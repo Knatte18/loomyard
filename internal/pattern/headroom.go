@@ -5,9 +5,11 @@ package pattern
 import "fmt"
 
 // Headroom reports a finding when the overview grew past HeadroomBytes.
-// base and head are the overview's content at the base and at the head; a nil or empty base means the overview was absent there and counts as zero bytes.
-// It answers true exactly when the head is longer than the base and longer than HeadroomBytes.
-// The finding names the bytes to cut, the head size minus the larger of the base size and HeadroomBytes: the smallest cut that passes.
+// base and head are the overview's content at the base and at the head;
+// a nil or empty base means the overview was absent there and counts as zero bytes.
+// The bool reports whether the head is longer than both the base and HeadroomBytes.
+// The finding names the bytes to cut, the head size minus the larger of the base size and HeadroomBytes:
+// the smallest cut that passes.
 func Headroom(base, head []byte) (Finding, bool) {
 	if len(head) <= len(base) || len(head) <= HeadroomBytes {
 		return Finding{}, false

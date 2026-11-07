@@ -1,6 +1,6 @@
-// enginedispatch_test.go covers how a Runner picks each run's engine from its EngineSet:
-// Start and Open resolve the spec's engine and record it, and every later operation resolves the engine the run's record names.
-// dispatchEngine records every seam method a call consults, so a call that reaches the wrong engine shows in that engine's own record.
+// enginedispatch_test.go covers how a Runner picks each run's engine from its EngineSet.
+// Start and Open resolve the spec's engine and record it;
+// every later operation resolves the engine the run's record names.
 
 package shuttleengine
 
@@ -157,7 +157,8 @@ var (
 	_ InterruptGuard      = (*dispatchEngine)(nil)
 )
 
-// dispatchRig is a Runner over a set holding dispatchEngines "a" (the default) and "b", and a plain engine "p" without optional capabilities.
+// dispatchRig is a Runner over a set of two dispatchEngines, "a" (the default) and "b", and a plain engine "p".
+// The plain engine "p" carries no optional capabilities.
 type dispatchRig struct {
 	t       *testing.T
 	fx      *fixture
@@ -208,8 +209,9 @@ func (r *dispatchRig) writeEvents(state RunState) {
 }
 
 // dispatchOp is one engine-consulting operation on a run of strand-1.
-// wantMethod is the seam method the run's engine must record;
-// wantOutcome is "ok" for a call that must succeed, "refused" for one that must fail, and empty when only the consult is pinned.
+// wantMethod is the seam method the run's engine must record.
+// wantOutcome is "ok" for a call that must succeed and "refused" for one that must fail;
+// it is empty when only the consult is pinned.
 type dispatchOp struct {
 	name        string
 	call        func(r *dispatchRig) error
@@ -281,7 +283,7 @@ func dispatchOps() []dispatchOp {
 	}
 }
 
-// requireConsulted fails unless used recorded method and other recorded nothing.
+// requireConsulted fails unless used recorded the method, and other recorded nothing.
 func requireConsulted(t *testing.T, used, other *dispatchEngine, method string) {
 	t.Helper()
 	if !slices.Contains(used.consulted(), method) {

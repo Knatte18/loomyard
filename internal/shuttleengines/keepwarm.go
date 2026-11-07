@@ -1,4 +1,4 @@
-// keepwarm.go declares the one keep-warm resolver: the cap an agent's blocking wait takes for its role, answered through the engine seam.
+// keepwarm.go declares KeepWarm, the resolver of the keep-warm caps an agent's blocking wait takes for its role.
 
 package shuttleengines
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// KeepWarmAnswer is what KeepWarm resolves for a strand: the caps its engine answers and the gate's break-even.
+// KeepWarmAnswer holds the keep-warm caps resolved for one strand, and the re-run count a long wait is worth.
 type KeepWarmAnswer struct {
 	// Cap is the longest one keep-warm wait of the strand's role; zero means the engine keeps nothing warm.
 	Cap time.Duration
@@ -23,8 +23,9 @@ type KeepWarmAnswer struct {
 	Fallback error
 }
 
-// KeepWarm resolves the keep-warm caps of the strand named strand, the full agent name of the caller, over the layers dirs locate.
-// It answers the fallback, never an error, when the strand does not parse or the shuttle config, the engine set or the engine's caps cannot be resolved:
+// KeepWarm resolves the keep-warm caps of strand, the full agent name of the caller, over the config layers of dirs.
+// It answers the fallback, never an error, when the strand does not parse.
+// It does the same when the shuttle config, the engine set or the engine's caps cannot be resolved:
 // both caps are shuttleengine.DefaultAwaitCap, MaxReruns is 0 and Fallback holds the cause.
 // It never logs; the caller logs a fallback at its own level.
 func KeepWarm(dirs configengine.Dirs, strand string) KeepWarmAnswer {
@@ -35,7 +36,7 @@ func KeepWarm(dirs configengine.Dirs, strand string) KeepWarmAnswer {
 	return keepWarmWith(dirs, strand, constructors)
 }
 
-// keepWarmWith is KeepWarm over the given engine constructors.
+// keepWarmWith resolves the keep-warm caps of strand from the engines that constructors build.
 // A numbered role such as implementer-2 resolves as its base role.
 func keepWarmWith(dirs configengine.Dirs, strand string, constructors map[string]constructor) KeepWarmAnswer {
 	fallback := func(cause error) KeepWarmAnswer {
@@ -64,7 +65,8 @@ func keepWarmWith(dirs configengine.Dirs, strand string, constructors map[string
 	return KeepWarmAnswer{Cap: capWait, LongCap: longCap, MaxReruns: cfg.KeepWarmMaxReruns}
 }
 
-// baseRole drops a numbered suffix from role: for a role of the form <base>-<N> that agentname numbers from base it answers base, and any other role answers itself.
+// baseRole drops the numbered suffix of role.
+// A role of the form <base>-<N> that agentname numbers from base answers base; any other role answers itself.
 func baseRole(role string) string {
 	index := strings.LastIndex(role, "-")
 	if index < 0 {

@@ -1,10 +1,9 @@
-// origin_integration_test.go covers Add's newly-landed provenance step end-to-end: the origin record
-// itself, its commit on the weft branch, its rollback behavior on both the created- and
-// adopted-weft-branch paths, its mutation-record entries (including the exemption the git-state
-// commit kind carries), and the run launcher that lands alongside it in the same batch.
+// origin_integration_test.go covers the origin record that Add writes, end-to-end.
+// It checks the record itself, its commit on the weft branch, and rollback on the created and adopted paths.
+// It also checks the mutation-record entries and the run launcher.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers (mustRecordsRepoRoot);
-// shares the single TestMain in testmain_test.go.
+// It is package fabricengine_test so it can import hubforge, which an in-package test cannot import.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// gitShow returns the content git show'd at rev:path in dir, failing the test on any git error.
+// gitShow returns the content of path at rev in dir, and fails the test on any git error.
 func gitShow(t *testing.T, dir, rev, path string) string {
 	t.Helper()
 
@@ -34,20 +33,14 @@ func gitShow(t *testing.T, dir, rev, path string) string {
 	return out
 }
 
-// TestAdd_OriginRecord builds one hub and runs Add against it, in this order:
-// the origin record is committed on the new pair's weft branch — present in that branch's tree, not
-// merely sitting on disk in the working copy;
-// Add records the acting worktree's name as parent_worktree, the prime's name for a pair added from
-// the prime and the first pair's slug for a pair added from inside that pair;
-// two concurrent CommitRecordsPaths calls against the same weft worktree serialize on the weft write
-// lock rather than racing unlocked: both land, neither corrupts the other's index, and the resulting
-// weft history is linear — driven the way TestCommitLock_WarpOnlySerializesConcurrentCommits drives
-// its own contention case, since CommitRecordsPaths and ensureWeftLockDirAt's lock path are unexported
-// and this package cannot import hubforge from inside package fabricengine to reuse that test's own
-// fixture directly;
-// and Add records the acting warp worktree's actual current branch as parent_branch, not always the
-// hub's default branch.
-// The last step checks the prime warp worktree out onto a non-default branch, so it runs last.
+// TestAdd_OriginRecord builds one hub and runs Add against it, then checks four things in order.
+// The origin record is committed on the new pair's weft branch, present in that branch's tree and not only on disk.
+// Add records the acting worktree's name as parent_worktree.
+// It is the prime's name when added from the prime, and the first pair's slug when added from inside that pair.
+// Concurrent record commits on one weft worktree serialize on the weft write lock: both land.
+// Neither corrupts the other's index, and the weft history stays linear.
+// Add records the acting warp worktree's current branch as parent_branch, not always the hub's default branch.
+// The last check moves the prime warp worktree onto a non-default branch, so it runs last.
 func TestAdd_OriginRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -169,9 +162,8 @@ func TestAdd_OriginRecord(t *testing.T) {
 		const parentBranch = "feature-parent"
 		const slug = "non-default-parent"
 
-		// Give the weft side a branch to fork from before the warp side ever leaves "main": the weft-side
-		// branch existing is what createWeftWorktree's fork-from-parent-weft-branch step needs, and
-		// creating it here (rather than via a checkout) needs no worktree of its own.
+		// Create the parent's weft branch before the prime warp worktree leaves "main":
+		// the new pair's weft branch forks from it, and creating it with git branch needs no worktree of its own.
 		gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(parentBranch), fabricengine.RecordsBranchName("main"))
 
 		// Move the prime warp worktree onto the non-default branch Add will read via rev-parse
@@ -180,8 +172,8 @@ func TestAdd_OriginRecord(t *testing.T) {
 
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-		// Resolve a Location at the new pair's own warp worktree — the acting worktree ReadOrigin reads
-		// through, mirroring how an operator who cd's into the new pair would read it back.
+		// Resolve a Location at the new pair's own warp worktree, as an operator inside the new pair would.
+		// ReadOrigin reads through this acting worktree.
 		pairLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 		if err != nil {
 			t.Fatalf("lymcwd.Resolve(pair warp worktree): %v", err)
@@ -200,8 +192,8 @@ func TestAdd_OriginRecord(t *testing.T) {
 }
 
 // TestAdd_RecordsParentBranch_SubpathAnchoredHub proves the record lands at the anchor-relative path
-// inside the new pair's weft worktree, not at the weft worktree root — the case a "." anchor cannot
-// distinguish.
+// inside the new pair's weft worktree, and not at the weft worktree root.
+// A "." anchor would put both paths at the root, so only a subdirectory anchor tells them apart.
 //
 //testtiming:keep the origin record landing at the anchor-relative path and not at the weft root, with parent_branch main; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
@@ -240,10 +232,9 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 	}
 }
 
-// TestAddRollback_CreatedPathLeavesNoOriginRecord forces Add to fail after the record has been
-// written (a refused records commit fails its commit) on the
-// created-branch path, and asserts rollback's existing weft-worktree-and-branch removal takes the
-// record with it: nothing survives to be read back.
+// TestAddRollback_CreatedPathLeavesNoOriginRecord refuses the records commit, so Add fails after writing the record.
+// Rollback removes the weft worktree and branch on the created-branch path, and with them the record:
+// nothing survives to be read back.
 func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -274,9 +265,8 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	}
 }
 
-// TestAdd_AdoptedWeftKeepsItsOriginRecord adopts a live pair's weft branch, which already carries the origin record, from a worktree on another branch:
-// the record keeps its recorded parent,
-// no record commit lands on the branch,
+// TestAdd_AdoptedWeftKeepsItsOriginRecord adopts a live pair's weft branch from a worktree on another branch.
+// The branch already carries the origin record, which keeps its recorded parent and gets no new record commit,
 // and the new weft worktree still gets its .weft lock directory.
 func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -325,8 +315,10 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	}
 }
 
-// TestAdd_AdoptedWeftTakesTheBeamMarkOnly adopts a live pair's weft branch, which carries an unmarked origin record, with AddOptions.Beam:
-// the record gains the beam mark in a record commit and keeps its recorded parent.
+// TestAdd_AdoptedWeftTakesTheBeamMarkOnly adopts a live pair's weft branch with AddOptions.Beam set.
+// The adoption runs from a worktree on another branch.
+// The branch carries an unmarked origin record.
+// Add gives it the beam mark in a record commit, and the record keeps its recorded parent.
 func TestAdd_AdoptedWeftTakesTheBeamMarkOnly(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -363,12 +355,11 @@ func TestAdd_AdoptedWeftTakesTheBeamMarkOnly(t *testing.T) {
 	}
 }
 
-// TestAdd_OriginRecordMutationEntries asserts the successful AddResult's mutation snapshot contains
-// exactly one KindFileWritten entry for the record and exactly one KindCommitCreated entry for the
-// record's commit, whose target is the new pair's weft worktree and whose detail is the sha the
-// commit landed at — the only guard the commit entry has, since the live-state mutation oracle
-// classifies KindCommitCreated as a git-state kind and exempts it from the commission direction
-// entirely.
+// TestAdd_OriginRecordMutationEntries asserts the mutation snapshot of a successful Add.
+// It holds exactly one KindFileWritten entry for the record and one KindCommitCreated entry for its commit.
+// The commit entry's target is the new pair's weft worktree, and its detail is the sha the commit landed at.
+// It is the only guard on the commit:
+// AssertRecordMatchesDiff classifies KindCommitCreated as a git-state kind and exempts it from the commission direction.
 func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -411,10 +402,9 @@ func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 	}
 }
 
-// TestAdd_SkipGitWritesRecordWithoutCommit asserts that an Add run with opts.SkipGit set still
-// writes the origin record and still carries its KindFileWritten entry, but lands no commit and
-// carries no KindCommitCreated entry — the guard that the commit is never claimed on a run that
-// deliberately performed none.
+// TestAdd_SkipGitWritesRecordWithoutCommit asserts that an Add run with opts.SkipGit set writes the origin record.
+// The run still carries its KindFileWritten entry, but it lands no commit and carries no KindCommitCreated entry.
+// The test guards that no commit is claimed on a run that performs none.
 func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -452,9 +442,9 @@ func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestAdd_RunLauncherLifecycle asserts the run launcher this batch adds exists in the per-slug
-// launcher directory after `add`, and that after the matching `remove` neither it nor the launcher
-// directory survives, with removal succeeding rather than being refused.
+// TestAdd_RunLauncherLifecycle asserts that the run launcher exists in the per-slug launcher directory after `add`.
+// After the matching `remove`, neither the launcher nor the launcher directory survives.
+// Removal succeeds rather than being refused.
 func TestAdd_RunLauncherLifecycle(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

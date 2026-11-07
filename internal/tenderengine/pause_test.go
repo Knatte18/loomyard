@@ -266,7 +266,8 @@ type env struct {
 // primeOrchName is the agent name the test world gives the prime's orch.
 const primeOrchName = "lym:orch"
 
-// beamOrch is a beam's orch in the test world: its strand guid and agent name, the pair holding its session, its watcher and its own creel journal.
+// beamOrch is a beam's orch in the test world:
+// its strand guid and agent name, the pair holding its session, its watcher and its own creel journal.
 type beamOrch struct {
 	strand, name string
 	pair         *fakePair
@@ -515,7 +516,7 @@ func TestPause(t *testing.T) {
 		{"the grace waits for a busy session and never past the grace end", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.busy["g-a"] = []bool{true}
-			// The session stays busy through both keys, and the row pins the clock at exactly the grace.
+			// The session stays busy through both keys, and the row pins the clock at the grace.
 			p.settle = 0
 			e := newEnv(t, p)
 

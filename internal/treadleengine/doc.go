@@ -1,197 +1,171 @@
-// Package treadleengine is the generalized round-loop engine: it spawns a
-// round via a caller-supplied RoundRunner each iteration, gates convergence
-// (llm-verdict / command / both), runs an ephemeral progress judge against a
-// milestone-capped round ladder, and persists per-round state for
-// crash/pause resume — all of it behind a seam, so a consumer supplies a
-// round-runner without duplicating any of this machinery.
+// Package treadleengine is a round-loop engine.
+// Each iteration it spawns a round through a caller-supplied RoundRunner and gates convergence.
+// The gate is an LLM verdict, a command, or both.
+// It runs an ephemeral progress judge against a milestone-capped round ladder.
+// It persists per-round state for crash and pause resume.
+// A consumer supplies a RoundRunner without duplicating any of this machinery.
 //
-// The package has no consumer today. It was extracted out of a shipped
-// review-gate loop that has since been retired, and is kept for the future
-// Tenter module (see the board's `hardener` note), whose behavior-review
-// rounds need exactly this machinery with a different round-runner inside
-// it. Nothing in the tree calls Engine.Run outside this package's own tests
-// — treat every contract below as the shipped behavior a future consumer
-// inherits, not as something a live caller depends on today.
+// The package has no consumer yet.
+// It is kept for the future Tenter module (see the board's `hardener` note).
+// Its behaviour-review rounds need this machinery with a different RoundRunner inside it.
+// Nothing in the tree calls Engine.Run outside this package's own tests.
+// Each contract below is behavior a future consumer inherits, not one a live caller depends on.
 //
 // # Text review and behaviour review
 //
-// A text-review round reads an artifact; a behaviour-review round runs a live-substrate module, reacts to what it observes and builds adversarial scenarios to break it.
-// The two share the review-round discipline (A-review before B-fix, no self-grading, commit-per-fix, fix everything) and differ along every other axis:
-// a text round runs in the worktree and is cheap, gated by an LLM verdict or a light command, and sits between phases on the spine;
-// a behaviour round needs a live sandbox repo with slow git and go operations, is gated deterministically (the smoke suite run N times concurrently, zero stray state),
-// costs hours per iteration, and runs on demand after loom.
-// This engine serves both through the RoundRunner seam; only the text profile exists today.
+// A text-review round reads an artifact.
+// A behaviour-review round runs a live-substrate module and reacts to what it observes.
+// It builds adversarial scenarios to break the module.
+// The two share the review-round discipline (A-review before B-fix, no self-grading, commit-per-fix, fix everything).
+// They differ along every other axis.
+// A text round runs in the worktree and is cheap.
+// It is gated by an LLM verdict or a light command and sits between phases on the spine.
+// A behaviour round needs a live sandbox repo with slow git and go operations.
+// It is gated deterministically (the smoke suite run N times concurrently, zero stray state).
+// It costs hours per iteration and runs on demand after loom.
+// This engine serves both through the RoundRunner seam; only the text profile exists.
 //
 // # Why every round respawns
 //
-// A hand-run behaviour campaign kept one persistent orchestrator thread alive across rounds, and that thread accumulated where the module's bugs live and targeted each next round.
-// This engine replaces the thread with Go and fresh one-shot spawns, so no context window carries state between rounds:
-// a progress judge runs before the round (reads the handoff, decides what to target, writes the round's seed prompt),
-// the round agent runs against that prompt,
-// and the judge runs again after it (independently validates the findings, rewrites the handoff in place, decides whether another round is needed).
-// Validating independently is not optional: a round's own "merge-ready" verdict was wrong in three of the seven rounds of the campaign that taught this.
-// The handoff is the only accumulation vehicle, so what a live thread knew implicitly must be explicit in it.
-// The prime case is the finding-recurrence ledger, which records which findings reappeared in which rounds:
-// the handoff's prose is distilled, but the ledger stays lossless, because an in-place edit that tidies a finding that looks resolved silently disables stuck detection.
+// Every round is a fresh one-shot spawn, so no context window carries state between rounds.
+// After each blocking round a progress judge independently validates the findings and rewrites the handoff in place.
+// It also decides whether another round is needed.
+// The independent validation is required: a round's own "merge-ready" verdict is not trusted.
+// A judge may also run before the round, reading the handoff and writing the round's seed prompt.
+// Pre-round targeting below covers it.
+// The handoff is the only accumulation vehicle, so what a live thread would know implicitly must be explicit in it.
+// The prime case is the finding-recurrence ledger, which records which findings reappeared in which rounds.
+// The handoff's prose is distilled, but the ledger stays lossless:
+// an in-place edit that tidies a finding that looks resolved silently disables stuck detection.
 //
-// # The RoundRunner seam — attempt-level, not round-level
+// # The RoundRunner seam: attempt-level, not round-level
 //
-// What used to be a hardwired "spawn a fresh burlerengine round" is now
-// the RoundRunner interface (runner.go): RunAttempt(AttemptInput)
-// (AttemptResult, error) runs ONE attempt of one round and reports a
-// shuttle-style outcome, a generic Verdict, blocking-findings count, artifact
-// paths, and diagnostic identities. The seam is deliberately attempt-level,
-// not round-level: Engine itself owns the generic machinery every future
-// runner needs for free — the two-attempt retry policy on died/timeout,
-// stale-artifact move-aside before a re-run, round/attempt token naming (roundToken, e.g. "3" then
-// "3b" for a retry), artifact path derivation, and the prior-round hydration
-// list assembly (collectPriorHydration) fed into every attempt's input. A
-// RoundRunner implementation therefore only ever adapts "spawn one attempt,
-// report its result" onto its own domain.
+// The RoundRunner interface (runner.go) has one method, RunAttempt(AttemptInput) (AttemptResult, error).
+// It runs one attempt of one round.
+// It reports a shuttle-style outcome, a generic Verdict and the blocking-findings count.
+// It also reports artifact paths and diagnostic identities.
+// The seam is attempt-level because Engine owns the machinery every runner needs:
+// the two-attempt retry policy on died or timeout;
+// stale-artifact move-aside before a re-run;
+// round and attempt token naming (roundToken, e.g. "3" then "3b" for a retry);
+// artifact path derivation;
+// and the prior-round hydration list assembly (collectPriorHydration) fed into every attempt's input.
+// A RoundRunner implementation therefore only adapts "spawn one attempt, report its result" onto its own domain.
 //
-// # Judge-maintained handoff — a bounded judge read-set
+// # Judge-maintained handoff: a bounded judge read-set
 //
-// The progress judge's per-round read-set was originally unbounded: every
-// prior round's review file, growing O(N) as rounds accumulate. Since the
-// judge already runs on every blocking round, the SAME call also maintains
-// a handoff (handoff.go) — round-<token>-handoff.md, written alongside the
-// verdict file in the same shuttle spawn (the handoff-on-disk shared
-// decision) — so the NEXT judge call reads {that handoff + the reviews of
-// every completed round its covers_rounds does not already absorb} plus the
-// current round's fresh review, instead of every prior round's review
-// (judgeReadSet). The handoff cannot be a single free-form prose summary:
-// the circling check depends on knowing whether a SPECIFIC finding has
-// recurred across rounds, so a distilled summary that silently drops a
-// recurring finding would break circling-detection quietly — worse than the
-// O(N) cost it replaces. It therefore carries two parts: a structured,
-// lossless finding-identity Ledger (a stable key, the rounds it has been
-// seen in, and an open/resolved Status — every entry from the previous
-// handoff must reappear here, never dropped, a rule enforced at prompt
-// level, not by this package) plus CoversRounds (which rounds' reviews this
-// handoff has already absorbed) over a distilled prose narrative for
-// everything else — "distill the prose, but keep the key-ledger lossless."
+// The progress judge runs on every blocking round, and the same call also maintains a handoff (handoff.go).
+// The handoff is round-<token>-handoff.md, written alongside the verdict file in the same shuttle spawn.
+// The next judge call reads that handoff and the current round's fresh review.
+// It also reads the review of every completed round that the handoff's covers_rounds has not absorbed (judgeReadSet).
+// The read-set stays bounded instead of growing with every prior round's review.
+// The handoff cannot be a single free-form prose summary.
+// The circling check depends on knowing whether a specific finding has recurred across rounds,
+// and a distilled summary that silently drops a recurring finding would break circling detection quietly.
+// The handoff therefore carries a lossless, structured Ledger of finding identities.
+// Each Ledger entry has a stable key, the rounds it has been seen in, and an open/resolved Status.
+// CoversRounds records which rounds' reviews the handoff has already absorbed.
+// A distilled prose narrative holds everything else.
+// Every entry from the previous handoff must reappear in the Ledger; the prompt enforces this and this package does not.
 //
-// Riding the same call has one consequence worth naming, since it is a
-// behavior change from the pre-handoff design rather than a pure addition:
-// the handoff is a REQUIRED second entry in that spawn's OutputFiles, and
-// shuttle reports OutcomeDone only once every output file exists. A judge
-// call that renders a well-formed verdict and then fails to write its
-// handoff therefore comes back non-done, and runJudgeCall takes its
-// fail-safe branch with the verdict file unread — where pre-handoff, with
-// the verdict as sole output file, that same call would have been honoured.
-// The direction is safe (the fallback is PROGRESSING/CONTINUE, never STUCK,
-// and the hard cap still bounds the block) and the alternative would mean
-// trusting a file after shuttle's own done contract said the agent was not
-// finished, so the coupling is deliberate — see runJudgeCall's doc.
+// The handoff is a required second entry in that spawn's OutputFiles.
+// Shuttle reports OutcomeDone only once every output file exists.
+// A judge call that renders a well-formed verdict and then fails to write its handoff comes back non-done.
+// runJudgeCall then takes its fail-safe branch with the verdict file unread.
+// The fallback is PROGRESSING/CONTINUE, never STUCK, and the hard cap still bounds the block.
 //
-// Parsing is a deliberate two-layer split, mirroring judgeverdict.go:
-// ParseHandoff itself is fail-loud — a malformed handoff is an agent defect
-// that must be visible as an error to any direct caller, including tests —
-// but the round loop that calls it (run.go, via judgeReadSet and
-// latestValidHandoff) is fail-safe: a missing or unparseable handoff logs a
-// name-prefixed logger.Warn and falls back rather than erroring or forcing
-// STUCK. The fallback walks a block's rounds newest-to-oldest for the
-// latest handoff that both reads and ParseHandoffs cleanly, so one
-// corrupted handoff deterministically degrades to the next older valid one
-// instead of taking every future judge call down with it; with no valid
-// handoff at all (a fresh block, or every recorded one has failed), the
-// read-set degrades to exactly the pre-handoff all-reviews behavior
-// (collectJudgeReviews). A round with no judge call at all (round 1, a
-// round right after an APPROVED verdict, or a round whose judge call itself
-// failed) carries no HandoffPath and so never appears in a later handoff's
-// CoversRounds — its review is therefore always fed to some future judge
-// call, which is what closes the "judge-gap" hole a bounded read-set would
-// otherwise open.
+// Parsing is two-layered, as in judgeverdict.go.
+// ParseHandoff is fail-loud:
+// a malformed handoff is an agent defect that must be visible as an error to any direct caller, including tests.
+// The round loop that calls it (run.go, via judgeReadSet and latestValidHandoff) is fail-safe.
+// A missing or unparseable handoff logs a name-prefixed logger.Warn and falls back.
+// It neither errors nor forces STUCK.
+// The fallback walks a block's rounds newest-to-oldest for the latest handoff that both reads and ParseHandoffs cleanly.
+// One corrupted handoff therefore degrades to the next older valid one.
+// It does not take every later judge call down with it.
+// With no valid handoff at all, the read-set is every round's review (collectJudgeReviews).
+// That is the case for a fresh block and for a block whose recorded handoffs all failed.
+// A round with no judge call carries no HandoffPath and never appears in a later handoff's CoversRounds.
+// Such a round is round 1, a round right after an APPROVED verdict, or a round whose judge call failed.
+// Its review is always fed to some later judge call, which closes the judge-gap hole a bounded read-set would open.
 //
-// # Pre-round targeting — optional, profile-gated
+// # Pre-round targeting: optional, profile-gated
 //
-// Profile.PreRoundTargeting (targeting.go) is a third, OPTIONAL ephemeral
-// judge framing, run once per round before attempt 1 when a valid handoff
-// already exists to target from: it reads that handoff and writes a short
-// prose seed brief to that round's AttemptInput.SeedPath, resolved once at
-// attempt 1's token and reused unchanged by a same-round retry. Unlike
-// runCircling/runMilestone it produces no verdict — only unconstrained
-// prose a RoundRunner MAY read or ignore entirely. A text-review profile
-// has no use for it (its rounds keep re-using a fixed rubric); the
-// capability exists for a future consumer (Tenter, see
-// the board's `hardener` note) whose rounds benefit from dynamically
-// retargeted focus. Like every other
-// ephemeral call in this package, it is fail-safe end to end: a stencil-fill
-// failure, a shuttle Run error, a non-done outcome, or an empty/unreadable
-// seed file all degrade to "no seed" with a name-prefixed logger.Warn,
-// never an error — a missed targeting call only costs the round the
-// guidance it would have added, never correctness.
+// Profile.PreRoundTargeting (targeting.go) enables an optional ephemeral judge framing.
+// It runs once per round before attempt 1, when a valid handoff already exists to target from.
+// It reads that handoff and writes a short prose seed brief to that round's AttemptInput.SeedPath.
+// The path is resolved once at attempt 1's token and reused unchanged by a same-round retry.
+// It produces no verdict, only unconstrained prose a RoundRunner may read or ignore.
+// A text-review profile has no use for it, since its rounds reuse a fixed rubric.
+// It exists for a future consumer whose rounds benefit from retargeted focus.
+// That consumer is Tenter (see the board's `hardener` note).
+// Like every other ephemeral call in this package, it is fail-safe end to end.
+// These failures degrade to "no seed" with a name-prefixed logger.Warn, never an error:
+// a stencil-fill failure, a shuttle Run error, a non-done outcome, and an empty or unreadable seed file.
+// A missed targeting call costs the round only the guidance it would have added.
 //
 // # Model choices
 //
-// Profile.Judge and Profile.Attempt are the two shuttleengine.ModelChoices, engine included:
-// Judge goes on the circling, milestone and targeting spawns, and Attempt reaches each attempt as AttemptInput.Choice.
+// Profile.Judge and Profile.Attempt are the two shuttleengine.ModelChoices, engine included.
+// Judge goes on the circling, milestone and targeting spawns.
+// Attempt reaches each attempt as AttemptInput.Choice.
 // Treadle declares no requirement on either spawn.
 //
 // # Skills and the parent directive
 //
-// The spawned roles (judge, targeting) each load `scribe:prose` through the spec's Skills before the prompt is delivered.
-// Each opening stencil carries `{{.parent_directive}}` and `{{.edit_directive}}` near its top, filled with `parentdirective.Directive` from the told Options.ParentName and `editdirective.Directive` respectively.
+// The spawned roles (judge, targeting) each load `scribe:prose` through the spec's Skills.
+// The skills load before the prompt is delivered.
+// Each opening stencil carries `{{.parent_directive}}` and `{{.edit_directive}}` near its top.
+// `{{.parent_directive}}` is filled with `parentdirective.Directive` from the told Options.ParentName.
+// `{{.edit_directive}}` is filled with `editdirective.Directive`.
 // An empty ParentName renders the no-parent variant;
 // a directive that cannot be rendered takes the same fail-safe path as an unreadable stencil.
 //
 // # Name-parameterized diagnostics
 //
-// Engine is constructed with a name that every error and Warn string
-// reached through an Engine method is prefixed with, so each caller (e.g.
-// "tenter") gets its own consistently-prefixed diagnostics for free rather
-// than a generic "treadle: " label that would erase which caller's block
-// failed. That
-// covers every Warn this package emits without exception — including the
-// fail-safe handoff-fallback Warns in latestValidHandoff, which reach an
-// operator's stderr at logger's default threshold during an ordinary run and
-// so must never wear a module name the operator has no CLI for.
+// Engine is constructed with a name that prefixes every error and Warn string reached through an Engine method.
+// Each caller (e.g. "tenter") gets its own diagnostics, so an operator can tell which caller's block failed.
+// The prefix covers every Warn this package emits, including the handoff-fallback Warns in latestValidHandoff.
+// Those reach an operator's stderr at logger's default threshold during an ordinary run,
+// so they must never carry a module name the operator has no CLI for.
 //
-// Two carve-outs, both deliberate. First, the name parameterization pins the
-// PREFIX only: error BODIES are runner-agnostic by design ("round N attempt
-// run", "kept run dir"), since this package cannot name a specific runner's
-// domain (burler, shuttle) without violating the Runner-Seam Invariant.
-// Second, the package's EXPORTED fail-loud parsers — ParseJudgeVerdict,
-// ParseHandoff, and the splitFrontmatter they share —
-// are package-level pure functions with no Engine in scope, so their errors
-// keep a fixed "treadle: " prefix. Those strings are never returned to a
-// caller as an engine error; they surface only as the cause= field of a
-// name-prefixed Warn (judge.go, run.go) or to a direct caller such as a
-// test, where "treadle: " is the accurate attribution.
+// Two carve-outs apply.
+// The name pins the prefix only: error bodies are runner-agnostic ("round N attempt run", "kept run dir").
+// This package cannot name a specific runner's domain (burler, shuttle) without violating the runner-seam invariant.
+// The exported fail-loud parsers are ParseJudgeVerdict and ParseHandoff.
+// They and the splitFrontmatter they share are package-level pure functions with no Engine in scope.
+// Their errors therefore keep a fixed "treadle: " prefix.
+// Those strings never reach a caller as an engine error.
+// They surface only as the cause= field of a name-prefixed Warn (judge.go, run.go) or to a direct caller such as a test.
 //
-// # No burlerengine import — the Treadle Runner-Seam Invariant
+// # No burlerengine import: the runner-seam invariant
 //
-// This package imports only the allowlist seam_enforcement_test.go holds, and never internal/burlerengine, internal/lymcwd or any internal/*cli package;
-// the test enforces it.
-// It defines its own vocabulary — Verdict, AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/Finding;
-// a round-runner adapter maps its own domain's result type onto treadle's.
-// If a type is ever genuinely needed by both treadle and a runner, it gets extracted out of burler into shared ground — never imported downward.
+// This package imports only the allowlist seam_enforcement_test.go holds.
+// It never imports internal/burlerengine, internal/lymcwd or any internal/*cli package; the test enforces it.
+// It defines its own vocabulary, Verdict and AttemptInput/AttemptResult.
+// It does not reuse burlerengine.Verdict or burlerengine.Finding.
+// A round-runner adapter maps its own domain's result type onto treadle's.
+// A type needed by both treadle and a runner gets extracted out of burler into shared ground, never imported downward.
 //
 // # Geometry-blindness and fabric-blindness
 //
-// treadleengine never imports internal/lymcwd directly — the ban is a
-// discipline against deriving geometry, not an isolation guarantee, since
-// the package's own allowlist permits internal/logger and
-// internal/shuttleengine, each of which imports lymcwd directly — and
-// never constructs a _lym path itself: Engine.Run operates on a
-// caller-supplied absolute runDir, and a block's Profile carries GateDir —
-// the absolute cwd the gate command runs in — supplied by the caller
-// (which resolves it from its own geometry) rather than resolved by this
-// package. Likewise treadleengine never touches fabric git; committing a
-// block's run-dir artifacts to fabric remains the loop OWNER's job, exactly
-// as PATTERN-fabric-boundary already requires one layer up.
+// treadleengine never imports internal/lymcwd directly, and it never constructs a _lym path itself.
+// The ban is a discipline against deriving geometry, not an isolation guarantee:
+// the allowlist permits internal/logger and internal/shuttleengine, each of which imports lymcwd directly.
+// Engine.Run operates on a caller-supplied absolute runDir.
+// A block's Profile carries GateDir, the absolute cwd the gate command runs in.
+// The caller resolves GateDir from its own geometry.
+// treadleengine also never touches fabric git.
+// Committing a block's run-dir artifacts to fabric is the loop owner's job.
+// PATTERN-fabric-boundary requires this one layer up.
 //
-// # Everything else carried over unchanged from the original loop
+// # Round-loop machinery
 //
-// The milestone ladder (RoundCaps: every entry but the last is a
-// judge-gated milestone rung, the last is the unconditional hard cap), the
-// holistic verdict-judge model (per-round circling check plus milestone
-// continuation gate, both fail-safe — any judge infrastructure failure
-// degrades to progressing/CONTINUE with a Warn, never STUCK, never an
-// engine error), the three pluggable GateModes and their convergence
-// semantics, the pause seam (checked only at round boundaries, with the
-// same pause-flag clearing rules), and run-dir mutual exclusion (run.lock,
-// the ErrBlockBusy sentinel) are all generalized machinery moved here
-// verbatim from the original shipped round loop; this package's job is to
-// carry that behavior forward under the RoundRunner seam, not to change it.
+// The milestone ladder (RoundCaps): every entry but the last is a judge-gated milestone rung.
+// The last entry is the hard cap.
+// The verdict-judge model: a per-round circling check plus a milestone continuation gate, both fail-safe.
+// Any judge infrastructure failure degrades to progressing/CONTINUE with a Warn, never STUCK or an engine error.
+// The pluggable GateModes and their convergence semantics.
+// The pause seam, checked only at round boundaries.
+// Run-dir mutual exclusion (run.lock, the ErrBlockBusy sentinel).
 package treadleengine

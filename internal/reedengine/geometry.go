@@ -1,48 +1,47 @@
-// geometry.go declares Geometry, the struct reed is told its coordinates through, and the two button types, ButtonContext and ButtonBeam, its Buttons field returns.
-// It declares types only — New and every method stay in their existing files (lock.go,
-// lifecycle.go, strand.go); this file adds no constructor, no validator, and no
-// default.
+// geometry.go declares Geometry, the paths and identity strings reed is given at construction.
+// It also declares the button types ButtonContext and ButtonBeam.
+// The package's constructor and methods live in other files, so this file declares types only.
 
 package reedengine
 
 import "gopkg.in/yaml.v3"
 
-// Geometry is the set of paths and identity strings reed is told, once, at construction, and never derives itself.
-// reedengine.New validates no field of a Geometry, and no method recomputes any of them from the others — populating every field with a usable absolute path (or, for SocketKey, a socket-safe key) is entirely the caller's obligation.
-// hubgeom.ReedGeometry is the hub-mode answer that builds a Geometry from a resolved *lymcwd.Location;
-// reedengine.ServerName(hubPath) is SocketKey's derivation.
-// Neither is imported here — this file states the contract, not the implementation.
+// Geometry is the set of paths and identity strings that reed is given once, at construction.
+// reed validates no field and derives none from the others.
+// The caller must populate every field with a usable absolute path;
+// SocketKey takes a socket-safe key instead.
+// Several fields are empty or nil in standalone mode, and each field comment says so.
 type Geometry struct {
-	// SocketKey is the tmux -L socket name; it is what Engine.Socket returns.
-	// It must carry no path separator: tmux resolves -L as a filename under its per-user socket
-	// directory, so a separator makes it a path whose parent does not exist — and tmux answers that
-	// with a stderr line and exit 0, indistinguishable from a slow boot. ServerName substitutes
-	// separators out at the derivation; validateToldTmuxIdentity (server.go) is the backstop for a
-	// teller that builds this field some other way.
+	// SocketKey is the tmux -L socket name.
+	// It must carry no path separator: tmux resolves -L as a filename under its per-user socket directory,
+	// so a separator makes it a path whose parent does not exist.
+	// tmux answers with a stderr line and exit 0, indistinguishable from a slow boot.
+	// The name derivation replaces separators;
+	// `validateToldTmuxIdentity` (server.go) is the backstop for a caller that builds this field another way.
 	SocketKey string
-	// SessionName is the tmux session name; it is what Engine.SessionName returns.
-	// It must carry none of tmux's three rewrite classes: '.' or ':' (silently rewritten to '_'),
-	// '\' (silently doubled to "\\"), or any ASCII control character, DEL, or invalid-UTF-8 byte
-	// (silently vis-encoded into a multi-character escape).
-	// Any of the three creates the session under the rewritten name with exit 0, which every
-	// exact-match "=<name>" target this package issues would then miss forever. A hub-mode caller
-	// gets this for free only if the worktree directory name happens to be clean, so the constraint
-	// is enforced rather than assumed — validateToldTmuxIdentity (server.go) refuses such a name at
-	// every op boundary, before any tmux round trip.
+	// SessionName is the tmux session name.
+	// It must avoid tmux's three rewrite classes.
+	// tmux silently rewrites '.' and ':' to '_' and doubles '\' to "\\".
+	// It vis-encodes any ASCII control character, DEL, or invalid-UTF-8 byte into a multi-character escape.
+	// Any of these creates the session under the rewritten name with exit 0,
+	// so every exact-match "=<name>" target this package issues would miss it forever.
+	// Hub mode gets a clean name only when the worktree directory name is clean,
+	// so the constraint is enforced rather than assumed.
+	// `validateToldTmuxIdentity` (server.go) refuses such a name at every op boundary, before any tmux round trip.
 	SessionName string
 	// AnchorPath is the base stateDir joins onto for reed.json/reed.lock.
 	AnchorPath string
-	// PaneCwd is the cwd every tmux pane is spawned with. It equals AnchorPath in hub mode and the
-	// standalone target directory in standalone mode. There is deliberately no zero-value fallback:
-	// an empty PaneCwd must never silently mean AnchorPath, or a caller that forgets the field spawns
-	// panes in the wrong directory with nothing to catch it.
+	// PaneCwd is the cwd every tmux pane is spawned with.
+	// It equals AnchorPath in hub mode and the standalone target directory in standalone mode.
+	// An empty PaneCwd must never silently mean AnchorPath.
+	// A caller that forgets the field would spawn panes in the wrong directory, with nothing to catch it.
 	PaneCwd string
-	// WorktreeRoot is what Strand.Worktree is stamped with.
+	// WorktreeRoot is the value that every strand's Worktree field is stamped with.
 	WorktreeRoot string
 	// LogsDir is the shared per-hub server's runtime log directory.
 	LogsDir string
 	// DiscoverSignalPath is the hub-level file a cold session boot touches to wake the watchdog daemon's discovery loop.
-	// Engine.Down also writes DiscoverStopMarker into it when it ends the server.
+	// Shutting the server down also writes the discovery stop marker into it.
 	// It is empty in standalone mode, where nothing is touched.
 	DiscoverSignalPath string
 	// WorktreeName names the worktree in the strand-name refusals.
@@ -54,47 +53,52 @@ type Geometry struct {
 	// NameSlug is the task worktree's slug segment of a strand name;
 	// empty in the prime and in a standalone run.
 	NameSlug string
-	// PauseRecordPath is the hub's pause record, read by Resume to leave a covered pair's strands down.
+	// PauseRecordPath is the hub's pause record, which a resume reads to leave a covered pair's strands down.
 	// It is empty in standalone mode, where no pause covers anything.
 	PauseRecordPath string
 	// ParentName is the full name of the session that spawned this worktree's default run;
 	// empty when none is recorded.
-	// It is unrelated to Strand.Parent, which is a layout guid.
+	// The value is a session name, not a layout guid.
 	ParentName string
 	// SpawnOrder lists the hub's worktrees in spawn order, for the revival of a restarted server's sessions (revive.go).
 	// It is nil in standalone mode, and called only when a revival is due, so building an engine costs nothing.
 	SpawnOrder func() ([]ReviveEntry, error)
-	// Buttons tells the session's status-bar button context.
-	// It is nil in standalone mode, where the row shows follow alone, and is called by the status pins only, at boot and attach.
+	// Buttons supplies the session's status-bar button context.
+	// It is nil in standalone mode, where the row shows follow alone.
+	// It is called only by the status pins, at boot and attach.
 	Buttons func() (ButtonContext, error)
-	// PaneEnv tells the environment variables every strand pane exports before its launch command, name to value: the hub's env config module with this machine's override.
-	// It is nil in standalone mode, where a pane exports none, and is called at every strand launch, so a changed value reaches the next launch or relaunch.
+	// PaneEnv supplies the environment variables every strand pane exports before its launch command, name to value:
+	// the hub's env config module with this machine's override.
+	// It is nil in standalone mode, where a pane exports none.
+	// It is called at every strand launch, so a changed value reaches the next launch or relaunch.
 	PaneEnv func() (map[string]string, error)
 }
 
-// ReviveEntry is one worktree of a Geometry.SpawnOrder list.
+// ReviveEntry describes one worktree of a hub, for bringing its session back after a server restart.
 type ReviveEntry struct {
-	// Worktree names the worktree; the entry whose Worktree equals Geometry.WorktreeName is the booter's own.
+	// Worktree names the worktree; the entry that matches the booting worktree is the booter's own.
 	Worktree string
 	// Revive brings that worktree's recorded session back when it is not live, and reports whether it did.
 	Revive func() (revived bool, err error)
 }
 
-// ButtonContext is what a Geometry.Buttons call tells reed of a session's status-bar buttons.
+// ButtonContext is the status-bar button context that a session supplies to reed.
 type ButtonContext struct {
 	// Place is the kind of session the row is rendered for.
 	Place ButtonPlace
-	// Slug, Worktree and Session are the cheap placeholder values: the worktree's name, its anchor path and its tmux session name.
+	// Slug, Worktree and Session are the cheap placeholder values:
+	// the worktree's name, its anchor path and its tmux session name.
 	Slug     string
 	Worktree string
 	Session  string
-	// MachineButtons is desktop's buttons node, appended after reed's buttons of the same place; zero when the machine adds none.
+	// MachineButtons is desktop's buttons node, appended after reed's buttons of the same place;
+	// zero when the machine adds none.
 	MachineButtons yaml.Node
 	// Beam resolves the {beam} placeholder and is called only when the render needs it.
 	Beam func() (ButtonBeam, error)
 }
 
-// ButtonBeam is the beam a session's {beam} placeholder and run directory name.
+// ButtonBeam holds the values that a session's {beam} placeholder and run directory name resolve to.
 type ButtonBeam struct {
 	// Anchor is the beam's anchor path, empty when that directory is absent on this machine.
 	Anchor string

@@ -1,4 +1,5 @@
-// fixture_test.go holds the valid proposal, board and decision record the package's tests start from and break one rule at a time.
+// fixture_test.go holds the valid proposal, board and decision record.
+// The package's tests start from them and break one rule at a time.
 
 package raddleparser
 
@@ -7,7 +8,8 @@ import (
 	"strings"
 )
 
-// checkRecord is a decision record of two decisions with two risks, two criteria and two PATTERN changes; § stands for a backtick.
+// checkRecord is the decision record the tests check against: its decisions, risks, criteria and PATTERN changes.
+// § stands for a backtick, which a raw string cannot hold.
 var checkRecord = []byte(strings.NewReplacer("§", "`").Replace(`## Decisions
 
 ### D1 — First
@@ -34,7 +36,7 @@ The second decision.
 - §PATTERN-b§ — adds: Rule b.
 `))
 
-// validProposal returns a proposal of two parts that passes every check against checkRecord and validBoard.
+// validProposal returns a proposal of parts that passes every check against the fixture decision record and board.
 func validProposal() Proposal {
 	return Proposal{
 		Sketch:       "sketch-x",
@@ -58,7 +60,8 @@ func validProposal() Proposal {
 	}
 }
 
-// validBoard returns a board context under which validProposal passes: the Sketch is the run's own entry, and the one other open entry is weighed.
+// validBoard returns a board context in which the fixture proposal passes.
+// The Sketch is the run's own entry, and the other open entry is weighed.
 func validBoard() BoardContext {
 	return BoardContext{
 		Sketch:       "sketch-x",

@@ -1,21 +1,28 @@
 <!-- This is the loom Discussion producer's interview prompt.
-     It ships as an embedded default in contracts/stencils/stencils.go,
-     is seeded to the hub's stencils directory,
-     and is read from there at call time via internal/stencil.
-     The loom-template-discussion-chair stencil includes this one whole, and internal/seatengine fills it through stencil.FillWith as its second filler, from the lead's value map,
-     which loomengine.DiscussionTable builds for recipe row 3.
-     Every marker below is a top-level {{.X}} substitution;
-     specs_dir is a required marker, naming the directory the discussion format spec is deployed to;
-     stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
-     parent_directive is a third optional marker, rendered by internal/parentdirective.
-     project_directive is a further optional marker, rendered by internal/loomengine.ProjectRecordDirective for a run under a beam;
+     It ships as an embedded default in contracts/stencils/stencils.go and is seeded to the hub's stencils directory.
+     It is read from there at call time via internal/stencil.
+     The loom-template-discussion-chair stencil includes this one whole.
+     internal/seatengine fills it through stencil.FillWith from the lead's value map.
+     internal/loomengine's DiscussionTable builds that map.
+     Every marker below is a top-level {{.X}} substitution, and each must be non-empty unless the table's Optional list names it.
+     The file holds no {{if}}/{{range}} conditional,
+     since a required marker inside a conditional branch would render silently blank when present-but-empty;
+     see internal/stencil/stencil.go.
+     specs_dir is a required marker naming the directory the discussion format spec is deployed to.
+     pattern_directive and friction_directive are optional markers.
+     Each renders as nothing when its own tier is inactive: PATTERN for pattern_directive, Tier 2 for friction_directive.
+     parent_directive is rendered by internal/parentdirective.
+     project_directive is an optional marker rendered by internal/loomengine.ProjectRecordDirective for a run under a beam;
      it shares the pattern directive's line, so an empty value leaves the prompt's bytes unchanged.
-     twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
-     it sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
+     twill_directive is an optional marker rendered by internal/twilldirective through internal/loomengine;
+     it sits on the line that would otherwise be blank, so an empty value leaves the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
-     self_check is a required marker, the body of Step 6 up to its closing two lines, filled by internal/loomengine's DiscussionTable with the fragment that has the writer run the validator or, when the row's gate has a cold fixer, the one that has it run none.
+     self_check is a required marker: the body of Step 6 up to its closing two lines.
+     DiscussionTable fills it with the fragment that has the writer run the validator or,
+     when the gate has a cold fixer, the one that has it run none.
      subagent_model is a required marker, filled from loom.yaml's subagent_model.
-     The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->
+     The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax;
+     only `{{` begins a template action. -->
 
 # Discussion — interview, then write the decision record
 

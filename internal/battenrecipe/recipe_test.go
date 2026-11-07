@@ -1,9 +1,10 @@
-// recipe_test.go builds through New and asserts the shape the batten recipe's rows must
-// carry: their names, the OnDone chain, the load-bearing empty/self-route OnStuck edges and empty
-// terminal OnDone edge, Run-Shed's in-call wait configuration, the absence of any Segment, and that the
-// returned *shedengine.Shed carries ShedPaths' five values verbatim. It also asserts RecipeEngines()'s
-// own shape, since a silently empty return would disable the cross-consumer coverage guard rather
-// than fail it.
+// recipe_test.go builds the recipe through New and asserts the shape its rows must carry.
+// The rows carry their names and the OnDone chain.
+// The load-bearing empty and self-route OnStuck edges and the empty terminal OnDone edge are checked.
+// Run-Shed's in-call wait configuration is checked, and no row has a Segment.
+// The returned *shedengine.Shed carries ShedPaths' five values verbatim.
+// It also asserts the shape of RecipeEngines().
+// A silently empty return would disable the cross-consumer coverage guard rather than fail it.
 
 package battenrecipe
 
@@ -21,10 +22,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNew_RowNamesMatchTheDurableIdentityConstants asserts New assembles exactly the rows the Name* constants name, in order.
-// It is the durable-identity guard internal/loomrecipe's own row-name test mirrors.
-// It also pins NameRunShed's value: shedengine persists the row name, not the engine name, into the status file,
-// so a symmetry-minded rename of the row onto its InnerRun engine would break resume for an in-flight run.
+// TestNew_RowNamesMatchTheDurableIdentityConstants asserts the rows New assembles.
+// They are exactly the rows the Name* constants name, in order.
+// It is the durable-identity guard for the row names.
+// It also pins NameRunShed's value.
+// shedengine persists the row name, not the engine name, into the status file.
+// Renaming the row to match its InnerRun engine would break resume for an in-flight run.
 func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 	tiergate.Require(t, 0)
 	if NameRunShed != "Run-Shed" {
@@ -48,8 +51,10 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 	}
 }
 
-// TestNew_OnDoneChainAndLoadBearingEdges asserts the Worktree-Create -> Seed-Child -> Open-Window -> Seed-IDE -> Open-IDE -> Run-Shed -> Land -> Worktree-Teardown OnDone chain.
-// It also asserts Run-Shed's OnStuck self-route, Land's empty OnStuck, Worktree-Teardown's empty OnDone, that no row declares a Segment, and that the Open-Window, Seed-IDE and Open-IDE entry gates follow their batten setting.
+// TestNew_OnDoneChainAndLoadBearingEdges asserts the OnDone chain of the batten rows:
+// Worktree-Create -> Seed-Child -> Open-Window -> Seed-IDE -> Open-IDE -> Run-Shed -> Land -> Worktree-Teardown.
+// It also asserts Run-Shed's OnStuck self-route, Land's empty OnStuck, and Worktree-Teardown's empty OnDone.
+// No row declares a Segment, and the Open-Window, Seed-IDE and Open-IDE entry gates follow their batten setting.
 func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -134,8 +139,10 @@ func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 	}
 }
 
-// TestNew_RunShedWaitsInCallWithoutACountedBudget pins Run-Shed's wait in the recipe: a short check interval and a notice probe in its config, and no max_bounces.
-// Every Stuck the row returns is budget-exempt, so a counted budget would only be a limit nothing spends; a recipe that reintroduced one would read as a time limit on a running child that the producer no longer has.
+// TestNew_RunShedWaitsInCallWithoutACountedBudget pins Run-Shed's wait in the recipe:
+// a short check interval and a notice probe in its config, and no max_bounces.
+// Every Stuck the row returns is budget-exempt, so a counted budget would only be a limit nothing spends;
+// a recipe that reintroduced one would read as a time limit on a running child, and the producer enforces none.
 func TestNew_RunShedWaitsInCallWithoutACountedBudget(t *testing.T) {
 	tiergate.Require(t, 0)
 	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
@@ -159,8 +166,7 @@ func TestNew_RunShedWaitsInCallWithoutACountedBudget(t *testing.T) {
 	}
 }
 
-// TestNew_CarriesShedPathsVerbatim asserts the returned *shedengine.Shed carries ShedPaths' five
-// values verbatim.
+// TestNew_CarriesShedPathsVerbatim asserts the returned *shedengine.Shed carries ShedPaths' five values verbatim.
 func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -183,7 +189,7 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 	}
 }
 
-// TestRecipeEngines_ReportsEveryEngineNameSortedOnce asserts RecipeEngines() returns the sorted, de-duplicated engine names of battenRowEngines.
+// TestRecipeEngines_ReportsEveryEngineNameSortedOnce asserts RecipeEngines returns each engine name once, sorted.
 // It is the input the cross-consumer guard trusts, so a silently empty return would disable that guard rather than fail it.
 func TestRecipeEngines_ReportsEveryEngineNameSortedOnce(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -205,8 +211,10 @@ func TestRecipeEngines_ReportsEveryEngineNameSortedOnce(t *testing.T) {
 	}
 }
 
-// TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun asserts a pause requested during Land's land-lock wait halts batten blocked at Land with the pause flag still set.
-// It asserts a goto onto Land leaves the run paused with the flag cleared, and the next step calls Land again, which returns Done once the lock frees.
+// TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun asserts a pause requested during Land's land-lock wait.
+// It asserts the pause halts batten blocked at Land with the pause flag still set.
+// It asserts a goto onto Land leaves the run paused with the flag cleared,
+// and the next step calls Land again, which returns Done once the lock frees.
 func TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)

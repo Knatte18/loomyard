@@ -1,4 +1,5 @@
-// logfile.go appends the dobby's own log lines to dobby.log by a per-line open and rotates dobby.log and dobby.out to one previous file at a size bound.
+// logfile.go appends the dobby's own log lines to dobby.log, opening the file once per line.
+// It rotates dobby.log and dobby.out to one previous file at a size bound.
 
 package dobbyengine
 
@@ -12,8 +13,9 @@ const logRotateBytes = 1 << 20
 
 // AppendLog appends line and a newline to the file at path, opening and closing it for this one line.
 // It never creates a missing directory, so a removed worktree gets nothing back and the open error is returned.
-// With rotate set, a write that would take the file past 1 MiB first renames it to path + ".1", replacing an older one, and writes to a fresh file;
-// without it the file grows past the bound.
+// With rotate set, a write that would take the file past 1 MiB first renames it to path + ".1";
+// the rename replaces an older one, and the write goes to a fresh file.
+// Without rotate, the file grows past the bound.
 // Only the holder of the file's dobby lock passes rotate, so two renames never race.
 func AppendLog(path, line string, rotate bool) error {
 	text := line + "\n"
@@ -35,7 +37,8 @@ func AppendLog(path, line string, rotate bool) error {
 	return file.Close()
 }
 
-// RotatePastBound renames the file at path to path + ".1", replacing an older one, when the file is at or past 1 MiB, and reports whether it did.
+// RotatePastBound renames the file at path to path + ".1" when the file is at or past 1 MiB, replacing an older one.
+// It reports whether it renamed the file.
 // An absent file is no rotation and no error.
 func RotatePastBound(path string) (bool, error) {
 	info, err := os.Stat(path)

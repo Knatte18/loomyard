@@ -1,4 +1,5 @@
-// render_test.go drives Render, Show and Passages over temporary directories standing in for a worktree's anchor, its scratch directory and the Bolt checkout.
+// render_test.go drives Render, Show and Passages over temporary directories.
+// They stand in for a worktree's anchor, its scratch directory and the Bolt checkout.
 
 package heddleengine
 
@@ -20,7 +21,7 @@ import (
 // observeWindow is how long a test watches a blocked render stay blocked.
 const observeWindow = 50 * time.Millisecond
 
-// renderFixture is the three directories a render works over, with the exclude list a seeded worktree holds.
+// renderFixture holds the directories a render works over, and the exclude list a seeded worktree holds.
 type renderFixture struct {
 	anchor   string
 	scratch  string
@@ -69,7 +70,9 @@ func (f renderFixture) anchorHas(rel string) bool {
 	return err == nil
 }
 
-// claudeFileWant returns the CLAUDE.local.md a render writes: the marker, imports when non-empty, the shipped layer's section, then the repository's texts under their heading when any are given.
+// claudeFileWant returns the CLAUDE.local.md a render writes.
+// The file holds the marker, the imports when they are non-empty, and the shipped layer's section.
+// It ends with the repository's texts under their heading when any are given.
 func claudeFileWant(imports string, texts ...string) string {
 	parts := []string{Marker}
 	if imports != "" {
@@ -87,7 +90,7 @@ func claudeFileWant(imports string, texts ...string) string {
 	return strings.Join(parts, "\n\n") + "\n"
 }
 
-// writeHeddleConfig writes content as the hub's heddle.yaml in the Bolt checkout bolt.
+// writeHeddleConfig writes content as the hub's heddle.yaml in the Bolt checkout at bolt.
 func writeHeddleConfig(t *testing.T, bolt, content string) {
 	t.Helper()
 	path := configengine.ConfigFile(bolt, configModule)
@@ -120,7 +123,7 @@ func renderInBackground(r Renderer, req RenderRequest) <-chan renderOutcome {
 	return done
 }
 
-// requireStillBlocked fails when the render finished within the observe window.
+// requireStillBlocked fails when the render finishes within `observeWindow`.
 func requireStillBlocked(t *testing.T, done <-chan renderOutcome) {
 	t.Helper()
 	select {

@@ -14,7 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestTacklerFor verifies a darn, a tapestry, a pawl and a sampler run all take shed.yaml's tackler_max_spawns, each with the recipe line its rows select: a Sampler-Session row the interactive line, a Plan-Write row the phased line, none the one-writer line, and pawl its own.
+// TestTacklerFor pins that a darn, a tapestry, a pawl and a sampler run all take shed.yaml's tackler_max_spawns.
+// Each run gets the recipe line its rows select.
+// A Sampler-Session row takes the interactive line and a Plan-Write row the phased line.
+// A row selecting none takes the one-writer line, and pawl takes its own.
 func TestTacklerFor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

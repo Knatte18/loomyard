@@ -1,9 +1,8 @@
 // leaf_enforcement_test.go enforces the Discussionparser Sole-Parser Invariant's stdlib-only half:
-// production code in internal/discussionparser imports the standard library and nothing else --
+// production code in internal/discussionparser imports the standard library and nothing else:
 // never internal/lymcwd, never any feature package.
-// Like internal/pattern's leaf_enforcement_test.go, this check is an ALLOWLIST, empty here because
-// no non-stdlib import is ever permitted, so a future stray dependency is caught with no list
-// maintenance required.
+// The check is an allowlist, empty here because no non-stdlib import is permitted;
+// a stray dependency is caught without any list to maintain.
 
 package discussionparser
 
@@ -14,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allowedImports is empty: no non-stdlib import is permitted.
+// allowedImports is the allowlist of non-stdlib imports, empty because none are permitted.
 var allowedImports = []string{}
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {

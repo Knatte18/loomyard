@@ -1,10 +1,10 @@
-// remoteleftover.go holds Add's read-only pre-flight probes of both origins.
-// A branch on the weft or warp origin either makes the pair live or is a removed pair's leftover.
-// Add adopts a live pair's branch;
-// a leftover is proven replaceable or refused before Add's first mutation,
+// remoteleftover.go holds the read-only probes that Add runs against both origins before its first mutation.
+// A branch on the weft or warp origin either makes the pair live or is the leftover of a removed pair.
+// A live pair's branch is adopted;
+// a leftover is proven replaceable or refused before the first mutation,
 // so the refusal never arrives later as a rejected push of the new pair.
-// Every probe is read-only git through gitexec;
-// the fetches (the weft archive and fast-forward probes) write FETCH_HEAD only and create no branch, remote-tracking ref or tag.
+// Every probe is read-only git through gitexec.
+// The fetches write FETCH_HEAD only and create no branch, remote-tracking ref or tag.
 
 package fabricengine
 
@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// leftoverKind is the closed set of reasons ErrRemoteLeftover refuses.
-// A remote weft branch no archive tag covers is not one of them: it makes the pair live,
+// leftoverKind is the closed set of reasons a remote branch is refused as a leftover.
+// A remote weft branch that no archive tag covers is not one of them: it makes the pair live,
 // and Add adopts it.
 type leftoverKind int
 
@@ -30,7 +30,8 @@ const (
 	leftoverDivergedWarp
 )
 
-// ErrRemoteLeftover is Add's refusal when a remote branch cannot be adopted or proven replaceable: a remote weft branch that diverges from the local one, or a remote warp branch left by a removed pair.
+// ErrRemoteLeftover is the refusal of Add when a remote branch can be neither adopted nor proven replaceable.
+// It covers a remote weft branch that diverges from the local one, and a remote warp branch left by a removed pair.
 type ErrRemoteLeftover struct {
 	// Slug is the slug Add was asked to create.
 	Slug string
@@ -56,12 +57,13 @@ func (e *ErrRemoteLeftover) Error() string {
 	}
 }
 
-// weftLeftover is probeWeftLeftover's answer.
-// live is true when the pair is live: Add adopts the weft branch, from the local copy or from origin, instead of forking one.
-// fastForwardTo is the origin tip a live pair's behind local weft branch advances to, empty when it needs no advance.
-// tip and tag are the remote weft tip and the archive tag covering it, set only for an archived leftover Add replaces.
+// weftLeftover is the outcome of probing the weft origin for a slug's branch.
+// live is true when the pair is live: the weft branch is then taken from the local copy or from origin, not forked.
+// fastForwardTo is the origin tip that a live pair's local weft branch advances to;
+// it is empty when no advance is needed.
+// tip and tag are the remote weft tip and the archive tag covering it, set only for a replaceable archived leftover.
 // originAbsent is true when origin holds no such weft branch, whether or not a local copy makes the pair live.
-// When no probe runs Add assumes only live, from the local branch, so originAbsent stays false and nothing is dropped.
+// When no probe runs, only live is set from the local branch, so originAbsent stays false and nothing is dropped.
 type weftLeftover struct {
 	live          bool
 	fastForwardTo string
@@ -75,8 +77,9 @@ type weftLeftover struct {
 // an origin tip that equals or is an ancestor of the local tip needs nothing,
 // a local tip that is a strict ancestor of the origin tip becomes fastForwardTo,
 // and a true divergence is refused.
-// Without it, an absent remote branch returns the answer with only originAbsent set.
-// An origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag).
+// Without localExists, an absent remote branch returns the answer with only originAbsent set.
+// An origin tip is a replaceable leftover when an archive/<slug>/* tag's target equals or descends from it.
+// Such a leftover is reported with tip and tag set.
 // Any other origin tip makes the pair live.
 func probeWeftLeftover(l *lymcwd.Location, slug, weftBranch string, localExists bool) (weftLeftover, error) {
 	weftRoot, err := RecordsRepoRoot(l)
@@ -156,10 +159,11 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 	return weftLeftover{}, &ErrRemoteLeftover{Slug: slug, Branch: weftBranch, RemoteTip: originTip, kind: leftoverDivergedAdoptedWeft}
 }
 
-// judgeWarpLeftover judges tip, the origin tip of warpBranch the caller read with remoteHeadTip in the warp worktree, empty when origin lacks the branch.
-// It returns the origin tip Add adopts, or "" when it forks from HEAD, and onOrigin, whether origin holds the branch at all.
+// judgeWarpLeftover judges tip, the origin tip of warpBranch as the caller read it; "" means origin lacks the branch.
+// It returns the origin tip to adopt, or "" to fork from HEAD, and onOrigin, whether origin holds the branch at all.
 // For a live pair a present origin branch is adopted whatever its relation to HEAD.
-// For a pair that is not live it returns "" when the branch is absent or its tip equals or is an ancestor of the HEAD the new branch forks from, and refuses otherwise.
+// For a pair that is not live it returns "" when the branch is absent or its tip equals or is an ancestor of HEAD;
+// otherwise it refuses.
 // It touches no remote.
 func judgeWarpLeftover(l *lymcwd.Location, slug, warpBranch, tip string, live bool) (adoptTip string, onOrigin bool, err error) {
 	dir := l.WorktreePath()
@@ -176,9 +180,11 @@ func judgeWarpLeftover(l *lymcwd.Location, slug, warpBranch, tip string, live bo
 	return "", true, &ErrRemoteLeftover{Slug: slug, Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
 }
 
-// dropStaleOriginTracking drops the remote-tracking ref and upstream setting of the weft branch when weftAbsent, and of the warp branch when warpAbsent.
-// Each drop runs in its own repository, and the flags are the probes' answers that origin holds no such branch.
-// A ref and setting a removed pair left for a branch origin lacks would otherwise make a later reconcile read the new pair's unpushed branch as gone from origin.
+// dropStaleOriginTracking drops the remote-tracking ref and upstream setting of the weft branch when weftAbsent;
+// it does the same for the warp branch when warpAbsent.
+// Each drop runs in its own repository; each flag is a probe's answer that origin holds no such branch.
+// A removed pair can leave such a ref behind for a branch that origin lacks.
+// Kept, it would make a later reconcile read the new pair's unpushed branch as gone from origin.
 // A failed drop is returned naming the branch.
 func dropStaleOriginTracking(l *lymcwd.Location, weftBranch string, weftAbsent bool, warpBranch string, warpAbsent bool) error {
 	if weftAbsent {

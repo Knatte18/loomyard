@@ -1,8 +1,7 @@
-// discussionwrite_test.go exercises NewDiscussionWrite's own outcome mapping against a fake inner
-// shedengine.ShedProducer: commit fires exactly once, and only, when the inner producer reports
-// Done with a nil error, and every other outcome (Stuck, a non-nil error, or a commit failure)
-// leaves the Fabric untouched by never invoking commit more than that once. No test in this file
-// touches a filesystem or a real git repo -- see fakeInnerProducer and commitRecorder below.
+// discussionwrite_test.go tests NewDiscussionWrite's outcome mapping against a fake inner shedengine.ShedProducer.
+// commit fires exactly once, and only, when the inner producer reports Done with a nil error.
+// Every other outcome (Stuck, a non-nil error, or a commit failure) leaves the Fabric untouched.
+// No test in this file touches a filesystem or a real git repo.
 
 package loomshed
 
@@ -18,9 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeInnerProducer is a caller-settable shedengine.ShedProducer stand-in for the wrapped
-// producer: Call returns whatever outcome/pointer/err the test configured, and records how many
-// times it was called so a test can assert the decorator calls it exactly once per Call.
+// fakeInnerProducer is a caller-settable shedengine.ShedProducer stand-in for the wrapped producer.
+// Call returns the outcome, pointer and err the test configured, and counts its calls,
+// so a test can assert the decorator calls the inner producer exactly once per Call.
 type fakeInnerProducer struct {
 	outcome shedengine.Outcome
 	pointer shedengine.OutputPointer
@@ -33,8 +32,8 @@ func (f *fakeInnerProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return f.outcome, f.pointer, f.err
 }
 
-// commitRecorder is a caller-settable commit closure stand-in: Commit returns commitErr and
-// records how many times it was invoked.
+// commitRecorder stands in for the commit closure the decorator receives.
+// Commit returns commitErr and counts how many times it was invoked.
 type commitRecorder struct {
 	commitErr error
 	calls     int
@@ -64,8 +63,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		}
 	})
 
-	// StuckWithEmptyPointerLeavesCommitUninvoked is the shape of a Stuck that names no output file:
-	// a run that wrote nothing has nothing to commit.
+	// A Stuck with an empty pointer leaves the commit uninvoked: a run that wrote nothing has nothing to commit.
 	t.Run("StuckWithEmptyPointerLeavesCommitUninvoked", func(t *testing.T) {
 		inner := &fakeInnerProducer{outcome: shedengine.Stuck}
 		commit := &commitRecorder{}
@@ -80,10 +78,8 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		}
 	})
 
-	// StuckWithNonEmptyPointerCommitsAndReturnsStuck is the gate-failed writer row's shape: the
-	// wrapped producer reported Stuck with the artifact's own pointer, and the commit seam still
-	// fires so the invalid artifact is committed and diagnosable rather than left dirtying the records worktree
-	// when the run halts for a human.
+	// A Stuck that carries the artifact's own pointer still fires the commit seam, so the invalid artifact is committed.
+	// Committing it lets a human diagnose it when the run halts, rather than leaving it dirtying the records worktree.
 	t.Run("StuckWithNonEmptyPointerCommitsAndReturnsStuck", func(t *testing.T) {
 		inner := &fakeInnerProducer{outcome: shedengine.Stuck, pointer: shedengine.OutputPointer{Path: "decision-record.md"}}
 		commit := &commitRecorder{}
@@ -146,9 +142,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		}
 	})
 
-	// CommitErrorOnGateFailedStuckMapsToErrorExactlyAsOnDone is the gate-failed-Stuck twin of
-	// CommitErrorSurfacesAsErrorNotStuck: a commit failure maps to a returned error on the
-	// non-empty-pointer Stuck path exactly as it already does on the Done path.
+	// A commit failure on a non-empty-pointer Stuck returns an error wrapping the commit error, as on Done.
 	t.Run("CommitErrorOnGateFailedStuckMapsToErrorExactlyAsOnDone", func(t *testing.T) {
 		commitErr := errors.New("git commit failed")
 		inner := &fakeInnerProducer{outcome: shedengine.Stuck, pointer: shedengine.OutputPointer{Path: "decision-record.md"}}
@@ -168,11 +162,9 @@ func TestDiscussionWrite_Call(t *testing.T) {
 	})
 }
 
-// TestDiscussionWrite_NilCommitSeamIsANamedError is planwrite_test.go's sibling for the
-// Discussion-Write row; see that test for the round-4 R4-32 rationale. It runs against both branches
-// that now reach the commit seam -- Done and a gate-failed Stuck -- each carrying a non-empty
-// pointer, since the nil-commit-seam guard sits downstream of the pointer.Path == "" check and must
-// still fire on either shape.
+// TestDiscussionWrite_NilCommitSeamIsANamedError checks that a nil commit seam yields a named error.
+// It runs against Done and against a Stuck, each with a non-empty pointer:
+// the nil-commit-seam guard sits after the pointer.Path == "" check.
 func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tt := range []struct {
@@ -200,7 +192,8 @@ func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
 	}
 }
 
-// TestDiscussionWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped producer's Reason unchanged, both for the empty-Path shape (nothing committed) and the gate-failed shape (non-empty Path, committed).
+// TestDiscussionWrite_PassesStuckReasonThrough checks that the decorator passes the wrapped producer's Reason through.
+// It covers the empty-Path shape, where nothing is committed, and the non-empty-Path shape, which is committed.
 //
 //testtiming:keep pins that the wrapped producer's Reason reaches the caller unchanged in both stuck shapes, which TestDiscussionWrite_Call never asserts
 func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {

@@ -1,10 +1,9 @@
-// concurrency_test.go — concurrency correctness + read-under-write contention.
+// concurrency_test.go covers concurrent board access: readers alongside a writer, and writers racing for the write lock.
 //
-// Verifies that many readers run correctly alongside a writer (reads see a consistent wiki, never a
-// phantom-empty one) and that concurrent writers serialize through the write lock without losing
-// updates.
-// Also benchmarks read latency while a writer hammers the wiki in the background.
-// All no-git.
+// It verifies that readers see a consistent wiki, never a phantom-empty one,
+// and that concurrent writers serialize without losing updates.
+// It also benchmarks read latency while a writer hammers the wiki in the background.
+// The tests run without git.
 
 package boardtest
 
@@ -21,15 +20,14 @@ import (
 
 // TestConcurrentReadsDuringUpserts runs many readers concurrently with a single writer and asserts
 // reads never fail and always observe a consistent board.
-// Reads bypass the write lock and writes are atomic (temp + rename), so every read must see a complete board.json — either the pre- or post-upsert state, never a partial one.
+// Reads bypass the write lock, and writes are atomic (temp file and rename),
+// so every read sees a complete board.json: either the pre-upsert or the post-upsert state, never a partial one.
 //
-// The test is filesystem-bound, not CPU-bound: each write goes through Board.boardCriticalSection which performs
-// 3 AtomicWrite temp-create+rename operations (for board.json, Home.md, and _Sidebar.md), each
-// synchronously scanned by endpoint AV.
-// The readers loop continuously until the writer closes the stop channel, so read-under-write
-// coverage is governed by how long the writer runs, not by the absolute number of writes.
-// Therefore, the writes constant is kept small to bound the filesystem operation stream while
-// preserving the race-condition window for concurrent access.
+// The test is bound by the filesystem, not the CPU.
+// Each write runs Board.boardCriticalSection, which performs an AtomicWrite of board.json, Home.md and _Sidebar.md.
+// The readers loop until the writer closes the stop channel.
+// Read-under-write coverage therefore depends on how long the writer runs, not on how many writes it makes.
+// The writes constant therefore stays small: it bounds the filesystem work and keeps the race window open.
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -40,15 +38,9 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 
 	const (
 		readers = 8
-		// writes is bounded-shrunk from 50 to 10 (2026-07-13, Restore the Tier 1
-		// floor task): each write re-renders the 100-task Home.md/_Sidebar.md to
-		// disk (the dominant per-write cost) and is coupled to no assertion, so
-		// the iteration count itself is free to tune. 10 upserts at ~30-40ms of
-		// render I/O each still gives readers a few hundred milliseconds of
-		// overlap window before the writer closes stop, which is enough for the
-		// reader goroutines to complete multiple validated reads while the
-		// writer is mid-flight — the real reader/writer overlap this test exists
-		// to demonstrate does not depend on running the writer for longer.
+		// writes is the number of upserts the writer runs.
+		// Each write re-renders Home.md and _Sidebar.md, the dominant per-write cost.
+		// No assertion depends on the count, which only has to keep the writer busy long enough for the readers to overlap it.
 		writes = 10
 	)
 
@@ -104,15 +96,9 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 					return
 				}
 
-				// Yield between reads. The reader/writer overlap this test
-				// demonstrates needs readers running *alongside* the writer, not
-				// readers running *flat out*: 8 lock-free readers spinning with no
-				// pause peg every core and starve the single writer's upserts —
-				// harmless on Windows, where endpoint AV throttled the readers into
-				// leaving CPU for the writer, but on an unthrottled host it stretched
-				// the writer's 10 upserts from sub-second to minutes. A 1 ms pause
-				// still lands hundreds of validated reads inside the writer's window
-				// while leaving it the CPU to finish.
+				// Yield between reads: the readers must run alongside the writer, not flat out.
+				// Lock-free readers spinning with no pause peg every core and starve the single writer's upserts.
+				// A 1 ms pause still lands many validated reads inside the writer's window and leaves the writer CPU to finish.
 				time.Sleep(time.Millisecond)
 			}
 		}()
@@ -123,10 +109,8 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 
 // TestConcurrentUpsertsDoNotLoseWrites launches many writers at once, each adding a distinct task
 // to an initially empty board.
-// The write lock must serialize the load → mutate → save cycle so no update is lost and ids stay
-// unique;
-// if the lock failed to serialize same-process writers, we would see fewer than `writers` tasks or
-// duplicate ids.
+// The write lock must serialize the load, mutate and save cycle, so no update is lost and ids stay unique.
+// Without that serialization, the test sees fewer than `writers` tasks or duplicate ids.
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -165,10 +149,8 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	}
 }
 
-// BenchmarkGetDuringUpsert measures read latency while a writer continuously upserts in the
-// background.
-// Reads take no lock, so this should stay close to the uncontended BenchmarkGet — that gap is the
-// price reads pay for a busy writer.
+// BenchmarkGetDuringUpsert measures read latency while a writer continuously upserts in the background.
+// Reads take no lock, so the gap to an uncontended read is the cost a reader pays for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	tiergate.Require(b, 0)
 	cwd := seedWiki(b, 100)
@@ -187,8 +169,8 @@ func BenchmarkGetDuringUpsert(b *testing.B) {
 				return
 			default:
 			}
-			// Errors (if any) are surfaced by the correctness tests, not here;
-			// the writer just needs to keep the wiki busy.
+			// Errors are surfaced by the correctness tests, not here;
+			// the writer only needs to keep the wiki busy.
 			_, _ = w.UpsertTask(map[string]any{"slug": "task-0", "title": "U" + strconv.Itoa(i)})
 		}
 	}()

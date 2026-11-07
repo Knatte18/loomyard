@@ -30,8 +30,11 @@ const (
 // resolvedFields are the modelspec.Resolved fields no production code outside the mapping reads.
 var resolvedFields = []string{"Engine", "Model", "Params"}
 
-// modelChoiceMappingViolations returns "file:line" for every read of a modelspec.Resolved field in the production files under base, outside internal/modelspec and NewModelChoice, with the count of files scanned.
-// The scan is syntactic: it sees a Resolved held by an identifier that is assigned from a Resolve call, declared with the type, or ranged over from a map or slice of it.
+// modelChoiceMappingViolations returns "file:line" for every read of a Resolved field in production files under base.
+// Reads in internal/modelspec and in NewModelChoice are allowed.
+// It also returns the count of files scanned.
+// The scan is syntactic and sees a Resolved only when an identifier holds it:
+// it is assigned from a Resolve call, declared with the type, or ranged over from a map or slice of Resolved.
 // A Resolved reached through a struct field or a call chain is outside its sight.
 func modelChoiceMappingViolations(t *testing.T, base string) ([]string, int) {
 	t.Helper()
@@ -183,7 +186,8 @@ func identifierAt(expressions []ast.Expr, i int) (string, bool) {
 	return identifier.Name, true
 }
 
-// TestModelChoiceMappingRule verifies that no production file outside internal/modelspec and NewModelChoice reads a modelspec.Resolved field.
+// TestModelChoiceMappingRule verifies that no production file reads a modelspec.Resolved field.
+// Only internal/modelspec and NewModelChoice may read one.
 // It also verifies that the scan finds a violation for each way the scan can see a Resolved.
 //
 //testtiming:keep scans every production file for a modelspec.Resolved field read outside the mapping, which no other test reads

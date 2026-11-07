@@ -24,7 +24,10 @@ type supportingEngine struct {
 
 func (e supportingEngine) Supports(req Requirement) bool { return slices.Contains(e.supported, req) }
 
-// requiresRig is a Runner over a set holding "full" (the default, meeting every requirement), "wake" (meeting background-wake only) and "plain" (no RequirementSupporter).
+// requiresRig is a Runner over three engines.
+// "full" meets every requirement and is the default.
+// "wake" meets background-wake only.
+// "plain" has no RequirementSupporter.
 type requiresRig struct {
 	t    *testing.T
 	fx   *fixture

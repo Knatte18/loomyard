@@ -1,5 +1,8 @@
-// renumber.go implements the `insert-card`, `remove-card` and `restore-renumber` loom verbs: the sanctioned way for an agent editing a plan to add or drop one card and renumber the cards after it, and to undo an interrupted renumber.
-// Each cobra shell is thin over a verb function that takes its side effects as renumberDeps, so the refusal table is testable without a worktree or a webster run.
+// renumber.go implements the `insert-card`, `remove-card` and `restore-renumber` loom verbs.
+// They are the sanctioned way for an agent to add or drop one card of a plan and renumber the cards after it.
+// They also undo an interrupted renumber.
+// Each cobra command is a thin shell over a verb function that takes its side effects as renumberDeps.
+// That keeps the refusal table testable without a worktree or a webster run.
 
 package loomcli
 
@@ -17,12 +20,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// renumberDeps is every side effect the card verbs perform, injected so tests supply fakes and watch the lease.
+// renumberDeps holds every side effect the card verbs perform, so tests can supply fakes and observe the lease.
 type renumberDeps struct {
 	// planDir and journalPath locate the plan directory and the renumber journal.
 	planDir     string
 	journalPath string
-	// ops is the raw file seam the renumber performs every file operation through.
+	// ops performs every file operation of the renumber, so tests can substitute a fake.
 	ops planparser.RenumberIO
 	// loadState reads webster's run record, nil when no run has started.
 	loadState func() (*websterengine.State, error)
@@ -101,7 +104,8 @@ func runCardVerb(out io.Writer, d renumberDeps, verb, position string, renumber 
 		}
 		return renumber(number)
 	}()
-	// A failed release leaves a lock file the process exit frees, and the renumber's own outcome is the verb's result.
+	// A failed release leaves a lock file the process exit frees,
+	// and the renumber's own outcome is the verb's result.
 	_ = release()
 	if err != nil {
 		return output.Err(out, renumberRefusal(verb, err))
@@ -159,7 +163,8 @@ var renumberWaysForward = []struct {
 
 // renumberRefusal words one refusal of a card verb as `loom: <verb>: <cause>; way forward: <step>`.
 // It is the one place the card verbs' refusals are worded, so planparser never names a lym verb.
-// An error that is none of the known refusals is a plan that does not parse, and that is the way forward its message takes.
+// An error that matches none of the known refusals is a plan that does not parse.
+// Its way forward names the file to fix.
 func renumberRefusal(verb string, err error) string {
 	cause := strings.TrimPrefix(err.Error(), "planparser: ")
 	step := "fix the file the message names so lym loom validate-plan parses it, then re-run the verb"
@@ -179,8 +184,8 @@ func renumberRefusal(verb string, err error) string {
 }
 
 // renumberEnvelope is the success envelope of insert-card and remove-card.
-// The rewritten refs are the card ids and bare card references the renumber moved to their new numbers;
-// the prose mentions are lines left holding a bare reference with no faithful rewrite, which the agent fixes by hand.
+// The rewritten refs are the card ids and bare card references that the renumber moved to their new numbers.
+// The prose mentions are lines left with a bare reference and no faithful rewrite; the agent fixes them by hand.
 func renumberEnvelope(planDir string, res *planparser.RenumberResult) map[string]any {
 	moved := make([]map[string]any, 0, len(res.Moved))
 	for _, m := range res.Moved {

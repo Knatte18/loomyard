@@ -1,4 +1,6 @@
-// prsession.go keeps the PR-Review row's one interactive agent session: it starts or resumes the session, stops it around the reads that judge the pull request, and builds the spec it starts under.
+// prsession.go owns the PR-Review row's one interactive agent session.
+// It starts or resumes the session and stops it around the reads that judge the pull request.
+// It also builds the spec the session starts under.
 
 package landingshed
 
@@ -40,7 +42,7 @@ type prSessions interface {
 
 var _ prSessions = (*shuttleengine.Runner)(nil)
 
-// sessionStartHalt is a session start that failed for a reason that is not transient, which Call turns into a Stuck verdict with Halt.
+// sessionStartHalt is a session start that failed for a reason that is not transient, and the row halts on it.
 type sessionStartHalt struct {
 	cause error
 }
@@ -51,14 +53,16 @@ func (h *sessionStartHalt) Error() string {
 
 func (h *sessionStartHalt) Unwrap() error { return h.cause }
 
-// haltReason is the Stuck reason of the failed start.
+// haltReason is the reason the row reports as stuck for the failed start.
 func (h *sessionStartHalt) haltReason() string {
 	return fmt.Sprintf("%s; way forward: run lym loom resume", h.Error())
 }
 
 // ensureSession makes sure the run has a live PR-Review session and returns rec with the session's identity.
-// A recorded strand that is live is reused; a recorded session id whose strand is not live is resumed; with none recorded a new session starts.
-// A transient start failure is an error, and any other is a *sessionStartHalt.
+// A recorded strand that is live is reused;
+// a recorded session id whose strand is not live is resumed;
+// with none recorded, a new session starts.
+// A transient start failure is returned as an error, and any other is returned as a start halt.
 // A failed registration is logged, since the registration only lets a teardown end the pane process.
 func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (pullrequest.Record, error) {
 	pr := p.deps.PullRequest
@@ -101,7 +105,7 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 }
 
 // sessionSpec builds the spec the PR-Review session starts under for the pull request rec records.
-// The prompt carries paths only, never file content, bar the regression check's section, which no file holds.
+// The prompt carries paths only, never file content, except the drift verdict, which no file holds.
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
 	parsed, err := modelspec.Parse(p.deps.Config.PRReviewer)
 	if err != nil {
@@ -225,7 +229,9 @@ func (p *PRReview) resumeSession(ctx context.Context) error {
 	return err
 }
 
-// endSession stops the session when the call ends with a verdict or a failure of its own, and leaves it running when the context was cancelled, so the re-call after an interrupt finds it live.
+// endSession stops the session when the call ends with a verdict or a failure of its own.
+// It leaves the session running when the context was cancelled,
+// so the re-call after an interrupt finds it live.
 // A failed stop is logged, since the verdict stands whatever it says.
 func (p *PRReview) endSession(ctx context.Context, err error) {
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {

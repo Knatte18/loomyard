@@ -1,4 +1,5 @@
-// green_test.go pins the green end of the adopt check over fake seams and a temp subject directory: the lifts, the pair, the first passes, the resumed children, the fix task's removal and the try count.
+// green_test.go pins the green end of the adopt check over fake seams and a temp subject directory:
+// the lifts, the pair, the first passes, the resumed children, the fix task's removal and the try count.
 
 package adoptcli
 
@@ -23,7 +24,8 @@ import (
 // greenHoldTime is the pause time every hold entry of a green fixture carries.
 var greenHoldTime = time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 
-// greenFixture is a greenEnd over a temp adopt directory holding the subject `alpha` and a second subject `beta`, with every seam faked and recording its calls.
+// greenFixture is a test fixture: a temp adopt directory holding the subject `alpha` and a second subject `beta`.
+// Every seam is faked to record its calls.
 type greenFixture struct {
 	t        *testing.T
 	deps     greenDeps
@@ -143,7 +145,7 @@ func newGreenFixture(t *testing.T) *greenFixture {
 	return f
 }
 
-// hold lists slugs in the holds file of dir, and gives each of them a live hold entry when entry is set.
+// hold appends slugs to the holds file of dir, and gives each of them a live hold entry when entry is set.
 func (f *greenFixture) hold(dir string, entry bool, slugs ...string) {
 	f.t.Helper()
 	if err := appendHolds(dir, slugs); err != nil {
@@ -165,7 +167,7 @@ func (f *greenFixture) holds(dir string) []string {
 	return got
 }
 
-// fixTask returns the front task of alpha's adopt check with status.
+// fixTask returns the front task of alpha's adopt check, with the given slug and status.
 func fixTask(slug string, status *string) boardengine.Task {
 	return boardengine.Task{Slug: slug, Kind: boardengine.KindTask, Front: true, OnLand: fronttask.ActionAdoptCheck, Project: "alpha", Status: status}
 }

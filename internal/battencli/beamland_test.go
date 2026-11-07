@@ -1,4 +1,5 @@
-// beamland_test.go pins the beam landing refusal's judgement over told facts: each blocker names its way forward, and a beam with nothing under it passes.
+// beamland_test.go pins the beam landing refusal's judgement over the blockers each case supplies:
+// each blocker names its way forward, and a beam with nothing under it passes.
 
 package battencli
 

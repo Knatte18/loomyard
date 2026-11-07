@@ -1,4 +1,8 @@
-// resetpairwarp_integration_test.go covers Fabric.ResetPairCode, the gated reset of a task pair's warp checkout: a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset, a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals, and the remote half's refusals, skips, stale lease and failed checkout rewrite.
+// resetpairwarp_integration_test.go covers Fabric.ResetPairCode, the gated reset of a task pair's warp checkout.
+// It pins a reset past later commits and own-path dirt that keeps untracked files;
+// the reset moves the remote task branch and records remote_branch_updated then worktree_reset;
+// the refusal of dirt outside the own paths precedes any fetch; the ownership refusals;
+// and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //
 // Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 //
@@ -220,7 +224,8 @@ func lsRemoteTip(t *testing.T, dir, remote, branch string) string {
 	return fields[0]
 }
 
-// originTip returns the SHA of branch on the pair's origin read through its URL, which still works after a case renamed or removed the origin remote.
+// originTip returns the SHA of branch on the pair's origin, read through its URL.
+// The URL keeps working after a test renames or removes the origin remote.
 func originTip(t *testing.T, p *remoteHalfPair, branch string) string {
 	t.Helper()
 
@@ -261,7 +266,8 @@ func newRemoteHalfPair(t *testing.T, slug string) *remoteHalfPair {
 	return &remoteHalfPair{f: f, warp: warp, slug: slug, older: older, later: later, originURL: gitkit.Git(t, warp, "remote", "get-url", "origin")}
 }
 
-// pushRemoteOnlyCommit leaves the origin one commit ahead of the checkout, which is rewound to where it was, and returns that commit.
+// pushRemoteOnlyCommit leaves the origin one commit ahead of the checkout.
+// It rewinds the checkout to where it was and returns that commit.
 func (p *remoteHalfPair) pushRemoteOnlyCommit(t *testing.T) string {
 	t.Helper()
 
@@ -412,7 +418,8 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 }
 
 // TestResetPairCode_OursMergeThenRerunConverges proves the way forward a remote-only commit's refusal names:
-// after `git merge --strategy ours` takes in the remote tip, a re-run rewinds both the checkout and the remote task branch.
+// after `git merge --strategy ours` takes in the remote tip,
+// and a re-run rewinds both the checkout and the remote task branch.
 func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -439,7 +446,8 @@ func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
 	}
 }
 
-// TestUpdateRemoteBranch_StaleLeaseRefuses drives the executor with a lease stale against the origin, the state a remote tip that moves after the fetch produces.
+// TestUpdateRemoteBranch_StaleLeaseRefuses drives the executor with a lease stale against the origin.
+// That is the state a remote tip produces when it moves after the fetch.
 func TestUpdateRemoteBranch_StaleLeaseRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -461,7 +469,8 @@ func TestUpdateRemoteBranch_StaleLeaseRefuses(t *testing.T) {
 	}
 }
 
-// TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges holds the checkout's index lock so the rewrite fails once the remote has moved.
+// TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges holds the checkout's index lock,
+// so the rewrite fails once the remote has moved.
 func TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

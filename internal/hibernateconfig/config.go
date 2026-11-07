@@ -26,12 +26,14 @@ const resumeOnWakeKey = "resume_on_wake"
 
 // Config represents the resolved hibernate.yaml configuration.
 type Config struct {
-	// ResumeOnWake reports whether the wake from a hibernate request lifts the hub pause the request added, for a request that does not choose for itself.
+	// ResumeOnWake reports whether the wake lifts the hub pause a hibernate request added.
+	// It applies to a request that does not choose for itself.
 	ResumeOnWake bool `yaml:"resume_on_wake"`
 }
 
 // ConfigSpec returns the hibernate module's layered-load spec.
-// The module is hub-wide, and its one key decides whether every pair's run goes on after a wake, so the local layer refuses it.
+// The module is hub-wide, and its one key decides whether every pair's run goes on after a wake,
+// so the local layer refuses it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -44,7 +46,8 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals the hibernate module's configuration through the hub-wide layer stack under dirs.
-// A hub whose base file is absent resolves the template, so a hibernate request never fails on a hub not yet reconciled.
+// A hub whose base file is absent resolves the template,
+// so a hibernate request never fails on a hub not yet reconciled.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

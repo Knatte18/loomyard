@@ -1,15 +1,4 @@
-// topology.go — the Topology holder: the entry point for fabric's hub-scoped worktree-topology
-// verbs (add/remove/checkout/reconcile/status/prune/cleanup/ list, this batch and the next).
-// It is a config-carrying holder whose methods take a *lymcwd.Location, keeping the topology
-// surface mechanical and uniform across every verb.
-//
-// Topology is deliberately distinct from Fabric (fabric.go): Fabric is the per-pair cross-repo
-// handle over two already-existing checkouts (Warp/Weft gitrepo.Repo fields, used by weft-git verbs
-// like Commit);
-// Topology is the hub-scoped holder that creates, removes, and reconciles the pairs themselves.
-// A pair does not exist yet when Topology.Add runs, so Topology cannot hold a *Fabric — it only
-// holds the Config needed to derive paths via lymcwd and branch names via RecordsBranchName (backed by
-// internal/weftname).
+// topology.go holds Topology, the entry point for the hub-scoped worktree-topology verbs.
 
 package fabricengine
 
@@ -17,13 +6,14 @@ import "time"
 
 // Topology is the high-level facade over hub-scoped worktree-topology operations.
 // It holds the configuration needed by all topology methods.
+// A pair does not exist until a topology method creates it, so Topology cannot hold a per-pair handle.
 type Topology struct {
 	cfg Config
-	// leftover is the seam behind Remove's finishing of a directory git deregistered but left; its zero value is production.
+	// leftover is the seam Remove uses to finish a directory git deregistered but left; its zero value is production.
 	leftover leftoverSeam
 	// inFlight answers which other pairs' sessions are live when a pair is removed; nil answers none.
 	inFlight InFlightProbe
-	// teardownWait bounds how long Remove, Add and the task-branch discard wait for the pair's teardown lock.
+	// teardownWait bounds how long a mutation of a pair waits for the pair's teardown lock.
 	teardownWait time.Duration
 	// archiveSleep sleeps between the attempts of an archive-tag push; nil sleeps for real.
 	archiveSleep func(time.Duration)
@@ -33,7 +23,7 @@ type Topology struct {
 	cleanupAfterEnumerate func()
 }
 
-// SetInFlightProbe sets the probe Remove's store housekeeping consults before it runs gc.
+// SetInFlightProbe sets the probe that a removal's store housekeeping consults before it runs gc.
 func (t *Topology) SetInFlightProbe(probe InFlightProbe) {
 	t.inFlight = probe
 }

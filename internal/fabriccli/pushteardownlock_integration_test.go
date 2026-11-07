@@ -17,8 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_PushSkippedWhileTeardownLockHeld holds a pair's teardown lock exclusive, as a removal would, and runs `lym fabric push` from the pair with a new records commit.
-// The add verb's own pair push runs in the foreground here (see testmain_test.go), so origin holds the pair's weft branch before the commit.
+// TestRunCLI_PushSkippedWhileTeardownLockHeld holds a pair's teardown lock exclusive, as a removal would.
+// It runs `lym fabric push` from the pair with a new records commit.
+// The add verb's own pair push runs in the foreground here (see testmain_test.go).
+// Origin therefore holds the pair's weft branch before the commit.
 func TestRunCLI_PushSkippedWhileTeardownLockHeld(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

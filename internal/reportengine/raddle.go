@@ -1,4 +1,5 @@
-// raddle.go declares the raddle report's result types and ComputeRaddle, which sets each filed Sketch's predicted cost against what its filed parts cost.
+// raddle.go declares the raddle report's result types and ComputeRaddle.
+// ComputeRaddle sets each filed Sketch's predicted cost against what its filed parts cost.
 
 package reportengine
 
@@ -25,9 +26,11 @@ type RaddleSelection struct {
 // RaddleRow is one Sketch a raddle run filed.
 // PredictedUSD is the approved proposal's expected cost and is nil when the proposal states none.
 // ActualUSD is the summed session cost of the filed parts' runs and is nil when no session cost is known.
-// ActualPartial says a run of a filed part holds a session of unknown cost, no session or an unreadable usage directory, so ActualUSD leaves it out.
+// ActualPartial reports whether a run of a filed part holds a session of unknown cost or no session at all.
+// An unreadable usage directory also sets it.
+// Sessions of unknown cost are left out of ActualUSD.
 // Unlanded lists the filed parts with no archive tag.
-// ProposalChanged says the approved proposal's hash differs from the cold proposal's.
+// ProposalChanged reports whether the approved proposal's hash differs from the cold proposal's.
 type RaddleRow struct {
 	Sketch          string   `json:"sketch"`
 	PredictedUSD    *float64 `json:"predicted_usd"`
@@ -37,15 +40,18 @@ type RaddleRow struct {
 	ProposalChanged bool     `json:"proposal_changed"`
 }
 
-// RaddleReport is the result of ComputeRaddle.
+// RaddleReport holds one raddle run: the selection it was computed over and one row per filed Sketch.
+// It also holds the findings raised while computing it.
 type RaddleReport struct {
 	Selection RaddleSelection `json:"selection"`
 	Rows      []RaddleRow     `json:"rows"`
 	Findings  []Finding       `json:"findings"`
 }
 
-// ComputeRaddle lists every Sketch of the raddle store at the board branch's tip and sets its predicted cost against the cost of its filed parts.
-// A filed part's runs are the archive tags of its slug, each read through its usage files; the filed project, which never runs, is no part.
+// ComputeRaddle lists every Sketch of the raddle store at the board branch's tip.
+// It sets each Sketch's predicted cost against the cost of its filed parts.
+// A filed part's runs are the archive tags of its slug, each read through its usage files;
+// the filed project, which never runs, is no part.
 // A store directory without a store.json holds nothing.
 // A Sketch whose store files are missing or do not decode is skipped and listed as a finding that names it.
 // An error is a failed read of the repositories themselves.
@@ -81,7 +87,8 @@ func ComputeRaddle(src Sources) (RaddleReport, error) {
 }
 
 // raddleRow builds the row of the Sketch sketch from its store files at the board tip.
-// kept is false for a store directory that holds nothing and for a Sketch whose files are missing or do not decode, the latter with a finding.
+// kept is false for a store directory that holds nothing, and for a Sketch whose files are missing or do not decode.
+// The second case also yields a finding.
 func raddleRow(src Sources, sketch string, tagsBySlug map[string][]gitrepo.TagRef) (row RaddleRow, findings []Finding, kept bool, err error) {
 	recordRel := boardengine.RaddleStoreRecordRel(sketch)
 	stored, found, err := boardFileAtTip(src, recordRel)

@@ -1,4 +1,4 @@
-// logfile_test.go pins the per-line append and the size-bound rotation of the dobby's log and output files over temp files.
+// logfile_test.go pins the per-line append and size-bound rotation of the dobby's log and output files, using temp files.
 
 package dobbyengine
 

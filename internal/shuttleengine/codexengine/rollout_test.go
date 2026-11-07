@@ -1,4 +1,4 @@
-// rollout_test.go reads rollout fixtures shaped as the spike recorded them: the interrupt reading of a turn start and the context size of a turn end.
+// rollout_test.go reads rollout fixtures for the interrupt reading of a turn start and the context size of a turn end.
 
 package codexengine
 
@@ -94,7 +94,8 @@ func TestTurnStartInterrupt(t *testing.T) {
 	}
 }
 
-// TestContextTokens pins that the context size is the newest token_count's latest call total, and that a rollout without one, or none at all, reads unknown.
+// TestContextTokens pins that the context size is the newest token_count's latest call total.
+// A rollout without one, or none at all, reads unknown.
 func TestContextTokens(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

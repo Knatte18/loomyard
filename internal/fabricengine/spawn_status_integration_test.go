@@ -1,4 +1,5 @@
-// spawn_status_integration_test.go covers SpawnStatusPush, the one entry point for a status push, over a hubforge hub: the prime rule, the slug roles, and the board working directory.
+// spawn_status_integration_test.go covers SpawnStatusPush, the entry point for a status push, over a hubforge hub.
+// It checks the prime rule, the slug roles, and the board working directory.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -21,7 +22,7 @@ import (
 )
 
 // TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime and a task pair.
-// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
+// It runs serially because SwapPushRecorderForTest replaces the package-level spawnDetachedPushFn.
 func TestSpawnStatusPush(t *testing.T) {
 	tiergate.Require(t, 1)
 	pairSlug := hubforge.TemplatePairSlug

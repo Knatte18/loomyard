@@ -1,4 +1,6 @@
-// landnotice_creel_test.go shows the landing notice end to end: a dobby daemon's notice goes through a real creel store, scheduler and sweep, and reaches an orch strand that is listed only after the landing.
+// landnotice_creel_test.go shows the landing notice end to end.
+// A dobby daemon's notice goes through a real creel store, scheduler and sweep.
+// It reaches an orch strand that is listed only after the landing.
 
 package dobbyengine
 
@@ -71,7 +73,8 @@ func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 		t.Errorf("state LandNotices = %+v; want none once the notice is settled", memory)
 	}
 
-	// The sweep tells creel's own waits from the delivery workers' by length: workers wait up to 8 seconds, the sweep up to 50.
+	// The sweep tells creel's own waits from the delivery workers' by length.
+	// Workers wait up to 8 seconds; the sweep waits up to 50.
 	sweepWaits := func(n int) []time.Duration {
 		return clock.AwaitWaitsWhere(n, func(d time.Duration) bool { return d > 8*time.Second && d <= 50*time.Second })
 	}

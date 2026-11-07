@@ -1,4 +1,5 @@
-// config_test.go pins claude.yaml's load: the template on an absent base, the stack of its layers, and the local-layer rule on its keys.
+// config_test.go pins claude.yaml's load.
+// It covers the template on an absent base, the stack of its layers, and the local-layer rule on its keys.
 
 package claudeengine
 
@@ -24,7 +25,9 @@ func writeClaudeLayer(t testing.TB, path, document string) {
 	}
 }
 
-// TestLoadConfig pins claude.yaml's resolution: the template on an absent base, a repo default under a worktree file, the local layer's admitted and refused keys, and the binary marker's environment expansion.
+// TestLoadConfig pins claude.yaml's resolution.
+// It covers the template on an absent base and a repo default under a worktree file.
+// It also covers the local layer's admitted and refused keys and the binary marker's environment expansion.
 // It does not run in parallel: every row clears or sets LYM_SHUTTLE_CLAUDE, which is process-global.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)

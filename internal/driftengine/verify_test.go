@@ -1,4 +1,5 @@
-// verify_test.go — tier 0 tests for the Drift-Verify producer over the in-memory records store, two fake checkouts, a scripted current capture and a judge that evaluates the judgement gate the way the run loop does.
+// verify_test.go — tier 0 tests for the Drift-Verify producer over the in-memory records store.
+// It uses two fake checkouts, a scripted capture, and a judge that runs the judgement gate as the run loop does.
 
 package driftengine
 
@@ -37,7 +38,8 @@ func (fakeChair) Wait() (shuttleengine.Result, error) { return shuttleengine.Res
 func (fakeChair) Send(string) error                   { return nil }
 func (fakeChair) Stop() error                         { return nil }
 
-// gateLoopSeats returns a seat runner whose run and resume evaluate the table's gate entries in order, as the run loop does at each turn end.
+// gateLoopSeats returns a seat runner whose run and resume evaluate the table's gate entries in order.
+// It does so as the run loop does at each turn end.
 // Before each arrival it runs the next scripted agent action, a commit, an Accept or dirt.
 // A failing entry with attempts left is re-prompted and arrives again; a terminal result or a spent entry ends the run.
 // The result's chair carries a GateOutcome with each entry's state and attempts, as shuttle reports it.
@@ -127,13 +129,13 @@ type verifyFixture struct {
 	// row is the row the Status seam reports.
 	row    string
 	config Config
-	// current is the files the next current capture writes, captureDir the directory of the last one, and captureFails makes the next one fail; captures counts the captures and compares the compares.
+	// current holds the next capture's files; captureDir is the last capture's directory, captureFails fails the next.
 	current      map[string]string
 	captureDir   string
 	captureFails bool
 	captures     int
 	compares     int
-	// compare is what the Compare seam returns, and caseRulings the ruling the scripted judge gives each case of a failing compare by case name.
+	// compare is what the Compare seam returns; caseRulings is the ruling the judge gives each failing case by name.
 	compare     CompareResult
 	caseRulings map[string]Ruling
 	// endedRoles holds the roles of each call of EndRoles.
@@ -145,19 +147,20 @@ type verifyFixture struct {
 	// checkoutsErr, when set, is what the checkouts read fails with, so taking the judge snapshot fails.
 	checkoutsErr   error
 	recordsChanged []string
-	// rulings is the ruling the scripted judge gives each cell by "<case> <key>", matches when absent, and rangeChecked the sentence it notes under an open range.
+	// rulings maps a cell's "<case> <key>" to its ruling, which defaults to matching; rangeChecked is the open-range note.
 	rulings      map[string]Ruling
 	rangeChecked string
-	// onArrival runs at each judge arrival before its judgement is written, and badJudgement makes the judge write a judgement that does not parse.
+	// onArrival runs at each judge arrival before the judgement is written; badJudgement makes it unparsable.
 	onArrival    func()
 	badJudgement bool
-	// requests holds the request as each judge arrival found it, judgementPresent whether judgement.yaml was there as it arrived, and marksAtArrival the session mark it found.
+	// requests, judgementPresent, and marksAtArrival record each arrival's request, file presence and session mark.
 	requests         []JudgeRequest
 	judgementPresent []bool
 	marksAtArrival   []SessionMark
 }
 
-// newVerifyFixture returns a fixture at Drift-Verify under darn's rows, with the lines mode, the key=value pattern and a judge that rules every cell matching.
+// newVerifyFixture returns a fixture at Drift-Verify under darn's rows.
+// It uses the lines mode, the key=value pattern, and a judge that rules every cell matching.
 func newVerifyFixture(t *testing.T) *verifyFixture {
 	t.Helper()
 	store := newCommitStore(t)
@@ -230,7 +233,8 @@ func (f *verifyFixture) moveHead(head string) {
 	f.store.codeHead = head
 }
 
-// judgeArrives is the scripted judge's action at each arrival: it reads the request and writes a judgement that rules every cell by rulings and notes every open range.
+// judgeArrives is the scripted judge's action at each arrival.
+// It reads the request and writes a judgement that rules every cell by rulings and notes every open range.
 func (f *verifyFixture) judgeArrives() {
 	_, statErr := os.Stat(f.paths.Judgement)
 	f.judgementPresent = append(f.judgementPresent, statErr == nil)
@@ -274,7 +278,8 @@ func (f *verifyFixture) judgeArrives() {
 	writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
 }
 
-// seed writes the baseline files, a passed capture record at the code HEAD, and the scope record with the baseline's digest in one records commit.
+// seed writes the baseline files and a passed capture record at the code HEAD.
+// It then commits the scope record with the baseline's digest in one records commit.
 func (f *verifyFixture) seed(scope ScopeRecord, baseline map[string]string) {
 	f.t.Helper()
 	writeTree(f.t, f.paths.BaselineDir, baseline)
@@ -300,7 +305,8 @@ func (f *verifyFixture) seal(expected string) {
 	}
 }
 
-// seedChanged seeds the baseline, sealed expectation expected when it is not empty, and a current capture in which y changed from 2 to 3.
+// seedChanged seeds the baseline and seals expected unless it is empty.
+// It also sets a current capture in which y changed from 2 to 3.
 func (f *verifyFixture) seedChanged(expected string) {
 	f.t.Helper()
 	f.seed(countedScope(), verifyBaseline)
@@ -385,7 +391,8 @@ func (f *verifyFixture) judgementGone() bool {
 // commit is the action of the judge committing on the code side.
 func (f *verifyFixture) commit() func() { return func() { f.codeCheckout.Head = "code-2" } }
 
-// requireStuck checks the outcome is Stuck and the reason names every fragment; prefixed says whether it opens with the decision halt prefix.
+// requireStuck checks the outcome is Stuck and the reason names every fragment;
+// prefixed says whether the reason opens with the decision halt prefix.
 func requireStuck(t *testing.T, outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error, prefixed bool, fragments ...string) {
 	t.Helper()
 	if err != nil || outcome != shedengine.Stuck {
@@ -419,7 +426,9 @@ func requireDone(f *verifyFixture) {
 	}
 }
 
-// TestDriftVerify covers the passes that need no judge, the Stuck passes that stop before it, the stored rulings and the judge with its request and its rulings, the session an earlier entry left open and the snapshot guard around it.
+// TestDriftVerify covers the passes that need no judge and the Stuck passes that stop before it.
+// It covers the stored rulings and the judge with its request and rulings.
+// It also covers the session an earlier entry left open and the snapshot guard around it.
 func TestDriftVerify(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

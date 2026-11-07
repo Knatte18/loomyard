@@ -1,6 +1,7 @@
-// button.go implements the `button` reed verb: it runs one clicked status-bar button of a told session of a told tmux server.
-// The status bar's click binding and a button's ask and confirm prompts call it through run-shell; it prints nothing and exits 0 once its flags are valid, since a failed button is shown on the clicking client.
-// It carries clihelp.SkipStencilSeedAnnotation, since a button click must never run the root pre-run's stencil-seed pass.
+// button.go implements the `button` reed verb: it runs one clicked status-bar button in the tmux session its flags name.
+// The status bar's click binding and a button's ask and confirm prompts call it through run-shell;
+// it prints nothing and exits 0 once its flags are valid, since a failed button is shown on the clicking client.
+// It carries clihelp.SkipStencilSeedAnnotation, since a click must never run the root pre-run's stencil-seed pass.
 
 package reedcli
 
@@ -14,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// validateButtonFlags refuses a button call that lacks the socket, tmux path, session, range or client it is told, or a confirmed or answered call that lacks its hash, naming the flag.
+// validateButtonFlags returns an error naming the first flag a button call is missing, or nil when none is missing.
 func validateButtonFlags(req reedengine.ButtonRequest) error {
 	switch {
 	case req.SocketPath == "":
@@ -35,7 +36,7 @@ func validateButtonFlags(req reedengine.ButtonRequest) error {
 	return nil
 }
 
-// buttonRunDirectory returns the anchored directory, as recorded now, of the worktree holding dir, which a click runs its entry in.
+// buttonRunDirectory returns the anchor path of the worktree holding dir, the directory a click runs its entry in.
 // It applies no cwd gate and spawns no git.
 func buttonRunDirectory(dir string) (string, error) {
 	location, err := lymcwd.ResolveWorktree(dir)
@@ -45,7 +46,6 @@ func buttonRunDirectory(dir string) (string, error) {
 	return location.AnchorPath(), nil
 }
 
-// buttonCmd builds the `button` subcommand.
 func (c *reedCLI) buttonCmd() *cobra.Command {
 	var req reedengine.ButtonRequest
 

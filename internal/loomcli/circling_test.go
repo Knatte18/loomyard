@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// circlingFake is a circlingDeps whose status and record outcome the test sets, counting the records made.
+// circlingFake is a test double whose status and record outcome the test sets; it counts the records made.
 type circlingFake struct {
 	status    shedengine.Status
 	found     bool
@@ -30,7 +30,7 @@ type circlingFake struct {
 	recordErr error
 	// subdirErr, when set, makes the Bouncer lookup fail.
 	subdirErr error
-	// latest and latestErr are the Bouncer run directory's latest round; hardCap and raise are the row's resolved hard cap and the way forward that raises it, a zero hardCap meaning no cap.
+	// latest and latestErr are the latest round; hardCap and raise are the cap and raising route, a zero cap meaning none.
 	latest    int
 	latestErr error
 	// pending is whether the latest round carries an escalation no decision has answered.
@@ -40,7 +40,7 @@ type circlingFake struct {
 	raise      string
 	hardCapErr error
 	records    []string
-	// acceptErr is what the Finalize acceptance returns, and accepted records the row entry of each acceptance made.
+	// acceptErr is what the Finalize acceptance returns; accepted records the row entry of each acceptance.
 	acceptErr error
 	accepted  []int
 }
@@ -125,7 +125,8 @@ func blockedAtFinalize() shedengine.Status {
 	}
 }
 
-// TestCirclingVerb_AcceptsFinalizeFixReviewHalt pins that accept at a run halted at Finalize records the acceptance for Finalize's current row entry and no Bouncer decision.
+// TestCirclingVerb_AcceptsFinalizeFixReviewHalt pins one behavior:
+// accept at a run halted at Finalize records the acceptance for Finalize's current row entry and no Bouncer decision.
 func TestCirclingVerb_AcceptsFinalizeFixReviewHalt(t *testing.T) {
 	tiergate.Require(t, 0)
 	f := circlingFake{status: blockedAtFinalize(), found: true}
@@ -226,7 +227,8 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 	}
 }
 
-// TestPerchHardCap pins the hard cap and the raising route perchHardCap resolves per Bouncer row, each from the layer the value comes from.
+// TestPerchHardCap pins the hard cap and the raising route for each Bouncer row:
+// each is taken from the layer its value comes from.
 func TestPerchHardCap(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

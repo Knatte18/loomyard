@@ -1,4 +1,6 @@
-// land_test.go pins a beam's dobby's landing step: one per episode over a fake landing reading, a land request asked for or a notice when it cannot be, kept across a restart and retried after a failed post.
+// land_test.go pins the dobby's landing step over a fake landing reading.
+// It checks that each episode asks for one land request, or posts a notice when that cannot be done.
+// That state is kept across a restart, and a failed post is retried.
 
 package dobbyengine
 
@@ -27,7 +29,7 @@ type landHarness struct {
 	refusal error
 }
 
-// newLandHarness returns a landHarness whose CanLand answers script in order, then its last step again.
+// newLandHarness returns a landHarness whose CanLand answers follow script in order, then repeat its last step.
 func newLandHarness(t *testing.T, script ...landStep) *landHarness {
 	t.Helper()
 	h := &landHarness{passHarness: newPassHarness(t)}

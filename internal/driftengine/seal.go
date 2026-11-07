@@ -1,4 +1,5 @@
-// seal.go — the expectation's seal and the baseline's digest: the two checks every drift check runs first, over the records commits that hold their trailers.
+// seal.go — the expectation's seal and the baseline's digest:
+// the two checks every drift check runs first, over the commits that hold their trailers.
 
 package driftengine
 
@@ -16,13 +17,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// The commit trailers that hold the seal and the baseline digest, and the prefix that marks a halt only `lym drift defer` settles.
+// The commit trailers that hold the seal and the baseline digest.
+// The prefix that marks a halt only `lym drift defer` settles.
 const (
 	// SealTrailerKey carries the sha256 of expected.yaml as Drift-Expect sealed it.
 	SealTrailerKey = "Drift-Seal"
-	// BaselineTrailerKey carries the BaselineDigest of the baseline directory as it was when its capture counted.
+	// BaselineTrailerKey carries the digest of the baseline directory as it was when its capture counted.
 	BaselineTrailerKey = "Drift-Baseline"
-	// DeferHaltPrefix marks a Stuck reason whose way forward is `lym drift defer`; it follows the decision halt prefix a row's Stuck opens with, so the verb tells such a halt from another on the same row.
+	// DeferHaltPrefix marks a Stuck reason whose way forward is `lym drift defer`;
+	// it follows the decision halt prefix that a row's Stuck opens with,
+	// so the verb tells such a halt from another on the same row.
 	DeferHaltPrefix = "drift defer halt: "
 )
 
@@ -39,7 +43,8 @@ func PastRow(rows []string, current, row string) bool {
 	return currentIndex >= 0 && rowIndex >= 0 && currentIndex > rowIndex
 }
 
-// BaselineDigest hashes the baseline directory's tree with sha256: every regular file's slash-separated relative path and content, in path order.
+// BaselineDigest hashes the baseline directory's tree with sha256:
+// every regular file's slash-separated relative path and content, in path order.
 // A missing directory is an error wrapping fs.ErrNotExist.
 func BaselineDigest(dir string) (string, error) {
 	var names []string
@@ -74,15 +79,20 @@ func BaselineDigest(dir string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// BaselineState is what CheckBaseline found.
+// BaselineState reports whether the baseline directory can be trusted.
+// It also reports whether the capture recorded a digest to compare against.
 type BaselineState struct {
-	// Fault is the reason the baseline cannot be trusted, opening with DeferHaltPrefix and naming `lym drift defer` as the way forward, and empty when the baseline holds.
+	// Fault is the reason the baseline cannot be trusted, or empty when the baseline holds.
+	// It opens with the defer halt prefix and names `lym drift defer` as the way forward.
 	Fault string
-	// Unguarded is true when no commit carries BaselineTrailerKey, so only the digest compare was skipped: a capture that counted before the digest existed.
+	// Unguarded is true when no commit carries the Drift-Baseline trailer: a capture with no recorded digest.
+	// Only the digest compare is skipped.
 	Unguarded bool
 }
 
-// CheckBaseline recomputes the digest of the baseline directory and compares it with the one the oldest commit carrying BaselineTrailerKey recorded, so an edit of the baseline after its capture counted is found.
+// CheckBaseline recomputes the digest of the baseline directory.
+// It compares the digest with the one the oldest commit carrying the Drift-Baseline trailer recorded,
+// so an edit of the baseline after its capture counted is found.
 // A missing directory is a Fault whether or not a commit carries the trailer.
 // With no such commit it is Unguarded and only the compare is skipped.
 func CheckBaseline(d Deps) (BaselineState, error) {
@@ -113,7 +123,9 @@ func sealDigest(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// SealExpectation reads expected.yaml, hashes it and commits it alone through CommitWithTrailers with `Drift-Seal: <sha256>` and then any extra trailer, such as the baseline digest of a counted capture that has none yet.
+// SealExpectation reads expected.yaml, hashes it and commits it alone.
+// The commit carries `Drift-Seal: <sha256>` followed by the extra trailers.
+// An extra trailer is, for example, the baseline digest of a counted capture that has none yet.
 func SealExpectation(d Deps, extra ...fabricengine.Trailer) error {
 	if err := requireSeams("the seal", seam{"CommitWithTrailers", d.CommitWithTrailers != nil}); err != nil {
 		return err
@@ -129,12 +141,14 @@ func SealExpectation(d Deps, extra ...fabricengine.Trailer) error {
 	return nil
 }
 
-// SealState is the expectation containment reads, as CheckSeal decided it.
-// Exactly one of Sealed, Empty, NotYet and Fault is the verdict, except a Fault after an edit, which keeps the seal's copy in Sealed.
+// SealState is the seal check's result for the expectation.
+// Exactly one of Sealed, Empty, NotYet and Fault is the verdict;
+// a Fault after an edit is the exception, and it keeps the seal's copy in Sealed.
 type SealState struct {
 	// Sealed is the expectation's bytes as the seal commit holds them.
 	Sealed []byte
-	// Empty is true when containment reads the empty expectation: nothing was written, the parent discarded it, or the run passed Drift-Expect unsealed.
+	// Empty is true when containment reads the empty expectation:
+	// nothing was written, the parent discarded it, or the run passed Drift-Expect unsealed.
 	Empty bool
 	// NotYet is true when the run has not reached Drift-Expect's end, so no expectation exists to check.
 	NotYet bool
@@ -146,8 +160,9 @@ type SealState struct {
 // a `discard` amendment in rec, or an Unsealed record, is Empty with no check;
 // a status row not past Drift-Expect is NotYet;
 // with no seal commit, a missing file is Empty and a present one is a Fault naming `--discard`;
-// otherwise the oldest commit carrying SealTrailerKey is the seal, and its copy must hash to the trailer's value and its code head must equal baselineHead, else a Fault naming `--discard`,
-// and the current file must hash to the trailer's value, else a Fault naming `--restore` with Sealed still the seal's copy.
+// otherwise the oldest commit carrying the Drift-Seal trailer is the seal;
+// its copy must hash to the trailer's value and its code head must equal baselineHead, else a Fault naming `--discard`;
+// the current file must hash to the trailer's value, else a Fault naming `--restore` with Sealed still the seal's copy.
 func CheckSeal(d Deps, rec Records, baselineHead string) (SealState, error) {
 	if err := requireSeams("the seal check", seam{"Status", d.Status != nil}, seam{"TrailerCommit", d.TrailerCommit != nil}, seam{"FileAt", d.FileAt != nil}); err != nil {
 		return SealState{}, err

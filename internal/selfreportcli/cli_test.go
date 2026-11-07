@@ -1,7 +1,9 @@
 // cli_test.go contains white-box unit tests for the selfreport CLI.
 //
-// Tests live in package selfreportcli (same package as the production code) so the local stdin seam can be replaced without exporting it.
-// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam, injected with a real go-github client pointed at an httptest server rather than a fake RunGH -- that server is what lets these tests assert on the actual request shape (method, path, JSON body) instead of an argv slice that no longer exists.
+// Tests live in package selfreportcli so the local stdin seam can be replaced without exporting it.
+// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam.
+// Each test injects a real go-github client pointed at an httptest server.
+// That server lets the tests assert on the request shape: method, path and JSON body.
 // All tests drive the full cobra->flag->CreateIssue->go-github pipeline through RunCLI.
 // No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, and the stdin rows swap the stdin seam.
 
@@ -26,27 +28,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// requestCapture describes one HTTP request received by a test's issue
-// server: the method and path the CLI/engine actually sent, and the decoded
-// JSON body so a test can assert on title/body/labels directly instead of an
-// argv slice.
+// requestCapture describes one HTTP request received by a test's issue server.
+// It records the method and path the CLI or engine sent, and the decoded JSON body,
+// so a test can assert on title, body and labels directly.
 type requestCapture struct {
 	method string
 	path   string
 	body   map[string]any
 }
 
-// newIssueServer returns an httptest server that responds to every request
-// with status and respBody, appending a requestCapture describing each
-// request it receives to captured. Tests that expect no request at all
-// (e.g. cobra arg-count rejection) assert len(*captured) == 0 instead of
-// installing this server.
+// newIssueServer returns an httptest server that responds to every request with status and respBody.
+// It appends a requestCapture for each request it receives to captured.
+// Tests that expect no request, such as a cobra arg-count rejection, assert len(*captured) == 0.
+// They install no server.
 func newIssueServer(t *testing.T, status int, respBody string, captured *[]requestCapture) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		var decoded map[string]any
-		// A decode failure here would only ever indicate a genuine test bug --
+		// A decode failure here indicates a test bug:
 		// every request this server receives in these tests carries a JSON body.
 		_ = json.Unmarshal(raw, &decoded)
 		*captured = append(*captured, requestCapture{method: r.Method, path: r.URL.Path, body: decoded})
@@ -59,15 +59,12 @@ func newIssueServer(t *testing.T, status int, respBody string, captured *[]reque
 	return server
 }
 
-// installGitHubClient replaces selfreportengine.NewGitHubClient with a
-// closure that returns a real go-github client pointed at baseURL,
-// authenticated with a fixed placeholder token set directly on the client
-// rather than through githubclient's resolution chain. Injecting the whole
-// authenticated client, not just a base URL, is deliberate: it guarantees
-// this suite never reaches token resolution, so it never reads GH_TOKEN or
-// GITHUB_TOKEN, never shells out to `gh auth token`, and never touches the
-// operator's real credential cache -- runnable on a machine with no gh
-// installed and no GitHub credentials at all.
+// installGitHubClient replaces selfreportengine.NewGitHubClient with a closure that returns a real go-github client.
+// The client points at baseURL, and carries a fixed placeholder token set directly on it, bypassing token resolution.
+// Injecting the whole client, not just a base URL, keeps this suite off token resolution:
+// it never reads GH_TOKEN or GITHUB_TOKEN, never shells out to `gh auth token`;
+// it never touches the operator's real credential cache,
+// so it runs on a machine with no gh installed and no GitHub credentials at all.
 func installGitHubClient(t *testing.T, baseURL string) {
 	t.Helper()
 	client := github.NewClient(nil).WithAuthToken("test-token")
@@ -82,23 +79,19 @@ func installGitHubClient(t *testing.T, baseURL string) {
 	t.Cleanup(func() { selfreportengine.NewGitHubClient = orig })
 }
 
-// installGitHubClientPointedAtDeadAddress installs a client pointed at an
-// address nothing listens on, producing a deterministic connection-refused
-// network failure that must surface distinctly from an API rejection.
+// installGitHubClientPointedAtDeadAddress points a client at an address nothing listens on.
+// The resulting connection-refused failure is deterministic and must surface distinctly from an API rejection.
 func installGitHubClientPointedAtDeadAddress(t *testing.T) {
 	t.Helper()
-	// Start and immediately close a server: its address is guaranteed to have
-	// nothing listening on it afterward.
+	// Start and immediately close a server; its address then has nothing listening on it.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	deadURL := server.URL
 	server.Close()
 	installGitHubClient(t, deadURL)
 }
 
-// installFailingGitHubClientFactory replaces selfreportengine.NewGitHubClient
-// with a closure that itself returns err without ever handing back a client --
-// the CLI-level analogue of the old "gh binary not found" case, now
-// surfacing as a token-not-resolvable factory failure.
+// installFailingGitHubClientFactory replaces selfreportengine.NewGitHubClient with a closure.
+// The closure returns err and no client, simulating a token that cannot be resolved.
 func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Helper()
 	orig := selfreportengine.NewGitHubClient
@@ -107,7 +100,8 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 }
 
 // runCLI drives RunCLI into a buffer and returns the exit code and output text.
-// No args are passed as an empty slice, because cobra reads os.Args when handed nil and would then parse a test binary's own -test.* flags.
+// No args are passed as an empty slice, not nil:
+// cobra reads os.Args when handed nil and would then parse the test binary's own -test.* flags.
 func runCLI(t *testing.T, args ...string) (int, string) {
 	t.Helper()
 	if args == nil {
@@ -118,9 +112,8 @@ func runCLI(t *testing.T, args ...string) (int, string) {
 	return code, buf.String()
 }
 
-// labelsFromBody extracts the "labels" array from a decoded request body as
-// a []string, preserving order, so tests can assert multi-label ordering
-// survives encoding.
+// labelsFromBody extracts the "labels" array from a decoded request body as a []string.
+// It preserves order, so tests can assert multi-label ordering survives encoding.
 func labelsFromBody(body map[string]any) []string {
 	raw, ok := body["labels"].([]any)
 	if !ok {
@@ -133,7 +126,9 @@ func labelsFromBody(body map[string]any) []string {
 	return labels
 }
 
-// TestRunCreate_Success drives the successful create flow through each flag combination: exit 0, ok:true, the url and number of the server's typed response, and a request whose method, path, title, labels and body field match what the flags asked for.
+// TestRunCreate_Success drives the successful create flow through each flag combination.
+// It checks exit 0, ok:true, and the url and number from the server's response.
+// It also checks the request: its method, path, title, labels and body match the flags.
 func TestRunCreate_Success(t *testing.T) {
 	tiergate.Require(t, 0)
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
@@ -158,7 +153,7 @@ func TestRunCreate_Success(t *testing.T) {
 		{"custom labels replace default", []string{"create", "T", "--label", "enhancement", "--label", "p1"}, "", withNumber, "T", []string{"enhancement", "p1"}, nil, new(123.0)},
 		{"body via flag", []string{"create", "T", "-b", "details"}, "", withNumber, "T", []string{"bug"}, new("details"), new(123.0)},
 		{"body via stdin", []string{"create", "T", "-b", "-"}, markdownBody, withNumber, "T", []string{"bug"}, new(markdownBody), new(123.0)},
-		// The surviving form of the old unparseable-URL convention: a response without a number.
+		// A response that carries no number leaves the envelope's number field absent.
 		{"number omitted when response has none", []string{"create", "T"}, "", withoutNumber, "T", []string{"bug"}, nil, nil},
 	}
 	for _, tt := range tests {
@@ -220,7 +215,10 @@ func TestRunCreate_Success(t *testing.T) {
 	}
 }
 
-// TestRunCreate_Failure verifies that each way the create call can fail yields ok:false with exit 1 and an error message naming the cause: a client factory that cannot resolve a token, a non-2xx response (the message text surfaces) and a connection refused (a non-empty message distinct from an API rejection).
+// TestRunCreate_Failure verifies each way the create call can fail.
+// Each case expects ok:false, exit 1 and an error message naming the cause:
+// a client factory that cannot resolve a token, a non-2xx response whose message text surfaces,
+// and a connection refused, which must give a non-empty message distinct from an API rejection.
 func TestRunCreate_Failure(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -257,7 +255,10 @@ func TestRunCreate_Failure(t *testing.T) {
 	}
 }
 
-// TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group: a bare invocation lists create, an unknown subcommand gets the shared envelope, and a wrong positional count gets cobra's "accepts 1 arg(s)" message; none of them reaches the transport.
+// TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group.
+// A bare invocation lists create; an unknown subcommand gets the shared envelope;
+// a wrong positional count gets cobra's "accepts 1 arg(s)" message.
+// None of them reaches the transport.
 func TestRunCLI_RefusedBeforeTransport(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

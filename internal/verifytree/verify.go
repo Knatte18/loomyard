@@ -1,4 +1,4 @@
-// verify.go declares Verify, the one plan-verify function, and the record and paths it works over.
+// verify.go declares Verify and the verified-tree record and paths it works over.
 
 package verifytree
 
@@ -38,7 +38,8 @@ const (
 	logSuffix = ".log"
 )
 
-// verifyLogKeep is how many of the newest verify logs a run's pruning keeps, beside the one the landing failure record names.
+// verifyLogKeep is how many of the newest verify logs a run's pruning keeps.
+// The one the landing failure record names is kept beside them.
 const verifyLogKeep = 20
 
 // Status is the outcome of one Verify call.
@@ -46,7 +47,7 @@ type Status string
 
 const (
 	// StatusPassed means the command ran and exited 0.
-	// The record now names the tree the run started on, unless HEAD moved during the run.
+	// The record names the tree the run started on, unless HEAD moved during the run.
 	StatusPassed Status = "passed"
 	// StatusSkipped means the record already named HEAD's tree and the same command, so nothing ran.
 	StatusSkipped Status = "skipped"
@@ -101,10 +102,10 @@ type Result struct {
 	// TimedOut is set when the failed command's log holds a gate tier timeout line;
 	// the status is then StatusFailed with the command's own exit code.
 	TimedOut bool
-	// RunnerCrash is set when the failed command's log holds the gate's runner crash line: every failed tier run crashed its test runner on a signal with no failing test, in its run and its one rerun, so no test judged the code.
-	// The status is then StatusFailed with the command's own exit code.
+	// RunnerCrash is set when the failed command's log holds the gate's runner crash line; the status stays StatusFailed.
+	// It means every failed run, its one rerun included, crashed its test runner on a signal, so no test judged the code.
 	RunnerCrash bool
-	// Detail carries the cause of a shell that could not start, names the tier and timeout of a timed-out run, or names the crashed runs of a runner crash.
+	// Detail names a shell start failure, the tier and timeout of a timed-out run, or the crashed runs of a runner crash.
 	Detail string
 	// Log is this run's own verify log, empty for a dirty or skipped result.
 	Log string
@@ -123,7 +124,9 @@ type entry struct {
 	VerifiedAt time.Time `yaml:"verified_at"`
 }
 
-// withPass returns the record after command passed on pass: its own entry is replaced, and every entry of another command naming a different tree is dropped, except the entry of baseCommand.
+// withPass returns the record after command passed on pass.
+// Its own entry is replaced;
+// every entry of another command naming a different tree is dropped, except the entry of baseCommand.
 func (r record) withPass(command, baseCommand string, pass Pass) record {
 	next := record{Entries: []entry{{Command: command, Tree: pass.Tree, Commit: pass.Commit, VerifiedAt: pass.VerifiedAt}}}
 	for _, e := range r.Entries {
@@ -236,7 +239,8 @@ func nextLogPath(dir string) (string, error) {
 	return filepath.Join(dir, logPrefix+strconv.Itoa(next)+logSuffix), nil
 }
 
-// pruneLogs removes every verify log in p.Dir beyond the newest verifyLogKeep, except the one the landing failure record names.
+// pruneLogs removes the verify logs in p.Dir beyond the newest verifyLogKeep;
+// it keeps the log the landing failure record names.
 func pruneLogs(p Paths) error {
 	logs, err := listLogs(p.Dir)
 	if err != nil {
@@ -260,8 +264,8 @@ func pruneLogs(p Paths) error {
 	return nil
 }
 
-// UncommittedFindings is the gate finding for a producing session whose turn ended with paths, as DirtyPaths reports them, uncommitted or untracked in its worktree.
-// It names every path and asks the session to commit each one that belongs to its change and delete the rest, so the session that made a stray file removes it.
+// UncommittedFindings is the gate finding for a producing session whose turn ended with uncommitted or untracked paths.
+// It names every path and asks the session to commit each one that belongs to its change, and to delete the rest.
 func UncommittedFindings(paths []string) string {
 	return fmt.Sprintf("Your turn ended with uncommitted or untracked paths in the worktree: %s.\nCommit each one that belongs to the change, delete the rest, such as a scratch file or a shell redirect's output, and end your turn again.", strings.Join(paths, ", "))
 }
@@ -297,17 +301,27 @@ func parsePorcelainZ(out string) []string {
 // Verify runs command in p.Worktree unless the tree is dirty or already verified.
 // A dirty tree returns StatusDirty and runs nothing.
 // A record entry of the same command naming HEAD's tree returns StatusSkipped.
-// Otherwise the marker is written, the command runs with its output in a fresh `verify-<n>.log` in p.Dir that the result names, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
-// Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned except the one the landing failure record names;
-// a prune failure is logged and leaves the result unchanged.
-// The command is one `lym gate test --wait` call, or such calls joined by `&&`, which take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
-// The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
-// The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
-// A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
-// A failed command whose log holds a tier timeout line is also marked TimedOut, with the tier and its timeout in Detail and the command's own exit code.
-// One whose log holds no timeout line but the gate's runner crash line is marked RunnerCrash instead, with the crashed runs in Detail.
+// Otherwise the marker is written, and the command runs with its output in a fresh `verify-<n>.log` in p.Dir.
+// The result names that log.
+// The marker is removed whatever happened, and an exit 0 returns StatusPassed.
+// Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned.
+// The log the landing failure record names is kept.
+// A prune failure is logged and leaves the result unchanged.
+// The command is one `lym gate test --wait` call, or such calls joined by `&&`.
+// Those calls take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
+// The pass writes the record only when HEAD still names the tree and commit the run started on,
+// so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
+// The write replaces command's entry and drops every other entry naming a different tree, except site.BaseCommand's.
+// A non-zero exit is StatusFailed with the exit code,
+// and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
+// A failed command whose log holds a tier timeout line is also marked TimedOut.
+// Detail names the tier and its timeout, and ExitCode stays the command's own exit code.
+// One whose log holds no timeout line but the gate's runner crash line is marked RunnerCrash instead.
+// Detail names the crashed runs.
 // A cancelled ctx is a returned error and writes no record.
-// With a site.Hold, a covering pause holds Verify before its command and stops a running command at the pause's grace end, then Verify starts over from the dirty check after the resume.
+// With a site.Hold, a covering pause holds Verify before its command,
+// and it stops a running command at the pause's grace end.
+// Verify then starts over from the dirty check after the resume.
 // A held Verify removes its marker on every return, its dirty and skipped returns included.
 func Verify(ctx context.Context, p Paths, site Site, command string) (Result, error) {
 	if site.Hold != nil {
@@ -375,8 +389,10 @@ func waitOutPause(ctx context.Context, p Paths, site Site, command string) (bool
 	return held, markerErr
 }
 
-// runAndRecord runs command on the tree and commit the caller read, with the running marker written for the run and removed after it, and records a pass.
-// stopped is true when the site's hold stopped the command past a pause's grace end while ctx itself had not ended; the result then names only the stopped run's log.
+// runAndRecord runs command on the tree and commit the caller read.
+// It writes the running marker for the run and removes it after, and records a pass unless a commit landed mid-run.
+// stopped is true when the site's hold stopped the command past a pause's grace end, while ctx itself had not ended.
+// The result then names only the stopped run's log.
 func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit string) (result Result, stopped bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(p.Marker), 0o755); err != nil {
 		return Result{}, false, fmt.Errorf("verifytree: create verify directory: %w", err)
@@ -387,7 +403,8 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 	}
 	defer os.Remove(p.Marker)
 
-	// The verify command runs without the strand name, so a test driving `lym fabric` never meets a role guard that reads it.
+	// The verify command runs without the strand name,
+	// so a test driving `lym fabric` never meets a role guard that reads it.
 	// It never inherits the prebuilt-lym variable either: its own go test builds lym once per test binary.
 	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 
@@ -425,7 +442,8 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 		return failed, false, nil
 	}
 
-	// A commit that landed mid-run means the command read a tree that was not the recorded one, so the pass is not recorded.
+	// A commit that landed mid-run means the command may have read a tree other than the one it started on,
+	// so the pass is not recorded.
 	afterTree, err := headTree(p.Worktree)
 	if err != nil {
 		return Result{}, false, err
@@ -445,7 +463,9 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 	return Result{Status: StatusPassed, Tree: tree, Log: logPath}, false, nil
 }
 
-// runUnderHold runs command through verifyrun.Run, and with a non-nil hold cancels it once hold.PastGrace reports true, polled every hold.Poll only while the command runs.
+// runUnderHold runs command through verifyrun.Run.
+// With a non-nil hold, it cancels the run once hold.PastGrace reports true.
+// It polls every hold.Poll, only while the command runs.
 // pauseStopped reports that the hold cancelled the run.
 func runUnderHold(ctx context.Context, hold *PauseHold, command, dir string, env []string, out io.Writer) (code int, pauseStopped bool, runErr error) {
 	if hold == nil {
@@ -481,7 +501,8 @@ func runUnderHold(ctx context.Context, hold *PauseHold, command, dir string, env
 	return code, stopped.Load(), runErr
 }
 
-// tierTimeoutDetail reports whether the log at logPath holds a gate tier timeout line, and names the tier and its timeout when it does.
+// tierTimeoutDetail reports whether the log at logPath holds a gate tier timeout line.
+// When it does, the detail names the tier and its timeout.
 func tierTimeoutDetail(logPath string) (bool, string) {
 	data, err := os.ReadFile(logPath)
 	if err != nil {
@@ -504,7 +525,8 @@ func tierTimeoutDetail(logPath string) (bool, string) {
 	return true, detail
 }
 
-// runnerCrashDetail reports whether the log at logPath holds the gate's runner crash line, and names the crashed runs when it does.
+// runnerCrashDetail reports whether the log at logPath holds the gate's runner crash line.
+// When it does, the detail names the crashed runs.
 func runnerCrashDetail(logPath string) (bool, string) {
 	data, err := os.ReadFile(logPath)
 	if err != nil {
@@ -549,7 +571,6 @@ func headCommit(worktree string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// writeRecord writes rec to path.
 func writeRecord(path string, rec record) error {
 	data, err := yaml.Marshal(rec)
 	if err != nil {

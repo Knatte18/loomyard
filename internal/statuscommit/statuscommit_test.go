@@ -9,7 +9,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNew_OrdinaryPath covers the path with no merge in progress: the seam commits with the message its prefix names, then runs afterCommit, then spawns the push only when the commit landed something.
+// TestNew_OrdinaryPath covers the path with no merge in progress.
+// The seam commits with the message its prefix names, then runs afterCommit.
+// It spawns the push only when the commit landed something.
 func TestNew_OrdinaryPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -121,9 +123,12 @@ func TestNew_CommitErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip covers a commit failure the second probe explains: the probe is unlocked, so a merge can go live between the first probe and the commit.
-// Driven live during review: without the re-probe, a MERGE_HEAD landing in that window failed the path-scoped commit with git's "cannot do a partial commit during a merge" and killed the run.
-// Both a re-probe that reports the merge live and one that cannot read the state take the skip disposition, never the halt: an unreadable re-probe is the same untrustworthy-git-state category the skip exists for.
+// TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip covers a commit failure that the second probe explains.
+// The probe is unlocked, so a merge can go live between the first probe and the commit.
+// Without the re-probe, a MERGE_HEAD landing in that window fails the path-scoped commit.
+// Git refuses it with "cannot do a partial commit during a merge", and the run is killed.
+// A re-probe that reports the merge live takes the skip disposition, and so does one that cannot read the state.
+// Neither takes the halt: an unreadable re-probe is the same untrustworthy-git-state case the skip exists for.
 func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -15,7 +15,9 @@ const (
 	closeMarker = "<!-- /lym:carry-over Plan-Review -->"
 )
 
-// recordWithOpenRisks returns a decision record whose `## Open risks` section holds body, the text after the heading line, and whose other sections hold the default body.
+// recordWithOpenRisks returns a decision record whose `## Open risks` section holds body.
+// body is the text after the heading line.
+// The other sections hold the default body.
 func recordWithOpenRisks(body string) string {
 	var b strings.Builder
 	for _, h := range requiredDiscussionSections {
@@ -49,7 +51,8 @@ func writeRecord(t *testing.T, content string) string {
 	return path
 }
 
-// TestWriteCarryOver_RendersConvergedAndAcceptedEntries pins the rendered entry: marker lines, the closing bullet per closing kind, the paths line and one nested bullet per finding.
+// TestWriteCarryOver_RendersConvergedAndAcceptedEntries pins the rendered entry.
+// It has marker lines, a closing bullet per closing kind, a paths line and one nested bullet per finding.
 func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -97,7 +100,9 @@ func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
 	}
 }
 
-// TestWriteCarryOver_SplicesEntries asserts append, replace and remove touch only the segment's entry and the one blank line before it, leave other segments and prose byte-identical, write the same bytes on a replay and keep the record valid.
+// TestWriteCarryOver_SplicesEntries asserts that append, replace and remove touch only the segment's entry.
+// The one blank line before the entry is touched too; other segments and prose stay byte-identical.
+// A replay writes the same bytes, and the record stays valid.
 // Marker text inline, in another section or in a fence is ordinary prose.
 func TestWriteCarryOver_SplicesEntries(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -228,7 +233,10 @@ func TestWriteCarryOver_RefusesWithoutWriting(t *testing.T) {
 	})
 }
 
-// TestWriteCarryOver_DetectsConcurrentWriter asserts a write by another process between the carry-over's read and its rename is refused with nothing written, and one just after the rename is reported; either way the file holds the other writer's bytes.
+// TestWriteCarryOver_DetectsConcurrentWriter asserts a write by another process is caught.
+// A write between the carry-over's read and its rename is refused with nothing written.
+// A write just after the rename is reported.
+// Either way the file holds the other writer's bytes.
 func TestWriteCarryOver_DetectsConcurrentWriter(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -280,7 +288,9 @@ func TestWriteCarryOver_DetectsConcurrentWriter(t *testing.T) {
 	}
 }
 
-// TestWriteCarryOver_SanitizesHostileFields asserts a key holding a line break, a backtick, a marker string and a heading renders on one line and cannot end the entry early or add a heading.
+// TestWriteCarryOver_SanitizesHostileFields asserts that a hostile field renders on one line.
+// The field holds a line break, a backtick, a marker string and a heading.
+// It cannot end the entry early or add a heading.
 func TestWriteCarryOver_SanitizesHostileFields(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

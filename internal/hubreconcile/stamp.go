@@ -16,13 +16,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// stamp is the build stamp file: the key of the build that last reconciled the hub, with its identity in readable form for the log.
+// stamp is the build stamp file: the key of the build that last reconciled the hub.
+// It also carries the build identity, in readable form for the log.
 type stamp struct {
 	BuildKey string `json:"build_key"`
 	buildvcs.Identity
 }
 
-// BuildKey returns the hex SHA-256 of the VCS revision, the modified flag and the registry fingerprint, each length-prefixed.
+// BuildKey returns the hex SHA-256 of the VCS revision, the modified flag and the registry fingerprint.
+// Each field is written with its length first.
 func BuildKey(id buildvcs.Identity, fingerprint string) string {
 	hash := sha256.New()
 	for _, field := range []string{id.Revision, fmt.Sprint(id.Modified), fingerprint} {

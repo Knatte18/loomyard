@@ -27,7 +27,7 @@ const cancelSlug = "some-slug"
 var destructiveCancelCalls = []string{"EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim", "LiftPauses"}
 
 // cancelFake is a set of fake substrates for cancelRun that records every call and answers from its knobs.
-// Its zero value is a blocked run at Worktree-Create with no pair, a run claim and records on the local board and disk, and nothing alive.
+// Its zero value has no status, no board entry and no records, and nothing alive.
 type cancelFake struct {
 	calls []string
 
@@ -70,7 +70,8 @@ type cancelFake struct {
 	notifyErr       error
 	ownerHeld       bool
 
-	// beamProject, hubReport, hubReconcileErr, landRefusal, landingHeld, landBlockers and stopBeamErr answer the beam seams; the zero value is a task.
+	// beamProject, hubReport, hubReconcileErr, landRefusal, landingHeld, landBlockers and stopBeamErr answer the beam seams;
+	// the zero value is a task.
 	beamProject     bool
 	hubReport       fabricengine.OriginReport
 	hubReconcileErr error
@@ -238,7 +239,8 @@ func runningStatus(producer string) shedengine.Status {
 	return shedengine.Status{CurrentProducer: producer, State: shedengine.StateRunning}
 }
 
-// TestCancelRun drives cancelRun through the fakes; a refusal row asserts none of the destructive seams ran, bar the rows that name the seam that refused.
+// TestCancelRun drives cancelRun through the fakes;
+// a refusal row asserts none of the destructive seams ran, bar the rows that name the seam that refused.
 func TestCancelRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -261,13 +263,15 @@ func TestCancelRun(t *testing.T) {
 		errAbsent   []string
 		// nothingLeft is whether the refusal matches ErrNothingLeft through errors.Is.
 		nothingLeft bool
-		// judging is "endonly" when cancelJudgingEndOnly over a fresh fake of the row must return the origin-unreachable error, "full" when it must return nil, and empty when it is not run.
+		// judging is "endonly" when cancelJudgingEndOnly over a fresh fake of the row must return the origin-unreachable error.
+		// It is "full" when that call must return nil, and empty when no judging check runs.
 		judging string
 		// wantCalls is an ordered subsequence of the calls made.
 		wantCalls []string
 		// noCalls are seams that must not have been called.
 		noCalls []string
-		// marker is "none" when no marker was taken, "left" when its lock was released and the file kept, and "removed" when removed.
+		// marker is "none" when no marker was taken, "left" when its lock was released and the file kept.
+		// It is "removed" when the marker was removed.
 		marker string
 		check  func(*testing.T, cancelReport, *cancelFake)
 	}

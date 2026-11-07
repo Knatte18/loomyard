@@ -17,10 +17,11 @@ type Citation struct {
 // citationMarks are the suffixes after a closing backtick that mark a span as naming something the task creates or removes.
 var citationMarks = []string{" (new)", " (removed)"}
 
-// Citations returns, in record order, one Citation per inline code span of each line of the record, and judges none of them.
+// Citations returns every inline code span of the record in record order, without judging any of them.
 // A span runs from a backtick to the next backtick on the same line, and a span with empty text is skipped.
 // It skips the lines inside fenced code blocks and the lines of each `### Added after Discussion` entry.
-// It also skips a `## PATTERN changes` bullet line that `lym loom decision add` appended, and every line of a `<!-- lym:carry-over … -->` block, an unclosed block running to the end of the record.
+// It also skips a `## PATTERN changes` bullet line that `lym loom decision add` appended.
+// It skips every line of a `<!-- lym:carry-over … -->` block; a block left unclosed runs to the end of the record.
 // A heading line is read like any other line.
 func Citations(record []byte) []Citation {
 	lines := strings.Split(string(record), "\n")

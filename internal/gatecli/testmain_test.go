@@ -1,5 +1,7 @@
-// testmain_test.go runs the test binary under the hermetic git environment and tmux isolation, and lets the integration test re-execute the binary as a helper process.
-// It carries no build tag, so it compiles into every tag set; the helper roles themselves register from the integration-tagged file, since they spawn.
+// testmain_test.go runs the test binary under the hermetic git environment and tmux isolation.
+// It lets the integration test re-execute the binary as a helper process.
+// It carries no build tag, so it compiles into every tag set;
+// the helper roles themselves register from the integration-tagged file, since they spawn.
 
 package gatecli
 

@@ -1,4 +1,6 @@
-// hubpull.go implements `lym fabric pull --hub`: it resolves the hub's prime from the acting pair, runs the hub-wide pull with the parent lock seam and reports every side.
+// hubpull.go implements `lym fabric pull --hub`.
+// It resolves the hub's prime from the acting pair and pulls the hub under a branch lock per pair.
+// It reports every side in the envelope.
 
 package fabriccli
 
@@ -52,7 +54,7 @@ func hubPullStopError(sides []fabricengine.HubPullSide) error {
 	return errors.New("the hub pull stopped on " + strings.Join(stopped, ", ") + "; each stopped side's detail names its way forward, and the other sides were pulled")
 }
 
-// hubPullSidesMap converts the sides of a hub pull into the map shape output.Ok expects, never nil.
+// hubPullSidesMap converts the sides of a hub pull into the maps the envelope lists under "sides", never nil.
 func hubPullSidesMap(sides []fabricengine.HubPullSide) []map[string]any {
 	out := make([]map[string]any, 0, len(sides))
 	for _, side := range sides {

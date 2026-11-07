@@ -1,7 +1,7 @@
-// time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags.
+// time_integration_test.go checks that run reads each finished run's archived shed status from git archive tags.
 // It checks that with no slugs named it counts only finished runs and says in the header which it counted and skipped.
-// It checks that the Recipes section counts the lines of the commit a run landed on a real code repository, root commits included,
-// and that -since counts every finished run active since a date.
+// It checks that the Recipes section counts the lines of a landed commit, root commits included, in a git repository.
+// It checks that -since counts every finished run active since a date.
 // It also checks that -no-cutoff counts every located session and keeps the span from the seed's start,
 // and that the header names an engine that has no transcript reader.
 
@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// burlerSessions returns the sessions cell of the burler part row in a -detail segment table, empty when the row is absent.
+// burlerSessions returns the sessions cell of the burler part row in a -detail segment table, or empty when absent.
 func burlerSessions(section string) string {
 	for _, line := range strings.Split(section, "\n") {
 		if cells := strings.Split(line, "|"); strings.HasPrefix(line, "| └ burler |") && len(cells) > 7 {
@@ -75,7 +75,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	gitkit.Git(t, records, "init", "-b", "main")
 	gitkit.Git(t, code, "init", "-b", "main")
 
-	// commitIn writes files into the repository at dir and commits them under message with the given committer date, returning the commit.
+	// commitIn writes files into the repository at dir and commits them under message with the given committer date.
+	// It returns the commit's hash.
 	commitIn := func(dir, message, date string, files map[string]string) string {
 		t.Helper()
 		for rel, content := range files {
@@ -149,12 +150,12 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	// readsFor builds a read set of the fake engine over the slugs' sessions.
-	// The done slug's counted session starts after its older tag's date and the live slug's after its newest tag's date;
+	// The done slug's counted session starts after its older tag's date, and the live slug's after its newest tag's date;
 	// the solo slug has one tag and no worktree, so no bound.
 	// An earlier session of each bounded slug starts before that date and is left out.
 	// The slugs are touched done, live, full, solo from newest to oldest, which orders the default selection.
-	// The early slug's sessions are written only when early is set: its older tag and newest tag bound nothing under -no-cutoff,
-	// and the default selection must not see it.
+	// The early slug's sessions are written only when early is set:
+	// under -no-cutoff its older and newest tags bound nothing, and the default selection must not see it.
 	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	readsFor := func(early bool) ReadSet {
 		fake := newFakeTranscripts()
@@ -277,7 +278,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		t.Errorf("run with no finished run = %v; want %q", err, wantErr)
 	}
 
-	// Under -no-cutoff the earlier sessions and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.
+	// Under -no-cutoff the earlier sessions and the untimestamped one count,
+	// and the span keeps the seed's start instead of the older tag's date.
 	noCutoffPath := filepath.Join(t.TempDir(), "no-cutoff.md")
 	args = []string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "-detail", "done", "live", "early"}
 	if err := run(args, &stdout, readsFor(true)); err != nil {

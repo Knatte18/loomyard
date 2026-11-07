@@ -1,5 +1,7 @@
-// tiertags_test.go enforces the tier half of `PATTERN-test-speed`: every test function opens with `tiergate.Require` naming its tier, the test functions of one file name one tier, and no test file carries a tier build tag or a retired tier spelling.
-// The scan parses each file, so a function inside a string literal is no function of the file.
+// tiertags_test.go enforces the tier half of `PATTERN-test-speed`.
+// Each test function opens with `tiergate.Require` naming its tier, and the test functions of one file name one tier.
+// No test file carries a tier build tag or a retired tier spelling.
+// The scan parses each file, so a function inside a string literal is not a function of the file.
 
 package main
 
@@ -21,13 +23,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// tierTagNames are the build tags that named a test tier before the run-time selector; no test file carries one now.
+// tierTagNames are the build tags a test file must not name in its constraint.
+// `tiergate.Require` selects the tier at run time, so no file names one.
 var tierTagNames = []string{"tier0", "tier1", "tier2", "tier3"}
 
-// retiredTierSpellings are the tags that named tiers before the `tierN` tags, each paired with the tier it named.
+// retiredTierSpellings maps each old build tag, superseded by the `tierN` tags, to the tier it named.
 var retiredTierSpellings = map[string]string{"integration": "tier1", "tmux": "tier2", "llm": "tier3"}
 
-// holdsTestFunction reports whether the name is a `Test`, `Benchmark`, `Fuzz` or `Example` function that go test runs, which `TestMain` is not.
+// holdsTestFunction reports whether the name is a `Test`, `Benchmark`, `Fuzz` or `Example` function that go test runs;
+// `TestMain` is not one.
 func holdsTestFunction(name string) bool {
 	if name == "TestMain" {
 		return false
@@ -54,7 +58,8 @@ func testFunctions(file *ast.File) []*ast.FuncDecl {
 	return tests
 }
 
-// firstTierTerm returns the first tier tag or retired tier spelling the constraint names, left to right and whatever its polarity, or "" when it names none.
+// firstTierTerm returns the first tier tag or retired tier spelling the constraint names, left to right.
+// A negated term counts too; it returns "" when the constraint names none.
 // It walks the expression tree because Eval short-circuits, which would skip an operand to the right of a false term.
 func firstTierTerm(expr constraint.Expr) string {
 	switch e := expr.(type) {
@@ -112,7 +117,9 @@ func tierFailure(rel string, data []byte) string {
 	return ""
 }
 
-// TestTierTags_OneTierPerTestFile fails for a test function that does not open with tiergate.Require, for a test file whose functions name two tiers, and for a test file whose constraint names a tier tag or a retired tier spelling.
+// TestTierTags_OneTierPerTestFile fails for a test function that does not open with `tiergate.Require`.
+// It also fails for a test file whose functions name two tiers.
+// It also fails for a test file whose constraint names a tier tag or a retired tier spelling.
 //
 //lym:guard
 func TestTierTags_OneTierPerTestFile(t *testing.T) {

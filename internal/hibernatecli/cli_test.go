@@ -1,4 +1,5 @@
-// cli_test.go pins how `hibernate request` chooses whether its wake lifts the hub pause, from its flag and the hub's hibernate.yaml.
+// cli_test.go pins how `hibernate request` chooses whether its wake lifts the hub pause.
+// The choice comes from its flag and the hub's hibernate.yaml.
 
 package hibernatecli
 

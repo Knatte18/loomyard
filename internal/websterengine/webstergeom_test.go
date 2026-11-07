@@ -1,6 +1,7 @@
-// webstergeom_test.go — pure path-math unit tests for the webster geometry accessors (Dir/ReportsDir/PromptsDir/ScratchDir).
-// These tests do not require a git repository and run under standard unit test verification.
-// They pin the scratch-dir split: Dir and ReportsDir (durable, fabric-synced) stay under lymdirs.LymDirName, while ScratchDir and PromptsDir (never-tracked) resolve under lymdirs.DotLymDirName at the same mirrored subpath, for both an unanchored and a subpath-anchored *lymcwd.Location's AnchorPath, and for a plain told directory driven with no Location at all.
+// webstergeom_test.go holds the unit tests for the webster path accessors Dir, ReportsDir, PromptsDir and ScratchDir.
+// The tests need no git repository.
+// They pin the scratch split: Dir and ReportsDir, durable and fabric-synced, stay under lymdirs.LymDirName;
+// ScratchDir and PromptsDir, never tracked, resolve under lymdirs.DotLymDirName at the same mirrored subpath.
 
 package websterengine
 
@@ -14,11 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// TestWebsterGeometryHelpers pins every webster path constructor for an unanchored Location
-// (AnchorRel == "."), for a nested AnchorRel (every accessor moves down by AnchorRel together,
-// since both trees share the Cwd Resolution Invariant's per-module anchoring) and for a plain told
-// directory that is not derived from any *lymcwd.Location at all (the property
-// internal/standalonegeom depends on).
+// TestWebsterGeometryHelpers pins every webster path constructor for each of these anchors:
+// an unanchored Location (AnchorRel == "."); a nested AnchorRel, where every accessor moves down by AnchorRel together;
+// and a plain told directory not derived from any *lymcwd.Location.
+// The nested case holds because both trees share the Cwd Resolution Invariant's per-module anchoring.
+// The told-directory case is the property internal/standalonegeom depends on.
 func TestWebsterGeometryHelpers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -30,7 +31,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 	tests := []struct {
 		name       string
 		anchorRoot string
-		// wantAnchorRoot, when set, is the anchor the Location must resolve to.
+		// wantAnchorRoot is the anchor the Location must resolve to; an empty value skips the check.
 		wantAnchorRoot string
 	}{
 		{name: "unanchored location", anchorRoot: unanchored.AnchorPath(), wantAnchorRoot: baseDir},
@@ -62,8 +63,8 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 		})
 	}
 
-	// The verify directory both tellers fill sits under lymdirs.DotLymDirName, beside webster's
-	// scratch directory, for a plain told anchor.
+	// The verify directory both tellers fill sits under lymdirs.DotLymDirName.
+	// It sits beside webster's scratch directory for a plain told anchor.
 	t.Run("verify directory beside scratch", func(t *testing.T) {
 		t.Parallel()
 

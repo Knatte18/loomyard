@@ -1,5 +1,5 @@
 // drivehandback.go holds what every shed-driver hand-back leaves behind:
-// a Go-authored stop report, the park the recipe's Park seam performs, and the parent messages the LLM driver's two notify rules send.
+// a Go-authored stop report, the park the recipe's Park seam performs, and the parent notices the notify rules send.
 
 package sheddriver
 
@@ -42,8 +42,10 @@ type driveHandBack struct {
 }
 
 // driveNotices returns the messages a hand-back sends its parent, each ending in driveNoticeTail.
-// Watched, a batten announces the run and retries a matching verify halt itself, so only the parent notice, a question and a friction-failed done are sent.
-// Unwatched, the same are sent, plus one line naming the run-id and the stop report at every other hand-back; a done stop sends nothing else.
+// Watched, a batten announces the run and retries a matching verify halt itself.
+// Only the parent notice, a question and a friction-failed done are sent.
+// Unwatched, the same are sent, plus one line naming the run-id and the stop report at every other hand-back;
+// a done stop sends nothing else.
 func driveNotices(h driveHandBack, watched bool) []string {
 	var notices []string
 	if h.Relay != "" {
@@ -63,7 +65,8 @@ func driveNotices(h driveHandBack, watched bool) []string {
 }
 
 // driveReport is the content of a stop report.
-// Progress is the step's progress as the envelope reported it, and Sends holds one line per send, declined send, failed send or unqueued send.
+// Progress is the step's progress as the envelope reported it.
+// Sends holds one line per send, declined send, failed send or unqueued send.
 type driveReport struct {
 	RunID         string
 	At            time.Time
@@ -113,7 +116,7 @@ func (r driveReport) render() string {
 type HandBackDeps struct {
 	// ReportPath is where the stop report is written; the driver replaces it with a fresh path for each hand-back.
 	ReportPath string
-	// Notify queues one line for the run's parent at stop; sent is false, with a nil error, when the recipe declines to send a notice at this stop.
+	// Notify queues one line for the parent at stop; sent is false, with a nil error, when the recipe sends none here.
 	Notify func(stop Stop, line string) (sent bool, err error)
 	// OrchRecorded reports whether an orch strand is recorded to receive a notice.
 	OrchRecorded func() (bool, error)
@@ -124,7 +127,8 @@ type HandBackDeps struct {
 }
 
 // handBackRun sends the hand-back's notices, writes the stop report and parks the run.
-// Each notice goes through Notify when an orch strand is recorded; otherwise the line is logged and posted nowhere, and the report alone carries it.
+// Each notice goes to the recipe's notify seam when an orch strand is recorded;
+// otherwise the line is logged and posted nowhere, and the report alone carries it.
 // Every send, declined send, failed send and unqueued line is one line of the report.
 // The report is written at ReportPath, creating its directory, and a write failure is returned.
 // A hand-back describing a friction-failed done stops there, so a finished run is never parked.

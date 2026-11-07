@@ -1,4 +1,7 @@
-// beamland_integration_test.go drives a beam's landing prerequisites over a hubforge hub: the start guard and Worktree-Create's skip for beams made the two ways, the unreadable-pair refusal, the promote refusal judged from the board, a sub-beam under an open beam, and the landing refusal over a beam with members.
+// beamland_integration_test.go drives a beam's landing prerequisites over a hubforge hub.
+// It covers the start guard and Worktree-Create's skip for beams made the two ways.
+// It also covers the unreadable-pair refusal and the promote refusal judged from the board.
+// It also covers a sub-beam under an open beam, and the landing refusal over a beam with members.
 
 package battencli
 

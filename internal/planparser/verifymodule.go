@@ -1,5 +1,7 @@
-// verifymodule.go holds verify-nested-module, the plan check that refuses an author-written gate command which tests a nested module's package from outside that module, and verify-module-wide, the check that refuses a card Verify no fork may run.
+// verifymodule.go holds the plan checks verify-nested-module and verify-module-wide over a card's Verify value.
+// verify-nested-module refuses a go command that names a nested module's package from outside that module.
 // The go tool limits a package pattern to the module it runs in, so such a command cannot pass by construction.
+// verify-module-wide refuses a module-wide go command, which no fork may run.
 
 package planparser
 
@@ -24,14 +26,15 @@ var goValueFlags = map[string]bool{
 
 // crossModuleCommand is one go command that names a package in a nested module other than the module it runs in.
 type crossModuleCommand struct {
-	// Command is the command's text.
+	// Command is the command's text, its fields joined by single spaces and its leading environment assignments removed.
 	Command string
 
 	// Module is the worktree-relative directory of the nested module the package argument lies in.
 	Module string
 }
 
-// checkVerifyNestedModule implements verify-nested-module: a `go` command in a card's Verify value must not name a package of a nested module other than the one it runs in.
+// checkVerifyNestedModule implements verify-nested-module:
+// a `go` command in a card's Verify value must not name a package of a nested module other than the one it runs in.
 // A card's value is judged against the nested modules as the plan stands once that card has run.
 // The overview's `## verify:` section is not read, since no gate runs it.
 // It returns nothing unless the plan's language is go, since a nested module is a Go module boundary.
@@ -61,10 +64,15 @@ func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError 
 	return findings
 }
 
-// checkVerifyModuleWide implements verify-module-wide: a `go test`, `go build` or `go vet` in a card's Verify value must not name a module-wide package pattern (one holding `...`, or `all`), and a `go test` must not select the `tier2` or `tier3` tier.
-// An agent's settings deny such a command, so it can never run under a fork; the way forward is a `lym gate test` call over the card's scope, run in the foreground under the gate rule in the agent's system prompt.
+// checkVerifyModuleWide implements verify-module-wide:
+// a `go test`, `go build` or `go vet` in a card's Verify value must not name a module-wide package pattern.
+// A pattern is module-wide when it holds `...` or is `all`.
+// A `go test` must also not select the `tier2` or `tier3` tier.
+// An agent's settings deny such a command, so it can never run under a fork.
+// The way forward is a `lym gate test` call over the card's scope.
+// The call runs in the foreground under the gate rule in the agent's system prompt.
 // The overview's verify chain is not read.
-// Like the deny, it matches static shapes only: a command built from a variable or behind `bash -c` passes.
+// It matches static shapes only: a command built from a variable or behind `bash -c` passes.
 func checkVerifyModuleWide(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -84,7 +92,8 @@ func checkVerifyModuleWide(plan *Plan) []ValidationError {
 	return findings
 }
 
-// moduleWideCommands scans one shell chain and returns the text of each go command checkVerifyModuleWide refuses.
+// moduleWideCommands scans a shell chain and returns the text of each go build, test or vet over a module-wide pattern.
+// It also returns the text of each go test that selects the tier2 or tier3 tier.
 func moduleWideCommands(chain string) []string {
 	var found []string
 
@@ -103,7 +112,8 @@ func moduleWideCommands(chain string) []string {
 	return found
 }
 
-// isModuleWideGoCommand reads the fields after `go` and reports whether the command is a build, test or vet over a module-wide pattern, or a test selecting the tier2 or tier3 tier.
+// isModuleWideGoCommand reads the fields after `go` and reports whether the command is module-wide.
+// Such a command is a build, test or vet over a module-wide pattern, or a test selecting the tier2 or tier3 tier.
 func isModuleWideGoCommand(fields []string) bool {
 	i := 0
 	for i < len(fields) && strings.HasPrefix(fields[i], "-") {
@@ -149,9 +159,12 @@ func namesGateOnlyTier(tags string) bool {
 	})
 }
 
-// crossModuleCommands scans one shell chain and returns each go command whose relative package argument lies in a nested module of modules other than the module the command runs in.
-// The run directory starts at the worktree root and follows a literal `cd <dir>`; a go command's `-C <dir>` sets its own directory.
-// A `cd` or `-C` to an absolute path, an unresolvable spelling or a directory outside the root ends the scan, since only what can be placed is refused.
+// crossModuleCommands scans one shell chain and returns each go command that names a package of a nested module.
+// A package in the module the command itself runs in is not returned.
+// The run directory starts at the worktree root and follows a literal `cd <dir>`;
+// a go command's `-C <dir>` sets its own directory.
+// A `cd` or `-C` to an absolute path, an unresolvable spelling or a directory outside the root ends the scan.
+// Only what can be placed is refused.
 func crossModuleCommands(chain string, modules []string) []crossModuleCommand {
 	var found []crossModuleCommand
 	runDir := "."
@@ -193,9 +206,10 @@ func crossModuleCommands(chain string, modules []string) []crossModuleCommand {
 	return found
 }
 
-// goCommandDirAndPackages reads the fields after `go`: the directory the command runs in, its subcommand and its relative package arguments.
+// goCommandDirAndPackages reads the fields after `go`:
+// the directory the command runs in, its subcommand and its relative package arguments.
 // subcommand is empty when the fields hold none.
-// ok is false when a -C directory cannot be placed.
+// ok is false when a -C directory cannot be placed, or when any other flag comes before the subcommand.
 func goCommandDirAndPackages(runDir string, fields []string) (commandDir, subcommand string, packageArgs []string, ok bool) {
 	commandDir = runDir
 	i := 0
@@ -269,8 +283,9 @@ func isEnvAssignment(field string) bool {
 	})
 }
 
-// VerifyCommands splits a card's Verify value into its commands at `&&`, `||`, `;`, `|` and a newline, as the verify checks do.
-// Each command is returned with its leading environment assignments removed and its fields joined by single spaces; an empty command is dropped.
+// VerifyCommands splits a card's Verify value into its commands at `&&`, `||`, `;`, `|` and a newline.
+// Each command is returned with its leading environment assignments removed and its fields joined by single spaces;
+// an empty command is dropped.
 func VerifyCommands(value string) []string {
 	var commands []string
 	for _, segment := range splitChain(value) {
@@ -298,7 +313,8 @@ type chainSegment struct {
 // chainContinuation joins a backslash-newline line continuation into one line.
 var chainContinuation = strings.NewReplacer("\\\r\n", " ", "\\\n", " ")
 
-// splitChain splits a shell chain into its commands at `&&`, `||`, `;`, `|` and a newline, after joining line continuations.
+// splitChain splits a shell chain into its commands at `&&`, `||`, `;`, `|` and a newline.
+// Line continuations are joined before the split.
 // `||` is one separator, never two pipes, and a separator inside a single- or double-quoted span is text.
 func splitChain(chain string) []chainSegment {
 	runes := []rune(chainContinuation.Replace(chain))

@@ -1,6 +1,11 @@
-// standalonegeom_test.go pins every field of both told-mode geometry builders against a fixed target directory and told literal stateDir/hash8 values.
-// Nothing here calls standalonestate.Derive or reads an environment variable — the whole point of the builders' told parameters is that these tests need no t.Setenv and can run t.Parallel().
-// Every target below is a fictional absolute path that does not exist, so ReedGeometry's one filesystem read (standalonestate.Normalize, see doc.go) resolves each of them to itself and these cases stay deterministic with no fixture; the symlink behaviour that read exists for is pinned separately in reedgeom_symlink_test.go, which needs a real filesystem.
+// standalonegeom_test.go pins every field of both told-mode geometry builders.
+// They take a fixed target directory and literal stateDir and hash8 values.
+// Nothing here calls standalonestate.Derive or reads an environment variable;
+// the tests therefore need no t.Setenv and run t.Parallel().
+// Every target below is a fictional absolute path that does not exist,
+// so the one filesystem read in ReedGeometry (standalonestate.Normalize) resolves each of them to itself.
+// The cases stay deterministic with no fixture.
+// The symlink behaviour is pinned in reedgeom_symlink_test.go, which needs a real filesystem.
 
 package standalonegeom
 
@@ -25,8 +30,7 @@ func TestBurlerGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// target is deliberately not under stateDir, since that is the whole reason
-	// WorktreeRoot and AnchorPath exist as separate fields.
+	// target is not under stateDir, so WorktreeRoot and AnchorPath resolve to different roots.
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
 	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 
@@ -49,14 +53,15 @@ func TestBurlerGeometry(t *testing.T) {
 	if want := SpecsDir(stateDir); got.SpecsDir != want {
 		t.Errorf("BurlerGeometry().SpecsDir = %q; want %q", got.SpecsDir, want)
 	}
-	// WorktreeRoot and AnchorPath asserted in the same case: the whole reason the two-root
-	// split exists is that they differ here, with a fixture target not under stateDir.
+	// WorktreeRoot and AnchorPath are asserted to differ in the same case, since the fixture target is not under stateDir.
 	if got.WorktreeRoot == got.AnchorPath {
 		t.Errorf("BurlerGeometry().WorktreeRoot = %q; want != AnchorPath %q", got.WorktreeRoot, got.AnchorPath)
 	}
 }
 
-// TestStandaloneDirs pins each told-stateDir directory builder to its own subdirectory of stateDir, and that no two of them converge: StencilsDir and SpecsDir are separate directories under the durable lym directory, and LogsDir is a third under the ephemeral one, deliberately a different directory from the "logs" directory ReedGeometry's LogsDir field names for a different producer.
+// TestStandaloneDirs pins each told-stateDir directory builder to its own subdirectory of stateDir.
+// No two of them converge: StencilsDir and SpecsDir are separate directories under the durable lym directory.
+// LogsDir is a third one, under the ephemeral directory.
 func TestStandaloneDirs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -102,8 +107,7 @@ func TestReedGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// target is deliberately not under stateDir, since that is the whole reason
-	// AnchorPath and PaneCwd exist as separate fields.
+	// target is not under stateDir, so AnchorPath and PaneCwd resolve to different paths.
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
 	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 	hash8 := "abcd1234"
@@ -132,8 +136,7 @@ func TestReedGeometry(t *testing.T) {
 	if got.PaneCwd != target {
 		t.Errorf("ReedGeometry().PaneCwd = %q; want %q (target)", got.PaneCwd, target)
 	}
-	// PaneCwd and AnchorPath asserted in the same case: the whole reason the field
-	// exists is that the two differ here, with a fixture target not under stateDir.
+	// PaneCwd and AnchorPath are asserted to differ in the same case, since the fixture target is not under stateDir.
 	if got.PaneCwd == got.AnchorPath {
 		t.Errorf("ReedGeometry().PaneCwd = %q; want != AnchorPath %q", got.PaneCwd, got.AnchorPath)
 	}
@@ -141,8 +144,8 @@ func TestReedGeometry(t *testing.T) {
 		t.Errorf("ReedGeometry().WorktreeRoot = %q; want %q (target)", got.WorktreeRoot, target)
 	}
 	if want := filepath.Join(stateDir, "logs"); got.LogsDir != want {
-		// The wrong answer is one fabricengine.HubLogsDir call away and is a
-		// board-shaped path, so this row is explicit rather than derived.
+		// fabricengine.HubLogsDir is one call away and returns a board-shaped path,
+		// so this row spells the expected value out.
 		t.Errorf("ReedGeometry().LogsDir = %q; want %q (stateDir joined with \"logs\")", got.LogsDir, want)
 	}
 	if got.HubPath != stateDir {
@@ -153,14 +156,10 @@ func TestReedGeometry(t *testing.T) {
 	}
 }
 
-// TestReedGeometry_SessionNameSanitizesTheReadableHalf is the regression guard for the R4 review's
-// R4-10: SessionName was built from a RAW filepath.Base(target), and reedengine's
-// validateToldTmuxIdentity refuses a session name carrying '.', ':', '\', a control character, or an
-// invalid UTF-8 byte — so standalone mode, whose whole premise is "point it at any plain checkout
-// the operator already has", died on the routine repository name "my.repo" with advice to rename the
-// operator's own directory.
-// The hash8 suffix is asserted intact on every row, since sanitizing the readable half must never
-// touch the half that carries the identity.
+// TestReedGeometry_SessionNameSanitizesTheReadableHalf pins that the readable half of SessionName is tmux-safe.
+// reedengine's validateToldTmuxIdentity refuses '.', ':', '\', control characters and invalid UTF-8,
+// so a repository named "my.repo" needs its readable half sanitized.
+// The hash8 suffix is never sanitized, since it carries the identity.
 func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -190,13 +189,11 @@ func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 			if got.SessionName != c.want {
 				t.Errorf("ReedGeometry(%q).SessionName = %q; want %q", target, got.SessionName, c.want)
 			}
-			// The sanitizer is reedengine's own, never re-implemented here — the rule belongs to
-			// the package that also refuses violations of it.
+			// The sanitizer is reedengine's own, so the rule lives in the package that refuses violations of it.
 			if want := reedengine.SanitizeSessionName(c.basename) + "-" + hash8; got.SessionName != want {
 				t.Errorf("ReedGeometry(%q).SessionName = %q; want %q (reedengine.SanitizeSessionName + hash8)", target, got.SessionName, want)
 			}
-			// WorktreeName is a display value, not a tmux target, so a routine repository name
-			// must not be sanitized or normalized out from under it.
+			// WorktreeName is a display value, not a tmux target, so it is never sanitized.
 			if got.WorktreeName != c.basename {
 				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want %q (raw basename)", target, got.WorktreeName, c.basename)
 			}
@@ -222,8 +219,7 @@ func TestWebsterGeometry(t *testing.T) {
 	if got.PaneCwd != target {
 		t.Errorf("WebsterGeometry().PaneCwd = %q; want %q (target)", got.PaneCwd, target)
 	}
-	// AnchorRoot and WorktreeRoot asserted in the same case, for the same reason
-	// as the reed test's PaneCwd/AnchorPath pair.
+	// AnchorRoot and WorktreeRoot are asserted to differ in the same case.
 	if got.AnchorRoot == got.WorktreeRoot {
 		t.Errorf("WebsterGeometry().AnchorRoot = %q; want != WorktreeRoot %q", got.AnchorRoot, got.WorktreeRoot)
 	}
@@ -245,16 +241,14 @@ func TestWebsterGeometry(t *testing.T) {
 	if want := filepath.Join(stateDir, lymdirs.LymDirName, "stencils"); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q", got.StencilsDir, want)
 	}
-	// This equality pins the one-construction-site property: WebsterGeometry's StencilsDir
-	// field must always come from the shared StencilsDir helper, never a re-derived literal.
+	// This equality pins that the StencilsDir field comes from the shared StencilsDir helper, not a re-derived path.
 	if want := StencilsDir(stateDir); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q (StencilsDir(stateDir))", got.StencilsDir, want)
 	}
 	if want := filepath.Join(stateDir, lymdirs.LymDirName, "specs"); got.SpecsDir != want {
 		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q", got.SpecsDir, want)
 	}
-	// This equality pins the one-construction-site property: WebsterGeometry's SpecsDir field
-	// must always come from the shared SpecsDir helper, never a re-derived literal.
+	// This equality pins that the SpecsDir field comes from the shared SpecsDir helper, not a re-derived path.
 	if want := SpecsDir(stateDir); got.SpecsDir != want {
 		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q (SpecsDir(stateDir))", got.SpecsDir, want)
 	}

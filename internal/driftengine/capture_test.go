@@ -1,6 +1,7 @@
 //go:build !windows
 
-// capture_test.go — tier 1 tests for the main and current captures, driven by fake sh commands against a temp gate-slot pool.
+// capture_test.go — tier 1 tests for the main and current captures.
+// They drive fake sh commands against a temp gate-slot pool.
 
 package driftengine
 
@@ -313,7 +314,9 @@ func TestCaptureCurrent(t *testing.T) {
 	}
 }
 
-// TestRunCapture covers the command's outcome rows, the timeout tree kill, the kept backup, the capture lock, the slot wait, Check's refusal and a command holding the retired skip file placeholder.
+// TestRunCapture covers the command's outcome rows and the timeout tree kill.
+// It also covers the kept backup, the capture lock, the slot wait and Check's refusal.
+// It also covers a command holding the retired skip file placeholder.
 func TestRunCapture(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

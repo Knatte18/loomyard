@@ -14,8 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFinalize_OwnerChecks pins that a landing happens only when this machine owns the run and its parent, and that each halt names its owners and the adopt commands that move them.
-// A parent already holding the task's work lands whatever the owners and origin say, and a Finalize halted then resumed meets both checks again.
+// TestFinalize_OwnerChecks pins that a landing happens only when this machine owns the run and its parent,
+// and that each halt names its owners and the adopt commands that move them.
+// A parent already holding the task's work lands whatever the owners and origin say,
+// and a Finalize halted then resumed meets both checks again.
 func TestFinalize_OwnerChecks(t *testing.T) {
 	tiergate.Require(t, 0)
 	ownedElsewhere := func(owner string) *fabricengine.OriginReport {
@@ -34,7 +36,7 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		holdsErr  error
 		parent    *ParentOwnership
 		parentErr error
-		// subject is the run's own adopt subject, empty reading as its slug.
+		// subject is the run's own adopt subject; an empty subject reads as its slug.
 		subject     string
 		wantOutcome shedengine.Outcome
 		// wantInReason names what a halting reason must carry, behind OwnerHaltPrefix.

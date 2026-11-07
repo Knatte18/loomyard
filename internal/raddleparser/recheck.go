@@ -8,18 +8,23 @@ import (
 	"time"
 )
 
-// Recheck is the result of RecheckBoard.
-// Failures are the rules the board now breaks.
-// Landed names the board_checked entries now done or gone from the board; they fail nothing.
-// Dropped names, only when BoardContext.Filing is set, the board_checked entries gone from the board that a part depends on, which Raddle-File drops.
+// Recheck is the outcome of checking a proposal against the board as it stands now.
+// Failures lists the rules the board now breaks.
+// Landed lists the board_checked slugs that are now done or gone from the board; they fail nothing.
+// Dropped lists, only for a check made for filing, the board_checked slugs gone from the board that a part depends on.
+// Raddle-File drops them.
 type Recheck struct {
 	Failures []Finding
 	Landed   []string
 	Dropped  []string
 }
 
-// RecheckBoard judges p against the board as it is now.
-// It fails a board_checked entry still open with another `revised` stamp, an open task or project that carries a module label of the Sketch and is absent from board_checked, whenever it was created or promoted, and a filed slug now taken.
+// RecheckBoard judges a proposal against the board as it is now.
+// It is the second look at the board, at approval and at filing, for changes since the proposal was read.
+// It fails a board_checked entry that is still open with another `revised` stamp.
+// It fails an open task or project that carries a module label of the Sketch and is absent from board_checked.
+// The run's own entry is exempt from that rule.
+// It fails a filed slug that the board or the raddle store already holds.
 func RecheckBoard(p Proposal, board BoardContext) Recheck {
 	var result Recheck
 	for _, checked := range p.BoardChecked {
@@ -55,7 +60,8 @@ func RecheckBoard(p Proposal, board BoardContext) Recheck {
 	return result
 }
 
-// sameStamp reports whether two RFC 3339 stamps name one instant, and falls back to comparing the text when either does not parse.
+// sameStamp reports whether two RFC 3339 stamps name one instant.
+// When either stamp does not parse, it compares the texts instead.
 func sameStamp(a, b string) bool {
 	first, firstErr := time.Parse(time.RFC3339, a)
 	second, secondErr := time.Parse(time.RFC3339, b)

@@ -51,7 +51,8 @@ func ReadPresence(path string) (Presence, error) {
 	return record.Presence, nil
 }
 
-// WritePresence stores presence at path with now as its change time, and reports whether the stored value changed, so a caller sends its notices only on a change.
+// WritePresence stores presence at path with now as its change time.
+// It reports whether the stored value changed, so a caller sends its notices only on a change.
 // A missing file counts as PresenceTerminal; a stored value that is neither presence is an error naming the file.
 func WritePresence(path string, presence Presence, now time.Time) (bool, error) {
 	changed := false

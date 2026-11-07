@@ -1,5 +1,5 @@
-// patternchanges.go implements the decision record's optional `## PATTERN changes` section:
-// ParsePatternChanges reads and checks its bullets, patternOverCapFindings measures the rule texts they prescribe, and DeclaredPatternChanges hands the rendered bullets to the callers that put them in front of an agent.
+// patternchanges.go parses, checks and rewrites the decision record's optional `## PATTERN changes` section.
+// The section declares the PATTERN entries a task adds, changes or removes.
 
 package discussionparser
 
@@ -70,8 +70,11 @@ func (c PatternChange) Bullet() string {
 	return bullet + ": " + c.Text
 }
 
-// ParsePatternChanges reads the `## PATTERN changes` section of record, which runs from its heading to the next H2 outside a fenced block, and returns its entries in order.
-// Each defect is one pattern-change-malformed finding naming its line: a non-blank line that is not a bullet of the shape, an unknown action, `adds` or `changes` without text, `removes` followed by text, and a repeated entry ID.
+// ParsePatternChanges reads the `## PATTERN changes` section of record and returns its entries in order.
+// The section runs from its heading to the next H2 outside a fenced block.
+// Each defect yields one pattern-change-malformed finding naming its line.
+// A defect is a non-blank line that is not a bullet of the shape, or an unknown action.
+// It is also `adds` or `changes` without text, `removes` followed by text, or a repeated entry ID.
 // A record without the section returns nil and no finding.
 // A finding's Path is left empty for the caller to set.
 func ParsePatternChanges(record []byte) ([]PatternChange, []Finding) {
@@ -157,7 +160,8 @@ func parsePatternBullet(line string) (PatternChange, string) {
 	return change, ""
 }
 
-// checkPatternChangeOverCap names a Finding produced when an `adds` or `changes` bullet prescribes a rule text longer than a PATTERN.md entry's rule text may be.
+// checkPatternChangeOverCap names a Finding produced when an `adds` or `changes` bullet is over the cap.
+// The cap is the length a PATTERN.md entry's rule text may have.
 const checkPatternChangeOverCap = "pattern-change-over-cap"
 
 // patternEntryTextCap is the longest a PATTERN.md entry's rule text may be, in runes.
@@ -167,12 +171,13 @@ const patternEntryTextCap = 280
 // patternLinkTailRe matches the background link that may close a prescribed entry text, with its separator.
 var patternLinkTailRe = regexp.MustCompile(` — \[background\]\([^)]*\)$`)
 
-// patternRuleText returns text without a trailing background link and then a trailing " (test)" marker, the part of an entry line the cap measures.
+// patternRuleText returns text without a trailing background link and then a trailing " (test)" marker.
+// The cap measures this rule text only.
 func patternRuleText(text string) string {
 	return strings.TrimSuffix(patternLinkTailRe.ReplaceAllString(text, ""), " (test)")
 }
 
-// patternOverCapFindings returns one pattern-change-over-cap finding per `adds` or `changes` change in changes whose rule text runs past patternEntryTextCap runes, in order.
+// patternOverCapFindings returns one pattern-change-over-cap finding per over-cap change, in order.
 // A bullet `lym loom decision add` appended is measured like any other, since the entry text it prescribes is the same.
 // A finding's Path is left empty for the caller to set.
 func patternOverCapFindings(changes []PatternChange) []Finding {
@@ -197,7 +202,7 @@ func patternOverCapFindings(changes []PatternChange) []Finding {
 	return findings
 }
 
-// PatternTextOverCap reports whether the rule text of the entry text is longer than a PATTERN.md entry's rule text may be.
+// PatternTextOverCap reports whether the rule text of the given text runs past the PATTERN.md entry cap.
 func PatternTextOverCap(text string) bool {
 	return len([]rune(patternRuleText(text))) > patternEntryTextCap
 }
@@ -211,7 +216,9 @@ type PatternClusterMapping struct {
 	Text  string
 }
 
-// MapPatternChanges returns record with each mapping's bullet rewritten in place as a `changes` bullet of its live entry, so a record cut for a part declares the entry the plan gate and PATTERN.md know.
+// MapPatternChanges returns record with each mapping's bullet rewritten in place as a `changes` bullet.
+// The bullet names the live entry that absorbs the change.
+// A record cut for a part thereby declares the entry the plan gate and PATTERN.md know.
 // Every other byte stays, and no mappings return record unchanged.
 // A SketchID the `## PATTERN changes` section holds no bullet for is an error naming it.
 func MapPatternChanges(record []byte, mappings []PatternClusterMapping) ([]byte, error) {
@@ -230,8 +237,10 @@ func MapPatternChanges(record []byte, mappings []PatternClusterMapping) ([]byte,
 // notesHeading is the optional H2 heading a new PATTERN changes section is placed before.
 const notesHeading = "## Notes for the plan writer"
 
-// patternChangeAppendedBullet renders change as the bullet AppendDecision writes, with the appended-after-Discussion suffix naming by and the UTC day of date.
-// The fields are trimmed, and a `removes` bullet that still carries text keeps it, so the record's own check refuses it.
+// patternChangeAppendedBullet renders change as a bullet marked as added after the Discussion.
+// It names by and the UTC day of date in that suffix.
+// The fields are trimmed.
+// A `removes` bullet that still carries text keeps it, so the record's own check refuses it.
 func patternChangeAppendedBullet(change PatternChange, by string, date time.Time) string {
 	change.ID = strings.TrimSpace(change.ID)
 	change.Action = strings.TrimSpace(change.Action)
@@ -244,8 +253,9 @@ func patternChangeAppendedBullet(change PatternChange, by string, date time.Time
 }
 
 // patternChangesInsertOffset returns the byte offset in content where a new PATTERN changes bullet or section goes.
-// When the section exists, the offset is just after its last non-blank line and needHeading is false.
-// Otherwise needHeading is true and the offset is the start of the `## Notes for the plan writer` heading line, or the end of content when that heading is absent.
+// When the section exists, the offset is after its last non-blank line and needHeading is false.
+// Otherwise needHeading is true, and the offset is the start of the `## Notes for the plan writer` heading line;
+// without that heading, it is the end of content.
 // Headings inside a fenced code block are not headings.
 func patternChangesInsertOffset(content string) (offset int, needHeading bool) {
 	lines := strings.Split(content, "\n")
@@ -292,7 +302,8 @@ func patternChangesInsertOffset(content string) (offset int, needHeading bool) {
 	return starts[end], false
 }
 
-// patternBulletRange returns the byte range in content of the first line of the `## PATTERN changes` section whose bullet head names id, without its newline.
+// patternBulletRange returns the byte range in content of the first `## PATTERN changes` bullet naming id;
+// the range excludes the newline.
 // The head alone decides, so a bullet for id of a malformed shape is found too.
 // found is false when the record has no such section or the section has no bullet for id.
 // Headings and bullets inside a fenced code block are not headings or bullets.
@@ -322,7 +333,9 @@ func patternBulletRange(content, id string) (start, end int, found bool) {
 	return 0, 0, false
 }
 
-// patternChangesInsertion returns the text AppendDecision inserts into content at offset, where patternChangesInsertOffset reported offset and needHeading: the bullet alone, or a new section holding it.
+// patternChangesInsertion returns the text that places bullet into content at offset.
+// It is the bullet alone when needHeading is false;
+// otherwise it is a new `## PATTERN changes` section holding the bullet.
 func patternChangesInsertion(content string, offset int, needHeading bool, bullet string) string {
 	prefix := ""
 	if offset == len(content) && offset > 0 && content[offset-1] != '\n' {
@@ -341,10 +354,12 @@ func patternChangesInsertion(content string, offset int, needHeading bool, bulle
 	return prefix + section
 }
 
-// DeclaredPatternChanges returns the bullets of the decision record's `## PATTERN changes` section, in order and without the appended suffix, for a caller to render into an agent's prompt.
+// DeclaredPatternChanges returns the bullets of the decision record's `## PATTERN changes` section in order.
+// The bullets carry no appended suffix, so a caller can render them into an agent's prompt.
 // An empty recordPath or a record that does not exist returns nil and no error, as does a record without the section.
 // A read error is returned.
-// A malformed section returns an error wrapping ErrPatternChangesInvalid that names the record, the section and each defect, and ends with a way forward the caller completes with its own re-step.
+// A malformed section returns an error wrapping ErrPatternChangesInvalid.
+// The error names the record, the section and each defect, and ends with a way forward that the caller completes.
 func DeclaredPatternChanges(recordPath string) ([]string, error) {
 	if recordPath == "" {
 		return nil, nil

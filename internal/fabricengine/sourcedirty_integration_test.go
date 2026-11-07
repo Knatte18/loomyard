@@ -17,7 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSourceDirtyPaths pins that a clean source lists nothing, a modified tracked file is listed and refuses Add as *ErrSourceDirty, and an untracked file alone neither lists nor refuses.
+// TestSourceDirtyPaths pins three cases.
+// A clean source lists nothing.
+// A modified tracked file is listed and refused by Add as *ErrSourceDirty.
+// An untracked file alone is neither listed nor refused.
 func TestSourceDirtyPaths(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

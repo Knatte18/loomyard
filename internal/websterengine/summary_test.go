@@ -15,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// writeSummaryFile writes raw content to path, creating its parent
-// directory first, failing the test on any error.
+// writeSummaryFile writes raw content to path, creating its parent directory first, failing the test on any error.
 func writeSummaryFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -41,8 +40,8 @@ const triageSectionHead = "\n\n## Integration suite triage\n\nThe `final` gate f
 
 const fixCommitsSectionHead = "\n\n## Verify gate fix commits\n\nThe verify-gate fixers' commits above the pre-fix head, and the PATTERN departures their messages declare.\n\n"
 
-// TestAppendSummarySections pins each Append* helper: an empty list leaves the file
-// byte-identical, and a non-empty list appends its section after the existing content in order.
+// TestAppendSummarySections pins each Append* helper: an empty list leaves the file byte-identical,
+// and a non-empty list appends its section after the existing content in order.
 func TestAppendSummarySections(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

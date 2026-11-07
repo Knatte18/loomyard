@@ -1,4 +1,5 @@
-// tidy.go implements dobby's board-tidy step: the count of landings, the board-tidy agent's prompt and launch spec, and the spawn, report and timeout of the agent every few landings.
+// tidy.go implements dobby's board-tidy step.
+// It counts landings, composes the board-tidy agent's prompt and launch spec, and spawns and settles the agent.
 
 package dobbyengine
 
@@ -49,8 +50,9 @@ type TidyPromptInput struct {
 }
 
 // TidyPrompt composes the board-tidy agent's launch prompt.
-// The stencil is read from stencilsDir at call time and filled with in, the parent directive naming in.Parent and the edit directive.
-// It returns the read or fill error wrapped with the stencil's name.
+// It reads the board-tidy stencil from stencilsDir at call time and fills its markers from in.
+// The parent directive names in.Parent, and the edit directive is filled in too.
+// A stencil read or fill error is returned wrapped with the stencil's name.
 func TidyPrompt(stencilsDir string, in TidyPromptInput) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, in.Parent, false)
 	if err != nil {
@@ -81,8 +83,10 @@ func TidyPrompt(stencilsDir string, in TidyPromptInput) (string, error) {
 }
 
 // TidySpec composes the shuttle spec the board-tidy agent launches from.
-// OutputFiles holds reportPath alone, and Skills only `ly:board`, the one skill the agent needs to read and amend the board.
-// Segment is the coordinator, since the agent acts for the beam's driver, and the agent is autonomous with no parent session to message.
+// OutputFiles holds reportPath alone.
+// Skills holds only `ly:board`, the one skill the agent needs to read and amend the board.
+// Segment is the coordinator, since the agent acts for the beam's driver,
+// and the agent is autonomous with no parent session to message.
 func TidySpec(prompt, reportPath string, model shuttleengine.ModelChoice, timeout time.Duration) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:      prompt,
@@ -95,10 +99,14 @@ func TidySpec(prompt, reportPath string, model shuttleengine.ModelChoice, timeou
 	}
 }
 
-// countLandings reads the landings the batten history of every run of this worktree holds and records each one not yet counted in the state record.
-// The first read of a record baselines: every landing already there is marked seen and none is counted, so run records left from before the dobby, or a record rewritten fresh, trigger no tidy.
-// While a board-tidy agent is in flight nothing is counted, so the record's slugs since the last tidy are exactly the agent's.
-// A baselined record not yet marked machine-only has its landed-since-tidy list emptied once, ahead of the count, since it may hold other machines' landings.
+// countLandings reads the landings the batten history of every run of this worktree holds.
+// It records each one not yet counted in the state record.
+// The first read of a record baselines it: every landing already there is marked seen and none is counted.
+// So run records left from before the dobby, or a record rewritten fresh, trigger no tidy.
+// While a board-tidy agent is in flight nothing is counted,
+// so the record's slugs since the last tidy are exactly the agent's.
+// A baselined record not yet marked machine-only has its landed-since-tidy list emptied once, ahead of the count.
+// The list may hold other machines' landings.
 func (d *daemon) countLandings(now time.Time) error {
 	if d.deps.Landings == nil {
 		return nil
@@ -136,8 +144,10 @@ func (d *daemon) countLandings(now time.Time) error {
 	})
 }
 
-// tidyStep spawns the board-tidy agent at every board_tidy_every landings, unless one is in flight, and settles the one in flight.
-// A report the agent wrote is posted to the nearest live orch by path and ends the agent; an agent past board_tidy_timeout_min is ended and its slugs carry to the next tidy.
+// tidyStep spawns the board-tidy agent at every board_tidy_every landings unless one is in flight.
+// It also settles the agent in flight.
+// A report the agent wrote is posted to the nearest live orch by path and ends the agent;
+// an agent past board_tidy_timeout_min is ended, and its slugs carry to the next tidy.
 // An agent in flight keeps the loop out of its idle backoff.
 func (d *daemon) tidyStep(ctx context.Context, now time.Time) error {
 	if d.deps.TidyShuttle == nil {
@@ -195,7 +205,8 @@ func (d *daemon) spawnTidy(now time.Time, cfg Config, landed []string) error {
 	return nil
 }
 
-// settleTidy ends the agent in flight once its report exists or its deadline has passed, and reports whether it is still running.
+// settleTidy ends the agent in flight once its report exists or its deadline has passed.
+// It reports whether the agent is still running.
 // The notice goes out before the state record is cleared, so a notice that fails is retried on the next tick.
 func (d *daemon) settleTidy(ctx context.Context, now time.Time, current State) (waiting bool, err error) {
 	tidy := current.Tidy
@@ -227,7 +238,8 @@ func (d *daemon) settleTidy(ctx context.Context, now time.Time, current State) (
 	})
 }
 
-// stopTidyStrand ends the board-tidy agent's strand; a failure is logged, since the agent ends on its own at its timeout.
+// stopTidyStrand ends the board-tidy agent's strand;
+// a failure is logged, since the agent ends on its own at its timeout.
 func (d *daemon) stopTidyStrand(guid string) {
 	if err := d.deps.TidyShuttle.StopStrand(guid); err != nil {
 		logger.Warn("dobbyengine: the board-tidy agent's strand did not stop", "worktree", d.geom.WorktreeName, "strand", guid, "error", err)

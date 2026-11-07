@@ -80,8 +80,10 @@ func archived(t *testing.T, dir, pattern string) []string {
 	return matches
 }
 
-// TestArchiveRunAfterReset pins the guard's three refusals, each naming the clearing step and then the reset, with the run record left in place,
-// and the archive a pending finding does not block: state.json and the reports dir renamed, the prompts cleared, one drop warning per finding.
+// TestArchiveRunAfterReset pins the guard's refusals.
+// Each refusal names the clearing step and then the reset, and it leaves the run record in place.
+// A pending finding does not block the archive.
+// It renames state.json and the reports dir, clears the prompts, and gives each finding one drop warning.
 func TestArchiveRunAfterReset(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

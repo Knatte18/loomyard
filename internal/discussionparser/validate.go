@@ -1,6 +1,5 @@
-// validate.go implements Validate, the discussion gate's decision record and support log check: both `_lym/discussion/` files exist, and the decision record carries every required H2 section.
-// Both callers also run CheckDecisionIDs beside Validate, and the loom gate runs CheckRelevant too.
-// It backs both gated discussion sites -- Discussion-Write's own gate and Discussion-Burler-Fix's own fix-step gate, both built by internal/loomshed's NewDiscussionGate -- and the standalone `lym loom validate-discussion` verb, per the Gate Self-Check Parity Invariant, so extracting it into this stdlib-only leaf changes nothing about when a failed check re-prompts the live session versus when an I/O fault aborts the run as an ordinary producer error.
+// validate.go implements Validate, which checks that a discussion's support log and decision record exist.
+// It also checks that the decision record carries every required H2 section.
 
 package discussionparser
 
@@ -10,17 +9,16 @@ import (
 	"strings"
 )
 
-// Finding is one defect Validate found: which check tripped, which absolute path it concerns, and
-// a human-readable detail.
+// Finding is one defect found in a discussion.
+// It records the check that tripped, the absolute path it concerns, and a human-readable detail.
 type Finding struct {
 	Check  string
 	Path   string
 	Detail string
 }
 
-// Error implements the error interface. Path is not repeated here -- Detail already names the file
-// or heading concerned, and Path itself carries the absolute path as a structured field for a
-// future caller.
+// Error implements the error interface as the check name, then the detail.
+// Path is left out.
 func (f Finding) Error() string {
 	return f.Check + ": " + f.Detail
 }
@@ -28,12 +26,11 @@ func (f Finding) Error() string {
 // checkFileMissing names a Finding produced when a required `_lym/discussion/` file does not exist.
 const checkFileMissing = "discussion-file-missing"
 
-// checkSectionMissing names a Finding produced when the decision record lacks a required H2
-// heading.
+// checkSectionMissing names a Finding produced when the decision record lacks a required H2 heading.
 const checkSectionMissing = "discussion-section-missing"
 
-// requiredDiscussionSections are the seven H2 headings Validate requires decisionRecordPath to
-// carry, per contracts/specs/loom-discussion-spec.md.
+// requiredDiscussionSections are the H2 headings the decision record must carry.
+// The list follows `contracts/specs/loom-discussion-spec.md`.
 var requiredDiscussionSections = []string{
 	"## Goal",
 	"## Scope",
@@ -44,24 +41,21 @@ var requiredDiscussionSections = []string{
 	"## Acceptance criteria",
 }
 
-// Validate checks that decisionRecordPath and supportLogPath both exist, and that
-// decisionRecordPath carries every section in requiredDiscussionSections.
-// It never reads the relevant list, which CheckRelevant checks.
+// Validate checks a discussion's two files and reports each defect as a Finding.
+// The support log is checked for existence first, then the decision record.
+// A missing file yields one Finding and a nil error, and ends the check.
+// Any other stat or read failure is returned as the error, with no findings.
 //
-// The checks run in a fixed order, and an error from an earlier check always wins over a finding a
-// later check would have produced, because the later check never runs: first, os.Stat
-// supportLogPath -- a not-exist yields exactly one Finding and a nil error, any other stat error
-// returns immediately as a returned error with a nil findings slice.
-// Then os.ReadFile decisionRecordPath, with the identical two-way split.
-// Only then do the checks that accumulate findings run: the heading check, one Finding per missing heading, and then the optional `## PATTERN changes` section's shape check, one Finding per malformed bullet, and its length check, one Finding per `adds` or `changes` bullet whose rule text is longer than a PATTERN.md entry's rule text may be.
+// Each missing required H2 heading is one Finding.
+// The optional `## PATTERN changes` section, when present, yields one Finding per malformed bullet.
+// It yields another per `adds` or `changes` bullet whose rule text is longer than a PATTERN.md entry's rule text may be.
 // A record without that section passes it.
 //
-// A clean run returns a nil (or empty) slice and a nil error. Validate never returns a non-empty
-// findings slice together with a non-nil error.
+// Validate never returns a non-empty findings slice together with a non-nil error.
+// A clean run returns a nil or empty slice and a nil error.
 //
-// Deliberately NOT checks, each for a stated reason: "## Notes for the plan writer" is optional by
-// contract and its absence is never a violation; section *order* is pinned in the stencil but is not
-// validated here; an extra unexpected H2 is not a violation either.
+// Section order is not checked, and neither is an extra H2.
+// The optional `## Notes for the plan writer` section is never required.
 func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 	if _, err := os.Stat(supportLogPath); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -97,19 +91,14 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 	return findings, nil
 }
 
-// missingSections returns every heading in required that does not appear as its own line in content outside a fenced block, after right-trimming " \t\r".
-// A heading nested inside a fenced block or appearing mid-sentence never counts.
-// The result preserves required's own order.
+// missingSections returns every heading in required that no line of content matches outside a fenced block.
+// A line matches after its trailing spaces, tabs and carriage returns are trimmed.
+// A heading nested inside a fenced block, or part of a longer line, never counts.
+// The result keeps the order of required.
 //
-// It splits the string it was already handed rather than running a bufio.Scanner over it, and that
-// is a correctness choice, not a style one. Scanner stops at the first line longer than
-// bufio.MaxScanTokenSize (64 KB) and reports that only through scanner.Err(), which this function
-// never checked -- so one pasted base64 blob or minified snippet, entirely ordinary in a discussion
-// document an agent wrote, made every heading BELOW it report missing. loomshed's Discussion-Write
-// gate maps those findings to a re-prompt of the same live session, up to its attempt budget, and
-// repeats on the same document until the budget is exhausted and escalates to a human, over a
-// document that was valid all along (crucible round opus-medium-r6, R6-28). content is already
-// fully in memory, so there is no line length to cap and no error left to drop.
+// It splits content by newline rather than reading it with a bufio.Scanner.
+// A Scanner stops at the first line longer than bufio.MaxScanTokenSize.
+// It reports that only through Err, so every heading below such a line would count as missing.
 func missingSections(content string, required []string) []string {
 	found := make(map[string]bool, len(required))
 

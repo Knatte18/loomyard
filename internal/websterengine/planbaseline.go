@@ -16,10 +16,12 @@ import (
 	"strings"
 )
 
-// planBaselineDirName is the directory under WebsterDir holding one file per recorded plan content, named by its hex SHA-256.
+// planBaselineDirName is the directory under `WebsterDir` that holds one file per recorded plan content.
+// Each file is named by the hex SHA-256 of its content.
 const planBaselineDirName = "plan-baseline"
 
-// ErrPlanBaselineMissing is returned by RestorePlan when a changed plan file has no stored copy to restore from, or the state recorded no plan hashes at all.
+// ErrPlanBaselineMissing reports that a plan file cannot be restored from the store.
+// The stored copy is absent or does not match its recorded hash, or the state recorded no plan hashes at all.
 var ErrPlanBaselineMissing = errors.New("websterengine: plan baseline copy missing")
 
 // freshRestartSteps is the ordered step list that discards the run and starts it over: the reset verb, then reentry.
@@ -54,7 +56,8 @@ func planBaselineHas(websterDir, hash string) (bool, error) {
 
 // storePlanBaseline writes each plan file's bytes to its hash's file under websterDir when that file is absent.
 // The store is content-addressed, so a repeat write is a no-op.
-// Bytes that no longer hash to their recorded value (the file changed since its hash was computed) are refused, writing nothing for that file, so no stored copy is ever wrong.
+// A file whose bytes no longer hash to their recorded value is refused, and nothing is written for it,
+// so no stored copy is ever wrong.
 // An empty websterDir is a wiring error, returned rather than resolved against the working directory.
 func storePlanBaseline(websterDir, planDir string, hashes map[string]string) error {
 	if websterDir == "" {
@@ -115,7 +118,7 @@ func writeFileAtomic(dir, dst string, data []byte) error {
 	return nil
 }
 
-// RestorePlan restores every plan file changedPlanFiles reports.
+// RestorePlan restores every plan file that has changed since the run recorded it.
 // A recorded file is written back from the store after checking the stored bytes hash to the recorded value,
 // and a file the run never recorded is removed.
 // Every needed copy is checked before anything is written;

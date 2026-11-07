@@ -1,6 +1,6 @@
-// cleanreason_integration_test.go is card 6's regression guard for Clean's reworded reason string:
-// no earlier test asserted its exact wording, and loomengine prints it verbatim to an operator, so
-// all three shapes — code-side only, state-side only, and both joined — are pinned here.
+// cleanreason_integration_test.go pins the exact wording of the reason Clean reports for a dirty pair.
+// loomengine prints that reason verbatim to an operator, so every shape is asserted:
+// code-side only, state-side only, and both joined.
 
 package fabricengine_test
 
@@ -16,8 +16,9 @@ import (
 )
 
 // TestClean_ReasonWording exercises the three shapes fabricengine.Clean can report a reason for.
-// The steps share one hub and run in order: each step leaves the hub with neither side dirty, so the
-// next one starts from a clean pair.
+// The steps share one hub and run in order:
+// each step leaves the hub with neither side dirty,
+// so the next one starts from a clean pair.
 func TestClean_ReasonWording(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

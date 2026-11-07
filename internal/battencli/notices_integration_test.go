@@ -1,4 +1,5 @@
-// notices_integration_test.go pins where batten's notices about a run go, over a hubforge hub with a beam: the walk's start for a present or absent pair, and whether its destination records an orch strand.
+// notices_integration_test.go pins where batten's notices about a run go, over a hubforge hub with a beam.
+// It covers the walk's start for a present or absent pair, and whether its destination records an orch strand.
 
 package battencli
 
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// noticeHub returns a hub with a recorded shortname, a marked beam "b" with a member pair "m" and a pair "p" forked from the prime.
+// noticeHub returns a hub with a recorded shortname and a marked beam "b" with a member pair "m".
+// The hub also holds a pair "p" forked from the prime.
 func noticeHub(t *testing.T) *hubforge.Hub {
 	t.Helper()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -28,7 +30,8 @@ func noticeHub(t *testing.T) *hubforge.Hub {
 	return h
 }
 
-// recordOrchStrand records a strand in the orch state of location, with no reed session behind it, so the orch reads recorded but never live.
+// recordOrchStrand records a strand in the orch state of location, with no reed session behind it.
+// The orch then reads recorded but never live.
 func recordOrchStrand(t *testing.T, location *lymcwd.Location) {
 	t.Helper()
 	if err := orchengine.SaveState(orchcli.PrimePaths(location), orchengine.State{Strand: "guid-" + location.WorktreeName, Phase: orchengine.PhaseIdle}); err != nil {

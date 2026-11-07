@@ -1,4 +1,6 @@
-// config_test.go verifies env.yaml's layer stack, its name refusals, the machine-layer write and the two forms the variables are handed on in, seeded with plain file writes under t.TempDir() so the test stays spawn-free.
+// config_test.go verifies env.yaml's layer stack, its name refusals and the machine-layer write.
+// It also verifies the two forms the variables are handed on in.
+// Layers are seeded with plain file writes under t.TempDir(), so the test stays spawn-free.
 
 package envconfig_test
 
@@ -144,7 +146,8 @@ func TestLoadConfig_StacksHubAndMachineName(t *testing.T) {
 	}
 }
 
-// TestSet_MachineLayerTakesAVariable pins the write the issue found refused: a per-machine value set through the machine layer, and the local layer still refusing it.
+// TestSet_MachineLayerTakesAVariable pins a per-machine value set through the machine layer,
+// and the local layer still refuses it.
 func TestSet_MachineLayerTakesAVariable(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

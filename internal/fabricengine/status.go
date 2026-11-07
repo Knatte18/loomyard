@@ -1,12 +1,11 @@
-// status.go implements the paired warp↔weft status view and warp-pollution detection for fabric.
+// status.go reports the paired warp and weft status of each worktree, and detects _lym paths tracked in the warp index.
 //
-// Status enumerates all warp worktrees via List, pairs each with its weft sibling, reports branch, in-sync verdict, junction health, and scans the warp index for any _lym paths that have been accidentally git-tracked (warp pollution).
-// A pair is InSync when weftBranch == RecordsBranchName(warpBranch), and DriftReason states the expected suffixed branch rather than a bare mismatch.
+// Status lists the warp worktrees and pairs each with its weft sibling.
+// It reports each pair's branches, in-sync verdict, junction health and warp pollution.
+// A pair is in sync when its weft branch is RecordsBranchName of its warp branch and its junction is healthy.
+// DriftReason names the expected weft branch when the branches differ.
 //
-// Status computes its in-sync verdict inline (branch correspondence via RecordsBranchName, then junction health via checkJunctionHealth, both already defined in reconcile.go) rather than
-// calling the shared Healthy helper (drift.go) — Status already has warpBranch/weftBranch in hand
-// from readBranch, so there is nothing to gain from a second rev-parse round trip through a shared
-// helper.
+// Status computes the in-sync verdict from the branch names it has already read, so it runs no second rev-parse.
 
 package fabricengine
 
@@ -20,12 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// PollutionEntry describes a single tracked path in the warp index that should never be committed
-// there (e.g. _lym, which belongs exclusively in the weft).
+// PollutionEntry describes a path tracked in the warp index that belongs in the weft, such as one under _lym.
 type PollutionEntry struct {
 	// Path is the relative path reported by git ls-files.
 	Path string `json:"path"`
-	// Remedy is the suggested remediation command. Empty when the entry is report-only.
+	// Remedy is the command that untracks the path and keeps it on disk. Empty when no remedy applies.
 	Remedy string `json:"remedy,omitempty"`
 }
 
@@ -39,7 +37,7 @@ type PairStatus struct {
 	WarpBranch string `json:"warp_branch"`
 	// WeftBranch is the current branch of the weft worktree (empty if missing or undetermined).
 	WeftBranch string `json:"weft_branch"`
-	// InSync reports whether the pair is branch-synchronized (weftBranch == RecordsBranchName(warpBranch)) and the junction is healthy.
+	// InSync reports whether the weft branch is RecordsBranchName of the warp branch and the junction is healthy.
 	InSync bool `json:"in_sync"`
 	// DriftReason describes why the pair is out of sync. Empty when InSync is true.
 	DriftReason string `json:"drift_reason,omitempty"`
@@ -51,18 +49,18 @@ type PairStatus struct {
 	Pollution []PollutionEntry `json:"pollution,omitempty"`
 }
 
-// StatusResult is the top-level result type returned by Status.
-// It contains one PairStatus entry per discovered warp worktree.
+// StatusResult is the paired warp and weft status of the worktrees in one fabric layout.
+// It holds one PairStatus per warp worktree, in the order the worktrees were listed.
 type StatusResult struct {
 	// Pairs is the ordered list of warp↔weft pair reports.
 	Pairs []PairStatus `json:"pairs"`
 }
 
-// Status returns the paired warp↔weft status view for all worktrees reachable from the given
-// layout, plus warp-pollution detection on the warp index.
-// For each warp worktree, it reports branch status, in-sync verdict, junction health, and
-// warp-tracked _lym paths.
-// Per-worktree errors are recorded inline in PairStatus.DriftReason / PairStatus.JunctionReason.
+// Status returns the paired warp and weft status of every worktree reachable from the given layout.
+// It also runs warp-pollution detection on each warp index.
+// For each warp worktree it reports the branches, in-sync verdict, junction health and tracked _lym paths.
+// Per-worktree errors are recorded inline in the pair's DriftReason, JunctionReason or Pollution fields;
+// only a failure to list the worktrees is returned as an error.
 func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 	entries, err := List(l.WorktreePath())
 	if err != nil {
@@ -117,9 +115,7 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 		pair.JunctionHealthy = junctionHealthy
 		pair.JunctionReason = junctionReason
 
-		// Determine pair in-sync status: branch correspondence uses RecordsBranchName (fabric's suffixed pairing) rather than warp's equal-name requirement.
-		// It is folded together with junction health exactly as warp's pair-in-sync check (fabric's
-		// Healthy) folds both checks into one verdict.
+		// The verdict combines branch correspondence with junction health, and the first failing check sets DriftReason.
 		expectedWeftBranch := RecordsBranchName(warpBranch)
 		switch {
 		case weftBranch != expectedWeftBranch:
@@ -132,11 +128,11 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 			pair.InSync = true
 		}
 
-		// Scan the warp index for _lym paths that must never be tracked there, scoped through this pair's own anchor — on a subpath-anchored hub the tracked content sits at <anchor>/_lym/..., which a root-relative pathspec never matches.
+		// Scan the warp index for _lym paths, scoped through this pair's anchor.
+		// A subpath-anchored hub tracks its content under <anchor>/_lym, which a root-relative pathspec never matches.
 		pollution, pollErr := detectWarpPollution(warpPath, warpLayout.AnchorRel)
 		if pollErr != nil {
-			// Non-fatal: record the error inline and continue. Remedy stays
-			// empty since no automated remedy applies to a scan failure.
+			// A scan failure does not abort Status. It is recorded inline, and its Remedy stays empty.
 			pair.Pollution = append(pair.Pollution, PollutionEntry{
 				Path: fmt.Sprintf("<scan error: %v>", pollErr),
 			})
@@ -150,20 +146,14 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 	return result, nil
 }
 
-// detectWarpPollution scans the warp worktree index for _lym paths that should
-// never be tracked in the warp repo.
+// detectWarpPollution scans the warp worktree index for _lym paths that must not be tracked in the warp repo.
 //
-// anchorRel scopes the pathspec through the pair's recorded anchor, exactly as Fabric.Commit scopes
-// its own routing prefixes. This is load-bearing rather than tidy: a subpath-anchored hub keeps its
-// durable tree at <anchor>/_lym, which a bare "_lym" pathspec never matches, so the scan reported a
-// genuinely polluted index as clean — a false negative in the one verb that advertises the check.
+// anchorRel scopes the pathspec through the pair's anchor.
+// A subpath-anchored hub keeps its durable tree at <anchor>/_lym, which a bare "_lym" pathspec never matches.
 //
-// Every match under _lym has a junction wired to restore, so the remedy is
-// always the git rm --cached command that removes the file from the index
-// without deleting it from disk, plus a reminder to restore the
-// junction/exclude entry. No pollution class in this scan lacks an automated
-// remedy, which is why PollutionEntry has no report-only signal beyond an
-// empty Remedy.
+// Every match has a junction wired to restore, so its remedy is the git rm --cached command.
+// That command untracks the file and leaves it on disk.
+// The remedy also says to restore the junction and git-exclude entry.
 func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
@@ -189,8 +179,6 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 			continue
 		}
 
-		// Offer git rm --cached as the remedy, plus a reminder to restore the
-		// junction and exclude entry so lym topology is intact afterwards.
 		remedy := fmt.Sprintf(
 			"git -C %s rm --cached -- %s  # then restore junction and git-exclude entry",
 			warpPath, tracked,

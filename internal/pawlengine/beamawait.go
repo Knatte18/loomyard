@@ -1,4 +1,5 @@
-// beamawait.go implements BeamAwait, the pawl recipe's Beam-Await row: the Go producer that holds a run until a land request it accepts passes the landing re-check, and the wait it wakes on.
+// beamawait.go implements BeamAwait, the producer of the pawl recipe's Beam-Await row.
+// It holds a run until a land request it accepts passes the landing re-check, and it sets the wait between wakes.
 
 package pawlengine
 
@@ -18,16 +19,16 @@ const (
 	NameBeamAwait = "Beam-Await"
 
 	// finalizeName is the row whose status holds the beam's landing: a run at it holds its beam.
-	// The package keeps its own copy, since it must not import the package that declares the row.
+	// This package keeps its own copy because it cannot import the package that declares the row.
 	finalizeName = "Finalize"
 
-	// awaitFloor is the shortest wake and the wait the timer starts at and returns to on an event.
+	// awaitFloor is the shortest wait: the timer starts at it and returns to it on an event.
 	awaitFloor = time.Second
 	// awaitCeiling is the longest wait while the row idles.
 	awaitCeiling = time.Minute
 )
 
-// BeamAwait is the Beam-Await producer.
+// BeamAwait is the producer of the Beam-Await row: it holds a run until its land request passes the landing re-check.
 type BeamAwait struct {
 	name string
 	deps Deps
@@ -60,7 +61,8 @@ func NewBeamAwait(name string, deps Deps) (*BeamAwait, error) {
 	return &BeamAwait{name: name, deps: deps}, nil
 }
 
-// nextAwaitWait is the wait after current: a second after an event, otherwise double current up to a minute and never under a second.
+// nextAwaitWait returns the wait after current.
+// After an event it is a second; otherwise it doubles current, capped at a minute and never under a second.
 func nextAwaitWait(current time.Duration, event bool) time.Duration {
 	if event {
 		return awaitFloor
@@ -68,10 +70,13 @@ func nextAwaitWait(current time.Duration, event bool) time.Duration {
 	return min(max(current*2, awaitFloor), awaitCeiling)
 }
 
-// Call holds the run at the row, spawning no agent, until a land request naming this run passes the landing re-check, and then is Done.
-// An entry that finds an accepted landing with no land request settles it itself: a standing ready record is re-checked and lands the beam, and with none the hold is lifted and the dobby restarted.
+// Call holds the run at the row without spawning an agent.
+// It returns Done once a land request naming this run passes the landing re-check.
+// An entry that finds an accepted landing with no land request settles it itself:
+// a standing ready record is re-checked and lands the beam, and with none the hold is lifted and the dobby restarted.
 // A beam another machine owns removes any request and yields, deciding nothing.
-// A failing re-check lifts the landing hold again, restarts the dobby the landing stopped, removes the request, posts the blockers and keeps waiting.
+// A failing re-check lifts the landing hold and restarts the dobby the landing stopped;
+// it then removes the request, posts the blockers, and keeps waiting.
 // Each wake that completes without ending the row is stamped; a failed stamp is logged only.
 // A cancelled context is an error.
 func (p *BeamAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -102,9 +107,11 @@ func (p *BeamAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	}
 }
 
-// interruptedLanding reports whether the row is entered with no land request standing while the entry's status still names Finalize or a row of Deps.RetiredRows:
-// the landing hold a crash left between the accept's removals and the row's Done, or the one an older binary wrote under a name the recipe has since retired.
-// A failed read reads as not interrupted and is logged.
+// interruptedLanding reports whether the row is entered with no land request standing,
+// and the entry's status names Finalize or a row of Deps.RetiredRows.
+// Such a status is the landing hold a crash left between the accept's removals and the row's Done.
+// An older binary may also have written it under a row name that Deps.RetiredRows lists.
+// A failed read counts as not interrupted and is logged.
 func (p *BeamAwait) interruptedLanding() bool {
 	_, found, err := ReadLandRequest(p.deps.Paths)
 	if err != nil {
@@ -125,9 +132,10 @@ func (p *BeamAwait) interruptedLanding() bool {
 // awaitRun is the state of one Call: its producer, what its entry found and when it last woke.
 type awaitRun struct {
 	*BeamAwait
-	// interrupted is true when the entry found an accepted landing it must lift: the hold standing, or the dobby-stop marker standing with no ready record.
+	// interrupted reports whether the entry found an accepted landing to lift:
+	// the hold stands, or the dobby-stop marker stands with no ready record.
 	interrupted bool
-	// entered is true once the entry's status write succeeded.
+	// entered reports whether the entry's status write succeeded.
 	entered  bool
 	lastWake time.Time
 }
@@ -135,13 +143,15 @@ type awaitRun struct {
 // awaitWake is what one wake decided.
 type awaitWake struct {
 	outcome shedengine.Outcome
-	// finished is true when the row ends with outcome.
+	// finished reports whether the row ends with outcome.
 	finished bool
-	// acted is true when the wake answered a request or left one for a prompt retry, so the timer returns to a second.
+	// acted reports whether the wake answered a request or left one for a prompt retry.
+	// Such a wake returns the timer to a second.
 	acted bool
 }
 
-// wake runs one wake: the owner read, the settling of an accepted landing the entry finds and the entry's writes while they are pending, and the land request.
+// wake runs one wake: it reads the beam's owner and settles an accepted landing the entry finds.
+// It retries the entry's writes while they are pending, and then it handles the land request.
 func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 	r.lastWake = r.deps.Now()
 	if err := cancelErr(ctx, r.name); err != nil {
@@ -188,7 +198,8 @@ func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 }
 
 // enter writes the status naming this row and, once it is written, the entry's markers and notices.
-// An entry that lifts an interrupted landing also removes the dobby-stop marker and restarts the dobby, whether or not the marker stood.
+// An entry that lifts an interrupted landing removes the dobby-stop marker and restarts the dobby.
+// It does so whether or not the marker stands.
 // It reports whether the entry completed; a failed status write is retried at the next wake.
 func (r *awaitRun) enter() bool {
 	if err := r.deps.SetStatus(NameBeamAwait); err != nil {
@@ -224,8 +235,10 @@ func (r *awaitRun) enter() bool {
 }
 
 // noticeDownDobby posts one notice per episode when a re-entry with no land request standing finds the beam's dobby down.
-// The sent notice is recorded in the await marker and skipped on later re-entries until a re-entry sees the dobby live or a refusal restarts it.
-// It reads the dobby only on a re-entry, since the dobby Beam-Up's steps just spawned may not hold its lock yet on the first entry.
+// The await marker records the sent notice.
+// Later re-entries skip the notice until a re-entry sees the dobby live or a refusal restarts it.
+// It reads the dobby only on a re-entry.
+// On the first entry, the dobby the Beam-Up steps spawned may not hold its lock yet, so it is not read there.
 func (r *awaitRun) noticeDownDobby() {
 	if _, found, err := ReadLandRequest(r.deps.Paths); err != nil || found {
 		return

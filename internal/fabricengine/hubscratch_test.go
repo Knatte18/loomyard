@@ -1,10 +1,6 @@
-// hubscratch_test.go covers fabricengine.HubScratchDir and fabricengine.HubLogsDir's own
-// idempotency against it.
-// It is an external test package because clone_test.go's own header comment documents the same
-// import-cycle constraint from the in-package side; keeping this file as package fabricengine_test
-// rather than folding it back into an in-package file is deliberate and out of scope to change.
-// It adds no TestMain: the package shares the single one testmain_test.go declares for the whole
-// fabricengine test binary.
+// hubscratch_test.go covers fabricengine.HubScratchDir and the idempotency of fabricengine.HubLogsDir against it.
+// It is an external test package to avoid an import cycle that an in-package file would hit.
+// It declares no TestMain: it shares the single TestMain of testmain_test.go.
 
 package fabricengine_test
 
@@ -19,15 +15,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHubScratchAndLogsDir covers the hub scratch geometry:
-// HubScratchDir(hub) equals filepath.Join(BoardDir(hub), lymdirs.DotLymDirName) and is a sibling of
-// StencilsDir(hub)'s `_lym` component rather than nested under it — the ephemeral `.lym` tree and
-// the durable `_lym` tree sit side by side inside the Bolt checkout, never one inside the other;
-// HubScratchDir's value is byte-identical for a subpath-anchored hub, because it takes a bare hub
-// string and must never pick up AnchorRel, the board's `_lym`/`.lym` trees being flat;
-// and HubLogsDir(hub) equals filepath.Join(HubScratchDir(hub), "logs") — the derivation HubLogsDir's
-// own doc comment states;
-// and LogArchiveDir(hub) equals filepath.Join(HubScratchDir(hub), "log-archive"), the archive root beside the logs directory.
+// TestHubScratchAndLogsDir covers the hub scratch geometry.
+// HubScratchDir(hub) equals filepath.Join(BoardDir(hub), lymdirs.DotLymDirName).
+// It is a sibling of StencilsDir(hub)'s `_lym` component, not nested under it.
+// The ephemeral `.lym` tree and the durable `_lym` tree sit side by side inside the Bolt checkout.
+// Neither lies inside the other.
+// HubScratchDir never picks up AnchorRel, because the board's `_lym` and `.lym` trees are flat.
+// Its value is byte-identical for a subpath-anchored hub.
+// HubLogsDir(hub) equals filepath.Join(HubScratchDir(hub), "logs").
+// LogArchiveDir(hub) equals filepath.Join(HubScratchDir(hub), "log-archive").
+// It is the archive root beside the logs directory.
 //
 //testtiming:keep HubScratchDir being board-anchored, a sibling of the stencils _lym tree, ignoring AnchorRel, and HubLogsDir and LogArchiveDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
 func TestHubScratchAndLogsDir(t *testing.T) {
@@ -71,13 +68,9 @@ func TestHubScratchAndLogsDir(t *testing.T) {
 	}
 }
 
-// TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLym asserts the second half of the
-// hub-scratch-move batch's coverage: reed's boot path's idempotent
-// os.MkdirAll(fabricengine.HubLogsDir(...)) call still succeeds, twice in a row, when
-// fabricengine.HubScratchDir(hubPath) already exists as a real directory — the shape CloneHub now
-// produces at the Bolt checkout's .lym.
-// Moved verbatim from clone_test.go except that the pre-created directory is
-// fabricengine.HubScratchDir(hubPath) instead of the old bare <hub>/.lym join.
+// TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLym checks the boot path's idempotent MkdirAll call.
+// It must still succeed twice in a row when fabricengine.HubScratchDir(hubPath) exists as a real directory.
+// CloneHub produces that shape at the Bolt checkout's .lym, and the boot path makes the same call there.
 //
 //testtiming:keep the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
 func TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLym(t *testing.T) {

@@ -1,6 +1,5 @@
-// fsx_test.go — unit tests for filesystem-safety primitives (fsx.go).
-//
-// PathGuard rejection, AtomicWrite and AtomicWriteBytes behavior.
+// fsx_test.go tests the filesystem-safety primitives in fsx.go.
+// It covers PathGuard rejection and the behavior of AtomicWrite and AtomicWriteBytes.
 
 package fsx_test
 

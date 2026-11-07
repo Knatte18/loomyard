@@ -1,4 +1,6 @@
-// convergence_integration_test.go drives `lym report convergence` through RunCLIIn over a hubforge hub: the prime-only refusals, the empty report before any tag, and the report of one finished run seeded the way a landing leaves it.
+// convergence_integration_test.go drives `lym report convergence` through RunCLIIn over a hubforge hub.
+// It covers the prime-only refusals and the empty report before any tag.
+// It also covers the report of one finished run, seeded the way a landing leaves it.
 
 package reportcli
 
@@ -54,7 +56,8 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
 	slug := hubforge.TemplatePairSlug
 
-	// The seeded run's stamps lie an hour apart and end an hour before the test starts, inside the timing verb's default window.
+	// The seeded run's stamps lie an hour apart and end an hour before the test starts.
+	// They fall inside the timing verb's default window.
 	testStart := time.Now().UTC().Truncate(time.Second)
 	runStart := testStart.Add(-3 * time.Hour)
 	stamp := func(hours int) string { return runStart.Add(time.Duration(hours) * time.Hour).Format(time.RFC3339) }
@@ -234,7 +237,8 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 	if phases, _ := timed["phases"].(map[string]any); len(phases) == 0 {
 		t.Errorf("timing run phases = %v; want a phases object", timed["phases"])
 	}
-	// Either the journal was read, or the seeded hub pause stands in for it: a wrong pause record path would report no recorded pause.
+	// Either the journal was read, or the seeded hub pause stands in for it:
+	// a wrong pause record path would report no recorded pause.
 	note, _ := timing.Raw["sleep_note"].(string)
 	journalRead := strings.HasPrefix(note, "Machine sleep, read from") || strings.HasPrefix(note, "No machine sleep is subtracted")
 	if !journalRead && !strings.Contains(note, "recorded pauses stand in") {

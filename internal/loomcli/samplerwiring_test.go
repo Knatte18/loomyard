@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestOpenRecordWatch pins that the watch delivers when the record is written after it opened, and is nil when the record's directory cannot be created.
+// TestOpenRecordWatch pins that the watch delivers when the record is written after it opened,
+// and that it is nil when the record's directory cannot be created.
 func TestOpenRecordWatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

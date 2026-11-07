@@ -7,7 +7,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriverResumeLine asserts the line names the run-id and the report path verbatim, tells the driver to take a baseline and reset its budgets, and is a non-empty single line, which shuttleengine.Runner.Send requires.
+// TestDriverResumeLine asserts the line names the run-id and the report path verbatim.
+// It also asserts the line tells the driver to take a baseline and reset its budgets.
+// The line must be a non-empty single line, which shuttleengine.Runner.Send requires.
 //
 //testtiming:keep pins the resume line naming the run-id, the report path, the baseline and budget instructions, and being a non-empty single line; the covering test sends the line without asserting its text
 func TestDriverResumeLine(t *testing.T) {

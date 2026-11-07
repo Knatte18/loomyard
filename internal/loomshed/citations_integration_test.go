@@ -1,4 +1,5 @@
-// citations_integration_test.go covers the loom discussion check's citation test against a real git repository, since a cited path counts only when git tracks its root entry.
+// citations_integration_test.go tests the loom discussion check's citation rules against a real git repository.
+// Git must track a cited path's root entry for the path to count, so the tests need a real repository.
 
 package loomshed
 
@@ -63,7 +64,8 @@ func writeCitationFiles(t *testing.T, root string, files map[string]string) {
 	}
 }
 
-// citingRecord returns validDecisionRecord with body as its Decisions text and appendix after its last section.
+// citingRecord returns a valid decision record with body as its Decisions text.
+// appendix is added after its last section.
 func citingRecord(body, appendix string) string {
 	return strings.Replace(validDecisionRecord, "Decisions text.", body, 1) + appendix
 }

@@ -1,4 +1,5 @@
-// override.go holds the lym overrides: a hub's tuning texts for shipped entries, stored in the Bolt checkout beside heddle.json and read only while the hub's lym_override setting is on.
+// override.go holds the lym overrides: a hub's tuning texts for shipped entries.
+// They are stored in the Bolt checkout beside heddle.json and read only while the hub's lym_override setting is on.
 
 package heddleengine
 
@@ -9,7 +10,8 @@ import (
 )
 
 // OverrideFileName is the file at the Bolt checkout's root that holds the lym overrides, in heddle.json's format.
-// An override's slug and text are read; its order and targets stay those of the shipped entry it overrides.
+// An override's slug and text are read;
+// its order and targets stay those of the shipped entry it overrides.
 const OverrideFileName = "heddle-lym-override.json"
 
 // OverrideLayer is the --layer value that names the lym overrides on `lym heddle set` and `remove`.

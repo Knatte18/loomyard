@@ -1,4 +1,5 @@
-// watchloop.go — the watcher daemon's loop: single-instance per prime, polling Tick until the strand is gone, the context is cancelled, or ticks keep failing.
+// watchloop.go runs the watcher daemon's loop, with one watcher per prime.
+// It polls Tick until the strand is gone, the context is cancelled, or ticks keep failing.
 
 package orchengine
 
@@ -16,10 +17,11 @@ import (
 
 const (
 	// maxConsecutiveTickErrors caps consecutive failed ticks, since most ticks spawn tmux through reed.
-	// At the default two-second poll interval it gives about a minute of failures.
+	// The cap times the poll interval bounds how long a run of failures lasts.
 	maxConsecutiveTickErrors = 30
 
-	// watchLockAttempts and watchLockRetryInterval bound how long Run waits for a watch lock that WatcherLive holds for the instant of its probe.
+	// watchLockAttempts and watchLockRetryInterval bound how long the watcher waits for the watch lock.
+	// A liveness probe holds that lock only for an instant.
 	watchLockAttempts      = 5
 	watchLockRetryInterval = 200 * time.Millisecond //lym:one-shot bounded lock retry of watchLockAttempts
 )
@@ -46,8 +48,8 @@ func WatcherLive(p Paths) (bool, error) {
 	return false, nil
 }
 
-// WaitWatcherGone probes the watch lock and, while the state records the watcher stopping and the lock is still held, sleeps interval and probes again, up to bound.
-// It answers whether a watcher still holds the lock at the end.
+// WaitWatcherGone reports whether a watcher still holds the watch lock after a bounded wait.
+// It probes again every interval while the state records the watcher stopping and the lock is held.
 // With no stopping record it probes once and returns,
 // so a healthy live watcher costs no wait.
 func WaitWatcherGone(p Paths, bound, interval time.Duration, sleep func(time.Duration)) (live bool, err error) {
@@ -114,8 +116,10 @@ func (w *Watcher) recordStoppingOnCancel(ctx context.Context, runReturned <-chan
 	}
 }
 
-// readMailboxAtStart reads the watcher's creel mailbox once through the handler every tick's read uses, so creel knows the program as a receiver before any reply can arrive.
-// The handler declines while the watcher has not bound to the recorded strand, which leaves every message unread for the first tick to handle once the events cursor is set.
+// readMailboxAtStart reads the watcher's creel mailbox once, through the handler every tick's read uses.
+// This makes creel know the program as a receiver before any reply can arrive.
+// The handler declines until the watcher binds to the recorded strand,
+// so every message stays unread for the first tick to handle once the events cursor is set.
 // A failed read is logged and changes nothing else.
 func (w *Watcher) readMailboxAtStart() {
 	err := w.creel.ReadMailbox(w.readReplies)
@@ -127,15 +131,18 @@ func (w *Watcher) readMailboxAtStart() {
 	}
 }
 
-// WatchBinary tells the watcher the function that re-execs the process onto a replaced binary, which Run calls at a restart-safe tick; a watcher never told one never calls it.
+// WatchBinary tells the watcher the function that re-execs the process onto a replaced binary.
+// Run calls it at a restart-safe tick; a watcher never told one never calls it.
 // check does not return when it execs.
 func (w *Watcher) WatchBinary(check func()) {
 	w.binaryCheck = check
 }
 
 // restartSafe reports whether the process can be replaced now without losing anything in flight.
-// It re-reads the state from disk and is true only when the phase is idle, so no cycle step is in flight and the persisted cycle state carries over.
-// It also needs the told pause record to read with no live hub entry, so no in-memory pause handling is live to be lost.
+// It re-reads the state from disk and is true only when the phase is idle,
+// so no cycle step is in flight and the persisted cycle state carries over.
+// It also needs the told pause record to read with no live hub entry,
+// so no in-memory pause handling is live to be lost.
 // A watcher never told a pause record reads no entry, and a state or record read error is not safe.
 func (w *Watcher) restartSafe() bool {
 	st, err := LoadState(w.paths)
@@ -153,11 +160,14 @@ func (w *Watcher) restartSafe() bool {
 	return !live
 }
 
-// Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
+// Run holds the watch lock and calls Tick every PollInterval until Tick reports done;
+// ctx is cancelled, or the cap on consecutive tick errors is reached.
 // It returns ErrWatcherRunning when another watcher holds the lock through every retry.
 // It reads the creel mailbox once before its first tick; a failed read is logged and is not a tick error.
-// A run of failing ticks warns at its first failure and logs the rest at Debug, then logs one Info at the next tick that succeeds.
-// After a tick that succeeded and returned not done, and before the poll sleep, it calls the function WatchBinary was told when restartSafe reports true, so the check adds no wake of its own.
+// A run of failing ticks warns at its first failure and logs the rest at Debug;
+// the next tick that succeeds logs one Info.
+// After a tick that succeeded and returned not done, it calls the binary check before the poll sleep.
+// It does so only when the process can be replaced safely, so the check adds no wake of its own.
 func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	if err := os.MkdirAll(w.paths.Dir, 0o755); err != nil {
 		return fmt.Errorf("orch: create %s: %w", w.paths.Dir, err)

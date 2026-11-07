@@ -1,5 +1,4 @@
-// toc.go declares the "toc" subcommand: the structure query the stencil's replaced lookup
-// instructions point the planner at.
+// toc.go declares the "toc" subcommand: the structure query that stencil lookup instructions point the planner at.
 
 package quarrycli
 
@@ -13,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 )
 
-// newTOCCmd returns the "toc" subcommand, reading the resolved repository root through root at
-// call time.
+// newTOCCmd returns the "toc" subcommand, reading the resolved repository root through root at call time.
 func newTOCCmd(root func() string) *cobra.Command {
 	return &cobra.Command{
 		Use:         "toc <path>",

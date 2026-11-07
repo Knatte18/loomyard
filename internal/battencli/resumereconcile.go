@@ -1,4 +1,5 @@
-// resumereconcile.go runs the run-scope origin reconcile that "lym batten run" performs over an existing run record, and turns the slug's verdict into a resume or a refusal.
+// resumereconcile.go runs the run-scope origin reconcile that "lym batten run" performs over an existing run record.
+// It turns the verdict on the slug into a resume or a refusal.
 
 package battencli
 
@@ -18,13 +19,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// The repository sides a branch outcome names that a stop on is shared by every pair.
+// sideBolt and sideRecords name the repository sides a branch outcome reports.
+// A stop on the bolt side, or on the records side of the prime, is shared by every pair.
 const (
 	sideBolt    = "bolt"
 	sideRecords = "records"
 )
 
-// reconcileRun runs the run-scope origin reconcile of slug from the prime, with the seams pairteardown builds for a hub.
+// reconcileRun runs the run-scope origin reconcile of slug from the prime, with the hub seams the pair teardown builds.
 // The run scope tears no pair down.
 // With judgeOnly the reconcile only judges: it moves no ref and tears nothing down.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
@@ -41,7 +43,9 @@ func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool) (fabri
 	return report, err
 }
 
-// originOwed is the record of the origin-owed marker: a resume that judged its owner without origin leaves it, so the next passes stay full until one reaches origin.
+// originOwed is the record of the origin-owed marker.
+// A resume that judged its owner without reaching origin leaves the marker,
+// so the next passes stay full until one reaches origin.
 type originOwed struct {
 	// WrittenAt is when the resume wrote the marker.
 	WrittenAt time.Time `json:"written_at"`
@@ -49,8 +53,9 @@ type originOwed struct {
 	PID int `json:"pid"`
 }
 
-// OriginOwed reports whether slug's origin-owed marker stands, which holds from a resume that judged its owner without origin until a pass reaches origin.
-// A continue pass is refused while it stands, and dobby schedules full passes.
+// OriginOwed reports whether the origin-owed marker of slug stands.
+// The marker stands from a resume that judged its owner without reaching origin, until a pass reaches origin.
+// While it stands, a continue pass is refused and dobby schedules full passes.
 func OriginOwed(location *lymcwd.Location, slug string) (bool, error) {
 	if _, err := os.Stat(shedrun.OriginOwedMarker(location, slug)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -67,7 +72,8 @@ func (c *battenCLI) markOriginOwed() error {
 	return state.WriteJSON(path, path+".lock", originOwed{WrittenAt: time.Now(), PID: os.Getpid()})
 }
 
-// clearOriginOwed removes the origin-owed marker of this run, which a pass that reached origin and exited 0 owes.
+// clearOriginOwed removes the origin-owed marker of this run.
+// A pass that reached origin and exited 0 owes this removal.
 // A failed removal is logged and the marker stays, so the next pass stays full.
 func (c *battenCLI) clearOriginOwed() {
 	if err := os.Remove(shedrun.OriginOwedMarker(c.location, c.slug)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -75,10 +81,17 @@ func (c *battenCLI) clearOriginOwed() {
 	}
 }
 
-// reconcileResume runs the run-scope reconcile for the slug the pre-run is about to resume and returns the refusal its verdict calls for.
-// A reconcile error refuses with fixing its cause, then the re-run, as the way forward.
-// An unreachable origin logs one Warn and resumes, bar a task the local board shows owned by another machine, and writes no owner; it writes the origin-owed marker before the resume, and a failed write refuses the resume with its cause and the re-run, since a resume that leaves no marker would let dobby skip the reconcile it owes.
-// A reconcile that reached origin first claims the prime when no prime owner is recorded, warning when the claim fails, notes that the pass reached origin, then judges the verdict and writes no owner.
+// reconcileResume runs the run-scope reconcile for the slug the pre-run is about to resume.
+// It returns the refusal its verdict calls for.
+// A reconcile error refuses; the way forward is to fix the cause it names, then re-run.
+// An unreachable origin logs one Warn and resumes, unless the local board shows a task owned by another machine;
+// it writes no owner.
+// On that path it writes the origin-owed marker before the resume.
+// A failed marker write refuses the resume, naming its cause and the re-run as the way forward;
+// a resume that leaves no marker would let dobby skip the reconcile it owes.
+// A reconcile that reached origin claims the prime when no prime owner is recorded;
+// it warns when the claim fails.
+// It then notes that the pass reached origin, judges the verdict, and writes no owner.
 // A receiver with no reconcile seam resumes unchecked.
 func (c *battenCLI) reconcileResume() error {
 	if c.reconcile == nil {
@@ -107,10 +120,14 @@ func (c *battenCLI) reconcileResume() error {
 	return resumeRefusal(c.slug, report)
 }
 
-// resumeRefusal turns the verdict on slug's entry into the refusal a resume gets, and returns nil for an active entry or one the report does not judge.
-// An ended entry refuses naming the landing or the removal from the board, with "lym cleanup --apply" from the prime as the way forward.
-// An entry owned elsewhere refuses naming its owner and the adopt of its subject, the beam or `root`, that takes it over.
-// A stopped entry refuses naming the branch that stopped it, its state and the way forward for that state, followed by the re-run of the resume.
+// resumeRefusal turns the verdict on slug's entry into the refusal a resume gets.
+// It returns nil for an active entry, or for one the report does not judge.
+// An ended entry refuses, naming the landing or the removal from the board;
+// "lym cleanup --apply" from the prime is the way forward.
+// An entry owned elsewhere refuses, naming its owner and the adopt of its subject that takes it over;
+// the subject is the beam or `root`.
+// A stopped entry refuses, naming the branch that stopped it and its state;
+// the way forward for that state comes next, then the re-run of the resume.
 func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 	for _, entry := range report.Entries {
 		if entry.Slug != slug {
@@ -139,10 +156,12 @@ func endedReason(how string) string {
 	return "its board entry was removed from the board"
 }
 
-// stoppedRefusal names the branch that stopped entry, its state and the way forward for it, then reentry, the step that retries the act.
+// stoppedRefusal names the branch that stopped entry, its state, and the way forward for it;
+// reentry, the step that retries the act, follows.
 // act is the verb the refusal says it cannot do, "resume" or "cancel".
 // A branch the entry's own run holds busy stops nothing, as the reconcile itself judges it.
-// An entry stopped by a branch every pair shares is named by that branch; one with no branch to name falls back to the entry's own way forward.
+// An entry stopped by a branch every pair shares is named by that branch;
+// one with no branch to name falls back to the entry's own way forward.
 func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
 	for _, branch := range branches {
 		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
@@ -150,7 +169,7 @@ func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, 
 		if !own && !(shared && branch.State != fabricengine.BranchBusy) {
 			continue
 		}
-		// Only a stopped branch carries a way forward.
+		// Only a stopped branch carries a way forward, so a branch without one is skipped.
 		if branch.WayForward == "" {
 			continue
 		}
@@ -179,7 +198,9 @@ func (e rewordedError) Error() string { return e.text }
 // Unwrap returns the error whose text was replaced.
 func (e rewordedError) Unwrap() error { return e.error }
 
-// withFollowUp ends refusal's text in followUp: it replaces the trailing "; <reentry>" when refusal ends in it, and is appended after "; " otherwise.
+// withFollowUp ends refusal's text in followUp.
+// It replaces the trailing "; <reentry>" when the text ends in it;
+// otherwise it appends followUp after "; ".
 func withFollowUp(refusal error, reentry, followUp string) error {
 	text := refusal.Error()
 	if head, ok := strings.CutSuffix(text, "; "+reentry); ok {

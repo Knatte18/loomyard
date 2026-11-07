@@ -15,8 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestLoadConfig covers the template default, a hub value, a value below the floor refused naming the key and the way forward,
-// and that the template holds no key but remind_after_min, so no `lym config slack` write can name a channel, an operator or a token.
+// TestLoadConfig covers the template default, a hub value, and a value below the floor.
+// That value is refused with an error that names the key and the way forward.
+// The template holds no key but remind_after_min,
+// so no `lym config slack` write can name a channel, an operator or a token.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

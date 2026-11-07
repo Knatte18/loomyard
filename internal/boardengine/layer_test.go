@@ -1,6 +1,6 @@
 // layer_test.go — unit tests for derived fields (layer.go).
 //
-// ComputeLayers depth assignment and RenderOrder.
+// It covers the depth assignment of ComputeLayers and the order RenderOrder gives.
 
 package boardengine_test
 
@@ -192,7 +192,9 @@ func TestComputeLayers(t *testing.T) {
 	}
 }
 
-// TestRenderOrder asserts RenderOrder's bucket order, tasks before notes with done entries last, priority order within a task layer, among open notes and among done entries, and ID order within a bucket.
+// TestRenderOrder asserts the bucket order of RenderOrder, with tasks before notes and done entries last.
+// It also asserts the priority order within a task layer, among open notes and among done entries;
+// and the ID order within a bucket.
 //
 //testtiming:keep pins the bucket order, the task-before-note order and the ID sort within a bucket, which the render goldens do not assert
 func TestRenderOrder(t *testing.T) {
@@ -305,7 +307,7 @@ func TestRenderOrder(t *testing.T) {
 				if len(result) != 3 {
 					t.Fatalf("RenderOrder() got %d tasks, want 3", len(result))
 				}
-				// All Ready, should be sorted by ID
+				// All three are Ready, so only the ID orders them.
 				for i, id := range []int{1, 2, 3} {
 					if result[i].ID != id {
 						t.Errorf("RenderOrder() position %d got ID %d, want %d", i, result[i].ID, id)

@@ -1,5 +1,6 @@
-// readoptstop.go holds the failed stop of a resume whose gone pair can never be re-adopted:
-// the closed set of permanent answers, the way forward each row and answer calls for, and the one status write and notice that record the stop.
+// readoptstop.go holds the failed stop of a resume whose gone pair can never be re-adopted.
+// It defines the closed set of permanent answers and the way forward each row and answer calls for.
+// It also writes the status and posts the notice that record the stop.
 
 package battencli
 
@@ -19,7 +20,9 @@ import (
 // failedStopCommitPrefix heads the commit message of the status commit a failed stop makes.
 const failedStopCommitPrefix = "batten"
 
-// readoptPermanent reports whether err is an answer of Add that no re-run can change: the pair is not live, a remote leftover stands, or a records worktree directory, a checked-out branch or a task path blocks the re-adoption.
+// readoptPermanent reports whether err is an answer to re-making the pair that no re-run can change:
+// the pair is not live; a remote leftover stands;
+// or a records worktree directory, a checked-out branch or a task path blocks the re-adoption.
 // Every other answer is transient.
 func readoptPermanent(err error) bool {
 	var leftover *fabricengine.ErrRemoteLeftover
@@ -33,7 +36,8 @@ func readoptPermanent(err error) bool {
 		errors.As(err, &taken)
 }
 
-// childStatusRels returns the tree-relative paths of the child run's status file under both run directory segments a run may carry: the slug's own and the legacy self.
+// childStatusRels returns the tree-relative paths of the child run's status file under each run directory segment.
+// A run may carry the slug's own segment or the legacy self segment.
 func childStatusRels(slug string) ([]string, error) {
 	var rels []string
 	for _, runID := range []string{slug, shedrun.SelfRunID} {
@@ -46,7 +50,8 @@ func childStatusRels(slug string) ([]string, error) {
 	return rels, nil
 }
 
-// readoptRecordRels returns the paths a tag read must carry: the child run's status under each run directory segment, then the origin record.
+// readoptRecordRels returns the paths a tag read must carry:
+// the child run's status under each run directory segment, then the origin record.
 func readoptRecordRels(slug string) ([]string, error) {
 	rels, err := childStatusRels(slug)
 	if err != nil {
@@ -56,9 +61,11 @@ func readoptRecordRels(slug string) ([]string, error) {
 }
 
 // failReadopt records the permanent failure addErr as the stop of a run whose status is status.
-// A running status is written failed with Add's refusal and the way forward of the row, committed and pushed, and the run's parent is told once.
+// A running status is written failed with the failure and the way forward of the row, committed and pushed,
+// and the run's parent is told once.
 // A status in any other state, a failed one included, keeps its state: no write and no notice.
-// A way forward that cannot be worked out, a status write that fails and a run lock held elsewhere refuse the pass as transient, status untouched.
+// A way forward that cannot be worked out refuses the pass as transient, leaving the status untouched.
+// A status write that fails and a run lock held elsewhere do the same.
 // It returns the error, so the pass exits non-zero.
 func (c *battenCLI) failReadopt(status shedengine.Status, addErr error) error {
 	rerun := "lym batten run " + c.slug
@@ -103,8 +110,9 @@ func (c *battenCLI) failReadopt(status shedengine.Status, addErr error) error {
 }
 
 // readoptCause words what addErr reports for the stop's error text.
-// A checked-out refusal is worded without Add's own way forward, which names an --adopt-local re-run that a batten run never makes;
-// the stop carries the way forward of the row instead.
+// A checked-out refusal is worded without its own way forward.
+// That way forward names an `--adopt-local` re-run that a batten run never makes.
+// The stop carries the way forward of the row instead.
 func readoptCause(addErr error) string {
 	var checkedOut *fabricengine.ErrAdoptLocalCheckedOut
 	if !errors.As(addErr, &checkedOut) {
@@ -117,7 +125,8 @@ func readoptCause(addErr error) string {
 }
 
 // readoptWayForward words the way forward of the permanent answer addErr for a run whose status reads producer.
-// Before Land the answers that leave nothing to restore settle through a cancel that removes the pair; at Land the landed work is restored first, since a cancel would release a landed entry.
+// Before Land the answers that leave nothing to restore settle through a cancel that removes the pair;
+// at Land the landed work is restored first, since a cancel would release a landed entry.
 // A failed tag or file read is returned, and the pass refuses as transient.
 func readoptWayForward(c *battenCLI, producer string, addErr error) (string, error) {
 	atLand := producer == battenrecipe.NameLand
@@ -157,7 +166,8 @@ func readoptWayForward(c *battenCLI, producer string, addErr error) (string, err
 	return "", fmt.Errorf("no way forward is worded for %w", addErr)
 }
 
-// leftoverArchiveWayForward words the way forward of a records branch left on origin, for a run at Land: archive the leftover tip under a tag, delete the branch on origin, then re-run.
+// leftoverArchiveWayForward words the way forward of a records branch left on origin, for a run at Land:
+// archive the leftover tip under a tag, delete the branch on origin, then re-run.
 func leftoverArchiveWayForward(c *battenCLI, leftover *fabricengine.ErrRemoteLeftover) (string, error) {
 	recordsRoot, err := c.readopt.RecordsRoot()
 	if err != nil {
@@ -195,9 +205,13 @@ func leftoverArchiveWayForward(c *battenCLI, leftover *fabricengine.ErrRemoteLef
 	return "archive the leftover records branch on origin and delete it there: " + strings.Join(steps, ", then "), nil
 }
 
-// landRestoreWayForward words the restore of a landed run whose pair is not live: the records branch from its newest finished archive tag, and the task branch at its parent, each only when it is the branch that is gone.
-// It names running the resume right after the restore, since a cleanup between the two would archive and delete a restored records branch, which has no worktree.
-// With no archive or set-aside tag holding a finished run, it names that no copy of the records is left and the landing is finished by hand.
+// landRestoreWayForward returns the instruction that restores a landed run whose branch pair is not live.
+// The records branch is restored from the newest finished archive tag, and the task branch at its parent branch.
+// Each branch is restored only when it is the one that is gone.
+// The instruction also names running the resume right after the restore.
+// A cleanup in between would archive and delete the restored records branch, which has no worktree.
+// When no tag holds a finished run, the instruction says no copy of the records is left,
+// and the landing must be finished by hand.
 func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (string, error) {
 	recordsRoot, err := c.readopt.RecordsRoot()
 	if err != nil {
@@ -258,7 +272,8 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 	return fmt.Sprintf("restore what the landing needs: %s; then run `lym batten run %s` right away, since a `lym fabric cleanup --apply` in between would archive and delete a restored records branch, which has no worktree, and the restore would have to be run again from the tag", strings.Join(steps, ", then "), c.slug), nil
 }
 
-// newestFinishedTag returns the tag of tags with the latest committer time whose child run status reads done under either run directory segment, nil when none does.
+// newestFinishedTag returns the tag with the latest committer time whose child run status reads done.
+// It returns nil when no tag does, and the status is read under either run directory segment.
 // A tag whose status is absent or does not decode is skipped.
 func newestFinishedTag(slug string, tags []fabricengine.RecordsTag) (*fabricengine.RecordsTag, error) {
 	rels, err := childStatusRels(slug)

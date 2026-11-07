@@ -1,13 +1,10 @@
-// checkout_index_refresh_test.go proves Checkout refreshes the pair's
-// per-worktree correspondence index for the newly-current branch. Pre-fix,
-// entries recorded on the previous branch survived the switch and kept passing
-// the SHAExists staleness check (their commits still exist on the other
-// branch's refs), so WeftSHAForWarpSHA served weft SHAs the current branch's
-// trailer history — the documented sole source of truth — would never produce,
-// and Fabric.Diff bridged against such an answer via weftAnchorForWarpSHA
-// would graft the current branches onto the other branch's history.
+// checkout_index_refresh_test.go covers the refresh of the pair's per-worktree correspondence index on switch.
+// Entries recorded on the previous branch must not survive the switch.
+// Their commits still exist on the other branch's refs, so the SHAExists staleness check passes them.
+// Left in place, WeftSHAForWarpSHA would serve a weft SHA that the current branch's trailer history never produces.
+// Fabric.Diff would then graft the current branches onto the other branch's history through weftAnchorForWarpSHA.
 //
-// Package fabricengine_test; shares the TestMain in testmain_test.go.
+// The package's TestMain lives in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,10 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original
-// branch, coordinated-switches to a pre-existing divergent branch pair whose weft history predates
-// that record, and asserts the lookup now misses (ErrNoCorrespondence) instead of serving the other
-// branch's weft SHA.
+// TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original branch.
+// It then switches with Checkout to a divergent branch pair whose weft history predates that record.
+// The lookup must then miss with ErrNoCorrespondence rather than serve the other branch's weft SHA.
 func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -41,9 +37,8 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	// Create the divergent target pair NOW — before the sync commit below — so
-	// the target weft branch's history predates (and never contains) the
-	// correspondence-carrying commit recorded on the original branch.
+	// Create the divergent target before the commit below.
+	// Its weft history then never contains the correspondence-carrying commit recorded on the original branch.
 	const targetBranch = "index-refresh-target"
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
@@ -77,9 +72,8 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 		t.Fatalf("weft branch after Checkout = %q; want %q", got, fabricengine.RecordsBranchName(targetBranch))
 	}
 
-	// The refreshed index reflects only the now-current branch's trailer
-	// history, which predates the recorded correspondence — the lookup must
-	// miss instead of serving the other branch's weft SHA.
+	// The now-current branch's trailer history predates the recorded correspondence.
+	// The lookup must therefore miss rather than serve the other branch's weft SHA.
 	got, err := f.WeftSHAForWarpSHA(warpSHA)
 	if err == nil {
 		t.Fatalf("post-switch WeftSHAForWarpSHA(%s) = (%q, nil); want ErrNoCorrespondence — a cross-branch answer served from the stale cache", warpSHA, got)

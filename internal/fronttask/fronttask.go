@@ -1,4 +1,5 @@
-// fronttask.go implements filing, removing and settling a front task, with the open and lookup rules over board entries, the action table and the record file.
+// fronttask.go implements filing, removing and settling a front task.
+// It also holds the open and lookup rules over board entries, the action table and the record file.
 
 package fronttask
 
@@ -20,7 +21,8 @@ import (
 // ActionAdoptCheck is the action key of the adopt check of the subject whose worktree holds the front task.
 const ActionAdoptCheck = "adopt-check"
 
-// action is one row of the closed action table: the lym arguments that run it and the step an operator takes by hand when it fails.
+// action is one row of the closed action table.
+// It holds the lym arguments that run the action and the step an operator takes by hand when it fails.
 type action struct {
 	args     func(subject string) []string
 	handStep func(subject string) string
@@ -44,7 +46,8 @@ func actionKeys() []string {
 	return keys
 }
 
-// Request is the task File files: its board fields, the project that holds it and the action it runs once it lands.
+// Request describes a front task to file: its board fields, the project that holds it,
+// and the action it runs once it lands.
 type Request struct {
 	Slug    string
 	Title   string
@@ -58,7 +61,7 @@ type Request struct {
 	OnLand string
 }
 
-// Deps is every seam over the hub that File and Remove read.
+// Deps holds every seam over the hub that filing and removing a front task read.
 type Deps struct {
 	// Tasks returns the local board's entries.
 	Tasks func() ([]boardengine.Task, error)
@@ -76,7 +79,7 @@ type Deps struct {
 	RecordPath string
 }
 
-// SettleDeps is every seam Settle reads, for the worktree of one project.
+// SettleDeps holds every seam that settling the front tasks of one worktree reads.
 type SettleDeps struct {
 	// Project is the worktree's project: the beam's slug, empty for the prime.
 	Project string
@@ -124,7 +127,8 @@ func (e *RemoveError) Error() string {
 // Unwrap returns the step's error.
 func (e *RemoveError) Unwrap() error { return e.Err }
 
-// HandRemoval names the commands that finish the removal by hand: the cancel and the board removal after a failed cancel, the board removal alone after a later step.
+// HandRemoval names the commands that finish the removal by hand.
+// After a failed cancel these are the cancel and the board removal; after a later step, the board removal alone.
 func (e *RemoveError) HandRemoval() string {
 	if e.Step == "cancel" {
 		return fmt.Sprintf("run `lym batten cancel %s --remove`, then `%s`", e.Slug, boardengine.RemoveCommand(e.Slug))
@@ -144,7 +148,8 @@ func isDone(task boardengine.Task) bool {
 	return task.Status != nil && *task.Status == "done"
 }
 
-// OpenFront returns the open front entry of project, "" for the prime, found by its Front field and project and never by slug.
+// OpenFront returns the open front entry of project, "" for the prime.
+// It finds the entry by its Front field and project, never by slug.
 func OpenFront(tasks []boardengine.Task, project string) (boardengine.Task, bool) {
 	for _, task := range tasks {
 		if IsOpen(task) && task.Project == project {
@@ -154,7 +159,8 @@ func OpenFront(tasks []boardengine.Task, project string) (boardengine.Task, bool
 	return boardengine.Task{}, false
 }
 
-// FrontOf returns the front entry of project whose action is onLand and that is not done, whatever its status, so a draft or halted one is found too.
+// FrontOf returns the front entry of project whose action is onLand and that is not done, whatever its status.
+// A draft or halted entry is found too.
 func FrontOf(tasks []boardengine.Task, project, onLand string) (boardengine.Task, bool) {
 	for _, task := range tasks {
 		if task.Front && task.Project == project && task.OnLand == onLand && !isDone(task) {
@@ -164,10 +170,13 @@ func FrontOf(tasks []boardengine.Task, project, onLand string) (boardengine.Task
 	return boardengine.Task{}, false
 }
 
-// File files req as a front task: it creates the entry, runs between when it is not nil, releases the entry and records its action and project under its slug.
+// File files req as a front task.
+// It creates the entry, runs between when it is not nil, then releases the entry.
+// It records the action and project under the slug.
 // It refuses an action outside the table and a project that already holds an open front task, both before any write.
 // A between error or a release error leaves the entry as a draft, which is closed and holds no start.
-// A failed record write after the release is logged and File returns nil, since the released entry starts and Settle heals the missing record.
+// A failed record write after the release is logged and the call still returns nil;
+// the released entry starts anyway, and the next settle of the worktree records the missing record.
 func File(deps Deps, req Request, between func() error) error {
 	if _, known := actions[req.OnLand]; !known {
 		return fmt.Errorf("front task %s: the action %q is not in the action table; way forward: use one of %s", req.Slug, req.OnLand, strings.Join(actionKeys(), ", "))
@@ -209,15 +218,19 @@ func File(deps Deps, req Request, between func() error) error {
 		return cur, nil
 	})
 	if err != nil {
-		// The entry is released and starts, so the filing stands; Settle records an open front entry that has no record.
+		// The entry is released and starts, so the filing stands;
+		// the next settle records an open front entry that has no record.
 		logger.Warn("fronttask: the record of a filed front task was not written; Settle records it from the entry", "slug", req.Slug, "error", err)
 	}
 	return nil
 }
 
-// Remove removes the front task slug in three steps: the cancel of its run, when it has one, the drop of its record and the removal of its entry.
-// A cancel that finds nothing left counts as done; any other cancel error stops the removal before the record is touched, so no action runs for it.
-// The record's drop and the entry's removal run under the record's lock, so a concurrent Settle either reads the record still there or reads the entry gone with no record.
+// Remove removes the front task slug in three steps.
+// It cancels the run when there is one, drops the record and removes the entry.
+// A cancel that finds nothing left counts as done;
+// any other cancel error stops the removal before the record is touched, so no action runs for it.
+// The record's drop and the entry's removal run under the record's lock.
+// A concurrent settle therefore reads either the record still there or the entry gone with no record.
 // A failing step returns a *RemoveError, the earlier steps left done.
 func Remove(deps Deps, slug string) error {
 	hasRun, err := deps.HasRun(slug)
@@ -230,7 +243,8 @@ func Remove(deps Deps, slug string) error {
 		}
 	}
 
-	// The entry's removal error is carried out of the locked update, since an error returned from it would skip the record write that drops the record.
+	// The entry's removal error is carried out of the locked update;
+	// returning it would skip the record write that drops the record.
 	var entryErr error
 	err = state.UpdateJSON(deps.RecordPath, lockPathOf(deps.RecordPath), func(cur records, _ bool) (records, error) {
 		delete(cur.Entries, slug)
@@ -248,8 +262,10 @@ func Remove(deps Deps, slug string) error {
 
 // Settle runs the land actions of the worktree's front tasks and keeps its record true, under the record's lock.
 // When this machine does not own the subject it drops the project's records and runs nothing.
-// Otherwise it records each open front entry that has no record, then runs once the action of each record whose entry is gone or done and drops that record.
-// A record whose entry stands in any other status is left, a record naming an action outside the table is dropped with a warning, and a failed action keeps its record.
+// Otherwise it records each open front entry that has no record;
+// then it runs the action of each record whose entry is gone or done, and drops that record.
+// A record whose entry stands in any other status is left;
+// a record naming an action outside the table is dropped with a warning, and a failed action keeps its record.
 // The error of a failed action names the slug, the action, the failure and the hand step from the table.
 func Settle(deps SettleDeps) error {
 	var failures []error

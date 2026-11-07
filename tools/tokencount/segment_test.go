@@ -1,4 +1,4 @@
-// segment_test.go drives the segment grouping over fake reads: a role's segment and label, the most expensive parts, the cost per run and the segment tree's order.
+// segment_test.go tests the segment grouping over fake reads: segments, labels, costliest parts and the cost per run.
 // Tier-1 (no git, no spawn).
 
 package main
@@ -110,7 +110,8 @@ func TestSegmentReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := buf.String()
-	// The ten costliest parts of both runs, $459 in all, each with its cost per run; Webster recovery, Landing describe and Webster Master fall below them.
+	// The costliest parts of both runs, each with its cost per run.
+	// Webster recovery, Landing describe and Webster Master fall below the listed ones.
 	wantParts := "## Most expensive parts\n\n| part | cost | share | per run |\n|---|---|---|---|\n" +
 		"| Webster forks | $200.00 | 43.6% | $100.00 |\n" +
 		"| Plan writer | $60.00 | 13.1% | $30.00 |\n" +

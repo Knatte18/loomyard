@@ -16,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSessionSpec covers the spec a valid call builds, with and without a PATTERN overview in the worktree, the required inputs it refuses by name, and an agent the registry cannot resolve.
+// TestSessionSpec covers the spec a valid call builds, with and without a PATTERN overview in the worktree;
+// the required inputs it refuses by name; and an agent the registry cannot resolve.
 func TestSessionSpec(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

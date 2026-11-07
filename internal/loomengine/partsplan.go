@@ -1,7 +1,7 @@
-// partsplan.go implements PartsPlanTable, the Parts-Plan-Write row's seat-table builder.
-// The row writes the plan in parts: one writer seat per part of the parts file, each turning its part's contract into plan cards in the part's own directory, and a chair that joins the parts into the plan in `_lym/plan/`.
-// PartsPlanTable reads the parts file at call time, so the seats the row runs are the parts the file holds when the row starts.
-// It is a pure builder: it reads the parts file and the stencils it composes from, and does not create the part directories or spawn anything.
+// partsplan.go builds the seat table of the Parts-Plan-Write row, which writes the plan in parts.
+// The table seats one chair that joins the parts into the plan, and one writer seat per part of the parts file.
+// It is a pure builder: it reads the parts file at call time and the stencils it composes from,
+// and it creates no part directories and spawns nothing.
 
 package loomengine
 
@@ -34,17 +34,28 @@ const partWriterStencil = "loom-template-part-writer"
 // partsChairStencil is the stencil that opens the Parts-Plan-Write chair.
 const partsChairStencil = "loom-template-parts-chair"
 
-// partsPlanLiveStrandsNote is the remedy both parts-file refusals add: the table fails before the resume probe can stop a live strand.
+// partsPlanLiveStrandsNote is the remedy both parts-file refusals add.
+// The table fails before the resume probe can stop a live strand,
+// so the remedy is to remove the task's `parts-plan` strands first.
 const partsPlanLiveStrandsNote = "a resumed row whose chair or writers are still live keeps their strands, since the table fails before the probe can stop them, so first remove each `parts-plan` strand of the task with `lym reed remove --name <strand>`"
 
-// PartsPlanTable builds the seatengine.Table of one Parts-Plan-Write run from the parts file under layout: a chair as the lead, then one writer seat per part in file order.
-// The chair writes the join record `partsparser.JoinRecord` and reads the decision record, the parts file and every part's overview; each writer writes its part's overview and reads the decision record, the relevant list and the parts file.
-// runTimeout is shuttle's run_timeout_min as a duration, told by the caller so a plan_timeout_min of 0 resolves to the effective plan timeout: it bounds every writer, and the chair's seat timeout is cfg.PartsChairTimeout(runTimeout), whose error fails the table.
-// gates, accept and findingsPath build each writer's gate, Accept and failed-gate findings path from its part's name; an error from gates fails the table.
-// An absent parts file fails the table with the way forward of running the Parts-Write row again, and a malformed one with the way forward of `lym loom validate-parts`.
-// specsDir and gateTiers are told, never derived: this package is bound by the Told-Geometry Invariant.
+// PartsPlanTable builds the seatengine.Table of one Parts-Plan-Write run from the parts file under layout:
+// a chair as the lead, then one writer seat per part in file order.
+// The chair writes the join record `partsparser.JoinRecord`.
+// It reads the decision record, the parts file and every part's overview.
+// Each writer writes its part's overview and reads the decision record, the relevant list and the parts file.
+// runTimeout is shuttle's run_timeout_min as a duration, told by the caller.
+// The caller tells it so that a plan_timeout_min of 0 resolves to the effective plan timeout.
+// It bounds every writer.
+// The chair's seat timeout is cfg.PartsChairTimeout(runTimeout), and an error from it fails the table.
+// gates, accept and findingsPath build each writer's gate, Accept and failed-gate findings path from its part's name.
+// An error from gates fails the table.
+// An absent parts file fails the table with the way forward of running the Parts-Write row again.
+// A malformed one fails it with the way forward of `lym loom validate-parts`.
+// specsDir and gateTiers are told by the caller and never derived here.
 // The table carries no chair gate; the producer entry sets it.
-// A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
+// A PATTERN directive that cannot be rendered fails the table.
+// A friction directive that cannot be rendered is left empty, and the failure is logged.
 func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string, runTimeout time.Duration, gates func(part string) (shuttleengine.GateSpec, error), accept func(part string) func(shuttleengine.Result) error, findingsPath func(part string) string) (seatengine.Table, error) {
 	anchor := layout.AnchorPath()
 	parts, err := readPartsFile(anchor)
@@ -81,7 +92,7 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 	seatFriction := func(noteName string) map[string]string {
 		directive, err := friction.Directive(friction.NotePath(frictionDir, noteName), stencilsDir, friction.RoleImplementer)
 		if err != nil {
-			// A friction directive is optional bookkeeping, so a stencil read failure here must never fail the Parts-Plan-Write spawn.
+			// A friction directive is optional bookkeeping: a stencil read failure must never fail the Parts-Plan-Write spawn.
 			logger.Warn("loom: friction directive failed, continuing without one", "role", "parts-plan-write", "note", noteName, "error", err)
 			return nil
 		}

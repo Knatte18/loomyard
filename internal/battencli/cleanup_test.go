@@ -1,4 +1,5 @@
-// cleanup_test.go drives cleanup over a synthetic prime location with stubbed records deps; it spawns no git and no process.
+// cleanup_test.go drives cleanup over a synthetic prime location with stubbed records deps;
+// it spawns no git and no process.
 
 package battencli
 
@@ -157,7 +158,7 @@ func TestCleanup(t *testing.T) {
 		fixtures     []cleanupFixture
 		holdRunLock  string
 		denyRunsRoot bool
-		// legacySelf adds a done run under a directory literally named "self", which no slug-addressed path reaches.
+		// legacySelf adds a done run under a directory named "self", which no slug-addressed path reaches.
 		legacySelf   bool
 		spawnErr     error
 		wantRemoved  []string

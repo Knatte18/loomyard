@@ -1,6 +1,5 @@
-// verifygatereport.go implements the per-run report of the webster verify gate's failed evaluations,
-// the touch-based card hint that names which cards may have broken a failing package,
-// and the findings text the gate returns to Merriam.
+// verifygatereport.go holds the verify gate's record of failed evaluations and the findings text it returns to Merriam.
+// It also holds the card hint that names which cards may have broken a failing package.
 
 package websterengine
 
@@ -33,7 +32,7 @@ type VerifyGateReport struct {
 	Cap int `yaml:"cap"`
 	// Dirty lists the paths of a clean-tree failure, which runs no verify and so has no Failures or LogPath.
 	Dirty []string `yaml:"dirty,omitempty"`
-	// TimedOut names the gate tier and the timeout it outlived, as verifytree.Result.Detail words them, and is empty when no tier timed out.
+	// TimedOut names the gate tier and the timeout it outlived, and is empty when no tier timed out.
 	// Such a failure has no Failures and carries LogTail instead.
 	TimedOut string `yaml:"timed_out,omitempty"`
 	// LogTail is the bounded tail of the verify log of a timed-out or hung run.
@@ -85,10 +84,11 @@ func WriteVerifyGateReport(path string, r VerifyGateReport) error {
 	return nil
 }
 
-// cardHint returns the labels, in trail order, whose commit changed a file directly in the directory of a failing package.
-// shas and labels are the parallel trail accumulatedCardSHAs returns.
+// cardHint returns the labels, in trail order, of the cards that touched a failing package's directory.
+// A card touches it when its commit changes a file directly in that directory.
+// shas and labels are parallel: labels[i] is the card whose commit is shas[i].
 // changedPaths lists the repository-relative paths one commit changed.
-// A failing package maps to a worktree directory through modulePath, go.mod's module path.
+// A failing package maps to a worktree directory through modulePath, the module path of go.mod.
 // An opaque identity, or a package outside the module, contributes no directory, so it contributes no hint.
 // The hint claims only that a card touched a failing package;
 // Merriam judges it with the plan in hand.
@@ -151,9 +151,10 @@ func logTail(output string) string {
 	return strings.TrimSpace(output)
 }
 
-// verifyGateWayForward returns the one line naming Merriam's way forward from a verify-gate failure, never fixing the findings itself and ending the turn:
-// for FixerCold, run `lym webster fix-verify` backgrounded and spawn no fork;
-// otherwise spawn one fixer fork with the prompt file at fixPromptPath.
+// verifyGateWayForward returns the one line that names Merriam's way forward from a verify-gate failure.
+// The line tells Merriam not to fix the findings itself and to end the turn.
+// For FixerCold it names `lym webster fix-verify`, run as a backgrounded command with no fork spawned.
+// Otherwise it names one fixer fork, with the prompt file at fixPromptPath.
 func verifyGateWayForward(fixer, fixPromptPath string) string {
 	if fixer == FixerCold {
 		return fmt.Sprintf("Do not fix the findings yourself and spawn no fork; run `%s` as a backgrounded Bash command, as the gate-failure section of your prompt says; then end your turn.", fixVerifyCommand)
@@ -161,16 +162,19 @@ func verifyGateWayForward(fixer, fixPromptPath string) string {
 	return fmt.Sprintf("Do not fix the findings yourself; spawn one fixer fork as the gate-failure section of your prompt says, with the prompt file at %s; then end your turn.", fixPromptPath)
 }
 
-// verifyGateReprompt returns the renderer for the verify entry's re-prompt line:
-// one line that opens with the `Gate findings recorded at` text Merriam's gate-failure section triggers on, then names the findings file and the way forward to the fixer notes holds.
+// verifyGateReprompt returns the renderer for the verify entry's re-prompt line.
+// The line opens with the `Gate findings recorded at` text that Merriam's gate-failure section triggers on.
+// It then names the findings file and the way forward, which depends on the fixer that notes reports.
 func verifyGateReprompt(fixPromptPath string, notes *VerifyGateNotes) func(findingsPath string) string {
 	return func(findingsPath string) string {
 		return fmt.Sprintf("Gate findings recorded at %s — %s", findingsPath, verifyGateWayForward(notes.Fixer(), fixPromptPath))
 	}
 }
 
-// wrapRunLevelEntry returns entry with a gate that records a failed result as a verify-gate report at reportPath before returning it, and with the re-prompt the verify entry has.
-// The report carries the entry's name, its findings and the count of its failures, and the returned findings are the rendered report, so Merriam reads the way forward to the fixer beside them.
+// wrapRunLevelEntry returns entry with a gate that records a failed result as a verify-gate report at reportPath.
+// It also sets the entry's re-prompt to the one the verify entry uses.
+// The report carries the entry's name, its findings and the attempt number.
+// The returned findings are the rendered report, so Merriam reads the way forward to the fixer beside them.
 // A passing, pending, terminal or erroring result is returned as it came, and writes nothing.
 // The wrap changes how a failure is reported, never whether the entry passes.
 func wrapRunLevelEntry(entry shuttleengine.GateEntry, reportPath, fixPromptPath string, notes *VerifyGateNotes) shuttleengine.GateEntry {
@@ -199,11 +203,15 @@ func wrapRunLevelEntry(entry shuttleengine.GateEntry, reportPath, fixPromptPath 
 	return entry
 }
 
-// renderVerifyGateFindings returns the findings text the gate returns to Merriam:
-// the way forward to the report's fixer, the attempt and the cap, then the named entry's findings, the dirty paths, the timeout sentence, a hang or the failing identities.
-// A timeout carries the log path and tail, and a hang its matched marker, identities, log path and tail.
+// renderVerifyGateFindings returns the findings text the gate returns to Merriam.
+// The text opens with the way forward to the report's fixer, then the attempt and the cap.
+// It then gives the named entry's findings.
+// Otherwise it gives the dirty paths, the timeout sentence, a hang or the failing identities.
+// A timeout carries the log path and tail.
+// A hang carries its matched marker, identities, log path and tail.
 // Identities carry their output tail, the full log path and the hint.
-// A timeout or hang says the step was not re-run, and a watchdog quit also names the window and the operator's way forward.
+// A timeout or hang says the step was not re-run.
+// A watchdog quit also names the window and the operator's way forward.
 func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	var b strings.Builder
 	b.WriteString(verifyGateWayForward(r.Fixer, fixPromptPath) + "\n")

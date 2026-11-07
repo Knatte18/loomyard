@@ -1,4 +1,5 @@
-// parentguard_test.go drives the parent lock guard against a real parentlock.Store in a temporary directory and fake tip reads.
+// parentguard_test.go drives the parent lock guard against a real parentlock.Store in a temporary directory.
+// The tip reads are fakes.
 
 package landingshed
 
@@ -24,7 +25,8 @@ var (
 	guardOwnerOther = parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r9", PID: 111, StartTime: "t1"}
 )
 
-// newGuardFixture returns a guard over a fresh store in which every process reads as alive, and the wait marks it set in order.
+// newGuardFixture returns a guard over a fresh store in which every process reads as alive,
+// and the wait marks it set in order.
 func newGuardFixture(t *testing.T) (g parentGuard, store *parentlock.Store, marks *[]string) {
 	t.Helper()
 
@@ -239,7 +241,9 @@ func TestParentGuard_ReleaseFreesOwnRecordAndLeavesAnotherProcessAlone(t *testin
 	}
 }
 
-// TestParentGuard_PauseReadFailureLogsOncePerEpisode asserts a pause-flag read that fails on every poll logs one Warn, Debug while it repeats and one Info at the next good read, and reads as not paused throughout.
+// TestParentGuard_PauseReadFailureLogsOncePerEpisode pins the logging of a pause-flag read that fails on every poll.
+// It logs one Warn, then Debug while the failure repeats, then one Info at the next good read.
+// The guard reads as not paused throughout.
 // It is serial: it captures the process-global logger.
 func TestParentGuard_PauseReadFailureLogsOncePerEpisode(t *testing.T) {
 	tiergate.Require(t, 0)

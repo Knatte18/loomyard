@@ -9,8 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDismissPicker_Guards pins that a picker shown over a running turn gets no key and records no try, so a later poll can try again,
-// and that a picker over a quiet pane gets one Escape, records the try and leaves the pane alone for the engine's interrupt settle.
+// TestDismissPicker_Guards pins that a picker shown over a running turn gets no key and records no try,
+// so a later poll can try again.
+// A picker over a quiet pane gets one Escape and records the try;
+// it leaves the pane alone for the engine's interrupt settle.
 func TestDismissPicker_Guards(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

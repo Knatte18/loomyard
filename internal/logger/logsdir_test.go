@@ -1,7 +1,5 @@
-// logsdir_test.go tests the AnchorPath-anchored LogsDir constructor on hand-built Locations — pure
-// path arithmetic, no spawning, untagged (Tier 1).
-// It replaces worktreelogs_test.go: every assertion there pinned the old WorktreePath-anchored
-// behaviour, which this batch inverts.
+// logsdir_test.go tests that LogsDir is rooted at the Location's AnchorPath.
+// It builds hand-made Locations and does pure path arithmetic, without spawning a process.
 
 package logger_test
 
@@ -14,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLogsDir_AnchorsAtAnchorPath pins that LogsDir is rooted at the Location's AnchorPath: for an unanchored Location that equals the worktree path, and for a subpath-anchored one it differs.
+// TestLogsDir_AnchorsAtAnchorPath pins that LogsDir is rooted at the Location's AnchorPath.
+// For an unanchored Location that is the worktree path; for a subpath-anchored one it differs.
 //
 //testtiming:keep pins LogsDir path arithmetic for unanchored and subpath-anchored Locations without git, which its covering integration scenario reaches only for the unanchored repository root
 func TestLogsDir_AnchorsAtAnchorPath(t *testing.T) {

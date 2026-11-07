@@ -1,20 +1,19 @@
-// Command wordswap performs a case-preserving whole-token substitution of one word for another
-// across files of any language: identifiers, comments, string literals, shell variables, and
-// markdown prose all substitute through the same mechanism.
-// Its safety invariant is reversibility over recorded spans -- reverting exactly the recorded
-// substitution offsets must reproduce the input byte-for-byte, and a file failing that check is
-// left untouched and reported.
-// `host` + lowercase at a token start is not guessed at: it is reported as AMBIGUOUS so the
-// operator can hand-edit it or name it in `-skip`.
-// wordswap assumes ASCII-stable case folding: it locates matches via strings.ToLower and then
-// indexes into the original text using those offsets, which is only byte-length-preserving for
-// ASCII input. A rune whose lowercase mapping changes UTF-8 byte length (e.g. U+0130 İ -> "i̇")
-// desynchronizes the offsets. Run wordswap only over ASCII-only file content.
+// Command wordswap performs a case-preserving whole-token substitution of one word for another.
+// It works across files of any language:
+// identifiers, comments, string literals, shell variables, and markdown prose share one mechanism.
+// Its safety invariant is reversibility over recorded spans:
+// reverting exactly the recorded substitution offsets must reproduce the input byte-for-byte,
+// and a file failing that check is left untouched and reported.
+// `host` + lowercase at a token start is not guessed at:
+// it is reported as AMBIGUOUS, so the operator can hand-edit it or name it in `-skip`.
+// wordswap assumes ASCII-stable case folding:
+// it locates matches via strings.ToLower and then indexes into the original text with those offsets.
+// The offsets stay valid only for ASCII input.
+// A rune whose lowercase mapping changes UTF-8 byte length (e.g. U+0130 İ -> "i̇") desynchronizes them.
+// Run wordswap only over ASCII-only file content.
 //
 //	go run ./tools/wordswap -from host -to warp [-dry-run] [-skip <regexp>]... <path-or-glob> [...]
 //	go run ./tools/wordswap -from host -to warp -skip 'pane hosting an idle agent' internal/fabricengine/*.go
-//
-// Last run: 2026-08-09, host->warp sweep of the fabric-host-to-warp-rename task.
 package main
 
 import (
@@ -127,18 +126,17 @@ func main() {
 	}
 }
 
-// pathOccurrence pairs an Occurrence with the file path it came from, for the report's
-// "<path>:<line>: <line text>" entries.
+// pathOccurrence pairs a reported line with the path of the file it was found in,
+// so the report can print the entry as "<path>:<line>: <line text>".
 type pathOccurrence struct {
 	path       string
 	occurrence Occurrence
 }
 
-// processFile reads the file at path, runs swapText over its contents, and -- unless dryRun is
-// set or the reversibility check failed -- writes the result back preserving the file's existing
-// mode, exactly as tools/mdreflow/main.go's processFile does.
-// It returns the status string "mismatch", "changed", or "unchanged", plus the underlying Result
-// for the caller's report buckets.
+// processFile substitutes the word in the file at path and writes the result back.
+// It leaves the file untouched under dryRun and when the reversibility check fails.
+// It keeps the file's existing mode.
+// It returns the status "mismatch", "changed", or "unchanged", plus the substitution's outcome for the caller's report.
 func processFile(path string, from, to string, skips []*regexp.Regexp, dryRun bool) (string, Result, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

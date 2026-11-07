@@ -1,5 +1,5 @@
 // fabricvocab.go holds the fabric-vocabulary predicates and their data.
-// That is the side tokens, the owner set, the doc roots and the bare-token checks.
+// It covers the side tokens, the owner set, the doc roots and the bare-token checks.
 
 package fabricvocab
 
@@ -8,15 +8,14 @@ import (
 	"strings"
 )
 
-// ConfigsyncOwnerDir is the owner row with a narrower carve-out than the rest.
-// internal/configsync may name the side tokens in string literals and comments, but not in identifiers.
+// ConfigsyncOwnerDir is the owner directory allowed to name the side tokens in string literals and comments.
+// It may not name them in identifiers.
 // Its literals are the on-disk legacy config filenames its migration must read by name.
 const ConfigsyncOwnerDir = "internal/configsync"
 
 // owners is the set of directories permitted to use the bare side tokens.
 // It governs the bare-token rule only; the fabric-sense host-phrase rule applies inside these directories too.
-// internal/hubforge is a directory of non-test .go files that names fabric's own geometry,
-// so it owns the tokens the same way internal/fabricengine does.
+// internal/hubforge names fabric's own geometry in its non-test .go files, so it owns the tokens.
 // internal/fabricvocab spells the tokens it bans.
 var owners = map[string]bool{
 	"internal/fabricengine": true,
@@ -32,7 +31,7 @@ var owners = map[string]bool{
 // docRoots are the roots whose .md, .yaml and .go files the bare-token scan covers.
 var docRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "crucible": true, "cmd": true}
 
-// hostGeometryIdentifiers are the fabric-geometry identifiers that compound the retired host noun with a repo or geometry noun.
+// hostGeometryIdentifiers are the fabric-geometry identifiers that compound the host noun with a repo or geometry noun.
 // They are matched case-insensitively against an identifier's name.
 var hostGeometryIdentifiers = map[string]bool{
 	"hostbranch":    true,
@@ -64,7 +63,8 @@ func BareToken(s string) bool {
 	return BareTokenIn(s, false)
 }
 
-// BareTokenIn is BareToken with the side-named name package's spelling stripped first when stripPackageName is set.
+// BareTokenIn reports whether s contains a side token, case-insensitively.
+// When stripPackageName is set, the side-named name package's spelling is stripped first.
 // That serves a file whose import of that package another rule already governs.
 func BareTokenIn(s string, stripPackageName bool) bool {
 	if !containsSideToken(strings.ToLower(s)) {
@@ -76,8 +76,8 @@ func BareTokenIn(s string, stripPackageName bool) bool {
 	return containsSideToken(strings.ToLower(s))
 }
 
-// BareTokenInRootDoc is BareToken for a repo-root markdown file:
-// it strips the records repository's proper name first, so that name passes and every other side token still fails.
+// BareTokenInRootDoc reports whether s contains a side token, for a repo-root markdown file.
+// It strips the records repository's proper name first, so that name passes and every other side token still fails.
 func BareTokenInRootDoc(s string) bool {
 	return BareToken(recordsRepoNamePattern.ReplaceAllString(s, ""))
 }
@@ -91,7 +91,8 @@ func containsSideToken(lower string) bool {
 	return false
 }
 
-// IsHostGeometryIdentifier reports whether name, case-insensitively, is a fabric-geometry identifier that compounds the retired host noun.
+// IsHostGeometryIdentifier reports whether name, case-insensitively, is a fabric-geometry identifier.
+// Such an identifier compounds the host noun.
 func IsHostGeometryIdentifier(name string) bool {
 	return hostGeometryIdentifiers[strings.ToLower(name)]
 }
@@ -101,15 +102,15 @@ func IsOwner(dir string) bool {
 	return owners[dir]
 }
 
-// SkipsBareCheck reports whether dir is exempt from the bare-token check entirely:
-// every owner row except ConfigsyncOwnerDir, whose narrower carve-out FailsBareCheck applies.
+// SkipsBareCheck reports whether dir is exempt from the bare-token check entirely.
+// Every owner directory is exempt except internal/configsync, which is still checked for identifier hits.
 func SkipsBareCheck(dir string) bool {
 	return owners[dir] && dir != ConfigsyncOwnerDir
 }
 
-// FailsBareCheck applies the owner-set carve-outs to a file's bare-token hits.
+// FailsBareCheck reports whether a file in dir fails the bare-token check, given its hits.
 // ConfigsyncOwnerDir passes on a literal-or-comment-only hit and fails on an identifier hit.
-// Every other directory reaching it is a non-owner, so it fails on either kind of hit.
+// Any other directory reaching it is not an owner, so it fails on either kind of hit.
 func FailsBareCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
 	if dir == ConfigsyncOwnerDir {
 		return bareIdent

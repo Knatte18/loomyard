@@ -1,10 +1,9 @@
-<!-- This is the Discussion-Review rubric. It is read by the Bouncer row and the review row of the Discussion-Review perch:
-     the Discussion-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's rubric marker value, and the Discussion-Burler-Review row interpolates it
-     the same way into internal/burlerengine's own review prompt.
-     It is a marker VALUE, never a template -- its only markers are the ones ReadRubric fills, and
-     internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
-     sees it. -->
+<!-- This is the Discussion-Review rubric.
+     The Bouncer row and the review row of the Discussion-Review perch read it.
+     The Discussion-Bouncer row interpolates it as the rubric marker value of bouncer-template-seed.md and bouncer-template-judge.md,
+     and the Discussion-Burler-Review row interpolates it the same way into internal/burlerengine's review prompt.
+     It is a marker VALUE, never a template: its only markers are the ones ReadRubric fills,
+     and internal/stencil's StripLeadingComment removes this comment before either consumer sees it. -->
 
 # Discussion-Review rubric
 

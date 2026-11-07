@@ -1,18 +1,18 @@
 // Package gitoracle is the differential-parity harness's CLI oracle for internal/gitrepo.
-// For every gitrepo method that reads through go-git, it reimplements the same read directly on gitexec.RunGit, independent of any gitrepo method.
-// The duplication is deliberate.
+// For every gitrepo method that reads through go-git, the package reimplements the same read on gitexec.RunGit.
+// It calls no gitrepo method: the duplication is deliberate.
 //
 // # Why an oracle, not a copy
 //
-// The parity harness being lifted from internal/gitnativepoc used gitrepo's own CLI-backed methods as its reference side, because at the time gitrepo WAS the CLI implementation.
-// The moment gitrepo's methods return go-git results, a harness that still calls gitrepo for its "truth" compares go-git against go-git:
-// it asserts nothing while staying green, which is worse than no test because it looks like coverage.
-// This package keeps a second, independent implementation of every parsing convention production deleted — the `-z` NUL-split, the `--verify --quiet` exit-0/1/other convention, and the unborn-HEAD stderr sniff — so the thing that parsing validates (gitrepo's methods) can stop depending on it.
+// A parity harness that takes its reference from gitrepo's own methods compares go-git against go-git.
+// Such a harness asserts nothing while it stays green, which is worse than no test because it looks like coverage.
+// This package keeps a second, independent implementation of the CLI parsing conventions:
+// the `-z` NUL-split, the `--verify --quiet` exit-0/1/other convention, and the unborn-HEAD stderr sniff.
 // Replacing it with calls into gitrepo would silently turn every parity test into a tautology.
 //
 // The package imports stdlib and internal/gitexec only, never internal/gitrepo or internal/gitkit;
 // leaf_enforcement_test.go enforces that.
-// Its callers are tests alone, in both gitrepo test packages.
+// Its callers are tests only.
 //
 // Each function takes an explicit worktree directory, never a stored path,
 // so a caller can point it at either side of a linked-worktree fixture.
@@ -28,10 +28,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// ErrNoCommits is the oracle's own sentinel for "no commits yet", distinct from gitrepo.ErrNoCommits for independence.
+// ErrNoCommits is the sentinel for a repository with no commits yet.
+// It is defined here rather than shared, so the oracle does not depend on the code it checks.
 var ErrNoCommits = errors.New("oracle: repository has no commits")
 
-// CurrentSHA reimplements gitrepo's CurrentSHA on `git rev-parse HEAD`, mapping unborn-HEAD stderr to ErrNoCommits.
+// CurrentSHA returns the SHA that HEAD resolves to in dir, from `git rev-parse HEAD`.
+// It maps the stderr of an unborn HEAD to ErrNoCommits.
 func CurrentSHA(t testing.TB, dir string) (string, error) {
 	t.Helper()
 
@@ -49,10 +51,12 @@ func CurrentSHA(t testing.TB, dir string) (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// SHAExists reimplements gitrepo's SHAExists directly on `git rev-parse --verify --quiet <sha>^{commit}`:
-// the `^{commit}` peel is contractual, not incidental — it is what makes a tree or blob SHA resolve as absent rather than present.
-// Exit 0 means true, exit 1 means false;
-// anything else is an oracle failure the calling test must not swallow, since a silent third case here would hide a real oracle bug behind a bool.
+// SHAExists reports whether sha names a commit in dir, by running `git rev-parse --verify --quiet <sha>^{commit}`.
+// The `^{commit}` peel is contractual, not incidental:
+// it makes a tree or blob SHA resolve as absent rather than present.
+// Exit 0 means present and exit 1 means absent;
+// any other exit is an oracle failure that the calling test must not swallow.
+// A silent third case would hide a real oracle bug behind a bool.
 func SHAExists(t testing.TB, dir, sha string) bool {
 	t.Helper()
 
@@ -72,9 +76,11 @@ func SHAExists(t testing.TB, dir, sha string) bool {
 	}
 }
 
-// ChangedFilesSince reimplements gitrepo's ChangedFilesSince directly on `git diff --name-only -z --no-renames <sha>..HEAD`:
-// -z terminates each path with NUL and disables core.quotePath's C-style escaping, so a non-ASCII filename comes back verbatim;
-// --no-renames is what keeps a rename reported as delete-plus-add rather than folded into one entry.
+// ChangedFilesSince lists the paths that differ between sha and HEAD in dir.
+// It runs `git diff --name-only -z --no-renames <sha>..HEAD`.
+// -z terminates each path with NUL and disables core.quotePath's C-style escaping,
+// so a non-ASCII filename comes back verbatim.
+// --no-renames keeps a rename reported as a delete plus an add, not folded into one entry.
 func ChangedFilesSince(t testing.TB, dir, sha string) ([]string, error) {
 	t.Helper()
 
@@ -97,19 +103,22 @@ func ChangedFilesSince(t testing.TB, dir, sha string) ([]string, error) {
 	return files, nil
 }
 
-// GitDir reimplements gitrepo's GitDir on `git rev-parse --git-dir`, absolutized against dir when git answers a relative path.
+// GitDir returns the git directory of the repository at dir, from `git rev-parse --git-dir`.
+// It joins the result onto dir when git prints a relative path.
 func GitDir(t testing.TB, dir string) (string, error) {
 	t.Helper()
 	return revParsePath(dir, "--git-dir")
 }
 
-// CommonDir reimplements gitrepo's CommonDir on `git rev-parse --git-common-dir`, absolutized against dir when git answers a relative path.
+// CommonDir returns the common git directory of the repository at dir, from `git rev-parse --git-common-dir`.
+// It joins the result onto dir when git prints a relative path.
 func CommonDir(t testing.TB, dir string) (string, error) {
 	t.Helper()
 	return revParsePath(dir, "--git-common-dir")
 }
 
-// BranchExists reimplements gitrepo's BranchExists on `git rev-parse --verify --quiet refs/heads/<branch>`: exit 0 means present, exit 1 absent.
+// BranchExists reports whether refs/heads/<branch> exists in dir.
+// It runs `git rev-parse --verify --quiet` on that ref: exit 0 means present, exit 1 absent.
 func BranchExists(t testing.TB, dir, branch string) bool {
 	t.Helper()
 
@@ -117,14 +126,16 @@ func BranchExists(t testing.TB, dir, branch string) bool {
 	return found
 }
 
-// RefSHA reimplements gitrepo's RefSHA on `git rev-parse --verify --quiet <ref>`; the bool is false for an absent ref.
+// RefSHA returns the SHA that ref resolves to in dir, from `git rev-parse --verify --quiet <ref>`.
+// The bool is false when the ref does not resolve.
 func RefSHA(t testing.TB, dir, ref string) (string, bool) {
 	t.Helper()
 	return verifyQuiet(t, dir, ref)
 }
 
-// HeadRef reimplements gitrepo's HeadRef on `git rev-parse --abbrev-ref HEAD`, which prints `HEAD` for a detached HEAD.
-// An unborn branch makes that command fail, so the name then comes from `git branch --show-current`.
+// HeadRef returns the branch name HEAD points to in dir, and reports whether HEAD is detached.
+// `git rev-parse --abbrev-ref HEAD` prints `HEAD` for a detached HEAD.
+// An unborn branch makes that command fail, so the name comes from `git branch --show-current` instead.
 func HeadRef(t testing.TB, dir string) (branch string, detached bool, err error) {
 	t.Helper()
 
@@ -151,7 +162,7 @@ func HeadRef(t testing.TB, dir string) (branch string, detached bool, err error)
 	return strings.TrimSpace(current), false, nil
 }
 
-// RefTree reimplements gitrepo's RefTree on `git rev-parse <ref>^{tree}`.
+// RefTree returns the tree SHA of ref in dir, from `git rev-parse <ref>^{tree}`.
 func RefTree(t testing.TB, dir, ref string) (string, error) {
 	t.Helper()
 
@@ -162,13 +173,16 @@ func RefTree(t testing.TB, dir, ref string) (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// Upstream reimplements gitrepo's Upstream on `git rev-parse --verify --quiet <branch>@{upstream}`; the bool is false when git reports no upstream or an unresolvable one.
+// Upstream returns the SHA of the branch that branch tracks in dir.
+// It resolves `<branch>@{upstream}` with `git rev-parse --verify --quiet`.
+// The bool is false when git reports no upstream or one that does not resolve.
 func Upstream(t testing.TB, dir, branch string) (string, bool) {
 	t.Helper()
 	return verifyQuiet(t, dir, branch+"@{upstream}")
 }
 
-// verifyQuiet runs `git rev-parse --verify --quiet <rev>` in dir and classifies the exit codes git documents: 0 prints the SHA, 1 means the revision does not resolve, anything else fails the test.
+// verifyQuiet runs `git rev-parse --verify --quiet <rev>` in dir and classifies its exit code.
+// Exit 0 prints the SHA, exit 1 means the revision does not resolve, and any other exit fails the test.
 func verifyQuiet(t testing.TB, dir, rev string) (string, bool) {
 	t.Helper()
 
@@ -188,7 +202,8 @@ func verifyQuiet(t testing.TB, dir, rev string) (string, bool) {
 	}
 }
 
-// revParsePath runs `git rev-parse <flag>` in dir and returns the path it prints, joined onto dir when git prints it relative.
+// revParsePath runs `git rev-parse <flag>` in dir and returns the path it prints.
+// It joins the path onto dir when git prints it relative.
 func revParsePath(dir, flag string) (string, error) {
 	stdout, err := gitexec.Run([]string{"rev-parse", flag}, dir)
 	if err != nil {
@@ -201,7 +216,8 @@ func revParsePath(dir, flag string) (string, error) {
 	return path, nil
 }
 
-// CurrentBranch reimplements gitrepo's CurrentBranch directly on `git symbolic-ref --short HEAD`, which fails on a detached HEAD and succeeds — printing the branch name — even on an unborn or orphan HEAD that has never been committed.
+// CurrentBranch returns the branch name HEAD points to in dir, from `git symbolic-ref --short HEAD`.
+// It fails on a detached HEAD, but it succeeds on an unborn or orphan HEAD and prints the branch name.
 func CurrentBranch(t testing.TB, dir string) (string, error) {
 	t.Helper()
 

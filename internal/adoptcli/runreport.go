@@ -1,4 +1,5 @@
-// runreport.go builds the per-run report of an adopt: one line for each run under the named subjects, with the state it stands in after the takeover.
+// runreport.go builds the per-run report of an adopt: one line for each run under the named subjects.
+// Each line gives the state the run stands in after the takeover.
 
 package adoptcli
 
@@ -12,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// The states a runReport is in, in the order runReports tries them.
+// The states a runReport can be in.
 const (
 	runStateOwnedElsewhere  = "owned_elsewhere"
 	runStateLanded          = "landed"
@@ -24,7 +25,7 @@ const (
 	runStateRunningHere     = "running_here"
 )
 
-// The states of a subject's adopt check as CheckState reports them.
+// Two adopt check states that a check record does not hold by itself.
 const (
 	// checkStateEnded is a check whose record reads running with its process gone.
 	checkStateEnded = "ended"
@@ -32,7 +33,10 @@ const (
 	checkStateNone = "none"
 )
 
-// runReport is the line of one run under the named subjects: its state, the row its batten run record stands at, the machine owning it when that is another, the caller of the pause covering it, and a plain line.
+// runReport is the line of one run under the named subjects.
+// It holds the run's state and the row its batten run record stands at.
+// OwnedBy names the machine owning the run when that is another, and Caller names the caller of the pause covering it.
+// Line is the plain-text form.
 type runReport struct {
 	Slug    string `json:"slug"`
 	State   string `json:"state"`
@@ -42,7 +46,11 @@ type runReport struct {
 	Line    string `json:"line"`
 }
 
-// reportInput is what runReports reads besides the seams: this machine's name, the moved runs before and after the reconcile, the named subjects, the slugs held for each subject, the subjects whose check this call started, and the owners and board entries read after the owner write.
+// reportInput holds the inputs of an adopt's per-run report, apart from its dependencies.
+// Machine is this machine's name.
+// Before and Moved are the runs before and after the reconcile, and Subjects are the named subjects.
+// Held lists the slugs held for each subject, and Started marks the subjects whose check this call started.
+// Owners and Tasks are read after the owner write.
 type reportInput struct {
 	Machine  string
 	Before   []string
@@ -54,9 +62,11 @@ type reportInput struct {
 	Tasks    []boardengine.Task
 }
 
-// runReports returns, sorted by slug, one report for each run under the named subjects: the moved runs before and after the reconcile, the slugs held for a subject and each subject's open front task.
-// Each run gets the first state that applies:
-// owned_elsewhere, landed, held_failed_check, waiting_for_check, paused, halted, ended and running_here, as the constants name them.
+// runReports returns, sorted by slug, one report for each run under the named subjects.
+// The candidate runs are the moved runs before and after the reconcile and the slugs held for each subject.
+// Each subject's open front task is a candidate too.
+// Each run gets the first state that applies, tried in this order:
+// owned_elsewhere, landed, waiting_for_check (or held_failed_check), paused, halted, ended and running_here.
 // A read that fails returns its error and no report.
 func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 	pause, err := deps.PauseRecord()
@@ -209,7 +219,7 @@ func checkStateWords(state string) string {
 	return state
 }
 
-// haltReason returns why a halted run stopped: its error, else its pause reason.
+// haltReason returns why a halted run stopped: its error, else its pause reason, else "no reason recorded".
 func haltReason(status shedengine.Status) string {
 	switch {
 	case status.Error != "":
@@ -226,7 +236,10 @@ func closedStatus(task boardengine.Task) bool {
 }
 
 // reportRuns reads the owners and the board entries after the owner write and builds the per-run reports of this call.
-// before and moved are the moved runs before and after the reconcile, subjects the named subjects, held the slugs held for each, and checks the checks this call started.
+// before and moved are the runs moved before and after the reconcile.
+// subjects are the named subjects.
+// held maps each subject to the slugs it holds.
+// checks are the checks this call started.
 func reportRuns(deps adoptDeps, here string, before, moved, subjects []string, held map[string][]string, checks []suiteStart) ([]runReport, error) {
 	owners, err := deps.ReadOwners()
 	if err != nil {

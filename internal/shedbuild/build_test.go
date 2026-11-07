@@ -1,6 +1,6 @@
-// build_test.go covers Build's own routing logic against Recipe values constructed in Go rather
-// than parsed, so a Build failure can never be a Parse failure in disguise. The filesystem-backed
-// twelve-engine coverage lives in build_engines_test.go instead -- see that file's own doc comment.
+// build_test.go covers Build's own routing logic against Recipe values constructed in Go rather than parsed,
+// so a Build failure can never be a Parse failure in disguise.
+// The filesystem-backed coverage of every registered engine lives in build_engines_test.go.
 
 package shedbuild
 
@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBuild_RowsCarryRoutingInRecipeOrder asserts Build returns one definition per row, in recipe order, each carrying its row's routing fields and a producer.
+// TestBuild_RowsCarryRoutingInRecipeOrder asserts Build returns one definition per row, in recipe order.
+// Each definition carries its row's routing fields and a producer.
 func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -47,7 +48,8 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 	}
 }
 
-// TestBuild_Errors asserts each Build failure wraps the shedbuild prefix and names the offending row's index and name, an unknown engine, or the rejected config key.
+// TestBuild_Errors asserts each Build failure wraps the shedbuild prefix.
+// The error names the offending row's index and name, an unknown engine, or the rejected config key.
 func TestBuild_Errors(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -55,9 +57,9 @@ func TestBuild_Errors(t *testing.T) {
 	tests := []struct {
 		name string
 		rows []Row
-		// contract is the recipe's Contract.
+		// contract is the Contract the recipe declares, or empty for none.
 		contract string
-		// fullEnv selects envkit.FullEnv over a zero shedrecipe.Env.
+		// fullEnv selects envkit.FullEnv in place of the zero shedrecipe.Env.
 		fullEnv  bool
 		wantSubs []string
 	}{
@@ -111,7 +113,8 @@ func TestBuild_Errors(t *testing.T) {
 			wantSubs: []string{"Gated", "Env.SettingKnown is nil", "fill Env.SettingKnown in the caller"},
 		},
 		{
-			// Proves cfg reaches the constructor rather than being dropped: an engine that accepts no config keys rejects a non-empty block through its own unknown-key check.
+			// Proves cfg reaches the constructor rather than being dropped:
+			// an engine that accepts no config keys rejects a non-empty block through its own unknown-key check.
 			name:     "non-empty config on an engine that accepts none",
 			rows:     []Row{{Name: "Stub-Row", Engine: "Stub", Config: map[string]any{"bogus": "value"}}},
 			fullEnv:  true,
@@ -139,12 +142,15 @@ func TestBuild_Errors(t *testing.T) {
 	}
 }
 
-// TestBuild_LoomContract asserts Build refuses a recipe declaring contract: loom that breaks a clause of the loom contract, naming the clause and its way forward, and never checks a recipe without the contract.
+// TestBuild_LoomContract asserts Build refuses a recipe that declares the loom contract and breaks one of its clauses.
+// The refusal names the clause and its way forward.
+// A recipe without the contract is never checked.
 func TestBuild_LoomContract(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// validLoom returns a recipe meeting every clause: a record row, a build row after it, and a Finalize row followed only by a terminal.
+	// validLoom returns a recipe meeting every clause:
+	// a record row, a build row after it, and a Finalize row followed only by a terminal.
 	validLoom := func() Recipe {
 		return Recipe{
 			Contract:     "loom",

@@ -1,8 +1,8 @@
-// commit.go — CommitResult, PartialCommitError, and Fabric.Commit: the classify-and-dispatch
-// two-sided commit that fans a caller's mixed file list into a warp-side plain-git commit and a
-// weft-side trailer-bearing commit, both performed under one combined write lock whenever the call
-// will commit anything at all — warp-only included — per the combined-commit-lock Shared Decision,
-// with the lock released before the async push is spawned per commit-lock-scoped-to-commit-only.
+// commit.go holds CommitResult, PartialCommitError, and Fabric.Commit.
+// Fabric.Commit splits a mixed file list into a warp-side plain-git commit;
+// the weft side is a commit that carries trailers.
+// Both sides commit under one combined write lock whenever anything is committed,
+// and the async push is spawned after that lock is released.
 
 package fabricengine
 
@@ -15,10 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was
-// made, mirroring gitrepo.StageAndCommit and commitWeftLocked since unchanged content is a
-// legitimate no-op.
-// It embeds MutationRecord, which carries the mutation record accumulated over the call.
+// CommitResult reports what Fabric.Commit did on each side: the SHA that landed and whether a commit was made.
+// Unchanged content is a legitimate no-op, so a side can report that no commit was made.
+// It embeds MutationRecord, which holds the mutations the call recorded.
 type CommitResult struct {
 	MutationRecord
 	WarpSHA       string
@@ -28,19 +27,16 @@ type CommitResult struct {
 }
 
 // Committed reports whether Fabric.Commit landed a commit on either side.
-// This is the one result a consumer outside the owner set should read — the four raw fields stay
-// exported for fabriccli, which prints them by design.
+// Read this rather than the four raw fields, which stay exported because fabriccli prints them.
 func (r CommitResult) Committed() bool {
 	return r.WarpCommitted || r.WeftCommitted
 }
 
-// PartialCommitError reports Fabric.Commit's weft-side failure, distinguishing whether the weft
-// commit itself landed (weftCommitted=true, index recording failed) or failed entirely.
-// warpSHA/weftSHA report whatever did land;
-// does not imply a warp commit (tags-only case).
-// The fields are private — the type is still returned to external callers and matched with
-// errors.As, but only Error()'s rendered message is part of the public contract, not direct field
-// access.
+// PartialCommitError reports Fabric.Commit's weft-side failure.
+// weftCommitted is true when the weft commit landed but recording it in the correspondence index failed.
+// It is false when the weft commit failed entirely.
+// warpSHA and weftSHA report whatever landed; warpSHA is empty when no warp commit landed.
+// The fields are unexported: callers match the type with errors.As and use only the Error message.
 type PartialCommitError struct {
 	warpSHA       string
 	weftSHA       string
@@ -48,8 +44,8 @@ type PartialCommitError struct {
 	Err           error
 }
 
-// Error implements the error interface, including the warp clause only when warpSHA is populated
-// (tags-only calls can hit weft-side failures with no warp commit).
+// Error implements the error interface.
+// The warp clause appears only when warpSHA is set, since a tags-only call can fail weft-side with no warp commit.
 func (e *PartialCommitError) Error() string {
 	warpClause := "no warp commit"
 	if e.warpSHA != "" {
@@ -69,58 +65,36 @@ func (e *PartialCommitError) Unwrap() error {
 // spawnDetachedPushFn is a package-level test seam; tests swap it for a recorder.
 var spawnDetachedPushFn = SpawnDetachedPush
 
-// Commit classifies files into warp and weft paths against the repo-wide routing set (never a raw,
-// unfiltered pathspec), commits each side under one combined write lock (acquired whenever anything
-// lands, even warp-only), and fires an async push after releasing the lock.
-// That push covers both sides, or the records side only in the hub's prime, whose code branch is the operator's to push.
-// A fully degenerate no-op takes no lock and spawns no push.
+// Commit classifies files into warp and weft paths against the repo-wide routing set, never a raw pathspec.
+// It commits each side under one combined write lock, taken whenever a commit is about to land, warp-only included.
+// The lock is released before the push is spawned.
 //
-// Before taking any lock or committing anything, Commit hard-errors if classification's
-// never-committed bucket is non-empty, naming the first offending path: a caller passing a path
-// under structuralNeverCommittedDirs (e.g. `.lym/...`) is a bug and must be told, not silently
-// filtered or committed.
-// This is an error rather than a filter for the same reason classifyPaths' own header comment
-// gives: dropping the path would hide the caller's bug, and committing it would violate the
-// never-committed contract outright.
-// The check precedes the lock, so a rejected call mutates nothing on either side and spawns no
-// push.
+// Commit hard-errors, before taking any lock, when the never-committed bucket is non-empty.
+// The error names the first such path.
+// A caller passing a path under a never-committed directory has a bug that must surface:
+// dropping the path would hide it, and committing it would break the never-committed contract.
+// Because the check precedes the lock, a rejected call mutates nothing and spawns no push.
 //
-// weftSide — and therefore whether committing takes the combined lock and runs ensureWeftLockDir —
-// is true whenever there are weft files OR snapshotTags is non-empty (and opts.SkipGit is false),
-// per the tags-force-a-weft-commit Shared Decision: commitWeftLocked lands an empty weft commit
-// carrying the tags when there is otherwise nothing to commit.
-// This means a tags-only or warp-only-but-tagged call now takes the lock and runs ensureWeftLockDir
-// where an earlier version of Commit did neither — that is correct, since the call is about to
-// write to weft, but it is a real behavioural widening from a predicate that once looked only at
-// weftFiles.
-// Commit(nil, msg, tags, opts) — tags with zero files at all — is consequently a supported call
-// shape, not an accident of the predicate: it is how a caller records a baseline (a warp SHA under
-// a snapshot tag) without producing any weft content of its own, the standalone-snapshot use this
-// design's write path serves without a new method.
+// The weft side is taken when there are weft files or snapshot tags, unless opts.SkipGit is set.
+// Snapshot tags force a weft commit: an empty one carries the tags when there is nothing else to commit.
+// Commit(nil, msg, tags, opts) is a supported call: it records a baseline under those tags without weft content.
 //
-// Finally, Commit fires the async, fire-and-forget push of whatever landed via spawnDetachedPushFn,
-// but only when something actually landed (result.WarpCommitted || result.WeftCommitted) — a fully
-// no-op call (e.g.
-// an empty files list,
-// or unchanged content on every side) spawns no detached child.
-// The push is unconditional on opts here;
-// skip-env gating (FABRIC_SKIP_GIT/FABRIC_SKIP_PUSH) is handled inside SpawnDetachedPush itself, per
-// the async-push-both-sides-via-detached-child Shared Decision — the WarpCommitted || WeftCommitted
-// guard here is a separate "did anything land" gate, not an opts gate.
+// Commit spawns the async, fire-and-forget push of whatever landed via spawnDetachedPushFn.
+// It spawns that push only when something landed.
+// The push covers both sides, or in the hub's prime the records side only;
+// there the operator pushes the code branch.
+// A call that lands nothing spawns no detached child.
+// SpawnDetachedPush itself honors the skip environment variables.
 func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (res CommitResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	// Refuse before any classification or locking: a recorded merge blocks the same as it does for
-	// every other sibling mutating verb, and foreign git-level merge state with no record — a plain
-	// git conflicted merge in the warp checkout — is refused here too, pre-empting git's own raw
-	// "cannot do a partial commit during a merge".
-	// The two refusals carry DIFFERENT typed errors on purpose: fabric has no merge of its own in
-	// progress in the foreign case (MergeInProgress reports false there), so *ErrMergeInProgress's
-	// "run \"lym fabric merge --continue\" or \"lym fabric merge --abort\" first" would misdirect the
-	// operator into two more refusals —
-	// *ErrForeignMergeState says what actually clears the state (plain git), the same answer every
-	// merge verb gives it.
+	// Refuse before any classification or locking, as every sibling mutating verb refuses a recorded merge.
+	// Foreign git-level merge state with no record, such as a plain git conflicted merge, is refused here too.
+	// It pre-empts git's own "cannot do a partial commit during a merge" error.
+	// The two refusals return different typed errors on purpose.
+	// Fabric has no merge of its own in the foreign case, so *ErrMergeInProgress would misdirect the operator.
+	// *ErrForeignMergeState names what clears that state, plain git, as every merge verb does.
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
 		return CommitResult{}, err
@@ -146,7 +120,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 	routingNames := pathspecNames(cfg)
 
-	// Built before any lock, like the refusals above: a failure here lands no commit and spawns no push.
+	// Built before taking any lock: a failure here lands no commit and spawns no push.
 	pushRequest, err := statusPushRequest(l, "")
 	if err != nil {
 		return CommitResult{}, err
@@ -163,9 +137,9 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return result, err
 	}
 
-	// Record from the already-populated CommitResult fields, not from control flow, so a partial
-	// commit (below) still records whichever side actually landed. The Target is the worktree the
-	// commit landed in (a path, so Append); the Detail is the SHA.
+	// Record from the populated CommitResult fields rather than from control flow.
+	// A partial commit (below) still records whichever side actually landed.
+	// The target is the worktree path the commit landed in; the detail is the SHA.
 	if result.WarpCommitted {
 		rec.Append(KindCommitCreated, f.warpPath, result.WarpSHA)
 	}
@@ -184,26 +158,15 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	return result, nil
 }
 
-// commitBothSides performs the locked, warp-then-weft commit critical
-// section Commit dispatches to: it acquires the combined write lock
-// (`.weft/weft.write.lock`) whenever committing is true — computed by the
-// caller as `len(warpFiles) > 0 || weftSide`, per the combined-commit-lock
-// Shared Decision — releases it via a helper-scoped defer before returning,
-// and performs the same warp-first-then-weft ordering, hard-error-on-warp-
-// failure, and three-outcome *PartialCommitError mapping Commit always has.
-// Scoping the lock to this helper (rather than a defer in Commit itself) is
-// what keeps the lock released before Commit's own spawnDetachedPushFn call,
-// per the commit-lock-scoped-to-commit-only Shared Decision: a
-// function-scoped defer in Commit would still be held across that spawn,
-// which the design forbids and a test asserts against.
+// commitBothSides runs the locked section that Commit dispatches to: it commits warp first, then weft.
+// It takes the combined write lock (`.weft/weft.write.lock`) whenever anything will commit.
+// The lock is scoped to this helper, not to Commit, so it is released before Commit spawns the push.
+// A defer in Commit would hold the lock across that spawn.
 //
-// On a warp commit failure, commitBothSides returns immediately with a zero
-// CommitResult and the wrapped warp error — nothing has landed yet. Otherwise,
-// once the weft side (if any) has been attempted, it maps its three possible
-// outcomes onto a *PartialCommitError per the
-// partial-failure-report-three-outcomes Shared Decision: a failed-but-landed
-// weft commit, a failed-and-unlanded weft commit, or (the non-error path) a
-// landed or no-op weft commit.
+// A warp failure returns at once with a zero CommitResult and the wrapped error, since nothing has landed.
+// Otherwise, once the weft side, if any, has been attempted, its outcome maps onto a *PartialCommitError:
+// the weft commit landed but failed to record, or it failed and did not land.
+// On the non-error path the weft commit either landed or was a no-op.
 func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, msg string, snapshotTags []string, opts SyncOptions) (CommitResult, *PartialCommitError, error) {
 	committing := len(warpFiles) > 0 || weftSide
 

@@ -32,7 +32,7 @@ type Config struct {
 }
 
 // ConfigSpec returns the creel module's layered-load spec.
-// The module is hub-wide, and its one key grants authority over this hub's agents, so the local layer refuses it.
+// The module is hub-wide, and its keys grant authority over this hub's agents, so the local layer refuses it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,

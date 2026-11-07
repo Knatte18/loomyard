@@ -1,9 +1,6 @@
-// weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lymcwd in this
-// batch — RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor — with both AnchorRel "."
-// (root) and subpath cases, pinning the "-weft" sibling naming across container/base/subpath
-// combinations the illusion depends on.
-// WeftRaddleDir had zero production callers and is deleted outright rather than relocated, so it
-// has no coverage here.
+// weftpaths_test.go covers the weft-sibling path accessors:
+// RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor, with AnchorRel "." (root) and subpath cases.
+// It pins the "-weft" sibling naming across container, base and subpath combinations.
 
 package fabricengine
 
@@ -15,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWeftPathAccessors covers RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor, verifying AnchorRel-mirroring and junction pairing against the warp-side worktree.
+// TestWeftPathAccessors checks that the weft path accessors mirror AnchorRel.
+// It also checks that each weft worktree pairs with its warp-side worktree.
 //
 //testtiming:keep RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftPathAccessors(t *testing.T) {
@@ -102,8 +100,8 @@ func TestWeftPathAccessors(t *testing.T) {
 	}
 }
 
-// TestWeftWarpSlug covers WeftWarpSlug's round-trip against a weft sibling directory name,
-// and rejects names that do not carry the weftname.Suffix tail or whose stripped prefix is empty.
+// TestWeftWarpSlug checks that WeftWarpSlug round-trips a weft sibling directory name,
+// and that it rejects names without the weftname.Suffix tail or with an empty stripped prefix.
 func TestWeftWarpSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

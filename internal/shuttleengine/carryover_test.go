@@ -1,4 +1,6 @@
-// carryover_test.go covers the carry-over of operator instructions into a re-spawned run: the sent-texts record a verified send keeps, and the predecessor a run start reads instructions from.
+// carryover_test.go covers the carry-over of operator instructions into a re-spawned run.
+// It covers the sent-texts record that a verified send keeps.
+// It also covers the predecessor that a run start reads instructions from.
 
 package shuttleengine
 
@@ -16,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// instructionEngine is a fakeEngine whose session signals read each "PROMPT:<text>" line as a turn start carrying <text> as its instruction.
+// instructionEngine is a test engine whose session signal parser reads each "PROMPT:<text>" line as a turn start.
+// The turn start carries <text> as its instruction.
 type instructionEngine struct {
 	*fakeEngine
 }
@@ -31,10 +34,12 @@ func (e instructionEngine) ParseSessionSignals(data []byte) ([]SessionSignal, in
 	return signals, len(data)
 }
 
-// predecessorEvents is the events file of a seeded predecessor: a skill-load turn start before the prompt offset, the prompt, an operator instruction, a text a send typed and a repeat of the instruction.
+// predecessorEvents is the events file of a seeded predecessor, with a skill-load turn start before the prompt offset:
+// the prompt, an operator instruction, a text a send typed, and a repeat of the instruction.
 const predecessorEvents = "PROMPT:skill load\nPROMPT:the prompt\nPROMPT:also fix the README\nPROMPT:a parent send\nPROMPT:also fix the README\n"
 
-// seedPredecessor writes the run record of an earlier run into the run root of fx, with events as its events file and its prompt offset past the skill-load turn start.
+// seedPredecessor writes the run record of an earlier run into the run root of fx.
+// Its events file is the events argument, and its prompt offset lies past the skill-load turn start.
 // The run's directory is named after its RunID, and the strand of its record after the same ID.
 // The sent text "a parent send" is recorded as a send into it.
 func seedPredecessor(t *testing.T, fx *fixture, rs RunState, events string) {
@@ -55,7 +60,8 @@ func seedPredecessor(t *testing.T, fx *fixture, rs RunState, events string) {
 	recordSentText(dir, "a parent send")
 }
 
-// TestStart_CarriesOverOperatorInstructions pins which earlier run of a role a start carries instructions over from, and what it carries.
+// TestStart_CarriesOverOperatorInstructions pins which earlier run of a role a start carries instructions over from.
+// It also pins what that run carries.
 // The predecessor's prompt turn start is no operator instruction, and neither is a text its sends typed.
 func TestStart_CarriesOverOperatorInstructions(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -206,7 +212,8 @@ func TestStart_CarriesOverOperatorInstructions(t *testing.T) {
 	}
 }
 
-// TestStart_CarryOverSurvivesAStartRetry pins that a start whose first launch died carries the instructions into the prompt of the launch that succeeds, sends one notice after that success, and logs the carry-over once.
+// TestStart_CarryOverSurvivesAStartRetry pins that a start whose first launch died still carries its instructions.
+// The successful launch's prompt carries them; the start then sends one notice and logs the carry-over once.
 // It captures the process-global logger, so it runs serially.
 func TestStart_CarryOverSurvivesAStartRetry(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -253,7 +260,8 @@ func TestStart_CarryOverSurvivesAStartRetry(t *testing.T) {
 	}
 }
 
-// TestRun_Send_RecordsTheSentText pins that a verified send into a run with a directory appends its text to the run's sent-texts file.
+// TestRun_Send_RecordsTheSentText pins that a verified send into a run with a directory appends its text.
+// The text goes to the run's sent-texts file.
 func TestRun_Send_RecordsTheSentText(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -275,7 +283,8 @@ func TestRun_Send_RecordsTheSentText(t *testing.T) {
 	}
 }
 
-// TestRun_Send_SucceedsWhenTheSentTextCannotBeRecorded pins that a run directory the sent-texts file cannot be written in does not fail the send, and that the failure is logged once.
+// TestRun_Send_SucceedsWhenTheSentTextCannotBeRecorded pins that the send still succeeds.
+// The sent-texts file cannot be written in the run directory, and the failure is logged once.
 // It captures the process-global logger, so it runs serially.
 func TestRun_Send_SucceedsWhenTheSentTextCannotBeRecorded(t *testing.T) {
 	tiergate.Require(t, 0)

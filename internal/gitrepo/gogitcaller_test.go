@@ -1,5 +1,6 @@
-// gogitcaller_test.go machine-checks PATTERN-gitrepo-client-boundary: in internal/gitrepo's own non-test source, readGoGit is the only function that calls goGit, so no go-git read can bypass its whole-read retry.
-// It is untagged and spawns nothing, a pure go/ast scan.
+// gogitcaller_test.go is a go/ast scan.
+// It checks that readGoGit is the only function in internal/gitrepo's non-test source that calls goGit.
+// Any other goGit call would bypass readGoGit's whole-read retry.
 
 package gitrepo
 
@@ -13,11 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// goGitCallerMinScannedFiles is the vacuous-scan floor: fewer non-test .go files than this means the directory resolution is misconfigured rather than the package having shrunk.
+// goGitCallerMinScannedFiles is the least number of non-test .go files the scan must find.
+// A smaller count means the directory resolution is wrong, not that the package has shrunk.
 const goGitCallerMinScannedFiles = 5
 
-// TestGoGitCallers_OnlyReadGoGitCallsGoGit fails when any function of internal/gitrepo's non-test source other than readGoGit calls goGit, and when the scan finds no call from readGoGit at all.
-// See PATTERN-gitrepo-client-boundary.
+// TestGoGitCallers_OnlyReadGoGitCallsGoGit fails when a non-test function calls goGit outside readGoGit.
+// The scan covers internal/gitrepo's non-test source, and it also fails when it finds no call from readGoGit at all.
 func TestGoGitCallers_OnlyReadGoGitCallsGoGit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

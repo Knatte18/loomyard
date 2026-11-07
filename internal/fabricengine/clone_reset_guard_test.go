@@ -1,10 +1,9 @@
 // clone_reset_guard_test.go pins --reset's hub predicate.
 //
-// The hub name --reset acts on is DERIVED, never typed: from the warp URL in the two-argument form,
-// and from the warp URL recorded on the weft's own binding in the one-argument form, where the
-// operator never sees the name of the directory being deleted.
-// Before the guard, --reset ran an unconditional RemoveAll on that derived path, so any directory
-// that merely happened to be called `<name>-LYMHUB` was destroyed, user content and all.
+// The hub name --reset acts on is derived, never typed:
+// in the two-argument form from the warp URL, and in the one-argument form from the weft's recorded warp URL.
+// --reset tears down only a directory carrying a structural hub mark:
+// a directory merely named `<name>-LYMHUB` is left alone.
 //
 // These tests drive resetHub directly rather than CloneHub, so they spawn no git and stay in the
 // untagged Tier-1 tier per the Test Tier Purity Invariant.
@@ -56,9 +55,8 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 	}
 }
 
-// TestResetHub_RemovesARealHub is the guard's counter-test: a directory carrying either structural
-// mark of a hub must still be torn down, so --reset stays an idempotent re-clone rather than being
-// disabled outright.
+// TestResetHub_RemovesARealHub asserts that a directory carrying either structural hub mark is torn down.
+// It keeps --reset an idempotent re-clone rather than disabling it outright.
 //
 //testtiming:keep resetHub still tearing down a directory carrying either structural hub mark, so --reset stays an idempotent re-clone; coverage of its blocks by other tests does not show an assertion of this
 func TestResetHub_RemovesARealHub(t *testing.T) {

@@ -1,19 +1,9 @@
-// seam_enforcement_test.go enforces this package's half of the Told-Geometry Invariant: production
-// code in internal/cliwire takes every absolute path it operates on from its caller and has no
-// direct production import of internal/lymcwd.
-//
-// cliwire/doc.go already makes this claim in prose ("cliwire's production dependency set is fixed
-// ... internal/lymcwd is barred by the Told-Geometry Invariant and is never needed here"); this test
-// is the mechanical pin behind that prose, mirroring internal/shedrecipe's own
-// seam_enforcement_test.go (crucible round sonnet-xhigh-r8, CW-3). Several other Told-Geometry
-// "Bound packages" (reedengine, burlerengine, websterengine, planparser, planglyph, configengine)
-// carry the same unenforced claim today with no dedicated test of their own -- a genuine, repo-wide
-// gap this one test closes only for cliwire, the package this round's own mandate is auditing, not
-// for the whole Bound-packages set.
-//
-// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist,
-// mirroring internal/shedrecipe's own reasoning: it catches the excluded import and anything else
-// that would drag geometry resolution in, with no list maintenance beyond a genuine new dependency.
+// seam_enforcement_test.go pins the Told-Geometry Invariant for internal/cliwire.
+// Production code in this package takes every absolute path it operates on from its caller,
+// and it has no direct production import of internal/lymcwd.
+// The allowlist is a membership list rather than an internal/lymcwd denylist,
+// so it also catches any other import that would drag geometry resolution in.
+// Adding a genuine new dependency means extending the list.
 
 package cliwire
 
@@ -26,8 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// cliwireAllowedImports are the only non-stdlib import paths production code in this package may
-// use -- exactly those named in doc.go's own "production dependency set is fixed" claim.
+// cliwireAllowedImports lists the only non-stdlib import paths production code in this package may use.
 var cliwireAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/standalonestate",
 	"github.com/Knatte18/loomyard/internal/standalonegeom",
@@ -39,9 +28,8 @@ var cliwireAllowedImports = []string{
 	"github.com/Knatte18/loomyard/contracts/specs",
 }
 
-// cliwireDeniedLymcwdImport is the exact import path the Told-Geometry Invariant excludes from this
-// package's production files, named here so a violation of that specific rule is reported by name
-// rather than only implied by its absence from the allowlist above.
+// cliwireDeniedLymcwdImport is the import path the Told-Geometry Invariant bars from this package's production files.
+// Naming it reports a violation by name, not only by its absence from the allowlist.
 const cliwireDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcwd"
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package

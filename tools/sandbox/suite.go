@@ -1,9 +1,8 @@
-// suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox reed-watch-suite",
-// "sandbox shuttle-suite", "sandbox creel-suite", "sandbox burler-suite", and "sandbox webster-suite"
-// subcommands: copies one of the embedded suite templates (main, reed, reed-watch, shuttle, creel, burler, or webster) into the Hub warp repo, stamps a lym binary fingerprint, registers the file as a git exclude entry, and launches an interactive Claude session to execute it.
-// The suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch, post-session reed teardown) via the suiteSpec parameterization of runSuite.
-// Only the file name, embedded doc body, default instruction, and reed-teardown flag differ.
-// reedWatchSuite is the one spec that sets reedTeardown false, deliberately (see its own comment).
+// suite.go implements the sandbox suite subcommands, which run one embedded suite scheme against the Hub warp repo.
+// A run writes the scheme file there and stamps a lym binary fingerprint into it.
+// It also registers the file as a git exclude entry, then launches an interactive claude session to execute it.
+// Every suite shares these mechanics through the suiteSpec parameterization of runSuite.
+// A spec varies only its file name, embedded doc body, default instruction, and whether reed teardown runs.
 
 package main
 
@@ -22,8 +21,8 @@ import (
 
 // Suite-specific constants.
 const (
-	// repoDirName is the subdirectory under the Hub (lym-test-LYMHUB) that holds
-	// the repo clone. The Hub layout is <parent>/<hubName>/<repoDirName>.
+	// repoDirName is the subdirectory under the Hub (lym-test-LYMHUB) that holds the repo clone.
+	// The Hub layout is <parent>/<hubName>/<repoDirName>.
 	repoDirName = "lym-test"
 )
 
@@ -51,16 +50,14 @@ var websterSandboxSuiteMD string
 //go:embed SANDBOX-FABRIC-SUITE.md
 var fabricSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over every supported suite: the file written into
-// the Hub warp repo, the embedded doc body rendered into it, the default
-// prompt handed to claude when the operator supplies no -prompt override, and
-// whether the suite boots a live reed substrate that must be torn down after
-// the session. Every other mechanic (fingerprinting, git-exclude,
-// stale-report cleanup, agent launch) is shared across specs.
+// suiteSpec describes one suite run: its scheme file, its embedded doc body, and its default prompt.
+// The default prompt applies when the operator supplies no -prompt override.
+// reedTeardown says whether the suite boots a live reed substrate that runSuite must tear down afterwards.
+// Every other mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch) is shared by all specs.
 type suiteSpec struct {
-	// fileName is the name of the suite scheme file written into the Hub warp
-	// repo at each suite run. It is intentionally kept out of git via
-	// .git/info/exclude (see ensureGitExclude).
+	// fileName is the name of the suite scheme file written into the Hub warp repo at each suite run.
+	// It is kept out of git through a .git/info/exclude entry;
+	// so git never tracks it.
 	fileName string
 	// doc is the embedded suite body rendered into fileName, following the
 	// binary fingerprint header.
@@ -69,20 +66,18 @@ type suiteSpec struct {
 	// its sole argument when no -prompt override is supplied.
 	instruction string
 	// reedTeardown marks suites whose scenarios boot a live tmux substrate (lym reed up).
-	// For those, runSuite runs `lym reed down` in the warp repo after the agent session ends, whatever the agent did: an orphaned tmux server holds open handles inside the Hub and blocks the next sandbox/build.cmd -reset.
+	// runSuite then runs lym reed down after the session, since an orphaned tmux server blocks the next build -reset.
 	reedTeardown bool
 }
 
-// mainSuite is the original SANDBOX-CORE-SUITE spec: the general black-box scheme
-// exercising the lym CLI end-to-end.
+// mainSuite is the SANDBOX-CORE-SUITE spec: the general black-box scheme exercising the lym CLI end-to-end.
 var mainSuite = suiteSpec{
 	fileName:    "SANDBOX-CORE-SUITE.md",
 	doc:         sandboxSuiteMD,
 	instruction: "Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly.",
 }
 
-// reedSuite is the SANDBOX-REED-SUITE spec: the dedicated scheme exercising the
-// reed/tmux lifecycle scenarios split out of the main suite.
+// reedSuite is the SANDBOX-REED-SUITE spec: the dedicated scheme exercising the reed/tmux lifecycle scenarios.
 var reedSuite = suiteSpec{
 	fileName:     "SANDBOX-REED-SUITE.md",
 	doc:          reedSandboxSuiteMD,
@@ -90,21 +85,17 @@ var reedSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// reedWatchSuite is the SANDBOX-REED-WATCH-SUITE spec: the non-destructive,
-// single-attach-session counterpart to reedSuite. Unlike every other
-// reed-touching suite, reedTeardown is deliberately false here -- the whole
-// point of this suite is that the reed session survives past the driving
-// agent's own turn ending, so the operator can keep exploring the still-live,
-// still-attached session by hand. See SANDBOX-REED-WATCH-SUITE.md's "Session
-// end" section.
+// reedWatchSuite is the SANDBOX-REED-WATCH-SUITE spec: a non-destructive scheme that runs one attached reed session.
+// reedTeardown stays false here: the reed session must outlive the driving agent's turn,
+// so the operator can keep exploring the still-live session by hand.
 var reedWatchSuite = suiteSpec{
 	fileName:    "SANDBOX-REED-WATCH-SUITE.md",
 	doc:         reedWatchSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-REED-WATCH-SUITE.md and follow the instructions in it exactly.",
 }
 
-// shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec: the dedicated scheme
-// exercising the lym shuttle black-box agent scenarios.
+// shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec:
+// the dedicated scheme exercising the lym shuttle black-box agent scenarios.
 var shuttleSuite = suiteSpec{
 	fileName:     "SANDBOX-SHUTTLE-SUITE.md",
 	doc:          shuttleSandboxSuiteMD,
@@ -112,9 +103,9 @@ var shuttleSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// creelSuite is the SANDBOX-CREEL-SUITE spec: the dedicated scheme
-// exercising the lym creel black-box agent scenarios.
-// It sets reedTeardown because its scenarios add reed strands, whose tmux server would otherwise block the next build -reset.
+// creelSuite is the SANDBOX-CREEL-SUITE spec:
+// the dedicated scheme exercising the lym creel black-box agent scenarios.
+// It sets reedTeardown: its scenarios add reed strands, whose tmux server would block the next build -reset.
 var creelSuite = suiteSpec{
 	fileName:     "SANDBOX-CREEL-SUITE.md",
 	doc:          creelSandboxSuiteMD,
@@ -122,8 +113,8 @@ var creelSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// burlerSuite is the SANDBOX-BURLER-SUITE spec: the dedicated scheme
-// exercising the lym burler round-worker black-box agent scenarios.
+// burlerSuite is the SANDBOX-BURLER-SUITE spec:
+// the dedicated scheme exercising the lym burler round-worker black-box agent scenarios.
 var burlerSuite = suiteSpec{
 	fileName:     "SANDBOX-BURLER-SUITE.md",
 	doc:          burlerSandboxSuiteMD,
@@ -131,7 +122,8 @@ var burlerSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// websterSuite is the SANDBOX-WEBSTER-SUITE spec: the dedicated scheme exercising the lym webster fork-loop black-box agent scenarios.
+// websterSuite is the SANDBOX-WEBSTER-SUITE spec:
+// the dedicated scheme exercising the lym webster fork-loop black-box agent scenarios.
 var websterSuite = suiteSpec{
 	fileName:     "SANDBOX-WEBSTER-SUITE.md",
 	doc:          websterSandboxSuiteMD,
@@ -139,14 +131,12 @@ var websterSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// fabricSuite is the SANDBOX-FABRIC-SUITE spec: the dedicated scheme exercising
-// fabric's stricter "main-weft"-suffixed branch-naming behavior. It runs
-// against the same shared Hub every other suite uses -- fabric's own
-// destructive verbs (clone --reset, prune --apply, cleanup --apply) are
-// exactly what a sandbox Hub exists to absorb, and re-running sandbox/build.cmd
-// -reset is the recovery path if a run leaves the Hub in a state another
-// suite would trip on. No live reed/tmux substrate is involved, so no
-// teardown is needed.
+// fabricSuite is the SANDBOX-FABRIC-SUITE spec:
+// the dedicated scheme exercising fabric's stricter "main-weft"-suffixed branch-naming behavior.
+// It shares the Hub with every other suite and runs fabric's destructive verbs.
+// The verbs are clone --reset, prune --apply, and cleanup --apply; a sandbox Hub exists to absorb them.
+// sandbox/build.cmd -reset is the recovery path when a run leaves the Hub in a state another suite trips on.
+// No live reed/tmux substrate is involved, so reedTeardown stays false.
 var fabricSuite = suiteSpec{
 	fileName:    "SANDBOX-FABRIC-SUITE.md",
 	doc:         fabricSandboxSuiteMD,
@@ -171,18 +161,17 @@ var interactiveStdio = func() bool {
 	return isCharDevice(os.Stdin) && isCharDevice(os.Stdout)
 }
 
-// nonInteractiveWarning is printed before launching the agent when the
-// launcher's stdio is not an attached console. An interactive claude session
-// without a TTY cannot idle between turns: the process ends as soon as the
-// model ends a turn, so a backgrounded command's completion notification is
-// never delivered and the agent may abandon the remaining scenarios.
+// nonInteractiveWarning is printed before launching the agent when stdin or stdout is not an attached console.
+// Without a TTY, an interactive claude session cannot idle between turns: it ends as soon as the model ends a turn.
+// A backgrounded command's completion notice never arrives, and the agent may abandon the remaining scenarios.
 const nonInteractiveWarning = "sandbox: warning: stdin/stdout is not an attached console; " +
 	"the agent session cannot idle for notifications and may end early, abandoning scenarios. " +
 	"Run the suite launcher in a real interactive terminal (do not redirect or background it).\n"
 
-// launchAgent runs an interactive claude session inside warpRepoDir. It passes
-// instruction as the sole positional argument and --dangerously-skip-permissions
-// to skip per-action confirmation. binDir (when non-empty) is prepended to PATH.
+// launchAgent runs an interactive claude session inside warpRepoDir.
+// It passes instruction as the sole positional argument.
+// It also passes --dangerously-skip-permissions to skip per-action confirmation.
+// binDir, when non-empty, is prepended to PATH.
 var launchAgent = func(warpRepoDir, claudePath, instruction, binDir string) int {
 	// An interactive claude session is only reliable on an attached console;
 	// warn (not fail) so a knowingly-detached run can still proceed.
@@ -194,14 +183,13 @@ var launchAgent = func(warpRepoDir, claudePath, instruction, binDir string) int 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// Only override the inherited environment when a dev binary is in play;
-	// otherwise the child sees the operator's own environment unchanged, as before.
+	// Override the inherited environment only when a dev binary is in play;
+	// otherwise the child sees the operator's environment unchanged.
 	if binDir != "" {
 		cmd.Env = prependPath(binDir, os.Environ())
 	}
 	if err := cmd.Run(); err != nil {
-		// exec.ExitError is returned directly by cmd.Run, never wrapped, so a
-		// plain two-value type assertion is the idiomatic way to extract the code.
+		// cmd.Run returns *exec.ExitError unwrapped, so a direct type assertion reaches the exit code.
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return exitErr.ExitCode()
 		}
@@ -238,8 +226,8 @@ type binaryInfo struct {
 
 // binaryFingerprint stats and hashes the file at path to produce a binaryInfo snapshot.
 func binaryFingerprint(path, source string) (binaryInfo, error) {
-	// Stat first to capture size and modtime before opening the file, so the
-	// two calls reflect a consistent view of the inode.
+	// Stat first to capture size and modtime before opening the file.
+	// The two calls then reflect a consistent view of the inode.
 	fi, err := os.Stat(path)
 	if err != nil {
 		return binaryInfo{}, fmt.Errorf("stat binary %s: %w", path, err)
@@ -282,14 +270,13 @@ func (b binaryInfo) header() string {
 	)
 }
 
-// renderScheme combines the binary fingerprint header with doc to produce
-// the full suite file content.
+// renderScheme combines the binary fingerprint header with doc to produce the full suite file content.
 func renderScheme(info binaryInfo, doc string) string {
 	return info.header() + "\n" + doc
 }
 
-// ensureGitExclude idempotently appends entry to <repoDir>/.git/info/exclude,
-// creating the directory and file if needed. Existing content is preserved.
+// ensureGitExclude idempotently appends entry to <repoDir>/.git/info/exclude.
+// It creates the directory and file if needed, and it preserves existing content.
 func ensureGitExclude(repoDir, entry string) error {
 	infoDir := filepath.Join(repoDir, ".git", "info")
 	if err := os.MkdirAll(infoDir, 0o755); err != nil {
@@ -325,7 +312,9 @@ func ensureGitExclude(repoDir, entry string) error {
 	return nil
 }
 
-// runSuite executes a sandbox suite: fingerprints the deployed lym binary, writes a fresh suite file, registers it in .git/info/exclude, and starts an interactive Claude session.
+// runSuite executes a sandbox suite.
+// It fingerprints the deployed lym binary, writes a fresh suite file, and registers it in .git/info/exclude.
+// It then starts an interactive Claude session.
 // For specs flagged reedTeardown, it runs `lym reed down` after the session ends.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	warpRepoDir := filepath.Join(parentDir, hubName, repoDirName)

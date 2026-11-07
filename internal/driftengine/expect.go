@@ -1,4 +1,5 @@
-// expect.go — the Drift-Expect producer and the `expectation` gate entry: the expect agent writes the changes it expects a task to make before the writer starts, and Drift-Expect seals them.
+// expect.go implements the Drift-Expect producer, which seals the changes the expect agent expects a task to make.
+// It also holds the `expectation` gate entry that the agent's table runs.
 
 package driftengine
 
@@ -21,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// DriftExpect is the Drift-Expect ShedProducer.
+// DriftExpect is the ShedProducer that runs the expect agent and seals the changes it expects.
 type DriftExpect struct {
 	name        string
 	row         Row
@@ -37,16 +38,19 @@ func NewDriftExpect(name string, row Row, expectation shuttleengine.GateEntry, d
 	return &DriftExpect{name: name, row: row, expectation: expectation, deps: deps}
 }
 
-// Call runs one Drift-Expect pass.
-// With drift switched off, no scope record, an already sealed expectation, scope off or a deferred capture it is Done at once spawning no agent;
-// the last two record Unsealed first, so containment reads the empty expectation.
-// A capture that never counted, a baseline that is missing or no longer matches its digest, and a code HEAD other than the capture's are a Stuck for the run's parent, opening with shedadapters.DecisionHaltPrefix and then DeferHaltPrefix.
-// A run whose record holds no diff mode gets the config's diff and key_patterns recorded first.
-// A pass that goes on to write over records differing from their newest records commit is a Stuck for the run's parent, opening with shedadapters.DecisionHaltPrefix and naming lym drift amend <slug> --restore.
-// A session mark closed by an agent return without an error, which keeps its OpenedAt, with an expected.yaml that validates is sealed with no spawn; a mark never opened, or closed after an error, runs the agent.
-// Otherwise the pass writes the listing of the baseline's cases, opens the session mark, and runs the agent, resuming a live chair; the session's return closes the mark.
-// A Done seals expected.yaml, with the baseline's digest as a second trailer when no commit has recorded it yet;
-// an exhausted `expectation` entry is the shed's Stuck, and its resume spawns the agent again.
+// Call runs one Drift-Expect pass, which seals the changes the expect agent expects a task to make.
+// It is Done at once, spawning no agent, when drift is switched off or no scope is recorded.
+// It is also Done at once when the expectation is already sealed.
+// When the scope is off or the baseline capture was deferred, the pass records the expectation Unsealed first.
+// Containment then reads the empty expectation, and the pass is Done.
+// The run's parent gets a Stuck when the capture never counted, or when the baseline is missing or fails its digest.
+// It also gets one when the code HEAD is not the capture's, or when the records differ from their newest commit.
+// Each such reason opens with shedadapters.DecisionHaltPrefix.
+// The capture, baseline and HEAD reasons also carry DeferHaltPrefix.
+// A session the agent already closed, with an expected.yaml that validates, is sealed without spawning the agent.
+// Otherwise the pass runs the expect agent, which resumes a live chair when one exists.
+// A Done seals expected.yaml, adding the baseline digest as a second trailer when no commit has recorded it yet.
+// An exhausted `expectation` entry is the shed's Stuck, and its resume spawns the agent again.
 func (p *DriftExpect) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	err := requireSeams(p.name,
@@ -76,7 +80,7 @@ func haltForParent(reason string) (shedengine.Outcome, shedengine.OutputPointer,
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: shedadapters.DecisionHaltPrefix + reason}, nil
 }
 
-// pass is Call after the switch check.
+// pass runs one Drift-Expect pass once drift is switched on, ending in a seal, a halt, or a run of the expect agent.
 func (p *DriftExpect) pass(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	rec, err := ReadRecords(d)
@@ -160,8 +164,9 @@ func (p *DriftExpect) doneUnsealed(rec Records, why string) (shedengine.Outcome,
 	return doneBecause(why)
 }
 
-// checkHead returns a Stuck when the code HEAD is not the head the baseline was captured at, which the scope record's BaselineHead names and the capture record names when the scope record holds none.
-// stopped is true when it returned a Stuck; a run that knows no capture head is not checked.
+// checkHead returns a Stuck when the code HEAD differs from the head the baseline was captured at.
+// That head is the scope record's BaselineHead, or the capture record's head when the scope record holds none.
+// stopped reports whether it returned a Stuck; a run that knows no capture head is not checked.
 func (p *DriftExpect) checkHead(scope ScopeRecord) (outcome shedengine.Outcome, pointer shedengine.OutputPointer, stopped bool, err error) {
 	d := p.deps
 	captureHead := scope.BaselineHead
@@ -210,7 +215,8 @@ func (p *DriftExpect) setSession(mark SessionMark) error {
 	})
 }
 
-// runAgent writes the listing, opens the session mark when it is not open, runs the agent or resumes its live chair, closes the mark and seals a Done.
+// runAgent writes the listing, opens the session mark if needed, and runs the agent or resumes its live chair.
+// It closes the mark when the context is still live, and seals the expectation when the agent is Done.
 // The mark stays open when the context ended, which leaves a possibly live agent for the next entry to reattach to.
 func (p *DriftExpect) runAgent(ctx context.Context, scope ScopeRecord, unguarded bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
@@ -255,7 +261,8 @@ func (p *DriftExpect) runAgent(ctx context.Context, scope ScopeRecord, unguarded
 	return p.seal(unguarded)
 }
 
-// seal commits expected.yaml with its seal trailer, and with the baseline's digest as a second trailer when unguarded says no commit recorded it yet.
+// seal commits expected.yaml with its seal trailer.
+// When unguarded is true, no commit has recorded the baseline digest yet, so it is added as a second trailer.
 func (p *DriftExpect) seal(unguarded bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	var extra []fabricengine.Trailer
@@ -350,8 +357,9 @@ type listingFile struct {
 	Cases []listingCase `yaml:"cases"`
 }
 
-// writeListing writes the listing of every case under baselineDir to path: each line's identity and text under diff lines, the case names alone under diff command.
-// Under diff lines it leaves out what volatile names, which the diff ignores, so the agent writes no expectation of it.
+// writeListing writes the listing of every case under baselineDir to path.
+// Under diff lines it writes each line's identity and text, minus the lines volatile names, which the diff ignores.
+// Under diff command it writes the case names alone.
 func writeListing(path, mode, baselineDir string, patterns []*regexp.Regexp, volatile Volatile) error {
 	listings, err := ListCaptures(baselineDir, patterns)
 	if err != nil {

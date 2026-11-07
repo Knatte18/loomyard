@@ -1,6 +1,9 @@
-<!-- This is burler's assistant consolidation part: the rules the review step carries, after the cluster rules, when the round runs an assistant reviewer beside the chair.
-     internal/burlerengine's assistRulesBlock (assist.go) reads and fills it, and the result becomes the review step's optional assist_rules marker value; a round with no assistant renders the review step without it.
-     It declares one required marker: {{.assist_origin}}, the origin value a kept assistant finding carries. -->
+<!-- This is burler's assistant consolidation part: the review step's rules for a round with an assistant reviewer.
+     The review step carries it after the cluster rules.
+     `assistRulesBlock` (internal/burlerengine/assist.go) fills it.
+     The result becomes the review step's optional assist_rules marker value.
+     A round with no assistant renders the review step without it.
+     It declares one required marker, {{.assist_origin}}, the origin value a kept assistant finding carries. -->
 ### The assistant reviewer
 
 An assistant reviewer reviews the same target beside you and writes one report; your prompt names its report and its end marker.

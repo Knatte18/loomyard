@@ -1,8 +1,7 @@
-// committedfile_integration_test.go covers CommittedAnchoredFile and CommittedAnchoredFileHistory against a wired hub fixture:
-// the committed bytes come back despite a later working-tree edit, a path never committed reports found == false,
-// and the history holds every committed version, newest first.
+// committedfile_integration_test.go covers CommittedAnchoredFile and CommittedAnchoredFileHistory.
+// The tests run against a wired hub fixture.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// It is in package fabricengine_test and shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -37,7 +36,7 @@ func TestCommittedAnchoredFile(t *testing.T) {
 		}
 	})
 
-	// Commits an anchored file, edits the working-tree copy, and asserts the committed bytes come back.
+	// The read must return the committed bytes, not the edited working-tree copy.
 	t.Run("ReturnsCommittedBytes", func(t *testing.T) {
 		const rel = "_lym/committedfile-probe.txt"
 		onDisk := filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, rel)
@@ -62,7 +61,8 @@ func TestCommittedAnchoredFile(t *testing.T) {
 		}
 	})
 
-	// A never-committed path has an empty history; two committed versions come back newest first, without the edited working copy.
+	// A never-committed path has an empty history;
+	// two committed versions come back newest first, without the edited working copy.
 	t.Run("HistoryHoldsCommittedVersions", func(t *testing.T) {
 		const rel = "_lym/committedfile-history-probe.txt"
 		onDisk := filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, rel)

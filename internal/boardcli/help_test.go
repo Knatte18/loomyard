@@ -1,7 +1,6 @@
 // help_test.go pins the documented payload schema visible via --help for every board leaf command.
-// Each test drives RunCLI with --help and asserts that the Long output contains the documented
-// field names and does NOT contain any removed token (id_or_slug, phase, group) that would signal a
-// stale description.
+// Each test drives RunCLI with --help and asserts that the Long output contains the documented field names.
+// It also asserts that no removed token (id_or_slug, phase, group) appears, since one would signal a stale description.
 
 package boardcli_test
 
@@ -16,10 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// runHelp invokes RunCLI for a leaf command (identified by one or more path
-// segments, e.g. "upsert" or "set-status") with --help and returns the
-// combined stdout. Help output does not require a seeded cwd because cobra
-// intercepts --help before PersistentPreRunE executes.
+// runHelp invokes RunCLI for a leaf command with --help and returns the combined stdout.
+// The leaf command is named by one or more path segments, e.g. "upsert" or "set-status".
+// Help output needs no seeded cwd, because cobra intercepts --help before PersistentPreRunE executes.
 func runHelp(t *testing.T, args ...string) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -27,15 +25,15 @@ func runHelp(t *testing.T, args ...string) string {
 	return buf.String()
 }
 
-// TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the documented field names for the post-batch-1 schema and does not contain any removed token (id_or_slug, phase, group).
-// Every slug-taking verb's help also states the limit formatted from boardengine.MaxSlugLength, so the sentence cannot drift from validation.
+// TestHelpSchema_LeafCommands asserts that each leaf command's --help names its documented fields.
+// It also asserts that none of the removed tokens (id_or_slug, phase, group) appears.
+// Every slug-taking verb's help states the limit from boardengine.MaxSlugLength, so it cannot drift from validation.
 //
 //testtiming:keep pins every leaf command's documented field names, removed tokens, the slug-limit sentence and the sibling-warning sentence in --help, which its covering test does not assert
 func TestHelpSchema_LeafCommands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// removedTokens are field names that were present in the old schema and must
-	// not appear in any --help output after the batch-1 rename.
+	// removedTokens are field names the schema no longer uses, and no --help output may name them.
 	removedTokens := []string{"id_or_slug", "phase", "group"}
 
 	tests := []struct {
@@ -158,7 +156,6 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s", tt.args, slugLimit, helpText)
 			}
 
-			// Each listed field name must appear somewhere in the help output.
 			for _, token := range tt.mustContain {
 				if !strings.Contains(helpText, token) {
 					t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s",
@@ -166,7 +163,6 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				}
 			}
 
-			// No removed token from the old schema must appear in any command's help.
 			for _, bad := range append(removedTokens, tt.mustNotContain...) {
 				if strings.Contains(helpText, bad) {
 					t.Errorf("RunCLI(%v --help) help text must not contain removed token %q\noutput:\n%s",

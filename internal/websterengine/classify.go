@@ -1,10 +1,7 @@
-// classify.go implements webster's own recovery-classification decision logic, deciding a batch's
-// outcome from webster's Report/Digest types.
-// The flat plan format carries no `## Scope`, so there is nothing for a changed file to be judged
-// against beyond the scope guard's informational deviation list.
-// The pinned decision order (report present wins outright; otherwise turn-ended, then timeout, then
-// dead-pane, then running) is a frozen, cross-checked invariant that Classify preserves exactly,
-// not a webster-specific choice.
+// classify.go implements webster's recovery classification, deciding a batch's outcome from Report and Digest.
+// The flat plan format has no `## Scope` section.
+// A changed file therefore has nothing to be judged against beyond the scope guard's informational deviation list.
+// Classify's decision order is a frozen, cross-checked invariant, not a webster-specific choice.
 
 package websterengine
 
@@ -13,20 +10,20 @@ import (
 	"time"
 )
 
-// ClassifyInputs carries every signal Classify's decision needs.
+// ClassifyInputs carries every signal that decides a batch's classification.
 type ClassifyInputs struct {
 	BatchNumber int
 	BatchSlug   string
 	ReportPath  string
 	Report      *Report // Non-nil always wins; nil when caller found none
-	// TurnEnded is true if the strand's newest turn end counts (gatefixer's TurnEndedAfter).
+	// TurnEnded reports whether the strand's newest turn end counts.
 	TurnEnded    bool
 	StrandLive   bool // True if fork's reed strand is still live
 	Elapsed      time.Duration
 	BatchTimeout time.Duration
 }
 
-// Classify decides a batch's classification from ins in pinned order:
+// Classify decides a batch's classification from ins, checking the signals in this order:
 // 1. Report present → terminal (done/stuck per OK/FAILED).
 // 2. No report, TurnEnded → terminal dead (DeadReasonAsking).
 // 3. No report, Elapsed > BatchTimeout → terminal dead (DeadReasonTimeout).

@@ -1,4 +1,5 @@
-// runlog.go keeps one diagnostic record and log per tier run under the gate directory, and renders and finds the tier timeout, runner crash and tier summary lines a site reads from a log.
+// runlog.go writes the diagnostic record and log of each tier run under the gate directory;
+// it also renders and finds the timeout, runner crash and tier summary lines that a log carries.
 
 package gateslot
 
@@ -58,32 +59,45 @@ type RunRecord struct {
 	// Outcome is "passed" or "failed".
 	Outcome   string `json:"outcome"`
 	GuardStep bool   `json:"guard_step"`
-	// Carried is set for a tier the green record held green over an unchanged tree, which took no slot and ran no command.
+	// Carried is set for a tier the green record held green over an unchanged tree.
+	// The tier took no slot and ran no command.
 	Carried bool `json:"carried,omitempty"`
-	// Build is set on the record of the build step, whose Tier is the first opted-in tier it ran before and whose ScopeForm is build.
+	// Build is set on the record of the build step.
+	// Its Tier is the first opted-in tier the build ran before, and its ScopeForm is build.
 	Build bool `json:"build,omitempty"`
-	// BlockedBy is the log path of the failed build that kept this tier from running, empty for a tier the build did not block.
+	// BlockedBy is the log path of the failed build that kept this tier from running.
+	// It is empty for a tier the build did not block.
 	BlockedBy  string `json:"blocked_by,omitempty"`
 	Discovered int    `json:"discovered"`
 	Passed     int    `json:"passed"`
 	Failed     int    `json:"failed"`
 	Skipped    int    `json:"skipped"`
-	// Launches lists, per package whose test binary ran, how long the binary took to launch; empty for a record written before the list existed, a tier that reads no packages and a run that launched none.
+	// Launches lists, per package whose test binary ran, how long the binary took to launch.
+	// It is empty for a tier that reads no packages and for a run that launched none,
+	// and it is absent from a record written before the field existed.
 	Launches []PackageLaunch `json:"launches,omitempty"`
-	// Failures lists the failed tests of a go-json tier in the order they failed, leaves only, so a test whose subtest failed is left out; empty for a tier that failed none and for a VSTest tier.
+	// Failures lists the failed tests of a go-json tier in the order they failed.
+	// It holds leaf tests only, so a test whose subtest failed is left out.
+	// It is empty for a tier that failed no test and for a VSTest tier.
 	Failures []TestFailure `json:"failures,omitempty"`
-	// CallID identifies the gate call that wrote the record; every record of one call carries the same id, and a record from before the field reads with none.
+	// CallID identifies the gate call that wrote the record.
+	// Every record of one call carries the same id; a record written before the field has none.
 	CallID string `json:"call_id,omitempty"`
-	// Abandoned is set on a record written after its call was cancelled, such as by a terminating signal or a passed lease; reports count such a record apart.
+	// Abandoned is set on a record written after its call was cancelled.
+	// Cancellation comes from a terminating signal or a passed lease, and reports count such a record apart.
 	Abandoned bool `json:"abandoned,omitempty"`
-	// RunnerCrash names the signal, such as SIGABRT, that ended a tier run with no failing test, so the run judged no code; empty for any other run.
+	// RunnerCrash names the signal, such as SIGABRT, that ended a tier run with no failing test.
+	// Such a run judged no code; the field is empty for any other run.
 	RunnerCrash string `json:"runner_crash,omitempty"`
-	// Rerun is set on the record of a tier's one rerun after its first run crashed its test runner or failed on a resource shortage; the first run has its own record.
+	// Rerun is set on the record of a tier's one rerun.
+	// The rerun follows a first run that crashed its test runner or failed on a resource shortage.
+	// The first run has its own record.
 	Rerun bool `json:"rerun,omitempty"`
 }
 
 // TestFailure is one failed test of a tier run.
-// FirstLine is the first line the test printed beside go test's own `=== ` and `--- ` status lines, trimmed, which is where an error, a fatal or a panic states its cause; empty when the test printed nothing else.
+// FirstLine is the first line the test printed other than go test's own `=== ` and `--- ` status lines, trimmed.
+// It is where an error, a fatal or a panic states its cause, and it is empty when the test printed nothing else.
 type TestFailure struct {
 	Package   string `json:"package"`
 	Test      string `json:"test"`
@@ -91,8 +105,9 @@ type TestFailure struct {
 }
 
 // PackageLaunch is one package's launch timing in a go-json tier run.
-// LaunchSeconds is the gap from the package's `start` event, which `go doc cmd/test2json` defines as the test binary about to be executed, to its next event:
-// the binary's exec, any host-scanner hold on it, its init and its `TestMain` setup.
+// LaunchSeconds is the gap from the package's `start` event to its next event.
+// The `start` event marks the test binary about to be executed, as `go doc cmd/test2json` defines it.
+// The gap covers the binary's exec, any host-scanner hold on it, its init and its `TestMain` setup.
 // ElapsedSeconds is the package's own elapsed time from its closing event.
 type PackageLaunch struct {
 	Package        string  `json:"package"`
@@ -105,9 +120,12 @@ func RunLogDir(gateDir string) string {
 	return filepath.Join(gateDir, runLogDirName)
 }
 
-// WriteRunRecord writes record as `<stamp>-tier<N>-<pid>.json`, or `<stamp>-build-<pid>.json` for a build record, in dir with the run's full output beside it as the same stem with `.log`, and returns the record's path.
+// WriteRunRecord writes record in dir and returns the path of the record file.
+// The file is named `<stamp>-tier<N>-<pid>.json`, or `<stamp>-build-<pid>.json` for a build record.
+// The run's full output goes beside it as the same stem with `.log`.
 // Both files are written atomically, the log first, so a record always has its log.
-// It first removes every `.json` and `.log` file in dir last modified more than 14 days before now; a failed removal is logged and never returned.
+// It first removes every `.json` and `.log` file in dir last modified more than `runLogMaxAge` before now.
+// A failed removal is logged and never returned.
 func WriteRunRecord(dir string, record RunRecord, output []byte, now time.Time) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create gate run log directory: %w", err)
@@ -134,7 +152,8 @@ func WriteRunRecord(dir string, record RunRecord, output []byte, now time.Time) 
 }
 
 // ReadRunRecords reads every `.json` record in dir in file-name order, which is start order.
-// A file that does not decode is logged and skipped, and a directory that does not exist, as on a machine that has run no gate, reads as no records.
+// A file that does not decode is logged and skipped.
+// A directory that does not exist, as on a machine that has run no gate, reads as no records.
 func ReadRunRecords(dir string) ([]RunRecord, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -201,7 +220,8 @@ func BuildTimeoutLine(timeout time.Duration) string {
 		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout)
 }
 
-// FindTierTimeout returns the tier of the first tier or build timeout line anywhere in log, `build` for a build line, and false when the log holds none.
+// FindTierTimeout returns the tier of the first tier or build timeout line in log.
+// The tier is `build` for a build line; ok is false when log holds none.
 func FindTierTimeout(log string) (tier string, ok bool) {
 	for _, line := range strings.Split(log, "\n") {
 		rest, found := strings.CutPrefix(line, tierTimeoutPrefix)
@@ -218,7 +238,8 @@ func FindTierTimeout(log string) (tier string, ok bool) {
 	return "", false
 }
 
-// RunnerCrashLine renders the line a gate call closes with when every run that failed crashed its test runner on a signal with no failing test, in its run and its one rerun.
+// RunnerCrashLine renders the line a gate call closes with when every failed run crashed its test runner on a signal.
+// Each such run and its one rerun ended on a signal with no failing test, so no test judged the code.
 // runs names each such run with its exit code and signal, and holds no semicolon.
 // The line names the way forward, since no change to the code under test mends a runtime's crash.
 func RunnerCrashLine(runs string) string {
@@ -239,7 +260,8 @@ func FindRunnerCrash(log string) (runs string, ok bool) {
 	return "", false
 }
 
-// FailedRunsPrefix opens the one stderr line a gate call that had a failed run closes with, naming each failed run, so a reader of the call's output can find it.
+// FailedRunsPrefix opens the stderr line that a gate call with a failed run closes with, naming each failed run.
+// A reader of the call's output finds the failed runs by it.
 const FailedRunsPrefix = "gate test: failed runs: "
 
 // TierSummaryLine renders the one stderr line the gate prints after each tier run.
@@ -253,15 +275,18 @@ func TierSummaryLine(record RunRecord, logPath string) string {
 		record.Tier, scope, record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
 }
 
-// BuildSummaryLine renders the one stderr line the gate prints after the build step, naming the opted-in tier it ran before.
+// BuildSummaryLine renders the one stderr line the gate prints after the build step.
+// The line names the opted-in tier the build ran before.
 // No tier summary reader matches it, so a build line never reads as a tier line.
 func BuildSummaryLine(record RunRecord, logPath string) string {
 	return fmt.Sprintf("gate test: build before tier%d wall %.1fs exit %d log %s", record.Tier, record.WallSec, record.ExitCode, logPath)
 }
 
-// FailedTier returns the tier number of the first tier or build summary line in log whose exit code is not 0, and false when the log holds none.
-// build is true when that line is the build's, whose tier is the first opted-in tier the failed build blocked.
-// A gate call that ran several failed runs exits with the first one's code, so the first line names the run that code belongs to.
+// FailedTier returns the tier number of the first tier or build summary line in log whose exit code is not 0.
+// build reports whether that line is the build's, whose tier is then the first opted-in tier the failed build blocked.
+// ok is false when log holds no such line.
+// A gate call that ran several failed runs exits with the first one's code,
+// so the first line names the run that code belongs to.
 func FailedTier(log string) (tier int, build bool, ok bool) {
 	for _, line := range strings.Split(log, "\n") {
 		line = strings.TrimRight(line, "\r")

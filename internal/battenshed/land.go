@@ -1,5 +1,6 @@
-// land.go implements NewLand, the producer that lands a finished child run into the prime:
-// it pulls the prime, runs the hub-wide deploy command, prunes the board and, when the pull's records side stopped, tells the orch.
+// land.go implements the land row, which lands a finished child run into the prime.
+// It pulls the prime, runs the hub-wide deploy command and prunes the board.
+// When the pull's records side stopped, the row tells the orch.
 // A child run that landed no code only prunes the board.
 
 package battenshed
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	// deployLogFileSuffix is the fixed suffix of the file the deploy command's output goes to, joined onto the row's own name.
+	// deployLogFileSuffix is the fixed suffix of the deploy command's output file, joined onto the row's name.
 	deployLogFileSuffix = "-deploy.log"
 	// landLockPollBase is the first pause between two attempts on a contended land lock.
 	landLockPollBase = time.Second
@@ -28,17 +29,17 @@ const (
 	primeDirtyWaitBound = 10 * time.Minute
 	// primeDirtyPollInterval is the pause between two reads of the prime's uncommitted tracked paths.
 	primeDirtyPollInterval = 5 * time.Second
-	// DeployTimeout is how long the deploy command may run.
+	// DeployTimeout bounds how long one deploy command may run before it is ended.
 	DeployTimeout = 30 * time.Minute
 	// recordsStopMarkerLine is the row-notice marker line recording that the records-stop notice was posted.
 	recordsStopMarkerLine = "records-stop"
 )
 
-// LandingSettings is the part of the hub-wide landing config the Land row reads.
+// LandingSettings holds the hub-wide landing config that a landing reads.
 type LandingSettings struct {
 	// Deploy is the shell command run in the prime after a landing; empty runs nothing.
 	Deploy string
-	// DeployBranches lists the base branches a landing into which is deployed; an empty list deploys nothing.
+	// DeployBranches lists the base branches whose landings are deployed; an empty list deploys nothing.
 	DeployBranches []string
 }
 
@@ -50,7 +51,8 @@ type DeployResult struct {
 	TimedOut bool
 }
 
-// LandDeps carries every outside effect NewLand needs, each behind a seam so this package imports none of them and every path and command is told.
+// LandDeps carries every outside effect a landing needs, each behind a seam.
+// The seams keep this package from importing the effects, and the caller supplies every path and command.
 type LandDeps struct {
 	// ChildLanded reports whether the child run landed code, which only a run that finished a Finalize did.
 	// A child that landed nothing is neither pulled for nor deployed, and posts no landing notice.
@@ -62,7 +64,7 @@ type LandDeps struct {
 	// PrimeDirty returns the prime code worktree's uncommitted tracked paths.
 	PrimeDirty func() ([]string, error)
 	// Pull pulls the prime; a refusal, a diverged prime included, is an error carrying the reason.
-	// A non-empty recordsStop with a nil error is a records side that did not pull while the code side did: the landing goes on and names it.
+	// A nil error with a non-empty recordsStop means only the records side did not pull; the landing goes on and names it.
 	Pull func(ctx context.Context) (recordsStop string, err error)
 	// Landing reads the hub-wide landing config; it is read on every Call.
 	Landing func() (LandingSettings, error)
@@ -71,7 +73,7 @@ type LandDeps struct {
 	RunDeploy func(ctx context.Context, command, logPath string, timeout time.Duration) (DeployResult, error)
 	// PruneBoard prunes the done tasks off the board, keeping one that still carries notify_on_land.
 	PruneBoard func() error
-	// LandLock is the hub-level lock one landing holds for its whole body, with the same non-blocking acquire shape as the prime lock.
+	// LandLock is the hub-level lock one landing holds for its whole body, acquired without blocking.
 	LandLock PrimeLock
 	// PauseRequested reports a pending `lym batten pause`; nil reads as never paused.
 	PauseRequested func() (bool, error)
@@ -97,9 +99,12 @@ type landProducer struct {
 var _ shedengine.ShedProducer = (*landProducer)(nil)
 
 // NewLand returns a shedengine.ShedProducer that lands the task worktree identified by slug.
-// Under the land lock it pulls the prime, runs the deploy command and prunes the board, then posts one notice only when the pull's records side stopped;
-// a child that landed no code only prunes the board.
-// A failed step is Stuck naming it, and a pause seen during a wait is Stuck naming the goto that clears it; neither posts a notice, since the driver's hand-back tells the orch of a stop the stop chain did not settle.
+// Under the land lock it pulls the prime, runs the deploy command and prunes the board.
+// It posts one notice only when the pull's records side stopped.
+// A child that landed no code only prunes the board.
+// A failed step ends the row as Stuck naming the step.
+// A pause seen during a wait ends it as Stuck naming the goto that clears the pause.
+// Neither posts a notice: the driver's hand-back tells the orch of a stop the stop chain did not settle.
 func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -126,7 +131,8 @@ func (p *landProducer) stop(ctx context.Context, reason string) (shedengine.Outc
 	return p.stuck(ctx, reason, reportStuck)
 }
 
-// pause returns the Stuck verdict for a pause request honoured while waiting, or the cancelled-during-run error when ctx ended first.
+// pause returns the Stuck verdict for a pause request honoured while waiting.
+// When ctx ended first, it returns the cancelled-during-run error instead.
 // It records the reason as a wait, since the operator asked for the pause.
 func (p *landProducer) pause(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	return p.stuck(ctx, reason, reportWait)
@@ -150,14 +156,16 @@ func (p *landProducer) failure(ctx context.Context, step string, err error) (she
 const PauseHonouredPrefix = "pause honoured"
 
 // pausedReason is the reason of a Stuck that honours a pause request seen while waiting for what.
-// Shed's blocked persist leaves the pause flag set, so the way forward clears it with a goto before the run re-enters the row.
+// Shed's blocked persist leaves the pause flag set,
+// so the way forward clears it with a goto before the run re-enters the row.
 func (p *landProducer) pausedReason(what string) string {
 	return fmt.Sprintf("%s: a pause was requested while waiting for %s; batten stays blocked at %s, so run \"lym batten goto %s --to %s\" and then \"lym batten run %s\"",
 		PauseHonouredPrefix, what, p.name, p.slug, p.name, p.slug)
 }
 
 // Call implements shedengine.ShedProducer.
-// It runs, under the land lock, the prime check, the pull, the deploy, the board prune and the records-stop notice, each idempotent so a resume re-runs the row from the top.
+// It runs, under the land lock, the prime check, the pull, the deploy, the board prune and the records-stop notice.
+// Each step is idempotent, so a resume re-runs the row from the top.
 // A child that landed nothing skips all but the board prune.
 // Every failed step, a seam read error included, is Stuck naming the step; only a cancelled context is a hard error.
 func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -236,9 +244,11 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// pullAndDeploy pulls the prime under the prime lock and then, outside it, runs the deploy command when the parent branch is one the landing config deploys.
+// pullAndDeploy pulls the prime under the prime lock.
+// Outside the lock it runs the deploy command, when the landing config names one and lists parent in deploy_branches.
 // A non-empty reason is the Stuck reason of the failed step.
-// A non-empty recordsStop is the records side's stop message from a pull that otherwise succeeded; the deploy runs regardless.
+// A non-empty recordsStop is the records side's stop message from a pull that otherwise succeeded.
+// The deploy runs regardless.
 // A non-nil err is the cancelled-during-run diagnosis.
 func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason, recordsStop string, err error) {
 	release, lockReason, err := acquirePrimeLock(ctx, p.name, p.slug, p.primeLock)
@@ -288,9 +298,11 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 	return "", recordsStop, nil
 }
 
-// acquireLandLock takes the land lock, polling a contended one from landLockPollBase doubling to landLockPollCeiling with no time limit.
+// acquireLandLock takes the land lock, polling a contended one with no time limit.
+// The poll interval starts at a base, doubles on each attempt, and stops growing at a ceiling.
 // A non-nil release means the lock is held and the caller must call it exactly once.
-// A non-empty stuckReason is a pause honoured between two polls, or a failure to read the pause flag or to acquire; paused tells the pause from the failures.
+// A non-empty stuckReason is a pause honoured between two polls, or a failure to read the pause flag or to acquire.
+// paused tells the pause from the failures.
 // A non-nil err is the cancelled-during-run diagnosis.
 func (p *landProducer) acquireLandLock(ctx context.Context) (release func() error, stuckReason string, paused bool, err error) {
 	lock := p.deps.LandLock
@@ -327,8 +339,9 @@ func (p *landProducer) acquireLandLock(ctx context.Context) (release func() erro
 	}
 }
 
-// waitCleanPrime waits, for at most primeDirtyWaitBound, until the prime has no uncommitted tracked paths.
-// A non-empty stuckReason is a pause honoured, a failed read, or the bound spent naming the paths; paused tells the pause from the failures.
+// waitCleanPrime waits, for at most a fixed time bound, until the prime has no uncommitted tracked paths.
+// A non-empty stuckReason is a pause honoured, a failed read, or the bound spent, naming the uncommitted paths.
+// paused tells the pause from the failures.
 // A non-nil err is the cancelled-during-run diagnosis.
 func (p *landProducer) waitCleanPrime(ctx context.Context) (stuckReason string, paused bool, err error) {
 	deadline := p.deps.Now().Add(primeDirtyWaitBound)
@@ -363,9 +376,11 @@ func (p *landProducer) waitCleanPrime(ctx context.Context) (stuckReason string, 
 	}
 }
 
-// recordsStopped posts the one notice of a landing that succeeded, once per batten run: the landed slug and the stop of the prime's records side.
+// recordsStopped posts the one notice of a landing that succeeded, once per batten run.
+// The notice names the landed slug and the stop of the prime's records side.
 // It posts nothing when recordsStop is empty, since the landing then needs nothing from the orch.
-// The marker line is written only once the notice was posted, and a notice that could not be posted is held back or dropped with a Warn, never retried.
+// The marker line is written only once the notice was posted,
+// and a notice that could not be posted is held back or dropped with a Warn, never retried.
 func (n rowNotifier) recordsStopped(ctx context.Context, landed, recordsStop string) {
 	if recordsStop == "" || n.deps.Notify == nil || ctx.Err() != nil {
 		return

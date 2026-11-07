@@ -1,5 +1,6 @@
 // warpexclude_integration_test.go covers the warp exclude list.
-// Wiring and SeedWarpExclude seed its lines, under the worktree's anchor, into the shared info/exclude exactly once, never into the weft or the wired junction names, and removing a pair keeps them.
+// Wiring and SeedWarpExclude seed its lines into the shared info/exclude exactly once, under the worktree's anchor.
+// The lines never go into the weft or the wired junction names, and removing a pair keeps them.
 
 package fabricengine_test
 
@@ -41,10 +42,11 @@ func requireWarpExcludeOnce(t *testing.T, dir string) {
 }
 
 // TestSeedWarpExclude_SeedsWarpOnlyOnce covers the warp exclude list end to end.
-// A pair's warp exclude holds each listed path once however often wiring and SeedWarpExclude run.
+// A pair's warp exclude holds each listed path once, however often wiring and SeedWarpExclude run.
 // The weft exclude and the wired names hold none, and removing the pair keeps the lines.
-// A re-wired pair gets stripped lines back, and an unparseable fabric config fails the wiring before it seeds anything.
-// In a hub with an anchor every line names the anchor and none names the root.
+// A re-wired pair gets its stripped lines back.
+// An unparseable fabric config fails the wiring before it seeds anything.
+// In a hub with an anchor, every line names the anchor and none names the root.
 //
 //testtiming:keep the warp exclude lines seeded once into the warp only, outside the wired names and surviving Remove, re-seeded by Reconcile's re-wire, and an unparseable config failing wiring; coverage of its blocks by other tests does not show an assertion of this
 func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {

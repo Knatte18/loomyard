@@ -1,5 +1,6 @@
-// portals.go declares the name of the retired `_portals` hub container, and sweeps the portal links and workspace file a hub still holds from it.
-// No verb creates a portal link any more; the name stays reserved and `lym fabric reconcile` runs the sweep.
+// portals.go declares the name of the retired `_portals` hub container.
+// It also sweeps the portal links and the workspace file a hub still holds from it.
+// No verb creates a portal link; the name stays reserved, and `lym fabric reconcile` runs the sweep.
 
 package fabricengine
 
@@ -18,8 +19,8 @@ import (
 )
 
 // portalsDirName is the directory name of the retired hub-level portals container (<hub>/_portals).
-// It stays declared here, and reserved by HubReservedNames, so no pair can take the name of a link a hub may still hold.
-// Declared here rather than in internal/lymcwd: it is not a resolution primitive lymcwd needs to expose.
+// It stays declared so that the name remains reserved: no pair can take the name of a link a hub may still hold.
+// It is a fabric-engine name, not a path-resolution primitive, so it is declared in this package.
 const portalsDirName = "_portals"
 
 // retiredPortalTarget returns <hub>/<name>/<AnchorRel>/_lym, the target a fabric portal link named name pointed at.
@@ -27,7 +28,8 @@ func retiredPortalTarget(l *lymcwd.Location, name string) string {
 	return filepath.Join(l.HubPath, name, l.AnchorRel, lymdirs.LymDirName)
 }
 
-// retiredHubWorkspacePath returns <hub>/_launchers/<AnchorRel>/<primeName>.code-workspace, where the retired hub workspace file lived.
+// retiredHubWorkspacePath returns the path of the retired hub workspace file.
+// The path is <hub>/_launchers/<AnchorRel>/<primeName>.code-workspace.
 func retiredHubWorkspacePath(l *lymcwd.Location, primeName string) string {
 	return filepath.Join(launchersDir(l), l.AnchorRel, primeName+hubWorkspaceExt)
 }
@@ -64,7 +66,8 @@ func readRetiredPortalDir(root *os.Root, dirRel string) ([]string, error) {
 	return names, nil
 }
 
-// isRetiredPortalLink reports whether the entry name of the hub-relative directory dirRel is a link whose raw target is retiredPortalTarget(l, name), whether or not that target still exists.
+// isRetiredPortalLink reports whether dirRel/name is a link to the retired portal target for name.
+// dirRel is hub-relative. The raw target is compared unresolved, so the target need not still exist.
 func isRetiredPortalLink(l *lymcwd.Location, dirRel, name string) bool {
 	path := filepath.Join(l.HubPath, dirRel, name)
 	isLink, err := fslink.IsLink(path)
@@ -75,7 +78,8 @@ func isRetiredPortalLink(l *lymcwd.Location, dirRel, name string) bool {
 	return err == nil && filepath.Clean(raw) == filepath.Clean(retiredPortalTarget(l, name))
 }
 
-// retiredHubArtifactsPresent reports whether the hub still holds a fabric-shaped portal link, or a file or link at the retired workspace path.
+// retiredHubArtifactsPresent reports whether the hub holds a retired artifact.
+// A fabric-shaped portal link counts, and so does a file or link at the retired workspace path.
 // It reads through an os.Root at the hub, so an escaping component reads as no artifact; the sweep reports it instead.
 func retiredHubArtifactsPresent(l *lymcwd.Location) bool {
 	root, err := os.OpenRoot(l.HubPath)
@@ -106,7 +110,8 @@ func retiredHubArtifactsPresent(l *lymcwd.Location) bool {
 	return err == nil && !info.IsDir()
 }
 
-// sweepRetiredHubArtifacts removes the retired portal links, their emptied directory chain and the retired hub workspace file, and returns one detail per entry it kept or refused.
+// sweepRetiredHubArtifacts removes the retired portal links, their emptied directories and the retired workspace file.
+// It returns one detail per entry it kept or refused.
 // Anything that is not a fabric-shaped portal link, or a file or link at the retired workspace path, is kept.
 // A refusal never stops the sweep; an absent artifact is a no-op that records nothing.
 // The workspace file is left alone when the prime cannot be resolved.
@@ -129,7 +134,8 @@ func keptDetail(l *lymcwd.Location, path, reason string) string {
 	return fmt.Sprintf("kept %s: %s", hubRelativeTarget(l.HubPath, path), reason)
 }
 
-// sweepRetiredPortals removes the fabric-shaped links under <hub>/_portals/<AnchorRel>/ and then every directory of that chain left empty, deepest first.
+// sweepRetiredPortals removes the fabric-shaped links under <hub>/_portals/<AnchorRel>/.
+// Then it removes every directory of that chain left empty, deepest first.
 // An escaping component fails the listing, which removes nothing and yields one detail.
 func sweepRetiredPortals(rec *Mutations, l *lymcwd.Location) []string {
 	root, err := os.OpenRoot(l.HubPath)
@@ -238,7 +244,8 @@ func directoryHoldsEntries(root *os.Root, rel string) bool {
 	return err == nil && len(names) > 0
 }
 
-// sweepRetiredHubWorkspace removes the retired workspace file when the prime resolves, and returns one detail for a directory kept there or a refusal.
+// sweepRetiredHubWorkspace removes the retired workspace file when the prime resolves.
+// It returns one detail for a directory kept at the path, or for a refusal.
 // A link at the path is removed as a link, so its target is left untouched.
 func sweepRetiredHubWorkspace(rec *Mutations, l *lymcwd.Location) []string {
 	prime, err := PrimeName(l)

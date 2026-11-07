@@ -1,4 +1,5 @@
-// follow_test.go table-drives FollowTemplate: what a file gains, changes and loses against its template base, and the operator values it keeps.
+// follow_test.go table-drives FollowTemplate:
+// what a file gains, changes and loses against its template base, and the operator values it keeps.
 
 package yamlengine_test
 

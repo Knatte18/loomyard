@@ -1,10 +1,9 @@
-// weftgit_pathspec_integration_test.go — integration coverage for
-// weftPathspecFilter, the pre-stage filter CommitWeft runs immediately
-// before f.records.StageAndCommit: one test per predicate clause, against real
-// git, plus (added by card 14) the batch's own regression assertion that the
-// widened default pathspec and this filter belong together. Package
-// fabricengine_test, reusing export_test.go's NewPlainWarpRepoForTest,
-// NewFabricForTest and WriteWeftConfigContentForTest fixture shims.
+// weftgit_pathspec_integration_test.go holds integration coverage for weftPathspecFilter.
+// That filter is the pre-stage step CommitWeft runs immediately before f.records.StageAndCommit.
+// Each predicate clause has a test against real git.
+// A regression test pins that the widened default pathspec and this filter belong together.
+// The package is fabricengine_test.
+// It reuses export_test.go's NewPlainWarpRepoForTest, NewFabricForTest and WriteWeftConfigContentForTest fixture shims.
 
 package fabricengine_test
 
@@ -23,8 +22,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// diffCachedQuietWeft reports whether `git diff --cached --quiet` exits 0 in
-// weftPath — true means nothing at all is staged.
+// diffCachedQuietWeft reports whether nothing at all is staged in weftPath: `git diff --cached --quiet` exits 0.
 func diffCachedQuietWeft(t *testing.T, weftPath string) bool {
 	t.Helper()
 
@@ -41,8 +39,7 @@ func diffCachedQuietWeft(t *testing.T, weftPath string) bool {
 	return false
 }
 
-// mustWriteFileWeft writes content to path, creating parent directories as
-// needed, failing the test on any error.
+// mustWriteFileWeft writes content to path, creating parent directories as needed, and fails the test on any error.
 func mustWriteFileWeft(t *testing.T, path, content string) {
 	t.Helper()
 
@@ -54,13 +51,12 @@ func mustWriteFileWeft(t *testing.T, path, content string) {
 	}
 }
 
-// TestCommitWeft_UntrackedNewFileCountsAsMatch covers the "untracked must count" predicate clause:
-// a pathspec's first entry ("doesnotexist") matches nothing at all and must be silently dropped
-// rather than failing the whole `git add`, while the second entry ("newmodule") names a brand-new,
-// never-staged directory — untracked in the worktree, absent from the index — that must still count
-// as a match and get committed.
-// This is the exact shape a first-ever new-directory commit needs: a tracked-only-in-the-index
-// predicate would filter it out and drop the very first commit under a brand-new optional junction.
+// TestCommitWeft_UntrackedNewFileCountsAsMatch covers the "untracked must count" predicate clause.
+// The first entry ("doesnotexist") matches nothing and must be dropped rather than failing the whole `git add`.
+// The second entry ("newmodule") names a new directory, untracked in the worktree and absent from the index.
+// It must still count as a match and get committed.
+// A first-ever commit under a brand-new optional junction has this shape.
+// A predicate that matched only tracked paths would drop that commit.
 //
 //testtiming:keep an untracked new directory counting as a pathspec match while a nonexistent first entry is dropped; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
@@ -90,12 +86,12 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_IndexOnlyDeletionCountsAsMatch covers the "index-only must count" predicate
-// clause: fabricengine.Unwire's (unwire.go) `_lym` clear-and-commit step commits a "_lym" path that
-// os.RemoveAll has just deleted from the worktree, surviving only in the index at that point.
-// A worktree-existence-only predicate would silently break that deletion commit — this test seeds a
-// tracked file, deletes it from disk only (never staged), then asserts CommitWeft still commits the
-// deletion.
+// TestCommitWeft_IndexOnlyDeletionCountsAsMatch covers the "index-only must count" predicate clause.
+// fabricengine.Unwire (unwire.go) clears `_lym` and commits that deletion.
+// os.RemoveAll has already deleted the path from the worktree, so it survives only in the index.
+// A predicate that checked only worktree existence would silently break that deletion commit.
+// This test seeds a tracked file and deletes it from disk without staging the deletion.
+// It then asserts that CommitWeft still commits the deletion.
 //
 //testtiming:keep an index-only deletion counting as a pathspec match so Unwire's deletion commit lands; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
@@ -111,9 +107,8 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "add", "_lym/trackedfile.txt")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "commit", "-q", "-m", "seed tracked file")
 
-	// Delete from disk only — the file survives in the index until something
-	// stages the deletion. This is the exact state undo.go's os.RemoveAll
-	// leaves the weft worktree in immediately before its own CommitWeft call.
+	// Delete from disk only; the file stays in the index until something stages the deletion.
+	// undo.go's os.RemoveAll leaves the weft worktree in this state before its own CommitWeft call.
 	if err := os.Remove(trackedPath); err != nil {
 		t.Fatalf("os.Remove(%q): %v", trackedPath, err)
 	}
@@ -135,12 +130,9 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_ExcludeMagicPassesThroughUntouched is the mandatory guard case: a pathspec
-// carrying a ":(exclude)" entry must pass it through untouched (never evaluated as a plain path to
-// match) while a genuine positive entry alongside it still commits — and the excluded artifact must
-// stay unstaged.
-// Without this test, a filter that behaves correctly on plain paths could still silently re-stage
-// machine-local artifacts by mis-evaluating exclusion magic as an ordinary non-matching entry.
+// TestCommitWeft_ExcludeMagicPassesThroughUntouched checks that a ":(exclude)" entry is not matched as a plain path.
+// A positive entry alongside it still commits, and the excluded artifact stays unstaged.
+// Without this check, a filter could mis-evaluate the magic and silently re-stage machine-local artifacts.
 //
 //testtiming:keep an :(exclude) pathspec entry passing through untouched while a positive entry still commits and the excluded artifact stays unstaged; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
@@ -174,14 +166,12 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing covers the early-return case: when
-// the only non-magic entry in the pathspec matches nothing at all, CommitWeft must return ("",
-// false, nil) WITHOUT ever calling StageAndCommit — leaving a genuinely dirty tracked file
-// (modified, unstaged) and an untracked lock file completely untouched.
-// Asserting the pre-existing HEAD SHA is unchanged and nothing is staged is what actually catches
-// the regression this guards: handing git a pathspec of only ":(exclude)" magic with no positive
-// entry is read as "everything except those," which would otherwise stage the entire weft worktree
-// (including the dirty config.yaml) rather than nothing.
+// TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing covers the early return.
+// When the only non-magic entry matches no file, CommitWeft returns ("", false, nil) without calling StageAndCommit.
+// A modified, unstaged tracked file and an untracked lock file must stay untouched.
+// Asserting that HEAD is unchanged and nothing is staged catches the regression this guards:
+// git reads a pathspec of only exclusion magic as "everything except those".
+// Such a pathspec stages the whole weft worktree.
 func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -192,9 +182,8 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 
 	preSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 
-	// A genuinely dirty tracked file and an untracked lock file: if the
-	// filter mishandled the all-negative pathspec by staging everything,
-	// both would show up staged below.
+	// The dirty tracked file and the untracked lock file must not show up staged below.
+	// A filter that stages everything for an all-exclusion pathspec would stage both.
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "dirtied but must stay unstaged")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "run.lock"), "machine-local lock")
 
@@ -218,12 +207,9 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	}
 }
 
-// resolvedDefaultRoutingNames resolves the fabric config template's REAL default pathspec and runs
-// it through pathspecNames -- not a hand-written literal, and not the raw, unfiltered Config.Dirs()
-// -- so TestResolvedDefaultRoutingNames_IsLymAlone below exercises whatever fabric's own commit
-// routing actually builds today: structuralCommittedDirs ("_lym") alone, the template's pathspec
-// default now being empty, catching both a future template default change and a future structural-set
-// change.
+// resolvedDefaultRoutingNames returns the routing names that a fabric commit uses by default.
+// It resolves the fabric config template's real default pathspec and runs it through pathspecNames.
+// It uses neither a literal nor the raw config directories, so a template or structural change reaches the result.
 func resolvedDefaultRoutingNames(t *testing.T) []string {
 	t.Helper()
 
@@ -238,13 +224,8 @@ func resolvedDefaultRoutingNames(t *testing.T) []string {
 	return fabricengine.PathspecNamesForTest(cfg)
 }
 
-// TestResolvedDefaultRoutingNames_IsLymAlone asserts the real, resolved default routing set —
-// structuralCommittedDirs ("_lym") alone, now that template.yaml's pathspec default is empty — still
-// guards against a future template change silently re-widening the default.
-// This is split out from the multi-entry tolerance regression below because an empty default leaves
-// resolvedDefaultRoutingNames with nothing to inject an "_extra" name through: the two properties this
-// file used to pin together (the real default's exact shape, and weftPathspecFilter's tolerance of a
-// wider pathspec with an empty optional entry) no longer share one subject.
+// TestResolvedDefaultRoutingNames_IsLymAlone asserts that the resolved default routing set is "_lym" alone.
+// It guards against a future template change silently widening the default.
 //
 //testtiming:keep the resolved default routing set being _lym alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
 func TestResolvedDefaultRoutingNames_IsLymAlone(t *testing.T) {
@@ -255,11 +236,15 @@ func TestResolvedDefaultRoutingNames_IsLymAlone(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir proves card 13's pathspec-tolerance filter still holds for a genuinely widened, multi-entry pathspec, even though the real template default no longer exercises that shape on its own (see TestResolvedDefaultRoutingNames_IsLymAlone above).
-// It deliberately does NOT ride the real template default: it hand-supplies a two-name routing set ("_lym", "_extra") instead, because weftPathspecFilter remains live production behaviour for any repo whose fabric.yaml pathspec actually does widen beyond "_lym" — and an empty default is exactly what would let a regression in that filter go unnoticed if this coverage were dropped along with the old widened-by-default shape.
-// With NO files under "_extra" at all, a genuine "_lym" change still commits.
-// Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git add -- _lym _extra` fails in its entirety the moment `_extra` matches nothing, and CommitWeft's own pre-existing "did not match any files" tolerance swallows that into ("", false, nil) with no error — so the only way to catch it is asserting the commit actually happened, not checking for an error.
-// Covers both shapes an empty "_extra" can take — wholly absent and present-but-empty — since git tracks files, not directories, and a materialised-but-empty "_extra/" is a normal, expected state for any optional pathspec entry a repo has not yet populated.
+// TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir covers a widened pathspec.
+// The routing set is hand-supplied as "_lym" and "_extra", not taken from the template default.
+// The pathspec filter stays live for any repo whose fabric.yaml pathspec widens beyond "_lym".
+// With no files under "_extra", a "_lym" change must still commit.
+// Without the filter, `git add -- _lym _extra` fails whole once "_extra" matches nothing.
+// CommitWeft's "did not match any files" tolerance then turns that into ("", false, nil) with no error,
+// so the test asserts that the commit happened rather than that no error was returned.
+// The test covers both an absent "_extra" and a present but empty one.
+// Git tracks files, not directories, so an empty "_extra/" is a normal state for an optional entry.
 func TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir(t *testing.T) {
 	tiergate.Require(t, 1)
 	dirs := []string{"_lym", "_extra"}
@@ -296,8 +281,7 @@ func TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptio
 		weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-		// git tracks files, not directories: a materialised-but-empty
-		// "_extra/" still has nothing for a pathspec to match.
+		// git tracks files, not directories: a materialised-but-empty "_extra/" still has nothing for a pathspec to match.
 		if err := os.MkdirAll(filepath.Join(weftFixture.PrimeRecords(), "_extra"), 0o755); err != nil {
 			t.Fatalf("MkdirAll _extra: %v", err)
 		}

@@ -9,8 +9,8 @@ import (
 )
 
 // RunInFlight reports whether a Webster run is mid-flight at anchorRoot.
-// It exists so another package can ask the question without constructing webster's paths, per the Cwd Resolution and Told-Geometry invariants;
-// every path is built from the told anchorRoot through Dir and OutcomePath.
+// It lets another package ask without constructing webster's paths itself.
+// Every path is derived from anchorRoot alone.
 //
 // A run is in flight when state.json exists and outcome.yaml is either absent or names an outcome other than done.
 // stuck counts as in flight because it resumes with `lym webster run`;

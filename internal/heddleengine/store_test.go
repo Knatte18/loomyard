@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// storeWithUnknownKeys is a heddle.json with an unknown top-level key and an unknown key on each of three entries.
+// storeWithUnknownKeys is a heddle.json with an unknown top-level key and an unknown key on each entry.
 const storeWithUnknownKeys = `{
   "entries": [
     {"slug": "a", "text": "first", "order": 1, "targets": ["claude-file"], "extra_a": 1},
@@ -170,7 +170,8 @@ func TestStore(t *testing.T) {
 	t.Run("ShippedEntriesArePinned", func(t *testing.T) {
 		t.Parallel()
 		// The rows are the shipped layer in render order.
-		// wantHeading is the entry's first line: a level-two heading of its own, so the rendered file steps from the shipped section's level-one heading with no skip.
+		// wantHeading is the entry's first line: a level-two heading of its own.
+		// Level two keeps the rendered file stepping from the shipped section's level-one heading with no skip.
 		tests := []struct {
 			slug        string
 			wantHeading string

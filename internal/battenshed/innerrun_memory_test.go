@@ -1,4 +1,5 @@
-// innerrun_memory_test.go pins what the memory record adds to InnerRun: each pass is a new producer over one scratch directory, and the record alone carries the episode across them.
+// innerrun_memory_test.go pins what the memory record adds to InnerRun:
+// each pass is a new producer over one scratch directory, and only the record carries the episode across them.
 
 package battenshed
 
@@ -16,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestInnerRun_MemoryOutlivesTheProcess builds a new producer per Call over one scratch directory and pins only what the record adds.
+// TestInnerRun_MemoryOutlivesTheProcess builds a new producer per Call over one scratch directory:
+// it pins only what the record adds.
 func TestInnerRun_MemoryOutlivesTheProcess(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// passes_test.go pins the pass planner and the scheduling of passes over fake runs, a fake pass spawner and a temp state record.
+// passes_test.go pins the pass planner and the scheduling of passes over fake runs.
+// A fake pass spawner and a temp state record back the tests.
 
 package dobbyengine
 
@@ -92,7 +93,7 @@ type passFake struct {
 	hold    bool
 	notices []string
 
-	// pauses, releases and lifts count the owner pause seams' calls; pauseErr fails the pause, and a pause that stands covers the first run.
+	// pauses, releases and lifts count the pause calls; pauseErr fails the pause, and a standing pause covers the first run.
 	pauses, releases, lifts int
 	pauseErr                error
 	// owner is what the local Bolt reads as the run's owner.
@@ -101,13 +102,13 @@ type passFake struct {
 	subject    string
 	subjectErr error
 
-	// tasks is the local board, maxRuns the beam.yaml cap, statuses the slugs a first pass left a status file for and covers the slugs a pause covers.
+	// tasks is the local board, maxRuns the beam.yaml cap, statuses the slugs with a status file, covers the paused slugs.
 	tasks    []TaskView
 	maxRuns  int
 	statuses map[string]bool
 	covers   map[string]bool
 
-	// settleErr is what the front settle seam returns, settles counts its calls and spawnedAtSettle holds how many passes had been spawned at each call.
+	// settleErr is the front settle seam's error; settles counts calls, and spawnedAtSettle holds the spawn count at each.
 	settleErr       error
 	settles         int
 	spawnedAtSettle []int

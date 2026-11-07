@@ -1,4 +1,5 @@
-// listreconcile_test.go covers the reconcile listing that breaks strand panes left in the shell window out into windows of their own, against the scripted multiplexer fake.
+// listreconcile_test.go covers the reconcile listing that moves strand panes left in the shell window.
+// Those panes move into windows of their own, and the tests run against the scripted multiplexer fake.
 
 package reedengine
 
@@ -11,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestListReconcilePanesLocked_MovesShellWindowStrands drives the listing the three reconcile call sites share:
+// TestListReconcilePanesLocked_MovesShellWindowStrands drives the listing that the reconcile call sites share:
 // list-panes answers the pre-move listing until a break-pane succeeds and the post-move listing after.
 func TestListReconcilePanesLocked_MovesShellWindowStrands(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -42,7 +43,7 @@ func TestListReconcilePanesLocked_MovesShellWindowStrands(t *testing.T) {
 		wantMoved     []string
 		wantPaneLists int
 		wantErr       bool
-		// wantLive is the pane ids the call returns.
+		// wantLive lists the pane IDs the call returns.
 		wantLive []string
 	}{
 		{

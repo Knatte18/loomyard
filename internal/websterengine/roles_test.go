@@ -1,7 +1,8 @@
-// roles_test.go exercises ResolveRoles's pre-flight: both roles resolve cleanly, an unknown alias
-// fails naming the offending role, an escape-form spec resolves with no registry entry at all, and
-// a bracket param survives into the resolved Params map — scoped to webster's two roles
-// (no oversized role exists here).
+// roles_test.go exercises ResolveRoles's pre-flight.
+// Both roles resolve cleanly, and an unknown alias fails naming the offending role.
+// An escape-form spec resolves with no registry entry at all.
+// A bracket param survives into the resolved Params map.
+// The cases cover webster's two roles; no oversized role exists here.
 
 package websterengine_test
 
@@ -60,8 +61,8 @@ func TestResolveRoles(t *testing.T) {
 			wantErrParts: []string{string(websterengine.RoleMaster), "typo-alias"},
 		},
 		{
-			// Every role is escape form here, since a nil registry never resolves an alias — this
-			// isolates the one behavior under test: escape form never consults the registry at all.
+			// Every role is escape form here, since a nil registry never resolves an alias.
+			// This isolates the one behavior under test: escape form never consults the registry.
 			name:             "escape form needs no registry entry",
 			cfg:              websterengine.Config{Master: "claude:sonnet", Recovery: "claude:claude-sonnet-4-5[effort=high]"},
 			reg:              nil,
@@ -71,8 +72,8 @@ func TestResolveRoles(t *testing.T) {
 			wantMasterEngine: "claude",
 		},
 		{
-			// The bracket param (max) overrides the registry default (high) per the documented
-			// "bracket param > registry default" precedence.
+			// The bracket param (max) overrides the registry default (high).
+			// A bracket param takes precedence over the registry default.
 			name:             "a bracket param overrides the registry default",
 			cfg:              websterengine.Config{Master: "sonnet", Recovery: "opus[effort=max]"},
 			reg:              sonnetOpusRegistry,

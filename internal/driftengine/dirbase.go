@@ -1,4 +1,5 @@
-// dirbase.go — the rewrite that carries a hub's drift.yaml across the move of a relative command dir's base from the worktree's anchored directory to its root.
+// dirbase.go rebases the relative capture and compare dirs of a hub's drift.yaml.
+// It moves their base from the anchored directory onto the worktree root.
 
 package driftengine
 
@@ -16,11 +17,13 @@ import (
 // DirBaseReinterpretation names the move of a relative capture or compare dir's base from the worktree's anchored directory to its root.
 const DirBaseReinterpretation = "drift-dir-root-base"
 
-// RebaseDirsOntoRoot rewrites the relative capture and compare dirs of a hub drift.yaml written while a relative dir was joined onto the anchored directory, so each names, joined onto the worktree root, the directory it named before.
+// RebaseDirsOntoRoot rebases the relative capture and compare dirs of a hub drift.yaml.
+// It rewrites each one so that, joined onto the worktree root, it names the directory it named before.
 // worktreeRoot and anchorDir are the prime's, and a hub anchored at its root changes nothing.
-// A dir naming an existing directory under the anchored directory is rewritten, even when it names one under the root too, since the file predates the move;
-// a dir naming one under the root alone is kept, since it was already written for the root;
-// a dir naming neither is flagged with the write that fixes it, and an absolute or unset dir is kept.
+// A dir naming an existing directory under the anchored directory is rewritten, even when the root holds one too.
+// Such a file was written with the anchored directory as its base.
+// A dir naming one under the root alone is kept, since it is already written for the root.
+// A dir naming neither is flagged with the write that fixes it, and an absolute or unset dir is kept.
 // It returns the document, rewritten only when a dir changed, one line per rewritten dir and one per flagged dir.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
 func RebaseDirsOntoRoot(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error) {
@@ -66,7 +69,8 @@ func RebaseDirsOntoRoot(existing []byte, worktreeRoot, anchorDir string) (rewrit
 	return encoded, rewrote, flagged, nil
 }
 
-// encodeDocument renders a rewritten drift.yaml document, and an encoder failure as an error marked configengine.ErrInvalid that opens with action.
+// encodeDocument renders a rewritten drift.yaml document.
+// An encoder failure is returned as an error marked configengine.ErrInvalid, its message opening with action.
 func encodeDocument(document *yaml.Node, action string) ([]byte, error) {
 	var out bytes.Buffer
 	encoder := yaml.NewEncoder(&out)
@@ -80,7 +84,8 @@ func encodeDocument(document *yaml.Node, action string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// scalarAt returns the scalar node at the key path under mapping, or nil when a key is absent, a node on the way is no mapping or the leaf is no scalar.
+// scalarAt returns the scalar node at the key path under mapping.
+// It returns nil when a key is absent, when a node on the path is no mapping, or when the leaf is no scalar.
 func scalarAt(mapping *yaml.Node, keys ...string) *yaml.Node {
 	node := mapping
 	for _, key := range keys {

@@ -1,4 +1,6 @@
-// verifyhang.go classifies a failed verify run as a hang: a test binary stopped by go test's timeout, a goroutine dump, a signal or the CPU watchdog, whose rerun would only hang again.
+// verifyhang.go classifies a failed verify run as a hang.
+// A hang is a test binary stopped by go test's timeout, a goroutine dump, a signal or the CPU watchdog;
+// its rerun would only hang again.
 
 package websterengine
 
@@ -34,7 +36,9 @@ type verifyHang struct {
 }
 
 // classifyHang reads a failed result and its log and reports whether the run hung.
-// The CPU watchdog line, go test's timeout panic and the SIGQUIT dump header are checked first, in that order, then a log line go test starts with `signal: `, then an exit code of 128 or above or a shell killed by a signal.
+// It checks the CPU watchdog line, go test's timeout panic and the SIGQUIT dump header, in that order.
+// Then it checks for a log line starting with `signal: `.
+// Last, it checks for an exit code of 128 or above, or a shell killed by a signal.
 // A shell that could not start and an ordinary non-zero exit are no hang.
 // The markers are matched as text anywhere in the log, so a test that prints one reads as a hang too.
 func classifyHang(res verifytree.Result, log string) (verifyHang, bool) {

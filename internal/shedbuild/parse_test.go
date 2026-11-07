@@ -1,5 +1,5 @@
-// parse_test.go covers Parse's shape checks and decode errors, table-driven over inline YAML
-// byte-slice literals with no filesystem access anywhere in this file.
+// parse_test.go covers Parse's shape checks and decode errors, table-driven over inline YAML byte-slice literals.
+// The file has no filesystem access anywhere.
 
 package shedbuild
 
@@ -627,7 +627,8 @@ producers:
 			wantErrSub: `retired row "Old-Row" moves to "nowhere", which names no row of the recipe`,
 		},
 		{
-			// A stray "---" mid-recipe once silently truncated the producer graph: Parse decoded once and stopped, so a self-consistent prefix ran as a truncated pipeline.
+			// Parse refuses a stray "---" mid-recipe.
+			// Decoding only the first document would run a self-consistent prefix as a truncated pipeline.
 			name: "second YAML document is refused, not dropped",
 			yaml: `version: 1
 entry: row1
@@ -702,7 +703,8 @@ retired:
   ` + entry + "\n"
 }
 
-// blockRowYAML returns a one-row recipe whose row is a well-formed block row, with the extra line appended to the row when non-empty.
+// blockRowYAML returns a one-row recipe whose row is a well-formed block row.
+// It appends extra to the row when extra is non-empty.
 func blockRowYAML(extra string) string {
 	yaml := `version: 1
 entry: Motif
@@ -718,8 +720,7 @@ producers:
 	return yaml
 }
 
-// recipeEqual reports whether two Recipe values are equal, including a nil-vs-empty distinction on
-// each row's Config map.
+// recipeEqual reports whether two Recipe values are equal, row for row.
 func recipeEqual(a, b Recipe) bool {
 	if a.Version != b.Version || a.Entry != b.Entry {
 		return false
@@ -738,8 +739,8 @@ func recipeEqual(a, b Recipe) bool {
 	return true
 }
 
-// rowEqual reports whether two Row values are equal, including a nil-vs-empty distinction on
-// Config.
+// rowEqual reports whether two Row values are equal.
+// A nil Config map is not equal to an empty one.
 func rowEqual(a, b Row) bool {
 	if a.Name != b.Name || a.Engine != b.Engine || a.OnDone != b.OnDone ||
 		a.OnStuck != b.OnStuck || a.Segment != b.Segment || a.MaxBounces != b.MaxBounces {
@@ -751,8 +752,8 @@ func rowEqual(a, b Row) bool {
 	return configEqual(a.Config, b.Config)
 }
 
-// configEqual deep-compares two decoded config maps by recursive structural comparison, since
-// map[string]any values may nest further maps and slices.
+// configEqual reports whether two decoded config maps are deep-equal.
+// Their values may nest further maps and slices, so the comparison recurses.
 func configEqual(a, b map[string]any) bool {
 	if len(a) != len(b) {
 		return false

@@ -1,8 +1,9 @@
-// smoke_test.go is the shared smoke-test harness: the helpers (binary discovery, live-tmux process/pane probes, transcript watching, fixture wiring) common to the smoke test files in this package.
-// Those files drive the composed live-tmux behaviors through RunCLIIn against a real server:
-// the basic up -> add -> status -> down round-trip, crash recovery, every successive add opening a window of its own, add-after-remove-last, down's synchronous server teardown, cross-worktree scope, the interactive attach handover, and native claude --resume codeword recall.
-// These paths are exactly where hermetic tests prove nothing:
-// tmux's real semantics (positional select-layout, silent split failures, corpse panes, async kill-server) and claude's real transcript persistence only show up live.
+// smoke_test.go is the shared smoke-test harness for the smoke test files in this package.
+// It holds the helpers: binary discovery, live-tmux process and pane probes, transcript watching, and fixture wiring.
+// Those files drive the live-tmux behaviors through RunCLIIn against a real server.
+// Hermetic tests prove nothing on these paths:
+// tmux's real semantics show up only live: positional select-layout, silent split failures, corpse panes, and async kill-server.
+// claude's real transcript persistence does too.
 // Excluded from the default `go test ./internal/reedcli/...`; runs under `go test -tags tmux`, or `-tags llm` for the claude resume test.
 // The file carries `tmux || llm` because both tiers' files use its helpers.
 
@@ -27,17 +28,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// smokePwshPath is the default PowerShell 7 binary the smoke helpers shell
-// out to for Windows process-table and PEB probes. Explicit absolute path,
-// never a bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY
-// stub. Callers should resolve via pwshBinaryPath(t), not this constant
-// directly, so a machine without pwsh (e.g. Linux) skips fast instead of
-// discovering the absence only after a doomed tmux boot + poll-timeout.
+// smokePwshPath is the default PowerShell 7 binary the smoke helpers use for Windows process-table and PEB probes.
+// It is an explicit absolute path, never a bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
+// Callers should resolve it via pwshBinaryPath(t), not this constant directly.
+// That way a machine without pwsh (e.g. Linux) skips fast.
+// Otherwise the absence surfaces only after a doomed tmux boot and poll timeout.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// tmuxBinaryPath returns the tmux binary path from the environment or
-// resolved via PATH, skipping the calling test when it is absent so a
-// -tags=tmux run never hard-fails on a machine without the tool.
+// tmuxBinaryPath returns the tmux binary path from the environment or resolved via PATH.
+// It skips the calling test when the binary is absent.
+// A -tags=tmux run then never hard-fails on a machine without the tool.
 func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()
 	if path := os.Getenv("LYM_REED_TMUX"); path != "" {
@@ -63,14 +63,13 @@ func tmuxBinaryPath(t *testing.T) string {
 	return ""
 }
 
-// pwshBinaryPath returns the PowerShell 7 binary path (LYM_REED_PWSH override
-// or the smokePwshPath default), skipping the calling test immediately when
-// it is absent. Callers must only reach this from a runtime.GOOS == "windows"
-// branch: the probes it backs (WMI process trees, PEB cwd reads via P/Invoke
-// into ntdll.dll/kernel32.dll) are Windows-only by construction, and on
-// Linux the same probes are answered natively via /proc (see
-// smoke_proctree.go) without any pwsh dependency at all — so on Linux this
-// function is simply never called, not skipped.
+// pwshBinaryPath returns the PowerShell 7 binary path, from the LYM_REED_PWSH override or the smokePwshPath default.
+// It skips the calling test immediately when the binary is absent.
+// Callers must reach this only from a runtime.GOOS == "windows" branch.
+// The probes it backs read WMI process trees and PEB cwd via P/Invoke into ntdll.dll and kernel32.dll.
+// They are Windows-only by construction.
+// On Linux the same probes read /proc (see smoke_proctree_test.go) and need no pwsh.
+// So on Linux this function is never called, rather than skipped.
 func pwshBinaryPath(t *testing.T) string {
 	t.Helper()
 	path := smokePwshPath
@@ -83,8 +82,8 @@ func pwshBinaryPath(t *testing.T) string {
 	return path
 }
 
-// statusStrand returns the tracked strand with the given guid from a `status`
-// JSON envelope, and whether it was found.
+// statusStrand returns the tracked strand with the given guid from a `status` JSON envelope.
+// It also reports whether the strand was found.
 func statusStrand(t *testing.T, statusJSON []byte, guid string) (map[string]any, bool) {
 	t.Helper()
 	var result map[string]any
@@ -101,13 +100,11 @@ func statusStrand(t *testing.T, statusJSON []byte, guid string) (map[string]any,
 	return nil, false
 }
 
-// waitServerGone blocks until `tmux -L socket has-session -t session` exits
-// non-zero (the server/session is gone), or fails the test after a timeout.
-// tmux's kill-server is asynchronous — it returns before the socket is
-// released — so a test that simulates a crash must wait for the server to
-// actually die before exercising recovery, or it races the teardown. The
-// deadline is saturation-sized: the teardown is ~1s quiet, but concurrent
-// suites pegging the CPU have starved fixed 5s waits of this shape.
+// waitServerGone blocks until `tmux -L socket has-session -t session` exits non-zero.
+// A non-zero exit means the server or session is gone; the test fails after a timeout.
+// tmux's kill-server is asynchronous: it returns before the socket is released.
+// A test that simulates a crash must wait for the server to die before it exercises recovery, or it races the teardown.
+// The deadline is sized for a saturated CPU, because concurrent suites have starved short fixed waits of this shape.
 func waitServerGone(t *testing.T, tmuxPath, socket, session string) {
 	t.Helper()
 	const timeout = 30 * time.Second
@@ -147,8 +144,8 @@ func socketAndSession(t *testing.T) (socket, session string) {
 	return socketAndSessionIn(t, "")
 }
 
-// socketAndSessionIn is socketAndSession driven through the RunCLIIn seam; see addStrandIn for what
-// the cwd argument means.
+// socketAndSessionIn returns the socket and session names that `status` reports, run from cwd through RunCLIIn.
+// It also registers a cleanup that kills the tmux server on that socket.
 func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	t.Helper()
 	var out bytes.Buffer
@@ -164,15 +161,17 @@ func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	if socket == "" || session == "" {
 		t.Fatalf("status result missing socket/session: %v", result)
 	}
-	// A no-op for a test that already registered the hub's key before its first boot, which is the one that makes the server hermetic; this late call covers one that did not.
+	// This call does nothing for a test that registered the hub's key before its first boot.
+	// Such a registration makes the server hermetic; this call covers a test that did not register the key.
 	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), socket)
 	return socket, session
 }
 
-// smokeReapLaunchCmd returns the OS-appropriate long-running command line the pane-child-reap fixtures (the TestSmokeTeardown steps) type into a pane:
-// a long-lived pwsh host on Windows, `sleep 300` on POSIX.
-// reed types cmdStr literally into the pane's own shell (send-keys -l, never exec'd directly — see spawn.go's launchStrandLocked), so #{pane_pid} is always that shell (bash on POSIX per the config template), not cmdStr's own process.
-// A command that actually runs gives the reap assertions a REAL child of that shell to find and track, meaningfully exercising "reap the whole subtree, not just #{pane_pid}" rather than trivially passing because the shell itself (with nothing running under it) was the only thing tmux ever had to kill.
+// smokeReapLaunchCmd returns the OS-appropriate long-running command line that TestSmokeTeardown's reap steps type.
+// On Windows it is a long-lived pwsh host; on POSIX it is `sleep 300`.
+// reed types the command into the pane's shell, so #{pane_pid} is that shell (bash on POSIX), not the command.
+// The command must actually run, so the reap assertions have a real child of that shell to find and track;
+// otherwise the reap would pass trivially, since tmux would kill only the idle shell.
 func smokeReapLaunchCmd() string {
 	if runtime.GOOS == "windows" {
 		return "pwsh -NoExit -Command Write-Host ready"
@@ -180,8 +179,9 @@ func smokeReapLaunchCmd() string {
 	return "sleep 300"
 }
 
-// smokeMarkerLaunchCmd returns the OS-appropriate long-running command line that prints marker into the pane and then stays alive, so a later capture (or the nested attach of TestSmokeLifecycle's attach step) can find it.
-// `exec` on the POSIX branch replaces the inner bash with sleep rather than leaving a bash-parent-of-sleep pair, mirroring pwsh -NoExit's single long-lived process shape.
+// smokeMarkerLaunchCmd returns the OS-appropriate command line that prints marker into the pane and then stays alive,
+// so a later capture or attach can find it.
+// On POSIX, `exec` replaces the inner bash with sleep, leaving one long-lived process, as pwsh -NoExit does.
 func smokeMarkerLaunchCmd(marker string) string {
 	if runtime.GOOS == "windows" {
 		return fmt.Sprintf("pwsh -NoExit -Command Write-Host %s", marker)
@@ -189,9 +189,10 @@ func smokeMarkerLaunchCmd(marker string) string {
 	return fmt.Sprintf("bash -c 'echo %s; exec sleep 300'", marker)
 }
 
-// harnessShellBinaryPath returns the interactive pane-shell binary the attach step of TestSmokeLifecycle boots its private harness session with:
-// pwsh on Windows (via pwshBinaryPath), bash on POSIX (LYM_REED_SHELL override or PATH lookup, skipping the test if absent).
-// This is a real, generically-available interactive shell to host the nested attach handover, not a pwsh-specific probe, so unlike pwshBinaryPath it has a meaningful POSIX branch instead of being Windows-only.
+// harnessShellBinaryPath returns the interactive shell that the TestSmokeLifecycle harness session runs in.
+// It is pwsh on Windows, and on POSIX it is bash, taken from the LYM_REED_SHELL override or a PATH lookup.
+// The test is skipped if bash is absent.
+// It hosts the nested attach handover, so it must be a real interactive shell.
 func harnessShellBinaryPath(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -207,11 +208,10 @@ func harnessShellBinaryPath(t *testing.T) string {
 	return path
 }
 
-// smokeAttachInvokeLine returns the OS-appropriate command line the harness
-// pane types to unset TMUX_SESSION (tmux refuses to nest a client into a
-// session it is itself running inside otherwise), run lymExe's attach
-// handover, and echo its exit code — pwsh syntax on Windows,
-// posix syntax elsewhere.
+// smokeAttachInvokeLine returns the OS-appropriate line that the harness pane types to run lymExe's attach handover.
+// The line first unsets TMUX_SESSION, because tmux refuses to nest a client into a session it runs inside;
+// then it echoes the exit code.
+// It uses pwsh syntax on Windows and POSIX syntax elsewhere.
 func smokeAttachInvokeLine(lymExe string) string {
 	if runtime.GOOS == "windows" {
 		return fmt.Sprintf(`$env:TMUX_SESSION=$null; & '%s' reed attach; Write-Host ATTACH-EXIT:$LASTEXITCODE`, lymExe)
@@ -219,16 +219,10 @@ func smokeAttachInvokeLine(lymExe string) string {
 	return fmt.Sprintf(`unset TMUX_SESSION; '%s' reed attach; echo ATTACH-EXIT:$?`, lymExe)
 }
 
-// smokeInvokeLine returns the OS-appropriate command line that runs bin with
-// args typed literally into the pane's own shell: pwsh's call operator (`&
-// 'bin' 'arg' ...`) on Windows, direct invocation (`'bin' 'arg' ...`) on
-// POSIX — `&` there is bash's BACKGROUND-job operator, not a call operator,
-// so a bare leading `&` is a hard syntax error (verified:
-// `bash -c "& 'echo' 'hi'"` → "syntax error near unexpected token `&'"),
-// which is why TestSmokeClaudeResumeRecallsCodeword's claude launch/resume
-// command lines never actually ran claude at all on Linux before this fix —
-// the pane just showed a syntax error, and the test then waited its full
-// timeout for a transcript a process that never started could never write.
+// smokeInvokeLine returns the OS-appropriate line that runs bin with args, typed literally into the pane's own shell.
+// On Windows it uses pwsh's call operator, `& 'bin' 'arg' ...`.
+// On POSIX it invokes directly, `'bin' 'arg' ...`.
+// A leading `&` is bash's background-job operator, so it is a syntax error there.
 func smokeInvokeLine(bin string, args ...string) string {
 	quoted := make([]string, 0, len(args)+1)
 	quoted = append(quoted, "'"+bin+"'")
@@ -247,10 +241,10 @@ func addStrand(t *testing.T, cmdStr string, extra ...string) string {
 	return addStrandIn(t, "", cmdStr, extra...)
 }
 
-// addStrandIn is addStrand driven through the RunCLIIn seam: cwd is seeded into the execution
-// context rather than into the process, so a test can drive reed for a worktree it is not standing
-// in.
-// An empty cwd means "read the process cwd", exactly as RunCLIIn itself documents.
+// addStrandIn runs `add` with the given extra flags against cwd and returns the new guid.
+// cwd becomes the working directory of the reed run rather than the process working directory,
+// so a test can drive reed for a worktree it is not standing in.
+// An empty cwd leaves the run on the process working directory.
 func addStrandIn(t *testing.T, cwd, cmdStr string, extra ...string) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -305,8 +299,7 @@ func processGone(pid int) bool {
 	}
 }
 
-// paneProcessTree returns the OS pids of the session's pane child processes
-// and their full descendant subtrees.
+// paneProcessTree returns the OS pids of the session's pane child processes and their full descendant subtrees.
 func paneProcessTree(t *testing.T, tmuxPath, socket, session string) []int {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session, "-F", "#{pane_pid}").Output()
@@ -358,8 +351,7 @@ $acc`, strings.Join(roots, ","))
 	return pids
 }
 
-// panePaneSubtree returns the OS pids of a single pane's child process and
-// its full descendant subtree.
+// panePaneSubtree returns the OS pids of a single pane's child process and its full descendant subtree.
 func panePaneSubtree(t *testing.T, tmuxPath, socket, session, paneID string) []int {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session,
@@ -410,8 +402,7 @@ $acc`, root)
 	return pids
 }
 
-// hubHolder is one process still holding the fixture hub as its current
-// working directory, as reported by hubHolders.
+// hubHolder is one process still holding the fixture hub as its current working directory.
 type hubHolder struct {
 	pid  int
 	name string
@@ -481,8 +472,8 @@ Get-Process | ForEach-Object {
 	return holders
 }
 
-// deferHubRelease registers a cleanup that makes the fixture hub directory
-// releasable before the framework's TempDir RemoveAll.
+// deferHubRelease registers a cleanup that makes the fixture hub directory releasable.
+// The cleanup runs before the framework's TempDir RemoveAll.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -537,8 +528,7 @@ func deferHubRelease(t *testing.T, hub string) {
 	})
 }
 
-// tmuxSocketPids returns the OS pids of every tmux process whose command
-// line names the given -L socket.
+// tmuxSocketPids returns the OS pids of every tmux process whose command line names the given -L socket.
 func tmuxSocketPids(t *testing.T, tmuxPath, socket string) []int {
 	t.Helper()
 	if runtime.GOOS != "windows" {
@@ -599,7 +589,8 @@ $acc`, strings.Join(lits, ","))
 }
 
 // reapHarnessServer tears down the test's private harness tmux server and waits for its process subtree to exit.
-// A watchdog daemon an attach spawned in the subtree is killed rather than waited for: it detaches into its own session and exits only on its own production idle schedule.
+// A watchdog daemon an attach spawned in the subtree is killed rather than waited for.
+// It detaches into its own session and exits only on its own production idle schedule.
 func reapHarnessServer(t *testing.T, tmuxPath, socket string) {
 	t.Helper()
 	subtree := pidClosure(t, tmuxSocketPids(t, tmuxPath, socket))
@@ -678,14 +669,10 @@ func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string,
 	}
 }
 
-// materializeSibling clones h's code bare origin into a second worktree inside the primary hub
-// directory and seeds reed config into it.
-// It clones to filepath.Join(h.Path, name), a direct child of the hub directory, matching
-// h.PrimeWorktree()'s own parentage — not filepath.Join(h.Container, name), which is the hub
-// directory's own parent and would give lymcwd.Resolve a different HubPath for the sibling than
-// for the prime worktree, breaking the shared-per-hub-socket invariant the "sibling" name promises.
-// The clone is a plain repo, not a hub, so it stays on gitkit.SeedConfig rather than
-// hubforge.SeedConfig — the third, ad-hoc "sibling" resolution of the SeedConfig triage.
+// materializeSibling clones h's code bare origin into a second worktree under the hub directory h.Path.
+// The clone sits directly under h.Path, not under the hub's parent,
+// so it resolves to the same hub as the prime worktree and shares its per-hub tmux socket.
+// The clone is a plain repo rather than a hub, so it is seeded through gitkit.SeedConfig.
 func materializeSibling(t *testing.T, h *hubforge.Hub, name string) string {
 	t.Helper()
 	sibling := filepath.Join(h.Path, name)
@@ -752,7 +739,7 @@ func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	return 0
 }
 
-// paneIDForStrandIn runs status through the RunCLIIn seam and returns the tracked strand's live pane id; see addStrandIn for what the cwd argument means.
+// paneIDForStrandIn runs `status` with cwd as the working directory and returns the pane id of the tracked strand guid.
 func paneIDForStrandIn(t *testing.T, cwd, guid string) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -837,8 +824,7 @@ func waitServerProcCountForSession(t *testing.T, tmuxPath, socket, session strin
 	}
 }
 
-// assertSiblingStaysLive polls for dur, failing if the sibling's session, pane,
-// server pid, or agent root process drop.
+// assertSiblingStaysLive polls for dur and fails if the sibling loses its session, pane, server pid, or agent process.
 func assertSiblingStaysLive(t *testing.T, tmuxPath, socket, session, paneID string, wantServerPID, agentPID int, dur time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(dur)

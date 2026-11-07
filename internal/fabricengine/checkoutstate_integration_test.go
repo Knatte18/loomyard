@@ -1,6 +1,6 @@
 // checkoutstate_integration_test.go covers CheckoutStates and RecordsPathsChangedSince against a wired hub fixture.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// The package's single TestMain lives in testmain_test.go.
 
 package fabricengine_test
 

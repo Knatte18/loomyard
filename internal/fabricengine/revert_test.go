@@ -1,5 +1,4 @@
-// revert_test.go — tier0 unit tests for classifyCorrespondence, the pure gap-classification core
-// resolveRevertTarget's resolution step builds on.
+// revert_test.go holds unit tests for classifyCorrespondence, the pure gap classification of a revert target.
 // No git spawn: every case works against a hand-built *corrIndex.
 
 package fabricengine
@@ -12,9 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// buildIndexFromEntries returns a corrIndex populated with entries, sorted by
-// WarpSeq to match what a real on-disk index would look like. Only corrIndex's
-// own file I/O is exercised, no git spawn.
+// buildIndexFromEntries returns a corrIndex populated with entries.
+// It orders them by WarpSeq to match a real on-disk index.
+// Only corrIndex's own file I/O is exercised, no git spawn.
 func buildIndexFromEntries(t *testing.T, entries []corrEntry) *corrIndex {
 	t.Helper()
 
@@ -31,10 +30,11 @@ func buildIndexFromEntries(t *testing.T, entries []corrEntry) *corrIndex {
 	return ix
 }
 
-// TestClassifyCorrespondence covers an exact index entry for targetSHA (wins outright, regardless
-// of targetSeq), a gap (no exact entry: the nearest at-or-before entry is used and Exact is false),
-// a target whose WarpSeq precedes every recorded entry (wrapped ErrNoCorrespondence) and an empty
-// index (ErrNoCorrespondence, exact or not).
+// TestClassifyCorrespondence covers these cases:
+// an exact index entry for targetSHA, which wins outright regardless of targetSeq;
+// a gap, with no exact entry, where the nearest at-or-before entry is used and Exact is false;
+// a target whose WarpSeq precedes every recorded entry, which wraps ErrNoCorrespondence;
+// and an empty index, which yields ErrNoCorrespondence whether exact or not.
 //
 //testtiming:keep an exact index hit, a gap falling back to the nearest older entry with Exact false, and the ErrNoCorrespondence cases; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyCorrespondence(t *testing.T) {
@@ -58,8 +58,8 @@ func TestClassifyCorrespondence(t *testing.T) {
 			wantExact: true, wantWarpSHA: "w20",
 		},
 		{
-			// "w25" has no recorded entry itself; its WarpSeq (25) sits between the
-			// two recorded entries, so the nearest older one (seq 10) is used.
+			// "w25" has no recorded entry itself; its WarpSeq (25) sits between the two recorded entries,
+			// so the nearest older one (seq 10) is used.
 			name: "gap_falls_back_to_nearest_older",
 			entries: []corrEntry{
 				{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},

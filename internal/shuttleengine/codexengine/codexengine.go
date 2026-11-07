@@ -22,14 +22,17 @@ import (
 // engineName is the name the engine registers under, which the standing passages are keyed by.
 const engineName = "codex"
 
-// defaultSubmitRedrawSettleMS is the redraw settle New uses, matching the shipped shuttle template.
+// defaultSubmitRedrawSettleMS is the redraw settle of an engine built without config.
+// It matches submit_redraw_settle_ms in internal/shuttleengine/template.yaml.
 const defaultSubmitRedrawSettleMS = 300
 
 // Codex implements shuttleengine.Engine for the Codex CLI's interactive TUI.
-// Prepare and CheckAfterStartup read codex.yaml through the Dirs fixed at construction, and every other method is a pure function of its arguments, its settle and the files it is pointed at,
+// Methods that read codex.yaml do so through the dirs fixed at construction.
+// Every other method is a pure function of its arguments, the redraw settle and the files it is pointed at,
 // so a Codex is safe to share across concurrent runs.
 type Codex struct {
-	// dirs locate the layered codex.yaml, the anchor a launch starts in and the records checkout the session may write; the zero value makes Prepare refuse, so an engine built by New serves reading uses only.
+	// dirs locate the layered codex.yaml, the anchor a launch starts in and the records checkout the session may write.
+	// The zero value refuses a launch, so an engine built without dirs serves reading uses only.
 	dirs configengine.Dirs
 	// submitRedrawSettleMS is the wait after an Enter before the composer is read, so Codex has redrawn it.
 	submitRedrawSettleMS int
@@ -43,20 +46,23 @@ var (
 	_ shuttleengine.SessionOpener  = (*Codex)(nil)
 )
 
-// New returns a Codex engine with the default redraw settle and no Dirs.
+// New returns a Codex engine with the default redraw settle and no dirs, so it serves reading uses only.
 func New() *Codex {
 	return &Codex{submitRedrawSettleMS: defaultSubmitRedrawSettleMS, warn: logger.Warn}
 }
 
-// NewFromConfig returns a Codex engine whose redraw settle is cfg.SubmitRedrawSettleMS and which reads codex.yaml and its anchor from dirs.
+// NewFromConfig returns a Codex engine whose redraw settle is cfg.SubmitRedrawSettleMS.
+// It reads codex.yaml and its anchor from dirs.
 func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Codex {
 	return &Codex{dirs: dirs, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, warn: logger.Warn}
 }
 
-// Legal Spec.PermissionMode values: empty and bypass, the mode every launch runs in.
+// permissionModeBypass is the permission mode every Codex launch runs in.
+// An empty permission mode is accepted too.
 const permissionModeBypass = "bypass"
 
-// validateSpec refuses what a Codex run cannot realize, before anything is written: a resumed session, and whatever validateChoice refuses.
+// validateSpec refuses what a Codex run cannot realize, before anything is written:
+// a resumed session, and a model choice or permission mode a Codex launch cannot realize.
 func validateSpec(spec shuttleengine.Spec, codex Config) error {
 	if spec.ResumeSessionID != "" {
 		return fmt.Errorf("codexengine: Codex sessions cannot be resumed by a new run; way forward: start a fresh session")
@@ -76,19 +82,17 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 	return validateEffort(choice.Effort, codex)
 }
 
-// Prepare readies a Codex launch and returns its lines.
-// It validates the spec and loads the hub's gate config, whose refuse_raw list the shell guard installs.
-// A gate config that fails to load refuses the launch.
-// It reads the checkout the anchor sits in and refuses under Codex rules there, all before anything is written.
-// It then readies the lym home, trusting the worktree root and a linked worktree's main checkout root, and writes prompt.md into runDir.
-// The prompt file opens with the deny notice announcing each installed shell guard row and the creel trust sentence, then the standing passages heddle holds for engine codex and the spec's role, then the spec's prompt.
-// The launch line carries a PreToolUse hook per installed row, and the writable roots readyHome returns.
-// An engine told a board directory adds creel's hook delivery over that hub's flag directory and marks the launch CreelHooks; an engine told none, a standalone run, adds none.
-// One root is the records checkout, so the session writes its report through the anchor's `.lym` and `_lym` links.
-// Another is the checkout's git dirs, so the session can commit.
-// The rest are codex.yaml's writable_roots that exist, such as a build cache the session's tools fill.
-// A spec that names skills launches with the skill-load line as its first turn and returns the prompt pointer as Launch.PromptLine, for shuttle to send after the skills load.
-// The launch line turns on the sandbox's network access, so the session reaches the creel daemon's socket, and appends the exit record to the run's events file once Codex exits.
+// Prepare readies a Codex launch for the run in runDir and returns it.
+// Before anything is written, it validates the spec and loads the hub's gate config.
+// A gate config that fails to load refuses the launch, and so does a checkout that Codex rules refuse.
+// It readies the lym home and writes prompt.md into runDir.
+// The prompt holds the deny notice, the creel trust sentence, the standing passages and the spec's prompt.
+// The launch line carries a PreToolUse hook per installed shell guard.
+// It turns on the sandbox's network access, so the session reaches the creel daemon's socket.
+// Once Codex exits, the launch appends the exit record to the run's events file.
+// A board directory adds creel's hook delivery and marks the launch CreelHooks.
+// A spec with skills starts with the skill load as its first turn.
+// It returns the prompt pointer as Launch.PromptLine, for shuttle to send once the skills load.
 // The launch records session starts and names no session id, since Codex mints its own at the first turn.
 func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	codex, err := loadConfigOrRefuse(c.dirs)
@@ -150,12 +154,16 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 }
 
 // OpenLaunch returns the launch of a named interactive Codex session with no prompt.
-// It validates the model choice and the permission mode and readies the lym home as Prepare does, refusing under Codex rules before anything is written.
-// Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer, and the pane's shell goes on to Runner.Open's chain when Codex exits.
-// The line turns on the sandbox's network access as a run's does, so an opened session reaches the creel daemon's socket too.
-// It writes nothing into dir and names no session id.
-// It carries no creel hooks, since the session has no prompt file to hold the creel trust sentence and Codex reads a hook's block as a failed tool call without it, so the strand gets its mail by the pane path.
-// Its resume line is empty: Codex mints the session id at the first turn, so a revive starts no Codex and the chain after it ends the strand.
+// It validates the model choice and the permission mode and readies the lym home.
+// It refuses under Codex rules before anything is written.
+// Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer.
+// When Codex exits, the pane's shell writes the exit marker, asks reed to remove the strand and exits.
+// The line turns on the sandbox's network access, so an opened session reaches the creel daemon's socket too.
+// It writes nothing into the directory it is given and names no session id.
+// It carries no creel hooks, since the session has no prompt file to hold the creel trust sentence.
+// Codex reads a hook's block as a failed tool call without that sentence, so the strand gets its mail by the pane path.
+// Its resume line is empty: Codex mints the session id at the first turn,
+// so a revive starts no Codex and the chain after it ends the strand.
 func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 	codex, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -179,12 +187,17 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 	}, nil
 }
 
-// readyHome readies the lym home codex.yaml names for a launch in the checkout the engine's anchor sits in.
-// It refuses an anchor that is not absolute, a folder in no git checkout, Codex rules in the checkout and an empty or relative writable_roots value before anything is written, then trusts the checkout's roots in the home.
+// readyHome readies the lym home that codex.yaml names for a launch in the checkout the engine's anchor sits in.
+// Before anything is written, it refuses an anchor that is not absolute or sits in no git checkout.
+// It also refuses a checkout that Codex rules refuse, and an empty or relative writable_roots value.
+// Then it trusts the checkout's roots in the home.
 // It returns the home and the launch's writable roots, each symlink-resolved, in this order:
-// the records checkout the engine is told, kept as told with a Warn when it cannot be resolved, or none outside a hub;
-// the checkout's git dir and the common git dir it links to, since a linked worktree's git dirs lie under the main checkout, outside the workspace, and a commit writes its index lock, objects and refs there;
+// the records checkout the engine is told, or none outside a hub;
+// the checkout's git dir and the common git dir it links to;
 // then codex.yaml's writable_roots that exist.
+// A records checkout that cannot be resolved is kept as told, with a warning logged.
+// The git dirs are listed because a linked worktree's git dirs lie under the main checkout, outside the workspace,
+// and a commit writes its index lock, objects and refs there.
 func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, err error) {
 	homes, err := resolveHomes(codex)
 	if err != nil {
@@ -209,7 +222,7 @@ func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, er
 		return "", nil, err
 	}
 	if c.dirs.Records != "" {
-		// Codex keys a linked path by its resolved target, as it does the trust roots.
+		// Codex keys a linked path by its resolved target, so the writable root must be the resolved path.
 		records, err := filepath.EvalSymlinks(c.dirs.Records)
 		if err != nil {
 			c.warn("codexengine: records checkout not resolvable, using the told path as the writable root", "path", c.dirs.Records, "error", err)
@@ -221,7 +234,9 @@ func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, er
 	return homes.lym, append(writableRoots, configured...), nil
 }
 
-// promptText returns the prompt file's text: the deny notice and the creel trust sentence space-separated, each passage, then prompt, separated by blank lines, with an empty notice left out.
+// promptText returns the prompt file's text as paragraphs separated by blank lines.
+// The first paragraph is `shuttleengine.CreelTrustSentence`, with a non-empty deny notice before it on the same line.
+// Each passage follows as its own paragraph, and the prompt comes last.
 func promptText(notice string, passages []string, prompt string) string {
 	head := shuttleengine.CreelTrustSentence
 	if notice != "" {
@@ -230,12 +245,13 @@ func promptText(notice string, passages []string, prompt string) string {
 	return strings.Join(append(append([]string{head}, passages...), prompt), "\n\n")
 }
 
-// PromptCacheLifetime returns zero: Codex states no warm lifetime for its prompt cache, so a caller keeps nothing warm.
+// PromptCacheLifetime returns zero: Codex has no warm lifetime for its prompt cache, so a caller keeps nothing warm.
 func (c *Codex) PromptCacheLifetime(shuttleengine.Spec, shuttleengine.Config) (time.Duration, error) {
 	return 0, nil
 }
 
-// KeepWarmCaps returns zero caps: with no warm lifetime to keep, a Codex session blocks to the end of a wait.
+// KeepWarmCaps returns zero for both durations.
+// With no warm lifetime to keep, a Codex session blocks to the end of a wait.
 func (c *Codex) KeepWarmCaps(string) (time.Duration, time.Duration, error) {
 	return 0, 0, nil
 }

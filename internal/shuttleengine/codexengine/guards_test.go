@@ -1,4 +1,5 @@
-// guards_test.go pins the shell guard rows a Codex launch installs, the hook entries it renders for them and the deny notice announcing them.
+// guards_test.go pins the shell guard rows a Codex launch installs.
+// It also pins the hook entries rendered for them and the deny notice announcing them.
 
 package codexengine
 
@@ -23,8 +24,8 @@ func rowNames(rows []shellguard.Row) []string {
 	return names
 }
 
-// TestInstalledGuards_CoverEveryRow pins that a launch with every switch on installs every row of the table in table order, the refuse-raw row of a non-empty list included,
-// and that the python and publish rows follow their switches.
+// TestInstalledGuards_CoverEveryRow pins that a launch with every switch on installs every row, in table order.
+// The refuse-raw row is included for a non-empty refuse list, and the python and publish rows follow their switches.
 func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -51,7 +52,7 @@ func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 }
 
 // TestGuardEntries_RenderEveryRowWithItsCodexText pins the literal deny output Codex honours.
-// It pins one entry per row, each opening with the literal Bash matcher and carrying the row's Codex steer in its deny.
+// It pins one entry per row: each opens with the literal Bash matcher and carries the row's Codex steer in its deny.
 // It also pins a deny notice of the rows' Codex notices in order.
 func TestGuardEntries_RenderEveryRowWithItsCodexText(t *testing.T) {
 	tiergate.Require(t, 0)

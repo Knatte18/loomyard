@@ -1,7 +1,7 @@
-// mergein_integration_test.go covers MergeIn's scenario matrix against a real hubforge pair: both
-// sides clean, a warp-side conflict (the only side MergeIn can now conflict on), the already-up-to-date
-// fast paths, worktree-resolved conflicts via MergeContinue, MergeAbort, and the never-squashes
-// merge-commit shape.
+// mergein_integration_test.go covers MergeIn's scenario matrix against a real hubforge pair:
+// both sides clean; a warp-side conflict (the only side MergeIn can conflict on);
+// the already-up-to-date fast paths; worktree-resolved conflicts via MergeContinue and MergeAbort;
+// and the never-squashes merge-commit shape.
 
 package fabricengine_test
 
@@ -20,15 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newMergePairFixture builds a real hubforge pair anchored at anchor and the *fabricengine.Fabric
-// handle over its prime warp/weft worktrees (via hubforge.OpenFabric), plus
-// two closures for building divergent commits directly on the prime warp and weft repos
-// (gitkit.MustRun): commitOnWarpBranch/commitOnWeftBranch each check out (creating if absent) the
-// named branch off whatever is currently checked out, write filename with content, commit msg, and
-// switch back — leaving the pair's own checkout on its original branch when the closure returns, so
-// every scenario builds its divergence without disturbing the checkout MergeIn itself will run
-// against.
-// Exported within the test package (capitalized helpers alongside it) for reuse by batches 4-5.
+// newMergePairFixture builds a real hubforge pair anchored at anchor.
+// It returns the pair's Hub and the Fabric opened over its prime warp and weft worktrees.
+// The commitOnWarpBranch and commitOnWeftBranch closures commit on a named branch and switch back,
+// so the checkout MergeIn runs against stays on its original branch.
 func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabricengine.Fabric, commitOnWarpBranch, commitOnWeftBranch func(branch, filename, content, msg string), commitOnWarpCurrent, commitOnWeftCurrent func(filename, content, msg string)) {
 	t.Helper()
 
@@ -51,9 +46,8 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 	return h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent
 }
 
-// commitOnBranch checks out branch in dir — creating it off whatever is currently checked out when
-// it does not exist yet — writes filename with content, commits msg, then switches back to whatever
-// branch was checked out before, so building a divergent branch never leaves dir mid-switch.
+// commitOnBranch checks out branch in dir, creating it off the current checkout when it does not exist yet.
+// It writes filename with content, commits msg, and switches back to the previous branch.
 func commitOnBranch(t *testing.T, dir, branch, filename, content, msg string) {
 	t.Helper()
 
@@ -69,16 +63,16 @@ func commitOnBranch(t *testing.T, dir, branch, filename, content, msg string) {
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", current)
 }
 
-// branchAtCurrentHEAD creates branch in dir pointing at whatever is currently checked out, without
-// checking it out or adding any commit — the already-up-to-date fixture shape.
+// branchAtCurrentHEAD creates branch in dir at the current HEAD, without checking it out or adding a commit.
+// Merging it reports already up to date.
 func branchAtCurrentHEAD(t *testing.T, dir, branch string) {
 	t.Helper()
 	gitkit.MustRun(t, dir, "git", "branch", branch)
 }
 
-// setupConflictingDivergence seeds filename on dir's current branch, branches off, diverges the
-// branch's copy, then diverges the current branch's own copy again — so merging branch into the
-// current branch conflicts on filename.
+// setupConflictingDivergence commits filename on dir's current branch.
+// It then writes different content to filename on branch and on the current branch.
+// Merging branch into the current branch then conflicts on filename.
 func setupConflictingDivergence(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
@@ -87,28 +81,26 @@ func setupConflictingDivergence(t *testing.T, dir, branch, filename string) {
 	gitkit.CommitFile(t, dir, filename, "current content\n", "diverge "+filename+" on current")
 }
 
-// setupCleanFastForward creates branch off dir's current HEAD with one new-file commit — a
-// fast-forward merge target, since the current branch never advances past the branch point.
+// setupCleanFastForward creates branch off dir's current HEAD with one commit adding filename.
+// The current branch never advances past the branch point, so merging branch fast-forwards.
 func setupCleanFastForward(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 	commitOnBranch(t, dir, branch, filename, "clean content\n", "clean "+filename+" on "+branch)
 }
 
-// setupCleanNonFastForward creates branch off dir's current HEAD with a new-file commit, then
-// advances the current branch with its own unrelated commit — a genuine (non-fast-forward) merge
-// target.
+// setupCleanNonFastForward creates branch off dir's current HEAD with a commit adding branchFile.
+// It then advances the current branch with a commit adding currentFile, so merging branch is not a fast-forward.
 func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile string) {
 	t.Helper()
 	commitOnBranch(t, dir, branch, branchFile, "clean branch content\n", "clean "+branchFile+" on "+branch)
 	gitkit.CommitFile(t, dir, currentFile, "current progress\n", "progress current past "+branch)
 }
 
-// TestMergeIn_BothSidesClean covers the both-sides-clean scenario: Committed true, both sides
-// concluded, correspondence recorded, the record deleted, and MergeInProgress false afterward.
-// Both target branches carry a divergent commit of their own, so the merge genuinely needs a
-// conclude-commit on each side rather than fast-forwarding. That divergence is load-bearing: without
-// it neither side commits anything, and the Committed assertion below passes for the wrong reason —
-// which is exactly how this test used to false-green while MergeIn hardcoded Committed true.
+// TestMergeIn_BothSidesClean covers the both-sides-clean scenario.
+// It asserts Committed is true, both sides are concluded, and correspondence is recorded.
+// The record is deleted and MergeInProgress is false afterward.
+// Both target branches carry their own divergent commit, so the merge needs a conclude-commit on each side.
+// Without that divergence neither side commits, and the Committed assertion would pass for the wrong reason.
 func TestMergeIn_BothSidesClean(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -148,11 +140,8 @@ func TestMergeIn_BothSidesClean(t *testing.T) {
 	}
 }
 
-// TestMergeIn_WarpConflicts covers a warp conflict — the only side MergeIn can now conflict on.
-// This test used to also cover a weft-only conflict and assert the two produced byte-identical
-// result shapes; the weft arm is deleted, with no replacement, since MergeIn no longer merges the
-// weft side at all, so a weft-side conflict is not a shape it can produce any more — see the
-// merge-drops-weft task.
+// TestMergeIn_WarpConflicts covers a conflict on the warp side.
+// MergeIn merges only into the warp checkout, so the warp side is the only one that can conflict.
 func TestMergeIn_WarpConflicts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -176,20 +165,12 @@ func TestMergeIn_WarpConflicts(t *testing.T) {
 	}
 }
 
-// TestMergeIn_BothSidesConflict used to cover both sides conflicting simultaneously, asserting one
-// flat, lexically sorted, deduplicated list spanning both sides. That scenario has no warp-side
-// analogue and is deleted: MergeIn no longer merges the weft side at all, so the weft half can never
-// conflict, and "both sides conflict" is not a reachable shape any more — see the merge-drops-weft
-// task. TestMergeIn_WarpConflicts covers the warp side's own conflict-reporting behavior.
+// MergeIn merges only the warp side, so no test case has both sides conflicting at once.
 
-// TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable pins the core.quotepath
-// regression on the warp side: a conflict on a path outside git's default ASCII quoting set must
-// surface as the raw worktree-relative path. Before ConflictedFiles passed `-z`, git handed back
-// the C-quoted rendering (`"\303\244..."`, quotes included), so the reported path was a literal that
-// exists nowhere in the worktree.
-// This test used to also seed a weft-side non-ASCII conflict, since weftPathVisible's own prefix test
-// was a second, independent place the quoted form could fail. That arm is deleted along with the
-// weft's ability to conflict at all — see the merge-drops-weft task.
+// TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable pins how conflicted paths are reported.
+// A conflict on a path outside git's default ASCII quoting set is reported as the raw worktree-relative path.
+// Without the -z flag, git returns the C-quoted rendering (`"\303\244..."`, quotes included).
+// That literal names no file in the worktree.
 func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -209,21 +190,15 @@ func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *tes
 	}
 }
 
-// TestMergeIn_OneSideFastForwardsOtherConflicts_AbortRestoresFastForwardedSide used to cover the B1
-// case: the warp side fast-forwards while the weft side conflicts, and MergeAbort restores the
-// fast-forwarded warp side to its recorded pre-merge SHA. That shape has no warp-only analogue and is
-// deleted: with the weft no longer a merge participant, there is no "other side" left that can
-// conflict while the warp side fast-forwards — a fast-forwarding warp side means the whole call
-// concludes cleanly, never conflicted. MergeAbort's own restore-a-fast-forwarded-side behavior is
-// covered structurally by TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded's fixtures and
-// by mergestate_test.go's own outcome-classification tests — see the merge-drops-weft task.
+// With the weft no longer a merge participant, a fast-forwarding warp side means the whole call
+// concludes cleanly and is never conflicted.
 
-// TestMergeIn_OneSideAlreadyUpToDate_OtherMerges covers the mixed already-up-to-date case: the
-// merge concludes, no empty commit is fabricated on the no-op side, and correspondence pairs the
-// new SHA with the unchanged one.
-// The merging side fast-forwards (setupCleanFastForward), so no conclude-commit is fabricated there
-// either and Committed is false — the pair advanced without any merge commit existing. AlreadyUpToDate
-// is likewise false: one side did move.
+// TestMergeIn_OneSideAlreadyUpToDate_OtherMerges covers a mixed already-up-to-date merge.
+// The merge concludes and correspondence pairs the new SHA with the unchanged one.
+// No empty commit is fabricated on the no-op side.
+// The merging side fast-forwards (`setupCleanFastForward`), so no conclude commit is fabricated there either.
+// Committed is false: the pair advanced without any merge commit existing.
+// AlreadyUpToDate is likewise false: one side did move.
 func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -272,9 +247,8 @@ func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
 	}
 }
 
-// hubRelForTest mirrors mutation.go's hub-relative Target conversion for target, so a test can
-// compare a raw path against a Mutation entry's own Target without duplicating fabricengine's
-// unexported conversion.
+// hubRelForTest returns target as a slash-separated path relative to the hub directory.
+// A test uses it to compare a raw path with a recorded mutation target without repeating the conversion.
 func hubRelForTest(t *testing.T, f *fabricengine.Fabric, target string) string {
 	t.Helper()
 	rel, err := filepath.Rel(filepath.Dir(fabricengine.WarpPathForTest(f)), target)
@@ -310,9 +284,9 @@ func TestMergeIn_BothSidesAlreadyUpToDate(t *testing.T) {
 	}
 }
 
-// TestMergeContinue_ResolvedConflictsConclude covers resolving a conflict in the worktree (edit +
-// git add) and running MergeContinue: both sides conclude, correspondence is recorded, and the
-// record is deleted.
+// TestMergeContinue_ResolvedConflictsConclude covers MergeContinue after a conflict is resolved in the worktree.
+// The test edits the file and runs git add;
+// both sides conclude, correspondence is recorded, and the record is deleted.
 func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -353,8 +327,8 @@ func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
 	}
 }
 
-// TestMergeContinue_UnresolvedConflictsRefuse covers MergeContinue's refusal while conflict markers
-// remain: a *MergeGuardError whose sole reason is the fixed "unresolved conflicts remain".
+// TestMergeContinue_UnresolvedConflictsRefuse covers MergeContinue's refusal while conflict markers remain:
+// a *MergeGuardError whose sole reason is the fixed "unresolved conflicts remain".
 func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -378,9 +352,9 @@ func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
 	}
 }
 
-// TestMergeAbort_AfterConflict covers MergeAbort after a conflicted MergeIn: both sides land at
-// their exact pre-merge SHAs, worktrees are clean, the record is deleted, and MergeInProgress
-// reports false.
+// TestMergeAbort_AfterConflict covers MergeAbort after a conflicted MergeIn:
+// both sides land at their exact pre-merge SHAs and worktrees are clean.
+// The record is deleted, and MergeInProgress reports false.
 func TestMergeAbort_AfterConflict(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -390,9 +364,8 @@ func TestMergeAbort_AfterConflict(t *testing.T) {
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
 	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
-	// Captured after the divergence commits above land, since those are the actual pre-merge SHAs
-	// MergeIn's own record captures and MergeAbort must restore — not the SHAs before this fixture's
-	// own setup ran.
+	// Captured after the divergence commits above land: these are the pre-merge SHAs
+	// MergeIn's own record captures and MergeAbort must restore — not the SHAs from before this fixture's own setup ran.
 	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
@@ -421,8 +394,8 @@ func TestMergeAbort_AfterConflict(t *testing.T) {
 	}
 }
 
-// TestMergeIn_NeverSquashes covers that a clean, non-fast-forward MergeIn lands a real merge commit
-// on warp: two parents.
+// TestMergeIn_NeverSquashes covers a clean, non-fast-forward MergeIn:
+// it lands a real merge commit on warp with two parents.
 func TestMergeIn_NeverSquashes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -453,9 +426,10 @@ func TestMergeIn_NeverSquashes(t *testing.T) {
 	}
 }
 
-// TestMergeInAt_MergesTheGivenTipNotTheLocalOne covers MergeInAt's told code-side SHA.
-// A tip behind the local branch merges only that tip, and a told tip that conflicts parks a merge-in of the named source recording the told SHA.
-// A SHA naming no commit is the source-not-found guard refusal with nothing merged.
+// TestMergeInAt_MergesTheGivenTipNotTheLocalOne covers MergeInAt's code-side SHA argument.
+// A tip behind the local branch merges only that tip.
+// A given tip that conflicts parks a merge-in of the named source, recording the given SHA.
+// A SHA naming no commit is refused by the source-not-found guard, with nothing merged.
 func TestMergeInAt_MergesTheGivenTipNotTheLocalOne(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

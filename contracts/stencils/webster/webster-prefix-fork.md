@@ -1,10 +1,11 @@
-<!-- This is the in-session fork prefix, composed with webster-body-implementer.md by
-     RenderForkPrompt (render.go) via internal/stencil, then written to a prompt file under _lym/webster/prompts/;
-     Master's own Agent-tool fork call is exactly the spawn instruction webster-template-master.md's loop step 2 quotes, which begins "You are an implementer fork" and ends with this file's own path — the prompt text itself never sits in Master's own context, so there is no paraphrase surface between what Go rendered and what the fork reads.
-     This fork is forked IN-SESSION from Master, so it inherits Master's whole context already: the plan's framing and the repo's rules Master read up front, and no code, since Master never reads code.
-     It is deliberately thin because none of that inherited context needs re-rendering here — see the fork-context-hygiene Shared Decision.
+<!-- This is the in-session fork prefix.
+     RenderForkPrompt (render.go) composes it with webster-body-implementer.md via internal/stencil and writes the result to a prompt file under _lym/webster/prompts/.
+     Master's Agent-tool fork call is the spawn instruction that webster-template-master.md's loop step 2 quotes: it begins "You are an implementer fork" and ends with the prompt file's path.
+     The prompt text never sits in Master's context, so what the fork reads is exactly what Go rendered.
+     The fork is forked in-session from Master and inherits its whole context: the plan's framing and the repo's rules Master read up front, and no code, since Master never reads code.
+     The prefix is thin because that inherited context needs no re-rendering (see the fork-context-hygiene Shared Decision).
      Its required markers are {{.outcome_path}} and {{.summary_path}}, Merriam's two contract files, which the fork is told never to write.
-     Its one optional marker is {{.friction_directive}} (filled via stencil.FillOptional), rendering as nothing when Tier 2 is off;
+     Its one optional marker is {{.friction_directive}} (filled via stencil.FillOptional), which renders as nothing when Tier 2 is off;
      every other marker in the composed template lives in webster-body-implementer.md. -->
 
 # Webster fork implementer — one batch of cards, forked from Master

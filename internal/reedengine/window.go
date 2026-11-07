@@ -1,5 +1,7 @@
-// window.go implements the reed op that opens a detached, named tmux window in this worktree's reed session running a `lym` command.
-// The op only chooses where a command runs: the window is not a strand, holds no reed state, and is never read as the strands' window.
+// window.go implements the reed op that opens a detached, named tmux window running a `lym` command.
+// The window lives in this worktree's reed session.
+// The op only chooses where a command runs.
+// The window is not a strand, holds no reed state, and is never read as the strands' window.
 
 package reedengine
 
@@ -14,14 +16,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// ErrNewWindowFailed is the sentinel OpenWindow wraps when the multiplexer refuses the window.
+// ErrNewWindowFailed marks an error from the multiplexer refusing to open a window.
 var ErrNewWindowFailed = errors.New("reed: could not open the window")
 
-// ErrWindowReadBack is the sentinel OpenWindow wraps when the new window does not read remain-on-exit off.
-// The chained option targets a name no other window holds, so this signals a multiplexer that did not apply it; the new window is killed.
+// ErrWindowReadBack marks a new window whose remain-on-exit option does not read back as off.
+// The option is set through a chained command on a name no other window holds.
+// A read-back mismatch therefore means the multiplexer did not apply it; the new window is killed.
 var ErrWindowReadBack = errors.New("reed: the opened window did not read remain-on-exit off")
 
-// WindowResult reports the window OpenWindow answers for.
+// WindowResult describes the window that a window-open call answers with.
 type WindowResult struct {
 	// WindowID is the multiplexer's window id ("@<n>"), what every later op addresses the window by.
 	WindowID string `json:"window_id"`
@@ -34,19 +37,23 @@ type WindowResult struct {
 // temporaryWindowNamePrefix starts the name a new window holds between its creation and its rename to the requested name.
 const temporaryWindowNamePrefix = "lym-opening-"
 
-// temporaryWindowCounter makes each OpenWindow call's temporary window name distinct within the process.
+// temporaryWindowCounter numbers the temporary window names so that each one is distinct within the process.
 var temporaryWindowCounter atomic.Uint64
 
-// windowListFormat is the session-wide listing format OpenWindow finds a named window with: window id, pane id, pane dead flag, the own-window flag, then the window name.
+// windowListFormat is the session-wide listing format that finds a named window:
+// window id, pane id, pane dead flag, the own-window flag, then the window name.
 const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lym_own},1,0} #{window_name}"
 
-// windowReadBackFormat is the format OpenWindow reads a new window's remain-on-exit back with: the answering window's id, then the value.
-// The id is needed because tmux answers a target window that has already closed from another scope, exiting 0 with an empty id and the global value.
+// windowReadBackFormat reads back a window's remain-on-exit option: the answering window's id, then the value.
+// The id is needed because tmux answers a target window that has already closed from another scope.
+// Such an answer exits 0 with an empty id and the global value.
 const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
 
 // OpenWindow opens a detached window named name in this worktree's reed session and runs `lym` with lymArgs in it.
-// The window is never selected, so it takes no focus, it carries @lym_hidden, so the status bar gives it no button, and it closes when its command exits.
-// It opens after the highest-index window, so every hidden window sits behind the shell window, which is first renamed and moved into place when the session predates the window order.
+// The window is never selected, so it takes no focus.
+// It carries @lym_hidden, so the status bar gives it no button, and it closes when its command exits.
+// It opens after the highest-index window, so every hidden window sits behind the shell window.
+// When the session predates the window order, the shell window is first renamed and moved into place.
 //
 // A window of that exact name whose pane is live is returned as existing and nothing is started;
 // one whose pane is dead is killed and replaced.
@@ -58,7 +65,9 @@ func (e *Engine) OpenWindow(name string, lymArgs []string) (WindowResult, error)
 	return e.OpenWindowIn(name, "", lymArgs)
 }
 
-// OpenWindowIn is OpenWindow with a working directory: a non-empty dir is the directory the window's command starts in, and an empty one leaves the multiplexer's default.
+// OpenWindowIn opens a detached window named name in this worktree's reed session and runs `lym` with lymArgs in it.
+// A non-empty dir is the directory the window's command starts in; an empty one leaves the multiplexer's default.
+// The window is hidden, never selected, and closes when its command exits.
 func (e *Engine) OpenWindowIn(name, dir string, lymArgs []string) (WindowResult, error) {
 	var result WindowResult
 	err := e.withOpLock(func() error {

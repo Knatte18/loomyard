@@ -1,4 +1,4 @@
-// hubfixture_helper_test.go holds the hub, config and verdict fixtures the tier0 and tier1 tests of this package share.
+// hubfixture_helper_test.go holds the hub, config and verdict fixtures that the tier0 and tier1 tests share.
 // It carries no build tag, so it compiles into every tag set.
 
 package loomcli
@@ -22,7 +22,7 @@ import (
 )
 
 // seedLoomConfig creates <anchorPath>/_lym/config/loom.yaml with the embedded template's contents.
-// It seeds the one config load loomengine.LoadConfig performs strictly.
+// It seeds the one config file the loom config loader reads strictly.
 func seedLoomConfig(t *testing.T, anchorPath string) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lym", "config")
@@ -36,7 +36,7 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 }
 
 // seedTapestryConfig creates <anchorPath>/_lym/config/tapestry.yaml with the embedded template's contents.
-// It seeds the file loomengine.LoadTapestryConfig reads strictly for a recipe with a Plan-Review row.
+// It seeds the file the tapestry config loader reads strictly for a recipe with a Plan-Review row.
 func seedTapestryConfig(t *testing.T, anchorPath string) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lym", "config")
@@ -49,11 +49,13 @@ func seedTapestryConfig(t *testing.T, anchorPath string) {
 	}
 }
 
-// hubDeploy is the deploy value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
+// hubDeploy is the deploy value the hub's landing.yaml carries.
+// A config read from a pair's copy instead differs from it.
 const hubDeploy = "./deploy-hub.sh"
 
 // seedLandingConfig creates <baseDir>/_lym/config/landing.yaml with the embedded template's contents, its deploy set to deploy.
-// landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every test that wires a hub without this seed.
+// The landing config loader is strict: an absent file is an error,
+// so every test that wires a hub without this seed fails.
 func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 	t.Helper()
 	configDir := filepath.Join(baseDir, "_lym", "config")
@@ -68,8 +70,9 @@ func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 }
 
 // hubLocation returns a *lymcwd.Location standing in for a real hub location.
-// Its anchor path is seeded on disk with loom.yaml, tapestry.yaml and a pair landing.yaml that blanks deploy,
-// and its hub is seeded with loom's and tapestry's repo defaults, the hub-wide landing.yaml at the board dir and both loom stencils.
+// Its anchor path is seeded on disk with loom.yaml, tapestry.yaml and a pair landing.yaml that blanks deploy.
+// Its hub is seeded with the loom and tapestry repo defaults and the hub-wide landing.yaml in the board directory.
+// The hub also holds both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -84,12 +87,14 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lymcwd.Location 
 	seedTapestryConfig(t, fabricengine.BoardDir(hub))
 	seedLandingConfig(t, fabricengine.BoardDir(hub), hubDeploy)
 	seedLandingConfig(t, loc.AnchorPath(), "")
-	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
+	// stencilstore.Read hard-errors on a missing file,
+	// so the stencils the Spec closures read are seeded into the hub's stencils directory.
 	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 	return loc
 }
 
-// hubLocationAt returns a Location whose anchor is anchorPath, under a hub that holds the hub-wide language.yaml languageContent when that is non-empty and none otherwise.
+// hubLocationAt returns a Location whose anchor is anchorPath.
+// When languageContent is non-empty, the hub holds it as the hub-wide language.yaml; otherwise the hub holds none.
 // The hub is anchorPath's parent directory, so a test's plan fixtures and its language file share one temp tree.
 func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lymcwd.Location {
 	t.Helper()
@@ -106,8 +111,9 @@ func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lymcwd.Loc
 	return loc
 }
 
-// seedDarnHubConfig writes the hub-wide darn.yaml into hub's board directory with verifyAttempts substituted into the template.
-// Each old, new pair of replacements is applied after it.
+// seedDarnHubConfig writes the hub-wide darn.yaml into hub's board directory.
+// verifyAttempts is substituted into the template.
+// Each old, new pair of replacements is applied after the substitution.
 func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ...string) {
 	t.Helper()
 	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
@@ -134,7 +140,7 @@ func writeHubGateConfig(t *testing.T, hub, contents string) {
 }
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map onto before comparison.
-// A string-typed constant set, rather than raw producer outcomes compared against raw exit codes, makes a mismatch failure message name the two sides' verdicts readably.
+// Its string values let a mismatch failure message name the two sides' verdicts readably.
 type parityVerdict string
 
 const (
@@ -144,7 +150,9 @@ const (
 )
 
 // producerVerdict maps a shuttleengine.Gate closure's raw (GateResult, error) onto a parityVerdict.
-// A non-nil error is verdictError, GateResult.Passed == false is verdictStuck, and GateResult.Passed == true is verdictDone.
+// A non-nil error gives verdictError.
+// GateResult.Passed == false gives verdictStuck.
+// GateResult.Passed == true gives verdictDone.
 func producerVerdict(result shuttleengine.GateResult, err error) parityVerdict {
 	if err != nil {
 		return verdictError
@@ -156,7 +164,9 @@ func producerVerdict(result shuttleengine.GateResult, err error) parityVerdict {
 }
 
 // cliVerdict maps a decoded verb envelope onto a parityVerdict.
-// ok == true is verdictDone, ok == false with a "findings" key present is verdictStuck, and ok == false without a "findings" key is verdictError.
+// ok == true gives verdictDone.
+// ok == false with a "findings" key present gives verdictStuck.
+// ok == false without a "findings" key gives verdictError.
 // The findings-key presence check is structural, never a matter of message wording.
 func cliVerdict(env envelope.Envelope) parityVerdict {
 	if env.OK {

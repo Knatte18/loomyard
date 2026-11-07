@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// RecordFileName is the name of the machine record of hubs inside the directory a caller tells.
+// RecordFileName is the name of the machine record of hubs, inside the directory the caller passes.
 const RecordFileName = "hubs.json"
 
 // lockFileName is the name of the record's lock file, beside the record, since the record belongs to no hub.
@@ -48,7 +48,8 @@ type recordFile struct {
 	Hubs []Entry `json:"hubs"`
 }
 
-// Record upserts hubPath with shortname and now into the record in dir, and drops every other entry whose hub no longer exists or whose Bolt shortname record now reads another shortname.
+// Record upserts hubPath with shortname and now into the record in dir.
+// It drops every other entry whose hub is certainly gone.
 // An entry whose Bolt record is absent, and one whose path cannot be told gone, is kept.
 // The read and the write happen under one lock, so concurrent daemons lose no entry.
 func Record(dir, hubPath, shortname string, now time.Time) error {
@@ -66,7 +67,7 @@ func Record(dir, hubPath, shortname string, now time.Time) error {
 	return refuseUnreadable(path, err)
 }
 
-// Lookup answers the path of the one hub in dir's record that recorded shortname and whose Bolt shortname record still reads it.
+// Lookup answers the path of the one hub in dir's record that recorded shortname and whose Bolt record reads it.
 // It refuses, wrapping ErrUnresolved, when no hub or several hubs read it, and the refusal names the way forward.
 func Lookup(dir, shortname string) (string, error) {
 	entries, err := readEntries(dir)
@@ -93,7 +94,7 @@ func Lookup(dir, shortname string) (string, error) {
 	}
 }
 
-// Live answers the entries of dir's record whose Bolt shortname record still reads the entry's own shortname, in shortname order.
+// Live answers the entries of dir's record whose Bolt record reads the entry's own shortname, in shortname order.
 func Live(dir string) ([]Entry, error) {
 	entries, err := readEntries(dir)
 	if err != nil {
@@ -129,7 +130,8 @@ func recordPaths(dir string) (path, lockPath string) {
 	return filepath.Join(dir, RecordFileName), filepath.Join(dir, lockFileName)
 }
 
-// entryGone reports whether the entry's hub is certainly gone: its path does not exist, or its Bolt record reads another shortname.
+// entryGone reports whether the entry's hub is certainly gone.
+// The hub is gone when its path does not exist, or when its Bolt record reads another shortname.
 // A path a stat cannot settle and an absent Bolt record keep the entry.
 func entryGone(entry Entry) bool {
 	if _, err := os.Stat(entry.HubPath); errors.Is(err, fs.ErrNotExist) {
@@ -139,7 +141,8 @@ func entryGone(entry Entry) bool {
 	return found && got != entry.Shortname
 }
 
-// refuseUnreadable turns a record that cannot be decoded into a refusal naming the file and the way forward, and passes any other error through.
+// refuseUnreadable turns a record that cannot be decoded into a refusal naming the file and the way forward.
+// Any other error passes through unchanged.
 func refuseUnreadable(path string, err error) error {
 	if errors.Is(err, state.ErrDecode) {
 		return fmt.Errorf("creel: the machine record of hubs %s cannot be decoded: %w; way forward: remove %s, after which lym creel inbox in each hub, a minute on, records it again", path, err, path)

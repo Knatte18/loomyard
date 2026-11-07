@@ -1,10 +1,9 @@
-// coalesce_integration_test.go — integration coverage for CoalescePushBothAt
-// against real warp+weft repos with bare origins: the two-sided-advance case
-// (including the no-push-lock-at-the-warp-root assertion), and the
-// diverged-warp-remote case that must return nil (not an error) without
-// spinning. Package fabricengine_test, driving the warp/bare fixture through
-// export_test.go's ForTest shims (NewPlainWarpRepoForTest, CurrentSHAForTest,
-// BareBranchSHAForTest) plus gitkit for bare-remote setup.
+// coalesce_integration_test.go holds integration tests for CoalescePushBothAt.
+// They run against real warp and weft repos with bare origins.
+// They cover a two-sided advance, which leaves no push lock at the warp root.
+// They also cover a diverged warp remote: CoalescePushBothAt must return nil without spinning.
+// The file is in package fabricengine_test:
+// it drives the warp/bare fixture through the ForTest shims in export_test.go and through gitkit for bare-remote setup.
 
 package fabricengine_test
 
@@ -22,9 +21,9 @@ import (
 )
 
 // addWarpBareRemote creates a bare git repository at <dir>/warp-remote.git,
-// adds it to warpPath as "origin", and pushes -u to establish upstream
-// tracking on "main" — the state CoalescePushBothAt's warp side needs before
-// it has anything to push against. Returns the bare repo's path.
+// adds it to warpPath as "origin", and pushes -u to set upstream tracking on "main".
+// The upstream lets a later plain `git push` from warpPath reach the bare repository.
+// It returns the bare repo's path.
 func addWarpBareRemote(t *testing.T, dir, warpPath string) string {
 	t.Helper()
 
@@ -35,10 +34,8 @@ func addWarpBareRemote(t *testing.T, dir, warpPath string) string {
 	return bare
 }
 
-// runWithDeadline runs fn in a goroutine and fails the test if it has not
-// returned within the given deadline — the promptness assertion the
-// diverged-remote test needs: a spinning CoalescePushBothAt call would never
-// reach the select's success branch.
+// runWithDeadline runs fn in a goroutine and fails the test if it has not returned within deadline.
+// A spinning call never returns, so the deadline is what makes such a hang fail the test promptly.
 func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) error {
 	t.Helper()
 
@@ -53,10 +50,8 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 	}
 }
 
-// TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock covers the straightforward
-// two-sided case: an unpushed commit on each side,
-// and the no-warp-root-gitrepo-push-lock Shared Decision's assertion that the warp-via-fabric path
-// never leaves a push lock file at the warp worktree root.
+// TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock covers an unpushed commit on each side.
+// It also asserts that the warp-via-fabric path never leaves a push lock file at the warp worktree root.
 //
 //testtiming:keep both sides advancing and no push lock being left at the warp root; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.T) {
@@ -88,11 +83,11 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	}
 }
 
-// TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning covers the rejection path: a
-// second warp clone pushes a commit the original checkout lacks, so the warp side's push is a
-// non-fast-forward rejection.
-// CoalescePushBothAt must return nil (not an error), leave the warp bare's HEAD unadvanced by this
-// call, mutate no warp working-tree file, and return promptly rather than spinning.
+// TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning covers the rejection path.
+// A second warp clone pushes a commit that the original checkout lacks,
+// so the warp side's push is a non-fast-forward rejection.
+// CoalescePushBothAt must return nil and leave the warp bare's HEAD unadvanced by this call.
+// It must mutate no warp working-tree file and return promptly rather than spinning.
 func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -102,8 +97,8 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
 
-	// A second clone advances the bare remote past what warpPath's checkout
-	// has, setting up the divergence: warpPath's next push will be rejected.
+	// A second clone advances the bare remote past warpPath's checkout.
+	// The next push from warpPath is then rejected.
 	warpClone2 := filepath.Join(fixtures, "warp-clone-2")
 	gitkit.MustRun(t, fixtures, "git", "clone", warpBare, warpClone2)
 	gitkit.Git(t, warpClone2, "config", "user.email", "test@test.com")
@@ -111,8 +106,8 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	gitkit.CommitFile(t, warpClone2, "other.txt", "from second clone", "from second clone")
 	gitkit.MustRun(t, warpClone2, "git", "push")
 
-	// warpPath now commits locally too, without ever having fetched the
-	// second clone's commit — its next push is a genuine non-fast-forward.
+	// warpPath commits locally too, without fetching the second clone's commit,
+	// so its next push is a non-fast-forward.
 	gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change that will be rejected", "warp change that will be rejected")
 
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -152,11 +147,11 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	}
 }
 
-// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the weft-only detached push (warpPath == "", the shape a caller of SpawnDetachedPush gets by passing no warp path):
-// with the detached child's cwd left at some unrelated, non-git directory (nothing overrides cmd.Dir), CoalescePushBothAt must still push the weft side and return nil, not open (or fail to open) a git checkout at the inherited cwd for the absent warp side.
-// Before the headOrEmpty("") short-circuit fix, this call errored (aborting the loop before the
-// weft push ever ran) because gitrepo.New("").CurrentSHA() resolves "" to the process's cwd via
-// filepath.Abs and found no .git there.
+// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the weft-only detached push.
+// The warp path is empty, the shape a caller of SpawnDetachedPush gets by passing no warp path.
+// CoalescePushBothAt must still push the weft side and return nil when the child's cwd is a non-git directory;
+// it must not open a git checkout at the inherited cwd for the absent warp side.
+// gitrepo.New("").CurrentSHA() resolves "" to the process cwd through filepath.Abs, where no .git exists.
 func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: os.Chdir changes the process-global cwd.

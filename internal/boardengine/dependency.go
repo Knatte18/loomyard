@@ -1,4 +1,4 @@
-// dependency.go — when a depends_on dependency is met, for every kind of entry that lands, and what a dependency on a project stands for.
+// dependency.go — when a depends_on dependency is met, and what a dependency on a project waits for.
 
 package boardengine
 
@@ -8,7 +8,8 @@ import "slices"
 // A dependency is met once its entry is done, and a slug the entries do not hold was pruned as done.
 // A task is done when its status is done, and so is a beam, whose landing into its parent sets that status.
 // A plain project is done when its status is done, or when it has a landing member and every landing member is done.
-// A landing member is a task or a project whose project key names the project; a note never lands, so it holds no project open.
+// A landing member is a task or a project whose project key names the project;
+// a note never lands, so it holds no project open.
 type Dependencies struct {
 	bySlug  map[string]Task
 	members map[string][]string
@@ -67,7 +68,8 @@ func (d Dependencies) waitsOn(entry Task) []string {
 	return entry.DependsOn
 }
 
-// standsFor returns the entries a dependency on slug waits for: slug itself and, under a project, each landing member not yet done, at any depth.
+// standsFor returns the entries a dependency on slug waits for.
+// They are slug itself and, under a project, each landing member not yet done, at any depth.
 func (d Dependencies) standsFor(slug string) []string {
 	return d.standsForBelow(slug, map[string]bool{})
 }

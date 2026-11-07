@@ -1,9 +1,9 @@
-// main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
-// parse, the plugin mirror, the binary install and the stray-binary report — plus -dev's destination and a
-// source-level guard that the -ldflags -X path in run() still names a variable that actually exists
-// at internal/buildinfo, and a go.mod guard that lymMainPackage still names lym's main package.
-// Tests spawn no git, go build, or go env;
-// the mirror and stray-binary tests work in t.TempDir, so goBinDir(), the pushed-to-main gate and the git-driven listing in syncPlugins are intentionally left uncovered here.
+// main_test.go covers the deploy's helpers: the dirty-tree refusal, the marketplace parse, and the plugin mirror.
+// It also covers the binary install, the stray-binary report and the -dev destination.
+// The drift guards pin the -X path, lymMainPackage and go.mod.
+// The tests spawn no git, go build or go env.
+// The mirror and stray-binary tests work in t.TempDir.
+// goBinDir(), the pushed-to-main gate and the git-driven listing in syncPlugins are not covered here.
 
 package main
 
@@ -42,8 +42,8 @@ func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
 	}
 }
 
-// TestDirtyError_RefusesAnyChange verifies production refuses a tree git reports any change in,
-// and accepts a clean one.
+// TestDirtyError_RefusesAnyChange verifies production refuses any tree git reports as changed.
+// It accepts a clean one.
 func TestDirtyError_RefusesAnyChange(t *testing.T) {
 	tiergate.Require(t, 0)
 	if err := dirtyError(""); err != nil {
@@ -71,9 +71,8 @@ func TestParseMarketplace_ReadsPluginEntries(t *testing.T) {
 	}
 }
 
-// TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles verifies the mirror copies the listed
-// files with their mode, drops files outside the plugin, and removes whatever the cache held
-// before (a stale built binary included).
+// TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles verifies the mirror copies the listed files with their mode.
+// It drops files outside the plugin and removes whatever the cache held before, a stale built binary included.
 func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := t.TempDir()
@@ -121,7 +120,10 @@ func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
 	}
 }
 
-// TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce verifies a second lym on PATH is reported whether it sits before or after the production dir, while the production binary, a foreign program of the same name and a second PATH entry reaching an already seen file through a directory link never are.
+// TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce verifies a second lym on PATH is reported once.
+// It reports a copy whether it sits before or after the production dir.
+// It never reports the production binary or a foreign program of the same name.
+// It also never reports a second PATH entry that reaches an already seen file through a directory link.
 // The test binary stands in for lym, recognised by its own main package path.
 func TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -182,7 +184,7 @@ func TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce(t *testing.T) 
 	}
 }
 
-// repoRoot locates the module root the way run() does, through devbin.RepoRoot.
+// repoRoot returns the module root that devbin.RepoRoot locates, and fails the test if it cannot.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := devbin.RepoRoot()
@@ -192,11 +194,11 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-// TestLdflagsPath_MatchesBuildinfoChannel guards the -X argument tools/deploy/main.go's run() passes
-// to the linker against silent drift: Go's linker does not error on an unmatched -X, so a rename of
-// either the variable or its package leaves a -dev build behaving as production, with no build
-// error, no test failure, and no visible symptom until someone notices stencils refreshing when
-// they should not.
+// TestLdflagsPath_MatchesBuildinfoChannel guards the -X stamp that tools/deploy/main.go passes to the linker.
+// The linker does not error on an unmatched -X.
+// A rename of either the variable or its package therefore leaves a -dev build behaving as production.
+// The failure is silent: there is no build error and no test failure.
+// Its one visible symptom is stencils refreshing when they should not.
 func TestLdflagsPath_MatchesBuildinfoChannel(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := repoRoot(t)
@@ -282,7 +284,8 @@ func declaresExportedVar(file *ast.File, name string) bool {
 	return false
 }
 
-// TestInstallBinary_RenameFailureRemovesTheBuild verifies a rename that fails leaves the target as it was and no temporary file behind.
+// TestInstallBinary_RenameFailureRemovesTheBuild verifies a failed rename leaves the target as it was.
+// It also leaves no temporary file behind.
 func TestInstallBinary_RenameFailureRemovesTheBuild(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

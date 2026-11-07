@@ -1,11 +1,9 @@
-// clone_explicit_root_subpath_test.go pins the one value that used to escape clone's
-// never-silently-re-anchor rule: an explicit `--subpath .` against a hub whose recorded anchor is a
-// real subpath.
-// Every other disagreeing value was already refused; "." was exempted because the CLI flag's own
-// default was "." and CloneHub could not tell an explicit request from an unset one.
+// clone_explicit_root_subpath_test.go pins that CloneHub refuses an explicit `--subpath .`:
+// the hub's recorded anchor is a real subpath.
+// An unset subpath still adopts the recorded anchor.
 //
-// Package fabricengine_test to reuse the bare-remote fixture helpers from clone_adopt_test.go;
-// shares the TestMain in testmain_test.go.
+// The file is in package fabricengine_test:
+// it reuses the bare-remote fixture helpers from clone_adopt_test.go and the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -46,14 +44,14 @@ func TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath(t *testing.T) {
 		t.Errorf("CloneHub() error = %v; want it to name the recorded-anchor mismatch", err)
 	}
 
-	// The refusal leaves no hub behind, exactly like every other disagreeing value.
+	// A refused clone leaves no hub behind.
 	if entries, readErr := os.ReadDir(cloneParent); readErr != nil {
 		t.Fatalf("read clone parent: %v", readErr)
 	} else if len(entries) != 0 {
 		t.Errorf("clone parent holds %d entries after a refused clone; want none", len(entries))
 	}
 
-	// An UNSET subpath still adopts the record — the empty default must not become a refusal.
+	// An unset subpath still adopts the recorded anchor, so the empty default must not become a refusal.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: filepath.ToSlash(warpBare),

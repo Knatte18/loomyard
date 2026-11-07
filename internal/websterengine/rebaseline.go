@@ -18,10 +18,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// ErrRebaselineCardSetChanged is the sentinel Rebaseline returns when the edited plan no longer holds a begun batch's recorded card set, which no restamp can make safe.
+// ErrRebaselineCardSetChanged reports an edited plan that changes the cards of a batch the run has already begun.
+// No restamp can make that safe.
 var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes the cards of a batch this run already begun")
 
-// followUpCardLanding is the landing for a decision that reaches a card whose batch is done, or an overview outside its Card Index: a follow-up card after the last begun batch.
+// followUpCardLanding is the landing for a decision that reaches a done card or an overview outside its Card Index.
+// The landing asks for a follow-up card after the last begun batch.
 // It carries no "way forward: " prefix.
 const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then run `lym webster rebaseline --card NN` naming it"
 
@@ -32,9 +34,11 @@ const (
 	causeNoCardIndex        = "the baseline copy of the recorded overview has no parseable Card Index"
 )
 
-// followUpLanding renders the landing for a decision that reaches a done batch's card or an overview outside its Card Index.
+// followUpLanding renders the landing for a decision that reaches a done batch's card.
+// The decision can also reach an overview outside its Card Index.
 // An empty step is the manual landing, followUpCardLanding;
-// a set step says to fix the plan, carry the decision in a follow-up card after the last begun batch with its Card Index line, and take step.
+// a set step says to fix the plan:
+// carry the decision in a follow-up card after the last begun batch, with its Card Index line, and take step.
 // It carries no "way forward: " prefix.
 func followUpLanding(step string) string {
 	if step == "" {
@@ -43,7 +47,8 @@ func followUpLanding(step string) string {
 	return "fix the plan: move a done card's edit to a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then " + step
 }
 
-// transientWayForward is the clause of a transient rebaseline failure: manual, the text naming the verb to re-run, when step is empty, and otherwise the instruction to take step.
+// transientWayForward is the clause of a transient rebaseline failure:
+// manual, the text naming the verb to re-run, when step is empty; otherwise the instruction to take step.
 // It carries no "way forward: " prefix.
 func transientWayForward(step, manual string) string {
 	if step == "" {
@@ -53,9 +58,12 @@ func transientWayForward(step, manual string) string {
 }
 
 // recordedOverviewFrame returns the overview frame hash the run recorded.
-// A state without State.PlanOverviewFrameHash takes the frame of the stored baseline copy of its recorded 00-overview.md, under websterDir.
-// It returns "" when the run has no recorded frame: no overview hash recorded, the copy absent, or a copy without a parseable Card Index.
-// For an empty frame cause is one of the three fixed texts above and path is the baseline copy's path, empty when no hash was recorded; both are empty beside a frame.
+// A state without State.PlanOverviewFrameHash takes the frame of the baseline copy of its recorded 00-overview.md.
+// That copy lies under websterDir.
+// The function returns "" when the run has no recorded frame:
+// no overview hash recorded, the copy absent, or a copy without a parseable Card Index.
+// For an empty frame, cause is one of the three causes of an empty frame, and path is the baseline copy's path.
+// Path is empty when no hash was recorded; both are empty beside a frame.
 // It logs nothing.
 // A read failure other than an absent copy is returned.
 func recordedOverviewFrame(st *State, websterDir string) (frame, cause, path string, err error) {
@@ -81,7 +89,8 @@ func recordedOverviewFrame(st *State, websterDir string) (frame, cause, path str
 	return frame, "", "", nil
 }
 
-// logEmptyOverviewFrame logs at Info why the run has no recorded overview frame, naming the baseline copy's path where there is one.
+// logEmptyOverviewFrame logs at Info why the run has no recorded overview frame.
+// It names the baseline copy's path where there is one.
 func logEmptyOverviewFrame(cause, path string) {
 	if path == "" {
 		logger.Info("websterengine: rebaseline: no recorded overview frame", "cause", cause)
@@ -90,7 +99,8 @@ func logEmptyOverviewFrame(cause, path string) {
 	logger.Info("websterengine: rebaseline: no recorded overview frame", "cause", cause, "path", path)
 }
 
-// overviewIndexOnly reports whether 00-overview.md differs from the run's record only inside its Card Index: recorded is the run's overview frame hash and the file's frame hash still equals it.
+// overviewIndexOnly reports whether 00-overview.md differs from the run's record only inside its Card Index:
+// recorded is the run's overview frame hash and the file's frame hash still equals it.
 // An empty recorded frame reports false.
 func overviewIndexOnly(recorded, planDir string) (bool, error) {
 	if recorded == "" {
@@ -103,7 +113,8 @@ func overviewIndexOnly(recorded, planDir string) (bool, error) {
 	return now == recorded, nil
 }
 
-// overviewRefusal is the refusal for a 00-overview.md change Rebaseline cannot accept: one outside the Card Index, or any change in a run whose recorded frame is empty.
+// overviewRefusal is the refusal for a 00-overview.md change that a rebaseline cannot accept:
+// one outside the Card Index, or any change in a run whose recorded frame is empty.
 // For an empty frame the refusal names cause and, where there is one, the baseline copy's path.
 // Its way forward names step, empty meaning `lym webster run`.
 func overviewRefusal(recorded, cause, path, step string) error {
@@ -128,24 +139,26 @@ func cardNumberInt(id string) int {
 	return n
 }
 
-// RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batchifier and size source that group its cards, and the run state whose fingerprint it restamps.
+// RebaselineDeps holds the inputs of a plan rebaseline:
+// the edited plan, the batchifier and size source that group its cards, and the run state.
+// A successful call restamps the state's fingerprint.
 type RebaselineDeps struct {
 	Plan   *planparser.Plan
 	Active batcher.Batcher
 	Sizes  batcher.SizeSource
-	// Base is Merriam's start base the tail's batches are priced from.
+	// Base is the run's start base the tail's batches are priced from.
 	Base  batcher.StartBase
 	State *State
 	// Cards are the card numbers the operator names as edited; a changed card file whose number is absent is refused.
 	Cards []int
 	// Geom locates the worktree whose history names the run's start commit.
 	Geom Geometry
-	// Step is the step every refusal names as the way to continue; empty means `lym webster run`, as RunDeps.ReentryStep does.
-	// The loom's Webster row sets its re-step text, so no refusal on that path tells an agent to run a verb by hand.
+	// Step is the step every refusal names as the way to continue; empty means `lym webster run`.
+	// A caller that sets a re-step text keeps every refusal on its path from telling an agent to run a verb by hand.
 	Step string
 }
 
-// RebaselineResult reports what one successful Rebaseline changed.
+// RebaselineResult reports what one successful rebaseline changed.
 type RebaselineResult struct {
 	// PreviousFingerprint is State.PlanFingerprint before the restamp.
 	PreviousFingerprint string
@@ -155,18 +168,23 @@ type RebaselineResult struct {
 	BatchesKept int
 	// CardsAccepted are the changed card file names this call accepted.
 	CardsAccepted []string
-	// CardsAmended are the NN-<slug> ids of the accepted cards that belong to an in-flight batch, which a recovery re-runs on the edited text.
+	// CardsAmended are the NN-<slug> ids of the accepted cards that belong to an in-flight batch.
+	// A recovery re-runs those on the edited text.
 	CardsAmended []string
 }
 
 // rebaselineBatches returns the batches the edited plan runs as, and whether they replace the recorded partition.
-// With a recorded partition, the batches up to and including the last begun one are kept as recorded, with their profile and estimate, and every plan card after them is batched by deps.Active;
+// With a recorded partition, the batches through the last begun one are kept as recorded.
+// Each keeps its profile and estimate, and every plan card after them is batched by deps.Active;
 // a plan whose first cards are not exactly the kept batches' recorded cards wraps ErrRebaselineCardSetChanged.
 // A state without a partition is grouped by the identity batchifier and records none.
 // Either way the result is asserted with CheckBatchOrder.
-// The tail is batched told how many batches precede it, the number kept, so its first batch is priced at the position after them.
-// That count is derived in Go from the recorded partition, never typed by an agent, and is told as if Merriam were never resumed, so after a resume the estimate is conservative;
-// work Merriam does between batches that the model does not know makes it too low, and nothing re-checks it at run time.
+// The tail is batched knowing how many batches precede it, the number kept,
+// so its first batch is priced at the position after them.
+// That count is derived in Go from the recorded partition and is never typed by an agent.
+// It is told as if the master session were never resumed, so after a resume the estimate is conservative;
+// Work the master session does between batches, unknown to the model, makes it too low.
+// Nothing re-checks it at run time.
 func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	st, plan := deps.State, deps.Plan
 	if len(st.Partition) == 0 {
@@ -218,23 +236,37 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
-// With a recorded partition it keeps every batch up to the last begun one as recorded, re-batches the plan's cards after it with the active batchifier, and replaces State.Partition with the result once every check passes;
-// cards added, removed or reordered after the last begun batch are accepted.
-// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is in flight or terminal failed, dead or stuck.
-// It also refuses when a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
-// A change to 00-overview.md is accepted only when it is confined to the Card Index: the run's recorded overview frame, State.PlanOverviewFrameHash or else the frame of the stored baseline copy, still equals the file's frame hash.
-// The index change is then held to the same card-set rule, so only cards after the last begun batch can be added, removed or reordered.
+// With a recorded partition, it keeps every batch up to the last begun one as recorded.
+// It re-batches the plan's cards after that batch with the active batchifier,
+// and it replaces State.Partition with the result once every check passes.
+// Cards added, removed or reordered after the last begun batch are accepted.
+// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set changed in the plan:
+// the plan no longer has that batch's number, or its batch of that number holds a different card set.
+// It also refuses when a begun card's file content differs from the hash recorded at begin.
+// A record without hashes compares ids only.
+// A card named in deps.Cards is accepted instead when its batch is in flight or terminal failed, dead or stuck.
+// A failed batch whose record lists Uncheckable entries still refuses it.
+// It also refuses a changed card file whose number is not in deps.Cards, unless the state predates State.PlanFileHashes.
+// A change to 00-overview.md is accepted only when it is confined to the Card Index.
+// The recorded overview frame must still equal the file's frame hash.
+// That frame is State.PlanOverviewFrameHash, or else the frame of the stored baseline copy.
+// The index change then falls under the same card-set rule:
+// only cards after the last begun batch can be added, removed or reordered.
 // A change outside the Card Index, and any overview change in a run with no recorded frame, is refused.
 // The start commit a refusal names is picked by git ancestry.
-// The bound on the accepted card edit: only cards named with --card, only in batches in flight or terminal failed, dead or stuck, never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md outside its Card Index.
-// A begun card's reworded one-line intent in the Card Index passes, since the card file stays pinned by its recorded hash.
-// A dead batch's strand, kept alive when classified dead, may still work on the old card, and so may the fork or recovery strand of an in-flight batch;
-// the restamp stops no strand, and the next recover-batch stops it before it spawns and archives a late report from it.
-// A card accepted in an in-flight batch is also recorded in the batch's AmendedCards with Rendered false, which resets an entry already there.
-// Otherwise it restamps State.PlanFingerprint, State.PlanFileHashes and the CardHashes entry of each accepted card, and leaves every other field untouched.
+// A begun card's reworded one-line intent in the Card Index passes.
+// Its card file stays pinned by the recorded hash.
+// A card accepted in an in-flight batch is also recorded in the batch's AmendedCards with Rendered false.
+// An entry already there is reset.
+// A dead batch's strand, kept alive when classified dead, may still work on the old card.
+// So may the fork or recovery strand of an in-flight batch.
+// The restamp stops no strand.
+// The next recover-batch stops such a strand before it spawns and archives a late report from it.
+// Otherwise it restamps State.PlanFingerprint, State.PlanFileHashes and the CardHashes entry of each accepted card,
+// and it leaves every other field untouched.
 // A refusal leaves the state unchanged.
-// It never saves;
-// the caller holds the state-mutation lease and saves, as for the bracket verbs.
+// It never saves.
+// The caller holds the state-mutation lease and saves.
 func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	if deps.Plan == nil {
 		return nil, fmt.Errorf("webster: rebaseline requires a parsed plan; RebaselineDeps.Plan is nil")

@@ -1,4 +1,5 @@
-// rowstore_test.go covers the row fixer's record store: the round trip through records.json, the keys a newer binary wrote, the live record and the terminal mark.
+// rowstore_test.go covers the row fixer's record store.
+// It pins the round trip through records.json, the keys a newer binary wrote, the live record and the terminal mark.
 
 package gatefixer
 

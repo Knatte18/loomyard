@@ -1,4 +1,5 @@
-// trace.go matches the located failures of a verify log to the live plan's cards and their Webster batches, and builds the tracer a landing producer is told.
+// trace.go matches the located failures of a verify log to the live plan's cards and their Webster batches.
+// It also builds the tracer a landing producer is told.
 
 package failuretrace
 
@@ -42,7 +43,7 @@ type Input struct {
 // Cards come out in card-number order, each with its matched glyphs and locations, its batch and the batch's commit range.
 // LaterRange runs from the last card commit of the highest-numbered matched batch that has one to in.Head.
 // Untraced lists the locations no card holds, the opaque identities' locations first.
-// A seam error is returned, and so is a nil plan or a nil state.
+// It returns an error when a call through Enclose, Resolve or Delta fails, or when the plan or state is nil.
 func Trace(in Input) (verifytree.FailureTrace, error) {
 	if in.Plan == nil {
 		return verifytree.FailureTrace{}, errors.New("failuretrace: no plan to trace against")
@@ -86,7 +87,7 @@ type cardMatch struct {
 type matcher struct {
 	in      Input
 	matched map[int]*cardMatch
-	// resolved maps each member glyph the plan targets to the files its declarations sit in at the head; nil until first needed.
+	// resolved maps each member glyph the plan targets to the files its declarations sit in at the head; nil until needed.
 	resolved map[string][]string
 	// deltas maps a batch start to the files each symbol of the delta from it to the head sat in before; keyed by glyph.
 	deltas map[string]map[string][]string
@@ -116,7 +117,8 @@ func (m *matcher) match(answer quarry.EncloseResult, location string) (bool, err
 	return false, nil
 }
 
-// matchFile matches a location inside no member of file to every card with a target that holds the file or its self glyph, or a member target that sits in file at the head or sat there at its batch's start.
+// matchFile matches a location inside no member of file to every card with a target that holds the file.
+// A member target also matches when it sits in file at the head, or sat there at its batch's start.
 func (m *matcher) matchFile(file, location string) (bool, error) {
 	held := false
 	for _, card := range m.in.Plan.Cards {
@@ -143,7 +145,8 @@ func (m *matcher) matchFile(file, location string) (bool, error) {
 	return held, nil
 }
 
-// memberInFile reports whether member resolves into file at the head, or, when it resolves nowhere there, sat in file at the start of card's batch.
+// memberInFile reports whether member resolves into file at the head.
+// When member resolves nowhere there, it reports whether member sat in file at the start of card's batch.
 func (m *matcher) memberInFile(card planparser.Card, member, file string) (bool, error) {
 	if m.resolved == nil {
 		if err := m.resolveMembers(); err != nil {
@@ -197,7 +200,8 @@ func (m *matcher) resolveMembers() error {
 	return nil
 }
 
-// deltaFiles returns the files each deleted, renamed or modified symbol of the delta from start to the head sat in before it, keyed by glyph.
+// deltaFiles maps each glyph to the files its symbol sat in before the delta from start to the head.
+// It covers the deleted, renamed and modified symbols of that delta.
 func (m *matcher) deltaFiles(start string) (map[string][]string, error) {
 	if files, ok := m.deltas[start]; ok {
 		return files, nil
@@ -314,8 +318,9 @@ func commitRange(from, to string) verifytree.CommitRange {
 	return verifytree.CommitRange{From: from, To: to}
 }
 
-// NewTracer returns the seam a landing producer is told, tracing a failed verify log at head over the worktree at worktreeRoot.
-// Each call parses the plan under anchorPath, loads Webster's state from the anchor's directories and reads the module path from the worktree's go.mod.
+// NewTracer returns a function that traces a failed verify log at head over the worktree at worktreeRoot.
+// Each call parses the plan under anchorPath and loads the websterengine state from the anchor's directories.
+// It also reads the module path from the worktree's go.mod.
 // The worktree is the clean tree the verify ran on at head, so a path exists at head when it exists there.
 // A missing plan or state is an error.
 func NewTracer(worktreeRoot, anchorPath string) func(log, head string) (verifytree.FailureTrace, error) {

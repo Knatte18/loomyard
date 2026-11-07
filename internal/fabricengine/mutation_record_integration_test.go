@@ -1,10 +1,11 @@
-// mutation_record_integration_test.go asserts the mutation record at the engine boundary: a Remove refused for a dirty worktree records nothing,
-// and an Add that fails partway and runs rollbackAdd is the mutated-then-errored case.
-// Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
-// package's own live-state harness consumer actually has.
+// mutation_record_integration_test.go asserts the mutation record at the engine boundary.
+// A Remove refused for a dirty worktree records nothing.
+// An Add that fails partway and runs rollbackAdd is the mutated-then-errored case.
+// Both read the record through res.Mutated().Entries(), the surface a CLI or this package's live-state harness uses.
 //
-// Package fabricengine_test to reuse the refused-records-commit failure injection refuseRecordsCommits already established (add_rollback_adopt_test.go);
-// shares the single TestMain in testmain_test.go.
+// The file is in package fabricengine_test and reuses the refuseRecordsCommits failure injection.
+// The injection itself lives in add_rollback_adopt_test.go.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -18,8 +19,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering this slice polices: remove.go runs its dirty pre-flight before its archive and every teardown, so a correctly-refusing Remove has mutated nothing and its record is empty.
-// The pre-flight's own error is a bare fmt.Errorf, never a *destructiveRefusal — RefusalOf(err) must report false, asserted as an absence, not a set of contents.
+// TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering that Remove keeps:
+// its dirty pre-flight in remove.go runs before the archive and every teardown,
+// so a Remove refused for a dirty worktree has mutated nothing and its record is empty.
+// The pre-flight error is a bare fmt.Errorf, never a *destructiveRefusal, so RefusalOf(err) reports false.
 func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -31,9 +34,9 @@ func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	// An untracked file is enough: Remove's pre-flight dirty check reads scopeAll (tracked and
-	// untracked alike), so this alone trips the "worktree has uncommitted changes; use --force"
-	// refusal without needing a staged or committed change.
+	// An untracked file is enough: Remove's pre-flight dirty check reads scopeAll (tracked and untracked alike),
+	// so this alone trips the "worktree has uncommitted changes; use --force" refusal.
+	// A staged or committed change is not needed.
 	target := fabricengine.WorktreePath(l, slug)
 	if err := os.WriteFile(filepath.Join(target, "uncommitted.txt"), []byte("dirt\n"), 0o644); err != nil {
 		t.Fatalf("dirty the warp worktree at %s: %v", target, err)
@@ -52,12 +55,11 @@ func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	}
 }
 
-// TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction forces Add to fail after its
-// worktree-creation steps have already landed, and asserts the returned record carries the
-// creations and the rollback's own destructions IN EXECUTION ORDER — a worktree_created entry before
-// the worktree_removed that undoes it, not merely both present. Array order is the only thing
-// carrying ordering in this vocabulary, so a set-membership assertion would prove only half the
-// contract.
+// TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction forces Add to fail after worktree creation.
+// It asserts that the returned record carries the creations and the rollback's own destructions in execution order:
+// a worktree_created entry before the worktree_removed that undoes it, not merely both present.
+// Array order is the only thing carrying ordering in this vocabulary,
+// so a set-membership assertion would prove only half the contract.
 func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -66,8 +68,10 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// Refuse every records commit so the origin-record commit fails after every earlier step — warp and weft worktree creation, junction wiring — has already landed, forcing rollbackAdd to run and undo them.
-	// The same injection add_rollback_adopt_test.go's TestAddRollback_UnwiresJunctionsOnPostWiringFailure already establishes.
+	// Refuse every records commit, so the origin-record commit fails after every earlier step has landed:
+	// warp and weft worktree creation and junction wiring.
+	// That forces rollbackAdd to run and undo them.
+	// The same injection is used by TestAddRollback_UnwiresJunctionsOnPostWiringFailure in add_rollback_adopt_test.go.
 	refuseRecordsCommits(t, l)
 
 	topology := h.Topology

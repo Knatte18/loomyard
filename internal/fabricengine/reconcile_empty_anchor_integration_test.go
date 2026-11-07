@@ -1,6 +1,8 @@
-// reconcile_empty_anchor_integration_test.go pins Reconcile's refusal to wire a pair whose own lym-anchor marker is present but empty.
+// reconcile_empty_anchor_integration_test.go pins Reconcile's refusal to wire a pair:
+// the pair's own lym-anchor marker is present but empty.
 // lymcwd treats an empty marker as absent and answers the "." anchor.
-// Wiring such a pair on a subpath-anchored hub laid a full SECOND junction set at the repo root beside the live set at the real anchor.
+// Wiring such a pair on a subpath-anchored hub would lay a full second junction set at the repo root;
+// the live set sits at the real anchor.
 // The refusal is per pair: the other pairs are still reconciled.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -21,7 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// pairResultFor returns the reconcile outcome of the warp worktree called slug, failing the test when the pass reported none.
+// pairResultFor returns the reconcile outcome of the warp worktree called slug.
+// It fails the test when the pass reported no pair for it.
 func pairResultFor(t *testing.T, h *hubforge.Hub, res fabricengine.ReconcileResult, slug string) fabricengine.ReconcilePairResult {
 	t.Helper()
 
@@ -35,14 +38,15 @@ func pairResultFor(t *testing.T, h *hubforge.Hub, res fabricengine.ReconcileResu
 	return fabricengine.ReconcilePairResult{}
 }
 
-// TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot truncates one worktree's own marker and asserts that pair alone fails, naming the file and the way forward.
+// TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot truncates one worktree's own marker.
+// The pair alone must fail, naming the file and the way forward.
 func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// failing and healthy name the truncated worktree and the one that must still reconcile, the prime's name being the hub's own.
+		// failing and healthy name the truncated worktree and the one to reconcile; the prime's name is the hub's own.
 		failing func(h *hubforge.Hub) string
 		healthy func(h *hubforge.Hub) string
 		// moveRecord stands a move record on the failing weft instead of truncating its marker.

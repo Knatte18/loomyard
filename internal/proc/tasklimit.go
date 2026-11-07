@@ -1,4 +1,5 @@
-// tasklimit.go reads the cgroup v2 task limit the calling process sits under: the level of its cgroup ancestry with the fewest free tasks.
+// tasklimit.go reads the cgroup v2 task limit that the calling process sits under.
+// It is the level of the cgroup ancestry with the fewest free tasks.
 
 package proc
 
@@ -26,13 +27,16 @@ func (l TaskLimit) Headroom() int {
 	return l.Max - l.Current
 }
 
-// ReadTaskLimit reads the task limit closest to being reached over the calling process's cgroup and each of its ancestors, so a fork-refusing limit is seen at whichever level it is set, such as a systemd user slice.
-// found is false when the process's cgroup v2 path is unreadable, as on Windows or a cgroup v1 host, or when no level sets a numeric limit.
+// ReadTaskLimit reads the task limit closest to being reached over the calling process's cgroup and its ancestors.
+// Reading every level sees a fork-refusing limit wherever it is set, such as a systemd user slice.
+// found is false when the process's cgroup v2 path is unreadable, as on Windows or a cgroup v1 host.
+// It is also false when no level sets a numeric limit.
 func ReadTaskLimit() (limit TaskLimit, found bool) {
 	return readTaskLimitAt("/proc/self/cgroup", "/sys/fs/cgroup")
 }
 
-// readTaskLimitAt reads the task limit closest to being reached for the process whose cgroup file is selfCgroup, under the cgroup v2 mount at mount.
+// readTaskLimitAt reads the task limit closest to being reached for the process whose cgroup file is selfCgroup.
+// mount is the cgroup v2 mount the levels are read under.
 func readTaskLimitAt(selfCgroup, mount string) (TaskLimit, bool) {
 	cgroup, ok := readCgroupV2Path(selfCgroup)
 	if !ok {
@@ -67,7 +71,8 @@ func readCgroupV2Path(selfCgroup string) (string, bool) {
 	return "", false
 }
 
-// readPidsLevel reads the task count and numeric limit of the cgroup at level under mount; ok is false when the level sets no limit or either file is unreadable or malformed.
+// readPidsLevel reads the task count and numeric limit of the cgroup at level under mount;
+// ok is false when the level sets no limit or either file is unreadable or malformed.
 func readPidsLevel(mount, level string) (TaskLimit, bool) {
 	dir := filepath.Join(mount, filepath.FromSlash(level))
 	limit, ok := readIntFile(filepath.Join(dir, "pids.max"))

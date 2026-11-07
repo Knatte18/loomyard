@@ -8,7 +8,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// PassageReader returns the standing passages heddle's layers hold for a session of engine whose strand role is role, in the order they are appended.
+// PassageReader returns the standing passages heddle's layers hold for a session of an engine in a strand role.
+// The passages come in the order they are appended.
 type PassageReader func(boltDir, engine, role string) ([]string, error)
 
 var installedPassageReader atomic.Pointer[PassageReader]
@@ -19,7 +20,8 @@ func InstallPassageReader(r PassageReader) (restore func()) {
 	return func() { installedPassageReader.Store(previous) }
 }
 
-// StandingPassages returns the passages the installed reader finds for a session of engine and strand role role in the hub whose Bolt checkout is boltDir.
+// StandingPassages returns the passages the installed reader finds for a session of engine in a strand role.
+// The hub is the one whose Bolt checkout is boltDir.
 // It returns none for an empty boltDir (a session outside a hub) or with no reader installed.
 // A reader error also returns none and is logged at Warn, so an unreadable store never blocks a launch.
 func StandingPassages(boltDir, engine, role string) []string {

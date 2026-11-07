@@ -1,4 +1,6 @@
-// scope.go computes the scope of one `lym gate test` call: which targets each listed tier runs over, and which guard tests the guard step runs, for the computed, --base and --card forms.
+// scope.go computes the scope of one `lym gate test` call.
+// It names the targets each listed tier runs over, and the guard tests the guard step runs.
+// This holds for the computed, --base and --card forms.
 
 package gatecli
 
@@ -32,7 +34,8 @@ const (
 	scopeCard     = "card"
 )
 
-// moduleTargets is the Go package arguments one module holds in a narrower scope, or the test project one dotnet share holds.
+// moduleTargets holds the targets one module runs in a narrower scope.
+// They are its Go package arguments, or the test project of a dotnet share.
 type moduleTargets struct {
 	// dir is the module directory relative to the worktree root, "." for the root module.
 	dir string
@@ -58,19 +61,23 @@ type scope struct {
 	form string
 	// whole means every listed tier runs over its all_targets.
 	whole bool
-	// modules are the per-module targets of a narrower scope; empty with whole, and empty for the empty set, which runs no listed tier's command.
+	// modules are the per-module targets of a narrower scope; empty with whole and for the empty set, which runs nothing.
 	modules []moduleTargets
 	// noTests means the dotnet scoper found changes but no test class naming them; set from the tier's share.
 	noTests bool
-	// tiers holds the share of each listed tier of a diff scope, which derives one impacted set per base; a tier it does not name takes whole and modules.
+	// tiers holds the share of each listed tier of a diff scope, which derives one impacted set per base.
+	// A tier it does not name takes whole and modules.
 	tiers map[int]tierScope
 	// guardStep means the scope form plans a guard step: a computed, --base or --card scope under the go scoper.
 	guardStep bool
-	// guardDir is the run directory of that guard step, relative to the worktree root; empty means the dir of each guard group's own tier.
+	// guardDir is the run directory of that guard step, relative to the worktree root.
+	// Empty means the directory of each guard group's own tier.
 	guardDir string
-	// guards maps a tier number to the directory of each package outside the scope that holds guard tests of that tier, and to their names, keyed relative to guardDir; nil when no scan has run.
+	// guards maps a tier number to each directory outside the scope that holds its guard tests, and to their names.
+	// The directories are relative to guardDir; nil when no scan has run.
 	guards map[int]map[string][]string
-	// tagTiers are the declared tiers, ascending, whose build tag brings a file into a --card scope's package that a build without tags leaves out; the vet step is planned over them.
+	// tagTiers are the declared tiers, ascending, whose build tag adds a file to a --card scope's package.
+	// A build without tags leaves that file out, so the vet step is planned over these tiers.
 	tagTiers []int
 }
 
@@ -83,7 +90,8 @@ func (s scope) forTier(number int) scope {
 }
 
 // withGateScope returns request with the scope form its --gate key names in place of the scope flags.
-// A key of scope all is the --all form, a key of scope diff is the computed form, and a key of scope card keeps the --card ids, so the --card ids beside the other two scopes are dropped.
+// A key of scope all is the --all form, and a key of scope diff is the computed form.
+// A key of scope card keeps the --card ids; the other two scopes drop them.
 // Explicit targets replace the key's scope and a call with no key is returned unchanged.
 func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 	if request.gate == "" || len(request.targets) > 0 {
@@ -101,16 +109,26 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 
 // computeScope returns the scope of request over the worktree at root, for the config cfg.
 // Explicit targets and --all take no computation.
-// Otherwise the form is --card when a card is named, else --base, else the computed form, whose base is taken per listed tier.
-// A computed tier's base is the newest commit that is an ancestor of HEAD and that green holds whole-green for the tier, else the merge base of HEAD with the parent branch the pair's fabric origin record names, and a tier with neither runs whole.
-// green is nil for a dirty worktree, which so takes the merge base.
-// A --card is read from the plan first, under either scoper, and an unknown id or a worktree with no plan is refused before any slot.
-// Under the none scoper each of the three forms is whole, except that a hub with inert_paths gives the tiers of a computed or --base base group whose diff is inert-only the empty share, which plans no guard step.
+// Otherwise the form is --card when a card is named, --base when a base is given, and the computed form otherwise.
+// The computed form takes its base per listed tier.
+// A computed tier's base is the newest ancestor of HEAD that green holds whole-green for the tier.
+// Failing that, it is the merge base of HEAD with the parent branch the pair's fabric origin record names.
+// A tier with neither runs whole.
+// green is nil for a dirty worktree, which takes the merge base.
+// A --card is read from the plan first, under either scoper.
+// An unknown id, or a worktree with no plan, is refused before any slot.
+// Under the none scoper each of the three forms is whole, except for a hub with inert_paths.
+// There, the tiers of a computed or --base group whose diff is inert-only get the empty share.
+// That share plans no guard step.
 // Under the dotnet scoper dotnetScope derives them.
-// Under the go scoper a computed or --base scope is the impacted set of the diff from its base to the working tree, derived once per base and shared by the tiers that land on it, each derivation named on request.stderr;
-// a base group whose diff is inert-only under inert_paths gets the empty share and is not derived, and leaves the guard tests to the module scan as a whole tier does.
-// A set that cannot be narrowed falls back to whole, naming the reason on request.stderr;
-// a --card scope is the cards' packages per module, with the declared tiers whose build tag brings a file into one of them.
+// Under the go scoper a computed or --base scope is the impacted set of the diff from its base.
+// The set is derived once per base and shared by the tiers that land on it.
+// Each derivation is named on request.stderr.
+// A base group whose diff is inert-only under inert_paths gets the empty share and is not derived.
+// It leaves the guard tests to the module scan, as a whole tier does.
+// A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
+// A --card scope is the cards' packages per module.
+// It adds the declared tiers whose build tag brings a file into one of those packages.
 // A guard scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
 func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
@@ -247,7 +265,8 @@ func noneScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Locati
 }
 
 // allInertSince reports whether every file that differs between base and the working tree, untracked files included, matches the hub's inert_paths.
-// A hub with no inert_paths, an empty diff and a diff that cannot be read report false, the last logged at Warn, so the scope stays as it would be.
+// A hub with no inert_paths, an empty diff and a diff that cannot be read report false.
+// A diff that cannot be read is logged at Warn, and the scope stays as it is.
 func allInertSince(ctx context.Context, cfg gateslot.Config, root, base string) bool {
 	if len(cfg.InertPaths) == 0 {
 		return false
@@ -266,9 +285,12 @@ type baseGroup struct {
 	tiers []int
 }
 
-// diffBaseGroups returns the tiers request lists, grouped by the base their diff starts from in the order each base first appears, and the tiers with no base, which run whole.
+// diffBaseGroups groups the tiers the request lists by the base their diff starts from.
+// Groups keep the order in which each base first appears.
+// The second result holds the tiers with no base, which run whole.
 // A --base call gives every tier its one base.
-// Under the computed form a tier's base is the newest commit the green record holds whole-green for it that is an ancestor of HEAD, else the merge base with the parent branch, and a tier with neither runs whole.
+// Under the computed form, a tier's base is the newest ancestor of HEAD that the green record holds whole-green for it.
+// Otherwise it is the merge base with the parent branch.
 // A dirty worktree holds no green record, so every tier takes the merge base.
 func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, green *greenRun) (groups []baseGroup, wholeTiers []int) {
 	numbers := keptTiers(cfg, request)
@@ -327,7 +349,8 @@ func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string,
 	return groups, wholeTiers
 }
 
-// keptTiers returns the tiers request lists that no other listed tier covers, ascending, naming nothing on stderr.
+// keptTiers returns the tiers the request lists that no other listed tier covers, in ascending order.
+// It writes nothing to stderr.
 func keptTiers(cfg gateslot.Config, request testRequest) []int {
 	silent := request
 	silent.stderr = nil
@@ -350,7 +373,7 @@ func tierNames(numbers []int) string {
 	return strings.Join(names, ", ")
 }
 
-// mergeGuards returns the union of the guard tests per directory of a and b, sorted by name.
+// mergeGuards returns the union of the guard tests of a and b per directory, sorted by name and then tier.
 func mergeGuards(a, b map[string][]impactset.GuardTest) map[string][]impactset.GuardTest {
 	merged := map[string][]impactset.GuardTest{}
 	for _, source := range []map[string][]impactset.GuardTest{a, b} {
@@ -396,9 +419,10 @@ func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, e
 	return tier0.Dir, nil
 }
 
-// scanGuards fills sc.guards with the guard tests of the module at sc.guardDir outside the scope's packages, grouped by their file's tier, by a scan of that module.
-// A whole scope and an explicit-targets scope hold no package of the scan, so every guard test counts as outside.
-// A scan error is returned as the refusal for it.
+// scanGuards fills sc.guards with the guard tests outside the scope's packages, grouped by their file's tier.
+// It scans the module at sc.guardDir.
+// A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as outside.
+// A scan error is returned as the refusal.
 func scanGuards(sc scope, root string) (scope, error) {
 	moduleDir := resolveRunDir(root, sc.guardDir)
 	all, err := impactset.ModuleGuardTests(moduleDir)
@@ -424,7 +448,7 @@ func scanGuards(sc scope, root string) (scope, error) {
 	return sc, nil
 }
 
-// cardPackages returns the Go packages of the named cards per module, read from the plan at the worktree's anchor by readCards.
+// cardPackages returns the Go packages of the named cards per module, read from the plan at the worktree's anchor.
 func cardPackages(location *lymcwd.Location, root string, ids []string) ([]planparser.ModulePackages, error) {
 	plan, cards, err := readCards(location, ids)
 	if err != nil {
@@ -435,7 +459,8 @@ func cardPackages(location *lymcwd.Location, root string, ids []string) ([]planp
 
 // readCards reads the plan at the worktree's anchor and returns it with the named cards, in the order of ids.
 // An id is a card's number, or its number and slug as `N-slug`, with leading zeros ignored.
-// An unknown id is refused naming the plan's ids, and a worktree with no plan is refused naming --all and explicit targets.
+// An unknown id is refused naming the plan's ids,
+// and a worktree with no plan is refused naming --all and explicit targets.
 func readCards(location *lymcwd.Location, ids []string) (*planparser.Plan, []planparser.Card, error) {
 	planDir := planparser.PlanDir(location.AnchorPath())
 	if _, err := os.Stat(planparser.PlanOverview(location.AnchorPath())); errors.Is(err, fs.ErrNotExist) {
@@ -470,8 +495,11 @@ func cardMatches(card planparser.Card, id string) bool {
 	return !hasSlug || slug == card.Slug
 }
 
-// tagTiers returns the tiers cfg declares, ascending, whose build tag `tierN` alone brings a `.go` file of a package of modules into the build that a build without tags leaves out, on the host's GOOS and GOARCH.
-// Package directories resolve against root, and a directory or file that cannot be read or matched is left out, since the listed tiers' own compiles report it.
+// tagTiers returns the tiers cfg declares, ascending, whose build tag `tierN` alone adds a `.go` file to a package.
+// A file counts only if a build without tags leaves it out,
+// and the match uses the host's GOOS and GOARCH.
+// Package directories resolve against root.
+// A directory or file that cannot be read or matched is left out, since the listed tiers' own compiles report it.
 func tagTiers(cfg gateslot.Config, root string, modules []moduleTargets) []int {
 	var dirs []string
 	for _, module := range modules {
@@ -495,7 +523,8 @@ func tagTiers(cfg gateslot.Config, root string, modules []moduleTargets) []int {
 	return numbers
 }
 
-// tagAddsFile reports whether dir directly holds a `.go` file that matches the build tags of tagged and that a build without tags leaves out.
+// tagAddsFile reports whether dir directly holds a `.go` file that matches the build tags of tagged.
+// Only a file that a build without tags leaves out counts.
 func tagAddsFile(tagged build.Context, dir string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

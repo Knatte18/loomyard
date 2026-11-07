@@ -6,7 +6,8 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// TestRaiseIntFloor pins which stored values are raised and which come back byte-identical, the reported line, and that comments and sibling keys survive a rewrite.
+// TestRaiseIntFloor pins which stored values are raised and which come back byte-identical.
+// It also pins the reported line, and that comments and sibling keys survive a rewrite.
 func TestRaiseIntFloor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

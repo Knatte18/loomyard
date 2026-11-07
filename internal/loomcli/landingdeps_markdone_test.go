@@ -1,4 +1,6 @@
-// landingdeps_markdone_test.go drives landingDeps' MarkTaskDone closure against a hub directory holding only the board config, so the board config load, the hub-board path and the status write run for real with no git and no hub fixture.
+// landingdeps_markdone_test.go drives landingDeps' MarkTaskDone closure against a hub directory.
+// It holds only the board config, so the config load, the hub-board path and the status write run for real.
+// No git and no hub fixture are involved.
 // Every test sets the board skip variables, which are process-global, so none calls t.Parallel.
 
 package loomcli
@@ -21,7 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// markDoneFixtureDir builds a hub directory whose board directory carries the board config, and returns landingDeps' MarkTaskDone closure for a pair named slug, the hub-board handle, the slug and the hub board directory.
+// markDoneFixtureDir builds a hub directory whose board directory carries the board config.
+// It returns landingDeps' MarkTaskDone closure for the pair named slug.
+// It also returns the hub-board handle, the slug, and the hub board directory.
 func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine.Board, slug, boardDir string) {
 	t.Helper()
 	t.Setenv("BOARD_SKIP_GIT", "1")
@@ -70,7 +74,8 @@ func TestLandingDeps_MarkTaskDone_UnknownSlugIsError(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON seeds the hub board with a legacy tasks.json holding the pair's slug and checks MarkTaskDone leaves that entry done in board.json.
+// TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON seeds the hub board with a legacy tasks.json.
+// The legacy entry holds the pair's slug, and the test checks MarkTaskDone leaves it done in board.json.
 func TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON(t *testing.T) {
 	tiergate.Require(t, 0)
 	markDone, _, slug, boardDir := markDoneFixtureDir(t)

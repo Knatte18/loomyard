@@ -1,6 +1,7 @@
 // replay_test.go — FabricReplay, the by-entry merge of a local board commit onto origin's board.
 //
-// Every row builds origin's board directory, the merge base, the commit's parent and the commit, applies the commit and reads the board directory back.
+// Every row builds origin's board directory, the merge base, the commit's parent and the commit.
+// It applies the commit and reads the board directory back.
 
 package boardengine
 
@@ -86,7 +87,8 @@ func asNotifyOnLand(task *Task) { task.NotifyOnLand = true }
 
 func asDiscussed(task *Task) { task.Discussed = true }
 
-// wantOriginFile returns a row check asserting that name in origin's board directory holds want, or is absent when want is empty.
+// wantOriginFile returns a row check asserting that origin's board directory holds want under name.
+// An empty want asserts that the file is absent.
 func wantOriginFile(name, want string) func(t *testing.T, dir string, got map[string]Task) {
 	return func(t *testing.T, dir string, _ map[string]Task) {
 		t.Helper()
@@ -116,7 +118,7 @@ func boardJSONWithPrime(t *testing.T, tasks []Task, prime string) []byte {
 	return boardJSONWithDraft(t, tasks, prime, false)
 }
 
-// boardJSONWithDraft encodes tasks like boardJSONWithPrime, with the top-level draft_status key set when draft is true.
+// boardJSONWithDraft encodes tasks as a board.json, with the top-level draft_status key set when draft is true.
 func boardJSONWithDraft(t *testing.T, tasks []Task, prime string, draft bool) []byte {
 	t.Helper()
 	numbered := make([]Task, len(tasks))
@@ -150,7 +152,8 @@ func hubWithBoardConfig(t *testing.T) string {
 	return hub
 }
 
-// replayRow is one scenario: origin's board and files, the three sides of the local commit and the checks after the replay.
+// replayRow is one scenario.
+// It holds origin's board and files, the three sides of the local commit, and the checks after the replay.
 type replayRow struct {
 	name        string
 	extraLabel  bool
@@ -160,9 +163,9 @@ type replayRow struct {
 	commit      []Task
 	originFiles map[string]string
 	designs     []fabricengine.ReplayFile
-	// originPrime, basePrime, parentPrime and commitPrime are the prime_owner each side records, and wantPrime the one the board holds afterwards.
+	// originPrime, basePrime, parentPrime and commitPrime are each side's prime_owner; wantPrime is held afterwards.
 	originPrime, basePrime, parentPrime, commitPrime, wantPrime string
-	// commitDraft is whether the commit's board.json records draft_status, and wantDraft whether the board holds it afterwards.
+	// commitDraft reports whether the commit's board.json records draft_status; wantDraft whether the board keeps it.
 	commitDraft, wantDraft bool
 	wantEmpty              bool
 	wantLost               []fabricengine.ReplayFinding
@@ -179,7 +182,8 @@ func TestFabricReplay(t *testing.T) {
 
 	runLocked := RunStatus("running", "Implementer")
 	ghostDependency := replayEntry("x", withDependsOn("ghost"))
-	// The raddle store directory a commit adds: store.json records the filed slugs p1 and p2, and proposal.yaml is a plain staged file.
+	// A commit adds the raddle store directory.
+	// store.json records the filed slugs p1 and p2, and proposal.yaml is a plain staged file.
 	const (
 		storeJSON         = `{"created":"2026-10-01T08:00:00Z","hash":"h","filed":["p1","p2"]}`
 		storeJSONPath     = "raddle/plan/store.json"

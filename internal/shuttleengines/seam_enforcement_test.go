@@ -1,4 +1,6 @@
-// seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/shuttleengines imports only the engine packages it registers and reed's name seam, the agent-name parser, and never internal/lymcwd.
+// seam_enforcement_test.go enforces this package's told-geometry membership.
+// Production code here imports only the engine packages it registers, reed's name seam and the agent-name parser.
+// It never imports internal/lymcwd.
 
 package shuttleengines
 
@@ -19,7 +21,8 @@ var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/reedengine",
 }
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, which excludes internal/lymcwd, and that no allowed path goes unused.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist.
+// The allowlist excludes internal/lymcwd, and the test fails on any allowed path that goes unused.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/shuttleengines", allowedImports...)

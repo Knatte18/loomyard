@@ -1,12 +1,11 @@
-// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/frictionengine takes every absolute path it operates on from its caller and has
-// no direct production import of internal/lymcwd. Modelled directly on
-// internal/mergeresolve/seam_enforcement_test.go.
+// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership:
+// production code in internal/frictionengine takes every absolute path it operates on from its caller,
+// and it has no direct production import of internal/lymcwd.
 //
-// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist:
-// it catches the excluded import and anything else that would drag geometry resolution in, with no
-// list maintenance beyond a genuine new dependency, and a transitive reach through an allowed entry
-// is explicitly fine.
+// The allowlist below is a membership list:
+// it catches the excluded import and any other new dependency that would drag geometry resolution in;
+// it needs list maintenance only for a genuine new dependency.
+// A transitive reach through an allowed entry is fine.
 
 package frictionengine
 
@@ -17,10 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// frictionengineAllowedImports are the only non-stdlib import paths production code in this package
-// may use: internal/friction (ReportFileName and EnsureDir), the model-spec package (resolving the
-// reflection session's model), the shuttle engine (the reflection session's seam), the stencil store
-// (reading the reflection prompt off disk), the stencil filler (rendering it), and the logger.
+// frictionengineAllowedImports lists the only non-stdlib import paths production code in this package may use.
+// internal/friction supplies ReportFileName and EnsureDir;
+// the model-spec package resolves the reflection session's model;
+// the shuttle engine is the reflection session's seam;
+// the stencil store reads the reflection prompt off disk;
+// the stencil filler renders it; the logger handles logging.
 // The segment vocabulary names the reflection session's segment.
 var frictionengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/friction",

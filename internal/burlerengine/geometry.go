@@ -1,37 +1,33 @@
-// geometry.go declares Geometry, the struct burler is told its coordinates through.
-// It declares the type only — this file adds no constructor, no validator, and no default.
+// geometry.go declares Geometry, the set of paths burler is told its coordinates through.
+// It declares the type only; it adds no constructor, no validator, and no default.
 
 package burlerengine
 
-// Geometry is the set of paths burler is told, once, at construction, and never derives itself.
-// burlerengine.New validates no field of a Geometry — populating every field with a usable absolute path is entirely the caller's obligation.
-// hubgeom.BurlerGeometry is the hub-mode answer that builds a Geometry from a resolved *lymcwd.Location, but is deliberately not imported here — this file states the contract, not the implementation.
+// Geometry is the set of paths burler is told once, at construction, and never derives itself.
+// No field is validated, so the caller must populate every field with a usable absolute path.
 type Geometry struct {
-	// WorktreeRoot is the root Engine.Review and Engine.Fix resolve a Profile's relative paths against, via (*Profile).validateReview and (*Profile).validateFix.
-	// What fills it differs by mode: hub mode now tells it the anchor path
-	// (hubgeom.BurlerGeometry), while standalone tells it the reviewed target directory
-	// (standalonegeom.BurlerGeometry) — this is why the field is not collapsible into AnchorPath
-	// and is not renamed.
+	// WorktreeRoot is the root that relative paths in review and fix profiles resolve against.
+	// In hub mode it is the anchor path; in standalone mode it is the reviewed target directory.
 	WorktreeRoot string
 	// AnchorPath is the base the per-round .lym/burler instruction directory joins onto.
 	AnchorPath string
-	// RepoRoot is the directory holding PATTERN.md and go.mod, the repository's worktree root.
-	// It is told separately because WorktreeRoot is the anchor path in hub mode,
-	// which is not the repo root for a subpath-anchored hub.
+	// RepoRoot is the repository root, the directory holding PATTERN.md and go.mod.
+	// It is set apart from the anchor path.
+	// The anchor path is not the repository root when a hub is anchored to a subpath.
 	// An empty RepoRoot yields no PATTERN directive.
 	RepoRoot string
-	// ParentName is the told parent agent name the round prompt renders its parent directive from.
+	// ParentName is the parent agent name that the round prompt renders its parent directive from.
 	// An empty name renders the directive's no-parent variant.
 	ParentName string
 	// Shortname and Slug are the hub shortname and the task slug the round's agent names are formed from.
 	// An empty Slug gives the two-segment name form.
 	Shortname string
 	Slug      string
-	// PatternRecordPath is the decision record whose declared PATTERN changes the review round's directive renders.
+	// PatternRecordPath is the decision record whose declared PATTERN the review round's directive renders.
 	// An empty path renders none.
 	PatternRecordPath string
 	// SpecsDir is the deployed-specs directory a fanned half's prompt points at for the lens report format.
 	SpecsDir string
-	// DefaultEngine is the name of the engine a half whose model choice names none runs on, shuttle's default; that half's stencils and instruction files are rendered for it.
+	// DefaultEngine names the engine a half with no model choice runs on, and its files are rendered for that engine.
 	DefaultEngine string
 }

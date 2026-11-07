@@ -33,8 +33,8 @@ type rebasedDoc struct {
 	Compare rebasedStep `yaml:"compare"`
 }
 
-// TestRebaseDirsOntoRoot pins that a relative capture or compare dir moves from the anchored directory to the worktree root:
-// a dir naming a directory under the anchor is rewritten (even when the root holds one too).
+// TestRebaseDirsOntoRoot pins that a relative capture or compare dir moves from the anchor to the worktree root:
+// A dir naming a directory under the anchor is rewritten, even when the root holds one too.
 // A dir under the root alone is kept.
 // A dir naming neither is flagged with its way forward.
 // An absolute, unset, null or undeclared dir is kept, and other keys survive.
@@ -69,7 +69,7 @@ func TestRebaseDirsOntoRoot(t *testing.T) {
 			name: "DotBecomesAnchorDirectory",
 			dirs: []string{anchorName},
 			yaml: "capture:\n  dir: .\ncompare:\n  dir: .\n",
-			// The dot names both the anchor and the root; the file predates the move, so the anchor wins.
+			// The dot names both the anchor and the root; the anchor takes precedence.
 			wantCapture: "dotnet", wantCompare: "dotnet",
 			wantRewrote: []string{"capture.dir", "compare.dir"},
 		},
@@ -186,7 +186,8 @@ func TestRebaseDirsOntoRoot(t *testing.T) {
 	}
 }
 
-// TestRebaseDirsOntoRoot_KeepsOtherKeys pins that a rewrite changes only the dir: the header comment, command, timeout_min, env and enabled survive and the compare step is untouched.
+// TestRebaseDirsOntoRoot_KeepsOtherKeys pins that a rewrite changes only the dir.
+// The header comment, command, timeout_min, env and enabled survive, and the compare step is untouched.
 func TestRebaseDirsOntoRoot_KeepsOtherKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -217,7 +218,8 @@ func TestRebaseDirsOntoRoot_KeepsOtherKeys(t *testing.T) {
 	}
 }
 
-// assertLineKeys fails unless lines is one line per key in wantKeys, in order, each starting with its key and holding wantPart followed by that key's set form.
+// assertLineKeys fails unless lines holds one line per key in wantKeys, in order.
+// Each line starts with its key and holds wantPart followed by that key's set form.
 func assertLineKeys(t *testing.T, label string, lines, wantKeys []string, wantPart string) {
 	t.Helper()
 	if len(lines) != len(wantKeys) {

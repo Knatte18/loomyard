@@ -1,5 +1,8 @@
 // teardownlock_integration_test.go covers the per-slug teardown lock between Remove and the pair's detached pushes:
-// Remove's refusal while a push of the pair holds the lock, the shared hold of a push child for its whole run, a child that meets the lock held or the worktrees gone, and the respawn of the pair's push after a Remove that fails and leaves a worktree behind.
+// Remove's refusal while a push of the pair holds the lock;
+// the shared hold of a push child for its whole run;
+// a child that meets the lock held or the worktrees gone;
+// and the respawn of the pair's push after a Remove that fails and leaves a worktree behind.
 // It also covers Add, the task-branch discard and the synchronous pair push meeting an exclusive hold of the lock.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -24,7 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// holdTeardownLock takes slug's teardown lock exclusive, as a removal, an Add or a discard would, and returns the release; the test's cleanup releases it too.
+// holdTeardownLock takes slug's teardown lock exclusive, as a removal, an Add or a discard would.
+// It returns the release, and the test's cleanup releases it too.
 func holdTeardownLock(t *testing.T, h *hubforge.Hub, slug string) (release func()) {
 	t.Helper()
 
@@ -42,7 +46,8 @@ func holdTeardownLock(t *testing.T, h *hubforge.Hub, slug string) (release func(
 	return release
 }
 
-// teardownTestWait is the shortened teardown-lock wait of every row; no row sleeps, since each ordering is told by channels.
+// teardownTestWait is the shortened teardown-lock wait of every row;
+// no row sleeps, since each ordering is told by channels.
 const teardownTestWait = 100 * time.Millisecond
 
 // pairPushRequest is the detached push request a status push of slug's pair makes.
@@ -225,8 +230,10 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 	})
 }
 
-// TestTeardownLock_SerialisesAddDiscardAndPairPush meets Add, the task-branch discard and the synchronous pair push with an exclusive hold of the slug's teardown lock, one hub per row.
-// Each row's wait is set on its own Topology and the holder is released by the test, so no row sleeps and no process-global state is touched.
+// TestTeardownLock_SerialisesAddDiscardAndPairPush holds the slug's teardown lock exclusive, one hub per row.
+// It meets Add, the task-branch discard and the synchronous pair push with that hold.
+// Each row sets its wait on its own Topology, and the test releases the holder,
+// so no row sleeps and no process-global state is touched.
 func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

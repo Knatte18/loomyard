@@ -26,7 +26,7 @@ type segmentDef struct {
 	Writer, WriterForks string
 }
 
-// segmentDefs are the segments placed by role prefix.
+// segmentDefs lists the segments in report order, each placed by its role prefix.
 var segmentDefs = []segmentDef{
 	{Name: "Discussion", Key: "discussion", Writer: "writer", WriterForks: "writer forks"},
 	{Name: "Plan", Key: "plan", Writer: "writer", WriterForks: "writer forks"},
@@ -38,7 +38,8 @@ var segmentDefs = []segmentDef{
 	{Name: "Code-Review", Key: "code", Writer: "writer", WriterForks: "writer forks"},
 }
 
-// landingRoles are the roles of the landing rows' sessions: Describe's writer, PR-Review's reviewer, and Finalize's merge fixer and its fix review.
+// landingRoles lists the roles whose sessions the Landing segment holds:
+// `describe`, `pr-reviewer`, `fixer` and `fix-reviewer`.
 var landingRoles = []string{"describe", "pr-reviewer", "fixer", "fix-reviewer"}
 
 const (
@@ -66,7 +67,7 @@ var roleSuffixLabels = map[string]string{
 	"bouncer-seed":  "seed",
 }
 
-// segmentNames is the order of the cost per run table's segment columns.
+// segmentNames returns the segment names in the column order of the cost per run table.
 func segmentNames() []string {
 	names := make([]string, 0, len(segmentDefs)+3)
 	for _, def := range segmentDefs {
@@ -76,8 +77,11 @@ func segmentNames() []string {
 }
 
 // partOf places a role in its segment and labels its part there.
-// A role equal to a segment's key is its writer, a role leading with the key and "-" is labelled by the rest, and a fork role by its parent's label with " forks" appended;
-// the webster recovery strand is a Webster part, a landing role a Landing part labelled by its own name, and any other role an Other part labelled by its own name.
+// The segment's key role is its writer's part, and a role starting with the key and "-" is labelled by the rest.
+// A fork role is labelled by its parent's label with " forks" appended.
+// The webster recovery role goes to the Webster segment.
+// A landing role goes to the Landing segment under its own name,
+// and any other role goes to the Other segment under its own name.
 func partOf(role string) (segment, label string) {
 	base, forked := strings.CutSuffix(role, forkSuffix)
 	withForks := func(label string) string {
@@ -123,7 +127,8 @@ type Part struct {
 	Charged bool
 }
 
-// Segment is one segment's parts, most expensive first, and its working time, the union of its roles' working intervals.
+// Segment is one of a run's report segments: its parts, most expensive first, and its working time.
+// The working time is the union of its roles' working intervals.
 type Segment struct {
 	Name  string
 	Parts []*Part
@@ -144,7 +149,8 @@ func (s Segment) Charged() bool {
 	return len(s.Parts) > 0 && s.Parts[0].Charged
 }
 
-// Segments groups the run's roles into segments, and the orch charge into an Orch segment when it is not nil, each sorted by cost.
+// Segments groups the run's roles into segments, each sorted by cost.
+// A non-nil orch charge becomes an Orch segment.
 func (run RunTally) Segments(orch *OrchCharge) []Segment {
 	parts := map[string]map[string]*Part{}
 	segmentWork := map[string][]Interval{}
@@ -189,7 +195,8 @@ func (run RunTally) Segments(orch *OrchCharge) []Segment {
 	return segments
 }
 
-// mergeSegments sums segments of several runs by segment name and part label, times included, and sorts the result by cost.
+// mergeSegments sums the segments of several runs by segment name and part label, times included.
+// It sorts the result by cost.
 func mergeSegments(perRun [][]Segment) []Segment {
 	var merged []Segment
 	index := map[string]int{}
@@ -224,7 +231,8 @@ func mergeSegments(perRun [][]Segment) []Segment {
 	return merged
 }
 
-// sortSegments orders the segments, and the parts within each, by cost, most expensive first, ties by name.
+// sortSegments orders the parts within each segment and the segments themselves by cost, most expensive first.
+// Ties are broken by name.
 func sortSegments(segments []Segment) {
 	for _, s := range segments {
 		sort.Slice(s.Parts, func(i, j int) bool {
@@ -260,10 +268,11 @@ func costShare(part, whole Cost) string {
 	return fmt.Sprintf("%.1f%%", 100*part.USD/whole.USD)
 }
 
-// mostExpensiveParts is how many parts the most expensive parts list holds at most.
+// mostExpensiveParts caps how many rows the most expensive parts list holds.
 const mostExpensiveParts = 10
 
-// writeMostExpensiveParts writes the costliest parts of segments, summed over runs runs, with each part's share of their total cost and its cost per run.
+// writeMostExpensiveParts writes the costliest parts of segments, each with its share of their total cost.
+// A part's cost per run is its cost divided by runs.
 func writeMostExpensiveParts(w io.Writer, segments []Segment, runs int) {
 	type named struct {
 		name string
@@ -291,8 +300,8 @@ func writeMostExpensiveParts(w io.Writer, segments []Segment, runs int) {
 	fmt.Fprintln(w)
 }
 
-// writeCostPerRun writes one row per run of its recipe, its segments' costs and its total, then their average.
-// perRun holds each run's segments, and the segment columns are the segments some run holds, in segmentNames order.
+// writeCostPerRun writes one row per run with its segments' costs and its total, then their average.
+// perRun holds each run's segments; the segment columns are the segments some run holds, in segmentNames order.
 func writeCostPerRun(w io.Writer, runs []RunTally, perRun [][]Segment) {
 	var names []string
 	for _, name := range segmentNames() {
@@ -325,7 +334,6 @@ func writeCostPerRun(w io.Writer, runs []RunTally, perRun [][]Segment) {
 	fmt.Fprintln(w)
 }
 
-// writeCostRow writes one cost per run row.
 func writeCostRow(w io.Writer, name, recipe string, cells []Cost) {
 	rendered := make([]string, len(cells))
 	for i, c := range cells {
@@ -334,21 +342,21 @@ func writeCostRow(w io.Writer, name, recipe string, cells []Cost) {
 	fmt.Fprintf(w, "| %s | %s | %s |\n", name, recipe, strings.Join(rendered, " | "))
 }
 
-// segmentTable is what one segment table needs beside its segments.
+// segmentTable holds the settings one segment table needs beside its segments.
 type segmentTable struct {
-	// Idle and Span are the table's idle duration and the span its time shares divide by.
+	// Idle is the table's idle duration, and Span is the duration its time shares divide by.
 	Idle, Span time.Duration
-	// Runs is the number of runs the table sums, which the Orch segment's row averages its cost over; 0 names no average.
+	// Runs is the number of runs the table sums, and 0 omits the per-run average the `orchSegment` row shows.
 	Runs int
 	// Detail adds the token columns.
 	Detail bool
 }
 
-// detailColumns are the columns -detail adds after the models column.
+// detailColumns are the token columns a detailed table appends after the models column.
 const detailColumns = " sessions | output | cache write | cache read | input | weight |"
 
 // write writes the segment tree: each segment's total row, then its parts indented below it, then an idle row.
-// Shares divide by the segments' total cost and time shares by the span.
+// Cost shares divide by the total cost of the segments, and time shares divide by the span.
 func (table segmentTable) write(w io.Writer, segments []Segment) {
 	total := totalCost(segments)
 	timeCells := func(d time.Duration) string {

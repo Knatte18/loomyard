@@ -1,4 +1,5 @@
-// haltnote.go renders and tolerantly parses the Go-authored loom halt note: the friction note a `blocked` or `failed` loom halt leaves.
+// haltnote.go renders and tolerantly parses the Go-authored loom halt note.
+// It is the friction note a `blocked` or `failed` loom halt leaves.
 
 package haltnote
 
@@ -17,7 +18,7 @@ const (
 	fence         = "```"
 	historyHeader = "history:"
 	noHistoryLine = "no history entries"
-	// parentHeader opened a section older binaries wrote; Parse skips every line under it.
+	// parentHeader opens a section that older binaries wrote; Parse skips every line under it.
 	parentHeader    = "parent fabric status:"
 	rowSeparator    = " / "
 	noteFileName    = NoteID + ".md"
@@ -26,7 +27,7 @@ const (
 	fenceThenFields = "\n" + fence + "\n\nproducer: "
 )
 
-// Note is one halt note. Every field is a string or an int, so the leaf needs no producer-state types.
+// Note is one halt note. Every field is a string or an int.
 type Note struct {
 	Producer string
 	State    string
@@ -46,7 +47,7 @@ type Row struct {
 	At       string
 }
 
-// Render returns the note's bytes.
+// Render returns the halt note file for n: a title, the reason in a fence, then the producer, state and history lines.
 func Render(n Note) []byte {
 	var b strings.Builder
 	b.WriteString(titlePrefix + n.State + " at " + n.Producer + "\n\n")

@@ -1,9 +1,7 @@
-// config.go — configuration for the boardengine module.
+// config.go holds the board's configuration: the Config and Outputs types, the label vocabulary, and LoadConfig.
 //
-// Defines the Config and Outputs types and LoadConfig.
-// LoadConfig uses internal/configengine.Load with the ConfigTemplate() to strictly validate and
-// resolve the board config file;
-// the boardengine module never reads config files or knows their layout itself.
+// LoadConfig resolves the board config file with internal/configengine.Load, strictly checked against ConfigTemplate().
+// The boardengine module never reads config files or knows their layout itself.
 
 package boardengine
 
@@ -21,12 +19,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the configuration for a board module.
+// Config is the configuration of a board module, read from board.yaml.
+// Its run-time fields, such as Path and Clock, are supplied by the caller rather than read from the file.
 type Config struct {
-	// Path is the absolute path to the board data directory. It is set by the
-	// caller (boardcli.Command's PersistentPreRunE via fabricengine.BoardDir or the
-	// --board-path flag), never by the config file. yaml:"-" prevents the
-	// yaml.v3 unmarshaller from mapping any leftover path: key onto this field.
+	// Path is the absolute path to the board data directory.
+	// The caller sets it, from the hub's board directory or the --board-path flag, never the config file.
+	// yaml:"-" keeps the yaml.v3 unmarshaller from mapping a leftover path: key onto this field.
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
@@ -45,10 +43,12 @@ type Config struct {
 	// Clock is the time a write stamps entry dates with and renders the README's ages as of;
 	// nil is the wall clock.
 	Clock func() time.Time `yaml:"-"`
-	// ParentOf names the slug of an entry's parent pair, "" for the prime, so reads and writes resolve an effective owner alike;
+	// ParentOf names the slug of an entry's parent pair, "" for the prime.
+	// Reads and writes both resolve an effective owner from it;
 	// nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error) `yaml:"-"`
-	// PairExists reports whether an entry's pair exists on this machine, so a write that moves or renames an entry with a pair is refused;
+	// PairExists reports whether an entry's pair exists on this machine,
+	// so a write that moves or renames an entry with a pair is refused;
 	// nil reads every pair as absent.
 	PairExists func(slug string) bool `yaml:"-"`
 	// ValidateSlug applies the pair slug rule to a task or project slug a write makes, returning the rule's refusal;
@@ -65,7 +65,8 @@ type Label struct {
 	Description string `json:"description"`
 }
 
-// ConfigOpenMaps returns the board.yaml keys whose entries are the repository's own, which configengine carries whole through reconcile and --set.
+// ConfigOpenMaps returns the board.yaml keys whose entries are the repository's own.
+// configengine carries these keys whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{"types", "labels"}
 }
@@ -79,7 +80,7 @@ func labelNames(labels []Label) []string {
 	return names
 }
 
-// Outputs represents the output configuration values derived from Config.
+// Outputs holds the configuration values that a board's rendering reads, derived from a Config.
 type Outputs struct {
 	Readme       string
 	DesignPrefix string
@@ -89,7 +90,7 @@ type Outputs struct {
 	Types []string
 }
 
-// Outputs returns the Outputs derived from a Config.
+// Outputs returns the values a board's rendering reads from c.
 func (c Config) Outputs() Outputs {
 	return Outputs{
 		Readme:        c.Readme,
@@ -108,8 +109,8 @@ func (o Outputs) recipeOf(task Task) string {
 	return o.DefaultRecipe
 }
 
-// Vocabulary is the one answer to "is this a type label" and "is this label configured".
-// The zero value, a path-only Config's vocabulary, knows no label.
+// Vocabulary answers whether a label is a configured type label or a configured plain label.
+// The zero value knows no label, which is the vocabulary of a Config that sets only Path.
 type Vocabulary struct {
 	Types  []string
 	Labels []string
@@ -131,7 +132,7 @@ func (v Vocabulary) Known(label string) bool {
 }
 
 // ConfigSpec returns the board's layered-load spec.
-// Every key is the one board's vocabulary or files, so none may be set in the local layer.
+// Every key names the board's vocabulary or files, so none may be set in the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "board",
@@ -149,9 +150,11 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals the board module configuration strictly through the hub-wide layer stack under dirs.
-// An absent `_lym/` under the hub's board dir and an absent board.yaml under a present one both refuse naming the file and the `lym fabric reconcile` way forward.
+// An absent `_lym/` under the hub's board dir refuses the load, as does an absent board.yaml under a present one.
+// The refusal names the file and the `lym fabric reconcile` way forward.
 // The built-in sketch type label leads the types unless board.yaml lists it.
-// Type labels that would share a handle letter, with each other, with the sketch type label or with tasks, refuse naming the label to rename.
+// Type labels that share a handle letter with each other, with the sketch type label or with tasks are refused.
+// The refusal names the label to rename.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -199,8 +202,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// checkDesignPrefix refuses a design_prefix that would render a design file onto a decision record's name, decision-<slug>.md:
-// a prefix that is a prefix of "decision-", the empty one included, and one that starts with it.
+// checkDesignPrefix refuses a design_prefix that would render a design file onto a decision record's name.
+// A decision record is named decision-<slug>.md, so a prefix of "decision-" is refused, the empty one included.
+// A prefix that starts with "decision-" is refused too.
 func checkDesignPrefix(prefix string) error {
 	if strings.HasPrefix(decisionFilePrefix, prefix) || strings.HasPrefix(prefix, decisionFilePrefix) {
 		return fmt.Errorf("board.yaml: design_prefix %q would name a design file %s<slug>%s, the name of an entry's decision record: set design_prefix in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", prefix, decisionFilePrefix, decisionFileSuffix)
@@ -210,7 +214,7 @@ func checkDesignPrefix(prefix string) error {
 
 // decodeLabels reads one board.yaml key into labels in file order.
 // A mapping gives each name its scalar description, where an empty or null one is the empty string;
-// a sequence of names is the older shape, read with empty descriptions.
+// a sequence of names is also accepted, read with empty descriptions.
 func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 	switch {
 	case node.Kind == 0, node.Kind == yaml.ScalarNode && node.Tag == "!!null":
@@ -243,8 +247,8 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 }
 
 // OpenHub opens the board of the hub at hubPath.
-// It reads the config from the hub's own Bolt checkout and points Path at its board directory, so no worktree link is followed,
-// and applies ApplySkipEnv so render and sync behave as they do for `lym board`.
+// It reads the config from the hub's own Bolt checkout and points Path at its board directory.
+// No worktree link is followed, and `ApplySkipEnv` is applied so render and sync behave as they do for `lym board`.
 // It is told only a hub path, so it loads with no anchor and therefore no local layer.
 func OpenHub(hubPath string) (*Board, error) {
 	boltDir := fabricengine.BoltDir(hubPath)

@@ -1,4 +1,5 @@
-// wake.go implements what the request's sequence does between the wake and the lift of its pause entry: the hub's origin reconcile under a network exemption, the pair pause entries it leaves behind and the notice text.
+// wake.go implements the work a hibernate request does after the wake and before its pause entry is lifted:
+// the hub's origin reconcile under a network exemption, the pair pause entries it leaves behind, and the notice text.
 
 package hibernateengine
 
@@ -11,12 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
-// WakeRun is the wake's view of one stopped or ended entry of the hub's reconcile.
+// WakeRun describes one stopped or ended entry of the hub's reconcile, as the wake sees it.
 // Ended is false for a stopped entry.
 // WayForward is the one line that repairs the stop, or for an ended entry what lets its removal go through.
-// Busy marks an entry whose pair a driver or a lock still holds, ParkedPush a busy pair whose records push lock a parked push holds, and Gone a stop whose branch origin no longer has.
+// Busy marks an entry whose pair a driver or a lock still holds;
+// ParkedPush marks a busy pair whose records push lock a parked push holds;
+// Gone marks a stop whose branch origin no longer has.
 // Owner names the other machine that owns the entry's run, and is empty for a run owned here.
-// AdoptSubject is the beam or `root` that `lym adopt` takes to move an owned-elsewhere run, and empty reads as the slug.
+// AdoptSubject is the beam or `root` that `lym adopt` takes to move a run owned elsewhere; empty means the slug.
 type WakeRun struct {
 	Slug         string
 	Ended        bool
@@ -28,7 +31,8 @@ type WakeRun struct {
 	AdoptSubject string
 }
 
-// WakeReconcile is the engine's own view of one hub reconcile at the wake, so the engine imports no fabric package.
+// WakeReconcile is the outcome of one hub reconcile at the wake.
+// It is declared here so the engine imports no fabric package.
 // Unreachable means origin could not be reached through the retry bound and nothing moved.
 // Stop is the way forward of a stop on a branch every pair shares, empty when none stopped.
 // Mutations holds one rendered line per entry of the reconcile's mutation record.
@@ -39,7 +43,7 @@ type WakeReconcile struct {
 	Mutations   []string
 }
 
-// reconcileAtWake runs the hub reconcile for the wake and returns the sentence the wake notice appends; the caller lifts the owned entry on every outcome.
+// reconcileAtWake runs the hub reconcile for the wake and returns the sentence the wake notice appends.
 // A hub entry the request does not own that stands skips the reconcile and the exemption.
 // Otherwise the owned entry, when it is live, is exempted from the network gate for the reconcile alone.
 // The stopped runs and the busy ended ones get pair pause entries, a stop on a branch every pair shares included, so those runs stay held once the hub entry is lifted.
@@ -90,8 +94,12 @@ func reconcileExempt(deps Deps, owned *tenderengine.EntryRef) (WakeReconcile, er
 	return deps.Reconcile()
 }
 
-// holdRuns adds a pair pause entry for each stopped run, each run owned by another machine and each busy ended one, not recorded as owned so it outlives the request, and returns the notice sentence naming each run's next step.
-// A run owned elsewhere is paused with the owner caller, so a slug entry already standing adds none, and once paused has its owned processes ended through deps.EndOwned; an end error is logged at Warn and leaves the notice as it was.
+// holdRuns adds a pair pause entry for each stopped run, each run owned elsewhere, and each busy ended run.
+// The entries are not recorded as owned, so they outlive the request.
+// It returns the notice sentence that names each run's next step.
+// A run owned elsewhere is paused with the owner caller, so a slug entry already standing adds none;
+// once paused, its owned processes are ended through deps.EndOwned.
+// An end error is logged at Warn and leaves the notice as it was.
 // A pair whose pause fails is left unheld and named with the step that holds it.
 func holdRuns(deps Deps, runs []WakeRun) string {
 	var steps, unheld, ended []string
@@ -124,7 +132,8 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 }
 
 // runStep names what an operator does for one held run.
-// A parked push is cleared by the resume alone; a pair stopped as gone, which no resume can carry on, and an ended one are cleared by the cleanup.
+// A parked push is cleared by the resume alone;
+// a pair stopped as gone, which no resume can carry on, and an ended one are cleared by the cleanup.
 func runStep(run WakeRun) string {
 	resume := fmt.Sprintf("`lym tender resume %s`", run.Slug)
 	switch {

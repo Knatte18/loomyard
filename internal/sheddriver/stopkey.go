@@ -10,7 +10,7 @@ import (
 // StopKey identifies a stop: the status file's current producer, history length and state.
 type StopKey = shedrun.StopKey
 
-// StopKeyOf reads the stop key off a status.
+// StopKeyOf reads the stop key off a status, the identity the driver matches attempt and settle records against.
 func StopKeyOf(st shedengine.Status) StopKey {
 	return StopKey{CurrentProducer: st.CurrentProducer, HistoryLength: len(st.History), State: string(st.State)}
 }

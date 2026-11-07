@@ -1,7 +1,7 @@
-// seamchild_test.go covers NewSeedChild's full verdict table, keeping the two-source split visible
-// -- recipe from the Board's own type, driver from prime's own seed -- and keeping the
-// failed-commit and failed-push arms distinct, since collapsing either pairing is the likeliest
-// regression.
+// seamchild_test.go covers NewSeedChild's verdict table.
+// It keeps the two-source split visible: the recipe from the Board's own type, the driver from prime's own seed.
+// It keeps the failed-commit and failed-push arms distinct;
+// collapsing either pairing is the likeliest regression.
 
 package battenshed
 
@@ -18,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedChildCalls records what each closure of a SeedChildDeps received, so a test can assert the
-// two-source split (recipe from the Board, driver from ChildDriver) rather than trusting a single
-// combined value.
+// seedChildCalls records what each closure of a SeedChildDeps received.
+// A test asserts the two-source split (recipe from the Board, driver from ChildDriver) against it.
+// A single combined value would hide the split.
 type seedChildCalls struct {
 	driverRecipe string
 	writeRecipe  string
@@ -71,7 +71,10 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 	return calls, withNoRunSettings(deps)
 }
 
-// TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row depends on: the seed's recipe comes from the Board's own type, read at Call time rather than captured at wiring time, and defaults when the Board names none, while its driver comes from the injected ChildDriver, never from one collapsed source.
+// TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row depends on.
+// The seed's recipe comes from the Board's own type.
+// It is read at Call time rather than captured at wiring time, and it defaults when the Board names none.
+// Its driver comes from the injected ChildDriver, never from one collapsed source.
 func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -145,9 +148,9 @@ func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
 	}
 }
 
-// TestSeedChild_UnsupportedChildRecipeIsStuck pins the second refusal a WriteSeed seam may raise:
-// a registered recipe the task worktree cannot bootstrap lands Stuck, naming the Board type, with
-// no commit and no push attempted.
+// TestSeedChild_UnsupportedChildRecipeIsStuck pins the refusal a WriteSeed seam may raise.
+// A registered recipe the task worktree cannot bootstrap lands Stuck, naming the Board type.
+// No commit and no push is attempted.
 func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -165,11 +168,9 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 	}
 }
 
-// TestSeedChild_DisagreeingChildSeedIsStuck pins the third refusal a WriteSeed seam may raise: a
-// pre-existing child seed that disagrees with the one being written lands Stuck, not a hard error --
-// the same business-judgment treatment as the other two WriteSeed refusals, with no commit and no
-// push attempted. Live-reproduced (batten review sonnet-xhigh-r5, finding F3): before this fix, this
-// exact case surfaced as a hard StateFailed with no stuck_reason.
+// TestSeedChild_DisagreeingChildSeedIsStuck pins the refusal a WriteSeed seam may raise.
+// A pre-existing child seed that disagrees with the one being written lands Stuck, not a hard error.
+// No commit and no push is attempted.
 func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -226,9 +227,9 @@ func TestSeedChild_FailedCommitIsStuck(t *testing.T) {
 	}
 }
 
-// TestSeedChild_FailedPushWarnsAndStillReturnsDone is the second load-bearing assertion: a failed
-// push must not halt the run, since an offline machine must not block on it, and must be kept
-// distinct from the failed-commit arm above rather than collapsed into it.
+// TestSeedChild_FailedPushWarnsAndStillReturnsDone pins that a failed push does not halt the run.
+// An offline machine must not block on the push.
+// The failed-push arm is kept distinct from the failed-commit arm, rather than collapsed into it.
 func TestSeedChild_FailedPushWarnsAndStillReturnsDone(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -264,7 +265,9 @@ func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
 	}
 }
 
-// TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation asserts the two hard-error paths (the child-driver read and the seed write) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+// TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation asserts the cancelled-context diagnosis.
+// The two hard-error paths, the child-driver read and the seed write, report it, not the raw underlying error.
+// This holds when ctx is cancelled by the time the failing seam call itself returns.
 func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -340,8 +343,12 @@ func TestSeedChild_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestSeedChild_RunSettings pins how Seed-Child settles the task worktree's local config layer from the board task's run settings:
-// the settings are prepared for the recipe the board type resolves, the named modules are written and the others removed before the seed, an invalid key or an unreadable board is Stuck with no seed written, a write failure is a hard error, and a Call run again after an interruption leaves the layer equal to the board's current settings.
+// TestSeedChild_RunSettings pins how Seed-Child settles the task worktree's local config layer.
+// The layer is settled from the board task's run settings, under these rules.
+// The settings are prepared for the recipe the board type resolves.
+// The named modules are written and the others removed before the seed.
+// An invalid key or an unreadable board is Stuck with no seed written; a write failure is a hard error.
+// A Call run again after an interruption leaves the layer equal to the board's current settings.
 func TestSeedChild_RunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -513,7 +520,8 @@ func TestSeedChild_RunSettings(t *testing.T) {
 	})
 }
 
-// TestSeedChild_MarksWatchedOnceTheSeedIsCommitted asserts the batten-watched marker is asked for after the commit, that a failing marker never changes the verdict, and that a failed commit never reaches it.
+// TestSeedChild_MarksWatchedOnceTheSeedIsCommitted asserts the batten-watched marker is asked for after the commit.
+// A failing marker never changes the verdict, and a failed commit never reaches the marker.
 func TestSeedChild_MarksWatchedOnceTheSeedIsCommitted(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

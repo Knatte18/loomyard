@@ -1,7 +1,5 @@
-// parse.go implements the pure, I/O-free parser the tmux overlay (overlay.go) calls after shelling
-// out: pane-list parsing.
-// Keeping it free of subprocess I/O means it is unit-testable without a running tmux server,
-// matching the module's hermetic-by-default testing posture.
+// parse.go implements the pure, I/O-free pane-list parser that the tmux overlay (overlay.go) calls after shelling out.
+// It does no subprocess I/O, so it is unit-testable without a running tmux server.
 
 package reedengine
 
@@ -29,7 +27,8 @@ type LivePane struct {
 
 // paneTailSeparator joins the title, the current command and the start command in the last field of a pane listing line.
 // Each of the three can hold spaces, so the separator is a tab:
-// tmux passes a tab through a format verbatim but escapes other control characters as octal text, such as the unit separator as "\037".
+// tmux passes a tab through a format verbatim.
+// It escapes other control characters as octal text, such as the unit separator as "\037".
 const paneTailSeparator = "\t"
 
 // splitPaneTail splits the last field of a pane listing line into the title, the current command and the start command.
@@ -72,9 +71,8 @@ func parsePaneList(out string) ([]LivePane, error) {
 		}
 		title, currentCommand, startCommand := splitPaneTail(tail)
 
-		// tmux reports pane_dead as "1"/"0"; remain-on-exit keeps the pane
-		// entry around after its command exits, which is exactly the case
-		// this flag exists to distinguish from a live pane.
+		// tmux reports pane_dead as "1" or "0";
+		// remain-on-exit keeps a pane's entry after its command exits, so this flag tells an exited pane from a live one.
 		dead := parts[1] == "1"
 		top, err := strconv.Atoi(parts[2])
 		if err != nil {

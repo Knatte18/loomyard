@@ -1,88 +1,110 @@
 # stencil
 
-> **Status: Built.** A shared infrastructure leaf. Per the [documentation lifecycle](../overview.md#documentation-lifecycle), once built its mechanics may fold into the package header (like the other implementation-only libs) — this doc pins the contract agreed during the review-engine design.
+> **Status: Built.** A shared infrastructure leaf. Per the [documentation lifecycle](../overview.md#documentation-lifecycle), once built its mechanics may fold into the package header, like the other implementation-only libs; this doc pins the contract.
 
 `internal/stencil` fills **marker fields** in a markdown template and returns the rendered markdown.
 It is the one mechanical thing every prompt-building call-site needs: *template + values → prompt*.
 
-It is a **leaf, not a module** — no CLI, no engine, no domain knowledge — the same category as `yamlengine` / `output` / `state`.
+It is a **leaf, not a module**: no CLI, no engine, no domain knowledge.
+It is the same category as `yamlengine`, `output` and `state`.
 It never learns "review", "phase", or "cluster";
 it substitutes markers.
 Callers own the templates and the values;
-stencil just fills them.
+stencil fills them.
 
 ## The name
 
-A **stencil** is a template with cut-out fields you fill to reproduce a pattern — exactly "markdown with marker fields that get filled."
-The name deliberately avoids two collisions in this codebase:
+A **stencil** is a template with cut-out fields you fill to reproduce a pattern.
+That is "markdown with marker fields that get filled."
+The name avoids two collisions in this codebase:
 
 - **`render`** — already `reed`'s layout sub-package (`internal/reedengine/render`, strands → layout).
-- **`template`** — already means the config default in `configreg.ConfigTemplate()`.
+- **`template`** — already means a module's config default, as in `ConfigTemplate()`.
 
 `stencil` is "template" said with its own word, so neither meaning is overloaded.
 
 ## The contract
 
 ```go
-// Fill renders a markdown template by substituting marker fields from values.
-// It returns an error if any marker in the template has no value — an unfilled
-// marker is never silently left blank.
+// Fill renders a markdown template by substituting {{.X}} markers from values.
+// Every top-level marker absent from values or blank is collected and reported in one error;
+// the template is never executed with unfilled top-level markers.
 func Fill(template []byte, values map[string]string) ([]byte, error)
 
-// FillOptional renders a markdown template exactly like Fill, except every name
-// listed in optional is exempt from Fill's unfilled-top-level-marker guarantee.
+// FillOptional renders a template in which the names in optional are exempt from the unfilled-marker guarantee.
+// Such a name renders as nothing when it is absent or blank.
 func FillOptional(template []byte, values map[string]string, optional []string) ([]byte, error)
 ```
 
-- **Input:** a markdown template (bytes / an asset file's contents), a set of named values, and (for `FillOptional`) a list of marker names exempt from the unfilled-marker guarantee.
+- **Input:** a markdown template (bytes / an asset file's contents) and a set of named values.
+  `FillOptional` also takes a list of marker names exempt from the unfilled-marker guarantee.
 - **Output:** the filled markdown, ready to hand to `shuttle.Run` as a prompt.
-- **Marker syntax:** the pinned grammar is Go stdlib `text/template` (`text/`, never `html/template` — output must not be HTML-escaped): `{{.X}}` substitution, plus `{{if eq .Type "…"}}` equality conditionals for bulk-vs-tool-use / cluster-present / seeded-context-vs-safety-pass sections.
-  Variadic `eq`,
-  and the `and`/`or`/`not`/comparison operators, come free with `text/template`.
+- **Marker syntax:** Go stdlib `text/template`, never `html/template`, because output must not be HTML-escaped.
+  `{{.X}}` substitutes a value.
+  `{{if eq .Type "…"}}` equality conditionals select sections, such as bulk-vs-tool-use or cluster-present.
+  Variadic `eq` and the `and`/`or`/`not`/comparison operators come free with `text/template`.
   A leading `<!-- … -->` comment on the template asset is stripped before parsing.
 - **`Fill` is defined as `FillOptional(template, values, nil)`.**
-  There is one code path, not two parallel implementations that could drift apart;
-  `Fill` simply supplies no optional names.
+  There is one code path, so two implementations cannot drift apart;
+  `Fill` supplies no optional names.
 
 ## The one load-bearing guarantee — fail on an unfilled marker
 
 This is the reason the leaf exists beyond DRY.
 **An unfilled marker is a hard error, never a silent blank.**
-A template whose `fasit` marker rendered empty would quietly neuter a review — and *fasit is the load-bearing field of a review profile* (`{fasit, target} → verdict`, not `target → verdict`).
-A shared renderer that refuses to emit a prompt with a hole in it turns that whole class of bug into a loud, early failure instead of a silently-degraded review.
+A template whose `fasit` marker rendered empty would quietly neuter a review.
+`fasit` is the load-bearing field of a review profile: the profile maps `{fasit, target}` to a verdict, not `target` alone.
+A shared renderer that refuses to emit a prompt with a hole in it makes that class of bug a loud, early failure.
 Centralizing this guard is worth more than the substitution itself, which is trivial.
 
-The built scoping: every **top-level** absent-or-empty marker is collected and reported together, sorted, in one error,
+Every **top-level** absent-or-empty marker is collected and reported together, sorted, in one error,
 and the template is never executed.
-A **branch-internal** reached-but-*absent* marker is instead caught incrementally, one per call, via `missingkey=error` — this is not "every hole in one error" for branch-internal markers, only for top-level ones.
+A **branch-internal** marker that is reached but *absent* is caught one per call, via `missingkey=error`.
 
-**A branch-internal marker *present* as `""` is a third case, closed 2026-08-15.** Neither guard above catches it on its own: it isn't top-level (so the batch check never sees it), and it isn't absent (so `missingkey=error` never fires — a present empty-string value is a valid map entry, not a missing key). Left alone, it would render silently blank — exactly the risk every producer template's own header comment warns "`{{if}}`/`{{range}}` conditionals" carry.
-`FillOptional` closes this specific case with a third, additive check: for a simple `{{if .X}}` or `{{if eq .X "literal"}}` condition confidently evaluated true against `values` (an absent or unresolvable condition is left entirely to the existing `missingkey=error` path, never newly flagged), any non-optional marker inside that branch present as `""`/whitespace-only is folded into the same batch error as top-level offenders.
-It does not descend into `{{range}}`/`{{with}}`/`{{template}}`, and it does not resolve an `{{else}}` branch — both remain exactly as unguarded as before this check existed.
-A caller-required marker (like `fasit`/`target`) should still live at the template's top level when practical — the branch-internal guarantee only covers the one specific shape above, not every conditional a template could write.
+A branch-internal marker *present* as `""` is a third case.
+The batch check never sees it because it is not top-level.
+`missingkey=error` never fires on it because a present empty-string value is a valid map entry.
+Left alone, it would render silently blank, which is the risk of `{{if}}`/`{{range}}` conditionals.
+`FillOptional` closes this case with a third check.
+A simple `{{if .X}}` or `{{if eq .X "literal"}}` condition counts when `values` confidently evaluates it true.
+Every non-optional marker inside that branch that is present as `""` or whitespace-only is reported.
+It is folded into the same batch error as top-level offenders.
+An absent or unresolvable condition is left to the `missingkey=error` path and never flagged by this check.
+The check does not descend into `{{range}}`/`{{with}}`/`{{template}}`, and it does not resolve an `{{else}}` branch.
+A caller-required marker (like `fasit`/`target`) should still live at the template's top level when practical,
+since the branch-internal guarantee covers only the one shape above.
 
 ## The optional-marker exemption — `FillOptional`
 
-A marker name passed in `FillOptional`'s `optional` argument is exempt from **both** of the guards above: the top-level batch check no longer reports it as unfilled, and `missingkey=error` no longer fires on it at execution time even when it is reached only via a branch.
-Concretely, a listed name that is absent from `values`, present as `""`, or present as a whitespace-only string all render as nothing rather than tripping either guard or leaking literal whitespace into the output — one shared `strings.TrimSpace` definition of "empty" governs both guards and both call paths.
-A listed name that is present with a genuine non-empty value renders that value exactly as before;
-the exemption only changes behaviour for the absent-or-empty case.
-A listed name that never appears in the template at all is a harmless no-op.
+A marker name passed in `FillOptional`'s `optional` argument is exempt from **both** of the guards above.
+The top-level batch check no longer reports it as unfilled.
+`missingkey=error` no longer fires on it at execution time, even when it is reached only via a branch.
+A listed name that is absent from `values`, or present as `""` or whitespace only, renders as nothing.
+It trips neither guard and leaks no whitespace into the output.
+One shared `strings.TrimSpace` definition of "empty" governs both guards and both call paths.
+A listed name present with a non-empty value renders that value;
+the exemption changes only the absent-or-empty case.
+A listed name that never appears in the template is a harmless no-op.
 
-Optionality is a property of **the caller's argument list**, not of the template text: a marker is optional because a specific Go call site passed its name in `optional`, which is a testable fact about that call site, unlike wrapping the same field in a `{{if}}` conditional inside the markdown asset.
-The same template can therefore be filled once with a marker required (via `Fill`, or `FillOptional` with that name omitted from `optional`) and once with it optional (via `FillOptional` with that name listed), depending entirely on which caller is filling it.
+Optionality is a property of **the caller's argument list**, not of the template text:
+a marker is optional because a specific Go call site passed its name in `optional`.
+That is testable at the call site, unlike wrapping the field in a `{{if}}` conditional inside the markdown asset.
+The same template can therefore be filled with a marker required by one caller and optional by another.
+The first caller uses `Fill`, or `FillOptional` with that name omitted from `optional`.
+The second uses `FillOptional` with that name listed.
 
 ## Consumers
 
-- **`burler`** — the reviewer prompt, the fixer prompt and each cluster-reviewer prompt: each half's thin orchestrator is passed *as a value*, while the instruction files it names (the explore step once per half, the review step and the fix step) are written to a fresh `.lym`-anchored directory and read by the agent via tools (see the `internal/burlerengine` package documentation).
-- **`treadle`** — the progress-judge prompt.
-- **`loom`** — the discussion / plan producer prompts (producers are prompts + profiles, not modules).
-- **`hardener`** (DRAFT) — the round-agent prompt (`review-prompt-template.md`).
+Every prompt-building call site fills its prompt through this leaf, such as the reviewer, fixer and judge prompts of the engines and the producer prompts of the planning modules.
+The templates live as `.md` assets, and the profiles supply the values.
 
-All four go through the same leaf;
-the templates live as `.md` assets, the profiles supply the values.
+`burler` passes each half's thin orchestrator as a value.
+The instruction files that orchestrator names are written to a fresh `.lym`-anchored directory and read by the agent via tools.
+See the `internal/burlerengine` package documentation.
 
 ## Tests
 
-Pure and table-driven, no substrate: fill cases, the **missing-marker → error** guarantee, conditional sections present/absent, and idempotence (same template + values → same output).
+Pure and table-driven, no substrate.
+The cases cover fills, the **missing-marker → error** guarantee and conditional sections present or absent.
+They also pin idempotence: the same template and values give the same output.
 Own deep tests, like every shared lib.

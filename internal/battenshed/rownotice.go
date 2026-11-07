@@ -1,4 +1,4 @@
-// rownotice.go implements the stop notice the driver's hand-back sends the orch for a stop at a row after Run-Shed.
+// rownotice.go implements the notice the driver sends the orch when it hands back a stop at a row after Run-Shed.
 // It also owns the per-run markers, which batten clears where it seeds a fresh status.
 
 package battenshed
@@ -16,24 +16,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// rowNoticeFileSuffix is the fixed suffix of the marker recording the notices a row already sent, joined onto the row's own name.
+// rowNoticeFileSuffix is the fixed suffix of the marker recording the notices a row has already sent.
+// The marker's file name is the row's name followed by this suffix.
 const rowNoticeFileSuffix = "-row-notice"
 
 // rowNoticeRetrySpacing is the pause between two delivery attempts of one row notice.
 const rowNoticeRetrySpacing = 30 * time.Second
 
-// rowNoticeHandBackPrefix leads the marker line recording the history length of the last stop the driver's hand-back noticed.
+// rowNoticeHandBackPrefix leads the marker line that records the history length of the last stop handed back.
 const rowNoticeHandBackPrefix = "handback "
 
-// runMarkerSuffixes names every marker that must last exactly one batten run, by file-name suffix.
-// ClearRunMarkers removes them all where batten seeds a fresh status.
+// runMarkerSuffixes lists the file-name suffixes of every marker that must last exactly one batten run.
+// Batten removes these markers where it seeds a fresh status.
 var runMarkerSuffixes = []string{
 	rowNoticeFileSuffix,
 	innerRunMemoryFileSuffix,
 }
 
-// ClearRunMarkers removes every file in scratchDir whose name ends in a suffix of runMarkerSuffixes.
-// An absent file or directory is not an error.
+// ClearRunMarkers removes the run markers from scratchDir, so a fresh batten run starts without them.
+// An absent scratch directory is not an error.
 func ClearRunMarkers(scratchDir string) error {
 	entries, err := os.ReadDir(scratchDir)
 	if err != nil {
@@ -57,15 +58,16 @@ func ClearRunMarkers(scratchDir string) error {
 	return nil
 }
 
-// RowNoticeDeps carries the seams a row's notices go through.
+// RowNoticeDeps carries the functions a row's notices use to reach the orch, read batten's history and pause.
 type RowNoticeDeps struct {
-	// Notify hands one notice line to whoever tells the orch, and reports whether the line was posted.
+	// Notify posts one notice line for the orch, and reports whether the line was posted.
 	// A nil Notify switches the row's notices off.
 	Notify func(ctx context.Context, line string) (queued bool, err error)
 	// OrchStrandRecorded reports whether the orch the notices go to has a strand recorded to receive them.
 	// A nil OrchStrandRecorded reads as one recorded.
 	OrchStrandRecorded func() (bool, error)
-	// BattenHistoryLen returns the length of batten's own status history, which tells one failure episode of a row from the next.
+	// BattenHistoryLen returns the length of batten's own status history.
+	// The length tells one failure episode of a row from the next.
 	BattenHistoryLen func() (int, error)
 	// Sleep is the pause between two delivery attempts; a test replaces it to keep the spacing out of real time.
 	// A nil Sleep resolves to waitOrCancel.
@@ -80,7 +82,8 @@ type rowNotifier struct {
 	deps       RowNoticeDeps
 }
 
-// newRowNotifier returns the notifier of the row named producer for the task worktree slug, keeping its marker under scratchDir.
+// newRowNotifier returns the notifier of the row named producer in the task whose worktree slug is slug.
+// Its marker is kept under scratchDir.
 func newRowNotifier(producer, slug, scratchDir string, deps RowNoticeDeps) rowNotifier {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -124,17 +127,20 @@ func (n rowNotifier) setMarkerLine(prefix, line string) {
 	}
 }
 
-// RowStopNotice sends the notice of the stop at the row producer after Run-Shed, which the stop chain gave back with the report at reportPath and whose stop key's history length is historyLen, and reports whether it was posted.
-// The line names the row, the reason cut to one line, the report and the way forward, and goes out as HandBackNotice sends a line, so a stop is noticed once.
+// RowStopNotice sends the notice of a stop at the row producer after Run-Shed, and reports whether it was posted.
+// The stop was handed back with the report at reportPath, and historyLen is the history length of its stop key.
+// The line names the row, the reason cut to one line, the report and the way forward.
+// A stop is noticed once: a second notice for the same historyLen sends nothing.
 func RowStopNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer, reason, reportPath string, historyLen int) bool {
 	line := fmt.Sprintf("%s %s: %s failed: %s; report %s; way forward: fix the cause, then run \"lym batten run %s\"",
 		noticePrefix, slug, producer, oneLine(reason, noticeErrorMax), reportPath, slug)
 	return HandBackNotice(ctx, deps, slug, scratchDir, producer, historyLen, line)
 }
 
-// HandBackNotice sends line for the stop at the batten row producer, whose stop key's history length is historyLen, and reports whether it was posted.
-// It sends nothing for `handback <historyLen>`, an earlier hand-back of the same stop by a driver that restarted.
-// Otherwise it sends through the row's own notifier, so the line is retried as a row notice is, and a posted line records `handback <historyLen>`.
+// HandBackNotice sends line for the stop at the batten row producer whose stop key's history length is historyLen.
+// It reports whether the line was posted.
+// It sends nothing for a stop already handed back: the marker records `handback <historyLen>`.
+// The line is retried on failure, and a posted line records `handback <historyLen>` in the marker.
 // A nil deps.Notify or a cancelled context sends nothing.
 func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer string, historyLen int, line string) bool {
 	if deps.Notify == nil || ctx.Err() != nil {
@@ -152,9 +158,8 @@ func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, p
 	return true
 }
 
-// send makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to post line, and reports whether it was posted.
-// With no orch strand recorded it does not call Notify and warns once.
-// A line still unposted after the attempts is dropped with a Warn.
+// send posts line and reports whether it was posted.
+// With no orch strand recorded, or an unreadable orch state, it does not call Notify and warns once.
 func (n rowNotifier) send(ctx context.Context, line string) bool {
 	if n.deps.OrchStrandRecorded != nil {
 		recorded, err := n.deps.OrchStrandRecorded()
@@ -170,7 +175,8 @@ func (n rowNotifier) send(ctx context.Context, line string) bool {
 	return n.deliver(ctx, line, n.deps.Notify)
 }
 
-// deliver makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to post line through notify, and reports whether it was posted.
+// deliver posts line through notify and reports whether it was posted.
+// It makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart.
 // A line still unposted after the attempts is dropped with a Warn.
 func (n rowNotifier) deliver(ctx context.Context, line string, notify func(ctx context.Context, line string) (bool, error)) bool {
 	for attempt := 1; attempt <= noticeMaxAttempts; attempt++ {

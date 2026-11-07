@@ -1,4 +1,6 @@
-// cli_integration_test.go drives `lym heddle` through the command tree over hubforge hubs: the entry verbs and their refusals, the Bolt write lock and sync around a write, the hub-resolution refusals, and render's worktree choice, exclude seeding and warnings.
+// cli_integration_test.go drives `lym heddle` through the command tree over hubforge hubs.
+// It covers the entry verbs and their refusals, and the Bolt write lock and sync around a write.
+// It also covers the hub-resolution refusals, and render's worktree choice, exclude seeding and warnings.
 
 package heddlecli
 
@@ -111,7 +113,8 @@ func excludeFile(t *testing.T, dir string) string {
 	return strings.TrimSpace(git(t, dir, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
 }
 
-// stripExcludeLines removes the exclude lines fabric seeded for the rendered paths, as a prime that predates the list lacks them.
+// stripExcludeLines removes the exclude lines fabric seeded for the rendered paths,
+// so the prime is in the state of one that predates the list, which lacks them.
 func stripExcludeLines(t *testing.T, dir string) {
 	t.Helper()
 	path := excludeFile(t, dir)

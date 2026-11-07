@@ -35,7 +35,7 @@ type Message struct {
 	From string
 	// Envelope is what creel saw of an EXTERNAL sender; empty for any other.
 	Envelope string
-	// Holder is who the message is with now.
+	// Holder is who the message is with.
 	Holder string
 	// Path lists the forwarders the message passed through, oldest first.
 	Path []string
@@ -64,7 +64,8 @@ type Message struct {
 	Unanswered string
 	// ChaseOf is the id of the message a chase concerns, 0 for every message that is no chase.
 	ChaseOf int64
-	// EndedUnreadBy is the receiver the message was returned from because it never read it, with the time of the return; empty otherwise.
+	// EndedUnreadBy is the receiver the message was returned from because it never read it.
+	// EndedUnreadAt is the time of that return; both are empty otherwise.
 	EndedUnreadBy string
 	EndedUnreadAt time.Time
 	// SendingHub is the path of the hub that sent the message, empty for every local message.
@@ -226,7 +227,8 @@ type LogEntry struct {
 	ReplyTo int64
 	// Chase is the chase number a chased entry records, 0 for every other entry.
 	Chase int
-	// SendingHub and SendingID are the hub path and the id on it of an inbound message; a dropped entry carries SendingHub and SendingShortname.
+	// SendingHub and SendingID are the hub path and the id on it of an inbound message;
+	// a dropped entry carries SendingHub and SendingShortname.
 	SendingHub       string
 	SendingShortname string
 	SendingID        int64
@@ -314,7 +316,8 @@ func foldJournal(dir string) (*pool, error) {
 }
 
 // lastNonBlankLine returns the index of the last line whose trimmed text is not empty, or -1 when there is none.
-// The fold and the journal's tail repair share it, so the line the fold skips as torn is the line the repair cuts.
+// The fold and the journal's tail repair share it,
+// so the line the fold skips as torn is the line the repair cuts.
 func lastNonBlankLine(lines [][]byte) int {
 	last := len(lines) - 1
 	for last >= 0 && len(bytes.TrimSpace(lines[last])) == 0 {
@@ -324,14 +327,16 @@ func lastNonBlankLine(lines [][]byte) int {
 }
 
 // parseRecord decodes one journal line as a record.
-// A line that is valid JSON but no record, such as an array, fails.
+// A line that is valid JSON but not a record, such as an array, returns an error.
 func parseRecord(line []byte) (record, error) {
 	var rec record
 	err := json.Unmarshal(line, &rec)
 	return rec, err
 }
 
-// finishFold settles what a crash leaves open: an inject with a sending event and no outcome folds as unconfirmed, so one in flight is never retyped.
+// finishFold settles what a crash leaves open.
+// An inject still marked sending has no recorded outcome,
+// so it folds as unconfirmed, and one in flight is never retyped.
 func (p *pool) finishFold() {
 	for _, entry := range p.injects {
 		if entry.Outcome == injectSending {
@@ -341,7 +346,8 @@ func (p *pool) finishFold() {
 }
 
 // apply folds one record from the file of the given day.
-// It is idempotent by id for the records that create an entry, so a carried record and the original line fold to one entry.
+// It is idempotent by id for the records that create an entry.
+// A carried record and its original line therefore fold to one entry.
 func (p *pool) apply(rec record, day string) {
 	p.maxID = max(p.maxID, rec.ID)
 	switch rec.Event {
@@ -470,7 +476,8 @@ func (p *pool) applyPosted(rec record, day string) {
 }
 
 // applyOutbound folds an outbound record into the outbound map.
-// An outbound reply to a local message that expects one sets that message's Replied, as a local reply does, so its chase stops.
+// An outbound reply sets Replied on the local message it answers when that message expects a reply,
+// so that message's chase stops.
 func (p *pool) applyOutbound(rec record, day string) {
 	p.knowProgramMailbox(rec.From)
 	entry := p.outbound[rec.ID]
@@ -540,7 +547,8 @@ func (p *pool) applyRead(rec record, day string) {
 }
 
 // applyCarried folds a retention snapshot; an entry the pool already holds is left as the original lines made it.
-// It reports whether the record snapshots a hold, message or inject this binary knows; a carried read of a program only keeps its mailbox known and is no event for the log.
+// It reports whether the record snapshots a hold, message or inject this binary knows;
+// a carried read of a program only keeps its mailbox known and is no event for the log.
 func (p *pool) applyCarried(rec record, day string) bool {
 	switch {
 	case rec.Of == eventRead:
@@ -665,17 +673,20 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	return entry
 }
 
-// carriedMessage reports whether retention carries msg forward: an unread message, or a message the chase clock still runs on.
+// carriedMessage reports whether retention carries msg forward:
+// an unread message, or a message the chase clock still runs on.
 func carriedMessage(msg *Message) bool {
 	return msg.Status == StatusUnread || isChaseable(msg)
 }
 
-// carryRecords returns a carried record for every unread or chaseable message, queued inject, live hold and program that has read, recorded in a file older than cutoffDay.
+// carryRecords returns a carried record for every unread or chaseable message, queued inject, live hold, and read mark.
+// Only an entry recorded in a file older than cutoffDay is carried.
 func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 	var carried []record
 	for _, msg := range p.messages {
 		if msg.origin < cutoffDay && carriedMessage(msg) {
-			// An inbound message is carried under its own name, since an older binary would fold a carried posted line into unstamped mail.
+			// An inbound message is carried under its own name:
+			// an older binary would fold a carried posted line into unstamped mail.
 			of := eventPosted
 			if msg.SendingHub != "" {
 				of = eventInbound
@@ -731,7 +742,8 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 	return carried
 }
 
-// moveOrigins marks the entries carryRecords returned as recorded in day's file, so the next retention does not carry them again.
+// moveOrigins sets the origin of every entry older than cutoffDay that is carried forward to day,
+// so the next retention does not carry it again.
 func (p *pool) moveOrigins(cutoffDay, day string, now time.Time) {
 	for _, msg := range p.messages {
 		if msg.origin < cutoffDay && carriedMessage(msg) {
@@ -760,7 +772,8 @@ func (p *pool) moveOrigins(cutoffDay, day string, now time.Time) {
 	}
 }
 
-// prune drops what only deleted files held: entries recorded before cutoffDay that were not carried, and their log lines.
+// prune drops what only deleted files held:
+// entries recorded before cutoffDay that were not carried, and their log lines.
 func (p *pool) prune(cutoffDay string) {
 	for id, msg := range p.messages {
 		if msg.origin < cutoffDay {

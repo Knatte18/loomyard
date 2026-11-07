@@ -1,6 +1,7 @@
 //go:build !windows
 
-// capture_integration_test.go drives the built `lym drift` verbs in a hubforge hub pair: a detached capture that outlives its caller, and its end by the owned-process end of a teardown.
+// capture_integration_test.go drives the built `lym drift` verbs in a hubforge hub pair.
+// It covers a detached capture that outlives its caller, and a capture ended by the owned-process end of a teardown.
 
 package driftcli_test
 
@@ -36,7 +37,8 @@ const (
 	pollLimit = 30 * time.Second
 )
 
-// driftYAML returns a hub drift.yaml whose capture command fails while mark is absent and otherwise waits for release, then writes a profile file.
+// driftYAML returns a hub drift.yaml whose capture command fails while mark is absent.
+// With mark present, the command waits for release, then writes a profile file.
 func driftYAML(mark, release, pidFile string) string {
 	return fmt.Sprintf(`capture:
   command: |
@@ -100,7 +102,8 @@ func touch(t *testing.T, path string) {
 	}
 }
 
-// lastLogEnvelope decodes the last non-empty line of the log at path as an envelope, and reports false while the log holds none.
+// lastLogEnvelope decodes the last non-empty line of the log at path as an envelope.
+// It reports false when the log is unreadable, empty, or its last line is not an envelope.
 func lastLogEnvelope(path string) (envelope.Envelope, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -111,7 +114,9 @@ func lastLogEnvelope(path string) (envelope.Envelope, bool) {
 	return env, err == nil
 }
 
-// TestCapture_OutlivesCaller covers a capture that fails, one that passes after its caller exited, and one ended by the owned-process end of a teardown, and that the status body names the compare ignored under the template's lines mode.
+// TestCapture_OutlivesCaller covers a capture that fails and one that passes after its caller exits.
+// It also covers a capture ended by the owned-process end of a teardown.
+// The status body must name the compare ignored under the template's lines mode.
 func TestCapture_OutlivesCaller(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -151,8 +156,8 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 	writeStatus("Drift-Await", shedengine.StateBlocked)
 
 	t.Run("a capture with the marker absent records failed and its child logs the reason", func(t *testing.T) {
-		// The command exits non-zero at once, so whether the record already reads failed when the verb reads it is a race:
-		// the verb either starts the child and succeeds, or refuses with the capture's reason.
+		// The command exits non-zero at once, so the record may already read failed when the verb reads it.
+		// The verb then either starts the child and succeeds, or refuses with the capture's reason.
 		env := lymRun(t, bin, pair, "capture")
 		if !env.OK {
 			for _, want := range []string{"drift: the baseline capture ended failed (exit 1; it ran in ", "printed nothing", "log ", "lym drift capture followed by lym loom resume"} {

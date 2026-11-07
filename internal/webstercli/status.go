@@ -1,6 +1,7 @@
-// status.go implements the `status` webster verb: an instant, side-effect-free snapshot of _lym/webster/state.json, a human- and loom-facing navigation refresher.
-// It never spawns an agent, never fabric-commits, and never mutates state.json;
-// webster's own record-batch/recover-batch persist BatchState.Status/Terminal/Digest directly onto state.json the moment the batch reaches a terminal classification, so status here is a plain read of the persisted record and needs no separate reports-dir scan -- a pure snapshot, never a mutation.
+// status.go implements the `status` webster verb, an instant and side-effect-free snapshot of _lym/webster/state.json.
+// It never spawns an agent, never commits to fabric, and never mutates state.json.
+// Webster writes a batch's Status, Terminal and Digest onto state.json once the batch is terminal.
+// Status therefore needs no reports-dir scan.
 package webstercli
 
 import (
@@ -61,10 +62,10 @@ Example:
 			for _, n := range numbers {
 				bs := st.Batches[n]
 				if bs == nil {
-					// A state.json carrying an explicit null for a batch key parses to a
-					// present-but-nil entry. Reporting the key with no detail keeps `lym webster
-					// status` — the verb an operator reaches for when a run looks wrong — answering
-					// at all, where dereferencing it panicked the one diagnostic they had left.
+					// A state.json with an explicit null for a batch key parses to a present-but-nil entry.
+					// Dereferencing that entry would panic.
+					// `lym webster status` is the verb an operator reaches for when a run looks wrong,
+					// so it reports the key with no detail instead of dereferencing it.
 					batches = append(batches, map[string]any{"number": n, "malformed": true})
 					continue
 				}

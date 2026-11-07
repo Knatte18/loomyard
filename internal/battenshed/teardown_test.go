@@ -139,9 +139,8 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 	})
 }
 
-// TestWorktreeTeardown_CancelledDuringAcquireError mirrors
-// TestWorktreeCreate_CancelledDuringAcquireError (create_test.go): the Acquire-error hard-error
-// path must consult cancelErr before returning, per F1 (crucible round sonnet-xhigh-r3).
+// TestWorktreeTeardown_CancelledDuringAcquireError covers the Acquire-error hard-error path.
+// That path must consult cancelErr before it returns.
 func TestWorktreeTeardown_CancelledDuringAcquireError(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -188,7 +187,8 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestRecordAbandonedSession asserts the teardown row's abandoned-session record is written when a session was abandoned and cleared when a later teardown abandoned none, and that the producer's own Done path writes it, not only the helper in isolation.
+// TestRecordAbandonedSession asserts the abandoned-session record is written when a session was abandoned.
+// It also asserts that a teardown abandoning none clears the record, and that the Done path writes it.
 //
 //testtiming:keep pins the record's write, its clearing of a stale record and its write from the Done path, which the covering teardown tests never read
 func TestRecordAbandonedSession(t *testing.T) {
@@ -232,7 +232,9 @@ func TestRecordAbandonedSession(t *testing.T) {
 	}
 }
 
-// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row runs Shutdown strictly before Remove and reports Done whether the prime lock is free at once or contended for a few polls first, sleeping once per contended poll, and releases the lock afterwards.
+// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts that the row runs Shutdown strictly before Remove.
+// It also asserts that the row reports Done whether the prime lock is free at once or contended for a few polls,
+// and that it sleeps once per contended poll and releases the lock afterwards.
 func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

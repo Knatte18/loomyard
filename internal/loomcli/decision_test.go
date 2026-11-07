@@ -31,7 +31,8 @@ import (
 
 const decisionPriorRecord = "# Record\n\n## Decisions\n\n### First\n\nDecision: a.\n"
 
-// decisionFake is a decisionDeps over a temp record whose append writes the entry at the end of the file and whose outcomes the test sets.
+// decisionFake is a decisionDeps over a temp record.
+// Its append writes the entry at the end of the file, and the test sets its outcomes.
 type decisionFake struct {
 	path      string
 	status    shedengine.Status
@@ -48,7 +49,7 @@ type decisionFake struct {
 	parentErr  error
 	// arbiterName is the one strand name the run's arbiter check accepts.
 	arbiterName string
-	// samplerName is the one strand name the run's sampler session check accepts, and samplerErr what that check returns in place of an answer.
+	// samplerName is the one strand name the sampler session check accepts; samplerErr is returned instead of its answer.
 	samplerName string
 	samplerErr  error
 	appends     int
@@ -58,7 +59,7 @@ type decisionFake struct {
 	lastAdded discussionparser.AddedDecision
 	clock     time.Time
 
-	// noPlan makes the has-a-Plan-Write-row seam answer false, and recordRow makes the record-written-by-Record-Write seam answer true.
+	// noPlan makes the has-a-Plan-Write-row seam answer false; recordRow makes the record-written seam answer true.
 	noPlan    bool
 	recordRow bool
 	// recipeErr is the error both recipe seams return.
@@ -102,7 +103,7 @@ type decisionFake struct {
 	amendErr error
 	// amendErrTitle, when set, makes the amendment append fail before it writes for that title alone.
 	amendErrTitle string
-	// appendClobbers makes a failing record append leave the decision record overwritten, as an append that dies midway would.
+	// appendClobbers makes a failing record append leave the decision record overwritten, as a dying append would.
 	appendClobbers bool
 	// amendWrote is the amendment record's bytes the last append wrote.
 	amendWrote []byte
@@ -116,7 +117,7 @@ type decisionFake struct {
 	amendCommitErr error
 	amendCommits   int
 
-	// pastRows maps a run's current row to whether the run is past its Discussion approval there, and askedRows records every row the verb asked about.
+	// pastRows reports, per row, whether the run is past its Discussion approval; askedRows lists the rows asked about.
 	pastRows  map[string]bool
 	askedRows []string
 	// storeErr is what the board copy returns, and stored records every record it was given.
@@ -144,7 +145,8 @@ func newDecisionFake(t *testing.T) *decisionFake {
 	}
 }
 
-// newDarnDecisionFake is a fake of a run whose Record-Write row wrote the record, which is committed and unchanged since, with a history holding only that version.
+// newDarnDecisionFake is a fake of a run whose Record-Write row wrote the record.
+// The record is committed and unchanged since, and its history holds only that version.
 func newDarnDecisionFake(t *testing.T) *decisionFake {
 	t.Helper()
 	f := newDecisionFake(t)
@@ -327,7 +329,8 @@ func readDecisionRecord(t *testing.T, path string) string {
 	return string(data)
 }
 
-// TestDecisionVerb_AppendsAndCommits asserts an entry from an unnamed shell or from the run's recorded parent is appended after the prior record byte-identical and committed once, with no status file.
+// TestDecisionVerb_AppendsAndCommits asserts an entry from an unnamed shell or the recorded parent is appended.
+// It must follow the prior record, which stays byte-identical, and be committed once with no status file.
 func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -453,7 +456,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		inputRefusal bool
 		// noDarnReads marks a refusal that must come before any recipe or record seam is read.
 		noDarnReads bool
-		// afterCommit marks a refusal that follows the commit, so the record is no longer untouched and one commit has run.
+		// afterCommit marks a refusal that follows the commit, so the record is changed and one commit has run.
 		afterCommit bool
 	}
 	tests := []refusalCase{
@@ -966,8 +969,9 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 	}
 }
 
-// TestDecisionVerb_NotifiesLiveAgents asserts a committed entry is announced to each live agent of the run but the tackler, the arbiter and the caller,
-// and that a failed listing or post is reported on a success envelope.
+// TestDecisionVerb_NotifiesLiveAgents asserts a committed entry is announced to each live agent of the run.
+// It skips the tackler, the arbiter and the caller.
+// It also asserts that a failed listing or post is reported on a success envelope.
 func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -980,7 +984,7 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 		liveStrands []string
 		liveErr     error
 		notifyErrs  map[string]error
-		// from, when set, is the content of a --from file the call passes in place of the per-entry flags; the posts then split per entry and wantPosts counts them.
+		// from, when set, is the --from file content used instead of the per-entry flags; wantPosts counts the split posts.
 		from      string
 		failPost  int
 		wantPosts int
@@ -1121,9 +1125,10 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 	}
 }
 
-// TestDecisionVerb_FromFileRecordsBatch asserts a --from batch is appended in one write, in file order, with its PATTERN change.
+// TestDecisionVerb_FromFileRecordsBatch asserts a --from batch is appended in one write, in file order.
+// It also asserts the batch carries its PATTERN change.
 // The batch is committed once with every title in the amendment record.
-// Each live agent gets one notice: a short one naming every heading, and Merriam's carrying every entry's text.
+// Each live agent gets one notice: a short one naming every heading, and the webster's carries every entry's text.
 func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1185,7 +1190,8 @@ func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
 	}
 }
 
-// TestDecisionNoticeOpening_NamedByParentDirective asserts the rendered parent directive quotes the opening every decision notice starts with.
+// TestDecisionNoticeOpening_NamedByParentDirective asserts the parent directive quotes the notice opening.
+// Every decision notice starts with that opening.
 // That quote is what makes a spawned role admit the notice as its parent's.
 func TestDecisionNoticeOpening_NamedByParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1199,7 +1205,7 @@ func TestDecisionNoticeOpening_NamedByParentDirective(t *testing.T) {
 	}
 }
 
-// recordingNoticePoster is a noticePoster that records its kind on every post and answers with err.
+// recordingNoticePoster records its kind on every post and answers every post with err.
 type recordingNoticePoster struct {
 	kind  string
 	err   error
@@ -1297,7 +1303,8 @@ func TestDecisionVerb_CommitFailureNamesWayForward(t *testing.T) {
 	}
 }
 
-// TestDecisionStoreVerb asserts the store verb copies the committed record for the callers it admits past the approval, and refuses every other caller and run with a way forward.
+// TestDecisionStoreVerb asserts the store verb copies the committed record for each admitted caller.
+// It copies only past the approval, and refuses every other caller and run with a way forward.
 func TestDecisionStoreVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1437,7 +1444,8 @@ func TestDecisionStoreVerb(t *testing.T) {
 	}
 }
 
-// TestDecisionVerb_CopiesRecordToBoard asserts the committed record is copied onto the board entry only at a row past the Discussion approval, and that a failed copy is reported on a successful envelope.
+// TestDecisionVerb_CopiesRecordToBoard asserts the committed record is copied to the board only past the approval.
+// It also asserts that a failed copy is reported on a successful envelope.
 func TestDecisionVerb_CopiesRecordToBoard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1447,7 +1455,7 @@ func TestDecisionVerb_CopiesRecordToBoard(t *testing.T) {
 		setup func(f *decisionFake)
 		// wantStored is whether the committed record reaches the store.
 		wantStored bool
-		// wantError lists the fragments of record_store_error, empty when the envelope carries none; notWant lists fragments it must lack.
+		// wantError lists the record_store_error fragments, empty when none; notWant lists fragments it must lack.
 		wantError []string
 		notWant   []string
 	}{
@@ -1510,10 +1518,10 @@ func TestDecisionVerb_CopiesRecordToBoard(t *testing.T) {
 	}
 }
 
-// decisionEntryRecord is the decision record holding the entry the fake appends for goodDecisionInput on the fake's clock.
+// decisionEntryRecord is the decision record a successful call leaves: the prior record plus one appended entry.
 const decisionEntryRecord = decisionPriorRecord + "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: Keep it per run.\n"
 
-// seedAmendment writes an amendment record holding titles at the fake's amendment path, as earlier --amends-plan calls would have left it.
+// seedAmendment writes an amendment record of titles at the fake's amendment path, as earlier --amends-plan calls do.
 func seedAmendment(t *testing.T, f *decisionFake, titles ...string) {
 	t.Helper()
 	for _, title := range titles {
@@ -1523,7 +1531,7 @@ func seedAmendment(t *testing.T, f *decisionFake, titles ...string) {
 	}
 }
 
-// amendmentBytesAfterCall is the amendment record's bytes a call on the fake's clock leaves holding titles.
+// amendmentBytesAfterCall returns the bytes of an amendment record holding titles, appended on the fake's clock.
 func amendmentBytesAfterCall(t *testing.T, f *decisionFake, titles ...string) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "amendment.yaml")
@@ -1540,7 +1548,8 @@ func amendmentBytesAfterCall(t *testing.T, f *decisionFake, titles ...string) []
 }
 
 // TestDecisionVerb_AmendsPlan asserts a call with --amends-plan records the entry and the amendment title together.
-// It refuses where there is no plan to amend, and leaves both records as they were on every failed append or commit that did not land.
+// It refuses where there is no plan to amend.
+// When an append or commit fails before it lands, it leaves both records as they were.
 // It also asserts the approved-plan reader's answers over a plan directory.
 func TestDecisionVerb_AmendsPlan(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1850,7 +1859,9 @@ func writeDecisionPlan(t *testing.T, anchor string, approved bool) {
 	})
 }
 
-// TestSamplerStrandReader pins which strand the sampler session check admits: the one the Sampler-Session row recorded, while the run stands at that row, running or halted, and not a darn run's.
+// TestSamplerStrandReader pins which strand the sampler session check admits.
+// It admits only the strand the Sampler-Session row recorded, while the run stands at that row, running or halted.
+// It does not admit a darn run's strand.
 func TestSamplerStrandReader(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,9 +1,6 @@
 // prune_unowned_integration_test.go pins Prune's ownership gate.
-// Prune's orphan pass enumerates on directory NAME alone — every hub child whose name ends in the
-// weft suffix — so the set it reports has never been the set it owns.
-// Before the gate, `git worktree remove --force` refusing such a path was read as licence to
-// os.RemoveAll it, and `prune --apply` destroyed an ordinary operator directory (and a wholly
-// unrelated git clone) reporting removed:true, ok:true, exit 0, with no --force and no warning.
+// Prune's orphan pass enumerates every hub child whose name ends in the weft suffix, by name alone.
+// The gate stops `prune --apply` from deleting such a directory unless fabric owns it.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -21,10 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named
-// "<slug>-weft" in the hub and asserts prune reports it Unowned and never deletes it — not on a dry
-// run, not on --apply, and not even on --apply --force, since force answers "discard this work",
-// never "this directory is mine".
+// TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named "<slug>-weft" in the hub.
+// It asserts prune reports it Unowned and never deletes it, on a dry run, on --apply, and on --apply --force.
+// Force answers "discard this work", never "this directory is mine", so it does not lift the refusal.
 func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -34,7 +30,7 @@ func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 	topology := h.Topology
 
 	// An ordinary operator directory that is not a git checkout at all and was never fabric's.
-	// WeftWarpSlug("notes-weft") yields ("notes", true), so prune's orphan pass enumerates it.
+	// `WeftWarpSlug("notes-weft")` yields ("notes", true), so prune's orphan pass enumerates it.
 	unowned := filepath.Join(l.HubPath, "notes-weft")
 	if err := os.MkdirAll(unowned, 0o755); err != nil {
 		t.Fatalf("create unowned hub directory: %v", err)
@@ -79,10 +75,10 @@ func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 	}
 }
 
-// TestPrune_RefusesUnrelatedGitCloneInHub is the second shape of the same defect: the parked
-// directory is a complete, independently-initialised git repository with a committed file and a
-// clean working tree. The clean tree means the dirty-tracked gate has nothing to say even in
-// principle, so only the ownership gate stands between `prune --apply` and the whole clone.
+// TestPrune_RefusesUnrelatedGitCloneInHub parks a complete, independently initialised git repository in the hub.
+// The repository has a committed file and a clean working tree.
+// A clean tree leaves the dirty-worktree check nothing to refuse.
+// Only the ownership gate stands between `prune --apply` and the whole clone.
 func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -126,7 +122,8 @@ func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	}
 }
 
-// TestPrune_ReportsANonWorktreeDirectoryAtAPairPath parks a directory of build output at a pair slug's path, as a late writer leaves one after a removal.
+// TestPrune_ReportsANonWorktreeDirectoryAtAPairPath parks a directory of build output at a pair slug's path.
+// A late writer leaves such a directory after a removal.
 // It asserts every mode reports the directory Unowned with the way to clear it and never deletes it.
 func TestPrune_ReportsANonWorktreeDirectoryAtAPairPath(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -177,7 +174,8 @@ func TestPrune_ReportsANonWorktreeDirectoryAtAPairPath(t *testing.T) {
 	}
 }
 
-// TestPrune_IgnoresDirectoriesThatAreNoPairPath asserts the pass over pair paths reports no entry for a live pair's directory, a hidden directory, a weft-suffixed directory and a reserved hub name.
+// TestPrune_IgnoresDirectoriesThatAreNoPairPath asserts the pass over pair paths reports no entry for a live pair.
+// It also asserts the pass ignores a hidden directory, a weft-suffixed directory and a reserved hub name.
 func TestPrune_IgnoresDirectoriesThatAreNoPairPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -213,9 +211,9 @@ func TestPrune_IgnoresDirectoriesThatAreNoPairPath(t *testing.T) {
 	}
 }
 
-// TestPrune_StillRemovesAStaleWeftWorktreeItOwns is the ownership gate's counter-test: a genuine
-// stale pair — a weft worktree the hub's weft repo really does register — must still be removed by
-// --apply, so the gate refuses only what fabric does not own rather than disabling prune outright.
+// TestPrune_StillRemovesAStaleWeftWorktreeItOwns is the ownership gate's counter-test.
+// A stale pair whose weft worktree the hub's weft repo registers must still be removed by --apply.
+// The gate refuses only what fabric does not own, rather than disabling prune outright.
 func TestPrune_StillRemovesAStaleWeftWorktreeItOwns(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// outbound.go is the relay's read of its own mailbox: it posts the orchs' and programs' mail for `<shortname>:SLACK` to the channel at least once and never twice for one acknowledged read.
+// outbound.go is the relay's read of its own mailbox: it posts the orchs' and programs' mail to the channel.
+// Each message for `<shortname>:SLACK` is posted at least once, and never twice for one acknowledged read.
 
 package slackengine
 
@@ -20,7 +21,8 @@ import (
 const (
 	// outboundReadTimeout bounds one read of the mailbox: the wait for mail, the posting and creel's confirmation together.
 	outboundReadTimeout = 60 * time.Second
-	// postingBudget is how long one read posts before it releases the rest, inside creel's 30-second acknowledgement window.
+	// postingBudget is how long one read posts before it releases the rest;
+	// it stays inside creel's 30-second acknowledgement window.
 	postingBudget = 25 * time.Second
 	// staleMailAge is the age past which mail is acknowledged without being posted.
 	staleMailAge = 24 * time.Hour
@@ -28,23 +30,24 @@ const (
 	refusalCap = 5
 )
 
-// errReadBudget is what a read's handler returns when its posting budget ended, so creel releases the read with the rest unposted.
+// errReadBudget is what a read's handler returns when its posting budget ends;
+// creel then releases the read with the rest unposted.
 var errReadBudget = errors.New("slack: the posting budget of one read ended; the rest waits for the next read")
 
 // errOutboxWrite marks a failed write of the outbox file.
 var errOutboxWrite = errors.New("slack: write the outbox file")
 
 // outboxRecord is the outbox file's content.
-// Handled holds the messages of a read not yet acknowledged that are done.
-// Refusals holds how often Slack refused each other message.
-// Stale counts the done messages that were stale mail whose count line is not yet posted.
+// Handled holds the IDs of the messages a read has handled and not yet acknowledged.
+// Refusals counts how often Slack refused each message that is not yet handled.
+// Stale counts the messages skipped as stale mail whose line is not yet posted.
 type outboxRecord struct {
 	Handled  []int64       `json:"handled,omitempty"`
 	Refusals map[int64]int `json:"refusals,omitempty"`
 	Stale    int           `json:"stale,omitempty"`
 }
 
-// outbound is the relay's outbound read of its mailbox.
+// outbound is one read of the relay's mailbox, posting its mail to the channel.
 type outbound struct {
 	geom    Geometry
 	mailbox Mailbox
@@ -57,9 +60,11 @@ func newOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock,
 	return &outbound{geom: geom, mailbox: mailbox, slack: slack, clock: clock, wait: newLoopWait(floor)}
 }
 
-// read waits for mail in the relay's mailbox and posts it to the channel, and returns how long to wait before the next read.
+// read waits for mail in the relay's mailbox and posts it to the channel.
+// It returns how long to wait before the next read.
 // The wait is the floor after mail arrived, doubled after a read with none, and a rate limit's retry wait.
-// The mail is acknowledged only when creel confirms it, and the outbox record keeps each message already handled until then, so a read creel redelivers posts nothing twice.
+// The mail is acknowledged only when creel confirms it.
+// Until then the outbox record keeps each handled message, so a redelivered read posts nothing twice.
 // A failed post returns its error with the read released; the record stays until a confirmed acknowledgement clears it.
 func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	setup, found, err := ReadSetup(out.geom.SetupPath)
@@ -91,10 +96,14 @@ func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	return out.wait.afterIdle(), err
 }
 
-// post is the read's handler: it posts each message not yet in the outbox record, oldest first, and records each once it is done.
-// Whether the messages all posted or the read ends early, it then posts the one line naming the stale mail the record counts, so that line survives a failed read.
-// A line that fails to post stays counted in the record for the next read; its failure is returned only when the messages themselves posted.
-// The line waits for the next read when the read ended on a rate limit, which a further call would only prolong, or on a failed write of the record, which would let the line post twice.
+// post is the read's handler.
+// It posts each message not yet in the outbox record, oldest first, and records each one once it is done.
+// It then posts the line naming the stale mail the record counts, whether or not the read ended early,
+// so the line survives a failed read.
+// A line that fails to post stays counted in the record for the next read;
+// its failure is returned only when the messages themselves posted.
+// The line waits for the next read when the read ended on a rate limit, a further call only prolonging it;
+// it also waits when the record failed to write, since that would let the line post twice.
 func (out *outbound) post(ctx context.Context, setup Setup, messages []creelengine.Message) error {
 	record, err := readOutbox(out.geom)
 	if err != nil {
@@ -128,7 +137,7 @@ func (out *outbound) reportStale(ctx context.Context, setup Setup, record *outbo
 	return writeOutbox(out.geom, *record)
 }
 
-// postMessages posts each message of messages not yet in record, oldest first, and writes the record after each one it is done with.
+// postMessages posts each message not yet in record, oldest first, and writes the record after each one it handles.
 // Mail older than staleMailAge is counted in the record instead of posted.
 // It returns errReadBudget once the posting budget ends, and the error of a failed post or write.
 func (out *outbound) postMessages(ctx context.Context, setup Setup, record *outboxRecord, messages []creelengine.Message) error {
@@ -162,9 +171,9 @@ func (out *outbound) postMessages(ctx context.Context, setup Setup, record *outb
 }
 
 // refused counts Slack's refusal of message in the record and writes it.
-// It reports dropped true once the refusal count reaches refusalCap, after posting one line that names the message;
-// a failure that is no refusal, a transport failure, a server error or a rate limit, counts toward no cap.
-// Otherwise it returns err so the read is released with the message queued.
+// Once the count reaches refusalCap, it posts one line naming the message and reports whether it drops the message.
+// A failure that is no refusal, a transport failure, a server error or a rate limit, counts toward no cap;
+// otherwise it returns err so the read is released with the message queued.
 func (out *outbound) refused(ctx context.Context, setup Setup, record *outboxRecord, message creelengine.Message, err error) (bool, error) {
 	if _, ok := isAPIError(err); !ok {
 		return false, err
@@ -191,7 +200,8 @@ func (out *outbound) relayName() string {
 	return out.geom.Shortname + ":" + SlackProgram
 }
 
-// outboundText renders mail for the channel as `[<sender>] <body>`, escaped, and reports false for a sender the relay does not post.
+// outboundText renders mail for the channel as `[<sender>] <body>`, escaped.
+// It reports whether the relay posts the sender's mail.
 // The relay posts an orch strand and any program of the hub but the one for an unplaced sender.
 // Mail from a beam ends with how to answer it, `(answer: @<slug> …)`.
 func outboundText(shortname string, message creelengine.Message) (string, bool) {

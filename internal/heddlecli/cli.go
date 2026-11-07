@@ -1,4 +1,5 @@
-// cli.go builds the heddle cobra command with its pre-run that resolves the hub, and the RunCLI/RunCLIIn seams that wire it into the io.Writer-based call contract.
+// cli.go builds the heddle cobra command and its pre-run, which resolves the hub.
+// It also holds the RunCLI and RunCLIIn seams that run the command against an io.Writer.
 // The verbs live in verbs.go.
 
 package heddlecli
@@ -22,7 +23,9 @@ import (
 const groupName = "heddle"
 
 // heddleCLI holds what the verbs share once the pre-run has resolved the hub.
-// A nil save means heddleengine.Save, a nil spawnSync means boardengine.SpawnSync and a zero renderer waits heddleengine.DefaultBoltLockWait, so a receiver a test builds by hand behaves as Command()'s does.
+// A nil save means heddleengine.Save, and a nil spawnSync means boardengine.SpawnSync.
+// A zero renderer waits heddleengine.DefaultBoltLockWait.
+// So a receiver a test builds by hand behaves like the one the command builds.
 type heddleCLI struct {
 	location *lymcwd.Location
 	boltDir  string
@@ -86,7 +89,9 @@ func (c *heddleCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 }
 
 // wire resolves the hub of cwd into c's location and Bolt checkout.
-// A cwd that does not resolve is refused with the way forward, a worktree fabric does not drive keeps fabric's own text, and a hub without a Bolt checkout is refused naming the clone that creates one.
+// A cwd that does not resolve is refused with the way forward.
+// A worktree fabric does not drive keeps fabric's own error text.
+// A hub without a Bolt checkout is refused, and the error names `lym fabric clone`, which creates one.
 func (c *heddleCLI) wire(cwd string) error {
 	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
@@ -105,7 +110,8 @@ func (c *heddleCLI) wire(cwd string) error {
 }
 
 // namedWorktree returns the location of the worktree of c's hub that name is the last path element of.
-// A name matching no listed worktree, or only one git marks prunable, is refused, so the render writes and seeds only in an existing worktree of its own hub.
+// A name that matches no listed worktree, or only a worktree git marks prunable, is refused.
+// So a render writes and seeds only in an existing worktree of its own hub.
 func (c *heddleCLI) namedWorktree(name string) (*lymcwd.Location, error) {
 	entries, err := fabricengine.List(c.location.WorktreePath())
 	if err != nil {
@@ -127,12 +133,14 @@ func (c *heddleCLI) namedWorktree(name string) (*lymcwd.Location, error) {
 	return nil, fmt.Errorf("heddle: no worktree named %q in this hub; way forward: pick the last element of a path `lym fabric list` prints", name)
 }
 
-// RunCLI is the public seam for the heddle module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the heddle command with args, writes its output to out, and returns the exit status.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the heddle command with args and writes its output to out, returning the exit status.
+// An empty cwd makes the command read the process working directory.
+// Any other cwd is seeded into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)
@@ -140,15 +148,17 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
-// ChangeStore applies change to the store of the hub cwd lies in, the way `lym heddle set` and `remove` write: under the Bolt write lock, followed by the board's detached Bolt sync.
-// It lets another module's verb write heddle entries of its own through heddle's one write path.
-// A cwd that is no drivable worktree of a hub, or a change the store refuses, returns the error and saves nothing;
-// a sync that did not start after the save returns a warning naming `lym board sync`, with no error.
+// ChangeStore applies change to the store of the hub cwd lies in, under the Bolt write lock.
+// It then starts the board's detached Bolt sync.
+// It is the write path `lym heddle set` and `remove` use.
+// So another module's verb can write heddle entries of its own through it.
+// A cwd that is no drivable worktree of a hub, or a change the store refuses, returns the error and saves nothing.
+// A sync that did not start after the save returns a warning naming `lym board sync`, with no error.
 func ChangeStore(cwd string, change func(*heddleengine.Store) error) (warning string, err error) {
 	return (&heddleCLI{}).changeStore(cwd, change)
 }
 
-// changeStore is ChangeStore over c's seams.
+// changeStore applies change through c's seams, so a test can replace the save and the sync.
 func (c *heddleCLI) changeStore(cwd string, change func(*heddleengine.Store) error) (warning string, err error) {
 	if err := c.wire(cwd); err != nil {
 		return "", err
@@ -159,7 +169,7 @@ func (c *heddleCLI) changeStore(cwd string, change func(*heddleengine.Store) err
 	return c.syncWarning, nil
 }
 
-// saveStore writes the store through c's save seam.
+// saveStore writes the store through c's save seam, or heddleengine.Save when none is set.
 func (c *heddleCLI) saveStore(store heddleengine.Store) error {
 	if c.save != nil {
 		return c.save(c.boltDir, store)
@@ -167,7 +177,7 @@ func (c *heddleCLI) saveStore(store heddleengine.Store) error {
 	return heddleengine.Save(c.boltDir, store)
 }
 
-// startSync starts the Bolt sync through c's spawnSync seam.
+// startSync starts the board's Bolt sync through c's spawnSync seam, or boardengine.SpawnSync when none is set.
 func (c *heddleCLI) startSync() error {
 	if c.spawnSync != nil {
 		return c.spawnSync(c.boltDir)

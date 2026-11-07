@@ -13,8 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// handOver replaces this process with tmux running args, so no lym process outlives the attach and an attach never keeps an old binary running.
-// The exec skips the root's post-run, so the log line comes first; the process's run directory is left to the next start's sweep.
+// handOver replaces this process with tmux running args.
+// No lym process outlives the attach, so an attach never keeps an old binary running.
+// The exec skips the root's post-run, so the log line comes first;
+// the process's run directory is left to the next start's sweep.
 // The tmux name is resolved through PATH first, since exec itself does no lookup.
 // A failed lookup or exec returns exit code 1 and the error.
 // Under a test binary it runs tmux as a child instead, so an in-process test never replaces itself.

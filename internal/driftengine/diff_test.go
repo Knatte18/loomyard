@@ -37,8 +37,8 @@ func writeCaptureTree(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// TestDiffCaptures pins the diff of two capture directories: the cell kinds, identity pairing, line normalisation and the case leave-out,
-// and the compile refusals and listing identities the diff rests on.
+// TestDiffCaptures pins the diff of two capture directories: the cell kinds and identity pairing.
+// It also pins line normalisation, the case leave-out, the compile refusals and the listing identities.
 func TestDiffCaptures(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -208,7 +208,8 @@ func TestDiffCaptures(t *testing.T) {
 	})
 }
 
-// TestVolatile covers which cells the volatile lists drop, and that the expect agent's listing leaves out what they name under diff lines alone.
+// TestVolatile covers which cells the volatile lists drop.
+// It also covers that the expect agent's listing leaves out what the lists name under diff lines alone.
 func TestVolatile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

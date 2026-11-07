@@ -1,4 +1,5 @@
-// estimate_test.go verifies PeakContext against a fake size source and hand-built cards, and DiskSizes against a temporary worktree tree.
+// estimate_test.go verifies PeakContext against a fake size source and hand-built cards.
+// It also verifies DiskSizes against a temporary worktree tree.
 // Tier-1 (pure logic, no git, no spawn).
 
 package batcher_test
@@ -200,7 +201,8 @@ func TestPeakContext(t *testing.T) {
 }
 
 // TestDiskSizes asserts DiskSizes counts the lines of present files and reports absent ones as missing.
-// It also asserts DiskSizes lists only the *_test.go files directly in a directory, with an absent directory listing none.
+// It also asserts DiskSizes lists only the *_test.go files directly in a directory.
+// An absent directory lists none.
 func TestDiskSizes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

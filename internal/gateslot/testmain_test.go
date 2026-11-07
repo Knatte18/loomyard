@@ -1,4 +1,5 @@
-// testmain_test.go runs the test binary under the hermetic git environment and tmux isolation, and doubles as the holder child the integration test re-executes.
+// testmain_test.go runs the test binary under the hermetic git environment and tmux isolation.
+// It also doubles as the holder child the integration test re-executes.
 // It carries no build tag, so it compiles into every tag set.
 
 package gateslot
@@ -13,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// childSlotDirEnv, when set, turns the test binary into a child that holds the only slot of that directory until it is killed.
+// childSlotDirEnv, when set, turns the test binary into a child that holds the only slot of that directory.
+// The child holds the slot until it is killed.
 const childSlotDirEnv = "GATESLOT_TEST_CHILD_SLOT_DIR"
 
 // childHeldLine is what the child prints once it holds the slot.

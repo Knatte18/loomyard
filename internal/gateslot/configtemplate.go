@@ -1,6 +1,6 @@
-// configtemplate.go — gate.yaml template accessor.
+// configtemplate.go embeds the default gate.yaml template from template.yaml at build time.
 //
-// ConfigTemplate provides the default YAML template for the gate config module, embedded directly from template.yaml at build time.
+// ConfigTemplate exposes that template to the gate config module.
 
 package gateslot
 

@@ -1,5 +1,8 @@
-// boltreplay.go declares the registry of Bolt replayers: the seam a local commit to a Bolt file is re-applied by entry through, and the run ledger the ended-set and owner reads go through.
-// A replayer lives in the package that owns its files, which imports fabricengine, so the seam is declared here and each replayer is registered process-wide.
+// boltreplay.go declares the registry of Bolt replayers.
+// A replayer re-applies a local commit's changes to a Bolt file, entry by entry.
+// The same registry holds the run ledger that the ended-set and owner reads go through.
+// Each replayer lives in the package that owns its files, which imports fabricengine,
+// so the seam is declared here and each replayer is registered process-wide.
 
 package fabricengine
 
@@ -12,7 +15,8 @@ import (
 )
 
 // ReplayFile is one Bolt file a local commit touches, with its bytes at the merge base, before the commit and after it.
-// Path is relative to the Bolt root and slash-separated, and a nil slice means the file is absent at that point.
+// Path is relative to the Bolt root and slash-separated,
+// and a nil slice means the file is absent at that point.
 type ReplayFile struct {
 	Path   string
 	Base   []byte
@@ -28,7 +32,8 @@ type ReplayRequest struct {
 }
 
 // ReplayFinding names one entry-level or file-level change a replay did not apply and why.
-// Field is empty when the whole entry is concerned, and Local is the local side's value of the field when it was lost to origin's.
+// Field is empty when the whole entry is concerned.
+// Local is the local side's value of the field when it was lost to origin's.
 type ReplayFinding struct {
 	Entry  string
 	Field  string
@@ -66,7 +71,8 @@ type LedgerRun struct {
 // RunLedger is the part of a Bolt file that records the hub's runs, which one registered replayer may also implement.
 // File is the Bolt file holding the runs.
 // Runs decodes that file's bytes into its runs, an empty slice holding none.
-// CommitRuns returns the slugs of the runs a commit of paths touches, given the ledger file's bytes before and after the commit, each nil when the commit leaves the file alone.
+// CommitRuns returns the slugs of the runs a commit of paths touches.
+// It takes the ledger file's bytes before and after the commit, each nil when the commit leaves the file alone.
 type RunLedger interface {
 	File() string
 	Runs(data []byte) ([]LedgerRun, error)
@@ -95,8 +101,9 @@ func updateReplayers(update func(registered []BoltReplayer) []BoltReplayer) {
 	}
 }
 
-// RegisterBoltReplayer adds r to the registered replayers, replacing the one of the same name, and returns a function that puts back only what that name held before.
-// Putting back leaves every other name's registration as it then stands, so parallel tests may share one registration.
+// RegisterBoltReplayer adds r to the registered replayers, replacing the one of the same name.
+// The returned function puts back only what that name held before.
+// It leaves every other name's registration as it then stands, so parallel tests may share one registration.
 func RegisterBoltReplayer(r BoltReplayer) (restore func()) {
 	name := r.Name()
 	var previous BoltReplayer

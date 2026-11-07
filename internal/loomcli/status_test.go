@@ -1,4 +1,5 @@
-// status_test.go drives loom's status verb in-process and pins the envelope key set it emits and the interrupt policy it adds.
+// status_test.go drives loom's status verb in-process.
+// It pins the envelope key set the verb emits and the interrupt policy it adds.
 // The generic status line rendering is tested in internal/shedverbs.
 
 package loomcli
@@ -22,13 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestStatusCmd_EnvelopeKeySet drives statusCmd()'s RunE in-process against a hand-populated
-// receiver whose shedPaths point at a seeded status file under t.TempDir(), and asserts the emitted
-// envelope's top-level key set equals exactly the payload keys plus "ok" -- in both directions,
-// so the interrupt_policy addition can neither quietly rename an existing key nor let a later
-// removal go unnoticed. It also tables interrupt_policy's own value across the three shapes
-// InterruptPolicyFor returns: "handback" for NameWebster, "reinvoke" for another named row, and the
-// empty string for a current_producer naming no row at all.
+// TestStatusCmd_EnvelopeKeySet drives statusCmd()'s RunE in-process.
+// The hand-populated receiver's shedPaths point at a seeded status file under t.TempDir().
+// It asserts that the emitted envelope's top-level key set equals exactly the payload keys plus "ok" in both directions.
+// A renamed, added or removed key therefore fails the test.
+// It also tables interrupt_policy's value across the three shapes InterruptPolicyFor returns.
+// The policy is "handback" for NameWebster, "reinvoke" for another row, or empty for a current_producer naming none.
 func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

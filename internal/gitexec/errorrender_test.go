@@ -1,5 +1,5 @@
-// errorrender_test.go covers GitError.Error's rendering rules: the
-// trailing-stderr segment's presence and trimming, and per-arg quoting.
+// errorrender_test.go covers GitError.Error's rendering rules:
+// the trailing-stderr segment's presence and trimming, and per-arg quoting.
 // It spawns no git, so it carries no //go:build tag.
 
 package gitexec_test
@@ -56,8 +56,9 @@ func TestGitError_Error(t *testing.T) {
 			err:  &gitexec.GitError{Args: []string{"rev-parse", "HEAD"}, ExitCode: 128, Stderr: ""},
 			want: `git rev-parse HEAD: exit 128`,
 		},
-		// Dir is carried for a caller that wants to name the directory itself and is never rendered:
-		// nearly every wrapper already names the repo or worktree it operated on, so rendering Dir would put the same path twice into the part of the message an operator reads first.
+		// Dir is carried for a caller that wants to name the directory itself, and it is never rendered:
+		// nearly every wrapper already names the repo or worktree it operated on.
+		// Rendering Dir would put the same path twice into the part of the message an operator reads first.
 		{
 			name: "DirNotRendered",
 			err:  &gitexec.GitError{Args: []string{"status", "--porcelain"}, Dir: "/tmp/some/worktree/path", ExitCode: 128, Stderr: "fatal: not a git repository"},

@@ -1,4 +1,5 @@
-// claim.go settles a removed pair's board entry: a landed run's entry is marked done, and an abandoned run's claim is cleared.
+// claim.go settles a removed pair's board entry: a landed run's entry is marked done,
+// and an abandoned run's claim is cleared.
 
 package pairteardown
 
@@ -27,14 +28,16 @@ const (
 	claimClear claimSettlement = "clear"
 	// claimHeld writes nothing and warns: batten's run for the slug is still running.
 	claimHeld claimSettlement = "held"
-	// claimHeldGone writes nothing and warns: batten's run for the slug reads running, but no registered batten process is alive.
+	// claimHeldGone writes nothing and warns: batten's run reads running, but no registered batten process is alive.
 	claimHeldGone claimSettlement = "held-gone"
 )
 
 // settleClaim decides the settlement of a board entry with the given status.
 // An entry with no status, a done status or a status that is not a run status is kept.
 // A landed run is done.
-// Otherwise a run batten never seeded, or one batten halted, is cleared; a run batten finished is done; a running one is held while a registered batten process is alive, and held with a gone-process warning when none is.
+// Otherwise a run batten never seeded, or one batten halted, is cleared;
+// a run batten finished is done;
+// a running one is held while a registered batten process is alive, and held with a gone-process warning when none is.
 func settleClaim(status *string, landed, battenSeeded bool, battenState string, battenAlive bool) claimSettlement {
 	if !boardengine.IsRunStatus(status) {
 		return claimKeep
@@ -113,7 +116,8 @@ func (t *Teardown) settleBoardClaim(slug string, landed bool) {
 	}
 }
 
-// childLanded reports whether the task worktree's run finished a Finalize: its status history holds a Finalize with outcome Done.
+// childLanded reports whether the task worktree's run finished a Finalize:
+// its status history holds a Finalize with outcome Done.
 func (t *Teardown) childLanded(slug string) (bool, error) {
 	task, err := t.taskLocation(slug)
 	if err != nil {
@@ -145,7 +149,8 @@ func (t *Teardown) battenRunState(slug string) (seeded bool, state string, err e
 	return true, string(status.State), nil
 }
 
-// readStatus reads the shed status file at path under its lock; found is false when the file is absent, which includes a run directory that was never created.
+// readStatus reads the shed status file at path under its lock;
+// found is false when the file is absent, which includes a run directory that was never created.
 func readStatus(path, lockPath string) (shedengine.Status, bool, error) {
 	status, found, err := state.ReadJSON[shedengine.Status](path, lockPath)
 	if errors.Is(err, fs.ErrNotExist) {

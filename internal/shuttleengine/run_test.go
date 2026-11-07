@@ -1,7 +1,7 @@
-// run_test.go covers Runner.Start: the happy path's exact AddSpec wiring (including
-// SessionID/Display passthrough), validation short-circuiting before any reed call, run-dir cleanup
-// on an AddStrand failure, and the opportunistic orphan sweep never blocking Start on its own
-// failure.
+// run_test.go covers Runner.Start.
+// The happy path passes the exact AddSpec wiring, including SessionID and Display.
+// Validation short-circuits before any reed call, and an AddStrand failure cleans up the run dir.
+// The opportunistic orphan sweep never blocks Start on its own failure.
 
 package shuttleengine
 
@@ -29,17 +29,16 @@ import (
 )
 
 // TestNewRunner_RefusesUnusableToldPaths pins the told-pair guard.
-// anchorPath and worktreeRoot are adjacent parameters of the same type with four semantically
-// distinct consumers, so a swap compiles cleanly and, in a subpath-anchored worktree, silently
-// relocates the run-dir root, reed's state lookup, and the fork audit's transcript directory into
-// the worktree root instead of the anchor. An empty or relative value fails the same way — it
-// succeeds against whatever working directory the process happens to have.
-// Every public entry point must refuse, not just Start: Interrupt/Send/Inject all resolve their run
-// through the same anchorPath.
+// anchorPath and worktreeRoot are adjacent parameters of the same type, so a swap compiles cleanly.
+// In a subpath-anchored worktree, a swap silently moves the run-dir root to the worktree root.
+// The same swap also moves reed's state lookup and the fork audit's transcript directory.
+// An empty or relative value fails the same way: it succeeds against whatever working directory the process has.
+// Every public entry point must refuse, not just Start.
+// Interrupt, Send and Inject resolve their run through the same anchorPath.
 //
-// The rows with no wantIn pin the other side: every pair hubgeom.ReedGeometry can produce must
-// pass, including the anchor-at-worktree-root case (AnchorRel "."), where the two values are
-// legitimately equal and a swap is a no-op.
+// The rows with no wantIn pin the other side:
+// every pair hubgeom.ReedGeometry can produce must pass.
+// That includes the anchor-at-worktree-root case (AnchorRel "."), where the two values are equal and a swap is a no-op.
 func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	worktreeRoot := t.TempDir()
@@ -59,9 +58,8 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 		{"empty_worktree_root", anchorPath, "", "empty path"},
 		{"relative_anchor", filepath.Join("sub", "dir"), worktreeRoot, "relative path"},
 		{"anchor_in_a_sibling_tree", t.TempDir(), worktreeRoot, "outside its worktree root"},
-		// NewRunner must still refuse the standalone shape (anchor and worktree root disjoint) even
-		// though NewDetachedRunner accepts it, so the two constructors are provably not
-		// interchangeable.
+		// A standalone shape, with anchor and worktree root disjoint, must be refused by NewRunner.
+		// NewDetachedRunner accepts it, so the two constructors must not be interchangeable.
 		{"standalone_pair_disjoint_dirs", t.TempDir(), t.TempDir(), "outside its worktree root"},
 		{"anchored_at_worktree_root", worktreeRoot, worktreeRoot, ""},
 		{"subpath_anchored", anchorPath, worktreeRoot, ""},
@@ -92,11 +90,11 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 	}
 }
 
-// TestNewDetachedRunner_RefusesUnusableToldPaths pins validateDetachedToldPaths' guard, mirroring
-// TestNewRunner_RefusesUnusableToldPaths' shape but driven by strict disjointness rather than
-// containment: anchorPath and worktreeRoot must be two distinct, non-overlapping directories, and
-// paneCwd is checked only for non-empty and absolute. Every public entry point is driven, not just
-// Start, since Interrupt/Send/Inject all resolve their run through the same anchorPath.
+// TestNewDetachedRunner_RefusesUnusableToldPaths pins validateDetachedToldPaths' guard.
+// anchorPath and worktreeRoot must be two distinct, non-overlapping directories.
+// paneCwd is checked only for non-empty and absolute.
+// Every public entry point is driven, not just Start.
+// Interrupt, Send and Inject resolve their run through the same anchorPath.
 func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchor := t.TempDir()
@@ -149,12 +147,10 @@ func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
 
 // TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions pins the accepted side of
 // validateDetachedToldPaths: a standalone pair of two disjoint absolute directories passes, and
-// paneCwd is accepted whether it equals anchorPath or worktreeRoot — exactly the hub and standalone
-// shapes, neither of which validateDetachedToldPaths refuses since it makes no relational assertion
-// about paneCwd at all.
-// The verdict is asserted through a public entry point (Start's validation short-circuit never
-// firing on the told-path check) rather than by reading the toldErr field directly, since toldErr is
-// unexported implementation, not the contract callers depend on.
+// paneCwd is accepted whether it equals anchorPath or worktreeRoot, the hub and standalone shapes.
+// The told-path check makes no relational assertion about paneCwd, so neither position is refused.
+// The verdict is asserted through Start, a public entry point.
+// It does not read an unexported error field, which is implementation, not contract.
 func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchor := t.TempDir()
@@ -181,7 +177,8 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 	}
 }
 
-// TestRunner_StartGated_CarriesNoDoneWhen pins that a gated run's strand carries no done-when list, because its output files existing does not mean its gate passed.
+// TestRunner_StartGated_CarriesNoDoneWhen pins that a gated run's strand carries no done-when list.
+// Output files existing does not mean the gate passed.
 func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -265,8 +262,8 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		}
 	})
 
-	// A ready start issues exactly one Status/CapturePane probe before returning, and persists
-	// Started: true: the startup step does not linger past the first successful probe.
+	// A ready start issues exactly one Status/CapturePane probe before returning and persists
+	// Started: true. The startup step does not linger past the first successful probe.
 	t.Run("probes exactly once and persists Started", func(t *testing.T) {
 		statusCalls, captureCalls := 0, 0
 		for _, c := range reed.CallLog {
@@ -293,9 +290,8 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		}
 	})
 
-	// A freshly started run's persisted run.json carries the runOutcomeRunning sentinel, before any
-	// classification has happened: the fact on disk that a later Attach relies on to tell a live
-	// run from an ended one.
+	// A freshly started run's run.json carries the runOutcomeRunning sentinel before any classification.
+	// A later Attach relies on that fact on disk to tell a live run from an ended one.
 	t.Run("persists the running outcome", func(t *testing.T) {
 		rs, found, err := loadRunState(run.runDir)
 		if err != nil {
@@ -395,7 +391,8 @@ func (c *sleepHookClock) Sleep(d time.Duration) {
 	c.onSleep()
 }
 
-// pasteLoadReed is a skillReed that plays a skill-load turn when a load message is pasted, since the paste path never reaches SendText.
+// pasteLoadReed is a skillReed that plays a skill-load turn when a load message is pasted.
+// The paste path never reaches SendText, so the load turn is played here instead.
 // onPaste runs before each paste is recorded.
 type pasteLoadReed struct {
 	*skillReed
@@ -416,9 +413,9 @@ func (r *pasteLoadReed) PasteSubmit(guid, text string, submit bool) error {
 	return nil
 }
 
-// TestRunner_Start_WaitsWhileAPauseCoversItsPair pins that a start registers no strand while a pause covers the runner's pair,
+// TestRunner_Start_WaitsWhileAPauseCoversItsPair pins that a start registers no strand while the pair is paused,
 // and that the run it then returns counts its deadline from the resume, not from the call.
-// A pause landing after that wait, during the idle wait of a start's typed line, holds the line until the resume and types it once.
+// A pause landing during a start's typed-line idle wait holds the line until the resume, then types it once.
 func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -564,7 +561,8 @@ func startWaitsItsOwnPause(t *testing.T) {
 	}
 }
 
-// TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted pins that a run reconstructed from its record types the deferred prompt line only when no turn started at or past the prompt offset.
+// TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted pins this rule:
+// a run rebuilt from its record types the deferred prompt line only when no turn started at or past the prompt offset.
 func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -690,8 +688,10 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 }
 
 // TestRunner_Start_TypesTheSegmentColorAfterStartup pins the color step.
-// A colored strand gets the engine's color inputs after startup and after the skill load's first turn, which the launch line carries, and before the retry turn and the prompt.
-// No color, a caller that colors itself and an engine without a color command type nothing, and a failing color play still starts the run.
+// A colored strand gets the engine's color inputs after startup and after the skill load's first turn.
+// The launch line carries that turn, and the color is typed before the retry turn and the prompt.
+// No color, a caller that colors itself, and an engine without a color command type nothing;
+// a failing color play still starts the run.
 func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 	tiergate.Require(t, 0)
 	loaded := func(skills ...string) SkillLoadReport { return SkillLoadReport{Verified: true, Loaded: skills} }
@@ -704,7 +704,7 @@ func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 		byCaller bool
 		noInputs bool
 		colorErr error
-		// hookState starts the run over an engine reading hook state, whose events file holds only a SessionStart(startup) line beside a busy-looking pane.
+		// hookState makes the engine read hook state, whose events hold only a SessionStart(startup) line beside a busy pane.
 		hookState bool
 		// lateEnds maps a load turn to the number of Status calls before its turn end is appended.
 		lateEnds  map[int]int
@@ -821,16 +821,12 @@ func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 	}
 }
 
-// TestRunner_Start_SaveRunStateFailure covers AddStrand succeeding (the strand and its launching
-// pane exist) and the subsequent saveRunState failing. Start must tear the strand back down and
-// remove the run directory rather than leaking a live, untracked pane no run.json can ever bind.
+// TestRunner_Start_SaveRunStateFailure covers AddStrand succeeding and the subsequent saveRunState failing.
+// Start must tear the strand back down and remove the run directory, so no live pane is left untracked.
 //
-// By then AddStrand has put a real pane and a real provider process on the substrate, so the
-// RemoveStrand that follows is a live-substrate teardown, and a RemoveStrand that ERRORS is
-// precisely "a teardown that did not confirm clean", which PATTERN-child-processes requires on
-// internal/logger at Warn. It used to go to the bare log package, which the durable Info+ trace sink
-// never captures, so the one record of a leaked live pane existed only on an ephemeral stderr with no
-// trace correlation id on it.
+// The RemoveStrand that follows is a live-substrate teardown.
+// A RemoveStrand error means a teardown that did not confirm clean,
+// and that is logged at Warn through internal/logger.
 func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -853,7 +849,7 @@ func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 			}
 			engine := &fakeEngine{
 				PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"},
-				// Plant run.json as a DIRECTORY so the later saveRunState write can never succeed,
+				// Plant run.json as a directory so the later saveRunState write cannot succeed,
 				// forcing the mid-op failure this test exercises.
 				PrepareHook: func(runDir string) {
 					if err := os.MkdirAll(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
@@ -896,19 +892,15 @@ func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 	}
 }
 
-// TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger is the other half of R2-F8's guard, and
-// the one that actually prevents reintroduction.
+// TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger pins that operational messages avoid the stdlib log package.
 //
-// This whole package is a live-substrate module: every operational message it emits is about a real
-// pane or a real provider process, so every one of them belongs on internal/logger's durable sink
-// rather than on the stdlib log package, whose output the trace file never sees and which carries no
-// trace correlation id. R1-F10 migrated finalize's two sites and left five siblings behind in these
-// same two files; a behavioural test can only ever pin the sites it happens to exercise, so the
-// no-reintroduction half is a source scan, following the guard-test idiom cmd/lym already uses.
+// Every operational message in this package is about a real pane or a real provider process,
+// so each belongs on internal/logger's durable sink.
+// The stdlib log package never reaches the trace file and carries no trace correlation id.
+// A behavioural test pins only the sites it exercises, so this is a source scan of the package's production files.
 //
-// The scan reads this package's own production sources by name from the test's own working
-// directory — no process is spawned and no scan root has to be resolved, so the Test Tier Purity
-// Invariant is satisfied without an allowlist entry.
+// The scan reads those files from the test's working directory and spawns no process,
+// so it needs no allowlist entry under the Test Tier Purity Invariant.
 //
 //testtiming:keep scans this package's production sources for bare log and fmt.Println calls, which no behavioral test can pin
 func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
@@ -943,24 +935,22 @@ func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
 }
 
 // TestRunner_Start_SweepSkipsEntirelyWithoutReedState covers Start's opportunistic orphan sweep when
-// reed's state file is not a trustworthy live set. Start must log and continue rather than fail the
-// whole run over a housekeeping error, and the sweep must be skipped for this Start entirely.
+// reed's state file is not a trustworthy live set.
+// Start must log and continue, not fail the whole run over a housekeeping error,
+// and the sweep is skipped for this Start entirely.
 //
-// A LoadState ERROR must not degrade to "sweep with an empty live set": that would delete every
-// old-enough run dir, including a kept died/timeout dir reed still genuinely tracks, over an
-// unrelated I/O problem. An ABSENT reed.json used to fall through to the same empty live-guid set
-// (R3-F2), so every run dir past the age guard was deleted — including one whose agent is still
-// working. That state is not exotic: it is exactly what reed's own corrupt-state error recommends
-// ("delete <path> by hand to keep the session (its panes and their processes keep running,
-// untracked)") and what a `git clean -xdf` of .lym leaves behind. The sweep then removes the live
-// run's events.jsonl and run.json, after which interrupt/send answer "is not a shuttle strand" for a
-// running agent.
+// A LoadState error must not degrade to a sweep with an empty live set:
+// it would delete every old-enough run dir, including a kept died/timeout dir reed still tracks.
+// An absent reed.json must not either: reed's corrupt-state error recommends deleting it by hand,
+// and a `git clean -xdf` of .lym leaves it absent.
+// The sweep would then remove a running agent's events.jsonl and run.json;
+// after which interrupt and send answer "is not a shuttle strand".
 func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
-		// reedJSON is the corrupt reed.json to seed; empty leaves .lym without one — the
-		// hand-deleted / git-cleaned shape.
+		// reedJSON is the corrupt reed.json to seed;
+		// empty leaves .lym without one, the hand-deleted or git-cleaned shape.
 		reedJSON string
 	}{
 		{name: "unreadable reed.json", reedJSON: "not json"},
@@ -971,9 +961,9 @@ func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
-			// anchorPath is a real subpath of worktree, never the same value twice: passing one
-			// directory for both fields would let a swapped NewRunner argument pair pass this test,
-			// which is exactly the masking case newFixture's own contract exists to prevent.
+			// anchorPath is a real subpath of worktree, never the same value twice:
+			// one directory for both fields would let a swapped NewRunner argument pair pass.
+			// that masking is what newFixture's contract exists to prevent.
 			worktree := t.TempDir()
 			anchorPath := filepath.Join(worktree, "sub", "dir")
 			cfg := defaultConfig
@@ -987,8 +977,8 @@ func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 				}
 			}
 
-			// An old, kept run dir (as a died/timeout outcome would leave behind) whose
-			// strand is not in a live set that reed.json cannot supply.
+			// An old, kept run dir (as a died or timeout outcome leaves) whose
+			// strand is absent from any live set reed.json could supply.
 			shuttleRoot := runDirRoot(cfg, anchorPath)
 			keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")
 			setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
@@ -1010,18 +1000,19 @@ func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 	}
 }
 
-// liveStrandStatus scripts a fakeReed Status answer reporting strand-1 with
-// the given liveness — what the Interrupt/Send liveness guard consumes.
-// The pane id is part of the fixture rather than incidental: reed reports one for every strand whose
-// pane it still holds, so an EMPTY pane id means something different (a binding reed cleared), and a
-// not-live fixture without one would be testing that case instead of a dead pane.
+// liveStrandStatus scripts a fakeReed Status answer reporting strand-1 with the given liveness.
+// The Interrupt and Send liveness guard consumes it.
+// The fixture carries a pane id on purpose: reed reports one for every strand whose pane it still holds.
+// An empty pane id means reed cleared the binding;
+// a not-live fixture without one would test that case instead of a dead pane.
 func liveStrandStatus(live bool) []reedengine.StatusResult {
 	return []reedengine.StatusResult{
 		{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: live}}},
 	}
 }
 
-// assertNoPendingSendRecord fails when a pending-send record exists under runRoot or in the test's working directory, where a send with an empty run directory would write one.
+// assertNoPendingSendRecord fails when a pending-send record exists under runRoot or in the working directory.
+// A send with an empty run directory would write one there.
 func assertNoPendingSendRecord(t *testing.T, runRoot string) {
 	t.Helper()
 	if _, err := os.Stat(pendingSendFileName); !errors.Is(err, os.ErrNotExist) {
@@ -1035,18 +1026,18 @@ func assertNoPendingSendRecord(t *testing.T, runRoot string) {
 	})
 }
 
-// readyAgentEngine returns a fakeEngine whose Startup classification sticks
-// at StartupReady — the pane state requireReadyAgentPane demands before any
-// Interrupt/Send key is played, so tests of the key choreography itself pass
-// the guard without scripting captures per call.
+// readyAgentEngine returns a fakeEngine whose Startup classification sticks at StartupReady.
+// That is the pane state requireReadyAgentPane demands before any Interrupt or Send key is played.
+// Tests of the key choreography itself therefore pass the guard without scripting captures per call.
 func readyAgentEngine() *fakeEngine {
 	return &fakeEngine{StartupScript: []StartupState{StartupReady}}
 }
 
-// TestRun_Interrupt_PlaysEscape covers the guarded Interrupt on a live pane: the guard sends the key only into a pane showing a running turn.
-// One capture can land mid-redraw and classify a healthy TUI as still booting, so the ready probe
-// must retry within agentPaneProbeAttempts and pass once a later capture classifies Ready, rather
-// than refusing on the first inconclusive frame.
+// TestRun_Interrupt_PlaysEscape covers the guarded Interrupt on a live pane.
+// The guard sends the key only into a pane showing a running turn.
+// One capture can land mid-redraw and classify a healthy TUI as still booting.
+// The ready probe must therefore retry within agentPaneProbeAttempts and pass once a later capture classifies Ready.
+// It must not refuse on the first inconclusive frame.
 // A runner row also asserts the Runner's settle and pane running-turn readings on the same fixture.
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1131,9 +1122,8 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 	}
 }
 
-// TestRunner_InterruptRestoring covers the interrupt that also clears the prompt the provider restored into the box, on a stateful pane:
-// the keys sent, the box left behind and the error.
-// The guarded key itself is pinned by TestRun_Interrupt_PlaysEscape.
+// TestRunner_InterruptRestoring covers the interrupt that also clears the prompt the provider restored into the box.
+// It runs on a stateful pane and checks the keys sent, the box left behind, and the error.
 func TestRunner_InterruptRestoring(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1251,8 +1241,8 @@ func TestRunner_InterruptRestoring(t *testing.T) {
 	}
 }
 
-// TestGuardedPickerClose covers the guarded rewind-picker close before an interrupt and before a verified send:
-// one interrupt key closes an open picker and fails the operation, nothing more is sent, and no text is typed.
+// TestGuardedPickerClose covers the guarded rewind-picker close before an interrupt and before a verified send.
+// One interrupt key closes an open picker and fails the operation, nothing more is sent, and no text is typed.
 func TestGuardedPickerClose(t *testing.T) {
 	tiergate.Require(t, 0)
 	boom := errors.New("boom")
@@ -1394,11 +1384,10 @@ func TestRun_Send_RejectsNewlines(t *testing.T) {
 
 func TestRun_Send_RejectsEmptyOrWhitespace(t *testing.T) {
 	tiergate.Require(t, 0)
-	// An empty or whitespace-only send has nothing to deliver: it would still
-	// play the Escape+submit choreography (a stray empty turn) while making
-	// sendVerified's delivery check vacuous (an empty needle every capture
-	// "contains"), so Send must refuse before touching the pane rather than
-	// report a falsely-verified success.
+	// An empty or whitespace-only send has nothing to deliver.
+	// It would still play the Escape+submit choreography (a stray empty turn),
+	// and it would make sendVerified's delivery check vacuous (an empty needle every capture "contains").
+	// Send must therefore refuse before touching the pane rather than report a falsely-verified success.
 	tests := []struct {
 		name string
 		text string
@@ -1422,10 +1411,9 @@ func TestRun_Send_RejectsEmptyOrWhitespace(t *testing.T) {
 	}
 }
 
-// stubInputSleep replaces the package-level inputSleep seam with a no-op for
-// the duration of the calling test, restoring the real implementation via
-// t.Cleanup — so sendVerified's poll/replay loops (and playInputs' SettleMS
-// pause) run at test speed instead of real wall-clock time.
+// stubInputSleep replaces the package-level inputSleep seam with a no-op for the duration of the calling test.
+// It restores the real implementation via t.Cleanup.
+// That lets sendVerified's poll and replay loops, and playInputs' SettleMS pause, run at test speed.
 func stubInputSleep(t *testing.T) {
 	t.Helper()
 	orig := inputSleep
@@ -1433,8 +1421,7 @@ func stubInputSleep(t *testing.T) {
 	t.Cleanup(func() { inputSleep = orig })
 }
 
-// repeatCapture returns n copies of capture, the fixture shape fakeReed's
-// CaptureQueue consumes one-per-call.
+// repeatCapture returns n copies of capture, the fixture shape fakeReed's CaptureQueue consumes one-per-call.
 func repeatCapture(capture string, n int) []string {
 	out := make([]string, n)
 	for i := range out {
@@ -1445,23 +1432,22 @@ func repeatCapture(capture string, n int) []string {
 
 func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 	tiergate.Require(t, 0)
-	// tmux send-keys against a dead or missing pane exits 0 while
-	// delivering nothing (proven live), so Interrupt/Send must refuse
-	// before touching the pane rather than report a silent-no-op success.
+	// tmux send-keys against a dead or missing pane exits 0 while delivering nothing.
+	// Interrupt/Send must refuse before touching the pane rather than report a silent-no-op success.
 	tests := []struct {
 		name   string
 		status []reedengine.StatusResult
-		// wantIn is a phrase the refusal must name. The untracked case pins the
-		// state-reset cause explicitly: reed's table is also emptied by a remove,
-		// a down/up cycle, and a server rebirth, so a refusal claiming only that
-		// "its run has completed and been cleaned up" misdirects an operator whose
-		// agent is still running in its pane (proven live).
+		// wantIn is a phrase the refusal must name.
+		// The untracked case pins the state-reset cause: reed's table is also emptied by a remove,
+		// a down/up cycle, and a server rebirth.
+		// A refusal that claims only a completed, cleaned-up run misdirects an operator.
+		// That operator's agent may still be running in its pane.
 		wantIn string
 	}{
 		{"dead_pane", liveStrandStatus(false), "no live pane"},
-		// A strand reed tracks with NO pane bound is not a dead pane: reed cleared the binding as
-		// stale, and its agent is very often still working in a pane reed can no longer address
-		// (proven live). Naming a terminal outcome or a dead pane there was wrong on both counts.
+		// A strand reed tracks with no pane bound is not a dead pane: reed cleared the binding as stale,
+		// and its agent is often still working in a pane reed can no longer address.
+		// Naming a terminal outcome or a dead pane there is wrong on both counts.
 		{"cleared_pane_binding", []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}}}}, "holds no pane id for it"},
 		{"untracked_strand", []reedengine.StatusResult{{}}, "reed's strand table was reset under it"},
 	}
@@ -1530,12 +1516,11 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 
 func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 	tiergate.Require(t, 0)
-	// A live pane is not enough: a provider that failed at launch (or was
-	// killed while its shell survived) leaves a live pane whose keys land at
-	// the shell prompt — proven live, a send against a kept "died" run
-	// reported ok while its text was EXECUTED as a pwsh command. The engine
-	// classifying every probe capture as still-booting (a bare shell prompt
-	// shows no ready marker) must therefore refuse before any key is played.
+	// A live pane is not enough.
+	// A provider that failed at launch, or was killed while its shell survived, leaves a live pane.
+	// Its keys land at the shell prompt, where the text would run as a shell command.
+	// The engine classifies every probe capture as still booting, since a bare shell prompt shows no ready marker,
+	// so the send must refuse before any key is played.
 	stubInputSleep(t)
 	reed := &fakeReed{
 		StatusQueue:  liveStrandStatus(true),
@@ -1564,10 +1549,10 @@ func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 	}
 }
 
-// liveRecordedPaneFrame reads one of the pane captures recorded during round 4's live reproduction of
-// R2-F11 against a real Claude TUI (220x48 pane, `tmux capture-pane -p`).
-// The two frames are kept verbatim rather than hand-written, so this regression test is pinned to what
-// the provider TUI actually rendered rather than to a reviewer's model of it.
+// liveRecordedPaneFrame reads one of the pane captures recorded from a real Claude TUI.
+// The capture is a 220x48 pane read with `tmux capture-pane -p`.
+// The frames are kept verbatim rather than hand-written.
+// A test built on them is pinned to what the provider TUI rendered, not to a reviewer's model of it.
 func liveRecordedPaneFrame(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", name))
@@ -1577,24 +1562,24 @@ func liveRecordedPaneFrame(t *testing.T, name string) string {
 	return string(data)
 }
 
-// recordedScrollSendText is the exact text sent in that live reproduction.
-// Its first 48 normalized characters — the needle sendVerified derives — are shared with the copy
-// already on screen in the baseline frame, which is what makes the baseline count 1 rather than 0.
+// recordedScrollSendText is the exact text sent when the recorded pane frames were captured.
+// Its first 48 normalized characters, the needle sendVerified derives, also occur in the baseline frame.
+// That copy is why the baseline count is 1 rather than 0.
 const recordedScrollSendText = "reply with the numbers 1 to 38 one per line and nothing else, and take care to print each number on its very own separate line, with no extra commentary, no preamble, no summary and no trailing remarks whatsoever, just the plain numbers in order"
 
-// TestRun_Send_DeliveryVerification drives Send's delivery check over scripted pane captures. The
-// first capture of every queue answers requireReadyAgentPane's TUI probe and the second is
+// TestRun_Send_DeliveryVerification drives Send's delivery check over scripted pane captures.
+// The first capture of every queue answers requireReadyAgentPane's TUI probe, and the second is
 // sendVerified's pre-send baseline; the rest are the verification polls, the last entry sticking.
 //
-// The sent text can already be on screen before the send — an operator retrying the same
-// instruction after an uncertain first attempt, or text quoting the agent's own visible output —
-// so presence alone would "verify" even a swallowed send; delivery is judged by the occurrence
-// count RISING above the pre-send baseline. CapturePane returns the pane's visible VIEWPORT, not
-// its scrollback, so an occurrence counted at baseline time can scroll off while the agent works
-// (R2-F6); a false negative there is not a harmless retry but a duplicate agent turn, from a send
-// that actually landed. R4-F1 closes R2-F11 on the branch re-baselining cannot reach: the delivered
-// copy's position, 9 lines from the bottom where every copy the baseline counted sat 46 lines from
-// it, is the evidence a count cannot carry, because a pane only ever appends at its bottom.
+// The sent text can already be on screen before the send, from an operator retrying the same
+// instruction after an uncertain first attempt, or from text quoting the agent's own visible output.
+// Presence alone would "verify" even a swallowed send, so delivery is judged by the occurrence
+// count rising above the pre-send baseline.
+// CapturePane returns the pane's visible viewport, not its scrollback.
+// So an occurrence counted at baseline time can scroll off while the agent works.
+// A false negative there is not a harmless retry but a duplicate agent turn, from a send that landed.
+// Where a count cannot tell the copies apart, the delivered copy's position is the evidence:
+// a pane only appends at its bottom, so a new copy lands below the copies already on screen.
 func TestRun_Send_DeliveryVerification(t *testing.T) {
 	tiergate.Require(t, 0)
 	baselineFrame := liveRecordedPaneFrame(t, "pane-scroll-baseline.txt")
@@ -1602,8 +1587,8 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 		name     string
 		captures []string
 		text     string
-		// wantErrIn is a fragment the delivery failure must name; empty with wantErr unset means
-		// the send must verify.
+		// wantErrIn is a fragment the delivery failure must name.
+		// An empty wantErrIn with wantErr unset means the send must verify.
 		wantErr   bool
 		wantErrIn string
 		// wantSends is the expected SendText call count; zero leaves it unchecked.
@@ -1611,21 +1596,19 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 		wantLog   []string
 	}{
 		{
-			// The later captures report the sent text back for the delivery check to succeed without
-			// a replay.
+			// The later captures report the sent text back, so the delivery check succeeds without a replay.
 			name:      "plays Escape then the text with submit",
 			captures:  []string{"❯ ", "❯ ", "❯ updated instructions"},
 			text:      "updated instructions",
 			wantSends: 1,
-			// Status then CapturePane lead the log: the liveness guard and the ready-TUI probe must
-			// both run before any key reaches the pane; the second CapturePane is the pre-send
-			// baseline snapshot. The final CapturePane follows the text step: the delivery poll.
+			// Status then CapturePane open the log: the liveness guard and the TUI probe run before any key is sent;
+			// the second CapturePane is the pre-send baseline snapshot.
+			// The final CapturePane follows the text step: the delivery poll.
 			wantLog: []string{"Status", "CapturePane", "CapturePane", "SendKey:Escape", "SendText:updated instructions", "CapturePane"},
 		},
 		{
-			// The provider TUI can swallow the whole Escape+text chunk with no error anywhere
-			// (observed live): every poll of the first attempt sees no trace of the text, the
-			// replay's polls see it delivered.
+			// The provider TUI can swallow the whole Escape+text chunk with no error anywhere.
+			// Every poll of the first attempt sees no trace of the text, and the replay's polls see it delivered.
 			name: "swallowed first attempt succeeds on the replay",
 			captures: append(
 				repeatCapture("❯ ", 2+sendVerifyAttempts),
@@ -1635,8 +1618,8 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 			wantSends: 2,
 		},
 		{
-			// If the text never appears even after the replay, Send must report a delivery failure
-			// rather than the "keys were emitted" false ok:true observed live.
+			// If the text never appears even after the replay, Send must report a delivery failure,
+			// not a success that only means the keys were emitted.
 			name:      "never delivered reports an honest failure",
 			captures:  repeatCapture("❯ ", 2*sendVerifyAttempts+2),
 			text:      "updated instructions",
@@ -1645,25 +1628,25 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 			wantSends: 1 + sendReplays,
 		},
 		{
-			// Every capture shows the text exactly once: it was already there, and the send never
-			// lands. A presence check would falsely verify this.
+			// Every capture shows the text exactly once: it was already there, and the send never lands.
+			// A presence check would falsely verify this.
 			name:     "pre-existing text with a swallowed send reports failure",
 			captures: []string{"❯ do it again"},
 			text:     "do it again",
 			wantErr:  true,
 		},
 		{
-			// Probe and baseline see one pre-existing occurrence; the verification polls see a
-			// second one appear — a genuine delivery.
+			// Probe and baseline see one pre-existing occurrence; the verification polls see a second one appear.
+			// That is a genuine delivery.
 			name:     "pre-existing text with a rising count verifies delivery",
 			captures: []string{"❯ do it again", "❯ do it again", "do it again …\n❯ do it again"},
 			text:     "do it again",
 		},
 		{
-			// Probe and baseline: the text is already on screen TWICE from earlier turns, so the
-			// baseline starts at 2. The first poll sees both earlier copies pushed off the top of
-			// the viewport and the delivered copy not rendered yet (count 0); the second sees it
-			// (count 1, below the ORIGINAL baseline, which is why the pre-fix check never passed).
+			// Probe and baseline: the text is already on screen twice from earlier turns, so the baseline starts at 2.
+			// The first poll sees both earlier copies pushed off the top of the viewport.
+			// The delivered copy is not rendered yet, so the count is 0.
+			// The second poll sees it, so the count is 1, below the baseline of 2.
 			name: "baseline occurrences scrolled away do not duplicate the delivery",
 			captures: []string{
 				"❯ do it again do it again",
@@ -1675,10 +1658,10 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 			wantSends: 1,
 		},
 		{
-			// Both frames are real captures taken 800 ms apart during the live reproduction. In the
-			// baseline frame one copy of the text sits at line 1 — the top of a full viewport. In
-			// the delivered frame the newly delivered copy is rendered at line 38 and that earlier
-			// copy has scrolled off in the SAME redraw, so the count is 1 in both.
+			// Both frames are real captures taken 800 ms apart.
+			// The baseline frame holds one copy of the text at line 1, the top of a full viewport.
+			// The delivered frame renders the newly delivered copy at line 38,
+			// and the earlier copy has scrolled off in the same redraw, so the count is 1 in both.
 			name: "baseline occurrence evicted as the delivered one arrives does not replay",
 			captures: []string{
 				baselineFrame,
@@ -1689,9 +1672,9 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 			wantSends: 1,
 		},
 		{
-			// The send is swallowed and the pane merely scrolls, which moves the pre-existing copy
-			// UP — further from the bottom, never closer. Scrolling ALONE is not evidence of
-			// delivery, so the swallowed-send failure path must still fire, replays included.
+			// The send is swallowed and the pane only scrolls.
+			// Scrolling moves the pre-existing copy up, further from the bottom, never closer.
+			// Scrolling alone is not evidence of delivery, so the swallowed-send failure path must still fire, replays included.
 			name: "viewport scrolling without delivery still reports failure",
 			captures: []string{
 				"● working\n❯ do it again\nstill working",
@@ -1746,7 +1729,7 @@ type inputBoxAnswer struct {
 }
 
 // inputBoxEngine wraps a fakeEngine with the InputBoxReader capability over a scripted queue of box answers.
-// The queue is consumed FIFO and its last answer sticks, like fakeReed's capture queue.
+// The queue is consumed FIFO and its last answer sticks.
 type inputBoxEngine struct {
 	*fakeEngine
 	boxes  []inputBoxAnswer
@@ -1778,9 +1761,11 @@ func (c *boxTestClock) Sleep(d time.Duration) {
 	c.fakeClock.Sleep(d)
 }
 
-// clearableBoxEngine is inputBoxEngine plus the idle reading, session signals, a session prober and a scripted InputBoxClearer:
+// clearableBoxEngine is an input-box engine with a scripted InputBoxClearer.
+// It also has the idle reading, session signals and a session prober.
 // A capture is idle when it starts with "IDLE".
-// "START" is a turn start, "STOP:<message>" a turn end and "SESSIONSTART" or "SESSIONSTART:<source>" a session start with that source.
+// "START" is a turn start and "STOP:<message>" a turn end.
+// "SESSIONSTART" or "SESSIONSTART:<source>" is a session start with that source.
 // Every turn start reads interrupted when interrupted is set, and TurnStartProgress answers progress for any turn start.
 
 type clearableBoxEngine struct {
@@ -1853,7 +1838,8 @@ func (r *enterHookReed) SendKey(guid, key string) error {
 	return err
 }
 
-// TestRun_Send_ConfirmsSubmission drives Send's settle, submit window and clear through an engine with the InputBoxReader capability on a fake clock.
+// TestRun_Send_ConfirmsSubmission drives Send's settle, submit window and clear on a fake clock.
+// The engine has the InputBoxReader capability.
 // No Enter goes out until two box reads agree.
 // Every Enter is followed by one box read at a doubling interval.
 // An extra Enter goes only while the box holds the sent text and the window is open.
@@ -1876,7 +1862,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		return out
 	}
 	keys := func(names ...string) []string { return names }
-	// tallFrame is twenty numbered rows with a blank row after each, taller than the pane tail a failure carries.
+	// tallFrame is numbered rows, each followed by a blank row, taller than the pane tail a failure carries.
 	var tallFrame string
 	for row := 1; row <= 20; row++ {
 		tallFrame += fmt.Sprintf("row-%02d\n\n", row)
@@ -1887,7 +1873,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		text string
 		// idle gives the engine the idle reading and InputBoxClearer.
 		idle bool
-		// settleMS and confirmS override the 100 ms settle interval and the 30 s window.
+		// settleMS and confirmS override the default settle interval and confirm window.
 		settleMS, confirmS int
 		// captures replaces the pane captures; the last sticks.
 		captures []string
@@ -1907,7 +1893,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		wantSleeps []time.Duration
 	}{
 		{
-			// Also the empty box under a running turn: nothing pending.
+			// An empty box under a running turn has nothing pending.
 			name: "box clears at once", text: shortText,
 			boxes:    join(settled(shortText), []inputBoxAnswer{box("")}),
 			wantKeys: keys("Escape", "Enter"), wantSleeps: []time.Duration{ms(100), ms(300)},
@@ -2013,7 +1999,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			wantKeys: keys("Escape", "Enter", "Enter"),
 		},
 		{
-			// The box merely contains the sent text's first 48 characters, which no longer count as the sent text.
+			// A draft that starts with the long sent text and continues is another draft, not the sent text.
 			name: "a longer draft containing a long sent text's start is not held", text: longText,
 			boxes:    join(settled(longText), []inputBoxAnswer{box(longText + " " + longText)}),
 			wantKeys: keys("Escape", "Enter"),
@@ -2331,7 +2317,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		retryText string
 		// wantPastes is how many pastes both sends made together.
 		wantPastes int
-		// recordless sends through a Runner with no run record; the unlanded text stays in the box, so the second send over a not-idle pane holding it fails as a draft hold.
+		// recordless sends through a Runner with no run record, so the unlanded text stays in the box as a draft hold.
 		recordless bool
 	}{
 		{name: "recordless: an unlanded text stays in the box and holds the next send", firstBox: box(retriedText), retryText: retriedText, wantPastes: 1, recordless: true},
@@ -2428,8 +2414,8 @@ func TestScanPaneForNeedle(t *testing.T) {
 		{"two occurrences, position taken from the last", "❯ do it\nfiller\n❯ do it\nfiller", "doit", 2, 1},
 		{"trailing blank lines are not content", "❯ do it\n\n\n", "doit", 1, 0},
 		{
-			// Matching runs over the whole normalized capture, so a needle split across a wrap
-			// boundary still counts, and its position is the line the match ENDS on.
+			// Matching runs over the whole normalized capture, so a needle split across a wrap boundary still counts,
+			// and its position is the line the match ends on.
 			name: "needle straddling a wrap boundary", capture: "❯ do i\nt now\nafter", needle: "doit", wantCount: 1, wantLinesBelow: 1,
 		},
 	}
@@ -2444,9 +2430,12 @@ func TestScanPaneForNeedle(t *testing.T) {
 	}
 }
 
-// TestSend_WaitsForIdleSession drives the idle wait of Run.Send, and of Runner.Send in one row, over an engine with the idle reading.
-// The pane turns idle at a fake-clock time, or never; an unmatched turn start in the events file holds a send against an idle pane until the override, an interrupt report or a later turn end releases it.
-// Nothing is typed before the wait ends, and a session that stays busy fails with ErrSessionBusy carrying the pane's last lines.
+// TestSend_WaitsForIdleSession drives the idle wait of Run.Send and Runner.Send over an engine with the idle reading.
+// The pane turns idle at a fake-clock time, or never.
+// An unmatched turn start in the events file holds a send against an idle pane.
+// Only an override, an interrupt report or a later turn end releases it.
+// Nothing is typed before the wait ends,
+// and a session that stays busy fails with ErrSessionBusy carrying the pane's last lines.
 // A row with no events reads no signal, so the pane decides; a row with events reads the hook-derived state.
 //
 // It is not parallel: logcapture redirects the process-global logger.
@@ -2472,9 +2461,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// activeQueue and activityErr script the fake reed's operator-activity answers.
 		activeQueue []bool
 		activityErr error
-		// activityErrQueue scripts the fake reed's operator-activity failures per query, FIFO with the last entry sticking; a nil entry answers from activeQueue.
+		// activityErrQueue scripts operator-activity failures per query; the last sticks, a nil entry answers from activeQueue.
 		activityErrQueue []error
-		// sends is how many sends the row makes through one run, one when zero, so the activity queries span several waits of one runner.
+		// sends is how many sends the row makes through one run; zero means one, so the activity queries span several waits.
 		sends int
 		// frozen gives the run a clock that never advances, so only the poll count can end the wait.
 		frozen bool
@@ -2483,10 +2472,11 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		wantBusy                   []string
 		// wantReason, when set, is the prefix the busy error's Reason must carry.
 		wantReason string
-		// wantDraft is whether the busy error names a draft in the input box, checked through SessionBusyError.Draft and IsDraftHold.
+		// wantDraft is whether the busy error names a draft, checked via SessionBusyError.Draft and IsDraftHold.
 		wantDraft bool
 		wantWarns int
-		// wantActivityWarns counts the WARN lines about an unreadable operator-activity query across the row's polls, and wantActivityRecoveries the INFO lines saying it reads again.
+		// wantActivityWarns counts the WARN lines for an unreadable operator-activity query across the polls;
+		// wantActivityRecoveries counts the INFO lines for a query that reads again.
 		wantActivityWarns, wantActivityRecoveries int
 		// stray, when set, drives the row through a pane holding a lone stray character instead.
 		stray *strayRow
@@ -2633,9 +2623,13 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 }
 
 // strayRow is one Send into a pane whose input box starts holding box, driven over a strayPasteEngine.
-// hook seeds a finished turn in the events file, so the hook-derived reading decides; otherwise the file holds no signal and the pane does.
-// keepOnClear makes the clear leave the box as it is, active scripts the operator-activity answers, and wantClears is how many C-u keys the send plays.
-// A row with wantBusy fails with ErrSessionBusy naming each fragment and pastes nothing; any other row pastes "hello" once.
+// hook seeds a finished turn in the events file, so the hook-derived reading decides;
+// otherwise the file holds no signal and the pane does.
+// keepOnClear makes the clear leave the box as it is.
+// active scripts the operator-activity answers.
+// wantClears is how many C-u keys the send plays.
+// A row with wantBusy fails with ErrSessionBusy naming each fragment and pastes nothing;
+// any other row pastes "hello" once.
 type strayRow struct {
 	box         string
 	hook        bool
@@ -2693,7 +2687,8 @@ func checkStraySend(t *testing.T, row *strayRow) {
 	}
 }
 
-// paneReed is a fakeReed whose pane shows every text typed so far, so each Send's delivery check passes whatever order sends arrive in.
+// paneReed is a fakeReed whose pane shows every text typed so far,
+// so each Send's delivery check passes whatever order sends arrive in.
 // Every call yields the processor first, so an unordered pair of sends would interleave.
 type paneReed struct {
 	*fakeReed
@@ -2746,7 +2741,8 @@ func (c *onceStepClock) Sleep(d time.Duration) {
 	c.once.Do(c.step)
 }
 
-// gatedRunWithNotice drives a gated Wait that fails its gate once and then passes, with notice, when non-empty, sent through Run.Send beside it.
+// gatedRunWithNotice drives a gated Wait that fails its gate once and then passes.
+// When notice is non-empty, it is sent through Run.Send beside the Wait.
 // It returns the Wait result, the reed and the notice's Send error.
 func gatedRunWithNotice(t *testing.T, notice string) (Result, *paneReed, error) {
 	t.Helper()
@@ -2788,8 +2784,10 @@ func gatedRunWithNotice(t *testing.T, notice string) (Result, *paneReed, error) 
 	return result, reed, noticeErr
 }
 
-// TestRun_Send_ConcurrentSendsTypeInSequence pins the per-run send lock: two in-process sends on one run, and a Send beside a gated Wait's re-prompt, type one after the other.
-// Each send's Escape and text land together, each delivery verifies without a replay, and the notice costs the gate no attempt.
+// TestRun_Send_ConcurrentSendsTypeInSequence pins the per-run send lock:
+// two in-process sends on one run, and a Send beside a gated Wait's re-prompt, type one after the other.
+// Each send's Escape and text land together, each delivery verifies without a replay,
+// and the notice costs the gate no attempt.
 //
 // It is not parallel: stubInputSleep replaces a package-level function.
 func TestRun_Send_ConcurrentSendsTypeInSequence(t *testing.T) {

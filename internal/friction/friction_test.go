@@ -1,5 +1,6 @@
 // friction_test.go covers Directive's four roles and WarnIfMarkerAbsent.
-// Every test here is in tier 0: it uses only t.TempDir (via newTestStencilsDir, seeding a hermetic stencils directory) and spawns nothing.
+// Every test here is in tier 0.
+// It uses only t.TempDir, through newTestStencilsDir, and spawns nothing.
 
 package friction
 
@@ -13,15 +14,17 @@ import (
 )
 
 // newTestStencilsDir returns a seeded stencils directory.
-// Seeding runs `stencilstore.Reconcile`, so the files carry the real leading banner, which is what makes the banner-strip assertion in this file meaningful.
+// Seeding runs `stencilstore.Reconcile`, so the files carry the real leading banner that a banner-strip check needs.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 	return stencilkit.Seed(t)
 }
 
 // TestDirective_PerRole covers all four roles.
-// Against a seeded stencils directory each role returns its own stencil's text, containing the told note path verbatim -- the assertion that catches a composer wiring the wrong path.
-// Against a stencils directory that carries none of the four friction stencils each role fails loud with a non-nil error naming its missing stencil.
+// Against a seeded stencils directory, each role returns its own stencil's text, containing the note path verbatim.
+// This catches a composer that wires the wrong path.
+// Against a stencils directory without the four friction stencils, each role returns a non-nil error.
+// The error names the missing stencil.
 func TestDirective_PerRole(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -65,8 +68,9 @@ func TestDirective_PerRole(t *testing.T) {
 	}
 }
 
-// TestDirective_NoDirectiveAttemptsNoRead pins the two guards that return no directive text and attempt no stencil read: an empty notePath, and an unknown or zero Role with a non-empty notePath.
-// Each is asserted by pointing stencilsDir at a path that does not exist, so any attempted read would surface as an error.
+// TestDirective_NoDirectiveAttemptsNoRead pins the guards that return no directive text without reading a stencil.
+// The guards are an empty notePath, and a Role outside the defined roles with a non-empty notePath.
+// Each case points the stencils directory at a path that does not exist, so an attempted read would surface as an error.
 func TestDirective_NoDirectiveAttemptsNoRead(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -95,8 +99,9 @@ func TestDirective_NoDirectiveAttemptsNoRead(t *testing.T) {
 	}
 }
 
-// TestWarnIfMarkerAbsent_DoesNotPanic covers the marker-detection half: absent for template bytes with no "{{.friction_directive}}" literal, present for bytes carrying it, each with a directive and with an empty one.
-// Since WarnIfMarkerAbsent returns nothing, this test only pins that it does not panic on any input.
+// TestWarnIfMarkerAbsent_DoesNotPanic covers the marker detection in WarnIfMarkerAbsent.
+// It runs templates with and without the "{{.friction_directive}}" marker, each with and without a directive.
+// The function returns nothing, so the test only pins that it does not panic on these inputs.
 func TestWarnIfMarkerAbsent_DoesNotPanic(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

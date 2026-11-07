@@ -1,4 +1,5 @@
-// keep.go merges the keys of the JSON file a write replaces into the write's own encoding, so a record a newer binary wrote keeps the keys this binary's Go type does not declare.
+// keep.go merges the keys of the JSON file a write replaces into the write's own encoding.
+// It keeps the keys a newer binary wrote that this binary's Go type does not declare.
 
 package state
 
@@ -16,17 +17,20 @@ var (
 	nullJSON        = []byte("null")
 )
 
-// jsonMember is one member of a JSON object: its decoded key, the key's text as it stands in the source, and the raw bytes of its value.
+// jsonMember is one member of a JSON object: its decoded key, its source key text, and its raw value bytes.
 type jsonMember struct {
 	key    string
 	rawKey []byte
 	value  []byte
 }
 
-// keepUnknown returns newRaw with every object member of oldRaw that the Go type t does not declare appended to the object that holds it, recursing through t's struct, pointer, map, slice and array layers.
+// keepUnknown returns newRaw with the members of oldRaw's objects that the Go type t does not declare appended.
+// It recurses through t's struct, pointer, map, slice and array layers.
 // Both inputs are compact or indented JSON; the result is compact wherever it differs from newRaw.
-// A type that encodes itself (a json.Marshaler or json.Unmarshaler, json.RawMessage, an interface or a scalar kind) is opaque and yields newRaw whole, as does any pair whose JSON shapes differ.
-// A slice or array element is merged with an old element only when both decode to the same value, so an element updated in place keeps no unknown keys, while one that merely shifted index keeps them.
+// An opaque type yields newRaw whole: a json.Marshaler, json.Unmarshaler, json.RawMessage, interface or scalar kind.
+// Any pair whose JSON shapes differ also yields newRaw whole.
+// Slice and array elements merge only with an old element that decodes into t and re-encodes to the same JSON.
+// So an element updated in place keeps no unknown keys, while one that merely shifted index keeps them.
 func keepUnknown(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	if isOpaque(t) {
 		return newRaw
@@ -66,7 +70,10 @@ func isOpaque(t reflect.Type) bool {
 	return true
 }
 
-// keepUnknownInStruct merges oldRaw into newRaw for a struct type: the new object's members in their order, each recursed into when the old object holds the same key, then the old object's undeclared members in the old order.
+// keepUnknownInStruct merges oldRaw into newRaw for a struct type.
+// The result holds the new object's members in their order.
+// Each declared member is merged with the old object's value under the same key, when there is one.
+// The old object's undeclared members follow, in the old order.
 func keepUnknownInStruct(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	oldMembers, oldIsObject := objectMembers(oldRaw)
 	newMembers, newIsObject := objectMembers(newRaw)
@@ -101,7 +108,8 @@ func keepUnknownInStruct(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	return encodeObject(merged)
 }
 
-// keepUnknownInMap merges oldRaw into newRaw for a map type: each value under a key both objects hold is recursed into, and no key the new map lacks is added.
+// keepUnknownInMap merges oldRaw into newRaw for a map type.
+// Each value under a key both objects hold is merged, and no key the new map lacks is added.
 func keepUnknownInMap(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	oldMembers, oldIsObject := objectMembers(oldRaw)
 	newMembers, newIsObject := objectMembers(newRaw)
@@ -117,7 +125,9 @@ func keepUnknownInMap(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	return encodeObject(newMembers)
 }
 
-// keepUnknownInList merges oldRaw into newRaw for a slice or array type, element by element, for each element that has a not yet paired old element encoding to the same compact JSON, the one at the same index preferred.
+// keepUnknownInList merges oldRaw into newRaw for a slice or array type, element by element.
+// Each new element pairs with an unpaired old element that encodes to the same compact JSON.
+// The one at the same index is preferred.
 func keepUnknownInList(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	if isOpaque(t.Elem()) {
 		return newRaw
@@ -137,7 +147,8 @@ func keepUnknownInList(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	return encodeArray(newElements)
 }
 
-// pairOldElement returns the index of the old element not yet paired that encodes as newElement, preferring preferred and otherwise the first such element.
+// pairOldElement returns the index of an unpaired old element that encodes as newElement.
+// It prefers the element at preferred, and otherwise takes the first match.
 func pairOldElement(t reflect.Type, oldElements [][]byte, paired []bool, preferred int, newElement []byte) (int, bool) {
 	if preferred < len(oldElements) && !paired[preferred] && encodesAs(t, oldElements[preferred], newElement) {
 		return preferred, true
@@ -170,7 +181,8 @@ type fieldSet struct {
 	names []string
 }
 
-// declaredFields returns the keys t declares: json tag names and field names, embedded structs' promoted fields included and `json:"-"` fields excluded.
+// declaredFields returns the keys t declares: JSON tag names or field names.
+// Promoted fields of embedded structs are included, and `json:"-"` fields are excluded.
 func declaredFields(t reflect.Type) fieldSet {
 	declared := fieldSet{exact: map[string]reflect.Type{}}
 	for _, field := range reflect.VisibleFields(t) {
@@ -203,7 +215,9 @@ func declaredFields(t reflect.Type) fieldSet {
 	return declared
 }
 
-// lookup returns the type of the field key decodes into: the field whose name equals key, else the first whose name equals it ignoring case, as encoding/json matches.
+// lookup returns the type that key decodes into.
+// It prefers the field whose name equals key exactly.
+// Otherwise it takes the first field whose name matches key ignoring case, as encoding/json does.
 func (declared fieldSet) lookup(key string) (reflect.Type, bool) {
 	if fieldType, found := declared.exact[key]; found {
 		return fieldType, true
@@ -225,7 +239,8 @@ func lastValueByKey(members []jsonMember) map[string][]byte {
 	return values
 }
 
-// objectMembers splits a JSON object into its members in source order, and reports false when raw is not exactly one object.
+// objectMembers splits a JSON object into its members in source order.
+// It reports false when raw is not exactly one object.
 func objectMembers(raw []byte) ([]jsonMember, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
@@ -252,7 +267,8 @@ func objectMembers(raw []byte) ([]jsonMember, bool) {
 	return members, decoder.InputOffset() == int64(len(raw))
 }
 
-// arrayElements splits a JSON array into its raw elements, and reports false when raw is not exactly one array.
+// arrayElements splits a JSON array into its raw elements.
+// It reports false when raw is not exactly one array.
 func arrayElements(raw []byte) ([][]byte, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if token, err := decoder.Token(); err != nil || token != json.Delim('[') {

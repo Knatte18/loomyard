@@ -1,6 +1,6 @@
-// seedownership_test.go covers VerifySeedOwnership, F-B7's (round fable5-high-r3) guard: a status
-// file recording a different task's slug — the state a worktree inherits when forked from a task
-// worktree — must refuse loudly instead of letting the driver resume the inherited run.
+// seedownership_test.go covers VerifySeedOwnership.
+// A status file recording a different task's slug must be refused loudly.
+// A worktree inherits one when forked from a task worktree, and refusing it stops the driver resuming that run.
 
 package loomengine
 
@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeSeedFixture writes a shedengine.Status carrying a loom Status product with slug, returning
-// the status and lock paths.
+// writeSeedFixture writes a shedengine.Status with a loom Status product carrying slug.
+// It returns the status and lock paths.
 func writeSeedFixture(t *testing.T, slug string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -70,11 +70,10 @@ func TestVerifySeedOwnership(t *testing.T) {
 		}
 	})
 
-	// DecodeFailurePasses pins that a malformed status file (exactly what a corrupted or hand-edited status.json produces) is ownership's business to pass on, not to refuse.
-	// A decode failure is diagnosed by the spawned driver's Shed.Run step-1 read gate,
-	// which does the same read at the top of its loop and errors on it before any producer is looked up,
-	// so this ownership check must not stand in for the step-1 gate.
-	// Reproduced live: before this test existed, a poisoned status file made both "lym loom start" and "lym loom run" refuse on the envelope before ever spawning a driver, contradicting this function's own doc comment.
+	// DecodeFailurePasses pins that VerifySeedOwnership passes a malformed status file rather than refusing it.
+	// A corrupted or hand-edited status.json is such a file.
+	// The spawned driver's Shed.Run step-1 read gate reads the same file at the top of its loop.
+	// It fails on a decode error before it looks up any producer, so this check must not stand in for that gate.
 	t.Run("DecodeFailurePasses", func(t *testing.T) {
 		dir := t.TempDir()
 		statusPath := filepath.Join(dir, "status.json")

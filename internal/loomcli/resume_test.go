@@ -1,4 +1,5 @@
-// resume_test.go pins `lym loom resume` outcome by outcome over fakes for the driver directory, the merge probe and the driver sender, with real status, run-lock and park-marker files in a temp directory.
+// resume_test.go pins each outcome of `lym loom resume` over fakes for the driver directory, merge probe and sender.
+// Real status, run-lock and park-marker files in a temp directory back the verb.
 // It also pins that the verb takes the bootstrap lock before reading anything.
 
 package loomcli
@@ -48,7 +49,8 @@ type resumeEnvelope struct {
 	Conflicts  *[]string `json:"conflicts"`
 }
 
-// newResumeVerbReceiver builds a receiver for the resume verb over the shared temp-directory fixture, with the given driver strand and a clean merge probe.
+// newResumeVerbReceiver builds a receiver for the resume verb over the shared temp-directory fixture.
+// The receiver reports the given driver strand and a clean merge probe.
 // c.reed stays nil,
 // so a call into reed would panic: the verb must touch only its seams.
 func newResumeVerbReceiver(t *testing.T, sender *fakeDriverSender, directory fakeDriverDirectory) (*loomCLI, *fakeDriverStarter, *fakeDriverPaneProbeFull) {
@@ -63,10 +65,11 @@ func newResumeVerbReceiver(t *testing.T, sender *fakeDriverSender, directory fak
 	return c, starter, probe
 }
 
-// resumeBouncerSubdir is the run subdirectory fakeBouncerSubdir reports for the Plan-Bouncer row.
+// resumeBouncerSubdir is the run subdirectory of the Plan-Bouncer row's Bouncer in these tests.
 const resumeBouncerSubdir = "plan-review-test"
 
-// fakeBouncerSubdir reports the Plan-Bouncer row as a Bouncer with resumeBouncerSubdir and every other row as no Bouncer.
+// fakeBouncerSubdir reports the Plan-Bouncer row as a Bouncer with the fixed test subdirectory.
+// Every other row reports no Bouncer.
 func fakeBouncerSubdir(row string) (string, bool, error) {
 	if row == loomshed.NamePlanBouncer {
 		return resumeBouncerSubdir, true, nil
@@ -74,7 +77,8 @@ func fakeBouncerSubdir(row string) (string, bool, error) {
 	return "", false, nil
 }
 
-// layoutResumeBouncerRun creates the Plan-Bouncer run directory with one reviewed round and, when decision is not empty, that round's circling decision file with decision as its content.
+// layoutResumeBouncerRun creates the Plan-Bouncer run directory with one reviewed round.
+// When decision is not empty, it also writes that round's circling decision file with decision as its content.
 func layoutResumeBouncerRun(t *testing.T, c *loomCLI, decision string) {
 	t.Helper()
 	runDir := filepath.Join(loomengine.LoomReviewsDir(c.location), resumeBouncerSubdir)
@@ -92,7 +96,8 @@ func layoutResumeBouncerRun(t *testing.T, c *loomCLI, decision string) {
 	}
 }
 
-// invokeResume runs the verb and returns its decoded envelope and exit code, reporting a failure as an error so a goroutine can call it.
+// invokeResume runs the verb and returns its decoded envelope and exit code.
+// It reports a failure as an error, so a goroutine can call it.
 func invokeResume(c *loomCLI) (resumeEnvelope, int, error) {
 	ctx, exit := clihelp.NewExitContext(context.Background())
 	var out bytes.Buffer
@@ -143,8 +148,10 @@ func putParkMarker(t *testing.T, c *loomCLI) string {
 // pendingAcceptDecision is a circling decision file for round 1 that is recorded and not yet settled.
 const pendingAcceptDecision = "---\nround: 1\ndecision: accept\ncause: circling\nsettled: false\n---\n"
 
-// TestResumeVerb reaches every outcome of `lym loom resume` and asserts for each the envelope, the exit code, that nothing was spawned, added or removed,
-// that a resume line was typed only when a parked driver was woken, and that no message names `lym loom start` as the retry of resume.
+// TestResumeVerb reaches every outcome of `lym loom resume` and asserts for each the envelope and the exit code.
+// It asserts that nothing was spawned, added or removed.
+// It asserts that a resume line was typed only when a parked driver was woken.
+// It asserts that no message names `lym loom start` as the retry of resume.
 func TestResumeVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -166,7 +173,7 @@ func TestResumeVerb(t *testing.T) {
 		// decision is the content of the Plan-Bouncer run's circling decision file;
 		// empty lays out no Plan-Bouncer run directory at all unless bouncerRun is set.
 		decision string
-		// bouncerRun lays out the Plan-Bouncer run directory with one reviewed round, and the decision file when decision is set.
+		// bouncerRun lays out the Plan-Bouncer run directory with one reviewed round, and its decision file if set.
 		bouncerRun bool
 		// lookupErr makes the Bouncer-row lookup fail.
 		lookupErr error
@@ -182,7 +189,7 @@ func TestResumeVerb(t *testing.T) {
 		marker     bool
 		// covered records a live pause entry covering the run before the verb runs.
 		covered bool
-		// noScratch points the lock paths at a directory that does not exist after the status file is written, as on a pair re-created from its branch.
+		// noScratch points the lock paths at a directory that does not exist, as on a pair re-created from its branch.
 		noScratch bool
 		merge     fabricengine.MidMergeState
 		wantOK    bool
@@ -339,7 +346,8 @@ func TestResumeVerb(t *testing.T) {
 	}
 }
 
-// TestResumeVerb_FailedDeliveryNamesResume asserts a resume line that cannot be delivered is refused naming `lym loom status` and a re-run of `lym loom resume`, and leaves the marker.
+// TestResumeVerb_FailedDeliveryNamesResume asserts that a resume line that cannot be delivered is refused.
+// The refusal names `lym loom status` and a re-run of `lym loom resume`, and the park marker stays on disk.
 func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -371,9 +379,9 @@ func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 	}
 }
 
-// TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState asserts the verb waits for a held bootstrap lock and reads the run's state only after it is released:
-// the status file is written while the lock is held,
-// and the verb must report that state, not the absence it would have found reading first.
+// TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState asserts that the verb waits for a held bootstrap lock.
+// The status file is written while the lock is held, and the verb must report that state.
+// Reading before the release would find no state, so the verb must read after it.
 func TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

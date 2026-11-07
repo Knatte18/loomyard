@@ -1,4 +1,5 @@
-// rowgate_test.go covers WrapRowGate over a scripted fixer and scripted inner gate closures in a temp visit directory.
+// rowgate_test.go covers WrapRowGate over a scripted fixer and scripted inner gate closures.
+// The closures run against a temp visit directory.
 
 package gatefixer
 
@@ -16,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeFixer is a Fixer scripted by its fields: it records its spawns and stops, answers running a set number of times before it ends, and can fail its spawn, its wait or its stop.
+// fakeFixer is a Fixer scripted by its fields.
+// It records its spawns and stops and answers running a set number of times before it ends.
+// It can fail its spawn, its wait or its stop.
 type fakeFixer struct {
 	mu sync.Mutex
 	// runningFirst is how many waits answer running before the terminal answer.
@@ -148,7 +151,7 @@ func (h *rowHarness) statuses(t *testing.T) []string {
 	return statuses
 }
 
-// wrap wraps a one-entry spec whose entry has the given gate, forked gate and attempts.
+// wrap wraps a one-entry spec around entry and returns the wrapped entry.
 func (h *rowHarness) wrap(t *testing.T, entry shuttleengine.GateEntry) shuttleengine.GateEntry {
 	t.Helper()
 	wrapped, err := WrapRowGate(shuttleengine.GateSpec{entry}, entry.Name, h.rf)

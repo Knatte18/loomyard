@@ -1,6 +1,7 @@
 //go:build !windows
 
-// run_tied_integration_test.go holds the tests of RunTied: the process-group record it reports and the parent-death tie of its shell.
+// run_tied_integration_test.go holds the tests of RunTied.
+// They cover the process-group record it reports and the parent-death tie of its shell.
 
 package verifyrun
 

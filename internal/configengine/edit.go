@@ -1,11 +1,6 @@
-// edit.go — interactive config editing with scaffold, validate, and abort contract.
-//
-// Provides the Edit function, and EditPath for a file at a told path, to load a config file, open it in an injected editor, validate the
-// YAML syntax, and loop on validation failure.
-// Scaffolds a missing hub base with the sparse header, and any other missing base from the template, and removes a scaffolded file on abort to leave the filesystem in its
-// pre-call state.
-// An overlay module's base scaffold holds empty per-name maps, and a hub worktree save holding the overlay selector with a value other than the base's is refused.
-// Injected EditorFunc allows tests to drive the editor without a real process.
+// edit.go opens a config file in an injected editor, validates its YAML syntax, and loops on a validation failure.
+// Edit and EditPath are the entry points; an abort removes a file that the call scaffolded.
+// Tests drive the editor through the injected EditorFunc, without a real process.
 
 package configengine
 
@@ -28,8 +23,8 @@ import (
 type EditorFunc func(path string) error
 
 // ErrAborted is the sentinel error returned when an edit is aborted.
-// On abort, Edit removes a scaffolded file and leaves a pre-existing file with what the editor left.
-// On an empty or whitespace-only result a pre-existing file is put back to its previous bytes instead.
+// An abort removes a scaffolded file and leaves a pre-existing file with what the editor left.
+// An empty or whitespace-only result restores a pre-existing file to its previous bytes instead.
 var ErrAborted = errors.New("config edit aborted")
 
 // resolveEditor picks the editor command as a binary plus the arguments that precede the path.
@@ -55,14 +50,13 @@ func resolveEditor(getenv func(string) string, lookPath func(string) (string, er
 	return "vi", nil
 }
 
-// DefaultEditor resolves the editor from $VISUAL, then $EDITOR, then `code --wait` when code is on
-// PATH, then notepad on Windows, and elsewhere nano when it is on PATH, else vi.
-// It runs the editor via os/exec with Stdin/Stdout/Stderr wired to the process std streams.
-// Returns a non-nil error if the editor exits non-zero.
+// DefaultEditor opens path in the first of these that applies:
+// $VISUAL, $EDITOR, `code --wait` when code is on PATH, notepad on Windows, nano when it is on PATH, vi.
+// It runs the editor through os/exec with Stdin, Stdout and Stderr wired to the process std streams.
+// It returns a non-nil error if the editor exits non-zero.
 func DefaultEditor(path string) error {
 	editorCmd, editorArgs := resolveEditor(os.Getenv, exec.LookPath, runtime.GOOS)
 
-	// Run the editor with the path as the last argument.
 	cmd := exec.Command(editorCmd, append(editorArgs, path)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -77,26 +71,22 @@ func DefaultEditor(path string) error {
 	return nil
 }
 
-// scaffoldIfMissing writes template to path (creating configDir first) when
-// path does not yet exist, and reports whether it did so.
+// scaffoldIfMissing writes template to path when path does not yet exist, and reports whether it did so.
+// It creates configDir first when it scaffolds.
 //
-// It is shared by Edit and Set so both entry points scaffold a missing config
-// file identically: a caller that scaffolds must know so it can remove the
-// fresh file on any later abort, restoring the pre-call filesystem state.
+// A caller that receives true must remove the file on any later abort;
+// removing it restores the pre-call filesystem state.
 func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err error) {
-	// Check if the file already exists.
 	_, statErr := os.Stat(path)
 	scaffolded = os.IsNotExist(statErr)
 	if !scaffolded {
 		return false, nil
 	}
 
-	// Create _lym/config/ directory if needed.
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return false, fmt.Errorf("create config directory: %w", err)
 	}
 
-	// Write the template to the new file.
 	if err := os.WriteFile(path, []byte(template), 0o644); err != nil {
 		return false, fmt.Errorf("scaffold config file: %w", err)
 	}
@@ -104,10 +94,12 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 	return true, nil
 }
 
-// BaseScaffold returns the bytes an absent base layer is scaffolded with:
-// [SparseBaseHeader] when the base is sparse over the template.
-// For a spec with an overlay selector it is the template with every per-name map emptied, else the spec's template.
-// An overlay module's scaffold holds no per-name entry, so no entry of the base template pins itself over the layer the base picks.
+// BaseScaffold returns the bytes an absent base layer is scaffolded with.
+// It is [SparseBaseHeader] when the base is sparse over the template.
+// For a spec with an overlay selector it is the template with every per-name map emptied;
+// otherwise it is the spec's template.
+// An overlay module's scaffold holds no per-name entry,
+// so no entry of the base template pins itself over the layer the base picks.
 func BaseScaffold(dirs Dirs, spec Spec) string {
 	if sparseBase(dirs, spec) {
 		return SparseBaseHeader
@@ -145,14 +137,15 @@ func scaffoldWithoutPerNameEntries(spec Spec) string {
 	return out.String()
 }
 
-// hubWorktreeGuardsSelector reports whether layer is the worktree layer of a hub for a spec with an overlay selector:
-// the one layer above the base a selector value must not differ in.
+// hubWorktreeGuardsSelector reports whether layer is the worktree layer of a hub whose spec has an overlay selector.
+// It is the one layer above the base where the selector may not differ from the base's value.
 func hubWorktreeGuardsSelector(dirs Dirs, spec Spec, layer Layer) bool {
 	return spec.Overlay.Selector != "" && layer == LayerWorktree && BaseLayer(dirs, spec) == LayerDefault
 }
 
-// worktreeSelectorRefusal returns the refusal of a hub worktree document holding the selector with a value other than the default file's, or nil when it holds none.
-// heldBefore says the file held the selector before the write or edit being judged.
+// worktreeSelectorRefusal refuses a hub worktree document whose selector differs from the default file's.
+// It returns nil when no such value is present.
+// heldBefore reports whether the file held the selector before the write or edit being judged.
 func worktreeSelectorRefusal(dirs Dirs, spec Spec, path string, document []byte, heldBefore bool) error {
 	defaultPath, _ := LayerFile(dirs, spec, LayerDefault)
 	defaultBytes, err := os.ReadFile(defaultPath)
@@ -169,12 +162,14 @@ func worktreeSelectorRefusal(dirs Dirs, spec Spec, path string, document []byte,
 	return nil
 }
 
-// Edit opens the layer's file of spec under dirs in an editor, validates the YAML syntax, and loops on validation
-// failure.
-// An absent base layer is scaffolded through [BaseScaffold], the header for a hub's sparse base and the template for a standalone or seed-only one; a layer above it is sparse, so an absent file is scaffolded empty.
-// On abort, removes any scaffolded file and returns ErrAborted.
+// Edit opens the layer's file of spec under dirs in an editor, validates its YAML, and loops on a validation failure.
+// An absent base layer is scaffolded through [BaseScaffold]:
+// the header for a hub's sparse base, and the template for a standalone or seed-only one.
+// A layer above the base is sparse, so an absent file there is scaffolded empty.
+// On abort it removes any scaffolded file and returns ErrAborted.
 // Validation is syntactic only;
-// known keys are not enforced, except that a saved local override must pass [ValidateLocal] and a saved machine override [ValidateMachine],
+// known keys are not enforced, except that a saved local override must pass [ValidateLocal],
+// and a saved machine override must pass [ValidateMachine],
 // and a saved hub worktree file may not hold a spec's overlay selector with a value other than the default file's.
 // A refused save is put back to its previous bytes, or removed when the call created it.
 func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
@@ -221,11 +216,11 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	return nil
 }
 
-// EditPath is Edit's body for a file at a told path, with no _lym/ check:
-// it scaffolds path from template when absent (creating its parent directory), runs the editor,
-// and loops on a YAML parse error.
+// EditPath opens the file at path in an editor, validates its YAML syntax, and loops on a parse error.
+// An absent path is scaffolded from template, creating its parent directory first.
 // An unchanged unparseable save returns ErrAborted, and any abort removes a file EditPath scaffolded.
-// An empty or whitespace-only result is an abort too, checked before the YAML parse: a pre-existing file is written back to the bytes it held on entry.
+// An empty or whitespace-only result is an abort too, checked before the YAML parse:
+// a pre-existing file is written back to the bytes it held on entry.
 // Validation is syntactic only.
 func EditPath(path, template string, edit EditorFunc) error {
 	scaffolded, err := scaffoldIfMissing(path, filepath.Dir(path), template)
@@ -242,11 +237,10 @@ func EditPath(path, template string, edit EditorFunc) error {
 		return fmt.Errorf("read config file: %w", err)
 	}
 
-	// Loop until valid YAML is saved or edit is aborted.
 	for {
 		preEditBytes, err := os.ReadFile(path)
 		if err != nil {
-			// If we just scaffolded and now can't read it, something is very wrong.
+			// If we just scaffolded and now can't read it, something is wrong.
 			if scaffolded {
 				_ = os.Remove(path)
 			}
@@ -282,7 +276,7 @@ func EditPath(path, template string, edit EditorFunc) error {
 
 		var config map[string]any
 		if err := yaml.Unmarshal(postEditBytes, &config); err != nil {
-			// Parse failed. Check if the user left the bytes unchanged.
+			// The parse failed; the user may have saved the bytes unchanged.
 			if string(preEditBytes) == string(postEditBytes) {
 				// User saved without fixing; abort.
 				if scaffolded {
@@ -291,7 +285,7 @@ func EditPath(path, template string, edit EditorFunc) error {
 				return ErrAborted
 			}
 
-			// Bytes changed; print the error and loop to re-edit.
+			// The user changed the bytes but they still do not parse, so the editor opens again.
 			fmt.Fprintf(os.Stderr, "config parse error: %v\n", err)
 			continue
 		}

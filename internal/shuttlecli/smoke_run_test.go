@@ -1,15 +1,6 @@
-// smoke_run_test.go is shuttlecli's live-integration smoke suite entry
-// point: the shared helpers (the orphaned-conhost
-// teardown guard) used across this file, smoke_guardrail_test.go, and
-// smoke_interrupt_test.go, plus TestSmokeShuttleRunWritesOutputAndCleans —
-// the full round-trip proof that `lym shuttle run` drives a REAL claude in a
-// REAL tmux pane to a "done" outcome, writes the file-contract output, and
-// cleans up the strand and run directory afterward. Follows the
-// internal/reedcli/smoke_*.go conventions: opt-in via -tags llm, skipped
-// when no claude binary resolves, deferHubRelease against the
-// orphaned-conhost hazard. The helpers here are reproduced (not imported)
-// from reedcli's smoke files, per the smoke-files-are-self-contained
-// convention.
+// smoke_run_test.go holds the live round-trip test for `lym shuttle run`, TestSmokeShuttleRunWritesOutputAndCleans.
+// It also holds the helpers the smoke files share, such as deferHubRelease for the orphaned-conhost hazard.
+// The test skips unless tiergate selects tier 3 and a claude binary resolves.
 
 package shuttlecli
 
@@ -31,33 +22,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
-// for the orphaned-conhost teardown probe. Explicit absolute path, never a
-// bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
+// smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to for the orphaned-conhost teardown probe.
+// It is an explicit absolute path, never a bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// smokeClaudeModel is the model every real `claude` process this package spawns must run on,
-// matching internal/reedcli/smoke_test.go's constant of the same name.
-// Every test here asserts something mechanical — a file's content, an envelope field, whether a
-// strand is still tracked — and a stronger model buys none of it, so leaving the model unpinned
-// only spent the account default's tokens on each of the four real spawns.
-// A test that genuinely needs model-specific behaviour must say so explicitly rather than silently
-// omitting the pin.
+// smokeClaudeModel is the model every real `claude` process this package spawns must run on.
+// Every test checks something mechanical: a file's content, an envelope field, or whether a strand is still tracked.
+// A stronger model buys none of that.
+// Leaving the model unpinned only spent the account default's tokens on each real spawn.
+// A test that needs model-specific behaviour must say so explicitly rather than silently omit the pin.
 const smokeClaudeModel = "haiku"
 
-// hubHolder is one process still holding the fixture hub as its current
-// working directory, as reported by hubHolders.
+// hubHolder is one process still holding the fixture hub as its current working directory.
 type hubHolder struct {
 	pid  int
 	name string
 }
 
-// hubHolders returns every process whose current working directory is
-// inside dir, read from each process's PEB (RTL_USER_PROCESS_PARAMETERS.
-// CurrentDirectory via NtQueryInformationProcess) — the only way to find the
-// conhost.exe holders, since Win32_Process exposes no cwd column. Returns
-// nil when nothing holds dir or the probe fails (callers degrade to
-// waiting).
+// hubHolders returns every process whose current working directory is inside dir.
+// It reads the directory from each PEB (RTL_USER_PROCESS_PARAMETERS.CurrentDirectory) via NtQueryInformationProcess.
+// Win32_Process exposes no cwd column, so this PEB read is the only way to find the conhost.exe holders.
+// It returns nil when nothing holds dir or the probe fails, and callers degrade to waiting.
 func hubHolders(t *testing.T, pwshPath, dir string) []hubHolder {
 	t.Helper()
 	script := fmt.Sprintf(`
@@ -117,27 +102,24 @@ Get-Process | ForEach-Object {
 	return holders
 }
 
-// deferHubRelease registers a cleanup that makes the fixture hub directory
-// releasable before the framework's TempDir RemoveAll — which runs AFTER
-// this cleanup — so RemoveAll never fails with a worktree-dir-in-use error.
-// The holder in question is the conhost.exe the OS parents to psmux to host
-// each pane's pseudo-console: reed never spawns it, it is not a #{pane_pid}
-// descendant, and on a quiet machine it exits on its own a beat after its
-// pane dies — but under CPU saturation it can be ORPHANED and then holds the
-// hub cwd indefinitely, so no fixed wait can ever out-last it. The cleanup
-// therefore confirms rather than waits: a short grace for the self-exit
-// path, then it kills any conhost whose PEB cwd is inside the hub (safe —
-// its console app is already gone) and keeps confirming until the hub
-// actually renames. A NON-conhost holder is a genuine leak and fails the
-// test loudly instead of being masked. Registered before t.Chdir and the
-// down cleanup so it runs AFTER them (cwd already restored out of hub) but
-// BEFORE RemoveAll.
+// deferHubRelease registers a cleanup that makes the fixture hub directory releasable.
+// The framework's TempDir RemoveAll runs after it, so RemoveAll never fails with a worktree-dir-in-use error.
+// The holder in question is the conhost.exe the OS parents to psmux to host each pane's pseudo-console.
+// reed never spawns it, and it is not a #{pane_pid} descendant.
+// On a quiet machine it exits on its own a beat after its pane dies.
+// Under CPU saturation it can be ORPHANED, and then it holds the hub cwd indefinitely.
+// No fixed wait can ever out-last it, so the cleanup confirms rather than waits.
+// It first allows a short grace for the self-exit path.
+// Then it kills any conhost whose PEB cwd is inside the hub, which is safe because its console app is already gone.
+// It keeps confirming until the hub actually renames.
+// A non-conhost holder is a genuine leak: the test fails loudly instead of masking it.
+// Register it before t.Chdir and before any later t.Cleanup, so that it runs after them.
+// By then the cwd is already restored out of the hub.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
-		// A process cannot rename its own cwd; make sure ours is not in hub
-		// while probing, then restore it so a later test's cwd-relative work
-		// is not corrupted.
+		// A process cannot rename its own cwd, so make sure ours is not in hub while probing.
+		// Then restore it, so a later test's cwd-relative work is not corrupted.
 		prev, _ := os.Getwd()
 		_ = os.Chdir(os.TempDir())
 
@@ -162,13 +144,12 @@ func deferHubRelease(t *testing.T, hub string) {
 			}
 		}
 
-		// Grace phase: the healthy path, where the ConPTY host exits on its
-		// own moments after its pane died.
+		// Grace phase: the healthy path, where the ConPTY host exits on its own moments after its pane died.
 		if !waitReleased(10 * time.Second) {
-			// Escalation phase: identify the actual holders. Orphaned
-			// conhosts are killed (re-scanned each round — one can appear
-			// late while the OS teardown is starved); anything else holding
-			// the hub is a real leak the kill must not paper over.
+			// Escalation phase: identify the actual holders.
+			// Orphaned conhosts are killed; a conhost can appear late while the OS teardown is starved,
+			// so the holders are re-scanned each round.
+			// Anything else holding the hub is a real leak the kill must not paper over.
 			deadline := time.Now().Add(90 * time.Second)
 			for {
 				for _, h := range hubHolders(t, smokePwshPath, hub) {
@@ -189,19 +170,18 @@ func deferHubRelease(t *testing.T, hub string) {
 			}
 		}
 
-		// Restore the original cwd only when it is outside hub (the normal
-		// case, since t.Chdir's own restore has already run by now); never
-		// chdir back into a hub that is about to be removed.
+		// Restore the original cwd only when it is outside hub, which is the normal case:
+		// t.Chdir's own restore has already run when this cleanup does.
+		// Never chdir back into a hub that is about to be removed.
 		if prev != "" && !strings.HasPrefix(strings.ToLower(prev), strings.ToLower(hub)) {
 			_ = os.Chdir(prev)
 		}
 	})
 }
 
-// reedStatusStrand runs `lym reed status` in the current worktree and returns
-// the tracked strand record for guid, or ok=false if status does not list
-// it — the shared assertion helper this file's and smoke_guardrail_test.go's
-// tests use to confirm a run's post-outcome reed state.
+// reedStatusStrand runs `lym reed status` in the current worktree and returns the tracked strand record for guid.
+// The second result is false when status does not list guid.
+// Smoke tests use it to confirm a run's post-outcome reed state.
 func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 	t.Helper()
 	var out bytes.Buffer
@@ -222,13 +202,10 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 	return nil, false
 }
 
-// TestSmokeShuttleRunWritesOutputAndCleans drives one full `lym shuttle run` against a REAL claude
-// in a REAL tmux pane: `up` boots the substrate first (a strand must exist in an up'd session
-// before AddStrand can bind a pane to it), then `run` blocks until the agent writes the requested
-// output file and the run loop classifies it "done".
-// Asserts the file-contract output, the envelope's outcome, and that both the strand and run
-// directory are cleaned up afterward — the same happy path the sandbox suite's S1 scenario
-// exercises manually.
+// TestSmokeShuttleRunWritesOutputAndCleans drives one full `lym shuttle run` against a real claude in a real tmux pane.
+// The run blocks until the agent writes the requested output file and the run loop classifies it "done".
+// It asserts the file-contract output and the envelope's outcome,
+// and that both the strand and the run directory are cleaned up afterward.
 func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
@@ -242,8 +219,8 @@ func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
-	// up: boots the substrate. A strand must exist in an up'd session
-	// before shuttle's AddStrand can bind it to a pane.
+	// `up` boots the substrate first.
+	// A strand must exist in an up'd session before `AddStrand` can bind a pane to it.
 	var reedOut bytes.Buffer
 	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())

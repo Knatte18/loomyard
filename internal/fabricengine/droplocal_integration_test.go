@@ -1,6 +1,8 @@
-// droplocal_integration_test.go proves DropLocal on a hubforge hub: a pair's local-only tips are tagged and its branches moved to origin's tips, or a dirty path refuses with nothing moved.
+// droplocal_integration_test.go tests DropLocal on a hubforge hub:
+// a pair's local-only tips are tagged and its branches moved to origin's tips,
+// or a dirty tracked path refuses with nothing moved.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// The file shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -17,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDropLocal covers a records branch and a code branch ahead of origin tagged and moved to origin's tips with the mutations recorded, and a dirty tracked path refusing with nothing tagged or moved.
+// TestDropLocal checks the branches ahead of origin:
+// a records branch and a code branch are tagged and moved to origin's tips, with the mutations recorded.
+// A dirty tracked path refuses the drop with nothing tagged or moved.
 func TestDropLocal(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -100,7 +104,8 @@ func TestDropLocal(t *testing.T) {
 
 		tests := []struct {
 			name string
-			// arrange leaves the records branch ahead of origin and the two anchors apart, and returns what the refusal must contain.
+			// arrange leaves the records branch ahead of origin and the two anchors apart.
+			// It returns what the refusal must contain.
 			arrange func(t *testing.T, pair *movesPair) []string
 		}{
 			{

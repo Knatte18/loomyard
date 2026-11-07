@@ -1,4 +1,4 @@
-// segmentcolor.go resolves a loom segment to its configured palette color and validates the segment color config at boot.
+// segmentcolor.go resolves a loom segment to its configured palette color and validates the color config at boot.
 
 package reedengine
 
@@ -10,8 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
-// validateSegmentColors fails when any configured value is outside the palette.
-// The error names the key, the value and the palette as the way forward; keys are checked in sorted order so the message is deterministic.
+// validateSegmentColors fails on the first configured value outside the palette.
+// Keys are checked in sorted order, so the same config always reports the same key.
+// The error names the key and asks for one of the palette colors.
 func validateSegmentColors(colors map[string]string) error {
 	keys := make([]string, 0, len(colors))
 	for key := range colors {
@@ -26,8 +27,9 @@ func validateSegmentColors(colors map[string]string) error {
 	return nil
 }
 
-// segmentColor returns the palette color configured for a segment.
-// An empty segment yields no color silently; a segment with no key, or a value outside the palette, yields no color and a logged warning.
+// segmentColor returns the palette color configured for a segment, and false when there is none.
+// An empty segment yields no color without a log line;
+// a segment with no key, or a value outside the palette, yields no color and logs a warning.
 // Only palette names leave it, so no config value carries format syntax into a tmux format or a typed command.
 func (e *Engine) segmentColor(segment string) (segmentcolor.Color, bool) {
 	if segment == "" {

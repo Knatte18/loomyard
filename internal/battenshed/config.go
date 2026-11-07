@@ -21,10 +21,12 @@ func ConfigTemplate() string {
 }
 
 // Config is the resolved batten.yaml's tackler and arbiter keys, which a batten run passes through.
-// The Command rows' entry-gate and command keys are read one at a time through the setting lookups, so Config holds none of them.
+// The Command rows' entry-gate and command keys are read one at a time through the setting lookups.
+// Config holds none of them.
 type Config struct {
-	// Tackler, TacklerTimeoutMin, TacklerMaxSpawns, Arbiter, ArbiterTimeoutMin and ArbiterMaxSpawns override shed.yaml's keys of the same names for a batten run;
-	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
+	// These keys override shed.yaml's keys of the same names for a batten run;
+	// an empty string, a zero or a null inherits shed.yaml,
+	// and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
 	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
@@ -46,13 +48,14 @@ func (c Config) ShedOverride() sheddriver.Override {
 	}
 }
 
-// ValidateLocalValues checks the tackler and arbiter keys a local-layer document sets, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks only the tackler and arbiter keys that a local-layer document sets.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
 	return sheddriver.CheckLocalOverride("batten", document)
 }
 
-// ConfigSpec returns batten's layered-load spec: a per-worktree module whose Command-row entry-gate, tackler and arbiter keys a local override, and so a task's run settings, may set.
+// ConfigSpec returns batten's layered-load spec: a per-worktree module.
+// A local override, and so a task's run settings, may set the Command rows' entry-gate, tackler and arbiter keys.
 // The Command rows' command keys are executable, so the local layer, and so a task's run settings, refuses them.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{

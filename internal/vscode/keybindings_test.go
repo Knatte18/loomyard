@@ -1,4 +1,5 @@
-// keybindings_test.go covers the keybindings block's entries and merge, the seeding of the user file and the per-platform path.
+// keybindings_test.go covers the keybindings block's entries and its merge into the user file.
+// It also covers seeding the user file and the per-platform path.
 
 package vscode
 
@@ -11,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestKeybindingsBlock pins the block's entries: the Alt-arrow sendSequence keys in the terminal, and ctrl+alt+a running the reed attach task.
+// TestKeybindingsBlock pins the block's entries:
+// the Alt-arrow sendSequence keys in the terminal, and ctrl+alt+a running the reed attach task.
 func TestKeybindingsBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

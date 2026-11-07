@@ -1,10 +1,9 @@
-// gate_test.go tables converged across all three GateMode values and their verdict/gatePassed
-// combinations, exercises execGateCommand against real trivial commands (go's own toolchain — the
-// one binary guaranteed present in this repo's test environment) for the pass, fail, timeout, and
-// not-found paths, and checks writeGateOutput's file shape.
-// The one real-time execGateCommand case (a lingering child holding the output pipe past
-// gateWaitDelay) lives in gate_lingering_test.go under the integration build tag instead — see the
-// PATTERN-test-speed.
+// gate_test.go covers the gate runner: the converged verdict table over every GateMode.
+// It runs execGateCommand against real trivial commands for the pass, fail, timeout and not-found paths.
+// It also checks the shape of writeGateOutput's file.
+// The commands are go's own toolchain, the one binary guaranteed present in this repo's test environment.
+// The one real-time execGateCommand case is a lingering child holding the output pipe past gateWaitDelay.
+// It lives in gate_lingering_test.go under the integration build tag, per `PATTERN-test-speed`.
 
 package treadleengine
 
@@ -52,8 +51,13 @@ func TestConverged(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand table-drives execGateCommand over a zero-exit command (success), a non-zero exit (failure, not an error), a command that cannot run (an error) and a timed-out command (a failing gate carrying a timeout note, not an infrastructure error).
-// "go version" reliably finishes well inside 30s but a 1-nanosecond timeout guarantees the deadline fires before the process can even be scheduled, without a platform-specific long-running command.
+// TestExecGateCommand table-drives execGateCommand over its outcomes.
+// A zero-exit command is a success, and a non-zero exit is a failure rather than an error.
+// A command that cannot run is an error,
+// and a timed-out command is a failing gate carrying a timeout note rather than an infrastructure error.
+// "go version" finishes well inside 30s.
+// A 1-nanosecond timeout guarantees the deadline fires before the process can even be scheduled,
+// so the test needs no platform-specific long-running command.
 func TestExecGateCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

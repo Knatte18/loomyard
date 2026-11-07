@@ -1,4 +1,7 @@
-// landnotice_test.go pins the landing notice over a pass harness: which runs and done entries get a line under each land_notice value, the line's text, the request's clearing, the owed line's posts until one succeeds and the memory's upkeep.
+// landnotice_test.go pins the landing notice over a pass harness.
+// It covers which runs and done entries get a line under each land_notice value.
+// It covers the line's text and the request's clearing.
+// It covers the owed line's posts until one succeeds, and the memory's upkeep.
 
 package dobbyengine
 
@@ -27,7 +30,7 @@ func TestLandNotices(t *testing.T) {
 	tests := []struct {
 		name string
 		mode string
-		// requested is the board entry's notify_on_land while the run is ahead of Land; the entry is pruned once the run is past it.
+		// requested is the board entry's notify_on_land while the run is ahead of Land, and the entry is pruned after.
 		requested bool
 		// requestedByTick, when set, replaces requested with the entry's notify_on_land at each tick.
 		requestedByTick []bool
@@ -37,7 +40,8 @@ func TestLandNotices(t *testing.T) {
 		failConfigOnTick int
 		// rebuildBeforeTick is the one-based tick that a new daemon over the same state record runs; zero rebuilds none.
 		rebuildBeforeTick int
-		// doneEntryParent, when set, puts on the board, at each tick with no run ahead of Land, a done entry of the slug carrying notify_on_land under this parent worktree, until the request is cleared.
+		// doneEntryParent, when set, makes each tick with no run ahead of Land put a done entry of the slug on the board.
+		// The entry carries notify_on_land and sits under this parent worktree until the request is cleared.
 		doneEntryParent string
 		// doneEntryOwnedElsewhere marks that done entry as owned by another machine.
 		doneEntryOwnedElsewhere bool
@@ -137,7 +141,8 @@ func TestLandNotices(t *testing.T) {
 					h.fake.tasks = []TaskView{{Slug: "task", Kind: "task", Status: &done, NotifyOnLand: true, Parent: tt.doneEntryParent, OwnedElsewhere: tt.doneEntryOwnedElsewhere}}
 				}
 				if tickNumber == tt.failBoardOnTick {
-					// The tick's own start step reads the board after the notice step, so a failed read fails the tick; the notice step has run by then.
+					// The tick's own start step reads the board after the notice step, so a failed read fails the tick;
+					// the notice step has run by then.
 					h.clock.sleep(context.Background(), 10*time.Second)
 					if err := h.d.tick(context.Background(), h.clock.now()); err == nil {
 						t.Fatalf("tick() = nil on a failed board read; want the start step's error")

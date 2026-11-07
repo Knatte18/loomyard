@@ -1,6 +1,7 @@
 // originreconcilemoves.go holds the origin reconcile's moving half.
 // It fast-forwards or replays the local branches a judging pass found behind origin.
-// Each move waits on no lock: the prime lock and a records branch's write and push locks are try-acquired, and the live-pair seam is asked once per pair.
+// Each move waits on no lock: the prime lock and a records branch's write and push locks are try-acquired,
+// and the live-pair seam is asked once per pair.
 // It also reads the ended set, the runs origin has ended, that every replay is told.
 
 package fabricengine
@@ -33,7 +34,7 @@ const (
 )
 
 // tryPrimeLock takes the hub's prime lock by one try-acquire, never waiting.
-// held reports whether this call now holds it; a lock another holder has returns held false with no error.
+// held reports whether this call holds it; a lock another holder has returns held false with no error.
 // The caller calls release once the prime's branches are moved.
 func tryPrimeLock(l *lymcwd.Location) (release func(), held bool, err error) {
 	path := shedrun.PrimeRunLock(l)
@@ -51,7 +52,8 @@ func tryPrimeLock(l *lymcwd.Location) (release func(), held bool, err error) {
 }
 
 // tryRecordsLocks takes a records branch's write lock and then its push lock, each by one try-acquire.
-// On Bolt they are the board write lock and the board checkout's push lock, and on a weft they are the weft's write and push locks.
+// On Bolt they are the board write lock and the board checkout's push lock.
+// On a weft they are the weft's write and push locks.
 // A held lock returns its name in busy, with pushHeld set when it was the push lock, and nothing held.
 func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, pushHeld bool, err error) {
 	writePath := ""
@@ -130,7 +132,8 @@ func dirtyTrackedPaths(dir string) ([]string, error) {
 	return relativeSlashPaths(dir, absolute)
 }
 
-// pathsChangedBetween returns the paths whose content differs between two commits of the repository at dir, renames counted as a delete and an add.
+// pathsChangedBetween returns the paths of the repository at dir whose content differs between two commits.
+// A rename counts as a delete and an add.
 func pathsChangedBetween(dir, from, to string) ([]string, error) {
 	out, err := gitexec.Run([]string{"diff", "--name-only", "--no-renames", "-z", from, to}, dir)
 	if err != nil {
@@ -172,12 +175,15 @@ func ffWorktree(rec *Mutations, worktree, originHead string) (state BranchState,
 	return BranchLevel, nil, nil
 }
 
-// reconcileRecordsBranch brings the records branch checked out at worktree up to originHead, under its write lock and then its push lock, each by one try-acquire.
+// reconcileRecordsBranch brings the records branch checked out at worktree up to originHead.
+// It takes its write lock and then its push lock, each by one try-acquire.
 // bolt names the board checkout, replayed by entry; any other records branch is a weft, replayed by commit.
 // A held lock returns BranchBusy naming it, and nothing moves.
-// A branch behind origin is fast-forwarded, and one both sides moved has its local commits replayed onto origin's with ended told to the replay.
-// A replay that stops on a conflict returns BranchDiverged naming the conflicting paths and the local commits, and one an uncommitted change blocks returns BranchDirty;
-// a branch the locks found already level or ahead is returned as that, unmoved.
+// A branch behind origin is fast-forwarded.
+// A branch both sides moved has its local commits replayed onto origin's, with ended told to the replay.
+// A replay that stops on a conflict returns BranchDiverged naming the conflicting paths and the local commits.
+// A replay that an uncommitted change blocks returns BranchDirty.
+// A branch the locks found already level or ahead is returned as that, unmoved.
 // A moved branch returns BranchLevel, or BranchAhead when replayed commits sit on origin's head, with Moved set.
 func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, originHead string, ended EndedSet, bolt bool) (BranchOutcome, error) {
 	var outcome BranchOutcome
@@ -257,7 +263,8 @@ func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, origin
 	return outcome, err
 }
 
-// originMover moves the branches one reconcile judged, in the order its work is done, and reports each move on the outcome it was judged as.
+// originMover moves the branches one reconcile judged, in the order its work is done.
+// It reports each move on the outcome the branch was judged as.
 type originMover struct {
 	rec      *Mutations
 	l        *lymcwd.Location
@@ -273,7 +280,8 @@ type originMover struct {
 	owners map[string]string
 }
 
-// moveAll moves every judged branch that is behind origin: Bolt first, then the prime's branches, the prime's records before its code, then each pair's.
+// moveAll moves every judged branch that is behind origin.
+// It moves Bolt first, then the prime's branches, its records before its code, then each pair's.
 // The prime's branches move only under the prime lock and a free parent lock.
 // A run scope moves Bolt and its own pair, and judges the parent branch only.
 func (m *originMover) moveAll(pairs []string) error {
@@ -364,9 +372,11 @@ func (m *originMover) movePrime(indexes []int) error {
 	return nil
 }
 
-// move moves the judged branch at index i when it needs a move and nothing stops it, and records the result on its outcome.
+// move moves the judged branch at index i when it needs a move and nothing stops it.
+// It records the result on the outcome.
 // A busy lock name stops the move and marks the branch busy.
-// A records branch both sides moved, of an entry another machine owns, is left where it is and reported needs_replay, so only a fast-forward moves such an entry's branches.
+// A records branch needing a replay, of an entry another machine owns, is left in place.
+// Only a fast-forward moves such an entry's branches.
 func (m *originMover) move(i int, busy string) error {
 	outcome := &m.outcomes[i]
 	target := m.targets[i]
@@ -466,7 +476,8 @@ func (m *originMover) move(i int, busy string) error {
 
 // weftAnchorStopped reports whether moving the weft target to originHead is held back.
 // An empty own marker stops it with no anchor.
-// Otherwise it stops when taking originHead in would cross a change of the anchor marker, and anchor is the one the way forward sets.
+// Otherwise it stops when taking originHead in would cross a change of the anchor marker.
+// Anchor is the one the way forward sets.
 // The anchor of a markerless tip falls back to that of the pair's, or the prime's, own worktree.
 func (m *originMover) weftAnchorStopped(target originTarget, originHead string) (stopped bool, anchor string, err error) {
 	if emptyMarkerStop(target.worktree) != nil {
@@ -524,8 +535,10 @@ func recordedPairs(l *lymcwd.Location, pairs []string) ([]string, error) {
 }
 
 // readOriginEnded reads which runs origin has ended, from origin's Bolt tip and its history, before any replay.
-// The candidates are the pairs with a batten run record and the runs a local commit origin lacks touches, on Bolt or on a weft needing a replay.
-// A run this machine's own landing has reached is dropped from the set, so no replay sets aside what this machine is landing.
+// The candidates are runs, plus the runs that the local commits origin lacks touch.
+// On Bolt those are read from the local run ledger; on a weft needing a replay, from the paths the commits change.
+// A run this machine's own landing has reached is dropped from the set,
+// so no replay sets aside what this machine is landing.
 // A hub with no Bolt branch to read, or one origin no longer has, has an empty set.
 func readOriginEnded(l *lymcwd.Location, targets []originTarget, outcomes []BranchOutcome, runs []string) (EndedSet, error) {
 	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })

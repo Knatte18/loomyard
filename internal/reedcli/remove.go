@@ -1,7 +1,6 @@
-// remove.go implements the `remove` reed verb: deletes a strand by guid or by fixed name, requiring
-// --recursive for a non-leaf so children are never silently orphaned, and reports every strand
-// actually removed. `--name --detach` lets a strand remove itself: a detached child, started from
-// outside the strand's own process tree, waits for the invoking process to exit and then removes.
+// remove.go implements the `remove` reed verb: it deletes a strand by guid or name and reports every strand removed.
+// Removing a non-leaf strand needs --recursive, so its children are never silently orphaned.
+// `--name --detach` lets the strand remove itself through a detached child that waits for the invoking process to exit.
 
 package reedcli
 
@@ -20,12 +19,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pidAlive is the liveness check the parent-exit wait polls; a package variable so a test can
-// substitute a fake without a real process.
+// pidAlive reports whether the process with a given pid is alive, and the parent-exit wait polls it.
+// It is a package variable so a test can substitute a fake without a real process.
 var pidAlive = proc.IsAlive
 
-// validateRemoveArgs enforces the verb's argument rules: exactly one of the positional guid and
-// --name, and --detach only with --name.
+// validateRemoveArgs enforces the verb's argument rules:
+// exactly one of the positional guid and --name, and --detach only with --name.
 func validateRemoveArgs(guidArgs []string, name string, detach bool) error {
 	hasGUID := len(guidArgs) > 0
 	hasName := name != ""
@@ -52,9 +51,11 @@ func waitParentExit(waitPID int) error {
 	return nil
 }
 
-// spawnDetachedRemove starts a detached `lym reed remove <guid>` in the invoking worktree, handing it
-// this process's pid so it removes only once the pane's descendant (this process) is gone. It is a
-// no-op under a test binary (suppress), where re-exec'ing os.Executable() would run the suite.
+// spawnDetachedRemove starts a detached `lym reed remove <guid>` in the invoking worktree.
+// The child runs outside the strand's own process tree,
+// and it removes only once this process, the pane's descendant, is gone.
+// It is a no-op under a test binary, where `suppressWatchdogSpawn` is set.
+// Re-exec'ing os.Executable() there would run the whole suite.
 func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
 	if c.suppressWatchdogSpawn {
 		return nil
@@ -68,14 +69,14 @@ func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
 		args = append(args, "--recursive")
 	}
 	cmd := exec.Command(exe, args...)
-	// The worktree's anchor, never the hub: the strand verbs resolve from a cwd that must equal the
-	// anchor. A child that exits once the removal is done cannot pin the worktree's deletion the way
-	// the watchdog could.
+	// The child runs in the worktree's anchor, never the hub:
+	// the strand verbs resolve from a cwd that must equal the anchor.
+	// A child that exits once the removal is done cannot pin the worktree's deletion.
 	cmd.Dir = c.anchorPath
 	proc.Detach(cmd)
 
 	logger.Info("reed: spawning detached remove", "exe", exe, "guid", guid, "dir", c.anchorPath, "wait_pid", os.Getpid())
-	// Detached, so the spawn is the only lifecycle line.
+	// The child runs detached, so the spawn is the only lifecycle line this process logs for it.
 	if err := cmd.Start(); err != nil {
 		logger.Warn("reed: detached remove spawn failed", "exe", exe, "guid", guid, "err", err)
 		return fmt.Errorf("spawn detached remove: %w", err)
@@ -188,7 +189,8 @@ Example:
 
 			removed, err := c.strandEngine().RemoveStrand(guid, recursive)
 			if waitPID != 0 && errors.Is(err, reedengine.ErrUnknownStrand) {
-				// The detached remover found its strand already gone, as when `lym loom start` replaced it under a new guid first: nothing left to remove.
+				// The detached remover found its strand already gone, as when `lym loom start` replaced it under a new guid first.
+				// Nothing is left to remove.
 				logger.Info("reed: detached remove found its strand already gone", "guid", guid)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 					"removed": []map[string]any{},

@@ -1,5 +1,8 @@
-// report_test.go covers Report's round-trip through WriteReport->ParseReport for every status, both empty and populated deviation lists, and a renames list carried into the digest.
-// It also covers ParseReport's strict-decode rejections: an unknown key, a missing head_sha, an unrecognized status, a need missing or misplaced, a malformed rename, malformed YAML, an empty file and a missing file.
+// report_test.go covers Report's round-trip through WriteReport->ParseReport.
+// It covers every status, both empty and populated deviation lists, and a renames list carried into the digest.
+// It also covers ParseReport's strict-decode rejections.
+// Those cover an unknown key, a missing head_sha, an unrecognized status, and a need missing or misplaced.
+// They also cover a malformed rename, malformed YAML, an empty file and a missing file.
 // Tier 1: no git, only t.TempDir().
 
 package websterengine

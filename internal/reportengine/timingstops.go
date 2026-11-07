@@ -1,4 +1,5 @@
-// timingstops.go lists a run's stops for the timing report and names who settled each: it reads the Go driver's settle records, joins them to the stops and falls back to the caller labels of the history.
+// timingstops.go lists a run's stops for the timing report and names who settled each:
+// it reads the Go driver's settle records, joins them to the stops and falls back to the caller labels of the history.
 
 package reportengine
 
@@ -15,9 +16,9 @@ import (
 
 // The kinds of stop a run is counted under.
 const (
-	// StopKindStop is a halt or awaiting stop as convergence lists it.
+	// StopKindStop is a halt or awaiting stop as the convergence report lists it.
 	StopKindStop = "stop"
-	// StopKindBounce is a loom stuck entry an OnStuck edge bounced.
+	// StopKindBounce is a loom stuck entry that an `OnStuck` edge bounced.
 	StopKindBounce = "bounce"
 	// StopKindBattenHalt is a halt of one of batten's own rows.
 	StopKindBattenHalt = "batten-halt"
@@ -35,7 +36,7 @@ const (
 )
 
 // TimingStop is one stop of a run and who settled it.
-// At is nil for a stop with no time of its own, a halt note no batten change recorded.
+// At is nil for a stop with no time of its own: a halt note that no batten change recorded.
 type TimingStop struct {
 	Kind     string     `json:"kind"`
 	Producer string     `json:"producer"`
@@ -46,11 +47,14 @@ type TimingStop struct {
 	// changed marks a stop batten recorded as a child state change.
 	changed bool
 
-	// position is the index of the history entry the stop is read from: batten's for a batten-row halt, the loom's for a bounce and for a halt note no change recorded; -1 when none was found.
+	// position is the index of the history entry the stop is read from:
+	// batten's for a batten-row halt, the loom's for a bounce and for a halt note no change recorded;
+	// -1 when none was found.
 	position int
 }
 
-// readSettles reads the run's two settle-record files through shedrun.ParseSettleRecords: the tapestry run's at tag, and batten's at the commit holding the run's batten record.
+// readSettles reads the run's two settle-record files through shedrun.ParseSettleRecords:
+// the tapestry run's at tag, and batten's at the commit holding the run's batten record.
 // An absent file holds no record, and a line that does not decode is a finding naming the file and the line.
 func (row *RunRow) readSettles(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
 	rels, err := shedrun.TreeRunRels(row.Slug)
@@ -95,8 +99,11 @@ func stampPointer(entry shedengine.HistoryEntry) *time.Time {
 }
 
 // runStops lists the run's stops and sets each one's settler.
-// StopKindStop holds the halts convergence lists, so it is absent without the halt-note source: the k-th stop with a change takes the time of the k-th batten change into blocked, failed or awaiting, and a note-only stop has no time.
-// StopKindBounce is a loom stuck entry an OnStuck edge bounced, and StopKindBattenHalt a halt of a batten row as battenRowHalts finds it.
+// StopKindStop holds the halts the convergence report lists, so it is absent without the halt-note source:
+// the k-th stop with a change takes the time of the k-th batten change into blocked, failed or awaiting,
+// and a note-only stop has no time.
+// StopKindBounce is a loom stuck entry that an `OnStuck` edge bounced.
+// StopKindBattenHalt is a halt of a batten row as battenRowHalts finds it.
 // A settle record that matches no stop is a finding, except for the loom file when StopKindStop is absent.
 func runStops(row RunRow, rows []timedRow) ([]TimingStop, []Finding) {
 	var stops []TimingStop
@@ -156,7 +163,8 @@ func runStops(row RunRow, rows []timedRow) ([]TimingStop, []Finding) {
 	return stops, findings
 }
 
-// unclaimedHaltEntry returns the index of the first entry of history that halted producer and that claimed has not marked, and marks it; -1 when none is left.
+// unclaimedHaltEntry returns the index of the first entry of history that halted producer and is not yet in claimed.
+// It marks that entry in claimed, and returns -1 when none is left.
 func unclaimedHaltEntry(history []shedengine.HistoryEntry, producer string, claimed map[int]bool) int {
 	for i, entry := range history {
 		if claimed[i] || entry.Producer != producer || (entry.Outcome != shedengine.Stuck && entry.Outcome != shedengine.Awaiting) {
@@ -184,7 +192,9 @@ func countedBefore(history []shedengine.HistoryEntry, record shedrun.SettleRecor
 }
 
 // matchChildRecords matches the loom file's records to the stops of kind StopKindStop by index.
-// A stop with a change and a producer takes the record naming its producer and state with the greatest history length among those whose last counted entry is stamped at or before the change, and every earlier such record folds into it.
+// A stop with a change and a producer takes the record naming its producer and state with the greatest history length.
+// It is chosen among the records whose last counted entry is stamped at or before the change.
+// Every earlier such record folds into it.
 // A note-only stop takes the earliest record naming its producer and state that no stop took.
 // Any other record is a finding, which is left out when the run lists no StopKindStop.
 func matchChildRecords(stops []TimingStop, row RunRow) (map[int]shedrun.SettleRecord, []Finding) {
@@ -234,7 +244,9 @@ func matchChildRecords(stops []TimingStop, row RunRow) (map[int]shedrun.SettleRe
 }
 
 // matchBattenRecords matches batten's file records to the batten-row halts by index.
-// A record names a halt when its producer and state equal the halt's and its history length is the 1-based position of the halt's entry in batten's history; a record naming no halt is a finding.
+// A record names a halt when its producer and state equal the halt's,
+// and its history length is the 1-based position of the halt's entry in batten's history.
+// A record naming no halt is a finding.
 func matchBattenRecords(stops []TimingStop, row RunRow) (map[int]shedrun.SettleRecord, []Finding) {
 	matched := map[int]shedrun.SettleRecord{}
 	taken := make([]bool, len(row.battenSettles))
@@ -253,7 +265,8 @@ func matchBattenRecords(stops []TimingStop, row RunRow) (map[int]shedrun.SettleR
 	return matched, unmatchedRecords(row, row.battenSettles, taken, "in batten's copy: ")
 }
 
-// unmatchedRecords returns a finding for each record taken has not marked, naming the settle-record file and the record's key.
+// unmatchedRecords returns a finding for each record taken has not marked.
+// The finding names the settle-record file and the record's key.
 func unmatchedRecords(row RunRow, records []shedrun.SettleRecord, taken []bool, label string) []Finding {
 	file := ""
 	if rels, err := shedrun.TreeRunRels(row.Slug); err == nil {
@@ -269,12 +282,15 @@ func unmatchedRecords(row RunRow, records []shedrun.SettleRecord, taken []bool, 
 	return findings
 }
 
-// settlerOf names who settled the stop, the first of these that holds:
+// settlerOf names who settled the stop, by the first of these that holds:
 // a bounce was settled by the judge;
-// a batten automatic step accounting for it, or a go-rule restep record or a past run's verify-retry record, make it the shed's;
+// a batten automatic step accounting for the stop makes it the shed's;
+// a go-rule restep record, or a past run's verify-retry record, makes it the shed's;
 // a tackler restep record makes it the tackler's;
-// an applied arbiter attempt or a parent-review alignment verdict spawned after the stop makes it the arbiter's or alignment's;
-// else the by label of the first history entry that moved it on, unknown when that entry has none, and open when none follows in a run in flight.
+// an applied arbiter attempt spawned after the stop makes it the arbiter's;
+// a parent-review alignment verdict spawned after the stop makes it alignment's;
+// otherwise the by label of the first history entry that moved it on;
+// that label is unknown when the entry has none, and open when no entry follows in a run in flight.
 // A record of any other settler or action settles nothing by itself.
 func settlerOf(stop TimingStop, record *shedrun.SettleRecord, row RunRow, rows []timedRow) string {
 	if stop.Kind == StopKindBounce {
@@ -310,7 +326,9 @@ func settlerOf(stop TimingStop, record *shedrun.SettleRecord, row RunRow, rows [
 	return movedOnBy(stop, row, rows)
 }
 
-// movedOnBy returns the caller label of the first entry after the stop in the history that moved it on, batten's for a batten-row halt and the loom's otherwise.
+// movedOnBy returns the caller label of the history entry that moved the stop on,
+// or the SettledBy value that applies when no label does.
+// A batten-row halt reads batten's history, and any other stop reads the run's child history.
 // Batten's Run-Shed entries record state changes and never move a halt on, so they are skipped.
 func movedOnBy(stop TimingStop, row RunRow, rows []timedRow) string {
 	var mover *shedengine.HistoryEntry
@@ -345,8 +363,9 @@ func movedOnBy(stop TimingStop, row RunRow, rows []timedRow) string {
 	return mover.By
 }
 
-// settlersInWindow counts the stops of runs by kind and settler for one bucket window, each in the bucket its time falls in and a stop with no time in its run's closing bucket.
-// last says window is the report's final bucket, which also holds a time equal to its close.
+// settlersInWindow counts the stops of runs by kind and settler for one bucket window.
+// A stop counts in the bucket its time falls in, and a stop with no time is placed at its run's end.
+// last reports whether window is the report's final bucket, which also holds a time equal to its close.
 func settlersInWindow(runs []TimingRun, window Interval, last bool) map[string]map[string]int {
 	settlers := map[string]map[string]int{}
 	for _, run := range runs {

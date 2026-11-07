@@ -1,6 +1,6 @@
 //go:build !windows
 
-// dobbyreopen_unix.go moves a dobby process's standard output and error onto a file off Windows.
+// dobbyreopen_unix.go moves a dobby process's standard output and error onto a file on every platform but Windows.
 
 package beamcli
 
@@ -12,7 +12,8 @@ import (
 )
 
 // reopenStdio opens the file at path for append and duplicates it onto this process's standard output and error.
-// A dobby whose descriptors an older binary pointed at `dobby.log` so leaves that file to its own lines.
+// A rotation renames the output file while the descriptors still point at it;
+// this moves them onto the fresh file, so the renamed file keeps only its own lines.
 func reopenStdio(path string) error {
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {

@@ -1,4 +1,5 @@
-// entries_command.go implements the Command registry entry: it reads a row's command and timeout_s keys and builds a shedadapters.CommandProducer over Env.Command.
+// entries_command.go implements the Command registry entry.
+// It reads the row's command and timeout_s keys and builds a shedadapters.CommandProducer over Env.Command.
 
 package shedrecipe
 
@@ -23,7 +24,7 @@ const (
 
 // commandEntry is the Constructor for the "Command" registry row.
 // The row's command is a required module.key setting reference and timeout_s is an optional positive number of seconds.
-// Env.Command is handed to the producer with its two setting lookups taken from Env.Setting and Env.ExecutableSetting;
+// The producer's dependencies come from Env.Command, with Setting and ExecutableSetting taken from Env itself;
 // a nil Env.ExecutableSetting builds, and the producer refuses when the row is reached.
 func commandEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg, "command", "timeout_s"); err != nil {

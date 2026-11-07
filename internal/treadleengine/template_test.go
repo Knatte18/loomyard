@@ -1,5 +1,6 @@
-// template_test.go pins that each shipped judge template names the verdict words and frontmatter keys this package parses,
-// and that each template fills through stencil with its required markers.
+// template_test.go checks the shipped judge templates.
+// Each one names the verdict words and frontmatter keys this package parses.
+// Each one also fills through stencil with its required markers.
 
 package treadleengine
 
@@ -13,8 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// requireContains fails the test, naming the missing needle, if text does
-// not contain it. Shared across this package's template tests.
+// requireContains fails the test, naming the missing needle, if text does not contain it.
+// It is shared across this package's template tests.
 func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
@@ -22,9 +23,9 @@ func requireContains(t *testing.T, text, needle string) {
 	}
 }
 
-// judgeCirclingMarkerValues and judgeMilestoneMarkerValues return a values map with every one of the corresponding template's required top-level markers set to a non-empty placeholder,
-// so tests can delete one key at a time to prove stencil.Fill's
-// per-marker error.
+// judgeCirclingMarkerValues and judgeMilestoneMarkerValues return a values map for their judge template.
+// Every required top-level marker is set to a non-empty placeholder.
+// A test drops one key at a time to check that filling fails and names that marker.
 func judgeCirclingMarkerValues() map[string]string {
 	return map[string]string{
 		"round":            "3",
@@ -50,9 +51,8 @@ func judgeMilestoneMarkerValues() map[string]string {
 	}
 }
 
-// targetingMarkerValues returns a values map with every one of the
-// targeting template's required top-level markers set to a non-empty
-// placeholder, mirroring the two judge marker-value helpers above.
+// targetingMarkerValues returns a values map that sets every required top-level marker of the targeting template.
+// Each marker gets a non-empty placeholder.
 func targetingMarkerValues() map[string]string {
 	return map[string]string{
 		"round":            "3",
@@ -73,10 +73,11 @@ func yamlTagOf(t *testing.T, v any, field string) string {
 	return f.Tag.Get("yaml")
 }
 
-// TestShippedTemplates table-drives the three shipped judge and targeting templates through the two properties each must hold.
-// Names the values Go parses: a judge template names every verdict word and frontmatter key this package parses, read from their Go definitions.
-// Targeting produces no verdict and parses no key, so it carries no list.
-// Fills with all markers: stencil.Fill succeeds when every required marker is supplied and fails, naming the marker, when any single one is absent.
+// TestShippedTemplates table-drives the shipped judge and targeting templates through the two properties each must hold.
+// A judge template names every verdict word and frontmatter key the package parses, read from their Go definitions.
+// The targeting template produces no verdict and parses no key, so it carries no list.
+// Filling succeeds when every required marker is supplied,
+// and it fails, naming the marker, when any one is absent.
 func TestShippedTemplates(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

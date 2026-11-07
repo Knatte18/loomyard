@@ -1,6 +1,7 @@
-// smoke_paste_test.go pins, against a REAL claude in a REAL tmux pane, the facts the paste path rests on:
-// an Enter right after reed's bracketed paste submits it, a slash command pasted that way starts no turn, and a long paste collapses into a placeholder from claudeengine.PasteCollapseMinChars characters.
-// It is the operator's check when Claude Code changes, and the plan's verify compiles it and never runs it.
+// smoke_paste_test.go pins, against a real claude in a real tmux pane, the facts the paste path rests on:
+// an Enter right after reed's bracketed paste submits it, a slash command pasted that way starts no turn,
+// and a long paste collapses into a placeholder from `claudeengine.PasteCollapseMinChars` characters.
+// It is the operator's check when Claude Code changes.
 
 package shuttlecli
 
@@ -44,7 +45,8 @@ func turnStartsAndEnds(t *testing.T, claude *claudeengine.Claude, eventsPath str
 	return starts, ends
 }
 
-// readBoxText returns the input box's text as the engine reads it from the strand's pane right now, with ok false for a pane showing no readable box.
+// readBoxText returns the input box's text as the engine reads it from the strand's pane.
+// It returns ok false for a pane that shows no readable box.
 func readBoxText(t *testing.T, reedEngine *reedengine.Engine, claude *claudeengine.Claude, guid string) (string, bool) {
 	t.Helper()
 	capture, err := reedEngine.CapturePane(guid)
@@ -71,8 +73,10 @@ func waitFor(condition func() bool) bool {
 // TestSmokePasteSubmitAndCollapse drives reed's PasteSubmit into a ready claude run and reads what the pane did.
 // A plain one-line text pasted with submit true starts a turn and leaves the box empty.
 // `/color green` pasted with submit true leaves the box empty and starts no turn.
-// Both observations must equal Claude.PasteSubmits(), so a Claude Code release that turns the post-paste Enter into a newline fails here and names the constant to flip.
-// A text of claudeengine.PasteCollapseMinChars characters pasted with submit false shows a placeholder that OwnPastePlaceholder accepts for it, and one character shorter shows the text itself.
+// Both observations must equal `Claude.PasteSubmits()`,
+// so a Claude Code release that turns the post-paste Enter into a newline fails here and names the constant to flip.
+// A text of claudeengine.PasteCollapseMinChars characters pasted with submit false shows a placeholder.
+// OwnPastePlaceholder accepts that placeholder, and one character shorter shows the text itself.
 func TestSmokePasteSubmitAndCollapse(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")

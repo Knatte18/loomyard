@@ -1,5 +1,7 @@
-// panebin_test.go hermetically covers panebin.go's composition: paneBinPrelude and composePaneLaunchLine, driven directly against injected inputs with no tmux and no process spawned.
-// Every case passes a stub executable lookup: under go test the live os.Executable() value is the test binary's path, which PATTERN-child-processes bars re-exec'ing, so no case here reads it.
+// panebin_test.go hermetically covers panebin.go's composition:
+// paneBinPrelude and composePaneLaunchLine, driven directly against injected inputs with no tmux and no process spawned.
+// Every case passes a stub executable lookup: under go test the live os.Executable() value is the test binary's path;
+// PATTERN-child-processes bars re-exec'ing it, so no case here reads it.
 // The stageLaunchScript cases at the end cover the per-strand launch script file.
 
 package reedengine
@@ -51,9 +53,8 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 				t.Fatalf("paneBinPrelude(%s, %q) = %q, want it to name the full executable path %q", d.name, exe, got, exe)
 			}
 			// The directory is a prefix of exe, so the first occurrence of dir inside got may be
-			// the one inside the export statement rather than the prepend. Locate the export
-			// statement itself via agentname.LymBinEnv, which is unique to it, and compare positions
-			// against that.
+			// the one inside the export statement rather than the prepend.
+			// Locate the export statement itself via agentname.LymBinEnv, which is unique to it, and compare positions against that.
 			exportStmtIdx := strings.Index(got, agentname.LymBinEnv)
 			if exportStmtIdx < 0 {
 				t.Fatalf("paneBinPrelude(%s, %q) = %q, want it to carry the %s export", d.name, exe, got, agentname.LymBinEnv)
@@ -77,9 +78,11 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 }
 
 // TestComposePaneLaunchLine drives composePaneLaunchLine in both dialects with an injected executable path:
-// the prelude, then the .NET build-server exports, the name export (always when a name is told), the parent export (only when a parent is told), then the command, all on one line;
+// the prelude, then the .NET build-server exports, the name export (always when a name is told);
+// the parent export (only when a parent is told), then the command, all on one line;
 // an empty command emits the prelude and exports alone with no trailing separator;
-// and a failed executable lookup drops only the prelude, passing the command and exports through with a warning naming the strand.
+// and a failed executable lookup drops only the prelude;
+// the command and exports pass through with a warning naming the strand.
 // It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
@@ -202,8 +205,9 @@ func TestComposePaneLaunchLine(t *testing.T) {
 	}
 }
 
-// TestPaneEnvExports pins per dialect that a strand pane exports the variables the geometry's PaneEnv tells in name order.
-// It also pins that no PaneEnv, an empty answer and a failed read each export nothing, the failure logged naming the strand.
+// TestPaneEnvExports pins per dialect that a strand pane exports the geometry's PaneEnv variables in name order.
+// It also pins that no PaneEnv, an empty answer and a failed read each export nothing;
+// the failure is logged, naming the strand.
 // It is not parallel, since it captures the process-global logger.
 func TestPaneEnvExports(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -347,7 +351,9 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 	}
 }
 
-// TestComposeSwitchCommand pins the switch command a key binding runs and the follow command the follow button runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} or #{q:session_name} stays an unquoted word, and an unresolvable executable pins nothing.
+// TestComposeSwitchCommand pins the switch command a key binding runs and the follow command the follow button runs.
+// The pinned tokens are quoted once and have every # doubled.
+// #{q:client_name} or #{q:session_name} stays an unquoted word; an unresolvable executable pins nothing.
 // It captures the process-global logger, so it does not run in parallel.
 func TestComposeSwitchCommand(t *testing.T) {
 	tiergate.Require(t, 0)

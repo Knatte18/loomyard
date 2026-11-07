@@ -16,20 +16,20 @@ import (
 // checkProposalUnparsable names the finding of a proposal file that is missing or does not parse.
 const checkProposalUnparsable = "proposal-unparsable"
 
-// RaddleCheck carries the told values of the checks run over a raddle proposal.
+// RaddleCheck carries the inputs of the checks run over a raddle proposal.
 // ProposalPath and RecordPath are absolute.
-// Board builds the board context the checks read, with filing set at Raddle-File's run.
 type RaddleCheck struct {
 	// ProposalPath is the proposal file.
 	ProposalPath string
-	// RecordPath is the Sketch's decision record.
+	// RecordPath is the approved decision record a Discussion writes for the discussed entry.
 	RecordPath string
-	// Board builds the context from the board, the raddle store and the profiles.
+	// Board builds the context from the board, the raddle store and the profiles, with filing set by the caller.
 	Board func(filing bool) (raddleparser.BoardContext, error)
 }
 
 // readProposal reads and parses the proposal file.
-// A file that is missing or does not parse comes back as the finding that names it, with a nil error, so a caller tells that from a fault of the read.
+// A file that is missing or does not parse comes back as the finding that names it, with a nil error.
+// A caller tells that finding from a read fault, which comes back as the error.
 func readProposal(path string) (proposal raddleparser.Proposal, unparsable *raddleparser.Finding, err error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -45,10 +45,12 @@ func readProposal(path string) (proposal raddleparser.Proposal, unparsable *radd
 	return proposal, nil, nil
 }
 
-// CheckRaddleProposal judges the proposal on disk against the Sketch's decision record and the board, and returns one finding per broken rule.
-// A proposal file that is missing or does not parse is the one finding `proposal-unparsable`, carrying the parser's way forward.
+// CheckRaddleProposal judges the proposal on disk against the decision record and the board.
+// It returns one finding per broken rule.
+// A proposal file that is missing or does not parse yields the one finding `proposal-unparsable`.
+// That finding carries the parser's way forward.
 // A read error of the decision record or a failure to build the board context is returned, with no findings.
-// filing is told to the board context, which Raddle-File's run sets.
+// It passes filing to the board context; Raddle-File's run sets it.
 func CheckRaddleProposal(check RaddleCheck, filing bool) ([]raddleparser.Finding, error) {
 	proposal, unparsable, err := readProposal(check.ProposalPath)
 	if err != nil {
@@ -69,7 +71,8 @@ func CheckRaddleProposal(check RaddleCheck, filing bool) ([]raddleparser.Finding
 	return raddleparser.Check(proposal, record, board), nil
 }
 
-// RecheckRaddleBoard judges the proposal on disk against the board as it is now, with the board context built for a filing run so the entries a part's dependency dropped are named.
+// RecheckRaddleBoard judges the proposal on disk against the board as it is now.
+// It builds the board context for a filing run, so the entries a part's dependency dropped are named.
 // A proposal that is missing or does not parse is a returned error, since the re-check follows a check that passed.
 func RecheckRaddleBoard(check RaddleCheck) (raddleparser.Recheck, error) {
 	proposal, unparsable, err := readProposal(check.ProposalPath)
@@ -99,10 +102,12 @@ func FormatRaddleFindings(findings []raddleparser.Finding) string {
 	return strings.Join(parts, "; ")
 }
 
-// NewRaddleGate returns the raddle gate closure of the Raddle-Write row: a shuttleengine.Gate that runs CheckRaddleProposal(check, false) once and maps the result onto the gate contract.
+// NewRaddleGate returns the shuttleengine.Gate of the Raddle-Write row.
+// The gate checks the proposal once, without filing, and maps the result onto the gate contract.
 // A returned error is an infrastructure fault and burns no attempt.
-// Findings fail the gate, with the findings joined as the result's Findings and logged, since the findings file is ephemeral.
-// A pass calls onPass before it passes, and an error of onPass is an infrastructure error too.
+// Findings fail the gate.
+// The gate joins them into the result's Findings and logs them, since the findings file is ephemeral.
+// A passing check calls onPass before reporting the pass, and an error from onPass is an infrastructure error too.
 func NewRaddleGate(check RaddleCheck, onPass func() error) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		findings, err := CheckRaddleProposal(check, false)

@@ -1,9 +1,10 @@
 // forkaudit.go defines the provider-invariant value types a fork-authorized run's audit surfaces:
 // ForkAudit summarizes the parent session's own fork-spawning behavior,
 // and ForkReport summarizes one fork subagent's transcript.
-// Both are plain value types with no methods — the engine populates them from provider-specific
-// transcript formats (claudeengine's own knowledge, never this package's), and a caller
-// (burlerengine's cluster round) interprets the counts against its own policy.
+// Both are plain value types with no methods.
+// The engine fills them from each provider's transcript format.
+// This package holds no provider-specific knowledge,
+// and the caller interprets the counts against its own policy.
 
 package shuttleengine
 
@@ -19,9 +20,9 @@ type WriteEvent struct {
 }
 
 // ForkAudit summarizes fork-spawning behavior in a fork-authorized run's parent session.
-// It counts Agent tool invocations (SpawnCalls) and named spawns (NamedSpawns, a defect signal
-// since named forks lose inherited context).
-// Forks holds one ForkReport per fork subagent the parent spawned.
+// It counts Agent tool invocations (SpawnCalls) and named spawns (NamedSpawns).
+// A named spawn is a defect signal, since named forks lose inherited context.
+// Forks holds one report per fork subagent the parent spawned.
 type ForkAudit struct {
 	Forks              []ForkReport // One ForkReport per fork subagent, in discovery order.
 	SpawnCalls         int          // Agent tool invocations in parent's transcript (attempts, not confirmations).
@@ -32,11 +33,9 @@ type ForkAudit struct {
 	ParentBashCommands []string     // Verbatim Bash commands in parent's transcript (caller classifies git-mutating or disallowed).
 }
 
-// ForkReport summarizes one fork subagent's transcript: what it attempted and whether it produced a
-// final report.
-// Policy over these fields (e.g.
-// what counts as git-mutating,
-// or whether nested Agent calls are errors) is the caller's job;
+// ForkReport summarizes one fork subagent's transcript: what it attempted and whether it produced a final report.
+// Policy over these fields is the caller's job.
+// For example, the caller decides what counts as git-mutating or whether nested Agent calls are errors.
 // ForkReport only carries facts.
 type ForkReport struct {
 	TranscriptPath string         // Path to the fork's transcript file (engine locates per provider layout).

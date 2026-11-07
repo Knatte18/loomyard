@@ -1,5 +1,5 @@
 // windowsize_test.go covers windowsize.go's geometry pins and the window-resized unpin.
-// Every case is driven through TmuxCmd's execHook seam (no live server, no external process spawn, no sleep), the shape generation_test.go and strand_test.go already use.
+// Every case is driven through TmuxCmd's execHook seam, with no live server, no external process spawn and no sleep.
 
 package reedengine
 
@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// resizedUnpinCount is how many window-resized unpins one pinGeometryOptionsLocked run issues: two wherever set-hook exists, none on Windows.
+// resizedUnpinCount is how many window-resized unpins one pinGeometryOptionsLocked run issues:
+// two wherever set-hook exists, none on Windows.
 func resizedUnpinCount() int {
 	if runtime.GOOS == "windows" {
 		return 0
@@ -22,7 +23,8 @@ func resizedUnpinCount() int {
 	return 2
 }
 
-// bindKeyArgvCount is how many bind-key calls one pinBindingsLocked run issues with no session-switch command and no follow jump: every binding argv but the Alt+z unbind.
+// bindKeyArgvCount counts the bind-key calls one pinBindingsLocked run issues.
+// With no session-switch command and no follow jump, that is every binding argv but the Alt+z unbind.
 func bindKeyArgvCount() int {
 	count := 0
 	for _, argv := range bindingArgvs("", "", false, false) {
@@ -33,7 +35,8 @@ func bindKeyArgvCount() int {
 	return count
 }
 
-// wantButtonRowArgv is the single invocation pinButtonRowLocked issues for target: four set-option commands joined by ";" separators.
+// wantButtonRowArgv is the single invocation pinButtonRowLocked issues for target:
+// four set-option commands joined by ";" separators.
 func wantButtonRowArgv(target, plain, agent, specJSON, dirWord string) []string {
 	return []string{
 		"set-option", "-t", target, buttonRowPlainOption, plain, ";",
@@ -51,7 +54,8 @@ func wantResizedUnpins(target string) [][]string {
 	}
 }
 
-// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux, recording every set-option argv issued.
+// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux.
+// It records every set-option argv issued.
 // It asserts the three-line bar's pins plus the window-size pin are all issued with the expected target and value:
 // all three status formats global, status 3 and status-position on the session, and no pane-border pin.
 // It asserts that no call's failure stops the calls after it,
@@ -151,7 +155,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 				}
 			}
 		}
-		// The fixture's tmux binary does not exist, so the two session-switch keys are left unbound and the follow jump is not pinned.
+		// The fixture's tmux binary does not exist, so the two session-switch keys stay unbound and the follow jump is unpinned.
 		if want := bindKeyArgvCount(); bindings != want {
 			t.Errorf("pinGeometryOptionsLocked issued %d bind-key calls, want %d", bindings, want)
 		}
@@ -328,7 +332,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)
 		}
-		// The unseen-clear pin and both unpins are attempted while each errors, the session-scoped unpin after the failed window-scoped one.
+		// The unseen-clear pin and both unpins are attempted while each errors;
+		// the session-scoped unpin follows the failed window-scoped one.
 		if got, want := fake.Count("set-hook"), unseenClearPinCount()+resizedUnpinCount(); got != want {
 			t.Errorf("set-hook calls = %d, want %d", got, want)
 		}

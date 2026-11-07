@@ -1,5 +1,6 @@
 // resetsubpathcheck.go implements the --subpath check a --reset clone runs while the existing hub is still intact.
-// It stages shallow clones of the weft and warp remotes in throwaway directories and applies the anchor rules CloneHub applies after its own clone,
+// It stages shallow clones of the weft and warp remotes in throwaway directories.
+// It applies the anchor rules CloneHub applies after its own clone,
 // so a refused --subpath never costs the hub being replaced.
 
 package fabricengine
@@ -16,9 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// checkSubpathBeforeReset refuses a requested --subpath that CloneHub would refuse after cloning, without touching any existing hub.
+// checkSubpathBeforeReset refuses a requested --subpath that the clone would refuse, without touching any existing hub.
 // A subpath that disagrees with the anchor recorded on the weft is refused with the adopt-path error;
-// when the weft records none, a subpath that is not a directory in the warp's checked-out tree is refused with the create-path error.
+// when the weft records none, a subpath must name a directory in the warp's checked-out tree,
+// or it is refused with the create-path error.
 // The staged clones live under cwd and are removed before it returns.
 // requestedAnchor is the validated form of the explicit --subpath.
 func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string) error {
@@ -65,8 +67,10 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string) erro
 }
 
 // recordedAnchorOnWeft reads the anchor marker the hub clone would adopt, from the staged weft clone at weftStage.
-// The prime's weft branch, RecordsBranchName(warpBranch), supplies it when the remote carries that branch and the weft's default HEAD supplies it otherwise, matching how the clone creates that branch.
-// Failing both, the default HEAD supplies the legacy board marker, but only when the default branch is warpBranch itself, since the board checkout adopts a local branch of that name and is orphan-created otherwise.
+// The prime's weft branch, RecordsBranchName(warpBranch), supplies it when the remote carries that branch;
+// otherwise the weft's default HEAD supplies it, matching how the clone creates that branch.
+// Failing both, the default HEAD supplies the legacy board marker only when the default branch is warpBranch itself;
+// the board checkout adopts a local branch of that name and is orphan-created otherwise.
 // source names where the marker was read, in adoptRecordedAnchor's wording.
 func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string) (data []byte, source string, found bool, err error) {
 	primeBranch := RecordsBranchName(warpBranch)
@@ -94,7 +98,8 @@ func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string) (data []byte, s
 	return data, "on weft:main", found, err
 }
 
-// readAnchorMarkerAt returns the anchor marker's content at the root of ref in the staged clone at dir, and whether the marker is present.
+// readAnchorMarkerAt returns the anchor marker's content at the root of ref in the staged clone at dir.
+// It reports whether the marker is present.
 // An unborn HEAD carries no marker.
 func readAnchorMarkerAt(weftURL, dir, ref string) ([]byte, bool, error) {
 	if ref == "HEAD" {

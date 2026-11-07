@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-// ErrRequirementsUnmet is wrapped by every refusal of a run whose Spec.Requires names an unknown requirement or one its engine does not meet.
+// ErrRequirementsUnmet is wrapped by every refusal of a run.
+// A refusal occurs when Spec.Requires names an unknown requirement or one the engine does not meet.
 var ErrRequirementsUnmet = errors.New("shuttle: the engine does not meet the run's requirements")
 
 // requirementsError is a refusal that reads as its message and matches ErrRequirementsUnmet.
@@ -22,7 +23,8 @@ func (e *requirementsError) Error() string { return e.message }
 func (e *requirementsError) Unwrap() error { return ErrRequirementsUnmet }
 
 // startRequirementsError is the refusal of an unmet requirement at Start.
-// It holds the refusal without its way forward and reads with the generic one, so a refusal no caller wraps still names a way forward.
+// It holds the refusal without its way forward;
+// Error appends the way forward, so a refusal no caller wraps still names one.
 type startRequirementsError struct{ refusal error }
 
 func (e *startRequirementsError) Error() string {
@@ -45,7 +47,8 @@ type ModelKey struct {
 }
 
 // Wrap returns err unchanged unless its chain holds a Start requirements refusal.
-// For one that does, it returns the held refusal with the way forward for this key in place of the generic one; the result still wraps ErrRequirementsUnmet.
+// For one that does, it returns the held refusal with the way forward for this key in place of the generic one.
+// The result still wraps ErrRequirementsUnmet.
 func (k ModelKey) Wrap(err error) error {
 	var start *startRequirementsError
 	if !errors.As(err, &start) {
@@ -99,7 +102,9 @@ func meetsAll(engine Engine, required []Requirement) bool {
 }
 
 // unmetRequirements returns nil when engine meets every requirement in required.
-// Otherwise it returns an error wrapping ErrRequirementsUnmet that names engineName, each unmet requirement and the registered engines that meet them all, "none" when no engine does.
+// Otherwise it returns an error wrapping ErrRequirementsUnmet.
+// The error names engineName, the unmet requirements, and the engines that meet them all;
+// it names "none" when no engine does.
 func unmetRequirements(engines EngineSet, engineName string, engine Engine, required []Requirement) error {
 	supporter, _ := engine.(RequirementSupporter)
 	var unmet []string
@@ -124,7 +129,8 @@ func unmetRequirements(engines EngineSet, engineName string, engine Engine, requ
 	return &requirementsError{message: fmt.Sprintf("shuttle: engine %q does not meet the required %s; engines that meet them all: %s", engineName, strings.Join(unmet, ", "), meetingList)}
 }
 
-// refuseUnknownRequirement returns a refusal naming the first requirement in listed that is not a known one, nil when all are known.
+// refuseUnknownRequirement returns a refusal naming the first requirement in listed that is not known.
+// It returns nil when all are known.
 // verb names the operation (start or attach) in the message.
 func refuseUnknownRequirement(verb string, listed []Requirement) error {
 	for _, req := range listed {
@@ -140,7 +146,8 @@ func refuseUnknownRequirement(verb string, listed []Requirement) error {
 	return nil
 }
 
-// checkRequirementsAtStart refuses a start whose spec lists an unknown requirement or names one the resolved engine does not meet.
+// checkRequirementsAtStart refuses a start when spec lists an unknown requirement.
+// It also refuses one when the resolved engine does not meet a required one.
 func (r *Runner) checkRequirementsAtStart(spec Spec, engine Engine, engineName string) error {
 	if err := refuseUnknownRequirement("start", spec.Requires); err != nil {
 		return err
@@ -152,7 +159,8 @@ func (r *Runner) checkRequirementsAtStart(spec Spec, engine Engine, engineName s
 	return nil
 }
 
-// checkRequirementsAtAttach refuses an attach of the run candidate records when spec lists an unknown requirement or the engine the record names does not meet one.
+// checkRequirementsAtAttach refuses an attach when spec lists an unknown requirement.
+// It also refuses one when the engine the run candidate's record names does not meet a required one.
 // The record's ForkSubagents joins the spec's list; a ForkSubagents on the spec alone adds nothing, since the live run keeps its recorded engine.
 func (r *Runner) checkRequirementsAtAttach(spec Spec, candidate attachCandidate, minAge time.Duration) error {
 	if err := refuseUnknownRequirement("attach", spec.Requires); err != nil {

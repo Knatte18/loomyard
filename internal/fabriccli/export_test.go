@@ -1,4 +1,6 @@
-// export_test.go exposes the add verb's pair-push seam, the open-PR lookup seam, the hub pull runner and the hibernate request reader to this package's external tests.
+// export_test.go exposes test seams and helpers to this package's external tests.
+// They cover the add verb's pair-push seam and the open-PR lookup seam.
+// They also cover the hub pull runner and the hibernate request reader.
 
 package fabriccli
 
@@ -19,7 +21,8 @@ func SetOpenPRHeadsForTest(t *testing.T, lookup func(ctx context.Context, remote
 	t.Cleanup(func() { listOpenPRHeads = prev })
 }
 
-// SetPairPushForTest makes "lym fabric add" push a new pair through push instead of a detached child, for the whole test binary.
+// SetPairPushForTest makes "lym fabric add" push a new pair through push instead of a detached child.
+// The override holds for the whole test binary.
 // It returns the previous seam so a test can restore it.
 func SetPairPushForTest(push func(*lymcwd.Location) error) (previous func(*lymcwd.Location) error) {
 	previous = spawnPairPush

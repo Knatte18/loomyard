@@ -19,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheck_RefusesLandingHalts pins that Check refuses a blocked landing halt with a refusal ending in HandBackWayForward, and admits a Webster reroute-cap halt and an ordinary blocked halt.
+// TestCheck_RefusesLandingHalts pins Check's refusal of a blocked landing halt, ending in HandBackWayForward.
+// It also pins that Check admits a Webster reroute-cap halt and an ordinary blocked halt.
 func TestCheck_RefusesLandingHalts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -63,7 +64,10 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 	}
 }
 
-// TestEligibility_BattenRule pins batten's rule through Check: a tackler-escalated stop is eligible unless it is a spent budget, an unmet precondition or a pause-honoured Land stop, which end in BattenHandBackWayForward, while loom-shaped readers keep loom's answer for the budget and precondition stops.
+// TestEligibility_BattenRule pins batten's rule through Check:
+// a tackler-escalated stop is eligible unless it is a spent budget, an unmet precondition or a pause-honoured Land stop.
+// Those refusals end in BattenHandBackWayForward.
+// Loom-shaped readers keep loom's answer for the budget and precondition stops.
 func TestEligibility_BattenRule(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -103,7 +107,9 @@ func TestEligibility_BattenRule(t *testing.T) {
 	}
 }
 
-// TestEligibility_InterruptedPawlRows pins that an interrupted stop at each of Beam-Up, Beam-Await and Beam-Down, with the policy loomshed.InterruptPolicyFor reads for it, is eligible, so the arbiter admits one the driver re-stepped past its repair cap.
+// TestEligibility_InterruptedPawlRows pins that an interrupted stop is eligible at Beam-Up, Beam-Await and Beam-Down:
+// each row's stop carries the interrupt policy that loomshed looks up for it,
+// so the arbiter admits an interrupted stop the driver re-stepped past its repair cap.
 func TestEligibility_InterruptedPawlRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -119,7 +125,8 @@ func TestEligibility_InterruptedPawlRows(t *testing.T) {
 	}
 }
 
-// TestEscalationEligible pins EscalationEligible over fake readers: only a pending hard-cap, circling or decision escalation is eligible.
+// TestEscalationEligible pins EscalationEligible over fake readers:
+// only a pending hard-cap, circling or decision escalation is eligible.
 // Every refused row also runs Check over an awaiting status and wants the refusal to end with HandBackWayForward.
 func TestEscalationEligible(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,17 +1,17 @@
-// step.go holds stepKindForBootstrapStage, loom's own mapping from seedAndCommitBootstrap's
-// bootstrapStage classification onto shedverbs' refusal-kind vocabulary. step's own verb body now
-// lives in arm.go's loomPreStep/loomPostStep hooks, called by shedverbs' generic step command.
+// step.go holds stepKindForBootstrapStage, which maps bootstrapStage onto shedverbs' refusal-kind vocabulary.
+// The verb's body lives in arm.go's loomPreStep and loomPostStep hooks, which shedverbs' generic step command calls.
 
 package loomcli
 
 import "github.com/Knatte18/loomyard/internal/shedverbs"
 
-// stepKindForBootstrapStage maps a bootstrapStage -- seedAndCommitBootstrap's own classification of
-// where in the bootstrap a failure occurred -- onto shedverbs' refusal-kind vocabulary.
-// bootstrapStageSeed maps to shedverbs.KindUnseeded and bootstrapStageOwnership maps to
-// shedverbs.KindOwnership, the two sub-steps with a more specific kind; bootstrapStageOrigin and
-// bootstrapStageCommit both map to shedverbs.KindBootstrap, as does every other value including
-// bootstrapStageNone, so an unclassifiable failure still carries a kind rather than an empty one.
+// stepKindForBootstrapStage maps a bootstrapStage onto shedverbs' refusal-kind vocabulary.
+// A bootstrapStage classifies where in the bootstrap a failure occurred.
+// bootstrapStageSeed maps to shedverbs.KindUnseeded, and bootstrapStageOwnership maps to shedverbs.KindOwnership.
+// Those are the two sub-steps with a more specific kind.
+// bootstrapStageOrigin and bootstrapStageCommit map to shedverbs.KindBootstrap.
+// So does every other value, bootstrapStageNone included.
+// An unclassifiable failure therefore still carries a kind rather than an empty one.
 func stepKindForBootstrapStage(stage bootstrapStage) string {
 	switch stage {
 	case bootstrapStageSeed:

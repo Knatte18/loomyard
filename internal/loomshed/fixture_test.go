@@ -1,10 +1,5 @@
-// fixture_test.go carries the package-level test fixture helpers built for the two removed validate
-// producers' own test files (batch 3) that gates_test.go and cancellation_test.go still depend on --
-// validDecisionRecord and writeDiscussionFixture from discussionvalidate_test.go, and
-// seedPlanValidateFixture (renamed to seedPlanFormatFixture), seedFormatInvalidPlanValidateFixture
-// (renamed to seedFormatInvalidPlanFixture), writeGlyphRepoFixture, and seedGlyphPlanFixture, all
-// from planvalidate_test.go. Both source files are deleted by the same commit that adds this one;
-// this file is what keeps their surviving callers compiling.
+// fixture_test.go holds the shared fixtures for the decision record and the plan:
+// validDecisionRecord, writeDiscussionFixture, and the seed helpers that write a plan under an anchor path.
 
 package loomshed
 
@@ -20,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
-// validDecisionRecord carries all seven required sections, in order, plus the optional eighth. It
-// stays a hardcoded literal here rather than an export of internal/discussionparser: no caller
-// outside that package needs the list itself now that the section-iteration case has moved there.
+// validDecisionRecord is a complete decision record: the seven required sections in order, plus the optional eighth.
+// It is a literal here rather than an export of internal/discussionparser:
+// no caller outside that package needs the section list.
 const validDecisionRecord = `# Decision record
 
 ## Goal
@@ -75,14 +70,17 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 	return decisionRecordPath, supportLogPath
 }
 
-// seedPlanFormatFixture writes a syntactically complete, one-card plan-format plan under <anchorPath>/_lym/plan/, approved or not per approved.
-// The sole card carries a Create group so path-missing never fires regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence checking.
+// seedPlanFormatFixture writes a syntactically complete, one-card plan under <anchorPath>/_lym/plan/.
+// The plan is approved when approved is true.
+// The sole card carries a Create group, so the path-missing check never fires whatever the worktree holds:
+// a Create group's targets are exempt from on-disk existence checking.
 func seedPlanFormatFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
 	plankit.Write(t, filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), firstCardPlan(approved, "none", "internal/firstcard/new.go", ""))
 }
 
-// firstCardPlan describes a one-card plan whose sole Create group targets createTarget and, when useTarget is non-empty, whose card also uses useTarget.
+// firstCardPlan describes a one-card plan whose sole Create group targets createTarget.
+// When useTarget is non-empty, the card also uses it.
 func firstCardPlan(approved bool, language, createTarget, useTarget string) plankit.Plan {
 	card := plankit.Card{
 		Number:  1,
@@ -97,9 +95,11 @@ func firstCardPlan(approved bool, language, createTarget, useTarget string) plan
 	return plankit.Plan{Approved: approved, Language: language, Framing: "Framing.", Cards: []plankit.Card{card}}
 }
 
-// seedPlanContextFixture writes a one-card plan under anchorPath whose card renames by renamePair, a complete "`old` -> `new`" line, or edits a file when renamePair is empty.
+// seedPlanContextFixture writes a one-card plan under anchorPath.
+// The card renames by renamePair, a complete "`old` -> `new`" line, or edits a file when renamePair is empty.
 // planSection is the body of the overview's `## PATTERN changes` section, omitted when empty.
-// It writes a decision record next to the plan holding recordSection as its `## PATTERN changes` body, a record without the section when recordSection is empty, and no record when it is the literal "absent".
+// It writes a decision record next to the plan, with recordSection as its `## PATTERN changes` body.
+// When recordSection is empty, the record has no such section; when it is the literal "absent", no record is written.
 // cardFence is fenced text written into the card's Intent, omitted when empty.
 // The returned PlanContext names the record path and lists no rename tool.
 func seedPlanContextFixture(t *testing.T, anchorPath, renamePair, planSection, recordSection, cardFence string) PlanContext {
@@ -143,9 +143,9 @@ func fenceOf(lines ...string) string {
 	return "```\n" + strings.Join(lines, "\n") + "\n```"
 }
 
-// seedFormatInvalidPlanFixture writes a plan whose overview declares an unrecognized format,
-// tripping format-unrecognized regardless of requireApproved — the mode dimension must not change a
-// format-invalid plan's Stuck disposition either way.
+// seedFormatInvalidPlanFixture writes a plan whose overview declares an unrecognized format.
+// The format trips format-unrecognized whatever requireApproved is.
+// The mode dimension must not change a format-invalid plan's Stuck disposition, in either mode.
 func seedFormatInvalidPlanFixture(t *testing.T, anchorPath string) {
 	t.Helper()
 
@@ -168,9 +168,10 @@ func seedFormatInvalidPlanFixture(t *testing.T, anchorPath string) {
 	}
 }
 
-// seedGlyphPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/.
-// createTarget names the card's sole Create group entry;
-// when useTarget is non-empty it also carries a Uses: entry naming useTarget, so a test can add a second glyph target resolved outside the Create inversion.
+// seedGlyphPlanFixture writes a syntactically complete, one-card go plan under <anchorPath>/_lym/plan/.
+// createTarget names the card's sole Create group entry.
+// A non-empty useTarget adds a Uses: entry naming it,
+// so a test can add a second glyph target resolved outside the Create inversion.
 func seedGlyphPlanFixture(t *testing.T, anchorPath string, approved bool, createTarget, useTarget string) {
 	t.Helper()
 	plankit.Write(t, filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), firstCardPlan(approved, "go", createTarget, useTarget))

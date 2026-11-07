@@ -22,7 +22,14 @@ func sortedCopy(keys []string) []string {
 	return out
 }
 
-// TestReconcile pins the merge: added and removed report template-only and file-only key paths, user values, template comments and template key order survive in merged, lists, open maps and per-name map entries are carried whole, a per-name map holds only the names the file changed, a name only the file holds under a per-name map is kept and reported in kept, a template-equal name is left out and reported in dropped, and reconciling the merged output again changes nothing.
+// TestReconcile pins the merge.
+// Added and removed report template-only and file-only key paths.
+// User values, template comments, and template key order survive in merged.
+// Lists, open maps, and per-name map entries are carried whole.
+// A per-name map holds only the names the file changed.
+// A name only the file holds under a per-name map is kept and reported in kept.
+// A template-equal name is left out and reported in dropped.
+// Reconciling the merged output again changes nothing.
 func TestReconcile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -305,7 +312,9 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
-// TestMissingKeys pins which template key paths a file lacks: an empty value counts as present, a list is a default rather than a minimum length, and an open map satisfies every leaf under it.
+// TestMissingKeys pins which template key paths a file lacks.
+// An empty value counts as present, and a list is a default rather than a minimum length.
+// An open map satisfies every leaf under it.
 func TestMissingKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -376,8 +385,8 @@ func TestMissingKeys(t *testing.T) {
 	}
 }
 
-// TestSequenceBasePath covers the split MissingKeys keys its sequence-element rule off, including
-// the shapes that must NOT be read as an element.
+// TestSequenceBasePath covers the split that MissingKeys keys its sequence-element rule off.
+// It includes the shapes that must not be read as an element.
 func TestSequenceBasePath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

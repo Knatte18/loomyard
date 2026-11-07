@@ -1,4 +1,4 @@
-// entries_pawl.go implements beamUpEntry, beamAwaitEntry and beamDownEntry, the Constructors of the pawl recipe's Go producers, each built over Env.Pawl.
+// entries_pawl.go holds the Constructors of the pawl recipe's Go producers, each built over Env.Pawl.
 
 package shedrecipe
 
@@ -12,8 +12,9 @@ import (
 // pawlPathFields are the Paths fields every pawl producer that touches the run's files requires.
 var pawlPathFields = []string{"Paths.LandRequest", "Paths.DobbyStopMarker", "Paths.AwaitMarker"}
 
-// requirePawl refuses the first of fields that Env.Pawl leaves unset, naming it in its dotted `Pawl.<Field>` form on behalf of entry.
-// A string field must be non-empty and every other field non-nil.
+// requirePawl refuses the first of the named fields that is unset in deps, naming it as `Pawl.<Field>` for entry.
+// A string field must be non-empty, and every other field must be non-nil.
+// An unknown field name panics.
 func requirePawl(entry string, deps pawlengine.Deps, fields ...string) error {
 	values := map[string]any{
 		"Slug":                  deps.Slug,
@@ -58,7 +59,10 @@ func requirePawl(entry string, deps pawlengine.Deps, fields ...string) error {
 	return nil
 }
 
-// beamUpEntry is the Constructor for the "BeamUp" registry row: it rejects every config key, requires the Env.Pawl fields Beam-Up uses, and returns pawlengine.NewBeamUp over Env.Pawl, wrapping that constructor's own error, a step with no name or function, with this package's error-text prefix.
+// beamUpEntry is the Constructor for the "BeamUp" registry row.
+// It rejects every config key and requires the Env.Pawl fields Beam-Up uses.
+// It returns pawlengine.NewBeamUp over Env.Pawl.
+// A constructor error, such as a step with no name or function, is wrapped with this package's error-text prefix.
 func beamUpEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -73,7 +77,9 @@ func beamUpEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer,
 	return producer, nil
 }
 
-// beamAwaitEntry is the Constructor for the "BeamAwait" registry row: it rejects every config key, requires the Env.Pawl fields Beam-Await uses, and returns pawlengine.NewBeamAwait over Env.Pawl.
+// beamAwaitEntry is the Constructor for the "BeamAwait" registry row.
+// It rejects every config key and requires the Env.Pawl fields Beam-Await uses.
+// It returns pawlengine.NewBeamAwait over Env.Pawl.
 func beamAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -91,7 +97,9 @@ func beamAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	return producer, nil
 }
 
-// beamDownEntry is the Constructor for the "BeamDown" registry row: it rejects every config key, requires Env.Pawl.Down, and returns pawlengine.NewBeamDown over Env.Pawl.
+// beamDownEntry is the Constructor for the "BeamDown" registry row.
+// It rejects every config key and requires Env.Pawl.Down.
+// It returns pawlengine.NewBeamDown over Env.Pawl.
 func beamDownEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err

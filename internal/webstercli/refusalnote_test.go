@@ -15,8 +15,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runVerbs executes args against a bare parent carrying c's verbs, noted through addVerbs or raw, and returns the exit code and output.
-// The bare CLI carries no geometry, so its scratch directory is a temporary one, which keeps begin-batch's conflict-record removal off the test's working directory.
+// runVerbs executes args against a bare parent carrying c's verbs, noted through addVerbs or raw.
+// It returns the exit code and output.
+// The bare CLI carries no geometry, so its scratch directory is a temporary one.
+// That keeps begin-batch's conflict-record removal off the test's working directory.
 func runVerbs(t *testing.T, c *websterCLI, noted bool, args ...string) (int, string) {
 	t.Helper()
 	c.geom.ScratchDir = t.TempDir()

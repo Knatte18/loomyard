@@ -1,4 +1,5 @@
-// commitstatus_integration_test.go drives the commit-status seam each wiring entry point installs against a real hub pair and its hub board, to pin the board entry a finished run leaves per recipe.
+// commitstatus_integration_test.go drives the commit-status seam that each wiring entry point installs.
+// It runs against a real hub pair and its hub board, and pins the board entry a finished run leaves per recipe.
 
 package loomcli
 
@@ -15,9 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWiredCommitStatus_FinishedRunEntry drives the seam each of wireLightweight and wire installs through a run's last transition and asserts the board entry it leaves:
-// a recipe with no Finalize row makes the run-held task a Sketch with no status, unless another entry depends on it, which leaves the task draft;
-// one with a Finalize row leaves the task with the status of the last running transition.
+// TestWiredCommitStatus_FinishedRunEntry drives the seam that wireLightweight and wire each install.
+// The test takes a run through its last transition and asserts the board entry that transition leaves.
+// A recipe with no Finalize row leaves the run-held task a Sketch with no status;
+// the task stays draft instead when another entry depends on it.
+// A recipe with a Finalize row leaves the task with the status of the last running transition.
 // It is serial because it sets the board skip variable, which is process-global.
 func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -104,9 +107,10 @@ func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 	}
 }
 
-// TestSketchFinish_TellsTheParentOnlyOfARefusedSketch drives a finished motif run's Finish against a real hub board and asserts the notices it posts:
-// one naming the dependent entry and both ways forward when the board refuses the Sketch, and none when it takes it;
-// a notice that cannot be sent leaves the finish succeeding after the one attempt.
+// TestSketchFinish_TellsTheParentOnlyOfARefusedSketch drives a finished motif run's Finish against a real hub board.
+// The finish posts one notice when the board refuses the Sketch, naming the dependent entry and both ways forward.
+// It posts none when the board takes the Sketch.
+// A notice that cannot be sent leaves the finish succeeding after the one attempt.
 // It is serial because it sets the board skip variable, which is process-global.
 func TestSketchFinish_TellsTheParentOnlyOfARefusedSketch(t *testing.T) {
 	tiergate.Require(t, 1)

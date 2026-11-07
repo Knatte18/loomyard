@@ -1,4 +1,4 @@
-// landings_test.go tests the landing joins, kinds and the fresh-code rule over fake parent, records and board repositories.
+// landings_test.go tests the landing joins, kinds and fresh-code rule over fake parent, records and board repositories.
 
 package reportengine
 
@@ -21,7 +21,8 @@ type wantLanding struct {
 }
 
 // landingExpectation is what a row expects of a report's landings.
-// runLandings maps a run's tag to the commit its Landing names, empty for none, and landingSteps its tag to its landing LLM step.
+// runLandings maps a run's tag to the commit its Landing names, empty for none;
+// landingSteps maps it to its landing LLM step.
 type landingExpectation struct {
 	landings     []wantLanding
 	runLandings  map[string]string
@@ -37,7 +38,8 @@ var (
 	finalizeStuck = []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Stuck}}
 )
 
-// exactRun adds a full tapestry run of slug tagged sha at hour, whose records history ends in a commit naming task in its trailer and whose loom history is history.
+// exactRun adds a full tapestry run of slug tagged sha at hour.
+// Its records history ends in a commit naming task in its trailer, and its loom history is the given history.
 func (w *world) exactRun(slug, sha string, hour int, task string, history []shedengine.HistoryEntry) {
 	w.recordsCommit("r-"+sha, hour-1, task)
 	w.tagOver(slug, sha, "r-"+sha, at(hour), seedText("tapestry"), statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: history}), nil)

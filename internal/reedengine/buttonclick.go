@@ -1,5 +1,6 @@
-// buttonclick.go implements the engine-less click of a status-bar button: it finds the clicked entry in the session's spec option, asks for its answer and confirms when the entry says so, runs it, logs it and shows a failure on the clicking client.
-// It reads no config and no reed state, only the session's @lym_button_spec, through the told anchor reader the current anchor of the worktree holding its run directory, for {strand} the clicking client's active pane, and for {answer} the session's @lym_button_answer.
+// buttonclick.go handles the engine-less click of a status-bar button.
+// It finds the clicked entry in the session's button spec and raises the prompts the entry names.
+// It runs the entry in the current anchor of its worktree and shows any failure on the clicking client.
 
 package reedengine
 
@@ -18,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// ButtonRequest is one click of a status-bar button, as the click verb is told it.
+// ButtonRequest is one click of a status-bar button, as the click verb supplies it.
 type ButtonRequest struct {
 	// TmuxPath is the tmux binary and SocketPath the server's socket the click addresses.
 	TmuxPath   string
@@ -29,9 +30,9 @@ type ButtonRequest struct {
 	Range string
 	// Client is the clicking client, which prompts and messages go to.
 	Client string
-	// Confirmed reports that the operator already answered the entry's confirm prompt yes, so Hash, Strand and Answer are the confirmed line's values.
+	// Confirmed reports a yes at the confirm prompt; Hash, Strand and Answer are the confirmed line's values.
 	Confirmed bool
-	// Answered reports that the operator answered the entry's ask prompt, whose answer the session's buttonAnswerOption holds, so Hash and Strand are the answered line's values.
+	// Answered reports that the ask prompt was answered; Hash and Strand are the answered line's values.
 	Answered bool
 	// Hash is the buttonRunHash of the run text the prompt was raised for; it is read only when Confirmed or Answered.
 	Hash string
@@ -45,7 +46,7 @@ type ButtonRequest struct {
 // The answer travels through an option rather than the answered line because tmux can escape it for its own parser but not quote it for a shell.
 const buttonAnswerOption = "@lym_button_answer"
 
-// buttonDeps are the process-level calls runButtonVia makes, replaceable by a test.
+// buttonDeps holds the process-level calls of a button click, so a test can replace them.
 type buttonDeps struct {
 	// run starts shellPath with flag and script in dir, waits for it, and returns its combined output and exit code.
 	run func(shellPath, flag, script, dir string) (output string, exitCode int, err error)
@@ -57,10 +58,11 @@ type buttonDeps struct {
 	sh shell.Shell
 }
 
-// RunButton handles one click of a status-bar button on the told server.
-// It builds its tmux command from the told paths and reads nothing else of reed's.
-// anchorOf returns the anchored directory, as recorded now, of the worktree holding a directory;
-// the entry runs there rather than in the rendered run directory, which goes stale when an anchor marker changes after the render.
+// RunButton handles one click of a status-bar button on the tmux server that req addresses.
+// It builds its tmux command from req's paths and reads nothing else of reed's.
+// anchorOf returns the anchored directory, as recorded now, of the worktree holding a directory.
+// The entry runs in that anchor rather than in the rendered run directory.
+// The rendered directory goes stale when an anchor marker changes after the render.
 // It returns nothing: every failure is shown to the clicking client or logged, so the click verb always exits 0.
 func RunButton(req ButtonRequest, anchorOf func(dir string) (string, error)) {
 	runButtonVia(newTmuxCmdForSocketPath(req.TmuxPath, req.SocketPath), req, buttonDeps{
@@ -71,9 +73,10 @@ func RunButton(req ButtonRequest, anchorOf func(dir string) (string, error)) {
 	})
 }
 
-// runButtonVia is RunButton's implementation over an already-built tmux command and its process-level calls, so a test can drive it through the execHook seam.
-// A clicked range with no entry, an unrendered spec, a gone run directory, a run directory whose anchor does not resolve, an anchor directory that is gone, an ask text that holds a ',' after the placeholder fill and a failed run each show one message on the clicking client and run nothing further.
-// An entry with an ask text raises a prompt that stores its answer and re-enters through an answered request; Escape at that prompt runs nothing.
+// runButtonVia runs one button click over the given tmux command and process-level calls, so a test can replace them.
+// Every failure shows one message on the clicking client and runs nothing further.
+// An entry with an ask text raises a prompt that stores its answer and re-enters through an answered request;
+// Escape at that prompt runs nothing.
 // An entry with a confirm text then raises a prompt whose yes re-enters through a confirmed request carrying the answer.
 // An answered or confirmed request runs the entry only when its run text still hashes to the prompt's hash.
 func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
@@ -157,7 +160,8 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 		}
 		var argv []string
 		if asking {
-			// %%% is the first %% of the template, so tmux puts the answer there with its quotes, backslashes, dollars, semicolons and tildes escaped for the double-quoted string.
+			// %%% is the first %% of the template, so tmux puts the answer there.
+			// The answer's quotes, backslashes, dollars, semicolons and tildes are escaped for the double-quoted string.
 			line := composeButtonReentryLine(deps.sh, exe, req, runDir, buttonStageAnswered, hash, values)
 			template := "set-option -t " + tmuxString(exactSessionWindowTarget(req.Session)) + " " + buttonAnswerOption + ` "%%%" ; run-shell -b ` + tmuxQuote(line)
 			argv = []string{"command-prompt", "-t", req.Client, "-p", ask + " ", template}
@@ -203,7 +207,7 @@ func readButtonSpec(cmd TmuxCmd, session string) (buttonSpec, bool) {
 }
 
 // findButtonEntry returns the entry of spec whose index the clicked range names.
-// A range whose suffix is no number, and an index no entry holds, report false.
+// A range without the prefix, a suffix that is no number, and an index no entry holds all report false.
 func findButtonEntry(spec buttonSpec, rangeName string) (buttonSpecEntry, bool) {
 	suffix, ok := strings.CutPrefix(rangeName, buttonRangePrefix)
 	if !ok {
@@ -241,7 +245,8 @@ func buttonStrand(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (strand
 
 // buttonAnswer returns the value that fills {answer} for an answered or confirmed click, or the message to show instead.
 // A confirmed click carries the value.
-// An answered click reads the session's buttonAnswerOption, trimmed of surrounding space, and an empty answer takes the entry's ask default.
+// An answered click reads the session's buttonAnswerOption, trimmed of surrounding space,
+// and an empty answer takes the entry's ask default.
 func buttonAnswer(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (answer, problem string) {
 	if req.Confirmed {
 		return req.Answer, ""
@@ -258,10 +263,12 @@ func buttonAnswer(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (answer
 	return answer, ""
 }
 
-// runButtonScript starts shellPath with flag and script in dir, waits for it with no timeout, and returns its combined output and exit code.
+// runButtonScript starts shellPath with flag and script in dir and waits for it with no timeout.
+// It returns the combined output and the exit code.
 // The spawn and the end, with the exit code and the output, are logged at Info.
 // A process that ran and exited non-zero is no error; an error means it could not be started, with exit code -1.
-// It sets no caller identity: the process inherits the tmux server's environment, which reed stripped of the strand name variables at spawn.
+// It sets no caller identity.
+// The process inherits the tmux server's environment, which reed stripped of the strand name variables at spawn.
 func runButtonScript(shellPath, flag, script, dir string) (output string, exitCode int, err error) {
 	logger.Info("reed: running a status-bar button", "shell", shellPath, "dir", dir, "script", script)
 	command := exec.Command(shellPath, flag, script)
@@ -286,12 +293,15 @@ func buttonRunHash(run string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// tmuxQuote wraps s in double quotes for tmux's command parser and doubles every #, since run-shell format-expands its command.
+// tmuxQuote wraps s in double quotes for tmux's command parser and doubles every #.
+// run-shell format-expands its command, and the doubled # escapes that expansion.
 func tmuxQuote(s string) string {
 	return tmuxString(strings.ReplaceAll(s, "#", "##"))
 }
 
-// tmuxString wraps s in double quotes for tmux's command parser, escaping backslash, double quote and dollar sign with a backslash, for an argument tmux does not format-expand.
+// tmuxString wraps s in double quotes for tmux's command parser.
+// It escapes backslash, double quote and dollar sign with a backslash.
+// Use it for an argument tmux does not format-expand.
 func tmuxString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`).Replace(s) + `"`
 }

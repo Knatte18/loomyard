@@ -13,23 +13,27 @@ import (
 // defaultConfig is the Config most tests that never poll use.
 var defaultConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
-// fastConfig is defaultConfig with the floor poll interval and a liveness probe on every poll; newFixture's fake clock makes a scripted probe sequence cost no real wall-clock time.
-// Its RunTimeoutMin is generous enough that Spec.validate's zero-Timeout default never binds the run deadline before a test's own scripted startup outcome does;
-// a zero result would put run.deadline at start time, which the startup step's own run-deadline check would hit after the very first pending probe.
+// fastConfig has a one-second poll interval and a liveness probe on every poll;
+// the fake clock makes a scripted probe sequence cost no real wall-clock time.
+// RunTimeoutMin is generous enough that Spec.validate's zero-Timeout default never binds the run deadline;
+// so a test's own scripted startup outcome decides before the deadline does.
+// A zero result would put run.deadline at start time;
+// the startup step's own run-deadline check would hit it after the very first pending probe.
 var fastConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}
 
-// shortStartupConfig is fastConfig with a one-second startup deadline, which a single fake-clock sleep of the poll interval reaches.
+// shortStartupConfig has a one-second startup deadline, which a single fake-clock sleep of the poll interval reaches.
 var shortStartupConfig = Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}
 
-// sparseProbeConfig is fastConfig with a liveness probe only every hundredth poll.
+// sparseProbeConfig has a one-second poll interval and a liveness probe only every hundredth poll.
 var sparseProbeConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 100}
 
-// gateConfig is fastConfig with a liveness cadence no gate test reaches, so a gate's scripted STOP and pane sequence alone decides the outcome.
+// gateConfig has a one-second poll interval and a liveness cadence no gate test reaches,
+// so a gate's scripted STOP and pane sequence alone decides the outcome.
 var gateConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1_000_000}
 
 // fixture is a Runner over a fresh temp worktree.
 // Anchor is a real subpath of Worktree, never the same value, so a swapped NewRunner argument pair fails a test rather than passing.
-// The Runner's paneCwd is Anchor by construction, since it is built through NewRunner rather than NewDetachedRunner.
+// The Runner is built through NewRunner, so its paneCwd is Anchor by construction.
 type fixture struct {
 	t        *testing.T
 	Runner   *Runner
@@ -39,7 +43,7 @@ type fixture struct {
 	DotLym string
 	// RunRoot is the run-directory root the Runner resolves.
 	RunRoot string
-	// EventsPath is the events file of the run withStrand seeded, empty otherwise.
+	// EventsPath is the events file of the seeded run, empty when none is seeded.
 	EventsPath string
 }
 
@@ -53,12 +57,12 @@ type fixtureSettings struct {
 
 type fixtureOpt func(*fixtureSettings)
 
-// withEngines builds the Runner over engines instead of the one engine newFixture is handed.
+// withEngines builds the Runner over engines instead of the single engine a fixture is built with.
 func withEngines(engines EngineSet) fixtureOpt {
 	return func(s *fixtureSettings) { s.engines = &engines }
 }
 
-// withConfig sets the Runner's Config, defaultConfig otherwise.
+// withConfig sets the Runner's Config, a default one otherwise.
 func withConfig(cfg Config) fixtureOpt {
 	return func(s *fixtureSettings) { s.cfg = cfg }
 }
@@ -69,13 +73,14 @@ func withClock(clk Clock) fixtureOpt {
 	return func(s *fixtureSettings) { s.clk = clk }
 }
 
-// withStrand seeds run-1 under the run-dir root with guid as its strand and an events path inside it, so FindRun can resolve guid:
-// Runner.Inject and ReadEvents, unlike (*Run).Interrupt/Send, have no in-process Run handle to draw StrandGUID from.
+// withStrand seeds run-1 under the run-dir root with guid as its strand and an events path inside it.
+// That lets FindRun resolve guid for Runner.Inject and ReadEvents, which have no Run handle to draw StrandGUID from.
 func withStrand(guid string) fixtureOpt {
 	return func(s *fixtureSettings) { s.guid = guid }
 }
 
-// withSeparateRunDir points the run-dir root at its own temp directory through Config.RunDir, so a test can seed run.json files without reasoning about the anchor-relative default layout.
+// withSeparateRunDir points the run-dir root at its own temp directory through Config.RunDir,
+// so a test can seed run.json files without reasoning about the anchor-relative default layout.
 func withSeparateRunDir() fixtureOpt {
 	return func(s *fixtureSettings) { s.separateRunDir = true }
 }
@@ -127,7 +132,7 @@ type runSettings struct {
 type runOpt func(*testing.T, *runSettings)
 
 // withRunState replaces the Run's state, which otherwise names strand-1 alone.
-// It precedes withRunEvents, which writes into the state it leaves.
+// An option that seeds events writes into the state this leaves, so it must come after this one.
 func withRunState(state RunState) runOpt {
 	return func(_ *testing.T, s *runSettings) { s.state = state }
 }
@@ -231,7 +236,7 @@ func coverScope(t *testing.T, scope string, pausedAt time.Time) (string, func(re
 	return path, resume
 }
 
-// addLiveEntry appends a live entry of scope paused at pausedAt to the record at path, creating the record when it is missing.
+// addLiveEntry appends a live entry of scope paused at pausedAt to the record at path, creating the record if absent.
 func addLiveEntry(t *testing.T, path, scope string, pausedAt time.Time) {
 	t.Helper()
 	_, err := pauserecord.Update(path, pausedAt, func(record *pauserecord.Record) error {

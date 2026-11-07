@@ -30,13 +30,18 @@ type VerbStatus struct {
 // errNoScope is the refusal of a verb that needs a recorded scope.
 var errNoScope = errors.New("drift: no scope is recorded yet; way forward: lym loom status shows the row the run is at")
 
-// deferHaltRows are the rows past Drift-Await that a halt naming `lym drift defer`, or a failed baseline check, blocks: Drift-Expect, the writer rows, Drift-Verify and Drift-Recheck.
+// deferHaltRows are the rows past Drift-Await that a halt naming `lym drift defer`, or a failed baseline check, blocks:
+// Drift-Expect, the writer rows, Drift-Verify and Drift-Recheck.
 var deferHaltRows = []string{expectRow, darnWriteRow, websterRow, verifyRow, recheckRow}
 
-// Defer settles the baseline wait with no baseline taken, so the run goes on to code changes, and records `awaited_at` and `deferred` through WriteRecords.
-// It is admitted while blocked at Drift-Await, at a Drift-Baseline capture halt, and at a halt of Drift-Expect, a writer row, Drift-Verify or Drift-Recheck whose error, past an optional leading decision halt prefix, opens with DeferHaltPrefix, or, on a run whose scope record holds a scope other than off and no deferral, whose baseline check fails when it runs.
+// Defer settles the baseline wait with no baseline taken,
+// so the run goes on to code changes, and records `awaited_at` and `deferred` in the drift records.
+// It is admitted while the run is blocked at Drift-Await, or at a Drift-Baseline capture halt.
+// It is also admitted at a blocked halt of Drift-Expect, a writer row, Drift-Verify or Drift-Recheck.
+// For those halts, the error must open with the defer halt prefix, optionally after a decision halt prefix.
+// A run whose scope is neither off nor deferred is also admitted when its baseline check fails.
 // A scope-off run has no baseline directory, so it never admits a deferral that way.
-// It refuses while a capture holds the lock, which a running capture, a `lym drift check` and the drift gate's check all take.
+// It refuses while the capture lock is held, which captures and checks take.
 func Defer(d Deps, st VerbStatus) error {
 	admitted, err := deferAdmitted(d, st)
 	if err != nil {
@@ -61,7 +66,7 @@ func Defer(d Deps, st VerbStatus) error {
 	})
 }
 
-// deferAdmitted reports whether Defer settles the halt st holds.
+// deferAdmitted reports whether a deferral settles the halt that st holds.
 func deferAdmitted(d Deps, st VerbStatus) (bool, error) {
 	row := st.Status.CurrentProducer
 	if st.Status.State != shedengine.StateBlocked {

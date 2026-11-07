@@ -1,6 +1,4 @@
-// gitrepo.go defines the Repo type and its read/commit primitives: New, the run/runChecked pair
-// over gitexec.RunGit and gitexec.Run, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
-// ChangedFilesSince, and SHAExists.
+// gitrepo.go defines the Repo type and the read and commit primitives that run git through gitexec and go-git.
 
 package gitrepo
 
@@ -25,8 +23,8 @@ import (
 // ErrNoCommits is returned by CurrentSHA when the repository has no commits.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
 
-// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex object name, surfaced
-// before reaching git.
+// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex object name.
+// The check runs before git is reached.
 var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
 
 // ErrIndexNotEmpty is returned by CommitEmpty when the index has staged changes.
@@ -51,16 +49,19 @@ type Repo struct {
 	goGitOK             bool
 	lastPackFingerprint string
 
-	// reindexCount counts the storer reindexes readGoGit has run, incremented under the exclusive goGitMu and read only by this package's tests.
+	// reindexCount counts the storer reindexes readGoGit has run.
+	// It is incremented under the exclusive goGitMu and read only by this package's tests.
 	reindexCount int
 
-	// geometryOnce guards the one dotgit.Read of this handle's checkout; geometryValue and geometryErr hold its result for the handle's life.
+	// geometryOnce guards the one dotgit.Read of this handle's checkout.
+	// geometryValue and geometryErr hold its result for the handle's life.
 	// Nothing else is cached: HEAD and refs change under a process, the git and common dirs do not.
 	geometryOnce  sync.Once
 	geometryValue dotgit.Geometry
 	geometryErr   error
 
-	// pushSleep replaces the production backoff sleep of the plain push primitives; nil in every handle New returns, set only by this package's tests.
+	// pushSleep replaces the production backoff sleep of the plain push primitives;
+	// it is nil in every handle New returns and set only by this package's tests.
 	pushSleep func(time.Duration)
 }
 
@@ -75,14 +76,15 @@ func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) 
 	return gitexec.RunGit(args, r.path)
 }
 
-// runChecked executes a git subcommand against this Repo's checkout and treats a non-zero exit as
-// a failure, returning *gitexec.GitError, recoverable via errors.As, whenever git ran and rejected
-// the command.
+// runChecked executes a git subcommand against this Repo's checkout.
+// A non-zero exit is a failure;
+// it returns *gitexec.GitError, recoverable via errors.As, when git ran and rejected the command.
 func (r *Repo) runChecked(args ...string) (string, error) {
 	return gitexec.Run(args, r.path)
 }
 
-// geometry reads the checkout's git dir and common dir through dotgit on first use and returns the same result for the handle's life.
+// geometry reads the checkout's git dir and common dir through dotgit on first use.
+// It returns the same result for the handle's life.
 func (r *Repo) geometry() (dotgit.Geometry, error) {
 	r.geometryOnce.Do(func() {
 		r.geometryValue, r.geometryErr = dotgit.Read(r.path)
@@ -91,7 +93,8 @@ func (r *Repo) geometry() (dotgit.Geometry, error) {
 }
 
 // GitDir returns the absolute directory holding this checkout's HEAD and per-worktree state.
-// It is the checkout's own `.git` directory, or for a linked worktree the directory under the common dir's `worktrees/` that its gitfile names.
+// It is the checkout's own `.git` directory.
+// For a linked worktree it is the directory under the common dir's `worktrees/` that its gitfile names.
 func (r *Repo) GitDir() (string, error) {
 	g, err := r.geometry()
 	if err != nil {
@@ -100,7 +103,8 @@ func (r *Repo) GitDir() (string, error) {
 	return g.GitDir, nil
 }
 
-// CommonDir returns the absolute directory holding this checkout's objects and refs, which a linked worktree shares with its primary.
+// CommonDir returns the absolute directory holding this checkout's objects and refs.
+// A linked worktree shares it with its primary.
 func (r *Repo) CommonDir() (string, error) {
 	g, err := r.geometry()
 	if err != nil {
@@ -162,10 +166,10 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	return sha, true, nil
 }
 
-// CommitEmpty records an empty commit (tree identical to its parent's) via `git commit
-// --allow-empty`.
-// It refuses if the index is dirty, returning ErrIndexNotEmpty.
-// Unlike StageAndCommit, it always commits when it succeeds.
+// CommitEmpty records an empty commit whose tree is identical to its parent's.
+// It uses `git commit --allow-empty`.
+// It returns ErrIndexNotEmpty when the index is dirty.
+// On success it always records a commit.
 func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 	_, err = r.CurrentSHA()
 	switch {
@@ -204,8 +208,7 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 }
 
 // StageAllAndCommit stages every change via `git add -A` and commits with msg.
-// Return semantics mirror StageAndCommit: ("", false, nil) when nothing to commit, otherwise the
-// new HEAD SHA with committed=true.
+// It returns ("", false, nil) when nothing is staged after that, otherwise the new HEAD SHA with committed=true.
 func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {
 	if _, err := r.runChecked("add", "-A"); err != nil {
 		return "", false, fmt.Errorf("gitrepo: git add -A: %w", err)
@@ -245,8 +248,8 @@ func (r *Repo) SHAExists(sha string) bool {
 	return err == nil
 }
 
-// commitByHash resolves sha to its commit object, peeling like
-// `git rev-parse <sha>^{commit}`. Tree or blob hashes report error.
+// commitByHash resolves sha to its commit object, peeling it as `git rev-parse <sha>^{commit}` does.
+// Tree or blob hashes report an error.
 func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
 	if len(sha) == hex.EncodedLen(len(plumbing.ZeroHash)) {
 		return repo.CommitObject(plumbing.NewHash(sha))
@@ -262,8 +265,7 @@ func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
 	return repo.CommitObject(*hash)
 }
 
-// CurrentBranch returns the short name of the branch HEAD points to,
-// or an error if HEAD is detached.
+// CurrentBranch returns the short name of the branch HEAD points to, or an error if HEAD is detached.
 func (r *Repo) CurrentBranch() (string, error) {
 	return readGoGit(r, func(repo *git.Repository) (string, error) {
 		head, err := repo.Reference(plumbing.HEAD, false)
@@ -277,9 +279,9 @@ func (r *Repo) CurrentBranch() (string, error) {
 	})
 }
 
-// ChangedFilesSince returns repo-relative paths that differ between sha and HEAD, considering
-// committed history only.
-// Returns ErrInvalidSHA if sha is invalid.
+// ChangedFilesSince returns the repo-relative paths that differ between sha and HEAD in committed history.
+// It ignores uncommitted changes.
+// It returns ErrInvalidSHA if sha is invalid.
 // The returned order is not contractual.
 func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	if !validSHA(sha) {
@@ -317,9 +319,8 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 			case merkletrie.Delete:
 				files = append(files, change.From.Name)
 			default:
-				// Insert and Modify both carry the current path on the To side;
-				// DiffTree never reports renames (see above), so Modify's From
-				// and To names are always identical.
+				// Insert and Modify both carry the current path on the To side.
+				// DiffTree reports no renames, so the From and To names of a Modify are always identical.
 				files = append(files, change.To.Name)
 			}
 		}

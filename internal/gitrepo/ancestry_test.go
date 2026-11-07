@@ -1,7 +1,7 @@
-// ancestry_test.go covers IsAncestor's and CommitsNotIn's argument-validation guard — pure string-matching logic that must reject a malformed sha or a leading-dash ref before ever spawning git.
-// It is deliberately untagged (no //go:build constraint) and in the internal package so it can
-// assert no git spawn happens on the rejected path, keeping it in Tier 1 alongside plain `go test`
-// per the Test Tier Purity Invariant.
+// ancestry_test.go covers the argument-validation guards of IsAncestor and CommitsNotIn;
+// the guards are pure string matching that rejects a malformed sha or a leading-dash ref before any git spawn.
+// It carries no //go:build constraint, so it stays in Tier 1 under the Test Tier Purity Invariant;
+// it runs under plain `go test` and asserts that no git spawn happens on the rejected path.
 
 package gitrepo
 
@@ -12,11 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestIsAncestor_RejectsInvalidArgs asserts a validSHA-failing sha and a leading-dash ref (which
-// git would otherwise parse as a flag) each return ErrInvalidSHA via errors.Is, without spawning
-// git — this test's own untagged Tier-1 status is the proof of that: it runs under plain `go test`,
-// with no hermetic git test-binary requirement, so a call that actually reached git would fail this
-// file's own build/run contract.
+// TestIsAncestor_RejectsInvalidArgs asserts that a sha failing validSHA returns ErrInvalidSHA;
+// a leading-dash ref, which git would otherwise parse as a flag, gets the same error, without spawning git.
 func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -47,7 +44,8 @@ func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
 	}
 }
 
-// TestMergeBase_RejectsInvalidArgs asserts a validSHA-failing a or b returns ErrInvalidSHA and no SHA, without opening the repository, for the same untagged Tier-1 reason as TestIsAncestor_RejectsInvalidArgs.
+// TestMergeBase_RejectsInvalidArgs asserts that MergeBase rejects a or b failing validSHA;
+// it returns ErrInvalidSHA and no SHA, without opening the repository.
 func TestMergeBase_RejectsInvalidArgs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -78,7 +76,8 @@ func TestMergeBase_RejectsInvalidArgs(t *testing.T) {
 	}
 }
 
-// TestCommitsNotIn_RejectsInvalidArgs asserts a validSHA-failing tip or base returns ErrInvalidSHA and no commits, without spawning git, for the same untagged Tier-1 reason as TestIsAncestor_RejectsInvalidArgs.
+// TestCommitsNotIn_RejectsInvalidArgs asserts that CommitsNotIn rejects a tip or base failing validSHA;
+// it returns ErrInvalidSHA and no commits, without spawning git.
 func TestCommitsNotIn_RejectsInvalidArgs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

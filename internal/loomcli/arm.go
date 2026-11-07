@@ -1,31 +1,7 @@
-// arm.go implements loomcli's two exported resolution entry points -- Arm, which resolves cwd
-// itself, and ArmAt, which takes an already-resolved *lymcwd.Location and a resolved run-id and
-// performs no lymcwd.Resolve of its own -- plus the three-function split behind them: the
-// unexported worker arm resolves cwd and delegates to armAt, armAt records the run-id, applies the
-// seed-presence refusal, and wires the whole engine stack exactly as resolvePersistentPreRun
-// (cli.go) always has, and the resolution-free specFor fills a Spec from an already-wired receiver.
-// Arm stays the single cwd-resolution entry point for loom's own subtree -- that rule survives
-// unchanged there -- but it no longer describes the "lym shed" path, which enters through ArmAt
-// with the Location and run-id already in hand. See the overview's
-// exported-Arm-is-the-single-resolution-entry-point and spec-fill-is-separable-from-resolution
-// Shared Decisions.
-//
-// Arm carries no command-name guard of its own: the existing cmd.Name() == "loom" short-circuit
-// stays in resolvePersistentPreRun, where it lets a bare group listing run without a git
-// repository -- a bare "lym shed" listing is shedcli's own equivalent guard, not this module's.
-//
-// arm's --parent disposition differs by entry point, and that difference is real rather than an
-// oversight: "lym shed step --recipe tapestry" registers no --parent flag of its own, so c.parentFlag
-// is the empty string there -- exactly the value "lym loom step" passes when the operator omits
-// the flag, so the two paths agree and the provenance record is simply never written from the
-// shed path.
-//
-// arm also resolves the run-id every one of loom's four generic verbs addresses -- args[0] when
-// present, shedrun.SelfRunID otherwise -- and, for those four verbs alone, refuses when no seed
-// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan and validate-description -- are not generic verbs and never reach this check; "lym loom
-// start" is the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed
-// decision.
-// See genericShedVerb's own doc comment for the exact four-verb set.
+// arm.go holds loomcli's run arming, which returns the shedverbs.Spec a verb runs with.
+// Arm resolves the working directory itself, and it is the only entry point in loom's subtree that does so.
+// ArmAt takes an already-resolved Location and run-id instead, and the lym shed path enters through it.
+// The shed path leaves the --parent value empty, so it writes no provenance record.
 
 package loomcli
 
@@ -61,10 +37,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
-// step, status, pause -- as opposed to loom's own hand-written verbs (start,
-// validate-discussion, validate-plan, validate-description), which never reach arm's
-// seed-presence check below.
+// genericShedVerb reports whether verb is one of the generic subcommands that shedverbs.Verbs returns:
+// run, step, status, pause and goto.
+// Loom's own hand-written verbs (start, validate-discussion, validate-plan and validate-description) are not generic.
+// They never reach the seed-presence check in resolveRunID.
 func genericShedVerb(verb string) bool {
 	switch verb {
 	case "run", "step", "status", "pause", "goto":
@@ -74,21 +50,23 @@ func genericShedVerb(verb string) bool {
 	}
 }
 
-// resolveRunID resolves the run-id verb addresses -- args[0] when present, shedrun.SelfRunID
-// otherwise -- and records it on c before either wiring call, unconditionally for every verb, not
-// only the four generic ones, so wireLightweight and wire (wiring.go) can read c.runID back to
-// build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID.
+// resolveRunID records on c the run-id the verb addresses: args[0] when present, shedrun.SelfRunID otherwise.
+// It records the run-id for every verb, not only the generic ones.
+// The wiring then builds every shedrun path from c.runID rather than from shedrun.SelfRunID.
 //
-// For the four generic verbs alone (genericShedVerb), it also refuses when no seed exists at that
-// run-id: ReadSeed answers found == false purely from seed.json's own absence, so a status file
-// present with no seed beside it takes the same refusal. "lym loom start" is not a generic verb and
-// never reaches this refusal -- it is the one site that writes a seed, per the batch's
-// loom's-run-and-step-do-not-auto-seed decision.
+// For the generic verbs alone (genericShedVerb), it also refuses when no seed exists at that run-id.
+// shedrun.ReadSeed reports not found from seed.json's absence alone.
+// A status file with no seed beside it therefore takes the same refusal.
+// "lym loom start" is not a generic verb, so it never reaches this refusal.
+// It is the verb that bootstraps the seed the generic verbs need.
 //
-// It performs no I/O beyond shedrun.ReadSeed and shedrun.List, both pure filesystem reads under location's own AnchorPath -- no git spawn -- so a test can drive it directly against a hand-built *lymcwd.Location with no real git repository behind it, which is what lets arm_seed_test.go stay Tier 1 despite arm itself needing lymcwd.Resolve's real git spawn.
+// It does no I/O beyond shedrun.ReadSeed and shedrun.List.
+// Both are filesystem reads under location.AnchorPath() and spawn no git process.
+// So a test can drive it with a hand-built *lymcwd.Location and no git repository.
 func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
-	// insert-card's and remove-card's first positional is a card position, and fmt's arguments are the Go files to format; none is a run-id.
+	// insert-card's and remove-card's first positional is a card position.
+	// fmt's arguments are the Go files to format, and none is a run-id.
 	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
 		runID = args[0]
 	}
@@ -110,19 +88,24 @@ func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []st
 	if err != nil {
 		return err
 	}
-	// A driverless seed gives status, pause and goto nothing to act on, and the bootstrap's seed-agreement check reads and writes only the self seed, so only run and step on self name that route.
+	// A driverless seed gives status, pause and goto nothing to act on.
+	// The bootstrap's seed-agreement check reads and writes only the self seed.
+	// So only run and step on the self run-id get the seed-without-driver remedy.
 	remedy := `run "lym loom start" first to bootstrap this task`
 	if (verb == "run" || verb == "step") && runID == shedrun.SelfRunID {
 		remedy = `run "lym loom start" first to bootstrap this task, or seed it without a driver with "lym shed seed self --recipe tapestry --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lym loom step"`
 	}
-	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
-	// this refusal words identically to battencli's own.
-	// KindlessRefusal keeps it kind-less on step too, since resolvePersistentPreRun reports it through shedverbs.ReportArmError.
+	// Rendered through shedrun.MissingSeedMessage, the renderer every seed refusal shares.
+	// This refusal therefore words identically to the others.
+	// KindlessRefusal keeps it kind-less on step too:
+	// resolvePersistentPreRun reports it through shedverbs.ReportArmError.
 	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, remedy))}
 }
 
-// resolveRecipe records on c the recipe the addressed run's seed names, shedrun.RecipeTapestry when the run has no seed yet.
-// It runs once, right after resolveRunID, so every verb, the lightweight ones included, reads the same recipe.
+// resolveRecipe records on c the recipe the addressed run's seed names.
+// When the run has no seed yet, the recipe is shedrun.RecipeTapestry.
+// It runs once, right after the run-id is resolved.
+// Every verb, the lightweight ones included, therefore reads the same recipe.
 // Only the seed's recipe is read here; the driver choice stays with the verb that selects the driving surface.
 func (c *loomCLI) resolveRecipe(location *lymcwd.Location) error {
 	seed, found, err := shedrun.ReadSeed(location, c.runID)
@@ -166,7 +149,8 @@ const reseedWayForward = `remove the run's seed.json and seed the run again with
 const shedVerbsWayForward = `drive the run with the lym shed verbs, "lym shed status <run-id>", "lym shed step <run-id>" and "lym shed goto <run-id>"`
 
 // refuseUnservedRecipe refuses a run whose recipe `lym loom` does not serve, and answers nil for one it does.
-// It names the lym shed verbs for an embedded non-loom recipe, and the re-seed for a name that selects no embedded recipe.
+// It names the lym shed verbs for an embedded recipe that loom does not serve.
+// It names the re-seed for a name that selects no embedded recipe.
 func refuseUnservedRecipe(recipe string) error {
 	switch serviceOfRecipe(recipe) {
 	case recipeNotLoom:
@@ -181,7 +165,8 @@ func refuseUnservedRecipe(recipe string) error {
 // planVerbs are the `lym loom` verbs that act on the run's plan.
 var planVerbs = []string{"validate-plan", "insert-card", "remove-card", "restore-renumber"}
 
-// verbRowEngines maps each verb that needs a recipe row to the engine of that row: every plan verb to Plan-Write, validate-parts to Parts-Write and join-parts to Parts-Plan-Write.
+// verbRowEngines maps each verb that needs a recipe row to the engine of that row:
+// every plan verb to Plan-Write, validate-parts to Parts-Write and join-parts to Parts-Plan-Write.
 var verbRowEngines = func() map[string]string {
 	engines := map[string]string{"validate-parts": partsWriteEngine, "join-parts": partsPlanWriteEngine}
 	for _, verb := range planVerbs {
@@ -191,8 +176,10 @@ var verbRowEngines = func() map[string]string {
 	return engines
 }()
 
-// refuseVerbOffRecipe refuses a verb whose row the run's recipe lacks, read from the recipe's rows, and answers nil for every verb that needs none.
-// A plan verb on a recipe with no Plan-Write row has no plan, validate-parts on a recipe with no Parts-Write row has no parts file, and join-parts on a recipe with no Parts-Plan-Write row has no parts to join.
+// refuseVerbOffRecipe refuses a verb whose row the run's recipe lacks, and answers nil for every verb that needs none.
+// A plan verb on a recipe with no Plan-Write row has no plan.
+// validate-parts on a recipe with no Parts-Write row has no parts file.
+// join-parts on a recipe with no Parts-Plan-Write row has no parts to join.
 func refuseVerbOffRecipe(verb, recipe string) error {
 	engine, needsRow := verbRowEngines[verb]
 	if !needsRow {
@@ -215,23 +202,23 @@ func refuseVerbOffRecipe(verb, recipe string) error {
 	return fmt.Errorf("loom: %s does not apply to this run, whose %q recipe has no Plan-Write row and so no plan; way forward: none is needed, since the run's scope is its decision record, which \"lym loom validate-discussion\" checks", verb, recipe)
 }
 
-// arm resolves cwd into a *lymcwd.Location and delegates to armAt with the raw positional args,
-// which resolveRunID resolves into a run-id exactly as it always has. It is loom's own subtree
-// entry point: every "lym loom <verb>" invocation reaches Arm, never ArmAt directly, so its own
-// resolvePersistentPreRun keeps resolving cwd exactly once per invocation as it always has.
+// arm is the entry point of loom's own subtree:
+// the `lym loom` pre-run reaches it for every verb it arms, so cwd is resolved once per invocation.
+// It resolves cwd into a *lymcwd.Location and hands it, with the raw positional args, to armAt.
+// For a start or resume verb, it first reconciles the hub's config.
 func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		// lymcwd.Resolve's error is already self-describing (it IS the "not a git repository"
-		// sentinel); pass it through bare rather than doubling that same text on top of it.
+		// lymcwd.Resolve's error is already self-describing, since it is the "not a git repository" sentinel;
+		// pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
 	}
 	// Recorded before the reconcile and armAt so a refusal from any later arming stage finds the location set.
 	c.location = location
 	c.loomPath = true
 
-	// A start verb reconciles the hub's config after a binary change before armAt loads any module config.
-	// A strict load of a file still carrying a retired key would otherwise refuse the verb before the reconcile that removes the key.
+	// A start or resume verb reconciles the hub's config after a binary change before armAt loads any module config.
+	// A strict load of a file still carrying a retired key would refuse the verb before the reconcile removes that key.
 	if verb == "start" || verb == "resume" {
 		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
 			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
@@ -241,23 +228,23 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 	return c.armAt(location, verb, args)
 }
 
-// armAt resolves and records the addressed run-id via resolveRunID, refuses when one of the four
-// generic verbs addresses a run-id with no seed, wires the receiver's whole engine stack -- through
-// wireLightweight when verb is one of the lightweight verbs, through the full wire otherwise -- and
-// returns the filled Spec. It performs no lymcwd.Resolve of its own: location is already resolved,
-// told rather than derived, by whichever caller holds it.
+// armAt resolves and records the addressed run-id.
+// It refuses a generic verb that addresses a run-id with no seed.
+// It wires the receiver's engine stack:
+// through wireLightweight when verb is a lightweight verb, and through the full wire otherwise.
+// It returns the filled Spec.
 //
-// It is the single worker both arm (loom's own subtree, which resolves cwd first) and the exported
-// ArmAt wrapper delegate to, so the *loomCLI whose fields the returned hooks close over is always
-// the same value the caller holds: the pre-run's own c on the "lym loom" path, the wrapper's
-// freshly-constructed one on the "lym shed" path.
+// The caller passes in a location that is already resolved, so armAt performs no lymcwd.Resolve of its own.
 //
-// On the `lym loom` path (loomPath) it also refuses a run whose recipe `lym loom` does not serve, and a plan verb on a recipe with no plan, right after the recipe is resolved.
+// The hooks in the returned Spec close over c's fields, so c must be the value the caller holds.
 //
-// The seed-presence refusal runs before either wiring call -- before wireLightweight or wire have
-// touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
-// location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
-// AnchorPath() after a successful resolve (see lymcwd.Location's own doc comment).
+// On the `lym loom` path (loomPath), it refuses a recipe that `lym loom` does not serve.
+// It also refuses a plan verb on a recipe with no plan, right after the recipe is resolved.
+//
+// The seed-presence refusal runs before either wiring call has touched the filesystem,
+// so a refused verb writes nothing to disk.
+//
+// The wiring takes location.AnchorPath() as its cwd, which equals the cwd the location was resolved from.
 func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	c.caller = agentname.CallerLabel(os.Getenv(agentname.StrandNameEnv))
 	if err := c.resolveRunID(location, verb, args); err != nil {
@@ -266,7 +253,8 @@ func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (
 	if err := c.resolveRecipe(location); err != nil {
 		return shedverbs.Spec{}, err
 	}
-	// Only the `lym loom` subtree serves loom runs alone; the refusals come before any wiring, so a refused verb writes nothing.
+	// Only the `lym loom` subtree serves loom runs alone;
+	// the refusals come before any wiring, so a refused verb writes nothing.
 	if c.loomPath {
 		if err := refuseUnservedRecipe(c.recipe); err != nil {
 			return shedverbs.Spec{}, shedverbs.KindlessRefusal{Err: err}
@@ -296,9 +284,10 @@ func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (
 	return c.specFor(verb), nil
 }
 
-// loadRouting projects the run's recipe routing onto c.routing, with MaxBounces taken from c.shedPaths
-// so status reports the same bounce budget the engine enforces. It runs after wiring, which is what
-// fills c.shedPaths, and is the one place the routing can return an error; specFor only copies it.
+// loadRouting projects the run's recipe routing onto c.routing.
+// It takes MaxBounces from c.shedPaths, so status reports the same bounce budget the engine enforces.
+// It runs after wiring, which fills c.shedPaths, and it is the one place the routing can return an error.
+// The spec built afterwards only copies the routing.
 func (c *loomCLI) loadRouting() error {
 	routing, err := c.recipeRouting()
 	if err != nil {
@@ -326,7 +315,7 @@ func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 	return loomrecipe.New(c.recipe, c.env, c.shedPaths)
 }
 
-// The engine names of the recipe rows loomcli's wiring keys on, and the verify_source value that selects the tree-scope source.
+// The engine names of the recipe rows loomcli's wiring keys on, and the tree-scope verify_source value.
 const (
 	planWriteEngine       = "PlanWrite"
 	partsWriteEngine      = "PartsWrite"
@@ -359,8 +348,10 @@ func recipeIsLoom(recipe string) bool {
 	return isLoom
 }
 
-// verifySource returns the verify source of the run's recipe: darn.yaml's for a recipe whose verify_source is tree_scope, and the hub's gate-call source otherwise.
-// A pawl run sets verify_source to plan and reads no plan, so its Finalize runs the `finalize` gate key over the whole merged tree.
+// verifySource returns the verify source of the run's recipe:
+// darn.yaml's for a recipe whose verify_source is tree_scope, and the hub's gate-call source otherwise.
+// A pawl run sets verify_source to plan and reads no plan,
+// so its Finalize runs the `finalize` gate key over the whole merged tree.
 // A recipe that selects no embedded recipe reads as the tapestry recipe.
 func (c *loomCLI) verifySource() verifySource {
 	source, err := loomrecipe.VerifySource(c.recipe)
@@ -372,8 +363,11 @@ func (c *loomCLI) verifySource() verifySource {
 }
 
 // reviewBudget returns the per-segment review bounce budgets the routing projection reports.
-// The full wiring has already loaded loom.yaml, and tapestry.yaml for a recipe with a Plan-Review row, into c.cfg, which holds a hard cap of at least 1 once loaded, since the run-wide budget may be 0; the lightweight wiring loads no config, so it reads both files here once more.
-// An unreadable loom.yaml or tapestry.yaml degrades to the templates' defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+// The full wiring has already loaded loom.yaml, and tapestry.yaml for a recipe with a Plan-Review row, into c.cfg.
+// Once loaded, c.cfg holds a hard cap of at least 1, and the run-wide budget may be 0, so the check tests the cap.
+// The lightweight wiring loads no config, so this method reads both files itself.
+// An unreadable loom.yaml or tapestry.yaml degrades to the templates' defaults with a warning;
+// the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
 func (c *loomCLI) reviewBudget() (map[string]int, error) {
 	if c.cfg.ReviewHardMaxBounces > 0 {
 		return loomSegmentBudgets(c.cfg), nil
@@ -401,10 +395,8 @@ func (c *loomCLI) reviewBudget() (map[string]int, error) {
 	return loomSegmentBudgets(template.WithTapestry(tapestryTemplate)), nil
 }
 
-// specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
-// no I/O of its own. internal/loomcli's own untagged cli_test.go, status_test.go and step_test.go
-// call this directly against a hand-populated receiver, so their leaf-command tests never spawn
-// git.
+// specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and no I/O of its own.
+// Tests call it directly against a hand-populated receiver, so their leaf-command tests never spawn git.
 func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	spec := shedverbs.Spec{
 		StatusPath:          c.shedPaths.StatusPath,
@@ -415,9 +407,9 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
 		StatusLabel:             "loom",
 		DecodeErrPrefix:         "loom:",
-		// Both busy messages are passthrough: loom's run reports the bare ErrShedBusy sentinel
-		// text as an ordinary error envelope today, and step reports err.Error() verbatim
-		// alongside its own kind.
+		// Both busy messages are passthrough:
+		// loom's run reports the bare ErrShedBusy sentinel text as an ordinary error envelope,
+		// and step reports err.Error() verbatim alongside its own kind.
 		RunBusyMessage:  "",
 		StepBusyMessage: "",
 		StepBusyKind:    shedverbs.KindBusy,
@@ -426,7 +418,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lym loom start\" first to bootstrap this task",
 		},
 		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lym loom start\" first to bootstrap this task",
-		// The landing halts and the decision halt go to the orch on tapestry and darn runs alike, so both tell the one predicate.
+		// The landing halts and the decision halt go to the orch on tapestry and darn runs alike.
+		// So both use the one predicate.
 		HandBack: arbiterstop.HandsBack,
 		Hooks: shedverbs.Hooks{
 			PreRun:             c.loomPreRun,
@@ -443,8 +436,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 
 	spec.FrictionDir = c.frictionDir
 	spec.Caller = c.caller
-	// The nil guard keeps the untagged tests that call specFor on a hand-populated receiver with no
-	// location working.
+	// The nil guard keeps the untagged tests working: they call specFor on a hand-populated receiver with no location.
 	if c.location != nil {
 		spec.ScratchDir = shedrun.ScratchDir(c.location, c.runID)
 		spec.StepsDir = shedrun.StepsDir(c.location, c.runID)
@@ -470,12 +462,11 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	}
 	spec.Routing = c.routing
 
-	// BuildShed is filled per verb, never left generic: step drives c.buildLoomShed, which
-	// already performs the whole fabricengine.Open/CurrentBranch/OriginURL/ReadOrigin/
-	// resolveLandingParent block and the c.env.Landing assignment, while run performs that same
-	// block inline in loomPreRun and then calls loomrecipe.New directly -- giving run a
-	// buildLoomShed-backed BuildShed would open the fabric and read origin twice where it does so
-	// once today. status and pause leave BuildShed nil, since neither ever calls it.
+	// BuildShed is filled per verb, never left generic.
+	// step's BuildShed is c.buildLoomShed, which calls wireLanding and then c.newShed.
+	// run's BuildShed is c.newShed, because loomPreRun already calls wireLanding;
+	// a buildLoomShed-backed BuildShed would run wireLanding a second time, opening the fabric and reading origin twice.
+	// status and pause leave BuildShed nil, since neither ever calls it.
 	switch verb {
 	case "step":
 		spec.BuildShed = c.buildLoomShed
@@ -486,55 +477,46 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	return spec
 }
 
-// Arm is loomcli's exported resolution entry point, for loom's own subtree: it constructs a fresh
-// receiver via newLoomCLI and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level
-// Arm alone could not serve resolvePersistentPreRun, because that pre-run must wire its own c:
-// start.go reads thirteen receiver fields and validate.go reads four more, so arming a throwaway
-// receiver and assigning only *c.spec would break start, validate-discussion, validate-plan and validate-description, none of which is a shedverbs verb and none of which reads
-// c.spec.
+// Arm resolves the shed spec for a loom verb from cwd, for loom's own subtree.
+// It arms a fresh receiver and returns the spec, not the receiver,
+// so a caller that needs the receiver's other fields must wire its own receiver.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := newLoomCLI()
 	return c.arm(cwd, verb, args)
 }
 
-// ArmAt is loomcli's Location-taking resolution entry point, for internal/shedcli's "lym shed"
-// table: it constructs a fresh receiver via newLoomCLI and returns c.armAt(location, verb,
-// []string{runID}), performing no lymcwd.Resolve of its own. It exists because shedcli's own
-// pre-run must read a seed before it knows which recipe to arm, a seed read is a path read, a path
-// read needs an anchor, and resolving one twice per invocation to preserve Arm's own single
-// signature would cost a second "git rev-parse" on every call. Wrapping runID as a one-element
-// slice reuses resolveRunID's own args[0]-or-default logic unchanged; since runID is already
-// resolved and non-empty by the time ArmAt is called, args[0] is always what resolveRunID records.
+// ArmAt resolves the shed spec for a verb at a Location the caller has already resolved.
+// It takes a Location rather than a working directory, because a caller reads a seed before it knows the recipe:
+// resolving the anchor a second time would cost another "git rev-parse" on every call.
+// The runID is passed as the verb's only argument and is recorded as given,
+// so it must already be resolved and non-empty.
 func ArmAt(location *lymcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
 	c := newLoomCLI()
 	return c.armAt(location, verb, []string{runID})
 }
 
-// loomPreRun implements the PreRun hook for loom's spec: run's whole existing pre-flight, in
-// today's order, each step's error becoming a returned error the generic body reports on the
-// error envelope exactly as run's own inline handling did.
+// loomPreRun implements the PreRun hook for loom's spec: it runs run's whole pre-flight in order.
+// Each step's error is returned, and the generic body reports it on the error envelope.
 func (c *loomCLI) loomPreRun(ctx context.Context) error {
-	// The status-file existence refusal, naming "lym loom start" and "lym loom step" as the remedies.
-	// The shared bootstrap of those two verbs seeds the status file, because it owns the commit-before-precondition ordering that seeding needs.
+	// The shared bootstrap of "lym loom start" and "lym loom step" seeds the status file.
+	// It owns the commit-before-precondition ordering that seeding needs.
 	if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
 		return errors.New("loom: no status file at " + c.shedPaths.StatusPath + "; run \"lym loom start\", or \"lym loom step\" after a driverless seed, first to seed the status file")
 	}
-	// The status file must be THIS task's own, for the same reason "lym loom start" checks: a
-	// worktree forked from a task worktree inherits the old task's `_lym` state, and the phase
-	// machine would silently resume the inherited run under the wrong slug (crucible round
-	// fable5-high-r3, F-B7).
+	// The status file must belong to this task:
+	// a worktree forked from a task worktree inherits the old task's `_lym` state,
+	// and the phase machine would silently resume the inherited run under the wrong slug.
 	if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, seedSlug(c.location.WorktreeName)); err != nil {
 		return err
 	}
 
-	// Observed here, next to the read VerifySeedOwnership just performed; the observation is guarded
-	// on Tier 2 being on, so a disabled run pays for neither a lock probe nor a status decode.
+	// The observation runs here, next to the read that VerifySeedOwnership performs above.
+	// It is guarded on Tier 2 being on, so a disabled run pays for neither a lock probe nor a status decode.
 	c.noteCrashResumeAtEntry("run")
 
-	// Ensure the reed substrate before the first producer call: the rows beneath run spawn
-	// agents into reed panes, so without a live session the run gets several producers deep and
-	// then hard-errors. Up is idempotent and is what "lym loom start" already calls at its own
-	// step 4.
+	// Ensure the reed substrate before the first producer call: the rows beneath run spawn agents into reed panes.
+	// Without a live session, the run gets several producers deep and then hard-errors.
+	// Up is idempotent, and "lym loom start" calls it too.
 	if _, err := c.reed.Up(); err != nil {
 		return err
 	}
@@ -543,16 +525,18 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		return err
 	}
 
-	// Ensure the friction directory before the run starts, and never clear it here: run requires
-	// an already-seeded task (VerifySeedOwnership above), so a run-only invocation is by
-	// definition a resume.
+	// Ensure the friction directory before the run starts, and never clear it here:
+	// run requires an already-seeded task (VerifySeedOwnership above),
+	// so a run-only invocation is by definition a resume.
 	friction.EnsureDir(c.frictionDir)
 
 	return nil
 }
 
-// noteCrashResumeAtEntry observes the run at entry for the named verb (`run` or `step`) and, when the observation is a crash-resume, writes the `loom-crash-resume` friction note.
-// It does nothing with Tier 2 off, and a note write failure only warns, so it never changes the verb's exit or envelope.
+// noteCrashResumeAtEntry observes the run at entry for the named verb, `run` or `step`.
+// When the observation is a crash-resume, it writes the `loom-crash-resume` friction note.
+// It does nothing with Tier 2 off, and a note write failure only warns,
+// so it never changes the verb's exit or envelope.
 func (c *loomCLI) noteCrashResumeAtEntry(verb string) {
 	entry := observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location))
 	if !loomengine.DetectCrashResume(entry) {
@@ -563,14 +547,17 @@ func (c *loomCLI) noteCrashResumeAtEntry(verb string) {
 	}
 }
 
-// loomPostRun implements the PostRun hook for loom's spec: it returns the envelope's "friction" key, on the hard-error arm too, which is why PostRun itself runs unconditionally.
-// RunDone never reflects here: the Friction-Reflect row already did, under the run lock and before
-// done persisted, so the key reports c.rowFrictionStatus, or frictionengine.StatusSkipped when the
-// row did not run in this process (the engine's done short-circuit on an already-done status file).
-// RunBlocked, and a non-nil runErr behind a `failed` status (failedHalt), each write a halt note here and report skipped, leaving the reflection to the Friction-Reflect row;
-// any other runErr reports skipped.
-// The key is returned unconditionally so it is never silently dropped from a RunPaused envelope,
-// and `run` merges it onto its error envelope as onto its success envelope.
+// loomPostRun implements the PostRun hook for loom's spec.
+// It returns the envelope's "friction" key on every outcome, including the hard-error arm.
+// PostRun therefore runs unconditionally, and the key is never silently dropped from a RunPaused envelope.
+// `run` merges the key onto both its error envelope and its success envelope.
+// This function never reflects a RunDone run:
+// the Friction-Reflect row does that under the run lock, before done is persisted.
+// It reports the row's status, or skipped when the row did not run in this process.
+// The engine's done short-circuit on an already-done status file is one such case.
+// A RunBlocked run, and a non-nil runErr behind a `failed` status, each write a halt note here and report skipped;
+// leaving the reflection to the Friction-Reflect row.
+// Any other runErr reports skipped.
 // RunAwaiting and RunPaused write nothing.
 func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
 	frictionStatus := frictionengine.StatusSkipped
@@ -593,9 +580,11 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 	return map[string]any{"friction": frictionStatus}
 }
 
-// loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's bootstrap, then reed Up -- today's stepCmd body, in today's order, each returned error paired with its refusal kind.
+// loomPreStep implements the PreStep hook for loom's spec.
+// It runs the early run-lock probe, then step's bootstrap, then reed Up,
+// and it pairs each returned error with its refusal kind.
 //
-// Up stays because the producers under step spawn agents into reed panes.
+// Up is needed because the producers under step spawn agents into reed panes.
 // Step never adds or removes the status strand:
 // removal needs the driver, which step must not read,
 // and an unconditional removal would strip the band from a halted go run an operator steps by hand.
@@ -610,15 +599,13 @@ func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	return kind, shedtransient.Mark(err)
 }
 
-// loomPreStepUnmarked is loomPreStep's body, before the transient mark.
+// loomPreStepUnmarked runs the step bootstrap: the run-lock probe, the seed and commit, and bringing reed up.
+// It returns the refusal kind with the error, and the caller applies the transient mark.
 func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
-	// The MkdirAll is part of the probe rather than an accident of ordering: the run lock lives
-	// in the ephemeral tree, internal/lock opens with O_CREATE but never creates a parent, and
-	// "start" creates that same directory at its own step 4 before its own step-5 probe -- so
-	// hoisting only the probe would run it on a fresh worktree whose parent directory does not
-	// exist. Treating a missing-parent error as "lock free" is explicitly rejected, because it
-	// would convert a filesystem fault into a false green light on the one check guarding
-	// against a second driver.
+	// The MkdirAll runs before the probe because a fresh worktree does not have the lock's parent directory yet.
+	// internal/lock opens the run lock with O_CREATE but never creates a parent directory itself.
+	// A missing-parent error must stay an error and must not read as "lock free":
+	// that would turn a filesystem fault into a false green light on the check against a second driver.
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.LockPath), 0o755); err != nil {
 		return shedverbs.KindBootstrap, err
 	}
@@ -630,7 +617,8 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	if runLockFree {
 		_ = probe.Release()
 	} else {
-		// An unreadable status file leaves the placeholder; the refusal still names the command's shape.
+		// If the status file is unreadable or missing, currentProducer stays empty,
+		// and the refusal names the command with a placeholder for the producer.
 		var currentProducer string
 		if st, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
 			currentProducer = st.CurrentProducer
@@ -639,8 +627,7 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	}
 
 	slug := seedSlug(c.location.WorktreeName)
-	// The returned driver is discarded permanently here, not just for now: "step" spawns no driver
-	// at all, so a driver value reaching this path is one nothing can act on.
+	// step spawns no driver, so nothing could act on the driver this call returns, and it is discarded.
 	_, _, stage, err := c.seedAndCommitBootstrap(slug, c.parentFlag)
 	if err != nil {
 		return stepKindForBootstrapStage(stage), err
@@ -658,8 +645,7 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 		_ = bootstrapLock.Release()
 		return shedverbs.KindBootstrap, err
 	}
-	// Released immediately, before the producer call: the lock must never be held across a
-	// minutes-long LLM row.
+	// Released immediately, before the producer call: the lock must never be held across a minutes-long LLM row.
 	_ = bootstrapLock.Release()
 
 	// Last, so a step this hook refuses, busy or at the bootstrap, neither observes nor consumes the handoff voucher.
@@ -669,16 +655,18 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 }
 
 // loomPostStep implements the PostStep hook for loom's spec: it records the handoff voucher
-// after a successful shed.Step and before the envelope is written -- a completed step's persisted
-// aftermath is byte-identical to a mid-run driver death, and this voucher is the one thing letting
-// the next run's entry observation tell the two apart, so its call site can move neither above the
-// Step call nor below the envelope.
-// A step that returns an error vouches too, from loomAfterStep, for what it left on disk.
+// after a successful shed.Step and before the envelope is written.
+// A completed step's persisted aftermath is byte-identical to a driver that died mid-run,
+// and the voucher is the one thing that lets the next run's entry observation tell the two apart.
+// So the call must stay between the Step call and the envelope.
+// A step that returns an error also records the handoff voucher, for what it left on disk.
+// A step refused as busy does not record one.
 func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
 	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(res.History), res.State)
 }
 
-// pauseAfterCommand returns the `lym loom pause --after` command halting this run at the end of currentProducer, naming the run-id when it is not the worktree's own.
+// pauseAfterCommand returns the `lym loom pause --after` command that halts the run at the end of currentProducer.
+// The command names the run-id too when the run is not the worktree's own.
 // An empty currentProducer is filled with the placeholder "<current_producer>".
 func (c *loomCLI) pauseAfterCommand(currentProducer string) string {
 	if currentProducer == "" {
@@ -693,7 +681,8 @@ func (c *loomCLI) pauseAfterCommand(currentProducer string) string {
 	return command
 }
 
-// loomBarePause implements the BarePause hook for loom's spec: a flagless pause no longer stops a tapestry run, so it refuses naming both ways forward.
+// loomBarePause implements the BarePause hook for loom's spec:
+// a flagless pause does not stop a tapestry run, so it refuses and names both ways forward.
 func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 	slug := "<slug>"
 	if c.location != nil {
@@ -702,15 +691,14 @@ func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 	return errors.New("loom: a bare pause no longer stops a run; way forward: run \"lym tender pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
 }
 
-// loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys
+// loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own status keys
 // (pause_requested, slug, parent), decoded from st.Product only when non-empty, and no others.
-// A run a live pause covers also carries paused_since and paused_by.
+// A run that a live pause covers also carries paused_since and paused_by.
 func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error) {
 	var product loomengine.Status
 	if len(st.Product) > 0 {
 		if err := json.Unmarshal(st.Product, &product); err != nil {
-			// Returned verbatim, with no re-prefixing: the generic body reports the hook's
-			// whole string as-is.
+			// Returned verbatim, with no re-prefixing: the generic body reports the hook's whole string as-is.
 			return nil, errors.New("loom: decode status file " + c.shedPaths.StatusPath + "'s product payload: " + err.Error())
 		}
 	}

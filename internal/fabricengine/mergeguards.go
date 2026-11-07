@@ -1,13 +1,8 @@
-// mergeguards.go implements the shared merge precondition machinery: guard evaluation, per-side
-// merge-source resolution with the freshness rule, the attached-HEAD precondition, the
-// upstream-sync helper batch 4's Merge guard set builds on, and MergeAbort's own
-// conclude-already-landed precondition.
-// Every helper here returns reasons for aggregation via newMergeGuardError and mutates no worktree,
-// index, branch tip or fabric record — the upstream sync itself, which does, is deliberately not
-// here; it is a batch-4 pre-merge step, per the guards decision.
-// The one thing this file does mutate is remote-tracking state: resolveMergeSources runs a
-// best-effort Fetch() on both sides before resolving, so "mutates nothing" would be false as
-// written. Nothing a caller can observe as a change to the pair happens here.
+// mergeguards.go holds the shared merge precondition helpers: guard evaluation and per-side merge-source resolution.
+// It also covers the attached-HEAD and upstream-sync checks, and MergeAbort's conclude-already-landed check.
+// Every helper returns reasons for aggregation via newMergeGuardError.
+// Helpers change no worktree, index, branch tip or fabric record.
+// The one exception is remote-tracking state: resolveMergeSources runs a best-effort Fetch() on both sides.
 
 package fabricengine
 
@@ -20,33 +15,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// mergeSources holds, per side, the resolved SHA a merge call actually merges — the freshness rule's
-// output, already picked between a local branch and its remote-tracking counterpart.
+// mergeSources holds, per side, the SHA a merge actually merges.
+// The freshness rule has already picked it between a local branch and its remote-tracking counterpart.
 type mergeSources struct {
 	warpSHA string
 	weftSHA string
 }
 
-// resolveMergeSources resolves the SHA each side of f actually merges, applying the freshness rule
-// independently per side: warp resolves source itself, weft resolves RecordsBranchName(source) — the
-// sole "-weft" composition (branchname.go).
-// Both sides run a best-effort Fetch() first — a fetch failure is tolerated and logged via
-// logger.Warn, never fatal (millhouse's fetch-then-prefer-origin rule) — then resolve the local
-// branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
-// A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound — the only
-// reason this function can still return.
+// resolveMergeSources resolves the SHA each side of f merges, applying the freshness rule independently per side.
+// The warp side resolves source itself.
+// The weft side resolves RecordsBranchName(source), the sole "-weft" composition (branchname.go).
+// Both sides run a best-effort Fetch first; a fetch failure is logged via logger.Warn and is never fatal.
+// Each side then resolves its local branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
+// A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound.
+// That is the only reason this function returns.
 //
-// The weft counterpart's SHA is still resolved and returned: mergeState.WeftSource still needs a
-// value, best-effort and possibly empty. What this function has lost is the power to refuse on the
-// weft's behalf. Resolving the weft counterpart no longer gates on whether it is a recognized fabric
-// pair (weftBranchExists), so an unresolvable weft counterpart simply leaves weftSHA the empty
-// string rather than appending mergeReasonNotFabricManaged or mergeReasonSourceNotFound.
-// mergeReasonNotFabricManaged is no longer reachable from this function at all — its constant is
-// retained only because mergevocab_test.go pins its string as part of the closed reason set.
+// The weft SHA is still resolved and returned, best-effort and possibly empty.
+// mergeState.WeftSource needs a value even then.
+// This function never refuses on the weft's behalf.
+// An unresolvable weft counterpart leaves weftSHA empty and appends no reason.
+// It never appends mergeReasonNotFabricManaged.
+// Its constant stays only because mergevocab_test.go pins the closed reason set.
 //
-// Every reason is collected, never returned early — each guard is evaluated regardless of an earlier
-// failure — and newMergeGuardError deduplicates, so a source missing on both sides still reports one
-// mergeReasonSourceNotFound rather than disclosing that two subjects were checked.
+// Every reason is collected rather than returned early, so each guard runs regardless of an earlier failure.
+// newMergeGuardError deduplicates, so a source missing on both sides reports one mergeReasonSourceNotFound.
+// It does not disclose that both sides were checked.
 func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
 	weftBranch := RecordsBranchName(source)
@@ -71,14 +64,12 @@ func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
 }
 
-// pickMergeSourceSHA implements the freshness rule for one side: merge the remote-tracking SHA when
-// the local branch is absent, or when it is an ancestor of the remote-tracking SHA and not equal to
-// it (IsAncestor); the local SHA otherwise.
+// pickMergeSourceSHA implements the freshness rule for one side.
+// It picks remoteSHA when the local branch is absent, or when localSHA is a proper ancestor of remoteSHA;
+// otherwise it picks localSHA.
 // It reports found=false only when neither the local branch nor its remote-tracking ref resolved.
-// The ancestry probe is best-effort, matching this file's best-effort Fetch rule: an IsAncestor
-// failure falls back to the local SHA — the pre-freshness-rule answer — and is logged via
-// logger.Warn rather than swallowed silently, so a degraded pick (merging a possibly-stale local
-// tip) always leaves a trace.
+// The ancestry probe is best-effort: an IsAncestor failure falls back to the local SHA and is logged via logger.Warn.
+// A degraded pick, merging a possibly-stale local tip, therefore always leaves a trace.
 func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, remoteSHA string, remoteFound bool) (sha string, found bool) {
 	switch {
 	case !localFound && !remoteFound:
@@ -103,12 +94,11 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 	return localSHA, true
 }
 
-// pairDirtyReason reports mergeReasonWorktreeDirty when f's warp checkout carries uncommitted
-// tracked changes.
-// The weft side is not evaluated: it is not a merge participant, so its dirtiness cannot affect a
-// warp-only merge's correctness, and checking it could only refuse a merge that would have been
-// right.
-// The reason is decided on the checkout's worktree-relative, sorted tracked dirty paths, which are returned beside it so a guard error can carry them.
+// pairDirtyReason reports mergeReasonWorktreeDirty when f's warp checkout carries uncommitted tracked changes.
+// The weft side is not evaluated.
+// It is not a merge participant, so its dirtiness cannot affect a warp-only merge's correctness.
+// Checking it could only refuse a merge that would have been right.
+// The returned paths are the checkout's worktree-relative, sorted tracked dirty paths, so a guard error can carry them.
 func pairDirtyReason(f *Fabric) ([]string, []string, error) {
 	paths, err := codeDirtyPaths(f)
 	if err != nil {
@@ -140,7 +130,7 @@ func codeDirtyPaths(f *Fabric) ([]string, error) {
 }
 
 // upstreamSHAAt resolves dir's checked-out branch's upstream tracking ref to a plain SHA.
-// No configured upstream, an upstream ref that does not exist and a detached HEAD are hasUpstream=false rather than an error.
+// No configured upstream, a missing upstream ref and a detached HEAD all report hasUpstream=false, not an error.
 func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 	repo := gitrepo.New(dir)
 	branch, detached, err := repo.HeadRef()
@@ -157,13 +147,12 @@ func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 	return sha, hasUpstream, nil
 }
 
-// detachedHeadReason reports mergeReasonDetachedHead when f's warp checkout has HEAD pointing
-// straight at a commit instead of at a branch.
-// A merge concluded on a detached HEAD lands a commit no ref reaches, so the next checkout discards
-// it silently — the only point at which that is recoverable is before the attempt starts.
-// The weft side is not evaluated: it is not a merge participant, so its head attachment cannot
-// affect a warp-only merge's correctness, and checking it could only refuse a merge that would have
-// been right.
+// detachedHeadReason reports mergeReasonDetachedHead when f's warp checkout has a detached HEAD.
+// A merge concluded on a detached HEAD lands a commit no ref reaches, so the next checkout discards it silently.
+// Refusing before the attempt starts is the only point where that loss is avoided.
+// The weft side is not evaluated.
+// It is not a merge participant, so its head attachment cannot affect a warp-only merge's correctness.
+// Checking it could only refuse a merge that would have been right.
 func detachedHeadReason(f *Fabric) ([]string, error) {
 	warpDetached, err := f.code.HeadDetached()
 	if err != nil {
@@ -189,25 +178,23 @@ func mergeInProgressReason(f *Fabric) ([]string, error) {
 	return nil, nil
 }
 
-// syncedToUpstreamReason reports mergeReasonNotSynced when f's warp side is genuinely diverged from
-// its own upstream: no upstream passes vacuously (Fabric.Pull's no-upstream rule), and an upstream
-// passes when the tip is not diverged from it — upstream ancestor of HEAD (in sync or ahead) passes,
-// HEAD ancestor of upstream (behind, since Merge's own pre-merge sync step will advance it) passes,
-// and only neither direction (a genuine divergence) fails.
-// The weft side is not evaluated. Per-transition status pushes warn and continue on a rejected push,
-// which makes a locally-diverged weft a routine, expected state — a retained weft arm here would
-// refuse every subsequent landing with mergeReasonNotSynced.
+// syncedToUpstreamReason reports mergeReasonNotSynced when f's warp side is diverged from its own upstream.
+// A checkout with no upstream passes.
+// An upstream passes when the tip is not diverged from it.
+// An upstream that is an ancestor of HEAD (in sync or ahead) passes.
+// So does HEAD being an ancestor of the upstream (behind), since the pre-merge sync step advances it.
+// Only a divergence, where neither is an ancestor of the other, fails.
+// The weft side is not evaluated.
+// Per-transition status pushes warn and continue on a rejected push, so a locally diverged weft is routine.
+// Refusing on it would block every later landing.
 //
-// This is a pre-fetch FAST PATH, not the whole of the not-synced precondition, and reading it as the
-// whole of it is a mistake with a live failure behind it. Every helper in this file resolves @{u}
-// from whatever remote-tracking state the checkout already carries — nothing in Merge's guard stage
-// fetches before this runs — so a divergence created by someone else's push that this checkout has
-// not fetched yet is invisible here: @{u} still points at a commit that IS an ancestor of HEAD, the
-// side classifies as "ahead", and the guard passes. Merge merged straight over a genuinely diverged
-// target that way.
-// syncSideBeforeMerge re-decides the same predicate after its own fetch and refuses with this same
-// reason, so the promise holds even when this fast path could not see the divergence. Anything added
-// here that must hold post-fetch belongs there too.
+// This is a pre-fetch fast path, not the whole not-synced precondition.
+// Every helper in this file reads @{u} from remote-tracking state the checkout already carries.
+// Nothing before this runs fetches.
+// A divergence someone else pushed, which this checkout has not fetched, therefore reads as ahead and passes.
+// syncSideBeforeMerge fetches and re-decides the same predicate after that fetch.
+// It refuses with the same reason, so the promise holds even when this fast path cannot see the divergence.
+// Anything that must hold post-fetch belongs there too.
 func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	warpNotSynced, err := sideNotSyncedToUpstream(f.code, f.warpPath)
 	if err != nil {
@@ -219,10 +206,11 @@ func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	return nil, nil
 }
 
-// sideNotSyncedToUpstream implements syncedToUpstreamReason's per-side predicate: false (synced) when
-// dir has no upstream, when its HEAD already equals its upstream, when its upstream is an ancestor of
-// its HEAD (in sync or ahead), or when its HEAD is an ancestor of its upstream (behind); true (a
-// genuine divergence) only when neither direction holds.
+// sideNotSyncedToUpstream reports whether dir's HEAD has diverged from its upstream.
+// It reports false when dir has no upstream or when HEAD equals the upstream.
+// It also reports false when the upstream is an ancestor of HEAD, which covers in sync and ahead.
+// It reports false when HEAD is an ancestor of the upstream, which means behind.
+// It reports true only when neither commit is an ancestor of the other.
 func sideNotSyncedToUpstream(repo *gitrepo.Repo, dir string) (bool, error) {
 	upstreamSHA, hasUpstream, err := upstreamSHAAt(dir)
 	if err != nil {
@@ -259,18 +247,13 @@ func sideNotSyncedToUpstream(repo *gitrepo.Repo, dir string) (bool, error) {
 	return true, nil
 }
 
-// concludeLandedReason reports mergeReasonConcludeLanded when st's attempt may already have put a
-// conclude-commit on either side — the one precondition MergeAbort has, and the mirror of
-// MergeContinue's mergeAttemptIncompleteReason.
-// MergeAbort restores both sides from the recorded pre-merge SHAs, so running it against a
-// half-concluded attempt discards a commit that really landed. In the MergeIn-with-conflicts flow
-// that commit carries the operator's own hand-written conflict resolutions, and resetMergeSides runs
-// with force: true, so nothing else stands in the way. Refusing leaves MergeContinue — which skips a
-// side whose committed SHA is already recorded, and is therefore idempotent across a resumed run —
-// as the one correct recovery, exactly as the incomplete-attempt refusal leaves MergeAbort as the
-// one correct recovery for the opposite shape.
-// Both sides are evaluated unconditionally before combining, so the single aggregated reason never
-// reveals which side (if either) had landed.
+// concludeLandedReason reports mergeReasonConcludeLanded when either side may already carry a conclude commit.
+// Aborting the merge would reset both sides to their recorded pre-merge SHAs, which discards a commit that landed.
+// In a merge-in with conflicts, that commit holds the operator's own conflict resolutions.
+// The reset runs with force, so nothing else stops it.
+// Refusing leaves MergeContinue as the one correct recovery.
+// It skips a side whose conclude SHA is already recorded, so it is idempotent across a resumed run.
+// Both sides are evaluated before the result is combined, so the single reason never reveals which side had landed.
 func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
 	warpLanded, err := sideConcludeMayHaveLanded(f.code, st.WarpCommitted, st.WarpOutcome, st.WarpStart)
 	if err != nil {
@@ -287,18 +270,14 @@ func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
 	return nil, nil
 }
 
-// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when either side that MergeContinue is
-// about to conclude no longer carries the git-level merge st recorded — MergeContinue's own
-// precondition, and the commit-side twin of sideConcludeAlreadyLanded's evidence rule.
-// concludeMergeSides finishes a side by running `git commit`, which commits whatever MERGE_HEAD names.
-// Between the attempt and the resumed MergeContinue an operator may — legitimately, per the Fabric Git
-// Invariant's own carve-out for plain git in the warp checkout — have discarded fabric's staged merge
-// and started a different one. Without this precondition that different merge is committed, written
-// into the record as this merge's conclude SHA, reported as a merge_committed mutation, paired into the
-// correspondence index and then erased along with the record: a silent false success leaving the merge
-// source un-merged with nothing left to inspect.
-// Both sides are evaluated unconditionally before combining, so the single aggregated reason never
-// reveals which side (if either) had lost its merge.
+// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when either side has lost its recorded merge.
+// Concluding a side runs git commit, which commits whatever MERGE_HEAD names.
+// An operator may legitimately discard the staged merge and start a different one before the continue.
+// Plain git in the warp checkout is allowed to do that.
+// Without this check, that different merge would be committed and recorded as this merge's conclude SHA.
+// It would be reported as a merge_committed mutation, paired in the correspondence index, and erased with the record.
+// The result is a silent false success that leaves the merge source un-merged with nothing left to inspect.
+// Both sides are evaluated first, so the single reason never reveals which side lost its merge.
 func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
 	warpGone, err := sideRecordedMergeGone(f.code, f.warpPath, st.WarpCommitted, st.WarpOutcome, st.WarpSource, st.Squash)
 	if err != nil {
@@ -315,53 +294,29 @@ func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
 	return nil, nil
 }
 
-// sideRecordedMergeGone implements recordedMergeGoneReason's per-side predicate: true when this side is
-// genuinely about to be concluded by `git commit` and the recorded source is neither the merge that
-// commit would conclude nor already in this side's history.
+// sideRecordedMergeGone reports whether a side that is about to be concluded has lost the merge its record names.
+// Only a staged or conflicted side with no conclude SHA recorded is checked.
+// Only those get a commit from git commit.
+// A side with a fast-forwarded or up-to-date outcome is never refused, since it gets no commit.
 //
-// It is scoped to exactly the states concludeMergeSides runs `git commit` in, so it can never refuse a
-// side that verb would skip: a side whose conclude SHA is already recorded is skipped, and so is one
-// whose outcome is fast_forwarded or up_to_date, since neither fabricates a commit.
+// A squash merge and a record with no source SHA are never refused.
+// A squash writes no MERGE_HEAD, and an old record stores no source, so there is no evidence to compare.
+// That residual case is left open rather than refused.
 //
-// The first exit is the ordinary one — MERGE_HEAD names the recorded per-side source and nothing else,
-// so `git commit` concludes precisely the merge the record describes.
-// Demanding the whole head SET be that one SHA, rather than testing membership in it, is what rejects
-// the uncommitted octopus: `git merge --no-commit <recorded source> <decoy>` leaves a MERGE_HEAD whose
-// FIRST entry is the recorded source, and every rev-parsing spelling of the query reports only that
-// first entry (see gitrepo.MergeHeads). Committing it lands the decoy's content under this merge's
-// name, brought in by no side of the merge and named by no merge_staged entry — the same commit the
-// adoption arm refuses to adopt, reached by simply not committing it first.
+// The source must be the only entry in MERGE_HEAD, not merely one of its entries.
+// Containment would accept an uncommitted octopus whose first head is the source.
+// Committing it would land the other head's content under this merge's name.
 //
-// The second exit is what keeps this precondition from wedging states that are already fine, and it is
-// deliberately reachability rather than an exact-shape test. Once the recorded source is an ancestor of
-// this side's HEAD the merge has genuinely landed, whatever else the operator has since done in the
-// checkout, so there is no false claim left for this precondition to prevent: it covers the crash the
-// adoption arm exists to finish (HEAD IS the conclude, whose second parent is the source), a conclude
-// landed with a second unrelated merge started on top of it, and a hand-landed merge of the source onto
-// a wrong base. Refusing those would leave the pair with no route out at all, since MergeAbort refuses
-// every one of them too on concludeLandedReason.
+// An ancestor source counts as landed however the checkout has moved since.
+// That covers a crash that left HEAD on the conclude commit itself.
+// It also covers a second unrelated merge started on top of a landed conclude.
+// It also covers a hand-landed merge of the source onto a wrong base.
+// Refusing them would leave the pair with no route out, since MergeAbort refuses them too.
 //
-// The third exit is the one that keeps this precondition from BLINDING the adoption arm, and it is a
-// coverage property rather than a behavioural nicety. With no merge live and a clean checkout, `git
-// commit` fails on its own and *ErrMergeIncomplete already comes back — so refusing here would only
-// swap one refusal for another, while making every adoption-evidence test (first parent, second parent,
-// exact arity, unrelated commit) refuse before it ever reached the clause it exists to pin. Those tests
-// abort both sides by design, so this precondition would have decided every one of them.
-// What is NOT exempt is the same no-live-merge state with tracked dirt in the checkout, because there
-// `git commit` succeeds: it lands an ordinary commit of whatever the operator left staged, which fabric
-// would then write into the record as this merge's conclude SHA.
-//
-// What survives all three exits is the shape with a real destructive consequence: the recorded source
-// is nowhere in this side's history, and concluding would commit some other merge — or some other staged
-// content — and record, report and pair it as this merge's own conclude before deleting the only
-// evidence that it was not.
-//
-// A squash record is exempt and an empty recorded source SHA is exempt, for the identical reason the
-// adoption arm gives: `git merge --squash` writes no MERGE_HEAD at all, so a squash conclude carries no
-// evidence to compare against, and a record written by a binary predating the recorded source SHAs
-// carries no source. No evidence is not failed evidence here any more than it is satisfied evidence
-// there — refusing every squash --continue would break the ordinary squash flow, so that residual stays
-// open and is stated rather than papered over.
+// With no MERGE_HEAD and a clean checkout, git commit already fails, so this check does not refuse it.
+// Refusing there would pre-empt the adoption path's own checks.
+// A checkout with tracked changes is refused.
+// There git commit succeeds and commits the leftover staged content as this merge's conclude.
 func sideRecordedMergeGone(repo *gitrepo.Repo, checkoutPath, committed, outcome, sourceSHA string, squash bool) (bool, error) {
 	if committed != "" {
 		return false, nil
@@ -404,20 +359,17 @@ func sideRecordedMergeGone(repo *gitrepo.Repo, checkoutPath, committed, outcome,
 	return dirty, nil
 }
 
-// sideConcludeMayHaveLanded implements concludeLandedReason's per-side predicate: true when the
-// record already carries this side's conclude SHA, or when the side's recorded outcome is
-// staged/conflicted and its HEAD has moved off its recorded pre-merge SHA.
-// The second clause is not redundant with the first. concludeMergeSides writes a side's conclude SHA
-// only after `git commit` returned and CurrentSHA resolved and the record was re-saved, so an I/O
-// failure at either of those two steps leaves a landed commit the record does not mention — and
-// keying only on the recorded SHA would let MergeAbort discard exactly the commits that are hardest
-// to notice missing.
-// Reading it off HEAD instead is exact: an up_to_date side is never concluded and cannot move, a
-// fast_forwarded side moved legitimately and MergeAbort is documented to reset it, and a side whose
-// outcome is empty never started. Only a staged or conflicted side can have a commit put on it, and
-// the conclude is the only thing that puts one there.
-// The failure direction is safe: an unreadable HEAD errors out and an unexpected move over-refuses,
-// rather than proceeding into a destructive reset.
+// sideConcludeMayHaveLanded reports whether a side may already carry a conclude commit.
+// It is true when the record holds the side's conclude SHA.
+// It is also true when a staged or conflicted side's HEAD has moved off its recorded pre-merge SHA.
+// The HEAD check matters because the conclude SHA is written last.
+// It is written only after git commit, the HEAD read, and the record save have all succeeded.
+// A failure in the HEAD read or the save leaves a landed commit that the record does not mention.
+// Keying only on the recorded SHA would let an abort discard exactly those commits.
+// Only a staged or conflicted side can receive a commit, so no other outcome is checked.
+// An up_to_date side never moves, and an empty outcome never started.
+// A fast_forwarded side moved legitimately, and an abort resets it.
+// An unreadable HEAD returns an error, and an unexpected move refuses rather than letting a destructive reset proceed.
 func sideConcludeMayHaveLanded(repo *gitrepo.Repo, committed, outcome, start string) (bool, error) {
 	if committed != "" {
 		return true, nil

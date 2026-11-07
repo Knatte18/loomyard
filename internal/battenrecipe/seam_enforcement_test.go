@@ -1,10 +1,14 @@
-// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/battenrecipe takes every absolute path it operates on from its caller and
-// has no direct production import of internal/lymcwd.
+// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership.
+// Production code in internal/battenrecipe takes every absolute path it operates on from its caller.
+// It has no direct production import of internal/lymcwd.
 //
-// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist, mirroring internal/loomrecipe's own reasoning: it catches the excluded import and anything else that would drag geometry resolution in, with no list maintenance beyond a genuine new dependency.
+// The allowlist below is a membership list rather than a denylist of internal/lymcwd:
+// it catches the excluded import and any other import that would drag geometry resolution in.
+// It needs no list maintenance beyond a genuine new dependency.
 //
-// github.com/Knatte18/loomyard/contracts/recipes sits outside internal/ and so must be allowlisted explicitly, since the stdlib test is "the first path segment contains no dot", which a full module path never satisfies.
+// github.com/Knatte18/loomyard/contracts/recipes sits outside internal/, so it must be allowlisted explicitly:
+// the stdlib test counts an import as standard library when its first path segment contains no dot.
+// A full module path never satisfies that test.
 
 package battenrecipe
 
@@ -17,8 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// battenrecipeAllowedImports are the only non-stdlib import paths production code in this
-// package may use.
+// battenrecipeAllowedImports are the only non-stdlib import paths production code in this package may use.
 var battenrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/contracts/recipes",
 	"github.com/Knatte18/loomyard/internal/shedbuild",
@@ -26,12 +29,12 @@ var battenrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedengine",
 }
 
-// battenrecipeDeniedLymcwdImport is the exact import path the Told-Geometry Invariant excludes
-// from this package's production files, named here so a violation of that specific rule is
-// reported by name rather than only implied by its absence from the allowlist above.
+// battenrecipeDeniedLymcwdImport is the import path the Told-Geometry Invariant excludes from production files here.
+// It is named so a violation is reported by name rather than only implied by its absence from the allowlist above.
 const battenrecipeDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcwd"
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts that no production import path is battenrecipeDeniedLymcwdImport.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist.
+// It also asserts that no production import path is battenrecipeDeniedLymcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/battenrecipe", battenrecipeAllowedImports...)

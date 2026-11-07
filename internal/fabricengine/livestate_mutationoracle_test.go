@@ -1,9 +1,8 @@
-// mutationoracle.go is the truthfulness oracle: AssertRecordMatchesDiff cross-checks a call's
-// fabricengine.Mutations record against the unfiltered manifest diff of the same call, in both
-// directions -- omission (every diff change is accounted for by some record entry) and commission
-// (every manifest-observable record entry is backed by a real diff change).
-// It lives apart from manifest.go, matching the package's one-concern-per-file layout: manifest.go
-// owns the filesystem capture and diff, this file owns judging a record against that diff.
+// livestate_mutationoracle_test.go judges a call's fabricengine.Mutations record against the unfiltered manifest diff.
+// AssertRecordMatchesDiff checks the record in two directions.
+// Omission: every diff change is accounted for by some record entry.
+// Commission: every manifest-observable record entry is backed by a real diff change.
+// The filesystem capture and diff live in livestate_manifest_test.go; this file judges a record against that diff.
 
 package fabricengine_test
 
@@ -16,17 +15,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// manifestObservableKind classifies every fabricengine.Kind except KindFileWritten for the commission
-// direction: true means every entry of that kind is manifest-observable and must be backed by a real
-// diff change; false means the kind is a git-state kind, exempt from commission and asserted instead
-// through the per-verb Expectation.Effect assertions, which read git directly rather than infer from a
-// manifest CaptureManifest never fully carries (branch existence, for one, is deliberately not
-// recorded at all).
-// KindFileWritten is deliberately absent: whether one of its entries participates depends on its
-// Target, not on its kind alone -- see participatesInCommission.
-// Declaring every other kind here, rather than testing membership in one list, is what makes a newly
-// added Kind fail loud (participatesInCommission's "known" return) instead of silently falling through
-// unclassified.
+// manifestObservableKind classifies each fabricengine.Kind, except KindFileWritten, for the commission direction.
+// A true entry means every entry of that kind is manifest-observable and must be backed by a real diff change.
+// A false entry marks a git-state kind: it is exempt from commission.
+// It is asserted instead through the per-verb Expectation.Effect assertions, which read git directly.
+// The manifest never fully carries that state; branch existence, for one, is deliberately not recorded at all.
+// KindFileWritten is absent on purpose:
+// whether one of its entries participates depends on its Target, not on its kind alone.
+// Declaring every other kind here, rather than testing membership in one list, makes a new Kind fail loud.
+// Otherwise a newly added Kind would fall through unclassified without a failure.
 var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindPathRemoved:     true,
 	fabricengine.KindWorktreeRemoved: true,
@@ -53,17 +50,15 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindTagCreated:          false,
 }
 
-// invertedBy maps a constructive kind to the kinds of a later entry, at the same Target, that undo it
-// -- the pairs the commission direction folds away before asserting, since a mutation performed and
-// then undone inside one call nets to zero in the before/after manifest even though the record
-// correctly carries both entries.
-// A worktree_created or dir_created is undone by either a worktree_removed or a path_removed at the
-// same Target -- Add's mint-then-rollbackAdd tears a freshly minted worktree back down through
-// removePath's os.RemoveAll fallback, not always through removeGitWorktree -- a link_created is undone
-// only by a link_removed, matching reconcile's own dangling-link repoint, and a file_written is undone
-// by a path_removed at the same Target: removeLaunchers' own script teardown (launchers.go) removes
-// each generated script individually via removePath before removing the launcher directory itself, so
-// Add's own rollback writes and then removes each launcher script at the identical target.
+// invertedBy maps a constructive kind to the kinds of a later entry at the same Target that undo it.
+// The commission direction folds these pairs away before asserting.
+// Within one call, such a pair nets to zero in the before/after manifest, though the record carries both entries.
+// A worktree_created or dir_created is undone by a worktree_removed or a path_removed at the same Target.
+// A rollback may tear a freshly minted worktree down through the os.RemoveAll fallback, not only through git.
+// A link_created is undone only by a link_removed, including a dangling link repointed during reconcile.
+// A file_written is undone by a path_removed at the same Target.
+// Launcher scripts are removed one by one before their directory.
+// A rollback therefore writes and then removes each script at the identical target.
 var invertedBy = map[fabricengine.Kind][]fabricengine.Kind{
 	fabricengine.KindDirCreated:      {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
 	fabricengine.KindWorktreeCreated: {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
@@ -71,10 +66,10 @@ var invertedBy = map[fabricengine.Kind][]fabricengine.Kind{
 	fabricengine.KindFileWritten:     {fabricengine.KindPathRemoved},
 }
 
-// subtreeDestroyingKind reports whether e's primitive removed everything beneath its own Target, not
-// merely the Target path itself: worktree_removed always does (`git worktree remove` deletes the whole
-// checkout), and path_removed does only when its own Detail says "recursive" (removePath's
-// os.RemoveAll branch) rather than "single" (os.Remove, a leaf file only).
+// subtreeDestroyingKind reports whether e's primitive removed everything beneath its own Target.
+// The Target path itself is not enough; the removal must reach its contents.
+// A worktree_removed always does, since `git worktree remove` deletes the whole checkout.
+// A path_removed does only when its Detail is "recursive" (os.RemoveAll), not "single" (os.Remove of a leaf file).
 func subtreeDestroyingKind(e fabricengine.Mutation) bool {
 	switch e.Kind {
 	case fabricengine.KindWorktreeRemoved:
@@ -86,24 +81,23 @@ func subtreeDestroyingKind(e fabricengine.Mutation) bool {
 	}
 }
 
-// constructiveKind reports whether kind is one invertedBy ever maps as a key -- the closed set of
-// kinds netCommissionEffect's ancestor-sweep pass considers for exemption when a later entry destroys
-// their whole containing subtree, rather than their own exact Target.
+// constructiveKind reports whether kind is a key of invertedBy.
+// A later entry that destroys the whole containing subtree of such a kind can exempt it without an exact-Target undo.
 func constructiveKind(kind fabricengine.Kind) bool {
 	_, ok := invertedBy[kind]
 	return ok
 }
 
-// AssertRecordMatchesDiff cross-checks rec against unfiltered, the manifest diff computed with a nil
-// permitted list, and fails tb naming the offending entry or path.
+// AssertRecordMatchesDiff checks rec against unfiltered, the manifest diff computed with a nil permitted list.
+// It fails tb naming the offending entry or path.
 //
-// The omission direction runs over unfiltered's raw entries: every diff change must be covered by some
-// record entry's coverage set, matching segment-wise subtree containment (see pathAtOrBelowRoot in
-// manifest.go, reused rather than reimplemented) plus the worktree-admin and directory-ancestor
-// widenings this file's coverage rules add.
-// The commission direction runs over rec's net effect: netCommissionEffect folds away a
-// mint-then-undo pair first, then every surviving manifest-observable entry must be backed by at least
-// one diff change at or beneath its Target.
+// The omission direction checks unfiltered's raw entries.
+// Every diff change must be covered by some record entry's coverage set.
+// Coverage is segment-wise subtree containment, plus the worktree-admin and directory-ancestor widenings.
+//
+// The commission direction checks rec's net effect.
+// Net effect drops every mint-then-undo pair first.
+// Each surviving manifest-observable entry must then be backed by at least one diff change at or beneath its Target.
 func AssertRecordMatchesDiff(tb testing.TB, rec fabricengine.Mutations, unfiltered []Change) {
 	tb.Helper()
 
@@ -112,28 +106,26 @@ func AssertRecordMatchesDiff(tb testing.TB, rec fabricengine.Mutations, unfilter
 	assertCommission(tb, entries, unfiltered)
 }
 
-// netCommissionEffect returns entries with every mint-then-undo pair removed, via two independent
-// consumption passes over the original entries, in order.
+// netCommissionEffect returns entries with every mint-then-undo pair removed.
+// It consumes the original entries in two independent passes, in order.
 //
-// Pass one is invertedBy's exact-Target pairing: for each constructive entry, the earliest later,
-// not-yet-consumed entry at the SAME Target whose Kind appears in invertedBy[entry.Kind] is paired with
-// it, and both are dropped.
+// The first pass pairs each constructive entry with the earliest later entry at the same Target:
+// one that is not yet consumed and whose Kind is in invertedBy[entry.Kind]; both are dropped.
 //
-// Pass two widens this to ancestor sweep: a constructive entry with no exact-Target pairing is ALSO
-// dropped when a later entry destroys its whole containing subtree -- worktree_removed, or a
-// path_removed whose own Detail is "recursive" (removePath's os.RemoveAll branch, never its
-// single-file os.Remove branch) -- at or above the constructive entry's own Target. This is what nets
-// Add's own mint-then-rollbackAdd to zero for a warp junction wired inside the pair's own worktree: the
-// junction's own link_removed can legitimately never fire (removeWarpJunction's best-effort call falls
-// back to removing nothing when RepoWiredNames can't be read, per add.go's own doc comment), yet the
-// junction is physically swept away regardless the moment rollback's `git worktree remove` deletes the
-// whole worktree tree it lives inside. Only the constructive (earlier) entry is dropped by this pass --
-// the destroying entry itself keeps its own, independent commission obligation (or is itself netted by
-// pass one against its own same-Target mint, e.g. the worktree_created/worktree_removed pair).
+// The second pass is an ancestor sweep.
+// A constructive entry with no exact-Target pair is also dropped.
+// That happens when a later entry destroys its whole containing subtree at or above the entry's own Target.
+// The destroying entry is a worktree_removed.
+// A path_removed counts only when its Detail is "recursive" (os.RemoveAll, never the single-file os.Remove).
+// This nets a mint-then-rollback to zero for a warp junction wired inside the worktree the pair creates.
+// The junction's own link_removed may never fire;
+// its best-effort removal does nothing when the wired names cannot be read.
+// The junction is still swept away when the worktree is removed.
+// Only the constructive (earlier) entry is dropped by this pass.
+// The destroying entry keeps its own commission obligation, or the first pass nets it against its own same-Target mint.
 //
-// Either way, a mutation performed and then undone inside one call would otherwise report a false lie
-// of commission, since the before/after manifest nets to zero for a path (or subtree) the record still
-// names.
+// Without these passes, a mutation performed and undone inside one call would report a false commission.
+// The before/after manifest nets to zero for a path or subtree the record still names.
 func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutation {
 	consumed := make([]bool, len(entries))
 
@@ -177,7 +169,6 @@ func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutatio
 	return net
 }
 
-// containsKind reports whether kinds contains want.
 func containsKind(kinds []fabricengine.Kind, want fabricengine.Kind) bool {
 	for _, k := range kinds {
 		if k == want {
@@ -187,26 +178,24 @@ func containsKind(kinds []fabricengine.Kind, want fabricengine.Kind) bool {
 	return false
 }
 
-// assertCommission asserts the commission direction over entries' net effect (see
-// netCommissionEffect): every surviving manifest-observable entry must be backed by at least one
-// change in unfiltered at or beneath its Target.
+// assertCommission asserts the commission direction over the net effect of entries.
+// Every surviving manifest-observable entry must be backed by at least one change in unfiltered.
+// That change must sit at or beneath the entry's Target.
 //
-// An entry recorded after a whole-hub teardown (a path_removed at ".", resetHub's own
-// removePath(hubPath) call) is exempt too, for the same mechanical reason the "." target itself is:
-// once nothing survives for a finer entry to name, a reconstruction that happens to land back on
-// byte-identical content -- CloneHub{Reset: true} against an unchanged upstream, the steady-state case
-// cloneHubResetRealHubCase exists to prove is not trivially refused -- is indistinguishable from a
-// no-op to a content-hash diff, even though every recorded primitive genuinely ran. Nothing before a
-// whole-hub teardown loses this exemption; only entries recorded at or after it do.
+// An entry recorded at or after a whole-hub teardown (a path_removed at ".") is exempt too.
+// Once nothing survives for a finer entry to name, a reconstruction may restore byte-identical content.
+// A content-hash diff then cannot tell it from a no-op, even though every recorded primitive ran.
+// CloneHub with Reset against an unchanged upstream is one such reconstruction.
+// Nothing recorded before a whole-hub teardown loses this exemption.
 func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered []Change) {
 	tb.Helper()
 
 	wholeHubTornDown := false
 	for _, e := range netCommissionEffect(entries) {
 		if e.Target == "." {
-			// A "." target is always exempt from commission, unconditionally and mechanically:
-			// CaptureManifest never emits a "." key (it returns early at path == hubRoot), so no
-			// "."-targeted entry could ever find a matching change regardless of what it claims.
+			// A "." target is always exempt from commission.
+			// The manifest capture never emits a "." key (it returns early at the hub root),
+			// so no "."-targeted entry can find a matching change, whatever it claims.
 			if e.Kind == fabricengine.KindPathRemoved {
 				wholeHubTornDown = true
 			}
@@ -229,9 +218,10 @@ func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered
 			continue
 		}
 		// A worktree-rooted kind's own change can land entirely on its derived admin entry rather than
-		// on its own Target -- a stale registration a physically-already-absent worktree directory
-		// leaves behind, which Prune's own removeStalePair clears via `git worktree prune` -- so the
-		// same widening entryCovers applies for omission also applies here.
+		// on its own Target.
+		// That happens when a stale registration is left behind after the worktree directory is already gone:
+		// `git worktree prune` clears it.
+		// So the change is also searched for under the derived admin target.
 		if worktreeRootedKind[e.Kind] && anyChangeAtOrBelow(unfiltered, worktreeAdminTarget(e.Target)) {
 			continue
 		}
@@ -241,9 +231,9 @@ func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered
 
 // participatesInCommission reports whether e's kind is manifest-observable, and therefore subject to
 // the commission direction, and whether its kind is classified at all.
-// KindFileWritten is decided by its Target rather than by manifestObservableKind alone: a file_written
-// under the ".git" metadata directory records git-state bookkeeping CaptureManifest excludes wholesale
-// (see manifest.go's git allowlist), so only a file_written outside ".git" participates.
+// KindFileWritten is decided by its Target rather than by the kind alone.
+// A file_written under the ".git" directory records git-state bookkeeping the manifest capture excludes wholesale.
+// So only a file_written outside ".git" participates.
 func participatesInCommission(e fabricengine.Mutation) (participates, known bool) {
 	if e.Kind == fabricengine.KindFileWritten {
 		return !underGitMetadataDir(e.Target), true
@@ -252,9 +242,9 @@ func participatesInCommission(e fabricengine.Mutation) (participates, known bool
 	return participates, known
 }
 
-// underGitMetadataDir reports whether target names a path at or below a ".git" path segment -- the
-// boundary participatesInCommission uses to split KindFileWritten, and manifest.go's own CaptureManifest
-// uses to decide what it excludes wholesale beneath ".git".
+// underGitMetadataDir reports whether target names a path at or below a ".git" path segment.
+// It is the boundary that splits file_written entries for the commission check,
+// and the manifest capture excludes everything beneath a ".git" segment the same way.
 func underGitMetadataDir(target string) bool {
 	for _, seg := range strings.Split(target, "/") {
 		if seg == gitDirName {
@@ -275,10 +265,10 @@ func anyChangeAtOrBelow(unfiltered []Change, root string) bool {
 }
 
 // assertOmission asserts the omission direction over entries' raw, unfolded form: every change in
-// unfiltered must be covered by at least one entry's coverage set (entryCovers).
-// Unlike assertCommission, this direction is not folded to net effect -- a path the diff shows as
-// changed must be accounted for by something in the record, whether or not a later entry later undid
-// it.
+// unfiltered must be covered by at least one entry's coverage set.
+// This direction is not folded to net effect.
+// A path the diff shows as changed must be accounted for by something in the record.
+// That holds even when a later entry undid the change.
 func assertOmission(tb testing.TB, entries []fabricengine.Mutation, unfiltered []Change) {
 	tb.Helper()
 
@@ -296,8 +286,8 @@ func assertOmission(tb testing.TB, entries []fabricengine.Mutation, unfiltered [
 	}
 }
 
-// worktreeRootedKind is the closed set of kinds whose Target names a worktree root, per the coverage
-// rule: worktree_created, worktree_removed, worktree_reset, worktree_switched, repo_advanced,
+// worktreeRootedKind is the closed set of kinds whose Target names a worktree root:
+// worktree_created, worktree_removed, worktree_reset, worktree_switched, repo_advanced,
 // merge_staged, merge_committed.
 var worktreeRootedKind = map[fabricengine.Kind]bool{
 	fabricengine.KindWorktreeCreated:  true,
@@ -309,14 +299,15 @@ var worktreeRootedKind = map[fabricengine.Kind]bool{
 	fabricengine.KindMergeCommitted:   true,
 }
 
-// entryCovers reports whether e's coverage set includes diff change c: segment-wise subtree
-// containment on e.Target, widened for a worktree-rooted kind to also cover the derived
-// <prime>/.git/worktrees/<name> admin entry, and widened further to cover every KindDir ancestor
-// directory of e.Target -- the implicit directory chains fslink.CreateDirLink and writeLaunchers
-// MkdirAll around the roots fabric records, and pruneEmptyAncestors reaps on the way out.
-// A "." Target is exempt except for path_removed, per the asymmetry AssertRecordMatchesDiff's own doc
-// comment states: resetHub's whole-hub teardown is the one "."-targeted entry that genuinely covers
-// everything, since nothing survives it for a finer entry to name.
+// entryCovers reports whether e's coverage set includes diff change c.
+// Coverage is segment-wise subtree containment on e.Target.
+// A worktree-rooted kind also covers its derived <prime>/.git/worktrees/<name> admin entry.
+// It also covers every KindDir ancestor directory of e.Target.
+// These directories are created implicitly around the recorded roots by fslink.CreateDirLink and writeLaunchers.
+// pruneEmptyAncestors reaps them on the way out.
+// A "." Target is exempt except for path_removed.
+// A whole-hub teardown is the one "."-targeted entry that covers everything.
+// Nothing survives it for a finer entry to name.
 func entryCovers(e fabricengine.Mutation, c Change) bool {
 	if e.Target == "." {
 		return e.Kind == fabricengine.KindPathRemoved
@@ -327,7 +318,7 @@ func entryCovers(e fabricengine.Mutation, c Change) bool {
 	}
 
 	// A rename's source subtree is gone from its old path.
-	// A change at or below the Detail, the hub-relative source, is the rename's own doing.
+	// A change at or below that source, which e.Detail holds relative to the hub, is the rename's own doing.
 	if e.Kind == fabricengine.KindPathRenamed && pathAtOrBelowRoot(c.Path, e.Detail) {
 		return true
 	}
@@ -345,16 +336,11 @@ func entryCovers(e fabricengine.Mutation, c Change) bool {
 	return false
 }
 
-// worktreeAdminTarget derives the git-admin bookkeeping entry a worktree-rooted record entry's own
-// creation or destruction additionally covers: the prime warp worktree's or prime weft sibling's own
-// ".git/worktrees/<name>" directory.
-//
-// primeWorktreeAdminPermittedRoot and primeWeftAdminPermittedRoot (verbs.go) both take a WARP slug --
-// the weft one applies weftname.SiblingPath to it internally -- so feeding either one a weft-side
-// target that already carries the "-weft" suffix would double it (e.g.
-// "warp-bare-weft/.git/worktrees/<slug>-weft-weft", a key that never exists). This function tests
-// target's basename for weftname.Suffix first: a weft-side target strips the suffix and goes to
-// primeWeftAdminPermittedRoot; a warp-side one goes to primeWorktreeAdminPermittedRoot unchanged.
+// worktreeAdminTarget returns the git-admin entry a worktree-rooted record entry covers when created or destroyed.
+// That entry is the ".git/worktrees/<name>" directory of the prime warp worktree or prime weft sibling.
+// A weft-side target has its "-weft" suffix stripped first, because the weft lookup adds that suffix itself.
+// A kept suffix would be doubled and name a key that never exists.
+// A warp-side target goes to the warp lookup unchanged.
 func worktreeAdminTarget(target string) string {
 	base := path.Base(target)
 	if strings.HasSuffix(base, weftname.Suffix) {
@@ -363,9 +349,9 @@ func worktreeAdminTarget(target string) string {
 	return primeWorktreeAdminPermittedRoot(base)
 }
 
-// changeEntryIsDir reports whether c's own recorded entry -- After if present, else Before -- carries
-// Kind KindDir, the test the upward ancestor-coverage widening requires: a *file* or *link* appearing
-// beside a recorded target is still an uncovered change, and only directory levels are admitted.
+// changeEntryIsDir reports whether the recorded entry of c, After if present and else Before, is a directory.
+// Only directory levels may cover an ancestor.
+// A file or link beside a recorded target is still an uncovered change.
 func changeEntryIsDir(c Change) bool {
 	if c.After != nil {
 		return c.After.Kind == KindDir
@@ -376,8 +362,7 @@ func changeEntryIsDir(c Change) bool {
 	return false
 }
 
-// isAncestorDirOf reports whether candidate is a strict ancestor directory of target: target resolves
-// at or below candidate, and candidate is not target itself.
+// isAncestorDirOf reports whether candidate is a strict ancestor directory of target.
 func isAncestorDirOf(candidate, target string) bool {
 	if candidate == target {
 		return false

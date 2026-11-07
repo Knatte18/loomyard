@@ -28,7 +28,8 @@ func testIssue(number int, labels ...string) boardengine.InboxIssue {
 	return boardengine.InboxIssue{Number: number, Title: "Issue title", Body: "Issue body.", URL: "https://example.test/issues/1", Labels: labels, Open: true}
 }
 
-// testIssueWithComments is testIssue carrying two comments, oldest first; the first is created late on 2 January in UTC-5, so on 3 January in UTC.
+// testIssueWithComments returns an issue with two comments, oldest first;
+// the first is created late on 2 January in UTC-5, so on 3 January in UTC.
 func testIssueWithComments(number int, labels ...string) boardengine.InboxIssue {
 	issue := testIssue(number, labels...)
 	issue.Comments = []boardengine.IssueComment{
@@ -54,8 +55,11 @@ func mustUpsert(t *testing.T, b *boardengine.Board, fields map[string]any) {
 	}
 }
 
-// TestImportIssueNewEntry asserts importing an issue creates a note carrying the issue's title, body link, number and configured labels, drops the labels the vocabulary lacks, and honours an explicit title, brief and label set.
-// The issue's comments follow its body as second-level sections in order, and an issue without comments keeps the body without any.
+// TestImportIssueNewEntry asserts that importing an issue creates a note.
+// The note carries the issue's title, body link, number and configured labels.
+// Labels the vocabulary lacks are dropped, and an explicit title, brief and label set are honoured.
+// The issue's comments follow its body as second-level sections in order,
+// and an issue without comments keeps the body without any.
 func TestImportIssueNewEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

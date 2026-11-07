@@ -1,8 +1,8 @@
-// mergestateactive_integration_test.go covers MergeStateActive against a real hubforge pair: a clean
-// weft reports false; a weft carrying a live MERGE_HEAD (no conflicts) reports true; a weft carrying
-// a conflicted `git merge --squash` (no MERGE_HEAD) reports true, pinning that neither probe kind is
-// redundant; and a warp-alone mid-merge with a clean weft reports false, pinning the weft-only scope.
-// Reuses mergestate_integration_test.go's driveConflictedMergeStart fixture helper.
+// mergestateactive_integration_test.go covers MergeStateActive against a real hubforge pair.
+// A clean weft reports false, and a weft with a live MERGE_HEAD and no conflicts reports true.
+// A conflicted `git merge --squash` leaves no MERGE_HEAD yet reports true, so neither probe kind is redundant.
+// A mid-merge warp checkout with a clean weft reports false, which pins the weft-only scope.
+// It reuses driveConflictedMergeStart from mergestate_integration_test.go.
 
 package fabricengine_test
 
@@ -16,10 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// driveMergeHeadOnlyNoConflicts builds a divergent, non-conflicting branch in dir and runs
-// `git merge --no-commit --no-ff` against it, leaving MERGE_HEAD live with a clean, fully-staged
-// merge — the "resolved but not concluded" shape neither the conflicted-index probe nor a bare
-// worktree-dirty check would catch.
+// driveMergeHeadOnlyNoConflicts leaves dir mid-merge with MERGE_HEAD set and no conflicts.
+// It runs `git merge --no-commit --no-ff` against a divergent, non-conflicting branch.
+// The state is a resolved, unconcluded merge that a conflicted-index check and a dirty-worktree check both miss.
 func driveMergeHeadOnlyNoConflicts(t *testing.T, dir string) {
 	t.Helper()
 
@@ -30,9 +29,9 @@ func driveMergeHeadOnlyNoConflicts(t *testing.T, dir string) {
 	gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "--no-ff", "no-conflict-branch")
 }
 
-// driveConflictedSquashMerge builds a divergent, conflicting branch in dir and runs
-// `git merge --squash` against it, leaving a non-empty conflicted index with no MERGE_HEAD at
-// all — the squash form writes none — the shape only the conflicted-index probe catches.
+// driveConflictedSquashMerge leaves dir with a non-empty conflicted index and no MERGE_HEAD.
+// It runs `git merge --squash` against a divergent branch that conflicts with the original branch;
+// the squash form writes no MERGE_HEAD.
 func driveConflictedSquashMerge(t *testing.T, dir string) {
 	t.Helper()
 
@@ -47,15 +46,14 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 	_, _ = mergeCmd.CombinedOutput() // conflicted squash merge exits non-zero, intentionally ignored
 }
 
-// TestMergeStateActive builds one hubforge pair and drives it through the shapes MergeStateActive
-// distinguishes, in this order:
-// a freshly cloned pair's clean weft is not mid-merge (reports false);
-// a foreign conflicted merge running in the warp checkout alone, with the weft clean, must not make
-// it report true, since it probes only the weft's independent .git state;
-// a live, non-conflicting merge staged in the weft sibling (MERGE_HEAD only) reports true, and is
-// aborted so the weft is clean again;
-// and a conflicted `git merge --squash` in the weft, which never writes a MERGE_HEAD, reports true —
-// unreachable by the MERGE_HEAD probe alone, pinning that neither probe kind is redundant.
+// TestMergeStateActive drives one hubforge pair through the shapes MergeStateActive distinguishes.
+// A freshly cloned pair's clean weft is not mid-merge, so it reports false.
+// A foreign conflicted merge in the warp checkout alone, with the weft clean, must not make it report true.
+// The probe reads only the weft's own .git state.
+// A live, non-conflicting merge staged in the weft (MERGE_HEAD only) reports true;
+// it is then aborted, so the weft is clean again.
+// A conflicted `git merge --squash` in the weft writes no MERGE_HEAD and reports true;
+// the MERGE_HEAD probe alone cannot reach it, so neither probe kind is redundant.
 // The steps run serially on one pair.
 // Each leaves the weft clean or conflicted exactly as the next step expects.
 func TestMergeStateActive(t *testing.T) {

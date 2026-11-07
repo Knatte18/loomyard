@@ -1,9 +1,10 @@
-// githubclient_test.go is the hermetic, table-driven test suite for the whole package: the token resolution chain (token.go), the on-disk cache (cache.go/cache_windows.go), and the authenticating RoundTripper (transport.go).
-// Every case redirects the cache to a t.TempDir() via t.Setenv and reaches the `gh auth token` shell-out only through its injected seam, so the suite runs correctly on a machine with no `gh` installed and no GitHub credentials, and never touches the operator's real credential file.
-// This file carries no build tag -- it is untagged Tier 1, spawning no process and needing no git fixture, so `go test -race -count=1 ./internal/githubclient/...` runs every case here on any platform.
-// The one genuinely Windows-only piece -- TestWriteCachedToken_CreatesFileWithRestrictivePermissions and its assertOwnerOnlyDACL helper, which import golang.org/x/sys/windows to assert the cache file's security descriptor directly -- lives in githubclient_windows_test.go behind `//go:build windows`, mirroring this package's cache.go/cache_windows.go/cache_other.go split.
-// No test here calls t.Parallel: each redirects the cache through t.Setenv, which edits the process-global environment.
-// Both files share the helpers declared below (setCacheDir, seedCacheFile, withFakeGHAuthToken, capturedRequest, newScriptedServer).
+// githubclient_test.go is the hermetic, table-driven test suite for the package:
+// the token chain, the on-disk cache, and the authenticating RoundTripper.
+// Every case redirects the cache to a t.TempDir() through t.Setenv and reaches `gh` only through its injected seam.
+// The Windows-only permissions test lives in githubclient_windows_test.go.
+// No test here calls t.Parallel, since t.Setenv edits the process-global environment.
+// Both files share the helpers declared below:
+// setCacheDir, seedCacheFile, withFakeGHAuthToken, capturedRequest, and newScriptedServer.
 
 package githubclient
 
@@ -28,25 +29,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// setCacheDir redirects the token cache to dir by setting every environment
-// variable cacheDir consults, on either branch of its runtime.GOOS check:
-// LOCALAPPDATA on Windows, XDG_CONFIG_HOME everywhere else. Setting both
-// unconditionally (rather than branching on runtime.GOOS here too) means
-// this helper redirects cacheDir correctly regardless of which platform the
-// suite is actually running on, since cacheDir itself ignores whichever
-// variable its own branch does not consult. Every test in this file calls
-// this (directly or via seedCacheFile) before touching anything else, so the
-// operator's real credential file is never read or written.
+// setCacheDir redirects the token cache to dir.
+// It sets both variables cacheDir consults, LOCALAPPDATA and XDG_CONFIG_HOME, on every platform.
+// cacheDir reads only the one its own platform branch consults, so the redirect holds everywhere.
+// Every test in this file calls it, directly or through seedCacheFile, before touching anything else,
+// so the operator's credential file is never read or written.
 func setCacheDir(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("LOCALAPPDATA", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 }
 
-// seedCacheFile writes a cache file with the given token and resolved-at
-// time directly, bypassing writeCachedToken so a test can construct a
-// specific age (e.g. past the freshness TTL) that writeCachedToken itself,
-// which always stamps "now", cannot produce.
+// seedCacheFile writes a cache file with the given token and resolved-at time directly.
+// Tests use it to set an age, such as one past the freshness TTL, that the cache writer cannot produce.
+// The writer always stamps the current time.
 func seedCacheFile(t *testing.T, token string, resolvedAt time.Time) {
 	t.Helper()
 
@@ -70,10 +66,9 @@ func seedCacheFile(t *testing.T, token string, resolvedAt time.Time) {
 	}
 }
 
-// withFakeGHAuthToken replaces the package-level runGHAuthToken seam with fn
-// for the duration of the test, restoring the original afterward. This is
-// the seam every case in this file uses to reach the `gh auth token`
-// shell-out -- no test here ever spawns a real gh process.
+// withFakeGHAuthToken replaces the package-level runGHAuthToken seam with fn for the test's duration.
+// It restores the original when the test ends.
+// Tests reach the `gh auth token` shell-out through this seam, so no test spawns a real gh process.
 func withFakeGHAuthToken(t *testing.T, fn func(ctx context.Context) (string, error)) {
 	t.Helper()
 	orig := runGHAuthToken
@@ -88,10 +83,9 @@ type capturedRequest struct {
 	body       []byte
 }
 
-// newScriptedServer returns an httptest server that replies with the status
-// codes in statuses, one per request in order (repeating the last entry for
-// any request beyond len(statuses)), and appends a capturedRequest for every
-// request it receives to captured.
+// newScriptedServer returns an httptest server that replies with the status codes in statuses, one per request in order.
+// A request beyond len(statuses) gets the last entry again.
+// Every request it receives is appended to captured as a capturedRequest.
 func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest) *httptest.Server {
 	t.Helper()
 
@@ -114,7 +108,10 @@ func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest
 	return server
 }
 
-// TestResolveToken_Chain covers the full resolution order end to end: env vars always win over the cache, GH_TOKEN before GITHUB_TOKEN, a fresh cache entry is used when both env vars are empty, a stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable alongside an empty token, without blocking or prompting.
+// TestResolveToken_Chain covers the full resolution order end to end.
+// Env vars always win over the cache, and GH_TOKEN comes before GITHUB_TOKEN.
+// A fresh cache entry is used when both env vars are empty, and a stale one is not.
+// An unresolvable token surfaces as ErrTokenUnresolvable with an empty token, without blocking or prompting.
 func TestResolveToken_Chain(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -217,7 +214,9 @@ func TestResolveToken_Chain(t *testing.T) {
 	}
 }
 
-// TestCacheDirRedirection_HonoursOverride asserts the redirection itself works, rather than assuming it: pointing the environment at an empty temp dir must resolve cacheDir under that temp dir and report a cache miss there, never silently fall back to a real user path.
+// TestCacheDirRedirection_HonoursOverride asserts that the redirection works rather than assuming it.
+// Pointing the environment at an empty temp dir must resolve cacheDir under that temp dir and report a cache miss there.
+// It must never silently fall back to a real user path.
 //
 //testtiming:keep pins that the cache redirection resolves under the temp dir rather than a real user path, which no other test asserts directly
 func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
@@ -252,9 +251,9 @@ func isUnder(base, candidate string) bool {
 	return rel == "." || !strings.HasPrefix(rel, "..")
 }
 
-// TestReadCachedToken_MalformedFileIsMiss covers every way the on-disk file can fail to match the
-// exact two-field schema: each is a cache miss, never a fatal error, so a foreign or worn-out file
-// never blocks resolution.
+// TestReadCachedToken_MalformedFileIsMiss covers every way the on-disk file can break the two-field schema.
+// Each such file is a cache miss, never a fatal error.
+// A foreign or worn-out file therefore never blocks resolution.
 func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
 	tiergate.Require(t, 0)
 	freshTimestamp := time.Now().UTC().Format(time.RFC3339)
@@ -295,10 +294,10 @@ func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
 	}
 }
 
-// TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution covers the requirement that a
-// cache directory which cannot be created degrades to in-process resolution rather than failing the
-// command: writeCachedToken must not panic or error out loud,
-// and a subsequent resolveToken must still succeed via the (faked) gh CLI fallback.
+// TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution covers a cache directory that cannot be created.
+// The command must degrade to in-process resolution rather than fail.
+// writeCachedToken must neither panic nor error out loud,
+// and a subsequent resolveToken must still succeed through the faked gh CLI fallback.
 func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := t.TempDir()
@@ -307,7 +306,7 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 		t.Fatalf("seed blocking file: %v", err)
 	}
 
-	// LOCALAPPDATA now points at a regular file, so cacheDir's "lym" subdirectory can never be created underneath it.
+	// LOCALAPPDATA points at a regular file, so cacheDir's "lym" subdirectory can never be created underneath it.
 	setCacheDir(t, blockingFile)
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
@@ -328,7 +327,8 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 }
 
 // TestCache_ConcurrentWriters drives many goroutines through writeCachedToken and readCachedToken at once.
-// The requirement is not that any particular write wins -- it is that the file is always either absent or fully parseable, never left half-written by a torn concurrent write.
+// No particular write has to win.
+// The file must always be either absent or fully parseable, never left half-written by a torn concurrent write.
 //
 //testtiming:keep pins that concurrent writers never leave a torn cache file, which the sequential cache tests do not exercise
 func TestCache_ConcurrentWriters(t *testing.T) {
@@ -358,9 +358,9 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Absent is an acceptable final state -- every writer races
-			// every other one, and the guarantee is only that none of
-			// them leaves a half-written file behind.
+			// Absent is an acceptable final state.
+			// Every writer races the others,
+			// and the only guarantee is that no writer leaves a half-written file behind.
 			return
 		}
 		t.Fatalf("ReadFile(%s): %v", path, err)
@@ -375,7 +375,13 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 	}
 }
 
-// TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces as an error naming the rejected variable and wrapping ErrTokenRejected.
+// TestAuthRT_401Handling covers the transport's 401 contract.
+// A 401 on a cache-sourced token invalidates it and resolves a fresh one exactly once.
+// The request is then replayed with that token, never in a loop.
+// The replay rewinds the request body byte-identical through req.GetBody, which a drained replay would silently skip.
+// A second consecutive 401 goes back to the caller unchanged.
+// An environment-sourced token is never replayed, since replaying it reproduces the identical value.
+// The 401 surfaces instead as an error naming the rejected variable and wrapping ErrTokenRejected.
 func TestAuthRT_401Handling(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -479,10 +485,9 @@ func TestAuthRT_401Handling(t *testing.T) {
 	}
 }
 
-// TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout encodes the operator requirement directly rather
-// than mere behaviour: a fake that hangs like a stuck `gh` process must still cause resolveToken to
-// return once ghAuthTokenTimeout elapses.
-// This is a test that would hang forever on a regression that dropped the context deadline.
+// TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout checks the timeout on the seam.
+// A fake that hangs like a stuck `gh` process must still let resolveToken return once ghAuthTokenTimeout elapses.
+// Without the context deadline, this test would hang forever.
 func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -490,15 +495,13 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
 
-	// Shrink the timeout for this test so it proves the seam engages without
-	// paying the real 5s production wait -- same save/override/restore shape
-	// withFakeGHAuthToken uses above for runGHAuthToken.
+	// Shrink the timeout so the test proves the seam engages without paying the production wait.
+	// It uses the same save, override and restore shape as withFakeGHAuthToken does for runGHAuthToken.
 	origTimeout := ghAuthTokenTimeout
 	ghAuthTokenTimeout = 10 * time.Millisecond
 	t.Cleanup(func() { ghAuthTokenTimeout = origTimeout })
 
-	// A well-behaved fake -- like the real `gh auth token` subprocess it
-	// stands in for -- respects ctx's deadline instead of running forever.
+	// The fake respects ctx's deadline instead of running forever, as the real `gh auth token` subprocess does.
 	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
 		<-ctx.Done()
 		return "", ctx.Err()
@@ -514,14 +517,16 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	if elapsed < ghAuthTokenTimeout {
 		t.Errorf("resolveToken() returned after %v; want at least ghAuthTokenTimeout (%v) -- an early return here would mean this test is not exercising the timeout at all", elapsed, ghAuthTokenTimeout)
 	}
-	// The slack outlasts a scheduling stall under a loaded suite and stays under the real ~5s wait an override that silently fails to apply would cost.
+	// The slack outlasts a scheduling stall under a loaded suite;
+	// it stays under the real ~5s wait an override that silently fails to apply would cost.
 	const slack = 2 * time.Second
 	if elapsed > ghAuthTokenTimeout+slack {
 		t.Errorf("resolveToken() took %v; want close to ghAuthTokenTimeout (%v), not an unbounded hang", elapsed, ghAuthTokenTimeout)
 	}
 }
 
-// TestAuthRT_WaitsWhileAPauseCoversTheProcess pins that a request waits at entry while a live pause covers the process, writes one gate line, and goes out once the pause is resumed.
+// TestAuthRT_WaitsWhileAPauseCoversTheProcess pins that a request waits at entry while a live pause covers the process.
+// It writes one gate line, and the request goes out once the pause is resumed.
 // It is not parallel: the pause network gate is process-wide state.
 func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -616,9 +621,10 @@ func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
 // pauseHoldDuration is a top-level constant so the untagged-test sleep guard can resolve it.
 const pauseHoldDuration = 150 * time.Millisecond
 
-// TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease pins the transport's deadlines around a pause hold:
-// a held call gets its caller deadline moved later by the held time and its client timeout from the release, an unheld call and a call admitted before the pause keep theirs,
-// and a cancellation ends a held call unless the caller's own deadline had already passed.
+// TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease pins the transport's deadlines around a pause hold.
+// A held call gets its caller deadline moved later by the held time, and its client timeout runs from the release.
+// An unheld call and a call admitted before the pause keep their deadlines.
+// A cancellation ends a held call unless the caller's own deadline had already passed.
 // It is not parallel: the pause network gate is process-wide state.
 func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -638,7 +644,8 @@ func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 		hits   int32
 	}
 	// run sends one request through an authRT with a 50 ms timeout, under a caller deadline of callerTimeout.
-	// A live hub entry exists from the start when live is set; sleep is the gate's wait seam and handler serves the request.
+	// A live hub entry exists from the start when live is set;
+	// sleep is the gate's wait seam, and handler serves the request.
 	run := func(t *testing.T, callerTimeout time.Duration, live bool, sleep func(*env), handler func(*env, http.ResponseWriter, *http.Request)) result {
 		t.Helper()
 		recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)

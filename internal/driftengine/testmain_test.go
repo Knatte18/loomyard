@@ -1,4 +1,6 @@
-// testmain_test.go runs the package's tests under the hermetic git environment and tmuxkit.Main, so tests that spawn git never reach the operator's gitconfig and every temp file lives in the process run directory.
+// testmain_test.go runs the package's tests under the hermetic git environment and tmuxkit.Main.
+// Together they keep tests that spawn git away from the operator's gitconfig,
+// and they put every temp file in the process run directory.
 
 package driftengine
 

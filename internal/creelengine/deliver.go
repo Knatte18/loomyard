@@ -1,4 +1,5 @@
-// deliver.go runs the Scheduler, one worker per receiver that types queued injects, notices and reminders into its pane through the delivery seam, and the Store side those workers act on.
+// deliver.go runs the Scheduler, which types queued injects, notices and reminders into panes through the delivery seam.
+// It runs one worker per receiver and acts on the Store.
 
 package creelengine
 
@@ -20,19 +21,25 @@ const (
 	probeBackoffCeiling = 8 * time.Second
 	// agedPersistInterval is how often the TTL an inject has consumed is journaled while it runs.
 	agedPersistInterval = time.Minute
-	// bellGrace is how long a hook strand with no waiter live waits, after the later of the store's opening and its last waiter's end, before it gets the bell; it keeps the bell out of the moment between a Stop and its waiter's connection.
+	// bellGrace is how long a hook strand with no live waiter waits before it gets the bell.
+	// The wait counts from the later of the store's opening and the end of its last waiter.
+	// It keeps the bell out of the moment between a Stop and its waiter's connection.
 	bellGrace = 5 * time.Second
-	// ringAnswerWindow is how long a ring may stand unanswered, or the turn it woke go without a turn end, before the bell follows it.
+	// ringAnswerWindow is how long a ring may stand unanswered.
+	// The bell follows once the window passes with the ring unanswered, or with the turn it woke lacking a turn end.
 	ringAnswerWindow = 30 * time.Second
 )
 
-// BellLine is the fixed line typed into an idle hook strand that has mail no waiter reaches; it carries no sender text, so no post is typed.
+// BellLine is the fixed line typed into an idle hook strand that has mail no waiter reaches.
+// It carries no sender text, so no post is typed.
 const BellLine = "[creel] Mail is waiting for you. End this turn now; creel hands the mail to you as the turn ends. Do not run lym creel read for it."
 
-// Scheduler delivers what the pool holds into panes: one worker per receiver with pending deliveries, at most one delivery in flight per receiver.
+// Scheduler delivers what the pool holds into panes, with one worker per receiver that has pending deliveries.
+// At most one delivery is in flight per receiver.
 // It types queued injects into every live strand.
-// A hook strand, one marked CreelHooks, has its mail rung to its idle waiter, and a fixed bell line wakes it where no waiter reaches;
-// every other strand is a pane-mail strand, whatever its engine, and gets notices and reminders.
+// A hook strand, one marked CreelHooks, has its mail rung to its idle waiter.
+// A fixed bell line wakes it where no waiter reaches.
+// Every other strand is a pane-mail strand, whatever its engine, and gets notices and reminders.
 // A program's mailbox is never reminded.
 type Scheduler struct {
 	store    *Store
@@ -50,7 +57,7 @@ type Scheduler struct {
 	sweepWake chan struct{}
 	// outbound holds the one worker of each receiving hub path with a pending outbound message.
 	outbound map[string]*outboundWorker
-	// hubStarts counts, per receiving hub path, the daemon starts since that hub's daemon last answered a call, and hubCapWarned marks the paths whose start-cap warning for the current episode is out.
+	// hubStarts counts starts per hub path since its daemon last answered; hubCapWarned marks paths warned this episode.
 	hubStarts    map[string]int
 	hubCapWarned map[string]bool
 }
@@ -64,7 +71,10 @@ func NewScheduler(store *Store, delivery Delivery, clock Clock) *Scheduler {
 	}
 }
 
-// Start subscribes to the store's wake notifications, starts the removed-holder sweep, launches a worker for every receiver the pool already shows with a queued inject or unread mail, a chaser for every holder of a chaseable message, and an outbound worker for every hub with a pending outbound message.
+// Start subscribes to the store's wake notifications and starts the removed-holder sweep.
+// It launches a worker for each receiver the pool already shows with a queued inject or unread mail.
+// It launches a chaser for each holder of a chaseable message.
+// It launches an outbound worker for each hub with a pending outbound message.
 func (s *Scheduler) Start() {
 	s.store.SetWakeHook(s.wake)
 	s.store.SetOutboundHook(s.wakeOutbound)
@@ -81,7 +91,8 @@ func (s *Scheduler) Start() {
 	}
 }
 
-// Stop starts no new send, waits for the sends in flight to return and their outcomes to be journaled, and persists the TTL each queued inject has consumed and the chase clock each chaser has counted.
+// Stop starts no new send and waits for the sends in flight to return and journal their outcomes.
+// It persists the TTL each queued inject has consumed and the chase clock each chaser has counted.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
 	if s.stopping {
@@ -94,7 +105,8 @@ func (s *Scheduler) Stop() {
 	s.wg.Wait()
 }
 
-// wake signals that receiver has something to deliver: it nudges its worker, or starts one when the receiver has pending deliveries.
+// wake signals that receiver has something to deliver:
+// it nudges its worker, or starts one when the receiver has pending deliveries.
 func (s *Scheduler) wake(receiver string) {
 	select {
 	case s.sweepWake <- struct{}{}:
@@ -128,7 +140,7 @@ type worker struct {
 	receiver  string
 	wake      chan struct{}
 
-	// known says whether a probe has seen the receiver yet; running is whether the receiver was live and unpaused at the last probe.
+	// known says whether a probe has seen the receiver; running says whether it was live and unpaused at the last probe.
 	known     bool
 	running   bool
 	lastProbe time.Time
@@ -137,9 +149,12 @@ type worker struct {
 	lastError map[string]string
 }
 
-// run probes the receiver from a 1-second base and doubles the wait to 8 seconds after every probe that delivers nothing.
-// A wake notification or a probe that delivers returns the wait to the base, and the worker ends when nothing is pending.
-// While the receiver is live and unpaused, the wait is capped at the soonest queued inject's remaining TTL, never below the base, so the probe that expires the inject runs when its TTL runs out.
+// run probes the receiver from a 1-second base.
+// After every probe that delivers nothing, it doubles the wait, up to 8 seconds.
+// A wake notification or a probe that delivers resets the wait to the base.
+// The worker ends when nothing is pending.
+// While the receiver is live and unpaused, the wait is capped at the soonest queued inject's remaining TTL.
+// The wait never drops below the base, so the probe that expires the inject runs when its TTL runs out.
 func (w *worker) run() {
 	defer w.scheduler.wg.Done()
 	var lastWait time.Duration
@@ -178,7 +193,8 @@ func (w *worker) run() {
 	}
 }
 
-// retire removes the worker once nothing is pending; it reports false when something arrived meanwhile and the worker carries on.
+// retire removes the worker once nothing is pending;
+// it reports false when something arrived meanwhile and the worker carries on.
 func (w *worker) retire() bool {
 	w.scheduler.mu.Lock()
 	defer w.scheduler.mu.Unlock()
@@ -212,7 +228,8 @@ func (w *worker) report(kind string, err error) {
 }
 
 // probe makes one delivery attempt for the receiver.
-// It types a queued inject into any live strand first; with none due it rings a hook strand's idle waiter, or types a notice or the reminder into a pane-mail strand.
+// It types a queued inject into any live strand first.
+// With none due, it rings a hook strand's idle waiter, or types a notice or the reminder into a pane-mail strand.
 // It reports whether it typed something, and whether the receiver still has deliveries pending.
 func (w *worker) probe() (delivered, pending bool) {
 	store, clock := w.scheduler.store, w.scheduler.clock
@@ -239,7 +256,8 @@ func (w *worker) probe() (delivered, pending bool) {
 	if !running {
 		return false, true
 	}
-	// Held through the send, so an interrupt of this pane runs with no delivery in flight and the next reading after it is a fresh one.
+	// Held through the send, so an interrupt of this pane runs with no delivery in flight,
+	// and the next reading after it is a fresh one.
 	lock := store.paneLock(w.receiver)
 	lock.Lock()
 	defer lock.Unlock()
@@ -259,11 +277,15 @@ func (w *worker) probe() (delivered, pending bool) {
 }
 
 // wakeHookStrand wakes a strand whose session runs creel's hook delivery, and reports whether it rang or typed the bell.
-// It rings the idle waiter when the strand's claimable ids are non-empty and differ from those of its last ring, a waiter is registered, and the delivery reads no turn in progress, whatever the input box holds.
-// A woken turn records no prompt submit, so from a ring on the reading counts as no turn only once a turn end was recorded after the ring; a reading the pane decided has no turn end time and is taken as it reads.
+// It rings the idle waiter when the strand's claimable ids are non-empty and differ from those of its last ring.
+// It also needs a registered waiter and a reading of no turn in progress, whatever the input box holds.
+// A woken turn records no prompt submit.
+// After a ring, a reading counts as no turn only once a turn end was recorded after the ring.
+// A reading the pane decided has no turn end time and is taken as it reads.
 // A probe that reads a turn in progress after a ring marks the ring answered.
 // When it does not ring, it types the bell for a claimable set no bell was typed for.
-// Within ringAnswerWindow of a ring it types none while the ring stands unanswered or no turn end was read after the ring.
+// Within ringAnswerWindow of a ring, it types no bell.
+// It types none while the ring stands unanswered or no turn end was read after the ring.
 // The turn an answered ring woke, queued or running, ends in a Stop that hands out the mail that arrived since.
 // Past that window an unanswered ring is followed by the bell at once; otherwise the bell waits for bellGrace with no waiter live.
 func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
@@ -304,8 +326,10 @@ func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
 	return w.typeBell(strand, ids)
 }
 
-// typeBell types BellLine into a hook strand once it is idle, and records the bell for the claimable set ids, whether the line landed or not.
-// A line that did not land is never typed again for the same set; a busy send records nothing, so the next probe tries again.
+// typeBell types BellLine into a hook strand once it is idle.
+// It records the bell for the claimable set ids whether the line landed or not.
+// A line that did not land is never typed again for the same set;
+// a busy send records nothing, so the next probe tries again.
 // Every send it makes logs one `creel bell` line.
 func (w *worker) typeBell(strand Strand, ids []int64) bool {
 	store := w.scheduler.store
@@ -358,7 +382,7 @@ func (w *worker) locate() (Strand, bool) {
 	return strand, err == nil && !paused
 }
 
-// idle asks whether the strand may be typed into; an error counts as not idle.
+// idle reports whether the strand may be typed into; an error counts as not idle.
 // Every reading goes to the stall journal, an error as a reading with no reason.
 func (w *worker) idle(strand Strand) bool {
 	answer, err := w.scheduler.delivery.Idle(strand)
@@ -407,8 +431,10 @@ func (w *worker) typeInject(strand Strand, inject QueuedInject) bool {
 	}
 }
 
-// typeNotice types the notice's line once the receiver is idle, and journals the notice read once the line was typed, landed or not.
-// It reserves the notice before the send, so a tool-boundary claim never hands out the line being typed, and types nothing when a claim took it first.
+// typeNotice types the notice's line once the receiver is idle.
+// It journals the notice read once the line was typed, landed or not.
+// It reserves the notice before the send, so a tool-boundary claim never hands out the line being typed.
+// It types nothing when a claim took the notice first.
 // A busy send releases it unread for the next probe.
 func (w *worker) typeNotice(strand Strand, notice Message) bool {
 	store := w.scheduler.store
@@ -531,7 +557,8 @@ func (s *Store) markRingAnswered(strand string) {
 	}
 }
 
-// markBell records that the bell was typed for the claimable set ids, keeping the strand's ring time and whether that ring was answered.
+// markBell records that the bell was typed for the claimable set ids.
+// It keeps the strand's ring time and whether that ring was answered.
 func (s *Store) markBell(strand string, ids []int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -553,9 +580,9 @@ type deliverySnapshot struct {
 	injects []QueuedInject
 	// holdOwner is the owner of a live hold on the receiver, empty when there is none.
 	holdOwner string
-	// notices are the unread notices no read holds reserved, oldest first, typed as their own lines; under a hold only the hold owner's.
+	// notices are unreserved unread notices, oldest first, each typed as its own line; under a hold, the hold owner's only.
 	notices []Message
-	// unread are the other unread messages, which the receiver is reminded about: all of them, or under a hold only the hold owner's.
+	// unread are the other unread messages the receiver is reminded about; under a hold, only the hold owner's.
 	unread      []Message
 	reminder    reminderEntry
 	hasReminder bool
@@ -584,7 +611,9 @@ func (s *Store) snapshot(receiver string) deliverySnapshot {
 	return snap
 }
 
-// ageInjects charges every inject queued for receiver the time from the later of since and its own posting to now against its TTL, and expires those that used it up.
+// ageInjects charges every inject queued for receiver its elapsed time against its TTL.
+// The time counts from the later of since and the inject's posting, up to now.
+// An inject whose consumed time reaches its TTL expires.
 func (s *Store) ageInjects(receiver string, since, now time.Time) error {
 	return s.do(func() error {
 		for _, entry := range s.queuedEntriesLocked(receiver) {
@@ -607,7 +636,8 @@ func (s *Store) ageInjects(receiver string, since, now time.Time) error {
 	})
 }
 
-// remainingTTL returns the shortest TTL left, the TTL less what it has consumed, among the injects queued for receiver, and false when none is queued.
+// remainingTTL returns the shortest remaining TTL among the injects queued for receiver: the TTL less consumed time.
+// The second result reports whether any inject is queued.
 func (s *Store) remainingTTL(receiver string) (time.Duration, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -690,8 +720,10 @@ func (s *Store) settleInjectLocked(id int64, event string) error {
 	return nil
 }
 
-// noteStall records the stall a probe read for receiver and journals a stalled record when it is non-empty and differs from the standing one, or the standing one went stale.
-// Every non-empty reading stamps the time it was read, and tells each waiter on the receiver's queued injects the stall when it differs from the one that waiter was last told.
+// noteStall records the stall a probe read for receiver.
+// Journals a stalled record when a non-empty stall differs from the standing one or the standing reading went stale.
+// Every non-empty reading stamps the time it was read.
+// It tells each waiter on the receiver's queued injects the stall when it differs from what that waiter was last told.
 // An empty stall clears the receiver's entry with no record and resets what those waiters were told.
 func (s *Store) noteStall(receiver string, stall Stall) error {
 	return s.do(func() error {
@@ -717,7 +749,8 @@ func (s *Store) noteStall(receiver string, stall Stall) error {
 	})
 }
 
-// tellStallLocked records stall as told to each waiter on receiver's queued injects whose last told stall differs, and notifies it of note unless stall is empty.
+// tellStallLocked records stall as told to each waiter on receiver's queued injects whose last told stall differs;
+// each such waiter is notified of note unless stall is empty.
 func (s *Store) tellStallLocked(receiver string, stall Stall, note stallNote) {
 	for _, entry := range s.queuedEntriesLocked(receiver) {
 		for _, waiter := range s.waiters[waitKey{kind: waitInject, id: entry.ID}] {
@@ -732,10 +765,13 @@ func (s *Store) tellStallLocked(receiver string, stall Stall, note stallNote) {
 	}
 }
 
-// paneReserver is the reservation holder of a notice the pane path is typing; no agent name equals it, so no read or claim of a holder releases it.
+// paneReserver is the reservation holder of a notice the pane path is typing.
+// No agent name equals it, so no read or claim by an agent releases the reservation.
 const paneReserver = "\x00pane"
 
-// reserveNotice reserves the notice id held by receiver for the pane path, and reports false when it left the receiver, was read or is reserved meanwhile.
+// reserveNotice reserves the notice id held by receiver for the pane path.
+// It reports whether the reservation was made.
+// It is refused when the notice left the receiver, was read or is already reserved.
 func (s *Store) reserveNotice(receiver string, id int64) bool {
 	reserved := false
 	_ = s.do(func() error {
@@ -750,7 +786,8 @@ func (s *Store) reserveNotice(receiver string, id int64) bool {
 	return reserved
 }
 
-// releaseNotice drops the pane path's reservation of the notice id after a send that typed nothing, and answers a wait for receiver's mail, since the notice is back.
+// releaseNotice drops the pane path's reservation of the notice id after a send that typed nothing.
+// It answers a wait for receiver's mail, since the notice is back.
 func (s *Store) releaseNotice(receiver string, id int64) {
 	_ = s.do(func() error {
 		if s.reserved[id] == paneReserver {
@@ -761,8 +798,9 @@ func (s *Store) releaseNotice(receiver string, id int64) {
 	})
 }
 
-// markNoticeRead drops the pane path's reservation of the notice id and journals it read by receiver, the pane it was typed into.
-// A notice that left the receiver meanwhile is left to that.
+// markNoticeRead drops the pane path's reservation of the notice id and journals it read by receiver:
+// the pane the notice was typed into.
+// A notice that left the receiver meanwhile is not journaled.
 func (s *Store) markNoticeRead(receiver string, id int64) error {
 	return s.do(func() error {
 		if s.reserved[id] == paneReserver {

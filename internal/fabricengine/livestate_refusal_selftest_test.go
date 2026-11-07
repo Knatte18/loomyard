@@ -1,8 +1,8 @@
-// refusal_test.go proves RefusedByGate and RefusedBefore pin the correct layer against real errors
-// driven from real verbs against real hubs — one gate refusal per reachable Check member, the two
-// negative properties that make the matching trustworthy rather than merely permissive, and
-// RefusedBefore's own real pre-flight cases, including the discriminating pair the "check failed"
-// exclusion exists for.
+// livestate_refusal_selftest_test.go checks that RefusedByGate and RefusedBefore pin the correct layer.
+// They are checked against real errors from real verbs on real hubs.
+// It covers one gate refusal per reachable Check member.
+// It also covers two negative properties that keep the matching from being merely permissive.
+// It covers the pre-flight cases of RefusedBefore, including the pair the "check failed" exclusion exists for.
 
 package fabricengine_test
 
@@ -20,12 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// driveContainmentGateRefusal drives a real containment refusal through UnwireJunctions: a junction
-// name of "../<escapeName>" cancels the slug segment and lands the "link" at the hub itself, escaping
-// the worktree UnwireJunctions was asked to operate on. This is the same reach point
-// TestUnwireJunctions_RefusesLinkOutsideItsWorktree (destructivegaps_integration_test.go) proves live:
-// junction.go:368's UnwireJunctions, through unseedLymJunction, into unseedJunctionRecords's
-// pathRequest and removeLink call at junction.go:474-483.
+// driveContainmentGateRefusal drives a real containment refusal through UnwireJunctions.
+// A junction name of "../<escapeName>" cancels the slug segment and lands the link at the hub itself,
+// and that puts the link outside the worktree UnwireJunctions was asked to operate on.
 func driveContainmentGateRefusal(t testing.TB, h *hubforge.Hub, slug, escapeName string) error {
 	t.Helper()
 
@@ -39,31 +36,13 @@ func driveContainmentGateRefusal(t testing.TB, h *hubforge.Hub, slug, escapeName
 	return err
 }
 
-// driveOwnershipGateRefusal drives a real ownership refusal through UnwireJunctions, using the one
-// reach point in this batch's Context files where the gate's own ownership predicate genuinely
-// diverges from a caller's own pre-flight rather than merely re-running it.
-//
-// Topology.Prune(apply=true) against a hub child ending in the weft suffix that fabric never created
-// was tried first, matching this batch's own instructions, and confirmed unreachable by running it:
-// Prune's applyStalePairOwnership pre-check calls the exact same isRegisteredLinkedWorktreeIn
-// predicate, on the exact same (repoDir, target) pair, that the gate's own
-// ownedRegisteredLinkedWorktree check resolves inside removeStalePair — deliberately so, per
-// isRegisteredLinkedWorktreeIn's own doc comment ("shared rather than duplicated because both sides
-// of the pair need the same rule"). The two calls can never disagree, so the gate's own pipeline is
-// never reached for an unregistered child; the resulting PruneEntry.Error is entirely
-// applyStalePairOwnership's own hand-written message, which never contains "check failed". The
-// identical duplication blocks Remove's removeWarpWorktreeDir for the same reason on its primary
-// gate call, and its fallback call is only reached once the same registration check has already
-// passed, so ownership cannot fail there either.
-//
-// A real divergence does exist for ownedWiredJunction (destroy.go:376-397), though.
-// unseedJunctionRecords's own pre-check resolves the link with fslink.PointsTo — fully resolved,
-// walking every hop — while the gate's own resolvePathOwnership case for pathOwnershipWiredJunction
-// reads fslink.RawTarget: the ONE HOP a wiring call actually recorded (see RawTarget's own doc
-// comment for why). Chaining the junction through an intermediate symlink (link -> intermediate ->
-// target) makes PointsTo resolve correctly — so the pre-check passes and removeLink is attempted —
-// while RawTarget reads "intermediate", which does not match the gate's expected one-hop target: a
-// genuine gate-only refusal, not a proxy for a pre-flight duplicate.
+// driveOwnershipGateRefusal drives a real ownership refusal through UnwireJunctions.
+// The gate's ownership check can diverge from the pre-flight check.
+// The pre-flight resolves the link with fslink.PointsTo, which walks every hop;
+// the gate reads fslink.RawTarget, the one hop a wiring call recorded.
+// Chaining the junction through an intermediate symlink makes PointsTo pass, so removal is attempted.
+// RawTarget then reads the intermediate, which does not match the gate's expected target.
+// This is a gate-only refusal, not a duplicate of a pre-flight check.
 func driveOwnershipGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error {
 	t.Helper()
 
@@ -94,17 +73,11 @@ func driveOwnershipGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 	return err
 }
 
-// driveDirtinessGateRefusal drives a real dirtiness refusal through Fabric.ResetHard, the gate's one
-// site whose pathRequest hardcodes force: false — so the refusal it produces can never be answered by
-// a flag, and no caller's own pre-flight stands in front of it to claim the planted dirt first.
-//
-// It used to drive Remove(force=true) against a LOCKED, tracked-dirty worktree, relying on the
-// fallback pathRequest inside removeWarpWorktreeDir carrying no force field at all so the operator's
-// --force silently failed to reach it. That was a DEFECT (fixed in R2 as finding L1), not a property:
-// a helper whose scenario depends on a bug stops working the moment the bug is fixed, and worse, it
-// makes the bug look load-bearing to whoever next reads the test. ResetHard needs no such trick — its
-// force flag is a constant in production source, which is exactly what makes it the honest way to
-// reach a gate dirtiness refusal.
+// driveDirtinessGateRefusal drives a real dirtiness refusal through Fabric.ResetHard.
+// The gate's pathRequest there hardcodes force: false, so the refusal cannot be answered by a flag,
+// and no caller's pre-flight stands in front of it to claim the planted dirt first.
+// ResetHard's force flag is a constant in production source.
+// That makes this the honest way to reach a gate dirtiness refusal.
 func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error {
 	t.Helper()
 
@@ -123,13 +96,13 @@ func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 	if err != nil {
 		t.Fatalf("fabricengine.Open(%s): %v", warpTarget, err)
 	}
-	// The gate refuses before repo.ResetHard is ever called, so this SHA is never actually reset to;
-	// it is the pair's own HEAD purely so the request is a realistic one rather than a sentinel.
+	// The gate refuses before repo.ResetHard is called, so this SHA is never reset to;
+	// it is the pair's own HEAD so the request is a realistic one rather than a sentinel.
 	return f.ResetHard(fabricengine.NewMutations(h.Path), head)
 }
 
-// TestRefusedByGate proves RefusedByGate matches a real gate refusal for each of the three reachable
-// Check members, one driven scenario per member.
+// TestRefusedByGate proves RefusedByGate matches a real gate refusal for each reachable Check member.
+// Each member is driven by its own scenario.
 func TestRefusedByGate(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("Containment", func(t *testing.T) {
@@ -173,10 +146,10 @@ func TestRefusedByGate(t *testing.T) {
 }
 
 // TestRefusedByGate_Negatives proves the two negative properties RefusedByGate must hold: an
-// ordinary, non-refusal error matches no Check at all, and a refusal genuinely attributable to one
-// check does not also match either of the other two.
-// A helper proved only on its positive cases could still pass with an overly loose substring match —
-// these are the cases that would catch that.
+// ordinary, non-refusal error matches no Check at all,
+// and a refusal attributable to one check does not also match either of the others.
+// A helper proved only on its positive cases could still pass with an overly loose substring match,
+// and these cases catch that.
 func TestRefusedByGate_Negatives(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("OrdinaryErrorMatchesNoCheck", func(t *testing.T) {
@@ -185,9 +158,9 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "ordinary-owner"
 		hubforge.AddPair(t, h, slug)
-		// A second Add against the same slug fails for an entirely ordinary, non-refusal reason
-		// (add.go:71's plain fmt.Errorf: the worktree directory already exists) — a real error from
-		// a real verb, not a hand-written string standing in for one.
+		// A second Add against the same slug fails for an ordinary, non-refusal reason:
+		// the worktree directory already exists.
+		// It is a real error from a real verb, not a hand-written string standing in for one.
 		_, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{})
 		if err == nil {
 			t.Fatalf("Add(%s) a second time: want an error, got nil", slug)
@@ -232,10 +205,10 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 	})
 }
 
-// TestRefusedBefore proves RefusedBefore matches real pre-flight refusals — verb-level guards that
-// run before a request ever reaches the destructive gate — and, in its discriminating case, proves
-// the mandatory "check failed" exclusion actually earns its keep against a gate refusal sharing the
-// identical reason text.
+// TestRefusedBefore proves RefusedBefore matches real pre-flight refusals.
+// Those are verb-level guards that run before a request reaches the destructive gate.
+// Its discriminating case proves the "check failed" exclusion.
+// It does so against a gate refusal that shares the identical reason text.
 func TestRefusedBefore(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("RemovesOwnDirtyMessage", func(t *testing.T) {
@@ -260,12 +233,11 @@ func TestRefusedBefore(t *testing.T) {
 		}
 	})
 
-	// DiscriminatesFromGateDirtinessOnIdenticalReasonText is the whole point of the "check failed"
-	// exclusion documented on RefusedBefore itself: the gate's own dirtiness reason (destroy.go:564)
-	// is byte-identical to Remove's own pre-flight reason (remove.go:74), so a naive substring match
-	// on the reason text alone cannot tell the two apart. Without the exclusion this sub-test's first
-	// assertion would be true instead of false, and sabotage row 3 in batch 8 would stay green on its
-	// refusal half for the wrong reason.
+	// The "check failed" exclusion documented on RefusedBefore is what separates the two:
+	// the gate's dirtiness reason is byte-identical to Remove's pre-flight reason.
+	// A substring match on the reason text alone cannot tell them apart.
+	// Without the exclusion, the first assertion below would be true instead of false,
+	// and the refusal half would pass for the wrong reason.
 	t.Run("DiscriminatesFromGateDirtinessOnIdenticalReasonText", func(t *testing.T) {
 		t.Parallel()
 
@@ -306,7 +278,8 @@ func TestRefusedBefore(t *testing.T) {
 			t.Fatalf("mkdir %s: %v", hubPath, err)
 		}
 
-		// A plain directory at the derived hub path has no Bolt checkout entry and no weft sibling, so checkResetTarget's looksLikeHub pre-flight refuses before CloneHub ever touches the network.
+		// A plain directory at the derived hub path has no Bolt checkout entry and no weft sibling.
+		// checkResetTarget's looksLikeHub pre-flight refuses before CloneHub touches the network.
 		_, err := fabricengine.CloneHub(cwd, fabricengine.CloneOptions{
 			WeftURL: "https://example.invalid/reset-hub-preflight-weft.git",
 			WarpURL: warpURL,

@@ -15,15 +15,15 @@ import (
 // It is well above a walk with no contended pair lock.
 const DefaultLockWait = 2 * time.Minute
 
-// Geometry is the told geometry of one hub: the paths the walk works on.
+// Geometry holds the paths of one hub that the walk works on.
 type Geometry struct {
-	// BoardDir is the hub's Bolt checkout, where the hub-wide config lives at _lym/config/ and the stamp and lock live at .lym/config/.
+	// BoardDir is the hub's Bolt checkout: the hub-wide config is at _lym/config/, the stamp and lock at .lym/config/.
 	BoardDir string
 	// WorktreePath is the caller's code worktree root, from which the walk lists the hub's code worktrees.
 	WorktreePath string
 }
 
-// StampPath returns the build stamp file, in the never-tracked mirror of the hub-wide config dir.
+// StampPath returns the build stamp file, in the untracked scratch dir of the hub-wide config.
 func (g Geometry) StampPath() string {
 	return filepath.Join(configengine.ScratchDir(g.BoardDir), "build-stamp.json")
 }
@@ -38,13 +38,14 @@ type Options struct {
 	// LockWait bounds the wait for the hub lock; zero means DefaultLockWait.
 	LockWait time.Duration
 	// Pair is a code worktree root.
-	// When set, Ensure reconciles that one pair unconditionally, whatever the build stamp says, and neither reads nor writes the stamp.
+	// When set, Ensure reconciles that one pair unconditionally, ignoring the build stamp, and neither reads nor writes it.
 	Pair string
 }
 
 // Ensure reconciles the hub's config once per binary build, under the hub lock, and commits what it wrote.
-// A build stamp naming the running build returns nil after one file read, one stat per per-worktree module's repo default and one for the board's base-sparse marker, with no lock and no git;
-// an absent repo default or an absent marker makes the stamp stale.
+// A build stamp naming the running build returns nil with no lock and no git.
+// That check reads the stamp, stats each per-worktree module's repo default, and stats the board's base-sparse marker.
+// An absent repo default or an absent marker makes the stamp stale.
 // Options.Pair selects the unconditional single-pair call instead of the stamp-gated walk over the whole hub.
 // A lock not acquired within the wait returns *LockTimeoutError; a reconcile or commit failure returns *WorktreeError.
 func Ensure(geom Geometry, opts Options) error {
@@ -55,7 +56,8 @@ func Ensure(geom Geometry, opts Options) error {
 const reconcileWayForward = "fix the cause the error names, then run a start verb to retry the reconcile: `lym loom resume` in the task worktree, or `lym batten run` or `lym beam start` from the prime"
 
 // EnsureOrWarn is Ensure for a caller that reads a hub's config and goes on when the reconcile fails.
-// A failure logs one warning naming the error and the way forward and returns nothing, leaving the stamp stale so the next start verb retries the walk.
+// A failure logs one warning naming the error and the way forward, and returns nothing.
+// It leaves the stamp stale, so the next start verb retries the walk.
 func EnsureOrWarn(geom Geometry, opts Options) {
 	if err := Ensure(geom, opts); err != nil {
 		logger.Warn("hubreconcile: hub config reconcile failed, going on with the config as it is", "error", err, "way_forward", reconcileWayForward)
@@ -81,7 +83,7 @@ type WorktreeError struct {
 	Worktree string
 	// File is the config file that failed; empty when the failure names no file.
 	File string
-	// Module is the config module of File; empty when File is, or when File belongs to no config module, such as the board marker.
+	// Module is the config module of File; empty when File is empty or belongs to none, such as the board marker.
 	Module string
 	// Board marks a failure at the board dir, whose files are edited at the default layer from the prime worktree.
 	Board bool
@@ -90,7 +92,8 @@ type WorktreeError struct {
 }
 
 // Error names the worktree, the file and the cause, and ends with the way forward.
-// A failing board file names the default-layer command, and a file that belongs to no config module names only the file and the re-run.
+// A failing board file names the default-layer command.
+// A file that belongs to no config module names only the file and the re-run.
 func (e *WorktreeError) Error() string {
 	switch {
 	case e.File == "":

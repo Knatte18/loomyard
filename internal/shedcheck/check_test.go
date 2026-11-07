@@ -1,6 +1,6 @@
-// check_test.go table-drives Check across every finding kind, its deterministic output order, and
-// the tolerated-malformed-input behaviours. Every case builds bare []shedengine.ProducerDef
-// literals with Producer left nil -- no fakes of any kind.
+// check_test.go table-drives Check across every finding kind and its deterministic output order.
+// It also covers the tolerated-malformed-input behaviours.
+// Every case builds bare []shedengine.ProducerDef literals with Producer left nil, and uses no fakes.
 
 package shedcheck
 
@@ -11,9 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantFinding is the Message-free projection every case's want table compares against: Kind,
-// Producer, and Target are the pinned contract, and Message is asserted non-empty separately
-// rather than compared for wording.
+// wantFinding is the Message-free projection every case's want table compares against.
+// Kind, Producer, and Target are the pinned contract.
+// Message is asserted non-empty separately, rather than compared for wording.
 type wantFinding struct {
 	Kind     Kind
 	Producer string
@@ -44,10 +44,10 @@ func assertFindings(t *testing.T, got []Finding, want []wantFinding) {
 
 func TestCheck(t *testing.T) {
 	tiergate.Require(t, 0)
-	// defectProducers carries one instance of every non-endpoint finding kind at once: a dangling
-	// edge, an unreachable row, an unexpected silent terminal, a done cycle, and a blind gate.
-	// Reused across the endpoint-suppression cases below, so those cases prove the endpoint kinds
-	// are returned alone even against a graph that would otherwise fail every other check too.
+	// defectProducers carries one instance of every non-endpoint finding kind at once:
+	// a dangling edge, an unreachable row, an unexpected silent terminal, a done cycle, and a blind gate.
+	// The endpoint-suppression cases below reuse it:
+	// they prove the endpoint kinds come back alone, even against a graph that would fail every other check too.
 	defectProducers := []shedengine.ProducerDef{
 		{Name: "E", OnDone: "Gate"},
 		{Name: "Gate", OnDone: "Term", OnStuck: "Bystander"},

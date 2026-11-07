@@ -1,4 +1,5 @@
-// transcriptread.go declares the provider-neutral reading of finished session records: transcript entries, per-message usage, pricing and the RecordReads set an engine hands out.
+// transcriptread.go declares the provider-neutral reading of finished session records:
+// transcript entries, per-message usage, pricing and the RecordReads set an engine hands out.
 
 package shuttleengine
 
@@ -11,7 +12,7 @@ type MessageUsage struct {
 	Input int
 	// CacheWrite is the tokens written to the prompt cache, every lifetime included.
 	CacheWrite int
-	// CacheWriteOneHour is the one-hour-lifetime part of CacheWrite.
+	// CacheWriteOneHour is the part of the cache writes that has a one-hour lifetime.
 	CacheWriteOneHour int
 	// CacheRead is the tokens read from the prompt cache.
 	CacheRead int
@@ -114,7 +115,7 @@ type TranscriptRef struct {
 // LocatedSession is one session an engine recorded under a worktree, with its fork transcripts.
 type LocatedSession struct {
 	TranscriptRef
-	// Modified is the last-modified time of the session's own record, its forks' left out.
+	// Modified is the last-modified time of the session's own record, not of its forks.
 	Modified time.Time
 	// Forks is the session's fork transcripts.
 	Forks []TranscriptRef
@@ -124,12 +125,13 @@ type LocatedSession struct {
 type SessionRead struct {
 	// Main is the session's own transcript.
 	Main TranscriptRead
-	// Forks is the fork transcripts, in LocatedSession.Forks order.
+	// Forks holds the fork transcripts in the order the session located them.
 	Forks []TranscriptRead
 }
 
-// TranscriptReader is an optional capability beside Engine: locating and reading the transcripts the provider recorded, with no run and no shuttle config.
-// An engine without it has no readable transcripts.
+// TranscriptReader is an optional capability that locates and reads the provider's recorded transcripts.
+// It works with no run and no shuttle config.
+// An engine that does not implement it has no readable transcripts.
 type TranscriptReader interface {
 	// LocateSessions returns the sessions the engine recorded under the worktree path.
 	// An absent provider root or no session is an empty list and no error.
@@ -139,7 +141,7 @@ type TranscriptReader interface {
 	ReadSession(s LocatedSession) (SessionRead, error)
 }
 
-// MessagePricer is an optional capability beside Engine: the provider's price for one message.
+// MessagePricer is an optional capability: the provider's price for one message.
 type MessagePricer interface {
 	// PriceMessage returns the cost in USD of a message of the given model and usage.
 	// priced is false when the model has no known price.

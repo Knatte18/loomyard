@@ -12,8 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunner_SessionEnd covers the hook StopStrand calls for an unawaited record it moves to stopped:
-// the record's session, engine, role, model and start with the stop time and the engine's reading, the unknown reading for an engine without the capability, and no call for a record already terminal.
+// TestRunner_SessionEnd covers the hook StopStrand calls for an unawaited record it moves to stopped.
+// The hook receives the record's session, engine, role, model and start, the stop time, and the engine's reading.
+// An engine without the capability gives the unknown reading, and a record already terminal gets no call.
 func TestRunner_SessionEnd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

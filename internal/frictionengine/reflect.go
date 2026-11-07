@@ -1,4 +1,5 @@
-// reflect.go implements Reflect, the settle-scan-skip-spawn-archive step this package exists for.
+// reflect.go implements Reflect, which scans friction notes and spawns one reflection agent over them.
+// It archives the covered files after a clean return.
 
 package frictionengine
 
@@ -20,7 +21,8 @@ import (
 // rendered with.
 const archiveTimestampFormat = "20060102-150405"
 
-// coveredRecordFileName names the covered-notes record: a non-.md file in the friction directory, beside the report, holding the sorted note file names one reflection covers.
+// coveredRecordFileName names the covered-notes record, a non-.md file kept beside the report.
+// It sits in the friction directory and holds the sorted note file names one reflection covers.
 // scanNotes never reads it, because it reads only .md entries.
 const coveredRecordFileName = "reflection-covered.json"
 
@@ -41,14 +43,19 @@ const (
 	recordCorrupt
 )
 
-// Reflect scans deps.FrictionDir for friction notes and, when it finds any, spawns exactly one reflection agent over them through deps.Shuttle, archiving the covered files on a clean return only.
+// Reflect scans deps.FrictionDir for friction notes.
+// When it finds any, it spawns one reflection agent over them through deps.Shuttle.
+// It archives the covered files only after a clean return.
 //
-// Reflect is re-entrant across a killed driving process: a covered-notes record written before the spawn lets a re-invocation settle the prior reflection first, by attaching to a live agent or by archiving a finished one's files without spawning.
+// Reflect is re-entrant across a killed driving process.
+// A covered-notes record, written before the spawn, lets a re-invocation settle the prior reflection first:
+// it attaches to a live agent or archives a finished one's files without spawning.
 // One call spends at most one positive deps.Timeout, measured from entry through deps.Clock.
 //
 // Deps validation is Reflect's first act, and the only source of a non-nil error:
-// every value on Deps is a wiring bug at the one call site when missing, and is surfaced loudly rather than failing silently at some later runtime step.
-// Every failure below the validation line returns a nil error and a Report instead, per the decision that the reflection step can never change the run's own outcome.
+// a missing value on Deps is a wiring bug at the one call site, so it is surfaced loudly rather than failing later.
+// Every failure below the validation line returns a nil error and a Report instead:
+// the reflection step must never change the run's own outcome.
 func Reflect(deps Deps) (Report, error) {
 	if err := validateDeps(deps); err != nil {
 		return Report{}, err
@@ -173,7 +180,7 @@ func Reflect(deps Deps) (Report, error) {
 		return Report{Status: StatusFailed, NoteCount: len(notes)}, nil
 	}
 	if result.Outcome != shuttleengine.OutcomeDone {
-		// died, timeout, or any outcome this package does not recognize: the notes and the record are left exactly as they are,
+		// died, timeout, or any outcome this package does not recognize: the notes and the record stay as they are,
 		// so the next trigger in the same task settles or reflects on the same notes again.
 		logger.Warn("frictionengine: reflection run did not complete", "dir", deps.FrictionDir, "outcome", result.Outcome)
 		return Report{Status: StatusFailed, NoteCount: len(notes)}, nil
@@ -195,7 +202,7 @@ func withTimeout(deps Deps, timeout time.Duration) Deps {
 }
 
 // validateDeps rejects a malformed Deps with a distinct error per field, in order:
-// a nil Deps.Shuttle, an empty or non-absolute Deps.FrictionDir, an empty Deps.ArchivePrefix, an empty Deps.StencilsDir and an empty Deps.TaskSlug.
+// a nil Shuttle, a FrictionDir that is empty or relative, or an empty ArchivePrefix, StencilsDir or TaskSlug.
 func validateDeps(deps Deps) error {
 	if deps.Shuttle == nil {
 		return fmt.Errorf("frictionengine: Reflect: Deps.Shuttle must not be nil")
@@ -215,11 +222,9 @@ func validateDeps(deps Deps) error {
 	return nil
 }
 
-// scanNotes reads dir and returns the sorted set of friction note file names -- every *.md entry
-// except the one named friction.ReportFileName. Its second return value is false whenever there is
-// nothing to reflect on: a missing directory, an empty directory, a directory whose entries are all
-// non-.md, and a directory whose only .md entry is the reflection agent's own report file all report
-// the same (nil, false, nil).
+// scanNotes returns the sorted friction note file names in dir: every *.md entry except friction.ReportFileName.
+// Its second return value reports whether there is anything to reflect on.
+// A missing directory, or one with no *.md entry besides the report, has nothing to reflect on.
 func scanNotes(dir string) ([]string, bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -297,9 +302,12 @@ func writeRecord(path string, notes []string) error {
 	return nil
 }
 
-// archiveCovered moves the covered notes, the report and then the record into the first free directory of deps.ArchivePrefix + timestamp, then -2, -3 and so on, and returns a StatusReflected Report for it.
+// archiveCovered moves the covered notes, the report and then the record into a new archive directory.
+// The directory is named deps.ArchivePrefix plus a timestamp, with -2, -3 and so on appended when that name is taken.
+// It returns a StatusReflected Report for that directory.
 // A covered file already gone is skipped.
-// The friction directory itself is never renamed or removed, so a note written after the record stays behind for the next reflection.
+// The friction directory itself is never renamed or removed,
+// so a note written after the record stays behind for the next reflection.
 func archiveCovered(deps Deps, clock Clock, covered []string) (Report, error) {
 	base := deps.ArchivePrefix + clock.Now().UTC().Format(archiveTimestampFormat)
 	archiveDir := base

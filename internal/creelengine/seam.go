@@ -1,4 +1,4 @@
-// seam.go declares the delivery seam the engine reaches panes through, and the Sender a resolved caller is.
+// seam.go declares the delivery seam the engine reaches strand panes through, and the Sender type of a resolved caller.
 
 package creelengine
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
-// Strand is one strand of the hub as the delivery seam reports it.
+// Strand is one strand of the hub, identified by its full name and GUID.
 type Strand struct {
 	// Name is the strand's full agent name.
 	Name string
@@ -25,7 +25,7 @@ type Strand struct {
 	Live bool
 	// PanePID is the process id of the strand's pane process, 0 when unknown.
 	PanePID int
-	// CreelHooks reports whether shuttle launched the strand's session with creel's hook delivery, so the daemon may ring its idle waiter and ring its bell.
+	// CreelHooks reports whether shuttle launched the strand's session with creel's hooks, so the daemon may ring it.
 	CreelHooks bool
 }
 
@@ -41,7 +41,8 @@ type Delivery interface {
 	// Paused reports whether a pause covers the strand; an error means the pause record could not be read.
 	Paused(strand Strand) (bool, error)
 	// ClaimPause records the strand in the live pause entry that covers it, so that entry's resume gives the strand its resume line.
-	// An uncovered strand records nothing and answers an uncovered claim; an error means the pause record could not be read or written.
+	// An uncovered strand records nothing and answers an uncovered claim.
+	// An error means the pause record could not be read or written.
 	ClaimPause(strand Strand) (PauseClaim, error)
 	// Send types one line into the strand's pane and confirms it landed.
 	// It returns ErrBusy when the pane guard held the write, and ErrNotLanded when the text was typed but not confirmed.
@@ -51,11 +52,12 @@ type Delivery interface {
 	Command(strand Strand, command Command) error
 	// Interrupt sends the guarded interrupt to the strand's running turn.
 	// It clears a prompt the provider restored by the interrupt.
-	// It returns ErrNoRunningTurn when there is none, and an error wrapping ErrClearFailed when the interrupt key was sent and only the clear after it failed.
+	// It returns ErrNoRunningTurn when there is none.
+	// It returns an error wrapping ErrClearFailed when the interrupt key was sent and only the clear after it failed.
 	Interrupt(strand Strand) error
 }
 
-// PauseClaim is the answer of Delivery.ClaimPause.
+// PauseClaim is the answer to a claim that a live pause entry covers a strand.
 type PauseClaim struct {
 	// Covered reports whether a live pause entry covered the strand and now owns it.
 	Covered bool
@@ -63,7 +65,7 @@ type PauseClaim struct {
 	StillLive func() (bool, error)
 }
 
-// Idleness is the answer of Delivery.Idle.
+// Idleness reports whether a strand's agent may be typed into, and why not when it may not.
 type Idleness struct {
 	// Idle reports whether the strand's agent may be typed into.
 	Idle bool
@@ -110,7 +112,7 @@ var (
 	ErrNotLanded = errors.New("creel: the text was typed but not confirmed")
 	// ErrNoRunningTurn means an interrupt found no running turn and sent nothing.
 	ErrNoRunningTurn = errors.New("creel: the receiver has no running turn")
-	// ErrClearFailed means an interrupt key was sent and only the clear of the prompt it restored failed, so the interrupt counts as sent.
+	// ErrClearFailed means the interrupt was sent and only the clear of the prompt it restored failed.
 	ErrClearFailed = errors.New("creel: the interrupt was sent, but clearing the prompt it restored failed")
 )
 
@@ -170,7 +172,8 @@ func (s Sender) Envelope() string {
 	return strings.Join(parts, ", ")
 }
 
-// String renders the sender as a reader sees it: an EXTERNAL sender carries its envelope, as in "ly:EXTERNAL (claude, pts/4, ~/Code/…)".
+// String renders the sender as a reader sees it.
+// An EXTERNAL sender carries its envelope, as in "ly:EXTERNAL (claude, pts/4, ~/Code/…)".
 func (s Sender) String() string {
 	if envelope := s.Envelope(); envelope != "" {
 		return s.Name + " (" + envelope + ")"
@@ -184,7 +187,8 @@ func isOrchName(full string) bool {
 	return err == nil && agentname.MatchesRole(name.Role, agentname.RoleOrch)
 }
 
-// privileged reports whether the sender may inject, interrupt and hold on another strand: EXTERNAL, a program and an orch strand.
+// privileged reports whether the sender may inject, interrupt and hold on another strand:
+// EXTERNAL, a program and an orch strand.
 func (s Sender) privileged() bool {
 	return s.Kind != KindStrand || isOrchName(s.Name)
 }

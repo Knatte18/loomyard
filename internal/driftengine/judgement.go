@@ -1,4 +1,4 @@
-// judgement.go — the sole parser of `_lym/drift/judgement.yaml`, the rulings the judge writes, and the model it parses to.
+// judgement.go holds the sole parser of `_lym/drift/judgement.yaml`, the rulings the judge writes, and its model.
 
 package driftengine
 
@@ -76,7 +76,7 @@ type JudgementWant struct {
 	SpawnID string
 	// CellIDs are the ids of the cells the judge must rule on, under DiffLines.
 	CellIDs []string
-	// OpenRanges are the open ranges covering a judged cell, as case and range, under DiffLines; Checked is ignored.
+	// OpenRanges are the open ranges covering a judged cell, under DiffLines; matching compares case and range only.
 	OpenRanges []OpenRangeNote
 	// CompareFailed reports that the compare failed, under DiffCommand, so the judgement must rule on at least one case.
 	CompareFailed bool
@@ -86,9 +86,13 @@ type JudgementWant struct {
 // The file is agent-written, so an unknown field is refused.
 //
 // It refuses a spawn_id other than want's.
-// Under DiffLines it refuses a missing, duplicate or unknown cell id, a ruling outside matches and does not match, an empty reason, an open range covering a judged cell that open_ranges does not list, and a cases list.
-// Under DiffCommand it refuses a ruling outside matches, does not match and unexpected, an empty reason, a repeated case, no case at all when the compare failed, and a cells or open_ranges list.
-// The error lists every finding, one per line, each naming its entry, since the judge's gate hands it back as the findings to fix.
+// Under DiffLines it refuses a missing, duplicate or unknown cell id, and a ruling outside matches and does not match.
+// It also refuses an empty reason and a cases list.
+// It also refuses an open range covering a judged cell that open_ranges does not list.
+// Under DiffCommand it refuses a ruling outside the three rulings, an empty reason or a repeated case;
+// it also refuses no case at all when the compare failed, and a cells or open_ranges list.
+// The error lists every finding, one per line, each naming its entry.
+// The judge's gate hands that error back as the findings to fix.
 func ParseJudgement(data []byte, want JudgementWant) (Judgement, error) {
 	if want.Mode != DiffLines && want.Mode != DiffCommand {
 		return Judgement{}, fmt.Errorf("judgement.yaml: mode %q is neither %q nor %q", want.Mode, DiffLines, DiffCommand)

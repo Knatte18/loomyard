@@ -7,9 +7,11 @@ import (
 	"strings"
 )
 
-// renderMarkdown returns the report of g for the plan at planDir:
-// a summary line, the levels table of cards that could run in parallel, each card's direct dependencies and the card by ref matrix.
-// A non-nil guessed, the same plan's graph under the additive guess, adds one line after the summary comparing the two critical paths and best speedups.
+// renderMarkdown returns the report of g for the plan at planDir.
+// The report holds a summary line and a levels table of cards that could run in parallel.
+// It also lists each card's direct dependencies and the card by ref matrix.
+// When guessed is non-nil, a line after the summary compares the critical paths and best speedups of g and guessed;
+// guessed is the same plan's graph under the additive guess.
 func renderMarkdown(g cardGraph, guessed *cardGraph, planDir string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Card DAG: %s\n\n", planDir)
@@ -119,7 +121,8 @@ func kindMark(kind edgeKind) string {
 	return string(markUse)
 }
 
-// renderDOT returns g's transitively reduced graph as Graphviz DOT, one node per card labelled with its ID and its summary as tooltip.
+// renderDOT returns g's transitively reduced graph as Graphviz DOT.
+// Each card is a node labelled with its ID and tooltipped with its summary.
 // An edge where both cards change an overlapping ref is solid, and one where a card only uses the ref is dashed.
 func renderDOT(g cardGraph) string {
 	var b strings.Builder

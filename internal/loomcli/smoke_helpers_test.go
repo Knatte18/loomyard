@@ -31,34 +31,35 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// runLoomCLINoFatal runs exe with args in dir as a real subprocess, bounded by timeout, and returns
-// its combined stdout+stderr and exit code without ever calling a *testing.T method -- the pure seam
-// case (h)'s concurrent invocations need, since t.Fatalf from a non-test goroutine is unsafe. Callers
-// on the test's own goroutine that want fail-fast behaviour check the returned err themselves.
+// runLoomCLINoFatal runs exe with args in dir as a real subprocess, bounded by timeout.
+// It returns the combined stdout+stderr and the exit code, and it never calls a *testing.T method,
+// so it is safe on a non-test goroutine, where t.Fatalf is unsafe.
+// A caller on the test's own goroutine that wants fail-fast behaviour checks the returned err itself.
 func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
 	return lymbin.Run(exe, dir, timeout, args...)
 }
 
-// skipBoardPush keeps a verb's detached board sync from pushing,
-// which would otherwise outlive the test and race TempDir's removal of the bare remote.
+// skipBoardPush sets the environment that keeps a verb's detached board sync from pushing.
+// Without it the push would outlive the test and race TempDir's removal of the bare remote.
 var skipBoardPush = []string{"BOARD_SKIP_PUSH=1"}
 
-// skipWalkPush is skipBoardPush plus the fabric push skip, for a verb that reconciles an unstamped hub.
-// The reconcile commit fires a detached push that would outlive the test and race TempDir's removal of the bare remote;
-// a test asserts the commit, never the push.
+// skipWalkPush sets the environment for a verb that reconciles an unstamped hub.
+// It skips the fabric push as well as the board sync's push.
+// The reconcile commit fires a detached push that outlives the test.
+// That push would race TempDir's removal of the bare remote, so a test asserts the commit, never the push.
 var skipWalkPush = append([]string{"FABRIC_SKIP_PUSH=1"}, skipBoardPush...)
 
-// runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
-// so a parallel test can set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
+// runLoomCLIWithEnvNoFatal runs exe with args in dir as a real subprocess, bounded by timeout.
+// It never calls a *testing.T method.
+// It appends extraEnv to the subprocess's inherited environment alone.
+// A parallel test can thus set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
 func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
 	return lymbin.RunWithEnv(exe, dir, extraEnv, timeout, args...)
 }
 
-// newWiredPairFixture builds a real fabric hub, seeds every module's config template into it, and
-// adds one worktree pair -- the shape every test in this suite needs before it can bootstrap loom
-// against it. AddPair already writes and commits the pair's origin record (see the plan's
-// origin-record-records-both-its-write-and-its-commit decision), so a caller never needs a --parent
-// flag on its own first "loom start" call.
+// newWiredPairFixture builds a real fabric hub and seeds every module's config template into it.
+// It then adds one worktree pair, the shape every test in this suite needs before it can bootstrap loom.
+// AddPair writes and commits the pair's origin record, so a caller's first "loom start" call needs no --parent flag.
 func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lymcwd.Location, worktree, slug string) {
 	t.Helper()
 
@@ -83,18 +84,13 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lymcwd.Location, w
 	return h, loc, worktree, slug
 }
 
-// providerlessShuttleConfig returns shuttle's shipped config template with the startup window shortened and the start retry off.
-// A launch failure from the unreachable provider binary that providerlessBinary seeds into claude.yaml is then classified within a test's own patience rather than ninety seconds later.
-// The fixtures take one launch only: a died start would otherwise be launched a second time after a wait.
+// providerlessShuttleConfig returns shuttle's shipped config template, with a shorter startup window and no start retry.
+// The shortened window lets a launch failure from providerlessBinary surface within a test's own patience.
+// The fixtures launch once: a died start would otherwise be launched again after a wait.
 //
-// This is a correction, not a convenience. The suite's own header used to assert that every fixture
-// here "bounces before a real spawn", and the campaign's cost model was written on that claim. It
-// stopped being true: a crucible round measured one real `claude` subprocess alive for the full
-// thirty seconds of TestSmokeRunStandalone's first step, which is why that test
-// timed out rather than merely being slow. Every test in this file is about bootstrap and driver
-// mechanics -- locks, handshakes, strands, the status file -- and none of them is about what a
-// provider does, so removing the provider makes the suite test what it claims to test AND makes the
-// zero-subprocess claim true by construction instead of by hope.
+// No test here is about what a provider does.
+// They cover bootstrap and driver mechanics: locks, handshakes, strands and the status file.
+// Without a provider to launch, no test spawns a real provider subprocess.
 func providerlessShuttleConfig() string {
 	cfg := shuttleengine.ConfigTemplate()
 	const retriesValue = "start_retries: 1"
@@ -108,7 +104,8 @@ func providerlessShuttleConfig() string {
 // providerlessBinary is a provider path that cannot exist, which keeps a fixture from starting a real session.
 const providerlessBinary = "/nonexistent/lym-smoke-has-no-provider"
 
-// claudeConfigWithBinary returns claude.yaml's shipped template with its binary: value pointed at binary, so a fixture seeding it launches that executable rather than the real claude on PATH.
+// claudeConfigWithBinary returns claude.yaml's shipped template with its binary value set to binary.
+// A fixture seeding this config then launches that executable rather than the real claude on PATH.
 // It panics when the template no longer holds the line it rewrites, so drift fails loudly.
 func claudeConfigWithBinary(binary string) string {
 	const binaryValue = "binary: ${env:LYM_SHUTTLE_CLAUDE:-}"
@@ -119,16 +116,13 @@ func claudeConfigWithBinary(binary string) string {
 	return strings.Replace(template, binaryValue, "binary: "+binary, 1)
 }
 
-// fastDeadlineLoomConfig returns loom's shipped config template with the discussion producer's
-// deadline cut from eight hours to one minute.
-//
-// The deadline and provider overrides work as a pair with providerlessShuttleConfig above, and
-// neither is sufficient alone. Removing the provider stops a real session from starting; it does
-// not stop the wait. A launch that fails still leaves reed holding the pane, so shuttle's wait
-// loop polls until the SPEC's own deadline -- and Discussion-Write's deadline comes from
-// loom.yaml's discussion_timeout_min, which ships at 480 so an autonomous agent exploring a
-// codebase is never cut off. In a fixture with no agent at all that is an eight-hour block on a
-// thirty-second test.
+// fastDeadlineLoomConfig returns loom's shipped config template with the discussion deadline cut to one minute.
+// The deadline override must be applied together with the provider override, and neither is sufficient alone.
+// Removing the provider stops a real session from starting but not the wait:
+// a launch that fails still leaves reed holding the pane, so shuttle's wait loop polls until the SPEC's own deadline.
+// The discussion deadline comes from loom.yaml's discussion_timeout_min, which ships at 480 minutes.
+// That default is set high so an autonomous agent exploring a codebase is never cut off.
+// In a fixture with no agent at all, the wait would be an eight-hour block on a thirty-second test.
 func fastDeadlineLoomConfig() string {
 	return strings.Replace(loomengine.ConfigTemplate(), "discussion_timeout_min: 480", "discussion_timeout_min: 1", 1)
 }
@@ -138,8 +132,7 @@ func smokeStatusRel(loc *lymcwd.Location) string {
 	return shedrun.StatusRel(loc, shedrun.SelfRunID)
 }
 
-// recordsHeadChangedFiles returns the paths HEAD's own commit changed, relative to dir's repository
-// root.
+// recordsHeadChangedFiles returns the paths HEAD's own commit changed, relative to dir's repository root.
 func recordsHeadChangedFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", dir, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Output()
@@ -155,17 +148,12 @@ func recordsHeadChangedFiles(t *testing.T, dir string) []string {
 	return files
 }
 
-// seedGoDriverRun writes loc's own self-run seed.json directly to disk for the go driver, with
-// Params agreeing byte-for-byte with what seedAndCommitBootstrap itself would write on the very next
-// bootstrap against it (loomSeedFor) -- the same recorded.ParentBranch-matching shape
-// smoke_driverstrand_test.go's own seedLLMDriver uses for the llm driver.
+// seedGoDriverRun writes loc's self-run seed.json for the go driver.
+// Its Params agree byte-for-byte with what the bootstrap writes on its next run against loc.
 //
-// It exists because arm.go's resolveRunID now refuses "run"/"step"/"status"/"pause" outright when no
-// seed exists at the addressed run-id, before either verb's own bootstrap or absent-status-file
-// checks ever run: several of this file's fixtures drive one of those four verbs directly against a
-// pair whose STATUS FILE is deliberately still absent (to exercise the status-file-absent path
-// itself), which now also needs the run's own seed.json present first -- exactly the state a seed
-// written via "lym shed seed" before any bootstrap has ever run would leave.
+// The run verbs refuse a run-id that has no seed, before they run their own bootstrap or status-file checks.
+// Fixtures that drive one of them against a deliberately absent status file therefore need this seed first.
+// It is the state a seed written by "lym shed seed" before any bootstrap leaves.
 func seedGoDriverRun(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	recorded, found, err := fabricengine.ReadOrigin(loc)
@@ -180,7 +168,9 @@ func seedGoDriverRun(t *testing.T, loc *lymcwd.Location) {
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
 		t.Fatalf("WriteSeed(go driver): %v", err)
 	}
-	// Turns the tackler and the arbiter off, so a go-driven halt such as a failing Preflight hands back with no agent spawned and a tmux-tier smoke run reaches no LLM.
+	// The tackler and the arbiter are turned off.
+	// A go-driven halt, such as a failing Preflight, hands back with no agent spawned,
+	// and a tmux-tier smoke run reaches no LLM.
 	localPath := configengine.LocalFile(loc.AnchorPath(), "shed")
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		t.Fatalf("create the shed local layer directory: %v", err)
@@ -190,9 +180,9 @@ func seedGoDriverRun(t *testing.T, loc *lymcwd.Location) {
 	}
 }
 
-// seedAndCommitStatus seeds loc's status file directly through the production Seed function and
-// commits it records-side -- the same seed-then-commit shape "lym loom start" itself performs, used here
-// so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
+// seedAndCommitStatus seeds loc's status file through the production Seed function and commits it on the records side.
+// It is the seed-then-commit sequence that "lym loom start" runs,
+// so a standalone-driver test gets a valid seeded pair without a live tmux server.
 func seedAndCommitStatus(t *testing.T, loc *lymcwd.Location, slug string) {
 	t.Helper()
 	if err := loomshed.Seed(shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID), slug, "main"); err != nil {
@@ -204,16 +194,12 @@ func seedAndCommitStatus(t *testing.T, loc *lymcwd.Location, slug string) {
 	}
 }
 
-// seedLLMDriver writes loc's own self-run seed directly to disk with driver=llm, uncommitted --
-// mirroring seedAndCommitStatus and
-// TestSmokeBootstrapLifecycle's origin-record step's shape of driving a
-// production primitive directly rather than through a CLI subprocess.
+// seedLLMDriver writes loc's self-run seed.json with driver=llm directly to disk, uncommitted.
+// It drives the production primitive directly rather than through a CLI subprocess.
 //
-// The written seed's Params must agree byte-for-byte with the one seedAndCommitBootstrap's own step
-// 1b (loomSeedFor) writes on the first "loom start" against it, since WriteSeed refuses a disagreeing
-// existing seed outright rather than silently accepting the later write: recorded.ParentBranch is
-// read from the origin record newWiredPairFixture-style callers already committed via
-// hubforge.AddPair, so this seed's own params.parent matches what the bootstrap itself would compute.
+// The written Params must agree byte-for-byte with what the first "lym loom start" against loc writes.
+// WriteSeed refuses a disagreeing existing seed rather than accepting the later write.
+// params.parent is the origin record's parent branch, so the origin record must already be committed.
 func seedLLMDriver(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	recorded, found, err := fabricengine.ReadOrigin(loc)
@@ -267,9 +253,11 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) 
 	return loc, worktree
 }
 
-// waitForFixtureProcessesToExit registers a cleanup that waits for every process whose working directory lies under the test's temp directories to exit.
-// A push into a bare repository leaves a git process of its own there for a moment, which would otherwise write into a directory the temp-dir removal is deleting.
-// It is registered after the fixture, so it runs before the fixture's removal; the wait is best effort and the removal reports what is still left.
+// waitForFixtureProcessesToExit registers a cleanup that waits for processes whose cwd is under the test's temp dirs.
+// A push into a bare repository leaves a git process there for a moment;
+// that process would otherwise write into a directory the temp-dir removal is deleting.
+// It is registered after the fixture, so it runs before the fixture's removal;
+// the wait is best effort, and the removal reports what is still left.
 func waitForFixtureProcessesToExit(t *testing.T) {
 	t.Helper()
 	root := filepath.Dir(t.TempDir())
@@ -294,7 +282,8 @@ func hubStampPath(loc *lymcwd.Location) string {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
 }
 
-// commitRetiredBatcherKey commits a batcher.yaml carrying a retired key into loc's records worktree, the state a hub reconcile after a binary change removes.
+// commitRetiredBatcherKey commits a batcher.yaml that carries a retired key into loc's records worktree.
+// This is the state that a hub reconcile after a binary change removes.
 func commitRetiredBatcherKey(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	batcher, _ := configreg.Lookup("batcher")
@@ -302,9 +291,12 @@ func commitRetiredBatcherKey(t *testing.T, loc *lymcwd.Location) {
 	gitkit.CommitFile(t, fabricengine.RecordsWorktree(loc), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 }
 
-// findWatchdogPIDs returns the pids of every live process that is a reed watchdog daemon and whose argv carries a "--hub-path" argument equal to hubPath.
-// It finds the per-hub watchdog daemon a bootstrap spawned, for the same find-then-proc.KillPID pattern this file's cleanup applies to driver pids.
-// The daemon is a detached, per-hub process that the test's own cwd does not identify the way a driver's cwd does, so the --hub-path value it was told is what keeps this scan specific to this fixture's own daemon rather than a sibling fixture's.
+// findWatchdogPIDs returns the pids of the live reed watchdog daemons.
+// It matches a daemon whose argv carries a "--hub-path" argument equal to hubPath.
+// A bootstrap spawns one such daemon per hub,
+// and the cleanup finds it with the find-then-proc.KillPID pattern used for driver pids.
+// Unlike a driver, the daemon's working directory does not identify it,
+// so its --hub-path value keeps the scan to this fixture's own daemon rather than a sibling's.
 // Linux only; returns nil on any other GOOS.
 func findWatchdogPIDs(hubPath string) []int {
 	if runtime.GOOS != "linux" {
@@ -326,11 +318,13 @@ func findWatchdogPIDs(hubPath string) []int {
 	return pids
 }
 
-// findDriverPIDs returns the pids of every live process whose current working directory is worktree and whose argv contains an adjacent "loom" followed by "drive" pair.
-// It finds the detached "lym loom drive" process a bootstrap spawned, since it runs in the worktree and its own argv is fixed.
+// findDriverPIDs returns the pids of the live processes whose working directory is worktree.
+// It finds the detached "lym loom drive" process a bootstrap spawns; it runs in the worktree and its argv is fixed.
 // A lone "drive" argv element is not a sufficient discriminator, so the adjacent "loom" is required.
 // Linux only; returns nil on any other GOOS.
-// A process whose parent also matches is dropped: between fork and exec the driver's own child, such as a git call, still carries the driver's argv and cwd, and is not a second driver.
+// A process whose parent also matches is dropped.
+// Between fork and exec, the driver's own child, such as a git call, still carries the driver's argv and cwd,
+// so it is not a second driver.
 func findDriverPIDs(worktree string) []int {
 	if runtime.GOOS != "linux" {
 		return nil

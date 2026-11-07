@@ -1,10 +1,8 @@
-// runner.go defines the RoundRunner seam Engine drives once per attempt,
-// and the plain value types that cross it: AttemptInput (everything Engine assembles for one
-// attempt) and AttemptResult (the shuttle-style outcome the runner reports back).
-// The seam is deliberately attempt-level, not round-level: Engine (engine.go, run.go) owns the
-// two-attempt retry policy, stale-artifact move-aside, round/attempt token naming,
-// and prior-round hydration assembly, so a RoundRunner implementation only ever adapts "spawn one
-// attempt, report its result" onto its own domain.
+// runner.go defines the RoundRunner seam that Engine drives once per attempt, and the value types that cross it.
+// AttemptInput carries everything Engine assembles for one attempt.
+// AttemptResult is the shuttle-style outcome the runner reports back.
+// Engine owns the two-attempt retry policy and stale-artifact move-aside.
+// It also owns round and attempt token naming and prior-round hydration assembly.
 
 package treadleengine
 
@@ -23,9 +21,9 @@ const (
 	VerdictBlocking Verdict = "BLOCKING"
 )
 
-// AttemptInput contains everything Engine assembles for one RoundRunner.RunAttempt call: identity,
-// paths, prior hydration, and per-round tuning.
-// SeedPath is optional pre-round-targeting input, round-scoped not attempt-scoped.
+// AttemptInput is the input to one attempt of a round:
+// its identity, artifact paths, prior-round hydration, and per-round tuning.
+// SeedPath is optional input from pre-round targeting; it is set once per round, not per attempt.
 type AttemptInput struct {
 	RunDir            string
 	Round             int
@@ -40,8 +38,9 @@ type AttemptInput struct {
 	Timeout           time.Duration
 }
 
-// AttemptResult is what one RoundRunner.RunAttempt call reports back: a shuttle-style Outcome and,
-// when done, the verdict, blocking count, and artifact paths for Engine's round history.
+// AttemptResult is the outcome of one attempt.
+// It carries a shuttle-style Outcome.
+// When it is `OutcomeDone`, the verdict, blocking count, and artifact paths are set for the round history.
 type AttemptResult struct {
 	Outcome              shuttleengine.Outcome
 	Verdict              Verdict
@@ -53,10 +52,9 @@ type AttemptResult struct {
 	RunDir               string
 }
 
-// RoundRunner is the seam Engine drives once per attempt: RunAttempt runs one attempt of one round
-// and reports its result or a hard error.
-// Engine owns retry policy and stale-artifact move-aside;
-// a RoundRunner implementation only adapts "spawn one attempt, report its result."
+// RoundRunner runs one attempt of one round and reports its result or a hard error.
+// The caller owns retry policy and stale-artifact move-aside;
+// an implementation only adapts "spawn one attempt, report its result" onto its own domain.
 type RoundRunner interface {
 	RunAttempt(AttemptInput) (AttemptResult, error)
 }

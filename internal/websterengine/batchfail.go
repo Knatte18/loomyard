@@ -1,5 +1,6 @@
-// batchfail.go implements the one primitive that takes a batch terminal-failed.
-// record-batch and recover-batch share it, so a batch rejected on its merits never stays non-terminal with an OK report on disk, the state that made the three verbs refuse each other.
+// batchfail.go implements failBatch, the primitive that takes a batch terminal-failed.
+// It archives the batch report and records the failure,
+// so a batch rejected on its merits never stays non-terminal with an OK report on disk.
 
 package websterengine
 
@@ -11,7 +12,7 @@ import (
 	"time"
 )
 
-// ErrBatchFailed is the sentinel a *BatchFailedError unwraps to.
+// ErrBatchFailed is the sentinel that a batch-failed error unwraps to.
 var ErrBatchFailed = errors.New("webster: batch failed")
 
 // BatchFailedError reports a batch webster rejected on its merits.
@@ -22,10 +23,10 @@ type BatchFailedError struct {
 	Reasons        []string
 	SuspectPaths   []string
 	ArchivedReport string
-	// WayForward replaces the default way forward, a recover-batch call, for a failure that call cannot clear.
+	// WayForward replaces the default recover-batch call as the way forward, for a failure that call cannot clear.
 	// It carries no "way forward: " prefix.
 	WayForward string
-	// CardAmended is true when the failure includes the reason that an amendment to a card landed after the attempt began.
+	// CardAmended is true when a card was amended after the attempt began and no recovery prompt has rendered it.
 	CardAmended bool
 }
 
@@ -50,7 +51,7 @@ func (e *BatchFailedError) Error() string {
 // Unwrap returns ErrBatchFailed.
 func (e *BatchFailedError) Unwrap() error { return ErrBatchFailed }
 
-// amendedReasons returns one card_amended reason per entry of bs.AmendedCards that no recovery spawn has rendered yet.
+// amendedReasons returns one card_amended reason for each amended card that no recovery spawn has rendered yet.
 func amendedReasons(bs *BatchState) []string {
 	var reasons []string
 	for _, a := range bs.AmendedCards {
@@ -75,7 +76,7 @@ type failBatchInput struct {
 	SuspectPaths   []string
 	Uncheckable    []string
 	NewTranscripts []string
-	// WayForward is the BatchFailedError's alternative way forward, empty for the default.
+	// WayForward is the alternative way forward reported in the failure; empty selects the default.
 	WayForward string
 	Now        func() time.Time
 	// Git answers the suspect-blob probes.
@@ -83,12 +84,11 @@ type failBatchInput struct {
 	Git Git
 }
 
-// failBatch archives the batch's report, records the batch terminal failed with its reasons,
-// and clears State.CurrentBatch.
-// Every amendment of the batch not yet rendered into a recovery prompt adds a reason of its own and sets CardAmended on the error,
+// failBatch archives the batch's report, records it terminal failed with its reasons, and clears State.CurrentBatch.
+// Every amendment not yet rendered into a recovery prompt adds its own reason and sets CardAmended on the error,
 // so the failure carries it whatever else failed; it is never recorded as uncheckable.
-// The returned error is only the archive's I/O failure;
-// the blob probes and the archive run first, so nothing in State has been mutated when one fails.
+// The returned error is an I/O failure of the blob probes or of the archive;
+// both run before any mutation, so a failure leaves State untouched.
 func failBatch(in failBatchInput) (*BatchFailedError, error) {
 	blobs, err := suspectBlobs(orReal(in.Git), in.PaneCwd, in.WorktreeRoot, in.SuspectPaths)
 	if err != nil {
@@ -117,7 +117,8 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 	}
 	reasons = append(reasons, amended...)
 
-	// A path the batch already records keeps its recorded blob, so a re-failed recovery still checks the content the audit first flagged.
+	// A path the batch already records keeps its recorded blob,
+	// so a re-failed recovery still checks the content the audit first flagged.
 	recorded := map[string]string{}
 	for _, sp := range in.Batch.SuspectPaths {
 		recorded[sp.Path] = sp.Blob

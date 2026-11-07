@@ -1,5 +1,6 @@
-// portallauncher_test.go covers the launcher path accessors — launchersDir, LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel — and the launcher teardown.
-// It pins the _launchers layout and the launcher relative-path math across root and subpath AnchorRel cases, the reason a wrong HubPath base or a broken filepath.Rel would be caught here rather than in a live hub.
+// portallauncher_test.go covers the launcher path accessors and the launcher teardown.
+// It pins the `_launchers` layout and the launcher relative-path math across root and subpath AnchorRel cases.
+// A wrong HubPath base or a broken filepath.Rel fails here rather than in a live hub.
 
 package fabricengine
 
@@ -14,9 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantMenuLauncherName returns the expected menu launcher filename for the
-// current runtime.GOOS, mirroring the GOOS-aware selection in launchers.go
-// so these tests are green regardless of warp OS.
+// wantMenuLauncherName returns the menu launcher filename for runtime.GOOS.
+// The selection mirrors the GOOS check in launchers.go, so the tests hold on every OS.
 func wantMenuLauncherName() string {
 	if runtime.GOOS == "windows" {
 		return "ide-menu.cmd"
@@ -24,7 +24,7 @@ func wantMenuLauncherName() string {
 	return "ide-menu.sh"
 }
 
-// TestLaunchersDir verifies that launchersDir and LauncherDir join the hub with the launchers directory name and the slug.
+// TestLaunchersDir verifies that launchersDir and LauncherDir join the hub, the launchers directory, and the slug.
 //
 //testtiming:keep launchersDir and LauncherDir joining the hub, the _launchers name and the slug; coverage of its blocks by other tests does not show an assertion of this
 func TestLaunchersDir(t *testing.T) {
@@ -44,9 +44,8 @@ func TestLaunchersDir(t *testing.T) {
 	}
 }
 
-// TestMirroredLauncherMethods tests the AnchorRel-mirrored geometry accessors:
-// LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel, both at the anchor root and
-// at a nested subpath, plus a no-collision check between two distinct subpaths.
+// TestMirroredLauncherMethods tests the launcher path accessors at the anchor root and at a nested subpath.
+// It also checks that two distinct subpaths never collide.
 //
 //testtiming:keep the AnchorRel-mirrored launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
 func TestMirroredLauncherMethods(t *testing.T) {
@@ -65,7 +64,7 @@ func TestMirroredLauncherMethods(t *testing.T) {
 			l := locationkit.Location(hub, worktreeName, ".")
 			slug := "test-slug"
 			got := LauncherDir(l, slug)
-			// At root, should still equal Join(launchersDir(), slug)
+			// At the root, the expected path is the launchers directory joined with the slug.
 			want := filepath.Join(launchersDir(l), slug)
 			if got != want {
 				t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, want)
@@ -209,10 +208,8 @@ func TestMirroredLauncherMethods(t *testing.T) {
 	})
 }
 
-// TestRemoveLaunchers_PreservesForeignContent proves the launcher teardown deletes only the scripts
-// fabric wrote.
-// It used to os.RemoveAll the whole directory, destroying anything the operator had placed beside
-// the launchers.
+// TestRemoveLaunchers_PreservesForeignContent proves the launcher teardown deletes only the scripts fabric wrote.
+// A file the operator placed beside the launchers survives the teardown.
 func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -236,8 +233,8 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 		t.Fatalf("seed operator file: %v", err)
 	}
 
-	// The directory cannot be removed while the operator's file is in it, and that refusal is the
-	// point: teardown reports it rather than deleting what it does not own.
+	// The directory cannot be removed while the operator's file is in it.
+	// That refusal is the point: teardown reports it rather than deleting what it does not own.
 	if err := removeLaunchers(NewMutations(""), l, slug); err == nil {
 		t.Error("removeLaunchers() = nil; want the non-empty-directory refusal to be reported")
 	}
@@ -253,21 +250,14 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 	}
 }
 
-// TestRemoveLaunchers_DirRemovalIsContained proves the launcher-DIRECTORY removal acts through an
-// os.Root rooted at the launchers container rather than on the nominal path.
+// TestRemoveLaunchers_DirRemovalIsContained proves the launcher-directory removal stays inside the launchers container.
 //
-// This is fabric's R8 finding M1. The directory removal used to be a raw os.Remove(launcherDir)
-// performed after checkPathRequest had already returned, which made it the one arbitrary-path removal
-// left in the package still resolving containment at one instant and unlinking at a later one — the
-// window R3 closed for removePath/removeLink by routing them through removeContainedPath. A symlink
-// planted at an intermediate segment and flipped live-and-escaping inside that window carried the
-// unlink outside the hub while the mutation record named the hub-relative path.
+// The escape is deterministic here rather than raced.
+// The test calls removeContainedPath, which removeLaunchers uses, on an escaping intermediate component.
+// The out-of-container victim must survive.
 //
-// The escape is deterministic here rather than raced: the removal is driven through the exact helper
-// removeLaunchers now calls, with an intermediate component that escapes the container, and the
-// out-of-container victim must survive. The routing itself is separately guarded mechanically —
-// launchers.go is no longer on cmd/lym/destructiveguard_test.go's allowlist, so reintroducing a raw
-// os.Remove( there fails TestNoDestructiveBypass_FabricengineProductionSource.
+// The routing itself is guarded by `TestNoDestructiveBypass_FabricengineProductionSource`.
+// It lives in cmd/lym/destructiveguard_test.go and fails if a raw os.Remove appears in launchers.go.
 //
 //testtiming:keep launcher-directory removal acting through the containment root so an escaping intermediate cannot delete an outside directory; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
@@ -279,8 +269,8 @@ func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
 	l := locationkit.Location(hub, "prime", "escapes")
 	const slug = "my-task"
 
-	// The victim the escaping link points at: an EMPTY directory, so a nominal os.Remove would
-	// succeed on it and the assertion below is a real one rather than a vacuous OS refusal.
+	// The victim the escaping link points at is an empty directory: a plain os.Remove would succeed on it,
+	// so the assertion below fails without the containment guard.
 	victim := filepath.Join(outside, slug)
 	if err := os.MkdirAll(victim, 0o755); err != nil {
 		t.Fatalf("mkdir victim: %v", err)
@@ -305,11 +295,10 @@ func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
 	}
 }
 
-// TestRemoveLaunchers_EmptyDirRemovedAndRecorded pins the ordinary success path across the R8 M1
-// routing change: an empty launcher directory is removed and recorded exactly once, and a second
-// call is a silent, unrecorded no-op. removeContainedPath reports removed=false for an absent target,
-// which is what keeps the idempotence every teardown caller relies on — the raw os.Remove this
-// replaced relied on an os.IsNotExist check to get the same answer.
+// TestRemoveLaunchers_EmptyDirRemovedAndRecorded pins the success path of removeLaunchers:
+// an empty launcher directory is removed and recorded exactly once, and a second call is a silent, unrecorded no-op.
+// removeContainedPath reports removed=false for an absent target,
+// and that keeps the idempotence every teardown caller relies on.
 //
 //testtiming:keep an empty launcher directory being removed and recorded exactly once with a silent second call; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
@@ -336,8 +325,7 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 		t.Errorf("removeLaunchers() recorded %d mutations; want 1 (the directory removal)", got)
 	}
 
-	// Second call: idempotent, and records nothing — an absent target is a successful no-op, never a
-	// claimed removal.
+	// Second call: idempotent, and it records nothing, since an absent target is a successful no-op and not a removal.
 	rec2 := NewMutations(hub)
 	if err := removeLaunchers(rec2, l, slug); err != nil {
 		t.Fatalf("removeLaunchers() second call error = %v; want nil", err)
@@ -347,19 +335,14 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 	}
 }
 
-// TestRemoveLaunchers_ContainmentRefusalSurvivesSurfaceRefusal proves the pre-gate
-// containment guard's refusal reaches a best-effort call site rather than being silently discarded.
+// TestRemoveLaunchers_ContainmentRefusalSurvivesSurfaceRefusal proves that the containment refusal is not discarded:
+// removeLaunchers opens with refuseUncontainedPath.
+// Every best-effort call site in Remove and Prune wraps its error in surfaceRefusal.
+// surfaceRefusal returns nil for anything that is not a *destructiveRefusal,
+// so a bare containment error would be dropped unnoticed.
 //
-// This is fabric's R8 finding L2. removeLaunchers opens with
-// refuseUncontainedPath, which returned a bare fmt.Errorf. Every best-effort call site in Remove and
-// Prune wraps it in surfaceRefusal, which by design returns nil for anything that is not a
-// *destructiveRefusal — so a containment refusal evaporated and `lym fabric remove` reported
-// "ok":true with an exit 0 while the launcher scripts were still on disk. Reproduced live against
-// the deployed binary with a static symlink at the _launchers container, no race required.
-//
-// The assertion is on surfaceRefusal specifically, not merely on a non-nil error, because a non-nil
-// error was never the missing half: reverting refuseUncontainedPath to a bare fmt.Errorf still
-// returns an error here, and only the surfaceRefusal round-trip below fails.
+// The assertion checks surfaceRefusal's result, not only a non-nil error:
+// a bare error from refuseUncontainedPath would still be non-nil here, and only the surfaceRefusal round-trip fails.
 func TestRemoveLaunchers_ContainmentRefusalSurvivesSurfaceRefusal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

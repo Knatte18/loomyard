@@ -70,7 +70,8 @@ type ChannelInfo struct {
 	IsPrivate bool `json:"is_private"`
 }
 
-// APIError is a call Slack answered with ok false and an error code, such as `msg_too_long`, `invalid_auth` or `channel_not_found`.
+// APIError is a call Slack answered with ok false and an error code.
+// Codes include `msg_too_long`, `invalid_auth` and `channel_not_found`.
 type APIError struct {
 	// Method is the Web API method that was called.
 	Method string
@@ -112,7 +113,8 @@ type responseCurse struct {
 }
 
 // call posts form to method and decodes Slack's answer.
-// An HTTP 429 and an ok-false `ratelimited` are a *RateLimitError, any other ok false is an *APIError, and a transport failure, a 5xx or an unreadable answer is a plain error.
+// An HTTP 429 and an ok-false `ratelimited` are a *RateLimitError.
+// Any other ok false is an *APIError, and a transport failure, a 5xx or an unreadable answer is a plain error.
 // No error carries the token.
 func (a *API) call(ctx context.Context, method string, form url.Values) (response, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
@@ -151,7 +153,8 @@ func (a *API) call(ctx context.Context, method string, form url.Values) (respons
 	return response{}, &APIError{Method: method, Code: decoded.Error}
 }
 
-// retryAfter reads the Retry-After header of httpResponse in seconds; a missing or unreadable header reads as defaultRetryAfter.
+// retryAfter reads the Retry-After header of httpResponse in seconds;
+// a missing or unreadable header reads as defaultRetryAfter.
 func retryAfter(httpResponse *http.Response) time.Duration {
 	seconds, err := strconv.Atoi(strings.TrimSpace(httpResponse.Header.Get("Retry-After")))
 	if err != nil || seconds < 1 {

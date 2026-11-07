@@ -1,4 +1,5 @@
-// remove_localmode_integration_test.go covers RemoveLocal, the removal mode that runs no origin step and waits on no other writer, and SnapshotUncommitted with SnapshotTagged.
+// remove_localmode_integration_test.go covers RemoveLocal, which runs no origin step and waits on no other writer.
+// It also covers SnapshotUncommitted and SnapshotTagged.
 // TestRemoveLocal swaps package-global hooks, so it is not parallel.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.

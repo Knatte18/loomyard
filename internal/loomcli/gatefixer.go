@@ -1,5 +1,6 @@
 // gatefixer.go wires Env.GateFixer for the Darn-Write, Plan-Write and Discussion-Write rows:
-// the seam that wraps a row's gate with a cold fixer, the visit directory that keys a row's fixer records, and the launch each fixer's prompt, model and skills make.
+// the seam that wraps a row's gate with a cold fixer; the visit directory that keys a row's fixer records;
+// and the launch of each fixer's prompt, model and skills.
 
 package loomcli
 
@@ -30,20 +31,21 @@ const (
 	gateFixerDirName = "gatefix"
 	// darnWriteGateKey is the gate.yaml key a Darn-Write row's verify gate runs, and so the call its fixer re-runs.
 	darnWriteGateKey = "darn-write"
-	// planCheckCommand and planLensReviewCheckCommand are the plan self-checks a Plan-Write fixer re-runs, the second for a run whose gate also demands the lens review.
+	// Plan self-checks a Plan-Write fixer re-runs; the lens-review variant serves a gate that also demands it.
 	planCheckCommand           = "lym loom validate-plan"
 	planLensReviewCheckCommand = "lym loom validate-plan --lens-review"
 	// discussionCheckCommand is the discussion self-check a Discussion-Write fixer re-runs.
 	discussionCheckCommand = "lym loom validate-discussion"
 	// discussionWriteEngine is the engine of the Discussion-Write row, whose discussion gate element carries a fixer.
 	discussionWriteEngine = "DiscussionWrite"
-	// darnGateEntry, planGateEntry and discussionGateEntry name the gate elements of the Darn-Write, Plan-Write and Discussion-Write rows that carry a fixer.
+	// Gate elements that carry a fixer: darnGateEntry, planGateEntry and discussionGateEntry.
 	darnGateEntry       = "verify"
 	planGateEntry       = "plan"
 	discussionGateEntry = "discussion"
 )
 
-// gateFixerInputs is every told value the row fixers' wrap and launch read, gathered by wire so the seam opens nothing itself.
+// gateFixerInputs is every told value the row fixers' wrap and launch read.
+// wire gathers them, so the seam opens nothing itself.
 type gateFixerInputs struct {
 	// pairSlug is the worktree's pair slug, empty on the prime and outside a hub, where no fixer runs.
 	pairSlug string
@@ -83,7 +85,8 @@ type gateFixerInputs struct {
 	lensReviewPath     string
 }
 
-// gateFixerBody is one fixer body: the stencil joined behind the shared frame, the segment color of its session and the marker values it is filled with.
+// gateFixerBody is one fixer body: the stencil joined behind the shared frame.
+// It also holds the segment color of the session and the function that fills the markers.
 type gateFixerBody struct {
 	stencil string
 	segment segmentcolor.Segment
@@ -136,8 +139,8 @@ type wallClock struct{}
 func (wallClock) Now() time.Time        { return time.Now() }
 func (wallClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// pairSlugOf returns location's worktree name when the fabric origin record names it, and "" on the prime and outside a hub.
-// A record that cannot be read is returned as an error.
+// pairSlugOf returns location's worktree name when the fabric origin record names it.
+// It returns "" on the prime and outside a hub, and an error when the record cannot be read.
 func pairSlugOf(location *lymcwd.Location) (string, error) {
 	_, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
@@ -149,8 +152,9 @@ func pairSlugOf(location *lymcwd.Location) (string, error) {
 	return location.WorktreeName, nil
 }
 
-// writerFixerOn reports whether a cold fixer clears the gate element gate of the recipe's row running engine, so its writer's prompt drops the validator loop.
-// It holds exactly when gateFixerSeam wraps that gate: the worktree has a pair slug, the element names a fixer setting, and setting holds a non-empty value for it.
+// writerFixerOn reports whether a cold fixer clears the gate element gate of the row running engine in recipe.
+// When it does, the writer's prompt drops the validator loop.
+// It holds when the worktree has a pair slug and the element names a fixer setting that holds a non-empty value.
 // A setting that cannot be read, or that holds a non-string, is returned as an error.
 func writerFixerOn(recipe, engine, gate string, setting func(module, key string) (any, error), pairSlug string) (bool, error) {
 	if pairSlug == "" {
@@ -178,7 +182,8 @@ func writerFixerOn(recipe, engine, gate string, setting func(module, key string)
 	return text != "", nil
 }
 
-// rowVisitDir returns the directory the fixer records of one visit to row live in: `<scratchDir>/gatefix/<row>-<history length>-<newest entry's Repeats>`.
+// rowVisitDir returns the directory the fixer records of one visit to row live in:
+// `<scratchDir>/gatefix/<row>-<history length>-<newest entry's Repeats>`.
 // A call that ends appends a history entry or folds into the newest,
 // and a goto appends one.
 // A crash re-step, and a resume that appended none, keep the directory;
@@ -200,8 +205,10 @@ func rowVisitDir(scratchDir, statusPath, statusLockPath, row string) (string, er
 }
 
 // gateFixerSeam returns the Env.GateFixer seam over in.
-// With no pair slug it returns the request's spec unchanged, so a row on the prime or outside a hub spawns no fixer and its gate failure reaches the writer.
-// Otherwise it resolves the request's model-spec through the registry and returns the spec wrapped so a failure at the entry goes to a cold fixer.
+// With no pair slug it returns the request's spec unchanged:
+// a row on the prime or outside a hub spawns no fixer, and its gate failure reaches the writer.
+// Otherwise it resolves the request's model-spec through the registry.
+// It returns the spec wrapped so a failure at the entry goes to a cold fixer.
 func gateFixerSeam(in gateFixerInputs) func(shedrecipe.GateFixerRequest) (shuttleengine.GateSpec, error) {
 	return func(req shedrecipe.GateFixerRequest) (shuttleengine.GateSpec, error) {
 		if in.pairSlug == "" {
@@ -238,9 +245,10 @@ func gateFixerSeam(in gateFixerInputs) func(shedrecipe.GateFixerRequest) (shuttl
 	}
 }
 
-// fixerSpec returns the closure that builds one fixer's launch from the report it reads and the reply file it writes, for the body req's entry names.
+// fixerSpec returns the closure that builds one fixer's launch for the entry req.Entry names.
 // An entry with no body is refused, since the row wiring sends only the entries gateFixerBodies names.
-// The closure renders the prompt and reads the declared PATTERN changes at each spawn, so a record edited between spawns is read fresh.
+// The closure renders the prompt and reads the declared PATTERN changes at each spawn,
+// so a record edited between spawns is read fresh.
 func fixerSpec(in gateFixerInputs, req shedrecipe.GateFixerRequest, choice shuttleengine.ModelChoice) (func(reportPath, replyPath string) (gatefixer.Spec, error), error) {
 	body, ok := gateFixerBodies[req.Entry]
 	if !ok {

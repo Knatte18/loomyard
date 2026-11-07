@@ -1,11 +1,11 @@
-// coverage_guard_test.go pins the registry's reason to exist for this package's own three rows: it
-// builds a real shedrecipe.Env/ShedPaths pair, calls this package's own New, and checks the
-// row-to-engine table below in both directions against New's real, current output rather than
-// against a standalone literal that could drift silently.
+// coverage_guard_test.go checks battenRowEngines, this package's row-to-engine table, against the rows New builds.
+// It builds a real shedrecipe.Env and ShedPaths pair and calls New.
+// It compares the table with New's real output in both directions.
+// A standalone literal could drift silently; the check runs against New's output instead.
 //
-// It carries no closed-coverage assertion over shedrecipe.Names() -- that claim now lives in one
-// cross-consumer place, internal/shedrecipe's own external test package, and a second copy here
-// would fail on the other consumer's engines.
+// It carries no closed-coverage assertion over shedrecipe.Names():
+// internal/shedrecipe's external test package owns that check,
+// and a copy here would fail on the other consumer's engines.
 
 package battenrecipe
 
@@ -16,9 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// battenRowEngines maps each of New's row names to the engine name backing it. The
-// row-name side is keyed off this package's own Name* constants, per the
-// row-name-authority-stays-with-the-go-constants Shared Decision.
+// battenRowEngines maps each row name New assembles to the name of the engine that backs it.
+// Its keys are this package's Name* constants.
 var battenRowEngines = map[string]string{
 	NameWorktreeCreate:   "WorktreeCreate",
 	NameSeedChild:        "SeedChild",
@@ -30,12 +29,10 @@ var battenRowEngines = map[string]string{
 	NameWorktreeTeardown: "WorktreeTeardown",
 }
 
-// TestCoverageGuard_EveryBattenRowHasAnEngine asserts three things about battenRowEngines
-// against New's real, current row list: every row New assembles has an entry in the table (the
-// direction that catches a row added to the recipe before its consuming code lands); every key in
-// the table names a row New actually has (the direction that keeps the table from accumulating
-// dead entries); and every engine name the table maps to resolves through shedrecipe.Lookup
-// without error.
+// TestCoverageGuard_EveryBattenRowHasAnEngine checks battenRowEngines against the rows New builds.
+// Every row New assembles has a table entry, which catches a row added to the recipe before its consuming code lands.
+// Every key names a row New has, which keeps dead entries out of the table.
+// Every engine name the table maps to resolves through shedrecipe.Lookup without error.
 func TestCoverageGuard_EveryBattenRowHasAnEngine(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)

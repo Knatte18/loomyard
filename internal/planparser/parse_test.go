@@ -1,8 +1,6 @@
-// parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
-// parsing, framing extraction), its per-card file-parsing behavior (the title heading, the
-// format-4 one-or-more type-label model and its per-label TargetGroups, Uses:/Intent:/
-// ImpactSummary:, retired-label routing, and Commit:/Verify:), the label-present-vs-absent field
-// distinction, and a full round-trip over the format-4 golden fixture (testdata/goodplan).
+// parse_test.go covers ParsePlan's overview parsing: frontmatter, Card Index and framing extraction.
+// It covers per-card parsing: the title, the one-or-more type labels and their TargetGroups, and the field labels.
+// It also covers present-versus-absent labels, retired-label routing, and a round-trip over testdata/goodplan.
 
 package planparser_test
 
@@ -20,9 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writePlanFiles writes every entry of files (keyed by filename, e.g.
-// "00-overview.md") into a fresh temp plan directory and returns that directory's
-// path.
+// writePlanFiles writes every entry of files into a fresh temp plan directory and returns that directory's path.
+// The map is keyed by filename, for example "00-overview.md".
 func writePlanFiles(t *testing.T, files map[string]string) string {
 	t.Helper()
 
@@ -36,9 +33,8 @@ func writePlanFiles(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// minimalOverview is a syntactically complete format-4 overview with a single Card Index
-// entry, used as the base fixture for tests that don't care about framing or
-// plan-level sections.
+// minimalOverview is a syntactically complete format-5 overview with a single Card Index entry.
+// Tests that do not care about framing or plan-level sections use it as their base fixture.
 const minimalOverview = `---
 format: 5
 approved: true
@@ -53,15 +49,20 @@ Framing paragraph.
 1 — only — the only card
 `
 
-// minimalCardFile is a syntactically complete format-4 card file body: one type label carrying a
-// single bullet, plus an **Intent:** line — no "none" sentinel anywhere, since format 4 has none.
+// minimalCardFile is a syntactically complete format-5 card file body:
+// one type label carrying a single bullet, plus an **Intent:** line.
+// It has no "none" sentinel anywhere.
 func minimalCardFile(number int, name, editPath string) string {
 	return fmt.Sprintf("# Card %d — %s\n\n", number, name) +
 		"**Edit:**\n- `" + editPath + "`\n" +
 		"**Intent:** placeholder card.\n"
 }
 
-// TestParsePlan_Overview covers the overview's frontmatter, framing and Card Index parsing: a complete overview, ASCII single and double hyphen Card Index separators, and a missing format:/approved: key -- not a ParsePlan failure, since format-unrecognized and plan-unapproved are Validate's checks, not the parser's, so the plan simply parses with the zero value.
+// TestParsePlan_Overview covers the overview's frontmatter, framing and Card Index parsing:
+// a complete overview, ASCII single and double hyphen Card Index separators, and a missing format: or approved: key.
+// A missing key is not a ParsePlan failure.
+// format-unrecognized and plan-unapproved are Validate's checks, not the parser's.
+// The plan therefore parses with the zero value.
 //
 //testtiming:keep pins the overview's frontmatter, framing and Card Index fields, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Overview(t *testing.T) {
@@ -341,8 +342,18 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_CardFields covers how one card file's body parses into its Card, each row pinning one field family:
-// the one-or-more type-label model and its per-label TargetGroups (two recognized labels on a card, even the same label twice, is the supported shape; zero labels stays a defect card-type-missing catches); a "**Uses:**" label present with no bullets (a non-nil zero-length slice, distinct from an absent label); the ImpactSummary inline remainder plus trailing lines; the retired labels routed to RetiredLabels while terminating the preceding Intent prose; the Rename and Create grammars, where a malformed bullet reaches RenameRaw or CreateRaw rather than becoming a parse error and the arrow form reaches its matcher with its backticks intact; a handle-shaped target never picking up a root: prefix; and the optional Commit and Verify fields.
+// TestParsePlan_CardFields covers how one card file's body parses into its Card.
+// Each row pins one field family:
+// the one-or-more type-label model and its per-label TargetGroups:
+// two recognized labels on a card, even the same label twice, are the supported shape;
+// zero labels is a defect that card-type-missing catches;
+// a "**Uses:**" label present with no bullets is a non-nil zero-length slice, distinct from an absent label;
+// the ImpactSummary inline remainder plus trailing lines;
+// the retired labels routed to RetiredLabels while terminating the preceding Intent prose;
+// the Rename and Create grammars: a malformed bullet reaches RenameRaw or CreateRaw, not a parse error;
+// and the arrow form reaches its matcher with its backticks intact;
+// a handle-shaped target never picks up a root: prefix;
+// and the optional Commit and Verify fields.
 func TestParsePlan_CardFields(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -390,7 +401,7 @@ Framing paragraph.
 				if card.TargetGroups[1].Type != planparser.CardTypeDelete {
 					t.Errorf("card.TargetGroups[1].Type = %q; want %q", card.TargetGroups[1].Type, planparser.CardTypeDelete)
 				}
-				// Canonicalized to their file self glyph form: both carry a file extension, so
+				// The targets are canonicalized to their file self glyph form, since both carry a file extension.
 				// ParsePlan's canonicalizeCard rewrites them under the default language: go.
 				if want := []string{"a.go#"}; !slices.Equal(card.TargetGroups[0].Refs, want) {
 					t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, want)
@@ -492,7 +503,9 @@ Framing paragraph.
 			},
 		},
 		{
-			// The label line's own remainder lands in ImpactSummary and every following non-label line in ImpactSummaryTrailing -- captured rather than discarded so impact-summary-multiline has something to report.
+			// The label line's own remainder lands in ImpactSummary,
+			// and every following non-label line lands in ImpactSummaryTrailing.
+			// Both are captured rather than discarded, so impact-summary-multiline has something to report.
 			name: "ImpactSummary inline remainder plus trailing lines",
 			body: "# Card 1 — multiline impact\n\n**Edit:**\n- `a.go`\n" +
 				"**ImpactSummary:** first line.\nsecond line.\nthird line.\n**Intent:** placeholder.\n",
@@ -518,7 +531,8 @@ Framing paragraph.
 			},
 		},
 		{
-			// The case-sensitive match routes format-3's lowercase label to RetiredLabels rather than mistaking it for format-4's "**Verify:**" field.
+			// The case-sensitive match routes format-3's lowercase label to RetiredLabels.
+			// It does not read that label as format-4's "**Verify:**" field.
 			name: "retired lowercase verify label terminates Intent",
 			body: "# Card 1 — half-migrated\n\n**Intent:** prose before verify.\n**verify:** go test ./...\n",
 			check: func(t *testing.T, card planparser.Card) {
@@ -554,7 +568,9 @@ Framing paragraph.
 			},
 		},
 		{
-			// parseRefField strips backticks before returning a payload, so routing the arrow form through it would never match the two-backticked-token shape: a declaration in Declarations, not CreateRaw, proves the backticks arrived intact.
+			// parseRefField strips backticks before returning a payload.
+			// Routing the arrow form through it would therefore never match the two-backticked-token shape.
+			// A declaration in Declarations, not CreateRaw, proves the backticks arrived intact.
 			name: "Create grammar: declaration, plain ref and malformed arrow bullet",
 			body: "# Card 1 — create handles\n\n**Create:**\n" +
 				"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
@@ -689,9 +705,9 @@ Framing paragraph.
 	}
 }
 
-// TestParsePlan_InlineFieldValueFailsLoud proves a bullet-only field carrying an inline value
-// (e.g. "**Edit:** `foo.go`") is a fail-loud ParsePlan error, never silently read as an empty
-// field — for both a type label and "**Uses:**".
+// TestParsePlan_InlineFieldValueFailsLoud proves that an inline value on a bullet-only field is a fail-loud error.
+// Such a value, as in "**Edit:** `foo.go`", is never silently read as an empty field.
+// The test covers both a type label and "**Uses:**".
 func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -726,7 +742,8 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative `_lym/plan/NN-<slug>.md` token, never prefixed by the (t.TempDir()) absolute Plan.Dir the fixture is parsed from.
+// TestParsePlan_Card_SourcePath proves that each parsed card's SourcePath is the bare worktree-relative token.
+// The token is `_lym/plan/NN-<slug>.md`, never prefixed by the absolute Plan.Dir the fixture is parsed from.
 //
 //testtiming:keep pins SourcePath as the bare worktree-relative token without the absolute plan directory, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Card_SourcePath(t *testing.T) {
@@ -773,14 +790,16 @@ Framing paragraph.
 	}
 }
 
-// goodPlanDir is this package's format-5 golden happy-path fixture, exercising seven of the eight card
-// types.
+// goodPlanDir is this package's format-5 golden happy-path fixture, exercising most card types.
 func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")
 }
 
-// TestParsePlan_GoldenFixture round-trips testdata/goodplan exactly: the overview's frontmatter, framing, and every field of every one of the seven cards must match the fixture's own canonicalized content, including the root: internal/boardcli resolution (for a plain path) and the // worktree-root escape, both followed by glyph canonicalization under the fixture's language: go.
-// It also pins this migration's sharpest possible regression: a glyph copied verbatim from the fixture must survive canonicalization byte-identical even though the fixture's root: is non-empty — a glyph is never root:-joined.
+// TestParsePlan_GoldenFixture round-trips testdata/goodplan exactly.
+// The overview's frontmatter, framing, and every field of every card must match the fixture's own canonicalized content.
+// The round trip covers the root: internal/boardcli resolution for a plain path and the // worktree-root escape.
+// Both are followed by glyph canonicalization under the fixture's language: go.
+// It also pins that a glyph survives canonicalization unmodified, even though the fixture's root: is non-empty.
 // Card 2 additionally round-trips a multi-label card: an **Edit:** group followed by a **Create:** group.
 //
 //testtiming:keep pins the full field-by-field round-trip of the golden fixture, which TestValidate_CardNumbering does not assert
@@ -987,15 +1006,14 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		}
 	}
 
-	// The sharpest regression this migration can introduce: a glyph copied verbatim from the
-	// fixture must pass through both normalization and canonicalization unmodified, even though
-	// the fixture's root: is non-empty — a glyph is never root:-joined.
+	// A glyph copied verbatim from the fixture must pass through both normalization and canonicalization unmodified.
+	// The fixture's root: is non-empty, and a glyph is never root:-joined.
 	if got := plan.Cards[0].Targets[0]; got != "internal/boardcli#RowJSON" {
 		t.Errorf("card 1 glyph target = %q; want %q unmodified despite non-empty root:", got, "internal/boardcli#RowJSON")
 	}
 
-	// SurfaceRefs records the pre-canonicalization surface lexeme for every canonicalized
-	// path-shaped ref, keyed by the owning card's own identity.
+	// `SurfaceRefs` records the pre-canonicalization surface lexeme of every canonicalized path-shaped ref.
+	// The map is keyed by the owning card's identity.
 	wantSurface := map[string]string{
 		"internal/boardcli/list_json_test.go#": "internal/boardcli/list_json_test.go",
 		"internal/output/envelope.go#":         "internal/output/envelope.go",
@@ -1006,14 +1024,15 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			t.Errorf("plan.SurfaceRefs[%q][%q] = %v; want exactly [%q]", "2-json-flag", canonical, got, wantRaw)
 		}
 	}
-	// A glyph copied verbatim from the fixture is never rewritten, so it never gains a
-	// SurfaceRefs entry of its own.
+	// A glyph copied verbatim from the fixture is never rewritten, so it never gains a `SurfaceRefs` entry of its own.
 	if _, ok := plan.SurfaceRefs["1-json-row-type"]; ok {
 		t.Errorf("plan.SurfaceRefs[%q] = %v; want no entry (card 1's own target is already a glyph)", "1-json-row-type", plan.SurfaceRefs["1-json-row-type"])
 	}
 }
 
-// TestParsePlan_Language covers the language: frontmatter key's effect on Plan.Language and on canonicalization: absent defaults to "go" (and canonicalizes), an explicit "go" behaves identically, and "none" leaves every ref byte-identical with an empty SurfaceRefs.
+// TestParsePlan_Language covers the effect of the language: frontmatter key on `Plan.Language` and canonicalization.
+// An absent key defaults to "go" and canonicalizes, and an explicit "go" behaves identically.
+// "none" leaves every ref byte-identical and `SurfaceRefs` empty.
 //
 //testtiming:keep pins the language: key's effect on Plan.Language, canonicalization and SurfaceRefs, which its covering tests do not assert
 func TestParsePlan_Language(t *testing.T) {
@@ -1065,7 +1084,8 @@ func TestParsePlan_Language(t *testing.T) {
 	}
 }
 
-// TestParsePlan_FirstCard pins how the optional first_card overview key parses, including that a non-integer value reaches validation instead of failing the strict decode.
+// TestParsePlan_FirstCard pins how the optional first_card overview key parses.
+// A non-integer value reaches validation instead of failing the strict decode.
 func TestParsePlan_FirstCard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1102,7 +1122,10 @@ func TestParsePlan_FirstCard(t *testing.T) {
 	}
 }
 
-// TestOverviewWithoutCardIndex covers the overview comparison form webster hashes: an index change leaves the output equal, a change anywhere else changes it, an index at the end of the file is cut to the end, and a missing heading or an unterminated frontmatter fence errors.
+// TestOverviewWithoutCardIndex covers the overview comparison form that webster hashes.
+// An index change leaves the output equal, and a change anywhere else changes it.
+// An index at the end of the file is cut to the end.
+// A missing heading or an unterminated frontmatter fence errors.
 func TestOverviewWithoutCardIndex(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

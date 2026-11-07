@@ -19,7 +19,8 @@ import (
 )
 
 // smokeClaudeModel is the model every real `claude` process this package spawns must run on.
-// The suite's Claude-adjacent assertions are about reed (env hygiene on the server spawn, opaque resumeCmd replay), never about model capability, so the cheapest model is always the right one — and leaving it unpinned silently bills the operator's default model on every sweep.
+// The suite's assertions concern reed's env hygiene and resumeCmd replay, not model capability,
+// so the cheapest model is always the right one; leaving it unpinned bills the operator's default model on every run.
 const smokeClaudeModel = "haiku"
 
 // claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory for cwd dir.
@@ -144,17 +145,16 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	if err := exec.Command(tmuxPath, "-L", socket, "kill-server").Run(); err != nil {
 		t.Fatalf("kill-server: %v", err)
 	}
-	// kill-server returns before the server has fully released its socket. If
-	// we called up while the dying server still answered has-session, reed
-	// would treat the session as still up (booted=false), skip the stale-
-	// binding clear, and the reused pane id would read falsely live — a race
-	// that only surfaces on a loaded machine. A real crash is a dead process,
-	// so wait until the server is genuinely gone before simulating recovery.
+	// kill-server returns before the server has fully released its socket.
+	// Calling up while the dying server still answers has-session makes reed treat the session as up;
+	// it then skips the stale-binding clear and reads the reused pane id as falsely live.
+	// That race only surfaces on a loaded machine.
+	// A real crash is a dead process, so wait until the server is genuinely gone before simulating recovery.
 	waitServerGone(t, tmuxPath, socket, session)
 
-	// up after the crash: reboots the substrate and clears the stale binding
-	// (the reborn session's initial pane reuses the old pane id, so without
-	// the booted-session binding-clear the strand would look falsely live).
+	// up after the crash: reboots the substrate and clears the stale binding.
+	// The reborn session's initial pane reuses the old pane id.
+	// Without the booted-session binding-clear, the strand would look falsely live.
 	out.Reset()
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("post-crash up = %d; want 0, output: %s", code, out.String())
@@ -188,15 +188,15 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	}
 }
 
-// TestSmokeClaudeResumeRecallsCodeword is the end-to-end proof of reed's one Claude-adjacent
-// responsibility: env hygiene on the server spawn (without it, a claude launched from inside a
-// Claude Code session treats itself as a nested child and silently stops persisting its transcript)
-// plus the opaque resumeCmd replay.
-// It launches a real claude in a strand with a codeword prompt, kills the whole tmux server out
-// from under it, resumes via the stored `claude --continue`, and asserts the codeword comes back —
-// which is only possible if the transcript was persisted and found again.
-// Needs a logged-in claude CLI;
-// runs a real subscription session (~1-3 min).
+// TestSmokeClaudeResumeRecallsCodeword is the end-to-end proof of reed's Claude-adjacent duty:
+// env hygiene on the server spawn, plus the opaque resumeCmd replay.
+// Without it, a claude launched inside a Claude Code session treats itself as a nested child,
+// so it silently stops persisting its transcript.
+// The test launches a real claude in a strand with a codeword prompt.
+// It kills the whole tmux server out from under it.
+// It then resumes via the stored `claude --continue` and asserts the codeword comes back.
+// That is possible only if the transcript was persisted and found again.
+// It needs a logged-in claude CLI and runs a real subscription session, which takes minutes.
 func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	tiergate.Require(t, 3)
 	tmuxPath := tmuxBinaryPath(t)
@@ -218,21 +218,20 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 
 	codeword := fmt.Sprintf("zebra-%d", time.Now().UnixNano()%1000000)
 	prompt := fmt.Sprintf("Remember the codeword %s. Reply with exactly: STORED %s", codeword, codeword)
-	// --model is pinned to the cheapest model on BOTH lines, launch and resume
-	// alike. Nothing this test asserts is model-specific — it checks that a
-	// transcript persisted and that `--continue` found it again, which is reed's
-	// env-hygiene and opaque-replay contract, not a model capability — while the
-	// cost of NOT pinning is a real subscription session on the operator's
-	// default model every time anyone runs a bare `-run Smoke` sweep, which this
-	// test's name matches.
+	// --model is pinned to the cheapest model on both lines, launch and resume.
+	// Nothing this test asserts is model-specific.
+	// It checks that a transcript persisted and that `--continue` found it again.
+	// That is reed's env-hygiene and opaque-replay contract, not a model capability.
+	// A bare `-run Smoke` sweep matches this test's name.
+	// Without the pin, it would start a real subscription session on the operator's default model.
 	launch := smokeInvokeLine(claudePath, "--model", smokeClaudeModel, prompt)
 	resume := smokeInvokeLine(claudePath, "--continue", "--model", smokeClaudeModel)
 
-	// Scope the transcript watch to THIS test's claude project directory
-	// (derived from the fixture hub — the pane's cwd) and snapshot what is
-	// already in it BEFORE the launch, so phase 1 can only ever match the one
-	// transcript this test's own claude produces — never a concurrent sibling
-	// suite's (each suite has a unique temp hub, hence a unique project dir).
+	// Scope the transcript watch to this test's claude project directory, derived from the fixture hub (the pane's cwd).
+	// Snapshot what is already there before the launch.
+	// Phase 1 then matches only the transcript this test's own claude produces.
+	// Each suite has a unique temp hub, hence a unique project dir,
+	// so a concurrent sibling suite's transcript is never matched.
 	projectDir := claudeProjectDir(t, h.PrimeWorktree())
 	transcriptsBefore := claudeTranscriptFiles(t, projectDir)
 	guid := addStrand(t, launch, "--resume-cmd", resume, "--name", "agent")
@@ -255,11 +254,11 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 		return paneID
 	}
 
-	// dismissTrust answers claude's one-time "do you trust this folder?"
-	// gate (Enter = its default "yes") whenever that screen is visible. A
-	// fresh fixture dir triggers it; it is operator setup, not the contract
-	// under test. Called on every poll iteration (not once) because a single
-	// early Enter can land before the prompt is interactive and be dropped.
+	// dismissTrust answers claude's one-time "do you trust this folder?" gate whenever that screen is visible.
+	// It sends Enter, which selects claude's default "yes".
+	// A fresh fixture dir triggers the gate; it is operator setup, not the contract under test.
+	// The caller invokes it on every poll iteration.
+	// A single early Enter can land before the prompt is interactive and be dropped, so a one-time call is not enough.
 	dismissTrust := func(paneID string) {
 		content := capturePane(t, tmuxPath, socket, paneID)
 		if strings.Contains(content, "trust") && strings.Contains(content, "folder") {
@@ -267,15 +266,13 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 		}
 	}
 
-	// Phase 1: let claude receive the codeword and PERSIST a transcript
-	// before the crash. The persistence gate is the transcript file itself,
-	// not a TUI idle marker: claude's "? for shortcuts" hint is on screen
-	// even while it is still starting/thinking, so a marker-based wait can
-	// fire before the first transcript flush and the crash then truncates
-	// before anything reaches disk (which is exactly what a "No conversation
-	// found" resume looks like — a test artifact, not a reed defect). Waiting
-	// for the .jsonl to appear and stop growing is the direct proof that env
-	// hygiene let claude persist — the whole point of this test.
+	// Phase 1: let claude receive the codeword and persist a transcript before the crash.
+	// The persistence gate is the transcript file itself, not a TUI idle marker.
+	// The "? for shortcuts" hint is on screen even while claude is still starting or thinking,
+	// so a marker-based wait can fire before the first transcript flush.
+	// The crash would then truncate the session before anything reaches disk.
+	// A resume then reports "No conversation found", which is a test artifact, not a reed defect.
+	// Waiting for the .jsonl to appear and stop growing is the direct proof that env hygiene let claude persist.
 	paneID := readPane()
 	transcript := waitTranscriptStable(t, projectDir, transcriptsBefore, dismissTrust, paneID, 180*time.Second)
 	t.Logf("phase 1 transcript persisted: %s", transcript)
@@ -301,15 +298,13 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 		t.Fatalf("resumed = %v; want 1", resumeResult["resumed"])
 	}
 
-	// Phase 3: the codeword must come back in the RESUMED pane. The resume
-	// command line is `claude --continue` — it carries NO codeword, so the
-	// codeword appearing here can only come from the persisted transcript
-	// being reloaded (the whole point). Match the codeword token alone: it
-	// has no internal spaces, so it survives capture-pane's space-stripping
-	// of claude's rendered response boxes. `--continue` re-renders the prior
-	// turn, so the codeword typically returns on its own; if a future TUI
-	// hides history, ask for it explicitly (the question carries no codeword,
-	// so it cannot false-match).
+	// Phase 3: the codeword must come back in the resumed pane.
+	// The resume command line is `claude --continue`, which carries no codeword,
+	// so the codeword can only come from the persisted transcript being reloaded.
+	// Match the codeword token alone: it has no internal spaces,
+	// so it survives capture-pane's space-stripping of claude's rendered response boxes.
+	// `--continue` re-renders the prior turn, so the codeword typically returns on its own.
+	// If a future TUI hides history, ask for it explicitly; the question carries no codeword, so it cannot false-match.
 	resumedPane := readPane()
 	dismissTrust(resumedPane)
 	if paneEventuallyContains(t, tmuxPath, socket, resumedPane, codeword, 30*time.Second) {

@@ -9,13 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// moduleName is the language module's own configreg name, passed to configengine.LoadOrTemplate.
+// moduleName is the language module's own configreg name, the Name of the spec ConfigSpec returns.
 const moduleName = "language"
 
 // skillsKey is the key holding the skills every code role loads.
 const skillsKey = "skills"
 
-// retiredVerifyTiersKey is the retired key that held the hub's verify-tier rules, which gate.yaml's tiers replace.
+// retiredVerifyTiersKey is the retired language.yaml key for verify tiers; gate.yaml's tiers replace it.
 const retiredVerifyTiersKey = "verify_tiers"
 
 // renameToolsKey is the key holding the hub's structure-aware rename tools.
@@ -27,7 +27,7 @@ const wayForward = `; way forward: fix it with "lym config language" from the pr
 // ErrUnusable marks a content failure of language.yaml whose error already carries its own way forward.
 var ErrUnusable = errors.New("language config unusable")
 
-// config mirrors language.yaml's keys as raw nodes, so Load can check their YAML shape.
+// config holds language.yaml's list keys as raw nodes, so Load can check their YAML shape.
 type config struct {
 	Skills      yaml.Node `yaml:"skills"`
 	RenameTools yaml.Node `yaml:"rename_tools"`
@@ -43,7 +43,7 @@ type Language struct {
 }
 
 // ConfigSpec returns the language module's layered-load spec.
-// Every key is Guard-classified, so a local override holding one is refused.
+// Every key is classed as configengine.CategoryGuard, so a local override holding one is refused.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     moduleName,
@@ -62,7 +62,8 @@ func ConfigSpec() configengine.Spec {
 // Load resolves the hub's language.yaml through the layer stack under dirs, each list in file order and repeats kept.
 // An empty dirs.Board resolves every list empty without reading any file;
 // an absent hub language.yaml resolves the template's empty lists.
-// A content failure returns an error marked configengine.ErrInvalid that wraps ErrUnusable, names the failing key where there is one and ends with the way forward.
+// A content failure returns an error marked configengine.ErrInvalid that wraps ErrUnusable.
+// The error names the failing key where there is one, and it ends with the way forward.
 // Any other failure, such as an unreadable file, is returned unwrapped.
 func Load(dirs configengine.Dirs) (Language, error) {
 	if dirs.Board == "" {
@@ -141,7 +142,6 @@ func unusable(key, detail string) error {
 }
 
 // AppendSkills returns a fresh slice holding own in order, then each language entry not already present, in order.
-// A skill repeated in language, or already in own, appears once at its first position.
 // own's backing array is never written.
 func AppendSkills(own, language []string) []string {
 	merged := make([]string, len(own), len(own)+len(language))

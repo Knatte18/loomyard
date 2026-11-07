@@ -1,4 +1,4 @@
-// resume.go implements Claude's shuttleengine.SessionResumer: the check that an existing session may be taken over by a new run.
+// resume.go implements Claude's shuttleengine.SessionResumer: the check that a new run may take over a session.
 // It reads the session's transcript under Claude's project directory for the pane cwd and Claude's session registry,
 // and every fact about either layout stays in this file, per the Shuttle Provider-Seam Invariant.
 
@@ -15,10 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Compile-time assertion that Claude offers the optional resume check.
 var _ shuttleengine.SessionResumer = (*Claude)(nil)
 
-// registryEntry is the audited subset of one Claude session-registry file.
+// registryEntry is the subset of one Claude session-registry file that the resume check reads.
 type registryEntry struct {
 	PID       int    `json:"pid"`
 	SessionID string `json:"sessionId"`
@@ -26,7 +25,7 @@ type registryEntry struct {
 }
 
 // CheckResume implements shuttleengine.SessionResumer.
-// It derives the project and registry directories from the same home resolution the fork audit uses, then delegates to checkResumable.
+// It checks that the session has a transcript for workdir and that no live process holds it.
 func (c *Claude) CheckResume(sessionID, workdir string) (string, error) {
 	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
@@ -40,9 +39,10 @@ func (c *Claude) CheckResume(sessionID, workdir string) (string, error) {
 	return checkResumable(sessionID, projectDir, registryDir, proc.IsAlive, proc.StartTime)
 }
 
-// checkResumable refuses a resume unless sessionID is well-formed, has a transcript under projectDir, and is not held by a live process in registryDir.
-// A live pid refuses unless the live process's start time differs from the entry's procStart, which proves the pid was reused;
-// when either start time cannot be read the pid still refuses, so two processes never drive one session.
+// checkResumable refuses a resume unless sessionID is well-formed and has a transcript under projectDir.
+// It also refuses while a live process in registryDir holds the session.
+// A live pid refuses unless its start time differs from the entry's procStart, which proves the pid was reused.
+// When either start time cannot be read, the pid still refuses, so two processes never drive one session.
 // An unreadable registry returns a warning and the check proceeds.
 // It kills, signals and edits nothing.
 func checkResumable(sessionID, projectDir, registryDir string, alive func(pid int) bool, startTime func(pid int) (string, bool)) (warning string, err error) {
@@ -87,7 +87,8 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 	return warning, nil
 }
 
-// registryRecord is one session-registry file as read: its decoded entry, or the error that stopped it being read or decoded.
+// registryRecord is one session-registry file as read.
+// It holds the decoded entry, or the error that stopped it being read or decoded.
 type registryRecord struct {
 	Path      string
 	Entry     registryEntry
@@ -95,7 +96,8 @@ type registryRecord struct {
 	DecodeErr error
 }
 
-// readRegistry reads every .json file in registryDir, in directory order, and returns an error only when the directory itself cannot be read.
+// readRegistry reads every .json file in registryDir, in directory order.
+// It returns an error only when the directory itself cannot be read.
 func readRegistry(registryDir string) ([]registryRecord, error) {
 	dirEntries, err := os.ReadDir(registryDir)
 	if err != nil {

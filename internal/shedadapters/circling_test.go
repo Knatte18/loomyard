@@ -252,7 +252,8 @@ func TestReadCirclingDecision(t *testing.T) {
 // escalationRecord is a well-formed round-1 escalation record.
 const escalationRecord = "---\nround: 1\ncause: budget\n---\nbrief\n"
 
-// TestPendingCirclingDecision pins PendingCirclingDecision over each layout of the latest round, and PendingEscalation over the same layouts.
+// TestPendingCirclingDecision pins PendingCirclingDecision over each layout of the latest round.
+// It pins PendingEscalation over the same layouts.
 func TestPendingCirclingDecision(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

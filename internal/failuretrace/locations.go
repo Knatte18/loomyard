@@ -1,4 +1,5 @@
-// locations.go extracts the `path:line` locations a failed verify log names and places each relative to the repository root.
+// locations.go extracts the `path:line` locations a failed verify log names.
+// It places each one relative to the repository root.
 
 package failuretrace
 
@@ -14,10 +15,11 @@ import (
 // maxPlacedLocations caps the placed locations one trace answers.
 const maxPlacedLocations = 20
 
-// goLocation matches one `<path>.go:<line>` token of Go test or build output, with an optional `:<col>` that the match leaves out.
+// goLocation matches one `<path>.go:<line>` token of Go test or build output.
+// An optional `:<col>` is left out of the match.
 var goLocation = regexp.MustCompile(`((?:[A-Za-z]:)?[^\s:()"'\[\]]+\.go):(\d+)`)
 
-// Placement tells Locations where the verified tree sits and what it holds.
+// Placement describes where the verified tree sits and what it holds.
 type Placement struct {
 	// WorktreeRoot is the absolute root of the verified worktree.
 	WorktreeRoot string
@@ -29,8 +31,9 @@ type Placement struct {
 }
 
 // Locations extracts the `path:line` locations of every failure's Tail and places each relative to the repository root.
-// placed holds the placed locations, deduplicated in first-seen order and capped at twenty.
-// untraced holds the bare and `./`-relative locations of an opaque identity, as written, which no package directory places.
+// placed holds the placed locations, deduplicated in first-seen order and capped at `maxPlacedLocations`.
+// untraced holds the bare and `./`-relative locations of an opaque identity, as written.
+// No package directory places them.
 // A location that places nowhere, such as a standard-library or dependency frame, is dropped.
 func Locations(failures []websterengine.VerifyFailure, p Placement) (placed, untraced []string) {
 	seenPlaced := map[string]bool{}
@@ -57,7 +60,7 @@ func Locations(failures []websterengine.VerifyFailure, p Placement) (placed, unt
 	return placed, untraced
 }
 
-// placeOutcome is what placing one location comes to.
+// placeOutcome is the result of placing one location.
 type placeOutcome int
 
 const (

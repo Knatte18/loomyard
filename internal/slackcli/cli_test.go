@@ -1,4 +1,5 @@
-// cli_test.go drives the slack verbs over a slackCLI whose seams are fakes and whose Slack is an httptest server, so no hub, Slack or creel is reached.
+// cli_test.go drives the slack verbs over a slackCLI whose seams are fakes.
+// Its Slack is an httptest server, so no hub, Slack or creel is reached.
 
 package slackcli
 
@@ -52,7 +53,8 @@ type slackRequest struct {
 	authorization string
 }
 
-// fakeSlack is an httptest server standing in for Slack's Web API, answering each method from a canned body and recording the requests.
+// fakeSlack is an httptest server standing in for Slack's Web API.
+// It answers each method from a canned body and records the requests.
 type fakeSlack struct {
 	server   *httptest.Server
 	mu       sync.Mutex
@@ -142,7 +144,8 @@ func paneIn(name string) paneCaller {
 	return paneCaller{PID: callerPID, Strands: strands, ParentPID: noParent, GOOS: "linux"}
 }
 
-// newHarness builds a harness whose Slack answers answers and whose process sits outside every pane, every live pane process known.
+// newHarness builds a harness whose Slack answers from answers.
+// Its process sits outside every pane, and the pane check knows every live pane process.
 func newHarness(t *testing.T, answers map[string]string) *harness {
 	t.Helper()
 	dir := t.TempDir()
@@ -260,7 +263,8 @@ func (h *harness) presence() slackengine.Presence {
 	return presence
 }
 
-// run executes the slack command with args and standard input stdin, from the harness's directory, and decodes the envelope it printed.
+// run executes the slack command with args and standard input stdin, from the harness's directory.
+// It decodes the envelope the command printed.
 func (h *harness) run(stdin string, args ...string) (int, envelope.Envelope) {
 	h.t.Helper()
 	cmd := h.cli.command()
@@ -312,7 +316,8 @@ func fileExists(path string) bool {
 var setupArgs = []string{"setup", "--channel", "C1", "--operator", "U1"}
 
 // paneCallers are the callers the pane check tells apart.
-// loginOK says whether login and setup, which no strand may run, let the caller through; orchVerbOK says the same for start, stop, away and back, which an orch may run.
+// loginOK says whether login and setup, which no strand may run, let the caller through.
+// orchVerbOK says the same for start, stop, away and back, which an orch may run.
 var paneCallers = []struct {
 	name       string
 	caller     paneCaller

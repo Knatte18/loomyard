@@ -10,7 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// Launch launches VS Code on Windows on target, a folder or a workspace file, opening each of files in an editor of the window.
+// Launch opens target, a folder or a workspace file, in VS Code on Windows.
+// Every file in files opens in an editor of that window.
 //
 // It runs "code" via cmd /c for PATH resolution and hides the console window.
 func Launch(target string, files ...string) error {

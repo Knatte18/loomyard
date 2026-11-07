@@ -10,7 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// planparserProdFile parses the named production file directly under internal/planparser through scankit and returns its AST with its module-relative path.
+// planparserProdFile parses the named production file directly under internal/planparser through scankit.
+// It returns the file's AST and its module-relative path.
 func planparserProdFile(t *testing.T, name string) (*ast.File, string) {
 	t.Helper()
 
@@ -28,8 +29,9 @@ func planparserProdFile(t *testing.T, name string) (*ast.File, string) {
 	return astFile, want
 }
 
-// refKindConstNamesInDeclarationOrder parses internal/planparser/classify.go and returns the identifiers declared in its refKind-typed const block, in declaration order.
-// That is the same order that fixes each identifier's iota-derived refKind value.
+// refKindConstNamesInDeclarationOrder returns the names in classify.go's `refKind` const block, in declaration order.
+// Go cannot reflect over a package's constants, so the names come from the AST.
+// The declaration order fixes each name's iota-derived `refKind` value.
 func refKindConstNamesInDeclarationOrder(t *testing.T) []string {
 	t.Helper()
 
@@ -41,9 +43,9 @@ func refKindConstNamesInDeclarationOrder(t *testing.T) []string {
 		if !ok || gd.Tok != token.CONST {
 			continue
 		}
-		// A refKind const block's first ValueSpec carries the explicit "refKind = iota" type;
-		// subsequent ValueSpecs in the same block inherit it implicitly (no repeated Type).
-		// Only the block whose FIRST spec names refKind is the one this test cares about.
+		// The block's first `ValueSpec` carries the explicit `refKind` type, as in `name refKind = iota`.
+		// Later `ValueSpec`s in the block inherit that type and repeat none.
+		// Only the block whose first spec names `refKind` is read.
 		if len(gd.Specs) == 0 {
 			continue
 		}

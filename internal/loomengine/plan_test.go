@@ -46,9 +46,11 @@ func planTableConfig(lenses string) Config {
 // templatePlanFan is the fan the embedded lenses template defines for the Plan-Write lead's lens forks.
 const templatePlanFan = "twill-plan"
 
-// TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs, at an unanchored location and at a subpath-anchored one, with and without the plan_lenses key.
-// Its lead carries the plan role, model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag,
-// and its prompt from seatengine.Prompts names the told paths.
+// TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs:
+// at an unanchored location and at a subpath-anchored one, with and without the plan_lenses key.
+// Its lead carries the plan role and the fields it needs:
+// model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag.
+// Its prompt, composed by seatengine.Prompts, names the told paths.
 // The anchored row has a non-"." AnchorRel so the anchor path and the worktree path are distinguishable strings:
 // the plan paths must be rooted at layout.AnchorPath() and never layout.WorktreePath().
 //
@@ -209,7 +211,7 @@ func TestPlanTable(t *testing.T) {
 				if directiveIdx != -1 {
 					t.Errorf("lead prompt contains a ## Constraints heading with no PATTERN.md at the worktree root: %q", prompt)
 				}
-				// Two adjacent optional markers (pattern_directive, friction_directive) both rendering empty produce one more blank line than a single empty marker would.
+				// Two adjacent empty optional markers (pattern_directive, friction_directive) leave one more blank line.
 				if strings.Contains(prompt, "\n\n\n\n\n") {
 					t.Errorf("lead prompt contains a stray blank-line block: %q", prompt)
 				}
@@ -289,7 +291,8 @@ func TestPlanTable(t *testing.T) {
 		}
 	})
 
-	// A fixer clearing the plan gate drops the validator loop from the prompt: the self-check step's command block, the spawn point's validator clause and the closing step.
+	// A fixer clearing the plan gate drops the validator loop from the prompt:
+	// the self-check step's command block, the spawn point's validator clause and the closing step.
 	// The dispute-evidence phrase naming the validator's output stays in both.
 	t.Run("fixer on", func(t *testing.T) {
 		t.Parallel()
@@ -527,7 +530,8 @@ func writeTestPattern(t *testing.T, dir string) {
 // declaredBullet is the one declared PATTERN change the record planted by writeDeclaredPatternRecord holds.
 const declaredBullet = "- `PATTERN-example-entry` — adds: the new rule text"
 
-// writeDeclaredPatternRecord writes an active PATTERN.md at layout's worktree root and a decision record whose `## PATTERN changes` section holds body.
+// writeDeclaredPatternRecord writes an active PATTERN.md at layout's worktree root.
+// It also writes a decision record whose `## PATTERN changes` section holds body.
 func writeDeclaredPatternRecord(t *testing.T, layout *lymcwd.Location, body string) {
 	t.Helper()
 	writeTestPattern(t, layout.WorktreePath())
@@ -543,8 +547,9 @@ func writeDeclaredPatternRecord(t *testing.T, layout *lymcwd.Location, body stri
 // malformedDeclaredBullet is a PATTERN changes bullet with an unknown action.
 const malformedDeclaredBullet = "- `PATTERN-example-entry` — frobnicates: nothing"
 
-// newTestSpecsDir returns a real, non-empty directory to pass as the specsDir parameter of PlanTable and its spec predecessors, alongside newTestStencilsDir.
-// A real directory rather than an empty-string placeholder is required: specs_dir is a required marker, so an empty value fails the table's validation.
+// newTestSpecsDir returns a real, empty directory to pass as the specsDir argument of `PlanTable`.
+// It must be a real directory, not an empty string:
+// specs_dir is a required marker, so an empty value fails the table's validation.
 func newTestSpecsDir(t *testing.T) string {
 	t.Helper()
 	return t.TempDir()

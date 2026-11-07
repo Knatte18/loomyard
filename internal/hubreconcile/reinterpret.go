@@ -1,4 +1,5 @@
-// reinterpret.go applies each registered reinterpretation once to the board's base files, and mails what it rewrote or flagged to the hub's orch through the process's installed notifier.
+// reinterpret.go applies each registered reinterpretation once to the board's base files.
+// It mails the values each one rewrote or flagged to the hub's orch through the installed notifier.
 
 package hubreconcile
 
@@ -23,7 +24,8 @@ type Notifier func(boardDir, line string) (posted bool, err error)
 
 var installedNotifier atomic.Pointer[Notifier]
 
-// InstallNotifier stores n as the process's notifier, which a walk mails its reconcile notices through, and returns a function that reinstates the previous one.
+// InstallNotifier stores n as the process's notifier, which a walk mails its reconcile notices through.
+// It returns a function that reinstates the previous notifier.
 func InstallNotifier(n Notifier) (restore func()) {
 	previous := installedNotifier.Swap(&n)
 	return func() { installedNotifier.Store(previous) }
@@ -32,7 +34,10 @@ func InstallNotifier(n Notifier) (restore func()) {
 // noticePrefix opens the mail a walk sends, so the orch tells it from operator input.
 const noticePrefix = "[reconcile notice]"
 
-// applyReinterpretations applies every registered reinterpretation whose board marker is absent to its module's hub base file at boardDir, judging the file's values against the prime's root and anchored directory, and writes each marker after the file.
+// applyReinterpretations applies every registered reinterpretation whose board marker is absent.
+// It applies each one to its module's hub base file at boardDir.
+// It judges the file's values against the prime's root and anchored directory.
+// It writes each marker after the file.
 // An absent base file holds no value to carry across, so only its marker is written.
 // It returns the board-relative paths it wrote and one line per value rewritten or flagged, naming the module's file.
 func applyReinterpretations(boardDir, primeRoot, primeAnchor string) (written, lines []string, err error) {
@@ -73,8 +78,9 @@ func applyReinterpretations(boardDir, primeRoot, primeAnchor string) (written, l
 	return written, lines, nil
 }
 
-// notifyReinterpretations logs what the walk's reinterpretations rewrote or flagged and mails it, as one line, to the hub's orch through the installed notifier.
-// No line sends nothing; with no notifier installed, or a mail not posted, the log holds the line alone.
+// notifyReinterpretations logs what the walk's reinterpretations rewrote or flagged.
+// It mails that as one line to the hub's orch through the installed notifier.
+// With no lines, it sends nothing; with no notifier installed, or a mail not posted, the log holds the line alone.
 func notifyReinterpretations(boardDir, label string, lines []string) {
 	if len(lines) == 0 {
 		return

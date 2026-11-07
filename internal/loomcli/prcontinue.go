@@ -1,6 +1,8 @@
-// prcontinue.go implements the `pr-continue` loom verb: the PR-Review agent's flag that the operator is satisfied with the review and the run goes on.
+// prcontinue.go implements the `pr-continue` loom verb.
+// The PR-Review agent runs it to tell the run the operator is satisfied with the review.
 // The verb only sets Continue in the run's pull-request record.
-// The PR-Review row reads the flag, records the ending and ends the row, leaving the pull request open, and Finalize then merges it on GitHub under its own gate and credit block.
+// The PR-Review row reads that flag, records the ending and ends the row, leaving the pull request open.
+// Finalize then merges the pull request on GitHub under its own gate and credit block.
 
 package loomcli
 
@@ -18,7 +20,8 @@ import (
 // prContinueNoRecord refuses a run that has opened no pull request yet.
 const prContinueNoRecord = "loom: pr-continue: this run has no pull request record, so there is no review to end; way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
 
-// prContinueVerb sets Continue in the pull-request record at recordPath, guarded by the lock at lockPath, and reports a JSON envelope naming the pull request, returning the exit code.
+// prContinueVerb sets Continue in the pull-request record at recordPath, under the lock at lockPath.
+// It reports a JSON envelope naming the pull request and returns the exit code.
 // A record already carrying Continue or ReviewEnded succeeds the same way and is not written again.
 // A run with no record is refused, and an unreadable or unwritable record is an error envelope carrying the error.
 func prContinueVerb(out io.Writer, recordPath, lockPath string) int {

@@ -10,7 +10,8 @@ import (
 )
 
 // startPlatform starts the child in its own process group with a parent-death SIGKILL.
-// The start and the wait run on one goroutine locked to its OS thread, because the parent-death signal follows the thread that started the child.
+// The parent-death signal follows the thread that started the child,
+// so the start and the wait run on one goroutine locked to its OS thread.
 func (t *Tied) startPlatform() error {
 	if t.cmd.SysProcAttr == nil {
 		t.cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -52,8 +53,10 @@ func (t *Tied) killPlatform() error {
 	return nil
 }
 
-// killTreePlatform kills rec's process group while some live process reports that group id with a start time at or after the recorded one.
-// Linux keeps a group id unassigned while any member lives, so a match is the recorded tree, and the check holds after the group leader is dead.
+// killTreePlatform kills rec's process group when some live process reports that group id.
+// That process must have started at or after the recorded start time.
+// Linux keeps a group id unassigned while any member lives, so a match is the recorded tree,
+// and the check holds after the group leader is dead.
 func killTreePlatform(rec TreeRecord) (bool, error) {
 	if rec.PGID <= 1 {
 		return false, nil

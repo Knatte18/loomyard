@@ -1,5 +1,7 @@
-// weftskippush_integration_test.go covers the fabric CLI's content-sync verbs ("push", "sync") against one real hub with FABRIC_SKIP_PUSH set, so the detached push child does no network work:
-// the env-to-SyncOptions mapping at the CLI edge, and the sync pathspec still covering _lym when the repo-wide config names only another path.
+// weftskippush_integration_test.go covers the fabric CLI's push and sync verbs against one real hub.
+// It sets FABRIC_SKIP_PUSH, so the detached push child does no network work.
+// The tests check the env-to-SyncOptions mapping at the CLI edge,
+// and that the sync pathspec still covers _lym when the repo-wide config names only another path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -22,21 +24,25 @@ import (
 )
 
 // TestRunCLI_WeftSkipPushScenario runs the push and sync checks over one hub.
-// It stays serial (no t.Parallel): t.Setenv("FABRIC_SKIP_PUSH", "1") panics under t.Parallel, and the env var is process-global state.
-// Steps run serially in this order, because both rewrite the weft placeholder file and each commit must differ from the last.
+// It runs serially: t.Setenv("FABRIC_SKIP_PUSH", "1") panics under t.Parallel,
+// and the env var is process-global state.
+// The steps run in this order, because both rewrite the weft placeholder file,
+// and each commit must differ from the last.
 func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-	// Prevent the detached push child from doing any real network work;
-	// SpawnDetachedPush itself checks this env var before spawning.
+	// Stop the detached push child from doing any real network work.
+	// SpawnDetachedPush checks this env var before it spawns the child.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	weftConfigFile := filepath.Join(h.WeftBase, lymdirs.LymDirName, "placeholder")
 
 	if !t.Run("EnvMapToOption", func(t *testing.T) {
 		// The CLI edge maps FABRIC_SKIP_PUSH to SyncOptions on the push verb.
-		// Fabric config is a repo-wide fact read from the board dir: fabriccli.CloneAndWire already materializes it with the plain registered template as part of building h, so nothing further needs seeding here.
+		// The repo-wide fabric config is read from the board dir.
+		// fabriccli.CloneAndWire already materializes it from the plain registered template while building h.
+		// Nothing further needs seeding here.
 		if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
@@ -64,7 +70,9 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	}
 
 	t.Run("SyncStillCommitsLym_WhenRepoWidePathspecNamesOnlyAnotherPath", func(t *testing.T) {
-		// With the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lym name), "lym fabric sync" must still commit _lym content, because the sync pathspec is built from fabricengine.PathspecNames — the routing set, which always contains "_lym" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
+		// The repo-wide fabric.yaml names only "_extra" as its pathspec, so "lym fabric sync" must still commit _lym content.
+		// The sync pathspec is built from fabricengine.PathspecNames, which always contains "_lym".
+		// It is never built from the raw Config.Dirs(), which would silently drop _lym.
 		// A miss here is silent, not loud.
 		hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
@@ -79,7 +87,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		result := envelope.RequireOK(t, output)
 
-		// In the prime sync hands the detached child the records side alone,
+		// In the prime, sync hands the detached child the records side alone,
 		// so the record holds a single push_spawned entry.
 		if got := pushSpawnedTargets(result); len(got) != 1 {
 			t.Errorf("push_spawned targets = %v; want exactly the records side\noutput: %s", got, output)
@@ -92,7 +100,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	})
 
 	t.Run("SyncInATaskPairSpawnsBothSides", func(t *testing.T) {
-		// In a task pair sync hands the detached child both sides, one push_spawned entry each.
+		// In a task pair, sync hands the detached child both sides, one push_spawned entry each.
 		const slug = "sync-both-sides-pair"
 		if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 			t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
@@ -116,7 +124,8 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	})
 
 	t.Run("AddSpawnsThePairPushAndReportsAFailedSpawnWithoutFailing", func(t *testing.T) {
-		// "add" reports one push_spawned entry per side of the new pair, and a failed spawn is a push_error that leaves the verb ok and the pair whole.
+		// "add" reports one push_spawned entry per side of the new pair.
+		// A failed spawn is a push_error that leaves the verb ok and the pair whole.
 		// The test swaps the process-global add seam, which is why the scenario stays serial.
 		spawnErr := errors.New("spawn refused")
 		tests := []struct {

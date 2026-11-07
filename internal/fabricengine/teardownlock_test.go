@@ -1,5 +1,6 @@
 // teardownlock_test.go covers DetachedPush's exit under a pause, which needs no git and no real hub:
-// the worktree paths it is given do not exist, so a child that goes on past the pause check stops at the gone-worktree check.
+// the worktree paths it is given do not exist,
+// so a child that goes on past the pause check stops at the gone-worktree check.
 
 package fabricengine
 
@@ -13,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDetachedPush_CoveredChildExitsBeforeItsFlags covers a covered child that was not spawned under its pair's parent lock:
+// TestDetachedPush_CoveredChildExitsBeforeItsFlags covers a covered child not spawned under its pair's parent lock:
 // it logs the deferral and returns before it takes the teardown lock, and records no failed push.
 // A parent-locked child skips the covered check, which the teardown lock file it then writes shows.
 // Serial: HoldHubPauseForTest installs the process's network gate.

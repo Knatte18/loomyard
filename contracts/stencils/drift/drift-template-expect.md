@@ -1,11 +1,11 @@
-<!-- This is the drift expect agent's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/drift/`
-     and read from there at call time by internal/seatengine, which fills it from the lead's value map that driftengine's ExpectTable builds, then hands it to
-     shuttle as the agent's whole prompt.
-     Every marker below is a top-level substitution;
-     the engine fills the parent and edit directives, and ExpectTable fills the rest,
-     expectation_format with the expected.yaml format of the run's diff mode.
-     There are no conditionals anywhere in this file. -->
+<!-- This is the drift expect agent's entire instruction set.
+     It ships as an embedded default in the top-level stencils package (contracts/stencils/stencils.go).
+     It is seeded to the Bolt checkout's `_lym/stencils/drift/`, and internal/seatengine reads it from there at call time.
+     seatengine fills it from the lead's value map that `driftengine.ExpectTable` builds.
+     It then hands the result to shuttle as the agent's whole prompt.
+     Every marker below is a top-level substitution, and the file has no conditionals.
+     The engine fills the parent and edit directives, and `driftengine.ExpectTable` fills the rest;
+     expectation_format holds the expected.yaml format of the run's diff mode. -->
 
 # Drift expect — write the changes this task is expected to make
 

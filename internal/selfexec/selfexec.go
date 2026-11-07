@@ -24,7 +24,7 @@ var errNoFileIdentity = errors.New("selfexec: no file identity on this platform"
 var errUnderTest = errors.New("selfexec: exec skipped under go test")
 
 // Watcher records the binary a process started from and re-execs the process when that binary changes.
-// It is not safe for concurrent use; its callers call Check from one poll loop.
+// It is not safe for concurrent use; a single poll loop must call Check.
 type Watcher struct {
 	path string
 	stat func(string) (identity, error)
@@ -66,16 +66,19 @@ func newWatcher(path string, stat func(string) (identity, error), exec func(path
 	return w
 }
 
-// Check re-stats the recorded path and replaces the process with it when the binary there differs from the one the process started from on two consecutive checks.
+// Check re-stats the recorded path.
+// When the binary there differs from the start binary on two consecutive checks, the process is replaced with it.
 // A process whose exec succeeds does not return.
 func (w *Watcher) Check() {
 	w.CheckWith(nil, nil)
 }
 
-// CheckWith re-stats the recorded path and replaces the process with it when the binary there differs from the one the process started from on two consecutive checks, telling its caller around the exec.
+// CheckWith re-stats the recorded path.
+// When the binary there differs from the start binary on two consecutive checks, the process is replaced with it.
 // A process whose exec succeeds does not return.
 // beforeExec runs right before the exec, once the two-sighting rule and the failed-identity rule have passed.
-// failed runs with the exec's error after an exec failed, once that identity is marked failed; a failed identity is never exec'd again, so it runs at most once per identity.
+// failed receives the exec's error after an exec fails.
+// A failed identity is never exec'd again, so failed runs at most once per identity.
 // A nil callback is skipped.
 func (w *Watcher) CheckWith(beforeExec func(), failed func(error)) {
 	current, changed := w.changedTwice()
@@ -96,8 +99,8 @@ func (w *Watcher) CheckWith(beforeExec func(), failed func(error)) {
 	}
 }
 
-// Replaced re-stats the recorded path and reports whether the binary there differs from the one the process started from on two consecutive calls.
-// It never execs, so a process that exits on a replaced binary instead of re-execing uses it in place of Check.
+// Replaced reports whether the binary there differs from the start binary on two consecutive calls.
+// It never execs, so a process that exits on a replaced binary can use it instead of replacing itself.
 func (w *Watcher) Replaced() bool {
 	if _, changed := w.changedTwice(); !changed {
 		return false
@@ -106,7 +109,8 @@ func (w *Watcher) Replaced() bool {
 	return true
 }
 
-// changedTwice re-stats the recorded path, updates the previous-identity state and reports the current identity with whether it differs from the start identity on this call and the one before.
+// changedTwice re-stats the recorded path and updates the previous-identity state.
+// It reports the current identity and whether it differs from the start identity on this call and the one before.
 func (w *Watcher) changedTwice() (identity, bool) {
 	if !w.hasStart {
 		return identity{}, false

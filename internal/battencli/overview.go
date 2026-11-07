@@ -1,4 +1,5 @@
-// overview.go implements the hidden `overview` batten verb, the pane process of the runs strand that draws a beam's window, and the cells the window draws for each run a dobby drives:
+// overview.go implements the hidden `overview` batten verb: the pane process of the runs strand drawing a beam's window.
+// The window draws the cells of each run a dobby drives:
 // the dobby's lines (overviewdobby.go) above the orch lines of the beam and of every beam below it (overvieworch.go).
 
 package battencli
@@ -35,7 +36,7 @@ const (
 	overviewStatusBroken = "status unreadable"
 	overviewUnknown      = "-"
 	overviewColumnGap    = "  "
-	// overviewPausedFormat is the state cell of a run a live pause covers, filled with the minutes since the pause began.
+	// overviewPausedFormat is the state cell of a run under a live pause; %s takes the minutes since the pause began.
 	overviewPausedFormat = "paused %s"
 )
 
@@ -47,7 +48,7 @@ type overviewRun struct {
 	StartedAt time.Time
 	// Batten is the poll of batten's own status file.
 	Batten statuspane.StatusPoll
-	// Child is the poll of the task worktree's status file; the zero poll unless batten is in the row that runs the child.
+	// Child is the poll of the task worktree's status file; the zero poll unless batten is in Run-Shed.
 	Child statuspane.StatusPoll
 	// PausedAt is when the live pause covering the run began; zero when none covers it.
 	PausedAt time.Time
@@ -65,12 +66,15 @@ type RunCells struct {
 	Stage string
 	// InStage is the time since the stage began, in whole minutes.
 	InStage string
-	// Unreadable reports that the run's status, or the status of the child it runs, failed to read on two polls in a row; the other fields are then empty.
+	// Unreadable reports that the run's status, or the status of the child it runs, failed to read on two polls in a row;
+	// the other fields are then empty.
 	Unreadable bool
 }
 
 // overviewRunCells builds the cells of run at now.
-// A run with no status shows as `starting` with no stage; the stage is the task worktree's current producer while batten is in Run-Shed and that status is found, and batten's own producer otherwise.
+// A run with no status shows as `starting` with no stage.
+// While batten is in Run-Shed and the task worktree's status is found, the stage is that worktree's current producer.
+// Otherwise the stage is batten's own current producer.
 func overviewRunCells(run overviewRun, now time.Time) RunCells {
 	inRunShed := run.Batten.Found && run.Batten.Status.CurrentProducer == battenrecipe.NameRunShed
 	if run.Batten.Unreadable || (inRunShed && run.Child.Unreadable) {
@@ -100,7 +104,8 @@ func overviewRunCells(run overviewRun, now time.Time) RunCells {
 	return RunCells{State: state, Stage: stage, InStage: overviewSince(stageStarted, now)}
 }
 
-// overviewEntryNumber returns the entry number row has in the named recipe; false when the recipe is empty or unreadable or does not hold the row.
+// overviewEntryNumber returns the entry number row has in the named recipe;
+// false when the recipe is empty or unreadable or does not hold the row.
 func overviewEntryNumber(recipe, row string) (int, bool) {
 	if recipe == "" {
 		return 0, false
@@ -113,7 +118,8 @@ func overviewEntryNumber(recipe, row string) (int, bool) {
 	return number, ok
 }
 
-// overviewStage draws row as `<n>. <row>`, n being its entry number in the named recipe; the row alone when its number cannot be read.
+// overviewStage draws row as `<n>. <row>`, n being its entry number in the named recipe;
+// the row alone when its number cannot be read.
 func overviewStage(recipe, row string) string {
 	number, ok := overviewEntryNumber(recipe, row)
 	if !ok {
@@ -122,7 +128,8 @@ func overviewStage(recipe, row string) string {
 	return fmt.Sprintf("%d. %s", number, row)
 }
 
-// overviewChildStage draws the child's current row of a run in Run-Shed as `<Run-Shed's number>.<child number> <row>`; the row alone when either number cannot be read.
+// overviewChildStage draws the child's current row of a run in Run-Shed as `<Run-Shed's number>.<child number> <row>`;
+// the row alone when either number cannot be read.
 func overviewChildStage(run overviewRun) string {
 	row := run.Child.Status.CurrentProducer
 	parent, parentOK := overviewEntryNumber(run.Recipe, battenrecipe.NameRunShed)
@@ -133,7 +140,8 @@ func overviewChildStage(run overviewRun) string {
 	return fmt.Sprintf("%d.%d %s", parent, child, row)
 }
 
-// lastEntryEnd returns the end of status's last history entry: its last_at when set, else its at; false when there is no entry or the time does not parse.
+// lastEntryEnd returns the end of status's last history entry: its last_at when set, else its at;
+// false when there is no entry or the time does not parse.
 func lastEntryEnd(status shedengine.Status) (time.Time, bool) {
 	if len(status.History) == 0 {
 		return time.Time{}, false
@@ -165,7 +173,8 @@ func padRight(s string, width int) string {
 	return s
 }
 
-// DobbyRunCells reads the RunCells of the batten runs of a hub's prime, keeping across reads what a later read can reuse.
+// DobbyRunCells reads the RunCells of the batten runs of a hub's prime.
+// It keeps across reads what a later read can reuse.
 // It reads the seeds, the status files and the pause record without their locks, and writes nothing.
 // It is not safe for concurrent use.
 type DobbyRunCells struct {
@@ -181,10 +190,11 @@ type DobbyRunCells struct {
 	childCaches  map[string]*statuspane.StatusCache
 	// seeds holds the decoded seed by slug; a seed is write-once, so a decoded one is never read again.
 	seeds map[string]shedrun.Seed
-	// pairs holds the resolved task worktree location by slug, for as long as its directory exists and the run stays in Run-Shed;
+	// pairs holds the resolved task worktree location by slug while its directory exists and the run stays in Run-Shed;
 	// the pair's anchor can move between two runs, so a later Run-Shed spell resolves it again.
 	pairs map[string]*lymcwd.Location
-	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again while the run stays in Run-Shed.
+	// childRecipes holds the recipe a child's seed names by slug;
+	// a seed is write-once, so a decoded one is never read again while the run stays in Run-Shed.
 	// The entry goes with the pair's, since a later run in the pair has a seed of its own.
 	childRecipes map[string]string
 }
@@ -206,7 +216,8 @@ func NewDobbyRunCells(prime *lymcwd.Location, pauseRecord string) *DobbyRunCells
 }
 
 // Of returns the RunCells of each of runs at now, by slug.
-// A status that fails to read once keeps the cells of its previous read; a pause record that does not read covers nothing.
+// A status that fails to read once keeps the cells of its previous read;
+// a pause record that does not read covers nothing.
 func (r *DobbyRunCells) Of(runs []dobbyengine.ViewRun, now time.Time) map[string]RunCells {
 	record, err := pauserecord.Read(r.pauseRecord)
 	if err != nil {
@@ -248,7 +259,8 @@ func (r *DobbyRunCells) resolveChildStatus(slug string) (string, error) {
 }
 
 // resolveChildRecipe returns the recipe the seed of the task worktree of slug names, empty when the seed is absent.
-// A decoded seed's recipe is cached by slug.
+// resolveChildRecipe returns the recipe in the seed of the child run of slug.
+// A recipe is cached by slug once read, and a child with no seed yields an empty recipe.
 func (r *DobbyRunCells) resolveChildRecipe(slug string) (string, error) {
 	if recipe, ok := r.childRecipes[slug]; ok {
 		return recipe, nil
@@ -265,7 +277,9 @@ func (r *DobbyRunCells) resolveChildRecipe(slug string) (string, error) {
 	return seed.Recipe, nil
 }
 
-// poll builds the overviewRun of slug from its seed, batten's status and, while batten is in Run-Shed, the child's status and seed.
+// poll builds the overviewRun of slug from its seed and from batten's status.
+// While batten's current producer is `battenrecipe.NameRunShed`, it adds the child's status and recipe.
+// Otherwise it drops the cached child pair and recipe.
 func (r *DobbyRunCells) poll(slug string) overviewRun {
 	run := overviewRun{Slug: slug}
 
@@ -321,14 +335,17 @@ func cacheFor(caches map[string]*statuspane.StatusCache, slug string) *statuspan
 	return cache
 }
 
-// overviewSource draws a beam's window: the lines of its dobby, then the orch lines of the beam and of every beam below it.
+// overviewSource draws a beam's window:
+// the lines of its dobby, then the orch lines of the beam and of every beam below it.
 // It is not safe for concurrent use.
 type overviewSource struct {
 	now func() time.Time
-	// orchPaths locates the state file of the window's own orch, labelled orchLabel; the frame reads it alone when orchs is nil or fails.
+	// orchPaths locates the state file of the window's own orch, labelled orchLabel;
+	// the frame reads it alone when orchs is nil or fails.
 	orchPaths orchengine.Paths
 	orchLabel string
-	// orchs returns the paths of the orchs the window shows, with the slug label of each, empty for the prime; read on each frame.
+	// orchs returns the paths of the orchs the window shows, with the slug label of each, empty for the prime.
+	// It is called on each frame.
 	orchs func() ([]orchengine.Paths, []string, error)
 	// orchCaches holds one state cache per orch, by state file path.
 	orchCaches map[string]*orchStateCache
@@ -337,7 +354,8 @@ type overviewSource struct {
 	dobby func(now time.Time) []string
 }
 
-// newOverviewSource returns the source of the window of worktree, in the hub of prime, drawing the orchs against thresholds and reading the time from now.
+// newOverviewSource returns the source of the window of worktree, in the hub of prime.
+// It draws the orchs against thresholds and reads the time from now.
 func newOverviewSource(prime, worktree *lymcwd.Location, thresholds overviewThresholds, now func() time.Time) *overviewSource {
 	label := worktree.WorktreeName
 	if label == prime.WorktreeName {
@@ -356,7 +374,9 @@ func newOverviewSource(prime, worktree *lymcwd.Location, thresholds overviewThre
 	}
 }
 
-// windowOrchPaths returns the orch paths of the orchs the window of the worktree named worktree shows, in the hub of prime, with the slug of each beam's worktree as its label and an empty label for the prime.
+// windowOrchPaths returns the orch paths of the orchs the window of the worktree named worktree shows.
+// The orchs are listed in the hub of prime.
+// Each beam's orch path is labelled with the slug of its worktree, and the prime's with an empty label.
 // parentOf answers the worktree a beam was forked from, "" for the prime.
 func windowOrchPaths(prime *lymcwd.Location, worktree string, parentOf func(slug string) (string, error)) ([]orchengine.Paths, []string, error) {
 	locations, err := orchcli.HubOrchs(prime)
@@ -376,7 +396,9 @@ func windowOrchPaths(prime *lymcwd.Location, worktree string, parentOf func(slug
 }
 
 // orchsAtOrBelow keeps, in order, the orch locations the window of the worktree named worktree shows.
-// The prime's window, the prime being named primeName, shows every one; a beam's window shows the beam's own and each beam whose parent chain, read through parentOf, reaches the beam.
+// The prime's window, the prime being named primeName, shows every location.
+// A beam's window shows the beam's own location.
+// It also shows every location whose parent chain, read through parentOf, reaches the beam.
 // A location whose parent chain does not read is left out.
 func orchsAtOrBelow(primeName, worktree string, locations []*lymcwd.Location, parentOf func(slug string) (string, error)) []*lymcwd.Location {
 	if worktree == primeName {
@@ -396,7 +418,8 @@ func orchsAtOrBelow(primeName, worktree string, locations []*lymcwd.Location, pa
 	return shown
 }
 
-// atOrBelow reports whether the worktree named slug is the one named worktree or descends from it, following parentOf up to the prime, named primeName.
+// atOrBelow reports whether the worktree named slug is the one named worktree or descends from it.
+// It follows parentOf up to the prime, which is named primeName.
 // A parent chain that revisits a slug returns an error.
 func atOrBelow(slug, worktree, primeName string, parentOf func(slug string) (string, error)) (bool, error) {
 	visited := map[string]bool{}
@@ -417,7 +440,8 @@ func atOrBelow(slug, worktree, primeName string, parentOf func(slug string) (str
 	return false, nil
 }
 
-// orchLines polls the state of every orch the window shows and returns one orch line per orch that has a state file to show.
+// orchLines polls the state of every orch the window shows.
+// It returns one orch line per orch that has a state file to show.
 // An orch list that cannot be read falls back to the window's own orch alone.
 func (s *overviewSource) orchLines() []string {
 	paths, labels := []orchengine.Paths{s.orchPaths}, []string{s.orchLabel}
@@ -443,9 +467,11 @@ func (s *overviewSource) orchLines() []string {
 	return lines
 }
 
-// frame polls the window's dobby and orchs and returns the frame: the dobby's lines, then a blank line and the orch lines.
+// frame polls the window's dobby and orchs and returns the frame.
+// The frame is the dobby's lines, then a blank line and the orch lines.
 // A missing section leaves out the blank line with it.
-// It reads the orch states, the run records, the status files and the dobby's record without their locks, and writes nothing.
+// It reads the orch states, the run records, the status files and the dobby's record without their locks.
+// It writes nothing.
 func (s *overviewSource) frame() statuspane.Frame {
 	var lines []string
 	if s.dobby != nil {
@@ -460,7 +486,8 @@ func (s *overviewSource) frame() statuspane.Frame {
 	return statuspane.Frame{Lines: lines}
 }
 
-// worktreeHasDobby reports whether the worktree named worktree runs a dobby: the prime, or a beam among those beams lists.
+// worktreeHasDobby reports whether the worktree named worktree runs a dobby:
+// the prime, or a beam among those beams lists.
 // A task pair has none.
 func worktreeHasDobby(prime *lymcwd.Location, worktree string, beams func() ([]dobbyengine.BeamPair, error)) (bool, error) {
 	if worktree == prime.WorktreeName {
@@ -473,7 +500,8 @@ func worktreeHasDobby(prime *lymcwd.Location, worktree string, beams func() ([]d
 	return slices.ContainsFunc(pairs, func(pair dobbyengine.BeamPair) bool { return pair.Slug == worktree }), nil
 }
 
-// overviewCmd builds the hidden `overview` subcommand: the pane process of the runs strand that draws the window of the prime or of a beam.
+// overviewCmd builds the hidden `overview` subcommand:
+// the pane process of the runs strand that draws the window of the prime or of a beam.
 // It reads the orch states, the orch config once at start, the run records and status files, and the dobby's records.
 func (c *battenCLI) overviewCmd() *cobra.Command {
 	return &cobra.Command{

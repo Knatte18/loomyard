@@ -1,4 +1,5 @@
-// pool.go — the hub-wide pool of gate slots: acquiring a slot, the holder records beside the slot locks, and the environment a slot's child inherits.
+// pool.go implements the hub-wide pool of gate slots.
+// It covers acquiring a slot, the holder records beside the slot locks, and the environment a slot's child inherits.
 
 package gateslot
 
@@ -21,10 +22,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// InheritEnv names the environment variable that carries the lock path of the slot a gate run holds, so a nested gate run inside it does not acquire a second slot.
+// InheritEnv names the environment variable that carries the lock path of the slot a gate run holds,
+// so a nested gate run inside it does not acquire a second slot.
 const InheritEnv = "LYM_GATE_SLOT"
 
-// PrebuiltLymEnv names the environment variable that carries the path of the `lym` binary a gate run built once for every package of a tagged run, so a test binary runs it instead of building its own.
+// PrebuiltLymEnv names the environment variable that carries the path of the `lym` binary.
+// A tagged gate run builds it once for all packages, and each test binary runs that build instead.
 const PrebuiltLymEnv = "LYM_PREBUILT_LYM"
 
 // StripPrebuilt returns env without PrebuiltLymEnv.
@@ -58,9 +61,11 @@ const (
 type Limits struct {
 	// Slots is the number of gate runs that may hold a slot at once.
 	Slots int
-	// Tier0Parallel is `tier0`'s effective parallel, this machine's override included, that a non-tier slot holder's go commands run under; 0 when the hub declares no `tier0`.
+	// Tier0Parallel is the effective parallel of `tier0`, this machine's override included.
+	// Go commands of a non-tier slot holder run under it; it is 0 when the hub declares no `tier0`.
 	Tier0Parallel int
-	// BusyQuit is the continuous CPU-busy window after which `lym gate test` quits a Go test binary; 0 means the watchdog is off.
+	// BusyQuit is the continuous CPU-busy window after which `lym gate test` quits a Go test binary.
+	// Zero means the watchdog is off.
 	BusyQuit time.Duration
 }
 
@@ -74,17 +79,18 @@ type Holder struct {
 	PID int `yaml:"pid"`
 	// Started is when the slot was acquired; Acquire sets it.
 	Started time.Time `yaml:"started"`
-	// Tier is the tier key, such as tier0, of the tier run that holds the slot; empty for a holder that is no tier run.
+	// Tier is the tier key, such as tier0, of the tier run holding the slot; empty when the holder is not a tier run.
 	Tier string `yaml:"tier,omitempty"`
-	// Slot is the number of the held slot; Holders fills it from the record's file name, and the record never carries it.
+	// Slot is the number of the held slot, read from the record's file name; the record never carries it.
 	Slot int `yaml:"-"`
 }
 
 // Pool is the hub-wide pool of gate slots, one OS file lock per slot in Dir.
 type Pool struct {
-	// Dir is the told slot directory.
+	// Dir is the directory that holds the slot locks and holder records.
 	Dir string
-	// Limits is read at every acquire attempt, so a lowered count takes effect on the next acquire while a running holder of a higher slot finishes.
+	// Limits is read at every acquire attempt.
+	// A lowered count takes effect at the next acquire, and a running holder of a higher slot finishes.
 	Limits func() (Limits, error)
 	// Poll is the pause between attempts while every slot is held; zero means two seconds.
 	Poll time.Duration
@@ -114,9 +120,12 @@ func (p *Pool) PrebuiltDir() string {
 }
 
 // Acquire holds one slot for h until the lease is released.
-// It tries every slot from 1 to the current Limits().Slots; while all are held it logs the wait start, polls, and logs the wait end on acquiring.
-// While another holder has the drain lock a multi-slot acquire takes, it waits the same way, so a multi-slot waiter is not starved by new single-slot holders.
-// It imposes no deadline of its own: a caller wanting a bound passes a deadline context, and a cancelled context returns its error with no slot held.
+// It tries every slot from 1 to the current Limits().Slots.
+// While all are held, it logs the wait start, polls, and logs the wait end on acquiring.
+// While a multi-slot acquire holds the drain lock, it waits the same way.
+// The drain lock keeps a multi-slot waiter from being starved by new single-slot holders.
+// It imposes no deadline of its own; a caller wanting a bound passes a deadline context.
+// A cancelled context returns its error with no slot held.
 // Polling gives no FIFO order among waiters.
 func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 	poll, err := p.prepare(&h)
@@ -158,10 +167,14 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 }
 
 // AcquireSlots holds count slots for h until the lease is released.
-// A count of 1 behaves as Acquire; a count of 0, or above the current Limits().Slots, is clamped to every slot.
-// A multi-slot acquire first takes the pool's drain lock at `<Dir>/drain.lock`, an OS file lock, so process death releases it and new single-slot acquires queue behind it.
-// It then takes slots one at a time in ascending slot order, holding each it has while it waits for the next, and releases the drain lock once it holds them all.
-// The drain admits one multi-slot waiter at a time and every single-slot holder finishes, so two multi-slot waiters never deadlock.
+// A count of 1 takes one slot and does not take the drain lock.
+// A count of 0, or above the current Limits().Slots, is clamped to every slot.
+// A multi-slot acquire first takes the pool's drain lock at `<Dir>/drain.lock`, an OS file lock.
+// Process death releases it, and new single-slot acquires queue behind it.
+// It then takes slots one at a time in ascending slot order, holding each while it waits for the next.
+// It releases the drain lock once it holds them all.
+// The drain admits one multi-slot waiter at a time.
+// Every single-slot holder finishes, so two multi-slot waiters never deadlock.
 // A cancelled context releases every slot and the drain lock already taken and returns its error with nothing held.
 func (p *Pool) AcquireSlots(ctx context.Context, h Holder, count int) (*Lease, error) {
 	if count == 1 {
@@ -248,8 +261,10 @@ func (p *Pool) acquireDrain(ctx context.Context, poll time.Duration, noteWait fu
 	}
 }
 
-// takeSlotsInOrder takes slots 1, 2, ... one at a time, holding each while it waits for the next, until it holds count of them.
-// A count of 0, or above the current Limits().Slots, means every slot, re-read at each attempt so a lowered count takes effect.
+// takeSlotsInOrder takes slots 1, 2, ... one at a time, holding each while it waits for the next.
+// It returns once it holds count slots.
+// A count of 0, or above the current Limits().Slots, means every slot.
+// Limits are re-read at each attempt, so a lowered count takes effect.
 // It does not check the drain lock, which the caller holds.
 // On an error or a cancelled context it releases every slot it holds.
 func (p *Pool) takeSlotsInOrder(ctx context.Context, h Holder, count int, poll time.Duration, noteWait func()) (*Lease, error) {
@@ -318,7 +333,8 @@ func (p *Pool) tryAcquireSlot(number int, h Holder) (heldSlot, bool, error) {
 }
 
 // Holders returns the holder records of the slots whose lock is held right now, oldest first, each with its slot number.
-// A record is trusted only while its lock is held, so a record a crashed holder left behind is dropped; it reads every slot record in the directory, so a holder of a slot above a lowered count still shows.
+// A record is trusted only while its lock is held, so a record a crashed holder left behind is dropped.
+// It reads every slot record in the directory, so a holder of a slot above a lowered count still shows.
 func (p *Pool) Holders() ([]Holder, error) {
 	records, err := filepath.Glob(filepath.Join(p.Dir, holderGlobPattern))
 	if err != nil {
@@ -352,7 +368,8 @@ func (p *Pool) Holders() ([]Holder, error) {
 	return holders, nil
 }
 
-// Draining reports whether a multi-slot acquire holds the drain lock, which makes every new single-slot acquire wait even while a slot is free.
+// Draining reports whether a multi-slot acquire holds the drain lock.
+// While it does, every new single-slot acquire waits, even when a slot is free.
 // A pool whose drain lock file was never created is not draining, and the check creates no file there.
 func (p *Pool) Draining() (bool, error) {
 	if _, err := os.Stat(p.drainLockPath()); errors.Is(err, os.ErrNotExist) {
@@ -413,8 +430,10 @@ func (l *Lease) Release() error {
 }
 
 // HolderEnv returns a copy of base for a non-tier slot holder's child.
-// GOFLAGS carries the base's value with `-trimpath` appended, and `-p=<tier0Parallel>` before it when tier0Parallel is above 0; a tier0Parallel of 0 adds no `-p`.
-// A non-nil lease also sets InheritEnv to its first slot's lock path, so a gate run inside the child runs without acquiring.
+// GOFLAGS is the base's value, when it has one, followed by `-p=<tier0Parallel>` and `-trimpath`.
+// The `-p` flag is added only when tier0Parallel is above 0.
+// A non-nil lease also sets InheritEnv to its first slot's lock path,
+// so a gate run inside the child runs without acquiring.
 func HolderEnv(base []string, lease *Lease, tier0Parallel int) []string {
 	existingFlags := ""
 	env := make([]string, 0, len(base)+2)
@@ -442,7 +461,8 @@ func HolderEnv(base []string, lease *Lease, tier0Parallel int) []string {
 	return env
 }
 
-// InheritEnv returns a copy of base with only InheritEnv set, naming the first held slot's lock path, so a nested gate run inside the lease runs without acquiring.
+// InheritEnv returns a copy of base with InheritEnv replaced by the first held slot's lock path,
+// so a nested gate run inside the lease runs without acquiring.
 // It appends no GOFLAGS: a tier's command and env set its own parallelism.
 func (l *Lease) InheritEnv(base []string) []string {
 	env := make([]string, 0, len(base)+1)

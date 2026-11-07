@@ -1,7 +1,7 @@
-// mergestage_integration_test.go covers MergeStageResolved against real conflicted pairs: resolving
-// on disk then staging via the verb (unblocking MergeContinue), a path neither side lists (error, not
-// a silent skip), a delete/modify conflict resolved by deletion (staging succeeds), the empty-paths
-// no-op, and the Mutation Record Invariant's record assertion.
+// mergestage_integration_test.go covers MergeStageResolved against real conflicted pairs.
+// It checks that resolved paths stage and unblock MergeContinue, and that a path neither side lists is an error.
+// It also checks that a delete/modify conflict resolved by deletion stages, and that empty paths are a no-op.
+// The test also asserts the Mutation Record Invariant's record.
 
 package fabricengine_test
 
@@ -17,15 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging pins the foreign-state refusal on
-// the one mutating merge verb that lacked it.
-// doc.go states that foreign git merge state — a merge fabric did not start — is refused by EVERY
-// mutating merge verb, and MergeStageResolved's own godoc justified having no guard at all with
-// "with no merge in progress both sides' ConflictedFiles() are empty". Both claims were false in
-// exactly one state, and it is a state the repo's invariants explicitly permit an operator to create: a
-// plain-git conflicted merge in the warp checkout leaves MergeInProgress() false while
-// ConflictedFiles() lists the conflict, so the partition routed that path straight to `git add -A`
-// and staged into a merge fabric had no record of and no lock over.
+// TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging pins the refusal of foreign merge state:
+// a plain-git merge in the warp checkout leaves MergeInProgress false while ConflictedFiles lists the conflict.
+// Without the refusal, the path would be staged into a merge the fabric has no record of and no lock over.
 func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -35,8 +29,7 @@ func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T)
 	setupConflictingDivergence(t, h.PrimeWorktree(), "other", "plain-conflict.txt")
 	gitMergeAllowConflict(t, h.PrimeWorktree(), "other")
 
-	// Preconditions, asserted rather than assumed: fabric has no merge of its own, yet the path IS
-	// conflicted — the exact pair of facts the old justification claimed could not co-occur.
+	// Preconditions, asserted rather than assumed: the fabric has no merge of its own, yet the path is conflicted.
 	if inProgress, err := f.MergeInProgress(); err != nil || inProgress {
 		t.Fatalf("MergeInProgress() = (%v, %v); want (false, nil) — foreign state is not fabric's merge", inProgress, err)
 	}
@@ -58,9 +51,9 @@ func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T)
 	}
 }
 
-// TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds covers the primitive's whole
-// point: after a conflicted MergeIn, editing the conflicted file alone leaves it unmerged in the
-// index — MergeStageResolved with exactly the conflicted paths clears both sides' ConflictedFiles(),
+// TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds covers the primitive's purpose:
+// after a conflicted MergeIn, editing the conflicted file alone leaves it unmerged in the index.
+// MergeStageResolved with exactly the conflicted paths clears both sides' ConflictedFiles(),
 // and a subsequent MergeContinue then succeeds.
 func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -101,8 +94,8 @@ func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testin
 	}
 }
 
-// TestMergeStageResolved_PathNotConflictedOnEitherSide covers the caller-bug guard: a path listed by
-// neither side's ConflictedFiles() is an error naming that path, never a silent skip.
+// TestMergeStageResolved_PathNotConflictedOnEitherSide covers the caller-bug guard:
+// a path listed by neither side's ConflictedFiles() is an error naming that path, never a silent skip.
 func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -126,12 +119,11 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 	}
 }
 
-// TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion covers that a delete/modify conflict
-// resolved by removing the file stages successfully rather than erroring on the missing pathspec.
-// Read honestly, this test pins the OUTCOME, not gitrepo.StageResolved's `-A`: plain
-// `git add <pathspec>` has staged removals since git 2.0, so on any git in use the two forms behave
-// identically here and rewriting `add -A --` to `add --` keeps this test green. The `-A` is a version
-// pin whose correctness no test on a modern git can demonstrate — see StageResolved's own godoc.
+// TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion covers a delete/modify conflict resolved by deletion:
+// the stage succeeds rather than erroring on the missing pathspec.
+// The test pins that outcome, not the `-A` in the staging call.
+// Plain `git add <pathspec>` has staged removals since git 2.0, so this test stays green if `-A` is dropped.
+// The `-A` is a version pin that no test on a modern git can demonstrate.
 func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -175,9 +167,8 @@ func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T)
 	}
 }
 
-// commitOnBranchDeleting checks out branch in dir off whatever is currently checked out — creating it
-// if absent — removes filename and commits the removal, then switches back to whatever branch was
-// checked out before.
+// commitOnBranchDeleting checks out branch in dir, creating it if absent, off whatever is currently checked out.
+// It removes filename, commits the removal, then switches back to the branch that was checked out before.
 func commitOnBranchDeleting(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 

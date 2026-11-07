@@ -1,4 +1,5 @@
-// remove_test.go covers the verdict `lym fabric remove` takes from an origin reconcile report, and the remover's choice between the local removal and the ordinary one over fake seams.
+// remove_test.go covers the verdict `lym fabric remove` takes from an origin reconcile report.
+// It also covers the remover's choice between the local removal and the ordinary one over fake seams.
 
 package fabriccli
 

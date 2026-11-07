@@ -1,4 +1,6 @@
-// driftwiring_integration_test.go checks that the Drift seams loomcli builds run the capture and the compare where a step's dir resolves in a hub anchored at a subdirectory: the anchored directory for no dir, and the worktree root joined with a relative dir.
+// driftwiring_integration_test.go checks that the Drift seams loomcli builds run each step where its dir resolves.
+// In a hub anchored at a subdirectory, a step with no dir runs in the anchored directory,
+// and a step whose relative dir is joined onto the worktree root runs in the worktree root joined with that dir.
 
 package loomcli_test
 
@@ -21,8 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriftDeps_RunWhereTheStepsDirResolves covers the capture and the compare seams over a hub anchored at a subdirectory:
-// each declared command records its working directory, which must be the anchored directory both for a step with no dir and for a step whose dir `backend` is joined onto the worktree root.
+// TestDriftDeps_RunWhereTheStepsDirResolves covers the capture and compare seams in a hub anchored at a subdirectory.
+// Each declared command records its working directory, which must be the anchored directory for a step with no dir.
+// For a step with dir `backend`, it must be the worktree root joined with that dir.
 // A relative dir joined onto the anchored directory instead names a directory that does not exist, so the run is refused.
 func TestDriftDeps_RunWhereTheStepsDirResolves(t *testing.T) {
 	tiergate.Require(t, 1)

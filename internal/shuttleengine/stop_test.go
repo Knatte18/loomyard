@@ -128,7 +128,8 @@ func TestStop_FailedRecordWriteRemovesNothingAndRestoresTheHandle(t *testing.T) 
 }
 
 // TestStopStrand_UnrecordableStopRemovesNothing covers the guid form's record that cannot be read or rewritten.
-// The read row calls stopRecorded because FindRun skips an unreadable record, so only a record that turns unreadable after the scan reaches that refusal.
+// The read row calls stopRecorded because FindRun skips an unreadable record;
+// only a record that turns unreadable after the scan reaches that refusal.
 func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -202,7 +203,9 @@ func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 }
 
 // TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns covers the step form over one run-directory root:
-// only a running run tied to the step whose strand is live or a dead own-window one is stopped, an untied one is listed and left alone, a dead window 0 strand is left alone, and a failed stop is reported and skipped.
+// only a running run tied to the step is stopped when its strand is live or a dead own-window one;
+// an untied run is listed and left alone; a dead window 0 strand is left alone;
+// and a failed stop is reported and skipped.
 func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -280,7 +283,8 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 }
 
 // TestStop_WaitThatSeesTheStoppedStrandGoEndsDied covers a Wait on a handle whose own Stop removed the strand:
-// with the run's files missing the strand's absence is the stop, so the run ends died and records stopped, never the not-tracked mechanism failure;
+// with the run's files missing, the strand's absence is the stop;
+// the run ends died and records stopped, never the not-tracked mechanism failure;
 // with the files present the finished work stays done.
 func TestStop_WaitThatSeesTheStoppedStrandGoEndsDied(t *testing.T) {
 	tiergate.Require(t, 0)

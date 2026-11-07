@@ -1,4 +1,5 @@
-// tied.go starts a child tied to the calling process's life and kills a child's whole process tree, from the live child or from a record read back from disk.
+// tied.go starts a child tied to the calling process's life and kills the child's whole process tree.
+// The kill works from the live child or from a record read back from disk.
 
 package proc
 
@@ -18,7 +19,7 @@ type TreeRecord struct {
 	StartTime string `json:"start_time"`
 }
 
-// Tied is a child started by StartTied.
+// Tied is a child process that dies with the calling process, and whose process tree can be killed as a whole.
 type Tied struct {
 	cmd    *exec.Cmd
 	record TreeRecord
@@ -32,7 +33,8 @@ type Tied struct {
 
 // StartTied starts cmd tied to the calling process's life, in its own process group whose id is the child's pid.
 // On Linux the kernel kills the child when the calling process dies; on Windows a kill-on-close job object does.
-// When the caller set no cmd.Cancel on an exec.CommandContext child, so it still holds the default that kills the child alone, it installs one that calls Kill and the child dies with its whole tree on cancel.
+// When cmd still holds the default Cancel of exec.CommandContext, StartTied replaces it with one that calls Kill.
+// The default kills the child alone, so the replacement makes cancel kill the child's whole tree.
 // A Cancel the caller set is kept, and a plain exec.Command has none.
 func StartTied(cmd *exec.Cmd) (*Tied, error) {
 	t := &Tied{cmd: cmd, done: make(chan error, 1)}
@@ -82,8 +84,10 @@ func (t *Tied) Kill() error {
 }
 
 // KillTree kills the process tree a record names and reports whether it killed anything.
-// On Linux it kills the process group only while a live process still reports the recorded group id with a start time at or after the recorded one, so a group that has emptied is left alone.
-// On Windows it kills nothing and reports false; the tree dies through TerminateNamedJob on its loop's job.
+// On Linux it kills the process group only while a live process still reports the recorded group id,
+// and that process has a start time at or after the recorded one, so a group that has emptied is left alone.
+// On Windows it kills nothing and reports false;
+// the tree dies through TerminateNamedJob on the named job its loop holds.
 func KillTree(rec TreeRecord) (bool, error) {
 	return killTreePlatform(rec)
 }
@@ -95,8 +99,10 @@ func SelfRecord() TreeRecord {
 	return TreeRecord{PID: pid, StartTime: start}
 }
 
-// HoldNamedJob puts the calling process into a kill-on-close Windows job object called name and returns the function that releases its handle.
-// The name exists only while a handle is open, so TerminateNamedJob reaches the live holder and its whole tree and never a reused pid.
+// HoldNamedJob puts the calling process into a kill-on-close Windows job object called name.
+// It returns the function that releases the job's handle.
+// The name exists only while a handle is open.
+// TerminateNamedJob therefore reaches the live holder and its whole tree, and never a reused pid.
 // On Linux it does nothing and returns a no-op release.
 func HoldNamedJob(name string) (func() error, error) {
 	return holdNamedJobPlatform(name)
@@ -108,7 +114,8 @@ func TerminateNamedJob(name string) (bool, error) {
 	return terminateNamedJobPlatform(name)
 }
 
-// IsBreakawayRefused reports whether err is Windows refusing a CREATE_BREAKAWAY_FROM_JOB start because the enclosing job forbids breakaway.
+// IsBreakawayRefused reports whether err is Windows refusing a CREATE_BREAKAWAY_FROM_JOB start.
+// Windows refuses that start when the enclosing job forbids breakaway.
 // It is always false on Linux.
 func IsBreakawayRefused(err error) bool {
 	return isBreakawayRefusedPlatform(err)

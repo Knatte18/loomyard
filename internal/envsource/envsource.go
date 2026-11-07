@@ -1,6 +1,6 @@
 // Package envsource reads environment variables from a .env file and OS environment.
-// It provides a single source of truth for how environment variables enter the system, isolating
-// env-sourcing policy from the configuration engine.
+// It is the single source of truth for how environment variables enter the system,
+// and it keeps env-sourcing policy out of `configengine`.
 package envsource
 
 import (
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// dotEnvName is the filename for environment variable overrides.
+// dotEnvName is the file name of the .env file whose variables the OS environment may override.
 const dotEnvName = ".env"
 
 // DotEnv returns the path to the .env file within a baseDir.
@@ -19,22 +19,18 @@ func DotEnv(baseDir string) string {
 	return filepath.Join(baseDir, dotEnvName)
 }
 
-// Build reads the .env file at DotEnv(baseDir) and overlays the OS environment, with OS values
-// taking precedence.
+// Build reads the .env file in baseDir and overlays the OS environment, with OS values taking precedence.
 // The .env file is parsed line-by-line, skipping blank lines and comments;
 // each line is split on the first = only.
-// Absent .env files return only OS environment.
-// Returns the merged map,
-// or an error if .env cannot be read.
+// An absent .env file yields only the OS environment.
+// It returns the merged map, or an error if the .env file cannot be read.
 func Build(baseDir string) (map[string]string, error) {
-	// Read the .env file
 	dotEnvPath := DotEnv(baseDir)
 	dotEnvMap, err := readDotEnv(dotEnvPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Overlay OS environment; OS values win
 	for _, envPair := range os.Environ() {
 		idx := strings.Index(envPair, "=")
 		if idx == -1 {
@@ -49,9 +45,9 @@ func Build(baseDir string) (map[string]string, error) {
 	return dotEnvMap, nil
 }
 
-// readDotEnv reads a .env file into a map, returning an empty map if the file
-// does not exist. Skips empty lines, comments, and lines without =. Values are
-// taken verbatim (not trimmed).
+// readDotEnv reads a .env file into a map, which is empty when the file does not exist.
+// It skips empty lines, comments, and lines without =.
+// Values are taken verbatim, not trimmed.
 func readDotEnv(path string) (map[string]string, error) {
 	file, err := os.Open(path)
 	if os.IsNotExist(err) {

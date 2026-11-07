@@ -1,4 +1,5 @@
-// record.go declares the owner record: the Record type, its constructors, and the Register, List and Owners functions that write and read the record files.
+// record.go declares the owner record:
+// the Record type, its constructors, and the Register, List and Owners functions that write and read the record files.
 
 package runproc
 
@@ -18,7 +19,8 @@ import (
 )
 
 // HubOwner is the owner of the processes that belong to the hub rather than to one run.
-// It is the Bolt checkout's directory name, which the fabric slug check refuses as reserved hub geometry, so no slug can take it.
+// It is the Bolt checkout's directory name, which the fabric slug check refuses as reserved hub geometry,
+// so no slug can take it.
 const HubOwner = lymcwd.BoltDirName
 
 // The roles a registered process plays for its owner.
@@ -51,7 +53,7 @@ const (
 type Record struct {
 	// PID is the process id.
 	PID int `json:"pid"`
-	// PGID is the pid when the process leads its own process group, and zero when it does not or the platform has no group to signal.
+	// PGID is the pid when the process leads its own group, and zero when it does not or the platform cannot signal groups.
 	PGID int `json:"pgid"`
 	// StartTime is the process's start time in the form proc.StartTime returns, empty where none can be read.
 	StartTime string `json:"start_time"`
@@ -63,7 +65,7 @@ type Record struct {
 	RegisteredAt time.Time `json:"registered_at"`
 }
 
-// ChildRecord builds the record of a child a spawner has just started with proc.Detach.
+// ChildRecord builds the record of a child a spawner has just started as a detached process.
 // The child leads its own group on every platform but Windows, where a child's group cannot be signalled.
 func ChildRecord(pid int, role string, argv []string) Record {
 	startTime, _ := proc.StartTime(pid)
@@ -75,7 +77,8 @@ func ChildRecord(pid int, role string, argv []string) Record {
 }
 
 // SelfRecord builds the record of the calling process.
-// Its group is recorded only when the process leads it, so a role started inside a shell's group is never group-signalled.
+// Its group is recorded only when the process leads it,
+// so a role started inside a shell's group is never group-signalled.
 func SelfRecord(role string) Record {
 	pid := os.Getpid()
 	startTime, _ := proc.StartTime(pid)
@@ -93,7 +96,7 @@ func SelfRecord(role string) Record {
 }
 
 // Register writes the record of one process of owner under dir, replacing the file of the same pid and start time.
-// dir is told by the caller; the record lands at <dir>/<owner>/<pid>-<start time>.json.
+// dir is supplied by the caller; the record lands at <dir>/<owner>/<pid>-<start time>.json.
 func Register(dir, owner string, rec Record) error {
 	path := recordPath(dir, owner, rec)
 	if err := state.WriteJSON(path, path+".lock", rec); err != nil {
@@ -108,7 +111,8 @@ func recordPath(dir, owner string, rec Record) string {
 	return filepath.Join(dir, owner, fmt.Sprintf("%d-%s.json", rec.PID, rec.StartTime))
 }
 
-// lister reads the records of an owner against the liveness seams, so a test reaches the Windows branch and a zombie on any platform.
+// lister reads the records of an owner against the liveness seams,
+// so a test reaches the Windows branch and a zombie on any platform.
 type lister struct {
 	startTime func(pid int) (string, bool)
 	// isAlive reports whether the pid answers, a zombie included.
@@ -123,8 +127,11 @@ func productionLister() lister {
 }
 
 // List returns the live records of one owner, ordered by pid.
-// It removes, with its lock file, every record whose process is gone or whose pid now carries another start time; a record file that does not decode is skipped.
-// A record whose process is a zombie is left out of the result but kept on disk, since members of its group may still run and an end must still reach them; it is removed once the zombie is reaped.
+// It removes, with its lock file, every record whose process is gone or whose pid now carries another start time;
+// a record file that does not decode is skipped.
+// A record whose process is a zombie is left out of the result but kept on disk.
+// Members of its group may still run and an end must still reach them,
+// so the record is removed once the zombie is reaped.
 // A missing owner directory lists nothing.
 func List(dir, owner string) ([]Record, error) {
 	return productionLister().list(dir, owner)
@@ -193,7 +200,8 @@ func (l lister) list(dir, owner string) ([]Record, error) {
 }
 
 // liveness reports whether the record's process is still the one that was registered, and whether it runs.
-// present is false when the pid is gone or carries another start time; running is false for a zombie, which has ended though its parent has not reaped it.
+// present is false when the pid is gone or carries another start time;
+// running is false for a zombie, which has ended though its parent has not reaped it.
 // Where no start time can be read, as on Windows, a record with an empty start time is present while its pid answers.
 func (l lister) liveness(record Record) (present, running bool) {
 	if !l.isAlive(record.PID) {

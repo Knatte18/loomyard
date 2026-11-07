@@ -1,16 +1,5 @@
-// cli.go builds the cobra command tree for the shed subtree and the RunCLI/RunCLIIn seams that wire
-// it into the standard io.Writer-based call contract, matching internal/loomcli's and
-// internal/battencli's own shapes so all three modules read identically at the call site.
-//
-// resolvePersistentPreRun is the whole reason this package resolves cwd at all, unlike internal/shedverbs' own no-resolver leaf: it must read a seed before it knows which recipe to arm, and a seed read is a path read that needs an anchor.
-// Its sequence, pinned as this batch's own refusal precedence, is: short-circuit on the bare group ("shed") and on "seed" (card 29's command, exempt because it is the one site invoked when no seed yet exists);
-// resolve cwd via lymcwd.CwdFrom;
-// resolve it into a *lymcwd.Location via lymcwd.Resolve, whose own not-a-git-repository sentinel passes through bare;
-// resolve the run-id from the command's positional argument, defaulting to shedrun.SelfRunID;
-// read the seed at that run-id via shedrun.ReadSeed, refusing via shedrun.MissingSeedMessage naming "lym shed seed <run-id> --recipe <name>" as the remedy when none is found;
-// look the seed's recipe up through the table's own lookup, whose unknown-name error already names the available recipes;
-// apply the verb gate against the resolved entry's Verbs set;
-// and call the entry's Arm (the Location-taking ArmAt shape) with the Location and run-id already in hand.
+// cli.go builds the cobra command tree for the shed subtree.
+// It also holds the RunCLI and RunCLIIn seams that run that tree against an io.Writer and an argument list.
 
 package shedcli
 
@@ -28,17 +17,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// shedCLI carries the one field every shed verb hangs off: spec, the shedverbs.Spec the pre-run
-// fills in place (resolvePersistentPreRun) and the four shedverbs verbs read at run time.
+// shedCLI holds the shedverbs.Spec that every shed verb reads at run time.
+// The pre-run fills the Spec in place once the addressed run is armed.
 type shedCLI struct {
-	// spec is always non-nil after construction, so Command() can hand the same pointer to
-	// shedverbs.Verbs before the pre-run has ever run.
+	// spec is never nil: the verbs hold this pointer from construction, before the pre-run fills it in.
 	spec *shedverbs.Spec
 }
 
-// shedVerbTexts carries this subtree's own generic Use/Short/Long text for the four shedverbs
-// verbs: it is not loom's and not batten's, since one "lym shed status --help" must serve every
-// recipe rather than describing only one of them.
+// shedVerbTexts holds the generic Use, Short and Long text of the five shedverbs verbs.
+// The text describes every recipe, so one "lym shed status --help" serves all of them.
 var shedVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
 		Use:      "run [<run-id>]",
@@ -148,8 +135,8 @@ Example:
   lym shed status
   lym shed pause --after Plan-Write
   lym shed goto --to Plan-Write`,
-		// RunE is set so that bare "lym shed" lists subcommands and "lym shed bogus" emits a JSON
-		// error envelope instead of falling through to cobra's plain-text help.
+		// RunE lists the subcommands for a bare "lym shed" and emits a JSON error envelope for "lym shed bogus";
+		// without it, cobra prints plain-text help instead.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
@@ -157,9 +144,8 @@ Example:
 	verbs := shedverbs.Verbs(shedVerbTexts, c.spec)
 	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
 
-	// MaximumNArgs(1), not a per-recipe contract read off the table: an addressed run is named by
-	// run-id, not by a per-recipe argument shape, so there is nothing left for a per-recipe
-	// contract to vary now that --recipe is gone.
+	// The one positional is the run-id, which names an addressed run the same way for every recipe,
+	// so the argument count is not read off the table.
 	runVerb.Args = cobra.MaximumNArgs(1)
 	stepVerb.Args = cobra.MaximumNArgs(1)
 	statusVerb.Args = cobra.MaximumNArgs(1)
@@ -171,13 +157,12 @@ Example:
 	return parent
 }
 
-// resolvePersistentPreRun is this subtree's own equivalent of each module's existing group guard,
-// extended to also exempt "lym shed seed" (card 29's command): it short-circuits when the bare
-// "shed" group command or "seed" itself is invoked, so neither needs a git repository or an
-// already-existing seed. Otherwise it resolves cwd, resolves it into a *lymcwd.Location -- the one
-// resolution stage armFromSeed below performs no part of, and therefore the one stage this
-// package's own untagged tests never drive directly -- and delegates the rest of the pinned
-// sequence to armFromSeed. See this file's own header comment for the full pinned sequence.
+// resolvePersistentPreRun arms the addressed run before a shed verb runs.
+// It returns at once for the bare "shed" group and for "seed"; neither needs a git repository or an existing seed.
+// Otherwise it resolves the working directory through lymcwd.CwdFrom;
+// it resolves the git location through lymcwd.Resolve, whose not-a-git-repository error passes through bare;
+// it arms the run through armFromSeed, which reads the seed and looks up its recipe;
+// and it stores the armed Spec in c.spec.
 func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "shed" || cmd.Name() == "seed" {
 		return nil
@@ -232,7 +217,7 @@ func reportArmFailure(out io.Writer, cmd *cobra.Command, location *lymcwd.Locati
 	return shedverbs.ReportArmError(out, cmd.Name(), err)
 }
 
-// addressedRunID is the run-id the positional arguments address: the first one, or shedrun.SelfRunID when there is none.
+// addressedRunID returns the run-id that args address: args[0] when present, otherwise shedrun.SelfRunID.
 func addressedRunID(args []string) string {
 	if len(args) > 0 {
 		return args[0]
@@ -240,14 +225,16 @@ func addressedRunID(args []string) string {
 	return shedrun.SelfRunID
 }
 
-// armFromSeed resolves the addressed run-id from args -- args[0] when present, shedrun.SelfRunID otherwise -- reads that run's seed, looks the seed's recipe up through the table's own lookup, applies the verb gate against the resolved entry's Verbs set, and calls the entry's Arm (the Location-taking ArmAt shape) with location and the resolved run-id.
-// It performs no lymcwd.Resolve of its own: location is already resolved, told rather than derived, by resolvePersistentPreRun -- which is what lets cli_test.go drive this directly against a hand-built *lymcwd.Location, with no real git repository behind it, and stay Tier 1.
+// armFromSeed arms the run that args address for verb and returns the armed Spec.
+// It reads the run's seed and looks up its recipe;
+// it refuses a verb the recipe does not support, and it calls the recipe's Arm.
+// The caller resolves location, so armFromSeed performs no git-location lookup of its own.
 //
-// The missing-seed refusal and the unsupported-verb refusal are wrapped in shedverbs.KindlessRefusal.
-// shedverbs.ReportArmError prints them with no "kind" field even on step.
-// A missing run is not a seventh value in the closed step vocabulary, and a driver never re-seeds a run.
+// A missing seed and an unsupported verb are wrapped in shedverbs.KindlessRefusal;
+// shedverbs.ReportArmError prints them with no "kind" field, even on step.
+// A missing run is not a value of the closed step vocabulary, and a driver never re-seeds a run.
 // A seed naming a recipe the table does not hold is refused with the re-seed way forward.
-// Every other error it returns reaches the driver on step as a bootstrap refusal.
+// Every other error reaches the driver on step as a bootstrap refusal.
 func armFromSeed(location *lymcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	runID := addressedRunID(args)
 
@@ -274,8 +261,8 @@ func armFromSeed(location *lymcwd.Location, verb string, args []string) (shedver
 
 	armed, err := e.Arm(location, verb, runID)
 	if err != nil {
-		// The arming module's own error is already self-describing (either lymcwd.Resolve's "not a git repository" sentinel or a non-prime refusal naming both worktrees);
-		// pass it through bare rather than doubling text on top of it, exactly as both modules' own pre-runs already do.
+		// The arming module's error is already self-describing;
+		// it is the not-a-git-repository sentinel or a non-prime refusal naming both worktrees, so it passes through bare.
 		return shedverbs.Spec{}, err
 	}
 	return armed, nil
@@ -299,17 +286,17 @@ func unsupportedVerbMessage(verb, recipe string, supported []string) string {
 
 // RunCLI is the public seam for the shed subtree.
 //
-// It delegates to RunCLIIn with an empty cwd, exactly as loomcli.RunCLI and battencli.RunCLI do.
+// It delegates to RunCLIIn with an empty cwd, which makes RunCLIIn read the process working directory.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute, while any other value seeds cwd into the execution context via
-// clihelp.ExecuteIn, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the shed subtree with cwd as the working directory.
+// An empty cwd reads the process working directory and runs through clihelp.Execute;
+// any other value is seeded into the execution context by clihelp.ExecuteIn.
+// lymcwd.WithCwd panics on an empty directory, so an empty cwd must not reach clihelp.ExecuteIn.
 //
-// RunCLIIn is carried rather than skipped because this package's own parity tests need an
-// injectable cwd.
+// The seam exists because this package's parity tests need an injectable cwd.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

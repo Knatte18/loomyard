@@ -1,8 +1,4 @@
-// proc_linux.go — Linux process control primitives.
-//
-// On Linux, HideWindow is a no-op (there are no console windows).
-// Detach places the process in a new session using Setsid so it survives parent exit and is
-// unaffected by the parent's signal handling.
+// proc_linux.go implements package proc's process control on Linux, reading process state from /proc.
 
 package proc
 
@@ -29,7 +25,8 @@ func IsAlive(pid int) bool {
 }
 
 // IsRunning reports whether the process identified by pid is alive and not a zombie.
-// A process that exited but was not yet reaped by its parent still answers a signal, so IsAlive reads it as alive while IsRunning reads it as gone.
+// A process that exited but has not been reaped by its parent is a zombie:
+// it still answers a signal, yet it is not running.
 // A live pid whose stat cannot be parsed counts as running.
 func IsRunning(pid int) bool {
 	if !IsAlive(pid) {
@@ -39,8 +36,8 @@ func IsRunning(pid int) bool {
 	return !ok || fields[0] != "Z"
 }
 
-// StartTime returns the start time of the process identified by pid, in the form Claude's session registry records as procStart:
-// field 22 of /proc/<pid>/stat (clock ticks since boot).
+// StartTime returns the start time of the process identified by pid, in the form Claude's session registry uses.
+// It is field 22 of /proc/<pid>/stat, in clock ticks since boot, stored as procStart.
 // It reports false when the process does not exist or its stat cannot be parsed.
 func StartTime(pid int) (string, bool) {
 	fields, ok := statFieldsAfterName(pid)
@@ -92,7 +89,8 @@ func statFieldsAfterName(pid int) ([]string, bool) {
 // userHZ is the kernel's fixed tick rate for the CPU times in /proc/<pid>/stat, in ticks per second.
 const userHZ = 100
 
-// TreeCPU returns root and every descendant of it, each with its executable path and the user plus system CPU time it has used.
+// TreeCPU returns root and every descendant of it.
+// Each entry carries the executable path and the user plus system CPU time the process has used.
 // A process that ends between the /proc listing and its reads is skipped; an unreadable /proc is an error.
 func TreeCPU(root int) ([]ProcessCPU, error) {
 	entries, err := os.ReadDir("/proc")
@@ -111,7 +109,8 @@ func TreeCPU(root int) ([]ProcessCPU, error) {
 		if !ok {
 			continue
 		}
-		// The remainder starts at field 3, so field 4 (parent pid) is entry 1, and fields 14 and 15 (user and system ticks) are entries 11 and 12.
+		// The remainder starts at field 3, so field 4 (parent pid) is entry 1.
+		// Fields 14 and 15 (user and system ticks) are entries 11 and 12.
 		parent, parentErr := strconv.Atoi(fields[1])
 		userTicks, userErr := strconv.ParseInt(fields[11], 10, 64)
 		systemTicks, systemErr := strconv.ParseInt(fields[12], 10, 64)
@@ -137,7 +136,8 @@ func TreeCPU(root int) ([]ProcessCPU, error) {
 	return tree, nil
 }
 
-// executablePath returns the executable of pid from its /proc exe link, falling back to the first field of its command line.
+// executablePath returns the executable of pid from its /proc exe link.
+// When that link cannot be read, it falls back to the first field of the command line.
 // The 15-character command name in stat is never used, so a long test-binary name keeps its suffix.
 func executablePath(pid int) string {
 	base := "/proc/" + strconv.Itoa(pid)
@@ -153,7 +153,8 @@ func executablePath(pid int) string {
 }
 
 // ListProcesses returns every process in /proc with its start time, exe link, cwd link and command line.
-// A process that ends between the /proc listing and its reads, or whose links the caller may not read, is skipped; an unreadable /proc is an error.
+// A process that ends between the /proc listing and its reads, or whose links the caller may not read, is skipped;
+// an unreadable /proc is an error.
 func ListProcesses() ([]Process, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -204,7 +205,8 @@ func ListStats() ([]StatEntry, error) {
 		if !ok {
 			continue
 		}
-		// The remainder starts at field 3, so the state is entry 0, the parent entry 1, the group entry 2 and field 22 (start time) entry 19.
+		// The remainder starts at field 3, so the state is entry 0, the parent entry 1 and the group entry 2.
+		// The start time, field 22, is entry 19.
 		parent, parentErr := strconv.Atoi(fields[1])
 		group, groupErr := strconv.Atoi(fields[2])
 		if parentErr != nil || groupErr != nil {
@@ -268,11 +270,13 @@ func KillPID(pid int) error {
 }
 
 // Detach configures the command to run in a new session and survive parent exit.
+// The new session also leaves it unaffected by the parent's signal handling.
 func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
-// DetachBreakaway configures the command like Detach, additionally surviving a Windows Job Object.
+// DetachBreakaway configures the command to run in a new session and survive parent exit.
+// Linux has no job object to break out of, so a new session is all it does.
 func DetachBreakaway(cmd *exec.Cmd) {
 	Detach(cmd)
 }

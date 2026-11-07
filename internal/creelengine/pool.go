@@ -1,4 +1,4 @@
-// pool.go holds the Store: the folded pool, its journal writer and clock behind one mutex, with the waiter registry and the wake hook.
+// pool.go holds the Store, the folded pool of one hub with its journal writer, clock, waiter registry and wake hook.
 
 package creelengine
 
@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// maxBodyBytes caps the body of a reply to EXTERNAL, which only a waiting post --wait-reply receives and no claim hands out; every other message is capped by the line it renders (LineFits).
+	// maxBodyBytes caps the body of a reply to EXTERNAL, which only a post waiting with --wait-reply receives.
 	maxBodyBytes = 64 << 10
 	// defaultInjectTTL is how long an inject lives when its sender names no TTL.
 	defaultInjectTTL = 10 * time.Minute
@@ -48,32 +48,33 @@ type Store struct {
 	paneLocks map[string]*sync.Mutex
 	// flags holds the file names of the flags the flag directory holds, as this store last set or found them.
 	flags map[string]bool
-	// stopBlocks maps a strand to the Stop claims that handed out mail in its current turn; a strand with no entry counts as at the cap, and the count is never journaled.
+	// stopBlocks maps a strand to its Stop claims that handed out mail this turn, not journaled; no entry means at the cap.
 	stopBlocks map[string]int
-	// wakeMarks maps a hook strand to the claimable set its last ring was for, the clock time of that ring, whether it was answered and the set its bell was typed for; it is kept in memory alone.
+	// wakeMarks maps a hook strand to its last ring: its claimable and bell sets, clock time and answer; memory only.
 	wakeMarks map[string]wakeMark
-	// echoes maps a strand to the ring mail its operator is still owed as an echo, oldest first; it is kept in memory alone, so a restart drops it.
+	// echoes maps a strand to the ring mail its operator is owed, oldest first; memory only, so a restart drops it.
 	echoes map[string][]echoItem
-	// opened is the clock time the store opened, from which a strand whose hook waiter never registered counts its bell grace.
+	// opened is the clock time the store opened; a strand whose hook waiter never registered counts its grace from it.
 	opened time.Time
 	// waiterEnds maps a hook strand to the clock time its last hook waiter ended.
 	waiterEnds map[string]time.Time
 	// chaseWritten maps a message id to the whole seconds of its chase clock its last chase-aged record recorded.
 	chaseWritten map[int64]int64
-	// chaseBase maps a message id whose chase step was already due when the store opened to the clock at that opening, the base its next step counts from.
+	// chaseBase maps a message id whose chase step was due at opening to the clock then, the base its next step counts from.
 	chaseBase map[int64]time.Duration
-	// hubs reaches the other hubs of the machine; nil means a daemon that serves no other hub, and goos is the platform the daemon runs on.
+	// hubs reaches the other hubs of the machine, nil when none is served; goos is the platform the daemon runs on.
 	hubs HubDirectory
 	goos string
 	// dropWindows maps the path of a sending hub to its window of drop notices; it is kept in memory alone.
 	dropWindows map[string]*dropWindow
-	// outboundHook is called with the path of a receiving hub whenever an outbound message to it is queued, and outboundWakes holds the paths a locked section signalled until the hook runs.
+	// outboundHook takes a hub path when a message to that hub is queued; outboundWakes holds paths until it runs.
 	outboundHook  func(hubPath string)
 	outboundWakes []string
 }
 
 // paneLock returns the one mutex of receiver's pane.
-// An interrupt holds it while the interrupt runs, and a worker holds it from before it asks whether the pane is idle until its send or reminder ends.
+// An interrupt holds it while the interrupt runs,
+// and a worker holds it from before it asks whether the pane is idle until its send or reminder ends.
 func (s *Store) paneLock(receiver string) *sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -94,11 +95,13 @@ type stallNote struct {
 }
 
 // stallFreshness is how old a stall's last reading may be and still reach a waiter or an expired answer.
-// A probe that reads runs at least every probeBackoffCeiling, so only a stall no probe has read for twice that is withheld.
+// A probe that reads runs at least every probeBackoffCeiling.
+// Only a stall that no probe has read for twice that long is withheld.
 const stallFreshness = 2 * probeBackoffCeiling
 
 // freshStallLocked returns receiver's standing stall when a probe read it no longer ago than stallFreshness.
-// A stale stall is dropped from the standing map, so its next reading journals a new stalled record, and nothing is returned.
+// A stale stall is dropped from the standing map,
+// so its next reading journals a new stalled record, and nothing is returned.
 func (s *Store) freshStallLocked(receiver string) (stallNote, bool) {
 	note, ok := s.stalls[receiver]
 	if !ok {
@@ -143,7 +146,8 @@ func (s *Store) Close() error {
 	return s.writer.close()
 }
 
-// RollDay opens the journal's file for the clock's UTC day when that day has changed, which also carries live state out of the files past retention.
+// RollDay opens the journal's file for the clock's UTC day when that day has changed.
+// The roll also carries live state out of the files past retention.
 func (s *Store) RollDay() error {
 	return s.do(func() error {
 		now := s.clock.Now().UTC()
@@ -154,7 +158,8 @@ func (s *Store) RollDay() error {
 	})
 }
 
-// SetWakeHook sets the function called with a receiver name whenever mail, an inject or a release makes that receiver worth a delivery attempt.
+// SetWakeHook sets the function called with a receiver name when that receiver has something to deliver.
+// Mail, an inject or a release can make a receiver worth a delivery attempt.
 // The hook runs after the verb has released the store's mutex, so it may call back into the store.
 func (s *Store) SetWakeHook(hook func(receiver string)) {
 	s.mu.Lock()
@@ -162,8 +167,11 @@ func (s *Store) SetWakeHook(hook func(receiver string)) {
 	s.wakeHook = hook
 }
 
-// do runs fn under the mutex, then calls the wake hook for every receiver fn signalled, and the outbound hook for every receiving hub, once the mutex is free.
-// When fn journaled a record, the strands' mail flags follow the pool before the mutex is freed, whether or not fn failed after it.
+// do runs fn under the mutex.
+// Once the mutex is free, it calls the wake hook for each receiver fn signalled.
+// It then calls the outbound hook for each receiving hub.
+// When fn journaled a record, the strands' mail flags follow the pool before the mutex is freed.
+// This holds even when fn failed after it journaled.
 func (s *Store) do(fn func() error) error {
 	s.mu.Lock()
 	appended := s.writer.appended
@@ -201,7 +209,8 @@ func (s *Store) wakeLocked(receiver string) {
 	s.wakes = append(s.wakes, receiver)
 }
 
-// readStrands lists the hub's strands, wrapping a failure so a verb reports what could not be read instead of an unknown name.
+// readStrands lists the hub's strands.
+// A failure is wrapped so the verb reports what could not be read instead of an unknown name.
 func (s *Store) readStrands() ([]Strand, error) {
 	strands, err := s.delivery.Strands()
 	if err != nil {
@@ -226,14 +235,18 @@ func isExternalName(full string) bool {
 	return err == nil && name == agentname.External
 }
 
-// isHubOrchName reports whether full is the fixed name of an orch of this hub, `<shortname>:orch` for the prime's or `<shortname>:<slug>:orch` for a beam's.
-// Such a name takes mail while no strand of that name is listed, so a notice to an orch that is down waits for its strand to come back.
+// isHubOrchName reports whether full is the fixed name of an orch of this hub.
+// That name is `<shortname>:orch` for the prime's orch and `<shortname>:<slug>:orch` for a beam's.
+// Such a name takes mail while no strand of that name is listed,
+// so a notice to an orch that is down waits for its strand to come back.
 func (s *Store) isHubOrchName(full string) bool {
 	name, err := agentname.Parse(full)
 	return err == nil && name.Shortname == s.geom.Shortname && name.Role == agentname.RoleOrch
 }
 
-// checkReceiverLocked refuses a name that is no receiver: EXTERNAL always, and a name that is neither a strand, a program that has posted or read, nor the fixed name of an orch of this hub.
+// checkReceiverLocked refuses a name that is no receiver.
+// EXTERNAL is always refused.
+// Any other name must be a strand, a program that has posted or read, or the fixed name of an orch of this hub.
 func (s *Store) checkReceiverLocked(strands []Strand, name string) error {
 	if isExternalName(name) {
 		return fmt.Errorf("creel: %s is never a receiver: it has no address; an external sender waits for its answer with `lym creel post --wait-reply`, and a reply reaches it with `--reply`", name)
@@ -283,15 +296,19 @@ const (
 	// OutcomeMail means the waited-on holder now holds unread mail.
 	OutcomeMail OutcomeKind = "mail"
 	// OutcomeRing means the daemon woke the idle strand whose waiter this was.
-	// A ring to a waiter marked as taking mail carries the claimed mail in Outcome.Reading, and one to an unmarked waiter carries none.
+	// A ring to a waiter marked as taking mail carries the claimed mail in Outcome.Reading.
+	// One to an unmarked waiter carries none.
 	OutcomeRing OutcomeKind = "ring"
 	// OutcomeSuperseded means a newer waiter of the same strand replaced this one.
 	OutcomeSuperseded OutcomeKind = "superseded"
 )
 
-// Outcome is the answer to a Waiter; Message is the reply or the returned message, and zero for the others.
-// Stall and StallAt are the receiver's fresh stall when an inject expired and the time it began, empty and zero when none stood.
-// Reading is the claim a ring to a marked waiter carries, reserved until its taker acknowledges or releases it, and nil for every other outcome.
+// Outcome is the answer to a wait.
+// Message is the reply or the returned message, and zero for the others.
+// Stall and StallAt are the receiver's fresh stall and the time it began, when an inject expired.
+// Both are empty and zero when no stall stood.
+// Reading is the claim a ring to a marked waiter carries, reserved until its taker acknowledges or releases it.
+// Reading is nil for every other outcome.
 type Outcome struct {
 	Kind    OutcomeKind
 	Message Message
@@ -315,7 +332,8 @@ const (
 	waitHook waitKind = 3
 )
 
-// waitKey names what a waiter waits on: the reply to a message id, an inject id, mail for a holder, or the ring of a strand's idle waiter.
+// waitKey names what a waiter waits on:
+// the reply to a message id, an inject id, mail for a holder, or the ring of a strand's idle waiter.
 type waitKey struct {
 	kind   waitKind
 	id     int64
@@ -326,7 +344,8 @@ type waitKey struct {
 type Waiter struct {
 	// C receives the outcome.
 	C <-chan Outcome
-	// Progress receives the stall of the inject's receiver each time it changes; only a wait on an inject has one, and a newer note replaces an unread older one.
+	// Progress receives the stall of the inject's receiver each time it changes; only a wait on an inject has one,
+	// and a newer note replaces an unread older one.
 	Progress <-chan StallNote
 	ch       chan Outcome
 	progress chan StallNote
@@ -334,7 +353,8 @@ type Waiter struct {
 	key      waitKey
 	// told is the stall the waiter was last told, empty when none; a reading that differs from it is notified.
 	told Stall
-	// takesMail marks an idle waiter whose ring carries the strand's claimed mail; it is set under the store's mutex when the waiter registers.
+	// takesMail marks an idle waiter whose ring carries the strand's claimed mail;
+	// it is set under the store's mutex when the waiter registers.
 	takesMail bool
 }
 
@@ -356,7 +376,8 @@ func (w *Waiter) notify(note StallNote) {
 
 // Cancel unregisters the wait; a waiter already answered is unaffected.
 // A hook waiter's end, answered or not, is recorded at the clock time, from which its strand's bell grace runs.
-// A hook waiter's ring outcome still unread in its channel is drained and its claim released, so a ring nobody took returns its mail.
+// A hook waiter's ring outcome still unread in its channel is drained and its claim released,
+// so a ring nobody took returns its mail.
 func (w *Waiter) Cancel() {
 	w.store.mu.Lock()
 	if w.key.kind == waitHook {
@@ -427,7 +448,8 @@ func (s *Store) answerLocked(key waitKey, outcome Outcome) int {
 }
 
 // settledOutcomeLocked reports an outcome that already stands in the pool for key.
-// A reply waiting undelivered for an EXTERNAL sender is handed over here and journaled delivered; a reply to any other sender is handed over without a record.
+// A reply waiting undelivered for an EXTERNAL sender is handed over here and journaled delivered;
+// a reply to any other sender is handed over without a record.
 func (s *Store) settledOutcomeLocked(key waitKey) (Outcome, bool, error) {
 	switch key.kind {
 	case waitReply:
@@ -497,7 +519,8 @@ func (s *Store) settledOutcomeLocked(key waitKey) (Outcome, bool, error) {
 	return Outcome{}, false, nil
 }
 
-// unreadLocked returns the unread messages holder holds and no read is handing out, oldest first, narrowed to one sender when from is set.
+// unreadLocked returns the unread messages holder holds and no read is handing out, oldest first.
+// A non-empty from narrows the result to messages from that sender.
 func (s *Store) unreadLocked(holder, from string) []*Message {
 	var unread []*Message
 	for id, msg := range s.state.messages {
@@ -509,10 +532,13 @@ func (s *Store) unreadLocked(holder, from string) []*Message {
 	return unread
 }
 
-// wakeMark is the record of a hook strand's last ring and bell: the claimable message ids the ring was for, the clock time of the ring and whether the ring was answered.
-// A ring is answered by the acknowledgement of its own claim, by a claim that handed out mail, or by a probe that reads a turn in progress after it.
+// wakeMark is the record of a hook strand's last ring and bell:
+// the claimable message ids the ring was for, the clock time of the ring and whether the ring was answered.
+// A ring is answered by acknowledging its own claim or by a claim that handed out mail.
+// A probe that reads a turn in progress after the ring answers it too.
 // The time and the answer stay until the next ring replaces them, whatever the set does meanwhile.
-// bellIDs are the claimable ids the typed bell was for, empty when none was typed; a different set is a set no bell was typed for.
+// bellIDs are the claimable ids the typed bell was for, empty when none was typed;
+// a different set is a set no bell was typed for.
 type wakeMark struct {
 	ids      []int64
 	at       time.Time

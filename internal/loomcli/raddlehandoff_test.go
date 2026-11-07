@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRaddleHandOff asserts a beam whose project a stored proposal filed gets the line naming the Sketch, the record read and the proposal read, and a beam no stored proposal filed gets none.
+// TestRaddleHandOff asserts that a beam gets the hand-off line only when a stored proposal filed its project.
+// The line names the Sketch, the record read and the proposal read.
 func TestRaddleHandOff(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

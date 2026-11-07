@@ -1,4 +1,5 @@
-// movekeys.go applies configreg's declared key moves to one layer of config files, before the layer's modules are reconciled.
+// movekeys.go applies the key moves that configreg declares to one layer of config files.
+// It runs before the layer's modules are reconciled.
 
 package configsync
 
@@ -17,8 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// formerSourceDefaults maps a key move's source module to its source key to the template value that key held, as YAML text, before the key moved to another module.
-// A base layer that still holds such a value was never tuned, so the move drops it instead of carrying it over the target's own default.
+// formerSourceDefaults maps a source module, then a source key, to the template value that key held as YAML text.
+// A base layer that still holds such a value was never tuned,
+// so the move drops it instead of carrying it over the target's own default.
 // Only values that differ from the target's current default are listed: an equal one changes nothing when it moves.
 var formerSourceDefaults = map[string]map[string]string{
 	"darn": {
@@ -44,7 +46,8 @@ type moveFile struct {
 	virtual bool
 	// fromTemplate marks a created standalone base file started from the module template, whose values carry no operator intent.
 	fromTemplate bool
-	// keepHeader marks a registered module's file of a hub's base layer: a move that leaves it with no unit saves it as the header-only base.
+	// keepHeader marks a registered module's file in a hub's base layer:
+	// a move that leaves it with no unit saves it as the header-only base.
 	// A retired module's file is deleted instead.
 	keepHeader bool
 	changed    bool
@@ -56,21 +59,28 @@ type moveFile struct {
 	moved, keptTarget, overwritten []string
 }
 
-// moveKeys applies configreg.KeyMoves to the layer's files under dir and returns one Result per file it changes, would change or carries report lines for.
-// A file that only carries report lines, such as a target a prime-seeded source's dropped value was reported on, is never written and its Result is never Applied.
+// moveKeys applies the key moves that configreg declares to the layer's files under dir.
+// It returns one Result per file it changes, would change or carries report lines for.
+// A file that only carries report lines is never written, and its Result is never Applied.
+// One such file is a target that a prime-seeded source's dropped value was reported on.
 // dir is the board dir or the anchor, and base marks a base layer of its stack.
-// seedDir is set only at a board pass that seeds from the prime: an absent source is then the prime's copy, never written.
+// seedDir is set only at a board pass that seeds from the prime:
+// an absent source is then the prime's copy, never written.
 // A value moves unexpanded, with its line comment replaced by the target template's.
-// At a base layer a target value other than its template default is kept and the source key dropped, and a default is overwritten;
-// at a sparse layer any target value is kept.
+// At a base layer a target value other than its template default is kept and the source key dropped,
+// and a default is overwritten.
+// At a sparse layer any target value is kept.
 // At a base layer a source value equal to its key's former template default is dropped instead of moved.
-// A move marked KeepTarget keeps any target value at either layer, the template default included, unless the target was started from the template in this pass,
-// and its kept-target line names the dropped and kept keys without their mappings.
+// A move marked KeepTarget keeps any target value at either layer, the template default included.
+// The one exception is a target started from the template in this pass.
+// Its kept-target line names the dropped and kept keys without their mappings.
 // A source file the move empties is deleted.
 //
 // The default layer is a hub's sparse base, so a move into or out of it writes it sparse:
-// an absent target starts as the sparse seed of the prime's copy of the target when seedDir is set and that copy parses, else empty, and never from the template;
-// a target value equal to the template default is overwritten only while the board's base-sparse marker is absent, and is a pin once it exists;
+// an absent target starts as the sparse seed of the prime's copy of the target when seedDir is set and that copy parses;
+// otherwise it starts empty, and never from the template;
+// a target value equal to the template default is overwritten only while the board's base-sparse marker is absent,
+// and it is a pin once the marker exists;
 // a registered module's file the move leaves with no unit, target or source, is saved as the header-only base.
 // Only a standalone worktree base, which stays full, starts an absent target from the template.
 // A file that cannot be read or parsed fails the move with a *FileError before anything is written.
@@ -219,7 +229,8 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 	return results, nil
 }
 
-// copyKeys applies configreg.KeyCopies to the base files under boardDir and returns one Result per target file it changes or would change.
+// copyKeys applies the key copies that configreg declares to the base files under boardDir.
+// It returns one Result per target file it changes or would change.
 // A key is copied only when the source file sets it and the target file does not; the source keeps its key.
 // The value is placed unexpanded with its line comment replaced by the target template's.
 // An absent target file starts as the header-only base, and a target the copy leaves with units keeps its header.
@@ -292,7 +303,8 @@ func copyKeys(boardDir string, apply bool) ([]Result, error) {
 	return results, nil
 }
 
-// writeCopied saves a copy target as a sparse base: its document, preceded by the base header when the file held no unit before.
+// writeCopied saves a copy target as a sparse base:
+// its document, preceded by the base header unless the encoded document already starts with a comment.
 func (file *moveFile) writeCopied() error {
 	data, err := yaml.Marshal(file.doc)
 	if err != nil {
@@ -335,7 +347,7 @@ func (file *moveFile) parse(data []byte) error {
 	return nil
 }
 
-// formerSourceDefault reports whether value equals the template value the move's source key held before it moved.
+// formerSourceDefault reports whether value equals the template default recorded for move's source key.
 func formerSourceDefault(move configreg.KeyMove, value *yaml.Node) (bool, error) {
 	text, listed := formerSourceDefaults[move.FromModule][move.FromKey]
 	if !listed {
@@ -348,11 +360,14 @@ func formerSourceDefault(move configreg.KeyMove, value *yaml.Node) (bool, error)
 	return nodesEqual(value, former.Content[0]), nil
 }
 
-// takeKey moves the source mapping's entry at index at into this target file under the move's target key, and records the report lines.
+// takeKey moves the source mapping's entry at index at into this target file under the move's target key.
+// It also records the report lines for the move.
 // The source entry is removed from its mapping in every case.
 // With overwriteDefaults a source value equal to its key's former template default is dropped, never moved.
-// A target started from the template, or one lacking the key, takes the source's mapping whole; a move never merges per name.
-// With overwriteDefaults a target value equal to the template default is replaced by the moved value; without it that value is a pin and is kept.
+// A target started from the template, or one lacking the key, takes the source's mapping whole;
+// a move never merges per name.
+// With overwriteDefaults a target value equal to the template default is replaced by the moved value;
+// without it that value is a pin and is kept.
 func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove, overwriteDefaults bool) error {
 	value := source.root.Content[at+1]
 	sourceName := move.FromModule + "." + move.FromKey
@@ -472,7 +487,8 @@ func templateValueNode(template []byte, key string) (*yaml.Node, error) {
 	return root.Content[at+1], nil
 }
 
-// nodesEqual reports whether two nodes hold the same kind, scalar value and children; comments and mapping key order are ignored.
+// nodesEqual reports whether two nodes hold the same kind, scalar value and children;
+// comments and mapping key order are ignored.
 func nodesEqual(a, b *yaml.Node) bool {
 	if a.Kind != b.Kind {
 		return false
@@ -505,7 +521,7 @@ func nodesEqual(a, b *yaml.Node) bool {
 	return false
 }
 
-// nodeText renders a node's value on one line, unexpanded.
+// nodeText renders a node's value on one line: a scalar's text, or the collapsed YAML of a sequence or mapping.
 func nodeText(node *yaml.Node) string {
 	if node.Kind == yaml.ScalarNode {
 		return node.Value
@@ -549,7 +565,8 @@ func placeValue(mapping *yaml.Node, key string, value *yaml.Node, comment string
 	}
 }
 
-// templateLineComment returns the line comment, from its '#', that the template carries on its top-level key's line, or "" when the key has none.
+// templateLineComment returns the line comment, starting at its '#', that the template carries on the key's line.
+// It returns "" when the key has none.
 func templateLineComment(template []byte, key string) string {
 	prefix := key + ":"
 	for _, line := range strings.Split(string(template), "\n") {

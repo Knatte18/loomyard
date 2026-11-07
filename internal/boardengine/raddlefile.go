@@ -1,4 +1,5 @@
-// raddlefile.go — the board writes of a raddle run: filing a Sketch's approved entries with the raddle store, releasing filed parts, and ending the run's entry.
+// raddlefile.go holds the board writes of a raddle run.
+// It files a Sketch's approved entries with the raddle store, releases the filed parts, and ends the run's entry.
 
 package boardengine
 
@@ -22,7 +23,8 @@ const (
 	raddleRecordFileName       = "decision-record.md"
 )
 
-// ErrRaddleRecheck matches, through errors.Is, a FileRaddle refused by its filing's Check, so a caller tells the re-check's refusal from a failure of the write.
+// ErrRaddleRecheck is the error a raddle filing wraps when its re-check refuses the write.
+// A caller matches it with errors.Is to tell that refusal from a failed write.
 var ErrRaddleRecheck = errors.New("the board moved since the raddle proposal was checked")
 
 // RaddleEntry is one entry a raddle run files: a task, or the project that groups the run's tasks.
@@ -43,7 +45,7 @@ type RaddleEntry struct {
 	Record []byte
 }
 
-// RaddleFiling is everything one FileRaddle writes for a Sketch whose raddle proposal was approved.
+// RaddleFiling holds the board and store writes that file a Sketch whose raddle proposal was approved.
 type RaddleFiling struct {
 	// Sketch is the Sketch's slug, which names the store directory, and Created is the Sketch's created stamp.
 	Sketch  string
@@ -60,7 +62,8 @@ type RaddleFiling struct {
 	Parts []RaddleEntry
 	// Release is whether the parts are released in the filing's own write; otherwise they are draft.
 	Release bool
-	// Proposal, ColdProposal and SketchRecord are the staged files stored as proposal.yaml, cold-proposal.yaml and decision-record.md.
+	// Proposal, ColdProposal and SketchRecord are the staged files.
+	// They are stored as proposal.yaml, cold-proposal.yaml and decision-record.md.
 	Proposal     []byte
 	ColdProposal []byte
 	SketchRecord []byte
@@ -68,16 +71,20 @@ type RaddleFiling struct {
 	Check func(tasks []Task, store RaddleStore) error
 }
 
-// raddleFiled is the mutation result of a filing: the parts the write leaves released, which the critical section passes to the draft rule.
+// raddleFiled is the mutation result of a filing: the parts the write leaves released.
 type raddleFiled struct {
 	released []string
 }
 
 // FileRaddle files the entries of f and its raddle store in one write under the board lock.
-// It writes nothing when the store already holds a directory for the Sketch with the filing's created stamp and hash, the done marker of the filing.
-// When the board already holds every filed entry of the Sketch, the state a crash or a failed store write leaves after board.json was saved, it skips the check and the entry writes and only writes the store.
+// It writes nothing when the store already holds a directory for the Sketch with the filing's created stamp and hash.
+// That record is the done marker of the filing.
+// When the board already holds every filed entry of the Sketch, it skips the check and the entry writes.
+// That is the state a crash or a failed store write leaves after board.json was saved.
+// The write then only writes the store.
 // Otherwise it runs f.Check, wrapping a refusal in ErrRaddleRecheck.
-// It then adds the project and the parts as discussed entries, each with its decision-<slug>.md written before board.json is saved.
+// It then adds the project and the parts as discussed entries.
+// Each entry's decision-<slug>.md is written before board.json is saved.
 // After the save it writes the store directory, store.json last, so the write leaves its own done marker.
 // The parts are released in the same write when f.Release is set and are draft otherwise; the run's entry stays open.
 func (b *Board) FileRaddle(f RaddleFiling) error {
@@ -140,7 +147,8 @@ func (b *Board) FileRaddle(f RaddleFiling) error {
 	return err
 }
 
-// fileRaddleEntry adds one filed entry to store as a discussed entry of the project project, and writes its decision record file, recording the file's path in recordFiles.
+// fileRaddleEntry adds one filed entry to store as a discussed entry, under project when project is not empty.
+// It writes the entry's decision record file and appends the file's path to recordFiles.
 // A dependency on the run's entry or on a slug the store does not hold is dropped.
 func (b *Board) fileRaddleEntry(store *Store, f RaddleFiling, entry RaddleEntry, project string, recordFiles *[]string) error {
 	fields := map[string]any{"slug": entry.Slug, "title": entry.Title, "kind": entry.Kind, "labels": entry.Labels, "body": entry.Body}
@@ -176,7 +184,8 @@ func (b *Board) fileRaddleEntry(store *Store, f RaddleFiling, entry RaddleEntry,
 	return nil
 }
 
-// writeRaddleStore writes the staged files of f's store directory and then its store.json, which records the filed slugs and is the done marker.
+// writeRaddleStore writes the staged files of f's store directory, then its store.json.
+// store.json records the filed slugs and is the done marker.
 func (b *Board) writeRaddleStore(f RaddleFiling, filed []string) error {
 	dir := RaddleStoreDir(b.boardPath, f.Sketch)
 	staged := []struct {
@@ -209,7 +218,8 @@ func RaddlePartBodyPrefix(sketch string) string {
 	return fmt.Sprintf("Filed from the Sketch `%s`", sketch)
 }
 
-// RaddleProjectBodyPrefix returns the text a filed project's body begins with, which names the Sketch whose entries the project groups.
+// RaddleProjectBodyPrefix returns the text a filed project's body begins with.
+// The text names the Sketch whose entries the project groups.
 func RaddleProjectBodyPrefix(sketch string) string {
 	return fmt.Sprintf("Groups the entries filed from the Sketch `%s`", sketch)
 }
@@ -226,12 +236,13 @@ func raddleFilingSlugs(f RaddleFiling) []string {
 	return slugs
 }
 
-// isRaddleFiledFrom reports whether task is a discussed entry whose body marks it as filed from the Sketch sketch.
+// isRaddleFiledFrom reports whether task is a discussed entry whose body marks it as filed from the Sketch named sketch.
 func isRaddleFiledFrom(task Task, sketch string) bool {
 	return task.Discussed && (strings.HasPrefix(task.Body, RaddlePartBodyPrefix(sketch)) || strings.HasPrefix(task.Body, RaddleProjectBodyPrefix(sketch)))
 }
 
-// raddleFilingHeld reports whether get finds every slug of slugs as an entry filed from the Sketch sketch; an empty slugs is not held.
+// raddleFilingHeld reports whether get finds every slug of slugs as an entry filed from the Sketch named sketch.
+// With no slugs it reports false.
 func raddleFilingHeld(get func(slug string) (Task, bool), sketch string, slugs []string) bool {
 	if len(slugs) == 0 {
 		return false
@@ -245,8 +256,10 @@ func raddleFilingHeld(get func(slug string) (Task, bool), sketch string, slugs [
 	return true
 }
 
-// HoldsRaddleFiling reports whether the board holds every slug of slugs as a discussed entry filed from the Sketch sketch.
-// A retry uses it to tell a filing whose board write landed from one that did not; an empty slugs is not held.
+// HoldsRaddleFiling reports whether the board holds every slug of slugs as a discussed entry.
+// Each such entry's body must mark it as filed from the Sketch named sketch.
+// A retry uses it to tell a filing whose board write landed from one that did not.
+// With no slugs it reports false, and it returns an error when a board read fails.
 func (b *Board) HoldsRaddleFiling(sketch string, slugs []string) (bool, error) {
 	if len(slugs) == 0 {
 		return false, nil
@@ -263,8 +276,9 @@ func (b *Board) HoldsRaddleFiling(sketch string, slugs []string) (bool, error) {
 	return true, nil
 }
 
-// ReleaseTasks releases each task of slugs that is still on the board, open and draft, in one write, and skips one that is absent, done or not draft.
-// It writes nothing when none is left to release.
+// ReleaseTasks clears the status of each task of slugs that is on the board, not done, and draft, in one write.
+// Tasks that are absent, done or not draft are skipped.
+// It writes nothing when no task is released.
 func (b *Board) ReleaseTasks(slugs []string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		releasedAny := false
@@ -284,7 +298,8 @@ func (b *Board) ReleaseTasks(slugs []string) error {
 	return err
 }
 
-// EndRaddleEntry marks the entry slug done and clears its notify_on_land in one write, which the run lock admits since neither field is scope.
+// EndRaddleEntry marks the entry slug done and clears its notify_on_land in one write.
+// The run lock admits the write since neither field is scope.
 // It writes nothing for an absent or done entry.
 func (b *Board) EndRaddleEntry(slug string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {

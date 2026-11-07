@@ -1,13 +1,4 @@
-// config.go — configuration for the landing module.
-//
-// Defines the Config type mirroring landing.yaml's keys and LoadConfig, which uses
-// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve landing's
-// config file -- the strict entry point, where an absent config file is an error. Strict is
-// required by the membership rule rather than chosen: neither producer in this package has a
-// standalone entry point, both are reachable only inside a hub, and there an absent config means
-// the hub is broken. It then validates the conflict key's model-spec grammar at load time via
-// modelspec.Parse, so a typo fails loudly at load rather than hours into a run when the conflict
-// session first spawns.
+// config.go defines the Config type that mirrors landing.yaml, its layered-load spec, and LoadConfig, which loads it.
 
 package landingshed
 
@@ -29,10 +20,9 @@ type Config struct {
 	// DeployBranches is the list of base branch names a landing into which batten's Land row deploys.
 	// An empty list deploys nothing.
 	DeployBranches []string `yaml:"deploy_branches"`
-	// Squash selects whether Finalize's parent-side merge squashes.
+	// Squash selects whether the merge into the parent branch squashes.
 	Squash bool `yaml:"squash"`
-	// Conflict is the model-spec string selecting the model both producers' conflict-resolution
-	// session runs under.
+	// Conflict is the model-spec string selecting the model both producers' conflict-resolution session runs under.
 	Conflict string `yaml:"conflict"`
 	// ConflictTimeoutMin is the conflict-resolution session's wall-clock budget in minutes.
 	ConflictTimeoutMin int `yaml:"conflict_timeout_min"`
@@ -48,7 +38,8 @@ type Config struct {
 	CreditHeading string `yaml:"credit_heading"`
 	// CreditLoomYard is the credit block's LoomYard item, listed whatever engines ran; empty adds none.
 	CreditLoomYard string `yaml:"credit_loomyard"`
-	// CreditEngines maps an engine name to the credit block's item for that engine, listed only when the engine ran a session in the task.
+	// CreditEngines maps an engine name to the credit block's item for that engine.
+	// The item is listed only when the engine ran a session in the task.
 	// An engine left out, or mapped to empty text, adds nothing.
 	CreditEngines map[string]string `yaml:"credit_engines"`
 	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
@@ -68,7 +59,8 @@ type Config struct {
 	FinalizeFixAttempts int `yaml:"finalize_fix_attempts"`
 	// FinalizeFixMaxLines is the added plus deleted lines a fixer change may hold before it is over the cap.
 	FinalizeFixMaxLines int `yaml:"finalize_fix_max_lines"`
-	// FinalizeFixReviewRounds is the fix reviews one Finalize row entry may run over an over-cap fixer change before it halts for the operator.
+	// FinalizeFixReviewRounds is the fix reviews one Finalize row entry may run over an over-cap fixer change.
+	// Once they are spent, it halts for the operator.
 	FinalizeFixReviewRounds int `yaml:"finalize_fix_review_rounds"`
 }
 
@@ -86,7 +78,9 @@ func (c Config) IdleRelease() time.Duration {
 }
 
 // CreditBlock returns the plain-text credit block that ends the landing commit and the pull request's body.
-// The block is the trimmed CreditHeading, then one ` - <item>` line for the trimmed CreditLoomYard and for the trimmed CreditEngines text of each name in enginesRun, in sorted name order, each name once.
+// The block is the trimmed CreditHeading, then one ` - <item>` line per item.
+// The items are the trimmed CreditLoomYard text, then the trimmed CreditEngines text of each name in enginesRun.
+// The engine items follow in sorted name order, each name once.
 // An empty or whitespace-only text adds no line.
 // The block is empty when Credit is off or no item line remains, and an empty block means nothing follows the body.
 func (c Config) CreditBlock(enginesRun []string) string {
@@ -118,13 +112,15 @@ func (c Config) CreditBlock(enginesRun []string) string {
 // creditEnginesKey is the landing.yaml key whose entries map engine names to credit block items.
 const creditEnginesKey = "credit_engines"
 
-// ConfigOpenMaps returns the landing.yaml keys whose entries belong to the operator, which configengine carries whole through reconcile and the layer stack.
+// ConfigOpenMaps returns the landing.yaml keys whose entries belong to the operator.
+// configengine carries those keys whole through reconcile and the layer stack.
 func ConfigOpenMaps() []string {
 	return []string{creditEnginesKey}
 }
 
 // ConfigSpec returns landing's layered-load spec.
-// Keys that gate or shape what lands on the parent branch, and the shell commands Publish and Land run, are barred from the local layer.
+// Keys that gate or shape what lands on the parent branch are barred from the local layer.
+// So is the shell command that Land runs.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "landing",
@@ -155,8 +151,8 @@ func ConfigSpec() configengine.Spec {
 			"finalize_fix_review_rounds": configengine.CategoryCrossPair,
 		},
 		// A file still holding a retired key loads and reconcile prunes it.
-		// publish_verify moved to the hub's publish gate.
-		// The co-author and trailer keys gave way to the credit keys; their values are co-author lines, so none is carried over.
+		// publish_verify belongs to the hub's publish gate.
+		// The co-author and trailer keys are not carried into the credit keys, since their values are co-author lines.
 		RetiredKeys: map[string]configengine.Category{
 			"publish_verify":  configengine.CategoryExecutable,
 			"co_authored_by":  configengine.CategoryCrossPair,
@@ -166,8 +162,13 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
-// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1, and refuses a credit_engines entry whose key names no engine.
+// LoadConfig loads and unmarshals the landing module's configuration through the hub-wide layer stack under dirs.
+// The load is strict: an absent config file is an error.
+// Its producers are reachable only inside a hub, where a missing config means the hub is broken.
+// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time.
+// A typo in one of them fails at load, not when its session spawns.
+// It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
+// It also refuses a credit_engines entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -229,11 +230,10 @@ var retiredKeyRenames = []yamlengine.KeyRename{
 	{From: "merge_fix_attempts", To: "parent_align_fix_attempts"},
 }
 
-// MigrateConfig rewrites a landing.yaml document for lym config reconcile and returns the rewritten bytes with one line per rewrite.
-// It renames the retired require_pr_to_base key to deploy_branches, keeping its value, an empty list included;
-// a document already holding deploy_branches keeps it and drops the old key.
-// It likewise renames the retired merge_fix_attempts key to parent_align_fix_attempts, keeping its value;
-// a document already holding parent_align_fix_attempts keeps it and drops the old key.
+// MigrateConfig rewrites a landing.yaml document for lym config reconcile.
+// It returns the rewritten bytes and one line per rewrite.
+// Each retired key is renamed to the key that replaced it, keeping its value, an empty list included.
+// When the document already holds the replacement key, that key is kept and the retired key is dropped.
 // A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {

@@ -1,6 +1,6 @@
-// reexecguard_test.go covers cliReexecArg's pure classification of a test binary's argv tail: only
-// a LEADING non-flag argument marks a CLI-style re-exec;
-// flag-led argv (including two-token flag values) stays allowed.
+// reexecguard_test.go covers cliReexecArg's classification of a test binary's argv tail.
+// Only a leading non-flag argument marks a CLI-style re-exec;
+// flag-led argv, including two-token flag values, stays allowed.
 
 package gitkit
 
@@ -34,8 +34,8 @@ func TestCLIReexecArg(t *testing.T) {
 		},
 		{
 			name: "TwoTokenFlagValueAllowed",
-			// A later positional-looking token can be a flag's value, so only
-			// the leading argument is ever classified.
+			// Only the leading argument is classified.
+			// A later positional-looking token can be a flag's value.
 			args:   []string{"-test.run", "TestFoo"},
 			wantOK: false,
 		},

@@ -1,6 +1,8 @@
-// accepted.go — the profile-file naming rule and the file copy the judge snapshot uses: which files under a profile directory hold one test's profile, and a copy of one file.
+// accepted.go — the profile-file naming rule and the single-file copy the judge snapshot uses.
 //
-// A test is named by its profile files: a file under a profile directory holds a test's profile when its path relative to the directory, with or without its last extension, is the test's name; a dotfile has no extension to drop, so its whole name is the test's name.
+// A file under a profile directory holds a test's profile when its path relative to the directory is the test's name.
+// The name matches with or without the file's last extension.
+// A dotfile has no extension to drop, so its whole name is the test's name.
 
 package driftengine
 
@@ -13,7 +15,8 @@ import (
 	"path/filepath"
 )
 
-// testFiles returns the slash-separated paths, relative to dir, of the regular files under dir that hold test's profile, and none when dir does not exist.
+// testFiles returns the slash-separated paths, relative to dir, of the regular files that hold test's profile.
+// It returns none when dir does not exist.
 func testFiles(dir, test string) ([]string, error) {
 	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil

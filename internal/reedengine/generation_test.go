@@ -1,6 +1,6 @@
-// generation_test.go covers the pane-generation stamp: parsing a display-message answer, the two
-// comparison predicates, and adoptPaneGenerationLocked's three outcomes (adopt, clear, refuse)
-// driven through TmuxCmd's execHook seam so no live server is required.
+// generation_test.go covers the pane-generation stamp: parsing a display-message answer and the comparison predicates.
+// It also covers adoptPaneGenerationLocked's three outcomes: adopt, clear and refuse.
+// All of it runs through TmuxCmd's execHook seam, so no live server is required.
 
 package reedengine
 
@@ -52,9 +52,9 @@ func TestParsePaneGeneration(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			// tmux 3.6's real answer for a -t target naming no session: exit 0, session-scoped
-			// fields empty, server-global #{pid} filled. This rejection is what the orphan check
-			// reads as "that session is gone" (R6 review finding R6-F4).
+			// tmux 3.6 answers a -t target that names no session with exit 0 and empty session-scoped fields.
+			// The server-global #{pid} is still filled.
+			// The parser rejects that answer, and the orphan check reads the rejection as the session being gone.
 			name:    "tmux's own absent-session answer is an error, which is how absence is detected",
 			out:     "|2912080|",
 			wantErr: true,
@@ -125,15 +125,15 @@ func TestPaneGeneration_RecordedAndSameIncarnation(t *testing.T) {
 	}
 }
 
-// unprobeableSession is the answer that marks a session as present in list-sessions but unable to
-// answer the identity probe — the transport-failure shape R6-F2 covers, where one tmux round trip
-// fails on an otherwise-healthy server. An empty answer reaches parsePaneGeneration as a probe
-// error, which is exactly what a failed round trip produces.
+// unprobeableSession is the answer that marks a session as listed but unable to answer the identity probe.
+// It models a transport failure: one tmux round trip fails on an otherwise healthy server.
+// An empty answer is a probe error, which is what a failed round trip produces.
 const unprobeableSession = ""
 
-// answerGenerations scripts list-sessions with the session names in answersBySessionName and display-message with each session's own generation answer.
-// A session absent from the map is absent from both answers, which is how a recorded session that no
-// longer exists is expressed; a session mapped to unprobeableSession is listed but does not answer.
+// answerGenerations scripts list-sessions with the session names in answersBySessionName.
+// It scripts display-message with each session's own generation answer.
+// A session absent from the map models a recorded session that no longer exists: it is absent from both answers.
+// A session mapped to unprobeableSession is listed but does not answer.
 func answerGenerations(f *fakeTmux, answersBySessionName map[string]string) {
 	names := make([]string, 0, len(answersBySessionName))
 	for name := range answersBySessionName {
@@ -147,17 +147,16 @@ func answerGenerations(f *fakeTmux, answersBySessionName map[string]string) {
 		out, ok := answersBySessionName[strings.TrimSuffix(strings.TrimPrefix(target, "="), ":")]
 		if !ok {
 			// tmux 3.6 answers an absent session with exit 0 and empty session-scoped fields,
-			// not an error (see paneGenerationLocked); #{pid} is server-global and still fills.
+			// not an error; #{pid} is server-global and still fills.
 			return "|4321|", nil
 		}
 		return out, nil
 	})
 }
 
-// TestAdoptPaneGenerationLocked is the regression guard for the R5 review's R5-F2 (stale bindings
-// from a previous session incarnation reported live:true and blocked resume) and R5-F5 / R5-F4
-// (a renamed worktree, or a hand-copied .lym, silently double-launching every strand or targeting
-// another worktree's live panes).
+// TestAdoptPaneGenerationLocked guards adoption of a recorded pane generation against three wrong bindings.
+// A binding from a previous session incarnation would report live:true and block resume.
+// A renamed worktree or a hand-copied .lym would double-launch every strand or target another worktree's live panes.
 func TestAdoptPaneGenerationLocked(t *testing.T) {
 	tiergate.Require(t, 0)
 	const liveAnswer = "$4|900|1787043918"
@@ -165,9 +164,9 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// generations maps a session name to its display-message answer; a name absent from the map
-		// is absent from list-sessions too, and one mapped to unprobeableSession is listed but does
-		// not answer the probe.
+		// generations maps a session name to its display-message answer.
+		// A name absent from the map is absent from list-sessions too.
+		// A name mapped to unprobeableSession is listed but does not answer the probe.
 		generations     map[string]string
 		recorded        PaneGeneration
 		wantErrFragment string
@@ -222,11 +221,11 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 			wantGeneration: liveGeneration,
 		},
 		{
-			// R6 review finding R6-F2: the recorded session is demonstrably THERE (list-sessions
-			// names it) and only its identity probe failed. Reading that as "gone" is the fail-open
-			// that let one transient round trip re-open R5-F5's double-launch, and — because the
-			// pre-boot and post-boot call sites run this same check — deposit a bare session on the
-			// shared per-hub server as a refusal's residue.
+			// The recorded session is listed by list-sessions, so it exists;
+			// only its identity probe failed. Reading that as gone is a fail-open:
+			// one transient round trip could re-open a double launch.
+			// The pre-boot and post-boot call sites run this same check.
+			// A misread would leave a bare session on the shared per-hub server as a refusal's residue.
 			name: "a recorded session that is listed but does not answer the probe refuses rather than assuming it is gone",
 			generations: map[string]string{
 				"worktree": liveAnswer,

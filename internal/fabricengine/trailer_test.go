@@ -11,8 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestAppendParseWarpSHATrailer_RoundTrip covers append-then-parse round trips for a single-line
-// subject and a multi-paragraph message.
+// TestAppendParseWarpSHATrailer_RoundTrip covers append-then-parse round trips.
+// The messages have a single-line subject or several paragraphs.
 func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -41,12 +41,10 @@ func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock asserts that a single-line message -- even
-// one shaped exactly like a trailer line, the "webster: <label>" form every
-// webster weft commit uses -- gets its Warp-SHA trailer in a NEW blank-line-separated
-// paragraph, keeping the git subject clean.
-// Joining instead would fold the trailer into the subject paragraph and pollute `git log --oneline`
-// for every such commit (the round fable-r1 regression).
+// TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock asserts that a single-line message gets a Warp-SHA trailer.
+// The trailer goes in a new blank-line-separated paragraph.
+// That holds even for a trailer-shaped message such as "webster: <label>", and keeps the git subject clean.
+// Joining would fold the trailer into the subject paragraph and pollute `git log --oneline` for such commits.
 //
 //testtiming:keep a single-line message, even one shaped like a trailer, getting its Warp-SHA trailer in a new paragraph; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
@@ -77,9 +75,8 @@ func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
 	}
 }
 
-// TestAppendWarpSHATrailer_JoinsExistingTrailerBlock asserts that appending to a message already
-// ending in a trailer block (e.g.
-// a prior Co-authored-by:) joins the new line directly, without introducing a stray blank line.
+// TestAppendWarpSHATrailer_JoinsExistingTrailerBlock asserts that appending joins the new line to a trailer block.
+// A message already ending in a trailer block, such as a Co-authored-by: trailer, gets no stray blank line.
 func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	message := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>"
@@ -91,8 +88,8 @@ func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
 	}
 }
 
-// TestParseWarpSHATrailer covers a message with no Warp-SHA trailer (ok=false), several Warp-SHA
-// trailer lines (the last wins) and whitespace around the trailer line and its value (tolerated).
+// TestParseWarpSHATrailer covers a message with no Warp-SHA trailer (ok=false).
+// It also covers several Warp-SHA trailer lines (the last wins) and whitespace around them.
 //
 //testtiming:keep parseWarpSHATrailer returning ok=false when absent, the last trailer winning, and whitespace being tolerated; coverage of its blocks by other tests does not show an assertion of this
 func TestParseWarpSHATrailer(t *testing.T) {
@@ -120,10 +117,8 @@ func TestParseWarpSHATrailer(t *testing.T) {
 	}
 }
 
-// parseSnapshotTags scans message for every "Snapshot: <tag>" trailer line
-// and returns the tags in the order they appear. It is a test-only helper
-// mirroring parseWarpSHATrailer's scan, used to assert appendSnapshotTrailers
-// round-trips.
+// parseSnapshotTags returns the value of every "Snapshot: <tag>" trailer line in message, in the order they appear.
+// Tests use it to check that appended snapshot trailers parse back.
 func parseSnapshotTags(message string) []string {
 	var tags []string
 	prefix := SnapshotTrailerKey + ":"
@@ -208,11 +203,11 @@ func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_RejectsInvalidTags asserts that a tag containing a newline, carriage
-// return, colon, or any other out-of-charset character is rejected, and that rejection happens
-// before anything is written (the returned message is empty on error).
-// A valid tag preceding an invalid one fails the whole call too: a caller must never end up with a
-// partial trailer block.
+// TestAppendSnapshotTrailers_RejectsInvalidTags asserts that an invalid tag is rejected.
+// A tag containing a newline, a carriage return, a colon, or any other out-of-charset character is invalid,
+// and that rejection happens before anything is written (the returned message is empty on error).
+// A valid tag preceding an invalid one fails the whole call too,
+// so a caller never ends up with a partial trailer block.
 //
 //testtiming:keep out-of-charset tags, and a valid tag before an invalid one, being rejected with *ErrInvalidSnapshotTag and an empty message; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {

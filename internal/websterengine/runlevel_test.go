@@ -1,6 +1,7 @@
-// runlevel_test.go exercises Run end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory over a fakeGit backs WorktreeRoot and a real on-disk plan directory backs PlanDir (so ParsePlan/Validate/the batchifier/fingerprint all run for real, against the real identity batchifier — newRunFixture injects it into RunDeps.Batcher directly, since Run itself does no config I/O and needs no _lym/ tree on WorktreeRoot), while the Master spawn itself is a local, fully-scripted fake (MasterStarter/ MasterHandle) whose Wait method can carry an onWait side effect that writes outcome.yaml/summary.md the instant before it returns — modeling the real ordering (Master writes its two contract files DURING the run Wait blocks on).
-// FindRun's cross-process resolution is satisfied by hand-seeding a run.json under the fixture's own shuttle run-dir root, mirroring what a real *shuttleengine.Runner.Start would have produced.
-// Its helpers are package-local (the internal and external test packages deliberately do not share a test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's own precedent), except for the shared seedPlanDir/mustFingerprint/writeWorktreeFile helpers already defined in beginbatch_test.go and gitfake_test.go.
+// runlevel_test.go exercises Run end to end as a Tier 1 test, over a real plan directory and identity batcher.
+// The Master spawn is a scripted fake whose Wait writes outcome.yaml and summary.md before it returns.
+// Helpers are package-local;
+// seedPlanDir, mustFingerprint and writeWorktreeFile live in hub_helper_test.go and gitfake_test.go.
 
 package websterengine_test
 
@@ -47,8 +48,8 @@ func (s realMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengi
 
 var _ websterengine.MasterStarter = realMasterStarter{}
 
-// appendIntegrationVerify appends a plan-level "## verify:" section to the overview of the already-seeded plan dir at planDir,
-// so a fixture built without one can exercise the plan-level verify gate.
+// appendIntegrationVerify appends a plan-level "## verify:" section to the overview of the plan dir at planDir.
+// The overview must already exist; a fixture built without a verify section can exercise the plan-level verify gate.
 func appendIntegrationVerify(t *testing.T, planDir, verify string) {
 	t.Helper()
 	path := filepath.Join(planDir, "00-overview.md")
@@ -62,15 +63,12 @@ func appendIntegrationVerify(t *testing.T, planDir, verify string) {
 	}
 }
 
-// addCardUses rewrites an already-seeded card file under planDir — one of seedRunPlanDir's own
-// "%02d-batch%d.md" files — to carry a "**Uses:**" field naming ref, modelled on
-// appendIntegrationVerify: read the file, splice the field in, write it
-// back. Inserted ahead of the card's own "**Intent:**" line, which every seedRunPlanDir card
-// carries.
-// A path-shaped ref this points at another card's Create target is already satisfied by
-// planparser.Validate's own createTargetsUnion check within the same plan, but a caller that wants
-// the ref to also resolve on disk (mirroring a real cross-card file dependency) must still create it
-// under the fixture's own worktree — this helper only edits the plan-format text.
+// addCardUses adds a "**Uses:**" field naming ref to an already-seeded card file under planDir.
+// The field goes ahead of the card's "**Intent:**" line, which every seedRunPlanDir card carries.
+// A path-shaped ref to another card's Create target is already satisfied by
+// planparser.Validate's createTargetsUnion check within the same plan.
+// A caller that wants the ref to resolve on disk must create the file under the fixture's own worktree;
+// this helper edits only the plan-format text.
 func addCardUses(t *testing.T, planDir string, cardNumber int, ref string) {
 	t.Helper()
 	slug := fmt.Sprintf("batch%d", cardNumber)
@@ -92,10 +90,9 @@ func addCardUses(t *testing.T, planDir string, cardNumber int, ref string) {
 	}
 }
 
-// addCardCreateTarget rewrites an already-seeded card file under planDir to add target as an
-// additional bullet under the card's existing "**Create:**" group, ahead of its own
-// seedRunPlanDir-written path target -- so a test can add a glyph-shaped Create target alongside
-// the plain-path one every seedRunPlanDir card already carries, without disturbing it.
+// addCardCreateTarget adds target as an extra bullet under the "**Create:**" group of an already-seeded card file.
+// It goes ahead of the path target seedRunPlanDir writes into every card,
+// so a test can add a glyph-shaped Create target beside the plain-path one without disturbing it.
 func addCardCreateTarget(t *testing.T, planDir string, cardNumber int, target string) {
 	t.Helper()
 	slug := fmt.Sprintf("batch%d", cardNumber)
@@ -185,8 +182,8 @@ func requireNoConflictRecord(t *testing.T, fx *runFixture) {
 type runRefusalCase struct {
 	name  string
 	cards int
-	// setup edits the fixture to provoke the refusal and returns the step that takes the way
-	// forward; nil means the case has no way forward to take.
+	// setup edits the fixture to provoke the refusal;
+	// it returns the step that takes the way forward, or nil when the case has no way forward.
 	setup       func(t *testing.T, fx *runFixture) (takeWayForward func())
 	errIs       error
 	msgContains []string
@@ -198,8 +195,10 @@ type runRefusalCase struct {
 	check func(t *testing.T, fx *runFixture, err error)
 }
 
-// deadEndRefusalCase returns a row over a run whose batch 1 is recorded as bs, a dead end, refused with ErrBatchDeadEnd and the text want.
-// Its way forward does what `lym webster reset --to batch-start` does to the record, clearing the recovery count and start, after which the run reaches Master.
+// deadEndRefusalCase returns a row over a run whose batch 1 is recorded as the dead end bs.
+// Run refuses it with ErrBatchDeadEnd and the text want.
+// The way forward clears the batch's recovery count and start.
+// It is what `lym webster reset --to batch-start` does to the record; the run then reaches Master.
 func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) runRefusalCase {
 	return runRefusalCase{
 		name:  name,
@@ -220,7 +219,8 @@ func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) 
 	}
 }
 
-// enginesWithHiddenX returns an engine set whose engine "x" hides its fork audit and whose other engine is the fake that audits, with defaultName as the default.
+// enginesWithHiddenX returns an engine set with defaultName as the default engine.
+// Engine "x" wraps the fake engine without exposing its fork audit; the fake engine itself keeps it.
 func enginesWithHiddenX(defaultName string) shuttleengine.EngineSet {
 	fake := &shuttlefake.Engine{}
 	return shuttleengine.NewEngineSet(defaultName, map[string]shuttleengine.Engine{
@@ -229,8 +229,10 @@ func enginesWithHiddenX(defaultName string) shuttleengine.EngineSet {
 	})
 }
 
-// roleEngineRefusalCase returns a row over a fixture holding a recorded state, a recorded Master strand and a stale outcome, whose roles mutate edits.
-// The row asserts the refusal names roleKey and engineQuoted, and that nothing was started, stopped, archived or rewritten.
+// roleEngineRefusalCase returns a row over a fixture with a recorded state, a Master strand and a stale outcome.
+// mutate edits the fixture to change its roles.
+// The row asserts that the refusal names roleKey and engineQuoted,
+// and that nothing was started, stopped, archived or rewritten.
 func roleEngineRefusalCase(name string, fresh bool, roleKey, engineQuoted string, mutate func(fx *runFixture)) runRefusalCase {
 	var stateBefore, outcomeBefore []byte
 	var dirBefore []string
@@ -291,9 +293,9 @@ func snapshotWebsterDir(t *testing.T, fx *runFixture) (state, outcome []byte, en
 	return state, outcome, entries
 }
 
-// TestRun_RefusesBeforeSpawn asserts each refusal Run raises ahead of the Master spawn: the typed
-// error or message it carries, the way forward it names, that the Starter is never reached, and —
-// where the card has a way forward to take — that taking it lets the re-run reach the Master.
+// TestRun_RefusesBeforeSpawn checks each refusal Run raises before the Master spawn.
+// Each row checks the typed error or message, the way forward it names, and that the Starter is never reached.
+// Where the card has a way forward to take, taking it lets the re-run reach the Master.
 func TestRun_RefusesBeforeSpawn(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -301,7 +303,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 	var masterReed *shuttlefake.Reed
 	cases := []runRefusalCase{
 		{
-			// The engine meets no requirement, so shuttle's Start refuses Master's forks and background wake; the empty engine is checked as the set's default.
+			// The engine meets no requirement, so Start refuses Master's forks and background wake; the set's default is empty.
 			name:  "master engine misses a requirement",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
@@ -468,9 +470,8 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				}
 				addCardUses(t, fx.PlanDir, 1, "sub#Missing")
 				return func() {
-					// The refused run already recorded the edited plan; fixing the card is a
-					// further edit, so the next run refuses it as foreign until the operator
-					// rebaselines, which the message names.
+					// The refused run already recorded the edited plan. Fixing the card is a further edit,
+					// so the next run refuses it as foreign until the operator rebaselines, as the refusal message says.
 					if err := os.WriteFile(cardPath, original, 0o644); err != nil {
 						t.Fatalf("fix card: %v", err)
 					}
@@ -578,12 +579,12 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			wayForward: []string{"changed outside its Card Index", "add a follow-up card after the last begun batch", "1) lym webster reset --to start; 2) lym webster run"},
 		},
 		{
-			// The validation error is forced by pointing WorktreeRoot at a path with no repository,
-			// so planglyph's own openRepo fails; the save failure is forced by making the webster dir
-			// read-only after the matching state has been seeded, which is the one directory
-			// SaveState writes into. The resolve pass has by then already rewritten the plan on
-			// disk, so a state.json still holding the pre-rewrite fingerprint would make the NEXT run
-			// refuse this run's own edit as a foreign one: both failures must be reported.
+			// The validation error comes from pointing WorktreeRoot at a path with no repository,
+			// so planglyph's openRepo fails; the save failure comes from making the webster dir
+			// read-only after the matching state is seeded, which is the one directory
+			// SaveState writes into. The resolve pass has already rewritten the plan on disk.
+			// So state.json keeps the pre-rewrite fingerprint,
+			// and the next run refuses this run's own edit as foreign. Both failures must be reported.
 			name:  "a validation error and a failed re-baseline save are both reported",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
@@ -685,7 +686,8 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 	}
 }
 
-// TestRun_DeadEndRefusalSparesRecoverableBatches asserts Run reaches Master, with no ErrBatchDeadEnd, over each recorded batch a Master or a recovery can still take.
+// TestRun_DeadEndRefusalSparesRecoverableBatches asserts Run reaches Master with no ErrBatchDeadEnd.
+// It covers each recorded batch that a Master or a recovery can still take.
 func TestRun_DeadEndRefusalSparesRecoverableBatches(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -717,16 +719,22 @@ func TestRun_DeadEndRefusalSparesRecoverableBatches(t *testing.T) {
 }
 
 // TestRun_AutoRebaseline drives RunOptions.AutoRebaseline over a plan edited after batch 1 began.
-// An accepted rebaseline is saved before Master starts, its warning rides the result, the summary and the log once, and it opens a stuck reason and every error that follows;
-// each refusal, transient and plan refusal after it wraps ErrAutoRebaseline, names re-stepping the row and neither manual verb, and starts nothing;
-// Fresh beside the option keeps its archive path, and an in-flight card's edit is recorded for the next recovery to render.
+// An accepted rebaseline is saved before Master starts.
+// Its warning rides the result, the summary and the log once,
+// and it opens a stuck reason and every error that follows.
+// Each refusal after the rebaseline, transient or plan, wraps ErrAutoRebaseline.
+// It names re-stepping the row and neither manual verb.
+// A refused run starts nothing.
+// Fresh beside the option keeps its archive path.
+// An in-flight card's edit is recorded for the next recovery to render.
 // The log capture swaps the logger's process-global output, so no subtest runs in parallel.
 func TestRun_AutoRebaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	const session = "master-session-auto"
 	const warningLead = "webster: the plan changed since the run recorded it and was rebaselined on entry"
 
-	// seed builds a run of numCards cards whose state holds batch 1, shaped by shape (nil keeps it done), over the plan as it stands.
+	// seed builds a run of numCards cards over the plan as it stands, with a state that holds batch 1.
+	// shape reshapes that batch; nil keeps it done.
 	seed := func(t *testing.T, numCards int, shape func(bs *websterengine.BatchState)) *runFixture {
 		t.Helper()
 		fx := newRunFixture(t, numCards)
@@ -748,7 +756,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		t.Helper()
 		plankit.Write(t, fx.PlanDir, runPlan(1, total))
 	}
-	// masterEnds scripts a Master that ends with outcomeYAML after onWait, auditing forks fork transcripts.
+	// masterEnds scripts a Master that ends with outcomeYAML after onWait, and audits the fork transcripts of forks.
 	masterEnds := func(t *testing.T, fx *runFixture, outcomeYAML string, forks int, gate *shuttleengine.GateOutcome, onWait func()) {
 		t.Helper()
 		fx.Starter.handle = &runFakeHandle{
@@ -1035,7 +1043,8 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		}
 	})
 
-	// The zero-batch refusal is not among the rows: a plan with no card fails to load, and the batches a rebaseline records cover every card, so no plan reaches it after an accepted rebaseline.
+	// The zero-batch refusal is not among the rows: a plan with no card fails to load,
+	// and the batches a rebaseline records cover every card, so no plan reaches it after an accepted rebaseline.
 	t.Run("a plan refusal or quarry transient after the rebaseline blocks the row", func(t *testing.T) {
 		cases := []struct {
 			name string
@@ -1166,10 +1175,11 @@ func TestRun_AutoRebaseline(t *testing.T) {
 	})
 }
 
-// TestRun_EntryValidationReachesMaster asserts a run whose state or plan could trip the entry
-// validation gate — a completed or begun Create card whose target already landed, a forthcoming
-// Create target another card Uses, an informational-only findings set, a first init — still reaches the
-// Master spawn exactly once, and that the first init records a hash for every plan file.
+// TestRun_EntryValidationReachesMaster asserts that a run still reaches the Master spawn exactly once:
+// its state or plan could trip the entry validation gate.
+// The cases are a completed or begun Create card whose target already landed;
+// a forthcoming Create target another card Uses; an informational-only findings set; and a first init.
+// The first init also records a hash for every plan file.
 func TestRun_EntryValidationReachesMaster(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1182,9 +1192,9 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 		check func(t *testing.T, fx *runFixture)
 	}{
 		{
-			// A resumed run whose state records batch 1 terminal, and whose batch-1 Create target
-			// consequently exists on disk, must sail past the entry validation gate: the gate once
-			// re-validated the WHOLE plan and refused the resume on create-already-exists.
+			// A resumed run whose state records batch 1 terminal has its batch-1 Create target on disk,
+			// so it must pass the entry validation gate.
+			// A gate that re-validates the whole plan refuses such a resume on create-already-exists.
 			name:  "resume with a completed Create card",
 			cards: 2,
 			setup: func(t *testing.T, fx *runFixture) {
@@ -1221,8 +1231,8 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 			},
 		},
 		{
-			// An informational-only findings set — create-new-unit, on a Create target introducing a
-			// brand-new package — is no refusal: severity decides the verdict.
+			// An informational-only findings set is no refusal: severity decides the verdict.
+			// The set here is create-new-unit, on a Create target introducing a brand-new package.
 			name:  "an informational-only findings set",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) {
@@ -1273,9 +1283,9 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 }
 
 // TestRun_EntryHousekeeping asserts what Run does to stale files and recorded strands on entry,
-// before the Master spawn: --fresh archives the stale state and reports and clears the prompts,
-// stale contract files are archived, live recorded strands are stopped, and a cleanly absent strand
-// is left alone.
+// before the Master spawn.
+// --fresh archives the stale state and reports and clears the prompts.
+// Stale contract files are archived, live recorded strands are stopped, and a cleanly absent strand is left alone.
 func TestRun_EntryHousekeeping(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1310,10 +1320,10 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 				}
 
 				return func(t *testing.T) {
-					// The stale state.json is archived (renamed, content preserved) rather
-					// than deleted; the live path is then reinitialized fresh by the same
-					// --fresh sequence, so a state.json legitimately exists there again by
-					// the time Run returns — it must no longer carry the stale fingerprint.
+					// The stale state.json is archived, renamed with its content preserved, rather than deleted.
+					// The live path is then reinitialized by the same --fresh sequence,
+					// so a state.json exists there again by the time Run returns,
+					// and it must not carry the stale fingerprint.
 					stateFile := filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")
 					archived, globErr := filepath.Glob(filepath.Join(fx.Deps.Geom.WebsterDir, "state-*.json"))
 					if globErr != nil || len(archived) != 1 {
@@ -1389,7 +1399,8 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 			},
 		},
 		{
-			// The recorded Master strand and each recorded, non-terminal recovery-batch, cold fixer and plan fixer strand are stopped through the stopper.
+			// The recorded Master strand is stopped through the stopper.
+			// So is each recorded, non-terminal recovery-batch, cold fixer and plan fixer strand.
 			// A terminal recovery batch's strand and a terminal fixer's are not.
 			name: "the Master and non-terminal recovery, cold fixer and plan fixer strands are stopped",
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
@@ -1413,7 +1424,8 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 					if want := []string{"prior-master-strand", "prior-recovery-strand", "prior-fixer-strand", "prior-plan-fixer-strand"}; !slices.Equal(fx.Stopper.Stopped, want) {
 						t.Errorf("stopped = %v; want %v", fx.Stopper.Stopped, want)
 					}
-					// A stopped fixer's record is saved terminal, so the next fix-verify spawns instead of attaching; a terminal fixer's record is left as it was.
+					// A stopped fixer's record is saved terminal, so the next fix-verify spawns instead of attaching.
+					// A terminal fixer's record is left as it was.
 					fixers := loadRunState(t, fx).VerifyFixers
 					if len(fixers) != 2 {
 						t.Fatalf("saved VerifyFixers = %d records; want 2", len(fixers))
@@ -1496,7 +1508,10 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 	}
 }
 
-// TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand role, model and skills, the awaited shell, the gate entries, the prompt (never written to a master.md), the strand and session identities, and the order of the batches the prompt lists.
+// TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it.
+// It covers the strand role, model and skills, the awaited shell and the gate entries.
+// It covers the prompt, which is never written to a master.md.
+// It covers the strand and session identities and the order of the batches the prompt lists.
 func TestRun_MasterSpawn(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1517,7 +1532,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 		check      func(t *testing.T, fx *runFixture)
 	}{
 		{
-			// Merriam spawns under the strand role `webster` while the model still resolves from RoleMaster.
+			// The Master spawns under the strand role `webster` while the model still resolves from RoleMaster.
 			name:  "the strand role, the model and the skills",
 			cards: 1,
 			prepare: func(t *testing.T, fx *runFixture) {
@@ -1596,7 +1611,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// The strand and session identities the bracket verbs read are persisted BEFORE Run blocks on Wait.
+			// The strand and session identities the bracket verbs read are persisted before Run blocks on Wait.
 			name:  "the strand and session identities are persisted",
 			cards: 1,
 			check: func(t *testing.T, fx *runFixture) {
@@ -1633,7 +1648,8 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// The size source reads repository-relative paths from the worktree root, which differs from the pane's cwd under a subpath anchor.
+			// The size source reads repository-relative paths from the worktree root.
+			// That root differs from the pane's cwd under a subpath anchor.
 			name:  "a first init sizes cards from the worktree root when the pane's cwd is a subdirectory",
 			cards: 2,
 			prepare: func(t *testing.T, fx *runFixture) {
@@ -1649,8 +1665,8 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// When FindRun fails AFTER Master's pane is live, state.json has already recorded
-			// MasterStrand, so the next run's entry-time reclaim can find and stop the orphaned pane.
+			// When FindRun fails after Master's pane is live, state.json has already recorded MasterStrand,
+			// so the next run's entry-time reclaim can find and stop the orphaned pane.
 			name:       "the Master strand is persisted before the session resolve",
 			cards:      1,
 			noRunState: true,
@@ -1661,8 +1677,8 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// The told gate is threaded, never rebuilt or dropped, and Run adds its own verify
-			// entry; evaluating the closure is shuttleengine's own Wait's job.
+			// The told gate is threaded, never rebuilt or dropped, and Run adds its own verify entry.
+			// Evaluating the closure is the job of shuttleengine's own Wait.
 			name:  "a told gate reaches StartMaster beside the verify entry",
 			cards: 1,
 			prepare: func(t *testing.T, fx *runFixture) {
@@ -1767,10 +1783,10 @@ func TestRun_MasterSpawn(t *testing.T) {
 	}
 }
 
-// TestRun_MasterEndedEarly asserts each of the died and timeout shuttle outcomes for
-// Master's own spawn maps to its own typed error, carrying the SessionID and the kept RunDir and
-// matching its sentinel via errors.Is, names the re-run as the way forward, and that a fresh Master
-// resuming from state.json then finishes.
+// TestRun_MasterEndedEarly asserts that a died or timeout outcome of Master's own spawn maps to its own typed error.
+// The error carries the SessionID and the kept RunDir and matches its sentinel via errors.Is.
+// It names the re-run as the way forward.
+// A fresh Master resuming from state.json then finishes.
 func TestRun_MasterEndedEarly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1838,9 +1854,11 @@ func TestRun_MasterEndedEarly(t *testing.T) {
 	}
 }
 
-// TestRun_DoneOutcome asserts what Run records and reports once Master writes outcome done over a
-// clean or findings-bearing whole-session fork audit: the result, the warnings, the pending
-// findings that demote the run to stuck, the summary sections and the fixer prompt.
+// TestRun_DoneOutcome asserts what Run records and reports once Master writes outcome done.
+// The whole-session fork audit is either clean or findings-bearing.
+// The assertions cover the result and the warnings.
+// They also cover the pending findings, which demote the run to stuck.
+// They also cover the summary sections and the fixer prompt.
 func TestRun_DoneOutcome(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2012,8 +2030,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 			},
 		},
 		{
-			// state.json is under _lym, which nothing the run recorded can check, so the way
-			// forward is the --fresh route and never a git restore.
+			// state.json is under _lym, which nothing the run recorded can check,
+			// so the way forward is the --fresh route, never a git restore.
 			name:    "a fork writing state.json leaves a pending fork-state-write finding",
 			cards:   1,
 			session: "master-session-statewrite",
@@ -2059,8 +2077,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 			},
 		},
 		{
-			// The run-exit fork audit covers the verify-gate fixer fork: a fork outside every batch
-			// bracket that writes the plan directory leaves one pending fork-plan-write finding.
+			// The run-exit fork audit covers the verify-gate fixer fork:
+			// a fork outside every batch bracket that writes the plan directory leaves one pending fork-plan-write finding.
 			name:    "the fixer fork writing the plan directory is flagged",
 			cards:   1,
 			session: "master-session-fixer",
@@ -2168,7 +2186,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 // endedSleepShell is the background shell the run-end rows leave outstanding for a minute and a half.
 var endedSleepShell = shuttleengine.EndedShell{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}
 
-// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists shells as ended shells, with Master's last action writing outcomeYAML.
+// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists shells as ended shells.
+// Master's last action writes outcomeYAML.
 func expiredShellRun(t *testing.T, fx *runFixture, shells []shuttleengine.EndedShell, outcomeYAML string) websterengine.RunResult {
 	t.Helper()
 	seedMatchingState(t, fx, &websterengine.State{
@@ -2198,14 +2217,17 @@ func expiredShellRun(t *testing.T, fx *runFixture, shells []shuttleengine.EndedS
 	return result
 }
 
-// The parts of the sentence the friction note and the warning share for `endedSleepShell`.
+// The sentence parts that the friction note and the warning share when a shell ends.
 const (
 	shellSentenceHead    = "background shell `sleep 9999` (reported by the transcript signal) was still running, outstanding for 1m30s, when the run ended; the run never read the shell's result, and lym did not stop the shell; "
 	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it where the shell is in the pane's process tree; "
 	shellStrandReclaimed = "Master's strand stays alive until the next `lym webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree; "
 )
 
-// TestRun_ExpiredShells asserts an ended shell states the run's outcome in its friction note and, on every outcome that returns a RunResult, in its warning; that only a done outcome lands in summary.md; and that an empty list adds no warning, summary section or friction note.
+// TestRun_ExpiredShells asserts that an ended shell states the run's outcome in its friction note.
+// On every outcome that returns a RunResult, the shell also states it in its warning.
+// Only a done outcome lands in summary.md.
+// An empty list adds no warning, summary section or friction note.
 func TestRun_ExpiredShells(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2308,7 +2330,8 @@ func TestRun_ExpiredShells(t *testing.T) {
 	})
 }
 
-// auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml (batchesDone batches) and a valid summary.md, with audit as the whole-session fork audit.
+// auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml and a valid summary.md.
+// The outcome.yaml records batchesDone batches, and audit is the whole-session fork audit.
 func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone int, audit shuttleengine.ForkAudit, extra func()) *runFakeHandle {
 	t.Helper()
 	return &runFakeHandle{
@@ -2328,8 +2351,11 @@ func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone i
 	}
 }
 
-// TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
-// that the finding stays pending and refuses a bare re-run, and that once the file is restored with git and the finding accepted a re-run with a clean audit ends done.
+// TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck:
+// a Master write into a tracked file leaves a correctness finding undispositioned.
+// The stuck outcome names the path and the git way forward.
+// The finding stays pending and refuses a bare re-run.
+// Once the file is restored with git and the finding accepted, a re-run with a clean audit ends done.
 func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2410,8 +2436,8 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	}
 }
 
-// runToDone drives fx's Run to a done outcome with the given ForkAudit forks, scripting
-// outcome.yaml/summary.md the same way auditDoneHandle does, and returns the RunResult.
+// runToDone drives fx's Run to a done outcome with the given ForkAudit forks.
+// It scripts outcome.yaml and summary.md as the Master would write them, and returns the RunResult.
 func runToDone(t *testing.T, fx *runFixture, strandGUID, sessionID string, forks []shuttleengine.ForkReport, batchesDone int) websterengine.RunResult {
 	t.Helper()
 
@@ -2437,7 +2463,8 @@ func runToDone(t *testing.T, fx *runFixture, strandGUID, sessionID string, forks
 	return result
 }
 
-// requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test pins the way forward the message names.
+// requireWayForward fails unless err carries a trailing "way forward:" clause that contains every want fragment.
+// Each reaching test uses it to pin the way forward the message names.
 func requireWayForward(t *testing.T, err error, wants ...string) {
 	t.Helper()
 	if err == nil {
@@ -2455,7 +2482,8 @@ func requireWayForward(t *testing.T, err error, wants ...string) {
 	}
 }
 
-// diedMaster scripts fx's Starter with a Master whose pane dies, the cheapest way for a re-run to prove it got past every refusal gate and reached the spawn.
+// diedMaster scripts fx's Starter with a Master whose pane dies.
+// A re-run that reaches the spawn has got past every refusal gate, and this is the cheapest way to prove it.
 func diedMaster(t *testing.T, fx *runFixture, label string) {
 	t.Helper()
 	fx.Starter.startErr = nil
@@ -2481,7 +2509,8 @@ func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
 	}
 }
 
-// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-batch its cards, restamp the recorded fingerprint and save.
+// rebaselineOnDisk parses the edited plan and re-batches its cards.
+// It restamps the recorded fingerprint and saves the state.
 func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 	t.Helper()
 	plan, err := planparser.ParsePlan(fx.PlanDir)
@@ -2522,7 +2551,10 @@ func requireNoRecordedState(t *testing.T, fx *runFixture, _ error) {
 	}
 }
 
-// TestRun_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its message and way forward, then takes the way forward (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done; a resume whose prior session's batches fall outside the audit passes outright.
+// TestRun_RunExitRefusals reaches each run-exit refusal over a done Master and asserts its message and way forward.
+// It then takes each way forward and proves the re-run ends done.
+// The way forward is a re-driven batch, a finished summary, or a completed audit.
+// A resume whose prior session's batches fall outside the audit passes outright.
 func TestRun_RunExitRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2548,7 +2580,7 @@ func TestRun_RunExitRefusals(t *testing.T) {
 		wantRunWarnings int
 		msgContains     []string
 		want            string
-		// repair mutates the world the way the way forward describes, before the clean re-run.
+		// repair mutates the world as the way forward describes, before the clean re-run.
 		repair func(t *testing.T, fx *runFixture)
 		// rerunBatches is how many batches and forks the clean re-run covers; zero means one.
 		rerunBatches int
@@ -2573,9 +2605,9 @@ func TestRun_RunExitRefusals(t *testing.T) {
 			want:        "re-drives every batch without a done record",
 		},
 		{
-			// A Master that writes outcome: done while a plan batch has no terminal done record
-			// (begun-but-never-recorded — a fork that slipped past record-batch) is refused even
-			// when the outcome/summary files are well-formed and the audit is clean.
+			// A Master that writes outcome: done while a plan batch has no terminal done record is refused.
+			// The refusal covers a fork that began but slipped past record-batch without a done record.
+			// It holds even when the outcome and summary files are well-formed and the audit is clean.
 			name:        "batch without a done record",
 			cards:       1,
 			state:       map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", SessionID: session}},
@@ -2612,8 +2644,8 @@ func TestRun_RunExitRefusals(t *testing.T) {
 			want:        "re-drives every batch without a done record",
 		},
 		{
-			// The audit covers only the fresh session's own subagents, so a crash-resumed run's
-			// batches the prior session completed must not count against it.
+			// The audit covers only the fresh session's own subagents.
+			// Batches that a prior session completed in a crash-resumed run must not count against it.
 			name:  "a resume excludes the prior session's batches from the audit",
 			cards: 2,
 			state: map[int]*websterengine.BatchState{
@@ -2714,9 +2746,11 @@ func TestRun_RunExitRefusals(t *testing.T) {
 	}
 }
 
-// TestRun_FreshRunOverNewGenerationAfterArchive proves a rework generation gets a fresh run:
-// a finished two-card run is archived with ArchiveRunRecord, the plan is replaced by a generation whose first_card is 3,
-// and Run starts over that plan with no ErrFingerprintMismatch, recording and telling Master only the new generation's batches.
+// TestRun_FreshRunOverNewGenerationAfterArchive proves a rework generation gets a fresh run.
+// A finished two-card run is archived with ArchiveRunRecord.
+// The plan is then replaced by a generation whose first_card is 3.
+// Run then starts over that plan with no ErrFingerprintMismatch.
+// It records and tells Master only the new generation's batches.
 func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2782,7 +2816,8 @@ func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
 	}
 }
 
-// seedFreshPendingState seeds a state with one recorded batch started at the fixture's first commit and one pending finding naming paths, and returns that start commit.
+// seedFreshPendingState seeds a state with one recorded batch started at the fixture's first commit.
+// It also seeds one pending finding naming paths, and returns that start commit.
 func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string {
 	t.Helper()
 	start := fx.Git.head
@@ -2796,7 +2831,8 @@ func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string
 	return start
 }
 
-// seedUncheckableState seeds a state with one batch failed on an uncheckable finding, started at the fixture's first commit, and returns that start commit.
+// seedUncheckableState seeds a state with one batch failed on an uncheckable finding.
+// The batch started at the fixture's first commit, and the function returns that start commit.
 func seedUncheckableState(t *testing.T, fx *runFixture) string {
 	t.Helper()
 	start := fx.Git.head
@@ -2813,7 +2849,8 @@ func seedUncheckableState(t *testing.T, fx *runFixture) string {
 	return start
 }
 
-// requireFreshRefusal asserts a --fresh run was refused with ErrPendingAuditFindings and archived nothing: state.json is still in place, and so is marker when one was planted in the reports dir.
+// requireFreshRefusal asserts a --fresh run was refused with ErrPendingAuditFindings and archived nothing.
+// state.json must still be in place, and so must marker when one was planted in the reports dir.
 func requireFreshRefusal(t *testing.T, fx *runFixture, err error, marker string) {
 	t.Helper()
 	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
@@ -2832,7 +2869,7 @@ func requireFreshRefusal(t *testing.T, fx *runFixture, err error, marker string)
 	}
 }
 
-// requireReinitialisedRun asserts the state records no pending finding and is no longer the stale run seeded by seedFreshPendingState or seedUncheckableState.
+// requireReinitialisedRun asserts the state records no pending finding and is not the stale run the test seeded.
 func requireReinitialisedRun(t *testing.T, fx *runFixture) {
 	t.Helper()
 	st := loadRunState(t, fx)
@@ -2851,8 +2888,10 @@ func plantReportsMarker(t *testing.T, fx *runFixture) string {
 	return marker
 }
 
-// TestRun_FreshOverPendingFindings asserts how Run weighs a pending audit finding or a batch failed on an uncheckable finding against --fresh and a plain re-run:
-// --fresh refuses, archiving nothing, while the evidence still stands, names the way forward, and drops the finding once the evidence is cleared.
+// TestRun_FreshOverPendingFindings asserts how Run weighs a pending audit finding against --fresh and a plain re-run.
+// A batch failed on an uncheckable finding is weighed the same way.
+// --fresh refuses, archiving nothing, while the evidence still stands.
+// It names the way forward, and it drops the finding once the evidence is cleared.
 // Subtests share the logger's process-global output, so none runs in parallel.
 func TestRun_FreshOverPendingFindings(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,6 +1,8 @@
 // circling_integration_test.go drives the circling group through the real cobra tree against a real hub pair.
-// It pins what circling_test.go's fakes cannot: the group's pre-run resolves a task worktree with and without a slug,
-// and the loom parent's pre-run never arms the group, which would read the slug as a run-id and refuse for the missing seed instead.
+// It pins what circling_test.go's fakes cannot:
+// the group's pre-run resolves a task worktree with and without a slug,
+// and the loom parent's pre-run never arms the group.
+// Arming it there would read the slug as a run-id and refuse for the missing seed.
 
 package loomcli
 

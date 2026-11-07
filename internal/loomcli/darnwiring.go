@@ -1,4 +1,6 @@
-// darnwiring.go holds the wiring only a tree-scoped or darn run needs: the tree scope reader a recipe with `verify_source: tree_scope` tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's Spec source, the record check the agent rows run, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a tree-scoped or darn run needs.
+// It holds the tree scope reader for `verify_source: tree_scope`, the verify source, and the Darn-Write row's seams.
+// It also holds the writer's Spec source, the agent rows' record check, and the rename of retired darn rows.
 // A tapestry run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
@@ -26,10 +28,12 @@ import (
 )
 
 // darnVerifySource returns the darn recipe's verify source: the call of the gate key a landing row names.
-// command resolves at each call, never at construction, so an edit between steps is seen:
-// the key's call over the touched trees' targets when the task diff is wholly under the hub's configured trees, else the key's call alone;
-// a gate config refusal and a malformed tree key are errors naming the way forward.
-// baseCommand is the fix rows' `code-burler-fix` call, as in a tapestry run, and stays the base command of a tree-scoped site.
+// The command resolves at each call, never at construction, so an edit between steps is seen.
+// For a task diff wholly under the hub's configured trees, it is the key's call over the touched trees' targets.
+// Otherwise it is the key's call alone.
+// A gate config refusal and a malformed tree key are errors naming the way forward.
+// baseCommand is the call of the `code-burler-fix` gate key, the fix rows' base command.
+// A tree-scoped site keeps this base command.
 func darnVerifySource(l *lymcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)
@@ -51,7 +55,8 @@ func darnVerifySource(l *lymcwd.Location) verifySource {
 }
 
 // pairMergeBase returns the reader of the task branch's merge base with its recorded parent branch.
-// The fabric is opened and the parent branch read on each call, so a parent that moved after bootstrap is read as it stands.
+// The fabric is opened and the parent branch read on each call,
+// so a parent that moved after bootstrap is read as it stands.
 func pairMergeBase(l *lymcwd.Location) func() (string, error) {
 	return func() (string, error) {
 		parent, err := readRecordedParentBranch(l)
@@ -66,10 +71,14 @@ func pairMergeBase(l *lymcwd.Location) func() (string, error) {
 	}
 }
 
-// darnTreeScope returns the darn recipe's tree scope reader: the tree-scoped command and true for a task diff wholly under the hub's configured trees, and ("", false, nil) otherwise.
-// The command is the call of the row's gate key followed by the touched trees' targets, so a tree-scoped site runs its own key's tiers over those targets in place of the key's scope.
-// Each call reads the hub-wide darn.yaml afresh, so an edit between steps is seen, and reads the diff from the pair's merge base to HEAD with a rename counted at both its paths.
-// A load error is returned with its way forward: the editor one for a malformed tree key, the hub reconcile one otherwise.
+// darnTreeScope returns the darn recipe's tree scope reader.
+// The reader returns the tree-scoped command and true for a task diff wholly under the hub's configured trees;
+// otherwise it returns ("", false, nil).
+// The command is the call of the row's gate key followed by the touched trees' targets,
+// so a tree-scoped site runs its own key's tiers over those targets in place of the key's scope.
+// Each call reads the hub-wide darn.yaml afresh, so an edit between steps is seen.
+// It reads the diff from the pair's merge base to HEAD, counting a rename at both its paths.
+// A load error carries its way forward: the editor's for a malformed tree key, the hub reconcile's otherwise.
 // A scoped diff whose trees contribute no target answers an empty command, which runs nothing.
 func darnTreeScope(l *lymcwd.Location) func(gateKey string) (string, bool, error) {
 	mergeBase := taskMergeBase(l)
@@ -110,11 +119,12 @@ func darnTreeScope(l *lymcwd.Location) func(gateKey string) (string, bool, error
 	}
 }
 
-// latestDarnOutcome returns the latest Darn-Write history entry of the status file at statusPath, locked by statusLockPath.
-// FindingsPath is findingsPath when that file exists, and empty otherwise:
+// latestDarnOutcome returns the latest Darn-Write history entry of the status file at statusPath.
+// The status file is read under the lock at statusLockPath.
+// The returned `FindingsPath` is findingsPath when that file exists, and empty otherwise:
 // the kept findings outlive the resume write that clears the status file's error before the row is called.
 // Reroute, goto and skipped entries record no spawn that did work, so they are passed over.
-// An absent status file and a history with no other Darn-Write entry report not found.
+// An absent status file, or a history with no Darn-Write entry besides the passed-over ones, reports not found.
 func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshed.DarnOutcome, bool, error) {
 	st, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 	// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
@@ -141,7 +151,8 @@ func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshe
 	return loomshed.DarnOutcome{}, false, nil
 }
 
-// discussionRecordCheck returns the record check a recipe's agent rows run: loomshed.ValidateDiscussion over the run's decision record, support log and the committed history of the record recipe keeps.
+// discussionRecordCheck returns the record check a recipe's agent rows run over the decision record.
+// The check also reads the support log and the committed history of the record that recipe keeps.
 // It reads on demand and opens nothing at build time.
 func discussionRecordCheck(l *lymcwd.Location, recipe string) func() ([]discussionparser.Finding, error) {
 	return func() ([]discussionparser.Finding, error) {
@@ -173,8 +184,10 @@ func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
 	}
 }
 
-// renameRetiredRows rewrites each retired row name of renames that the run's status file carries onto the row's current name, so a run parked under an old name resumes.
-// A live driver holding the run lock is left alone with a warning, since that driver runs the binary that wrote the old name; a later verb renames once it has stopped.
+// renameRetiredRows rewrites each retired row name in the run's status file onto its current name, as renames maps it.
+// The rename lets a run parked under an old name resume.
+// A live driver holding the run lock is left alone with a warning, since it runs the binary that wrote the old name;
+// a later verb renames them once that driver has stopped.
 func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 	renamed, err := shedengine.RenameProducers(shedengine.RenameRequest{
 		StatusPath:     c.shedPaths.StatusPath,
@@ -197,9 +210,12 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 	return nil
 }
 
-// wireTreeScope fills the verify Env fields a recipe whose verify_source is tree_scope reads beyond the ones wire fills for every recipe.
-// It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
-// A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
+// wireTreeScope fills the verify Env fields that a recipe whose verify_source is tree_scope reads.
+// Those are in addition to the fields filled for every recipe.
+// It loads the hub-wide darn.yaml strictly.
+// The start, run, step and resume verbs therefore refuse an absent or malformed file before any row builds.
+// A malformed tree_scope key gets the editor way forward instead of the hub reconcile one.
+// The reason is that `--set` cannot remove a key the hub file holds.
 func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
@@ -211,7 +227,7 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	}
 
 	// Each gate row's told command is the call of its own gate key;
-	// the row key's call over the touched trees' targets reaches the gate through VerifyTreeScope, never through this source.
+	// the tree-scoped command reaches the gate through `VerifyTreeScope`, never through this source.
 	c.env.VerifyCommand = gateCallSource(dirs)
 	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
@@ -220,12 +236,16 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	return nil
 }
 
-// wireDarn fills the Env fields a recipe with a Darn-Write row reads beyond the ones wire and wireTreeScope fill: the writer's seams, its table and Preflight's stencils check.
-// The check builds the table a first spawn reads and refuses a marker of its stencils no value fills, so a stencil newer than the running binary, or a blank value, halts the run at Preflight, before any agent row.
-// It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
-// A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
-// subagentModel is loom.yaml's subagent_model, the model the writer's prompt names for the subagents it hands work to.
-// pairSlug is the worktree's pair slug, empty on the prime; with it, a verify gate whose fixer setting holds a model-spec has the writer's prompt drop its gate runs.
+// wireDarn fills the Env fields that a recipe with a Darn-Write row reads:
+// the writer's seams, its table, and Preflight's stencils check.
+// That check builds the table a first spawn reads and refuses a marker of its stencils no value fills.
+// A stencil newer than the running binary, or a blank value, halts the run at Preflight, before any agent row.
+// It loads the hub-wide darn.yaml strictly.
+// So start, run, step and resume refuse an absent or malformed file before any row builds.
+// A malformed tree_scope key is refused with the editor way forward, since --set cannot remove a key the hub file holds.
+// subagentModel is loom.yaml's subagent_model: the model the writer's prompt names for the subagents it hands work to.
+// pairSlug is the worktree's pair slug, empty on the prime.
+// When it is set, a verify gate whose fixer setting holds a model-spec has the writer's prompt drop its gate runs.
 func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir, subagentModel, pairSlug string, registry modelspec.Registry) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")

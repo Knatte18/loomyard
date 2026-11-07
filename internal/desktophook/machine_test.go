@@ -9,8 +9,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// newDirsWithMachineConfig returns the Dirs of a fresh board and anchor whose board holds contents as its desktop machine override.
-// The board holds no hub file, as on a hub not yet reconciled.
+// newDirsWithMachineConfig returns the Dirs of a fresh board and anchor.
+// The board holds contents as its desktop machine override.
+// It holds no hub file, as on a hub not yet reconciled.
 func newDirsWithMachineConfig(t *testing.T, contents string) configengine.Dirs {
 	t.Helper()
 	dirs := configengine.Dirs{Board: t.TempDir(), Anchor: t.TempDir()}

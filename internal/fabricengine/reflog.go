@@ -1,5 +1,5 @@
-// reflog.go reads a remote-tracking ref's reflog and judges, from the values it held, what origin did to a branch this machine had pushed or fetched:
-// which local commits origin already holds, and whether origin rewound or rewrote the branch.
+// reflog.go reads a remote-tracking ref's reflog and judges what origin did to a branch this machine pushed or fetched.
+// It reports which local commits origin already holds, and whether origin rewound or rewrote the branch.
 
 package fabricengine
 
@@ -25,7 +25,8 @@ const (
 	rewriteRewritten
 )
 
-// trackingReflog returns the values of the remote-tracking ref trackingRef in repoDir, newest last, from the last entry lym's own recorded push wrote onward.
+// trackingReflog returns the values of the remote-tracking ref trackingRef in repoDir, newest last.
+// The values start at the entry of the last push lym recorded, and include that entry.
 // A reflog holding no push entry, as for a branch this machine never pushed, returns every value it holds.
 // A ref with no reflog returns none.
 func trackingReflog(repoDir, trackingRef string) ([]string, error) {
@@ -56,10 +57,14 @@ func trackingReflog(repoDir, trackingRef string) ([]string, error) {
 	return slices.Compact(values), nil
 }
 
-// classifyRewrite judges how origin's head relates to the values earlier the tracking ref held, for a branch whose local tip is localTip.
-// It is rewriteRewound when some earlier value is not an ancestor of originHead while originHead is an ancestor of it and localTip holds commits of that value originHead lacks, which it returns as dropped.
-// It is rewriteRewritten when every local commit originHead lacks is reachable from an earlier value and originHead is an ancestor of none of them.
-// The two never overlap, since whether originHead is an ancestor of an earlier value separates them; every other move is rewriteNone.
+// classifyRewrite judges how origin's head relates to the earlier values of the tracking ref.
+// localTip is the local tip of the same branch.
+// It is rewriteRewound when origin's head is an ancestor of an earlier value that origin's head does not contain.
+// The commits of that value that localTip holds and origin's head lacks are returned as dropped.
+// It is rewriteRewritten when every local commit that origin's head lacks is reachable from an earlier value.
+// That also needs origin's head to be an ancestor of none of the earlier values.
+// The two never overlap, since whether origin's head is an ancestor of an earlier value separates them.
+// Every other move is rewriteNone.
 func classifyRewrite(repo *gitrepo.Repo, localTip, originHead string, earlier []string) (kind rewriteKind, dropped []string, err error) {
 	earlier = slices.DeleteFunc(slices.Clone(earlier), func(value string) bool { return value == originHead })
 	if len(earlier) == 0 {

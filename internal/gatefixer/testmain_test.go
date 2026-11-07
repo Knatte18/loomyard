@@ -1,4 +1,4 @@
-// testmain_test.go runs the package's test binary under tmuxkit.Main, as every test package does.
+// testmain_test.go runs the package's tests under tmuxkit.Main.
 
 package gatefixer
 

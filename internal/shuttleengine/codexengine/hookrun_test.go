@@ -1,4 +1,5 @@
-// hookrun_test.go runs the hook commands the launch line carries under sh, as Codex runs them, and reads what they write back through the parsers.
+// hookrun_test.go runs the hook commands the launch line carries under sh, as Codex runs them.
+// It reads what they write back through the parsers.
 // It also runs the idle wake against a stand-in codex executable.
 
 package codexengine
@@ -28,8 +29,8 @@ func runHook(t *testing.T, command, payload string) string {
 	return string(out)
 }
 
-// TestHookCommands_RecordAndStamp pins that each recording hook appends a stamped payload the parsers read back with its time and prints the empty decision,
-// and that the activity hook touches the stamp beside the events file.
+// TestHookCommands_RecordAndStamp pins that each recording hook appends a stamped payload the parsers read back.
+// Each such hook prints the empty decision, and the activity hook touches the stamp beside the events file.
 func TestHookCommands_RecordAndStamp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -83,9 +84,12 @@ func writeExecutable(t *testing.T, path, content string) {
 	}
 }
 
-// TestCreelHookCommands pins the creel hooks under sh, with a stand-in lym on PATH that records its arguments and input and answers as told.
-// The mail hook prints the empty decision and runs nothing with no flag, and passes hook-read's output through when the flag stands.
-// The merged Stop hook records the turn end with no flag or when hook-read hands out nothing, and records nothing when hook-read hands out mail, whose block is the hook's output.
+// TestCreelHookCommands pins the creel hooks under sh.
+// A stand-in lym on PATH records its arguments and input, and answers as told.
+// With no flag, the mail hook prints the empty decision and runs nothing.
+// With the flag set, it passes hook-read's output through.
+// The merged Stop hook records the turn end with no flag, or when hook-read hands out nothing.
+// When hook-read hands out mail, the hook records nothing and prints the mail block as its output.
 func TestCreelHookCommands(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -143,7 +147,7 @@ func TestCreelHookCommands(t *testing.T) {
 }
 
 // TestWakeIdle pins the idle wake.
-// A stand-in codex is run as `queue --thread <session_id> --message <text>` under the CODEX_HOME of the environment.
+// A stand-in codex runs as `queue --thread <session_id> --message <text>` under the CODEX_HOME of the environment.
 // A payload naming no session id starts nothing.
 // A queue that fails returns an error carrying its output.
 // It sets LYM_CODEX_BINARY and CODEX_HOME, so it does not run in parallel.
@@ -183,7 +187,6 @@ func TestWakeIdle(t *testing.T) {
 	}
 }
 
-// readText returns the content of the file at path.
 func readText(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

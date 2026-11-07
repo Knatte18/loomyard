@@ -1,5 +1,6 @@
 // reset.go decides, read-only, what `lym webster reset` may do.
-// PlanReset resolves the commit a reset moves the task branch to and the paths the run itself wrote, and refuses with a way forward before fabric is ever called.
+// PlanReset resolves the commit a reset moves the task branch to and the paths the run itself wrote.
+// It refuses with a way forward before fabric is called.
 // Webster runs no mutating git: every probe here is a read, and the reset itself belongs to fabric.
 
 package websterengine
@@ -47,11 +48,11 @@ type ResetDeps struct {
 	Engines AuditEngines
 	// Reed answers whether a recovery strand is live; nil leaves the live-strand refusal of report-head unchecked.
 	Reed shuttleengine.ReedOps
-	// ParentBranch names the branch the run merges its parent in from; nil or an error leaves the parent-branch refusal unchecked.
+	// ParentBranch names the branch the run merges its parent from; nil or an error skips the parent-branch refusal.
 	ParentBranch ParentBranchFunc
-	// Branch returns the branch checked out in the task worktree as fabric reads it, and errors on a detached HEAD or a branch that is not the pair's own.
+	// Branch returns the task worktree's branch as fabric reads it; it errors on a detached HEAD or a foreign branch.
 	Branch func() (string, error)
-	// Standalone is set when the run has no task pair: git's keep form performs the move and guards the uncommitted changes, so the foreign-dirty-path refusal is skipped.
+	// Standalone is set when the run has no task pair; git's keep form guards the uncommitted changes instead.
 	Standalone bool
 }
 
@@ -61,19 +62,21 @@ type ResetPlan struct {
 	Target ResetTarget
 	// SHA is the commit the reset moves the task branch to.
 	SHA string
-	// OwnPaths are the worktree-relative, slash-separated tracked paths the run wrote successfully, exempt from the dirt check.
+	// OwnPaths lists the run's successful tracked writes as worktree-relative slash paths; the dirt check exempts them.
 	OwnPaths []string
-	// ArchiveOnly marks a reset to start that moves no branch and only archives the run record, because Reason keeps the start from being moved to.
+	// ArchiveOnly marks a reset to start that archives the run record and moves no branch.
 	// SHA and OwnPaths are empty then.
 	ArchiveOnly bool
 	// Reason says why the start cannot be moved to, set with ArchiveOnly.
 	Reason string
 }
 
-// errStartUnresolvable marks a recorded start that cannot be resolved to one commit, which a reset to start answers by archiving without moving.
+// errStartUnresolvable marks a recorded start that does not resolve to one commit.
+// A reset to start answers it by archiving the run record without moving the branch.
 var errStartUnresolvable = errors.New("the recorded start cannot be resolved")
 
-// archiveOnlyPlan is the plan of a reset to start that archives the run record and moves nothing, because reason keeps the start from being moved to.
+// archiveOnlyPlan returns the plan of a reset to start that archives the run record and moves nothing.
+// reason says why the start cannot be moved to.
 func archiveOnlyPlan(reason string) ResetPlan {
 	return ResetPlan{Target: ResetToStart, ArchiveOnly: true, Reason: reason}
 }
@@ -96,8 +99,9 @@ func noStartToMoveTo(geom Geometry, bases evidenceBases) string {
 	return ""
 }
 
-// wayForwardSteps renders an ordered step list: `way forward: 1) <a>; 2) <b>` for two or more steps, `way forward: <a>` for one, and "" for none.
-// It is the one renderer of an ordered step list, so each step is a distinct action and none restates another.
+// wayForwardSteps renders an ordered step list as `way forward: 1) <a>; 2) <b>`, or `way forward: <a>` for one step.
+// It returns "" for no steps and is the one renderer of such lists.
+// Each step must be a distinct action that does not restate another.
 func wayForwardSteps(steps ...string) string {
 	switch len(steps) {
 	case 0:
@@ -118,12 +122,15 @@ func resetRefusal(to ResetTarget, reason, wayForward string) error {
 }
 
 // PlanReset resolves to against the run's record and refuses, read-only, when a reset would be unsafe.
-// batch is the --batch number, zero when none: the report-head and batch-start targets require it and every other target refuses it.
-// The refusals run in this order: the batch pairing, run lock held (except for report-head, which Master runs inside its run), no state, merge in progress, a checked-out branch that is not the task branch,
-// no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
-// A reset to start skips the recorded-target, missing-commit and ancestor refusals, which guard a branch move:
-// when no start is recorded, a recorded start is missing, the starts share no oldest commit and no common ancestor, or the resolved start is not an ancestor of HEAD, it returns an archive-only plan with the reason.
-// It plans only a run-recorded commit that is an ancestor of HEAD, exempts only paths the run's own transcripts record a successful write to, and never reads a force flag.
+// batch is the --batch number, zero when none.
+// The report-head and batch-start targets require it; every other target refuses it.
+// Refusals are checked in a fixed order, from the batch pairing first to the dirty-path check last.
+// A held run lock refuses every target except report-head, which Master runs inside its run.
+// A reset to start skips the recorded-target, missing-commit and ancestor refusals, since they guard a branch move:
+// when no start can be moved to, it returns an archive-only plan with the reason.
+// It plans only a run-recorded commit that is an ancestor of HEAD.
+// It exempts only paths the run's own transcripts record a successful write to.
+// It never reads a force flag.
 func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	geom := deps.Geom
 	if err := refuseBatchPairing(to, batch); err != nil {
@@ -244,7 +251,8 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	return ResetPlan{Target: to, SHA: sha, OwnPaths: own}, nil
 }
 
-// refuseForeignBranch refuses when the checked-out branch is detached, the parent branch, or one the caller reports is not the pair's own.
+// refuseForeignBranch refuses unless the worktree is on its task branch.
+// It refuses when the checked-out branch is unknown or cannot be read, and when it is the parent branch.
 func refuseForeignBranch(deps ResetDeps, to ResetTarget, rerun string) error {
 	steps := wayForwardSteps("check out the task worktree's own branch with `git switch <task-branch>`", rerun)
 	if deps.Branch == nil {
@@ -263,10 +271,11 @@ func refuseForeignBranch(deps ResetDeps, to ResetTarget, rerun string) error {
 	return nil
 }
 
-// resetToStartStep is the way-forward step that restarts the run, the fallback of every target that cannot move the branch.
+// resetToStartStep is the way-forward step that restarts the run.
+// It is the fallback of every target that cannot move the branch.
 const resetToStartStep = "run `" + stepResetToStart + "`"
 
-// resetVerb spells the reset verb for to, with --batch when the target takes one.
+// resetVerb returns the reset command for to, with --batch when batch is positive.
 func resetVerb(to ResetTarget, batch int) string {
 	if batch > 0 {
 		return fmt.Sprintf("lym webster reset --to %s --batch %02d", to, batch)
@@ -274,8 +283,9 @@ func resetVerb(to ResetTarget, batch int) string {
 	return "lym webster reset --to " + string(to)
 }
 
-// refuseBatchPairing refuses a --batch value that does not fit the target: report-head and batch-start need one, every other known target takes none.
-// An unknown target passes, since PlanReset refuses it by name later.
+// refuseBatchPairing refuses a --batch value that does not fit the target.
+// report-head and batch-start need a batch; every other known target takes none.
+// An unknown target passes here and is refused by name later in the reset.
 func refuseBatchPairing(to ResetTarget, batch int) error {
 	switch to {
 	case ResetToReportHead, ResetToBatchStart:
@@ -295,8 +305,9 @@ func recordedTerminalHead(bs *BatchState) bool {
 	return bs != nil && bs.Terminal && bs.Digest != nil && bs.Digest.HeadSHA != ""
 }
 
-// recordedBatchesAfter returns the numbers of the batches after batch in the recorded partition's order that satisfy keep, in that order.
-// A state with no partition, or one that does not hold batch, orders by batch number.
+// recordedBatchesAfter returns the numbers of the batches after batch that satisfy keep.
+// They follow the recorded partition's order.
+// Without a partition that holds batch, they follow batch number order.
 func recordedBatchesAfter(st *State, batch int, keep func(*BatchState) bool) []int {
 	var after []int
 	index := slices.IndexFunc(st.Partition, func(pb PartitionBatch) bool { return cardNumberInt(pb.Cards[0]) == batch })
@@ -318,7 +329,8 @@ func recordedBatchesAfter(st *State, batch int, keep func(*BatchState) bool) []i
 	})
 }
 
-// refuseBatchStart refuses a batch-start reset when batch recorded no start commit or a later batch recorded one, which the reset would discard.
+// refuseBatchStart refuses a batch-start reset when batch recorded no start commit.
+// It also refuses when a later batch recorded one, since the reset would discard that batch's commits.
 func refuseBatchStart(st *State, batch int) error {
 	to := ResetToBatchStart
 	if bs := st.Batches[batch]; bs == nil || bs.StartSHA == "" {
@@ -330,7 +342,8 @@ func refuseBatchStart(st *State, batch int) error {
 	return nil
 }
 
-// refuseReportHeadBatch refuses a report-head reset unless batch is begun, not terminal, the last begun batch of the partition and without a live recovery strand.
+// refuseReportHeadBatch refuses a report-head reset unless batch is begun and not terminal.
+// It also refuses unless batch is the last begun batch of the partition and no recovery strand of it is live.
 func refuseReportHeadBatch(deps ResetDeps, batch int) error {
 	to := ResetToReportHead
 	st := deps.State
@@ -357,7 +370,9 @@ func refuseReportHeadBatch(deps ResetDeps, batch int) error {
 	return nil
 }
 
-// reportHeadSHA returns the head_sha of batch's report on disk, refusing when it is unreadable, missing from the repository or does not descend from the batch's start.
+// reportHeadSHA returns the head_sha of batch's report on disk.
+// It refuses when the report is unreadable or its head is missing from the repository.
+// It also refuses when that head does not descend from the batch's start.
 func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
 	to := ResetToReportHead
 	bs := st.Batches[batch]
@@ -392,8 +407,10 @@ func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
 }
 
 // resolveResetSHA returns the commit to reset to.
-// The start target is the oldest recorded start; when starts are recorded but none is the oldest of all, it is their octopus merge-base.
-// Each other target is the one commit its name says, read from the state or, for report-head, from the batch's report under the geometry's reports directory.
+// The start target is the oldest recorded start.
+// When no recorded start is the oldest of all, it is the octopus merge-base of the recorded starts.
+// The other targets read their commit from the state.
+// report-head reads it from the batch's report under the geometry's reports directory.
 func resolveResetSHA(geom Geometry, st *State, bases evidenceBases, to ResetTarget, batch int) (string, error) {
 	switch to {
 	case ResetToPreFix:

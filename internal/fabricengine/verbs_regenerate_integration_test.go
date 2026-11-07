@@ -1,5 +1,5 @@
-// verbs_regenerate_integration_test.go proves the fabric verbs that create, remove or switch a warp worktree regenerate the hub workspace file,
-// and that a failed regeneration never changes a verb's result.
+// verbs_regenerate_integration_test.go checks the fabric verbs that create, remove or switch a warp worktree.
+// Each of them regenerates the hub workspace file, and a failed regeneration never changes a verb's result.
 // Shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// assertFoldersAndNoPortals asserts the workspace file's folders as assertFolders does, and that the verb that preceded it left no `_portals` entry in the hub.
+// assertFoldersAndNoPortals asserts the workspace file's folder names,
+// and that the verb before it left no `_portals` entry in the hub.
 func assertFoldersAndNoPortals(t *testing.T, h *hubforge.Hub, path string, names ...string) {
 	t.Helper()
 	assertFolders(t, h, path, names...)

@@ -1,5 +1,6 @@
-// ownerset_integration_test.go covers SetOwners against a real board repository, a bare origin and a second clone of it:
-// the outcomes of an owner write, the ways it refuses, a competing write that wins at origin, a deferred push and the BOARD_SKIP_GIT bypass.
+// ownerset_integration_test.go covers SetOwners against a real board repository, a bare origin and a second clone of it.
+// It covers the outcomes of an owner write and the ways it refuses;
+// a competing write that wins at origin, a deferred push and the BOARD_SKIP_GIT bypass.
 
 package boardengine
 
@@ -25,7 +26,8 @@ const unreachableOrigin = "http://127.0.0.1:1/board.git"
 
 // ownerFixture is a board seeded with a few entries and pushed to a bare origin, beside a second clone of that origin.
 // The board is the hub's Bolt checkout worktree of a weft repository, the shape a rejected push's replay requires.
-// The seed holds alpha and beta, root tasks; boxed, a beam project owned by box, with away and held, run-held, as its members.
+// The seed holds alpha and beta, root tasks;
+// boxed, a beam project owned by box, with away and held, run-held, as its members.
 // It also holds grouping, a project, and beamer, an unowned beam project.
 type ownerFixture struct {
 	bare     string
@@ -40,7 +42,8 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 	hub := t.TempDir()
 	side := t.TempDir()
 	bare := newBareRemote(t, side)
-	// The hub's records repository sits beside the Bolt checkout under a name that pairs with a warp branch; fabric alone composes that name.
+	// The hub's records repository sits beside the Bolt checkout under a name that pairs with a warp branch;
+	// fabric alone composes that name.
 	weftDir := newBoardRepo(t, hub, fabricengine.RecordsBranchName("hub"), bare)
 
 	store := NewStore(weftDir)
@@ -58,7 +61,8 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 		}
 	}
 	for i := range store.tasks {
-		// The beam flag is written by no upsert key, so the seed sets it, and the membership and the owner it carries, on the entries directly.
+		// The beam flag is written by no upsert key.
+		// The seed therefore sets it, with the membership and the owner it carries, on the entries directly.
 		switch store.tasks[i].Slug {
 		case "away", "held":
 			store.tasks[i].Project = "boxed"
@@ -152,7 +156,8 @@ func failOnSleep(t *testing.T) func(time.Duration) {
 
 func TestSetOwners(t *testing.T) {
 	tiergate.Require(t, 1)
-	// Not parallel: the SkipGit row sets the environment, which a parallel ancestor forbids; the rows that can run in parallel say so themselves.
+	// Not parallel: the SkipGit row sets the environment, which a parallel ancestor forbids;
+	// the rows that can run in parallel say so themselves.
 
 	// A test binary never runs the lym root pre-run that registers the board replayer a rejected push is retried through.
 	fabricengine.RegisterBoltReplayer(FabricReplay{})
@@ -488,7 +493,8 @@ func TestSetOwners(t *testing.T) {
 			var waits []time.Duration
 			req := OwnerRequest{
 				Machine: "neve", Slugs: []string{"beamer"},
-				// The other clone moves origin by a change to another entry, so the first push is rejected, and the held board lock defers the replay that would retry it.
+				// The other clone moves origin by a change to another entry, so the first push is rejected,
+				// and the held board lock defers the replay that would retry it.
 				BeforePush: func() {
 					f.pushFromOther(t, func(store *Store) {
 						for i := range store.tasks {

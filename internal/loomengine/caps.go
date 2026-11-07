@@ -1,4 +1,4 @@
-// caps.go — the loom review perches and their resolved soft and hard bounce caps, resolved through reviewbudget.
+// caps.go defines the loom review perches and resolves their soft and hard bounce caps through reviewbudget.
 
 package loomengine
 
@@ -18,8 +18,9 @@ const (
 	PerchCode Perch = "code"
 )
 
-// reviewPerches lists the review perches loom.yaml holds, the one place ConfigSpec, LoadConfig and ValidateLocalValues take them from.
-// The plan perch's keys live in tapestry.yaml.
+// reviewPerches lists the review perches whose keys loom.yaml holds.
+// Config loading, its spec and local-value validation take the perches from here.
+// The plan perch's keys live in tapestry.yaml, so it is not listed here.
 var reviewPerches = []Perch{PerchDiscussion, PerchCode}
 
 // reviewPerchNames returns reviewPerches' names as reviewbudget takes them.
@@ -31,7 +32,9 @@ func reviewPerchNames() []string {
 	return names
 }
 
-// Caps resolves p's soft and hard cap: the perch's own `<perch>_max_bounces` when non-null, else `review_max_bounces`, and its own `<perch>_hard_max_bounces` when above 0, else `review_hard_max_bounces`.
+// Caps resolves p's soft and hard bounce caps.
+// The soft cap is the perch's own `<perch>_max_bounces` when that is non-null, else `review_max_bounces`.
+// The hard cap is the perch's own `<perch>_hard_max_bounces` when that is above 0, else `review_hard_max_bounces`.
 func (cfg Config) Caps(p Perch) reviewbudget.Caps {
 	var ownSoft *int
 	var ownHard int

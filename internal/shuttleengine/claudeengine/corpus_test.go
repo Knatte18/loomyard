@@ -1,5 +1,7 @@
-// corpus_test.go replays the corpus of real turn ends under testdata/corpus through ParseEvents, shuttle's wait loop and the session-state fold.
-// Each case directory holds a trimmed transcript, the run's events file and a case.yaml naming the reading each turn end must get and the session state each signal-bearing line reaches.
+// corpus_test.go replays the corpus of real turn ends under testdata/corpus.
+// It feeds each case through ParseEvents, shuttle's wait loop and the session-state fold.
+// Each case directory holds a trimmed transcript, the run's events file and a case.yaml.
+// The case.yaml names the reading each turn end must get and the session state each signal-bearing line reaches.
 
 package claudeengine_test
 
@@ -31,8 +33,8 @@ const (
 	readingWaitingHeld = "waiting_held"
 )
 
-// corpusCase is the part of a case.yaml the replay reads: whether the run is gated, the skills Start loads, each later turn end's expected reading,
-// and the session state after each events line the signal parser reads.
+// corpusCase is the part of a case.yaml the replay reads: whether the run is gated and the skills Start loads.
+// It also holds each later turn end's expected reading and the session state after each signal-bearing line.
 type corpusCase struct {
 	Gated    bool            `yaml:"gated"`
 	Skills   []string        `yaml:"skills"`
@@ -47,7 +49,8 @@ type corpusState struct {
 	Detail string `yaml:"detail"`
 }
 
-// corpusTurnEnd is one turn end's expected reading, whether every output file exists when it is written, and, for a waiting one, its outstanding tasks.
+// corpusTurnEnd is one turn end's expected reading and whether every output file exists when it is written.
+// For a waiting turn end it also holds the outstanding tasks.
 type corpusTurnEnd struct {
 	Reading      string       `yaml:"reading"`
 	OutputsExist bool         `yaml:"outputs_exist"`
@@ -61,7 +64,8 @@ type corpusTask struct {
 	Signal string                       `yaml:"signal"`
 }
 
-// corpusReplay feeds a case's events to a running Run, one line per poll tick, and checks each read turn end's effect on the next tick's sleep.
+// corpusReplay feeds a case's events to a running Run, one line per poll tick.
+// It checks each read turn end's effect on the next tick's sleep.
 // Wait calls Sleep from its own goroutine, the test's, so the replay needs no locking.
 type corpusReplay struct {
 	t        *testing.T
@@ -82,7 +86,8 @@ type corpusReplay struct {
 
 func (r *corpusReplay) Now() time.Time { return r.now }
 
-// Sleep advances the clock, checks the turn end the run read since the last sleep when the line it read carries one, and appends the next line.
+// Sleep advances the clock and checks the turn end the last appended line carries, if any.
+// It then appends the next line.
 // Past the last line it moves the clock beyond the run deadline, so Wait ends.
 func (r *corpusReplay) Sleep(d time.Duration) {
 	r.now = r.now.Add(d)
@@ -114,7 +119,8 @@ func (r *corpusReplay) Sleep(d time.Duration) {
 	r.noticesAt = r.notices
 }
 
-// checkRead checks the effect of turn end index, which the run read on the tick before this sleep, so the run did not finalize on it.
+// checkRead checks the effect of turn end index, which the run read on the tick before this sleep.
+// Reaching this sleep means the run did not finalize on that tick.
 func (r *corpusReplay) checkRead(index int) {
 	switch notified := r.notices - r.noticesAt; r.turnEnds[index].Reading {
 	case readingDone:
@@ -154,8 +160,10 @@ func TestCorpus_ReplaysEachTurnEnd(t *testing.T) {
 	}
 }
 
-// replayCorpusCase starts a run over the case's events, with the real Claude parser behind a fake engine and a fake reed,
-// checks each turn end's parse and each signal-bearing line's session state, and checks that Wait ends Done on a closing done turn end and times out otherwise.
+// replayCorpusCase starts a run over the case's events through a fake engine and a fake reed.
+// The fake engine parses events with the real Claude parser.
+// It checks each turn end's parse and each signal-bearing line's session state.
+// It also checks that Wait ends Done on a closing done turn end and times out otherwise.
 func replayCorpusCase(t *testing.T, name string) {
 	dir := filepath.Join(corpusDir, name)
 	c := loadCorpusCase(t, dir)
@@ -214,7 +222,7 @@ func replayCorpusCase(t *testing.T, name string) {
 			pane.WriteString(text + "\n")
 			if text == promptLine {
 				// The recorded events hold no turn start for the deferred prompt, which Wait would type again at a held turn end.
-				// So the replay appends the one the prompt's own turn writes when the line is typed.
+				// So the replay appends the turn start that the prompt's own turn writes when the line is typed.
 				appendEventsLine(t, name, replay.eventsPath, promptTurnStartLine(t, name, lines[0], promptLine))
 			}
 			return nil
@@ -240,7 +248,8 @@ func replayCorpusCase(t *testing.T, name string) {
 	var engine shuttleengine.Engine = fake
 	if len(c.Skills) > 0 {
 		// Only a run with a deferred prompt needs the signal parser: it tells the run whether the prompt's own turn started.
-		// The other cases keep the inert engine, so a recorded operator turn does not silence the notice their expected readings name.
+		// The other cases keep the inert engine.
+		// Otherwise a recorded operator turn would silence the notice that their expected readings name.
 		engine = &corpusEngine{Engine: fake, claude: claude}
 	}
 	cfg := shuttleengine.Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, RunTimeoutMin: 60, StartupTimeoutS: 30, BackgroundShellWaitMin: 10}
@@ -278,7 +287,8 @@ func replayCorpusCase(t *testing.T, name string) {
 	}
 }
 
-// corpusEngine is the replay's fake engine with the real Claude session-signal parser, so the run can tell whether its deferred prompt's own turn started.
+// corpusEngine is the replay's fake engine with the real Claude session-signal parser.
+// The run uses that parser to tell whether its deferred prompt's own turn started.
 type corpusEngine struct {
 	*shuttlefake.Engine
 	claude *claudeengine.Claude
@@ -302,7 +312,8 @@ func appendEventsLine(t *testing.T, name, path, line string) {
 	}
 }
 
-// promptTurnStartLine returns a UserPromptSubmit events line for prompt, built from the session fields of sample, an events line of the same session.
+// promptTurnStartLine returns a UserPromptSubmit events line for prompt.
+// It is built from the session fields of sample, an events line of the same session.
 func promptTurnStartLine(t *testing.T, name, sample, prompt string) string {
 	t.Helper()
 	var fields map[string]any
@@ -318,10 +329,13 @@ func promptTurnStartLine(t *testing.T, name, sample, prompt string) string {
 	return string(line)
 }
 
-// checkCorpusStates folds the case's lines after the ones Start consumes, a line at a time, through the real ParseSessionSignals into one SessionFold,
-// and checks the state after each line that yields a signal against the case's states in order.
-// The facts are the replay's own: liveness alive, an autonomous run, outputs present exactly when the newest turn end at or before the line says so, a fixed reading time and no transcript marker.
-// The marker is left out because the case's transcript is the whole session's final file and would mark every turn end with its end state.
+// checkCorpusStates folds the case's lines after the ones Start consumes into one SessionFold.
+// It feeds them a line at a time through the real ParseSessionSignals.
+// It checks the state after each line that yields a signal against the case's states in order.
+// Throughout the replay, liveness is alive, the run is autonomous, and the reading time is fixed.
+// Outputs are present exactly when the newest turn end at or before the line says so.
+// The transcript marker is left out, because the case's transcript is the whole session's final file.
+// Such a marker would mark every turn end with its end state.
 func checkCorpusStates(t *testing.T, claude *claudeengine.Claude, name string, c corpusCase, lines []string, turnEndOf []int, consumed int) {
 	t.Helper()
 	var fold shuttleengine.SessionFold
@@ -395,7 +409,8 @@ func loadCorpusCase(t *testing.T, dir string) corpusCase {
 	return c
 }
 
-// loadCorpusEvents returns dir's events.jsonl lines, each with its transcript_path rewritten to dir's transcript.jsonl.
+// loadCorpusEvents returns the lines of dir's events.jsonl, without its blank ones.
+// Each line's transcript_path is set to the absolute path of dir's transcript.jsonl.
 func loadCorpusEvents(t *testing.T, dir string) []string {
 	t.Helper()
 	transcript, err := filepath.Abs(filepath.Join(dir, "transcript.jsonl"))

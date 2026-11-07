@@ -1,4 +1,5 @@
-// worktreeseam.go holds fabric's process-wide worktree seam: the two events a worktree's content is told about, "made" and "took in commits".
+// worktreeseam.go holds fabric's process-wide worktree seam.
+// The seam is told when a worktree is made and when it takes in commits.
 // Fabric hands the seam paths and names no file of the code that plugs in.
 
 package fabricengine
@@ -14,9 +15,13 @@ import (
 )
 
 // WorktreeEvent is what the worktree seam is told about one worktree.
-// Root is the worktree's root, Anchor its anchor directory, where the repository's own files sit and equal to Root in a worktree with no anchor, and ScratchDir the pair's never-tracked `.lym` directory.
-// BoltDir is the hub's Bolt checkout, and Excluded the anchor-relative paths the warp exclude list names, already seeded into the repository's exclude file.
-// Paths are the root-relative paths that differ between the old and the new head, empty for "made".
+// Root is the worktree's root.
+// Anchor is its anchor directory, where the repository's own files sit; it equals Root in a worktree with no anchor.
+// ScratchDir is the pair's never-tracked `.lym` directory.
+// BoltDir is the hub's Bolt checkout.
+// Excluded holds the anchor-relative paths the warp exclude list names;
+// they are already seeded into the repository's exclude file.
+// Paths holds the root-relative paths that differ between the old and the new head, empty for "made".
 type WorktreeEvent struct {
 	Root       string
 	Anchor     string
@@ -26,10 +31,10 @@ type WorktreeEvent struct {
 	Paths      []string
 }
 
-// WorktreeSeam is told when a worktree was made and when it took in commits.
+// WorktreeSeam is told when a worktree is made and when it takes in commits.
 // An error from either is a warning for the verb that fired it and never fails that verb.
 type WorktreeSeam interface {
-	// Made reports a worktree that is wired, whose exclude lines are seeded and whose hub has its Bolt checkout present.
+	// Made reports a worktree that is wired, with its exclude lines seeded and its hub's Bolt checkout present.
 	Made(event WorktreeEvent) error
 	// TookIn reports a worktree whose checked-out branch moved to commits that change event.Paths.
 	TookIn(event WorktreeEvent) error
@@ -48,7 +53,8 @@ func InstallWorktreeSeam(s WorktreeSeam) (restore func()) {
 }
 
 // EventFor seeds the warp exclude list of l's worktree and returns the event for it carrying paths.
-// The seeding runs under the exclude file's lock and comes first, so a caller that writes the files the list names writes only after their lines are in place.
+// The seeding runs under the exclude file's lock and comes first,
+// so a caller that writes the files the list names writes only after their lines are in place.
 func EventFor(l *lymcwd.Location, paths []string) (WorktreeEvent, error) {
 	excluded, err := SeedWarpExclude(l)
 	if err != nil {
@@ -66,7 +72,8 @@ func EventFor(l *lymcwd.Location, paths []string) (WorktreeEvent, error) {
 
 // fireWorktreeEvent tells the installed seam about l's worktree, "made" when made is set and "took in" over paths otherwise.
 // It returns "" with no seam installed or when the seam took the event.
-// A failure to build the event or a seam error is logged at Warn and returned as that warning text, naming the worktree and the render verb that repairs it, and is never an error.
+// A failure to build the event or a seam error is logged at Warn and returned as the warning text.
+// The text names the worktree and the render verb that repairs it; it is never an error.
 // The seam's render takes the Bolt write lock, so the caller holds none.
 func fireWorktreeEvent(l *lymcwd.Location, paths []string, made bool) string {
 	seam := installedWorktreeSeam.Load()
@@ -94,7 +101,8 @@ func seamWarning(worktree string, err error) string {
 	return warning
 }
 
-// NotifyWorktreeMade tells the installed seam that l's worktree was made and returns the warning text of a failed event, "" otherwise.
+// NotifyWorktreeMade tells the installed seam that l's worktree was made.
+// It returns the warning text of a failed event, and "" otherwise.
 func NotifyWorktreeMade(l *lymcwd.Location) string {
 	return fireWorktreeEvent(l, nil, true)
 }

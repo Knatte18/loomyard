@@ -1,8 +1,8 @@
-<!-- This is the shared job body of webster's two verify-gate fixers: the fixer fork Merriam spawns in its own session, and the cold fixer strand `lym webster fix-verify` spawns at the recovery role.
-     RenderVerifyFixPrompt joins it behind webster-prefix-verify-fix-fork (render.go), and internal/gatefixer's RenderPrompt behind the shared cold frame gatefix-frame-cold, then fills it via internal/stencil.
-     Its six markers are required top-level {{.X}} substitutions ({{.report_path}}, {{.plan_dir}}, {{.worktree_root}}, {{.outcome_path}}, {{.summary_path}}, {{.fix_gate}});
-     stencil.FillOptional requires all of them non-empty.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the job body shared by webster's two verify-gate fixers: the fixer fork Merriam spawns in its own session, and the cold fixer strand `lym webster fix-verify` spawns at the recovery role.
+     RenderVerifyFixPrompt (render.go) joins it behind webster-prefix-verify-fix-fork, and internal/gatefixer's RenderPrompt joins it behind the shared cold frame gatefix-frame-cold;
+     both fill it via internal/stencil.
+     Its markers are required top-level {{.X}} substitutions ({{.report_path}}, {{.plan_dir}}, {{.worktree_root}}, {{.outcome_path}}, {{.summary_path}}, {{.fix_gate}}), and stencil.FillOptional requires each non-empty.
+     It holds no {{if}} or {{range}} conditional. -->
 
 ## The findings — read them first
 

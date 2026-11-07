@@ -1,10 +1,6 @@
-// command.go composes the pane-shell lines Prepare and OpenLaunch hand back as a Launch, and the `-c` hook settings the launch line carries.
-// The launch line starts the Codex TUI under the lym home with its first turn as the positional argument, then appends the exit record to the run's events file and exits the pane's shell,
+// command.go composes the pane-shell lines that start, open and resume a Codex session, and the hook commands.
+// A launch line appends the exit record to the run's events file and exits the pane's shell,
 // so a Codex exit reads as a process-ending session end and leaves a dead pane.
-// An opened session's line is the Codex command alone, with no hooks, no first turn, no exit record and no exit.
-// The resume line exits the pane's shell alone and starts no Codex.
-// Every hook is a plain POSIX sh command that appends a stamp line and its payload to the run's events file, touches the run's activity stamp, guards a shell command, or runs creel's hook delivery.
-// Argument quoting and statement chaining are pane-shell mechanics owned by internal/shell.
 
 package codexengine
 
@@ -26,11 +22,13 @@ const codexHomeEnvKey = "CODEX_HOME"
 const instructionFallbackFile = "CLAUDE.md"
 
 // sandboxNetworkAccess is the `-c` setting that lets the workspace-write sandbox open sockets.
-// Codex's Linux sandbox refuses every socket connect without it, a Unix socket's included, so a session could not reach the creel daemon.
+// Codex's Linux sandbox refuses every socket connect without it, a Unix socket's included,
+// so a session could not reach the creel daemon.
 const sandboxNetworkAccess = "sandbox_workspace_write.network_access=true"
 
-// The exit record is the line the launch line appends to the events file once Codex exits, since Codex fires no hook on its own exit.
+// The exit record is the line the launch line appends to the events file once Codex exits.
 // It reads as a process-ending session end with reason exitRecordReason; it has no stamp line, so it carries no time.
+// Codex fires no hook on its own exit, which is why the launch line appends this record.
 const (
 	exitRecordEvent  = "LymExit"
 	exitRecordReason = "codex-exit"
@@ -42,7 +40,7 @@ func launchPointer(promptPath string) string {
 	return "Read " + promptPath + " in full first; it is your complete, authoritative instructions."
 }
 
-// launchLine is what buildLaunchCmd composes a launch line from.
+// launchLine holds the settings that a session's launch line is composed from.
 type launchLine struct {
 	// bin is the Codex executable.
 	bin string
@@ -56,21 +54,27 @@ type launchLine struct {
 	effort string
 	// hooks are the `-c` hook settings, each one `hooks.<Event>=[…]` value; none for an opened session.
 	hooks []string
-	// firstTurn is the session's first turn, typed as the positional prompt; empty for an opened session, which waits at its composer.
+	// firstTurn is the session's first turn, typed as the positional prompt;
+	// empty for an opened session, which waits at its composer.
 	firstTurn string
-	// eventsPath is the run's events file, which the launch line appends the exit record to; unused by an opened session's command.
+	// eventsPath is the run's events file, which the launch line appends the exit record to;
+	// unused by an opened session's command.
 	eventsPath string
 }
 
-// buildLaunchCmd composes the pane-shell line that starts a Codex session and, when Codex exits, appends the exit record to the events file and exits the pane's shell.
+// buildLaunchCmd composes the pane-shell line that starts a Codex session.
+// When Codex exits, the line appends the exit record to the events file and exits the pane's shell.
 func buildLaunchCmd(sh shell.Shell, line launchLine) string {
 	return sh.Chain(codexCommand(sh, line), sh.AppendLine(line.eventsPath, exitRecordLine), sh.Exit())
 }
 
 // codexCommand composes the command that starts a Codex session under the lym home.
-// It runs `-a never -s workspace-write`, so no approval prompt shows and the sandbox bounds writes to the workspace, the writable roots and the temporary folders.
+// It runs `-a never -s workspace-write`, so no approval prompt shows.
+// The sandbox bounds writes to the workspace, the writable roots and the temporary folders.
 // It turns on the sandbox's network access, so the session's shell commands reach the creel daemon's socket.
-// It passes every hook setting with `--dangerously-bypass-hook-trust`, since a hook given by `-c` otherwise waits on a review prompt, and the first turn when there is one,
+// A hook given by `-c` otherwise waits on a review prompt,
+// so the command passes `--dangerously-bypass-hook-trust` with the hook settings.
+// It passes the first turn as the positional prompt when there is one,
 // and it loads CLAUDE.md as the project instructions of a directory with no AGENTS.md.
 // CODEX_HOME names the lym home as a command-scoped assignment.
 func codexCommand(sh shell.Shell, line launchLine) string {
@@ -98,12 +102,14 @@ func codexCommand(sh shell.Shell, line launchLine) string {
 }
 
 // buildResumeCmd composes the line reed replays to revive the strand: an exit of the pane's shell and no Codex.
-// Codex mints its session id at the first turn, which a line written before the launch cannot name, so a revive ends the run as died instead of starting a second session.
+// Codex mints its session id at the first turn, which a line written before the launch cannot name,
+// so a revive ends the run as died instead of starting a second session.
 func buildResumeCmd(sh shell.Shell) string {
 	return sh.Exit()
 }
 
-// Stamp line keys: a stamp line is {"lym_stamp":"<hook event name>","lym_at":"<RFC 3339 UTC>"}, written by a recording hook before its payload.
+// Stamp line keys: a stamp line is {"lym_stamp":"<hook event name>","lym_at":"<RFC 3339 UTC>"}.
+// A recording hook writes it before the hook's payload.
 const (
 	stampHookKey = "lym_stamp"
 	stampAtKey   = "lym_at"
@@ -119,20 +125,23 @@ const (
 	hookEventPostToolUse       = "PostToolUse"
 )
 
-// recordedHookEvents are the hooks whose payloads the events file records, in the order their settings ride the launch line.
+// recordedHookEvents are the hooks whose payloads the events file records.
+// Their settings ride the launch line in this order.
 var recordedHookEvents = []string{hookEventSessionStart, hookEventUserPromptSubmit, hookEventStop, hookEventPermissionRequest}
 
 // emptyHookOutput is what every hook prints: an empty decision, which leaves the session's behaviour unchanged.
 const emptyHookOutput = "printf '{}\\n'"
 
-// recordingCommand returns the hook command that appends one hook event to the events file at eventsPath, as appendRecord does, then prints the empty hook output.
+// recordingCommand returns the hook command that appends one hook event to the events file at eventsPath.
+// It then prints the empty hook output.
 func recordingCommand(hookEventName, eventsPath string) string {
 	return appendRecord(hookEventName, eventsPath) + "; " + emptyHookOutput
 }
 
 // appendRecord returns the command that appends one hook event to the events file at eventsPath and prints nothing:
 // a stamp line naming hookEventName with the hook-side time, then the payload on standard input and a newline.
-// Its exit status is the payload append's, and a failed `date` leaves the stamp's time empty, which the parser reads as no time.
+// Its exit status is the payload append's,
+// and a failed `date` leaves the stamp's time empty, which the parser reads as no time.
 func appendRecord(hookEventName, eventsPath string) string {
 	quoted := shell.Posix().Quote(eventsPath)
 	stamp := `printf '{"` + stampHookKey + `":"` + hookEventName + `","` + stampAtKey + `":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quoted
@@ -140,7 +149,8 @@ func appendRecord(hookEventName, eventsPath string) string {
 	return stamp + "; " + payload
 }
 
-// activityCommand returns the hook command that touches the activity stamp beside the events file at eventsPath and prints the empty hook output, so a failed touch never blocks the session.
+// activityCommand returns the hook command that touches the activity stamp beside the events file at eventsPath.
+// It prints the empty hook output, so a failed touch never blocks the session.
 func activityCommand(eventsPath string) string {
 	stampPath := path.Join(path.Dir(eventsPath), shuttleengine.ActivityStampFileName)
 	return "touch " + shell.Posix().Quote(stampPath) + "; " + emptyHookOutput
@@ -168,39 +178,51 @@ const (
 // creelWaitTimeoutSeconds bounds the idle waiter hook, a day: long enough to outlive any idle spell.
 const creelWaitTimeoutSeconds = 86400
 
-// codexBinaryEnvKey names the variable the idle waiter's command sets to the Codex executable WakeIdle runs.
+// codexBinaryEnvKey names the variable the idle waiter's command sets to the Codex executable.
+// The idle waiter runs that executable to queue a woken turn.
 // It is not a CODEX_ key, since Codex may read every one of those as its own.
 const codexBinaryEnvKey = "LYM_CODEX_BINARY"
 
-// creelFlagTest returns the condition that holds when the strand's mail flag, the file name the command formed in $f$n, stands in the directory at flagDir.
+// creelFlagTest returns the condition that holds when the strand's mail flag stands in the directory at flagDir.
+// The flag's file name is the one the command forms in `$f$n`.
 func creelFlagTest(flagDir string) string {
 	return `[ -f ` + shell.Posix().Quote(flagDir) + `/"$f$n" ]`
 }
 
 // creelMailHookCommand returns the PostToolUse hook command that hands the strand its creel mail after a tool call.
-// It prints the empty hook output and starts no process unless the strand's flag stands in flagDir, and then runs creelMailCommand, whose output is the hook's.
+// It prints the empty hook output and starts no process unless the strand's flag stands in flagDir.
+// When the flag stands, it runs creel's mail verb, whose output is the hook's.
 func creelMailHookCommand(flagDir string) string {
 	return shuttleengine.StrandFlagNameShell() + "; " + creelFlagTest(flagDir) + " || { " + emptyHookOutput + "; exit 0; }; " + creelMailCommand
 }
 
-// creelStopHookCommand returns the Stop hook command that merges the turn-end recording into the events file at eventsPath with creel's turn-end delivery, so a Stop that hands the session mail records no turn end.
-// It reads the hook input once; when the strand's flag stands in flagDir it pipes the input to creelMailCommand, whose output is the hook's, and exits 0 when that exits 0, since then the mail continues the turn.
-// Otherwise it appends the Stop record, printing the empty hook output only when the flag is absent, so a hook-read output stays the hook's one JSON document.
+// creelStopHookCommand returns the Stop hook command that records the turn end in the events file at eventsPath.
+// It reads the hook input once.
+// When the strand's mail flag stands in flagDir, it pipes the input to creel's mail verb,
+// and a zero exit from that verb ends the hook without recording the turn end, since the mail continues the turn.
+// Otherwise it appends the Stop record,
+// and it prints the empty hook output only when the flag is absent,
+// so a hook-read output stays the hook's one JSON document.
 func creelStopHookCommand(flagDir, eventsPath string) string {
 	deliver := `if ` + creelFlagTest(flagDir) + `; then printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; else ` + emptyHookOutput + `; fi`
 	return `in=$(cat); ` + shuttleengine.StrandFlagNameShell() + `; ` + deliver + `; printf '%s' "$in" | { ` + appendRecord(hookEventStop, eventsPath) + `; }`
 }
 
-// creelWaitHookCommand returns the idle waiter's command: creelWaitCommand under the Codex home and with the Codex executable it queues the woken turn through.
-// The home is set on the command as well as inherited, so the queued turn reaches this session's home even when Codex hands its hooks a trimmed environment.
+// creelWaitHookCommand returns the idle waiter's command, with the Codex home and executable set in its environment.
+// The waiter queues the woken turn through that executable.
+// The home is set on the command as well as inherited,
+// so the queued turn reaches this session's home even when Codex hands its hooks a trimmed environment.
 func creelWaitHookCommand(creel creelDelivery) string {
 	posix := shell.Posix()
 	return codexHomeEnvKey + "=" + posix.Quote(creel.home) + " " + codexBinaryEnvKey + "=" + posix.Quote(creel.bin) + " " + creelWaitCommand
 }
 
-// hookSettings returns the `-c` hook settings of a run whose events file is eventsPath:
-// a recording hook per recorded event, one PreToolUse setting holding an entry per guard row when guards is non-empty, then the activity hook after every tool call.
-// A creel delivery with a flag directory makes the Stop setting the merged creel Stop command followed by the async idle waiter, and adds the creel mail hook after the activity hook.
+// hookSettings returns the `-c` hook settings of a run whose events file is eventsPath.
+// Each recorded event gets a recording hook.
+// When guards is non-empty, a PreToolUse setting holds one entry per guard row.
+// The activity hook runs after every tool call.
+// With a creel flag directory, the Stop setting runs the merged creel Stop command, then the async idle waiter.
+// The PostToolUse setting also runs the creel mail hook, after the activity hook.
 // Entries of one event share one setting, since a second `-c` of the same key replaces the first.
 func hookSettings(eventsPath string, guards []shellguard.Row, creel creelDelivery) []string {
 	settings := make([]string, 0, len(recordedHookEvents)+2)
@@ -221,7 +243,6 @@ func hookSettings(eventsPath string, guards []shellguard.Row, creel creelDeliver
 	return append(settings, hookSetting(hookEventPostToolUse, postToolUse...))
 }
 
-// hookEntry returns one `{matcher=…,hooks=[…]}` hook entry running command, with matcher when non-empty.
 func hookEntry(matcher, command string) string {
 	entry := "{"
 	if matcher != "" {
@@ -230,17 +251,17 @@ func hookEntry(matcher, command string) string {
 	return entry + `hooks=[{type="command",command=` + tomlString(command) + "}]}"
 }
 
-// asyncHookEntry returns one hook entry with no matcher that Codex runs command in the background for, up to timeoutSeconds, without holding the turn open.
+// asyncHookEntry returns a hook entry with no matcher, whose command Codex runs in the background.
+// The command runs for up to timeoutSeconds without holding the turn open.
 func asyncHookEntry(command string, timeoutSeconds int) string {
 	return `{hooks=[{type="command",command=` + tomlString(command) + `,async=true,timeout=` + strconv.Itoa(timeoutSeconds) + "}]}"
 }
 
-// hookSetting returns one `hooks.<event>=[…]` setting holding entries.
 func hookSetting(event string, entries ...string) string {
 	return "hooks." + event + "=[" + strings.Join(entries, ",") + "]"
 }
 
-// tomlString returns s as a TOML basic string.
+// tomlString returns s as a TOML basic string, escaping the quote, the backslash and control characters.
 func tomlString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
@@ -264,13 +285,11 @@ func tomlString(s string) string {
 	return b.String()
 }
 
-// hexByte returns b as two uppercase hex digits.
 func hexByte(b byte) string {
 	const digits = "0123456789ABCDEF"
 	return string([]byte{digits[b>>4], digits[b&0x0f]})
 }
 
-// tomlArray returns values as a TOML array of basic strings.
 func tomlArray(values []string) string {
 	quoted := make([]string, len(values))
 	for i, value := range values {

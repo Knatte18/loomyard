@@ -1,5 +1,5 @@
 // keepreset.go holds KeepResetRefusal, the error of a standalone reset that git's keep form refused.
-// The CLI alone calls it: webster's engine runs no mutating git, so the keep-reset itself is made by the caller.
+// The CLI alone calls it: webster's engine runs no mutating git, so the keep-reset itself is made by the CLI.
 
 package websterengine
 
@@ -11,7 +11,9 @@ import (
 
 // KeepResetRefusal is the error of a standalone reset to plan's commit that git's keep form refused with cause.
 // overwritten lists the uncommitted paths the move would overwrite, which cause names in git's words.
-// The way forward gives one step per path, `git checkout -- <path>` for a path the run itself wrote (plan.OwnPaths) and commit or restore for any other, then re-running the reset.
+// The way forward gives one step per path.
+// A path the run itself wrote (plan.OwnPaths) gets `git checkout -- <path>`; any other needs a commit or a restore.
+// The reset is then re-run.
 // Keep leaves HEAD and every file unchanged when it refuses.
 func KeepResetRefusal(plan ResetPlan, cause error, overwritten []string) error {
 	var steps []string

@@ -1,10 +1,8 @@
-// cluster.go implements the fail-loud policy Engine.Review enforces over a cluster round's
-// shuttleengine.ForkAudit: the fork-count contract and the per-fork violation classes a disobedient
-// fork reviewer can trigger.
-// auditClusterRound is the single place that turns the raw audit facts (shuttleengine's own
-// knowledge — never this package's) into burler's hard-error/warning split, per the
-// fail-loud-posture Shared Decision.
-// auditFixRound applies the same per-fork checks to a twill fixer's self-check forks, where a wrong fork count is a warning.
+// cluster.go holds the fail-loud policy that Engine.Review enforces over a cluster round's shuttleengine.ForkAudit.
+// It covers the fork-count contract and the per-fork violations a disobedient fork reviewer can trigger.
+// auditClusterRound is the single place that turns the raw audit facts into burler's hard-error and warning split.
+// auditFixRound applies the same per-fork checks to a twill fixer's self-check forks.
+// A wrong fork count there is a warning.
 
 package burlerengine
 
@@ -17,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrClusterForksMissing is the sentinel for when a cluster round's ForkAudit does not carry
-// exactly the requested number of fork reviewers.
+// ErrClusterForksMissing is the sentinel error for a cluster round's fork audit.
+// It marks an audit that does not carry exactly the requested number of fork reviewers.
 var ErrClusterForksMissing = errors.New("the cluster round did not produce exactly the requested number of fork reviewers")
 
 // mutatingGitSubcommands holds the git subcommands that change repository or working-tree state.
@@ -28,7 +26,8 @@ var mutatingGitSubcommands = map[string]bool{
 	"switch": true, "stash": true, "apply": true, "cherry-pick": true, "tag": true, "branch": true,
 }
 
-// gitValuedGlobalOptions holds git's global options whose value is the following word, so that word is never read as the subcommand.
+// gitValuedGlobalOptions holds git's global options whose value is the following word.
+// That word is never read as the subcommand.
 var gitValuedGlobalOptions = map[string]bool{
 	"-C": true, "-c": true, "--git-dir": true, "--work-tree": true, "--namespace": true, "--config-env": true, "--attr-source": true,
 }
@@ -46,11 +45,14 @@ var gitTagWritingOptions = map[string]bool{
 	"-F": true, "--file": true, "-e": true, "--edit": true,
 }
 
-// gitTagValuedListOptions holds the git tag list-output options whose value may be the following word, so a value such as -version:refname is never read as an option.
+// gitTagValuedListOptions holds the git tag list-output options whose value may be the following word.
+// A value such as -version:refname is never read as an option.
 var gitTagValuedListOptions = map[string]bool{"--sort": true, "--format": true}
 
-// gitBranchReadOptions holds the git branch long options that never create, delete, rename, copy or move a branch or change its upstream or description.
-// The value reports whether the option puts git branch in list mode, where every operand is a pattern rather than a branch to create.
+// gitBranchReadOptions holds the git branch long options that only read branches.
+// Such an option never creates, deletes, renames, copies or moves a branch, or changes its upstream or description.
+// The value reports whether the option puts git branch in list mode.
+// In list mode every operand is a pattern rather than a branch to create.
 var gitBranchReadOptions = map[string]bool{
 	"--list": true, "--contains": true, "--no-contains": true, "--merged": true,
 	"--no-merged": true, "--points-at": true, "--show-current": true,
@@ -59,36 +61,51 @@ var gitBranchReadOptions = map[string]bool{
 	"--no-abbrev": false, "--omit-empty": false,
 }
 
-// gitBranchReadShortOptions holds the git branch short options that only read, with the value reporting whether the option puts git branch in list mode.
+// gitBranchReadShortOptions holds the git branch short options that only read.
+// The value reports whether the option puts git branch in list mode.
 var gitBranchReadShortOptions = map[rune]bool{'l': true, 'v': false, 'a': false, 'r': false, 'i': false}
 
-// gitBranchValuedReadOptions holds the git branch read options whose value is the following word when not given in the = form, so a value such as -committerdate is never read as an option or an operand.
+// gitBranchValuedReadOptions holds the git branch read options whose value is the next word unless given with =.
+// A value such as -committerdate is never read as an option or an operand.
 var gitBranchValuedReadOptions = map[string]bool{"--format": true, "--sort": true, "--points-at": true}
 
 // gitRepositoryOptions holds git's global options that name the repository or working tree apart from the directory git runs in.
 var gitRepositoryOptions = map[string]bool{"--git-dir": true, "--work-tree": true}
 
-// gitInitValuedOptions holds the git init options whose value is the following word, so that word is never read as the directory.
+// gitInitValuedOptions holds the git init options whose value is the following word.
+// That word is never read as the directory.
 var gitInitValuedOptions = map[string]bool{
 	"-b": true, "--initial-branch": true, "--template": true, "--separate-git-dir": true,
 	"--object-format": true, "--ref-format": true,
 }
 
-// gitWorktreeAddValuedOptions holds the git worktree add options whose value is the following word, so that word is never read as the path.
+// gitWorktreeAddValuedOptions holds the git worktree add options whose value is the following word.
+// That word is never read as the path.
 var gitWorktreeAddValuedOptions = map[string]bool{"-b": true, "-B": true, "--reason": true}
 
-// firstMutatingGitCommand returns the first of commands, one fork's Bash commands in transcript order, that invokes git with a state-mutating subcommand against a repository the fork did not create, and reports whether there is one.
-// A command is split into segments at ;, &, | and newlines, and a segment is a git invocation when its first word is git, bare or path-prefixed.
-// Only the subcommand word decides, so a mutating verb named as an argument, as in git help cherry-pick, never counts.
-// The exceptions are git tag, which counts only when it does not merely list tags, and git branch, which counts only when it does not merely list branches or show the current one.
+// firstMutatingGitCommand scans commands, one fork's Bash commands in transcript order.
+// It returns the first command that runs a state-mutating git subcommand on a repository the fork did not create.
+// It reports whether such a command exists.
+// A command is split into segments at ;, &, | and newlines,
+// and a segment is a git invocation when its first word is git, bare or path-prefixed.
+// Only the subcommand word decides: a mutating verb named as an argument, as in git help cherry-pick, never counts.
+// The exceptions are git tag and git branch.
+// A git tag counts only when it does not merely list tags.
+// A git branch counts only when it does not merely list branches or show the current one.
 // A -h or --help among the global options or directly after the subcommand only prints usage and never counts either;
 // further along it is an option value or an operand, as in git commit -m -h.
 //
-// A mutating invocation whose directory lies inside a repository the fork created earlier, by git init or by git worktree add from such a repository, does not count, so a fork may experiment on a throwaway repository.
-// The directory is resolved lexically from each command's unknown starting directory, through the command's own cd segments and then the invocation's -C options.
-// git push, an invocation with --git-dir or --work-tree and one after a bare cd or cd - always count, since their target is not the resolved directory.
-// A git init whose relative path is the starting directory, an ancestor of it or leaves it through .. creates no recorded repository, since it may reinitialize the target.
-// A .. that would climb above a leading ~ or $ word leaves the directory unresolvable, so it matches no recorded repository either.
+// A mutating invocation does not count when its directory lies inside a repository the fork created earlier.
+// The fork creates one by git init, or by git worktree add from such a repository.
+// So a fork may experiment on a throwaway repository.
+// The directory is resolved lexically from the command's unknown starting directory.
+// It applies the command's own cd segments first, then the invocation's -C options.
+// git push always counts, as does any invocation with --git-dir or --work-tree, or one after a bare cd or cd -.
+// Their target is not the resolved directory.
+// A git init whose relative path is the starting directory or an ancestor of it records no repository.
+// The same holds for a path that leaves the directory through .., since it may reinitialize the target.
+// A .. that would climb above a leading ~ or $ word leaves the directory unresolvable.
+// Such a directory matches no recorded repository.
 func firstMutatingGitCommand(commands []string) (string, bool) {
 	var repos forkRepositories
 	for _, cmd := range commands {
@@ -102,7 +119,8 @@ func firstMutatingGitCommand(commands []string) (string, bool) {
 // forkRepositories holds the lexically resolved directories of the repositories one fork created.
 type forkRepositories []string
 
-// runsMutatingGit reports whether cmd invokes git with a state-mutating subcommand outside repos, and records each repository cmd creates.
+// runsMutatingGit reports whether cmd invokes git with a state-mutating subcommand outside repos.
+// It records each repository cmd creates.
 func (repos *forkRepositories) runsMutatingGit(cmd string) bool {
 	dir, dirKnown := ".", true
 	for _, words := range splitShellSegments(cmd) {
@@ -123,7 +141,8 @@ func (repos *forkRepositories) runsMutatingGit(cmd string) bool {
 	return false
 }
 
-// gitInvocationMutates reports whether invocation changes state outside repos, and records the repository invocation creates.
+// gitInvocationMutates reports whether invocation changes state outside repos.
+// It records the repository that invocation creates.
 func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) bool {
 	if invocation.helpRequested || len(invocation.args) > 0 && isHelpFlag(invocation.args[0]) {
 		return false
@@ -157,8 +176,10 @@ func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) bo
 }
 
 // record adds operand, resolved against invocation's directory, to repos.
-// It records nothing when the directory is unknown or operand resolves to the starting directory, an ancestor of it or a path leaving it through ..;
-// such a path may name the starting directory under its own basename.
+// It records nothing when the directory is unknown.
+// It also records nothing when operand resolves to the starting directory or an ancestor of it.
+// A path leaving the directory through .. is skipped too.
+// Such a path may name the starting directory under its own basename.
 func (repos *forkRepositories) record(invocation gitInvocation, operand string) {
 	if !invocation.dirKnown {
 		return
@@ -197,8 +218,10 @@ type gitInvocation struct {
 	dirKnown bool
 }
 
-// parseGitInvocation parses args, the words after git, run from dir, skipping each valued global option's value and applying each -C to the directory.
-// dirKnown reports whether dir is known, and the result's directory is unknown too when --git-dir or --work-tree names the repository apart from it.
+// parseGitInvocation parses args, the words after git, for a command run from dir.
+// It skips the value of each valued global option and applies each -C to the directory.
+// The result's dirKnown reports whether dir is known,
+// and it is cleared when --git-dir or --work-tree names the repository apart from the directory.
 func parseGitInvocation(args []string, dir string, dirKnown bool) gitInvocation {
 	invocation := gitInvocation{dir: dir, dirKnown: dirKnown}
 	for i := 0; i < len(args); i++ {
@@ -226,7 +249,8 @@ func parseGitInvocation(args []string, dir string, dirKnown bool) gitInvocation 
 	return invocation
 }
 
-// firstOperand returns the first non-option word of args, skipping the value of each option valuedOptions holds, and reports whether there is one.
+// firstOperand returns the first non-option word of args and reports whether there is one.
+// It skips the value of each option that valuedOptions holds.
 // After a -- it returns the next word, whatever its spelling.
 func firstOperand(args []string, valuedOptions map[string]bool) (string, bool) {
 	for i := 0; i < len(args); i++ {
@@ -246,14 +270,18 @@ func firstOperand(args []string, valuedOptions map[string]bool) (string, bool) {
 	return "", false
 }
 
-// isAnchoredShellPath reports whether p names its directory independently of the current directory: absolute, or led by a ~ or a $ variable.
+// isAnchoredShellPath reports whether p names its directory independently of the current directory:
+// absolute, or led by a ~ or a $ variable.
 func isAnchoredShellPath(p string) bool {
 	return strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, "$")
 }
 
 // resolveShellPath lexically resolves p against dir.
-// An anchored p stands as written and cleaned; if a .. would climb above its leading ~ or $ word, the result is ../ followed by p, which lies inside no anchored root.
-// A relative p joins dir; under a relative dir the result stays relative to the starting directory, so a result such as .. or ../x escapes it.
+// An anchored p stands as written and cleaned;
+// if a .. would climb above its leading ~ or $ word, the result is ../ followed by p.
+// That result lies inside no anchored root.
+// A relative p joins dir; under a relative dir the result stays relative to the starting directory,
+// so a result such as .. or ../x escapes it.
 func resolveShellPath(dir, p string) string {
 	if !isAnchoredShellPath(p) {
 		if !isAnchoredShellPath(dir) {
@@ -276,7 +304,8 @@ func resolveShellPath(dir, p string) string {
 }
 
 // gitTagListsOnly reports whether args, the words after git tag, only list tags.
-// Bare git tag lists, and otherwise a list-mode option must stand before any -- with no tag-writing option beside it.
+// A bare git tag lists tags;
+// otherwise a list-mode option must stand before any -- with no tag-writing option beside it.
 // A long option counts in its --name=value form too, and -n also with its line count attached, as in -n5.
 // Any other short-option cluster, such as -ln, is not parsed and keeps the command mutating.
 func gitTagListsOnly(args []string) bool {
@@ -318,9 +347,12 @@ func isGitTagLineCount(word string) bool {
 }
 
 // gitBranchReadsOnly reports whether args, the words after git branch, only list branches or show the current one.
-// Every option must be a known read-only option, a short-option cluster such as -avv counting letter by letter, and a long option counting in its --name=value form too;
-// any other option keeps the command mutating.
-// An operand, any word after --, makes git branch create a branch unless a list-mode option such as --list or --contains turns operands into patterns.
+// Every option must be a known read-only option.
+// A short-option cluster such as -avv counts letter by letter,
+// and a long option counts in its --name=value form too.
+// Any other option keeps the command mutating.
+// An operand, any word after --, makes git branch create a branch.
+// A list-mode option such as --list or --contains turns operands into patterns instead.
 func gitBranchReadsOnly(args []string) bool {
 	listMode, hasOperand := false, false
 	for i := 0; i < len(args); i++ {
@@ -355,7 +387,9 @@ func gitBranchReadsOnly(args []string) bool {
 
 // splitShellSegments splits cmd into segments at unquoted ;, &, | and newlines, each segment a list of words.
 // A single or double quoted run is part of one word with its quotes removed.
-// An unquoted < or > redirection is no word: the operator, an unquoted file-descriptor number attached before it, an & attached after it and the target word that follows are all dropped, so 2>/dev/null is never read as an operand.
+// An unquoted < or > redirection is no word.
+// The operator, its target word, and any unquoted file-descriptor number before it are dropped;
+// an & after the operator is dropped too, so 2>/dev/null is never read as an operand.
 // A backslash-newline pair is removed, so a continued line stays in its segment.
 // A # at the start of a word comments out the rest of its line.
 // Any other backslash outside single quotes escapes the next character, so an escaped quote opens no quoted run.
@@ -449,8 +483,8 @@ func isGitExecutable(word string) bool {
 	return word == "git" || strings.HasSuffix(word, "/git") || strings.HasSuffix(word, `\git`)
 }
 
-// auditClusterRound enforces the cluster-round fail-loud policy. Checks run in
-// a fixed order; the first violation is returned as a hard error.
+// auditClusterRound enforces the cluster-round fail-loud policy.
+// Checks run in a fixed order; the first violation is returned as a hard error.
 func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, error) {
 	gotN := 0
 	if audit != nil {
@@ -466,7 +500,8 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 	return unreturnedForkWarnings(audit), nil
 }
 
-// forkViolation returns the first Agent-call, write, mutating-git or named-spawn violation of audit, checked in that order, or nil when the forks are clean.
+// forkViolation returns the first violation of audit, or nil when the forks are clean.
+// The checks run in this order: an Agent tool call, a write or edit call, a git-mutating command, and a named spawn.
 // The error carries no burler prefix, so each caller adds its own.
 func forkViolation(audit *shuttleengine.ForkAudit) error {
 	for _, fork := range audit.Forks {
@@ -490,7 +525,8 @@ func forkViolation(audit *shuttleengine.ForkAudit) error {
 	return nil
 }
 
-// unreturnedForkWarnings returns one warning per fork of audit that never returned a final report; such a fork is sloppiness, not a failure.
+// unreturnedForkWarnings returns one warning per fork of audit that never returned a final report.
+// Such a fork is sloppiness, not a failure.
 func unreturnedForkWarnings(audit *shuttleengine.ForkAudit) []string {
 	var warnings []string
 	for _, fork := range audit.Forks {
@@ -501,9 +537,12 @@ func unreturnedForkWarnings(audit *shuttleengine.ForkAudit) []string {
 	return warnings
 }
 
-// auditFixRound enforces the twill fixer's fork policy over audit, the audit of a fixer that spawned self-check forks for wantN lenses.
-// A fork violation is a hard error, wrapped with its way forward; a fork count other than wantN, none included, is a warning, since the fix is on disk and failing the half would redo a finished fix.
-// It returns the warnings, which also include one per fork that never returned a report, and the audited fork count, 0 for a nil audit.
+// auditFixRound checks the fork audit of a twill fixer that spawned self-check forks for wantN lenses.
+// A fork violation is a hard error, wrapped with its way forward.
+// A fork count other than wantN, zero included, is a warning.
+// The fix is already on disk; failing the half would redo a finished fix.
+// It returns the warnings, including one per fork that never returned a report.
+// It also returns the audited fork count, which is 0 for a nil audit.
 func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string, forks int, err error) {
 	if audit == nil {
 		return []string{fmt.Sprintf("twill fixer spawned 0 fork(s) for %d lens(es)", wantN)}, 0, nil

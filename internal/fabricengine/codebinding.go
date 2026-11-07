@@ -1,6 +1,6 @@
-// codebinding.go owns the .lym-warp warp-URL binding: a plain single-line record kept at the board
-// root, recorded once on weft:main.
-// It holds the warp URL only, never the subpath — each worktree's .lym-anchor, at its weft root, owns that.
+// codebinding.go owns the .lym-warp warp-URL binding:
+// a single-line record kept at the board root and recorded once on weft:main.
+// It holds the warp URL only; each worktree's .lym-anchor, at its weft root, owns the subpath.
 // The record is written to disk here but committed onto weft:main by the CLI layer through Bolt;
 // this file spawns no git and never calls Bolt itself.
 
@@ -17,24 +17,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// ErrNoWarpBinding matches, under errors.Is, the refusal of a weft that records no warp binding when none was supplied: resolveEffectiveWarpURL's and CloneHub's one-argument form's.
+// ErrNoWarpBinding matches, under errors.Is, the refusal of a weft with no warp binding and no supplied warp URL.
 var ErrNoWarpBinding = errors.New("no recorded warp binding")
 
-// ErrWarpBindingMismatch matches, under errors.Is, resolveEffectiveWarpURL's refusal to re-point a recorded binding at a different warp URL.
+// ErrWarpBindingMismatch matches, under errors.Is, the refusal to re-point a recorded binding at a different warp URL.
 var ErrWarpBindingMismatch = errors.New("warp binding mismatch")
 
 // WarpBindingFileName is the filename of the recorded warp-URL binding at the board root (<boardDir>/.lym-warp).
 // It holds only the warp URL string, plus a trailing newline.
-// This is a structural per-repo record, written once at clone and read on every subsequent clone or reconcile — never a config or env override.
-// It is distinct from lymcwd.AnchorFileName: the anchor says where in warp lym is rooted, this says which warp repo the weft pairs with.
-// Exported because both fabricengine_test integration tests and this package's own reconcile code need to name the file.
+// This is a structural per-repo record, written once at clone and read on every subsequent clone or reconcile.
+// It is never a config or env override.
+// The anchor file says where in warp lym is rooted; this file says which warp repo the weft pairs with.
+// Exported so other packages and tests can name the file.
 const WarpBindingFileName = ".lym-warp"
 
 // readWarpBinding reads the recorded warp-URL binding from <boardDir>/.lym-warp and reports whether a
 // usable URL was found.
-// It mirrors lymcwd's readRecordedAnchor: any read error (an absent board directory, an absent
-// binding file, or an unreadable file) and an empty-after-trim result both report ("", false), so the
-// caller treats a corrupt or missing record the same as a genuinely unbound weft.
+// Any read error (an absent board directory, an absent binding file, or an unreadable file) reports ("", false).
+// So does an empty-after-trim result.
+// The caller therefore treats a corrupt or missing record the same as an unbound weft.
 func readWarpBinding(boardDir string) (warpURL string, found bool) {
 	data, err := os.ReadFile(filepath.Join(boardDir, WarpBindingFileName))
 	if err != nil {
@@ -70,20 +71,18 @@ func HubRepoURL(l *lymcwd.Location) (string, error) {
 func writeWarpBinding(boardDir, warpURL string) error {
 	path := filepath.Join(boardDir, WarpBindingFileName)
 	if err := os.WriteFile(path, []byte(warpURL+"\n"), 0o644); err != nil {
-		// Wrap with %w so a caller can unwrap to the underlying os error while still seeing the
-		// full path that failed.
+		// Wrap with %w so a caller can unwrap to the os error while still seeing the path that failed.
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
 }
 
-// normalizeWarpURL reduces raw to a canonical spelling for equality comparison: it trims surrounding
-// whitespace, strips exactly one trailing "/", then exactly one trailing ".git", then — only when the
-// result begins with a "<scheme>://" prefix — lowercases the scheme and the host segment up to the
-// first "/" after "://".
-// A string with no "<scheme>://" prefix, such as a local filesystem path or an scp-form URL, is
-// returned with only the two trailing strips applied and no case change at all, so a Windows drive
-// letter survives byte-for-byte.
+// normalizeWarpURL reduces raw to a canonical spelling for equality comparison.
+// It trims surrounding whitespace and strips exactly one trailing "/", then exactly one trailing ".git".
+// Only when the result begins with a "<scheme>://" prefix does it lowercase the scheme and the host segment.
+// The host segment runs up to the first "/" after "://".
+// A string with no "<scheme>://" prefix gets only the two trailing strips and no case change.
+// That keeps a local filesystem path or an scp-form URL intact, so a Windows drive letter survives byte-for-byte.
 // The slash strip runs before the .git strip, so "repo.git/" reduces to "repo".
 func normalizeWarpURL(raw string) string {
 	trimmed := strings.TrimSpace(raw)
@@ -108,9 +107,9 @@ func normalizeWarpURL(raw string) string {
 
 // warpURLTransportIdentity reduces raw to a transport-agnostic identity string, used only to word a
 // reconcile divergence detail and never to decide equality.
-// It starts from normalizeWarpURL, drops a leading "<scheme>://", rewrites a leading scp-form
-// "<user>@<host>:" into "<host>/", and lowercases the whole result, so two spellings of the same repo
-// over different transports collapse to the same string.
+// It normalizes the spelling, then drops a leading "<scheme>://".
+// It rewrites a leading scp-form "<user>@<host>:" into "<host>/" and lowercases the whole result.
+// Two spellings of the same repo over different transports therefore collapse to one string.
 func warpURLTransportIdentity(raw string) string {
 	normalized := normalizeWarpURL(raw)
 
@@ -127,13 +126,14 @@ func warpURLTransportIdentity(raw string) string {
 	return strings.ToLower(normalized)
 }
 
-// resolveEffectiveWarpURL encodes the whole warp-binding conflict rule, pure and git-free: given the
-// recorded binding (and whether one was found) plus the URL the caller supplied on the command line,
-// it decides which URL is effective, whether the caller must persist a new record, and whether the
-// combination is a conflict that must abort instead.
+// resolveEffectiveWarpURL applies the warp-binding conflict rule.
+// It is pure and git-free.
+// It takes the recorded binding, whether one was found, and the URL the caller supplied on the command line.
+// It decides which URL is effective.
+// It decides whether the caller must persist a new record.
+// It decides whether the combination is a conflict that must abort instead.
 //
-// The caller prefixes the weft URL into the unbound-weft error text (see the CLI layer); this
-// function's own message must not attempt to name it.
+// The caller adds the weft URL to the unbound-weft error text; this function's own message must not name it.
 func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effective string, writeRecord bool, err error) {
 	if !found && supplied == "" {
 		return "", false, &sentinelError{
@@ -148,9 +148,9 @@ func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effe
 		return recorded, false, nil
 	}
 	if normalizeWarpURL(recorded) == normalizeWarpURL(supplied) {
-		// The supplied spelling is returned rather than the recorded one so the hub name and the
-		// URL actually cloned are derived from the same string; the record itself is left
-		// untouched either way.
+		// The supplied spelling is returned, not the recorded one,
+		// so the hub name and the cloned URL come from the same string.
+		// The record is left untouched either way.
 		return supplied, false, nil
 	}
 	return "", false, &sentinelError{

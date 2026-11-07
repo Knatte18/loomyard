@@ -1,15 +1,8 @@
-// destroy_toctou_test.go guards the act-time containment binding that closed R3's containment TOCTOU:
-// removeContainedPath must refuse to carry a removal through a symlink escaping its container, must
-// still remove a legitimate nested entry and a final-component link (a junction), and must treat an
-// absent target as an idempotent no-op.
-//
-// It is a hermetic, single-instant test of the primitive the fix moved the enforcement into, and that
-// is the point: the original defect escaped only in the check-then-act window (dangling at check,
-// live-escaping at act), so a single-instant test of the OLD nominal-path act would have missed it —
-// the old check refused a symlink that was already live. The fix makes the ACT itself refuse an
-// escaping component regardless of when the symlink went live, so pinning that act-time property with
-// a live-escaping symlink present at removal time is exactly what would fail on a regression back to a
-// nominal-path unlink.
+// destroy_toctou_test.go pins the act-time containment of removeContainedPath.
+// The act refuses a removal that reaches its target through a symlink escaping the container.
+// It does so regardless of when the symlink went live, since a symlink can go live between a check and the act.
+// The tests also pin removal of a nested entry and a final-component link (a junction).
+// An absent target is an idempotent no-op.
 
 package fabricengine
 
@@ -22,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemoveContainedPath_RefusesEscapingIntermediate asserts that a removal whose target is reachable
-// only by traversing a symlink that escapes the container is refused, with the outside file preserved.
+// TestRemoveContainedPath_RefusesEscapingIntermediate asserts that a removal is refused:
+// the target is reachable only by traversing a symlink that escapes the container, and the outside file survives.
 //
 //testtiming:keep a removal reachable only through an escaping symlink being refused with the outside file preserved; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
@@ -42,7 +35,6 @@ func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
 		t.Fatalf("write precious: %v", err)
 	}
 
-	// An intermediate segment of the target escapes the container.
 	if err := os.Symlink(outside, filepath.Join(container, "escape")); err != nil {
 		t.Fatalf("symlink escape: %v", err)
 	}
@@ -63,8 +55,8 @@ func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
 	}
 }
 
-// TestRemoveContainedPath_RemovesLegitimateNested asserts a real nested entry is removed and recorded
-// as a directory or single entry correctly.
+// TestRemoveContainedPath_RemovesLegitimateNested asserts that a real nested directory is removed.
+// It also asserts that the removal reports the entry as a directory.
 //
 //testtiming:keep a real nested entry being removed and recorded as a directory or single entry; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RemovesLegitimateNested(t *testing.T) {
@@ -100,8 +92,8 @@ func TestRemoveContainedPath_RemovesLegitimateNested(t *testing.T) {
 	}
 }
 
-// TestRemoveContainedPath_RemovesFinalLinkNotTarget asserts a final-component link (a junction) is
-// removed as a link, leaving the escaping target it pointed at untouched.
+// TestRemoveContainedPath_RemovesFinalLinkNotTarget asserts that a final-component link (a junction) is removed.
+// The escaping target the link points at stays untouched.
 //
 //testtiming:keep a final-component junction being removed as a link while its escaping target stays untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RemovesFinalLinkNotTarget(t *testing.T) {
@@ -159,12 +151,10 @@ func TestRemoveContainedPath_AbsentIsNoOp(t *testing.T) {
 	}
 }
 
-// TestCreateExclusiveDir_RefusesLeafSymlink pins createExclusiveDir's actual containment guarantee — the
-// dedicated regression round 5's F2/F3 lacked (they leaned on the shared-mechanism coverage): a symlink
-// planted at the leaf createExclusiveDir would mint is refused as an EEXIST rather than followed, so the
-// gate never mints a createdToken for a directory it did not itself bring into being. This is the leaf
-// property CloneHub's hub bootstrap relies on; the intermediate-ancestor case is documented as NOT
-// refused (os.OpenRoot resolves the parent), so this test deliberately pins only the leaf guarantee.
+// TestCreateExclusiveDir_RefusesLeafSymlink asserts that createExclusiveDir refuses a symlink planted at the leaf.
+// It is refused as EEXIST rather than followed, so the gate never mints a token for a directory it did not create.
+// A symlink at an intermediate ancestor is not refused, since os.OpenRoot resolves the parent.
+// This test pins only the leaf guarantee.
 //
 //testtiming:keep createExclusiveDir refusing a symlink planted at the leaf as EEXIST so the gate never mints a token for a directory it did not create; coverage of its blocks by other tests does not show an assertion of this
 func TestCreateExclusiveDir_RefusesLeafSymlink(t *testing.T) {
@@ -179,9 +169,8 @@ func TestCreateExclusiveDir_RefusesLeafSymlink(t *testing.T) {
 		t.Fatalf("mkdir outside: %v", err)
 	}
 
-	// Plant a symlink at the exact leaf createExclusiveDir would mint, pointing at an existing outside
-	// directory — the shape that would let a mkdir-follows-symlink adopt an out-of-container directory as
-	// though the gate had created it.
+	// Plant a symlink at the leaf createExclusiveDir would mint, pointing at an existing outside directory.
+	// A mkdir that follows the symlink would adopt an out-of-container directory as one the gate created.
 	leaf := filepath.Join(container, "hub")
 	if err := os.Symlink(outside, leaf); err != nil {
 		t.Fatalf("plant leaf symlink: %v", err)

@@ -1,8 +1,6 @@
-// configtemplate.go — loom.yaml template accessor.
+// configtemplate.go holds the default loom.yaml template for the config module.
 //
-// ConfigTemplate provides the default YAML template for loom's config module, embedded directly
-// from template.yaml at build time, mirroring reedengine's embed-and-accessor
-// pattern.
+// The template is embedded from template.yaml at build time.
 
 package loomengine
 

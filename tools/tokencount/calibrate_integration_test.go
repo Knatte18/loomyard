@@ -1,4 +1,5 @@
-// calibrate_integration_test.go checks that the gitrepo-backed plan history and base tree give the calibration the same row as the in-memory ones.
+// calibrate_integration_test.go checks the calibration against a real git repository.
+// The gitrepo-backed plan history and base tree give the same rows as the in-memory ones.
 
 package main
 
@@ -21,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// The test changes the working directory, which run reads the base trees from, so it never runs in parallel.
+// The test changes the working directory, which `run` reads the base trees from, so it never runs in parallel.
 func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	tiergate.Require(t, 1)
 	configDir := t.TempDir()
@@ -147,7 +148,8 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 		t.Errorf("git-backed profile report = %+v; want the in-memory %+v with one profile line of 2 findings", gotProfiles, wantProfiles)
 	}
 
-	// run drives the same calibration end to end: the one repository flag names the fixture, whose directory is also the code repository.
+	// run drives the same calibration end to end.
+	// The one repository flag names the fixture, whose directory is also the code repository.
 	hub := t.TempDir()
 	forkStart := started.UTC().Format(time.RFC3339Nano)
 	reads := oneEngine(filepath.Join(hub, "alpha"), sessionOf(

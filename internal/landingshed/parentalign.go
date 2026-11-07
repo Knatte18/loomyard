@@ -1,4 +1,6 @@
-// parentalign.go implements the Parent-Align producer: it merges the parent's tip into the task worktree with no parent lock and no write to the parent pair, runs the `landing` gate over the merged tree and writes the merge record the guarded landing rows read.
+// parentalign.go implements the Parent-Align producer.
+// It merges the parent's tip into the task worktree with no parent lock and no write to the parent pair.
+// It runs the `landing` gate over the merged tree and writes the merge record the guarded landing rows read.
 
 package landingshed
 
@@ -17,19 +19,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// parentAlignName is the producer name Parent-Align's log lines and error text carry, and the row name its failure record carries.
+// parentAlignName is the producer name that Parent-Align's log lines and error text carry.
+// It is also the row name its failure record carries.
 const parentAlignName = "Parent-Align"
 
-// retiredMergeInName is the row name Parent-Align carried before its rename, which a run parked on the old row still holds in its status file and attempt record.
+// retiredMergeInName is the retired row name of Parent-Align.
+// A run parked on that row still holds the name in its status file and attempt record.
 const retiredMergeInName = "Merge-In"
 
-// parentPuller is the narrow seam over the parent pair's fast-forward, which `*fabricengine.Fabric` satisfies.
+// parentPuller is the narrow seam over the parent pair's fast-forward.
 type parentPuller interface {
-	// FastForwardPair moves the parent pair to its upstream as a fast-forward only. See fabricengine.Fabric.FastForwardPair.
+	// FastForwardPair moves the parent pair to its upstream as a fast-forward only.
 	FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error)
 }
 
-// The compile-time assertion that *fabricengine.Fabric satisfies parentPuller.
 var _ parentPuller = (*fabricengine.Fabric)(nil)
 
 // mergeBefore is what Parent-Align reads before the merge, which the merge record carries.
@@ -52,7 +55,10 @@ type ParentAlign struct {
 	attempts FixerAttempts
 }
 
-// The FixerAttempts.Halt notes: a spent cap, an over-cap change at Parent-Align, and an over-cap change at Finalize whose fix reviews ran out of rounds without approving it.
+// The values of FixerAttempts.Halt, which notes the halt that last stopped an entry:
+// spent means the entry has no attempts left;
+// over-cap marks a change over the cap at Parent-Align;
+// review-capped marks an over-cap change at Finalize whose fix reviews ran out of rounds without approving it.
 const (
 	fixerHaltSpent        = "spent"
 	fixerHaltOverCap      = "over-cap"
@@ -61,7 +67,8 @@ const (
 
 var _ shedengine.ShedProducer = (*ParentAlign)(nil)
 
-// NewParentAlign constructs a ParentAlign from deps, refusing a nil OpenFabric, OpenParentFabric, ReadParentTips, ChangedPaths, MergeBase or TaskHead, a nil Lock.Store and an empty MergeRecordPath, each with its own error.
+// NewParentAlign constructs a ParentAlign from deps.
+// It returns an error when a required field of deps is nil or empty, and the error names that field.
 // It builds the resolver at construction time.
 func NewParentAlign(deps Deps) (*ParentAlign, error) {
 	switch {
@@ -116,12 +123,17 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 
 // Call runs one Parent-Align iteration.
 //
-// It runs the run-scope origin reconcile after the status commit: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
-// It writes nothing in the parent pair and holds no parent lock across the merge; a paused lock wait and an unreadable lock record for the local-tip read are Stuck with Halt, so the run stops at this row.
-// After the merge and the `landing` gate it aligns: it runs the merge fixer when the parent brought in commits or the gate fails,
+// It runs the run-scope origin reconcile after the status commit:
+// a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
+// It writes nothing in the parent pair and holds no parent lock across the merge.
+// A paused lock wait and an unreadable lock record for the local-tip read are Stuck with Halt,
+// so the run stops at this row.
+// After the merge and the `landing` gate it aligns:
+// it runs the merge fixer when the parent brought in commits or the gate fails,
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
-// A gate whose every failed run crashed its test runner judged no code, so it halts the same way before any alignment, with no fixer.
-// A fixer's escalate on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix instead.
+// A gate whose every failed run crashed its test runner judged no code:
+// it halts the same way before any alignment, with no fixer.
+// A fixer's escalate on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix.
 // A failed record write and every infrastructure fault are errors.
 func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, parentAlignName); err != nil {
@@ -190,7 +202,8 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 	m.gate.recorder.mergeCommit = mergeCommit
 
-	// The verify runs on committed content, and a verify that dirties the tree is a non-hermetic test that halts rather than ships.
+	// The verify runs on committed content,
+	// and a verify that dirties the tree is a non-hermetic test that halts rather than ships.
 	reason, err = m.gate.clean(parentAlignName, "after the merge-in")
 	if outcome, out, err, stop := gateStop(ctx, parentAlignName, reason, err); stop {
 		return outcome, out, err
@@ -227,8 +240,10 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 }
 
 // mergeTip picks the parent tip to merge and returns it, or a Stuck reason of the parent lock wait.
-// With an upstream and no push skip it fetches and takes the upstream tip, never the local tip, so a landing another run made locally and has not pushed is never merged in.
-// Under the told push skip, or with no upstream, it takes the parent lock only for the read of the local tip and releases it before returning, so the merge itself runs unlocked.
+// With an upstream and no push skip, it fetches and takes the upstream tip, never the local tip,
+// so a landing another run made locally and has not pushed is never merged in.
+// With the push skipped (Deps.PushSkipped) or no upstream, it takes the parent lock only to read the local tip.
+// It releases the lock before returning, so the merge itself runs unlocked.
 // A paused lock wait and an unreadable lock record come back as the reason, for a halting Stuck.
 func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
 	branch := m.deps.ParentBranch
@@ -261,7 +276,8 @@ func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
 // readBefore reads what the merge record carries from before the merge:
 // the task head, the parent tip last merged into the task, and the aligned tip of the earlier merge record.
 // An absent aligned tip stays empty, which reads as the task's fork point from the parent.
-// An unreadable earlier record is logged and read as an empty aligned tip, so a damaged record cannot block every later merge.
+// An unreadable earlier record is logged and read as an empty aligned tip.
+// A damaged record therefore cannot block every later merge.
 func (m *ParentAlign) readBefore() error {
 	head, err := m.deps.TaskHead()
 	if err != nil {
@@ -283,7 +299,7 @@ func (m *ParentAlign) readBefore() error {
 	return nil
 }
 
-// removeAttempts removes the row's fixer attempt record and the one it carried under its retired name.
+// removeAttempts removes the row's fixer attempt record and the one stored under the retired row name `Merge-In`.
 func (m *ParentAlign) removeAttempts() error {
 	for _, row := range []string{parentAlignName, retiredMergeInName} {
 		if err := RemoveFixerAttempts(FixerAttemptsPath(m.deps.ScratchDir, row)); err != nil {
@@ -293,9 +309,11 @@ func (m *ParentAlign) removeAttempts() error {
 	return nil
 }
 
-// readAttempts reads the entry's fixer attempt record into m.attempts and fixes the entry's fork point.
-// A run halted on the row under its retired name left its record there, so the retired name's record is read when the row's own is absent.
-// When the merge record holds no aligned tip and the attempt record no fork point, the task's fork point from the parent, read before the merge, is written as the record's AlignFrom,
+// readAttempts reads the entry's fixer attempt record into `m.attempts` and fixes the entry's fork point.
+// A run halted under the retired row name `Merge-In` leaves its record there,
+// so the record under that name is read when the row's own is absent.
+// readAttempts writes `AlignFrom` only when the merge record has no aligned tip and the attempt record no fork point.
+// The value is the task's fork point from the parent, read before the merge,
 // so a resumed entry whose merge is already up to date still reads the parent commits the first merge brought in.
 // An attempt record that does not decode comes back as a reason, for a halting Stuck.
 func (m *ParentAlign) readAttempts() (string, error) {
@@ -326,12 +344,15 @@ func (m *ParentAlign) readAttempts() (string, error) {
 	return "", nil
 }
 
-// align decides what the parent's merge needs after the `landing` gate ran with gateReason as its failure, "" for a pass.
-// The parent brought in commits when its merged tip adds something over the aligned tip, or over the entry's fork point when the merge record holds none.
+// align decides what the parent's merge needs, given the `landing` gate's failure `gateReason`, or "" for a pass.
+// The parent brought in commits when its merged tip adds something over the aligned tip.
+// With no aligned tip in the merge record, the entry's fork point stands in for it.
 // A merge that brought none over a passing gate is aligned with no fixer.
 // Parent commits brought in, or a failing gate, run the merge fixer on the attempts the entry has left.
-// A resume after an over-cap halt, or of an entry with no attempts left, reads the operator's work as the alignment and spawns nothing.
-// stop is false when Parent-Align may proceed to record the merge and advance the aligned tip; otherwise the other values are what Call returns at once.
+// A passing gate on a resume after an over-cap halt reads the operator's work as the alignment and spawns nothing.
+// An entry with no attempts left spawns no fixer.
+// stop is false when Parent-Align may proceed to record the merge and advance the aligned tip;
+// when stop is true, the other results go back to the caller as they are.
 func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateReason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	attemptsPath := FixerAttemptsPath(m.deps.ScratchDir, parentAlignName)
 	rec := m.attempts
@@ -398,7 +419,7 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 	return m.haltStop(ctx, outcome.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
 }
 
-// alignError returns err from Call, or the cancellation error when ctx is cancelled.
+// alignError stops the step with err, or with the cancellation error when ctx is cancelled.
 func (m *ParentAlign) alignError(ctx context.Context, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if cerr := cancelErr(ctx, parentAlignName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr, true
@@ -406,7 +427,7 @@ func (m *ParentAlign) alignError(ctx context.Context, err error) (shedengine.Out
 	return "", shedengine.OutputPointer{}, err, true
 }
 
-// haltStop returns a halting Stuck with reason from Call.
+// haltStop returns a halting Stuck verdict with reason.
 func (m *ParentAlign) haltStop(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	outcome, ptr, err := stuckVerdict(ctx, parentAlignName, reason, true)
 	return outcome, ptr, err, true
@@ -425,7 +446,8 @@ func (m *ParentAlign) haltSpent(ctx context.Context, gateReason string) (shedeng
 	return m.haltStop(ctx, fixerOutcome{end: fixerEndSpent, failureLog: log}.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
 }
 
-// judgeFixerChange judges the entry's fixer change, from its baseline to HEAD, against the caps when no review follows Parent-Align.
+// judgeFixerChange judges the entry's fixer change against the caps when no review follows Parent-Align.
+// The change runs from the fixer's baseline to HEAD.
 // An entry whose fixer never ran has no baseline and no change.
 // A change over the caps halts with the fixer's commits named and notes over-cap in the attempt record;
 // a change within them, or one a following review will see, lets Parent-Align proceed.
@@ -467,9 +489,14 @@ func (m *ParentAlign) judgeFixerChange(ctx context.Context, rec FixerAttempts) (
 	return m.haltStop(ctx, fmt.Sprintf("%sthe fixer's change in %s is over the caps: %s; fixer commits: %s..%s; way forward: review and fix on the task branch, then `lym loom resume`", LandingStopPrefix, parentAlignName, reason, rec.Baseline, head))
 }
 
-// writeRecord writes the merge record: tip is the parent tip merged, mergeCommit the merge commit (empty for an up-to-date merge), alignedTip the aligned tip it records and merge the resolver's answer.
-// The overlap is the paths the parent gained since the earlier aligned tip, or since the task's fork point when it is empty, against the paths the task changed since its last merge base;
-// an up-to-date merge records an empty overlap.
+// writeRecord writes the merge record of one alignment:
+// the parent tip merged, the merge commit and the aligned tip it records.
+// Unless the merge was up to date, the record also carries the overlap:
+// where the parent's changed paths meet the task's changed paths.
+// The parent's paths run from the earlier aligned tip to the tip merged.
+// Without an earlier aligned tip, they run from the task's fork point.
+// The task's paths run from its last merge base to its head.
+// An up-to-date merge has no merge commit and records an empty overlap.
 func (m *ParentAlign) writeRecord(tip, mergeCommit, alignedTip string, merge mergeresolve.Result) error {
 	record := MergeRecord{
 		ParentBranch: m.deps.ParentBranch,

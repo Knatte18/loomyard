@@ -1,12 +1,6 @@
-// generation.go implements the pane-generation stamp: the identity of the tmux session incarnation
-// that a persisted reed.json's PaneIDs and SelvagePaneID were bound against, the probe that reads
-// that identity off a live session, and the two load-time guards built on it — clearing bindings
-// minted against a session that is no longer the one running, and refusing to operate when this
-// worktree's recorded session is still alive on the shared socket under a different name.
-//
-// It exists because a tmux pane id is meaningless on its own. Pane ids are server-global and restart
-// at %0 on every server rebirth, so a persisted %0 does not identify a pane — it identifies a pane
-// WITHIN one server generation, and reed had no record of which generation that was.
+// generation.go reconciles reed.json's pane bindings with the tmux session they were minted against.
+// It holds the generation stamp, its probe, and the load-time guards that clear or refuse on a mismatch.
+// Pane ids restart at %0 on every tmux server rebirth, so a recorded pane id is meaningful only within one generation.
 
 package reedengine
 
@@ -20,13 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// paneGenerationFormat is the tmux display-message format the generation probe spends, and
+// paneGenerationFormat is the tmux display-message format the generation probe reads.
 // paneGenerationFieldSeparator joins its fields.
-// The three fields are chosen to be jointly unique across everything that can make a recorded pane
-// id mean something different: session_id distinguishes two sessions on one server, pid
-// distinguishes two servers on one socket, and session_created distinguishes a session id reused
-// after a server rebirth. None of them changes over a session's life, so a healthy worktree's stamp
-// is stable and this probe never triggers a spurious clear.
+// The three fields are jointly unique across everything that can make a recorded pane id mean something different:
+// session_id tells two sessions on one server apart.
+// pid tells two servers on one socket apart.
+// session_created tells apart a session id reused after a server rebirth.
+// None of them changes over a session's life, so a healthy worktree's stamp is stable,
+// and this probe never triggers a spurious clear.
 const (
 	paneGenerationFormat         = "#{session_id}|#{pid}|#{session_created}"
 	paneGenerationFieldSeparator = "|"
@@ -37,16 +32,14 @@ const (
 )
 
 // parsePaneGeneration turns one display-message answer into a PaneGeneration for sessionName.
-// A short or empty answer is an error rather than a partially-filled stamp: a stamp missing a field
-// would compare unequal to every future probe and clear this worktree's bindings on every op.
+// A short or empty answer is an error rather than a partially filled stamp: a stamp missing a field
+// would compare unequal to every later probe and clear this worktree's bindings on every op.
 //
-// That rejection carries a second, load-bearing job the field-count phrasing does not reveal: it is
-// also how an ABSENT session is detected at all. display-message exits 0 for a -t target naming no
-// session and expands the session-scoped fields to empty (see paneGenerationLocked), so
-// "|<serverpid>|" is tmux's real answer for "that session is gone" — not an error. Relaxing this
-// check would therefore not merely admit a partial stamp: it would turn the still-running-orphan
-// refusal into one that never fires. contract_integration_test.go's
-// TestDisplayMessageDoesNotErrorForAnAbsentSession pins both halves together.
+// The empty-field rejection is also how an absent session is detected.
+// display-message exits 0 for a -t target that names no session, and it expands the session-scoped fields to empty.
+// So "|<serverpid>|" is tmux's answer for a session that is gone, not an error.
+// Relaxing this check would admit a partial stamp, and the refusal against a still-running orphan would never fire.
+// TestDisplayMessageDoesNotErrorForAnAbsentSession in contract_integration_test.go pins both halves.
 func parsePaneGeneration(sessionName, out string) (PaneGeneration, error) {
 	fields := strings.Split(strings.TrimSpace(out), paneGenerationFieldSeparator)
 	if len(fields) != paneGenerationExpectedFields {
@@ -65,11 +58,9 @@ func parsePaneGeneration(sessionName, out string) (PaneGeneration, error) {
 	}, nil
 }
 
-// sessionNameListed reports whether sessionName appears as a whole line in a
-// `list-sessions -F '#{session_name}'` answer.
-// The comparison is whole-line and exact, matching every other session target this package builds
-// (see exactSessionTarget): a prefix or substring match would let a sibling worktree's session stand
-// in for the recorded one.
+// sessionNameListed reports whether sessionName is a whole line of a `list-sessions -F '#{session_name}'` answer.
+// The match is whole-line and exact.
+// A prefix or substring match would let a sibling worktree's session stand in for the recorded one.
 func sessionNameListed(listSessionsOutput, sessionName string) bool {
 	for _, line := range strings.Split(listSessionsOutput, "\n") {
 		if strings.TrimSpace(line) == sessionName {
@@ -81,21 +72,20 @@ func sessionNameListed(listSessionsOutput, sessionName string) bool {
 
 // paneGenerationLocked reads sessionName's current generation off this engine's socket.
 //
-// It does NOT error merely because the session is absent, contrary to what a reader might expect
-// from every other tmux subcommand this package spends: measured on tmux 3.6, display-message exits
-// 0 for a `-t` target that resolves to no session and expands the session-scoped fields to empty,
-// while the server-global #{pid} still fills — `-t '=nosuch:'` answers "|2912080|" with exit 0.
-// (has-session and list-panes DO exit 1 for the same target; display-message is the odd one out.)
-// The absent case therefore surfaces as parsePaneGeneration's empty-field rejection rather than as a
-// tmux error, which is why that rejection is load-bearing rather than cosmetic.
+// An absent session is not an error for this probe.
+// On tmux 3.6, display-message exits 0 for a -t target that resolves to no session,
+// and it expands the session-scoped fields to empty while the server-global #{pid} still fills.
+// For example, -t '=nosuch:' answers "|2912080|" with exit 0.
+// So the absent case surfaces as parsePaneGeneration's empty-field rejection, not as a tmux error.
 //
-// A returned error consequently means the probe could not be RUN or could not be understood — a
-// failed exec of the tmux binary, an unreachable socket, a non-exit-1 tmux failure, or an answer
-// that did not parse. Callers must not read it as "the session is gone";
-// refuseLiveForeignSessionLocked below answers that question with list-sessions instead.
+// A returned error means the probe could not be run or its answer could not be parsed.
+// This covers a failed exec of the tmux binary, an unreachable socket, and a tmux failure other than exit 1.
+// Callers must not read it as "the session is gone".
+// To decide that, ask list-sessions instead.
 //
-// The target stays the session's current-window form ("=<session>:") outside the strand-window seam.
-// The format reads session fields only, so whichever window is current gives the same answer, and a bare "=<session>" target expands every session field to empty on tmux 3.6.
+// The target stays the session's current-window form, "=<session>:", outside the strand-window seam.
+// The format reads session fields only, so whichever window is current gives the same answer.
+// A bare "=<session>" target expands every session field to empty on tmux 3.6.
 func (e *Engine) paneGenerationLocked(sessionName string) (PaneGeneration, error) {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(sessionName), paneGenerationFormat)
 	if err != nil {
@@ -107,28 +97,27 @@ func (e *Engine) paneGenerationLocked(sessionName string) (PaneGeneration, error
 // adoptPaneGenerationLocked reconciles st's recorded pane generation against the session that is
 // actually live, clearing every pane binding when they disagree and re-stamping st either way.
 //
-// This is the general form of the rebirth clear Up/Resume already perform under `booted`. That clear
-// fires only when THIS invocation spawned the server, which covers a rebirth and nothing else — and
-// the tables that need clearing mostly arrive BETWEEN boots: a restored backup, a resurrected
-// untracked copy, an operator hand-copy, or simply a reed.json older than the session now running.
-// Their bindings then name panes that exist but belong to something else, and reconcileLocked cannot
-// tell that apart from a healthy binding, because "present in list-panes" is the only question it
-// can ask. Reproduced live (R5 review finding R5-F2): after a down/up cycle reset pane ids and a
-// gen-1 reed.json was restored, `status` reported the strand live:true against the new session's
-// bare initial shell and `resume` answered resumed:0, refusing to rebuild a strand whose process was
-// not running anywhere.
+// Detecting a rebirth from the boot itself covers only a server this invocation spawned.
+// Stale tables arrive between boots.
+// Examples are a restored backup, a resurrected untracked copy, and an operator's hand-copy.
+// A reed.json older than the session now running is stale too.
+// Their bindings name panes that exist but belong to something else.
+// A presence check cannot tell that apart from a healthy binding.
+// It can only ask whether the pane is present in list-panes.
+// A stale binding can therefore report a strand live against a shell that is not running it.
+// Resume then refuses to rebuild that strand.
 //
-// A probe failure never clears. Clearing on "I could not tell" would discard a healthy worktree's
-// whole binding table over a transient tmux hiccup, which is strictly worse than the staleness this
-// guards against — so the failure path leaves st exactly as loaded and logs, keeping the pre-fix
-// behaviour as the fail-open floor.
+// A probe failure never clears.
+// Clearing on "could not tell" would discard a healthy worktree's whole binding table over a transient tmux error.
+// That loss is strictly worse than the staleness this guards against.
+// The failure path leaves st as loaded and logs.
+// That keeps the fail-open floor: the bindings stay as the file had them.
 //
-// A state file carrying NO stamp is adopted rather than cleared, for the same reason: the only way
-// to hold bindings without a stamp is to have been written by a binary predating this code, i.e. an
-// upgrade with a session already live, where the bindings are in fact valid. Clearing them would
-// make the first post-upgrade op tear down and relaunch every running strand. The
-// internal-consistency repair (clearConflictingPaneBindings) is deliberately NOT conditioned on the
-// stamp and so still covers such a file.
+// A state file with no stamp is adopted rather than cleared.
+// Bindings without a stamp can only come from a binary that predates stamps.
+// That is an upgrade over a session already live, so those bindings are valid.
+// Clearing them would make the first op after the upgrade tear down and relaunch every running strand.
+// The internal-consistency repair does not depend on the stamp, so such a file still gets it.
 func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 	live, err := e.paneGenerationLocked(e.SessionName())
 	if err != nil {
@@ -140,8 +129,8 @@ func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 
 	recorded := st.PaneGeneration
 	if !recorded.Recorded() || recorded.SameIncarnation(live) {
-		// SameIncarnation deliberately ignores SessionName, so an in-place tmux rename-session
-		// refreshes the stamp here instead of being mistaken for a different generation.
+		// The match ignores the session name.
+		// So an in-place tmux rename-session refreshes the stamp rather than reading as a different generation.
 		e.stateLoadNotices.forgetGenerationClear()
 		st.PaneGeneration = live
 		return nil
@@ -167,20 +156,16 @@ func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 	return nil
 }
 
-// refuseRecordedForeignSessionBeforeBootLocked runs refuseLiveForeignSessionLocked against the
-// state file directly, so the two booting verbs (Up, Resume) can refuse a recorded-session collision
-// BEFORE spawning rather than after.
+// refuseRecordedForeignSessionBeforeBootLocked returns an error for a recorded-session collision.
+// A booting verb calls it before spawning, so the refusal happens before any substrate is created.
+// Refusing after the spawn would leave a bare session squatting on the shared per-hub server.
+// It reads reed.json directly under the op lock the caller already holds, which costs one small extra read.
+// The same check also runs on every state load, which covers the verbs that do not boot.
+// Running it twice is harmless because it mutates nothing.
 //
-// It costs one extra small read of reed.json under the already-held op lock, and buys the posture
-// every other told-identity refusal in this package already has: refuse before creating substrate,
-// never leave a bare session squatting on the SHARED per-hub server as the residue of a refusal
-// (the property validateToldTmuxIdentity exists for). loadOrInitStateLocked runs the same check
-// again on the state it loads, which is what covers the non-booting verbs; running it twice is
-// harmless because it mutates nothing.
-//
-// A corrupt or absent state file is not this check's business: loadOrInitStateLocked reports the
-// corruption with the diagnosis an operator can act on, and an absent file records no session to
-// collide with.
+// A corrupt or absent state file is not this check's concern.
+// A corrupt file is reported by the state load with a diagnosis an operator can act on.
+// An absent file records no session to collide with.
 func (e *Engine) refuseRecordedForeignSessionBeforeBootLocked() error {
 	st, err := LoadState(e.stateDir())
 	if err != nil || st == nil {
@@ -190,29 +175,29 @@ func (e *Engine) refuseRecordedForeignSessionBeforeBootLocked() error {
 }
 
 // recordedSessionVerdict is what a state file's recorded session name resolves to on this engine's
-// socket right now: the answer both the refusal and Down's abandonment report are built on.
+// socket right now.
+// The refusal and the abandonment report both decide from it.
 type recordedSessionVerdict int
 
 const (
-	// recordedSessionAbsent means the recorded name is this worktree's own, is unset, or names no
-	// session reachable on this socket — nothing to collide with, nothing to report.
+	// recordedSessionAbsent means the recorded name is unset or is this worktree's own;
+	// no session reachable on this socket has that name, so nothing can collide with it.
 	recordedSessionAbsent recordedSessionVerdict = iota
-	// recordedSessionLive means a session of that name is running AND answered the identity probe
-	// as the same incarnation the state was recorded against.
+	// recordedSessionLive means a session of that name is running;
+	// it answered the identity probe as the same incarnation the state was recorded against.
 	recordedSessionLive
-	// recordedSessionUnidentifiable means a session of that name IS listed on the socket but did
-	// not answer the identity probe, so reed cannot tell whether it is the recorded one.
+	// recordedSessionUnidentifiable means a session of that name is listed on the socket;
+	// it did not answer the identity probe, so reed cannot tell whether it is the recorded one.
 	recordedSessionUnidentifiable
 )
 
-// classifyRecordedSessionLocked resolves recorded.SessionName against this socket, returning the
-// probe error alongside a recordedSessionUnidentifiable verdict so the caller can quote it.
+// classifyRecordedSessionLocked resolves recorded.SessionName against this socket into a verdict.
+// It returns the probe error alongside the verdict when the probe fails, so the caller can quote it.
 //
-// Existence is answered by list-sessions, never by the generation probe's error: display-message
-// exits 0 for an absent session (see paneGenerationLocked), so a probe error means the round trip
-// could not be run, and reading that as "gone" is the fail-open R6-F2 closed.
-// An errored list-sessions is read as "no reachable server on this socket, so nothing can be running
-// under the recorded name" — the same reading Down and sessionlessSocketHolderPersists give it.
+// Existence is answered by list-sessions, never by the generation probe's error.
+// display-message exits 0 for an absent session, so a probe error means the round trip could not run.
+// Reading that error as gone would fail open.
+// An errored list-sessions is read as no reachable server on this socket, so nothing runs under the recorded name.
 func (e *Engine) classifyRecordedSessionLocked(recorded PaneGeneration) (recordedSessionVerdict, error) {
 	if recorded.SessionName == "" || recorded.SessionName == e.SessionName() {
 		return recordedSessionAbsent, nil
@@ -235,44 +220,31 @@ func (e *Engine) classifyRecordedSessionLocked(recorded PaneGeneration) (recorde
 	return recordedSessionLive, nil
 }
 
-// refuseLiveForeignSessionLocked refuses the operation when recorded names a session that is STILL
-// RUNNING on this socket and is not this worktree's own — the one disagreement that must not be
-// resolved by silently carrying on.
+// refuseLiveForeignSessionLocked refuses the operation when the recorded session is still running on this socket;
+// it is not this worktree's own, or reed cannot identify it.
 //
-// Two ordinary routes reach it, and both are silently destructive without this guard:
+// Two ordinary routes lead here, and both are silently destructive without the guard:
 //
-//   - The worktree directory was renamed (R5 review finding R5-F5). SessionName derives from the
-//     worktree basename while .lym travels with the directory, so `resume` boots a SECOND session
-//     and relaunches every strand into it — reproduced live: after `mv svc-orig svc-moved`,
-//     `lym reed resume` reported ok:true/resumed:1 and the strand's process was running twice, and
-//     the orphaned svc-orig session survived a `lym reed down` because no worktree of that name
-//     exists for any engine to derive it from again.
-//   - A .lym directory was hand-copied between worktrees of one hub (R5 review finding R5-F4).
-//     The socket is per hub and pane ids are server-global, so the copied ids address the SOURCE
-//     worktree's live panes — reproduced live: a `lym reed remove` in svc-alpha killed svc-beta's
-//     strand pane and its process, reporting ok:true.
+//   - The worktree was renamed: its .lym state moves with it, but SessionName follows the new basename;
+//     so `resume` boots a second session and relaunches every strand into it.
+//   - A .lym directory was copied from another worktree of the same hub.
+//     The socket is per hub and pane ids are server-global;
+//     so the copied ids address the source worktree's live panes.
 //
-// The identity comparison is what keeps this from firing on a legitimate namesake: a new worktree
-// that merely reuses the old name answers the probe with a different incarnation, so its session is
-// not mistaken for this state's orphan and the caller falls through to the ordinary clear.
+// The identity comparison keeps this from firing on a legitimate namesake.
+// A new worktree that reuses the old name answers the probe with a different incarnation,
+// so the caller falls through to the ordinary clear.
 //
-// Refuse rather than adopt or kill: the recorded session's panes may hold live agent work, and
-// destroying it unasked is not reed's call. The message therefore names the session, the socket, and
-// the exact command that clears it.
+// Refuse rather than adopt or kill: its panes may hold live agent work.
+// Destroying it unasked is not reed's call.
+// The message names the session, the socket, and the exact command that clears it.
 //
-// A session reed cannot IDENTIFY is refused too, not waved through — this is the one check in the
-// package whose whole purpose is to refuse, so it is also the one place where failing open costs the
-// most: guessing "gone" wrong launches a second copy of every strand (R5-F5) or spends another
-// worktree's pane ids as targets (R5-F4). adoptPaneGenerationLocked's own fail-open is a different
-// and genuinely two-sided trade — clearing a healthy table over a hiccup is worse than the staleness
-// it guards — and must not be read as licence for this one.
+// A session that reed cannot identify is refused too, not waved through.
+// Guessing that it is gone would launch a second copy of every strand or target another worktree's panes.
 //
-// Failing open here also broke a guarantee stated elsewhere: because the pre-boot and post-boot call
-// sites run this same check against the same recorded value, ONE transient probe failure at the
-// pre-boot call was enough to split their verdicts, so Up booted and then refused — depositing the
-// bare session on the shared per-hub server that refuseRecordedForeignSessionBeforeBootLocked exists
-// to prevent (R6 review finding R6-F2, reproduced live on tmux 3.6). See
-// classifyRecordedSessionLocked for the authorities the three verdicts rest on.
+// The pre-boot and post-boot call sites run this check on the same recorded value;
+// a transient probe failure must therefore not give them different verdicts,
+// or a boot can leave a bare session on the shared per-hub server.
 func (e *Engine) refuseLiveForeignSessionLocked(recorded PaneGeneration) error {
 	verdict, probeErr := e.classifyRecordedSessionLocked(recorded)
 	switch verdict {
@@ -295,8 +267,10 @@ func (e *Engine) refuseLiveForeignSessionLocked(recorded PaneGeneration) error {
 }
 
 // stateLoadNotices remembers the last pane-binding clear a state load logged at Warn.
-// A state load clears in memory and never saves, so the next load of the same file clears and would log the same line again;
-// the first clear of a pair or set warns, a repeat of it logs at Debug, and a load that finds nothing to clear forgets the record.
+// A state load clears in memory and never saves;
+// so the next load of the same file clears again and would log the same line.
+// The first clear of a pair or set warns, a repeat of it logs at Debug,
+// and a load that finds nothing to clear forgets the record.
 // Both the watch and name-repair goroutines load state, so a mutex guards it.
 type stateLoadNotices struct {
 	mu sync.Mutex
@@ -308,7 +282,8 @@ type stateLoadNotices struct {
 	conflictSet    string
 }
 
-// generationClearIsNew reports whether the clear for the pair of recorded and live generation differs from the last one logged, and records it as the last.
+// generationClearIsNew reports whether the clear of this recorded and live pair differs from the last one logged.
+// It records this pair as the last one logged.
 func (n *stateLoadNotices) generationClearIsNew(recorded, live PaneGeneration) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -326,7 +301,8 @@ func (n *stateLoadNotices) forgetGenerationClear() {
 	n.generationLogged = false
 }
 
-// conflictClearIsNew reports whether the cleared strand GUIDs differ from the last set logged, and records them as the last.
+// conflictClearIsNew reports whether the cleared strand GUIDs differ from the last set logged.
+// It records this set as the last one logged.
 func (n *stateLoadNotices) conflictClearIsNew(cleared []string) bool {
 	set := strings.Join(slices.Sorted(slices.Values(cleared)), ",")
 	n.mu.Lock()

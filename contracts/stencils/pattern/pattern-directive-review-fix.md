@@ -1,11 +1,12 @@
-<!-- This is the RoleReviewFix directive: the variant internal/pattern.Directive renders for the
-     burler review half's reviewer, which judges code.
-     internal/burlerengine/review.go is its consuming call site, passing pattern.RoleReviewFix.
-     internal/pattern.Directive reads this file through stencilstore.Read, strips this banner with
-     stencil.StripLeadingComment and fills the file's required pattern_overview marker with
-     the content of PATTERN.md at the repository's worktree root, and its optional pattern_changes marker with the task's declared PATTERN changes.
-     The result is injected as a producer template's optional pattern_directive marker value, so it
-     is never itself passed through stencil.Fill again.
+<!-- This is the RoleReviewFix directive, the variant internal/pattern.Directive renders for the burler review half's reviewer.
+     The reviewer judges code.
+     internal/burlerengine/review.go passes pattern.RoleReviewFix to select it.
+     internal/pattern.Directive reads this file through stencilstore.Read.
+     It strips this banner with stencil.StripLeadingComment.
+     It fills the required pattern_overview marker with the content of PATTERN.md at the repository's worktree root.
+     It fills the optional pattern_changes marker with the task's declared PATTERN changes.
+     The result is injected as a producer template's optional pattern_directive marker value;
+     it is never passed through stencil.Fill again.
      This file declares two markers, the required pattern_overview and the optional pattern_changes, and no other. -->
 
 ## Constraints — do this before you judge anything

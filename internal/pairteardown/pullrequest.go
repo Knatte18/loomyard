@@ -1,4 +1,5 @@
-// pullrequest.go closes a torn-down pair's open pull request, so a run that never landed leaves nothing on GitHub that looks like pending work.
+// pullrequest.go closes a torn-down pair's open pull request,
+// so a run that never landed leaves nothing on GitHub that looks like pending work.
 
 package pairteardown
 
@@ -12,14 +13,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// closePullRequestTimeout bounds the GitHub calls of one pair's pull request close, so a teardown never hangs on the network.
+// closePullRequestTimeout bounds the GitHub calls of one pair's pull request close,
+// so a teardown never hangs on the network.
 const closePullRequestTimeout = 30 * time.Second
 
 // tornDownPullRequestComment is the comment a pull request is closed with when its pair is torn down before it landed.
 const tornDownPullRequestComment = "lym closed this pull request: the run's pair was torn down before it landed"
 
 // closePairPullRequest closes the open pull request the pair's run recorded, if any.
-// It reads whether the task worktree is gone, and when gone reads the task branch from what is left of the pair, or from origin when nothing is; when present it resolves the task location, reads the record under the run's scratch directory and the pair's origin URL, then closes through closeOpenPullRequest.
+// A gone task worktree has no record to read, so only a warning is logged.
 // Every failure is logged as a warning naming the slug, and none stops the teardown.
 func (t *Teardown) closePairPullRequest(slug string) {
 	gone, err := t.gone(slug)
@@ -75,10 +77,13 @@ func (t *Teardown) closePairPullRequest(slug string) {
 	closeOpenPullRequest(ctx, slug, "", false, rec, true, openClient, originURL)
 }
 
-// closeOpenPullRequest closes the pull request rec records when GitHub reports it open, with one comment saying the pair was torn down before it landed.
-// A merged or closed pull request is left as it is, so a landed run's merged pull request stays.
-// A gone task worktree has no record to read, so it logs a warning naming slug and taskBranch and calls nothing; no record calls nothing.
-// Any failure of the client, the status read or the close is logged as a warning naming the pull request's URL and returns, and never stops the teardown.
+// closeOpenPullRequest closes the pull request rec records when GitHub reports it open.
+// It leaves one comment saying the pair was torn down before it landed.
+// A merged or closed pull request is left as it is, so a landed run keeps its merged pull request.
+// A gone task worktree has no record to read, so it logs a warning naming slug and taskBranch and calls nothing;
+// no record calls nothing.
+// Any failure of the client, the status read or the close is logged as a warning naming the pull request's URL.
+// The function returns and the teardown continues.
 func closeOpenPullRequest(ctx context.Context, slug, taskBranch string, gone bool, rec pullrequest.Record, found bool, api func(originURL string) (pullrequest.API, error), originURL string) {
 	if gone {
 		logger.Warn("pairteardown: the task worktree is gone, so a pull request from its task branch, if the run opened one, may stay open", "slug", slug, "branch", taskBranch)

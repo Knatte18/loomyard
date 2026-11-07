@@ -1,4 +1,5 @@
-// siblings.go — the sibling check of a depends_on write: the tasks that newly wait on a dependency another open task waits on while sharing a module label.
+// siblings.go reports the siblings a depends_on write creates.
+// A sibling is an open task that shares a module label with the written task and waits on a dependency the write added.
 
 package boardengine
 
@@ -15,7 +16,8 @@ type Sibling struct {
 	Labels  []string `json:"labels"`
 }
 
-// SharedModuleLabels returns the labels a and b both carry that v does not report as type labels, in a's order, or nil when there are none.
+// SharedModuleLabels returns the labels a and b both carry that v does not report as type labels, in a's order.
+// It returns nil when there are none.
 func SharedModuleLabels(a, b Task, v Vocabulary) []string {
 	var shared []string
 	for _, label := range a.Labels {
@@ -27,11 +29,15 @@ func SharedModuleLabels(a, b Task, v Vocabulary) []string {
 	return shared
 }
 
-// addedSiblings returns the siblings of one write from the entries as loaded (before) and as the mutation left them (after).
-// A task X in after that is not done has the dependencies its depends_on gained over its baseline, minus any that are met;
-// X's baseline is its own depends_on in before together with the depends_on of every before entry absent from after, so a merge warns only on dependencies none of the merged entries had.
-// Every other entry in after that is neither done nor abandoned, waits on an entry an added dependency waits on and shares a module label with X is a sibling of X;
-// a dependency on a project waits on the project and on each of its landing members not yet done.
+// addedSiblings returns the siblings one write creates.
+// before holds the entries as loaded and after the entries as the mutation left them.
+// A task X in after that is not done has the dependencies its depends_on gained over its baseline.
+// Dependencies that are already met are left out.
+// X's baseline is its own depends_on in before together with the depends_on of every before entry absent from after,
+// so a merge warns only on dependencies none of the merged entries had.
+// Another entry in after is a sibling of X when it is neither done nor abandoned and shares a module label with X.
+// It must also wait on an entry an added dependency waits on.
+// A dependency on a project waits on the project and on each of its landing members not yet done.
 // A pair found from both sides is reported once, in the first orientation in after order, with both sides' dependencies.
 // A write that adds no dependency returns nil.
 func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
@@ -100,9 +106,10 @@ func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
 	return siblings
 }
 
-// writeReportingSiblings runs fn as a board write under the write lock and returns fn's result with the siblings the write created.
+// writeReportingSiblings runs fn as a board write under the write lock.
+// It returns fn's result with the siblings the write created.
 // The siblings are computed inside the locked mutation from the entries as loaded and as fn left them,
-// so they describe exactly the board the write saves.
+// so they describe the board the write saves.
 // A refused write returns its error and no siblings; the check itself never refuses.
 func (b *Board) writeReportingSiblings(fn func(store *Store) (any, error)) (any, []Sibling, error) {
 	var siblings []Sibling
@@ -121,8 +128,9 @@ func (b *Board) writeReportingSiblings(fn func(store *Store) (any, error)) (any,
 	return result, siblings, nil
 }
 
-// UpsertTaskSiblings creates or updates the task identified by fields["slug"] under the write lock and returns the siblings the write created beside it;
-// field validation (allowlist, slug shape) is the store's job.
+// UpsertTaskSiblings creates or updates the task identified by fields["slug"] under the write lock.
+// It returns the siblings the write created beside the task.
+// Field validation (allowlist, slug shape) is the store's job.
 func (b *Board) UpsertTaskSiblings(fields map[string]any) (Task, []Sibling, error) {
 	result, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
 		return store.UpsertTask(fields)

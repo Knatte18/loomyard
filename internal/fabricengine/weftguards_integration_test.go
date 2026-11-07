@@ -1,10 +1,7 @@
-// weftguards_integration_test.go pins the weft-guards-drop batch's own regression surface: the four
-// guard arms mergeguards.go and destroy.go dropped from the weft (dirty, detached, not-fabric-managed,
-// and the abort-time reset), each paired with its surviving warp-side twin so the same test proves
-// both halves of the claim — the weft lost the power to block a merge, the warp did not.
-// Reuses newMergePairFixture and its sibling fixture helpers from mergein_integration_test.go and
-// assertSoleGuardReason from mergecrucible_integration_test.go, since all three files share package
-// fabricengine_test.
+// weftguards_integration_test.go pins the merge guards that apply to the warp and not to the weft.
+// The guards cover a dirty worktree, a detached HEAD, a source that is not fabric-managed, and the abort-time reset.
+// Each case pairs a weft case, which does not block a merge, with its warp twin, which still does.
+// It reuses the fixture helpers newMergePairFixture and assertSoleGuardReason from the sibling test files.
 
 package fabricengine_test
 
@@ -19,9 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes covers pairDirtyReason's narrowed guard: a
-// weft worktree carrying uncommitted tracked changes no longer refuses a MergeIn the warp alone can
-// complete, while a dirty warp worktree still refuses with mergeReasonWorktreeDirty.
+// TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes covers pairDirtyReason for the weft.
+// A weft worktree with uncommitted tracked changes does not refuse a MergeIn that the warp alone can complete.
+// A dirty warp worktree still refuses it with mergeReasonWorktreeDirty.
 func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -61,9 +58,9 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 	}
 }
 
-// TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes covers detachedHeadReason's narrowed
-// guard: a weft checkout on a detached HEAD no longer refuses, while a detached warp HEAD still
-// refuses with mergeReasonDetachedHead.
+// TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes covers detachedHeadReason for the weft.
+// A weft checkout on a detached HEAD does not refuse a merge.
+// A detached warp HEAD still refuses it with mergeReasonDetachedHead.
 func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -94,21 +91,20 @@ func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T)
 	}
 }
 
-// TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly covers resolveMergeSources'
-// dropped refusal arm from two angles.
-// First, a source branch whose weft counterpart exists on neither the local weft repo nor origin no
-// longer refuses at all: the attempt proceeds (here, into a deliberately conflicted state, so the
-// merge-state record survives long enough to inspect), leaving mergeState.WeftSource empty and
-// appending neither mergeReasonNotFabricManaged nor mergeReasonSourceNotFound.
-// Second, and separately, a source resolvable on NEITHER side still reports mergeReasonSourceNotFound
-// alone, from the warp arm — the one reason resolveMergeSources can still produce.
+// TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly covers resolveMergeSources from two angles.
+// First, a source whose weft counterpart exists neither locally nor on origin is not refused.
+// The attempt proceeds, here into a deliberately conflicted state so the merge-state record survives to inspect.
+// mergeState.WeftSource stays empty.
+// Neither mergeReasonNotFabricManaged nor mergeReasonSourceNotFound is appended.
+// Second, a source resolvable on neither side still reports mergeReasonSourceNotFound alone, from the warp arm.
+// That is the only reason resolveMergeSources produces.
 func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	// Deliberately no "-weft" counterpart branch anywhere, locally or on origin.
+	// No "-weft" counterpart branch exists, locally or on origin.
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -134,14 +130,14 @@ func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testin
 	assertSoleGuardReason(t, "MergeIn(does-not-exist-anywhere)", err, "source branch not found")
 }
 
-// TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges drives the narrowed guards IN COMBINATION,
-// which the per-guard rows above deliberately do not.
-// The distinction is not cosmetic: the guard stage aggregates every reason before it decides, so a
-// single retained weft conjunct inside any one helper is invisible while the other weft states are
-// happy — a per-guard row would keep passing and the merge would still refuse once a real weft went
-// bad in more than one way at a time, which is the ordinary shape for a weft carrying a live loom
-// run. Here the weft is simultaneously on a detached HEAD, carrying uncommitted tracked changes, and
-// sitting on a branch with no upstream, while the warp side is clean.
+// TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges drives the weft guards in combination.
+// The guard stage aggregates every reason before it decides.
+// A retained weft conjunct inside one helper is therefore hidden while the other weft states are healthy.
+// A test of each guard alone would keep passing.
+// The merge still refuses once a weft is bad in more than one way at a time.
+// That is the ordinary shape for a weft carrying a live loom run.
+// Here the weft is on a detached HEAD, carries uncommitted tracked changes, and sits on a branch with no upstream,
+// and the warp side is clean.
 func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -172,14 +168,12 @@ func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
 	}
 }
 
-// TestWeftGuards_EveryRecordThisBinaryWritesIsResumable pins the invariant that made the second,
-// redundant saveMergeState call in MergeIn/Merge worth removing: every merge-state record this
-// binary persists carries a non-empty WeftOutcome from its very first on-disk appearance, so
-// mergeAttemptIncompleteReason — which refuses a MergeContinue resume on an empty outcome — can
-// never fire on a record fabric wrote itself.
-// It asserts the property at the one observable moment: a conflicted MergeIn leaves the record in
-// place, and a MergeContinue over that record must refuse on the conflicts alone, never on
-// mergeReasonAttemptIncomplete.
+// TestWeftGuards_EveryRecordThisBinaryWritesIsResumable pins one invariant.
+// Every merge-state record this binary persists carries a non-empty WeftOutcome from its first on-disk appearance.
+// mergeAttemptIncompleteReason refuses a MergeContinue resume on an empty outcome.
+// So it never fires on a record fabric wrote itself.
+// It asserts the property at the one observable moment: a conflicted MergeIn leaves the record in place,
+// and a MergeContinue over that record must refuse on the conflicts alone, never on mergeReasonAttemptIncomplete.
 func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -215,11 +209,12 @@ func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
 	}
 }
 
-// TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact covers resetMergeSides' dropped
-// weft arm at MergeAbort: an attempt whose weft gains its own commits during the attempt window
-// (the shape a per-transition status push produces, independent of any merge in progress on the warp
-// side) is reset to WarpStart on the warp side alone, leaving the weft HEAD — and the commits it
-// carries — exactly where MergeAbort found them.
+// TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact covers MergeAbort leaving the weft side alone:
+// resetMergeSides resets only the warp side.
+// Here the weft gains commits during the attempt window, independent of any merge in progress on the warp side.
+// A per-transition status push produces that shape.
+// The warp side is reset to WarpStart,
+// and the weft HEAD with the commits it carries stays where MergeAbort found it.
 func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -234,8 +229,7 @@ func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
 
-	// The weft gains its own commit during the attempt window — its own advance, independent of the
-	// merge attempt in progress on the warp side.
+	// The weft gains its own commit during the attempt window, independent of the merge in progress on the warp side.
 	gitkit.CommitFile(t, h.PrimeRecords(), "weft-progress.txt", "progress\n", "weft: progress during attempt")
 	weftDuringAttempt := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 

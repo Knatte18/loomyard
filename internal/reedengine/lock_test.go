@@ -1,6 +1,7 @@
-// lock_test.go verifies withOpLock's per-worktree lock path, that two calls serialize (the second
-// blocks until the first releases), that a released lock can be re-acquired with no stale-lock
-// residue, and Engine's Socket()/SessionName() accessor strings.
+// lock_test.go tests withOpLock's per-worktree lock path.
+// Two calls serialize: the second blocks until the first releases.
+// A released lock can be re-acquired with no stale-lock residue.
+// It also checks the accessor strings of Engine's Socket() and SessionName().
 
 package reedengine
 
@@ -19,9 +20,8 @@ import (
 //testtiming:keep pins the lock file living under the anchor path's .lym, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
 func TestWithOpLock_PathIsUnderDotLym(t *testing.T) {
 	tiergate.Require(t, 0)
-	// The anchor path is a real subpath of the worktree root here so
-	// stateDir's AnchorPath anchoring (as opposed to WorktreeRoot) is
-	// actually observable.
+	// The anchor path is a real subpath of the worktree root here.
+	// That lets the test see whether the lock path follows the anchor or the root.
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
 	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
@@ -64,7 +64,8 @@ func TestWithOpLock_PathIsUnderDotLym(t *testing.T) {
 	if filepath.Dir(sawPath) == filepath.Join(e.geom.WorktreeRoot, ".lym") {
 		t.Errorf("lock path = %q, want it to differ from the WorktreeRoot-based path for a subpath-anchored fixture", sawPath)
 	}
-	// No stale lock remains from the released acquisition: a second one on the same path succeeds immediately rather than blocking or erroring.
+	// No stale lock remains from the released acquisition:
+	// a second one on the same path succeeds immediately rather than blocking or erroring.
 	if err := e.withOpLock(func() error { return nil }); err != nil {
 		t.Errorf("second withOpLock after release: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestWithOpLock_SerializesConcurrentCalls(t *testing.T) {
 	case err := <-secondErr:
 		t.Fatalf("second withOpLock returned before the first released: %v", err)
 	case <-time.After(150 * time.Millisecond):
-		// Expected: the second call is blocked behind the first.
+		// The second call stays blocked behind the first for the whole window.
 	}
 
 	close(release)
@@ -162,16 +163,15 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 	New(Config{}, geom, EnvScrub{})
 }
 
-// TestWithOpLock_ReportsALockFileRemovedMidOperation is the regression guard for the R5 review's
-// R5-F6.
+// TestWithOpLock_ReportsALockFileRemovedMidOperation pins this:
+// withOpLock does not return success when the lock file is removed while the operation holds it.
 //
-// A flock is held on an inode, not on a name, so deleting .lym while an op holds reed.lock unlinks
-// that inode without disturbing the lock — and the next op's MkdirAll + O_CREATE mints a fresh one
-// whose lock is granted immediately. Measured live: a second `lym reed status` blocked 11027ms with
-// the lock genuinely held, and was granted in 107ms once .lym was deleted mid-hold, so two reed
-// processes then drove the same session and the same reed.json concurrently.
-// Reed cannot make the second op wait (an unlinked inode is unreachable by name), so what it must
-// not do is return success over state it did not actually have exclusive access to.
+// A flock is held on an inode, not on a name.
+// So deleting .lym while an op holds reed.lock unlinks that inode without disturbing the lock.
+// The next op's MkdirAll and O_CREATE mint a fresh inode whose lock is granted at once.
+// A second process then runs over the same session and reed.json concurrently.
+// Reed cannot make the second op wait, because an unlinked inode is unreachable by name.
+// What it must not do is return success over state it did not have exclusive access to.
 func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -179,7 +179,7 @@ func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
 	ran := false
 	err := e.withOpLock(func() error {
 		ran = true
-		// Exactly what `rm -rf .lym` / `git clean -xdf` does to a held lock.
+		// This is what `rm -rf .lym` or `git clean -xdf` does to a held lock.
 		return os.RemoveAll(e.stateDir())
 	})
 	if !ran {
@@ -195,9 +195,9 @@ func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
 	}
 }
 
-// TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed pins that the lock-compromise report
-// never swallows the operation's own error: an operator debugging a removed .lym still needs to know
-// what the operation itself hit.
+// TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed pins this:
+// the lock-compromise report never swallows the operation's own error.
+// An operator debugging a removed .lym still needs to know what the operation itself hit.
 func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -220,9 +220,10 @@ func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) 
 	}
 }
 
-// TestWithTryOpLock pins the three outcomes: on a free lock fn runs and (true, nil) is reported,
-// an fn error is wrapped while acquired stays true, and with reed.lock already held by a second
-// acquisition it reports (false, nil) and never calls fn (a deferral is not a failure).
+// TestWithTryOpLock pins the three outcomes: on a free lock fn runs and (true, nil) is reported.
+// An fn error is wrapped while acquired stays true.
+// With reed.lock already held by a second acquisition, it reports (false, nil) and never calls fn:
+// a deferral is not a failure.
 //
 //testtiming:keep pins withTryOpLock running fn on a free lock with acquired true, wrapping fn's error with acquired still true, and deferring with (false, nil) and no fn call or tmux call while the lock is held; its covering tests run this code without asserting it
 func TestWithTryOpLock(t *testing.T) {
@@ -279,8 +280,8 @@ func TestWithTryOpLock(t *testing.T) {
 	}
 }
 
-// TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched pins that a
-// told-geometry pre-flight failure reports (false, err) without ever touching the lock file.
+// TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched pins a told-geometry pre-flight failure.
+// It reports (false, err) without touching the lock file.
 func TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched(t *testing.T) {
 	tiergate.Require(t, 0)
 	hub := t.TempDir()

@@ -1,9 +1,5 @@
-// pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge pairs, the push lock both take, and PushAnchored against a hub's weft sibling:
-// SkipGit and SkipPush each short-circuit to an empty result and push nothing;
-// a weft carrying an unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed entry.
-// A diverged weft remote surfaces an error satisfying errors.Is(err, gitrepo.ErrPushRejected) through the failed-push error.
-// That error is distinguishable via errors.Is from a push error of a different kind.
-// Reuses gitsha_integration_test.go's BareBranchSHAForTest re-export.
+// pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge pairs.
+// It also covers the push lock both take, and PushAnchored against a hub's weft sibling.
 
 package fabricengine_test
 
@@ -26,14 +22,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// cloneBareForTest clones bareRepo into a fresh subdirectory of t.TempDir(), configuring a commit
-// identity and checking out branch explicitly, and returns the clone's path — the second-clone
-// fixture TestPushAnchored's diverged-remote scenario needs to advance the bare remote out from
-// under the primary weft sibling.
-// The explicit checkout is load-bearing, not cosmetic: bareRepo's own HEAD symref still points at
-// git's default ("master"), which was never the branch actually pushed, so a plain `git clone`
-// leaves the clone on a dangling, uncommitted "master" rather than on branch — committing there
-// would silently diverge on the wrong ref.
+// cloneBareForTest clones bareRepo into a fresh directory under t.TempDir() and returns its path.
+// The clone gets a commit identity and is checked out on branch, tracking origin/branch.
+// A test commits in this clone to advance the bare remote.
+// The explicit checkout matters: a plain clone lands on the bare repository's HEAD branch;
+// a commit made there would go to the wrong ref.
 func cloneBareForTest(t *testing.T, bareRepo, branch string) string {
 	t.Helper()
 
@@ -45,8 +38,8 @@ func cloneBareForTest(t *testing.T, bareRepo, branch string) string {
 	return dir
 }
 
-// TestPushAnchored_SkipGitOrSkipPush_PushesNothing asserts SkipGit and SkipPush each short-circuit
-// to an empty result and a nil error, leaving the weft bare remote unadvanced.
+// TestPushAnchored_SkipGitOrSkipPush_PushesNothing asserts that SkipGit and SkipPush each return a nil error.
+// Each returns an empty result, and the weft bare remote stays unadvanced.
 func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -62,8 +55,8 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			// The weft bare is genuinely empty at clone time (hubforge's own doc comment), so it
-			// carries no branch to read a "before" SHA from yet; a priming push establishes one.
+			// The weft bare is empty at clone time, so it carries no branch to read a "before" SHA from yet;
+			// a priming push establishes one.
 			if _, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 				t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 			}
@@ -85,9 +78,9 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 	}
 }
 
-// TestPushAnchored_PushesAndRecordsBranchPush covers the successful push path: a weft sibling
-// carrying a commit ahead of its bare remote pushes it, the bare remote advances to the local HEAD,
-// and the returned record contains exactly one KindBranchPushed entry.
+// TestPushAnchored_PushesAndRecordsBranchPush covers the successful push path.
+// A weft sibling with a commit ahead of its bare remote pushes it;
+// the bare remote advances to the local HEAD, and the returned record holds exactly one KindBranchPushed entry.
 //
 //testtiming:keep a successful weft push advancing the bare remote and recording exactly one KindBranchPushed entry; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
@@ -130,11 +123,11 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	}
 }
 
-// TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected covers the rejection path a
-// diverged weft remote produces: a second clone of the weft bare changes `status.json`, as this weft sibling does,
+// TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected covers the rejection path of a diverged weft remote.
+// A second clone of the weft bare changes `status.json`, as this weft sibling does;
 // so this weft's next PushAnchored push is rejected and its replay stops on a conflict.
-// The returned error must satisfy errors.Is(err, gitrepo.ErrPushRejected) through the failed-push error that wraps it.
-// Every caller that discriminates a rejection depends on that, and the failed-push record names the conflicting path.
+// The returned error must match errors.Is(err, gitrepo.ErrPushRejected) through the failed-push error wrapping it.
+// Callers that discriminate a rejection depend on that, and the failed-push record names the conflicting path.
 //
 //testtiming:keep a diverged weft remote returning gitrepo.ErrPushRejected through its failed-push error; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
@@ -144,9 +137,8 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-	// A priming push establishes real content and upstream tracking on the weft bare — the weft
-	// bare is genuinely empty at clone time (hubforge's own doc comment) — before the second clone
-	// below diverges from it.
+	// A priming push gives the weft bare content and upstream tracking;
+	// the bare is empty at clone time, so this happens before the second clone below diverges from it.
 	if _, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 		t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 	}
@@ -177,9 +169,9 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
 	}
 }
 
-// TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected covers the negative half of the
-// same sentinel property: a push error that is NOT a remote-divergence rejection — here, the weft
-// sibling's origin remote removed entirely — must not satisfy errors.Is(err, gitrepo.ErrPushRejected).
+// TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected covers a push error of another kind.
+// The test removes the weft sibling's origin remote entirely;
+// that error must not satisfy errors.Is(err, gitrepo.ErrPushRejected).
 func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -245,7 +237,8 @@ func installPreReceive(t *testing.T, bareDir, script string) {
 	}
 }
 
-// declineOncePreReceive installs a pre-receive hook in bareDir that declines the first push it sees and accepts every later one.
+// declineOncePreReceive installs a pre-receive hook in bareDir that declines the first push it sees.
+// Every later push is accepted.
 func declineOncePreReceive(t *testing.T, bareDir string) {
 	t.Helper()
 
@@ -264,9 +257,17 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 	return count
 }
 
-// TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the behaviors of PushPairAnchored in order:
-// both sides pushed and recorded, a remote that declines once retried to success on both entries, a rejection whose fetch then keeps failing never pushed again, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
-// Two subtests then run on hubs of their own: the prime pushes its records side only and reports the skipped code push, and a prime that cannot be resolved fails the call with nothing pushed.
+// TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through PushPairAnchored's behaviors.
+// In order, it covers: both sides pushed and recorded;
+// a remote that declines once is retried to success on both entries;
+// a rejection whose fetch keeps failing is never pushed again;
+// a remote that keeps declining is reported as a bare rejection;
+// an unborn code side is skipped while the records side still pushes;
+// a diverged code side is reported while the records side still pushes;
+// and both sides failing are reported together.
+// Two subtests run on hubs of their own:
+// a prime pushes its records side only and reports the skipped code push;
+// an unresolvable prime fails the call with nothing pushed.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

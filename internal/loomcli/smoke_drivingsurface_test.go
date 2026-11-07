@@ -1,10 +1,14 @@
 // smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
 // On the start side, an llm-seeded start keeps exactly one status strand.
-// On the step side, "lym loom step" and "lym shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
-// A start re-arms the session's follow state and selects the run's relevant window, and a resume leaves a follow-off session off.
-// A start puts the status strand in the overview window after the runs strand, replacing an own-window one an older build left.
-// ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction;
-// what only a real tmux server can show is that a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
+// On the step side, "lym loom step" and "lym shed step" bring reed up.
+// They never add, replace or remove a status strand, whatever driver the run was seeded with.
+// A start re-arms the session's follow state and selects the run's relevant window,
+// and a resume leaves a follow-off session off.
+// A start puts the status strand in the overview window after the runs strand.
+// It replaces an own-window status strand that an older build left.
+// ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction.
+// Only a real tmux server can show the step's effect on reed's strand table.
+// A step leaves the table without a status strand, and it leaves a pre-existing one alone.
 //
 // Zero real LLM subprocesses: the fixtures are reused from smoke_helpers_test.go,
 // and the shuttle config is the providerless one,
@@ -84,9 +88,12 @@ func statusStrandPane(t *testing.T, eng *reedengine.Engine) string {
 	return strandPane(t, eng, statusStrandDisplayName)
 }
 
-// TestSmokeStatusStrandAcrossDriverSeeds drives the step verbs, and an llm-seeded start, over one pair per driver seed, in this order, then a start over a pair whose session holds a runs strand.
-// A run's seed cannot be rewritten to the other driver, so each driver gets its own pair, and the steps of one pair share its reed session.
-// The step that adds a status strand builds on the reed session the step before it brought up, and the strand it adds stays for the steps after it.
+// TestSmokeStatusStrandAcrossDriverSeeds drives the step verbs and an llm-seeded start over one pair per driver seed.
+// It then drives a start over a pair whose session holds a runs strand.
+// A run's seed cannot be rewritten to the other driver, so each driver gets its own pair.
+// The steps of one pair share its reed session.
+// The step that adds a status strand builds on the reed session that the step before it brought up,
+// and the strand it adds stays for the steps after it.
 func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
@@ -175,7 +182,9 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		})
 	})
 
-	// A beam's session holds a runs strand in its first overview window, and an older build left the status strand in a window of its own with a sidecar naming another build, so a start puts the status strand into the overview window after the runs strand's.
+	// A beam's session holds a runs strand in its first overview window.
+	// An older build may have left the status strand in a window of its own, with a sidecar naming another build.
+	// A start puts the status strand into the overview window after the runs strand.
 	t.Run("start beside a runs strand puts an own-window status strand into the overview window after it", func(t *testing.T) {
 		_, loc, worktree, _ := newWiredPairFixture(t)
 		registerBootstrapTeardown(t, loc, worktree)
@@ -270,7 +279,8 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		})
 
 		// An llm-seeded start ensures the status strand, like a go-seeded one.
-		// The providerless shuttle config makes the driver launch fail, which the step ignores: the status strand is ensured before the driver spawn.
+		// The providerless shuttle config makes the driver launch fail, which the step ignores.
+		// The status strand is ensured before the driver spawn.
 		t.Run("start leaves exactly one status strand", func(t *testing.T) {
 			eng := probeReedEngine(t, loc)
 			if _, err := eng.Up(); err != nil {

@@ -5,16 +5,20 @@
 - `root` is the worktree or repo root and `cwd` is the current working directory; the two are never conflated.
 - `Resolve` requires cwd to be a git worktree root and to equal `Join(worktreeRoot, AnchorRel)`.
 - It exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, `WorktreePath()` and `AnchorPath()`.
-- Every cwd or worktree-root query goes through `lymcwd.Getwd()` or `Resolve()`; raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.
+- Every cwd or worktree-root query goes through `lymcwd.Getwd()` or `Resolve()`;
+  raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.
 - A module's own durable subdirectory is its own constant joined onto `AnchorPath()`, never a `lymcwd` call.
-- A worktree's anchor comes from its own `.lym-anchor` at the root of its weft branch, with the hub-wide Bolt marker as the fallback and `"."` after that.
-- `lymcwd.NamedWorktree(hubPath, name)` is how code outside `lymcwd` gets another worktree's `Location`, at that worktree's own anchor.
+- A worktree's anchor comes from its own `.lym-anchor` at the root of its weft branch.
+  The fallback is the hub-wide Bolt marker, and `"."` after that.
+- Code outside `lymcwd` gets another worktree's `Location` through `lymcwd.NamedWorktree(hubPath, name)`.
+  The `Location` is at that worktree's own anchor.
 - Only `fabricengine` writes the marker or reads it from git; `lymcwd` reads the working tree alone.
 - `lymcwd` imports the standard library, `internal/dotgit`, `internal/lymdirs` and `internal/weftname` only.
 
 ## Told geometry
 
-An engine is handed the absolute paths it operates on and derives none of its own, so it never imports `internal/lymcwd` directly.
+An engine is handed the absolute paths it operates on and derives none of its own,
+so it never imports `internal/lymcwd` directly.
 
 ### Tiers
 
@@ -33,7 +37,8 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 
 ### Detached runners
 
-A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, and only from a standalone CLI's own wiring.
+A `shuttleengine` runner whose anchor is outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`.
+Only a standalone CLI's own wiring calls it.
 `NewRunner`'s containment assertion is never relaxed to accommodate it.
 
 ## Hub containment
@@ -43,4 +48,6 @@ The Bolt checkout and `_launchers` are reachable from the hub only.
 
 - `_launchers` links point hub-inward only; a per-worktree link to it is banned.
 - `_portals` is retired and stays reserved; `lym fabric reconcile` sweeps what a hub still holds.
-- The hub workspace file `<RepoName>.code-workspace` and each beam's file `<RepoName>-<beam>.code-workspace` sit directly in the hub dir, reference hub-inward folders only, and are never written into a worktree.
+- Workspace files are the hub's `<RepoName>.code-workspace` and each beam's `<RepoName>-<beam>.code-workspace`.
+  They sit directly in the hub dir and reference hub-inward folders only.
+  They are never written into a worktree.

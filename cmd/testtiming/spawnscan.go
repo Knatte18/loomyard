@@ -58,7 +58,8 @@ var builtinNames = map[string]bool{
 	"uint32": true, "uint64": true, "uintptr": true, "any": true, "comparable": true,
 }
 
-// loadPkgSource parses every .go file in dir regardless of build constraints, so a helper declared in a platform-specific file is still found.
+// loadPkgSource parses every .go file in dir regardless of build constraints,
+// so a helper declared in a platform-specific file is still found.
 // Test files are skipped unless withTests is set.
 func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 	entries, err := os.ReadDir(dir)
@@ -150,7 +151,7 @@ type spawnScanner struct {
 }
 
 // scanSpawns returns the verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
-// A test in a tier0 file is always judged, because a tier0 test spawns nothing;
+// A test in a tier0 file always gets an empty verdict, because a tier0 test spawns nothing;
 // a test in a tmux-tier file is always out of process, because reed panes run lym.
 func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error) {
 	src, err := loadPkgSource(pkgDir, true)
@@ -268,7 +269,8 @@ func unwrapCallee(e ast.Expr) ast.Expr {
 	}
 }
 
-// collectLocals returns the names a function declares for itself (parameters, results, receiver, := and var declarations, range variables) and the types it declares locally.
+// collectLocals returns the names a function declares for itself and the types it declares locally.
+// The names are its receiver, parameters, results, := and var declarations, and range variables.
 // A call to a local name is a call of a function value.
 func collectLocals(decl *ast.FuncDecl) (locals, types map[string]bool) {
 	locals, types = map[string]bool{}, map[string]bool{}
@@ -322,7 +324,7 @@ func collectLocals(decl *ast.FuncDecl) (locals, types map[string]bool) {
 }
 
 // spawnRef reports whether importPath.name may run this module's code in another process:
-// the lymbin kit, os.Executable, or a testkit function that reaches one of those.
+// the lymbin kit, os.Executable, or a testkit function that may do so, or has a call the scan cannot resolve to source.
 func (s *spawnScanner) spawnRef(importPath, name string) bool {
 	if importPath == "os" {
 		return name == "Executable"
@@ -355,7 +357,8 @@ func readsOSArgsProgram(fn *funcInfo, x *ast.IndexExpr, locals map[string]bool) 
 	return ok && index.Kind == token.INT && index.Value == "0"
 }
 
-// runsGoCommand reports whether call is exec.Command or exec.CommandContext with the program "go", which builds and runs module code.
+// runsGoCommand reports whether call is exec.Command or exec.CommandContext with the program "go".
+// Such a call builds and runs module code.
 func runsGoCommand(fn *funcInfo, call *ast.CallExpr, locals map[string]bool) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -384,7 +387,8 @@ func runsGoCommand(fn *funcInfo, call *ast.CallExpr, locals map[string]bool) boo
 	return err == nil && value == "go"
 }
 
-// kitSpawns returns, per exported function of a testkit, whether the same scan marks it as out of process or unresolvable.
+// kitSpawns returns, keyed by function name, whether each function of the testkit at importPath is marked:
+// it may run this module's code in another process, or it calls something the scan cannot resolve to source.
 func (s *spawnScanner) kitSpawns(importPath, kit string) map[string]bool {
 	if funcs, ok := s.kits[importPath]; ok {
 		return funcs

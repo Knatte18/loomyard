@@ -1,11 +1,8 @@
-// states_test.go proves every hostile state in States establishes exactly what its own doc comment
-// claims, by applying each state directly against a real hub and asserting on the resulting condition —
-// never by driving a verb, which would confound the state's own establishment with the verb's
-// behaviour.
-// This is the suite the batch's own doc comment calls the single most important guard in the harness: a
-// dirtyWarpTracked state that silently failed to dirty anything would make every cell using it vacuous
-// while reading like coverage, and this file is what a broken state builder fails loudly against during
-// development rather than months later inside an opaque cross-product failure.
+// livestate_states_selftest_test.go proves each hostile state in States establishes what its doc comment claims.
+// It applies each state directly to a real hub and asserts on the resulting condition, never by driving a verb,
+// so the state's own establishment is not confounded with the verb's behaviour.
+// A dirtyWarpTracked state that dirtied nothing would make every cell using it vacuous while reading like coverage,
+// so this suite fails loudly against a broken state builder during development.
 
 package fabricengine_test
 
@@ -23,11 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// structuralStateNames is the set of states this suite also proves against a manifest diff: applying
-// one of these and re-capturing must produce at least one change against the pre-state manifest, so a
-// structural state that silently no-ops cannot pass this suite by accident.
-// Dirtiness states and clean are excluded: their own porcelain/cleanliness assertions already prove
-// establishment directly, and clean plants nothing to diff.
+// structuralStateNames is the set of states this suite also proves against a manifest diff.
+// Applying one of them and re-capturing must change the manifest,
+// so a structural state that silently no-ops cannot pass.
+// Dirtiness states and clean are not listed.
+// Their porcelain or cleanliness assertions already prove establishment, and clean plants nothing to diff.
 var structuralStateNames = map[string]bool{
 	"trackedSymlinkAtWiredPath":        true,
 	"staleWiredJunction":               true,
@@ -35,11 +32,12 @@ var structuralStateNames = map[string]bool{
 	"unrelatedGitCloneAtWeftNamedPath": true,
 }
 
-// resolveStateTarget builds the StateTarget a real cell would resolve for stateName against h: the
-// prime warp and weft checkouts for every dirtiness state, and a state-appropriate fabric-owned path for
-// every structural state — an existing wired junction link for the two link states, and a fresh,
-// not-yet-claimed pair path for the two foreign-entity states (a weft-named sibling path specifically
-// for unrelatedGitCloneAtWeftNamedPath, matching that state's own name).
+// resolveStateTarget builds the StateTarget that a cell resolves for stateName against h.
+// Every dirtiness state resolves to the prime warp and weft checkouts.
+// A structural state resolves to a fabric-owned path.
+// The two link states resolve to an existing wired junction link.
+// The two foreign-entity states resolve to a fresh, not-yet-claimed pair path.
+// The foreign-entity state unrelatedGitCloneAtWeftNamedPath gets a weft-named sibling path.
 func resolveStateTarget(t *testing.T, h *hubforge.Hub, stateName string) StateTarget {
 	t.Helper()
 
@@ -61,11 +59,10 @@ func resolveStateTarget(t *testing.T, h *hubforge.Hub, stateName string) StateTa
 	return target
 }
 
-// newPorcelainLines returns the lines present in afterStatus but absent from beforeStatus, so a
-// dirtiness assertion is immune to whatever baseline noise a checkout already carried before the state
-// ran — a freshly cloned hub's prime weft sibling, in particular, always carries one such baseline
-// line (see assertCleanHubEstablished's own doc comment for the full account), which a raw "every line
-// must match" scan over the full porcelain output would wrongly blame on the state under test.
+// newPorcelainLines returns the porcelain lines present in afterStatus but absent from beforeStatus.
+// Comparing against that baseline keeps a dirtiness assertion immune to noise a checkout already carried.
+// A freshly cloned prime weft sibling always carries one such line.
+// A raw scan of the full output would wrongly blame that line on the state under test.
 func newPorcelainLines(beforeStatus, afterStatus string) []string {
 	before := make(map[string]bool)
 	for _, line := range strings.Split(beforeStatus, "\n") {
@@ -84,9 +81,9 @@ func newPorcelainLines(beforeStatus, afterStatus string) []string {
 	return added
 }
 
-// assertOnlyNewShape fails t unless checkout carries at least one porcelain line new since
-// beforeStatus, and every new line carries wantPrefix — never the opposite shape, which is the negative
-// half of the tracked/untracked distinction dirtyWeftUntracked exists to make observable.
+// assertOnlyNewShape fails t unless checkout carries at least one porcelain line new since beforeStatus,
+// and every new line carries wantPrefix.
+// The prefix check also rejects the other dirtiness shape, so tracked and untracked changes stay distinct.
 func assertOnlyNewShape(t *testing.T, checkout, beforeStatus, wantPrefix string) {
 	t.Helper()
 
@@ -101,9 +98,8 @@ func assertOnlyNewShape(t *testing.T, checkout, beforeStatus, wantPrefix string)
 	}
 }
 
-// assertBothNewShapes fails t unless checkout carries at least one new tracked-modification line and at
-// least one new untracked line since beforeStatus, proving bothDirty genuinely established both shapes
-// rather than only one.
+// assertBothNewShapes fails t unless checkout gains a tracked-modification line and an untracked line.
+// Requiring both shapes rules out a state that establishes only one of them.
 func assertBothNewShapes(t *testing.T, checkout, beforeStatus string) {
 	t.Helper()
 
@@ -125,16 +121,14 @@ func assertBothNewShapes(t *testing.T, checkout, beforeStatus string) {
 	}
 }
 
-// assertCleanHubEstablished fails t unless every checkout in h is genuinely clean of operator content.
+// assertCleanHubEstablished fails t unless every checkout in h is clean of operator content.
 //
-// The warp checkout and the repo-wide board checkout must carry no git status --porcelain output at
-// all. The prime weft sibling is allowed exactly one line: the freshly materialised, still-empty
-// structural wiring directory WireJunctions creates before anything has ever been synced into it — git
-// never tracks an empty directory, so it shows as untracked ("?? _lym/" at anchor ".", "?? backend/" at
-// anchor "backend", where the whole untracked subtree collapses to its top segment).
-// This is fabric's own machine-local wiring scratch, not operator dirt — the same status
-// junction.go's own doc comment gives ".lym" ("always lym's own machine-local scratch"). Anything beyond
-// that single expected line is a genuine finding, not baseline noise.
+// The warp checkout and the board checkout must carry no git status --porcelain output.
+// The prime weft sibling may carry exactly one line, for the still-empty wiring directory WireJunctions creates.
+// Git never tracks an empty directory, so the line shows as untracked:
+// "?? _lym/" at anchor "." or "?? backend/" at anchor "backend".
+// This is fabric's own machine-local wiring scratch, not operator dirt.
+// Any other line is a genuine finding, not baseline noise.
 func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 
@@ -161,8 +155,8 @@ func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// gitPathIsTracked reports whether relPath is tracked by git in dir, via `git ls-files
-// --error-unmatch`.
+// gitPathIsTracked reports whether relPath is tracked by git in dir.
+// It asks git through `git ls-files --error-unmatch`.
 func gitPathIsTracked(t *testing.T, dir, relPath string) bool {
 	t.Helper()
 
@@ -171,9 +165,8 @@ func gitPathIsTracked(t *testing.T, dir, relPath string) bool {
 	return cmd.Run() == nil
 }
 
-// assertTrackedSymlinkEstablished fails t unless target.StructuralPath is a link whose raw one-hop
-// target resolves to a real, on-disk directory and is git-tracked in target.WarpCheckout — the three
-// properties trackedSymlinkAtWiredPath's own doc comment claims.
+// assertTrackedSymlinkEstablished fails t unless target.StructuralPath is a link.
+// Its raw one-hop target must exist on disk, and the link must be git-tracked in target.WarpCheckout.
 func assertTrackedSymlinkEstablished(t *testing.T, target StateTarget) {
 	t.Helper()
 
@@ -205,8 +198,8 @@ func assertTrackedSymlinkEstablished(t *testing.T, target StateTarget) {
 	}
 }
 
-// assertStaleJunctionEstablished fails t unless target.StructuralPath is a link whose raw one-hop
-// target does not resolve on disk.
+// assertStaleJunctionEstablished fails t unless target.StructuralPath is a link.
+// Its raw one-hop target must not resolve on disk.
 func assertStaleJunctionEstablished(t *testing.T, target StateTarget) {
 	t.Helper()
 
@@ -227,8 +220,8 @@ func assertStaleJunctionEstablished(t *testing.T, target StateTarget) {
 	}
 }
 
-// assertForeignDirEstablished fails t unless target.StructuralPath is a real, ordinary directory
-// carrying its planted content, and is not itself a git checkout.
+// assertForeignDirEstablished fails t unless target.StructuralPath is an ordinary directory with its planted content.
+// The directory must not itself be a git checkout.
 func assertForeignDirEstablished(t *testing.T, target StateTarget) {
 	t.Helper()
 
@@ -250,10 +243,8 @@ func assertForeignDirEstablished(t *testing.T, target StateTarget) {
 	}
 }
 
-// assertUnrelatedCloneEstablished fails t unless target.StructuralPath is a real git repository
-// carrying at least one commit and a clean working tree — the clean tree is what makes the dirty gate
-// have nothing to say about it, leaving only the ownership gate between a destructive verb and the
-// whole clone.
+// assertUnrelatedCloneEstablished fails t unless target.StructuralPath is a clean git repository with a commit.
+// The clean tree keeps the dirty gate silent, so only the ownership gate governs the clone.
 func assertUnrelatedCloneEstablished(t *testing.T, target StateTarget) {
 	t.Helper()
 
@@ -272,11 +263,10 @@ func assertUnrelatedCloneEstablished(t *testing.T, target StateTarget) {
 	}
 }
 
-// assertStateEstablished dispatches to the assertion matching stateName, directly proving the
-// condition that state's own doc comment in states.go claims.
-// beforeWarp and beforeWeft are target.WarpCheckout's and target.WeftCheckout's own git status
-// --porcelain output, captured before state.Apply ran, so a dirtiness assertion can isolate what the
-// state itself changed from whatever baseline a checkout already carried.
+// assertStateEstablished dispatches to the assertion matching stateName, proving the condition that state claims.
+// beforeWarp and beforeWeft hold the git status --porcelain output of the warp and weft checkouts.
+// They are captured before state.Apply ran.
+// Comparing against them isolates what the state itself changed from any baseline a checkout already carried.
 func assertStateEstablished(t *testing.T, h *hubforge.Hub, stateName string, target StateTarget, beforeWarp, beforeWeft string) {
 	t.Helper()
 
@@ -307,8 +297,8 @@ func assertStateEstablished(t *testing.T, h *hubforge.Hub, stateName string, tar
 	}
 }
 
-// TestStates proves every state in States establishes what it claims, at both anchors, on its own
-// freshly built hub.
+// TestStates proves every state in States establishes what it claims, at both anchors.
+// Each anchor runs on its own freshly built hub.
 func TestStates(t *testing.T) {
 	tiergate.Require(t, 1)
 	for _, state := range States {
@@ -336,9 +326,9 @@ func TestStates(t *testing.T) {
 
 					assertStateEstablished(t, h, state.Name, target, beforeWarp, beforeWeft)
 
-					// A structural state that silently no-ops must not pass this suite by accident: the
-					// manifest diff is the independent proof that applying the state actually changed
-					// something on disk, distinct from the state-specific assertion above.
+					// A structural state that silently no-ops must not pass this suite by accident:
+					// the manifest diff is the independent proof that applying the state changed something on disk.
+					// It is distinct from the state-specific assertion above.
 					if structuralStateNames[state.Name] {
 						after := CaptureManifest(t, h.Path)
 						if changes := DiffManifest(before, after, nil); len(changes) == 0 {

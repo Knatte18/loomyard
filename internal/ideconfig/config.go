@@ -39,7 +39,8 @@ type Config struct {
 	RenderMarkdown bool `yaml:"render_markdown"`
 }
 
-// OpenFiles is one ordered list of open_files entries per place, each a path relative to the worktree's anchored directory that may name BeamPlaceholder.
+// OpenFiles holds the ordered open_files entries of each place.
+// Each entry is a path relative to the worktree's anchored directory, and it may name BeamPlaceholder.
 type OpenFiles struct {
 	Prime []string `yaml:"prime"`
 	Beam  []string `yaml:"beam"`
@@ -61,7 +62,8 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals the ide module's configuration through the hub-wide layer stack under dirs.
-// A hub whose base file is absent resolves the template under the local layer present, so opening a window never fails on a hub not yet reconciled.
+// A hub whose base file is absent resolves the template under the local layer present.
+// This keeps opening a window from failing on a hub not yet reconciled.
 // It refuses an open_files entry that is empty, absolute or climbs out of the worktree, naming the key.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())

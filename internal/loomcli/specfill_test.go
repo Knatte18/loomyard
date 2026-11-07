@@ -20,8 +20,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestSpecFor_FillsRunIdentityForSelf verifies that a spec armed for "self" reports the worktree
-// slug as RunID, a StepsDir under the slug's .lym scratch directory, and the loom routing entry.
+// TestSpecFor_FillsRunIdentityForSelf verifies that a spec armed for "self" reports the worktree slug as RunID.
+// It also checks that StepsDir sits under the slug's .lym scratch directory and that Routing holds the loom entry.
 func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
@@ -50,7 +50,8 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 		t.Errorf("Routing.MaxBounces = %d, want 3", spec.Routing.MaxBounces)
 	}
 
-	// With no Segments and no config file, the status path degrades to the template: each review row carries its perch's template cap.
+	// With no Segments and no config file, the status path degrades to the template:
+	// each review row carries its perch's template cap.
 	var template loomengine.Config
 	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
 		t.Fatalf("unmarshal loom template: %v", err)
@@ -95,8 +96,8 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	}
 }
 
-// TestSpecFor_LegacySelfDirKeepsSlugRunID verifies that with only a legacy _lym/shed/self/ present,
-// RunID stays the slug while StepsDir keeps the legacy "self" segment.
+// TestSpecFor_LegacySelfDirKeepsSlugRunID verifies that with only a legacy _lym/shed/self/ present:
+// RunID stays the slug, while StepsDir keeps the legacy "self" segment.
 func TestSpecFor_LegacySelfDirKeepsSlugRunID(t *testing.T) {
 	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}

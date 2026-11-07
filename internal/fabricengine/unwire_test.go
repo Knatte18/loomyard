@@ -1,14 +1,9 @@
-// unwire_test.go ports initengine/undo_test.go's coverage to
-// fabricengine.Unwire, the new per-worktree teardown verb: full on-disk
-// junction removal (including a stale junction absent from the current
-// pathspec, proving on-disk-scan enumeration rather than a config
-// name-set), weft-side preservation for both _lym and its optional junction,
-// idempotency on a never-wired warp, and preservation of the repo-wide
-// weft:main records for a later reconcile re-wire.
+// unwire_test.go tests fabricengine.Unwire, the per-worktree teardown verb.
+// It covers full on-disk junction removal, including a stale junction absent from the pathspec;
+// weft-side preservation of `_lym` and its optional junction; idempotency on a never-wired warp;
+// and preservation of the repo-wide weft:main records for a later reconcile re-wire.
 //
-// Package fabricengine_test to reuse seedRepoWideFabricConfig
-// from reconcile_stale_registration_test.go; shares the single TestMain in
-// testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -32,10 +27,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan enumeration property:
-// Unwire removes every fabric junction present on disk for the worktree, including a junction
-// (`_extra`) absent from the repo-wide pathspec that a config-driven name-set would have left
-// behind.
+// TestUnwire_RemovesOnDiskJunctionsIncludingStale proves that Unwire enumerates junctions on disk, not configured names:
+// it removes every fabric junction present for the worktree, including `_other`.
+// The repo-wide pathspec does not name `_other`, so a config-driven teardown would have left it behind.
 // It also leaves the root scratch link and its exclude line in place.
 //
 //testtiming:keep Unwire removing every on-disk fabric junction including one absent from the pathspec while the root scratch link stays; coverage of its blocks by other tests does not show an assertion of this
@@ -47,10 +41,7 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	const slug = "unwire-removes-stale"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
-	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
-	// default pathspec; override it to "_extra" so Add's RepoWiredNames-driven wiring below
-	// wires the same junction name this test's explicit WireJunctions call retargets to,
-	// rather than wiring an extra, unrelated junction on top.
+	// Set the repo-wide pathspec to "_extra", replacing the template default; Add then wires `_extra`.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
@@ -59,10 +50,8 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
-	// Wire the desired trio (_lym, .lym, _extra — topology.Add above already wired the
-	// repo-wide set, .lym included) plus a stale name (_other) that is present on disk but
-	// absent from any pathspec — Unwire's on-disk scan must remove it too, unlike a
-	// config-name-set-driven teardown.
+	// Wire the desired trio (`_lym`, `.lym`, `_extra`) plus a stale name (`_other`) that is on disk but in no pathspec.
+	// Unwire's on-disk scan must remove it too, unlike a teardown driven by the configured names.
 	if err := fabricengine.WireJunctions(warpLayout, slug, []string{"_lym", ".lym", "_extra", "_other"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
@@ -127,7 +116,9 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	}
 }
 
-// TestUnwire_PreservesWeftLymAndOptionalContent rewrites the old _lym-clearing coverage into a preservation test: after Unwire, both weft-side `_lym` and `.lym` still exist with their content, WeftContent reports "preserved", and the weft branch carries no "lym fabric unwire: clear _lym" commit — the last is asserted by inspecting the weft log, not by counting commits, since an unrelated commit landing on the weft branch during setup would otherwise make a bare commit-count assertion fragile.
+// TestUnwire_PreservesWeftLymAndOptionalContent proves that Unwire leaves the weft side alone:
+// the weft `_lym` and `.lym` keep their content, WeftContent reports "preserved", and the weft log does not change.
+// The log is compared as a whole, not counted, so a setup commit on the weft branch cannot break the check.
 //
 //testtiming:keep weft-side _lym and .lym surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesWeftLymAndOptionalContent(t *testing.T) {
@@ -180,7 +171,7 @@ func TestUnwire_PreservesWeftLymAndOptionalContent(t *testing.T) {
 		t.Errorf("res.WeftContent = %q; want %q", res.WeftContent, "preserved")
 	}
 
-	// _lym content is deliberately never touched by Unwire.
+	// Unwire never touches the weft `_lym` content.
 	content, err := os.ReadFile(filepath.Join(weftLymDir, "marker.txt"))
 	if err != nil {
 		t.Fatalf("read weft _lym marker after Unwire: %v", err)
@@ -189,7 +180,7 @@ func TestUnwire_PreservesWeftLymAndOptionalContent(t *testing.T) {
 		t.Errorf("weft _lym marker content changed after Unwire: %q", string(content))
 	}
 
-	// .lym content is deliberately never touched by Unwire either.
+	// Unwire never touches the weft `.lym` content either.
 	content, err = os.ReadFile(dotLymFile)
 	if err != nil {
 		t.Fatalf("read weft .lym scratch file after Unwire: %v", err)
@@ -198,8 +189,8 @@ func TestUnwire_PreservesWeftLymAndOptionalContent(t *testing.T) {
 		t.Errorf("weft .lym scratch content changed after Unwire: %q", string(content))
 	}
 
-	// _extra content is deliberately never touched by Unwire — this is the same load-bearing
-	// property the _lym and .lym assertions above pin.
+	// Unwire never touches the weft `_extra` content either;
+	// the `_lym` and `.lym` assertions above pin the same property.
 	content, err = os.ReadFile(extraFile)
 	if err != nil {
 		t.Fatalf("read notes.md after Unwire: %v", err)
@@ -235,12 +226,8 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 	}
 }
 
-// TestUnwire_NeverWiredWarpIsIdempotentNoOp verifies that a second Unwire call against an
-// already-torn-down pair is a clean, error-free no-op — the idempotency guarantee this test's name
-// promises. hubforge.NewHub's prime pair arrives genuinely paired and already wired (unlike the old
-// plain-repo fixture, which had no weft sibling and no junctions at all — the shape
-// initengine.Undo's TestUndo_NoWeftPairing coverage mirrored), so the FIRST Unwire call below does
-// real teardown work rather than observing a no-op; only the second call is the no-op.
+// TestUnwire_NeverWiredWarpIsIdempotentNoOp verifies that a second Unwire call is a clean, error-free no-op.
+// The prime pair arrives paired and already wired, so the first call does real teardown work.
 //
 //testtiming:keep a second Unwire call against an already torn-down pair being a clean no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
@@ -300,7 +287,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// The prime's weft root holds the anchor marker clone committed there, beside the repo-wide fabric.yaml hubforge.NewHub already seeded on weft:main.
+	// The prime's weft root holds the committed anchor marker clone and the repo-wide fabric.yaml seeded on weft:main.
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	anchorPath := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
 	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
@@ -330,13 +317,15 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	}
 }
 
-// TestUnwire_LeavesSiblingWorktreeUndirtied is the cross-worktree scope regression: .git/info/exclude
-// resolves to the repo's COMMON gitdir, so unwiring one worktree used to strip the exclusion its
-// siblings' still-live junctions depend on, making every one of them report untracked dirt in git
-// status and trip Remove's no-force dirty gate.
+// TestUnwire_LeavesSiblingWorktreeUndirtied pins the cross-worktree scope of Unwire.
+// .git/info/exclude resolves to the repo's common gitdir.
+// Unwiring one worktree must not strip the exclusion that its siblings' live junctions depend on,
+// or every one of them reports untracked dirt in git status and trips Remove's no-force dirty gate.
 //
-// Each row unwires one pair of a hub whose prime is at ".", after the rows' pairs are re-anchored, and asserts which exclude lines the unwire left.
-// A legacy bare line matches at every depth, so it stays while any worktree wires the name at any anchor; an anchored line stays while another worktree links the same anchored path.
+// Each row unwires one pair of a hub whose prime is at ".", after the rows' pairs are re-anchored.
+// The row then asserts which exclude lines remain.
+// A legacy bare line matches at every depth, so it stays while any worktree wires the name at any anchor;
+// an anchored line stays while another worktree links the same anchored path.
 func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

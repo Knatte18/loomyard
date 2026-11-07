@@ -1,4 +1,5 @@
-// commitempty_integration_test.go covers Repo.CommitEmpty against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, headFilesOf, requireCurrentSHA, runGit) rather than inventing a new harness.
+// commitempty_integration_test.go tests Repo.CommitEmpty against a real git repository.
+// It uses the fixture helpers of gitrepo_test.go: newRepo, headFilesOf, requireCurrentSHA and runGit.
 
 package gitrepo_test
 
@@ -12,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// treeSHA resolves rev's tree object SHA in dir, used to assert an empty
-// commit's tree is byte-identical to its parent's.
+// treeSHA resolves rev's tree object SHA in dir, so tests can compare the trees of two commits.
 func treeSHA(t *testing.T, dir, rev string) string {
 	t.Helper()
 
@@ -28,7 +28,9 @@ func treeSHA(t *testing.T, dir, rev string) string {
 }
 
 // TestCommitEmpty drives CommitEmpty through one repository from an unborn HEAD to a born one.
-// The steps run serially in one order and share the repository's state: the root-commit step relies on the staged entry the refusal step removes from the index, and the born-HEAD steps rely on the root commit and on a.txt committed by the step that opens them.
+// The steps run serially in one order and share the repository's state.
+// The root-commit step relies on the staged entry that the refusal step removes from the index.
+// The born-HEAD steps rely on the root commit and on a.txt, committed by the step that opens them.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestCommitEmpty(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -36,7 +38,8 @@ func TestCommitEmpty(t *testing.T) {
 
 	dir, repo := newRepo(t)
 
-	// The only exercise of the git ls-files --cached branch: on an unborn HEAD there is no HEAD tree for diff --cached to compare against, so this is the case that proves the pre-check was specified for both states, not only the born one.
+	// This case is the only exercise of the git ls-files --cached branch.
+	// The pre-check must hold for an unborn HEAD too, where diff --cached has no HEAD tree to compare against.
 	if !t.Run("unborn HEAD with a staged file returns ErrIndexNotEmpty", func(t *testing.T) {
 		writeFile(t, dir, "wip.txt", "half-staged WIP")
 		gitkit.MustRun(t, dir, "git", "add", "wip.txt")
@@ -57,7 +60,7 @@ func TestCommitEmpty(t *testing.T) {
 	}
 
 	// A specified contract, not incidental behaviour: fabricengine reaches this path whenever fabric has no commits yet.
-	// Relies on the previous step's staged wip.txt, which this step unstages to get a clean index.
+	// It relies on the staged wip.txt that the refusal step left behind, and unstages it to get a clean index.
 	if !t.Run("unborn HEAD with a clean index creates an empty root commit", func(t *testing.T) {
 		gitkit.MustRun(t, dir, "git", "rm", "-f", "--cached", "wip.txt")
 
@@ -81,7 +84,8 @@ func TestCommitEmpty(t *testing.T) {
 		return
 	}
 
-	// The case the empty-commits-take-over-the-correspondence-entry decision rests on: an empty commit's tree must be byte-identical to its parent's, never merely similar, or resolving a revert target to it would silently restore a different fabric tree.
+	// An empty commit's tree must be byte-identical to its parent's, never merely similar:
+	// resolving a revert target to an empty commit would silently restore a different fabric tree.
 	if !t.Run("born HEAD with a clean index matches the parent tree", func(t *testing.T) {
 		gitkit.CommitFile(t, dir, "a.txt", "initial", "init")
 		parent := requireCurrentSHA(t, repo)
@@ -104,7 +108,7 @@ func TestCommitEmpty(t *testing.T) {
 		return
 	}
 
-	// An empty commit is never deduplicated into a no-op: CommitEmpty always commits when it commits at all, unlike StageAndCommit's no-op signal on unchanged content.
+	// CommitEmpty always creates a new commit when it succeeds, even when the tree is unchanged.
 	if !t.Run("two successive calls produce distinct shas", func(t *testing.T) {
 		first, err := repo.CommitEmpty("first empty commit")
 		if err != nil {
@@ -123,7 +127,7 @@ func TestCommitEmpty(t *testing.T) {
 		return
 	}
 
-	// The never-sweep intent holds on the ordinary (born-HEAD) path too, not only the unborn one.
+	// CommitEmpty never sweeps staged files into its commit on the born-HEAD path either, not only on an unborn HEAD.
 	t.Run("born HEAD with a staged file returns ErrIndexNotEmpty", func(t *testing.T) {
 		headBefore := requireCurrentSHA(t, repo)
 		gitkit.MustRun(t, dir, "git", "add", "wip.txt")

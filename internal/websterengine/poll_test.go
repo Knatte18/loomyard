@@ -1,7 +1,6 @@
-// poll_test.go covers PollUntilTerminal's long-poll loop against a fake clock: a terminal mid-wait
-// result short-circuits, a deadline returns the last running digest, and a gather error propagates.
-// This file lives in package websterengine (not websterengine_test) because the clock/ realClock
-// seam is unexported.
+// poll_test.go covers PollUntilTerminal's long-poll loop against a fake clock.
+// A terminal result mid-wait short-circuits, a deadline returns the last running digest, and a gather error propagates.
+// It lives in package websterengine, not websterengine_test, because the clock/ realClock seam is unexported.
 // Tier 1: no git, fake clock only.
 
 package websterengine
@@ -14,10 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeClock is a package-local, scriptable clock double for
-// PollUntilTerminal: Now starts at a fixed base and only advances when
-// Sleep is called, so a test controls exactly how many ticks elapse before
-// a fixed wait budget is exceeded, without ever blocking for real.
+// fakeClock is a scriptable clock double for PollUntilTerminal.
+// Now starts at a fixed base and advances only when Sleep is called,
+// so a test controls exactly how many ticks elapse before a fixed wait budget is exceeded.
+// The clock never blocks for real.
 type fakeClock struct {
 	now time.Time
 }

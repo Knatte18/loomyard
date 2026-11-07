@@ -1,7 +1,12 @@
-// beginbatch_test.go exercises BeginBatch end to end: a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the strand-stop seam is a recordingStopper.
-// The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads Plan.Cards, only deps.Batches, the already-derived execution batches), backed by a t.TempDir() seeded with a throwaway markdown file so the fingerprint gate has something real to hash.
-// There is no chain/restart path and no oversized role under the flat card-list model:
-// this file's own mustFingerprint helper duplicates fingerprint.go's pure hashing algorithm rather than importing anything, since this file deliberately stays in the external websterengine_test package (fingerprint itself is package-private).
+// beginbatch_test.go exercises BeginBatch end to end.
+// A temp directory backs WorktreeRoot, and a fakeGit answers the HeadSHA capture.
+// A recordingStopper stands in for the strand-stop seam.
+// The plan is a minimal *planparser.Plan with only Dir set.
+// BeginBatch reads deps.Batches and never Plan.Cards.
+// The plan dir holds a throwaway markdown file so the fingerprint gate has content to hash.
+// mustFingerprint repeats the pure hashing in fingerprint.go.
+// The fingerprint code is package-private.
+// This file is in the external websterengine_test package and cannot call it.
 
 package websterengine_test
 
@@ -25,7 +30,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for each recorded state (terminal done, stuck, failed or dead, and begun non-terminal fork or recovery), each message naming the record it saw and the one remedy that state calls for, and a geometry with no code index, whose message names the missing wiring.
+// TestBeginBatch_Refusals checks that each refusal names the record it saw and the one remedy for that state.
+// The refused states are a pause, a plan edited after run init,
+// and a report already on disk for each recorded state:
+// terminal done, stuck, failed or dead, and begun non-terminal fork or recovery.
+// A geometry with no code index is also refused, and its message names the missing wiring.
 func TestBeginBatch_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -306,9 +315,11 @@ func TestBeginBatch_Refusals(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_PromptFile proves the fork prompt is written under PromptsDir with {{.prev_digest}}
-// populated from the batch that ran immediately before in execution order, whatever the numbers, or
-// the first-batch sentinel for the batch sitting first, and with each card's Go-derived gate command.
+// TestBeginBatch_PromptFile checks the fork prompt that BeginBatch writes under PromptsDir.
+// The {{.prev_digest}} placeholder is filled from the batch that runs immediately before in execution order.
+// This holds whatever the batch numbers are.
+// The first batch gets the first-batch sentinel instead.
+// Each card's Go-derived gate command appears in the prompt.
 //
 //testtiming:keep pins the prompt's predecessor digest or first-batch sentinel in execution order, the prompt path and the card gate command; the covering tests render a prompt without reading these
 func TestBeginBatch_PromptFile(t *testing.T) {
@@ -328,7 +339,6 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 		}
 	}
 	reordered := func(t *testing.T, fx *beginFixture) {
-		// Batch 2 (list-tests) runs before batch 1 (json-flag) in execution order.
 		fx.Deps.Batches = []batcher.Batch{beginCard(2, "list-tests"), beginCard(1, "json-flag")}
 	}
 
@@ -465,11 +475,13 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 	})
 }
 
-// TestBeginBatch_Record proves the batch record BeginBatch leaves: a first begin sets CurrentBatch,
-// a fresh fork record at the current head with its NN-<slug> card set, and creates a missing reports
-// dir, which a shell-writing fork's report needs; a re-begin over a non-terminal record keeps its
-// StartSHA (or records the head when it had none), its card set, its audit warnings and its fork
-// transcripts, and re-begins past its own already-landed Create target (the 2026-09-30 wedge).
+// TestBeginBatch_Record checks the batch record BeginBatch leaves.
+// A first begin sets CurrentBatch and writes a fresh fork record at the current head.
+// The record carries the NN-<slug> card set.
+// A first begin also creates a missing reports dir, which a shell-writing fork's report needs.
+// A re-begin over a non-terminal record keeps its StartSHA, or records the head when it had none.
+// It also keeps the card set, the audit warnings and the fork transcripts.
+// A re-begin proceeds past the record's own already-landed Create target.
 //
 //testtiming:keep pins every field a first begin and each re-begin shape records, and the reports dir a first begin creates; the covering tests check only that a begin succeeds
 func TestBeginBatch_Record(t *testing.T) {
@@ -653,7 +665,9 @@ func TestBeginBatch_Record(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's guard: when the batch being begun as a fork carries a prior recovery record with a strand (a dead recovery keeps its substrate alive by design), BeginBatch stops that strand before the record overwrite erases its StrandGUID.
+// TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite checks a fork begin over a prior recovery record.
+// A dead recovery can keep its strand live.
+// BeginBatch must stop that strand before the overwrite erases its StrandGUID.
 // Otherwise the unreclaimed strand would race the fresh fork on the repo.
 // A stop that fails fails the begin and leaves the record as it was.
 func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
@@ -671,7 +685,6 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 		if want := []string{"dead-but-live-recovery"}; !slices.Equal(fx.Stopper.Stopped, want) {
 			t.Errorf("stopped = %v; want %v stopped before the record overwrite", fx.Stopper.Stopped, want)
 		}
-		// The record was overwritten to a fresh fork batch.
 		if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {
 			t.Errorf("Batches[1] = %+v; want a fresh non-terminal fork record with no strand", bs)
 		}
@@ -694,11 +707,12 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	})
 }
 
-// TestBeginBatch_ReResolvesPlanAtDispatch covers card 32's re-resolution step:
-// a clean plan dispatches as today;
-// a plan with a blocking finding returns a PlanConflictError, plan_defect before any batch is begun and tree_moved after, and writes no prompt file;
-// a quarry-unavailable root returns the wrapped infrastructure error rather than ErrPlanConflict;
-// and an informational-only findings set dispatches normally with the advisory carried on the result.
+// TestBeginBatch_ReResolvesPlanAtDispatch proves BeginBatch re-resolves the plan at dispatch.
+// A clean plan dispatches normally.
+// A plan with a blocking finding returns a PlanConflictError and writes no prompt file.
+// Its cause is plan_defect before any batch is begun and tree_moved after.
+// A quarry-unavailable root returns the wrapped infrastructure error rather than ErrPlanConflict.
+// An informational-only findings set dispatches normally with the advisory carried on the result.
 func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("clean plan dispatches as today", func(t *testing.T) {
@@ -715,8 +729,8 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 
 	t.Run("blocking finding returns a plan_defect PlanConflictError and writes no prompt file", func(t *testing.T) {
 		fx := newBeginFixture(t)
-		// A bare package-qualified symbol in Uses trips bare-symbol-target under the default
-		// glyph-enabled language, a blocking finding.
+		// A bare package-qualified symbol in Uses trips bare-symbol-target under the default glyph-enabled language.
+		// That finding is blocking.
 		fx.Deps.Plan.Cards = []planparser.Card{
 			{Number: 1, Slug: "json-flag", Uses: []string{"sub.Foo"}},
 		}
@@ -813,8 +827,12 @@ func (i dispatchFindingsIndex) ValidateDispatch(*planparser.Plan, string, []plan
 	return i.findings, nil
 }
 
-// TestBeginBatch_ConflictCauseNamesAPlanOrderConflict proves a refusal whose every blocking finding is delete-before-reference is plan_order and tells the reader to move the delete, begun batches or not.
-// A set holding any other blocking finding keeps its plan_defect or tree_moved cause and the way forward to match the tree; an informational delete-before-reference does not count.
+// TestBeginBatch_ConflictCauseNamesAPlanOrderConflict proves the plan_order cause.
+// A refusal whose every blocking finding is delete-before-reference gets that cause,
+// and its way forward tells the reader to move the delete, whether or not batches are begun.
+// A set holding any other blocking finding keeps its plan_defect or tree_moved cause,
+// and its way forward matches the tree.
+// An informational delete-before-reference does not count.
 func TestBeginBatch_ConflictCauseNamesAPlanOrderConflict(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -866,15 +884,15 @@ func TestBeginBatch_ConflictCauseNamesAPlanOrderConflict(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_AlreadyBuiltCardsAreNotReResolved proves the dispatch-boundary re-resolution is
-// scoped to work that has not landed. A plan describes intended change, so a card already built
-// contradicts the tree by design: its Create target now exists, which the Create inversion reports
-// as blocking create-already-exists. Re-resolving the whole plan on every batch therefore wedged
-// every multi-batch plan carrying a Create, Delete or Rename card at its second batch.
+// TestBeginBatch_AlreadyBuiltCardsAreNotReResolved proves re-resolution covers only work that has not landed.
+// A plan describes intended change, so a built card contradicts the tree by design:
+// its Create target now exists, which the Create inversion reports as blocking create-already-exists.
+// Re-resolving built cards would wedge a multi-batch plan at its second batch.
+// The plans it wedges are those carrying a Create, Delete or Rename card.
 func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newBeginFixture(t)
-	// A symbol that genuinely exists in the worktree, so card 1's Create target resolves found.
+	// A symbol that exists in the worktree, so card 1's Create target resolves found.
 	writeWorktreeFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n")
 
 	built := planparser.Card{
@@ -927,11 +945,11 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	})
 }
 
-// seedRewritingPlanDir writes a real, parseable plan directory whose first card declares a draft
-// plan: handle spelled differently from what quarry.Name computes for its own declaration head, so
-// begin-batch's ValidateDispatch canonicalizes it and rewrites the card file on disk. Its second
-// card names a glyph that cannot resolve against the fixture's worktree, so the same call also
-// reports a blocking finding — the co-occurrence R4-01/R4-02's re-baseline ordering turns on.
+// seedRewritingPlanDir writes a real, parseable plan directory.
+// Its first card declares a plan: handle that quarry.Name does not compute for its declaration head.
+// begin-batch's ValidateDispatch canonicalizes that handle and rewrites the card file on disk.
+// Its second card names a glyph that cannot resolve against the fixture's worktree,
+// so the same call also reports a blocking finding.
 func seedRewritingPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -960,12 +978,12 @@ func seedRewritingPlanDir(t *testing.T) string {
 	return dir
 }
 
-// TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts is the regression test for the round-4
-// review's R4-02. ValidateDispatch's resolve pass canonicalizes handles — rewriting the plan on
-// disk — and then keeps going, so one call routinely both rewrites and reports a blocking finding.
-// With the re-baseline positioned after the ErrPlanConflict return, state.json kept the pre-rewrite
-// fingerprint while the plan on disk carried webster's own sanctioned edit, and every later
-// begin-batch refused that edit as a foreign one.
+// TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts proves the fingerprint is restamped when the plan drifts.
+// ValidateDispatch's resolve pass canonicalizes handles, rewriting the plan on disk.
+// It then keeps going, so one call routinely both rewrites the plan and reports a blocking finding.
+// The re-baseline must run before the ErrPlanConflict return;
+// after it, state.json keeps the pre-rewrite fingerprint while the plan on disk carries webster's sanctioned edit,
+// and every later begin-batch refuses that edit as a foreign one.
 func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newBeginFixture(t)
@@ -998,9 +1016,7 @@ func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_NilStateIsRefusedNotPanicked is R6-21's regression test: BeginDeps.Plan was refused
-// loudly while BeginDeps.State was dereferenced unguarded a few lines below, so the stated
-// precondition discipline was enforced for only one of the two fields.
+// TestBeginBatch_NilStateIsRefusedNotPanicked proves a nil BeginDeps.State is refused with an error naming the field.
 func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, err := websterengine.BeginBatch(websterengine.BeginDeps{Plan: &planparser.Plan{}}, 1)
@@ -1012,8 +1028,9 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget pins #329: card 1 creates a file that card 2 Uses,
-// batch 1's first begin records it, no commit lands, and the second begin of batch 1 must not drop the Create target out of the later card's validation.
+// TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget pins a re-begin of a batch.
+// Card 1 creates a file that card 2 Uses. The first begin of batch 1 records it, and no commit lands.
+// The second begin of batch 1 must not drop the Create target from the later card's validation.
 func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newBeginFixture(t)
@@ -1059,8 +1076,8 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 	}
 }
 
-// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lym webster status`,
-// and that naming one of the run's batches then begins it.
+// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lym webster status`.
+// It also proves that naming one of the run's batches then begins it.
 func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newBeginFixture(t)

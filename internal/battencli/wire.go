@@ -1,12 +1,11 @@
-// wire.go implements wire, the assembly seam that builds the shedrecipe.Env and
-// shedbuild.ShedPaths the run and status verbs need, plus the receiver field the abandoned
-// session value is recorded into.
+// wire.go builds the assembly seam the battencli run and status verbs need: the shedrecipe.Env and
+// shedbuild.ShedPaths values, and the receiver field an abandoned session is recorded into.
 //
-// Every seam that touches the managed task worktree resolves inside its own closure body on Call,
-// never here at wiring time: the task worktree does not exist until WorktreeCreate has already run,
-// so resolving any of its paths any earlier would resolve a path that is not there yet. That applies
-// to the status-path pair, the spawn directory, and both teardown halves alike -- not only to the one
-// whose laziness (ResolveStatus's own signature) makes it visible.
+// Every seam that touches the managed task worktree resolves inside its closure body on Call, never at wiring time.
+// The task worktree does not exist until WorktreeCreate has run,
+// so resolving its paths earlier would name a path that is not there yet.
+// It holds for the status-path pair, the spawn directory and both teardown halves, not only for ResolveStatus.
+// ResolveStatus's own signature makes that laziness visible.
 
 package battencli
 
@@ -64,11 +63,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// spawnPairPush launches the detached push of a task pair; tests replace it, since a detached push forks the running binary.
+// spawnPairPush launches the detached push of a task pair.
+// Tests replace it, since a detached push forks the running binary.
 var spawnPairPush = fabricengine.SpawnPairPush
 
-// driverAliveFrom answers whether the child's driver strand is live, over an injected status reader so its answers are testable without tmux.
-// An absent task worktree is false without reading status, and so is an absent reed session -- no session means no driver -- while every other status error is returned unchanged.
+// driverAliveFrom reports whether the child's driver strand is live.
+// It takes the status through an injected reader, so its answers are testable without tmux.
+// An absent task worktree reports false without reading status.
+// An absent reed session reports false too, since no session means no driver.
+// Every other status error is returned unchanged.
 func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error)) (bool, error) {
 	if !present {
 		return false, nil
@@ -88,7 +91,8 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 	return false, nil
 }
 
-// childDriverAlive reports whether the driver strand of slug's child is live, reading the task worktree's reed status when the worktree is present.
+// childDriverAlive reports whether the driver strand of slug's child is live.
+// It reads the task worktree's reed status when the worktree is present.
 func childDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) (bool, error) {
 	present, err := taskWorktreePresent(prime, slug)
 	if err != nil {
@@ -111,7 +115,8 @@ func childDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*l
 	})
 }
 
-// driverStrandFrom reports the child's driver strand from reed's sessionless directory, over an injected reader so its answers are testable without tmux.
+// driverStrandFrom reports the child's driver strand from reed's sessionless directory.
+// It takes the directory through an injected reader, so its answers are testable without tmux.
 // An absent task worktree and a directory with no driver row are none;
 // a live row is retiring when its Retiring is set and live otherwise;
 // a row that is not live is dead.
@@ -140,8 +145,10 @@ func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow,
 	return battenshed.ChildDriverNone, nil
 }
 
-// arbiterInFlightFrom reads the child's in-flight arbiter marker through readMarker and reports its deadline, with Alive true only when a live row of the pair's reed directory carries the marker's strand guid.
-// An absent task worktree and an absent marker are not found; a marker read error and a directory read error are returned unchanged.
+// arbiterInFlightFrom reads the child's in-flight arbiter marker through readMarker and reports its deadline.
+// Alive is true only when a live row of the pair's reed directory carries the marker's strand guid.
+// An absent task worktree and an absent marker are not found;
+// a marker read error and a directory read error are returned unchanged.
 // A directory with no live row, as with no reed session, reads as not alive.
 func arbiterInFlightFrom(present bool, readMarker func() (loomengine.ArbiterMarker, bool, error), directory func() ([]reedengine.DirectoryRow, error)) (battenshed.ChildArbiter, bool, error) {
 	if !present {
@@ -193,21 +200,20 @@ func runLockHeld(lockPath string) (bool, error) {
 	return !free, nil
 }
 
-// taskWorktreeLocation resolves the managed task worktree's own *lymcwd.Location, for slug, from
-// the prime *lymcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
-// caller reading this file only once still sees every "resolved lazily" claim in one place.
+// taskWorktreeLocation returns the *lymcwd.Location of the managed task worktree for slug, resolved from prime.
+// It joins the worktree root with fabricengine.WorktreePath.
+// It resolves that root with lymcwd.ResolveWorktree, which applies no cwd gate:
+// the caller holds a worktree root, not an acting cwd, so the gate would fire spuriously.
 //
-// It joins the task worktree's root via fabricengine.WorktreePath -- the topology package's own
-// sibling-path helper -- and resolves that root through lymcwd.ResolveWorktree, which applies no
-// cwd gate: the caller here holds a worktree root, not an acting cwd, so the gate would spuriously
-// fire.
-//
-// An absent pair, or a directory that does not resolve as a worktree, is refused by name rather than left to the resolver's generic "not a git repository".
-// Batten's status is durable, so a run resumed on another machine reaches every row past Worktree-Create with no pair here.
-// This function re-makes nothing.
-// The refusal names the resume, "lym batten run", whose pre-run re-adopts a pair that is still live and otherwise stops naming the restore of each branch.
+// An absent pair, or a directory that does not resolve as a worktree, is refused by name.
+// Batten's status is durable,
+// so a run resumed on another machine can reach every row past Worktree-Create without a local pair.
+// The refusal names "lym batten run" as the resume.
+// The resume's pre-run re-adopts a live pair and otherwise stops and names the restore of each branch.
 // It names no fabric command as a substitute.
-// "lym fabric checkout" switches the CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it would mutate prime itself rather than restore anything.
+// "lym fabric checkout" switches the caller's own worktree.
+// Run from prime, that switch would mutate prime itself rather than restore anything.
+// It does not create the worktree.
 func taskWorktreeLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location, error) {
 	worktreePath, err := presentTaskWorktreePath(prime, slug)
 	if err != nil {
@@ -216,8 +222,9 @@ func taskWorktreeLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location
 	return lymcwd.ResolveWorktree(worktreePath)
 }
 
-// presentTaskWorktreePath returns the task worktree's root for slug, refusing an absent one by name (see taskWorktreeLocation).
-// The refusal reaches a worktree that disappears mid-run, and the cancel and goto verbs, which resolve the task worktree without a resume.
+// presentTaskWorktreePath returns the root of the managed task worktree for slug and refuses an absent one by name.
+// The refusal also applies to a worktree that disappears mid-run.
+// It applies as well to the cancel and goto verbs, which resolve the task worktree without a resume.
 func presentTaskWorktreePath(prime *lymcwd.Location, slug string) (string, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	present, err := taskWorktreePresent(prime, slug)
@@ -238,9 +245,11 @@ func absentTaskWorktreeRefusal(slug, worktreePath string) error {
 	)
 }
 
-// taskWorktreeLocator returns a taskWorktreeLocation for slug that spawns git only until a resolution succeeds.
-// Run-Shed's wait reads the task worktree's files every poll check, and resolving the location runs git;
-// a present pair's location never changes, so the first success is kept, while every later call still stats the pair, without spawning git, and refuses an absent one by name.
+// taskWorktreeLocator returns a function that resolves the location of the task worktree for slug.
+// The function runs on every poll of a wait, so it spawns git only until the first success.
+// That success is kept, since a present pair's location does not change.
+// Later calls stat the pair instead, with no git spawn.
+// They return the refusal for an absent worktree when it is gone.
 func taskWorktreeLocator(prime *lymcwd.Location, slug string) func() (*lymcwd.Location, error) {
 	var resolved *lymcwd.Location
 	return func() (*lymcwd.Location, error) {
@@ -263,10 +272,12 @@ func taskWorktreeLocator(prime *lymcwd.Location, slug string) func() (*lymcwd.Lo
 	}
 }
 
-// taskWorktreePresent reports whether the task worktree for slug stands on disk under prime's hub and resolves as a worktree of its own.
-// It is the answer the verbs that gate on or resolve the task worktree read, the re-adoption's gone check included.
-// A path that stands there but does not resolve as a worktree, such as a directory a removal left holding ignored build output, reads as absent, as a missing path does,
-// so those verbs meet it as a gone pair instead of failing on it, and fabric's own add refuses the stray path by name.
+// taskWorktreePresent reports whether the task worktree for slug stands under prime's hub and resolves as a worktree.
+// The verbs that gate on or resolve the task worktree read this answer, the re-adoption's gone check included.
+// A path that stands but does not resolve as a worktree reads as absent, as a missing path does.
+// That is the case for a directory a removal left holding ignored build output.
+// Those verbs meet such a path as a gone pair instead of failing on it,
+// and the add that creates the worktree refuses the stray path by name.
 // A stat error other than not-exist is returned.
 func taskWorktreePresent(prime *lymcwd.Location, slug string) (bool, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
@@ -282,19 +293,17 @@ func taskWorktreePresent(prime *lymcwd.Location, slug string) (bool, error) {
 	return true, nil
 }
 
-// taskWorktreeComplete reports whether the task worktree for slug is not just present but fully
-// materialised: Topology.Add's own full post-condition (fabricengine.PairComplete), which
-// taskWorktreePresent's bare directory check cannot tell from a pair Add left half-built.
+// taskWorktreeComplete reports whether the task worktree for slug is fully created, not just present.
+// A bare directory check cannot tell a complete pair from one an interrupted create left half-built.
+// Creation is a multi-step transaction.
+// It rolls back only when it observes an error, never when the process running it is killed,
+// so a check that the worktree resolves is satisfied by the transaction's first step alone.
+// The window also covers a create that returned before its transition was persisted.
+// A row re-entered after its worktree was created must report success, not ask fabric to create the same worktree twice.
 //
-// Worktree-Create's post-condition is "the task worktree for this slug exists", so a row re-entered
-// against an already-satisfied post-condition must report success rather than asking fabric to
-// create the same worktree twice. The window is wider than "Add returned but the transition was not
-// yet persisted": Add is a multi-step transaction whose own in-process rollback runs only when Add
-// itself observes an error, never when the process running it is killed instead -- a bare "the
-// worktree directory resolves" check is satisfied by that transaction's very first step alone.
-//
-// present is false only when the worktree does not exist or does not resolve as one, the absent case, which still reaches Topology.Add.
-// incompleteReason is non-empty only when the worktree exists but is not yet a complete pair, worded for this package's own refusal text rather than repeating PairComplete's fabric-vocabulary reason verbatim.
+// present is false only when the worktree is absent or does not resolve as one, and the create still runs then.
+// incompleteReason is set only when the worktree exists but is not a complete pair.
+// Its text is worded for this package's refusal.
 func taskWorktreeComplete(prime *lymcwd.Location, slug string) (present, complete bool, incompleteReason string, err error) {
 	present, err = taskWorktreePresent(prime, slug)
 	if err != nil || !present {
@@ -314,16 +323,23 @@ func taskWorktreeComplete(prime *lymcwd.Location, slug string) (present, complet
 	return present, true, "", nil
 }
 
-// incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
-// "lym fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
-// Remove also deletes the task branch when its work is already on another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so the branch deletion is named as conditional on the branch surviving the removal: an unconditional "git branch -D" fails on the branch Remove already deleted.
-// The task branch is named with fabric's branch prefix, since Add refuses a leftover one.
+// incompletePairRemedy returns the manual cleanup for a task pair that is not fully created.
+// Running "lym fabric remove --force" from prime removes whatever part of the pair was created, in one command.
+// That covers the task worktree, its sibling, their junctions, the launcher entries, and the sibling's branch.
+// No plain git commands can do that from here, since the sibling is a worktree of another repository.
+// The remove deletes the task branch when its work is already on another ref.
+// That is always so for a create interrupted before any work; otherwise the remove keeps the branch.
+// So the branch deletion is conditional on the branch surviving the removal:
+// an unconditional "git branch -D" fails on a branch the removal already deleted.
+// The task branch is named with fabric's branch prefix, since the create refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
 	return fmt.Sprintf("remove it by hand from here (\"lym fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
 }
 
 // reconcileTaskPair reconciles and commits the config of the task pair for slug, whatever the hub's build stamp says.
-// The pair forked the prime's records branch, which an earlier walk may have skipped as mid-merge or another holder's walk may not have committed yet.
+// The pair forks the prime's records branch.
+// An earlier walk may have skipped that branch as mid-merge,
+// and another holder's walk may not have committed it yet.
 // A repository outside a hub has nothing to reconcile.
 func reconcileTaskPair(prime *lymcwd.Location, slug string) error {
 	geometry, inHub := hubgeom.ReconcileGeometry(prime)
@@ -333,13 +349,19 @@ func reconcileTaskPair(prime *lymcwd.Location, slug string) error {
 	return hubreconcile.Ensure(geometry, hubreconcile.Options{Pair: fabricengine.WorktreePath(prime, slug)})
 }
 
-// createRefusal maps the create refusals no tackler can settle to a *battenshed.PreconditionError, and passes every other create error through verbatim.
-// A tracked-dirty source worktree is settled by committing or reverting in it.
-// A task branch left from an earlier pair of the slug, locally or on origin, is settled by the cancel verb, which archives and deletes it.
-// fabric words that leftover refusal for a caller inside a pair ("lym fabric checkout"), which from prime would switch prime's own pair onto the task's branches, so its text is replaced.
+// createRefusal maps the create refusals no tackler can settle to a *battenshed.PreconditionError.
+// Every other create error passes through verbatim.
+// A tracked-dirty source worktree is settled by committing or reverting its changes.
+// A task branch left from an earlier pair of the slug, locally or on origin, is settled by the cancel verb.
+// That verb archives the branch and deletes it.
+// The refusal fabric words for a caller inside a pair names "lym fabric checkout".
+// From the prime, that command would switch the prime's own pair onto the task's branches, so its text is replaced.
 // A remote leftover on any other branch, the records side included, passes through.
-// A directory at the task worktree's path is reached only when it does not resolve as a worktree, such as one a cancel's late writer refilled, so it is settled by deleting it.
-// taskPathStands reports whether that path holds a registered worktree, and is asked only for that refusal: such a path is settled by removing the pair, not by deleting a plain directory.
+// A directory at the task worktree's path is reached only when it does not resolve as a worktree.
+// Such a directory, for example one a cancel's late writer refilled, is settled by deleting it.
+// taskPathStands reports whether that path holds a registered worktree.
+// It is asked only for that refusal.
+// A registered worktree is settled by removing the pair, not by deleting a plain directory.
 func createRefusal(err error, slug, taskBranch string, taskPathStands func() bool) error {
 	leftoverWayForward := fmt.Sprintf(`run "lym batten cancel %s --remove" from the prime, which archives and deletes it, then "lym batten run %s"`, slug, slug)
 
@@ -385,10 +407,14 @@ func createRefusal(err error, slug, taskBranch string, taskPathStands func() boo
 	return err
 }
 
-// finishRemoval turns the composite's RemovePair outcome into the Worktree-Teardown row's verdict.
-// A pair of which nothing remains is the row's done post-condition, since shedengine persists the transition only after the producer returns and a process killed right after the removal re-enters the row.
-// Remove hands its remote steps to a detached child and returns without their outcome; the child mails the orch a failed step with its way forward.
-// A failed remote deletion Remove did report, when the steps ran in process, is returned here so the row halts resumable, and the resumed row retries the deletion.
+// finishRemoval turns the outcome of a pair removal into the verdict of the Worktree-Teardown row.
+// A pair with nothing of it left is the row's done state.
+// shedengine persists a transition only after its producer returns,
+// so a process killed right after the removal re-enters the row.
+// The removal hands its remote steps to a detached child and returns without their outcome;
+// the child mails the orchestrator a failed step with its way forward.
+// A failed remote deletion that the removal did report, when the steps ran in process, is returned here,
+// so the row halts resumable and the resumed row retries the deletion.
 func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrPairNotFound) {
 		logger.Info("battencli: teardown found nothing of the pair left, done", "slug", slug)
@@ -405,22 +431,36 @@ func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error 
 }
 
 // teardownRequest is the composite's request for a batten-driven teardown.
-// Remote is true: a batten-driven teardown is the task's own final removal, never a step toward re-adopting the pair, so nothing will ever need the pair's other-side branch again, and a remote copy left behind makes a later create of this slug refuse its push.
-// It never forces, and it neither waits for a quiet driver nor refuses a busy one, since the InnerRun done arm already waited its driver_exit_grace_s.
-// Landed is true: the row runs only after a done child, so the task's board entry is marked done once the pair is removed.
-// ClearStray is true: the run created the pair at its path, so a directory a late writer leaves there once the pair is removed is the run's to delete, and a resumed row deletes one an earlier attempt kept.
+// Remote is true: a batten-driven teardown is the task's own final removal, never a step toward re-adopting the pair.
+// Nothing will ever need the pair's other-side branch again,
+// and a remote copy left behind makes a later create of this slug refuse its push.
+// It never forces.
+// It neither waits for a quiet driver nor refuses a busy one.
+// The InnerRun done arm already waited its driver_exit_grace_s, which makes both unnecessary.
+// Landed is true: the row runs only after a done child,
+// so the task's board entry is marked done once the pair is removed.
+// ClearStray is true: the run created the pair at its path.
+// So a directory a late writer leaves there once the pair is removed is the run's to delete,
+// and a resumed row deletes one an earlier attempt kept.
 func teardownRequest(slug string) pairteardown.Request {
 	return pairteardown.Request{Slug: slug, Force: false, Remote: true, QuietWait: 0, RefuseWhenBusy: false, Landed: true, ClearStray: true}
 }
 
-// teardownRefusal rewords the teardown refusal for content in the pair's sibling the teardown could not commit, names the resume for a failed archive of the run records, and passes every other error through unchanged.
+// teardownRefusal rewords the teardown refusal for content in the pair's sibling that the teardown could not commit.
+// It names the resume for a failed archive of the run records,
+// and it passes every other error through unchanged.
 //
-// fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would discard exactly the records this task exists to keep.
-// The teardown commits the run records itself, so this refusal means content outside the record paths in the pair's sibling worktree under the hub;
-// the remedy names inspecting it, committing or removing it by hand, and resuming.
-// A push of the pair still running past the teardown's wait is refused before any mutation too, and the remedy names the resume once the push finishes.
-// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the failure is fixed.
-// That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
+// fabric's own refusal for a dirty pair sibling leaves --force as the way out.
+// --force would discard the records this task exists to keep.
+// The teardown commits the run records itself,
+// so this refusal means content outside the record paths in the pair's sibling worktree under the hub.
+// The remedy names inspecting it, committing or removing it by hand, and resuming.
+// A push of the pair still running past the teardown's wait is refused before any mutation too,
+// and the remedy names the resume once the push finishes.
+// A failed archive runs before any teardown mutation,
+// so the pair is still whole and a plain resume retries it once the failure is fixed.
+// That failure is most often an unreachable remote, but not always.
+// So the remedy points at the wrapped cause rather than naming one.
 // A directory the teardown could not delete at the task worktree's path names the resume once it is deleted.
 func teardownRefusal(err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrStrayPathKept) {
@@ -441,7 +481,8 @@ func teardownRefusal(err error, slug string) error {
 	}
 }
 
-// siblingDirtyRefusal carries batten's own remedy text and unwraps to fabric's refusal without repeating its text, which names --force.
+// siblingDirtyRefusal carries batten's own remedy text for a dirty pair sibling.
+// It unwraps to fabric's refusal without repeating that refusal's text, which names --force.
 type siblingDirtyRefusal struct {
 	msg string
 	err error
@@ -451,23 +492,26 @@ func (r siblingDirtyRefusal) Error() string { return r.msg }
 
 func (r siblingDirtyRefusal) Unwrap() error { return r.err }
 
-// maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
-// cannot push an unbounded string into a status file committed onto prime's own pair.
+// maxChildOutputInError caps the child output folded into a spawn error.
+// It keeps a misbehaving child from pushing an unbounded string into a status file committed onto prime's own pair.
 const maxChildOutputInError = 2000
 
 // battenProgram is the program name batten signs its notices to the orch with.
 const battenProgram = "BATTEN"
 
-// childSpawnError folds a failed child bootstrap's own output into runErr, so the returned error
-// carries the child's diagnosis rather than only its exit status.
-// It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
-// output past maxChildOutputInError with an explicit marker.
-// An output carrying the not-parked refusal (kind shedrun.StartNotParkedKind) also wraps battenshed.ErrChildNotParked, and one carrying the busy-pane refusal (kind shedrun.StartDriverBusyKind) also wraps battenshed.ErrChildDriverBusy, so InnerRun retries rather than failing.
-// One carrying a held-run-lock refusal (kind shedengine.ShedBusyKind) also wraps battenshed.ErrChildRunBusy.
-// One carrying the owned-elsewhere refusal (kind shedrun.StartOwnedElsewhereKind) also wraps a *battenshed.ChildOwnedElsewhereError naming the owner the refusal carries, so InnerRun pauses instead of failing the spawn.
+// childSpawnError folds a failed child bootstrap's own output into runErr,
+// so the returned error carries the child's diagnosis rather than only its exit status.
+// It returns nil for a nil runErr and runErr unchanged when the child said nothing.
+// It truncates output past maxChildOutputInError with an explicit marker.
+// An output carrying the not-parked refusal (kind shedrun.StartNotParkedKind) also wraps battenshed.ErrChildNotParked.
+// An output carrying the busy-pane refusal (kind shedrun.StartDriverBusyKind) also wraps battenshed.ErrChildDriverBusy.
+// The caller retries on those two rather than failing.
+// An output carrying a held-run-lock refusal (kind shedengine.ShedBusyKind) also wraps battenshed.ErrChildRunBusy.
+// The owned-elsewhere refusal (kind shedrun.StartOwnedElsewhereKind) also wraps a *battenshed.ChildOwnedElsewhereError.
+// The error names the owner the refusal carries, so the caller pauses rather than failing the spawn.
 //
-// The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
-// rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
+// The cut at maxChildOutputInError lands on a rune boundary only by chance.
+// strings.ToValidUTF8 drops the partial rune the cut leaves dangling, so the error text never holds invalid UTF-8.
 func childSpawnError(runErr error, childOutput string) error {
 	if runErr == nil {
 		return nil
@@ -493,7 +537,8 @@ func childSpawnError(runErr error, childOutput string) error {
 	return fmt.Errorf("%w: %s", runErr, trimmed)
 }
 
-// childRefusalOwner returns the "owner" of the first line of a child bootstrap's output that is a refusal envelope carrying one, or "" when none is.
+// childRefusalOwner returns the "owner" of the first refusal envelope in a child bootstrap's output that carries one.
+// It returns "" when no line does.
 func childRefusalOwner(childOutput string) string {
 	for line := range strings.Lines(childOutput) {
 		var envelope struct {
@@ -510,8 +555,10 @@ func childRefusalOwner(childOutput string) string {
 	return ""
 }
 
-// ownerVerdictOf maps a run-scope origin report onto the owner verdict InnerRun reads.
-// An unreachable report is Unreachable, the slug's owned-elsewhere entry is Elsewhere with its owner and adopt subject, and anything else, a report without the slug included, is owned here.
+// ownerVerdictOf maps a run-scope origin report onto the owner verdict for slug.
+// An unreachable report is Unreachable,
+// and the slug's owned-elsewhere entry is Elsewhere with its owner and adopt subject.
+// Any other report, one without the slug included, is owned here.
 func ownerVerdictOf(report fabricengine.OriginReport, slug string) battenshed.OwnerVerdict {
 	if report.Unreachable {
 		return battenshed.OwnerVerdict{Unreachable: true}
@@ -524,7 +571,8 @@ func ownerVerdictOf(report fabricengine.OriginReport, slug string) battenshed.Ow
 	return battenshed.OwnerVerdict{}
 }
 
-// childRefusalKind returns the "kind" of the first line of a child bootstrap's output that is a refusal envelope carrying one, or "" when none is.
+// childRefusalKind returns the "kind" of the first refusal envelope in a child bootstrap's output that carries one.
+// It returns "" when no line does.
 // Each output line is tried as an envelope, since the child's stdout and stderr share one buffer.
 func childRefusalKind(childOutput string) string {
 	for line := range strings.Lines(childOutput) {
@@ -542,7 +590,9 @@ func childRefusalKind(childOutput string) string {
 	return ""
 }
 
-// boardRecipe returns the recipe Seed-Child seeds for task: pawl for a project entry, otherwise the entry's own recipe field or, when it is empty, board's default_recipe.
+// boardRecipe returns the recipe that Seed-Child seeds for task.
+// A project entry gets pawl.
+// Any other entry gets its own recipe field, or board's default_recipe when that field is empty.
 func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 	if task.Kind == boardengine.KindProject {
 		return shedrun.RecipePawl
@@ -550,25 +600,26 @@ func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 	return board.RecipeOf(task)
 }
 
-// childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
-// the recipes `lym loom start` serves.
+// childRecipeSupported reports whether a task worktree's bootstrap verb can run recipe as the child's own run.
+// The admitted recipes are the ones `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
 	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler || recipe == shedrun.RecipeRaddle
 }
 
-// unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
+// unsupportedChildRecipeRefusal returns the refusal for a recipe that a task worktree's bootstrap verb cannot run.
 // It wraps battenshed.ErrUnsupportedChildRecipe and names the admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
 	return fmt.Errorf("%w: only %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipePawl, recipe)
 }
 
-// childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
-// childLocation.
+// childSeedParams returns the params of a child's seed.
+// For a recipe that childRecipeSupported accepts, it carries params.parent, taken from the pair's recorded origin;
+// for a beam that is the beam's parent branch.
+// An absent or empty recorded parent yields no param,
+// so the bootstrap's own "pass --parent once" refusal is the one an operator sees.
 //
-// shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
-// child seeded without a param its own bootstrap writes makes that bootstrap refuse.
-// Params are per-recipe: tapestry, motif, darn, sampler, raddle and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
-// An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
+// shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params,
+// so a child seeded without a param its own bootstrap writes makes that bootstrap refuse.
 func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]string, error) {
 	if !childRecipeSupported(recipe) {
 		return nil, nil
@@ -583,14 +634,16 @@ func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]
 	return map[string]string{"parent": origin.ParentBranch}, nil
 }
 
-// childSeedFor builds the seed written into the task worktree: the given recipe, driver and params.
-// It records no parent: the pair's parent is resolved from fabric's origin record at use.
+// childSeedFor builds the seed written into the task worktree from the given recipe, driver and params.
+// It records no parent: the pair's parent is resolved from fabric's origin record when the seed is used.
 func childSeedFor(recipe, driver string, params map[string]string) shedrun.Seed {
 	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}
 }
 
-// noticesReachDriversParent reports whether this batten's notices have a destination that is also the task worktree driver's parent, and that destination records an orch strand.
-// The task worktree's driver messages the nearest live orch from the pair's recorded parent, and batten's notices take the walk from the same pair, so the two destinations agree whenever the pair is present;
+// noticesReachDriversParent reports whether batten's notices reach the task worktree driver's parent.
+// It is true only when that destination records an orch strand.
+// The task worktree's driver messages the nearest live orch from the pair's recorded parent.
+// Batten's notices take the walk from the same pair, so the two destinations agree whenever the pair is present;
 // a driver and batten under a live beam orch both reach it.
 func noticesReachDriversParent(prime, taskLocation *lymcwd.Location) (bool, error) {
 	return runParentRecorded(prime, taskLocation.WorktreeName)
@@ -605,7 +658,8 @@ func battenHistoryLen(location *lymcwd.Location, slug string) (int, error) {
 	return len(status.History), nil
 }
 
-// rowNotices returns the notice seams of the rows after Run-Shed: notices go to the nearest live orch above the run, as Run-Shed's do, and an episode is told apart by batten's own history length.
+// rowNotices returns the notice seams of the rows after Run-Shed: notices go to the nearest live orch above the run,
+// and an episode is told apart by batten's own history length.
 func rowNotices(location *lymcwd.Location, slug string) battenshed.RowNoticeDeps {
 	return battenshed.RowNoticeDeps{
 		Notify: func(ctx context.Context, line string) (bool, error) {
@@ -616,7 +670,9 @@ func rowNotices(location *lymcwd.Location, slug string) battenshed.RowNoticeDeps
 	}
 }
 
-// readStopReport reads the driver park marker of the task worktree's run, whose content is the path of the stop report the driver parked on, and the time the marker was written.
+// readStopReport reads the driver park marker of the task worktree's run.
+// The marker's content is the path of the stop report the driver parked on,
+// and its modification time is the time the marker was written.
 // An absent marker reports found == false.
 func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, found bool, err error) {
 	marker := shedrun.ParkMarker(taskLocation, shedrun.SelfRunID)
@@ -634,9 +690,15 @@ func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, f
 	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
 }
 
-// readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto dobbyengine's neutral type,
-// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at a row of loomshed.OperatorWaitRows, a live gate runner or a fixer process of the pair younger than its timeout, or a shuttle wait that is not a held turn end.
-// A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
+// readAgentActivity reads the running agent runs of the task worktree.
+// Those include runs whose waiting process is gone.
+// It reads them through the shuttle config and its registered engines, and maps them onto dobbyengine's neutral type.
+// It also reports whether a Go-side wait is live.
+// A running verify, a parent lock wait, or a child at a row of loomshed.OperatorWaitRows is such a wait.
+// A live gate runner or a fixer process of the pair younger than its timeout counts as well.
+// A shuttle wait that is not a held turn end counts too.
+// A held run is idle at its turn end,
+// so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentRun, waitLive bool, err error) {
@@ -701,9 +763,12 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentR
 	return runs, false, nil
 }
 
-// gateProcessLive reports whether the pair of taskLocation has a live registered gate process: a detached `lym gate` runner, or the pane process of a cold fixer strand.
-// A fixer works in its own session while the writer's strand sits idle, and a gate run shows no agent activity at all, so either one is the run at work.
-// A fixer record counts only while it is younger than the fixer's own timeout at now, since a fixer that ended without its strand being removed leaves a pane process that outlives its work.
+// gateProcessLive reports whether the pair of taskLocation has a live registered gate process:
+// a detached `lym gate` runner, or the pane process of a cold fixer strand.
+// A fixer works in its own session while the writer's strand sits idle,
+// and a gate run shows no agent activity at all, so either one is the run at work.
+// A fixer record counts only while it is younger than the fixer's own timeout at now.
+// The age bound matters: a fixer that ended without its strand removed leaves a pane process outliving its work.
 func gateProcessLive(taskLocation *lymcwd.Location, now time.Time) (bool, error) {
 	records, err := runproc.List(fabricengine.RunProcDir(taskLocation.HubPath), taskLocation.WorktreeName)
 	if err != nil {
@@ -727,7 +792,8 @@ func gateProcessLive(taskLocation *lymcwd.Location, now time.Time) (bool, error)
 	return false, nil
 }
 
-// fixerTimeout returns how long a fixer under role may run: webster's recovery timeout for a verify fixer, the gate config's fixer timeout for any other.
+// fixerTimeout returns how long a fixer under role may run:
+// webster's recovery timeout for a verify fixer, the gate config's fixer timeout for any other.
 // It reports bounded == false when the gate config is absent, which leaves a gate fixer with no known bound.
 func fixerTimeout(taskLocation *lymcwd.Location, role string) (timeout time.Duration, bounded bool, err error) {
 	dirs := fabricengine.ConfigDirs(taskLocation)
@@ -748,7 +814,7 @@ func fixerTimeout(taskLocation *lymcwd.Location, role string) (timeout time.Dura
 	return cfg.FixerTimeout(), true, nil
 }
 
-// readNewestAgentEnd reads when the task worktree's newest ended shuttle run ended, through the shuttle config, zero when none has.
+// readNewestAgentEnd reads when the task worktree's newest ended shuttle run ended, or the zero time when none has.
 func readNewestAgentEnd(taskLocation *lymcwd.Location) (time.Time, error) {
 	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
@@ -757,7 +823,8 @@ func readNewestAgentEnd(taskLocation *lymcwd.Location) (time.Time, error) {
 	return shuttleengine.ReadNewestRunEnd(cfg, taskLocation.AnchorPath())
 }
 
-// childAtWaitingRow reports whether the child's own status file reads running at a row of loomshed.OperatorWaitRows, which wait with no agent running.
+// childAtWaitingRow reports whether the child's own status file reads running at a row of loomshed.OperatorWaitRows.
+// Those rows wait with no agent running.
 // The wait is live for as long as the status reads running at such a row.
 // An unreadable child status reads as no such wait, as an absent one does.
 func childAtWaitingRow(taskLocation *lymcwd.Location) bool {
@@ -782,7 +849,7 @@ func childAtWaitingRow(taskLocation *lymcwd.Location) bool {
 }
 
 // readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.
-// The states are only logged beside dobby's run notices, so a failed read is logged at Warn once and yields none.
+// The states are only logged beside run notices, so a failed read is logged at Warn once and yields none.
 func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines shuttleengine.EngineSet) map[string]shuttleengine.SessionState {
 	readings, err := shuttleengine.ReadSessionStates(cfg, anchor, engines, time.Now())
 	if err != nil {
@@ -796,8 +863,10 @@ func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines 
 	return states
 }
 
-// markBattenWatched writes the batten-watched marker of the task worktree's run while noticesReachDriversParent holds, and removes it otherwise.
-// The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name, so a Go driver can tell whether this batten has died.
+// markBattenWatched writes the batten-watched marker of the task worktree's run while notices reach the drivers' parent.
+// It removes the marker otherwise.
+// The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name,
+// so a Go driver can tell whether this batten has died.
 // It reports whether the marker is held.
 func markBattenWatched(prime, taskLocation *lymcwd.Location, scratchDir, producer string, pid int) (bool, error) {
 	watched, err := noticesReachDriversParent(prime, taskLocation)
@@ -829,7 +898,8 @@ func dobbyReading(prime *lymcwd.Location, slug string) (pid int, sleeps []pauser
 	return dobbyStateReading(geometry.StatePath, func() (bool, error) { return dobbyengine.Live(geometry) })
 }
 
-// dobbyStateReading is dobbyReading over the state record at statePath and a liveness probe of its dobby.
+// dobbyStateReading reads a dobby's pid and sleeps from its state record at statePath.
+// The liveness of the dobby is probed with live.
 func dobbyStateReading(statePath string, live func() (bool, error)) (int, []pauserecord.Interval, error) {
 	running, err := live()
 	if err != nil {
@@ -848,14 +918,18 @@ func dobbyStateReading(statePath string, live func() (bool, error)) (int, []paus
 	return record.PID, record.Sleeps, nil
 }
 
-// awakeReading is the clock every pass shares: the wall time since the Unix epoch less the machine sleeps the scheduling dobby recorded.
-// It stops while the machine sleeps and holds one origin across processes, so the idle watches the memory record restores keep measuring awake time.
+// awakeReading is the clock every pass shares:
+// the wall time since the Unix epoch less the machine sleeps the scheduling dobby recorded.
+// It stops while the machine sleeps and holds one origin across processes,
+// so the idle watches the memory record restores keep measuring awake time.
 func awakeReading(now time.Time, sleeps []pauserecord.Interval) time.Duration {
 	return time.Duration(now.UnixNano()) - pauserecord.Excluded(sleeps, time.Unix(0, 0), now)
 }
 
 // syncWatchedMarker makes the marker at path match watched: absent when not watched, and holding content when watched.
-// A marker already holding content is not rewritten, an absent marker is fine to remove, and a write is atomic so a driver's render never reads a torn marker.
+// A marker already holding content is not rewritten.
+// Removing an absent marker is not an error.
+// A write is atomic, so a driver's render never reads a torn marker.
 // It reports whether the marker is held.
 func syncWatchedMarker(marker string, watched bool, content []byte) (bool, error) {
 	if !watched {
@@ -883,7 +957,7 @@ func readTacklerAsArbiterMarker(path string) (loomengine.ArbiterMarker, bool, er
 }
 
 // dirtyPathsOutsideRunRecords lists the task pair's uncommitted or untracked paths outside the run's own records directories.
-// Both sides join onto the task worktree, since the records side reaches it through the `_lym` junction.
+// Each path is joined onto the task worktree, since the records side reaches it through the `_lym` junction.
 func dirtyPathsOutsideRunRecords(taskLocation *lymcwd.Location) ([]string, error) {
 	fab, err := fabricengine.Open(taskLocation)
 	if err != nil {
@@ -902,7 +976,8 @@ func dirtyPathsOutsideRunRecords(taskLocation *lymcwd.Location) ([]string, error
 
 // commandDeps returns the Env.Command facts and runner of the Open-Window, Seed-IDE and Open-IDE rows.
 // The commands run in the prime, and {task_dir} is the task worktree's anchor path, located when a command holds it.
-// {title} is the slug opened with the task's board handle, `T4: <slug>`, read from the board when a command holds it, or the slug alone when the board names no handle.
+// {title} is the slug opened with the task's board handle, `T4: <slug>`, read from the board when a command holds it.
+// When the board names no handle, the title is the slug alone.
 // Each command's output goes to a command-<row>.log under the run's scratch directory.
 func (c *battenCLI) commandDeps(location *lymcwd.Location, slug, executable string, locateTask func() (*lymcwd.Location, error)) shedadapters.CommandDeps {
 	return shedadapters.CommandDeps{
@@ -936,10 +1011,9 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
 		Acquire: func() (release func() error, ok bool, err error) {
-			// The prime lock's own directory first -- it is the one being locked in -- then the
-			// per-slug scratch directory, where the producers holding this lock write their
-			// stuck-reason files. The two shedrun constructors state no relationship, so neither
-			// may be left to the other's MkdirAll.
+			// The prime lock's own directory is created first, since it is the lock being acquired.
+			// The per-slug scratch directory comes next: the producers holding this lock write their stuck-reason files there.
+			// The two shedrun constructors state no relationship, so neither may be left to the other's MkdirAll.
 			if err := os.MkdirAll(filepath.Dir(primeRunLockPath), 0o755); err != nil {
 				return nil, false, err
 			}
@@ -1000,18 +1074,20 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
-		// The closure takes the prime lock through holdPrime only where Add reads the fork point and writes the hub's worktree registry, and where a held member's pair is removed.
-		// The claim, the config reconcile and the push run outside it, and the origin probes start before it, so a create waiting on the claim or the push holds up no other run's create.
+		// The closure takes holdPrime only for the fork-point read, the registry write and a held pair's removal.
+		// Claim, reconcile and push run outside it, and origin probes start before it; a waiting create holds up no other run.
 		CreateWorktree: func(ctx context.Context, holdPrime battenshed.HoldPrimeLock) error {
-			// The claim comes first, so the run lock on the board entry starts before the pair exists and survives this row failing.
-			// It records this machine as the entry's owner in the same commit, so a failed write or push refuses the row and the stopped run resumes with the same verb.
+			// The claim comes first,
+			// so the run lock on the board entry starts before the pair exists and survives this row failing.
+			// It records this machine as the entry's owner in the same commit,
+			// so a failed write or push refuses the row and the stopped run resumes with the same verb.
 			// Its push stays synchronous: it is what tells another machine this one owns the entry.
 			if err := c.claimBoardEntry(slug); err != nil {
 				return err
 			}
 
-			// The already-complete probe before Add, so the row is idempotent against its own
-			// post-condition -- see taskWorktreeComplete for the crash window this closes.
+			// The already-complete probe runs before Add,
+			// so a row re-entered after a crash is idempotent against its own post-condition.
 			present, complete, incompleteReason, err := taskWorktreeComplete(location, slug)
 			if err != nil {
 				return err
@@ -1033,9 +1109,9 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
-				// comment. Add refuses an existing worktree directory the same way it refuses a
-				// leftover branch, so the remedy is a cleanup followed by a resume.
+				// A worktree exists but Add never finished it.
+				// Add refuses an existing worktree directory the same way it refuses a leftover branch,
+				// so the remedy is a cleanup followed by a resume.
 				return fmt.Errorf(
 					"the task worktree for %q exists but %s; %s, then resume this run to create it fresh",
 					slug, incompleteReason, incompletePairRemedy(slug, branch),
@@ -1043,12 +1119,14 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			}
 
 			top := fabricengine.NewTopology(cfg)
-			// A member of a beam forks from the beam's pair, whichever worktree started the run; every other task forks from the prime.
+			// A member of a beam forks from the beam's pair, whichever worktree started the run;
+			// every other task forks from the prime.
 			parent, err := beamForkParent(location, slug, func(beam string) (bool, error) { return top.TaskBranchOnOrigin(location, beam) })
 			if err != nil {
 				return err
 			}
-			// A beam project's pair takes the anchor its first pass recorded in the seed, and is unmarked: the pawl run's Beam-Up marks it.
+			// A beam project's pair takes the anchor its first pass recorded in the seed.
+			// The pair stays unmarked until the pawl run's Beam-Up marks it.
 			var anchor string
 			project, err := c.entryIsProject()
 			if err != nil {
@@ -1064,7 +1142,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			if err != nil {
 				return createRefusal(err, slug, cfg.BranchPrefix+slug, func() bool { return fabricengine.PairWorktreeStands(location, slug) })
 			}
-			// The beam's accept may have written its hold while the pair was being made, so the member's beam is read again before anything more is done to the pair.
+			// The beam's accept may have written its hold while the pair was being made,
+			// so the member's beam is read again before anything more is done to the pair.
 			if err := c.refuseHeldMember(ctx, location, slug, holdPrime); err != nil {
 				return err
 			}
@@ -1080,11 +1159,16 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			}
 			return nil
 		},
-		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
-		// shedengine persists the row's transition only after the producer returns, so a process killed right after Remove succeeded re-enters this row with no pair on disk.
-		// EndSession's refusal probe then reports ErrPairNotFound, which Shutdown takes as nothing left to shut down, and RemovePair reports it again as done.
-		// The composite finishes a half-removed pair itself -- sibling worktree, launcher entries, both branches -- so no such state is refused by name here.
-		// EndSession ends the session by name when the task worktree is gone, and runs the refusal probe, so a refusal reaches the row before Remove and leaves the pair in place.
+		// Both teardown halves run through the pair-teardown composite,
+		// and both are idempotent against their shared post-condition: the pair is gone.
+		// shedengine persists the row's transition only after the producer returns,
+		// so a process killed right after Remove succeeds re-enters the row with no pair on disk.
+		// EndSession's refusal probe then reports ErrPairNotFound, which Shutdown takes as nothing left to shut down.
+		// RemovePair reports it again as done.
+		// The composite finishes a half-removed pair itself (sibling worktree, launcher entries, both branches),
+		// so no such state is refused by name here.
+		// EndSession ends the session by name when the task worktree is gone, and runs the refusal probe,
+		// so a refusal reaches the row before Remove and leaves the pair in place.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
 				td, err := pairteardown.New(location)
@@ -1116,9 +1200,11 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			Notify: func(ctx context.Context, line string) (bool, error) {
 				return notifyRunParent(location, slug, line)
 			},
-			// OrchStrandRecorded reads whether that orch records a strand, the same fact the watched marker is kept on.
+			// OrchStrandRecorded reads whether the nearest live orch above the run records a strand for this run.
+			// The same fact keeps the run marked as watched.
 			OrchStrandRecorded: func() (bool, error) { return runParentRecorded(location, slug) },
-			// StopReport reads the driver's park marker in the task worktree: the stop report path it holds and the time it was written.
+			// StopReport reads the driver's park marker in the task worktree.
+			// It returns the stop report path the marker holds and the time it was written.
 			StopReport: func() (string, time.Time, bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -1136,7 +1222,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			},
 			MarkWatched: markWatched,
 			// Awake is the wall clock less those sleeps, so every pass measures awake time from the same origin.
-			// An unreadable record excludes none, as the Sleeps seam's own error does.
+			// An unreadable record excludes none, and the error is logged.
 			Awake: func() time.Duration {
 				_, sleeps, err := dobbyReading(location, slug)
 				if err != nil {
@@ -1180,9 +1266,11 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
-			// HandBack marks a blocked landing halt, decision halt or tapestry, darn or sampler escalate halt, so the binary re-step leaves it alone.
+			// HandBack marks a blocked landing halt, decision halt or tapestry, darn or sampler escalate halt,
+			// so the binary re-step leaves it alone.
 			HandBack: restepSkips,
-			// PauseRequested reads batten's own status file, the one `lym batten pause` writes, so the in-call wait notices a pause within one check.
+			// PauseRequested reads batten's own status file, the one `lym batten pause` writes,
+			// so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
 			// Pause reads the hub's pause record at the prime's geometry, for the slug this run drives.
 			Pause: func() (pauserecord.Coverage, error) {
@@ -1199,8 +1287,9 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return taskLocation.WorktreePath(), nil
 			},
-			// ReadDecision and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
-			// No verb writes an approval or rejection record any more, so an awaiting child is never resumed on an operator decision.
+			// DriverAlive resolves the task worktree at each call, never at wiring time.
+			// ReadDecision reports no decision: no verb writes an approval or rejection record,
+			// so an awaiting child is never resumed on an operator decision.
 			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
 				return battenshed.ChildDecision{}, false, nil
 			},
@@ -1244,7 +1333,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					},
 					readReedDirectory)
 			},
-			// TacklerInFlight reads the task worktree's in-flight tackler marker as the arbiter's is read: against the same reed directory, so a live row carrying the tackler's strand reads alive.
+			// TacklerInFlight reads the task worktree's in-flight tackler marker against the pair's reed directory.
+			// A live row carrying the tackler's strand reads alive.
 			TacklerInFlight: func(ctx context.Context) (battenshed.ChildArbiter, bool, error) {
 				present, err := taskWorktreePresent(location, slug)
 				if err != nil {
@@ -1260,7 +1350,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					},
 					readReedDirectory)
 			},
-			// ReviveStrands ends the pair's dead arbiter strands, then resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			// ReviveStrands ends the pair's dead arbiter strands, then resumes the task worktree's reed session.
+			// The resume relaunches the dead driver strand and every other non-live strand of the pair.
 			// A dead arbiter is stopped rather than relaunched: its attempt reads as hand-on.
 			ReviveStrands: func(ctx context.Context) error {
 				taskLocation, err := locateTask()
@@ -1315,7 +1406,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return runLockHeld(shedrun.RunLock(taskLocation, shedrun.SelfRunID))
 			},
-			// ChildDriverLockHeld probes the Go driver's lock, which the driver holds for life while the run lock is free between its steps.
+			// ChildDriverLockHeld probes the Go driver's lock, which the driver holds for life.
+			// The run lock is free between the child's steps.
 			ChildDriverLockHeld: func() (bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -1323,7 +1415,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return runLockHeld(shedrun.DriverLock(taskLocation, shedrun.SelfRunID))
 			},
-			// ChildBuildChanged reads the lym on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
+			// ChildBuildChanged compares the lym on disk with the build the child's last step recorded.
+			// A deploy replaces that lym under this running batten.
 			ChildBuildChanged: func() (string, bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -1343,10 +1436,9 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return dirtyPathsOutsideRunRecords(taskLocation)
 			},
-			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
-			// caller reads through that lock next and nothing else on the Run-Shed path creates
-			// it: the child's status file is durable while its lock is not. This mirrors
-			// battenPreRun's own MkdirAll for prime's status lock (arm.go).
+			// ResolveStatus also creates the child's ephemeral status-lock directory.
+			// The child's status file is durable, but its lock is not.
+			// The caller reads through that lock next, and nothing else on the Run-Shed path creates the directory.
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -1368,11 +1460,10 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				// The bootstrap verb of tapestry and darn alike, not a per-recipe dispatch: the WriteSeed seam below admits
-				// no other child recipe, so the two stay consistent by construction.
-				// Dir is the task worktree's AnchorPath(), never its bare worktree root: the resolver
-				// gates a child's working directory to the anchor, and a bare root fails on any
-				// subpath-anchored hub.
+				// The bootstrap verb of tapestry and darn alike, not a per-recipe dispatch:
+				// the WriteSeed seam below admits no other child recipe, so the two stay consistent by construction.
+				// Dir is the task worktree's AnchorPath(), never its bare worktree root.
+				// The resolver gates a child's working directory to the anchor, and a bare root fails on any subpath-anchored hub.
 				cmd := exec.Command(exe, "loom", "start", "--no-attach")
 				cmd.Dir = taskLocation.AnchorPath()
 				// Captured rather than discarded: the child's own envelope is the only
@@ -1390,7 +1481,9 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
-			// ReadBoardType opens the hub's Board with its board.yaml fresh on every Call and returns the recipe boardRecipe answers for the entry -- never a value captured at wiring time, so a recipe or default_recipe corrected after prime was seeded is still honoured.
+			// ReadBoardType opens the hub's Board with its board.yaml fresh on every call and returns the recipe that boardRecipe gives the entry.
+			// It never returns a value captured at wiring time,
+			// so a recipe or default_recipe corrected after prime was seeded is still honoured.
 			ReadBoardType: func(ctx context.Context) (string, error) {
 				b, err := boardengine.OpenHub(location.HubPath)
 				if err != nil {
@@ -1405,8 +1498,10 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return boardRecipe(b, task), nil
 			},
-			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the child recipe's resolved driver_kind (childDriverFrom).
-			// The kind is read from the task worktree's config layers, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.
+			// ChildDriver returns the "child_driver" param of prime's own seed when the operator typed one.
+			// Otherwise it returns the child recipe's resolved driver_kind.
+			// The kind is read from the task worktree's config layers.
+			// The seeding step calls this after it writes that worktree's local layer, so a driver_kind from the run settings is seen.
 			ChildDriver: func(recipe string) (string, error) {
 				seed, found, err := shedrun.ReadSeed(location, slug)
 				if err != nil {
@@ -1420,7 +1515,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return childDriverKind(fabricengine.ConfigDirs(taskLocation), recipe)
 				})
 			},
-			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's profile and run_settings.
+			// ReadRunSettings opens the Board fresh on every call and returns the task's profile and run_settings.
 			ReadRunSettings: func(ctx context.Context) (battenshed.RunSettings, error) {
 				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
 				task, found, err := b.GetTask(slug)
@@ -1432,8 +1527,10 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return battenshed.RunSettings{Profile: task.Profile, Settings: task.RunSettings}, nil
 			},
-			// PrepareRunSettings reads the named profile from the hub's profiles.yaml and lays the task's settings over it through configreg;
-			// an unknown profile or a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings so Seed-Child routes it to Stuck.
+			// PrepareRunSettings reads the named profile from the hub's profiles.yaml.
+			// It lays the task's settings over that profile through configreg.
+			// An unknown profile or a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings,
+			// so the seeding step routes it to Stuck.
 			PrepareRunSettings: func(settings battenshed.RunSettings) (map[string][]byte, error) {
 				return prepareRunSettings(configengine.Dirs{Board: fabricengine.BoltDir(location.HubPath)}, settings)
 			},
@@ -1467,25 +1564,24 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return removed, nil
 			},
-			// WriteSeed is the only place in the batten path that encodes a seed, per the
-			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe
-			// itself, wrapping an unknown name in battenshed.ErrUnknownRecipe and a known but
-			// unbootstrappable one in battenshed.ErrUnsupportedChildRecipe; a shedrun.WriteSeed
-			// failure wrapping shedrun.ErrDisagreeingSeed (a pre-existing child seed that disagrees
-			// with the one being written) is re-wrapped in battenshed.ErrDisagreeingChildSeed, this
-			// package's own spelling -- so seedChildProducer's own errors.Is checks route all three
-			// to Stuck rather than a hard error.
+			// WriteSeed is the only place in the batten path that encodes a seed.
+			// It validates recipe itself: an unknown name is wrapped in battenshed.ErrUnknownRecipe,
+			// and a known recipe that cannot be bootstrapped is wrapped in battenshed.ErrUnsupportedChildRecipe.
+			// A shedrun.ErrDisagreeingSeed from shedrun.WriteSeed means a pre-existing child seed disagrees with this one.
+			// Such an error is re-wrapped as battenshed.ErrDisagreeingChildSeed.
+			// Callers that match these errors route all three to the Stuck state rather than a hard error.
 			//
-			// Params come from childSeedParams: a seed missing one the child's own bootstrap
-			// writes is not a smaller seed, it is a seed that bootstrap refuses.
+			// The params come from childSeedParams.
+			// A seed missing a param that the child's own bootstrap writes is refused by that bootstrap,
+			// so the seed must carry them all.
 			WriteSeed: func(ctx context.Context, recipe, driver string) error {
 				if err := shedrun.ValidateRecipe(recipe); err != nil {
 					return fmt.Errorf("%w: %s", battenshed.ErrUnknownRecipe, err.Error())
 				}
-				// Refused here, ahead of any write, because Spawn above runs loom's bootstrap verb
-				// unconditionally: a child seeded with any other recipe would carry a committed,
-				// pushed seed that its own bootstrap then refuses as a disagreement, reported from
-				// inside the child as a shedrun fault rather than as this choice.
+				// Refused here, ahead of any write, because spawning the child runs loom's bootstrap verb unconditionally.
+				// A child seeded with any other recipe would carry a committed, pushed seed.
+				// Its own bootstrap then refuses that seed as a disagreement;
+				// the child reports it as a shedrun fault rather than as this choice.
 				if !childRecipeSupported(recipe) {
 					return unsupportedChildRecipeRefusal(recipe)
 				}
@@ -1503,12 +1599,12 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					}
 					return err
 				}
-				// Batten's own run directory keeps the child's recipe, which the next status commit carries, so a done run still tells a motif child once the pair is gone.
+				// Batten's own run directory keeps the child's recipe, which the next status commit carries.
+				// A done run then still identifies a motif child after its pair is gone.
 				return shedrun.WriteChildRecipe(location, slug, recipe)
 			},
-			// CommitSeed commits the child's own seed onto the child's own fabric pair -- a
-			// one-off write, distinct from CommitStatus below, which commits prime's own batten
-			// status onto prime's own pair on every non-no-op transition.
+			// CommitSeed commits the child's seed onto the child's fabric pair as a one-off write.
+			// Batten's status commits to prime's own pair are separate, and they run on every non-no-op transition.
 			CommitSeed: func(ctx context.Context) error {
 				childLocation, err := locateTask()
 				if err != nil {
@@ -1518,8 +1614,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				return err
 			},
 			MarkWatched: markWatched,
-			// PushSeed spawns the detached push of the child's own fabric pair, the same location CommitSeed just
-			// committed onto, and never waits on it: the child reads its seed locally.
+			// PushSeed spawns the detached push of the child's fabric pair and does not wait for it.
+			// The child reads its seed locally, so the push need not finish first.
 			PushSeed: func(ctx context.Context) error {
 				childLocation, err := locateTask()
 				if err != nil {
@@ -1530,7 +1626,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		},
 	}
 
-	// Each setting is read when its row is reached, over the task worktree located then, so a task's run_settings in that worktree's local layer switch a row per task.
+	// Each setting is read when its row is reached, over the task worktree located then,
+	// so a task's run_settings in that worktree's local layer switch a row for that task alone.
 	env.Setting = func(module, key string) (any, error) {
 		taskLocation, err := locateTask()
 		if err != nil {
@@ -1538,9 +1635,10 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		}
 		return configreg.SettingLookup(fabricengine.ConfigDirs(taskLocation))(module, key)
 	}
-	// A Command row's command is read from the template and the board default layer only, the layers deploy and darn's verify are read from.
+	// A Command row's command is read from the template and the board default layer only, unlike deploy and darn's verify.
 	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
-	// A recipe row's entry gate checks its setting operands at build, which needs no task worktree, and names the resume command in its evaluation errors.
+	// A recipe row's entry gate checks its setting operands at build.
+	// Build needs no task worktree, and the gate's evaluation errors name the resume command.
 	env.SettingKnown = configreg.CheckSettingKey
 	env.Resume = fmt.Sprintf("lym batten run %s", slug)
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
@@ -1567,9 +1665,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		StatusPath:     StatusFile(location, slug),
 		LockPath:       RunLock(location, slug),
 		StatusLockPath: StatusLock(location, slug),
-		// CommitStatus is now batten's own seam, committing prime's own batten status onto prime's
-		// own pair on every non-no-op transition: the status file is durable, fabric-synced state
-		// now (see paths.go), so nil is no longer right here.
+		// CommitStatus commits prime's batten status onto prime's fabric pair on every non-no-op transition.
+		// The status file is durable, fabric-synced state, so the seam is required here rather than nil.
 		CommitStatus: battenCommitStatusSeam(location, slug),
 
 		RunID:                   slug,
@@ -1582,7 +1679,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 
 // restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:
 // a landing halt or a decision halt for the orch, or a tapestry, darn or sampler fixer's escalate halt for the arbiter.
-// The halt is read over the status's current producer and error.
+// The halt is read from the status's current producer and error.
 func restepSkips(status shedengine.Status) bool {
 	if status.State != shedengine.StateBlocked {
 		return false

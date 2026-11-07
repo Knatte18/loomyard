@@ -1,4 +1,5 @@
-// reroute.go implements the reroute edge: a Stuck verdict that takes a row's OnReroute target, at most rerouteCap times before a human resumes the row.
+// reroute.go implements the reroute edge: a Stuck verdict moves the run to a row's `OnReroute` target.
+// A row reroutes at most `rerouteCap` times before a human resumes it.
 
 package shedengine
 
@@ -10,7 +11,8 @@ import (
 // rerouteCap is how many times a row reroutes since its latest Done or reroute-cap halt before the next reroute halts the run.
 const rerouteCap = 3
 
-// rerouteCount counts row's OutcomeReroute entries, newest first, back to row's latest Done entry or its latest RerouteCapped entry, whichever is later.
+// rerouteCount counts row's OutcomeReroute entries, newest first.
+// It stops at the first Done or RerouteCapped entry of row, walking back from the newest.
 func rerouteCount(history []HistoryEntry, row string) int {
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
@@ -36,9 +38,11 @@ func (s *Shed) rerouteCapWayForward() string {
 	return fmt.Sprintf("%s resumes the row and grants it %d more reroutes", runVerb("run", s.RunID), rerouteCap)
 }
 
-// rerouteStuck handles a Stuck verdict of def that carries OutputPointer.Reroute, st being the status read at the start of the step.
-// Below rerouteCap it moves the run to def.OnReroute with a reroute history entry and spends no bounce budget;
-// at the cap it blocks the run at def with a RerouteCapped entry, and a row with no OnReroute is a wiring fault that fails the run.
+// rerouteStuck handles a Stuck verdict of def that carries OutputPointer.Reroute.
+// st is the status read at the start of the step.
+// Below rerouteCap it moves the run to def.OnReroute with a reroute history entry and spends no bounce budget.
+// At the cap it blocks the run at def with a RerouteCapped entry.
+// A row with no OnReroute is a wiring fault that fails the run.
 func (s *Shed) rerouteStuck(st Status, def ProducerDef, output OutputPointer) (StepResult, error) {
 	at := nowRFC3339()
 	if def.OnReroute == "" {

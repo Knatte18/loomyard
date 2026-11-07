@@ -1,6 +1,9 @@
-// replay.go — FabricReplay, the board's Bolt replayer and run ledger: the by-entry merge of a local board commit onto origin's board.
+// replay.go implements FabricReplay, the board's Bolt replayer and run ledger:
+// the by-entry merge of a local board commit onto origin's board.
 //
-// It is the board's implementation of the registry fabricengine declares for a records replay: a commit's entry-level changes are re-applied one by one onto the board checked out at origin's tip, each through the board's own write checks, so a change only one side made never conflicts.
+// It is the board's implementation of the registry fabricengine declares for a records replay.
+// A commit's entry-level changes are re-applied one by one onto the board at origin's tip.
+// Each goes through the board's own write checks, so a change only one side made never conflicts.
 // The by-entry merge itself is internal/entrymerge's.
 
 package boardengine
@@ -24,8 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// The board's file names a replay recognises: the rendered overview and the per-entry design files.
-// The per-project overview files take projectFilePrefix, and the entry store boardFile.
+// File names a replay recognises at the Bolt root: the rendered overview and the per-entry design and decision files.
+// Per-project overviews use projectFilePrefix, and the entry store is boardFile.
 const (
 	overviewFile       = "README.md"
 	designFilePrefix   = "design-"
@@ -41,7 +44,8 @@ type FabricReplay struct{}
 // Name returns the replayer's registry name.
 func (FabricReplay) Name() string { return "board" }
 
-// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board: the entry store, a rendered overview file, a design file, a decision record or a file of a raddle store directory.
+// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board:
+// the entry store, a rendered overview file, a design file, a decision record or a file of a raddle store directory.
 func (FabricReplay) Claims(path string) bool {
 	if path == boardFile || isBoardOverview(path) {
 		return true
@@ -56,7 +60,9 @@ func (FabricReplay) Claims(path string) bool {
 	return store
 }
 
-// raddleStorePath reports whether path, a Bolt-root-relative slash path, is a file directly in a raddle store directory, `raddle/<sketch>/<name>` with no deeper segment, and returns the Sketch slug.
+// raddleStorePath reports whether path, a Bolt-root-relative slash path, is a file directly in a raddle store directory:
+// `raddle/<sketch>/<name>` with no deeper segment.
+// On success it returns the sketch slug.
 func raddleStorePath(path string) (sketch string, ok bool) {
 	rest, found := strings.CutPrefix(path, raddleStoreDirName+"/")
 	if !found {
@@ -137,7 +143,8 @@ func entriesBySlug(data []byte) (map[string]string, error) {
 
 // CommitRuns returns the slugs of the entries a commit of paths changes, sorted:
 // each entry of `board.json` that differs between before and after, and each design file's and decision record's entry.
-// before and after are the entry store as the commit's parent and the commit hold it, read only when paths names the entry store.
+// before and after are the entry store as the commit's parent and the commit holds it.
+// Both are read only when paths names the entry store.
 // An overview file names no entry.
 func (FabricReplay) CommitRuns(before, after []byte, paths []string) ([]string, error) {
 	slugs := map[string]bool{}
@@ -178,7 +185,8 @@ func (FabricReplay) CommitRuns(before, after []byte, paths []string) ([]string, 
 }
 
 // replayFields lists every entry field a replay merges, in the order a change reports them.
-// Id, handle, created, revised and unknown keys are not merged as fields: the id and handle are origin's, the dates follow the changes, and an unknown key stays as origin holds it.
+// Id, handle, created, revised and unknown keys are not merged as fields:
+// the id and handle are origin's, the dates follow the changes, and an unknown key stays as origin holds it.
 var replayFields = entrymerge.Table[Task]{
 	Key: func(t Task) string { return t.Slug },
 	Fields: []entrymerge.Field[Task]{
@@ -233,7 +241,8 @@ func statusText(status *string) string {
 	return *status
 }
 
-// parsePrimeOwner decodes the top-level prime_owner of a board.json read from a commit, empty for an absent or empty file or an absent key.
+// parsePrimeOwner decodes the top-level prime_owner of a board.json read from a commit.
+// An absent or empty file, or an absent key, yields the empty string.
 func parsePrimeOwner(data []byte) (string, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return "", nil
@@ -247,7 +256,8 @@ func parsePrimeOwner(data []byte) (string, error) {
 	return decoded.PrimeOwner, nil
 }
 
-// parseDraftStatus decodes the top-level draft_status of a board.json read from a commit, false for an absent or empty file or an absent key.
+// parseDraftStatus decodes the top-level draft_status of a board.json read from a commit.
+// An absent or empty file, or an absent key, yields false.
 func parseDraftStatus(data []byte) (bool, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return false, nil
@@ -291,7 +301,8 @@ func (FabricReplay) Runs(data []byte) ([]fabricengine.LedgerRun, error) {
 	return runs, nil
 }
 
-// replayRun is the state of one Apply: origin's store, the three sides of the commit and what has been applied or set aside so far.
+// replayRun is the state of one replay: origin's store, the three sides of the commit;
+// and what has been applied or set aside so far.
 type replayRun struct {
 	store *Store
 	// origin is the entries as origin's tip holds them, the baseline the run lock judges each change's net effect against.
@@ -304,16 +315,28 @@ type replayRun struct {
 	applied  bool
 }
 
-// Apply re-applies the request's commit onto the board directory by entry, design file, decision record and raddle store file, reading the entry store, the design files, the decision records and the store files out of its files by path, and reports what it kept and what it set aside.
-// A decision record the commit writes for an entry origin does not hold is reported lost and not written; every other record file lands by the design-file rule.
-// A raddle store file lands by the same rule, unless the commit's store.json of its directory records as filed an entry whose add was refused or lost:
-// the directory's files are then all set aside and reported refused, naming the Sketch and that its staged store and part records stay in the raddle run's own committed `_lym/raddle/` records, so origin never holds a done marker without the entries it marks.
-// It loads the board config from the request's directory and a store from origin's board.json there, and applies each change of the commit against its parent on its own, against the board as the kept changes before it left it.
+// Apply re-applies the request's commit onto the board directory:
+// its entries, design files, decision records and raddle store files.
+// It takes each file's content from the request by path, and reports what it kept and what it set aside.
+// A decision record the commit writes for an entry origin does not hold is reported lost and not written;
+// every other record file lands by the design-file rule.
+// A raddle store file lands by the same rule;
+// unless the commit's store.json for its directory records as filed an entry whose add was refused or lost.
+// The directory's files are then all set aside and reported refused, naming the decision record.
+// Its staged store and part records stay in the raddle run's own committed `_lym/raddle/` records;
+// so origin never holds a done marker without the entries it marks.
+// It loads the board config from the request's directory, and a store from origin's board.json there.
+// It applies each change against its parent on its own, on the board as earlier kept changes left it.
 // The hub's prime_owner record replays like an entry field, reported lost under the entry name prime.
-// Where both sides changed the same field of an entry or the same design file since the merge base, or the change touches an entry origin removed, origin's side is kept for that change and it is reported lost.
-// A change the board's own checks refuse, the run lock included, is reported refused and so is a later change that depends on an entry a refused change added; the rest of the commit still lands.
-// An added entry takes a handle free on origin's board, and a changed entry keeps origin's handle unless its letter changed.
-// It saves board.json and re-renders the board's output files when anything was applied, and writes nothing otherwise.
+// Where both sides changed the same field of an entry or the same design file since the merge base,
+// or the change touches an entry origin removed, origin's side is kept for that change and it is reported lost.
+// A change the board's own checks refuse, the run lock included, is reported refused.
+// So is a later change that depends on an entry a refused change added.
+// The rest of the commit still lands.
+// An added entry takes a handle free on origin's board,
+// and a changed entry keeps origin's handle unless its letter changed.
+// It saves board.json and re-renders the board's output files when anything was applied;
+// and writes nothing otherwise.
 // It takes no lock and spawns no sync, since its caller holds the board and push locks.
 func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
 	cfg, err := LoadConfig(configengine.Dirs{Board: req.Dir}, "board")
@@ -452,7 +475,8 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 }
 
 // storeSetAsideReason reports whether the files of one raddle store directory are set aside, with the reason.
-// They are when the commit's store.json among them records as filed an entry whose add was refused or lost, since the store is the done marker of the entries it names.
+// They are when the commit's store.json among them records as filed an entry whose add was refused or lost.
+// The store is the done marker of the entries it names, so origin never holds one without them.
 // A store.json that cannot be decoded sets them aside too, since origin would then refuse every slug-making write.
 func (r *replayRun) storeSetAsideReason(files []fabricengine.ReplayFile) (string, bool) {
 	for _, file := range files {
@@ -515,7 +539,7 @@ func (r *replayRun) addEntry(commit Task) {
 	}
 	incoming := cloneTasks([]Task{commit})[0]
 	incoming.ID = r.store.nextID()
-	// The local handle may already be origin's for another entry; Apply assigns one free on origin's board.
+	// The local handle may already be origin's for another entry, so origin's board assigns a free one.
 	incoming.Handle = ""
 	incoming.Labels, incoming.Issues, incoming.DependsOn = orEmpty(incoming.Labels), orEmpty(incoming.Issues), orEmpty(incoming.DependsOn)
 	if dep, refused := r.refusedDependency(incoming); refused {
@@ -537,8 +561,10 @@ func (r *replayRun) addEntry(commit Task) {
 	r.applied = true
 }
 
-// changePrimeOwner applies the commit's prime_owner change against its parent onto origin's record.
-// A record origin already holds is skipped, and one origin changed since the merge base to a third value stands and is reported lost.
+// changePrimeOwner applies the commit's prime_owner change, made against its parent, onto origin's record.
+// It does nothing when the commit left the field unchanged or origin already holds the commit's value.
+// When origin changed the field since the merge base to a third value, origin's value is kept,
+// and the change is reported lost.
 func (r *replayRun) changePrimeOwner(base, before, commit string) {
 	if before == commit {
 		return
@@ -556,7 +582,9 @@ func (r *replayRun) changePrimeOwner(base, before, commit string) {
 }
 
 // changeEntry applies the fields commit changed against before onto origin's entry as one change.
-// A field origin already holds is skipped, a field origin changed since the merge base to a third value is reported lost and origin's value kept, and an entry origin removed reports every change lost.
+// A field origin already holds is skipped.
+// A field origin changed since the merge base to a third value keeps origin's value and is reported lost.
+// When origin no longer holds the entry, the change is reported lost.
 func (r *replayRun) changeEntry(before, commit Task) {
 	if len(replayFields.Changed(before, commit)) == 0 {
 		return
@@ -606,7 +634,8 @@ func (r *replayRun) changeEntry(before, commit Task) {
 }
 
 // removeEntry removes before's entry from origin's board when origin still holds it unchanged.
-// An entry origin changed is kept and reported lost, and a removal the run lock or a dependent entry refuses is reported refused.
+// An entry origin changed is kept and reported lost.
+// A removal that a dependent entry or the run lock refuses is reported refused.
 func (r *replayRun) removeEntry(before Task) {
 	origin, index, held := r.originEntry(before.Slug)
 	if !held {
@@ -631,9 +660,11 @@ func (r *replayRun) removeEntry(before Task) {
 	r.applied = true
 }
 
-// applyDesignFile writes the commit's side of one design file, decision record or raddle store file into boardDir when origin's file is still as the merge base or the commit's parent had it, and reports whether it wrote.
-// It serves the three kinds of file; label, "design file", "decision record" or "raddle store file", is the kind a refusal, a loss or an error names.
-// A design file or decision record is a plain file name, and a store file a path directly in a store directory; a path of any other shape is refused.
+// applyDesignFile writes the commit's side of one design file, decision record or raddle store file into boardDir.
+// It writes when origin's file still matches the merge base or the commit's parent, and it reports whether it wrote.
+// label names the kind of file: "design file", "decision record" or "raddle store file".
+// A design file or decision record must be a plain file name, and a store file a path directly in a store directory.
+// A path of any other shape is refused.
 // A file origin changed too stays as origin holds it and is reported lost.
 func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.ReplayFile) (bool, error) {
 	_, inStore := raddleStorePath(file.Path)
@@ -661,7 +692,7 @@ func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.Re
 			return false, fmt.Errorf("remove %s: %w", label, err)
 		}
 		if inStore {
-			// Fails while the store directory still holds a file, which then stays.
+			// The directory's removal fails while it still holds a file, and that file stays.
 			_ = os.Remove(filepath.Dir(path))
 		}
 		return true, nil

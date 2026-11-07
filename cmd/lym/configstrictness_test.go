@@ -1,34 +1,29 @@
-// configstrictness_test.go enforces the Config Strictness Invariant: a pinned set of
-// module package directories call internal/configengine's degrading entry point,
-// configengine.LoadOrTemplate, and a second pinned set calls its strict entry point,
-// configengine.Load. Following cmd/lym/gitrepoboundary_test.go's pinned-set style,
-// this guard walks every non-test *.go file under the module root, collects the
-// package directory of every configengine.LoadOrTemplate( call site and every
-// configengine.Load( call site, and asserts each collected set equals its pinned set
-// exactly in both directions. See `PATTERN-config-layers`.
+// configstrictness_test.go enforces the Config Strictness Invariant.
+// A pinned set of module package directories calls configengine.LoadOrTemplate, the degrading entry point.
+// A second pinned set calls configengine.Load, the strict entry point.
+// The guard walks every non-test *.go file under the module root.
+// It collects the package directory of every call site of configengine.LoadOrTemplate( and of configengine.Load(.
+// It asserts that each collected set equals its pinned set exactly, in both directions.
+// See `PATTERN-config-layers`.
 //
-// internal/configengine itself is excluded from both collected sets as the
-// declaration site: its own Load and LoadOrTemplate function bodies never contain the
-// qualified configengine.Load( / configengine.LoadOrTemplate( call form, since a
-// package never qualifies a call to its own function with its own package name, but
-// the exclusion is applied explicitly rather than relied upon structurally.
+// internal/configengine is excluded from both collected sets as the declaration site.
+// Its own Load and LoadOrTemplate bodies never contain the qualified call forms.
+// A package never qualifies a call to its own function with its own package name,
+// but the exclusion is explicit and does not rely on that naming rule.
 //
-// The own-loader module, internal/modelspec, calls neither entry point at all:
-// it reads its layers through configengine.StackLayers and decodes them itself with its own absent-file fallback.
-// It is structurally invisible to this substring scan, so this guard makes no assertion about it one way or the other.
-// It is outside its subject by construction, not by exclusion.
+// internal/modelspec, the own-loader module, calls neither entry point.
+// It reads its layers through configengine.StackLayers and decodes them itself, with its own absent-file fallback.
+// The substring scan cannot see it, so this guard makes no assertion about it either way.
+// It is outside the guard's subject by construction, not by exclusion.
 //
-// This guard's own file is skipped as a _test.go file, so the literal
-// "configengine.Load(" and "configengine.LoadOrTemplate(" tokens it carries as scan
-// data above are harmless -- the same self-reference every other pinned-set guard in
-// this package documents about itself.
+// The scan skips _test.go files, so the literal call tokens in this file's comments are harmless.
 //
 // # The one blind spot this guard cannot see
 //
-// A substring scan cannot see a call reached through an alias (a local name bound to
-// configengine.Load or configengine.LoadOrTemplate) or a function value (the function
-// passed around and invoked indirectly). Such a call would not contain the literal
-// substring this guard matches on, and would pass undetected.
+// A substring scan cannot see a call reached through an alias or a function value.
+// An alias is a local name bound to configengine.Load or configengine.LoadOrTemplate.
+// A function value is one passed around and invoked indirectly.
+// Such a call does not contain the literal substring this guard matches on, so it passes undetected.
 package main
 
 import (
@@ -41,8 +36,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// configStrictnessDegradingSet is the pinned set of module-relative, slash-separated package directories that call configengine.LoadOrTemplate -- the degrading loading policy, where an absent _lym/ directory or absent config file resolves the caller's embedded template instead of erroring.
-// See `PATTERN-config-layers` for the membership rule: a module belongs here when it has, or is slated to have, a standalone entry point.
+// configStrictnessDegradingSet is the pinned set of package directories that call configengine.LoadOrTemplate.
+// Each entry is a module-relative, slash-separated path.
+// That is the degrading loading policy:
+// an absent _lym/ directory or absent config file resolves the caller's embedded template instead of erroring.
+// See `PATTERN-config-layers` for the membership rule:
+// a module belongs here when it has, or is slated to have, a standalone entry point.
 var configStrictnessDegradingSet = map[string]bool{
 	"internal/shuttleengine":              true,
 	"internal/shuttleengine/claudeengine": true,
@@ -66,8 +65,11 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/slackengine":                true,
 }
 
-// configStrictnessStrictSet is the pinned set of module-relative, slash-separated package directories that call configengine.Load -- the strict loading policy, where an absent _lym/ directory or absent config file is an error.
-// See `PATTERN-config-layers`: a module stays here when it only ever runs inside a hub, where an absent config means the hub is broken.
+// configStrictnessStrictSet is the pinned set of package directories that call configengine.Load.
+// That is the strict loading policy:
+// an absent _lym/ directory or absent config file is an error.
+// See `PATTERN-config-layers`:
+// a module stays here when it only ever runs inside a hub, where an absent config means the hub is broken.
 var configStrictnessStrictSet = map[string]bool{
 	"internal/fabricengine":  true,
 	"internal/boardengine":   true,
@@ -82,19 +84,17 @@ var configStrictnessStrictSet = map[string]bool{
 	"internal/configreg":     true,
 }
 
-// configStrictnessMinScannedFiles is the vacuous-scan floor for this guard's
-// whole-module walk. The module has many hundreds of non-test .go files; fewer than
-// 50 found means the walk or module-root resolution is misconfigured rather than the
-// module having genuinely shrunk.
+// configStrictnessMinScannedFiles is the vacuous-scan floor for this guard's whole-module walk.
+// The module has far more non-test .go files than the floor.
+// A scan that finds fewer than the floor means the walk or module-root resolution is misconfigured.
+// It does not mean the module has shrunk.
 const configStrictnessMinScannedFiles = 50
 
-// TestConfigStrictness_PinnedCallSiteSets walks every non-test *.go file under the
-// module root and asserts that the set of package directories containing a
-// configengine.LoadOrTemplate( call equals configStrictnessDegradingSet exactly, and
-// that the set of package directories containing a configengine.Load( call equals
-// configStrictnessStrictSet exactly -- in both directions, so a pinned-set member
-// with no matching call anywhere fails just as loudly as an unpinned package that
-// gained a call.
+// TestConfigStrictness_PinnedCallSiteSets walks every non-test *.go file under the module root.
+// It asserts that the directories with a configengine.LoadOrTemplate( call equal configStrictnessDegradingSet exactly.
+// It asserts that the directories with a configengine.Load( call equal configStrictnessStrictSet exactly.
+// The check runs in both directions,
+// so a pinned member with no matching call fails as loudly as an unpinned package that gained a call.
 //
 //lym:guard
 func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
@@ -126,9 +126,8 @@ func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
 	}
 }
 
-// configStrictnessDiffSets returns a description of how got differs from want, or ""
-// if identical. Distinct from gitrepoboundary_test.go's diffMethodSets, whose failure
-// text is worded for that guard, so package main has no redeclaration conflict.
+// configStrictnessDiffSets returns a description of how got differs from want, or "" if identical.
+// Its failure text is worded for this guard, and its name is unique within package main.
 func configStrictnessDiffSets(want, got map[string]bool) string {
 	var missing, unexpected []string
 	for name := range want {

@@ -23,9 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestStartAndResume_RefuseARunOwnedElsewhere drives both verbs over a receiver with a fake ownerOf:
-// an owner elsewhere refuses with the kind owned_elsewhere, the owner and `lym adopt`, before the bootstrap lock is taken;
-// a verdict error refuses naming its cause and the re-run; a run owned here goes on; and an absent status file never calls the seam.
+// TestStartAndResume_RefuseARunOwnedElsewhere drives both verbs over a receiver with a fake ownerOf.
+// An owner elsewhere refuses before the bootstrap lock is taken.
+// That refusal names the kind owned_elsewhere, the owner and `lym adopt`.
+// A verdict error refuses naming its cause and the re-run.
+// A run owned here goes on.
+// An absent status file never calls the seam.
 func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

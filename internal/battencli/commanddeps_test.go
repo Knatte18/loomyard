@@ -1,4 +1,5 @@
-// commanddeps_test.go pins the window title commandDeps hands the Open-Window row: the slug opened with the task's board handle.
+// commanddeps_test.go pins the window title that commandDeps hands the Open-Window row:
+// the slug, prefixed by the task's board handle, or the bare slug when the board holds no handle for it.
 
 package battencli
 
@@ -11,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommandDeps_TitleOpensTheSlugWithTheTasksHandle pins that Title reads the hub's board for the task's handle, and falls back to the bare slug when the board names none.
+// TestCommandDeps_TitleOpensTheSlugWithTheTasksHandle pins that Title reads the hub's board for the task's handle.
+// Title falls back to the bare slug when the board names none.
 func TestCommandDeps_TitleOpensTheSlugWithTheTasksHandle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

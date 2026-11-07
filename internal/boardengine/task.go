@@ -1,7 +1,7 @@
-// task.go — the Task record stored in board.json.
+// task.go defines the Task record stored in board.json and the NewTask and ApplyPatch functions.
 //
-// Defines the Task struct plus NewTask and ApplyPatch, which build/patch a Task from a raw field
-// map via JSON round-trip so field types are validated exactly as they would be on disk.
+// Both build or patch a Task from a raw field map through a JSON round-trip.
+// The round-trip validates field types exactly as they are on disk.
 
 package boardengine
 
@@ -18,7 +18,8 @@ import (
 // Task is the canonical record stored in board.json.
 type Task struct {
 	ID int `json:"id"`
-	// Handle is the entry's short name, a letter and a number such as T4 or B2, which the board assigns; empty until a load or write assigns it.
+	// Handle is the entry's short name, a letter and a number such as T4 or B2.
+	// The board assigns it; it stays empty until a load or write assigns it.
 	Handle    string   `json:"handle,omitempty"`
 	Slug      string   `json:"slug"`
 	Title     string   `json:"title"`
@@ -38,13 +39,16 @@ type Task struct {
 	Created time.Time `json:"created,omitzero"`
 	Revised time.Time `json:"revised,omitzero"`
 
-	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file; an empty value is stored as no field.
+	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file;
+	// an empty value is stored as no field.
 	RunSettings map[string]any `json:"run_settings,omitempty"`
 	// Profile names the hub run profile whose settings lie under RunSettings at seeding; empty means none.
 	Profile string `json:"profile,omitempty"`
-	// PullRequest overrides the receiving branch's beam.yaml pull_request mode for this entry's landing: "on", "off" or PullRequestMergeIn; empty means no override.
+	// PullRequest overrides the receiving branch's beam.yaml pull_request mode for this entry's landing:
+	// "on", "off" or PullRequestMergeIn; empty means no override.
 	PullRequest string `json:"pull_request,omitempty"`
-	// NotifyOnLand asks the dobby that drives the entry's run for a creel line once the run lands or ends without landing; the dobby clears it once the line went out, and a note never carries it.
+	// NotifyOnLand asks the dobby driving the entry's run for a creel line once the run lands or ends without landing;
+	// the dobby clears it once the line went out, and a note never carries it.
 	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 	// OwnerMachine names the machine that owns the entry; empty means none is recorded, and a note never carries one.
 	OwnerMachine string `json:"owner_machine,omitempty"`
@@ -54,13 +58,16 @@ type Task struct {
 	Order []string `json:"order,omitempty"`
 	// Beam reports whether a project is a beam, a long-lived pair that runs its members; only a project carries it.
 	Beam bool `json:"beam,omitempty"`
-	// BeamColor is the #rrggbb colour a beam project's VS Code windows show, recorded once by the owner setter; only a beam project carries it.
+	// BeamColor is the #rrggbb colour a beam project's VS Code windows show, recorded once by the owner setter;
+	// only a beam project carries it.
 	BeamColor string `json:"beam_color,omitempty"`
 	// Front marks a task lym filed ahead of its worktree's other starts; only FileFrontTask sets it.
 	Front bool `json:"front,omitempty"`
 	// OnLand is the key of the action the front-task package runs when the front task lands; empty for any other entry.
 	OnLand string `json:"on_land,omitempty"`
-	// Discussed marks an entry whose run's Discussion was approved and whose decision record lym stored as decision-<slug>.md; only StoreDecisionRecord sets it.
+	// Discussed marks an entry whose run's Discussion was approved;
+	// lym stored its decision record as decision-<slug>.md.
+	// Only StoreDecisionRecord sets it.
 	Discussed bool `json:"discussed,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
@@ -68,10 +75,11 @@ type Task struct {
 	Unknown map[string]json.RawMessage `json:"-"`
 }
 
-// taskKeys is the set of lower-cased JSON keys Task declares, which unknownMembers subtracts from a decoded entry.
+// taskKeys is the set of lower-cased JSON keys Task declares; a decoded key outside it is kept in Unknown.
 var taskKeys = jsonKeySet(reflect.TypeFor[Task]())
 
-// jsonKeySet returns the lower-cased JSON key of each exported field of struct type t: the tag name, else the field name, skipping fields tagged "-".
+// jsonKeySet returns the lower-cased JSON key of each exported field of struct type t:
+// the tag name, else the field name, skipping fields tagged "-".
 // The fields of an embedded struct without a tag name count as t's own.
 func jsonKeySet(t reflect.Type) map[string]bool {
 	keys := map[string]bool{}
@@ -96,7 +104,8 @@ func jsonKeySet(t reflect.Type) map[string]bool {
 	return keys
 }
 
-// unknownMembers returns the members of the JSON object data whose key is not in known, each with its raw value, nil when none is left or data is not an object.
+// unknownMembers returns the members of the JSON object data whose key is not in known, each with its raw value.
+// It returns nil when none is left or data is not an object.
 // A key matches case-insensitively, as encoding/json matches a key to a field, so "Title" fills Title and is not also kept.
 // data must already be valid JSON.
 func unknownMembers(data []byte, known map[string]bool) map[string]json.RawMessage {
@@ -113,7 +122,8 @@ func unknownMembers(data []byte, known map[string]bool) map[string]json.RawMessa
 	return unknown
 }
 
-// eachMember calls visit with the key and raw value of each member of the JSON object data, in order; it visits nothing when data is not an object.
+// eachMember calls visit with the key and raw value of each member of the JSON object data, in order;
+// it visits nothing when data is not an object.
 // data must already be valid JSON: the walk is a single byte pass that trusts its structure.
 // value aliases data.
 func eachMember(data []byte, visit func(key string, value []byte)) {
@@ -145,7 +155,8 @@ func eachMember(data []byte, visit func(key string, value []byte)) {
 	}
 }
 
-// eachElement calls visit with the raw value of each element of the JSON array data, in order; it visits nothing when data is not an array.
+// eachElement calls visit with the raw value of each element of the JSON array data, in order;
+// it visits nothing when data is not an array.
 // data must already be valid JSON, and each value aliases data.
 func eachElement(data []byte, visit func(value []byte)) {
 	position := skipSpace(data, 0)
@@ -235,7 +246,8 @@ func appendUnknown(object []byte, unknown map[string]json.RawMessage) ([]byte, e
 	return append(out, '}'), nil
 }
 
-// UnmarshalJSON decodes the known fields over t's current values, so a caller's pre-set defaults survive, and keeps every other key in Unknown.
+// UnmarshalJSON decodes the known fields over t's current values, so a caller's pre-set defaults survive.
+// Every other key is kept in Unknown.
 func (t *Task) UnmarshalJSON(data []byte) error {
 	type plain Task
 	decoded := plain(*t)
@@ -258,27 +270,33 @@ func (t Task) MarshalJSON() ([]byte, error) {
 }
 
 const (
-	// KindTask is an entry that can run; KindNote is an idea or observation; KindProject groups entries and is a beam when its Beam flag is set.
+	// KindTask is an entry that can run; KindNote is an idea or observation;
+	// KindProject groups entries and is a beam when its Beam flag is set.
 	KindTask    = "task"
 	KindNote    = "note"
 	KindProject = "project"
 )
 
 // The priority values a note accepts; a task carries none.
-// Task.Priority holds PriorityHigh, PriorityLow or the empty value for normal, so a write of PriorityNormal stores no key.
+// A normal priority is stored as the empty value, so a write of PriorityNormal stores no key.
 const (
 	PriorityHigh   = "high"
 	PriorityNormal = "normal"
 	PriorityLow    = "low"
 )
 
-// PullRequestMergeIn is the pull_request value of an entry that merges its parent's parent branch into its parent: it lands with no pull request, whatever the parent's mode, by a true merge that keeps the merged commit as a parent.
+// PullRequestMergeIn is the pull_request value of an entry that merges its parent's parent branch into its parent.
+// Such an entry lands with no pull request, whatever the parent's mode.
+// It lands by a true merge that keeps the merged commit as a parent.
 const PullRequestMergeIn = "merge-in"
 
-// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of every entry but a beam project and stores the dates in whole UTC seconds, then checks that the Kind is one of the three kinds, the Priority one of the accepted values and a task without one.
-// A PullRequest other than empty, on, off and PullRequestMergeIn is refused for a task and a project alike.
-// A note carrying NotifyOnLand is refused.
-// A project carries none of depends_on, profile, run_settings or priority, and a recipe only when it is the project recipe; only a project carries order or beam, and only a project carries the project recipe.
+// normalizeTask puts t into its stored form, or refuses it when its fields do not fit its kind.
+// A normal priority and empty run settings are stored as the empty value,
+// and the dates are stored in whole UTC seconds.
+// The owner and beam color are cleared unless t is a beam project.
+// A pull_request other than empty, on, off and PullRequestMergeIn is refused, and so is a note with notify_on_land.
+// Only a project carries order or beam, and a task's recipe is never the project recipe.
+// A project carries none of depends_on, profile, run_settings or priority.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote && t.Kind != KindProject {
 		return fmt.Errorf("kind %q is not one of %s, %s, %s", t.Kind, KindTask, KindNote, KindProject)
@@ -324,8 +342,8 @@ func normalizeTask(t *Task) error {
 	return nil
 }
 
-// checkProjectFields refuses a project carrying a field only a task carries, naming the entry and the field to drop.
-// A project's recipe is accepted only when it is the project recipe; any other is refused naming that fix.
+// checkProjectFields refuses a project that carries a field only a task carries, naming the field to drop.
+// A project's recipe is accepted only when it is empty or the project recipe.
 func checkProjectFields(t Task) error {
 	if t.Recipe != "" && t.Recipe != ProjectRecipe {
 		return fmt.Errorf("project %q has recipe %q, and a project's recipe is %s: set the recipe to %q, or drop the recipe field", t.Slug, t.Recipe, ProjectRecipe, ProjectRecipe)
@@ -347,7 +365,7 @@ func checkProjectFields(t Task) error {
 	return nil
 }
 
-// ShortNameOrSlug returns t.ShortName when non-empty, otherwise t.Slug.
+// ShortNameOrSlug returns the short name of t, or its slug when no short name is set.
 func (t Task) ShortNameOrSlug() string {
 	if t.ShortName != "" {
 		return t.ShortName
@@ -355,7 +373,7 @@ func (t Task) ShortNameOrSlug() string {
 	return t.Slug
 }
 
-// MaxSlugLength caps a slug's length to fit in directory names without MAX_PATH issues.
+// MaxSlugLength caps a slug's length so that slugs fit in directory names without hitting MAX_PATH.
 const MaxSlugLength = 32
 
 // validateSlugLength returns an error when slug exceeds MaxSlugLength characters.
@@ -366,7 +384,8 @@ func validateSlugLength(slug string) error {
 	return nil
 }
 
-// validateSlugNotReserved returns an error when slug is RootSubject, which names the root project and whose board file project-root.md a project of that slug would overwrite.
+// validateSlugNotReserved returns an error when slug is RootSubject, the slug of the root project.
+// A project of that slug would overwrite the board file project-root.md.
 func validateSlugNotReserved(slug string) error {
 	if slug == RootSubject {
 		return fmt.Errorf("slug %q is reserved for the root project: pick another slug", RootSubject)
@@ -375,8 +394,8 @@ func validateSlugNotReserved(slug string) error {
 }
 
 // NewTask builds a Task from a raw field map, assigning nextID.
-// Uses JSON round-trip so field types are validated exactly as they would be on disk.
-// Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
+// The fields pass through a JSON round-trip, so their types are validated exactly as they are on disk.
+// Unknown fields are not rejected here; the caller validates them.
 func NewTask(fields map[string]any, nextID int) (Task, error) {
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -433,10 +452,9 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 	return task, nil
 }
 
-// ApplyPatch overlays fields onto existing and returns the updated Task.
-// Uses JSON round-trip: existing → raw members → each patch field overlaid as its own encoding → Task, preserving fields not in the patch.
-// The members stay raw, so the existing entry's kept keys come back with their exact digits.
-// Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
+// ApplyPatch overlays fields onto existing and returns the updated Task, keeping the fields the patch does not name.
+// The existing entry's fields stay raw JSON, so its kept keys come back with their exact digits.
+// Unknown fields are not rejected here; the caller validates them.
 func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 	existingJSON, err := json.Marshal(existing)
 	if err != nil {

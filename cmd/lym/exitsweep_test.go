@@ -71,7 +71,9 @@ func dirEntryCount(t *testing.T, dir string) int {
 
 const invalidLoggerYAML = "trace_retention_count: 0\ntrace_retention_days: 14\n"
 
-// TestNotifyExitAndSweep asserts the sweep runs only for a process whose sink armed: a non-zero exit arms it, a zero exit arms it only after an Info record, and a quiet zero exit leaves aged traces alone.
+// TestNotifyExitAndSweep asserts the sweep runs only for a process whose sink armed:
+// a non-zero exit arms it; a zero exit arms it only after an Info record;
+// a quiet zero exit leaves aged traces alone.
 func TestNotifyExitAndSweep(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -117,7 +119,9 @@ func TestNotifyExitAndSweep(t *testing.T) {
 	}
 }
 
-// TestExitSweepBounds asserts which retention bounds the sweep uses and how many Warn records an unusable logger.yaml produces: a redirected sink ignores the config, a valid config wins, an invalid one warns once and defaults, and an anchor without _lym defaults silently.
+// TestExitSweepBounds asserts the retention bounds the sweep uses and the Warn count an unusable logger.yaml gives.
+// A redirected sink ignores the config, a valid config wins, and an invalid one warns once and defaults.
+// An anchor without _lym defaults silently.
 func TestExitSweepBounds(t *testing.T) {
 	tiergate.Require(t, 0)
 	defaults := logger.DefaultRetentionBounds()

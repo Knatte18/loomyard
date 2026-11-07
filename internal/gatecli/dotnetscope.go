@@ -12,17 +12,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// dirGroup is the tiers of a call that run in one directory.
+// dirGroup holds the tiers of a call that run in one directory, and that directory.
 type dirGroup struct {
 	dir   string
 	tiers []int
 }
 
 // dotnetScope returns the scope of the computed, --base or --card form under the dotnet scoper.
-// A computed or --base scope groups the listed tiers by base through diffBaseGroups and derives once per base and tier dir;
-// a --card scope derives once per tier dir from seeds, the C# seeds of the named cards.
+// A computed or --base scope groups the listed tiers by base and derives once per base and tier directory;
+// a --card scope derives once per tier directory from seeds, the C# seeds of the named cards.
 // A derivation that cannot narrow gives its tiers a whole share, naming the reason on request.stderr.
-// A narrowed share is one moduleTargets per selected project, and the empty scope an empty share.
+// A narrowed share holds one module target per selected project;
+// a derivation that finds no test class gives its tiers an empty share.
 // The scope plans no guard step and no vet step.
 // A cancelled ctx is returned as the derivation's error.
 func dotnetScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, seeds []planparser.CSharpSeed, green *greenRun) (scope, error) {
@@ -55,8 +56,8 @@ func dotnetScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loca
 	return scope{form: form, tiers: shares}, nil
 }
 
-// groupByDir returns numbers grouped by the directory their tier runs in, in the order each directory first appears.
-// A tier the config does not declare is left out, since planTierRuns refuses it.
+// groupByDir groups numbers by the directory their tier runs in, in the order each directory first appears.
+// A tier the config does not declare is left out, since the run planning refuses such a tier.
 func groupByDir(cfg gateslot.Config, numbers []int) []dirGroup {
 	var groups []dirGroup
 	for _, number := range numbers {
@@ -78,7 +79,8 @@ func groupByDir(cfg gateslot.Config, numbers []int) []dirGroup {
 	return groups
 }
 
-// assignShare gives every tier of group the share derived describes, naming a whole fallback's reason on request.stderr.
+// assignShare gives every tier of group the share that derived describes.
+// On a fallback to whole, it prints the reason on request.stderr.
 func assignShare(shares map[int]tierScope, group dirGroup, derived dotnetimpact.Scope, request testRequest) {
 	share := tierScope{}
 	switch {

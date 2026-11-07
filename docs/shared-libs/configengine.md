@@ -1,7 +1,7 @@
 # `internal/configengine`
 
-Loads and resolves a module's configuration from the current working directory.
-This is the one place that knows the `_lym/` layout and enforces strict validation against a template.
+Loads, resolves and writes a module's YAML configuration under a base directory's `_lym/config/`.
+It is the one place that knows the `_lym/` layout, and it enforces strict validation against a template.
 
 ## Layout
 
@@ -17,45 +17,57 @@ This is the one place that knows the `_lym/` layout and enforces strict validati
 ├── .env                git-IGNORED — local env values (KEY=value)
 
 <hub>/_bolt/_lym/config/
-├── board.yaml          hub-wide: one per hub (must match board module template)
-└── fabric.yaml         hub-wide: one per hub (must match fabric module template)
+└── <module>.yaml       hub-wide: one per hub (must match the module's template)
 ```
 
-`configreg` marks `board` and `fabric` hub-wide (`Module.HubWide`), so their config files live once under the hub's board dir and not in each worktree's `_lym/config/`.
+A module marked hub-wide in `configreg` (`Module.HubWide`) keeps one config file under the hub's board dir, not one in each worktree's `_lym/config/`.
 
-`_lym/` presence is what makes a directory "initialised" for `Load`;
-if it is absent, `Load` errors (see `FindBaseDir`'s error messages below).
+`_lym/` presence at the base layer's directory is what makes it initialised for `Load`;
+when it is absent, `Load` errors with an error wrapping `ErrNotInitialized` (see `FindBaseDir`'s error messages below).
 `LoadOrTemplate` resolves the caller's embedded template instead of erroring on that same absence — see "Resolution model" below.
-Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a first-class constraint;
-it caused constant trouble in millpy precisely because it was designed in and then forgotten).
+Resolution is **cwd-authoritative**: the cwd does **not** need to equal the git-repo root.
 
 ## Resolution model
 
-**Two policies, one shared body:** `Load(baseDir, module, template []byte)` is strict — an absent `_lym/` directory or an absent config file is an error.
-`LoadOrTemplate(baseDir, module, template []byte)` degrades — either absence resolves `template` instead.
-Both read the on-disk config file, validate it against a template, and resolve environment variables whenever a config file is present.
+`Dirs` tells the geometry: `Anchor` is the reading worktree's anchor, and `Board` is the hub's board dir, empty standalone.
+Both are told, never derived.
+A per-worktree module stacks the template, the repo default, the worktree's tracked file and the untracked local override, lowest first;
+a hub-wide module stacks the template, the hub file and the local override.
+The package doc lists the layers in full.
 
-**Flow (the strict path, shared by both entry points whenever a config file is present):**
+**Two policies, one shared body:** `Load(dirs, spec)` is strict — an absent base layer, `_lym/` directory or config file, is an error.
+`LoadOrTemplate(dirs, spec)` degrades — either absence resolves the spec's template as the base instead.
+Both read the base layer, stack the upper layers present, validate against the template,
+and resolve environment variables whenever a base file is present.
 
-1. Call `FindBaseDir(baseDir)` — check that `_lym/` exists at baseDir.
-2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lym/config/loom.yaml`).
-   If absent, `Load` returns an error instructing the user to run `lym config reconcile`;
+**Flow (the strict path, shared by both entry points whenever a base file is present):**
+
+1. Call `FindBaseDir` on the base layer's directory (`Board` when told, else `Anchor`) — check that `_lym/` exists there.
+2. Read the base file (e.g., `_lym/config/loom.yaml`).
+   If absent, `Load` returns an error naming the way forward for the file's kind, such as `lym config reconcile`;
    `LoadOrTemplate` instead takes the degrading path below.
-3. Fill the file's missing template keys in memory via `yamlengine.FillMissing(template, fileBytes)`.
+3. Merge the present layers unexpanded in stack order, then fill the template keys the merged stack lacks in memory
+   via `yamlengine.FillMissing`.
    A shape mismatch or unparseable YAML returns an error naming the file and the key-path.
-   When it filled any key, one `logger.Info` line (`configengine: filled missing keys from template`) carries the module, the file and the filled key-paths.
-   The file on disk is never written;
+   When it filled any key, one `logger.Info` line (`configengine: filled missing keys from template`) carries the module, the file and the filled key-paths;
+   a hub's sparse base logs no fill.
+   No file is written;
    `lym config reconcile` stays the only writer of config files.
-   Then run `yamlengine.MissingKeys(template, filled)` as a backstop: `FillMissing` never descends into lists, so a template key missing inside a list element of mappings is still reported, and returns an error naming the file and the key-paths, without a reconcile hint, since reconcile carries lists whole and cannot add the key either.
-4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
+   Then run `yamlengine.MissingKeys(template, filled)` as a backstop:
+   `FillMissing` never descends into lists, so a template key missing inside a list element of mappings is still reported.
+   That returns an error naming the file and the key-paths, without a reconcile hint,
+   since reconcile carries lists whole and cannot add the key either.
+4. Build the environment via `envsource.Build` on the expansion directory (`Board` for a hub-wide module, `Anchor` otherwise);
+   it reads `.env` and overlays OS env.
 5. Resolve environment variables via `yamlengine.Resolve(filled, env)` (expands `${env:...}` markers).
 6. Return the resolved bytes (see "What it returns" below).
 
 **The degrading path (`LoadOrTemplate` only):**
 
 `LoadOrTemplate` diverges from the flow above at exactly two points, each gated on *proven* absence — `errors.Is(err, ErrNotInitialized)` at step 1, `os.IsNotExist(err)` at step 2 — never on any other failure at either point.
-On either proven absence, it skips step 3 (neither `yamlengine.FillMissing` nor `yamlengine.MissingKeys` is run;
-a template compared against itself is vacuously satisfied) and enters at step 4 with `template`'s bytes standing in for the file bytes, then continues through steps 4-6 unchanged.
+On either proven absence, it takes the template's bytes as the base and skips step 3's fill:
+neither `yamlengine.FillMissing` nor `yamlengine.MissingKeys` is run, since a template compared against itself is vacuously satisfied.
+It then continues through steps 4-6 unchanged, still stacking the upper layers present.
 A non-absence failure at either point — a stat error, a permission or IO read error — propagates unchanged, exactly as under `Load`.
 A config file that exists but is invalid still errors exactly as under `Load`;
 only its *absence* degrades.
@@ -63,13 +75,13 @@ only its *absence* degrades.
 **Key properties:**
 
 - **All defaults live in the template YAML file**, not in code.
-  The template is embedded via `//go:embed` and passed to `Load()`/`LoadOrTemplate()`.
-- **A key missing from a present config file resolves to its template default and is logged.**
-  Only key-paths in the template are filled, only with the template's own value, and only where the file lacks the key and every ancestor it holds is a mapping.
-  The fill is in memory; the file is never written.
-- **Errors are strict on `Load`**: absent files, shape mismatches, a template key missing inside a list element, or unset required env vars cause hard errors with clear messages naming the file and the problem.
+  The template is embedded via `//go:embed` and passed to `Load`/`LoadOrTemplate` as the spec's template.
+- **A key missing from the layer stack resolves to its template default and is logged.**
+  Only key-paths in the template are filled, only with the template's own value, and only where the stack lacks the key and every ancestor it holds is a mapping.
+  The fill is in memory; no file is written.
+- **Errors are strict on `Load`**: an absent base file, shape mismatches, a template key missing inside a list element, or unset required env vars cause hard errors with clear messages naming the file and the problem.
   Under `LoadOrTemplate`, the shape-mismatch, list-element and unset-required-env-var halves still hold;
-  only the absent-file half is replaced by a resolved template default.
+  only the absent-base half is replaced by a resolved template default.
 - **Extra/stale keys are tolerated** by both entry points and cleaned up by `lym config reconcile` (reconciliation).
   A default- or worktree-layer file holding them is logged at Warn, once per file and key list in a process, naming the reconcile that removes them: `lym config reconcile --layer default --apply` from the hub's prime for a file under the board dir, `lym config reconcile --apply` for a worktree file.
 - **A key present with an empty value counts as present** and is not flagged missing.
@@ -110,17 +122,18 @@ Environment variables are sourced by `envsource.Build(baseDir)`, which reads `en
 ## What it returns
 
 Resolved YAML bytes (as returned by `yamlengine.Resolve`).
-Each caller unmarshals this into its own config struct — the strict callers are `fabricengine.LoadConfig`, `boardengine.LoadConfig`, `loomengine.LoadConfig`, and `batcher.Active`;
-the degrading callers are `websterengine.LoadConfig`, `shuttleengine.LoadConfig`, and `reedengine.LoadConfig`.
+Each caller unmarshals this into its own config struct;
+a strict caller reads through `Load`, and a degrading caller reads through `LoadOrTemplate`.
 Callers never see raw YAML or unexpanded tokens.
 
 ## Migration from old format
 
-Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
-Running `lym config reconcile --apply` from the code worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
-Because the code worktree's `_lym` is a directory junction into its records sibling's `_lym`, a single `lym config reconcile` there reaches the worktree's own and local config files.
-No separate command in the records sibling is needed.
-The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults, are reconciled by `lym config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
+`lym config reconcile --apply` from the code worktree reconciles all module configs against their templates.
+The code worktree's `_lym` is a directory junction into its records sibling's `_lym`,
+so a single `lym config reconcile` there reaches the worktree's own and local config files;
+no separate command in the records sibling is needed.
+The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults,
+are reconciled by `lym config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
 
 ## Exported functions
 
@@ -162,25 +175,27 @@ On failure, an empty string and an error.
   This error wraps the exported `ErrNotInitialized` sentinel;
   `errors.Is(err, configengine.ErrNotInitialized)` is the supported way to detect absence, not text matching.
 - If stat fails for another reason: `stat _lym: <underlying error>`.
-  This branch deliberately does not wrap `ErrNotInitialized` — a stat failure (permission, IO) is not absence.
+  This branch does not wrap `ErrNotInitialized`, since a stat failure (permission, IO) is not absence.
 
-**Note on error rewrapping:** The strict callers of `Load` — `fabricengine.LoadConfig`, `loomengine.LoadConfig` and `batcher.Active` — match the substring `"not initialized"` in the error text to rewrap it into a module-level message: `not initialized here; run "lym fabric reconcile"`.
+**Note on error rewrapping:** Some strict callers of `Load` match the substring `"not initialized"` in the error text to rewrap it into a module-level message: `not initialized here; run "lym fabric reconcile"`.
 `boardengine.LoadConfig` instead detects absence with `errors.Is(err, configengine.ErrNotInitialized)` and an absent-file check, and names the hub's `board.yaml`: `board config <path> not initialized; run "lym fabric reconcile"`.
-The `ErrNotInitialized` sentinel makes migrating the other callers onto `errors.Is` possible;
-that migration is available, not done, and the substring match remains supported for callers that still use it.
+Both the substring match and `errors.Is` against the `ErrNotInitialized` sentinel are supported.
 Do not conflate:
 - Raw `FindBaseDir` error: `not initialized: _lym/ directory not found`
 - Strict-caller rewrapped: `not initialized here; run "lym fabric reconcile"`
 
 ### `Load(baseDir, module string, template []byte) ([]byte, error)`
 
-Loads and resolves a module's configuration from disk.
+Loads and resolves a module's configuration from its layer stack under `dirs`; the current signature is `Load(dirs Dirs, spec Spec) ([]byte, error)`.
 
-**Behavior:** Implements the six-step flow described in the Resolution model section above: check `_lym/` exists, read the config file, fill missing template keys, build environment, and resolve env vars.
+**Behavior:** Implements the six-step flow described in the Resolution model section above:
+check the base layer's `_lym/` exists, read the base file, merge the layers and fill missing template keys, build the environment, and resolve env vars.
+A present file that fails to parse or resolve, or lacks a key inside a list element, yields an error satisfying `ErrInvalid`.
+A caller marks its own unmarshal and validation failures with `MarkInvalid`.
 
 **Error cases:**
 
-- **Config file absent:** Returns error `config file <path> not found; run "lym config reconcile"`.
+- **Base config file absent:** Returns an error naming the file and the way forward for its kind, such as `config file <path> not found; run "lym config reconcile"`.
 - **Template key missing inside a list element:** Returns error `config file <path>: missing keys: <comma-separated key-paths>`, with no reconcile hint.
 - **Shape mismatch against the template:** Returns error `config file <path>: <error naming the key-path>`.
 - **Unset required env var:** Returns error `config file <path>: unset required env var "NAME"`.
@@ -194,13 +209,13 @@ On error, nil bytes and an error message.
 
 ### `LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error)`
 
-Same signature as `Load`.
-A provably-absent `_lym/` directory or a provably-absent config file resolves `template` through `envsource.Build` then `yamlengine.Resolve` instead of erroring — see the "degrading path" in the Resolution model section above.
+Takes the same arguments and returns the same results as `Load`.
+A provably-absent base-layer `_lym/` directory or base file resolves the spec's template through `envsource.Build` then `yamlengine.Resolve` instead of erroring — see the "degrading path" in the Resolution model section above.
 The fill and `yamlengine.MissingKeys` are skipped on that path, since the bytes being resolved are the template itself.
 A config file that exists but is invalid still errors exactly as under `Load`;
 any non-absence failure — a stat error, a permission or IO read error — propagates unchanged.
 
-**Error cases:** Identical to `Load`'s, except that config-file absence and `_lym/` absence no longer produce an error — those two cases resolve the template instead.
+**Error cases:** Identical to `Load`'s, except that config-file absence and `_lym/` absence produce no error — those two cases resolve the template instead.
 A fallback-path error is keyed on the module, not on a config-file path that does not exist: `<module> config template: <underlying error>`.
 
 **Returns:** On success, the resolved YAML bytes (either the on-disk config, or the resolved template on proven absence).
@@ -208,20 +223,26 @@ On error, nil bytes and an error message.
 
 ### `Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error)`
 
-Writes an explicit list of key=value pairs into a module's config file.
-This is the non-interactive counterpart to `Edit` used by the `lym config <module> --set key=value` CLI path — no editor is invoked and there is no validation loop.
+Writes an explicit list of key=value pairs into one layer of a module's config.
+It is the non-interactive path of the `lym config <module> --set key=value` CLI — no editor is invoked and there is no validation loop.
+The current signature is `Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, error)`.
 
 **Behavior:**
 
-1. Calls `FindBaseDir(baseDir)` to check that `_lym/` exists, then scaffolds the config file from `template` when it is absent (the same `scaffoldIfMissing` helper `Edit` uses, so both entry points create and roll back a fresh default-valued file identically).
-2. Delegates the actual mutation to `yamlengine.SetValues(template, existingBytes, pairs)`, which validates every requested pair's key against the template's leaf-key set and, when all keys are known, applies the pairs and marshals the merged result.
-3. Rejects the whole call — freshly-scaffolded file removed, existing file left untouched — when any *requested* pair's key is absent from the template's leaf-key set (existing, unchanged behavior;
-   see `internal/yamlengine`'s `SetValues` documentation for the full validation and preservation mechanism).
-4. On any error return, a freshly-scaffolded file is removed before returning, exactly mirroring `Edit`'s abort-removes-scaffold contract: a failed `--set` never leaves a fresh default-valued file behind on disk.
+1. Checks that the layer applies and that `_lym/` exists at the layer's owner directory, then scaffolds the file from the template when it is an absent standalone or seed-only base layer.
+2. Writes a standalone or seed-only base through `yamlengine.SetValues`, which validates every requested pair's key against the template's leaf-key set and, when all keys are known, applies the pairs and marshals the merged result.
+   A hub's base layer and every layer above the base are sparse: only the keys set are written, through `yamlengine.SetSparse`, and nothing is scaffolded.
+3. Rejects the whole call — freshly-scaffolded file removed, existing file left untouched — when any *requested* pair's key is absent from the template's leaf-key set;
+   see `internal/yamlengine`'s `SetValues` documentation for the full validation and preservation mechanism.
+4. Checks a write to the local layer with `ValidateLocal` and one to the machine layer with `ValidateMachine`;
+   a refused write writes nothing.
+5. On any error return, a freshly-scaffolded file is removed before returning, mirroring `Edit`'s abort-removes-scaffold contract:
+   a failed `--set` never leaves a fresh default-valued file behind on disk.
 
 **Error cases:**
 
 - **Not initialized:** Propagates `FindBaseDir`'s error.
+- **Layer does not apply:** Returns an error saying the layer of the module's config does not apply here.
 - **Scaffold failure:** Propagates the underlying filesystem error.
 - **Unknown config key(s):** Returns error `unknown config key(s): <requested keys> (known: <template's known keys>)`.
 - **Read/write failure:** Propagates the underlying filesystem error.
@@ -233,7 +254,14 @@ On any error return, the returned `[]string` is always nil.
 
 ### `Edit(baseDir, module, template string, edit EditorFunc) error`
 
-Checks `FindBaseDir(baseDir)`, then runs `EditPath` on `ConfigFile(baseDir, module)`.
+Opens one layer's file of a module in an editor, validates the YAML syntax, and loops on a validation failure.
+The current signature is `Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error`.
+An absent base layer is scaffolded first:
+the header for a hub's sparse base, the template for a standalone or seed-only one;
+an absent layer above the base is scaffolded empty.
+On abort it removes any scaffolded file and returns `ErrAborted`.
+Validation is syntactic only, except that a saved local override must pass `ValidateLocal` and a saved machine override `ValidateMachine`.
+A refused save is put back to its previous bytes, or removed when the call created it.
 
 ### `EditPath(path, template string, edit EditorFunc) error`
 

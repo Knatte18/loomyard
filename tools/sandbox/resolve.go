@@ -1,10 +1,8 @@
-// resolve.go implements the dev/prod lym binary resolution used across the sandbox launcher:
-// resolveLym picks the derived .dev-bin binary when it is present on disk and falls back to the
-// existing PATH lookup otherwise,
-// and prependPath builds the PATH a child process should see when a dev binary is in play.
-// This is the only file in package main permitted to perform a bare-PATH "lym" lookup;
-// every other call site resolves through resolveLym instead so the dev/prod distinction stays in
-// one place.
+// resolve.go implements the dev/prod lym binary resolution the sandbox launcher uses.
+// resolveLym prefers the derived .dev-bin binary when it exists on disk and otherwise falls back to a PATH lookup.
+// prependPath builds the PATH a child process sees when a dev binary is in play.
+// This is the only file in package main that performs a bare PATH lookup of "lym":
+// every other call site resolves through resolveLym, so the dev/prod distinction stays in one place.
 
 package main
 
@@ -16,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
-// Source labels returned by resolveLym, identifying which binary a caller
-// resolved to. The distinction is surfaced (not just the resolved path) so
-// callers can stamp it into fingerprints and log output.
+// Source labels reported by resolveLym, naming which binary a caller got.
+// Callers stamp the label into fingerprints and log output.
 const (
 	// sourceDev marks a binary resolved from the derived .dev-bin directory.
 	sourceDev = "dev"
@@ -26,16 +23,14 @@ const (
 	sourceProd = "prod"
 )
 
-// devBinPath is a testability seam over devbin.BinPath.
+// devBinPath derives the dev binary path; tests replace it to control the dev-binary lookup.
 var devBinPath = devbin.BinPath
 
-// resolveLym picks the lym binary to run: the derived .dev-bin binary when
-// it exists, otherwise the PATH-based "lym" lookup. Errors from devBinPath
-// are treated as "no dev binary available"; errors from PATH lookup are fatal.
+// resolveLym picks the lym binary to run: the derived .dev-bin binary if it exists, otherwise the PATH lookup of "lym".
+// An error from devBinPath means no dev binary is available; an error from the PATH lookup is fatal.
 func resolveLym() (path string, source string, err error) {
-	// devBinPath itself only derives a path; it does not guarantee the file
-	// exists. Stat it explicitly so a repo checked out without a dev build
-	// falls through to prod rather than returning a dangling path.
+	// devBinPath only derives a path and does not guarantee the file exists.
+	// Stat it, so a repo checked out without a dev build falls through to prod rather than a dangling path.
 	if devPath, derivErr := devBinPath(); derivErr == nil {
 		if _, statErr := os.Stat(devPath); statErr == nil {
 			return devPath, sourceDev, nil
@@ -52,8 +47,8 @@ func resolveLym() (path string, source string, err error) {
 	return prodPath, sourceProd, nil
 }
 
-// prependPath returns a copy of environ with dir prepended to the PATH
-// entry's value. When dir is empty, environ is returned unchanged.
+// prependPath returns a copy of environ with dir prepended to the PATH entry's value.
+// When dir is empty, environ is returned unchanged.
 func prependPath(dir string, environ []string) []string {
 	if dir == "" {
 		return environ
@@ -71,13 +66,13 @@ func prependPath(dir string, environ []string) []string {
 		return result
 	}
 
-	// No existing PATH entry (case-insensitive) was found; add one so the
-	// child process still sees dir on its search path.
+	// No PATH entry (matched case-insensitively) was found;
+	// add one so the child process still sees dir on its search path.
 	return append(result, "PATH="+dir)
 }
 
-// splitEnvEntry splits a "KEY=VALUE" entry into key and value. found reports
-// whether an "=" separator was present.
+// splitEnvEntry splits a "KEY=VALUE" entry into key and value.
+// found reports whether an "=" separator was present.
 func splitEnvEntry(entry string) (key, value string, found bool) {
 	idx := strings.IndexByte(entry, '=')
 	if idx < 0 {

@@ -1,5 +1,8 @@
-// projectrecord.go places a run's decision record by its recipe: a beam's project record for a recipe with a Beam-Await row, the discussion record otherwise.
-// It also finds the project records that bind a member's run, read live from each enclosing beam's worktree, fills a member prompt's project directive from them, and finds the member pairs a project decision reaches.
+// projectrecord.go places a run's decision record by its recipe.
+// A recipe with a Beam-Await row gets the beam's project record; any other recipe gets the discussion record.
+// It finds the project records that bind a member's run, read live from each enclosing beam's worktree.
+// It fills a member prompt's project directive from those records.
+// It also finds the member pairs a project decision reaches.
 
 package loomcli
 
@@ -20,7 +23,8 @@ import (
 // beamAwaitEngine is the engine of a beam run's build row, the row that marks the recipe as a beam's life.
 const beamAwaitEngine = "BeamAwait"
 
-// runRecord is where a run's decision record lives: the record, its support log, the directory holding both, and the anchor-relative forms of the record and the directory.
+// runRecord locates a run's decision record: the record, its support log, and the directory holding both.
+// rel and dirRel are the record and the directory in anchor-relative form.
 type runRecord struct {
 	path, supportLog, dir string
 	rel, dirRel           string
@@ -29,7 +33,8 @@ type runRecord struct {
 }
 
 // runRecordOf returns the decision record of the run at location whose recipe is recipe.
-// A recipe with a Beam-Await row is a beam's life, and its record is the beam's project record, kept under the beam's slug so no member's own record and no enclosing beam's record shares its path.
+// A recipe with a Beam-Await row is a beam's life, and its record is the beam's project record.
+// The record is kept under the beam's slug, so no member's own record and no enclosing beam's record shares its path.
 // Every other recipe's record is the discussion record.
 func runRecordOf(location *lymcwd.Location, recipe string) runRecord {
 	if recipeHasEngine(recipe, beamAwaitEngine) {
@@ -53,7 +58,8 @@ func runRecordOf(location *lymcwd.Location, recipe string) runRecord {
 }
 
 // commitRunRecord commits record's directory in location's worktree through the fabric.
-// The discussion record commits with the plan amendment record, as commitDiscussion does; a repeat commit over an unchanged directory is a no-op.
+// The discussion record commits with the plan amendment record.
+// A repeat commit over an unchanged directory is a no-op.
 func commitRunRecord(location *lymcwd.Location, record runRecord) error {
 	if !record.project {
 		return commitDiscussion(location)
@@ -70,10 +76,12 @@ func recordHistory(location *lymcwd.Location, record runRecord) func() ([][]byte
 	}
 }
 
-// projectRecordPaths returns the project records that bind the run of the pair at location, nearest beam first: the record of each beam above the pair, read in that beam's own worktree.
-// The beams are the board's, read through ParentBeam, so a member's project links name them.
+// projectRecordPaths returns the project records that bind the run of the pair at location, nearest beam first.
+// It reads the record of each beam above the pair in that beam's own worktree.
+// The beams come from the board, read through ParentBeam, so a member's project links name them.
 // A beam whose worktree or record is absent here is left out, and a pair under no beam has none.
-// The paths name each beam's live record, never the copy a pair inherited when it forked, so a decision recorded on the beam after the fork is read too.
+// The paths name each beam's live record, never the copy a pair inherited when it forked,
+// so a decision recorded on the beam after the fork is read too.
 func projectRecordPaths(location *lymcwd.Location) ([]string, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
@@ -98,7 +106,8 @@ func projectRecordPaths(location *lymcwd.Location) ([]string, error) {
 	}
 }
 
-// beamProjectRecord returns the path of the project record in the worktree of the beam slug, with found false when the worktree or its record is absent.
+// beamProjectRecord returns the path of the project record in the worktree of the beam slug.
+// found is false when the worktree or its record is absent.
 func beamProjectRecord(location *lymcwd.Location, slug string) (string, bool, error) {
 	beam, err := lymcwd.NamedWorktree(location.HubPath, slug)
 	if err != nil {
@@ -113,7 +122,8 @@ func beamProjectRecord(location *lymcwd.Location, slug string) (string, bool, er
 	return path, true, nil
 }
 
-// memberPairs returns the local worktrees of the runs working under the beam slug: each open member's pair and each pair forked from the beam, at any depth of grouping projects.
+// memberPairs returns the local worktrees of the runs working under the beam slug.
+// Those are each open member's pair and each pair forked from the beam, at any depth of grouping projects.
 func memberPairs(location *lymcwd.Location, slug string) ([]*lymcwd.Location, error) {
 	prime, err := primeOfHub(location)
 	if err != nil {
@@ -150,7 +160,8 @@ func memberPairs(location *lymcwd.Location, slug string) ([]*lymcwd.Location, er
 	return pairs, nil
 }
 
-// withProjectDirective fills table's project directive from the project records that bind the run of the pair at location, read at call time, so a decision recorded on a beam reaches the next spawn.
+// withProjectDirective fills table's project directive from the project records that bind the pair's run.
+// It reads the records at call time, so a decision recorded on a beam reaches the next spawn.
 // A pair under no beam keeps the marker empty.
 func withProjectDirective(table seatengine.Table, location *lymcwd.Location, stencilsDir string) (seatengine.Table, error) {
 	records, err := projectRecordPaths(location)

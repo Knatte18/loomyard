@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allSectionsContent returns a decision record body carrying every heading in
-// requiredDiscussionSections, in order, each with a one-line body.
+// allSectionsContent returns a decision record body with every heading in requiredDiscussionSections, in order.
+// Each section has a one-line body.
 func allSectionsContent() string {
 	var b strings.Builder
 	for _, h := range requiredDiscussionSections {
@@ -24,8 +24,8 @@ func allSectionsContent() string {
 	return b.String()
 }
 
-// writeFixture writes content to decisionRecordPath and supportLogPath under dir, creating both
-// as regular files, and returns their absolute paths.
+// writeFixture writes decisionContent to decision-record.md and supportContent to support-log.md under dir.
+// It creates both as regular files and returns their absolute paths.
 func writeFixture(t *testing.T, dir, decisionContent, supportContent string) (string, string) {
 	t.Helper()
 	decisionPath := filepath.Join(dir, "decision-record.md")
@@ -44,7 +44,8 @@ func patternChangesSection(lines ...string) string {
 	return patternChangesHeading + "\n\n" + strings.Join(lines, "\n") + "\n\n"
 }
 
-// TestValidate_PatternChanges asserts each defect of the `## PATTERN changes` section yields exactly one pattern-change-malformed finding at the decision record's path, naming the line.
+// TestValidate_PatternChanges asserts each defect of the `## PATTERN changes` section yields exactly one finding.
+// The finding is pattern-change-malformed, sits at the decision record's path and names the line.
 func TestValidate_PatternChanges(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -88,8 +89,9 @@ func TestValidate_PatternChanges(t *testing.T) {
 	}
 }
 
-// TestValidate_PatternChangeOverCap asserts an `adds` or `changes` bullet whose rule text runs past the PATTERN entry text cap in runes yields one pattern-change-over-cap finding with its way forward.
-// A text at the cap yields none whatever the entry's name length and a trailing "(test)" or background link.
+// TestValidate_PatternChangeOverCap asserts that an `adds` or `changes` bullet over the cap yields one finding.
+// The cap counts runes; the finding is pattern-change-over-cap and names the way forward.
+// A text at the cap yields no finding, whatever the entry's name length and any trailing "(test)" or background link.
 func TestValidate_PatternChangeOverCap(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -150,7 +152,8 @@ func TestValidate_PatternChangeOverCap(t *testing.T) {
 	}
 }
 
-// TestPatternEntryTextCap_EqualsThePatternCap asserts the package's cap and rule-text cut are the PATTERN format checker's, so the discussion check and the plan gate refuse the same texts.
+// TestPatternEntryTextCap_EqualsThePatternCap asserts the cap and rule-text cut match the pattern package's.
+// The discussion check and the plan gate thus refuse the same texts.
 func TestPatternEntryTextCap_EqualsThePatternCap(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -170,7 +173,9 @@ func TestPatternEntryTextCap_EqualsThePatternCap(t *testing.T) {
 	}
 }
 
-// TestDeclaredPatternChanges asserts the rendered bullets of a clean section, nil for a missing path, file or section, and an ErrPatternChangesInvalid refusal naming the validate verb for a malformed one.
+// TestDeclaredPatternChanges asserts a clean section renders its bullets.
+// A missing path, file or section yields nil.
+// A malformed section is refused with ErrPatternChangesInvalid, which names the validate verb.
 func TestDeclaredPatternChanges(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -244,7 +249,9 @@ func sectionsWithout(skip ...string) string {
 	return b.String()
 }
 
-// TestValidate_CleanRecords asserts a record carrying every required heading yields no finding, whatever else the file holds: trailing whitespace on a heading, headings in any order, an extra heading, the optional notes section absent, and a directory standing in for the support log.
+// TestValidate_CleanRecords asserts a record with every required heading yields no finding.
+// The record may hold trailing whitespace on a heading, headings in any order, or an extra heading.
+// It may omit the optional notes section, and the support log may be a directory.
 //
 //testtiming:keep pins that a record with every required heading yields no finding across whitespace, order, extra-heading and support-directory variants, which its covering test does not assert
 func TestValidate_CleanRecords(t *testing.T) {
@@ -281,7 +288,8 @@ func TestValidate_CleanRecords(t *testing.T) {
 			"- `PATTERN-late-rule` — changes: Reworded. — added after Discussion (parent, 2026-10-16)",
 			"- `PATTERN-late-gone` — removes — added after Discussion (arbiter, 2026-10-16)",
 		) + "## Notes for the plan writer\n\nhint.\n"},
-		// os.Stat accepts a directory as "exists", so the support-log check is exhaustively "both files exist"; an is-regular-file test would be a new check.
+		// os.Stat accepts a directory as "exists", so the support-log check is exhaustively "both files exist";
+		// an is-regular-file test would be a new check.
 		{name: "support log path is a directory", content: allSectionsContent(), supportIsDir: true},
 	}
 	for _, tt := range tests {
@@ -307,7 +315,8 @@ func TestValidate_CleanRecords(t *testing.T) {
 	}
 }
 
-// TestValidate_MissingHeadings asserts one section-missing finding per absent required heading, each at the decision record's path and naming its heading, in heading order.
+// TestValidate_MissingHeadings asserts one section-missing finding per absent required heading.
+// Each finding sits at the decision record's path and names its heading, in heading order.
 //
 //testtiming:keep pins the section-missing finding per absent heading with its path and detail, which its covering test does not assert
 func TestValidate_MissingHeadings(t *testing.T) {
@@ -320,9 +329,8 @@ func TestValidate_MissingHeadings(t *testing.T) {
 	for _, h := range requiredDiscussionSections {
 		switch h {
 		case fenced:
-			// Indented by two leading spaces, as a fenced example block quoting the heading
-			// format typically would be -- missingSections right-trims but never left-trims, so
-			// this line is not an exact match for h and must not count as present.
+			// A heading indented by two spaces, as a fenced example block would quote it, must not count as present:
+			// missingSections right-trims but never left-trims, so this line is not an exact match for h.
 			hidden.WriteString("```\n  " + h + "\n```\n\n")
 		case midSentence:
 			hidden.WriteString("See " + h + " above for details.\n\n")
@@ -439,10 +447,10 @@ func TestValidate_SupportLogAbsent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	supportPath := filepath.Join(dir, "support-log.md")
-	// decisionPath is deliberately a directory, not a file: if Validate ever read it despite the
-	// support log being absent, os.ReadFile would return a non-not-exist error, and the test below
-	// asserts a finding with a nil error instead -- proving the decision record is never read once
-	// the support log's absence short-circuits.
+	// decisionPath is a directory, not a file.
+	// If Validate read it despite the absent support log, os.ReadFile would return a non-not-exist error.
+	// The test below asserts a finding with a nil error instead:
+	// the decision record is never read once the absent support log short-circuits Validate.
 	decisionPath := filepath.Join(dir, "decision-record.md")
 	if err := os.Mkdir(decisionPath, 0o755); err != nil {
 		t.Fatalf("mkdir decision record: %v", err)
@@ -485,8 +493,10 @@ func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
 	}
 }
 
-// TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt is R6-28's regression test.
-// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet, entirely ordinary in an agent-written discussion document, made every heading below it report missing. loomshed's Discussion-Write and Discussion-Burler-Fix gates map that to a re-prompt against the still-live session, holding the handoff until the gate passes or its attempt budget escalates to a human.
+// TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt pins one regression.
+// A line over 64 KB must not hide the headings below it.
+// A bufio.Scanner stops at a line over bufio.MaxScanTokenSize and reports it only through scanner.Err().
+// missingSections must check that error, or every heading below the line reports as missing.
 //
 //testtiming:keep pins the R6-28 regression that a line over 64 KB does not hide the headings below it, which its covering test does not assert
 func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {
@@ -506,7 +516,8 @@ func TestCheckDecisionIDs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// record returns a decision record with the given Decisions and Acceptance criteria bodies; a nil acceptance leaves the section out.
+	// record returns a decision record with the given Decisions and Acceptance criteria bodies.
+	// A nil acceptance leaves the section out.
 	record := func(decisions string, acceptance *string) string {
 		var b strings.Builder
 		for _, h := range requiredDiscussionSections {

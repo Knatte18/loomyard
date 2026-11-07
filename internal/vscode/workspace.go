@@ -1,4 +1,5 @@
-// workspace.go builds the content of a VS Code .code-workspace file and sets the workspace look in the settings it splices.
+// workspace.go builds the content of a VS Code .code-workspace file.
+// It sets the workspace look in the settings it splices.
 // It owns VS Code format knowledge only: folder names and paths arrive as values,
 // and no hub geometry is known here.
 
@@ -21,7 +22,8 @@ type WorkspaceFolder struct {
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// BuildWorkspace returns the bytes of a .code-workspace file listing folders in order, with settings spliced verbatim as the value of the "settings" key.
+// BuildWorkspace returns the bytes of a .code-workspace file that lists folders in order.
+// It splices settings verbatim as the value of the "settings" key.
 // A leading BOM is stripped and trailing whitespace trimmed from settings first;
 // settings holding no JSON value (empty, whitespace, or only comments) become {}.
 // The only error is the folder encoding's.
@@ -52,7 +54,8 @@ func BuildWorkspace(folders []WorkspaceFolder, settings []byte) ([]byte, error) 
 
 // WorkspaceSettings returns settings with the keys lym owns set to the look of a workspace window titled title,
 // so a workspace window is told apart from the worktree windows whose settings it splices.
-// The title bar keeps the project colour settings hold, the prime's green when they hold none, and the activity bar takes WorkspaceColor.
+// The title bar keeps the project colour that settings hold, or the prime's green when they hold none.
+// The activity bar takes the workspace colour.
 // Every other key is kept, though comments are not.
 // Settings holding no JSON value yield the look's keys alone;
 // settings that do not decode as a JSONC object are returned unchanged with a warning, so the workspace file still splices them.
@@ -74,10 +77,12 @@ func WorkspaceSettings(settings []byte, title string) ([]byte, error) {
 	return json.MarshalIndent(decoded, "", "  ")
 }
 
-// RelativeSettingKeys returns, sorted, the top-level keys of the settings document whose string value starts with "./" or "../".
-// Such a value resolved against the folder's own .vscode/ before and resolves against the workspace file's directory once spliced into one.
+// RelativeSettingKeys returns, sorted, the top-level keys whose string value starts with "./" or "../".
+// Before splicing, such a value resolves against the folder's own .vscode/;
+// once spliced into a workspace file, it resolves against that file's directory.
 // Values of other types and keys nested inside an object are not examined.
-// Settings that are empty, not a JSON object after comments and trailing commas are dropped, or cannot be decoded yield nil.
+// Settings holding no value yield nil.
+// Settings that do not decode as a JSON object once comments and trailing commas are stripped yield nil too.
 func RelativeSettingKeys(settings []byte) []string {
 	value := bytes.TrimPrefix(settings, utf8BOM)
 	if !holdsValue(value) {

@@ -1,6 +1,7 @@
-// shortnamebinding_clone_integration_test.go proves CloneHub's repo-shortname rule end to end against real local bare-repo fixtures:
-// a fresh bind needs --shortname, the record lands on weft:main beside .lym-warp, a later clone derives it, a disagreeing shortname is refused,
-// and a bound weft without a record either takes a shortname or warns.
+// shortnamebinding_clone_integration_test.go checks CloneHub's shortname rule end to end on local bare-repo fixtures.
+// A fresh bind needs --shortname, and the record lands on weft:main beside .lym-warp.
+// A later clone derives the record, and a disagreeing shortname is refused.
+// A bound weft without a record either takes a shortname or warns.
 // The fixture helpers are reused from clone_adopt_test.go and warpbinding_clone_integration_test.go.
 
 package fabricengine_test
@@ -16,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCloneHub_FreshBindWithoutShortnameRefuses asserts a fresh weft refuses a clone with no shortname, naming the flag, before any hub directory exists.
+// TestCloneHub_FreshBindWithoutShortnameRefuses asserts a fresh weft refuses a clone with no shortname.
+// The refusal names the flag and comes before any hub directory exists.
 func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -40,7 +42,8 @@ func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
 }
 
 // TestCloneHub_ShortnameRecordLifecycle walks one repo through its shortname record.
-// The record is made at the first clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and refused when a different shortname is supplied.
+// The record is made at the first clone and committed on weft:main.
+// A second clone derives it, a --reset re-clone keeps it, and a different shortname is refused.
 // A --reset refusal leaves the existing hub in place.
 func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -95,7 +98,9 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 		}
 	})
 
-	// This subtest and ResetKeepsRecord do not call t.Parallel: they share the one existing hub (firstParent and first) and run in order, since ResetKeepsRecord tears that hub down and rebuilds it.
+	// This subtest and ResetKeepsRecord do not call t.Parallel:
+	// they share the one existing hub (firstParent and first) and run in order;
+	// ResetKeepsRecord tears that hub down and rebuilds it.
 	t.Run("ResetWithDisagreeingShortnameKeepsHub", func(t *testing.T) {
 		tests := []struct {
 			name    string
@@ -139,8 +144,8 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	})
 }
 
-// TestCloneHub_BoundWeftWithoutRecord asserts a weft bound before shortnames existed takes a supplied shortname and records it,
-// and succeeds with a warning naming `lym fabric shortname` when none is supplied.
+// TestCloneHub_BoundWeftWithoutRecord asserts that a weft bound before shortnames existed takes a supplied shortname.
+// It records the shortname, and without one the clone succeeds with a warning naming `lym fabric shortname`.
 func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

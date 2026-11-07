@@ -43,10 +43,14 @@ func joinLines(items []string) string {
 	return strings.Join(items, "\n")
 }
 
-// seatValues returns the value map seat's stencil is filled from: the table's values, then the seat's own, then every reserved marker.
-// names is strandNames' answer.
-// A chair's parent directive names the run's parent; an advisor's names the chair and is never interactive; an assistant's is the no-parent variant, since it sends no message.
-// An assistant's edit directive is its engine's own copy, in that engine's tool wording; every other seat's is the shared one.
+// seatValues returns the value map seat's stencil is filled from.
+// The map takes the table's values, then the seat's own, then every reserved marker.
+// names maps each seat name to its full strand name.
+// A chair's parent directive names the run's parent.
+// An advisor's names the chair and is never interactive.
+// An assistant's is the no-parent variant, since it sends no message.
+// An assistant's edit directive is its engine's own copy, in that engine's tool wording.
+// Every other seat's is the shared one.
 func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) (map[string]string, error) {
 	values := make(map[string]string, len(table.Values)+len(seat.Values)+len(reservedMarkers))
 	maps.Copy(values, table.Values)
@@ -104,7 +108,8 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 
 // Prompts returns the prompt every seat of table reads at a fresh start, keyed by seat name, and starts nothing.
 // The lead's prompt ends with the table's Amendment.
-// It validates table against geom.StencilsDir and geom.DefaultEngine, so a table that would be refused at start is refused here.
+// It validates table against geom.StencilsDir and geom.DefaultEngine,
+// so a table that would be refused at start is refused here.
 func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	if err := table.Validate(geom.StencilsDir, geom.DefaultEngine); err != nil {
 		return nil, err
@@ -128,14 +133,19 @@ func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	return prompts, nil
 }
 
-// CheckMarkers checks that a value fills every top-level marker of every seat's stencil and of every block it includes, read from stencilsDir, an engine block read for the seat's engine.
+// CheckMarkers checks that a value fills every top-level marker of every seat's stencil and of every block it includes.
+// The stencil and its blocks are read from stencilsDir, with the engine block for the seat's engine.
 // defaultEngine is the engine a seat whose model choice names none runs on.
-// A non-blank table or seat value, a name in Optional or a marker the engine fills itself fills a marker, so a table that passes composes no prompt with an unfilled marker.
+// A non-blank table or seat value, a name in Optional or a marker the engine fills itself fills a marker.
+// So a table that passes composes no prompt with an unfilled marker.
 // The first seat with an unfilled marker is refused naming its strand role, its stencil and every unfilled marker.
-// Such a marker means either the stencils are newer than the running binary, as after a version skew where a newer binary refreshed them, or a value is blank.
-// The refusal names both causes and a way forward for each: a binary that fills the marker, or text for the blank value.
-// It applies none of Validate's rules, and starts nothing.
-// An assistant whose engine lacks an engine block its stencil includes is passed over, since the missing block keeps it from starting instead.
+// Such a marker means the stencils are newer than the running binary, as after a version skew.
+// Otherwise a value is blank.
+// The refusal names both causes and a way forward for each:
+// a binary that fills the marker, or text for the blank value.
+// It applies none of the table's validation rules, and it starts nothing.
+// An assistant whose engine lacks an engine block its stencil includes is passed over.
+// The missing block keeps it from starting instead.
 func (t Table) CheckMarkers(stencilsDir, defaultEngine string) error {
 	for _, seat := range t.Seats {
 		label := t.seatLabel(seat)
@@ -167,7 +177,9 @@ func (t Table) CheckMarkers(stencilsDir, defaultEngine string) error {
 	return nil
 }
 
-// fills reports whether a value fills marker in seat's stencil: Optional names it, the engine fills it itself, or the seat's value, else the table's, is not blank.
+// fills reports whether a value fills marker in seat's stencil.
+// The marker is filled when Optional names it or the engine fills it itself.
+// Otherwise the seat's value, or the table's when the seat has none, must not be blank.
 func (t Table) fills(seat Seat, marker string) bool {
 	if slices.Contains(t.Optional, marker) || slices.Contains(reservedMarkers, marker) {
 		return true
@@ -179,7 +191,8 @@ func (t Table) fills(seat Seat, marker string) bool {
 	return strings.TrimSpace(value) != ""
 }
 
-// amendLeadPrompt returns prompt followed by the table's Amendment when seat is the lead, and prompt unchanged for any other seat.
+// amendLeadPrompt returns prompt followed by the table's Amendment when seat is the lead.
+// For any other seat it returns prompt unchanged.
 func amendLeadPrompt(table Table, seat Seat, prompt string) string {
 	if seat.Name != leadName {
 		return prompt
@@ -187,7 +200,8 @@ func amendLeadPrompt(table Table, seat Seat, prompt string) string {
 	return prompt + table.Amendment
 }
 
-// composeSeatPrompt reads seat's stencil and every block it includes from geom.StencilsDir, an engine block for the seat's engine, and fills them from values.
+// composeSeatPrompt reads seat's stencil and every block it includes from geom.StencilsDir.
+// It reads the engine block for the seat's engine, and it fills them from values.
 // A marker named in table's Optional renders as nothing when its value is empty, in the stencil and in every block.
 func composeSeatPrompt(geom Geometry, table Table, seat Seat, values map[string]string) (string, error) {
 	label := table.seatLabel(seat)
@@ -203,7 +217,8 @@ func composeSeatPrompt(geom Geometry, table Table, seat Seat, values map[string]
 }
 
 // seatSpec returns the shuttle spec that runs seat with prompt.
-// Only the chair is interactive; every seat after the lead keeps its pane and holds its turn end quietly unless it is a required advisor.
+// Only the chair is interactive.
+// Every seat after the lead keeps its pane and holds its turn end quietly unless it is a required advisor.
 // A seat's own Timeout, when non-zero, bounds its run in place of the table's.
 // Every seat of a table declares the own-window anchor with the table's window group and seat count.
 // The seat's gate rides the start call, not the spec.
@@ -231,7 +246,9 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	}
 }
 
-// tableWindow returns the window group the seats of table's instance declare: the role prefix, followed by `-` and the round when the round is set, so two rounds of one table never name the same group.
+// tableWindow returns the window group the seats of table's instance declare.
+// It is the role prefix, with `-` and the round appended when the round is set.
+// Two rounds of one table therefore never share a group.
 // A table of one seat returns "", which gives its seat a window to itself named by its role.
 func tableWindow(table Table) string {
 	if len(table.Seats) == 1 {

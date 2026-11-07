@@ -1,6 +1,6 @@
 // driver_test.go — untagged Tier-1 unit tests for ResolveDriver.
-// Mirrors review_test.go's shape: pure Go over an in-memory Config and a temp-dir modelspec
-// registry, no live hub, reed, or network involved.
+// Pure Go over an in-memory Config and a temp-dir modelspec registry;
+// no live hub, reed, or network involved.
 
 package loomengine
 
@@ -14,10 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestResolveDriver verifies ResolveDriver resolves an alias to its provider model id, lifting
-// effort and version out of the resolved value's Params -- the load-bearing case, since a test
-// asserting only that Model is non-empty would also pass against a raw copy of cfg.Driver, which is
-// the exact bug reg.Resolve exists to prevent.
+// TestResolveDriver verifies ResolveDriver resolves an alias to its provider model id.
+// It also checks effort and version, lifted from the resolved Params.
+// Checking Model against the registry's result matters: a non-empty check alone would pass a raw copy of cfg.Driver.
 func TestResolveDriver(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := Config{Driver: "opus[effort=high,v=1]"}
@@ -57,7 +56,8 @@ func TestResolveDriver(t *testing.T) {
 	}
 }
 
-// TestResolveDriver_Refuses verifies an alias absent from the registry and an ungrammatical driver model-spec each return an error naming the driver role, rather than being silently carried into the driver session's spawn site.
+// TestResolveDriver_Refuses verifies that an unknown alias and a malformed driver each return an error.
+// The error names the driver role, and a bad driver never reaches the driver session's spawn site.
 func TestResolveDriver_Refuses(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -90,9 +90,9 @@ func TestResolveDriver_Refuses(t *testing.T) {
 	}
 }
 
-// TestResolveDriver_EmptyDriverIsOffDefault verifies an empty cfg.Driver -- "defer to the provider
-// default" -- resolves to the zero ModelChoice (an empty Engine reads as the default engine) with a nil error, the same "off/default" arm
-// Friction already has, rather than being forced through modelspec.Parse.
+// TestResolveDriver_EmptyDriverIsOffDefault verifies an empty cfg.Driver resolves to the zero ModelChoice.
+// An empty driver defers to the provider default; an empty Engine reads as the default engine.
+// The empty driver is returned without going through modelspec.Parse.
 func TestResolveDriver_EmptyDriverIsOffDefault(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := Config{Driver: ""}

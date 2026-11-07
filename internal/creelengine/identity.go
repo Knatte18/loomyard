@@ -12,15 +12,18 @@ import (
 // maxAncestryDepth bounds the walk up a peer's parents, so a cyclic or absurdly deep ancestry ends the walk.
 const maxAncestryDepth = 256
 
-// ErrStrandClaimOutsidePane is what a refusal of a strand claim from a process in no strand pane matches under errors.Is.
-// The Go client returns it for a refusal carrying CodeStrandClaimOutsidePane, with the daemon's message as its text.
+// ErrStrandClaimOutsidePane marks a refusal of a strand claim from a process in no strand pane.
+// The claim names a listed strand.
+// errors.Is matches the refusal against it.
+// The Go client returns it for that refusal, with the daemon's message as its text.
 var ErrStrandClaimOutsidePane = errors.New("creel: the strand claim comes from a process in no strand pane")
 
-// ErrProgramClaimInStrandPane is what a refusal of a program claim from the pane of a strand that is no orch's matches under errors.Is.
-// The Go client returns it for a refusal carrying CodeProgramClaimInStrandPane, with the daemon's message as its text.
+// ErrProgramClaimInStrandPane marks a refusal of a program claim sent from the pane of a strand that is not an orch.
+// errors.Is matches the refusal against it.
+// The Go client returns it for that refusal, with the daemon's message as its text.
 var ErrProgramClaimInStrandPane = errors.New("creel: a program claim comes from a strand pane that is no orch's")
 
-// codedRefusal is a refusal whose text is the daemon's message and that matches the sentinel its code stands for.
+// codedRefusal is a refusal whose text is its message and that matches a sentinel error under errors.Is.
 type codedRefusal struct {
 	message  string
 	sentinel error
@@ -31,7 +34,8 @@ func (e *codedRefusal) Error() string { return e.message }
 func (e *codedRefusal) Unwrap() error { return e.sentinel }
 
 // Claim is what a client sends with each request.
-// It states who the client says it is; the daemon decides who it is from the peer's process ancestry where the platform allows.
+// It states who the client says it is;
+// the daemon decides who it is from the peer's process ancestry where the platform allows.
 type Claim struct {
 	// StrandName is the client's $LYM_STRAND_NAME.
 	StrandName string `json:"strand_name,omitempty"`
@@ -44,10 +48,15 @@ type Claim struct {
 }
 
 // resolveSender decides who sent a request.
-// peerPID is the connecting process, 0 when the platform cannot tell; strands and strandsErr are Delivery.Strands' answer; parentPID reads a process's parent.
-// On Linux a peer inside a live strand's pane process tree is that strand, whatever its environment says, and a claim never raises a pane's privilege.
+// peerPID is the connecting process, 0 when the platform cannot tell.
+// strands and strandsErr are the hub's strand listing and the error that came with it;
+// parentPID reads a process's parent.
+// On Linux a peer inside a live strand's pane process tree is that strand, whatever its environment says,
+// and a claim never raises a pane's privilege.
 // Elsewhere identity is the environment alone.
-// The refusal of a strand claim naming a listed strand from a process in no pane wraps ErrStrandClaimOutsidePane, and the refusal of a program claim from the pane of a strand that is no orch's wraps ErrProgramClaimInStrandPane; no other refusal wraps a sentinel.
+// A refusal of a strand claim that names a listed strand from a process in no pane wraps ErrStrandClaimOutsidePane;
+// a refusal of a program claim from the pane of a strand that is not an orch wraps ErrProgramClaimInStrandPane;
+// no other refusal wraps a sentinel.
 func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand, strandsErr error, parentPID func(int) (int, bool), goos string) (Sender, error) {
 	program, err := checkProgramClaim(claim, shortname)
 	if err != nil {
@@ -87,7 +96,8 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 	return externalFromClaim(claim, shortname)
 }
 
-// checkProgramClaim validates a program claim: a well-formed upper-case name under this hub's shortname that is not EXTERNAL.
+// checkProgramClaim validates a program claim:
+// a well-formed upper-case name under this hub's shortname that is not EXTERNAL.
 // It returns the empty string when the client claims none.
 func checkProgramClaim(claim Claim, shortname string) (string, error) {
 	if claim.Program == "" {
@@ -106,7 +116,8 @@ func checkProgramClaim(claim Claim, shortname string) (string, error) {
 	return claim.Program, nil
 }
 
-// resolveFromEnvironment is identity off Linux: the strand name when it is one of this hub, else the program claim, else EXTERNAL.
+// resolveFromEnvironment decides identity off Linux:
+// the strand name when it names a strand of this hub, else the program claim, else EXTERNAL.
 func resolveFromEnvironment(claim Claim, shortname, program string) (Sender, error) {
 	if name, err := agentname.Parse(claim.StrandName); err == nil && name.Shortname == shortname {
 		return StrandSender(claim.StrandName), nil
@@ -122,8 +133,10 @@ func externalFromClaim(claim Claim, shortname string) (Sender, error) {
 }
 
 // PaneOf answers which live strand's pane the process pid sits in, walking its ancestry, the process itself first.
-// The unreadable string says what keeps a process in no known pane from being told from a strand, and is empty when every live strand's pane process is known.
-// strands and strandsErr are a Delivery's strand listing, and parentPID reads a process's parent.
+// The unreadable string says what keeps a process in no known pane from being told from a strand.
+// It is empty when every live strand's pane process is known.
+// strands and strandsErr are the hub's strand listing and the error that came with it;
+// parentPID reads a process's parent.
 func PaneOf(pid int, strands []Strand, strandsErr error, parentPID func(int) (int, bool)) (*Strand, string) {
 	return paneOfPeer(pid, strands, strandsErr, parentPID)
 }
@@ -134,7 +147,8 @@ func IsOrchStrand(full string) bool {
 }
 
 // paneOfPeer walks the peer's ancestry, the peer itself first, and returns the live strand whose pane process it meets.
-// unreadable says what keeps a peer in no known pane from being told from a strand, and is empty when every live strand's pane process is known.
+// unreadable says what keeps a peer in no known pane from being told from a strand.
+// It is empty when every live strand's pane process is known.
 func paneOfPeer(peerPID int, strands []Strand, strandsErr error, parentPID func(int) (int, bool)) (pane *Strand, unreadable string) {
 	if strandsErr != nil {
 		return nil, fmt.Sprintf("the hub's strands could not be read (%v)", strandsErr)

@@ -1,25 +1,12 @@
-// settings.go composes the Claude Code settings.json document Prepare writes for each run, and the creel-only document OpenLaunch writes for a session opened in a hub:
-// a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
-// A session in a hub also gets creel's hook delivery: the PostToolUse mail hook, a Stop hook that merges the turn-end recording with creel's turn-end delivery so a Stop that handed mail to the session records no turn end, and the idle waiter hook that wakes an idle session.
-// The UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart and PermissionRequest hooks append their payloads to the same file for ParseSessionSignals;
-// the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
-// Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
-// The PostToolUse, PreCompact and PostCompact hooks of every session touch the run's activity stamp beside the events file, so a tool call, a fork's included, and a compaction read as activity.
-// With claude.yaml's batching nudge on, PostToolUse also runs the batching hook after each call of a tool a breach is made of.
-// The document also carries the PreToolUse guardrails:
-// refusing `lym webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
-// denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
-// and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
-// No hook denies the Agent tool: a subagent or fork runs inside the session and shows in its own pane.
-// The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
-// The Bash denies render the rows of internal/shellguard's table, each installed as its row's switch says.
-// buildDenyNotice, built from the same standingDeniesFor list so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
-// Every document also sets `promptSuggestionEnabled` to false for shuttle-launched sessions: a plain capture carries no styling,
+// settings.go composes the Claude Code settings.json document that Prepare writes for each run.
+// It also composes the creel-only document that OpenLaunch writes for a session opened in a hub.
+// Each recording hook appends to the run's events.jsonl, the only channel ParseEvents reads.
+// Each recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
+// Every document sets `promptSuggestionEnabled` to false, since a plain capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
-// The styled read is what lets a hand-added session's suggestion read as empty.
-// Every document, the run document and the creel-only one alike, sets Claude Code's `attribution` to empty commit and pull-request texts,
+// Every document also sets Claude Code's `attribution` to empty commit and pull-request texts,
 // so no session lym launches credits itself in a commit or pull request it makes.
-// Every document also carries the session's scope (scope.go) as its last keys, none of them when the scope is off.
+// No hook denies the Agent tool, since a subagent or fork runs inside the session and shows in its own pane.
 
 package claudeengine
 
@@ -36,15 +23,18 @@ import (
 // steerAskUserQuestionDeny denies AskUserQuestion in autonomous runs, where no operator is present to answer.
 const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file. The run then waits for the answer, which arrives as your next turn."
 
-// steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
-// It refuses `lym webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
+// steerWebsterForkDeny guards against fork-context deadlock:
+// a fork inherits Master's await-batch loop and polling it would livelock the run.
+// It refuses `lym webster` commands inside forks (detected by top-level agent_id in the payload).
+// Its text must contain no single/double quote or backslash (checked at init).
 const steerWebsterForkDeny = "lym webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lym webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
 // noticeAskUserQuestionDeny announces the AskUserQuestion deny in an autonomous run.
 const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
 
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
-// AsyncRewake runs the command in the background and wakes the idle session when it exits 2, and Timeout bounds it in seconds.
+// AsyncRewake runs the command in the background and wakes the idle session when it exits 2.
+// Timeout bounds it in seconds.
 // RewakeMessage and RewakeSummary label that wake for the model and the operator's notification row.
 // Every one of them is omitted when unset.
 type hookCommand struct {
@@ -65,9 +55,12 @@ type hookEntry struct {
 
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
 // Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
-// PostToolUse, PreCompact and PostCompact touch the activity stamp, and PostToolUse also carries the batching hook while it is on and the creel mail hook in a hub.
-// In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter; in no hub it carries the recording alone.
-// PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
+// PostToolUse, PreCompact and PostCompact touch the activity stamp.
+// PostToolUse also carries the batching hook while it is on and the creel mail hook in a hub.
+// In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter;
+// in no hub it carries the recording alone.
+// PreToolUse is omitted when an autonomous run has every deny off;
+// interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
 	Stop              []hookEntry `json:"Stop"`
 	PreToolUse        []hookEntry `json:"PreToolUse,omitempty"`
@@ -88,7 +81,7 @@ const compactionMatcher = "compact"
 // nonCompactionMatcher is the SessionStart matcher for every source but compaction.
 const nonCompactionMatcher = "startup|resume|clear"
 
-// SessionStartContext renders the additional-context JSON a SessionStart hook prints to add text to the session's context.
+// SessionStartContext renders the JSON that a SessionStart hook prints to add text to the session's context.
 func SessionStartContext(text string) ([]byte, error) {
 	return hookContext(hookEventSessionStart, text)
 }
@@ -108,62 +101,90 @@ func hookContext(hookEventName, text string) ([]byte, error) {
 	return data, nil
 }
 
-// creelMailCommand is the command the PostToolUse hook runs when the strand's mail flag stands: creel's claim verb, told this engine's registry name so it renders the claimed mail as this engine's hook output.
+// creelMailCommand is the command the PostToolUse hook runs when the strand's mail flag stands.
+// It is creel's claim verb, given this engine's registry name.
+// It renders the claimed mail as this engine's hook output.
 const creelMailCommand = "lym creel hook-read claude"
 
 // creelMailHookCommand returns the PostToolUse hook command that hands the strand its creel mail at each tool boundary.
-// It forms the flag's file name from the strand's name by shell parameter expansion alone, turning every ":" into ".", and exits 0 at once unless that flag stands in the directory at quotedFlagDir, so a tool call with no mail starts no process.
+// It forms the flag's file name from the strand's name by shell parameter expansion alone, turning every ":" into ".".
+// It exits 0 at once unless that flag stands in the directory at quotedFlagDir,
+// so a tool call with no mail starts no process.
 // An empty or unset strand name names no regular file and exits the same way.
-// When the flag stands it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelMailCommand, whose output is the hook's.
+// When the flag stands, it changes to the session's project directory,
+// so a session that moved out of the hub still reaches it.
+// It then runs creel's claim verb, whose output is the hook's.
 func creelMailHookCommand(quotedFlagDir string) string {
 	return shuttleengine.StrandFlagNameShell() + `; [ -f ` + quotedFlagDir + `/"$f$n" ] || exit 0; cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelMailCommand
 }
 
-// creelStopHookCommand returns the Stop hook command that merges the turn-end recording with creel's turn-end delivery, so the record is written only when no mail was handed to the session.
-// Claude Code runs an event's hooks in parallel, so a separate creel hook could not keep the recording from logging a turn end the mail then continues.
-// The command reads the hook input once, and when the strand's flag stands in the directory at quotedFlagDir it pipes the input to creelMailCommand from the session's project directory, whose output is the hook's.
-// An exit 0 of that step means mail was handed to the session, which continues the turn, and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
-// Otherwise, or when the flag is absent, it appends the Stop stamp and the input as recordingCommand does and exits with that append's status, leaving whatever the delivery step printed as the hook's output, which an echo printed with exit 1 relies on to reach the operator.
+// creelStopHookCommand returns the Stop hook command that merges the turn-end recording with creel's turn-end delivery,
+// so the record is written only when no mail was handed to the session.
+// Claude Code runs an event's hooks in parallel,
+// so a separate creel hook could not keep the recording from logging a turn end the mail then continues.
+// The command reads the hook input once.
+// When the strand's flag stands in the directory at quotedFlagDir, it pipes that input to creel's claim verb.
+// That runs from the session's project directory, and its output is the hook's.
+// An exit 0 of that step means mail was handed to the session, which continues the turn,
+// and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
+// Otherwise, or when the flag is absent, the command appends the Stop stamp and the input as the recording command does.
+// It exits with that append's status, and what the delivery step printed stays the hook's output.
+// An echo printed with exit 1 relies on that output to reach the operator.
 func creelStopHookCommand(quotedFlagDir, quotedEventsPath string) string {
 	record := `printf '%s' "$in" | { ` + recordingCommand(hookEventStop, quotedEventsPath) + `; }`
 	return creelStopDelivery(quotedFlagDir) + `; ` + record
 }
 
-// creelOpenStopHookCommand returns the Stop hook command of a session with no events file: creel's turn-end delivery alone.
-// It reads the hook input once and, when the strand's flag stands in the directory at quotedFlagDir, pipes it to creelMailCommand from the session's project directory, whose output is the hook's.
-// It always exits 0, so whatever the delivery printed, an echo with exit 1 included, reaches Claude Code as the hook's output.
+// creelOpenStopHookCommand returns the Stop hook command of a session with no events file:
+// creel's turn-end delivery alone.
+// It reads the hook input once.
+// When the strand's flag stands in the directory at quotedFlagDir, it pipes the input to creel's mail command.
+// The mail command runs from the session's project directory, and its output is the hook's.
+// It always exits 0;
+// whatever the delivery printed, an echo with exit 1 included, reaches Claude Code as the hook's output.
 func creelOpenStopHookCommand(quotedFlagDir string) string {
 	return creelStopDelivery(quotedFlagDir) + `; true`
 }
 
-// creelStopDelivery returns the opening of a creel Stop hook command: it reads the hook input into $in, forms the strand's flag name, and when that flag stands in the directory at quotedFlagDir pipes the input to creelMailCommand from the session's project directory, exiting 0 when that hands out mail.
+// creelStopDelivery returns the opening of a creel Stop hook command:
+// it reads the hook input into $in and forms the strand's flag name.
+// When that flag stands in the directory at quotedFlagDir, it pipes the input to creel's mail command.
+// The command runs from the session's project directory, and the shell exits 0 when that hands out mail.
 func creelStopDelivery(quotedFlagDir string) string {
 	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
 	return `in=$(cat); ` + shuttleengine.StrandFlagNameShell() + `; ` + deliver
 }
 
-// creelWaitCommand is the command the idle waiter hook runs: creel's waiter verb, told this engine's registry name so it renders the wake as this engine's.
+// creelWaitCommand is the command the idle waiter hook runs.
+// It runs creel's waiter verb with this engine's registry name, so the wake renders as this engine's.
 const creelWaitCommand = "lym creel hook-wait claude"
 
-// creelWaitTimeout is the idle waiter hook's timeout in seconds, a day: well under the 2^31-1 ms ceiling of the timers Claude Code arms, and long enough to outlive any idle spell.
+// creelWaitTimeout is the idle waiter hook's timeout in seconds, a day.
+// It is well under the 2^31-1 ms ceiling of the timers Claude Code arms, and long enough to outlive any idle spell.
 const creelWaitTimeout = 86400
 
-// creelRewakeMessage is the label the idle waiter's wake carries for the model, in place of Claude Code's default naming the hook's command.
-// Both rewake keys are in Claude Code 2.1.312's hook schema marked `@internal`.
+// creelRewakeMessage is the label the idle waiter's wake carries for the model.
+// It replaces Claude Code's default label, which names the hook's command.
+// Claude Code's hook schema marks the rewake message and summary keys `@internal`.
 // The message opens with `[creel]` so the wake's first line matches the creel trust sentence.
 const creelRewakeMessage = "[creel] Mail that arrived while you were idle:"
 
 // creelRewakeSummary is the row the operator's terminal draws for the idle waiter's wake.
-// It is fixed for the session because Claude Code takes a per-wake summary only from a hook of an Anthropic-marketplace plugin.
+// Claude Code takes a per-wake summary only from a hook of an Anthropic-marketplace plugin,
+// so the summary is fixed for the session.
 const creelRewakeSummary = "creel mail"
 
-// creelWaitHookCommand returns the Stop hook command of the idle waiter: it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelWaitCommand.
-// It runs whether or not the strand's mail flag stands, since the waiter is what wakes an idle session for mail that arrives later.
+// creelWaitHookCommand returns the Stop hook command of the idle waiter:
+// it changes to the session's project directory and runs creel's waiter verb.
+// The change lets a session that moved out of the hub still reach the waiter.
+// It runs whether or not the strand's mail flag stands, since the waiter wakes an idle session for later mail.
 func creelWaitHookCommand() string {
 	return `cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelWaitCommand
 }
 
-// creelWaitHookEntry returns the Stop hook entry of the idle waiter: it runs creelWaitHookCommand in the background for up to creelWaitTimeout seconds and wakes the idle session, under creel's labels, when it exits 2.
+// creelWaitHookEntry returns the Stop hook entry of the idle waiter:
+// it runs the waiter in the background for up to the waiter's timeout.
+// When the waiter exits 2, it wakes the idle session under creel's labels.
 func creelWaitHookEntry() hookEntry {
 	return hookEntry{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout, RewakeMessage: creelRewakeMessage, RewakeSummary: creelRewakeSummary}}}
 }
@@ -174,24 +195,27 @@ type openSettingsHooks struct {
 	PostToolUse []hookEntry `json:"PostToolUse"`
 }
 
-// attributionSettings is Claude Code's `attribution` setting: the text a session appends to a commit message and to a pull request body it writes.
+// attributionSettings is Claude Code's `attribution` setting:
+// the text a session appends to a commit message and to a pull request body it writes.
 // An empty text appends nothing, so its zero value credits no session.
 type attributionSettings struct {
 	Commit      string `json:"commit"`
 	PullRequest string `json:"pr"`
 }
 
-// openSettingsDoc is the settings document OpenLaunch writes for a session opened in a hub.
-// It carries hooks, the attribution and the session's scope alone, so every other setting of the session stays the worktree's own.
-// Attribution has no omitempty and buildOpenSettings leaves it zero, so the document credits no session.
+// openSettingsDoc is the settings document written for a session opened in a hub.
+// It carries hooks, the attribution and the session's scope alone,
+// so every other setting of the session stays the worktree's own.
+// Attribution has no omitempty and is left zero, so the document credits no session.
 type openSettingsDoc struct {
 	Hooks       openSettingsHooks   `json:"hooks"`
 	Attribution attributionSettings `json:"attribution"`
 	sessionScope
 }
 
-// buildOpenSettings marshals an opened session's settings document over the creel flag directory creelFlagDirPosix, a git-bash POSIX path:
-// the PostToolUse creel mail hook, on Stop creel's turn-end delivery followed by the idle waiter, and scope.
+// buildOpenSettings marshals an opened session's settings document over the creel flag directory creelFlagDirPosix.
+// The path is a git-bash POSIX path, and the document holds the PostToolUse creel mail hook and the scope.
+// On Stop, it runs creel's turn-end delivery followed by the idle waiter.
 // It records nothing, since an opened session has no events file.
 func buildOpenSettings(creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
 	quotedFlagDir := shQuote(creelFlagDirPosix)
@@ -209,10 +233,12 @@ func buildOpenSettings(creelFlagDirPosix string, scope sessionScope) ([]byte, er
 	return data, nil
 }
 
-// settingsDoc is the Claude Code settings.json document Prepare writes.
-// PromptSuggestionEnabled has no omitempty and buildSettings leaves it false, so every document carries `"promptSuggestionEnabled": false`.
-// The styled read is what lets a hand-added session, which this document does not configure, have its suggestion read as an empty box.
-// Attribution has no omitempty and buildSettings leaves it zero, so the document credits no session.
+// settingsDoc is the Claude Code settings.json document written for a session.
+// The promptSuggestionEnabled key has no omitempty and is left false,
+// so every document carries `"promptSuggestionEnabled": false`.
+// This document does not configure a hand-added session;
+// the styled read is what lets it have its suggestion read as an empty box.
+// Attribution has no omitempty and is left zero, so the document credits no session.
 // The session's scope follows as the last keys.
 type settingsDoc struct {
 	Hooks                   settingsHooks       `json:"hooks"`
@@ -221,8 +247,8 @@ type settingsDoc struct {
 	sessionScope
 }
 
-// shQuote wraps s in POSIX shell single quotes, escaping embedded quotes with the standard sh idiom (close, emit escaped quote, reopen).
-// This prevents paths containing apostrophes from breaking out of the quoted argument.
+// shQuote wraps s in POSIX shell single quotes, escaping embedded quotes with the standard sh idiom.
+// It keeps a path that contains an apostrophe from breaking out of the quoted argument.
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
@@ -246,7 +272,7 @@ type denyInputs struct {
 }
 
 // standingDeny is one PreToolUse deny lym installs, with the system-prompt sentence announcing it.
-// buildSettings and buildDenyNotice both iterate standingDeniesFor, so the hooks and their announcement cannot drift.
+// The hook entries and the announcement are rendered from one list of denies, so they cannot drift.
 type standingDeny struct {
 	// matcher is the tool name the PreToolUse entry matches.
 	matcher string
@@ -264,8 +290,8 @@ type standingDeny struct {
 func claudeDenies() []standingDeny {
 	return []standingDeny{
 		{
-			// Fork-context webster-verb guard: deny `lym webster` inside forks (detected by top-level agent_id in payload).
-			// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
+			// Denies `lym webster` inside a fork, detected by a top-level agent_id in the payload.
+			// The command ends with `; true`, so it exits 0 and every other call is allowed.
 			matcher:   "Bash",
 			command:   "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lym[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true",
 			steer:     steerWebsterForkDeny,
@@ -288,17 +314,19 @@ func standingDeniesFor(refuseRaw []string) []standingDeny {
 	return append(claudeDenies(), shellGuardDenies(refuseRaw)...)
 }
 
-// bashForegroundPhrase is Claude's phrase for running a long command in the foreground, which the raw go row's steer and notice carry.
+// bashForegroundPhrase is Claude's phrase for running a long command in the foreground.
+// The `raw-go` row's steer and notice carry it.
 var bashForegroundPhrase = "with the Bash tool timeout set to " + bashMaxTimeoutMS
 
-// shellSwitchInstalled maps each shellguard.Switch to whether a run with the given inputs installs the rows hanging on it.
+// shellSwitchInstalled maps each shell guard switch to whether a run with the given inputs installs its rows.
 var shellSwitchInstalled = map[shellguard.Switch]func(denyInputs) bool{
 	shellguard.SwitchNone:        func(denyInputs) bool { return true },
 	shellguard.SwitchDenyPython:  func(in denyInputs) bool { return in.cfg.DenyPython },
 	shellguard.SwitchDenyPublish: func(in denyInputs) bool { return in.denyPublish },
 }
 
-// shellGuardInstalled reports whether a run with the given inputs installs the shell guard rows hanging on sw; a switch it does not know is not installed.
+// shellGuardInstalled reports whether a run with the given inputs installs the shell guard rows hanging on sw;
+// a switch it does not know is not installed.
 func shellGuardInstalled(sw shellguard.Switch, in denyInputs) bool {
 	installed, known := shellSwitchInstalled[sw]
 	return known && installed(in)
@@ -314,9 +342,10 @@ func shellGuardDenies(refuseRaw []string) []standingDeny {
 }
 
 // renderShellGuard wraps a shell guard row as a PreToolUse(Bash) hook entry.
-// A one-pattern row greps the payload once; a row of several patterns greps the payload once per pattern and denies only when all match.
+// A one-pattern row greps the payload once;
+// a row of several patterns greps the payload once per pattern and denies only when all match.
 // Each pattern is shell-quoted, since a pattern may hold a single quote.
-// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+// The command ends with `; true`, so a non-match exits 0 and allows the call.
 func renderShellGuard(row shellguard.Row) standingDeny {
 	var command string
 	if len(row.Patterns) == 1 {
@@ -337,7 +366,8 @@ func renderShellGuard(row shellguard.Row) standingDeny {
 	}
 }
 
-// buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
+// buildDenyNotice returns the one-line system-prompt notice that announces each deny the given inputs install.
+// The notice is "" when they install none.
 func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool) string {
 	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
 	var sentences []string
@@ -351,7 +381,8 @@ func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, 
 
 // recordingCommand returns the hook command that appends one hook event to the events file at quotedEventsPath:
 // a stamp line naming hookEventName with the hook-side time, then the payload on standard input followed by a newline.
-// The two are joined by `;` so a failed stamp never blocks the payload, and the command's exit status is the payload append's.
+// The two are joined by `;` so a failed stamp never blocks the payload,
+// and the command's exit status is the payload append's.
 // A failed `date` leaves the stamp's time empty, which the parser reads as no time.
 func recordingCommand(hookEventName, quotedEventsPath string) string {
 	stamp := `printf '{"` + stampHookKey + `":"` + hookEventName + `","` + stampAtKey + `":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath
@@ -359,26 +390,34 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 	return stamp + "; " + payload
 }
 
-// activityStampHook returns the hook entry that touches the activity stamp beside the events file at eventsPathPosix and always exits 0, so a failed touch never blocks the session.
+// activityStampHook returns the hook entry that touches the activity stamp beside the events file at eventsPathPosix,
+// and the entry always exits 0, so a failed touch never blocks the session.
 func activityStampHook(eventsPathPosix string) []hookEntry {
 	stampPath := path.Join(path.Dir(eventsPathPosix), shuttleengine.ActivityStampFileName)
 	return []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: "touch " + shQuote(stampPath) + "; true"}}}}
 }
 
-// buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg, claude and interactive.
-// The activity stamp hooks touch the file named shuttleengine.ActivityStampFileName in eventsPathPosix's directory.
-// eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
-// The denies are the entries of standingDeniesFor(cfg.RefuseRaw).
-// The AskUserQuestion deny is controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents adds a webster-verb guard.
-// denyPublish adds the publish deny of git push and the gh calls beyond reads, comments and title and body edits.
+// buildSettings marshals settings.json:
+// a Stop hook and the other recording hooks append their events to eventsPathPosix.
+// That path must be a git-bash POSIX path, and it is shell-quoted, so an apostrophe in it cannot break the command.
+// The PreToolUse guardrails follow from interactive, cfg, claude and forkSubagents.
+// denyPublish adds a deny of git push and of gh calls beyond reads, comments, and title and body edits.
 // Every SessionStart source is recorded exactly once.
-// A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
-// Empty gives a single recording entry with no matcher.
-// The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
-// claude's batching nudge, when on, adds the batching hook's PostToolUse entry after the stamp, matched to the tools a breach is made of and naming the state file beside the events file.
+// A non-empty contextAfterCompaction splits the SessionStart hook in two:
+// one entry records every source but compaction,
+// and the compaction entry records the event and then runs that command verbatim,
+// so its standard output reaches the session's context.
+// An empty contextAfterCompaction gives a single recording entry with no matcher.
+// The recordings print nothing and exit 0, so the PermissionRequest recording answers no request,
+// and the SessionStart recording adds nothing to the session's context.
+// claude's batching nudge, when on, adds a PostToolUse entry matched to the tools a breach is made of,
+// and it names the state file beside the events file.
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
-// It adds the PostToolUse creel mail hook, after the stamp and the batching hook, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
-// Empty adds none of them and keeps the plain Stop recording.
+// It adds the creel mail hook to PostToolUse,
+// and the hook tests the strand's flag in that directory.
+// It also replaces the Stop recording with the command that merges it with creel's turn-end delivery.
+// Creel's idle waiter is added as a second Stop entry.
+// An empty creelFlagDirPosix adds none of them and keeps the plain Stop recording.
 // scope is the session's scope, carried as the document's last keys; the zero scope adds none.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
@@ -425,7 +464,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 	if interactive {
-		// Record the live ask like a turn end, allowing the tool call to proceed unhindered.
+		// The hook records the live ask like a turn end and lets the tool call proceed.
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 			Matcher: "AskUserQuestion",
 			Hooks:   recordingHook(hookEventPreToolUse, false)[0].Hooks,
@@ -454,16 +493,21 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 	return data, nil
 }
 
-// steerTextForbiddenChars are characters that would corrupt steer constants in JSON or shell quoting layers (checked at init).
+// steerTextForbiddenChars are characters that would corrupt steer constants in JSON or shell quoting.
+// The package checks them at load.
 const steerTextForbiddenChars = `'"\`
 
-// noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since a deny notice also rides echo and JSON constants and shares one line of the append-system-prompt file with the sentences that follow it.
+// noticeTextForbiddenChars are the characters a deny notice must not hold:
+// single and double quotes, a backslash, and line breaks.
+// A notice rides echo and JSON constants,
+// and it shares one line of the append-system-prompt file with the sentences that follow it.
 const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
 // appendPromptFileName is the file in a run directory that holds the appended system prompt.
 const appendPromptFileName = "append-system-prompt.txt"
 
-// appendPromptText returns the appended system prompt: the deny notice and the creel trust sentence, space-separated, with the notice left out when it is empty.
+// appendPromptText returns the appended system prompt:
+// the deny notice and the creel trust sentence, space-separated, with the notice left out when it is empty.
 // Each passage follows after a blank line, in order.
 func appendPromptText(notice string, passages []string) string {
 	text := shuttleengine.CreelTrustSentence

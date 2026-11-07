@@ -1,4 +1,5 @@
-// cost.go tallies estimated cost: the cost a tally carries and the pricing of one message through its engine.
+// cost.go defines Cost, the estimated price of a tally of messages.
+// It also prices one message through the pricer of the engine that read it.
 
 package main
 
@@ -8,7 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Cost is an estimated price: a sum in USD over the priced messages, and a count of the messages whose model has no price.
+// Cost is an estimated price in USD.
+// It sums the priced messages and counts, per model, the messages that have no price.
 type Cost struct {
 	USD float64
 	// Unpriced counts, per model, the messages with nonzero usage that no price was found for;
@@ -43,12 +45,15 @@ func (c *Cost) add(o Cost) {
 	}
 }
 
-// share is the fraction f of the cost's USD, keeping every unpriced message count, since a share of an unpriced message is still unpriced.
+// share returns the cost scaled to the fraction f of its USD.
+// It keeps every unpriced count, since a share of an unpriced message is still unpriced.
 func (c Cost) share(f float64) Cost {
 	return Cost{USD: c.USD * f, Unpriced: c.Unpriced}
 }
 
-// String renders the cost for a table cell: "$1.23", "unpriced" when only unpriced messages hold tokens, or "$1.23 + unpriced" when both do.
+// String renders the cost for a table cell as "$1.23".
+// When only unpriced messages hold tokens it reads "unpriced".
+// When both priced and unpriced messages hold tokens it reads "$1.23 + unpriced".
 func (c Cost) String() string {
 	switch {
 	case len(c.Unpriced) == 0:
@@ -60,7 +65,10 @@ func (c Cost) String() string {
 	}
 }
 
-// precise renders the cost as String does but to a tenth of a cent, for a figure such as a cost per line that rounds to nothing at cents.
+// precise renders the cost to a tenth of a cent.
+// It suits a figure, such as a cost per line, that rounds to nothing at cents.
+// When only unpriced messages hold tokens it reads "unpriced".
+// When both do it appends " + unpriced" to the figure.
 func (c Cost) precise() string {
 	switch {
 	case len(c.Unpriced) == 0:

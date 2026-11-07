@@ -1,4 +1,5 @@
-// cleanup_integration_test.go drives "lym cleanup" through RunCLIIn over a hubforge hub seeded with one leftover for every segment: the prime-only refusal, the dry run that lists them all and the apply that removes them.
+// cleanup_integration_test.go drives "lym cleanup" through RunCLIIn over a hubforge hub.
+// The hub is seeded with one leftover for every segment.
 
 package cleanupcli
 
@@ -326,7 +327,8 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 		t.Errorf("--apply over an ended run: mutations = %v; want the removed pair recorded", mutationKinds(t, endedRun))
 	}
 
-	// The wake force case: a pair the hibernate request's wake paused, ended on origin, with an uncommitted task worktree and a held teardown lock.
+	// The wake force case: a pair the hibernate request's wake paused and that ended on origin.
+	// Its task worktree has uncommitted changes, and its teardown lock is held.
 	wakeSlug := "wake-task"
 	endOnOrigin(t, h, board, wakeSlug)
 	wakeWorktree := h.PairCodeWorktree(wakeSlug)
@@ -538,7 +540,8 @@ func setOrigin(t *testing.T, repoDir, url string) (restore func()) {
 	return restore
 }
 
-// endOnOrigin gives the hub a pair for slug whose run has a batten record, and has origin's board mark the entry done while this machine's board still holds it live.
+// endOnOrigin gives the hub a pair for slug whose run has a batten record.
+// On origin's board the entry is marked done, while this machine's board still holds it live.
 func endOnOrigin(t *testing.T, h *hubforge.Hub, board *boardengine.Board, slug string) {
 	t.Helper()
 	hubforge.AddPair(t, h, slug)
@@ -546,7 +549,8 @@ func endOnOrigin(t *testing.T, h *hubforge.Hub, board *boardengine.Board, slug s
 	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("seed the board entry %s: %v", slug, err)
 	}
-	// Board writes stay uncommitted in the Bolt checkout until its sync, which a test binary never spawns, so the test commits them itself.
+	// Board writes stay uncommitted in the Bolt checkout until its sync.
+	// A test binary never spawns that sync, so the test commits them itself.
 	boardDir := h.BoardDir()
 	commitBoard := func(message string) {
 		gitkit.Git(t, boardDir, "add", "board.json")

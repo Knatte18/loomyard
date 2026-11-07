@@ -1,5 +1,6 @@
-// readiness.go builds the readiness reading: one answer, from the hook-derived session state, to whether a session can take typed input now.
-// Runner.SessionIdle and the verified send's idle wait both gate on it, and fall back to the pane alone when the state is unknown.
+// readiness.go builds the readiness reading: whether a session can take typed input now, from its hook-derived state.
+// The runner's idle check and the verified send's idle wait gate on it.
+// When the state is unknown, both fall back to the pane alone.
 
 package shuttleengine
 
@@ -13,7 +14,7 @@ import (
 const (
 	// readinessReasonPaneTooShort is the held reason of a pane too short to draw the input box.
 	readinessReasonPaneTooShort = "the pane is too short to show the input box"
-	// readinessReasonNoInputBox is the held reason of a pane whose input box an engine able to read one finds nowhere on screen, as when a menu or picker is open.
+	// readinessReasonNoInputBox is the held reason of a pane with no input box on screen, as when a menu or picker is open.
 	readinessReasonNoInputBox = "no input box is on screen; a menu or picker may be open"
 	// sessionCauseReleasedTurn is the cause of the idle-stalled state a turn start reads as once its hold released.
 	sessionCauseReleasedTurn = "released-turn"
@@ -82,10 +83,15 @@ func readBox(engine Engine, capture string) boxReading {
 }
 
 // judgeReadiness turns a session state, whether a turn start is still unmatched and the box reading into a readiness.
-// A finished, stalled or freshly started session, one waiting on input at a turn end and one busy only on background work are ready, provided no turn start is unmatched and the box, where one is read, is blank.
-// A running turn, a question awaiting an answer and a dead process are held, as are a pane too short, a pane showing no input box to an engine that reads one, an unmatched turn start and a draft in the box.
+// A finished, stalled or freshly started session and one waiting on input at a turn end are ready.
+// So is one busy only on background work.
+// All of these are ready provided no turn start is unmatched and the box, where one is read, is blank.
+// A running turn, a question awaiting an answer and a dead process are held.
+// So are a pane too short, a pane with no input box for an engine that reads one, and a draft in the box.
+// An unmatched turn start is held as well.
 // An unknown state is neither: the caller falls back to the pane.
-// A reading that passes the state switch with no unmatched turn start also carries noTurn and the state's Since as turnEndedAt, held or not, since a too-short pane, a missing box or a draft says nothing about a turn.
+// A reading that passes the state switch with no unmatched turn start sets noTurn and turnEndedAt, held or not.
+// A too-short pane, a missing box or a draft says nothing about a turn.
 func judgeReadiness(state SessionState, unmatched bool, box boxReading) readiness {
 	switch state.Name {
 	case SessionUnknown:
@@ -125,7 +131,8 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 
 // readinessState returns the session state a readiness reading judges at now: the fold of the run's signals past its prompt offset.
 // When no signal lies past a non-zero offset, the session has done nothing since the offset was set, so the state is the fold of the whole events file.
-// A send right after the skill-load turns, which start moved the offset past, so reads the last load turn's end instead of an unknown state.
+// Starting moves the offset past the skill-load turns.
+// A send right after them reads the last load turn's end instead of an unknown state.
 func readinessState(rs RunState, engine Engine, now time.Time) SessionState {
 	state := readRunSessionState(rs, engine, now).State
 	if state.Name != SessionUnknown || state.Cause != SessionCauseNoSignal || rs.PromptOffset == 0 {
@@ -137,10 +144,13 @@ func readinessState(rs RunState, engine Engine, now time.Time) SessionState {
 
 // sessionReadiness reads the readiness of the strand sc names from capture, its pane just captured.
 // A recordless context reads unknown with cause no-run-record, so the caller takes the pane-only reading.
-// It folds the run's session state at the context's clock, through readinessState; an unknown state settles nothing, so the reading is unknown without a look at the box.
+// It folds the run's session state at the context's clock.
+// An unknown state settles nothing, so the reading is unknown without a look at the box.
 // Otherwise it decides through hold whether an unmatched turn start still holds, and reads the box.
-// A turn start whose hold released, by a later turn end, a reported interrupt, a later session start or the pane reading idle for turnStartIdleOverride, no longer counts as a running turn;
-// a turn start the engine reads in flight is not released by the idle pane.
+// A later turn end, a reported interrupt or a later session start releases a turn start's hold.
+// So does the pane reading idle for turnStartIdleOverride.
+// A released turn start does not count as a running turn.
+// A turn start the engine reads in flight is not released by the idle pane.
 func sessionReadiness(sc sendContext, cycler SessionCycler, hold *turnStartHold, capture string) readiness {
 	if sc.recordless {
 		return judgeReadiness(SessionState{Name: SessionUnknown, Cause: sessionCauseNoRunRecord}, false, boxReading{})

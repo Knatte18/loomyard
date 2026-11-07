@@ -1,4 +1,5 @@
-// directory.go owns the read-only name directory behind `lym reed list`: one row per strand in this worktree's state, with the pane's current title beside the name it should carry.
+// directory.go owns the read-only name directory behind `lym reed list`:
+// one row per strand in this worktree's state, with the pane's current title beside the name it should carry.
 
 package reedengine
 
@@ -15,7 +16,7 @@ type DirectoryRow struct {
 	Live  bool
 	// Drift is true when the strand is live and its pane title differs from its name.
 	Drift bool
-	// Retiring is the strand's own Retiring flag: it is about to remove itself.
+	// Retiring reports that the strand is about to remove itself.
 	Retiring bool
 }
 
@@ -55,8 +56,9 @@ func (e *Engine) Directory() ([]DirectoryRow, error) {
 }
 
 // directoryRows maps strands onto the live pane set; a nil live set makes every row dormant.
-// A row reads live, and carries its pane's title and drift, only when its pane is in alive, the set of panes whose engine still runs.
-// Drift is whatever planTitleRepairs would repair, so the two never disagree.
+// A row reads live, and carries its pane's title and drift, only when its pane is in alive.
+// alive is the set of panes whose engine still runs.
+// Drift is set for each row whose pane title needs repair, so drift and repair never disagree.
 func directoryRows(strands []Strand, live []LivePane, alive map[string]bool) []DirectoryRow {
 	titles := make(map[string]string, len(live))
 	for _, p := range live {

@@ -17,12 +17,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// skippedDirs are the directory names scanTree never enters.
+// skippedDirs are the directory names the tree scan never enters.
 var skippedDirs = []string{"bin", "obj", ".scratch", ".git", "_lym", ".lym"}
 
-// DeriveDiff derives the Scope of the diff between base and the working tree in worktree, for the tier whose directory is dir, relative to the worktree.
-// inert reports whether a worktree-relative path is inert; an inert path is dropped before anything else is read.
-// A fallback is the Whole Scope with its reason and is no error; the one error is a cancelled ctx, checked before each git read.
+// DeriveDiff derives the Scope of the diff between base and the working tree in worktree.
+// dir is the tier's directory, relative to worktree.
+// inert reports whether a worktree-relative path is inert;
+// an inert path is dropped before anything else is read.
+// A fallback is the Whole Scope with its reason and is no error;
+// the one error is a cancelled context, checked before each git read.
 func DeriveDiff(ctx context.Context, worktree, dir, base string, inert func(rel string) bool) (Scope, error) {
 	dir = path.Clean(filepath.ToSlash(dir))
 	if base == "" {
@@ -77,10 +80,14 @@ func DeriveDiff(ctx context.Context, worktree, dir, base string, inert func(rel 
 	return scanAndNarrow(worktree, dir, s), nil
 }
 
-// DeriveCards derives the Scope of the card targets in seeds, for the tier whose directory is dir, relative to the worktree.
-// inert reports whether a worktree-relative path is inert; a seed whose file is inert is dropped.
-// It reads no git; a seed list that is empty, or whose seeds are all dropped as inert, is the empty scope.
-// A fallback is the Whole Scope with its reason and is no error; the one error is a cancelled ctx.
+// DeriveCards derives the Scope of the card targets in seeds.
+// dir is the tier's directory, relative to worktree.
+// inert reports whether a worktree-relative path is inert;
+// a seed whose file is inert is dropped.
+// It reads no git;
+// a seed list that is empty, or whose seeds are all dropped as inert, is the empty scope.
+// A fallback is the Whole Scope with its reason and is no error;
+// the one error is a cancelled context.
 func DeriveCards(ctx context.Context, worktree, dir string, seeds []planparser.CSharpSeed, inert func(rel string) bool) (Scope, error) {
 	dir = path.Clean(filepath.ToSlash(dir))
 	if err := ctx.Err(); err != nil {
@@ -127,7 +134,8 @@ func scanAndNarrow(worktree, dir string, s seed) Scope {
 	return narrow(sources, projects, s)
 }
 
-// readFallback turns a failed git or source read into the cancelled ctx's error, or into the Whole Scope naming it.
+// readFallback turns a failed git or source read into the Whole Scope naming the failure,
+// and it returns the context's error instead when the context is cancelled.
 func readFallback(ctx context.Context, err error) (Scope, error) {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return Scope{}, ctxErr
@@ -143,9 +151,10 @@ func relativeToDir(dir, rel string) (string, bool) {
 	return strings.CutPrefix(rel, dir+"/")
 }
 
-// declaredTypes returns the names of the types the C# file declares in its base version and in the working tree, so a renamed or deleted type still seeds.
+// declaredTypes returns the names of the types the C# file declares in its base version and in the working tree,
+// so a renamed or deleted type still seeds.
 // A missing version declares none.
-// reason is non-empty, with an empty error, when neither version declares a type.
+// reason is non-empty, and err is nil, when neither version declares a type.
 func declaredTypes(ctx context.Context, worktree, base, file string) (names []string, reason string, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
@@ -186,8 +195,10 @@ func typeNames(rel string, data []byte) []string {
 	return names
 }
 
-// scanTree reads every `.cs` file under dir into a sourceFile, keyed by its slash path relative to dir, and lists every `.csproj`, in path order.
-// It skips the directories named in skippedDirs; an unreadable file or directory is its error.
+// scanTree reads every `.cs` file under dir into a sourceFile whose path is relative to dir and slash-separated.
+// It lists every `.csproj` in path order.
+// It skips the directories named in skippedDirs;
+// an unreadable file or directory is returned as the error.
 func scanTree(dir string) (sources []sourceFile, projects []string, err error) {
 	err = filepath.WalkDir(dir, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {

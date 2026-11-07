@@ -1,4 +1,5 @@
-// walk.go walks a hub's worktrees under the hub lock: reconcile each one's config, commit what was written, and stamp the build.
+// walk.go walks a hub's worktrees under the hub lock.
+// It reconciles each worktree's config, commits what was written, and stamps the build.
 
 package hubreconcile
 
@@ -27,12 +28,13 @@ type walkHooks struct {
 	afterEnumerate func()
 	// beforeCommit runs between a worktree's config write and its commit, with the worktree root.
 	beforeCommit func(worktreePath string)
-	// afterHubWideWrite runs inside the board write after the hub-wide reconcile returns, so after the files and the board marker are written;
-	// a non-nil error fails the write as a commit failure would.
+	// afterHubWideWrite runs in the board write once the hub-wide reconcile has written the files and the board marker.
+	// A non-nil error fails the write as a commit failure would.
 	afterHubWideWrite func() error
 }
 
-// ensure is Ensure with test hooks.
+// ensure brings the hub's config up to the running build, under the hub lock.
+// It returns at once when the build stamp is current, except for a pair call, which reconciles only that pair.
 func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 	running := runningStamp()
 	pairCall := opts.Pair != ""
@@ -82,9 +84,9 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 	return writeStamp(geom.StampPath(), running)
 }
 
-// repoDefaultAbsent reports whether any per-worktree module's repo default is absent under boardDir, or the board's base-sparse marker is.
-// It makes a stamp naming the running build stale, so a default deleted after a walk is reseeded by the next start verb,
-// and a board not yet stripped to sparse base files, or whose marker was removed, is walked again.
+// repoDefaultAbsent reports whether boardDir lacks the base-sparse marker or a per-worktree module's repo default.
+// A true result marks the build stamp stale, so the next start verb reseeds a default deleted after a walk.
+// A board not yet stripped to sparse base files, or whose marker was removed, is walked again.
 func repoDefaultAbsent(boardDir string) bool {
 	if !fileExists(configengine.BaseSparseMarker(boardDir)) {
 		return true
@@ -112,7 +114,8 @@ func readCurrentStamp(path, key string) (s stamp, current bool) {
 }
 
 // walkHub reconciles the hub-wide config, the prime and then every pair, re-listing until no unwalked pair remains.
-// It reports whether the hub-wide write was skipped or left unpushed, or any worktree was skipped as mid-merge.
+// It reports whether the hub-wide write was skipped because the board could not be brought up to date,
+// or any worktree was skipped as mid-merge.
 func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err error) {
 	worktrees, err := fabricengine.CodeWorktrees(geom.WorktreePath)
 	if err != nil {
@@ -189,18 +192,25 @@ func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree
 	return fabricengine.CodeWorktree{}, false
 }
 
-// spawnBoardSync starts the detached board sync after a hub-wide commit; it is a variable so a test records the call.
+// spawnBoardSync starts the detached board sync of a board dir.
+// It is a variable so a test can record the call.
 var spawnBoardSync = boardengine.SpawnSync
 
-// reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
-// While the board's base-sparse marker is absent the pass also strips each present base file once, and the marker it writes joins the files in the board commit.
-// Each seed-only module's template base the pass wrote joins the commit beside its file.
-// Each registered reinterpretation whose board marker is absent is then applied, judged against the prime, and its marker joins the commit too.
-// The board is pulled first: when it cannot be brought up to date nothing is written and skipped is true.
-// A reconcile or commit failure restores the board's config files to their prior bytes and removes a marker or template base the pass wrote.
-// Once the commit landed, what the reinterpretations rewrote or flagged, and what the seed-only files took from their template or kept against it, is mailed to the hub's orch.
-// The board is synced by the detached board sync whether or not this run committed, so a hub-wide commit an earlier run left unpushed is pushed too.
-// The walk never waits on that push: a refusal of it reaches the orch as a failed-push record, and a spawn failure is only logged.
+// reconcileHubWide reconciles the board's hub-wide config, seeded from the prime's anchor, and commits what it wrote.
+// While the base-sparse marker is absent, the pass strips each present base file once.
+// The marker it then writes joins the commit.
+// A seed-only module's template base that the pass wrote joins the commit beside its file.
+// A registered reinterpretation whose board marker is absent is judged against the prime and applied.
+// Its marker joins the commit.
+// The board is pulled first: when it cannot be brought up to date, nothing is written and skipped is true.
+// A reconcile or commit failure restores the board's config files to their prior bytes.
+// It also removes a marker or template base the pass wrote.
+// Once the commit lands, the hub's orch is mailed what the reinterpretations rewrote or flagged.
+// It is also mailed what the seed-only files took from their template or kept against it.
+// The detached board sync runs whether or not this run committed.
+// So a hub-wide commit an earlier run left unpushed is pushed too.
+// The walk never waits on that push.
+// A refusal of it reaches the orch as a failed-push record; a spawn failure is only logged.
 func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label string, hooks walkHooks) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
@@ -270,7 +280,8 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 }
 
 // reconcileWorktree reconciles and commits one code worktree's config.
-// It reports skipped when a mid-merge state keeps the worktree from being written or committed, which leaves the build stamp stale.
+// It reports skipped when a merge in progress keeps the worktree from being written or committed.
+// A skipped worktree leaves the build stamp stale.
 // A pair that is incomplete or has been removed is passed over without being reported skipped.
 // A failure after the write restores the config files to their prior bytes, so nothing written is left uncommitted;
 // a commit that landed before a later step of it failed keeps them.
@@ -343,7 +354,8 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 	}
 	res, err := f.Commit(files, "lym: reconcile config for build "+revision, nil, fabricengine.SyncOptions{})
 	if err != nil {
-		// A commit that landed before a later step failed already holds the written bytes, so a restore would dirty the tree against it.
+		// A commit that landed before a later step failed already holds the written bytes.
+		// A restore would dirty the tree against that commit.
 		if res.Committed() {
 			return false, &WorktreeError{Worktree: w.Path, Err: err}
 		}
@@ -371,7 +383,8 @@ func failRestoringConfig(prior map[string][]byte, failure *WorktreeError) *Workt
 	return failure
 }
 
-// passOverOrFail maps an error from opening a worktree: a path that no longer exists is passed over, anything else fails the walk.
+// passOverOrFail maps an error from opening a worktree.
+// A path that no longer exists is passed over; any other error fails the walk.
 func passOverOrFail(worktreePath string, err error) (skipped bool, failure error) {
 	var missing *fabricengine.ErrMissingPath
 	if errors.As(err, &missing) {
@@ -382,7 +395,8 @@ func passOverOrFail(worktreePath string, err error) (skipped bool, failure error
 }
 
 // worktreeErrorFor wraps a reconcile failure, taking the file and module from a *configsync.FileError.
-// A template base is no file the module's editor repairs, so a failure naming one carries no module and its way forward is the file alone.
+// A template base is not a file the module's editor repairs.
+// A failure naming one carries no module, so its way forward is the file alone.
 func worktreeErrorFor(worktree string, err error) *WorktreeError {
 	var fileErr *configsync.FileError
 	if errors.As(err, &fileErr) {
@@ -395,14 +409,15 @@ func worktreeErrorFor(worktree string, err error) *WorktreeError {
 	return &WorktreeError{Worktree: worktree, Err: err}
 }
 
-// boardErrorFor is worktreeErrorFor for a failure at the board dir, so the error names the board way forward.
+// boardErrorFor wraps a failure at the board dir, and marks the error so its way forward names the board.
 func boardErrorFor(boardDir string, err error) *WorktreeError {
 	failure := worktreeErrorFor(boardDir, err)
 	failure.Board = true
 	return failure
 }
 
-// followedLines renders what a board result carried from the template into a present seed-only file, and the operator values it kept against the template, one line per unit naming the module's file.
+// followedLines renders one line per change a board result carried from the template into a present seed-only file.
+// Each operator value kept against the template gets a line too, naming the module's file.
 // Any other result renders none.
 func followedLines(result configsync.Result) []string {
 	module, ok := configreg.Lookup(result.Module)
@@ -426,8 +441,9 @@ func followedLines(result configsync.Result) []string {
 	return lines
 }
 
-// notifyTemplateFollowed logs what the walk carried from the template into the hub's seed-only files and kept against it, and mails it, as one line, to the hub's orch through the installed notifier.
-// No line sends nothing.
+// notifyTemplateFollowed logs what the walk carried into the hub's seed-only files and kept against the template.
+// It mails the same, as one line, to the hub's orch through the installed notifier.
+// With no lines, it sends nothing.
 func notifyTemplateFollowed(boardDir, label string, lines []string) {
 	if len(lines) == 0 {
 		return
@@ -451,9 +467,12 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// snapshotConfig reads every file in anchor's config dir and every registry module's config file and local override file, each seed-only module's template base, and the sparse, base-sparse and reinterpretation markers under anchor; an absent one maps to nil.
-// The dir's own files cover a legacy file a migration removes.
-// Any read or list failure other than absence is returned naming the path, since a snapshot missing a file could not restore it.
+// snapshotConfig reads every file that a reconcile under anchor may write, and maps an absent one to nil.
+// It covers every registry module's config and local override file and each seed-only module's template base.
+// It also covers the sparse, base-sparse and reinterpretation markers under anchor.
+// Every file in the config dir is covered too, so a legacy file that a migration removes is restored.
+// Any read or list failure other than absence is returned naming the path.
+// A snapshot missing a file could not restore it.
 func snapshotConfig(anchor string) (map[string][]byte, error) {
 	prior := make(map[string][]byte)
 	configDir := configengine.ConfigDir(anchor)
@@ -472,7 +491,8 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 		}
 		prior[path] = data
 	}
-	// The markers are snapshotted too, so a restore removes one a failed walk wrote and the worktree or board stays unmarked for the next walk.
+	// The markers are snapshotted too, so a restore removes one a failed walk wrote.
+	// The worktree or board then stays unmarked for the next walk.
 	paths := []string{configengine.SparseMarker(anchor), configengine.BaseSparseMarker(anchor)}
 	for _, module := range configreg.Modules() {
 		paths = append(paths, configengine.ConfigFile(anchor, module.Name), configengine.LocalFile(anchor, module.Name))
@@ -497,7 +517,8 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 	return prior, nil
 }
 
-// restoreConfig puts every file of a snapshot back to its prior bytes, removing the files that were absent.
+// restoreConfig writes every file of a snapshot back to its prior bytes, removing the files it recorded as absent.
+// It attempts every file and returns the failures joined, so one failed write does not skip the rest.
 func restoreConfig(prior map[string][]byte) error {
 	var errs []error
 	for path, data := range prior {

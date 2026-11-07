@@ -1,4 +1,6 @@
-// add_adoptonly_integration_test.go covers Add under AddOptions.AdoptOnly over hubforge hubs: the re-making of a live pair whose task worktree is gone, the typed answers for a pair that cannot be re-made, and the reuse of a records worktree that stands.
+// add_adoptonly_integration_test.go covers Add under AddOptions.AdoptOnly over hubforge hubs.
+// It checks re-making a live pair whose task worktree is gone.
+// It checks the typed answers for a pair that cannot be re-made, and the reuse of a records worktree that stands.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -40,7 +42,7 @@ func dropRecordsWorktree(h *hubforge.Hub, slug string) {
 	mustGit(h.PrimeRecords(), "branch", "-D", fabricengine.RecordsBranchName(slug))
 }
 
-// goneLocally returns a hub whose slug pair is pushed and has lost both worktrees and both local branches, leaving the branches on origin.
+// goneLocally returns a hub whose pushed slug pair has lost both worktrees and local branches, which remain on origin.
 func goneLocally(t *testing.T, slug string) *hubforge.Hub {
 	t.Helper()
 
@@ -436,11 +438,12 @@ func TestAdd_AdoptOnly(t *testing.T) {
 	})
 }
 
-// TestAdd_AdoptOnlyRollbackKeepsReusedRecordsWorktree covers a failure after the task worktree exists: the records worktree the add reused, and its branch, stay.
+// TestAdd_AdoptOnlyRollbackKeepsReusedRecordsWorktree covers a failure after the task worktree exists.
+// The records worktree the add reused, and its branch, survive the rollback.
 // It sets a package hook, so it must not run in parallel.
 func TestAdd_AdoptOnlyRollbackKeepsReusedRecordsWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
-	// Serial: SetAddFailAfterWarpHookForTest sets the package-level addFailAfterWarpHook.
+	// SetAddFailAfterWarpHookForTest sets the package-level addFailAfterWarpHook.
 	const slug = "reuse-fail"
 	h := pushedAdoptPair(t, slug)
 	dropTaskWorktree(h, slug)

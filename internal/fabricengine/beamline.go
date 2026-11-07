@@ -1,4 +1,5 @@
-// beamline.go implements BeamLineCommits, the read of the commits a beam pair's own first-parent line holds beyond its parent branch, and BeamCommitsPast, the part of that line a merged pull request lacks.
+// beamline.go reads the commits on a beam pair's first-parent line beyond its parent branch.
+// It also lists the part of that line that a merged pull request lacks.
 
 package fabricengine
 
@@ -21,18 +22,23 @@ type LineCommit struct {
 	SHA string
 	// Message is the commit's full message: its subject line, then its body.
 	Message string
-	// Parents are the commit's parent object names, first parent first, so a caller tells a merge from the commit it brought in.
+	// Parents are the commit's parent object names, first parent first,
+	// so a caller tells a merge from the commit it brought in.
 	Parents []string
 	// Committed is the commit's committer time.
 	Committed time.Time
-	// RecordsOnly reports whether every path the commit changes against its first parent lies under the pair's lym directory.
+	// RecordsOnly reports whether the commit changes, against its first parent, only paths under the pair's lym directory.
 	// Such a commit is lym's own bookkeeping and never a landing of work.
 	RecordsOnly bool
 }
 
-// BeamLineCommits lists the commits on the first-parent line of the beam pair at l that its merge base with parentBranch lacks, oldest first.
-// The first-parent line holds what landed on the beam branch itself: a squash or merge of each member, each merge from the parent and each commit made on the beam directly, and never the commits a merge brought in.
-// An empty parentBranch, a pair with no origin record, is refused with the way forward of making the beam through `lym beam create`.
+// BeamLineCommits lists the commits on the beam pair's first-parent line that its merge base with parentBranch lacks.
+// They are oldest first.
+// The first-parent line holds what landed on the beam branch itself:
+// a squash or merge of each member, each merge from the parent, and each commit made on the beam directly.
+// It never holds the commits a merge brought in.
+// An empty parentBranch, meaning a pair with no origin record, is refused.
+// The error names the way forward: make the beam through `lym beam create`.
 func BeamLineCommits(l *lymcwd.Location, parentBranch string) ([]LineCommit, error) {
 	if parentBranch == "" {
 		return nil, errors.New("the beam's pair records no parent branch to measure its commits from; way forward: make the beam through \"lym beam create\", which records its parent branch")
@@ -59,7 +65,8 @@ func BeamLineCommits(l *lymcwd.Location, parentBranch string) ([]LineCommit, err
 		beamOwn[sha] = true
 	}
 
-	// The first-parent line leaves the merge base's history at its first commit the parent already holds, so it is at most as long as added.
+	// The first-parent line leaves the merge base's history at its first commit the parent already holds,
+	// so it is at most as long as added.
 	line, err := repo.Log(head, gitrepo.LogQuery{FirstParent: true, Limit: len(added)})
 	if err != nil {
 		return nil, err
@@ -87,8 +94,12 @@ func BeamLineCommits(l *lymcwd.Location, parentBranch string) ([]LineCommit, err
 	return commits, nil
 }
 
-// BeamCommitsPast lists the commits a landing of a pull request merged at mergedHead would lack, from the beam pair at l whose parent branch is parentBranch, oldest first, each as a short object name and its subject.
-// They are the commits of the beam's first-parent line past mergedHead, or the whole line when mergedHead is not on it, bar the commits that only record lym's own state and the merges whose second parent parentBranch already holds.
+// BeamCommitsPast lists the commits a landing of a pull request merged at mergedHead lacks, oldest first.
+// Each entry is a short object name and its subject; the beam pair at l has parent branch parentBranch.
+// The candidates are the commits past mergedHead on the beam's first-parent line.
+// When mergedHead is not on that line, the candidates are the whole line.
+// Commits that only record lym's own state are left out.
+// So are merges whose second parent parentBranch already holds.
 func BeamCommitsPast(l *lymcwd.Location, parentBranch, mergedHead string) ([]string, error) {
 	line, err := BeamLineCommits(l, parentBranch)
 	if err != nil {

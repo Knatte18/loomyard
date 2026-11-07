@@ -34,7 +34,9 @@ func newCompareFixture(t *testing.T, command string) (CompareRequest, *gateslot.
 	}, f.pool
 }
 
-// TestRunCompare covers a pass, a failure naming its log, the rendered baseline placeholder, the retired skip file placeholder's refusal, the marker read as held while the run waits for a slot, the timeout tree kill and a held marker.
+// TestRunCompare covers a pass, a failure naming its log and the rendered baseline placeholder.
+// It also covers the retired skip file placeholder's refusal.
+// It also covers the marker read as held while the run waits for a slot, and the timeout tree kill.
 func TestRunCompare(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

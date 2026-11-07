@@ -1,5 +1,5 @@
-// fix_test.go tables the fix half (Engine.Fix, ProbeFix, ResumeFix) against the same-package fakeShuttle.
-// It covers the one-seat table's shape, a spawn for a review holding only a NIT finding, the empty-review skip, routed decision findings, a failing gate spawning the fixer with the gate findings as its work, a gate closure error spawning nothing, ErrReviewChanged before and after the fixer, a failed fixer gate passing through, probe and resume, and what the fixer's files hold.
+// fix_test.go tests the fix half (Engine.Fix, ProbeFix, ResumeFix) against fakeShuttle.
+// It covers when a fixer is spawned, how the gate outcome feeds it, and what the fixer's files hold.
 
 package burlerengine
 
@@ -42,7 +42,8 @@ const (
 		"---\n### [LOW] cache scope left open\n### [NIT] naming\n"
 )
 
-// newFixCase writes review as the profile's review file and returns the engine root, the profile and the digest the review half would have handed over.
+// newFixCase writes review as the profile's review file.
+// It returns the engine root, the profile and the digest the review half would hand over.
 func newFixCase(t *testing.T, review string) (root string, p Profile, digest string) {
 	t.Helper()
 	root, p = newEngineTestProfile(t)
@@ -52,7 +53,8 @@ func newFixCase(t *testing.T, review string) (root string, p Profile, digest str
 	return root, p, reviewDigest([]byte(review))
 }
 
-// gateOf returns a one-entry gate spec named name whose closure returns result, err and counts its calls in calls.
+// gateOf returns a one-entry gate spec named name.
+// Its closure returns result and err, and counts each call in calls.
 func gateOf(name string, result shuttleengine.GateResult, err error, calls *int) shuttleengine.GateSpec {
 	return shuttleengine.GateSpec{{Name: name, Attempts: 1, Gate: func() (shuttleengine.GateResult, error) {
 		*calls++
@@ -82,8 +84,10 @@ func fixInstructionFiles(t *testing.T, root string) map[string]string {
 	return files
 }
 
-// TestEngine_Fix_TableShapeAndFiles proves Fix spawns exactly one seat for a review holding only a NIT finding, and builds its spec and gate as the fix half pins them, for a single fixer and for a twill fixer.
-// It also proves the instruction files hold the review path, the review format and the target paths and none of the rubric, fasit, PATTERN directive, focus file or prior rounds.
+// TestEngine_Fix_TableShapeAndFiles proves Fix spawns exactly one seat for a review holding only a NIT finding.
+// It proves its spec and gate are built as the fix half pins them, for a single fixer and for a twill fixer.
+// It also proves the instruction files hold the review path, the review format and the target paths.
+// They hold none of the rubric, fasit, PATTERN directive, focus file or prior rounds.
 // The single row's fix step equals the fix stencil with the self-check marker removed and has no lenses;
 // the twill row's forks, empty seat model key, self-check part and lenses are the fixer fan's.
 func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
@@ -102,7 +106,7 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	}
 }
 
-// checkFixTableShapeAndFiles runs one row of TestEngine_Fix_TableShapeAndFiles: a fix over a NIT review whose profile names a fixer fan exactly when twill is set.
+// checkFixTableShapeAndFiles runs one table row: a NIT review fixed with a fixer fan exactly when twill is set.
 func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	t.Helper()
 
@@ -231,7 +235,10 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	}
 }
 
-// TestEngine_Fix_Outcomes table-drives Fix over the empty-review skip, a failing gate, a gate closure error, ErrReviewChanged on either side of the fixer, a fixer gate that failed and every non-done outcome and start and stop failure.
+// TestEngine_Fix_Outcomes table-drives Fix over the outcomes it can reach.
+// The rows cover the empty-review skip, a failing gate and a gate closure error.
+// They also cover ErrReviewChanged on either side of the fixer and a fixer gate that failed.
+// Every non-done outcome and every start and stop failure has a row too.
 func TestEngine_Fix_Outcomes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -258,7 +265,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		wantNotStart bool
 		wantErrIs    error
 		wantErrText  string
-		// fixFan makes the profile name a fixer fan, and wantForks and wantWarnings are the audited fork count and warnings the result must carry.
+		// fixFan makes the profile name a fixer fan; wantForks and wantWarnings are the audited forks and warnings.
 		fixFan       bool
 		wantForks    int
 		wantWarnings []string
@@ -417,8 +424,11 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 	}
 }
 
-// TestEngine_ProbeFix_And_ResumeFix proves ProbeFix classifies the fixer as live, done or gone from the fake's runs and the fixer report, names the report as the probed output and starts nothing,
-// and that ResumeFix attaches to a live fixer and concludes it against the digest, refusing a half that is not live and one not taken from a probe.
+// TestEngine_ProbeFix_And_ResumeFix proves ProbeFix classifies the fixer as live, done or gone.
+// The classification reads the fake's runs and the fixer report.
+// The probe names the report as the probed output and starts nothing.
+// ResumeFix attaches to a live fixer and concludes it against the digest.
+// It refuses a half that is not live and a half not taken from a probe.
 func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

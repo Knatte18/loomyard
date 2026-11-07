@@ -1,12 +1,9 @@
 // modelspec.go declares the package's exported types and closed vocabularies.
-// It carries no logic — Parse (parse.go), Registry.Resolve and builtins (registry.go), LoadRegistry
-// (load.go), and ConfigTemplate (template.go) implement the behaviour this file's types describe.
+// It carries no logic; parse.go, registry.go, load.go and template.go implement the behaviour these types describe.
 
-// Package modelspec parses and resolves the model-spec notation every
-// agent-spawning config in the stack uses to say which LLM runs a role
-// (webster's roles, burler reviewers and judges, loom's producers). The
-// pinned contract is contracts/specs/llm-model-spec.md; this package is its as-built
-// implementation.
+// Package modelspec parses and resolves the model-spec notation.
+// Agent-spawning configs use it to say which LLM runs a role.
+// The contract is contracts/specs/llm-model-spec.md, and this package implements it.
 //
 // Grammar, in one line:
 //
@@ -16,32 +13,33 @@
 //
 //	<engine>:<model-id>[item,item,...]        where item is the same shape as above
 //
-// Alias form vs escape form: a Spec is either an alias (Alias non-empty, Engine
-// and Model both empty) or an escape-form pair (Engine and Model both non-empty,
-// Alias empty) — exactly one of the two shapes holds for any parsed Spec, never
-// both and never neither.
+// A Spec takes one of two shapes.
+// In alias form, Alias is non-empty and Engine and Model are empty.
+// In escape form, Engine and Model are both non-empty and Alias is empty.
+// Exactly one of the two shapes holds for any parsed Spec: never both, never neither.
 //
-// Parse/Resolve split: Parse(s) checks grammar only and returns a Spec — callers
-// can lint a spec string with no registry in hand, and grammar errors are
-// distinguished from "unknown alias" errors. Registry.Resolve(spec) then performs
-// alias lookup (alias form) or passes the escape-form pair through unchanged, and
-// applies bracket-over-default precedence, yielding a Resolved.
+// Parse(s) checks grammar only and returns a Spec, so callers can lint a spec string with no registry in hand.
+// Grammar errors are reported apart from unknown-alias errors.
+// Registry.Resolve(spec) performs the alias lookup for alias form, or passes the escape-form pair through unchanged.
+// It also applies bracket-over-default precedence and yields a Resolved.
 //
-// LoadRegistry fallback semantics: LoadRegistry(dirs) reads the models.yaml layers through configengine.StackLayers.
-// No layer file is NOT an error — it returns the built-in fallback registry unchanged, so every consumer works with zero config present.
-// A present layer's entries are validated, and the stack's merged entries are laid over the built-ins by whole-entry replacement per alias (a file entry for "sonnet" replaces the built-in "sonnet" entirely; it does not merge field-by-field).
+// LoadRegistry(dirs) reads the models.yaml layers through configengine.StackLayers.
+// A missing layer file is not an error: LoadRegistry returns the built-in fallback registry unchanged,
+// so every consumer works with zero config present.
+// A present layer's entries are validated.
+// The stack's merged entries are laid over the built-ins by whole-entry replacement per alias.
+// A file entry for "sonnet" replaces the built-in "sonnet" entirely; it does not merge field by field.
 //
-// Leaf import discipline: this package's production code imports ONLY the
-// standard library (including embed), internal/configengine, and gopkg.in/yaml.v3
-// — never configreg, envsource, yamlengine, lymcwd, or any feature package.
-// This lets every future consumer (webster, burler/loom configs) import
-// modelspec without creating an import cycle; configreg importing modelspec (for
-// ConfigTemplate) is the one allowed direction. Enforced by
-// leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) and recorded as the
-// PATTERN-leaf-packages.
+// Leaf import discipline: this package's production code imports a closed set of packages.
+// That set is the standard library (including embed), internal/configengine, and gopkg.in/yaml.v3.
+// It never imports configreg, envsource, yamlengine, lymcwd, or any feature package.
+// This lets every future consumer import modelspec without an import cycle;
+// configreg importing modelspec (for ConfigTemplate) is the one allowed direction.
+// leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) enforces this.
+// The rule is recorded as PATTERN-leaf-packages.
 //
-// Consumers map Resolved onto shuttleengine.Spec themselves — this package does
-// not import shuttleengine, so it cannot return one directly:
+// Consumers map Resolved onto shuttleengine.Spec themselves.
+// This package does not import shuttleengine, so it cannot return one directly:
 //
 //	spec.Model = resolved.Model
 //	spec.Effort = resolved.Params["effort"]
@@ -52,14 +50,13 @@ import "sort"
 
 // Spec is one parsed model-spec string, in exactly one of two shapes:
 //
-//   - Alias form: Alias is non-empty; Engine and Model are both empty. Resolving
-//     it requires a Registry lookup.
-//   - Escape form: Engine and Model are both non-empty; Alias is empty. Resolving
-//     it needs no registry — the engine and model are stated outright.
+//   - Alias form: Alias is non-empty; Engine and Model are both empty.
+//     Resolving it requires a Registry lookup.
+//   - Escape form: Engine and Model are both non-empty; Alias is empty.
+//     Resolving it needs no registry; the engine and model are stated outright.
 //
-// Params holds the bracket part's key=value pairs, or nil when the spec string
-// had no bracket at all. A Spec is produced only by Parse, which enforces that
-// exactly one of the two shapes holds.
+// Params holds the bracket's key=value pairs, or nil when the spec string had no bracket.
+// A Spec is produced only by Parse, which enforces that exactly one of the two shapes holds.
 type Spec struct {
 	// Alias is the registry key to resolve, set only in alias form.
 	Alias string
@@ -67,77 +64,68 @@ type Spec struct {
 	Engine string
 	// Model is the provider-side model id, set only in escape form.
 	Model string
-	// Params holds the bracket's key=value overrides, or nil when no bracket was
-	// present in the spec string.
+	// Params holds the bracket's key=value overrides;
+	// nil when no bracket was present in the spec string.
 	Params map[string]string
 }
 
-// Entry is one registry record: the engine + model a registry alias resolves to, plus the parameter
-// defaults applied when a spec's bracket doesn't set them.
-// The yaml tags are what LoadRegistry's strict decoder binds a models.yaml alias block against.
+// Entry is one registry record: the engine and model that an alias resolves to.
+// Its Defaults supply parameter values that a spec's bracket omits.
+// The yaml tags name the keys of a models.yaml alias block, which is decoded strictly.
 type Entry struct {
 	// Engine names the provider engine the alias requires (e.g. "claude").
 	Engine string `yaml:"engine"`
-	// Model is the provider-side model string passed to that engine. It is a
-	// free-form string — modelspec never validates it against any model list,
-	// which is what lets a brand-new model be adopted via a models.yaml entry
-	// with no recompile.
+	// Model is the provider-side model string passed to that engine.
+	// It is a free-form string; modelspec never validates it against any model list.
+	// That lets a brand-new model be adopted through a models.yaml entry, with no recompile.
+	// A new model under a known engine needs no code change.
 	Model string `yaml:"model"`
-	// Defaults holds parameter defaults (e.g. {"effort": "medium"}) applied when
-	// a resolving spec's bracket omits that key. Nil means no defaults.
+	// Defaults holds parameter defaults (e.g. {"effort": "medium"}) for the keys a bracket omits.
+	// Nil means no defaults.
 	Defaults map[string]string `yaml:"defaults"`
 }
 
 // Registry maps a registry alias to the Entry it resolves to.
-// The zero Registry (nil map) is valid to Resolve against in escape form (which never consults the
-// registry) but resolves no alias form spec — every alias lookup against it fails with an
-// unknown-alias error naming the (empty) set of known aliases.
+// The zero Registry (a nil map) is valid to Resolve against.
+// Escape-form specs resolve normally, since they never consult the registry.
+// Alias-form specs fail on it with an unknown-alias error.
 type Registry map[string]Entry
 
-// Resolved is the fully resolved outcome of one Spec against one Registry (or, for escape form, of
-// the Spec alone): the provider engine, the provider-side model string, and the final parameter map
-// after bracket-over-default precedence has been applied.
-// Params is never nil — an empty map, not nil, represents "no parameters" — so callers can range
-// over it unconditionally.
+// Resolved is the outcome of resolving one Spec against a Registry, or of the Spec alone in escape form.
+// It holds the provider engine, the provider-side model string, and the final parameter map.
+// Params is never nil: an empty map means no parameters, so callers can range over it unconditionally.
 type Resolved struct {
 	// Engine is the provider engine name to dispatch to.
 	Engine string
 	// Model is the provider-side model string to pass to that engine.
 	Model string
-	// Params holds the final parameter map: for alias form, the registry
-	// entry's Defaults overlaid by the spec's bracket params (bracket wins per
-	// key); for escape form, the spec's bracket params verbatim. Never nil.
+	// Params holds the final parameter map.
+	// For alias form it is the entry's Defaults overlaid by the bracket params, the bracket winning per key;
+	// for escape form it is the bracket params verbatim, and it is never nil.
 	Params map[string]string
 }
 
-// knownParams is the closed set of canonical parameter keys an Entry's
-// Defaults map may use, and the canonical key space every bracket param
-// normalizes into via bracketKeys. It gates param KEYS ONLY — never model
-// names or aliases — preserving the pinned new-model-without-recompile
-// requirement: a brand-new model is adopted via a models.yaml entry or the
-// escape form on an old binary, with no change to this set required.
-// See bracketKeys for the bracket-facing spelling layer over this set.
+// knownParams is the closed set of canonical parameter keys an Entry's Defaults map may use.
+// Every bracket param normalizes into this key space.
+// It gates param keys only, never model names or aliases.
+// A brand-new model is therefore adopted through a models.yaml entry or the escape form, with no change here.
 var knownParams = map[string]bool{
 	"effort":  true,
 	"version": true,
 }
 
-// bracketKeys is the closed set of accepted bracket key spellings, mapping
-// each spelling to the canonical Params key it normalizes to. It is the
-// bracket-facing spelling layer over knownParams: its values are canonical
-// Params keys, and its value set must remain a subset of knownParams' key
-// set. A bracket key spelling and its canonical key may differ — "v" maps to
-// "version" — so a bracket never yields a Params key that is not also in
-// knownParams.
+// bracketKeys maps each accepted bracket key spelling to the canonical Params key it normalizes to.
+// A spelling may differ from its canonical key, as "v" maps to "version".
+// Every value is one of the closed canonical parameter keys, so a bracket never yields any other Params key.
 var bracketKeys = map[string]string{
 	"effort": "effort",
 	"v":      "version",
 }
 
-// knownEngines is the closed set of provider engine names a registry Entry's
-// Engine field or an escape-form prefix may name. Like knownParams, it gates
-// engine NAMES ONLY — never model names or aliases — so a new model under an
-// already-known engine (e.g. a new Claude model) needs no change here.
+// knownEngines is the closed set of provider engine names.
+// An Entry's Engine field and an escape-form prefix may name only these.
+// It gates engine names only, never model names or aliases.
+// A new model under a known engine, such as a new Claude model, needs no change here.
 var knownEngines = map[string]bool{
 	"claude": true,
 	"codex":  true,

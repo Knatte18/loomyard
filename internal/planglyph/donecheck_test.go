@@ -164,8 +164,11 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 
 // TestDoneCheckVerdicts_NotFoundDetail pins the finding for a Create target quarry answered not_found, read against the worktree's declarations.
 // A member its unit declares only with another parameter list is a signature-mismatch finding that leads with the declared signature and its file, for a Create target and a Rename new side alike.
-// A target with no parameter list, or whose same-named member sits under another owner or unit, stays create-not-done, as does a Go target.
-// A name declared in many other units names the nearest few and counts the rest, and the unit's files are counted, never listed.
+// A target with no parameter list stays create-not-done.
+// A target whose same-named member sits under another owner or unit stays create-not-done.
+// A Go target stays create-not-done.
+// A name declared in many other units names the nearest few and counts the rest,
+// and the unit's files are counted, never listed.
 func TestDoneCheckVerdicts_NotFoundDetail(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

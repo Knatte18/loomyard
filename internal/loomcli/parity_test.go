@@ -1,15 +1,13 @@
-// parity_test.go asserts the Gate Self-Check Parity Invariant for the gate sites the loomshed
-// gate closures cover: NewDiscussionGate against validate-discussion, NewPlanGate against
-// validate-plan's flag-absent mode. Both the gate closure and its loomcli verb must
-// reach the same three-way verdict over the identical fixture, because both sides call the
-// identical package function per the shared-implementation-is-the-whole-point Shared Decision.
+// parity_test.go asserts the Gate Self-Check Parity Invariant for the gate sites the loomshed gate closures cover.
+// It covers NewDiscussionGate against validate-discussion, and NewPlanGate against validate-plan's flag-absent mode.
+// Both the gate closure and its loomcli verb must reach the same three-way verdict over the identical fixture.
+// Both sides call the identical package function.
 //
-// The comparison is three-way, not binary, per the discussion's parity-tests-per-gate decision: the
-// gate closure's Passed/error trio and the verb's ok/findings-key trio are each mapped onto one
-// shared parityVerdict before comparison, so a Stuck-vs-error mismatch is caught rather than
-// collapsed onto a single "fail" side. Both halves take told paths and construct no repository and
-// spawn no process, real hub, or fixture-tree copy, and no test here calls RunCLIIn -- so both stay
-// tier 1.
+// The comparison is three-way, not binary.
+// The gate closure's Passed/error trio and the verb's ok/findings-key trio each map onto one shared parityVerdict.
+// That lets a Stuck-vs-error mismatch be caught rather than collapsed onto a single "fail" side.
+// Both halves take told paths and construct no repository, spawn no process, use no real hub, or copy a fixture tree.
+// No test here calls RunCLIIn, so both stay tier 1.
 package loomcli
 
 import (
@@ -167,9 +165,8 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 }
 
 // planFixtureInvalidFormat writes a plan under <anchorPath>/_lym/plan/ whose frontmatter carries an
-// unrecognized format value, tripping format-unrecognized regardless of mode, and returns a
-// *loomCLI wired only with the two plan path fields validatePlanCmd's RunE reads. It is a local
-// helper distinct from validate_test.go's planFixture, which always writes the recognized format.
+// unrecognized format value, tripping format-unrecognized regardless of mode.
+// It returns a *loomCLI with only the two plan path fields set, the ones the validate-plan verb reads.
 func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 	t.Helper()
 
@@ -209,16 +206,21 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 	}}
 }
 
-// fabricReferenceCommand is a command that reaches a sibling worktree of the fabric repo, the shape card-fabric-reference refuses in a plan's verify: section.
+// fabricReferenceCommand is a command that reaches a sibling worktree of the fabric repo.
+// It is the shape the card-fabric-reference check refuses in a plan's verify: section.
 var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lym/plan.md"
 
-// verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lym/plan/ whose verify: section runs verifyBody, and returns a *loomCLI wired with anchorPath and worktreeRoot.
+// verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lym/plan/.
+// Its verify: section runs verifyBody.
+// It returns a *loomCLI wired with anchorPath and worktreeRoot.
 func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody string) *loomCLI {
 	t.Helper()
 	return verifyPlanFixture(t, anchorPath, worktreeRoot, "none", verifyBody, "")
 }
 
-// verifyPlanFixture is verifySectionPlanFixture with the plan's language and the sole card's `**Verify:**` set to cardVerify.
+// verifyPlanFixture writes a plan under <anchorPath>/_lym/plan/ in the given language.
+// Its verify: section runs verifyBody, and its sole card's `**Verify:**` line is cardVerify.
+// It returns a *loomCLI wired with anchorPath and worktreeRoot.
 func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, language, verifyBody, cardVerify string) *loomCLI {
 	t.Helper()
 
@@ -244,7 +246,10 @@ func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, language, verifyB
 	}}
 }
 
-// glyphRepoPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/ whose sole card's Create group targets createTarget and, when useTarget is non-empty, whose Uses: field also names useTarget, and returns a *loomCLI wired with anchorPath and worktreeRoot -- duplicated from internal/loomcli/validate_test.go's own glyphPlanFixture, extended with the optional Uses: field this parity table's fifth and sixth fixtures both need to reach the resolve-backed half without the Uses target also tripping the Create-side inversion.
+// glyphRepoPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/.
+// The sole card's Create group targets createTarget, and a non-empty useTarget also goes in its Uses: field.
+// That lets the resolve-backed half reach useTarget without the Uses target tripping the Create-side inversion.
+// It returns a *loomCLI wired with anchorPath and worktreeRoot.
 func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, useTarget string) *loomCLI {
 	t.Helper()
 
@@ -273,7 +278,9 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 	}}
 }
 
-// symbolRenamePlanFixture writes a one-card plan whose card renames a symbol, so the plan needs the hub's rename tool, and returns a *loomCLI wired with anchorPath and worktreeRoot.
+// symbolRenamePlanFixture writes a one-card plan whose card renames a symbol.
+// The plan needs the hub's rename tool.
+// It returns a *loomCLI wired with anchorPath and worktreeRoot.
 func symbolRenamePlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 	t.Helper()
 
@@ -306,11 +313,12 @@ func writeLensReview(t *testing.T, anchorPath, content string) {
 	}
 }
 
-// planParityCase is one fixture for TestGateParity_PlanGate: build populates anchorPath and
-// worktreeRoot as needed and returns the single *loomCLI both the gate closure and the verb read
-// their paths from, so both halves run over the exact same on-disk fixture. wantGate and wantCLI
-// carry the verdict each side must reach; they agree for every fixture but NoPlanDirectory, the one
-// deliberate, documented divergence (see that case's own comment).
+// planParityCase is one fixture for TestGateParity_PlanGate.
+// build populates anchorPath and worktreeRoot as needed.
+// It returns the single *loomCLI that the gate closure and the verb both read their paths from.
+// Both halves therefore run over the same on-disk fixture.
+// wantGate and wantCLI are the verdicts each side must reach.
+// They agree for every fixture except NoPlanDirectory, the one deliberate divergence.
 type planParityCase struct {
 	name     string
 	build    func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI
@@ -320,10 +328,10 @@ type planParityCase struct {
 	wantFinding string
 	// lensReview builds the gate with NewLensReviewPlanGate and runs the verb with --lens-review.
 	lensReview bool
-	// languageContent is the hub's language.yaml the verb loads, and rename_tools the gate is told the same list; both empty lists no tool.
+	// languageContent is the hub's language.yaml the verb loads; renameTools is what the gate is told, empty for none.
 	languageContent string
 	renameTools     []string
-	// gateContent is the hub's gate.yaml the verb loads, and tierTags the tier keys the gate is told the same file declares; both empty leaves the hub without a gate.yaml.
+	// gateContent is the hub's gate.yaml the verb loads, empty for none; tierTags are the tier keys the gate is told.
 	gateContent string
 	tierTags    []string
 	// seamTests tells the gate the seam reader over the fixture worktree, as the verb tells itself.
@@ -332,7 +340,7 @@ type planParityCase struct {
 	absentFinding string
 }
 
-// testTierPlanFixture writes a one-card language: go plan whose card creates sub/new_test.go and states no tier for it.
+// testTierPlanFixture writes a one-card go plan whose card creates sub/new_test.go and states no tier for it.
 func testTierPlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 	t.Helper()
 
@@ -359,21 +367,21 @@ func testTierPlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI
 
 // TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode.
 // It also drives NewLensReviewPlanGate and the verb's --lens-review mode.
-// Each pair runs over the same fixture set and the two mapped verdicts must agree. The mode cross-product this test
-// used to drive is gone: both plan gate sites (Plan-Write's own gate and Plan-Burler-Fix's own gate) run
-// planglyph.ValidateFormat and neither has a --require-approved counterpart -- that flag's own
-// guarantee now rests entirely on the approve seam failing loudly if it is ever wired nil (see
-// approveseam_test.go), not on any row re-checking the flag. validate_test.go covers
-// --require-approved's own CLI behaviour in isolation; this file's subject is parity with a gate,
-// and no gate answers to that flag.
+// Each pair runs over the same fixture set, and the two mapped verdicts must agree.
 //
-// The fixtures are: a clean approved plan, a clean unapproved plan, a format-invalid plan, an absent
-// plan directory, a glyph-not-resolving plan, an informational-only plan, a plan listing a test file under Edit, and a quarry-unavailable
-// plan.
+// Both plan gate sites run planglyph.ValidateFormat, and neither has a --require-approved counterpart.
+// That flag's guarantee rests on the approve seam failing loudly if it is ever wired nil;
+// internal/loomrecipe/approveseam_test.go covers that.
+// validate_test.go covers --require-approved's CLI behaviour in isolation.
+// This file's subject is parity with a gate, and no gate answers to that flag.
 //
-// The Unapproved case is the load-bearing one: it must expect done, not stuck, because that is
-// exactly what proves the F7 deadlock is gone -- planglyph.ValidateFormat never runs the
-// plan-unapproved check, so an unapproved plan is a clean pre-review pass on both sides.
+// The fixtures cover a clean approved plan, a clean unapproved plan, and a format-invalid plan.
+// They also cover an absent plan directory, a glyph-not-resolving plan, and an informational-only plan.
+// A plan listing a test file under Edit and a quarry-unavailable plan complete the set.
+//
+// The Unapproved case is the load-bearing one: it must expect done, not stuck.
+// planglyph.ValidateFormat never runs the plan-unapproved check,
+// so an unapproved plan is a clean pre-review pass on both sides.
 func TestGateParity_PlanGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	cases := []planParityCase{
@@ -402,7 +410,8 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantCLI:  verdictStuck,
 		},
 		{
-			// FabricReference puts a command that reaches the fabric repo in the verify: section: the gate and the verb both report card-fabric-reference.
+			// FabricReference puts a command that reaches the fabric repo in the verify: section.
+			// The gate and the verb both report card-fabric-reference.
 			name: "FabricReference",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return verifySectionPlanFixture(t, anchorPath, worktreeRoot, fabricReferenceCommand)
@@ -412,7 +421,8 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "card-fabric-reference",
 		},
 		{
-			// VerifyNestedModule gives the card a Verify: that tests a nested module's packages from the root: the gate and the verb both report verify-nested-module.
+			// VerifyNestedModule gives the card a Verify: that tests a nested module's packages from the root.
+			// The gate and the verb both report verify-nested-module.
 			name: "VerifyNestedModule",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				plankit.WriteTree(t, worktreeRoot, map[string]string{"nested/go.mod": "module nested\n"})
@@ -433,7 +443,8 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "verify-module-wide",
 		},
 		{
-			// PatternEntryLineCap fences a PATTERN.md entry line over the cap in the card: the gate and the verb both report pattern-entry-line-cap.
+			// PatternEntryLineCap fences a PATTERN.md entry line over the cap in the card.
+			// The gate and the verb both report pattern-entry-line-cap.
 			name: "PatternEntryLineCap",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				c := planFixture(t, anchorPath, worktreeRoot, true)
@@ -453,7 +464,8 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "pattern-entry-line-cap",
 		},
 		{
-			// DoneCardEdited records a done batch whose card hash differs from the card file: the gate and the verb both report done-card-edited.
+			// DoneCardEdited records a done batch whose card hash differs from the card file.
+			// The gate and the verb both report done-card-edited.
 			name: "DoneCardEdited",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				c := planFixture(t, anchorPath, worktreeRoot, true)
@@ -476,16 +488,14 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "done-card-edited",
 		},
 		{
-			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's
-			// own rewrite carves out: it binds the two sides to the same package FUNCTION, which both
-			// still call here -- planglyph.ValidateFormat -- and the divergence lives strictly in the
-			// ParsePlan pre-step ahead of it, whose disposition the gate deliberately reverses.
-			// NewPlanGate's ParsePlan carve-out (gates.go) routes a missing or malformed overview to
-			// findings (verdictStuck) because its bounce target is the live session that just wrote
-			// the file, holding full context; the verb keeps returning the identical error as a
-			// returned error (verdictError) because a standalone verb has no session to re-prompt.
-			// Both dispositions are reasoned, not accidental, so this case is asserted explicitly
-			// rather than folded into the pv == cv comparison every other fixture uses.
+			// NoPlanDirectory is the one deliberate divergence: both sides call planglyph.ValidateFormat.
+			// The split lies in the ParsePlan pre-step ahead of it, which the gate and the verb answer differently.
+			// NewPlanGate reports a missing or malformed overview as findings (verdictStuck);
+			// its bounce target is the live session that wrote the file, holding full context.
+			// The verb returns the same error as a returned error (verdictError);
+			// a standalone verb has no session to re-prompt.
+			// Both dispositions are intended.
+			// This case asserts them explicitly, rather than through the pv == cv comparison every other fixture uses.
 			name: "NoPlanDirectory",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot, PlanIndex: planglyph.NewIndex(fabricengine.NewReferenceRule())}}
@@ -494,11 +504,11 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantCLI:  verdictError,
 		},
 		{
-			// GlyphNotResolving covers the resolve-backed half the move onto planglyph introduces: a
-			// Uses: entry naming a unit that exists but a member that does not resolves the blocking
-			// glyph-not-found finding over a real quarry-openable worktreeRoot. The Create target is
-			// its own brand-new, informational-only unit, so the blocking verdict this case asserts is
-			// attributable to the Uses: side alone.
+			// GlyphNotResolving covers the resolve-backed side of the glyph check.
+			// A Uses: entry naming an existing unit with an unresolved member yields the blocking glyph-not-found finding.
+			// The case runs it over a real quarry-openable worktreeRoot.
+			// The Create target is a brand-new, informational-only unit,
+			// so the blocking verdict this case asserts comes from the Uses: side alone.
 			name: "GlyphNotResolving",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
@@ -508,10 +518,10 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantCLI:  verdictStuck,
 		},
 		{
-			// InformationalOnly covers the cell that would have caught the bounce loop had it
-			// existed before the move: a Create target introducing a brand-new package produces only
-			// the informational create-new-unit finding, and both sides must read that severity the
-			// same way, reaching done rather than bouncing on a condition Plan-Write cannot fix.
+			// InformationalOnly covers a Create target that introduces a brand-new package.
+			// It produces only the informational create-new-unit finding.
+			// Both sides must read that severity the same way, so the case reaches done.
+			// It does not bounce on a condition Plan-Write cannot fix.
 			name: "InformationalOnly",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
@@ -521,7 +531,8 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantCLI:  verdictDone,
 		},
 		{
-			// EditTestFile pins edit-test-file from a card file's plain test-file path under Edit, through ParsePlan's canonicalization into a file self glyph, to both the plan gate and the verb.
+			// EditTestFile pins that a card's plain test-file path under Edit yields edit-test-file on both sides.
+			// ParsePlan canonicalizes that path into a file self glyph.
 			name: "EditTestFile",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a_test.go": "package sub\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n"})
@@ -549,12 +560,11 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "edit-test-file",
 		},
 		{
-			// QuarryUnavailable points both sides at a worktreeRoot that is not a repository, under
-			// language: go rather than language: none -- the declaration is what makes this fixture
-			// distinguishable from the four language: none fixtures above, which share the same kind
-			// of non-repository root and must stay clean. Both sides must report the same
-			// infrastructure-error disposition, proving it is symmetric across the pair rather than
-			// merely implemented twice.
+			// QuarryUnavailable points both sides at a worktreeRoot that is not a repository, under language: go.
+			// The declaration separates this fixture from the language: none fixtures above.
+			// Those share the same kind of non-repository root and must stay clean.
+			// Both sides must report the same infrastructure-error disposition.
+			// The case proves that disposition is symmetric across the pair, not merely implemented twice.
 			name: "QuarryUnavailable",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				badRoot := filepath.Join(t.TempDir(), "does-not-exist")
@@ -713,11 +723,10 @@ func TestGateParity_PlanGate(t *testing.T) {
 	}
 }
 
-// TestGenericVerbs_AcceptOptionalRunIDPositional asserts each of loom's four generic verbs --
-// run, step, status, pause -- independently carries cobra.MaximumNArgs(1): zero and one
-// positional are both accepted, and two are refused. Command() builds the whole cobra tree with no
-// I/O of its own, and (*cobra.Command).Find is a pure tree traversal, so this test spawns no
-// process and stays Tier 1.
+// TestGenericVerbs_AcceptOptionalRunIDPositional asserts that each generic verb carries cobra.MaximumNArgs(1).
+// Zero and one positional are accepted, and two are refused.
+// Command() builds the whole cobra tree with no I/O of its own, and (*cobra.Command).Find is a pure tree traversal,
+// so this test spawns no process and stays Tier 1.
 //
 //testtiming:keep pins run, step, status, pause and goto each accepting zero or one positional run-id and refusing two; its covering test builds the tree without asserting argument counts
 func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
@@ -748,9 +757,9 @@ func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
 }
 
 // TestGateParity_DescriptionGate drives landingshed.NewDescriptionGate and the validate-description
-// verb over the same fixture set and asserts the two mapped verdicts agree: a well-formed file
-// (done), a file with a Co-Authored-By line (stuck), and a directory at the description path, a
-// read failure other than not-exist (error).
+// verb over the same fixture set and asserts that the two mapped verdicts agree.
+// A well-formed file maps to done, and a file with a Co-Authored-By line maps to stuck.
+// A directory at the description path, a read failure other than not-exist, maps to error.
 func TestGateParity_DescriptionGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	cases := []discussionParityCase{
@@ -808,7 +817,11 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 	}
 }
 
-// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses and editing edit when each is non-empty and carrying verify as its verify: section when that is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
+// reworkParityFixture writes a one-card language: go plan under anchorPath.
+// Its card is numbered cardNumber, sets first_card to cardNumber when that is above 1, and creates newpkg#Bar.
+// It adds uses, an Edit group for edit, and a verify: section when each is non-empty.
+// The returned *loomCLI's committed-file seam serves a one-card plan (card 1 creating sub#Foo) as the HEAD plan.
+// It serves nothing when committed is false.
 // The told number is therefore 2.
 func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses, edit, verify string, committed bool) *loomCLI {
 	t.Helper()
@@ -876,7 +889,8 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 	}}
 }
 
-// seamTestPlanFixture writes a one-card language: go plan whose card edits the struct internal/s#Deps, which a test in internal/c marks with `//lym:seam`, without listing that test.
+// seamTestPlanFixture writes a one-card language: go plan whose card edits the struct internal/s#Deps.
+// A test in internal/c marks that struct with `//lym:seam`, and the plan does not list that test.
 func seamTestPlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 	t.Helper()
 

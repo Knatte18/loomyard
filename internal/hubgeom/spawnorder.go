@@ -1,4 +1,5 @@
-// spawnorder.go tells reed the hub's worktrees in spawn order, so a restarted server's sessions are revived in the order the first server numbered them.
+// spawnorder.go gives reed the hub's worktrees in spawn order,
+// so a restarted server revives sessions in the order their runs started.
 
 package hubgeom
 
@@ -25,7 +26,8 @@ type spawnCandidate struct {
 	dated   bool
 }
 
-// sortSpawnOrder returns candidates in spawn order: the prime first, then the pairs with a start time ascending, then the pairs without one by worktree name.
+// sortSpawnOrder returns candidates in spawn order:
+// the prime first, then the pairs with a start time ascending, then the pairs without one by worktree name.
 // Ties break by worktree name.
 func sortSpawnOrder(candidates []spawnCandidate) []spawnCandidate {
 	ordered := slices.Clone(candidates)
@@ -98,7 +100,7 @@ func spawnOrder(l *lymcwd.Location) func() ([]reedengine.ReviveEntry, error) {
 	}
 }
 
-// reviveWorktree builds the reed engine of l's worktree from its own reed.yaml and geometry and revives its recorded session.
+// reviveWorktree revives l's recorded session with a reed engine built from its own reed.yaml and geometry.
 func reviveWorktree(l *lymcwd.Location) (bool, error) {
 	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(l), "reed")
 	if err != nil {

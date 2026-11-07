@@ -1,12 +1,14 @@
 <!-- This is the raddle agent's entire instruction set.
-     It ships as an embedded default in contracts/stencils/stencils.go,
-     is seeded to the hub's stencils directory,
-     and is read from there at call time via internal/stencilstore, filled by internal/seatengine from the table loomengine.RaddleTable builds for the Raddle-Write row.
-     Every marker below is a top-level {{.X}} substitution and every one but return_note must be non-empty:
-     slug, specs_dir, decision_record_path, proposal_path, subagent_model,
-     mode_rules (the mode's text, filled by Go),
-     parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective).
-     return_note is the one optional marker: empty on a first session, and the reason of a returned filing with the path to start from after a return.
+     It ships as an embedded default in contracts/stencils/stencils.go and is seeded to the hub's stencils directory.
+     It is read from there at call time via internal/stencilstore.
+     internal/seatengine fills it from the table loomengine.RaddleTable builds for the Raddle-Write row.
+     Every marker below is a top-level {{.X}} substitution, and every one but return_note must be non-empty:
+     slug, specs_dir, decision_record_path, proposal_path and subagent_model;
+     mode_rules, the mode's text filled by Go;
+     parent_directive, rendered by internal/parentdirective;
+     and edit_directive, rendered unconditionally by internal/editdirective.
+     return_note is the one optional marker:
+     empty on a first session, and after a return the reason of the returned filing with the path to start from.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Raddle — split a Sketch into the entries the operator approves

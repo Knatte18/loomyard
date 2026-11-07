@@ -13,15 +13,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGate_ContainmentResolvesSymlinkedAncestors is R2's regression for the symlink-mediated containment bypass:
-// a link planted at an intermediate segment of a gate target used to satisfy the containment check, because the check related NOMINAL paths through filepath.Rel and never resolved anything.
-// Each subtest pins one half of the fix — the escape must be refused,
-// and the two shapes that legitimately involve a link (a link AS the target, a real path under a symlinked container) must still pass — so a future simplification back to a bare filepath.Rel fails here rather than silently reopening the hole.
+// TestGate_ContainmentResolvesSymlinkedAncestors pins the containment check against symlinked ancestors.
+// A link planted at an intermediate segment of a gate target must be refused as an escape.
+// A bare filepath.Rel compares nominal paths and resolves nothing, so it would accept such a link.
+// The subtests also pin two shapes that must pass:
+// a link as the target itself, and a real path under a symlinked container.
 func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("SymlinkedParentSegmentEscapesAndIsRefused", func(t *testing.T) {
-		// This mirrors the shape R2's live repro used against removeLaunchers exactly, ownership kind included:
-		// ownedUnderGeometryRoot is declared here deliberately rather than a kind that fails anyway, because a kind that refuses on its own would leave the subtest passing for the wrong reason and prove nothing about containment.
+		// The test request uses ownedUnderGeometryRoot on purpose:
+		// a kind that refuses on its own would pass this subtest for the wrong reason and prove nothing about containment.
 		hub := t.TempDir()
 		root := filepath.Join(hub, launchersDirName)
 		if err := os.Mkdir(root, 0o755); err != nil {
@@ -34,7 +35,8 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 			t.Fatalf("write victim: %v", err)
 		}
 
-		// <root>/slug links to a directory outside the hub, so <root>/slug/victim.txt is nominally inside the geometry root and really outside the hub entirely.
+		// <root>/slug links to a directory outside the hub.
+		// So <root>/slug/victim.txt is nominally inside the geometry root but outside the hub.
 		if err := os.Symlink(outside, filepath.Join(root, "slug")); err != nil {
 			t.Fatalf("symlink slug: %v", err)
 		}
@@ -49,8 +51,8 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 		}
 		assertRefusalCheck(t, checkPathRequest(req), CheckContainment)
 
-		// Assert the executor itself refuses too, not merely the check helper, and that the file outside the container survives:
-		// before the fix this call deleted it and reported success.
+		// The executor must refuse too, not merely the check helper, and the file outside the container must survive.
+		// A removal that followed the link would delete that file and report success.
 		rec := NewMutations(hub)
 		if err := removePath(rec, req); err == nil {
 			t.Fatal("removePath through a symlinked parent segment = nil; want a containment refusal")
@@ -66,8 +68,8 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 	t.Run("LinkAsTargetItselfStillPassesContainment", func(t *testing.T) {
 		container := t.TempDir()
 		outside := t.TempDir()
-		// The link's own final component is the target.
-		// Resolving it would relocate the target outside container and refuse every junction removal, so containment must not resolve it.
+		// The link's own final component is the target, and containment must not resolve it:
+		// resolving it would move the target outside the container and refuse every junction removal.
 		target := filepath.Join(container, "junction")
 		if err := os.Symlink(outside, target); err != nil {
 			t.Fatalf("symlink junction: %v", err)
@@ -85,7 +87,8 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 	})
 
 	t.Run("SymlinkedContainerAncestorStillPassesContainment", func(t *testing.T) {
-		// Both sides are resolved, so a container reached through a link (macOS's /var -> /private/var is the everyday case) must not start refusing its own real children.
+		// Both sides are resolved, so a container reached through a link must still accept its real children.
+		// macOS's /var -> /private/var is the everyday case of such a link.
 		realDir := t.TempDir()
 		linkParent := t.TempDir()
 		container := filepath.Join(linkParent, "via-link")
@@ -109,7 +112,7 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 
 	t.Run("GeometryRootOwnershipRefusesASymlinkedRoot", func(t *testing.T) {
 		// ownedUnderGeometryRoot is the one ownership kind with no independent resolved-path authority to cross-check against,
-		// so a link standing where the geometry root belongs must be refused by the base-name test running against the RESOLVED root.
+		// so the base-name test, run against the resolved root, must refuse a link standing where the geometry root belongs.
 		hub := t.TempDir()
 		outside := t.TempDir()
 		root := filepath.Join(hub, launchersDirName)

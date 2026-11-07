@@ -1,5 +1,5 @@
-// failedpush_test.go covers the failed-push record store, its once-per-episode notice and its way-forward lines.
-// It is an external test package, and the notifier is process-global, so every test here that installs one runs without t.Parallel.
+// failedpush_test.go covers the failed-push record store: its once-per-episode notice and its way-forward lines.
+// The notifier is process-global, so the tests that install one run without t.Parallel.
 
 package fabricengine_test
 
@@ -31,7 +31,8 @@ func codePushFailure() fabricengine.FailedPush {
 	}
 }
 
-// TestFailedPushRecord covers the record's lifecycle, its single notice per episode, and every side and class way-forward line a push writes.
+// TestFailedPushRecord covers the record's lifecycle and its single notice per episode.
+// It also checks the way-forward line that each side and class of push writes.
 //
 // It runs without t.Parallel: the notifier it installs is process-global.
 func TestFailedPushRecord(t *testing.T) {

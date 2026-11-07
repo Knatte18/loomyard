@@ -25,8 +25,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport, a remote that accepts and never answers, with no network.
-// Its rows run serially because they set the remote deadline, the stall bound, the stall check seam, the kill reporter, the pause network gate and the process environment, which are process-global state.
+// TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport:
+// a remote that accepts and never answers, with no network.
+// Its rows run serially because they set process-global state:
+// the remote deadline, the stall bound and the stall check seam;
+// the kill reporter, the pause network gate and the process environment.
 func TestRun_RemoteBounds(t *testing.T) {
 	tiergate.Require(t, 1)
 	const deadline = time.Second
@@ -206,7 +209,8 @@ func TestRun_RemoteBounds(t *testing.T) {
 		return
 	}
 
-	// remoteAttempts runs a remote ls-remote against an ext:: command that counts its runs, writes reply and hangs, and returns the command's run count, the call's kill reports and its error.
+	// remoteAttempts runs a remote ls-remote against an ext:: command that counts its runs, prints reply and hangs.
+	// It returns the command's run count, the call's kill reports and its error.
 	remoteAttempts := func(t *testing.T, name, reply string) (int, []kill, error) {
 		t.Helper()
 		countFile := filepath.Join(scriptDir, name+".count")
@@ -231,7 +235,8 @@ func TestRun_RemoteBounds(t *testing.T) {
 	}
 
 	if !t.Run("a remote that never answers is killed at the stall bound and run once more", func(t *testing.T) {
-		// A stall bound under the deadline arms the stall check, and the check runs once the attempt's ext command has counted its run,
+		// A stall bound under the deadline arms the stall check.
+		// The check runs once the attempt's ext command has counted its run,
 		// so a loaded machine's git start-up never reaches the check; the long deadline leaves that start-up room.
 		const stall = deadline / 5
 		gitexec.SetRemoteDeadlineForTest(t, 10*deadline)

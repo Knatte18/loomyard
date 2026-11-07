@@ -1,30 +1,41 @@
 // Package agentname is the sole former, parser and validator of agent names.
 //
-// A full name is "<shortname>:<role>" in the prime and in a standalone run, and "<shortname>:<slug>:<role>" in a task worktree.
-// The shortname is 2-6 characters of [a-z][a-z0-9]; the slug and the role are [a-z][a-z0-9-]*.
-// Every other package forms, parses, validates and matches names through this one (PATTERN-agent-addressing),
-// and the package imports the standard library only.
+// A full name has the form "<shortname>:<role>" in the prime and in a standalone run.
+// In a task worktree it has the form "<shortname>:<slug>:<role>".
+// The shortname is 2-6 characters of [a-z][a-z0-9];
+// the slug and the role are [a-z][a-z0-9-]*.
+// Every other package forms, parses, validates and matches names through this one (PATTERN-agent-addressing).
+// This package imports the standard library only.
 //
 // # Where names are formed
 //
-// A program sender is "<shortname>:<NAME>" with an upper-case name matching [A-Z][A-Z0-9_]*, formed and parsed by FormatProgram and ParseProgram.
-// A program acting for one beam signs "<shortname>:<slug>:<NAME>", formed by FormatScopedProgram and read by ParseProgram as the same (shortname, name) pair.
+// A program sender is "<shortname>:<NAME>", with an upper-case NAME matching [A-Z][A-Z0-9_]*.
+// FormatProgram forms it and ParseProgram parses it.
+// A program acting for one beam signs "<shortname>:<slug>:<NAME>".
+// FormatScopedProgram forms it, and ParseProgram reads it as the same (shortname, name) pair.
 // EXTERNAL is the reserved name of a sender creel cannot place.
-// Reed forms a strand's full name once, in AddStrand under its state lock, and stores it in the strand record, which is the only key delivery and lookup resolve through.
+// Reed forms a strand's full name once, in AddStrand under its state lock.
+// It stores the name in the strand record, the only key that delivery and lookup resolve through.
 // Pane titles and Claude session names are display mirrors.
 // A full name never names a tmux session or socket, since tmux rewrites ':' and '.' there.
 // A per-strand file, such as creel's mail flag, is named by FileName.
 //
-// The module that spawns an agent owns its role name as a constant declared in that module, never as an inline literal in the spawn spec.
+// The module that spawns an agent owns its role name as a constant declared in that module.
+// It is never an inline literal in the spawn spec.
 // There is no shared list of roles, and the role set stays open.
-// cmd/lym/spawnrole_test.go is a tripwire that fails a shuttleengine.Spec or reedengine.AddSpec composite literal whose Role is a string literal.
-// A seat table's role is its prefix, declared in the spawning module, and its lead's role is the prefix alone;
-// a later seat's role suffix may come from the recipe or config, bounded by the role grammar and the table's uniqueness check.
+// cmd/lym/spawnrole_test.go is a tripwire.
+// It fails a shuttleengine.Spec or reedengine.AddSpec composite literal whose Role is a string literal.
+// A seat table's role is its prefix, declared in the spawning module.
+// Its lead's role is the prefix alone.
+// A later seat's role suffix may come from the recipe or config.
+// The role grammar and the table's uniqueness check bound it.
 //
 // A run's parent is the worktree its pair was created from, recorded once in fabric's origin record.
-// Its agent name is resolved at use as the orch role's name in that worktree, and is never stored in a seed or read from the caller's environment.
-// The hub's shortname is recorded in .lym-shortname at the board root, read and written by internal/fabricengine alone, and told to reed by internal/hubgeom;
-// a standalone run's derived shortname is told by internal/standalonegeom.
+// Its agent name is resolved at use as the orch role's name in that worktree.
+// It is never stored in a seed or read from the caller's environment.
+// The hub's shortname is recorded in .lym-shortname at the board root.
+// Only internal/fabricengine reads and writes that file; internal/hubgeom tells the shortname to reed.
+// internal/standalonegeom tells reed a standalone run's derived shortname.
 package agentname
 
 import (
@@ -46,14 +57,15 @@ const (
 	StrandNameEnv = "LYM_STRAND_NAME"
 	// ParentEnv is the env key reed injects with the full name of the session that spawned the worktree's run.
 	ParentEnv = "LYM_PARENT"
-	// LymBinEnv is the env key reed's launch script exports with the absolute path of the spawning lym binary, never its directory.
+	// LymBinEnv is the env key reed's launch script exports with the absolute path of the lym binary, not its directory.
 	// The Claude engine's env file reads the same key.
 	LymBinEnv = "LYM_BIN"
 
 	sep = ":"
 )
 
-// Name is a parsed agent name. Slug is empty in the prime and in a standalone run.
+// Name is a parsed agent name.
+// Slug is empty in the prime and in a standalone run.
 type Name struct {
 	Shortname string
 	Slug      string
@@ -97,10 +109,12 @@ func validateDashed(kind, v string) error {
 // ValidateSlug checks the task worktree slug grammar [a-z][a-z0-9-]*.
 func ValidateSlug(slug string) error { return validateDashed("slug", slug) }
 
-// ValidateRole checks the role grammar [a-z][a-z0-9-]*; the set of roles is open.
+// ValidateRole checks the role grammar [a-z][a-z0-9-]*;
+// the set of roles is open.
 func ValidateRole(role string) error { return validateDashed("role", role) }
 
-// Format validates each segment and joins them; an empty slug gives the two-segment form.
+// Format validates each segment and joins them;
+// an empty slug gives the two-segment form.
 func Format(shortname, slug, role string) (string, error) {
 	if err := ValidateShortname(shortname); err != nil {
 		return "", err
@@ -116,7 +130,8 @@ func Format(shortname, slug, role string) (string, error) {
 	return Name{Shortname: shortname, Slug: slug, Role: role}.String(), nil
 }
 
-// Parse accepts exactly two segments (prime) or three (task); anything else is an error.
+// Parse accepts exactly two segments (prime) or three (task);
+// anything else is an error.
 func Parse(name string) (Name, error) {
 	parts := strings.Split(name, sep)
 	var n Name
@@ -154,7 +169,7 @@ func validateProgramName(name string) error {
 }
 
 // FormatProgram validates the shortname and the upper-case program name and joins them as "<shortname>:<NAME>".
-// A program sender is a non-strand sender such as a batten row; the upper-case name tells it from a strand role.
+// The upper-case name tells a program sender, such as a batten row, from a strand role.
 func FormatProgram(shortname, name string) (string, error) {
 	if err := ValidateShortname(shortname); err != nil {
 		return "", err
@@ -165,8 +180,9 @@ func FormatProgram(shortname, name string) (string, error) {
 	return shortname + sep + name, nil
 }
 
-// FormatScopedProgram validates the shortname, the slug and the upper-case program name and joins them as "<shortname>:<slug>:<NAME>".
-// An empty slug gives the two-segment form FormatProgram forms.
+// FormatScopedProgram validates the shortname, the slug and the upper-case program name.
+// It joins them as "<shortname>:<slug>:<NAME>".
+// An empty slug gives the two-segment form.
 // A scoped sender is a program that acts for one beam, such as the beam's dobby.
 func FormatScopedProgram(shortname, slug, name string) (string, error) {
 	if slug == "" {
@@ -184,7 +200,8 @@ func FormatScopedProgram(shortname, slug, name string) (string, error) {
 	return shortname + sep + slug + sep + name, nil
 }
 
-// ParseProgram accepts "<shortname>:<NAME>" or "<shortname>:<slug>:<NAME>" and returns the shortname and the upper-case program name.
+// ParseProgram accepts "<shortname>:<NAME>" or "<shortname>:<slug>:<NAME>".
+// It returns the shortname and the upper-case program name.
 func ParseProgram(full string) (shortname, name string, err error) {
 	parts := strings.Split(full, sep)
 	switch len(parts) {
@@ -205,14 +222,14 @@ func ParseProgram(full string) (shortname, name string, err error) {
 	return parts[0], parts[len(parts)-1], nil
 }
 
-// IsProgram reports whether full parses as a program sender, External included.
+// IsProgram reports whether full parses as a program sender, such as "<shortname>:EXTERNAL".
 func IsProgram(full string) bool {
 	_, _, err := ParseProgram(full)
 	return err == nil
 }
 
 // TaskSlug returns the slug of a strand name that parses and carries one.
-// It returns the empty string for an empty name, a slug-free name such as the hub orch's, and a name that does not parse.
+// It returns the empty string for a name with no slug and for a name that does not parse.
 func TaskSlug(strandName string) string {
 	name, err := Parse(strandName)
 	if err != nil {
@@ -238,7 +255,7 @@ func NumberRole(role string, held []string) string {
 	}
 }
 
-// MatchesRole reports whether role is base itself or a numbered form NumberRole forms from it: base-N with N >= 2.
+// MatchesRole reports whether role is base itself or a numbered form of it: base-N with N >= 2.
 func MatchesRole(role, base string) bool {
 	if role == base {
 		return true
@@ -251,10 +268,12 @@ func MatchesRole(role, base string) bool {
 	return err == nil && n >= 2 && strconv.Itoa(n) == suffix
 }
 
-// CallerLabel classifies a caller's strand name, the value of StrandNameEnv, into the label the shed history records.
-// An empty strand reads CallerOperator; a strand whose role MatchesRole RoleOrch or RoleDriver reads that role;
-// any other strand reads its own role.
-// A strand that does not parse is never refused: its label is the text after its last ":", or the whole strand when it has none.
+// CallerLabel classifies a caller's full strand name into the label the shed history records.
+// An empty strand reads as "operator";
+// a strand whose role is "orch" or "driver", or a numbered form of either, reads as that role;
+// any other strand reads as its own role.
+// A strand that does not parse is never refused.
+// Its label is the text after its last ":", or the whole strand when it has none.
 // The label is for reports only and no decision reads it, which bounds a caller choosing its own strand.
 func CallerLabel(strand string) string {
 	if strand == "" {
@@ -299,8 +318,9 @@ func (n Name) prefix() string {
 	return n.Shortname + sep + n.Slug
 }
 
-// Matches reports whether query addresses the strand named full: equal to it,
-// or a bare role segment equal to full's role. A full that does not Parse matches by equality only.
+// Matches reports whether query addresses the strand named full.
+// It matches when query equals full, or when query is a bare role segment equal to full's role.
+// A full name that does not parse matches by equality only.
 func Matches(full, query string) bool {
 	if full == query {
 		return true
@@ -320,7 +340,8 @@ func StandaloneShortname(hash8 string) string {
 	return "s" + hash8
 }
 
-// fileNameSep replaces sep in a name's file name; no name segment holds it, so the mapping is one to one.
+// fileNameSep is the character that stands in for ":" in a per-strand file name.
+// No name segment holds ".", so the mapping is one to one.
 const fileNameSep = "."
 
 // FileName returns the file name a per-strand file of full takes: full with every ":" turned into ".".

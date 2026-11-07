@@ -1,16 +1,11 @@
-// sharedbootstrap_test.go covers the three helpers sharedbootstrap.go extracts, driven against a
-// hand-populated *loomCLI receiver -- bypassing wire entirely, the idiom cli_test.go already uses for
-// the drive/pause refusal paths. No test here spawns a real hub or brings up a real reed session;
-// ensureStatusStrand's own resolveStatusStrandAction branches are covered directly through that pure
-// function in bootstrap_test.go rather than re-covered here through a real reed engine.
-//
-// seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) always needs a real git-backed records
-// sibling to succeed -- even on the record-already-found path -- so no test in this file drives the
-// whole function past bootstrapStageOrigin; TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists
-// below documents that wall directly. Card 13's own seed-write coverage (the recipe/driver/param
-// shape, WriteSeed's idempotency, and the seed's presence in the commit pathspec) is instead pinned
-// through loomSeedFor and bootstrapCommitPaths, the two pure helpers factored out of
-// seedAndCommitBootstrap for exactly this reason.
+// sharedbootstrap_test.go covers the bootstrap helpers in sharedbootstrap.go without a real hub or reed session.
+// Tests drive a hand-populated *loomCLI receiver, bypassing wire.
+// seedAndCommitBootstrap reads a real git-backed records sibling in its first step, fabricengine.ReadOrigin.
+// That holds even on the record-already-found path, so no test here drives it past bootstrapStageOrigin.
+// Seed-write coverage lives in loomSeedFor and bootstrapCommitPaths, two pure helpers.
+// seedAndCommitBootstrap delegates to them.
+// They cover the recipe, driver and param shape, and WriteSeed's idempotency.
+// They also check the seed's presence in the commit pathspec.
 
 package loomcli
 
@@ -28,9 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBootstrapStage_ConstantsAreDistinctAndZeroValued asserts the four stage constants are
-// distinct, that bootstrapStageNone is the zero value, and that every stage a caller can receive is
-// one of the five declared constants.
+// TestBootstrapStage_ConstantsAreDistinctAndZeroValued asserts that the stage constants are distinct,
+// and that bootstrapStageNone is the zero value.
+// Every stage a caller can receive is one of the declared constants.
 //
 //testtiming:keep pins the bootstrap stage constants being distinct with bootstrapStageNone the zero value; no behavior test asserts the enumeration
 func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
@@ -52,17 +47,14 @@ func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
 	}
 }
 
-// TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists asserts the seed-tolerance
-// contract's idempotency: calling seedAndCommitBootstrap twice in a row against the same receiver
-// produces the same stage and the same error both times, proving the second call never surfaces a
-// hard failure the first call did not already surface.
+// TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists asserts idempotency of seedAndCommitBootstrap.
+// Calling it twice in a row against the same receiver yields the same stage and error both times.
+// The second call must never surface a hard failure the first call did not already surface.
 //
-// The receiver's location has no real fabric behind it (no git repository, no records sibling), so both
-// calls fail at bootstrapStageOrigin -- the first sub-step that genuinely needs a real fabric to
-// proceed past -- rather than reaching bootstrapStageSeed or bootstrapStageCommit. Driving this
-// helper far enough to observe loomshed.Seed's own ErrSeedExists tolerance would need a real git
-// repository behind c.location, which this untagged suite must not spawn (the
-// new-tests-stay-untagged-and-pure Shared Decision); that deeper coverage belongs to a tagged suite.
+// The receiver has no real fabric behind it (no git repository, no records sibling).
+// Both calls therefore fail at bootstrapStageOrigin, the first sub-step that needs a real fabric to proceed past.
+// Observing loomshed.Seed's ErrSeedExists tolerance needs a real git repository behind c.location.
+// This untagged suite must not spawn one, so that deeper coverage belongs to a tagged suite.
 func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -92,9 +84,10 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 	}
 }
 
-// TestLoomSeedFor_WriteSeedIsIdempotent asserts loomSeedFor's shape carries RecipeTapestry, the given driver and a single "parent" param.
-// It also asserts writing that shape twice, for the same parent and driver, at the same location and run-id, is a no-op the second time:
-// the idempotency seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to re-run.
+// TestLoomSeedFor_WriteSeedIsIdempotent asserts that loomSeedFor's shape carries RecipeTapestry and the given driver.
+// It also asserts that writing that shape a second time leaves the seed unchanged.
+// The same parent, driver, location and run-id are used both times.
+// That idempotency is what makes a crashed-and-resumed bootstrap safe to re-run.
 func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -126,7 +119,8 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind, and a recorded seed's driver wins over it.
+// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind,
+// and a recorded seed's driver wins over it.
 func TestResolveSeedDriver(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -156,7 +150,9 @@ func TestResolveSeedDriver(t *testing.T) {
 	}
 }
 
-// TestResolveSeedRecipe covers resolveSeedRecipe's read-through: an unseeded worktree takes loom, and a recorded recipe is preserved, so `lym loom start` never writes a recipe over an existing seed.
+// TestResolveSeedRecipe covers resolveSeedRecipe's read-through: an unseeded worktree takes loom,
+// and a recorded recipe is preserved.
+// The read-through keeps `lym loom start` from writing a recipe over an existing seed.
 func TestResolveSeedRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -183,9 +179,10 @@ func TestResolveSeedRecipe(t *testing.T) {
 	}
 }
 
-// TestBootstrapCommitPaths asserts the pathspec seedAndCommitBootstrap's step 3 commits:
-// the status file, the seed and the origin record always,
-// so a crashed-and-resumed bootstrap's seed self-heals into the fabric, and the friction directory only when it holds tracked or untracked content.
+// TestBootstrapCommitPaths asserts the pathspec that seedAndCommitBootstrap commits.
+// The status file, the seed and the origin record are always committed,
+// so a crashed-and-resumed bootstrap's seed self-heals into the fabric.
+// The friction directory is committed only when it holds tracked or untracked content.
 func TestBootstrapCommitPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -213,7 +210,9 @@ func TestBootstrapCommitPaths(t *testing.T) {
 	}
 }
 
-// TestRunUsageRecord asserts the identity record of a run: the entry's own profile, the recipe's default for an entry naming none, a discussed entry starting from a stored record, and an absent entry recording neither profile nor stored record.
+// TestRunUsageRecord asserts the identity record of a run.
+// An entry's own profile wins; an entry naming none takes the recipe's default.
+// A discussed entry starts from its stored record, and an absent entry records neither profile nor stored record.
 func TestRunUsageRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

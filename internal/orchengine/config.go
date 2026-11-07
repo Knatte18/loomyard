@@ -1,6 +1,6 @@
-// config.go — configuration for the orch module.
-//
-// Defines the Config type mirroring orch.yaml's keys and LoadConfig, which uses internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the orch config file, degrading to the embedded template on proven absence;
+// config.go defines the Config type, which mirrors orch.yaml's keys, and LoadConfig, which loads it.
+// LoadConfig resolves the orch config file through configengine.LoadOrTemplate with ConfigTemplate.
+// It falls back to the embedded template when the file is absent in every layer.
 // orch never reads config files or knows their on-disk layout itself.
 
 package orchengine
@@ -15,7 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Template defaults; the accessors floor a non-positive value back to them, except the poll interval, which pollFloor floors.
+// Template defaults. The accessors floor a non-positive value to its default;
+// the poll interval is floored by pollFloor instead.
 const (
 	defaultThresholdTokens     = 200000
 	defaultSoftThresholdTokens = 150000
@@ -28,7 +29,8 @@ const (
 // pollFloor is the shortest watcher tick interval; a configured value below it is floored to it.
 const pollFloor = time.Second
 
-// Fails to compile when the template default falls below pollFloor, since the template would then load with a warning.
+// A compile-time check: the build fails when the template's poll interval is below pollFloor.
+// The template would otherwise load with a warning.
 const _ = uint(defaultPollIntervalMS*time.Millisecond - pollFloor)
 
 // The accepted cycle_mode values.
@@ -117,9 +119,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// MigrateConfig raises a below-floor or null poll_interval_ms in an orch.yaml document to the poll floor, for lym config reconcile, and returns the rewritten bytes with one line describing the rewrite.
-// Everything else is carried through with its comments;
-// the loader never calls it.
+// MigrateConfig raises a below-floor or null poll_interval_ms in an orch.yaml document to the poll floor.
+// It serves lym config reconcile and returns the rewritten bytes with one line describing the rewrite.
+// Everything else is carried through with its comments; the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "poll_interval_ms", int(pollFloor.Milliseconds()))
@@ -140,7 +142,8 @@ func (c Config) Mode() string {
 	return c.CycleMode
 }
 
-// Threshold returns the context-token count that triggers a cycle, flooring a non-positive value to the template default so a zero can never cycle on every turn.
+// Threshold returns the context-token count that triggers a cycle.
+// A non-positive value is floored to the template default, so a zero can never cycle on every turn.
 func (c Config) Threshold() int {
 	if c.ThresholdTokens <= 0 {
 		return defaultThresholdTokens
@@ -148,8 +151,9 @@ func (c Config) Threshold() int {
 	return c.ThresholdTokens
 }
 
-// SoftThreshold returns the context-token count at which the watcher may cycle at a natural break, flooring a non-positive value to the template default.
-// A value at or above Threshold never fires.
+// SoftThreshold returns the context-token count at which the watcher may cycle at a natural break.
+// A non-positive value is floored to the template default.
+// A value at or above the hard cap (threshold_tokens) never fires.
 func (c Config) SoftThreshold() int {
 	if c.SoftThresholdTokens <= 0 {
 		return defaultSoftThresholdTokens
@@ -157,7 +161,9 @@ func (c Config) SoftThreshold() int {
 	return c.SoftThresholdTokens
 }
 
-// SoftIdle returns how long the newest turn end must be quiet before a soft cycle, and how long a DEFER reply holds the next soft attempt, flooring a non-positive value to the template default.
+// SoftIdle returns how long the newest turn end must be quiet before a soft cycle.
+// The same duration is how long a DEFER reply holds the next soft attempt.
+// A non-positive value is floored to the template default.
 func (c Config) SoftIdle() time.Duration {
 	if c.SoftIdleS <= 0 {
 		return defaultSoftIdleS * time.Second
@@ -165,7 +171,8 @@ func (c Config) SoftIdle() time.Duration {
 	return time.Duration(c.SoftIdleS) * time.Second
 }
 
-// IdleGrace returns how long the session must stay idle after its newest event, flooring a non-positive value to the template default.
+// IdleGrace returns how long the session must stay idle after its newest event.
+// A non-positive value is floored to the template default.
 func (c Config) IdleGrace() time.Duration {
 	if c.IdleGraceS <= 0 {
 		return defaultIdleGraceS * time.Second
@@ -173,7 +180,8 @@ func (c Config) IdleGrace() time.Duration {
 	return time.Duration(c.IdleGraceS) * time.Second
 }
 
-// HandoffTimeout returns how long the session gets to write its handoff, flooring a non-positive value to the template default.
+// HandoffTimeout returns how long the session gets to write its handoff.
+// A non-positive value is floored to the template default.
 func (c Config) HandoffTimeout() time.Duration {
 	if c.HandoffTimeoutS <= 0 {
 		return defaultHandoffTimeoutS * time.Second
@@ -181,8 +189,9 @@ func (c Config) HandoffTimeout() time.Duration {
 	return time.Duration(c.HandoffTimeoutS) * time.Second
 }
 
-// PollInterval returns the watcher's tick interval, flooring a value below pollFloor, non-positive included, to pollFloor so a zero can never busy-spin.
-// It floors silently; LoadConfig logs the one warning.
+// PollInterval returns the watcher's tick interval.
+// A value below pollFloor, non-positive included, is floored to pollFloor so a zero can never busy-spin.
+// It floors silently; the config load warns once when the value is below the floor.
 func (c Config) PollInterval() time.Duration {
 	interval := time.Duration(c.PollIntervalMS) * time.Millisecond
 	if interval < pollFloor {

@@ -68,7 +68,7 @@ func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T
 		t.Errorf("Execute(bogus) = %d; want 1", got)
 	}
 
-	// The cobra error message must still be present — now embedded in the JSON value.
+	// The cobra error message must appear, embedded in the JSON value.
 	if !strings.Contains(buf.String(), "unknown command") {
 		t.Errorf("Execute(bogus) output = %q; want to contain \"unknown command\"", buf.String())
 	}
@@ -82,7 +82,9 @@ func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T
 	}
 }
 
-// TestWrap_ShortCircuitsAfterAbort verifies that a WrapRun- or WrapRunCtx-wrapped handler short-circuits without running when Abort was called on the command's context before the leaf fired, and that Execute reports the aborted code.
+// TestWrap_ShortCircuitsAfterAbort verifies the abort path of WrapRun and WrapRunCtx handlers.
+// When Abort is called on the command's context before the leaf fires, the handler short-circuits without running.
+// Execute then reports the aborted code.
 func TestWrap_ShortCircuitsAfterAbort(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -133,10 +135,10 @@ func TestExecute_ConcurrentInvocationsDoNotCrossExitCodes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// Run two concurrent Execute calls — one returning 0, one returning 7 —
-	// and assert that each reports its own code. This guards the per-invocation
-	// holder invariant: if exitState were a package-level variable the codes
-	// would race and at least one assertion would flake.
+	// Run two concurrent Execute calls, one returning 0 and one returning 7.
+	// Each must report its own code.
+	// This guards the per-invocation holder invariant:
+	// if exitState were a package-level variable the codes would race and at least one assertion would flake.
 	const iterations = 50
 
 	var wg sync.WaitGroup
@@ -175,7 +177,8 @@ func TestExecute_ConcurrentInvocationsDoNotCrossExitCodes(t *testing.T) {
 	wg.Wait()
 }
 
-// TestExecuteIn_HandlerObservesInjectedCwd verifies that a handler reading lymcwd.CwdFrom(cmd.Context()) observes the exact directory passed to ExecuteIn.
+// TestExecuteIn_HandlerObservesInjectedCwd verifies that the handler sees the exact directory passed to ExecuteIn.
+// It reads the directory through lymcwd.CwdFrom(cmd.Context()).
 func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -205,9 +208,7 @@ func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 	}
 }
 
-// TestExecute_HandlerObservesProcessCwd verifies that the same command
-// driven through Execute (not ExecuteIn) observes the process cwd instead
-// of an injected one.
+// TestExecute_HandlerObservesProcessCwd verifies that a handler run through Execute observes the process cwd.
 func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -240,9 +241,7 @@ func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
 	}
 }
 
-// TestRunRootCtx_PropagatesContextValue verifies that RunRootCtx given a
-// context carrying a value propagates that value into the command's
-// context.
+// TestRunRootCtx_PropagatesContextValue verifies that RunRootCtx carries a context value into the command's context.
 func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -277,9 +276,8 @@ func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
 	}
 }
 
-// TestWrapRunCtx_ReceivesCommandContext verifies that a WrapRunCtx-wrapped
-// handler receives the command's own context, observed by reading a value
-// seeded into it.
+// TestWrapRunCtx_ReceivesCommandContext verifies that a WrapRunCtx-wrapped handler receives the command's own context.
+// The test seeds a value into that context and observes it in the handler.
 func TestWrapRunCtx_ReceivesCommandContext(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

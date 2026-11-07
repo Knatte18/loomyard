@@ -1,5 +1,5 @@
-// reset_test.go covers Repo.ResetHard and Repo.ResetKeep against real git repositories, reusing
-// gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit).
+// reset_test.go covers Repo.ResetHard and Repo.ResetKeep against real git repositories.
+// It reuses gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit).
 
 package gitrepo_test
 
@@ -15,7 +15,8 @@ import (
 )
 
 // TestResetHard covers ResetHard against one repository with two commits.
-// A well-formed but fabricated hex SHA — one that passes validSHA but names no commit in this repo's history — surfaces as a genuine git failure, not ErrInvalidSHA; ResetHard then restores the earlier commit's file state and moves CurrentSHA back to it.
+// A well-formed hex SHA that names no commit in the repository surfaces as a git failure, not as ErrInvalidSHA;
+// ResetHard then restores the earlier commit's file state and moves CurrentSHA back to it.
 // The steps run serially in that order: the failed reset must leave the repository untouched for the successful one.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestResetHard(t *testing.T) {
@@ -60,11 +61,11 @@ func TestResetHard(t *testing.T) {
 	})
 }
 
-// TestResetHard_InvalidSHA_RejectedBeforeGitSpawn asserts that an option-shaped or empty sha is
-// rejected with ErrInvalidSHA before any git spawn.
-// The check is run against a path with no .git directory at all: if ResetHard spawned git before
-// validating sha, the result would be a git failure (not a repository) rather than ErrInvalidSHA,
-// so a passing assertion here doubles as proof validation happens first.
+// TestResetHard_InvalidSHA_RejectedBeforeGitSpawn asserts that an option-shaped or empty sha is rejected.
+// The call returns ErrInvalidSHA before any git spawn.
+// The check runs against a path with no .git directory at all.
+// If ResetHard spawned git before validating sha, git would fail on the missing repository.
+// So a passing assertion of ErrInvalidSHA proves that validation runs first.
 func TestResetHard_InvalidSHA_RejectedBeforeGitSpawn(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

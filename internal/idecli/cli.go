@@ -1,12 +1,13 @@
 // cli.go exposes the cobra command tree for the ide module.
 //
 // Command() returns the root "ide" command with four subcommands — spawn, menu, seed and open.
-// spawn and menu wrap the existing handler bodies;
-// seed writes an existing worktree's .vscode/ config, window title and colours, the workspace files for the prime or a beam, and the user's lym key bindings, and launches nothing;
-// with no slug it seeds the worktree it runs in, the prime included.
+// spawn and menu wrap the handler bodies.
+// seed writes an existing worktree's VS Code setup and the user's lym key bindings, and launches nothing.
+// The setup is the .vscode/ config, the window title and colours, and the workspace files for the prime or a beam.
+// With no slug it seeds the worktree it runs in, the prime included.
 // open starts VS Code on a pair's folder and takes a slug.
-// Layout resolution happens once in a PersistentPreRunE so that the no-arg "lym ide" listing never
-// requires a git repo.
+// Layout resolution happens once in a PersistentPreRunE.
+// That keeps the no-arg "lym ide" listing from requiring a git repo.
 
 package idecli
 
@@ -115,9 +116,11 @@ func Command() *cobra.Command {
 	return cmd
 }
 
-// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing worktree of the hub and prints the slug and the fields action returns.
+// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing worktree of the hub.
+// The verb prints the slug and the fields action returns.
 // With slugOptional, the slug may be left out and names the worktree the verb runs in, the prime included.
-// Before calling action it refuses a slug failing the slug grammar and one whose worktree directory under the hub does not exist,
+// Before calling action it refuses a slug that fails the slug grammar.
+// It also refuses a slug whose worktree directory under the hub does not exist,
 // so the verb acts only on a directory directly under the hub.
 // The location is read through l when the verb runs, after the root's pre-run has resolved it.
 func slugVerbCommand(l **lymcwd.Location, name, short string, slugOptional bool, action func(*lymcwd.Location, string) (map[string]any, error)) *cobra.Command {
@@ -173,11 +176,8 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the ide module CLI in cwd, or in the process working directory when cwd is empty.
+// An empty cwd takes its own branch, since lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

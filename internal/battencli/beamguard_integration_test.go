@@ -1,4 +1,5 @@
-// beamguard_integration_test.go drives the prime-or-beam guard over a hubforge hub with a marked beam: the guard's verdicts, the batten verbs run through a beam's anchor, and the self-pair refusals.
+// beamguard_integration_test.go drives the prime-or-beam guard over a hubforge hub with a marked beam:
+// the guard's verdicts, the batten verbs run through a beam's anchor, and the self-pair refusals.
 
 package battencli
 
@@ -20,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// beamHub returns a hub with a marked beam "b", a member "m" forked from it, and a pair "p" forked from the prime, with the prime's worktree name.
+// beamHub returns a hub with a marked beam "b" and a member "m" forked from it.
+// It adds a pair "p" forked from the prime and returns the prime's worktree name.
 func beamHub(t *testing.T) (h *hubforge.Hub, primeName string) {
 	t.Helper()
 	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

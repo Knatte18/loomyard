@@ -30,7 +30,8 @@ type Watcher struct {
 }
 
 // Watch opens one fsnotify watcher on dir.
-// Its Events channel delivers one Event per create, write, rename or remove of an entry whose base name is in names, or of any entry when names is empty.
+// Its Events channel delivers one Event per create, write, rename or remove of an entry whose base name is in names.
+// When names is empty, it delivers the event of any entry.
 // An fsnotify failure at open or add is returned, so the caller falls back to polling.
 func Watch(dir string, names ...string) (*Watcher, error) {
 	inner, err := fsnotify.NewWatcher()

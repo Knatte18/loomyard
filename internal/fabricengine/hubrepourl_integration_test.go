@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHubRepoURL_BindingThenOriginThenError walks one hub through the three sources in turn, removing each before the next step.
+// TestHubRepoURL_BindingThenOriginThenError walks one hub through the three sources in turn.
+// It removes each source before the next step.
 func TestHubRepoURL_BindingThenOriginThenError(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

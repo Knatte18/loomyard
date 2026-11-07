@@ -11,9 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// WebsterRecordNote renders webster's run record under anchorPath as markdown for the Plan-Review rubric, or `none` when there is no record or it holds no begun batch.
-// The note names each begun batch with its status and card ids, the done cards, and the rule that a done card is frozen.
-// A record that cannot be read is logged at Warn and renders a fixed note saying the frozen cards are unknown, so the reviewer is never told nothing is frozen and a rubric read never fails on it.
+// WebsterRecordNote renders webster's run record under anchorPath as markdown for the Plan-Review rubric.
+// It returns `none` when there is no record or it holds no begun batch.
+// The note names each begun batch with its status and card ids.
+// It also lists the done cards and states that a done card is frozen.
+// A record that cannot be read is logged at Warn and renders a fixed note that the frozen cards are unknown;
+// so the reviewer is never told that nothing is frozen, and a rubric read never fails on it.
 func WebsterRecordNote(anchorPath string) string {
 	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 	if err != nil {

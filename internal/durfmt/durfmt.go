@@ -8,6 +8,7 @@ import (
 )
 
 // FormatMinutes renders d in whole minutes as `12m`, `1h05m` or `2d03h`, so a pane line changes at most once a minute.
+// A negative d renders as `0m`.
 func FormatMinutes(d time.Duration) string {
 	minutes := max(int(d/time.Minute), 0)
 	switch {
@@ -20,7 +21,8 @@ func FormatMinutes(d time.Duration) string {
 	}
 }
 
-// FormatSeconds renders a closed span in whole seconds as `45s`, `12m05s` or `1h05m12s`, and from one day on as FormatMinutes does.
+// FormatSeconds renders a closed span in whole seconds as `45s`, `12m05s` or `1h05m12s`.
+// From one day on it renders days and hours only, as `2d03h`.
 // A negative d renders as `0s`.
 func FormatSeconds(d time.Duration) string {
 	seconds := max(int(d/time.Second), 0)

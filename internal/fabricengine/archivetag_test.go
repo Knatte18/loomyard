@@ -20,7 +20,8 @@ func TestArchiveTagPushDelays(t *testing.T) {
 	}
 }
 
-// TestArchiveTagSlug covers the accepted archive/<slug>/<sha> shape and the names that carry the prefix without a slug or tip, or another prefix.
+// TestArchiveTagSlug covers the accepted archive/<slug>/<sha> shape.
+// It also covers the names that carry the prefix without a slug or tip, and those with another prefix.
 func TestArchiveTagSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

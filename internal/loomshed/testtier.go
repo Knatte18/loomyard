@@ -1,4 +1,5 @@
-// testtier.go holds the plan gate's test-tier-unstated check: a card creating a test file as a file target must state the file's build tier in its Intent.
+// testtier.go holds the plan gate's test-tier-unstated check.
+// A card that creates a test file as a file target must state the file's build tier in its Intent.
 
 package loomshed
 
@@ -12,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// testTierUnstatedCheck names the finding testTierFindings appends for a created test file whose naming Intent lines do not state exactly one tier.
+// testTierUnstatedCheck is the check name for a created test file whose Intent lines state no valid tier.
 const testTierUnstatedCheck = "test-tier-unstated"
 
 // untaggedWord is the Intent word that states a created test file holds support only and names no tier.
@@ -21,9 +22,12 @@ const untaggedWord = "untagged"
 // testTierWayForward is the way-forward clause every test-tier-unstated finding carries.
 const testTierWayForward = "way forward: add an Intent line naming the file and its tier, such as `tier0`, the tier every test function of the file names in its opening tiergate.Require call, or the word `untagged` when the file holds support only (TestMain, helpers), on a line that names no other test file; where the lines name several tiers, keep one; drop untagged or the tier when both appear"
 
-// testTierFindings returns one test-tier-unstated finding per test file that a card of cards creates as a file target and whose naming Intent lines state no valid tier.
+// testTierFindings returns one test-tier-unstated finding per test file that a card creates as a file target.
+// The finding is made when the Intent lines naming that file state no valid tier.
 // It returns nothing unless plan is a go plan and tierTags is non-empty.
-// A file passes when its naming lines hold exactly one distinct tag; several tags, each consecutive pair joined by || on one line; or the word untagged and no tag.
+// A file passes when its naming lines hold exactly one distinct tag;
+// several tags, each consecutive pair joined by || on one line;
+// or the word untagged and no tag.
 func testTierFindings(plan *planparser.Plan, cards []planparser.Card, tierTags []string) []planindex.Finding {
 	if !plan.GoToolchain() || len(tierTags) == 0 {
 		return nil
@@ -90,7 +94,8 @@ func (s tierStatement) describe() string {
 	return strings.Join(parts, ", ")
 }
 
-// collectTierStatement reads the lines that name path, by its full path or its base name as a token of its own, for the tier tags and untagged word they state.
+// collectTierStatement gathers what the lines naming path say about its tier.
+// A line names path when it holds the full path or the base name as a token of its own.
 func collectTierStatement(lines []string, path string, tierTags []string) tierStatement {
 	base := path[strings.LastIndex(path, "/")+1:]
 	var statement tierStatement
@@ -146,7 +151,7 @@ func wordSpans(line string) []wordSpan {
 	return spans
 }
 
-// joinsAll reports whether the tag occurrences of one line are two or more and each consecutive pair is separated by only ||.
+// joinsAll reports whether line holds two or more tag occurrences, each consecutive pair separated only by ||.
 func joinsAll(line string, occurrences []wordSpan) bool {
 	if len(occurrences) < 2 {
 		return false
@@ -168,7 +173,8 @@ func distinctCount(occurrences []wordSpan) int {
 	return len(seen)
 }
 
-// namesFile reports whether line holds name as a token of its own: not the tail of a longer path and not the head of a longer file name.
+// namesFile reports whether line holds name as a token of its own.
+// It rejects a match that is the tail of a longer path or the head of a longer file name.
 func namesFile(line, name string) bool {
 	for offset := 0; ; {
 		at := strings.Index(line[offset:], name)

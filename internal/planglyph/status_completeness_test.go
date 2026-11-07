@@ -1,11 +1,10 @@
-// status_completeness_test.go guards quarry's status vocabulary against silent widening.
-// quarry.Status.Known() moved the definition of "readable" from lym to quarry, so a status quarry
-// adds later would pass the guard in doneCheckVerdicts and land on the resolved and stillExists
-// booleans, which derive only from quarry.StatusFound, quarry.StatusMultipart and
-// quarry.StatusNotFound — a fifth status would read as not-resolved-but-still-existing and produce
-// an ordinary-looking verdict rather than the honest glyph-rejected diagnostic. This file's
-// coverage assertion is the tripwire: it fails the moment quarry.Statuses and this file's own
-// expectation table diverge in either direction.
+// status_completeness_test.go guards the status vocabulary against silent widening.
+// A status that quarry adds later would reach the resolved and stillExists booleans.
+// Those booleans derive only from quarry.StatusFound, quarry.StatusMultipart and quarry.StatusNotFound.
+// Such a status would read as not resolved yet still existing.
+// It would then produce an ordinary-looking verdict instead of the glyph-rejected diagnostic.
+// The coverage assertion is the tripwire:
+// it fails when quarry.Statuses and the expectation table diverge in either direction.
 
 package planglyph
 
@@ -18,9 +17,8 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// statusOutcome names the expected doneCheckVerdicts outcome for one status across all four
-// checkID arms doneCheckVerdicts switches on: true means the arm fires its blocking finding, false
-// means it produces no finding.
+// statusOutcome holds the expected verdict for one status on each of the four check arms, one field per arm.
+// A true field means the arm reports a blocking finding; a false field means it reports none.
 type statusOutcome struct {
 	createNotDone    bool
 	deleteNotDone    bool
@@ -28,8 +26,7 @@ type statusOutcome struct {
 	renameNotDoneNew bool
 }
 
-// expectedOutcomeByStatus is the table a human has consciously taught doneCheckVerdicts to handle,
-// one entry per status quarry.Statuses names today.
+// expectedOutcomeByStatus maps each status in quarry.Statuses to the statusOutcome the checks must produce for it.
 var expectedOutcomeByStatus = map[quarry.Status]statusOutcome{
 	quarry.StatusFound:     {createNotDone: false, deleteNotDone: true, renameNotDoneOld: true, renameNotDoneNew: false},
 	quarry.StatusMultipart: {createNotDone: false, deleteNotDone: true, renameNotDoneOld: true, renameNotDoneNew: false},
@@ -37,11 +34,13 @@ var expectedOutcomeByStatus = map[quarry.Status]statusOutcome{
 	quarry.StatusNotFound:  {createNotDone: true, deleteNotDone: false, renameNotDoneOld: false, renameNotDoneNew: true},
 }
 
-// TestStatusCompleteness_TableCoversQuarryStatuses is the whole reason this file exists: the table key set and quarry.Statuses cover each other exactly, in both directions, as genuine set membership tests.
-// A length comparison would pass a same-size swap of one status for another, and sizing a range loop off len(quarry.Statuses) would assert nothing at all — both are rejected by design, per the statuses-is-read-only Shared Decision.
+// TestStatusCompleteness_TableCoversQuarryStatuses fails when the keys of the table and quarry.Statuses differ.
+// It tests set membership in both directions.
+// A length comparison would pass a same-size swap of one status for another.
 //
-// This file deliberately does NOT also assert that every value in quarry.Statuses avoids glyph-rejected in TestStatusCompleteness_MatchesDoneCheckVerdicts below: that would hold for a hypothetical fifth status too, since Known() would admit it, so it cannot detect the drift this file exists to catch.
-// Do not add it.
+// Do not add a check that every value in quarry.Statuses avoids glyph-rejected.
+// quarry.Status.Known() admits a status that quarry adds later, so such a check would pass for it.
+// It would then miss the drift this test catches.
 //
 //testtiming:keep a guard that fires when quarry.Statuses and the expectation table diverge, which no covering test asserts
 func TestStatusCompleteness_TableCoversQuarryStatuses(t *testing.T) {
@@ -69,8 +68,8 @@ func TestStatusCompleteness_TableCoversQuarryStatuses(t *testing.T) {
 	}
 }
 
-// runDoneCheckVerdict drives doneCheckVerdicts through its own seam — a hand-built index holding a
-// synthetic result carrying status — for one checkID, and returns the findings produced.
+// runDoneCheckVerdict runs the done-check verdicts for one checkID over a single synthetic result.
+// The result carries status, and the function returns the findings produced.
 func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) []Finding {
 	t.Helper()
 
@@ -87,7 +86,9 @@ func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) [
 	return findings
 }
 
-// TestStatusCompleteness_MatchesDoneCheckVerdicts drives doneCheckVerdicts through its own seam, one checkID at a time so the two rename arms — which both emit a Finding whose Check field is rename-not-done — are told apart by which arm produced the finding rather than by Check alone, and compares the result against expectedOutcomeByStatus's row for status.
+// TestStatusCompleteness_MatchesDoneCheckVerdicts checks each status against its expectedOutcomeByStatus row.
+// It runs one checkID at a time, because both rename arms emit a finding whose Check is rename-not-done.
+// It tells the two arms apart by the arm that produced the finding, not by Check alone.
 //
 //testtiming:keep pins every quarry status against all four check arms from the guard table, where TestDoneChecks_Verdicts reaches found and not_found only
 func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
@@ -127,7 +128,11 @@ func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
 	}
 }
 
-// TestStatusCompleteness_UnreadableStatusesFailClosed pins the two unreadable shapes — the zero-value status, quarry's pre-resolution rejection carrying Error and Reason, and a synthetic out-of-vocabulary status string — to exactly one blocking glyph-rejected finding for every one of the four checkID arms, with no create, delete or rename verdict, and confirms the two shapes render the two different Detail strings unreadableStatusDetail produces for them.
+// TestStatusCompleteness_UnreadableStatusesFailClosed checks the two unreadable status shapes.
+// The first is quarry's pre-resolution rejection, which carries Error and Reason and a zero-value status.
+// The second is a synthetic out-of-vocabulary status string.
+// Each shape yields exactly one blocking glyph-rejected finding on each of the four check arms.
+// No create, delete or rename verdict accompanies it, and each shape renders its own Detail string.
 //
 //testtiming:keep pins the two unreadable-status Detail strings on every check arm, which TestCreateFindings_UnreadableStatusFailsClosed does not assert
 func TestStatusCompleteness_UnreadableStatusesFailClosed(t *testing.T) {

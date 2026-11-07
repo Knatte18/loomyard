@@ -1,4 +1,5 @@
-// watchfilechanges_test.go drives watchFileChanges over a real temporary directory, and the PR-Review wait's RecordChanges seam that watches the run's pull request record through it.
+// watchfilechanges_test.go drives watchFileChanges over a real temporary directory.
+// It also covers the RecordChanges seam of the PR-Review wait, which watches the run's pull request record.
 
 package loomcli
 
@@ -121,7 +122,8 @@ func TestWatchFileChanges(t *testing.T) {
 	})
 }
 
-// TestPullRequestDeps_RecordChangesWatchesTheRunsPullRequestRecord asserts a write to the run's pull request record reaches the RecordChanges channel of the PR-Review wait.
+// TestPullRequestDeps_RecordChangesWatchesTheRunsPullRequestRecord asserts the run's pull request record is watched.
+// A write to that record reaches the RecordChanges channel of the PR-Review wait.
 func TestPullRequestDeps_RecordChangesWatchesTheRunsPullRequestRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

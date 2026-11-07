@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lym/ that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to the template.
+// TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback pins the stat-failure case.
+// An _lym/ that exists but cannot be stat'd makes LoadOrTemplate return an error, not the template.
 //
 //testtiming:keep pins that an _lym/ that cannot be stat'd errors instead of resolving the template, which no covering test reaches
 func TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback(t *testing.T) {

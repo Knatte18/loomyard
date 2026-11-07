@@ -1,5 +1,6 @@
-<!-- This is the Claude engine's copy of the edit directive: internal/editdirective.EngineDirective renders it into the edit_directive marker of an assistant seat that runs on Claude.
-     It states the rule the shared edit-directive stencil states, in the same Claude tool wording. It declares no marker and must stay marker-free. -->
+<!-- This is the Claude engine's copy of the edit directive.
+     internal/editdirective.EngineDirective renders it into the edit_directive marker of an assistant seat on Claude.
+     It declares no marker and must stay marker-free. -->
 
 ## Editing files
 

@@ -1,4 +1,6 @@
-// samplersession.go implements the Sampler-Session row's producer: it keeps one interactive agent session in the run's worktree and waits, with no timeout, for the done flag `lym loom sampler-done` writes.
+// samplersession.go implements the Sampler-Session row's producer.
+// It keeps one interactive agent session in the run's worktree.
+// It waits, with no timeout, for the done flag that `lym loom sampler-done` writes.
 
 package loomshed
 
@@ -18,13 +20,13 @@ import (
 )
 
 const (
-	// samplerWaitFloor is the shortest time between two wakes of the wait, and the one a change returns it to.
+	// samplerWaitFloor is the shortest time between two wakes of the wait; a change returns the wait to it.
 	samplerWaitFloor = time.Second
 	// samplerWaitCeiling is the longest time between two wakes while nothing changes.
 	samplerWaitCeiling = time.Minute
 )
 
-// samplerUnresumableWayForward follows a way forward of resuming the row, for a recorded session that can no longer be resumed.
+// samplerUnresumableWayForward is the way forward a halt reports when the recorded session can no longer be resumed.
 const samplerUnresumableWayForward = "when the recorded session can no longer be resumed, commit the work in the task worktree and run lym loom sampler-done first, so the resume ends the row without a session, or end the run with lym batten cancel <slug>"
 
 // SamplerSessions is the seam the Sampler-Session row starts and stops its interactive session through.
@@ -37,13 +39,13 @@ type SamplerSessions interface {
 
 var _ SamplerSessions = (*shuttleengine.Runner)(nil)
 
-// SamplerDeps carries the told seams NewSamplerSession needs.
+// SamplerDeps carries the seams the Sampler-Session row needs from its caller.
 // Every field but Watch is required.
 type SamplerDeps struct {
 	// RecordPath and RecordLockPath are the sampler record and its lock.
 	RecordPath     string
 	RecordLockPath string
-	// Spec builds the spec the session starts under; its error halts the run with the way forward that fixes the agent or the stencil.
+	// Spec builds the spec the session starts under; its error halts the run with a way forward to fix the agent or stencil.
 	Spec func() (shuttleengine.Spec, error)
 	// Sessions starts and stops the session.
 	Sessions SamplerSessions
@@ -55,7 +57,7 @@ type SamplerDeps struct {
 	Stamp func() (int, error)
 	// DirtyPaths returns the code checkout's uncommitted paths.
 	DirtyPaths func() ([]string, error)
-	// CheckRecord validates the decision record once the operator ends the build, returning the findings that halt the run; it commits nothing.
+	// CheckRecord validates the decision record once the build ends, returning the halting findings; it commits nothing.
 	CheckRecord func() ([]discussionparser.Finding, error)
 	// MailAgent posts line to the session whose strand name is strandName.
 	MailAgent func(strandName, line string) error
@@ -83,11 +85,15 @@ func NewSamplerSession(name string, deps SamplerDeps) shedengine.ShedProducer {
 }
 
 // Call keeps the run's one interactive session and waits for the operator's done flag.
-// A flag at the run's current entry stamp is judged first, so a flag written while the run was halted ends the row without starting a session; otherwise the recorded session is reused when live, resumed by its recorded id when not, or started.
+// A flag at the run's current entry stamp is judged first,
+// so a flag written while the run was halted ends the row without starting a session.
+// Otherwise the recorded session is reused when live, resumed by its recorded id when not, or started.
 // The wait has no timeout; a covered pause stops the session and the next uncovered wake resumes it.
-// A flag judged on a dirty checkout is cleared and the session is told to commit; on a clean one with an intact decision record the row is Done.
+// A flag judged on a dirty checkout is cleared and the session is told to commit;
+// on a clean checkout with an intact decision record the row is Done.
 // A transient session start failure is an error the driver re-steps, and any other failure is Stuck with Halt.
-// Every verdict, Stuck or error stops a live session, except a cancelled context, which leaves it running so the re-call finds it live.
+// Every verdict, Stuck or error, stops a live session, except when the context is cancelled.
+// A cancelled context leaves the session running, so the re-call finds it live.
 func (p *samplerSession) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -105,7 +111,7 @@ func (p *samplerSession) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	return outcome, pointer, err
 }
 
-// checkWiring returns an error naming the first told value the row needs and the deps leave unset.
+// checkWiring returns an error naming the first SamplerDeps field that is needed and left unset.
 func (p *samplerSession) checkWiring() error {
 	d := p.deps
 	seams := []struct {
@@ -134,20 +140,21 @@ func (p *samplerSession) checkWiring() error {
 	return nil
 }
 
-// samplerHalt is a failure that is not transient, which Call turns into a Stuck verdict with Halt.
+// samplerHalt is a non-transient failure, which ends the call as a Stuck verdict with Halt.
 type samplerHalt struct {
 	reason string
 }
 
 func (h *samplerHalt) Error() string { return h.reason }
 
-// samplerRun is the state of one Call: the strand the call knows of, and whether the row stopped it.
+// samplerRun is the state of one call of the Sampler-Session row:
+// the strand it knows of, and whether the row has stopped that strand.
 type samplerRun struct {
 	name string
 	deps SamplerDeps
 	// guid is the strand the call last read from the record or started.
 	guid string
-	// rowStopped is true while the row itself holds the session stopped, so a strand that is not live is no death.
+	// rowStopped is true while the row itself holds the session stopped, so a strand that is not live is not a death.
 	rowStopped bool
 }
 
@@ -187,7 +194,8 @@ func (r *samplerRun) flagIsCurrent(rec samplerengine.Record) (bool, error) {
 }
 
 // ensureSession makes sure the run has a live session and returns rec with the session's identity.
-// A recorded strand that is live is reused; otherwise the spec is started with the recorded session id, empty for a first start, and the strand is recorded.
+// A recorded strand that is live is reused;
+// otherwise the spec is started with the recorded session id, empty for a first start, and the strand is recorded.
 // A transient start failure is an error, and any other failure is a *samplerHalt.
 // A failed registration is logged, since it only lets a teardown end the pane process.
 func (r *samplerRun) ensureSession(ctx context.Context, rec samplerengine.Record) (samplerengine.Record, error) {
@@ -252,7 +260,8 @@ func (r *samplerRun) stopLive(guid string) (bool, error) {
 
 // judgeDone judges a done flag at the current stamp and reports whether it ended the call.
 // It stops the recorded session first.
-// A dirty checkout clears the flag, brings the session back and mails it the uncommitted paths, and the call goes on waiting.
+// A dirty checkout clears the flag, brings the session back and mails it the uncommitted paths,
+// and the call goes on waiting.
 // A clean checkout whose decision record has findings is Stuck with Halt, and an intact one is Done.
 func (r *samplerRun) judgeDone(ctx context.Context, rec samplerengine.Record) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	if _, err := r.stopLive(rec.StrandGUID); err != nil {
@@ -282,7 +291,8 @@ func (r *samplerRun) judgeDone(ctx context.Context, rec samplerengine.Record) (s
 	return shedengine.Done, shedengine.OutputPointer{}, true, nil
 }
 
-// refuseDirtyDone clears the done flag of a build ended on a dirty checkout, brings the session back and tells it which paths are uncommitted.
+// refuseDirtyDone clears the done flag of a build ended on a dirty checkout.
+// It brings the session back and tells it which paths are uncommitted.
 func (r *samplerRun) refuseDirtyDone(ctx context.Context, rec samplerengine.Record, dirty []string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	err := samplerengine.UpdateRecord(r.deps.RecordPath, r.deps.RecordLockPath, func(stored *samplerengine.Record) { stored.DoneStamp = 0 })
 	if err != nil {
@@ -325,7 +335,8 @@ func (r *samplerRun) wait(ctx context.Context) (shedengine.Outcome, shedengine.O
 }
 
 // wake runs one wake of the wait.
-// It reports whether the call ended with the returned verdict, and whether the wake changed anything, which returns the wait to its shortest interval.
+// It reports whether the call ended with the returned verdict, and whether the wake changed anything.
+// A change returns the wait to its shortest interval.
 // pausedStop is true while a covered pause holds the session stopped.
 func (r *samplerRun) wake(ctx context.Context, pausedStop *bool) (outcome shedengine.Outcome, pointer shedengine.OutputPointer, ended, moved bool, err error) {
 	fail := func(err error) (shedengine.Outcome, shedengine.OutputPointer, bool, bool, error) {
@@ -386,7 +397,9 @@ func (r *samplerRun) wake(ctx context.Context, pausedStop *bool) (outcome sheden
 	return "", shedengine.OutputPointer{}, false, moved, nil
 }
 
-// nextSamplerWait is the wait after current: a second once something changed, otherwise double current up to a minute and never under a second.
+// nextSamplerWait is the wait after current.
+// It is samplerWaitFloor once something moved.
+// Otherwise it doubles current, and keeps the result between samplerWaitFloor and samplerWaitCeiling.
 func nextSamplerWait(current time.Duration, moved bool) time.Duration {
 	if moved {
 		return samplerWaitFloor
@@ -395,7 +408,8 @@ func nextSamplerWait(current time.Duration, moved bool) time.Duration {
 }
 
 // pause waits wait, or until Watch delivers, and reports whether it did.
-// An event still waits out the rest of samplerWaitFloor since lastWake, so no wake follows another by less than a second.
+// An event still waits out the rest of samplerWaitFloor since lastWake,
+// so no wake follows another by less than a second.
 func (r *samplerRun) pause(ctx context.Context, wait time.Duration, lastWake time.Time) (bool, error) {
 	if r.deps.Watch == nil {
 		return false, r.deps.Sleep(ctx, wait)
@@ -425,8 +439,9 @@ func (r *samplerRun) stuck(ctx context.Context, reason string) (shedengine.Outco
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Halt: true}, nil
 }
 
-// transientFailure returns the error a transient failure of action ends the call with, so the driver re-steps it, and nil for any other failure.
-// A cancelled context is that error first.
+// transientFailure returns the error that ends the call on a transient failure of action, so the driver re-steps it.
+// It returns nil for any other failure.
+// A cancelled context returns the cancellation error first.
 func (r *samplerRun) transientFailure(ctx context.Context, action string, err error) error {
 	if cerr := cancelErr(ctx, r.name); cerr != nil {
 		return cerr
@@ -437,7 +452,8 @@ func (r *samplerRun) transientFailure(ctx context.Context, action string, err er
 	return fmt.Errorf("loomshed: %s: %s: %w", r.name, action, err)
 }
 
-// endSession stops the call's live session when the call ends with a verdict or a failure of its own, and leaves it running when the context was cancelled, so the re-call after an interrupt finds it live.
+// endSession stops the call's live session when the call ends with a verdict or a failure of its own.
+// It leaves the session running when the context was cancelled, so the re-call after an interrupt finds it live.
 // A failed stop is logged, since the verdict stands whatever it says.
 func (r *samplerRun) endSession(ctx context.Context, err error) {
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {

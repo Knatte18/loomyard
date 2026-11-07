@@ -1,4 +1,5 @@
-// pushlock_test.go covers where the single-pusher lock of PushCoalesced sits: in the checkout's git dir, never in its working tree.
+// pushlock_test.go covers where the single-pusher lock of PushCoalesced sits:
+// in the checkout's git dir, never in its working tree.
 
 package gitrepo_test
 

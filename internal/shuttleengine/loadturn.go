@@ -1,5 +1,6 @@
 // loadturn.go runs one skill-load turn of a starting run and holds it through an API error.
-// An API error says nothing about the skills, so such a turn is no skipped skill: the load runs again once a back-off has passed, and the prompt waits behind it.
+// An API error says nothing about the skills, so such a turn is no skipped skill.
+// The load runs again once a back-off has passed, and the prompt waits behind it.
 // The typed load line is the probe, since a session has no other way of asking whether its API answers.
 
 package shuttleengine
@@ -13,13 +14,14 @@ import (
 )
 
 const (
-	// loadHoldBackoffCeiling is the longest wait between two load turns of a hold; the wait starts at apiErrorRetryBackoff and doubles with each API error.
+	// loadHoldBackoffCeiling is the longest wait between two load turns of a hold, doubling from apiErrorRetryBackoff.
 	loadHoldBackoffCeiling = 5 * time.Minute
-	// loadHoldNoticeErrors is the API-error count at which the parent is told of the hold, so a passing error sends no notice.
+	// loadHoldNoticeErrors is the API-error count at which the parent is told of the hold; a passing error sends no notice.
 	loadHoldNoticeErrors = 2
 )
 
-// loadModelRejectedError ends a start whose load turn the provider ended on a model it does not know, which no further turn changes.
+// loadModelRejectedError ends a start whose load turn the provider ended on a model it does not know.
+// No further turn changes the model.
 type loadModelRejectedError struct {
 	// text is the provider's error text.
 	text string
@@ -42,7 +44,7 @@ type loadTurnWatch struct {
 	began time.Time
 	// open is true while a turn start read has no turn end after it.
 	open bool
-	// turnStart is the newest turn start signal read, which an engine reads an interrupt marker of.
+	// turnStart is the newest turn start signal read, which the engine checks for an interrupt.
 	turnStart SessionSignal
 	// errors counts the API-error turn ends read, and since is when the first was read.
 	errors int
@@ -52,14 +54,15 @@ type loadTurnWatch struct {
 	retypeAt time.Time
 	// backoff is the wait the next API error gets.
 	backoff time.Duration
-	// rejected is true when the pending turn end is one the provider marked ModelRejected, and text is the newest error's text.
+	// rejected is true when the pending turn end is marked ModelRejected, and text is the newest error's text.
 	rejected bool
 	text     string
 	// noticed is true once the parent was told of the hold.
 	noticed bool
 }
 
-// heldDeadline returns deadline moved later by the hold that preceded the turn being awaited, which is the time from the first API error to that turn's start.
+// heldDeadline returns deadline moved later by the hold that preceded the turn being awaited.
+// The hold runs from the first API error to that turn's start.
 func (w *loadTurnWatch) heldDeadline(deadline time.Time) time.Time {
 	if w.errors == 0 {
 		return deadline
@@ -78,7 +81,8 @@ func (w *loadTurnWatch) apiErrorRead(text string, rejected bool, now time.Time) 
 	w.backoff = min(2*w.backoff, loadHoldBackoffCeiling)
 }
 
-// turnStartRead records a turn start read at now, which ends a pending API error: the operator, a revive or a typed load line started the turn awaited from now on.
+// turnStartRead records a turn start read at now, which ends a pending API error.
+// The operator, a revive or a typed load line started the turn awaited from now on.
 func (w *loadTurnWatch) turnStartRead(signal SessionSignal, now time.Time) {
 	w.open, w.pending, w.turnStart = true, false, signal
 	if w.errors > 0 {
@@ -86,19 +90,30 @@ func (w *loadTurnWatch) turnStartRead(signal SessionSignal, now time.Time) {
 	}
 }
 
-// loadSkillTurn is one load turn: when typed, it sends the engine's load message for skills through the verified send path; otherwise the launch line already carried the message.
-// It then polls the events file until the first turn end past the run's offset, which it returns, the pane dies, or the wait ends as described below.
-// timeout is measured from the call's entry and ends only a turn no turn start was read for, such as one of an engine that reads no turn starts.
-// A provider retries a failing API inside a turn for minutes before it ends the turn on the error, so a turn start read with no turn end after it is awaited until its end, the pane's death, the run's deadline, which fails with a *loadDeadlineError, or the engine's reading of it as interrupted.
+// loadSkillTurn is one load turn.
+// When typed, it sends the engine's load message for skills through the verified send path;
+// otherwise the launch line already carried the message.
+// It then polls the events file for the first turn end past the run's offset, and returns it.
+// The poll also ends when the pane dies or the wait ends, as described below.
+// timeout is measured from the call's entry.
+// It ends only a turn no turn start was read for, such as every turn of an engine that reads no turn starts.
+// A provider retries a failing API inside a turn for minutes before it ends the turn on the error.
+// So a turn start read with no turn end after it is awaited.
+// The wait ends at that turn's end, the pane's death, the run's deadline, or the engine's reading of it as interrupted.
+// The deadline ends the call with a *loadDeadlineError.
 // ended is false on a timeout and on an interrupted turn.
 // died is true when the strand's pane is no longer live.
 // The run's offset moves past every event read.
 //
 // A turn that ends on an API error, by the engine's signal or by the transcript's marker on a turn end, returns nothing.
-// The poll sleeps out a back-off from apiErrorRetryBackoff doubling to loadHoldBackoffCeiling, and the load message goes out again through the verified send path, as many times as the API fails, with no bound of its own: it ends when a turn ends, the pane dies or a send fails.
-// A turn start read meanwhile takes the place of that line, since the operator or a revive may have carried the session on, and a busy session only moves the line to the next back-off.
-// A turn end the engine marks ModelRejected fails with a *loadModelRejectedError, since no further turn changes the model.
-// The hold moves the run's deadline later by its length, as a pause does.
+// The poll sleeps out a back-off from apiErrorRetryBackoff, doubling to loadHoldBackoffCeiling.
+// The load message goes out again through the verified send path as many times as the API fails.
+// It has no bound of its own: the loop ends when a turn ends, the pane dies or a send fails.
+// A turn start read meanwhile takes the place of that line: the operator or a revive may have carried the session on.
+// A busy session only moves the line to the next back-off.
+// A turn end the engine marks ModelRejected fails with a *loadModelRejectedError.
+// No further turn changes the model.
+// The hold moves the run's deadline later by its length.
 func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration, typed bool) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
@@ -155,7 +170,8 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 	}
 }
 
-// readLoadTurn reads the events past the run's offset into watch, and returns the first turn end that is the load turn's own.
+// readLoadTurn reads the events past the run's offset into watch.
+// It returns the first turn end that is the load turn's own.
 // A turn end the transcript marks an API error counts as an API-error turn end.
 // An unreadable file and a failed parse read nothing and leave the offset where it was.
 func (run *Run) readLoadTurn(watch *loadTurnWatch, skills []string) (Event, bool) {
@@ -205,7 +221,8 @@ func (run *Run) readLoadTurn(watch *loadTurnWatch, skills []string) (Event, bool
 	return turnEnd, found
 }
 
-// loadTurnInterrupted reports whether the engine reads the open load turn as interrupted by the operator, a turn that no turn end ever follows.
+// loadTurnInterrupted reports whether the engine reads the open load turn as interrupted by the operator.
+// An interrupted turn has no turn end after it.
 // An engine that cannot read an interrupt reads every open turn as running.
 func (run *Run) loadTurnInterrupted(watch *loadTurnWatch) bool {
 	prober, ok := run.engine.(SessionProber)
@@ -216,7 +233,9 @@ func (run *Run) loadTurnInterrupted(watch *loadTurnWatch) bool {
 	return interrupted
 }
 
-// noticeLoadHold tells the parent once that the API keeps failing the load, for an autonomous run on a runner with a notifier, since a start held on a lasting error shows nowhere else.
+// noticeLoadHold tells the parent once that the API keeps failing the load.
+// It notifies only an autonomous run on a runner with a notifier.
+// Otherwise a start held on a lasting error shows nowhere else.
 // A notifier error is only logged.
 func (run *Run) noticeLoadHold(watch *loadTurnWatch) {
 	notify := run.runner.notifier
@@ -234,7 +253,8 @@ func (run *Run) noticeLoadHold(watch *loadTurnWatch) {
 	}
 }
 
-// endLoadHold moves the run's deadline later by the length of the hold watch kept, so the deadline counts no time spent waiting on the API.
+// endLoadHold moves the run's deadline later by the length of the hold watch kept,
+// so the deadline counts no time spent waiting on the API.
 func (run *Run) endLoadHold(watch *loadTurnWatch) {
 	if watch.errors == 0 {
 		return
@@ -245,7 +265,8 @@ func (run *Run) endLoadHold(watch *loadTurnWatch) {
 }
 
 // abandonLoad ends a start whose load turn failed with err.
-// A rejected model ends it OutcomeAPIError with Result.APIError naming the error, and a turn still open at the run's deadline ends it OutcomeTimeout;
+// A rejected model ends it OutcomeAPIError with Result.APIError naming the error,
+// and a turn still open at the run's deadline ends it OutcomeTimeout;
 // either returns the run instead when every output file exists, as a start past its gates.
 // Any other failure ends it OutcomeDied.
 func (run *Run) abandonLoad(err error) (Result, error) {

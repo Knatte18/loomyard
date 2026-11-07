@@ -1,4 +1,5 @@
-// capabilities_test.go pins Codex's side of creel's hook delivery that runs no process: the hook-input parse and the hook output that hands mail over.
+// capabilities_test.go tests the parts of Codex's creel hook delivery that run no process.
+// They are the hook-input parse and the hook output that hands mail over.
 
 package codexengine
 
@@ -9,7 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHookInput pins the parse of a Codex hook payload: PostToolUse is the tool boundary, Stop the turn end with its stop_hook_active, another event none, and a payload that is no JSON object is refused.
+// TestHookInput pins the parse of a Codex hook payload.
+// PostToolUse is the tool boundary, Stop the turn end with its stop_hook_active, and another event is none.
+// A payload that is no JSON object is refused.
 func TestHookInput(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -42,7 +45,8 @@ func TestHookInput(t *testing.T) {
 	}
 }
 
-// TestHookOutput pins that mail goes out as a block whose reason is the mail on either event, that the echo is dropped, and that no mail is the empty hook output.
+// TestHookOutput pins that mail goes out as a block whose reason is the mail on either event.
+// The echo is dropped; no mail is the empty hook output.
 // It also pins that no hook exit wakes an idle Codex session.
 func TestHookOutput(t *testing.T) {
 	tiergate.Require(t, 0)

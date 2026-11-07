@@ -1,4 +1,6 @@
-// raddletable.go implements RaddleTable, the Raddle-Write row's table factory: a pure composer that resolves the raddle agent's model, names the file it ends on and returns the seatengine.Table the row's seat producer runs.
+// raddletable.go implements RaddleTable, the table factory of the Raddle-Write row.
+// RaddleTable is a pure composer: it resolves the raddle agent's model and names the file the agent ends on,
+// and it returns the seatengine.Table that the row's seat producer runs.
 // It does no spawning, polling or filesystem writing itself.
 
 package loomengine
@@ -14,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// raddleRole is the agent-name role this module's Raddle-Write spawn carries.
+// raddleRole is the agent-name role that the Raddle-Write spawn carries.
 const raddleRole = "raddle"
 
 // raddleStencil is the stencil that opens the raddle agent's seat.
@@ -23,7 +25,9 @@ const raddleStencil = "raddle-template-agent"
 // raddleSkills are the skills the Raddle-Write spawn loads, in order.
 var raddleSkills = []string{"scribe:prose", "scribe:conversation"}
 
-// raddleModeRules returns the {{.mode_rules}} block of the raddle agent: in auto mode the agent ends on the complete proposal file with no operator present, and in interactive mode it checks the proposal, puts it to the operator and records the operator's approval.
+// raddleModeRules returns the {{.mode_rules}} block of the raddle agent.
+// In auto mode the agent ends on the complete proposal file with no operator present.
+// In interactive mode it checks the proposal, puts it to the operator and records the operator's approval.
 func raddleModeRules(interactive bool, proposalPath string) string {
 	if !interactive {
 		return "This session is running in auto mode: no operator is present. " +
@@ -36,8 +40,11 @@ func raddleModeRules(interactive bool, proposalPath string) string {
 		"Run `lym loom raddle-approve` only on the operator's explicit approval, never without it, and then end your turn."
 }
 
-// raddleReturnNote returns the {{.return_note}} block: empty on a first session, and after a return the reason the filing returned the proposal with the file to start from.
-// Auto mode sets the returned proposal aside at returnedPath; interactive mode keeps it at proposalPath with its approval cleared.
+// raddleReturnNote returns the {{.return_note}} block.
+// It is empty on a first session;
+// after a return it gives the reason the filing returned the proposal, with the file to start from.
+// Auto mode sets the returned proposal aside at returnedPath;
+// interactive mode keeps it at proposalPath with its approval cleared.
 func raddleReturnNote(interactive bool, returnReason, proposalPath, returnedPath string) string {
 	if returnReason == "" {
 		return ""
@@ -50,9 +57,14 @@ func raddleReturnNote(interactive bool, returnReason, proposalPath, returnedPath
 
 // RaddleTable builds the seatengine.Table of one Raddle-Write run: one lead that writes the raddle proposal.
 // The lead's model is cfg.Raddle resolved through reg, and the seat is interactive when interactive is set.
-// Its one output is the approval record in interactive mode, written by `lym loom raddle-approve`, and the proposal file in auto mode, so the session ends on the operator's approval or on the finished proposal.
-// returnReason is the reason a Raddle-File return gave, empty on a first session; it fills the prompt's return note with the set-aside proposal's path.
-// The opening stencil is read at call time from stencilsDir, the prompt points at the proposal format spec under specsDir, and the seat's parent directive is rendered by the seat engine from its geometry.
+// Its one output is the approval record in interactive mode, written by `lym loom raddle-approve`.
+// In auto mode the output is the proposal file,
+// so the session ends on the operator's approval or on the finished proposal.
+// returnReason is the reason a Raddle-File return gave, empty on a first session;
+// it fills the prompt's return note with the set-aside proposal's path.
+// The opening stencil is read at call time from stencilsDir.
+// The prompt points at the proposal format spec under specsDir.
+// The seat engine renders the seat's parent directive from its geometry.
 // The table carries no gate; the producer entry sets it.
 func RaddleTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string, interactive bool, returnReason string) (seatengine.Table, error) {
 	if slug == "" {

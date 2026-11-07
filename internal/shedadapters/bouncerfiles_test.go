@@ -28,9 +28,9 @@ var bouncerFileParsers = map[string]func(content []byte) (summary, prose string,
 	},
 }
 
-// TestParseCommonRules exercises the frontmatter-delimiter rules shared by all three file contracts,
-// driven through each of the three top-level parsers so a regression in the shared
-// splitFrontmatter/frontmatterProse helpers is caught no matter which parser exposed it.
+// TestParseCommonRules exercises the frontmatter-delimiter rules shared by all three file contracts.
+// It drives each of the three top-level parsers, so a regression in the shared
+// splitFrontmatter/frontmatterProse helpers is caught whichever parser exposed it.
 func TestParseCommonRules(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -404,10 +404,8 @@ func TestParseFocusSpecific(t *testing.T) {
 	}
 }
 
-// TestRenderFocus_RoundTripsThroughParseFocus asserts that
-// parseFocus(renderFocus(f)) yields back a value equal to f, for a range of
-// focusFile shapes including the seed-fallback shape, a lens name carrying
-// YAML metacharacters, and a value carrying prose.
+// TestRenderFocus_RoundTripsThroughParseFocus asserts that parseFocus(renderFocus(f)) yields a value equal to f.
+// It covers the seed-fallback focusFile shape, a lens name carrying YAML metacharacters, and a value carrying prose.
 //
 //testtiming:keep pins the render and parse round trip for shapes the bouncer tests never write: nil lists, YAML metacharacters in a lens name, and prose
 func TestRenderFocus_RoundTripsThroughParseFocus(t *testing.T) {
@@ -474,9 +472,9 @@ func TestRenderFocus_RoundTripsThroughParseFocus(t *testing.T) {
 	}
 }
 
-// writeVerdictAndLedger writes a well-formed verdict file and a ledger file (whose own frontmatter
-// round is ledgerRound, independent of the path round its filename encodes) into runDir at round's
-// own verdictPath/ledgerPath, for recordedVerdict's own tests.
+// writeVerdictAndLedger writes a well-formed verdict file and a ledger file into runDir.
+// It places them at the paths verdictPath and ledgerPath give for round.
+// The ledger file's own frontmatter round is ledgerRound, which may differ from the round its filename encodes.
 func writeVerdictAndLedger(t *testing.T, runDir string, round, ledgerRound int) {
 	t.Helper()
 	verdict := "---\nverdict: CONVERGED\nrationale: \"looks good\"\n---\n"
@@ -489,10 +487,8 @@ func writeVerdictAndLedger(t *testing.T, runDir string, round, ledgerRound int) 
 	}
 }
 
-// TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename is LS-1's own regression test (crucible
-// round sonnet-xhigh-r8): a ledger file whose own round: frontmatter field disagrees with the round
-// number its own filename already encodes must not be trusted as "this round has been judged" --
-// recordedVerdict's whole job, per its own doc comment.
+// TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename pins this rule:
+// a ledger file whose round: field disagrees with its filename's round is not trusted as "this round has been judged".
 func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("MatchingRoundIsTrusted", func(t *testing.T) {
@@ -510,9 +506,8 @@ func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
 
 	t.Run("MismatchedRoundIsNotTrusted", func(t *testing.T) {
 		dir := t.TempDir()
-		// The ledger file lands at round-3-*.md (per verdictPath/ledgerPath(dir, 3)) but its own
-		// frontmatter claims round: 1 -- the exact shape a judge writing the wrong round's own claim
-		// into a file that landed at the right path would produce.
+		// The ledger file lands at the path ledgerPath(dir, 3) returns, but its own frontmatter claims round: 1.
+		// That is the shape a judge produces when it writes the wrong round into a file at the right path.
 		writeVerdictAndLedger(t, dir, 3, 1)
 
 		_, _, judged := recordedVerdict(dir, 3)

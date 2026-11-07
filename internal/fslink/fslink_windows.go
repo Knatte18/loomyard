@@ -13,8 +13,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// utf16Ptr converts a string to a UTF-16 pointer for Windows syscalls, panicking
-// on NUL bytes.
+// utf16Ptr converts a string to a UTF-16 pointer for Windows syscalls.
+// It panics on NUL bytes.
 func utf16Ptr(s string) *uint16 {
 	p, err := windows.UTF16PtrFromString(s)
 	if err != nil {
@@ -23,8 +23,8 @@ func utf16Ptr(s string) *uint16 {
 	return p
 }
 
-// CreateDirLink establishes a junction from link to target, creating parent directories and
-// refusing to clobber existing paths.
+// CreateDirLink establishes a junction from link to target.
+// It refuses to clobber an existing path and creates parent directories.
 func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
@@ -97,13 +97,14 @@ func CreateDirLink(link, target string) error {
 	return nil
 }
 
-// CreateFileLink refuses on Windows before touching the filesystem: a file symlink there needs elevated privileges, and a junction links only a directory.
+// CreateFileLink refuses on Windows before touching the filesystem:
+// a file symlink there needs elevated privileges, and a junction links only a directory.
 func CreateFileLink(link, target string) error {
 	return fmt.Errorf("create file link %s -> %s: Windows makes a file link only with elevated privileges; way forward: run a session that needs one on a Linux or macOS machine", link, target)
 }
 
-// readReparseData opens path with reparse-point semantics and returns the
-// reparse data buffer truncated to the bytes Windows wrote.
+// readReparseData opens path with reparse-point semantics.
+// It returns the reparse data buffer, truncated to the bytes Windows wrote.
 func readReparseData(path string) ([]byte, error) {
 	handle, err := windows.CreateFile(
 		utf16Ptr(path),
@@ -135,8 +136,8 @@ func readReparseData(path string) ([]byte, error) {
 	return buf[:bytesReturned], nil
 }
 
-// reparseSubstituteName extracts the substitute name from a junction or
-// symlink reparse data buffer, stripping the \??\ prefix if present.
+// reparseSubstituteName extracts the substitute name from a junction or symlink reparse data buffer.
+// It strips the \??\ prefix if present.
 func reparseSubstituteName(data []byte) (string, error) {
 	if len(data) < 16 {
 		return "", fmt.Errorf("reparse buffer too small (%d bytes)", len(data))
@@ -217,16 +218,10 @@ func PointsTo(link string) (string, error) {
 	return target, nil
 }
 
-// RawTarget returns the literal, one-hop target recorded in link's own reparse point data — the
-// substitute name CreateDirLink wrote — without resolving it further, and without requiring that
-// target (or anything past it) to exist.
-// This is the ownership-check primitive PointsTo cannot serve: PointsTo fully resolves the chain, so
-// it fails outright when a later segment is gone (the legitimate case of a stale-pair prune, where
-// one side of a wired junction's chain no longer exists), and it silently walks past a
-// target that is itself a further symlink (a Fabric junction wired at a path whose own immediate
-// target is another Fabric junction, e.g. a wired junction pointing at a further Fabric junction that
-// itself points at the paired repository) — comparing that fully-resolved end state against the
-// ONE HOP a wiring call actually recorded is a mismatch by construction, not a drift.
+// RawTarget returns the literal target recorded in link's own reparse point data, one hop only.
+// It returns the substitute name written for the link, without resolving it further or requiring it to exist.
+// Ownership checks need this one hop: a fully resolved path differs from it whenever the target is a link,
+// and it fails outright when a later segment is missing.
 // Returns an error if link is not a link.
 func RawTarget(link string) (string, error) {
 	isLink, err := IsLink(link)

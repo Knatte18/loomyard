@@ -1,4 +1,5 @@
-// recipekeys_test.go covers the recipe-keyed accessors: contract, engines, record engine, verify source and retired rows.
+// recipekeys_test.go covers the recipe-keyed accessors:
+// contract, engines, record engine, verify source and retired rows.
 
 package loomrecipe
 
@@ -11,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGateFixerSetting covers the setting each writer row's gate element names for its cold fixer, an element that names none, and the refusals of a recipe or engine that does not exist.
+// TestGateFixerSetting covers the setting each writer row's gate element names for its cold fixer.
+// It also covers a gate element that names none, and the refusals of a recipe or engine that does not exist.
 func TestGateFixerSetting(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

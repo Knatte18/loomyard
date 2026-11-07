@@ -1,4 +1,5 @@
-// config_test.go pins batten.yaml's load: the tackler override keys it carries over shed.yaml, and the refusal of a driver_kind key.
+// config_test.go pins batten.yaml's load.
+// It covers the tackler override keys carried over from shed.yaml, and the refusal of a driver_kind key.
 
 package battenshed
 
@@ -27,7 +28,9 @@ func writeBattenLayer(t *testing.T, path, document string) {
 	}
 }
 
-// TestLoadConfig verifies the template's tackler keys inherit shed.yaml, set values are read, a negative spawn budget is refused naming batten, and a driver_kind key is refused in the local layer and in the base layer, since batten's own driver is always go.
+// TestLoadConfig verifies the template's tackler keys inherit shed.yaml and that set values are read.
+// It also asserts a negative spawn budget is refused naming batten,
+// and a driver_kind key is refused in the local layer and in the base layer, since batten's own driver is always go.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

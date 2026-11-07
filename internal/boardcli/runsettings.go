@@ -17,13 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
-// prepareRunSettings validates the run_settings and the profile of one task payload before the store write, migrating run_settings in place.
+// prepareRunSettings validates the run_settings and profile of one task payload before the store write.
+// It migrates run_settings in place, so the board stores the migrated value.
 // A payload with neither field passes untouched.
-// run_settings must be an object of module name to keys; configreg.PrepareRunSettings migrates and validates it,
-// and the migrated documents replace the payload's value so the board stores the migrated result.
-// profile must be a string, and a non-empty one must name a run profile loadProfiles returns.
-// A change to either stored value is refused from a session refuseRunSettingsCaller refuses, and returns a notice when the stored status says a run is past Seed-Child.
-// The caller guard reads outside the board's write lock and guards a mistaken write, not a determined one.
+// run_settings must be an object of module name to keys, and profile must be a string;
+// a non-empty profile must name a run profile that loadProfiles returns.
+// A session that may not change either stored value is refused, and the check reads outside the board's write lock:
+// it guards a mistaken write, not a determined one.
+// It returns a notice when the entry's stored status says a run is past Seed-Child.
 func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName string, loadProfiles func() (runprofile.Profiles, error)) (string, error) {
 	settingsValue, settingsPresent := fields["run_settings"]
 	profileValue, profilePresent := fields["profile"]
@@ -83,8 +84,10 @@ func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName 
 
 // refuseRunSettingsCaller refuses a run_settings or profile change on one entry from a session that may not make it.
 // A session whose strand name carries no slug, the operator's or the hub orch's, may.
-// A beam's orch, whose strand name carries the beam's slug and the orch role, may when the entry belongs to that beam both as stored and as the payload leaves its project link.
-// It sets the profile of the tasks it files under its beam but moves no change past the beam's edge.
+// A beam's orch, whose strand name carries the beam's slug and the orch role, may make the change.
+// It may do so only when the entry belongs to that beam both as stored and under the project the payload names;
+// when the payload names none, the stored project counts.
+// The beam's orch may set the profile of the tasks it files under its beam, but it moves no change past the beam's edge.
 // Every other session whose strand name carries a slug is refused.
 // stored is the zero entry when the board does not yet hold the entry.
 func refuseRunSettingsCaller(b *boardengine.Board, strandName string, fields map[string]any, stored boardengine.Task) error {
@@ -137,7 +140,8 @@ func migrateRunSettings(value any) (map[string]any, error) {
 	return migrated, nil
 }
 
-// sameRunSettings reports whether two run settings values are equal as the board stores them, an empty value equal to an absent one.
+// sameRunSettings reports whether two run settings values are equal as the board stores them;
+// an empty value equals an absent one.
 func sameRunSettings(stored, requested map[string]any) (bool, error) {
 	storedJSON, err := json.Marshal(stored)
 	if err != nil {

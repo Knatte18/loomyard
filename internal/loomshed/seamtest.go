@@ -1,4 +1,5 @@
-// seamtest.go holds the plan gate's seam-test-unlisted check: a card that touches a struct a `//lym:seam` test reflects over must cover that test.
+// seamtest.go holds the plan gate's seam-test-unlisted check.
+// A card that touches a struct a `//lym:seam` test reflects over must cover that test.
 
 package loomshed
 
@@ -12,14 +13,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// seamTestUnlistedCheck names the finding seamTestFindings appends for a card that touches a marked struct without covering the marked test.
+// seamTestUnlistedCheck is the check name of a seam-test-unlisted finding.
+// The finding is for a card that touches a marked struct without covering the marked test.
 const seamTestUnlistedCheck = "seam-test-unlisted"
 
 // seamTestWayForward is the way-forward clause every seam-test-unlisted finding carries.
 const seamTestWayForward = "way forward: list it under Edit by its member glyph when the card changes it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit"
 
-// SeamTestReader returns the reader a PlanContext's SeamTests field takes: called at check time, it parses the `//lym:seam` markers of every package directory under worktreeRoot and returns the marked tests in directory order.
-// A marker the parser rejects, or a test file that does not parse, is returned as the error.
+// SeamTestReader returns a function that reads the marked tests at check time.
+// The function parses the `//lym:seam` markers of every package directory under worktreeRoot, in directory order.
+// A marker the parser rejects, or a test file that does not parse, is returned as an error.
 func SeamTestReader(worktreeRoot string) func() ([]impactset.SeamTest, error) {
 	return func() ([]impactset.SeamTest, error) {
 		dirs, err := goPackageDirs(worktreeRoot)
@@ -38,9 +41,16 @@ func SeamTestReader(worktreeRoot string) func() ([]impactset.SeamTest, error) {
 	}
 }
 
-// seamTestFindings returns one seam-test-unlisted finding per card of cards, marked struct it touches and marked test of that struct the card does not cover.
-// A card touches a marked struct `u#T` when a ref of its Create, Edit, Extends, Delete or Rename groups, with a `plan:` prefix stripped, is `u#T`, a member `u#T.<x>`, the file self glyph of a file declaring `T`, or the package self glyph `u#`.
-// It covers a test when its refs name the test's glyph or the glyph's package counterpart, the test's file, or the package self glyph of the test's unit or of its counterpart unit, or when a later card names the test glyph or its counterpart under Edit or Extends.
+// seamTestFindings returns one seam-test-unlisted finding for each marked struct a card touches.
+// It reports a struct only when the card does not cover the struct's marked test.
+// A card touches a marked struct `u#T` when a ref of its Create, Edit, Extends, Delete or Rename groups names it.
+// Refs are compared after a `plan:` prefix is stripped.
+// A ref names the struct when it is `u#T`, a member `u#T.<x>`, or the file self glyph of a file declaring `T`.
+// A ref also names the struct when it is the package self glyph `u#`.
+// A card covers a test when a ref names the test's glyph or its counterpart glyph.
+// A card also covers it when a Delete, Rename, Move or Uses ref names the test's file.
+// A card also covers it when a ref names the package self glyph of the test's unit or of its counterpart unit.
+// A later card of the plan covers it when it edits or extends the test's glyph or its counterpart.
 // Every marked struct is resolved in one index call, made only when cards and seams are both non-empty.
 func seamTestFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, index planindex.Index, seams []impactset.SeamTest) ([]planindex.Finding, error) {
 	var glyphs []string
@@ -90,7 +100,8 @@ var touchGroupTypes = []planparser.CardType{
 	planparser.CardTypeCreate, planparser.CardTypeEdit, planparser.CardTypeExtends, planparser.CardTypeDelete, planparser.CardTypeRename,
 }
 
-// strippedRefs returns the refs of card's groups of the given types, or of every group and Uses when types is empty, each with a `plan:` prefix stripped.
+// strippedRefs returns the refs of card's groups of the given types, each with a `plan:` prefix stripped.
+// With no types, it returns the refs of every group and of Uses.
 func strippedRefs(card planparser.Card, types ...planparser.CardType) []string {
 	var refs []string
 	for _, group := range card.TargetGroups {

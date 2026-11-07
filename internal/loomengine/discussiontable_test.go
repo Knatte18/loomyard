@@ -100,7 +100,9 @@ func unboundedAskOperator(prompt string) bool {
 	return false
 }
 
-// TestDiscussionTable verifies the table DiscussionTable builds: its settings, seats and optional list for zero, one and two advisors in both modes, that it validates against a seeded stencils directory, and that the seats' composed prompts carry the paths, strand names and mode text they must.
+// TestDiscussionTable verifies the table DiscussionTable builds for zero, one and two advisors in both modes.
+// It checks the settings, seats and optional list, and that it validates against a seeded stencils directory.
+// It also checks that the seats' composed prompts carry the paths, strand names and mode text they must.
 func TestDiscussionTable(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -339,7 +341,8 @@ func TestDiscussionTable(t *testing.T) {
 		}
 	})
 
-	// Two advisors are configured throughout, so the lens key is told apart from the advisors: the lead alone forks, and the advisors never do.
+	// Two advisors are configured throughout, so the lens key is told apart from the advisors:
+	// the lead alone forks, and the advisors never do.
 	lensKeys := []struct {
 		name          string
 		lenses        string
@@ -391,7 +394,8 @@ func TestDiscussionTable(t *testing.T) {
 		})
 	}
 
-	// A fixer clearing the discussion gate drops the validator loop from the lead's prompt, the chair's included since the chair template wraps the discussion template:
+	// A fixer clearing the discussion gate drops the validator loop from the lead's prompt.
+	// That covers the chair's prompt too, since the chair template wraps the discussion template:
 	// the self-check step's command block, the spawn point's validator clause and the closing step.
 	t.Run("fixer on", func(t *testing.T) {
 		t.Parallel()
@@ -442,7 +446,8 @@ func TestDiscussionTable(t *testing.T) {
 			// fan is the discussion_lenses value; empty takes the template's fan.
 			fan        string
 			lensesYAML string
-			// defaultYAML, when non-empty, is the lenses.yaml of a temp board dir the load is told, so the fan lives only in the repo default.
+			// defaultYAML, when non-empty, is planted as the lenses.yaml of a temp board dir,
+			// so the fan lives only in the repo default.
 			defaultYAML string
 			wantLenses  []string
 		}{
@@ -533,7 +538,8 @@ func TestDiscussionTable(t *testing.T) {
 	})
 }
 
-// TestDiscussionTable_Refuses verifies DiscussionTable rejects an empty slug, an unreadable designer directive stencil (the first stencil it reads, when PATTERN.md is active), an unparsable chair model, an advisor entry the registry does not define, and, with discussion_lenses set, a lenses.yaml that does not parse or a fan that is missing, empty or names an undefined lens, naming the key, the index or the fan and the way forward.
+// TestDiscussionTable_Refuses verifies DiscussionTable returns an error for each bad input in its table.
+// Each error names the offending key, index or fan and the way forward.
 func TestDiscussionTable_Refuses(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -542,7 +548,7 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 		name       string
 		slug       string
 		missingDir bool
-		// malformedRecord plants a decision record whose PATTERN changes section is malformed.
+		// malformedRecord plants a decision record with a malformed PATTERN changes section.
 		malformedRecord bool
 		mutate          func(*Config)
 		// lensesYAML, when non-empty, is planted as the anchor's lenses.yaml.

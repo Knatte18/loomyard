@@ -1,4 +1,5 @@
-// codeworktrees.go holds the path-based reads of a hub's code worktrees for a caller told its paths: list them, open one's fabric handle, and ask whether a pair is complete.
+// codeworktrees.go holds the path-based reads of a hub's code worktrees:
+// listing them, opening one's fabric handle, and checking whether a pair is complete.
 
 package fabricengine
 
@@ -11,7 +12,7 @@ import (
 
 // CodeWorktree names one code worktree of a hub.
 type CodeWorktree struct {
-	// Path is the worktree root, cleaned the way WorktreePath builds a pair's path.
+	// Path is the worktree root, cleaned and in native path separators.
 	Path string
 	// Anchor is the worktree's anchor dir, where its _lym/config lives.
 	Anchor string
@@ -19,7 +20,8 @@ type CodeWorktree struct {
 	Main bool
 }
 
-// CodeWorktrees lists the code worktrees of the repository the worktree at worktreePath belongs to, the main worktree first.
+// CodeWorktrees lists the code worktrees of the repository that the worktree at worktreePath belongs to.
+// The main worktree comes first.
 // A prunable entry and an entry whose directory no longer exists are skipped;
 // any other failure to resolve an entry is returned naming its path.
 func CodeWorktrees(worktreePath string) ([]CodeWorktree, error) {
@@ -59,7 +61,7 @@ func OpenCodeWorktree(path string) (*Fabric, error) {
 }
 
 // PairCompleteAt reports whether the pair whose worktree root is path is complete, with the reason when it is not.
-// A pair Add is still creating, or one a killed Add left partway, reads as not complete.
+// A pair still being created, or one an interrupted creation left partway, reads as not complete.
 // A path that does not exist returns an *ErrMissingPath naming it.
 func PairCompleteAt(path string) (ok bool, reason string, err error) {
 	if err := requireDir(path); err != nil {

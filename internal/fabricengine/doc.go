@@ -1,641 +1,818 @@
-// Package fabricengine is lym's sole warp↔weft git-coordination module, built on two
-// `internal/gitrepo.Repo` instances covering warp↔weft topology and commit/push/pull into the
-// paired weft repo.
-// fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `code *gitrepo.Repo` and `records *gitrepo.Repo` fields for anything repo-specific and uncoordinated, reachable only from inside this package, and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
+// Package fabricengine is lym's sole warp↔weft git-coordination module.
+// It is built on two `internal/gitrepo.Repo` instances,
+// and it covers warp↔weft topology and commit, push and pull into the paired weft repo.
+// fabric is the only module that knows both repos exist.
+// The `Fabric` handle holds the unexported `code` and `records` `*gitrepo.Repo` fields.
+// Only this package reaches them.
+// It adds the cross-repo operations `Commit`, `Pull`, `Diff` and `Status`, which a single `gitrepo.Repo` cannot express.
 //
-// `Fabric.Pull` (pull.go) is the unified read path: weft is brought level with origin first, then warp is fetched and inspected against its upstream tracking ref.
-// The weft is fast-forwarded via a plain `PullWeft`, or, where both sides moved, its local commits are replayed onto origin's by `replayWeft` under the weft write lock and push lock.
-// A weft branch with no upstream yet is skipped as a vacuous success, the freshly bootstrapped hub's ordinary state until its first push lands.
-// A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply advances warp.
-// A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so.
-// A local commit is unpushed only when no value of the remote-tracking ref's reflog, from this machine's last push onward, reaches it.
-// When local warp carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft trailer history, the sole source of truth: a re-cloned hub's per-pair index cache starts empty while its adopted weft history carries every recorded anchor, and a verdict as final as `ErrNoSurvivingAnchor` must never rest on a stale cache.
-// Then weft's correspondence is re-anchored to the nearest surviving `Warp-SHA`, via the same empty-commit-with-trailer mechanism `commitWeftLocked`'s snapshot rule already uses (see below), warp is reset to the new tip, and the fresh correspondence is recorded.
-// Two cases abort loudly and make no change to either repo: local warp already has unpushed commits
-// AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
-// `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
-// survives it at all (`ErrNoSurvivingAnchor`).
+// `Fabric.Pull` (pull.go) is the unified read path.
+// It brings weft level with origin first, then fetches warp and inspects it against its upstream tracking ref.
+// The weft is fast-forwarded by a plain `PullWeft`.
+// Where both sides moved, `replayWeft` replays its local commits onto origin's.
+// The replay runs under the weft write lock and push lock.
+// A weft branch with no upstream yet is skipped as a vacuous success.
+// That is the ordinary state of a freshly bootstrapped hub until its first push lands.
+// A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) advances warp.
+// A detected warp history rewrite is auto-reconciled whenever it is safe.
+// A rewrite is a rebase or force-push upstream: local warp HEAD is not an ancestor of the fetched tip.
+// A commit is unpushed only when no reflog value of the remote-tracking ref since this machine's last push reaches it.
+// When local warp has no unpushed commits, it first rebuilds the correspondence index from the weft trailer history.
+// That history is the sole source of truth.
+// A re-cloned hub's per-pair index cache starts empty, but its adopted weft history carries every recorded anchor,
+// so a verdict as final as `ErrNoSurvivingAnchor` never rests on a stale cache.
+// Weft's correspondence is then re-anchored to the nearest surviving `Warp-SHA` by an empty commit with a trailer.
+// `commitWeftLocked`'s snapshot rule makes the same kind of commit (see below).
+// Warp is reset to the new tip and the fresh correspondence is recorded.
+// Two cases abort loudly and make no change to either repo.
+// The first is a local warp with unpushed commits and a diverged remote (`ErrWarpDivergedUnpushed`).
+// `Pull` refuses to resolve that double conflict unattended.
+// The second is a rewrite so thorough that no recorded correspondence survives it (`ErrNoSurvivingAnchor`).
 // A third refusal guards a task pair's branch that origin rewound.
-// `classifyRewrite` reads the branch as rewound when origin's head is an ancestor of a value the tracking ref's reflog held and the local tip holds commits of that value origin dropped.
-// `Pull` then returns `ErrWarpRewound`, naming the dropped commits and the two ways to settle it, before any reset.
+// `classifyRewrite` reads a branch as rewound when origin's head is an ancestor of a value the tracking ref held,
+// and the local tip holds commits of that value origin dropped.
+// `Pull` then returns `ErrWarpRewound`, naming the dropped commits and the ways to settle it, before any reset.
 // The prime's code branch is the operator's, so a rewind of it resets as a rewrite does.
-// A fourth refusal guards the working tree rather than history: whenever warp would have to move at all, by fast-forward or reconcile, a warp worktree carrying uncommitted tracked changes aborts with `ErrWarpDirty` before anything mutates warp.
-// Every warp advance goes through a `reset --hard` that would silently destroy those changes, and the weft has already been brought level when this fires, while warp is untouched.
-// Every rewrite/anchor determination is ancestry-based — `f.code.IsAncestor`, via `git merge-base
-// --is-ancestor` — never `f.code.SHAExists`: `git fetch` never prunes objects, so a rebased-away
-// commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
-// would never fire (see the reachability-never-object-existence Shared Decision).
+// A fourth refusal guards the working tree rather than history.
+// It applies whenever warp would have to move, by fast-forward or reconcile.
+// A warp worktree carrying uncommitted tracked changes then aborts with `ErrWarpDirty` before anything mutates warp.
+// Every warp advance goes through a `reset --hard` that would silently destroy those changes.
+// The weft has already been brought level when this fires, and warp is untouched.
+// Rewrite and anchor determination is ancestry-based, through `f.code.IsAncestor` (`git merge-base --is-ancestor`).
+// It never uses `f.code.SHAExists`.
+// `git fetch` never prunes objects, so a rebased-away commit's object survives the fetch.
+// `SHAExists` would then report true.
+// Detection would then never fire.
 // The weft arm never stalls the warp side.
 // A failed upstream probe or an unreachable origin is warned and leaves `PullResult.WeftPulled` false.
-// A replay that stops on a conflict or an uncommitted change is returned as a `*WeftStopError` after the warp arm has run, beside the warp result.
+// A replay that stops on a conflict or an uncommitted change returns a `*WeftStopError`.
+// It is returned after the warp arm has run, beside the warp result.
 // The stop names the weft branch, the paths and the way forward.
-// For a conflict that is the two ways to settle it, each followed by `lym fabric push`, so a re-run `lym fabric pull` replays nothing.
+// For a conflict the stop names the ways to settle it, each followed by `lym fabric push`.
+// The push means a re-run `lym fabric pull` replays nothing.
 // For an uncommitted change it is committing the named paths with `lym fabric commit` and re-running the pull.
 // A weft never crosses a change of its anchor marker on the pull and push paths (anchorstop.go).
-// `weftAnchorStop` is the one comparison: it reads `treeAnchor` of the weft tip, of the upstream tip and of their merge base, and stops when the upstream has commits the tip lacks and the two tips' anchors differ.
-// A tip that already contains the upstream never stops, so a re-anchor not yet pushed goes through, and a markerless tip compares by the anchor its content implies.
-// Its `wantAnchor` is the upstream's anchor when only the upstream moved the marker and the tip's otherwise, and names the `lym fabric anchor <slug> --set <anchor>` way forward.
+// `weftAnchorStop` is the one comparison.
+// It reads `treeAnchor` of the weft tip, of the upstream tip and of their merge base.
+// It stops when the upstream has commits the tip lacks and the two tips' anchors differ.
+// A tip that already contains the upstream never stops, so a re-anchor not yet pushed goes through.
+// A markerless tip compares by the anchor its content implies.
+// Its `wantAnchor` is the upstream's anchor when only the upstream moved the marker, and the tip's otherwise.
+// The stop names the `lym fabric anchor <slug> --set <anchor>` way forward.
 // A weft whose own marker is empty stops the same way, and its way forward is restoring the marker.
-// `Pull` returns the stop as a `*WeftStopError` wrapping `ErrAnchorChange` before the warp arm runs, so neither side moves.
+// `Pull` returns the stop as a `*WeftStopError` wrapping `ErrAnchorChange`.
+// It returns before the warp arm runs, so neither side moves.
 // `FastForwardPair` skips the weft pull with a warning that names the way forward, and goes on with the code side.
-// A push that must replay returns an `*AnchorStopError` before changing anything, recorded as the failed-push class `anchor_change` with the way forward in the record, never as the not-fast-forward class, whose way forward would carry the other marker in by hand.
+// A push that must replay returns an `*AnchorStopError` before changing anything.
+// The failed-push record has class `anchor_change` and carries the way forward.
+// It is never the not-fast-forward class, whose way forward would carry the other marker in by hand.
 // `Checkout` and `DropLocal` refuse before they switch, tag or move anything, with an error wrapping `ErrAnchorChange`.
-// `Checkout` refuses an empty own marker, then reads the tip of the target weft branch from the local branch or from origin, fetching an origin tip into its remote-tracking ref only, and refuses when that tip's anchor differs from the worktree's own.
+// `Checkout` refuses an empty own marker.
+// It then reads the tip of the target weft branch, from the local branch or from origin.
+// An origin tip is fetched into its remote-tracking ref only.
+// It refuses when that tip's anchor differs from the worktree's own.
 // A target with no weft branch is forked and inherits the marker, so it is never refused.
-// The refusal names `lym fabric anchor --set <anchor>` with its cost, a marker commit on the branch being left that every machine checking it out shares, and when the current warp checkout does not track the anchor directory it names the code commit that brings it in first.
-// `DropLocal` refuses an empty own marker of the records branch, then compares its anchor with the origin tip it would reset to through `weftAnchorStop` with `reset` set, so a local re-anchor not yet pushed differs from origin's tip as well.
+// The refusal names `lym fabric anchor --set <anchor>` with its cost:
+// a marker commit on the branch being left, which every machine checking it out shares.
+// A current warp checkout that does not track the anchor directory gets the code commit that brings it in named first.
+// `DropLocal` refuses an empty own marker of the records branch.
+// It compares the branch's anchor with the origin tip it would reset to, using `weftAnchorStop` with `reset` set.
+// A local re-anchor not yet pushed therefore differs from origin's tip as well.
 // `Pull` never returns success with `WeftPulled` false for a moved origin.
-// The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
-// see pull.go's own doc comment for
-// the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
-// faithfully reports whether the weft arm completed rather than asserting it always did.
+// The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline.
+// pull.go's doc comment holds the full flow and the `*PartialPullError` warp-side-failure contract.
+// That error's `WeftPulled` field reports whether the weft arm completed.
 //
-// `Fabric.RemoteOnlyCommits` (remoteonly.go) is the read of how far the warp origin's branch of the checkout's own name has run ahead of warp HEAD:
-// it returns that remote tip and the commits on it HEAD lacks, newest first.
-// An empty tip means the remote has no such branch or the repository has no origin remote, and a tip with no commits means the remote is at or behind HEAD.
+// `Fabric.RemoteOnlyCommits` (remoteonly.go) reads the warp origin's branch of the checkout's own name.
+// It returns that remote tip and the commits on it that HEAD lacks, newest first.
+// An empty tip means the remote has no such branch or the repository has no origin remote.
+// A tip with no commits means the remote is at or behind HEAD.
 // A failed fetch returns the error, so each caller decides whether it refuses or degrades.
 // It mutates no ref other than the remote-tracking refs the fetch refreshes.
 //
-// `BeamLineCommits` (beamline.go) lists the commits on a beam pair's own first-parent line that its merge base with the parent branch lacks, oldest first, as `LineCommit` values.
-// A commit's `RecordsOnly` is true when every path it changes against its first parent lies under the pair's lym directory: lym's own bookkeeping, never a landing of work.
+// `BeamLineCommits` (beamline.go) returns `LineCommit` values, oldest first.
+// They are the commits on a beam pair's own first-parent line that its merge base with the parent branch lacks.
+// A commit's `RecordsOnly` is true when every path it changes from its first parent is under the pair's lym directory.
+// Such a commit is lym's own bookkeeping, never a landing of work.
 // Its `Parents` name the commit's parents, first parent first, so a caller tells a merge of the parent from a landing.
-// `BeamCommitsPast` (beamline.go) lists, each as a short object name and subject, the commits of that line past a merged pull request's head that a landing of the merged pull request would lack, leaving out records-only commits and merges whose second parent the parent branch holds.
+// `BeamCommitsPast` (beamline.go) lists the commits on a beam pair's line that landing a merged pull request would lack.
+// These are the commits past the pull request's head, each as a short object name and subject.
+// Records-only commits and merges whose second parent the parent branch holds are left out.
 //
 // # Origin reconcile
 //
-// `ReconcileOrigin` (originreconcile.go) is the one judge of this machine's local branches against origin, run before anything acts on a run or the hub after the machine may have been away.
-// It takes the hub location, a `ReconcileScope` and the `OriginSeams` a call site injects, and returns an `OriginReport` embedding `MutationRecord`, with one `BranchOutcome` per judged branch and one `EntryOutcome` per pair that has a batten run record.
-// An empty `ReconcileScope.Run` judges the hub: Bolt, the prime's code and records branches, and those of every local pair.
-// A slug judges the run: Bolt, the run's parent branch on both sides as its origin record names it, and the run's own pair.
+// `ReconcileOrigin` (originreconcile.go) judges this machine's local branches against origin.
+// It runs before anything acts on a run or the hub after the machine may have been away.
+// It takes the hub location, a `ReconcileScope` and the `OriginSeams` a call site injects.
+// The returned `OriginReport` embeds `MutationRecord`.
+// It holds one `BranchOutcome` per judged branch and one `EntryOutcome` per pair that has a batten run record.
+// An empty `ReconcileScope.Run` judges the hub:
+// Bolt, the prime's code and records branches, and those of every local pair.
+// A slug judges the run:
+// Bolt, the run's parent branch on both sides as its origin record names it, and the run's own pair.
 // A branch with no origin tracking ref was never pushed and is not judged.
 //
-// The network work is two `git ls-remote origin` calls, one per repository, run in parallel under `ReconcileOptions`' per-attempt deadline and retried together after a transport failure until the bound is spent.
+// The network work is two `git ls-remote origin` calls, one per repository, run in parallel.
+// Each attempt runs under `ReconcileOptions`' per-attempt deadline.
+// A transport failure retries both calls together until the bound is spent.
 // Only the heads origin moved past the local tracking ref are then fetched, one fetch per repository.
 // A judge-only reconcile fetches their objects by SHA into no ref and writes no FETCH_HEAD, so it moves nothing.
-// The reconcile holds each repository's remote-refs lock (`gitrepo.Repo.HoldRemoteRefs`) from the ls-remote pair through the last branch verdict, the code repository's first,
-// so a fetch, or a push's tracking-ref write, of either repository waits for the verdicts.
-// A push transfers outside the lock and writes its tracking ref only after the verdicts, so one that lands meanwhile is judged against the origin read before it and never a rewind.
-// A transport failure through the bound is `OriginReport.Unreachable`, with nothing judged and nothing moved, and a nil error.
+// The reconcile holds each repository's remote-refs lock (`gitrepo.Repo.HoldRemoteRefs`), the code repository's first.
+// The locks are held from the ls-remote pair through the last branch verdict.
+// A fetch, or a push's tracking-ref write, of either repository therefore waits for the verdicts.
+// A push transfers outside the lock and writes its tracking ref only after the verdicts.
+// One that lands meanwhile is judged against the origin read before it, never as a rewind.
+// A transport failure through the bound is `OriginReport.Unreachable`, with nothing judged and nothing moved.
+// The error is nil.
 // Any other failure of the ls-remote pair, or a failed fetch after both answered, is the returned error.
 //
 // `judgeBranch` reads a branch as level, fast_forward, ahead, rewound, rewritten, diverged, needs_replay or gone.
-// A code branch is read through the reflog of its tracking ref, as `Fabric.Pull` reads it: rewound takes precedence over ahead, and rewritten is a history origin replaced with commits this machine never held.
-// A records branch neither side contains is needs_replay, which a moving reconcile replaces with the result of its replay.
-// The states a move adds, dirty, busy, live and anchor_stopped, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
-// A weft records branch that is not Bolt and needs a move, hub-wide or run-scoped, first refuses an empty own marker and then runs `weftAnchorStop` on its tip and origin's head, falling back to the `NamedWorktree` anchor of its pair or the prime.
-// Either stop leaves the weft unmoved and reports anchor_stopped, with `BranchOutcome.Anchor` the anchor the way forward sets, empty for an empty marker, and the reconcile goes on with the other branches and returns no error.
+// A code branch is read through the reflog of its tracking ref.
+// Rewound takes precedence over ahead, and rewritten is a history origin replaced with commits this machine never held.
+// A records branch neither side contains is needs_replay.
+// A moving reconcile replaces that state with the result of its replay.
+// The states a move adds, dirty, busy, live and anchor_stopped, and the stops themselves, carry a `WayForward` line.
+// That line is the repair step alone; each caller appends its own re-entry.
+// A weft records branch that is not Bolt and needs a move, hub-wide or run-scoped, first refuses an empty own marker.
+// It then runs `weftAnchorStop` on its tip and origin's head.
+// The fallback anchor is the `NamedWorktree` anchor of its pair or the prime.
+// Either stop leaves the weft unmoved and reports anchor_stopped.
+// `BranchOutcome.Anchor` is the anchor the way forward sets, empty for an empty marker.
+// The reconcile goes on with the other branches and returns no error.
 // The pair's code branch still moves, since it changes no marker.
-// The way forward of a pair is `lym fabric anchor <slug> --set <anchor>` in its code worktree; the prime's first names ending every reed session of the hub and waiting out every live batten run, then the `--set`, then `lym beam start`.
+// The way forward of a pair is `lym fabric anchor <slug> --set <anchor>` in its code worktree.
+// The prime's way forward names these steps in order:
+// ending every reed session of the hub, waiting out every live batten run, the `--set`, then `lym beam start`.
 // An anchor_stopped branch stops its entry, and one on the prime's records branch stops every entry.
-// `classifyEntry` turns the verdicts on an entry's branches into active, ended, owned_elsewhere or stopped, in that precedence.
+// `classifyEntry` turns the verdicts on an entry's branches into one state.
+// The states are active, ended, owned_elsewhere and stopped, in that precedence.
 //
-// After judging and before the ended set, `readOriginOwners` reads the run ledger's file at origin's fetched Bolt tip and asks `OriginSeams.OwnerOf`, an `OwnerReader`, once per recorded pair whether another machine owns it.
+// After judging and before the ended set, `readOriginOwners` reads the run ledger's file at origin's fetched Bolt tip.
+// It asks `OriginSeams.OwnerOf`, an `OwnerReader`, once per recorded pair whether another machine owns it.
 // A judge-only scope reads owners too, since the tip's objects are fetched by SHA, and moves nothing.
 // A hub with no Bolt target or no origin head asks nothing, and a nil `OwnerOf` reads every entry as owned here.
 // A seam error, an empty machine name included, is the reconcile's error, so no verdict is compared with an empty name.
-// An owned_elsewhere entry carries its `Owner`, its `AdoptSubject` (the beam or `root` that `lym adopt` takes to move it, which the `OwnerReader` answers beside the owner) and a way forward naming `lym adopt <subject>`, the slug when the reader left the subject empty, and the report's `Summary` has a line for it.
+// An owned_elsewhere entry carries its `Owner`, its `AdoptSubject` and a way forward naming `lym adopt <subject>`.
+// The `OwnerReader` answers `AdoptSubject` beside the owner.
+// It is the beam or `root` that `lym adopt` takes to move the entry.
+// The way forward names the slug when the reader left the subject empty.
+// The report's `Summary` has a line for the entry.
 // An ended entry stays ended whoever owns it, and an owned_elsewhere entry's pair is never handed to the teardown seam.
-// The move is fast-forward only for such an entry: its code and records fast-forwards move, but a records branch both sides moved stays needs_replay and is not replayed, so no commit made after the handover lands on the new owner's tip.
+// The move is fast-forward only for such an entry.
+// Its code and records fast-forwards move.
+// A records branch both sides moved stays needs_replay and is not replayed,
+// so no commit made after the handover lands on the new owner's tip.
 // The rule holds in the reconcile only; the weft push retry still replays a rejected push.
 //
-// Every scope reads the ended set from origin's fetched Bolt tip and its history before any replay, and drops each run this machine's own landing has reached.
-// `reconcileEnded` then applies the removal to each of those runs that has a batten run record here: an entry with a local part of its pair, its worktree paths, launchers or branches, goes to `OriginSeams.Teardown` as an `EndedTeardown` naming the slug and whether `SnapshotTagged` finds the snapshot tag an earlier force-case run left.
-// An ended entry with no local part is reported with no teardown and no network call, and the report's `Summary` leaves it out.
-// A teardown reporting busy leaves the pair, and its entry is ended with the busy flag and a way forward naming the wait, `BusyOnDriver` or `BusyOnLock`, then a re-run of `lym cleanup --apply`; any other teardown error is on the entry and stops no other.
-// The teardowns' mutations join the report's record, a removed pair's branches leave the report, and no move touches the branches of a pair the step judged.
-// The run scope reports its own run ended like any other and calls no teardown, since its driver is the caller; a judge-only scope reports the teardowns it would run and runs none.
-// A run scope whose task worktree is not a registered worktree of the code repository refuses, naming the missing pair worktree, unless `ReconcileScope.PairMayBeAbsent` is set, which only a batten resume sets.
-// With the option, which also counts a registration whose directory is gone and not yet pruned as absent, the run's entry is judged from origin's Bolt alone, with no branch of its own and no parent branch, and reads `PairAbsent`, which the report's `Summary` marks.
+// Every scope reads the ended set from origin's fetched Bolt tip and its history before any replay.
+// It drops each run this machine's own landing has reached.
+// `reconcileEnded` then applies the removal to each of those runs that has a batten run record here.
+// An entry with a local part of its pair, its worktree paths, launchers or branches, goes to `OriginSeams.Teardown`.
+// The `EndedTeardown` names the slug and whether `SnapshotTagged` finds the snapshot tag a force-case run left.
+// An ended entry with no local part is reported with no teardown and no network call.
+// The report's `Summary` leaves it out.
+// A teardown reporting busy leaves the pair, and its entry is ended with the busy flag.
+// Its way forward names the wait, `BusyOnDriver` or `BusyOnLock`, then a re-run of `lym cleanup --apply`.
+// Any other teardown error is on the entry and stops no other.
+// The teardowns' mutations join the report's record, and a removed pair's branches leave the report.
+// No move touches the branches of a pair this step judged.
+// The run scope reports its own run ended like any other and calls no teardown, since its driver is the caller.
+// A judge-only scope reports the teardowns it would run and runs none.
+// A run scope refuses when its task worktree is not a registered worktree of the code repository.
+// The refusal names the missing pair worktree, unless `ReconcileScope.PairMayBeAbsent` is set.
+// Only a batten resume sets that option.
+// The option also counts a registration whose directory is gone and not yet pruned as absent.
+// With it, the run's entry is judged from origin's Bolt alone, with no branch of its own and no parent branch.
+// It reads `PairAbsent`, which the report's `Summary` marks.
 //
-// Any scope but judge-only then moves, in this order: it passes the rest of the ended set to every replay.
-// Bolt moves first, then the prime's records branch, the prime's code branch and each pair's, a pair's records before its code.
-// A checked-out branch moves only by `ffWorktree`, a fast-forward that stops as dirty, naming the paths, when a tracked change sits on a path it touches.
-// A records branch moves under its write lock and then its push lock, each by one try-acquire through `reconcileRecordsBranch`, which fast-forwards or replays and reads a held lock as busy.
+// Any scope but judge-only then moves.
+// It passes the rest of the ended set to every replay.
+// Bolt moves first, then the prime's records branch, the prime's code branch and each pair's.
+// Within a pair, records move before code.
+// A checked-out branch moves only by `ffWorktree`, a fast-forward.
+// It stops as dirty, naming the paths, when a tracked change sits on a path it touches.
+// A records branch moves through `reconcileRecordsBranch`, under its write lock and then its push lock.
+// Each lock is one try-acquire, and a held lock reads as busy.
+// The move fast-forwards or replays.
 // A code branch is never rebased, so one both sides moved stays diverged.
-// The prime's branches move only under the prime lock, taken by `tryPrimeLock` with no wait, and only while `OriginSeams.PrimeParentLockFree` finds no live owner; otherwise they are busy.
-// A pair `OriginSeams.LivePair` reports live is judged and left where it was, reading live once origin moved past it; the run scope never asks about its own pair.
+// The prime's branches move only under the prime lock, which `tryPrimeLock` takes with no wait.
+// They also move only while `OriginSeams.PrimeParentLockFree` finds no live owner.
+// Otherwise they are busy.
+// A pair `OriginSeams.LivePair` reports live is judged and left where it was.
+// It reads live once origin moved past it.
+// The run scope never asks about its own pair.
 // The run scope judges its parent branch and never moves it.
-// A stop on Bolt or on the prime's records branch stops every entry; a busy branch of either stops none, nor does a busy records branch of the run scope's own pair.
+// A stop on Bolt or on the prime's records branch stops every entry.
+// A busy branch of either stops none, nor does a busy records branch of the run scope's own pair.
 // A seam left nil reads as no live pair, a free parent lock and no teardown.
 // A moving scope ends by removing every failed-push record whose branch is no longer local.
 //
-// fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
-// always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
-// weft `main-weft`).
-// `main-weft` does not advance on landing by design, since weft content is per-branch and never a merge participant, and a landed pair's records live in its archive tag.
+// fabric enforces one branch-naming scheme with no exceptions:
+// a warp branch `<branch>` always pairs with weft branch `<branch>-weft`.
+// That includes the primary worktree (`main` ↔ `main-weft`).
+// `main-weft` does not advance on landing, since weft content is per-branch and never a merge participant.
+// A landed pair's records live in its archive tag.
 //
-// Every weft commit fabric makes carries a `Warp-SHA: <sha>` trailer recording the warp SHA it
-// corresponds to (see WarpSHATrailerKey),
-// and a rebuildable correspondence index sits on top as a pure performance layer over that trailer
-// history, never authoritative on its own.
-// The one exception is a commit made while the warp repo itself has no commits yet (an unborn HEAD,
-// e.g.
-// a fresh `git init` before the operator's first warp commit): that commit carries no trailer and
-// no correspondence entry, since there is no warp SHA yet to name — see commitWeft's warpHeadSHA.
-// Normal trailer/record behavior resumes on the first weft commit made after warp's own first
-// commit.
+// Every weft commit fabric makes carries a `Warp-SHA: <sha>` trailer.
+// The trailer records the warp SHA the commit corresponds to (see `WarpSHATrailerKey`).
+// A rebuildable correspondence index sits on top as a performance layer over that trailer history.
+// The index is never authoritative on its own.
+// The one exception is a commit made while warp's HEAD is unborn, as in a fresh `git init`.
+// That commit carries no trailer and no correspondence entry, since there is no warp SHA to name.
+// See `commitWeft`'s `warpHeadSHA`.
+// Normal trailer and record behavior resumes on the first weft commit after warp's first commit.
 //
-// fabric never calls gitrepo's `StageAllAndCommit` (board's opt-in wildcard-stage exception, per
-// gitrepo's doc.go) — all staging is explicit-list `StageAndCommit`, scoped to a configured
-// pathspec.
-// The one exception is the package-level `commitWeftAt` function (not a `Fabric` method), which
-// wraps board's wildcard-stage commit on its behalf — see `commitWeftAt`'s own doc comment.
-// It seeds the weft artifact excludes before every stage, so a file under the Bolt checkout's `.lym`, such as a stray trace log, never reaches Bolt.
+// fabric never calls gitrepo's `StageAllAndCommit`, board's opt-in wildcard-stage exception;
+// all staging is an explicit-list `StageAndCommit` scoped to a configured pathspec.
+// The one exception is the package-level `commitWeftAt` function.
+// It wraps board's wildcard-stage commit on fabric's behalf.
+// It seeds the weft artifact excludes before every stage.
+// A file under the Bolt checkout's `.lym`, such as a stray trace log, therefore never reaches Bolt.
 //
-// The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
-// directory is staged by default; `_lym` itself arrives from `structuralCommittedDirs`, not from
-// `pathspec`, so any tracked `_lym` content is committed without needing its own pathspec entry.
+// The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty.
+// No optional directory is staged by default.
+// `_lym` arrives from `structuralCommittedDirs`, not from `pathspec`.
+// Any tracked `_lym` content is therefore committed without a pathspec entry.
 //
-// The narrow-pathspec asymmetry below inverts, rather than disappears, once `pathspec` went empty:
-// `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key already
-// present in a worktree's `fabric.yaml`, only adds one when the key is absent entirely.
-// A worktree deployed before this task's template change therefore stays on its own recorded
-// `pathspec: _pattern` forever — *wider* than the now-empty template default, not narrower — keeping
-// a junction the template no longer wires, until that worktree's repo is re-cloned.
-// `applyStaleRemoval` tears down a junction absent from `RepoWiredNames`, but only once that repo's
-// recorded `pathspec` is actually empty, which a pre-existing `pathspec: _pattern` worktree's is not
-// — so changing `template.yaml` governs newly cloned repos only.
-// This is accepted rather than a defect: the sole deployed repo, SANDBOX, is throwaway and re-cloned
-// rather than migrated, so no upgrade path is documented here because none exists.
+// `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key present in a `fabric.yaml`.
+// It only adds the key when it is absent entirely.
+// A worktree whose `fabric.yaml` records `pathspec: _pattern` keeps it until its repo is re-cloned.
+// That value is wider than the empty template default and keeps a junction the template does not wire.
+// `applyStaleRemoval` tears down a junction absent from `RepoWiredNames` only when the recorded `pathspec` is empty.
+// Such a worktree's recorded `pathspec` is not empty.
+// So a change to `template.yaml` governs newly cloned repos only.
+// This is accepted: the sole deployed repo, SANDBOX, is throwaway and re-cloned, so no upgrade path exists.
 //
-// This is a deliberate asymmetry with the junction side (see fabricengine's own junction wiring): a
-// junction self-heals on the next `lym fabric clone`/`add`/reconcile and reports loudly until it
-// does, because `WireJunctions` owns junction state outright, whereas `pathspec` is an
-// operator-editable config value that `configsync` must never silently overwrite.
+// A junction self-heals on the next `lym fabric clone`, `add` or reconcile, and it reports loudly until it does.
+// `WireJunctions` owns junction state outright.
+// `pathspec` is an operator-editable config value that `configsync` never silently overwrites.
 //
-// The wired junction set is NOT sourced from `pathspec` alone: `WireJunctions`/`UnwireJunctions`
-// operate over whatever name-set their caller passes them (see junctionnames.go's
-// `junctionNames`/`WiredNames`), and every one of those callers builds that name-set as
-// `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the pair's `pathspec` filtered against
-// `HubReservedNames()` — the three hub-structural tokens (the Bolt checkout, the retired `_portals` and `_launchers`) that
-// can never be a per-worktree junction.
-// The two structural sets (`_lym`, `.lym`) are injected in code and never read from `pathspec` at
-// all; only the third piece — empty today — comes from config.
-// A future weft-backed *optional* module is therefore wired with no `fabric` code change at all:
+// The wired junction set is not sourced from `pathspec` alone.
+// `WireJunctions` and `UnwireJunctions` operate over the name-set their caller passes.
+// See junctionnames.go's `junctionNames` and `WiredNames`.
+// Every caller builds that set from `structuralCommittedDirs`, `structuralNeverCommittedDirs` and the pair's `pathspec`.
+// The union is filtered against `HubReservedNames()`.
+// `HubReservedNames()` holds the hub-structural tokens that can never be a per-worktree junction:
+// the Bolt checkout, the retired `_portals` and `_launchers`.
+// The two structural sets (`_lym`, `.lym`) are injected in code and never read from `pathspec`;
+// only the third piece, the pair's `pathspec`, comes from config.
+// A weft-backed optional module is wired with no `fabric` code change:
 // append its directory name to `template.yaml`'s `pathspec:` default,
-// and any worktree whose `fabric.yaml` picks up that wider default wires the new junction the next
-// time `WireJunctions` runs against it — subject to the same narrow-pathspec asymmetry above (an
-// already-initialised worktree's existing `pathspec:` key is never widened for it automatically).
-// This mechanism has no live instance today — the worked example above is purely hypothetical.
-// A structural directory has no such asymmetry to worry about: it is never sourced from `pathspec`,
-// so it cannot be left behind by a worktree's stale config.
+// and any worktree whose `fabric.yaml` picks up that default wires the junction on the next `WireJunctions` run.
+// The pathspec asymmetry above applies:
+// an initialised worktree's existing `pathspec:` key is never widened automatically.
+// A structural directory has no such asymmetry.
+// It is never sourced from `pathspec`, so a stale config cannot leave it behind.
 //
-// This batch (`.lym` joining the wired name-set) establishes three operator-facing facts worth recording plainly.
-// First, downgrade is unsupported — a pre-fix binary's `applyStaleRemoval` removes on-disk junctions absent from *its own* `RepoWiredNames`, so running an older `lym fabric reconcile` after this change unwires `.lym` and strands scratch inside the weft worktree;
-// this is a one-way upgrade, never made downgrade-safe.
-// Second, upgrade is signalled through health, not a dedicated migration step: an existing worktree reports the `.lym` junction missing (`Healthy` false, `CauseJunctionMissing`) until `lym fabric reconcile` runs — which both wires the junction and, via `seedLymJunction`'s `.lym`-only adoption branch, moves any pre-existing real `.lym` content into the weft target rather than hard-erroring.
-// That is the documented remedy, not a bug to route around.
-// Adoption MERGES a directory present on both sides, recursively, rather than refusing it, and that is load-bearing rather than lenient: `lym fabric unwire` removes the `.lym` junction, and the very next `lym` invocation in that worktree that logs at Info-or-above or exits non-zero opens `internal/logger`'s durable sink — which is ungated outside `go test`, and whose `os.MkdirAll(<anchor>/.lym/logs)` therefore recreates a REAL warp-side `.lym/logs` on top of the `logs` an earlier adoption already moved into weft.
-// Refusing that collision left `reconcile`, the documented remedy, permanently unable to heal the pair, and — because `seedLymJunction` aborts before `seedGitExclude` re-runs — left the warp worktree untracked-dirty, which then fed false input to the destruction gate's own dirtiness checks.
-// A collision that is not a directory on BOTH sides is still refused, because resolving it would mean choosing a winner between two files, which fabric never does on the operator's behalf.
-// Third, the unwire output envelope changed: `UnwireVerbResult.WeftContent`'s value set is now `"preserved"` | `"not_present"` (never `"cleared"`), and the `gitignore` key is gone from the CLI envelope entirely — no code path removes a leftover committed `.gitignore` `.lym/` block left by a pre-fix binary;
+// Three operator-facing facts follow from `.lym` being in the wired name-set.
+// First, downgrade is unsupported.
+// An older binary's `applyStaleRemoval` removes on-disk junctions absent from its own `RepoWiredNames`.
+// Running its `lym fabric reconcile` therefore unwires `.lym` and strands scratch inside the weft worktree.
+// Second, an upgrade is signalled through health, with no migration step:
+// an existing worktree reports the `.lym` junction missing (`Healthy` false, `CauseJunctionMissing`) until a reconcile.
+// Reconcile wires the junction.
+// Through `seedLymJunction`'s `.lym`-only adoption branch, it also moves any real `.lym` content into the weft target.
+// It does not hard-error on that content.
+// That is the documented remedy.
+// Adoption merges a directory present on both sides, recursively, rather than refusing it.
+// `lym fabric unwire` removes the `.lym` junction,
+// and the next `lym` invocation there that logs at Info or above, or exits non-zero, opens `internal/logger`'s sink.
+// That durable sink is ungated outside `go test`.
+// Its `os.MkdirAll(<anchor>/.lym/logs)` recreates a real warp-side `.lym/logs`.
+// The `logs` an earlier adoption moved into weft stays beside it.
+// Refusing that collision would leave `reconcile` unable to heal the pair.
+// `seedLymJunction` would abort before `seedGitExclude` re-runs.
+// The warp worktree would stay untracked-dirty, which feeds false input to the destruction gate's dirtiness checks.
+// A collision that is not a directory on both sides is still refused.
+// Resolving it means choosing a winner between two files, which fabric never does for the operator.
+// Third, `UnwireVerbResult.WeftContent` takes the values `"preserved"` and `"not_present"`, never `"cleared"`.
+// The CLI envelope has no `gitignore` key.
+// No code path removes a leftover committed `.gitignore` `.lym/` block written by an older binary;
 // the manual remedy is deleting the `.lym/` line from the repo's lym-managed `.gitignore` block by hand.
 //
-// The junction side of that asymmetry has a concrete blast radius worth naming rather than leaving
-// an operator to meet as a surprise: every worktree wired before a new name is added to
-// `WarpJunctions` lacks that junction, full stop, until `lym fabric reconcile` re-runs against it —
-// `_pattern`'s own now-superseded rollout was one such case, and any future optional-module addition
-// would hit the same gap.
-// Until re-run, `lym fabric status` reports that pair not in sync, with `JunctionReason` naming the
-// missing junction;
-// `lym fabric reconcile` reports `ReconcileActionJunctionRepointed` rather than
-// `ReconcileActionAlreadyHealthy` for it — and repairs it, so reconcile *is* the remedy, not merely
-// a report;
-// and `internal/preflight`'s `CheckResolved` — wired into `internal/preflightshed` — fails
-// `CheckJunction` and blocks the run.
-// The remedy is one `lym fabric reconcile` (idempotent: wires the missing junction and materialises
-// the weft-side directory) — never `lym init`, which is gone;
-// reconcile clears every one of those three symptoms in a single call.
-// This is not suppressed because it should not be: the junction genuinely is missing,
-// and a health check that lied about a missing junction is the exact fault the junction-health
-// generalisation (`checkJunctionHealth`, `Healthy`, `Status`'s inline verdict) exists to remove.
+// The junction side of that asymmetry has a concrete blast radius.
+// Every worktree wired before a name is added to `WarpJunctions` lacks that junction.
+// It stays missing until `lym fabric reconcile` re-runs against the worktree.
+// Until then, `lym fabric status` reports that pair not in sync, with `JunctionReason` naming the missing junction;
+// `lym fabric reconcile` reports `ReconcileActionJunctionRepointed` rather than `ReconcileActionAlreadyHealthy` for it,
+// and it repairs it;
+// and `internal/preflight`'s `CheckResolved` fails `CheckJunction` and blocks the run.
+// One `lym fabric reconcile` clears all three symptoms.
+// It is idempotent, wiring the missing junction and materialising the weft-side directory.
+// The missing junction is reported on purpose:
+// `checkJunctionHealth`, `Healthy` and `Status`'s inline verdict never claim health for a pair that lacks a junction.
 //
-// `Fabric.Commit` classifies a caller's mixed file list into warp-side and weft-side paths and
-// dispatches each side to its own commit, warp always first (see the
-// warp-first-then-weft-under-one-lock Shared Decision): the warp commit is bare, plain git — no
-// trailer, no correspondence entry, preserving the "warp stays ordinary git" property — and only
-// once it lands does the weft side commit under the fabric-layer write lock, acquired before the
-// warp commit and held across both.
-// There is no cross-repo transaction and no rollback: a landed warp commit is never unwound if the
-// weft side then fails, so a two-sided call reports, not undoes, partial failure — see commit.go's
-// `CommitResult` (independent `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted`) and
-// `*PartialCommitError`, which distinguishes the three possible weft outcomes a call can leave
-// behind: the weft commit never landed at all;
-// it landed and its `Warp-SHA` trailer was recorded in the correspondence index as usual (the
-// non-error path);
-// or it landed but `RecordCorrespondence` itself failed to persist the index entry
-// (`WeftCommitted=true` on the error) — recoverable only via an explicit `RebuildIndex` rescan of
-// the trailer history, since the landed commit's own trailer remains the index's sole source of
-// truth and `WeftSHAForWarpSHA`'s own one-shot self-correction fires only on a stale *hit*, never
-// on the index *miss* a never-written entry produces.
+// `Fabric.Commit` classifies a caller's mixed file list into warp-side and weft-side paths.
+// It commits each side separately, warp first.
+// The warp commit is bare, plain git, with no trailer and no correspondence entry, so warp stays ordinary git.
+// Once it lands, the weft side commits under the fabric-layer write lock.
+// That lock is acquired before the warp commit and held across both.
+// There is no cross-repo transaction and no rollback:
+// a landed warp commit is never unwound if the weft side then fails.
+// A two-sided call reports partial failure and does not undo it.
+// `CommitResult` (commit.go) has independent fields `WarpSHA`, `WarpCommitted`, `WeftSHA` and `WeftCommitted`.
+// `*PartialCommitError` distinguishes three weft outcomes:
+// the weft commit never landed;
+// it landed and its `Warp-SHA` trailer was recorded in the correspondence index (the non-error path);
+// or it landed but `RecordCorrespondence` failed to persist the index entry (`WeftCommitted=true` on the error).
+// The last is recoverable only by an explicit `RebuildIndex` rescan of the trailer history:
+// the landed commit's trailer is the index's sole source of truth,
+// and `WeftSHAForWarpSHA`'s one-shot self-correction fires only on a stale hit.
+// It never fires on the miss a never-written entry produces.
 //
-// Once `Commit` has attempted the weft side (if any),
-// and the combined write lock (see below) has already been released, it fires an unconditional,
-// detached, fire-and-forget push via `SpawnDetachedPush` whenever anything landed on
-// either side (`WarpCommitted || WeftCommitted`) — the async-push-both-sides-via-detached-child
-// Shared Decision.
+// `Commit` spawns a detached, fire-and-forget push through `SpawnDetachedPush`.
+// The spawn comes after the weft attempt, if any, and after the combined write lock (see below) is released.
+// It happens whenever anything landed on either side (`WarpCommitted || WeftCommitted`).
 // The request is the one `SpawnStatusPush` builds, built before any lock so a failure lands no commit:
 // the records side only in the hub's prime, and both sides in a task pair.
 //
-// `SpawnStatusPush(l, gateSlug)` is the one entry point for a status push, building its request from the location alone so no caller names a records path or pushes the prime's code branch.
+// `SpawnStatusPush(l, gateSlug)` is the one entry point for a status push.
+// It builds its request from the location alone, so no caller names a records path or pushes the prime's code branch.
 // In the prime the request holds the records side, `PauseSlug` the caller's gate slug and no `TeardownSlug`;
 // in a task pair it holds both sides with `PauseSlug` and `TeardownSlug` both the pair's own slug.
-// The child starts in the hub's Bolt checkout, outside both of the pair's worktrees, and resolves its hub from there through `lymcwd.ResolveWorktree`.
+// The child starts in the hub's Bolt checkout, outside both of the pair's worktrees.
+// It resolves its hub from there through `lymcwd.ResolveWorktree`.
 // `SpawnDetachedPush` returns `ErrSpawnUnderTest` in a test binary, so no test forks a real push child.
 //
-// `opts.SkipGit`/`opts.SkipPush` interact with this two-step call in ways
-// that narrow their general contract, worth stating plainly rather than leaving a caller to infer
-// them from behavior. `opts.SkipGit` is **weft-scoped** for `Fabric.Commit` specifically: it gates
-// only whether the weft-side commit is attempted at all;
-// the warp commit and the async push both proceed regardless of `opts.SkipGit`, a deliberate
-// narrowing of `SyncOptions.SkipGit`'s general "skip all git operations if true" contract for this
-// one entry point. `opts.SkipPush` is likewise **not consulted** by the async push at all: the
-// detached both-sides push gates only on the `FABRIC_SKIP_GIT`/`FABRIC_SKIP_PUSH` environment
-// variables, checked helper-internally inside `SpawnDetachedPush` (per the
-// async-push-both-sides-via-detached-child Shared Decision) — so a caller passing
-// `SyncOptions{SkipPush: true}` to `Fabric.Commit` still triggers the fire-and-forget push unless
-// the environment variable is also set.
+// `opts.SkipGit` and `opts.SkipPush` narrow their general contract in this two-step call.
+// `opts.SkipGit` is weft-scoped for `Fabric.Commit`: it gates only whether the weft-side commit is attempted.
+// The warp commit and the async push proceed regardless.
+// That narrows `SyncOptions.SkipGit`'s general contract of skipping all git operations.
+// `opts.SkipPush` is not consulted by the async push.
+// The detached both-sides push gates only on the `FABRIC_SKIP_GIT` and `FABRIC_SKIP_PUSH` environment variables.
+// `SpawnDetachedPush` checks them.
+// So `Fabric.Commit` with `SyncOptions{SkipPush: true}` still triggers the push unless a variable is set.
 //
-// The detached child that spawn launches no longer runs one single push per side: its bypass
-// handler (`internal/fabriccli`'s `push` verb, re-entered with `--warp-path`/`--weft-path`) now
-// runs `CoalescePushRequest`, a loop-until-clean coalescing push (`CoalescePushBothAt` is its blocking foreground form) that holds a separate absorbing
-// push lock — `fabric.push.lock`, under the weft worktree's `.weft/` directory, distinct from the
-// commit lock below — for the whole loop, repeatedly rebase-free-pushing whichever side has commits
-// and exiting once an iteration advances neither side's HEAD.
-// This push is deliberately rebase-free: `gitrepo.PushRebaseFree` is a plain `git push`, never `git
-// pull --rebase`, so a rejected push never mutates the calling process's working tree out from under it.
-// A refused push is classified, retried by replay where that is safe, and otherwise recorded and reported, as **Push classification** below says.
+// The detached child re-enters `internal/fabriccli`'s `push` verb with `--warp-path` and `--weft-path`.
+// Its bypass handler runs `CoalescePushRequest`, a loop-until-clean coalescing push.
+// `CoalescePushBothAt` is its blocking foreground form.
+// The loop holds a separate absorbing push lock, `fabric.push.lock` under the weft worktree's `.weft/` directory.
+// That lock is distinct from the commit lock below.
+// The loop pushes whichever side has commits, repeatedly, and exits once an iteration advances neither side's HEAD.
+// The push is rebase-free: `gitrepo.PushRebaseFree` is a plain `git push`, never `git pull --rebase`.
+// So a rejected push never mutates the calling process's working tree.
+// A refused push is classified, as **Push classification** below says.
+// It is retried by replay where that is safe, and otherwise recorded and reported.
 //
 // Every weft worktree fabric creates gets its `.weft/` lock directory at birth, whichever way it is created or adopted.
-// `Reconcile` restores a missing one on a pair whose weft worktree exists, without changing the pair's action,
-// and `ReadOriginFor` refuses a record whose weft worktree lacks it, naming `lym fabric reconcile`, instead of answering "no record".
+// `Reconcile` restores a missing one on a pair whose weft worktree exists, without changing the pair's action.
+// `ReadOriginFor` refuses a record whose weft worktree lacks it and names `lym fabric reconcile`;
+// it does not answer "no record".
 //
-// The combined write lock `Fabric.Commit` takes — `.weft/weft.write.lock`, the same lock
-// `commitWeft` already used weft-side — is now acquired for ANY committing call, warp-only included
-// (see the combined-commit-lock Shared Decision), not only when a weft-side commit is involved,
-// closing the race two concurrent warp-only `Fabric.Commit` calls previously ran unlocked.
-// The lock is released before the async push above is spawned, never held across it (the
-// commit-lock-scoped-to-commit-only Shared Decision): the network push is a separate concern
-// running under its own absorbing push lock in the detached child, not this commit-side lock.
+// `Fabric.Commit` takes the combined write lock, `.weft/weft.write.lock`, for any committing call.
+// A warp-only call takes it too, not only a call with a weft-side commit, so concurrent warp-only calls serialise.
+// The lock is released before the async push above is spawned and is never held across it:
+// the network push runs under its own absorbing push lock in the detached child.
 //
-// `Fabric.Diff` (now wired onto the `lym fabric diff <since-warp-sha>` CLI verb) answers "what
-// changed since this warp SHA, on both sides" by bridging `sinceWarpSHA` to the
-// nearest-at-or-before weft SHA the correspondence index resolves it to, via the same
-// `resolveRevertTarget` resolver diff.go's `weftAnchorForWarpSHA` calls;
-// a `sinceWarpSHA` older than the first recorded correspondence degrades to an empty weft side with
-// `DiffResult.NoWeftCorrespondence` set, rather than an error, since a diff from before fabric
-// started tracking this pair has no weft baseline to compare against. `Fabric.Status` answers a
-// different question — "what is currently uncommitted, on both sides" — via a live worktree read
-// (`gitrepo.Repo.WorktreeChangedFiles`, backed by go-git's `Worktree.Status()`) with no
-// correspondence anchor involved at all.
+// `Fabric.Diff` (`lym fabric diff <since-warp-sha>`) answers "what changed since this warp SHA, on both sides".
+// It bridges `sinceWarpSHA` to a weft SHA through `resolveRevertTarget`.
+// The bridge is the nearest-at-or-before weft SHA the correspondence index holds.
+// A `sinceWarpSHA` older than the first recorded correspondence gives an empty weft side, not an error.
+// It sets `DiffResult.NoWeftCorrespondence` there: a diff from before fabric tracked this pair has no weft baseline.
+// `Fabric.Status` answers "what is currently uncommitted, on both sides" with no correspondence anchor involved.
+// It reads the live worktree through `gitrepo.Repo.WorktreeChangedFiles`, backed by go-git's `Worktree.Status()`.
 //
-// fabric now exposes two distinct status-shaped surfaces, deliberately not variations of one
-// another: `Topology.Status` reports paired warp↔weft topology (branch pairing, junction health),
-// reachable via `lym fabric pairs`;
-// and the unified `Fabric.Status` merges each side's currently-uncommitted worktree changes into
-// one side-labelled view, reachable via `lym fabric status`.
+// Fabric has two status-shaped surfaces that are not variations of one another:
+// `Topology.Status` reports paired warp↔weft topology (branch pairing, junction health) via `lym fabric pairs`;
+// and `Fabric.Status` merges each side's uncommitted changes into one side-labelled view via `lym fabric status`.
 //
-// `gitrepo.PushCoalesced`'s single-pusher lock file sits in a checkout's own git dir, so `Fabric.Status` never reports it on either side.
+// The single-pusher lock file of `gitrepo.PushCoalesced` sits in a checkout's own git dir,
+// so `Fabric.Status` never reports it on either side.
 //
-// The read half of the same `Snapshot:` trailer mechanism exposes `Fabric.snapshotWarpSHA(tag
-// string) (string, error)`, resolving a caller-supplied snapshot tag to the warp SHA recorded under
-// it by the newest weft commit (in topological order) carrying a `Snapshot: <tag>` git trailer (see
-// `SnapshotTrailerKey`, `snapshotTagPattern`, in trailer.go).
-// A tag is restricted to letters, digits, dot, underscore, and hyphen, excluding newline, carriage
-// return, and colon — the trailer-injection vector those excluded characters would otherwise open,
-// letting a bug- or attacker-supplied tag inject a fake or unrelated trailer line into the commit
-// message;
-// that restriction is enforced entirely on the write path (`validateSnapshotTag`, called from
-// `appendSnapshotTrailers`), never on the read side.
+// The read half of the `Snapshot:` trailer mechanism is `Fabric.snapshotWarpSHA(tag string) (string, error)`.
+// It resolves a snapshot tag to the warp SHA recorded under it.
+// The SHA comes from the newest weft commit in topological order that carries a `Snapshot: <tag>` git trailer.
+// `SnapshotTrailerKey` and `snapshotTagPattern` in trailer.go define the trailer key and the tag grammar.
+// A tag is restricted to letters, digits, dot, underscore, and hyphen.
+// Newline, carriage return, and colon are excluded:
+// they would let a buggy or hostile tag inject a fake trailer line into the commit message.
+// The restriction is enforced on the write path only (`validateSnapshotTag`, called from `appendSnapshotTrailers`).
 //
-// `snapshotWarpSHA` scans the same generalized trailer history `scanWarpSHATrailers` (index.go)
-// already builds for `RebuildIndex` — one `git log --topo-order` pass, run fresh on demand every
-// call — rather than consulting or maintaining any index of its own: "newest" means newest in
-// topological order, where no commit is ever listed before one of its own descendants, the
-// identical rule `RebuildIndex`'s own dedup applies, which is what keeps the two answers in
-// agreement over the same history.
-// No snapshot index was added on top, because a snapshot read is rare — a staleness check at a
-// phase boundary, not a hot path — so an index would only buy a second cache-invalidation surface
-// for a consumer that does not exist yet, per the trailer-is-truth-no-new-cache decision: the
-// `Snapshot` trailer itself is the sole source of truth, and anything built on top of it is a
-// rebuildable cache, the same layering the correspondence index already rests on.
+// `snapshotWarpSHA` scans the trailer history that `scanWarpSHATrailers` (index.go) builds for `RebuildIndex`:
+// one `git log --topo-order` pass, run fresh on every call, with no index of its own.
+// "Newest" means newest in topological order, where no commit is listed before one of its descendants.
+// `RebuildIndex`'s dedup applies the same rule, which keeps the two answers in agreement over the same history.
+// No snapshot index exists because a snapshot read is rare, a staleness check at a phase boundary,
+// so an index would only add a second cache-invalidation surface.
+// The `Snapshot` trailer is the sole source of truth.
+// Anything built on it is a rebuildable cache, as the correspondence index is.
 //
-// A tag never recorded in the current branch's history reads as `("", nil)`, not an error — absent
-// is a normal, expected first-run state, matching the retired `gitrepo.SnapshotSHA` contract
-// exactly — deliberately unlike index.go's `ErrNoCorrespondence`, where a miss signals broken
-// bookkeeping rather than a legitimate absence.
-// Matching is byte-exact and unvalidated on the read side: a tag that could not have been written
-// can never match anything, so read-side validation would buy nothing, while fuzzy matching would
-// let a lookup for `Raddle` silently resolve a baseline recorded as `raddle`, hiding a caller bug
-// behind a false-positive convenience.
+// A tag never recorded in the current branch's history reads as `("", nil)`, not an error.
+// Absence is a normal first-run state;
+// a miss in index.go's `ErrNoCorrespondence` signals broken bookkeeping instead.
+// Matching is byte-exact and unvalidated on the read side.
+// A tag that could not have been written never matches anything.
+// Fuzzy matching would let a lookup for `Raddle` silently resolve a baseline recorded as `raddle` and hide a caller bug.
 //
-// A dangling `Warp-SHA` — the newest tagged commit names a warp SHA that no longer exists because
-// warp history was rewritten — is returned raw, with a nil error: the same validate-at-use posture
-// `RebuildIndex` already takes for its own trailer values.
-// Skipping back to an older tagged commit would silently answer with an older baseline and
-// under-report staleness,
-// and collapsing the answer to absent would conflate "never recorded" with "recorded, then
-// rewritten" for no benefit, since both drive the same consumer action.
-// The intended three-step consumer idiom is: read the SHA via `snapshotWarpSHA`, check `f.code.SHAExists(sha)`, then call `f.code.ChangedFilesSince(sha)` only if it exists, treating a missing SHA as total staleness;
-// that is not a burden invented here, since `ChangedFilesSince`'s own doc comment already asks every caller to check `SHAExists` first.
+// A dangling `Warp-SHA` is returned raw with a nil error.
+// It arises when the newest tagged commit names a warp SHA that no longer exists because warp history was rewritten.
+// This is the validate-at-use posture `RebuildIndex` takes for its trailer values.
+// Skipping back to an older tagged commit would answer with an older baseline and under-report staleness.
+// Collapsing the answer to absent would conflate "never recorded" with "recorded, then rewritten".
+// Both drive the same consumer action.
+// A consumer reads the SHA via `snapshotWarpSHA`.
+// It checks `f.code.SHAExists(sha)`.
+// It calls `f.code.ChangedFilesSince(sha)` only if the SHA exists, treating a missing SHA as total staleness.
+// `ChangedFilesSince` already asks every caller to check `SHAExists` first.
 //
-// The reader is per-branch, because it scans only the current weft branch's history: a snapshot
-// recorded on another branch reads as absent the moment a coordinated `Checkout` switches the pair
-// onto that branch, and the consumer regenerates from scratch — the safe failure direction.
-// Contrast this with `refreshCorrIndexAfterSwitch`: the correspondence index is a per-worktree file
-// that survives a branch switch and can therefore keep answering cross-branch, which is exactly why
-// `Checkout` must discard and rebuild it, whereas `snapshotWarpSHA` holds no state of its own to
-// discard and simply stops seeing the other branch's commits once the weft worktree switches away.
+// The reader is per-branch because it scans only the current weft branch's history:
+// a snapshot recorded on another branch reads as absent once a coordinated `Checkout` moves the pair onto that branch,
+// and the consumer regenerates from scratch, the safe failure direction.
+// The correspondence index, by contrast, is a per-worktree file that survives a branch switch.
+// It could keep answering cross-branch.
+// `Checkout` therefore discards and rebuilds it through `refreshCorrIndexAfterSwitch`;
+// `snapshotWarpSHA` holds no state and stops seeing the other branch's commits.
 //
-// The write half closes the one gap the read half's design leaves open: when `snapshotTags` is
-// non-empty and no weft commit would otherwise land, `commitWeftLocked` (recordsgit.go) lands an
-// **empty** weft commit carrying the already-composed `Warp-SHA` and `Snapshot:` trailers, via
-// `commitEmptySnapshot` wrapping `gitrepo.Repo.CommitEmpty`.
-// There are four triggering cases, all sharing the identical rationale: a caller's regeneration
-// confirmed itself current against a warp SHA, and that confirmation needs a home even though
-// nothing else changed.
-// A warp-only or tags-only `Fabric.Commit` call reaches `commitWeftLocked` with an empty weft
-// pathspec, which `weftPathspecFilter` reduces to no positive entry at all.
-// A pathspec that survives filtering can still resolve to nothing by the time `git add` runs, which
-// `commitWeftLocked`'s own "did not match any files" tolerance absorbs — reachable only as
-// defense-in-depth, since the filter's own pre-check normally keeps this path from firing.
-// The tolerance lives in `commitWeftLocked` (recordsgit.go), not in `gitrepo.StageAndCommit`, which has
-// none: `StageAndCommit` wraps and returns `git add`'s failure like any other, and
-// `commitWeftLocked` recognises this one case by matching git's own message text on the way past.
-// That match is the single place in this package whose correctness depends on
-// `*gitexec.GitError.Error()` continuing to render git's trimmed stderr into the message, so a
-// change to that rendering would silently turn this tolerance back into a hard failure.
-// And — the genuine correctness hole this whole mechanism exists to close — a pathspec that matches
-// real, tracked content whose staged bytes are identical to HEAD's makes `StageAndCommit` report
-// `committed=false`: without the empty-commit rule, a caller re-running an identical regeneration
-// against an unchanged warp SHA would see no weft commit land, the correspondence baseline would
-// never advance, and a staleness check would report drift forever despite the regeneration having
-// just confirmed itself current.
+// The write half covers the case where no weft commit would otherwise land.
+// When `snapshotTags` is non-empty, `commitWeftLocked` (recordsgit.go) lands an **empty** weft commit.
+// The commit carries the composed `Warp-SHA` and `Snapshot:` trailers.
+// `commitEmptySnapshot` wraps `gitrepo.Repo.CommitEmpty` to land it.
+// Several cases trigger it, with one rationale:
+// a caller's regeneration confirmed itself current against a warp SHA,
+// and that confirmation needs a home even though nothing else changed.
+// A warp-only or tags-only `Fabric.Commit` reaches `commitWeftLocked` with an empty weft pathspec.
+// `weftPathspecFilter` reduces that to no positive entry.
+// A pathspec that survives filtering can still resolve to nothing by the time `git add` runs.
+// `commitWeftLocked` absorbs that through its "did not match any files" tolerance.
+// The tolerance is reachable only as defense in depth, because the filter's pre-check normally prevents it.
+// The tolerance lives in `commitWeftLocked` (recordsgit.go), not in `gitrepo.StageAndCommit`.
+// `StageAndCommit` wraps and returns `git add`'s failure like any other.
+// `commitWeftLocked` recognises this case by matching git's message text.
+// That match depends on `*gitexec.GitError.Error()` rendering git's trimmed stderr into the message.
+// A change to that rendering would turn the tolerance into a hard failure.
+// The last case is the correctness hole the mechanism exists to close:
+// a pathspec that matches tracked content whose staged bytes equal HEAD's makes `StageAndCommit` report no commit.
+// Without the empty commit, re-running an identical regeneration against an unchanged warp SHA lands no weft commit.
+// The correspondence baseline would never advance, and a staleness check would report drift forever.
 //
-// `Commit(nil, msg, tags, opts)` — snapshot tags with zero files at all — is consequently a
-// **supported call shape**, not an accident of a widened predicate: it is how a caller records a
-// baseline (a warp SHA under a tag) with no weft content of its own to commit, the
-// standalone-snapshot use this design serves without a dedicated method. `Fabric.Commit`'s
-// `weftSide` predicate reflects this directly: it is true whenever there are weft files OR
-// `snapshotTags` is non-empty, so a tags-only or warp-only-but-tagged call now takes the combined
-// write lock and runs `ensureWeftLockDir` where an earlier version of `Commit` did neither —
-// correct, since the call is about to write to weft, but a real widening from a predicate that once
-// looked only at weft files.
+// `Commit(nil, msg, tags, opts)`, snapshot tags with zero files, is a **supported call shape**:
+// it records a baseline (a warp SHA under a tag) with no weft content of its own, without a dedicated method.
+// The `weftSide` predicate of `Fabric.Commit` is true whenever there are weft files or `snapshotTags` is non-empty.
+// A tags-only or warp-only-but-tagged call therefore takes the combined write lock and runs `ensureWeftLockDir`.
+// That is correct, since the call is about to write to weft.
 //
-// `RecordCorrespondence` runs for an empty commit exactly as it does for a content commit: the
-// empty commit carries a real `Warp-SHA` trailer like any other, so `RebuildIndex` — which reads
-// trailers, not this call site's own choices — would record it anyway on a full rescan, and
-// skipping the call here would only make the incremental and rebuilt indexes diverge.
-// One consequence of always recording is now routine rather than rare: a warp SHA does not move
-// between a content commit and a later tags-only or unchanged-content call at the same warp HEAD,
-// so the later empty commit's `RecordCorrespondence` call **upserts over** the entry the earlier
-// content commit wrote for that same warp SHA — `WeftSHAForWarpSHA` and `resolveRevertTarget` then
-// resolve to the empty commit, "last recorded wins" being `corrIndex.record`'s own pre-existing
-// upsert rule meeting a newly-common input.
-// This is accepted as benign, not merely tolerated, because an empty commit's tree is identical to
-// its parent's by construction: resolving a diff anchor to it bridges to exactly the same weft tree
-// the superseded content commit produced, and `resolveRevertTarget` uses the resolved weft SHA only
-// as a bridge target, never for anything that would make the overwrite observable beyond that.
+// `RecordCorrespondence` runs for an empty commit as for a content commit:
+// the empty commit carries a real `Warp-SHA` trailer.
+// A full rescan by `RebuildIndex`, which reads trailers, would record it anyway.
+// Skipping the call would make the incremental and rebuilt indexes diverge.
+// A warp SHA does not move between a content commit and a later tags-only or unchanged-content call at one warp HEAD.
+// So the later empty commit's `RecordCorrespondence` **upserts over** the entry the content commit wrote for that SHA.
+// `WeftSHAForWarpSHA` and `resolveRevertTarget` then resolve to the empty commit.
+// `corrIndex.record` lets the last recorded entry win.
+// This is benign because an empty commit's tree is identical to its parent's:
+// a diff anchor resolved to it bridges to the same weft tree the superseded content commit produced,
+// and `resolveRevertTarget` uses the resolved weft SHA only as a bridge target.
 //
-// One propagation is a genuine behaviour change worth naming plainly: when
-// `gitrepo.Repo.CommitEmpty` refuses via `gitrepo.ErrIndexNotEmpty` — the weft index is carrying
-// staged content the combined write lock did not exclude, most likely left behind by an aborted
-// earlier run — that refusal now surfaces as a `*PartialCommitError` with `weftCommitted: false`,
-// through the exact mapping arm `Fabric.Commit` already uses for an unlanded weft commit.
-// The equivalent call before this mechanism existed was a documented silent no-op; failing loudly
-// here is deliberate, since silently folding somebody else's staged work into a snapshot commit is
-// strictly worse than refusing.
+// `gitrepo.Repo.CommitEmpty` refuses with `gitrepo.ErrIndexNotEmpty` when the weft index carries staged content.
+// The combined write lock did not exclude that content; an aborted earlier run most likely left it.
+// The refusal surfaces as a `*PartialCommitError` with `weftCommitted: false`,
+// through the mapping arm `Fabric.Commit` uses for an unlanded weft commit.
+// It fails loudly because silently folding somebody else's staged work into a snapshot commit would be worse.
 //
-// The rule has exactly two exceptions, both narrower than "skip everything."
-// An **unborn warp HEAD** still drops the tags exactly as it always has, regardless of
-// `snapshotTags`: a snapshot's entire content is a warp SHA to record, and with none yet to name,
-// an empty commit carrying only a bare `Snapshot:` trailer with no `Warp-SHA` sibling would force
-// `snapshotWarpSHA`'s reader to grow a third "found the tag, but it has no baseline" state — normal
-// trailer/tag/record behaviour resumes on the first `commitWeftLocked` call after warp's own first
-// commit.
-// An **unborn weft HEAD**, by contrast, is deliberately *not* an exception: `commitEmptySnapshot`'s
-// `CommitEmpty` call lands the empty commit as weft's own root commit, carrying its trailers like
-// any other, because weft having no history yet is not a reason to withhold a baseline warp already
-// has. `opts.SkipGit` is unaffected by any of this and is recorded here so a reader of the rule
-// does not conclude it overrides the opt-out: `SkipGit` still skips the weft side entirely, tags or
-// not, exactly as `Fabric.Commit`'s own doc comment already describes.
+// The empty-commit rule has two exceptions.
+// An **unborn warp HEAD** drops the tags regardless of `snapshotTags`:
+// a snapshot's content is a warp SHA to record.
+// A bare `Snapshot:` trailer with no `Warp-SHA` sibling would force `snapshotWarpSHA` to handle a third state.
+// That state is "found the tag, but it has no baseline".
+// Normal trailer, tag and record behaviour resumes on the first `commitWeftLocked` call after warp's first commit.
+// An **unborn weft HEAD** is not an exception:
+// `commitEmptySnapshot` lands the empty commit as weft's root commit, with its trailers.
+// Weft having no history is no reason to withhold a baseline warp already has.
+// `opts.SkipGit` overrides none of this.
+// It skips the weft side entirely, tags or not, as `Fabric.Commit`'s doc comment describes.
 //
-// The accepted accumulation cost is worth stating honestly rather than leaving implicit: every
-// no-op tagged run now appends a weft commit carrying no content, so a consumer checking staleness
-// in a tight loop would grow weft history without bound, and the cache-free reader
-// (`snapshotWarpSHA`, `RebuildIndex`) scans that whole history on every call.
-// This is accepted because the actual call pattern this mechanism serves is one tagged commit per
-// regeneration at a phase boundary, not a poll, and because the scan is a single `git log` over a
-// history that stays small by construction under that pattern;
-// if a consumer ever does poll, the fix belongs on the consumer's side — check `ChangedFilesSince`
-// first, and tag only when actually regenerating — not on this mechanism, which has no way to
-// distinguish a genuine regeneration from a poll from the trailer history alone.
+// Every no-op tagged run appends a weft commit with no content.
+// A consumer checking staleness in a tight loop would therefore grow weft history without bound,
+// and the cache-free readers (`snapshotWarpSHA`, `RebuildIndex`) scan that whole history on every call.
+// This cost is accepted: the intended pattern is one tagged commit per regeneration at a phase boundary, not a poll.
+// The scan is a single `git log` over a history that stays small under that pattern.
+// A polling consumer should check `ChangedFilesSince` first and tag only when it regenerates;
+// the trailer history cannot distinguish a regeneration from a poll.
 //
-// Cross-clone sharing comes for free from where the trailers live: because `Snapshot:` and
-// `Warp-SHA` trailers are part of weft's own versioned commit history,
-// and the empty commits carrying them are ordinary weft commits like any other, the existing
-// detached both-sides push (see `Fabric.Commit`'s own doc comment) already sends them to the remote
-// — no equivalent of the retired `refs/loomyard/snapshot` mechanism's own separate ref push is
-// needed for a snapshot baseline to reach another clone.
+// Cross-clone sharing follows from where the trailers live:
+// `Snapshot:` and `Warp-SHA` trailers are part of weft's versioned history.
+// The empty commits carrying them are ordinary weft commits.
+// The detached both-sides push (see `Fabric.Commit`'s doc comment) therefore sends them with no separate ref push.
 //
-// Slice 5 (the `fabric-clone-subpath` task) landed clone-does-everything, a subpath-in-weft anchor,
-// and the dissolution of `lym init`, replacing the earlier two-step "clone, then `lym init`" flow
-// with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives warp+weft
-// clone, Bolt checkout materialization, and lym-anchor resolution in one call;
-// the CLI layer (`internal/fabriccli`) then records the repo-wide `fabric.yaml` onto
-// `weft:main`, creates every warp junction (`_lym`, `.lym`), and runs
-// `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
-// every config materialized without a second command. Every junction is excluded through the warp's
-// own `.git/info/exclude`, never a committed `.gitignore` in the user's repo, and the entry written
-// there is the junction's own anchored path (`/backend/_lym`, or `/_lym` at a root anchor) rather
-// than a bare name, since a slash-free gitignore pattern matches at every depth and would untrack
-// same-named directories fabric never wired.
-// git resolves `info/exclude` to the repo's COMMON gitdir, so the file is shared by every worktree
-// in the hub and two verbs running side by side edit the same bytes;
-// every mutation of it therefore goes through `mutateGitExclude` (gitexclude.go), which holds a
-// repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
-// a concurrent reader sees either the whole old file or the whole new one.
+// `CloneHub` (clone.go) drives warp and weft clone, Bolt checkout materialization and lym-anchor resolution in one call.
+// The CLI layer (`internal/fabriccli`) then records the repo-wide `fabric.yaml` onto `weft:main`.
+// It creates every warp junction (`_lym`, `.lym`) and runs `configsync.ReconcileAll`.
+// A fresh clone or `worktree add` therefore leaves every junction wired and every config materialized.
+// Every junction is excluded through the warp's `.git/info/exclude`, never a committed `.gitignore` in the user's repo.
+// The entry is the junction's anchored path (`/backend/_lym`, or `/_lym` at a root anchor), not a bare name.
+// A slash-free gitignore pattern matches at every depth and would untrack same-named directories fabric never wired.
+// git resolves `info/exclude` to the repo's common gitdir, so every worktree in the hub shares the file;
+// two verbs running side by side therefore edit the same bytes.
+// Every mutation goes through `mutateGitExclude` (gitexclude.go).
+// It holds a repo-wide flock across read, rewrite and write.
+// It replaces the file by same-directory rename.
+// A concurrent reader sees either the whole old file or the whole new one.
 //
-// The warp exclude list, fabric.yaml's `warp_exclude` key, names paths under a warp worktree's anchor that lym's instruction files occupy.
-// Wiring seeds each as a root-anchored `/<anchor>/<path>` line, `/<path>` for anchor `.`, into the same `info/exclude` and never removes one, since the file is shared by every worktree;
+// The warp exclude list is `fabric.yaml`'s `warp_exclude` key.
+// It names paths under a warp worktree's anchor that lym's instruction files occupy.
+// Wiring seeds each as a root-anchored `/<anchor>/<path>` line (`/<path>` for anchor `.`) into the same `info/exclude`.
+// It never removes one, since every worktree shares the file.
 // `SeedWarpExclude` seeds it on demand, and `ExcludeWayForward` is the refusal text for a path off the list.
-// The list is separate from `pathspec` and is never folded into the wired junction names, so health and drift checks never ask for a junction of it.
+// The list is separate from `pathspec`.
+// It is never folded into the wired junction names, so health and drift checks never ask for a junction of it.
 //
 // The worktree seam (`worktreeseam.go`) is how code that renders files into a worktree learns of it.
-// `InstallWorktreeSeam` stores one process-wide `WorktreeSeam`, and with none installed every event is no event.
-// "Made" fires once a worktree is wired, its exclude lines seeded and the Bolt checkout present:
-// from `Topology.add` last, and from the clone's wiring sequence right after the prime's junctions, through `NotifyWorktreeMade`.
-// "Took in commits" fires with the paths that differ between the old and new head, from a warp pull's fast-forward and its re-anchor resets, from the parent-pair fast-forward, and from the origin reconcile's fast-forward of a pair's code branch;
-// the weft arm and every records or Bolt move fire nothing.
-// `EventFor` seeds the exclude list before it builds an event, so every writer of the listed files writes only after their lines are in place.
-// A seam failure never fails a verb: it is logged at Warn and returned as warning text, which `PullResult.SeamWarning`, `BranchOutcome.Warning` and a hub pull's line carry.
+// `InstallWorktreeSeam` stores one process-wide `WorktreeSeam`, and with none installed no event fires.
+// "Made" fires through `NotifyWorktreeMade` once a worktree is fully set up:
+// wired, with its exclude lines seeded and the Bolt checkout present.
+// It fires last in `Topology.add` and right after the prime's junctions in the clone's wiring sequence.
+// "Took in commits" fires with the paths that differ between the old and new head.
+// It fires from a warp pull's fast-forward and its re-anchor resets.
+// It also fires from the parent-pair fast-forward and from the origin reconcile's fast-forward of a pair's code branch.
+// The weft arm and every records or Bolt move fire nothing.
+// `EventFor` seeds the exclude list before it builds an event.
+// Every writer of the listed files therefore writes only after their lines are in place.
+// A seam failure never fails a verb.
+// It is logged at Warn and returned as warning text in the verb's result, such as `PullResult.SeamWarning`.
 // Events fire with no Bolt write lock held, since the seam's render takes it.
 //
-// The lym-anchor subpath (e.g. `backend` or `.`)
-// is recorded per worktree, as the plain `.lym-anchor` marker at the root of that worktree's own weft branch (see `internal/lymcwd/anchor.go`);
+// The lym-anchor subpath (for example `backend`, or `.`) is recorded per worktree.
+// It is the plain `.lym-anchor` marker at the root of that worktree's own weft branch (see `internal/lymcwd/anchor.go`).
 // `lymcwd.Resolve` is the reader.
-// `CloneHub` records the prime's marker first, committing it on the prime's weft branch (`commitAnchorMarker`, anchormarker.go) on a fresh bind and adopting it from there on a re-clone.
-// The Bolt marker at `BoltDir(Hub)` is read only as the fallback of a hub whose prime weft is still markerless, until `lym fabric reconcile` migrates it.
-// `Resolve` treats the record as truth once present — it sets `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory exactly — and falls back to `AnchorRel` `"."`
-// only when no marker is recorded yet (mid-clone, a gitkit synthetic hub, or a non-fabric git repo).
-// A hub still carrying the pre-rename marker spelling (`lymcwd.StaleAnchorFileName`) with no renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old name, so every resolver returns `lymcwd.ErrStaleAnchorMarker` rather than answering `"."`
-// — which would re-anchor the repo at its root and let `lym fabric reconcile` wire a second junction set there.
-// `CloneHub` refuses the same state at clone time, on its Bolt fallback read only, naming the same literal from the same single declarer.
+// `CloneHub` records the prime's marker first.
+// On a fresh bind it commits the marker on the prime's weft branch (`commitAnchorMarker`, anchormarker.go);
+// on a re-clone it adopts the marker from there.
+// The Bolt marker at `BoltDir(Hub)` is read only for a hub whose prime weft is still markerless.
+// `lym fabric reconcile` migrates it.
+// `Resolve` treats a present record as truth.
+// It sets `AnchorRel` from the marker and errors if cwd does not equal the anchored directory exactly.
+// Only when no marker is recorded yet does it fall back to `AnchorRel` `"."`:
+// mid-clone, a gitkit synthetic hub, or a non-fabric git repo.
+// A hub with only the stale marker `lymcwd.StaleAnchorFileName` is not a fallback case:
+// it recorded a real subpath under the old name, so every resolver returns `lymcwd.ErrStaleAnchorMarker`.
+// Answering `"."` would re-anchor the repo at its root and let `lym fabric reconcile` wire a second junction set there.
+// `CloneHub` refuses the same state at clone time, on its Bolt fallback read only.
+// It names the same literal, from the same single declarer.
 //
-// A marker that is PRESENT but empty after trimming is a third state, and it is fabric's to refuse
-// rather than lymcwd's: `lymcwd` deliberately treats it as absent and falls back to `"."`, which is
-// exactly right for a hub that never recorded an anchor and exactly wrong for one whose marker was
-// truncated.
-// Since `Reconcile` is the only verb that wires junctions, it is the only verb that can turn that
-// fallback into the second-junction-set damage above, so it judges each present weft's own marker before wiring that pair (`migrateWeftMarker`, reconcile.go):
-// a blank one fails that pair alone through `refuseEmptyOwnMarker`, with its wiring untouched and the pass going on, leaving `lymcwd`'s documented fallback untouched.
+// A marker that is present but empty after trimming is a third state, and fabric refuses it rather than lymcwd:
+// `lymcwd` treats it as absent and falls back to `"."`.
+// That is right for a hub that never recorded an anchor and wrong for one whose marker was truncated.
+// Only `Reconcile` wires junctions, so only it can turn that fallback into the second-junction-set damage above.
+// It judges each present weft's own marker before wiring that pair (`migrateWeftMarker`, reconcile.go).
+// A blank one fails that pair alone through `refuseEmptyOwnMarker`, with its wiring untouched and the pass going on.
+// `lymcwd`'s documented fallback stays untouched.
 //
 // A weft with no committed marker is migrated by the same pass.
-// `committedMarker` reads the file from git objects, and `treeAnchor` is the one rule for the anchor of a branch that records none:
-// the committed non-blank marker at the revision, else the shallowest directory of the revision's tree that holds one of the wired names (`.` when the root holds one, a tie at one depth going to the byte-wise smaller path), else the caller's fallback, which is the resolution of `lymcwd.NamedWorktree`.
-// `Reconcile` commits that value with `commitAnchorMarker` under `fabric reconcile: record anchor <value>`, the prime's weft first, hands the commit to the detached push `SpawnPairPush` spawns, and wires the pair at the anchor read back through `NamedWorktree`.
-// `Topology.Add` does the same for an adopted weft branch with no committed marker or a blank one, right after the branch's worktree is added, and builds every path for the pair at its own anchor; an adopted branch that carries a marker uses it.
+// `committedMarker` reads the file from git objects.
+// `treeAnchor` is the one rule for the anchor of a branch that records none:
+// the committed non-blank marker at the revision;
+// else the shallowest directory holding a wired name (`.` for the root, the byte-wise smaller path on a tie);
+// else the caller's fallback, which is the resolution of `lymcwd.NamedWorktree`.
+// `Reconcile` commits that value with `commitAnchorMarker`, the prime's weft first.
+// The commit message is `fabric reconcile: record anchor <value>`.
+// It hands the commit to the detached push `SpawnPairPush` spawns.
+// It wires the pair at the anchor read back through `NamedWorktree`.
+// `Topology.Add` does the same for an adopted weft branch with no committed marker or a blank one.
+// It does so right after the branch's worktree is added.
+// It builds every path for the pair at its own anchor; an adopted branch that carries a marker uses it.
 //
 // The Bolt marker is retired once every weft carries its own.
-// After the pair loop `retireBoltAnchorMarker` (anchormarker.go) runs a census over local refs, with no network call:
-// the prime's weft and every local pair's weft carry a non-blank committed marker at `HEAD`, and every weft branch, local or fetched, whose warp sibling is on origin carries one on its already-fetched remote-tracking ref.
+// After the pair loop, `retireBoltAnchorMarker` (anchormarker.go) runs a census over local refs, with no network call:
+// the prime's weft and every local pair's weft carry a non-blank committed marker at `HEAD`;
+// and every weft branch, local or fetched, whose warp sibling is on origin carries one on its remote-tracking ref.
 // A weft branch with no warp sibling on origin is an orphan and is not counted.
-// A branch whose ref is not fetched, a marker commit not yet pushed or a blank committed marker keeps the Bolt marker for a later reconcile.
-// When the census holds, the Bolt checkout's `.lym-anchor` and a leftover `.fabric-anchor` beside it are deleted through an `os.Root` in one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board, and then pushed.
-// `ReconcileResult.BoltAnchor` carries the verdict (`removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail), `lym fabric reconcile` reports it as `bolt_anchor`, and a hub with no Bolt marker reports nothing.
-// `lym fabric unwire` keeps leaving every marker.
+// An unfetched ref, an unpushed marker commit or a blank committed marker keeps the Bolt marker for a later reconcile.
+// When the census holds, the Bolt checkout's `.lym-anchor` and `.fabric-anchor` files are deleted through an `os.Root`.
+// The deletion is one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board.
+// The commit is then pushed.
+// `ReconcileResult.BoltAnchor` carries the verdict.
+// It is `removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail.
+// `lym fabric reconcile` reports it as `bolt_anchor`.
+// A hub with no Bolt marker reports nothing.
+// `lym fabric unwire` leaves every marker.
 //
-// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml` config, held as a plain single-line file, `.lym-warp`, at the board root (`BoltDir(hub)/.lym-warp`, see codebinding.go), containing the warp URL only.
-// `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL, and writes the record when none exists yet and a warp URL is supplied;
+// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml` config.
+// It is the single-line file `.lym-warp` at the board root (see codebinding.go) and holds the warp URL only.
+// `CloneHub` resolves the effective warp URL from that record when the caller supplies none.
+// It writes the record when none exists yet and a warp URL is supplied;
 // a supplied URL that disagrees with the recorded one is a hard error, never a silent re-point.
-// That resolution runs through a throwaway pre-hub probe clone of the weft remote (recordsprobe.go), because the hub is named after the warp repo and therefore has no path to resolve into until the warp URL is known.
-// `clone --reset` removes an existing hub only after the probe has checked the warp binding, the shortname and the old-order guard, and has checked an explicit `--subpath` against staged clones of both remotes (resetsubpathcheck.go), so a refused argument leaves the hub untouched.
-// `Reconcile` backfills the record once per hub from the warp side's own `origin` remote (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as clone's own binding write is committed CLI-side.
+// That resolution runs through a throwaway pre-hub probe clone of the weft remote (recordsprobe.go).
+// The hub is named after the warp repo, so it has no path to resolve into until the warp URL is known.
+// `clone --reset` removes an existing hub only after the probe has checked several things:
+// the warp binding, the shortname and the old-order guard.
+// It also first checks an explicit `--subpath` against staged clones of both remotes (resetsubpathcheck.go).
+// A refused argument therefore leaves the hub untouched.
+// `Reconcile` backfills the record once per hub from the warp `origin` remote (`reconcileWarpBinding`, reconcile.go).
+// The CLI layer drives the commit and push, as it does for clone's own binding write.
 //
-// The hub's shortname is a fifth repo-wide record, held the same way as a plain single-line file, `.lym-shortname`, beside `.lym-warp` at the board root (see shortnamebinding.go).
+// The hub's shortname is a repo-wide record, held the same way.
+// It is the single-line file `.lym-shortname` beside `.lym-warp` at the board root (see shortnamebinding.go).
 // This package alone reads and writes it.
 // At clone the CLI layer commits it onto weft:main through Bolt, with the rest of the fresh hub;
-// on a live hub `CommitShortname` (shortnamecommit.go) commits it alone under the board write lock, so no pending board change rides along.
-// `lym fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lym-warp` nor `.lym-anchor`) refuses without `--shortname`,
-// while a bound weft that lacks the record takes `--shortname` or warns.
-// `lym fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
+// on a live hub `CommitShortname` (shortnamecommit.go) commits it alone under the board write lock,
+// so no pending board change rides along.
+// `lym fabric clone --shortname <shortname>` records it.
+// A clone of a fresh bind (a weft carrying neither `.lym-warp` nor `.lym-anchor`) refuses without `--shortname`.
+// A bound weft that lacks the record takes `--shortname` or warns.
+// `lym fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none.
+// That is how a repo bound before shortnames existed gets its shortname.
 // The grammar and the way reed uses the shortname are in internal/agentname's package doc.
 //
-// The worktree's anchor marker, the repo-wide config, and the warp binding are the records that let a
-// later `lym fabric reconcile` re-wire a hub with no re-clone at all;
+// The worktree's anchor marker, the repo-wide config, and the warp binding let `lym fabric reconcile` re-wire a hub.
+// No re-clone is needed.
 // `Unwire` leaves all three untouched.
 //
-// The wired junction set is likewise a **repo-wide** fact, not a per-worktree one: the `pathspec`
-// key lives in the repo-wide `fabric.yaml` at the Bolt checkout's `_lym/config/fabric.yaml`, so every
-// worktree in the repo reconciles against the one recorded name-set rather than each carrying its
-// own.
-// Reconcile (reconcile.go) is declarative convergence to that pathspec — add what's missing,
-// re-point what's broken, remove what's stale — and is fail-closed: a missing or unparseable
-// repo-wide `fabric.yaml` aborts stale-removal for that pair and touches nothing, rather than
-// risking a blanket sweep on a broken read.
+// The wired junction set is a **repo-wide** fact, not a per-worktree one.
+// The `pathspec` key lives in the repo-wide `fabric.yaml` at the Bolt checkout's `_lym/config/fabric.yaml`.
+// Every worktree therefore reconciles against the one recorded name-set.
+// Reconcile (reconcile.go) converges to that pathspec: add what's missing, re-point what's broken, remove what's stale.
+// It is fail-closed.
+// A missing or unparseable repo-wide `fabric.yaml` aborts stale-removal for that pair and touches nothing.
+// That avoids a blanket sweep on a broken read.
 //
-// `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lym init
-// --undo`:
-// with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names), the scratch link excepted, and their warp `.git/info/exclude` entries;
-// without it nothing is removed and the result reports what an applied run would remove.
-// Either way it never deletes weft-side
-// content — `_lym` and `.lym` are both preserved — and never touches the repo-wide
-// `weft:main` records, which survive so a later `lym fabric reconcile` re-wires the worktree from the
-// same anchor and pathspec.
+// `Unwire` (unwire.go) is the per-worktree full deactivation.
+// With `apply` set, it removes every fabric junction present on disk, not only those the wired name-set names.
+// The scratch link is excepted.
+// It also removes their warp `.git/info/exclude` entries.
+// Without `apply`, nothing is removed and the result reports what an applied run would remove.
+// Either way it never deletes weft-side content, so `_lym` and `.lym` are preserved.
+// It never touches the repo-wide `weft:main` records either.
+// Those records survive, so a later `lym fabric reconcile` re-wires the worktree from the same anchor and pathspec.
 //
 // # The scratch link
 //
-// Wiring ends with the scratch step (scratchlink.go): the `.scratch` at the warp worktree's anchor becomes a directory link to `<weft worktree>/<anchor>/.lym/scratch`.
+// Wiring ends with the scratch step (scratchlink.go):
+// the `.scratch` at the warp worktree's anchor becomes a directory link to `<weft worktree>/<anchor>/.lym/scratch`.
 // Agents work from the anchor, so `.scratch` lives there; at the default `.` anchor that is the worktree root.
-// A real directory would change its own modification time with every file an agent creates or removes beneath it, and every source-scan test that opens the module root hashes that time into its `go test` cache key; a link's own `Lstat` stays fixed while files change under its target.
-// The warp `.git/info/exclude` carries `/<anchor>/.scratch`, `/.scratch` at anchor `.`, with no trailing slash, since git matches a link as a file and a directory-only pattern would not exclude it; a legacy line with the trailing slash is replaced.
+// A real directory would change its own modification time with every file an agent creates or removes beneath it,
+// and every source-scan test that opens the module root hashes that time into its `go test` cache key;
+// a link's own `Lstat` stays fixed while files change under its target.
+// The warp `.git/info/exclude` carries `/<anchor>/.scratch` (`/.scratch` at anchor `.`) with no trailing slash;
+// git matches a link as a file, so a directory-only pattern would not exclude it.
+// A legacy line with the trailing slash is replaced.
 //
-// At a subpath anchor nothing of lym's lands at the repository root, so the step first retires what an earlier binary wired there:
-// a root `.scratch` link resolving into the pair's weft worktree is removed through the destruction chokepoint, and the root `/.scratch` exclude line goes once no other warp worktree of the repository still has an entry at its root `.scratch`.
+// At a subpath anchor nothing of lym's lands at the repository root.
+// The step therefore first retires what an earlier binary wired there:
+// a root `.scratch` link resolving into the pair's weft worktree is removed through the destruction chokepoint,
+// and the root `/.scratch` exclude line goes once no other warp worktree has an entry at its root `.scratch`.
 // Any other root `.scratch` is left as found with its exclude line kept and reported with its way forward.
-// `lym fabric reconcile` runs the step on every managed pair, so one pass moves an anchored hub's worktrees and prime over.
+// `lym fabric reconcile` runs the step on every managed pair.
+// One pass therefore moves an anchored hub's worktrees and prime over.
 //
 // The step then runs in order: seed the exclude, refuse to link over paths git tracks, then classify the anchor's entry.
 // An absent entry is linked, creating the target when absent.
 // A correct link has an absent target recreated, and is otherwise untouched.
 // A real directory with an absent target is moved into the target and linked, recorded as `path_renamed`.
-// A link to another target, a real directory while the target exists, a regular file and a tracked `.scratch` are left as found, each reported with its way forward.
-// The step creates nothing when the pair's weft worktree is absent, so a weft torn down mid-repair does not get its `.lym/scratch` recreated as a plain directory.
+// These cases are left as found, each reported with its way forward:
+// a link to another target, a real directory while the target exists, a regular file, and a tracked `.scratch`.
+// The step creates nothing when the pair's weft worktree is absent;
+// a weft torn down mid-repair does not get its `.lym/scratch` recreated as a plain directory.
 // It never fails wiring and removes nothing but a retired root link; a leave or a failure reaches the log as a warning.
 // `lym fabric unwire` keeps the link and its exclude.
 // `lym fabric remove` unlinks the link, and a retired root link still standing, ahead of the warp worktree removal.
-// An anchor change unlinks the link at the old anchor and drops its exclude line unless another worktree still has an entry at that path.
+// An anchor change unlinks the link at the old anchor.
+// It drops the exclude line unless another worktree still has an entry at that path.
 //
-// `lym fabric reconcile` runs the step on every managed pair after the junction repair, on a healthy and a re-wired pair alike and whether or not the repair failed.
-// It reports what the step changed or left in the pair's Detail and changes neither the pair's Action nor its Error, since scratch is agent convenience and never downgrades a verdict about the pair.
-// A pair that never reaches the repair, such as a raw-adopted one, an unmanaged one or one whose weft worktree is still missing, gets no link and no target.
-// A weft worktree torn down mid-repair gets nothing created either, because the step checks the weft root itself first.
+// `lym fabric reconcile` runs the step on every managed pair after the junction repair.
+// It runs on a healthy and a re-wired pair alike, whether or not the repair failed.
+// It reports what the step changed or left in the pair's Detail.
+// It changes neither the pair's Action nor its Error;
+// scratch is agent convenience and never downgrades a verdict about the pair.
+// A pair that never reaches the repair gets no link and no target:
+// a raw-adopted pair, an unmanaged pair, or one whose weft worktree is still missing.
 // The stale-junction sweep never claims the scratch link and never strips its exclude line.
-// After this lands, the operator runs `lym fabric reconcile` once to convert the prime and every pair an older binary wired.
+// `lym fabric reconcile` run once converts the prime and every pair an older binary wired.
 //
-// `lym fabric remove` unlinks the `.scratch` link at the anchor through the destructive gate before it removes the warp worktree directory, and at a subpath anchor also a root `.scratch` link an earlier binary wired, recording a `link_removed` at each.
+// `lym fabric remove` unlinks the anchor's `.scratch` link through the destructive gate before the worktree removal.
+// At a subpath anchor it also unlinks a root `.scratch` link an earlier binary wired.
+// It records a `link_removed` at each.
 // It claims only a link that resolves into the pair's weft worktree; any other entry is left to the worktree removal.
 // The link's target lives in the pair's weft `.lym` and goes with the weft worktree teardown.
 //
-// `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
-// to remove unless that directory is a registered LINKED worktree of the warp repo.
-// The rule is load-bearing rather than defensive: `git worktree remove` refuses a main working
-// tree, a path belonging to another repo (the Bolt checkout is a worktree of the WEFT repo), and a
-// worktree carrying state it will not discard — and treating every one of those refusals as licence
-// to delete the directory turned an ordinary typo into the loss of a whole git clone, gitdir
-// included, reported as success.
-// A directory git deregistered but left on disk, on either side of the pair, is finished through the contained removal `removeWorktreeLeftover`:
-// one git failed to delete, as when a late writer refilled it while git deleted it, and one on disk after git's clean exit, which a late writer such as a build or language server refilled with git-ignored output once git had deleted it.
-// The removal retries a late-writer failure (a not-empty directory, or on Windows a file its writer still holds open) after one second and then two, three attempts in all, and returns any other failure at once.
-// The hub's prime worktree is refused by name before any teardown begins, since it is the warp
-// repository rather than a pair.
-// No teardown waits on the network: `Remove`, `DiscardTaskBranch` and the `Cleanup` sweep run their local steps and hand the remote ones to a detached teardown child (remoteteardown.go).
-// After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` tags the pair's local weft tip `archive/<slug>/<tip>` (`tagWeftTipForArchive`), so the run records on the weft branch stay reachable once the branch is deleted.
-// A failed tag returns its error with the worktrees, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds untagged with `ArchiveSkippedReason` set.
-// The child then runs `archiveWeftTip` from that tip: it reads origin's weft tip and, when origin lacks the local tip, pushes the tip to the weft branch alone, rebase-free and with no code branch, so the tag never goes out ahead of the tip it names; a refused branch push is logged only.
-// It then pushes the tag of the local tip, and a second tag at origin's tip when that tip is neither the local tip nor an ancestor of it, a diverged or ahead tip.
+// `Remove` (remove.go) is the paired teardown.
+// It never deletes a directory git declined to remove unless it is a registered linked worktree of the warp repo.
+// The rule matters because `git worktree remove` refuses a main working tree and a path belonging to another repo.
+// An example is the Bolt checkout, a worktree of the weft repo.
+// It also refuses a worktree carrying state it will not discard.
+// Deleting the directory after such a refusal would lose a whole git clone, gitdir included, and report success.
+// `removeWorktreeLeftover`, a contained removal, finishes a directory git deregistered but left on disk, on either side.
+// It covers two cases:
+// one git failed to delete, as when a late writer refilled it while git deleted it;
+// and one a late writer, such as a build or language server, refilled with git-ignored output after git's clean exit.
+// The removal retries a late-writer failure after one second and then two, three attempts in all.
+// A late-writer failure is a not-empty directory, or on Windows a file its writer still holds open.
+// It returns any other failure at once.
+// The hub's prime worktree is refused by name before any teardown begins.
+// It is the warp repository rather than a pair.
+// No teardown waits on the network.
+// `Remove`, `DiscardTaskBranch` and the `Cleanup` sweep run their local steps,
+// and they hand the remote ones to a detached teardown child (remoteteardown.go).
+// `Remove` tags the pair's local weft tip `archive/<slug>/<tip>` (`tagWeftTipForArchive`) before its first mutation.
+// The tag comes after its refusals, the no-force dirtiness checks and their status probes among them.
+// It keeps the run records on the weft branch reachable once the branch is deleted.
+// A failed tag returns its error with the worktrees, launchers and both branches still in place.
+// A plain re-run retries it;
+// `force` and `remote` never skip it,
+// and a weft repo with no origin proceeds untagged with `ArchiveSkippedReason` set.
+// The child then runs `archiveWeftTip` from that tip.
+// It reads origin's weft tip and, when origin lacks the local tip, pushes the tip to the weft branch alone.
+// The push is rebase-free and carries no code branch, so the tag never goes out ahead of the tip it names;
+// a refused branch push is logged only.
+// It then pushes the tag of the local tip,
+// and it pushes a second tag at origin's tip when that tip is neither the local tip nor an ancestor of it.
+// Such a tip is diverged or ahead.
 // The `Cleanup` sweep archives both tips the same way and pushes no branch.
-// With `remote`, the delete of a weft branch on origin, in `Remove` and in the `Cleanup` sweep alike, is leased on the origin tip the archive read, or on the local tip when the archive's branch push landed.
-// A branch origin moved since stays on origin and is logged as kept, never as a failure, and an origin that held no weft branch at the archive read gets no delete.
-// The tag push retries a `missing necessary objects` refusal beside `(failed)` and `cannot lock ref`, sleeping through the topology's archive sleep seam.
-// A failed remote step is logged and mailed to the hub's orch through the installed push notifier, one line naming the slug and, for each failed step, the operation and the way forward, and a job the child cannot read is mailed the same way; the local archive tag keeps the tip until its push is redone.
-// `Remove` reports the handover in `RemoteHandedOff`; in a test binary the child's steps run in process before the verb returns, filling `OriginArchiveTag`, the `RemoteBranch` and `RemoteCodeBranch` fields and the sweep entry's remote fields, an archive failure returned as the error.
-// Just before the tag, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
+// With `remote`, the delete of a weft branch on origin, in `Remove` and in the `Cleanup` sweep alike, is leased.
+// The lease is on the origin tip the archive read, or on the local tip when the archive's branch push landed.
+// A branch origin moved since stays on origin and is logged as kept, never as a failure,
+// and an origin that held no weft branch at the archive read gets no delete.
+// The tag push retries a `missing necessary objects` refusal beside `(failed)` and `cannot lock ref`.
+// It sleeps through the topology's archive sleep seam.
+// A failed remote step is logged and mailed to the hub's orch through the installed push notifier.
+// The mail is one line naming the slug and, for each failed step, the operation and the way forward.
+// A job the child cannot read is mailed the same way;
+// the local archive tag keeps the tip until its push is redone.
+// `Remove` reports the handover in `RemoteHandedOff`;
+// in a test binary the child's steps run in process before the verb returns.
+// They fill `OriginArchiveTag`, the `RemoteBranch` and `RemoteCodeBranch` fields and the sweep entry's remote fields,
+// and an archive failure is returned as the error.
+// Before the tag, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec,
+// so the tag holds them;
+// only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
-// `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally (task worktree, records worktree, records branch, task branch, launchers, and a stray path at the task worktree's location), made from the same `inspectPair` `Remove` uses.
-// `Topology.PairTaskBranch` reads the warp branch a pair stands on from the pair itself: the branch its task worktree has checked out, else the one its records worktree's branch pairs with, else the first of its names a local branch carries, else the current prefix's name.
+// `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally.
+// The parts are the task worktree, records worktree, records branch, task branch and launchers.
+// A stray path at the task worktree's location counts as a part too.
+// It is made from the same `inspectPair` `Remove` uses.
+// `Topology.PairTaskBranch` reads the warp branch a pair stands on from the pair itself, in this order:
+// the branch its task worktree has checked out;
+// the one its records worktree's branch pairs with;
+// the first of its names a local branch carries;
+// the current prefix's name.
 // A records worktree whose repository cannot be resolved is skipped, so a half-torn pair stays readable.
-// `Topology.PairTaskBranchOrOrigin` reads the same, except that a pair no local worktree or branch names is named by the first of its names origin holds, for a caller that runs after the pair's local parts are gone.
-// A pair's names are the current `branch_prefix` plus slug and the bare slug of a pair made before the prefix was set, so `branch_prefix` names only the branches of pairs made after it changes and can be set while pairs are live.
-// Every step that starts while a pair's worktree stands reads its branches this way, the remote teardown job carries the names read when the teardown started, and every step going from a branch to its slug (cleanup, the origin sweep, `TaskBranchSlugs`, the parent check of `Add`) accepts a branch with the current prefix and one without.
-// `Topology.TaskBranchOnOrigin` reports whether the task branch is on the task repository's origin under either name: a repository with no origin remote reads false, and a failed lookup is returned.
-// `TaskBranchSlugs` lists, offline and read-only, the slugs of a prefix whose task branch exists locally or as an origin remote-tracking branch, so a caller numbering new slugs past a torn-down pair's kept branch sees it.
-// `Topology.DiscardTaskBranch` archives and deletes the task branch locally and on origin whether or not its work is landed: it tags the local tip `archive/<slug>/<first 12 hex>` and deletes the local branch under that tag, and its teardown child pushes the tags, archiving only the containing tip when one tip holds the other, and deletes the branch on origin under them.
-// A failed local tag deletes nothing and wraps `ErrArchiveFailed`, and a refused gate is returned as an error naming the branch.
-// A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
-// After the sibling's teardown `Remove` looks at the task worktree's path once more and removes a directory a late writer refilled there since its removal;
-// one it cannot remove is reported in `StrayPath`, and `Remove` finishes the teardown and returns an error wrapping `ErrStrayPathKept`.
-// `Topology.RemoveStrayTaskPath` deletes a path at a slug's task worktree location that is no registered worktree and holds no `.git` entry, for a caller that knows the slug's pair stood there; a failed delete wraps `ErrStrayPathKept`.
-// `PairWorktreeStands` reports whether a slug's task worktree stands as a registered linked worktree, so a caller never reads such a leftover directory as a pair.
-// `Prune` reports every hub directory named as a pair slug that no registration covers as `Unowned`, naming the way to clear it, and never removes one.
-// With `remote`, `Remove`'s teardown child also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is logged as kept and is no failure.
-// The result names the code branch's fate in `CodeBranchDeleted` and `CodeBranchKeptReason` (JSON `code_branch_deleted`, `code_branch_kept_reason`, `remote_code_branch_deleted`, `remote_code_branch_kept_reason`).
-// `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree` (JSON `code_worktree`, `records_worktree`).
+// `Topology.PairTaskBranchOrOrigin` reads the same for a caller that runs after the pair's local parts are gone.
+// A pair no local worktree or branch names is named by the first of its names origin holds.
+// A pair's names are the current `branch_prefix` plus slug and the bare slug of a pair made before the prefix was set.
+// So `branch_prefix` names only the branches of pairs made after it changes, and it can be set while pairs are live.
+// Every step that starts while a pair's worktree stands reads its branches this way;
+// the remote teardown job carries the names read when the teardown started;
+// and every step going from a branch to its slug accepts a branch with the current prefix and one without.
+// Those steps are cleanup, the origin sweep, `TaskBranchSlugs` and the parent check of `Add`.
+// `Topology.TaskBranchOnOrigin` reports whether the task branch is on the task repository's origin under either name:
+// a repository with no origin remote reads false, and a failed lookup is returned.
+// `TaskBranchSlugs` lists the slugs of a prefix whose task branch exists locally or as an origin remote-tracking ref.
+// It reads offline and writes nothing, so a caller numbering new slugs past a torn-down pair's kept branch sees it.
+// `Topology.DiscardTaskBranch` archives and deletes the task branch locally and on origin, landed or not.
+// It tags the local tip `archive/<slug>/<first 12 hex>` and deletes the local branch under that tag.
+// Its teardown child pushes the tags, archiving only the containing tip when one tip holds the other,
+// and it deletes the branch on origin under them.
+// A failed local tag deletes nothing and wraps `ErrArchiveFailed`,
+// and a refused gate is returned as an error naming the branch.
+// A pair already half removed is finished rather than refused:
+// `Remove` does whatever teardown remains and reports its `Steps` and any `StrayPath`.
+// It returns `ErrPairNotFound` when nothing is left.
+// After the sibling's teardown, `Remove` looks at the task worktree's path once more.
+// It removes a directory a late writer refilled there since the removal;
+// one it cannot remove is reported in `StrayPath`,
+// and `Remove` finishes the teardown and returns an error wrapping `ErrStrayPathKept`.
+// `Topology.RemoveStrayTaskPath` deletes a path at a slug's task worktree location.
+// The path must be no registered worktree and hold no `.git` entry.
+// It is for a caller that knows the slug's pair stood there;
+// a failed delete wraps `ErrStrayPathKept`.
+// `PairWorktreeStands` reports whether a slug's task worktree stands as a registered linked worktree.
+// A caller thus never reads a leftover directory as a pair.
+// `Prune` reports every hub directory named as a pair slug that no registration covers as `Unowned`.
+// It names the way to clear it and never removes one.
+// With `remote`, `Remove`'s teardown child also deletes the landed task branch on origin.
+// The delete is leased to the observed tip and gated on the branch being landed;
+// a refusal or lost lease is logged as kept and is no failure.
+// The result names the code branch's fate in `CodeBranchDeleted` and `CodeBranchKeptReason`.
+// The JSON keys are `code_branch_deleted` and `code_branch_kept_reason`.
+// The remote keys are `remote_code_branch_deleted` and `remote_code_branch_kept_reason`.
+// `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree`.
+// Their JSON keys are `code_worktree` and `records_worktree`.
 //
 // `Cleanup` sweeps local leftovers.
-// Under apply it takes each orphan's slug's teardown lock with one try before it archives or deletes anything of the slug: a held lock skips the slug whole (`Skipped`, `SkippedReason`), another lock error fills the entry's `Error`, and an orphan a worktree turned live since the enumeration gets no entry.
-// `CleanupRemoteWarp` takes the same one try per candidate before its leased delete, and keeps the candidate with a `Reason` when the lock is held or a hub worktree has the branch checked out.
+// Under apply it makes one try at each orphan slug's teardown lock before it archives or deletes anything of the slug:
+// a held lock skips the slug whole (`Skipped`, `SkippedReason`);
+// another lock error fills the entry's `Error`;
+// an orphan a worktree turned live since the enumeration gets no entry.
+// `CleanupRemoteWarp` takes the same one try per candidate before its leased delete.
+// It keeps the candidate with a `Reason` when the lock is held or a hub worktree has the branch checked out.
 // A skipped slug is swept by a later run, and the try never waits.
-// `CleanupRemoteWarp` is the separate origin sweep: it classifies leftover task branches on origin against the open-PR heads its caller supplies and, with apply, deletes the landed ones; a nil open-PR set refuses every deletion.
+// `CleanupRemoteWarp` is the separate origin sweep.
+// It classifies leftover task branches on origin against the open-PR heads its caller supplies.
+// With apply, it deletes the landed ones;
+// a nil open-PR set refuses every deletion.
 //
-// `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind, and a pair moved from another machine.
-// Before its first mutation it probes both origins read-only (remoteleftover.go), the two `ls-remote` reads in parallel, and decides whether the pair is live.
-// The probes are the one remote read a command waits on by design: a branch found on origin is adopted and the work continued on.
-// A pair is live when its weft branch exists locally, or exists on origin with no `archive/<slug>/*` tag covering its tip;
+// `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind.
+// It also handles a pair moved from another machine.
+// Before its first mutation it probes both origins read-only (remoteleftover.go).
+// The two `ls-remote` reads run in parallel;
+// `Add` then decides whether the pair is live.
+// The probes are the one remote read a command waits on by design:
+// a branch found on origin is adopted and the work continued on.
+// A pair is live when its weft branch exists locally.
+// A pair is also live when its weft branch exists on origin with no `archive/<slug>/*` tag covering its tip;
 // archive tags are consulted only when there is no local weft branch.
 // A live pair is adopted, never forked:
-// a local weft branch behind origin is fast-forwarded to origin's tip (`KindRepoAdvanced`),
-// a weft branch only on origin becomes a local tracking branch through `resolveWeftBranch`,
+// a local weft branch behind origin is fast-forwarded to origin's tip (`KindRepoAdvanced`);
+// a weft branch only on origin becomes a local tracking branch through `resolveWeftBranch`;
 // and an origin warp branch becomes a local tracking branch whatever its relation to `HEAD`.
 // A true divergence between the local weft branch and origin's is refused with an `*ErrRemoteLeftover`,
 // and nothing on origin is ever force-pushed or deleted for a live pair.
@@ -645,630 +822,879 @@
 // A pair that is not live has a removed pair's leftovers: the archive tag is the orphan proof,
 // and a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable.
 // The warp side of such a pair is refused unless the remote warp tip is an ancestor of `HEAD`.
-// Once the refusals have passed and before the first worktree is made, `Add` drops the remote-tracking ref and the upstream setting (`gitrepo.DropRemoteTracking`) of each branch the probes read absent on origin, weft or warp,
-// so a reconcile before the new pair's first push does not judge a removed pair's tracking ref as a branch gone from origin.
-// The dropped ref names a branch origin does not hold, so no origin head is lost; a failed drop fails the `Add` before anything is made, and a rollback restores neither the ref nor the setting.
+// Once the refusals have passed and before the first worktree is made, `Add` drops the tracking state of each branch.
+// The branches are the weft and warp branches the probes read absent on origin;
+// the state is the remote-tracking ref and the upstream setting (`gitrepo.DropRemoteTracking`).
+// So a reconcile before the pair's first push never judges a removed pair's tracking ref as a branch gone from origin.
+// The dropped ref names a branch origin does not hold, so no origin head is lost;
+// a failed drop fails the `Add` before anything is made, and a rollback restores neither the ref nor the setting.
 // No probe runs under `SkipGit` or `SkipPush`, so nothing is dropped.
-// A replaceable weft leftover is deleted at step 11, `Add`'s last, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
-// `Add` pushes neither branch: its callers spawn the pair's detached push through `SpawnPairPush`, and the leftover's deletion keeps that push from being rejected.
-// A failed or never-run push leaves both branches committed locally, and the pair's next detached push, which every fabric commit and sync spawns, carries them and creates a never-pushed branch's upstream.
-// A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, never touches an origin branch, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
+// A replaceable weft leftover is deleted at `Add`'s last step, step 11, through the destructive gate.
+// The delete leases the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
+// `Add` pushes neither branch:
+// its callers spawn the pair's detached push through `SpawnPairPush`,
+// and the leftover's deletion keeps that push from being rejected.
+// A failed or never-run push leaves both branches committed locally.
+// Every fabric commit and sync spawns a detached push of the pair.
+// The next one carries the commits and creates a never-pushed branch's upstream.
+// A rollback deletes the local branches this `Add` created, a weft branch taken from origin included.
+// It never touches an origin branch, and it never restores the deleted remote weft branch:
+// its content is reachable from the archive tag.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
 // A rollback never deletes an adopted warp branch.
 //
-// Every plain fabric push retries a push the server refuses on the pushed ref with a bare `(failed)` or a remote `cannot lock ref`, through gitrepo's bounded retry with exponential backoff;
-// the archive tag push included, on its own longer schedule of six attempts from two seconds doubling, and every other push failure returns on the first attempt.
+// Every plain fabric push retries a refusal of the pushed ref.
+// The retried refusals read as a bare `(failed)` or a remote `cannot lock ref`.
+// The retry is gitrepo's bounded retry with exponential backoff.
+// The archive tag push retries too, on its own longer schedule of six attempts from two seconds doubling.
+// Every other push failure returns on the first attempt.
 // The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.
 // `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch,
 // and the warp branch forks from `HEAD`.
 //
 // **Weft-branch resolution.**
-// `resolveWeftBranch` (weftbranch.go) is the one place a verb decides where a pair's weft branch comes from: the local branch first, then the branch on origin, adopted as a local branch tracking it, then none,
-// and the caller forks.
-// `Checkout` takes the weft branch that way, whether or not an archive tag covers the origin tip, and rolls an adopted branch back like a forked one, deleting only the local branch.
+// `resolveWeftBranch` (weftbranch.go) is the one place a verb decides where a pair's weft branch comes from.
+// It takes the local branch first, then the branch on origin, adopted as a local branch tracking it;
+// with neither, it returns none and the caller forks.
+// `Checkout` takes the weft branch that way, whether or not an archive tag covers the origin tip.
+// It rolls an adopted branch back like a forked one, deleting only the local branch.
 // An unreachable origin stops the verb instead of forking,
-// and a weft repo with no `origin` remote forks as before.
-// `Reconcile` consults it for a pair whose weft worktree is missing, before its raw-warp and unmanaged branches: a weft branch found locally or on origin is adopted as a worktree and the pair's wiring repaired (`weft_recreated`),
-// so a raw warp worktree with an origin weft ends wired rather than dormant,
-// and only with no such branch does it fork a dormant weft.
-// When the worktree adopt fails after the resolver created the local branch from origin, `Reconcile` deletes that branch again through the destruction gate,
-// so a surviving local weft branch stays proof of a live pair;
+// and a weft repo with no `origin` remote forks.
+// `Reconcile` consults it for a pair whose weft worktree is missing, before its raw-warp and unmanaged branches.
+// A weft branch found locally or on origin is adopted as a worktree and the pair's wiring repaired (`weft_recreated`),
+// so a raw warp worktree with an origin weft ends wired rather than dormant;
+// only with no such branch does it fork a dormant weft.
+// `Reconcile` deletes a local weft branch the resolver created from origin when the worktree adopt then fails.
+// The delete goes through the destruction gate, so a surviving local weft branch stays proof of a live pair;
 // origin is never touched.
 //
 // **Config changes.**
-// `ReadConfigChanges` (configchanges.go) intersects the diff of a task's weft branch against its fork point from the parent's weft branch with its diff against the parent's current tip, and reports which of the config files its caller names are in both, as `ConfigChanges`.
-// `ConfigChanges.Contents` carries, per reported file, its bytes at the fork point, the task tip and the parent tip, nil where a revision holds no such file, so a file whose text changed stays a candidate and the caller compares it key by key.
-// It is read-only and writes nothing;
+// `ReadConfigChanges` (configchanges.go) intersects two diffs of a task's weft branch.
+// One is against its fork point from the parent's weft branch;
+// the other is against the parent's current tip.
+// It reports as `ConfigChanges` which of the config files its caller names are in both.
+// `ConfigChanges.Contents` carries, per reported file, its bytes at the fork point, the task tip and the parent tip.
+// A revision that holds no such file gives nil,
+// so a file whose text changed stays a candidate and the caller compares it key by key.
+// It is read-only;
 // the caller supplies the anchor-relative file set, because the config registry imports this package.
 //
-// **Line change.** `LineChange(from, to)` (linechange.go) reads the tree difference between two commits of the pair's code repository as a `LineChange`, beside `ChangedPaths`.
-// It holds the sorted changed paths with a rename at both its paths, the added plus deleted lines from `git diff --numstat -M` (a pure rename counts none, a binary file counts one), and the text of every added line.
+// **Line change.** `LineChange(from, to)` (linechange.go) reads the tree difference between two commits.
+// The commits belong to the pair's code repository, and the result is a `LineChange`.
+// It holds the sorted changed paths with a rename at both its paths, and the text of every added line.
+// It also holds the added plus deleted lines from `git diff --numstat -M`;
+// a pure rename counts none, and a binary file counts one.
 // It is read-only, and a read failure is an error naming both commits.
 //
-// **Diff size.** `DiffSize(from, to)` (linechange.go) reads the same `git diff --numstat -M` as a `DiffSize`: the added lines, the deleted lines and the changed files, a rename and a binary file each one file, and a binary file or a pure rename no lines.
+// **Diff size.** `DiffSize(from, to)` (linechange.go) reads `git diff --numstat -M` and returns a `DiffSize`.
+// It holds the added lines, the deleted lines and the changed files.
+// A rename and a binary file each count one file, and a binary file or a pure rename counts no lines.
 // It is read-only, and a read failure is an error naming both commits.
 //
-// **Code identity reads.** Three read-only methods (taskpatch.go) give a code segment's identity what `Diff`'s changed paths cannot, and mutate nothing.
-// `ReadTaskPatch(base, skip)` returns a `TaskPatch`: the warp working tree's change against the told merge base, tracked files and uncommitted edits included, plus every untracked non-ignored file as a new-file diff, minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
-// It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form, which a rebase that only moves context leaves unchanged.
-// `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In: a merge commit whose second parent is an ancestor of `parentTip`, or a commit that is itself such an ancestor, as a fast-forward Merge-In leaves it.
+// **Code identity reads.** These methods (taskpatch.go) read a code segment's identity and mutate nothing.
+// `ReadTaskPatch(base, skip)` returns a `TaskPatch`:
+// the warp working tree's change against the told merge base, tracked files and uncommitted edits included;
+// plus every untracked non-ignored file as a new-file diff;
+// minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
+// It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form.
+// A rebase that only moves context leaves that patch-id unchanged.
+// `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In.
+// A Merge-In is a merge commit whose second parent is an ancestor of `parentTip`;
+// a commit that is itself such an ancestor also counts, as a fast-forward Merge-In leaves it.
 // `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
 //
-// `ValidatePairSlug` is the one pair slug rule, the one `Add` and `Remove` apply, exported so the board applies it through its seam and refuses a slug with the same reason text, matching `ErrInvalidSlug`.
+// `ValidatePairSlug` is the one pair slug rule, the one `Add` and `Remove` apply.
+// It is exported so the board applies it through its seam.
+// A slug it refuses carries the same reason text and matches `ErrInvalidSlug`.
 //
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
-// A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
-// The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).
-// The pair's first weft commit, the origin record's, stages the root's deletions when the fork point tracked anything there.
-// The adopt path drops nothing, because an existing branch's run records are its own, and `Reconcile`'s dormant-weft creation keeps the plain fork since it makes no commit to carry a drop.
+// A weft branch forked from its parent would carry every committed run directory.
+// That includes one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
+// The fork is `worktree add --no-checkout` followed by writing out the index without the `shedrun.RunsRootRel()` tree.
+// No run record reaches the new worktree's disk and nothing is deleted;
+// an index-only removal after a full checkout would leave the files `shedrun` reads.
+// The pair's first weft commit is the origin record's.
+// It stages the root's deletions when the fork point tracked anything there.
+// The adopt path drops nothing, because an existing branch's run records are its own.
+// `Reconcile`'s dormant-weft creation keeps the plain fork, since it makes no commit to carry a drop.
 //
 // `Add` records the pair's origin (`_lym/fabric/origin.json`) in that same first weft commit.
-// The record holds two write-once fields: `parent_branch`, the warp branch the pair was forked from, and `parent_worktree`, the `WorktreeName` of the worktree `Add` ran from.
+// The record holds two write-once fields:
+// `parent_branch` is the warp branch the pair was forked from;
+// `parent_worktree` is the `WorktreeName` of the worktree `Add` ran from.
 // The parent worktree is what a run's parent agent name is resolved from.
-// A record written before `parent_worktree` existed, or by a legacy-worktree repair that cannot know the creator, decodes with it empty.
-// A third field, `beam` (omitted when false), marks the pair as a beam; a record written before it decodes as no beam.
-// `AddOptions.Beam` writes it at creation, and `MarkBeam` writes it into an existing pair's record and commits that one path, reporting false when the mark is already there.
+// A record that lacks `parent_worktree` decodes with it empty;
+// a legacy-worktree repair writes one, since it cannot know the creator.
+// A third field, `beam` (omitted when false), marks the pair as a beam; a record without it decodes as no beam.
+// `AddOptions.Beam` writes it at creation.
+// `MarkBeam` writes it into an existing pair's record and commits that one path.
+// It reports false when the mark is already there.
 //
-// With `AddOptions.Parent` naming a pair of the hub, `Add` forks the new pair from that pair instead of from the acting worktree.
-// The warp branch forks from the parent worktree's HEAD (`git worktree add -b <branch> <path> <sha>`) and the weft branch from the parent's records branch,
+// `AddOptions.Parent` names a pair of the hub.
+// `Add` then forks the new pair from that pair instead of from the acting worktree.
+// The warp branch forks from the parent worktree's HEAD (`git worktree add -b <branch> <path> <sha>`);
+// the weft branch forks from the parent's records branch;
 // and the origin record carries the parent's branch as `parent_branch` and the parent's slug as `parent_worktree`.
-// The acting worktree keeps every other role, so a caller in any worktree that passes the prime's location forks from the named parent.
-// `resolveAddParent` refuses, before any mutation and naming the way forward, a parent that is no live pair of the hub (`lym fabric pairs`), the prime itself, a parent on a detached HEAD or unborn branch and a parent whose checked-out branch is not its own pair branch (`lym fabric checkout <branch>` in the parent).
-// A named parent checks no tracked dirt in either worktree and logs the parent's dirty paths at Info: the fork takes the parent's last commit, never its uncommitted edits.
+// The acting worktree keeps every other role,
+// so a caller in any worktree that passes the prime's location forks from the named parent.
+// `resolveAddParent` refuses these parents before any mutation, naming the way forward:
+// a parent that is no live pair of the hub (`lym fabric pairs`);
+// the prime itself;
+// a parent on a detached HEAD or unborn branch;
+// and a parent whose checked-out branch is not its own pair branch (`lym fabric checkout <branch>` in the parent).
+// A named parent checks no tracked dirt in either worktree and logs the parent's dirty paths at Info:
+// the fork takes the parent's last commit, never its uncommitted edits.
 // Without `Parent`, `Add` forks from the acting worktree's HEAD and refuses its tracked dirt with `ErrSourceDirty`.
 //
-// With `AddOptions.AdoptLocal`, `Add` makes a pair over an unmarked local warp branch that already exists, instead of refusing `ErrBranchExists`.
-// The branch is checked out into the new worktree (`git worktree add <path> <branch>`) and, like an adopted marked branch, is never deleted by the rollback; the weft side follows the usual rules, adopting a live records branch and otherwise forking from the parent's records branch.
-// The `--adopt-local` flag sets it, and otherwise only batten's resume does, under `AdoptOnly`, so an unattended run never adopts a stale branch left under a reused slug.
-// Before any mutation `refuseAdoptLocalCheckedOut` refuses, with an `*ErrAdoptLocalCheckedOut`, a warp branch checked out in another worktree (`lym fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
-// The origin record's parent comes from `Parent` or the acting worktree, except when the adopted branch is the warp's default branch: then `parent_branch` and `parent_worktree` are empty, a root pair, which batten's Land row refuses to land on.
+// `AddOptions.AdoptLocal` makes `Add` build a pair over an unmarked local warp branch that already exists.
+// Without it, `Add` refuses with `ErrBranchExists`.
+// The branch is checked out into the new worktree (`git worktree add <path> <branch>`).
+// Like an adopted marked branch, it is never deleted by the rollback;
+// the weft side follows the usual rules:
+// it adopts a live records branch and otherwise forks from the parent's records branch.
+// The `--adopt-local` flag sets it, and otherwise only batten's resume does, under `AdoptOnly`.
+// An unattended run therefore never adopts a stale branch left under a reused slug.
+// Before any mutation `refuseAdoptLocalCheckedOut` refuses with an `*ErrAdoptLocalCheckedOut`:
+// a warp branch checked out in another worktree (`lym fabric checkout <other branch>` in it);
+// and a records branch checked out in another records worktree.
+// The way forward is `git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair.
+// The origin record's parent comes from `Parent` or the acting worktree.
+// When the adopted branch is the warp's default branch, `parent_branch` and `parent_worktree` are empty:
+// that is a root pair, which batten's Land row refuses to land on.
 //
-// With `AddOptions.AdoptOnly`, set only together with `AdoptLocal`, `Add` re-makes a live pair and forks nothing (addadoptonly.go).
-// A weft branch that is absent locally and on origin, or whose origin tip an `archive/<slug>/*` tag covers, and a task branch that is neither local nor on origin, return `*ErrNotLive` before any mutation; it matches the sentinel `ErrPairNotLive` under `errors.Is`, and `errors.As` reads the branch and whether it is the records branch.
-// It skips every check that guards only a fork: `ErrSourceDirty`, the acting worktree's HEAD, the fork point's marker, and the parent, which the adopted weft's origin record names; an adopted weft with no origin record is written none.
-// The warp probe also runs for an adopted local task branch, only to learn whether origin holds it: the branch is never fetched or replaced from origin, and a stale remote-tracking ref for a branch origin lacks is dropped.
-// A records worktree that stands registered, not prunable, on the weft branch is reused: `Add` makes only the task worktree, takes the anchor that worktree records, fast-forwards a behind branch by fetching origin's tip by SHA and merging it inside that worktree, and a rollback leaves the worktree and its branch in place.
-// A records worktree directory that stands without being such a worktree returns `*ErrRecordsWorktreeNotPair`, an existing task worktree path `*ErrTaskPathTaken`.
-// Under `AdoptOnly` the checked-out guard also covers a records branch another records worktree holds when the task branch comes from origin.
-// `PruneRegistrations` runs `git worktree prune` in the code and the records repository, so a pair whose worktree directories were deleted by hand holds no stale registration when it is re-made.
+// `AddOptions.AdoptOnly` makes `Add` re-make a live pair and fork nothing (addadoptonly.go).
+// It is set only together with `AdoptLocal`.
+// These cases return `*ErrNotLive` before any mutation:
+// a weft branch that is absent locally and on origin, or whose origin tip an `archive/<slug>/*` tag covers;
+// and a task branch that is neither local nor on origin.
+// It matches the sentinel `ErrPairNotLive` under `errors.Is`.
+// `errors.As` reads the branch and whether it is the records branch.
+// It skips every check that guards only a fork:
+// `ErrSourceDirty`, the acting worktree's HEAD, the fork point's marker, and the parent.
+// The parent comes from the adopted weft's origin record;
+// an adopted weft with no origin record is written none.
+// The warp probe also runs for an adopted local task branch, only to learn whether origin holds it:
+// the branch is never fetched or replaced from origin,
+// and a stale remote-tracking ref for a branch origin lacks is dropped.
+// A records worktree that stands registered, not prunable, on the weft branch is reused:
+// `Add` makes only the task worktree and takes the anchor that worktree records.
+// It fast-forwards a behind branch by fetching origin's tip by SHA and merging it inside that worktree,
+// and a rollback leaves the worktree and its branch in place.
+// A records worktree directory that stands without being such a worktree returns `*ErrRecordsWorktreeNotPair`.
+// An existing task worktree path returns `*ErrTaskPathTaken`.
+// Under `AdoptOnly` the checked-out guard has one more case.
+// It covers a records branch another records worktree holds when the task branch comes from origin.
+// `PruneRegistrations` runs `git worktree prune` in the code and the records repository.
+// A pair whose worktree directories were deleted by hand thus holds no stale registration when it is re-made.
 //
-// Three read-only reads of the records repository serve a caller that restores a pair's records once the pair is gone (recordsreads.go); none writes a branch, a tag or a remote-tracking ref.
-// `SlugRecordsTags` lists a slug's `archive/<slug>/*` tags on origin and its local `archive/<slug>/*` and `set-aside/<slug>/*` tags, each as a `RecordsTag` with its peeled commit, whether origin holds it, whether only origin does, the commit's committer time and the content of each requested path found at the commit, resolved under the anchor that commit itself records.
+// Read-only reads of the records repository (recordsreads.go) serve a caller that restores a pair's records.
+// The caller runs once the pair is gone;
+// none of the reads writes a branch, a tag or a remote-tracking ref.
+// `SlugRecordsTags` lists a slug's tags as `RecordsTag` values.
+// The tags are the `archive/<slug>/*` tags on origin and the local `archive/<slug>/*` and `set-aside/<slug>/*` tags.
+// Each carries its peeled commit, whether origin holds it, whether only origin does, and the commit's committer time.
+// Each also carries the content of each requested path found at the commit.
+// The path is resolved under the anchor that commit itself records.
 // A commit only origin holds is fetched by SHA first, and a records repository with no origin lists local tags only.
-// `RecordsBranchFile` reads one anchored file of a records branch, from the local branch when it exists and otherwise from origin's copy fetched by SHA, and reports it absent when the branch or the file is.
-// `RecordsBranchHasUpstream` reports whether the records repository configures `branch.<branch>.remote` or `branch.<branch>.merge`.
+// `RecordsBranchFile` reads one anchored file of a records branch from the local branch when it exists.
+// Otherwise it reads origin's copy, fetched by SHA, and it reports the file absent when the branch or the file is.
+// `RecordsBranchHasUpstream` reports whether the records repository configures an upstream for a branch.
+// The upstream is `branch.<branch>.remote` or `branch.<branch>.merge`.
 //
-// Three trailer seams (trailercommit.go) serve a caller that stamps its own marker into a records commit and finds it again, and name no caller's concept.
-// `CommitAnchoredPathsWithTrailers` commits anchor-relative paths as `CommitAnchoredPaths` does, with a message ending in a trailer block: `Warp-SHA: <the warp checkout's HEAD>`, which `CommitAnchoredPaths` writes none of, then one `Key: Value` line per `Trailer`, in order.
-// A key outside `[A-Za-z][A-Za-z0-9-]*` or a value that is empty or holds a line break is refused, naming the trailer, before anything is staged.
-// `FindTrailerCommit` walks the records branch's first-parent history from HEAD and returns the newest or the oldest commit carrying a key as a `TrailerCommit` (its SHA, the key's last value and its `Warp-SHA` value); a records branch with no commit reads as not found.
-// `AnchoredFileAt` reads an anchor-relative file as stored in a records commit, and reads a path absent there as not found.
+// The trailer seams (trailercommit.go) serve a caller that stamps its own marker into a records commit.
+// The caller finds the marker again, and the seams name no caller's concept.
+// `CommitAnchoredPathsWithTrailers` commits anchor-relative paths with a message ending in a trailer block.
+// The block holds `Warp-SHA: <the warp checkout's HEAD>`, then one `Key: Value` line per `Trailer`, in order.
+// A key outside `[A-Za-z][A-Za-z0-9-]*` or a value that is empty or holds a line break is refused.
+// The error names the trailer, and nothing is staged.
+// `FindTrailerCommit` walks the records branch's first-parent history from HEAD.
+// It returns the newest or the oldest commit carrying a key as a `TrailerCommit`.
+// The `TrailerCommit` holds the SHA, the key's last value and the `Warp-SHA` value;
+// a records branch with no commit reads as not found.
+// `AnchoredFileAt` reads an anchor-relative file as stored in a records commit.
+// A path absent there reads as not found.
 //
-// Two read-only reads of the checkouts (checkoutstate.go) name no caller's concept either.
-// `CheckoutStates` returns a `CheckoutState` for the warp checkout and for the weft worktree: its root, its HEAD, its tracked paths that differ from HEAD and its untracked paths outside the ignore rules and `.git/info/exclude`, every list slash-separated, relative to the root, sorted and never nil.
-// `RecordsPathsChangedSince` lists the weft paths whose committed content differs between a revision and the weft worktree's HEAD, in the same form.
+// Read-only reads of the checkouts (checkoutstate.go) also name no caller's concept.
+// `CheckoutStates` returns a `CheckoutState` for the warp checkout and for the weft worktree.
+// It holds the root, the HEAD, and the tracked paths that differ from HEAD.
+// It also holds the untracked paths outside the ignore rules and `.git/info/exclude`.
+// Every list is slash-separated, relative to the root, sorted and never nil.
+// `RecordsPathsChangedSince` lists the weft paths whose committed content differs between a revision and the weft HEAD.
+// The list has the same form.
 //
 // # The one-repo illusion at the public API boundary
 //
-// fabric exists to sell one illusion to every other package: a developer, an agent, and every lym module see one repository, called fabric, never the warp/weft split underneath it.
-// `Open(l *lymcwd.Location) (*Fabric, error)` is the only constructor any other package calls — it derives both paths from l and stat-validates them, performing no wiring of its own (wiring is Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup).
-// `OpenParent` is the parent-fabric resolution chain built on `List` — it matches the hub's worktrees against a caller-supplied branch, skipping any `Prunable` entry (git's own signal that a worktree's directory is gone but its administrative entry survives), resolves the match via `lymcwd.ResolveWorktree`, and opens it through `Open`, returning a plain error a caller turns into `Stuck` when no live pair matches;
-// `Fabric.OriginURL()` and `Fabric.PushBranch(opts)` are the two single-sided methods a caller like `internal/loomcli` reaches for under the same carve-out `Open`'s own bullet already states, `OriginURL` wrapping the warp side's `RemoteURL("origin")` and `PushBranch` wrapping `PushWarpRebaseFreeAt` under a vocabulary-neutral name `internal/loomcli` is not permitted to say itself.
-// `Fabric.Commit`'s `CommitResult.Committed() bool` is the one commit result a consumer outside the owner set should read;
-// the four raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only because `internal/fabriccli`'s own `lym fabric weft …` verb prints them by design.
-// `RefScanner` (refscanner.go), constructed via `NewRefScanner(l)`, is how a consumer like `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the answer.
+// fabric exists to sell one illusion to every other package:
+// a developer, an agent, and every lym module see one repository, called fabric, never the warp/weft split under it.
+// `Open(l *lymcwd.Location) (*Fabric, error)` is the only constructor any other package calls.
+// It derives both paths from l and stat-validates them, and it performs no wiring of its own;
+// wiring is Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup.
+// `OpenParent` is the parent-fabric resolution chain built on `List`.
+// It matches the hub's worktrees against a caller-supplied branch, skipping any `Prunable` entry.
+// A `Prunable` entry is git's own signal that a worktree's directory is gone but its administrative entry survives.
+// It resolves the match via `lymcwd.ResolveWorktree` and opens it through `Open`,
+// and it returns a plain error a caller turns into `Stuck` when no live pair matches.
+// `Fabric.OriginURL()` and `Fabric.PushBranch(opts)` are single-sided methods for a caller like `internal/loomcli`.
+// They fall under the same carve-out as `Open`.
+// `OriginURL` wraps the warp side's `RemoteURL("origin")`.
+// `PushBranch` wraps `PushWarpRebaseFreeAt` under a vocabulary-neutral name, one `internal/loomcli` may say.
+// A consumer outside the owner set reads only `CommitResult.Committed() bool` of `Fabric.Commit`.
+// The raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only for `internal/fabriccli`.
+// Its `lym fabric weft …` verb prints them by design.
+// `RefScanner` (refscanner.go), built by `NewRefScanner(l)`, answers a consumer like `websterengine`'s audit.
+// The question is "does this command reference fabric's two-checkout mechanism".
+// The consumer never holds the weft path or the command-spelling pattern itself;
+// fabric owns every word in the answer.
 // `ReferenceRule` (refscanner.go), constructed via `NewReferenceRule()`, is the location-free part of that answer.
-// Its `MatchPath` and `MatchSpelling` return the matched text without any worktree, so a plan check shares one rule with the audit.
-// `MatchPath` reads no bare weft-suffixed word inside a `lym gate` invocation, because a card ID may end in the suffix and a gate resolves its arguments inside the worktree;
+// Its `MatchPath` and `MatchSpelling` return the matched text without any worktree,
+// so a plan check shares one rule with the audit.
+// `MatchPath` reads no bare weft-suffixed word inside a `lym gate` invocation.
+// A card ID may end in the suffix, and a gate resolves its arguments inside the worktree;
 // a separator-prefixed weft path there still matches.
-// `IsReadOnlyCommand` (refscanner.go) rejects an unquoted parenthesis and a dollar expansion in a reader segment, because a zsh glob qualifier and a parameter expansion run code with no substitution marker.
-// It otherwise leaves readers' globs and flags free, because no flag of a listed reader writes a file or runs a command, so a glob that expands into a flag-shaped name can do nothing a typed flag could not.
-// A reader joins `readOnlyCommands` only if none of its flags writes or executes, and a reader that blocks, such as `tail -f`, writes nothing and is admitted.
-// In `git` words an unquoted glob is rejected except after the `--` of `log`, `show`, `diff` and `status`, because git reads every word after `--` as a pathspec, so an expanded name is a path and never a flag.
+// `IsReadOnlyCommand` (refscanner.go) rejects an unquoted parenthesis and a dollar expansion in a reader segment.
+// A zsh glob qualifier and a parameter expansion run code with no substitution marker.
+// It otherwise leaves readers' globs and flags free.
+// No flag of a listed reader writes a file or runs a command,
+// so a glob that expands into a flag-shaped name can do nothing a typed flag could not.
+// A reader joins `readOnlyCommands` only if none of its flags writes or executes.
+// A reader that blocks, such as `tail -f`, writes nothing and is admitted.
+// In `git` words an unquoted glob is rejected except after the `--` of `log`, `show`, `diff` and `status`.
+// Git reads every word after `--` as a pathspec, so an expanded name is a path and never a flag.
 // Every other rule is in `IsReadOnlyCommand`'s comment.
-// `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause` instead of parsing prose.
-// `PushAnchored(l, opts, lockWait)`, `PushPairAnchored(l, opts, lockWait)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
+// `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to substring-match.
+// A caller like `preflight.CheckResolved` thus switches on `HealthReason.Cause` instead of parsing prose.
+// `PushAnchored(l, opts, lockWait)` and `PushPairAnchored(l, opts, lockWait)` are vocabulary-neutral entry points.
+// `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are too.
+// Each takes `l` and is reachable the same way `CommitAnchoredPaths` is.
 // `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
-// On an opened `*Fabric`, `Fabric.MidMerge` is the same probe over that pair's own location, and `Fabric.CodeDirtyPaths` reads the code checkout's tracked dirty paths, the list the dirty merge guard decides on.
-// For a parked fabric merge the answer also carries the record's verb, source branch and the code side's source and start SHAs.
+// On an opened `*Fabric`, `Fabric.MidMerge` is the same probe over that pair's own location.
+// `Fabric.CodeDirtyPaths` reads the code checkout's tracked dirty paths, the list the dirty merge guard decides on.
+// For a parked fabric merge the answer also carries the record's verb and source branch.
+// It carries the code side's source and start SHAs as well.
 // `lym loom start` consults it before putting a driver to work.
-// `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the invariant's scan matches the bare token inside an identifier, so the published name is itself the leak, and a caller that must refuse fabric's own checkouts before driving topology has no other way in.
-// `PushAnchored` and `PushPairAnchored` are the synchronous, rebase-free counterparts to `CommitAnchoredPaths`: the first pushes the records side only;
-// the second pushes the code side and then the records side, except in the hub's prime, where it pushes the records side only and reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
+// `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all.
+// The invariant's scan matches the bare token inside an identifier, so the published name is itself the leak,
+// and a caller that must refuse fabric's own checkouts before driving topology has no other way in.
+// `PushAnchored` and `PushPairAnchored` are synchronous and rebase-free:
+// the first pushes the records side only;
+// the second pushes the code side and then the records side;
+// in the hub's prime it pushes the records side only,
+// and it reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
 // and both run under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
-// `lockWait` bounds only the wait for that lock: `StatusPushLockWait` is the bound `commit-records` passes, and the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
+// `lockWait` bounds only the wait for that lock:
+// `StatusPushLockWait` is the bound `commit-records` passes;
+// it is also the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
 // an expiry returns an error wrapping `ErrPushLockBusy` with nothing pushed;
 // and `LockWaitUnbounded` blocks.
 //
 // `fabric.push.lock` alone follows the pending-flag protocol; `board.push.lock` of `Bolt.Sync` does not.
-// `Bolt.HasUncommitted` reads whether the board worktree holds changed files, so a lift can tell that a board sync deferred at its start still owes its commit.
-// A pusher writes one flag per side it owes, `pending.records` or `pending.code` beside the lock, before it tries the lock, so a commit always precedes its flag.
+// `Bolt.HasUncommitted` reads whether the board worktree holds changed files.
+// A lift thus can tell that a board sync deferred at its start still owes its commit.
+// A pusher writes one flag per side it owes, `pending.records` or `pending.code`, beside the lock.
+// It writes each flag before it tries the lock, so a commit always precedes its flag.
 // A flag holds that side's path and the pause and teardown slugs of the push it serves, so any holder can respawn it.
-// The detached push child (`CoalescePushRequest`) try-locks and exits at once when the lock is held, leaving its commits to the holder.
+// The detached push child (`CoalescePushRequest`) try-locks and exits at once when the lock is held.
+// It leaves its commits to the holder.
 // The holder takes its owed sides' flags before each push, and after releasing re-reads them.
 // A flag of an owed side set again sends it back to the lock.
-// A flag of a side it does not push is respawned as a detached push when its path is the worktree the lock directory belongs to and its slugs are plain names.
+// A flag of a side it does not push is respawned as a detached push only when both hold:
+// its path is the worktree the lock directory belongs to, and its slugs are plain names.
 // Any other such flag is dropped with a warning.
-// The last holder to release therefore always sees a flag set after its last push, and no committed transition is left unpushed.
-// A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait; a missed re-acquire after its own push landed returns nil.
+// The last holder to release therefore always sees a flag set after its last push.
+// No committed transition is left unpushed.
+// A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait.
+// A missed re-acquire after its own push landed returns nil.
 // A holder that hangs delays every later push of that records worktree until it exits.
-// Every holder of `fabric.push.lock` writes a holder record, `fabric.push.holder` beside the lock, with its pid and the time it took the lock, and removes it before it releases the lock.
-// The error wrapping `ErrPushLockBusy` names that holder, how long it has held the lock and whether it still runs, so an operator can tell a slow push from a hung one.
+// Every holder of `fabric.push.lock` writes a holder record, `fabric.push.holder`, beside the lock.
+// The record holds its pid and the time it took the lock, and the holder removes it before it releases the lock.
+// The error wrapping `ErrPushLockBusy` names that holder, how long it has held the lock and whether it still runs.
+// An operator can thus tell a slow push from a hung one.
 // The lock is an OS lock its holder's exit frees, so a dead holder never keeps it and nothing clears it by hand;
-// a record naming a pid with no running process may be stale, left by a holder that died, and the next holder overwrites it.
+// a record naming a pid with no running process may be stale, left by a holder that died.
+// The next holder overwrites it.
 //
-// The hub-wide scratch tree also holds `AdoptScratchDir(hub)`, the adopt check's files, and `FrontTaskScratchDir(hub)`, the front-task record and its action output, as sibling directories.
+// The hub-wide scratch tree also holds two sibling directories.
+// `AdoptScratchDir(hub)` holds the adopt check's files.
+// `FrontTaskScratchDir(hub)` holds the front-task record and its action output.
 //
-// A pair's teardown lock is `TeardownLockPath(hub, slug)`, `<HubScratchDir>/teardown/<slug>.lock`, outside both of the pair's worktrees.
+// A pair's teardown lock is `TeardownLockPath(hub, slug)`, `<HubScratchDir>/teardown/<slug>.lock`.
+// The lock lies outside both of the pair's worktrees.
 // Neither the lock file nor a child's working directory or log therefore sits in a tree `Remove` deletes.
-// The detached push child (`DetachedPush`) carrying a teardown slug takes the lock shared through `lock.TryAcquireReadLock` for its whole run.
-// It exits with a warning and a nil error when a removal holds the lock.
-// Every child then checks that each worktree path it was given is still a directory, before it creates anything, and exits with a warning and a nil error when one is gone.
-// `Remove` has its teardown child take the lock exclusive after its refusals and the pair inspection, and before its first mutation, waiting at most the topology's teardown wait (`StatusPushLockWait`);
-// when the wait runs out it returns an error wrapping `ErrPairPushRunning` with nothing mutated.
-// The child is spawned in the hub's Bolt checkout, answers `held` or `busy` on one line, and holds the lock while `Remove` runs its local teardown and store housekeeping under it.
-// `Remove` then writes the remote job to the child's input and returns; the child releases the lock after the job's last remote step, so the weft-tip push, the archive tags and the leased deletes keep their order with no push, `Add` or other teardown of the slug in between.
+// A detached push child (`DetachedPush`) carrying a teardown slug takes the lock shared for its whole run.
+// It acquires the lock with `lock.TryAcquireReadLock` and exits with a warning and a nil error when a removal holds it.
+// Every child then checks, before it creates anything, that each worktree path it was given is still a directory.
+// It exits with a warning and a nil error when one is gone.
+// `Remove` has its teardown child take the lock exclusive.
+// The child takes it after the refusals and the pair inspection, and before the first mutation.
+// The wait is at most the topology's teardown wait (`StatusPushLockWait`);
+// when the wait runs out, `Remove` returns an error wrapping `ErrPairPushRunning` with nothing mutated.
+// The child is spawned in the hub's Bolt checkout and answers `held` or `busy` on one line.
+// It holds the lock while `Remove` runs its local teardown and store housekeeping under it.
+// `Remove` then writes the remote job to the child's input and returns.
+// The child releases the lock after the job's last remote step.
+// The weft-tip push, the archive tags and the leased deletes thus keep their order.
+// No push, `Add` or other teardown of the slug runs in between.
 // A `Remove` that fails closes the child's input with no job and waits for the child to release the lock.
-// `RemoveLocal` holds the lock in process by one try and hands nothing over, and so does every teardown in a test binary, where no child is spawned.
-// `Add` takes the lock exclusive right after slug validation and before its origin probes, holds it to its return, rollback included, and waits as `Remove` does;
-// when the wait runs out it returns, before any mutation, an error wrapping `ErrPairPushRunning` that names re-running the command that made the pair.
-// `DiscardTaskBranch` has its child take it exclusive the same way before its first tip read and hold it across the remote archive and delete, its wait-out refusal naming a re-run of the command that discarded the task branch.
-// The `Cleanup` sweep has a child take it by one try per orphan.
-// `PushPairAnchored` takes it shared for a non-prime pair, before the weft push lock, through `lock.TryAcquireReadLock`, and holds it through the push;
-// while any holder has it exclusive the push sends nothing and returns an empty `PushResult` and an error wrapping `ErrPairPushRunning`, and the commits stay local for the pair's next push.
-// A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push once the lock is released:
-// through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands.
+// `RemoveLocal` holds the lock in process by one try and hands nothing over.
+// Every teardown in a test binary does the same, since no child is spawned there.
+// `Add` takes the lock exclusive right after slug validation and before its origin probes.
+// It holds the lock to its return, rollback included, and waits as `Remove` does;
+// when the wait runs out, it returns an error wrapping `ErrPairPushRunning` before any mutation.
+// The error names re-running the command that made the pair.
+// `DiscardTaskBranch` has its child take the lock exclusive the same way before its first tip read.
+// The child holds the lock across the remote archive and delete.
+// Its wait-out refusal names a re-run of the command that discarded the task branch.
+// The `Cleanup` sweep has a child take the lock by one try per orphan.
+// `PushPairAnchored` takes the lock shared for a non-prime pair, through `lock.TryAcquireReadLock`.
+// It takes it before the weft push lock and holds it through the push.
+// While any holder has the lock exclusive, the push sends nothing.
+// It returns an empty `PushResult` and an error wrapping `ErrPairPushRunning`.
+// The commits stay local for the pair's next push.
+// A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push.
+// It does so once the lock is released:
+// through `SpawnStatusPush` over the pair's location while the task worktree stands;
+// else through a records-side-only request when only the records worktree stands.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
-// Every detached push child registers in the owner record under `RunProcDir(hub)`, `<HubScratchDir>/runproc`, right after its start:
-// under its teardown slug when it carries one, so a pair's teardown ends its own pushes, and under `runproc.HubOwner` otherwise, so a prime records push is never ended by a pair's teardown.
+// Every detached push child registers in the owner record under `RunProcDir(hub)`, `<HubScratchDir>/runproc`.
+// It registers right after its start:
+// under its teardown slug when it carries one, so a pair's teardown ends its own pushes;
+// under `runproc.HubOwner` otherwise, so a prime records push is never ended by a pair's teardown.
 // The teardown child registers under its slug with the push role the same way.
 // A registration failure is logged at Warn and never fails the spawn.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
-// A detached push under a pause defers instead of waiting: it pushes nothing more, leaves its commits local and its pending flags in place, and exits with one Info line, since the push is deferred and not failed, so no failed-push record and no creel mail are written.
-// `DetachedPush` exits at once, before it takes the teardown lock or marks a flag, when `pauserecord.GateCovered` reads covered.
-// `coalescePushSides` installs a deferral for the call's life that puts back the flag of every owed side the running push step has not pushed, then exits through `exitDeferred`.
-// The deferral fires only in a process whose gate defers, which only the detached push and board sync children install, so `CoalescePushBothAt` in an ordinary process is unaffected.
-// `PushSpawn.ParentLocked` is set at spawn time by `statusPushRequest` for a task pair when a live parent lock record names the pair's slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
-// It travels as the hidden `--parent-locked` flag and through the pending flags and their respawns, and a parent-locked child never exits for coverage and lets only its own slug's owner entry pass.
+// A detached push under a pause defers instead of waiting.
+// It pushes nothing more, leaves its commits local and its pending flags in place, and exits with one Info line.
+// The push is deferred and not failed, so no failed-push record and no creel mail are written.
+// When `pauserecord.GateCovered` reads covered, `DetachedPush` exits before it takes the teardown lock or marks a flag.
+// `coalescePushSides` installs a deferral for the call's life.
+// The deferral puts back the flag of every owed side the running push step has not pushed.
+// It then exits through `exitDeferred`.
+// The deferral fires only in a process whose gate defers.
+// Only the detached push and board sync children install such a gate,
+// so `CoalescePushBothAt` in an ordinary process is unaffected.
+// `statusPushRequest` sets `PushSpawn.ParentLocked` at spawn time when a live parent lock record names the pair's slug.
+// That holds for the pushes a Finalize spawns past its parent-side merge.
+// The mark travels as the hidden `--parent-locked` flag and through the pending flags and their respawns.
+// A parent-locked child never exits for coverage and lets only its own slug's owner entry pass.
 // The mark covers only pushes spawned while that record stood.
-// A code-side rejected push is retried over the push backoff by `repushOverOriginContained`, only while origin's tip is contained in the local tip,
-// so a stale remote-tracking ref or a lost race recovers while a real divergence is reported at once.
-// A caller treats the `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, as a human-decidable condition.
-// `IsPushRejected(err)` is the side-neutral predicate that reads it without importing `gitrepo`.
-// `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing, distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
-// `PairComplete(l)` is the same shape over `Add`'s own post-condition: a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery itself to check it by hand.
-// `Remove` itself finishes a half-removed pair, so a teardown re-entered after an interruption calls it again.
+// `repushOverOriginContained` retries a code-side rejected push over the push backoff.
+// It retries only while origin's tip is contained in the local tip;
+// a stale remote-tracking ref or a lost race recovers, and a real divergence is reported at once.
+// The `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, is a condition a human decides.
+// `IsPushRejected(err)` reads it without importing `gitrepo`.
+// `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing.
+// It differs from `Fabric.MergeInProgress` and from the two-sided `foreignMergeStatePresent`.
+// `PairComplete(l)` is the predicate over `Add`'s own post-condition.
+// It lets a caller tell a finished pair creation from one a SIGKILL interrupted partway through.
+// The caller cannot name the weft worktree path or the junction machinery itself to check it by hand.
+// `Remove` finishes a half-removed pair, so a teardown re-entered after an interruption calls it again.
 //
 // # The mutation record
 //
-// Every mutating verb accumulates a `*Mutations` record (mutation.go) naming, in order, the
-// primitives it actually performed — not the primitives it attempted, and not what its own success
-// return value implies happened. `ok` (or, at this layer, a nil error) means only "no error was
-// returned"; it has never meant "nothing happened", and mixing the two up is what `mutations` and
-// `partial` exist to stop a consumer from doing by accident.
+// Every mutating verb accumulates a `*Mutations` record (mutation.go) naming, in order, the primitives it performed.
+// The record lists what changed, not what the verb attempted and not what its success return implies.
+// `ok`, or at this layer a nil error, means only that no error was returned, never that nothing happened;
+// `mutations` and `partial` keep a consumer from confusing the two.
 //
-// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`, `dir_created`, `path_renamed`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`, `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through everything it performs.
+// `Kind` is the closed, string-backed enum of primitives, whose values mutation.go lists.
+// `Mutation` is a flat entry of kind, target and optional detail.
+// `Mutations` is the ordered accumulator a verb call threads through everything it performs.
 // A `branch_created` or `branch_pushed` entry's detail starts `side=code` or `side=records`.
 //
-// The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
-// after a primitive observably changed state, never before, and never for a no-op or a refusal.
-// destroy.go's gate executors auto-record the kinds they perform this way, since every one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own success sites instead.
+// The accumulate-as-you-mutate rule has no exception:
+// append an entry immediately after a primitive observably changed state.
+// Never append one before, and never for a no-op or a refusal.
+// The gate executors in destroy.go auto-record the kinds they perform.
+// Every one funnels through the destruction chokepoint.
+// The remaining kinds have no such chokepoint and are hand-recorded at their own success sites.
 //
-// Every mutating entry point owns exactly one recorder: it constructs one via `NewMutations`,
-// threads it as a `*Mutations` parameter into everything the call performs (gate executors
-// included), and — per the record-survives-the-error-return decision — installs
-// `defer func() { res.Mutations = rec.Snapshot() }()` immediately after construction, so the
-// record reaches the caller through every return statement, including an existing
-// `return XResult{}, err` early-return site that predates this mechanism and was never
-// individually rewritten.
+// Every mutating entry point owns exactly one recorder.
+// It constructs one via `NewMutations`.
+// It threads it as a `*Mutations` parameter into everything the call performs, gate executors included.
+// It installs `defer func() { res.Mutations = rec.Snapshot() }()` immediately after construction,
+// so the record reaches the caller through every return statement, early error returns included.
 //
-// Every mutating verb's result type embeds `MutationRecord` (mutation.go), exposing the
-// accumulated record through one accessor, `Mutated() Mutations`; the read-only verbs' result types
-// do not, since nothing was mutated and there is no record to carry.
-// There are exactly TWO such types, and which verb each serves is worth stating precisely rather
-// than approximately, because the natural guess is wrong in both directions: `StatusResult`
-// (status.go, returned by `Topology.Status`) is the **pairs** verb, and `DiffResult` (diff.go) is
-// `diff`. The other two read-only verbs have no result type at all — `Fabric.Status`, the `status`
-// verb, returns a bare `[]ChangeEntry`, and `List` returns a bare `[]WorktreeEntry` — so there is
-// nothing for `destructiveguard_test.go`'s companion table to pin for them, and a reader must not
-// conclude from its two rows that the table is under-populated.
+// Every mutating verb's result type embeds `MutationRecord` (mutation.go).
+// It exposes the accumulated record through one accessor, `Mutated() Mutations`.
+// Read-only verbs' result types do not embed it, since nothing was mutated and there is no record to carry.
+// `StatusResult` (status.go, returned by `Topology.Status`, the `pairs` verb) is a read-only result type.
+// So is `DiffResult` (diff.go, the `diff` verb).
+// `Fabric.Status`, the `status` verb, returns a bare `[]ChangeEntry`, and `List` returns a bare `[]WorktreeEntry`.
+// `destructiveguard_test.go`'s companion table therefore has no row for them.
 //
-// At the CLI envelope layer (`internal/fabriccli`), every mutating verb's JSON output therefore
-// always carries two fixed keys on top of its own fields, present on both the success and the
-// failure path alike: `"mutations"`, always a JSON array (empty, never `null`), and `"partial"`,
-// always a bool (`false`, never absent). `partial` derives from exactly one rule — `error != nil
-// AND record non-empty` — the shape a caller reads to answer the question `ok` cannot: not "did an
-// error come back", but "did this call leave the hub in a state some but not all of the intended
-// change landed in". A handler that fails before ever calling its verb (cwd/location resolution,
-// `LoadConfig`, an argument usage error) carries neither key, since nothing was mutated and there
-// is no result to read a record from — see `internal/fabriccli`'s `envelope.go` for the
-// helpers, `okWithRecord`/`errWithRecord`/`errWithRecordFields`, that are this rule's one
-// implementation.
+// At the CLI envelope layer (`internal/fabriccli`), every mutating verb's JSON output carries two fixed keys.
+// They sit beside its own fields, on the success and the failure path alike:
+// `"mutations"`, always a JSON array (empty, never `null`), and `"partial"`, always a bool (`false`, never absent).
+// `partial` is true exactly when `error != nil` and the record is non-empty.
+// It answers what `ok` cannot: whether a failed call left the hub with some but not all of the intended change landed.
+// A handler that fails before it calls its verb carries neither key.
+// Nothing was mutated and there is no record to read.
+// Such failures are cwd or location resolution, `LoadConfig` and argument usage errors.
+// `okWithRecord`, `errWithRecord` and `errWithRecordFields` in `internal/fabriccli`'s `envelope.go` implement this rule.
 //
-// A verb whose result carries PER-ITEM outcomes has one further obligation, and `reconcile` is where
-// it was learned: an item-level failure must reach the caller as a failure, not only as a field
-// inside a success envelope. `runReconcile` used to exit unconditionally through `okWithRecord`, so
-// a junction it could not re-point produced `"ok":true`, `"partial":false`, and exit 0 with the real
-// reason buried in `pairs[].error` — an unqualified success, to every scripted caller, for a repair
-// that did not happen.
-// It now emits the same `pairs` array through `errWithRecordFields` whenever any pair carries an
-// `Error`, so the per-pair report survives and the verdict is honest.
-// `prune` alone deliberately does NOT follow: its per-entry `Error` doubles as the explanation for a
-// DESIGNED refusal ("commit them or re-run with --force to discard them", "fabric will not remove
-// it"), so treating it as a failure would report a documented outcome as one. The distinction is
-// whether the field means "this verb failed at its job" or "this verb is telling you what it
-// deliberately did not do", and it is that test — not membership in this carve-out — that decides
-// the question below for `cleanup`.
+// A verb whose result carries per-item outcomes reports an item-level failure as a failure.
+// A failure only inside a success envelope gives a scripted caller `"ok":true`, `"partial":false` and exit 0.
+// That is wrong for a repair that did not happen.
+// `reconcile` follows the rule:
+// it emits its `pairs` array through `errWithRecordFields` whenever any pair carries an `Error`,
+// so the per-pair report survives and the verdict is honest.
+// `prune` does not follow, because its per-entry `Error` also explains a designed refusal.
+// Examples are "commit them or re-run with --force to discard them" and "fabric will not remove it".
+// Treating that as a failure would report a documented outcome as one.
+// The test is whether the field means "this verb failed at its job" or "this verb is telling you what it did not do".
 //
-// `cleanup` was removed from this carve-out because the premise never held for it: unlike `prune`,
-// `CleanupBranchEntry.Error` is a genuine deletion failure, not a refusal, per its own field doc in
-// `internal/fabricengine/cleanup.go`, and the new `CleanupBranchEntry.RemoteError` falls on the same
-// side for the same reason — both drive `cleanup`'s exit code. This does not extend to `cleanup`'s
-// own designed-refusal dispositions: a `Protected` or unmanaged entry still exits 0, because those
-// arms set no `Error` at all — a property of the field being empty, not of any carve-out.
-// A missing `origin` remote sits on the deliberately-did-not-do side too, and exits 0: it is carried
-// by the verb-level `RemoteSkippedReason` on both `CleanupResult` and `RemoveResult` rather than by
-// either per-branch error field, so the identical configuration state produces the identical verdict
-// from `cleanup` and `remove` alike.
+// `CleanupBranchEntry.Error` and `CleanupBranchEntry.RemoteError` are genuine deletion failures, not refusals,
+// so both drive `cleanup`'s exit code.
+// A `Protected` or unmanaged entry still exits 0, because those arms set no `Error`.
+// A missing `origin` remote also exits 0.
+// The verb-level `RemoteSkippedReason` on `CleanupResult` and `RemoveResult` carries it, not a per-branch error field.
+// `cleanup` and `remove` therefore give the same verdict for the same configuration.
 //
-// One consequence of that rule is a new `ReconcileAction`. `Reconcile` reads `git worktree list`
-// once, before its per-pair loop, so a concurrent `remove`/`prune` can delete a pair's directory
-// between the enumeration and the iteration that reaches it. That used to fail `readBranch` and be
-// reported as `ReconcileActionUnmanagedReported` with `os/exec`'s raw `chdir …: no such file or
-// directory` as its `Error` — a verdict meaning something else entirely, and, once a per-pair
-// `Error` drives the exit code, an ordinary concurrent teardown that would fail every enclosing
-// reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
-// nothing failed to reconcile: the pair simply stopped existing.
+// `Reconcile` reads `git worktree list` once, before its per-pair loop,
+// so a concurrent `remove` or `prune` can delete a pair's directory before the loop reaches it.
+// `ReconcileActionVanishedMidWalk` names that race and sets no `Error`, because nothing failed to reconcile:
+// the pair stopped existing.
+// A per-pair `Error` drives the exit code.
+// An error there would fail every reconcile that overlaps an ordinary teardown.
 //
-// See `cmd/lym/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
-// guard itself.
+// `TestMutationRecord_FabricengineProductionSource` in `cmd/lym/destructiveguard_test.go` guards this rule.
 //
 // # The fabric vocabulary rule
 //
-// In production code, the tokens `weft`, `warp`, and the fabric-sense phrase form of `warp` (`warp
-// repo`, `warp worktree`, `warpBranch`, …
-// — never the bare word, which is ordinary English elsewhere in the repo) may appear only in the
-// owner set: `internal/fabricengine` (this package, which implements the illusion),
-// `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
-// `internal/weftname` (the `-weft` suffix leaf), `internal/gitkit` (the test-fixture leaf that
-// builds real paired worktrees), `internal/hubforge` (the repo-wide hub-fixture factory, which
-// builds every hub fixture in the repo through `fabriccli.CloneAndWire` rather than assembling a
-// stand-in by hand, and therefore names both sides), `internal/boardengine` (the pre-existing board
-// carve-out, since board lives at `weft:main`), `internal/configsync` (string literals and
-// comments, never identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
-// `internal/hubforge` and `internal/lymcwd` also sit in the narrower `weftname`-import subset alongside
-// `internal/fabricengine`, `internal/fabriccli`, and `internal/gitkit`.
-// `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
-// `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
-// their vocabulary (naming the real `lym-test-weft`/`lym-fabric-test-weft` GitHub repos) is a
-// review obligation instead. See PATTERN-fabric-boundary for the authoritative
-// list.
-// `TestEnforcement_FabricVocabulary` (`internal/lymcwd/enforcement_test.go`) machine-checks
-// identifiers, string literals, and comments in every production `.go` file plus the embedded agent
-// prompt templates;
-// `PATTERN-fabric-boundary` records the rule in full, including the phrase-based
-// `warp` predicate and the review-only prose-doc split between a doc explaining fabric's own
-// mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
-// rewords).
-// As an owner file, this doc comment — and every other file in this package — keeps `warp`/`weft`
-// vocabulary freely when explaining the mechanism the illusion sits on.
+// In production code, the tokens `weft` and `warp` may appear only in the owner set.
+// The rule covers the fabric-sense phrases of `warp`, such as `warp repo`, `warp worktree` and `warpBranch`.
+// The bare word is ordinary English elsewhere in the repo and is not covered.
+// The owner set holds `internal/fabricengine`, which implements the illusion.
+// It holds `internal/fabriccli`, fabric's own CLI, which exposes the weft to an operator.
+// It holds `internal/weftname`, the `-weft` suffix leaf.
+// It holds `internal/gitkit`, the test-fixture leaf that builds real paired worktrees.
+// It holds `internal/hubforge`, the hub-fixture factory.
+// It builds every hub fixture through `fabriccli.CloneAndWire` and so names both sides.
+// It holds `internal/boardengine`, since board lives at `weft:main`.
+// It holds `internal/configsync`, which uses the tokens in string literals and comments only.
+// They name the legacy config filenames `warp.yaml` and `weft.yaml`.
+// `internal/hubforge` and `internal/lymcwd` also sit in the narrower `weftname`-import subset.
+// `internal/fabricengine`, `internal/fabriccli` and `internal/gitkit` are in it too.
+// `tools/` and `sandbox/` are not in the owner set:
+// the enforcement walk covers `internal/` and `cmd/` only, so an entry for them would never match.
+// Their vocabulary, naming the real `lym-test-weft` and `lym-fabric-test-weft` GitHub repos, is a review obligation.
+// `TestEnforcement_FabricVocabulary` (`internal/lymcwd/enforcement_test.go`) machine-checks the rule.
+// It covers identifiers, string literals and comments in every production `.go` file.
+// It also covers the embedded agent prompt templates.
+// `PATTERN-fabric-boundary` holds the authoritative owner list.
+// It records the rule in full, including the phrase-based `warp` predicate.
+// It also records the review-only split for prose docs.
+// A doc explaining fabric's own mechanism keeps the vocabulary.
+// A doc describing a consumer module's behaviour rewords it.
+// This package is an owner, so its files use `warp` and `weft` freely to explain the mechanism the illusion sits on.
 //
 // # The destruction chokepoint
 //
-// `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), a warp checkout's `ResetHard`, and the board checkout's seed-commit drop — and every one of them runs its shared four-check pipeline first.
+// `destroy.go` is the one file in this package permitted to perform a destructive primitive;
+// every one of them runs the shared four-check pipeline first.
+// The primitives are `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D` and `fslink.Remove`;
+// deleting a branch on a remote (`git push <remote> --delete`);
+// moving a task branch on a remote (a leased force push);
+// a warp checkout's `ResetHard`; and the board checkout's seed-commit drop.
 // There are two exceptions.
-// `removeWorktreeLeftover` keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
-// `Topology.RemoveStrayTaskPath` reaches the same delete with no git run before it: its caller proves ownership, as a run that created the pair at that path or as an operator who asked to remove the slug's pair, it refuses a registered linked worktree and a directory holding a `.git` entry, and neither `force` nor dirtiness applies.
-// See `PATTERN-fabric-boundary` for the rules;
-// this section is the rationale the invariant deliberately omits.
+// `removeWorktreeLeftover` keeps containment through `os.Root`.
+// It takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
+// `Topology.RemoveStrayTaskPath` reaches the same delete with no git run before it.
+// Its caller proves ownership.
+// That caller is either the run that created the pair at that path or an operator who asked to remove the slug's pair.
+// It refuses a registered linked worktree and a directory holding a `.git` entry.
+// Neither `force` nor dirtiness applies.
+// `PATTERN-fabric-boundary` holds the rules;
+// this section is the rationale the invariant omits.
 //
-// **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
-// Its request declares the hub as container and the warp worktree as target;
-// ownership `ownedPairWarpCheckout`, a registered linked worktree that is not on `parentBranch` and whose weft checkout has `RecordsBranchName` of the same branch checked out, a detached HEAD refusing;
-// dirtiness `dirtyTrackedExcept(ownPaths)`, so a tracked change refuses unless its worktree-relative, slash-separated path is one the caller names, and the refusal names each other path;
-// and force always false.
+// **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout.
+// It does so through `resetHardTo`.
+// `ResetHard` itself refuses on any tracked dirt and accepts the prime checkout.
+// Its request declares the hub as container and the warp worktree as target, and force is always false.
+// Ownership is `ownedPairWarpCheckout`, which holds for a registered linked worktree that is not on `parentBranch`.
+// The weft checkout must also have `RecordsBranchName` of the same branch checked out, and a detached HEAD refuses.
+// Dirtiness is `dirtyTrackedExcept(ownPaths)`: a tracked change refuses unless the caller names its path.
+// A path is worktree-relative and slash-separated, and the refusal names each other path.
 // Untracked files are left alone, the weft is never touched, and a refusal records nothing.
-// It also moves the pair's task branch on the origin remote to `sha`, through the `updateRemoteBranch` executor, so a later push is not rejected as diverged.
-// The order is the gate checks, then a fetch and an ancestry read through `RemoteOnlyCommits`, then the leased remote update, then the checkout rewrite;
-// a refusal before the remote update leaves the remote and the checkout unchanged.
-// A remote task branch holding commits the checkout lacks refuses, listing them and naming the `git merge --strategy ours` way forward for the run's own abandoned commits;
-// an unreachable remote, a failed update and a lease that no longer holds refuse too, and the update is skipped (no record entry) when there is no remote, no such remote branch, or the remote tip is at or behind `sha`.
-// The update appends `remote_branch_updated`, and a checkout rewrite that fails after it says the remote was already updated, leaving the entry in `rec`.
-// `opts.SkipPush` skips the remote half; `opts.SkipGit` does not, so the remote update is the one push-shaped step that ignores `SkipGit`.
-// The bound is that it rewrites only the pair's own task branch, only to `sha`, only when every commit it drops is reachable from HEAD, and under a lease on the tip the ancestry read saw.
+// It also moves the pair's task branch on the origin remote to `sha` through `updateRemoteBranch`.
+// A later push is therefore not rejected as diverged.
+// The order is the gate checks, then a fetch and an ancestry read through `RemoteOnlyCommits`.
+// The leased remote update follows, then the checkout rewrite.
+// A refusal before the remote update leaves the remote and the checkout unchanged.
+// A remote task branch holding commits the checkout lacks refuses, listing them.
+// The refusal names the `git merge --strategy ours` way forward for the run's own abandoned commits.
+// An unreachable remote, a failed update and a lease that no longer holds refuse too.
+// The update is skipped, and records nothing, when there is no remote or no such remote branch.
+// It is also skipped when the remote tip is at or behind `sha`.
+// The update appends `remote_branch_updated` to `rec`.
+// A checkout rewrite that fails after it says the remote was already updated, and the entry stays in `rec`.
+// `opts.SkipPush` skips the remote half.
+// `opts.SkipGit` does not, so the remote update is the one push-shaped step that ignores `SkipGit`.
+// It rewrites only the pair's own task branch, and only to `sha`.
+// It does so only when every commit it drops is reachable from HEAD.
+// The rewrite runs under a lease on the tip the ancestry read saw.
 //
-// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` resets the hub's own Bolt checkout to its upstream with `reset --keep` and replays the commits of `ahead` that are not seed commits, oldest first, through a plain `cherry-pick` that skips a change upstream already carries and refuses a commit empty from the start, so Bolt can be brought up to date when seed commits sit ahead of a moved upstream.
-// Its request, built by `boardDropRequest`, declares the board dir's parent as container and the board dir as target;
-// ownership `ownedBoardWorktree`, which holds only when the target is named by `BoltDirName` and a weft repo of the same hub, a sibling whose name `WeftWarpSlug` admits, registers it as a linked worktree, so no other directory with that name can be reset;
-// dirtiness `dirtyTrackedOn(touched)`, which refuses only on a tracked change on a path the ahead commits changed, so a pending board write elsewhere is carried across;
-// and force always false.
+// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` brings Bolt up to date.
+// It applies when seed commits sit ahead of a moved upstream.
+// It resets the hub's own Bolt checkout to its upstream with `reset --keep`.
+// It then replays the commits of `ahead` that are not seed commits, oldest first, through a plain `cherry-pick`.
+// The cherry-pick skips a change upstream already carries and refuses a commit empty from the start.
+// Its request, built by `boardDropRequest`, declares the board dir's parent as container and the board dir as target.
+// Force is always false.
+// Ownership is `ownedBoardWorktree`, which holds when the target is named by `BoltDirName`.
+// It also requires a weft repo of the same hub to register the target as a linked worktree.
+// That weft repo is a sibling whose name `WeftWarpSlug` admits, so no other directory with that name can be reset.
+// Dirtiness is `dirtyTrackedOn(touched)`, which refuses only on a tracked change on a path the ahead commits changed.
+// A pending board write elsewhere is carried across.
 // A replay that fails aborts the cherry-pick and restores the tip the drop started from.
-// The bound is that only commits `IsSeedCommit` admits are dropped, only in a hub's own Bolt checkout; a non-seed commit is replayed or, when its replay fails, kept at its original tip.
+// Only commits `IsSeedCommit` admits are dropped, and only in a hub's own Bolt checkout;
+// a non-seed commit is replayed or, when its replay fails, kept at its original tip.
 // It appends `commits_dropped` once HEAD observably moved.
 //
-// **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream before running an ordered list of writes, and commits each write's paths as its own commit.
-// It sits beside `CommitWritten`, which stays offline-capable for `configcli`'s hub-wide edit.
-// Both stage only the paths git can stage: a written path on disk, and a missing one HEAD's tree holds, whose deletion is committed;
-// a missing path HEAD does not hold, such as an output a stale local render manifest still names after a pull removed it, is left out, since `git add` would refuse it.
-// A Bolt with no upstream writes as before; one only behind is fast-forwarded (`repo_advanced`); one with seed commits ahead of a moved upstream has them dropped by the executor above.
-// When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why: `fetch_failed`, `diverged` (a non-seed commit ahead of a moved upstream, a drop refused on containment or ownership, or a failed replay) or `dirty` (a tracked change blocking the reset or the fast-forward).
-// Each skip is logged at Warn once, inside `Bolt.pullFirst`, with a detail naming the way forward; callers only read the result.
-// The lock order is the board write lock, then the board checkout's push lock (`gitrepo.Repo.PushLockPath`), across every reset, replay and fast-forward of Bolt;
-// a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
+// **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream.
+// It then runs an ordered list of writes and commits each write's paths as its own commit.
+// `CommitWritten` commits the same way without pulling first,
+// so it stays offline-capable for `configcli`'s hub-wide edit.
+// Both stage only the paths git can stage: a written path on disk, and a missing one HEAD's tree holds.
+// Staging the missing one commits its deletion.
+// A missing path HEAD does not hold is left out, since `git add` would refuse it;
+// an example is an output a stale local render manifest still names after a pull removed it.
+// A Bolt with no upstream writes without pulling.
+// One only behind is fast-forwarded (`repo_advanced`).
+// One with seed commits ahead of a moved upstream has them dropped by the executor above.
+// When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why.
+// The reasons are `fetch_failed`, `diverged` and `dirty`.
+// `diverged` means a non-seed commit ahead of a moved upstream.
+// It also covers a drop refused on containment or ownership, and a failed replay.
+// `dirty` means a tracked change blocking the reset or the fast-forward.
+// Each skip is logged at Warn once, inside `Bolt.pullFirst`, with a detail naming the way forward;
+// callers only read the result.
+// The lock order is the board write lock, then the board checkout's push lock (`gitrepo.Repo.PushLockPath`).
+// It holds across every reset, replay and fast-forward of Bolt.
+// A coalesced push holds the push lock across its own rebase and never takes the board write lock.
+// The order therefore cannot deadlock.
 //
-// **Push classification.** Every push fabric runs per side goes through `pushClassified`:
-// the detached coalesced push (`coalescePushSides`), `PushAnchored`, `PushPairAnchored`, `PushWarpRebaseFreeAt` (reached through `Fabric.PushBranch`) and Bolt's pushes (`Bolt.PushRecorded`, reached by `Bolt.Push` and Bolt's syncs).
+// **Push classification.** Every push fabric runs per side goes through `pushClassified`.
+// That covers the detached coalesced push (`coalescePushSides`) and `PushWarpRebaseFreeAt`.
+// It also covers the anchored pushes and Bolt's pushes.
 // The side is `code`, `records` (a weft) or `bolt`, and the push is always the rebase-free `gitrepo.PushRebaseFree`.
-// `Fabric.PushWeft` and `PushWarpAt` stay on `gitrepo.PushCoalesced`, which no production path reaches.
+// `Fabric.PushWeft` and `PushWarpAt` stay on `gitrepo.PushCoalesced` and have no production caller.
 //
 // Before a weft or a task branch with an upstream is pushed, one `git ls-remote` asks origin for the branch.
 // A branch origin no longer has is not pushed, so a parked push never recreates a branch landed or deleted elsewhere.
-// `goneEntryEnded` fetches origin's Bolt branch and reads the ended set, so an entry origin ended writes no record and is left to the teardown of its pair.
-// A gone branch whose entry is not ended, and an unreachable origin, are retried by one backoff, the delays `gitrepo.PushBackoffDelays` returns slept through `SyncOptions.BackoffSleep`, before a `gone` or `transport` record is written.
-// A task branch (a code side outside the hub's prime) whose origin head `classifyRewrite` reads as a rewind of what this machine pushed is not pushed either, and writes a `rewound` record naming origin's head and the dropped commits:
+// `goneEntryEnded` fetches origin's Bolt branch and reads the ended set.
+// An entry origin ended writes no record and is left to the teardown of its pair.
+// A gone branch whose entry is not ended, and an unreachable origin, are retried over one backoff.
+// The backoff sleeps the delays `gitrepo.PushBackoffDelays` returns through `SyncOptions.BackoffSleep`.
+// Only then is a `gone` or `transport` record written.
+// A task branch is a code side outside the hub's prime.
+// One whose origin head `classifyRewrite` reads as a rewind of what this machine pushed is not pushed.
+// It writes a `rewound` record naming origin's head and the dropped commits:
 // a plain push would fast-forward origin and restore the commits the rewind dropped.
 // The prime's code branch, a weft and Bolt are never held back as rewound.
 //
 // A rejection (`gitrepo.ErrPushRejected`) of any side runs the side's retry before anything is recorded:
-// `retryWeftPush` fetches the weft branch and origin's Bolt branch, try-acquires the weft write lock while the caller holds the push lock, reads the ended set from the fetched Bolt tip and replays the local commits with `replayWeft`;
-// `retryBoltPush` try-acquires the board write lock, takes the push lock in the board dir, fetches, reads the ended set and replays with `replayBolt`, which drops the seed commits.
+// `retryWeftPush` fetches the weft branch and origin's Bolt branch.
+// It try-acquires the weft write lock while the caller holds the push lock.
+// It then reads the ended set from the fetched Bolt tip and replays the local commits with `replayWeft`.
+// `retryBoltPush` try-acquires the board write lock and takes the push lock in the board dir.
+// It fetches, reads the ended set and replays with `replayBolt`, which drops the seed commits.
 // Each then pushes again.
-// A code-side retry (`repushOverOriginContained`) fetches and pushes again only while origin's tip is contained in the local tip, and reports the rejection at once when origin holds commits the branch lacks.
-// Two pushes of one branch can race, and the loser's rejection, or a fetch its retry made while the winner held the tracking ref, names a divergence the winner's landing already removed;
-// so `settleRejection` runs the retry again, one delay of `gitrepo.PushBackoffDelays` apart slept through `SyncOptions.BackoffSleep`, while it fails with a bare rejection or an error no class names, such as a failed fetch, and records the failure only once the backoff runs out.
-// A held write lock or an uncommitted change on a path the replay touches is a deferral:
-// the push returns nil, writes a `deferred` record that mails nothing, and leaves the commits to the next push of the branch, whose landing removes the record.
-// A replay that stops on a conflict is a `not_fast_forward` failure carrying the conflicting paths and the local commits, since a replay runs only when origin held commits the branch lacked.
-// A rejection that outlasts the backoff is judged by a fresh fetch (`failRejection`): origin holding commits the branch lacks is a `not_fast_forward` failure carrying the local commits;
-// origin holding nothing the branch lacks, as after two pushes of the hub overlapped or under a declining hook, is an `other` failure whose way forward is a plain retry, so no notice names a divergence that does not exist;
-// a failed fetch, or a branch whose origin tip cannot be read after it, leaves origin unknown and is an `other` failure too.
-// A `not_fast_forward` way forward names no machine, since no commit names the machine that wrote it, and names paths only when a replay stopped on some.
-// An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once, and a transport failure of the push call, or an exhausted push retry, is class `transport`.
+// `repushOverOriginContained` is the code-side retry.
+// It fetches and pushes again only while origin's tip is contained in the local tip.
+// It reports the rejection at once when origin holds commits the branch lacks.
+// Two pushes of one branch can race.
+// The loser's rejection names a divergence the winner's landing already removed.
+// So can a fetch its retry made while the winner held the tracking ref.
+// `settleRejection` therefore runs the retry again while it fails with a bare rejection or an error no class names.
+// A failed fetch is such an error.
+// The runs are one delay of `gitrepo.PushBackoffDelays` apart, slept through `SyncOptions.BackoffSleep`.
+// It records the failure only once the backoff runs out.
+// A held write lock or an uncommitted change on a path the replay touches is a deferral.
+// The push returns nil and writes a `deferred` record that mails nothing.
+// It leaves the commits to the next push of the branch, whose landing removes the record.
+// A replay that stops on a conflict is a `not_fast_forward` failure.
+// The failure carries the conflicting paths and the local commits.
+// That class is right because a replay runs only when origin held commits the branch lacked.
+// A rejection that outlasts the backoff is judged by a fresh fetch (`failRejection`).
+// Origin holding commits the branch lacks is a `not_fast_forward` failure carrying the local commits.
+// Origin holding nothing the branch lacks is an `other` failure whose way forward is a plain retry.
+// It arises after two pushes of the hub overlapped or under a declining hook.
+// No notice then names a divergence that does not exist.
+// A failed fetch, or a branch whose origin tip cannot be read after it, leaves origin unknown.
+// That is an `other` failure too.
+// A `not_fast_forward` way forward names no machine, since no commit names the machine that wrote it.
+// It names paths only when a replay stopped on some.
+// An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once.
+// A transport failure of the push call, or an exhausted push retry, is class `transport`.
 // Any other failure of the push call is class `other`, so no refused push is left to a log line.
-// A retry that stops before it pushes, through the whole backoff, keeps the rejection, joined with the retry's error, for that judgment.
+// A retry that stops before it pushes, through the whole backoff, keeps the rejection for that judgment.
+// The rejection is joined with the retry's error.
 //
-// A failure `pushClassified` records returns a `*PushFailedError` holding the `FailedPush` record and the push's own error, which `Unwrap` returns, so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
-// Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record, so a caller that appends a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
-// The detached push returns nil for a recorded failure, as it always has; the synchronous pushes return the error.
+// A failure `pushClassified` records returns a `*PushFailedError`.
+// It holds the `FailedPush` record and the push's own error.
+// `Unwrap` returns the push's error,
+// so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
+// Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record.
+// A caller appending a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
+// The detached push returns nil for a recorded failure;
+// the synchronous pushes return the error.
 // A push that lands removes the record of its side and branch.
-// `Bolt.PushRecorded` records the seed-commit drop of its replay in the mutation record passed to it as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
+// `Bolt.PushRecorded` records the seed-commit drop of its replay as `commits_dropped`.
+// It records it in the mutation record passed to it.
+// `Bolt.Push` takes no record, so it only logs the drop at Info.
 //
-// **Why a chokepoint at all.**
-// Eight data-loss defects across five review rounds were one shape, not eight mistakes: a
-// destructive operation acting on a path it does not own, or destroying it without checking
-// whether there is work there to lose.
-// Every one of the roughly 28 destructive call sites this slice consolidates already had the
-// freedom to write its own containment check, its own ownership check, its own dirtiness probe —
-// and that freedom, exercised inconsistently 28 separate times, is what produced the class.
+// # Why a chokepoint at all
+//
+// Data-loss defects in destructive code share one shape:
+// an operation acts on a path it does not own, or destroys a path without checking whether work there would be lost.
+// When each call site writes its own containment, ownership and dirtiness checks, the checks come out inconsistent,
+// and that inconsistency produces the defect class.
 // A chokepoint does not add a check nobody thought of;
 // it removes the freedom to skip one.
 //
 // **Why the gate executes rather than approves.**
-// A gate a caller consults and then acts on independently is advice, not enforcement — the caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then destroyed" from "destroyed".
-// `destroy.go`'s executors (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `updateRemoteBranch`, `resetHardTo`, `dropSeedCommits`) run the pipeline and then perform the primitive themselves, so the two can never come apart.
-// This is also what makes the bypass guard meaningful: a raw call to any of the primitives is mechanically bannable everywhere else in this package precisely because there is no legitimate reason for one to exist there — the gate is not one way to destroy something, it is the only way.
+// A gate a caller consults and then acts on independently is advice, not enforcement:
+// the caller can still reach `os.RemoveAll` directly.
+// Nothing distinguishes "checked, then destroyed" from "destroyed".
+// The executors in `destroy.go` run the pipeline and then perform the primitive themselves,
+// so the two can never come apart.
+// The bypass guard depends on this:
+// a raw call to any of the primitives is mechanically bannable everywhere else in this package,
+// and no legitimate reason for one exists there.
+// The gate is not one way to destroy something, it is the only way.
 //
 // **Why ownership is a closed enum with no caller-supplied predicate.**
-// A `func() (bool, string)` ownership parameter would let a call site declare "trust me, this is
-// mine" — exactly the freedom that produced the class in the first place, relocated one layer
-// down rather than removed. Every ownership kind is instead resolved by the gate itself, against
-// a fixed, finite set of predicates it owns (`resolvePathOwnership`, `resolveBranchOwnership`):
-// a call site picks which kind applies, never what the kind checks.
-// A caller-supplied predicate, or an open interface with per-kind implementations, would both
-// re-admit the escape hatch — an interface doubly so, since Go interfaces are open sets unless
-// sealed with an unexported method, so closure would have to be re-established rather than
-// assumed.
+// A `func() (bool, string)` ownership parameter would let a call site declare "trust me, this is mine".
+// That is the freedom that produced the defect class, relocated one layer down.
+// The gate itself resolves every ownership kind against a fixed, finite set of predicates it owns:
+// `resolvePathOwnership` and `resolveBranchOwnership`.
+// A call site picks which kind applies, never what the kind checks.
+// A caller-supplied predicate, or an open interface with per-kind implementations, would re-admit the escape hatch.
+// An interface is worse: Go interfaces are open sets unless sealed with an unexported method.
+// Closure would have to be re-established rather than assumed.
 //
 // **Why dirtiness scope is a caller declaration, not a primitive-derived default.**
-// "Is there work here to lose" does not have one right scope: `ResetHard` and a linked-worktree
-// removal both discard tracked changes, so both probe tracked-only (`dirtyScopeTracked`) and
-// leave untracked debris alone;
-// a stale-pair removal takes the whole directory with it, so it probes tracked and untracked
-// alike (`dirtyScopeAll`).
-// `prune.go`'s two call sites are the worked example: `removeStalePair`'s worktree teardown
-// declares `dirtyScopeTracked`, matching `pull.go`'s `ResetHard` scope exactly, while
-// `weftwiring.go`'s `removeWeftWorktree` declares `dirtyScopeAll`, matching
-// `refuseDirtyWeftWorktree`'s pre-existing scope.
-// Deriving the scope from the primitive itself — "a removal is always untracked-inclusive" —
-// would have silently widened the tracked-only sites and opened a new data-loss path: git's own
-// untracked-file refusal on `git worktree remove` would then route into a directory-removal
-// fallback with no equivalent protection.
-// Scope is therefore a caller-declared member of a closed sum type
-// (`dirtyScopeTracked`/`dirtyScopeAll`/`dirtinessNA`), with every site keeping the scope it
-// already had, rather than a property the primitive silently picks.
+// "Is there work here to lose" has no single right scope:
+// `ResetHard` and a linked-worktree removal both discard tracked changes,
+// so both probe tracked-only (`dirtyScopeTracked`) and leave untracked debris alone;
+// a stale-pair removal takes the whole directory with it, so it probes tracked and untracked alike (`dirtyScopeAll`).
+// `prune.go`'s `removeStalePair` worktree teardown declares `dirtyScopeTracked`, matching `pull.go`'s `ResetHard` scope.
+// `weftwiring.go`'s `removeWeftWorktree` declares `dirtyScopeAll`, matching `refuseDirtyWeftWorktree`.
+// Deriving the scope from the primitive ("a removal is always untracked-inclusive") would widen the tracked-only sites.
+// That would open a data-loss path:
+// git's own untracked-file refusal on `git worktree remove` would route into a directory-removal fallback.
+// That fallback has no equivalent protection.
+// Scope is therefore a caller-declared member of a closed sum type:
+// `dirtyScopeTracked`, `dirtyScopeAll` or `dirtinessNA`.
+// The primitive does not pick it.
 //
-// **Why the dirtiness probe lives beside the gate, in `dirtiness.go`, rather than inside
-// `destroy.go`.**
-// The gate calls it;
-// read-only callers (`warpclean.go`'s exported `Clean`, `reconcile.go`'s board-status check,
-// `checkout.go`'s pre-switch check) call it directly, bypassing the gate entirely, because
-// running `git status --porcelain` destroys nothing and gating it would be nonsense.
-// Keeping the probe out of `destroy.go` is what lets the bypass guard's allowlist mean "the only
-// file that destroys," not "the only file that also happens to run `git status`" — folding the
-// probe into the gate file would muddy the one property that file's contents exist to keep
-// precise.
+// **Why the dirtiness probe lives beside the gate, in `dirtiness.go`, rather than inside `destroy.go`.**
+// The gate calls it.
+// Read-only callers, such as a board-status check and a pre-switch check, bypass the gate and call it directly.
+// Running `git status --porcelain` destroys nothing, so gating it would be pointless.
+// Keeping the probe out of `destroy.go` lets the bypass guard's allowlist mean "the only file that destroys".
+// It would otherwise mean "the only file that also runs `git status`".
 //
-// **Why containment resolves symlinks, and why it stops short of the final component.**
-// The check was purely lexical — `filepath.Rel` over the nominal strings — until fabric's R2
-// crucible round planted a symlink at `<Hub>/_launchers/<slug>` and watched `removeLaunchers`'
-// gated `removePath` delete two files outside the hub, report `ok:true`, and record the removal
-// against hub-relative paths that were never the inodes removed.
-// A lexical comparison answers a question nobody is asking: it proves the SPELLING of the target
-// sits under the SPELLING of the container, while every destructive primitive acts on the inode
-// those spellings resolve to.
-// So both sides now go through `filepath.EvalSymlinks` (`ancestors.go`'s `resolveAncestorSymlinks`),
-// with an ancestor-walk fallback for the ordinary case of a target that does not exist yet.
-// The target's own final component is deliberately left unresolved (`containmentPath`): every
-// junction the gate removes is a link living inside the warp worktree and pointing into the weft
-// one, so resolving the leaf would relocate the target into weft and make the warp-worktree
-// container refuse every legitimate unwire — the fix would have broken the verb it was meant to
-// protect.
-// `ownedUnderGeometryRoot` resolves the same way for a reason worth naming: it is the ONLY
-// ownership kind with no independent authority to cross-check a target against. The two
-// worktree-shaped kinds compare against git's own worktree registration and the two link-shaped
-// kinds against `fslink.RawTarget`, both of which already carry resolved paths — which is exactly
-// why the geometry-root site was the one that fell and the others did not.
+// **Why containment resolves symlinks, and why it stops short of the final component**.
+// A lexical check, `filepath.Rel` over the nominal strings, compares spellings.
+// Every destructive primitive acts on the inode those spellings resolve to.
+// Under a lexical check, a symlink planted at `<Hub>/_launchers/<slug>` passes the gate.
+// `removeLaunchers`' `removePath` then deletes files outside the hub and reports `ok:true`.
+// The mutation record names hub-relative paths that were never the inodes removed.
+// Both sides therefore go through `filepath.EvalSymlinks` (`ancestors.go`'s `resolveAncestorSymlinks`).
+// An ancestor-walk fallback covers the ordinary case of a target that does not exist yet.
+// The target's own final component is left unresolved (`containmentPath`):
+// every junction the gate removes is a link inside the warp worktree pointing into the weft one.
+// Resolving the leaf would relocate the target into weft.
+// The warp-worktree container would then refuse every legitimate unwire.
+// `ownedUnderGeometryRoot` resolves the same way.
+// It is the only ownership kind with no independent authority to cross-check a target against.
+// The two worktree-shaped kinds compare against git's own worktree registration.
+// The two link-shaped kinds compare against `fslink.RawTarget`.
+// Both authorities already carry resolved paths.
 //
-// **The gate's DIRTINESS check is not atomic with its act, and that is a stated limit rather than an
-// oversight.**
-// `checkPathDirtiness` runs `git status --porcelain` and returns; the executor then performs the
-// primitive. No lock spans the two, so a write landing in that window is destroyed. The exposure is
-// narrow by construction — `removeGitWorktree` re-checks through git itself, `resetHardTo`
-// delegates to git, and the only recursive-removal sites carrying a real dirtiness scope are the two
-// fallbacks that fire *after* git has already declined the removal — but a reader must not take
-// "the gate executes rather than approves" to mean the probe and the act are one transaction.
-// Closing the window would need a lock held across probe and act at every executor, which is a
-// larger claim about every future call path than the residual risk warrants today.
+// **The gate's dirtiness check is not atomic with its act; that is a stated limit**.
+// `checkPathDirtiness` runs `git status --porcelain` and returns; the executor then performs the primitive.
+// No lock spans the two, so a write landing in that window is destroyed.
+// The exposure is narrow by construction.
+// `removeGitWorktree` re-checks through git itself, and `resetHardTo` delegates to git.
+// The only recursive-removal sites with a real dirtiness scope are the two fallbacks.
+// Those fire after git has declined the removal.
+// A reader must not take "the gate executes rather than approves" to mean the probe and the act are one transaction.
+// Closing the window would need a lock held across probe and act at every executor.
+// That is a larger claim about every future call path than the residual risk warrants.
 //
-// **The gate's CONTAINMENT check, by contrast, IS bound to its act, because R3's review proved it had
-// to be.** The containment check resolves symlinks at one instant (`refuseUncontainedPath`,
-// `containmentPath`), and a symlink planted at an intermediate segment of a gate target — dangling
-// when the check ran, so the check short-circuited on an absent target, then flipped
-// live-and-escaping before the executor's own `os.Lstat`+unlink — carried a gated `remove --force`
-// outside the hub anyway, a real out-of-hub deletion reported as (partial) success. The two
-// arbitrary-path executors (`removePath`, `removeLink`) therefore no longer act on the nominal path:
-// `removeContainedPath` removes through an `os.Root` rooted at the gate's declared container, so each
-// path component is resolved and unlinked as one `openat` chain that atomically refuses any component
-// escaping the container at removal time, while still removing a final-component junction link as a
-// link. The containment check stays as defense-in-depth; the rooted act is the actual window-closer,
-// and unlike the dirtiness window it needs no lock — the atomicity comes from the kernel's `openat`
-// escape refusal, not from a span held across two calls. `removeGitWorktree` and `resetHardTo`
-// delegate their act to git, which re-validates at its own instant, so the containment binding lives
-// where the arbitrary-path removals are.
+// **The gate's containment check, by contrast, is bound to its act**.
+// The check resolves symlinks at one instant (`refuseUncontainedPath`, `containmentPath`).
+// A symlink planted at an intermediate segment of a gate target can be dangling when the check runs.
+// It can then flip to live and escaping before the executor's `os.Lstat`+unlink.
+// A gated `remove --force` would then delete outside the hub and report it as (partial) success.
+// The two arbitrary-path executors (`removePath`, `removeLink`) therefore never act on the nominal path.
+// `removeContainedPath` removes through an `os.Root` rooted at the gate's declared container.
+// Each path component is resolved and unlinked in one `openat` chain.
+// That chain atomically refuses a component escaping the container at removal time.
+// A final-component junction link is still removed as a link.
+// The containment check stays as defense in depth.
+// The rooted act closes the window and needs no lock:
+// the atomicity comes from the kernel's `openat` escape refusal, not from a span held across two calls.
+// `removeGitWorktree` and `resetHardTo` delegate their act to git, which re-validates at its own instant.
+// The containment binding therefore lives where the arbitrary-path removals are.
 //
-// **The two CREATE-side minters bind creation to a rooted act the same way, because R5's review proved
-// the delete-side asymmetry was live on the create side too.** `createExclusiveDir` and
-// `createGitWorktree` are the gate's only path/worktree minters, and both once resolved their target's
-// nominal path and let the create follow a symlink planted there. `createExclusiveDir` now creates its
-// leaf through an `os.Root` rooted at the parent, so an intermediate-symlink escape is refused at
-// `mkdir` time exactly as `removeContainedPath` refuses one at `unlink` time. `createGitWorktree` can
-// not be rooted the same way — `git worktree add` is a subprocess that resolves its destination
-// argument itself and FOLLOWS a symlink there, writing a whole worktree wherever it points — so
-// `containedWorktreeAdd` closes it with a two-level staging structure plus two fail-closed containment
-// checks. git's WRITE targets a leaf named after the slug inside an unguessable 0700 random PARENT
-// directory created through an `os.Root` rooted at container; the parent's unguessability and mode deny
-// a different-UID planter, and its being a real intermediate directory makes `os.Root.Rename` refuse a
-// parent-swap (it refuses a symlink at an intermediate SOURCE component). R5 stopped at that rename,
-// but `os.Root.Rename` renames a symlink standing at the SOURCE's own final component as a link rather
-// than refusing it, so a staging-LEAF symlink planted during git's write was still renamed onto the
-// target — an out-of-hub worktree reported as success (R6's review reproduced this 12/12 against a
-// same-UID observing planter). R6 binds containment to the act: after git writes, `stagedWorktreeContained`
-// confirms the staging leaf is a real directory reached without traversing a symlink, and after the
-// rename it confirms the placed target is too; either failure cleans up the escaped worktree and staging
-// debris and returns an error, then `git worktree repair` fixes git's registration on the success path.
-// A same-UID (or root) planter actively racing the add can still make git transiently write a checkout
-// into a directory it already controls — unpreventable by any staging location, since such a planter can
-// substitute any path fabric writes to — but the operation is never REPORTED as success and never leaves
-// the target a dangling out-of-hub symlink, which is the create-side twin of the delete-side guarantee.
+// **The create-side minters bind creation to a rooted act the same way**.
+// `createExclusiveDir` and `createGitWorktree` are the gate's only path and worktree minters.
+// A create that followed a symlink planted at its target would write outside the container.
+// `createExclusiveDir` creates its leaf through an `os.Root` rooted at the parent.
+// An intermediate-symlink escape is refused at `mkdir` time, as `removeContainedPath` refuses one at `unlink` time.
+// `createGitWorktree` cannot be rooted the same way:
+// `git worktree add` is a subprocess that resolves its destination itself and follows a symlink there.
+// It would write a whole worktree wherever the symlink points.
+// `containedWorktreeAdd` therefore uses a two-level staging structure plus two fail-closed containment checks.
+// git writes a leaf named after the slug inside an unguessable 0700 random parent directory.
+// That parent is created through an `os.Root` rooted at the container.
+// Its unguessability and mode deny a different-UID planter.
+// As a real intermediate directory, it makes `os.Root.Rename` refuse a parent swap.
+// That refusal covers a symlink at an intermediate source component.
+// `os.Root.Rename` renames a symlink at the source's own final component as a link instead of refusing it.
+// Containment is therefore also bound to the act:
+// after git writes, `stagedWorktreeContained` confirms the staging leaf is a real directory reached without a symlink.
+// After the rename, it confirms the placed target is too.
+// Either failure cleans up the escaped worktree and staging debris and returns an error.
+// On the success path, `git worktree repair` fixes git's registration.
+// A same-UID or root planter racing the add can make git transiently write a checkout into a directory it controls.
+// No staging location prevents that, because such a planter can substitute any path fabric writes to.
+// The operation is still never reported as success and never leaves the target a dangling out-of-hub symlink.
+// This is the create-side twin of the delete-side guarantee.
 //
-// **The hub-level container WRITER binds its writes to a rooted act the same way, because R7's review proved five rounds of create-side pressure had never looked at it**.
-// `writeLaunchers` (launchers.go) writes into `<hub>/_launchers/<AnchorRel>/<slug>` — a hub-level structural container, not the freshly-created worktree — and once wrote through a raw primitive that resolved and followed the container path itself, `os.MkdirAll`+`os.WriteFile`.
-// A STATIC symlink planted at the `<slug>` leaf OR the `_launchers` container (no race, no observation) carried the write OUTSIDE the hub — executable launcher content to an attacker-chosen path — while `add` reported `ok:true` with a mutation record naming the hub-relative path the bytes never reached, the exact delete-side M3 false-success shape and strictly easier to exploit (no timing).
-// This is the same asymmetry the delete side already closed for `removeLaunchers`, live on the create side of the same two verbs.
-// It now writes through an `os.Root` rooted at `l.HubPath` (the true containment boundary;
-// `_launchers` is never legitimately a symlink), so any component escaping the hub is refused at write time.
+// **The hub-level container writer binds its writes to a rooted act the same way**.
+// `writeLaunchers` (launchers.go) writes into `<hub>/_launchers/<AnchorRel>/<slug>`.
+// That is a hub-level structural container, not a freshly created worktree.
+// A raw `os.MkdirAll`+`os.WriteFile` would resolve and follow the container path itself.
+// A static symlink planted at the `<slug>` leaf or the `_launchers` container needs no race and no observation.
+// It would carry executable launcher content outside the hub.
+// `add` would report `ok:true` with a mutation record naming a hub-relative path the bytes never reached.
+// `writeLaunchers` therefore writes through an `os.Root` rooted at `l.HubPath`.
+// That is the true containment boundary, since `_launchers` is never legitimately a symlink.
+// Any component escaping the hub is refused at write time.
 // `writeHubWorkspace` (hubworkspace_write.go) writes the hub workspace file the same way.
-// The remaining raw writes in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation), where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side guard rather than a routed write.
-// See PATTERN-fabric-boundary and `cmd/lym/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
+// The remaining raw writes in the package are not this class.
+// Some target a git-owned `.git/…` path.
+// The others target a worktree or board directory that a contained minter created in the same call.
+// Only a post-creation same-UID race, never a static pre-plant, could redirect those writes.
+// That is the same accepted residual class as the gate's dirtiness window.
+// Each is an allowlisted entry with a stated reason in the write-side guard, which PATTERN-fabric-boundary describes.
+// `TestNoUncontainedWrite_FabricengineProductionSource` in `cmd/lym/uncontainedwrite_test.go` enforces the guard.
 //
-// **The launcher teardown path was the last corner still holding the old shape, because every prior
-// round fixed it from the outside and none audited it on its own terms.** R3 rerouted the gate's two
-// arbitrary-path executors and R7 rerouted the hub-level container writer, but three things in that one
-// teardown path were left standing, and R8's review found all three. First, `removeLaunchers`' launcher-DIRECTORY
-// removal ran the gate's `checkPathRequest` and then acted with a raw, unrooted single-entry removal of the
-// nominal path — a THIRD arbitrary-path removal, carrying exactly the check-then-act window R3 closed for the
-// other two, with the same false-success shape (the record naming a hub-relative path the removed inode never
-// was). It could not use `removePath`, whose directory branch is `RemoveAll` and would destroy operator content
-// beside the launchers, so it now calls `removeContainedPath` directly with `recursive` false: the non-recursive
-// branch is `os.Root.Remove`, which the OS refuses on a non-empty directory exactly as before, so the
-// preservation property is untouched while the unlink becomes one rooted `openat` chain. Second,
-// `pruneEmptyAncestors` — which runs immediately after, on both teardown paths — related its walk to the
-// container with a purely lexical `filepath.Rel` and removed the nominal path, so with a multi-segment
-// `AnchorRel` a symlink planted at an intermediate segment destroyed an out-of-hub directory outright, with no
-// race needed at all; its removal is now rooted at the sweep's stop directory, and the lexical `Rel` survives
-// only as the loop's termination condition, where it can stop the walk early but never widen it. Both files are
-// consequently OFF the destructive guard's allowlist, so a raw removal reintroduced in either now fails the
-// guard rather than inheriting a reason written for a call site that no longer exists.
+// **The launcher teardown path is rooted end to end**.
+// `removeLaunchers`' launcher-directory removal runs the gate's `checkPathRequest`.
+// It then calls `removeContainedPath` directly with `recursive` false.
+// It cannot use `removePath`, whose directory branch is `RemoveAll`.
+// That would destroy operator content beside the launchers.
+// The non-recursive branch is `os.Root.Remove`, which the OS refuses on a non-empty directory.
+// The neighbours are preserved, and the unlink is one rooted `openat` chain.
+// `pruneEmptyAncestors` runs immediately after on both teardown paths.
+// It removes through a root at the sweep's stop directory.
+// Otherwise a symlink at an intermediate segment of a multi-segment `AnchorRel` redirects the removal out of the hub.
+// Its lexical `filepath.Rel` is only the loop's termination condition; it can stop the walk early but never widen it.
+// Neither `launchers.go` nor `ancestors.go` is on the destructive guard's allowlist,
+// so a raw removal introduced in either fails the guard.
 //
-// Third, and separate from containment: `refuseUncontainedPath`, the pre-gate guard the teardown helper opens with, returned a bare `fmt.Errorf`.
-// Every one of its best-effort call sites (`Remove`, `Prune`) wraps the call in `surfaceRefusal`, which by design discards anything that is not a `*destructiveRefusal` — so the one refusal class that must never be dropped was dropped.
-// A STATIC symlink at the `_launchers` container (no race) made the whole teardown refuse correctly, nothing escaping, while `lym fabric remove` reported `ok:true`, `partial:false` and exit 0 with the pair's launcher scripts still on disk and no reason for the operator to reach for `reconcile` — R2's M2 dishonest-success shape, relocated onto the teardown path.
-// The guard now returns the gate's own refusal type, so every site propagates it with no call-site change and `RefusalOf` answers for it like any other.
-// The lesson worth keeping is that a refusal's TYPE is part of its contract here: a containment check that refuses correctly but is not the type the best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.
+// `refuseUncontainedPath` is the pre-gate guard the teardown helper opens with.
+// It returns the gate's own `*destructiveRefusal` type.
+// Every best-effort call site (`Remove`, `Prune`) wraps the call in `surfaceRefusal`.
+// `surfaceRefusal` discards anything that is not a `*destructiveRefusal`.
+// A bare error would be dropped.
+// A static symlink at the `_launchers` container would make the teardown refuse correctly.
+// `lym fabric remove` would still report `ok:true`, `partial:false` and exit 0.
+// The launcher scripts would remain on disk, with no reason for the operator to reach for `reconcile`.
+// With the gate's type, every site propagates the refusal and `RefusalOf` answers for it.
+// A refusal's type is part of its contract.
+// A check that refuses correctly in a type the best-effort wrapper drops is, to the operator, no check at all.
 //
-// **Why the token-carrying ownership kinds exist, and the honest limit of what backs them.**
-// `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
-// itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and
-// `Add`'s worktree rollback both need exactly that, and nothing weaker would do: a rollback site
-// that could destroy anything matching a *shape* rather than a specific gate-minted grant would
-// reopen the same freedom every other ownership kind exists to close.
-// `createdToken`'s two producers, `createExclusiveDir` and `createGitWorktree`, are declared only
-// in `destroy.go`, but being unexported does not by itself stop a same-package composite literal
-// — `createdToken{}` compiles anywhere in `package fabricengine`.
-// The property that a site cannot declare this kind for a path the gate did not create therefore
-// rests on the bypass guard's `createdToken{` ban, not on Go's type system;
+// **Why the token-carrying ownership kinds exist, and the limit of what backs them**.
+// `ownedFreshlyCreatedPath` and `ownedFreshlyCreatedWorktree` let a rollback site prove something specific:
+// the gate itself created the target, moments ago, in this same call.
+// The fabric-hub bootstrap teardown and `Add`'s worktree rollback both need exactly that.
+// Nothing weaker would do.
+// Matching on a shape instead of a gate-minted grant would reopen the freedom every other ownership kind closes.
+// `createdToken` has two producers, `createExclusiveDir` and `createGitWorktree`, declared only in `destroy.go`.
+// Being unexported does not stop a same-package composite literal:
+// `createdToken{}` compiles anywhere in `package fabricengine`.
+// A site cannot declare this kind for a path the gate did not create.
+// That property rests on the bypass guard's `createdToken{` ban, not on Go's type system;
 // a reader who believes the type system alone enforces it will eventually write one.
-// `createdBranchToken`, which `createGitWorktree` also mints for the branch its `-b` created and `ownedCreatedBranch` takes, is backed the same way, by the `createdBranchToken{` ban.
-// That kind lets `rollbackAdd` delete the warp branch this `Add` created whatever the branch prefix, locally and, under a lease, on origin.
+// `createdBranchToken` is minted by `createGitWorktree` for the branch its `-b` created.
+// `ownedCreatedBranch` takes it, and the `createdBranchToken{` ban backs it the same way.
+// That kind lets `rollbackAdd` delete the warp branch this `Add` created, whatever its prefix.
+// The delete happens locally and, under a lease, on origin.
 //
 // # The hub workspace file
 //
-// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the hub's own VS Code workspace file: the prime first, `Bolt` second, then every pair whose parent is the prime at its anchor dir, sorted by slug, the beams among them.
-// A pair's parent is the `parent_worktree` of its origin record, read with `ReadOriginFor`; the prime when that is empty, names the prime or names a pair that is gone, and when the record is absent or cannot be read.
+// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the hub's own VS Code workspace file.
+// It lists the prime first and `Bolt` second.
+// Then come the pairs whose parent is the prime, each at its anchor dir and sorted by slug, the beams among them.
+// A pair's parent is the `parent_worktree` of its origin record, read with `ReadOriginFor`.
+// The prime is the parent when that field is empty, names the prime or names a pair that is gone.
+// It is also the parent when the record is absent or cannot be read.
 // A pair under a beam is left out of the hub file.
-// Beside it, `BeamWorkspacePath` names `<hub>/<RepoName>-<beam>.code-workspace` for each pair whose origin record carries the beam mark, listing the beam, its parent, `Bolt` and every pair whose parent is the beam; a sub-beam appears there by its own worktree only and has a file of its own.
-// Each beam file carries `lym.generated: true` as its first key, and a regeneration removes such a file only when its beam pair is gone, through the hub's `os.Root`, so an operator's unmarked file of that name stays.
-// The files are lym-owned and rewritten from the hub's current worktrees and origin records whenever their bytes would change, so a hand edit is overwritten;
-// settings belong in the prime's `.vscode/settings.json`, which the hub file splices.
-// A beam's file splices the beam's own `.vscode/settings.json` when it exists and can be read, and the prime's otherwise, with a Warn for an unreadable one.
-// Each file splices its settings with the workspace look `vscode.WorkspaceSettings` sets, titled `<SHORTNAME>: <name> workspace` after the repository or the beam, so a workspace window is told apart from the worktree whose settings it carries.
-// A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory, and lists the folders only after taking it,
-// so a pair created while the regeneration waits is listed.
+// Each pair whose origin record carries the beam mark also gets a beam file of its own.
+// `BeamWorkspacePath` names it `<hub>/<RepoName>-<beam>.code-workspace`.
+// It lists the beam, its parent, `Bolt` and every pair whose parent is the beam.
+// A sub-beam appears there by its own worktree only, and has a file of its own.
+// Each beam file carries `lym.generated: true` as its first key.
+// A regeneration removes a marked file only when its beam pair is gone, through the hub's `os.Root`.
+// An operator's unmarked file of that name stays.
+// The files are lym-owned, so a hand edit is overwritten.
+// A regeneration rewrites them from the hub's current worktrees and origin records whenever their bytes would change.
+// Settings belong in the prime's `.vscode/settings.json`, which the hub file splices.
+// A beam's file splices the beam's own `.vscode/settings.json` when it exists and can be read, and the prime's otherwise.
+// An unreadable beam settings file logs a Warn.
+// Each file splices its settings with the workspace look `vscode.WorkspaceSettings` sets.
+// The title is `<SHORTNAME>: <name> workspace`, named after the repository or the beam,
+// so a workspace window is told apart from the worktree whose settings it carries.
+// A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory.
+// It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.
 // The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.
 //
 // # The correspondence index's write path
 //
-// This section, together with "The destruction chokepoint" above, closes out the fabric crucible
-// campaign's four follow-up slices (12-15), all now landed.
+// The index is a rebuildable cache of the weft commit trailers; this section states the limits of its write path.
 //
 // **Why `record()` is single-phase.**
-// `corrIndex.record` used to compose its upsert from an in-memory snapshot loaded earlier under a
-// read lock already released by the time the write happened — a two-phase load-then-write window
-// a concurrent writer could land inside, clobbering it. `state.UpdateJSON` closes that window: it
-// re-reads the on-disk base under the same exclusive lock it writes under, so `record()`'s upsert
-// composes from a base no other writer can have superseded mid-call.
+// `corrIndex.record` composes its upsert through `state.UpdateJSON`.
+// `state.UpdateJSON` re-reads the on-disk base under the same exclusive lock it writes under.
+// The upsert therefore composes from a base no other writer can have superseded mid-call.
+// No load-then-write window exists for a concurrent writer to land inside.
 //
-// **Why not "re-read under the write lock `record()` already takes."**
-// That was the preferred shape on paper, but `record()` takes no write lock in its own frame:
-// `state.WriteJSON` acquires and releases the lock internally, and `lock.AcquireWriteLock` opens a
-// fresh `flock` handle on every call, so a nested acquire from `corrindex.go` self-deadlocks rather
-// than serializing.
+// **Why `record()` does not re-read under a write lock of its own**.
+// `record()` takes no write lock in its own frame.
+// `state.WriteJSON` acquires and releases the lock internally.
+// `lock.AcquireWriteLock` opens a fresh `flock` handle on every call.
+// A nested acquire from `corrindex.go` therefore self-deadlocks rather than serializing.
 //
-// **Why `RebuildIndex` and `refreshCorrIndexAfterSwitch` were left alone.**
-// Giving them the weft write lock is a claim about every call path that every future caller must
-// preserve, not a local fact `corrindex.go` can establish on its own, and it would still leave
-// `record()` two-phase against any writer that does not take the weft lock.
+// **Why `RebuildIndex` and `refreshCorrIndexAfterSwitch` do not take the weft write lock**.
+// Giving them the lock is a claim about every call path that every future caller must preserve.
+// `corrindex.go` cannot establish that on its own.
+// It would also leave `record()` two-phase against any writer that does not take the weft lock.
 //
-// **Why `refreshCorrIndexAfterSwitch`'s unlocked `os.Remove`-then-rebuild window is designed, not
-// defective.**
-// The discard is intended to drop cross-branch entries that would otherwise keep passing
-// `SHAExists`, so a concurrent `record()` losing its entry there is the intended behaviour, not an
-// oversight.
+// **Why `refreshCorrIndexAfterSwitch`'s unlocked `os.Remove`-then-rebuild window is designed**.
+// The discard drops cross-branch entries that would otherwise keep passing `SHAExists`.
+// A concurrent `record()` losing its entry there is the intended behaviour.
 //
-// **The residual window, by name.**
-// `RebuildIndex` is itself two-phase — `scanWarpSHATrailers` reads git, then `state.WriteJSON`
-// writes, with the scan outside the file's lock — so the interleaving scan → `record()` writes →
-// rebuild writes still loses the recorded entry.
-// This is accepted, not overlooked: LOW severity and self-healing, because the weft commit
-// trailers are the sole source of truth and the index is an explicitly rebuildable cache, so the
-// worst observable effect is one spurious `no_weft_correspondence` from `lym fabric diff` that a
-// re-run clears.
-// `record()`'s side of the race is closed; the reverse direction, against `RebuildIndex`'s own
-// scan-to-write span, is not.
+// **The residual window**.
+// `RebuildIndex` is itself two-phase: `scanWarpSHATrailers` reads git, then `state.WriteJSON` writes.
+// The scan runs outside the file's lock.
+// The interleaving scan, `record()` write and rebuild write therefore still loses the recorded entry.
+// This is accepted as low severity and self-healing.
+// The weft commit trailers are the sole source of truth and the index is a rebuildable cache.
+// The worst observable effect is one spurious `no_weft_correspondence` from `lym fabric diff` that a re-run clears.
+// `record()`'s side of the race is closed.
+// The reverse direction, against `RebuildIndex`'s own scan-to-write span, is not.
 //
 // # Git geometry and ref reads
 //
-// Geometry and ref lookups run in-process through `gitrepo`: the git dir, common dir, branch existence, a ref's SHA, the current branch, a branch's upstream and a ref's tree.
+// Geometry and ref lookups run in-process through `gitrepo`.
+// They cover the git dir, common dir, branch existence, a ref's SHA, the current branch, a branch's upstream and a ref's tree.
 // A `rev-parse` spawn survives only where git derives the answer from config or revision syntax:
 //
 //   - `InstallPostCheckoutHook` asks `--git-path hooks`, which honours `core.hooksPath`.
@@ -1276,458 +1702,634 @@
 //
 // # The records replay
 //
-// A records branch that both this machine and origin moved is brought level by replaying the local commits origin lacks onto origin's tip, never by a merge or a rebase.
-// `replayWeft` does it for a weft worktree and `replayBolt` for the Bolt checkout, both under their caller's locks, and both report a `ReplayOutcome`.
+// When both this machine and origin moved a records branch, the local commits origin lacks are replayed onto origin's tip.
+// The replay is never a merge or a rebase.
+// `replayWeft` does it for a weft worktree and `replayBolt` for the Bolt checkout.
+// Both run under their caller's locks and report a `ReplayOutcome`.
 //
-// **Weft.** Local commits are cherry-picked onto upstream oldest first through `cherryPickOnto`, which lives in `destroy.go` beside the seed-commit drop.
+// **Weft.** Local commits are cherry-picked onto upstream oldest first through `cherryPickOnto`.
+// `cherryPickOnto` lives in `destroy.go` beside the seed-commit drop.
 // A commit that becomes empty is dropped.
 // A conflict returns `ErrReplayConflict` naming the paths, with the starting tip restored.
 // A tracked change on a path the commits touch returns `ErrReplayDirty`, with the branch unmoved.
 // The set-aside commits are tagged before the branch moves, so a stop leaves a tag on a commit still on the branch.
 // A Bolt failure after the pick restores the starting tip, and a restore git refuses is joined into the error.
 //
-// **Bolt.** A commit whose every path some registered `BoltReplayer` claims is re-applied by entry through the claiming replayers, so an entry only one side changed never conflicts and no entry change stops the replay.
-// A replayer lives in the package owning its files and is registered with `RegisterBoltReplayer`; one of them also implements `RunLedger`, naming the Bolt file that holds the runs.
-// Each replayer gets one `ReplayRequest` holding its files' bytes at the merge base, before the commit and after it, and the replays are committed together as one commit with the original message.
-// The run ledger is read only once a commit is claimed, and none registered returns `ErrReplayerMissing` before the branch moves; a path no registered replayer claims is cherry-picked.
-// A change that lost a value to origin or met a replayer's refusal is committed for what was kept, and its original is set aside.
+// **Bolt.** A commit whose every path a registered `BoltReplayer` claims is re-applied by entry through the replayers.
+// An entry only one side changed never conflicts, and no entry change stops the replay.
+// A replayer lives in the package owning its files and is registered with `RegisterBoltReplayer`;
+// one of them also implements `RunLedger`, naming the Bolt file that holds the runs.
+// Each replayer gets one `ReplayRequest` holding its files' bytes at the merge base, before the commit and after it.
+// The replays are committed together as one commit with the original message.
+// The run ledger is read only once a commit is claimed.
+// With none registered, the replay returns `ErrReplayerMissing` before the branch moves.
+// A path no registered replayer claims is cherry-picked.
+// A change that lost a value to origin or met a replayer's refusal is committed for what was kept,
+// and its original is set aside.
 // Seed commits are dropped, and any other commit is cherry-picked as on a weft.
-// `Bolt.pullFirst` replays through it: a conflict skips as diverged, naming the conflicting paths and the two ways to settle them, and an uncommitted change on a touched path skips as dirty.
+// `Bolt.pullFirst` replays this way.
+// A conflict skips as diverged, naming the conflicting paths and the two ways to settle them.
+// An uncommitted change on a touched path skips as dirty.
 //
-// **The ended set.** `readEndedSet` reads which runs origin has ended through the run ledger: a run the ledger marks ended on origin's Bolt tip, or one that tip's history held and the tip pruned, which reads as done when the newest commit holding it marked it ended and as removed otherwise; none registered returns `ErrReplayerMissing`.
+// **The ended set.** `readEndedSet` reads through the run ledger which runs origin has ended.
+// A run counts as ended when the ledger marks it ended on origin's Bolt tip.
+// A run that the tip's history held and the tip pruned reads as done when the newest commit holding it marked it ended.
+// Otherwise it reads as removed.
+// With none registered, it returns `ErrReplayerMissing`.
 // A created stamp keeps a reused slug from matching a pruned run.
-// A replay sets aside, under a local `set-aside/<slug>/<sha>` tag, each local commit whose every path belongs to an ended run, since replaying it would resurrect the run.
-// A commit that also touches another replayer's path skips only the ledger's part and is tagged the same way, and a loss or refusal from a replayer other than the run ledger tags the original `set-aside/replayer/<name>/<sha>`, as does a ledger loss that names no run.
+// A replay sets aside each local commit whose every path belongs to an ended run.
+// Replaying it would resurrect the run, so it is tagged locally as `set-aside/<slug>/<sha>`.
+// A commit that also touches another replayer's path skips only the ledger's part and is tagged the same way.
+// A loss or refusal from a replayer other than the run ledger tags the original `set-aside/replayer/<name>/<sha>`.
+// So does a ledger loss that names no run.
 // The prefix is one no archive reader matches, so a set-aside commit shows as no run.
-// `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize, read from the pair's loom status, the local parent branch and the prime's batten status, and treats an unreadable state as reached.
-// It also exempts a raddle run standing at Raddle-File when origin shows its entry done, the row that ends the run's own entry, so a filed run goes on through Land and Worktree-Teardown; an entry origin removed before it ended done still reconciles as ended there.
+// `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize.
+// It reads that from the pair's loom status, the local parent branch and the prime's batten status,
+// and it treats an unreadable state as reached.
+// It also exempts a raddle run standing at Raddle-File when origin shows its entry done.
+// That row ends the run's own entry, so a filed run goes on through Land and Worktree-Teardown.
+// An entry origin removed before it ended done still reconciles as ended there.
 //
 // # The local removal mode
 //
-// `RemoveLocal` removes a pair the way `Remove` does, after the same refusals, without an origin step and without waiting on another writer.
-// It try-acquires the pair's teardown lock and the weft write lock, and a held one returns an error wrapping `ErrPairBusy` with nothing changed.
-// It commits the sibling's pending records, then puts a local `set-aside/<slug>/<sha>` tag on the weft tip, reported as `SetAsideTag`, where `Remove` pushes an archive tag.
-// It asks origin for nothing, respawns no push after a failure so the surviving worktree's commits stay local, skips the store housekeeping, and regenerates the hub workspace file by one attempt at its lock, reporting `WorkspaceSkipped` when the lock is held.
+// `RemoveLocal` removes a pair the way `Remove` does, after the same refusals.
+// It has no origin step and does not wait on another writer.
+// It try-acquires the pair's teardown lock and the weft write lock,
+// and a held one returns an error wrapping `ErrPairBusy` with nothing changed.
+// It commits the sibling's pending records, then puts a local `set-aside/<slug>/<sha>` tag on the weft tip.
+// The tag is reported as `SetAsideTag`; `Remove` pushes an archive tag instead.
+// It asks origin for nothing and respawns no push after a failure, so the surviving worktree's commits stay local.
+// It skips the store housekeeping.
+// It regenerates the hub workspace file by one attempt at its lock, reporting `WorkspaceSkipped` when the lock is held.
 // Both modes clear the failed-push records of the pair's code and records branches once the pair is removed.
 //
-// `SnapshotUncommitted` serves the force case: under one try-acquire of the weft write lock it keeps the task worktree's uncommitted paths, under `warp/`, and the weft worktree's uncommitted paths outside the record pathspec, under `weft/`, untracked ones included, in one parentless commit under an annotated `set-aside/<slug>/<sha>` tag.
-// The commit is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched; with nothing uncommitted it writes nothing.
-// `SnapshotTagged` reports whether such an annotated tag of a slug exists, which tells a later run that an earlier one took the snapshot.
+// `SnapshotUncommitted` serves the force case.
+// Under one try-acquire of the weft write lock, it keeps two sets of uncommitted paths, untracked ones included:
+// the task worktree's under `warp/`, and the weft worktree's outside the record pathspec under `weft/`.
+// They go in one parentless commit under an annotated `set-aside/<slug>/<sha>` tag.
+// The commit is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched;
+// with nothing uncommitted it writes nothing.
+// `SnapshotTagged` reports whether such an annotated tag of a slug exists.
+// That tells a later run that an earlier one took the snapshot.
 //
 // # The hub pull
 //
-// `PullHub` (hubpull.go) brings a hub up to date from origin side by side: Bolt, then the prime pair, then each local beam pair in `git worktree list` order.
-// Bolt goes through `Bolt.Pull`, which takes the board write lock, so it never interleaves with a board write, and reports a Bolt it cannot bring up to date as a skip with the way forward.
-// Each pair goes through `Fabric.Pull` while the caller's `PairLock` holds the parent lock of its code branch, held for that one pair only.
-// A local beam is a pair present here whose origin record carries the beam mark, whatever machine owns it; task pairs are left to their runs.
-// A beam whose code branch has no upstream is up to date without taking the lock, and a pair whose records side could not reach origin is stopped.
-// A pull honoring `SkipGit` leaves every side up to date, and a pair whose origin record cannot be read is reported as a stopped beam side, since its beam mark is unknown.
-// A side that stops never keeps the next one from running, and each side reports `moved`, `up_to_date` or `stopped` with the stop's way forward.
+// `PullHub` (hubpull.go) brings a hub up to date from origin side by side:
+// Bolt, then the prime pair, then each local beam pair in `git worktree list` order.
+// Bolt goes through `Bolt.Pull`, which takes the board write lock, so it never interleaves with a board write.
+// It reports a Bolt it cannot bring up to date as a skip with the way forward.
+// Each pair goes through `Fabric.Pull` while the caller's `PairLock` holds the parent lock of its code branch.
+// The lock is held for that one pair only.
+// A local beam is a pair present here whose origin record carries the beam mark, whatever machine owns it;
+// task pairs are left to their runs.
+// A beam whose code branch has no upstream is up to date without taking the lock,
+// and a pair whose records side could not reach origin is stopped.
+// A pull honoring `SkipGit` leaves every side up to date.
+// A pair whose origin record cannot be read is reported as a stopped beam side, since its beam mark is unknown.
+// A side that stops never keeps the next one from running,
+// and each side reports `moved`, `up_to_date` or `stopped` with the stop's way forward.
 // It pushes nothing.
 //
 // # Changing an anchor
 //
-// A worktree's anchor changes in three calls a CLI interleaves with its session, run and dobby checks: `Topology.BeginAnchorChange`, `AnchorChange.Apply` and `AnchorChange.Finish`, with `Close` ending every path (anchorchange.go).
+// A worktree's anchor changes in three calls a CLI interleaves with its session, run and dobby checks (anchorchange.go):
+// `Topology.BeginAnchorChange`, `AnchorChange.Apply` and `AnchorChange.Finish`.
+// `Close` ends every path.
 // A is the anchor the worktree leaves and B the one it takes.
 //
-// **The record.** A change with something to do leaves a move record, `anchor-move.json` in the weft's lock directory (moverecord.go), written before the weft is touched and removed when the change finishes or is undone.
-// It holds A, B, the kind, the upstream tip U an integration rebuilds on, and the pid and start time of the process holding the move lock.
-// `MoveInProgress` reads it for every weft writer, so a held lock names a change in progress when the record's pid and start time are a live process and a change still starting otherwise, and a free lock names the interrupted change and the `lym fabric anchor <slug> --set <B>` run that recovers it.
+// **The record.** A change with something to do leaves a move record in the weft's lock directory (moverecord.go).
+// The file is `anchor-move.json`.
+// It is written before the weft is touched and removed when the change finishes or is undone.
+// It holds A, B, the kind and the upstream tip U an integration rebuilds on.
+// It also holds the pid and start time of the process holding the move lock.
+// `MoveInProgress` reads it for every weft writer.
+// A held lock names a change in progress when the record's pid and start time are a live process.
+// Otherwise it names a change still starting.
+// A free lock names the interrupted change and the `lym fabric anchor <slug> --set <B>` run that recovers it.
 //
-// **Begin.** `BeginAnchorChange` refuses before it moves anything, each refusal naming its next step: an empty own marker; a target the warp checkout cannot hold; a held move lock; and, with a record standing, a target other than the record's B.
-// `validateAnchorTarget` requires a target that passes `lymcwd.ValidateAnchorRel`, has no segment that is a link or a wired, `.lym`, `.scratch` or hub-reserved name, is a directory the warp checkout's HEAD tracks, and holds no real wired name, since a junction cannot be wired over one.
-// A target HEAD lacks while the warp's fetched upstream tracks it names the update of the warp checkout, and one neither tracks names the commit that brings it in; both cost a code commit on the checked-out warp branch, shared by every machine that checks it out.
-// With no record the weft needs a committed marker and no uncommitted or untracked path under A's wired names or in its marker, the never-tracked `.lym` apart.
-// The kind is `integrate` when the weft's fetched upstream has commits its tip lacks and the two tips carry different anchors, else `move` when B differs from A, else none.
+// **Begin.** `BeginAnchorChange` refuses before it moves anything, each refusal naming its next step:
+// an empty own marker; a target the warp checkout cannot hold; a held move lock;
+// and, with a record standing, a target other than the record's B.
+// `validateAnchorTarget` requires a target that passes `lymcwd.ValidateAnchorRel`.
+// The target has no segment that is a link or a wired, `.lym`, `.scratch` or hub-reserved name.
+// It is a directory the warp checkout's HEAD tracks.
+// It holds no real wired name, since a junction cannot be wired over one.
+// A target HEAD lacks while the warp's fetched upstream tracks it names the update of the warp checkout.
+// A target neither tracks names the commit that brings it in.
+// Both cost a code commit on the checked-out warp branch, shared by every machine that checks it out.
+// With no record the weft needs a committed marker.
+// It also needs no uncommitted or untracked path under A's wired names or in its marker, the never-tracked `.lym` apart.
+// The kind is `integrate` when the weft's fetched upstream has commits its tip lacks,
+// and the two tips carry different anchors.
+// Otherwise the kind is `move` when B differs from A, and none when it does not.
 // A change of kind none takes no lock and writes no record, and its `Apply` and `Finish` do nothing.
 // Any other holds the move lock until `Close` and writes the record, a standing record keeping its other fields.
 // `Close` before `Apply` removes a record this `BeginAnchorChange` wrote, and keeps one it found standing.
 //
-// **Apply.** `Apply` unwires the pair's junctions, exclude entries, scratch link and its exclude line at A through the destruction chokepoint, holds the weft write lock, and moves the weft.
-// A move runs `moveWeftContent` (anchormove.go): it moves each wired name's tracked content with `git mv`, renames `A/.lym` to `B/.lym`, writes the marker B last through an `os.Root` at the weft, and commits those paths, the marker among them, in one weft commit.
-// An integration writes U into the record, runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B, and then renames `A/.lym` to `B/.lym`.
-// `Apply` then wires the junctions and scratch link at B, writes the launchers under `_launchers/<B>/<slug>` and removes `_launchers/<A>/<slug>`, and regenerates the hub and beam workspace files.
+// **Apply.** `Apply` unwires the pair at A through the destruction chokepoint:
+// its junctions, exclude entries, scratch link and its exclude line.
+// It then holds the weft write lock and moves the weft.
+// A move runs `moveWeftContent` (anchormove.go).
+// It moves each wired name's tracked content with `git mv` and renames `A/.lym` to `B/.lym`.
+// It writes the marker B last through an `os.Root` at the weft.
+// It commits those paths, the marker among them, in one weft commit.
+// An integration writes U into the record.
+// It runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B.
+// It then renames `A/.lym` to `B/.lym`.
+// `Apply` then wires the junctions and scratch link at B.
+// It writes the launchers under `_launchers/<B>/<slug>` and removes `_launchers/<A>/<slug>`.
+// It also regenerates the hub and beam workspace files.
 // The prime has no launcher directory, so it loses the menu launcher of A instead.
 // `Finish` removes the record and spawns the pair's detached push, which carries the commit.
 //
-// **Failure and recovery.** A failure before the commit, or before the integration moves the branch, restores the weft's paths and `.lym`, rewires A and removes the record, and `Apply` returns `landed` false.
-// The restore is `restoreMovePathsToHead` (destroy.go), the executor that resets the index to HEAD for A's and B's wired names and the marker, restores the tracked files, and removes the untracked files git does not ignore.
+// **Failure and recovery.** A failure before the commit, or before the integration moves the branch, is undone:
+// `Apply` restores the weft's paths and `.lym`, rewires A, removes the record, and returns `landed` false.
+// The restore is `restoreMovePathsToHead`.
+// It resets the index to HEAD for A's and B's wired names and the marker.
+// It restores the tracked files and removes the untracked files git does not ignore.
 // When a restoring step itself fails, the record stays and the error names the re-run.
-// A failure after the commit, or after the branch moved, leaves the record, returns `landed` true, and names the re-run that skips the move and finishes the wiring.
+// A failure after the commit, or after the branch moved, leaves the record and returns `landed` true.
+// The error names the re-run that skips the move and finishes the wiring.
 // A re-run finds the record, and the record's A, B, kind and U govern.
-// The change landed when HEAD's committed marker is B, an integration also holding U among HEAD's ancestors; no U means not landed.
-// A re-run of a change that did not land recovers it first: it refuses when both `A/.lym` and `B/.lym` stand, naming both and the merge by hand, moves a lone `B/.lym` back to A, restores the paths to HEAD and judges the tree clean.
+// The change landed when HEAD's committed marker is B, an integration also holding U among HEAD's ancestors.
+// No U means not landed.
+// A re-run of a change that did not land recovers it first.
+// It refuses when both `A/.lym` and `B/.lym` stand, naming both and the merge by hand.
+// It moves a lone `B/.lym` back to A, restores the paths to HEAD and judges the tree clean.
 // A re-run of a change that landed moves a lone `A/.lym` to B and does the wiring.
 //
-// `UpstreamRunUnfinished` reads the pair's own run status at the tree of its weft's fetched upstream tip, since a weft stopped by a marker change keeps a checked-out status that goes stale.
+// `UpstreamRunUnfinished` reads the pair's own run status at the tree of its weft's fetched upstream tip.
+// A weft stopped by a marker change keeps a checked-out status that goes stale.
 //
 // # The merge surface
 //
-// **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the
-// current pair's warp checkout, in the task worktree where a conflict is meant to be resolved by
-// hand. `Merge(source, opts)` merges into a target pair's warp checkout — the pair the caller opened
-// a separate handle on — squash-capable via `opts.Squash`, and expected conflict-free: any conflict
-// there self-aborts the warp side and returns `*ErrMergeInRequired`, since resolving a conflict
-// against an already-checked-out target worktree is not something git permits from another worktree
-// of the same repo. The two are not one verb with a flag, because their guards, failure modes, and
-// worktrees genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge`
-// rejection).
+// # The two verbs
 //
-// **`MergeInAt(source, warpSHA)` merges a told commit instead of the freshness rule's pick.** It runs `MergeIn`'s whole body, and only the code side's merged commit differs: `warpSHA` replaces the commit the freshness rule picks for `source`, once it resolves to a commit in the pair's code repository.
+// `MergeIn(source)` merges `source` into the current pair's warp checkout.
+// It runs in the task worktree, where a conflict is resolved by hand.
+// `Merge(source, opts)` merges into a target pair's warp checkout, the pair the caller opened a separate handle on.
+// It is squash-capable via `opts.Squash` and expected conflict-free.
+// Any conflict there self-aborts the warp side and returns `*ErrMergeInRequired`.
+// Git does not permit resolving a conflict in a checked-out target worktree from another worktree of the same repo.
+// The two are separate verbs because their guards, failure modes, and worktrees differ.
+//
+// # Merging a told commit
+//
+// `MergeInAt(source, warpSHA)` merges a told commit instead of the freshness rule's pick.
+// It runs `MergeIn`'s whole body; only the code side's merged commit differs.
+// `warpSHA` replaces the commit the freshness rule picks for `source`.
+// It must resolve to a commit in the pair's code repository.
 // A `warpSHA` that does not is the `source branch not found` guard reason, with nothing merged.
-// The records side and every other guard still resolve from `source`, and the merge record names `source` as the merged branch and `warpSHA` as its code-side source, so `MergeContinue` and `MergeAbort` treat the call as a merge-in of `source`.
-// A caller that reviewed a given upstream tip uses it to merge exactly that tip, whatever the local branch has moved to since.
+// The records side and every other guard still resolve from `source`.
+// The merge record names `source` as the merged branch and `warpSHA` as its code-side source,
+// so `MergeContinue` and `MergeAbort` treat the call as a merge-in of `source`.
+// A caller that reviewed an upstream tip uses it to merge exactly that tip.
+// The local branch may have moved since.
 //
-// **The weft is never a merge participant, in either verb or either direction.** Everything routed
-// to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge
-// to reconcile — a merge carries code, and the weft carries system files, not code. Two consequences
-// follow directly: no merge fabric starts can ever CREATE a weft conflict, so `MergeIn` passes
-// `unifyConflictPaths` a nil weft list at every call site of its own, and `fabriccli`'s
-// junction-staging conflict path is unreachable rather than wrong — both are retained plumbing (see
-// the `conclude-and-conflict-plumbing-is-retained` decision), not dead code waiting to be deleted.
+// # The weft and merges
 //
-// The weft conflict list is not, however, permanently empty as a whole, and reading it that way
-// misses a live path: `MergeContinue` reads `f.records.ConflictedFiles()` for real and routes it
-// through `unifiedRemainingConflicts` into that same weft arm, so a FOREIGN weft conflict — an
-// operator's own plain-git merge in the weft checkout, which the Fabric Git Invariant's carve-out
-// permits — does surface a weft path in the returned `Conflicts`. Reproduced live: a raw conflicting
-// merge in the weft while a fabric merge record was open made `merge --continue` refuse with
-// `unresolved: ["_lym/loom/status.json"]`. That is the machinery working, not leaking: the weft is
-// invisible from the visible worktree, so naming the path is the only actionable refusal available,
-// and the arm must stay for the legacy-record case `concludeMergeSides` still handles.
+// The weft is never a merge participant, in either verb or either direction.
+// Everything routed to the weft belongs to exactly one worktree and one branch.
+// A merge has nothing there to reconcile:
+// a merge carries code, and the weft carries system files.
+// No merge fabric starts can therefore create a weft conflict.
+// `MergeIn` passes `unifyConflictPaths` a nil weft list at every call site of its own,
+// and `fabriccli`'s junction-staging conflict path is unreachable.
+// Both are retained plumbing, not dead code.
 //
-// **The recorded merge.** A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept
-// beside the correspondence index — never derived from git state, because derivation fails in ways a
-// caller cannot recover from: a fast-forward defeats `--no-commit`'s own conflict window, a squash
-// merge records no `MERGE_HEAD` at all, and a human running plain git against either checkout can
-// leave real merge state fabric never started. That last case is `*ErrForeignMergeState`: every
-// mutating merge verb refuses rather than touch it, while `MergeInProgress` — a read-only probe —
-// reports `false` for it, since fabric genuinely has no merge of its own in progress.
+// The weft conflict list is not permanently empty as a whole.
+// `MergeContinue` reads `f.records.ConflictedFiles()`.
+// It routes the list through `unifiedRemainingConflicts` into that same weft arm.
+// A foreign weft conflict therefore surfaces a weft path in the returned `Conflicts`:
+// an operator's own plain-git merge in the weft checkout, which the Fabric Git Invariant's carve-out permits.
+// With a fabric merge record open, such a merge makes `merge --continue` refuse.
+// The refusal reads `unresolved: ["_lym/loom/status.json"]`.
+// The weft is invisible from the visible worktree, so naming the path is the only actionable refusal.
+// The arm also serves the legacy-record case `concludeMergeSides` handles.
 //
-// **The lifecycle quartet and crash recovery.** `MergeIn`/`Merge` start an attempt; `MergeContinue`
-// concludes one once every conflict is resolved in the worktree; `MergeAbort` discards one,
-// restoring the warp side to its pre-merge SHA — including a side that only fast-forwarded or never
-// moved, but never one whose conclude already landed (see below). Every state-changing step
-// re-persists the record before it acts, so
-// a crash mid-attempt leaves a record a resumed `MergeContinue`/`MergeAbort` can still read and act
-// on — there is no window where the record and the checkouts can drift silently out of reach of the
-// quartet.
+// # The recorded merge
 //
-// **Not every crash is continuable, and the record says which.** A side's outcome is persisted only
-// once that side's `MergeStart` has returned, so a crash before the first `MergeStart` or between
-// the two leaves an empty outcome for a side the attempt never reached. `MergeContinue` refuses such
-// a record outright with the guard reason `merge attempt did not reach both sides`, *before* landing
-// anything: concluding what it can would commit one side of a merge whose other side was never
-// started, leaving the pair non-corresponding with no way to finish it. `MergeAbort` is the one
-// correct recovery there, and it always works, because it restores from the recorded pre-merge SHAs
-// rather than from how far the attempt got.
+// A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept beside the correspondence index.
+// The record is never derived from git state, because derivation fails in ways a caller cannot recover from:
+// a fast-forward defeats `--no-commit`'s own conflict window;
+// a squash merge records no `MERGE_HEAD` at all;
+// and a human running plain git against either checkout can leave real merge state fabric never started.
+// That last case is `*ErrForeignMergeState`.
+// Every mutating merge verb refuses rather than touch it.
+// `MergeInProgress`, a read-only probe, reports `false` for it, because fabric has no merge of its own in progress.
 //
-// **And not every crash is abortable, for the mirror-image reason.** The conclude phase lands warp
-// first, then weft, so a conclude that fails on the second side — a policy hook, `commit.gpgsign`
-// with no key, a full disk — returns `*ErrMergeIncomplete` and deliberately retains the record with
-// the first side's commit already in it. Restoring from the recorded pre-merge SHAs there would
-// discard a commit that really landed, and in the `MergeIn`-with-conflicts flow that commit carries
-// the operator's own hand-written resolutions, reset away under `force: true`. So `MergeAbort`
-// refuses such a record with the guard reason `merge conclude already landed`, and `MergeContinue`
-// is the one correct recovery — it skips a side whose committed SHA is recorded, so a resumed run is
-// idempotent. Idempotency extends to a conclude the record never learned about: a crash between a
-// side's `git commit` and the record re-save leaves the commit landed with the recorded SHA still
-// empty, and re-running `git commit` there would fail forever on a clean tree. A resumed
-// `MergeContinue` detects that shape and adopts the landed commit into the record instead of
-// re-committing, so it finishes the states `MergeAbort` refuses to destroy.
+// # The lifecycle quartet and crash recovery
 //
-// **Adoption is a claim, so it demands evidence a refusal does not.** `MergeAbort`'s guard and
-// `MergeContinue`'s adoption arm both look at the same ambiguous signal — HEAD has moved off the
-// recorded pre-merge SHA and no `MERGE_HEAD` is live — and they must resolve that ambiguity in
-// OPPOSITE directions. For the guard, the ambiguity is safe: over-refusing an abort leaves a merge
-// stuck in a state an operator can still inspect. For adoption it is not: the signal is satisfied by
-// ANY commit landed on that checkout while the record was live, so keying adoption on it alone made
-// an operator's plain `git merge --abort` followed by one unrelated commit come back `committed:
-// true` naming that unrelated commit, with the record deleted and the merge source still un-merged.
-// A silent false success, and the reason the two are deliberately NOT exact mirrors.
-// Adoption therefore rests on git's own parentage rather than on HEAD movement. fabric starts a
-// non-squash merge with `git merge --ff --no-commit <sourceSHA>` and records that resolved
-// per-side SHA in the merge record, so a genuine conclude-commit is a merge commit with EXACTLY two
-// parents: the recorded pre-merge SHA first, that recorded source SHA second. Nothing short of all
-// of that is adopted.
-// The arity is part of the evidence, not a detail of it. Accepting "at least two parents, with the
-// source somewhere among them" admitted a commit fabric can never build: an operator who discards
-// the staged merge and then merges the recorded source TOGETHER with an unrelated branch —
-// `git merge <source> <other>` — lands a genuine octopus whose first parent is the recorded start
-// and whose second is the recorded source. Adopting it reported `committed: true` naming that
-// commit, recorded correspondence, and deleted the record, while the checkout carried `<other>`'s
-// content that no side of this merge brought in and that no `merge_staged` entry accounts for.
-// **A squash conclude is never adopted at all.** `git merge --squash` writes no `MERGE_HEAD` and its
-// conclude is an ordinary one-parent commit, so it carries no evidence distinguishing it from any
-// other commit — there is nothing there to be sure about, and the non-squash predicate is not
-// silently inherited. A crashed squash conclude stays honestly stuck: `*ErrMergeIncomplete`, record
-// retained. So does a record written by a binary predating the recorded source SHAs; no evidence is
-// not satisfied evidence.
-// **The commit arm demands evidence too, and for a while it did not.** Adoption is only half of what
-// `concludeMergeSides` does. When the adoption arm reports "not landed", the other half runs
-// `git commit` — which concludes whatever `MERGE_HEAD` names, whether or not that is the merge the
-// record describes. Nothing checked. So an operator who discarded fabric's staged merge with plain
-// `git merge --abort` (permitted verbatim: plain git in the warp checkout is theirs) and started an
-// unrelated merge instead had fabric commit THAT merge, write its SHA into the record as this merge's
-// conclude, report it as a `merge_committed` mutation with `ok`/`committed: true`, pair it into the
-// correspondence index, and then delete the record. The merge source stayed un-merged on that side
-// while the other side's half landed for good: a permanently non-corresponding pair, a silent false
-// success, and no evidence left that it was one. The adoption arm never saw the shape precisely
-// because the operator had not committed — HEAD was still on the recorded start with a live
-// `MERGE_HEAD`, so "not landed" was the right answer, handed straight to the defect.
-// `MergeContinue` therefore carries the precondition `checkout no longer carries the recorded merge`
-// (`recordedMergeGoneReason`), aggregated with its other two. A side pending a conclude passes it in
-// three ways, and each is a different question:
-//   - `MERGE_HEAD` is exactly the recorded per-side source SHA and nothing else — the ordinary case.
-//     The whole head SET must be that one SHA, not merely contain it: `git merge --no-commit <source>
-//     <decoy>` leaves a MERGE_HEAD whose FIRST entry is the source, and every rev-parsing spelling of
-//     the query reports only that first entry, so `gitrepo.MergeHeads` reads the file itself. This is
-//     the uncommitted twin of the octopus the adoption arm refuses.
-//   - the recorded source is already an ancestor of that side's HEAD — the merge landed, whatever else
-//     has happened since, so there is no false claim left to prevent. This is what keeps the
-//     precondition from wedging the crash the adoption arm exists to finish, a conclude with a second
-//     merge started on top of it, and a source merged onto a wrong base, all three of which `MergeAbort`
-//     also refuses.
-//   - no merge is live AND the checkout is clean — `git commit` fails on its own there, so the honest
-//     `*ErrMergeIncomplete` already comes back and refusing early would only blind the adoption-evidence
-//     tests, every one of which builds exactly that state. The same state with tracked dirt is NOT
-//     exempt, because `git commit` succeeds there and lands an ordinary one-parent commit of whatever
-//     the operator staged.
+// `MergeIn`/`Merge` start an attempt, and `MergeContinue` concludes one once every conflict is resolved in the worktree.
+// `MergeAbort` discards an attempt and restores the warp side to its pre-merge SHA.
+// That includes a side that only fast-forwarded or never moved.
+// It never discards a conclude that already landed (see below).
+// Every state-changing step re-persists the record before it acts.
+// A crash mid-attempt therefore leaves a record a resumed `MergeContinue`/`MergeAbort` can read and act on,
+// so the record and the checkouts cannot drift silently out of reach of the quartet.
 //
-// A squash record is exempt from the whole precondition, for the reason adoption gives: `git merge
-// --squash` writes no `MERGE_HEAD`, so there is no evidence to demand, and refusing every squash
-// `--continue` would break the ordinary squash flow. That residual is real and stated rather than
-// papered over — a squash record whose side was discarded and restaged by hand still concludes whatever
-// is staged. So is an empty recorded source SHA, from a record written by a binary predating them.
-// The refusal never wedges a pair on its own: in the state it fires on, the recorded source is nowhere
-// in that side's history, so `MergeAbort`'s own `concludeLandedReason` still passes for a side sitting
-// on its recorded start and the abort route stays open.
+// # Continuable crashes
 //
-// Within those bounds the two refusals still cover every half-finished attempt between them, and
-// neither destroys anything.
-// The precondition is deliberately wider than the recorded conclude SHA. A side counts as possibly
-// concluded when its recorded SHA is set **or** its recorded outcome is `staged`/`conflicted` and its
-// HEAD has moved off its recorded pre-merge SHA — because the record learns a conclude SHA only after
-// the commit, the `CurrentSHA` read, and the record re-save have all succeeded, so a failure at
-// either of the last two leaves a landed commit the record never mentions. Reading HEAD closes that:
-// an `up_to_date` side is never concluded and cannot move, a `fast_forwarded` side moved legitimately
-// and is still reset, an empty-outcome side never started, and only a `staged`/`conflicted` side can
-// have had a commit put on it by anything but the conclude.
-// If the underlying git failure cannot be fixed by retrying, plain git in the two checkouts is the
-// last resort — but it has to produce the same commit fabric would have: resolve each unfinished
-// side and commit it while git's own `MERGE_HEAD` is still live (`git commit --no-edit`, never
-// `git merge --abort` first), so the resulting commit really is a merge of this merge's source.
+// Not every crash is continuable, and the record says which.
+// A side's outcome is persisted only once that side's `MergeStart` has returned,
+// so a crash before the first `MergeStart` or between the two leaves an empty outcome.
+// The attempt never reached that side.
+// `MergeContinue` refuses such a record before landing anything.
+// The guard reason is `merge attempt did not reach both sides`.
+// Concluding what it can would commit one side of a merge whose other side was never started.
+// That leaves the pair non-corresponding with no way to finish it.
+// `MergeAbort` is the correct recovery there.
+// It always works, because it restores from the recorded pre-merge SHAs rather than from how far the attempt got.
+//
+// # Abortable crashes
+//
+// Not every crash is abortable, for the mirror-image reason.
+// The conclude phase lands warp first, then weft.
+// A conclude that fails on the second side returns `*ErrMergeIncomplete`.
+// It retains the record with the first side's commit in it.
+// Causes include a policy hook, `commit.gpgsign` with no key, and a full disk.
+// Restoring from the recorded pre-merge SHAs there would discard a commit that landed.
+// In the `MergeIn`-with-conflicts flow that commit carries the operator's own hand-written resolutions.
+// `force: true` would reset them away.
+// So `MergeAbort` refuses such a record with the guard reason `merge conclude already landed`.
+// `MergeContinue` is the correct recovery.
+// It skips a side whose committed SHA is recorded, so a resumed run is idempotent.
+// Idempotency extends to a conclude the record never learned about:
+// a crash between a side's `git commit` and the record re-save leaves the commit landed.
+// The recorded SHA is still empty.
+// Re-running `git commit` there would fail forever on a clean tree.
+// A resumed `MergeContinue` detects that shape and adopts the landed commit into the record instead of re-committing,
+// so it finishes the states `MergeAbort` refuses to destroy.
+//
+// **Adoption is a claim, so it demands evidence a refusal does not.**
+// `MergeAbort`'s guard and `MergeContinue`'s adoption arm read the same ambiguous signal:
+// HEAD has moved off the recorded pre-merge SHA and no `MERGE_HEAD` is live.
+// They resolve that ambiguity in opposite directions.
+// For the guard, over-refusing an abort leaves a merge stuck in a state an operator can still inspect.
+// For adoption the signal alone is unsafe: any commit landed on that checkout while the record was live satisfies it.
+// An operator's plain `git merge --abort` followed by one unrelated commit would then report `committed: true`.
+// It would name that unrelated commit, delete the record, and leave the merge source un-merged.
+// That is a silent false success, so the two are not exact mirrors.
+// Adoption therefore rests on git's own parentage rather than on HEAD movement.
+// Fabric starts a non-squash merge with `git merge --ff --no-commit <sourceSHA>` and records that resolved per-side SHA.
+// A genuine conclude-commit is therefore a merge commit with exactly two parents:
+// the recorded pre-merge SHA first, the recorded source SHA second.
+// Nothing short of all of that is adopted.
+// The arity is part of the evidence.
+// Accepting at least two parents with the source among them would admit a commit fabric can never build:
+// an operator who discards the staged merge and runs `git merge <source> <other>` lands an octopus.
+// Its first parent is the recorded start and its second is the recorded source.
+// Adopting it would report `committed: true`, record correspondence, and delete the record.
+// The checkout would carry `<other>`'s content.
+// No side of this merge brought it in, and no `merge_staged` entry accounts for it.
+// **A squash conclude is never adopted.**
+// `git merge --squash` writes no `MERGE_HEAD` and its conclude is an ordinary one-parent commit,
+// so it carries no evidence distinguishing it from any other commit.
+// A crashed squash conclude stays stuck with `*ErrMergeIncomplete` and the record retained.
+// So does a record written by a binary that predates the recorded source SHAs: no evidence is not satisfied evidence.
+// **The commit arm demands evidence too.**
+// Adoption is half of what `concludeMergeSides` does.
+// When the adoption arm reports "not landed", the other half runs `git commit`,
+// which concludes whatever `MERGE_HEAD` names, whether or not that is the merge the record describes.
+// Without a check, an operator who discarded fabric's staged merge with plain `git merge --abort`
+// and started an unrelated merge would have fabric commit that merge.
+// Plain git in the warp checkout is the operator's to use.
+// Fabric would write that commit's SHA into the record as this merge's conclude.
+// It would report a `merge_committed` mutation with `ok`/`committed: true`.
+// It would pair the commit into the correspondence index and delete the record.
+// The merge source would stay un-merged on that side while the other side's half landed.
+// That is a permanently non-corresponding pair and a silent false success.
+// The adoption arm cannot see that shape, because HEAD is still on the recorded start with a live `MERGE_HEAD`.
+// `MergeContinue` therefore carries the precondition `checkout no longer carries the recorded merge`.
+// Its identifier is `recordedMergeGoneReason`.
+// It is aggregated with `MergeContinue`'s other preconditions.
+// A side pending a conclude passes it in any of these ways, each a different question:
+//   - `MERGE_HEAD` is exactly the recorded per-side source SHA and nothing else, the ordinary case.
+//     The whole head set must be that one SHA, not merely contain it:
+//     `git merge --no-commit <source> <decoy>` leaves a MERGE_HEAD whose first entry is the source.
+//     Every rev-parsing spelling of the query reports only that first entry.
+//     `gitrepo.MergeHeads` therefore reads the file itself.
+//     This is the uncommitted twin of the octopus the adoption arm refuses.
+//   - the recorded source is already an ancestor of that side's HEAD.
+//     The merge landed, so no false claim is left to prevent.
+//     This keeps the precondition from wedging states `MergeAbort` also refuses:
+//     the crash the adoption arm finishes;
+//     a conclude with a second merge started on top of it;
+//     and a source merged onto a wrong base.
+//   - no merge is live and the checkout is clean.
+//     `git commit` fails on its own there, so the honest `*ErrMergeIncomplete` already comes back.
+//     The same state with tracked dirt is not exempt,
+//     because `git commit` succeeds there and lands an ordinary one-parent commit of whatever the operator staged.
+//
+// A squash record is exempt from the whole precondition, for the reason adoption gives:
+// `git merge --squash` writes no `MERGE_HEAD`, so there is no evidence to demand.
+// Refusing every squash `--continue` would break the ordinary squash flow.
+// One residual remains: a squash record whose side was discarded and restaged by hand still concludes whatever is staged.
+// An empty recorded source SHA, from a record written by a binary that predates them, is exempt too.
+// The refusal never wedges a pair on its own.
+// In the state it fires on, the recorded source is nowhere in that side's history.
+// So `MergeAbort`'s `concludeLandedReason` still passes for a side sitting on its recorded start,
+// and the abort route stays open.
+//
+// Within those bounds the two refusals cover every half-finished attempt between them, and neither destroys anything.
+// `MergeAbort`'s conclude-landed guard is wider than the recorded conclude SHA.
+// A side counts as possibly concluded when its recorded SHA is set,
+// or its recorded outcome is `staged`/`conflicted` and its HEAD has moved off its recorded pre-merge SHA.
+// The record learns a conclude SHA only after the commit, the `CurrentSHA` read, and the record re-save have succeeded,
+// so a failure at either of the last two leaves a landed commit the record never mentions.
+// Reading HEAD closes that gap:
+// an `up_to_date` side is never concluded and cannot move;
+// a `fast_forwarded` side moved legitimately and is still reset;
+// an empty-outcome side never started;
+// and only a `staged`/`conflicted` side can have had a commit put on it by anything but the conclude.
+// If the underlying git failure cannot be fixed by retrying, plain git in the two checkouts is the last resort.
+// It must produce the same commit fabric would have:
+// resolve each unfinished side and commit it while git's own `MERGE_HEAD` is still live.
+// Use `git commit --no-edit` and never `git merge --abort` first,
+// so the resulting commit is a merge of this merge's source.
 // `MergeContinue`'s adoption arm then accounts for the hand-landed commits and clears the record.
-// A side whose `MERGE_HEAD` is already gone is put back first — `git reset --hard` to that side's
-// recorded `warp_start`/`weft_start`, then `git merge` its recorded `warp_source`/`weft_source` —
-// because adoption checks the FIRST parent too, so a conclude landed on top of some other commit is
-// a merge of a different base and is not adopted. A squash attempt has no hand-landed route at all,
-// since adoption never accepts a one-parent conclude. Plain git alone can
-// never finish the job: the record lives in the weft gitdir where no git command touches it, and
-// while it exists every guarded sibling verb keeps refusing.
+// A side whose `MERGE_HEAD` is already gone is put back first:
+// run `git reset --hard` to that side's recorded `warp_start`/`weft_start`.
+// Then run `git merge` with its recorded `warp_source`/`weft_source`.
+// Adoption checks the first parent too.
+// A conclude landed on top of some other commit is a merge of a different base and is not adopted.
+// A squash attempt has no hand-landed route, since adoption never accepts a one-parent conclude.
+// Plain git alone can never finish the job:
+// the record lives in the weft gitdir where no git command touches it.
+// While it exists, every guarded sibling verb keeps refusing.
 //
-// **The not-synced precondition is decided twice, because once is too early.** `Merge` refuses a
-// target genuinely diverged from its own upstream with the guard reason `branch not synced to
-// upstream`. The guard stage's own half of that (`syncedToUpstreamReason`) resolves `@{u}` from
-// whatever remote-tracking state the checkout already carries — nothing in the guard stage fetches,
-// by design, since the guard stage mutates nothing — so a divergence created by someone else's push
-// that this checkout has not fetched yet is simply not visible to it: `@{u}` still names a commit
-// that IS an ancestor of HEAD, the side classifies as merely ahead, and the guard passes. `Merge`
-// then fetches twice on its way in (`resolveMergeSources`, then the pre-merge sync step), so the
-// divergence becomes knowable inside the same call that just decided it was absent. Acting on the
-// stale answer merged straight over a diverged target and returned `ok` with `committed: true`; the
-// operator found out at push time. So the pre-merge sync step re-decides the predicate on post-fetch
-// knowledge: per side it classifies equal / behind / ahead / diverged EXHAUSTIVELY, fast-forwards
-// `behind`, no-ops `equal` and `ahead`, and refuses `diverged` with the same reason string the guard
-// stage would have used. The guard stage stays as the cheap pre-lock fast path that refuses without
-// taking the write lock or touching either checkout — which is a real difference, not a duplication:
-// a refusal there mutates nothing, while a refusal from the sync step can already have
-// fast-forwarded the other side.
+// # The not-synced precondition
 //
-// **The dirty guard decides on a path list.** `pairDirtyReason` reads the code checkout's tracked dirty paths once, worktree-relative, slash-separated and sorted, and reports the dirty reason only when that list is not empty.
-// A `MergeGuardError` carrying the dirty reason carries that checkout and those paths in `Checkout` and `DirtyPaths`, outside `Error()`, which stays the fixed path-free string.
+// The not-synced precondition is decided twice, because once is too early.
+// `Merge` refuses a target diverged from its own upstream with the guard reason `branch not synced to upstream`.
+// The guard stage's half of that is `syncedToUpstreamReason`.
+// It resolves `@{u}` from the remote-tracking state the checkout already carries.
+// The guard stage mutates nothing, so it never fetches.
+// A divergence created by someone else's push that this checkout has not fetched is therefore not visible to it:
+// `@{u}` still names a commit that is an ancestor of HEAD, the side classifies as merely ahead, and the guard passes.
+// `Merge` then fetches twice on its way in (`resolveMergeSources`, then the pre-merge sync step),
+// so the divergence becomes knowable inside the same call.
+// Acting on the stale answer would merge over a diverged target and return `ok` with `committed: true`.
+// The pre-merge sync step therefore re-decides the predicate on post-fetch knowledge.
+// Per side it classifies equal, behind, ahead or diverged exhaustively.
+// It fast-forwards `behind`, no-ops `equal` and `ahead`, and refuses `diverged` with the guard stage's reason string.
+// The guard stage stays as the cheap pre-lock fast path.
+// It refuses without taking the write lock or touching either checkout.
+// A refusal there mutates nothing, while a refusal from the sync step can already have fast-forwarded the other side.
 //
-// **The warp checkout must be on a branch.** A merge verb refuses with the guard reason `checkout is
-// not on a branch` while the warp checkout has HEAD pointing straight at a commit. A conclude-commit
-// landed on a detached HEAD is reachable from no ref and disappears at the next checkout, and the
-// verb has already deleted its own record on the way out by the time that is discovered, so
-// `MergeAbort` cannot put it back — refusing before the attempt starts is the only point at which
-// that is still recoverable. The weft's own detachment no longer refuses anything: it
-// is not a merge participant, so a detached weft HEAD cannot produce the unreachable-commit shape
-// this precondition exists to prevent, and the guard set that used to evaluate both sides
-// unconditionally — pairDirtyReason, detachedHeadReason, syncedToUpstreamReason, and
-// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout. Drive all
-// four weft states at once and the merge still decides purely on warp state.
+// # The dirty guard
 //
-// Exactly two weft-reading refusals survive that narrowing, and they are kept on purpose rather than
-// missed. `foreignMergeStatePresent` still refuses MergeIn/Merge on weft-side git merge state fabric
-// did not start (mergestate.go says so at its own definition), and MergeContinue still refuses on a
-// weft-side conflicted index (see "The merge surface"). Both answer the same question — an operator
-// is running plain git inside the weft checkout right now — which is a reason to stop that no
-// narrowing of the ordinary guard set was meant to remove. So: the weft lost its power to block a
-// merge on ORDINARY state (dirt, detachment, upstream divergence, an unresolvable counterpart), not
-// on foreign in-flight git state.
+// The dirty guard decides on a path list.
+// `pairDirtyReason` reads the code checkout's tracked dirty paths once, worktree-relative, slash-separated and sorted.
+// It reports the dirty reason only when that list is not empty.
+// A `MergeGuardError` with the dirty reason carries that checkout and those paths in `Checkout` and `DirtyPaths`.
+// `Error()` stays the fixed path-free string.
 //
-// **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
-// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found the warp side already
-// carrying the resolved source. Both are read off the merge-state record's own fields rather than
-// hardcoded per return site, which is what makes them answer honestly in the two cases that used to
-// lie: a merge that fast-forwarded both sides fabricates no commit at all and reports `Committed`
-// false, and a call that finds the work already done *after* taking the write lock — the loser of a
-// race the unlocked pre-lock probe deliberately does not close — reports `AlreadyUpToDate` true,
-// which is what a strictly sequential run of the same two calls reports.
-// "Every return site" includes `MergeContinue`'s, which is the one that resumes such a record after
-// a crash: it derives both flags from the same fields rather than answering `AlreadyUpToDate` false
-// by construction, so a resumed call and a sequential one agree.
+// # The warp checkout must be on a branch
 //
-// **"Already up to date" means git had nothing to do, not that the trees already agreed.** A merge
-// whose source is not an ancestor of HEAD but whose result tree equals HEAD's own tree — the shape
-// a cherry-pick, backport, or duplicated hand-edit produces — is a real merge: git writes
-// `MERGE_HEAD` and `git commit` would land a proper two-parent commit for it. `gitrepo.MergeStart`
-// classifies it `MergeStaged` on the `MERGE_HEAD` probe, so fabric concludes it and reports
-// `Committed` true. Treating it as up-to-date was a defect, not a shortcut: fabric reported a clean
-// no-op, deleted its own record, and left a live `MERGE_HEAD` in both checkouts that no fabric verb
-// would then clear — `MergeAbort` included, since with the record gone the state reads as foreign.
-// The squash form is the one case where an empty result really is nothing to do: `git merge
-// --squash` writes no `MERGE_HEAD` and has no commit to make, so both sides report `up_to_date` and
-// `AlreadyUpToDate` comes back true from the derived field, with the pre-lock probe having said
-// otherwise. That is a single-process, race-free route to the derived flag, and it is what
-// `TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord` exercises.
+// A merge verb refuses while the warp checkout's HEAD points straight at a commit.
+// The guard reason is `checkout is not on a branch`.
+// A conclude-commit landed on a detached HEAD is reachable from no ref and disappears at the next checkout.
+// The verb has deleted its own record by the time that is discovered, so `MergeAbort` cannot put it back.
+// Refusing before the attempt starts is the only point at which that is recoverable.
+// The weft is not a merge participant, so a detached weft HEAD cannot produce that unreachable-commit shape.
+// A detached weft HEAD refuses nothing.
+// The merge guards evaluate the warp side alone.
+// The merge decides purely on warp state.
+// That holds whatever the weft's dirt, detachment, upstream divergence or counterpart resolution.
 //
-// **Conflict reporting.** Conflicted paths surface as one flat, lexically sorted, deduplicated list
-// of unified, worktree-relative paths — never raw per-repo paths, which would leak the warp/weft
-// split, and never absolute paths, which is not what `git merge` hands an operator. A path either
-// side's conflict resolves to something outside the single visible worktree tree is unmappable, and
-// that self-aborts the whole attempt with `*ErrUnmergeableState` rather than reporting a path that
-// would mislead the operator about where to look. `MergeResult.Conflicts` is empty, never nil, on
-// every path that carries no conflict, so a consumer's JSON never has to distinguish `[]` from
-// `null`.
+// Two weft-reading refusals remain by design.
+// `foreignMergeStatePresent` refuses `MergeIn`/`Merge` on weft-side git merge state fabric did not start.
+// `MergeContinue` refuses on a weft-side conflicted index.
+// Both answer the same question: an operator is running plain git inside the weft checkout right now.
+// So the weft cannot block a merge on ordinary state:
+// dirt, detachment, upstream divergence, or an unresolvable counterpart.
+// It can block a merge on foreign in-flight git state.
 //
-// **Resolving a conflict takes three steps, and the middle one is not skippable.** `MergeContinue`'s conflict guard is an INDEX probe (`ConflictedFiles()`), so editing a conflicted file to remove its markers does not on its own let the merge conclude — the path has to be marked resolved.
-// `MergeStageResolved` is that step: it takes the same unified paths `Conflicts` reported and stages each on whichever side's index actually lists it unmerged.
-// It is not merely a convenience for callers that would otherwise shell out to `git add`, because for a weft-side path there is no `git add` that works.
-// A conflict under a wired junction name — every `_lym/…` conflict — lives in the weft checkout, reachable from the single visible worktree only through the junction, and git refuses to stage through it (`pathspec … is beyond a symbolic link`).
-// So a merge whose conflicts land on the weft side is completable ONLY through this verb.
-// A refusal for that reason names the paths, and it did not always.
-// `MergeContinue` reads both sides' `ConflictedFiles()` to decide the guard and then threw the answer away, returning `unresolved conflicts remain` and nothing else.
-// That is un-actionable in the one flow that reaches it: an operator who staged some of the reported paths and not all of them cannot re-run `merge-in` to reprint the list (a merge is already in progress), `lym fabric status` reports a remaining weft-side conflict as an ordinary weft change indistinguishable from any other, and plain `git status` in the visible worktree does not see it at all, because it lives across the junction.
-// `status` does now report the parked merge itself, through its `merge_in_progress` key, while still not distinguishing which weft path is conflicted.
-// The only route back to the list was raw git inside the weft checkout — the one place the Fabric illusion says an operator never has to look, which is the same argument that made `merge-stage` a shipped gap.
-// The refusal now carries the still-unresolved paths, mapped through the same `unifyConflictPaths` the conflict result uses, and the CLI reports them under `unresolved` rather than `conflicts`: `conflicts` is the documented discriminator between a conflict result and a hard failure, so it stays exclusive to the former.
-// That listing is best-effort and never replaces the refusal: a geometry read that fails, or a remaining path that maps nowhere in the visible tree, yields no list rather than a partial one that would mislead the operator about what is left.
-// That made it a shipped gap rather than an internal detail while the verb had no CLI surface at all and existed solely for `internal/mergeresolve`: an operator following `lym fabric merge-in`'s own help reached a `merge --continue` that refused forever, with the only escape being raw git inside the weft checkout — the one place the Fabric illusion says they never have to look.
-// `lym fabric merge-stage <path>...`
-// is the surface, and the CLI's help now names the full resolve → stage → continue sequence rather than the two-step one that cannot finish.
+// # What the result flags mean
 //
-// **The one path-separator reconciliation, and why its guard is shaped oddly.** The visible-tree membership test compares two values that do NOT arrive in the same separator convention: the conflicted path is git's own output and is always forward-slash, while `AnchorRel` comes back from `lymcwd.ValidateAnchorRel` as an OS-separator path.
-// On Windows a multi-segment anchor recorded as `apps/backend` therefore arrives as `apps\backend`, and the joined prefix never matches what git reports — every `_lym` conflict under such an anchor is then classed unmappable and the whole merge self-aborts with `*ErrUnmergeableState`.
-// Converting the anchor's separator to `/` is what closes that, and it must convert the OS separator specifically, not every backslash: on a POSIX host a backslash is an ordinary filename character and a directory really can be named `weird\name`.
-// The conversion is written against an explicit separator argument rather than calling `filepath.ToSlash`, purely so it can be tested.
-// `filepath.ToSlash` is the identity function wherever the OS separator already is `/`, so on every host this project builds on, deleting it changes no observable behaviour and no test can fail — which is exactly how a Windows-only fix rots unnoticed.
+// `MergeResult.Committed` reports whether the pair now carries this merge's conclude-commit.
+// `AlreadyUpToDate` reports whether the attempt found the warp side already carrying the resolved source.
+// Both are read off the merge-state record's own fields rather than hardcoded per return site.
+// So they answer honestly in two cases.
+// A merge that fast-forwarded both sides fabricates no commit and reports `Committed` false.
+// A call that finds the work already done after taking the write lock reports `AlreadyUpToDate` true.
+// That call is the loser of a race the unlocked pre-lock probe does not close.
+// A strictly sequential run of the same two calls reports the same.
+// `MergeContinue` resumes such a record after a crash.
+// It derives both flags from the same fields, so a resumed call and a sequential one agree.
+//
+// # Already up to date
+//
+// "Already up to date" means git had nothing to do, not that the trees already agreed.
+// A merge whose source is not an ancestor of HEAD but whose result tree equals HEAD's own tree is a real merge.
+// A cherry-pick, backport, or duplicated hand-edit produces that shape.
+// Git writes `MERGE_HEAD`, and `git commit` would land a proper two-parent commit for it.
+// `gitrepo.MergeStart` classifies it `MergeStaged` on the `MERGE_HEAD` probe.
+// Fabric concludes it and reports `Committed` true.
+// Treating it as up-to-date would report a clean no-op and delete the record.
+// That leaves a live `MERGE_HEAD` in both checkouts that no fabric verb clears.
+// `MergeAbort` cannot, since with the record gone the state reads as foreign.
+// The squash form is the one case where an empty result is nothing to do:
+// `git merge --squash` writes no `MERGE_HEAD` and has no commit to make, so both sides report `up_to_date`.
+// `AlreadyUpToDate` comes back true from the derived field, although the pre-lock probe said otherwise.
+//
+// # Conflict reporting
+//
+// Conflicted paths surface as one flat, lexically sorted, deduplicated list of unified, worktree-relative paths.
+// Raw per-repo paths would leak the warp/weft split, and absolute paths are not what `git merge` hands an operator.
+// A path that either side's conflict resolves to outside the single visible worktree tree is unmappable.
+// That self-aborts the whole attempt with `*ErrUnmergeableState`.
+// Reporting the path would mislead the operator about where to look.
+// `MergeResult.Conflicts` is empty, never nil, on every path that carries no conflict,
+// so a consumer's JSON never has to distinguish `[]` from `null`.
+//
+// # Resolving a conflict
+//
+// Resolving a conflict takes three steps, and the middle one cannot be skipped.
+// `MergeContinue`'s conflict guard is an index probe (`ConflictedFiles()`).
+// Removing the markers from a conflicted file does not let the merge conclude; the path must be marked resolved.
+// `MergeStageResolved` is that step.
+// It takes the same unified paths `Conflicts` reported and stages each on whichever side's index lists it unmerged.
+// A weft-side path cannot be staged with `git add`.
+// A conflict under a wired junction name, which covers every `_lym/…` conflict, lives in the weft checkout.
+// The single visible worktree reaches it only through the junction.
+// Git refuses to stage through it (`pathspec … is beyond a symbolic link`).
+// So a merge whose conflicts land on the weft side is completable only through this verb.
+// `MergeContinue` refuses while conflicts remain.
+// The refusal names the still-unresolved paths, mapped through `unifyConflictPaths`.
+// An operator who staged some of the reported paths but not all cannot re-run `merge-in` to reprint the list.
+// A merge is already in progress.
+// `lym fabric status` reports a remaining weft-side conflict as an ordinary weft change.
+// Its `merge_in_progress` key reports the parked merge itself.
+// Plain `git status` in the visible worktree does not see the conflict, because it lives across the junction.
+// The CLI reports the paths under `unresolved` rather than `conflicts`:
+// `conflicts` is the documented discriminator between a conflict result and a hard failure.
+// It stays exclusive to the former.
+// The listing is best-effort and never replaces the refusal.
+// A geometry read that fails, or a remaining path that maps nowhere in the visible tree, yields no list.
+// A partial list would mislead the operator.
+// `lym fabric merge-stage <path>...` is the CLI surface of `MergeStageResolved`,
+// and the CLI's help names the full resolve, stage, continue sequence.
+//
+// # The path-separator reconciliation
+//
+// There is one path-separator reconciliation, and its guard is shaped oddly.
+// The visible-tree membership test compares two values in different separator conventions.
+// The conflicted path is git's own output and always forward-slash.
+// `AnchorRel` comes back from `lymcwd.ValidateAnchorRel` as an OS-separator path.
+// On Windows a multi-segment anchor recorded as `apps/backend` arrives as `apps\backend`.
+// The joined prefix then never matches what git reports.
+// Every `_lym` conflict under such an anchor would be classed unmappable.
+// The whole merge would then self-abort with `*ErrUnmergeableState`.
+// The anchor's separator is therefore converted to `/`.
+// The conversion must target the OS separator, not every backslash:
+// on a POSIX host a backslash is an ordinary filename character and a directory can be named `weird\name`.
+// The conversion takes an explicit separator argument instead of calling `filepath.ToSlash`, so it can be tested.
+// `filepath.ToSlash` is the identity wherever the OS separator already is `/`.
+// So on a POSIX host deleting it changes no observable behaviour and no test could fail.
 // The separator-explicit form lets a POSIX test drive the Windows spelling directly.
-// One atom stays beyond runtime reach here — the `os.PathSeparator` argument at the entry point, indistinguishable from a hardcoded `/` on this host — and is pinned by source inspection instead, with that limitation stated rather than papered over.
-// No Windows host has existed at any point in this module's history, so this is the strongest available proof, not a substitute for one that was skipped.
+// The `os.PathSeparator` argument at the entry point stays beyond runtime reach.
+// It is indistinguishable from a hardcoded `/` on a POSIX host.
+// Source inspection pins it instead.
+// No Windows host runs these tests, so this is the strongest available proof, not a substitute for a Windows run.
 //
-// **A conflict result is not a failure, and a script tells them apart by the envelope.** At the CLI
-// both a conflicted merge and a hard error exit 1 with `"ok": false` — the shared envelope has no
-// third outcome and no distinct exit code. The discriminator is the payload: a conflict result, and
-// only a conflict result, carries a `conflicts` array (`errConflictsWithRecord`), and it reports
-// `partial: false` even with a non-empty mutation record, since the engine returned no error.
+// # Conflict result versus failure
 //
-// **SHA-labelled conflict markers.** Every merge names a SHA, never a branch, in its conflict
-// markers on both sides — resolving the weft side's own SHA independently, rather than reusing the
-// warp source's marker text, so a marker never leaks the fact that a second repo exists underneath.
+// A conflict result is not a failure, and a script tells them apart by the envelope.
+// At the CLI both a conflicted merge and a hard error exit 1 with `"ok": false`;
+// the shared envelope has no third outcome and no distinct exit code.
+// The discriminator is the payload: only a conflict result carries a `conflicts` array (`errConflictsWithRecord`),
+// and it reports `partial: false` even with a non-empty mutation record, since the engine returned no error.
 //
-// **Sibling refusals and the write lock's scope.** Exactly four sibling verbs carry an explicit
-// refusal, and they are the four whose write would corrupt or be corrupted by a live merge:
-// `Commit`, `Pull`, `Topology.Checkout` and `Topology.Remove` all return `*ErrMergeInProgress` while
-// a merge record exists (`Commit` additionally refuses foreign git-level merge state with no record,
-// as `*ErrForeignMergeState` — fabric has no merge of its own in progress there, and the foreign
-// error's plain-git advice is the one that actually clears the state),
-// so a pair mid-merge cannot be pulled, committed, or torn down out from under the resolution in
-// progress. `Remove` guards two distinct subjects: the pair being removed being mid-merge itself,
-// and — via `mergeSourceInFlight` — some *other* pair in the hub being mid-merge on this pair's
-// branches, which would otherwise delete the weft branch that merge is resolving against.
-// That record-based refusal has one window it cannot cover, and the write lock is what covers it
-// instead: `Merge`'s pre-merge sync step mutates both checkouts BEFORE the record is written, so
-// while it runs the four sibling verbs see no record and do not refuse. `Merge` therefore takes the
-// write lock ahead of the sync rather than after it. `MergeIn` has no sync step and mutates nothing
-// before its record, so it is the one verb that can still defer acquisition — though what it (and
-// `Merge`) checked before acquiring is re-verified under the lock: the record's absence is
-// re-checked (a record written by another process mid-wait refuses with the in-progress guard
-// reason instead of being silently overwritten), foreign git-level merge state and pair dirtiness
-// are re-probed (a human's mid-wait plain-git merge would otherwise read as this merge's own
-// conflict — and be force-reset by `Merge`'s conflict path — while mid-wait tracked dirt would be
-// reset away by the genuine-`MergeStart`-error self-abort; the guard stage decided both before the
-// verb's fetches and the lock wait, a window of real seconds), and the recorded pre-merge SHAs are
-// read under the lock, never before it, so a commit landed by the lock's previous holder becomes
-// the recorded start rather than something `MergeAbort` would reset through. The residual window
-// between those re-checks and `MergeStart` itself stays open — no re-check closes a TOCTOU against
-// an external actor — but the seconds-wide parts are covered. `MergeContinue` and `MergeAbort` go
-// further and acquire the lock before reading the record or evaluating any guard at all — the
-// conclude-landed guard in particular must be able to see a conclude that lands while the abort
-// waits, or the abort would destroy it from a stale answer.
-// The rest of the mutating surface is deliberately unguarded and safe for stated reasons rather than
-// by omission: the push family (`PushWeft`, `PushWarpAt`, `CoalescePushBothAt`, `SpawnDetachedPush`)
-// pushes a committed branch tip an uncommitted merge has not moved; `Cleanup` cannot touch a
-// checked-out weft branch and a mid-merge pair is materialized by definition; `Prune` only acts on a
-// pair whose warp worktree is already gone; `Reconcile`, the junction verbs and the hook installer
-// touch filesystem links, never an index or a ref; `Add` builds a new pair off a branch tip;
-// `RebuildIndex` rewrites an explicitly rebuildable cache; `RecordCorrespondence` must stay
-// unguarded, since the merge verbs call it themselves while their own record is still live;
-// `MergeStageResolved` carries the foreign-state refusal every mutating merge verb carries, but no
-// record precondition and no lock, because with foreign state refused it can only ever write DURING
-// a merge (no fabric merge and no foreign merge means no path is conflicted, so the call errors
-// before staging anything, and while a fabric merge IS in progress the guarded siblings already keep
-// every other fabric writer out — see its own godoc in mergestage.go for the full argument, and note
-// that "no merge in progress" and "nothing conflicted" are not the same condition, which is exactly
-// what the foreign arm covers); and
+// # SHA-labelled conflict markers
+//
+// Every merge names a SHA, never a branch, in its conflict markers on both sides.
+// The weft side resolves its own SHA independently instead of reusing the warp source's marker text,
+// so a marker never reveals that a second repo exists underneath.
+//
+// # Sibling refusals and the write lock's scope
+//
+// Four sibling verbs carry an explicit refusal, the ones whose write would corrupt or be corrupted by a live merge:
+// `Commit`, `Pull`, `Topology.Checkout` and `Topology.Remove` return `*ErrMergeInProgress` while a merge record exists.
+// `Commit` also refuses foreign git-level merge state with no record, as `*ErrForeignMergeState`:
+// fabric has no merge of its own in progress there.
+// The foreign error's plain-git advice is the one that clears the state.
+// So a pair mid-merge cannot be pulled, committed, or torn down out from under the resolution in progress.
+// `Remove` guards two cases.
+// One is the pair being removed being mid-merge itself.
+// The other, detected via `mergeSourceInFlight`, is another pair in the hub being mid-merge on this pair's branches;
+// removing the pair would delete the weft branch that merge is resolving against.
+// That record-based refusal has one window it cannot cover, and the write lock is what covers it instead:
+// `Merge`'s pre-merge sync step mutates both checkouts before the record is written.
+// While it runs, the four sibling verbs see no record and do not refuse.
+// `Merge` therefore takes the write lock ahead of the sync rather than after it.
+// `MergeIn` has no sync step and mutates nothing before its record,
+// so it is the one verb that can still defer acquisition.
+// What it (and `Merge`) checked before acquiring is re-verified under the lock.
+// The record's absence is re-checked:
+// a record another process writes mid-wait refuses with the in-progress guard reason, never a silent overwrite.
+// Foreign git-level merge state and pair dirtiness are re-probed.
+// Without that, a human's mid-wait plain-git merge would read as this merge's own conflict,
+// and `Merge`'s conflict path would force-reset it.
+// Mid-wait tracked dirt would be reset away by the self-abort on a genuine `MergeStart` error.
+// The guard stage decided both before the verb's fetches and the lock wait, a window of real seconds.
+// The recorded pre-merge SHAs are read under the lock, never before it.
+// A commit the lock's previous holder landed becomes the recorded start, not something `MergeAbort` would reset away.
+// The residual window between those re-checks and `MergeStart` itself stays open.
+// No re-check closes a TOCTOU against an external actor, but the seconds-wide parts are covered.
+// `MergeContinue` and `MergeAbort` go further.
+// They acquire the lock before reading the record or evaluating any guard at all.
+// The conclude-landed guard in particular must see a conclude that lands while the abort waits,
+// or the abort would destroy it from a stale answer.
+// The rest of the mutating surface is unguarded and safe for stated reasons rather than by omission:
+// the push family pushes a committed branch tip an uncommitted merge has not moved;
+// its members are `PushWeft`, `PushWarpAt`, `CoalescePushBothAt` and `SpawnDetachedPush`;
+// `Cleanup` cannot touch a checked-out weft branch and a mid-merge pair is materialized by definition;
+// `Prune` only acts on a pair whose warp worktree is already gone;
+// `Reconcile`, the junction verbs and the hook installer touch filesystem links, never an index or a ref;
+// `Add` builds a new pair off a branch tip;
+// `RebuildIndex` rewrites an explicitly rebuildable cache;
+// `RecordCorrespondence` must stay unguarded, since the merge verbs call it themselves while their own record is live;
+// `MergeStageResolved` carries the foreign-state refusal of every mutating merge verb, but no record guard or lock;
+// because with foreign state refused it can only ever write during a merge;
+// with no fabric merge and no foreign merge, no path is conflicted, so the call errors before staging anything;
+// while a fabric merge is in progress, the guarded siblings already keep every other fabric writer out;
+// see its own godoc in mergestage.go for the full argument;
+// and note that "no merge in progress" and "nothing conflicted" are not the same condition;
+// the foreign arm covers exactly that difference.
 // `ResetHard`'s `force: false` plus tracked-dirtiness gate already refuses against a merge worktree,
-// which is dirty by definition.
-// The combined `.weft/weft.write.lock`
-// covers only the mutating steps of a merge call — `Merge`'s pre-merge sync step, starting the
-// attempt, and concluding it — never
-// the resolution window itself: an operator may take arbitrarily long editing conflict markers
-// between `MergeIn`/`Merge` and `MergeContinue` with the lock released, exactly as plain git leaves a
-// conflicted worktree unlocked between `git merge` and `git commit`.
+// and a merge worktree is dirty by definition.
+// The combined `.weft/weft.write.lock` covers only the mutating steps of a merge call:
+// `Merge`'s pre-merge sync step, starting the attempt, and concluding it.
+// It never covers the resolution window itself.
+// An operator may take arbitrarily long editing conflict markers between `MergeIn`/`Merge` and `MergeContinue`.
+// The lock is released meanwhile, as plain git does between `git merge` and `git commit`.
 //
-// **No post-conclude undo, by design.** Once `MergeContinue`/`Merge` lands a conclude-commit,
-// nothing in this layer can undo it: the verify-before-conclude discipline plus `MergeAbort` covers
-// the whole uncommitted attempt window, but a landed merge is final at the Fabric layer until a
-// separate two-sided reset-to-SHA verb exists (see the `fabric: merge-conflict primitive` item's
-// Someday follow-up, the board's `fabric-reset-to-sha` note). A consumer that needs an undo after concluding must
-// verify before calling `MergeContinue`/`Merge`, or accept that layer's own finality.
+// # No post-conclude undo
 //
-// **Squash leaves no ancestry link.** A squash-merged branch's history carries no merge commit
-// linking it to its target, so "was this branch merged?" cannot be answered from git alone after a
-// squash; a consumer needing that answer (branch cleanup, archive tagging) needs a source outside
-// git — this is a direct consequence of shipping squash as an option, not a defect in it.
+// There is no post-conclude undo, by design.
+// Once `MergeContinue`/`Merge` lands a conclude-commit, nothing in this layer can undo it.
+// Verifying before concluding, plus `MergeAbort`, covers the whole uncommitted attempt window.
+// A landed merge is final at the Fabric layer until a separate two-sided reset-to-SHA verb exists.
+// A consumer that needs an undo after concluding must verify before calling `MergeContinue`/`Merge`.
 //
-// **Store housekeeping.** The hub's shared code store and records store hold more unreferenced loose objects than git's auto-gc threshold, so nearly every commit, merge or fetch against them, an agent's or the operator's, would start a detached repack under live steps.
-// `Topology.Add` therefore sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config once its pre-flight refusals have passed, and `Topology.Remove` sets them again and runs a foreground `git gc --auto` in each store after a successful teardown.
-// `maintenance.auto=false` is what stops git's post-command `git maintenance run --auto`, whose repack tasks under a `geometric` or `incremental` `maintenance.strategy` `gc.auto` does not govern.
-// The removal's gc is best-effort: a failure is logged as a warning and never fails the Remove, and a store another gc already holds is skipped silently until a later removal.
-// The gc is skipped, with the keys still written, while the `InFlightProbe` set through `Topology.SetInFlightProbe` reports another pair's live reed session, logged at Info with the sessions, or fails, logged at Warn; a nil probe reports none, and production sets the real probe through `pairteardown`, the only route to `Remove`.
-// It prunes unreachable loose objects older than a day (`gc.pruneExpire=1.day.ago`) and never prunes a worktree's admin entry, so what it deletes is unreachable objects past that expiry and reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
+// # Squash leaves no ancestry link
+//
+// A squash-merged branch's history carries no merge commit linking it to its target.
+// "Was this branch merged?" therefore cannot be answered from git alone after a squash.
+// A consumer needing that answer, such as branch cleanup or archive tagging, needs a source outside git.
+//
+// # Store housekeeping
+//
+// The hub's shared code store and records store hold more unreferenced loose objects than git's auto-gc threshold.
+// Nearly every commit, merge or fetch against them would start a detached repack under live steps.
+// That holds for an agent's git and the operator's alike.
+// `Topology.Add` therefore sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config.
+// It does so once its pre-flight refusals have passed.
+// `Topology.Remove` sets them again and runs a foreground `git gc --auto` in each store after a successful teardown.
+// `maintenance.auto=false` stops git's post-command `git maintenance run --auto`.
+// Its repack tasks under a `geometric` or `incremental` `maintenance.strategy` are not governed by `gc.auto`.
+// The removal's gc is best-effort:
+// a failure is logged as a warning and never fails the Remove.
+// A store another gc already holds is skipped silently until a later removal.
+// The gc is skipped when the `InFlightProbe` set through `Topology.SetInFlightProbe` fails,
+// but the keys are still written.
+// It is also skipped while that probe reports another pair's live reed session.
+// A live session is logged at Info with the sessions, and a failed probe at Warn.
+// A nil probe reports none, and production sets the real probe through `pairteardown`, the only route to `Remove`.
+// The gc prunes unreachable loose objects older than a day (`gc.pruneExpire=1.day.ago`).
+// It never prunes a worktree's admin entry.
+// It deletes only unreachable objects past that expiry and reflog entries past git's own default expiry.
 // An existing hub picks the keys up at its next pair create or removal.
-// The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included: lym's housekeeping is the replacement, a manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lym's control.
+// The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included.
+// lym's housekeeping replaces them and a manual `git gc` still works;
+// maintenance an operator registers with `git maintenance start` stays outside lym's control.
 // The gc threshold is not operator configuration.
 //
 // **Platform verification: Linux only.**
-// Fabric is written cross-platform, and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
-// but every hardening round ran on Linux and no line of it has been executed on Windows.
-// The branches reasoned about and never driven are:
-// `lymcwd.ValidateAnchorRel`'s volume-rooted rejection (`C:\...`, `\\server\share`), which Linux cannot produce inputs for;
-// `excludePatternFor`'s separator handling, since git wants forward slashes and `filepath` on Windows produces backslashes;
+// Fabric is written cross-platform,
+// and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
+// but its code has been executed on Linux only.
+// The branches reasoned about and never driven on Windows are:
+// `lymcwd.ValidateAnchorRel`'s volume-rooted rejection (`C:\...`, `\\server\share`);
+// Linux cannot produce inputs for it;
+// `excludePatternFor`'s separator handling, where git wants forward slashes and `filepath` on Windows gives backslashes;
 // `lymcwd.samePath`'s case-insensitive branch, which is dead code on Linux;
 // and `internal/fslink`'s junction path, which every link fabric creates on Windows goes through.
-// The anchor and subpath mechanism, the source of the largest group of findings, has likewise been verified on one platform only.
-// This weighs more than an ordinary coverage gap: the data-loss defects found in the destruction chokepoint's campaign were all found by driving real git against a real filesystem with hostile or dirty state, while the hermetic suite stayed green, so fabric's defects live where platform behaviour lives, in path composition, link creation and filesystem semantics.
+// The anchor and subpath mechanism has likewise been verified on one platform only.
+// This weighs more than an ordinary coverage gap.
+// The data-loss defects found in the destruction chokepoint all came from driving real git against a real filesystem.
+// The filesystem held hostile or dirty state.
+// Fabric's defects live where platform behaviour lives: in path composition, link creation and filesystem semantics.
 // Closing the gap needs a Windows host rather than a design.
-// The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`);
-// beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lym` and `.lym` placement, the cwd gate refusing the warp root and its subdirectories),
-// `add`/`remove` slug hygiene, and the `prune` and `clone --reset` ownership refusals.
-// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and `PATTERN-lym-files` currently assert the opposite.
+// The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`).
+// Beyond it, drive these by hand:
+// a `--subpath` anchored hub, covering junction targets, `_lym` and `.lym` placement,
+// and the cwd gate refusing the warp root and its subdirectories;
+// `add`/`remove` slug hygiene; and the `prune` and `clone --reset` ownership refusals.
+// Deciding that Windows is not a goal is a valid resolution, but it must be written down.
+// `internal/fslink` and `PATTERN-lym-files` currently assert the opposite.
 //
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.

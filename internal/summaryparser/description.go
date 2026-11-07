@@ -1,6 +1,5 @@
-// description.go validates the change-description artifact: ValidateDescription is the single
-// function both the description gate and `lym loom validate-description` call, turning each of
-// Parse's failures, plus a few structural checks, into findings.
+// description.go validates the change-description artifact.
+// ValidateDescription turns the failures of Parse, plus a few structural checks, into Findings.
 
 package summaryparser
 
@@ -38,8 +37,9 @@ func (f Finding) Error() string {
 }
 
 // ValidateDescription checks the change description at path.
-// A missing file, an empty file, a bad heading, an empty title, an over-long title, an empty body and
-// a Co-Authored-By trailer line are findings; only a read failure other than not-exist is an error.
+// These conditions are reported as Findings:
+// a missing or empty file, a bad heading, an empty or over-long title, an empty body, or a Co-Authored-By trailer line.
+// Only a read failure other than not-exist is an error.
 func ValidateDescription(path string) ([]Finding, error) {
 	s, err := Parse(path)
 	if err != nil {

@@ -1,6 +1,8 @@
-// keybindings.go seeds the marked block of key bindings into the user's VS Code keybindings.json,
-// so the integrated terminal forwards the Alt keys reed's tmux bindings listen for and one key runs the reed attach task.
-// It holds VS Code format knowledge only: the user-file location per platform, a comment-aware JSONC merge of the block, and an atomic write.
+// keybindings.go seeds the lym block of key bindings into the user's VS Code keybindings.json.
+// The block makes the integrated terminal forward the Alt keys that reed's tmux bindings listen for.
+// It also adds a key that runs the reed attach task.
+// The file holds only VS Code format knowledge:
+// the user-file path per platform, a comment-aware JSONC merge of the block, and an atomic write.
 
 package vscode
 
@@ -25,9 +27,10 @@ const (
 	terminalSendSequenceCommand = "workbench.action.terminal.sendSequence"
 )
 
-// keybindingsBlockEntries are the block's entries: one terminal sendSequence per Alt key, and the key that runs the reed attach task.
-// Each args is written as it appears in the JSON file, so a sendSequence text keeps its escape sequences unexpanded;
-// an empty when writes no when clause.
+// keybindingsBlockEntries are the block's entries.
+// They hold a terminal sendSequence per Alt key and the key that runs the reed attach task.
+// Each args value is written as in the JSON file: a sendSequence text keeps its escape sequences unexpanded.
+// An empty when adds no when clause.
 var keybindingsBlockEntries = []struct{ key, command, args, when string }{
 	{"alt+up", terminalSendSequenceCommand, `{ "text": "\u001b[1;3A" }`, "terminalFocus"},
 	{"alt+down", terminalSendSequenceCommand, `{ "text": "\u001b[1;3B" }`, "terminalFocus"},
@@ -36,10 +39,10 @@ var keybindingsBlockEntries = []struct{ key, command, args, when string }{
 	{"ctrl+alt+a", "workbench.action.tasks.runTask", strconv.Quote(attachTaskLabel), ""},
 }
 
-// KeybindingsOutcome is what SeedKeybindings did to the user's file.
+// KeybindingsOutcome is what a seed did to the user's keybindings file.
 type KeybindingsOutcome string
 
-// The outcomes of SeedKeybindings.
+// The values of KeybindingsOutcome.
 const (
 	// KeybindingsCreated means the file did not exist and was created holding the block.
 	KeybindingsCreated KeybindingsOutcome = "created"
@@ -47,11 +50,11 @@ const (
 	KeybindingsWritten KeybindingsOutcome = "written"
 	// KeybindingsUnchanged means the file already held the current block and was not written.
 	KeybindingsUnchanged KeybindingsOutcome = "unchanged"
-	// KeybindingsSkipped means the file was left untouched, for the reason in KeybindingsResult.Reason.
+	// KeybindingsSkipped means the file was left untouched, and the result's Reason gives the cause.
 	KeybindingsSkipped KeybindingsOutcome = "skipped"
 )
 
-// KeybindingsResult reports what SeedKeybindings did and, for a skip, why.
+// KeybindingsResult reports what a seed did to the file and, for a skip, why.
 type KeybindingsResult struct {
 	Outcome KeybindingsOutcome `json:"outcome"`
 	Reason  string             `json:"reason"`
@@ -88,7 +91,8 @@ func userKeybindingsPath(goos string, getenv func(string) string, home string) (
 	}
 }
 
-// keybindingsBlock returns the block's lines, begin marker to end marker, joined by lineEnding and with no trailing line ending.
+// keybindingsBlock returns the block's lines from the begin marker to the end marker, joined by lineEnding.
+// It has no trailing line ending.
 func keybindingsBlock(lineEnding string) string {
 	lines := []string{"// " + keybindingsBeginMarker}
 	for _, entry := range keybindingsBlockEntries {
@@ -165,7 +169,8 @@ func scanKeybindings(content []byte) (arrayOpen int, markers []keybindingsMarker
 	return arrayOpen, markers
 }
 
-// mergeKeybindings returns existing with the lym block replaced in place, or inserted after the top-level array's opening bracket when there is none.
+// mergeKeybindings returns existing with the lym block replaced in place when the block is present.
+// Otherwise it inserts the block after the top-level array's opening bracket.
 // A file whose markers or array do not have exactly the expected shape is an error naming the shape.
 func mergeKeybindings(existing []byte) ([]byte, error) {
 	arrayOpen, markers := scanKeybindings(existing)
@@ -218,7 +223,8 @@ func mergeKeybindings(existing []byte) ([]byte, error) {
 }
 
 // SeedKeybindings makes the file at path hold the lym block between its markers, creating the file when it is missing.
-// It never fails the caller: any condition that stops the write is a KeybindingsSkipped result naming the reason, and the file is then untouched.
+// It never fails the caller: any condition that stops the write is a KeybindingsSkipped result naming the reason.
+// The file is then untouched.
 // A symlinked path is written at its target, and an unchanged result writes nothing.
 func SeedKeybindings(path string) KeybindingsResult {
 	return seedKeybindings(path, func() string {
@@ -226,7 +232,7 @@ func SeedKeybindings(path string) KeybindingsResult {
 	})
 }
 
-// seedKeybindings is SeedKeybindings with the temporary file's name drawn from temporaryName.
+// seedKeybindings makes the file at path hold the lym block, drawing the temporary file's name from temporaryName.
 func seedKeybindings(path string, temporaryName func() string) KeybindingsResult {
 	skip := func(format string, args ...any) KeybindingsResult {
 		return KeybindingsResult{Outcome: KeybindingsSkipped, Reason: fmt.Sprintf(format, args...)}

@@ -11,8 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// outcomeWriteFile writes raw content to path, creating its parent
-// directory first, failing the test on any error.
+// outcomeWriteFile writes raw content to path, creating its parent directory first.
+// It fails the test on any error.
 func outcomeWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -23,10 +23,10 @@ func outcomeWriteFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParseOutcome_AcceptReject tables every outcome.yaml accept/reject case parseOutcome's
-// fail-loud discipline pins: a well-formed done/stuck file parses;
-// an unrecognized outcome value (the retired paused included), a stuck file missing stuck_reason, an unknown extra key and a
-// missing file are all rejected loudly rather than guessed at.
+// TestParseOutcome_AcceptReject tables the outcome.yaml cases parseOutcome accepts and rejects.
+// A well-formed done or stuck file parses.
+// An unrecognized outcome value, a stuck file missing stuck_reason, or an unknown extra key is rejected loudly.
+// A missing file is rejected too, so no malformed input is guessed at.
 func TestParseOutcome_AcceptReject(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

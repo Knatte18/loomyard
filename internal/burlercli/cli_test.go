@@ -1,6 +1,9 @@
-// cli_test.go covers the burlercli cobra seam through RunCLI: the PersistentPreRunE group-command guard, run's required --profile flag, decodeProfile's strict YAML decode, and resultEnvelope's success-envelope shape (including its forkCount nil guard).
-// Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
-// that coverage lives in the smoke test and the sandbox suite.
+// cli_test.go covers the burlercli cobra seam through RunCLI.
+// It checks the PersistentPreRunE group-command guard and run's required --profile flag.
+// It checks decodeProfile's strict YAML decode.
+// It checks resultEnvelope's success-envelope shape, including its forkCount nil guard.
+// Engine.Run is not exercised here, since it needs a live reed/claude session;
+// the smoke test and the sandbox suite cover it.
 
 package burlercli
 
@@ -19,9 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lym burler" works
-// outside a git repository, mirroring shuttlecli's guard rationale (neither the bare listing nor
-// the unknown-subcommand path should require layout/config resolution).
+// TestRunCLI_GroupGuard_OutsideGitRepo asserts that bare "lym burler" exits 0 outside a git repository.
+// Neither the bare listing nor the unknown-subcommand path may require layout or config resolution.
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
@@ -34,7 +36,13 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	}
 }
 
-// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field lands on its Profile field, including the boolean/zero-value edge cases tool-use: true and cluster-fan: "standard" that a zero-value-blind mapping bug could silently drop), a minimal valid profile, an unknown key (rejected per the yaml-strictness-split decision's KnownFields(true)), the now-removed cluster-n key specifically (rejected the same way), and malformed YAML.
+// TestDecodeProfile covers decodeProfile's strict YAML decode.
+// It checks that a full valid profile maps every field onto its Profile field.
+// The boolean and zero-value cases are the ones a zero-value-blind mapping bug could drop:
+// tool-use: true and cluster-fan: "standard".
+// It also checks that a minimal valid profile decodes.
+// Unknown keys are rejected because the decoder sets KnownFields(true); the cluster-n key is rejected the same way.
+// Malformed YAML is covered as well.
 //
 //testtiming:keep pins every Profile field mapping and the strict-decode rejections, which the run-verb tests covering its blocks only reach through one failing profile
 func TestDecodeProfile(t *testing.T) {
@@ -187,8 +195,8 @@ fixer-report-path: fixer-report.md
 			wantErr: true,
 		},
 		{
-			// cluster-n was replaced with cluster-fan; the strict decode
-			// must reject the old key by name, not silently ignore it.
+			// cluster-n is not a profile key; the strict decode
+			// must reject it by name, not silently ignore it.
 			name: "UnknownKeyClusterN",
 			yaml: `
 target:
@@ -240,12 +248,12 @@ fixer-report-path: fixer-report.md
 	}
 }
 
-// TestResultEnvelope_ForkCountNilGuard asserts resultEnvelope's forkCount guards a nil ForkAudit
-// (the non-cluster or non-done case) to 0 rather than panicking.
-// It reports the real fork count plus the raw ClusterWarnings slice when ForkAudit is set.
-// It takes the outcome from the fix half when it ran and from the review otherwise.
-// It reports a skipped fix.
-// It lands the told mode/stateDir/stencilsDir parameters under their own keys.
+// TestResultEnvelope_ForkCountNilGuard asserts that resultEnvelope reports forkCount 0 for a nil ForkAudit.
+// A nil ForkAudit is the non-cluster or non-done case, and resultEnvelope must not panic on it.
+// It covers a review that stopped short, a fixed round with a populated ForkAudit and warnings, and a skipped fix.
+// When ForkAudit is set, it checks the real fork count and the raw ClusterWarnings slice.
+// It checks that the outcome comes from the fix half when it ran and from the review otherwise.
+// It checks that mode, stateDir and stencilsDir land under their own keys.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("a review that stopped short", func(t *testing.T) {
@@ -259,9 +267,8 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 		if got := env["forkCount"]; got != 0 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 0`, got)
 		}
-		// env["clusterWarnings"] holds a nil []string boxed in an `any` —
-		// comparing the interface itself to nil would always be false (a
-		// typed-nil-in-interface is never == nil), so assert on length.
+		// env["clusterWarnings"] holds a nil []string boxed in an `any`.
+		// A typed nil in an interface is never == nil, so the check asserts on length.
 		if got := env["clusterWarnings"].([]string); len(got) != 0 {
 			t.Errorf(`resultEnvelope() clusterWarnings = %v; want empty`, got)
 		}
@@ -339,8 +346,7 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 	})
 }
 
-// equalStrings reports whether got and want hold the same strings in the
-// same order.
+// equalStrings reports whether got and want hold the same strings in the same order.
 func equalStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false
@@ -353,15 +359,13 @@ func equalStrings(got, want []string) bool {
 	return true
 }
 
-// TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo is R6-16's regression test. The RunE checked
-// --profile before clihelp.ShouldAbort, against PATTERN-cli-cobra, so a wiring
-// refusal plus a missing --profile emitted two error envelopes — and the second one named a flag
-// while the real failure was the refusal above it.
+// TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo asserts that a refused pre-run emits one error envelope.
+// RunE checks clihelp.ShouldAbort before it reads --profile, so a refused pre-run never reports a missing --profile.
 func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
 	tiergate.Require(t, 0)
 	var out bytes.Buffer
-	// --target-dir naming a path that does not exist makes wireStandalone refuse in the pre-run;
-	// --profile is deliberately omitted so the flag check would fire too if it ran.
+	// --target-dir names a path that does not exist, so wireStandalone refuses in the pre-run;
+	// --profile is omitted, so the flag check would also fire if it ran.
 	code := RunCLIIn(t.TempDir(), &out, []string{"run", "--target-dir", filepath.Join(t.TempDir(), "absent")})
 	if code == 0 {
 		t.Fatalf("RunCLIIn() = 0; want a non-zero exit for a refused pre-run. output: %s", out.String())
@@ -374,35 +378,35 @@ func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
 	}
 }
 
-// TestRunVerb_RelativeProfileResolvesAgainstSeamCwd is R6-17's direct regression test. Nothing else
-// in this file pins it: cli_test.go otherwise covers only the missing-`--profile` refusal and
-// decodeProfile, and neither internal/cliwire's own tests nor either batch-3 enforcement test can
-// catch a swapped or dropped first argument to os.ReadFile, so a silent regression to the process
-// working directory is reachable.
+// TestRunVerb_RelativeProfileResolvesAgainstSeamCwd asserts that a relative --profile resolves against c.cwd.
+// Nothing else in this file pins that: the other cases cover only the missing --profile refusal and decodeProfile.
+// Neither the internal/cliwire tests nor the enforcement tests catch a swapped or dropped os.ReadFile argument,
+// so a silent regression to the process working directory would go unnoticed.
 //
-// It drives the `run` verb the way TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo already does, with
-// c.cwd pointed at a t.TempDir() holding a profile file, passing that file's own name as a RELATIVE
-// --profile value.
+// It drives the `run` verb with c.cwd set to a t.TempDir() holding a profile file.
+// It passes that file's own name as a RELATIVE --profile value.
 //
-// The fixture deliberately fails decodeProfile's strict decode -- this is the case's central
-// constraint, not an incidental detail. `run`'s RunE must never reach c.reedUp on this fixture: doing
-// so would call reedEngine.Up() and boot a live tmux/reed session from an untagged tier-1 test, which
-// the Test Tier Purity Invariant forbids. Do not "fix" this fixture by making the profile valid --
-// that would let the flow reach c.reedUp and breach the invariant this test's own tier depends on.
+// The fixture fails decodeProfile's strict decode, and that failure is the case's central constraint.
+// `run`'s RunE must never reach c.reedUp on this fixture.
+// Reaching it would call reedEngine.Up() and boot a live tmux/reed session from an untagged tier-1 test.
+// The Test Tier Purity Invariant forbids that.
+// Do not "fix" this fixture by making the profile valid.
+// A valid profile would let the flow reach c.reedUp and breach the invariant this test's tier depends on.
 //
-// The assertion is POSITIVE, not merely "does not contain": reaching decodeProfile's own "profile
-// YAML" error prefix proves os.ReadFile succeeded, which proves the relative --profile resolved
-// against c.cwd. A "does not contain" assertion alone would pass vacuously if the invocation ended
-// earlier -- and it can: RunE checks clihelp.ShouldAbort before ever reaching the read, and an
-// aborted pre-run returns nil there, satisfying a purely negative assertion without exercising the
-// resolution this case exists to pin. wiring runs in PersistentPreRunE, ahead of RunE, so the pre-run
-// must genuinely succeed for this case to mean anything.
+// The assertion checks for a positive marker, not for the absence of an error.
+// Reaching decodeProfile's own "profile YAML" error prefix proves os.ReadFile succeeded.
+// That proves the relative --profile resolved against c.cwd.
+// A negative assertion alone would pass vacuously, because the invocation can end earlier:
+// RunE checks clihelp.ShouldAbort before the read, and an aborted pre-run returns nil there,
+// so a negative check passes without exercising the resolution this case exists to pin.
+// wiring runs in PersistentPreRunE, ahead of RunE, so the pre-run must succeed for this case to mean anything.
 //
-// Both XDG_STATE_HOME and LOCALAPPDATA are redirected to fresh t.TempDir() values before the call,
-// and this case is not t.Parallel(): a successful pre-run reaches the real standalonestate.Derive and
-// the real stencilstore.Reconcile, so without both redirects this untagged case would seed a stencils
-// tree and a trace sink into the developer's own state home -- exactly why
-// internal/burlercli/cli_integration_test.go sets both and carries //go:build integration.
+// Both XDG_STATE_HOME and LOCALAPPDATA are redirected to fresh t.TempDir() values before the call.
+// This case is not t.Parallel().
+// A successful pre-run reaches the real standalonestate.Derive and the real stencilstore.Reconcile.
+// Without both redirects, this untagged case would seed a stencils tree and a trace sink into the real state home.
+// internal/burlercli/cli_integration_test.go sets both redirects.
+// It carries //go:build integration for the same reason.
 func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -410,9 +414,8 @@ func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	cwd := t.TempDir()
-	// A plain repository root is not required for standalone mode to wire successfully -- a genuine
-	// non-repository directory folds into the same ModeStandalone verdict -- so no ".git" marker is
-	// seeded here.
+	// Standalone mode needs no repository root.
+	// A directory outside any repository folds into the same ModeStandalone verdict, so no ".git" marker is seeded here.
 	const profileName = "profile.yaml"
 	if err := os.WriteFile(filepath.Join(cwd, profileName), []byte("not: valid: yaml: at: all"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -433,7 +436,10 @@ func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
 	}
 }
 
-// TestValidateReviewVerb_AgreesWithTheReviewGate runs validate-review and burlerengine.ReviewGate over the same review files, from a temp directory outside any git repository, and asserts the verb's exit code and envelope, that the gate passes exactly when the verb succeeds, and that the gate's findings contain the verb's error text.
+// TestValidateReviewVerb_AgreesWithTheReviewGate runs validate-review and burlerengine.ReviewGate on the same files.
+// It runs them from a temp directory outside any git repository.
+// It asserts the verb's exit code and envelope, that the gate passes exactly when the verb succeeds,
+// and that the gate's findings contain the verb's error text.
 // It is the only test of the verb's ok and error behavior.
 func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
 	tiergate.Require(t, 0)

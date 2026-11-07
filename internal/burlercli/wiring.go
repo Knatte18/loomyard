@@ -1,9 +1,7 @@
-// wiring.go implements wire, the package-private method resolvePersistentPreRun (cli.go) delegates
-// to once it has resolved cwd and told mode via preflight.ResolveMode: the mode decision itself, and
-// the whole engine stack construction for whichever mode wins.
-// The mode decision lives HERE, inside the extracted function, rather than upstream in
-// resolvePersistentPreRun, precisely so a test can drive it with a told preflight.Mode and stay
-// tier 1 -- driving the real pre-run would reach lymcwd.Resolve and its git spawn.
+// wiring.go holds burler's mode decision and the engine-stack construction for whichever mode wins.
+// resolvePersistentPreRun resolves cwd, asks preflight.ResolveMode for the mode, and hands both to wire.
+// The mode decision lives in wire so a test can drive it with a given preflight.Mode.
+// Driving the real pre-run would reach lymcwd.Resolve and its git spawn, which breaks the Test Tier Purity Invariant.
 
 package burlercli
 
@@ -28,14 +26,12 @@ import (
 // burlerProgram is the program name burler signs its notices to the orch with.
 const burlerProgram = "BURLER"
 
-// wireModule carries burler's own per-CLI variance for internal/cliwire's shared wiring prologue --
-// the message-bearing data cliwire needs but does not itself declare, since no production file in
-// that package may name webster or burler. cliwire carries the shared implementation; the data that
-// varies by caller lives here, with the caller, exactly the way internal/shedrecipe's constructors
-// live in that package while the rows that vary live outside it.
+// wireModule holds burler's per-CLI data for internal/cliwire's shared wiring prologue.
+// cliwire names no caller: no production file in that package may name webster or burler.
+// The message-bearing data that varies by caller therefore lives here, with the caller.
 //
-// Plan is nil because burler parses no plan -- a nil Plan is what makes ResolveStandalone skip
-// plan-dir resolution entirely rather than each caller writing its own branch.
+// Plan is nil because burler parses no plan.
+// A nil Plan makes ResolveStandalone skip plan-dir resolution entirely.
 var wireModule = cliwire.Module{
 	Name:             "burler",
 	StateArtifacts:   "instruction files, shuttle run directories and trace logs",
@@ -44,39 +40,36 @@ var wireModule = cliwire.Module{
 	HubTargetSubject: "the anchor path is already the target",
 }
 
-// wire computes hub-or-standalone mode from loc/mode -- the *lymcwd.Location and preflight.Mode a
-// preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: the
-// module configs, the reed/claude engines, the shuttleengine.Runner, and the told burlerengine.Engine.
+// wire computes hub or standalone mode from loc and mode, then builds the whole engine stack onto c:
+// the module configs, the reed and claude engines, the shuttleengine.Runner, and the burlerengine.Engine.
 //
-// mode == preflight.ModeHub selects hub mode, because the Location's paths are real.
-// preflight.ModeStandalone selects standalone mode, which covers BOTH a plain downloaded git
-// repository and an unresolvable cwd -- preflight.ResolveMode returns a nil Location for each, and
-// the two are indistinguishable from here.
+// mode == preflight.ModeHub selects hub mode, because loc's paths are real.
+// preflight.ModeStandalone selects standalone mode.
+// It covers a plain downloaded git repository and an unresolvable cwd alike.
+// preflight.ResolveMode returns a nil Location for both, and wire cannot tell them apart.
 //
-// There is no planDirFlag parameter here: that flag is webster-only, because burler parses no plan.
+// There is no plan-dir flag parameter, because burler parses no plan.
 //
-// wire never sees the refused case at all: a ResolveMode error aborts upstream in
-// resolvePersistentPreRun, because a refusal is a resolution verdict rather than a wiring choice --
-// which is why mode carries only two reachable values here.
+// wire never sees the refused case: a ResolveMode error aborts the pre-run before wire is called.
+// A refusal is a resolution verdict rather than a wiring choice, so mode carries only two reachable values here.
 //
-// cwd is the already-resolved cwd resolvePersistentPreRun read via lymcwd.CwdFrom -- wire needs it
-// as standalone's --target-dir default and as the base every relative flag value is made absolute
-// against, never to resolve or re-resolve anything itself.
-// stencilsDirFlag and targetDirFlag are the two persistent flags' raw, as-parsed values (empty
-// string when the operator did not pass one).
+// cwd is the already-resolved working directory.
+// wire uses it as standalone's --target-dir default and as the base for relative flag values.
+// wire never resolves cwd itself.
+// stencilsDirFlag and targetDirFlag are the raw values of the two persistent flags, as parsed;
+// an empty string means the operator passed none.
 //
-// Both are made absolute HERE, at the one boundary that still knows which working directory the
-// operator typed them from, via cliwire.ResolveToldDir. A relative value stored verbatim is not a
-// smaller version of an absolute one: this process resolves it against ITS cwd while the pane burler
-// spawns runs at the target (standalone) or the anchor (hub), so one string named two different
-// directories. Every other told path in this codebase is required absolute for exactly that reason.
+// Both are made absolute here, via cliwire.ResolveToldDir.
+// This is the one boundary that still knows the directory the operator typed them from.
+// A relative value stored verbatim resolves against this process's cwd,
+// but the pane burler spawns runs at the target (standalone) or the anchor (hub).
+// Every other told path in this codebase is required absolute for the same reason.
 //
-// wireStandalone deliberately does not take loc: a standalone session must never read a fictional
-// Location.
+// wire performs no cwd resolution and spawns no process.
+// Every path it touches is supplied by the caller (loc, cwd) or read from the filesystem,
+// so a test can drive it directly.
 //
-// wire performs no cwd resolution and spawns no process -- every path it touches is either supplied
-// by the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) --
-// so a test can drive it directly and stay inside the Test Tier Purity Invariant.
+// wireStandalone takes no loc, because a standalone session must never read a fictional Location.
 func (c *burlerCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, targetDirFlag string) error {
 	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
 
@@ -86,26 +79,27 @@ func (c *burlerCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stencil
 	return c.wireStandalone(cwd, stencilsDir, targetDirFlag)
 }
 
-// wireHub builds the engine stack for hub mode, reproducing today's PersistentPreRunE body
-// byte-for-byte in resolved values: every module config loaded over the anchor path, hubgeom's
-// geometry builders, and the reed/claude engines wired into a shuttleengine.Runner.
+// wireHub builds the engine stack for hub mode.
+// It loads every module config over the anchor path and builds the geometry with hubgeom.
+// It wires the reed and claude engines into a shuttleengine.Runner.
 //
-// stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
-// sees a raw flag value and must never start honouring one.
+// stencilsDirOverride arrives already absolute or empty, because wire made it so.
+// This function never sees a raw flag value and must not honour one.
 func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDirFlag string) error {
 	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
 		return err
 	}
 
-	// Both configs anchor at loc.AnchorPath() -- the worktree the operator is actually standing in,
-	// never WorktreeRoot or any fabric sibling. hubgeom.BurlerGeometry now tells burlerengine that
-	// same anchor path as its own WorktreeRoot, so the geometry beside this wiring agrees with it.
+	// Both configs anchor at loc.AnchorPath(), the worktree the operator is standing in.
+	// They never anchor at WorktreeRoot or at a fabric sibling.
+	// hubgeom.BurlerGeometry reports that same anchor path as its WorktreeRoot.
 	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 	if err != nil {
 		return err
 	}
 
-	// lenses.Load degrades to the template on an absent lenses.yaml, so its only errors are a read or decode failure.
+	// lenses.Load degrades to the template on an absent lenses.yaml.
+	// Its only errors are a read or decode failure.
 	lensesCfg, err := lenses.Load(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
@@ -124,10 +118,11 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {
-		// The same boundary stat standalone's prologue applies, through the same descriptor method,
-		// so the two modes can never drift on what a told stencils directory must be: a typo'd
-		// --stencils-dir refused here costs nothing, while unchecked it failed only at the first
-		// instruction render, after the run lock and substrate boot (crucible round fable-high-r7, F2).
+		// Check the told directory through the same descriptor method standalone's prologue uses,
+		// so the two modes refuse the same inputs.
+		// Unchecked, a mistyped --stencils-dir fails only at the first instruction render.
+		// By then the run lock and substrate boot have already run.
+		// Refused here, it costs nothing.
 		if err := wireModule.RefuseUnreadableStencilsDir(stencilsDirOverride); err != nil {
 			return err
 		}
@@ -168,19 +163,14 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 	return nil
 }
 
-// wireStandalone builds the engine stack for standalone mode by calling wireModule.ResolveStandalone
-// -- internal/cliwire's single ordered standalone prologue -- and composing burler's own engine onto
-// the result: the reed/claude engines wired into a shuttleengine.NewDetachedRunner-constructed
-// runner, since standalone's anchor (the derived state directory) is deliberately outside its
-// worktree root (the target), which NewRunner's containment assertion would refuse.
+// wireStandalone builds the engine stack for standalone mode.
+// It runs the shared standalone prologue through wireModule.ResolveStandalone.
+// It then wires the reed and claude engines into a runner built by shuttleengine.NewDetachedRunner.
+// The standalone anchor, the derived state directory, lies outside the target worktree root by design.
+// NewDetachedRunner is built for that layout.
 //
-// See cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation and its two
-// asymmetries (an explicitly-told stencilsDirFlag is read and never written in either mode; the
-// derived default's Reconcile failure is a hard pre-run error), which this function's body no longer
-// needs to restate.
-//
-// stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
-// sees a raw flag value and must never start honouring one.
+// stencilsDirOverride arrives already absolute or empty, because wire made it so.
+// This function never sees a raw flag value and must not honour one.
 func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag string) error {
 	res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{
 		Cwd:             cwd,
@@ -207,8 +197,8 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 
 	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
 	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-	// Standalone's anchor (the derived state directory) is deliberately outside its worktree root
-	// (the target), which NewRunner's containment assertion would refuse -- NewDetachedRunner stays.
+	// The standalone anchor is the derived state directory, deliberately outside the worktree root.
+	// NewRunner's containment assertion would refuse that layout, so the detached runner is used.
 	engines, err := shuttleengines.New(shuttleCfg, configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
@@ -216,13 +206,13 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	runner := shuttleengine.NewDetachedRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
-	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach — `lym reed up` is hub-only — so the run verb boots it in-process through this seam (see the field's own doc comment).
-	// Assigned here, executed only by run, so wiring itself never boots a tmux server.
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb reaches: `lym reed up` is hub-only.
+	// The run verb therefore boots it in-process through this seam.
+	// It is assigned here and executed only by run, so wiring itself never boots a tmux server.
 	//
-	// Standalone reed is never booted by `lym reed up` — that verb is hub-only — it is booted
-	// in-process by a long-lived supervising run that exists for exactly the session's working
-	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
-	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case.
+	// The standalone reed is booted by a long-lived supervising run, which exists for the session's working lifetime.
+	// Hub mode lacks that process, which is why it needs a detached daemon at all;
+	// reusing the run process is the smaller mechanism.
 	// Standalone computes no hub lock path and spawns no daemon.
 	c.reedUp = func() error {
 		_, err := reedEngine.Up()

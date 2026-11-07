@@ -1,6 +1,6 @@
-// stencilhistory_integration_test.go covers StencilBaseByStamp against a real hubforge hub whose
-// board has been seeded and re-seeded with a changed default, via CommitSeededStencils exactly as
-// the real seeding pass would drive it.
+// stencilhistory_integration_test.go covers StencilBaseByStamp against a real hubforge hub.
+// The hub's board is seeded and re-seeded with a changed default.
+// Each seed goes through CommitSeededStencils, as the real seeding pass drives it.
 
 package fabricengine_test
 
@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedStencil writes content at name's path under hub's stencils directory and commits it via
-// CommitSeededStencils, mirroring the real per-process seeding pass.
+// seedStencil writes content at name's path under the hub's stencils directory and commits it.
+// It goes through CommitSeededStencils, as the real per-process seeding pass does.
 func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, message string) {
 	t.Helper()
 
@@ -37,7 +37,8 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 
 // TestStencilBaseByStamp covers the three outcomes over one hub whose stencil history grows step by step.
 // The steps run in order on the same stencil.
-// Each seeds bodies no earlier step seeded last, and looks up a stamp only its own seeding (or none) produced, so a longer history never changes a step's expectation.
+// Each step seeds a body no earlier step seeded last, and looks up a stamp only its own seeding (or none) produced.
+// That keeps each expectation fixed as the history grows.
 func TestStencilBaseByStamp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -69,8 +70,8 @@ func TestStencilBaseByStamp(t *testing.T) {
 		}
 	})
 
-	// No revision's body matches the stamp: found == false and a nil error -- the case `diff` must
-	// report explicitly instead of rendering an empty diff.
+	// No revision's body matches the stamp, so found is false and the error is nil.
+	// The `diff` command must report that case explicitly instead of rendering an empty diff.
 	t.Run("NoMatchReturnsFoundFalse", func(t *testing.T) {
 		seedStencil(t, hub, name, []byte("only default body\n"), "lym: seed stencils")
 
@@ -90,11 +91,10 @@ func TestStencilBaseByStamp(t *testing.T) {
 		}
 	})
 
-	// A stamp computed from a working-tree copy whose bytes were written with CRLF line endings still
-	// matches the LF-stored blob, in the base-recovery path specifically. go-git returns stored blob
-	// bytes untouched while CLI git converts on checkout, so the two sides can differ by line ending
-	// alone -- this is what keeps base recovery working on a machine with core.autocrlf=true, where a
-	// regression here would silently disable it entirely.
+	// A stamp computed from a CRLF working-tree copy still matches the LF-stored blob in the base-recovery path.
+	// go-git returns stored blob bytes untouched, but CLI git converts them on checkout.
+	// The two sides can therefore differ by line ending alone.
+	// This keeps base recovery working with core.autocrlf=true, where a regression would silently disable it.
 	t.Run("HashNormalisationAcrossCRLF", func(t *testing.T) {
 		olderLF := []byte("older default body\nsecond line\n")
 		seedStencil(t, hub, name, olderLF, "lym: seed stencils (v1)")

@@ -1,4 +1,6 @@
-// gatefixer_test.go covers the row gate fixer wiring: the visit directory a fixer's records live in, the seam that wraps a gate with a fixer, and the launch spec each gate entry's fixer gets.
+// gatefixer_test.go covers the row gate fixer wiring.
+// It checks the visit directory a fixer's records live in and the seam that wraps a gate with a fixer.
+// It also checks the launch spec each gate entry's fixer gets.
 
 package loomcli
 
@@ -20,7 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// testGateFixerInputs returns the inputs of a pair run over a gate config declaring tier0 and the darn-write key, a registry holding one alias and a seeded stencils directory.
+// testGateFixerInputs returns the inputs of a pair run over a gate config declaring tier0 and the darn-write key.
+// The registry holds one alias, and the stencils directory is seeded.
 func testGateFixerInputs(t *testing.T) gateFixerInputs {
 	t.Helper()
 	gate := gateslot.Config{
@@ -46,7 +49,9 @@ func testGateFixerInputs(t *testing.T) gateFixerInputs {
 	}
 }
 
-// TestWriterFixerOn covers when a writer's prompt drops its validator loop: a pair slug, a gate element that names a fixer setting and a non-empty value in that setting, with a failed lookup returned.
+// TestWriterFixerOn covers when a writer's prompt drops its validator loop.
+// It sets a pair slug, a gate element that names a fixer setting, and a non-empty value in that setting.
+// A failed lookup is returned.
 func TestWriterFixerOn(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

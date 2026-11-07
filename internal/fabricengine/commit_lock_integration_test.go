@@ -1,18 +1,7 @@
-// commit_lock_integration_test.go — integration coverage for the
-// combined-commit-lock and commit-lock-scoped-to-commit-only Shared
-// Decisions: two concurrent warp-only Fabric.Commit calls serialize on
-// .weft/weft.write.lock rather than racing unlocked (the gap this batch
-// closes), a warp-only/weft-only/two-sided Commit call all contend on that
-// same lock file, the lock is released before spawnDetachedPushFn fires, and
-// the push seam still fires on a *PartialCommitError where the warp side
-// landed. Package fabricengine (internal) because it swaps the unexported
-// spawnDetachedPushFn seam and reaches the unexported weftWriteLockFile
-// constant and ensureWeftLockDir/weftGitDir methods. Reuses
-// commit_integration_test.go's fixture and recorder helpers
-// (newCommitFixture, swapPushRecorder, writeWarpFile) and
-// syncweft_integration_test.go's writeWeftConfigContent — no
-// t.Parallel() anywhere in this file, per the push-invocation-seam-for-tests
-// discipline those helpers already follow.
+// commit_lock_integration_test.go tests the combined write lock on .weft/weft.write.lock, which Fabric.Commit takes.
+// Its tests check that commits contend on that lock and that the lock is released before the push seam fires.
+// They also check that the push seam fires on a *PartialCommitError where the warp side landed.
+// The file is in package fabricengine because it swaps the unexported spawnDetachedPushFn seam.
 
 package fabricengine
 
@@ -28,9 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// weftWriteLockPath returns the path of f's combined commit write lock file,
-// creating the .weft lock directory (idempotently) if it does not already
-// exist — the same path every committing Fabric.Commit call contends on.
+// weftWriteLockPath returns the path of f's combined commit write lock file.
+// It creates the .weft lock directory if it does not exist.
+// Every commit on f contends on this file.
 func weftWriteLockPath(t *testing.T, f *Fabric) string {
 	t.Helper()
 
@@ -41,22 +30,15 @@ func weftWriteLockPath(t *testing.T, f *Fabric) string {
 	return filepath.Join(lockDir, weftWriteLockFile)
 }
 
-// WeftWriteLockPathForTest re-exports weftWriteLockPath for commit_integration_test.go, which needs
-// f's combined commit write lock path directly.
-// It lives here rather than in export_test.go because weftWriteLockPath itself is defined in this
-// integration-tagged file;
-// an untagged export_test.go re-export would leave the symbol undefined under `-tags tmux` or `-tags llm`.
+// WeftWriteLockPathForTest returns the path of f's combined commit write lock file.
+// It creates the .weft lock directory if needed, so the package's external tests can hold the lock.
 func WeftWriteLockPathForTest(t *testing.T, f *Fabric) string {
 	return weftWriteLockPath(t, f)
 }
 
-// TestCommitLock_WarpOnlySerializesConcurrentCommits asserts that two concurrent warp-only
-// Fabric.Commit calls (weft-empty inputs) against one warp+weft pair serialize on the combined
-// write lock: both commits land, neither corrupts the other's index (no git failure from a stray
-// .git/index.lock collision), and the resulting warp history is linear (no merge commit, exactly
-// two new commits on top of the fixture's initial one).
-// This is the scenario that fails against a lock scoped to the weft side only, since both calls
-// here have zero weft-side files.
+// TestCommitLock_WarpOnlySerializesConcurrentCommits asserts that two concurrent warp-only commits both land:
+// neither commit fails, and the warp history gains exactly two commits with no merge commit.
+// Both calls have no weft-side files, so the test fails against a lock scoped to the weft side only.
 func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
@@ -75,10 +57,9 @@ func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 	for i := 0; i < goroutineCount; i++ {
 		name := names[i]
 		go func() {
-			// os.WriteFile (not the t.Fatalf-based writeWarpFile helper) is used
-			// here deliberately: t.Fatal/FailNow may only be called from the
-			// goroutine running the test itself, never from a spawned goroutine
-			// like this one.
+			// os.WriteFile is used here instead of the t.Fatalf-based writeWarpFile helper:
+			// t.Fatal and FailNow may only be called from the goroutine that runs the test.
+			// This goroutine is spawned, so it must not call them.
 			if err := os.WriteFile(filepath.Join(warpPath, name), []byte("concurrent "+name), 0o644); err != nil {
 				outcomes <- outcome{err: err}
 				return
@@ -112,10 +93,8 @@ func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 	}
 }
 
-// TestCommitLock_ContendsAcrossSides asserts that a warp-only, a weft-only, and a two-sided
-// Fabric.Commit call all contend on the same combined write lock file: each subtest externally
-// acquires the lock first, starts the Commit call, confirms it is still blocked while the external
-// lock is held, releases the external lock, and confirms the call then completes.
+// TestCommitLock_ContendsAcrossSides asserts that Fabric.Commit calls contend on the combined write lock file:
+// a warp-only, a weft-only, and a two-sided call each block while another holder has the lock.
 func TestCommitLock_ContendsAcrossSides(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
@@ -145,12 +124,10 @@ func TestCommitLock_ContendsAcrossSides(t *testing.T) {
 	})
 }
 
-// assertCommitBlocksOnHeldLock externally acquires f's combined write lock,
-// starts f.Commit(files, msg, nil, SyncOptions{}) in a goroutine, asserts it
-// has not completed after a short wait (the lock is still held), releases
-// the external lock, and then asserts the call completes successfully within
-// a generous timeout — proving the Commit call was genuinely blocked on, not
-// merely slower than, the external lock holder.
+// assertCommitBlocksOnHeldLock acquires f's combined write lock externally and starts f.Commit in a goroutine.
+// It asserts that the call has not completed after a short wait, while the lock is still held.
+// It then releases the lock and asserts that the call completes within a generous timeout.
+// That sequence shows the call was blocked on the lock, not merely slower than its holder.
 func assertCommitBlocksOnHeldLock(t *testing.T, f *Fabric, files []string, msg string) {
 	t.Helper()
 
@@ -192,10 +169,9 @@ func assertCommitBlocksOnHeldLock(t *testing.T, f *Fabric, files []string, msg s
 	}
 }
 
-// TestCommitLock_ReleasedBeforePush asserts that the combined write lock is NOT held at the moment
-// spawnDetachedPushFn fires: the swapped seam attempts a non-blocking TryAcquireWriteLock on the
-// same lock path Fabric.Commit uses, which must succeed because Commit has already released its own
-// hold by the time it calls the seam (the commit-lock-scoped-to-commit-only Shared Decision).
+// TestCommitLock_ReleasedBeforePush asserts that the combined write lock is not held when spawnDetachedPushFn fires.
+// Commit releases its own hold before it calls the seam.
+// The swapped seam tries a non-blocking TryAcquireWriteLock on the same lock path and must find it free.
 func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: the test assigns the package-level spawnDetachedPushFn.
@@ -230,10 +206,10 @@ func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 	}
 }
 
-// TestCommitLock_PushFiresOnPartialFailure asserts that Commit's WarpCommitted || WeftCommitted
-// push gate still fires the push seam on a *PartialCommitError where the warp side landed but the
-// weft commit itself failed — reusing commit_partial_integration_test.go's failure-injection
-// approach (pre-creating the weft gitdir's index.lock) to force that outcome.
+// TestCommitLock_PushFiresOnPartialFailure asserts that Commit fires the push seam on a partial failure:
+// the warp side landed, the weft commit failed, and the returned error is a *PartialCommitError.
+// The push gate is WarpCommitted || WeftCommitted.
+// The test forces the weft commit to fail by pre-creating the weft gitdir's index.lock.
 func TestCommitLock_PushFiresOnPartialFailure(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.

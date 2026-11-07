@@ -1,6 +1,7 @@
-// steprun.go — the runner behind every drift command: one slot of the gate pool, the shell, the log file and the timeout tree kill.
+// steprun.go runs one drift command in the gate slot its caller holds, through a shell.
+// It writes the command's output to the log file, and it kills the command's tree on timeout.
 //
-// The main capture, the current capture and the compare each describe their run as a stepRun and share this body.
+// The drift commands describe their run as a stepRun and share this body.
 
 package driftengine
 
@@ -28,7 +29,8 @@ import (
 // stampLayout is the UTC time layout that names a run's log file.
 const stampLayout = "20060102T150405.000Z"
 
-// The sites a drift command runs from, which label its slot holder and wait record and word the way forward of a refused dir.
+// The sites a drift command runs from label its slot holder and wait record,
+// and a refused dir's way forward names the verbs for its site.
 const (
 	siteCapture        = "drift capture"
 	siteCompare        = "drift compare"
@@ -49,9 +51,10 @@ type stepRun struct {
 	Pool *gateslot.Pool
 	// WaitDir is where the run's wait record is written while it waits for a slot.
 	WaitDir string
-	// InheritedSlot is the lock path of the slot a gate holds around the run; acquireSlot runs in it, when it is held, instead of taking one.
+	// InheritedSlot is the lock path of the slot a gate holds around the run;
+	// when it is held, the run runs in that slot instead of taking one.
 	InheritedSlot string
-	// Slot is the slot the run's command runs in, which the caller took with acquireSlot and releases after runStep returns.
+	// Slot is the slot the run's command runs in, which the caller takes before the run and releases after it.
 	Slot heldSlot
 	// Site labels the slot holder and the wait record.
 	Site string
@@ -92,8 +95,10 @@ type heldSlot struct {
 }
 
 // runStep runs the command in the slot the caller holds and returns once its whole tree is gone.
-// The caller takes the slot with acquireSlot before and releases it after, which lets a capture hold its slot before it takes the capture lock.
-// A step whose dir is no existing directory is refused with a stepRefusal before its command starts, so a shell never fails to start in a missing directory.
+// The caller takes the slot before runStep runs and releases it after runStep returns.
+// This lets a capture hold its slot before it takes the capture lock.
+// A step whose dir is no existing directory is refused with a stepRefusal before its command starts,
+// so a shell never fails to start in a missing directory.
 func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 	command, err := renderCommand(run)
 	if err != nil {
@@ -167,7 +172,8 @@ const outputTailMaxRunes = 400
 const outputTailReadBytes = 64 * 1024
 
 // readLogTail returns the last outputTailReadBytes bytes of the file at path, or all of it when it is shorter.
-// A cut file starts at a line boundary when its read window holds one, and a line the window begins inside is dropped.
+// A cut file starts at a line boundary when its read window holds one,
+// and a line the window begins inside is dropped.
 func readLogTail(path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -178,7 +184,8 @@ func readLogTail(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A cut file is read from one byte before its window, so the byte shows whether the window begins on a line start.
+	// A cut file is read from one byte before its window,
+	// so the byte shows whether the window begins on a line start.
 	offset := max(0, info.Size()-outputTailReadBytes-1)
 	if _, err := file.Seek(offset, io.SeekStart); err != nil {
 		return nil, err
@@ -197,9 +204,12 @@ func readLogTail(path string) ([]byte, error) {
 	return data, nil
 }
 
-// commandReport returns the clause a failed command's reason ends on: the directory the command ran in, and the end of its last non-empty output lines from its log or that it printed nothing.
+// commandReport returns the clause that ends a failed command's reason.
+// The clause names the directory the command ran in, and quotes the last non-empty lines of its log.
+// When the log holds no such lines, it says the command printed nothing.
 // A tail over the output bound is cut from its start, so the last line, which usually states the cause, stays.
-// A log that cannot be read is named with its error, so the clause still says where the command ran.
+// A log that cannot be read is named with its error,
+// so the clause still says where the command ran.
 func commandReport(dir, logPath string) string {
 	data, err := readLogTail(logPath)
 	if err != nil {
@@ -232,7 +242,8 @@ func boundOneLine(text string, maxRunes int) string {
 	return string(runes[:maxRunes-1]) + "…"
 }
 
-// boundOneLineKeepingEnd folds text onto one line and cuts it to maxRunes from its start, marking a cut with a leading ellipsis.
+// boundOneLineKeepingEnd folds text onto one line and cuts it to maxRunes from its start.
+// A cut is marked with a leading ellipsis.
 func boundOneLineKeepingEnd(text string, maxRunes int) string {
 	runes := foldOneLine(text)
 	if len(runes) <= maxRunes {
@@ -253,7 +264,9 @@ func (e *stepRefusal) Error() string { return e.cause.Error() }
 func (e *stepRefusal) Unwrap() error { return e.cause }
 
 // missingDirRefusal is the refusal of a step whose dir is no existing directory.
-// It names the config key and the resolved path, and as the way forward the write that fixes the key from the prime, where hub-wide config is written, and then the verbs that run the step again from its site.
+// It names the config key and the resolved path.
+// Its way forward names the config write that fixes the key from the prime, where hub-wide config is written.
+// Then it names the verbs that run the step again from its site.
 func missingDirRefusal(run stepRun, cause error) error {
 	again := "lym loom resume"
 	if run.Site == siteCapture {
@@ -263,8 +276,9 @@ func missingDirRefusal(run stepRun, cause error) error {
 }
 
 // acquireSlot returns the slot the run's command runs in.
-// A run told an InheritedSlot that the pool reports held runs in it and acquires none, as a command inside a gate does;
-// otherwise it writes a wait record, waits for one slot with no deadline and removes the record.
+// A run whose InheritedSlot the pool reports as held takes that slot and acquires none.
+// A command inside a gate is such a run.
+// Otherwise it writes a wait record, waits for one slot with no deadline and removes the record.
 // The caller releases the returned slot once the command ended.
 func acquireSlot(ctx context.Context, run stepRun) (heldSlot, error) {
 	limits, err := run.Pool.Limits()
@@ -294,7 +308,7 @@ func acquireSlot(ctx context.Context, run stepRun) (heldSlot, error) {
 }
 
 // renderCommand returns the step's command with {baseline_dir} replaced by the quoted baseline directory.
-// A command still holding the retired {skip_file} placeholder is refused, since nothing fills it any more.
+// A command holding the {skip_file} placeholder is refused, since nothing fills it.
 func renderCommand(run stepRun) (string, error) {
 	if err := refuseSkipFilePlaceholder(run.Site, run.Name, run.Step.Command); err != nil {
 		return "", err
@@ -306,11 +320,13 @@ func renderCommand(run stepRun) (string, error) {
 	return strings.ReplaceAll(run.Step.Command, baselineDirPlaceholder, baseline), nil
 }
 
-// skipFilePlaceholder is the retired placeholder that once rendered the file naming the skipped tests.
+// skipFilePlaceholder is the {skip_file} placeholder, which drift does not render, so a command holding it is refused.
 const skipFilePlaceholder = "{skip_file}"
 
-// refuseSkipFilePlaceholder returns the stepRefusal of a command of the told site that still holds the retired {skip_file} placeholder, naming the reconcile and the edit of the told step that clear it.
-// Both are hub-wide writes, refused from a task or beam session, so the way forward hands them to the operator or the hub orch.
+// refuseSkipFilePlaceholder returns the stepRefusal of a command at the site that holds the {skip_file} placeholder.
+// The refusal names the reconcile and the edit of the step that clear it.
+// Both are hub-wide writes, refused from a task or beam session,
+// so the way forward hands them to the operator or the hub orch.
 // It returns nil for a command holding none.
 func refuseSkipFilePlaceholder(site, step, command string) error {
 	if !strings.Contains(command, skipFilePlaceholder) {
@@ -340,7 +356,8 @@ func killTree(tied *proc.Tied, site string) {
 	}
 }
 
-// exitCodeOf returns the exit code a Wait error carries, 0 for none; an error that is no exit status is returned.
+// exitCodeOf returns the exit code a Wait error carries, 0 for a nil error.
+// An error that carries no exit status is returned unchanged.
 func exitCodeOf(waitErr error) (int, error) {
 	if waitErr == nil {
 		return 0, nil

@@ -16,7 +16,8 @@ import (
 
 // TaskPatch is the warp working tree's change against a merge base.
 // Head is the commit HEAD stands at, Full the full diff bytes in a stable order, and FullHash the hex SHA-256 of Full.
-// PatchID is git's stable patch-id of the zero-context form of the same diff, so it survives a rebase that moves the context around the change; it is empty when the diff is.
+// PatchID is git's stable patch-id of the zero-context form of the same diff.
+// It survives a rebase that moves the context around the change, and it is empty when the diff has no change.
 type TaskPatch struct {
 	Head     string
 	Full     []byte
@@ -24,8 +25,9 @@ type TaskPatch struct {
 	PatchID  string
 }
 
-// ReadTaskPatch reads the warp working tree's change against base, the told merge base.
-// The change is the full diff of tracked files, uncommitted changes included, plus every untracked file that is not ignored, each rendered as a new-file diff.
+// ReadTaskPatch reads the warp working tree's change against base, the merge base the caller passes.
+// The change is the full diff of tracked files, uncommitted changes included.
+// It adds every untracked file that is not ignored, each rendered as a new-file diff.
 // An untracked path equal to a skip entry, or under a skip entry ending in "/", is left out;
 // a skip entry exempts a path only while it is untracked, so a tracked file of that name still counts.
 func (f *Fabric) ReadTaskPatch(base string, skip []string) (TaskPatch, error) {
@@ -76,7 +78,8 @@ func skippedPath(path string, skip []string) bool {
 	return false
 }
 
-// renderTaskDiff returns the tracked diff against base followed by one new-file diff per untracked path, with context as git's context-lines flag.
+// renderTaskDiff returns the tracked diff against base, followed by one new-file diff per untracked path.
+// context is git's context-lines flag, for example -U3.
 func (f *Fabric) renderTaskDiff(base string, untracked []string, context string) ([]byte, error) {
 	tracked, err := gitexec.Run([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", context, base, "--"}, f.warpPath)
 	if err != nil {
@@ -111,8 +114,10 @@ func stablePatchID(dir string, diff []byte) (string, error) {
 }
 
 // MergeInOnly reports whether every first-parent commit from HEAD back to since, since excluded, came from a Merge-In.
-// A commit counts when it is a merge commit whose second parent is an ancestor of parentTip, or when it is itself an ancestor of parentTip, which is how a fast-forward Merge-In leaves it.
-// It reports false when since is not on HEAD's first-parent history, since a history that skips it cannot be shown to hold only Merge-Ins.
+// A commit counts when it is a merge commit whose second parent is an ancestor of parentTip.
+// It also counts when it is itself an ancestor of parentTip, which is how a fast-forward Merge-In leaves it.
+// It reports false when since is not on HEAD's first-parent history.
+// A history that skips since cannot be shown to hold only Merge-Ins.
 func (f *Fabric) MergeInOnly(since, parentTip string) (bool, error) {
 	head, err := f.code.CurrentSHA()
 	if err != nil {
@@ -143,7 +148,7 @@ func (f *Fabric) MergeInOnly(since, parentTip string) (bool, error) {
 }
 
 // RecordsHeadSHA returns the commit the weft checkout's HEAD stands at.
-// It is a thin, read-only delegation to gitrepo.Repo.CurrentSHA on f.records, so a caller reads the weft side without naming it.
+// A caller reads the weft side through it without holding the records repository.
 func (f *Fabric) RecordsHeadSHA() (string, error) {
 	return f.records.CurrentSHA()
 }

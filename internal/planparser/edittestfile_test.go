@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckEditTestFile covers the refs under Edit that the check refuses and the ones it admits: groups other than Edit, member glyphs, handles, paths the go tool ignores, files with no member glyph, other languages and done cards.
+// TestCheckEditTestFile covers the refs under Edit that the check refuses and the ones it admits.
 func TestCheckEditTestFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

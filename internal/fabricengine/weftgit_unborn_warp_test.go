@@ -1,11 +1,6 @@
-// weftgit_unborn_warp_test.go — integration coverage for the O4 fix: a warp
-// repo with zero commits (a fresh `git init` -> `lym init` -> `lym config`
-// first-run path, before the operator's first warp commit) must not fail
-// every weft commit just because CommitWeft now reads warp HEAD for the
-// Warp-SHA trailer. Package fabricengine_test, reusing
-// export_test.go's NewFabricForTest/CurrentSHAForTest/CommitWarpForTest
-// shims for the fixture helpers this file used to share directly with
-// index_integration_test.go, back when both lived in package fabricengine.
+// weftgit_unborn_warp_test.go covers CommitWeft against a warp repo with zero commits.
+// That is the state of a fresh `git init`, `lym init` and `lym config`, before the operator's first warp commit.
+// CommitWeft must still commit there, and leave out the Warp-SHA trailer.
 
 package fabricengine_test
 
@@ -20,11 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newUnbornWarpRepo creates a minimal, isolated git repo at t.TempDir() on
-// branch main with NO commits — an unborn HEAD, the state a bare `git init`
-// leaves before any commit lands. Distinct from
-// fabricengine.NewPlainWarpRepoForTest (which commits once), since this
-// file's tests need the pre-first-commit state itself.
+// newUnbornWarpRepo creates an isolated git repo at t.TempDir() on branch main with no commits.
+// Its HEAD is unborn, the state a bare `git init` leaves before any commit lands.
 func newUnbornWarpRepo(t *testing.T) string {
 	t.Helper()
 
@@ -35,13 +27,10 @@ func newUnbornWarpRepo(t *testing.T) string {
 	return dir
 }
 
-// TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord asserts that CommitWeft against an
-// unborn warp HEAD still commits (unlike the pre-fix behavior, which failed with "warp CurrentSHA:
-// gitrepo: repository has no commits" before ever reaching StageAndCommit), that the resulting
-// commit carries no Warp-SHA trailer (there is no warp SHA yet to name), and that no correspondence
-// entry was recorded for it.
-// It then makes warp's first commit and calls CommitWeft again, asserting normal trailer/record
-// behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
+// TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord checks CommitWeft on an unborn warp HEAD.
+// The commit still happens, with no Warp-SHA trailer, since there is no warp SHA yet.
+// It records no correspondence entry.
+// Once warp makes its first commit, CommitWeft writes the trailer and the record again.
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -79,8 +68,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 		}
 	}
 
-	// Warp gains its first commit; a subsequent CommitWeft must resume
-	// normal trailer/record behavior — the unborn condition self-heals.
+	// Warp gains its first commit, so CommitWeft writes the trailer and the record again.
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp's first commit")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, warp now born")
 

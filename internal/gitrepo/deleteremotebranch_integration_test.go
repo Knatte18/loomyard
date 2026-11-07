@@ -1,4 +1,6 @@
-// deleteremotebranch_integration_test.go covers Repo.DeleteRemoteBranch and DeleteRemoteBranchLeased against a real bare remote and clones, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) exactly as fetch_integration_test.go does.
+// deleteremotebranch_integration_test.go tests Repo.DeleteRemoteBranch and DeleteRemoteBranchLeased.
+// They run against a real bare remote and clones, using the fixtures of push_test.go:
+// newBareRemote, newRepoWithRemote and cloneFromBare.
 
 package gitrepo_test
 
@@ -31,7 +33,9 @@ func remoteHeads(t *testing.T, container, bareRemote string) string {
 }
 
 // TestDeleteRemoteBranch drives DeleteRemoteBranch and DeleteRemoteBranchLeased against one bare remote with two clones.
-// The steps run serially in one order and share the remote: each pushes its own branch from clone A, and the unreachable-remote step runs last because it repoints clone A's origin at a missing path.
+// The steps run serially in one order and share the remote.
+// Each pushes its own branch from clone A.
+// The unreachable-remote step runs last, because it repoints clone A's origin at a missing path.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestDeleteRemoteBranch(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -51,7 +55,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 		name string
 		run  func(t *testing.T)
 	}{
-		// The first of DeleteRemoteBranch's three named outcomes: deleting a branch that exists on the remote returns (true, nil), and the remote no longer lists it afterward.
+		// Deleting a branch that exists on the remote returns (true, nil), and the remote does not list it afterward.
 		{"an existing branch is deleted and reported true", func(t *testing.T) {
 			const branch = "feature-x"
 			pushFeatureBranch(t, cloneAPath, branch)
@@ -74,8 +78,11 @@ func TestDeleteRemoteBranch(t *testing.T) {
 				t.Errorf("bare remote heads after delete = %q; want it to no longer contain refs/heads/%s", lsOut, branch)
 			}
 		}},
-		// The idempotence contract: deleting a branch that is already absent from the remote returns (false, nil).
-		// This runs a real `git push --delete` against a ref that genuinely is not there, so it observes git's own stderr rather than a fixture, and is the tripwire on the single pinned substring "remote ref does not exist": a future git rewording makes this step fail loudly instead of silently reclassifying the common case as an error.
+		// Deleting a branch that is already absent from the remote returns (false, nil): the call is idempotent.
+		// The step runs a real `git push --delete` against a ref that is not there,
+		// so it observes git's own stderr rather than a fixture.
+		// It is the tripwire on the pinned substring "remote ref does not exist":
+		// a git rewording fails this step loudly instead of silently classifying the common case as an error.
 		{"an absent branch is reported false with a nil error", func(t *testing.T) {
 			const branch = "gone-branch"
 			deleted, err := repoA.DeleteRemoteBranch("origin", branch)
@@ -97,7 +104,8 @@ func TestDeleteRemoteBranch(t *testing.T) {
 				t.Errorf("bare remote heads after leased delete = %q; want no refs/heads/%s", heads, branch)
 			}
 		}},
-		// A lease whose SHA the remote branch has since moved past fails with ErrLeaseRejected, still naming the leased SHA, and leaves the branch at its advanced tip.
+		// A lease whose SHA the remote branch has moved past fails with ErrLeaseRejected, still naming the leased SHA.
+		// The remote branch stays at its advanced tip.
 		{"a stale lease errors and keeps the branch", func(t *testing.T) {
 			const branch = "leased-stale"
 			staleTip := pushFeatureBranch(t, cloneAPath, branch)
@@ -140,9 +148,9 @@ func TestDeleteRemoteBranch(t *testing.T) {
 				t.Errorf("bare remote heads = %q; want refs/heads/%s untouched", heads, branch)
 			}
 		}},
-		// The failure outcome: a genuine failure returns a non-nil error and deleted == false.
+		// The failure outcome: the call returns a non-nil error and deleted == false.
 		// The failure is induced without a network by pointing the clone's remote at a filesystem path that does not exist.
-		// The exact wording of git's failure is not pinned by any decision, so this deliberately does not assert on it.
+		// This test does not assert on the exact wording of git's failure.
 		// Runs last: it leaves origin pointing at the missing path.
 		{"an unreachable remote returns an error", func(t *testing.T) {
 			missing := filepath.Join(container, "does-not-exist.git")

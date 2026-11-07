@@ -51,7 +51,8 @@ func TestHubWorkspacePathAndFolders(t *testing.T) {
 	}
 }
 
-// TestWriteHubWorkspace covers first write, identical rewrite and changed rewrite at both anchors, and that no container directory is created.
+// TestWriteHubWorkspace covers the first write, an identical rewrite and a changed rewrite at both anchors.
+// It also checks that no container directory is created.
 func TestWriteHubWorkspace(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -110,7 +111,8 @@ func TestWriteHubWorkspace(t *testing.T) {
 	}
 }
 
-// TestWriteHubWorkspace_ReadErrorFailsWithReadCause plants a directory at the workspace file path and asserts the write fails with the read cause.
+// TestWriteHubWorkspace_ReadErrorFailsWithReadCause plants a directory at the workspace file path.
+// It asserts the write fails with the read cause.
 func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -126,7 +128,8 @@ func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
 	assertNoHubContainers(t, l.HubPath)
 }
 
-// TestWriteHubWorkspace_RefusesEscapingSymlink plants a symlink out of the hub at the workspace file path and asserts the write fails with nothing landing at the symlink's target.
+// TestWriteHubWorkspace_RefusesEscapingSymlink plants a symlink out of the hub at the workspace file path.
+// It asserts the write fails and nothing lands at the symlink's target.
 func TestWriteHubWorkspace_RefusesEscapingSymlink(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

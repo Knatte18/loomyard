@@ -1,7 +1,6 @@
-// interruptpolicy.go declares the exported table mapping each of loom's durable row names
-// to the operator-facing action an external supervisor should take when it finds `lym loom step`
-// interrupted mid-row, and the accessor that reads it.
-// The two policy words themselves are shedverbs.InterruptPolicyReinvoke and shedverbs.InterruptPolicyHandback.
+// interruptpolicy.go declares the exported InterruptPolicies table and the InterruptPolicyFor accessor that reads it.
+// The table maps each durable row name to the action an external supervisor takes once `lym loom step` is interrupted.
+// The two policy words are shedverbs.InterruptPolicyReinvoke and shedverbs.InterruptPolicyHandback.
 
 package loomshed
 
@@ -10,28 +9,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// InterruptPolicies maps each of loom's durable row names (the Name* constants declared
-// in loomshed.go) to the shedverbs.InterruptPolicyReinvoke/shedverbs.InterruptPolicyHandback action an external
-// supervisor should take after finding that row interrupted. It is keyed by those constants rather
-// than by repeated string literals, because the constants are the durable on-disk identity a rename
-// would otherwise silently desynchronize this table from.
+// InterruptPolicies maps each durable row name to the action an external supervisor takes when a row is interrupted.
+// The action is shedverbs.InterruptPolicyReinvoke or shedverbs.InterruptPolicyHandback.
+// The table is keyed by the row name constants rather than by repeated string literals.
+// The constants are each row's durable on-disk identity; renaming one would silently desynchronize this table.
 //
-// Every row maps to shedverbs.InterruptPolicyReinvoke except NameWebster, which maps to shedverbs.InterruptPolicyHandback.
-// On every row but Webster and Friction-Reflect, re-calling current_producer after an interrupted invocation does not double-spawn:
-// internal/shedadapters/doc.go's "Every spawning adapter probes for a live agent first" section records that every spawning adapter probes for a live agent with the step's own OutputFiles and waits on a match before any archive.
+// Every row maps to shedverbs.InterruptPolicyReinvoke except Webster, which maps to shedverbs.InterruptPolicyHandback.
+// On every row but Webster and Friction-Reflect, re-invoking an interrupted row does not double-spawn.
+// Each spawning adapter probes for a live agent with the step's own output files first.
 // So a re-invocation reattaches to the live agent rather than spawning a second one.
 //
-// NameFrictionReflect's premise is the attach premise:
-// frictionengine.Reflect probes shuttle's attach seam for a live reflection agent and archives a finished reflection's notes instead of spawning,
-// so re-invoking an interrupted step never double-files.
+// Friction-Reflect probes for a live reflection agent and archives a finished reflection's notes instead of spawning.
+// So re-invoking an interrupted step never double-files.
 //
-// NameWebster is the exception because WebsterProducer inherits websterengine's own entry-time
-// reclaim, which stops a leftover Master rather than attaching to it (reclaimEntryTimeStrands in
-// internal/websterengine/runlevel.go), so re-invoking an interrupted Webster step kills the
-// in-flight Master and restarts the batch run from state.json. Correctness survives that restart --
-// recovery from state.json is what the reclaim exists for -- but the cost does not, Webster being
-// the most expensive row in the list, and that cost is the operator's to accept rather than the
-// supervisor skill's.
+// Webster is the exception: its entry-time reclaim stops a leftover Master rather than attaching to it;
+// so re-invoking an interrupted Webster step kills the in-flight Master and restarts the batch run from state.json.
+// Correctness survives that restart, since recovery from state.json is the reason the reclaim exists.
+// The cost is a different matter: Webster is the most expensive row in the list.
+// Accepting that cost is the operator's call, not the supervisor's.
 var InterruptPolicies = map[string]string{
 	NamePreflight:         shedverbs.InterruptPolicyReinvoke,
 	NameDiscussionWrite:   shedverbs.InterruptPolicyReinvoke,
@@ -42,7 +37,7 @@ var InterruptPolicies = map[string]string{
 	NameCodeBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,
 	NameParentAlign:       shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
-	// PR-Review reattaches the run's live interactive session, or resumes it by its recorded session id, rather than spawning a second one.
+	// PR-Review reattaches the live interactive session or resumes its recorded one, rather than spawning a second one.
 	NamePRReview:        shedverbs.InterruptPolicyReinvoke,
 	NameDarnWrite:       shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameFinalize:        shedverbs.InterruptPolicyReinvoke,
@@ -56,17 +51,17 @@ var InterruptPolicies = map[string]string{
 	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 
-	// Record-Write writes its files only when missing and commits the pair, so a re-invocation completes whatever a crash left.
+	// Record-Write writes its files only when missing and commits the pair; a re-invocation completes what a crash left.
 	NameRecordWrite: shedverbs.InterruptPolicyReinvoke,
 
-	// The three agent rows probe for a live chair and reattach to it, and Drift-Await and Drift-Recheck spawn nothing.
+	// Agent-spawning Drift rows probe for a live chair and reattach to it; Drift-Await and Drift-Recheck spawn nothing.
 	NameDriftBaseline: shedverbs.InterruptPolicyReinvoke,
 	NameDriftAwait:    shedverbs.InterruptPolicyReinvoke,
 	NameDriftExpect:   shedverbs.InterruptPolicyReinvoke,
 	NameDriftVerify:   shedverbs.InterruptPolicyReinvoke,
 	NameDriftRecheck:  shedverbs.InterruptPolicyReinvoke,
 
-	// Both parts rows probe for a live chair and resume it through the seat probe rather than spawn a second one.
+	// The parts rows probe for a live chair and resume it through the seat probe rather than spawn a second one.
 	NamePartsWrite:     shedverbs.InterruptPolicyReinvoke,
 	NamePartsPlanWrite: shedverbs.InterruptPolicyReinvoke,
 
@@ -87,9 +82,8 @@ var InterruptPolicies = map[string]string{
 	pawlengine.NameBeamDown:  shedverbs.InterruptPolicyReinvoke,
 }
 
-// InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is
-// empty or names no row. The empty return is the caller's signal to omit the key rather than a
-// third policy value.
+// InterruptPolicyFor returns the policy action for name, or the empty string when name is empty or names no row.
+// The empty return tells the caller to omit the key rather than treat it as a third policy value.
 func InterruptPolicyFor(name string) string {
 	return InterruptPolicies[name]
 }

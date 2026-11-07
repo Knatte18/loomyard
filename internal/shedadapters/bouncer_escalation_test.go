@@ -1,4 +1,5 @@
-// bouncer_escalation_test.go covers the Bouncer's escalation of a CIRCLING ruling or a spent bounce budget to the run's parent: the record it writes, the Awaiting it returns, and the way it acts on the recorded decision.
+// bouncer_escalation_test.go covers the Bouncer escalating a CIRCLING ruling or a spent budget to the run's parent.
+// It checks the escalation record it writes, the Awaiting it returns, and how it acts on the recorded decision.
 
 package shedadapters
 
@@ -23,10 +24,12 @@ import (
 // spentBounces is a Bounces seam reporting a budget of three with all three spent.
 func spentBounces() (int, int, bool, error) { return 3, 3, true, nil }
 
-// escalationBouncer builds a Bouncer over a run directory whose rounds 1 and 2 are judged, round 1 CONTINUE and round 2 verdict,
-// with a gating key open in both so a CIRCLING at round 2 is earned.
+// escalationBouncer builds a Bouncer over a run directory with rounds 1 and 2 judged: round 1 CONTINUE, round 2 verdict.
+// A gating key is open in both rounds, so a CIRCLING at round 2 is earned.
 // The fixture tells the brief render its slug, worktree root and decision record path.
-// It overwrites round 2's report at cfg.ReportName(2) with `not a review`, so its rounds are in the soft-cap rule's window wherever its callers spend the budget, and an unparseable report keeps their cause budget through the rule's first step.
+// It overwrites round 2's report at cfg.ReportName(2) with `not a review`.
+// That puts its rounds in the soft-cap rule's window wherever its callers spend the budget,
+// and an unparseable report keeps their cause budget through the rule's first step.
 func escalationBouncer(t *testing.T, verdict string, tweak func(*BouncerConfig), opts ...bouncerFixtureOpt) (*Bouncer, *BouncerConfig, *shedfake.Shuttle) {
 	t.Helper()
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -46,7 +49,7 @@ func escalationBouncer(t *testing.T, verdict string, tweak func(*BouncerConfig),
 	if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(2)), []byte("not a review\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(report round 2) = %v; want nil", err)
 	}
-	// RecordCirclingDecision resolves the latest round from the review file, not the fixture's report name.
+	// RecordCirclingDecision resolves the latest round from the review file, so the test writes one for each round.
 	for n := 1; n <= 2; n++ {
 		if err := os.WriteFile(roundReviewPath(cfg.RunDir, n), []byte("review\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(review round %d) = %v; want nil", n, err)
@@ -64,7 +67,7 @@ type taggedEntry struct {
 	key, status, class, severity, fix string
 }
 
-// taggedLedgerContent renders round's ledger from entries as writeEvidenceLedger does, writing `fix:` only when set.
+// taggedLedgerContent renders round's ledger from entries, writing a `fix:` key only for an entry with a fix tag.
 func taggedLedgerContent(round int, entries ...taggedEntry) string {
 	var b strings.Builder
 	for _, e := range entries {
@@ -109,8 +112,10 @@ func requireNoEscalation(t *testing.T, cfg *BouncerConfig) {
 // belowBounces is a Bounces seam reporting a budget of three with one spent.
 func belowBounces() (int, int, bool, error) { return 1, 3, true, nil }
 
-// TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched covers the escalation itself: the
-// Awaiting pointer, the record and notice it writes, the cause it picks, the accept-only offer at the hard cap, and that a second Call returns the same pointer and leaves the record untouched.
+// TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched covers the escalation itself.
+// It pins the Awaiting pointer, the record and notice it writes, and the cause it picks.
+// It also pins the accept-only offer at the hard cap.
+// A second Call returns the same pointer and leaves the record untouched.
 // A round in the soft-cap rule's window whose review does not parse escalates budget, even over a CIRCLING verdict.
 //
 //testtiming:keep pins the escalation's Awaiting pointer and reason, the record and notice it writes, the cause it picks, the accept-only offer at the hard cap and that a re-call leaves the record untouched
@@ -214,8 +219,7 @@ func TestBouncer_Escalation_NoBudgetEscalationReturnsAPlainStuck(t *testing.T) {
 	}
 }
 
-// TestBouncer_Escalation_RecordedDecision covers the way a recorded circling decision settles an
-// escalation of any cause.
+// TestBouncer_Escalation_RecordedDecision covers how a recorded circling decision settles an escalation of any cause.
 // A continue returns Stuck, exempt from the budget for a budget cause or at a spent budget.
 // At the hard cap a continue is moved aside and the round re-escalates with cause hard-cap.
 // An accept approves, commits and returns Done, and a re-entry afterwards archives the settled generation.
@@ -368,8 +372,9 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 	}
 }
 
-// TestBouncer_AutoAccept covers BouncerConfig.AutoAccept: a spent budget over a verdict this call's judge just wrote settles as an automatic accept,
-// and a replay and a BlockingEscalates round go to the soft-cap rule.
+// TestBouncer_AutoAccept covers BouncerConfig.AutoAccept.
+// A spent budget over a verdict this call's judge just wrote settles as an automatic accept.
+// A replay and a BlockingEscalates round go to the soft-cap rule.
 // The rule's continue rows run over an untagged MEDIUM entry, which pins that a missing `fix` key reads as design-wrong.
 func TestBouncer_AutoAccept(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -527,7 +532,9 @@ func TestBouncer_AutoAccept(t *testing.T) {
 	}
 }
 
-// softCapPath is one of the three ways a round reaches the soft-cap rule: a harvest with no auto-accept, a replay on an auto-accept perch, and a harvest on an auto-accept perch whose open BLOCKING entry blocking_escalates sends to the rule.
+// softCapPath is one of the three ways a round reaches the soft-cap rule.
+// A harvest with no auto-accept reaches it, and so does a replay on an auto-accept perch.
+// A harvest on an auto-accept perch reaches it when an open BLOCKING entry is one blocking_escalates sends there.
 type softCapPath struct {
 	name                          string
 	harvest, autoAccept, blocking bool
@@ -547,7 +554,7 @@ type softCapRuleRow struct {
 	ledger     []taggedEntry
 	// prevDecision writes round 1's decision as an automatic budget-cause continue.
 	prevDecision bool
-	// badReport overwrites round 2's report, badPrevLedger round 1's ledger, and badPrevDecision writes `accept` as round 1's decision file.
+	// badReport overwrites round 2's report; badPrevLedger round 1's ledger; badPrevDecision round 1's decision as accept.
 	badReport, badPrevLedger, badPrevDecision bool
 	// preRecord writes round 2's escalation record with this cause before the first Call.
 	preRecord   EscalationCause
@@ -559,8 +566,10 @@ type softCapRuleRow struct {
 	wantCarried  []string
 }
 
-// TestBouncer_SoftCapRule covers the soft-cap rule's five steps over a spent budget, the hard cap and a new generation's count, on every path that reaches it.
-// Every row Calls a second time, the replay of a rule-settled round, and requires the same result with no further judge run.
+// TestBouncer_SoftCapRule covers the soft-cap rule's five steps over a spent budget.
+// It also covers the hard cap and a new generation's count, on every path that reaches the rule.
+// Every row Calls a second time to replay the rule-settled round.
+// The replay must give the same result with no further judge run.
 func TestBouncer_SoftCapRule(t *testing.T) {
 	tiergate.Require(t, 0)
 	design := taggedEntry{"alpha", "open", "design", "MEDIUM", "design-wrong"}
@@ -616,7 +625,8 @@ func TestBouncer_SoftCapRule(t *testing.T) {
 	}
 }
 
-// runSoftCapRuleRow lays out one TestBouncer_SoftCapRule row on one path, Calls twice and checks the pointer, the records and the decision file.
+// runSoftCapRuleRow runs one TestBouncer_SoftCapRule row on one path.
+// It Calls twice and checks the pointer, the records and the decision file.
 func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 	t.Helper()
 	verdict := row.verdict

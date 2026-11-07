@@ -1,4 +1,5 @@
-// stops.go reads what stopped a run: its batten halts matched to the halt notes loom left, each stop classed by the note's anomaly and its reason.
+// stops.go reads what stopped a run: its batten halts, matched to the halt notes loom left.
+// Each stop is classed by the note's anomaly and its reason.
 
 package reportengine
 
@@ -31,7 +32,8 @@ const (
 )
 
 // Stop is one halt of a run.
-// Change is true when batten recorded the halt as a child state change; Note is the tree path of the halt note, empty when the stop has none.
+// Change is true when batten recorded the halt as a child state change.
+// Note is the tree path of the halt note, empty when the stop has none.
 // Failure is the failure class of the note's reason.
 type Stop struct {
 	Class    string `json:"class"`
@@ -53,8 +55,10 @@ var (
 	digitRun     = regexp.MustCompile(`\d+`)
 )
 
-// failureClass names the failure a halt belongs to: the producer, `: `, and the leading clause of the reason, up to the first `:`, `;` or `(`.
-// Quoted strings, paths and digit runs in the clause are replaced by `<str>`, `<path>` and `<n>`, so halts that differ only in them share a class.
+// failureClass names the failure a halt belongs to: the producer, `: `, and the leading clause of the reason.
+// The clause ends at the first `:`, `;` or `(`.
+// Quoted strings, paths and digit runs in the clause are replaced by `<str>`, `<path>` and `<n>`.
+// Halts that differ only in them share a class.
 func failureClass(producer, reason string) string {
 	clause := quotedString.ReplaceAllString(reason, "${1}<str>")
 	if end := strings.IndexAny(clause, ":;("); end >= 0 {
@@ -85,7 +89,8 @@ func noteOrder(name string) int {
 	return number
 }
 
-// readHaltNotes reads the halt notes of the tree at tag: the files of each archived friction directory by name, then the live friction directory, each directory's notes in suffix order.
+// readHaltNotes reads the halt notes of the tree at tag.
+// It reads each archived friction directory, then the live one, and each directory's notes come in suffix order.
 // present is false when the tree holds neither the friction directory nor an archived sibling of it.
 // A note that does not parse is a finding.
 func readHaltNotes(records Reader, tag gitrepo.TagRef) (notes []haltNote, findings []Finding, present bool, err error) {
@@ -157,7 +162,8 @@ func noteStop(held haltNote, change bool) Stop {
 }
 
 // readStops matches the run's recorded halts to its halt notes and fills Stops and Failures.
-// Both stay absent when the tree holds no friction directory and no archived sibling of it, whatever the run's batten changes.
+// Both stay absent when the tree holds neither the friction directory nor an archived sibling.
+// This holds whatever the run's batten changes.
 func (row *RunRow) readStops(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
 	notes, findings, present, err := readHaltNotes(records, tag)
 	if err != nil {

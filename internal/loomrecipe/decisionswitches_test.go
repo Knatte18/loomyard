@@ -17,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts both switches are true on exactly Discussion-Bouncer and Discussion-Burler-Fix in the tapestry recipe and on no row of the darn recipe.
+// TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts both switches are true on exactly two rows.
+// Those rows are Discussion-Bouncer and Discussion-Burler-Fix in the tapestry recipe; no darn row carries them.
 // The Plan-Review and Code-Review rows therefore keep the fix row's own parent notice.
 func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 	tiergate.Require(t, 0)

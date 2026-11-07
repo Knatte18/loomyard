@@ -16,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose, exact, starts, ends, near and grouping in that store order.
-// old carries every field a rename must keep, a kept unknown key included, and mentions its own slug, and is the one member of the project grouping;
+// newRenameBoard returns a board whose clock reads *now.
+// It holds other, old, waiter, prose, exact, starts, ends, near and grouping in that store order.
+// old carries every field a rename must keep, a kept unknown key included, and mentions its own slug,
+// and it is the one member of the project grouping;
 // waiter is a run-held task depending on other and old;
 // prose, exact, starts and ends mention old as a whole slug mid-text, as the whole text, at its start and at its end.
 // near holds it only beside a hyphen, underscore, letter or digit.
@@ -60,8 +62,10 @@ func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 	return b, boardPath
 }
 
-// TestRename_KeepsEntryRewritesDependentsAndReportsMentions pins that a rename changes only the entry's slug, keeping its id, position, dates and kept keys.
-// It also pins that the rename rewrites a run-held dependent's depends_on without revising it, renders under the new slug and reports the whole-slug mentions.
+// TestRename_KeepsEntryRewritesDependentsAndReportsMentions pins that a rename changes only the entry's slug;
+// the entry keeps its id, position, dates and kept keys.
+// It also pins that the rename rewrites a run-held dependent's depends_on without revising it.
+// The dependent renders under the new slug, and the rename reports the whole-slug mentions.
 func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -156,7 +160,7 @@ func TestRename_Refusals(t *testing.T) {
 		to         string
 		wantErrHas string
 		wantLocked bool
-		// build makes the board the rename runs against; nil is newRenameBoard's.
+		// build makes the board the rename runs against; a nil build uses newRenameBoard.
 		build func(t *testing.T) (*boardengine.Board, string)
 	}{
 		{"AbsentSource", "ghost", "fresh", "task not found", false, nil},

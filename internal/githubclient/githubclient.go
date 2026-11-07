@@ -1,7 +1,7 @@
 // githubclient.go constructs the authenticated *github.Client this package hands to every consumer:
 // New and NewWithBaseURL, plus the request timeout they share.
-// See doc.go for the package's full design record -- resolution chain, cache, authenticating
-// transport, and the GitHub surface consumers need.
+// See doc.go for the package's full design record:
+// resolution chain, cache, authenticating transport, and the GitHub surface consumers need.
 
 package githubclient
 
@@ -15,19 +15,20 @@ import (
 	"github.com/google/go-github/v75/github"
 )
 
-// clientTimeout bounds the whole HTTP round trip via request context, covering
-// both original attempt and 401 replay.
+// clientTimeout bounds the whole HTTP round trip, the original attempt and the 401 replay together.
 // authRT applies it after the pause hold ends, so a hold does not use it up.
 const clientTimeout = 30 * time.Second
 
-// New returns an authenticated *github.Client against the real GitHub API, with credentials
-// resolved lazily and non-blockingly via authRT.
+// New returns an authenticated *github.Client against the real GitHub API.
+// Credentials are resolved lazily and non-blockingly by authRT.
 func New() (*github.Client, error) {
 	return NewWithBaseURL("", nil)
 }
 
-// NewWithBaseURL returns an authenticated *github.Client at baseURL with the given http.Client's
-// Transport, useful for tests pointing at httptest servers.
+// NewWithBaseURL returns an authenticated *github.Client that sends requests to baseURL.
+// An empty baseURL keeps the real GitHub API.
+// Its inner transport is httpClient's Transport, or the default when httpClient is nil.
+// Tests use this to target httptest servers.
 func NewWithBaseURL(baseURL string, httpClient *http.Client) (*github.Client, error) {
 	var inner http.RoundTripper
 	if httpClient != nil {

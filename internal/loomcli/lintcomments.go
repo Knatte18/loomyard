@@ -1,5 +1,5 @@
-// lintcomments.go implements the `lint-comments` loom verb, the standalone form of the comment line-break lint that a gate key's `comments` lint step also runs inside `lym gate test`.
-// It is a caller of the same commentlint.Lint the round gate calls.
+// lintcomments.go implements the `lint-comments` loom verb: a lint of the comment line breaks in the current change.
+// It calls `commentlint.Lint`, the check the gate's `comments` lint step also runs inside `lym gate test`.
 
 package loomcli
 

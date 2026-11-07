@@ -1,5 +1,8 @@
-// daemonwakeups_test.go enforces `PATTERN-daemon-wakeups`: the files that hold an unbounded wait carry no sub-second duration literal and no sub-second `MS` or `Ms` constant unless the line announces itself with `//lym:one-shot <reason>`, and no production file outside that list starts a `time.NewTicker` or `time.Tick`.
-// The scan sees literal shapes only; a computed period, or a sleep loop in a file the list does not name, is left to review.
+// daemonwakeups_test.go enforces `PATTERN-daemon-wakeups`.
+// Files that hold an unbounded wait carry no sub-second duration literal and no sub-second `MS` or `Ms` constant.
+// A line may opt out with `//lym:one-shot <reason>`.
+// No production file outside unboundedWaitFiles starts a `time.NewTicker` or `time.Tick`.
+// The scan sees literal shapes only; a computed period, or a sleep loop in a file outside the list, is left to review.
 
 package main
 
@@ -19,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// unboundedWaitFiles are the module-relative, slash-separated files that hold an unbounded wait or the loop that drives one.
+// unboundedWaitFiles lists the module-relative, slash-separated files holding an unbounded wait or its driving loop.
 var unboundedWaitFiles = []string{
 	"internal/reedengine/watchloop.go",
 	"internal/reedengine/namerepair.go",
@@ -57,7 +60,8 @@ var unboundedWaitFiles = []string{
 // oneShotMarker opens the comment that lets a sub-second literal through on its own line, followed by the reason.
 const oneShotMarker = "//lym:one-shot"
 
-// subSecondWakeFindings parses data as Go and returns one message per sub-second duration literal or sub-second `MS`/`Ms` integer constant that its own line does not excuse with a reasoned oneShotMarker.
+// subSecondWakeFindings parses data as Go and returns one message per unexcused sub-second value:
+// a duration literal, or a `MS` or `Ms` integer constant, on a line without a reasoned `//lym:one-shot` marker.
 func subSecondWakeFindings(filename string, data []byte) ([]string, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, data, parser.ParseComments)

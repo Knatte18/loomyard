@@ -26,12 +26,15 @@ const costMinRunsKey = "cost_min_runs"
 
 // Config represents the resolved report.yaml configuration.
 type Config struct {
-	// CostMinRuns is the number of runs a cell of the cost report needs before it shows its figures instead of "too few runs".
+	// CostMinRuns is the number of runs a cell of the cost report needs before it shows its figures;
+	// below that the cell shows "too few runs" instead.
 	CostMinRuns int `yaml:"cost_min_runs"`
 }
 
 // ConfigSpec returns the report module's layered-load spec.
-// The module is hub-wide, and its one key decides which cost figures the raddle agent prices a proposal from, so the local layer refuses it.
+// The module is hub-wide,
+// and its one key decides which cost figures the raddle agent prices a proposal from,
+// so the local layer refuses it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,

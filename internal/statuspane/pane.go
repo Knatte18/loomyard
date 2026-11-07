@@ -1,4 +1,5 @@
-// pane.go is the redraw-in-place pane loop the status panes share and the terminal-size and binary-check seams it takes.
+// pane.go is the redraw-in-place pane loop the status panes share.
+// It takes its output, terminal size, per-poll check, wait and resize signal as seams.
 
 package statuspane
 
@@ -53,7 +54,8 @@ type Pane struct {
 // Every line of the frame is drawn uncut: a frame taller than the terminal scrolls its first lines into the history, and a line wider than the terminal wraps.
 // A size change alone redraws, so a wrapped frame is redrawn for the new width.
 // Each poll calls Check before reading the frame, on the poll's own wait and adding no wake of its own.
-// The wait between polls starts at one second, doubles while a poll changes nothing up to an eight-second ceiling, and returns to one second on a redraw.
+// The wait between polls starts at initialWait and doubles while a poll changes nothing, up to maxWait.
+// It returns to initialWait on a redraw.
 // A value on Resized ends the wait at once, so the next poll redraws for the new size without waiting out the back-off.
 // It reads and writes nothing but its seams.
 func (p Pane) Run(ctx context.Context, poll func() Frame) {

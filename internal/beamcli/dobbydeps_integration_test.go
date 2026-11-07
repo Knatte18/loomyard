@@ -1,4 +1,5 @@
-// dobbydeps_integration_test.go pins the seams hubDobbyDeps fills, those that differ between a beam's dobby and the prime's and those it fills for both, over a hubforge hub.
+// dobbydeps_integration_test.go pins the seams hubDobbyDeps fills over a hubforge hub.
+// It covers the seams that differ between a beam's dobby and the prime's, and the seams it fills for both.
 
 package beamcli
 
@@ -74,7 +75,8 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	if primeDeps.PrimeTidyShuttle != nil {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
 	}
-	// The watch opens only a directory that exists, and a tick creates it as a side effect, so the check comes before any tick.
+	// The watch opens only a directory that exists, and a tick creates it as a side effect.
+	// So the check comes before any tick.
 	if info, err := os.Stat(filepath.Dir(hibernatecli.RequestPath(prime))); err != nil || !info.IsDir() {
 		t.Errorf("the request's directory after the prime's wiring: stat = %v; want an existing directory", err)
 	}
@@ -98,7 +100,8 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 		t.Errorf("prime TaskLimit = nil; want the task-limit reader")
 	}
 
-	// Both dobbies send the run notices, with the batten recipe's quiet window and the marker in the run's records directory.
+	// Both dobbies send the run notices.
+	// They use the batten recipe's quiet window and the marker in the run's records directory.
 	for name, notices := range map[string]dobbyengine.RunNoticeDeps{"beam": beamDeps.RunNotices, "prime": primeDeps.RunNotices} {
 		if notices.ReadChild == nil || notices.DriverAlive == nil || notices.Agents == nil || notices.NewestAgentEnd == nil || notices.Pause == nil || notices.ReviveAPIError == nil || notices.MarkerPath == nil {
 			t.Errorf("%s RunNotices = %+v; want every seam filled", name, notices)
@@ -113,7 +116,9 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 }
 
-// TestHubDobbyDeps_PrimeTickEnsuresRelay pins that the prime's tick starts the Slack relay while the presence is slack and the relay is down, and starts nothing in the states `lym slack stop` and a gave-up relay leave.
+// TestHubDobbyDeps_PrimeTickEnsuresRelay pins that the prime's tick starts the Slack relay.
+// It does so while the presence is slack and the relay is down.
+// It starts nothing in the states `lym slack stop` and a gave-up relay leave.
 // It redirects the credential directory with t.Setenv, which is process-global state, so it does not run in parallel.
 func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -180,7 +185,9 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	}
 }
 
-// TestHubDobbyDeps_WaitReminders pins that every dobby gets the wait reminder seams, and what they read over a hub: the reminded rows, the presence, the template's interval and the pause record's latest resume.
+// TestHubDobbyDeps_WaitReminders pins that every dobby gets the wait reminder seams.
+// It also pins what they read over a hub: the reminded rows, the presence, the template's interval,
+// and the pause record's latest resume.
 func TestHubDobbyDeps_WaitReminders(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -249,7 +256,9 @@ func TestHubDobbyDeps_WaitReminders(t *testing.T) {
 	}
 }
 
-// startCreelDaemon runs creel's daemon in process for the hub over a fake delivery that holds receiver as a live strand, so a client built over the hub connects to it and spawns no daemon of its own.
+// startCreelDaemon runs creel's daemon in process for the hub over a fake delivery.
+// The delivery holds receiver as a live strand.
+// A client built over the hub then connects to it and spawns no daemon of its own.
 func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
 	t.Helper()
 	root, err := lymtemp.ProcessRoot()
@@ -285,7 +294,8 @@ func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
 	}
 }
 
-// TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby pins that the wait reminder line of a beam's dobby and of the prime's dobby is posted to the hub's Slack relay, signed DOBBY in the dobby's own scope.
+// TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby pins the Slack post of the wait reminder.
+// Each dobby's line is posted to the hub's Slack relay, signed DOBBY in the dobby's own scope.
 func TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -346,7 +356,8 @@ func TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby(t *te
 	}
 }
 
-// landingHub returns a hubforge hub holding the beam b, owned by this machine, whose pawl run waits at Beam-Await, and the seam set of b's dobby over it.
+// landingHub returns a hubforge hub holding the beam b, owned by this machine, whose pawl run waits at Beam-Await.
+// It also returns the seam set of b's dobby over that hub.
 func landingHub(t *testing.T) (*hubforge.Hub, dobbyengine.Deps) {
 	t.Helper()
 	boardkit.InstallReplay(t)

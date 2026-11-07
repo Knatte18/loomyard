@@ -1,9 +1,5 @@
-// proctree_linux.go implements the process-tree probes (descendantClosurePIDs, sessionMemberPIDs, serverProcessesOnSocket) directly against /proc — Linux has no Win32_Process analog, so the probes read the kernel's own process table instead of shelling out to a helper.
-// Each enumerates the numeric entries under /proc, reads the per-pid file it needs
-// (/proc/<pid>/stat or /proc/<pid>/cmdline), and delegates the actual decision to the pure helpers
-// in proctree.go (parseStat, descendantClosure, matchSocketCmdlines).
-// Linux is the platform lym runs on, so this file is exercised for real rather than merely
-// compile-checked.
+// proctree_linux.go implements the process-tree probes for Linux by reading the kernel's process table under /proc.
+// Each probe reads the per-pid files it needs and hands the decision to the pure helpers in proctree.go.
 
 package reedengine
 
@@ -32,7 +28,7 @@ func paneProcessAge(pid int) (time.Duration, bool) {
 	if err != nil {
 		return 0, false
 	}
-	// An unreadable auxiliary vector leaves the default rate, as it does for sysconf.
+	// An unreadable auxiliary vector leaves the default clock-tick rate.
 	auxv, _ := unix.Auxv()
 	age, err := processAge(string(uptime), string(stat), clockTicksFromAuxv(auxv))
 	if err != nil {
@@ -110,7 +106,7 @@ func sessionMemberPIDs(sessions []int) []int {
 
 // serverProcessesOnSocket returns OS pids of processes on this engine's socket,
 // scanned from /proc/*/cmdline. Returns nil on read failure.
-// Note: This is a backstop only; liveness is tmux's CLI absence signal.
+// It is a backstop only: liveness is decided by tmux's CLI reporting no server.
 func (e *Engine) serverProcessesOnSocket() []int {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -127,8 +123,7 @@ func (e *Engine) serverProcessesOnSocket() []int {
 			continue
 		}
 		// /proc/<pid>/cmdline is NUL-separated argv with a trailing NUL;
-		// trim it before splitting so the split does not yield a spurious
-		// empty trailing element.
+		// trim it before splitting, so the split does not yield a spurious empty trailing element.
 		argv := strings.Split(strings.TrimSuffix(string(raw), "\x00"), "\x00")
 		procs = append(procs, ProcCmdline{PID: pid, Argv: argv})
 	}

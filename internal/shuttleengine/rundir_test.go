@@ -1,6 +1,8 @@
-// rundir_test.go covers the run-dir lifecycle: runDirRoot's default vs. configured resolution,
-// createRunDir + saveRunState/loadRunState round-tripping, findRunByStrand's hit/miss paths, and
-// sweepOrphans' age guard (young orphan kept, old orphan removed, live-guid dir kept).
+// rundir_test.go covers the run-dir lifecycle.
+// It checks runDirRoot's default and configured resolution.
+// createRunDir with saveRunState and loadRunState must round-trip.
+// findRunByStrand must hit and miss correctly.
+// sweepOrphans' age guard keeps young orphans and live-guid dirs, and removes old orphans.
 
 package shuttleengine
 
@@ -20,12 +22,11 @@ func TestRunDirRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// A real subpath of a worktree root, so the default branch's anchor-path anchoring (as
-	// opposed to a worktree-root anchoring) is observable.
+	// A subpath of a worktree root: the default branch anchors at the anchor path, not the worktree root,
+	// and the subpath makes that visible.
 	defaultAnchor := filepath.Join(`C:\worktree`, "sub", "dir")
 	// An OS-absolute RunDir must be returned verbatim, never re-joined against the anchor path.
-	// t.TempDir() yields an absolute path on any host, so the row is not tied to one OS's notion
-	// of "absolute".
+	// t.TempDir() yields an absolute path on any host, so the row does not depend on one OS's notion of "absolute".
 	abs := filepath.Join(t.TempDir(), "runs")
 
 	tests := []struct {
@@ -109,8 +110,7 @@ func TestRunState_RoundTrip(t *testing.T) {
 	}
 }
 
-// seedRun creates <root>/<id>/run.json with the given strand guid and
-// returns the run directory path.
+// seedRun creates <root>/<id>/run.json with the given strand guid and returns the run directory path.
 func seedRun(t *testing.T, root, id, strandGUID string) string {
 	t.Helper()
 	runDir := filepath.Join(root, id)
@@ -146,9 +146,9 @@ func TestFindRunByStrand(t *testing.T) {
 			strandGUID: "strand-b",
 		},
 		{
-			// A clean scan must not hedge: every run.json was read, so "no run found" is the whole
-			// truth and a could-not-be-read clause would make an ordinary caller mistake read like
-			// possible corruption.
+			// A clean scan must not hedge.
+			// Every run.json was read, so "no run found" is the whole truth.
+			// A could-not-be-read clause would make an ordinary miss read like possible corruption.
 			name: "miss on a clean scan does not hedge",
 			seed: func(t *testing.T, root string) string {
 				seedRun(t, root, "run-a", "strand-a")
@@ -159,10 +159,10 @@ func TestFindRunByStrand(t *testing.T) {
 			wantErrNotIn: "could not be read",
 		},
 		{
-			// A truncated run.json is skipped so one damaged dir cannot abort the scan, but the
-			// resulting miss must say the scan was incomplete: Runner.Interrupt and Runner.Send wrap
-			// this error as "%q is not a shuttle strand", which sends an operator away from an agent
-			// that is still live in its pane (proven live by truncating a running run's run.json).
+			// A truncated run.json is skipped so one damaged dir cannot abort the scan.
+			// The resulting miss must say the scan was incomplete.
+			// Runner.Interrupt and Runner.Send wrap this error as "%q is not a shuttle strand".
+			// That message sends an operator away from an agent that is still live in its pane.
 			name: "miss names unreadable dirs",
 			seed: func(t *testing.T, root string) string {
 				seedRun(t, root, "run-a", "strand-a")
@@ -210,8 +210,8 @@ func TestFindRunByStrand(t *testing.T) {
 	}
 }
 
-// setDirMTime backdates the modification time of dir by age relative to
-// referenceNow, simulating a run directory that was created age ago.
+// setDirMTime backdates the modification time of dir by age relative to referenceNow.
+// It simulates a run directory created age ago.
 func setDirMTime(t *testing.T, dir string, referenceNow time.Time, age time.Duration) {
 	t.Helper()
 	mtime := referenceNow.Add(-age)
@@ -227,8 +227,7 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	now := time.Now()
 	minAge := 90 * time.Second
 
-	// A dir with no run.json at all (unreadable state), young: must be
-	// kept.
+	// A young dir with no run.json at all (unreadable state) must be kept.
 	youngNoState := filepath.Join(root, "young-no-state")
 	if err := os.MkdirAll(youngNoState, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -242,13 +241,12 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 	setDirMTime(t, oldNoState, now, 10*time.Minute)
 
-	// A young orphan (StrandGUID not live, but the dir is younger than
-	// minAge) must survive the sweep — it may be mid-startup.
+	// A young orphan (StrandGUID not live, but the dir is younger than minAge) must survive the sweep.
+	// It may be mid-startup.
 	youngOrphan := seedRun(t, root, "young-orphan", "strand-gone")
 	setDirMTime(t, youngOrphan, now, 10*time.Second)
 
-	// An old orphan (older than minAge, StrandGUID not live) must be
-	// removed.
+	// An old orphan (older than minAge, StrandGUID not live) must be removed.
 	oldOrphan := seedRun(t, root, "old-orphan", "strand-gone")
 	setDirMTime(t, oldOrphan, now, 10*time.Minute)
 
@@ -280,9 +278,9 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 }
 
-// TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest is R6-14's regression test: returning on
-// the first os.RemoveAll failure abandoned every later entry, so a single directory that cannot be
-// removed made every subsequent Start sweep nothing and orphan run dirs accumulated without bound.
+// TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest pins that the sweep continues past a failed removal.
+// Returning on the first os.RemoveAll failure abandoned every later entry.
+// One undeletable directory then stopped every later Start's sweep, so orphan run dirs piled up.
 func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
 	tiergate.Require(t, 0)
 	if os.Geteuid() == 0 {

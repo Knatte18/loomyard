@@ -1,5 +1,6 @@
-// pushlockholder.go holds the holder record of fabric's records push lock, fabric.push.lock:
-// the process that holds the lock writes its pid and the time it took the lock beside it, and a bounded push that gives up on the lock names that holder.
+// pushlockholder.go holds the holder record of fabric's records push lock, fabric.push.lock.
+// The process that holds the lock writes its pid and the time it took the lock beside it,
+// so a bounded push that gives up on the lock can name that holder.
 
 package fabricengine
 
@@ -16,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// pushLockHolderFile names the holder record beside weftPushLockFile in the records worktree's lock directory.
+// pushLockHolderFile is the name of the holder record kept beside fabric.push.lock in the lock directory.
 const pushLockHolderFile = "fabric.push.holder"
 
 // pushLockHolder is the record a process writes beside fabric.push.lock while it holds the lock.
@@ -32,9 +33,12 @@ func pushLockHolderPath(lockDir string) string {
 	return filepath.Join(lockDir, pushLockHolderFile)
 }
 
-// holdPushLock writes this process's holder record, taken at now, beside the push lock in lockDir that held guards, and returns the release of both.
-// The release removes the record before it releases the lock, so a holder never removes the record of the holder after it.
-// A record that cannot be written or removed is logged at Warn and the lock is still held and released, since the record only feeds a busy report.
+// holdPushLock writes this process's holder record beside the push lock in lockDir and returns the release of both.
+// The record holds the pid and the time now.
+// The release removes the record before it releases the lock,
+// so a holder never removes the record of the holder after it.
+// A record that cannot be written or removed is logged at Warn,
+// and the lock is still held and released, since the record only feeds a busy report.
 func holdPushLock(held *lock.FileLock, lockDir string, now time.Time) func() error {
 	path := pushLockHolderPath(lockDir)
 	content, err := json.Marshal(pushLockHolder{PID: os.Getpid(), Since: now.UTC()})
@@ -52,10 +56,12 @@ func holdPushLock(held *lock.FileLock, lockDir string, now time.Time) func() err
 	}
 }
 
-// describePushLockHolder returns the clause of a busy report that names the holder of the push lock in lockDir, read from its holder record at now.
+// describePushLockHolder returns the clause of a busy report that names the push lock holder in lockDir.
+// It reads the holder record and judges its age against now.
 // alive reports whether a pid names a running process.
 // A record that decodes with no pid or no time it was taken is reported as unreadable.
-// The push lock is an OS lock its holder's exit frees, so a record naming a pid for which no running process is found may be stale.
+// The push lock is an OS lock its holder's exit frees,
+// so a record naming a pid for which no running process is found may be stale.
 func describePushLockHolder(lockDir string, now time.Time, alive func(pid int) bool) string {
 	content, err := os.ReadFile(pushLockHolderPath(lockDir))
 	if errors.Is(err, os.ErrNotExist) {

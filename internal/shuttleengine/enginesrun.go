@@ -1,4 +1,5 @@
-// enginesrun.go keeps the engine ledger, the run directory root's record of every engine a run started under, and answers which engines a worktree's sessions ran under.
+// enginesrun.go keeps the engine ledger, the run directory root's record of every engine a run started under.
+// It also answers which engines a worktree's sessions ran under.
 
 package shuttleengine
 
@@ -12,16 +13,18 @@ import (
 )
 
 // engineLedgerFileName is the engine ledger's file name at the run directory root.
-// It is a file beside the per-run directories, so the orphan sweep, which removes directories only, never removes it.
+// It is a file beside the per-run directories.
+// `sweepOrphansOpportunistic` removes directories only, so it never removes this file.
 const engineLedgerFileName = "engines-run.json"
 
-// engineLedger is the set of engine names runs under one run directory root started under.
+// engineLedger is the set of engine names that the runs under one run directory root started with.
 type engineLedger struct {
 	Engines []string `json:"engines"`
 }
 
 // recordEngineRun adds engineName to the engine ledger at root, keeping the names sorted and each once.
-// The ledger records start attempts that passed Prepare, so an attempt that later fails, such as at strand registration, still counts.
+// The ledger records start attempts that passed `Engine.Prepare`,
+// so an attempt that later fails, such as when `AddStrand` fails, still counts.
 func recordEngineRun(root, engineName string) error {
 	path := filepath.Join(root, engineLedgerFileName)
 	return state.UpdateJSON(path, path+".lock", func(cur engineLedger, _ bool) (engineLedger, error) {
@@ -35,7 +38,8 @@ func recordEngineRun(root, engineName string) error {
 
 // EnginesRun returns the sorted names of the engines this runner's run directory root holds a run of, each once.
 // It reads the root's engine ledger and the engine of every run record still under the root,
-// so a run whose directory was swept still counts and a run started before the ledger existed counts while its record lasts.
+// so a run whose directory was swept still counts,
+// and a run started before the ledger existed counts while its record lasts.
 // A run record with no engine counts as the engine set's default, and an unreadable run record is skipped.
 // An absent root returns no names.
 func (r *Runner) EnginesRun() ([]string, error) {

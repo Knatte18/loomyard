@@ -1,11 +1,13 @@
-// treesitterlink_test.go declares the pure half of the tree-sitter link guard.
-// That is the parse of `go list` output, the shortest import chain from a test binary to tree-sitter, and the comparison against the allowed list.
-// treesitterlink_integration_test.go runs `go list` and feeds this half.
+// treesitterlink_test.go declares the pure logic of the tree-sitter link guard.
+// It parses `go list` output and finds the shortest import chain from a test binary to tree-sitter.
+// It compares the packages that link tree-sitter against the allowed list.
 //
-// Linking tree-sitter costs every test binary that does so a slower link, so only the packages that call the code index for real may do it.
+// Linking tree-sitter costs every test binary that does so a slower link.
+// So only the packages that call the code index for real may do it.
 // A package outside the list fails with its chain.
-// An entry whose binary no longer links tree-sitter fails as stale, so the list tracks the tree in both directions.
-// It carries no build tag, so the `tier1` guard and the `tier0` test that read it both compile it.
+// An entry whose binary no longer links tree-sitter fails as stale,
+// so the list tracks the tree in both directions.
+// It carries no build tag, so the tier guards and tier tests that read it compile it.
 
 package main
 
@@ -46,7 +48,8 @@ func parseGoListImports(output string) map[string][]string {
 	return deps
 }
 
-// importChainToTreeSitter returns the shortest import chain from the package named from to tree-sitter, from first, or nil when it is unreachable.
+// importChainToTreeSitter returns the shortest import chain from the package named from to tree-sitter.
+// It returns nil when tree-sitter is unreachable from that package.
 // Variant suffixes are kept, because a name without one may be another node.
 func importChainToTreeSitter(deps map[string][]string, from string) []string {
 	parent := map[string]string{from: ""}
@@ -97,7 +100,9 @@ func formatImportChain(chain []string) string {
 }
 
 // treeSitterLinkFindings compares the packages whose test binaries link tree-sitter against allowed.
-// It reports each linked package outside the list with its chain, and each entry whose package does not link it, both sorted.
+// It reports each linked package outside allowed with its import chain.
+// It also reports each allowed entry whose package does not link tree-sitter.
+// Both groups are sorted.
 func treeSitterLinkFindings(linked map[string][]string, allowed []scankit.Entry) []string {
 	allowlist := scankit.NewAllowlist(allowed)
 	var findings []string

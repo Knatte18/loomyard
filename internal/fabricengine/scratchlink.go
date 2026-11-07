@@ -1,8 +1,10 @@
 // scratchlink.go implements the scratch step of fabric wiring.
 // The `.scratch` at the warp worktree's anchor becomes a directory link into the pair's weft-side `.lym`.
-// Files an agent writes under `.scratch/` then never change the link's own modification time, which source-scan tests hash into their `go test` cache key.
+// Files an agent writes under `.scratch/` never change the link's own modification time.
+// Source-scan tests hash that modification time into their `go test` cache key.
 // The step runs under every wiring verb and adopts an existing real `.scratch` by moving it into the link target.
-// At a subpath anchor it also retires the root `.scratch` link and exclude line an earlier binary wired, since nothing of lym's lands at the repository root there.
+// At a subpath anchor it also retires the root `.scratch` link and exclude line that fabric wiring owns.
+// Nothing of lym's lands at the repository root in that case.
 // It never fails wiring: what it cannot settle it leaves as found and reports with a way forward.
 
 package fabricengine
@@ -28,11 +30,11 @@ const scratchTargetName = "scratch"
 const scratchReconcileHint = "then rerun `lym fabric reconcile`"
 
 // scratchBeforeLinkHook, when non-nil, runs between the classification of the anchor's `.scratch` and the creation of its link.
-// It exists only so a test can recreate `.scratch` in that window; production never sets it.
+// It exists so a test can recreate `.scratch` in that window; production never sets it.
 var scratchBeforeLinkHook func()
 
 // scratchPathTracked answers whether the warp index tracks a path.
-// It is a variable only so a test can make the answer fail; production keeps PathTracked.
+// It is a variable so a test can make the answer fail; production uses the real check.
 var scratchPathTracked = PathTracked
 
 // scratchOutcome is what the scratch step reports.
@@ -43,7 +45,6 @@ type scratchOutcome struct {
 	left string
 }
 
-// detail joins the non-empty parts of the outcome with "; ".
 func (o scratchOutcome) detail() string {
 	return joinNonEmpty(o.changed, o.left)
 }
@@ -53,7 +54,6 @@ func (o scratchOutcome) and(next scratchOutcome) scratchOutcome {
 	return scratchOutcome{changed: joinNonEmpty(o.changed, next.changed), left: joinNonEmpty(o.left, next.left)}
 }
 
-// joinNonEmpty joins the non-empty parts with "; ".
 func joinNonEmpty(parts ...string) string {
 	kept := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -92,10 +92,13 @@ func withoutScratchLink(names []string) []string {
 	return kept
 }
 
-// seedScratchLinkExclude makes git ignore the `.scratch` link at anchorRel of the warp worktree at worktreeDir with a `/<anchorRel>/.scratch` line, `/.scratch` at anchor ".".
-// The pattern carries no trailing slash, since git matches a link as a file and a directory-only pattern would not exclude it;
-// a legacy line with the trailing slash is dropped.
-// It records KindFileWritten at the exclude file only when the content changed, and returns the exclude path as far as it is known.
+// seedScratchLinkExclude makes git ignore the `.scratch` link at anchorRel of the warp worktree at worktreeDir.
+// It writes a `/<anchorRel>/.scratch` line, or `/.scratch` at anchor ".".
+// The pattern carries no trailing slash, because git matches a link as a file.
+// A directory-only pattern would not exclude it.
+// A legacy line with the trailing slash is dropped.
+// It records KindFileWritten at the exclude file only when the content changed.
+// It returns the exclude path as far as it is known.
 func seedScratchLinkExclude(rec *Mutations, worktreeDir, anchorRel string) (excludePath string, err error) {
 	pattern := excludePatternFor(anchorRel, scratchDirName)
 	legacyPattern := pattern + "/"
@@ -130,8 +133,10 @@ func seedScratchLinkExclude(rec *Mutations, worktreeDir, anchorRel string) (excl
 	return excludePath, nil
 }
 
-// unseedScratchExclude drops the `.scratch` exclude line of anchorRel, with and without a trailing slash, from the exclude file of slug's warp repository.
-// It keeps the line while another warp worktree of the repository still has an entry, link or not, at that anchored `.scratch` path, since the exclude file is shared by every worktree.
+// unseedScratchExclude drops the `.scratch` exclude line of anchorRel from the exclude file of slug's repository.
+// The line goes with or without a trailing slash.
+// It keeps the line while another worktree has an entry at that anchored `.scratch` path, link or not.
+// The exclude file is shared by every worktree of the repository.
 // It records KindFileWritten at the exclude file only when the content changed.
 func unseedScratchExclude(rec *Mutations, l *lymcwd.Location, slug, anchorRel string) error {
 	pattern := excludePatternFor(anchorRel, scratchDirName)
@@ -162,8 +167,10 @@ func unseedScratchExclude(rec *Mutations, l *lymcwd.Location, slug, anchorRel st
 	return nil
 }
 
-// scratchLinkedInSibling reports whether a warp worktree of the repository other than slug's has an entry, whether link, directory or file, at `<anchorRel>/.scratch`.
-// A worktree list that cannot be read, or a sibling entry that cannot be inspected, answers true, since keeping a dead line costs less than dirtying a live entry.
+// scratchLinkedInSibling reports whether a warp worktree other than slug's has an entry at `<anchorRel>/.scratch`.
+// The entry may be a link, a directory or a file.
+// A worktree list that cannot be read, or a sibling entry that cannot be inspected, answers true.
+// Keeping a dead line costs less than dirtying a live entry.
 func scratchLinkedInSibling(l *lymcwd.Location, slug, anchorRel string) bool {
 	entries, err := List(WorktreePath(l, slug))
 	if err != nil {
@@ -185,16 +192,18 @@ func scratchLinkedInSibling(l *lymcwd.Location, slug, anchorRel string) bool {
 	return false
 }
 
-// wireScratchLink converges slug's scratch.
+// wireScratchLink converges the scratch link of slug's warp worktree.
 // At a subpath anchor it first retires the root `.scratch` link and exclude line.
-// It then makes the `.scratch` at the anchor a directory link to scratchLinkTarget.
-// It never returns an error; a leave or a failure comes back in the outcome with its way forward.
+// It then makes the `.scratch` at the anchor a directory link to the `scratch` directory under the weft-side `.lym`.
+// It never returns an error; anything it leaves as found or cannot do comes back in the outcome with its way forward.
 func wireScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scratchOutcome {
 	return retireRootScratchLink(rec, l, slug).and(wireAnchorScratchLink(rec, l, slug))
 }
 
-// retireRootScratchLink removes, at a subpath anchor, the fabric-owned root `.scratch` link of slug's warp worktree and then the root `/.scratch` exclude line.
-// An entry at the root that is not such a link is left as found with its exclude line kept, and reported, since dropping the line would show it as untracked.
+// retireRootScratchLink removes, at a subpath anchor, the fabric-owned root `.scratch` link of slug's warp worktree.
+// It then removes the root `/.scratch` exclude line.
+// An entry at the root that is not such a link is left as found and reported, with its exclude line kept.
+// The line stays because dropping it would show that entry as untracked.
 // It does nothing at anchor ".", where the root is the anchor.
 func retireRootScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scratchOutcome {
 	if anchorIsRoot(l) {
@@ -225,10 +234,13 @@ func retireRootScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scra
 	return outcome
 }
 
-// wireAnchorScratchLink makes the `.scratch` at the anchor of slug's warp worktree a directory link to scratchLinkTarget.
-// In order it seeds the exclude, refuses to link over tracked paths, then classifies the entry:
-// an absent entry is linked, a correct link has its target restored, a real directory with an absent target is moved into the target and linked,
-// and every other shape is left as found.
+// wireAnchorScratchLink makes the `.scratch` at the anchor of slug's warp worktree a directory link.
+// The link points at the `scratch` directory under the weft-side `.lym`.
+// In order it seeds the exclude, refuses to link over tracked paths, then classifies the entry.
+// An absent entry is linked.
+// A correct link has its target restored.
+// A real directory with an absent target is moved into the target and linked.
+// Every other shape is left as found.
 // It removes nothing, and creates nothing when the pair's weft worktree is absent.
 func wireAnchorScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scratchOutcome {
 	warp := WorktreePath(l, slug)
@@ -238,7 +250,7 @@ func wireAnchorScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scra
 
 	excludePath, err := seedScratchLinkExclude(rec, warp, l.AnchorRel)
 	if err != nil {
-		// Resolving the exclude path itself can fail, which leaves it empty; the warp worktree is then the location named.
+		// Resolving the exclude path can fail and leave it empty; the warp worktree then stands in as the location named.
 		if excludePath == "" {
 			excludePath = warp
 		}
@@ -276,8 +288,8 @@ func wireAnchorScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scra
 	return adoptScratchDirectory(rec, l, slug, link, target)
 }
 
-// unlinkScratchLink removes slug's scratch links through the destructive gate, leaving their target untouched:
-// the link at the anchor and, at a subpath anchor, a root `.scratch` link an earlier binary wired.
+// unlinkScratchLink removes slug's scratch links through the destructive gate and leaves their target untouched.
+// It removes the link at the anchor and, at a subpath anchor, a root `.scratch` link an earlier binary wired.
 // It skips an entry that is absent, is not a link, or is a link that does not resolve into the pair's weft worktree;
 // git's own worktree removal unlinks such a link without following it.
 // A gate refusal comes back naming the link and the manual removal that lets a rerun proceed.
@@ -294,8 +306,9 @@ func unlinkScratchLink(rec *Mutations, l *lymcwd.Location, slug string) error {
 	return nil
 }
 
-// removeOwnedScratchLink removes link through the destructive gate when it is a link resolving into slug's weft worktree, and reports whether it removed it.
-// It reads the entry by its own path, so it sees a link the anchored junction scan does not.
+// removeOwnedScratchLink removes link through the destructive gate when it is a link into slug's weft worktree.
+// It reports whether it removed the link.
+// It inspects the path itself, so it finds a link that a scan of the anchor's junctions misses.
 func removeOwnedScratchLink(rec *Mutations, l *lymcwd.Location, slug, link string) (removed bool, err error) {
 	if _, err := os.Lstat(link); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -338,8 +351,9 @@ func linkAbsentScratch(rec *Mutations, l *lymcwd.Location, slug, link, target st
 	return createScratchLink(rec, link, target, scratchOutcome{changed: fmt.Sprintf("scratch linked: %s → %s", link, target)})
 }
 
-// restoreScratchTarget handles an anchor `.scratch` that is a link: a link to the expected target gets the target recreated when absent,
-// and a link to anything else is left.
+// restoreScratchTarget handles an anchor `.scratch` that is a link.
+// A link to the expected target gets the target recreated when absent.
+// A link to anything else is left.
 func restoreScratchTarget(rec *Mutations, l *lymcwd.Location, slug, link, target string) scratchOutcome {
 	raw, err := fslink.RawTarget(link)
 	if err != nil {
@@ -364,7 +378,8 @@ func restoreScratchTarget(rec *Mutations, l *lymcwd.Location, slug, link, target
 	return scratchOutcome{changed: fmt.Sprintf("scratch target restored at %s", target)}
 }
 
-// adoptScratchDirectory moves a real anchor `.scratch` into the absent target and links it; with the target present it leaves the directory.
+// adoptScratchDirectory moves a real anchor `.scratch` into the absent target and links it.
+// With the target present, it leaves the directory in place.
 func adoptScratchDirectory(rec *Mutations, l *lymcwd.Location, slug, link, target string) scratchOutcome {
 	exists, err := scratchTargetExists(target)
 	if err != nil {
@@ -428,7 +443,8 @@ func mkdirScratchTarget(rec *Mutations, target string) (failedPath string, err e
 	return "", nil
 }
 
-// scratchTargetExists reports whether anything stands at target; a missing path and a parent that is not a directory both report false.
+// scratchTargetExists reports whether anything stands at target.
+// A missing path and a parent that is not a directory both report false.
 func scratchTargetExists(target string) (bool, error) {
 	_, err := os.Lstat(target)
 	if err == nil {
@@ -441,7 +457,8 @@ func scratchTargetExists(target string) (bool, error) {
 }
 
 // weftWorktreePresent reports whether slug's weft worktree directory exists.
-// The step creates nothing without it, since a weft torn down mid-repair would otherwise get a plain directory recreated at its `.lym/scratch` path.
+// The scratch steps create nothing without it.
+// A weft torn down mid-repair would otherwise get a plain directory recreated at its `.lym/scratch` path.
 func weftWorktreePresent(l *lymcwd.Location, slug string) bool {
 	_, err := os.Stat(RecordsWorktreePath(l, slug))
 	return !errors.Is(err, fs.ErrNotExist)

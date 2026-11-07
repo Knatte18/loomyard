@@ -1,4 +1,4 @@
-// fixerendguard.go wraps loom's goto guard so that a move of the run onto a row ends every gate fixer registered under the pair before the move is written.
+// fixerendguard.go wraps the goto guard so a move onto a row ends the pair's gate fixers before the move is written.
 
 package loomcli
 
@@ -12,9 +12,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// endGateFixers ends every process of each gatefixer role that the pair named by slug has registered under runProcDir, through end, sparing the calling process.
+// endGateFixers ends every process of each gatefixer role that the pair named by slug has registered under runProcDir.
+// It calls end for each role and spares the calling process.
 // An empty slug, the prime's or one outside a hub, ends nothing.
-// A slug read error, and an end that fails, are returned wrapping their cause; the caller's guard check adds the way forward.
+// A slug read error and a failed end are returned wrapping their cause.
 func endGateFixers(runProcDir string, slug func() (string, error), end func(dir, owner, role string, callerPID int) ([]runproc.Ended, error)) error {
 	owner, err := slug()
 	if err != nil {
@@ -31,8 +32,10 @@ func endGateFixers(runProcDir string, slug func() (string, error), end func(dir,
 	return nil
 }
 
-// fixerEndingGuard returns a goto guard that runs inner and, only when inner admits the target, calls endFixers before the move is written.
-// A refusal or error from inner is returned unchanged and ends nothing; an endFixers error is returned as the guard's error, so the move is refused and the run stays where it is.
+// fixerEndingGuard returns a goto guard that runs inner first.
+// Only when inner admits the target does it call endFixers, before the move is written.
+// A refusal or error from inner is returned unchanged and ends nothing;
+// an endFixers error is returned as the guard's error, so the move is refused and the run stays where it is.
 func fixerEndingGuard(inner shedengine.GotoGuard, endFixers func() error) shedengine.GotoGuard {
 	return func(target string) (string, error) {
 		refusal, err := inner(target)

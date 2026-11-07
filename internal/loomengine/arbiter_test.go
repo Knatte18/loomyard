@@ -40,7 +40,9 @@ func TestIsArbiterStrand(t *testing.T) {
 	}
 }
 
-// TestArbiterAttempts pins attempt write and read (the directory filled in and never serialized), listing in attempt order, an absent directory listing none, and a subdirectory with no attempt.json refused by name.
+// TestArbiterAttempts pins attempt write and read, where the directory is filled in and never serialized.
+// It also pins listing in attempt order and that an absent directory lists none.
+// A subdirectory with no attempt.json is refused by name.
 func TestArbiterAttempts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -236,7 +238,8 @@ func TestReadArbiterVerdict(t *testing.T) {
 	})
 }
 
-// TestArbiterJSONRecords pins the envelope and marker round trip, absence as found false, and an unparseable file as an error.
+// TestArbiterJSONRecords pins the envelope and marker round trip, and that an absent file reports found false.
+// It also pins that an unparseable file is an error.
 func TestArbiterJSONRecords(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -284,7 +287,8 @@ func TestArbiterJSONRecords(t *testing.T) {
 	}
 }
 
-// TestArbiterAppliedAndMarkerRemoval pins the applied mark's absence and presence, and that removing an absent marker is not an error.
+// TestArbiterAppliedAndMarkerRemoval pins the applied mark's absence and presence.
+// It also pins that removing an absent marker is not an error.
 func TestArbiterAppliedAndMarkerRemoval(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -16,7 +16,7 @@ func writePlan(t *testing.T, cardIndex string, cards map[string]string) string {
 	return writePlanInLanguage(t, "go", cardIndex, cards)
 }
 
-// writePlanInLanguage is writePlan for a plan whose overview declares language.
+// writePlanInLanguage writes a plan directory whose overview declares language, with the given card index and cards.
 func writePlanInLanguage(t *testing.T, language, cardIndex string, cards map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -68,7 +68,8 @@ func TestRun_WritesMatrixLevelsAndReducedGraph(t *testing.T) {
 		t.Errorf("os.Stat(%s) = %v; want not exist", svgPath, err)
 	}
 
-	// The edges 1 -> 3 and 1 -> 4 are implied through card 2 and dropped, and the two readers of T, cards 3 and 4, get no edge.
+	// The edges 1 -> 3 and 1 -> 4 are implied through card 2 and dropped.
+	// Cards 3 and 4, the two readers of T, get no edge from card 1.
 	wantDOT := `digraph plan {
 	node [shape=box];
 	1 [label="1-type", tooltip="create type T"];
@@ -150,7 +151,8 @@ func TestRun_CSharpMemberGlyphsOverlapByOwnerPrefix(t *testing.T) {
 		t.Fatalf("run() = %v; want nil", err)
 	}
 
-	// Card 2's member glyph sits under card 1's owner glyph, so the two change an overlapping ref; the Crate member shares only a member name.
+	// Card 2's member glyph sits under card 1's owner glyph, so the two change an overlapping ref;
+	// the Crate member shares only a member name.
 	wantDOT := `digraph plan {
 	node [shape=box];
 	1 [label="1-owner", tooltip="edit Box"];
@@ -181,8 +183,10 @@ func TestRun_UnparseablePlanFailsWithoutOutput(t *testing.T) {
 func TestRun_AdditiveGuessReportsBothCriticalPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// Consecutive cards share one column, alternating a column the guess keeps, an ordinary member, with one it drops, so every dropped link sits beside a kept one:
-	// a guessed class that were kept would join two kept pairs into a longer chain.
+	// Consecutive cards share one column.
+	// The guess alternates between a column it keeps, an ordinary member, and one it drops,
+	// so every dropped link sits beside a kept one.
+	// Keeping a guessed class would join two kept pairs into a longer chain.
 	// The guessed member name is built in two parts because a test file may not spell a bare side token.
 	addVerbsMember := "internal/f#fabricCLI.add" + "We" + "ftVerbs"
 	cardEdits := [][]string{

@@ -1,10 +1,8 @@
-// audit_incremental_test.go covers AuditForksIncremental's seen-set filtering: only fork
-// transcripts whose path is not a key of seenTranscripts are reported, a nil map is equivalent to
-// AuditForks, and the parent facts
-// (SpawnCalls/NamedSpawns/ParentWriteCalls/ParentWrites/ParentBashCommands) are unaffected by the
-// seen set — they are always read in full.
-// Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no
-// subprocess).
+// audit_incremental_test.go covers the seen-set filtering of AuditForksIncremental.
+// Only fork transcripts whose path is not a key of seenTranscripts are reported in Forks.
+// A nil map makes AuditForksIncremental equivalent to AuditForks.
+// The parent facts are unaffected by the seen set and always read in full.
+// Fixture transcripts are written directly with os.WriteFile: no fixture files, no subprocess.
 
 package claudeengine
 
@@ -16,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeForkTranscript writes lines as a newline-joined fork transcript at
-// subagentsDir/name, creating subagentsDir as needed, and returns the full
-// path written.
+// writeForkTranscript writes lines as a newline-joined fork transcript at subagentsDir/name.
+// It creates subagentsDir as needed and returns the full path written.
 func writeForkTranscript(t *testing.T, subagentsDir, name string, lines []string) string {
 	t.Helper()
 	if err := os.MkdirAll(subagentsDir, 0o755); err != nil {
@@ -35,8 +32,7 @@ func writeForkTranscript(t *testing.T, subagentsDir, name string, lines []string
 	return dest
 }
 
-// TestAuditForksIncremental_SeenSetFiltering proves only fork transcripts whose full path is NOT a
-// key of seenTranscripts are reported in Forks.
+// TestAuditForksIncremental_SeenSetFiltering proves that Forks reports only the fork transcripts not yet seen.
 func TestAuditForksIncremental_SeenSetFiltering(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -72,8 +68,8 @@ func TestAuditForksIncremental_SeenSetFiltering(t *testing.T) {
 	}
 }
 
-// TestAuditForksIncremental_NilMapEquivalentToAuditForks proves a nil seenTranscripts map reports
-// every fork transcript, identically to AuditForks.
+// TestAuditForksIncremental_NilMapEquivalentToAuditForks proves a nil seenTranscripts map reports all fork transcripts.
+// The result matches AuditForks.
 func TestAuditForksIncremental_NilMapEquivalentToAuditForks(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -114,9 +110,8 @@ func TestAuditForksIncremental_NilMapEquivalentToAuditForks(t *testing.T) {
 	}
 }
 
-// TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet proves the seen set only filters Forks —
-// the parent-session facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites,
-// ParentBashCommands) are always full/cumulative regardless of what seenTranscripts excludes.
+// TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet proves that the seen set filters only Forks.
+// The parent facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are read in full.
 func TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()

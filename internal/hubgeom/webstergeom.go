@@ -1,4 +1,4 @@
-// webstergeom.go implements WebsterGeometry, the hub-mode teller that converts a resolved *lymcwd.Location into a websterengine.Geometry.
+// webstergeom.go implements WebsterGeometry, which builds a websterengine.Geometry for a hub-mode *lymcwd.Location.
 
 package hubgeom
 
@@ -12,14 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// WebsterGeometry builds a websterengine.Geometry for l: the resolved Location's paths, read off
-// its accessors and passed through untouched.
-// It performs no cwd resolution of its own — internal/lymcwd stays the sole owner of cwd resolution
-// (the Cwd Resolution Invariant), and WebsterGeometry only reads what l's caller already resolved.
-// WorktreeRoot is l.WorktreePath(), the git worktree every git call opens and every card path resolves against;
-// PaneCwd is l.AnchorPath(), where webster's sessions run, as ReedGeometry's PaneCwd is.
-// The two differ in a hub whose anchor sits in a subdirectory.
-// ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
+// WebsterGeometry builds a websterengine.Geometry for l from the paths l already resolved.
+// It reads l's accessors and passes them through unchanged.
+// It performs no cwd resolution of its own: internal/lymcwd owns cwd resolution.
+// This function only reads the paths its caller resolved.
+// WorktreeRoot is l.WorktreePath(), the git worktree that git calls open and card paths resolve against.
+// PaneCwd is l.AnchorPath(), the directory webster's sessions run in.
+// The two differ when the hub's anchor sits in a subdirectory of the worktree.
+// ParentName is the parent's name; when the parent cannot be resolved, a warning is logged and it stays empty.
 // DecisionRecordPath is the location's decision record, where the task's declared PATTERN changes are read from.
 // GateConfig loads the hub's gate config over the hub's config dirs at each call.
 func WebsterGeometry(l *lymcwd.Location) websterengine.Geometry {

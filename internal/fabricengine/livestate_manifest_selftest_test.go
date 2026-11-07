@@ -1,8 +1,9 @@
-// manifest_test.go proves CaptureManifest, DiffManifest, and AssertNoUnpermittedChange against real
-// hubs from NewHub: the round-trip properties a permit diff must hold, both directions of the ".git"
-// allowlist, the two portability guarantees the package's own doc comments promise, and the one walk
-// property a Linux-only run would otherwise never catch — that a wired junction's target is recorded
-// once, under its own path, never a second time under the junction's path.
+// livestate_manifest_selftest_test.go proves the manifest helpers against real hubs built by hubforge:
+// CaptureManifest, DiffManifest, and AssertNoUnpermittedChange.
+// It covers the round-trip properties a permit diff must hold and both directions of the ".git" allowlist.
+// It also covers the two portability guarantees the package's doc comments state.
+// It covers the one walk property a Linux-only run would otherwise never catch:
+// a wired junction's target is recorded once, under its own path, never a second time under the junction's path.
 
 package fabricengine_test
 
@@ -165,8 +166,8 @@ func TestManifestGitAllowlist(t *testing.T) {
 		repoDir := h.PrimeWorktree()
 		before := CaptureManifest(t, h.Path)
 
-		// An ordinary status probe followed by an empty commit only ever touches index/logs/refs/
-		// objects churn inside .git — nothing this harness's allowlist should ever surface.
+		// An ordinary status probe followed by an empty commit touches only index, logs, refs, and objects churn inside .git;
+		// the git allowlist must never surface any of it.
 		gitkit.GitStatusPorcelain(t, repoDir)
 		gitkit.Git(t, repoDir, "commit", "--allow-empty", "-m", "livestate: manifest git-allowlist probe")
 
@@ -242,15 +243,15 @@ func TestManifestPortability(t *testing.T) {
 		}
 		after := CaptureManifest(t, h.Path)
 
-		// The permit root is written with a plain "/" regardless of the running platform's own
-		// separator; DiffManifest's segment-wise matching is what makes this portable.
+		// The permit root uses a plain "/" on every platform.
+		// DiffManifest's segment-wise matching is what makes this portable.
 		AssertNoUnpermittedChange(t, before, after, []string{"scratch-nested/deeper"})
 	})
 }
 
-// TestManifestWiredJunctionWalk proves the one property a Linux-only run would otherwise never catch:
-// a path reachable only by descending through a wired junction is recorded exactly once, under the
-// weft sibling's own path, and never a second time under the junction's path.
+// TestManifestWiredJunctionWalk proves a property a Linux-only run would otherwise never catch:
+// a path reachable only through a wired junction is recorded exactly once, under the weft sibling's own path.
+// The junction's path never records it a second time.
 //
 //testtiming:keep a path reachable only through a wired junction being recorded once under the weft sibling's path; coverage of its blocks by other tests does not show an assertion of this
 func TestManifestWiredJunctionWalk(t *testing.T) {

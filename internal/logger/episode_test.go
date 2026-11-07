@@ -1,4 +1,5 @@
-// episode_test.go verifies Episode and EpisodeSet log Warn once per episode, Debug while it repeats and Info at recovery.
+// episode_test.go verifies that Episode and EpisodeSet log Warn once per episode.
+// Debug records cover the repeats, and an Info record marks recovery.
 // Its test is not parallel: it captures the process-global logger output and verbosity.
 
 package logger
@@ -96,7 +97,9 @@ func TestEpisode_WarnsOncePerEpisodeAndInfoOnRecovery(t *testing.T) {
 	}
 }
 
-// TestEpisodeSet_RestoreContinuesTheEpisode pins that a set restored from saved tick counts continues each open episode at Debug and recovers it at Info, while a key absent from the restore warns on its first failure.
+// TestEpisodeSet_RestoreContinuesTheEpisode pins that a set restored from saved tick counts continues each open episode.
+// A restored episode logs at Debug while it repeats and at Info on recovery.
+// A key absent from the restore warns on its first failure.
 // It is not parallel: it captures the process-global logger output and verbosity.
 func TestEpisodeSet_RestoreContinuesTheEpisode(t *testing.T) {
 	tiergate.Require(t, 0)

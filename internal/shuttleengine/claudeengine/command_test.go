@@ -1,10 +1,6 @@
-// command_test.go table-tests the pane-shell command composition helpers: quoting of paths with
-// spaces and embedded single quotes, model/flag presence per the interactive toggle, the exact
-// resume-command shape, the resolveModelID bare-word-plus-version composition rule, the
-// forkSubagents env-prefix wrapping on both launch and resume lines, and a no-newline invariant
-// every produced command must hold (they are typed into a pane via a single send-keys call).
-// The pwsh-quote cases formerly asserted here now live in internal/shell's shell_test.go, since
-// quoting itself moved there.
+// command_test.go table-tests the pane-shell command composition helpers.
+// It covers quoting, flag presence, the resume shape, resolveModelID's version composition, and the fork env prefix.
+// Every produced command must hold the no-newline invariant, since it is typed via a single send-keys call.
 
 package claudeengine
 
@@ -22,7 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// The leading CLAUDE_ENV_FILE assignment, the BASH_MAX_TIMEOUT_MS assignment and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL assignment every launch and resume line carries, per dialect, for the env file paths the tests below thread through.
+// Each launch and resume line starts with the per-dialect env assignments:
+// CLAUDE_ENV_FILE, BASH_MAX_TIMEOUT_MS, and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL.
+// The env file paths are the ones the tests below thread through.
 const (
 	pwshEnvFilePath  = `C:\run\bash-env.sh`
 	posixEnvFilePath = "/run/bash-env.sh"
@@ -119,9 +117,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:         pwshEnvLead + `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --model 'claude-opus-4'`,
 		},
 		{
-			// A model value with a space or embedded quote must not corrupt
-			// the single launch line — --model is single-quoted exactly
-			// like every other argument on the line.
+			// A model value with a space or embedded quote must not corrupt the single launch line.
+			// --model is single-quoted, like every other argument on the line.
 			name:         "model_with_space_and_quote",
 			bin:          "claude",
 			promptPath:   `C:\run\prompt.md`,
@@ -202,8 +199,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:         pwshEnvLead + `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --effort 'max' --dangerously-skip-permissions`,
 		},
 		{
-			// --model and --effort must both appear, in that order, when
-			// both are set.
+			// --model and --effort must both appear, in that order, when both are set.
 			name:         "effort_with_model",
 			bin:          "claude",
 			promptPath:   `C:\run\prompt.md`,
@@ -215,10 +211,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:         pwshEnvLead + `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --model 'claude-opus-4' --effort 'high' --dangerously-skip-permissions`,
 		},
 		{
-			// An effort value with a space or embedded quote must not
-			// corrupt the single launch line — --effort is single-quoted
-			// exactly like every other argument on the line (mirrors the
-			// model_with_space_and_quote row above).
+			// An effort value with a space or embedded quote must not corrupt the single launch line.
+			// --effort is single-quoted, like every other argument on the line.
 			name:         "effort_with_space_and_quote",
 			bin:          "claude",
 			promptPath:   `C:\run\prompt.md`,
@@ -250,9 +244,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:             posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --append-system-prompt-file '/run/append-system-prompt.txt'`,
 		},
 		{
-			// Proves the seam is shell-agnostic: the same builder produces the
-			// posix form when handed shell.Posix() instead of the default
-			// shell.Pwsh() every other row above exercises.
+			// Proves the seam is shell-agnostic: the same builder produces the posix form when handed shell.Posix().
+			// Every other row uses the default shell.Pwsh().
 			name:         "posix_shell",
 			sh:           shell.Posix(),
 			bin:          "claude",
@@ -263,10 +256,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:         posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions`,
 		},
 		{
-			// Fork mode on (pwsh): the fully composed line is wrapped in the
-			// pwsh $env: assignment prefix — asserted as the exact composed
-			// prefix, not just a substring, so a future WithEnv shape change
-			// cannot silently drift undetected here.
+			// Fork mode on (pwsh): the fully composed line is wrapped in the pwsh $env: assignment prefix.
+			// The row asserts the whole prefix, not a substring, so a change to what WithEnv composes fails this row.
 			name:          "fork_mode_on_pwsh",
 			bin:           "claude",
 			promptPath:    `C:\run\prompt.md`,
@@ -277,8 +268,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:          pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
-			// Fork mode on (posix): the fully composed line is wrapped in the
-			// posix command-scoped assignment prefix.
+			// Fork mode on (posix): the fully composed line is wrapped in the posix command-scoped assignment prefix.
 			name:          "fork_mode_on_posix",
 			sh:            shell.Posix(),
 			bin:           "claude",
@@ -314,8 +304,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:             posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`,
 		},
 		{
-			// Fork mode off: the line is unchanged from today's shape — no
-			// env prefix at all.
+			// Fork mode off: the line carries no fork-subagent env assignment.
 			name:          "fork_mode_off",
 			bin:           "claude",
 			promptPath:    `C:\run\prompt.md`,
@@ -349,7 +338,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags, the resume line that falls back to the fresh one, and the refusals made before a session id is minted.
+// TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags;
+// the resume line that falls back to the fresh one; and the refusals made before a session id is minted.
 func TestOpenLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -362,7 +352,8 @@ func TestOpenLaunch(t *testing.T) {
 		invalidConfig bool
 		// board gives the engine a hub board directory, so the launch writes creel's files into the open directory.
 		board bool
-		// obstructAppendPrompt makes a directory of the append-prompt file's path, so the write of that file fails after the directory and settings.json exist.
+		// obstructAppendPrompt makes a directory at the append-prompt file's path,
+		// so the write of that file fails after the directory and settings.json exist.
 		obstructAppendPrompt bool
 		wantErr              string
 		check                func(t *testing.T, launch shuttleengine.Launch)
@@ -528,7 +519,10 @@ func TestOpenLaunch(t *testing.T) {
 	}
 }
 
-// checkOpenCreelFiles asserts what an open launch with a board directory leaves: CreelHooks, both lines naming the two files in dir, the settings document holding creel's hooks and the empty attribution alone, and the append prompt holding the trust sentence alone.
+// checkOpenCreelFiles asserts what an open launch with a board directory leaves:
+// CreelHooks is set, and both launch lines name the settings and append-prompt files in dir.
+// The settings document holds creel's hooks and the empty attribution alone,
+// and the append prompt holds the trust sentence alone.
 func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDir string, sh shell.Shell) {
 	t.Helper()
 	if !launch.CreelHooks {
@@ -604,7 +598,12 @@ func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDi
 	}
 }
 
-// TestValidateEffort covers validateEffort's full input space: the empty string (defers to claude's default), every exact-lowercase valid value, and both an unrecognized value and a wrong-case valid value (case sensitivity is load-bearing — claude only warns-and-ignores an unrecognized value rather than failing, so a silently-accepted "High" would defeat the whole hard-error guarantee).
+// TestValidateEffort covers validateEffort's full input space:
+// the empty string, which defers to claude's default;
+// every exact-lowercase valid value;
+// and both an unrecognized value and a wrong-case valid value.
+// Case sensitivity is load-bearing: claude only warns-and-ignores an unrecognized value rather than failing,
+// so a silently accepted "High" would defeat the hard-error guarantee.
 //
 //testtiming:keep pins the accepted effort values and the wrong-case rejection, which its covering tests do not assert row by row
 func TestValidateEffort(t *testing.T) {
@@ -636,11 +635,11 @@ func TestValidateEffort(t *testing.T) {
 	}
 }
 
-// TestResolveModelID covers resolveModelID's full input space: an empty version passes the model
-// through unchanged (including an empty model), a dotted and a dotless version both compose against
-// a bare model, an empty model with a non-empty version errors (nothing to compose against), and a
-// dashed (full id) model with a non-empty version errors (the id already pins its own version —
-// combining it with version is a contradiction).
+// TestResolveModelID covers resolveModelID's input space:
+// an empty version passes the model through unchanged, including an empty model;
+// a dotted and a dotless version both compose against a bare model;
+// an empty model with a non-empty version errors, since there is nothing to compose against;
+// and a dashed (full id) model with a non-empty version errors, since the id already pins its own version.
 func TestResolveModelID(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -679,11 +678,11 @@ func TestResolveModelID(t *testing.T) {
 //testtiming:keep pins the exact resume line for every mode-bearing flag, which its covering tests only substring-match
 func TestBuildResumeCmd(t *testing.T) {
 	tiergate.Require(t, 0)
-	// The resumed process is a fresh claude that inherits nothing from the launch, and reed replays
-	// this string verbatim — so every mode-bearing flag buildLaunchCmd emits must be here too, or a
-	// resumed autonomous run comes back permission-gated (it then stalls at its first tool dialog
-	// with no operator present, which shuttle can only classify as a timeout) and on the provider
-	// default model rather than the pinned one.
+	// The resumed process is a fresh claude that inherits nothing from the launch, and reed replays this string verbatim.
+	// So every mode-bearing flag that buildLaunchCmd emits must appear here too.
+	// Without them, a resumed autonomous run comes back permission-gated:
+	// it stalls at its first tool dialog with no operator present, which shuttle can only classify as a timeout,
+	// and it comes back on the provider default model rather than the pinned one.
 	tests := []struct {
 		name             string
 		model            string
@@ -699,8 +698,7 @@ func TestBuildResumeCmd(t *testing.T) {
 		{"model_and_effort_pinned", "haiku", "low", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
 		{"prompt_file_on_resume", "", "", `C:\run\append-system-prompt.txt`, false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt-file 'C:\run\append-system-prompt.txt'`},
 		{
-			// A resumed fork-mode session must keep the fork-subagent
-			// capability it launched with.
+			// A resumed fork-mode session must keep the fork-subagent capability it launched with.
 			"fork_mode_on", "", "", "", true, true, "5m",
 			pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`,
 		},
@@ -719,7 +717,8 @@ func TestBuildResumeCmd(t *testing.T) {
 	}
 }
 
-// TestBuildResumeCmd_NoticePosix pins the posix resume line carrying the append-system-prompt file inside the fork-mode env wrap.
+// TestBuildResumeCmd_NoticePosix pins the posix resume line:
+// it carries the append-system-prompt file flag inside the fork-mode env wrap.
 //
 //testtiming:keep pins the posix resume line with the prompt file flag inside the fork env wrap, which its covering test only substring-matches
 func TestBuildResumeCmd_NoticePosix(t *testing.T) {

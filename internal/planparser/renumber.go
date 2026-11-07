@@ -243,8 +243,10 @@ func renumberPrecheck(ops RenumberIO, planDir, journalPath string) (*Plan, error
 	return plan, nil
 }
 
-// applyRenumber computes every new file in memory, journals the pre-call bytes, applies the edit and removes the journal.
-// A failure after the journal is written undoes the edit and returns ErrRenumberIOFailed.
+// applyRenumber computes every new file in memory and journals the pre-call bytes.
+// It then applies the edit and removes the journal.
+// A failure after the journal is written reverses the edit from the journal and returns ErrRenumberIOFailed.
+// It returns ErrRenumberReversalFailed when the reversal itself fails.
 func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit renumberEdit) (*RenumberResult, error) {
 	overviewPath := filepath.Join(planDir, overviewFileName)
 	read := func(name string) ([]byte, error) {
@@ -408,15 +410,18 @@ func movedSlugs(plan *Plan, moved []MovedCard) map[int]cardIDMove {
 // cardIDNumberRe matches the number and hyphen a card-id token opens with.
 var cardIDNumberRe = regexp.MustCompile(`\d+-`)
 
-// cardIDToken is one card-id token of a line: its byte span, the number it names, and the width its number is padded to, zero when unpadded.
+// cardIDToken is one card-id token of a line: its byte span and the number it names.
+// width is the minimum width a rewritten number is zero-padded to, or zero for none.
 type cardIDToken struct {
 	start, end int
 	number     int
 	width      int
 }
 
-// cardIDTokens returns every token of line that spells a card id `<N>-<slug>`, zero-padded or not, for a card slugOf knows.
-// A token is bounded on both sides, so a number inside a longer word or a slug that runs on into a longer one is no token.
+// cardIDTokens returns every token of line that spells a card id `<N>-<slug>` for a card slugOf knows.
+// The number may or may not be zero-padded.
+// A token must be bounded on both sides.
+// A number inside a longer word is no token, and neither is a slug that runs on into a longer one.
 func cardIDTokens(line string, slugOf func(number int) (string, bool)) []cardIDToken {
 	var tokens []cardIDToken
 	for _, m := range cardIDNumberRe.FindAllStringIndex(line, -1) {
@@ -454,7 +459,8 @@ func isCardIDByte(b byte) bool {
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '-' || b == '_'
 }
 
-// rewriteCardIDs rewrites every card-id token in text that names a moved card by its old number to the card's new number, padded as the token is.
+// rewriteCardIDs rewrites each card-id token in text that names a moved card to the card's new number.
+// The new number is zero-padded to the width the token carries.
 // Every token is read against the pre-renumber numbering in one pass, so a reference is never moved twice.
 // It returns the rewritten text and one RewrittenRef per token, located in file.
 func rewriteCardIDs(text, file string, moves map[int]cardIDMove) (string, []RewrittenRef) {
@@ -485,7 +491,8 @@ func rewriteCardIDs(text, file string, moves map[int]cardIDMove) (string, []Rewr
 	return strings.Join(lines, "\n"), refs
 }
 
-// writeRenumberJournal encodes j and puts it at journalPath through a temporary file, so a journal on disk is always complete.
+// writeRenumberJournal encodes j and puts it at journalPath through a temporary file,
+// so a journal on disk is always complete.
 // A failure removes the temporary file and leaves the plan directory untouched.
 func writeRenumberJournal(ops RenumberIO, journalPath string, j renumberJournal) error {
 	data, err := json.Marshal(j)
@@ -508,7 +515,8 @@ func writeRenumberJournal(ops RenumberIO, journalPath string, j renumberJournal)
 	return nil
 }
 
-// reverseRenumber puts the plan directory back as j found it: it removes every created name, then writes every recorded file back.
+// reverseRenumber puts the plan directory back as j found it:
+// it removes every created name, then writes every recorded file back.
 // A created name that does not exist is skipped, since a failure before the last create leaves some unwritten.
 // Every step is attempted, and the errors are joined.
 func reverseRenumber(ops RenumberIO, planDir string, j renumberJournal) error {
@@ -532,7 +540,8 @@ func reverseRenumber(ops RenumberIO, planDir string, j renumberJournal) error {
 	return errors.Join(errs...)
 }
 
-// moveCardBytes rewrites the two things a card moving from number from to number to carries: the number in its heading, and the `from: ` prefix of an explicit `**Commit:**` value, inside its backticks when it has them.
+// moveCardBytes rewrites a card's number from `from` to `to` in its heading.
+// It also rewrites the `from: ` prefix of an explicit `**Commit:**` value, inside its backticks when it has them.
 // Every other byte is kept.
 func moveCardBytes(data []byte, from, to int) []byte {
 	lines := strings.Split(string(data), "\n")
@@ -569,7 +578,9 @@ func moveCardBytes(data []byte, from, to int) []byte {
 var indexNumberRe = regexp.MustCompile(`^(\s*(?:-\s+)?)(\d+)`)
 
 // renumberCardIndex rewrites the overview's Card Index section for edit and keeps every other byte.
-// Each index line of a moved card has its number replaced, the removed card's line is dropped, and the new card's line goes before the first line numbered at or above its position, or after the last index line when there is none.
+// It replaces the number on each index line of a moved card, and drops the line of the removed card.
+// The new card's line goes before the first line numbered at or above its position;
+// when there is none, it goes after the last index line.
 func renumberCardIndex(overview string, edit renumberEdit) (string, error) {
 	_, body, _, err := splitFrontmatter(overview)
 	if err != nil {
@@ -627,7 +638,8 @@ var cardMentionRe = regexp.MustCompile(`\b[Cc]ards?\s+\d+(?:(?:\s*,\s*(?:and\s+)
 // mentionNumberRe splits a card reference into its numbers and range dashes.
 var mentionNumberRe = regexp.MustCompile(`\d+|[–—-]`)
 
-// referenceEdit is what a renumber does to the references plan text makes to cards, each read against the numbering before the renumber.
+// referenceEdit is what a renumber does to the references that plan text makes to cards.
+// Each reference is read against the numbering before the renumber.
 type referenceEdit struct {
 	// moves holds each moved card's slug and new number by its old number.
 	moves map[int]cardIDMove
@@ -638,9 +650,13 @@ type referenceEdit struct {
 	removing bool
 }
 
-// renumberReferences rewrites every bare card reference in text, then every card id, that names a moved card by its old number to the card's new number.
-// skip reports the lines that hold no prose, such as a card's heading or a Card Index line, whose bare references are left alone.
-// It returns the rewritten text, one RewrittenRef per rewritten reference, and one ProseMention per line left holding a bare reference with no faithful rewrite, each located in file.
+// renumberReferences rewrites the bare card references and card ids in text that name a moved card by its old number.
+// Each one takes the card's new number.
+// skip reports the lines that hold no prose, such as a card's heading or a Card Index line.
+// Bare references on those lines are left alone; their card ids are still rewritten.
+// It returns the rewritten text and one RewrittenRef per rewritten reference;
+// it returns one ProseMention per line that keeps a bare reference with no faithful rewrite.
+// Both are located in file.
 func renumberReferences(text, file string, edit referenceEdit, skip func(i int, line string) bool) (string, []RewrittenRef, []ProseMention) {
 	slugOf := func(number int) (string, bool) {
 		slug, ok := edit.slugs[number]
@@ -717,8 +733,11 @@ func rewriteCardMentions(line, masked string, edit referenceEdit) (rewritten str
 	return b.String(), pairs, kept
 }
 
-// mapsFaithfully reports whether ref, a bare card reference split into its number and dash tokens, keeps its meaning once each moved number becomes its new one.
-// It does not when it names the removed card, or when one of its ranges takes in the position a card is inserted at or removed from, since the range would then gain or lose a card.
+// mapsFaithfully reports whether the bare card reference ref keeps its meaning after its moved numbers change.
+// tokens holds the byte spans of its numbers and range dashes.
+// A reference that names the removed card does not map faithfully.
+// Neither does one whose range spans the position a card is inserted at or removed from:
+// the range would gain or lose a card.
 func (e referenceEdit) mapsFaithfully(ref string, tokens [][]int) bool {
 	previous, inRange := 0, false
 	for _, tok := range tokens {
@@ -738,8 +757,8 @@ func (e referenceEdit) mapsFaithfully(ref string, tokens [][]int) bool {
 	return true
 }
 
-// cardIndexLines returns a skip test for renumberReferences over overview that holds for each Card Index line.
-// overview has already been through renumberCardIndex, so its Card Index section is known to be present.
+// cardIndexLines returns a skip test that holds for each Card Index line of overview.
+// overview must have a Card Index section; cardIndexLines does not check for one.
 func cardIndexLines(overview string) func(i int, line string) bool {
 	_, body, _, _ := splitFrontmatter(overview)
 	bodyLines := strings.Split(body, "\n")
@@ -750,7 +769,8 @@ func cardIndexLines(overview string) func(i int, line string) bool {
 	}
 }
 
-// maskCardIDs blanks every card-id token of line for a card slugOf knows, so a card id is never read as a bare card number.
+// maskCardIDs blanks every card-id token of line for a card slugOf knows,
+// so a card id is never read as a bare card number.
 func maskCardIDs(line string, slugOf func(number int) (string, bool)) string {
 	tokens := cardIDTokens(line, slugOf)
 	if len(tokens) == 0 {

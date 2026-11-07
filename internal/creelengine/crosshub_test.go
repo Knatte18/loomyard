@@ -1,4 +1,6 @@
-// crosshub_test.go pins mail across hubs over real sockets: a receiving and a sending daemon confirming each other's mail, the drops and notices of mail the sender does not confirm, and the trust stamp.
+// crosshub_test.go pins mail across hubs over real sockets.
+// It covers a receiving and a sending daemon confirming each other's mail.
+// It covers the drops and notices of mail the sender does not confirm, and the trust stamp.
 
 package creelengine_test
 
@@ -31,7 +33,9 @@ const (
 	chaser = "lyt:CREEL"
 )
 
-// hubPair is two hubs with their daemons not yet started: the sending hub ly, in whose strand alpha the test process sits, and the receiving hub lyt, in whose strand rcvAlpha it sits.
+// hubPair is two hubs with their daemons not yet started.
+// The sending hub is ly, in whose strand alpha the test process sits.
+// The receiving hub is lyt, in whose strand rcvAlpha the test process sits.
 // Each rig's Hubs knows both hubs.
 type hubPair struct {
 	t                        *testing.T
@@ -40,7 +44,8 @@ type hubPair struct {
 }
 
 // newHubPair builds the two rigs and starts nothing.
-// The sending rig's Hubs fails the receiving hub's geometry, which parks an outbound worker on its retry wait so a row's hand-sent deliver never races it; unpark clears it.
+// The sending rig's Hubs fails the receiving hub's geometry, which parks an outbound worker on its retry wait.
+// A row's hand-sent deliver then never races that worker, and unpark clears the failure.
 func newHubPair(t *testing.T) *hubPair {
 	t.Helper()
 	sending, receiving := newRig(t, true), newRig(t, false)
@@ -73,7 +78,7 @@ func (p *hubPair) client(r *rig) *creelengine.Client {
 	return r.client(claim, nil, creelfake.NewClock(epoch))
 }
 
-// logOf returns the log of the rig's daemon, narrowed to the sender from when it is not empty.
+// logOf returns the log of the rig's daemon, narrowed to the sender `from` when it is not empty.
 func (p *hubPair) logOf(r *rig, from string) []creelengine.LogEntry {
 	p.t.Helper()
 	return mustCall(p.t, p.client(r), creelengine.Request{Verb: creelengine.VerbLog, From: from}).Log
@@ -118,7 +123,8 @@ func deliverTo(t *testing.T, r *rig, mail creelengine.HubMail) creelengine.Respo
 	return r.rawExchange(string(line))
 }
 
-// pending posts body from alpha to rcvAlpha on the running sending daemon and returns the tuple its outbound message makes.
+// pending posts body from alpha to rcvAlpha on the running sending daemon.
+// It returns the tuple its outbound message makes.
 func (p *hubPair) pending(body string) creelengine.HubMail {
 	p.t.Helper()
 	resp := mustCall(p.t, p.client(p.sending), creelengine.Request{Verb: creelengine.VerbPost, Receiver: rcvAlpha, Text: body})
@@ -135,7 +141,8 @@ func confirmYes(creelengine.Request) (creelengine.Response, string) {
 	return creelengine.Response{OK: true, Confirmed: "yes"}, ""
 }
 
-// hubFake stands in for a sending hub's daemon on a rig's socket; it counts the requests by verb and answers each as its answer function says.
+// hubFake stands in for a sending hub's daemon on a rig's socket;
+// it counts the requests by verb and answers each as its answer function says.
 type hubFake struct {
 	listener net.Listener
 	arrived  chan struct{}
@@ -144,8 +151,10 @@ type hubFake struct {
 }
 
 // listenHubFake serves the rig's socket with answer, which may block until the row releases it.
-// answer returns a Response and a raw line: a non-empty raw line is written verbatim with a line end in place of the Response, so a row can reach the client's JSON decoder;
-// otherwise the Response is written with the HubPath the answer set, or the rig's hub path when the answer left it empty.
+// answer returns a Response and a raw line.
+// A non-empty raw line is written verbatim with a line end in place of the Response,
+// so a row can reach the client's JSON decoder;
+// otherwise the Response is written with the HubPath the answer set, or the rig's hub path if the answer left it empty.
 func listenHubFake(t *testing.T, r *rig, answer func(req creelengine.Request) (creelengine.Response, string)) *hubFake {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(r.geom.SocketPath), 0o755); err != nil {
@@ -258,7 +267,8 @@ func wantAccepted(t *testing.T, resp creelengine.Response) int64 {
 	return resp.ID
 }
 
-// wantNotOK fails the test unless resp is a refusal of the request as a whole, the transient answer a sending daemon retries.
+// wantNotOK fails the test unless resp is a refusal of the request as a whole:
+// the transient answer a sending daemon retries.
 func wantNotOK(t *testing.T, resp creelengine.Response, part string) {
 	t.Helper()
 	if resp.OK || !strings.Contains(resp.Error, part) {
@@ -291,7 +301,8 @@ func TestDaemon_CrossHubDeliver(t *testing.T) {
 			}
 		}},
 		{"ADeliverOfARealPendingIdDifferingInOneFieldIsDroppedAndTheTrueTupleIsAccepted", func(t *testing.T, p *hubPair) {
-			// The receiving hub sent message 3 to the sending hub from the delivery's receiver, so a reply-to of 3 passes the reply guard and reaches the confirm.
+			// The receiving hub sent message 3 to the sending hub from the delivery's receiver;
+			// so a reply-to of 3 passes the reply guard and reaches the confirm.
 			p.receiving.writeJournal("2026-10-01",
 				fmt.Sprintf(`{"event":"outbound","at":"2026-10-01T11:00:00Z","id":3,"from":%q,"to":%q,"receiving_hub":%q,"kind":"mail","body":"q"}`, rcvAlpha, alpha, p.sending.geom.HubPath),
 				`{"event":"remote-delivered","at":"2026-10-01T11:00:01Z","id":3,"remote_id":9}`)
@@ -368,7 +379,8 @@ func TestDaemon_CrossHubDeliver(t *testing.T) {
 				return creelengine.Response{OK: true, Confirmed: "no"}, ""
 			})
 			forged := creelengine.HubMail{SendingID: 1, Sender: "xx:orch", Receiver: beta, Posted: epoch, Body: "forged"}
-			// The first write of a day file is its high-water record; the drop's own write passes after it, and the notice's write fails.
+			// The first write of a day file is its high-water record;
+			// the drop's own write passes after it, and the notice's write fails.
 			e.store.FailJournalWrites(2)
 			if answer, err := e.store.Deliver(forged); err != nil || answer.Delivery != "refused" {
 				t.Fatalf("a forged deliver = %+v, %v; want the refusal", answer, err)

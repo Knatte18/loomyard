@@ -24,7 +24,8 @@ const FileName = "heddle.json"
 var slugRule = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // Entry is one instruction text and where it is delivered.
-// Unknown holds the keys this binary does not know, each with its raw JSON value, written back after the known ones in key order.
+// Unknown holds the keys this binary does not know, each with its raw JSON value.
+// They are written back after the known keys, in key order.
 type Entry struct {
 	Slug    string
 	Text    string
@@ -72,7 +73,7 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 }
 
 // Store is the content of heddle.json.
-// Unknown holds the top-level keys this binary does not know, kept the way an entry's are.
+// Unknown holds the top-level keys this binary does not know, each with its raw JSON value.
 type Store struct {
 	Entries []Entry
 	Unknown map[string]json.RawMessage
@@ -157,7 +158,7 @@ func appendUnknown(object []byte, unknown map[string]json.RawMessage) ([]byte, e
 }
 
 // Decode decodes the bytes of a heddle.json committed in git, empty or whitespace-only bytes being an empty store.
-// Bytes that do not decode are refused with the way forward for a malformed committed blob.
+// Bytes that do not decode are refused with an error that names the way forward.
 func Decode(data []byte) (Store, error) {
 	store, err := decodeBytes(data)
 	if err != nil {
@@ -237,7 +238,7 @@ func (s Store) Get(slug string) (Entry, bool) {
 	return Entry{}, false
 }
 
-// Patch holds the fields of an entry a Set changes; a nil field is left as it is.
+// Patch holds the fields of an entry to change; a nil field is left as it is.
 type Patch struct {
 	Text    *string
 	Order   *int
@@ -245,7 +246,8 @@ type Patch struct {
 }
 
 // Set updates the entry with slug by the fields p gives, or creates it, which needs all three fields.
-// The result must pass ValidateEntry or nothing changes, and a new entry under a slug the shipped layer holds is refused.
+// The result must be a valid entry, or nothing changes.
+// A new entry under a slug the shipped layer holds is refused.
 func (s *Store) Set(slug string, p Patch) error {
 	index := slices.IndexFunc(s.Entries, func(entry Entry) bool { return entry.Slug == slug })
 	candidate := Entry{Slug: slug}
@@ -308,7 +310,8 @@ func (s *Store) Remove(slug string) error {
 	return nil
 }
 
-// ValidateEntry refuses an entry that cannot be rendered: a slug off the slug rule, an empty text, no target or a target the table does not hold.
+// ValidateEntry refuses an entry that cannot be rendered.
+// It refuses a slug off the slug rule, an empty text, no target, or a target the table does not hold.
 // Each message names the way forward.
 func ValidateEntry(e Entry) error {
 	if !slugRule.MatchString(e.Slug) {

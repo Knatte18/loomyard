@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRun_ExpiryKillsBackgroundedDescendant pins that an expired context terminates a descendant of the verify shell that holds the output pipe, not only the shell:
-// a descendant that exits on SIGTERM is gone when run returns, having run its trap.
+// TestRun_ExpiryKillsBackgroundedDescendant pins that an expired context ends a descendant that holds the output pipe.
+// A descendant that exits on SIGTERM is gone when run returns, having run its trap.
 // One that ignores SIGTERM is killed once the wait delay has passed.
 func TestRun_ExpiryKillsBackgroundedDescendant(t *testing.T) {
 	tiergate.Require(t, 1)

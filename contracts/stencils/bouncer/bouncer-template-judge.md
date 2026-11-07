@@ -1,24 +1,20 @@
-<!-- This is the Bouncer's judge prompt: the per-round review-gate judge call. It is filled via
-     internal/stencil.Fill (bouncer.go's judgeCall, reached from Call) and handed to the shuttle as
-     the agent's entire instruction set -- the call runs as a single clean-room agent told only "read
-     this file and do exactly what it says".
-     The judge is a sit-rep agent, not a reviewer: it reads the facts file Go renders before every judge call ({{.facts_path}}, see bouncerfacts.go), the latest review and the previous ledger, and never the artifacts.
+<!-- This is the Bouncer's judge prompt: the per-round review-gate judge call.
+     It is filled via internal/stencil.Fill and handed to the shuttle as the agent's entire instruction set.
+     The call runs as a single clean-room agent told only "read this file and do exactly what it says".
+     The judge is a sit-rep agent, not a reviewer: it reads the facts file Go renders before every judge call ({{.facts_path}}), the latest review and the previous ledger, and never the artifacts.
      The facts file is an input and never one of the three declared output files.
      Every marker below is a top-level {{.X}} substitution;
      {{.edit_directive}} is a required marker, rendered unconditionally by internal/editdirective;
      stencil.FillOptional requires every marker this file names non-empty except {{.pattern_directive}}, which is optional and renders as nothing when PATTERN is inactive (the pattern directive is filled by pattern.Directive with pattern.RoleJudge),
-     and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty -- see internal/stencil/stencil.go).
+     and there are no {{if}}/{{range}} conditionals anywhere in this file:
+     a required marker inside a conditional branch would render silently blank when present-but-empty (see internal/stencil/stencil.go).
      The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}, {{.approved_focus_lists}}) have two variants, rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
      Go holds the variant so this stencil stays conditional-free.
      {{.decision_rule}} is the same kind of Go-held variant, rendered by decisionRuleMarker in the same file: it renders round 1's rule in round 1 and the lighter rule from round 2 on, and offers CIRCLING only from the configured checkpoint round on.
-     {{.round}} and {{.next_round}} are deliberately DIFFERENT markers, not a typo: the ledger file
-     (`{{.ledger_path}}`, built from ledgerPath(runDir, round)) records the round being judged, while
-     the focus file (`{{.focus_path}}`, built from focusPath(runDir, round+1) -- see focusPath's own
-     doc comment on why the filename names the round the directive is FOR, not the round that wrote
-     it) must record that SAME round-plus-one in its own frontmatter, or readRoundFocus's own
-     round-agrees-with-filename check discards it as malformed (crucible round sonnet-xhigh-r8,
-     LS-1) -- before this fix, both instructions reused {{.round}}, so a compliant judge wrote a
-     focus file whose OWN frontmatter round permanently disagreed with its OWN filename by one. -->
+     {{.round}} and {{.next_round}} are different markers on purpose.
+     The ledger file (`{{.ledger_path}}`) records the round being judged.
+     The focus file (`{{.focus_path}}`) is named for the round the directive is for, so its own frontmatter must record that round plus one;
+     a focus file whose frontmatter round disagrees with its filename is discarded as malformed. -->
 
 # Bouncer — judge pass, round {{.round}}
 

@@ -1,5 +1,7 @@
-// summary.go implements the producer-agnostic final-summary artifact's read contract: FileName and Path name the artifact.
-// Parse reads and validates it from a file and ParseData from content read elsewhere, with minimal fail-loud checks: non-empty, and a "# <title>" first non-blank line with a non-empty title.
+// summary.go implements the read contract of the producer-agnostic final-summary artifact.
+// FileName and Path name the artifact.
+// Parse reads it from a file and ParseData reads it from content read elsewhere.
+// Both check for non-empty content and a first non-blank line that is a "# <title>" heading with a non-empty title.
 // CommitMessage composes the parsed Summary into a git-conventional subject/body commit message.
 
 package summaryparser
@@ -15,7 +17,7 @@ import (
 // FileName is the final-summary artifact's fixed filename.
 const FileName = "summary.md"
 
-// Path returns the path to the final-summary artifact inside dir, a told directory.
+// Path returns the path of the final-summary artifact inside dir.
 func Path(dir string) string {
 	return filepath.Join(dir, FileName)
 }
@@ -27,15 +29,15 @@ var (
 	errEmptyTitle = errors.New("title heading has an empty title")
 )
 
-// Summary is a producer's final-action prose artifact: Title from the "# <title>" heading, Body the
-// remaining lines verbatim.
+// Summary is a producer's final-action prose artifact:
+// Title from the "# <title>" heading, and Body the remaining lines verbatim.
 type Summary struct {
 	Title string
 	Body  string
 }
 
-// Parse reads the final-summary artifact at path and validates it as ParseData does;
-// a file that cannot be read is an error too.
+// Parse reads the final-summary artifact at path and validates its content.
+// A file that cannot be read is an error too.
 func Parse(path string) (*Summary, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -74,12 +76,11 @@ func ParseData(data []byte, source string) (*Summary, error) {
 	return &Summary{Title: title, Body: body}, nil
 }
 
-// CommitMessage composes s into a git-conventional subject/blank-line/body commit message: the bare
-// Title when Body is empty or whitespace-only, otherwise Title followed by a blank line and Body
-// with its leading whitespace trimmed.
-// The trim lives here rather than in Parse because Parse's Body is used verbatim elsewhere (the
-// pull-request body), and a conventionally formatted artifact's Body starts with the newline after
-// its heading -- joining that raw here would emit two blank lines between subject and body.
+// CommitMessage composes s into a git-conventional commit message.
+// It is the bare Title when Body is empty or whitespace-only.
+// Otherwise it is Title, a blank line, and Body with its leading whitespace trimmed.
+// Trimming is needed because a conventionally formatted Body starts with the newline after its heading.
+// Joining it untrimmed would emit two blank lines between subject and body.
 // Trailing whitespace is left untouched; git normalizes that itself.
 func (s *Summary) CommitMessage() string {
 	if strings.TrimSpace(s.Body) == "" {
@@ -88,8 +89,9 @@ func (s *Summary) CommitMessage() string {
 	return s.Title + "\n\n" + strings.TrimLeft(s.Body, " \t\r\n")
 }
 
-// LandingMessage composes the landing commit message: CommitMessage's title/blank/body, then a blank line and the credit block verbatim when credit is non-empty.
-// An empty credit yields CommitMessage alone.
+// LandingMessage composes the landing commit message.
+// It is the subject and body, followed by a blank line and credit verbatim when credit is non-empty.
+// An empty credit leaves out the credit block.
 // It never inspects the body for an existing trailer; the description gate guarantees there is none.
 func (s *Summary) LandingMessage(credit string) string {
 	if credit == "" {

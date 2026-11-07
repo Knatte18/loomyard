@@ -1,4 +1,5 @@
-// workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing, and the workspace look WorkspaceSettings sets.
+// workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing.
+// It also covers the workspace look WorkspaceSettings sets.
 
 package vscode
 

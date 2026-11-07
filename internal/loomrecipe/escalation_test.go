@@ -1,5 +1,7 @@
-// escalation_test.go drives a real Discussion-Review segment, and a darn run's Code-Review perch, through a spent review budget:
-// the soft-cap rule continues a design-wrong round one round at a time, the Bouncer escalates at the hard cap instead of blocking, and an accept settles the segment.
+// escalation_test.go drives the Discussion-Review segment and the darn Code-Review perch through a spent review budget:
+// the soft-cap rule continues a design-wrong round one round at a time;
+// the Bouncer escalates at the hard cap instead of blocking;
+// and an accept settles the segment.
 
 package loomrecipe
 
@@ -25,13 +27,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// budgetEscalationBudget is the small review budget the escalation tests run with; they run under a hard cap one above it.
+// budgetEscalationBudget is the small review budget the escalation tests run with;
+// they run under a hard cap one above it.
 const budgetEscalationBudget = 2
 
-// newEscalationShed builds a Shed over the sequence fixture with a small review budget and a hard cap one above it for Discussion-Bouncer.
+// newEscalationShed builds a Shed over the sequence fixture, with a small review budget.
+// It sets a hard cap one above that budget for Discussion-Bouncer.
 // The judge rules CONTINUE over one open design-wrong entry every round.
 // The SegmentBounces seam is wired over the fixture's status file through Routing, as loomcli wires it.
-// It returns the Shed, the fixture env and the Discussion-Review run directory.
+// It returns the Shed, the Discussion-Review run directory, the burler fake and a function that reads the status.
 func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.BurlerHalfRunner, func() shedengine.Status) {
 	t.Helper()
 
@@ -70,7 +74,8 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 	return shed, filepath.Join(env.RunRoot, "discussion"), env.Burler.(*shedfake.BurlerHalfRunner), readStatus
 }
 
-// haltingProducer is a fake row that counts its calls and returns Stuck with no on_stuck to bounce to, so a run halts on reaching it.
+// haltingProducer is a fake row that counts its calls and returns Stuck with no on_stuck to bounce to,
+// so a run halts on reaching it.
 type haltingProducer struct{ calls int }
 
 func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -78,8 +83,11 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: "halting fake"}, nil
 }
 
-// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Code-Review perch past a budget of 1 under a hard cap of 2, with code_auto_accept off:
-// the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, and an accept settles the perch onto Describe and files the open finding under Code-Review.
+// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe covers a darn run's Code-Review perch.
+// It drives the perch past a budget of 1 under a hard cap of 2, with code_auto_accept off.
+// The soft-cap rule continues round 1 automatically.
+// At the hard cap the Bouncer escalates to the parent with a rendered brief instead of blocking.
+// An accept settles the perch onto Describe and files the open finding under Code-Review.
 func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -176,8 +184,10 @@ func countStuck(history []shedengine.HistoryEntry, producer string) (total, exem
 	return total, exempt
 }
 
-// TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept asserts the halts of a spent review budget under a hard cap one above it:
-// the soft-cap rule continues the spent budget with one automatic continue, the next round halts awaiting at the hard cap with a parent notice rather than blocked,
+// TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept asserts the halts of a spent review budget.
+// The hard cap sits one above the budget.
+// The soft-cap rule continues the spent budget with one automatic continue.
+// The next round halts awaiting at the hard cap with a parent notice rather than blocked,
 // and an accept settles the segment.
 func TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -244,9 +254,12 @@ func TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept(t *testing.T) {
 	}
 }
 
-// TestEscalation_PerchBudgetOneWithAutoAccept drives the sequence fixture with Code-Bouncer's own budget at 1 and its auto-accept flag set, and a Code judge that rules CONTINUE.
-// With the fix half passing, the Code-Review segment runs one review and one fix and Code-Bouncer settles Done with an automatic accept on disk, and the run reaches Describe.
-// With the fix half's gate failing in round 1 no round is left to judge, so the run halts blocked, with no circling decision and no Code-Bouncer Done.
+// TestEscalation_PerchBudgetOneWithAutoAccept drives the sequence fixture with Code-Bouncer's own budget at 1;
+// its auto-accept flag is set, and a Code judge rules CONTINUE.
+// With the fix half passing, the Code-Review segment runs one review and one fix.
+// Code-Bouncer then settles Done with an automatic accept on disk, and the run reaches Describe.
+// With the fix half's gate failing in round 1, no round is left to judge,
+// so the run halts blocked, with no circling decision and no Code-Bouncer Done.
 func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

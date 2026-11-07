@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// HeadingRaddleRows is the heading of RenderRaddleMarkdown's one section.
+// HeadingRaddleRows is the markdown heading that opens the raddle report's table of Sketches.
 const HeadingRaddleRows = "## Predicted against actual cost per Sketch"
 
 // RenderRaddleMarkdown renders report as one document: the selection it was computed over, then one table row per Sketch.

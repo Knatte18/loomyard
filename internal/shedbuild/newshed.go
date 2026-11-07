@@ -1,6 +1,6 @@
-// newshed.go declares ShedPaths, the five told Shed-only values, and NewShed, the assembler that
-// parses a caller-supplied recipe, builds it against a caller-supplied shedrecipe.Env, and returns
-// the assembled *shedengine.Shed.
+// newshed.go declares ShedPaths, the five told values the Shed reads itself, and NewShed, the assembler.
+// NewShed parses a caller-supplied recipe and builds it against a caller-supplied shedrecipe.Env.
+// It returns the assembled *shedengine.Shed.
 
 package shedbuild
 
@@ -10,73 +10,69 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 )
 
-// ShedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
-// registry entry reads: StatusPath, LockPath, StatusLockPath, MaxBounces, and CommitStatus.
+// ShedPaths carries the five told values that the engine reads itself:
+// StatusPath, LockPath, StatusLockPath, MaxBounces and CommitStatus.
 //
-// These five cannot travel in shedrecipe.Env: Env holds roots and run-wide values the registry
-// entries read, and no entry reads LockPath.
+// No registry entry reads any of these five, so they cannot travel in shedrecipe.Env.
 type ShedPaths struct {
-	// StatusPath is the durable status file; it is told and never derived. See
-	// shedengine.Shed.StatusPath's own field doc.
+	// StatusPath is the durable status file.
+	// It is told and never derived.
 	StatusPath string
-	// LockPath is the run lock, held non-blocking for the whole of one Run. See
-	// shedengine.Shed.LockPath's own field doc.
+	// LockPath is the run lock.
+	// It is held non-blocking for the whole of one Run.
 	LockPath string
-	// StatusLockPath is the lock internal/state itself takes; it must name a different file from
-	// LockPath. See shedengine.Shed.StatusLockPath's own field doc.
+	// StatusLockPath is the lock internal/state itself takes;
+	// it must name a file other than the run lock.
 	StatusLockPath string
-	// MaxBounces is the default a ProducerDef.MaxBounces of 0 inherits. 0 means "use the internal
-	// default", never "no bounces allowed" -- the budget it seeds is per-producer and
-	// episode-scoped, not run-wide. See shedengine.Shed.MaxBounces's own field doc.
+	// MaxBounces is the default a producer inherits when its own MaxBounces is 0.
+	// 0 means "use the internal default", never "no bounces allowed";
+	// the budget it seeds is per-producer and episode-scoped, not run-wide.
 	MaxBounces int
-	// CommitStatus is copied verbatim onto the constructed shedengine.Shed. See
-	// shedengine.Shed.CommitStatus's own field doc.
+	// CommitStatus is copied verbatim onto the built shed.
+	// It is not wrapped here.
 	CommitStatus func(producer, state string) error
-	// RunID is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.RunID's own field doc.
+	// RunID is copied onto the built shed.
+	// It is not checked here.
 	RunID string
-	// MissingStatusWayForward is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.MissingStatusWayForward's own field doc.
+	// MissingStatusWayForward is copied onto the built shed.
+	// It is not checked here.
 	MissingStatusWayForward string
-	// PauseWayForward is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.PauseWayForward's own field doc.
+	// PauseWayForward is copied onto the built shed.
+	// It is not checked here.
 	PauseWayForward string
-	// RerouteCapWayForward is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.RerouteCapWayForward's own field doc.
+	// RerouteCapWayForward is copied onto the built shed.
+	// It is not checked here.
 	RerouteCapWayForward string
-	// BudgetWayForward is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.BudgetWayForward's own field doc.
+	// BudgetWayForward is copied onto the built shed.
+	// It is not checked here.
 	BudgetWayForward string
-	// RetiredMove is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.RetiredMove's own field doc.
+	// RetiredMove is copied onto the built shed.
+	// It is not checked here.
 	RetiredMove func(from, to string, resumed bool) error
-	// RetiredWayForward is copied onto the constructed shedengine.Shed.
-	// See shedengine.Shed.RetiredWayForward's own field doc.
+	// RetiredWayForward is copied onto the built shed.
+	// It is not checked here.
 	RetiredWayForward string
 }
 
-// NewShed parses recipe, builds it against env, and returns a *shedengine.Shed carrying the built
-// []shedengine.ProducerDef plus paths' five fields.
+// NewShed parses recipe and builds it against env.
+// It returns a *shedengine.Shed carrying the built []shedengine.ProducerDef and paths' five fields.
 //
-// NewShed takes the recipe bytes as its first argument rather than reading an embedded var of its
-// own, because contracts/recipes' //go:embed vars are named per-recipe and this package must stay
-// recipe-agnostic.
+// NewShed takes the recipe bytes as its first argument rather than reading an embedded var of its own.
+// The //go:embed vars in contracts/recipes are named per recipe, and this package must stay recipe-agnostic.
 //
-// NewShed returns both the parse error and the build error unwrapped, adding no prefix of its own:
-// shedbuild already names the offending row's zero-based index and name in every error it raises
-// after decode, and the decoder keeps yaml line numbers, so the unwrapped error is self-locating.
-// Each of NewShed's two callers wraps a non-nil returned error with its own single package prefix,
-// so NewShed must not add a second one on top.
+// NewShed returns both the parse error and the build error unwrapped, adding no prefix of its own.
+// shedbuild already names the offending row's zero-based index and name in every error it raises after decode,
+// and the decoder keeps yaml line numbers, so the unwrapped error is self-locating.
+// Callers wrap a non-nil returned error with their own package prefix, so NewShed adds none.
 //
 // NewShed builds the recipe without expanding it, so a recipe holding a block row is refused:
 // it goes through Expand and then NewShedFrom.
 //
-// NewShed never calls Check -- internal/shedcheck/doc.go and internal/shedbuild/check.go both state
-// that Check is authoring-time only, because a resumed run legitimately starts mid-graph and
-// reachability-from-entry is the wrong production question.
+// NewShed never calls Check, which is for authoring time only:
+// a resumed run legitimately starts mid-graph, so reachability from the entry is the wrong production question.
 //
-// NewShed performs no nil-guard or absolute-path check of its own on any Env field: each registry
-// entry validates exactly the fields it reads.
+// NewShed performs no nil-guard or absolute-path check of its own on any Env field:
+// each registry entry validates exactly the fields it reads.
 func NewShed(recipe []byte, env shedrecipe.Env, paths ShedPaths) (*shedengine.Shed, error) {
 	parsed, err := Parse(recipe)
 	if err != nil {
@@ -86,9 +82,10 @@ func NewShed(recipe []byte, env shedrecipe.Env, paths ShedPaths) (*shedengine.Sh
 	return NewShedFrom(parsed, env, paths)
 }
 
-// NewShedFrom builds an already-parsed recipe against env and returns a *shedengine.Shed carrying the built []shedengine.ProducerDef plus paths' five fields.
-// It lets a caller change the parsed recipe before it is built, which NewShed's bytes argument does not allow.
-// It returns the build error unwrapped and never calls Check, for the reasons NewShed does.
+// NewShedFrom builds an already-parsed recipe against env.
+// It returns a *shedengine.Shed carrying the built []shedengine.ProducerDef and paths' five fields.
+// It lets a caller change the parsed recipe before it is built.
+// It returns the build error unwrapped and never calls Check, which is for authoring time only.
 func NewShedFrom(recipe Recipe, env shedrecipe.Env, paths ShedPaths) (*shedengine.Shed, error) {
 	producers, err := Build(recipe, env)
 	if err != nil {

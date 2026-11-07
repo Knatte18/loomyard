@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// samplerDoneDeps carries the told seams samplerDoneVerb reads and writes through.
+// samplerDoneDeps carries the injected seams through which the sampler-done verb reads and writes.
 type samplerDoneDeps struct {
 	// row answers the name of the recipe's SamplerSession row, and false when the recipe has none.
 	row func() (string, bool, error)
@@ -42,11 +42,15 @@ func samplerDoneReadFailure(out io.Writer, what string, err error) int {
 	return output.Err(out, "loom: sampler-done: "+what+": "+err.Error()+"; way forward: run lym loom sampler-done again, and tell the operator when it keeps failing")
 }
 
-// samplerDoneVerb sets the done flag of the Sampler-Session row's record to the row's current entry stamp and reports a JSON envelope naming it, returning the exit code.
-// It refuses, each with its way forward, a recipe with no SamplerSession row, a run whose current row is not that row, a record that is absent or names no strand, and a task worktree with uncommitted paths.
-// A failed read of any seam is an error envelope carrying the error, and a refusal or a failed read leaves the record unchanged.
+// samplerDoneVerb sets the done flag of the Sampler-Session row's record to the row's current entry stamp.
+// It reports a JSON envelope naming that stamp, and it returns the exit code.
+// It refuses, each with its way forward, a recipe with no SamplerSession row or a run standing at another row.
+// It also refuses a record that is absent or names no strand, and a task worktree with uncommitted paths.
+// A failed read of any seam is an error envelope carrying the error.
+// A refusal or a failed read leaves the record unchanged.
 // A repeat call writes the same stamp again.
-// The verb only writes the flag: the row ends only on a flag at its current stamp with a clean checkout and an intact decision record.
+// The verb only writes the flag.
+// The row ends only on a flag at its current stamp, with a clean checkout and an intact decision record.
 func samplerDoneVerb(out io.Writer, deps samplerDoneDeps) int {
 	row, hasRow, err := deps.row()
 	if err != nil {

@@ -1,4 +1,5 @@
-// override_test.go drives the lym overrides through their file contract: setting, replacing and removing an override of a shipped entry, and the refusals.
+// override_test.go drives the lym overrides through their file contract:
+// setting, replacing and removing an override of a shipped entry, and the refusals.
 
 package heddleengine
 

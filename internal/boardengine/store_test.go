@@ -23,7 +23,6 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
-	// (a) new task gets sequential ID starting at 0
 	task1, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"title": "Task 1",
@@ -51,7 +50,6 @@ func TestUpsertTaskDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
-	// (b) defaults applied (DependsOn=[], Isolated=false, Kind=note, Labels=[])
 	task, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
 	})
@@ -242,7 +240,7 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
-	// (d) `group` key is rejected by the store allowlist (coverage relocated from task_test.go)
+	// (d) The store allowlist rejects the `group` key.
 	_, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"group": "something",
@@ -255,9 +253,9 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	}
 }
 
-// TestUpsertFieldAllowlist verifies that the store chokepoint rejects unknown upsert fields on all
-// three entry points: UpsertTask, UpsertTasksBatch, and MergeTasks.
-// Also verifies that `status` IS in the allowed set and is persisted correctly.
+// TestUpsertFieldAllowlist verifies that the store rejects unknown upsert fields on all three entry points:
+// UpsertTask, UpsertTasksBatch, and MergeTasks.
+// It also verifies that `status` is in the allowed set and is persisted correctly.
 func TestUpsertFieldAllowlist(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("upsert_stray_phase_key_errors", func(t *testing.T) {
@@ -269,7 +267,7 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error for stray phase key")
 		}
-		// The "phase" key gets a friendly hint toward the renamed "status" field.
+		// The "phase" key gets a hint toward the "status" field.
 		wantSubstr := `unknown field: "phase"`
 		if !stringContains(err.Error(), wantSubstr) {
 			t.Errorf("expected error containing %q, got %v", wantSubstr, err)
@@ -565,7 +563,9 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 	})
 }
 
-// TestValidateDependencyGraph verifies that UpsertTask rejects a dangling dependency, a dependency on an isolated task and a cycle with precise error messages, and accepts a chain without a cycle (the kind rules have their own test).
+// TestValidateDependencyGraph verifies that UpsertTask rejects bad dependency graphs.
+// It rejects a dangling dependency, a dependency on an isolated task, and a cycle;
+// it accepts a chain without a cycle.
 func TestValidateDependencyGraph(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -656,10 +656,8 @@ func TestRemoveTaskMissing(t *testing.T) {
 	}
 }
 
-// TestSetStatus verifies SetStatus behaviour: clearing status via nil and the current silent no-op
-// for a missing slug (changed to an error in Card 3).
-//
-// Folds: TestSetPhaseNil, TestSetPhaseMissing
+// TestSetStatus verifies that SetStatus clears the status when given nil,
+// and that it returns an error for a missing slug.
 func TestSetStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("TestSetPhaseNil", func(t *testing.T) {
@@ -695,7 +693,7 @@ func TestSetStatus(t *testing.T) {
 	t.Run("TestSetPhaseMissing", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
-		// Missing target now returns "task not found" instead of the former silent no-op.
+		// A missing target returns "task not found".
 		err := s.SetStatus("nonexistent", nil)
 		if err == nil {
 			t.Fatalf("expected error for missing task, got nil")
@@ -706,10 +704,8 @@ func TestSetStatus(t *testing.T) {
 	})
 }
 
-// TestMergeTasks verifies both the happy path (atomic remove+upsert+set_phase) and the rollback
+// TestMergeTasks verifies both the happy path (atomic remove+upsert+set_status) and the rollback
 // path (validation error leaves store unchanged).
-//
-// Folds: TestMergeTasksAtomic, TestMergeTasksValidationRollback
 func TestMergeTasks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("TestMergeTasksAtomic", func(t *testing.T) {
@@ -901,8 +897,9 @@ func TestMergeTasks(t *testing.T) {
 
 // TestMergeTasksSetStatusRollback verifies that a merge whose set_status targets a non-existent
 // slug returns an error and leaves the store unchanged.
-// The remove and upsert steps are applied in-memory but writeOp discards them when mutate errors —
-// confirmed by loading a fresh store from disk and asserting the task list is identical.
+// The remove and upsert steps are applied in memory,
+// and the unsaved store discards them when the merge fails.
+// Loading a fresh store from disk confirms that the task list is identical.
 func TestMergeTasksSetStatusRollback(t *testing.T) {
 	tiergate.Require(t, 0)
 	taskPath := t.TempDir()
@@ -919,7 +916,7 @@ func TestMergeTasksSetStatusRollback(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	// Reload to simulate a fresh writeOp cycle.
+	// Reload to simulate a fresh write cycle.
 	s2 := boardengine.NewStore(taskPath)
 	if err := s2.Load(); err != nil {
 		t.Fatalf("load s2: %v", err)
@@ -927,7 +924,7 @@ func TestMergeTasksSetStatusRollback(t *testing.T) {
 
 	// MergeTasks with a set_status that targets a non-existent slug. The remove +
 	// upsert steps execute in-memory, but set_status errors so MergeTasks returns an
-	// error. The caller (writeOp) must not call Save() on error.
+	// error. The caller must not call Save() on error.
 	status := "active"
 	_, err := s2.MergeTasks(
 		nil,
@@ -941,7 +938,7 @@ func TestMergeTasksSetStatusRollback(t *testing.T) {
 		t.Errorf("expected 'task not found' error, got %v", err)
 	}
 
-	// Load a fresh store from disk (as writeOp would after not calling Save).
+	// Load a fresh store from disk, as a caller does after not calling Save.
 	// The on-disk task list must be identical to before the failed merge.
 	s3 := boardengine.NewStore(taskPath)
 	if err := s3.Load(); err != nil {
@@ -1009,7 +1006,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Errorf("listed layers = %v; want %v", layers, want)
 	}
 
-	// With no parent seam, the parent beam a list carries is ParentBeam over the store's own entries.
+	// With no parent seam, each listed entry's parent beam is computed from the store's own entries.
 	beamDir := t.TempDir()
 	beamBoard := `{"version":1,"entries":[` +
 		`{"id":0,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true},` +
@@ -1030,7 +1027,9 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Errorf("listed parent beams = %v; want %v", parentBeams, want)
 	}
 
-	// The owner a task lists is its beam's, else the prime's, whatever owner the task itself carries; a note lists none, and a parent resolver that fails empties the cell of an entry that reads its parent's without failing the list.
+	// The owner a task lists is its beam's, else the prime's, whatever owner the task carries.
+	// A note lists no owner.
+	// A parent resolver that fails empties the owner of an entry that reads its parent's, and the list still succeeds.
 	dir := t.TempDir()
 	owned := `{"version":1,"prime_owner":"neve","entries":[` +
 		`{"id":0,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"stray","project":"beamer"},` +
@@ -1154,7 +1153,6 @@ func TestSetDeps(t *testing.T) {
 	t.Run("TestSetDepsValid", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
-		// Create tasks
 		_, err := s.UpsertTask(map[string]any{
 			"slug": "a",
 			"kind": "task",
@@ -1171,7 +1169,7 @@ func TestSetDeps(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// (o) SetDeps: valid update succeeds
+		// SetDeps accepts a dependency on an existing task.
 		err = s.SetDeps("b", []string{"a"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1186,7 +1184,7 @@ func TestSetDeps(t *testing.T) {
 	t.Run("TestSetDepsCycleRollback", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
-		// Create A and B with A depending on B
+		// Create A and B, with B depending on A
 		_, err := s.UpsertTask(map[string]any{
 			"slug": "a",
 			"kind": "task",
@@ -1204,20 +1202,18 @@ func TestSetDeps(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// (p) setting deps that create a cycle returns error and leaves store unchanged
+		// SetDeps rejects a dependency cycle and leaves the store unchanged.
 		originalB, _ := s.GetTask("b")
 		err = s.SetDeps("a", []string{"b"})
 		if err == nil {
 			t.Fatalf("expected error for cycle detection")
 		}
 
-		// Verify a is unchanged
 		retrievedA, _ := s.GetTask("a")
 		if len(retrievedA.DependsOn) != 0 {
 			t.Errorf("expected a to have no deps, got %v", retrievedA.DependsOn)
 		}
 
-		// Verify b is unchanged
 		retrievedB, _ := s.GetTask("b")
 		if !sliceEqualStrings(retrievedB.DependsOn, originalB.DependsOn) {
 			t.Errorf("expected b deps to be unchanged, got %v", retrievedB.DependsOn)
@@ -1225,8 +1221,8 @@ func TestSetDeps(t *testing.T) {
 	})
 }
 
-// TestUpsertTasksBatch verifies that a valid batch upserts all tasks and that an invalid batch
-// returns an error without mutating the store.
+// TestUpsertTasksBatch verifies that a valid batch upserts all tasks.
+// It also verifies that an invalid batch returns an error without mutating the store.
 //
 // Folds: TestUpsertTasksBatchValid, TestUpsertTasksBatchInvalid
 func TestUpsertTasksBatch(t *testing.T) {
@@ -1234,7 +1230,7 @@ func TestUpsertTasksBatch(t *testing.T) {
 	t.Run("TestUpsertTasksBatchValid", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
-		// (q) valid batch of two tasks both upserted
+		// A valid batch of two tasks upserts both.
 		err := s.UpsertTasksBatch([]map[string]any{
 			{
 				"slug":  "task1",
@@ -1276,8 +1272,8 @@ func TestUpsertTasksBatch(t *testing.T) {
 	t.Run("TestUpsertTasksBatchForwardReference", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
-		// A batch is validated against its full projected snapshot, so an
-		// element may depend on one introduced later in the same batch.
+		// A batch is validated against its full projected snapshot,
+		// so an element may depend on one introduced later in the same batch.
 		err := s.UpsertTasksBatch([]map[string]any{
 			{"slug": "task-a", "title": "A", "kind": "task", "depends_on": []string{"task-b"}},
 			{"slug": "task-b", "title": "B", "kind": "task"},
@@ -1301,10 +1297,9 @@ func TestUpsertTasksBatch(t *testing.T) {
 			t.Fatalf("seed upsert: %v", err)
 		}
 
-		// The first element patches an existing task; the second fails
-		// validation. The projection must not have written through to the live
-		// store, so the patched title must be rolled back too — not just the
-		// task count.
+		// The first element patches an existing task; the second fails validation.
+		// The projection must not write through to the live store,
+		// so the patched title must be rolled back too, not only the task count.
 		err := s.UpsertTasksBatch([]map[string]any{
 			{"slug": "existing", "title": "Patched title"},
 			{"slug": "broken", "depends_on": []string{"nonexistent"}},
@@ -1322,7 +1317,6 @@ func TestUpsertTasksBatch(t *testing.T) {
 	t.Run("TestUpsertTasksBatchInvalid", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
-		// Create initial state
 		_, err := s.UpsertTask(map[string]any{
 			"slug": "existing",
 		})
@@ -1330,7 +1324,7 @@ func TestUpsertTasksBatch(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// (r) batch with one invalid task returns error and neither task is mutated
+		// A batch with one invalid task returns an error and mutates neither task.
 		beforeCount := len(s.Tasks())
 		err = s.UpsertTasksBatch([]map[string]any{
 			{
@@ -1346,7 +1340,6 @@ func TestUpsertTasksBatch(t *testing.T) {
 			t.Fatalf("expected error for invalid batch")
 		}
 
-		// Verify nothing was mutated
 		afterCount := len(s.Tasks())
 		if beforeCount != afterCount {
 			t.Errorf("expected store unchanged, but count changed from %d to %d", beforeCount, afterCount)
@@ -1354,7 +1347,9 @@ func TestUpsertTasksBatch(t *testing.T) {
 	})
 }
 
-// keptValue decodes the saved board.json raw and returns the compact value of key on the entry slug, or on the top level when slug is empty, and whether it is present.
+// keptValue decodes the saved board.json raw.
+// It returns the compact value of key on the entry slug, or on the top level when slug is empty.
+// It also reports whether key is present.
 func keptValue(t *testing.T, raw []byte, slug, key string) (string, bool) {
 	t.Helper()
 	members := map[string]json.RawMessage{}
@@ -1389,7 +1384,10 @@ func keptValue(t *testing.T, raw []byte, slug, key string) (string, bool) {
 	return compact.String(), true
 }
 
-// keptBoardBody is the board.json the kept-key rows of TestLoad share: a top-level key, a task a with a big integer, a nested value, strings holding an escaped quote and closing brackets, and a key spelled with an escape, listed unsorted, a task b, a note n and a done task fin.
+// keptBoardBody is a board.json body whose unknown keys the kept-key checks read.
+// Task a carries a big integer, a nested value, and strings with an escaped quote and closing brackets.
+// It also has a key spelled with an escape, listed unsorted.
+// The body holds a task b, a note n, a done task fin, and a top-level key.
 const keptBoardBody = `{"version":1,"entries":[` +
 	`{"id":0,"slug":"a","title":"A","kind":"task","labels":["bug"],"zz_scalar":9007199254740993,"zz_nested":{"a":[1,{"b":"c"}]},` +
 	`"zz_quote":"q\"}],x","zz_nested_quote":{"s":["q\"}],x",{"t":"\\}],"}]},"zz\u005fesc":1},` +
@@ -1408,8 +1406,13 @@ var keptA = [][3]string{
 	{"", "zz_top", `{"k":[1,2]}`},
 }
 
-// TestLoad asserts Store.Load's handling of board.json: a missing file yields an empty store, nil depends_on and labels normalize to empty slices, the version-1 and old tier-and-type shapes load and a Save round-trips them, and an unknown version or corrupt file is an error.
-// It also pins the kept keys: an entry key or top-level key this binary does not know survives every write path with its exact digits, after the known fields in key order, while the retired tier and type are still dropped.
+// TestLoad asserts Store.Load's handling of board.json.
+// A missing file yields an empty store, and nil depends_on and labels normalize to empty slices.
+// The version-1 and old tier-and-type shapes load, and a Save round-trips them.
+// An unknown version or a corrupt file is an error.
+// It also pins the kept keys:
+// an entry key or top-level key this binary does not know survives every write path with its exact digits;
+// it sits after the known fields in key order, and the retired tier and type are still dropped.
 func TestLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1423,7 +1426,7 @@ func TestLoad(t *testing.T) {
 		check func(t *testing.T, tasks []boardengine.Task)
 		// act mutates the loaded store after check and before the save.
 		act func(t *testing.T, store *boardengine.Store)
-		// save writes the store back, as do act and wantKeys; saveContains and saveAbsent are the whitespace-free substrings the saved file must and must not contain, and a non-empty saveExact is the whole file, byte for byte.
+		// save writes the store back, as do act and wantKeys; saveContains, saveAbsent and saveExact check the saved file.
 		save                     bool
 		saveContains, saveAbsent []string
 		saveExact                string
@@ -2056,7 +2059,8 @@ func TestFind(t *testing.T) {
 	}
 }
 
-// TestUpsertIssues verifies issues defaults to empty, is replaced as a whole and refuses duplicates and non-positive numbers.
+// TestUpsertIssues verifies that issues defaults to empty and is replaced as a whole.
+// It also verifies that duplicate and non-positive numbers are refused.
 func TestUpsertIssues(t *testing.T) {
 	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")

@@ -67,7 +67,6 @@ func (r *Root) newRun() (*run, error) {
 }
 
 // randomRunName returns runPrefix followed by runNameLength random lower-case letters and digits.
-// The short name keeps a tmux socket path below a run directory under the sun_path limit.
 func randomRunName() string {
 	var name strings.Builder
 	name.WriteString(runPrefix)

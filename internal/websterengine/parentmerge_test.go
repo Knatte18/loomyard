@@ -1,5 +1,6 @@
-// parentmerge_test.go pins the observed wedge end to end (Tier 2 — see docs/benchmarks/running-tests.md):
-// a parent merge-in lands between a fork's commit and record-batch, and the run must still record the batch and open the next one.
+// parentmerge_test.go pins the parent-merge wedge end to end (Tier 2, see docs/benchmarks/running-tests.md):
+// a parent merge-in lands between a fork's commit and record-batch,
+// and the run must still record the batch and open the next one.
 
 package websterengine_test
 
@@ -16,8 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestParentMergeBetweenForkCommitAndRecordBatch is the 2026-09-30 parent-merge-ring regression.
-// It walks begin → fork commit → parent merge → record → next begin → next record and asserts each recorded value exactly.
+// TestParentMergeBetweenForkCommitAndRecordBatch walks the ring over real git:
+// begin, fork commit, parent merge, record, next begin and next record.
+// It asserts each recorded value exactly.
 //
 //testtiming:keep pins the 2026-09-30 wedge end to end over real git: a parent merge between the fork's commit and record-batch, then the next begin and record; each covering test pins one step over a fake or a single call
 func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {

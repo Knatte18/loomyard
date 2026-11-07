@@ -3,31 +3,42 @@
 ## What this is
 
 A structured test-loop for exercising `lym burler` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
-Like `SANDBOX-SHUTTLE-SUITE.md`, the value here is partly **visual**: a burler round doing real review+fix work in a pane, a verdict coming back.
-Not an automated suite -- an agent drives it, an operator watches.
+The value here is partly **visual**, as in `SANDBOX-SHUTTLE-SUITE.md`: a burler round doing real review+fix work in a pane, and a verdict coming back.
+An agent drives the suite and an operator watches; it is not automated.
 
 burler drives one review+fix round over an artifact: an A phase reviews the target against a fasit (a source of truth) and writes a structured review file (verdict + findings), then a B phase fixes what A found and writes a fixer report.
-Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lym burler run`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful.
+Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lym burler run`), never review quality.
+They are trivial (a toy chair/table color mismatch), so the assertions cover the mechanics:
+verdict parse, file contract, and fix applied.
 
 ## Pre-conditions
 
 Before starting a session:
 
 1. **Deploy a fresh dev binary.**
-   Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lym` stays untouched.
-   The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+   Run `deploy-dev` to build `lym.exe` from the current source into `.dev-bin`.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH, so no PATH setup is needed and production `lym` stays untouched.
+   The fingerprint header's `Source: dev` line confirms the dev build is under test.
+   The deployed binary is a snapshot: re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
    the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
-3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
-   and a logged-in `claude` on PATH.
-   If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a burler defect** -- the `**Covers:** burler` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lym burler run` requires a worktree wired by `lym fabric clone`/`lym fabric add` -- which materializes `_lym/config/shuttle.yaml` and `reed.yaml` eagerly -- exactly like `lym shuttle` and `lym reed` do -- burler wires the real shuttle substrate (reed + claude) on every invocation and has no config file of its own;
+3. **Live-tmux and claude requirement.**
+   tmux (or the Windows tmux port), PowerShell 7, and a logged-in `claude` must be on PATH.
+   If any of these is unavailable in the session,
+   **note that as the session outcome rather than treating it as a burler defect**.
+   The `**Covers:** burler` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`),
+   whether or not the runtime is available.
+4. **Wired worktree required.**
+   `lym burler run` requires a worktree wired by `lym fabric clone` or `lym fabric add`,
+   which materialize `_lym/config/shuttle.yaml` and `reed.yaml` eagerly.
+   `lym shuttle` and `lym reed` have the same requirement.
+   burler wires the real shuttle substrate (reed + claude) on every invocation and has no config file of its own;
    the profile YAML is the only burler-specific input.
 5. **Attached interactive terminal.**
    Launch `sandbox/burler-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached.
-   Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned (observed live: S1 completed, S2/S3 never ran, no `sandbox-report.json`).
+   Without a TTY the driving claude session cannot idle between turns waiting for notifications.
+   The process then ends as soon as a turn ends, and the remaining scenarios are silently abandoned, with no `sandbox-report.json`.
    The launcher prints a warning when it detects non-console stdio.
 
 ## Black-box rule
@@ -46,7 +57,9 @@ each command's `--help` example profile is the reference for the file's shape.
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
 The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
-The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
+The same fingerprint records the report's provenance:
+a separate fetch step, run after this session, stamps it into `meta.fingerprint` of the fetched `sandbox-report.json`.
+A maintainer can then reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
 
 ## How to run a scenario
@@ -54,11 +67,11 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lym burler`'s own `--help` (S0 ethos).
+  Discover the commands via `lym burler`'s own `--help` (the S0 ethos of `SANDBOX-CORE-SUITE.md`).
 - Run every scenario-driving command in the **foreground** and wait for it to return before moving on.
-  **Never background or detach a command** -- `lym burler run` blocks until it reaches a terminal outcome by design, so there is nothing to wait for asynchronously,
-  and no completion notification will ever be delivered back into this session.
-  Assume no async signal arrives, ever.
+  **Never background or detach a command**:
+  `lym burler run` blocks until it reaches a terminal outcome by design, so there is nothing to wait for asynchronously,
+  and no completion notification is ever delivered back into this session.
 - **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
@@ -103,17 +116,27 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Covers:** burler
 
-**Goal:** "Create a fixture text file describing a chair and a table whose colors DO NOT match, write a profile YAML that reviews it against the rule 'the chair's color must match the table's color', run `lym burler run --profile <file>`, and confirm the round finds the mismatch, fixes it, and reports the fix."
+**Goal:** "Create a fixture text file describing a chair and a table whose colors DO NOT match,
+write a profile YAML that reviews it against the rule 'the chair's color must match the table's color',
+run `lym burler run --profile <file>`,
+and confirm the round finds the mismatch, fixes it, and reports the fix."
 
-**Watch:** Create a small fixture file in the Hub's Fabric repo (e.g. `chair-table.txt`) whose text states a chair color and a table color that disagree (e.g. "The chair is red.
-The table is blue.").
-Write a profile YAML naming that file as `target`, an inline `fasit.instructions` stating the rule "the chair's color must match the table's color" (no fasit paths needed -- the rule itself is the source of truth here), a short `rubric` mapping a color mismatch to a BLOCKING finding, `fix-scope: overlay`, `tool-use: false`, `cluster-fan` omitted (empty -- a solo round, since naming a fan is what activates clustering), and fresh `review-path` / `fixer-report-path` (files that do not already exist).
+**Watch:** Create a small fixture file in the Hub's Fabric repo (e.g. `chair-table.txt`).
+Its text states a chair color and a table color that disagree (e.g. "The chair is red. The table is blue.").
+Write a profile YAML naming that file as `target`.
+Give it an inline `fasit.instructions` stating the rule "the chair's color must match the table's color"
+(no fasit paths needed -- the rule itself is the source of truth here).
+Add a short `rubric` mapping a color mismatch to a BLOCKING finding.
+Set `fix-scope: overlay` and `tool-use: false`.
+Omit `cluster-fan` (empty): a solo round, since naming a fan is what activates clustering.
+Set fresh `review-path` / `fixer-report-path` (files that do not already exist).
 Run `lym burler run --profile <file>`.
-The command blocks until the round finishes;
-the printed JSON envelope reports `"outcome":"done"` and `"verdict":"BLOCKING"`;
-the review file at `review-path` opens with YAML frontmatter carrying at least one `BLOCKING`-severity finding;
-the fixture file's content has actually changed so the chair's and table's colors now match;
-and the fixer-report at `fixer-report-path` exists and is non-empty (it must describe what was fixed).
+The command blocks until the round finishes, and then:
+
+- The printed JSON envelope reports `"outcome":"done"` and `"verdict":"BLOCKING"`.
+- The review file at `review-path` opens with YAML frontmatter carrying at least one `BLOCKING`-severity finding.
+- The fixture file's content has changed so the chair's and table's colors now match.
+- The fixer-report at `fixer-report-path` exists and is non-empty, and it describes what was fixed.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -125,15 +148,20 @@ and the fixer-report at `fixer-report-path` exists and is non-empty (it must des
 
 **Goal:** "Repeat S1's setup but with the chair and table colors already matching, and confirm the round reports APPROVED instead of BLOCKING."
 
-**Watch:** Reuse S1's fixture file (or a fresh copy) but edit it so the chair's and table's colors already match (e.g. "The chair is red.
-The table is red.").
-Write a profile YAML identical in shape to S1's but with fresh `review-path` / `fixer-report-path` (S1's output files already exist and must not be reused).
-Run `lym burler run --profile <file>`.
-The JSON envelope reports `"outcome":"done"` and `"verdict":"APPROVED"`;
-the review file's frontmatter carries zero `BLOCKING`-severity findings (non-blocking MEDIUM/LOW/NIT polish findings are legal and do not fail this scenario);
-the fixer-report still exists and is non-empty.
-A review with no findings at all spawns no fixer: the fixer-report is then the Go-written one, which says nothing was fixed, and the envelope reports `"fixSkipped":true`.
-A review with polish findings runs the fixer, and the fixer-report is its own.
+**Watch:** Reuse S1's fixture file (or a fresh copy), edited so the chair's and table's colors already match
+(e.g. "The chair is red. The table is red.").
+Write a profile YAML with the same shape as S1's but with fresh `review-path` / `fixer-report-path`;
+S1's output files already exist and must not be reused.
+Run `lym burler run --profile <file>`, and then:
+
+- The JSON envelope reports `"outcome":"done"` and `"verdict":"APPROVED"`.
+- The review file's frontmatter carries zero `BLOCKING`-severity findings;
+  non-blocking MEDIUM/LOW/NIT polish findings are legal and do not fail this scenario.
+- The fixer-report exists and is non-empty.
+
+A review with no findings at all spawns no fixer.
+The fixer-report is then the Go-written one, which says nothing was fixed, and the envelope reports `"fixSkipped":true`.
+A review with polish findings runs the fixer, and the fixer-report is the fixer's own.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -143,18 +171,23 @@ A review with polish findings runs the fixer, and the fixer-report is its own.
 
 **Covers:** burler
 
-**Goal:** "Confirm four profile-level mistakes are each rejected with a distinct, sane error in the JSON envelope: an unknown cluster fan name, an empty fasit, a re-run against an already-existing review-path, and a review-path identical to the fixer-report-path."
+**Goal:** "Confirm four profile-level mistakes are each rejected with a distinct, sane error in the JSON envelope:
+an unknown cluster fan name, an empty fasit, a re-run against an already-existing review-path,
+and a review-path identical to the fixer-report-path."
 
-**Watch:** Four separate `lym burler run` invocations, each expected to exit non-zero with an error in the JSON envelope (not a panic, not a silent zero-exit):
+**Watch:** Four separate `lym burler run` invocations, each expected to exit non-zero with an error in the JSON envelope,
+never a panic or a silent zero-exit:
 
 1. Take a valid profile (e.g. a copy of S1's) and set `cluster-fan: no-such-fan`.
    The run must fail with a validation error naming the unknown fan.
 2. Take a valid profile and clear `fasit` entirely (empty `paths` and empty `instructions`).
    The run must fail with a validation error naming the empty fasit -- not silently degrade to reviewing the target in isolation.
 3. Re-run S1's exact profile file unmodified (same `review-path` that S1 already wrote).
-   The run must fail with shuttle's pre-existing-output-file rejection -- burler never silently overwrites a prior round's artifact.
+   The run must fail with shuttle's pre-existing-output-file rejection:
+   burler never silently overwrites a prior round's artifact.
 4. Take a valid profile and set `fixer-report-path` to the SAME value as `review-path` (a plausible copy-paste mistake).
-   The run must fail with a validation error naming the two fields and stating they must not be the same path -- burler must never let the two-artifact file contract collapse into one file wearing both hats.
+   The run must fail with a validation error naming the two fields and stating they must not be the same path:
+   the two-artifact file contract must never collapse into one file serving as both.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -177,12 +210,14 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lym reed down` to tear down the tmux session/server the scenarios booted with `lym reed up`.
+After the session summary is recorded and `./sandbox-report.json` is written,
+run `lym reed down` to tear down the tmux session/server the scenarios booted with `lym reed up`.
 An orphaned tmux server holds open handles inside the Hub's Fabric repo and blocks the next `sandbox/build.cmd -reset`.
-The launcher also runs `lym reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
-and it keeps the Hub clean while the session is still open for inspection.
+The launcher also runs `lym reed down` after the session ends as a backstop, but run it here anyway:
+it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`;
-  this suite holds only burler's own review+fix round scenarios -- add `S` scenarios here, not in any other suite.
+- Warp/weft scenarios live in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios in `SANDBOX-REED-SUITE.md`,
+  and shuttle black-box agent scenarios in `SANDBOX-SHUTTLE-SUITE.md`.
+  This suite holds only burler's own review+fix round scenarios: add burler `S` scenarios here and no others.

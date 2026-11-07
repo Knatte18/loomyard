@@ -1,9 +1,6 @@
-// stuck.go declares reportStuck, the one helper every producer routes its stuck verdicts through, and the verdict helpers built on it.
-//
-// The producer seam (shedengine.ShedProducer) carries a producer's reason on
-// OutputPointer.Reason, which the engine persists as the blocked error when the row has no OnStuck
-// target -- every landingshed row has none. This helper is the log-line carrier beside it: a
-// structured warning that stays in the trace after the persisted error is overwritten.
+// stuck.go holds the stuck-verdict helpers: the logger reportStuck, and the reconcile and gate mappings built on it.
+// The engine persists a producer's Reason as the blocked error when the row has no `OnStuck` target,
+// and every landingshed row has none; the logged warning stays in the trace after that error is overwritten.
 
 package landingshed
 
@@ -17,15 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// reportStuck emits a structured warning through the shared logger carrying at minimum a producer
-// field and a reason field alongside fields' own key-value pairs.
+// reportStuck logs a structured warning through the shared logger.
+// The producer and reason fields come first, followed by the caller's key-value pairs.
 func reportStuck(producer, reason string, fields ...any) {
 	logFields := append([]any{"producer", producer, "reason", reason}, fields...)
 	logger.Warn("landingshed: producer stuck", logFields...)
 }
 
-// stuckVerdict consults cancelErr first, like every non-success exit, and otherwise logs reason via reportStuck and returns Stuck with reason on the output pointer.
-// halt blocks the run at the producer's own row whatever the row's on_stuck route.
+// stuckVerdict returns the cancellation error when ctx is cancelled.
+// Otherwise it logs a warning and returns a Stuck verdict carrying reason on the output pointer.
+// When halt is true, the run blocks at the producer's own row whatever the row's on_stuck route.
 func stuckVerdict(ctx context.Context, producer, reason string, halt bool, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, producer); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
@@ -34,12 +32,14 @@ func stuckVerdict(ctx context.Context, producer, reason string, halt bool, field
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Halt: halt}, nil
 }
 
-// reconcileVerdict runs the run-scope origin reconcile and maps the verdict on the run's own entry onto a producer's Call return.
-// stop is false when the run is active, when origin was unreachable, which logs one Warn so the row fails on its own remote steps as before, and when no reconcile is wired.
-// Otherwise the other values are what Call returns at once:
-// an ended entry as a halting Stuck naming the landing or the board removal, with the end of the run from the prime as the way forward;
-// a stopped entry as a Stuck naming the branch, its state and its way forward, then the row's re-entry;
-// a cancellation or a reconcile error as an error.
+// reconcileVerdict runs the run-scope origin reconcile and maps the run's own entry onto the producer's return values.
+// The fourth result is false when the run is active, when no reconcile is wired, or when origin was unreachable.
+// An unreachable origin logs one Warn; the run is not judged against it, so the row fails on its own remote steps.
+// Otherwise the fourth result is true.
+// An ended entry gives a halting Stuck naming the landing or the board removal.
+// Its way forward is the end of the run from the prime.
+// A stopped entry gives a Stuck naming the branch, its state and its way forward, then the row's re-entry.
+// A cancellation or a reconcile error is returned as an error.
 // Each entry of the report's mutation record is logged at Info, since a row has no envelope to carry it.
 // followUp, when non-nil, ends a stopped reason whose way forward names the pair's removal.
 func reconcileVerdict(ctx context.Context, producer string, reconcile func() (fabricengine.OriginReport, error), followUp func() string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
@@ -73,11 +73,12 @@ func reconcileReport(ctx context.Context, producer string, reconcile func() (fab
 	return report, nil
 }
 
-// reportVerdict maps the ended and stopped entries of a reached origin's report onto a producer's Call return.
-// stop is false when no entry ended or stopped, including an entry another machine owns, so Call proceeds.
-// Otherwise the other values are what Call returns at once:
-// an ended entry as a halting Stuck naming the landing or the board removal, with the end of the run from the prime as the way forward;
-// a stopped entry as a Stuck naming the branch, its state and its way forward, then the row's re-entry.
+// reportVerdict maps the ended and stopped entries of a reached origin's report onto the producer's return values.
+// The fourth result is false when no entry ended or stopped, including an entry another machine owns.
+// A false fourth result lets the producer proceed.
+// An ended entry gives a halting Stuck naming the landing or the board removal.
+// Its way forward is the end of the run from the prime.
+// A stopped entry gives a Stuck naming the branch, its state and its way forward, then the row's re-entry.
 // followUp, when non-nil, ends a stopped reason whose way forward names the pair's removal.
 func reportVerdict(ctx context.Context, producer string, report fabricengine.OriginReport, followUp func() string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	for _, entry := range report.Entries {
@@ -97,7 +98,8 @@ func reportVerdict(ctx context.Context, producer string, report fabricengine.Ori
 	return "", shedengine.OutputPointer{}, nil, false
 }
 
-// endedReason words the Stuck reason of a run origin ended: how it ended, and ending the run here from the prime as the way forward.
+// endedReason words the Stuck reason for a run whose origin ended, given how it ended.
+// The way forward is the end of the run from the prime.
 func endedReason(how string) string {
 	ended := "its board entry was removed from the board"
 	if how == "done" {
@@ -106,9 +108,11 @@ func endedReason(how string) string {
 	return fmt.Sprintf(`origin ended this run: %s; way forward: pause the run, then run "lym cleanup --apply" from the prime, whose hub reconcile tears this pair down`, ended)
 }
 
-// stoppedReason words the Stuck reason of a run origin's judgment stopped: the branch that stopped it, its state and its way forward, then the row's re-entry.
-// The branch is the one whose way forward the entry carries; an entry with no such branch names none.
-// A way forward that names the pair's removal ends in followUp instead, when it reads non-empty, since the removal deletes the task worktree the resume runs in.
+// stoppedReason words the Stuck reason for a run whose origin judgment stopped.
+// The reason names the stopping branch, its state and its way forward, then the row's re-entry.
+// The stopping branch is the one whose way forward equals the entry's; without one, no branch is named.
+// A way forward that names the pair's removal ends in followUp instead, when followUp returns non-empty text.
+// That removal deletes the task worktree the resume runs in.
 func stoppedReason(entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome, followUp func() string) string {
 	for _, branch := range branches {
 		if branch.WayForward != "" && branch.WayForward == entry.WayForward {
@@ -124,8 +128,9 @@ const resumeReentry = `then run "lym loom resume" in the task worktree`
 // fabricRemoveCommand is the removal a way forward names for a branch that only the removal clears.
 const fabricRemoveCommand = "lym fabric remove"
 
-// reentryAfter returns the step that ends a stopped reason whose way forward is wayForward.
-// It is followUp's text when wayForward names the pair's removal and followUp reads non-empty, and the resume otherwise.
+// reentryAfter returns the step that ends a stopped reason, given that reason's way forward.
+// It is followUp's text when wayForward names the pair's removal and followUp returns non-empty text;
+// otherwise it is the resume.
 func reentryAfter(wayForward string, followUp func() string) string {
 	if followUp != nil && strings.Contains(wayForward, fabricRemoveCommand) {
 		if text := followUp(); text != "" {
@@ -135,10 +140,11 @@ func reentryAfter(wayForward string, followUp func() string) string {
 	return resumeReentry
 }
 
-// gateStop maps one gate call's result onto a producer's Call return.
-// stop is false when the gate passed, so Call proceeds.
-// Otherwise the other values are what Call returns at once:
-// a cancellation or an infrastructure fault as an error, a Stuck reason as a Stuck verdict.
+// gateStop maps one gate call's result onto the producer's return values.
+// The fourth result is false when the gate passed, so the producer proceeds.
+// Otherwise the fourth result is true.
+// A cancellation or an infrastructure fault is returned as an error;
+// a Stuck reason is returned as a Stuck verdict.
 func gateStop(ctx context.Context, producer, reason string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if err != nil {
 		if cerr := cancelErr(ctx, producer); cerr != nil {

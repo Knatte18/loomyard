@@ -1,5 +1,6 @@
-// layers.go implements the node-level operations over layered YAML: merge, strip, sparse set, prune, unit paths and unit annotation.
-// Every operation works on raw unexpanded bytes and shares one notion of a unit, described in the package documentation.
+// layers.go implements the node-level operations over layered YAML:
+// merge, strip, sparse set, prune, unit paths and unit annotation.
+// Every operation works on raw unexpanded bytes and shares one notion of a unit.
 
 package yamlengine
 
@@ -15,7 +16,7 @@ import (
 // unitRule decides which values the layer operations carry and compare whole.
 // A mapping key is descended into unless its path is a declared open map or, with wholeEntries, it is a top-level key.
 // A scalar or a sequence is always one unit.
-// Under a declared per-name map every name is kept whole, and Prune reports a name the template lacks as kept.
+// Under a declared per-name map every name is kept whole; when pruning, a name the template lacks is reported as kept.
 type unitRule struct {
 	openMaps     []string
 	perNameMaps  []string
@@ -35,7 +36,8 @@ func (rule unitRule) descends(value *yaml.Node, path string, topLevel bool) bool
 // Merge lays upper over lower key by key at every mapping depth and returns the merged document.
 // A unit upper holds replaces lower's, a unit only lower holds stays, and a mapping both hold merges recursively;
 // no layer can delete a key from the one below.
-// A unit is a mapping key descended into, except a key at a declared openMaps path and, when wholeEntries is true, every top-level key, each carried whole; a scalar or a sequence is always one unit.
+// Each key at a declared openMaps path, and with wholeEntries each top-level key, is carried whole.
+// Otherwise a mapping key is descended into, and a scalar or a sequence is one unit.
 // An empty or comment-only side yields the other side's bytes, and both empty yields empty bytes.
 // Comments and key order come from lower, with upper's new keys appended in upper's order.
 func Merge(lower, upper []byte, openMaps []string, wholeEntries bool) ([]byte, error) {
@@ -87,11 +89,13 @@ func (rule unitRule) mergeMapping(lower, upper *yaml.Node, path string, topLevel
 	}
 }
 
-// Strip removes from upper every unit whose node equals lower's node at the same path, and returns the stripped bytes and the sorted dotted paths it removed.
-// Units follow the same rule as in Merge: a key at a declared openMaps path and, when wholeEntries is true, every top-level key is compared whole.
+// Strip removes from upper every unit whose node equals lower's node at the same path.
+// It returns the stripped bytes and the sorted dotted paths it removed.
+// A key at a declared openMaps path, and with wholeEntries every top-level key, is compared whole.
 // Equality is over the unexpanded nodes: same kind, same scalar tag and value, same children, comments ignored;
 // so a ${env:...} marker equals only the same marker text, in either direction.
-// A mapping left empty by the strip is removed with its key, and an empty mapping where lower holds an empty mapping is a removed unit;
+// A mapping left empty by the strip is removed with its key,
+// and an empty mapping where lower holds an empty mapping is a removed unit;
 // an upper left with nothing returns empty bytes.
 // When nothing is removed, upper is returned byte for byte.
 func Strip(lower, upper []byte, openMaps []string, wholeEntries bool) ([]byte, []string, error) {
@@ -151,25 +155,36 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 	upper.Content = kept
 }
 
-// SetSparse applies pairs to existing, an empty mapping when existing is empty or comment-only, and writes only the set keys, creating intermediate mappings.
+// SetSparse applies pairs to existing, or to an empty mapping when existing is empty or comment-only.
+// It writes only the set keys, creating intermediate mappings.
 // It never scaffolds from the template, which only decides which keys are known.
-// A key is known when the template holds it as a leaf or a list, or lies under a declared openMaps path P as P.<name>;
-// a list key takes a YAML flow list such as [] or [a, b], and an open-map entry is a scalar in the mapping at P.
-// A key at P itself, when P holds a scalar or a list, takes either: a value starting with [ is written as a flow list of scalars or mappings of scalars, any other value as a string, and a bracketed value that is not such a list is an error.
-// A key at P itself, when P holds a mapping, replaces P whole with the YAML flow mapping its value spells, as SetValues does.
-// Unknown lists the requested keys that are not known, Known the sorted known set, and Merged is nil when Unknown is non-empty.
-// A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null, gives it the tag its own text resolves to.
-// An open map that shapes maps to a shape takes a key at any path the shape reaches, as SetValues takes it, and a path it does not reach is an error naming the key.
+// A key is known when the template holds it as a leaf or a list.
+// A key lying under a declared openMaps path P is known as P.<name>.
+// A list key takes a YAML flow list such as [] or [a, b], and an open-map entry is a scalar in the mapping at P.
+// A key at P itself, when P holds a scalar or a list, takes either form.
+// A value starting with [ is written as a flow list of scalars or mappings of scalars, and any other value as a string.
+// A bracketed value that is not such a list is an error.
+// A key at P itself, when P holds a mapping, replaces P whole with the YAML flow mapping its value spells.
+// Unknown lists the requested keys that are not known.
+// Known is the sorted known set.
+// Merged is nil when Unknown is non-empty.
+// A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag.
+// The exception is a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null:
+// the leaf takes the tag its own text resolves to.
+// An open map that shapes maps to a shape takes a key at any path the shape reaches.
+// A path the shape does not reach is an error naming the key.
 // A whole-map value holding a mapping or list where the shape takes a string is an error naming the key.
 // Preserved stays empty.
 //
 // Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
-// P.<name> is known for any dot-free name, and the pair writes the name into the mapping at P, appending it when absent.
+// P.<name> is known for any dot-free name,
+// and the pair writes the name into the mapping at P, appending it when absent.
 // Under a mapping of scalars the value is a string whatever its first character;
 // under a mapping of lists it is a YAML flow list;
 // under a mapping of mappings it is a YAML flow mapping.
-// A per-name map of mappings also knows P.<name>.<rest> for any name, where rest is a scalar or list path some template entry holds:
-// the pair writes that one key into the mapping at P.<name>, creating it, under the template entry's tag or as a flow list.
+// A per-name map of mappings also knows P.<name>.<rest> for any name.
+// Here rest is a scalar or list path that some template entry holds:
+// the pair writes that key into the mapping at P.<name>, creating it under the template entry's tag or as a flow list.
 // A value at P that is neither a mapping nor null is an error naming P and its shape, and nothing is written.
 func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, shapes map[string]*Shape, openMaps ...string) (SetResult, error) {
 	var templateNode yaml.Node
@@ -286,8 +301,10 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, shap
 	return SetResult{Merged: merged, Known: known}, nil
 }
 
-// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths, each open map P itself, and one P.<name> per open map and per per-name map P.
-// It also holds one P.<name>.<rest> per path rest the entries of a per-name map of mappings hold, as entryLeaves lists them.
+// knownKeys returns the sorted key set a template makes settable.
+// The set holds the template's leaf and sequence paths, and each open map path.
+// It also holds P.<name> for each open map and per-name map path P.
+// For a per-name map whose entries are mappings, it holds P.<name>.<rest> for each rest path an entry holds.
 func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
 	known := make([]string, 0, len(templateLeaves)+len(templateSequences)+len(openMaps)+len(perNameMaps))
 	for path := range templateLeaves {
@@ -309,9 +326,10 @@ func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps
 	return slices.Compact(known)
 }
 
-// unknownKeys returns the sorted, deduplicated pair keys the template neither holds nor opens.
+// unknownKeys returns the sorted, deduplicated pair keys that the template neither holds nor opens.
 // A declared open map is known itself, whatever it holds.
-// A key under a per-name map is open for one dot-free name only, or, when the map's entries are mappings, for a name followed by a path some entry holds, as entryLeaves lists them;
+// A key under a per-name map is open for one dot-free name only.
+// Where the map's entries are mappings, it is also open for a name followed by a path that some entry holds;
 // a deeper key under it is unknown.
 func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
 	var unknown []string
@@ -330,7 +348,6 @@ func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.
 	return slices.Compact(unknown)
 }
 
-// splitLastSegment splits a dotted path into its parent path and last key.
 func splitLastSegment(path string) (parent, name string) {
 	if at := strings.LastIndex(path, "."); at >= 0 {
 		return path[:at], path[at+1:]
@@ -339,7 +356,8 @@ func splitLastSegment(path string) (parent, name string) {
 }
 
 // parentMappingOf returns the mapping under root that holds the last segment of the dotted key, and that segment.
-// Missing mappings on the way are created, and a value on the way that is neither a mapping nor null is an error naming its path.
+// Missing mappings on the way are created,
+// and a value on the way that is neither a mapping nor null is an error naming its path.
 func parentMappingOf(root *yaml.Node, key string) (*yaml.Node, string, error) {
 	parentPath, name := splitLastSegment(key)
 	if parentPath == "" {
@@ -376,7 +394,8 @@ func mappingAt(root *yaml.Node, path string) (*yaml.Node, error) {
 	return node, nil
 }
 
-// setEntry sets name to value in the mapping, replacing an existing entry's value and keeping its comments, or appending the key.
+// setEntry sets name to value in the mapping.
+// An existing entry's value is replaced and its comments are kept; a missing key is appended.
 func setEntry(mapping *yaml.Node, name string, value *yaml.Node) {
 	at := mappingIndex(mapping, name)
 	if at < 0 {
@@ -388,11 +407,12 @@ func setEntry(mapping *yaml.Node, name string, value *yaml.Node) {
 	mapping.Content[at+1] = value
 }
 
-// Prune removes from a sparse existing every unit the template does not know, and returns the pruned bytes and the sorted removed paths.
+// Prune removes from a sparse existing every unit the template does not know.
+// It returns the pruned bytes, the removed paths, and the kept paths, each sorted.
 // A key at a declared openMaps path is known whole, so everything under it stays.
 // A name under a declared perNameMaps path is never removed:
-// one the template lacks stays whole and is reported in kept as P.<name>, sorted.
-// It never adds a key, so it keeps a sparse layer sparse where a full reconcile would scaffold from the template.
+// one the template lacks stays whole and is reported in kept as P.<name>.
+// It never adds a key, so it keeps a sparse layer sparse.
 // A mapping left empty is removed with its key, and an existing left with nothing returns empty bytes.
 // When nothing is removed, existing is returned byte for byte.
 func Prune(template, existing []byte, perNameMaps []string, openMaps ...string) (pruned []byte, removed, kept []string, err error) {
@@ -427,7 +447,8 @@ func Prune(template, existing []byte, perNameMaps []string, openMaps ...string) 
 	return pruned, removed, kept, nil
 }
 
-// pruneMapping removes from the existing mapping, in place, every unit the template mapping does not know, recording each removed unit's path.
+// pruneMapping removes in place, from the existing mapping, every unit the template mapping does not know.
+// It records the path of each removed unit.
 // A name under a per-name map stays whole, and one the template lacks is recorded in kept.
 // template is nil where the template holds no mapping.
 func (rule unitRule) pruneMapping(template, existing *yaml.Node, path string, removed, kept *[]string) {
@@ -471,8 +492,9 @@ func recordKeptNames(template, existing *yaml.Node, path string, kept *[]string)
 	}
 }
 
-// DropTemplateEqualNames removes from a sparse existing every name under a declared perNameMaps path whose value equals the template's, and returns the changed bytes and the removed P.<name> paths, sorted.
-// Equal means the two values decode to the same data, whatever their style or quoting, as in Reconcile.
+// DropTemplateEqualNames removes the names under a declared perNameMaps path whose value equals the template's.
+// It works on a sparse existing, and it returns the changed bytes and the removed P.<name> paths, sorted.
+// Equal means the two values decode to the same data, whatever their style or quoting.
 // A name the template lacks stays, and a mapping the removal leaves empty stays as an empty mapping.
 // When nothing is removed, existing is returned byte for byte.
 func DropTemplateEqualNames(template, existing []byte, perNameMaps []string) (out []byte, dropped []string, err error) {
@@ -524,7 +546,9 @@ func DropTemplateEqualNames(template, existing []byte, perNameMaps []string) (ou
 }
 
 // LeafPaths returns the sorted dotted paths of every unit in doc.
-// A key at a declared openMaps path and, when wholeEntries is true, every top-level key is one unit; an empty mapping counts as one unit too.
+// A key at a declared openMaps path is one unit.
+// When wholeEntries is true, every top-level key is one unit.
+// An empty mapping is one unit too.
 func LeafPaths(doc []byte, openMaps []string, wholeEntries bool) ([]string, error) {
 	_, root, err := parseMappingRoot(doc, "doc")
 	if err != nil {
@@ -557,7 +581,8 @@ func (rule unitRule) mappingUnitPaths(mapping *yaml.Node, path string, topLevel 
 }
 
 // AnnotateLeaves writes each notes[path] as the line comment of the unit at path and returns the re-marshalled document.
-// Units are those LeafPaths returns; a path doc lacks, or that is not a unit, is ignored.
+// Units are as openMaps and wholeEntries define them.
+// A path the document lacks, or that is not a unit, is ignored.
 // A note without a leading # gets "# " in front.
 // An empty or comment-only doc is returned as it is.
 func AnnotateLeaves(doc []byte, notes map[string]string, openMaps []string, wholeEntries bool) ([]byte, error) {
@@ -630,7 +655,8 @@ func mappingIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// nodesEqual reports whether two unexpanded nodes have the same kind, scalar tag and value and children, comments and mapping key order ignored.
+// nodesEqual reports whether two unexpanded nodes have the same kind, scalar tag and value, and children.
+// Comments and mapping key order are ignored.
 func nodesEqual(a, b *yaml.Node) bool {
 	if a == nil || b == nil {
 		return a == b

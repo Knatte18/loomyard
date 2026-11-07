@@ -1,4 +1,4 @@
-// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed, the machine-named landings seam, the binary check the hibernate carrier holds, and the recipe count-to-duration fallback behind the probe interval and quiet window.
+// dobby_test.go pins the dobby's hub wiring that needs no hub, and the recipe count-to-duration fallback.
 
 package beamcli
 

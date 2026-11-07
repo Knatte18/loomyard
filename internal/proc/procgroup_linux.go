@@ -11,10 +11,11 @@ import (
 	"time"
 )
 
-// groupPollInterval is how often awaitGone asks whether the terminated group is empty.
+// groupPollInterval is how often the wait for a terminated group checks whether the group is empty.
 const groupPollInterval = 50 * time.Millisecond
 
-// configurePlatformGroupKill starts cmd in its own process group and makes a cancel SIGKILL the whole group, killing the command alone when the group kill fails.
+// configurePlatformGroupKill starts cmd in its own process group and makes a cancel send SIGKILL to the whole group.
+// When the group kill fails, it kills the command alone.
 func configurePlatformGroupKill(cmd *exec.Cmd, report func(pid int, groupErr error)) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
@@ -28,7 +29,8 @@ func configurePlatformGroupKill(cmd *exec.Cmd, report func(pid int, groupErr err
 	}
 }
 
-// configurePlatformGroupTerminate starts cmd in its own process group and makes a cancel SIGTERM the whole group and arm a SIGKILL of it after killAfter.
+// configurePlatformGroupTerminate starts cmd in its own process group.
+// A cancel sends SIGTERM to the whole group and arms a SIGKILL of it after killAfter.
 // The SIGKILL goes out whether or not the shell has exited, since a descendant may still hold the group.
 // A SIGTERM that fails for a reason other than the group being gone kills the command alone and arms no timer.
 func configurePlatformGroupTerminate(cmd *exec.Cmd, killAfter time.Duration, report func(pid int, sig os.Signal, groupErr error)) (awaitGone func()) {

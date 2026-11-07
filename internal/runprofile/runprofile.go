@@ -1,4 +1,5 @@
-// runprofile.go — the profiles.yaml template, its layered-load spec, and the loader and lookups of the hub's run profiles and each recipe's default profile.
+// runprofile.go holds the profiles.yaml template and its layered-load spec.
+// It also holds the loader and lookups of the hub's run profiles and each recipe's default profile.
 
 package runprofile
 
@@ -20,20 +21,24 @@ import (
 // ModuleName is the config module name of the profiles file, profiles.yaml.
 const ModuleName = "profiles"
 
-// DefaultsEntry is the reserved top-level entry of profiles.yaml that maps a recipe name to the profile a task of that recipe takes when it names none.
+// DefaultsEntry is the reserved top-level entry of profiles.yaml.
+// It maps a recipe name to the profile a task of that recipe takes when it names none.
 const DefaultsEntry = "defaults"
 
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the seed content of profiles.yaml: the starting profiles and defaults a hub's first reconcile writes when the file is absent.
+// ConfigTemplate returns the seed content of profiles.yaml.
+// It holds the starting profiles and defaults that a hub's first reconcile writes when the file is absent.
 func ConfigTemplate() string {
 	return configTemplate
 }
 
 // ConfigSpec returns the module's layered-load spec.
 // It is hub-wide, and each profile, like the defaults entry, is one whole entry set from a JSON object.
-// No entry is open to the local layer: each template entry is classified cross-pair, since every pair naming it reads it, and a hub-wide module refuses an unclassified one.
+// No entry is open to the local layer:
+// each template entry is classified cross-pair, since every pair naming it reads it,
+// and a hub-wide module refuses an unclassified one.
 func ConfigSpec() configengine.Spec {
 	entries := templateEntries()
 	categories := make(map[string]configengine.Category, len(entries))
@@ -61,10 +66,12 @@ func templateEntries() map[string]any {
 	return entries
 }
 
-// Profile maps a recipe name to that recipe's settings: module name to a mapping of that module's config keys, the shape of a board task's run_settings.
+// Profile maps a recipe name to that recipe's settings:
+// module name to a mapping of that module's config keys, the shape of a board task's run_settings.
 type Profile map[string]map[string]any
 
-// Profiles holds the hub's run profiles by name and, under Defaults, the profile name each recipe takes when a task names none.
+// Profiles holds the hub's run profiles by name.
+// Defaults holds the profile name each recipe takes when a task names none.
 type Profiles struct {
 	ByName   map[string]Profile
 	Defaults map[string]string
@@ -86,8 +93,9 @@ func (p Profiles) Lookup(name string) (Profile, error) {
 }
 
 // Settings returns the named profile's settings for recipe, module name to keys.
-// An unknown name, or a profile holding no block for recipe, is an error naming the way forward:
-// the reconcile that renames the block when the profile holds it under the recipe's former name, else naming another profile or adding the block.
+// An unknown name, or a profile holding no block for recipe, is an error naming the way forward.
+// When the profile holds the block under the recipe's former name, the way forward is the reconcile that renames it;
+// otherwise it names another profile or adds the block.
 func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 	profile, err := p.Lookup(name)
 	if err != nil {
@@ -117,7 +125,8 @@ func (p Profiles) Default(recipe string) (string, error) {
 }
 
 // Load reads the hub's run profiles through the layer stack under dirs.
-// The merged layers are decoded as they stand, never filled from the template, so a profile removed from the file stays removed;
+// The merged layers are decoded as they stand, never filled from the template.
+// A profile removed from the file therefore stays removed;
 // with no layer file present the template's profiles are returned.
 // Each profile must be a mapping of recipe name to a mapping of module name to a mapping of keys,
 // and each default must name a profile holding a block for its recipe; an error names the entry and the file.
@@ -167,7 +176,8 @@ func decode(document []byte, source string) (Profiles, error) {
 	return profiles, nil
 }
 
-// decodeProfile checks that value, the profile called name, is a mapping of recipe name to a mapping of module name to a mapping of keys, and returns it.
+// decodeProfile checks that value, the profile called name, is a mapping of recipe name to settings, and returns it.
+// Each recipe's settings must be a mapping of module name to a mapping of keys.
 func decodeProfile(name string, value any) (Profile, error) {
 	recipes, ok := value.(map[string]any)
 	if !ok {
@@ -189,8 +199,9 @@ func decodeProfile(name string, value any) (Profile, error) {
 	return profile, nil
 }
 
-// decodeDefaults checks that value is a mapping of recipe name to the name of a profile in profiles holding a block for that recipe, and returns it.
-// The DefaultsEntry entry is never read as a profile, since decode parses it only through this function.
+// decodeDefaults checks that value is a mapping of recipe name to profile name, and returns it.
+// Each named profile must hold a block for its recipe.
+// The value is the DefaultsEntry entry, which is never read as a profile.
 func decodeDefaults(value any, profiles Profiles) (map[string]string, error) {
 	entries, ok := value.(map[string]any)
 	if !ok {

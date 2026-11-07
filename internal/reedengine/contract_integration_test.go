@@ -1,14 +1,9 @@
-// contract_integration_test.go asserts the full psmux/tmux wire contract that
-// doc.go's "Multiplexer contract surface" section pins, against a real,
-// running instance of the binary LoadConfig resolves (psmux on Windows
-// today, tmux on Linux in the deferred follow-up). It is the canary for both
-// version drift in the on-box binary and the eventual tmux swap — the same
-// assertions run unmodified against whichever binary is configured, and the
-// test self-skips cleanly when that binary is absent. It complements, and
-// does not replace, the existing agent-driven SANDBOX-REED-SUITE: that suite
-// drives a real hub end to end through the CLI, while this test pins the
-// narrower wire-level contract reedengine's own godoc claims, in isolation,
-// on its own scratch socket so it can never collide with a real hub server.
+// contract_integration_test.go pins the psmux/tmux wire contract against the real binary that LoadConfig resolves.
+// It catches drift in that binary, and the same assertions run unchanged against whichever binary is configured.
+// The test skips when that binary is absent.
+// It is separate from the agent-driven SANDBOX-REED-SUITE, which drives a real hub through the CLI.
+// This test pins the narrower wire contract in isolation.
+// It uses its own scratch socket, so it never collides with a real hub server.
 
 package reedengine
 
@@ -75,9 +70,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 
-	// The self-skip: this test's whole point is to validate whatever binary
-	// is actually configured, so an absent binary is "nothing to validate
-	// here", not a failure.
+	// The test validates whatever binary is configured, so an absent binary means nothing to validate, not a failure.
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
@@ -87,16 +80,15 @@ func TestMultiplexerContract(t *testing.T) {
 	session := "contract-session"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
 
-	// new-session: the same shape ensureServerAndSessionLocked spawns
-	// (-x/-y sizing plus a real shell command as the initial pane's command),
-	// against a scratch session/socket this test owns exclusively.
+	// new-session matches the shape ensureServerAndSessionLocked spawns: -x/-y sizing and a real shell command.
+	// The session and socket are scratch ones this test owns exclusively.
 	if err := reed.run("new-session", "-d", "-s", session, "-x", "80", "-y", "24", cfg.Shell); err != nil {
 		t.Fatalf("new-session: %v", err)
 	}
 
-	// remain-on-exit: production always sets this at boot (lifecycle.go);
-	// the dead-pane assertion below depends on it being set here too, since
-	// this scratch session boots independently of ensureServerAndSessionLocked.
+	// remain-on-exit keeps a pane after its command exits, so the dead-pane assertion below can read it.
+	// Production sets it at boot in lifecycle.go.
+	// This scratch session boots without ensureServerAndSessionLocked, so the test sets it too.
 	if err := reed.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
 		t.Fatalf("set-option remain-on-exit: %v", err)
 	}
@@ -110,10 +102,9 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatal("has-session reported the freshly created session absent")
 	}
 
-	// (a) The exact list-panes -F output shape and its parsePaneList parse.
-	// Call the raw format string directly (not through listPanes) so this
-	// assertion catches drift in the literal string itself, not just in
-	// parsePaneList's tolerance of whatever the binary happens to emit.
+	// (a) pins the exact list-panes -F output shape and its parsePaneList parse.
+	// The raw format string is called directly, not through listPanes.
+	// Drift in the literal itself fails here, not only in parsePaneList's tolerance of the output.
 	const paneFormat = "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}"
 	rawOut, err := reed.output("list-panes", "-t", session, "-F", paneFormat)
 	if err != nil {
@@ -145,8 +136,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Errorf("initial pane PID = %d, want a positive OS pid", initialPane.PID)
 	}
 
-	// listPanes (overlay.go) must agree with the raw parse above — it is a
-	// thin wrapper around the same format string and parser.
+	// listPanes (overlay.go) wraps the same format string and parser, so its result matches the raw parse above.
 	viaListPanes, err := reed.listPanes(exactSessionWindowTarget(session))
 	if err != nil {
 		t.Fatalf("listPanes: %v", err)
@@ -155,30 +145,24 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Errorf("listPanes() = %+v, want a single pane matching the raw parse %+v", viaListPanes, initialPane)
 	}
 
-	// pwsh takes a moment to load its profile and print its first prompt;
-	// sending keys before that happens types into a not-yet-listening shell
-	// and capture-pane sees nothing. Poll until the pane has produced some
-	// output before driving it, rather than a fixed sleep.
+	// pwsh takes a moment to print its first prompt, and keys sent before then reach a shell that is not yet listening.
+	// Poll until the pane has output before driving it, rather than sleep for a fixed time.
 	waitUntil(t, 15*time.Second, "initial pane never produced a prompt", func() bool {
 		out, err := reed.output("capture-pane", "-p", "-t", initialPane.ID)
 		return err == nil && strings.TrimSpace(out) != ""
 	})
 
-	// (c) send-keys -l literal handling of a leading-dash payload: psmux/tmux
-	// parses a bare '-'-prefixed literal argument as flags and silently drops
-	// it, so sendKeysLiteralArg's one-space prefix must make it through to
-	// the pane verbatim. Typed without a trailing Enter so this checks
-	// delivery, not shell execution semantics.
+	// (c) send-keys -l with a leading-dash payload: psmux/tmux parses a bare '-'-prefixed literal as flags and drops it.
+	// sendKeysLiteralArg's one-space prefix must carry the payload through to the pane verbatim.
+	// The payload is typed without a trailing Enter, so this checks delivery, not shell execution.
 	const dashPayload = "-contract-dash-marker"
 	if err := reed.run("send-keys", "-t", initialPane.ID, "-l", sendKeysLiteralArg(dashPayload)); err != nil {
 		t.Fatalf("send-keys -l %q: %v", dashPayload, err)
 	}
-	// capture-pane wraps its 80-column pane at the terminal width, which can
-	// split the payload word across a line break (e.g. a long cwd in the
-	// prompt pushes the wrap point mid-word). Stripping embedded newlines
-	// before matching re-joins any such wrap without altering the typed
-	// character sequence itself, so the assertion checks delivery, not
-	// terminal line-wrapping.
+	// capture-pane wraps output at the 80-column pane width, which can split the payload word across a line break.
+	// A long cwd in the prompt can push the wrap point mid-word.
+	// Stripping embedded newlines before matching rejoins any such wrap.
+	// The assertion checks delivery, not terminal line-wrapping.
 	var lastCapture string
 	waitUntil(t, 10*time.Second, fmt.Sprintf("capture-pane never showed the literal payload %q", dashPayload), func() bool {
 		out, err := reed.output("capture-pane", "-p", "-t", initialPane.ID)
@@ -196,7 +180,8 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("send-keys C-c: %v", err)
 	}
 
-	// (b) split-window: the raw split the wire contract still has to honour, though launchStrandLocked now creates every pane through new-window.
+	// (b) split-window: the raw split the wire contract must honour.
+	// launchStrandLocked creates every pane through new-window.
 	splitOut, err := reed.output("split-window", "-t", initialPane.ID, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		t.Fatalf("split-window: %v", err)
@@ -207,27 +192,26 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 
 	// (c) select-layout succeeds against the live pane set.
-	// A built-in tmux/psmux layout keyword is enough here, since this only needs to prove the subcommand itself works against a live, two-pane session.
+	// A built-in tmux/psmux layout keyword is enough:
+	// the check only needs to show the subcommand works against a live two-pane session.
 	if err := reed.run("select-layout", "-t", session, "even-vertical"); err != nil {
 		t.Fatalf("select-layout: %v", err)
 	}
 
-	// (b) select-pane: focus the second pane.
 	if err := reed.run("select-pane", "-t", secondPaneID); err != nil {
 		t.Fatalf("select-pane: %v", err)
 	}
 
-	// set-hook / resize-pane: reed's first deliberately OPTIONAL wire surface — absent from
-	// requiredSubcommands on purpose (doc.go's "Subcommand set" paragraph), so this section
-	// documents their semantics rather than gating the capability probe on them. Both wire
-	// behaviours the resize-pin hook (windowsize.go) rests on, and that no unit test can reach,
-	// are pinned here: array independence across set-hook -u / set-hook / set-hook -a, and a
-	// window-resized hook firing AFTER tmux has already resized the layout.
+	// set-hook and resize-pane are optional wire surface: they are left out of requiredSubcommands,
+	// so this section documents their semantics instead of gating the capability probe on them.
+	// It pins two wire behaviours that the resize-pin hook in windowsize.go relies on and no unit test can reach:
+	// array independence across set-hook -u, set-hook and set-hook -a,
+	// and a window-resized hook firing after tmux has already resized the layout.
 	windowTarget := exactSessionWindowTarget(session)
 
-	// First: set-hook -u followed by set-hook and one set-hook -a yields INDEPENDENT array
-	// entries. Entry [0] deliberately names a pane id no session on this socket owns, so the
-	// live-firing half below can assert its failure does not take entry [1] down with it.
+	// set-hook -u followed by set-hook and set-hook -a yields independent array entries.
+	// Entry [0] names a pane id that no session on this socket owns.
+	// The live-firing half below can assert that its failure does not take entry [1] down with it.
 	if err := reed.run("set-hook", "-u", "-w", "-t", windowTarget, "window-resized"); err != nil {
 		t.Fatalf("set-hook -u -w -t %q window-resized: %v", windowTarget, err)
 	}
@@ -238,8 +222,8 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("set-hook -a -w -t %q window-resized (entry [1]): %v", windowTarget, err)
 	}
 
-	// Read the array back: one line per entry, each naming its own pane id — the readback shape
-	// verified live on tmux 3.6.
+	// Read the array back: one line per entry, each naming its own pane id.
+	// The readback shape is the one tmux 3.6 prints.
 	hooksOut, err := reed.output("show-hooks", "-w", "-t", windowTarget)
 	if err != nil {
 		t.Fatalf("show-hooks -w -t %q: %v", windowTarget, err)
@@ -251,10 +235,10 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Errorf("show-hooks -w -t %q = %q, want a window-resized[1] line naming pane %s", windowTarget, hooksOut, initialPane.ID)
 	}
 
-	// Second: a window-resized hook fires AFTER tmux has resized the layout, so a resize-pane -y
-	// inside it survives the resize that triggered it — and the dead entry [0] above does not
-	// take entry [1] down with it. window-size manual is required to make a DETACHED session
-	// resizable at all.
+	// A window-resized hook fires after tmux has resized the layout,
+	// so a resize-pane -y inside it survives the resize that triggered it,
+	// and the dead entry [0] does not take entry [1] down with it.
+	// window-size manual is required to make a detached session resizable at all.
 	if err := reed.run("set-option", "-w", "-t", windowTarget, "window-size", "manual"); err != nil {
 		t.Fatalf("set-option -w -t %q window-size manual: %v", windowTarget, err)
 	}
@@ -293,10 +277,9 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Errorf("pane %s height after resize-window = %d, want exactly 1 (the resize-pane -y entry [1] fired after tmux's own resize and pinned it)", initialPane.ID, pinnedHeight)
 	}
 
-	// Leave the window as the later steps of this test expect to find it, using two named
-	// mechanisms and no ad-hoc readback-and-restore: clear the hook array, and drop the
-	// window-size override with the -u unset form rather than reading the prior value back and
-	// re-setting it.
+	// Leave the window as the later steps expect it.
+	// Clear the hook array, and drop the window-size override with the -u unset form.
+	// Reading the prior value back and re-setting it would be the ad-hoc alternative.
 	if err := reed.run("set-hook", "-u", "-w", "-t", windowTarget, "window-resized"); err != nil {
 		t.Fatalf("set-hook -u -w -t %q window-resized (final clear): %v", windowTarget, err)
 	}
@@ -304,8 +287,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("set-option -uw -t %q window-size (unset): %v", windowTarget, err)
 	}
 
-	// (b) list-sessions: the subcommand serverPIDLocked's sibling reap
-	// helpers use to distinguish "no server" from "server up".
+	// (b) list-sessions: distinguishes "no server" from "server up".
 	sessionsOut, err := reed.output("list-sessions", "-F", "#{session_name}")
 	if err != nil {
 		t.Fatalf("list-sessions: %v", err)
@@ -314,8 +296,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Errorf("list-sessions -F #{session_name} = %q, want %q", strings.TrimSpace(sessionsOut), session)
 	}
 
-	// (b) display-message: the #{pid} format variable serverPIDLocked relies
-	// on to name the server's OS pid for Down's process-exit wait.
+	// (b) display-message: the #{pid} format variable names the server's OS pid that Down's process-exit wait needs.
 	pidOut, err := reed.output("display-message", "-p", "-t", session, "#{pid}")
 	if err != nil {
 		t.Fatalf("display-message: %v", err)
@@ -324,9 +305,8 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Errorf("display-message -p #{pid} = %q, want a positive integer pid", pidOut)
 	}
 
-	// (c) remain-on-exit keeps a dead pane visible with pane_dead=1: make the
-	// second pane's shell exit, then poll until list-panes reports it dead
-	// rather than absent.
+	// (c) remain-on-exit keeps a dead pane visible with pane_dead=1:
+	// make the second pane's shell exit, then poll until list-panes reports it dead rather than absent.
 	if err := reed.run("send-keys", "-t", secondPaneID, "-l", "exit"); err != nil {
 		t.Fatalf("send-keys exit: %v", err)
 	}
@@ -343,13 +323,11 @@ func TestMultiplexerContract(t *testing.T) {
 				return p.Dead
 			}
 		}
-		// Absent entirely (not merely dead) would be remain-on-exit failing
-		// to keep the corpse visible — treat that as "not yet satisfied"
-		// too, so the deadline message covers both failure shapes.
+		// An absent pane, not merely a dead one, means remain-on-exit failed to keep the corpse visible,
+		// so the poll treats it as not yet satisfied, and the deadline message covers both failure shapes.
 		return false
 	})
 
-	// (b) kill-pane: reap the now-dead second pane.
 	if err := reed.run("kill-pane", "-t", secondPaneID); err != nil {
 		t.Fatalf("kill-pane: %v", err)
 	}
@@ -363,8 +341,7 @@ func TestMultiplexerContract(t *testing.T) {
 		}
 	}
 
-	// (b) kill-session: tear the session down while the scratch server
-	// itself is left for t.Cleanup's kill-server to reap.
+	// (b) kill-session: the scratch server is left running for t.Cleanup's kill-server to reap.
 	if err := reed.run("kill-session", "-t", session); err != nil {
 		t.Fatalf("kill-session: %v", err)
 	}
@@ -373,18 +350,15 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 }
 
-// TestExactSessionTargetsNeverPrefixMatchSiblings pins the exact-match target forms
-// exactSessionTarget ("=<name>") and exactSessionWindowTarget ("=<name>:") against a real
-// multiplexer.
-// tmux resolves a bare -t session name by exact match first but falls back to PREFIX matching when
-// no exact match exists — so with sessions "repo" and "repo2" on one shared per-hub server (exactly
-// what two prefix-sharing sibling worktrees produce), a bare `kill-session -t repo` issued after
-// "repo" is already gone KILLS "repo2", and a bare `has-session -t repo` false-positives on it
-// (both verified live on tmux 3.6, which is what motivated the "=" forms).
-// This test asserts the engine's two target grammars behave exactly: they resolve the exact-named
-// session while it exists, error (rather than prefix-match the sibling) once it is gone, and never
-// touch the sibling — the canary for a configured binary (psmux) that does not implement the "="
-// target syntax.
+// TestExactSessionTargetsNeverPrefixMatchSiblings checks the exact-match target forms.
+// They are "=<name>" for a session and "=<name>:" for its window.
+// Each resolves only the named session on a real multiplexer.
+// A bare -t name falls back to prefix matching when no session matches exactly.
+// With sessions "repo" and "repo2" on one server, a bare kill-session -t repo after "repo" is gone kills "repo2",
+// and a bare has-session -t repo reports "repo2" present.
+// The test asserts that the exact forms resolve the named session while it exists,
+// and that they error once it is gone without touching the sibling.
+// It is the canary for a configured binary, such as psmux, that lacks the "=" target syntax.
 func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -400,9 +374,7 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	}
 
 	socket := tmuxkit.PackageServer(t, cfg.Tmux)
-	// sibling's name deliberately extends session's, so any prefix-match
-	// fallback in the binary would resolve session-targets onto the sibling
-	// once the exact-named session is gone.
+	// The sibling's name extends session's, so a prefix-match fallback would hit the sibling once session is gone.
 	const session = "exact-target"
 	const sibling = "exact-target2"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
@@ -450,19 +422,18 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	}
 }
 
-// TestDisplayMessageDoesNotErrorForAnAbsentSession pins the wire-contract fact the pane-generation
-// guards rest on, and which the code that spends it originally documented backwards (R6 review
-// finding R6-F4).
+// TestDisplayMessageDoesNotErrorForAnAbsentSession pins the wire-contract fact that the pane-generation
+// guards rely on: display-message does not report an absent session as an error.
 //
 // Unlike has-session and list-panes, which exit 1 for a -t target naming no session, display-message
-// exits 0 and expands every session-scoped format to empty while the server-global #{pid} still
-// fills — and it does NOT fall back to a current session when other sessions exist on the socket.
-// The generation probe's absent-session case therefore surfaces as parsePaneGeneration's empty-field
-// rejection rather than as a tmux error, so that rejection is load-bearing rather than cosmetic:
-// relaxing it would turn the still-running-orphan check into one that never refuses and
-// adoptPaneGenerationLocked into one that clears every worktree's bindings on every op.
-// The assertions below are therefore paired — the raw wire answer AND what parsePaneGeneration makes
-// of it — so the connection cannot be broken from either end without a failure.
+// exits 0 and expands every session-scoped format to empty while the server-global #{pid} still fills.
+// It does not fall back to a current session when other sessions exist on the socket.
+// The generation probe's absent-session case therefore surfaces as parsePaneGeneration's empty-field rejection.
+// That rejection is load-bearing.
+// Relaxing it would stop the still-running-orphan check from ever refusing.
+// It would also let adoptPaneGenerationLocked clear every worktree's bindings on every op.
+// The assertions below pair the raw wire answer with what parsePaneGeneration makes of it,
+// so the connection cannot be broken from either end without a failure.
 func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -499,8 +470,8 @@ func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 		t.Errorf("parsePaneGeneration(%q) = %+v; want a recorded generation", out, presentGeneration)
 	}
 
-	// The absent session answers with EXIT 0 — the whole point of this test. A future tmux that
-	// errors here instead would make the probe's error path mean two different things.
+	// The absent session answers with exit 0.
+	// A tmux that errors here instead would make the probe's error path mean two different things.
 	absentOut, err := reed.output("display-message", "-p", "-t", exactSessionWindowTarget(absent), paneGenerationFormat)
 	if err != nil {
 		t.Fatalf("display-message for the absent session %q = %v; want no error — the guards in generation.go are built on display-message NOT reporting absence as an error, and doc.go states that as a pinned contract", absent, err)
@@ -522,15 +493,15 @@ func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 }
 
 // TestSessionNameRewriteIsSilentAndExactTargetsMissIt pins the wire-contract fact behind
-// validateToldTmuxIdentity (server.go): tmux does not REJECT a session name containing '.' or ':' —
-// it rewrites each to '_', creates the session under the rewritten name, and exits 0.
-// That silence is the whole hazard. Every session target this package issues is the exact-match
-// "=<name>" form, so the created session is unreachable by the very name that created it: the boot
-// loop polls forever, the operator sees a timeout naming no cause, and the rewritten session is left
-// squatting on a shared per-hub server with no reed verb able to address it.
-// Pinning it here, in the file that owns doc.go's multiplexer-contract claims, is what makes a
-// future tmux behaviour change (a hard rejection, a different substitute character, a wider rewrite
-// set) surface as a test failure rather than as a silently-weakened guard.
+// validateToldTmuxIdentity (server.go): tmux does not reject a session name containing '.' or ':'.
+// It rewrites each to '_', creates the session under the rewritten name, and exits 0.
+// That silence is the hazard.
+// Every session target this package issues is the exact-match "=<name>" form,
+// so the created session cannot be reached by the name that created it.
+// The boot loop polls forever, the operator sees a timeout naming no cause,
+// and the rewritten session is left on a shared per-hub server with no reed verb able to address it.
+// A future tmux change would then fail a test rather than silently weakening the guard.
+// It might be a hard rejection, a different substitute character, or a wider rewrite set.
 func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -555,11 +526,8 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 	}{
 		{"dot", "rewrite-dot.v2", "rewrite-dot_v2"},
 		{"colon", "rewrite-colon:v2", "rewrite-colon_v2"},
-		// The vis-encode half of the rewrite (R3-F1): a raw TAB becomes the
-		// TWO literal characters backslash-t, not '_' — a different rewrite
-		// mechanism with the same silence, pinned here so a tmux that starts
-		// rejecting (or differently encoding) control characters surfaces as
-		// a failure rather than a silently-weakened guard.
+		// The vis-encode half of the same rewrite: a raw TAB becomes two literal characters, backslash and t, not '_'.
+		// It is pinned so that a tmux which starts rejecting or re-encoding control characters fails here.
 		{"tab", "rewrite-tab\tv2", `rewrite-tab\tv2`},
 	}
 	for _, tt := range tests {
@@ -582,34 +550,23 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 				t.Fatalf("list-sessions = %v; want the requested name %q ABSENT — if tmux stopped rewriting, validateToldTmuxIdentity's ban is now over-strict and must be revisited", names, tt.requested)
 			}
 
-			// And the exact-match target this package always uses misses it,
-			// which is what makes the created session untearable by reed.
+			// The exact-match target this package always uses misses it as well.
+			// So reed cannot tear the session down.
 			if up, err := reed.hasSession(tt.requested); err != nil || up {
 				t.Fatalf("hasSession(%q) = (%v, %v); want (false, nil) — an exact target must not resolve the rewritten session", tt.requested, up, err)
 			}
-			// Deliberately NOT killed per case: killing the last session on a
-			// socket takes the server down with it, and the next case's
-			// new-session then races that asynchronous teardown ("server exited
-			// unexpectedly", observed while writing this test — the same
-			// async-kill hazard lifecycle.go's own doc comment describes).
-			// Every case's session is torn down together by the package server's kill-server when the package ends.
+			// Sessions are not killed per case: killing the last session on a socket takes the server down with it.
+			// The next case's new-session would then race that asynchronous teardown ("server exited unexpectedly").
+			// The package server's kill-server tears every case's session down together when the package ends.
 		})
 	}
 }
 
-// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the Selvage keepalive regression this
-// batch adds: with the always-present Selvage pane booted, removing a session's sole non-hidden
-// strand must return success, leave reed.json holding zero persisted strands, AND leave both the
-// session and the Selvage pane specifically alive — Selvage's whole purpose.
-// This supersedes the original pre-Selvage regression (removing a session's true last pane used to
-// be backend-dependent: tmux destroyed the session outright, forcing RemoveStrand to swallow the
-// resulting "no server running" error as an expected success — see removalEmptiedSession,
-// strand.go).
-// With Selvage as a permanent second pane, killing the strand's pane is never a
-// last-pane-destroy on ANY backend, so that swallow branch is no longer reached by this scenario at
-// all;
-// it remains in place for the (now believed unreachable in practice, but still defensive) case
-// where Selvage is itself somehow absent.
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds checks removing a session's sole non-hidden strand.
+// It requires success, zero persisted strands in reed.json, and both the session and the Selvage pane still alive.
+// Selvage is a permanent second pane, so killing the strand's pane is never the last pane destroyed on any backend.
+// The empty-session branch of RemoveStrand is therefore not reached here.
+// It stays as a guard for when Selvage is absent.
 func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -621,18 +578,17 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 
-	// The self-skip: on a box without the configured multiplexer binary
-	// there is nothing to drive, matching TestMultiplexerContract's guard.
+	// On a box without the configured multiplexer binary there is nothing to drive,
+	// so the test skips, as TestMultiplexerContract does.
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	// A Geometry literal rooted at a scratch tmpDir, mirroring newTestEngine's
-	// (lock_test.go) hub/worktree-root shape but built against the real,
-	// LoadConfig-resolved cfg rather than the does-not-exist stub paths
-	// newTestEngine deliberately uses. Built directly rather than via
-	// hubgeom.ReedGeometry: hubgeom imports reedengine, so an in-package test
-	// importing it would close an import cycle.
+	// The Geometry literal is rooted at a scratch tmpDir and built against the LoadConfig-resolved cfg.
+	// Its hub and worktree-root shape mirrors newTestEngine in enginefixture_helper_test.go.
+	// newTestEngine uses stub paths that do not exist; this literal does not.
+	// It is built directly rather than through hubgeom.ReedGeometry, because hubgeom imports reedengine,
+	// and an in-package test importing it would close an import cycle.
 	hub := filepath.Dir(tmpDir)
 	geom := Geometry{
 		SocketKey:     ServerName(hub),
@@ -648,17 +604,18 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	}
 	e := New(cfg, geom, testScrub)
 
-	// Registered before the Down cleanup so it runs after it (cleanups run last-in-first-out).
-	// It is the belt-and-suspenders guard against a leaked scratch server on a genuine test failure that never reached RemoveStrand, and it removes the server's socket file.
+	// Registered before the Down cleanup, so it runs after it (cleanups run last-in-first-out).
+	// It guards against a scratch server leaked by a test failure that never reached RemoveStrand,
+	// and it removes the server's socket file.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
-		// Best-effort: the fix under test is expected to have already torn
-		// the session (and, on tmux, the whole server, since it was this
-		// scratch server's only session) down, so Down's own error here is
-		// unsurprising and ignored.
+		// Best-effort: the code under test has normally already torn the session down.
+		// On tmux the whole server goes too, since this scratch server held only that session;
+		// Down's error here is therefore expected and ignored.
 		_, _ = e.Down()
 
-		// Reed removes the socket file of the server it just tore down; the KillOnCleanup above runs after this and would hide a missed removal, so the check sits here.
+		// Reed removes the socket file of the server it tore down;
+		// the KillOnCleanup above runs after this and would hide a missed removal, so the check sits here.
 		if runtime.GOOS != "windows" {
 			if _, err := os.Lstat(filepath.Join(socketDirFromEnv(), geom.SocketKey)); err == nil {
 				t.Errorf("socket file for key %q remains after Down, want it removed", geom.SocketKey)
@@ -670,17 +627,16 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	// Selvage is booted as part of Up, before any strand exists;
-	// capture its id so the post-remove assertions below can confirm it
-	// specifically (not merely "some pane") survived.
+	// Selvage is booted as part of Up, before any strand exists.
+	// Its id is captured so the post-remove assertions can confirm that this pane, not merely some pane, survived.
 	upSt, err := LoadState(e.stateDir())
 	if err != nil || upSt == nil || upSt.SelvagePaneID == "" {
 		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted SelvagePaneID", upSt, err)
 	}
 	selvagePaneID := upSt.SelvagePaneID
 
-	// One non-hidden strand, anchored so it is realized into a live pane at
-	// add time; a long-lived command so it is still running when removed.
+	// One non-hidden strand, anchored so it is realized into a live pane at add time.
+	// Its command is long-lived, so the strand is still running when removed.
 	strand, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
 		Display: render.Display{Anchor: render.AnchorOwnWindow},
@@ -697,16 +653,15 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("RemoveStrand.Removed.Strands = %+v, want exactly guid %q", removed.Strands, strand.GUID)
 	}
 
-	// Persistence is the resurrect-on-resume guard: removeStrandLocked only
-	// prunes st.Strands in memory, so this must reload from disk rather than
-	// trust the in-memory Removed result above.
+	// Persistence is the guard against a removed strand reappearing on resume.
+	// removeStrandLocked prunes st.Strands in memory only.
+	// So this must reload from disk, not trust the in-memory Removed result above.
 	waitUntil(t, 5*time.Second, "persisted reed.json never reflected the emptied strand table", func() bool {
 		st, err := LoadState(e.stateDir())
 		return err == nil && st != nil && len(st.Strands) == 0
 	})
 
-	// The keepalive guarantee this batch adds: the session, and Selvage
-	// specifically, must still be alive with zero strands tracked.
+	// The session, and Selvage specifically, must still be alive with zero strands tracked.
 	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil || !up {
 		t.Fatalf("hasSession after removing the sole strand = (%v, %v), want (true, nil) — Selvage must keep the session alive", up, err)
@@ -729,12 +684,15 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	}
 }
 
-// TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout drives the dead-Selvage lifecycle end to end against a real multiplexer.
-// Selvage's shell process exits (pane_dead=1 under remain-on-exit), and the next Up must heal Selvage:
-// split a fresh Selvage off the corpse, which is the window's only pane, kill the corpse and persist the new id.
+// TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout drives the dead-Selvage lifecycle end to end.
+// It runs against a real multiplexer.
+// Selvage's shell process exits, leaving its pane dead (pane_dead=1 under remain-on-exit).
+// The next Up must heal Selvage by splitting a fresh one off the corpse, the window's only pane.
+// It then kills the corpse and persists the new id.
 // It must not treat the corpse as a working Selvage.
-// After a fresh up, after the healing up and after a resize-window of the session run with no client attached, the shell window lists exactly one pane.
-// That pane is the alive Selvage, and its height equals the window's height.
+// The shell window must hold exactly one pane after a fresh up.
+// It must still hold exactly one after the healing up and after a resize-window with no client attached.
+// That pane is the live Selvage, and its height equals the window's height.
 // The fixture attaches no client, so window-size latest has none to follow.
 func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -781,11 +739,9 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 
 	assertOnlySelvageFillsTheWindow(t, e, st.SelvagePaneID, "after a fresh up")
 
-	// Kill Selvage's shell by pid: Selvage does not read stdin the way a
-	// script-driven pane would react to typed input, so killing
-	// #{pane_pid} is how a real shell death looks to tmux. remain-on-exit
-	// then corpses the pane (pane_dead=1); the flip is asynchronous, so
-	// poll.
+	// Kill Selvage's shell by pid: Selvage does not read stdin the way a script-driven pane would react to typed input.
+	// Killing #{pane_pid} is how a real shell death looks to tmux.
+	// remain-on-exit then corpses the pane (pane_dead=1), and the flip is asynchronous, so the test polls.
 	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes before Selvage kill: %v", err)
@@ -814,7 +770,8 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		return false
 	})
 
-	// The heal: Up must replace the corpse, which is the window's only pane, with a fresh, alive Selvage that fills the window, and persist its id.
+	// The heal: Up must replace the corpse, which is the window's only pane.
+	// It must put a fresh, alive Selvage in its place, one that fills the window, and persist its id.
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up (heal) = %v, want success", err)
 	}
@@ -835,8 +792,8 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	assertOnlySelvageFillsTheWindow(t, e, st.SelvagePaneID, "after a resize-window")
 }
 
-// assertOnlySelvageFillsTheWindow asserts the shell window lists exactly one pane, the alive Selvage selvagePaneID,
-// and that its height equals the window's height.
+// assertOnlySelvageFillsTheWindow asserts that the shell window lists exactly one pane: the alive Selvage selvagePaneID.
+// That pane's height must equal the window's height.
 func assertOnlySelvageFillsTheWindow(t *testing.T, e *Engine, selvagePaneID, step string) {
 	t.Helper()
 	target := exactSessionWindowTarget(e.SessionName())
@@ -862,7 +819,8 @@ func assertOnlySelvageFillsTheWindow(t *testing.T, e *Engine, selvagePaneID, ste
 
 // TestStrandOpsIgnoreASecondCurrentWindow pins the window seam against a real multiplexer:
 // with another window made current in the session, the seam still resolves the window holding the strands.
-// An enumeration op (AddStrand) then lands the new strand in a window of its own and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
+// An enumeration op, AddStrand, lands the new strand in a window of its own.
+// The other window's pane stays unreaped, and the session-scoped pane-generation read still answers.
 func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()

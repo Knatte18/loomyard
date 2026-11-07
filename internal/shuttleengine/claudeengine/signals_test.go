@@ -37,8 +37,11 @@ func signalPayload(t *testing.T, hook string, fields map[string]any) string {
 }
 
 // TestParseSessionSignals covers how hook lines become session signals.
-// Its rows cover each hook's kind and fields, the stamp pairing and its zero-time cases, the held trailing stamps across incremental reads, and the background tasks a turn end reads from the transcript at parse time.
-// Every row feeds its chunks one at a time, each call resuming at the previous call's consumed, and the signals of all calls must equal one whole-data call's.
+// Its rows cover each hook's kind and fields and the stamp pairing, zero-time cases included.
+// They also cover the held trailing stamps across incremental reads,
+// and the background tasks a turn end reads from the transcript at parse time.
+// Every row feeds its chunks one at a time, each call resuming at the previous call's consumed,
+// and the signals of all calls must equal one whole-data call's.
 func TestParseSessionSignals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -350,7 +353,8 @@ func TestParseSessionSignals(t *testing.T) {
 	}
 }
 
-// assertSignals fails when got differs from want in every field but Raw, and when a signal's Raw is not the JSON line it was read from.
+// assertSignals fails when got differs from want in every field but Raw.
+// It also fails when a signal's Raw is not the JSON line it was read from.
 func assertSignals(t *testing.T, label string, got, want []shuttleengine.SessionSignal) {
 	t.Helper()
 	stripped := make([]shuttleengine.SessionSignal, len(got))

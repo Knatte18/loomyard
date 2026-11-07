@@ -1,7 +1,7 @@
-// recipe_test.go carries the tests whose subject is the recipe itself rather than New's built
-// list: the shape assertion against the recipe-built list, the structural check over the parsed
-// recipe, the two split-argument coherence failures New itself performs, the construction-failure
-// surface a bad Env field produces, and the seed/resume row-name pin.
+// recipe_test.go holds the tests whose subject is the recipe itself rather than New's built list.
+// They cover the shape assertion against the recipe-built list and the structural check over the parsed recipe;
+// the two split-argument coherence failures New performs;
+// the construction-failure surface a bad Env field produces, and the seed/resume row-name pin.
 
 package loomrecipe
 
@@ -20,8 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t) and asserts row order and concrete Producer type against wantProducerTable.
-// It also asserts the perch shape over the built rows: every Bouncer's OnStuck names a review row whose OnStuck names a fix row whose OnStuck names the Bouncer back, with equal Segment and MaxBounces, and no row is unreachable through OnDone/OnStuck from the first row.
+// TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t).
+// It asserts row order and concrete Producer type against wantProducerTable.
+// It also asserts the perch shape over the built rows.
+// Every Bouncer's OnStuck names a review row; that review row's OnStuck names a fix row;
+// that fix row's OnStuck names the Bouncer back, and the three rows have equal Segment and MaxBounces.
+// No row is unreachable through OnDone/OnStuck from the first row.
 func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -89,12 +93,12 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	}
 }
 
-// TestRecipe_StructuralCheckHasNoFindings parses each embedded recipe through shedbuild.Parse, builds
-// it through shedbuild.Build against testEnv(t)'s Env, and asserts shedbuild.Check(recipe, built)
-// returns no findings.
+// TestRecipe_StructuralCheckHasNoFindings parses each embedded recipe through shedbuild.Parse.
+// It builds the parsed recipe through shedbuild.Build against testEnv(t)'s Env.
+// It then asserts that shedbuild.Check(recipe, built) returns no findings.
 //
-// This goes through Parse/Build rather than through New deliberately: it needs the parsed Recipe
-// value, which New does not return, so it must not be "simplified" back onto New.
+// This goes through Parse/Build rather than through New: it needs the parsed Recipe value, which New does not return,
+// so it must not be "simplified" back onto New.
 // The tapestry recipe holds a block row, so its parsed recipe is expanded before it is built.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -123,8 +127,9 @@ func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	}
 }
 
-// TestNew_StatusPathCoherence protects the split ShedPaths carries a duplicate of Env.StatusPath and Env.StatusLockPath needs.
-// A divergent fill between the Env copy and the ShedPaths copy (read by Shed) is silent, Shed persisting to one file while a row reads another, which is exactly why New checks it itself, ahead of shedbuild.Build.
+// TestNew_StatusPathCoherence protects the split: ShedPaths holds duplicates of Env.StatusPath and Env.StatusLockPath.
+// A divergent fill between the Env copy and the ShedPaths copy (read by Shed) is silent:
+// Shed persists to one file while a row reads another, so New checks the pair itself, ahead of shedbuild.Build.
 func TestNew_StatusPathCoherence(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("StatusPath", func(t *testing.T) {
@@ -160,11 +165,10 @@ func TestNew_StatusPathCoherence(t *testing.T) {
 	})
 }
 
-// TestNew_ConstructionFailureNamesOffendingRow is the replacement for the deleted
-// TestNew_NilPreflightReturnsError and covers the same class of failure at the layer that now owns
-// it: an Env with an empty Cwd makes New return a non-nil error and a nil *shedengine.Shed, because
-// preflightEntry's requireAbsRoot("Preflight", "Cwd", …) rejects it, wrapped by shedbuild with the
-// row's zero-based index and quoted name.
+// TestNew_ConstructionFailureNamesOffendingRow covers a construction failure that names the offending row.
+// An Env with an empty Cwd makes New return a non-nil error and a nil *shedengine.Shed:
+// preflightEntry's requireAbsRoot("Preflight", "Cwd", …) rejects it.
+// shedbuild wraps that error with the row's zero-based index and quoted name.
 func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -182,14 +186,15 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 	}
 }
 
-// TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession, the pawl recipe's BeamUp, BeamAwait and BeamDown and the raddle recipe's RaddleWrite and RaddleFile, sorted and de-duplicated -- derived from wantProducerTable's own engine
-// column rather than a second hand-written literal, for the same reason its battenrecipe twin
-// gets this test: a silently empty return would disable the cross-consumer coverage guard rather
-// than fail it.
+// TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() returns exactly the engines loom reaches.
+// The expected set is the literal below plus wantProducerTable's engine column, sorted and de-duplicated.
+// A silently empty return would disable the cross-consumer coverage guard rather than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	tiergate.Require(t, 0)
-	// The darn recipe's record row and writer, the sampler recipe's session row and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's; the motif recipe's rows are all tapestry's.
+	// The literal lists the engines a loom row can reach from other recipes:
+	// the darn recipe's record row and writer, the sampler recipe's session row, and the pawl recipe's rows;
+	// the raddle recipe's writer and file follow.
+	// The motif recipe's rows are all tapestry's.
 	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDown", "RaddleWrite", "RaddleFile"}
 	seen := map[string]bool{}
 	for _, engine := range want {
@@ -217,7 +222,8 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	}
 }
 
-// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its expanded shedbuild rows in order, block fields included, and that an unknown recipe name is refused.
+// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its expanded shedbuild rows.
+// They must match in order, block fields included, and an unknown recipe name is refused.
 func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tt := range []struct {
@@ -283,7 +289,8 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	}
 }
 
-// TestAmendmentTarget pins that loom's recipe names Plan-Burler-Review, that darn's and batten's name none, and that an unknown recipe name is refused.
+// TestAmendmentTarget pins that loom's recipe names Plan-Burler-Review and that darn's and batten's name none;
+// an unknown recipe name is refused.
 func TestAmendmentTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -377,7 +384,8 @@ func TestEntryNumbers(t *testing.T) {
 	}
 }
 
-// TestRecipe_FinalizeDeclaresNoReroute pins that the tapestry recipe has a Finalize row and that it declares no reroute edge.
+// TestRecipe_FinalizeDeclaresNoReroute pins that the tapestry recipe has a Finalize row;
+// it declares no reroute edge.
 func TestRecipe_FinalizeDeclaresNoReroute(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -400,7 +408,9 @@ func TestRecipe_FinalizeDeclaresNoReroute(t *testing.T) {
 	}
 }
 
-// TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels:the Webster row reroutes to Plan-Burler-Review, whose fasit instructions name the conflict record by the path websterengine declares.
+// TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels.
+// The Webster row reroutes to Plan-Burler-Review.
+// Its fasit instructions name the conflict record by the path that websterengine declares.
 func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)

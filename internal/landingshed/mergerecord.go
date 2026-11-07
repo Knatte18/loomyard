@@ -36,7 +36,8 @@ type MergeRecord struct {
 	ParentBranch string `yaml:"parent_branch"`
 	// MergedTip is the parent tip the merge brought in.
 	MergedTip string `yaml:"merged_tip"`
-	// AlignedTip is the parent tip up to which the merge fixer has read what the parent brought in, empty before the first alignment.
+	// AlignedTip is the parent tip up to which the merge fixer has read what the parent brought in.
+	// It is empty before the first alignment.
 	AlignedTip string `yaml:"aligned_tip"`
 	// TaskBase is the parent tip last merged into the task before this merge, the fork point before any merge-in.
 	TaskBase string `yaml:"task_base"`
@@ -81,8 +82,8 @@ func WriteMergeRecord(path string, rec MergeRecord) error {
 	return writeBytesAtomic(path, "merge-record", data)
 }
 
-// writeBytesAtomic writes data to path through a temp file in the same directory and a rename, creating the parent directory;
-// kind names the record in error messages.
+// writeBytesAtomic writes data to path through a temp file in the same directory and a rename.
+// It creates the parent directory, and kind names the record in error messages.
 func writeBytesAtomic(path, kind string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

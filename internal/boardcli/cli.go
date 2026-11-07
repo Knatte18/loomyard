@@ -2,14 +2,14 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// promote, rename, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// Command itself builds the remaining verbs, such as promote, rename, raddle and sync.
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
 // The config file (readme, design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml, whatever worktree the verb runs in,
 // and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lymcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
-// process launched by spawn.go, bypassing both config and path resolution.
+// process launched by internal/boardengine/spawn.go, bypassing both config and path resolution.
 
 package boardcli
 
@@ -38,7 +38,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// exitDeferredSync ends a deferrable board sync that a pause covers; a test swaps it for a recorder.
+// exitDeferredSync ends a deferrable board sync that a pause covers.
 var exitDeferredSync = func() { os.Exit(0) }
 
 // Command returns the cobra command tree for the board module.
@@ -116,11 +116,11 @@ available subcommands without requiring a git repo.
 
 		var cfg boardengine.Config
 
-		// If --board-path is set, use it directly (internal use for detached sync child).
+		// The detached sync child passes --board-path, so it skips config and path resolution.
 		if *boardPathFlag != "" {
 			cfg = boardengine.Config{Path: *boardPathFlag}
 		} else {
-			// Resolve configuration from the current working directory.
+			// The working directory locates the worktree layout; config and the data dir follow from it.
 			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
@@ -484,10 +484,10 @@ func slugLimitNote() string {
 	return fmt.Sprintf("\n\nA slug is at most %d characters.", boardengine.MaxSlugLength)
 }
 
-// entrySelector is the group of keys of which one names the entry a payload addresses.
+// entrySelector lists the keys, exactly one of which names the entry a payload addresses.
 var entrySelector = []string{"slug", "id", "handle"}
 
-// lookupPayload is the payload of get, remove and promote.
+// lookupPayload is the payload of the verbs that address one entry by its selector.
 var lookupPayload = payloadKeys{exclusive: [][]string{entrySelector}}
 
 // renamePayload is the payload of rename.
@@ -499,7 +499,8 @@ var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][]
 // setDepsPayload is the payload of set-deps.
 var setDepsPayload = payloadKeys{required: []string{"depends_on"}, exclusive: [][]string{entrySelector}}
 
-// upsertPayload is the payload of upsert, the <task> upsert-batch and merge nest; the store enforces it on every upsert path.
+// upsertPayload is the payload of upsert, and of the task objects that upsert-batch and merge nest.
+// The store enforces it on every upsert path.
 var upsertPayload = func() payloadKeys {
 	required, optional := boardengine.UpsertPayloadKeys()
 	return payloadKeys{required: required, optional: optional}
@@ -515,7 +516,8 @@ var mergePayload = payloadKeys{
 	nested:   map[string]payloadKeys{"upsert": upsertPayload, "set_status": setStatusPayload},
 }
 
-// storeVerbs builds the nine store verbs over the one store board returns, the upsert paths checking a task's profile against the run profiles profiles returns.
+// storeVerbs builds the store verbs over the one store board returns.
+// The upsert paths check a task's profile against the run profiles that profiles returns.
 func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Profiles, error)) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
@@ -629,7 +631,6 @@ Example:
 				return outputError(out, err.Error())
 			}
 
-			// tasks is required and must be a non-empty array.
 			tasksVal, hasTasksKey := raw["tasks"]
 			if !hasTasksKey || tasksVal == nil {
 				return outputError(out, "missing required field: tasks")
@@ -667,8 +668,7 @@ Example:
 		}),
 	}
 
-	// set-status subcommand: set or clear the status field of a task identified by
-	// slug or numeric id.
+	// set-status subcommand: set or clear the status field of a task identified by slug or numeric id.
 	setStatusCmd := &cobra.Command{
 		Use:         "set-status {slug|id|handle, status}",
 		Short:       "set the status of a task, or release it with null",
@@ -709,7 +709,6 @@ Examples:
 		}),
 	}
 
-	// remove subcommand: remove a task by slug or numeric id.
 	removeCmd := &cobra.Command{
 		Use:         "remove {slug|id|handle}",
 		Short:       "remove a task",
@@ -740,8 +739,8 @@ Examples:
 		}),
 	}
 
-	// get subcommand: fetch a single task by slug or numeric id; returns task:null
-	// for a valid-but-absent target (not an error). Malformed payloads error.
+	// get writes task:null for a valid payload whose target is absent, which is not an error.
+	// A malformed payload is an error.
 	var getBody, getRecord bool
 	getCmd := &cobra.Command{
 		Use:         "get {slug|id|handle}",
@@ -831,7 +830,6 @@ Examples:
 	getCmd.Flags().BoolVar(&getBody, "body", false, "write the entry's body alone, verbatim, instead of the JSON envelope")
 	getCmd.Flags().BoolVar(&getRecord, "record", false, "write the entry's stored decision record alone, verbatim, instead of the JSON envelope")
 
-	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool
 	var listLabels []string
 	var listSort string
@@ -880,7 +878,6 @@ Examples:
 	listCmd.Flags().StringVar(&listSort, "sort", "", "order by date instead of README order: age (oldest first) or revised (longest unrevised first)")
 	listCmd.Flags().StringArrayVar(&listLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
-	// list-full subcommand: list all tasks as stored in board.json.
 	listFullCmd := &cobra.Command{
 		Use:         "list-full",
 		Short:       "list all tasks as stored in board.json",
@@ -894,8 +891,8 @@ Examples:
 		}),
 	}
 
-	// merge subcommand: remove slugs, upsert one task, and optionally set status — atomically.
-	// The inner set_status object is validated identically to the set-status command.
+	// merge folds entries together: it removes slugs, upserts one task, and sets a status, in one atomic write.
+	// The set_status object is checked with the same payload rules as a status change.
 	var mergeBodyFile string
 	mergeCmd := &cobra.Command{
 		Use:         "merge {remove_slugs?, upsert: <task>, set_status?: {slug|id|handle, status}}",
@@ -949,7 +946,6 @@ Example:
 					return outputError(out, err.Error())
 				}
 
-				// Parse remove_slugs (optional, default empty).
 				var removeSlugs []string
 				if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
 					rsArr, ok := rsVal.([]any)
@@ -979,7 +975,7 @@ Example:
 					}
 				}
 
-				// Parse set_status (optional) against the standalone set-status command's own declaration.
+				// Parse set_status (optional) with the key declaration that set-status uses.
 				var setStatusPtr *boardengine.MergeStatusUpdate
 				if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
 					ssBytes, err := json.Marshal(ssVal)
@@ -1016,9 +1012,8 @@ Example:
 	mergeCmd.Flags().StringVar(&mergeBodyFile, "body-file", "", `read the upsert's "body" from this file, or from stdin when "-"`)
 
 	// set-deps subcommand: replace the depends_on list for a task.
-	// depends_on is required (absent errors;
-	// explicit [] clears the list, distinguishing intentional clear from a typo
-	// that would otherwise silently wipe the task's dependency list).
+	// depends_on is required: an absent key is an error, while an explicit [] clears the list.
+	// That separates an intentional clear from a typo that would otherwise silently wipe the list.
 	setDepsCmd := &cobra.Command{
 		Use:         "set-deps {slug|id|handle, depends_on}",
 		Short:       "replace a task's depends_on list",
@@ -1130,8 +1125,10 @@ func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 	return 0
 }
 
-// resolveLookup decodes a payload addressing one entry by slug, id or handle, validates it against keys, and returns the selector and the decoded map.
-// keys declares the slug|id|handle group and any further keys; each of its required keys must be present, and a null value counts as present.
+// resolveLookup decodes a payload that addresses one entry by slug, id or handle.
+// It validates the payload against keys and returns the selector and the decoded map.
+// keys declares the slug|id|handle group and any further keys;
+// each of its required keys must be present, and a null value counts as present.
 // A raw payload that is a bare handle, such as B4, reads as {"handle":"B4"}.
 func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	var m map[string]any
@@ -1155,7 +1152,9 @@ func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	return selector, m, nil
 }
 
-// lookupSelector returns the slug string, the integral float64 id or the boardengine.Handle that m addresses, refusing a payload with none of the three keys or more than one.
+// lookupSelector returns the selector that m addresses.
+// The selector is the slug string, the integral float64 id, or the boardengine.Handle.
+// It refuses a payload that has none of the three keys or more than one.
 func lookupSelector(m map[string]any) (any, error) {
 	given := 0
 	for _, key := range entrySelector {
@@ -1200,16 +1199,15 @@ func lookupSelector(m map[string]any) (any, error) {
 	}
 }
 
-// RunCLI is the public seam for the board module CLI.
+// RunCLI runs the board module CLI against the process working directory, writing to out, and returns the exit code.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the board module CLI with cwd as its working directory.
+// An empty cwd reads the process working directory through clihelp.Execute,
+// and any other value seeds cwd into the execution context through clihelp.ExecuteIn.
+// The empty case cannot go through ExecuteIn, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)
@@ -1237,7 +1235,8 @@ func outputSuccessWithNotice(out io.Writer, notice string) int {
 }
 
 // siblingNotice formats siblings as one line per pair, joined by newlines, and is empty when there are none.
-// Each line names the written task, the dependencies it newly waits on, the sibling that waits on them too and the module labels the two share.
+// Each line names the written task, the dependencies it newly waits on, and the sibling that waits on them too.
+// The line also names the module labels the two share.
 func siblingNotice(siblings []boardengine.Sibling) string {
 	lines := make([]string, len(siblings))
 	for i, sibling := range siblings {
@@ -1248,7 +1247,8 @@ func siblingNotice(siblings []boardengine.Sibling) string {
 	return strings.Join(lines, "\n")
 }
 
-// refuseNoticeOnAbsentEntry refuses a payload that only asks for a landing notice, its slug and notify_on_land true, on a slug the board does not hold.
+// refuseNoticeOnAbsentEntry refuses a payload that only asks for a landing notice on a slug the board does not hold.
+// Such a payload has two fields, slug and notify_on_land set to true.
 // Land prunes an entry once its run lands, so such an upsert would file a new entry for a run that already landed.
 func refuseNoticeOnAbsentEntry(board *boardengine.Board, fields map[string]any) error {
 	slug, _ := fields["slug"].(string)
@@ -1262,7 +1262,9 @@ func refuseNoticeOnAbsentEntry(board *boardengine.Board, fields map[string]any) 
 	return fmt.Errorf("no entry %q is on the board, and Land prunes an entry once its run lands, so a run of that slug already landed or the slug is wrong: lym batten status %s shows the run; nothing was written", slug, slug)
 }
 
-// landedNotice tells an upsert whose payload set notify_on_land on a done entry that its run already landed, so its parent's dobby handles the request at its next tick; it is empty for any other write.
+// landedNotice returns the notice for an upsert whose payload sets notify_on_land on a done entry.
+// Such an entry's run already landed, so its parent's dobby handles the request at its next tick.
+// Any other write gets an empty notice.
 func landedNotice(task boardengine.Task, fields map[string]any) string {
 	if fields["notify_on_land"] != true || !task.NotifyOnLand || !boardengine.IsDoneStatus(task.Status) {
 		return ""
@@ -1290,7 +1292,8 @@ func outputSuccessWithCount(out io.Writer, count int, notice string) int {
 	return output.Ok(out, envelope)
 }
 
-// outputSuccessWithTask writes {"ok":true,"task":{...}} with exit code 0, plus a "notice" field when notice is not empty.
+// outputSuccessWithTask writes {"ok":true,"task":{...}} with exit code 0.
+// It adds a "notice" field when notice is not empty.
 func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) int {
 	envelope := map[string]any{"task": task}
 	if notice != "" {
@@ -1299,7 +1302,8 @@ func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) 
 	return output.Ok(out, envelope)
 }
 
-// outputGetTask writes {"ok":true,"task":{...},"parent_beam":"..."} with task as pointer (nil → null, and no parent_beam).
+// outputGetTask writes {"ok":true,"task":{...},"parent_beam":"..."} with task as a pointer.
+// A nil task writes null and omits parent_beam.
 // parentBeam is the slug of the beam the entry belongs to, empty when the prime is its parent.
 // The task carries "discussed": true when its run's Discussion was approved, and no discussed key otherwise.
 func outputGetTask(out io.Writer, task *boardengine.Task, parentBeam string) int {

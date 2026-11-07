@@ -1,11 +1,9 @@
-// boardguard_test.go enforces the Fabric Git Invariant's board carve-out: internal/boardengine's
-// non-test production code never imports internal/gitrepo or internal/gitexec directly,
-// and never shells out to `git` itself.
-// boardengine routes every fabric-repo git operation through internal/fabricengine's
-// commit and push entry points for the records side instead (see the plan's "no import cycle from boardengine into
-// fabricengine" Shared Decision) — this guard is the mechanical enforcement that keeps a future
-// change from regressing that routing back into a raw git call.
-// See `PATTERN-fabric-boundary`.
+// boardguard_test.go enforces the board carve-out of the Fabric Git Invariant.
+// internal/boardengine's non-test production code never imports internal/gitrepo or internal/gitexec directly.
+// It also never shells out to `git` itself.
+// Board code routes its fabric-repo git operations through internal/fabricengine's commit and push entry points,
+// and this guard keeps them there.
+// Failures cite `PATTERN-fabric-boundary`.
 
 package main
 
@@ -20,35 +18,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// boardGuardBannedImports are the import paths internal/boardengine's production
-// code may never reference directly: the two packages that own raw git access.
-// boardengine must instead route fabric-repo git operations through
-// internal/fabricengine's commit and push entry points for the records side.
+// boardGuardBannedImports are the import paths that internal/boardengine's production code may never reference directly.
+// They are the packages that own raw git access.
+// Board code reaches fabric-repo git through the commit and push entry points of internal/fabricengine instead.
 var boardGuardBannedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/gitrepo": true,
 	"github.com/Knatte18/loomyard/internal/gitexec": true,
 }
 
-// boardGuardExecSpawnTokens identify an exec.Command or exec.CommandContext call,
-// matched on the SAME LINE as the quoted "git" argument (see lineHasBannedGitSpawn)
-// -- the same same-line co-occurrence discipline ghguard_test.go's "gh" check uses,
-// generalized to "git" here so internal/boardengine/spawn.go's git-free
-// exec.Command(exe, "board", "--board-path", abs, "sync") self-relaunch call
-// passes cleanly: that line never mentions "git".
+// boardGuardExecSpawnTokens identify an exec.Command or exec.CommandContext call.
+// A spawn token counts only on the same line as the quoted "git" argument.
+// So the self-relaunch call in internal/boardengine/spawn.go passes, because its line never mentions git.
 var boardGuardExecSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 
-// boardGuardMinScannedFiles is the vacuous-scan floor for this guard's
-// single-directory walk of internal/boardengine. The package has 9 non-test .go
-// files today (board.go, config.go, layer.go, render.go, spawn.go, store.go,
-// sync.go, task.go, template.go); fewer than 5 found means the directory
-// resolution is misconfigured rather than the package having genuinely shrunk.
+// boardGuardMinScannedFiles is the vacuous-scan floor for this guard's single-directory walk of internal/boardengine.
+// Fewer scanned files than this floor means the directory resolution is misconfigured, not that the package shrank.
 const boardGuardMinScannedFiles = 5
 
-// TestBoardGuard_NoRawGitImportOrShellOut walks internal/boardengine's non-test *.go files
-// (skipping the boardtest subdirectory, a sibling package of integration tests that legitimately
-// spawn git via hubforge.NewHub, not production code this guard's ban applies to) and fails if any
-// file imports internal/gitrepo or internal/gitexec directly, or shells out to `git` via
-// exec.Command/exec.CommandContext.
+// TestBoardGuard_NoRawGitImportOrShellOut walks internal/boardengine's non-test *.go files.
+// It fails when a file imports internal/gitrepo or internal/gitexec directly;
+// it also fails when a file shells out to `git` via exec.Command or exec.CommandContext.
+// The boardtest subdirectory is skipped.
+// Its integration tests legitimately spawn git via hubforge.NewHub, so the ban does not apply to them.
 //
 //lym:guard
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
@@ -59,7 +50,6 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	var failures []string
 
 	scankit.Walk(t, scankit.Options{Roots: []string{dir}}, func(f *scankit.File) {
-		// boardtest is a sibling package of integration tests — skip it.
 		if strings.HasPrefix(f.Rel, dir+"/boardtest/") {
 			return
 		}

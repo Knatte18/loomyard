@@ -1,4 +1,6 @@
-// detachfixer.go implements the fixer phase of the detached runner: the wait on a fixer an earlier run left, the hand-off of a red verdict to a cold fixer and the re-run over the tree the fixer left.
+// detachfixer.go runs the card-fixer phase of the detached gate runner.
+// It waits on a fixer an earlier run left and hands a red verdict to a cold fixer.
+// It re-runs the gate over the tree that fixer left.
 
 package gatecli
 
@@ -29,7 +31,7 @@ const (
 	fixerReplyFile = "fixer-reply.md"
 )
 
-// fixerWaitSlice is how long one wait on a fixer blocks before the runner reads its context again; it is the one-second floor of the wake rule.
+// fixerWaitSlice is how long one wait on a fixer blocks before the runner reads its context again.
 const fixerWaitSlice = time.Second
 
 // fixerOutcome is how a wait on a fixer ended.
@@ -47,7 +49,8 @@ func (o fixerOutcome) note() string {
 	return fmt.Sprintf("The cold fixer ended without a reply (%s); any change it left uncommitted is in the worktree.", o.deadReason)
 }
 
-// awaitFixer waits for rec's fixer in slices of fixerWaitSlice until it ends, and returns ctx's error once ctx is cancelled first.
+// awaitFixer waits on rec's fixer in slices of `fixerWaitSlice` until the fixer ends.
+// It returns ctx's error if ctx is cancelled first.
 func awaitFixer(ctx context.Context, kit cardFixerKit, rec *gatefixer.Record) (fixerOutcome, error) {
 	for {
 		if err := ctx.Err(); err != nil {
@@ -63,10 +66,11 @@ func awaitFixer(ctx context.Context, kit cardFixerKit, rec *gatefixer.Record) (f
 	}
 }
 
-// watchPhase sets up around a phase outside runRequest the same two cancels runRequest sets up around the gate run: a terminating signal and a passed lease.
-// It returns the phase's context and a closer that ends the watch and answers the abandoned exit.
-// That exit is {128 + signal, abandoned} after a signal, or {1, abandoned} with abandonedLine on stderr after a passed lease, and the closer answers false when neither ended the phase.
-// The closer is called once.
+// watchPhase watches a phase for a terminating signal and for a passed lease, which both cancel it.
+// It returns the phase's context and a closer that ends the watch.
+// The closer is called once and reports the abandoned exit: {128 + signal, abandoned} after a signal.
+// After a passed lease it reports {1, abandoned} and writes abandonedLine to stderr.
+// It reports false when neither event ended the phase.
 func (d detachRun) watchPhase(ctx context.Context) (context.Context, func() (detachExit, bool)) {
 	signalCtx, caught, stopSignals := catchTerminatingSignals(ctx)
 	phaseCtx, cancelPhase := context.WithCancel(signalCtx)
@@ -92,10 +96,15 @@ func (d detachRun) watchPhase(ctx context.Context) (context.Context, func() (det
 	}
 }
 
-// runWithFixer runs request as runRequest does, with the card fixer around a `test` request.
-// Before the gate runs, a live fixer record in the key directory is waited on and marked terminal, or its strand is stopped when it cannot be attached to.
-// A red verdict, after the run released its slots, goes to a cold fixer whose reply the re-run's stderr carries; the re-run's exit is the call's.
-// A pass, an abandoned exit, a non-zero exit that left nothing on stderr, as a refusal does, a red verdict whose every failed run crashed its test runner, a `card-verify` request, and a request the seam turns down or errors on end with the first run's result.
+// runWithFixer runs request as runRequest does, adding the card fixer around a `test` request.
+// Before the gate runs, a live fixer record in the key directory is waited on and marked terminal.
+// When that record cannot be attached to, its strand is stopped instead.
+// A red verdict, reached after the run released its slots, goes to a cold fixer.
+// The re-run's stderr carries the fixer's reply, and the re-run's exit is the call's.
+// The first run's result ends the call for a pass, an abandoned exit, or a non-zero exit with nothing on stderr.
+// A refusal leaves such an exit.
+// It also ends the call for a red verdict whose every failed run crashed its test runner.
+// It also ends the call for a request that is not `test`, and for a request the seam turns down or errors on.
 func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gateTree func() *cobra.Command, seams detachSeams) detachExit {
 	if request.Verb != verbTest {
 		return d.runRequest(ctx, request, gateTree)
@@ -132,9 +141,10 @@ func (d detachRun) endedOnRunnerCrash() bool {
 	return crashed
 }
 
-// settleLiveFixer waits on the live fixer record of an earlier run before the gate runs, under the phase fixing.
-// A record it cannot attach to, because there is no kit or the wait failed, has its strand stopped through the stopper and is marked dead only once the stop succeeded;
-// a failed stop ends the call with exit 1 and the way forward, leaving the record live.
+// settleLiveFixer waits on the live fixer record of an earlier run before the gate runs, under `phaseFixing`.
+// It stops the record's strand when the record cannot be attached to: the card fixer is off or the wait failed.
+// It marks the record dead only once that stop succeeded.
+// A failed stop ends the call with exit 1 and the way forward, and leaves the record live.
 // It reports true with the exit to write when the call ends here.
 func (d detachRun) settleLiveFixer(ctx context.Context, request detachRequest, seams detachSeams, kit cardFixerKit, on bool, store keyFixerStore) (detachExit, bool) {
 	live, err := store.Live()
@@ -178,10 +188,12 @@ func (d detachRun) settleLiveFixer(ctx context.Context, request detachRequest, s
 	return detachExit{}, false
 }
 
-// fixAndRerun hands the red verdict first to a cold fixer and runs the request again over the tree the fixer left.
-// The phase is fixing from before the spawn to the re-run's start, and the report is first's stderr.
-// A launch that cannot be built or started ends with first and a stderr line saying no fixer ran.
-// A passed lease or a terminating signal during the phase stops the fixer, marks its record dead only once the stop succeeded and ends abandoned.
+// fixAndRerun hands a red verdict to a cold fixer, then runs request again over the tree the fixer left.
+// The phase is `phaseFixing` from before the spawn until the re-run starts.
+// The report the fixer reads is the first run's stderr.
+// A launch that cannot be built or started ends with the first run's exit and a stderr line saying no fixer ran.
+// A passed lease or a terminating signal during the phase stops the fixer and ends the call abandoned.
+// It marks the fixer's record dead only once the stop succeeded.
 func (d detachRun) fixAndRerun(ctx context.Context, request detachRequest, gateTree func() *cobra.Command, seams detachSeams, kit cardFixerKit, store keyFixerStore, first detachExit) detachExit {
 	d.writePhase(runPhase{State: phaseFixing})
 	reportPath, replyPath := d.path(fixerReportFile), d.path(fixerReplyFile)
@@ -224,7 +236,8 @@ func (d detachRun) fixAndRerun(ctx context.Context, request detachRequest, gateT
 	d.rewriteTreeIdentity(seams.treeIdentity(kit.worktreeRoot))
 	d.writePhase(runPhase{State: phaseStarting})
 	rerun := d.runRequest(ctx, request, gateTree)
-	// Marked only once the re-run has a result over the fixer's finished tree, so a restart during the re-run still finds the record live.
+	// Marked only once the re-run has a result over the fixer's finished tree;
+	// a restart during the re-run still finds the record live.
 	if err := store.markTerminal(outcome.status, outcome.deadReason); err != nil {
 		logger.Warn("gate run-detached: could not mark the fixer record terminal", "dir", d.dir, "cause", err)
 	}
@@ -234,7 +247,10 @@ func (d detachRun) fixAndRerun(ctx context.Context, request detachRequest, gateT
 	return rerun
 }
 
-// cardFixerSpec builds the launch of the fixer of request's red call: the shared cold frame and the card body, filled with the gate call, the card ids its words name and the worktree root, and no parent.
+// cardFixerSpec builds the launch of the fixer of request's red call.
+// It renders the card body into the shared cold frame.
+// The body fills in the gate call, the card ids named by the call's arguments, and the worktree root.
+// The launch has no parent.
 func cardFixerSpec(kit cardFixerKit, request detachRequest, reportPath, replyPath string) (gatefixer.Spec, error) {
 	cardIDs := "none"
 	if ids := flagValues(request.Args, "card"); len(ids) > 0 {
@@ -267,7 +283,8 @@ func cardFixerSpec(kit cardFixerKit, request detachRequest, reportPath, replyPat
 	}, nil
 }
 
-// stopFixer stops rec's strand and marks its record dead only once the stop succeeded, so a failed stop leaves the record live for the next run to retry.
+// stopFixer stops rec's strand and marks its record dead only once the stop succeeded;
+// a failed stop leaves the record live for the next run to retry.
 func (d detachRun) stopFixer(kit cardFixerKit, store keyFixerStore, rec *gatefixer.Record) {
 	if err := kit.fixer.Stop(rec); err != nil {
 		logger.Warn("gate run-detached: could not stop the fixer strand of an abandoned run", "dir", d.dir, "strand", rec.StrandGUID, "cause", err)
@@ -278,14 +295,16 @@ func (d detachRun) stopFixer(kit cardFixerKit, store keyFixerStore, rec *gatefix
 	}
 }
 
-// endUnfixed ends a call whose fixer never ran with first, after a stderr line naming what failed and that no fixer ran.
+// endUnfixed ends a call whose fixer never ran and returns first;
+// before that it writes a stderr line naming what failed and that no fixer ran.
 func (d detachRun) endUnfixed(first detachExit, what string, cause error) detachExit {
 	d.appendStderr(fmt.Sprintf("gate test: %s (%v); no cold fixer ran\n", what, cause))
 	d.writePhase(runPhase{State: phaseRunning})
 	return first
 }
 
-// rewriteTreeIdentity writes identity as the run's tree record, so a front joins the re-run over the tree the fixer left.
+// rewriteTreeIdentity writes identity as the run's tree record,
+// so a front joins the re-run over the tree the fixer left.
 func (d detachRun) rewriteTreeIdentity(identity treeRecord) {
 	data, err := json.Marshal(identity)
 	if err == nil {
@@ -296,7 +315,8 @@ func (d detachRun) rewriteTreeIdentity(identity treeRecord) {
 	}
 }
 
-// appendStderr appends text to the run's stderr file and makes sure its stdout file exists, logging a failure since the text only informs the caller.
+// appendStderr appends text to the run's stderr file and makes sure its stdout file exists;
+// it logs a failure because the text only informs the caller.
 func (d detachRun) appendStderr(text string) {
 	stdout, err := os.OpenFile(d.path(stdoutFile), os.O_CREATE|os.O_WRONLY, 0o644)
 	if err == nil {

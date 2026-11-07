@@ -1,9 +1,7 @@
-// stencils.go is the single Go file at the top-level stencils/ package root: //go:embed reaches
-// only files at or below its own directory, so every stencil's shipped-default byte var and its
-// //go:embed directive must live here, one per family subfolder below.
-// Beside the embedded vars, this file declares the name-to-default registry that
-// internal/stencilstore.Registry consumes, and is the only place a stencil's on-disk path and its
-// Go identifier are both named -- the one place a new stencil is registered.
+// stencils.go declares every stencil's shipped-default byte var.
+// It also holds the name-to-default registry that internal/stencilstore.Registry consumes.
+// It is the one place a new stencil is registered, naming both its on-disk path and its Go identifier.
+// Its //go:embed directives live at this package root, which sits above every family subfolder they reach.
 
 package stencils
 
@@ -28,42 +26,52 @@ var LandingTemplateDescribe []byte
 //go:embed landing/landing-template-fixer.md
 var LandingTemplateFixer []byte
 
-// LandingTemplateFixReview is the landing fix review's shipped-default prompt: the solo session that judges an over-cap merge fixer change before Finalize lands it.
+// LandingTemplateFixReview is the landing fix review's shipped-default prompt.
+// It is the solo session that judges an over-cap merge fixer change before Finalize lands it.
 //
 //go:embed landing/landing-template-fix-review.md
 var LandingTemplateFixReview []byte
 
-// LandingTemplatePRReview is the PR-Review session's shipped-default prompt: the interactive session the operator discusses a run's pull request with.
+// LandingTemplatePRReview is the PR-Review session's shipped-default prompt.
+// It is the interactive session the operator discusses a run's pull request with.
 //
 //go:embed landing/landing-template-pr-review.md
 var LandingTemplatePRReview []byte
 
-// DarnTemplateWrite is the darn writer's shipped-default prompt: the whole instruction set of the one session that makes a board entry's change.
+// DarnTemplateWrite is the darn writer's shipped-default prompt.
+// It is the whole instruction set of the one session that makes a board entry's change.
 //
 //go:embed darn/darn-template-write.md
 var DarnTemplateWrite []byte
 
-// DarnFragmentMakeChange is the darn writer prompt's Step 4 list that has the writer and its subagents run the gate, filled in when the verify gate has no cold fixer.
+// DarnFragmentMakeChange is the darn writer prompt's Step 4 list when the verify gate has no cold fixer.
+// The writer and its subagents run the gate in it.
 //
 //go:embed darn/darn-fragment-make-change.md
 var DarnFragmentMakeChange []byte
 
-// DarnFragmentMakeChangeGated is the darn writer prompt's Step 4 list that has the writer and its subagents run no gate, filled in when the verify gate has a cold fixer.
+// DarnFragmentMakeChangeGated is the darn writer prompt's Step 4 list when the verify gate has a cold fixer.
+// The writer and its subagents run no gate in it.
 //
 //go:embed darn/darn-fragment-make-change-gated.md
 var DarnFragmentMakeChangeGated []byte
 
-// SamplerTemplateAgent is the sampler agent's shipped-default prompt: the whole instruction set of the interactive session the operator works a change out with.
+// SamplerTemplateAgent is the sampler agent's shipped-default prompt.
+// It is the whole instruction set of the interactive session the operator works a change out with.
 //
 //go:embed sampler/sampler-template-agent.md
 var SamplerTemplateAgent []byte
 
-// DriftTemplateExpect is the drift expect agent's shipped-default prompt: the whole instruction set of the session that writes down which captured values a task is expected to change and why.
+// DriftTemplateExpect is the drift expect agent's shipped-default prompt.
+// It is the whole instruction set of the session that records which captured values a task is expected to change.
+// It also records the reason for each.
 //
 //go:embed drift/drift-template-expect.md
 var DriftTemplateExpect []byte
 
-// DriftTemplateJudge is the drift judge's shipped-default prompt: the whole instruction set of the session that rules on each changed value of a task's captured output against the expectation that covers it.
+// DriftTemplateJudge is the drift judge's shipped-default prompt.
+// It is the whole instruction set of the session that rules on each changed captured value of a task.
+// It judges each change against the expectation that covers it.
 //
 //go:embed drift/drift-template-judge.md
 var DriftTemplateJudge []byte
@@ -93,22 +101,26 @@ var LoomDirectiveProjectRecord []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
-// LoomBlockPlanGlyphs is the plan-format block holding the glyph lookup rule, pulled into the stencils of every plan writer as an include.
+// LoomBlockPlanGlyphs is the plan-format block holding the glyph lookup rule.
+// Every plan writer's stencil includes it.
 //
 //go:embed loom/loom-block-plan-glyphs.md
 var LoomBlockPlanGlyphs []byte
 
-// LoomBlockPlanFormat is the plan-format block holding what a card is and the on-disk layout, pulled into the stencils of every plan writer as an include.
+// LoomBlockPlanFormat is the plan-format block holding what a card is and the on-disk layout.
+// Every plan writer's stencil includes it.
 //
 //go:embed loom/loom-block-plan-format.md
 var LoomBlockPlanFormat []byte
 
-// LoomBlockPlanOverview is the plan-format block holding the overview file format and the glyph and handle target rules, pulled into the stencils of every plan writer as an include.
+// LoomBlockPlanOverview is the plan-format block holding the overview file format.
+// It also holds the glyph and handle target rules, and every plan writer's stencil includes it.
 //
 //go:embed loom/loom-block-plan-overview.md
 var LoomBlockPlanOverview []byte
 
-// LoomBlockPlanCards is the plan-format block holding the card file format, the rename mechanic and the skeleton, pulled into the stencils of every plan writer as an include.
+// LoomBlockPlanCards is the plan-format block holding the card file format, the rename mechanic and the skeleton.
+// Every plan writer's stencil includes it.
 //
 //go:embed loom/loom-block-plan-cards.md
 var LoomBlockPlanCards []byte
@@ -118,63 +130,72 @@ var LoomBlockPlanCards []byte
 //go:embed loom/loom-template-parts.md
 var LoomTemplateParts []byte
 
-// LoomFragmentPartsLight is the light reading depth of the Parts-Write agent, filled into the Parts-Write prompt when parts_depth is light.
+// LoomFragmentPartsLight is the light reading depth of the Parts-Write agent.
+// It is filled into the Parts-Write prompt when parts_depth is light.
 //
 //go:embed loom/loom-fragment-parts-light.md
 var LoomFragmentPartsLight []byte
 
-// LoomFragmentPartsMedium is the medium reading depth of the Parts-Write agent, filled into the Parts-Write prompt when parts_depth is medium.
+// LoomFragmentPartsMedium is the medium reading depth of the Parts-Write agent.
+// It is filled into the Parts-Write prompt when parts_depth is medium.
 //
 //go:embed loom/loom-fragment-parts-medium.md
 var LoomFragmentPartsMedium []byte
 
-// LoomFragmentSelfCheckPlan is the Plan-Write prompt's self-check step body that has the writer run the plan validator, filled in when the plan gate has no cold fixer.
+// LoomFragmentSelfCheckPlan is the self-check step body of the Plan-Write prompt.
+// It has the writer run the plan validator, and it is filled in when the plan gate has no cold fixer.
 //
 //go:embed loom/loom-fragment-self-check-plan.md
 var LoomFragmentSelfCheckPlan []byte
 
-// LoomFragmentSelfCheckPlanGated is the Plan-Write prompt's self-check step body that has the writer run no validator, filled in when the plan gate has a cold fixer.
+// LoomFragmentSelfCheckPlanGated is the self-check step body of the Plan-Write prompt.
+// It has the writer run no validator, and it is filled in when the plan gate has a cold fixer.
 //
 //go:embed loom/loom-fragment-self-check-plan-gated.md
 var LoomFragmentSelfCheckPlanGated []byte
 
-// LoomFragmentSelfCheckDiscussion is the Discussion-Write prompt's self-check step body that has the writer run the discussion validator, filled in when the discussion gate has no cold fixer.
+// LoomFragmentSelfCheckDiscussion is the self-check step body of the Discussion-Write prompt.
+// It has the writer run the discussion validator, and it is filled in when the discussion gate has no cold fixer.
 //
 //go:embed loom/loom-fragment-self-check-discussion.md
 var LoomFragmentSelfCheckDiscussion []byte
 
-// LoomFragmentSelfCheckDiscussionGated is the Discussion-Write prompt's self-check step body that has the writer run no validator, filled in when the discussion gate has a cold fixer.
+// LoomFragmentSelfCheckDiscussionGated is the self-check step body of the Discussion-Write prompt.
+// It has the writer run no validator, and it is filled in when the discussion gate has a cold fixer.
 //
 //go:embed loom/loom-fragment-self-check-discussion-gated.md
 var LoomFragmentSelfCheckDiscussionGated []byte
 
-// LoomTemplatePartWriter is a part writer's shipped-default opening prompt: the seat that turns one part of the parts file into plan cards.
+// LoomTemplatePartWriter is a part writer's shipped-default opening prompt.
+// It is the seat that turns one part of the parts file into plan cards.
 //
 //go:embed loom/loom-template-part-writer.md
 var LoomTemplatePartWriter []byte
 
-// LoomTemplatePartsChair is the Parts-Plan-Write chair's shipped-default opening prompt: the lead that checks the parts, joins them into one plan and writes the shared spots.
+// LoomTemplatePartsChair is the Parts-Plan-Write chair's shipped-default opening prompt.
+// It is the lead that checks the parts, joins them into one plan and writes the shared spots.
 //
 //go:embed loom/loom-template-parts-chair.md
 var LoomTemplatePartsChair []byte
 
-// LoomTemplateArbiter is the loom arbiter's shipped-default opening prompt: the cold session that settles one stop its run's driver could not.
+// LoomTemplateArbiter is the loom arbiter's shipped-default opening prompt.
+// It is the cold session that settles one stop its run's driver could not.
 //
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
-// LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
-// Discussion-Review perch.
+// LoomRubricDiscussionReview is the Discussion-Review rubric, read by every row of the Discussion-Review perch.
 //
 //go:embed loom/loom-rubric-discussion-review.md
 var LoomRubricDiscussionReview []byte
 
-// LoomRubricPlanReview is the Plan-Review rubric, read by both rows of the Plan-Review perch.
+// LoomRubricPlanReview is the Plan-Review rubric, read by every row of the Plan-Review perch.
 //
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
-// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch in the tapestry, darn and sampler recipes.
+// LoomRubricCodeReview is the Code-Review rubric.
+// Every row of the Code-Review perch reads it, in whichever recipes hold one.
 //
 //go:embed loom/loom-rubric-code-review.md
 var LoomRubricCodeReview []byte
@@ -184,7 +205,9 @@ var LoomRubricCodeReview []byte
 //go:embed loom/loom-template-prior-plan.md
 var LoomTemplatePriorPlan []byte
 
-// RaddleTemplateAgent is the raddle agent's shipped-default prompt: the whole instruction set of the session that proposes how a Sketch splits into the entries the operator approves.
+// RaddleTemplateAgent is the raddle agent's shipped-default prompt.
+// It is the whole instruction set of the session that proposes how a decision record splits into entries.
+// The operator approves those entries.
 //
 //go:embed raddle/raddle-template-agent.md
 var RaddleTemplateAgent []byte
@@ -219,38 +242,45 @@ var BurlerReviewFormat []byte
 //go:embed burler/burler-step-fix.md
 var BurlerStepFix []byte
 
-// BurlerFocusDirective is burler's shipped-default focus-directive block: the text a round's focus file reaches the explore step through, filled with the file's path.
+// BurlerFocusDirective is burler's shipped-default focus-directive block.
+// It is the text a round's focus file reaches the explore step through, filled with the file's path.
 //
 //go:embed burler/burler-focus-directive.md
 var BurlerFocusDirective []byte
 
-// BurlerForkReading is burler's shipped-default fork-reading part: the pre-read a fanned round's handler does in the explore step, so every fork inherits the reading.
+// BurlerForkReading is burler's shipped-default fork-reading part.
+// It is the pre-read a fanned round's handler does in the explore step, so every fork inherits the reading.
 //
 //go:embed burler/burler-fork-reading.md
 var BurlerForkReading []byte
 
-// BurlerClusterSolo is burler's shipped-default cluster-rules part of a round that names no fan: the single-reviewer statement.
+// BurlerClusterSolo is burler's shipped-default cluster-rules part of a round that names no fan:
+// the single-reviewer statement.
 //
 //go:embed burler/burler-cluster-solo.md
 var BurlerClusterSolo []byte
 
-// BurlerClusterFan is burler's shipped-default cluster-rules part of a fanned round: the spawn mechanics, the fork rules and the consolidation rules, filled with the round's lens list.
+// BurlerClusterFan is burler's shipped-default cluster-rules part of a fanned round:
+// the spawn mechanics, the fork rules and the consolidation rules, filled with the round's lens list.
 //
 //go:embed burler/burler-cluster-fan.md
 var BurlerClusterFan []byte
 
-// BurlerFixSelfCheck is burler's shipped-default fix self-check part: the procedure by which a twill fixer has read-only forks check its own change set, filled with the deployed rubric's path and the fixer fan's lens list.
+// BurlerFixSelfCheck is burler's shipped-default fix self-check part:
+// the procedure by which a twill fixer has read-only forks check its own change set.
+// It is filled with the deployed rubric's path and the fixer fan's lens list.
 //
 //go:embed burler/burler-fix-self-check.md
 var BurlerFixSelfCheck []byte
 
-// BurlerFixCheckRubric is burler's shipped-default fix-check rubric: the severity vocabulary and finding rules a twill fixer's self-check forks work under.
+// BurlerFixCheckRubric is burler's shipped-default fix-check rubric:
+// the severity vocabulary and finding rules a twill fixer's self-check forks work under.
 //
 //go:embed burler/burler-fix-check-rubric.md
 var BurlerFixCheckRubric []byte
 
-// BouncerTemplateSeed is the Bouncer's shipped-default seed prompt: the focus-setting pass that
-// runs before any round has been reviewed.
+// BouncerTemplateSeed is the Bouncer's shipped-default seed prompt:
+// the focus-setting pass that runs before any round has been reviewed.
 //
 //go:embed bouncer/bouncer-template-seed.md
 var BouncerTemplateSeed []byte
@@ -260,29 +290,32 @@ var BouncerTemplateSeed []byte
 //go:embed bouncer/bouncer-template-judge.md
 var BouncerTemplateJudge []byte
 
-// BouncerTemplateEscalation is the Bouncer's shipped-default escalation brief, read by a one-shot
-// fork of the run's parent session.
+// BouncerTemplateEscalation is the Bouncer's shipped-default escalation brief.
+// A one-shot fork of the run's parent session reads it.
 //
 //go:embed bouncer/bouncer-template-escalation.md
 var BouncerTemplateEscalation []byte
 
-// BouncerFragmentDecideOpen is the Bouncer's shipped-default decide step of the escalation brief for a round below its perch's hard cap, filled into the brief's decide_options marker.
+// BouncerFragmentDecideOpen is the Bouncer's shipped-default decide step of the escalation brief:
+// it applies to a round below its perch's hard cap and fills the brief's decide_options marker.
 //
 //go:embed bouncer/bouncer-fragment-decide-open.md
 var BouncerFragmentDecideOpen []byte
 
-// BouncerFragmentDecideCapped is the Bouncer's shipped-default decide step of the escalation brief for a round at or past its perch's hard cap, filled into the brief's decide_options marker.
+// BouncerFragmentDecideCapped is the Bouncer's shipped-default decide step of the escalation brief:
+// it applies to a round at or past its perch's hard cap and fills the brief's decide_options marker.
 //
 //go:embed bouncer/bouncer-fragment-decide-capped.md
 var BouncerFragmentDecideCapped []byte
 
-// BouncerFragmentDecision is the Bouncer's shipped-default decision detail of the escalation brief for cause decision, filled into the brief's cause_detail marker.
+// BouncerFragmentDecision is the Bouncer's shipped-default decision detail of the escalation brief:
+// it fills the brief's cause_detail marker for cause decision.
 //
 //go:embed bouncer/bouncer-fragment-decision.md
 var BouncerFragmentDecision []byte
 
-// BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice, which
-// points the parent at the escalation brief.
+// BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice:
+// it points the parent at the escalation brief.
 //
 //go:embed bouncer/bouncer-template-parent-notice.md
 var BouncerTemplateParentNotice []byte
@@ -292,8 +325,7 @@ var BouncerTemplateParentNotice []byte
 //go:embed treadle/treadle-template-judge-circling.md
 var TreadleTemplateJudgeCircling []byte
 
-// TreadleTemplateJudgeMilestone is treadle's shipped-default milestone continuation-gate judge
-// prompt.
+// TreadleTemplateJudgeMilestone is treadle's shipped-default milestone continuation-gate judge prompt.
 //
 //go:embed treadle/treadle-template-judge-milestone.md
 var TreadleTemplateJudgeMilestone []byte
@@ -308,40 +340,45 @@ var TreadleTemplateTargeting []byte
 //go:embed webster/webster-template-master.md
 var WebsterTemplateMaster []byte
 
-// WebsterBodyVerifyFix is webster's shipped-default shared verify-gate fixer body, composed with WebsterPrefixVerifyFixFork for the fixer fork and with GatefixFrameCold for the cold fixer strand.
+// WebsterBodyVerifyFix is webster's shipped-default shared verify-gate fixer body.
+// The fixer fork's prompt prefix is joined ahead of it to compose the fixer fork prompt,
+// and the shared gate-fixer cold frame is joined ahead of it for the cold fixer strand.
 //
 //go:embed webster/webster-body-verify-fix.md
 var WebsterBodyVerifyFix []byte
 
-// WebsterPrefixVerifyFixFork is webster's shipped-default verify-gate fixer fork prompt prefix, joined ahead of WebsterBodyVerifyFix to compose the fixer fork prompt.
+// WebsterPrefixVerifyFixFork is webster's shipped-default verify-gate fixer fork prompt prefix:
+// it is joined ahead of the shared verify-gate fixer body to compose the fixer fork prompt.
 //
 //go:embed webster/webster-prefix-verify-fix-fork.md
 var WebsterPrefixVerifyFixFork []byte
 
-// WebsterTemplatePlanFix is webster's shipped-default cold plan fixer prompt, which matches a plan-conflict's cards to the tree.
+// WebsterTemplatePlanFix is webster's shipped-default cold plan fixer prompt:
+// it matches a plan-conflict's cards to the tree.
 //
 //go:embed webster/webster-template-plan-fix.md
 var WebsterTemplatePlanFix []byte
 
-// WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix, joined ahead of
-// WebsterBodyImplementer to compose the fork prompt.
+// WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix:
+// it is joined ahead of the shared implementer job body to compose the fork prompt.
 //
 //go:embed webster/webster-prefix-fork.md
 var WebsterPrefixFork []byte
 
-// WebsterPrefixRecovery is webster's shipped-default cold-start recovery prompt prefix, joined
-// ahead of WebsterBodyImplementer to compose the recovery prompt.
+// WebsterPrefixRecovery is webster's shipped-default cold-start recovery prompt prefix:
+// it is joined ahead of the shared implementer job body to compose the recovery prompt.
 //
 //go:embed webster/webster-prefix-recovery.md
 var WebsterPrefixRecovery []byte
 
-// WebsterFragmentCardFixer is the paragraph WebsterBodyImplementer's card_gate_fixer marker takes when a failed card gate call goes through a cold fixer first.
+// WebsterFragmentCardFixer is the paragraph that fills the card_gate_fixer marker of the shared implementer job body:
+// it applies when a failed card gate call goes through a cold fixer first.
 //
 //go:embed webster/webster-fragment-card-fixer.md
 var WebsterFragmentCardFixer []byte
 
-// WebsterBodyImplementer is webster's shipped-default shared implementer-job body, composed with
-// both WebsterPrefixFork and WebsterPrefixRecovery.
+// WebsterBodyImplementer is webster's shipped-default shared implementer-job body:
+// it is composed with both the in-session fork prefix and the cold-start recovery prefix.
 //
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
@@ -381,57 +418,59 @@ var OrchTemplateNote []byte
 //go:embed orch/orch-template-reload.md
 var OrchTemplateReload []byte
 
-// OrchTemplateUsageLimitWake is orch's shipped-default one-line wake line typed once a usage limit that stopped the orch should have reset.
+// OrchTemplateUsageLimitWake is orch's shipped-default one-line wake line:
+// it is typed once a usage limit that stopped the orch should have reset.
 //
 //go:embed orch/orch-template-usage-limit-wake.md
 var OrchTemplateUsageLimitWake []byte
 
-// PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
+// PatternDirectiveImplementer is the shipped-default PATTERN directive for the implementer role.
 //
 //go:embed pattern/pattern-directive-implementer.md
 var PatternDirectiveImplementer []byte
 
-// PatternDirectiveReviewFix is the shipped-default PATTERN directive for RoleReviewFix.
+// PatternDirectiveReviewFix is the shipped-default PATTERN directive for the review-fix role.
 //
 //go:embed pattern/pattern-directive-review-fix.md
 var PatternDirectiveReviewFix []byte
 
-// PatternDirectiveOrchestrator is the shipped-default PATTERN directive for RoleOrchestrator.
+// PatternDirectiveOrchestrator is the shipped-default PATTERN directive for the orchestrator role.
 //
 //go:embed pattern/pattern-directive-orchestrator.md
 var PatternDirectiveOrchestrator []byte
 
-// PatternDirectiveDesigner is the shipped-default PATTERN directive for RoleDesigner.
+// PatternDirectiveDesigner is the shipped-default PATTERN directive for the designer role.
 //
 //go:embed pattern/pattern-directive-designer.md
 var PatternDirectiveDesigner []byte
 
-// PatternDirectiveJudge is the shipped-default PATTERN directive for RoleJudge.
+// PatternDirectiveJudge is the shipped-default PATTERN directive for the judge role.
 //
 //go:embed pattern/pattern-directive-judge.md
 var PatternDirectiveJudge []byte
 
-// PatternFragmentChanges is the shipped-default fragment a PATTERN directive appends to list the task's declared PATTERN changes.
+// PatternFragmentChanges is the shipped-default fragment a PATTERN directive appends:
+// it lists the task's declared PATTERN changes.
 //
 //go:embed pattern/pattern-fragment-changes.md
 var PatternFragmentChanges []byte
 
-// FrictionDirectiveImplementer is the shipped-default friction directive for RoleImplementer.
+// FrictionDirectiveImplementer is the shipped-default friction directive for the implementer role.
 //
 //go:embed friction/friction-directive-implementer.md
 var FrictionDirectiveImplementer []byte
 
-// FrictionDirectiveReviewFix is the shipped-default friction directive for RoleReviewFix.
+// FrictionDirectiveReviewFix is the shipped-default friction directive for the review-fix role.
 //
 //go:embed friction/friction-directive-review-fix.md
 var FrictionDirectiveReviewFix []byte
 
-// FrictionDirectiveOrchestrator is the shipped-default friction directive for RoleOrchestrator.
+// FrictionDirectiveOrchestrator is the shipped-default friction directive for the orchestrator role.
 //
 //go:embed friction/friction-directive-orchestrator.md
 var FrictionDirectiveOrchestrator []byte
 
-// FrictionDirectiveInterview is the shipped-default friction directive for RoleInterview.
+// FrictionDirectiveInterview is the shipped-default friction directive for the interview role.
 //
 //go:embed friction/friction-directive-interview.md
 var FrictionDirectiveInterview []byte
@@ -441,12 +480,14 @@ var FrictionDirectiveInterview []byte
 //go:embed friction/friction-template-reflection.md
 var FrictionTemplateReflection []byte
 
-// ShedTemplateDriver is the shed driver's shipped-default launch prompt: the whole procedure of the session that drives one seeded run.
+// ShedTemplateDriver is the shed driver's shipped-default launch prompt:
+// the whole procedure of the session that drives one seeded run.
 //
 //go:embed shed/shed-template-driver.md
 var ShedTemplateDriver []byte
 
-// ShedTemplateDriverGuide is the driver's shipped-default repair guide: the reference the one-shot fork a driver spawns at an error or interrupted stop reads.
+// ShedTemplateDriverGuide is the driver's shipped-default repair guide:
+// the reference the one-shot fork a driver spawns at an error or interrupted stop reads.
 //
 //go:embed shed/shed-template-driver-guide.md
 var ShedTemplateDriverGuide []byte
@@ -461,7 +502,9 @@ var ShedTemplateDriverNotify []byte
 //go:embed shed/shed-template-driver-notify-watched.md
 var ShedTemplateDriverNotifyWatched []byte
 
-// ShedTemplateTackler is the shed tackler's shipped-default opening prompt: the cold session that settles one stop the shed driver's rules could not, or escalates it to a stronger agent or the run's parent.
+// ShedTemplateTackler is the shed tackler's shipped-default opening prompt:
+// the cold session that settles one stop the shed driver's rules could not.
+// It escalates a stop it cannot settle to a stronger agent or the run's parent.
 //
 //go:embed shed/shed-template-tackler.md
 var ShedTemplateTackler []byte
@@ -471,7 +514,8 @@ var ShedTemplateTackler []byte
 //go:embed parent/parent-directive-parent.md
 var ParentDirectiveParent []byte
 
-// ParentDirectiveOperatorBan is the shipped-default operator-ban line the parent variant carries for a non-interactive role.
+// ParentDirectiveOperatorBan is the shipped-default operator-ban line:
+// the parent variant carries it for a non-interactive role.
 //
 //go:embed parent/parent-directive-operator-ban.md
 var ParentDirectiveOperatorBan []byte
@@ -481,122 +525,150 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
-// EditDirective is the shared edit directive's shipped default: the edit rule every spawned role's opening stencil carries.
+// EditDirective is the shared edit directive's shipped default:
+// the edit rule every spawned role's opening stencil carries.
 //
 //go:embed edit/edit-directive.md
 var EditDirective []byte
 
-// TwillDirective is the twill directive's shipped default: the host-neutral procedure that has a writer review its finished record through fork lenses.
+// TwillDirective is the twill directive's shipped default:
+// the host-neutral procedure that has a writer review its finished record through fork lenses.
 //
 //go:embed twill/twill-directive.md
 var TwillDirective []byte
 
-// TwillWriterFork is the twill writer-fork part's shipped default: the host-neutral procedure in which one fork writes the reviewed files and the writer reviews what it wrote.
+// TwillWriterFork is the twill writer-fork part's shipped default:
+// the host-neutral procedure in which one fork writes the reviewed files and the writer reviews what it wrote.
 //
 //go:embed twill/twill-writer-fork.md
 var TwillWriterFork []byte
 
-// TwillWriterForkGated is the twill writer-fork part's shipped default for a host whose reviewed files a gate checks once the writer's turn ends: the same procedure with no validator run.
+// TwillWriterForkGated is the twill writer-fork part's shipped default for a host whose gate checks the reviewed files:
+// the writer-fork procedure with no validator run.
+// A gate checks the reviewed files once the writer's turn ends.
 //
 //go:embed twill/twill-writer-fork-gated.md
 var TwillWriterForkGated []byte
 
-// TwillRelaunch is the twill relaunch part's shipped default: the host-neutral paragraphs that say what a writer relaunched around its lens spawn call does.
+// TwillRelaunch is the twill relaunch part's shipped default:
+// the host-neutral paragraphs that say what a writer relaunched around its lens spawn call does.
 //
 //go:embed twill/twill-relaunch.md
 var TwillRelaunch []byte
 
-// TwillJudgeCritical is the twill critical-judge part's shipped default: the host-neutral steps that have the writer judge each finding as a critical fixer and record each disposition.
+// TwillJudgeCritical is the twill critical-judge part's shipped default:
+// the host-neutral steps that have the writer judge each finding as a critical fixer and record each disposition.
 //
 //go:embed twill/twill-judge-critical.md
 var TwillJudgeCritical []byte
 
-// TwillJudgePlain is the twill plain-judge part's shipped default: the host-neutral steps that have the writer judge each finding and record whether it was fixed or rejected.
+// TwillJudgePlain is the twill plain-judge part's shipped default:
+// the host-neutral steps that have the writer judge each finding and record whether it was fixed or rejected.
 //
 //go:embed twill/twill-judge-plain.md
 var TwillJudgePlain []byte
 
-// BeamTemplateBoardTidy is the board-tidy agent's shipped-default opening prompt: the cold session dobby spawns every few landings to bring the board's notes in line with what the landings built.
+// BeamTemplateBoardTidy is the board-tidy agent's shipped-default opening prompt:
+// the cold session dobby spawns every few landings to bring the board's notes in line with what the landings built.
 //
 //go:embed beam/beam-template-board-tidy.md
 var BeamTemplateBoardTidy []byte
 
-// SeatDirectiveChair is the chair seat block's shipped default: the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
+// SeatDirectiveChair is the chair seat block's shipped default:
+// the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
 //
 //go:embed seat/seat-directive-chair.md
 var SeatDirectiveChair []byte
 
-// SeatDirectiveAdvisor is the advisor seat block's shipped default: the channel rules an advisor works under, pulled into a seat stencil as an include.
+// SeatDirectiveAdvisor is the advisor seat block's shipped default:
+// the channel rules an advisor works under, pulled into a seat stencil as an include.
 //
 //go:embed seat/seat-directive-advisor.md
 var SeatDirectiveAdvisor []byte
 
-// SeatDirectiveWriter is the writer seat block's shipped default: the channel rules a writer works under, pulled into a writer seat's stencil as an include.
+// SeatDirectiveWriter is the writer seat block's shipped default:
+// the channel rules a writer works under, pulled into a writer seat's stencil as an include.
 //
 //go:embed seat/seat-directive-writer.md
 var SeatDirectiveWriter []byte
 
-// SeatDirectiveWriterChair is the writer chair seat block's shipped default: the channel rules the lead of a table of writer seats works under, pulled into its stencil as an include in place of the advisor chair's block.
+// SeatDirectiveWriterChair is the writer chair seat block's shipped default:
+// the channel rules the lead of a table of writer seats works under, pulled into the lead's stencil as an include.
 //
 //go:embed seat/seat-directive-writer-chair.md
 var SeatDirectiveWriterChair []byte
 
-// SeatDirectiveAssistant is the assistant seat block's shipped default: the rules an assistant works under, writing its outputs and nothing else, pulled into an assistant seat's stencil as an include.
+// SeatDirectiveAssistant is the assistant seat block's shipped default:
+// the rules an assistant works under, writing its outputs and nothing else.
+// It is pulled into an assistant seat's stencil as an include.
 //
 //go:embed seat/seat-directive-assistant.md
 var SeatDirectiveAssistant []byte
 
-// SeatDirectiveAssistantFanned is the fanned assistant seat block's shipped default: the rules an assistant that runs subagents works under, writing its outputs and their reports and nothing else, pulled into its stencil as an include in place of the assistant seat block.
+// SeatDirectiveAssistantFanned is the fanned assistant seat block's shipped default:
+// the rules an assistant that runs subagents works under, writing its outputs and their reports and nothing else.
+// It is pulled into that assistant's stencil as an include.
 //
 //go:embed seat/seat-directive-assistant-fanned.md
 var SeatDirectiveAssistantFanned []byte
 
-// SeatDirectiveAssistantChair is the assistant chair seat block's shipped default: how the lead of a table of assistant seats waits for each assistant's end marker, pulled into its stencil as an include in place of the advisor chair's block.
+// SeatDirectiveAssistantChair is the assistant chair seat block's shipped default:
+// how the lead of a table of assistant seats waits for each assistant's end marker.
+// It is pulled into the lead's stencil as an include.
 //
 //go:embed seat/seat-directive-assistant-chair.md
 var SeatDirectiveAssistantChair []byte
 
-// BurlerTemplateReviewerAssisted is the burler reviewer seat stencil of a round that runs an assistant reviewer beside the chair: the reviewer stencil with the assistant chair's block.
+// BurlerTemplateReviewerAssisted is burler's reviewer seat stencil for a round with an assistant beside the chair:
+// the reviewer stencil with the assistant chair's block.
 //
 //go:embed burler/burler-template-reviewer-assisted.md
 var BurlerTemplateReviewerAssisted []byte
 
-// BurlerTemplateAssistReviewer is the burler assistant reviewer seat stencil: the assistant seat of an assisted review round, on the engine its model-spec names.
+// BurlerTemplateAssistReviewer is the burler assistant reviewer seat stencil:
+// the assistant seat of an assisted review round, on the engine its model-spec names.
 //
 //go:embed burler/burler-template-assist-reviewer.md
 var BurlerTemplateAssistReviewer []byte
 
-// BurlerTemplateAssistReviewerFanned is the burler assistant reviewer seat stencil of a round whose assistant runs a lens fan: the assistant reviewer stencil with the lens reports on its write surface and the fanned assistant's block.
+// BurlerTemplateAssistReviewerFanned is burler's assistant reviewer seat stencil for a fanned assistant:
+// the assistant reviewer stencil with the lens reports on its write surface and the fanned assistant's block.
 //
 //go:embed burler/burler-template-assist-reviewer-fanned.md
 var BurlerTemplateAssistReviewerFanned []byte
 
-// BurlerAssistConsolidation is the review step's part of an assisted round: the chair waits for the assistant and judges its findings as one more report.
+// BurlerAssistConsolidation is the review step's part of an assisted round:
+// the chair waits for the assistant and judges its findings as one more report.
 //
 //go:embed burler/burler-assist-consolidation.md
 var BurlerAssistConsolidation []byte
 
-// BurlerAssistClusterFan is an assistant reviewer's fanned cluster-rules part, whose spawn and in-turn wait come from its engine's assist-fan engine block.
+// BurlerAssistClusterFan is an assistant reviewer's fanned cluster-rules part:
+// its spawn and in-turn wait come from its engine's assist-fan engine block.
 //
 //go:embed burler/burler-assist-cluster-fan.md
 var BurlerAssistClusterFan []byte
 
-// EngineClaudeAssistFan is the Claude engine's assist-fan block: how an assistant reviewer on Claude runs its lens subagents inside its one turn.
+// EngineClaudeAssistFan is the Claude engine's assist-fan block:
+// how an assistant reviewer on Claude runs its lens subagents inside its one turn.
 //
 //go:embed engine/claude/assist-fan.md
 var EngineClaudeAssistFan []byte
 
-// EngineCodexAssistFan is the Codex engine's assist-fan block: how an assistant reviewer on Codex runs its lens subagents inside its one turn.
+// EngineCodexAssistFan is the Codex engine's assist-fan block:
+// how an assistant reviewer on Codex runs its lens subagents inside its one turn.
 //
 //go:embed engine/codex/assist-fan.md
 var EngineCodexAssistFan []byte
 
-// EngineClaudeAssistReading is the Claude engine's assist-reading block: the reading directions an assistant reviewer on Claude follows.
+// EngineClaudeAssistReading is the Claude engine's assist-reading block:
+// the reading directions an assistant reviewer on Claude follows.
 //
 //go:embed engine/claude/assist-reading.md
 var EngineClaudeAssistReading []byte
 
-// EngineCodexAssistReading is the Codex engine's assist-reading block: the reading directions an assistant reviewer on Codex follows.
+// EngineCodexAssistReading is the Codex engine's assist-reading block:
+// the reading directions an assistant reviewer on Codex follows.
 //
 //go:embed engine/codex/assist-reading.md
 var EngineCodexAssistReading []byte
@@ -606,32 +678,36 @@ var EngineCodexAssistReading []byte
 //go:embed engine/claude/edit-directive.md
 var EngineClaudeEditDirective []byte
 
-// EngineCodexEditDirective is the Codex engine's copy of the edit directive, in Codex's tool wording, rendered for an assistant seat on Codex.
+// EngineCodexEditDirective is the Codex engine's copy of the edit directive:
+// it uses Codex's tool wording and is rendered for an assistant seat on Codex.
 //
 //go:embed engine/codex/edit-directive.md
 var EngineCodexEditDirective []byte
 
-// GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with, joined ahead of one caller body stencil.
+// GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with:
+// it is joined ahead of one caller body stencil.
 //
 //go:embed gatefix/gatefix-frame-cold.md
 var GatefixFrameCold []byte
 
-// GatefixBodyDarn is the job body of the cold fixer for the Darn-Write row's gate, joined behind GatefixFrameCold.
+// GatefixBodyDarn is the job body of the cold fixer for the Darn-Write row's gate, joined behind the shared cold frame.
 //
 //go:embed gatefix/gatefix-body-darn.md
 var GatefixBodyDarn []byte
 
-// GatefixBodyPlan is the job body of the cold fixer for the Plan-Write row's gate, joined behind GatefixFrameCold.
+// GatefixBodyPlan is the job body of the cold fixer for the Plan-Write row's gate, joined behind the shared cold frame.
 //
 //go:embed gatefix/gatefix-body-plan.md
 var GatefixBodyPlan []byte
 
-// GatefixBodyDiscussion is the job body of the cold fixer for the Discussion-Write row's gate, joined behind GatefixFrameCold.
+// GatefixBodyDiscussion is the job body of the cold fixer for the Discussion-Write row's gate:
+// it is joined behind the shared cold frame.
 //
 //go:embed gatefix/gatefix-body-discussion.md
 var GatefixBodyDiscussion []byte
 
-// GatefixBodyCard is the job body of the cold fixer for a Webster card gate's red agent call, joined behind GatefixFrameCold.
+// GatefixBodyCard is the job body of the cold fixer for a Webster card gate's red agent call:
+// it is joined behind the shared cold frame.
 //
 //go:embed gatefix/gatefix-body-card.md
 var GatefixBodyCard []byte
@@ -642,7 +718,8 @@ type registryEntry struct {
 	def  *[]byte
 }
 
-// entries is the ordered name-to-default registry: the order stencils are listed here is the order `lym stencil list` prints them in.
+// entries is the ordered name-to-default registry,
+// and `lym stencil list` prints the stencils in this order.
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
@@ -770,8 +847,9 @@ var entries = []registryEntry{
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
-// A key names a role with any segment prefix left off: a review segment's session carries `<prefix>-<key>` for the keys `bouncer-judge`, `bouncer-seed`, `burler-review` and `burler-fix`.
-// Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
+// A key names a role with any segment prefix left off: a review segment's session carries `<prefix>-<key>`.
+// Each stencil carries both the parent directive marker and the edit directive marker.
+// `parentdirective_test.go` enforces that.
 var roleOpeningStencils = map[string][]string{
 	"driver":               {"shed-template-driver"},
 	"arbiter":              {"loom-template-arbiter"},
@@ -832,10 +910,10 @@ var askOperatorBounds = []string{
 	"before",
 }
 
-// registry implements stencilstore.Registry over entries.
+// registry implements stencilstore.Registry over the stencils this package embeds.
 type registry struct{}
 
-// Names returns every registered stencil's name, in entries' declared order.
+// Names returns every registered stencil's name, in declaration order.
 func (registry) Names() []string {
 	names := make([]string, len(entries))
 	for i, e := range entries {
@@ -855,8 +933,8 @@ func (registry) Default(name string) ([]byte, bool) {
 }
 
 // Registry returns the stencilstore.Registry backed by this package's embedded defaults.
-// `cmd/lym`'s root pre-run and internal/stencilcli are its consumers; no engine imports this
-// package -- an engine reads a stencil at call time via stencilstore.Read, which needs no registry.
+// No engine imports this package outside its tests.
+// An engine reads a stencil at call time via stencilstore.Read, which needs no registry.
 func Registry() stencilstore.Registry {
 	return registry{}
 }

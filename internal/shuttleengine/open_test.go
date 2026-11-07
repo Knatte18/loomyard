@@ -1,4 +1,4 @@
-// open_test.go covers Runner.Open: the strand it adds, the chain its pane runs, and the refusals made before anything is created.
+// open_test.go covers Runner.Open: the strand it adds, the chain its pane runs, and the refusals made before creation.
 
 package shuttleengine
 
@@ -20,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// dirCreatingOpenerEngine is an openerFakeEngine whose OpenLaunch creates the session directory, as an engine that writes the session's files does.
+// dirCreatingOpenerEngine is an openerFakeEngine whose OpenLaunch creates the session directory.
+// It mirrors an engine that writes the session's files.
 type dirCreatingOpenerEngine struct{ *openerFakeEngine }
 
 func (e dirCreatingOpenerEngine) OpenLaunch(dir string, spec OpenSpec, cfg Config) (Launch, error) {
@@ -33,7 +34,8 @@ func (e dirCreatingOpenerEngine) OpenLaunch(dir string, spec OpenSpec, cfg Confi
 // TestRunner_Open pins the strand Open adds and what it refuses before creating one.
 func TestRunner_Open(t *testing.T) {
 	tiergate.Require(t, 0)
-	// One subtest captures the process-global logger, so the test runs serially and no parallel test of the package swaps the logger output during the capture.
+	// One subtest captures the process-global logger, so the test runs serially:
+	// no parallel test of the package may swap the logger output during the capture.
 	sh := shell.ForGOOS()
 	launch := Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-9"}
 	spec := OpenSpec{Role: "explore", Segment: segmentcolor.Segment("review")}

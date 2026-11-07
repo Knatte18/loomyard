@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// DriftAwait is the Drift-Await ShedProducer.
+// DriftAwait is the Drift-Await ShedProducer, which holds the run until the baseline capture has finished.
 type DriftAwait struct {
 	name string
 	deps Deps
@@ -24,10 +24,15 @@ func NewDriftAwait(name string, deps Deps) *DriftAwait {
 	return &DriftAwait{name: name, deps: deps}
 }
 
-// Call runs one Drift-Await pass and commits the durable drift directory, the capture log included, on every way out but one: with drift switched off it is Done at once, committing nothing.
-// It is Done with no scope record, with scope off, with awaited_at set whatever HEAD is, and when a passed capture was taken at HEAD, which it records as awaited_at.
-// A capture holding the lock is waited on without a bound of its own, and the capture record is read only after the lock reads free.
-// A missing, failed or unfinished capture, and a passed one taken at another commit than HEAD, are a Stuck naming its ways forward.
+// Call runs one Drift-Await pass.
+// It commits the durable drift directory, the capture log included, on every way out but one.
+// With drift switched off it is Done at once, committing nothing.
+// It is Done with no scope record, with scope off, or with awaited_at set whatever HEAD is.
+// It is also Done when a passed capture was taken at HEAD, which it records as awaited_at.
+// A capture holding the lock is waited on without a bound of its own,
+// and the capture record is read only after the lock reads free.
+// A missing, failed or unfinished capture is a Stuck naming its ways forward.
+// So is a passed capture taken at another commit than HEAD.
 func (p *DriftAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	err := requireSeams(p.name,
@@ -47,7 +52,7 @@ func (p *DriftAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 	return commitOnExit(p.name, d.Commit, []string{DirRel()}, outcome, pointer, err)
 }
 
-// await is Call without the commit.
+// await runs one Drift-Await pass and returns its outcome without committing the drift directory.
 func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	records, err := ReadRecords(d)

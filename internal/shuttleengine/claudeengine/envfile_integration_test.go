@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeExecutable writes an executable file at path with the given script content.
 func writeExecutable(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -31,8 +30,10 @@ func writeExecutable(t *testing.T, path, content string) {
 	}
 }
 
-// TestEnvFile_DefaultStdinIsDevNull runs each command as `bash -c '<env file content>eval <command>'` with the shell's stdin an open pipe nothing ever writes to or closes.
-// It pins the default stdin and the PATH re-prepend: an operator rc that left a decoy `lym` first on PATH is overridden by LYM_BIN's directory.
+// TestEnvFile_DefaultStdinIsDevNull runs each command as `bash -c '<env file content>eval <command>'`.
+// The shell's stdin is an open pipe that nothing ever writes to or closes.
+// It pins the default stdin and the PATH re-prepend.
+// An operator rc that left a decoy `lym` first on PATH is overridden by LYM_BIN's directory.
 func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

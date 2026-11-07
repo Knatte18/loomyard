@@ -21,10 +21,10 @@ func TestDriverReportPath(t *testing.T) {
 	now := func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 
 	// Two calls under a frozen clock must produce two different paths.
-	// A test that instead advances the clock between calls would prove only that the timestamp varies,
-	// the half that already worked, and would pass against a composer with no random component at all.
+	// A test that advances the clock between calls would prove only that the timestamp varies:
+	// it would pass against a composer with no random component at all.
 	// This is the only case that can fail against a composer missing the random half,
-	// and the collision it guards fires precisely under the automated relaunch.
+	// and the collision it guards fires under the automated relaunch.
 	t.Run("frozen clock, two calls produce different paths", func(t *testing.T) {
 		t.Parallel()
 		seq := []string{"aaaa", "bbbb"}

@@ -1,4 +1,5 @@
-// tmuxfloor.go checks tmux's version floor once per resolved tmux path before reed spawns tmux, and keeps whether that tmux has the allow-set-title pane option.
+// tmuxfloor.go checks tmux's version floor once per resolved tmux path, before reed spawns tmux.
+// It also records whether that tmux has the allow-set-title pane option.
 
 package reedengine
 
@@ -17,11 +18,12 @@ import (
 type tmuxFloorAnswer struct {
 	// floorErr is nil, or the *toolfloor.FloorError for a tmux below the floor.
 	floorErr error
-	// lacksAllowSetTitle is whether the version line parsed as a release older than toolfloor.TmuxAllowSetTitle.
+	// lacksAllowSetTitle reports whether the version line parsed as a release older than toolfloor.TmuxAllowSetTitle.
 	lacksAllowSetTitle bool
 }
 
-// tmuxFloorCache holds the process's probe answer for each resolved tmux path, so the version probe runs once per path.
+// tmuxFloorCache holds the process's probe answer for each resolved tmux path.
+// It runs the version probe once per path.
 // The zero value is ready to use.
 type tmuxFloorCache struct {
 	mu      sync.Mutex
@@ -40,9 +42,10 @@ func (c *tmuxFloorCache) check(tmuxPath string, probe func(tmuxPath string) (str
 // answer returns the cached answer for tmuxPath once one exists; otherwise it runs probe on tmuxPath.
 // tmuxPath is resolved with exec.LookPath, and the raw path is the key when it does not resolve.
 // A probe error is returned wrapped and not cached, so the next call probes again.
-// A line toolfloor parses is cached with its answer.
-// An unparseable line is logged once with Warn and cached as admitted, with allow-set-title not known to be missing.
-// A parsed release without allow-set-title is logged once at Info, the one note of the pane-title fallback.
+// A version line that toolfloor parses is cached with its answer.
+// An unparseable line is logged once with Warn and cached as admitted.
+// It is not treated as lacking allow-set-title.
+// A parsed release without allow-set-title is logged once at Info.
 func (c *tmuxFloorCache) answer(tmuxPath string, probe func(tmuxPath string) (string, error)) (tmuxFloorAnswer, error) {
 	key := tmuxPath
 	if resolved, err := exec.LookPath(tmuxPath); err == nil {
@@ -89,10 +92,12 @@ func probeTmuxVersion(tmuxPath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// CheckTmuxFloor reports whether the tmux at tmuxPath is at or above lym's floor, probing once per resolved path per process.
-// It returns a *toolfloor.FloorError for a tmux below the floor, and the wrapped exec error, uncached, when tmux could not be run.
+// CheckTmuxFloor checks that the tmux at tmuxPath is at or above lym's floor.
+// It probes once per resolved path per process.
+// It returns a *toolfloor.FloorError for a tmux below the floor,
+// and it returns the wrapped exec error, uncached, when tmux could not be run.
 // It admits without probing on Windows, whose psmux has its own version shape and the capability probe's own floor.
-// It is exported so a tmux spawn outside the runner checks too.
+// It is exported so tmux spawns outside the runner check their floor too.
 func CheckTmuxFloor(tmuxPath string) error {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -102,7 +107,8 @@ func CheckTmuxFloor(tmuxPath string) error {
 
 // checkFloor checks the floor for this command's tmux binary before a spawn.
 // A command with an execHook never reads or fills the process cache.
-// It admits when floorLine is empty, and otherwise returns the refusal toolfloor.CheckTmux gives floorLine, admitting an unparseable line.
+// It admits when floorLine is empty.
+// Otherwise it returns the refusal toolfloor.CheckTmux gives floorLine, and it admits an unparseable line.
 func (p TmuxCmd) checkFloor() error {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -117,8 +123,10 @@ func (p TmuxCmd) checkFloor() error {
 	return CheckTmuxFloor(p.tmuxPath)
 }
 
-// lacksAllowSetTitle reports whether this command's tmux is known to predate the allow-set-title pane option, from the process's version probe.
-// A version that did not parse, a probe that could not run, Windows, and a hook-driven command whose floorLine does not parse answer false, so the caller tries the option.
+// lacksAllowSetTitle reports whether this command's tmux is known to predate the allow-set-title pane option.
+// The process's version probe supplies the answer, except for a hook-driven command, which reads its floorLine.
+// A version that did not parse, a probe that could not run, and Windows answer false.
+// A hook-driven command whose floorLine does not parse also answers false, so the caller tries the option.
 func (p TmuxCmd) lacksAllowSetTitle() bool {
 	if runtime.GOOS == "windows" {
 		return false

@@ -59,7 +59,7 @@ func peersFakeTasks() []boardengine.Task {
 	}
 }
 
-// peersFakeDeps is a peersDeps over peersFakeTasks whose caller, board and records the test sets.
+// peersFakeDeps is a peersDeps serving a fixed task set, whose caller, board and records the test sets.
 // Its rows are darn's for darn-peer, pawl's for pawl-peer and tapestry's for every other task.
 func peersFakeDeps(caller string) peersDeps {
 	rowsOf := func(recipe string) []string {
@@ -102,7 +102,10 @@ func peersFakeDeps(caller string) peersDeps {
 	}
 }
 
-// TestPeersVerb verifies the peer set is every run-status task but the caller's own, that a peer with unread parts is kept with the reasons, that the parent's commits appear only from a task pair, and that a hub with no board refuses.
+// TestPeersVerb verifies the peer set is every run-status task but the caller's own.
+// A peer with unread parts is kept with the reasons.
+// The parent's commits appear only from a task pair.
+// A hub with no board refuses.
 func TestPeersVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -126,10 +129,11 @@ func TestPeersVerb(t *testing.T) {
 			"running-peer":  0,
 			"awaiting-peer": loomRowNumber(t, "PR-Review"),
 			"blocked-peer":  loomRowNumber(t, "Plan-Write"),
-			// A peer's row is read in its own recipe: Darn-Write is darn's row, and Finalize's position in pawl's recipe is not tapestry's.
+			// A peer's row is read in its own recipe:
+			// Darn-Write is darn's row, and Finalize's position in pawl's recipe is not tapestry's.
 			"darn-peer":     recipeRowNumber(t, shedrun.RecipeDarn, "Darn-Write"),
 			"finalize-peer": loomRowNumber(t, "Finalize"),
-			// A peer parked on the row's name before its rename is listed at the renamed row's position.
+			// A peer parked on a row's retired name is listed at the row's current position.
 			"retired-row-peer": loomRowNumber(t, "Parent-Align"),
 			"pawl-peer":        recipeRowNumber(t, shedrun.RecipePawl, "Finalize"),
 		}
@@ -207,7 +211,8 @@ func TestPeersVerb(t *testing.T) {
 	})
 }
 
-// TestPeersShowVerb verifies a peer's decision record and plan are printed, and that each refusal reaches its row with its way forward.
+// TestPeersShowVerb verifies a peer's decision record and plan are printed.
+// Each refusal reaches its row with its way forward.
 func TestPeersShowVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

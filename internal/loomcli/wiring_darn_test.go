@@ -1,4 +1,7 @@
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the perch's settings taken from loom.yaml's Code-Review keys, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams and the verify source and attempts.
+// It covers the perch's settings from loom.yaml's Code-Review keys.
+// It covers the early refusals of a malformed or absent darn.yaml and the routing per recipe.
+// It covers the rename of retired darn rows when a verb arms and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -27,7 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders for the `finalize` key.
+// wantDarnLandingCall is the landing call the two-tier gate config renders for the `finalize` key.
 const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 
 //lym:seam internal/battenshed#InnerRunDeps
@@ -93,7 +96,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 				}
 			}
 		}
-		// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that a darn seed keeps the shared wiring's seam, which answers not found since darn has no Parent-Align report.
+		// envkit.NilSeams skips ReviewInput through nilLegal.
+		// A direct check pins that a darn seed keeps the shared wiring's seam.
+		// The seam answers not found, since darn has no Parent-Align report.
 		if c.env.ReviewInput == nil {
 			t.Fatal("ReviewInput is nil after wire() of a darn seed; want it told")
 		}
@@ -375,7 +380,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 	})
 }
 
-// TestWire_SamplerRecipe pins the wiring a sampler seed adds to wire: the Sampler-Session row's seams, the tree-scope verify seams and attempts it shares with darn, and the strict load of sampler.yaml.
+// TestWire_SamplerRecipe pins the wiring a sampler seed adds to wire.
+// It covers the Sampler-Session row's seams and the strict load of sampler.yaml.
+// It also covers the tree-scope verify seams and attempts it shares with darn.
 // The four seams that need reed's strand table are left to wireLanding.
 //
 //lym:seam internal/battenshed#InnerRunDeps
@@ -505,7 +512,8 @@ func TestWire_SamplerRecipe(t *testing.T) {
 	})
 }
 
-// TestArmAt_RenamesRetiredDarnRows pins that arming any verb over a darn run carries a status file still naming the writer row's former name onto Darn-Write, and leaves a tapestry run's file alone.
+// TestArmAt_RenamesRetiredDarnRows pins the status-file rename that arming any verb over a darn run performs:
+// a file still naming the writer row's former name moves to Darn-Write, and a tapestry run's file is left alone.
 // A live driver holding the run lock keeps the old name, and the verb still arms.
 func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -560,7 +568,8 @@ func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 	}
 }
 
-// TestRenameRetiredRows pins that renameRetiredRows carries every field of a status file naming a retired row onto its successor, for the loom table and for the darn one, and leaves other rows alone.
+// TestRenameRetiredRows pins what renameRetiredRows does to a status file naming a retired row:
+// every field moves to the successor row, for the loom table and for the darn one, and other rows are left alone.
 func TestRenameRetiredRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -752,7 +761,8 @@ func TestLatestDarnOutcome(t *testing.T) {
 	}
 }
 
-// TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile pins that the LatestOutcome seam reads the run's status file and names the findings file Env.GateFindingsFile gives the Darn-Write row.
+// TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile pins that the LatestOutcome seam reads the run's status file.
+// It names the findings file Env.GateFindingsFile gives the Darn-Write row.
 func TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -781,7 +791,8 @@ func TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile(t *testing.T) {
 	}
 }
 
-// firstNonEmptyState returns st, or the running state when st is empty, since a status file with no state does not decode.
+// firstNonEmptyState returns st, or the running state when st is empty.
+// A status file with no state does not decode, which is why an empty st reads as running.
 func firstNonEmptyState(st shedengine.State) shedengine.State {
 	if st == "" {
 		return shedengine.StateRunning

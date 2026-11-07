@@ -1,5 +1,7 @@
-// snapshotuncommitted.go implements SnapshotUncommitted and SnapshotTagged: the local set-aside of a pair's uncommitted paths that D6's force case takes before a local removal.
-// The snapshot is one parentless commit in the weft repository holding the task worktree's uncommitted paths under warp/ and the weft worktree's uncommitted paths outside the record pathspec under weft/.
+// snapshotuncommitted.go implements SnapshotUncommitted and SnapshotTagged, which set aside uncommitted paths locally.
+// The snapshot is one parentless commit in the weft repository.
+// Under warp/ it holds the task worktree's uncommitted paths.
+// Under weft/ it holds the weft worktree's uncommitted paths outside the record pathspec.
 // It is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched.
 
 package fabricengine
@@ -23,7 +25,7 @@ const (
 	snapshotTaskDir = "warp"
 	// snapshotRecordsDir is the top-level directory of a snapshot commit that holds the weft worktree's uncommitted paths.
 	snapshotRecordsDir = "weft"
-	// snapshotTagMessage is the message that marks a set-aside tag as a snapshot, which SnapshotTagged looks for through the tag's annotated type.
+	// snapshotTagMessage is the message of a snapshot tag; SnapshotTagged finds those tags by their object type.
 	snapshotTagMessage = "snapshot of the uncommitted paths of a pair set aside before its local removal"
 )
 
@@ -31,14 +33,18 @@ const (
 type snapshotEntry struct {
 	// treePath is the slash-separated path inside the snapshot tree, under snapshotTaskDir or snapshotRecordsDir.
 	treePath string
-	// filePath is the absolute path of the file whose content is snapshotted; empty for a path deleted from the worktree, which the snapshot lists and does not hold.
+	// filePath is the absolute path of the file to snapshot; empty for a deleted path, which is listed without content.
 	filePath string
 }
 
-// SnapshotUncommitted keeps the uncommitted paths of slug's task worktree and of its weft worktree, outside the record pathspec, under a local annotated `set-aside/<slug>/<sha>` tag, and returns the tag and the paths it holds.
+// SnapshotUncommitted sets aside the uncommitted paths of slug's pair before a local removal.
+// It keeps them under a local annotated `set-aside/<slug>/<sha>` tag,
+// and it returns that tag and the paths it holds.
 // Untracked paths are included.
-// The paths are one parentless commit built from loose blobs, so it moves no branch and touches neither worktree's index.
-// It takes the weft write lock by one attempt and returns an error wrapping ErrPairBusy, with nothing written, when another writer holds it.
+// The snapshot is one parentless commit built from loose blobs,
+// so it moves no branch and touches neither worktree's index.
+// It takes the weft write lock by one attempt,
+// and it returns an error wrapping ErrPairBusy, with nothing written, when another writer holds it.
 // With nothing uncommitted it writes nothing and returns an empty tag.
 // The commit and the tag are recorded in rec, the tag only after it exists.
 func (t *Topology) SnapshotUncommitted(rec *Mutations, l *lymcwd.Location, slug string) (tag string, paths []string, err error) {
@@ -103,7 +109,7 @@ func (t *Topology) SnapshotUncommitted(rec *Mutations, l *lymcwd.Location, slug 
 	return tag, paths, nil
 }
 
-// SnapshotTagged reports whether the weft repository holds a snapshot tag of slug, an annotated `set-aside/<slug>/` tag SnapshotUncommitted wrote.
+// SnapshotTagged reports whether the weft repository holds an annotated `set-aside/<slug>/` tag of slug.
 // A set-aside tag of a replay is lightweight and does not count.
 func SnapshotTagged(l *lymcwd.Location, slug string) (bool, error) {
 	weftRoot, err := RecordsRepoRoot(l)
@@ -176,8 +182,8 @@ func newSnapshotTreeNode() *snapshotTreeNode {
 	return &snapshotTreeNode{blobs: map[string][2]string{}, dirs: map[string]*snapshotTreeNode{}}
 }
 
-// commitSnapshot writes the blobs of entries into the repository at repoRoot, assembles them into a tree, commits it with no parent and returns the commit's SHA.
-// The commit is recorded in rec.
+// commitSnapshot writes the blobs of entries into the repository at repoRoot and assembles them into a tree.
+// It commits the tree with no parent, records the commit in rec, and returns the commit's SHA.
 func commitSnapshot(rec *Mutations, repoRoot, slug string, entries []snapshotEntry) (string, error) {
 	root := newSnapshotTreeNode()
 	for _, entry := range entries {
@@ -213,7 +219,8 @@ func commitSnapshot(rec *Mutations, repoRoot, slug string, entries []snapshotEnt
 	return sha, nil
 }
 
-// writeSnapshotBlob writes the content of the file or symlink at filePath into the repository at repoRoot and returns its tree mode and blob SHA.
+// writeSnapshotBlob writes the content of the file or symlink at filePath into the repository at repoRoot,
+// and it returns its tree mode and blob SHA.
 func writeSnapshotBlob(repoRoot, filePath string) (mode, blob string, err error) {
 	info, err := os.Lstat(filePath)
 	if err != nil {
@@ -244,7 +251,8 @@ func writeSnapshotBlob(repoRoot, filePath string) (mode, blob string, err error)
 	return mode, strings.TrimSpace(out), nil
 }
 
-// writeSnapshotTree writes node and every directory under it into the repository at repoRoot, bottom up, and returns node's tree SHA.
+// writeSnapshotTree writes node and every directory under it into the repository at repoRoot, bottom up,
+// and it returns node's tree SHA.
 func writeSnapshotTree(repoRoot string, node *snapshotTreeNode) (string, error) {
 	var lines []string
 	for name, child := range node.dirs {
@@ -265,9 +273,9 @@ func writeSnapshotTree(repoRoot string, node *snapshotTreeNode) (string, error) 
 	return strings.TrimSpace(out), nil
 }
 
-// snapshotTag puts the local annotated tag `set-aside/<slug>/<short sha>` on sha, marked as a snapshot by its message, and returns its name.
-// A tag already on sha is kept.
-// It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
+// snapshotTag puts the local annotated tag `set-aside/<slug>/<short sha>` on sha and returns its name.
+// The tag is marked as a snapshot by its message, and a tag already on sha is kept.
+// It appends KindTagCreated once the tag exists: the target is the repository root, the detail the tag name.
 func snapshotTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
 	tag := setAsideTagPrefix + slug + "/" + sha[:ArchiveTagSHALen]
 	commonDir, err := repo.CommonDir()

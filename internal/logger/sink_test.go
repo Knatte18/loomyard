@@ -1,6 +1,10 @@
-// sink_test.go covers the durable sink's naming, lazy-open header composition, both open triggers, and the size-cap truncation marker.
-// Every case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, so no lymcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset sink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already triggered.
-// No test in this file calls t.Parallel: each rewrites the process-global durable sink state that SetDurableSinkDir resets.
+// sink_test.go covers the durable sink's file naming and lazy-open header.
+// It also covers both open triggers and the size-cap truncation marker.
+// Every case calls SetDurableSinkDir(t.TempDir()) at its own start, and no case shares that call.
+// The call keeps lymcwd.Resolve from running (Test Tier Purity Invariant) and resets the sink,
+// so an earlier case's trigger cannot leak into this one.
+// A test that rewrites the process-global durable sink state must not call t.Parallel:
+// SetDurableSinkDir resets that state, and parallel cases would race on it.
 
 package logger
 
@@ -60,7 +64,10 @@ func readSoleSinkFile(t *testing.T, dir string) string {
 	return string(data)
 }
 
-// TestEnsureDurableSink_CreatesOneNamedFileWithHeader pins the lazy open: exactly one trace file lands in the directory SetDurableSinkDir* names and nowhere in the cwd-derived location, its name follows trace-<ts>-<16hex>-<pid>.log, and its first line is the header record carrying the trace ID and, when the caller supplied one, the worktree root.
+// TestEnsureDurableSink_CreatesOneNamedFileWithHeader pins the lazy open.
+// Exactly one trace file lands in the directory SetDurableSinkDir* names, and nowhere in the cwd-derived location.
+// Its name follows trace-<ts>-<16hex>-<pid>.log.
+// Its first line is the header record, carrying the trace ID and, when the caller supplied one, the worktree root.
 //
 //testtiming:keep pins the trace file name grammar, the header first line and the worktree root in the header, which TestEnsureDurableSink_ConcurrentRedirectIsRaceFree does not assert
 func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
@@ -146,8 +153,11 @@ func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
 	}
 }
 
-// TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory is R4-09's end-to-end guard, the one that shows why the alphabet check in trace.go is a containment property and not a cosmetic one: ensureDurableSink interpolates header.TraceID into the filename and hands the result to filepath.Join, which CLEANS it -- so an adopted 'ci-run/../../pwned' used to place the trace file two levels above the logs directory.
-// The assertion is positional, not textual: whatever the filename ends up being, it must sit inside dir, and dir's grandparent must stay empty.
+// TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory guards the trace-ID alphabet check in trace.go.
+// ensureDurableSink interpolates header.TraceID into the filename and passes it to filepath.Join, which cleans it.
+// An adopted 'ci-run/../../pwned' would otherwise place the trace file two levels above the logs directory.
+// The assertion is positional, not textual:
+// whatever the filename ends up being, it must sit inside dir, and dir's grandparent must stay empty.
 //
 //testtiming:keep a guard that an adopted path-traversal trace ID cannot place the file above the logs directory, which no covering test asserts
 func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing.T) {
@@ -180,15 +190,16 @@ func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing
 		}
 	}
 
-	// A filename Sweep cannot match is the second, independent half of R4-09: the file would never
-	// be ranked or removed and the logs directory would grow without bound.
+	// A filename Sweep cannot match is a second hazard: the file would never be ranked or removed,
+	// and the logs directory would grow without bound.
 	files := listSinkDirFiles(t, dir)
 	if len(files) == 1 && !sinkTestFilePattern.MatchString(files[0]) {
 		t.Errorf("filename %q does not match the retention-sweepable grammar; Sweep would never reclaim it", files[0])
 	}
 }
 
-// TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile is the ordering obligation as an executable assertion: setting the directory after the sink is already armed does not move the file that was already opened.
+// TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile pins one ordering:
+// a directory set after the sink is armed does not move the file already opened.
 //
 //testtiming:keep pins that a redirect after arming resets sinkPath, reports not armed and leaves the opened file in place, which TestEnsureDurableSink_ConcurrentRedirectIsRaceFree does not assert
 func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(t *testing.T) {
@@ -217,10 +228,12 @@ func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(
 	}
 }
 
-// TestEnsureDurableSink_ConcurrentRedirectIsRaceFree is the regression guard for the R4 review's R4-20: the lazy first-open read sinkDirOverride and wrote sinkPath, sinkOK, sinkBytesWritten and header from inside a sync.Once with NO lock, while resetDurableSinkLocked wrote all of those AND reassigned that very sync.Once under sinkMu.
-// A SetDurableSinkDir* concurrent with an in-flight first record was therefore a data race on the Once value itself, and the losing order left the PRE-redirect sinkPath installed -- and that redirect is the mechanism keeping a standalone run's trace files out of the operator's own repository.
+// TestEnsureDurableSink_ConcurrentRedirectIsRaceFree guards a SetDurableSinkDir* that races the first open of the sink.
+// The sink must end up in one of the two directories, never a path composed from neither.
+// The redirect keeps a standalone run's trace files out of the operator's own repository.
 //
-// It must be run under `go test -race` to observe the race itself; the positional assertion below holds either way, and is what catches a half-applied reset leaving a path composed from neither generation.
+// It must run under `go test -race` to observe the race itself.
+// The positional assertion below holds either way and catches a half-applied reset.
 //
 //testtiming:keep a regression guard that a redirect racing the first open leaves the sink in one of the two directories, which its covering tests do not assert
 func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
@@ -229,8 +242,8 @@ func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
 	secondDir := t.TempDir()
 	t.Cleanup(func() { SetDurableSinkDir("") })
 
-	// Several rounds, because the interleaving that loses is order-dependent: one arm/redirect pair
-	// can easily complete in the safe order by luck.
+	// Several rounds, because the interleaving that loses is order-dependent.
+	// One arm/redirect pair can complete in the safe order by luck.
 	for round := 0; round < 20; round++ {
 		SetDurableSinkDir(firstDir)
 
@@ -244,8 +257,8 @@ func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
 		}()
 		wg.Wait()
 
-		// Whichever order won, re-arming must land the sink in the directory the surviving
-		// generation names -- never a stale composite of the two.
+		// Whichever order won, re-arming must land the sink in the directory the surviving generation names.
+		// It must never land on a stale composite of the two.
 		if !ensureDurableSink() {
 			t.Fatalf("round %d: ensureDurableSink() ok = false; want true", round)
 		}
@@ -282,7 +295,9 @@ func TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields(t *testing.T) 
 	}
 }
 
-// TestSinkArmTriggers pins what arms the durable sink: an Info-or-above record and a non-zero NotifyExit open it with the header as first line, while no record and NotifyExit(0) leave the directory empty and the sink unarmed.
+// TestSinkArmTriggers pins what arms the durable sink:
+// an Info-or-above record and a non-zero NotifyExit open it, with the header as first line.
+// No record and NotifyExit(0) leave the directory empty and the sink unarmed.
 func TestSinkArmTriggers(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -370,10 +385,12 @@ func TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker(t *testing.T
 	}
 }
 
-// TestWriteDurable_SurvivesLogsDirRenameMidProcess is the load-bearing regression guard for this batch.
-// Against the pre-batch code, sinkWriter is an *os.File opened once and held for the process lifetime: a POSIX rename of that file's directory leaves the held descriptor still valid and still pointed at the (now differently-named) underlying file, so a second write through that stale descriptor never becomes visible under a directory freshly recreated at the original path -- exactly what a fabric content-adoption step recreating .lym/logs after moving the old tree away would do.
-// Against the handle-free sink (writeDurable opens, appends, and closes sinkPath per record), the second write re-opens by path and lands in the freshly recreated directory, because no descriptor survives from the first write to intercept it.
-// The rename succeeding plus the second record landing under the recreated original directory are the only observables available on Linux; enumerating open file descriptors is deliberately out of scope.
+// TestWriteDurable_SurvivesLogsDirRenameMidProcess pins the sink's behavior after a rename.
+// The logs directory is renamed and recreated at its original path mid-process, as fabric's content adoption does.
+// A sink that held one file descriptor for the process lifetime would keep writing into the renamed tree.
+// writeDurable opens, appends and closes sinkPath per record.
+// The second write therefore re-opens by path and lands in the recreated directory.
+// Enumerating open file descriptors is out of scope.
 //
 //testtiming:keep a regression guard that a record written after the logs directory is renamed and recreated lands in the recreated directory, which no covering test asserts
 func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
@@ -396,9 +413,8 @@ func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
 	if err := os.Rename(dir, renamedDir); err != nil {
 		t.Fatalf("os.Rename(%q, %q) error = %v; want nil", dir, renamedDir, err)
 	}
-	// Recreate an empty directory at the original path, as fabric's content adoption would once it
-	// has moved the old tree elsewhere -- this is what makes a stale descriptor observable: a write
-	// through one never shows up here.
+	// Recreate an empty directory at the original path, as fabric's content adoption does after moving the old tree.
+	// A write through a stale descriptor never shows up here.
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatalf("os.Mkdir(%q) (recreate) error = %v; want nil", dir, err)
 	}
@@ -421,7 +437,10 @@ func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
 	}
 }
 
-// TestIsLymWorktree_GatesTheCwdAnchoredFallback pins R6-6's decision: the durable sink's cwd-anchored fallback may arm only inside a worktree lym actually owns. lymcwd.Resolve succeeds for any plain git repository standing at its root, and cmd/lym force-arms the sink on every non-zero exit, so without this gate every refusal — a standalone webster/burler invocation refused before its own sink redirect, or an unknown subcommand that never reached wiring — created <repo>/.lym/logs inside a checkout lym does not own.
+// TestIsLymWorktree_GatesTheCwdAnchoredFallback pins that the sink's cwd fallback arms only in an owned worktree.
+// lymcwd.Resolve succeeds for any plain git repository standing at its root.
+// cmd/lym force-arms the sink on every non-zero exit.
+// Without the gate, every refusal would create <repo>/.lym/logs inside a checkout lym does not own.
 //
 //testtiming:keep pins isLymWorktree for a plain checkout and an anchored worktree without git, which its covering integration test reaches only through the real call site
 func TestIsLymWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
@@ -507,8 +526,8 @@ func TestTraceDir_MatchesOverrideAndCreatesNothing(t *testing.T) {
 	}
 }
 
-// TestEnsureDurableSink_ArmingDoesNotSweep pins that opening the sink leaves a pre-seeded, aged, dead-pid trace file in place;
-// the sweep runs at process exit, never at arm.
+// TestEnsureDurableSink_ArmingDoesNotSweep pins that arming the sink leaves an aged, dead-pid trace file in place.
+// The sweep runs at process exit, not when the sink is armed.
 //
 //testtiming:keep pins that arming leaves an aged dead-pid trace file in place, which no covering test asserts
 func TestEnsureDurableSink_ArmingDoesNotSweep(t *testing.T) {

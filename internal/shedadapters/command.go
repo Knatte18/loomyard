@@ -1,4 +1,5 @@
-// command.go implements CommandProducer, the producer that runs one operator-configured shell command and never halts the run over the command's outcome.
+// command.go holds CommandProducer, the producer that runs one operator-configured shell command.
+// It never halts the run over the command's outcome.
 
 package shedadapters
 
@@ -26,7 +27,7 @@ type CommandRow struct {
 	Timeout time.Duration
 }
 
-// CommandResult is what a CommandDeps.Run reports about one command.
+// CommandResult reports the outcome of one command run: its exit code and whether the timeout ended it.
 type CommandResult struct {
 	// ExitCode is the command's exit code.
 	ExitCode int
@@ -34,17 +35,21 @@ type CommandResult struct {
 	TimedOut bool
 }
 
-// CommandDeps is what the recipe's owner tells a CommandProducer; the producer derives no path itself.
+// CommandDeps holds what the recipe's owner gives a command producer.
+// The producer derives no path itself.
 type CommandDeps struct {
-	// Setting is the plain setting lookup through which the command key is read over the owner's ordinary stack to warn about an ignored value.
+	// Setting reads the command key over the owner's ordinary stack, so the producer can warn about a value it ignores.
 	Setting func(module, key string) (any, error)
-	// ExecutableSetting is the owner's lookup over the template and the board default layer only; the command is read through it and nothing else.
+	// ExecutableSetting reads the command key over the template and the board default layer only.
+	// The command is read through it and through no other lookup.
 	ExecutableSetting func(module, key string) (any, error)
 	// Lym and Slug are the values of the {lym} and {slug} placeholders.
 	Lym, Slug string
-	// TaskDir returns the value of the {task_dir} placeholder; it is called only when the command holds that placeholder.
+	// TaskDir returns the value of the {task_dir} placeholder;
+	// it is called only when the command holds that placeholder.
 	TaskDir func() (string, error)
-	// Title returns the value of the {title} placeholder, the title of the run's window; it is called only when the command holds that placeholder.
+	// Title returns the value of the {title} placeholder, the title of the run's window;
+	// it is called only when the command holds that placeholder.
 	Title func() string
 	// Dir is the directory the command runs in.
 	Dir string
@@ -52,7 +57,7 @@ type CommandDeps struct {
 	LogPath func(row string) string
 	// Run runs command once through the platform shell in dir, writing its output to logPath, and ends it after timeout.
 	Run func(ctx context.Context, dir, command, logPath string, timeout time.Duration) (CommandResult, error)
-	// Rerun is the command that resumes the run, named in every way forward.
+	// Rerun is the command that resumes the run; error messages name it as the way forward.
 	Rerun string
 	// GOOS names the platform whose shell quoting the placeholders get; empty means runtime.GOOS.
 	GOOS string
@@ -67,14 +72,15 @@ type CommandProducer struct {
 
 var _ shedengine.ShedProducer = (*CommandProducer)(nil)
 
-// NewCommandProducer returns the producer of the row name over row's settings and deps' seams.
+// NewCommandProducer returns the producer named name, which runs row's command through the seams in deps.
 func NewCommandProducer(name string, row CommandRow, deps CommandDeps) *CommandProducer {
 	return &CommandProducer{name: name, row: row, deps: deps}
 }
 
 // Call implements shedengine.ShedProducer.
-// See the package documentation's Command section for the order it follows.
-// Only an unreadable command setting or a missing executable-key lookup is an error; a command that fails, times out or cannot start is warned about and the row is Done.
+// It reads the command setting, expands its placeholders, and runs the command once.
+// An unreadable command setting, a missing executable-key lookup or a cancelled context is an error;
+// a command that fails, times out or cannot start is warned about, and the row is Done.
 func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, commandEngine); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -149,7 +155,8 @@ func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	return done, shedengine.OutputPointer{}, nil
 }
 
-// warnOnIgnoredCommand warns when the owner's ordinary stack answers a different non-empty command than the one the row runs, since only the template and the board default layer are read.
+// warnOnIgnoredCommand warns when the owner's ordinary stack holds a different non-empty command.
+// The row reads its command from the template and the board default layer only, so such a value is ignored.
 // A failed read of the ordinary stack skips the comparison and never stops the row.
 func (p *CommandProducer) warnOnIgnoredCommand(command, setCommand string) {
 	other, err := p.deps.Setting(p.row.CommandModule, p.row.CommandKey)
@@ -162,7 +169,7 @@ func (p *CommandProducer) warnOnIgnoredCommand(command, setCommand string) {
 	}
 }
 
-// refusedPlaceholderWayForward names how to avoid a placeholder whose value cmd cannot quote.
+// refusedPlaceholderWayForward names how to avoid a placeholder whose value cannot be quoted for the shell.
 func refusedPlaceholderWayForward(placeholder string) string {
 	switch placeholder {
 	case "{task_dir}":
@@ -174,9 +181,10 @@ func refusedPlaceholderWayForward(placeholder string) string {
 	}
 }
 
-// expandPlaceholders replaces each {name} of values in command with the value quoted by verifyrun.QuoteArg for goos, in one pass, so brace text inside a value is never expanded again.
+// expandPlaceholders replaces each {name} of values in command with its value, quoted for the shell of goos.
+// It replaces in one pass, so brace text inside a value is never expanded again.
 // Any other brace text, ${HOME} included, passes through literally.
-// A value QuoteArg refuses returns that error and the refused placeholder, such as "{task_dir}", with no expanded text.
+// A value that cannot be quoted returns its error and the refused placeholder, with an empty expansion.
 func expandPlaceholders(command, goos string, values map[string]string) (expanded, refusedPlaceholder string, err error) {
 	names := make([]string, 0, len(values))
 	for name := range values {

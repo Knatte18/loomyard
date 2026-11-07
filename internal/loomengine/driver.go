@@ -1,10 +1,7 @@
-// driver.go implements ResolveDriver, the driver segment's config-to-settings resolver: a pure
-// composer that parses and resolves the driver role's model-spec, modelled on ResolveReview in
-// internal/loomengine/review.go.
-// Unlike ReviewSettings, the driver's resolved choice carries no Timeout: shuttleengine.Spec.Timeout feeds
-// Run.deadline, which only Wait reads, and the driver path deliberately never calls Wait, so a
-// timeout key would configure nothing.
-// It also pins the roles of the strands a loom bootstrap adds: the driver's and the status strand's.
+// driver.go resolves the driver role's model-spec into the model choice of the loom driver session.
+// The resolved choice carries no timeout: shuttleengine.Spec.Timeout feeds Run.deadline, which only Wait reads,
+// and the driver path never calls Wait, so a timeout key would configure nothing.
+// It also pins the role names of the strands a loom bootstrap adds: the driver's and the status strand's.
 
 package loomengine
 
@@ -16,19 +13,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// LoomDriverStrandName is the loom driver session's own strand's stable identity, the role the hub addresses as "<slug>:driver".
-// It is pinned because reed's add has no upsert semantics and refuses an add whose explicit role another strand already holds.
-// Every add and every lookup must use this exact constant, or a re-entrant bootstrap misses the driver already running and its add is refused.
-// It lives here rather than in loomcli so batten can look the driver up without importing another CLI package.
+// LoomDriverStrandName is the stable role the hub addresses as "<slug>:driver" for the loom driver session's strand.
+// It is pinned because reed's add has no upsert semantics,
+// and it refuses an add whose explicit role another strand already holds.
+// Every add and every lookup must use this exact constant,
+// or a re-entrant bootstrap misses the driver already running and its add is refused.
+// It is defined in this package so that batten can look the driver up without importing a CLI package.
 const LoomDriverStrandName = agentname.RoleDriver
 
 // LoomStatusStrandName is the role of the strand `lym loom start` adds to draw a run's gate checklist.
-// It is pinned because reed's add refuses an add whose explicit role another strand already holds, so every add and lookup must use it.
+// It is pinned because reed's add refuses an add whose explicit role another strand already holds,
+// so every add and lookup must use it.
 const LoomStatusStrandName = "loom-status"
 
 // LegacyLoomDriverStrandName names a driver strand recorded before agent names existed.
 // No add ever uses it.
-// It exists because agentname.Matches reaches a legacy name only by equality, so a "driver" query alone never sees it,
+// It exists because agentname.Matches reaches a legacy name only by equality,
+// so a "driver" query alone never sees it,
 // and a run in flight across the deploy would otherwise miss its own live driver and spawn a second one.
 const LegacyLoomDriverStrandName = "loom-driver"
 

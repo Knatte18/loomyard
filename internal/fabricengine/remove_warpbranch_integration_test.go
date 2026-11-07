@@ -1,9 +1,9 @@
-// remove_warpbranch_integration_test.go covers Remove's local warp-branch deletion: a pair's task
-// branch goes when the destructive gate proves its work is pushed or landed on the parent recorded in
-// the pair's origin record, and is kept with a reason otherwise.
+// remove_warpbranch_integration_test.go covers Remove's local warp-branch deletion.
+// A pair's task branch goes when the destructive gate proves its work is pushed or landed on the parent.
+// The parent is the one recorded in the pair's origin record.
+// Otherwise the branch is kept with a reason.
 //
-// Every hub is built through hubforge.NewHub with an empty branch_prefix, so
-// the pair's warp branch is the bare slug.
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 

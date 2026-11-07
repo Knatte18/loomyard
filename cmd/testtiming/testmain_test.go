@@ -1,4 +1,5 @@
-// testmain_test.go runs the test binary under tmux isolation, which the tier1-tagged prebuild test requires of its package, and makes a re-exec'd test binary a stand-in `go` when the prebuild test asks for one.
+// testmain_test.go runs the package's tests under tmux isolation, as the tier1-tagged prebuild test requires.
+// It also runs a re-exec'd test binary as a stand-in `go` when that test asks for one.
 // It carries no build tag, so it compiles into every tag set.
 
 package main
@@ -25,7 +26,8 @@ func TestMain(m *testing.M) {
 	os.Exit(tmuxkit.Main(m))
 }
 
-// runStandInGo writes args, one per line, to record and creates the empty file a `-o` among them names, as a build would, and returns the process exit code.
+// runStandInGo writes args, one per line, to record.
+// It also creates the empty file a `-o` among them names, as a build would, and returns the process exit code.
 func runStandInGo(record string, args []string) int {
 	if err := os.WriteFile(record, []byte(strings.Join(args, "\n")), 0o644); err != nil {
 		return 1

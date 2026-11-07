@@ -1,12 +1,11 @@
 // run.go implements the `run` webster verb: it maps websterengine.Run's outcome onto the run-level
-// backstop fabric commit (the fourth and last of webster's four fabric-commit points, see the
-// discussion's fabric-ownership decision) and the CLI envelope.
-// ErrRunBusy skips the fabric sync entirely:
-// the losing call touched nothing, so syncing would commit the winner's in-flight partial state
-// under a misleading label;
-// every other exit -- success OR error, including ErrFingerprintMismatch and the distinct
-// MasterDied/MasterTimeout errors -- runs the backstop fabric commit before its
-// envelope, since completed batches' artifacts must not strand uncommitted.
+// backstop fabric commit and the CLI envelope.
+// ErrRunBusy skips the fabric sync entirely.
+// The losing call touched nothing.
+// Syncing would commit the winner's in-flight partial state under a misleading label.
+// Every other exit runs the backstop fabric commit before its envelope, success or error.
+// That includes ErrFingerprintMismatch and the distinct MasterDied and MasterTimeout errors.
+// Completed batches' artifacts must not strand uncommitted.
 package webstercli
 
 import (
@@ -20,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runDeps builds the websterengine.RunDeps for this CLI's current wiring.
+// runDeps assembles the websterengine.RunDeps from the CLI's wiring.
 func (c *websterCLI) runDeps() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:      c.masterStarter,
@@ -41,7 +40,6 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 	}
 }
 
-// runCmd builds the `run` subcommand.
 func (c *websterCLI) runCmd() *cobra.Command {
 	var fresh bool
 
@@ -84,27 +82,21 @@ Example:
 				return nil
 			}
 
-			// Master types its verbs flagless from the stencil in BOTH modes, so it resolves the
-			// DEFAULT plan directory — a run over a --plan-dir override would boot a real session
-			// whose every in-pane verb then wire-refuses against a plan it cannot see (found live
-			// in crucible round fable5-high-r3, F-A3; the hub half of the same failure went
-			// unrefused until crucible round opus-medium-r6, R6-8). Refused here, before any
-			// substrate boots; the recourse is the default location. Every other verb keeps
-			// honoring the override.
+			// Master types its verbs flagless in both modes and resolves the default plan directory.
+			// A run over a --plan-dir override would boot a session whose in-pane verbs refuse against a plan they cannot see.
+			// Refuse here, before any substrate boots; the recourse is the default location.
+			// Every other verb keeps honoring the override.
 			if c.planDirOverridden {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run cannot spawn Master over a --plan-dir override: Master's own in-pane verbs are flagless and resolve the default plan directory; place the plan at %s and re-run without --plan-dir", c.planDirDefault)))
 				return nil
 			}
 
-			// Standalone mode boots its own reed session here, idempotently, because nothing else
-			// can: `lym reed up` is hub-only. AddStrand now self-heals a cold worktree on its own,
-			// so this call is no longer the only thing standing between a standalone spawn and a
-			// dead end (pre-fix the spawn died on "no reed session" with an impossible recourse,
-			// found live in crucible round fable5-high-r3, F-A1) — it stays as a deliberate early,
-			// explicit boot, chosen so a boot failure surfaces here with its own
-			// envelope-reportable error and so the boot happens at a controlled point rather than
-			// wherever AddStrand is first called. Nil in hub mode, where the session is the
-			// operator's or loom's own to manage.
+			// Standalone mode boots its own reed session here, idempotently.
+			// Nothing else can boot it: `lym reed up` is hub-only.
+			// AddStrand self-heals a cold worktree on its own, so this boot is not the only guard against a dead-end spawn.
+			// The boot stays an explicit early step, so a failure surfaces here with its own envelope-reportable error.
+			// It runs at a controlled point, not wherever AddStrand is first called.
+			// Nil in hub mode, where the session is managed by the operator or loom.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster run`", err)))

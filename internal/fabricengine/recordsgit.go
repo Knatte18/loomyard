@@ -1,7 +1,7 @@
-// recordsgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
-// package-level commitWeftAt for board's warp-untethered weft:main commit (via Bolt).
-// commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately —
-// except on an unborn warp HEAD (see warpHeadSHA), where both are skipped for that one commit.
+// recordsgit.go holds the weft-git content-sync verbs on Fabric: commitWeft, PushWeft and PullWeft.
+// It also holds commitWeftAt, which makes board's commit on weft:main without a warp tether, via Bolt.
+// A commitWeft commit carries a Warp-SHA trailer and records the correspondence at once.
+// On an unborn warp HEAD, both are skipped for that one commit.
 
 package fabricengine
 
@@ -20,26 +20,22 @@ import (
 )
 
 const (
-	// weftLockDirName and weftWriteLockFile name fabric's own write-lock
-	// location, so every concurrent commitWeft caller contends on the
-	// identical file rather than racing past each other.
+	// weftLockDirName and weftWriteLockFile name the write lock's location,
+	// so every concurrent committer contends on the same file rather than racing past the others.
 	weftLockDirName   = ".weft"
 	weftWriteLockFile = "weft.write.lock"
-	// weftPushLockFile names the absorbing push lock the coalescing loop
-	// (coalescePush, in coalesce.go) holds for the whole loop-until-clean push
-	// window. It lives inside .weft/ alongside weftWriteLockFile — already
-	// git-excluded by seedWeftArtifactExcludes' whole-directory
-	// weftLockDirName + "/" entry, so no separate exclude entry is needed for
-	// it (Shared Decision lock-artifact-under-weft).
+	// weftPushLockFile names the push lock that coalescePush holds for the whole loop-until-clean push window.
+	// It sits in .weft/ with weftWriteLockFile, so the .weft/ git exclude already covers it.
 	weftPushLockFile = "fabric.push.lock"
-	// retiredLockFilePattern and retiredSwapLockFilePattern once hid every lock file in the weft repo's checkouts.
-	// seedWeftArtifactExcludes removes them, so a lock file that strays into a tracked tree shows in `git status` instead of hiding.
+	// retiredLockFilePattern and retiredSwapLockFilePattern are the broad excludes seedWeftArtifactExcludes removes.
+	// Keeping them would hide a lock file that strays into a tracked tree from git status.
 	retiredLockFilePattern     = "*.lock"
 	retiredSwapLockFilePattern = "*.swaplock"
 )
 
-// legacyLockFileNames are the lock files earlier binaries wrote beside tracked files in the weft repo's checkouts: in the Bolt root, and beside the review records of a run directory.
-// No code writes them any more.
+// legacyLockFileNames are lock files that earlier versions wrote beside tracked files in the weft checkouts:
+// in the Bolt root, and beside the review records of a run directory.
+// No current code writes them.
 // They stay excluded by name, so a leftover one never enters a stage-all board commit or a records commit.
 var legacyLockFileNames = []string{".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
 
@@ -50,13 +46,13 @@ func (f *Fabric) ensureWeftLockDir() (string, error) {
 }
 
 // RecordsLockDirPath returns the lock directory path inside the records worktree at recordsWorktreePath.
-// It only builds the path; ensureWeftLockDirAt is what creates the directory.
+// It builds the path only and does not create the directory.
 func RecordsLockDirPath(recordsWorktreePath string) string {
 	return filepath.Join(recordsWorktreePath, weftLockDirName)
 }
 
-// ensureWeftLockDirAt is the no-Fabric form of ensureWeftLockDir for callers
-// without a Fabric instance.
+// ensureWeftLockDirAt creates the .weft lock directory under weftPath.
+// It also seeds the git-exclude entries for fabric's lock artifacts, so callers need no Fabric instance.
 func ensureWeftLockDirAt(weftPath string) (string, error) {
 	dir := RecordsLockDirPath(weftPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -68,9 +64,11 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 	return dir, nil
 }
 
-// HoldRecordsWriteLock takes the combined records write lock of the records worktree at recordsWorktreePath exclusively, waiting at most wait for it.
-// It is the lock every committing Fabric.Commit takes, so a holder keeps a records commit from running while it works.
-// It returns the lock's release and held true, or a nil release and held false when the lock is still held once wait runs out.
+// HoldRecordsWriteLock takes the combined records write lock of the records worktree at recordsWorktreePath exclusively.
+// It waits at most wait for the lock.
+// Committers take the same lock, so a holder keeps a records commit from running while it works.
+// On success it returns the release function and held true.
+// When wait runs out first, it returns a nil release and held false.
 // A wait of zero reports held false without trying.
 // An error reports a failed lock directory creation or lock call.
 func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (release func() error, held bool, err error) {
@@ -88,13 +86,15 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 	return l.Release, true, nil
 }
 
-// seedWeftArtifactExcludes appends the weft repo's never-tracked operational artifacts — the .weft/ lock directory, lymdirs.DotLymDirName, and the legacy lock file names — to the weft repo's .git/info/exclude, line-exact idempotent (the same discipline as seedGitExclude), and removes the retired *.lock and *.swaplock lines.
-// Every lock file lives under .lym or .weft, or in a git dir, so the two wildcards would only hide a stray one.
-// It is the sole owner of that file's content: one `.lym/` pattern keeps every module's machine-local scratch and every lock under a checkout's .lym/locks untracked in the weft repo,
-// and no .gitignore is ever committed in weft either — .git/info/exclude wins there because it needs no commit, no pathspec change, and no new file in the weft root.
-// Without this seeding, every weft worktree that has ever run a weft-git verb reports fabric's own artifacts (and .lym scratch) as untracked dirt forever: Remove's no-force dirty gate then refuses with a "run lym fabric sync" hint that a pathspec-scoped sync can never satisfy.
-// The exclude file lives in the repo's common gitdir, so one seeding covers every linked weft worktree,
-// and — because excludes are evaluated at status time — it also heals worktrees that already carry the artifacts as untracked (though not ones where a prior sync already committed them; see commitWeft's doc comment for that limit).
+// seedWeftArtifactExcludes adds the weft repo's never-tracked operational artifacts to its .git/info/exclude.
+// They are the .weft/ lock directory, the lymdirs.DotLymDirName directory, and the legacy lock file names.
+// Each missing entry is appended line-exact and idempotently;
+// the retired *.lock and *.swaplock lines are removed.
+// Exclude is used instead of a committed .gitignore: it needs no commit and no new file in the weft root.
+// Without these excludes, a weft worktree reports the artifacts as untracked dirt, which makes it look dirty.
+// The exclude file lives in the repo's common gitdir, so one seeding covers every linked weft worktree.
+// Excludes are evaluated at status time, so the seeding also clears artifacts already shown as untracked.
+// It cannot untrack files that a prior sync already committed.
 func seedWeftArtifactExcludes(weftPath string) error {
 	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
 		present := map[string]bool{}
@@ -126,8 +126,8 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	return nil
 }
 
-// warpHeadSHA returns the warp repo's HEAD SHA, or reports unborn=true for an
-// unborn HEAD (zero commits), preventing regression on first-run paths.
+// warpHeadSHA returns the warp repo's HEAD SHA.
+// On an unborn HEAD with zero commits, it reports unborn as true and returns no error.
 func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 	sha, err = f.code.CurrentSHA()
 	if err == nil {
@@ -139,19 +139,11 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 	return "", false, err
 }
 
-// weftPathspecFilter filters pathspec entries before staging: keeps git
-// pathspec magic (entries starting with ":") untouched and evaluates plain
-// paths for matches in the weft worktree or index. Returns filtered entries
-// and whether at least one non-magic entry survived. It prevents stale
-// entries from reaching git add, which fails its entire invocation on a
-// non-matching entry.
-// entryMatchesWeft's probe excludes ignored files (--exclude-standard),
-// closing a latent bug where an entry matching only an ignored file was
-// forwarded as if it matched real content: git add on that doomed entry
-// then failed the whole invocation with exit 1, toppling a commit that had
-// legitimate content in the same call. With the flag, such an entry is
-// filtered out here, positive stays false for it, and the commit degrades
-// to a clean no-op instead.
+// weftPathspecFilter keeps the pathspec entries that git add can stage in the weft worktree.
+// Magic entries, which start with ":", pass through unchanged.
+// A plain entry is kept only when it matches a path in the weft index or worktree, with ignored files not counted.
+// Dropping the others matters because git add fails its whole invocation on one non-matching entry.
+// It returns the filtered entries and whether at least one plain entry survived.
 func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, positive bool, err error) {
 	for _, entry := range pathspec {
 		if strings.HasPrefix(entry, ":") {
@@ -170,14 +162,11 @@ func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, 
 	return filtered, positive, nil
 }
 
-// entryMatchesWeft reports whether pathspec entry matches a path in the
-// weft repo's index or worktree via git ls-files, the same anchor used by
-// git add.
-// --exclude-standard is load-bearing, not cosmetic: without it, `git
-// ls-files --cached --others` also matches ignored files, so a stray
-// ignored file matching entry would make this report a match that git add
-// then refuses, failing the whole staging invocation (see
-// weftPathspecFilter's doc comment for the full failure mode this closes).
+// entryMatchesWeft reports whether pathspec entry matches a path in the weft repo's index or worktree.
+// It asks git ls-files, the same matching git add uses.
+// --exclude-standard is required.
+// Without it, an ignored file matching the entry counts as a match.
+// git add then refuses the entry and fails the whole staging invocation.
 func entryMatchesWeft(weftPath, entry string) (bool, error) {
 	stdout, err := gitexec.Run([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--", entry}, weftPath)
 	if err != nil {
@@ -186,8 +175,7 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// commitEmptySnapshot lands an empty weft commit with the given commitMessage
-// and records the correspondence via RecordCorrespondence.
+// commitEmptySnapshot lands an empty weft commit with commitMessage and records its correspondence to warpSHA.
 func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string, committed bool, err error) {
 	sha, err = f.records.CommitEmpty(commitMessage)
 	if err != nil {
@@ -199,12 +187,11 @@ func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string,
 	return sha, true, nil
 }
 
-// commitWeftLocked stages and commits pathspec-scoped changes in the weft
-// worktree. The weft write lock must already be held. When warp has a HEAD,
-// the commit carries a Warp-SHA trailer and Snapshot trailers. On unborn
-// warp (zero commits), tags are dropped. When snapshotTags is non-empty and
-// warp is not unborn, falls through to commitEmptySnapshot for no-op cases
-// that still need snapshot tags recorded.
+// commitWeftLocked stages and commits pathspec-scoped changes in the weft worktree.
+// The weft write lock must already be held.
+// When warp has a HEAD, the commit carries a Warp-SHA trailer and Snapshot trailers.
+// On an unborn warp, with zero commits, the tags are dropped.
+// With snapshotTags set and warp past its first commit, a no-op commit still records the tags.
 func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
@@ -260,9 +247,9 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 	return sha, true, nil
 }
 
-// commitWeft acquires the weft write lock and delegates to commitWeftLocked.
-// Returns ("", false, nil) when opts.SkipGit is true. Optional snapshotTags
-// force an empty commit to record them.
+// commitWeft stages the pathspec and commits it while holding the weft write lock.
+// Returns ("", false, nil) when opts.SkipGit is true.
+// Snapshot tags force an empty commit when nothing is staged, so the tags are still recorded.
 func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
@@ -281,30 +268,24 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
-// PushResult exists solely to carry the mutation record: push had no result type at all before this
-// slice, which is why its envelope had nowhere to put one.
-// EVERY push entry point in this package returns this same type, whichever side it pushes and
-// whichever primitive it pushes through, so a composed push verb concatenates homogeneous records.
-// That is stated as the invariant rather than as a roll-call of the entry points: the roll-call
-// spelling ("all three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt") had
-// already gone stale twice by the time anyone read it, first for PushWarpRebaseFreeAt and then for
-// PushAnchored, because a list of call sites is maintenance a doc comment cannot win.
+// PushResult carries the mutation record of a push.
+// Every push entry point in this package returns this type, whatever side it pushes and whatever primitive it uses.
+// That lets a composed push verb concatenate homogeneous records.
 //
-// CodePushSkipped is non-empty only when the push ran in the hub's prime and left the code side's unpushed commits alone:
-// it names the branch and says it was left for the operator to push.
+// CodePushSkipped is non-empty only when the push ran in the hub's prime,
+// and it left the code side's unpushed commits alone.
+// It names the branch and says it was left for the operator to push.
 type PushResult struct {
 	MutationRecord
 	CodePushSkipped string `json:"code_push_skipped,omitempty"`
 }
 
-// recordPushIfAdvanced records KindBranchPushed for repo's current branch when hasUnpushedBefore and
-// hasUnpushedErr together prove a real true -> false transition across the push call already made:
-// hasUnpushedErr must be nil, hasUnpushedBefore must be true (there was something to push), and
-// repo.HasUnpushed() sampled now must report false (nothing is unpushed any more).
-// Bare "the push call returned nil" is not sufficient evidence: PushCoalesced also returns nil when there was nothing to push,
-// and a detached push leaves a rejected push unreported by its caller, so either would otherwise be recorded as a push that never actually happened.
-// That is the commission-direction lie this slice exists to kill.
-// The entry's detail names side, repoPath and the branch's configured remote (see refDetail).
+// recordPushIfAdvanced records KindBranchPushed for repo's current branch.
+// It does so only when the unpushed state proves a real true -> false transition across the push call already made.
+// hasUnpushedErr must be nil, hasUnpushedBefore must be true, and repo.HasUnpushed() sampled now must report false.
+// A nil return from the push is not enough evidence: a push with nothing to push also returns nil,
+// and a detached push can leave a rejection unreported to its caller.
+// The entry's detail names side, repoPath and the branch's configured remote.
 // If either HasUnpushed sample or CurrentBranch errors, nothing is recorded and the error is not
 // propagated: a failure to observe is not a failure to push.
 func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, side, repoPath string, hasUnpushedBefore bool, hasUnpushedErr error) {
@@ -319,8 +300,8 @@ func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, side, repoPath str
 	if err != nil {
 		return
 	}
-	// The configured remote is read-only evidence for the trace; a failure to observe it leaves the
-	// remote empty rather than failing the record.
+	// The configured remote is only trace evidence.
+	// When it cannot be read, the remote stays empty and the record is still written.
 	remote := ""
 	if out, err := gitexec.Run([]string{"config", "--get", "branch." + branch + ".remote"}, repoPath); err == nil {
 		remote = strings.TrimSpace(out)
@@ -328,7 +309,8 @@ func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, side, repoPath str
 	rec.AppendRef(KindBranchPushed, branch, refDetail(side, repoPath, remote))
 }
 
-// PushWeft pushes unpushed weft commits via PushCoalesced, honoring SkipGit/SkipPush gating.
+// PushWeft pushes unpushed weft commits and records the push when it verifiably advanced the branch.
+// It does nothing when opts.SkipGit or opts.SkipPush is set.
 func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -346,7 +328,8 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 	return PushResult{}, nil
 }
 
-// PullWeft fast-forwards the weft worktree from its upstream, honoring SkipGit gating.
+// PullWeft fast-forwards the weft worktree from its upstream.
+// It does nothing when opts.SkipGit is set.
 func (f *Fabric) PullWeft(opts SyncOptions) error {
 	if opts.SkipGit {
 		return nil
@@ -354,10 +337,11 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 	return f.records.Pull()
 }
 
-// commitWeftAt commits wildcard-staged content at weftPath for the Bolt checkout's weft:main checkout, with no warp branch or Warp-SHA trailer.
+// commitWeftAt stages everything at weftPath and commits it, with no warp branch or Warp-SHA trailer.
 // Returns ("", false, nil) when opts.SkipGit is true.
-// Does not acquire the weft write lock; the caller is responsible for synchronization.
-// It seeds the weft artifact excludes before staging, so the stage-all never sweeps up machine-local scratch even in a repo no other verb has seeded.
+// It does not acquire the weft write lock; the caller is responsible for synchronization.
+// It seeds the weft artifact excludes before staging,
+// so the stage-all never sweeps up machine-local scratch, even in a repo no other verb has seeded.
 func commitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil

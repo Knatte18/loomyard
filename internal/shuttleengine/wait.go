@@ -1,85 +1,113 @@
-// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its terminal outcome (done/died/timeout/api-error), probes the startup window for a trust-dialog dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run dir deletion).
-// It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run handle at all, and abandonStartup, start's teardown for a provider that never became ready or never took its first input.
-// Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock seam defined here, which lets tests replay a whole poll sequence instantly.
-// A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when every output file already exists — the file contract can be satisfied an instant before the process disappears, racing ahead of its own Stop hook.
-// died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not alive;
-// the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) — are mechanism failures, not classifications.
-// The exception is a handle whose own Stop removed the strand: its Wait ends OutcomeDied, which finalize records as stopped unless the files show the run done.
-// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout, and OutcomeAPIError for a spec with APIErrorRetries or a turn end the engine marks ModelRejected) is the only way out.
-// That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink (.lym/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached driver's own log, which captures stderr and therefore only Warn and above.
-// An operator asking "is this interview waiting for me, or is it wedged?"
-// reads the trace sink.
-// An autonomous run's pane that shows a permission or input dialog past a bound is also reported to the parent, once per dialog, through the same notifier;
-// see dialog.go.
-// A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero), and by the liveness check, which still classifies a dead pane.
-// A turn end that leaves a fork or an awaited shell outstanding while an output file is missing is a wait, never a held stop, and expires into no hold or notice.
-// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lym reaps no shell.
+// wait.go implements Run.Wait, the poll loop that reads a run's events.jsonl and classifies its terminal outcome:
+// done, died, timeout or api-error.
+// It probes the startup window for a trust-dialog dismissal or a fast-failing dead pane,
+// and it runs the done-outcome cleanup: strand removal and run directory deletion.
+// It also hosts awaitStartup, the startup probe that the start method in run.go calls before a run handle exists.
+// It also hosts abandonStartup, the teardown for a provider that never became ready or never took its first input.
+// Wait and awaitStartup are the only two places in the run loop that sleep.
+// Both sleep through the clock seam defined here, which lets tests replay a whole poll sequence instantly.
+// A pane that goes not-live is classified done, not died, when every output file already exists:
+// a crash, a kill or an exit counts, since the file contract can be satisfied an instant before the process disappears.
+// That can race ahead of the run's own Stop hook.
+// died is reserved for a strand that reed still tracks and still holds a pane for, whose pane is not alive;
+// the two ways reed's bookkeeping can go away instead are mechanism failures, not classifications.
+// errStrandNotTracked covers a strand reed does not track.
+// errStrandPaneBindingCleared covers a strand whose pane binding reed cleared.
+// The exception is a handle whose own Stop removed the strand:
+// its Wait ends OutcomeDied, which finalize records as stopped unless the files show the run done.
+// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent.
+// The run ends only through the other exits: OutcomeDone, OutcomeDied, a liveness mechanism failure or OutcomeTimeout.
+// OutcomeAPIError ends it only for a spec with APIErrorRetries, or for a turn end the engine marks ModelRejected.
+// The hold is logged at Info, so it reaches the durable trace sink in internal/logger.
+// It does not reach the detached driver's own log, which captures stderr and so keeps only Warn and above.
+// The trace sink is .lym/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info.
+// An operator who asks whether a run is waiting for input or is wedged reads the trace sink.
+// A permission or input dialog that an autonomous run's pane shows past a bound is reported to the parent:
+// once per dialog, through the same notifier. The rules live in dialog.go.
+// A hold never extends run.deadline.
+// A held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero).
+// The liveness check still classifies a dead pane while the run is held.
+// While an output file is missing, a turn end that leaves a fork or an awaited shell outstanding is a wait.
+// It is never a held stop, and it expires into no hold or notice.
+// The wait is bounded only by the run deadline and the liveness check:
+// a shell that never ends ends the run OutcomeTimeout, and lym reaps no shell.
 // A turn end whose only outstanding work is shells the session does not await is no work product's wait.
 // A gated run with an output file missing holds it at once.
-// A gated run with every output file present does not count it Done while such a shell runs, since the shell may hold a commit or a gate run whose result the session never read:
-// it tells the agent once per shell to wait for the shell and read its result, and counts the turn end Done through the gate once every such shell has been outstanding for the shell wait bound.
-// An ungated run with an output file missing holds it once every such shell has been outstanding for the shell wait bound, which notifies the parent once.
-// A gated run's waiting turn end on a fork or an awaited shell is never an arrival: it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
-// At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, and finalize evaluates the gate once more over the tree as it stands.
+// A gated run with every output file present does not count the run Done while such a shell runs.
+// The shell may hold a commit or a gate run whose result the session never read.
+// The gate tells the agent, once per shell, to wait for the shell and read its result.
+// Once every such shell has been outstanding for the shell wait bound, the turn end counts Done through the gate.
+// An ungated run with an output file missing holds once every such shell has been outstanding for the shell wait bound.
+// The hold notifies the parent once.
+// A gated run's waiting turn end on a fork or an awaited shell is never an arrival:
+// it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
+// At the deadline, classifyDeadlineExpiry ends the run OutcomeDone when the output files exist.
+// finalize then evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
 //
 // The events-tick Done branch splits in two, on whether run.gate is empty:
-// an ungated run's Done finalizes exactly as before the gate existed, unaware the gate exists at all.
-// A gated Done instead evaluates the gate's entries through run.evaluateGate() and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop" and "attempts counts re-prompts actually sent" plan decisions describe.
+// An ungated run's Done finalizes without consulting the gate.
+// A gated Done instead evaluates the gate's entries through run.evaluateGate().
+// When an entry failed with its own budget remaining, it sends a one-line re-prompt naming the findings file.
+// The run keeps polling rather than finalizing. This is the bounded re-prompt loop.
+// Each re-prompt actually sent counts as an attempt.
 // A gated Done is also the writer's turn boundary, and a PassOnCap entry may answer pending there:
-// the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates with no new arrival while the writer is idle at most once per gateRecheckEvery, so a verdict recorded meanwhile is read without a new arrival.
-// Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
-// For an engine with the idle reading and session signals, a boundary is confirmed idle in fact before the gate sends:
-// a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
-// and the boundary is restored when the engine reports that turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read that turn in flight.
+// the loop sends the entry's carried text at a boundary only, and keeps polling.
+// While the writer is idle with no new arrival, the loop re-evaluates at most once per gateRecheckEvery.
+// A verdict recorded meanwhile is therefore read without a new arrival.
+// Both paths run through handleGatedBoundary.
+// The run deadline and liveness checks keep running throughout, and the wait never extends them.
+// For an engine with the idle reading and session signals, a boundary is confirmed idle before the gate sends:
+// a turn start left unmatched by a later turn end clears the boundary.
+// The loop then keeps polling and reads the pane every tick.
+// The boundary is restored when the engine reports the turn interrupted, or when a session start follows it;
+// the pane reading idle for turnStartIdleOverride restores it too, unless the engine reads that turn in flight.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
-// One held maxNoInputBoxReprompts times in a row by a pane showing no input box ends the loop with the attempts spent so far, so a picker shuttle cannot dismiss does not hold the run until its deadline.
-// A gated run off the boundary, mid-turn or attached with no boundary seen, also asks each entry's read-only Expired probe once per gateRecheckEvery;
-// the first entry whose wait bound has run out finalizes the run done, so the bound ends the wait even when the writer never ends its turn.
+// Held maxNoInputBoxReprompts times in a row, a pane with no input box ends the loop with the attempts spent so far.
+// The loop thus ends before a picker that shuttle cannot dismiss holds the run until its deadline.
+// A gated run off the boundary also asks each entry's read-only Expired probe once per gateRecheckEvery.
+// That covers a run mid-turn, or attached with no boundary seen.
+// The first entry whose wait bound has run out finalizes the run done.
+// The bound ends the wait even when the writer never ends its turn.
 // That finalize call is a positive outcome, so it needs no allOutputFilesExist check.
-// The other finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
-// each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
+// The other finalize call sites in this file attempt no Send:
+// the mechanism-failure exits through finishedDespiteMechanismFailure, the liveness-tick exit and the deadline exit.
+// Each is reached because the session is gone, the clock ran out, or the bookkeeping broke.
+// The finalize evaluation reports Attempts as it stands.
 //
 // # Completion Signal Invariant
 //
-// Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
-// OutcomeDied, an OutcomeTimeout, an OutcomeAPIError, a runOutcomeStopped record, a mechanism-failure error, or a verdictRespawnEligible -- must
-// first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
-// helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
-// or soleFinishedCandidate (attach.go). The startup step (awaitStartup, abandonStartup) honours the
-// same rule through the same primitives: its retry-cap and tick-cap exits call allOutputFilesExist
-// directly, its not-ready answer comes through checkLivenessTick/classifyStartupWindow (which already
-// consult it), and its run-deadline exit through classifyDeadlineExpiry.
+// Any code path in this package that finalizes a negative answer to "did this run finish":
+// it must first consult allOutputFilesExist over the run's OutputFiles.
+// These negative answers include OutcomeDied, OutcomeTimeout, OutcomeAPIError and runOutcomeStopped records.
+// So do a mechanism-failure error and a verdictRespawnEligible.
+// The check runs directly or through one of the helpers that own it:
+// classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here), or soleFinishedCandidate in attach.go.
+// The startup step, awaitStartup and abandonStartup, follows the same rule through the same primitives:
+// its retry-cap and tick-cap exits call allOutputFilesExist directly;
+// its not-ready answer comes through checkLivenessTick and classifyStartupWindow, which already consult it;
+// its run-deadline exit goes through classifyDeadlineExpiry.
 //
-// The rule exists because those are two different questions and only one of them is the one being
-// asked. A clock running out, reed no longer tracking a strand, reed's pane binding going stale,
-// reed.Status erroring for maxStatusRetries consecutive ticks, the events file staying unreadable
-// for maxEventsReadRetries, reed.json being absent or undecodable at attach time -- every one of
-// those answers "has something gone wrong", and none of them answers "did this run finish". The
-// agent's output files ARE its return value, so a run that wrote all of them finished, whatever went
-// wrong afterwards. Publishing the first answer as though it were the second records a completed,
-// expensive LLM step as a failure, after which the next resume archives the finished files and
-// re-runs it -- precisely the rework the Completion Signal Invariant above exists to
-// prevent.
+// The rule rests on two different questions, and only one of them is the one asked.
+// A deadline running out, reed not tracking a strand, or a stale pane binding answers whether something went wrong.
+// So do maxStatusRetries consecutive reed.Status errors and maxEventsReadRetries unreadable reads of the events file.
+// So does a reed.json absent or undecodable at attach time.
+// None of them answers whether the run finished.
+// The agent's output files are its return value,
+// so a run that wrote all of them finished, whatever went wrong afterwards.
+// Publishing the first answer as though it were the second records a completed, expensive LLM step as a failure.
+// The next resume then archives the finished files and re-runs the step, which is the rework this invariant prevents.
 //
-// It is named here, rather than left implied by the individual helpers, because it was omitted SIX
-// times by six different edits before anyone noticed it was one rule: crucible rounds opus5-high-r4
-// (both deadlines), fable5-high-r5 (both retry-exhausted caps), fable5-xhigh-r6 (Attach's
-// dispositionCandidate) and opus5-high-r7 (Attach's three reed-state gates) each found the next
-// instance by asking "is there another exit shaped like the ones already fixed". Every one was an
-// omission to CALL an already-correct, already-shared primitive -- never a divergent
-// reimplementation of it -- which is why this is a stated invariant plus a tripwire test
-// (completionsignal_enforcement_test.go) rather than a registry in the shape of
-// internal/planparser/shape.go's ref-shape ledger. That mechanism needs a closed value enum to build
-// a flat map over, and the negative outcomes here live in three different types across two files.
-// See PATTERN-shuttle-provider-seam for the cross-reference a reader who
-// checks the PATTERN entries first will find.
+// Each such path calls the shared primitive; it does not reimplement it.
+// The tripwire test completionsignal_enforcement_test.go guards the rule.
 //
-// The one structural precondition the rule rests on: a *Run with an empty OutputFiles exists only for an unawaited session.
+// The rule rests on one structural precondition:
+// a *Run with an empty OutputFiles exists only for an unawaited session.
 // Spec.validate refuses an empty list for every other spec.
 // An unawaited run never reaches Wait or Attach, since Runner.StartSession never calls Wait.
-// Attach set-matches a persisted record's output files against the caller's spec, and every caller passes an awaited spec naming its output files, which an unawaited record's empty list never matches.
+// Attach set-matches a persisted record's output files against the caller's spec.
+// Every caller passes an awaited spec that names its output files, so an unawaited record's empty list never matches.
 // allOutputFilesExist answers false for an empty list, so no negative answer of an unawaited run reads as finished.
 
 package shuttleengine
@@ -127,22 +155,27 @@ type AwakeClock interface {
 // awakeReading returns the awake reading of realClock, whose origin is taken at first use.
 var awakeReading = sync.OnceValue(pauserecord.MonotonicAwake)
 
-// Awake returns the time since the process first read it on the monotonic clock, which stops during suspend where the platform stops it.
+// Awake returns the time since the process first read it on the monotonic clock.
+// Where the platform stops that clock during suspend, the reading excludes time spent asleep.
 func (realClock) Awake() time.Duration { return awakeReading()() }
 
 // pollFloor is the shortest poll interval; a configured value below it is floored to it.
 const pollFloor = time.Second
 
-// gateRecheckEvery is the shortest spacing between two gate evaluations the wait loop starts with no new arrival.
-// A verdict read this much later costs nothing, and each evaluation re-reads the entries' files.
+// gateRecheckEvery is the minimum spacing between gate evaluations that the wait loop starts with no new arrival.
+// Each evaluation re-reads the entries' files; this spacing keeps those reads rare,
+// and a verdict read this much later costs nothing.
 const gateRecheckEvery = 5 * time.Second
 
-// maxNoInputBoxReprompts bounds the consecutive re-prompt sends a pane showing no input box may hold before the gated loop ends with the attempts spent so far.
-// Each held send has already waited out its idle window, so the bound ends a wait on a picker shuttle cannot dismiss within a few idle windows rather than at the run deadline.
+// maxNoInputBoxReprompts bounds the consecutive re-prompt sends a pane showing no input box may hold.
+// The gated loop then ends with the attempts spent so far.
+// Each held send has already waited out its idle window,
+// so the bound ends a wait on a picker shuttle cannot dismiss within a few idle windows, not at the run deadline.
 const maxNoInputBoxReprompts = 5
 
-// pollInterval returns Wait's tick interval, flooring a value below pollFloor (non-positive included) to pollFloor to prevent busy-spinning.
-// It floors silently; LoadConfig logs the one warning.
+// pollInterval returns the wait loop's tick interval.
+// It floors a value below pollFloor, non-positive values included, to pollFloor so the loop cannot busy-spin.
+// It floors silently; the config load logs the one warning.
 func pollInterval(cfg Config) time.Duration {
 	interval := time.Duration(cfg.PollIntervalMS) * time.Millisecond
 	if interval < pollFloor {
@@ -152,7 +185,7 @@ func pollInterval(cfg Config) time.Duration {
 }
 
 // dismissalGap returns the spacing of the startup probe's backoff ceiling and of startup-gate dismissals:
-// pollInterval(cfg) times LivenessEveryNPolls, the multiple floored to 1 exactly as Run.Wait floors it.
+// pollInterval(cfg) times LivenessEveryNPolls, with a non-positive multiple counted as 1.
 func dismissalGap(cfg Config) time.Duration {
 	livenessEvery := cfg.LivenessEveryNPolls
 	if livenessEvery <= 0 {
@@ -164,78 +197,73 @@ func dismissalGap(cfg Config) time.Duration {
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
 const maxEventsReadRetries = 3
 
-// maxStatusRetries bounds consecutive liveness-check failures — a reed.Status that could not be run,
-// a Status that ran but no longer lists this run's strand, and a Status that lists it with no pane
-// bound.
+// maxStatusRetries bounds consecutive liveness-check failures:
+// a reed.Status that could not be run,
+// a Status that ran but no longer lists this run's strand,
+// and a Status that lists it with no pane bound.
 const maxStatusRetries = 2
 
-// errStrandNotTracked reports that reed answered the liveness check successfully but its strand table
-// no longer holds this run's guid.
+// errStrandNotTracked reports that reed answered the liveness check successfully,
+// but its strand table no longer holds this run's guid.
 //
-// It exists because that answer says nothing about the agent.
-// A strand reed still tracks whose pane is not alive IS a dead run;
-// a strand reed does not track at all is reed's own bookkeeping going away under a run whose agent very often keeps working — reed's strand table is reset by an ordinary `lym reed down`/`remove`, by a `git clean -xdf` of .lym (a sanctioned operator action under the Durable-vs-Ephemeral State Invariant), by reed's own documented remedy for a corrupt reed.json ("delete it by hand to keep the session"), and by a worktree renamed while a run is in flight, which leaves this process's told anchor path pointing at a directory reed then re-creates empty.
-// Classifying any of those OutcomeDied reports a live agent as gone, and an unattended caller answers "died" by respawning — leaving two agents on one worktree, the first unreachable.
-// That is the duplicate-agent hazard reed's own foreign-session refusal exists to prevent, one layer up.
-// Interrupt/Send already draw exactly this distinction (see requireLiveStrand);
-// this is Wait's half.
+// That answer says nothing about the agent.
+// reed's bookkeeping is reset under runs whose agents keep working:
+// a lym reed down or remove, a lost or rebuilt reed.json, a git clean of .lym,
+// or a worktree renamed while the run was in flight.
+// Classifying the run as dead would make an unattended caller respawn it.
+// That leaves two agents on one worktree, the first unreachable.
 var errStrandNotTracked = errors.New(
 	"reed's strand table no longer holds this run's strand — reed's bookkeeping was reset under the run " +
 		"(a reed remove/down, a lost or rebuilt reed.json, or a worktree renamed while the run was in flight), " +
 		`which says nothing about the agent: its process may still be working in its pane. Check "lym reed status"`)
 
-// errStrandPaneBindingCleared reports that reed answered the liveness check successfully and still
-// lists this run's strand, but holds NO pane id for it.
+// errStrandPaneBindingCleared reports that reed still lists this run's strand but holds no pane id for it.
 //
-// It exists because that is a third answer, and the one the not-live branch below would otherwise
-// swallow: a strand reed tracks with no pane bound is not a strand whose pane died, it is a strand
-// reed can no longer address at all. Reed clears every pane binding in a state file whose recorded
-// pane generation is not the incarnation now running (adoptPaneGenerationLocked — a restored backup,
-// a hand-copied .lym, or simply a reed.json older than the session), and Status then reports the
-// strand with an empty PaneID, which its liveness lookup answers false for. Reproduced live in round
-// 4 against a real agent: reed logged the clear, shuttle answered ok:true outcome:"died" 4 seconds
-// later, and tmux still reported the pane alive with the agent working inside it — after which
-// restoring the stamp made the same strand report live:true again on the same pane.
-// Classifying that OutcomeDied is the same duplicate-agent hazard errStrandNotTracked exists to
-// avoid: an unattended caller reads "died" as "gone, retry" and puts a second agent on a worktree
-// whose first one is still working, unreachably.
+// The strand is not dead.
+// reed clears its pane bindings when the persisted pane generation is not the incarnation now running:
+// a restored backup, a copied .lym, or a reed.json older than the session.
+// It then reports the strand with an empty pane id, which the liveness lookup answers as not live.
+// The agent may still work in a pane reed can no longer address.
+// Classifying that as dead would make an unattended caller start a second agent on the worktree.
 var errStrandPaneBindingCleared = errors.New(
 	"reed still tracks this run's strand but holds no pane id for it — its pane binding was cleared " +
 		"as stale (reed does that when the persisted pane generation is not the session incarnation now " +
 		"running: a restored backup, a copied .lym, or a reed.json older than the session), " +
 		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lym reed status"`)
 
-// ErrNotStarted reports that a run's provider never became ready inside its startup window or never took its first input.
-// StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready or a start-time send fails —
-// see abandonStartup for the teardown and the full error text a caller actually sees.
+// ErrNotStarted reports that a run's provider never became ready inside its startup window.
+// It also reports a provider that never took its first input.
+// A gated start wraps it after tearing the strand down, when startup ends not ready or a start-time send fails.
 var ErrNotStarted = errors.New("shuttle: the provider never became ready")
 
-// ErrAgentDied reports that a run's provider started and then died before it wrote its outputs, the OutcomeDied result of a run that got past its start.
-// shuttle never returns it; a caller that turns such a result into an error wraps it, so a classifier can tell the death from other failures.
+// ErrAgentDied reports that a run's provider started and then died before it wrote its outputs.
+// shuttle never returns it.
+// A caller that turns an OutcomeDied result into an error wraps it,
+// so a classifier can tell the death from other failures.
 var ErrAgentDied = errors.New("shuttle: the agent died before it wrote its outputs")
 
 // Wait blocks until run reaches a terminal outcome.
-// Error is reserved for mechanism failures that leave no classifiable outcome.
-// A turn end without every output file is held, never terminal: Wait logs the hold and keeps polling,
-// so it terminates only on OutcomeDone, OutcomeDied, a liveness mechanism failure or OutcomeTimeout.
-// It also terminates on OutcomeAPIError, once a spec's APIErrorRetries re-sends of API-error turn ends are spent, or at once on a turn end the engine marks ModelRejected.
+// It returns an error only for a mechanism failure that leaves no classifiable outcome.
+// A turn end without every output file is held, never terminal: Wait logs the hold and keeps polling.
+// It terminates on OutcomeDone, OutcomeDied, a liveness mechanism failure or OutcomeTimeout.
+// It also terminates on OutcomeAPIError once a spec's APIErrorRetries re-sends of API-error turn ends are spent.
+// It terminates at once on a turn end the engine marks ModelRejected.
 //
-// An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
-// empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
-// so the run directory is still on disk and the strand may still be registered, and without those
-// three the caller cannot diagnose, resume, or tear down what it started.
-// Reproduced live: tearing the reed session down under an in-flight run returned reed's
-// no-session error and, before this, a wholly zero Result.
+// A result with an error still carries the run's identity: SessionID, StrandGUID and RunDir.
+// Its Outcome is empty.
+// The caller needs them most then: no cleanup ran,
+// so the run directory is still on disk and the strand may still be registered.
+// Without them the caller cannot diagnose, resume or tear down the run.
 //
-// It is deliberately NOT reclassified as OutcomeDied. reed returns the same untyped error for its
-// foreign-session refusal — a renamed worktree or a copied .lym, where the run may well be alive
-// under another session — and reed exposes no sentinel that tells the two apart, so guessing "died"
-// would report a live agent as dead.
-// The same reasoning binds the two cases where reed does NOT fail: a Status that succeeds without
-// this run's strand in it, and one that returns the strand with no pane bound, both exit here rather
-// than as OutcomeDied — see errStrandNotTracked and errStrandPaneBindingCleared.
-// The one exception is a handle Stop marked: its own Stop removed the strand,
-// so a Status without it ends the run OutcomeDied, which finalize records as stopped unless the files show the run done.
+// A mechanism failure is never reported as OutcomeDied:
+// reed returns the same untyped error for a foreign-session refusal.
+// The run may still be alive under another session, and no sentinel tells the two apart.
+// Reporting it as OutcomeDied would report a live agent as dead.
+// A status without this run's strand, or one that holds it with no pane bound, exits here too.
+//
+// The exception is a handle Stop marked: its own Stop removed the strand,
+// so a status without it ends the run as OutcomeDied.
+// finalize records that as stopped unless the files show the run done.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -246,33 +274,15 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	// started seeds from run.state.Started alone — for a started run and an attached one alike. A
-	// handle from Start carries Started: true unless it was issued on the satisfied-file-contract
-	// branch, where re-probing is harmless and still classifies OutcomeDone (on an events-tick Done,
-	// or at the latest at Wait's own startup-window expiry through classifyDeadlineExpiry). Reed's own
-	// liveness reads, which an attached run's reconstruction consults before ever reaching Wait, are
-	// strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
-	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch command
-	// already failed (a live shell sitting at its own prompt after a bad binary path) or whose driver
-	// was killed before its own first liveness tick ever ran: reed reports both "live", and the run's
-	// own run.json still carries the runOutcomeRunning sentinel in every one of those cases, because
-	// nothing ever wrote a terminal Outcome to it. That is why liveness alone is never enough on its
-	// own to skip the probe, whether reported by Attach's own reads or by this loop's own
-	// checkLivenessTick: only a persisted Started fact does. Started is false for every run.json a
-	// pre-this-change binary wrote too, which is the same safe direction as RunState.Outcome's own
-	// compat rule: the probe runs one extra time rather than being skipped when it should not have
-	// been.
-	// The probe in checkLivenessTick/classifyStartupWindow is therefore reached from this seed only
-	// for an attached run whose run.json was never marked Started — a killed driver, or a launch whose
-	// binary never existed — and Wait still computes its own startupDeadline from its own entry time
-	// for that case, since the startup window an attach's own awaitStartup never ran belongs to this
-	// Wait call, not to some earlier one. Once Started is true, re-running the probe against a pane
-	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s into
-	// this Wait, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
-	// happens to trip a trust-dialog needle — so a confirmed-ready run, started or attached, skips it.
-	// The not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so every
-	// run keeps full liveness coverage regardless of Started — only the startup probe itself is
-	// conditional on it.
+	// started seeds from run.state.Started alone, for a started run and an attached one alike.
+	// A handle from Start has Started true, except on the satisfied-file-contract branch, where re-probing is harmless.
+	// Liveness reads cannot tell a booted provider from a failed launch or a killed driver.
+	// Only a persisted Started fact skips the probe.
+	// A probe against a mid-turn pane would misclassify a live agent as OutcomeDied.
+	// It could also play the trust-dismiss keys into a live agent's pane when its capture trips a dialog needle.
+	// So the startup probe in checkLivenessTick and classifyStartupWindow runs only for runs never marked Started.
+	// For an attached run of that kind, the startup window counts from this Wait call's entry.
+	// Liveness checks run for every run regardless of Started; only the startup probe depends on it.
 	started := run.state.Started
 	run.sessionLiveness = sessionLivenessState{}
 	eventsFailures := 0
@@ -288,7 +298,8 @@ func (run *Run) Wait() (Result, error) {
 	run.shadow = sessionShadow{active: true, cursor: run.state.PromptOffset}
 	defer func() { run.shadow.active = false }()
 
-	// The dialog latch reads asks from the larger of the prompt offset and the last dialog-notified offset, so a reattach never re-notifies a dialog it already did.
+	// The dialog latch reads asks from the larger of the prompt offset and the last dialog-notified offset,
+	// so a reattach never re-notifies a dialog it already did.
 	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
 	run.apiErrors = apiErrorWatch{cursor: run.state.PromptOffset}
 
@@ -308,8 +319,8 @@ func (run *Run) Wait() (Result, error) {
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
-				// A satisfied file contract outranks this mechanism failure exactly as it outranks
-				// every other negative answer in this loop -- see finishedDespiteMechanismFailure.
+				// A satisfied file contract outranks this mechanism failure;
+				// it outranks every other negative answer in the loop.
 				if result, ferr, ok := run.finishedDespiteMechanismFailure(); ok {
 					return result, ferr
 				}
@@ -331,7 +342,8 @@ func (run *Run) Wait() (Result, error) {
 				case run.deliverPromptAtHold(held):
 					// The agent never got its task; the turn its prompt now starts is the work, so the parent has nothing to answer.
 				case run.holdNoticePending() && run.usageLimited(held):
-					// The parent cannot act while the account is limited, and a notice sent now lands in its context as stale clutter after the reset.
+					// The parent cannot act while the account is limited,
+					// and a notice sent now lands in its context as stale clutter after the reset.
 					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
 				case run.holdNoticePending() && run.operatorStartedTurn(held):
 					// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
@@ -345,10 +357,10 @@ func (run *Run) Wait() (Result, error) {
 					run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
 				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
-				// Not a gated Done: finalize exactly as this branch always has.
+				// Any other outcome, or a Done with no gate, finalizes at once.
 				return run.finalizeAndRemoveDiedWindow(outcome)
 			} else if outcome == OutcomeDone {
-				// A gated Done is the writer's turn boundary: let the shared helper judge it.
+				// A gated Done marks the writer's turn boundary: per-turn gate state resets here.
 				run.endReworkSpans(run.clock.Now())
 				run.gateAtBoundary = true
 				run.startCleared = false
@@ -372,8 +384,10 @@ func (run *Run) Wait() (Result, error) {
 					}
 				}
 			} else if !run.covered && (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
-				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
-				// A pending entry is re-read at most once per gateRecheckEvery; an unsent re-prompt is retried every tick, since that re-sends a re-prompt and reads no verdict.
+				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle:
+				// re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
+				// A pending entry is re-read at most once per gateRecheckEvery;
+				// an unsent re-prompt is retried every tick, since that sends a re-prompt and reads no verdict.
 				if (run.unsentReprompt || run.gateRecheckDue()) && run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
@@ -386,7 +400,8 @@ func (run *Run) Wait() (Result, error) {
 				}
 			} else if len(run.gate) != 0 && !run.gateAtBoundary && run.gateRecheckDue() {
 				// Nothing arrived and the writer is off the boundary, mid-turn or with no boundary seen since an attach:
-				// ask the entries' read-only probes whether a wait bound has run out, which the writer's own turn end would otherwise never show.
+				// ask the entries' read-only probes whether a wait bound has run out.
+				// The writer's own turn end would otherwise never show that.
 				run.lastGateEvalAt = run.clock.Now()
 				if name, expired := run.probeExpiry(); expired {
 					logger.Info("shuttle: gate: entry wait expired off the boundary, finalizing", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", name)
@@ -409,9 +424,8 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
-					// A satisfied file contract outranks this mechanism failure exactly as it
-					// outranks every other negative answer in this loop -- see
-					// finishedDespiteMechanismFailure.
+					// A satisfied file contract outranks this mechanism failure;
+					// it outranks every other negative answer in the loop.
 					if result, ferr, ok := run.finishedDespiteMechanismFailure(); ok {
 						return result, ferr
 					}
@@ -433,9 +447,9 @@ func (run *Run) Wait() (Result, error) {
 		}
 
 		if !run.covered && run.clock.Now().After(run.deadline) {
-			// classifyDeadlineExpiry, not a bare OutcomeTimeout: the run deadline answers "has the
-			// clock run out", never "did this run finish", and a run whose every output file is on
-			// disk finished whatever the clock says — see that function.
+			// The run deadline answers whether the clock ran out, not whether the run finished.
+			// A run whose every output file is on disk finished, whatever the clock says,
+			// so the expiry is classified rather than taken as OutcomeTimeout.
 			return run.finalize(run.classifyDeadlineExpiry(OutcomeTimeout))
 		}
 
@@ -443,12 +457,14 @@ func (run *Run) Wait() (Result, error) {
 	}
 }
 
-// observePause is Wait's per-tick reading of the pause and of machine sleep.
-// It feeds the run's sleep watch when the clock is an AwakeClock, reads the runner's coverage of the run's own session into run.covered, and moves run.deadline by the change in the time excluded since the run was created.
-// The session is judged by the slug of its strand's name, the one a send into it is judged by.
-// The excluded time is the union of the detected sleeps and the coverage's paused intervals, so the deadline counts awake, unpaused time only.
-// A runner told no pause geometry never covers the run.
-// An unreadable record reads uncovered, with one Warn per change of error.
+// observePause reads the pause and machine sleep on each Wait tick, then moves run.deadline by the newly excluded time.
+// It feeds the sleep watch when the clock is an AwakeClock,
+// and it records the runner's coverage of the run's own session in run.covered.
+// The session is judged by the slug of its strand's name, the same slug a send into it is judged by.
+// The excluded time is the union of the detected sleeps and the coverage's paused intervals,
+// so the deadline counts only awake, unpaused time.
+// A runner with no pause geometry never covers the run.
+// An unreadable record reads as uncovered, and it logs one Warn per change of error.
 func (run *Run) observePause() {
 	now := run.clock.Now()
 	if awake, ok := run.clock.(AwakeClock); ok {
@@ -472,7 +488,9 @@ func (run *Run) observePause() {
 	run.deadlineExcluded = excluded
 }
 
-// coverageSlug returns the slug the run's own session is judged by: the slug of its record's strand name, else of the name reed's status reports for its strand, else the runner's geometry slug.
+// coverageSlug returns the slug the run's own session is judged by.
+// It uses the slug of the strand name in the run's record.
+// Failing that, it uses the slug of the name reed reports for the strand, and then the runner's geometry slug.
 // A lookup that resolves a name is kept, so reed is asked at most until the first success.
 func (run *Run) coverageSlug() string {
 	if run.sessionSlugKnown {
@@ -485,14 +503,16 @@ func (run *Run) coverageSlug() string {
 	return slug
 }
 
-// gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation, which is always so before the first.
+// gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation.
+// It is always true before the first evaluation.
 func (run *Run) gateRecheckDue() bool {
 	return run.lastGateEvalAt.IsZero() || run.clock.Now().Sub(run.lastGateEvalAt) >= gateRecheckEvery
 }
 
-// probeExpiry calls the Expired probe of every entry that has one and is not off, in list order, and returns the name of the first entry whose probe reports expired.
+// probeExpiry calls the Expired probe of every entry that has one and is not off, in list order.
+// It returns the name of the first entry whose probe reports expired.
 // A probe error counts as not expired, so the loop keeps polling under its deadline and liveness checks;
-// it warns once per entry and episode, and an answer after it logs one Info.
+// it warns once per entry and episode, and an answer after an error logs one Info.
 func (run *Run) probeExpiry() (string, bool) {
 	for _, entry := range run.gate {
 		if entry.Attempts <= 0 || entry.Expired == nil {
@@ -511,25 +531,39 @@ func (run *Run) probeExpiry() (string, bool) {
 	return "", false
 }
 
-// gateEntryError builds a gate-contract violation error for the named entry.
-// It is not an Errorf call on purpose: evaluateGate's returns are infrastructure faults wrapped by their callers with "shuttle: gate: %w", not negative verdicts on whether the run finished.
+// gateEntryError builds the error for a gate entry that breaks the gate contract.
+// It uses errors.New rather than fmt.Errorf.
+// evaluateGate's returns are infrastructure faults that callers wrap with "shuttle: gate: %w".
+// They are not negative verdicts on whether the run finished.
 func gateEntryError(name, problem string) error {
 	return errors.New("entry " + strconv.Quote(name) + " " + problem)
 }
 
-// handleGatedBoundary evaluates the gate list from its first entry at a turn boundary and reports whether Wait finishes with the returned Result and error.
-// It is reached from a gated Done arrival and from a poll tick with no new arrival while an entry is pending, the writer is idle and gateRecheckEvery has passed since the last evaluation.
-// Run.Interrupt is never used here: the gate fires at a turn boundary, when there is no in-progress turn to interrupt.
-// No new deadline is introduced and run.deadline is never extended: the loop runs under the deadline Start already set from spec.Timeout,
-// so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
+// handleGatedBoundary evaluates the gate list from its first entry at a turn boundary,
+// and it reports whether Wait finishes with the returned Result and error.
+// It runs on a gated Done arrival, and on a poll tick that brings no new arrival.
+// That poll tick runs only while an entry is pending and the writer is idle.
+// It also needs gateRecheckEvery to have passed since the last evaluation.
+// Run.Interrupt is not used here: the gate fires at a turn boundary, when no turn is in progress to interrupt.
+// It sets no new deadline and never extends run.deadline: the loop runs under the deadline Start set.
+// A timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present,
+// and the gate then runs one final time through finalize.
 //
-// A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes done.
+// A pass finalizes done, and so does a failure whose budget is spent.
+// A terminal failure (GateResult.Terminal) also finalizes done, whatever the entry's failure count.
+// It sends no re-prompt.
 // A failure with budget remaining re-prompts and keeps polling.
-// A re-prompt send that fails with ErrSessionBusy, ErrSubmissionNotLanded or ErrPaused leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it until the run deadline;
-// the maxNoInputBoxReprompts-th such failure in a row that is a pane showing no input box instead finalizes done with the attempts spent so far, and any other re-prompt send failure ends the loop as it always has.
-// A pending result sends its Send text when non-empty and keeps polling;
-// a failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward, logs Debug while it keeps failing and Info when it is delivered, leaves the entry pending and the writer at the boundary, and never ends the loop.
-// The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
+// A re-prompt send that fails with ErrSessionBusy, ErrSubmissionNotLanded or ErrPaused changes neither count.
+// It clears the memo and keeps the writer at the boundary with the re-prompt marked unsent,
+// so a later tick re-sends it until the run deadline.
+// When maxNoInputBoxReprompts such failures follow each other from a pane with no input box, the loop finalizes done.
+// The attempts spent so far are kept.
+// Any other re-prompt send failure ends the loop.
+// A pending result sends its Send text when non-empty and keeps polling.
+// A failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward.
+// It logs Debug while it keeps failing and Info when it is delivered.
+// It leaves the entry pending and the writer at the boundary, and never ends the loop.
+// The memo is cleared after a pending result, so the next evaluation and any later finalize read the closures afresh.
 func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	run.lastGateEvalAt = run.clock.Now()
 	verdict, gerr := run.evaluateGate(false)
@@ -553,7 +587,8 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	}
 	failed := run.gateFailedAt
 	if failed < 0 || run.gateTerminal || run.gateFails[failed] >= run.gate[failed].Attempts {
-		// No failing entry, a terminal failure, or a spent budget: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
+		// No failing entry, a terminal failure, or a spent budget: finalize reads the verdict evaluateGate just stored.
+		// It does not re-validate the verdict.
 		result, ferr := run.finalize(OutcomeDone)
 		return result, true, ferr
 	}
@@ -576,7 +611,9 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 				return result, true, ferr
 			}
 			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
-			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.
+			// The send clears its own text where it can.
+			// An engine that judges idle by its input box fails each re-send busy while the send leaves that box occupied.
+			// The loop then ends at the run deadline.
 			// A held send is an ordinary retry iteration: Info when it first holds, Debug while it stays held.
 			logHeld := logger.Debug
 			if !run.unsentReprompt {
@@ -603,8 +640,10 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 			run.gateFails[i] = 0
 		}
 	}
-	// The run directory is deleted on the Done cleanup every exhausted gate takes, so the findings TEXT (never just its path) is folded into this Warn line — the durable record of why the gate failed, same as the deleted producers' own warn lines carried.
-	// The file was just written by evaluateGate, so a read failure here is unexpected but non-fatal to the loop.
+	// The run directory is deleted on the Done cleanup every exhausted gate takes.
+	// So the findings text, not just its path, goes into this Warn line.
+	// The Warn is the durable record of why the gate failed.
+	// The file was written by evaluateGate, so a read failure here is unexpected, and the loop goes on.
 	findingsText, rerr := os.ReadFile(run.gateFindingsPath)
 	if rerr != nil {
 		findingsText = []byte(fmt.Sprintf("<unreadable: %v>", rerr))
@@ -615,18 +654,16 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	return Result{}, false, nil
 }
 
-// startupTickCap returns the maximum number of checkLivenessTick calls awaitStartup's loop performs.
-// Its interval is the startup probe's base interval, the poll interval and the shortest sleep the probe takes.
+// startupTickCap returns the maximum number of checkLivenessTick calls that awaitStartup's loop makes.
+// The interval is the startup probe's base interval, which is also its shortest sleep.
 // The cap is the ceiling of startupTimeout/interval, plus 1, plus maxStatusRetries.
 //
-// It is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: every tick's
-// reed.Status and pane capture each run a real tmux process through reed, so the count cap is the
-// clause's required bound — and it also terminates the loop under a clock that never advances. The
-// maxStatusRetries slack keeps a run of tolerated status errors from eating the ticks the window
-// itself needs.
+// Each tick runs a real tmux process through reed, for its status and its pane capture.
+// The count is the attempt bound that the Live-Substrate Spawn Observability retry clause requires.
+// It also ends the loop when the clock never advances.
+// The maxStatusRetries slack keeps tolerated status errors from using up the ticks the window needs.
 //
-// A negative startupTimeout is treated as 0 before the division, so the cap is never below
-// 1 + maxStatusRetries.
+// A negative startupTimeout counts as 0 before the division, so the cap is never below 1 + maxStatusRetries.
 func startupTickCap(startupTimeout, interval time.Duration) int {
 	if startupTimeout < 0 {
 		startupTimeout = 0
@@ -635,48 +672,49 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 	return ticks + 1 + maxStatusRetries
 }
 
-// awaitStartup runs the same startup probe Wait runs — checkLivenessTick's liveness check, pane
-// capture, the engine's startup classification, and the engine's trust-dismiss sequence for a
-// recognized one-time gate — on its own, until the provider reaches StartupReady or the window (or
-// the run's own deadline, whichever is shorter) closes. run.go's start calls it once, before ever
-// returning a handle: this is what makes a *Run issued by Start/StartGated already past its
-// provider's startup gates.
+// awaitStartup runs the startup probe that Wait runs, on its own, before a *Run handle is issued.
+// The probe runs checkLivenessTick's liveness check and a pane capture.
+// It then applies the engine's startup classification and its trust-dismiss sequence for a recognized one-time gate.
+// The loop runs until the provider reaches StartupReady or the window closes.
 //
-// The answer it reports is "the provider's input TUI is on screen, with any recognized one-time gate
-// dismissed", never "the provider read its prompt": a ready-then-idle session still reads as ready,
-// and that residual degrades to the caller's own outer watch budget.
+// Its answer is that the provider's input TUI is on screen, with any recognized one-time gate dismissed.
+// It never says that the provider read its prompt.
+// A ready-then-idle session still reads as ready, and that residual is left to the caller's outer watch budget.
 //
-// Return mapping: (Result{}, nil) when the handle may be issued — StartupReady reached (with Started
-// persisted to run.json by checkLivenessTick, so a later Attach skips the startup probe), or the run's
-// file contract already satisfied; (result, err) with errors.Is(err, ErrNotStarted) and a died/timeout
-// Result.Outcome when the pane died, the startup window closed, or the run's own deadline arrived
-// first, all with the teardown abandonStartup performs already done.
-// The same teardown and a died Result follow when checkLivenessTick failed maxStatusRetries consecutive times with the file contract unsatisfied.
-// The error then wraps ErrNotStarted beside the mechanism failure's own sentinel, worded in the same family Wait uses.
+// It returns (Result{}, nil) when the handle may be issued.
+// That holds when StartupReady was reached, or when the run's file contract is already satisfied.
+// On StartupReady, checkLivenessTick persists Started to run.json, so a later Attach skips the startup probe.
+// It returns (result, err) when the pane died, the startup window closed, or the run's own deadline arrived first.
+// The error wraps ErrNotStarted, and the Outcome is died or timeout.
+// Each of these cases tears down through abandonStartup first.
+// The same teardown and a died Result follow when checkLivenessTick fails maxStatusRetries times in a row.
+// That holds only while the file contract is unsatisfied,
+// and the error then wraps ErrNotStarted beside the mechanism failure's own sentinel.
 //
-// The window is the shorter of startup_timeout_s and the time left until run.deadline (floored at
-// 0): a run.Timeout shorter than startup_timeout_s must still expire on schedule, classified
-// OutcomeTimeout rather than OutcomeDied, so RunGated's caller sees "the agent was working" rather
-// than "it never started" when its own configured deadline, not the startup window, is what ran out.
-// startup_timeout_s 0 is included, with deliberately no floor: it makes the probe answer on its first
-// tick unless the TUI is already ready, the same fast-fail every producer run's Wait applies under
-// that config.
+// The window is the shorter of startup_timeout_s and the time left until run.deadline, floored at 0.
+// A run.Timeout shorter than startup_timeout_s still expires on schedule, as OutcomeTimeout rather than OutcomeDied.
+// A caller can then tell a working run from one that never started.
+// That holds when the run's own deadline, not the startup window, is what ran out.
+// A startup_timeout_s of 0 has no floor: the probe answers on its first tick unless the TUI is already ready.
 //
-// Every negative answer honors the Completion Signal Invariant: the not-ready answer is reached only
-// through checkLivenessTick/classifyStartupWindow, which already consult allOutputFilesExist, the
-// run-deadline exit goes through classifyDeadlineExpiry, and the retry-cap and tick-cap exits below
-// consult allOutputFilesExist directly.
+// Every negative answer honors the Completion Signal Invariant.
+// The not-ready answer comes only from checkLivenessTick and classifyStartupWindow.
+// Both already consult allOutputFilesExist.
+// The run-deadline exit goes through classifyDeadlineExpiry.
+// The retry-cap and tick-cap exits consult allOutputFilesExist directly.
 //
 // The tick cap (startupTickCap) bounds the loop by count as well as by the deadline.
 //
-// Probe cadence: awaitStartup calls checkLivenessTick once per sleep, and the sleep backs off while the pane does not change.
+// Probe cadence: awaitStartup calls checkLivenessTick once per sleep.
 // The base is pollInterval(cfg) and the ceiling is dismissalGap(cfg).
 // The first sleep is the base.
-// After each later probe the sleep returns to the base when the pane's capture differs from the one the previous probe left, and otherwise doubles up to the ceiling.
+// After each later probe, the sleep returns to the base if the pane's capture differs from the previous probe's.
+// Otherwise it doubles, up to the ceiling.
 // A probe whose capture failed leaves the capture unchanged, so it backs off.
-// A ready provider shows within the first one or two probes, because Claude's boot redraws the pane and resets the backoff.
-// Gate keys are spaced by checkLivenessTick's dismissal gap rather than by the probe cadence,
-// so a capture taken before the provider redraws after a dismissal never drives a second key into the next gate.
+// A ready provider shows within the first one or two probes.
+// This is because Claude's boot redraws the pane and resets the backoff.
+// Gate keys are spaced by the dismissal gap, not by the probe cadence,
+// so a capture taken before the provider redraws after a dismissal never sends a second key into the next gate.
 //
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
 func (run *Run) awaitStartup() (Result, error) {
@@ -751,31 +789,36 @@ func (run *Run) awaitStartup() (Result, error) {
 	return run.abandonStartup(OutcomeDied, nil)
 }
 
-// abandonStartup is start's teardown for a provider that never became ready or never took its first input:
-// the strand is torn down and the run's own Outcome is finalized while the run
-// directory and its last pane capture are kept for diagnosis.
-// cause is nil when the provider never reached StartupReady inside its window,
-// and otherwise the error that ended the start, which the returned error wraps beside ErrNotStarted.
+// abandonStartup tears down a start whose provider never became ready or never took its first input.
+// It finalizes the run's Outcome and removes the strand, keeping the run directory and last pane capture.
+// cause is nil when the provider never reached StartupReady inside its window.
+// Otherwise cause is the error that ended the start, and the returned error wraps it beside ErrNotStarted.
 //
-// In order: any capture checkLivenessTick recorded is saved to startupCaptureFileName (a write
-// failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome)
-// persists RunState.Outcome and logs "run finished", skipping the gate and cleanup since outcome is
-// never OutcomeDone here; the strand is removed, tried up to startupRemoveAttempts times with a doubling run-clock wait, whatever Spec.KeepPane says — KeepPane governs a
-// COMPLETED run's pane retention, not a startup failure's, and a provider that never came up leaves
-// nothing worth keeping the pane around for; the run directory is left in place either way, so the
-// capture file (and prompt.md/settings.json/events.jsonl) are findable; and a Warn names the run dir,
-// strand guid and outcome, per the Live-Substrate Spawn Observability invariant.
+// In order, it saves any capture that checkLivenessTick recorded to startupCaptureFileName.
+// A write failure is a Warn, and the returned error then says no capture was saved.
+// It calls run.finalize(outcome), which persists RunState.Outcome and logs "run finished".
+// It skips the gate and cleanup, since outcome is never OutcomeDone here.
+// It removes the strand, trying up to startupRemoveAttempts times with a doubling run-clock wait.
+// Spec.KeepPane does not apply here.
+// It governs retention of a completed run's pane, and a provider that never came up leaves no pane worth keeping.
+// It leaves the run directory in place, so the capture file, prompt.md, settings.json and events.jsonl stay findable.
+// The Warn names the run dir, strand guid and outcome, as the Live-Substrate Spawn Observability invariant requires.
 //
-// The returned error wraps ErrNotStarted and names the run dir, the strand guid, the outcome, whether
-// the capture was saved, and whether the strand removal itself succeeded — carrying reed's own error
-// text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
-// one residual an operator must clear by hand.
+// The returned error wraps ErrNotStarted.
+// It names the run dir, the strand guid, the outcome, whether the capture was saved, and whether the strand was removed.
+// When removal failed, the error carries reed's own error text and an operator remedy:
+// a strand that abandonStartup could not remove is the one residual an operator must clear by hand.
 //
-// When cause is nil and the run never started, the error also carries the reason the last startup probe held a ready pane back for want of a session-start line, if it recorded one.
-// The error ends with the last startup capture's excerpt, its last lines and, for a capture longer than one tail, its first lines before them, when all three hold:
-// cause is nil, the provider never reached StartupReady (run.state.Started is false), and a startup capture was recorded.
-// Every other teardown reports a cause that already carries its own screen or a mechanism failure with none,
-// or a pane that died after it was ready, whose last capture is the ready screen from before the death.
+// When cause is nil and the run never started, the error also carries a reason.
+// The reason is a missing session-start line, when the last startup probe recorded one for holding back a ready pane.
+// The error ends with the last startup capture's excerpt under three conditions.
+// The cause is nil.
+// The provider never reached StartupReady (run.state.Started is false).
+// A startup capture was recorded.
+// The excerpt is the capture's last lines and, for a capture longer than one tail, its first lines before them.
+// Other teardowns leave the excerpt out.
+// Their cause already carries a screen or a mechanism failure.
+// A pane that died after it was ready has the ready screen as its last capture.
 func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 	captureNote := "no pane capture was saved"
 	if run.lastStartupCapture != "" {
@@ -825,7 +868,8 @@ const (
 	startupRemoveFirstDelay = time.Second
 )
 
-// removeStartupStrand removes the run's strand, and tries again after a doubling wait on the run clock while the removal fails, up to startupRemoveAttempts tries.
+// removeStartupStrand removes the run's strand.
+// While the removal fails it tries again after a doubling wait on the run clock, up to startupRemoveAttempts tries.
 // It returns nil once a removal succeeds, and the last removal's error otherwise.
 func (run *Run) removeStartupStrand() error {
 	delay := startupRemoveFirstDelay
@@ -842,8 +886,9 @@ func (run *Run) removeStartupStrand() error {
 
 // startupCaptureExcerpt returns the pane lines the not-ready error ends with, each block under its own heading.
 // A capture whose non-blank lines fit in paneTailLines is shown whole as the last lines.
-// A longer one shows its first lines, up to paneTailLines of them and none the tail repeats, and then its last paneTailLines lines.
-// So the first error line of a launch that scrolled away is not lost.
+// A longer one shows its first lines, up to paneTailLines of them and none the tail repeats.
+// It then shows its last paneTailLines lines.
+// The first lines keep the first error line of a launch that scrolled away.
 func startupCaptureExcerpt(capture string) string {
 	lines := nonBlankLines(capture)
 	if len(lines) <= paneTailLines {
@@ -853,32 +898,33 @@ func startupCaptureExcerpt(capture string) string {
 	return "The pane's first lines:\n" + strings.Join(head, "\n") + "\nThe pane's last lines:\n" + strings.Join(lines[len(lines)-paneTailLines:], "\n")
 }
 
-// pollEventsTick reads any events.jsonl bytes appended since run.offset and
-// parses them via the engine. run.offset only advances past what it read
-// AFTER ParseEvents succeeds: if ParseEvents errors, the bytes stay
-// unconsumed so Wait's events-failure retry actually re-reads and
-// re-classifies them on the next tick, rather than silently discarding a
-// batch that may contain the run's only qualifying event (the Engine seam
-// permits an erroring parser; the retry counter Wait maintains implies this
-// re-read guarantee).
-// It classifies the batch by its LAST event:
-// a batch containing more than one event, e.g. an interrupted turn immediately followed by a resumed one, is classified by its most recent one,
-// and every consumed byte still counts once parsing succeeds, so none of the earlier events in the same batch is ever reprocessed.
-// When every output file exists the run is done whatever the last event's Kind was.
+// pollEventsTick reads the events.jsonl bytes appended since run.offset and classifies them by the batch's last event.
+// run.offset advances past the bytes only after ParseEvents succeeds.
+// A parse failure leaves them unconsumed.
+// The next tick then re-reads and re-classifies them.
+// Discarding the batch could lose the run's only qualifying event.
+// A batch that holds more than one event is classified by its most recent one.
+// Every consumed byte still counts once parsing succeeds, so no earlier event of the batch is reprocessed.
+// When every output file exists the run is done, whatever the last event's Kind is.
 // Otherwise the turn end is held, whatever its Kind:
-// an EventStop and an EventAsk with output files missing return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
-// Kind only selects Message's source, inside ParseEvents, not this branch.
-// An EventWaiting is the one Kind that is not held at once: the session is waiting on its own background work,
-// so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding and the files are missing;
-// an ungated one with an empty outstanding list and every output file present is done at once.
-// A gated run whose outstanding list holds only shells the session does not await is held at once when an output file is missing.
-// With every output file present it keeps waiting when a turn start past the waiting turn end is already read, since the next turn is under way;
-// otherwise it returns what expiredTurnEnd answers, queueing the shell nudge only while that is nothing:
-// nothing while a shell is inside the bound, and done once every shell has been outstanding for it, so the gate runs as at any turn end.
-// A turn start read past a recorded waiting turn end clears it, so no expiry counts the run done in a turn already under way.
-// A fork and an awaited shell keep the turn waiting however long they run.
+// an EventStop or an EventAsk with output files missing returns a held turn end.
+// It carries the event's message and the offset just past its line, and the caller keeps polling the same agent.
+// The Kind only selects the source of Message inside ParseEvents; it does not change this branch.
+// An EventWaiting is the one Kind that is not held at once: the session waits on its own background work.
+// The tick then returns the waiting turn end's expiry answer.
+// That answer is nothing while the work is outstanding and the files are missing.
+// An ungated run with an empty outstanding list and every output file present is done at once.
+// When an output file is missing, a gated run whose outstanding list holds only non-awaited shells is held at once.
+// With every output file present, it keeps waiting when a turn start past the waiting turn end is already read.
+// That turn start means the next turn is under way.
+// Otherwise it returns the expiry's answer, and queues the shell nudge only while that answer is nothing.
+// While a shell is inside the bound, the expiry answers nothing.
+// Once every shell has been outstanding for the bound, it answers done, so the gate runs as at any turn end.
+// A turn start read past a recorded waiting turn end clears it.
+// So no expiry counts the run done in a turn already under way.
+// A fork or an awaited shell keeps the turn waiting however long it runs.
+// Only the run's own deadline and the liveness check bound that wait, and lym reaps no shell.
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
-// A waiting turn end on a fork or an awaited shell is bounded only by the run's own deadline and the liveness check, and lym reaps no shell.
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
@@ -896,9 +942,6 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	// Only now, with parsing proven successful, is it safe to advance past
-	// these bytes — a parse failure must leave them for the next tick to
-	// retry rather than discarding them unread.
 	run.offset = newOffset
 	guardArmed := run.holdGuard
 	turnStarts := turnStartOffsets(run.engine, data, startOffset)
@@ -971,10 +1014,12 @@ func turnStartAfter(turnStarts []int64, offset int64) bool {
 	return slices.ContainsFunc(turnStarts, func(start int64) bool { return start > offset })
 }
 
-// armHoldGuard sets the hold guard for a Wait from the events file as it stands.
+// armHoldGuard sets the hold guard for a wait from the events file as it stands.
 // A turn start before the prompt offset proves the provider writes turn starts for typed turns, so the guard arms;
-// a turn start from the prompt offset up to the run's read offset, which a Wait attached past the prompt's turn start sees, lifts it at once.
-// An engine without SessionSignalParser, a zero prompt offset, a file with no turn start before the prompt offset and an unreadable file leave the guard off.
+// a turn start from the prompt offset up to the run's read offset lifts it at once;
+// a wait attached past the prompt's turn start sees that turn start.
+// An engine that does not parse session signals and a zero prompt offset leave the guard off.
+// So do a file with no turn start before the prompt offset and an unreadable file.
 func (run *Run) armHoldGuard() {
 	run.holdGuard, run.promptTurnStarted = false, false
 	promptOffset := run.state.PromptOffset
@@ -995,9 +1040,10 @@ func (run *Run) armHoldGuard() {
 	}
 }
 
-// turnStartOffsets returns the events-file offset just past the line of each turn start the engine reads from data, in file order.
+// turnStartOffsets returns the events-file offset just past the line of each turn start the engine reads from data.
+// The offsets are in file order.
 // data is the slice of the events file that begins at startOffset.
-// An engine without SessionSignalParser reads none.
+// An engine that does not parse session signals reads none.
 func turnStartOffsets(engine Engine, data []byte, startOffset int64) []int64 {
 	starts := positionedTurnStarts(engine, data, startOffset)
 	offsets := make([]int64, len(starts))
@@ -1013,9 +1059,10 @@ type positionedTurnStart struct {
 	end    int64
 }
 
-// positionedTurnStarts returns each turn start the engine reads from data, in file order, with the events-file offset just past its line.
+// positionedTurnStarts returns each turn start the engine reads from data, in file order.
+// Each carries the events-file offset just past its line.
 // data is the slice of the events file that begins at startOffset.
-// An engine without SessionSignalParser reads none.
+// An engine that does not parse session signals reads none.
 func positionedTurnStarts(engine Engine, data []byte, startOffset int64) []positionedTurnStart {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
@@ -1041,7 +1088,8 @@ func positionedTurnStarts(engine Engine, data []byte, startOffset int64) []posit
 	return starts
 }
 
-// heldTurnEnd is a plain Stop or a live ask that left the run's output files missing, so the run is held rather than ended.
+// heldTurnEnd is a plain Stop or a live ask that left the run's output files missing.
+// The run is held rather than ended.
 type heldTurnEnd struct {
 	// message is the agent's last message at the turn end.
 	message string
@@ -1049,7 +1097,7 @@ type heldTurnEnd struct {
 	offset int64
 	// raw is the turn end's events-file line.
 	raw []byte
-	// background is true when the turn end left background work of the session's own running.
+	// background is true when the turn end left background work of the session that is still running.
 	background bool
 }
 
@@ -1068,7 +1116,8 @@ func offsetPastEvent(data []byte, startOffset, batchEnd int64, ev Event) int64 {
 	return startOffset + int64(end)
 }
 
-// recordWaiting keeps a waiting turn end's outstanding list, logs what it waits on once, and stamps each shell id not seen before with now.
+// recordWaiting keeps a waiting turn end's outstanding list and logs what it waits on.
+// It records the current time as first sight of each shell id not seen before.
 func (run *Run) recordWaiting(ev Event) {
 	run.waitingTasks = ev.Outstanding
 	tasks := make([]string, 0, len(ev.Outstanding))
@@ -1095,9 +1144,12 @@ func (run *Run) shellWaitBound() time.Duration {
 	return ShellWaitBound(run.runner.cfg)
 }
 
-// ShellWaitBound returns how long a background shell of either signal stays outstanding before the wait logs it and shows it in the wait marker, cfg.BackgroundShellWaitMin, flooring a non-positive hand-built value to the template default as pollInterval does.
+// ShellWaitBound returns how long a background shell of either signal may stay outstanding before the wait logs it.
+// The wait shows the shell in the wait marker after the same bound.
+// The bound is cfg.BackgroundShellWaitMin minutes, or the template default when that value is not positive.
 // It is also the bound after which a waiting turn end whose every outstanding task is a non-awaited shell expires:
-// an ungated one with an output file missing into a held turn end, and a gated one with every output file present into a Done.
+// The expiry turns an ungated turn end with an output file missing into a held turn end.
+// It turns a gated one with every output file present into a Done.
 func ShellWaitBound(cfg Config) time.Duration {
 	minutes := cfg.BackgroundShellWaitMin
 	if minutes <= 0 {
@@ -1124,16 +1176,19 @@ func awaitedLabel(label string, prefixes []string) bool {
 	return false
 }
 
-// expiredTurnEnd decides the recorded waiting turn end: it counts it as a Done at once, expires it into a held turn end or a Done, or keeps it waiting.
+// expiredTurnEnd decides the recorded waiting turn end:
+// it counts it as a Done at once, expires it into a held turn end or a Done, or keeps it waiting.
 // An ungated run counts it at once whenever every output file exists, whatever is outstanding.
-// An ungated run with an output file missing expires it into the held turn end of that waiting turn end once every outstanding task is a non-awaited shell and each has been outstanding for the bound;
-// a fork or an awaited shell outstanding keeps it waiting however long it runs.
-// A gated run with every output file present expires it into a Done once every outstanding task is a non-awaited shell and each has been outstanding for the bound.
-// Any other gated waiting turn end here is never an arrival, because the output files may be left over from an earlier arrival while the session works on in the background;
-// it waits until the task's completion starts the next turn, the run's deadline or the liveness check.
+// Expiry needs every outstanding task to be a non-awaited shell, each outstanding for the bound:
+// an ungated run with an output file missing turns it into a held turn end,
+// and a gated run with every output file present turns it into a Done.
+// A fork or an awaited shell outstanding keeps it waiting however long it runs.
+// Any other gated turn end is never an arrival:
+// output files may be left over from an earlier arrival while the session works on in the background.
+// It waits until the task's completion starts the next turn, the run's deadline or the liveness check.
 // A shell outstanding past the bound is logged once per shell.
 // Counting or expiring a turn end clears the waiting list and keeps its tasks in countedTasks for the run's record;
-// a turn start read past the recorded turn end clears it the same way before this runs.
+// a turn start read past the recorded turn end clears it the same way.
 // Returns outcome == "" and a nil held turn end while the turn keeps waiting.
 func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	if len(run.waitingTasks) == 0 {
@@ -1167,7 +1222,8 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	return OutcomeDone, nil, nil
 }
 
-// unawaitedShellsPastBound reports whether every outstanding task of the recorded waiting turn end is a non-awaited shell outstanding for at least the shell wait bound at now.
+// unawaitedShellsPastBound reports whether every outstanding task of the waiting turn end is a non-awaited shell.
+// Each such shell must have been outstanding for at least the shell wait bound at now.
 func (run *Run) unawaitedShellsPastBound(now time.Time) bool {
 	if !run.unawaitedShellsOnly(run.waitingTasks) {
 		return false
@@ -1181,9 +1237,10 @@ func (run *Run) unawaitedShellsPastBound(now time.Time) bool {
 	return true
 }
 
-// queueShellNudge queues the line naming each shell of the recorded waiting turn end that no sent line of this Wait named.
-// It queues nothing when every shell was named before, so an agent that ends its turn again over the same shell is not told twice.
-// The shells count as named only once sendShellNudge has sent the line.
+// queueShellNudge queues the line naming each shell of the waiting turn end that no sent nudge has named.
+// It queues nothing when every shell was named before,
+// so an agent that ends its turn again over the same shell is not told twice.
+// A shell counts as named once its nudge line has been sent.
 func (run *Run) queueShellNudge() {
 	var ids, labels []string
 	for _, task := range run.waitingTasks {
@@ -1198,14 +1255,17 @@ func (run *Run) queueShellNudge() {
 	}
 }
 
-// shellNudgeText returns the one line that tells an agent its turn ended while background shells whose results it never read still run, naming each by its delimited label.
+// shellNudgeText returns the one line that tells an agent its turn ended while background shells still run.
+// The agent never read those shells' results,
+// and the line names each shell by its delimited label.
 func shellNudgeText(labels []string) string {
 	return "[lym] Your turn ended while these background shells still run: " + strings.Join(labels, ", ") +
 		". The run does not count as done while one runs: wait for each to finish, read its result and act on it before you end your turn."
 }
 
-// sendShellNudge types the queued shell nudge into the run's pane through the gated send and clears it, marking the shells it named as named once the send succeeds.
-// While a pause covers the run it drops the line unsent.
+// sendShellNudge types the queued shell nudge into the run's pane through the gated send, then clears it.
+// It marks the shells the nudge named once the send succeeds.
+// While a pause covers the run, it drops the line unsent.
 // A failed send is logged at Info and not retried in place, since the shell's completion still starts the session's next turn.
 // A dropped or failed line leaves its shells unnamed, so the next waiting turn end over them queues it again.
 func (run *Run) sendShellNudge() {
@@ -1231,7 +1291,7 @@ func (run *Run) sendShellNudge() {
 	logger.Info("shuttle: told the agent to read the background shells its turn end left running", "strandGUID", run.state.StrandGUID)
 }
 
-// unawaitedShellsOnly reports whether tasks is non-empty and holds no fork and no shell the spec's AwaitedShellPrefixes names.
+// unawaitedShellsOnly reports whether tasks is non-empty and holds only background shells that are not awaited.
 func (run *Run) unawaitedShellsOnly(tasks []BackgroundTask) bool {
 	if len(tasks) == 0 {
 		return false
@@ -1244,7 +1304,7 @@ func (run *Run) unawaitedShellsOnly(tasks []BackgroundTask) bool {
 	return true
 }
 
-// logPayloadShellPastBound logs at Warn, once per shell id, that a background shell of either signal has been outstanding for at least the bound.
+// logPayloadShellPastBound logs at Warn, once per shell id, that a background shell has been outstanding for at least bound.
 // It names the run and the shell's label and changes no decision.
 func (run *Run) logPayloadShellPastBound(task BackgroundTask, outstanding, bound time.Duration) {
 	if outstanding < bound || run.payloadShellLogged[task.ID] {
@@ -1258,7 +1318,8 @@ func (run *Run) logPayloadShellPastBound(task BackgroundTask, outstanding, bound
 }
 
 // logEndedShells logs at Info the shells outstanding at the run's end.
-// With the strand removed it says the removal ended them; on every other end it says the run ended with them outstanding and the strand is left to its caller.
+// With the strand removed, it says the removal ended them.
+// On every other end, it says the run ended with them outstanding and the strand is left to its caller.
 // lym kills no shell itself, so a shell detached from the pane's process tree survives the removal.
 func (run *Run) logEndedShells(ended []EndedShell, strandRemoved bool) {
 	if len(ended) == 0 {
@@ -1275,7 +1336,8 @@ func (run *Run) logEndedShells(ended []EndedShell, strandRemoved bool) {
 	logger.Info(message, "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "shells", strings.Join(labels, "; "))
 }
 
-// endedShells lists each shell outstanding when the run ends, from the recorded waiting turn end, or from the turn end counted at once when none is recorded.
+// endedShells lists the shells outstanding when the run ends.
+// It reads them from the recorded waiting turn end, or from the turn end counted at once when none is recorded.
 // Each entry's duration runs from the shell's first sighting to now.
 func (run *Run) endedShells(now time.Time) []EndedShell {
 	tasks := run.waitingTasks
@@ -1292,8 +1354,8 @@ func (run *Run) endedShells(now time.Time) []EndedShell {
 	return ended
 }
 
-// readEventsFrom reads path from byte offset onward, returning bytes up to
-// the last complete line. Partial lines are left unconsumed for the next tick.
+// readEventsFrom reads path from byte offset onward, returning the bytes up to the last complete line.
+// A partial trailing line is left unconsumed for the next tick.
 func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -1325,8 +1387,8 @@ func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 }
 
 // strandStatusByGUID returns the strand reed reports for guid, and whether reed reported one at all.
-// The second return value is what separates "reed tracks this strand and its pane is not alive" from
-// "reed does not track this strand", which a bare liveness bool cannot express — see errStrandNotTracked.
+// The second result separates a strand reed tracks with no live pane from one it does not track at all.
+// A bare liveness flag cannot express that difference.
 func strandStatusByGUID(strands []reedengine.StrandStatus, guid string) (reedengine.StrandStatus, bool) {
 	for _, s := range strands {
 		if s.GUID == guid {
@@ -1350,33 +1412,40 @@ func allOutputFilesExist(files []string) bool {
 	return true
 }
 
-// checkLivenessTick checks strand liveness and probes the pane during
-// startup. Returns a non-nil error for a reed.Status that could not be run, and for the two Status
-// answers that report reed's own bookkeeping rather than the agent's fate: a Status that no longer
-// lists this run's strand (errStrandNotTracked), and one that lists it with no pane bound
-// (errStrandPaneBindingCleared) — see each for why it is a mechanism failure rather than a
-// classification.
-// A satisfied file contract wins over every negative answer: the agent's output files ARE its return
-// value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped
-// tracking or addressing it.
-// A Status that no longer lists the strand of a handle Stop marked answers OutcomeDied instead of errStrandNotTracked:
-// that Stop removed the strand, so its going is the stop and not reed's bookkeeping going away, and finalize records it stopped.
+// checkLivenessTick checks strand liveness and probes the pane during startup.
+// It returns a non-nil error when the status call cannot run.
+// It also returns one for two status answers that describe reed's own bookkeeping rather than the agent's fate:
+// a status that no longer lists this run's strand, and one that lists it with no pane bound.
+// Both are failures of the mechanism, not classifications of the agent.
+// A satisfied file contract wins over every negative answer.
+// The agent's output files are its return value.
+// Their existence classifies OutcomeDone whether the pane died or reed stopped tracking or addressing it.
+// For a stopped handle, a status that no longer lists the strand answers OutcomeDied rather than an error.
+// The stop removed the strand, so its going is the stop, not reed's bookkeeping.
+// The run is recorded as stopped.
 //
-// A startup gate is dismissed at most once per dismissalGap on the run's clock: a probe inside the gap that still sees a gate plays nothing and does not ask for the dismissal keys.
-// Any play that sent at least one input starts the gap, failed partway or not; an empty sequence or a first input that failed does not.
-// Bound: the throttle only removes key presses and never adds one, and the startup deadline and the tick cap still end a gate that never clears.
+// A startup gate is dismissed at most once per dismissal gap on the run's clock.
+// A probe inside the gap that still sees a gate plays nothing and does not send the dismissal keys.
+// Any play that sent at least one input starts the gap, whether it failed partway or not.
+// An empty sequence, or a first input that failed, does not start it.
+// The throttle only removes key presses and never adds one.
+// The startup deadline and the tick cap still end a gate that never clears.
 //
-// Once the strand reads live, every tick asks sessionGone, before the started short-circuit so startup is covered too;
-// a gone session returns OutcomeDone when every output file exists and OutcomeDied otherwise, the way a dead pane does.
-// Run.Wait's own startup probe already runs at least one gap apart, so the throttle never holds a dismissal there.
+// Once the strand reads live, every tick checks whether the session is gone.
+// This check runs before the started short-circuit, so startup is covered too.
+// A gone session returns OutcomeDone when every output file exists and OutcomeDied otherwise, as a dead pane does.
+// The wait's own startup probe already runs at least one dismissal gap apart, so the throttle never holds a dismissal there.
 //
-// For a record with RecordsSessionStarts, a ready pane marks the run started only once the events file also holds a session-start line.
-// Until then the tick stays not started, records the reason on the run for abandonStartup and answers as a still-booting pane does; gate detection and dismissal run as for any run.
-// Bound: a session-start line an earlier launch of the same run left satisfies the line half, and the pane half still gates it.
+// For a record with `RecordsSessionStarts`, a ready pane marks the run started only once the events file also holds a session-start line.
+// Until then the tick stays not started, records the reason on the run for the teardown, and answers as a still-booting pane does.
+// Gate detection and dismissal run as for any run.
+// A session-start line an earlier launch of the same run left satisfies the line half; the pane half still gates it.
 //
-// With eventsProof set, a record with RecordsSessionStarts is also started once the events file holds a session start followed by a turn start, checked before the pane capture;
-// a false answer falls through to the capture path, so a recognized gate is still dismissed.
-// Only start's probe sets it: its events file is created fresh for the launch, so only this launch's hooks satisfy it, while Wait's probe of a not-yet-started run may read an earlier incarnation's lines.
+// With eventsProof set, a record with `RecordsSessionStarts` also starts once the events file holds a session start followed by a turn start.
+// That check runs before the pane capture; a false answer falls through to the capture path, so a recognized gate is still dismissed.
+// Only the launch's own startup wait sets eventsProof.
+// Its events file is created fresh for the launch, so only this launch's hooks satisfy it.
+// The wait's probe of a not-yet-started run may read an earlier incarnation's lines, so it leaves eventsProof unset.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, eventsProof bool) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
@@ -1397,11 +1466,11 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
 		}
-		// Reed reports not-live for a strand it holds no pane id for, exactly as it does for one whose
-		// pane died — but those are different facts, and only the second is a dead run. An
-		// anchor:hidden strand is the one case where an empty pane id is normal rather than a cleared
-		// binding (reed realizes a pane for every other anchor), so it keeps today's classification;
-		// every other run's strand carries a pane id from the moment AddStrand persists it.
+		// Reed reports a strand it holds no pane id for as not live, as it does for a strand whose pane died.
+		// Those are different facts, and only the second is a dead run.
+		// An anchor:hidden strand is the one case where an empty pane id is normal.
+		// It keeps the not-live classification.
+		// Reed realizes a pane for every other anchor, so an empty pane id there is a cleared binding.
 		if strand.PaneID == "" && run.spec.Display.Anchor != render.AnchorHidden {
 			return "", errStrandPaneBindingCleared
 		}
@@ -1428,8 +1497,8 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
 		run.failures.Fail("startup capture", "shuttle: capture pane during startup probe (non-fatal, retrying)", "strandGUID", run.state.StrandGUID, "error", err)
-		// A pane that cannot be captured has told us nothing about whether the provider came up,
-		// so it stays inside the startup window and expires with it — see classifyStartupWindow.
+		// A pane that cannot be captured tells us nothing about whether the provider came up,
+		// so it stays inside the startup window and expires with it.
 		return run.classifyStartupWindow(startupDeadline), nil
 	}
 	run.failures.Recover("startup capture", "shuttle: startup probe capture works again", "strandGUID", run.state.StrandGUID)
@@ -1472,22 +1541,19 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 			run.failures.Fail("startup dismiss", "shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		} else if len(inputs) > 0 {
 			run.failures.Recover("startup dismiss", "shuttle: trust prompt dismissal sends again", "strandGUID", run.state.StrandGUID)
-			// Info, not Debug: a dismissal is a lifecycle event that happens at most once or twice
-			// per run, not a routine polling probe — and Wait's producers gain this line too.
+			// Logged at Info, not Debug: a dismissal is a lifecycle event, not a routine polling probe.
 			logger.Info("shuttle: dismissed startup gate", "strandGUID", run.state.StrandGUID, "inputs", len(inputs))
 		}
 	}
-	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
-	// share the one deadline that governs the whole startup window.
+	// StartupPending and an uncleared trust prompt both mean still not ready.
+	// Both share the one deadline that governs the whole startup window.
 	return run.classifyStartupWindow(startupDeadline), nil
 }
 
 // markStarted persists that the provider is past its startup gates.
-// It is persisted immediately, not left for finalize: this is the one fact a killed driver must
-// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
-// from one whose launch already failed (see Wait's own doc comment on started).
-// Best-effort, like every other mid-run persistence in this package (finalize's Outcome write):
-// a save failure costs a future re-attach one extra startup probe, never this run's own correctness.
+// It persists at once, since this is the one fact a killed driver must not lose.
+// A later attach uses it to tell a booted, mid-turn pane from one whose launch already failed.
+// The save is best-effort: a failure costs a later attach one extra startup probe, never this run's correctness.
 func (run *Run) markStarted() {
 	run.recordMu.Lock()
 	run.state.Started = true
@@ -1498,7 +1564,7 @@ func (run *Run) markStarted() {
 	}
 }
 
-// sessionLivenessState is what sessionGone keeps across the liveness ticks of one wait.
+// sessionLivenessState is the state a wait's liveness ticks carry from one tick to the next.
 type sessionLivenessState struct {
 	// sizeTaken reports that firstTickSize holds the events file's size at the wait's first liveness tick.
 	sizeTaken     bool
@@ -1507,12 +1573,17 @@ type sessionLivenessState struct {
 	readAlive map[string]bool
 }
 
-// sessionGone reports whether this tick proves the provider's process gone behind a live pane.
-// It answers false for an engine without both SessionSignalParser and SessionProber.
-// Otherwise it reads the registry once for the newest session id the events file names, the record's SessionID when none, and answers true when either holds:
-// the signals past the events-file size taken at the wait's first call end in a process-ending session end and the reading is not alive,
-// or the reading is dead for an id this wait read alive at an earlier tick.
-// An alive reading records the id and answers false, as does an unproven reading, a dead one for an id this wait never read alive and a session end at or before the first-call size.
+// sessionGone reports whether this tick proves the provider's process is gone behind a live pane.
+// An engine that does not both parse session signals and probe session liveness always reports false.
+// Otherwise it reads the registry once for the newest session id the events file names,
+// or the record's session id when the file names none.
+// It reports true when either of two proofs holds.
+// The first is a process-ending session end in the events file past the size taken at the wait's first call;
+// the process must also not be alive.
+// The second is a dead reading for an id this wait read alive at an earlier tick.
+// An alive reading records the id and reports false.
+// So does an unproven reading: a dead one for an id this wait never read alive,
+// or a session end at or before the first-call size.
 // An unreadable events file counts no session end.
 func (run *Run) sessionGone() bool {
 	parser, parses := run.engine.(SessionSignalParser)
@@ -1561,8 +1632,10 @@ func (run *Run) sessionGone() bool {
 	return true
 }
 
-// sessionStartRecorded reports whether the events file holds a session-start signal of any source, read from the file's start.
-// An absent file reads false with no error and an unreadable one returns the read error; an engine without SessionSignalParser reads false.
+// sessionStartRecorded reports whether the events file holds a session-start signal of any source.
+// It reads the file from its start.
+// An absent file reports false with no error, and an unreadable one returns the read error.
+// An engine that does not parse session signals reports false.
 func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
@@ -1584,8 +1657,9 @@ func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
 	return false, nil
 }
 
-// turnStartedAfterSessionStart reports whether the events file holds a turn-start signal after a session-start signal, in file order, read from the file's start.
-// An absent or unreadable file and an engine without SessionSignalParser read false.
+// turnStartedAfterSessionStart reports whether the events file holds a turn-start signal after a session-start signal.
+// Signals are taken in file order, from the file's start.
+// An absent or unreadable file, and an engine that does not parse session signals, report false.
 // It reads signals through the engine's parser, never by a provider's hook names.
 func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
 	parser, ok := engine.(SessionSignalParser)
@@ -1611,19 +1685,16 @@ func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
 	return false
 }
 
-// classifyStartupWindow reports the run's outcome once startupDeadline has passed on a run whose
-// provider has still not reached StartupReady, and "" while that window is still open.
+// classifyStartupWindow reports the outcome once startupDeadline has passed.
+// On a run whose provider has not reached StartupReady, it returns "" while the window is still open.
 //
-// It is called from every not-yet-started exit of checkLivenessTick, not just the still-booting one,
-// because the startup window belongs to the WINDOW rather than to one classification within it.
-// Enforcing it only on StartupPending let the two silent paths — a trust prompt whose dismissal
-// never takes, and a pane that fails every capture — skip the deadline entirely and burn the full
-// run_timeout_min (30 minutes by default) instead of startup_timeout_s (90), and be reported as
-// OutcomeTimeout ("the agent was working") rather than OutcomeDied ("it never started").
+// The window covers every not-started exit of the liveness check, not only the still-booting one.
+// Enforcing it on StartupPending alone let two silent paths skip the deadline:
+// a trust prompt that never clears, and a pane that fails every capture.
+// Such a run ran until the run deadline and was reported as timed out rather than died.
 //
-// The expired answer comes from classifyDeadlineExpiry rather than being a bare OutcomeDied,
-// because an expired startup window is a NEGATIVE answer like any other and the file contract
-// outranks all of them — see that function for the whole argument.
+// Once the window has expired, the answer is OutcomeDone if the file contract is already satisfied.
+// Otherwise it is OutcomeDied.
 func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
 	if run.clock.Now().After(startupDeadline) {
 		return run.classifyDeadlineExpiry(OutcomeDied)
@@ -1633,25 +1704,9 @@ func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
 
 // classifyDeadlineExpiry reports the outcome for a deadline that has just expired: OutcomeDone when
 // the run's file contract is already satisfied, and expired otherwise.
-//
-// It exists because a deadline answers "has the clock run out", never "did this run finish", and
-// the two deadlines in this file — the startup window and the run deadline — both used to publish
-// the first as though it were the second. checkLivenessTick's own doc comment already states the
-// governing rule ("a satisfied file contract wins over every negative answer"), and its
-// not-tracked and not-live branches both honour it; the two deadline paths did not, so a run whose
-// agent had written every file in OutputFiles but left no parseable terminal event behind was
-// classified OutcomeDied at startup_timeout_s or OutcomeTimeout at the run deadline. Reproduced
-// live in crucible round opus5-high-r4 against the real built binary, once per deadline: both of
-// Discussion-Write's declared output files present on disk, events.jsonl never written, and the
-// step recorded as a shed failure — after which the next resume archived the finished files and
-// re-ran the step, which is precisely the rework the Completion Signal Invariant
-// ("inside an attached or started run's own wait loop … the step finished; read it and advance")
-// exists to prevent.
-//
-// An empty OutputFiles exists only on an unawaited run, which never reaches Wait or Attach:
-// Runner.StartSession never calls Wait, and Attach set-matches a persisted record's output files against an awaited caller's spec, which an unawaited record's empty list never matches.
-// Spec.validate states the file contract from the other side when it refuses a spec whose output
-// file ALREADY exists, "a pre-existing file would satisfy the file contract immediately".
+// A deadline answers whether the clock has run out, not whether the run finished, so the file contract outranks it.
+// Without that rule, a run whose agent wrote every output file but left no parseable terminal event was
+// classified as died at the startup deadline or as timed out at the run deadline.
 func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone
@@ -1659,26 +1714,19 @@ func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 	return expired
 }
 
-// finishedDespiteMechanismFailure finalizes OutcomeDone when the run's file contract is already
-// satisfied at a point Wait would otherwise abandon the run with a mechanism-failure error, and
-// reports whether it did (the bool is false, with a zero Result and nil error, when the contract is
-// not satisfied and the caller must surface its mechanism error unchanged).
+// finishedDespiteMechanismFailure finalizes the run as OutcomeDone if its file contract is satisfied.
+// It reports whether it did.
+// It runs where a run would otherwise be abandoned with a mechanism-failure error.
+// The two exits are: the events file unreadable for maxEventsReadRetries consecutive ticks;
+// or reed.Status failing for maxStatusRetries consecutive ticks.
+// They describe reed's bookkeeping, not whether the run finished; a satisfied file contract outranks them.
+// Without this check, a run could be recorded as a mechanism failure after its agent wrote every output file;
+// if reed.json was left corrupt, the next resume would archive the finished files and re-run the step.
+// That is the rework the Completion Signal Invariant exists to prevent.
+// When the contract is not satisfied, it returns a zero Result and a nil error, with false;
+// the caller then surfaces its mechanism error unchanged.
 //
-// It exists for the same reason classifyDeadlineExpiry does, extended to Wait's two retry-exhausted
-// exits: the events file staying unreadable for maxEventsReadRetries consecutive ticks, and
-// reed.Status erroring for maxStatusRetries consecutive ticks, both answer "has reed's own
-// bookkeeping or the events file gone wrong", never "did this run finish". checkLivenessTick's own
-// doc comment already governs both -- "a satisfied file contract wins over every negative answer" --
-// and its not-tracked and not-live branches beside these exits both honour it; the two
-// retry-exhausted caps did not, so a run whose agent had written every declared output file but left
-// reed.json corrupt (a crash, a full disk, a kill -9 during a reed write) or events.jsonl
-// unparseable was recorded as a mechanism failure, after which the next resume archived the finished
-// files and re-ran the step -- precisely the rework the Completion Signal Invariant
-// exists to prevent. Reproduced live in crucible round fable5-high-r5 against the real built binary:
-// a shuttle run whose declared output file was on disk, reed.json truncated mid-run, returned the
-// consecutive-status-failure mechanism error rather than OutcomeDone.
-//
-// An empty OutputFiles exists only on an unawaited run, which never reaches this loop, as classifyDeadlineExpiry documents.
+// An empty OutputFiles exists only on an unawaited run, which never reaches this loop.
 func (run *Run) finishedDespiteMechanismFailure() (Result, error, bool) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		result, err := run.finalize(OutcomeDone)
@@ -1687,9 +1735,9 @@ func (run *Run) finishedDespiteMechanismFailure() (Result, error, bool) {
 	return Result{}, nil, false
 }
 
-// identity returns the run's identifying fields with an empty Outcome: what Wait hands back
-// alongside a mechanism-failure error, so the caller keeps the handles it needs to diagnose,
-// resume, or tear down a run that reached no classification.
+// identity returns the run's identifying fields with an empty Outcome.
+// It is the Result for a run that reached no classification;
+// the caller keeps the handles it needs to diagnose, resume, or tear down the run.
 func (run *Run) identity() Result {
 	return Result{
 		SessionID:  run.state.SessionID,
@@ -1699,32 +1747,41 @@ func (run *Run) identity() Result {
 	}
 }
 
-// evaluateGate runs run's gate entries once per arrival, memoising the verdict on run.gateVerdict — which is what makes "the gate runs exactly once per settling" true:
-// this method returns the stored memo unchanged when it is already non-nil, and Wait clears the memo to nil before each re-prompt so the next arrival re-validates rather than reading the first arrival's stale verdict.
+// evaluateGate runs run's gate entries and returns the verdict, memoized on run.gateVerdict.
+// A stored memo is returned unchanged, so the gate runs once per settling;
+// Wait clears the memo before each re-prompt, so the next arrival re-validates.
 //
-// Returns (nil, nil) when run.gate is empty (an ungated run) — the method's own way of saying "there is nothing to evaluate", distinct from Result.Gate's own nil-means-no-gate contract.
+// It returns (nil, nil) when run.gate is empty, an ungated run.
 //
-// The entries run in list order and stop at the first failure.
-// An off entry (Attempts 0) is reported off wherever it sits;
+// The entries run in list order and stop at the first failure:
+// an off entry (Attempts 0) is reported off wherever it sits;
 // a PassOnCap entry whose failure count has reached its Attempts is not run and is reported let through;
-// every other entry runs its closure and is reported passed, failed or, for a PassOnCap or MayHold entry, waiting;
+// every other entry runs its closure and is reported passed, failed, or, for a PassOnCap or MayHold entry, waiting;
 // every non-off entry after the stopping entry is reported not reached.
-// Passed is true only when every entry that is neither off nor PassOnCap passed at this arrival, so a pending MayHold entry is never a pass.
-// A Terminal flag on a passed or pending result or from a PassOnCap entry, or Pending or a non-nil Final on an entry that is neither PassOnCap nor MayHold, is a returned gate error.
+// Passed is true only when every entry that is neither off nor PassOnCap passed at this arrival;
+// a pending MayHold entry is never a pass.
+// A Terminal flag on a passed or pending result, or on a result from a PassOnCap entry, is a returned gate error;
+// so is Pending, or a non-nil Final, on an entry that is neither PassOnCap nor MayHold.
 // A Terminal failing result is recorded on run.gateTerminal, and its Findings text is carried on GateOutcome.Reason.
-// The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating afresh after a lost session or a deadline cannot change one.
+// The method never changes a count; only Wait's re-prompt branch does.
+// So a finalize that evaluates afresh after a lost session or a deadline cannot change one.
 //
-// An entry's closure is Gate, replaced by Forked when the run's record carries fork authorization, and by Final at a final evaluation.
+// An entry's closure is Gate, replaced by Forked when the run's record carries fork authorization;
+// at a final evaluation it is Final.
 //
-// A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the "a gate error is never not passed" decision:
-// a gate that could not run has found no defect, it is an infrastructure fault, not a GateResult{Passed: false}.
+// A non-nil error from a closure is returned verbatim and stores no memo and changes no count.
+// A gate that could not run has found no defect; it is an infrastructure fault, not a GateResult{Passed: false}.
 //
-// On a failing entry the method writes GateResult.Findings to <run.runDir>/gateFindingsFileName, overwriting any previous arrival's file so the agent always reads the current complaint (the "findings always ride a file" decision), and sets GateOutcome.FindingsPath to that path and GateOutcome.Findings to that text when the outcome did not pass.
-// A write failure is a returned error, not a failed gate — findings the agent can never read cannot fix anything.
-// Both of this method's error returns come back unwrapped, on purpose:
-// this is a helper the two finalize/Wait call sites already wrap with their own "shuttle: gate: %w" context, so wrapping here too would double it, and it keeps this method's own negative-verdict return sites free of the completionsignal_enforcement_test.go tripwire's Errorf marker, which is reserved for the two call sites that actually finalize a run.
+// On a failing entry the method writes GateResult.Findings to <run.runDir>/gateFindingsFileName.
+// It overwrites any previous arrival's file, so the agent always reads the current complaint.
+// It sets GateOutcome.FindingsPath and GateOutcome.Findings when the outcome did not pass.
+// A write failure is a returned error, not a failed gate, because findings the agent cannot read cannot fix anything.
+// Both error returns are unwrapped, because the finalize and Wait call sites add their own "shuttle: gate: %w" context;
+// wrapping here too would double it.
+// Its negative-verdict returns use no Errorf:
+// the completionsignal_enforcement_test.go tripwire reserves that marker for the call sites that finalize a run.
 //
-// GateOutcome.Attempts is the sum of the entries' re-prompts sent, per the "attempts counts re-prompts actually sent" decision.
+// GateOutcome.Attempts is the sum of the entries' re-prompts sent.
 func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	if run.gateVerdict != nil {
 		return run.gateVerdict, nil
@@ -1856,31 +1913,31 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 
 // finalize builds run's terminal Result, persists the classification into the run's RunState.Outcome,
 // and performs cleanup for OutcomeDone.
-// For fork mode, audits fork subagents and attaches the result.
+// For fork mode, it audits fork subagents and attaches the result.
 //
-// finalize is the gate's single verdict site: immediately on entry, and only when outcome ==
-// OutcomeDone, it calls run.evaluateGate() and stamps the returned pointer onto result.Gate — before
-// the RunState.Outcome write, the fork-audit block, and cleanup, so no Done escapes ungated and an
-// exhausted gate still takes the ordinary Done-path cleanup. One verdict site reached by all four of
-// Wait's finalize calls is what makes "no Done escapes ungated" true BY CONSTRUCTION rather than by
-// four correct edits — classifyStartupWindow and classifyDeadlineExpiry cannot host the gate
-// themselves, because they return an Outcome rather than a Result.
+// finalize is the single gate verdict site.
+// On OutcomeDone it evaluates the gate before the Outcome write, the fork audit and cleanup;
+// it stamps the verdict onto result.Gate, so no Done escapes ungated.
+// An exhausted gate still takes the ordinary Done-path cleanup.
+// Every finalize call in Wait reaches this one site; "no Done escapes ungated" then holds by construction.
+// classifyStartupWindow and classifyDeadlineExpiry cannot host the gate themselves;
+// they return an Outcome rather than a Result.
 //
-// The Outcome write happens for EVERY terminal outcome, before the fork-audit block: finalize returns
-// early with (result, err) when AuditForks fails, so a write placed after the audit would leave a run
-// that genuinely classified OutcomeDone persisted at "running" — the exact live-but-idle state the
-// sentinel exists to prevent, if its pane is still alive on a later resume. The write is best-effort:
-// a saveRunState failure here is a logger.Warn, never an error, because the run genuinely reached its
-// outcome and turning a successful run into a failure over a bookkeeping write would invert the cost.
-// The accepted residual is that such a record keeps "running", so if its pane is also still live and
-// idle it stays attachable for that one run.
+// The Outcome write happens for every terminal outcome, before the fork audit.
+// finalize returns early with (result, err) when AuditForks fails.
+// A write placed after the audit would leave a run that classified OutcomeDone persisted at "running";
+// that is the live-but-idle state the sentinel exists to prevent, when its pane is still alive on a later resume.
+// The write is best-effort: a saveRunState failure is logged with logger.Warn, never returned as an error;
+// the run already reached its outcome, and failing a successful run over a bookkeeping write would invert the cost.
+// The accepted residual is that such a record keeps "running";
+// if its pane is also still live and idle, it stays attachable for that one run.
 //
-// It is also the run's teardown observability point, which the Live-Substrate Spawn Observability
-// invariant requires to be as instrumented as the spawn is: Start logs "run started" through
-// internal/logger, so without the logger.Info below the durable Info+ trace file would show every
-// shuttle run beginning and none of them ending. The two cleanup failures go to logger.Warn for the
-// same reason — a teardown that did not confirm clean is exactly what that level is for, and the
-// bare log package they used before never reaches the trace sink at all.
+// finalize is also the run's teardown observability point.
+// The Live-Substrate Spawn Observability invariant requires teardown to be instrumented as the spawn is:
+// Start logs "run started" through internal/logger;
+// without the logger.Info below, the durable Info+ trace file would show every run beginning and none ending.
+// The cleanup failures go to logger.Warn for the same reason:
+// a teardown that did not confirm clean is what that level is for.
 func (run *Run) finalize(outcome Outcome) (Result, error) {
 	run.logSessionState(outcome, true)
 	result := Result{
@@ -1923,7 +1980,8 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	if saveErr != nil {
 		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", recorded, "error", saveErr)
 	}
-	// Stamped before the cleanup below removes the run directory, so a reader that finds no running run still sees this one has just ended.
+	// Stamped before the cleanup below removes the run directory;
+	// a reader that finds no running run still sees this one has just ended.
 	if err := stampRunEnd(filepath.Dir(run.runDir), run.clock.Now()); err != nil {
 		logger.Warn("shuttle: stamp the run end failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
 	}
@@ -1958,13 +2016,11 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		}
 		audit, err := auditor.AuditForks(run.state.SessionID, run.runner.paneCwd)
 		if err != nil {
-			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
-			// whole classified Result back — identity AND Outcome — not the bare identity().
-			// identity() is for Wait's mechanism-failure exits, where no outcome was ever reached;
-			// here one was, and blanking it left a caller unable to tell a run that finished and
-			// merely failed its audit from a run that never classified at all. Since this branch
-			// skips cleanup either way, the identity fields alone do not separate them.
-			// ForkAudit stays nil, which already means "not audited".
+			// The run succeeded and nothing has been cleaned up yet, so the caller gets the whole classified Result.
+			// identity() is for the mechanism-failure exits, where no outcome was reached.
+			// Here one was, and the identity fields alone would make a run that finished look like one that never classified;
+			// this branch skips cleanup either way, so they do not separate the two.
+			// ForkAudit stays nil, which means "not audited".
 			return result, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
 		}
 		result.ForkAudit = &audit
@@ -1988,7 +2044,7 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	return result, nil
 }
 
-// diedCaptureFileName is where removeEndedOwnWindowStrand saves an ended run's last pane capture in the run directory.
+// diedCaptureFileName names the run-directory file that holds an ended run's last pane capture.
 const diedCaptureFileName = "died-capture.txt"
 
 // finalizeAndRemoveDiedWindow finalizes the run with outcome, then ends the window of a died run's own-window strand.
@@ -2000,9 +2056,11 @@ func (run *Run) finalizeAndRemoveDiedWindow(outcome Outcome) (Result, error) {
 	return result, err
 }
 
-// removeEndedOwnWindowStrand saves a died or api-error run's last pane capture to died-capture.txt in the run directory and removes the run's strand, when the strand is tracked, own-window and present.
+// removeEndedOwnWindowStrand saves a died or api-error run's last pane capture to died-capture.txt in the run directory;
+// it then removes the run's strand when the strand is tracked, own-window and present.
 // A window 0 strand is left to reed's reconcile.
-// A failed capture or write is a Warn and the removal still runs; a failed removal is a Warn naming `lym reed remove` as the way forward.
+// A failed capture or write is a Warn, and the removal still runs;
+// a failed removal is a Warn naming `lym reed remove` as the way forward.
 func (run *Run) removeEndedOwnWindowStrand() {
 	guid := run.state.StrandGUID
 	reed := run.runner.reed

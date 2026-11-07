@@ -1,7 +1,7 @@
 // parse.go implements Parse, the strict grammar checker for model-spec strings.
-// It recognizes exactly four shapes (alias, alias[bracket], engine:model, engine:model[bracket])
-// and rejects everything else with a loud error naming the offending token or character — see
-// contracts/specs/llm-model-spec.md for the pinned grammar this file implements against.
+// It accepts exactly four shapes: alias, alias[bracket], engine:model, and engine:model[bracket].
+// Anything else is rejected with a loud error that names the offending token or character.
+// The grammar is pinned in contracts/specs/llm-model-spec.md.
 
 package modelspec
 
@@ -18,7 +18,7 @@ func isIdentChar(r rune) bool {
 }
 
 // isModelIDChar reports whether r is valid in an escape-form model id or param value:
-// isIdentChar plus dot and underscore.
+// lowercase letters, digits, dash, dot, and underscore.
 func isModelIDChar(r rune) bool {
 	return isIdentChar(r) || r == '.' || r == '_'
 }
@@ -34,27 +34,26 @@ func validateCharset(s, kind string, allowed func(rune) bool) error {
 }
 
 // Parse checks s against the strict model-spec grammar and returns the parsed Spec.
-// It recognizes four shapes: alias, alias[item,...], engine:model-id, and engine:model-id[item,...],
-// where a bracket item is either key=value or a bare token meaning effort=<token>.
+// It recognizes four shapes: alias, alias[item,...], engine:model-id, and engine:model-id[item,...].
+// A bracket item is either key=value or a bare token meaning effort=<token>.
 // On success, Params is nil when s had no bracket, or the parsed map otherwise.
 func Parse(s string) (Spec, error) {
 	if s == "" {
 		return Spec{}, fmt.Errorf("modelspec: empty spec string")
 	}
 
-	// Whitespace is rejected anywhere in the string, before any structural
-	// parsing — a stray space almost always means the operator meant two
-	// tokens, and silently trimming it would hide that mistake.
+	// Whitespace is rejected anywhere in the string, before any structural parsing.
+	// A stray space almost always means the operator meant two tokens.
+	// Silently trimming it would hide that mistake.
 	for i, r := range s {
 		if unicode.IsSpace(r) {
 			return Spec{}, fmt.Errorf("modelspec: whitespace character %q at position %d in spec %q", r, i, s)
 		}
 	}
 
-	// Split off the optional bracket part first. Finding '[' by its first
-	// occurrence and then requiring the remainder to end in ']' rejects both
-	// "nothing after the bracket" (extra trailing text) and an unterminated
-	// bracket in one check.
+	// Split off the optional bracket part first.
+	// Finding '[' by its first occurrence and then requiring the remainder to end in ']' is one check.
+	// It rejects both trailing text after the bracket and an unterminated bracket.
 	body := s
 	var bracketInner string
 	hasBracket := false
@@ -73,8 +72,8 @@ func Parse(s string) (Spec, error) {
 
 	spec := Spec{}
 
-	// Escape form is detected by the presence of ':' in body; anything else
-	// is alias form. Exactly one colon is allowed either way.
+	// Escape form is detected by the presence of ':' in body; anything else is alias form.
+	// Exactly one colon is allowed either way.
 	colonIdx := strings.IndexByte(body, ':')
 	if colonIdx == -1 {
 		if body == "" {
@@ -120,13 +119,13 @@ func Parse(s string) (Spec, error) {
 	return spec, nil
 }
 
-// parseBracket parses the comma-separated item list inside a spec's bracket, where each item is
-// either key=value or a bare token meaning effort=<token>.
+// parseBracket parses the comma-separated item list inside a spec's bracket.
+// Each item is either key=value or a bare token meaning effort=<token>.
 // Every rejection is its own named error per the fail-loud grammar contract.
 func parseBracket(inner, fullSpec string) (map[string]string, error) {
 	params := make(map[string]string)
-	// firstSegment tracks, per canonical key, the as-written segment that first set it —
-	// needed to name both segments in the duplicate-key error.
+	// firstSegment tracks, per canonical key, the as-written segment that first set it.
+	// It supplies both segments to the duplicate-key error.
 	firstSegment := make(map[string]string)
 
 	for _, segment := range strings.Split(inner, ",") {
@@ -137,9 +136,8 @@ func parseBracket(inner, fullSpec string) (map[string]string, error) {
 		var canonicalKey, value string
 		eq := strings.IndexByte(segment, '=')
 		if eq == -1 {
-			// Bare token: the whole segment is the value and the canonical key is
-			// always "effort". No effort-value vocabulary gates it — only the
-			// model-id charset, same as any other param value.
+			// Bare token: the whole segment is the value and the canonical key is always "effort".
+			// No effort-value vocabulary gates it; only the model-id charset applies, as for any other param value.
 			if err := validateCharset(segment, "param value", isModelIDChar); err != nil {
 				return nil, err
 			}

@@ -1,4 +1,5 @@
-// samplerrecipe_test.go covers New over the sampler recipe: its row path, the entry gate that leaves the Code-Review perch out, the perch-gate accessor, Finalize's lack of a reroute edge and the engine-row accessor.
+// samplerrecipe_test.go covers New over the sampler recipe: its row path, its entry gate, and its perch-gate accessor.
+// It also covers Finalize's lack of a reroute edge and the engine-row accessor.
 
 package loomrecipe
 
@@ -12,8 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSamplerRecipe asserts the sampler recipe builds under the loom contract and walks Preflight to Friction-Reflect on the Done edges.
-// It also asserts the three Code-Review rows are left out unless sampler.code_review holds while Describe always runs, Finalize declares no reroute, CodePerchGate answers that gate, and the session row is found by engine.
+// TestSamplerRecipe asserts the sampler recipe builds under the loom contract;
+// it walks Preflight to Friction-Reflect on the Done edges.
+// It also asserts that the three Code-Review rows are left out unless sampler.code_review holds;
+// that Describe always runs; that Finalize declares no reroute; that CodePerchGate answers that gate;
+// and that the session row is found by engine.
 func TestSamplerRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -27,7 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
-// worktreeOps is the five calls the adapter makes on one worktree: reed's status and a shuttle runner's idle probe, send, command and interrupt.
+// worktreeOps is the five calls made on one worktree:
+// reed's status, and a shuttle runner's idle probe, send, command and interrupt.
 type worktreeOps interface {
 	// Status reports the worktree's strands and whether each is live.
 	Status() (reedengine.StatusResult, error)
@@ -41,14 +42,15 @@ type worktreeOps interface {
 	Interrupt(guid string) error
 }
 
-// hubDelivery is creelengine.Delivery over one hub: the worktrees git lists, each worktree's reed state and a shuttle runner built per call.
+// hubDelivery is creelengine.Delivery over one hub:
+// the worktrees git lists, each worktree's reed state and a shuttle runner built per call.
 type hubDelivery struct {
 	hubPath string
 	// wire builds the worktreeOps of a resolved worktree; a test replaces it with a stub.
 	wire func(location *lymcwd.Location) (worktreeOps, error)
 	// skippedMu guards skipped, since the delivery workers list the strands concurrently.
 	skippedMu sync.Mutex
-	// skipped holds the worktree paths Strands has logged a skip for, until the path resolves again or the listing no longer holds it.
+	// skipped holds the worktree paths with a logged skip, until the path resolves again or the listing drops it.
 	skipped map[string]bool
 }
 
@@ -73,7 +75,7 @@ type shuttleOps struct {
 	runner *shuttleengine.Runner
 }
 
-// wireShuttle builds the worktree's reed and shuttle config, its reed geometry, and the reed engine and runner over them.
+// wireShuttle builds the reed engine and shuttle runner of the worktree at location, from its configs and geometry.
 func wireShuttle(location *lymcwd.Location, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
@@ -98,7 +100,7 @@ func wireShuttle(location *lymcwd.Location, enginesFor func(shuttleengine.Config
 	}
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-	// Told the hub's record with no slug, so each send judges its target by the target's own strand name.
+	// The pause record is the hub's, with no slug, so each send judges its target by the target's own strand name.
 	runner.SetPause(pauserecord.Geometry{RecordPath: pauseGeom.RecordPath})
 	return shuttleOps{reed: reed, runner: runner}, nil
 }
@@ -117,7 +119,7 @@ func (o shuttleOps) RunCommand(guid string, command creelengine.Command) error {
 
 func (o shuttleOps) Interrupt(guid string) error { return o.runner.InterruptRestoring(guid) }
 
-// sessionCommands is the session commands a shuttle runner offers, one per command of creel's closed set.
+// sessionCommands is the set of session commands a shuttle runner offers, one per command of creel's closed set.
 type sessionCommands interface {
 	ClearSession(guid string) error
 	CompactSession(guid, focus string) error
@@ -126,7 +128,8 @@ type sessionCommands interface {
 	LoadSkills(guid string, skills []string) error
 }
 
-// runSessionCommand runs command through ops: compact takes its argument as the focus, color as the segment color, load-skills as a space-separated skill list.
+// runSessionCommand runs command through ops.
+// compact takes its argument as the focus, color as the segment color, and load-skills as a space-separated skill list.
 // A command outside the closed set is refused.
 func runSessionCommand(ops sessionCommands, guid string, command creelengine.Command) error {
 	switch command.Name {
@@ -145,17 +148,19 @@ func runSessionCommand(ops sessionCommands, guid string, command creelengine.Com
 	}
 }
 
-// errWorktreeGone marks a worktree that no longer resolves as a worktree, so Strands skips it instead of failing the listing.
+// errWorktreeGone marks a worktree that no longer resolves as a worktree, so the listing skips it instead of failing.
 var errWorktreeGone = errors.New("creel: the worktree is gone")
 
 // worktreeGoneMessage is the log line of a skipped worktree.
 const worktreeGoneMessage = "creel: skipped a worktree that no longer resolves"
 
 // Strands lists every strand reed persists in any worktree of the hub.
-// A worktree that no longer resolves as a worktree is skipped, and its strands get no delivery until it resolves again:
-// the resolve fails as not a git repository, or the reed state read, the wire or the reed status fails while the worktree's directory no longer exists.
-// Any other resolve failure, and a state read, wire or status failure with the directory present, fail the call naming the worktree,
-// so an unreadable strand is never mistaken for an absent one.
+// A worktree that no longer resolves as a worktree is skipped, and its strands get no delivery until it resolves again.
+// That holds when the resolve fails as not a git repository.
+// It also holds when the worktree's directory is gone and the reed state read, the wire or the reed status fails.
+// Any other resolve failure fails the call.
+// A state read, wire or status failure with the directory present fails it too, naming the worktree.
+// So an unreadable strand is never mistaken for an absent one.
 func (d *hubDelivery) Strands() ([]creelengine.Strand, error) {
 	entries, err := fabricengine.List(d.primeWorktree())
 	if err != nil {
@@ -184,9 +189,10 @@ func (d *hubDelivery) Strands() ([]creelengine.Strand, error) {
 }
 
 // noteSkippedWorktree logs the skip of the worktree at path.
-// The first skip of a path logs at Info when worktreeTornDown reads a teardown and at Warn otherwise, so a cause that is no teardown shows;
-// a repeated skip of the same path logs at Debug, since the delivery workers list the strands on every probe.
-// The Warn line of a worktree whose .git is a file names the repair step, and that of one whose .git is a directory names that cause.
+// The first skip of a path logs at Info when the worktree was torn down.
+// Otherwise it logs at Warn, so a cause that is no teardown shows.
+// A repeated skip of the same path logs at Debug, since the delivery workers list the strands on every probe.
+// A Warn line names the repair step when .git is a file, and names the cause when .git is a directory.
 func (d *hubDelivery) noteSkippedWorktree(path string, cause error) {
 	d.skippedMu.Lock()
 	repeated := d.skipped[path]
@@ -214,7 +220,8 @@ func (d *hubDelivery) noteSkippedWorktree(path string, cause error) {
 	}
 }
 
-// forgetSkippedWorktrees drops every remembered skip whose path forgets selects, so a later skip of that path logs at its first level again.
+// forgetSkippedWorktrees drops the remembered skip of each path that forgets selects.
+// A later skip of such a path logs at its first level again.
 func (d *hubDelivery) forgetSkippedWorktrees(forgets func(path string) bool) {
 	d.skippedMu.Lock()
 	defer d.skippedMu.Unlock()
@@ -225,7 +232,9 @@ func (d *hubDelivery) forgetSkippedWorktrees(forgets func(path string) bool) {
 	}
 }
 
-// worktreeTornDown reports a teardown's mark: the worktree directory at path is gone, or its .git is a file whose gitdir line names a directory that is gone.
+// worktreeTornDown reports whether the worktree at path was torn down.
+// It was torn down when its directory is gone.
+// It was also torn down when .git is a file whose gitdir line names a directory that is gone.
 func worktreeTornDown(path string) bool {
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return true
@@ -252,7 +261,8 @@ func worktreeTornDown(path string) bool {
 }
 
 // worktreeStepError wraps the failure of step on the worktree at path, naming the worktree.
-// It wraps errWorktreeGone as well when the worktree's directory no longer exists, since a teardown can land after a successful resolve.
+// It also wraps errWorktreeGone when the worktree's directory no longer exists:
+// a teardown can land after a successful resolve.
 func worktreeStepError(path, step string, cause error) error {
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%w: %s worktree %s: %w", errWorktreeGone, step, path, cause)
@@ -329,7 +339,8 @@ func (d *hubDelivery) opsFor(strand creelengine.Strand) (worktreeOps, error) {
 	return ops, nil
 }
 
-// Idle reports whether the strand's agent can take typed input, and for a pane that is not idle the stall the probe found.
+// Idle reports whether the strand's agent can take typed input.
+// For a pane that is not idle, it also reports the stall the probe found.
 func (d *hubDelivery) Idle(strand creelengine.Strand) (creelengine.Idleness, error) {
 	ops, err := d.opsFor(strand)
 	if err != nil {
@@ -374,7 +385,8 @@ func (d *hubDelivery) Paused(strand creelengine.Strand) (bool, error) {
 }
 
 // ClaimPause records the strand in the live pause entry that covers it, under the record lock.
-// The prime's orch strand is recorded as the orch session, which its watcher finds owned, so the watcher sends no interrupt of its own and still posts the resume line;
+// The prime's orch strand is recorded as the orch session, which its watcher finds owned,
+// so the watcher sends no interrupt of its own and still posts the resume line;
 // any other strand is recorded by name, guid and slug.
 // The claim's StillLive re-reads the record and reports whether the owning entry is still live.
 func (d *hubDelivery) ClaimPause(strand creelengine.Strand) (creelengine.PauseClaim, error) {
@@ -440,9 +452,11 @@ func (d *hubDelivery) Interrupt(strand creelengine.Strand) error {
 }
 
 // mapDeliveryError maps shuttle's send and interrupt sentinels onto creel's, and passes any other error through.
-// A send refused because a pause covers the session maps onto creelengine.ErrBusy, so the delivery worker requeues the inject and types it after the resume.
-// A send that failed after the paste, its text found in the operator's draft or foreign text in the input box, maps onto creelengine.ErrNotLanded instead:
-// ErrBusy means nothing was typed, and requeueing such an inject would type it again.
+// A send refused because a pause covers the session maps onto creelengine.ErrBusy,
+// so the delivery worker requeues the inject and types it after the resume.
+// A send that failed after the paste maps onto creelengine.ErrNotLanded instead.
+// Its text sits in the operator's draft or among foreign text in the input box.
+// Requeueing such an inject would type it again, whereas ErrBusy means nothing was typed.
 func mapDeliveryError(err error) error {
 	switch {
 	case errors.Is(err, shuttleengine.ErrSentTextInDraft), errors.Is(err, shuttleengine.ErrForeignBoxText):

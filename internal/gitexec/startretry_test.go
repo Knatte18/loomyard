@@ -16,9 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRun_StartRefusedForEAGAIN pins the start retry: a start refused for EAGAIN is tried again up to four times in all, while a git that ran and exited nonzero, and any other start failure, is started once.
+// TestRun_StartRefusedForEAGAIN pins the start retry.
+// A start refused for EAGAIN is tried again, up to four times in all.
+// A git that ran and exited nonzero, and any other start failure, is started once.
 // A refusal is noted in proc's spawn-refusal record.
-// It replaces the package's start seam, which is process-global state, so neither the test nor its rows run in parallel.
+// The test replaces the package's start seam, which is process-global state.
+// Neither the test nor its rows run in parallel.
 func TestRun_StartRefusedForEAGAIN(t *testing.T) {
 	tiergate.Require(t, 1)
 	refused := &os.PathError{Op: "fork/exec", Path: "/usr/bin/git", Err: syscall.EAGAIN}

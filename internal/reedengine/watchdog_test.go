@@ -1,4 +1,6 @@
-// watchdog_test.go pins watchdog.go's pure surface: watchdogOption's validate/normalize contract, the wake cadence rule and both embedded templates' watchdog default.
+// watchdog_test.go pins the pure surface of watchdog.go.
+// It covers the watchdogOption validate and normalize contract and the wake cadence rule.
+// It also pins the watchdog default in both embedded templates.
 // Untagged: nothing here spawns a process or sleeps (Test Tier Purity Invariant).
 
 package reedengine
@@ -12,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNextWakeCadence pins the shared backoff rule: base on a changed cycle, otherwise double the current wait up to the ceiling.
+// TestNextWakeCadence pins the shared backoff rule:
+// base on a changed cycle, otherwise double the current wait up to the ceiling.
 func TestNextWakeCadence(t *testing.T) {
 	tiergate.Require(t, 0)
 	const base, ceiling = time.Second, 8 * time.Second
@@ -80,10 +83,9 @@ func TestWatchdogOption(t *testing.T) {
 	}
 }
 
-// TestWatchdogTemplateDefault_BothGOOS reads both embedded template YAML files directly by relative
-// path, since ConfigTemplate() only ever exposes the GOOS this build embedded (template_posix.go
-// carries !windows, template_windows.go carries windows) — the same limit
-// TestLoadConfig_UninitializedFallsBackToTemplate documents in config_test.go.
+// TestWatchdogTemplateDefault_BothGOOS reads both embedded template YAML files directly by relative path.
+// ConfigTemplate() exposes only the GOOS this build embedded.
+// template_posix.go carries !windows, and template_windows.go carries windows.
 //
 //testtiming:keep pins both embedded templates and the shipped accessor declaring the watchdog default line, reading the posix and windows files directly since ConfigTemplate exposes only one; its covering tests run this code without asserting it
 func TestWatchdogTemplateDefault_BothGOOS(t *testing.T) {

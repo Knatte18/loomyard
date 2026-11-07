@@ -1,4 +1,4 @@
-// deps.go fills tenderengine.Deps for a hub: its task pairs as shuttle-backed Pair values, the network operation and parent lock readers, and the orch watcher probe.
+// deps.go builds the tenderengine.Deps of a hub from its task pairs and its process, lock and orch readers.
 
 package tendercli
 
@@ -54,7 +54,7 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 		prime *lymcwd.Location
 		// pairLocations holds each task pair's location by slug, for the push a lift spawns.
 		pairLocations = map[string]*lymcwd.Location{}
-		// pairByWorktree holds the shuttle-backed Pair of each wired worktree, the prime's included, by worktree path, for the orch that runs there.
+		// pairByWorktree maps each wired worktree path to its shuttle-backed Pair, the prime's included, for its orch.
 		pairByWorktree = map[string]tenderengine.Pair{}
 	)
 	worktreePaths := make([]string, 0, len(worktrees))
@@ -160,7 +160,8 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 	return deps, slugs, nil
 }
 
-// pairOwners lists each local pair of slugs with the owner it reads as, then each run-held board entry owned by a machine other than here that has no local pair.
+// pairOwners lists each local pair of slugs with the owner it reads as;
+// then it adds each run-held board entry owned by a machine other than here that has no local pair.
 // parentOf names the slug of a pair's parent pair, or "" for the prime; its error is returned.
 func pairOwners(owners boardengine.Owners, slugs []string, here string, parentOf func(slug string) (string, error)) ([]tenderengine.PairOwner, error) {
 	listed := []tenderengine.PairOwner{}
@@ -192,7 +193,8 @@ func pairOwners(owners boardengine.Owners, slugs []string, here string, parentOf
 	return listed, nil
 }
 
-// syncBoardIfOwed spawns the board sync when the board is ahead of its upstream or holds uncommitted changes, which is what a sync deferred at its start leaves.
+// syncBoardIfOwed spawns the board sync when the board is ahead of its upstream or holds uncommitted changes.
+// A sync deferred at its start leaves the board in one of those two states.
 // A probe error is returned and nothing is spawned.
 func syncBoardIfOwed(ahead, uncommitted func() (bool, error), spawn func() error) error {
 	for _, owed := range []func() (bool, error){ahead, uncommitted} {
@@ -210,7 +212,8 @@ func syncBoardIfOwed(ahead, uncommitted func() (bool, error), spawn func() error
 // pauseGrace is how long the running turns of a pair lym pauses on its own judgment get to finish before the Esc.
 const pauseGrace = 10 * time.Second
 
-// PausePair pauses the pair of slug in the hub location belongs to with a plain pair entry, for a run lym stopped because origin moved what it works on.
+// PausePair pauses the pair of slug in the hub location belongs to with a plain pair entry.
+// It is for a run lym stopped because origin moved what it works on.
 // A slug whose entry already stands adds none, and the pair's running turns are interrupted after the grace.
 func PausePair(location *lymcwd.Location, slug string) error {
 	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
@@ -224,8 +227,9 @@ func PausePair(location *lymcwd.Location, slug string) error {
 // PauseOwnedElsewhere pauses the pair of slug in the hub location belongs to, because another machine owns its run.
 // The entry carries pauserecord.OwnerCaller, and the pair's running turns are interrupted after the grace.
 // A slug whose entry already stands adds none.
-// Once the pause stands it ends the run's owned processes on this machine, unless the run's Finalize is past its parent-side merge;
-// a failed end or a survivor is logged at Warn and never fails the pause.
+// Once the pause stands, it ends the run's owned processes on this machine.
+// It skips the end when the run's Finalize is past its parent-side merge.
+// A failed end or a survivor is logged at Warn and never fails the pause.
 func PauseOwnedElsewhere(location *lymcwd.Location, slug string) error {
 	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 	if err != nil {
@@ -245,8 +249,10 @@ func PauseOwnedElsewhere(location *lymcwd.Location, slug string) error {
 	return nil
 }
 
-// ReviveStalled gives the revive line to the sessions of the pair slug that are stalled on an API error, through the conditioned send.
-// It returns an error when the revive sent nothing and a session refused or did not land the line, so a caller that revives once per episode can warn.
+// ReviveStalled gives the revive line to the sessions of the pair slug that are stalled on an API error.
+// It goes through the conditioned send.
+// It returns an error when the revive sent nothing and a session refused or did not land the line,
+// so a caller that revives once per episode can warn.
 func ReviveStalled(location *lymcwd.Location, slug string) error {
 	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 	if err != nil {
@@ -259,7 +265,8 @@ func ReviveStalled(location *lymcwd.Location, slug string) error {
 	return reviveError(report)
 }
 
-// reviveError maps a revive report onto an error: nil when a session was given the line or none refused it, otherwise an error naming the first refusal.
+// reviveError maps a revive report onto an error.
+// It is nil when a session was given the line or none refused it, and otherwise it names the first refusal.
 func reviveError(report tenderengine.ReviveReport) error {
 	if len(report.Sent) > 0 || len(report.SentNoTurnStart) > 0 {
 		return nil
@@ -272,11 +279,13 @@ func reviveError(report tenderengine.ReviveReport) error {
 	return fmt.Errorf("revive sent no line: %s (%s): %s", first.Strand, first.Slug, first.Reason)
 }
 
-// endOwnedElsewhere is the end PauseOwnedElsewhere runs after its pause.
+// endOwnedElsewhere is the end step that runs after a pause of a slug owned elsewhere.
 var endOwnedElsewhere = EndOwnedElsewhere
 
-// EndOwnedElsewhere ends the processes registered under slug in the hub location belongs to, because another machine owns its run.
-// A run whose Finalize is past its parent-side merge keeps them, since it finishes its landing on either machine, and so does a run whose reading fails.
+// EndOwnedElsewhere ends the processes registered under slug in the hub location belongs to.
+// It does so because another machine owns the run.
+// A run whose Finalize is past its parent-side merge keeps them, since it finishes its landing on either machine.
+// A run whose reading fails keeps them too.
 // The calling process and its ancestors are never ended.
 func EndOwnedElsewhere(location *lymcwd.Location, slug string) ([]runproc.Ended, error) {
 	taskPath := fabricengine.WorktreePath(location, slug)
@@ -376,7 +385,8 @@ func (e ownedElsewhereEnder) removeFollowUp() string {
 }
 
 // run ends the slug's owned processes and returns what it ended.
-// A run whose Finalize is past its parent-side merge ends nothing, and neither does a run whose status or Finalize reading fails, which returns that error.
+// A run whose Finalize is past its parent-side merge ends nothing.
+// A run whose status or Finalize reading fails ends nothing either, and returns that error.
 // A task worktree with no status file, or none at all, ends by slug, since no Finalize can be running there.
 // An end error and a *runproc.SurvivorsError come back wrapped with the commands that finish the end.
 func (e ownedElsewhereEnder) run() ([]runproc.Ended, error) {
@@ -413,7 +423,8 @@ const orchReviveTTL = time.Minute
 // postedEvent is the log event of a message or inject being left in creel.
 const postedEvent = "posted"
 
-// orchReviveTarget returns a creel client signing as tender and the name of the orch strand of worktree the revive injects into.
+// orchReviveTarget returns a creel client that signs as tender.
+// It also returns the name of the orch strand of worktree that the revive injects into.
 func orchReviveTarget(worktree *lymcwd.Location) (*creelcli.GoClient, string, error) {
 	orch, recorded, err := orchcli.OrchStrandOf(worktree)
 	if err != nil {
@@ -430,7 +441,8 @@ func orchReviveTarget(worktree *lymcwd.Location) (*creelcli.GoClient, string, er
 }
 
 // hubOrchs lists the orchs of the hub location belongs to that record a strand, the prime's and each beam's.
-// An orch is listed with the Pair in pairByWorktree for its worktree, nil when that worktree did not wire, which leaves its sessions unread.
+// An orch is listed with the Pair that pairByWorktree holds for its worktree.
+// The Pair is nil when that worktree did not wire, which leaves its sessions unread.
 func hubOrchs(location *lymcwd.Location, pairByWorktree map[string]tenderengine.Pair) ([]tenderengine.Orch, error) {
 	worktrees, err := orchcli.HubOrchs(location)
 	if err != nil {
@@ -484,7 +496,9 @@ func hubOrchs(location *lymcwd.Location, pairByWorktree map[string]tenderengine.
 	return orchs, nil
 }
 
-// revivePending reports whether entries, tender's log to the orch strand, hold an inject whose posted event has no injected, unconfirmed or expired event for its id after it.
+// revivePending reports whether entries hold an inject that is still pending.
+// entries is tender's log to the orch strand.
+// An inject is pending when its posted event has no injected, unconfirmed or expired event for its id after it.
 func revivePending(entries []creelengine.LogEntry) bool {
 	pending := map[int64]bool{}
 	for _, entry := range entries {
@@ -507,7 +521,7 @@ type shuttlePair struct {
 	runner   *shuttleengine.Runner
 }
 
-// newShuttlePair builds the pair's runner the way the pair's own wiring does: its reed and shuttle config and its reed geometry.
+// newShuttlePair builds the pair's runner from its reed and shuttle config and its reed geometry.
 func newShuttlePair(location *lymcwd.Location) (shuttlePair, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
@@ -532,7 +546,8 @@ func newShuttlePair(location *lymcwd.Location) (shuttlePair, error) {
 		return shuttlePair{}, err
 	}
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-	// Told the hub's record with no slug, so each send judges its target by the target's own strand name.
+	// Sets the runner's pause record to the hub's, with no slug.
+	// The empty slug makes each send judge its target by the target's own strand name.
 	runner.SetPause(pauserecord.Geometry{RecordPath: pauseGeom.RecordPath})
 	return shuttlePair{
 		location: location,
@@ -543,7 +558,7 @@ func newShuttlePair(location *lymcwd.Location) (shuttlePair, error) {
 	}, nil
 }
 
-// Slug is the pair's slug.
+// Slug names the worktree the pair serves.
 func (p shuttlePair) Slug() string { return p.location.WorktreeName }
 
 // Sessions lists the pair's running runs whose strand reed reports live.
@@ -579,7 +594,8 @@ func (p shuttlePair) State(guid string) (shuttleengine.SessionState, error) {
 	return shuttleengine.SessionState{}, nil
 }
 
-// readTurn derives from state whether the session is in a running turn, and whether its turn ended with background work, with one label per outstanding task.
+// readTurn reports whether the session is in a running turn, and whether its turn ended with background work.
+// The labels hold one entry per outstanding task in the background case, and are nil otherwise.
 // A task's label is its description, or its id when it has none.
 func readTurn(state shuttleengine.SessionState) (running bool, labels []string, background bool) {
 	if state.Name == shuttleengine.SessionBusy && state.Cause == shuttleengine.SessionCauseBackground {
@@ -598,7 +614,8 @@ func (p shuttlePair) Busy(guid string) (bool, error) {
 	return running, err
 }
 
-// Background reports whether the run's session turn ended with background work still running, with the outstanding tasks' labels.
+// Background reports whether the run's session turn ended with background work still running.
+// The labels name the outstanding tasks when it reports true.
 func (p shuttlePair) Background(guid string) ([]string, bool, error) {
 	state, err := p.State(guid)
 	_, labels, background := readTurn(state)

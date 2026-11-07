@@ -1,5 +1,5 @@
-// switch.go implements SwitchClient: moving one client to the next or previous session of a tmux server in numeric session-id order.
-// It is engine-less and told everything it uses; it reads no working directory, no reed config and no reed state.
+// switch.go implements SwitchClient, which moves one client to the next or previous tmux session.
+// It takes every path and the client as arguments and reads no working directory, reed config or reed state.
 
 package reedengine
 
@@ -11,8 +11,10 @@ import (
 	"strings"
 )
 
-// SwitchClient switches the told client to the next or previous session of the server listening on socketPath, wrapping at either end.
-// Sessions are ordered by their numeric id, so the order matches the status bar's session loop, not tmux's name order.
+// SwitchClient switches the given client to the next or previous session of the server on socketPath.
+// The sessions wrap at either end.
+// Sessions are ordered by their numeric id;
+// the order matches the status bar's session loop, not tmux's name order.
 // A server with one session is a no-op success.
 // It issues list-sessions, display-message and switch-client on that socket, and nothing else.
 // The error names an unreachable socket, a client the server does not know, or a current session missing from the listing.
@@ -20,7 +22,7 @@ func SwitchClient(tmuxPath, socketPath, client string, next bool) error {
 	return switchClientVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), client, next)
 }
 
-// switchClientVia is SwitchClient's implementation over an already-built TmuxCmd, so a test can drive it through the execHook seam.
+// switchClientVia moves the client over an already-built TmuxCmd, so a test can drive it through the execHook seam.
 func switchClientVia(cmd TmuxCmd, client string, next bool) error {
 	listing, err := cmd.output(listSessionsArgv(runtime.GOOS, "#{session_id} #{session_name}")...)
 	if err != nil {

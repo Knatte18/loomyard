@@ -1,12 +1,13 @@
-// mergein_recovery_integration_test.go covers MergeIn's crash-recovery, freshness, foreign-state,
-// and illusion-integrity matrix: a fresh Fabric handle recovering a mid-merge record (both the
-// conflicted and the crashed-after-clean-staging shapes), a conclude-phase partial failure and its
-// idempotent retry, foreign git merge state's refusal-without-touching disposition, the freshness
-// rule's three source-resolution outcomes, the fabric-managed guard, the dirty-pair guard's
-// byte-identical error values, an unmappable weft-root conflict's self-abort, conflict-marker
-// content that never leaks a "-weft" name, and path mapping on a subpath-anchored hub.
-// Reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go, since both
-// files share package fabricengine_test.
+// mergein_recovery_integration_test.go covers MergeIn's crash recovery and its guards.
+// It tests a fresh Fabric handle resuming a mid-merge record, both conflicted and crashed after clean staging,
+// and a conclude-phase partial failure with its idempotent retry.
+// It tests refusal of foreign git merge state without touching it.
+// It tests the freshness rule's source-resolution outcomes and the fabric-managed guard.
+// It tests that dirty-pair guard errors are byte-identical.
+// It tests an unmappable weft-root conflict aborting itself.
+// It tests that conflict markers never leak a "-weft" name, and path mapping on a subpath-anchored hub.
+// It reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go.
+// Both files share package fabricengine_test.
 
 package fabricengine_test
 
@@ -27,8 +28,8 @@ import (
 )
 
 // openFreshFabric opens a brand-new *fabricengine.Fabric handle over warpPath, independent of any
-// handle a fixture already returned — the crash-recovery scenarios' "a different process resumes
-// the merge" shape.
+// handle a fixture already returned.
+// Crash-recovery tests use it to model a fresh process resuming a merge.
 func openFreshFabric(t *testing.T, warpPath string) *fabricengine.Fabric {
 	t.Helper()
 
@@ -43,8 +44,8 @@ func openFreshFabric(t *testing.T, warpPath string) *fabricengine.Fabric {
 	return f
 }
 
-// installFailingPreCommitHook installs a pre-commit hook in repoDir's .git/hooks that always exits
-// 1, so any commit attempted there fails.
+// installFailingPreCommitHook installs a pre-commit hook in repoDir's .git/hooks that always exits 1,
+// so any commit attempted there fails.
 func installFailingPreCommitHook(t *testing.T, repoDir string) {
 	t.Helper()
 
@@ -54,7 +55,7 @@ func installFailingPreCommitHook(t *testing.T, repoDir string) {
 	}
 }
 
-// removePreCommitHook removes a hook installFailingPreCommitHook installed, tolerating its absence.
+// removePreCommitHook removes the pre-commit hook in repoDir, tolerating its absence.
 func removePreCommitHook(t *testing.T, repoDir string) {
 	t.Helper()
 
@@ -64,8 +65,8 @@ func removePreCommitHook(t *testing.T, repoDir string) {
 	}
 }
 
-// gitMergeAllowConflict runs `git merge ref` in dir directly (bypassing fabric entirely), tolerating
-// a non-zero exit — the plain-git conflict this file's foreign-merge-state scenarios manufacture.
+// gitMergeAllowConflict runs `git merge ref` in dir directly, bypassing fabric, and tolerates a non-zero exit.
+// The non-zero exit is the plain-git conflict that foreign-merge-state tests need.
 func gitMergeAllowConflict(t *testing.T, dir, ref string) {
 	t.Helper()
 
@@ -74,10 +75,9 @@ func gitMergeAllowConflict(t *testing.T, dir, ref string) {
 	_ = cmd.Run()
 }
 
-// pushDetachedContentAsRemoteBranch commits filename/content on a detached HEAD in dir (never
-// naming a local branch) and pushes it to origin under branch — manufacturing a branch that exists
-// only on the remote, with no local ref of that name at all — then returns dir to whatever branch
-// was checked out before.
+// pushDetachedContentAsRemoteBranch commits filename and content on a detached HEAD in dir.
+// It then pushes that commit to origin as branch, so the branch exists only on the remote.
+// Then it checks dir back out to the branch that was checked out before.
 func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, content, msg string) {
 	t.Helper()
 
@@ -88,9 +88,9 @@ func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, cont
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", original)
 }
 
-// TestMergeAbort_FreshHandle_RecoversConflictedRecord covers the crash-recovery case: a real
-// conflicted MergeIn leaves its record on disk, and a brand-new Fabric handle over the same pair
-// drives MergeAbort to an exact two-sided restore.
+// TestMergeAbort_FreshHandle_RecoversConflictedRecord covers the crash-recovery case:
+// a real conflicted MergeIn leaves its record on disk,
+// and a brand-new Fabric handle over the same pair drives MergeAbort to an exact two-sided restore.
 func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -120,10 +120,10 @@ func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
 	}
 }
 
-// TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging covers the crash-after-clean-
-// staging shape: both sides staged (via the gitrepo.Repo.MergeStart seam, never a conflict) with a
-// hand-saved record and nothing concluded, then a fresh Fabric handle's MergeContinue concludes
-// both.
+// TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging covers the crash after clean staging.
+// Both sides are staged via the gitrepo.Repo.MergeStart seam, never a conflict.
+// A record is saved by hand, and nothing is concluded.
+// A fresh Fabric handle's MergeContinue then concludes both sides.
 func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -180,26 +180,19 @@ func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T
 	}
 }
 
-// TestMergeContinue_ConcludeFailureThenRetryConcludes covers a conclude-phase failure on the warp
-// side — the only side concludeMergeSides now has anything to conclude on: the conclude-commit is
-// sabotaged to fail, so MergeIn returns *ErrMergeIncomplete with the record retained and no
-// WarpCommitted recorded; removing the sabotage and re-running MergeContinue then lands the
-// conclude-commit for the first time.
-// This test used to sabotage the weft side specifically, pinning a partial failure where warp had
-// already landed and only the weft side needed a retry. That shape has no warp-only analogue and is
-// deleted along with it: concludeMergeSides has only the warp side left to conclude, so a conclude
-// failure is total, not partial — see the merge-drops-weft task. The already-landed-then-retried
-// idempotency this test also used to cover is pinned instead by
-// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking.
+// TestMergeContinue_ConcludeFailureThenRetryConcludes covers a conclude-phase failure on the warp side.
+// The conclude-commit is sabotaged to fail, so MergeIn returns *ErrMergeIncomplete,
+// and the record stays retained with no WarpCommitted recorded.
+// Removing the sabotage and re-running MergeContinue then lands the conclude-commit.
 func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
-	// setupCleanNonFastForward forks the branch off the pre-divergence HEAD, then advances current
-	// separately — a genuine (non-fast-forward) merge target, so the merge lands a real conclude
-	// commit rather than a fast-forward (which concludeMergeSides skips outright).
+	// setupCleanNonFastForward forks the branch off the pre-divergence HEAD and advances current separately.
+	// The target is a genuine non-fast-forward merge, so it lands a real conclude commit.
+	// A fast-forward would make concludeMergeSides skip the conclude commit.
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
 	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
@@ -236,10 +229,10 @@ func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
 	}
 }
 
-// TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching covers foreign git merge state: a plain-git
-// conflicted merge staged directly in the warp checkout leaves MergeInProgress() false with no
-// error, while MergeIn, MergeContinue, and MergeAbort all refuse with *ErrForeignMergeState and
-// leave the foreign state untouched (same MERGE_HEAD, same conflicted files).
+// TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching covers foreign git merge state:
+// a plain-git conflicted merge staged directly in the warp checkout leaves MergeInProgress() false with no error.
+// MergeIn, MergeContinue, and MergeAbort all refuse with *ErrForeignMergeState,
+// and they leave the foreign state untouched (same MERGE_HEAD, same conflicted files).
 func TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -320,8 +313,8 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "feature-weft")
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", "feature-weft")
 
-	// Advance origin's copy of "feature" past the local branch, via a separate clone so the local
-	// "feature" ref itself never moves.
+	// Advance origin's copy of "feature" past the local branch, via a separate clone,
+	// so the local "feature" ref itself never moves.
 	remoteClone := t.TempDir()
 	gitkit.MustRun(t, t.TempDir(), "git", "clone", h.CodeBare, remoteClone)
 	gitkit.Git(t, remoteClone, "config", "user.email", "test@test.com")
@@ -335,7 +328,8 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
 	// Both sides fast-forward onto the remote-tracking tip, so no conclude-commit is fabricated and
-	// Committed is false; the merge landing is asserted by the merged content below, not by the flag.
+	// Committed is false.
+	// The merge landing is asserted by the merged content below, not by the Committed flag.
 	if res.Committed {
 		t.Fatalf("MergeIn(feature).Committed = true; want false — a fast-forward fabricates no commit")
 	}
@@ -373,10 +367,9 @@ func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
 	}
 }
 
-// TestMergeIn_Freshness_SourceResolvableNowhere covers the freshness rule's refusal branch: a
-// source resolvable on neither local nor remote refuses with the fixed "source branch not found"
-// reason — isolated by giving the weft counterpart a legitimate local branch, so the only guard
-// reason that can fire is the warp-side one.
+// TestMergeIn_Freshness_SourceResolvableNowhere covers a source resolvable on neither local nor remote.
+// Such a source refuses with the fixed "source branch not found" reason.
+// The weft counterpart gets a local branch, so the warp-side check is the only guard that can fire.
 func TestMergeIn_Freshness_SourceResolvableNowhere(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -395,15 +388,11 @@ func TestMergeIn_Freshness_SourceResolvableNowhere(t *testing.T) {
 	}
 }
 
-// TestMergeIn_NoWeftCounterpart_NothingMutated used to be TestMergeIn_NotFabricManaged_NothingMutated,
-// pinning resolveMergeSources' now-removed fabric-managed guard: a source branch with no "-weft"
-// counterpart, locally or remotely, used to refuse with the fixed "source branch is not
-// fabric-managed" reason. resolveMergeSources no longer refuses on the weft's behalf at all — it
-// still resolves the weft counterpart's SHA for mergeState.WeftSource, best-effort, but an
-// unresolvable one simply leaves that field empty rather than blocking the merge.
-// This fixture's "feature" branch is created at the current HEAD, so with the guard gone the call
-// reaches the degenerate AlreadyUpToDate case instead of refusing — nothing mutates either way,
-// which is why the original nothing-mutated assertions still hold verbatim.
+// TestMergeIn_NoWeftCounterpart_NothingMutated covers a source branch with no "-weft" counterpart, locally or remotely.
+// The merge resolves the weft counterpart's SHA best-effort;
+// an unresolvable one leaves that field empty rather than blocking the merge.
+// This fixture's "feature" branch is created at the current HEAD, so nothing mutates:
+// the call reaches the AlreadyUpToDate case.
 func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -431,13 +420,8 @@ func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
 	}
 }
 
-// TestMergeIn_DirtyWarpRefuses covers the dirty-pair guard's surviving half: a dirty warp-only pair
-// refuses with the fixed "worktree dirty" reason.
-// It was TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide's warp-dirty half; the byte-identical-
-// either-side assertion that test's name promised no longer holds now that the weft half doesn't
-// refuse at all (TestMergeIn_DirtyWeftDoesNotRefuse below), so the two halves are split into
-// separately named tests rather than kept under one name that describes a property only one of them
-// still has.
+// TestMergeIn_DirtyWarpRefuses covers a dirty warp-only pair.
+// The merge refuses with the fixed "worktree dirty" reason.
 func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -461,12 +445,10 @@ func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
 	assertGuardDirt(t, guardErr, h.PrimeWorktree(), []string{"dirty.txt"})
 }
 
-// TestMergeIn_DirtyWeftDoesNotRefuse used to be TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide's
-// weft-dirty half, pinning pairDirtyReason's now-removed weft arm. pairDirtyReason evaluates the warp
-// side alone now, so a dirty weft no longer blocks MergeIn — the weft is not a merge participant, so
-// its dirtiness cannot affect a warp-only merge's correctness. This fixture's "feature" branch is
-// created at the current HEAD, so with the guard gone the call reaches the degenerate
-// AlreadyUpToDate case rather than landing a real merge commit.
+// TestMergeIn_DirtyWeftDoesNotRefuse pins that a dirty weft does not block a warp-only merge.
+// The weft is not a merge participant, so its dirtiness cannot affect the merge's correctness.
+// This fixture's "feature" branch is created at the current HEAD;
+// the call reaches the AlreadyUpToDate case rather than landing a merge commit.
 func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -491,26 +473,11 @@ func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
 	}
 }
 
-// TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides covers a weft-side conflict on a repo-root
-// path outside the wired name-set: the merge self-aborts on both sides, returns
-// *ErrUnmergeableState, restores the pair to its pre-merge SHAs, and leaves no record.
-// TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides used to cover a weft-root conflict outside
-// the wired name set, which unifyConflictPaths' own weftPathVisible test flagged unmappable and
-// self-aborted the merge with *ErrUnmergeableState. MergeIn now calls unifyConflictPaths with a
-// literal nil weft conflict list — the weft can no longer conflict at all — so that loop, and the
-// unmappable outcome it alone could produce, is unreachable from MergeIn: a warp path (already
-// worktree-relative) never sets unmappable, and the same-path-from-both-sides collision needs a
-// non-empty weft list to occur. This test is deleted rather than adapted, since there is no warp-side
-// shape left that reaches the branch under test — see the merge-drops-weft task.
-// unifyConflictPaths' own unmappable behavior stays covered directly, at the unit level, by
-// mergepaths_test.go, which is exactly the plumbing-is-retained decision's point: the function stays
-// correct for a caller that still passes it a real weft list, even though MergeIn is no longer one.
+// The merge no longer reaches unifyConflictPaths' unmappable outcome, so no test in this file covers it.
+// mergepaths_test.go covers that outcome at the unit level.
 
-// TestMergeIn_ConflictMarkers_NeverLeakWeftName used to cover conflict-marker content on both a
-// weft-only conflict and a warp-only conflict, asserting the two were styled identically so neither
-// ever leaked a "-weft"-suffixed branch name. The weft arm is deleted along with the weft's ability to
-// conflict at all — see the merge-drops-weft task — leaving the warp-only assertion, which needs no
-// cross-side comparison any more since there is no other side to compare against.
+// TestMergeIn_ConflictMarkers_NeverLeakWeftName covers conflict-marker content on a warp-only conflict.
+// The markers never show a "-weft"-suffixed branch name.
 func TestMergeIn_ConflictMarkers_NeverLeakWeftName(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -537,27 +504,17 @@ func TestMergeIn_ConflictMarkers_NeverLeakWeftName(t *testing.T) {
 	}
 }
 
-// TestMergeIn_SubpathAnchoredHub_PathMapping used to cover path mapping on a subpath-anchored hub for
-// a weft-side conflict: a conflict inside the junctioned path had to be reported at its unified
-// worktree-root-relative path via weftPathVisible's anchor/wired-name join. That mapping step only
-// ever ran for weft paths — a warp path already IS worktree-relative and passes through
-// unifyConflictPaths unchanged, subpath anchor or not, so there is no warp-side version of this test
-// that would exercise anything the plain warp-conflict tests do not already cover. Deleted along with
-// the weft's ability to conflict at all — see the merge-drops-weft task. The mapping function itself
-// stays covered at the unit level by mergepaths_test.go.
+// A warp path is already worktree-relative, so unifyConflictPaths passes it through unchanged.
+// The hub's subpath anchor does not change that.
+// The weftPathVisible mapping is covered at the unit level by mergepaths_test.go.
 
-// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking covers the crash shape where the
-// warp side's conclude-commit landed but the record never learned its SHA — the state a kill between
-// `git commit` and the record re-save leaves behind, simulated exactly by resolving a conflicted
-// MergeIn and committing the warp side with plain git while the record still says committed:"".
-// Before the adoption arm existed this state was a permanent wedge: MergeContinue re-ran
-// `git commit` on a clean tree and failed forever, MergeAbort refused via concludeLandedReason, and
-// no fabric verb could ever clear the record.
-// The resumed MergeContinue must adopt the landed commit off HEAD — creating no new commit — report
-// Committed true, record a KindMergeCommitted carrying the adopted SHA, and delete the record.
-// This test used to also land and adopt a weft-side conclude, since a weft-side conflict was how the
-// two-sided design kept BOTH sides pending. With the weft no longer able to conflict, there is only
-// the warp side left to adopt — see the merge-drops-weft task.
+// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking covers an invisible landed conclude.
+// The warp side's conclude commit has landed, but the record holds no SHA for it.
+// A crash between `git commit` and the record re-save leaves this state behind.
+// The test reproduces it by resolving a conflicted MergeIn and committing the warp side with plain git.
+// The record still says committed:"" at that point.
+// MergeContinue must adopt the landed commit off HEAD, creating no new commit.
+// It reports Committed true, records a KindMergeCommitted carrying the adopted SHA, and deletes the record.
 func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -575,8 +532,8 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict", res.Conflicts)
 	}
 
-	// Resolve, then land the conclude with plain git — on-disk state now byte-identical to a crash
-	// between concludeMergeSides' `git commit` and its record re-save.
+	// Resolve, then land the conclude with plain git.
+	// The on-disk state is now byte-identical to a crash between concludeMergeSides' `git commit` and its record re-save.
 	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved\n"), 0o644); err != nil {
 		t.Fatalf("write resolved clash.txt: %v", err)
 	}
@@ -591,7 +548,7 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 		t.Fatalf("recorded warp conclude SHA = %q; want empty — the invisible shape", st.WarpCommitted)
 	}
 
-	// Sanity: MergeAbort must refuse this state (R2's guard), leaving MergeContinue as the recovery.
+	// MergeAbort must refuse this state, leaving MergeContinue as the recovery.
 	fresh := openFreshFabric(t, h.PrimeWorktree())
 	if _, err := fresh.MergeAbort(); err == nil {
 		t.Fatalf("MergeAbort() on invisible landed conclude: error = nil; want conclude-landed guard refusal")
@@ -626,13 +583,11 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 	}
 }
 
-// abortMergeAndLandUnrelatedCommit reproduces the adversarial shape MergeContinue's adoption arm
-// must refuse: an operator discards the in-progress git merge with plain `git merge --abort` and
-// then lands one commit of their own, while fabric's merge record is still live and still says this
-// side's conclude never happened.
-// The resulting HEAD satisfies "moved off the recorded pre-merge start, with no live MERGE_HEAD"
-// exactly as a real crashed-after-commit conclude does — that ambiguity is the whole point — and it
-// returns the unrelated SHA so the caller can assert fabric never claims it.
+// abortMergeAndLandUnrelatedCommit moves HEAD with no live MERGE_HEAD, the state a crashed conclude leaves.
+// It discards the in-progress git merge with `git merge --abort`, then lands one commit of its own.
+// The merge record stays live and still says this side's conclude never happened.
+// MergeContinue must therefore not adopt that commit.
+// It returns the unrelated SHA, so the caller can assert fabric never claims it.
 func abortMergeAndLandUnrelatedCommit(t *testing.T, dir, filename string) string {
 	t.Helper()
 
@@ -641,16 +596,11 @@ func abortMergeAndLandUnrelatedCommit(t *testing.T, dir, filename string) string
 	return fabricengine.CurrentSHAForTest(t, dir)
 }
 
-// TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted is the adversarial direction of
-// the conclude-adoption arm.
-// Adoption is a positive CLAIM about which commit a checkout carries, so it must rest on
-// discriminating evidence — git's own parentage — rather than on the same ambiguous "HEAD moved,
-// no live MERGE_HEAD" read that MergeAbort's concludeLandedReason uses to REFUSE. Keying adoption
-// on that read alone made this exact sequence return ok/committed true naming the operator's
-// unrelated commit, delete the record, and leave the merge source un-merged with nothing left to
-// inspect: a silent false success.
-// The correct disposition is honestly stuck — *ErrMergeIncomplete with the record retained, so the
-// operator can still see what fabric thinks is happening.
+// TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted checks that an unrelated commit is never adopted.
+// Adoption claims which commit a checkout carries, so it must rest on git's own parentage.
+// Adopting on the ambiguous "HEAD moved, no live MERGE_HEAD" signal alone is a silent false success:
+// it reports committed true, deletes the record, and leaves the merge source un-merged.
+// The correct result is *ErrMergeIncomplete with the record kept, so the operator can see the merge state.
 func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -671,8 +621,7 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	sourceWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "feature")
 	unrelatedWarpSHA := abortMergeAndLandUnrelatedCommit(t, h.PrimeWorktree(), "warp-unrelated.txt")
 
-	// Precondition, asserted rather than assumed: the record must still be live and must still show
-	// the warp side unconcluded, or the scenario is not the one this test names.
+	// The record must still be live with the warp side unconcluded, or the scenario this test names is absent.
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
@@ -708,15 +657,10 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	}
 }
 
-// TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted pins the first-parent clause of the
-// adoption evidence, which no other test exercises: deleting `parents[0] != start` from
-// sideConcludeAlreadyLanded left the whole suite green, because the unrelated-commit test's fixture
-// is a ONE-parent commit that `len(parents) < 2` refuses on its own.
-// The shape only the first-parent clause refuses: the operator plain-git-aborts the recorded merge,
-// lands a commit of their own, and then merges the recorded source SHA on top of it — a genuine
-// two-parent merge of the RIGHT source on the WRONG base. Adopting it would record correspondence
-// against a base the paired side never saw; doc.go names this exact shape as not-adopted, and its
-// plain-git recovery instructions (reset to the recorded start first) exist because of it.
+// TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted checks the refusal of a wrong base.
+// The operator aborts the recorded merge, lands a commit of their own, and merges the recorded source onto it.
+// The result is a genuine two-parent merge of the right source on the wrong base.
+// Adopting it would record correspondence against a base the paired side never saw.
 func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -739,8 +683,8 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
 
-	// Warp: abort the recorded merge, land an unrelated base commit, then hand-merge the RECORDED
-	// source SHA onto it and resolve — parents [unrelated, recorded source].
+	// Warp: abort the recorded merge, land an unrelated base commit, then merge the recorded source onto it.
+	// The resolved merge has parents [unrelated base, recorded source].
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "wrong-base.txt", "operator's own base\n", "unrelated base commit")
 	wrongBaseSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
@@ -752,9 +696,9 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
-	// Precondition, asserted rather than assumed: the hand-landed commit is a two-parent merge whose
-	// SECOND parent is the recorded source and whose FIRST parent is NOT the recorded start — the one
-	// shape only the first-parent clause can refuse.
+	// The hand-landed commit must be a two-parent merge: its second parent is the recorded source;
+	// its first parent is not the recorded start.
+	// Only the first-parent check refuses this shape.
 	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
 	if len(parents) != 2 || parents[0] != wrongBaseSHA || parents[1] != st.WarpSource {
 		t.Fatalf("hand-landed commit parents = %v; want [%s %s] — a merge of the recorded source on the wrong base", parents, wrongBaseSHA, st.WarpSource)
@@ -782,11 +726,11 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	}
 }
 
-// TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted pins the source-membership clause of
-// the adoption evidence — the mirror of the wrong-base test above: a genuine two-parent merge on
-// the RIGHT base whose merged-in tip is NOT the recorded source. Only the "one of the remaining
-// parents is the recorded source SHA" clause refuses it; without that clause adoption would claim a
-// merge of some other branch as this merge's conclude.
+// TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted checks that a merge of the wrong source is refused.
+// The merge is a genuine two-parent merge on the right base,
+// but its merged-in tip is not the recorded source.
+// Only the check that a parent is the recorded source refuses it;
+// without that check, adoption would claim another branch's merge as this merge's conclude.
 func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -796,8 +740,7 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
 	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
-	// A decoy branch off the current warp HEAD with one non-conflicting commit, so a plain merge of
-	// it onto the recorded start auto-concludes into a two-parent commit.
+	// A decoy branch off the current warp HEAD, carrying one non-conflicting commit.
 	commitOnBranch(t, h.PrimeWorktree(), "decoy", "decoy.txt", "nothing to do with feature\n", "decoy commit")
 	decoySHA := gitkit.RevParse(t, h.PrimeWorktree(), "decoy")
 
@@ -814,14 +757,14 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
 
-	// Warp: abort back to the recorded start, then merge the decoy — parents [start, decoy].
-	// --no-ff, because the decoy sits one commit ahead of the start and a plain merge would
-	// fast-forward without creating the two-parent commit this fixture is about.
+	// Warp: abort back to the recorded start, then merge the decoy, giving parents [start, decoy].
+	// The merge uses --no-ff: the decoy is one commit ahead of the start,
+	// and a plain merge would fast-forward instead of creating the two-parent commit.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-ff", "--no-edit", decoySHA)
 	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
-	// Precondition, asserted rather than assumed: right base, wrong source.
+	// Right base, wrong source: the second parent is not the recorded source.
 	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
 	if len(parents) != 2 || parents[0] != st.WarpStart || parents[1] != decoySHA {
 		t.Fatalf("hand-landed commit parents = %v; want [%s %s] — a merge of the wrong source on the recorded start", parents, st.WarpStart, decoySHA)
@@ -849,10 +792,9 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	}
 }
 
-// rootCommitForTest returns dir's oldest root commit — a commit that is an ancestor of nothing the
-// merge fixtures build on, so a branch created there stays outside the recorded start's history and
-// git therefore keeps the recorded start as a parent of an octopus merge rather than discarding it
-// as redundant.
+// rootCommitForTest returns the oldest root commit of dir.
+// A branch created there is outside the history of the recorded start;
+// git therefore keeps the recorded start as a parent of an octopus merge instead of discarding it as redundant.
 func rootCommitForTest(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -863,18 +805,15 @@ func rootCommitForTest(t *testing.T, dir string) string {
 	return lines[len(lines)-1]
 }
 
-// TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted pins the parent-ARITY half of the
-// adoption evidence, which no other test exercises: before this test, `len(parents) < 2` was a lower
-// bound and the source was searched across ALL remaining parents, so a three-parent octopus whose
-// first parent was the recorded start and whose second was the recorded source was adopted as this
-// merge's own conclude.
-// The shape only the exact-arity clause refuses: the operator discards the staged merge and then
-// merges the recorded source TOGETHER with an unrelated branch — `git merge <source> <other>` — an
-// ordinary thing to do and a commit git builds happily. Adopting it made fabric report
-// committed:true naming that commit, record correspondence, and delete the record, while the
-// checkout carried <other>'s content that no side of this merge brought in and that no merge_staged
-// entry accounts for. fabric can never produce an octopus: it starts every non-squash merge with a
-// single `git merge --ff --no-commit <sourceSHA>`, so its conclude has exactly two parents.
+// TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted checks that adoption requires exactly two parents.
+// The operator discards the staged merge and then merges the recorded source with an unrelated branch.
+// That is an ordinary action, and git builds the commit without complaint.
+// Adopting that commit would report committed true, record correspondence, and delete the record.
+// The checkout would then carry the unrelated branch's content, which no side of this merge brought in;
+// no merge_staged entry accounts for it.
+// Fabric never produces an octopus.
+// It starts each non-squash merge with a single `git merge --ff --no-commit <sourceSHA>`,
+// so its conclude has exactly two parents.
 func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -894,9 +833,9 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-edit", st.WarpSource, decoySHA)
 	octopusSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
-	// Precondition, asserted rather than assumed: a THREE-parent commit whose first parent is the
-	// recorded start and whose second is the recorded source — every clause of the old loose test
-	// satisfied, and only the exact-arity clause standing between it and adoption.
+	// Precondition, asserted rather than assumed: a three-parent commit whose first parent is the
+	// recorded start and whose second is the recorded source.
+	// Every adoption clause holds for it except the exact-arity check, so only that check refuses it.
 	parents := commitParentsForTest(t, h.PrimeWorktree(), octopusSHA)
 	if len(parents) != 3 {
 		t.Fatalf("hand-landed commit has %d parents (%v); want the 3-parent octopus this test is about", len(parents), parents)
@@ -928,19 +867,15 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	}
 }
 
-// setupWarpStagedPendingConclude builds the one fixture several conclude-evidence tests in this file
-// share: the warp side merges CLEANLY (a real non-fast-forward merge, outcome staged, MERGE_HEAD
-// live) with no conclude landed yet, and the merge-state record already reflects that on disk —
-// WarpOutcome "staged", WarpCommitted empty, WeftOutcome already "up_to_date" since the weft is not a
-// merge participant.
-// It builds this state directly via gitrepo.Repo.MergeStart and SaveMergeStateForTest rather than
-// through a real MergeIn call. Before this batch, a weft-side conflict was what kept MergeIn from
-// auto-concluding a clean warp side, isolating the tests below on the warp side alone; with the weft
-// no longer able to conflict, a MergeIn whose warp side merges cleanly now concludes and deletes its
-// own record immediately, so there is no other way left to leave this pending-conclude window open —
-// see the merge-drops-weft task.
-// It returns the hub and the manufactured record, asserting the fixture really is the shape described
-// rather than assuming it.
+// setupWarpStagedPendingConclude builds the fixture several conclude-evidence tests share.
+// The warp side merges cleanly: a real non-fast-forward merge, outcome staged, MERGE_HEAD live.
+// No conclude has landed yet.
+// The merge-state record on disk reflects that: WarpOutcome "staged" and WarpCommitted empty.
+// WeftOutcome is "up_to_date", since the weft is not a merge participant.
+// It builds this state directly through gitrepo.Repo.MergeStart and SaveMergeStateForTest.
+// A MergeIn call cannot leave this window open.
+// When the warp side merges cleanly, MergeIn concludes and deletes its record at once.
+// It returns the hub and the manufactured record, after asserting the fixture has the described shape.
 func setupWarpStagedPendingConclude(t *testing.T) (*hubforge.Hub, fabricengine.MergeStateForTest) {
 	t.Helper()
 
@@ -974,9 +909,10 @@ func setupWarpStagedPendingConclude(t *testing.T) (*hubforge.Hub, fabricengine.M
 	return h, st
 }
 
-// assertConcludeRefusedWithoutCommitting asserts the disposition both conclude-evidence tests demand:
-// the aggregated guard refusal naming the recorded-merge-gone reason, no conclude commit recorded or
-// landed, the record still on disk, and the operator's own warp state left exactly as it was.
+// assertConcludeRefusedWithoutCommitting asserts the disposition the conclude-evidence tests expect.
+// The conclude is refused with the aggregated guard error naming the recorded-merge-gone reason.
+// No conclude commit is recorded or landed.
+// The record stays on disk, and the operator's own warp state is left exactly as it was.
 func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpHEADBefore string, res fabricengine.MergeResult, err error) {
 	t.Helper()
 
@@ -1000,22 +936,20 @@ func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpH
 	}
 }
 
-// TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted pins the commit-side twin of the
-// adoption arm's evidence rule, and closes a silent false success the adoption hardening did not reach.
+// TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted checks the commit side of a merge.
+// The commit arm must refuse a MERGE_HEAD that is not this merge's.
 //
-// concludeMergeSides finishes a pending side by running `git commit`, which commits whatever MERGE_HEAD
-// names. The adoption arm demands exact parentage before CLAIMING a landed commit as this merge's
-// conclude; the commit arm three lines below it demanded nothing at all. So an operator who — as the
-// Fabric Git Invariant explicitly permits — discarded fabric's staged warp merge with plain
-// `git merge --abort` and started an unrelated one instead had that unrelated merge committed by
-// fabric, written into the record as this merge's conclude SHA, reported as a merge_committed mutation
-// and an ok/committed:true result, paired into the correspondence index, and then erased along with the
-// record. The merge source stayed un-merged on that side while the other side's half landed for good,
-// leaving a permanently non-corresponding pair and nothing left to inspect.
+// concludeMergeSides finishes a pending side by running `git commit`, which commits whatever MERGE_HEAD names.
+// The adoption arm demands exact parentage before it claims a landed commit as this merge's conclude.
+// The Fabric Git Invariant permits an operator to discard the staged warp merge with plain `git merge --abort`.
+// The operator may then start an unrelated merge instead.
+// Committing that merge would record it as this merge's conclude and pair it in the correspondence index.
+// The record would then be erased, leaving a permanently non-corresponding pair.
+// The commit arm must refuse it: the record stays on disk, and MergeAbort stays available.
 //
-// The adoption arm never sees this shape precisely because the operator did not commit: HEAD is still
-// on the recorded start and a MERGE_HEAD is live, so sideConcludeAlreadyLanded correctly reports "not
-// landed" and hands straight to the commit that was the defect.
+// The adoption arm never sees this shape, because the operator did not commit.
+// HEAD stays on the recorded start and MERGE_HEAD is live.
+// So sideConcludeAlreadyLanded reports the side as not landed, and the commit runs.
 func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1031,8 +965,8 @@ func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *test
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "--no-ff", otherSHA)
 
-	// Preconditions, asserted rather than assumed: HEAD is back on the recorded start (so the adoption
-	// arm cannot fire), and the live merge is genuinely a DIFFERENT one.
+	// Preconditions, asserted rather than assumed: HEAD is back on the recorded start, so the adoption arm cannot fire,
+	// and the live merge is a different one.
 	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	if warpHEADBefore != st.WarpStart {
 		t.Fatalf("warp HEAD = %q; want the recorded start %q, or this test is exercising the adoption arm instead", warpHEADBefore, st.WarpStart)
@@ -1056,16 +990,13 @@ func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *test
 	}
 }
 
-// TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted is the uncommitted twin of
-// TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted, and it is what forces the evidence to
-// be read from the WHOLE of MERGE_HEAD rather than from `git rev-parse --verify --quiet MERGE_HEAD`.
-// The operator discards the staged merge and starts a merge of the recorded source TOGETHER with an
-// unrelated decoy, leaving it uncommitted. MERGE_HEAD then carries two SHAs whose FIRST is the recorded
-// source, so an equality test written against rev-parse's single-value answer passes and fabric commits
-// an octopus it can never itself produce — the decoy's content landing under this merge's name, brought
-// in by no side of it and named by no merge_staged entry.
-// The test asserts that first-entry-equals-the-source precondition explicitly, so a regression to the
-// truncating read fails here instead of passing.
+// TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted covers this case:
+// an uncommitted merge whose MERGE_HEAD holds two SHAs, the recorded source first.
+// Evidence must be read from every SHA in MERGE_HEAD.
+// Reading only the first, as `git rev-parse --verify --quiet MERGE_HEAD` does, would accept this merge:
+// fabric would commit an octopus it could never produce itself.
+// The decoy's content would land under this merge's name, brought in by no side and named by no merge_staged entry.
+// The test asserts that the first entry is the source, so a truncating read fails here instead of passing.
 func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1081,8 +1012,8 @@ func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *t
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", st.WarpSource, decoySHA)
 
-	// Precondition, asserted rather than assumed: the truncating read reports exactly the recorded
-	// source, so only reading every head can tell this state apart from a legitimate one.
+	// Precondition, asserted rather than assumed: the first-head read reports exactly the recorded source.
+	// Only reading every head tells this state apart from a legitimate one.
 	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	if got := firstMergeHeadForTest(t, h.PrimeWorktree()); got != st.WarpSource {
 		t.Fatalf("git rev-parse --verify --quiet MERGE_HEAD = %q; want the recorded source %q — the octopus this test needs is not present", got, st.WarpSource)
@@ -1096,17 +1027,13 @@ func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *t
 	assertConcludeRefusedWithoutCommitting(t, h, warpHEADBefore, res, err)
 }
 
-// TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted pins the third arm of
-// recordedMergeGoneReason — the one the no-live-merge exemption must NOT swallow.
-// With fabric's merge discarded and the checkout clean, `git commit` fails by itself and the conclude
-// already refuses honestly, which is why that state is exempt (refusing there would decide every
-// adoption-evidence test before it reached the clause it pins). But the same discarded state with
-// tracked content staged is not honest at all: `git commit --no-edit` succeeds, landing an ORDINARY
-// one-parent commit of whatever the operator staged, which fabric then writes into the record as this
-// merge's conclude SHA, reports as committed:true with a merge_committed mutation, pairs into the
-// correspondence index, and erases the record behind.
-// It is the same silent false success as the live-different-merge shape, reached without any second
-// merge at all — one `git merge --abort` and one `git add`.
+// TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted covers a conclude:
+// the merge is gone, but tracked content is staged in the index.
+// A clean index with no live merge refuses by itself, because a plain `git commit` fails there.
+// With content staged, `git commit --no-edit` succeeds and lands an ordinary one-parent commit of whatever was staged;
+// the conclude then records that commit as this merge's conclude SHA and reports it as committed.
+// The commit is then paired into the correspondence index, and the merge record is erased.
+// The outcome is a silent false success, reached with no second merge: one `git merge --abort` and one `git add`.
 func TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1143,9 +1070,9 @@ func TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitt
 	}
 }
 
-// stagedContentPresentForTest reports whether dir's index differs from HEAD, via
-// `git diff --cached --quiet`'s exit status — the independent read the staged-content test asserts its
-// fixture's "a commit would actually succeed here" precondition with.
+// stagedContentPresentForTest reports whether dir's index differs from HEAD.
+// It reads the answer through `git diff --cached --quiet`,
+// so a fixture can assert its precondition without trusting the code under test.
 func stagedContentPresentForTest(t *testing.T, dir string) bool {
 	t.Helper()
 
@@ -1162,9 +1089,9 @@ func stagedContentPresentForTest(t *testing.T, dir string) bool {
 	return true
 }
 
-// firstMergeHeadForTest returns what `git rev-parse --verify --quiet MERGE_HEAD` reports in dir — the
-// truncating, first-head-only answer the octopus test asserts its fixture against, read through plain
-// git rather than through the method under test.
+// firstMergeHeadForTest returns what `git rev-parse --verify --quiet MERGE_HEAD` reports in dir.
+// The answer keeps only the first SHA of a MERGE_HEAD that lists several,
+// so a test can check that a fixture's first head is the source.
 func firstMergeHeadForTest(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -1177,8 +1104,8 @@ func firstMergeHeadForTest(t *testing.T, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// runGitExpectingConflict runs git with args in dir, tolerating the nonzero exit a conflicted merge
-// returns and failing the test on any spawn-level error.
+// runGitExpectingConflict runs git with args in dir;
+// it tolerates the nonzero exit a conflicted merge returns and fails the test on any spawn-level error.
 func runGitExpectingConflict(t *testing.T, dir string, args ...string) {
 	t.Helper()
 
@@ -1192,8 +1119,8 @@ func runGitExpectingConflict(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// commitParentsForTest reads sha's parent SHAs in dir via plain git, first parent first — the
-// independent read the adoption-evidence tests assert their fixture's parentage with.
+// commitParentsForTest reads sha's parent SHAs in dir via plain git, first parent first.
+// It reads them without fabric, so the adoption tests check their fixture's parentage independently.
 func commitParentsForTest(t *testing.T, dir, sha string) []string {
 	t.Helper()
 
@@ -1210,15 +1137,14 @@ func commitParentsForTest(t *testing.T, dir, sha string) []string {
 	return fields[1:]
 }
 
-// TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted drives the squash shape of the same
-// question, which prior rounds reasoned about but never executed.
-// `git merge --squash` writes no MERGE_HEAD and its conclude is an ORDINARY one-parent commit, so
-// the parentage evidence a non-squash conclude carries — first parent the pre-merge start, second
-// parent the merge source — does not exist for a squash. There is therefore nothing to tell a
-// hand-landed squash conclude apart from any other commit, and adoption must refuse rather than
-// silently inherit the non-squash predicate.
-// The refusal is honest, not lossy: the record is retained and *ErrMergeIncomplete comes back, which
-// is exactly the behaviour that held before an adoption arm existed at all.
+// TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted runs the squash shape of the adoption question.
+// `git merge --squash` writes no MERGE_HEAD, and its conclude is an ordinary one-parent commit.
+// A non-squash conclude carries a first parent (the pre-merge start) and a second (the merge source).
+// A squash conclude has no such parentage.
+// Nothing tells a hand-landed squash conclude apart from any other commit.
+// Adoption must therefore refuse rather than inherit the non-squash predicate.
+// The refusal is not lossy: the record is retained and *ErrMergeIncomplete comes back.
+// That is the behaviour from before an adoption arm existed.
 func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1278,21 +1204,20 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	}
 }
 
-// TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead pins
-// sideConcludeAlreadyLanded's live-MERGE_HEAD clause, which no other test reaches: replacing that
-// clause with a no-op left the entire integration suite green.
-// The state it guards is reachable. The operator hand-lands this merge's conclude (HEAD moves off
-// the recorded start, MERGE_HEAD clears — the adoptable shape), and then, before running
-// MergeContinue, starts a SECOND merge of their own in the same checkout that merges cleanly. The
-// index carries no conflicts, so MergeContinue's own guard passes and control reaches the adoption
-// probe with HEAD moved, no recorded conclude SHA, and a live MERGE_HEAD belonging to a merge fabric
-// never started.
-// Adopting there is the documented disaster shape: fabric would report the merge concluded, record
-// correspondence, delete its record, and walk away leaving a live MERGE_HEAD in the checkout that no
-// fabric verb can then clear — MergeAbort included, since with the record gone the state reads as
-// foreign. That is exactly the wedge TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned
-// exists to prevent, and the assertion that discriminates is the same one: a verb that returns
-// without error must never leave git-level merge state behind on either side.
+// TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead tests one clause:
+// the live-MERGE_HEAD clause of sideConcludeAlreadyLanded, which no other test reaches.
+// The operator hand-lands this merge's conclude, so HEAD moves off the recorded start and MERGE_HEAD clears.
+// That is the adoptable shape.
+// Before MergeContinue runs, the operator starts a second merge in the same checkout, and it merges cleanly.
+// The index carries no conflicts, so MergeContinue's own guard passes.
+// Control then reaches the adoption probe with HEAD moved and no recorded conclude SHA,
+// and a live MERGE_HEAD is present that fabric never started.
+// Adopting there is the disaster shape.
+// Fabric would report the merge concluded, record correspondence, delete its record, and leave a live MERGE_HEAD.
+// No fabric verb can clear it, MergeAbort included, because the state reads as foreign without the record.
+// That is the wedge TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned guards against.
+// The discriminating assertion is the same one:
+// a verb that returns without error must never leave git-level merge state behind on either side.
 func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1328,9 +1253,9 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 	// The operator now starts a second merge of their own and leaves it uncommitted.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "--no-ff", "decoy")
 
-	// Preconditions, asserted rather than assumed: the hand-landed conclude really is the adoptable
-	// shape, and a live MERGE_HEAD from the operator's own second merge really is present with a
-	// conflict-free index — so nothing but the MERGE_HEAD clause can change the outcome.
+	// Preconditions, asserted rather than assumed: the hand-landed conclude has the adoptable shape,
+	// and a live MERGE_HEAD from the operator's own second merge is present with a conflict-free index.
+	// So nothing but the MERGE_HEAD clause can change the outcome.
 	parents := commitParentsForTest(t, h.PrimeWorktree(), concludeSHA)
 	if len(parents) != 2 || parents[0] != st.WarpStart || parents[1] != st.WarpSource {
 		t.Fatalf("hand-landed conclude parents = %v; want [%s %s] — the adoptable shape", parents, st.WarpStart, st.WarpSource)
@@ -1361,20 +1286,17 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 	}
 }
 
-// TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted is the test the squash
-// refusal actually needs, and the reason it exists is a proof gap rather than a new behaviour.
-// TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted above looks like it pins the `squash`
-// clause but does not: its hand-landed squash conclude is an ORDINARY one-parent commit, so the
-// parent-arity clause refuses it first. Deleting `squash ||` from sideConcludeAlreadyLanded left
-// that test — and the entire integration suite — green.
-// The shape only the squash clause can refuse is a squash record whose side carries a genuine
-// TWO-parent merge of the recorded source on the recorded start. An operator reaches it by the
-// documented route: a squash writes no MERGE_HEAD, so `git merge --abort` is unavailable and the
-// way back is `git reset --hard <recorded start>`, after which finishing with a plain `git merge
-// <recorded source>` produces exactly the parentage a non-squash conclude carries.
-// Adopting it would record a MERGE commit as a SQUASH record's conclude and then record
-// correspondence for a pair whose two sides carry structurally different history — one squashed,
-// one not. Refusing keeps it honestly stuck, which is the pre-adoption-arm behaviour.
+// TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted pins the squash refusal of MergeContinue.
+// Only the squash clause refuses this shape:
+// a side that carries a genuine two-parent merge of the recorded source on the recorded start.
+// An operator reaches it by the documented route.
+// A squash writes no MERGE_HEAD, so `git merge --abort` is unavailable;
+// the way back is `git reset --hard <recorded start>`, followed by a plain `git merge <recorded source>`.
+// That produces exactly the parentage a non-squash conclude carries.
+// Adopting it would record a MERGE commit as a SQUASH record's conclude.
+// It would then record correspondence for a pair whose two sides carry structurally different history:
+// one squashed, one not.
+// Refusing leaves the merge honestly stuck.
 func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1408,15 +1330,15 @@ func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *tes
 		t.Fatalf("merge state WarpSource is empty; the source-SHA clause would refuse before the squash clause is ever reached")
 	}
 
-	// The operator returns the side to the recorded start — `git merge --abort` is unavailable, since
-	// a squash writes no MERGE_HEAD — and finishes with a plain, non-squash merge.
+	// A squash writes no MERGE_HEAD, so `git merge --abort` is unavailable;
+	// the side is reset to the recorded start and finished with a plain, non-squash merge.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "reset", "--hard", st.WarpStart)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-edit", st.WarpSource)
 	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
-	// Precondition, asserted rather than assumed: EVERY non-squash adoption clause is now satisfied —
-	// HEAD moved, no live MERGE_HEAD, a resolved source SHA on the record, and exactly two parents in
-	// exactly the right order. Only `squash` stands between this commit and adoption.
+	// Precondition: every non-squash adoption clause is satisfied:
+	// HEAD moved, no live MERGE_HEAD, a resolved source SHA on the record, and two parents in the right order.
+	// Only `squash` stands between this commit and adoption.
 	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
 	if len(parents) != 2 || parents[0] != st.WarpStart || parents[1] != st.WarpSource {
 		t.Fatalf("hand-landed commit parents = %v; want [%s %s] — the two-parent shape only the squash clause refuses", parents, st.WarpStart, st.WarpSource)
@@ -1446,15 +1368,14 @@ func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *tes
 	}
 }
 
-// TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate pins that MergeContinue derives
-// BOTH result flags from the merge record, the same rule MergeIn and Merge follow.
-// Committed was already derived; AlreadyUpToDate was hardcoded to its zero value at MergeContinue's
-// single return, so a resumed record whose two sides both recorded up_to_date came back
-// already_up_to_date:false where the equivalent single-shot call returns true.
-// That record shape is reachable rather than theoretical: MergeIn/Merge's up-to-date probe runs
-// before the write lock by design, so a call that loses that race records up_to_date on both sides,
-// and a crash before its conclude leaves precisely this record behind. The fixture writes it
-// directly, which is the same on-disk state that crash produces.
+// TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate pins the derivation of both result flags.
+// MergeContinue derives both flags from the merge record.
+// A resumed record whose two sides both recorded up_to_date must report already_up_to_date:true.
+// The single-shot call reports the same.
+// Such a record is reachable: the up-to-date probe in MergeIn and Merge runs before the write lock by design,
+// so a call that loses that race records up_to_date on both sides,
+// and a crash before its conclude leaves the same record behind.
+// The fixture writes it directly to the same on-disk state that crash produces.
 func TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1523,7 +1444,7 @@ func gitMergeHeadRaw(t *testing.T, dir string) (string, bool) {
 	return string(content), true
 }
 
-// gitUnmergedPaths lists dir's unmerged index entries, the same set gitrepo.ConflictedFiles reads.
+// gitUnmergedPaths lists dir's unmerged index entries: the paths git reports as conflicted.
 func gitUnmergedPaths(t *testing.T, dir string) []string {
 	t.Helper()
 
@@ -1536,41 +1457,38 @@ func gitUnmergedPaths(t *testing.T, dir string) []string {
 	return strings.Fields(strings.TrimSpace(string(out)))
 }
 
-// foreignShape names one of the three distinguishable git-level merge states fabric did not start.
-// They are not three spellings of one condition: each is seen by a different subset of
-// foreignMergeStatePresent's probes, and only shapeConflictedIndexOnly and shapeMergeHeadOnly make
-// any individual probe load-bearing.
+// foreignShape names one of three git-level merge states that fabric did not start.
+// Each state is seen by a different subset of the probes that detect a foreign merge:
+// the MERGE_HEAD file and the unmerged index entries.
+// The states shapeMergeHeadOnly and shapeConflictedIndexOnly are each seen by one probe alone,
+// so they are what make each probe load-bearing.
 type foreignShape int
 
 const (
-	// shapeConflictedAndMergeHead is an ordinary conflicted `git merge`: MERGE_HEAD live AND unmerged
-	// index entries. Either probe alone sees it, which is why it cannot pin either one.
+	// shapeConflictedAndMergeHead is an ordinary conflicted `git merge`: MERGE_HEAD live and unmerged index entries.
+	// Either probe alone sees it, which is why it cannot pin either one.
 	shapeConflictedAndMergeHead foreignShape = iota
-	// shapeMergeHeadOnly is a foreign merge resolved but not concluded: MERGE_HEAD live, unmerged set
-	// EMPTY. Only the MERGE_HEAD probe sees it, and it is the most dangerous shape because nothing
-	// about the worktree looks wrong.
+	// shapeMergeHeadOnly is a foreign merge resolved but not concluded: MERGE_HEAD live, no unmerged entries.
+	// Only the MERGE_HEAD probe sees it.
+	// It is the most dangerous shape, because nothing about the worktree looks wrong.
 	shapeMergeHeadOnly
-	// shapeConflictedIndexOnly is a conflicted `git merge --squash`: unmerged index entries with NO
-	// MERGE_HEAD, since --squash writes none. Only the conflicted-index probe sees it. Plain cherry-pick
-	// and `checkout -m` conflicts land in this same shape.
+	// shapeConflictedIndexOnly is a conflicted `git merge --squash`: unmerged index entries, no MERGE_HEAD.
+	// --squash writes no MERGE_HEAD, so only the conflicted-index probe sees it.
+	// Plain cherry-pick and `checkout -m` conflicts land in this same shape.
 	shapeConflictedIndexOnly
 )
 
-// TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses is the foreign-state matrix, and it exists
-// because the single warp-conflicted fixture that covered this before could not fail for three of the
-// four probes foreignMergeStatePresent runs.
+// TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses checks that every merge verb refuses foreign merge state.
+// It does so on either checkout, in each of three shapes.
+// The shapes separate the two probe kinds.
+// The sides matter: the weft checkout is the hidden half an operator is told never to touch.
+// Foreign state there is the state nobody watches for.
+// Every helper on this path is per-side.
 //
-// Sabotage-measured, not assumed: deleting BOTH weft probes left the whole suite green, and so did
-// deleting either warp probe on its own. The reason is that one conflicted plain-git merge in the warp
-// checkout sets `warpMergeHead` and `warpConflicted` simultaneously, so either alone carried the
-// assertion, and no fixture ever populated the weft side at all.
-//
-// The matrix is three shapes on each of the two sides. The shapes separate the two probe KINDS (see
-// foreignShape). The SIDES matter for a different reason: the weft checkout is the hidden half an
-// operator is told never to touch, so state appearing there is precisely the state nobody is watching
-// for, and every helper on this path is per-side.
-// Each row asserts its own shape with t.Fatal before asserting any refusal, so a fixture that silently
-// stopped producing the state under test fails on its precondition instead of passing vacuously.
+// One conflicted plain-git merge in the warp checkout sets `warpMergeHead` and `warpConflicted` together.
+// So either warp probe alone passes the assertion, and no single-side fixture exercises the weft probes.
+// Each row asserts its own shape with t.Fatal before asserting any refusal,
+// so a fixture that stops producing the state under test fails on its precondition instead of passing vacuously.
 func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -1610,8 +1528,7 @@ func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 				gitkit.MustRun(t, dir, "git", "add", "--", conflictPath)
 			}
 
-			// Precondition: exactly the shape this row is named for, so the row really does rest on the
-			// probe it is meant to pin.
+			// Precondition: the checkout is in exactly this row's shape, so the row rests on the probe it pins.
 			mergeHeadBefore, mergeHeadPresent := gitMergeHeadRaw(t, dir)
 			unmergedBefore := gitUnmergedPaths(t, dir)
 			wantMergeHead := tt.shape != shapeConflictedIndexOnly
@@ -1624,8 +1541,8 @@ func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 			}
 			statusBefore := gitkit.GitStatusPorcelain(t, dir)
 
-			// A read-only probe reports fabric's own state, which foreign plain-git state does not make
-			// true, on either side and in every shape.
+			// A read-only probe reports fabric's own state.
+			// Foreign plain-git state does not make that state true, on either side and in every shape.
 			if inProgress, err := f.MergeInProgress(); err != nil || inProgress {
 				t.Errorf("MergeInProgress() with foreign state = (%v, %v); want (false, nil)", inProgress, err)
 			}
@@ -1660,10 +1577,10 @@ func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 	}
 }
 
-// gitMergeSquashAllowConflict runs a plain `git merge --squash ref` in dir, tolerating the nonzero
-// exit a conflicted squash returns. The result is the conflicted-index-with-no-MERGE_HEAD shape:
-// --squash deliberately writes no MERGE_HEAD, so this is the state only the conflicted-index probe
-// can see.
+// gitMergeSquashAllowConflict runs a plain `git merge --squash ref` in dir.
+// It ignores the nonzero exit that a conflicted squash returns.
+// The result is a conflicted index with no MERGE_HEAD, because --squash writes none.
+// Only the conflicted-index probe sees that state.
 func gitMergeSquashAllowConflict(t *testing.T, dir, ref string) {
 	t.Helper()
 

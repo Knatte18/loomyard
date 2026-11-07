@@ -42,7 +42,10 @@ func writeFileString(t *testing.T, path, content string) {
 	}
 }
 
-// TestRecords covers the guard: a write's single commit and its digest, a read of the committed copies, a hand edit setting Mismatch, a restore, an unguarded read before the first commit, an extra trailer and an unknown key surviving a write.
+// TestRecords covers the guard: a write's single commit and its digest, and a read of the committed copies.
+// It also covers a hand edit setting Mismatch and a restore.
+// It also covers an unguarded read before the first commit.
+// It also covers an extra trailer and an unknown key surviving a write.
 func TestRecords(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

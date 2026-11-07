@@ -1,19 +1,19 @@
 // status.go declares the persisted status-file shape and its JSON tags.
-// internal/state (the persistence package) and this file's own State type are two different
-// things -- keep the two apart when reading identifiers in this file and its callers.
+// The State type here is not internal/state, the persistence package.
+// Keep the two apart when reading identifiers here and in their callers.
 
 package shedengine
 
 import "encoding/json"
 
-// State is the status file's own lifecycle field: a superset of RunOutcome, adding the two
-// values Run can never return (running, failed).
+// State is the status file's lifecycle field.
+// It is a superset of RunOutcome, adding running and failed, which Run never returns.
 type State string
 
-// The six legal State values. A persisted value outside this set -- including the empty
-// string -- is a hard error at the read gate.
-// StateAwaiting is the planned hand-off halt: it behaves like blocked wherever a halt is
-// observed, but is no failure and spends no bounce budget.
+// The six legal State values.
+// A persisted value outside this set, including the empty string, is a hard error at the read gate.
+// StateAwaiting is the planned hand-off halt.
+// It behaves like blocked wherever a halt is observed, but it is no failure and spends no bounce budget.
 const (
 	StateRunning  State = "running"
 	StatePaused   State = "paused"
@@ -24,10 +24,10 @@ const (
 )
 
 // valid reports whether s is one of the six legal State constants.
-// The empty string is rejected rather than tolerated: State is a mandatory enum string read from
-// a file an external actor seeds, so a typo or a partial seed would otherwise fall through to
-// undefined behaviour -- silently treated as running, or as done.
-// PauseRequested (bool) and History (slice) below tolerate their zero value, since neither is a mandatory enum string.
+// The empty string is rejected rather than tolerated:
+// State is a mandatory enum string read from a file an external actor seeds,
+// so a typo or a partial seed would otherwise be silently treated as running, or as done.
+// PauseRequested (bool) and History (slice) tolerate their zero value, since neither is a mandatory enum string.
 func (s State) valid() bool {
 	switch s {
 	case StateRunning, StatePaused, StateDone, StateBlocked, StateFailed, StateAwaiting:
@@ -66,7 +66,7 @@ type GateSpan struct {
 	End   string `json:"end"`
 }
 
-// CallerShed is the caller label of lym's own automatic steps: the Go driver and batten.
+// CallerShed is the caller label of the automatic steps that lym itself takes.
 const CallerShed = "shed"
 
 // HistoryEntry is one producer call's durable record, and the element type of Result.History.
@@ -77,18 +77,18 @@ type HistoryEntry struct {
 	Outcome  Outcome `json:"outcome"`
 	Output   string  `json:"output"`
 	At       string  `json:"at"`
-	// GateAttempts is the gate's own re-prompt count (shuttleengine.GateOutcome.Attempts),
-	// carried through so the status file shows it -- the same idiom as max_bounces, per
-	// the producer-gate contract's "an explicit attempt counter bounds the loop"
-	// requirement. Nil means this call's producer applied no gate; non-nil is shown even when
-	// its value is 0 (a gate that passed on the first try), since 0 is a meaningful, distinct
-	// verdict from "ungated" and collapsing the two would silently lose it.
+	// GateAttempts is the gate's own re-prompt count (shuttleengine.GateOutcome.Attempts).
+	// It is carried through so the status file shows it, as the producer-gate contract requires:
+	// an explicit attempt counter bounds the loop.
+	// Nil means this call's producer applied no gate.
+	// A non-nil 0 is a gate that passed on its first try, a verdict distinct from ungated.
+	// Collapsing the two into nil would silently lose it.
 	GateAttempts *int `json:"gate_attempts,omitempty"`
 	// GateSpans are the time spans this call's gate entries took, in the order they started.
 	// A status file written before the field existed decodes as nil, and a nil list is not written.
 	GateSpans []GateSpan `json:"gate_spans,omitempty"`
-	// BudgetExempt is true on a Stuck entry not counted against the bounce budget: one the producer marked, a Halt, or one at a row with no OnStuck.
-	// A status file written before the field existed decodes as false and counts as before.
+	// BudgetExempt is true on a Stuck entry that is not counted against the bounce budget.
+	// Such an entry is one the producer marked, a Halt, or one at a row with no OnStuck; absent, it decodes as false.
 	BudgetExempt bool `json:"budget_exempt,omitempty"`
 	// Repeats is the number of further identical calls folded into this entry, zero when none.
 	Repeats int `json:"repeats,omitempty"`
@@ -115,26 +115,31 @@ type HistoryEntry struct {
 	// Reason is the entry gate's text on a skipped entry, empty on every other entry.
 	// A status file written before the field existed decodes as empty.
 	Reason string `json:"reason,omitempty"`
-	// Machine is the name of the machine whose shed appended this entry, empty on an entry written by a shed told none and on a goto or resume entry.
+	// Machine is the machine whose shed appended this entry; empty when none was given, and on goto or resume entries.
 	// A status file written before the field existed decodes as empty.
 	Machine string `json:"machine,omitempty"`
-	// Block is the block path of the row that wrote this entry: the enclosing block rows' names, outermost first, joined by "/".
-	// It is empty on an entry of a row outside every block.
+	// Block is the block path of the row that wrote this entry.
+	// It is the enclosing block rows' names, outermost first, joined by "/", and it is empty outside every block.
 	// A status file written before the field existed decodes as empty.
 	Block string `json:"block,omitempty"`
 }
 
 // Status is the whole status file.
 //
-// Field ownership is split by who writes the field.
+// Field ownership follows who writes each field.
 // CurrentProducer, State, PauseReason, Error, Activity, and History are Shed-owned and rewritten on every persist.
-// PauseRequested is shared write-to-clear, set true only by an outside actor and written false only by Shed, exactly once, in the persist that records StatePaused.
-// PauseBefore and PauseAfter are outside-set and cleared by Shed together, only in the persist that records StatePaused for a fired condition and in Goto's persist.
-// PauseRequestedBy, PauseBeforeBy and PauseAfterBy are outside-set beside the request they accompany and cleared in the same write as it.
-// EnteredRow is Shed-owned and written only by the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
+// PauseRequested is shared write-to-clear.
+// An outside actor sets it true; Shed writes it false, exactly once, in the persist that records StatePaused.
+// PauseBefore and PauseAfter are set from outside.
+// Shed clears them together in the persist that records StatePaused for a fired condition, and in Goto's persist.
+// PauseRequestedBy, PauseBeforeBy and PauseAfterBy are set from outside beside the request they accompany.
+// They are cleared in the same write as the request.
+// EnteredRow is Shed-owned.
+// Its writers are the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
 // Product is external-writer-owned and only ever carried through.
 type Status struct {
-	// CurrentProducer names the row the run is at; empty means the run is at its start, the first row of its producer list.
+	// CurrentProducer names the row the run is at;
+	// empty means the run is at its start, the first row of its producer list.
 	CurrentProducer string `json:"current_producer"`
 	State           State  `json:"state"`
 	Error           string `json:"error"`
@@ -147,11 +152,11 @@ type Status struct {
 	// PendingBy is the caller label of a step that resumed a halted run, waiting for the next appended history entry to carry it.
 	// A status file written before the field existed decodes as empty.
 	PendingBy string `json:"pending_by,omitempty"`
-	// EnteredRow names the row the run entered, whose entry gate held or was bypassed by a goto, so the row is called again without evaluating its gate.
-	// A status without the field, or naming another row, reads as not entered.
+	// EnteredRow names the row the run entered, so the row is called again without evaluating its gate.
+	// Its entry gate held or a goto bypassed it. A status without the field, or naming another row, reads as not entered.
 	EnteredRow     string `json:"entered_row,omitempty"`
 	PauseRequested bool   `json:"pause_requested"`
-	// PauseRequestedBy is the caller label of the outside actor that set PauseRequested, cleared in the write that consumes the request.
+	// PauseRequestedBy is the outside actor's caller label for PauseRequested, cleared when the request is consumed.
 	// A status file written before the field existed decodes as empty.
 	PauseRequestedBy string `json:"pause_requested_by,omitempty"`
 	// PauseBefore names the row the run pauses before running, empty when none is recorded.
@@ -164,18 +169,19 @@ type Status struct {
 	// PauseAfterBy is the caller label of the outside actor that recorded PauseAfter, cleared with the conditions.
 	// A status file written before the field existed decodes as empty.
 	PauseAfterBy string `json:"pause_after_by,omitempty"`
-	// PauseReason is why the run is paused, set by every write that records StatePaused and empty on every other write.
-	// A status file written before the field existed decodes as empty.
+	// PauseReason is why the run is paused, set by every write that records StatePaused.
+	// It is empty on every other write. A status file written before the field existed decodes as empty.
 	PauseReason string         `json:"pause_reason,omitempty"`
 	Activity    Activity       `json:"activity"`
 	History     []HistoryEntry `json:"history"`
-	// Product is an opaque product-owned payload Shed round-trips verbatim and never inspects,
-	// validates, or interprets. It carries no compatibility claim for loom's own schema.
+	// Product is an opaque, product-owned payload Shed round-trips verbatim and never inspects, validates, or interprets.
+	// It carries no compatibility claim for loom's own schema.
 	Product json.RawMessage `json:"product,omitempty"`
 }
 
 // ParseStatusTolerant decodes data, the bytes of a status.json a caller read elsewhere, such as from a git tree.
-// An unknown key reads, and no State value is checked, so a finished or older record the live read gate refuses still decodes.
+// Unknown keys are ignored and no State value is checked,
+// so a finished or older record that a strict read would refuse still decodes.
 func ParseStatusTolerant(data []byte) (Status, error) {
 	var st Status
 	if err := json.Unmarshal(data, &st); err != nil {

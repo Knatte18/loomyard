@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// buildEvent renders one `go test -json` event line of a package's build, which names its package by ImportPath, without its newline.
+// buildEvent renders one `go test -json` event line of a package's build, without its newline.
+// The line names its package by ImportPath.
 func buildEvent(action, output string) string {
 	line := fmt.Sprintf(`{"Action":%q,"ImportPath":"example.com/p [example.com/p.test]"`, action)
 	if output != "" {
@@ -39,7 +40,8 @@ func goEvent(action, test, output string) string {
 	return line + "}"
 }
 
-// goPackageEvent renders one package-level `go test -json` event line for pkg, stamped at the given offset in seconds past a fixed start, without its newline.
+// goPackageEvent renders one package-level `go test -json` event line for pkg, without its newline.
+// The event is stamped at offset seconds past a fixed start.
 func goPackageEvent(pkg, action, output string, offset, elapsed float64) string {
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	event := map[string]any{"Action": action, "Package": pkg, "Time": base.Add(time.Duration(offset * float64(time.Second))).Format(time.RFC3339Nano)}

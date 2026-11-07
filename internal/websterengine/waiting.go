@@ -1,4 +1,5 @@
-// waiting.go implements the batch that waits on its parent: a fork or recovery strand that stopped on a step only the run's parent can take reports NEEDS_PARENT.
+// waiting.go implements the batch that waits on its parent.
+// A fork or recovery strand that stops on a step only the run's parent can take reports NEEDS_PARENT.
 // record-batch or recover-batch then records the batch in flight with status waiting, spending no recovery.
 
 package websterengine
@@ -13,7 +14,8 @@ func waitsOnParent(bs *BatchState) bool {
 	return bs != nil && !bs.Terminal && bs.Status == DigestStatusWaiting
 }
 
-// recordWaiting records bs as waiting on the parent with digest, archiving the report the strand wrote so a re-begin or a fresh recovery finds none.
+// recordWaiting records bs as waiting on the parent with digest.
+// It archives the report the strand wrote, so a re-begin or a fresh recovery finds none.
 // The batch stays in flight with its recovery count and start commit unchanged, and the in-flight cursor stays on it.
 func recordWaiting(bs *BatchState, digest *Digest, reportsDir string, number int, slug string, now func() time.Time) error {
 	if _, err := archiveStaleReport(reportsDir, number, slug, now); err != nil {

@@ -22,7 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeShuttle is a scripted sheddriver.AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
+// fakeShuttle is a scripted sheddriver.AgentShuttle: it records every call.
+// It runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
 type fakeShuttle struct {
 	starts       []shuttleengine.Spec
 	attaches     []shuttleengine.Spec
@@ -142,7 +143,8 @@ func newCallFixture(t *testing.T, producer string, state shedengine.State) *call
 	return f
 }
 
-// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and the status error reason.
+// haltAtVerifyRow halts the run at row, with a Stuck history entry for it at 11:30.
+// The history starts with a Done entry at 11:00, and the status error is reason.
 func (f *callFixture) haltAtVerifyRow(row, reason string) {
 	f.status.Error = reason
 	f.status.History = []shedengine.HistoryEntry{
@@ -252,7 +254,8 @@ const (
 )
 
 // TestCall_SpawnPath covers the call for a stop no attempt has arbitrated yet, including the eligibility list.
-// Each eligible stop spawns exactly one run whose spec, attempt record, prompt and marker carry the expected values; every refused stop spawns nothing and writes no attempt directory.
+// An eligible stop spawns exactly one run whose spec, attempt record, prompt and marker carry the expected values;
+// a refused stop spawns nothing and writes no attempt directory.
 func TestCall_SpawnPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -282,7 +285,8 @@ func TestCall_SpawnPath(t *testing.T) {
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
 		{
-			// The target answers only once the attempt record exists, so the prompt naming it pins the read at the spawn, after settleFresh writes the record.
+			// The target answers only once the attempt record exists, so a prompt naming it pins the read at the spawn.
+			// settleFresh writes that record first.
 			name: "amendment target read at the spawn", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *callFixture) {
 				f.amendmentTarget = func() string {
@@ -489,7 +493,8 @@ func TestCall_SpawnPath(t *testing.T) {
 	}
 }
 
-// TestCall_Rerun covers the call for a stop an attempt already arbitrated: it spawns nothing and returns or awaits that attempt's verdict.
+// TestCall_Rerun covers the call for a stop an attempt already arbitrated:
+// it spawns nothing and returns or awaits that attempt's verdict.
 func TestCall_Rerun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -633,7 +638,9 @@ func TestCall_Rerun(t *testing.T) {
 	}
 }
 
-// TestVerdictGate covers the gate the arbiter's started and attached runs carry: it fails a verdict file that does not read, such as a verbs item whose ": " makes it a map, and passes an absent file and one written in block scalars.
+// TestVerdictGate covers the gate the arbiter's started and attached runs carry:
+// it fails a verdict file that does not read, such as a verbs item whose ": " makes it a map;
+// it passes an absent file and one written in block scalars.
 func TestVerdictGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

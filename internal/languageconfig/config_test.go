@@ -1,4 +1,5 @@
-// config_test.go verifies language.yaml's Load degrade and content-failure paths and AppendSkills' ordering, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() so the test stays spawn-free.
+// config_test.go verifies Load's degrade and content-failure paths for language.yaml, and AppendSkills' ordering.
+// It seeds its fixtures with os.MkdirAll and os.WriteFile under t.TempDir, so the tests spawn no process.
 
 package languageconfig_test
 

@@ -1,4 +1,4 @@
-// guards.go finds the top-level tests marked `//lym:guard` by a static parse of the `_test.go` files of the module's package directories.
+// guards.go finds the top-level tests marked `//lym:guard` by a static parse of `_test.go` files.
 
 package impactset
 
@@ -29,7 +29,7 @@ const (
 // RequireImportPath is the import path of the test kit whose Require call opens every test function with its tier.
 const RequireImportPath = "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// GuardScanKind classifies a GuardScanError by the way forward its author has.
+// GuardScanKind classifies a GuardScanError by the failure it reports.
 type GuardScanKind string
 
 const (
@@ -45,18 +45,21 @@ const (
 type GuardTest struct {
 	// Name is the top-level test function's name.
 	Name string
-	// Tier is the file's tier as FileTier reads it.
+	// Tier is the tier of the file declaring the test, from its `tiergate.Require` calls or else its build constraint.
 	Tier int
 }
 
-// GuardScanError is a failure of the guard or seam scan that sits in the content of a test file: a file that does not parse, a `//lym:guard` or `//lym:seam` marker not directly above a top-level test, a guard marker in a `tier2` or `tier3` file, or a seam marker whose argument is not a `<unit>#<Type>` glyph.
-// The author of the change can fix each one, unlike a failure to read a directory or git.
+// GuardScanError is a failure of the guard or seam scan that sits in the content of a test file:
+// a file that does not parse; a `//lym:guard` or `//lym:seam` marker not directly above a top-level test;
+// a guard marker in a `tier2` or `tier3` file; and a seam marker whose argument is not a `<unit>#<Type>` glyph.
+// The author of the change can fix each one.
 type GuardScanError struct {
 	// File is the worktree-relative, slash-separated path of the test file the error sits in.
 	File string
 	// Kind is which of the four failures this is.
 	Kind GuardScanKind
-	// Line is the marker's line for the marker kinds, and the parser's line for GuardParse when the parser reports a position; 0 otherwise.
+	// Line is the marker's line for the marker kinds.
+	// For GuardParse it is the line the parser reports, or 0 when it reports none.
 	Line int
 
 	message string
@@ -70,9 +73,11 @@ func IsGuardScanError(err error) bool {
 	return errors.As(err, &scanErr)
 }
 
-// FindGuardTests returns, per package directory, the tests marked `//lym:guard` in its `_test.go` files, sorted by name, each with the tier of its file.
+// FindGuardTests returns, per package directory, the tests marked `//lym:guard` in its `_test.go` files.
+// Each directory's tests are sorted by name, and each test carries the tier of its file.
 // The caller passes the package directories, worktree-relative and slash-separated.
-// A marker not directly above a top-level `func Test…` line, or in a `tier2` or `tier3` file, is an error naming the file and line.
+// A marker not directly above a top-level `func Test…` line is an error, as is one in a `tier2` or `tier3` file.
+// Such an error names the file and line.
 func FindGuardTests(worktree string, dirs []string) (map[string][]GuardTest, error) {
 	guards := map[string][]GuardTest{}
 	for _, dir := range dirs {
@@ -99,12 +104,16 @@ func FindGuardTests(worktree string, dirs []string) (map[string][]GuardTest, err
 	return guards, nil
 }
 
-// moduleDirsFormat is the `go list -f` template ModuleGuardTests reads: one NUL-terminated record per entry, its directory then its error, tab-separated.
+// moduleDirsFormat is the `go list -f` template for one NUL-terminated record per package.
+// Each record is the package directory, a tab, and the list error, if any.
 const moduleDirsFormat = `{{.Dir}}{{"\t"}}{{with .Error}}{{.Err}}{{end}}{{"\x00"}}`
 
-// ModuleGuardTests returns, per package directory of the module at moduleDir, the tests marked `//lym:guard` with their file's tier, keyed by the module-relative, slash-separated directory.
-// It lists the packages under the tier tags `tier0` through `tier3` with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
-// A failed `go list` run, or an entry with no directory such as an unreadable package directory, is a plain error naming moduleDir and the enumeration's own error, and so is a listed package directory outside moduleDir.
+// ModuleGuardTests returns, per package directory of the module at moduleDir, the tests marked `//lym:guard`.
+// The map is keyed by the module-relative, slash-separated directory, and each test carries the tier of its file.
+// It lists the packages under the tier tags `tier0` through `tier3` with `go list -e`.
+// A package whose test file cannot be read stays listed, and the scan reports that file as a GuardParse error.
+// A failed `go list` run is a plain error naming moduleDir and the enumeration's own error.
+// So are an entry with no directory, such as an unreadable package directory, and a listed directory outside moduleDir.
 // A marker the scan rejects is a *GuardScanError.
 func ModuleGuardTests(moduleDir string) (map[string][]GuardTest, error) {
 	absolute, err := filepath.Abs(moduleDir)
@@ -195,7 +204,8 @@ func guardNamesInFile(path, rel string) ([]GuardTest, error) {
 	return names, nil
 }
 
-// onlyKeepLinesAfter reports whether every comment is a `//testtiming:keep` or `//lym:seam` line, the only lines allowed between a marker and its func line.
+// onlyKeepLinesAfter reports whether every comment is a `//testtiming:keep` or `//lym:seam` line.
+// Those are the only lines allowed between a guard marker and its func line.
 func onlyKeepLinesAfter(comments []*ast.Comment) bool {
 	for _, comment := range comments {
 		if !strings.HasPrefix(comment.Text, testtimingKeepTag) && !isSeamLine(comment.Text) {
@@ -205,8 +215,10 @@ func onlyKeepLinesAfter(comments []*ast.Comment) bool {
 	return true
 }
 
-// FileTier returns the tier of a test file: the lowest tier its top-level functions name in an opening `tiergate.Require` call.
-// A file making no such call, such as one written before the run-time selector, reads its tier from its `//go:build` constraint: the N of the `tierN` tag it names, 0 when it names none.
+// FileTier returns the tier of a test file.
+// It is the lowest tier that the file's top-level functions name in an opening `tiergate.Require` call.
+// A file making no such call takes its tier from its `//go:build` constraint.
+// That is the N of the `tierN` tag it names, or 0 when it names none.
 // A negated tag does not count, and a constraint naming several tier tags reads as the lowest.
 func FileTier(file *ast.File) int {
 	tier := -1
@@ -234,7 +246,8 @@ func FileTier(file *ast.File) int {
 	return max(tier, 0)
 }
 
-// RequiredTier returns the tier fn's first statement names in a `tiergate.Require(t, N)` call with an integer literal N, under whatever name file imports the kit as.
+// RequiredTier returns the tier that the first statement of fn names in a `tiergate.Require(t, N)` call.
+// The N must be an integer literal, and the call uses whatever name the file imports the kit as.
 // It reports false when the first statement is no such call.
 func RequiredTier(file *ast.File, fn *ast.FuncDecl) (int, bool) {
 	kitName := ""

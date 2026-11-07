@@ -1,9 +1,8 @@
-// warpforward.go collects the warp-only forwarding methods on *Fabric: thin, one-line delegations
-// to the paired gitrepo.Repo verb on f.code, added so an out-of-package caller can invoke a
-// warp-mutating git verb through Fabric's public API — preserving the one-repo illusion — without
-// ever touching f.code directly.
-// Kept in its own file rather than folded into fabric.go to keep the delegation cluster isolated
-// from Fabric's construction and cross-repo plumbing.
+// warpforward.go holds the warp-only forwarding methods on *Fabric.
+// Most of them delegate to gitrepo.Repo verbs on f.code,
+// so an out-of-package caller can run warp git verbs through Fabric's public API.
+// That keeps the one-repo illusion, since no caller touches f.code directly.
+// The methods sit apart from fabric.go's construction and cross-repo plumbing.
 
 package fabricengine
 
@@ -17,33 +16,32 @@ import (
 )
 
 // CurrentBranch returns the short name of the branch the warp checkout's HEAD currently points at.
-// It is a thin delegation to gitrepo.Repo.CurrentBranch on f.code,
-// and inherits that method's rejection of detached HEAD (returns wrapped error).
+// It returns an error when HEAD is detached.
 func (f *Fabric) CurrentBranch() (string, error) {
 	return f.code.CurrentBranch()
 }
 
 // HeadSHA returns the full commit SHA the warp checkout's HEAD currently points at.
-// It is a thin, read-only delegation to gitrepo.Repo.CurrentSHA on f.code,
-// so a caller reads a commit without naming a fabric side.
+// It is read-only.
 func (f *Fabric) HeadSHA() (string, error) {
 	return f.code.CurrentSHA()
 }
 
 // IsAncestor reports whether sha is an ancestor of ref in the warp checkout.
-// It is a thin, read-only delegation to gitrepo.Repo.IsAncestor on f.code.
+// It is read-only.
 func (f *Fabric) IsAncestor(sha, ref string) (bool, error) {
 	return f.code.IsAncestor(sha, ref)
 }
 
 // CommitExists reports whether the warp checkout holds the commit sha.
-// It is a thin, read-only delegation to gitrepo.Repo.SHAExists on f.code, so an invalid SHA and a read error read as absent.
+// It is read-only, and an invalid SHA or a read error reports false.
 func (f *Fabric) CommitExists(sha string) bool {
 	return f.code.SHAExists(sha)
 }
 
-// MergeBase returns the SHA of the best common ancestor of the warp checkout's HEAD and ref, where ref is a branch, a remote-tracking ref or a SHA.
-// It is a read-only delegation to gitrepo.Repo.MergeBase on f.code, so a caller reads the task branch's fork point without naming a fabric side.
+// MergeBase returns the SHA of the best common ancestor of the warp checkout's HEAD and ref.
+// ref is a branch, a remote-tracking ref or a SHA.
+// It is read-only; a caller uses it to read a task branch's fork point.
 func (f *Fabric) MergeBase(ref string) (string, error) {
 	head, err := f.code.CurrentSHA()
 	if err != nil {
@@ -57,19 +55,22 @@ func (f *Fabric) MergeBase(ref string) (string, error) {
 }
 
 // HeadContains reports whether sha is the commit at HEAD of the worktree at worktreePath, or one of its ancestors.
-// It reads in-process through gitrepo.Repo.HeadContains and takes a path rather than a *Fabric, so a caller running from any worktree of a hub, paired or not, can ask.
+// It takes a path rather than a *Fabric, so a caller in any worktree of a hub, paired or not, can ask.
 func HeadContains(worktreePath, sha string) (bool, error) {
 	return gitrepo.New(worktreePath).HeadContains(sha)
 }
 
-// StencilSource builds the stencil seed pass's Source for the worktree at worktreePath, told the running binary's identity.
-// A running identity with a revision sets Writer to its revision and commit time, and Older to the ordering of a recorded writer against it.
-// Older orders by ancestry when the worktree holds both commits, answering RecordedOlder only for a strict ancestor.
-// It orders by commit time when the worktree lacks either, answering RecordedOlder only when the recorded time is strictly before the running time and both are set.
+// StencilSource builds the stencil seed pass's Source for worktreePath, given the running binary's identity.
+// A running identity with a revision sets Writer to its revision and commit time.
+// Older orders by ancestry when the worktree holds both commits; it answers RecordedOlder only for a strict ancestor.
+// It orders by commit time when the worktree lacks either commit.
+// It answers RecordedOlder only when the recorded time is strictly before the running time and both are set.
 // Otherwise, or on a failed read (logged once), it answers OrderingUnknown.
-// An empty sourceDir returns a Source with no Dir and no Build, which keeps the drift warning silent, and an empty revision returns a Source with no Build.
-// Otherwise Build asks HeadContains for the revision at most once per Source, so a pass with several drifted stencils reads ancestry once and a pass with none runs no git.
-// A failed read is logged and reported as unknown ancestry.
+// An empty sourceDir returns a Source with no Dir and no Build, which keeps the drift warning silent,
+// and an empty revision returns a Source with no Build.
+// Build asks HeadContains for the revision at most once per Source,
+// so a pass with several drifted stencils reads ancestry once and a pass with none runs no git.
+// A failed Build read is logged and reported as unknown ancestry.
 func StencilSource(worktreePath, sourceDir string, running buildvcs.Identity) stencilstore.Source {
 	source := stencilstore.Source{Dir: sourceDir}
 	if running.Revision == "" {
@@ -126,8 +127,7 @@ func StencilSource(worktreePath, sourceDir string, running buildvcs.Identity) st
 	return source
 }
 
-// ResetHard has moved to destroy.go, where it becomes the gated executor for the ResetHard
-// primitive — see that file's own doc comment. It is not a thin delegation like its neighbours
-// above: there is exactly one correct ownership/dirtiness declaration for "reset this Fabric's warp
-// checkout", so the gated wrapper hardcodes it rather than exposing it, and it lives beside the rest
-// of the destructive surface instead of here.
+// ResetHard is not a thin delegation: its gated executor lives in destroy.go.
+// It sits beside the rest of the destructive surface.
+// Resetting this Fabric's warp checkout has exactly one correct ownership and dirtiness declaration,
+// so the gated wrapper hardcodes it rather than exposing it.

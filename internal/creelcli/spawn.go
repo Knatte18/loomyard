@@ -1,4 +1,5 @@
-// spawn.go starts the detached creel daemon a verb's client asks for when none answers, and opens the log file its stderr goes to.
+// spawn.go starts the detached creel daemon a verb's client asks for when none answers;
+// it also opens the log file its stderr goes to.
 
 package creelcli
 
@@ -20,7 +21,8 @@ const daemonLogCap = 1 << 20
 
 // openDaemonLog opens the daemon log at path for append, creating it and its directory.
 // A log larger than daemonLogCap is truncated first, so the file stays bounded.
-// A log that cannot be opened is logged at Warn and answered as a nil file with the error, so the spawn goes on with a null stderr.
+// A log that cannot be opened is logged at Warn and answered as a nil file with the error,
+// so the spawn goes on with a null stderr.
 func openDaemonLog(path string) (*os.File, error) {
 	file, err := openAppendCapped(path)
 	if err != nil {
@@ -46,8 +48,10 @@ func openAppendCapped(path string) (*os.File, error) {
 	return file, nil
 }
 
-// spawnDaemon starts `<this binary> creel daemon --hub-path <hub>` detached from the hub directory, with null stdin and stdout and its stderr appended to the log at logPath, and returns its pid with the signal of its exit.
-// A background wait on the daemon reaps it and sends that signal when it exits.
+// spawnDaemon starts `<this binary> creel daemon --hub-path <hub>` detached from the hub directory.
+// Its stdin and stdout are null, and its stderr is appended to the log at logPath.
+// It returns the daemon's pid with the channel that reports its exit.
+// A background wait reaps the daemon and sends its exit on that channel.
 // A log that cannot be opened leaves the daemon's stderr null.
 // Under go test it starts nothing and returns an error, so no test re-executes the test binary.
 func spawnDaemon(hubPath, logPath string) (creelengine.Spawn, error) {
@@ -72,8 +76,10 @@ func spawnDaemon(hubPath, logPath string) (creelengine.Spawn, error) {
 	return creelengine.Spawn{PID: cmd.Process.Pid, Exited: reapDaemon(cmd)}, nil
 }
 
-// reapDaemon waits on the started command in the background, logs its exit with the pid and the exit status, and sends one SpawnExit.
-// LostRace is true exactly when the exit status is 0: the daemon exits 0 when another daemon holds the lock or it stops cleanly, and 1 when its start fails.
+// reapDaemon waits on the started command in the background and logs its exit with the pid and the exit status;
+// it sends one SpawnExit.
+// LostRace is true exactly when the exit status is 0:
+// the daemon exits 0 when another daemon holds the lock or it stops cleanly, and 1 when its start fails.
 // A wait error that is no exit code reads as not a lost race.
 func reapDaemon(cmd *exec.Cmd) <-chan creelengine.SpawnExit {
 	exited := make(chan creelengine.SpawnExit, 1)

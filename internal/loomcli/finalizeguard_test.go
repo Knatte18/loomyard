@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFinalizeDirtGuard covers the Finalize arm composed with a later guard, then the receiver's wiring of both arms.
+// TestFinalizeDirtGuard covers the Finalize arm composed with a later guard.
+// It then covers the receiver's wiring of both arms.
 func TestFinalizeDirtGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

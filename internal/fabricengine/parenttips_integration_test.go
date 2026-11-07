@@ -1,5 +1,7 @@
-// parenttips_integration_test.go proves the code-side reads a parent merge needs — ReadParentTips, ChangedPaths and HoldsWork — and FastForwardPair's fast-forward-only move and refusals.
-// Package fabricengine_test; it reuses pull_integration_test.go's buildReconcileFixture and rewriteWarpRemoteHistory.
+// parenttips_integration_test.go proves the code-side reads a parent merge needs:
+// ReadParentTips, ChangedPaths and HoldsWork.
+// It also covers FastForwardPair's fast-forward-only move and its refusals.
+// It reuses buildReconcileFixture and rewriteWarpRemoteHistory from pull_integration_test.go.
 
 package fabricengine_test
 
@@ -17,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// pushFromSecondClone commits one new file on main in a fresh clone of bareDir, pushes it and returns the new upstream tip.
+// pushFromSecondClone commits one new file on main in a fresh clone of bareDir and pushes it.
+// It returns the SHA of that commit, the new upstream tip.
 func pushFromSecondClone(t *testing.T, fixturesDir, bareDir, name string) string {
 	t.Helper()
 
@@ -128,7 +131,9 @@ func TestReadParentTips(t *testing.T) {
 	}
 }
 
-// TestLocalOnlyCommits covers a branch level with origin, one with two local commits listed newest first, and one with no tracking ref.
+// TestLocalOnlyCommits covers three branches:
+// one level with origin, one with two local commits, and one with no tracking ref.
+// The local commits are listed newest first.
 func TestLocalOnlyCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -221,7 +226,9 @@ func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
 	}
 }
 
-// TestChangedPathsBothSides_NamesRenamesAndRawPaths asserts a rename is named by both paths, a non-ASCII path arrives raw, an empty range names nothing and an unknown ref is an error naming it.
+// TestChangedPathsBothSides_NamesRenamesAndRawPaths asserts that a rename is named by both paths.
+// It also asserts that a non-ASCII path arrives raw and that an empty range names nothing.
+// An unknown ref is an error naming it.
 func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -257,7 +264,8 @@ func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
 	}
 }
 
-// TestLineChange_CountsLinesAndListsPaths asserts a change of three added and two deleted lines, a pure rename and a binary file read as six lines, every path with the rename at both, and the added lines' text, and that an unknown ref is an error naming it.
+// TestLineChange_CountsLinesAndListsPaths asserts the added and deleted line counts of a commit range.
+// It also asserts the paths it lists, the text of the added lines, and that an unknown ref is an error naming it.
 func TestLineChange_CountsLinesAndListsPaths(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -296,7 +304,9 @@ func TestLineChange_CountsLinesAndListsPaths(t *testing.T) {
 	}
 }
 
-// TestFabric_DiffSize asserts the added lines, deleted lines and changed files of a commit range, a binary file and a pure rename each counting as one file and no lines, and that an unknown ref is an error naming it.
+// TestFabric_DiffSize asserts the added lines, deleted lines and changed files of a commit range.
+// A binary file and a pure rename each count as one file and no lines.
+// An unknown ref is an error naming it.
 func TestFabric_DiffSize(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -380,7 +390,8 @@ func TestFabric_DiffSize(t *testing.T) {
 	}
 }
 
-// TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as a seven-character SHA prefix and subject, newest first, an empty result for an empty range and an error naming an unknown ref.
+// TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as seven-character SHA prefixes and subjects.
+// They list newest first, an empty range gives an empty result, and an unknown ref is an error naming it.
 func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -411,7 +422,8 @@ func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 	}
 }
 
-// TestHeadHoldsCommitsNotIn asserts HEAD level with a ref reads false, a commit past the ref reads true, the HEAD tip as the ref reads false, and an unknown ref is an error naming it.
+// TestHeadHoldsCommitsNotIn asserts that HEAD holds a commit not in a ref only when a commit sits past the ref.
+// An unknown ref is an error naming it.
 func TestHeadHoldsCommitsNotIn(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -473,8 +485,9 @@ func TestHoldsWork(t *testing.T) {
 	check("conflicting source", "main", clashTip, false)
 }
 
-// TestFastForwardPair_MovesBehindPairToUpstream asserts the code side lands on the upstream tip, and that a weft whose upstream also moved is advanced and recorded.
-// A weft whose upstream carries another anchor marker stays where it is while the code side still moves.
+// TestFastForwardPair_MovesBehindPairToUpstream asserts that the code side lands on the upstream tip.
+// The weft is advanced and recorded when its upstream also moved.
+// A weft whose upstream carries another anchor marker stays where it is, while the code side still moves.
 func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -484,7 +497,7 @@ func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 		// originRel and originContent are the file the weft's origin gains from a second clone.
 		originRel, originContent string
 		wantWeftMoves            bool
-		// moveRecord stands a move record on the weft before the fast-forward.
+		// moveRecord places a move record on the weft before the fast-forward.
 		moveRecord bool
 	}{
 		{"WeftWhoseUpstreamAlsoMovedIsAdvanced", "from-clone-b.txt", "b", true, false},

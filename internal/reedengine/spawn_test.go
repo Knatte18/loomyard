@@ -1,8 +1,12 @@
-// spawn_test.go covers launchStrandLocked's reap-before-allocate ordering (TestLaunchStrandLocked_*,
-// invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
-// bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real
-// tmux is covered by the smoke tests.
-// It also pins two regression guards for the pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the launch script's source statement and the script holds the composed prelude rather than the bare command, and that the new-window argv it issues still carries no trailing shell-command argument.
+// spawn_test.go covers launchStrandLocked's reap-before-allocate ordering.
+// It also covers the fresh-worktree bootstrap of loadOrInitStateLocked.
+// The ordering tests call launchStrandLocked directly through the e.tmux.execHook fake.
+// Both run hermetically, with no live tmux.
+// The composed behavior against a real tmux is covered by the smoke tests.
+// It also pins two regression guards for the pane-binary prelude wiring:
+// launchStrandLocked's send-keys payload is the launch script's source statement,
+// and the script holds the composed prelude rather than the bare command.
+// The new-window argv it issues carries no trailing shell-command argument.
 
 package reedengine
 
@@ -21,14 +25,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap-before-allocate
-// chokepoint at the unit tier: launchStrandLocked must reconcile before it creates the strand's window, so
-// an untracked alive pane is reaped first.
+// TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap order.
+// launchStrandLocked must reconcile before it creates the strand's window,
+// so an untracked alive pane is reaped first.
 //
-// The fixture is a ReedState with an alive Selvage pane, zero strands bound to a present pane, and one
-// untracked alive pane; the strand being launched has PaneID == "", mirroring how addStrandLocked
-// appends a fresh strand before calling launchStrandLocked. The alive Selvage — not any strand
-// binding — is what authorizes the untracked reap here (see reconcile.go's policy.authorizesReap() disjunct).
+// The fixture is a ReedState with an alive Selvage pane and one untracked alive pane;
+// no strand is bound to a present pane.
+// The launched strand has PaneID == "": addStrandLocked appends a fresh strand before calling launchStrandLocked.
+// The untracked reap is authorized by the alive Selvage, not by any strand binding.
+// That is the `policy.authorizesReap()` disjunct in reconcile.go.
 func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -88,9 +93,9 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 	}
 }
 
-// TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped is the companion to
-// TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget: when reconcile kills nothing,
-// launchStrandLocked must issue no kill-pane and create the strand's window only after the pane listing.
+// TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped pins two things.
+// First, when reconcile reaps nothing, launchStrandLocked issues no kill-pane.
+// Second, it creates the strand's window only after the pane listing.
 //
 // The fixture has nothing to reap: an alive Selvage plus a strand already bound to a present alive
 // pane. The strand being launched is a second one, again with PaneID == "".
@@ -132,11 +137,14 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 	}
 }
 
-// TestLoadOrInitStateLocked pins the R3 review's R3-F2 contract: an absent file initializes a fresh state from the engine's identity,
-// while strand data loads verbatim from an existing persisted file and the Socket/Session identity diagnostic is re-stamped
-// from the engine's told geometry on every load — a renamed worktree carries its .lym state along,
-// but its session name changes with the directory, and a diagnostic recording an identity reed no longer drives is worse than none.
-// A binding clear is made in memory and never saved, so repeated loads of one file clear again: the first logs at Warn and the repeats at Debug.
+// TestLoadOrInitStateLocked pins the load contract.
+// An absent file initializes a fresh state from the engine's identity.
+// An existing file loads its strand data verbatim.
+// The Socket/Session identity diagnostic is re-stamped from the engine's told geometry on every load:
+// a renamed worktree carries its .lym state along, but its session name changes with the directory,
+// and a diagnostic recording an identity reed no longer drives is worse than none.
+// A binding clear is made in memory and never saved, so repeated loads of one file clear again:
+// the first logs at Warn and the repeats at Debug.
 // It captures the process-global logger at Debug, so it stays serial.
 func TestLoadOrInitStateLocked(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -236,10 +244,11 @@ func TestLoadOrInitStateLocked(t *testing.T) {
 	}
 }
 
-// TestSendKeysLiteralArg pins the dash-escape rule for tmux send-keys -l: tmux parses a '-'-leading
-// literal argument as flags and silently drops it (exit 0, nothing typed; '--' does not stop the
-// parsing), so a dash-leading opaque cmd must be sent with one leading space — which the pane shell
-// ignores — while every other text passes through verbatim.
+// TestSendKeysLiteralArg pins the dash-escape rule for tmux send-keys -l.
+// tmux parses a '-'-leading literal argument as flags and silently drops it (exit 0, nothing typed);
+// '--' does not stop the parsing.
+// So a dash-leading opaque cmd is sent with one leading space, which the pane shell ignores.
+// Every other text passes through verbatim.
 //
 //testtiming:keep pins the dash-escape rule for send-keys -l: a dash-leading text gets one leading space and every other text, an already spaced one included, passes verbatim; its covering tests run this code without asserting it
 func TestSendKeysLiteralArg(t *testing.T) {
@@ -262,11 +271,11 @@ func TestSendKeysLiteralArg(t *testing.T) {
 	}
 }
 
-// TestValidateSplitCreatedNewPane pins the genuinely-new-pane guard both split sites
-// (launchStrandLocked, ensureSelvagePaneLocked) share: psmux's silent too-small-to-split failure
-// exits 0 and prints an EXISTING pane's id, and trusting it would bind two owners to one pane — a
-// duplicate pane number in the next select-layout string, which destroys the session's panes
-// wholesale.
+// TestValidateSplitCreatedNewPane pins the new-pane guard that both split sites share.
+// The split sites are launchStrandLocked and ensureSelvagePaneLocked.
+// psmux's silent too-small-to-split failure exits 0 and prints an existing pane's id.
+// Trusting that id binds two owners to one pane.
+// The duplicate pane number then reaches the next select-layout string, which destroys the session's panes wholesale.
 //
 //testtiming:keep pins the genuinely-new-pane guard: a fresh pane id passes while an empty, pre-existing alive or pre-existing dead pane id errors; its covering tests run this code without asserting it
 func TestValidateSplitCreatedNewPane(t *testing.T) {
@@ -301,16 +310,14 @@ func TestValidateSplitCreatedNewPane(t *testing.T) {
 // loadOrInitStateLocked left the whole hermetic and smoke suites green while the reconcile-side layer
 // was gone — the wiring gap the orchestrator's independent verification of round 5 found.
 //
-// Status is the observable that isolates this layer: it reads the loaded table and cross-references
-// it against live panes, and never touches the render path. With the repair wired, a strand whose
-// PaneID names a pane another owner already claims is cleared and reported not-live; without it, that
-// pane IS alive, so status reports live:true against someone else's pane — exactly the false-healthy
-// symptom the R5 review reproduced live ("status reported the strand live:true against the header
-// pane running `lym reed header --blocking`", the pre-Selvage keepalive this batch removes).
+// TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims pins one invariant of status.
+// Status never reports a strand live on a pane another owner claims.
+// Status reads the loaded table and cross-references it against live panes, without touching the render path.
+// The repair clears such a binding and reports the strand not-live.
+// Without it, status reports live:true against someone else's pane, a false-healthy result.
 //
-// The recorded generation deliberately MATCHES the one the probe answers, so the pane-generation
-// guard adopts rather than clears and the only thing that can clear a binding here is the repair
-// under test.
+// The recorded generation matches the one the probe answers, so the pane-generation guard adopts the binding.
+// Only the repair can clear it here.
 func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	tiergate.Require(t, 0)
 	const selvagePane = "%1"
@@ -320,8 +327,8 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// strandPaneIDs are the persisted PaneIDs, in table order, for strands named "first" and
-		// "second".
+		// strandPaneIDs are the persisted PaneIDs, in table order.
+		// The strands are named "first" and "second".
 		strandPaneIDs []string
 		wantLive      []bool
 	}{
@@ -348,8 +355,8 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 			fake := installFakeTmux(t, e)
 			fake.answer("display-message", liveAnswer, nil)
 			fake.answer("list-sessions", "worktree\n", nil)
-			// Both panes present and alive, so a binding that survives the repair reads as
-			// live and one that does not reads as not-live.
+			// Both panes are present and alive.
+			// A binding that survives the repair reads as live; one that does not reads as not-live.
 			fake.answer("list-panes", selvagePane+" 0 0 100 3 4322\n"+firstStrandPane+" 0 3 100 20 4323\n", nil)
 
 			st := &ReedState{SelvagePaneID: selvagePane, PaneGeneration: liveGeneration}
@@ -382,8 +389,9 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	}
 }
 
-// launchFake installs a fakeTmux that reports one live Selvage pane and answers new-window with a fresh pane and window id.
-// onEnter, when non-nil, runs at the Enter submit, the last step of launchStrandLocked.
+// launchFake installs a fakeTmux that reports one live Selvage pane.
+// It answers new-window with a fresh pane and window id.
+// When onEnter is non-nil, it runs on the Enter submit that ends a launch.
 func launchFake(t *testing.T, e *Engine, onEnter func()) *fakeTmux {
 	t.Helper()
 	fake := installFakeTmux(t, e)
@@ -434,11 +442,15 @@ func breakSaveState(t *testing.T, e *Engine) {
 	}
 }
 
-// TestLaunchStrandLocked_LaunchScript pins, per launch sequence, what launchStrandLocked types and what the strand's launch script holds:
-// each launch sends the dialect's discard-line key, when it has one, then types the source statement for the script (a single line) and then Enter, each a separate send-keys call,
-// and the script holds the composed pane-binary prelude joined onto the strand's command, not the bare command.
-// A relaunch regenerates the script, an unresolvable executable path leaves the command alone in it, and an empty command writes the prelude alone.
-// The variables the geometry's PaneEnv tells are exported ahead of the strand's command, on the host's dialect, the one a launch types into.
+// TestLaunchStrandLocked_LaunchScript pins what each launch types and what the strand's launch script holds.
+// A launch sends the dialect's discard-line key when it has one.
+// It types the source statement for the script as one line, then sends Enter.
+// The statement and the Enter are separate send-keys calls.
+// The script holds the composed pane-binary prelude joined onto the strand's command, not the bare command.
+// A relaunch regenerates the script.
+// An unresolvable executable path leaves the command alone in it, and an empty command writes the prelude alone.
+// The variables the geometry's PaneEnv names are exported ahead of the strand's command.
+// They are written in the host's dialect, the one a launch types into.
 //
 //testtiming:keep pins what a launch types and writes: any discard-line key, the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
@@ -558,8 +570,9 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 	}
 }
 
-// TestLaunchStrandLocked_WriteFailureSendsTheFullLine pins the degrade path: a regular file where the launch directory's parent belongs makes the payload the composed line,
-// and the warning names the strand GUID.
+// TestLaunchStrandLocked_WriteFailureSendsTheFullLine pins the degrade path.
+// A regular file where the launch directory's parent belongs makes the send-keys payload the full composed line.
+// The warning names the strand GUID.
 // It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the degrade path: when the launch script cannot be written the send-keys payload is the full composed line and the warning names the strand guid; its covering tests run this code without asserting it
@@ -592,9 +605,10 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	}
 }
 
-// TestLaunchScriptDoesNotSurviveAFailedLaunch pins that no launch script outlives a launch that did not complete:
-// a launch whose literal send-keys fails deletes the script it already wrote,
-// and a SaveState failure right after the launch deletes the never-persisted strand's script, for add and for replace alike.
+// TestLaunchScriptDoesNotSurviveAFailedLaunch pins that no launch script outlives a launch that did not complete.
+// A launch whose literal send-keys fails deletes the script it already wrote.
+// A SaveState failure right after the launch deletes the never-persisted strand's script.
+// This holds for add and for replace alike.
 func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -657,12 +671,14 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 }
 
 // TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls pins the two pane-start guarantees of one launch.
-// The new-window argv ends with the -c flag and the told cwd, so that appending ANY trailing argument fails it, not merely a specific known-bad value:
-// a trailing shell-command makes tmux hand the pane to /bin/sh -c, which execs a non-login shell that skips ~/.profile / ~/.bash_profile
-// and therefore changes the pane's inherited PATH — and that pane resolves claude by bare name, so the change would stop the agent binary resolving at all.
-// The two title commands then run in order between the window creation and the send-keys, and carry the strand's full name;
-// a tmux whose version predates allow-set-title runs only the select-pane, with no log naming the option.
-// The strand's full name follows in @lym_strand_name, unset for an empty name, and a failure of that option leaves the rest of the sequence unchanged.
+// The new-window argv ends with the -c flag and the told cwd, so the test fails on any trailing argument.
+// A trailing shell command makes tmux run the pane under /bin/sh -c.
+// That non-login shell skips ~/.profile and ~/.bash_profile, so the pane's inherited PATH changes.
+// The pane resolves claude by bare name, so the agent binary would stop resolving at all.
+// The two title commands run in order between the window creation and the send-keys; they carry the strand's full name.
+// A tmux whose version predates allow-set-title runs only the select-pane, with no log naming the option.
+// The strand's full name follows in @lym_strand_name, unset for an empty name.
+// A failure of that option leaves the rest of the sequence unchanged.
 // It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the new-window argv ending with -c and the told cwd with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the window creation and the send-keys; its covering tests run this code without asserting it

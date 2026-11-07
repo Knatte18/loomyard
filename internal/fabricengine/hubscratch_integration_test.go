@@ -1,10 +1,9 @@
-// hubscratch_integration_test.go pins card 2's ordering guarantee at CloneHub's own boundary: the
-// board worktree's weft-common-gitdir excludes carry a `.lym/` entry the instant CloneHub returns,
-// and the board's stage-all commit path never picks up anything planted inside the hub scratch tree
-// in between.
+// hubscratch_integration_test.go pins the ordering CloneHub guarantees at its own boundary:
+// the board worktree's weft-common-gitdir excludes carry a `.lym/` entry the instant CloneHub returns,
+// and the board's stage-all commit never picks up anything planted inside the hub scratch tree.
 //
-// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go) rather than re-declaring it;
-// shares the single TestMain in testmain_test.go — no new TestMain is added here.
+// It is an external test package to reuse makeBareRemote from clone_adopt_test.go.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -24,13 +23,10 @@ import (
 // fabricengine.CloneHub returns, the weft common gitdir's info/exclude file reached from
 // res.BoardDir already carries the `.lym/` entry.
 //
-// This calls CloneHub directly, never fabriccli.CloneAndWire, whose later WireJunctionsWith seeding
-// would mask the omission this test exists to catch.
-// The exclude file is resolved via `git rev-parse --git-path info/exclude` run in res.BoardDir, the
-// same resolution mutateGitExclude uses for a linked worktree, rather than assuming a path.
-// A `git status`-is-clean assertion would not qualify: it passes either way while the scratch
-// directory is empty, so this checks the exclude entry itself — the load-bearing assertion for
-// card 2's ordering.
+// It calls CloneHub directly: a later step that seeds the excludes would hide the omission this test checks.
+// The exclude file is resolved with `git rev-parse --git-path info/exclude` run in res.BoardDir.
+// The path is not assumed.
+// The test checks the exclude entry itself, since a clean `git status` passes while the scratch directory is empty.
 func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -40,8 +36,8 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "hubscratch-order-weft")
 
 	cloneParent := t.TempDir()
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft, not
-	// a repo that has ever been one, so it carries no .lym-anchor.
+	// ForceBootstrap is true because weftBare is an ordinary seeded bare remote standing in for a weft.
+	// It has never been a weft itself, so it carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -60,10 +56,9 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 	}
 }
 
-// TestCloneHub_BoardStageAllCommitNeverStagesHubScratch is the failure card 2's ordering exists to
-// prevent, stated directly: after CloneHub returns, fabricengine.HubScratchDir(res.HubPath) exists as
-// a real directory; a file planted inside it must be absent from the tree of the board's own
-// stage-all commit.
+// TestCloneHub_BoardStageAllCommitNeverStagesHubScratch checks that the board's stage-all commit omits hub scratch.
+// After CloneHub returns, fabricengine.HubScratchDir(res.HubPath) exists as a real directory;
+// a file planted inside it must be absent from the tree of the board's own stage-all commit.
 func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

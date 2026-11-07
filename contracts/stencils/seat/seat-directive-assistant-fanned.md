@@ -1,7 +1,11 @@
-<!-- This is the fanned assistant's seat directive: the block a fanned assistant seat's stencil pulls in with the bare {{template "seat-directive-assistant-fanned"}}, with no pipeline, in place of seat-directive-assistant.
+<!-- This is the fanned assistant's seat directive:
+     the block a fanned assistant's stencil pulls in with the bare {{template "seat-directive-assistant-fanned"}}.
+     The call has no pipeline.
      The fill hands it the seat's value map, so it declares two required markers:
      {{.seat_name}} and {{.output_files}}, which for a fanned assistant lists its outputs and then each subagent report.
-     internal/seatengine fills them for each assistant seat; the assistant runs the subagents its instructions name, writes those files and nothing else, and the chair waits on the end marker lym writes for it. -->
+     internal/seatengine fills them for each assistant seat.
+     The assistant runs the subagents its instructions name and writes those files and nothing else,
+     and the chair waits on the end marker lym writes for it. -->
 
 ## You are an assistant in this step
 

@@ -13,7 +13,13 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, shows the handle column first only when an entry has a handle, the priority column only when an entry is high or low and each age column only when an entry has that date, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
+// TestRenderCompact asserts that the compact listing aligns columns by display width and keeps the input order.
+// The status bracket appears only when a status is set;
+// the handle column comes first and appears only when an entry has a handle;
+// the priority column appears only when an entry is high or low;
+// each age column appears only when an entry has that date;
+// no trailing gap is left without labels;
+// and nothing is printed for no input.
 //
 //testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
 func TestRenderCompact(t *testing.T) {

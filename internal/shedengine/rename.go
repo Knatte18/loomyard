@@ -1,5 +1,6 @@
 // rename.go declares the status-file migration that carries a run across a row rename.
-// It lives here, beside the other status-file writes, so a product that renames a row keeps an in-flight run resumable without writing the Shed-owned fields itself.
+// It lives beside the other status-file writes,
+// so a recipe that renames a row keeps an in-flight run resumable without writing the Shed-owned fields itself.
 
 package shedengine
 
@@ -14,23 +15,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// RenameRequest is everything RenameProducers needs.
-// All three paths are told.
+// RenameRequest describes one row-rename migration of a run's status file.
+// It carries the status file path, the two lock paths, the row renames, and the run-id a busy refusal names.
 type RenameRequest struct {
 	StatusPath     string
 	LockPath       string
 	StatusLockPath string
 	// Renames maps each retired row name to the name its row carries now.
 	Renames map[string]string
-	// RunID is the addressed run-id the busy refusal names; see Shed.RunID.
+	// RunID is the run-id a busy refusal addresses, empty when none is told.
 	RunID string
 }
 
-// RenameProducers rewrites every retired row name the status file carries onto its successor: current_producer, entered_row, pause_before, pause_after and each history entry's producer.
+// RenameProducers rewrites every retired row name the status file carries onto its successor.
+// The rewritten fields are current_producer, entered_row, pause_before, pause_after and each history entry's producer.
 // It reports whether it wrote the file.
-// An absent status file, one that does not decode, and one that names no retired row, are left untouched and take no lock, so a caller may run it before every verb.
+// A status file that is absent, does not decode, or names no retired row is left untouched and takes no lock,
+// so a caller may run it before every verb.
 // A run lock held by a live driver refuses with ErrShedBusy and leaves the file unchanged.
-// Like Goto, it calls no CommitStatus: the next step's persist commits the file.
+// It does not commit the file: the next step's persist commits it.
 func RenameProducers(req RenameRequest) (bool, error) {
 	st, found, err := state.ReadJSON[Status](req.StatusPath, req.StatusLockPath)
 	// A run directory not yet created fails the status lock open with not-exist; that is an absent status file too.
@@ -74,7 +77,7 @@ func RenameProducers(req RenameRequest) (bool, error) {
 	return true, nil
 }
 
-// namesRetiredRow reports whether any field RenameProducers rewrites holds a key of renames.
+// namesRetiredRow reports whether any field a rename rewrites holds a key of renames.
 func namesRetiredRow(st Status, renames map[string]string) bool {
 	names := []string{st.CurrentProducer, st.EnteredRow, st.PauseBefore, st.PauseAfter}
 	for _, entry := range st.History {

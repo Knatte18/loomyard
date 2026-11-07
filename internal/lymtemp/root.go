@@ -16,7 +16,7 @@ import (
 type Root struct {
 	path string
 	now  func() time.Time
-	// remove, retryNow and sleep are the sweep's removal, retry-budget clock and retry pause, replaceable so a test retries without waiting.
+	// remove, retryNow and sleep drive the sweep's removal and its retries; a test replaces them to retry without waiting.
 	remove   func(string) error
 	retryNow func() time.Time
 	sleep    func(time.Duration)
@@ -49,7 +49,8 @@ func openRoot(path string, uid int, now func() time.Time) (*Root, error) {
 }
 
 // resolveRootPath returns the root path under tempDir.
-// When tempDir is itself a run directory under a lym root, it returns that root, so a child that inherited a run directory as its system temp directory works beside its parent.
+// When tempDir is itself a run directory under a lym root, it returns that root,
+// so a child that inherited a run directory as its system temp directory works beside its parent.
 func resolveRootPath(tempDir string, uid int) string {
 	if strings.HasPrefix(filepath.Base(tempDir), runPrefix) {
 		parent := filepath.Dir(tempDir)

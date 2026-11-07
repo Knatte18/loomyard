@@ -1,4 +1,5 @@
-// pawlwiring_integration_test.go drives the production closures of a beam's landing record and of the move off a retired row over a real beam pair and real git.
+// pawlwiring_integration_test.go drives the production closures of a beam's landing record.
+// It also drives the move off a retired row; both run over a real beam pair and real git.
 
 package loomcli
 
@@ -24,7 +25,9 @@ import (
 
 const beamPullRequestURL = "https://github.com/o/r/pull/7"
 
-// TestBeamLandingRecordSeams_DropRewritesTheRecordAndCommitsTheLandingDirectory asserts the read seam names the pull request the landing record holds, and the drop seam rewrites the record with none and commits the landing directory.
+// TestBeamLandingRecordSeams_DropRewritesTheRecordAndCommitsTheLandingDirectory asserts the seams:
+// the read seam names the pull request the landing record holds,
+// and the drop seam rewrites the record with none and commits the landing directory.
 func TestBeamLandingRecordSeams_DropRewritesTheRecordAndCommitsTheLandingDirectory(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -65,8 +68,12 @@ func TestBeamLandingRecordSeams_DropRewritesTheRecordAndCommitsTheLandingDirecto
 	}
 }
 
-// TestPawlRetiredMove_CarriesTheScratchPullRequestIntoTheLandingRecord asserts the production move over a beam holding a scratch pull-request record and a ready record writes the landing record carrying the pull request with the beam's head, removes both records, makes one commit of the landing directory, and writes the status and the notice through the pawl seams.
-// The hub's origin is a local path, so the GitHub read of the pull request's state fails and the pull request is carried, as for any state that does not read.
+// TestPawlRetiredMove_CarriesTheScratchPullRequestIntoTheLandingRecord drives the production move.
+// The beam holds a scratch pull-request record and a ready record.
+// The move writes the landing record carrying the pull request with the beam's head and removes both records.
+// It makes one commit of the landing directory and writes the status and the notice through the pawl seams.
+// The hub's origin is a local path, so the GitHub read of the pull request's state fails,
+// and the pull request is carried, as for any state that does not read.
 func TestPawlRetiredMove_CarriesTheScratchPullRequestIntoTheLandingRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

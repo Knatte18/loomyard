@@ -1,7 +1,9 @@
-<!-- This is the writer chair's seat directive: the block the lead stencil of a table of writer seats pulls in with the bare {{template "seat-directive-writer-chair"}}, with no pipeline.
+<!-- This is the writer chair's seat directive:
+     the block the lead stencil of a writer table pulls in with the bare {{template "seat-directive-writer-chair"}}.
+     The call has no pipeline.
      The fill hands it the seat's value map, so it declares three required markers:
      {{.advisor_names}}, {{.inputs}} and {{.output_files}}.
-     internal/seatengine fills them for the chair of a writer table; seat-directive-chair keeps serving every advisor table. -->
+     internal/seatengine fills them for the chair of a writer table. -->
 
 ## You are the chair of this step
 

@@ -1,8 +1,7 @@
-// reconcile.go implements the reconcile-against-live-panes engine op: the pure planning function
-// planReconcile decides which strand pane bindings to clear, which dead panes to kill, and which
-// untracked panes to reap, and reconcileLocked composes that plan with the tmux kill I/O.
-// Every public engine op runs reconcile first, under the op lock, so the persisted table never
-// drifts from what tmux's list-panes actually reports.
+// reconcile.go implements the reconcile-against-live-panes engine op.
+// planReconcile is its pure planning step, and reconcileLocked applies the plan through tmux kill I/O.
+// Every public engine op runs reconcile first, under the op lock,
+// so the persisted table never drifts from what tmux list-panes reports.
 
 package reedengine
 
@@ -12,13 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// reconcilePlan is planReconcile's decision: which strand bindings to clear, which dead panes to
-// kill, which untracked panes to reap, and which dead pane (if any) is kept alive so the session
-// survives.
-// ownWindowsToEnd names the own windows no strand holds.
-// deadPanesToKill and untrackedPanesToKill are carried apart, rather than merged into one slice,
-// because reconcileLocked's reap log line must distinguish the two kill reasons without a caller
-// having to cross-reference anything else.
+// reconcilePlan is the decision of one reconcile pass.
+// It names the strand bindings to clear, the dead panes to kill, and the untracked panes to reap.
+// It also names the dead pane kept alive so the session survives, and the own windows to end.
+// The dead and untracked kills stay in separate lists so the reap log can report each kill reason.
 type reconcilePlan struct {
 	clearedGUIDs         []string
 	deadPanesToKill      []string
@@ -27,12 +23,15 @@ type reconcilePlan struct {
 	ownWindowsToEnd      []string
 }
 
-// planReconcile decides which pane bindings to clear, which dead panes to kill, which
-// untracked panes to reap, and which own windows to end.
-// live holds window 0's panes and windows the whole session's.
+// planReconcile decides what a reconcile pass does to the table and the panes.
+// It names the bindings to clear, the dead panes to kill, the untracked panes to reap, and the own windows to end.
+// live holds window 0's panes, and windows holds the panes of every window in the session.
 // The kill decisions and the survival rule read live alone.
-// An own-window strand's binding is judged against windows, and a window carrying the own marker with no bound pane is ended.
-// elsewhere holds the pane ids found in another session of the server: an own-window strand bound to one keeps its binding, and no pane in it is ever killed, since the kill sets read live alone.
+// An own-window strand's binding is judged against windows,
+// and an own window that no strand holds is ended.
+// elsewhere holds the pane ids found in other sessions of the server.
+// An own-window strand bound to one of them keeps its binding.
+// No pane in another session is ever killed, since the kill sets read live alone.
 // Pure logic; unit-testable without a running server.
 // Keeps at least one pane alive (session-survival rule); spares Selvage.
 func planReconcile(strands []Strand, live []LivePane, windows []windowPane, policy reapPolicy, elsewhere map[string]string) reconcilePlan {
@@ -44,10 +43,10 @@ func planReconcile(strands []Strand, live []LivePane, windows []windowPane, poli
 	}
 
 	// If any pane is still alive, killing every dead pane leaves the session
-	// with at least that live pane, so all dead panes are killable. If every
-	// pane in the window is dead, one dead pane must be spared — killing the
-	// last pane ends the session — so keptDeadPane names the first dead pane
-	// to keep.
+	// with at least that live pane,
+	// so every dead pane is killable.
+	// If every pane in the window is dead, one must be spared, since killing the last pane ends the session;
+	// keptDeadPaneID names the first dead pane to keep.
 	anyAlive := false
 	for _, p := range live {
 		if !p.Dead {
@@ -73,9 +72,8 @@ func planReconcile(strands []Strand, live []LivePane, windows []windowPane, poli
 		}
 	}
 
-	// Deterministic untracked-pane reaping (see the doc comment): kill every
-	// live pane no strand owns, while EITHER some strand is bound to a
-	// present pane OR Selvage's policy authorizes it.
+	// The untracked-pane reap kills every live pane no strand owns.
+	// It runs when some strand is bound to a present pane, or when the policy authorizes it.
 	boundPaneIDs := make(map[string]bool, len(strands))
 	for _, s := range strands {
 		if s.PaneID != "" {
@@ -90,12 +88,9 @@ func planReconcile(strands []Strand, live []LivePane, windows []windowPane, poli
 		}
 	}
 
-	// exemptPaneIDs gates ONLY which untracked panes escape the deterministic
-	// reap below, and holds bound strand pane ids alone; anyBoundPresent
-	// above stays computed from real strand bindings alone too (see this
-	// function's doc comment). Selvage's own exemption is asked of the
-	// policy separately, as its own disjunct, rather than being folded into
-	// this map.
+	// exemptPaneIDs holds the bound strand pane ids alone, and it gates only which untracked panes escape the reap.
+	// anyBoundPresent is likewise computed from the strand bindings alone.
+	// Selvage's exemption is asked of the policy separately, as its own disjunct, rather than folded into this map.
 	exemptPaneIDs := boundPaneIDs
 
 	if anyBoundPresent || policy.authorizesReap() {
@@ -135,8 +130,8 @@ func planReconcile(strands []Strand, live []LivePane, windows []windowPane, poli
 	return plan
 }
 
-// ownWindowsHoldingNoStrand lists, in listing order and once each, every window whose panes carry the own marker and none of whose pane ids is bound to a strand.
-// A window without the marker never qualifies.
+// ownWindowsHoldingNoStrand lists each own window that holds no strand-bound pane, in listing order and once each.
+// A window without the own marker never qualifies.
 func ownWindowsHoldingNoStrand(strands []Strand, windows []windowPane) []string {
 	bound := make(map[string]bool, len(strands))
 	for _, s := range strands {
@@ -169,30 +164,27 @@ func clearAllPaneBindings(st *ReedState) {
 	}
 }
 
-// clearConflictingPaneBindings clears every strand PaneID that names a pane the strand cannot
-// possibly own — Selvage's pane, or a pane an earlier strand in the table already claims — and
-// returns the GUIDs it cleared, in table order.
+// clearConflictingPaneBindings clears every strand PaneID that names a pane the strand cannot own.
+// It returns the GUIDs it cleared, in table order.
+// A strand cannot own Selvage's pane, nor a pane an earlier strand in the table already claims.
 //
 // A pane has exactly one owner.
-// reed's own construction paths already guarantee that, since every strand pane is created new in a window of its own,
-// so a table violating it is a CORRUPT table, not one reed produced:
-// a stale reed.json restored over a newer session, a hand-edited file, a partially restored backup.
-// Every such table reaches this package through LoadState,
-// so the repair belongs at that one load chokepoint rather than at each of the several places a duplicate does damage.
+// reed's own construction paths keep that true, since every strand pane is created new in a window of its own.
+// A table that breaks the rule is corrupt, not one reed produced:
+// a stale reed.json restored over a newer session, a hand-edited file, or a partially restored backup.
+// Every table reaches this package through LoadState.
+// The repair therefore runs at that one load point, rather than at each place a duplicate would do damage.
 //
-// The damage is worth naming, because it is neither theoretical nor loud (R5 review finding R5-F3,
-// both shapes reproduced live on tmux 3.6):
-//   - A strand sharing SELVAGE's pane id makes one pane answer to two owners, so the strand reports
+// Two shapes of damage follow from a shared pane id:
+//   - A strand sharing Selvage's pane id makes one pane answer to two owners, so the strand reports
 //     live:true against the Selvage pane.
-//   - Two strands sharing one pane id leave the second strand's REAL pane bound to nobody, so
-//     planReconcile's deterministic untracked reap kills it. Observed: `up` reported ok:true and
-//     strands:2 while destroying the second strand's pane and its running process, after which
-//     status reported both strands live on the one surviving pane.
+//   - Two strands sharing one pane id leave the second strand's pane bound to nobody, so the
+//     untracked-pane reap kills it, along with the process running in it.
 //
-// First writer wins, so the repair is deterministic and order-stable rather than dependent on which
-// conflict is noticed first. Clearing (rather than refusing the op) is what makes it self-healing:
-// a cleared strand is simply not-live, which resume already knows how to rebuild, whereas a refusal
-// would wedge the worktree on exactly the corruption this exists to survive.
+// First writer wins, so the repair is deterministic and independent of the order conflicts are noticed.
+// Clearing rather than refusing the op makes the repair self-healing:
+// a cleared strand is not live, which resume already knows how to rebuild.
+// A refusal would wedge the worktree on the corruption this repair exists to survive.
 func clearConflictingPaneBindings(st *ReedState) []string {
 	claimed := make(map[string]bool, len(st.Strands)+1)
 	seedSelvageClaim(st, claimed)
@@ -214,35 +206,32 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 }
 
 // reconcileLocked reconciles the persisted table against live panes.
-// Kills panes per planReconcile's schedule; clears bindings for gone panes.
-// It also ends the own windows no strand holds, moving a viewer on one to the relevant window first (the newest live agent, else the lowest-index overview, never the shell); those windows are not in killed, since no window 0 pane went.
+// It kills the panes the plan schedules and clears bindings for gone panes.
+// It also ends the own windows no strand holds.
+// A viewer on one of those windows is first moved to the relevant window.
+// That window is the newest live agent, else the lowest-index overview, and never the shell.
+// Those windows are not in killed, since no window 0 pane went.
 // A viewer on any other window is never moved.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane, windows []windowPane) (killed []string, err error) {
 	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live), e.strandsElsewhereLocked(st.Strands, windows))
 
-	// Accumulate the ids actually destroyed, separately for each kill reason,
-	// as the loops below progress -- never plan.deadPanesToKill /
-	// plan.untrackedPanesToKill themselves, which name what was SCHEDULED,
-	// not what a partial-kill error path actually reached. The two agree on
-	// the success path and diverge on a mid-loop kill-pane failure, where a
-	// log claiming to have destroyed a pane that is still alive is worse
-	// than no log at all -- this is a destruction record, not a record of
-	// intent.
+	// deadKilled and untrackedKilled collect the ids actually destroyed, one list per kill reason.
+	// The plan's kill lists name what was scheduled, not what a partial kill-pane failure reached,
+	// so the log reads these lists instead.
+	// The two agree on the success path and diverge only on a mid-loop kill-pane failure.
+	// A log that reports a pane destroyed while it is still alive is worse than no log,
+	// so this is a record of destruction, not of intent.
 	var deadKilled, untrackedKilled []string
 
-	// This is Info, not Debug: per
-	// PATTERN-child-processes's lifecycle-vs-probe split, a real pane teardown is a
-	// lifecycle event, not a probe. And it needs a trace at all because the
-	// policy.authorizesReap() disjunct above makes this reap fire on the zero-strand
-	// precondition (every AddStrand/UpdateStrand once the reap-before-
-	// allocate chokepoint lands), taking it from near-dormant to routine --
-	// and it destroys panes an operator may have created themselves.
+	// This is Info, not Debug: a real pane teardown is a lifecycle event, not a probe.
+	// It needs a trace at all.
+	// The `policy.authorizesReap()` disjunct lets this reap fire even when no strand is bound to a present pane.
+	// Such a reap destroys panes an operator may have created themselves.
 	//
-	// A defer (rather than duplicating the call before each return) is what
-	// keeps the success and partial-kill-error paths from drifting apart
-	// later: both reach this same one call, and a reconcile that killed
-	// nothing on either path still logs nothing. Logging here is additive
-	// only -- it must not swallow or alter the returned error.
+	// The log is a defer rather than a call before each return,
+	// so the success and partial-kill error paths cannot drift apart: both reach this one call.
+	// A reconcile that killed nothing logs nothing.
+	// Logging here is additive only; it must not swallow or alter the returned error.
 	defer func() {
 		if len(deadKilled) == 0 && len(untrackedKilled) == 0 {
 			return

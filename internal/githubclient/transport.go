@@ -1,7 +1,7 @@
-// transport.go implements authRT, the client's outermost http.RoundTripper and the sole owner of
-// the Authorization header.
-// It sets the header on every outbound request and, on a 401 response, invalidates the token cache,
-// re-resolves once, and replays the request exactly once.
+// transport.go implements authRT, the client's outermost http.RoundTripper.
+// authRT is the sole owner of the Authorization header.
+// On every outbound request it sets that header.
+// On a 401 response it invalidates the token cache, resolves a token once more, and replays the request once.
 
 package githubclient
 
@@ -16,12 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// authRT owns the Authorization header on every request, resolving a token per
-// request and replaying once with a fresh token on a 401 response.
+// authRT owns the Authorization header on every request.
+// It resolves a token per request and replays once with a fresh token on a 401 response.
 type authRT struct {
 	// transport is the underlying transport that performs the round trip.
-	// A nil value defaults to http.DefaultTransport; tests inject an
-	// alternative to point at an httptest server without a real network hop.
+	// A nil value defaults to http.DefaultTransport.
+	// Tests set it to reach an httptest server without a real network hop.
 	transport http.RoundTripper
 	// timeout bounds the original attempt and a 401 replay together, from the end of the pause hold.
 	// Zero means no timeout.
@@ -37,12 +37,13 @@ func (rt *authRT) base() http.RoundTripper {
 }
 
 // RoundTrip implements http.RoundTripper.
-// It sends req with a resolved token,
-// and on a 401, it invalidates the cache and replays exactly once with a fresh token (unless the
-// token is environment-sourced, in which case it returns an error instead).
+// It sends req with a resolved token.
+// On a 401 it invalidates the cache and replays once with a fresh token;
+// an environment-sourced token instead yields an error.
 //
-// It first waits while a pause covers the process; the hold is outside the replay, so a replay is not held twice.
-// The request then goes out under a context from requestContext, which gives a held call its full deadline after the hold.
+// It first waits while a pause covers the process.
+// The hold sits outside the replay, so a replay is not held twice.
+// The request then goes out under a context that gives a held call its full deadline after the hold.
 func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	held, done := pauserecord.Network("github")
 	defer done()
@@ -63,7 +64,8 @@ func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // requestContext derives the context a request goes out under, once a hold of held has ended.
 // It returns the caller's error at once when the caller's context was cancelled.
 // For held zero the caller's context is used unchanged.
-// For held above zero the caller's values are kept, its deadline, if any, moves later by held, and a cancellation of the caller before its own deadline passed still ends the call;
+// For held above zero the caller's values are kept and its deadline, if any, moves later by held.
+// A cancellation of the caller before its own deadline has passed still ends the call;
 // once that deadline has passed, only the moved deadline does.
 // A positive rt.timeout then applies from now.
 // The returned cancel must run once the response body is closed, or at once on an error.
@@ -130,21 +132,14 @@ func (rt *authRT) authenticate(req *http.Request) (*http.Response, error) {
 	}
 
 	if source.isEnvSource() {
-		// RoundTrip's contract (net/http.RoundTripper) forbids returning a
-		// non-nil error alongside a response it obtained: "RoundTrip must
-		// return err == nil if it obtained a response... A non-nil err
-		// should be reserved for failure to obtain a response." Every real
-		// caller reaches this transport through an http.Client, which
-		// discards the response whenever RoundTrip returns a non-nil error
-		// anyway, so closing the body and returning (nil, err) is
-		// behavior-preserving while staying contract-compliant.
+		// net/http's RoundTripper contract requires err == nil whenever a response was obtained.
+		// An http.Client discards the response on any error, so closing the body first changes nothing for callers.
 		resp.Body.Close()
 		return nil, fmt.Errorf("%w: the token from %s (401)", ErrTokenRejected, source.envName())
 	}
 
-	// The rejected token was cache- or gh-CLI-sourced: invalidate it so the
-	// re-resolution below cannot simply read the same stale value back out
-	// of the cache, then resolve and replay exactly once.
+	// Invalidate the rejected cache or gh-CLI token, so the re-resolution cannot read it back.
+	// Then resolve a token and replay the request once.
 	invalidateCachedToken()
 	resp.Body.Close()
 
@@ -156,8 +151,8 @@ func (rt *authRT) authenticate(req *http.Request) (*http.Response, error) {
 	return rt.send(req, newTok)
 }
 
-// send clones req, sets its Authorization header to tok, rewinds the body
-// via GetBody, and issues the clone through the underlying transport.
+// send clones req and sets its Authorization header to tok.
+// It rewinds the body via GetBody and issues the clone through the underlying transport.
 func (rt *authRT) send(req *http.Request, tok string) (*http.Response, error) {
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", "Bearer "+tok)

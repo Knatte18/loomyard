@@ -1,4 +1,5 @@
-// tapestry_test.go — tier0 tests for the tapestry config module: LoadTapestryConfig over a worktree-only layer stack, and the plan values Config.WithTapestry applies.
+// tapestry_test.go holds the tier0 tests for the tapestry config.
+// They cover LoadTapestryConfig over a worktree-only layer stack, and the plan values Config.WithTapestry applies.
 
 package loomengine
 
@@ -58,7 +59,9 @@ func tapestryTemplateWith(t *testing.T, values map[string]string) string {
 	return b.String()
 }
 
-// seedLoomAndTapestry seeds baseDir's worktree layer with a loom.yaml built from the shipped template with loomValues applied, and a tapestry.yaml with tapestryValues applied.
+// seedLoomAndTapestry seeds baseDir's worktree layer with a loom.yaml and a tapestry.yaml.
+// The loom.yaml is built from the shipped template with loomValues applied,
+// and the tapestry.yaml is built from its template with tapestryValues applied.
 func seedLoomAndTapestry(t *testing.T, baseDir string, loomValues, tapestryValues map[string]string) {
 	t.Helper()
 	if len(loomValues) == 0 {
@@ -69,8 +72,11 @@ func seedLoomAndTapestry(t *testing.T, baseDir string, loomValues, tapestryValue
 	seedTapestryConfig(t, baseDir, tapestryTemplateWith(t, tapestryValues))
 }
 
-// TestLoadTapestryConfig verifies the plan perch's values load from tapestry.yaml and resolve against loom.yaml's run-wide keys, and that Config.WithTapestry applies them:
-// a null plan_max_bounces and a zero plan_hard_max_bounces take loom.yaml's budget and hard cap, an empty model list, judge and seed take the shared ones, and every malformed or out-of-bound value is refused naming the tapestry key.
+// TestLoadTapestryConfig verifies that the plan perch's values load from tapestry.yaml.
+// They resolve against loom.yaml's run-wide keys, and Config.WithTapestry applies them.
+// A null plan_max_bounces and a zero plan_hard_max_bounces take loom.yaml's budget and hard cap.
+// An empty model list, judge and seed take the shared ones.
+// Every malformed or out-of-bound value is refused, and the error names the tapestry key.
 func TestLoadTapestryConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

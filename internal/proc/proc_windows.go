@@ -26,8 +26,7 @@ func HideWindow(cmd *exec.Cmd) {
 	}
 }
 
-// Detach configures the command to run detached in a new process group and without a console
-// window.
+// Detach configures the command to run detached in a new process group and without a console window.
 func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
@@ -35,8 +34,8 @@ func Detach(cmd *exec.Cmd) {
 	}
 }
 
-// DetachBreakaway configures the command like Detach, additionally setting
-// CREATE_BREAKAWAY_FROM_JOB.
+// DetachBreakaway configures the command to run detached in a new process group and without a console window.
+// It also sets CREATE_BREAKAWAY_FROM_JOB, which lets the process leave the job object of its parent.
 func DetachBreakaway(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
@@ -51,18 +50,19 @@ func IsAlive(pid int) bool {
 }
 
 // IsRunning reports whether the process identified by pid is alive.
-// Windows has no zombie state to tell apart, so it answers as IsAlive does.
+// Windows has no zombie state, so a live process counts as running.
 func IsRunning(pid int) bool {
 	return IsAlive(pid)
 }
 
-// StartTime reports the start time as unreadable on Windows, which keeps the resume check failing closed there.
+// StartTime reports false on Windows, where no start time is readable, so a caller that needs one fails closed.
 func StartTime(pid int) (string, bool) {
 	return "", false
 }
 
-// CreationTime reads the creation time of the process identified by pid and reports false when the process cannot be opened or its times read.
-// It lets a caller tell a live process from a reused pid, since StartTime is unreadable on Windows.
+// CreationTime reads the creation time of the process identified by pid.
+// It reports false when the process cannot be opened or its times cannot be read.
+// It lets a caller tell a live process from a reused pid, since Windows gives no readable start time.
 func CreationTime(pid int) (time.Time, bool) {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 	if err != nil {
@@ -76,12 +76,12 @@ func CreationTime(pid int) (time.Time, bool) {
 	return time.Unix(0, creation.Nanoseconds()), true
 }
 
-// ParentPID reports no parent on Windows, where creel resolves identity from process ancestry on Linux only.
+// ParentPID reports no parent on Windows, where identity is resolved from process ancestry on Linux only.
 func ParentPID(pid int) (int, bool) {
 	return 0, false
 }
 
-// TreeCPU reports errors.ErrUnsupported on Windows, which a CPU watchdog reads as no watchdog applying.
+// TreeCPU reports errors.ErrUnsupported on Windows, which callers read as no CPU watchdog applying.
 func TreeCPU(root int) ([]ProcessCPU, error) {
 	return nil, errors.ErrUnsupported
 }
@@ -96,7 +96,8 @@ func ListStats() ([]StatEntry, error) {
 	return nil, errors.ErrUnsupported
 }
 
-// SignalProcess force-kills the process identified by pid when kill is set and reports errors.ErrUnsupported otherwise, since Windows has no SIGTERM.
+// SignalProcess force-kills the process identified by pid when kill is set.
+// Otherwise it reports errors.ErrUnsupported, since Windows has no SIGTERM.
 func SignalProcess(pid int, kill bool) error {
 	if kill {
 		return KillPID(pid)

@@ -1,4 +1,5 @@
-// refusal.go holds the checks that run before adopt's first mutation: the refusal of a standing anchor change, and the read-only answer to whether an entry's takeover would stop.
+// refusal.go holds the checks that run before adopt's first mutation.
+// It covers the refusal of a standing anchor change and the read-only answer to whether an entry's takeover would stop.
 
 package adoptcli
 
@@ -8,10 +9,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// refuseStandingMove refuses an adopt while an anchor change stands in a worktree it would act under: the prime, each adopted beam and moved run's own worktree when this machine holds its pair, and each one's parent worktree.
+// refuseStandingMove refuses an adopt while an anchor change stands in a worktree it would act under.
 // slugs lists the adopted beams and the runs moved with them.
-// The refusal carries the way forward the standing record names, then the re-run, so no pair is added, no run resumed and no gate suite started under a moving anchor.
-// A read error refuses naming it, and nil MoveInProgress reads as no record standing.
+// It checks the prime's worktree and the parent worktree of each slug.
+// It also checks each slug's own worktree when this machine holds its pair.
+// The refusal carries the way forward the standing record names, then the re-run.
+// Nothing runs under a moving anchor: no pair is added, no run resumed, no gate suite started.
+// A read error refuses, naming the entry or worktree whose read failed,
+// and a nil `MoveInProgress` reads as no record standing.
 func refuseStandingMove(deps adoptDeps, slugs []string) error {
 	if deps.MoveInProgress == nil {
 		return nil
@@ -45,8 +50,11 @@ func refuseStandingMove(deps adoptDeps, slugs []string) error {
 	return nil
 }
 
-// wouldStop answers, from the read-only part of step 1 alone, whether takeOverSlug would stop slug there: its pair holds local commits origin lacks or is live, or --drop-local meets a live pair.
-// An entry no other machine owns, one with no pair here and any entry under --keep-local pass step 1.
+// wouldStop reports whether a takeover of slug would stop on this machine, judged from read-only checks alone.
+// A live pair stops it.
+// A branch in a state that stops a takeover stops it too, unless `--drop-local` is given.
+// One such state is a branch holding local commits that origin lacks.
+// An entry no other machine owns, one with no pair here, and any entry under `--keep-local` never stop.
 func wouldStop(deps adoptDeps, req request, report fabricengine.OriginReport, slug string) (bool, error) {
 	if !ownedElsewhere(report, slug) || !deps.LocalPair(slug) || req.KeepLocal {
 		return false, nil

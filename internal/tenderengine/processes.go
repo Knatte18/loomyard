@@ -1,4 +1,4 @@
-// processes.go reads the processes registered to runs and the lym processes no record owns, for the status report's processes part.
+// processes.go reads the processes registered to runs and the lym processes no record owns, for the status report.
 
 package tenderengine
 
@@ -35,12 +35,13 @@ type OwnedProcess struct {
 	StartTime string `json:"start_time"`
 	// AgeSeconds is the time from the record's registration to the reading.
 	AgeSeconds int64 `json:"age_seconds"`
-	// Orphan is true when the process's owner has no pair and no live batten, and the process works outside every registered worktree.
+	// Orphan is true when the owner has no pair and no live batten, and the process works outside every registered worktree.
 	Orphan bool `json:"orphan"`
 }
 
-// readProcesses builds the processes part from the owner record, the worktrees git registers and the one process listing Status took.
-// A failed record or worktree read lands in Error and leaves the rest standing; with the worktrees unread no process reads as an orphan.
+// readProcesses builds the processes part from the owner record, the git worktrees and the given process listing.
+// A failed record or worktree read lands in Error and leaves the rest standing;
+// with the worktrees unread, no process reads as an orphan.
 // An unsupported listing keeps the owned processes and marks the unregistered part unsupported.
 func readProcesses(deps Deps, processes []proc.Process, processesErr error) ProcessReport {
 	report := ProcessReport{Owned: []OwnedProcess{}, Unregistered: []StaleProcess{}, UnregisteredSupported: true}
@@ -111,8 +112,9 @@ func readProcesses(deps Deps, processes []proc.Process, processesErr error) Proc
 	return report
 }
 
-// orphanOwner reports whether owner's records read as orphans: owner is a slug, never the hub owner, that no worktree of worktreeNames carries as its base name and that has no live batten record among records.
-// A running batten record counts only while a batten record of the slug is alive, and records lists only live records.
+// orphanOwner reports whether owner's records read as orphans.
+// The hub owner is never an orphan, nor is a slug that a worktree in worktreeNames carries as its base name.
+// A batten record among records keeps the owner from reading as an orphan, since records lists only live records.
 func orphanOwner(owner string, records []runproc.Record, worktreeNames map[string]bool) bool {
 	if owner == runproc.HubOwner || worktreeNames[owner] {
 		return false
@@ -125,7 +127,8 @@ func orphanOwner(owner string, records []runproc.Record, worktreeNames map[strin
 	return true
 }
 
-// unregisteredOrphans keeps each process running executable's file name from a deleted working directory that lies inside hubPath and outside every worktree, that no record registers and whose own exe is not deleted.
+// unregisteredOrphans keeps each process that runs executable's file name from a deleted working directory.
+// The process must be one no record registers, and its directory must lie inside hubPath and outside every worktree.
 // A process with a deleted exe is the replaced-binary part's, and an empty executable keeps nothing.
 func unregisteredOrphans(processes []proc.Process, hubPath, executable string, worktrees []string, registered map[int]bool) []StaleProcess {
 	orphans := []StaleProcess{}

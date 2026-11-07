@@ -1,4 +1,5 @@
-// drive.go runs "lym batten run" through the shed driver's body: the run verb's pre-run and driver lock, the seams batten fills the driver with, and the envelope the verb prints from how the driver ended.
+// drive.go holds the body of "lym batten run": batten's pre-run, then the shed driver over batten's seams.
+// It also holds the driver lock, the run envelope the verb prints, and the exit codes of refused passes.
 
 package battencli
 
@@ -45,7 +46,8 @@ import (
 // battenTacklerRecipe is the one-line description of a batten run the tackler's prompt names under its run heading.
 const battenTacklerRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime (create the pair, seed and run the task's own run, tear the pair down and land it)"
 
-// battenArbiterRecipe describes batten's rows and the arbiter's moves for the arbiter's prompt, which names it under its run heading.
+// battenArbiterRecipe describes batten's rows and the arbiter's moves.
+// The arbiter's prompt names it under its run heading.
 const battenArbiterRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime, in rows. " +
 	"Worktree-Create claims the task and makes the pair; " +
 	"Seed-Child writes the child's seed and run settings; " +
@@ -55,10 +57,12 @@ const battenArbiterRecipe = "batten: a task worktree's whole lifecycle run from 
 	"Worktree-Teardown ends the session and removes the pair. " +
 	"The arbiter's only moves are a plain re-launch, a goto to the halted row, or a hand-on."
 
-// battenDriveRefusal is the refusal of a second batten driver for a run one already drives, before its way-forward clause.
+// battenDriveRefusal is the refusal of a second batten driver for a run one already drives.
+// A way-forward clause follows it.
 const battenDriveRefusal = "battencli: a batten driver already drives this run"
 
-// battenDriveLock names the driver lock "lym batten run" holds for its life, the files it removes once it holds it, and what it says when another driver holds the lock.
+// battenDriveLock names the driver lock "lym batten run" holds for its life.
+// It also names the stale files removed once the lock is held, and what it says when another driver holds the lock.
 func battenDriveLock(location *lymcwd.Location, slug string) sheddriver.DriveLock {
 	return sheddriver.DriveLock{
 		Path:        shedrun.DriverLock(location, slug),
@@ -68,7 +72,8 @@ func battenDriveLock(location *lymcwd.Location, slug string) sheddriver.DriveLoc
 	}
 }
 
-// driveRun is the run verb's body: batten's pre-run, then the shed driver over batten's seams under the driver lock, then the run envelope.
+// driveRun is the run verb's body:
+// batten's pre-run, then the shed driver over batten's seams under the driver lock, then the run envelope.
 func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -100,7 +105,8 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 		return battenRunEnvelope(exit, status, found, abandonedSession, yieldReason, c.spec.RunBusyMessage)
 	})
 	clihelp.SetExit(ctx, exit)
-	// A pass that reached origin and exited 0 pays the origin the earlier resume owed; any other pass leaves the marker standing.
+	// A pass that reached origin and exited 0 pays the origin the earlier resume owed;
+	// any other pass leaves the marker standing.
 	if exit == 0 && c.originReached {
 		c.clearOriginOwed()
 	}
@@ -111,7 +117,9 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 	return nil
 }
 
-// passExitCode returns the exit code of a pass that refused with err before the step loop: the owned-elsewhere code for a run another machine owns, the covered code for a run a pause covers, the continue-refused code for a continue pass of a run dobby may not continue, and 1 for any other refusal.
+// passExitCode returns the exit code of a pass that refused with err before the step loop:
+// the owned-elsewhere code for a run another machine owns; the covered code for a run a pause covers;
+// the continue-refused code for a continue pass of a run dobby may not continue; and 1 for any other refusal.
 func passExitCode(err error) int {
 	var owned *OwnedElsewhereError
 	var covered *coveredRefusal
@@ -129,9 +137,11 @@ func passExitCode(err error) int {
 }
 
 // battenRunEnvelope builds the run verb's success envelope from how the driver ended and the status as it then reads.
-// A run that finished or stopped at done, blocked, paused or awaiting reports outcome, halted_producer, reason and history_length, and abandonedSession when the teardown row recorded one.
+// A run whose status is done, blocked, paused or awaiting reports outcome, halted_producer, reason and history_length.
+// The envelope also reports abandonedSession when the teardown row recorded one.
 // A busy exit returns busyMessage as the error, and a failed run the status's own error.
-// A yield reports outcome yielded with the run still running, and yieldReason, the hold or wait reason it yielded on, as the reason.
+// A yield reports outcome yielded with the run still running,
+// and it reports yieldReason, the hold or wait reason the run yielded on, as the reason.
 func battenRunEnvelope(exit sheddriver.Exit, st shedengine.Status, found bool, abandonedSession, yieldReason, busyMessage string) (map[string]any, error) {
 	if exit == sheddriver.ExitBusy || exit == sheddriver.ExitRunningElsewhere {
 		return nil, errors.New(busyMessage)
@@ -181,14 +191,15 @@ func (c *battenCLI) readRunStatus() (shedengine.Status, bool, error) {
 }
 
 // reportSuffix returns four lowercase hex characters, the random part of a drive-reports file name.
-// Its job is keeping two same-second files apart, so a failed read, which leaves "0000", costs at most a rare name collision.
+// It keeps two same-second files apart, so a failed read, which leaves "0000", costs at most a rare name collision.
 func reportSuffix() string {
 	var b [2]byte
 	_, _ = rand.Read(b[:])
 	return fmt.Sprintf("%04x", b)
 }
 
-// driverStep is the Go driver's step seam: the untilStop override when set, else the loop's waiter over the armed spec, labelled shedengine.CallerShed.
+// driverStep is the Go driver's step seam:
+// the untilStop override when set, else the loop's waiter over the armed spec, labelled shedengine.CallerShed.
 // It returns the envelope the waiter printed, or an error when it printed none.
 func (c *battenCLI) driverStep(ctx context.Context, attempt string) ([]byte, error) {
 	if c.untilStop != nil {
@@ -209,8 +220,11 @@ func (c *battenCLI) driverGoto(ctx context.Context, target string) error {
 }
 
 // battenHandBackNotice routes the notice of a hand-back at stop and reports whether it was posted.
-// A paused stop sends nothing, since the operator asked for the pause, and neither does a Land stop that honoured a pause, whose own reason names the goto that clears it.
-// A stop at Land or Worktree-Teardown sends the row-stop notice with the stop's reason and the report at reportPath, and any other stop sends line.
+// A paused stop sends nothing, since the operator asked for the pause.
+// A Land or Worktree-Teardown stop that honoured a pause sends nothing either;
+// its own reason names the goto that clears it.
+// A stop at Land or Worktree-Teardown sends the row-stop notice with the stop's reason and the report at reportPath,
+// and any other stop sends line.
 func battenHandBackNotice(deps battenshed.RowNoticeDeps, slug, scratchDir string, stop sheddriver.Stop, line, reportPath string) bool {
 	if stop.Key().State == string(shedengine.StatePaused) {
 		return false
@@ -226,9 +240,12 @@ func battenHandBackNotice(deps battenshed.RowNoticeDeps, slug, scratchDir string
 }
 
 // driverDepsFor fills the shed driver's seams for batten's run in the prime.
-// Every path comes from shedrun over the prime's location and the slug, and nothing is read or built here: the configs, the model registry and the shuttle runner load inside the Tackler and Arbiter seams on their first call.
-// The seams it leaves nil, the verify, watched, hand-over, tamper and friction-note ones, remove their rows from the driver's rule table.
-// A hand-back's park and a done stop commit the run's records on the prime's pair, since the stop report and the done step's envelope are written after the transition's own commit.
+// Every path comes from shedrun over the prime's location and the slug.
+// Nothing is read or built here.
+// The configs, the model registry and the shuttle runner load when the `Tackler` or `Arbiter` seam is called.
+// A seam left nil removes its rows from the driver's rule table.
+// The stop report and the done step's envelope are written after the transition's own commit,
+// so a hand-back's park and a done stop commit the run's records on the prime's pair.
 func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 	location, slug := c.location, c.slug
 	runID := shedrun.ResolveRunID(location, slug)
@@ -268,7 +285,8 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 			return reportPath
 		},
 		HandBack: sheddriver.HandBackDeps{
-			// The driver asks for the hand-back's report path just before it sends the hand-back's notices, so reportPath is the report the notice names.
+			// The driver asks for the hand-back's report path just before it sends the hand-back's notices,
+			// so `reportPath` is the report the notice names.
 			Notify: func(stop sheddriver.Stop, line string) (bool, error) {
 				return battenHandBackNotice(rowNotices(location, slug), slug, c.env.ScratchDir, stop, line, reportPath), nil
 			},
@@ -333,7 +351,8 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 	}, nil
 }
 
-// runRecordsDeps returns the fabric calls that commit the run's records: the recordsDeps override when set, else the real ones over the prime's pair.
+// runRecordsDeps returns the fabric calls that commit the run's records.
+// It is the `recordsDeps` override when one is set, else the real calls over the prime's pair.
 func (c *battenCLI) runRecordsDeps() commitStatusDeps {
 	if c.recordsDeps != nil {
 		return c.recordsDeps()
@@ -341,8 +360,8 @@ func (c *battenCLI) runRecordsDeps() commitStatusDeps {
 	return battenCommitStatusDeps(c.location, c.slug)
 }
 
-// arbiterSeam builds batten's arbiter seam, whose deps load on its first Judge call.
-// A batten stop never awaits a review escalation, so EscalationPending answers false.
+// arbiterSeam builds batten's arbiter seam, whose deps load on its first `Judge` call.
+// A batten stop never awaits a review escalation, so `EscalationPending` answers false.
 func (c *battenCLI) arbiterSeam(runID string) *sheddriver.ArbiterSeam {
 	var loaded *sheddriver.ArbiterSeam
 	seam := shedarbiter.Seam(shedarbiter.Deps{}, runID, func(string) bool { return false })
@@ -360,7 +379,8 @@ func (c *battenCLI) arbiterSeam(runID string) *sheddriver.ArbiterSeam {
 }
 
 // tacklerDepsFor fills the tackler call's seams and fixed values over settings and shuttle.
-// A batten tackler has no worktree snapshot, since the prime has other writers, and a resume names the halted row only.
+// A batten tackler has no worktree snapshot, since the prime has other writers,
+// and a resume names the halted row only.
 func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle sheddriver.AgentShuttle) sheddriver.TacklerDeps {
 	location, slug := c.location, c.slug
 	settlePath := shedrun.SettleRecords(location, slug)
@@ -408,7 +428,8 @@ func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle 
 	}
 }
 
-// loadedTacklerDeps loads the configs and the model registry and builds the prime's shuttle runner, then fills the tackler call's seams over them.
+// loadedTacklerDeps loads the configs and the model registry and builds the prime's shuttle runner.
+// It then fills the tackler call's seams over them.
 func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	location := c.location
 	dirs := fabricengine.ConfigDirs(location)
@@ -437,7 +458,8 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 }
 
 // primeShuttle builds the prime's shuttle runner, shared by the tackler and the arbiter.
-// The runner is built from the prime's own reed geometry, so an agent's strand lives in the prime's reed session and the task worktree's session shutdown never ends it.
+// The runner is built from the prime's own reed geometry,
+// so an agent's strand lives in the prime's reed session and the task worktree's session shutdown never ends it.
 func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttle, error) {
 	location := c.location
 	reedConfig, err := reedengine.LoadConfig(dirs, "reed")
@@ -466,7 +488,8 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
-	// The tackler and the arbiter work for the task's run, so their sessions count toward the task worktree's usage records.
+	// The tackler and the arbiter work for the task's run,
+	// so their sessions count toward the task worktree's usage records.
 	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
 		logger.Warn("battencli: locate the task worktree to record its tackler and arbiter sessions failed; they stay unrecorded", "slug", c.slug, "error", err)
 	} else {
@@ -475,8 +498,8 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 	return sheddriver.RunnerShuttle{Runner: runner}, nil
 }
 
-// loadedArbiterDeps loads the configs and the model registry and builds the prime's shuttle runner, then fills the arbiter call's seams over them.
-// The arbiter's settings are shed.yaml's under batten.yaml's override.
+// loadedArbiterDeps returns the dependencies of the arbiter call, built from the config directories.
+// The arbiter's settings come from shed.yaml, with the override in batten.yaml applied.
 func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 	location, slug := c.location, c.slug
 	dirs := fabricengine.ConfigDirs(location)
@@ -523,7 +546,8 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 	}, nil
 }
 
-// haltedRowGuard returns the arbiter's goto guard: it admits only the row the run is halted at, read from the status at the call.
+// haltedRowGuard returns the arbiter's goto guard, which admits only the row the run is halted at.
+// The guard reads the halted row from the status on each call.
 // A goto to an earlier row would re-run Seed-Child over a live pair's local config layer and seed, or Worktree-Create.
 func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 	return func(target string) (string, error) {
@@ -541,7 +565,9 @@ func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 	}
 }
 
-// battenConsumeAttempt is batten's ConsumeAttempt hook: it parses attempt as a positive attempt number of the run and consumes that attempt's directory over batten's relaunch request.
+// battenConsumeAttempt applies the arbiter attempt that a batten relaunch names.
+// It parses attempt as a positive attempt number of the run,
+// and it refuses any other value before it reads an attempt directory.
 func (c *battenCLI) battenConsumeAttempt(_ context.Context, attempt string) error {
 	number, err := strconv.Atoi(attempt)
 	if err != nil || number < 1 {

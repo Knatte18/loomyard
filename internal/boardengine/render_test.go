@@ -1,9 +1,10 @@
 // render_test.go — unit tests for rendering (render.go).
 //
-// README and design-doc goldens over the kind-and-label layout: tasks in layers, notes grouped by type with an Other group, done and abandoned entries, dependencies, bodies, and the omitted Done section and empty Notes subsections.
-// Also covers the manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
-// across consecutive renders,
-// and a missing or corrupt manifest degrades gracefully.
+// README and design-doc goldens over the kind-and-label layout.
+// They cover tasks in layers; notes grouped by type with an Other group;
+// done and abandoned entries; dependencies; bodies; and the omitted Done section and empty Notes subsections.
+// It also covers the manifest-based cleanup in RenderToDisk:
+// renamed outputs are removed across consecutive renders, and a missing or corrupt manifest degrades gracefully.
 
 package boardengine_test
 
@@ -37,8 +38,10 @@ func seedManifest(t *testing.T, dir string, names []string) {
 	}
 }
 
-// TestRenderToDiskManifestCleanup covers RenderToDisk's outputs and the manifest-based cleanup scenarios:
-// a pre-seeded orphan removed with a custom design prefix, renamed outputs removed across consecutive renders, body loss removing a design doc, a removed project dropping its board file, unrelated files left untouched, and graceful degradation for missing/corrupt manifests.
+// TestRenderToDiskManifestCleanup covers RenderToDisk's outputs and the manifest-based cleanup:
+// a seeded orphan removed under a custom design prefix; renamed outputs removed across consecutive renders;
+// body loss removing a design doc; a removed project dropping its board file; unrelated files left untouched;
+// and graceful degradation for missing or corrupt manifests.
 func TestRenderToDiskManifestCleanup(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("SeededManifestRemovesOrphanAndWritesOutputs", func(t *testing.T) {
@@ -48,7 +51,8 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 			{ID: 1, Slug: "b", Title: "B", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}, // no body → no design-doc file
 		}
 
-		// A stale design doc from a previous render, pre-seeded into the manifest, so the one RenderToDisk call removes it: a first render with no prior manifest removes nothing.
+		// A stale design doc from a previous render, pre-seeded into the manifest, so the one RenderToDisk call removes it.
+		// A first render with no prior manifest removes nothing.
 		ghost := filepath.Join(dir, "prop-ghost.md")
 		if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
 			t.Fatal(err)
@@ -198,8 +202,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		dir := t.TempDir()
 		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}}
 
-		// A file that looks like an orphan under the old glob approach but is absent
-		// from the manifest because no manifest exists yet (pre-upgrade state).
+		// A proposal file that no manifest records, as on a board rendered before any manifest existed.
 		stale := filepath.Join(dir, "proposal-stale.md")
 		if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
 			t.Fatal(err)
@@ -243,7 +246,8 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 // readmeTypes is the type-label order the README goldens render Notes sections in.
 var readmeTypes = []string{"bug", "enhancement", "research"}
 
-// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a research note, a note whose type label is not in readmeTypes, a high-priority note, a low-priority note listed before a normal one of the same type, a profile with a pipe on a task with no recipe, a recipe with a profile, and run settings on three tasks: two keys in one module, a nested key with a pipe in its value beside a list value, and one key with no brief.
+// readmeFixture returns the tasks and notes the README golden tests render.
+// They mix labels, dates, priorities, dependencies, bodies, profiles, recipes, and run settings.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
@@ -259,28 +263,63 @@ func readmeFixture() []boardengine.Task {
 	}
 }
 
-// TestRenderReadmeGolden pins the README tables for a fixture with tasks and notes, notes grouped by type with research first, headed Research, then the other types in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, only non-type labels, an After cell naming the open dependency by handle and leaving out a done one, an isolated task, and a Ready task with one in Layer A after it.
-// The same row pins that every row opens with the entry's handle and that each group is one table sorted by handle, a note with a lower handle and a higher ID first.
-// It pins that among the root's tables only the Notes tables carry the priority column, headed Prio, H for high, L for low and blank for normal.
-// It pins that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
-// The same row pins that each run setting stacks as a code-span bullet in the entry cell after any brief, sorted, a nested key as its dotted path, a non-string value as JSON and a pipe escaped, adding no column.
-// Every Tasks table pins a Recipe column after the slug, the fixture's default recipe for an empty recipe and the stored name otherwise, followed by ` · ` and the profile, pipe escaped, when the task names one, and the Notes and Done tables pin its absence.
-// Every README pins the root's own sections under the root project's heading, P0 linked to project-root.md and counting its open entries, then its facts line naming only the prime owner, one heading level below a project file's.
-// Every README pins the render time at its top and the prime owner under it, the machine in a code span and none recorded when the board records none;
-// every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.
-// A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
+// TestRenderReadmeGolden pins the README tables for readmeFixture.
+// Notes are grouped by type, with research first under the heading Research and the other types in Outputs.Types order;
+// the golden also pins an Other group, a done entry, an abandoned note, and a slug linked to its design doc;
+// labels that are not types; an After cell naming the open dependency by handle and leaving out a done one;
+// an isolated task; and a Ready task with one in Layer A after it.
+// Every row opens with the entry's handle, and each group is one table sorted by handle,
+// so a note with a lower handle and a higher ID comes first.
+// Among the root's tables only the Notes tables carry the priority column:
+// headed Prio, with H for high, L for low, and blank for normal.
+// It pins that a pipe in a title is escaped and a line break in a brief becomes a space;
+// so each row stays one table row.
+// It pins that each run setting stacks as a sorted code-span bullet in the entry cell after any brief;
+// a nested key appears as its dotted path, a non-string value as JSON, a pipe is escaped, and no column is added.
+// Every Tasks table pins a Recipe column after the slug, when the task names one.
+// The column holds the fixture's default recipe for an empty recipe and the stored name otherwise;
+// it is followed by ` · ` and the profile, with a pipe escaped.
+// The Notes and Done tables pin its absence.
+// Every README pins the root's own sections under the root project's heading.
+// That heading reads P0, linked to project-root.md, and counts its open entries.
+// Its facts line names only the prime owner, one heading level below a project file's.
+// Every README pins the render time at its top and the prime owner under it, the machine in a code span;
+// it reads none recorded when the board records no prime owner.
+// Every table pins the one column before Labels, holding the age above the time since revision;
+// the age is as of that time, and the cell is blank for unknown dates.
+// A second row pins that Ready renders _None._ when empty.
+// It also pins that the Done section is omitted when no entry is done,
+// and that every empty Notes subsection is omitted when no note exists for it.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
-// A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the prime owner for a task outside every beam.
-// The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming its handle under After, and that a task after that one lands in Layer B.
-// A fourth row pins that README.md renders every open project under no other at heading level two, by handle, and nests sub-projects one heading level per depth, in their parent's order and then by handle, with an open project under a done one counted as top-level, each heading linking the project and counting its open members, then its facts, the slug there linked to its design file only for a project with a body, its brief, its sub-projects and its own Tasks, Notes and Done split as the root's.
-// The same row pins that the root's section comes last, at the top-level projects' level, holding only the entries under no project, its projects not counted as its members, a done project a linked Done row there, that a project with sub-projects holds its own entries under an Own entries heading after them and one without holds them directly, and that every project, open or done, renders to project-<slug>.md and the root to project-root.md.
-// A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, renders its nested projects as sections in its order and then by handle, and holds its own entries under Own entries after them.
+// A third row pins that a task with a run status renders under Running, before Ready and in no layer.
+// Those tasks are ordered by handle over ID; each At cell drops the state `running` and keeps any other.
+// Each Owner cell holds the prime owner for a task outside every beam.
+// The same row pins that a task waiting on a running one lands in Layer A, not Ready.
+// That task still names its handle under After, and a task after it lands in Layer B.
+// A fourth row pins that README.md renders each open project with no open parent at heading level two, by handle.
+// It pins that sub-projects nest one heading level per depth, in their parent's order and then by handle.
+// Each heading links the project and counts its open members.
+// Under the heading come its facts, with the slug linked to its design file only for a project with a body;
+// then its brief, its sub-projects, and its own Tasks, Notes and Done split as the root's.
+// The same row pins that the root's section comes last, at the top-level projects' level.
+// It holds only the entries under no project, and its projects are not counted as its members;
+// a done project is a linked Done row there.
+// A project with sub-projects holds its own entries under an Own entries heading after them;
+// a project without sub-projects holds them directly.
+// Every project, open or done, renders to project-<slug>.md, and the root to project-root.md.
+// A project file opens with its handle and title, a link up to its parent's file, and the brief;
+// for a beam only, it also names the beam and its recorded owner.
+// It renders its nested projects as sections in its order and then by handle;
+// it holds its own entries under Own entries after them.
 // The root's file opens the same way with a link up to README.md and its facts line, and holds only its own entries.
-// A task there waiting on a running member and a root task stands in Layer A, its After cell one handle per line, and the running member shows the beam's recorded owner.
-// A dependency naming no board entry shows in the After cell as a code span of its slug, and a draft task in a project file stands in its own Draft subsection after Ready.
+// A task there waiting on a running member, and a root task, stands in Layer A;
+// its After cell holds one handle per line, and the running member shows the beam's recorded owner.
+// A dependency naming no board entry shows in the After cell as a code span of its slug;
+// a draft task in a project file stands in its own Draft subsection after Ready.
 // A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its own file.
-// A sixth row pins that a chain of nested projects stops deepening its headings at level six.
-// A seventh row pins that a task depending on an open project shows the project's handle under After, and one depending on a plain project whose every landing member is done leaves After empty and stands in Ready.
+// A row pins that a chain of nested projects stops deepening its headings at level six.
+// A row pins that a task depending on an open project shows the project's handle under After.
+// One depending on a plain project whose every landing member is done leaves After empty and stands in Ready.
 func TestRenderReadmeGolden(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -972,7 +1011,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 	}
 }
 
-// TestRenderRecipeCellTakesTheDefaultRecipe pins that a task with no recipe shows Outputs.DefaultRecipe in its Recipe cell and a task naming a recipe shows its own.
+// TestRenderRecipeCellTakesTheDefaultRecipe pins that a task with no recipe shows Outputs.DefaultRecipe,
+// and a task naming a recipe shows its own.
 func TestRenderRecipeCellTakesTheDefaultRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -992,8 +1032,9 @@ func TestRenderRecipeCellTakesTheDefaultRecipe(t *testing.T) {
 	}
 }
 
-// TestRenderProjectFileShowsTheBodyUnderTheBrief pins that a project file renders the project's body between its brief and the intro.
-// Its ATX headings shift down together until the shallowest is level two, and lines in fenced or indented code stay as they are.
+// TestRenderProjectFileShowsTheBodyUnderTheBrief pins that the body renders between the brief and the intro.
+// Its ATX headings shift down together until the shallowest is level two.
+// Lines in fenced or indented code stay as they are.
 // A project with no body, or a blank one, renders no body.
 func TestRenderProjectFileShowsTheBodyUnderTheBrief(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1049,7 +1090,9 @@ func TestRenderProjectFileShowsTheBodyUnderTheBrief(t *testing.T) {
 	}
 }
 
-// TestRenderSlugCellLinksTheDecisionRecord pins that a discussed entry's Slug cell stacks a Sketch link to its decision record under the slug, in an open and a Done table of every board file listing it, and that an entry not flagged discussed renders the slug alone.
+// TestRenderSlugCellLinksTheDecisionRecord pins that a discussed entry's Slug cell stacks a Sketch link under the slug.
+// The link goes to the decision record, in an open and a Done table of every board file listing it.
+// An entry not flagged discussed renders the slug alone.
 func TestRenderSlugCellLinksTheDecisionRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1076,7 +1119,8 @@ func TestRenderSlugCellLinksTheDecisionRecord(t *testing.T) {
 	}
 }
 
-// TestRenderSketchSection pins that Sketches render under their own Sketches subsection, the first of the Notes subsections and ahead of Research, each row a note row with its Sketch link and its module labels.
+// TestRenderSketchSection pins that Sketches render first among the Notes subsections, ahead of Research.
+// Each row is a note row with its Sketch link and its module labels.
 func TestRenderSketchSection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1100,7 +1144,8 @@ func TestRenderSketchSection(t *testing.T) {
 	}
 }
 
-// emptyProjectEntries is the rendered own entries of a project holding none, its Tasks and Notes at heading level level and Ready one level down.
+// emptyProjectEntries renders the own entries of a project holding none.
+// Its Tasks and Notes headings sit at heading level level, and its Ready heading one level below.
 func emptyProjectEntries(level int) string {
 	return strings.Repeat("#", level) + " Tasks (0)\n" +
 		"\n" +
@@ -1117,7 +1162,8 @@ func emptyProjectEntries(level int) string {
 		"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
 }
 
-// emptyEntriesAtLevelSix is the rendered own entries of a project holding none, nested so deep that its Tasks, Ready and Notes headings all stop at level six.
+// emptyEntriesAtLevelSix renders the own entries of a project holding none.
+// The project is nested so deep that its Tasks, Ready and Notes headings all stop at level six.
 const emptyEntriesAtLevelSix = "###### Tasks (0)\n" +
 	"\n" +
 	"Concrete and claimable; only a task can run.\n" +
@@ -1132,7 +1178,8 @@ const emptyEntriesAtLevelSix = "###### Tasks (0)\n" +
 	"\n" +
 	"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
 
-// rootProjectHeading is the root project's heading at level level counting members open entries, then its facts line naming owner.
+// rootProjectHeading renders the root project's heading at level level, counting its open members.
+// The facts line under it names the owner.
 func rootProjectHeading(level, members int, owner string) string {
 	return strings.Repeat("#", level) + " [P0 Root: entries under no project](project-root.md) (" + strconv.Itoa(members) + ")\n" +
 		"\n" +
@@ -1140,7 +1187,8 @@ func rootProjectHeading(level, members int, owner string) string {
 		"\n"
 }
 
-// rootEntriesWithProjects is the rendered own entries of the root in the fixture with projects, its Tasks, Notes and Done at heading level level: one Ready task and one done project.
+// rootEntriesWithProjects renders the own entries of the root in the fixture with projects.
+// Its Tasks, Notes and Done headings sit at heading level level, with one Ready task and one done project.
 func rootEntriesWithProjects(level int) string {
 	section, subsection := strings.Repeat("#", level), strings.Repeat("#", level+1)
 	return section + " Tasks (1)\n" +
@@ -1168,7 +1216,8 @@ func rootEntriesWithProjects(level int) string {
 		"| P3 | **[Old project](project-old.md)** | `old` |  |  |\n"
 }
 
-// ownEntriesHeading is the heading at level level and the meaning line over a project's own entries when it has open sub-projects.
+// ownEntriesHeading renders the heading and meaning line over a project's own entries, at level level.
+// It applies when the project has open sub-projects.
 func ownEntriesHeading(level int) string {
 	return strings.Repeat("#", level) + " Own entries\n" +
 		"\n" +
@@ -1176,7 +1225,8 @@ func ownEntriesHeading(level int) string {
 		"\n"
 }
 
-// TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.
+// TestRenderDesignDocGoldens pins the design-doc header and the Depends on line.
+// The Depends on line has one linked and one named dependency; the multi-line body appears byte-identical.
 func TestRenderDesignDocGoldens(t *testing.T) {
 	tiergate.Require(t, 0)
 	task, note := boardengine.KindTask, boardengine.KindNote
@@ -1217,9 +1267,8 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 	}
 }
 
-// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields, covering both a custom Readme filename and a custom design prefix.
-//
-// Folds: TestRenderConfigurableHomeFilename, TestRenderConfigurableProposalPrefix
+// TestRenderCustomOutputs pins that Render honors the configurable Outputs fields.
+// Its subtests cover a custom readme filename and a custom design prefix.
 //
 //testtiming:keep pins the result keys and design-doc links for a custom readme name and design prefix, which its covering test does not assert
 func TestRenderCustomOutputs(t *testing.T) {

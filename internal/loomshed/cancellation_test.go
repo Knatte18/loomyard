@@ -1,11 +1,7 @@
-// cancellation_test.go carries the one test whose subject is this package's own constructors under
-// an already-cancelled context, plus the reduced fixture it drives from. It stays in
-// internal/loomshed rather than moving to internal/loomrecipe alongside the rest of the sequence
-// suite because it calls neither New nor Run: it constructs NewWebsterProducer directly and calls Call on it.
-//
-// This is the only test anywhere proving their real Call wiring
-// returns an error rather than a verdict under an already-cancelled context -- the shared
-// cancellation helpers' own tests exercise those helpers in isolation and never through a producer.
+// cancellation_test.go tests the real producers' Call under an already-cancelled context.
+// It also holds the reduced fixture the test drives from.
+// Each producer must return an error rather than a verdict in that state,
+// and the helpers' own tests cannot show that because they never run through a producer.
 
 package loomshed
 
@@ -19,21 +15,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// cancellationFixture carries the one told value TestCancellation_RealProducersReturnErrorNotStuck reads.
+// cancellationFixture holds the one value TestCancellation_RealProducersReturnErrorNotStuck reads.
 type cancellationFixture struct {
 	AnchorPath string
 }
 
-// buildCancellationFixture seeds only what the producers this test drives read: NewWebsterProducer reads AnchorPath.
+// buildCancellationFixture seeds only AnchorPath, the one field the producers under test read.
 func buildCancellationFixture(t *testing.T) cancellationFixture {
 	t.Helper()
 
 	return cancellationFixture{AnchorPath: t.TempDir()}
 }
 
-// TestCancellation_RealProducersReturnErrorNotStuck asserts the one obligation shedengine cannot enforce for itself:
-// every real producer this test drives -- the Webster wrapper -- returns a non-nil error rather than shedengine.Stuck when called under an already-cancelled context.
-// A Stuck under a cancelled context is indistinguishable to Shed from a genuine verdict and would silently consume bounce budget for what was actually an operator stop.
+// TestCancellation_RealProducersReturnErrorNotStuck asserts that each producer under test returns a non-nil error.
+// It must return that error, not shedengine.Stuck, when called under an already-cancelled context.
+// A Stuck under a cancelled context looks to Shed like a genuine verdict:
+// it would silently consume bounce budget for an operator stop.
 func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := buildCancellationFixture(t)

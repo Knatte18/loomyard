@@ -251,7 +251,8 @@ func TestFileRaddle(t *testing.T) {
 		if err := b.FileRaddle(filing); err != nil {
 			t.Fatalf("FileRaddle() error = %v; want nil", err)
 		}
-		// Removing the store directory leaves what a crash between the board save and the store write leaves: filed entries and no done marker.
+		// Removing the store directory leaves what a crash between the board save and the store write leaves:
+		// filed entries and no done marker.
 		if err := os.RemoveAll(RaddleStoreDir(boardPath, "plan")); err != nil {
 			t.Fatalf("RemoveAll(store directory) = %v; want nil", err)
 		}

@@ -1,5 +1,6 @@
-// innerrun_failures_test.go covers how the inner-run passes log a seam that keeps failing, and the attempts they repeat:
-// one Warn per episode across passes with Debug lines while it lasts and one Info at recovery, and Info only for the first attempt of a retried goto, resume or spawn.
+// innerrun_failures_test.go covers the log lines the inner-run passes write when a seam keeps failing.
+// It checks one Warn per episode across passes, with Debug lines while it lasts and one Info at recovery;
+// Info is logged only for the first attempt of a retried goto, resume or spawn.
 // The tests capture the process-global logger, so they do not run in parallel.
 
 package battenshed
@@ -74,8 +75,11 @@ func failureLockSeams() *ChildParentLock {
 	}
 }
 
-// TestInnerRun_ReadFailuresLogOncePerEpisode asserts each polled seam whose failure repeats on every check warns once, logs Debug while it keeps failing and logs one Info when it reads again.
-// It also asserts the demoted lines: a parent lock release logs Info, and a retried goto or resume logs Info on its first attempt and Debug after each refusal.
+// TestInnerRun_ReadFailuresLogOncePerEpisode asserts a polled seam whose failure repeats on every check warns once.
+// It logs Debug while it keeps failing, and logs one Info when it reads again.
+// It also asserts the demoted lines.
+// A parent lock release logs Info.
+// A retried goto or resume logs Info on its first attempt and Debug after each refusal.
 func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 	tiergate.Require(t, 0)
 	blocked := parked(shedengine.StateBlocked)
@@ -93,7 +97,7 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 		status  shedengine.Status
 		// covered makes the fake pause record cover the slug on every check, so the awaiting arm's own decision read does not end the Call.
 		covered bool
-		// recent starts the fake clock seconds after the status file's modification time, so a parked stop's notice has not waited out its report wait.
+		// recent starts the fake clock seconds after the status file's modification time, so a parked notice is not yet due.
 		recent bool
 		// wire installs the seam under test into deps; fail errors on its first three calls.
 		wire func(deps *InnerRunDeps, fail func() error)
@@ -202,7 +206,8 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 			status: restepBlocked,
 			wire: func(deps *InnerRunDeps, fail func() error) {
 				wireRestepSeams(deps)
-				// The revive reads the strand before the re-step check on every tick, so the seam fails twice as often to fail the check three times.
+				// The revive reads the strand before the re-step check on every tick.
+				// Six failing calls therefore fail the check three times.
 				failBoth := failFirstCalls(6)
 				deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return ChildDriverNone, failBoth() }
 			},

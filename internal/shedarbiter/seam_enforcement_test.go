@@ -1,5 +1,6 @@
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership:
-// production code in internal/shedarbiter takes every path from its caller and imports no cwd resolver and no CLI package.
+// production code in internal/shedarbiter takes every path from its caller;
+// it imports no cwd resolver and no CLI package.
 
 package shedarbiter
 
@@ -28,7 +29,8 @@ var shedarbiterAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 }
 
-// shedarbiterDeniedImport reports whether importPath is one of the imports the package never makes: the cwd resolver and any internal CLI package.
+// shedarbiterDeniedImport reports whether importPath is one of the imports the package never makes:
+// the cwd resolver and any internal CLI package.
 func shedarbiterDeniedImport(importPath string) bool {
 	if importPath == "github.com/Knatte18/loomyard/internal/lymcwd" {
 		return true
@@ -36,7 +38,8 @@ func shedarbiterDeniedImport(importPath string) bool {
 	return strings.HasPrefix(importPath, "github.com/Knatte18/loomyard/internal/") && strings.HasSuffix(path.Base(importPath), "cli")
 }
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately names any production import of a denied package.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist;
+// it also names any production import of a denied package.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/shedarbiter", shedarbiterAllowedImports...)

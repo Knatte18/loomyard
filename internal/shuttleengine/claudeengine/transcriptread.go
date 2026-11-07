@@ -1,4 +1,5 @@
-// transcriptread.go implements shuttleengine.TranscriptReader for Claude: it locates the sessions Claude Code recorded under a worktree and reads them into neutral transcript entries.
+// transcriptread.go implements shuttleengine.TranscriptReader for Claude.
+// It locates the sessions Claude Code recorded under a worktree and reads them into neutral transcript entries.
 // The project directory layout lives here; the line format is parsed in usage.go.
 
 package claudeengine
@@ -14,7 +15,8 @@ import (
 
 var _ shuttleengine.TranscriptReader = (*Claude)(nil)
 
-// subagentsDirName is the directory, beside a session's transcript and named after it, that holds the transcripts of the session's subagents and forks.
+// subagentsDirName is the name of the directory that holds a session's subagent and fork transcripts.
+// It sits inside the directory named after the session, which lies beside the session's transcript file.
 const subagentsDirName = "subagents"
 
 // subagentTranscriptPrefix starts the file name of a subagent's transcript, followed by its agent id and ".jsonl".
@@ -106,9 +108,10 @@ func locateForks(subagentsDir string) ([]shuttleengine.TranscriptRef, error) {
 	return forks, nil
 }
 
-// ReadSession reads a session this engine located: its own transcript with sidechain lines included, then each fork transcript.
+// ReadSession reads a session this engine located.
+// It reads the session's own transcript with sidechain lines included, then each fork transcript.
 // A fork skips the message ids the session's own transcript counted, since it replays its parent's spawning message.
-// A transcript that cannot be read, one that vanished after locating included, is an error naming its path.
+// A transcript that cannot be read is an error naming its path, including one that vanished after it was located.
 func (c *Claude) ReadSession(s shuttleengine.LocatedSession) (shuttleengine.SessionRead, error) {
 	main, err := readTranscript(s.TranscriptRef, s.ID, nil)
 	if err != nil {

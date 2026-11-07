@@ -15,13 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ResumeRequest asks for a resume.
+// ResumeRequest selects which live entries a resume lifts.
 type ResumeRequest struct {
 	// Slug is the pair to resume; empty resumes every live entry.
 	Slug string
 }
 
-// ResumeReport is what a resume did.
+// ResumeReport reports what a resume lifted and how each interrupted session was handled.
 type ResumeReport struct {
 	// Resumed holds the scope of each entry lifted.
 	Resumed []string `json:"resumed"`
@@ -39,7 +39,7 @@ type ResumeReport struct {
 	SpawnFailed []SessionNote `json:"spawn_failed"`
 }
 
-// StatusReport is what a pause currently holds and what runs, waits, stalls or runs stale in the hub.
+// StatusReport describes the hub's pauses: what they hold, and what runs, waits, stalls or runs stale.
 type StatusReport struct {
 	// Live holds the live entries.
 	Live []pauserecord.Entry `json:"live"`
@@ -51,9 +51,9 @@ type StatusReport struct {
 	Sessions []SessionStatus `json:"sessions"`
 	// Stale holds the processes running a replaced binary.
 	Stale StaleReport `json:"stale"`
-	// Processes holds the run processes registered in the owner record, the orphans among them, and the lym processes no record owns.
+	// Processes holds the registered run processes, the orphans among them, and the lym processes no record owns.
 	Processes ProcessReport `json:"processes"`
-	// Owners holds each local pair with its effective owner, then each run-held entry owned by another machine that has no local pair.
+	// Owners holds each local pair with its effective owner, and each run-held entry owned elsewhere with no local pair.
 	Owners []PairOwner `json:"owners"`
 	// OwnersError is the error of a failed owners reading, empty when it read.
 	OwnersError string `json:"owners_error,omitempty"`
@@ -70,7 +70,7 @@ type PairOwner struct {
 	OwnedHere bool `json:"owned_here"`
 }
 
-// SessionStatus is one live session with the state its run's files read.
+// SessionStatus is one live session with the state read from its run's files.
 type SessionStatus struct {
 	Slug   string `json:"slug"`
 	Strand string `json:"strand"`
@@ -78,7 +78,7 @@ type SessionStatus struct {
 	State string `json:"state"`
 	// Cause says why the session is in the state, or the error of a failed reading.
 	Cause string `json:"cause"`
-	// Background is the kind of each outstanding task of a busy state whose cause is background, empty for any other state.
+	// Background is the kind of each outstanding task of a busy state whose cause is background, empty otherwise.
 	Background []string `json:"background,omitempty"`
 	// Since is when the causing line or reading happened, in RFC 3339, empty when it has no time.
 	Since string `json:"since"`
@@ -106,7 +106,8 @@ type StaleProcess struct {
 }
 
 // Resume lifts live entries and gives each session they interrupted one line.
-// A slug with no entry of its own that a live hub entry covers is refused, naming `lym tender resume`; resuming nothing succeeds.
+// A slug with no entry of its own that a live hub entry covers is refused, naming `lym tender resume`;
+// resuming nothing succeeds.
 func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
 		var targets, kept []pauserecord.Entry
@@ -135,8 +136,9 @@ type EntryRef struct {
 	PausedAt time.Time `json:"paused_at"`
 }
 
-// Lift lifts the live entry ref names and gives the sessions it owns the same lines Resume does.
-// An entry that is no longer live, a newer entry of the same scope and an entry another caller added match nothing, so nothing is lifted and the call succeeds.
+// Lift lifts the live entry ref names and gives the sessions it owns one resume line each.
+// An entry that is no longer live, a newer entry of the same scope, and an entry another caller added match nothing;
+// the call then lifts nothing and succeeds.
 func Lift(deps Deps, ref EntryRef) (ResumeReport, error) {
 	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
 		var targets, kept []pauserecord.Entry
@@ -152,7 +154,8 @@ func Lift(deps Deps, ref EntryRef) (ResumeReport, error) {
 	})
 }
 
-// liftEntries moves the entries pick selects and removes from the record to the resumed list under the record lock, then gives their remaining sessions the resume line.
+// liftEntries moves the entries pick selects from the record to its resumed list under the record lock.
+// Then it gives their remaining sessions the resume line.
 // pick may refuse, which ends the lift with its error and changes nothing.
 func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord.Entry, error)) (ResumeReport, error) {
 	report := ResumeReport{Resumed: []string{}, Moved: []string{}, Lines: []string{}, NoLine: []SessionNote{}, Spawned: []string{}, SpawnFailed: []SessionNote{}}
@@ -207,8 +210,10 @@ func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord
 	return report, nil
 }
 
-// spawnOwed spawns the detached pushes and the board sync a pause deferred, which the lift of lifted uncovers, and records each spawn in report.
-// A pair is pushed when a lifted entry covered it, no live entry of record still covers it, no other machine owns it and the hub still holds it;
+// spawnOwed spawns the detached pushes and the board sync that a pause deferred and the lift uncovers.
+// It records each spawn in report.
+// A pair is pushed when a lifted entry covered it, no live entry of record still covers it, no other machine owns it,
+// and the hub still holds it;
 // a pair that is gone had its owed push go with it.
 // An owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
 // A seam error is recorded under SpawnFailed and never fails the lift.
@@ -228,7 +233,8 @@ func spawnOwed(deps Deps, record pauserecord.Record, lifted []pauserecord.Entry,
 	}
 }
 
-// pairsToPush returns the slugs of the hub's pairs a lifted entry covered and nothing still holds back, in deps.Pairs order.
+// pairsToPush returns the slugs of the hub's pairs that a lifted entry covered and that nothing still holds back.
+// They come in deps.Pairs order.
 // An owners error is recorded in report and returns no pair.
 func pairsToPush(deps Deps, record pauserecord.Record, lifted []pauserecord.Entry, report *ResumeReport) []string {
 	var owners []PairOwner
@@ -284,7 +290,8 @@ func moveToCoveringEntry(record *pauserecord.Record, held pauserecord.Session) b
 // A send the guard holds is reported by the guard's own reason, and any other failure by its message.
 // A prime session, which has the empty slug, is given its line through deps.Prime.
 //
-// A send refused by a live pause entry added after the lift's lock was released claims the session into that entry and reports claimed.
+// A send refused by a live pause entry added after the lift's lock was released claims the session into that entry;
+// claimed is then true.
 // The later resume of that entry then gives the session its line.
 // A claim that finds the slug uncovered means the entry was lifted since the send, so the line is sent once more.
 // A second refusal is claimed once more, and a third send is never made, so no send loops.
@@ -333,8 +340,9 @@ func resumePair(deps Deps, slug string) Pair {
 	return nil
 }
 
-// claimPausedSession records held in the live entry covering the slug paused judged.
-// It reports owned when an entry owns the session after the call; both results are empty when the slug is uncovered, and reason names a failed claim.
+// claimPausedSession records held in the live entry covering paused.Slug.
+// It reports owned when that entry owns the session after the call;
+// reason is empty unless the claim failed, and then names the failure.
 func claimPausedSession(deps Deps, paused *shuttleengine.PausedError, held pauserecord.Session) (owned bool, reason string) {
 	_, covered, err := pauserecord.ClaimSession(deps.RecordPath, paused.Slug, held, deps.Now())
 	if err != nil {
@@ -356,7 +364,7 @@ func sendFailureReason(err error) string {
 	}
 }
 
-// ReviveLine is the one line revive types, into a session stalled on an API error.
+// ReviveLine is the line Revive sends into a session stalled on an API error.
 const ReviveLine = "[lym] Your last turn stopped on an API error. Carry on where you stopped: rerun the tool call that failed. If nothing was cut, end your turn."
 
 // Orch results a revive reports.
@@ -367,13 +375,13 @@ const (
 	orchSkipped  = "skipped"
 )
 
-// ReviveRequest asks for a revive.
+// ReviveRequest selects the sessions a revive covers: one pair by slug, or the whole hub when Slug is empty.
 type ReviveRequest struct {
 	// Slug is the pair to revive; empty covers the whole hub.
 	Slug string
 }
 
-// ReviveReport is what a revive did.
+// ReviveReport is the outcome of one revive, sorted by what became of each session.
 type ReviveReport struct {
 	// Sent holds the strands given the line, with a turn start seen after it.
 	Sent []string `json:"sent"`
@@ -387,7 +395,7 @@ type ReviveReport struct {
 	Skipped []SessionNote `json:"skipped"`
 	// Refused holds the sessions whose state reading or guarded send was refused, each with the reason.
 	Refused []SessionNote `json:"refused"`
-	// Orchs is what became of each orch of the hub, one per orch recording a strand; empty for a pair revive and when the hub has none.
+	// Orchs holds the result for each orch of the hub that records a strand; empty for a pair revive.
 	Orchs []OrchRevive `json:"orchs,omitempty"`
 }
 
@@ -403,8 +411,9 @@ type OrchRevive struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// Revive gives ReviveLine to each live session stalled on an API error, in the hub for an empty slug and in one pair for a slug.
-// The hub scope also injects the line into each orch of the hub through creel when that orch is stalled the same way, no hub entry is live and no earlier revive inject of tender's to it still waits for its outcome.
+// Revive gives ReviveLine to each live session stalled on an API error, across the whole hub or one pair.
+// The whole-hub scope also injects the line into each orch through creel when that orch is stalled the same way;
+// it does so only when no hub entry is live and no earlier revive inject of tender's to it still waits for its outcome.
 // A session a live entry covers is left to resume, and no send is retried.
 func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	report := ReviveReport{
@@ -430,8 +439,10 @@ func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	return report, err
 }
 
-// reviveSession gives s the revive line when its state reads idle-stalled with cause api-error and no live entry covers it, and records the outcome in report.
-// The coverage read and the conditioned send run under the record's write lock, so a pause added meanwhile waits for the send and then finds the session's state as the send left it.
+// reviveSession gives s the revive line when it reads idle-stalled with cause api-error and no live entry covers it.
+// It records the outcome in report.
+// The coverage read and the conditioned send run under the record's write lock,
+// so a pause added meanwhile waits for the send and then finds the session's state as the send left it.
 // The returned error is a record failure only; every refusal of the session is a note in report.
 func reviveSession(deps Deps, s session, report *ReviveReport) error {
 	state, err := s.pair.State(s.GUID)
@@ -478,10 +489,13 @@ func reviveSession(deps Deps, s session, report *ReviveReport) error {
 	return nil
 }
 
-// reviveOrch reports what became of each orch's carry-on line and injects it through creel for each orch that reads stalled on an API error, with no hub entry live and no revive inject of tender's to it still waiting for its outcome.
-// Each orch's pending check and inject run inside one `pauserecord.Update` that changes no entry, the lock that serialises tender's revive sends, so two concurrent revives inject at most once per orch.
+// reviveOrch injects the carry-on line through creel into each orch that reads stalled on an API error;
+// it does so only when no hub entry is live and no revive inject of tender's to the orch still waits for its outcome.
+// Each orch's pending check and inject run inside one `pauserecord.Update` that changes no entry;
+// the lock serialises tender's revive sends, so two concurrent revives inject at most once per orch.
 // It returns nothing for a hub with no orch recording a strand, and reads no other prime session.
-// An orch whose result is an error stops the walk, and the results of the orchs before it are returned with that error.
+// An orch whose result is an error stops the walk,
+// and the results of the orchs before it are returned with that error.
 func reviveOrch(deps Deps) ([]OrchRevive, error) {
 	if deps.Orchs == nil {
 		return nil, nil
@@ -504,7 +518,8 @@ func reviveOrch(deps Deps) ([]OrchRevive, error) {
 	return revives, nil
 }
 
-// reviveOneOrch is reviveOrch's step for one orch: what became of its carry-on line, or the failure that kept a result from being reached.
+// reviveOneOrch reports what became of one orch's carry-on line.
+// It returns the error that kept a result from being reached.
 func reviveOneOrch(deps Deps, orch Orch) (OrchRevive, error) {
 	state, err := orch.Pair.State(orch.Strand)
 	if err != nil {
@@ -555,7 +570,10 @@ func describeState(state shuttleengine.SessionState) string {
 	return fmt.Sprintf("%s (%s)", state.Name, state.Cause)
 }
 
-// Status reads the live entries, the holds, every live session's state, the processes running a replaced binary, the processes registered to runs with the orphans among them and the owners of the pairs, changing nothing.
+// Status changes nothing.
+// It reports the live entries, the holds, and every live session's state.
+// It reports the processes running a replaced binary and the processes registered to runs, with the orphans among them.
+// It reports the owners of the pairs.
 // A failed state, process or owners reading is reported inside its own part and leaves the rest of the report intact.
 func Status(deps Deps) (StatusReport, error) {
 	record, err := pauserecord.Read(deps.RecordPath)
@@ -641,7 +659,8 @@ func sessionStatuses(deps Deps, record pauserecord.Record) ([]SessionStatus, err
 // deletedSuffix is what the kernel appends to an exe or cwd link whose target was removed.
 const deletedSuffix = " (deleted)"
 
-// staleProcesses keeps each process whose exe is a deleted file named as executable and whose cwd is hubPath or inside it, a deleted working directory included.
+// staleProcesses keeps each process whose exe is a deleted file named as executable.
+// Its cwd must be hubPath or inside it, a deleted working directory included.
 // An empty executable keeps nothing.
 func staleProcesses(processes []proc.Process, hubPath, executable string) []StaleProcess {
 	stale := []StaleProcess{}

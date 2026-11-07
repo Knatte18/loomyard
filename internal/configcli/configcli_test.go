@@ -1,8 +1,10 @@
-// configcli_test.go — unit and integration tests for configcli.
+// configcli_test.go holds the unit and integration tests for configcli.
 //
-// Unit tests (tier 0): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
-// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub built by the hubforge package.
-// The git-init-backed reconcile scenario lives in reconcile_integration_test.go per the Test Tier Purity Invariant.
+// The unit tests run at tier 0 over temp base dirs, with a fake editor and sync.
+// They cover dispatch, editOne, printModule and printAll.
+// The integration test, under the integration build tag, runs RunCLI end to end over a hub.
+// The hub is built by the hubforge package.
+// The git-backed reconcile scenario lives in reconcile_integration_test.go, per the Test Tier Purity Invariant.
 
 package configcli
 
@@ -32,8 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeEditor returns a fake EditorFunc that writes the given valid YAML
-// and returns the given error.
+// fakeEditor stands in for the editor: it writes validYAML to the path, or returns returnErr when it is set.
 func fakeEditor(validYAML string, returnErr error) configengine.EditorFunc {
 	return func(path string) error {
 		if returnErr != nil {
@@ -43,8 +44,8 @@ func fakeEditor(validYAML string, returnErr error) configengine.EditorFunc {
 	}
 }
 
-// fakeHubCommit is a fake hubCommitFunc that runs the write closure, records the call
-// and returns the write error, or err when the write succeeded.
+// fakeHubCommit counts the commits made through commitFunc.
+// Each commit runs its write closure and reports the write's error, or err when the write succeeded.
 type fakeHubCommit struct {
 	calls int
 	err   error
@@ -86,7 +87,10 @@ func newHubFixture(t *testing.T) hubFixture {
 	return fx
 }
 
-// TestEditOne pins the single-module edit: a valid edit is synced and reported as a JSON success, an unknown module is refused with the known list before anything runs, an editor failure aborts before the sync, and a failing sync is reported with its own output.
+// TestEditOne pins the single-module edit.
+// A valid edit is synced and reported as a JSON success.
+// An unknown module is refused with the known list before anything runs.
+// An editor failure aborts before the sync, and a failing sync is reported with its own output.
 func TestEditOne(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -152,7 +156,7 @@ func TestEditOne(t *testing.T) {
 				fmt.Fprint(w, tt.syncOutput)
 				return tt.syncExit
 			}
-			// An existing board dir makes the worktree a hub's, the case that keeps its fabric sync.
+			// An existing board dir makes the worktree part of a hub, the case that keeps its fabric sync.
 			dirs := worktreeDirs(baseDir)
 			dirs.board = t.TempDir()
 			code := editOne(dirs, &out, tt.module, tt.editor, sync, nil)
@@ -178,7 +182,10 @@ func TestEditOne(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare `lym config` prints help naming reconcile, menu and every module; a bad argument, and a verb that needs a repository, each exit 1 with a JSON error envelope naming the way forward.
+// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves.
+// A bare `lym config` prints help naming reconcile, menu and every module.
+// A bad argument exits 1 with a JSON error envelope, and so does a verb that needs a repository;
+// the envelope names the way forward.
 // The bare row passes an empty argument list, since a nil one would make cobra read the test binary's own flags.
 func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -260,8 +267,8 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 	}
 }
 
-// TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a config subcommand,
-// since a subcommand name always routes as a subcommand.
+// TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a config subcommand.
+// A subcommand name always routes as a subcommand.
 func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -276,7 +283,9 @@ func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 	}
 }
 
-// TestConfigLong verifies that the config command's Long help text names every module in configreg.Names(), so it stays in sync with the registry rather than drifting from a hardcoded list, and documents the EDITOR/VISUAL editor fallback and the --set flag.
+// TestConfigLong verifies that the config command's Long help text names every module in configreg.Names().
+// The list comes from the registry rather than a hardcoded copy, so the help does not drift from it.
+// It also documents the EDITOR/VISUAL editor fallback and the --set flag.
 func TestConfigLong(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -289,8 +298,10 @@ func TestConfigLong(t *testing.T) {
 	}
 }
 
-// runMenuWith runs menu over a hub fixture with the given input, terminal answer and editor, and returns the exit code, the output and the sync tracker.
-// Each seed names a module, optionally as "<module>:default", "<module>:machine" or "<module>:local" for that layer's file; a bare name seeds the module's own default file.
+// runMenuWith runs menu over a hub fixture with the given input, terminal answer and editor.
+// It returns the exit code, the output and the sync tracker.
+// Each seed is a module name, optionally with a layer: <module>:default, <module>:machine or <module>:local.
+// The layer names the file to seed; a bare name seeds the module's own default file.
 func runMenuWith(t *testing.T, input string, terminal bool, editor configengine.EditorFunc, seed ...string) (int, string, *fakeSyncTracker) {
 	t.Helper()
 	fx := newHubFixture(t)
@@ -325,7 +336,10 @@ func runMenuWith(t *testing.T, input string, terminal bool, editor configengine.
 	return code, out.String(), tracker
 }
 
-// TestMenu pins the interactive menu: a valid selection edits and syncs the module, quit exits 0 without either, a non-number and an out-of-range number each exit 1 with an invalid message and without either, and the listing marks each module with the layers that hold a file, or (template) when none does.
+// TestMenu pins the interactive menu.
+// A valid selection edits and syncs the module, and quit exits 0 without either.
+// A non-number and an out-of-range number each exit 1 with an invalid message, and neither edits nor syncs.
+// The listing marks each module with the layers that hold a file, or (template) when none does.
 func TestMenu(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -392,10 +406,9 @@ func TestMenu(t *testing.T) {
 	}
 }
 
-// assertJSONOkContains verifies that output is a well-formed JSON success envelope
-// with ok:true and, for each key in wantFields, an equal value. Callers that need to
-// assert a field's absence (e.g. "preserved" on a clean write) should decode env
-// themselves rather than stretching this helper to cover that case.
+// assertJSONOkContains checks that output is a JSON success envelope with ok:true.
+// For each key in wantFields, the envelope must hold an equal value.
+// A test that needs a field's absence decodes the envelope itself.
 func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any) {
 	t.Helper()
 	var env map[string]any
@@ -423,7 +436,9 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 	}
 }
 
-// TestPrint pins the --print form, which never opens an editor: a seeded module's on-disk YAML is emitted verbatim, a known module with no file is an ok:false envelope, an unknown module is an ok:false envelope naming it, and the aggregate form prints a deterministic header for every registry module with inline YAML for seeded ones and "# (not configured)" for absent ones.
+// TestPrint pins the --print form, which never opens an editor.
+// A seeded module prints its on-disk YAML verbatim; a module with no file, or an unknown one, is an ok:false envelope.
+// The aggregate form lists every registry module; a seeded one shows its YAML, an absent one "# (not configured)".
 func TestPrint(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -487,7 +502,10 @@ func TestPrint(t *testing.T) {
 	}
 }
 
-// TestDispatchSet pins the --set path on a per-worktree module: it never opens the editor, syncs once for a successful write and never for a refused one, keeps an orphan key of a sparse worktree file and omits the "preserved" field, and refuses an unknown key, a --print/--set pair, a missing module and a value without '='.
+// TestDispatchSet pins the --set path on a per-worktree module.
+// It never opens the editor, and it syncs once for a successful write but never for a refused one.
+// It keeps an orphan key of a sparse worktree file and omits the "preserved" field.
+// It refuses an unknown key, a --print/--set pair, a missing module, and a value without '='.
 func TestDispatchSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -558,7 +576,7 @@ func TestDispatchSet(t *testing.T) {
 				seedModuleConfig(t, baseDir, "loom", tt.seed)
 			}
 
-			// A hub's board dir makes the worktree a hub's, the case that keeps its fabric sync.
+			// A board dir marks the worktree as a hub, and a hub keeps its fabric sync.
 			layout := makeLayoutAt(baseDir)
 			if tt.wantSyncs > 0 {
 				if err := os.MkdirAll(fabricengine.BoardDir(layout.HubPath), 0o755); err != nil {
@@ -612,9 +630,8 @@ func TestDispatchSet(t *testing.T) {
 	}
 }
 
-// countingEditor returns a configengine.EditorFunc that increments *calls
-// every time it is invoked, so tests can assert the --set path never opens
-// the editor by asserting the counter stays at 0.
+// countingEditor returns a configengine.EditorFunc that increments *calls on every invocation.
+// A --set test asserts the counter stays at 0, which proves the editor never opened.
 func countingEditor(calls *int) configengine.EditorFunc {
 	return func(path string) error {
 		*calls++
@@ -1107,13 +1124,17 @@ func driftWithCaptureDir(dir string) string {
 	return strings.Replace(driftengine.ConfigTemplate(), "capture: {}", `capture: {command: "p {baseline_dir}", dir: `+dir+`, timeout_min: 3}`, 1)
 }
 
-// assertDarnSaveRefused checks a refused darn editor save: the board file still holds seeded, the staging copy holds saved, and the error names each of wantErr, none of notErr, and the staging path.
+// assertDarnSaveRefused checks a refused darn editor save.
+// The board file still holds seeded, and the staging copy holds saved.
+// The error names each of wantErr, none of notErr, and the staging path.
 func assertDarnSaveRefused(t *testing.T, fx hubFixture, hubFile, out, seeded, saved string, wantErr, notErr []string) {
 	t.Helper()
 	assertSaveRefused(t, fx, "darn", hubFile, out, seeded, saved, wantErr, notErr)
 }
 
-// assertSaveRefused checks a refused editor save of module: the board file still holds seeded, the staging copy holds saved, and the error names each of wantErr, none of notErr, and the staging path.
+// assertSaveRefused checks a refused editor save of module.
+// The board file still holds seeded, and the staging copy holds saved.
+// The error names each of wantErr, none of notErr, and the staging path.
 func assertSaveRefused(t *testing.T, fx hubFixture, module, hubFile, out, seeded, saved string, wantErr, notErr []string) {
 	t.Helper()
 	if hubFile != seeded {
@@ -1147,7 +1168,8 @@ func assertDarnSaveWritten(t *testing.T, fx hubFixture, hubFile, saved string) {
 }
 
 // TestDispatchSetProfiles drives --set on the hub-wide profiles module.
-// A JSON object adds a profile or replaces one whole, leaving the others, and an absent hub file starts from the template's profiles.
+// A JSON object adds a profile or replaces one whole, leaving the others,
+// and an absent hub file starts from the template's profiles.
 // A value that is not an object, or a profile no module takes, is refused with the file left as it was.
 func TestDispatchSetProfiles(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1247,14 +1269,21 @@ func TestDispatchSetProfiles(t *testing.T) {
 	}
 }
 
-// TestDispatchLayers drives --layer through dispatch over a hub fixture: an unknown layer is refused naming the four, the default layer is written and committed from the prime only, a hub-wide module has no worktree layer, a local override is written uncommitted and refuses a key the local layer closes, a machine override is written uncommitted from the prime through the load check and refused on a module with no machine file, a worktree write under a board is sparse, and --print reads the selected layer.
+// TestDispatchLayers drives --layer through dispatch over a hub fixture.
+// An unknown layer is refused naming the four; the default layer is written and committed from the prime only.
+// A hub-wide module has no worktree layer.
+// A local override is written uncommitted and refuses a key the local layer closes.
+// A machine override is written uncommitted from the prime through the load check,
+// and it is refused on a module with no machine file.
+// A worktree write under a board is sparse, and --print reads the selected layer.
 func TestDispatchLayers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loomTemplate, _ := configreg.Template("loom")
 	tapestryTemplateFunc, _ := configreg.Template("tapestry")
-	// tapestryTemplate is the tapestry board file, and loomBoard the loom board file tapestry's load reads for the run-wide review keys.
+	// tapestryTemplate is the tapestry board file.
+	// loomBoard is the loom board file that tapestry's load reads for the run-wide review keys.
 	tapestryTemplate, loomBoard := tapestryTemplateFunc(), loomTemplate()
 	gateTemplate, _ := configreg.Template("gate")
 	lensesTemplate := lenses.ConfigTemplate
@@ -1289,7 +1318,7 @@ func TestDispatchLayers(t *testing.T) {
 		noTerminal bool
 		// seedBoard and seedLocal are the module's board file and local file before the call; empty seeds nothing.
 		seedBoard string
-		// seedLoomBoard is the loom board file a call on tapestry also reads, for the run-wide review keys; empty seeds nothing.
+		// seedLoomBoard is the loom board file a tapestry call also reads, for the run-wide review keys; empty seeds nothing.
 		seedLoomBoard string
 		seedLocal     string
 		// seedMachine is the module's machine file before the call; empty seeds nothing.
@@ -1450,7 +1479,8 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			// The refusal is before layer dispatch, so one row stands for every layer, and the failing guard pins that it also precedes the hub-write guard.
+			// The refusal is before layer dispatch, so one row stands for every layer.
+			// The failing guard pins that it also precedes the hub-write guard.
 			name: "no terminal refuses the editor and writes nothing", module: "loom", layer: "default", noTerminal: true,
 			seedBoard: loomTemplate(), seedLocal: "review_max_bounces: 5\n", wantCode: 1, wantErr: "--print",
 			guard: func(hubFixture) func() (string, error) {
@@ -1641,7 +1671,8 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			// The refusal is before layer dispatch, so the way forward must carry the layer or it would send the caller to the hub file's write.
+			// The refusal is before layer dispatch, so the way forward must carry the layer,
+			// or it would send the caller to the hub file's write.
 			name: "no terminal refuses the machine layer's editor naming that layer", module: "gate", layer: "machine", noTerminal: true,
 			seedBoard: gateTemplate(), wantCode: 1, wantErr: "--layer machine --set",
 			check: func(t *testing.T, fx hubFixture, out string) {
@@ -1830,7 +1861,10 @@ func TestDispatchLayers(t *testing.T) {
 	}
 }
 
-// TestPrintResolved pins that --resolved prints a module's resolved configuration with each unit annotated by the layer it came from, refuses an unknown module and an absent base layer with an error envelope, and is refused beside --print, --set, --layer or without a module.
+// TestPrintResolved pins that --resolved prints a module's resolved configuration.
+// Each unit is annotated by the layer it came from.
+// It refuses an unknown module and an absent base layer with an error envelope,
+// and it refuses --resolved beside --print, --set or --layer, or without a module.
 func TestPrintResolved(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

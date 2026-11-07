@@ -1,4 +1,5 @@
-// entries_samplersession.go implements the SamplerSession registry entry: it refuses every config key and builds the Sampler-Session row over Env.Sampler.
+// entries_samplersession.go implements the SamplerSession registry entry:
+// it refuses every config key and builds the Sampler-Session row over Env.Sampler.
 
 package shedrecipe
 
@@ -13,8 +14,10 @@ import (
 const samplerSessionKeyWayForward = "way forward: remove the key; a SamplerSession row takes no config"
 
 // samplerSessionEntry is the Constructor for the "SamplerSession" registry row.
-// The row takes no config key: the session's agent comes from the sampler module's settings and its paths and seams from Env.Sampler.
-// It validates the two absolute record paths and every seam of Env.Sampler but Watch, then builds the row over Env.Sampler.
+// The row takes no config key:
+// the session's agent comes from the sampler module's settings, and its paths and seams from Env.Sampler.
+// It validates the two absolute record paths and every seam of Env.Sampler but Watch;
+// then it builds the row over Env.Sampler.
 func samplerSessionEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, samplerSessionKeyWayForward)

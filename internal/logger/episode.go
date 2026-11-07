@@ -1,16 +1,16 @@
-// episode.go provides Episode and EpisodeSet, the guard for a failure that can repeat on every tick of a loop or poll:
-// Warn at the first failure, Debug while it repeats, Info at recovery.
+// episode.go provides Episode and EpisodeSet, which guard a failure that repeats on every tick of a loop or poll.
+// The first failure logs at Warn, each repeat at Debug, and the recovery at Info.
 
 package logger
 
 import "sync"
 
-// failedTicksKey is the field Episode stamps on its repeat and recovery lines.
+// failedTicksKey is the log field that carries an episode's failed-tick count on repeat and recovery lines.
 const failedTicksKey = "failed_ticks"
 
 // Episode tracks one failure that can repeat on every tick.
-// The zero value is ready; one owner uses it, with no lock.
-// It stamps nothing of its own beyond failed_ticks: the caller's message and fields are logged as given.
+// The zero value is ready to use; it is not safe for concurrent use, so one owner calls it without a lock.
+// Its only added field is failed_ticks: the caller's message and fields are logged as given.
 type Episode struct {
 	failedTicks int
 }
@@ -28,7 +28,7 @@ func (e *Episode) Fail(msg string, args ...any) {
 }
 
 // Recover ends the episode, logging msg with args and failed_ticks at Info.
-// Outside an episode it does nothing, so the next Fail is a Warn again.
+// Outside an episode it does nothing; the next failure then logs at Warn.
 func (e *Episode) Recover(msg string, args ...any) {
 	if e.failedTicks == 0 {
 		return
@@ -37,14 +37,17 @@ func (e *Episode) Recover(msg string, args ...any) {
 	e.failedTicks = 0
 }
 
-// EpisodeSet tracks one Episode per key, for a caller guarding several failures, or one per strand or entry, from one value.
+// EpisodeSet tracks one Episode per key.
+// It suits a caller that guards several failures from one value, or one failure per strand or entry.
 // The zero value is ready and safe for concurrent use.
 type EpisodeSet struct {
 	mu       sync.Mutex
 	episodes map[string]*Episode
 }
 
-// Fail counts one failure in key's episode, as Episode.Fail does.
+// Fail counts one failure in key's episode and logs msg with args.
+// The first failure of an episode logs at Warn;
+// every later one logs at Debug with failed_ticks carrying the count so far.
 func (s *EpisodeSet) Fail(key, msg string, args ...any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -59,7 +62,8 @@ func (s *EpisodeSet) Fail(key, msg string, args ...any) {
 	episode.Fail(msg, args...)
 }
 
-// Recover ends key's episode, as Episode.Recover does; a key with no episode does nothing.
+// Recover ends key's episode, logging msg with args and failed_ticks at Info.
+// A key with no open episode logs nothing.
 func (s *EpisodeSet) Recover(key, msg string, args ...any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,7 +87,8 @@ func (s *EpisodeSet) Ticks() map[string]int {
 }
 
 // Restore replaces the set's episodes with ticks, one open episode per key at the given failed-tick count.
-// The next Fail of a restored key continues its episode at Debug, and its Recover logs at Info; a key absent from ticks starts a new episode.
+// A restored key's next failure continues its episode at Debug, and its recovery logs at Info.
+// A key absent from ticks starts a new episode on its next failure.
 func (s *EpisodeSet) Restore(ticks map[string]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

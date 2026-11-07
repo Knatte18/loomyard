@@ -9,7 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// DirName is the segment partsparser joins onto lymdirs.LymDirName to form the parts directory.
+// DirName is the name of the parts directory, which sits under the worktree's `_lym` directory.
 const DirName = "parts"
 
 // ArchivePrefix starts the name of every archive directory under the parts directory.

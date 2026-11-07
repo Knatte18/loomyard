@@ -1,16 +1,7 @@
-// attach.go implements the `attach` reed verb: an in-place terminal handover into the tmux session
-// — no new window is spawned.
-// attach is the one registered JSON-envelope exception in this package: every fallible step runs
-// pre-flight on the envelope,
-// but the terminal-handover tail (once stdio belongs to tmux) emits no JSON
-// on success.
-// The handover itself is handOver, declared once per platform.
-// It execs tmux over this process on Unix and runs it as a child process on Windows.
-// The handover argv itself comes from reedengine.Engine.AttachArgv, not a package-level builder here:
-// this file's only remaining pre-flight addition that cannot abort is reading the operator's own terminal size via golang.org/x/term and handing it to the engine's builder.
-// That size read and the builder call are both pre-flight steps that nonetheless never write to the envelope.
-// Each degrades to today's bare argv and logs a warning instead.
-// So the tmux floor check, c.eng.EnsureSession() and c.eng.Status() remain the only pre-flight steps that can abort with an envelope error, the floor check first.
+// attach.go implements the `attach` reed verb, which hands the operator's terminal to the tmux session in place.
+// Once the handover begins, stdio belongs to tmux and the verb writes no JSON, even on failure;
+// it is the one registered JSON-envelope exception in this package,
+// and `handOver` is declared per platform.
 
 package reedcli
 
@@ -57,22 +48,20 @@ Example:
 			out := cmd.OutOrStdout()
 
 			// The floor check comes first.
-			// A below-floor tmux is refused with the floor error itself before EnsureSession or Status run tmux and before stdio is handed to tmux.
+			// A below-floor tmux is refused with the floor error before `EnsureSession` or `Status` runs tmux;
+			// the refusal still reaches the envelope, because stdio has not been handed to tmux yet.
 			if err := reedengine.CheckTmuxFloor(c.eng.TmuxPath()); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			// Pre-flight, in a load-bearing order after the floor check: EnsureSession first, Status
-			// second. EnsureSession self-heals a cold worktree by booting the
-			// session; Status calls requireSessionLocked, which refuses when no
-			// session is up, so running Status first would refuse on a cold
-			// worktree before anything booted, reinstating the exact bug this
-			// task removes. Status is kept rather than replaced because it also
-			// reaches loadOrInitStateLocked, which is what makes a warm attach
-			// refuse on an unreadable .lym/reed.json and on a live foreign
-			// session — refusals EnsureSession's early return cannot produce,
-			// since it reads no state at all.
+			// The order is load-bearing: `EnsureSession` runs before `Status`.
+			// `EnsureSession` boots the session of a cold worktree.
+			// `Status` calls `requireSessionLocked`, which refuses when no session is up.
+			// Running `Status` first would refuse a cold worktree before anything booted.
+			// `Status` also reaches `loadOrInitStateLocked`, which refuses an unreadable `.lym/reed.json`.
+			// The same read refuses a live foreign session.
+			// `EnsureSession`'s early return cannot produce those refusals, since it reads no state.
 			booted, err := c.eng.EnsureSession()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -82,33 +71,28 @@ Example:
 				logger.Info("reedcli: attach booted a cold worktree's session", "socket", c.eng.Socket(), "session", c.eng.SessionName())
 			}
 
-			// Surface the friendly no-session error (see
-			// reedengine.requireSessionLocked/noSessionMessage), or any other
-			// Status failure, on the envelope before ever touching stdio, since
-			// after the handover below no JSON can reach the caller.
+			// Status failures, including the friendly no-session error, go on the envelope before stdio is touched.
+			// After the handover no JSON can reach the caller.
 			if _, err := c.eng.Status(); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			// Attempted after the Status pre-flight and BEFORE attach.Run() hands the operator's
-			// stdio over: a spawn placed after the handover would fire only once the operator
-			// detaches, which is the one moment it is useless.
+			// The watchdog spawn runs after the `Status` pre-flight and before `handOver` hands the operator's stdio to tmux.
+			// A spawn placed after the handover would fire only once the operator detaches, which is the one moment it is useless.
 			c.ensureWatchdogSpawned()
 
-			// Read the operator's own terminal size against stdout. On error (piped
-			// output, no controlling terminal) this does not report on the envelope
-			// and does not abort: AttachArgv answers a non-positive cols/rows with
-			// the bare argv, exactly today's behaviour, so nothing regresses on a
-			// non-TTY.
+			// Read the operator's terminal size from stdout.
+			// On error (piped output, no controlling terminal) the read neither reports on the envelope nor aborts;
+			// `cols` and `rows` stay zero, which `AttachArgv` reads as no known size.
 			cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
 			if err != nil {
 				logger.Warn("reed: no terminal size available, attaching without a chained layout", "err", err)
 				cols, rows = 0, 0
 			}
 
-			// Terminal-handover tail: stdio now belongs to tmux, so this is the one documented exception to "every RunE ends in a JSON envelope".
-			// No JSON is written here even on failure, since tmux's own stderr already reached the operator's terminal.
+			// Terminal-handover tail: once the handover begins, stdio belongs to tmux, so no JSON is written here, even on failure.
+			// tmux's own stderr already reached the operator's terminal.
 			// The exit code still propagates, so a failed attach is not reported as success.
 			exitCode, err := handOver(c.eng.TmuxPath(), c.eng.AttachArgv(cols, rows))
 			if err != nil {
@@ -123,7 +107,8 @@ Example:
 }
 
 // runAttachChild runs tmux with args as a child that inherits the operator's stdio and returns the child's exit code.
-// A child that ran and exited non-zero returns its code and a nil error; one that could not start returns 1 and the error.
+// A child that ran and exited non-zero returns its code and a nil error;
+// one that could not start returns 1 and the error.
 func runAttachChild(tmux string, args []string) (exitCode int, err error) {
 	attach := exec.Command(tmux, args...)
 	attach.Stdin = os.Stdin

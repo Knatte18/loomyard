@@ -1,5 +1,6 @@
-// planfixer.go implements the cold plan fixer `lym webster fix-plan` drives after begin-batch refuses with a plan conflict:
-// the bounded spawn-or-attach of a strand at the master role with the plan-fix prompt, the wait that reads its verdict, and its terminal record.
+// planfixer.go implements the cold plan fixer that `lym webster fix-plan` drives after a plan conflict.
+// It spawns or attaches a strand at the master role with the plan-fix prompt.
+// It waits for that strand's verdict and writes its terminal record.
 
 package websterengine
 
@@ -38,7 +39,8 @@ const (
 	PlanFixVerdictPlanWriter = "plan_writer"
 )
 
-// planFixRefusalWayForward is the way forward of every fix-plan refusal and of a fixer that ends dead: the conflict goes on to the plan writer.
+// planFixRefusalWayForward is the way forward of every fix-plan refusal and of a fixer that ends dead:
+// the conflict goes on to the plan writer.
 const planFixRefusalWayForward = "way forward: write outcome: stuck to your outcome file, with a stuck_reason quoting begin-batch's plan_conflict refusal verbatim, so the conflict goes to the plan writer"
 
 // PlanFixReplyPath returns the path of the reply file the plan fixer writes as its final action, inside scratchDir.
@@ -63,7 +65,7 @@ type FixPlanDeps struct {
 	FrictionDir string
 }
 
-// FixPlanResult is what one FixPlanAwait call hands back.
+// FixPlanResult is the outcome of one wait for a plan fixer: its status, and its verdict and reply once done.
 type FixPlanResult struct {
 	// Status is DigestStatusRunning when the wait elapsed first, else DigestStatusDone or DigestStatusDead.
 	Status string
@@ -81,9 +83,15 @@ type FixPlanResult struct {
 
 // FixPlanSpawnOrAttach returns the plan fixer fix-plan waits on, and whether this call spawned it into st.
 // A last record of st.PlanFixers that is not terminal is attached to as it stands.
-// Otherwise it spawns a strand at the master role with the plan-fix prompt, whose shuttle output file is the reply file, and appends its record to st.PlanFixers, holding the conflict's batch and findings and the worktree's HEAD and uncommitted paths;
-// the caller saves st.
-// It refuses, spawning nothing, when no plan-conflict record names a finding, when an earlier plan fixer of the run was given the same findings, when the record's batch already had planFixersPerBatch fixers, and when the master role's engine cannot audit forks.
+// Otherwise it spawns a strand at the master role with the plan-fix prompt.
+// The strand's shuttle output file is the reply file.
+// It appends the strand's record to st.PlanFixers.
+// The record holds the conflict's batch and findings and the worktree's HEAD and uncommitted paths.
+// The caller saves st.
+// It refuses, spawning nothing, when no plan-conflict record names a finding.
+// It also refuses when an earlier plan fixer of the run was given the same findings.
+// It also refuses when the record's batch already had planFixersPerBatch fixers.
+// It also refuses when the master role's engine cannot audit forks.
 // A stale reply file is removed before the spawn.
 // A spawned strand whose run cannot be resolved is stopped, since no record of it will be saved.
 func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerState, bool, error) {
@@ -183,9 +191,13 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	return rec, true, nil
 }
 
-// FixPlanAwait blocks up to wait for rec's plan fixer to reach a terminal classification, as the cold fixers' shared wait classifies it, with recovery_timeout_min as its timeout.
-// On done, the verdict is the reply's first line after "verdict: ", and a reply without a known verdict reads as PlanFixVerdictPlanWriter.
-// A fixed verdict from a fixer that moved HEAD or left an uncommitted change on a path that was clean at the spawn is overruled to PlanFixVerdictPlanWriter, with a warning naming why, since the fixer's one job is the plan.
+// FixPlanAwait blocks up to wait for rec's plan fixer to reach a terminal state.
+// The fixer's timeout is the recovery_timeout_min setting.
+// On done, the verdict is the reply's first line after "verdict: ",
+// and a reply without a known verdict reads as PlanFixVerdictPlanWriter.
+// A fixed verdict is overruled to PlanFixVerdictPlanWriter when the fixer moved HEAD.
+// It is overruled the same way when the fixer left an uncommitted change on a path that was clean at the spawn.
+// The result carries a warning naming why, since the fixer's one job is the plan.
 // The caller holds no state-mutation lease across it.
 func FixPlanAwait(deps FixPlanDeps, rec *PlanFixerState, wait time.Duration, clk Clock) (*FixPlanResult, error) {
 	strand := &gatefixer.Record{
@@ -220,7 +232,8 @@ func FixPlanAwait(deps FixPlanDeps, rec *PlanFixerState, wait time.Duration, clk
 	return result, nil
 }
 
-// replyVerdict returns the verdict reply's first line names, and PlanFixVerdictPlanWriter when it names no known one.
+// replyVerdict returns PlanFixVerdictFixed when the reply's first line names it as the verdict.
+// Any other reply yields PlanFixVerdictPlanWriter.
 func replyVerdict(reply string) string {
 	firstLine, _, _ := strings.Cut(reply, "\n")
 	verdict, _ := strings.CutPrefix(strings.TrimSpace(firstLine), "verdict: ")
@@ -230,7 +243,8 @@ func replyVerdict(reply string) string {
 	return PlanFixVerdictPlanWriter
 }
 
-// codeTouchedSince returns why the task worktree is no longer as the plan fixer found it: HEAD moved from headAtSpawn, or a path not among dirtyAtSpawn is uncommitted.
+// codeTouchedSince returns why the task worktree differs from its state at spawn:
+// HEAD moved from headAtSpawn, or a path not in dirtyAtSpawn has uncommitted changes.
 // It returns "" when neither holds.
 func codeTouchedSince(geom Geometry, headAtSpawn string, dirtyAtSpawn []string) (string, error) {
 	git := geom.git()
@@ -257,8 +271,8 @@ func codeTouchedSince(geom Geometry, headAtSpawn string, dirtyAtSpawn []string) 
 	return "", nil
 }
 
-// RecordPlanFixerTerminal sets the terminal status and verdict of the record in st whose strand is strandGUID, from result.
-// It reports false when st records no such fixer, which a reset that archived the state leaves.
+// RecordPlanFixerTerminal copies status, dead reason and verdict from result onto st's fixer record for strandGUID.
+// It reports false when st holds no fixer record for strandGUID, which a reset that archives the state leaves.
 func RecordPlanFixerTerminal(st *State, strandGUID string, result *FixPlanResult) bool {
 	for _, rec := range st.PlanFixers {
 		if rec.StrandGUID == strandGUID {

@@ -1,4 +1,5 @@
-// verbs.go implements the pool's verbs: post, reply, read, inbox, forward, log, inject, interrupt, hold, release and withdraw, with the privilege rules.
+// verbs.go implements the pool's verbs and the privilege rules that gate them.
+// The verbs are post, reply, read, inbox, forward, log, inject, interrupt, hold, release and withdraw.
 
 package creelengine
 
@@ -19,7 +20,7 @@ import (
 const holdTimeLayout = time.RFC3339
 
 // validateBody refuses an empty body and one over the cap.
-// The cap is maxBodyBytes, the bound of a reply to EXTERNAL alone, which no claim hands out.
+// The cap bounds only a reply to an EXTERNAL sender, which only a waiting post receives and no claim hands out.
 func validateBody(body string) error {
 	if strings.TrimSpace(body) == "" {
 		return errors.New("creel: the message body is empty")
@@ -30,8 +31,10 @@ func validateBody(body string) error {
 	return nil
 }
 
-// LineFits reports whether the line carrying a message from from with that body is at most boundaryClaimBudget bytes, measured with the widest id an int64 takes and the longer, marked form so the answer never depends on the id the post gets or on whether it expects a reply.
-// A line of that size is at most 8,192 UTF-16 units, the measure a hook field is capped by, so a fitting line always arrives whole.
+// LineFits reports whether the line of a message from from with that body fits one claim's byte budget.
+// It measures the widest id an int64 takes and the longer, marked form.
+// The answer then never depends on the id the post gets or on whether it expects a reply.
+// A line within that budget has no more UTF-16 units than a hook field keeps, so a fitting line always arrives whole.
 func LineFits(from, body string) bool {
 	return len(widestLine(from, body)) <= boundaryClaimBudget
 }
@@ -65,7 +68,8 @@ func validateLine(from, body string) error {
 	return lineOverBudget(widestLine(from, body))
 }
 
-// lineOverHookField reports whether msg's line is longer than hookFieldCap UTF-16 units, so Claude Code would show a preview of it instead of the whole line.
+// lineOverHookField reports whether msg's line is longer than hookFieldCap UTF-16 units.
+// Claude Code shows such a line as a preview instead of the whole line.
 func lineOverHookField(msg *Message) bool {
 	return len(utf16.Encode([]rune(MessageLine(*msg)))) > hookFieldCap
 }
@@ -79,7 +83,8 @@ func (s *Store) appendPostedLocked(sender Sender, rec record) (int64, error) {
 	return rec.ID, err
 }
 
-// deliverMailLocked finishes a post, reply or forward to receiver: the holder's waiters and the wake.
+// deliverMailLocked finishes a post, reply or forward to receiver.
+// It answers the waits the receiver holds with OutcomeMail and wakes the receiver.
 func (s *Store) deliverMailLocked(id int64, receiver string) error {
 	s.answerLocked(waitKey{kind: waitHolder, holder: receiver}, Outcome{Kind: OutcomeMail})
 	s.mailSeq++
@@ -97,8 +102,11 @@ type PostOptions struct {
 	ExpectReply bool
 }
 
-// PostWith stores a message for receiver as opts say and returns its id, whether a running turn was stopped and the wait the options registered.
-// The post is validated, and with Interrupt the receiver must run creel's hook delivery and be one the sender may interrupt, before any key is sent.
+// PostWith stores a message for receiver as opts say.
+// It returns the id, whether a running turn was stopped, and the wait the options registered.
+// The post is validated.
+// With Interrupt, the receiver must run creel's hook delivery and be one the sender may interrupt.
+// Both checks run before any key is sent.
 func (s *Store) PostWith(sender Sender, receiver, body string, opts PostOptions) (int64, bool, *Waiter, error) {
 	return s.post(sender, receiver, body, opts)
 }
@@ -109,22 +117,24 @@ func (s *Store) Post(sender Sender, receiver, body string) (int64, error) {
 	return id, err
 }
 
-// PostWait is Post that also registers a wait for the reply to the new message, before any reply can arrive.
+// PostWait stores a message for receiver and registers a wait for its reply, before any reply can arrive.
 func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, error) {
 	id, _, waiter, err := s.post(sender, receiver, body, PostOptions{Wait: true})
 	return id, waiter, err
 }
 
-// PostInterrupt is Post, or PostWait when wait is set, that first stops the receiver's running turn, so the post lands as the input of the turn after it.
+// PostInterrupt stores a message for receiver after stopping the receiver's running turn.
+// The post lands as the input of the next turn, and with wait set it also registers a wait for the reply.
 // It reports whether a running turn was stopped; a receiver with no running turn still gets the post.
-// The post is validated, and the receiver must run creel's hook delivery and be one the sender may interrupt, before any key is sent.
+// The post is validated.
+// The receiver must run creel's hook delivery and be one the sender may interrupt, both checked before any key is sent.
 // A refusal, and a post whose store fails, say what was and was not done and the way forward.
 func (s *Store) PostInterrupt(sender Sender, receiver, body string, wait bool) (int64, bool, *Waiter, error) {
 	return s.post(sender, receiver, body, PostOptions{Wait: wait, Interrupt: true})
 }
 
 // interruptBeforePost stops the running turn of receiver for a post from sender and reports whether one was stopped.
-// Every refusal leaves nothing interrupted; the refusals of the interrupt itself are reworded for a post.
+// Every refusal leaves nothing interrupted, and its wording tells the sender what to do next.
 func (s *Store) interruptBeforePost(sender Sender, receiver string) (bool, error) {
 	target, err := s.strandTarget(receiver)
 	if err != nil {
@@ -187,7 +197,8 @@ func storedAfterInterrupt(receiver string, cause error) error {
 	return fmt.Errorf("creel: the turn of %s was interrupted, but the post was not stored: %w; way forward: post again without --interrupt", receiver, cause)
 }
 
-// storePost journals a validated post to receiver, marked as expecting a reply when expect is set, and, with wait, registers the wait for its reply.
+// storePost journals a validated post to receiver, marked as expecting a reply when expect is set.
+// With wait, it also registers the wait for the reply.
 func (s *Store) storePost(sender Sender, receiver, body string, wait, expect bool) (int64, *Waiter, error) {
 	strands, err := s.readStrands()
 	if err != nil {
@@ -219,7 +230,9 @@ func (s *Store) storePost(sender Sender, receiver, body string, wait, expect boo
 // The caller must hold or have read the message.
 // A reply to an EXTERNAL sender is handed to the wait registered on id, and journaled undelivered when none is.
 // A reply to a chase answers the message the chase chases, and only from that message's holder.
-// A reply to a message from another hub posts nothing here: it is journaled as an outbound message to the sending strand, validated with the longer stamped line, and marks the original replied.
+// A reply to a message from another hub posts nothing here;
+// it is journaled as an outbound message to the sending strand.
+// The line is validated with the longer stamped length, and the original message is marked replied.
 // A sender notice from creel takes no reply, since creel holds no mailbox.
 func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 	var replyID int64
@@ -284,7 +297,8 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 }
 
 // EchoHeading is the line hook-read puts above the echoed lines.
-// The echo reaches the operator alone: it is the mail an idle ring already put in the model's context, shown at the woken turn's first claim.
+// The echo reaches the operator alone.
+// It is mail an idle ring already put in the model's context, shown at the woken turn's first claim.
 const EchoHeading = "[creel] Delivered while idle:"
 
 // echoItem is one line of ring mail the operator is still owed, with the id of the message it carries.
@@ -295,7 +309,8 @@ type echoItem struct {
 	reserved bool
 }
 
-// Reading is the set of messages a read or a claim handed out; they are unread messages, reserved until Ack or Release.
+// Reading is the set of messages a read or a claim handed out.
+// They are unread messages, reserved until Ack or Release.
 type Reading struct {
 	// Messages are the messages handed out, oldest first.
 	Messages []Message
@@ -304,7 +319,8 @@ type Reading struct {
 	store  *Store
 	holder string
 	ids    []int64
-	// echoIDs are the ids of the echo items handed out, kept after the reading settles them so its log line can name them; echoSettled is true once it has.
+	// echoIDs are the ids of the echo items handed out, kept after the reading settles them so its log line can name them.
+	// echoSettled is true once the reading has settled them.
 	echoIDs     []int64
 	echoSettled bool
 	// path names the claim that made the reading for its log line: tool, stop or ring.
@@ -316,7 +332,8 @@ type Reading struct {
 	ring bool
 }
 
-// Read returns the caller's unread mail, oldest first, that no other read has reserved: every message, or with from only that sender's.
+// Read returns the caller's unread mail, oldest first, that no other read has reserved.
+// An empty `from` returns every message; otherwise only that sender's mail is returned.
 // They are reserved so a concurrent read by the same holder skips them.
 // A program sender's first read makes its mailbox known.
 func (s *Store) Read(sender Sender, from string) (*Reading, error) {
@@ -346,27 +363,39 @@ func (s *Store) Read(sender Sender, from string) (*Reading, error) {
 // hookFieldCap is the number of UTF-16 units Claude Code keeps of one hook field; a longer field is shown as a preview.
 const hookFieldCap = 10000
 
-// boundaryClaimBudget bounds the bytes of message lines, with the newlines joining them, one tool-boundary claim hands out, so one boundary adds a bounded amount to the session's context.
+// boundaryClaimBudget bounds the bytes one tool-boundary claim hands out as message lines, newlines included.
+// A boundary therefore adds a bounded amount to the session's context.
 const boundaryClaimBudget = 8 << 10
 
 // Boundary names the hook that asks for a claim.
 type Boundary struct {
 	// Stop is true for the turn-end Stop hook and false for the tool-boundary hook.
 	Stop bool
-	// StopHookActive is the Stop hook input's stop_hook_active: true when an earlier Stop claim that handed out mail already continued the turn.
+	// StopHookActive is the Stop hook input's stop_hook_active.
+	// It is true when an earlier Stop claim that handed out mail already continued the turn.
 	StopHookActive bool
 }
 
-// stopBlockCap is the number of consecutive Stop claims that hand out mail, each continuing the turn, creel allows one turn, below the 8 continuations Claude Code allows before it overrides a Stop hook.
+// stopBlockCap bounds how many Stop claims in a row may hand out mail and continue one turn.
+// It stays below the continuation limit Claude Code allows before it overrides a Stop hook.
 const stopBlockCap = 6
 
-// ClaimAtBoundary hands a strand's tool-boundary hook the strand's unread mail no read has reserved, oldest first and agent mail included, reserved until Ack or Release like a read's.
+// ClaimAtBoundary hands a strand's tool-boundary hook the strand's unread mail, oldest first.
+// It takes only mail that no read has reserved, agent mail included.
+// What it hands out stays reserved until Ack or Release, as a read's messages do.
 // Under a hold it hands out only the hold owner's mail, and while a pause covers the strand it hands out nothing.
-// It never claims a message whose MessageLine is longer than hookFieldCap UTF-16 units, which stays unread for `lym creel read`.
-// It stops before the message whose MessageLine, and the newline joining it to the line before, would take the lines past boundaryClaimBudget, but always hands out the first, and what it leaves stays unread for the next boundary.
-// A Stop claim hands out nothing once the strand's current turn has had stopBlockCap Stop claims that handed out mail, or when no Stop or tool-boundary claim of this daemon has set its count, so the turn end is recorded.
+// It never claims a message whose MessageLine is longer than hookFieldCap UTF-16 units.
+// Such a message stays unread for `lym creel read`.
+// It stops before a message that would take the lines past boundaryClaimBudget.
+// That count includes the MessageLine and the newline joining it to the line before.
+// It always hands out the first message, and what it leaves stays unread for the next boundary.
+// A Stop claim hands out nothing once stopBlockCap Stop claims in the strand's current turn have handed out mail.
+// It also hands out nothing when no Stop or tool-boundary claim of this daemon has set its count,
+// so the turn end is recorded.
 // A claim that hands out at least one message also marks the strand's last ring answered.
-// A strand owed an echo gets its unreserved echo lines first, oldest first, whatever a pause, a hold or the Stop cap keeps from its mail; the echo and the messages share boundaryClaimBudget, and an echo alone continues no turn.
+// A strand owed an echo gets its unreserved echo lines first, oldest first.
+// They are handed out even when a pause, a hold or the Stop cap keeps its mail back.
+// The echo and the messages share boundaryClaimBudget, and an echo alone continues no turn.
 // Only a strand sender may claim; any other sender is refused with the read verb as the way forward.
 func (s *Store) ClaimAtBoundary(sender Sender, boundary Boundary) (*Reading, error) {
 	if sender.Kind != KindStrand {
@@ -434,7 +463,9 @@ func (s *Store) ClaimAtBoundary(sender Sender, boundary Boundary) (*Reading, err
 	return reading, nil
 }
 
-// nothingClaimableReasonLocked names why a claim found no mail for holder: a live hold from another sender while the holder's unread mail is none of the owner's, or no claimable mail at all.
+// nothingClaimableReasonLocked names why a claim found no mail for holder.
+// It returns "held" when a live hold covers the holder's unread mail and none of it is from the hold owner.
+// Otherwise it returns "nothing-claimable".
 func (s *Store) nothingClaimableReasonLocked(holder string) string {
 	if hold := s.liveHoldLocked(holder); hold != nil {
 		unread := s.unreadLocked(holder, "")
@@ -445,7 +476,8 @@ func (s *Store) nothingClaimableReasonLocked(holder string) string {
 	return "nothing-claimable"
 }
 
-// claimEchoLocked reserves to reading the holder's unreserved echo items, oldest first, and stops before the line that would take the echo lines past boundaryClaimBudget; it always takes the first.
+// claimEchoLocked reserves to reading the holder's unreserved echo items, oldest first.
+// It stops before the line that would take the echo lines past boundaryClaimBudget, but always takes the first.
 func (s *Store) claimEchoLocked(holder string, reading *Reading) {
 	items := s.echoes[holder]
 	used := 0
@@ -479,7 +511,10 @@ func echoBytes(lines []string) int {
 	return total
 }
 
-// claimLocked reserves to reading the holder's claimable messages, oldest first, and stops before the message whose line and joining newline would take the echo and message lines already in reading past boundaryClaimBudget; it always takes the first line, echo or message.
+// claimLocked reserves to reading the holder's claimable messages, oldest first.
+// It stops before a message whose line would take reading's echo and message lines past boundaryClaimBudget.
+// The joining newline counts toward the budget too.
+// It always takes the first line, echo or message.
 func (s *Store) claimLocked(holder string, reading *Reading) {
 	used := echoBytes(reading.Echo)
 	for _, msg := range s.claimableLocked(holder) {
@@ -498,8 +533,10 @@ func (s *Store) claimLocked(holder string, reading *Reading) {
 	}
 }
 
-// claimableLocked returns the unread messages ClaimAtBoundary would hand holder if the byte budget were unlimited, oldest first.
-// They are the messages no read has reserved, the hold owner's alone under a live hold, and none whose line passes hookFieldCap.
+// claimableLocked returns the unread messages holder may claim, oldest first, with no byte budget applied.
+// It excludes messages a read has reserved.
+// Under a live hold it keeps only the hold owner's messages.
+// It also excludes any message whose line passes hookFieldCap.
 func (s *Store) claimableLocked(holder string) []*Message {
 	hold := s.liveHoldLocked(holder)
 	var claimable []*Message
@@ -515,16 +552,18 @@ func (s *Store) claimableLocked(holder string) []*Message {
 	return claimable
 }
 
-// resetStopBlocks starts strand's Stop count over at zero, which also makes the count known to this daemon.
+// resetStopBlocks sets the Stop count of strand back to zero, adding its entry if none exists.
 func (s *Store) resetStopBlocks(strand string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopBlocks[strand] = 0
 }
 
-// HookWait registers the idle waiter of the calling strand: a wait the daemon answers with OutcomeRing when it wakes the idle strand.
+// HookWait registers the idle waiter of the calling strand.
+// The daemon answers the waiter with OutcomeRing when it wakes the idle strand.
 // With takesMail the waiter is marked: its ring carries the strand's claimed mail, which the waiter acknowledges.
-// A newer waiter of the same strand ends the older, which is answered OutcomeSuperseded before the new one registers.
+// A newer waiter of the same strand ends the older one.
+// The older waiter is answered OutcomeSuperseded before the new one registers.
 // Only a strand sender may wait; any other sender is refused with the way forward for its kind.
 func (s *Store) HookWait(sender Sender, takesMail bool) (*Waiter, error) {
 	if sender.Kind != KindStrand {
@@ -555,7 +594,8 @@ func (s *Store) HookWait(sender Sender, takesMail bool) (*Waiter, error) {
 	return waiter, nil
 }
 
-// hookWakeState reads what the ring decision for strand rests on: its claimable message ids, the mark of its last ring and whether a waiter is registered.
+// hookWakeState reads the state the ring decision for strand depends on.
+// It returns the ids of strand's claimable messages, the mark of its last ring, and whether a hook waiter is registered.
 func (s *Store) hookWakeState(strand string) (ids []int64, mark wakeMark, waiting bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -582,9 +622,14 @@ func anyTakesMail(waiters []*Waiter) bool {
 	return false
 }
 
-// ringHook answers strand's registered waiters with OutcomeRing and records the mark of the ring at now, provided the claimable set is still ids and a waiter is still registered.
-// A marked waiter's ring carries a claim of the set through claimLocked, in a Reading the waiter acknowledges, and is made only when the pause read just before the locked step ran for a marked waiter and found no pause; a pause, a failed pause read or a marked waiter that registered after the read rings nothing and leaves the waiter registered.
-// A pause that keeps a marked ring from claiming logs it at Debug, and the ring's claim logs its outcome like any other.
+// ringHook answers strand's registered waiters with OutcomeRing and records the mark of the ring at now.
+// It rings only when the claimable set is still ids and a waiter is still registered.
+// A marked waiter's ring carries a claim of the set through claimLocked, in a Reading the waiter acknowledges.
+// That claim is made only when the pause read just before the locked step ran for a marked waiter and found no pause.
+// A pause, a failed pause read, or a marked waiter that registered after the read means the ring is not made.
+// The waiter then stays registered.
+// A pause that keeps a marked ring from claiming logs at Debug.
+// The ring's claim logs its outcome like any other claim.
 // It reports whether it rang, and starts the strand's Stop count over when it did.
 func (s *Store) ringHook(strand Strand, ids []int64, now time.Time) bool {
 	pauseRead := s.hookWaiterTakesMail(strand.Name)
@@ -629,7 +674,9 @@ func (s *Store) ringHook(strand Strand, ids []int64, now time.Time) bool {
 
 var errExternalHoldsNothing = errors.New("creel: an EXTERNAL caller holds no mail; wait for an answer with `lym creel post --wait-reply`")
 
-// journalReadLocked journals msg read by holder, and wakes holder when msg expects a reply: its chase clock starts at the read, and the removed-holder sweep has a read message to watch.
+// journalReadLocked journals msg as read by holder.
+// When msg expects a reply, it wakes holder, so the message's chase clock starts at the read.
+// The read message then gives the removed-holder sweep something to watch.
 func (s *Store) journalReadLocked(msg *Message, holder string) error {
 	if err := s.writer.append(record{Event: eventRead, ID: msg.ID, By: holder}); err != nil {
 		return err
@@ -640,13 +687,17 @@ func (s *Store) journalReadLocked(msg *Message, holder string) error {
 	return nil
 }
 
-// Ack marks the reserved messages read and journals each; a message that left the holder meanwhile stays as it is.
+// Ack marks the reserved messages read and journals each one; a message that left the holder meanwhile stays as it is.
 // Once every id is journaled, the Ack of a ring's claim marks the strand's last ring answered.
-// When a journal write fails, a claim's Ack releases the id it failed on and every id after it, so a later claim hands them out once more, and answers the holder's mail waiters;
+// When a journal write fails, a claim's Ack releases the id it failed on and every id after it,
+// so a later claim hands them out once more, and answers the holder's mail waiters;
 // a read's Ack leaves them reserved, since its client already printed the mail.
 // The ids before the failing one stay journaled read, and the error is returned.
-// A claim's Ack drops the echo items it handed out, whatever the journal writes do, since the hook already showed them.
-// A ring's Ack appends to the strand's echo one item per id it passed, journaled read or skipped as no longer the holder's unread mail, and none from a failing id on.
+// A claim's Ack drops the echo items it handed out whatever the journal writes do.
+// The hook has already shown them.
+// A ring's Ack appends one echo item per id it passed to the strand's echo.
+// The item goes in whether the id was journaled read or skipped as no longer the holder's unread mail.
+// It appends none from a failing id on.
 // The Ack of a claim or a ring that handed something out logs its outcome once.
 func (r *Reading) Ack() error {
 	return r.store.do(func() error {
@@ -710,9 +761,11 @@ const (
 	claimReleased     = "released"
 )
 
-// logOutcome writes the one daemon log line of this claim's delivery attempt: the strand, the path that claimed (tool, stop or ring), the message ids and echo ids it handed out, and the outcome.
-// An acknowledged claim logs at Info, a released one at Info, and one whose journal write failed at Warn with the error, the message ids released for a later claim and the echo ids dropped.
-// A reading no claim made, a read's, has no path and logs nothing.
+// logOutcome writes the one daemon log line of this claim's delivery attempt.
+// The line carries the strand, the path that claimed (tool, stop or ring), the message ids and echo ids handed out, and the outcome.
+// An acknowledged or released claim logs at Info.
+// A claim whose journal write failed logs at Warn, with the error, the message ids released for a later claim, and the echo ids dropped.
+// A read's reading has no path and logs nothing.
 func (r *Reading) logOutcome(outcome string, released, dropped []int64, err error) {
 	if r.path == "" {
 		return
@@ -729,8 +782,9 @@ func (r *Reading) logOutcome(outcome string, released, dropped []int64, err erro
 	logger.Info("creel claim", attrs...)
 }
 
-// settleEchoLocked ends this reading's hold on the echo items it handed out, once: it drops them, or with drop false leaves them owed and unreserved.
-// It reports whether the holder's echo had any, and syncs nothing; the caller does.
+// settleEchoLocked ends this reading's hold on the echo items it handed out, once.
+// With drop set it drops them; otherwise it leaves them owed and unreserved.
+// It reports whether it settled any echo items, and syncs nothing; the caller does.
 func (r *Reading) settleEchoLocked(drop bool) bool {
 	if len(r.echoIDs) == 0 || r.echoSettled {
 		return false
@@ -754,7 +808,8 @@ func (r *Reading) settleEchoLocked(drop bool) bool {
 	return true
 }
 
-// Release drops the reservation and leaves the messages unread; a wait for the holder's mail is answered, since the mail is back.
+// Release drops the reservation and leaves the messages unread.
+// A wait for the holder's mail is answered, since the mail is back.
 // The echo items the claim handed out are unreserved, so they stay owed.
 // A release of a claim or a ring that still held ids or echo items logs its outcome once.
 func (r *Reading) Release() {
@@ -833,7 +888,7 @@ type InboxEntry struct {
 	Unread int
 }
 
-// InboxResult is what Inbox answers: the unread counts per sender.
+// InboxResult holds the unread counts per sender of the caller's mail.
 type InboxResult struct {
 	Senders []InboxEntry
 }
@@ -860,7 +915,8 @@ func (s *Store) Inbox(sender Sender) (InboxResult, error) {
 	return result, err
 }
 
-// Forward moves an unread message the caller holds to receiver: the holder changes, From stays, and the caller joins the message's path.
+// Forward moves an unread message the caller holds to receiver.
+// The holder changes, From stays, and the caller joins the message's path.
 // A message from another hub is forwarded only to a strand of this hub.
 func (s *Store) Forward(sender Sender, id int64, receiver string) error {
 	strands, err := s.readStrands()
@@ -904,7 +960,8 @@ type LogFilter struct {
 	Since time.Time
 }
 
-// Log returns the journal events matching the filter, oldest first, with ids, parties, times and subjects and never a body.
+// Log returns the journal events matching the filter, oldest first.
+// Each event carries its ids, parties, time and subject, and never a body.
 // The id filter also keeps an event whose unread ids hold the id, such as a reminder.
 func (s *Store) Log(filter LogFilter) []LogEntry {
 	s.mu.Lock()
@@ -921,7 +978,8 @@ func (s *Store) Log(filter LogFilter) []LogEntry {
 	return entries
 }
 
-// InjectResult is what Inject answers: the inject's id, and for an inject that interrupts whether a running turn was stopped.
+// InjectResult reports the id of a queued inject.
+// For an inject that interrupts, it reports whether a running turn was stopped.
 type InjectResult struct {
 	ID          int64
 	Interrupted bool
@@ -934,12 +992,14 @@ func (s *Store) Inject(sender Sender, receiver, text string, ttl time.Duration, 
 	return result, err
 }
 
-// InjectWait is Inject that also registers a wait for the inject's outcome, before any outcome can happen.
+// InjectWait queues text to be typed into receiver's pane at its next idle, behind earlier injects.
+// It also registers a wait for the inject's outcome, before any outcome can happen.
 func (s *Store) InjectWait(sender Sender, receiver, text string, ttl time.Duration, interrupt bool) (InjectResult, *Waiter, error) {
 	return s.inject(sender, receiver, text, Command{}, ttl, interrupt, true)
 }
 
-// InjectCommand queues a command to be run in an orch strand's session at its next idle, behind earlier injects, under every rule of a text inject.
+// InjectCommand queues a command to run in an orch strand's session at its next idle, behind earlier injects.
+// It follows every rule that applies to a text inject.
 // Only a program sender may queue one, and only for an orch strand; an invalid command is refused.
 func (s *Store) InjectCommand(sender Sender, receiver string, command Command, ttl time.Duration) (InjectResult, error) {
 	if sender.Kind != KindProgram {
@@ -1017,7 +1077,8 @@ type QueuedInject struct {
 	Head bool
 }
 
-// Queued returns the injects waiting for receiver in the order they will be typed: the interrupt-queued ones first, newest first, then the rest oldest first.
+// Queued returns the injects waiting for receiver in the order they will be typed:
+// the interrupt-queued ones first, newest first, then the rest oldest first.
 func (s *Store) Queued(receiver string) []QueuedInject {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1060,7 +1121,8 @@ func (s *Store) strandTarget(receiver string) (Strand, error) {
 }
 
 // checkMayAct applies the privilege rule to a sender acting on a strand's pane.
-// A privileged sender (EXTERNAL, a program, an orch strand) may act on any strand, an orch strand included, and any other sender on its own.
+// A privileged sender (EXTERNAL, a program, or an orch strand) may act on any strand, an orch strand included.
+// Any other sender may act only on its own strand.
 func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 	if !sender.privileged() && sender.Name != receiver {
 		return fmt.Errorf("creel: %s may not %s another strand's pane; send it mail with `lym creel post`", sender.Name, action)
@@ -1070,7 +1132,8 @@ func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 
 // Interrupt sends the guarded interrupt to receiver at once, bypassing the queue, and reports whether a running turn was stopped.
 // A receiver with no running turn gets nothing and false.
-// A receiver a pause covers is claimed into that pause and then interrupted, so the pause's resume gives it its resume line;
+// A receiver a pause covers is claimed into that pause and then interrupted,
+// so the pause's resume gives it its resume line;
 // an unreadable pause record and another sender's hold refuse the interrupt.
 func (s *Store) Interrupt(sender Sender, receiver string) (bool, error) {
 	if err := s.refuseOtherHub(receiver, "interrupt"); err != nil {
@@ -1086,12 +1149,16 @@ func (s *Store) Interrupt(sender Sender, receiver string) (bool, error) {
 	return s.interruptTarget(sender, target)
 }
 
-// interruptTarget runs the checks that follow privilege and orch, in order, then the interrupt: another sender's hold, then the claim of a covering pause.
-// A strand a live pause covers is recorded in that pause before the key, so the pause's resume gives it its resume line;
+// interruptTarget runs the checks that follow the privilege check, in order:
+// another sender's hold, then the claim of a covering pause, then the interrupt itself.
+// A strand a live pause covers is recorded in that pause before the key,
+// so the pause's resume gives it its resume line;
 // an unreadable pause record refuses with nothing recorded, and so does a pause lifted before the key.
-// The interrupt runs under the receiver's pane lock, so no delivery reaches the receiver meanwhile, and the receiver's worker is woken once it ends.
+// The interrupt runs under the receiver's pane lock, so no delivery reaches the receiver meanwhile,
+// and the receiver's worker is woken once it ends.
 // An interrupt whose key was sent and whose clear failed counts as sent.
-// A hold, a lifted pause and an unreadable pause record each refuse with an *interruptRefusal of their kind, whose message names the interrupt.
+// A hold, a lifted pause and an unreadable pause record each refuse with an *interruptRefusal of their kind;
+// its message names the interrupt.
 func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
 	var holdErr error
 	_ = s.do(func() error {
@@ -1149,7 +1216,8 @@ const (
 	refusalPauseUnreadable
 )
 
-// interruptRefusal is a refusal of an interrupt that sent no key, carrying its kind so a caller can word it differently while Error keeps the message.
+// interruptRefusal is a refusal of an interrupt that sent no key.
+// It carries its kind, so a caller can word the refusal differently, while Error keeps the message.
 type interruptRefusal struct {
 	kind refusalKind
 	err  error
@@ -1171,14 +1239,17 @@ func holdRefusal(receiver string, hold *holdEntry) error {
 	return &interruptRefusal{kind: refusalHold, err: fmt.Errorf("creel: %s is held by %s until %s", receiver, hold.Owner, hold.Expires.UTC().Format(holdTimeLayout))}
 }
 
-// HoldResult is what Hold answers: the hold's owner and expiry, and whether it renewed the owner's earlier hold.
+// HoldResult is the outcome of holding a strand:
+// the hold's owner and expiry, and whether it renewed the owner's earlier hold.
 type HoldResult struct {
 	Owner   string
 	Expires time.Time
 	Renewed bool
 }
 
-// Hold holds receiver's deliveries for the given duration: only the owner's injects pass and only its mail is delivered, through the receiver's hooks or by its notice or reminder when it is a pane-mail strand.
+// Hold holds receiver's deliveries for the given duration: only the owner's injects pass.
+// Only the owner's mail is delivered:
+// through the receiver's hooks, or by its notice or reminder when it is a pane-mail strand.
 // The same owner holding again renews the hold; another sender's hold on a held receiver is refused.
 // An orch strand is held by a program only.
 func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (HoldResult, error) {
@@ -1223,16 +1294,20 @@ type WithdrawnMessage struct {
 	Subject string
 }
 
-// WithdrawResult is what Withdraw answers: the ids of the injects it expired and the messages it returned undelivered, both in id order.
+// WithdrawResult reports what a withdrawal removed.
+// It holds the ids of the injects expired and the messages returned undelivered, both in id order.
 type WithdrawResult struct {
 	Injects  []int64
 	Messages []WithdrawnMessage
 }
 
 // Withdraw removes the caller's own queued injects to receiver and its own unread, unreserved mail held by receiver.
-// Each inject is journaled expired and each message undelivered, with reason WithdrawnReason; a wait on an inject is answered expired and a wait on a message's reply is answered returned.
+// Each inject is journaled expired and each message undelivered, with reason `WithdrawnReason`.
+// A wait on an inject is answered expired, and a wait on a message's reply is answered returned.
 // An inject already sending and a message already read or being read are left alone.
-// Only a program may withdraw, and it acts on receiver by name whether or not creel still lists that strand; with nothing queued the result is empty.
+// Only a program may withdraw; any other sender gets an error.
+// It acts on receiver by name, whether or not creel still lists that strand.
+// With nothing queued, the result is empty.
 func (s *Store) Withdraw(sender Sender, receiver string) (WithdrawResult, error) {
 	if sender.Kind != KindProgram {
 		return WithdrawResult{}, fmt.Errorf("creel: %s may not withdraw; only a program may, through the Go client", sender.Name)
@@ -1262,8 +1337,10 @@ func (s *Store) Withdraw(sender Sender, receiver string) (WithdrawResult, error)
 	return result, err
 }
 
-// Release ends the caller's hold on receiver and reports whether there was one, even when the strand has since been removed.
-// Another sender's hold is refused; with no live hold, a name that is no existing strand is refused listing the strands that exist, and an existing strand changes nothing.
+// Release ends the caller's hold on receiver and reports whether there was one, even when the strand is gone.
+// Another sender's hold is refused.
+// With no live hold, a name that is no existing strand is refused, and the error lists the strands that exist.
+// With no live hold on an existing strand, it changes nothing.
 func (s *Store) Release(sender Sender, receiver string) (bool, error) {
 	if err := s.refuseOtherHub(receiver, "release"); err != nil {
 		return false, err

@@ -1,10 +1,8 @@
-// spawnwatchdog_test.go pins SpawnWatchdog's two no-spawn early returns, spawning no subprocess and
-// driving no live tmux at all — per the Test Tier Purity Invariant an untagged test file spawns
-// nothing. Reaching the end of each case below is the assertion: either call would re-exec
-// os.Executable() and recurse the whole suite if the early return were lost, which is precisely
-// what PATTERN-child-processes's "never re-exec
-// os.Executable() under go test" clause bars. No case in this file may ever call SpawnWatchdog
-// with suppress false and a non-empty hub path.
+// spawnwatchdog_test.go pins that SpawnWatchdog's two no-spawn early returns spawn no subprocess and drive no live tmux.
+// Reaching the end of each case is the assertion:
+// if an early return were lost, the call would re-exec os.Executable() and recurse the whole suite.
+// An untagged test file spawns nothing, per the Test Tier Purity Invariant.
+// No case here may call SpawnWatchdog with suppress false and a non-empty hub path.
 
 package reedengine
 

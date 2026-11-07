@@ -1,23 +1,22 @@
-// exec.go provides the per-invocation exit-state holder, the RunCLI seam adapter, the
-// legacy-handler-to-RunE wrapper, the shared root-execution helper, and the module-group RunE
-// helper for the clihelp package.
-//
-// The exit state is carried as a context value (never a package-level variable) so that concurrent
-// test invocations each track their own exit code without races.
+// exec.go holds the clihelp package's exit state, its RunCLI seam, and its RunE wrappers and root-execution helpers.
 
-// Package clihelp provides the shared cobra infrastructure used by cmd/lym and every module's
-// RunCLI seam.
-// It holds per-invocation exit state, a seam adapter that wires a cobra command tree into an
-// io.Writer-based call contract, a RunE wrapper that bridges legacy handler functions into cobra's
-// RunE signature, and helpers that centralise JSON-envelope error wrapping for Cobra-level errors.
+// Package clihelp provides the shared cobra infrastructure used by cmd/lym and every module's RunCLI seam.
+// It holds the per-invocation exit state.
+// Its seam adapter wires a cobra command tree into an io.Writer-based call contract.
+// It also holds the RunE wrapper for legacy handlers and the helpers that wrap Cobra errors in the JSON envelope.
 //
-// It also owns the global --json flag (InstallJSONHelp): under it every command, leaf or group, prints its help as structured JSON and exits 0, and no command runs;
-// a command that declares its own local --json flag shadows the global one and keeps its own meaning.
+// It owns the global --json flag (InstallJSONHelp).
+// Under it, every command, leaf or group, prints its help as structured JSON and exits 0, and no command runs.
+// A command that declares its own local --json flag shadows the global one and keeps its own meaning.
 //
-// It owns the readable summary of operator verbs (UseReadableOutput): a command carrying the operator audience whose output is a terminal prints each JSON envelope line as a short summary, and the global --envelope flag keeps the envelope there.
-// An output that is no terminal, as an agent's or a script's, always gets the envelope.
+// It owns the readable summary of operator verbs (UseReadableOutput).
+// Operator-audience commands print each JSON envelope line as a short summary when their output is a terminal;
+// the global --envelope flag keeps the envelope there.
+// An output that is no terminal, such as an agent's or a script's, always gets the envelope.
 //
-// The command index appends a command's index note (IndexNoteAnnotation) only when rendering the audience its IndexNoteAudienceAnnotation names, and never prints a note that lacks one.
+// The command index appends a command's index note (IndexNoteAnnotation).
+// It prints the note only in the audience that IndexNoteAudienceAnnotation names;
+// a note without that annotation never prints.
 package clihelp
 
 import (
@@ -32,10 +31,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// init disables cobra's Windows mousetrap check, a startup cost that
-// dominated the test suite. lym is orchestration-only and never launched by
-// double-click, so the message is dead weight. See
-// docs/benchmarks/test-suite-timing.md for measurements.
+// init clears cobra's Windows mousetrap help text.
+// The mousetrap check costs startup time in the test suite.
+// lym is never launched by double-click, so the text is never shown.
 func init() {
 	cobra.MousetrapHelpText = ""
 }
@@ -47,16 +45,17 @@ type ctxKey struct{}
 // exitKey is the context key under which an *exitState is stored.
 var exitKey = ctxKey{}
 
-// exitState records the exit code, the abort flag and the steps to run once execution ends for a single CLI invocation.
-// It is allocated fresh per invocation by NewExitContext and is never shared
-// across invocations, making it safe for concurrent use across parallel tests.
+// exitState records the exit code, the abort flag, and the steps to run once execution ends for one CLI invocation.
+// It is allocated fresh per invocation by NewExitContext and is never shared across invocations.
+// That makes it safe for concurrent use across parallel tests.
 type exitState struct {
 	code   int
 	abort  bool
 	finish []func()
 }
 
-// onFinish registers step to run, in registration order, once the invocation carried by ctx ends execution, before any cobra error envelope is written.
+// onFinish registers step to run once the invocation carried by ctx ends execution.
+// Steps run in registration order, before any cobra error envelope is written.
 // It is a no-op when ctx carries no exit state.
 func onFinish(ctx context.Context, step func()) {
 	es := exitStateFromCtx(ctx)
@@ -66,34 +65,29 @@ func onFinish(ctx context.Context, step func()) {
 	es.finish = append(es.finish, step)
 }
 
-// Code returns the recorded exit code, which is 0 if SetExit was never called with a non-zero
-// value.
-// It is the public read accessor for the unexported code field so that cmd/lym/main.go can read the
-// exit code after ExecuteContext returns without importing the unexported field directly.
+// Code returns the recorded exit code, which is 0 unless a non-zero code was recorded.
+// It exists so code outside clihelp can read the exit code, since the field itself is unexported.
 func (es *exitState) Code() int {
 	return es.code
 }
 
-// NewExitContext allocates a fresh *exitState, stores it in a child context derived from parent,
-// and returns both.
-// Call this once per CLI invocation (in Execute or in each module's RunCLI seam);
-// never store the returned *exitState in a package-level variable — doing so would break
-// parallel-test isolation.
+// NewExitContext allocates a fresh *exitState, stores it in a child context derived from parent, and returns both.
+// Call it once per CLI invocation.
+// Never store the returned *exitState in a package-level variable, since that would break parallel-test isolation.
 func NewExitContext(parent context.Context) (context.Context, *exitState) {
 	es := &exitState{}
 	return context.WithValue(parent, exitKey, es), es
 }
 
-// exitStateFromCtx retrieves the *exitState stored in ctx by NewExitContext.
-// Returns nil if ctx carries no exit state.
+// exitStateFromCtx returns the exit state carried by ctx, or nil when ctx carries none.
 func exitStateFromCtx(ctx context.Context) *exitState {
 	es, _ := ctx.Value(exitKey).(*exitState)
 	return es
 }
 
-// SetExit records code in the exit state carried by ctx.
-// It is a no-op when code is zero (zero means success; callers must not override a failure code
-// with a spurious zero) or when ctx carries no exit state.
+// SetExit records code as the exit code of the invocation carried by ctx.
+// A zero code is ignored, so a success never overwrites a failure code.
+// It is also a no-op when ctx carries no exit state.
 func SetExit(ctx context.Context, code int) {
 	if code == 0 {
 		return
@@ -105,11 +99,11 @@ func SetExit(ctx context.Context, code int) {
 	es.code = code
 }
 
-// Abort records code in the exit state carried by ctx and sets the abort flag, signalling that
-// subsequent RunE bodies should short-circuit without executing.
-// Used by a PersistentPreRunE that detects a fatal setup error so that leaf commands do not run
-// against an uninitialised environment.
-// Abort is a no-op when code is zero or when ctx carries no exit state.
+// Abort records code as the exit code of the invocation carried by ctx and sets the abort flag.
+// Subsequent RunE bodies then short-circuit without executing.
+// A PersistentPreRunE calls it on a fatal setup error.
+// That keeps leaf commands from running against an uninitialised environment.
+// It is a no-op when code is zero or when ctx carries no exit state.
 func Abort(ctx context.Context, code int) {
 	if code == 0 {
 		return
@@ -123,8 +117,8 @@ func Abort(ctx context.Context, code int) {
 }
 
 // ShouldAbort reports whether Abort was called on the exit state carried by ctx.
-// A RunE body should check this at its start and return nil immediately when true, because a
-// PersistentPreRunE has already written an error response and recorded the exit code.
+// A RunE body should return nil at its start when this reports true.
+// A PersistentPreRunE that aborted has already written the error response and recorded the exit code.
 func ShouldAbort(ctx context.Context) bool {
 	es := exitStateFromCtx(ctx)
 	if es == nil {
@@ -133,17 +127,14 @@ func ShouldAbort(ctx context.Context) bool {
 	return es.abort
 }
 
-// WrapRun adapts a legacy handler function with signature func(io.Writer, []string) int into a
-// cobra RunE.
-// The returned RunE short-circuits (returns nil without calling fn) when Abort has been signalled
-// on the command's context, so that a failing PersistentPreRunE prevents any leaf command body from
-// running.
-// Otherwise it calls fn, passes its exit code to SetExit, and returns nil so cobra does not
-// double-print over any JSON output the handler already wrote.
+// WrapRun adapts a legacy handler function with signature func(io.Writer, []string) int into a cobra RunE.
+// The returned RunE skips fn and returns nil when Abort was called on the command's context,
+// so a failing PersistentPreRunE keeps every leaf command body from running.
+// Otherwise it passes fn's exit code to SetExit.
+// It always returns nil, so cobra does not double-print over JSON output the handler already wrote.
 func WrapRun(fn func(out io.Writer, args []string) int) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		// Short-circuit when a PersistentPreRunE signalled abort; the pre-run
-		// already wrote the error response and recorded the exit code.
+		// The PersistentPreRunE that aborted has already written the error response and recorded the exit code.
 		if ShouldAbort(cmd.Context()) {
 			return nil
 		}
@@ -152,20 +143,14 @@ func WrapRun(fn func(out io.Writer, args []string) int) func(*cobra.Command, []s
 	}
 }
 
-// WrapRunCtx is WrapRun's context-carrying sibling: it adapts a handler function with signature
-// func(context.Context, io.Writer, []string) int into a cobra RunE, passing cmd.Context() through
-// as the handler's first argument instead of discarding it.
-// Both wrappers exist side by side rather than one replacing the other, because most registration
-// sites resolve no cwd and have no use for a context argument;
-// WrapRun stays the registration shape for those (every internal/boardcli and
-// internal/selfreportcli site, and most of internal/fabriccli's), while WrapRunCtx is for a handler
-// that needs to read an injected cwd via lymcwd.CwdFrom(ctx).
-// Short-circuit, exit-code recording, and the double-print-suppressing nil return all mirror WrapRun
-// exactly.
+// WrapRunCtx adapts a handler with signature func(context.Context, io.Writer, []string) int into a cobra RunE.
+// The handler receives cmd.Context() as its first argument, so it can read an injected cwd through lymcwd.CwdFrom.
+// The returned RunE skips fn and returns nil when Abort was called on the command's context.
+// Otherwise it passes fn's exit code to SetExit.
+// It always returns nil, so cobra does not double-print over JSON output the handler already wrote.
 func WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		// Short-circuit when a PersistentPreRunE signalled abort; the pre-run
-		// already wrote the error response and recorded the exit code.
+		// The PersistentPreRunE that aborted has already written the error response and recorded the exit code.
 		if ShouldAbort(cmd.Context()) {
 			return nil
 		}
@@ -174,20 +159,18 @@ func WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int) 
 	}
 }
 
-// RunRootCtx sets SilenceErrors and SilenceUsage on cmd, seeds a fresh exit context derived from
-// ctx, runs cmd.ExecuteContext, and on a non-nil cobra error writes the JSON error envelope to out
-// and returns 1. On nil error it returns the exit code recorded via SetExit.
-// Callers must configure cmd's output writers and args before calling RunRootCtx;
-// this function only supplies the context, the silence flags, and the error-wrapping policy.
-// RunRoot is the context.Background() special case of this function; ExecuteIn is the sibling that
-// seeds a cwd into ctx before calling this.
+// RunRootCtx runs cmd under a fresh exit state derived from ctx, and returns the exit code.
+// It silences cobra's error and usage output.
+// On a cobra error it writes the JSON error envelope to out and returns 1.
+// Otherwise it returns the exit code recorded by SetExit.
+// Callers configure cmd's output writers and args before the call;
+// this function supplies only the context, the silence flags, and the error wrapping.
 func RunRootCtx(ctx context.Context, cmd *cobra.Command, out io.Writer) int {
-	// Silence cobra's own error printing; we emit a JSON envelope instead so the
-	// caller always gets a machine-parseable error shape rather than plain text.
+	// Silence cobra's own error printing: the JSON envelope replaces it, so callers get a parseable error shape.
 	cmd.SilenceErrors = true
 
-	// Suppress the usage block on error paths; the command path already identifies
-	// the problem well enough, and a usage dump bloats test snapshots.
+	// Suppress the usage block on error paths: the command path already names the problem,
+	// and a usage dump bloats test snapshots.
 	cmd.SilenceUsage = true
 
 	execCtx, es := NewExitContext(ctx)
@@ -196,31 +179,28 @@ func RunRootCtx(ctx context.Context, cmd *cobra.Command, out io.Writer) int {
 		step()
 	}
 	if err != nil {
-		// Wrap the cobra error in the standard JSON envelope so all error paths
-		// (unknown command, bad flag, arg validation) have the same shape as domain
-		// errors. TrimSpace strips any newline cobra appends to its error strings.
+		// Wrap the cobra error in the standard JSON envelope.
+		// Unknown commands, bad flags and argument errors then share the shape of domain errors.
+		// TrimSpace strips the newline cobra appends to its error strings.
 		return output.Err(out, strings.TrimSpace(err.Error()))
 	}
 	return es.code
 }
 
-// RunRoot sets SilenceErrors and SilenceUsage on cmd, seeds a fresh exit context, runs
-// cmd.ExecuteContext, and on a non-nil cobra error writes the JSON error envelope to out and
-// returns 1. On nil error it returns the exit code recorded via SetExit.
-// Callers must configure cmd's output writers and args before calling RunRoot;
-// this function only supplies the context, the silence flags, and the error-wrapping policy.
-// Both Execute and cmd/lym use RunRoot so the wrapping logic has exactly one implementation.
+// RunRoot runs cmd under a fresh exit state with a background context, and returns the exit code.
+// It silences cobra's error and usage output.
+// On a cobra error it writes the JSON error envelope to out and returns 1.
+// Callers configure cmd's output writers and args first.
+// cmd/lym and Execute both go through RunRoot, so the error wrapping has one implementation.
 func RunRoot(cmd *cobra.Command, out io.Writer) int {
 	return RunRootCtx(context.Background(), cmd, out)
 }
 
-// Execute is the RunCLI seam used by every module and by cmd/lym.
-// It wires cmd to write both stdout and stderr into out (so in-process tests capture all output
-// from a single buffer), sets args, and delegates to RunRoot for context seeding, silence flags,
-// execution, and JSON error wrapping.
+// Execute is the RunCLI seam the modules use to run a command tree in process.
+// It writes stdout and stderr both into out, so in-process tests capture all output from one buffer.
+// It sets args and delegates to RunRoot for the context, the silence flags, and the JSON error wrapping.
 func Execute(cmd *cobra.Command, out io.Writer, args []string) int {
-	// Merge stdout and stderr into a single writer so in-process tests capture
-	// cobra's error text from the same buffer as handler output.
+	// Merge stdout and stderr into one writer so in-process tests capture cobra's error text with the handler output.
 	cmd.SetOut(out)
 	cmd.SetErr(out)
 
@@ -229,15 +209,13 @@ func Execute(cmd *cobra.Command, out io.Writer, args []string) int {
 	return RunRoot(cmd, out)
 }
 
-// ExecuteIn is Execute's context-carrying sibling: it wires cmd exactly as Execute does, then seeds
-// cwd into the execution context via lymcwd.WithCwd before delegating to RunRootCtx, so command
-// bodies that call lymcwd.CwdFrom(cmd.Context()) observe cwd instead of the process working
-// directory.
-// cwd must be an absolute, non-empty path — ExecuteIn never receives an empty cwd and performs no
-// empty-string tolerance of its own; WithCwd panics on both an empty and a relative cwd.
+// ExecuteIn runs cmd with cwd seeded into its execution context.
+// Command bodies that call lymcwd.CwdFrom(cmd.Context()) see cwd instead of the process working directory.
+// It sets cmd's output and arguments first, then delegates to RunRootCtx.
+// cwd must be an absolute, non-empty path: lymcwd.WithCwd panics on an empty or relative cwd.
 func ExecuteIn(cmd *cobra.Command, cwd string, out io.Writer, args []string) int {
-	// Merge stdout and stderr into a single writer so in-process tests capture
-	// cobra's error text from the same buffer as handler output.
+	// Stdout and stderr share one writer.
+	// An in-process test then reads cobra's error text beside the handler output.
 	cmd.SetOut(out)
 	cmd.SetErr(out)
 
@@ -246,11 +224,11 @@ func ExecuteIn(cmd *cobra.Command, cwd string, out io.Writer, args []string) int
 	return RunRootCtx(lymcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
 
-// GroupRunE is the RunE for parent module group commands (e.g. "lym fabric", "lym board").
-// When args is non-empty it returns an error naming the unknown subcommand;
-// when args is empty it delegates to the command's built-in help output.
-// Wire this as cmd.RunE = clihelp.GroupRunE on each group command so that bare invocations print
-// help and invocations with an unrecognised subcommand emit a JSON error envelope via RunRoot.
+// GroupRunE is the RunE for a parent command whose children are subcommands.
+// With arguments it returns an error naming the unknown subcommand.
+// Without arguments it prints the command's help.
+// Wire it as cmd.RunE = clihelp.GroupRunE on each group command: a bare invocation then prints help,
+// and an unknown subcommand emits a JSON error envelope through RunRoot.
 func GroupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("unknown subcommand %q for %q", args[0], cmd.CommandPath())

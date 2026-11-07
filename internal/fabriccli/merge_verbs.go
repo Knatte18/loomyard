@@ -1,15 +1,6 @@
-// merge_verbs.go wires the fabric merge lifecycle verbs (merge, merge-in, merge-stage) onto the
-// "fabric" parent command built by fabric.go.
-// merge-stage is the CLI surface for the engine's MergeStageResolved, and it is load-bearing rather
-// than a convenience wrapper over `git add`: MergeContinue gates on the git index, and a conflict
-// under a wired junction name (every _lym/… conflict) cannot be staged from the visible worktree at
-// all, since git refuses to stage through the junction. Without it a merge whose conflicts land on
-// the weft side is uncompletable through the CLI.
-// All three verbs join the weft-verb family: weft_verbs.go's weftVerbNames set and PersistentPreRunE
-// resolve the pair handle they need exactly as commit/pull do, so addMergeVerbs reaches that handle
-// indirectly through a getter closure rather than a value captured at registration time.
-// Flag combinations that would be silently ignored rather than obeyed (--squash or -m alongside
-// --abort) are rejected in a pre-flight check, before any handle is touched.
+// merge_verbs.go registers the fabric merge, merge-in and merge-stage verbs on the "fabric" parent command.
+// merge-stage is not a wrapper over `git add`: git refuses to stage through a wired junction name.
+// A conflict under one, such as every `_lym/` conflict, cannot be staged from the visible worktree.
 
 package fabriccli
 
@@ -31,8 +22,8 @@ const websterInFlightWarning = "Webster is mid-run in this worktree: `lym webste
 	"after a fork's commit but refuses a fast-forward past it and a merge whose conflicts were resolved by hand"
 
 // websterInFlightWarnings returns the merge-in warning list for the worktree at l.
-// It is nil when no run is in flight;
-// a RunInFlight error degrades to nil plus a logged warning, never a failure.
+// It is nil when no run is in flight.
+// An error from the in-flight check degrades to nil plus a logged warning, never a failure.
 func websterInFlightWarnings(l *lymcwd.Location) []string {
 	inFlight, err := websterengine.RunInFlight(l.AnchorPath())
 	if err != nil {
@@ -46,27 +37,18 @@ func websterInFlightWarnings(l *lymcwd.Location) []string {
 	return []string{websterInFlightWarning}
 }
 
-// setMergeExit maps a merge lifecycle verb's (res, err) pair onto the shared envelope shape — error
-// (errWithRecord), conflicts (errConflictsWithRecord), otherwise ok (okWithRecord with committed and
-// already_up_to_date) — and sets it as cmd's exit via clihelp.SetExit.
-// The three RunE bodies for merge-in, merge --continue, and merge --abort/default all funnel through
-// this one dispatch, per the card 16 "one envelope mapping, shared by all modes" requirement.
-// continue and abort never populate res.Conflicts, so the conflicts branch is a no-op for them, not a
-// behavior change.
+// setMergeExit maps a merge lifecycle verb's (res, err) result onto the shared envelope.
+// It sets that envelope as cmd's exit via clihelp.SetExit.
+// The RunE bodies of merge-in and merge funnel through it, so the envelope mapping lives in one place.
 //
-// warnings rides the ok and conflict envelopes only, under a "warnings" key present only when non-empty;
+// warnings is added to the ok and conflict envelopes only, under a "warnings" key present only when non-empty;
 // a hard failure never carries it.
 func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error, warnings []string) {
 	if err != nil {
-		// A failing verb that nevertheless knows which paths are still conflicted reports them under
-		// "unresolved", never under "conflicts". The two are different claims and only one of them is
-		// the documented discriminator: merge-in's own help promises that a conflict RESULT, and only a
-		// conflict result, carries a "conflicts" array, so a script tells a conflict apart from a hard
-		// failure by that key alone. Reusing it here would break exactly that test while adding no
-		// information the separate key does not carry.
-		// The only producer today is MergeContinue's unresolved-conflicts refusal, which an operator
-		// reaches by staging some of the reported paths and not all of them — and which named nothing
-		// at all before, leaving a weft-side path invisible from the visible worktree.
+		// A failing verb that still knows its conflicted paths reports them under "unresolved", never under "conflicts".
+		// Only a conflict result carries "conflicts", which is how a script tells a conflict from a hard failure.
+		// MergeContinue's refusal to conclude while conflicts remain names the paths that are still unresolved.
+		// Naming them matters because a weft-side path is invisible from the visible worktree.
 		if len(res.Conflicts) > 0 {
 			clihelp.SetExit(cmd.Context(), errWithRecordFields(out, res.Mutated(), err, map[string]any{
 				"unresolved": res.Conflicts,
@@ -91,12 +73,12 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 }
 
 // addMergeVerbs registers the "merge", "merge-in" and "merge-stage" subcommands on cmd.
-// fabric is a getter closure, not a bound value: weft_verbs.go's PersistentPreRunE assigns the
-// resolved *fabricengine.Fabric handle to a local at run time, after cobra has already built and
-// registered every command, so a value parameter here would capture that local's nil zero value and
-// every merge verb would nil-panic. Each RunE body calls fabric() after PersistentPreRunE has run.
+// fabric is a getter, not a bound value: the handle is resolved at run time, after every command is registered.
+// A value captured at registration would be nil, so every merge verb would nil-panic.
+// Each RunE body calls fabric() after the handle is resolved.
 //
-// loc is a getter for the same reason: it returns the *lymcwd.Location PersistentPreRunE resolved, which merge-in reads to ask whether a Webster run is in flight in this worktree.
+// loc is a getter for the same reason, returning the location resolved at run time.
+// merge-in reads it to check whether a Webster run is in flight in this worktree.
 func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lymcwd.Location) {
 	mergeInCmd := &cobra.Command{
 		Use:         "merge-in <branch>",
@@ -197,15 +179,13 @@ Example:
 			message, _ := cmd.Flags().GetString("message")
 
 			if squash && (continueFlag || abortFlag) {
-				// Nothing was mutated at this pre-flight validation point, so a bare output.Err
-				// carries no record — the pre-flight carve-out.
+				// Nothing is mutated before this pre-flight check, so `output.Err` carries no record.
 				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: --squash cannot be combined with --continue or --abort"))
 				return nil
 			}
-			// -m is the message override for the conclude-commit, so it is meaningful for --continue
-			// and meaningless for --abort, which discards it. Rejecting it is the same pre-flight
-			// carve-out as --squash above: silently ignoring a flag the caller passed is worse than
-			// refusing it, since the caller cannot tell the difference from a message that landed.
+			// -m names the conclude-commit, so it is meaningful for --continue and meaningless for --abort, which discards it.
+			// Refusing it is better than silently ignoring a flag the caller passed:
+			// the caller cannot tell that from a message that landed.
 			if abortFlag && message != "" {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: -m cannot be combined with --abort"))
 				return nil
@@ -268,8 +248,8 @@ Example:
 				return nil
 			}
 			// The staged echo deduplicates (order-preserving) rather than repeating args verbatim:
-			// the engine tolerates a path passed twice, but an envelope claiming two stagings for one
-			// path would be reporting something that did not happen twice.
+			// the engine tolerates a path passed twice,
+			// but an envelope claiming two stagings for one path would be reporting something that did not happen twice.
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
 				"staged": uniquePreservingOrder(args),
 			}))
@@ -286,8 +266,8 @@ Example:
 	cmd.AddCommand(mergeInCmd, mergeCmd, mergeStageCmd)
 }
 
-// uniquePreservingOrder returns values with every duplicate after a value's first occurrence
-// dropped, keeping the first-occurrence order — the shape merge-stage's staged echo reports.
+// uniquePreservingOrder returns values with repeats dropped, keeping the order of first occurrences,
+// so a reported list names each value once.
 func uniquePreservingOrder(values []string) []string {
 	seen := make(map[string]bool, len(values))
 	unique := make([]string, 0, len(values))

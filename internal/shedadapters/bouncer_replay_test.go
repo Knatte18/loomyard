@@ -1,8 +1,6 @@
-// bouncer_replay_test.go covers Bouncer.Call's replay mode, focus synthesis over a malformed file,
-// and cancellation.
-// The seed call, the re-bounce, the judge call's happy paths and degradations, harvest, and debris
-// handling are covered by bouncer_seed_test.go (batch 3) and bouncer_judge_test.go (this batch's
-// first file).
+// bouncer_replay_test.go covers Bouncer.Call's replay mode, focus synthesis over a malformed file, and cancellation.
+// The other bouncer test files cover the seed call and the re-bounce;
+// the judge call's happy paths and degradations, harvest, and debris handling.
 
 package shedadapters
 
@@ -22,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBouncer_Replay_Blocking also pins that judged(N) does not treat an absent next-round focus file as debris: the CONTINUE verdict replays rather than re-judging.
+// TestBouncer_Replay_Blocking also pins that judged(N) does not treat an absent next-round focus file as debris:
+// the CONTINUE verdict replays rather than re-judging.
 //
 //testtiming:keep pins the replay's warning log and that the verdict and ledger are left byte-identical, which the tests that reach a replay do not check
 func TestBouncer_Replay_Blocking(t *testing.T) {
@@ -77,18 +76,17 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 	}
 }
 
-// TestBouncer_FocusSynthesis_OverUnparseableFile covers an unparseable focus file standing at the
-// path the call is about to write: it is archived byte-identical beside the original and a
-// well-formed, empty focus file for the round replaces it, on the judge's replay (round 2's file)
-// and on the seed path (round 1's).
+// TestBouncer_FocusSynthesis_OverUnparseableFile covers an unparseable focus file at the path the call writes.
+// It is archived byte-identical beside the original, and a well-formed, empty focus file for the round replaces it.
+// The judge's replay synthesizes round 2's file; the seed path synthesizes round 1's.
 //
 //testtiming:keep pins that an unparseable focus file is archived byte-identical and replaced by a well-formed empty one, on both the replay and the seed path
 func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
-		// replay is whether round 1 is already judged CONTINUE, so the call replays and
-		// synthesizes round 2's focus; otherwise the call seeds round 1.
+		// replay is whether round 1 is already judged CONTINUE, so the call replays and synthesizes round 2's focus;
+		// otherwise the call seeds round 1.
 		replay bool
 	}{
 		{"JudgeBlockingReplay", true},
@@ -145,9 +143,9 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 	}
 }
 
-// TestBouncer_Cancellation_ParsedVerdictSurvives pins that a verdict the judge genuinely wrote
-// survives a cancellation that arrives during the run: the call returns the verdict's outcome with
-// the ledger as pointer, never the cancellation error.
+// TestBouncer_Cancellation_ParsedVerdictSurvives pins that a verdict the judge wrote survives a cancellation.
+// A cancellation during the run makes the call return the verdict's outcome with the ledger as pointer;
+// it never returns the cancellation error.
 //
 //testtiming:keep pins that a verdict the judge wrote survives a cancellation during the run, for both an approving and a blocking verdict
 func TestBouncer_Cancellation_ParsedVerdictSurvives(t *testing.T) {
@@ -190,24 +188,24 @@ func TestBouncer_Cancellation_ParsedVerdictSurvives(t *testing.T) {
 	}
 }
 
-// TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer covers every cancellation that is not a
-// parsed verdict surviving: an already-cancelled context never spawns, and a cancellation during
-// the seed run or a degrading judge run returns the context error with no outcome and an empty
-// pointer.
+// TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer covers every cancellation after which no parsed verdict survives.
+// An already-cancelled context never spawns.
+// A cancellation during the seed run or a degrading judge run returns the context error;
+// it reports no outcome and an empty pointer.
 func TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
-		// alreadyCancelled cancels the context before the call; otherwise the run's DuringRun
-		// hook cancels it.
+		// alreadyCancelled cancels the context before the call;
+		// otherwise the DuringRun hook cancels it.
 		alreadyCancelled bool
 		// judge lays out a round-1 report so the call is a judge call; otherwise it seeds.
 		judge bool
 	}{
 		{name: "AlreadyCancelled", alreadyCancelled: true},
 		{name: "DuringRun_SeedCall"},
-		// DuringRun cancels without writing anything usable, so judged(1) stays false and the run's
-		// own outcome (OutcomeDone with no verdict/ledger written) degrades.
+		// DuringRun cancels without writing anything usable, so judged(1) stays false;
+		// the run's own outcome, OutcomeDone with no verdict or ledger written, degrades.
 		{name: "DuringRun_DegradedJudgePath", judge: true},
 	}
 	for _, tt := range tests {

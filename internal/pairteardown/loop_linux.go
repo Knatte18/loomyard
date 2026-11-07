@@ -7,8 +7,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// killLoopProcessPlatform kills the loop process rec records, only while the loop lock at lockPath is held and the pid still reports the recorded start time.
-// A free lock means the loop is gone, and a different start time means the pid now belongs to another process.
+// killLoopProcessPlatform kills the loop process rec records, only while the loop lock at lockPath is held;
+// the pid must still report the recorded start time.
+// A free lock means the loop is gone, and a different start time means the pid belongs to another process.
 func killLoopProcessPlatform(rec shedverbs.LoopPIDRecord, lockPath, _ string) (bool, error) {
 	if rec.Loop.PID <= 0 {
 		return false, nil

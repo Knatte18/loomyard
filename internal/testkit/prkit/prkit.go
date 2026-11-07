@@ -94,61 +94,61 @@ func (a *API) answer(method string, args ...any) Answer {
 	return script[next]
 }
 
-// FindOpen returns the scripted Ref and Found.
+// FindOpen records the call and answers with the next scripted Ref and Found.
 func (a *API) FindOpen(_ context.Context, head, base string) (pullrequest.Ref, bool, error) {
 	answer := a.answer(MethodFindOpen, head, base)
 	return answer.Ref, answer.Found, answer.Err
 }
 
-// Create returns the scripted Ref.
+// Create records the call and answers with the next scripted Ref and error.
 func (a *API) Create(_ context.Context, head, base, title, body string) (pullrequest.Ref, error) {
 	answer := a.answer(MethodCreate, head, base, title, body)
 	return answer.Ref, answer.Err
 }
 
-// Edit returns the scripted error.
+// Edit records the call and returns the next scripted error.
 func (a *API) Edit(_ context.Context, number int, title, body string) error {
 	return a.answer(MethodEdit, number, title, body).Err
 }
 
-// Status returns the scripted Status.
+// Status records the call and answers with the next scripted Status and error.
 func (a *API) Status(_ context.Context, number int) (pullrequest.Status, error) {
 	answer := a.answer(MethodStatus, number)
 	return answer.Status, answer.Err
 }
 
-// Close returns the scripted error.
+// Close records the call and returns the next scripted error.
 func (a *API) Close(_ context.Context, number int, comment string) error {
 	return a.answer(MethodClose, number, comment).Err
 }
 
-// Reopen returns the scripted error.
+// Reopen records the call and returns the next scripted error.
 func (a *API) Reopen(_ context.Context, number int) error {
 	return a.answer(MethodReopen, number).Err
 }
 
-// SetDraft returns the scripted error.
+// SetDraft records the call and returns the next scripted error.
 func (a *API) SetDraft(_ context.Context, number int, draft bool) error {
 	return a.answer(MethodSetDraft, number, draft).Err
 }
 
-// Comment returns the scripted error.
+// Comment records the call and returns the next scripted error.
 func (a *API) Comment(_ context.Context, number int, body string) error {
 	return a.answer(MethodComment, number, body).Err
 }
 
-// Merge returns the scripted error.
+// Merge records the call and returns the next scripted error.
 func (a *API) Merge(_ context.Context, number int, expectedHead string, squash bool, title, message string) error {
 	return a.answer(MethodMerge, number, expectedHead, squash, title, message).Err
 }
 
-// RequiresPullRequest returns the scripted Found as its verdict.
+// RequiresPullRequest records the call and answers with the next scripted Found as its verdict.
 func (a *API) RequiresPullRequest(_ context.Context, branch string) (bool, error) {
 	answer := a.answer(MethodRequiresPullRequest, branch)
 	return answer.Found, answer.Err
 }
 
-// RequiredChecks returns the scripted Checks.
+// RequiredChecks records the call and answers with the next scripted Checks and error.
 func (a *API) RequiredChecks(_ context.Context, base, head string) ([]pullrequest.Check, error) {
 	answer := a.answer(MethodRequiredChecks, base, head)
 	return answer.Checks, answer.Err

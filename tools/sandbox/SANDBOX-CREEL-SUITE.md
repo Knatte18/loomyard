@@ -2,10 +2,13 @@
 
 ## What this is
 
-A structured test-loop for exercising `lym creel` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
-Like `SANDBOX-REED-SUITE.md`, the value here is partly **visual**: mail reminders and injected lines typed into a strand's pane, a message's events in the log.
-Not an automated suite -- an agent drives it, an operator watches.
-Every strand the suite adds comes from `lym reed add`, has no provider and so keeps the pane path, which is why its typed notices and reminders hold here.
+A structured test-loop that exercises `lym creel` in the sandbox Hub's Fabric repo.
+It runs against a **live tmux server and a logged-in claude**.
+Like `SANDBOX-REED-SUITE.md`, the suite is partly **visual**:
+the operator sees mail reminders and injected lines typed into a strand's pane, and a message's events in the log.
+The suite is not automated: an agent drives it and an operator watches.
+Every strand the suite adds comes from `lym reed add` and has no provider, so it keeps the pane path.
+That is why its typed notices and reminders hold here.
 A Claude session shuttle launches gets its mail through its hooks instead, which no scenario of this suite drives.
 
 ## Pre-conditions
@@ -14,22 +17,30 @@ Before starting a session:
 
 1. **Deploy a fresh dev binary.**
    Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lym` stays untouched.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH, so no PATH setup is needed.
+   Production `lym` stays untouched.
+   The fingerprint header's `Source: dev` line confirms the dev build is under test.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    Once a pane exists, run these checks inside a spawned agent pane:
-   - `command -v lym` (`where lym` on Windows) is not a check this suite makes: its interactive strands, the plain `--cmd claude` and `--cmd bash` strands, each start a fresh shell that re-runs the operator's rc.
+   - `command -v lym` (`where lym` on Windows) is not checked here:
+     the interactive `--cmd claude` and `--cmd bash` strands each start a fresh shell that re-runs the operator's rc.
      See `SANDBOX-REED-SUITE.md` for the pane-shell guarantee and `SANDBOX-SHUTTLE-SUITE.md` for the agent Bash tool check.
    - `LYM_BIN` is set inside that pane and names the same binary.
    - `claude` still resolves inside that pane.
-     `claude` is looked up by bare name from the pane's PATH, so it is the property most exposed to any future change in how a pane's shell is started, and it is the one property no hermetic test can prove.
-   `LYM_BIN` being set is the live-substrate fact no `go test` can prove, and both remaining checks are pre-condition checks rather than assertions.
+     `claude` is looked up by bare name from the pane's PATH,
+     so a change in how a pane's shell is started exposes it most.
+   No hermetic test proves either `LYM_BIN` or `claude`, so both are pre-condition checks rather than assertions.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
    the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
-3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, which reed's strands need,
-   and a logged-in `claude` on PATH, since S9 adds a `claude` strand.
-   If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a creel defect** -- the `**Covers:** creel` tag on S9 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lym reed` requires a worktree wired by `lym fabric clone`/`lym fabric add`, and `lym creel` reaches strands through reed.
+3. **Live-tmux and claude requirement.**
+   The session needs tmux (or the Windows tmux port) on PATH and PowerShell 7 for reed's strands.
+   It also needs a logged-in `claude` on PATH for S9's `claude` strand.
+   If any of these is unavailable, **note that as the session outcome rather than treating it as a creel defect**.
+   The `**Covers:** creel` tag on S9 satisfies the coverage guard in `sandbox_coverage_test.go` whatever the runtime.
+4. **Wired worktree required.**
+   `lym reed` requires a worktree wired by `lym fabric clone` or `lym fabric add`.
+   `lym creel` reaches strands through reed.
 
 ## Black-box rule
 
@@ -38,32 +49,41 @@ It tests `lym.exe` as a black box -- exactly as a real user with only the binary
 It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lym creel`, `lym creel <subcommand>`, `lym reed`, `lym reed <subcommand>`, and `--help` flags alone -- not from documentation outside the Hub.
+The agent discovers the command surface from these alone, never from documentation outside the Hub:
+`lym creel`, `lym creel <subcommand>`, `lym reed`, `lym reed <subcommand>` and `--help` flags.
 
 ### Controlled creel exceptions
 
-The creel scenarios (C1 to C13) need these non-black-box steps and nothing more:
+The creel scenarios (C1 to C13) need only these non-black-box steps:
 
-- **Listing the tmux and lymtemp socket directories read-only** (C1), to compare the sandbox hub's sockets with the live hub's.
+- **Listing the tmux and lymtemp socket directories read-only** (C1).
+  It compares the sandbox hub's sockets with the live hub's.
 - **Planting or editing a journal day file while the daemon is stopped** (C10), under the hub's creel state directory.
-- **Running a process detached from a strand's pane** (C12), to check that a process outside the pane is not taken for the strand.
-  The disagreeing-strand-name check of C12 is operator-assisted when the agent's harness refuses a command naming the strand variable: the agent asks the operator to run it in the pane and reports what the operator saw.
-- **Pane content a scenario judges** (S9's typed reminder, C2's single reminder in the scrollback, C6's line not typed again, C7's restored prompt) is observed by the operator through `lym reed attach` and reported back by the agent, as C12's operator-assisted check is.
+- **Running a process detached from a strand's pane** (C12).
+  It checks that a process outside the pane is not taken for the strand.
+  C12's disagreeing-strand-name check is operator-assisted when the harness refuses a command naming the strand variable:
+  the agent asks the operator to run it in the pane and reports what the operator saw.
+- **Pane content a scenario judges** is observed by the operator through `lym reed attach`.
+  The agent reports it back.
+  That covers S9's typed reminder, C2's single reminder in the scrollback, C6's line not typed again,
+  and C7's restored prompt.
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
+The launcher prepends a "binary under test" fingerprint block when it copies this file into the Hub's Fabric repo.
+The fingerprint records the `lym.exe` binary's absolute path, size, modification time and a short SHA-256 at launch.
 
-The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
-The agent does not need to transcribe the fingerprint anywhere itself.
+The same fingerprint gives the report its provenance:
+a separate fetch step run after the session stamps it into `meta.fingerprint` of the fetched `sandbox-report.json`.
+A maintainer can then reproduce the exact binary behind each finding.
+The agent does not transcribe the fingerprint anywhere.
 
 ## How to run a scenario
 
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lym creel`, `lym creel <subcommand>`, `lym reed`, and `--help` flags (S0 ethos).
+  Discover the commands via `lym creel`, `lym creel <subcommand>`, `lym reed`, and `--help` flags.
 - **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
@@ -77,7 +97,8 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the Fabric-repo cwd) on this exact schema.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` in the Fabric-repo cwd.
+The file follows this exact schema.
 **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
@@ -99,7 +120,8 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
-Write only `source` and `items` -- a separate fetch step (run after the session) stamps `meta` (including the binary fingerprint).
+Write only `source` and `items`;
+a separate fetch step run after the session stamps `meta`, including the binary fingerprint.
 Confine all free text to the `title`/`body` string fields so the JSON stays well-formed.
 
 ## Scenarios
@@ -108,26 +130,43 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Covers:** creel
 
-**Goal:** "Post a message to an interactive agent that was added by hand from the terminal and from another agent, watch the terminal's message carried in full and the agent's reminded once the receiver is idle, have the receiver read the agent's message, inject a line into it, and confirm the log shows the events without any body."
+**Goal:** "Post a message to an interactive agent added by hand, once from the terminal and once from another agent.
+Watch the terminal's message carried in full and the agent's message reminded once the receiver is idle.
+Have the receiver read the agent's message and take an injected line, then confirm the log shows no body."
 
-**Watch:** Add a strand with `lym reed add --cmd claude` and let it reach its idle prompt, and add a shell strand with `lym reed add --cmd bash`.
-`lym creel post <strand name> "please say CARRIED"` from the operator's shell prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
-The terminal is EXTERNAL, so at the agent's next idle moment `[creel] #<id> from "<shortname>:EXTERNAL": please say CARRIED` appears typed in its pane, and the message is read with no `lym creel read`.
-`lym creel post <strand name> "please say READ"` run in the shell strand's pane is agent mail: at the agent's next idle moment a one-line reminder naming the shell strand appears typed in its pane, and the reminder is not repeated while the agent works.
-Asking the agent to run `lym creel read` prints, as plain text, the message's id, its sender and the reply command on one line and its body below, and a second `lym creel read` prints `nothing unread`.
-`lym creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
-`lym creel log --id <id>` lists the message's events `posted`, each `reminded` event whose unread ids hold it, and `read`, oldest first, with their times and subject, and no event has a body field.
-A reminder typed into a busy turn, a line typed twice, or a body field in the log is a real failure here.
+**Watch:** Add a strand with `lym reed add --cmd claude` and let it reach its idle prompt.
+Add a shell strand with `lym reed add --cmd bash`.
+`lym creel post <strand name> "please say CARRIED"` from the operator's shell prints one JSON envelope.
+The envelope carries the message `id`.
+The first creel verb of the hub starts its daemon by itself.
+The terminal is EXTERNAL, so its message is carried:
+at the agent's next idle moment this line appears typed in the agent's pane:
+`[creel] #<id> from "<shortname>:EXTERNAL": please say CARRIED`.
+The message is read with no `lym creel read`.
+`lym creel post <strand name> "please say READ"` run in the shell strand's pane is agent mail:
+at the agent's next idle moment a one-line reminder naming the shell strand appears typed in its pane.
+The reminder is not repeated while the agent works.
+Asking the agent to run `lym creel read` prints plain text.
+The first line holds the message's id, its sender and the reply command, and the body follows below.
+A second `lym creel read` prints `nothing unread`.
+`lym creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle.
+It exits 0 with `"outcome":"injected"`.
+`lym creel log --id <id>` lists the message's events, oldest first, with their times and subject:
+`posted`, each `reminded` event whose unread ids hold it, and `read`.
+No event has a body field.
+A reminder typed into a busy turn, a line typed twice, or a body field in the log is a failure here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
 
 **Creel scenario fixtures.**
-The creel scenarios C1 to C13 reuse the fixtures of the creel audit, which the agent sets up in the Hub as steps of its own:
+The creel scenarios C1 to C13 reuse the fixtures of the creel audit.
+The agent sets them up in the Hub as steps of its own:
 
 - Bash strands, added with `lym reed add --cmd bash`, stand in for plain shell agents.
-- A fake idle pane that swallows input: a script that draws a ready marker and an empty input box and reads lines without echoing them.
+- A fake idle pane that swallows input.
+  It is a script that draws a ready marker and an empty input box, then reads lines without echoing them.
 - A fake input box that ignores Enter, so a typed line stays in the box.
 - An orch-role copy of the idle pane, added with `--role orch`.
 
@@ -137,10 +176,12 @@ The agent stops the creel daemon only by replacing its binary, never by killing 
 
 **Covers:** creel
 
-**Goal:** "Run the first creel verb of the sandbox hub and confirm it shares no path with any other hub on the machine."
+**Goal:** "Run the first creel verb of the sandbox hub and confirm it shares no path with any other hub."
 
 **Watch:** The first verb starts the hub's daemon.
-The daemon socket name carries the sandbox hub's shortname and path hash, the sandbox reed `-L` key differs from the live hub's, and the daemon's binary is the sandbox build.
+The daemon socket name carries the sandbox hub's shortname and path hash.
+The sandbox reed `-L` key differs from the live hub's.
+The daemon's binary is the sandbox build.
 Listing the tmux and lymtemp socket directories read-only shows the sandbox sockets beside the live ones and none shared.
 
 **Verdict:** `FAIL` if any path is shared with the live hub.
@@ -151,9 +192,11 @@ Listing the tmux and lymtemp socket directories read-only shows the sandbox sock
 
 **Covers:** creel
 
-**Goal:** "Post a message to a Claude strand that is busy with a long task, and confirm its reminder is typed after the turn and only once."
+**Goal:** "Post a message to a Claude strand busy with a long task.
+Confirm its reminder is typed after the turn, and only once."
 
-**Watch:** Busy a Claude strand with a long inject, then post mid-turn from a shell strand's pane, since only an agent strand's mail is reminded.
+**Watch:** Busy a Claude strand with a long inject, then post mid-turn from a shell strand's pane.
+Only an agent strand's mail is reminded.
 The reminder lands only after the turn ends and appears once in the pane's scrollback.
 
 **Verdict:** `FAIL` on a reminder typed into a busy turn, or a duplicate.
@@ -164,7 +207,8 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 
 **Covers:** creel
 
-**Goal:** "Leave a message unread while the strand keeps answering its reminders, and confirm the reminders back off and a new message is reminded at once."
+**Goal:** "Leave a message unread while the strand keeps answering its reminders.
+Confirm the reminders back off and a new message is reminded at once."
 
 **Watch:** The message comes from a shell strand's pane, and the strand answers reminders without reading.
 `reminded` events in `lym creel log` come about 5 and 10 minutes apart, and a new message is reminded at once.
@@ -177,10 +221,18 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 
 **Covers:** creel
 
-**Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
+**Goal:** "Leave interleaved mail from several senders and read it in every way the verb offers.
+Confirm each read returns the right set.
+Confirm mail whose output could not be written stays unread."
 
-**Watch:** Interleave mail from EXTERNAL and a shell strand to a receiver kept busy, so the EXTERNAL mail is not carried before the reads, then check that plain `read` returns every sender's mail at once, that `read --from` narrows it to one sender, that `read --envelope` prints the same set as one JSON line, and `inbox`.
-`lym creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
+**Watch:** Interleave mail from EXTERNAL and a shell strand to a busy receiver.
+The receiver stays busy so the EXTERNAL mail is not carried before the reads.
+Plain `read` returns every sender's mail at once.
+`read --from` narrows it to one sender.
+`read --envelope` prints the same set as one JSON line.
+Check `inbox` too.
+`lym creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread.
+A following `read` still returns it.
 
 **Verdict:** `FAIL` on a wrong set or lost mail.
 
@@ -190,7 +242,8 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 
 **Covers:** creel
 
-**Goal:** "Wait for a reply to a posted message, answer it, forward a message on and answer that, and confirm every reply reaches the right sender and the refused cases are refused."
+**Goal:** "Wait for a reply to a posted message, answer it, then forward a message on and answer that.
+Confirm every reply reaches the right sender and the refused cases are refused."
 
 **Watch:** `post --wait-reply` is answered by `--reply`.
 A forward followed by a reply goes back to the sender.
@@ -204,11 +257,13 @@ Forwarding to oneself, forwarding a message not held and forwarding one already 
 
 **Covers:** creel
 
-**Goal:** "Inject a line into panes that take it, ignore Enter, or never go idle, and confirm each ends as it should without a line typed twice."
+**Goal:** "Inject a line into panes that take it, ignore Enter, or never go idle.
+Confirm each ends as it should, with no line typed twice."
 
 **Watch:** `inject --wait` into an idle pane gives `injected`.
 A fake box that ignores Enter gives `unconfirmed`, and the line is not typed again once the box is cleared.
-A short `--ttl` into a never-idle pane expires within a second of its TTL, and into a bash strand it names the stall `no-input-box`.
+A short `--ttl` into a never-idle pane expires within a second of its TTL.
+Into a bash strand it names the stall `no-input-box`.
 
 **Verdict:** `FAIL` on a retype or an early expiry.
 
@@ -218,10 +273,12 @@ A short `--ttl` into a never-idle pane expires within a second of its TTL, and i
 
 **Covers:** creel
 
-**Goal:** "Interrupt a Claude strand mid-turn, with and without an inject, and confirm the line lands without anyone clearing the box."
+**Goal:** "Interrupt a Claude strand mid-turn, with and without an inject.
+Confirm the line lands without anyone clearing the box."
 
 **Watch:** `interrupt` and `inject --interrupt` mid-turn.
-Claude puts the interrupted prompt back in the input box, and creel clears it, so the inject lands with no hand-clearing.
+Claude puts the interrupted prompt back in the input box, and creel clears it,
+so the inject lands with no hand-clearing.
 A box holding the operator's own text is left alone, and the inject waits.
 
 **Verdict:** `FAIL` if the inject waits behind the restored prompt.
@@ -232,9 +289,11 @@ A box holding the operator's own text is left alone, and the inject waits.
 
 **Covers:** creel
 
-**Goal:** "Hold a strand for one sender, send from another, then pause the hub and resume it, and confirm delivery follows the hold and the pause."
+**Goal:** "Hold a strand for one sender and send from another, then pause the hub and resume it.
+Confirm delivery follows the hold and the pause."
 
-**Watch:** A privileged sender holds the strand, injects and mail from another sender are held back, and the owner's inject passes.
+**Watch:** A privileged sender holds the strand.
+Injects and mail from another sender are held back, and the owner's inject passes.
 After `release` the held inject is typed and the mail reminded.
 An `inject --wait` started after a draft was cleared under a hold prints no stall line and ends injected.
 Then `lym tender pause` freezes the TTL and holds delivery, and `lym tender resume` delivers.
@@ -247,11 +306,13 @@ Then `lym tender pause` freezes the TTL and holds delivery, and `lym tender resu
 
 **Covers:** creel
 
-**Goal:** "Send mail, an inject, an interrupt and a hold to an orch-role strand, and confirm creel delivers the first three and refuses the hold."
+**Goal:** "Send mail, an inject, an interrupt and a hold to an orch-role strand.
+Confirm creel delivers the first three and refuses the hold."
 
 **Watch:** Mail to the orch-role strand is reminded in its pane when it is idle.
 A text `inject` and an `interrupt` from EXTERNAL are accepted.
-A `hold` on it from EXTERNAL or from another orch strand is refused with the message that only a program may hold an orch strand.
+A `hold` on it from EXTERNAL or from another orch strand is refused.
+The refusal says only a program may hold an orch strand.
 The orch's own `inbox` shows plain unread counts and no `withheld` or `notice` key.
 
 **Verdict:** `FAIL` on a hold accepted from a non-program, or on a keystroke in an orch pane that no creel verb caused.
@@ -262,11 +323,16 @@ The orch's own `inbox` shows plain unread counts and no `withheld` or `notice` k
 
 **Covers:** creel
 
-**Goal:** "Replace the binary under a running daemon, damage the journal in the ways a crash or an old day file would, and confirm the daemon restarts on the same pool and says why when it cannot start."
+**Goal:** "Replace the binary under a running daemon, then damage the journal as a crash or an old day file would.
+Confirm the daemon restarts on the same pool and says why when it cannot start."
 
-**Watch:** Replacing the binary ends the daemon within 2 s, and the next verb brings the same pool (a diff of `lym creel log` before and after).
-A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut whether or not it ends in a newline, and a restart after the next append starts cleanly.
-A malformed middle line, planted while the daemon is stopped, gives the verb an error naming the daemon log, which quotes the start's error line with the journal file and line.
+**Watch:** Replacing the binary ends the daemon within 2 s.
+The next verb brings the same pool, as a diff of `lym creel log` before and after shows.
+A planted 8-day-old day file is carried forward and deleted.
+A torn tail is cut whether or not it ends in a newline.
+A restart after the next append starts cleanly.
+A malformed middle line, planted while the daemon is stopped, gives the verb an error naming the daemon log.
+The daemon log quotes the start's error line with the journal file and line.
 
 **Verdict:** `FAIL` on a pool diff or lost unread mail.
 
@@ -276,10 +342,12 @@ A malformed middle line, planted while the daemon is stopped, gives the verb an 
 
 **Covers:** creel
 
-**Goal:** "Remove the strand that holds forwarded mail and mail someone waits on, and confirm each message steps back or ends undelivered and the reader is told it bounced."
+**Goal:** "Remove the strand that holds forwarded mail and mail someone waits on.
+Confirm each message steps back or ends undelivered, and the reader is told it bounced."
 
 **Watch:** Remove the strand holding forwarded mail and the one holding mail awaited with `--wait-reply`.
-Within 60 s of the removal each message steps back one hop or ends `undelivered`, the waiter exits 5, and the reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
+Within 60 s of the removal each message steps back one hop or ends `undelivered`, and the waiter exits 5.
+The reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
 
 **Verdict:** `WARN` if the bounce is not shown.
 
@@ -289,11 +357,13 @@ Within 60 s of the removal each message steps back one hop or ends `undelivered`
 
 **Covers:** creel
 
-**Goal:** "Post from inside a pane, from a terminal, from a detached process and from a pane under another strand's name, and confirm each is who it should be or is refused."
+**Goal:** "Post from a pane, from a terminal, from a detached process and from a pane under another strand's name.
+Confirm each is who it should be or is refused."
 
 **Watch:** Pane processes resolve to their own strand and a terminal to EXTERNAL.
 A process detached from a strand's pane that keeps the strand name is refused.
-A disagreeing strand name inside a pane is refused; this check is operator-assisted when the harness refuses a command naming the strand variable.
+A disagreeing strand name inside a pane is refused;
+this check is operator-assisted when the harness refuses a command naming the strand variable.
 
 **Verdict:** `FAIL` on a spoof that succeeds.
 
@@ -303,11 +373,13 @@ A disagreeing strand name inside a pane is refused; this check is operator-assis
 
 **Covers:** creel
 
-**Goal:** "Post to a Claude strand added by hand and to a strand whose window shows no input box, and confirm each receives its line or creel says why it cannot deliver."
+**Goal:** "Post to a Claude strand added by hand and to a strand whose window shows no input box.
+Confirm each receives its line or creel says why it cannot deliver."
 
 **Watch:** A plain `lym reed add --cmd claude` strand receives the line carrying a post from the operator's shell.
 A `lym reed add --cmd bash` strand, which reed places in a window of its own, shows no input box.
-Its stall reason, `no-input-box`, shows as a `stalled` event in `lym creel log` and as a progress line on stderr of `lym creel inject --wait`.
+Its stall reason, `no-input-box`, shows as a `stalled` event in `lym creel log`.
+It also shows as a progress line on stderr of `lym creel inject --wait`.
 
 **Verdict:** `FAIL` on a silent stall.
 
@@ -337,7 +409,8 @@ C13: <OK|WARN|FAIL> -- <one-line note if not OK>
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
 
-`./sandbox-report.json` must be written before the session ends, per the Capturing findings section above -- with `items: []` when every scenario was `OK`.
+`./sandbox-report.json` must be written before the session ends, as the Capturing findings section says.
+When every scenario was `OK`, it holds `items: []`.
 
 ## Notes
 

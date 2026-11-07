@@ -10,8 +10,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBuildLaunchCmd pins the POSIX launch line: CODEX_HOME leading, every flag of the spike's line with the network access, the writable root, model and effort when set, each hook setting, the bypass flag, the first turn, the exit record appended to the events file, and the shell exit.
-// It also pins an opened session's command: the network access, and no hook bypass, no first turn, no exit record and no exit when the line has no hooks and no first turn.
+// TestBuildLaunchCmd pins the POSIX launch line.
+// CODEX_HOME leads, and the spike's flags carry the network access.
+// It carries the writable root, model and effort when set, each hook setting, the bypass flag and the first turn.
+// It ends with the exit record appended to the events file, and then the shell exit.
+// It also pins an opened session's command.
+// That command has the network access.
+// It has no hook bypass, first turn, exit record or exit when the line has no hooks and no first turn.
 func TestBuildLaunchCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -49,8 +54,11 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestHookSettings pins one setting per recorded hook in order, then one PreToolUse setting holding every guard entry when guards are given, then the activity hook on every tool, each running the command for the run's events file.
-// A creel delivery swaps the Stop setting for the merged creel Stop command and the async idle waiter, and adds the creel mail hook after the activity hook.
+// TestHookSettings pins one setting per recorded hook, in order.
+// A PreToolUse setting holding every guard entry follows when guards are given, then the activity hook on every tool.
+// Each runs the command for the run's events file.
+// A creel delivery swaps the Stop setting for the merged creel Stop command and the async idle waiter.
+// It adds the creel mail hook after the activity hook.
 func TestHookSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,11 +1,8 @@
-// ensuresession_integration_test.go pins EnsureSession's booted return value and AddStrand's own
-// attribution log line against a real, running multiplexer instance, following
-// contract_integration_test.go's pattern: its own scratch socket so it can never collide with a real
-// hub server, the seedReedConfig recipe for the on-disk config, and the same self-skip when the
-// configured multiplexer binary is absent. Both assertions need a real server to observe — booted is
-// the difference between "nothing was there to attach to" and "something already was", which only a
-// real has-session/list-panes round trip can answer — so there is no hermetic half to split off and
-// none of it belongs in the untagged tier.
+// ensuresession_integration_test.go pins EnsureSession's booted return value and AddStrand's attribution log line.
+// Both assertions run against a real, running multiplexer server.
+// Both need that server: booted separates "nothing was there to attach to" from "something already was".
+// Only a has-session and list-panes round trip can tell those apart.
+// No part of the file runs without a server, so it stays in the integration tier.
 
 package reedengine
 
@@ -27,16 +24,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// scrubProbeEnv is a process variable the cold-boot test sets and its engine's scrub names, so the stripped-key record is observable.
+// scrubProbeEnv is set by the cold-boot test and named in its engine's scrub.
+// That makes the scrub's stripping of it observable.
 const scrubProbeEnv = "LYM_REED_SCRUB_PROBE"
 
-// newColdScratchEngine builds an *Engine rooted at a fresh t.TempDir(), against the real,
-// LoadConfig-resolved cfg, on its own scratch socket derived from that tmpDir's own hash — the same
-// shape contract_integration_test.go's own Engine-driving tests (TestRemoveStrand_SoleStrandEmptiesSessionSucceeds,
-// TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout) use, so a leaked scratch server here can
-// never collide with a real hub server or another test's socket. It self-skips when the configured
-// multiplexer binary is absent, and registers a t.Cleanup that tears down every session and server
-// it may have created, on every path including a failed run mid-test.
+// newColdScratchEngine builds an *Engine rooted at a fresh t.TempDir(), against the LoadConfig-resolved cfg.
+// It runs on its own scratch socket, derived from the temp dir's hash.
+// A leaked scratch server therefore can never collide with a real hub server or another test's socket.
+// It self-skips when the configured multiplexer binary is absent.
+// It registers a t.Cleanup that tears down the engine's sessions and server on every path, including a failed run.
 func newColdScratchEngine(t *testing.T) *Engine {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -67,27 +63,30 @@ func newColdScratchEngine(t *testing.T) *Engine {
 	}
 	e := New(cfg, geom, EnvScrub{Names: append([]string{scrubProbeEnv}, testScrub.Names...), Prefixes: testScrub.Prefixes})
 
-	// Registered before the Down cleanup so it runs after it: the kill-server is the belt-and-suspenders guard against a leaked scratch server on a genuine test failure that never reached a clean teardown, and it removes the server's socket file.
+	// Registered before the Down cleanup so it runs after it.
+	// The kill-server guards against a leaked scratch server when a failed test never reaches a clean teardown,
+	// and it removes the server's socket file.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
-		// Best-effort, mirroring contract_integration_test.go's own Engine fixtures:
-		// Down may already have nothing left to tear down (the test under test tore it down itself, or never booted at all on a failure path).
+		// Best-effort: Down may already have nothing left to tear down.
+		// The test may have torn it down itself, or never booted on a failure path.
 		_, _ = e.Down()
 	})
 
 	return e
 }
 
-// TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm pins the primitive both this task's
-// attribution log lines derive from: EnsureSession answers true against a worktree whose session has
-// never been created, and false when called again against the live session it just created.
+// TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm pins the booted return value of EnsureSession.
+// It reports true against a worktree whose session has never been created.
+// It reports false when called again against the live session it just created.
 // It sets an environment variable, process-global state, so it does not run in parallel.
 func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Setenv(scrubProbeEnv, "1")
 	e := newColdScratchEngine(t)
 
-	// The kit pre-started a session-less hermetic server on this key; the cold boot must reuse it, not wait out the stale-holder grace and replace it.
+	// The test kit pre-starts a session-less hermetic server on this key;
+	// the cold boot must reuse it, not wait out the stale-holder grace and replace it.
 	serverPID := func() string {
 		t.Helper()
 		out, err := e.tmux.output("display-message", "-p", "#{pid}")
@@ -145,9 +144,11 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	}
 }
 
-// TestAddStrand_LogsAttributionOnlyOnColdBoot pins AddStrand's own log line, using logcapture.CaptureVerbose, which sets both the logger output and its verbosity — neither alone captures at Info.
-// A cold AddStrand must emit the attribution line;
-// a second AddStrand against the now-live session must not.
+// TestAddStrand_LogsAttributionOnlyOnColdBoot pins the attribution log line AddStrand emits.
+// It captures with logcapture.CaptureVerbose, which sets both the logger output and its verbosity;
+// neither alone captures at Info.
+// A cold AddStrand must emit the attribution line,
+// and a second AddStrand against the now-live session must not.
 // It captures the process-global logger, so it does not run in parallel.
 func TestAddStrand_LogsAttributionOnlyOnColdBoot(t *testing.T) {
 	tiergate.Require(t, 2)

@@ -109,9 +109,8 @@ func TestDriverSpec(t *testing.T) {
 			t.Error("driverSpec().Display.Focus = true; want false -- Focus is persisted and re-evaluated on every later AddStrand")
 		}
 	})
-	// Timeout and KeepPane: nothing reads these on the driver path -- the wait loop
-	// is never entered -- so this pins the zero value as a statement that nothing consumes it, not a
-	// pane-retention or deadline decision.
+	// Timeout and KeepPane: nothing on the driver path reads them, because the wait loop is never entered.
+	// This pins the zero value as a statement that nothing consumes them, not a pane-retention or deadline decision.
 	t.Run("Timeout_ZeroValue_NothingReadsIt", func(t *testing.T) {
 		if got.Timeout != 0 {
 			t.Errorf("driverSpec().Timeout = %v; want zero -- nothing on this path reads it, so an assertion of a resolved deadline would pin a dead field", got.Timeout)

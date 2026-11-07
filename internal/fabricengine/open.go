@@ -1,14 +1,11 @@
-// open.go implements Open, the location-based constructor every caller outside this package uses to
-// obtain a *Fabric handle — the location-only entry point that lets the one-repo illusion hold at
-// the public API boundary.
+// open.go implements Open, the constructor other packages use to get a *Fabric handle from a location.
 
 package fabricengine
 
 import "github.com/Knatte18/loomyard/internal/lymcwd"
 
-// Open returns a handle on the fabric repo for this worktree.
-// It is the only constructor any other package should call — see newPaired for the underlying stat
-// validation Open relies on.
+// Open returns a handle on the fabric repo for l's worktree.
+// Other packages should obtain their handle through it.
 func Open(l *lymcwd.Location) (*Fabric, error) {
 	return newPaired(l.WorktreePath(), RecordsWorktree(l))
 }

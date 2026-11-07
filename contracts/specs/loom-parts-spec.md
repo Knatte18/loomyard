@@ -1,10 +1,14 @@
 # Loom parts-spec — the task split into parts
 
-> **Status: Contract — pinned.** This doc pins **parts-format**: the parts file `Parts-Write` produces, which `Parts-Plan-Write` consumes and `internal/partsparser` parses. This is `internal/partsparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Parts-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-parts.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc. It also pins the part scope a part's plan is checked under and the join of the parts' plans.
+> **Status: Contract — pinned.** This doc pins **parts-format**: the parts file `Parts-Write` produces, which `Parts-Plan-Write` consumes and `internal/partsparser` parses.
+> It is `internal/partsparser`'s as-built contract, kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing.
+> The LLM-facing subset of this format, what `Parts-Write` itself must write, is pinned in the producer's stencil, `contracts/stencils/loom/loom-template-parts.md`, so the agent's prompt never duplicates this file.
+> It also pins the part scope a part's plan is checked under and the join of the parts' plans.
 
 ## Producer and contract
 
-This format is produced by `Parts-Write` and consumed by `Parts-Plan-Write`, whose part writers each write the plan of one part and whose chair joins the parts' plans.
+This format is produced by `Parts-Write` and consumed by `Parts-Plan-Write`.
+Its part writers each write the plan of one part, and its chair joins the parts' plans.
 It is validated by the `parts` gate and `lym loom validate-parts` over `internal/partsparser`.
 The decision record's ids it checks against are read only through `internal/discussionparser`.
 
@@ -50,7 +54,8 @@ All paths are under the parts directory `_lym/parts/`, declared only by `interna
   - `plan:internal/x#NewThing`
 ````
 
-The H1 is `# Parts: <title>`; then one `## Split note`, the `## Part: <name>` sections and the ``## Shared spot: `<path>` `` sections, in that order.
+The H1 is `# Parts: <title>`.
+One `## Split note`, the `## Part: <name>` sections and the ``## Shared spot: `<path>` `` sections follow, in that order.
 A field is a top-level bullet `- <Label>: <value>`.
 `Decisions`, `Needed by` and `Depends on` hold comma-separated values.
 `Takes in`, `Delivers` and `Needs` hold prose that may continue on indented lines.
@@ -97,19 +102,24 @@ Each finding names the part, or the shared spot's path, and ends in its way forw
 | `decision-unnamed` | a decision id of the record no part or spot names | name it in the part or spot that carries it |
 | `decision-unknown` | a named id the record does not hold | drop or correct it |
 
-`Validate` reads the parts file, parses it, reads the decision record and runs the checks over the record's decision ids and the worktree's files.
-An absent record is not a finding: it is Discussion-Write's committed output, which the `Parts-Write` agent cannot write, so the gate ends at once with an error naming `lym loom validate-discussion` for the parent.
+`Validate` reads the parts file and parses it, then reads the decision record.
+It runs the checks over the record's decision ids and the worktree's files.
+An absent record is not a finding:
+it is Discussion-Write's committed output, which the `Parts-Write` agent cannot write,
+so the gate ends at once with an error naming `lym loom validate-discussion` for the parent.
 
 ## Part plans
 
 ### Part scope
 
-A part's plan directory is checked with a part scope, which `lym loom validate-plan --part` sets: the plan checks of `loom-plan-checks-spec.md` run unchanged, and the scope adds to what they read.
+A part's plan directory is checked with a part scope, which `lym loom validate-plan --part` sets:
+the plan checks of `loom-plan-checks-spec.md` run unchanged, and the scope adds to what they read.
 An ordinary plan has no scope.
 
 - The scope lists the `plan:` handles and new file paths that other parts and shared spots export to the part, and the path of every shared spot.
 - `handle-dangling` counts a listed handle as claimed; it never counts toward `handle-collision`.
-- `path-missing` counts a listed path as satisfied, as a `Create` target is, and `glyph-not-found` leaves out a target path the part's external exports hold.
+- `path-missing` counts a listed path as satisfied, as a `Create` target is.
+  `glyph-not-found` leaves out a target path the part's external exports hold.
 - `caller-uncovered` is not reported, since its verdict rests on cards outside the part; the joined plan's gate checks it.
 - `part-spot-target` refuses a card's target, never a `Uses` entry, that is a shared spot's path, since the chair writes the spots' cards.
 - `part-export-missing` refuses an export of the part's contract that no card of the part creates.
@@ -117,7 +127,8 @@ An ordinary plan has no scope.
 ### Joining the parts' plans
 
 `planparser.JoinParts` is the one writer of the joined plan: Go numbers and orders the cards.
-It parses each part's plan in the parts file's order and refuses, before writing anything, with an error naming the part and the reason, when:
+It parses each part's plan in the parts file's order.
+Before writing anything, it refuses with an error naming the part and the reason when:
 
 - a part's plan does not parse;
 - two parts' overviews differ in `language:` or `root:`;
@@ -126,8 +137,12 @@ It parses each part's plan in the parts file's order and refuses, before writing
 - a `plan:` handle or a new file path is created by cards of two parts, exported or not.
 
 Otherwise it numbers the cards from 1 in part order.
-Each card keeps its slug; its heading and `Commit:` prefix take the new number, and each card id naming a card of its own part is rewritten.
-It removes every top-level card file and `00-overview.md` of the plan directory, leaving subdirectories in place, writes the joined cards, and writes `00-overview.md` last.
-The overview carries `approved: false`, the parts' shared `root:` and `language:`, a framing paragraph naming the parts for the chair to rewrite, the Card Index, each part's `## Shared Decisions` body under `### Part <name>`, and the canonical `## Rename mechanic` when any part has one.
+Each card keeps its slug;
+its heading and `Commit:` prefix take the new number, and each card id naming a card of its own part is rewritten.
+It removes every top-level card file and `00-overview.md` of the plan directory, leaving subdirectories in place.
+It then writes the joined cards, and writes `00-overview.md` last.
+The overview carries `approved: false`, the parts' shared `root:` and `language:`, and a framing paragraph naming the parts for the chair to rewrite.
+It also carries the Card Index, each part's `## Shared Decisions` body under `### Part <name>`,
+and the canonical `## Rename mechanic` when any part has one.
 
 A read or write failure is not a refusal: running the join again rewrites the whole plan directory from the parts.

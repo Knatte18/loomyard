@@ -1,18 +1,18 @@
-// envelope.go declares the helpers every mutating verb handler routes its output through:
-// okWithRecord for the success path, errWithRecord for the failure path, and
-// errConflictsWithRecord for the dedicated conflict-result failure path a merge verb takes when
-// MergeResult.Conflicts is non-empty. All three emit the fixed "mutations"/"partial" key pair the
-// fabric envelope carries on every verb outcome, so the fixed key set is declared once here rather
-// than open-coded at each of fabriccli's mutating call sites.
+// envelope.go declares the helpers every mutating verb handler routes its output through.
+// okWithRecord emits the success envelope and errWithRecord the failure envelope.
+// errConflictsWithRecord emits the failure envelope a merge verb returns when the engine reports conflicts.
+// All three emit the fixed "mutations" and "partial" keys that every verb outcome carries.
+// The key set is declared here once, not open-coded at each mutating call site in fabriccli.
 //
-// "mutations" is always a JSON array, never null — rec.Entries() never returns nil — and "partial" is
-// always a bool, never absent. A consumer therefore never has to distinguish absent from false, and
-// the key set does not vary by outcome: that is the property that lets a test assert the shape once
-// per verb instead of once per path. partial's one derivation rule is "error != nil AND record
-// non-empty" — okWithRecord's success path has no error, so it is unconditionally false there.
+// "mutations" is always a JSON array, never null, because rec.Entries() never returns nil.
+// "partial" is always a bool, never absent.
+// A consumer therefore never has to distinguish absent from false, and the key set does not vary by outcome.
+// That lets a test assert the shape once per verb instead of once per path.
+// partial follows one rule: it is true when err is non-nil and the record is non-empty.
+// okWithRecord's success path has no error, so partial is always false there.
 //
-// internal/fabricengine's read-only verbs (list, pairs, status, diff) deliberately do NOT route
-// through these helpers: nothing was mutated, so there is no record to report.
+// The read-only verbs of internal/fabricengine do not route through these helpers:
+// nothing was mutated, so there is no record to report.
 package fabriccli
 
 import (
@@ -22,35 +22,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// okWithRecord emits a success envelope carrying rec's accumulated mutations alongside the caller's
-// fields. It sets fields["mutations"] and fields["partial"] = false — unconditionally false, since
-// partial's one derivation rule requires a non-nil error and there is none on this path — overriding
-// any caller-supplied "ok", "mutations" or "partial" key, then delegates to output.Ok.
+// okWithRecord emits a success envelope carrying rec's accumulated mutations alongside the caller's fields.
+// It sets fields["mutations"] from rec and fields["partial"] to false.
+// partial is always false on this path, because its rule needs a non-nil error and there is none here.
+// It overrides any caller-supplied "ok", "mutations" or "partial" key, then delegates to output.Ok.
 func okWithRecord(w io.Writer, rec fabricengine.Mutations, fields map[string]any) int {
 	fields["mutations"] = rec.Entries()
 	fields["partial"] = false
 	return output.Ok(w, fields)
 }
 
-// errWithRecord emits a failure envelope carrying rec's accumulated mutations and the flattened err
-// string, with no fields of the verb's own. It is errWithRecordFields with an empty field set, and
-// exists because most failing handlers have nothing left to report beyond the error.
+// errWithRecord emits a failure envelope carrying rec's accumulated mutations and the flattened err string.
+// It carries no fields of the verb's own, because most failing handlers have nothing to report beyond the error.
 func errWithRecord(w io.Writer, rec fabricengine.Mutations, err error) int {
 	return errWithRecordFields(w, rec, err, nil)
 }
 
-// errWithRecordFields emits a failure envelope carrying rec's accumulated mutations, the flattened
-// err string, the caller's own fields, and — when err carries a gate refusal — a "refusal" object
-// with exactly the four keys check, what, target and reason. It sets fields["mutations"] and
-// fields["partial"] (true when rec is non-empty, since err is non-nil by construction here),
-// overriding any caller-supplied "ok", "error", "mutations" or "partial" key, then delegates to
-// output.ErrFields. The flattened error string is retained unchanged: dropping it would break the
-// "every failure carries an error string" contract every other module's envelope holds.
+// errWithRecordFields emits a failure envelope carrying rec's accumulated mutations and the flattened err string.
+// It also carries the caller's own fields.
+// When err carries a gate refusal, it adds a "refusal" object with exactly four keys: check, what, target and reason.
+// It sets fields["mutations"] and fields["partial"], the latter true when rec is non-empty, since err is non-nil here.
+// It overrides any caller-supplied "ok", "error", "mutations" or "partial" key, then delegates to output.ErrFields.
+// The flattened error string stays in the envelope, because every failure carries an error string.
 //
-// The fields parameter exists for a verb that fails while still having a full per-item report to
-// deliver — `reconcile`, whose per-pair outcomes must reach the caller on the failure path exactly
-// as they do on the success path, since a caller learning only "one pair failed" cannot tell which.
-// A caller passing nil gets the same envelope errWithRecord has always produced.
+// The fields parameter serves a verb, such as `reconcile`, that fails while still holding a full per-item report.
+// Its per-pair outcomes must reach the caller on the failure path just as on the success path:
+// a caller told only that one pair failed cannot tell which.
+// A nil fields map yields the envelope with the mutations and partial keys and no field of the verb's own.
 func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fields map[string]any) int {
 	if fields == nil {
 		fields = map[string]any{}
@@ -68,21 +66,18 @@ func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fie
 	return output.ErrFields(w, err.Error(), fields)
 }
 
-// errConflictsWithRecord emits the dedicated conflict-result failure envelope a merge verb returns
-// when the engine reports conflicts without an error (a nil engine error, MergeResult.Conflicts
-// non-empty). It sets fields["mutations"] from rec, fields["partial"] to the literal false — never
-// computed, since the Mutation Record Invariant's "error != nil AND record non-empty" rule yields
-// false when the engine returned a nil error — and fields["conflicts"] to conflicts, never null.
-// It never routes through errWithRecordFields, whose partial = rec.Len() > 0 computation would
-// wrongly report true here (the "conflict envelope never goes through errWithRecordFields" Shared
-// Decision).
-// The error text is the fixed, side-free message every conflict envelope carries, and it names the
-// FULL resolve → merge-stage → continue sequence rather than only the final step: --continue gates
-// on the git index, so an operator (or agent) following an error text that skipped merge-stage
-// edited the files, ran --continue, and looped on "unresolved conflicts remain" forever — and for a
-// conflict under a wired junction name plain `git add` cannot substitute at all.
+// errConflictsWithRecord emits the failure envelope a merge verb returns when the engine reports conflicts.
+// That is a nil engine error with MergeResult.Conflicts non-empty.
+// It sets fields["mutations"] from rec and fields["conflicts"] to conflicts, which is never null.
+// It sets fields["partial"] to the literal false, because partial needs an error and the engine returned none.
+// A helper that computes partial from the record would report true here.
 //
-// warnings adds a "warnings" string array only when non-empty, so a nil or empty slice leaves the envelope unchanged.
+// The error text is fixed and names the full sequence: resolve, merge-stage, then continue.
+// --continue checks the git index, so an error text that skips merge-stage leaves conflicts unresolved.
+// For a conflict under a wired junction name, plain git add cannot substitute for merge-stage.
+//
+// warnings adds a "warnings" string array only when non-empty,
+// so a nil or empty slice leaves the envelope unchanged.
 func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string, warnings []string) int {
 	fields := map[string]any{
 		"mutations": rec.Entries(),

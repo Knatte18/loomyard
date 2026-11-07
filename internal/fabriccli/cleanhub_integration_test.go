@@ -1,5 +1,6 @@
-// cleanhub_integration_test.go drives the fabric CLI's read-only, refusal and record-keeping verbs against one real hub built by hubforge, as ordered scenarios:
-// the clone-time config commit, pairs, status, prune, the shortname record and the refusals that need a resolved cwd but touch no pair state.
+// cleanhub_integration_test.go drives the read-only, refusal and record-keeping fabric verbs against one hubforge hub.
+// They run as ordered scenarios: the clone-time config commit, pairs, status, prune and the shortname record;
+// the refusals that need a resolved cwd but touch no pair state.
 // The anchored scenario covers what only a non-"." anchor can show.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -32,9 +33,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// perWorktreeModuleNames returns configreg.Modules() filtered to every entry that is not hub-wide
-// -- the set whose repo defaults the clone's walk seeds on the board, derived fresh every call so
-// a newly registered module never silently makes these tests wrong.
+// perWorktreeModuleNames returns the names of configreg.Modules() that are not hub-wide.
+// These are the modules whose repo defaults the clone's walk seeds on the board.
+// It derives them on every call, so a newly registered module never silently makes these tests wrong.
 func perWorktreeModuleNames() []string {
 	var names []string
 	for _, m := range configreg.Modules() {
@@ -46,9 +47,8 @@ func perWorktreeModuleNames() []string {
 	return names
 }
 
-// hubRelativeWeftTarget returns the hub-relative, slash-separated path fabricengine.Mutations.Append
-// would have recorded for h's weft prime worktree, matching the conversion CommitRecordsPaths's own
-// recording site performs.
+// hubRelativeWeftTarget returns the slash-separated path of h's weft prime worktree, relative to the hub root.
+// It is the form a mutation record holds the target in.
 func hubRelativeWeftTarget(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()
 
@@ -93,7 +93,9 @@ func boardGit(t *testing.T, h *hubforge.Hub, args ...string) string {
 }
 
 // TestRunCLI_CleanHubScenario runs the read-only, refusal and shortname checks over one hub.
-// Steps run serially in this order: the shortname steps that rewrite the record come after the ones that read it, and the pollution step comes last because it replaces the warp _lym junction with a tracked directory.
+// Steps run serially in this order:
+// the shortname steps that rewrite the record come after the ones that read it;
+// the pollution step comes last because it replaces the warp _lym junction with a tracked directory.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_CleanHubScenario(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -107,7 +109,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"CloneConfigCommit_WeftPrimeCleanAfterClone", func(t *testing.T) {
-			// A freshly-built hub's weft prime worktree is clean, and git ls-files on the board lists every per-worktree module's committed repo default.
+			// A freshly built hub's weft prime worktree is clean.
+			// The board's git ls-files lists every per-worktree module's committed repo default.
 			if status := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); status != "" {
 				t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 			}
@@ -126,7 +129,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"CloneConfigCommit_OneCommitNotOnePerModule", func(t *testing.T) {
-			// A fresh clone's weft prime carries no per-module config commit, and a second ReconcileAll over the same weft base reports Applied false for every module.
+			// A fresh clone's weft prime carries no per-module config commit.
+			// A second ReconcileAll over the same weft base reports Applied false for every module.
 			out := gitOutputCLI(t, h.PrimeRecords(), "log", "--oneline")
 
 			const unwantedSubject = "fabric clone: record module configs"
@@ -145,7 +149,9 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"CloneConfigCommit_MutationRecordShape", func(t *testing.T) {
-			// The mutation record CloneAndWire produced holds one KindFileWritten entry per seeded per-worktree repo default, each targeting that module's file under the board dir, and no weft config commit.
+			// The mutation record CloneAndWire produced holds one KindFileWritten entry per seeded per-worktree repo default.
+			// Each entry targets that module's file under the board dir.
+			// The record holds no weft config commit.
 			boardRel, err := filepath.Rel(h.Path, h.BoardDir())
 			if err != nil {
 				t.Fatalf("Rel(%s, %s): %v", h.Path, h.BoardDir(), err)
@@ -199,7 +205,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"ReadOnlyVerbsOmitMutationsKey", func(t *testing.T) {
-			// list, pairs, status and diff never carry a "mutations" key: nothing was mutated, so the which-verbs scope decision is machine-held rather than a convention.
+			// list, pairs, status and diff never carry a "mutations" key.
+			// Nothing was mutated, so the which-verbs scope decision is machine-held rather than a convention.
 			warpSHA := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "rev-parse", "HEAD"))
 
 			tests := []struct {
@@ -228,7 +235,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"StatusReportsNoMergeInProgressOnACleanPair", func(t *testing.T) {
-			// status on a pair with no parked merge reports "merge_in_progress" present and false, alongside the pre-existing "changes" key.
+			// On a pair with no parked merge, status reports "merge_in_progress" as present and false.
+			// The "changes" key is reported alongside it.
 			code, output := runFabric(t, h.PrimeWorktree(), "status")
 			if code != 0 {
 				t.Fatalf("RunCLI(status) = %d; want 0\noutput: %s", code, output)
@@ -247,8 +255,12 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"FallbackCwdMatchesInjectedCwd", func(t *testing.T) {
-			// RunCLI's process-cwd fallback and RunCLIIn's explicit-cwd branch agree on one read-only verb: "pairs" through RunCLIIn in this process, then through RunCLI in a separate OS process whose working directory is the prime worktree via exec.Command's Dir field, never a Chdir on this test binary.
-			// The subprocess is this test binary re-exec'd and intercepted by cli_test.go's package-level init, gated by lymFabricCLISubprocessCwdEnv.
+			// RunCLI's process-cwd fallback and RunCLIIn's explicit-cwd branch must agree on one read-only verb.
+			// "pairs" runs through RunCLIIn in this process.
+			// It also runs through RunCLI in a separate OS process, whose working directory is the prime worktree.
+			// The working directory is set by exec.Command's Dir field, never by a Chdir on this test binary.
+			// That subprocess is this test binary re-exec'd and intercepted by cli_test.go's package-level init.
+			// The init is gated by lymFabricCLISubprocessCwdEnv.
 			injectedCode, injectedOut := runFabric(t, h.PrimeWorktree(), "pairs")
 			if injectedCode != 0 {
 				t.Fatalf("RunCLIIn(pairs) = %d; want 0\noutput: %s", injectedCode, injectedOut)
@@ -317,7 +329,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"MergeRejectsFlagsItWouldOtherwiseIgnore", func(t *testing.T) {
-			// "merge --abort -m <msg>" used to be accepted with the message silently discarded, so the pre-flight rejects it the same way it rejects --squash alongside --abort.
+			// "merge --abort -m <msg>" must be refused, since its message would otherwise be silently discarded.
+			// The pre-flight rejects it the same way it rejects --squash alongside --abort.
 			// Driven against a real pair so the check is proven to sit ahead of the engine call.
 			tests := []struct {
 				name    string
@@ -349,7 +362,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"MergeNonexistentBranchReportsSourceNotFound", func(t *testing.T) {
-			// The aggregated MergeGuardError names the source-not-found reason and never claims the weft counterpart is not fabric-managed: the weft side is not a merge participant.
+			// The aggregated MergeGuardError names the source-not-found reason.
+			// It never claims the weft counterpart is not fabric-managed, because the weft side is not a merge participant.
 			code, output := runFabric(t, h.PrimeWorktree(), "merge", "nonexistent-branch")
 			if code != 1 {
 				t.Fatalf("RunCLI(merge nonexistent-branch) = %d; want 1\noutput: %s", code, output)
@@ -361,7 +375,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"MergeStageRequiresAtLeastOnePath", func(t *testing.T) {
-			// With no paths merge-stage refuses rather than succeed vacuously, since a caller that passed nothing meant to pass something.
+			// With no paths, merge-stage refuses rather than succeeding vacuously.
+			// A caller that passed nothing meant to pass something.
 			if code, output := runFabric(t, h.PrimeWorktree(), "merge-stage"); code == 0 {
 				t.Errorf("RunCLI(merge-stage) with no paths = 0; want a refusal\noutput: %s", output)
 			}
@@ -374,7 +389,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			envelope.RequireErr(t, output, "not found")
 		}},
 		{"CloneConfigCommit_PairInheritsConfigs", func(t *testing.T) {
-			// A pair created off a freshly-built hub resolves loom from the board's repo default, with no worktree file present: the end-to-end proof that the clone's seeded defaults reach a forked pair.
+			// A pair forked from a freshly built hub resolves loom from the board's repo default, with no worktree file present.
+			// It proves end to end that the clone's seeded defaults reach a forked pair.
 			hubforge.AddPair(t, h, "pair-inherits-configs")
 
 			pairLocation, err := lymcwd.Resolve(filepath.Join(h.PairCodeWorktree("pair-inherits-configs"), h.Anchor))
@@ -422,7 +438,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"ShortnameVerb_RecordsOnAHubWithNoShortname", func(t *testing.T) {
-			// Relies on the previous steps leaving TestShortname recorded: the record is removed here and the verb then writes "zz".
+			// Relies on an earlier step having recorded a shortname.
+			// This step removes that record, and the verb then writes "zz".
 			removeShortnameRecord(t, h)
 
 			exit, env := runShortnameVerb(t, h)
@@ -461,14 +478,17 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"PairsReportsPollutionEntryWithRemedy", func(t *testing.T) {
-			// With a file tracked directly under _lym in the warp index, "fabric pairs" still emits a pollution entry naming that path with a non-empty "remedy" key, pinning the pollution JSON shape at the CLI boundary.
+			// With a file tracked directly under _lym in the warp index, "fabric pairs" emits a pollution entry.
+			// The entry names that path and has a non-empty "remedy" key, pinning the pollution JSON shape at the CLI boundary.
 			// Last step: the warp _lym junction becomes a tracked directory.
 			hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lym\n")
 
 			// A real hub already wires _lym as a junction onto the weft config.
-			// Pollution means an operator replaced that junction with a real, tracked directory, so the junction must be removed first -- writing through it would land the file on the weft side instead of polluting the warp index.
-			// The explicit "-f" on the git add is likewise needed:
-			// WireJunctionsWith seeded _lym into the warp's .git/info/exclude, and git refuses to add an explicitly-named ignored path without it.
+			// Pollution means an operator replaced that junction with a real, tracked directory.
+			// The junction must be removed first, since writing through it would land the file on the weft side.
+			// The explicit "-f" on the git add is also needed:
+			// WireJunctionsWith seeded _lym into the warp's .git/info/exclude.
+			// Git refuses to add an explicitly-named ignored path without the -f flag.
 			warpLymDir := filepath.Join(h.PrimeWorktree(), lymdirs.LymDirName)
 			if err := fslink.Remove(warpLymDir); err != nil {
 				t.Fatalf("remove warp _lym junction: %v", err)
@@ -530,15 +550,16 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AnchoredHubScenario runs the checks only a subpath-anchored hub can show, over one hub anchored at "backend".
-// Steps run serially in this order; the scenario calls t.Parallel as a whole and no step does, because they share the one hub.
+// TestRunCLI_AnchoredHubScenario runs the checks only a subpath-anchored hub can show.
+// It runs them over one hub anchored at "backend".
+// Steps run serially in this order.
+// The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	// "backend" is a subpath anchor, so the weft ROOT (h.PrimeRecords()) is not the anchored directory
-	// (h.WeftBase) -- fabriccli.CloneAndWire records that anchor for real, so no hand-written anchor
-	// marker is needed here.
+	// "backend" is a subpath anchor, so the weft root (h.PrimeRecords()) is not the anchored directory (h.WeftBase).
+	// fabriccli.CloneAndWire records that anchor itself, so this test needs no hand-written anchor marker.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
 
 	steps := []struct {
@@ -546,7 +567,9 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"CloneConfigCommit_AnchorScoped", func(t *testing.T) {
-			// At a non-"." anchor the weft prime is clean, and the board lists every per-worktree module's repo default: the defaults are repo-wide, so they carry no anchor prefix.
+			// At a non-"." anchor the weft prime is clean.
+			// The board lists every per-worktree module's repo default.
+			// The defaults are repo-wide, so they carry no anchor prefix.
 			if status := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); status != "" {
 				t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 			}
@@ -560,7 +583,8 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 			}
 		}},
 		{"WeftSiblingNonAnchoredCwd_GetsWeftRefusal", func(t *testing.T) {
-			// The refusal an operator sees from a weft sibling's NON-anchored directory on a subpath-anchored hub is the specific weft-sibling message, never the generic cwd-gate error, which would direct the operator deeper INTO the weft.
+			// On a subpath-anchored hub, a weft sibling's non-anchored directory gets the specific weft-sibling refusal.
+			// It is never the generic cwd-gate error, which would direct the operator deeper into the weft.
 			code, output := runFabric(t, h.PrimeRecords(), "pairs")
 			if code == 0 {
 				t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", output)

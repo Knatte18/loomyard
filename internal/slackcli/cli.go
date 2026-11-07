@@ -1,4 +1,5 @@
-// cli.go builds the slack cobra command with its operator verbs and the hidden relay verb, the slackCLI that holds the seams they read, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the `lym slack` cobra command: its operator verbs and the hidden relay verb.
+// It also defines the slackCLI whose seams the verbs read.
 
 package slackcli
 
@@ -24,9 +25,9 @@ import (
 )
 
 const (
-	// relayVerb is the name of the hidden verb the relay's start runs.
+	// relayVerb is the name of the hidden verb that a started relay process runs.
 	relayVerb = "relay"
-	// botScopes names the bot scopes the app needs, as the verbs' way forward spells them.
+	// botScopes names the bot scopes the app needs, in the words the way-forward messages use.
 	botScopes = "channels:history and channels:read for a public channel or groups:history and groups:read for a private one, users:read and chat:write"
 	// noTokenMessage is the refusal of a verb that needs the machine's token when none is stored.
 	noTokenMessage = "slack: no Slack token on this machine; way forward: run `lym slack login` from the operator's terminal"
@@ -34,7 +35,7 @@ const (
 	missingScopeCode = "missing_scope"
 )
 
-// slackChecks is the Slack calls `login` and `setup` make, which slackengine.API implements.
+// slackChecks is the Slack calls that `login` and `setup` make to check the token, a channel and a user.
 type slackChecks interface {
 	// AuthTest checks the token.
 	AuthTest(ctx context.Context) error
@@ -51,7 +52,7 @@ type slackCLI struct {
 	geom slackengine.Geometry
 	// slackBaseURL is the Slack Web API's base URL.
 	slackBaseURL string
-	// clock is the time the presence change and the wait for the relay's first read are told.
+	// clock is the time source for the presence change and the wait for the relay's first read.
 	clock slackengine.Clock
 
 	// resolveLocation resolves the worktree a verb runs in from its cwd.
@@ -59,13 +60,14 @@ type slackCLI struct {
 	// wire fills the seams below for the verb about to run; location is nil for relay, which runs from no worktree.
 	wire func(c *slackCLI, location *lymcwd.Location) error
 
-	// pane describes the process the verb runs in, for the pane check.
+	// pane describes the process the verb runs in, which the pane check reads to decide whether the verb may run.
 	pane func() paneCaller
-	// newSlack builds the Slack calls login and setup make, over baseURL with token.
+	// newSlack builds the Slack calls that `login` and `setup` make, against baseURL with token.
 	newSlack func(baseURL, token string) slackChecks
 	// newMailbox builds the creel mailbox signing as the SLACK program, which carries the presence notices.
 	newMailbox func() slackengine.Mailbox
 	// ensure starts the relay when it is down, for the hub's prime.
+	// It reports whether the relay started or was already live.
 	ensure func(geom slackengine.Geometry) (slackengine.StartOutcome, error)
 	// stop ends the relay, sparing the process with callerPID and its ancestors.
 	stop func(geom slackengine.Geometry, callerPID int) ([]runproc.Ended, error)
@@ -118,7 +120,8 @@ status shows both.`,
 }
 
 // preRun fills the seams the verb about to run reads.
-// A verb of a hub first resolves the worktree it runs in; relay resolves none, since it runs from the hub directory, which is no worktree.
+// A verb of a hub first resolves the worktree it runs in.
+// relay resolves none, since it runs from the hub directory, which is no worktree.
 // A failure is written as a refusal and aborts the verb.
 // The bare group needs nothing and prints its help.
 func (c *slackCLI) preRun(cmd *cobra.Command, args []string) error {
@@ -169,7 +172,8 @@ func terminalWayForward(verb string) string {
 	return fmt.Sprintf("run `lym slack %s` from the operator's terminal", verb)
 }
 
-// orchWayForward is the way forward of a verb the operator's terminal or an orch's pane may run, and the Slack text that does the same, when there is one.
+// orchWayForward is the way forward of a verb the operator's terminal or an orch's pane may run.
+// It adds the Slack text that does the same when slackText is not empty.
 func orchWayForward(verb, slackText string) string {
 	way := fmt.Sprintf("run `lym slack %s` from the operator's terminal or an orch's pane", verb)
 	if slackText != "" {
@@ -346,7 +350,7 @@ Example:
 	}
 }
 
-// start starts the relay.
+// start starts the relay once login and setup are done.
 func (c *slackCLI) start() (map[string]any, error) {
 	if err := paneRefusal(c.pane(), true, orchWayForward("start", "")); err != nil {
 		return nil, err
@@ -460,7 +464,6 @@ Example:
 	}
 }
 
-// back sets the presence terminal.
 func (c *slackCLI) back() (map[string]any, error) {
 	if err := paneRefusal(c.pane(), true, orchWayForward("back", "back")); err != nil {
 		return nil, err
@@ -469,7 +472,7 @@ func (c *slackCLI) back() (map[string]any, error) {
 }
 
 // setPresence writes presence and tells the orchs when it changed.
-// A write that stood with a failed notice is reported under notice_error and is no failure.
+// A write that stood but whose notice failed is reported under notice_error, not as a failure.
 func (c *slackCLI) setPresence(presence slackengine.Presence) (map[string]any, error) {
 	changed, err := slackengine.SetPresence(c.geom, c.newMailbox(), c.beams, presence, c.clock.Now())
 	fields := map[string]any{"presence": string(presence), "changed": changed}
@@ -597,7 +600,8 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the slack module CLI with cwd seeded into its execution context.
+// An empty cwd reads the process cwd instead, since lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

@@ -1,9 +1,11 @@
 <!-- This is the reflection agent's own prompt.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/friction/` and read from there at call time by internal/frictionengine,
-     which fills it through stencil.Fill and hands it to shuttle as the reflection agent's entire instruction set.
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires every marker (friction_dir, report_path, note_list, task_slug, parent_directive, edit_directive) non-empty, parent_directive being rendered by internal/parentdirective and edit_directive by internal/editdirective,
-     and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
+     seeded to the Bolt checkout's `_lym/stencils/friction/`.
+     internal/frictionengine reads it from there at call time and fills it through stencil.Fill.
+     It hands the result to shuttle as the reflection agent's entire instruction set.
+     Every marker below is a top-level {{.X}} substitution, and stencil.Fill requires each to be non-empty.
+     internal/parentdirective renders parent_directive, and internal/editdirective renders edit_directive.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Reflection — read the friction notes, file every distinct lym problem
 

@@ -1,4 +1,6 @@
-// detachrun_test.go covers the refusals of `lym gate run-detached`: a run directory the runner will not run leaves no exit file and names the gate verbs that start a run of their own.
+// detachrun_test.go covers the refusals of `lym gate run-detached`.
+// A run directory the runner will not run leaves no exit file,
+// and its refusal names the gate verbs that start a run of their own.
 
 package gatecli
 

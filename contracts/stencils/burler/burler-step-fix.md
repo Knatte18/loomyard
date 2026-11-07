@@ -1,13 +1,16 @@
-<!-- This is the fixer's instruction: fix every finding, the write-surface/git discipline for the fix, the fixer-report, and the never-push/never-touch-`_lym` rule.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
-     seeded to the Bolt checkout's `_lym/stencils/burler/` and read from there at call time by composeFixPrompt
-     (prompt.go) via internal/stencil, then read by the fixer only when the fixer stencil
-     (burler-template-fixer.md) directs it here.
+<!-- This is the fixer's instruction:
+     fix every finding, the write surface and git discipline for the fix, the fixer-report, and the never-push and never-touch-`_lym` rule.
+     It is an embedded default in contracts/stencils/stencils.go,
+     seeded to the Bolt checkout's `_lym/stencils/burler/`,
+     and composeFixPrompt in internal/burlerengine/prompt.go reads it from there at call time.
+     The fixer reads it only when burler-template-fixer.md directs it here.
      The friction_directive marker is optional and renders as nothing when the round has no note.
      The self_check marker is optional too, and renders as nothing when the round names no fixer fan;
      it sits directly before the Fixer-report heading with no line of its own, so an empty value adds no byte.
-     Every other marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires them all non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
+     Every other marker below is a top-level {{.X}} substitution, and stencil.Fill requires each of them non-empty.
+     There are no {{if}}/{{range}} conditionals in this file:
+     a required marker inside a conditional branch would render silently blank when present-but-empty
+     (see internal/stencil/stencil.go). -->
 
 {{.friction_directive}}
 

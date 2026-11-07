@@ -1,8 +1,8 @@
-// publish_integration_test.go drives Merge-In against a real pair built by the
-// standard hub fixture (internal/hubforge), with only the conflict-resolution session faked.
-// The byte-identical conflict shape across both sides is covered exhaustively by internal/fabricengine's own
-// mergein_integration_test.go and this file's own sibling (finalize_integration_test.go). No test
-// in this file contacts a real service or a real model.
+// publish_integration_test.go drives Merge-In against a real pair from the standard hub fixture in internal/hubforge.
+// Only the conflict-resolution session is faked.
+// The byte-identical conflict shape across both sides is covered by internal/fabricengine's mergein_integration_test.go.
+// finalize_integration_test.go in this package covers it too.
+// No test in this file contacts a real service or a real model.
 
 package landingshed_test
 
@@ -23,7 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newMergeInDepsAt builds Merge-In's Deps over the task worktree at taskWorktree: its real pair opener, a fake conflict-resolution session that must never spawn, a require-PR config for main, the real pair's tip, path and head reads, and a temporary lock store.
+// newMergeInDepsAt builds Merge-In's Deps over the task worktree at taskWorktree.
+// It wires the real pair opener, the real pair's tip, path and head reads, and a temporary lock store.
+// It sets a require-PR config for main and a fake conflict-resolution session that must never spawn.
 // The push is told skipped, so the parent tip is read locally with no fetch.
 func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	t.Helper()
@@ -62,8 +64,10 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	return deps
 }
 
-// TestMergeIn_ConflictSessionLoadsLanguageSkills drives Merge-In over a real pair whose branches conflict on one file, and asserts the one conflict session it spawns loads the told language skills after its own.
-// A second row stages a local parent branch holding a commit its upstream lacks, and asserts the merge brings in the upstream tip and leaves the local parent branch's ref alone.
+// TestMergeIn_ConflictSessionLoadsLanguageSkills drives Merge-In over a real pair whose branches conflict on one file.
+// It asserts the one conflict session it spawns loads the told language skills after its own.
+// A second row stages a local parent branch holding a commit its upstream lacks.
+// It asserts the merge brings in the upstream tip and leaves the local parent branch's ref alone.
 func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("a conflict session loads the told language skills", func(t *testing.T) {

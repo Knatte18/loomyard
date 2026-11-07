@@ -54,7 +54,7 @@ func recordLine(t *testing.T, rec record) string {
 	return string(line)
 }
 
-// messageShape is the part of a Message a row compares.
+// messageShape holds the fields of a message that a test row compares.
 type messageShape struct {
 	Holder        string
 	Path          []string
@@ -97,8 +97,8 @@ func TestJournal_Fold(t *testing.T) {
 		wantErr  []string
 		wantWarn int
 		check    func(t *testing.T, p *pool)
-		// wantNewest, when set, is the newest day file's content after the journal opens over the folded pool;
-		// wantCutBytes is the byte count the repair's Warn names, zero for a repair that cuts nothing.
+		// wantNewest, when set, is the newest day file's content after the journal opens over the folded pool.
+		// wantCutBytes is the byte count the repair's warning names; it is zero for a repair that cuts nothing.
 		wantNewest   *string
 		wantCutBytes int
 	}{
@@ -513,8 +513,10 @@ func TestJournal_Fold(t *testing.T) {
 	}
 }
 
-// checkRepairedTail opens the journal over the folded pool and pins the newest day file's content and the repair's warning.
-// It then appends one record, which only an empty file gets behind a high-water record, and pins that the directory folds again cleanly.
+// checkRepairedTail opens the journal over the folded pool.
+// It pins the newest day file's content and the repair's warning.
+// It then appends one record, which only an empty file gets behind a high-water record,
+// and it pins that the directory folds again cleanly.
 func checkRepairedTail(t *testing.T, dir string, p *pool, buf *logcapture.Buffer, files map[string]string, wantNewest string, wantCutBytes int, line func(record) string) {
 	t.Helper()
 	newest := ""
@@ -588,7 +590,8 @@ func TestJournal_Retention(t *testing.T) {
 	livePast := journalEpoch.AddDate(0, 0, 30)
 	renewedPast := livePast.AddDate(0, 0, 1)
 
-	// Day one: two messages (one read), two injects (one finished), and three holds (one live and renewed to a later expiry, one expiring before the carry, one released).
+	// Day one: the messages (one read), the injects (one finished), and the holds.
+	// The holds are one live hold renewed to a later expiry, one expiring before the carry, and one released.
 	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread", ExpectReply: true})
 	appendRecord(record{Event: eventForwarded, ID: 1, By: beta, To: gamma})
 	appendRecord(record{Event: eventPosted, ID: 2, From: alpha, To: beta, Body: "read"})
@@ -776,7 +779,8 @@ func TestJournal_Retention(t *testing.T) {
 		}
 	})
 
-	// Retention carries a pending outbound message and an inbound message, and no settled outbound message, and a carried line beside its original folds to one entry.
+	// Retention carries a pending outbound message and an inbound message, and no settled outbound message.
+	// A carried line beside its original folds to one entry.
 	t.Run("mail across hubs", func(t *testing.T) {
 		t.Parallel()
 		dir := filepath.Join(t.TempDir(), "journal")
@@ -845,7 +849,8 @@ func TestJournal_Retention(t *testing.T) {
 		}
 		check("the refolded journal", refolded, 1)
 
-		// A crash between the carry and the deletion leaves the old file beside the carried lines: each entry folds once, and the settled outbound messages return with it.
+		// A crash between the carry and the deletion leaves the old file beside the carried lines:
+		// each entry folds once, and the settled outbound messages return with it.
 		if err := os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl"), dayOne, 0o644); err != nil {
 			t.Fatalf("restore day one: %v", err)
 		}

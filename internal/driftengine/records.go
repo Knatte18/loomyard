@@ -1,6 +1,7 @@
 // records.go — the scope record and the capture record, and their locked reads and writes.
 //
-// Every record is JSON written through internal/state, so a key a newer binary wrote survives an older binary's rewrite.
+// Every record is JSON written through internal/state,
+// so a key a newer binary wrote survives an older binary's rewrite.
 
 package driftengine
 
@@ -65,7 +66,7 @@ type Acceptance struct {
 }
 
 // ScopeRecord is the task's recorded regression scope and what has been decided about its drift.
-// The zero ScopeRecord is not valid; ReadScope reports an absent record as found false.
+// The zero ScopeRecord is not valid: a record that was never written is absent, not zero.
 type ScopeRecord struct {
 	// Scope is ScopeOff, ScopePartial or ScopeFull.
 	Scope string `json:"scope"`
@@ -89,7 +90,7 @@ type ScopeRecord struct {
 	HaltNamed []string `json:"halt_named"`
 	// HaltNamedAt is the time of that halt, formatted as time.RFC3339 in UTC.
 	HaltNamedAt string `json:"halt_named_at"`
-	// GateHaltAt is the time of the dirty-tree or test-gate Stuck Drift-Verify last returned, formatted as time.RFC3339 in UTC.
+	// GateHaltAt is the RFC 3339 time, in UTC, that the dirty-tree or test-gate Stuck Drift-Verify last returned.
 	GateHaltAt string `json:"gate_halt_at"`
 	// BaselineHead is the commit of the baseline the last compare read, the task's branch point.
 	BaselineHead string `json:"baseline_head"`
@@ -99,7 +100,7 @@ type ScopeRecord struct {
 	ComparedAt string `json:"compared_at"`
 	// ComparePassed reports whether the last compare showed no drift.
 	ComparePassed bool `json:"compare_passed"`
-	// AcceptedProfileHead is the commit a compare against the accepted profile last passed at, and empty while no profile holds the current acceptances: an acceptance, a withdrawal and a lapse clear it.
+	// AcceptedProfileHead is the commit the accepted-profile compare last passed at; a change to the acceptances empties it.
 	AcceptedProfileHead string `json:"accepted_profile_head"`
 	// ScopeSource is the config key that set scope off, such as drift.scope, and empty for any other scope.
 	ScopeSource string `json:"scope_source,omitempty"`
@@ -132,7 +133,7 @@ type SessionMark struct {
 	// Open is true from the session's start until its return closes it.
 	Open bool `json:"open"`
 	// OpenedAt is the RFC 3339 time the mark opened.
-	// The expect agent's mark keeps it when closed by a return without an error, so a closed expect mark with OpenedAt set records an ended session.
+	// The expect mark keeps it on a return without an error: OpenedAt set on a closed mark records an ended session.
 	OpenedAt string `json:"opened_at,omitempty"`
 	// SpawnID is the id of the spawn that opened the mark.
 	SpawnID string `json:"spawn_id,omitempty"`
@@ -160,7 +161,7 @@ type CheckResult struct {
 	At string `json:"at"`
 	// Mode is DiffLines or DiffCommand.
 	Mode string `json:"mode"`
-	// Changed, Expected, Matched, Reused and Unexpected count the cells the check found, the cells an expectation covers, the cells the judge ruled matching, the cells a stored ruling decided and the cells nothing explains.
+	// Changed, Expected, Matched, Reused and Unexpected count cells found, covered, judged matching, reused, or unexplained.
 	Changed    int `json:"changed"`
 	Expected   int `json:"expected"`
 	Matched    int `json:"matched"`
@@ -201,7 +202,8 @@ type JudgedTuple struct {
 	At string `json:"at"`
 }
 
-// JudgedRange is the judge's note on an open range, stored with the covering entry's why so the verdict renders both without reading the expectation.
+// JudgedRange is the judge's note on an open range, stored with the covering entry's why.
+// Storing the why lets the verdict render both without reading the expectation.
 type JudgedRange struct {
 	Case string `json:"case"`
 	// Range is the range as the expectation spells it.
@@ -233,7 +235,7 @@ type CaptureRecord struct {
 	Pid int `json:"pid"`
 	// Head is the commit the capture ran on.
 	Head string `json:"head"`
-	// Skip is the tests the capture left out, which a scope replacement checks to tell whether the capture holds a profile of each test.
+	// Skip is the tests the capture left out; a scope replacement reads it to tell whether the capture profiled each test.
 	Skip []string `json:"skip"`
 	// SlotAcquiredAt is the RFC 3339 time the capture got its gate slot.
 	SlotAcquiredAt string `json:"slot_acquired_at"`

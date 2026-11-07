@@ -1,9 +1,8 @@
-// seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant:
-// production code in internal/treadleengine imports ONLY the standard library, internal/editdirective, internal/lock, internal/logger, internal/parentdirective, internal/segmentcolor, internal/state, internal/stencil, internal/stencilstore, internal/shuttleengine, and gopkg.in/yaml.v3;
-// it never imports internal/burlerengine, never internal/lymcwd as a direct import, and never any internal/*cli package.
-// Like internal/modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import
-// outside the allowed set fails the test, so a future stray dependency (a round-runner's own type
-// leaking upward, a convenience lymcwd import) is caught with no list maintenance required.
+// seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant.
+// Production code in internal/treadleengine imports only the standard library and the packages in allowedImports:
+// it never imports internal/burlerengine, never imports internal/lymcwd directly, and never any internal/*cli package.
+// The check is an allowlist, so any import outside the set fails the test.
+// A stray dependency, such as a round runner's type leaking upward, is caught with no deny list to maintain.
 
 package treadleengine
 
@@ -14,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allowedImports are the only non-stdlib import paths production code in
-// this package may use.
+// allowedImports lists the only non-stdlib import paths production code in this package may use.
 var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/editdirective",
 	"github.com/Knatte18/loomyard/internal/lock",
@@ -29,8 +27,8 @@ var allowedImports = []string{
 	"gopkg.in/yaml.v3",
 }
 
-// TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib
-// or an entry in allowedImports.
+// TestRunnerSeamInvariant_AllowlistOnly verifies the import allowlist.
+// Every non-test .go file imports only the standard library or an entry in allowedImports.
 func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/treadleengine", allowedImports...)

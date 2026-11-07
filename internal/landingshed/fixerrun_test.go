@@ -1,4 +1,5 @@
-// fixerrun_test.go drives the merge fixer loop over a fake seat runner, the gate fixture's fake verify tree and fake seams.
+// fixerrun_test.go drives the merge fixer loop over a fake seat runner.
+// The tests run over the gate fixture's fake verify tree and fake seams.
 // fakeFixerSeats is the shared fake the Merge-In and Finalize fixer tests drive too.
 
 package landingshed
@@ -23,21 +24,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// fakeFixerSeats is a fixerSeats whose session runs a scripted callback per turn and then calls the table's gate closure, up to the gate's attempts.
+// fakeFixerSeats runs each session as scripted callbacks, one per turn.
+// It then calls the table's gate closure, up to the gate's attempts.
 type fakeFixerSeats struct {
-	// turns scripts each turn by its index: it may write the report, commit, dirty the tree, move the remote tip, advance the gate's clock or release a lock record.
+	// turns scripts each turn by its index: a turn may write the report, commit, or dirty the tree;
+	// it may also move the remote tip, advance the gate's clock, or release a lock record.
 	// A turn past the script does nothing.
 	turns []func()
-	// reviewTurns scripts a fix review session's turns the same way, in place of turns.
+	// reviewTurns scripts the turns of a fix review session the same way.
 	reviewTurns []func()
 	// startErr, when set, is returned by Run before any turn, as a seat that never started.
 	startErr error
 	// sessionTimeout makes the session end on the table's timeout without reaching the gate closure.
 	sessionTimeout bool
-	// reviewTimeout and reviewStartErr do what sessionTimeout and startErr do, for a fix review session alone.
+	// For a fix review session alone: reviewTimeout ends it on the table's timeout; reviewStartErr fails it before any turn.
 	reviewTimeout  bool
 	reviewStartErr error
-	// hangAfter, when above zero, makes the turn at that index run its callback and then end the session with hangOutcome, never reaching the gate closure.
+	// hangAfter, when above zero, ends the turn at that index with hangOutcome after its callback, never reaching the gate.
 	hangAfter   int
 	hangOutcome shuttleengine.Outcome
 
@@ -89,7 +92,7 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 	return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, RunDir: fakeFixerRunDir}}, nil
 }
 
-// fixerRunFixture is a fixerRun over the gate fixture, a fake seat runner, a fake clock and a fake remote tip.
+// fixerRunFixture wires one fixer run to a gate fixture, a fake seat runner, a fake clock and a fake remote tip.
 type fixerRunFixture struct {
 	run       fixerRun
 	gate      *gateFixture

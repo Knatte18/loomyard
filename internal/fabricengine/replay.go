@@ -1,5 +1,8 @@
-// replay.go holds the records replay: bringing a records branch level with a moved origin by replaying the local commits origin lacks, and the ended-set rule that decides which of those commits a run's end on origin has made obsolete.
-// A weft worktree is replayed commit by commit; the Bolt checkout is replayed by entry through the registered Bolt replayers.
+// replay.go holds the records replay, which brings a records branch level with a moved origin.
+// It replays the local commits origin lacks,
+// and it applies the ended-set rule, which decides which of those a run's end on origin has made obsolete.
+// A weft worktree is replayed commit by commit;
+// the Bolt checkout is replayed by entry through the registered Bolt replayers.
 
 package fabricengine
 
@@ -40,13 +43,16 @@ const (
 	worktreeTeardownRow = "Worktree-Teardown"
 )
 
-// ErrReplayConflict is returned, wrapped with the conflicting paths, by a replay that stopped on a commit it could not apply, with the starting tip restored.
+// ErrReplayConflict is returned by a records replay that stopped on a commit it could not apply.
+// The error wraps the conflicting paths, and the starting tip is restored.
 var ErrReplayConflict error = errors.New("records replay stopped on a conflict")
 
-// ErrReplayDirty is returned, wrapped with the paths, by a replay that refused over an uncommitted tracked change on a path it would touch, with the branch unmoved.
+// ErrReplayDirty is returned by a records replay that refused over an uncommitted tracked change.
+// The change lies on a path the replay would touch, and the error wraps those paths with the branch unmoved.
 var ErrReplayDirty error = errors.New("records replay refused over an uncommitted change")
 
-// replayConflict is the error cherryPickOnto returns for a conflicting pick: it is ErrReplayConflict and carries the conflicting paths.
+// replayConflict is the error for a pick that does not apply cleanly.
+// It carries the commit, the conflicting paths and the cause, and errors.Is reports it as a replay conflict.
 type replayConflict struct {
 	commit string
 	paths  []string
@@ -61,7 +67,9 @@ func (e *replayConflict) Is(target error) bool { return target == ErrReplayConfl
 
 func (e *replayConflict) Unwrap() error { return e.cause }
 
-// EndedSet maps the slug of each run origin has ended to how: "done" for a run the ledger marks ended, a pruned one included whose last held state was ended, and "removed" for one pruned or deleted before it ended.
+// EndedSet maps the slug of each run origin has ended to how it ended.
+// "done" marks a run the ledger holds as ended, a pruned one included whose last held state was ended.
+// "removed" marks a run pruned or deleted before it ended.
 type EndedSet map[string]string
 
 // SetAsideCommit is a local commit a replay did not re-apply, kept under a local tag.
@@ -72,8 +80,11 @@ type SetAsideCommit struct {
 }
 
 // ReplayOutcome reports what a records replay did with the local commits origin lacked.
-// Replayed holds the commits re-applied, Dropped those that became empty or were seed commits, and SetAside those kept only under a tag.
-// Conflicts names the paths a stop conflicted on, and Lost and Refused the changes a by-entry replay did not apply.
+// Replayed holds the commits re-applied.
+// Dropped holds those that became empty or were seed commits.
+// SetAside holds those kept only under a tag.
+// Conflicts names the paths a stop conflicted on.
+// Lost and Refused hold the changes a by-entry replay did not apply.
 type ReplayOutcome struct {
 	Replayed  []string
 	Dropped   []string
@@ -92,13 +103,17 @@ func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]LedgerRun
 	return ledger.Runs(data)
 }
 
-// readEndedSet reads which of slugs origin has ended, from the records repository at recordsRoot and its ref boltRef, origin's Bolt tip as last fetched.
-// A slug is ended when the run ledger marks its run ended on that tip, or when its run is absent from the tip and present in a commit of the tip's history: a pruned run.
-// A pruned run is ended as done when the newest commit holding it marks it ended, and as removed otherwise.
-// Where localCreated holds a created stamp for the slug, the run on the tip or in the history must carry the same stamp,
+// readEndedSet reads which of slugs origin has ended.
+// It reads the records repository at recordsRoot and its ref boltRef.
+// The ref holds origin's Bolt tip as last fetched.
+// A slug is ended when the run ledger marks its run ended on that tip.
+// A pruned run is one absent from the tip and present in a commit of its history.
+// It is ended as done when the newest commit holding it marks it ended, and as removed otherwise.
+// With a created stamp in localCreated for the slug, the run on the tip or in the history must carry the same stamp,
 // so a pruned slug reused by a run only the local ledger holds is never ended.
 // A slug only the local ledger ever held matches nothing.
-// It runs no network call, reads the ledger's file through the registered run ledger, and returns ErrReplayerMissing when none is registered.
+// It runs no network call and reads the ledger's file through the registered run ledger.
+// It returns ErrReplayerMissing when no run ledger is registered.
 func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[string]string) (EndedSet, error) {
 	ledger, _, err := runLedger()
 	if err != nil {
@@ -223,13 +238,19 @@ func readRunStatusRows(path string) (runStatusRows, bool, error) {
 	return status, true, nil
 }
 
-// finalizeEntered reports whether this machine's local state shows slug's run past the parent-side merge of its Finalize.
-// After that merge Finalize writes the done mark, and its landing reaches origin.
-// It reads the task pair's loom status, the pair's local parent branch and the prime's batten status of the slug:
-// a Finalize history row, a current producer Finalize while the local parent branch already holds the task's work, or a batten status at Land or a later row or done.
+// finalizeEntered reports whether local state shows slug's run past the parent-side merge of its Finalize.
+// That merge writes the done mark, and its landing reaches origin.
+// It reads the pair's loom status, the pair's local parent branch and the prime's batten status of the slug.
+// The run counts as entered when one of these holds:
+// the loom status has a Finalize history row;
+// the current producer is Finalize and the local parent branch already holds the task's work;
+// the batten status is at Land, a later row, or done.
 // A current producer Finalize alone never counts, since it reads Finalize at every Finalize entry, before the merge.
-// A pair status standing at Raddle-File counts as well when how is endedDone: a raddle run has no Finalize and that row ends the run's own entry, so an entry origin shows done is the run's own finish, with Land and Worktree-Teardown still to come.
-// An entry origin removed from its board before it ended done is a real end, so it reconciles as ended at Raddle-File.
+// A pair status at Raddle-File counts too when how is endedDone.
+// A raddle run has no Finalize, and that row ends the run's own entry,
+// so an entry origin shows done is the run's own finish, with Land and Worktree-Teardown still to come.
+// An entry origin removed from its board before it ended done is a real end,
+// so it reconciles as ended at Raddle-File.
 // A Raddle-File history row alone never counts, since a return sends the run back to Raddle-Write.
 // A read failure counts as entered, logged at Warn, so a doubt never sets aside this machine's own landing.
 func finalizeEntered(l *lymcwd.Location, slug, how string) bool {
@@ -337,7 +358,8 @@ func sortedSlugs(ended EndedSet) []string {
 	return slugs
 }
 
-// runDirectorySlug returns the slug of the ended run whose record directory holds path, a records-repository-relative slash path.
+// runDirectorySlug returns the slug of the ended run whose record directory holds path.
+// path is a records-repository-relative slash path.
 func runDirectorySlug(l *lymcwd.Location, ended EndedSet, path string) (string, bool) {
 	for _, slug := range sortedSlugs(ended) {
 		dir := pathpkg.Clean(pathpkg.Join(filepath.ToSlash(l.AnchorRel), filepath.ToSlash(shedrun.RunDirRel(l, slug))))
@@ -370,7 +392,8 @@ func replayAhead(repo *gitrepo.Repo, upstream string) (tip string, ahead []strin
 	return tip, ahead, nil
 }
 
-// replayRequest builds the destructive gate's request for a records replay of target, refusing a tracked change on any of touched.
+// replayRequest builds the destructive gate's request for a records replay of target.
+// The request refuses a tracked change on any of touched.
 func replayRequest(target string, ownership pathOwnership, touched []string) pathRequest {
 	slices.Sort(touched)
 	return pathRequest{
@@ -393,10 +416,13 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 }
 
 // replayWeft brings a weft worktree's branch level with upstream when both moved, under its caller's locks.
-// It refuses with ErrReplayDirty, naming the paths, a tracked change on a path the local commits touch, leaving the branch unmoved.
-// A local commit origin lacks whose every path lies under an ended run's record directory is kept under a local set-aside tag instead of replayed.
+// It refuses with ErrReplayDirty, naming the paths, when a tracked change sits on a path the local commits touch,
+// and it leaves the branch unmoved.
+// A local commit that origin lacks is kept under a local set-aside tag instead of replayed.
+// That happens only when every path of the commit lies under an ended run's record directory.
 // The tags are made before the branch moves, so a stop leaves a tag on a commit still on the branch.
-// The other commits are replayed onto upstream oldest first, a commit that becomes empty being dropped, and a conflict returns ErrReplayConflict with the starting tip restored.
+// The other commits are replayed onto upstream oldest first, and a commit that becomes empty is dropped.
+// A conflict returns ErrReplayConflict with the starting tip restored.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
 func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, ended EndedSet) (ReplayOutcome, error) {
 	repo := gitrepo.New(worktree)
@@ -417,7 +443,8 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 		if err != nil {
 			return ReplayOutcome{}, err
 		}
-		// A set-aside commit's paths count too: the reset onto upstream drops that commit, so git refuses over a dirty file under it as well.
+		// A set-aside commit's paths count too.
+		// The reset onto upstream drops that commit, so git refuses over a dirty file under it as well.
 		touched = append(touched, detail.Paths...)
 		if slug, aside := endedRunSlug(l, live, detail.Paths); aside {
 			outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: sha, Slug: slug})
@@ -426,7 +453,8 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 		kept = append(kept, sha)
 	}
 
-	// The set-aside commits are tagged before the branch moves, so a later stop never leaves one reachable only through the reflog.
+	// The set-aside commits are tagged before the branch moves,
+	// so a later stop never leaves one reachable only through the reflog.
 	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
 		return outcome, err
 	}
@@ -444,7 +472,8 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 	return outcome, nil
 }
 
-// endedRunSlug returns the slug of the first ended run a commit of paths belongs to, and whether every path lies under an ended run's record directory.
+// endedRunSlug returns the slug of the first ended run a commit of paths belongs to.
+// It reports whether every path lies under an ended run's record directory.
 func endedRunSlug(l *lymcwd.Location, ended EndedSet, paths []string) (string, bool) {
 	if len(paths) == 0 || len(ended) == 0 {
 		return "", false
@@ -477,8 +506,10 @@ func tagSetAside(rec *Mutations, repo *gitrepo.Repo, asides []SetAsideCommit) er
 // setAsideTag puts the local tag `set-aside/<slug>/<short sha>` on sha, and returns its name.
 // The tag prefix is one no archive reader matches, so a set-aside commit shows as no run.
 // A tag already on sha is kept.
-// An empty slug is a set-aside of the run ledger with no run to name, which takes `replayer/<ledger name>` in the slug's place.
-// It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
+// An empty slug is a set-aside of the run ledger, which has no run to name.
+// The tag then takes `replayer/<ledger name>` in the slug's place.
+// It appends KindTagCreated once the tag exists.
+// Its target is the repository root and its detail is the tag name.
 func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
 	if slug == "" {
 		_, ledgerName, err := runLedger()
@@ -549,9 +580,10 @@ func commitLedgerRuns(repo *gitrepo.Repo, ledger RunLedger, sha, parent string, 
 	return slugs, nil
 }
 
-// localLedgerRuns returns the slugs of the runs the local commits ahead change, sorted, and the created stamp each carries at head.
+// localLedgerRuns returns the sorted slugs of the runs the local commits ahead change, and the created stamps at head.
 // A slug absent at head carries no stamp.
-// With no run ledger registered, a commit that touches no path a registered replayer claims changes no run, and one that does returns ErrReplayerMissing.
+// With no run ledger registered, a commit that touches no path a registered replayer claims changes no run.
+// A commit that touches such a path returns ErrReplayerMissing.
 func localLedgerRuns(repo *gitrepo.Repo, head string, ahead []string) (slugs []string, created map[string]string, err error) {
 	ledger, _, ledgerErr := runLedger()
 	seen := map[string]bool{}
@@ -636,16 +668,22 @@ func runsAllEnded(runs []string, ended EndedSet) bool {
 	return len(runs) > 0 && !slices.ContainsFunc(runs, func(slug string) bool { _, isEnded := ended[slug]; return !isEnded })
 }
 
-// replayBolt brings the Bolt checkout level with upstream when both moved, as replayWeft does for a weft, under its caller's locks.
-// A seed commit is dropped, as the seed-commit drop does.
-// A commit whose every path some registered replayer claims is re-applied by entry through the claiming replayers onto upstream,
-// so a file only one side changed never conflicts, and no entry change stops the replay.
-// A by-entry commit is set aside under a tag when every run the run ledger says it touches is ended, unless it also touches a path another replayer claims:
-// then only the ledger's part is skipped, its original is tagged, and the other replayers still apply theirs.
-// A commit that lost a value or met a refusal is committed for what was kept, and its original kept under a set-aside tag.
-// Any other commit is replayed by cherry-pick, and its conflict returns ErrReplayConflict with the starting tip restored.
-// The run ledger is read only once some commit is by-entry, and none registered then returns ErrReplayerMissing before the branch moves.
-// Every set-aside commit is tagged before the branch moves or as its replay reports it, and a later failure restores the starting tip;
+// replayBolt brings the Bolt checkout level with upstream when both moved, under its caller's locks.
+// A seed commit is dropped.
+// A commit whose every path a registered replayer claims is re-applied by entry onto upstream;
+// the claiming replayers apply it, so a file only one side changed never conflicts,
+// and no entry change stops the replay.
+// A by-entry commit is set aside under a tag when every run the run ledger says it touches is ended.
+// If it also touches a path another replayer claims, only the ledger's part is skipped;
+// its original is tagged, and the other replayers still apply theirs.
+// A commit that lost a value or met a refusal is committed for what was kept,
+// and its original is kept under a set-aside tag.
+// Any other commit is replayed by cherry-pick;
+// its conflict returns ErrReplayConflict with the starting tip restored.
+// The run ledger is read only once some commit is by-entry;
+// when none is registered, it returns ErrReplayerMissing before the branch moves.
+// Every set-aside commit is tagged before the branch moves or as its replay reports it.
+// A later failure restores the starting tip;
 // a restore git refuses, as over a file the failed replay had already written, is joined into the returned error.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
 func replayBolt(rec *Mutations, l *lymcwd.Location, boltDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
@@ -709,7 +747,8 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boltDir, upstream string, en
 		steps = append(steps, boltStep{sha: sha})
 	}
 
-	// The commits classification set aside are tagged before the branch moves, so a later stop never leaves one reachable only through the reflog.
+	// The commits that classification sets aside are tagged before the branch moves,
+	// so a later stop never leaves one reachable only through the reflog.
 	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
 		return outcome, err
 	}
@@ -761,12 +800,15 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boltDir, upstream string, en
 	return outcome, nil
 }
 
-// replayClaimedCommit re-applies one commit whose every path a registered replayer claims, by entry onto the Bolt checkout at upstream, and records what it did in outcome.
+// replayClaimedCommit re-applies one commit whose every path a registered replayer claims.
+// It applies the commit by entry onto the Bolt checkout at upstream and records what it did in outcome.
 // Each claiming replayer applies its own files, and what they kept is committed as one commit with the original message.
-// When every run the commit touches is in live, the run ledger's own files are left out and the original is set aside under the first such run's slug.
-// A commit no replayer changes anything for writes nothing, and is dropped unless it lost a value or met a refusal.
+// When every run the commit touches is in live, the run ledger's own files are left out,
+// and the original is set aside under the first such run's slug.
+// A commit no replayer changed writes nothing and is dropped.
 // A commit that lost a value or met a refusal is committed for what was kept, and its original is set aside:
-// under the run's slug when the finding comes from the run ledger, and under `replayer/<name>` when another replayer reports it.
+// under the run's slug when the finding comes from the run ledger;
+// under `replayer/<name>` when another replayer reports it.
 // The original is tagged as soon as the replayers report, before anything is committed.
 // baseline is the Bolt checkout's uncommitted files before the replay, which are never staged.
 func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase string, baseline []string, step boltStep, live EndedSet, outcome *ReplayOutcome) error {

@@ -1,6 +1,10 @@
-// sequence_test.go covers CheckBatchOrder through its exported surface: a batch list whose every dependency edge (a Uses entry naming another card's Targets entry, or two cards writing one Targets entry in card order) runs forward is accepted, and one with an edge to an earlier batch, including a cycle, is refused with an error that wraps ErrBatchOrder and names both batch numbers, the card, the ref and the way forward.
-// Tier 1: package websterengine_test, no git, no disk — every fixture is a hand-built []batcher.Batch
-// literal; nothing goes through planparser.ParsePlan.
+// sequence_test.go covers CheckBatchOrder through its exported surface.
+// A batch list whose every dependency edge runs forward is accepted.
+// An edge is a Uses entry naming another card's Targets entry, or two cards writing one Targets entry in card order.
+// An edge to an earlier batch, including a cycle, is refused.
+// The refusal is an error that wraps ErrBatchOrder and names both batch numbers, the card, the ref and the way forward.
+// Tier 1: package websterengine_test, no git, no disk.
+// Every fixture is a hand-built []batcher.Batch literal, and nothing goes through planparser.ParsePlan.
 
 package websterengine_test
 
@@ -15,8 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// oneCardBatch builds a single-card batcher.Batch from a number, slug, Targets list, and Uses list,
-// so the table rows below stay readable.
+// oneCardBatch builds a single-card batcher.Batch from a number, slug, Targets list, and Uses list.
 func oneCardBatch(number int, slug string, targets, uses []string) batcher.Batch {
 	return batcher.Batch{
 		Cards: []planparser.Card{
@@ -30,7 +33,8 @@ func oneCardBatch(number int, slug string, targets, uses []string) batcher.Batch
 	}
 }
 
-// groupedCardBatch builds a single-card batcher.Batch whose card holds ref under one target group of groupType, fencing a PATTERN.md line for each of entryIDs in its text.
+// groupedCardBatch builds a single-card batcher.Batch whose card holds ref under one target group of groupType.
+// It fences a PATTERN.md line for each of entryIDs in the card's text.
 func groupedCardBatch(number int, groupType planparser.CardType, ref string, entryIDs ...string) batcher.Batch {
 	text := ""
 	if len(entryIDs) > 0 {
@@ -48,7 +52,8 @@ func groupedCardBatch(number int, groupType planparser.CardType, ref string, ent
 	}}}
 }
 
-// TestCheckBatchOrder asserts which batch lists CheckBatchOrder accepts and the findings it names for each refused shape of Targets/Uses relation.
+// TestCheckBatchOrder asserts which batch lists CheckBatchOrder accepts.
+// It also asserts the findings CheckBatchOrder names for each refused shape of Targets/Uses relation.
 func TestCheckBatchOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -59,9 +64,9 @@ func TestCheckBatchOrder(t *testing.T) {
 		name string
 		in   []batcher.Batch
 		// wantFindings lists the substrings a refusal's message holds;
-		// none means the list is accepted.
+		// an empty list means the batch list is accepted.
 		wantFindings []string
-		// step is the way forward the call is told; a set step replaces the manual verbs.
+		// step is the way forward the call is told; when it is set, it replaces the manual verbs.
 		step string
 	}{
 		{

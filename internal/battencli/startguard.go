@@ -1,5 +1,9 @@
-// startguard.go holds batten's pre-run guard: the refusals of a run a cancel is ending, of a start over a dirty source and of a start over the left parts of an earlier pair, all raised before the pre-run writes anything.
-// It also judges a raddle entry's start over the done motif run under its own slug as the fresh start that run's removal makes, and removes the run only once the start's owner check has passed.
+// startguard.go holds batten's pre-run guard.
+// It refuses a run a cancel is ending, a start over a dirty source, and a start over the left parts of an earlier pair.
+// They are all raised before the pre-run writes anything.
+// It also judges a raddle entry's start over the done motif run under its own slug.
+// It treats that start as the fresh start the run's removal makes.
+// It removes the run only once the start's owner check has passed.
 
 package battencli
 
@@ -22,7 +26,7 @@ import (
 )
 
 // startGuard carries the local reads the pre-run's guard refuses on, as function values.
-// A nil seam checks nothing, which only a hand-populated receiver has.
+// A nil field checks nothing, which only a hand-populated receiver has.
 type startGuard struct {
 	// Marker reads the slug's cancel marker and the liveness of its writer.
 	Marker func() (cancelMarkerReading, error)
@@ -33,8 +37,10 @@ type startGuard struct {
 	// ParentBeam reads the beam the slug's pair forks from over the local board, "" meaning the prime.
 	// A nil ParentBeam reads every task as forked from the prime.
 	ParentBeam func() (string, error)
-	// Promoted reports whether the board holds the slug as a task whose local pair carries the beam mark, which only a promote stopped before its board write leaves.
-	// A project entry reads false, since a beam project is judged on its own, and so does a slug the board no longer holds, such as a beam project its own Land pruned.
+	// Promoted reports whether the board holds the slug as a task whose local pair carries the beam mark.
+	// Only a promote stopped before its board write leaves that state.
+	// A project entry reads false, since a beam project is judged on its own.
+	// A slug the board no longer holds also reads false, such as a beam project that its own landing pruned.
 	Promoted func() (bool, error)
 	// ReachedParent reports whether the run's work reached its parent, given batten's status, as a cancel judges it.
 	// A nil ReachedParent reads every run as not reached.
@@ -42,23 +48,30 @@ type startGuard struct {
 	// Project reads whether the slug's board entry is a project, and whether its beam flag is set.
 	// A nil Project reads every entry as a task.
 	Project func() (project, beam bool, err error)
-	// PairMark reads the origin record of the slug's local pair: found is false when the pair has no readable record, and marked says whether it carries the beam mark.
+	// PairMark reads the origin record of the slug's local pair.
+	// found is false when the pair has no readable record; marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
-	// Unreleased reads the board status of the slug when it is a task no run starts, boardengine.StatusDraft or boardengine.LegacyStatusDiscussed, and "" for any other entry.
+	// Unreleased reads the board status of the slug when it is a task no run starts:
+	// boardengine.StatusDraft or boardengine.LegacyStatusDiscussed, and "" for any other entry.
 	// A nil Unreleased reads every entry as released.
 	Unreleased func() (string, error)
-	// Raddle judges the start of a raddle entry: it returns a raddleRefusal when the entry cannot start, any other error for a failed probe, and nil for an entry of another recipe.
+	// Raddle judges the start of a raddle entry.
+	// It returns a raddleRefusal when the entry cannot start;
+	// any other error is a failed probe, and nil means an entry of another recipe.
 	// A nil Raddle checks nothing.
 	Raddle func() error
-	// ClearsMotifRun reports, without removing anything, whether the slug's done run is the motif run of the raddle entry about to start, which that start removes.
+	// ClearsMotifRun reports whether the slug's done run is the motif run of the raddle entry about to start.
+	// That start would remove the run; this reports without removing anything.
 	// A nil ClearsMotifRun reads every done run as one the start does not clear.
 	ClearsMotifRun func() (bool, error)
-	// ClearMotifRun removes the slug's done run when it is the motif run of the raddle entry about to start, and reports whether it did.
+	// ClearMotifRun removes the slug's done run when it is the motif run of the raddle entry about to start.
+	// It reports whether it removed the run.
 	// A nil ClearMotifRun removes nothing.
 	ClearMotifRun func() (bool, error)
 }
 
-// raddleRefusal is the refusal raddleStartRefusal returns, which the guard returns as it stands where a probe error is wrapped.
+// raddleRefusal reports that a raddle entry cannot start, as opposed to a failed probe.
+// The guard returns it as it stands, and wraps any other probe error.
 type raddleRefusal struct {
 	message string
 }
@@ -66,7 +79,9 @@ type raddleRefusal struct {
 // Error returns the refusal's message.
 func (r raddleRefusal) Error() string { return r.message }
 
-// hubStartGuard builds the startGuard over the hub of location: the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam, all local reads with no network call.
+// hubStartGuard builds the startGuard over the hub of location:
+// the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam.
+// All these are local reads with no network call.
 func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 	return startGuard{
 		Marker:      func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
@@ -136,9 +151,11 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 	}
 }
 
-// startClearsMotifRun reports whether a start of task clears the done run under its slug instead of refusing it: the hub board resolves the task's recipe to raddle, its own or the board's default, and that run's child ran motif.
+// startClearsMotifRun reports whether a start of task clears the done run under its slug instead of refusing it.
+// The hub board resolves the task's recipe to raddle, its own or the board's default, and that run's child ran motif.
 // Promoting a Sketch keeps the slug of the motif run that made it, so the raddle run always finds that done record.
-// A task's own recipe field decides without opening the board, which only an entry with no recipe or a project reads.
+// A task with its own recipe field decides without opening the board.
+// Only an entry with no recipe, or a project, reads the board.
 // It removes nothing.
 func startClearsMotifRun(location *lymcwd.Location, task boardengine.Task) (bool, error) {
 	recipe := task.Recipe
@@ -156,8 +173,9 @@ func startClearsMotifRun(location *lymcwd.Location, task boardengine.Task) (bool
 	return childRecipe == shedrun.RecipeMotif, err
 }
 
-// clearsMotifRunOfRaddleEntry reports whether a start of slug clears its done motif run: the board holds slug as an entry whose start startClearsMotifRun says clears it.
-// It removes nothing, and an absent entry clears nothing.
+// clearsMotifRunOfRaddleEntry reports whether a start of slug clears its done motif run.
+// The board's entry under slug decides; an absent entry clears nothing.
+// It removes nothing.
 func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
@@ -170,7 +188,7 @@ func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, 
 	return startClearsMotifRun(location, tasks[index])
 }
 
-// readRaddleStartRefusal reads the slug's board entry and, when its recipe is raddle, judges its start with raddleStartRefusal.
+// readRaddleStartRefusal reads the slug's board entry and, when its recipe is raddle, judges its start.
 // An absent entry and an entry of another recipe pass.
 func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
 	boardDir := fabricengine.BoardDir(location.HubPath)
@@ -205,10 +223,14 @@ func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
 	return raddleStartRefusal(entry, recordStored, store)
 }
 
-// raddleStartRefusal judges the start of a raddle entry, whose recordStored says whether it is flagged discussed with its decision record file in the board directory.
+// raddleStartRefusal judges the start of a raddle entry.
+// recordStored reports whether the entry is flagged discussed with its decision record in the board directory.
 // It refuses an entry with no stored record, which the raddle recipe has nothing to split.
-// It refuses an entry whose slug the store holds as another Sketch's, as its own under another created stamp, or as a slug a stored proposal filed, since the run's filing would collide with the store.
-// The entry that is the store's own Sketch under its own created stamp passes, so a fresh start after a filing that kept the store is not refused.
+// It refuses an entry whose slug the store already holds, since the run's filing would collide with the store.
+// That covers another Sketch's slug, the store's own Sketch under another created stamp,
+// and a slug a stored proposal filed.
+// The entry that is the store's own Sketch under its own created stamp passes,
+// so a fresh start after a filing that kept the store is not refused.
 func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boardengine.RaddleStore) error {
 	slug := entry.Slug
 	if !recordStored {
@@ -230,15 +252,27 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 
 // refuse judges verb's start or resume of slug, in order.
 // A present cancel marker refuses run, step and goto.
-// A run or step of a task whose pair carries the beam mark refuses, with or without a status file, since only a stopped promote leaves one;
-// a run whose work reached its parent passes that check, since a cancel refuses it and only the run finishes it.
-// A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
-// A run or step of a project entry is judged by refuseProject, which refuses a grouping project, passes a marked beam pair over the dirty-source and left-pair checks and a resume past Worktree-Create over all of them, and leaves a beam project with no marked pair here to the checks of a task.
-// A run or step with no status file of a task whose board status is draft or discussed refuses, naming that status and the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again from there.
-// A run or step with no status file of a raddle entry refuses when the entry holds no stored record or its slug collides with the raddle store.
-// A run or step with no status file refuses when a task worktree, records worktree or local records branch is left from an earlier run.
+// A run or step of a task whose pair carries the beam mark refuses, with or without a status file.
+// Only a stopped promote leaves the mark behind.
+// A run whose work reached its parent passes that check, since a cancel refuses it and only the run finishes it.
+// A run or step with no status file refuses on tracked dirty paths of the source worktree.
+// So does one whose status is at Worktree-Create while the task worktree is absent.
+// A task that forks from a beam skips that check:
+// its pair forks from the beam's last commit, not from the source worktree.
+// A run or step of a project entry is judged by the project check.
+// A resume past Worktree-Create passes over all the checks.
+// A marked beam pair passes over the dirty-source and left-pair checks.
+// A beam project with no marked pair here is left to the checks of a task.
+// A run or step with no status file refuses a task whose board status is draft or discussed.
+// The refusal names that status and the release that makes it startable.
+// A beam project skips that check.
+// A beam's cancel leaves its entry draft, and `lym beam create` starts its run again from there.
+// A run or step with no status file of a raddle entry refuses when the entry holds no stored record.
+// It also refuses when the entry's slug collides with the raddle store.
+// A run or step with no status file refuses on a leftover task worktree, records worktree or local records branch.
 // A probe error refuses naming the probe and the verb's re-run.
-// found and status describe the run's status file, and taskWorktreePresent whether the task worktree is there, which only a status at Worktree-Create reads.
+// found and status describe the run's status file.
+// taskWorktreePresent reports whether the task worktree is there, which only a status at Worktree-Create reads.
 func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, taskWorktreePresent bool) error {
 	rerun := fmt.Sprintf(`"lym batten %s %s"`, verb, slug)
 
@@ -333,10 +367,13 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 }
 
 // refuseProject judges a run or step of a project entry, which only a beam project's pawl run makes claimable.
-// beam reports whether the entry is a beam project; judged is false for an entry that is not a project, which the task checks then judge, and for a beam project with no marked pair here, which they judge as a fresh start.
+// beam reports whether the entry is a beam project.
+// judged is false for an entry that is not a project, which the task checks then judge.
+// It is also false for a beam project with no marked pair here, which they judge as a fresh start.
 // A grouping project is refused naming the create that makes it a beam.
 // A resume past Worktree-Create passes.
-// A beam pair here with no readable origin record is refused; a marked one passes the dirty-source and left-pair checks, since it is the legacy beam's or the resumed run's own pair.
+// A beam pair here with no readable origin record is refused.
+// A marked one passes the dirty-source and left-pair checks, as the legacy beam's or the resumed run's own pair.
 func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, found bool) (beam, judged bool, err error) {
 	project, beamFlag, err := g.Project()
 	if err != nil {
@@ -372,7 +409,8 @@ func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, 
 	return true, marked, nil
 }
 
-// forksFromPrime reports whether the slug's pair forks from the prime, which a nil ParentBeam seam reads every task as.
+// forksFromPrime reports whether the slug's pair forks from the prime.
+// With no parent-beam probe set, every task forks from the prime.
 func (g startGuard) forksFromPrime() (bool, error) {
 	if g.ParentBeam == nil {
 		return true, nil
@@ -381,7 +419,8 @@ func (g startGuard) forksFromPrime() (bool, error) {
 	return beam == "", err
 }
 
-// leftPartNames names the parts of a pair that make a start refuse: the task worktree, the records worktree and the local records branch.
+// leftPartNames names the parts of a pair that make a start refuse:
+// the task worktree, the records worktree and the local records branch.
 // A task branch left alone is not named, since the add refuses it and Worktree-Create halts on it.
 func leftPartNames(parts fabricengine.PairParts) []string {
 	var names []string
@@ -397,12 +436,13 @@ func leftPartNames(parts fabricengine.PairParts) []string {
 	return names
 }
 
-// releaseCommandText words the command that releases the draft or discussed task slug, with the slug filled in so a way forward naming it runs as typed.
+// releaseCommandText words the command that releases the draft or discussed task slug.
+// The slug is filled in, so a way forward that names the command runs as typed.
 func releaseCommandText(slug string) string {
 	return fmt.Sprintf(`lym board set-status '{"slug":"%s","status":null}'`, slug)
 }
 
-// releaseCommand quotes releaseCommandText for a way forward that names it between double quotes.
+// releaseCommand returns the release command for slug in double quotes, for a way forward that names it inline.
 func releaseCommand(slug string) string {
 	return `"` + releaseCommandText(slug) + `"`
 }
@@ -429,9 +469,10 @@ func (c *battenCLI) refuseCancelMarker() error {
 }
 
 // refuseAtStart reads the run's status file and applies the guard to verb's start or resume.
-// A run or step over a done status asks the guard's ClearsMotifRun, which removes nothing, and a start it says clears the run is judged as the fresh start it will be, with the removal left pending for claimStart.
+// A run or step over a done status asks the guard's `ClearsMotifRun`, which removes nothing.
+// A start it says clears the run is judged as the fresh start it will be, and its removal waits for `claimStart`.
 // Verbs other than run, step and goto are not guarded.
-// Its reads create nothing but the status lock's ephemeral directory, which checkRunStatus creates the same way.
+// Its reads create nothing except the status lock's ephemeral directory.
 func (c *battenCLI) refuseAtStart(verb string) error {
 	if verb != "run" && verb != "step" && verb != "goto" {
 		return nil
@@ -467,10 +508,13 @@ func (c *battenCLI) refuseAtStart(verb string) error {
 	return c.guard.refuse(c.slug, verb, status, found, taskPresent)
 }
 
-// claimStart runs the owner check of a run or step that starts a fresh run, then removes the done motif run refuseAtStart found the start replacing.
-// A start with no status file, or one replacing a done motif run, refuses when another machine owns the task, before anything is written or removed.
-// The owner check pulls the board, so the start is judged as replacing the run once more before the removal, and a start the pulled board no longer says replaces it removes nothing.
-// A failed removal refuses naming the re-run, and leaves the removal pending.
+// claimStart runs the owner check for a run or step that starts a fresh run.
+// It also removes the done motif run that the start replaces.
+// A start with no status file, or one replacing a done motif run, is refused when another machine owns the task.
+// Nothing is written or removed before that check.
+// The owner check pulls the board, so the start is judged as replacing the run once more before the removal.
+// A start that the pulled board no longer shows as replacing the run removes nothing.
+// A failed removal refuses, naming the re-run, and leaves the removal pending.
 func (c *battenCLI) claimStart(verb string) error {
 	if verb != "run" && verb != "step" {
 		return nil
@@ -499,8 +543,9 @@ func (c *battenCLI) claimStart(verb string) error {
 	return nil
 }
 
-// clearsMotifRun asks the guard whether the start of verb replaces the slug's done motif run, which a nil ClearsMotifRun reads as not.
-// A failed read refuses naming the re-run of verb.
+// clearsMotifRun reports whether the start of verb replaces the slug's done motif run.
+// A nil `ClearsMotifRun` on the guard reads as false.
+// A failed read refuses, naming the re-run of verb.
 func (c *battenCLI) clearsMotifRun(verb string) (bool, error) {
 	if c.guard.ClearsMotifRun == nil {
 		return false, nil

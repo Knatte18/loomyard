@@ -1,6 +1,6 @@
-// hookcmd_integration_test.go runs the recording hook commands settings.go builds under `sh` against payloads on standard input, pinning what they append to the events file.
-// It runs rendered shell guard commands the same way, pinning that the rendering greps each pattern as written.
-// The deny pattern tables live with the shell guard rows in shellguard.
+// hookcmd_integration_test.go runs the recording hook commands settings.go builds under `sh`.
+// It pins what each appends to the events file, and that rendered shell guard commands grep each pattern as written.
+// The deny pattern tables live with the shell guard rows in `internal/shellguard`.
 
 package claudeengine
 
@@ -23,8 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// recordingHookCommands returns the command of each recording hook buildSettings installs for an events file at eventsPath, keyed by hook event name;
-// the interactive AskUserQuestion record is keyed "AskUserQuestion".
+// recordingHookCommands returns the command of each recording hook in the generated settings, keyed by hook event name.
+// The settings are generated for the events file at eventsPath.
+// The interactive AskUserQuestion record is keyed "AskUserQuestion".
 func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	t.Helper()
 	commands := map[string]string{}
@@ -58,7 +59,8 @@ func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	return commands
 }
 
-// runHookCommand runs command under sh with stdin as its standard input and env as its environment, returning its standard output and exit code.
+// runHookCommand runs command under sh with stdin as its standard input and env as its environment.
+// It returns the command's standard output and exit code.
 func runHookCommand(t *testing.T, command, stdin string, env []string) (stdout string, exitCode int) {
 	t.Helper()
 	shPath, err := exec.LookPath("sh")
@@ -103,11 +105,13 @@ func paddedPayload(t *testing.T, fields map[string]any, size int) string {
 	return string(line)
 }
 
-// TestRecordingHooks_AppendStampThenPayload runs the recording hooks' commands under sh with a payload on standard input.
-// The Stop and ask record commands append a stamp line naming their hook and then the payload byte for byte, so ParseEvents reads the file as it reads the payload alone and ParseSessionSignals pairs the payload with the stamp's time;
-// a failing `date` still appends the payload, with no time;
-// the four newer hooks exit 0 and Stop and the ask record exit 1 when the events file cannot be written;
-// and no recording hook writes to standard output.
+// TestRecordingHooks_AppendStampThenPayload runs the recording hooks' commands under sh with a payload on stdin.
+// The Stop and ask record commands append a stamp line naming their hook, then the payload byte for byte.
+// ParseEvents reads the file as it reads the payload alone.
+// ParseSessionSignals pairs the payload with the stamp's time.
+// A failing `date` still appends the payload, with no time.
+// The other hooks exit 0, and the Stop and ask record commands exit 1, when the events file cannot be written.
+// No recording hook writes to standard output.
 func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -225,7 +229,9 @@ func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
 }
 
 // TestShellGuardDenies_RenderedCommandsGrepThePayload runs the rendered shell guard commands under sh against a Bash PreToolUse payload.
-// A row whose pattern holds a single quote and a row of several patterns each echo their deny JSON on a matching command and print nothing otherwise, and every command exits 0.
+// A row whose pattern holds a single quote echoes its deny JSON on a matching command.
+// So does a row of several patterns.
+// Otherwise the rows print nothing, and every command exits 0.
 func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -266,9 +272,12 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 	}
 }
 
-// TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands runs the creel mail hook and the idle waiter hook under sh with a stub `lym` on PATH that prints its directory and arguments.
-// The mail hook forms the flag's file name as agentname.FileName does, runs `lym creel hook-read claude` from the session's project directory only while that flag stands, and otherwise exits 0 having printed nothing;
-// the waiter hook runs `lym creel hook-wait claude` from the project directory whether or not a flag stands.
+// TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands runs the creel mail hook and the idle waiter hook under sh.
+// A stub `lym` on PATH prints its directory and arguments.
+// The mail hook forms the flag's file name as `agentname.FileName` does.
+// It runs `lym creel hook-read claude` from the session's project directory only while that flag stands.
+// Otherwise it exits 0 having printed nothing.
+// The waiter hook runs `lym creel hook-wait claude` from the project directory whether or not a flag stands.
 func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -333,8 +342,11 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 	}
 }
 
-// TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock runs the merged Stop command under sh with a stub `lym` on PATH that records the standard input it got, prints a fixed output and exits as the row says.
-// Mail written (the stub exits 0) leaves the events file empty and the output on standard output; otherwise, with the flag absent as well, the file holds the Stop stamp and then the payload byte for byte, which ParseEvents reads as the payload alone.
+// TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock runs the merged Stop command under sh.
+// A stub `lym` on PATH records the standard input it got, prints a fixed output, and exits as each row says.
+// Mail written (the stub exits 0) leaves the events file empty and the output on standard output.
+// Otherwise, with the flag absent as well, the file holds the Stop stamp and then the payload byte for byte.
+// ParseEvents reads that as the payload alone.
 // An exit 1 that printed an echo alone records the turn end and leaves the printed output as the hook's.
 // An unwritable events file fails the command as the plain recording command does.
 func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
@@ -357,7 +369,7 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 		wantRecord  bool
 		wantStubRun bool
 		wantFailure bool
-		// open runs creelOpenStopHookCommand, which records nothing and always exits 0, in place of the merged command.
+		// open runs `creelOpenStopHookCommand` in place of the merged command, which records nothing and always exits 0.
 		open bool
 	}{
 		{"FlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, false},

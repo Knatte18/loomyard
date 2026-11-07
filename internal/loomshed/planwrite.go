@@ -1,7 +1,6 @@
-// planwrite.go implements the Plan-Write row's two halves: NewPlanWrite, the post-Done commit
-// decorator it shares with Discussion-Write, and NewPlanDirRotator, the stale-plan-directory rotation
-// that runs as the wrapped seat producer's fresh-spawn preparation rather than as a step ahead of
-// it.
+// planwrite.go implements the Plan-Write row's producer decorator, NewPlanWrite.
+// It commits the plan once the wrapped producer reports an output.
+// It also holds NewPlanDirRotator, which archives the stale plan directory before a fresh lead is spawned.
 
 package loomshed
 
@@ -18,27 +17,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// archiveTimestampFormat is the compact UTC stamp layout the plan-directory rotation formats its
-// archive directory names from. It duplicates internal/shedadapters' identically-named unexported
-// constant deliberately, the same way this package's entryErr/cancelErr already duplicate that
-// package's own unexported helpers -- see doc.go for why the duplication is deliberate.
+// archiveTimestampFormat is the compact UTC stamp layout for plan-directory archive names.
+// It must match the unexported constant of the same name in internal/shedadapters; this package cannot import it.
 const archiveTimestampFormat = "20060102T150405Z"
 
-// planWrite decorates inner with a post-Done commit step: once inner.Call reports Done with a nil
-// error, planWrite invokes commit before returning that same verdict to the caller.
+// planWrite decorates inner with a commit step.
+// Once inner.Call returns a nil error and a non-empty output pointer:
+// planWrite invokes commit before returning that same verdict to the caller.
 //
-// It carries no rotation of its own, deliberately.
-// Rotating the plan directory is destructive to the very files a live plan lead may be mid-write on,
-// so it belongs after the wrapped seat producer's probe of the lead, never before its Call -- see NewPlanDirRotator.
+// It does no plan-directory rotation.
+// Rotation moves the files a live plan lead may still be writing,
+// so it must run only after the wrapped producer has probed for that lead, never before its Call.
 //
-// planWrite does not consult entryErr or cancelErr itself.
-// inner (a *shedadapters.MultiLLMProducer in practice) already entry-checks the context as its first act,
-// so a second check here would be duplicate work at the same seam; the wrapped producer owns the whole cancellation obligation.
+// planWrite does not check the context for cancellation itself.
+// The wrapped producer checks it on entry, as its first act,
+// so a second check here would be duplicate work at the same seam.
+// The wrapped producer owns the whole cancellation obligation.
 //
-// It is deliberately a distinct type from discussionWrite rather than a shared one, even though the
-// two now carry identical logic: internal/loomrecipe's shape_test asserts the concrete producer type
-// built for each recipe row, so collapsing them would retire a guard that currently tells the
-// Plan-Write row's producer from the Discussion-Write row's.
+// It is a distinct type from the Discussion-Write row's producer, although their logic is identical.
+// A shape test in internal/loomrecipe tells the two rows' producers apart by concrete type.
+// Merging the types would remove that guard.
 type planWrite struct {
 	name   string
 	inner  shedengine.ShedProducer
@@ -47,41 +45,38 @@ type planWrite struct {
 
 var _ shedengine.ShedProducer = (*planWrite)(nil)
 
-// NewPlanWrite returns a planWrite identified as name, delegating to inner and invoking commit once
-// inner reports Done with a nil error. The return type is shedengine.ShedProducer, the seam
-// interface, so internal/shedrecipe can construct this producer from outside this package while
-// planWrite itself stays unexported.
+// NewPlanWrite returns a producer named name that delegates to inner.
+// It invokes commit whenever inner returns a nil error with a non-empty output pointer.
+// The return type is the shedengine.ShedProducer interface, so code outside this package can build the producer.
 func NewPlanWrite(name string, inner shedengine.ShedProducer, commit func() error) shedengine.ShedProducer {
 	return &planWrite{name: name, inner: inner, commit: commit}
 }
 
-// Call implements shedengine.ShedProducer: it calls p.inner.Call(ctx) exactly once and returns its
-// three results verbatim whenever the error is non-nil or pointer.Path is empty. The commit seam
-// fires whenever the wrapped producer reports a non-empty output pointer with a nil error -- Done or
-// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.MultiLLMProducer can report
-// with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
-// forced to Done.
+// Call implements shedengine.ShedProducer.
+// It calls the wrapped producer's Call exactly once.
+// When that call returns a non-nil error or an empty pointer.Path, Call returns its three results verbatim.
+// Otherwise it runs commit, and the returned triple is (outcome, pointer, nil) rather than being forced to Done.
+// The commit runs on Done and on a gate-failed Stuck;
+// these are the only outcomes the wrapped producer reports with a non-empty pointer.
 //
-// A commit failure maps to a returned error, never to shedengine.Stuck, on both the Done path and the
-// gate-failed Stuck path alike: a git fault is infrastructure rather than plan quality, and a
-// returned error persists failed and aborts while Stuck persists blocked and bounces. Left alone, a
-// gate-failed Stuck would skip the commit and halt the run with the invalid artifact sitting
-// uncommitted in a dirty working tree -- exactly the state this decorator's own recorded rationale
-// exists to prevent -- so committing it here means the human the run just halted for finds the artifact
-// committed and diagnosable, keeping the working tree clean and the artifact durable without
-// certifying it.
+// A commit failure becomes a returned error, never shedengine.Stuck, on both paths.
+// A git fault is infrastructure, not plan quality.
+// A returned error persists failed and aborts the run, whereas Stuck persists blocked and bounces.
+// Skipping the commit on a gate-failed Stuck would halt the run and leave the artifact uncommitted in a dirty tree.
+// Committing it keeps the tree clean and the artifact durable, so the human can diagnose it.
+// It does not certify the artifact.
 func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	outcome, pointer, err := p.inner.Call(ctx)
 	if err != nil || pointer.Path == "" {
 		return outcome, pointer, err
 	}
 
-	// The seam is asserted here rather than at construction because this producer's constructor
-	// returns the bare seam interface every neighbouring row's shape test reflects over, so it has
-	// no error return to refuse a nil through. The registry entry does guard it (requireSeam in
-	// internal/shedrecipe), which is why no production path reaches this branch — but a nil deref
-	// several producers into a long unattended Shed run is exactly the failure this codebase
-	// already guards against elsewhere, and a named error is a diagnosable one where a panic is not.
+	// The seam is checked here rather than in the constructor.
+	// The constructor returns the bare seam interface, with no error return through which to refuse a nil.
+	// The registry entry guards the seam with requireSeam in internal/shedrecipe,
+	// so no production path reaches this branch.
+	// A nil commit would still be a nil dereference several producers into a long unattended run,
+	// and a named error is diagnosable where a panic is not.
 	if p.commit == nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: no commit seam wired; the produced plan would never be committed", p.name)
 	}
@@ -97,32 +92,37 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // files into a fresh archive-<stamp>[-N] subdirectory under it, resolving that directory from
 // anchorPath via planparser.PlanDir. A nil now defaults to time.Now.
 //
-// The returned closure is handed to shedadapters.NewMultiLLMProducerSourced as its prepareFreshSpawn hook,
-// so it runs only once the seat probe has established that no live lead is writing into that
-// directory. Running it unconditionally ahead of the producer -- which is what this rotation used to
-// do, as a step inside the decorator's own Call -- moves 00-overview.md, the lead's sole
-// declared output file, out from under a lead the very next line then resumes: shuttle's Wait
-// polls for bare existence at the lead's output paths, so a plan that was finished never classifies Done
-// and times out into a hard run failure instead.
+// The closure runs as the fresh-spawn preparation of the seat producer.
+// It therefore runs only after the seat probe has established that no live lead is writing into the directory.
+// Running it earlier moves 00-overview.md, the lead's sole declared output file, from under a lead that resumes.
+// The shuttle's Wait polls for bare existence at the lead's output paths;
+// a finished plan then never classifies Done and times out into a hard run failure.
 //
 // Only files move, never directories, so a second rotation can never nest a previous archive
 // directory inside a new one. An absent plan directory, or one with no top-level .md file to move,
 // is a no-op with a nil error and creates nothing.
 //
-// The closure's string result is the prompt amendment the seat producer sets as the table's Amendment, which the seat engine appends to the respawned lead's prompt: empty when nothing moved, otherwise a blank line followed by loomengine.PriorPlanBlock naming the archive directory and the moved files,
-// so the new session knows where the prior plan went.
-// The lens review file, planparser.LensReviewFileName, and the lens reports saved beside it move with the other files but are never named in the block;
-// when they are the only stale files, the rotation still moves them and returns an empty amendment, since there is no plan to carry forward.
-// stencilsDir is told by the caller and holds the loom-template-prior-plan stencil.
-// The block is rendered before any file moves,
-// and a render failure is returned as the closure's error,
-// so the producer aborts before spawning a session that would silently rewrite the plan.
-// The plan stays in place on that failure,
-// so the next attempt renders the block again rather than finding nothing to announce.
+// The closure's string result is the prompt amendment the seat producer sets as the table's Amendment.
+// The seat engine appends it to the respawned lead's prompt.
+// It is empty when nothing moved.
+// Otherwise it is a blank line followed by loomengine.PriorPlanBlock.
+// That block names the archive directory and the moved files, so the new session knows where the prior plan went.
+// The lens review file (planparser.LensReviewFileName) and the lens reports beside it move with the other files;
+// they are never named in the block.
+// When they are the only stale files, the rotation still moves them and returns an empty amendment.
+// There is no plan to carry forward.
+// stencilsDir holds the loom-template-prior-plan stencil that the block renders from.
+// The block is rendered before any file moves.
+// A render failure is returned as the closure's error.
+// The producer then aborts before spawning a session that would silently rewrite the plan.
+// The plan stays in place on that failure;
+// the next attempt renders the block again rather than finding nothing to announce.
 //
-// archiveWebster is told by the caller and archives webster's run record into the directory it is handed.
-// The closure calls it once with the archive's webster subdirectory, after the block renders and before any plan file moves, and only when stale files are being rotated.
-// A failure of it, including a webster run holding its run lock, is returned as the closure's error with the plan left in place, so a retry rotates again.
+// archiveWebster archives webster's run record into the directory it is handed.
+// The closure calls it once, with the archive's webster subdirectory, when stale files are being rotated;
+// it runs after the block renders and before any plan file moves.
+// A failure of it, including a webster run holding its run lock, is returned as the closure's error;
+// the plan stays in place, so a retry rotates again.
 func NewPlanDirRotator(anchorPath, stencilsDir string, archiveWebster func(dest string) error, now func() time.Time) func() (string, error) {
 	if now == nil {
 		now = time.Now
@@ -161,7 +161,8 @@ func NewPlanDirRotator(anchorPath, stencilsDir string, archiveWebster func(dest 
 	}
 }
 
-// ArchivedPlanWebsterDirs returns the webster subdirectory of every archive-* directory under planDir, each the place NewPlanDirRotator archives webster's run record into.
+// ArchivedPlanWebsterDirs returns the webster subdirectory of every archive-* directory under planDir.
+// Each one is where the plan rotation archives webster's run record.
 // A subdirectory is listed whether or not it exists, since a rotation with no record to move creates none.
 func ArchivedPlanWebsterDirs(planDir string) []string {
 	entries, err := os.ReadDir(planDir)
@@ -178,10 +179,14 @@ func ArchivedPlanWebsterDirs(planDir string) []string {
 	return dirs
 }
 
-// stalePlanRotation plans a rotation without performing it: it returns the plan directory resolved from anchorPath, the first free archive-<stamp>[-N] path under it, and the names of the plan directory's top-level ".md" files.
+// stalePlanRotation plans a rotation without performing it.
+// It returns the plan directory resolved from anchorPath and the first free archive-<stamp>[-N] path under it;
+// it also returns the names of the plan directory's top-level ".md" files.
 // Any other entry (a directory, or a non-.md file) is not listed and stays in place.
-// It returns no names, and touches nothing on disk, when there is nothing to rotate (absent plan directory, or no top-level .md file).
-// It resolves the plan directory via planparser.PlanDir(anchorPath) -- never by naming the "_lym" literal, which the Lymdirs Single-Declarer Invariant forbids in production path-construction context.
+// It returns no names and touches nothing on disk when there is nothing to rotate:
+// the plan directory is absent, or holds no top-level .md file.
+// It resolves the plan directory via planparser.PlanDir(anchorPath);
+// it never spells the "_lym" literal, which production path construction must not repeat.
 func stalePlanRotation(anchorPath string, now func() time.Time) (planDir, archiveDir string, staleFiles []string, err error) {
 	planDir = planparser.PlanDir(anchorPath)
 
@@ -214,7 +219,7 @@ func stalePlanRotation(anchorPath string, now func() time.Time) (planDir, archiv
 	return planDir, archiveDir, staleFiles, nil
 }
 
-// rotateStalePlanDir performs the rotation stalePlanRotation planned: it creates archiveDir and moves each of staleFiles into it from planDir.
+// rotateStalePlanDir creates archiveDir and moves each of staleFiles into it from planDir.
 func rotateStalePlanDir(planDir, archiveDir string, staleFiles []string) error {
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return err
@@ -227,10 +232,9 @@ func rotateStalePlanDir(planDir, archiveDir string, staleFiles []string) error {
 	return nil
 }
 
-// firstFreePlanArchivePath returns the first archive directory path under planDir, built via
-// planparser.ArchiveDirName(stamp, suffix) for suffix in the sequence "", "-1", "-2", ..., that
-// does not already exist. Any os.Stat error other than not-exist is returned as-is -- this mirrors
-// firstFreeArchivePath in internal/shedadapters/archive.go.
+// firstFreePlanArchivePath returns the first archive directory path under planDir that does not already exist.
+// Each candidate comes from planparser.ArchiveDirName(stamp, suffix), with suffix "", "-1", "-2", and so on.
+// An os.Stat error other than not-exist is returned as-is.
 func firstFreePlanArchivePath(planDir, stamp string) (string, error) {
 	for n := 0; ; n++ {
 		suffix := ""

@@ -20,7 +20,8 @@ func seededStencils(t *testing.T) string {
 	return dir
 }
 
-// TestDriverPrompt asserts the rendered prompt carries every marker value and the parent directive for the given parent name, leaves no marker unfilled, and that a missing driver stencil is refused rather than rendered empty.
+// TestDriverPrompt asserts the rendered prompt carries every marker value and the parent directive for its parent.
+// It leaves no marker unfilled, and it refuses a missing driver stencil rather than rendering it empty.
 func TestDriverPrompt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -95,7 +96,10 @@ func TestDriverPrompt(t *testing.T) {
 	}
 }
 
-// TestDriverPrompt_ParentNotifyRuleFollowsWatched asserts a watched prompt tells the driver to message the parent only for a relay, a question or a failed friction and never that the run stopped, and an unwatched prompt keeps the generic escalation line.
+// TestDriverPrompt_ParentNotifyRuleFollowsWatched asserts the parent notify rule of a watched prompt.
+// A watched prompt tells the driver to message the parent only for a relay, a question or a failed friction,
+// and it never tells the driver that the run stopped.
+// An unwatched prompt keeps the generic escalation line.
 func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -143,7 +147,8 @@ func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
 	}
 }
 
-// TestDriverWatched asserts a marker holding a live pid reads as watched, and an absent marker, a garbage one and a dead pid read as unwatched.
+// TestDriverWatched asserts that a marker holding a live pid reads as watched.
+// An absent marker, a garbage one and a dead pid read as unwatched.
 func TestDriverWatched(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -179,7 +184,8 @@ func TestDriverWatched(t *testing.T) {
 
 func ptr(s string) *string { return &s }
 
-// TestWriteParkMarker_CreatesDirAndHoldsReportPath asserts the marker is written under a not-yet-existing directory and holds the report path.
+// TestWriteParkMarker_CreatesDirAndHoldsReportPath asserts the marker is written under a missing directory.
+// The marker it writes holds the report path.
 func TestWriteParkMarker_CreatesDirAndHoldsReportPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	marker := filepath.Join(t.TempDir(), "shed", "run", "driver-parked")

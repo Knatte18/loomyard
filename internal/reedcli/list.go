@@ -1,4 +1,4 @@
-// list.go implements the `list` reed verb: the hub-wide name directory, one row per strand across every task worktree and the prime.
+// list.go implements the `list` reed verb: the hub-wide name directory, one row per strand in every worktree.
 // Each row shows the strand's pane title and whether it has drifted from the name.
 // It is read-only — each worktree's engine only reads its own state and its tmux panes.
 
@@ -18,7 +18,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listCmd builds the `list` subcommand.
 func (c *reedCLI) listCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "list",
@@ -74,7 +73,7 @@ Example:
 	}
 }
 
-// worktreeDirectory reads one worktree's name directory, answering nothing for a worktree that cannot be resolved or read.
+// worktreeDirectory reads one worktree's name directory; it returns nil and logs a warning when any step fails.
 func worktreeDirectory(path string) []reedengine.DirectoryRow {
 	location, err := lymcwd.ResolveWorktree(path)
 	if err != nil {

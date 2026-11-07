@@ -1,4 +1,5 @@
-// owner_helper_test.go holds fakeOwners, the fake the start, resume, step and window tests of every tier share, and the owners fixture built for it.
+// owner_helper_test.go holds fakeOwners, the fake the start, resume, step and window tests of every tier share.
+// It also holds the owners fixture built for it.
 
 package battencli
 
@@ -6,7 +7,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
-// fakeOwners is a working in-memory stand-in for the hub's board: it serves the owners it holds and records every pull and every owner write.
+// fakeOwners is a working in-memory stand-in for the hub's board:
+// it serves the owners it holds and records every pull and every owner write.
 type fakeOwners struct {
 	// machine is the name Machine returns; machineErr, when set, replaces it.
 	machine    string
@@ -31,7 +33,8 @@ type fakeOwners struct {
 	requests []boardengine.OwnerRequest
 }
 
-// seams returns the owner seams over the fake; its ParentOf answers some-beam for some-slug when the owners hold that beam, and the prime for every other entry.
+// seams returns the owner seams over the fake.
+// ParentOf answers some-beam for some-slug when the owners hold that beam, and the prime for every other entry.
 func (f *fakeOwners) seams() ownerSeams {
 	return ownerSeams{
 		Machine: func() (string, error) { return f.machine, f.machineErr },
@@ -69,7 +72,8 @@ func (f *fakeOwners) set(req boardengine.OwnerRequest) (boardengine.OwnerWrite, 
 	return boardengine.OwnerWrite{Lost: f.lost}, nil
 }
 
-// ownedBy returns the owners of a hub with the given prime owner that holds one task, some-slug, in the given run state, inside the beam project some-beam recording owner.
+// ownedBy returns the owners of a hub with the given prime owner.
+// The hub holds one task, some-slug, in the given run state, inside the beam project some-beam, recording owner.
 func ownedBy(prime, owner string, runHeld bool) boardengine.Owners {
 	return boardengine.Owners{
 		Prime: prime,

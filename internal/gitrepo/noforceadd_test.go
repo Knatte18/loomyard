@@ -1,9 +1,6 @@
-// noforceadd_test.go machine-checks PATTERN-gitrepo-client-boundary: internal/gitrepo's
-// own non-test source may never reintroduce a `git add -f` branch or the deleted hasPathspecMagic
-// helper that used to decide when to take it.
-// It is deliberately untagged (no //go:build constraint) and does a pure substring scan — no git
-// spawn — so it stays a Tier 1 test, modeled on cmd/lym/rawgitmutation_test.go's token-ban
-// structure.
+// noforceadd_test.go machine-checks PATTERN-gitrepo-client-boundary for internal/gitrepo's own non-test source:
+// it must never reintroduce a `git add -f` branch or the retired `hasPathspecMagic` helper.
+// The test has no build tag and reads source text without spawning git, so it runs in tier0, the offline tier.
 
 package gitrepo
 
@@ -15,26 +12,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// noForceAddBannedTokens are the raw substrings gitrepo's own non-test .go
-// source may not contain: the `-f` argv entry a `git add` force-add branch
-// would carry, and any reference to the deleted hasPathspecMagic helper that
-// used to gate it.
+// noForceAddBannedTokens are the raw substrings that gitrepo's own non-test .go source may not contain:
+// the `-f` argv entry of a `git add` force-add branch, and any reference to the retired hasPathspecMagic helper.
 var noForceAddBannedTokens = []string{
 	`"-f"`,
 	"hasPathspecMagic",
 }
 
-// noForceAddMinScannedFiles is the vacuous-scan floor for this guard's
-// single-directory walk of internal/gitrepo: fewer than 5 non-test .go files
-// found means the directory resolution is misconfigured rather than the
-// package having genuinely shrunk (it has 8 today: ancestry.go, doc.go,
-// gitrepo.go, gogit.go, pull.go, push.go, reset.go, worktree.go).
+// noForceAddMinScannedFiles is the floor on the non-test .go files the walk of internal/gitrepo must find.
+// Finding fewer means the directory resolution is misconfigured, not that the package has shrunk.
 const noForceAddMinScannedFiles = 5
 
-// TestNoForceAdd_GitrepoSourceHasNoForceAddBranch walks internal/gitrepo's own non-test .go files
-// and fails if any of them contains a banned token from noForceAddBannedTokens — guarding against
-// `git add -f` (or the hasPathspecMagic helper that used to gate it) ever reappearing.
-// See PATTERN-gitrepo-client-boundary.
+// TestNoForceAdd_GitrepoSourceHasNoForceAddBranch scans the non-test .go files directly in internal/gitrepo.
+// It fails if any file contains a banned token, which keeps a `git add -f` branch from reappearing.
+// The retired `hasPathspecMagic` helper is banned the same way.
 func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -50,8 +41,7 @@ func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
 		}
 	})
 
-	// Vacuous-scan protection: a mis-resolved directory that still finds a
-	// handful of files must not pass.
+	// A mis-resolved directory that still yields a handful of files must fail here, not pass vacuously.
 	scankit.RequireFloor(t, scanned, noForceAddMinScannedFiles, "no-force-add guard")
 
 	if len(failures) > 0 {

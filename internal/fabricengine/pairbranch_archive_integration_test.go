@@ -1,4 +1,6 @@
-// pairbranch_archive_integration_test.go covers the archive step of the verb that deletes an existing pair's weft branch besides Remove: Cleanup's apply loop tags the branch tip under archive/<slug>/ and pushes the tag to the weft origin before deleting the branch.
+// pairbranch_archive_integration_test.go covers Cleanup's archive step for orphan pair weft branches.
+// The step tags each branch tip under archive/<slug>/ and pushes the tag to the weft origin.
+// Only then is the branch deleted.
 //
 // Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -23,10 +25,13 @@ func wantArchiveTag(slug, tip string) string {
 	return "archive/" + slug + "/" + tip[:12]
 }
 
-// TestCleanup_ApplyArchivesEachOrphanBeforeDeleting covers Cleanup's apply loop: every orphan weft branch is tagged on the origin at its tip and then deleted.
-// An orphan whose origin tip diverges from the local one gets a tag at each tip, the sweep pushes no branch, and the origin branch is deleted under a lease on the tip the archive read.
+// TestCleanup_ApplyArchivesEachOrphanBeforeDeleting covers Cleanup's apply loop:
+// every orphan weft branch is tagged on the origin at its tip and then deleted.
+// An orphan whose origin tip diverges from the local one gets a tag at each tip;
+// the sweep pushes no branch, and the origin branch is deleted under a lease on the tip the archive read.
 // A branch origin moved between that read and the delete stays on origin and is reported kept.
-// A slug whose teardown lock is held is skipped whole, a pair a worktree turned live under the lock gets no entry, and a lock directory that cannot be made keeps the branch with an entry error.
+// A slug whose teardown lock is held is skipped whole; a pair a worktree turned live under the lock gets no entry,
+// and a lock directory that cannot be made keeps the branch with an entry error.
 // The moved row sets a package-level hook, so neither the test nor that row is parallel.
 func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -229,7 +234,9 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	})
 }
 
-// TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep covers a failed remote archive: the branch was deleted locally under its local archive tag, the entry carries the error, and Cleanup itself still returns no error.
+// TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep covers a failed remote archive:
+// the branch was deleted locally under its local archive tag and the entry carries the error.
+// Cleanup still returns no error.
 func TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -257,7 +264,8 @@ func TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep(t *testing.T) {
 	}
 }
 
-// TestCleanup_NoOriginDeletesAndReportsArchiveSkip covers a weft repo with no origin: the orphan is deleted as before and the result reports the skipped archive once.
+// TestCleanup_NoOriginDeletesAndReportsArchiveSkip covers a weft repo with no origin:
+// the orphan is deleted and the result reports the skipped archive once.
 func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

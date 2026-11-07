@@ -1,4 +1,6 @@
-// mergestate_test.go covers ReadMergeState against a scripted prkit.API and a fake clock: which pull requests merge now, what each other one names as its cause, and how long an uncomputed mergeability is waited for.
+// mergestate_test.go covers ReadMergeState against a scripted prkit.API and a fake clock.
+// It checks which pull requests merge now and what cause each other one names.
+// It also checks how long an uncomputed mergeability is waited for.
 
 package pullrequest_test
 

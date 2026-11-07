@@ -1,5 +1,7 @@
-// pushclasses_integration_test.go proves that every push fabric runs classifies a failure, recovers where it safely can, and otherwise writes the failed-push record and its one notice.
-// The other machine is a second clone of the hub's bare repositories, and a refusing origin is a pre-receive hook or an unreachable URL.
+// pushclasses_integration_test.go proves that every push a fabric runs classifies a failure.
+// It recovers where it safely can; otherwise it writes the failed-push record and its one notice.
+// The other machine is a second clone of the hub's bare repositories,
+// and a refusing origin is a pre-receive hook or an unreachable URL.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -146,7 +148,8 @@ func (f *recordsFixture) endEntryOnOrigin(slug string) {
 }
 
 // TestPushFailureClasses is the enforcing test of the push classification:
-// each row drives one push path against a refusing or moved origin and reads the failed-push record, the mail and the origin it leaves.
+// each row drives one push path against a refusing or moved origin;
+// it reads the failed-push record, the mail and the origin it leaves.
 //
 // It runs without t.Parallel: the notifier it installs is process-global.
 func TestPushFailureClasses(t *testing.T) {
@@ -242,7 +245,8 @@ func TestPushFailureClasses(t *testing.T) {
 	})
 
 	t.Run("ARejectionThatOutlastsTheBackoffWithOriginHoldingNothingTheBranchLacksIsNoDivergence", func(t *testing.T) {
-		// Every push the hook sees is declined, so the rejection outlasts the backoff while origin keeps no commit the branch lacks.
+		// Every push the hook sees is declined, so the rejection outlasts the backoff;
+		// origin keeps no commit the branch lacks.
 		const declining = "#!/bin/sh\necho 'declined' >&2\nexit 1\n"
 		tests := []struct {
 			name string
@@ -258,7 +262,8 @@ func TestPushFailureClasses(t *testing.T) {
 				weft, branch := f.primeWeft()
 				f.originCommit(branch, "other.txt", "other\n", "other machine")
 				gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-				// The first push never reaches the hook, since git refuses it against the other machine's tip; the replay retry's pushes do.
+				// The first push never reaches the hook, since git refuses it against the other machine's tip;
+				// the replay retry's pushes do.
 				installPreReceive(t, f.hub.RecordsBare, declining)
 				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
 					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
@@ -336,7 +341,8 @@ func TestPushFailureClasses(t *testing.T) {
 	t.Run("AJudgmentFetchThatFailsAfterTheFinalRejectionIsRecordedAsOtherWithTheFetchError", func(t *testing.T) {
 		f, fake := newFailureFixture(t)
 		gitkit.CommitFile(t, f.hub.PrimeWorktree(), "local.txt", "local\n", "local")
-		// Every push is declined; the last one the backoff allows also breaks the bare repository, so the fetch that judges the rejection fails.
+		// Every push is declined; the last one the backoff allows also breaks the bare repository,
+		// so the fetch that judges the rejection fails.
 		finalPush := len(gitrepo.PushBackoffDelays()) + 2
 		bare := filepath.ToSlash(f.hub.CodeBare)
 		marker := bare + "/declines"
@@ -380,7 +386,8 @@ func TestPushFailureClasses(t *testing.T) {
 	})
 
 	t.Run("APushThatLostARaceIsRetriedUntilItLandsWithNoRecord", func(t *testing.T) {
-		// The hook declines the first push and the first retry, the way a racing push of the same branch makes them lose, while origin keeps no commit the branch lacks.
+		// The hook declines the first push and the first retry, the way a racing push of the same branch makes them lose;
+		// origin keeps no commit the branch lacks.
 		declineTwice := func(t *testing.T, bare string) {
 			t.Helper()
 			marker := filepath.ToSlash(filepath.Join(bare, "declines"))
@@ -788,7 +795,8 @@ func TestPushFailureClasses(t *testing.T) {
 	})
 
 	t.Run("ATaskBranchRewoundOnOriginIsHeldBackUntilTheRewindIsSettled", func(t *testing.T) {
-		// rewound pushes a pair's first commit, rewinds origin's task branch past it as another machine's leased update would, and commits again locally.
+		// rewound pushes a pair's first commit and rewinds origin's task branch past it;
+		// as another machine's leased update would, it commits again locally.
 		rewound := func(t *testing.T, slug string) (p *pairFixture, f *fabricengine.Fabric, originHead, dropped string) {
 			t.Helper()
 			p = newPairFixture(t, slug)

@@ -1,4 +1,5 @@
-// delivery_test.go covers the hub delivery over a hubforge hub with a pair, reed states seeded on disk and the worktree wiring replaced by a stub.
+// delivery_test.go covers the hub delivery over a hubforge hub with a pair.
+// It seeds reed states on disk and replaces the worktree wiring with a stub.
 
 package creelcli
 
@@ -100,7 +101,9 @@ func (r *recordingCommands) LoadSkills(guid string, skills []string) error {
 	return nil
 }
 
-// restoringPane is a pane drawn like Claude's across an interrupt: a running turn over an empty box until the Escape, then the stopped turn's prompt restored into the box until a C-u deletes it.
+// restoringPane is a pane drawn like Claude's across an interrupt.
+// It shows a running turn over an empty box until the Escape.
+// After the Escape it shows the stopped turn's prompt in the box until a C-u deletes it.
 type restoringPane struct {
 	mu       sync.Mutex
 	escaped  bool
@@ -130,7 +133,9 @@ func (p *restoringPane) sendKey(_, key string) error {
 	return nil
 }
 
-// restoringEngine is a shuttlefake engine for a restoringPane: RUNNING reads as a running turn, the box is the text after the caret, and the restored-prompt clear is one C-u.
+// restoringEngine is a shuttlefake engine for a restoringPane.
+// RUNNING reads as a running turn, the box is the text after the caret,
+// and the restored-prompt clear is one C-u.
 type restoringEngine struct {
 	*shuttlefake.Engine
 }
@@ -214,7 +219,8 @@ func seedReedState(t *testing.T, path string, strands map[string]string) {
 	}
 }
 
-// seedReedStrands persists whole reed strands, provider and creel-hooks mark included, in the reed state of the worktree at path.
+// seedReedStrands persists whole reed strands, provider and creel-hooks mark included.
+// It writes them to the reed state of the worktree at path.
 func seedReedStrands(t *testing.T, path string, strands []reedengine.Strand) {
 	t.Helper()
 	location, err := lymcwd.ResolveWorktree(path)
@@ -645,10 +651,13 @@ func TestHubDelivery(t *testing.T) {
 	})
 }
 
-// TestHubDelivery_SkipsAWorktreeThatNoLongerResolves pins that Strands skips a listed worktree that no longer resolves as a worktree and returns the others' strands.
+// TestHubDelivery_SkipsAWorktreeThatNoLongerResolves pins the skip of a listed worktree that no longer resolves.
+// Strands returns the others' strands for that call.
 // It logs the first skip of a path at Info for a teardown and at Warn otherwise, and a repeated skip at Debug.
-// An unusable recorded anchor, which fails the resolve for another reason than not being a git repository, still fails the call.
-// It is not parallel: logcapture.CaptureVerbose swaps the process-global logger, and its rows assert on the captured lines.
+// An unusable recorded anchor still fails the call.
+// It fails the resolve for a reason other than not being a git repository.
+// It is not parallel:
+// logcapture.CaptureVerbose swaps the process-global logger, and its rows assert on the captured lines.
 func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
 	tiergate.Require(t, 1)
 	newHub := func(t *testing.T) (*hubforge.Hub, string, string) {
@@ -692,7 +701,7 @@ func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
 		wantLevel    string
 		wantInLog    []string
 		wantNotInLog []string
-		// directoryGone is set when the row removes the worktree's directory: git then lists the worktree prunable, so the second call never reaches its skip.
+		// directoryGone marks a row that removes the worktree: git lists it prunable, so the second call never skips.
 		directoryGone bool
 	}{
 		{

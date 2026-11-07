@@ -1,5 +1,4 @@
-// worktreelist.go parses `git worktree list --porcelain` into structured entries;
-// it is the single porcelain parser shared across the codebase.
+// worktreelist.go parses `git worktree list --porcelain` into structured entries for fabric's worktree lookups.
 
 package fabricengine
 
@@ -13,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// detachedBranch is the Branch a WorktreeEntry carries for a worktree on a detached HEAD.
+// detachedBranch is the branch name recorded for a worktree whose HEAD is detached.
 const detachedBranch = "(detached)"
 
 // WorktreeEntry represents a single git worktree in the output of `git worktree list`.
@@ -25,8 +24,8 @@ type WorktreeEntry struct {
 	Prunable bool   `json:"prunable"`
 }
 
-// List returns a list of all git worktrees in the repository.
-// The FIRST block in the porcelain output is marked as Main=true;
+// List returns every worktree of the repository at sourceDir.
+// The first block of the porcelain output, the main worktree, is marked Main=true;
 // all others have Main=false.
 func List(sourceDir string) ([]WorktreeEntry, error) {
 	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, sourceDir)
@@ -38,7 +37,7 @@ func List(sourceDir string) ([]WorktreeEntry, error) {
 }
 
 // parseWorktreePorcelain parses the porcelain output from `git worktree list --porcelain`.
-// The FIRST block gets Main=true; all others get Main=false.
+// The first block gets Main=true; all others get Main=false.
 func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 	blocks := strings.Split(out, "\n\n")
 	var entries []WorktreeEntry
@@ -72,9 +71,8 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 			} else if line == "detached" {
 				entry.Branch = detachedBranch
 			} else if strings.HasPrefix(line, "prunable") {
-				// Real porcelain output emits "prunable <reason>" (a reason string
-				// follows the keyword), never a bare "prunable" line, so an
-				// exact-equality match would silently never fire.
+				// Real porcelain output emits "prunable <reason>" (a reason string follows the keyword), never a bare "prunable" line,
+				// so an exact-equality match would silently never fire.
 				entry.Prunable = true
 			} else if line == "bare" {
 				return nil, fmt.Errorf("bare repositories are not supported")
@@ -87,14 +85,11 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 	return entries, nil
 }
 
-// matchParentBranch returns the path of the first live (non-Prunable) entry in entries whose Branch
-// equals parentBranch, with the path normalized via filepath.FromSlash (mirroring PrimeName's own
-// normalization above).
-// A Prunable entry is skipped before its branch is even checked — a prunable entry is never a match,
-// per the prunable-entries-are-skipped-and-resolve-failures-name-the-branch design decision.
-// It special-cases nothing else: a match whose Branch equals the caller's own acting worktree branch
-// is an ordinary match, not an error (that refusal is loom policy, not fabric policy, and belongs to
-// a future internal/loomcli caller, never here), and Main plays no role in matching.
+// matchParentBranch returns the path of the first live (non-Prunable) entry whose Branch equals parentBranch.
+// The path is normalized via filepath.FromSlash.
+// A Prunable entry is skipped before its branch is checked, so it never matches.
+// A match on the caller's own branch is an ordinary match: refusing it is the caller's policy.
+// Main plays no role in matching.
 // Returns ("", false) when no live entry matches.
 func matchParentBranch(entries []WorktreeEntry, parentBranch string) (path string, ok bool) {
 	for _, entry := range entries {
@@ -108,15 +103,13 @@ func matchParentBranch(entries []WorktreeEntry, parentBranch string) (path strin
 	return "", false
 }
 
-// OpenParent resolves and opens the Fabric handle paired with parentBranch, the parent-fabric
-// resolution chain: it lists l's hub worktrees, matches parentBranch against them via
-// matchParentBranch, resolves the match through lymcwd.ResolveWorktree, and opens it via Open.
-// It performs no wiring and creates nothing — it is a pure read-and-open chain, exactly like the
-// existing Open(l).
-// It returns a plain (unwrapped) error naming parentBranch when no live entry matches, so a caller
-// can turn "no live pair" into its own Stuck classification without unwrapping anything.
-// Every other failure is wrapped with the branch (and, once matched, the resolved path) so neither
-// Open's bare *ErrMissingPath nor ResolveWorktree's bare lymcwd.ErrNotAGitRepo ever escapes unwrapped.
+// OpenParent opens the Fabric paired with parentBranch.
+// It lists l's hub worktrees, finds the live one on parentBranch, resolves its path as a worktree root, and opens it.
+// It performs no wiring and creates nothing.
+// It returns a plain (unwrapped) error naming parentBranch when no live entry matches,
+// so a caller can tell that case apart without unwrapping.
+// Every other failure is wrapped with parentBranch, and with the matched path once there is one,
+// so no error from the open or resolve steps escapes unwrapped.
 func OpenParent(l *lymcwd.Location, parentBranch string) (*Fabric, error) {
 	entries, err := List(l.AnchorPath())
 	if err != nil {
@@ -128,8 +121,8 @@ func OpenParent(l *lymcwd.Location, parentBranch string) (*Fabric, error) {
 		return nil, fmt.Errorf("fabricengine: no live pair for parent branch %q", parentBranch)
 	}
 
-	// The matched path is a worktree root, not an acting cwd, so ResolveWorktree is used rather
-	// than Resolve — Resolve's strict cwd gate would spuriously reject it here.
+	// The matched path is a worktree root, not an acting cwd,
+	// so it goes through ResolveWorktree: Resolve's strict cwd gate would reject it.
 	parentLoc, err := lymcwd.ResolveWorktree(matchPath)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: open parent fabric for branch %q at %q: %w", parentBranch, matchPath, err)
@@ -142,11 +135,8 @@ func OpenParent(l *lymcwd.Location, parentBranch string) (*Fabric, error) {
 	return f, nil
 }
 
-// PrimeName resolves the base name of l's main worktree by scanning `git worktree list --porcelain`
-// for the FIRST (Main) entry.
-// It replaces lymcwd's former per-Resolve prime scan: lymcwd no longer performs this
-// subprocess-backed lookup at all (see the Cwd Resolution Invariant), so every caller needing the
-// prime's name now resolves it here, on demand.
+// PrimeName returns the base name of l's main worktree, the Main entry of `git worktree list --porcelain`.
+// It runs git on every call, so a caller resolves the name when it needs it.
 func PrimeName(l *lymcwd.Location) (string, error) {
 	entries, err := List(l.AnchorPath())
 	if err != nil {
@@ -163,8 +153,8 @@ func PrimeName(l *lymcwd.Location) (string, error) {
 	return "", fmt.Errorf("no main worktree found in %q", l.AnchorPath())
 }
 
-// IsPrimeWorktree reports whether l is the hub's prime worktree: the one whose name PrimeName resolves.
-// A resolution failure is returned as PrimeName reports it.
+// IsPrimeWorktree reports whether l is the hub's prime worktree.
+// A failure to find the main worktree is returned unchanged.
 func IsPrimeWorktree(l *lymcwd.Location) (bool, error) {
 	prime, err := PrimeName(l)
 	if err != nil {
@@ -173,8 +163,8 @@ func IsPrimeWorktree(l *lymcwd.Location) (bool, error) {
 	return prime == l.WorktreeName, nil
 }
 
-// RecordsRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree
-// add/remove), resolved via PrimeName.
+// RecordsRepoRoot returns the path of the weft prime worktree.
+// It is the directory `git -C` targets for weft worktree add and remove.
 func RecordsRepoRoot(l *lymcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {

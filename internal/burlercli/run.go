@@ -1,7 +1,7 @@
-// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-halves mapper that turns a "lym burler run" invocation into a blocking burlerengine.Engine.Review call.
-// A review that reached done is followed by a burlerengine.Engine.Fix call, and both results print as a single JSON envelope.
-// It also owns decodeProfile, the strict YAML decode that maps a profile file 1:1 onto
-// burlerengine.Profile.
+// run.go implements the `run` burler verb, which maps a profile file and its flags onto one review and fix round.
+// The verb calls burlerengine.Engine.Review, then burlerengine.Engine.Fix when the review reached done,
+// and it prints both results as one JSON envelope.
+// It also owns decodeProfile, the strict YAML decode of a profile file into burlerengine.Profile.
 
 package burlercli
 
@@ -20,13 +20,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fileSetYAML mirrors burlerengine.FileSet's YAML shape.
+// fileSetYAML holds one file set of a profile: its paths and the instructions for reading them.
 type fileSetYAML struct {
 	Paths        []string `yaml:"paths"`
 	Instructions string   `yaml:"instructions"`
 }
 
-// profileYAML mirrors a profile file's top-level shape, using kebab-case keys.
+// profileYAML is the top-level shape of a profile file, with kebab-case keys.
 type profileYAML struct {
 	Target            fileSetYAML `yaml:"target"`
 	Fasit             fileSetYAML `yaml:"fasit"`
@@ -43,8 +43,9 @@ type profileYAML struct {
 	LanguageSkills yaml.Node `yaml:"language-skills"`
 }
 
-// decodeProfile strictly decodes a profile file into burlerengine.Profile
-// using Decoder.KnownFields(true). Content validation is Profile.validate's job.
+// decodeProfile strictly decodes a profile file into burlerengine.Profile.
+// It sets Decoder.KnownFields(true), so a key the profile does not declare is an error.
+// Content validation is left to Profile.validate.
 func decodeProfile(data []byte) (burlerengine.Profile, error) {
 	var parsed profileYAML
 
@@ -86,8 +87,8 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 	}, nil
 }
 
-// runCmd builds the `run` subcommand. It validates --profile manually (rather
-// than via MarkFlagRequired) to route the flag error through SetExit.
+// runCmd builds the `run` subcommand.
+// It validates --profile by hand rather than with MarkFlagRequired, so the flag error goes through SetExit.
 func (c *burlerCLI) runCmd() *cobra.Command {
 	var (
 		profilePath  string
@@ -149,28 +150,22 @@ the config default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			// ShouldAbort first, as PATTERN-cli-cobra requires of every RunE and
-			// as every sibling verb already does. A failing PersistentPreRunE has already written its
-			// error envelope and recorded the exit code, so the flag check that used to run ahead of
-			// this emitted a SECOND envelope — and the second one ("--profile is required") was the
-			// misleading one, naming a flag while the real failure was the wiring refusal above it
-			// (crucible round opus-medium-r6, R6-16). A missing --profile on an aborted pre-run is
-			// not information the operator needs; the refusal is.
+			// ShouldAbort runs first, as the CLI pattern requires of every RunE and as every sibling verb does.
+			// A failing PersistentPreRunE has already written its error envelope and recorded the exit code.
+			// Checking --profile first would write a second envelope.
+			// That envelope would name a missing flag, but the real failure was the refusal above it.
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 
-			// Validate flag shape before ever touching c.engine.
 			if profilePath == "" {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "burler: --profile is required"))
 				return nil
 			}
 
-			// Resolved against the SEAM cwd, the same base every other relative flag in this
-			// invocation uses (wire resolves --target-dir and --stencils-dir through it). A bare
-			// os.ReadFile resolved against the PROCESS cwd instead, so under an in-process driver one
-			// relative flag named a different directory than the rest (crucible round opus-medium-r6,
-			// R6-17).
+			// The path resolves against the seam's cwd, the same base every other relative flag in this invocation uses.
+			// A bare os.ReadFile would resolve against the process cwd instead.
+			// Under an in-process driver, one relative flag would then name a different directory than the rest.
 			data, err := os.ReadFile(cliwire.ResolveToldDir(c.cwd, profilePath))
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("burler: read --profile: %v", err)))
@@ -195,10 +190,9 @@ the config default.`,
 				Round:     round,
 			}
 
-			// Standalone mode boots its own reed session here, idempotently, because nothing else
-			// can: `lym reed up` is hub-only, and pre-fix the round's spawn died on "no reed
-			// session" with an impossible recourse (crucible round fable5-high-r3, F-A1). Nil in
-			// hub mode, where the session is the operator's or loom's own to manage.
+			// Standalone mode boots its own reed session here, idempotently, because nothing else can.
+			// `lym reed up` is hub-only, and without this the round's spawn fails with "no reed session".
+			// Nil in hub mode, where the session is the operator's or loom's own to manage.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("burler: bring up the standalone reed session: %v", err)))
@@ -238,20 +232,18 @@ the config default.`,
 	return cmd
 }
 
-// resultEnvelope maps the two halves' results onto the JSON envelope run's RunE prints via
-// output.Ok. It is a separate function (rather than an inline map literal) so its shape
-// is directly unit-testable without needing a live engine call.
-// fix is the zero FixResult when the fixer was not reached because the review did not finish.
-// The outcome is the fix half's when it ran and the review's otherwise.
-// The verdict, fork count and cluster warnings come from the review, and fixSkipped reports a fix that spawned no fixer.
-// review.ForkAudit is nil for a non-cluster review (or one that never reached done), so forkCount guards that nil rather than dereferencing Forks on it.
+// resultEnvelope builds the JSON envelope the run verb prints from the two halves' results.
+// It is a separate function, not an inline map literal, so its shape can be unit-tested without a live engine call.
+// fix is the zero FixResult when the review did not finish, so the fixer was never reached.
+// The outcome is the fix half's when the fix ran, and the review's otherwise.
+// The verdict, fork count and cluster warnings come from the review; fixSkipped reports a fix that spawned no fixer.
+// forkCount is zero when review.ForkAudit is nil, which holds for a non-cluster review or one that never reached done.
 //
-// mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired, taken as
-// parameters rather than read off a receiver so this function stays directly unit-testable without a
-// live engine call. They are emitted in BOTH modes deliberately: a mode field that existed only
-// in standalone could not be used to tell the two modes apart, which is its whole purpose, and
-// stencilsDir is equally worth reporting in a hub run pointed at an experimental stencil set via the
-// flag. stateDir is the empty string in hub mode, where no derived state directory exists.
+// mode, stateDir and stencilsDir describe how the stack was wired.
+// They are passed in rather than read off a receiver.
+// They are emitted in both modes: a mode field present only in standalone could not tell the two modes apart.
+// stencilsDir is worth reporting in a hub run pointed at an experimental stencil set.
+// stateDir is empty in hub mode, where no derived state directory exists.
 func resultEnvelope(review burlerengine.ReviewResult, fix burlerengine.FixResult, mode, stateDir, stencilsDir string) map[string]any {
 	forkCount := 0
 	if review.ForkAudit != nil {

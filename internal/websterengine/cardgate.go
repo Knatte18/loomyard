@@ -1,6 +1,6 @@
-// cardgate.go derives each card's gate steps and the batch's gate, which begin-batch and recover-batch render into the implementer prompt's card_gates and batch_gate markers.
-// Go derives the command and the fork runs it;
-// Go never runs it, so a fork that skips it is caught by the plan-level verify gate.
+// cardgate.go derives each card's gate steps and the batch's gate.
+// begin-batch and recover-batch render them into the implementer prompt's card_gates and batch_gate markers.
+// The fork runs these steps, never Go itself, so a fork that skips them is caught by the plan-level verify gate.
 
 package websterengine
 
@@ -12,7 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// cardGateCommand returns the gate for card as its ordered steps: the hub's `card` gate call over the card's own scope, which also runs the lint steps the `card` key lists.
+// cardGateCommand returns the gate for card as its ordered steps:
+// the hub's `card` gate call over the card's own scope.
+// The call also runs the lint steps that the `card` key lists.
 // It refuses, with the config's way forward, a hub whose `card` list the config does not hold.
 func cardGateCommand(card planparser.Card, gate gateslot.Config) ([]string, error) {
 	call, err := gate.AgentGateCall("card", card.ID())
@@ -24,7 +26,6 @@ func cardGateCommand(card planparser.Card, gate gateslot.Config) ([]string, erro
 
 // renderCardGates renders each card in declared order as its pointer bullet with one indented sub-bullet per gate step.
 // Each step is its own backticked command, never chained, so a fork runs each as its own Bash call.
-// Pointers are spelled as renderCardPointers spells them.
 func renderCardGates(cards []planparser.Card, planDirDisplay string, gate gateslot.Config) (string, error) {
 	var lines []string
 	for _, c := range cards {

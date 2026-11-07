@@ -1,6 +1,6 @@
-// mergestate_integration_test.go — integration coverage for the on-disk merge-state record and the
-// foreign-merge-state probes: save/load roundtrip, absence, delete idempotence, and
-// foreignMergeStatePresent's true/false split against a real hubforge pair.
+// mergestate_integration_test.go covers the on-disk merge-state record and the foreign-merge-state probes.
+// It tests the save and load roundtrip, absence, and delete idempotence;
+// foreignMergeStatePresent's true and false cases run against a real hubforge pair.
 
 package fabricengine_test
 
@@ -19,9 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newMergeStateFixture builds a fresh hubforge pair and the *Fabric handle over its prime
-// warp/weft worktrees — the standard fixture every test in this file drives the merge-state record
-// and foreign-probe helpers against.
+// newMergeStateFixture builds a fresh hubforge pair and the *Fabric handle over its prime warp and weft worktrees.
+// Every test in this file uses it to drive the merge-state record and foreign-probe helpers.
 func newMergeStateFixture(t *testing.T) (f *fabricengine.Fabric, h *hubforge.Hub) {
 	t.Helper()
 
@@ -30,9 +29,8 @@ func newMergeStateFixture(t *testing.T) (f *fabricengine.Fabric, h *hubforge.Hub
 	return f, h
 }
 
-// assertNoZeroFields fails the test if any exported field of v (a struct value, not a pointer) still
-// carries its type's zero value — the guard that keeps a whole-record roundtrip assertion honest as
-// the record grows fields.
+// assertNoZeroFields fails the test for any field of v, a struct value, that holds its type's zero value.
+// It keeps a whole-record roundtrip assertion honest as the record grows fields.
 func assertNoZeroFields(t *testing.T, label string, v any) {
 	t.Helper()
 
@@ -46,11 +44,10 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 }
 
 // TestMergeState_Record drives the on-disk merge-state record through one pair, in this order:
-// with no record ever saved, loadMergeState reports not-found and mergeRecordExists reports false;
-// the save->load roundtrip preserves every field, the record lands at <weft gitdir>/fabric-merge.json
-// and is invisible to git status on both sides;
-// and deleteMergeState removes a saved record and tolerates a second call against an already-absent
-// one.
+// with no record saved, loadMergeState reports not-found and mergeRecordExists reports false;
+// the save->load roundtrip preserves every field;
+// the record lands at <weft gitdir>/fabric-merge.json, and git status on both sides does not show it;
+// and deleteMergeState removes a saved record and tolerates a second call against an absent one.
 // The steps run serially on one fixture, each starting from the record state the step before left.
 //
 //lym:seam internal/fabricengine#MergeStateForTest
@@ -95,9 +92,9 @@ func TestMergeState_Record(t *testing.T) {
 			StartedAt:     time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}
 
-		// "EveryField" is only true if want actually populates every field with a non-zero value: a
-		// field added to the record and left out of want here would roundtrip zero-to-zero and pass,
-		// which is the test staying green while the property it names goes unchecked.
+		// "EveryField" is only true if want populates every field with a non-zero value.
+		// A field added to the record and left out of want would roundtrip zero-to-zero and pass,
+		// so the test would stay green while the property it names goes unchecked.
 		assertNoZeroFields(t, "want", want)
 
 		if err := fabricengine.SaveMergeStateForTest(f, want); err != nil {
@@ -154,11 +151,11 @@ func TestMergeState_Record(t *testing.T) {
 	})
 }
 
-// assertMergeStateFileInvisibleToGit fails the test if `git status --porcelain` in dir mentions
-// mergeStateFileName. It does not require dir to be otherwise clean — a prime weft worktree
-// legitimately carries its own untracked scaffolding (e.g. the _lym junction target) independent of
-// the merge-state record — only that saving the record itself produced no observable git-status
-// entry.
+// assertMergeStateFileInvisibleToGit fails the test if `git status --porcelain` in dir mentions mergeStateFileName.
+// That means saving the record produced a visible git-status entry.
+// It does not require dir to be otherwise clean.
+// A prime weft worktree can carry its own untracked scaffolding, such as the _lym junction target.
+// That scaffolding is independent of the merge-state record.
 func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {
 	t.Helper()
 
@@ -168,9 +165,9 @@ func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {
 	}
 }
 
-// TestMergeState_ForeignMergeStatePresent covers the true/false split: a plain-git conflicted merge
-// staged directly in the warp checkout must report true and leave the foreign state untouched; a
-// clean pair must report false.
+// TestMergeState_ForeignMergeStatePresent checks the true/false split.
+// A plain-git conflicted merge staged directly in the warp checkout must report true.
+// A clean pair must report false.
 func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -205,7 +202,7 @@ func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
 		t.Fatalf("ForeignMergeStatePresentForTest() after foreign conflicted merge = false; want true (mergeErr from git merge = %v)", mergeErr)
 	}
 
-	// The probe must leave the foreign state untouched: MERGE_HEAD should still be present.
+	// The probe must leave the foreign state untouched, so MERGE_HEAD must still be present.
 	statCmd := exec.Command("git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
 	statCmd.Dir = warpPath
 	if err := statCmd.Run(); err != nil {
@@ -213,11 +210,12 @@ func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
 	}
 }
 
-// driveConflictedMergeStart builds a divergent "conflict-branch" in dir off the current HEAD and
-// runs repo.MergeStart against it, leaving dir with conflict markers present and the tracked
-// worktree dirty — the state resetMergeSides' abort exists to discard. It fails the test unless the
-// merge genuinely classified as conflicted, since a non-conflicted outcome would make the resulting
-// reset assertions vacuous.
+// driveConflictedMergeStart builds a divergent "conflict-branch" in dir off the current HEAD.
+// It then runs repo.MergeStart against it.
+// The merge leaves dir with conflict markers present and the tracked worktree dirty.
+// That is the state the reset under test exists to discard.
+// It fails the test unless the merge is classified as conflicted.
+// A non-conflicted outcome would make the reset assertions vacuous.
 func driveConflictedMergeStart(t *testing.T, dir string, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -237,8 +235,8 @@ func driveConflictedMergeStart(t *testing.T, dir string, repo *gitrepo.Repo) {
 }
 
 // wantWorktreeResetEntries asserts entries is exactly one KindWorktreeReset entry carrying the warp
-// pre-merge SHA — resetMergeSides no longer touches the weft, so there is nothing else for the
-// record to carry.
+// pre-merge SHA.
+// The weft is never a reset target, so the warp reset is the record's only entry.
 func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wantWarpSHA string) {
 	t.Helper()
 
@@ -253,21 +251,16 @@ func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wan
 	}
 }
 
-// TestMergeState_ResetMergeSides drives resetMergeSides through one pair, in this order:
-// with the warp side left dirty by a real conflicted MergeStart (the abort/self-abort reset), warp
-// HEAD restores to the captured pre-merge SHA, the warp worktree ends clean, MergeHeadPresent is
-// false on the warp, and the record carries exactly one KindWorktreeReset entry — the weft side was
-// never dirtied by this fixture, so it stays exactly as it started, trivially true whether or not a
-// weft reset ever ran, but stated because the weft is no longer a reset target regardless;
-// against the hub's prime warp worktree with nothing to reset, the ownership gate admits it — the
-// sole worktree resetMergeSides now ever resets, the weft having been dropped as a reset target
-// entirely;
-// and with the weft side, rather than the warp side, left dirty by a real conflicted MergeStart, the
-// warp-only reset restores the warp HEAD alone and the weft's conflicted merge state is left exactly
-// as it was — MERGE_HEAD still present, conflict markers still on disk — per
-// abort-does-not-reset-weft.
-// The steps run serially on one fixture, in this order: the weft step leaves its conflict in place,
-// so it runs last.
+// TestMergeState_ResetMergeSides drives resetMergeSides on one fixture, running its steps serially.
+// With the warp side left dirty by a real conflicted MergeStart, the reset restores warp HEAD.
+// Warp HEAD returns to the captured pre-merge SHA, and the warp worktree ends clean.
+// MergeHeadPresent is false on the warp, and the record holds exactly one KindWorktreeReset entry.
+// The weft side is never dirtied in that case, so its unchanged HEAD check is trivially true.
+// Against the hub's prime warp worktree with nothing to reset, the ownership gate must admit the reset.
+// With the weft side left dirty by a real conflicted MergeStart, the warp-only reset restores warp HEAD alone.
+// The weft's conflicted merge state stays exactly as it was:
+// MERGE_HEAD still present, conflict markers still on disk.
+// The weft step leaves its conflict in place, so it runs last.
 func TestMergeState_ResetMergeSides(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -323,10 +316,10 @@ func TestMergeState_ResetMergeSides(t *testing.T) {
 
 		driveConflictedMergeStart(t, weftPath, fabricengine.WeftForTest(f))
 
-		// Captured AFTER driveConflictedMergeStart, not before: that helper commits real content onto
-		// the checked-out branch before running MergeStart, so the weft's pre-reset HEAD has already
-		// moved off its pre-fixture SHA — the reset's job is to leave it exactly where the conflict
-		// left it, not to restore some earlier point.
+		// Capture the weft HEAD after driveConflictedMergeStart, not before it.
+		// That helper commits real content onto the checked-out branch before MergeStart,
+		// so the weft HEAD has already moved off its pre-fixture SHA.
+		// The reset must leave the weft where the conflict left it, not restore an earlier point.
 		weftBeforeReset := fabricengine.CurrentSHAForTest(t, weftPath)
 
 		rec := fabricengine.NewMutations(h.Path)

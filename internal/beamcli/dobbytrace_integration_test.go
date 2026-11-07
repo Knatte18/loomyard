@@ -1,4 +1,5 @@
-// dobbytrace_integration_test.go pins that each exit `lym beam dobby` takes before dobbyengine.Run leaves a line in the dobby's log and, after a re-exec, a notice, over a hubforge hub.
+// dobbytrace_integration_test.go pins that each exit `lym beam dobby` takes before dobbyengine.Run logs a line.
+// After a re-exec, each such exit also leaves a notice, over a hubforge hub.
 
 package beamcli
 

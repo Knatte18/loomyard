@@ -40,7 +40,7 @@ type fakeVerifyTree struct {
 	sites    []verifytree.Site
 	// resultByCommand overrides result for a command it names.
 	resultByCommand map[string]verifytree.Result
-	// writeLog, when set, makes every passed or failed call name `verify-<call>.log` in the verify directory on its result and write it there, as a real run does.
+	// writeLog, when set, makes each passed or failed call write `verify-<call>.log` to the verify directory.
 	writeLog func(path string)
 }
 
@@ -86,7 +86,8 @@ func (f *fakeVerifyTree) verify(ctx context.Context, p verifytree.Paths, site ve
 	return result, f.verifyErr
 }
 
-// gateFixture builds a gate for the row of gateKey over t.TempDir() paths with fake verifytree seams and a command closure that counts its calls and records the key each was made with.
+// gateFixture holds a gate for the row of gateKey, built over t.TempDir() paths with fake verifytree seams.
+// Its command closure counts its calls and records the key each call was made with.
 type gateFixture struct {
 	gate         verifyGate
 	fake         *fakeVerifyTree
@@ -124,10 +125,10 @@ const (
 	gateBaseCall    = "lym gate test --wait --tier 0 --all"
 )
 
-// fixedGateTierLists are the tier lists fixedGateTiers answers, one gate's highest tier differing from its first.
+// fixedGateTierLists holds the tier list for each fixture gate; one gate's highest tier differs from its first.
 var fixedGateTierLists = map[string][]int{"parent-align": {0, 1}, "finalize": {0, 1}, "webster": {0}}
 
-// fixedGateTiers is the tier lookup the fixtures tell their gate.
+// fixedGateTiers returns a copy of the tier list for a named gate, or an error for an unknown gate.
 func fixedGateTiers(gate string) ([]int, error) {
 	list, ok := fixedGateTierLists[gate]
 	if !ok {
@@ -145,8 +146,10 @@ type waitMarkCall struct {
 	start time.Time
 }
 
-// TestVerifyGate_WaitMark pins the mark around every verify: clear, set `verify <producer>` at the start time, clear again on every way out of the verify,
-// and a failing callback or a nil one leaving the verdict exactly as it is without a mark.
+// TestVerifyGate_WaitMark pins the mark around every verify.
+// The mark is cleared, then set to `verify <producer>` at the start time,
+// and it is cleared again on every way out of the verify.
+// A failing callback or a nil one leaves the verdict unchanged and sets no mark.
 func TestVerifyGate_WaitMark(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -208,7 +211,9 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_CheckMapsVerifyResult pins how each verifytree status turns into the gate's verdict, and that the verify seam receives the configured command, the gate's paths and the calling producer's site label.
+// TestVerifyGate_CheckMapsVerifyResult pins how each verifytree status maps to the gate's verdict.
+// It also pins what the verify seam receives.
+// That is the configured command, the gate's paths and the calling producer's site label.
 func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -359,7 +364,9 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_CheckWithoutCommandSkipsVerify pins that a gate with no command to run proceeds without calling verify, warning once when the command closure answers empty and staying silent when no closure is wired.
+// TestVerifyGate_CheckWithoutCommandSkipsVerify pins that a gate with no command proceeds without calling verify.
+// It also pins that the gate warns once when the command closure answers empty.
+// With no closure wired, the gate stays silent.
 //
 // It stays serial because logcapture swaps the process-global logger.
 func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
@@ -430,7 +437,10 @@ func TestVerifyGate_Cancellation(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_Clean pins the clean-tree check: a clean tree gives no reason, a dirty one names the point and the paths (capped), a status failure is an error naming the producer, and the check runs with no verify command and with a zero-value gate.
+// TestVerifyGate_Clean pins the clean-tree check.
+// A clean tree gives no reason, and a dirty one names the point and the paths (capped).
+// A status failure is an error naming the producer.
+// The check also runs with no verify command and with a zero-value gate.
 func TestVerifyGate_Clean(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

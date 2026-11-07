@@ -1,10 +1,10 @@
-// config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig,
-// overrides round-trip, a malformed role model-spec fails loud naming the offending key, and an
-// absent _lym/ degrades to the embedded template,
-// seeded via plain os.MkdirAll/os.WriteFile against a
-// t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate
-// only requires a filesystem _lym/config/<module>.yaml, no git repository, so this test stays
-// untagged and spawn-free (Test Tier Purity Invariant).
+// config_test.go verifies that webster.yaml's template parses and that defaults resolve through LoadConfig.
+// It also checks that overrides round-trip, that a malformed role model-spec fails loud naming the offending key,
+// and that an absent _lym/ degrades to the embedded template.
+// It seeds files with plain os.MkdirAll and os.WriteFile against a t.TempDir().
+// It does not use gitkit's config fixture-copy helpers:
+// configengine.LoadOrTemplate only requires a filesystem _lym/config/<module>.yaml and no git repository.
+// So this test stays untagged and spawn-free (Test Tier Purity Invariant).
 
 package websterengine_test
 
@@ -20,8 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// seedConfig writes module's content to <baseDir>/_lym/config/<module>.yaml, creating the config directory (and its _lym parent) as needed.
-// It is a plain-filesystem stand-in for gitkit's config seeding, deliberately avoiding that helper's git spawn since configengine.Load never needs a repository.
+// seedConfig writes content to <baseDir>/_lym/config/<module>.yaml and creates the directories above it.
+// It is a plain-filesystem stand-in for gitkit's config seeding;
+// it avoids that helper's git spawn, since configengine.Load never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
 
@@ -35,9 +36,8 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestConfigTemplate pins that every yaml tag of Config appears in the embedded template's text, so a
-// struct field added without a matching template line is caught mechanically rather than relying on
-// review to notice the gap.
+// TestConfigTemplate pins that every yaml tag of Config appears in the embedded template's text,
+// so a field added without a matching template line is caught here, not left to review.
 //
 //testtiming:keep pins every Config yaml tag having a template line; the load test only observes the keys the template already holds
 //lym:seam internal/websterengine#Config
@@ -58,8 +58,7 @@ func TestConfigTemplate(t *testing.T) {
 	}
 }
 
-// containsKey reports whether text contains a "<key>:" line-start token,
-// the shape every one of this template's keys takes.
+// containsKey reports whether text has a "<key>:" line-start token, the shape every key in the template takes.
 func containsKey(text, key string) bool {
 	needle := key + ":"
 	for _, line := range strings.Split(text, "\n") {
@@ -71,12 +70,14 @@ func containsKey(text, key string) bool {
 }
 
 // TestLoadConfig pins how LoadConfig resolves a hub webster.yaml:
-// the template seeded verbatim loads its defaults, overrides round-trip, a file still carrying the retired poll_wait_s key keeps loading (the
-// unmarshal ignores an unknown key), a hand-written file missing numeric knobs loads them at the
-// template defaults rather than Go's zero value (RecoveryTimeoutMin at 0 would classify every
-// recovery batch dead/timeout on the first poll), an uninitialized _lym/ degrades to the embedded
-// template, a malformed role model-spec fails loud naming the offending key, and webster's own
-// positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
+// the template seeded verbatim loads its defaults, and overrides round-trip.
+// A file carrying an unknown key, such as poll_wait_s, keeps loading, since the unmarshal ignores it.
+// A hand-written file missing numeric knobs loads them at the template defaults, not at Go's zero value:
+// RecoveryTimeoutMin at 0 would classify every recovery batch dead/timeout on the first poll.
+// An uninitialized _lym/ degrades to the embedded template.
+// A malformed role model-spec fails loud naming the offending key.
+// webster's own positive-integer check still refuses a knob the file sets to zero;
+// the template fill never touches it.
 // Both refusals are marked configengine.ErrInvalid.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -100,7 +101,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// body is the webster.yaml content; uninitialized skips seeding any _lym/ at all.
+		// body is the webster.yaml content; uninitialized skips seeding _lym/ entirely.
 		body          string
 		uninitialized bool
 		want          websterengine.Config
@@ -144,7 +145,7 @@ func TestLoadConfig(t *testing.T) {
 			want: templateDefaults,
 		},
 		{
-			// Do NOT create _lym/ — LoadConfig must degrade to the embedded template.
+			// _lym/ is not created, so LoadConfig must degrade to the embedded template.
 			name:          "an uninitialized hub falls back to the template",
 			uninitialized: true,
 			want:          templateDefaults,

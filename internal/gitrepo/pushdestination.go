@@ -1,5 +1,6 @@
-// pushdestination.go resolves where a push lands: the URL git sends to and the remote-tracking ref that records the branch locally.
-// It also records a finished push in that ref, and in the branch's upstream setting, under the remote-refs lock.
+// pushdestination.go resolves where a push lands.
+// It yields the URL git sends to and the remote-tracking ref that records the branch locally.
+// It also records a finished push in that ref and in the branch's upstream setting, under the remote-refs lock.
 
 package gitrepo
 
@@ -12,7 +13,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-// defaultPushRemote is the remote a push of the checked-out branch goes to when neither the branch nor the repository names one.
+// defaultPushRemote is the remote a default push goes to.
+// It applies when neither the branch nor the repository names a push remote.
 const defaultPushRemote = "origin"
 
 // PushReflogSubject is the reflog subject of a remote-tracking ref a recorded push moves.
@@ -20,9 +22,12 @@ const defaultPushRemote = "origin"
 const PushReflogSubject = "update by push"
 
 // pushDestination is where a push of one branch lands and how this repository records it.
-// url is what git pushes to: a URL writes no remote-tracking ref, so the transfer runs outside the remote-refs lock.
-// trackingRef is the ref the remote's fetch refspecs map the branch to, empty when the remote is no configured remote or no refspec maps the branch.
-// setUpstream is set for a default push of a branch with no upstream yet, which then takes the remote's branch as its upstream, as git's push.autoSetupRemote does.
+// url is what git pushes to.
+// A URL writes no remote-tracking ref, so the transfer runs outside the remote-refs lock.
+// trackingRef is the ref the remote's fetch refspecs map the branch to.
+// It is empty when the remote is not configured or no refspec maps the branch.
+// setUpstream is set for a default push of a branch with no upstream yet.
+// Such a push takes the remote's branch as its upstream, as git's push.autoSetupRemote does.
 type pushDestination struct {
 	remote      string
 	branch      string
@@ -32,8 +37,9 @@ type pushDestination struct {
 }
 
 // resolvePushDestination returns where a push of branch to remote lands.
-// An empty remote is the default push of the checked-out branch: the branch's push remote, the repository's push default, the branch's upstream remote or origin, in that order.
-// A remote that names no configured remote is pushed to as a URL or path, and records nothing.
+// An empty remote means the default push of the checked-out branch.
+// Its remote is, in order: the branch's push remote, the repository's push default, the upstream remote, or origin.
+// A remote that is not a configured remote is pushed to as a URL or path, and records nothing.
 func (r *Repo) resolvePushDestination(remote, branch string) (pushDestination, error) {
 	dest, err := readGoGit(r, func(repo *git.Repository) (pushDestination, error) {
 		cfg, err := repo.Config()
@@ -86,8 +92,10 @@ func (r *Repo) resolvePushDestination(remote, branch string) (pushDestination, e
 }
 
 // recordPush records a finished push to dest in one hold of the remote-refs lock.
-// The tracking ref moves to sha, or is deleted when sha is empty, and the branch takes its upstream when dest asks for one.
-// With keepNewer set, a tracking ref already at a descendant of sha stays there, since a fetch that ran after the push read origin past it.
+// The tracking ref moves to sha, or is deleted when sha is empty,
+// and the branch takes its upstream when dest asks for one.
+// With keepNewer set, a tracking ref already at a descendant of sha stays there.
+// A fetch that ran after the push reads origin past sha, which is why the newer ref is kept.
 // A destination with nothing to record takes no lock.
 // Its callers log a failure and never return it, since the transfer it records has already landed.
 func (r *Repo) recordPush(dest pushDestination, sha string, keepNewer bool) error {

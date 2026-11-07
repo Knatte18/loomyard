@@ -1,31 +1,18 @@
-// completionsignal_enforcement_test.go is the tripwire for the Completion Signal Invariant that
-// wait.go's own file doc comment states and PATTERN-shuttle-provider-seam records: every code path in this
-// package that finalizes a NEGATIVE answer to "did this run finish" must consult allOutputFilesExist
-// over the run's OutputFiles first.
+// completionsignal_enforcement_test.go is a tripwire for the Completion Signal Invariant.
+// The invariant covers every path in this package that finalizes a negative answer to "did this run finish":
+// such a path must consult allOutputFilesExist over the run's OutputFiles first.
 //
-// It is deliberately NOT the shape internal/planparser/shape.go's ledger meta-tests take, and the
-// difference is worth stating because the precedent is close enough to be misleading. Those tests
-// prove COMPLETENESS, because their domain is a closed four-value enum they can range over. This one
-// cannot prove anything of the sort: the domain here is "however many return statements a future diff
-// adds", which is not enumerable in advance. What it does instead is force a human to look. A diff
-// that adds a negative-verdict return, or deletes a file-contract check, fails this test with a
-// message naming exactly what moved; a reader then confirms the new site consults the check and
-// updates the audited set below. That is a tripwire, not a proof, and it is claimed as nothing more.
+// The tripwire forces a human to look; it does not prove the invariant holds.
+// A diff that adds a negative-verdict return or deletes a file-contract check fails a test naming what moved.
+// The reader then confirms the new site consults the check and updates the audited set below.
 //
-// TWO assertions, and neither subsumes the other:
+// Two assertions cover different mutations, and neither subsumes the other.
+//   - TestCompletionSignal_NegativeVerdictReturnSites catches an unguarded new exit.
+//     A count of allOutputFilesExist calls cannot catch one, since an unguarded return adds no such call.
+//   - TestCompletionSignal_FileContractCallSites catches a guard deleted from an exit that already has one,
+//     which leaves the return-site set unchanged.
 //
-//   - TestCompletionSignal_NegativeVerdictReturnSites pins the negative-verdict return sites. This is
-//     the one that catches an UNGUARDED NEW EXIT, which is how all six known instances arrived. A
-//     test that only counted allOutputFilesExist calls could not: an unguarded new return adds no
-//     such call, so the count would still read "as expected" while the bug was live. Crucible round
-//     opus5-high-r7's F1 is the proof — three negative exits in attach.go that never called the
-//     check, present the whole time the audited call-site count was correct.
-//   - TestCompletionSignal_FileContractCallSites pins the allOutputFilesExist call sites. This is the
-//     one that catches the opposite mutation: a guard being DELETED from an exit that already has
-//     one, which leaves the return-site set unchanged.
-//
-// Both scans are AST-based rather than textual so a mention inside a doc comment or a string literal
-// can never trip them.
+// Both scans are AST-based, so a mention in a doc comment or a string literal cannot trip them.
 
 package shuttleengine
 
@@ -42,21 +29,21 @@ import (
 
 // completionSignalScannedFiles are the files that own every run-outcome verdict in this package:
 // wait.go finalizes a live run's outcome, attach.go decides whether a persisted one is reconstructed
-// or respawned over, and stop.go records a stop over a run that has not finished. A future file that grows a third kind of verdict belongs in this list, and the
-// failure message says so.
+// or respawned over, and stop.go records a stop over a run that has not finished.
+// A future file that grows a third kind of verdict belongs in this list, and the failure message says so.
 var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go", "apierrorretry.go"}
 
 // negativeVerdictMarkers are the identifiers whose appearance anywhere in a return statement's
-// results makes that return a NEGATIVE answer to "did this run finish".
+// results makes that return a negative answer to "did this run finish".
 //
-// The four the invariant names — OutcomeDied, OutcomeTimeout, a mechanism-failure error, and
-// verdictRespawnEligible — plus three that are how two of those four are actually spelled at a
-// return: Errorf for the mechanism-failure errors, and the two package-level sentinels
-// checkLivenessTick returns for reed's own bookkeeping going away. verdictError is included because
-// it is the third disposition of the same three-way choice verdictRespawnEligible belongs to, and a
-// new one of those is exactly as worth a human look.
+// The invariant names four: OutcomeDied, OutcomeTimeout, a mechanism-failure error, and verdictRespawnEligible.
+// Three more are how two of those four are actually spelled at a return.
+// Errorf is the spelling of the mechanism-failure errors.
+// The two package-level sentinels checkLivenessTick returns, when reed's bookkeeping is gone, are also markers.
+// verdictError is the third disposition of the three-way choice that verdictRespawnEligible belongs to.
+// A new return of it is worth a human look too.
 //
-// OutcomeDone is deliberately absent: it is the positive answer and abandons no run.
+// OutcomeDone is absent: it is the positive answer and abandons no run.
 var negativeVerdictMarkers = map[string]bool{
 	"OutcomeDied":                 true,
 	"OutcomeTimeout":              true,
@@ -69,83 +56,70 @@ var negativeVerdictMarkers = map[string]bool{
 	"Errorf":                      true,
 }
 
-// auditedNegativeVerdictReturns is the audited set of negative-verdict return sites as of the
-// shuttle-start-guarantees-readiness task's shuttle-blocking-start batch, keyed by
-// "<function> [<markers>]" with the number of such returns in that function as the value.
+// auditedNegativeVerdictReturns is the audited set of return sites that give a negative verdict.
+// It is keyed by "<function> [<markers>]", with the number of such returns in that function as the value.
 //
-// Keying on the enclosing function plus the marker set — rather than on file:line — is deliberate:
-// line numbers drift on every edit above them, which would make this test fail for reasons that have
-// nothing to do with the invariant and get it deleted. This key changes only when a return statement
-// is added, removed, or changes which negative value it yields.
+// The key names the enclosing function and the marker set, not file:line.
+// Line numbers shift with every edit above them, and a test that fails on a shift gets deleted.
+// A key changes only when a return is added or removed, or when it yields a different negative value.
 //
-// Every entry carries its justification, because "the count is 7" is not something a future reader
-// can check without one:
+// Each entry carries its justification, because a bare count cannot be checked by a future reader:
 //
-//   - Wait [Errorf] x4 — the events-unreadable cap and the three status-cap arms, all four behind
+//   - Wait [Errorf] — the events-unreadable cap and the three status-cap arms, all behind
 //     finishedDespiteMechanismFailure, which consults the contract first.
-//   - handleGatedBoundary [Errorf] x1 — the gate-evaluation error returned when run.evaluateGate()
-//     fails at a turn boundary (the events-tick Done branch's former fifth Wait site, moved into the
-//     helper a poll tick also reaches). That is an infrastructure fault that never burns an attempt
-//     and never reaches the LLM, so it needs no file-contract consultation of its own — the run
-//     reached a positive OutcomeDone already, and the gate runs strictly after it, at a turn
-//     boundary with no in-progress turn to interrupt.
-//   - Wait [OutcomeTimeout] x1 — the run deadline, routed through classifyDeadlineExpiry.
-//   - checkLivenessTick [OutcomeDied] x3 — the dead-pane branch, the gone-session branch and the untracked strand of a handle Stop marked,
-//     each guarded by the allOutputFilesExist directly above it.
-//   - checkLivenessTick [errStrandNotTracked] / [errStrandPaneBindingCleared] x1 each — the two
-//     mechanism-failure sentinels, each guarded by the allOutputFilesExist directly above it.
-//   - checkLivenessTick [Errorf] x1 — the per-tick reed.Status error. NOT itself a finalization: Wait
-//     counts it toward maxStatusRetries and only the cap finalizes, behind
+//   - handleGatedBoundary [Errorf] — the gate-evaluation error returned when run.evaluateGate()
+//     fails at a turn boundary. It is an infrastructure fault that never burns an attempt and never
+//     reaches the LLM, so it needs no file-contract consultation of its own. The run already reached
+//     a positive OutcomeDone, and the gate runs strictly after it, at a turn boundary with no
+//     in-progress turn to interrupt.
+//   - Wait [OutcomeTimeout] — the run deadline, routed through classifyDeadlineExpiry.
+//   - checkLivenessTick [OutcomeDied] — the dead-pane branch, the gone-session branch, and the untracked
+//     strand of a handle that Stop marked.
+//     Each is guarded by the allOutputFilesExist call directly above it.
+//   - checkLivenessTick [errStrandNotTracked] and [errStrandPaneBindingCleared] — the two
+//     mechanism-failure sentinels, each guarded by the allOutputFilesExist call directly above it.
+//   - checkLivenessTick [Errorf] — the per-tick reed.Status error. It is not itself a finalization:
+//     Wait counts it toward maxStatusRetries, and only the cap finalizes, behind
 //     finishedDespiteMechanismFailure.
-//   - classifyStartupWindow [OutcomeDied] x1 — the expired startup window, routed through
-//     classifyDeadlineExpiry.
-//   - dispositionCandidate [verdictRespawnEligible] x2 — the tracked-and-live-but-terminal record and
-//     the confirmed-dead-pane record. Both are reachable only past the function's own top-of-body
-//     contract guard, so each is either a run that ALREADY ended or one whose files are not all
-//     present; neither needs a further check.
-//   - leftoverThenAgeVerdict [verdictRespawnEligible] x3, [verdictError] x1 — the leftover-then-age
-//     rule, whose first line is the contract check. The third respawn-eligible return is the terminal-
-//     Outcome check added by the shuttle-blocking-start batch: it sits after the function's file-
-//     contract check, so it is reached only when the output files are not all present.
-//   - stopOutcome [runOutcomeStopped] x1 — the one site that chooses the stopped outcome, behind the
+//   - classifyStartupWindow [OutcomeDied] — the expired startup window, routed through classifyDeadlineExpiry.
+//   - dispositionCandidate [verdictRespawnEligible] — the tracked-and-live-but-terminal record and the
+//     confirmed-dead-pane record. Both are reachable only past the function's top-of-body contract guard,
+//     so each is either a run that already ended or one whose files are not all present;
+//     neither needs a further check.
+//   - leftoverThenAgeVerdict [verdictRespawnEligible] and [verdictError] — the leftover-then-age rule,
+//     whose first line is the contract check. The terminal-Outcome check, which returns
+//     respawn-eligible, sits after the file-contract check, so it is reached only when the output
+//     files are not all present.
+//   - stopOutcome [runOutcomeStopped] — the one site that chooses the stopped outcome, behind the
 //     allOutputFilesExist call that opens the function.
-//   - Stop [Errorf] x1 — the failed record write, returned with the strand untouched; a refusal to
-//     stop, not a verdict on whether the run finished, and the write itself goes through stopOutcome.
-//   - stopRecorded [Errorf] x2 — the unreadable record and the failed record write, both returned
-//     before any strand removal; refusals to stop, with the write behind stopOutcome.
-//   - removeStrandIfPresent [Errorf] x2 — the failed reed probe and the failed removal, after the record
-//     was written; infrastructure faults of the removal, not verdicts on any run.
-//   - AttachGated [Errorf] x5 — a rename of Attach's own unchanged set, not a new site: card 3 moved
-//     Attach's whole body into AttachGated wholesale and added no return of its own. The five are
-//     still the three reed-state gates (each consulting soleFinishedCandidate first) plus the two
-//     multiplicity refusals, which are refusals to CHOOSE rather than verdicts on any run.
-//     The body now lives in attach, shared by Attach, AttachGated and AttachIfLive,
-//     so the same five sit under that name.
-//   - removeSupersededStrands [Errorf] x1 — a failed removal of a respawn-eligible candidate's strand,
-//     reached only past the zero-attachable answer;
-//     it is a refusal to start a run beside a live strand, not a verdict on whether any run finished.
-//   - normalizeAttachSpec [Errorf] x1, collectAttachCandidates [Errorf] x1, readEventsFrom [Errorf] x3
-//     — argument validation, a scan-root read failure, and events-file I/O. None classifies a run as
-//     unfinished; all are listed because an AST scan that hand-excluded them would need a second,
-//     unenforceable judgement about which Errorf "counts", and a human looking at a new one costs
-//     less than that.
-//   - finalize [Errorf] x3 — the fork-audit failure, the refusal to finish a fork-authorized done run
-//     whose engine has no fork audit, plus the gate-evaluation error finalize itself
-//     returns when run.evaluateGate() fails for an OutcomeDone it is about to finalize. All fire
-//     strictly after the run already reached a positive verdict (a done fork-mode run, or a Done
-//     finalize's own gate check), so none is itself a negative verdict on whether the run
-//     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
-//     pre-existing fork-audit entry already carried.
-//   - awaitStartup [Errorf,OutcomeDied] x3 — the three retry-cap arms, each the status-cap teardown
+//   - Stop [Errorf] — the failed record write, returned with the strand untouched. It is a refusal to
+//     stop, not a verdict on whether the run finished; the write itself goes through stopOutcome.
+//   - stopRecorded [Errorf] — the unreadable record and the failed record write, both returned before
+//     any strand removal. They are refusals to stop, with the write behind stopOutcome.
+//   - removeStrandIfPresent [Errorf] — the failed reed probe and the failed removal, after the record was
+//     written. They are infrastructure faults of the removal, not verdicts on any run.
+//   - attach [Errorf] — the returns in attach's body, which Attach, AttachGated and AttachIfLive share.
+//     Three are the reed-state gates, each consulting soleFinishedCandidate first;
+//     two are multiplicity refusals, which refuse to choose a candidate rather than judge any run.
+//   - removeSupersededStrands [Errorf]: the failed removal of a respawn-eligible candidate's strand.
+//     It is reached only past the zero-attachable answer, and it refuses to start a run beside a live strand.
+//     It is not a verdict on whether any run finished.
+//   - normalizeAttachSpec [Errorf], collectAttachCandidates [Errorf], readEventsFrom [Errorf]: argument validation,
+//     a scan-root read failure, and events-file I/O. None classifies a run as unfinished.
+//     All are listed: a scan that hand-excluded them would need an unenforceable judgement about which Errorf counts,
+//     and reviewing a new site by hand costs less.
+//   - finalize [Errorf]: sites that each fire after the run already reached a positive verdict.
+//     None is a negative verdict on whether the run finished; each is an infrastructure fault surfacing after the fact.
+//     They are the fork-audit failure; the refusal to finish a fork-authorized done run whose engine has no fork audit;
+//     and the error finalize returns when run.evaluateGate() fails for an OutcomeDone it is about to finalize.
+//   - awaitStartup [Errorf,OutcomeDied] — the three retry-cap arms, each the status-cap teardown
 //     behind the direct allOutputFilesExist check.
-//   - awaitStartup [OutcomeDied] x2 — the checkLivenessTick not-ready answer (case (c) in its own doc
-//     comment) and the tick-cap exhaustion fallback, each reached only past a direct or upstream
-//     allOutputFilesExist check.
-//   - awaitStartup [OutcomeTimeout] x1 — the run-deadline exit, reached only after
-//     classifyDeadlineExpiry has already answered not-done.
-//   - abandonStartup [Errorf] x1 — its own ErrNotStarted-wrapping return, the not-ready teardown's
-//     single finalization site: every caller reaches it only past one of awaitStartup's own three
-//     guarded checks above, never directly.
+//   - awaitStartup [OutcomeDied] — the not-ready answer of checkLivenessTick and the tick-cap exhaustion
+//     fallback, each reached only past a direct or upstream allOutputFilesExist check.
+//   - awaitStartup [OutcomeTimeout] — the run-deadline exit, reached only after classifyDeadlineExpiry
+//     has already answered not-done.
+//   - abandonStartup [Errorf] — its own ErrNotStarted-wrapping return, the not-ready teardown's single
+//     finalization site: every caller reaches it only past one of awaitStartup's guarded checks.
 var auditedNegativeVerdictReturns = map[string]int{
 	"attach [Errorf]":                                 5,
 	"removeSupersededStrands [Errorf]":                1,
@@ -174,23 +148,25 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"stopRecorded [Errorf]":                           2,
 }
 
-// auditedFileContractCallSites is the audited set of allOutputFilesExist call sites as of the
-// shuttle-start-guarantees-readiness task's shuttle-blocking-start batch, keyed by enclosing
-// function.
+// auditedFileContractCallSites is the audited set of allOutputFilesExist call sites, keyed by enclosing function.
 //
-// The sites: the seven rounds 4-6 left audited (wait.go's pollEventsTick, checkLivenessTick x2,
-// classifyDeadlineExpiry, finishedDespiteMechanismFailure; attach.go's dispositionCandidate and
-// leftoverThenAgeVerdict) plus soleFinishedCandidate, added by round opus5-high-r7's F1 for Attach's
-// three reed-state gates, plus awaitStartup x2 (a rename-and-move of the former AwaitStarted's own
-// two call sites — its retry-cap guard and its tick-cap answer — carried over unchanged by the
-// shuttle-blocking-start batch when the startup step moved from its own method into Start's own
-// blocking call),
-// plus expiredTurnEnd, whose waiting turn end counts as a Done only after consulting the files, and otherwise keeps waiting.
-// pollEventsTick's second site counts an ungated waiting turn end with nothing outstanding as a Done only after consulting the files,
-// and its third holds a gated waiting turn end on non-awaited shells when an output file is missing, and otherwise leaves the Done to expiredTurnEnd, which consults the files.
-// The last site is stopOutcome, whose stopped answer consults the files first.
+// The sites are:
+//   - in wait.go: pollEventsTick, classifyDeadlineExpiry, finishedDespiteMechanismFailure;
+//   - checkLivenessTick, two of its three sites;
+//   - in attach.go: dispositionCandidate and leftoverThenAgeVerdict;
+//   - soleFinishedCandidate, which the three reed-state gates consult first;
+//   - awaitStartup (x2: its retry-cap guard and its tick-cap answer);
+//   - expiredTurnEnd: a waiting turn end counts as a Done only after the files are consulted;
+//     otherwise it keeps waiting.
+//   - pollEventsTick, second site: an ungated waiting turn end with nothing outstanding counts as a Done;
+//     the site consults the files before it does so.
+//   - pollEventsTick, third site: a gated waiting turn end on a non-awaited shell waits while an output file is missing;
+//     otherwise the Done goes to expiredTurnEnd, which consults the files.
+//   - stopOutcome, whose stopped answer consults the files first.
+//
 // checkLivenessTick holds a third site, its gone-session branch, which consults the files before answering died.
-// attach holds a site that skips the requirements check for a run whose files are all on disk, since harvesting it drives no further turn.
+// attach holds a site that skips the requirements check for a run whose files are all on disk.
+// The skip is safe because harvesting such a run drives no further turn.
 var auditedFileContractCallSites = map[string]int{
 	"attach":                          1,
 	"awaitStartup":                    2,
@@ -205,8 +181,8 @@ var auditedFileContractCallSites = map[string]int{
 	"stopOutcome":                     1,
 }
 
-// TestCompletionSignal_NegativeVerdictReturnSites trips when a return statement yielding a negative
-// run verdict is added to or removed from wait.go or attach.go.
+// TestCompletionSignal_NegativeVerdictReturnSites trips when a negative-verdict return is added or removed.
+// The scan covers the return sites in wait.go and attach.go.
 //
 //testtiming:keep scans wait.go and attach.go for the negative-verdict return sites, catching an unguarded new exit, which no other test reads
 func TestCompletionSignal_NegativeVerdictReturnSites(t *testing.T) {
@@ -219,8 +195,8 @@ func TestCompletionSignal_NegativeVerdictReturnSites(t *testing.T) {
 			"with its own justification line")
 }
 
-// TestCompletionSignal_FileContractCallSites trips when an allOutputFilesExist call is added to or
-// removed from wait.go or attach.go.
+// TestCompletionSignal_FileContractCallSites trips when an allOutputFilesExist call is added or removed.
+// The scan covers the call sites in wait.go and attach.go.
 //
 //testtiming:keep scans the allOutputFilesExist call sites, catching a guard deleted from an exit that already has one, which the return-site scan cannot see
 func TestCompletionSignal_FileContractCallSites(t *testing.T) {
@@ -232,8 +208,8 @@ func TestCompletionSignal_FileContractCallSites(t *testing.T) {
 			"auditedFileContractCallSites")
 }
 
-// assertAuditedSet reports every key whose count differs between got and audited, naming the kind of
-// site and appending remedy as the instruction to the editor who tripped it.
+// assertAuditedSet reports every key whose count differs between got and audited.
+// It names the site kind in the failure and appends remedy as the instruction to the editor who tripped it.
 func assertAuditedSet(t *testing.T, kind string, got, audited map[string]int, remedy string) {
 	t.Helper()
 
@@ -264,8 +240,8 @@ func assertAuditedSet(t *testing.T, kind string, got, audited map[string]int, re
 		kind, completionSignalScannedFiles, strings.Join(drift, "\n"), remedy)
 }
 
-// scanNegativeVerdictReturns parses the scanned files and returns, per "<function> [<markers>]" key,
-// how many return statements in that function yield that exact set of negative markers.
+// scanNegativeVerdictReturns parses the scanned files and returns a count per "<function> [<markers>]" key.
+// Each count is the number of return statements in that function that yield exactly that set of negative markers.
 func scanNegativeVerdictReturns(t *testing.T) map[string]int {
 	t.Helper()
 	found := map[string]int{}
@@ -296,9 +272,9 @@ func scanNegativeVerdictReturns(t *testing.T) map[string]int {
 	return found
 }
 
-// scanFileContractCallSites parses the scanned files and returns, per enclosing function name, how
-// many times allOutputFilesExist is called inside it. The function's own declaration is skipped, so
-// the definition never counts as a call site.
+// scanFileContractCallSites parses the scanned files and returns a count per enclosing function name.
+// Each count is the number of allOutputFilesExist calls inside that function.
+// The function's own declaration is skipped, so the definition never counts as a call site.
 func scanFileContractCallSites(t *testing.T) map[string]int {
 	t.Helper()
 	found := map[string]int{}
@@ -320,9 +296,9 @@ func scanFileContractCallSites(t *testing.T) map[string]int {
 	return found
 }
 
-// forEachScannedFunc parses each file in completionSignalScannedFiles and calls visit once per
-// function declaration that has a body, with the declared name (the bare function or method name,
-// receiver excluded, since no two of these share one) and that body.
+// forEachScannedFunc parses each file in completionSignalScannedFiles.
+// It calls visit once per function declaration that has a body, with the bare function or method name and that body.
+// The receiver is left out, since no two of these share one.
 func forEachScannedFunc(t *testing.T, visit func(funcName string, body *ast.BlockStmt)) {
 	t.Helper()
 
@@ -348,9 +324,9 @@ func forEachScannedFunc(t *testing.T, visit func(funcName string, body *ast.Bloc
 	scankit.RequireFloor(t, parsed, len(completionSignalScannedFiles), "completion-signal scan")
 }
 
-// collectIdentifiers walks expr and records every bare identifier name and every selector's final
-// name into into — so both `OutcomeDied` and `fmt.Errorf`'s `Errorf` are seen, without the scan
-// needing to know which package qualifier a marker happens to carry.
+// collectIdentifiers walks expr and records every bare identifier name and every selector's final name in into.
+// Both `OutcomeDied` and `fmt.Errorf`'s `Errorf` are seen.
+// The scan need not know which package qualifier a marker carries.
 func collectIdentifiers(expr ast.Expr, into map[string]bool) {
 	ast.Inspect(expr, func(n ast.Node) bool {
 		switch node := n.(type) {

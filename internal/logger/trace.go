@@ -1,5 +1,6 @@
-// trace.go implements the process-wide trace-identity primitive: a single 16-hex-character ID that is minted or adopted once per process and stamped onto every emitted log line (batch 5's Debug/Info/Warn rewrite wires the call site).
-// It provides two entry points: the lazy TraceID() accessor, used by any code path that logs before cmd/lym's root hook has run, and MintOrAdoptAndExport, the root hook's explicit call that also exports the ID into the environment so spawned children inherit it.
+// trace.go holds the process-wide trace identity, a 16-hex-character ID that every log line carries.
+// TraceID() is the lazy accessor for code that logs before cmd/lym's root hook has run.
+// MintOrAdoptAndExport() is the root hook's explicit call; it also exports the ID so spawned children inherit it.
 
 package logger
 
@@ -12,26 +13,23 @@ import (
 	"sync"
 )
 
-// TraceIDEnv names the environment variable a process adopts its trace-identity from and exports it in.
+// TraceIDEnv names the environment variable that carries the trace identity between processes.
+// A process adopts the identity from it and exports its own identity to it, so spawned children inherit it.
 const TraceIDEnv = "LYM_TRACE_ID"
 
 var traceOnce sync.Once
 var traceID string
 
-// traceIDPattern is the exact alphabet mintTraceID produces, and the gate every ADOPTED value must
-// pass before it becomes this process's trace-identity.
+// traceIDPattern matches a trace identity: exactly 16 lowercase hex characters.
+// Every adopted value must match it before it becomes this process's trace identity.
 //
-// The trace-identity is not merely a log field: sink.go interpolates it into the trace filename and
-// filepath.Join CLEANS the composed name, so a value carrying separators or ".." walks the write out
-// of the logs directory entirely (LYM_TRACE_ID='ci-run/../../pwned' landed a trace file one level
-// ABOVE .lym/logs, and a longer chain escapes the state directory). Validating here rather than at
-// the filename is deliberate: MintOrAdoptAndExport re-exports the resolved value into the
-// environment, so one unvalidated value would propagate to every spawned child.
+// The trace identity is not merely a log field: the sink builds the trace filename from it.
+// filepath.Join cleans the composed name, so a value with a path separator or ".." writes outside the logs directory.
+// Validation happens here, not at the filename, because the resolved value is exported to the environment:
+// one unvalidated value would reach every spawned child.
 //
-// The alphabet is pinned to mintTraceID's own output for a second, independent reason:
-// retention.go's traceFilePattern only matches a filename whose trace half is exactly 16 lowercase
-// hex characters, so any other adopted value produces a trace file Sweep can never rank or remove
-// and the logs directory grows without bound.
+// Log retention ranks and removes only trace files whose ID is 16 lowercase hex characters.
+// Any other ID leaves a trace file that is never ranked or removed, so the logs directory grows without bound.
 var traceIDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // mintTraceID generates a fresh trace-identity as 16 lowercase hex characters.
@@ -43,18 +41,19 @@ func mintTraceID() string {
 	return hex.EncodeToString(buf)
 }
 
-// NewTraceID mints a fresh trace identity for a child process, leaving this process's own identity and the environment untouched.
+// NewTraceID mints a fresh trace identity for a child process.
+// It leaves this process's own identity and the environment untouched.
 func NewTraceID() string {
 	return mintTraceID()
 }
 
-// adoptOrMintTraceID returns LYM_TRACE_ID's value when it matches the minted alphabet exactly, and a
-// freshly minted identity otherwise.
+// adoptOrMintTraceID returns the trimmed LYM_TRACE_ID value when it is 16 lowercase hex characters.
+// Otherwise it returns a freshly minted trace identity.
 //
 // A rejected value is replaced silently rather than reported, because there is no one to report to:
-// this runs before any sink exists, and the caller's contract is "this process has a trace
-// identity", which a fresh mint satisfies. Losing the parent's correlation is strictly better than
-// spending an attacker-shaped, or merely malformed, value as a filename component.
+// this runs before any sink exists,
+// and the caller's contract is "this process has a trace identity", which a fresh mint satisfies.
+// Losing the parent's correlation is better than spending an attacker-shaped or malformed value as a filename component.
 func adoptOrMintTraceID() string {
 	if adopted := strings.TrimSpace(os.Getenv(TraceIDEnv)); traceIDPattern.MatchString(adopted) {
 		return adopted
@@ -62,8 +61,8 @@ func adoptOrMintTraceID() string {
 	return mintTraceID()
 }
 
-// resolveTraceID implements trace-ID precedence: pre-set value, a VALID LYM_TRACE_ID env var, or
-// fresh mint.
+// resolveTraceID sets traceID from the first of these that applies:
+// a pre-set value, a valid LYM_TRACE_ID, or a fresh mint.
 func resolveTraceID() {
 	if traceID != "" {
 		return
@@ -78,12 +77,9 @@ func TraceID() string {
 	return traceID
 }
 
-// MintOrAdoptAndExport resolves the trace-identity and exports it to the environment.
+// MintOrAdoptAndExport resolves the trace identity and exports it to the environment as LYM_TRACE_ID.
 //
-// The export is why adoption goes through adoptOrMintTraceID here too and not only in
-// resolveTraceID: this function OVERWRITES LYM_TRACE_ID with whatever it resolved, so validating on
-// only one of the two entry points would leave the other free to launder a malformed value into
-// every child process this one spawns.
+// The adopted value is validated before export, because every child process this one spawns inherits it.
 func MintOrAdoptAndExport() string {
 	traceOnce.Do(func() {
 		traceID = adoptOrMintTraceID()

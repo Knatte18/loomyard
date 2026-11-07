@@ -1,7 +1,9 @@
-// prompt_test.go covers the half prompts' marker composition.
+// prompt_test.go tests the composed half prompts: the marker fill, the switched blocks, and where each block lands.
 // The happy path fills every marker across the review half's three rendered assets and the fix half's two.
-// Each switched block (fix-scope, tool-use, prior-rounds, cluster-rules) renders the branch its Profile field selects and not the other branch's exclusive phrasing.
-// Each block helper's content lands in its intended instruction file rather than leaking into a seat stencil or a sibling instruction file.
+// Each switched block (fix-scope, tool-use, prior-rounds, cluster-rules) renders the branch its Profile field selects.
+// It never renders the other branch's phrasing.
+// Each block helper's content lands in its own instruction file.
+// It does not leak into a seat stencil or a sibling instruction file.
 
 package burlerengine
 
@@ -22,14 +24,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// Placeholder absolute instruction paths every compose call in this file passes.
-// The compose functions do no filesystem access on these beyond baking them into the seat stencils' marker values, so they need not exist on disk (the halves, not the compose functions, write the files there).
+// Placeholder absolute instruction paths that every compose call in this file passes.
+// The compose functions only bake them into the seat stencils' marker values, so they need not exist on disk.
 var (
 	testReviewFiles = reviewFilesIn("/tmp/review-half")
 	testFixFiles    = fixFilesIn("/tmp/fix-half")
 )
 
-// testSpecsDir is the placeholder deployed-specs directory every compose call in this file passes; the compose functions only render paths under it.
+// testSpecsDir is the placeholder deployed-specs directory that every compose call in this file passes.
+// The compose functions only render paths under it.
 const testSpecsDir = "/tmp/specs"
 
 // The positions of the rendered instruction files in a halfPrompt's Files.
@@ -44,10 +47,9 @@ const (
 	fixStepFile
 )
 
-// newComposableProfile builds a minimal Profile whose paths already exist
-// on disk (the compose functions' directory annotation stats them) and whose
-// fields are all resolved absolute paths, as validateReview and validateFix would
-// leave them — the compose functions are documented to run only after validation.
+// newComposableProfile builds a minimal Profile in the state validation leaves: every path is resolved and absolute.
+// The paths exist on disk, since the compose functions stat the directory annotation.
+// The compose functions run only after validation, and the fixture matches that state.
 func newComposableProfile(t *testing.T) Profile {
 	t.Helper()
 	root := t.TempDir()
@@ -86,7 +88,8 @@ func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirectiv
 	return prompt
 }
 
-// composeFix composes p's fix half prompt over the placeholder paths and a review's findings as the work, failing the test on error.
+// composeFix composes p's fix half prompt over the placeholder paths, with a review's findings as the work.
+// It fails the test on error.
 func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) halfPrompt {
 	t.Helper()
 	prompt, err := composeFixPrompt(stencilsDir, testSpecsDir, "claude", p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
@@ -96,7 +99,7 @@ func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective 
 	return prompt
 }
 
-// chairPrompt renders the one chair seat's prompt of a half's table the way the seats engine fills it, told parentName.
+// chairPrompt renders the chair seat's prompt of a half's table, filled as the seats engine fills it for parentName.
 func chairPrompt(t *testing.T, stencilsDir, parentName string, p *Profile, table seatengine.Table) string {
 	t.Helper()
 	root := filepath.Dir(p.ReviewPath)
@@ -111,7 +114,7 @@ func chairPrompt(t *testing.T, stencilsDir, parentName string, p *Profile, table
 }
 
 // combinedPrompt joins a half's chair prompt with every instruction file's Content, newline-separated.
-// It gives tests a single haystack to search when a presence/absence assertion does not care which of the rendered assets carries the text.
+// Tests use it as one haystack when a presence or absence check does not care which asset carries the text.
 func combinedPrompt(t *testing.T, stencilsDir string, p *Profile, table seatengine.Table, prompt halfPrompt) string {
 	t.Helper()
 	parts := make([]string, 0, len(prompt.Files)+1)
@@ -136,8 +139,9 @@ func fixHalf(t *testing.T, stencilsDir string, p *Profile, frictionDirective str
 	return prompt, combinedPrompt(t, stencilsDir, p, p.fixTable(RunOpts{}, prompt.Values, burlerSkills), prompt)
 }
 
-// TestComposePrompt_FocusDirective proves a round's focus file reaches the explore step through its own channel, with the precedence rule, and never reaches the review step's prior-rounds block;
-// and that a round without a directive renders no focus text and no marker residue.
+// TestComposePrompt_FocusDirective proves a round's focus file reaches the explore step through its own channel.
+// The precedence rule applies, and the file never reaches the review step's prior-rounds block.
+// A round without a directive renders no focus text and no marker residue.
 func TestComposePrompt_FocusDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	stencilsDir := newTestStencilsDir(t)
@@ -220,9 +224,16 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_MinimalProfile proves a minimal valid profile composes both halves cleanly through stencil (no unfilled-marker error) and one render of each satisfies the compose contract:
-// the review half's combined prompt carries the profile's content (the review path and the verbatim rubric text), a Target.Paths directory entry is annotated as one while a file entry is not, its files come back with Path values equal to the path parameters in order (the contract each half relies on to write every rendered file to the path the seat stencil names), and its seat stencil names the explore and review files;
-// the fix half's combined prompt carries both output paths, its seat stencil names the review, the format file and the fix step, and no seat stencil carries the Go-built cluster block.
+// TestComposePrompt_MinimalProfile proves a minimal valid profile composes both halves cleanly through stencil:
+// no unfilled-marker error is raised.
+// The review half's combined prompt carries the profile's content: the review path and the verbatim rubric text.
+// A Target.Paths directory entry is annotated as one, and a file entry is not.
+// The rendered files come back with Path values equal to the path parameters, in order;
+// each half relies on that to write every file to the path its seat stencil names.
+// The review half's seat stencil names the explore and review files.
+// The fix half's combined prompt carries both output paths.
+// Its seat stencil names the review, the format file and the fix step.
+// No seat stencil carries the Go-built cluster block.
 //
 //testtiming:keep pins the profile content, the directory annotation, the instruction file paths, the fixer stencil's pointers and the seat stencils' exclusion of the Go-built cluster block, which the cluster-rules test covering its blocks does not assert
 func TestComposePrompt_MinimalProfile(t *testing.T) {
@@ -282,7 +293,8 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 	}
 }
 
-// TestComposePrompt_ParentDirective proves both seat stencils carry the parent variant naming the parent when one is told, the no-parent variant when none is, and no instruction file carries either.
+// TestComposePrompt_ParentDirective proves both seat stencils carry the parent variant when a parent is told.
+// It also proves both carry the no-parent variant when none is, and that no instruction file carries either.
 func TestComposePrompt_ParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	p := newComposableProfile(t)
@@ -314,9 +326,9 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 	}
 }
 
-// TestComposePrompt_FixScope proves the fix-scope block switches on p.FixScope: FixScopeSource's
-// output carries the commit-per-fix phrasing and not the overlay-exclusive "no git" phrasing,
-// and vice versa for FixScopeOverlay.
+// TestComposePrompt_FixScope proves the fix-scope block switches on p.FixScope.
+// FixScopeSource's output carries the commit-per-fix phrasing and not the overlay-exclusive "no git" phrasing.
+// FixScopeOverlay's output does the reverse.
 // In neither scope does the fixer's rendered write surface list the review file, which only the reviewer writes.
 func TestComposePrompt_FixScope(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -347,8 +359,8 @@ func TestComposePrompt_FixScope(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_ToolUse proves the tool-use block switches on p.ToolUse, each value's phrase
-// present and the other's absent.
+// TestComposePrompt_ToolUse proves the tool-use block switches on p.ToolUse:
+// each value's phrase is present and the other's is absent.
 func TestComposePrompt_ToolUse(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("true drives the substrate", func(t *testing.T) {
@@ -372,8 +384,8 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_PriorRounds proves the prior-rounds block distinguishes a first round (no prior
-// files) from a round hydrated with prior review / fixer-report paths.
+// TestComposePrompt_PriorRounds proves the prior-rounds block distinguishes a first round from a later one.
+// A first round has no prior files; a hydrated round carries prior review and fixer-report paths.
 func TestComposePrompt_PriorRounds(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("first round", func(t *testing.T) {
@@ -400,12 +412,13 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_ClusterRules proves the cluster parts switch on p.ClusterFan:
+// TestComposePrompt_ClusterRules proves the cluster parts switch on p.ClusterFan.
 // A solo round's explore and review steps equal their stencils filled for a round with no fan, byte for byte.
-// A fanned round's explore step differs from the solo render by the fork-reading part, and its review step carries the filled lens bullets in fan order.
+// A fanned round's explore step differs from the solo render by the fork-reading part.
+// Its review step carries the filled lens bullets in fan order.
 // A fanned round whose cluster-fan stencil is missing fails with the read error.
-// composeReviewPrompt reads p.clusterLenses directly (as (*Profile).validateReview would have left it) rather
-// than calling lenses.ResolveFan itself.
+// composeReviewPrompt reads p.clusterLenses directly, as (*Profile).validateReview would have left it.
+// It does not call lenses.ResolveFan itself.
 func TestComposePrompt_ClusterRules(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("non-cluster", func(t *testing.T) {
@@ -488,7 +501,9 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		requireContains(t, reviewStep, "verbatim to `"+lensreport.PathPattern(p.ReviewPath)+"`")
 		requireContains(t, reviewStep, "`"+stencilstore.Path(testSpecsDir, lensreport.SpecName)+"` defines")
 
-		// Each block helper's rendered content lands in its intended instruction file and nowhere else: fix_scope_rules is the fix step's alone, cluster_rules (the lens names) is the review step's alone, and pattern_directive/target is the explore step's alone.
+		// Each block helper's rendered content lands in its intended instruction file and nowhere else:
+		// fix_scope_rules is the fix step's alone; cluster_rules (the lens names) is the review step's alone;
+		// and pattern_directive/target is the explore step's alone.
 		requireContains(t, fixStep, "Write surface")
 		requireNotContains(t, explore, "Write surface")
 		requireNotContains(t, reviewStep, "Write surface")
@@ -510,9 +525,9 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_FrictionDirective proves the friction_directive marker composes the same way
-// pattern_directive does: enabled carries the directive text verbatim into the fix step alone, disabled
-// composes cleanly with no directive text, and a marker-free template composes cleanly regardless.
+// TestComposePrompt_FrictionDirective proves the friction_directive marker composes the same way pattern_directive does.
+// An enabled marker carries the directive text verbatim into the fix step alone.
+// A disabled marker composes cleanly with no directive text, and a marker-free template composes cleanly regardless.
 func TestComposePrompt_FrictionDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("enabled", func(t *testing.T) {
@@ -551,8 +566,8 @@ func TestComposePrompt_FrictionDirective(t *testing.T) {
 	})
 }
 
-// findLineContaining returns the first line of text containing needle, or
-// "" if no line matches.
+// findLineContaining returns the first line of text that contains needle.
+// It returns an empty string if no line matches.
 func findLineContaining(text, needle string) string {
 	for _, line := range strings.Split(text, "\n") {
 		if strings.Contains(line, needle) {
@@ -570,8 +585,9 @@ func requireNotContains(t *testing.T, text, needle string) {
 	}
 }
 
-// TestWarnIfFocusMarkerAbsent covers the helper directly:
-// it logs nothing for an empty focus block or a template carrying the marker, and exactly one line naming the stencil and the marker literal otherwise.
+// TestWarnIfFocusMarkerAbsent covers the helper directly.
+// It logs nothing for an empty focus block or for a template carrying the marker.
+// Otherwise it logs exactly one line naming the stencil and the marker literal.
 // The logger output is process-global, so the test never runs in parallel.
 func TestWarnIfFocusMarkerAbsent(t *testing.T) {
 	tiergate.Require(t, 0)

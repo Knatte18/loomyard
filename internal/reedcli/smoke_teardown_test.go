@@ -1,4 +1,6 @@
-// smoke_teardown_test.go pins the teardown guarantees of `reed down` and `reed remove` against a real tmux server: the server is released before down returns, every pane descendant is reaped, and a worktree's down never touches a sibling worktree's session.
+// smoke_teardown_test.go pins the teardown guarantees of `reed down` and `reed remove` against a real tmux server.
+// The server is released before down returns, every pane descendant is reaped,
+// and a worktree's down never touches a sibling worktree's session.
 
 package reedcli
 
@@ -19,7 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestSmokeTeardown runs the teardown claims against one hub, each step bringing up its own session on the prime worktree and ending with that session down, so the next step starts from the same cold state.
+// TestSmokeTeardown runs the teardown claims against one hub.
+// Each step brings up its own session on the prime worktree and ends with that session down,
+// so the next step starts from the same cold state.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestSmokeTeardown(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -45,7 +49,7 @@ func TestSmokeTeardown(t *testing.T) {
 		return out.Bytes()
 	}
 
-	// DownReleasesServerBeforeReturning pins the down->up churn race.
+	// DownReleasesServerBeforeReturning pins that the tmux server is gone when down returns, over several cycles.
 	if !t.Run("DownReleasesServerBeforeReturning", func(t *testing.T) {
 		run(t, prime, "up")
 		socket, session := socketAndSessionIn(t, prime)
@@ -65,7 +69,7 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// DownReapsPaneChildProcesses pins the pane-child reaping semantics.
+	// DownReapsPaneChildProcesses pins that every pane descendant is gone when down returns.
 	if !t.Run("DownReapsPaneChildProcesses", func(t *testing.T) {
 		launch := smokeReapLaunchCmd()
 		for cycle := 0; cycle < 3; cycle++ {
@@ -79,7 +83,7 @@ func TestSmokeTeardown(t *testing.T) {
 			}
 
 			run(t, prime, "down")
-			// No sleep: every pane descendant must already be gone the instant down returned. processGone reuses the same non-child Wait probe the server-pid step uses.
+			// No sleep: every pane descendant must already be gone when down returns.
 			for _, pid := range pids {
 				if !processGone(pid) {
 					t.Fatalf("cycle %d: pane subtree pid %d still running immediately after down returned", cycle, pid)
@@ -90,12 +94,13 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// DownForceKillsSighupImmunePaneChildren is the regression guard for the reap-is-inert defect this round's R1 review found: reed's force-kill fallback for a straggling pane child was unreachable, because waitProcessExit blocked on os.Process.Wait, which returns ECHILD IMMEDIATELY for any pid that is not a child of the calling process — and every pane pid is a child of the TMUX server, never of lym.
-	// Every other reap step passed anyway, because their payloads (`sleep 300`, `pwsh -NoExit`) die to tmux's own SIGHUP cascade without reed ever needing to force-kill anything, so they could never distinguish "reed reaped it" from "tmux did".
+	// DownForceKillsSighupImmunePaneChildren pins that down force-kills a pane child that traps SIGHUP.
+	// The other reap steps cannot tell reed's reap from tmux's, because their payloads die to tmux's SIGHUP cascade.
 	//
-	// This step's payload is chosen to make exactly that distinction: the pane runs a descendant that TRAPS SIGHUP, so tmux's cascade cannot reap it and only reed's explicit force-kill can.
-	// With the defect present, down returned ok while that descendant stayed alive (reproduced live before the fix); with it fixed, down blocks until the descendant is actually gone.
-	// The immune descendant also forks a late child, immune too, a few seconds after down's snapshot, as a pane shell does when down lands just after a strand's command was typed.
+	// This payload runs a descendant that traps SIGHUP, so only reed's explicit force-kill can reap it.
+	// Down must block until that descendant is gone.
+	// The immune descendant also forks a late child, immune too, a few seconds after down's snapshot.
+	// A pane shell does the same when down lands just after a strand's command was typed.
 	// Only the reap of the pane session's remaining members reaches that child, since no snapshot holds it.
 	//
 	// POSIX-only: the payload needs a shell-level SIGHUP trap, which has no Windows equivalent.
@@ -104,7 +109,8 @@ func TestSmokeTeardown(t *testing.T) {
 
 		// `exec` on the outer sleep keeps the immune child's parent pid stable, so
 		// the child stays inside the pane's descendant closure reed snapshots.
-		// The immune child marks itself started, outlives the snapshot in its `sleep 5`, then records its late child's pid and waits until reed force-kills it.
+		// The immune child marks itself started and outlives the snapshot in its `sleep 5`.
+		// It then records its late child's pid and waits until reed force-kills it.
 		readyFile := filepath.Join(t.TempDir(), "ready")
 		lateFile := filepath.Join(t.TempDir(), "late.pid")
 		immune := fmt.Sprintf(`bash -c 'bash -c "trap \"\" HUP; : > %s; sleep 5; sleep 300 & echo \$! > %s; wait" & exec sleep 300'`, readyFile, lateFile)
@@ -126,8 +132,8 @@ func TestSmokeTeardown(t *testing.T) {
 		}
 
 		run(t, prime, "down")
-		// No sleep: down must not return until every snapshotted descendant is
-		// actually gone, force-killed if the graceful window expired.
+		// No sleep: down must not return until every snapshotted descendant is gone.
+		// One still running when the graceful window expires is force-killed.
 		for _, pid := range pids {
 			if !processGone(pid) {
 				t.Errorf("pane subtree pid %d still running immediately after down returned; reed's force-kill fallback did not run", pid)
@@ -148,9 +154,11 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// DownLeavesNoTmuxOnSocket pins the stray-server guarantee down's robust teardown owns: after down tears the shared server down, ZERO tmux process may still name this worktree's socket — not the main server, not its __warm__ helper.
-	// The tmux server is spawned with the worktree as its cwd, so a server that outlives down keeps the worktree directory busy (a real "no stray state" leak observed under down->up churn on a saturated machine, where a fixed-deadline server wait timed out and aborted down before the socket was cleared).
-	// Several add->down cycles give the async kill-server a chance to lag.
+	// DownLeavesNoTmuxOnSocket pins that no tmux process names this worktree's socket once down has torn the server down.
+	// That covers the main server and its __warm__ helper.
+	// The tmux server is spawned with the worktree as its cwd,
+	// so a server that outlives down keeps the worktree directory busy.
+	// Several add and down cycles give the async kill-server a chance to lag.
 	if !t.Run("DownLeavesNoTmuxOnSocket", func(t *testing.T) {
 		launch := smokeReapLaunchCmd()
 		for cycle := 0; cycle < 3; cycle++ {
@@ -169,20 +177,21 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// RemoveReapsRemovedPaneChildProcesses pins the reap gap this round generalized from down to remove:
-	// kill-pane on a removed strand's pane terminates that pane's children asynchronously, and on Windows the process actually holding the worktree directory is a deep descendant of #{pane_pid} — so a remove that returned without reaping could leave a removed strand's grandchild alive and the worktree dir busy under load (the same class down's reap already closed).
-	// remove now snapshots the removed panes' process subtrees before kill-pane and waits for them to exit before returning, so the instant remove returns every descendant of the removed pane must be gone.
+	// RemoveReapsRemovedPaneChildProcesses pins that remove reaps the removed pane's children.
+	// kill-pane terminates a pane's children asynchronously.
+	// On Windows the process holding the worktree directory is a deep descendant of #{pane_pid},
+	// so a remove that returned early could leave it alive and keep the directory busy.
+	// remove snapshots the removed pane's process subtree before kill-pane.
+	// It waits for that subtree to exit, so once remove returns, every descendant of the removed pane must be gone.
 	// A sibling strand is kept alive throughout so the session survives and the removed pane is never the sole pane.
 	if !t.Run("RemoveReapsRemovedPaneChildProcesses", func(t *testing.T) {
 		launch := smokeReapLaunchCmd()
 		for cycle := 0; cycle < 3; cycle++ {
 			run(t, prime, "up")
-			// Keeper first, then the victim we remove.
 			keeper := addStrandIn(t, prime, launch, "--name", "keeper")
 			victim := addStrandIn(t, prime, launch, "--name", "victim")
 			socket, session := socketAndSessionIn(t, prime)
 
-			// Resolve the victim's pane, then snapshot only its process subtree.
 			vs, ok := statusStrand(t, run(t, prime, "status"), victim)
 			if !ok {
 				t.Fatalf("cycle %d: status missing victim %s", cycle, victim)
@@ -197,16 +206,14 @@ func TestSmokeTeardown(t *testing.T) {
 			}
 
 			run(t, prime, "remove", victim)
-			// No sleep: every descendant of the removed pane must already be gone
-			// the instant remove returned.
+			// No sleep: every descendant of the removed pane must already be gone the instant remove returned.
 			for _, pid := range pids {
 				if !processGone(pid) {
 					t.Fatalf("cycle %d: removed pane %s subtree pid %d still running immediately after remove returned", cycle, victimPane, pid)
 				}
 			}
 
-			// The keeper must survive the remove untouched, and down cleans up for
-			// the next cycle.
+			// The keeper must survive the remove untouched, and down cleans up for the next cycle.
 			if ks, ok := statusStrand(t, run(t, prime, "status"), keeper); !ok {
 				t.Fatalf("cycle %d: keeper %s gone after removing victim", cycle, keeper)
 			} else if live, _ := ks["live"].(bool); !live {
@@ -218,31 +225,33 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// DownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE SCOPE invariant: the tmux server identity is per-hub (the -L socket derives from the hub) and shared by sibling worktrees, so `lym reed down` in worktree A must tear down ONLY A's session, never worktree B's session, panes, or agents that share the same hub socket.
-	// (This psmux port backs each session with its own `psmux.exe server -s <session> -L <socket>` process on the shared socket, so "no duplicate server" is verified per session: exactly one backing process per live session, never two, zero once killed.)
-	// Two worktrees under one hub `up` (same socket, distinct sessions, one backing process each), each adds a live strand;
-	// A goes `down`;
-	// then B's session + pane + agent subtree + its single backing server must all still be live while A's session and pane subtree are gone.
-	// B then `down`s last and the socket must be free of every tmux.
-	// The core assertion is B's continued liveness AFTER A's down (see assertSiblingStaysLive) — a naive "down kills the whole socket's server set" implementation fails this step rather than reporting a false green.
+	// DownInOneWorktreeLeavesSiblingSessionAlive pins the cross-worktree scope of down.
+	// The tmux server identity is per hub: the -L socket derives from the hub and is shared by sibling worktrees.
+	// So down in one worktree must tear down only its own session,
+	// and it must never touch a sibling's session, panes, or agents on that socket.
+	// (The psmux port backs each session with its own `psmux.exe server -s <session> -L <socket>` process,
+	// so "no duplicate server" is checked per session: one backing process per live session, none once killed.)
+	// Two worktrees under one hub `up` share the socket and have distinct sessions, one backing process each.
+	// Each adds a live strand.
+	// Worktree A goes down.
+	// Then B's session, pane, agent subtree, and single backing server must all still be live.
+	// A's session and pane subtree must be gone.
+	// B then goes down last, and the socket must be free of every tmux.
+	// The core assertion is B's continued liveness after A's down (see `assertSiblingStaysLive`):
+	// an implementation that kills the whole socket's server set fails this step rather than reporting a false green.
 	t.Run("DownInOneWorktreeLeavesSiblingSessionAlive", func(t *testing.T) {
-		// Named "sibling", NOT "hub-b": real tmux's has-session/kill-session
-		// target resolution fuzzy-matches an unambiguous prefix against a
-		// live session when there is no exact name match — "hub" would
-		// resolve against a lone remaining "hub-b" session even after "hub"
-		// itself was killed, making the post-down waitServerGone(sessionA)
-		// check below hang for the full timeout waiting on a has-session
-		// probe that can never fail. Verified live: `tmux new-session -s hub`
-		// + `-s hub-b`, kill-session -t hub, then `has-session -t hub` still
-		// exits 0. A name with no shared prefix sidesteps the ambiguity
-		// entirely rather than relying on tmux's target-matching rules.
+		// Named "sibling", not "hub-b": tmux's has-session and kill-session fuzzy-match an unambiguous prefix.
+		// With "hub-b" still alive, has-session -t hub keeps succeeding after hub is killed,
+		// so the post-down waitServerGone(sessionA) check would hang for its full timeout.
+		// A name with no shared prefix avoids depending on tmux's target matching.
 		sibling := materializeSibling(t, h, "sibling")
 
 		// Release the sibling worktree dir before the framework's TempDir RemoveAll.
 		// Registered before the down cleanup so it runs after it (LIFO).
 		deferHubRelease(t, sibling)
 
-		// Best-effort teardown net: down the sibling from its own cwd even if an assertion aborts the body partway through, so no server/session leaks.
+		// Best-effort teardown net: down the sibling from its own cwd even if an assertion aborts the body partway,
+		// so no server or session leaks.
 		t.Cleanup(func() {
 			var buf bytes.Buffer
 			RunCLIIn(sibling, &buf, []string{"down"})
@@ -250,19 +259,16 @@ func TestSmokeTeardown(t *testing.T) {
 
 		launch := smokeReapLaunchCmd()
 
-		// --- worktree A: up + a live strand ---
 		run(t, prime, "up")
 		socketA, sessionA := socketAndSessionIn(t, prime)
 		aGuid := addStrandIn(t, prime, launch, "--name", "agent-a")
 		aPane := paneIDForStrandIn(t, prime, aGuid)
 
-		// --- worktree B: up + a live strand ---
 		run(t, sibling, "up")
 		socketB, sessionB := socketAndSessionIn(t, sibling)
 		bGuid := addStrandIn(t, sibling, launch, "--name", "agent-b")
 		bPane := paneIDForStrandIn(t, sibling, bGuid)
 
-		// Siblings on one hub: shared socket, distinct sessions.
 		if socketA != socketB {
 			t.Fatalf("worktree A socket %q != worktree B socket %q; siblings on one hub must share the per-hub socket", socketA, socketB)
 		}
@@ -284,11 +290,11 @@ func TestSmokeTeardown(t *testing.T) {
 		// unchanged after A's down (B's server neither killed nor restarted).
 		bServerPID := serverPID(t, tmuxPath, socket, sessionB)
 
-		// Snapshot BEFORE A's down, while both panes still exist to enumerate:
-		// worktree A's whole pane process subtree (asserted GONE after A's down — a
-		// transient child that already exited still reads gone, so this is not
-		// flaky), and worktree B's pane ROOT pid (asserted ALIVE — only the stable
-		// root, never its come-and-go descendants, so the liveness check is robust).
+		// Snapshot before A's down, while both panes still exist to enumerate:
+		// worktree A's whole pane process subtree, which must read gone after A's down.
+		// A transient child that already exited still reads gone, so this is not flaky.
+		// Worktree B's pane root pid, which must read alive after A's down.
+		// Only the stable root is taken, never its come-and-go descendants, so the liveness check is robust.
 		aSubtree := panePaneSubtree(t, tmuxPath, socket, sessionA, aPane)
 		if len(aSubtree) == 0 {
 			t.Fatalf("worktree A pane %s reported no process subtree", aPane)
@@ -298,7 +304,8 @@ func TestSmokeTeardown(t *testing.T) {
 		// --- down in worktree A ---
 		run(t, prime, "down")
 
-		// A's own session is gone and its pane subtree reaped (down reaps this session's pane children before returning — no sleep, mirroring the down-reap steps).
+		// A's own session is gone and its pane subtree reaped.
+		// down reaps this session's pane children before it returns, so no sleep is needed.
 		waitServerGone(t, tmuxPath, socket, sessionA)
 		for _, pid := range aSubtree {
 			if !processGone(pid) {
@@ -308,15 +315,13 @@ func TestSmokeTeardown(t *testing.T) {
 		// A's own backing server process is gone too.
 		waitServerProcCountForSession(t, tmuxPath, socket, sessionA, 0)
 
-		// CORE: worktree B's session, pane, backing-server pid, and agent root
-		// process must ALL stay live throughout a stability window. A down that tore
-		// down the shared socket's server set would trip this instead of reporting a
-		// false green.
+		// Worktree B must keep its session, pane, backing-server pid, and agent root process live.
+		// A down that tore down the shared socket's server set would trip this check.
+		// Otherwise the test would report a false green.
 		assertSiblingStaysLive(t, tmuxPath, socket, sessionB, bPane, bServerPID, bPanePID, 2*time.Second)
 
-		// And still exactly ONE backing server for B — no duplicate spawned during
-		// the A up/down churn (the one process-table check, done once here rather
-		// than per stability-loop iteration).
+		// And still exactly one backing server for B: no duplicate was spawned during the A up/down churn.
+		// The process-table check runs once here, rather than inside the stability loop.
 		if got := serverProcCountForSession(t, tmuxPath, socket, sessionB); got != 1 {
 			t.Fatalf("worktree B backing-server count = %d after A down; want exactly 1 (0 = killed, 2 = duplicate)", got)
 		}

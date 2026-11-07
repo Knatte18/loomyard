@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantRun is what a row expects of one full run: its tag and ISO week, whether it holds the batten source and the history length of each batten snapshot, oldest first.
+// wantRun is what a row expects of one full run: its tag and ISO week, and whether it holds the batten source.
+// snapshots holds the history length of each batten snapshot, oldest first.
 // An empty recipe expects loom.
 type wantRun struct {
 	tag       string

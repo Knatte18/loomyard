@@ -1,4 +1,4 @@
-// spawnagain.go holds the test for a process start the host refused for a temporary resource shortage, and this process's record of the last such refusal.
+// spawnagain.go detects the host refusing a process start for a temporary resource shortage.
 
 package proc
 
@@ -9,16 +9,19 @@ import (
 	"time"
 )
 
-// lastSpawnAgain is the Unix-nanosecond time NoteSpawnAgain last recorded a refusal, zero before the first.
+// lastSpawnAgain holds the Unix-nanosecond time of the last refusal recorded, or zero before the first.
 var lastSpawnAgain atomic.Int64
 
-// IsSpawnAgain reports whether err is a refusal by the host to start a process because it was temporarily out of a resource, EAGAIN from fork or exec.
-// A process that started and exited nonzero never matches, so a caller may start the same command again without running it twice.
+// IsSpawnAgain reports whether err is a refusal by the host to start a process for lack of a temporary resource.
+// The refusal is EAGAIN from fork or exec.
+// A process that started and exited nonzero never matches,
+// so a caller may start the same command again without running it twice.
 func IsSpawnAgain(err error) bool {
 	return errors.Is(err, syscall.EAGAIN)
 }
 
-// NoteSpawnAgain records now as the time this process last saw a spawn refusal when err is one, and reports whether it was.
+// NoteSpawnAgain reports whether err is a refusal by the host to start a process.
+// When it is, it records the current time as the last refusal this process saw.
 // The record lets a caller that sees a later failure judge whether a host resource shortage preceded it.
 func NoteSpawnAgain(err error) bool {
 	if !IsSpawnAgain(err) {
@@ -28,7 +31,8 @@ func NoteSpawnAgain(err error) bool {
 	return true
 }
 
-// LastSpawnAgain returns the time NoteSpawnAgain last recorded a refusal in this process, and false when it recorded none.
+// LastSpawnAgain returns the time of the last host refusal to start a process that this process recorded.
+// It reports false when this process has recorded none.
 func LastSpawnAgain() (time.Time, bool) {
 	nanos := lastSpawnAgain.Load()
 	if nanos == 0 {

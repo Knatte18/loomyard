@@ -1,42 +1,12 @@
-// decision.go implements the `decision` loom subtree: the verb `add`, through which a design call made after the Discussion ended is recorded in the decision record, and the verb `store`, which re-copies the committed record onto the run's board entry.
-// The run's parent, or an operator, uses `add` to answer a question the record does not settle, so Plan-Write and a later reader see the call beside the decisions the Discussion made.
-// The verb appends one entry, or the batch a `--from` JSON file holds, through `discussionparser.AppendDecisions`, which writes once, re-runs the discussion check and restores the record on a finding, and then commits the record once.
-//
-// The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
-// It resolves the target worktree through the same resolver the review group uses.
-//
-// The verb refuses a task session's label: a caller whose exported strand name differs from the run's parent orch, the nearest live orch up its beam chain, is refused, and the operator's own unnamed shell always passes.
-// The one other caller is the run's own arbiter strand, which alone may pass `--by arbiter`; any other caller of that label is refused.
-// A sampler run adds a third: the strand its Sampler-Session row has recorded as its session, while the run stands at that row, which passes only `--by operator`, since it records only what the operator settled in its pane.
-// The check reads only the exported strand name, the parent orch's name and the recorded sampler strand, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
-// That is bounded by each entry being append-only, under an `Added after Discussion` heading with the claimed label and the date, in the call's one committed diff.
-// The one strike is a withdrawal, `--pattern-action withdraws`, which removes a declared `## PATTERN changes` bullet in the commit whose entry names it.
-//
-// On a run whose recipe has a Record-Write row the verb works once that row has written and committed the record.
-// The caller rule and the append-only, labelled, committed entry are unchanged.
-// The working copy must equal the committed copy and hold every added entry its history held.
-// After the commit the committed record must hold every appended entry, so an entry a displacing write lost is refused rather than reported.
-// Each refusal on such a record names the way forward by the run's current row.
-//
-// On a beam's run, whose recipe has a Beam-Await row, the record is the beam's project record, `lym loom decision add <beam-slug>` is the one way its scope changes once Record-Write wrote it, and the caller rule names the beam's own orch, the nearest live orch from the beam itself.
-// Its notice reaches the beam's live runs and every live run of the member pairs under the beam, since each member works under the project's scope.
-//
-// The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
-//
-// Once the entries are committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run acts on the call.
-// The line opens with a fixed phrase the parent directive names, so every spawned role takes it as its parent's, and names the record and each entry's heading.
-// A one-entry notice inlines the entry's decision and rationale, so a role that may not read the record, such as webster's Master, still has the call.
-// A batch's notice names only the headings, bar Master's, which inlines every entry's text.
-// With no live run nothing is sent: a later producer reads the record when it starts.
-// A failed listing or post is reported on the success envelope and never fails the verb, since the entry is already committed.
-//
-// On a run past its Discussion approval, the verb also copies the committed record onto the run's board entry, after the commit and before the notices.
-// A copy that fails never fails the verb, since the entry is already committed; the success envelope reports it as `record_store_error`.
-// A call landing while Discussion-Bouncer is settling is not copied, because the run is not past the approval yet, and `lym loom decision store` closes that window by hand.
-// A run a `lym loom goto` moved past Discussion-Bouncer counts as past, so its record is copied unapproved, as the parent's goto decided.
-//
-// `store` is the one idempotent way to make that copy by hand.
-// It admits the operator's own unnamed shell, the run's own arbiter strand and the run's parent orch, refuses a recipe with no Discussion approval row and a run not yet past the approval, and changes nothing in the run: no commit, no routing and no notice.
+// decision.go implements the `decision` loom group:
+// `add` records a design call made after the Discussion ended as an append-only entry in the run's decision record,
+// and `store` copies the committed record onto the run's board entry, idempotently.
+// A call takes one entry or a batch from a `--from` file, and commits the record once.
+// A call made while `Discussion-Bouncer` is settling is not copied to the board,
+// and `store` closes that window by hand.
+// Each live shuttle run of the target worktree gets a creel notice, except the tackler, the arbiter and the caller.
+// `add` never routes the run or touches the support log or the plan.
+// The caller check guards against a mistaken call, not a forged strand name, so `--by` stays an unverified label.
 
 package loomcli
 
@@ -119,23 +89,27 @@ const (
 	decisionWayNoticeTooLong   = "way forward: shorten the decision or rationale, put the detail in a file and name that file in the entry"
 )
 
-// decisionWayRecordRestore is the way forward of a run past its record row whose record is missing from the working copy but committed at HEAD; underLym is the record's path inside _lym.
+// decisionWayRecordRestore returns the way forward for a run past its record row.
+// It applies when the record is missing from the working copy but committed at HEAD.
+// underLym is the record's path inside _lym.
 func decisionWayRecordRestore(underLym string) string {
 	return fmt.Sprintf(`way forward: restore the record from HEAD with "git -C _lym checkout HEAD -- %s", then re-run the verb`, underLym)
 }
 
-// decisionWayDiffers is the way forward of a record whose working copy differs from its committed one; underLym is the record's path inside _lym.
+// decisionWayDiffers returns the way forward for a record whose working copy differs from its committed copy.
+// underLym is the record's path inside _lym.
 func decisionWayDiffers(underLym string) string {
 	return fmt.Sprintf(`way forward: when the working record differs from the committed one only by the entries or PATTERN bullets a failed call's commit-failed refusal reported, run "lym fabric commit" under _lym, which records that call's entries, then re-run the refused call alone, never the failed one; otherwise restore the record to its committed copy with "git -C _lym checkout HEAD -- %s", then re-run the verb`, underLym)
 }
 
-// errPlanUnparsed marks an approval read that failed because the plan does not parse, as opposed to one that failed reading a file.
+// errPlanUnparsed marks an approval read that failed because the plan does not parse.
+// A failed read of a file does not return this error.
 var errPlanUnparsed = errors.New("the plan does not parse")
 
-// decisionWayNoRecord is the way forward of the refusal for a Discussion-Write run with no decision record.
+// decisionWayNoRecord is the way forward when a Discussion-Write run has no decision record.
 const decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lym loom status <slug>" shows whether the run has reached that row, and "lym loom start" begins or resumes the run`
 
-// decisionInput is the flag values of one `decision add` call.
+// decisionInput holds the flag values of one `decision add` call.
 // The three pattern fields are the optional PATTERN-change form and are all empty without it.
 // from names the batch file whose entries replace the per-entry fields, and is empty for a one-entry call.
 // amendsPlan marks a decision that amends the approved plan, so the call also writes the plan amendment record.
@@ -156,16 +130,18 @@ type decisionEntry struct {
 	PatternText   string `json:"pattern_text"`
 }
 
-// patternFormBroken reports whether the PATTERN-change fields of one entry are partial, or carry text beside a withdrawal.
+// patternFormBroken reports whether an entry's PATTERN-change fields are partial, or carry text beside a withdrawal.
 func patternFormBroken(entry, action, text string) bool {
 	return (entry != "") != (action != "") || (entry == "" && text != "") ||
 		(strings.TrimSpace(action) == discussionparser.PatternActionWithdraws && text != "")
 }
 
 // decisionEntries returns the entries input carries, or the refusal text when they are not a well-formed set.
-// A one-entry call refuses an empty field or a partial PATTERN-change form.
-// A --from call refuses any per-entry flag beside it and a file that is unreadable, not one JSON array of objects, followed by more data, empty, or carrying a key no entry has.
-// It also refuses an entry with an empty field or a partial PATTERN-change form, and two entries sharing a title or a PATTERN entry ID.
+// A one-entry call refuses an empty title, decision or rationale, and a partial PATTERN-change form.
+// A --from call refuses any per-entry flag beside the file.
+// It refuses a file that is unreadable, is not one JSON array of entries with nothing after it, or holds no entry.
+// It refuses an entry with an empty title, decision or rationale, or a partial PATTERN-change form.
+// It also refuses an unknown key, and two entries that share a title or a PATTERN entry ID.
 func decisionEntries(input decisionInput) ([]decisionEntry, string) {
 	if input.from == "" {
 		for _, flag := range []struct{ name, value string }{{"title", input.title}, {"decision", input.decision}, {"rationale", input.rationale}} {
@@ -236,9 +212,9 @@ func decisionEntries(input decisionInput) ([]decisionEntry, string) {
 	return entries, ""
 }
 
-// unknownEntryKey returns the 1-based number of the first entry of the --from array data that carries a key no decisionEntry has, with that key.
-// The key is empty when every key is known.
-// The key check is its own pass because the entries decode must stay tolerant of unknown keys.
+// unknownEntryKey returns the 1-based number of the first entry in data with an undefined key, and that key.
+// It returns 0 and an empty key when every key is defined, or when data is not an array of objects.
+// The check is its own pass because the entries decode must stay tolerant of unknown keys.
 func unknownEntryKey(data []byte) (int, string) {
 	var objects []map[string]json.RawMessage
 	if err := json.Unmarshal(data, &objects); err != nil {
@@ -260,25 +236,25 @@ func unknownEntryKey(data []byte) (int, string) {
 	return 0, ""
 }
 
-// decisionDeps is every side effect decisionVerb performs, injected so tests supply fakes.
+// decisionDeps holds every side effect of a decision call, injected so that tests can supply fakes.
 type decisionDeps struct {
 	// strandName is the full name reed exported to the calling session, empty for a shell reed did not spawn.
 	strandName string
-	// programName resolves the hub's full LOOM program name, '<shortname>:LOOM', the sender of a notice posted as the program.
+	// programName resolves the hub's full LOOM program name, '<shortname>:LOOM', which sends notices as the program.
 	programName func() (string, error)
-	// parent resolves the orch that receives the run's notices, the nearest live one up the beam chain, called only for a named caller.
+	// parent resolves the nearest live orch up the beam chain, which receives the run's notices, for a named caller only.
 	parent func() (hubgeom.Parent, error)
 	// arbiterStrand reports whether name is the target run's own arbiter strand, called only for a named caller.
 	arbiterStrand func(name string) bool
-	// samplerStrand reports whether name is the strand the target run's Sampler-Session row has recorded as its session while the run's current row is that row, called only for a named caller.
+	// samplerStrand reports whether name is the strand the Sampler-Session row recorded, while the run stands at that row.
 	samplerStrand func(name string) (bool, error)
 	// readStatus reads the target worktree's default run status; found is false when the run has no status file.
 	readStatus reviewStatusReader
 	// recordPath is the decision record the entry lands in, reported on the success envelope.
 	recordPath string
-	// recordUnderLym is the record's path inside the _lym directory, which a restore way forward names.
+	// recordUnderLym is the record's path inside the _lym directory, which the restore way forward names.
 	recordUnderLym string
-	// append adds every entry of ds to the decision record in one write and re-runs the discussion check, restoring the record on a finding or an error.
+	// append adds the decisions in one write, re-runs the discussion check, and restores the record on a finding or error.
 	append func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error)
 	// commit commits the discussion artifacts, the record included.
 	commit func() error
@@ -308,7 +284,7 @@ type decisionDeps struct {
 	committedAmendment func() ([]byte, bool, error)
 	// commitAmendment commits the amendment record alone.
 	commitAmendment func() error
-	// pastApproval reports whether the run standing at currentRow, empty for a run with no status file, has passed its Discussion approval.
+	// pastApproval reports whether the run at currentRow (empty if no status file) has passed Discussion approval.
 	pastApproval func(currentRow string) bool
 	// storeRecord copies record onto the run's board entry.
 	storeRecord func(record []byte) error
@@ -324,12 +300,15 @@ type decisionNoticeError struct {
 }
 
 // decisionNoticeOpening opens every decision notice.
-// The parent directive stencil names it, so a spawned role tells the notice from any other message signed as the LOOM program.
+// The parent directive stencil names it.
+// That lets a spawned role tell the notice from any other message signed as the LOOM program.
 const decisionNoticeOpening = "Parent decision recorded with lym loom decision add"
 
 // decisionNoticeLine is the notice a live agent of the run gets for the entries added in the record at recordPath.
-// A one-entry notice, and every notice with inline set, carries each entry's decision and rationale, since a role such as Merriam may not read the record;
-// an agent that may read the record re-reads its Added after Discussion entries, the committed record being the authority.
+// A one-entry notice carries each entry's decision and rationale.
+// So does every notice with inline set, since a role such as Merriam may not read the record.
+// An agent that may read the record re-reads its Added after Discussion entries;
+// the committed record is the authority.
 // Any other notice of several entries names only their headings, so a batch reaches the agent as one short line.
 func decisionNoticeLine(recordPath string, added []discussionparser.AddedDecision, inline bool) string {
 	if len(added) == 1 {
@@ -352,7 +331,8 @@ func decisionNoticeLine(recordPath string, added []discussionparser.AddedDecisio
 		decisionNoticeOpening, len(added), recordPath, strings.Join(parts, ", "))
 }
 
-// noticeFits reports whether line fits one creel hook delivery under every sender name a notice may be posted as: the calling strand, when named, and the hub's LOOM program.
+// noticeFits reports whether line fits one creel hook delivery under every sender name a notice may be posted as:
+// the calling strand, when named, and the hub's LOOM program.
 func noticeFits(deps decisionDeps, line string) bool {
 	if deps.strandName != "" && !creelengine.LineFits(deps.strandName, line) {
 		return false
@@ -365,7 +345,8 @@ func noticeFits(deps decisionDeps, line string) bool {
 	return creelengine.LineFits(programName, line)
 }
 
-// decisionNoticeInline reports whether the live run's strand named strand reads no decision record, so its notice carries every entry's text.
+// decisionNoticeInline reports whether the live run's strand named strand reads no decision record.
+// Its notice then carries every entry's text.
 func decisionNoticeInline(strand string) bool {
 	name, err := agentname.Parse(strand)
 	return err == nil && agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole)
@@ -424,9 +405,10 @@ func recordWritePending(currentRow string) bool {
 }
 
 // checkDarnRecord returns the refusal text for a Record-Write run's record that is not safe to append to, or empty when it is.
-// The record is safe once Record-Write has committed it and nothing touched it since: it exists, is committed, equals its committed copy and holds every added entry its history held.
+// The record is safe once Record-Write has committed it and nothing touched it since:
+// it exists, is committed, equals its committed copy and holds every added entry its history held.
 // Each refusal names the way forward by currentRow, the run's current row, empty for a run with no status file.
-// A failed read of any of the four is returned as an error.
+// A failed read of the record, its committed copy or its history is returned as an error.
 func checkDarnRecord(deps decisionDeps, currentRow string) (string, error) {
 	working, err := deps.readRecord()
 	if errors.Is(err, fs.ErrNotExist) {
@@ -478,8 +460,9 @@ func missingRecordRefusal(deps decisionDeps, currentRow string) (string, error) 
 	return prefix + decisionWayRecordGoto, nil
 }
 
-// committedLacksEntry returns the heading of the first entry of added that the record as committed at HEAD holds no `Added after Discussion` entry for, or empty when it holds them all.
-// A record HEAD does not hold lacks the first entry.
+// committedLacksEntry returns the heading of the first entry of added that HEAD's record does not hold.
+// An entry is held when the committed record has an `Added after Discussion` entry with the same heading.
+// It returns empty when every entry is held, and the first entry when HEAD holds no record.
 func committedLacksEntry(deps decisionDeps, added []discussionparser.AddedDecision) (string, error) {
 	committed, found, err := deps.committed()
 	if err != nil {
@@ -504,9 +487,12 @@ func committedLacksEntry(deps decisionDeps, added []discussionparser.AddedDecisi
 	return "", nil
 }
 
-// copyRecordToBoard copies the committed decision record onto the run's board entry when the run standing at currentRow is past its Discussion approval, and returns the text the success envelope reports as record_store_error.
+// copyRecordToBoard copies the committed decision record onto the run's board entry.
+// It does so only when the run standing at currentRow is past its Discussion approval.
 // It returns "" when the run is not past the approval or the copy succeeded.
-// A done entry's refusal reports that the entry keeps the record it last stored, with no pointer at the store verb; any other failure, a missing committed record included, reports the error and the way forward of decisionWayStore.
+// Otherwise it returns the text the success envelope reports as record_store_error.
+// A done entry's refusal reports that the entry keeps the record it last stored, with no pointer at the store verb.
+// Any other failure, a missing committed record included, reports the error and the way forward that names the store verb.
 // Every failure is logged at Warn, and none fails the verb, since the entry is already committed.
 func copyRecordToBoard(deps decisionDeps, currentRow string) string {
 	if !deps.pastApproval(currentRow) {
@@ -600,7 +586,8 @@ func (a *amendmentCall) restoreDecision(deps decisionDeps) error {
 
 // rollBackAppend undoes the amendment of a call whose append returned an error or findings, which cause describes.
 // A decision record is restored only after an error, since the append restores it itself on findings.
-// When a status commit already landed this call's amendment bytes, the restored record is committed, so HEAD never keeps a title whose entry did not land.
+// The restored record is committed when a status commit already landed this call's amendment bytes.
+// That keeps HEAD from holding a title whose entry did not land.
 // It returns the refusal text when that cleanup fails, and empty when it succeeded.
 func (a *amendmentCall) rollBackAppend(deps decisionDeps, appendErrored bool, cause string) string {
 	if appendErrored {
@@ -624,8 +611,11 @@ func (a *amendmentCall) rollBackAppend(deps decisionDeps, appendErrored bool, ca
 }
 
 // afterFailedCommit decides what a failed commit left at HEAD, which commitErr describes.
-// It reports landed when HEAD holds both this call's amendment record and every entry, so the commit went through despite its error.
-// Otherwise it returns the refusal text: both files are kept when HEAD holds the amendment record alone or cannot be read, and restored when HEAD differs.
+// It reports landed when HEAD holds both this call's amendment record and every entry,
+// so the commit went through despite its error.
+// Otherwise it returns the refusal text.
+// Both files are kept when HEAD holds the amendment record alone or cannot be read;
+// they are restored when HEAD differs.
 // wayCommit is the way forward the refusals that keep the files end in.
 func (a *amendmentCall) afterFailedCommit(deps decisionDeps, added []discussionparser.AddedDecision, commitErr error, wayCommit string) (landed bool, refusal string) {
 	failed := fmt.Sprintf("the entry is appended but the commit failed: %s", commitErr)
@@ -674,12 +664,17 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 	}
 }
 
-// decisionVerb appends the decisions in input to the record and commits them in one commit, or refuses with a way forward.
+// decisionVerb appends the decisions in input to the record and commits them in one commit.
+// A refusal carries a way forward.
 //
-// With amendsPlan the verb also appends each entry's title to the plan amendment record, committed with the entries.
-// It is refused on a recipe with no Plan-Write row and for a plan that is not approved, and a failed append or commit puts both records back.
-// The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside its entry, in the same write.
-// It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
+// With amendsPlan the verb also appends each entry's title to the plan amendment record.
+// The title is committed with the entries.
+// It is refused on a recipe with no Plan-Write row and for a plan that is not approved,
+// and a failed append or commit puts both records back.
+// The optional PATTERN-change form appends one bullet beside its entry, in the same write.
+// The bullet follows the record's PATTERN-change shape.
+// It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards.
+// Only the run's parent, the operator's own shell or the run's own arbiter therefore declares a change after Discussion.
 // The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces.
 // Its `withdraws` action strikes that bullet instead, and is refused when the record declares none.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
@@ -888,7 +883,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	return output.Ok(out, result)
 }
 
-// addedDecisionHeading is the heading AppendDecision writes for d, without its leading marker.
+// addedDecisionHeading is the heading of a decision added after a Discussion, without its leading marker.
 func addedDecisionHeading(d discussionparser.AddedDecision) string {
 	return fmt.Sprintf("Added after Discussion (%s, %s): %s", strings.TrimSpace(d.By), d.Date.UTC().Format("2006-01-02"), strings.TrimSpace(d.Title))
 }
@@ -897,7 +892,8 @@ func addedDecisionHeading(d discussionparser.AddedDecision) string {
 const decisionStoreRetry = `way forward: re-run "lym loom decision store"`
 
 // decisionStoreVerb copies the committed decision record onto the run's board entry, or refuses with a way forward.
-// It admits the operator's own unnamed shell, the run's own arbiter strand and the run's parent orch, and refuses a run whose recipe has no Discussion approval row or that is not yet past the approval.
+// It admits the operator's own unnamed shell, the run's own arbiter strand and the run's parent orch.
+// It refuses a run whose recipe has no Discussion approval row or that is not yet past the approval.
 // It changes nothing in the run: no commit, no routing and no notice.
 func decisionStoreVerb(out io.Writer, slug string, deps decisionDeps) int {
 	refuse := func(format string, args ...any) int {
@@ -1066,8 +1062,8 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), target, []string{loomengine.LoomAmendmentRecordRel()}, fmt.Sprintf("loom: plan amendment record for %s", seedSlug(target.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		// resolveReviewTarget's recipeUnknown refusal, which runs before any dep is built, has refused every recipe the accessor cannot parse, so its error is dropped here.
-		// A recipe with no approval row (darn, sampler) answers false, and so does pawl, whose record is the beam's project record: none of those runs is copied.
+		// The recipe's parse error is dropped: an unparseable recipe is refused before any dep is built.
+		// A recipe with no approval row answers false, and so does a run whose record is the beam's project record: neither copies a past approval.
 		pastApproval: func(currentRow string) bool {
 			past, _, _ := loomrecipe.PastDiscussionApproval(recipe, currentRow)
 			return past
@@ -1083,9 +1079,12 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// samplerStrandReader returns the seam that reports whether name is the target run's sampler session: the strand its Sampler-Session row has recorded, while the run's current row is that row.
-// It answers false for a recipe with no SamplerSession row, judged by the recipe's rows, for a status file whose current producer is another row, and for an absent record.
-// The run's state is not read, so a run halted at the row still admits its strand, which the row re-records on each of its own starts and resumes.
+// samplerStrandReader returns the seam that reports whether name is the target run's sampler session:
+// the strand its Sampler-Session row has recorded, while the run's current row is that row.
+// It answers false for a recipe with no SamplerSession row.
+// It also answers false for a status file whose current producer is another row, and for an absent record.
+// The run's state is not read,
+// so a run halted at the row still admits its strand, which the row re-records on each of its own starts and resumes.
 func samplerStrandReader(target *lymcwd.Location, recipe string) func(name string) (bool, error) {
 	readStatus := circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID))
 	return func(name string) (bool, error) {
@@ -1115,7 +1114,8 @@ func seedRecipe(target *lymcwd.Location) (string, error) {
 }
 
 // decisionParent resolves the orch that may record a decision on target's run.
-// A beam's project record is the beam's own orch's to change, the nearest live orch from the beam itself; any other record is the run's parent orch's, the nearest live one up from the run's parent.
+// A beam's project record is the beam's own orch's to change: the nearest live orch from the beam itself.
+// Any other record is the run's parent orch's: the nearest live one up from the run's parent.
 // orchLive reports whether a worktree's orch is live.
 func decisionParent(target *lymcwd.Location, record runRecord, orchLive func(*lymcwd.Location) (bool, error)) (hubgeom.Parent, error) {
 	if record.project {
@@ -1132,7 +1132,9 @@ func decisionParent(target *lymcwd.Location, record runRecord, orchLive func(*ly
 }
 
 // decisionReceivers returns the strand names of the live shuttle runs a decision on target's record reaches.
-// A project record reaches the beam's own runs and the runs of every member pair under the beam, since every member works under the project's scope; any other record reaches target's own runs.
+// A project record reaches the beam's own runs and the runs of every member pair under the beam.
+// Every member works under the project's scope, so the project record reaches their runs too.
+// Any other record reaches target's own runs.
 // runStrands reads the live strand names of one worktree.
 func decisionReceivers(target *lymcwd.Location, record runRecord, runStrands func(*lymcwd.Location) ([]string, error)) ([]string, error) {
 	strands, err := runStrands(target)
@@ -1154,7 +1156,7 @@ func decisionReceivers(target *lymcwd.Location, record runRecord, runStrands fun
 }
 
 // liveRunStrands returns the strand names of the live shuttle runs of target's worktree, read through the registered engines.
-// A running run whose waiting process is gone is not live here.
+// A running run whose waiting process is gone is not live.
 func liveRunStrands(target *lymcwd.Location) ([]string, error) {
 	configDirs := fabricengine.ConfigDirs(target)
 	cfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
@@ -1183,14 +1185,16 @@ type noticePoster interface {
 	Post(receiver, body string) (int64, error)
 }
 
-// noticeClients builds the creel clients a notice posts through: one signing as a strand, one signing as the LOOM program.
+// noticeClients builds the creel clients a notice posts through:
+// one signing as a strand, one signing as the LOOM program.
 type noticeClients struct {
 	strand  func(strandClaim string) (noticePoster, error)
 	program func() (noticePoster, error)
 }
 
 // postDecisionNotice posts line to receiver for a caller whose exported strand name is caller.
-// Creel accepts a program claim only from an orch pane or a process in no pane, so a named non-orch caller, the arbiter, posts as its own strand.
+// Creel accepts a program claim only from an orch pane or from a process in no pane.
+// So a named caller that is not an orch, such as the arbiter, posts as its own strand.
 // A strand claim creel refuses as coming from outside that strand's pane falls back to posting once as the program.
 func postDecisionNotice(clients noticeClients, caller, receiver, line string) error {
 	if name, err := agentname.Parse(caller); err == nil && !agentname.MatchesRole(name.Role, agentname.RoleOrch) {

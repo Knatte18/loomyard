@@ -1,5 +1,6 @@
 // entries_drift.go implements the Drift registry entries, one per Drift engine.
-// Each reads its keys, checks the Env.Drift seams its producer reads and hands the producer a copy of Env.Drift filled with the run-wide seat runner and clock.
+// Each reads its keys and checks the Env.Drift seams its producer reads.
+// It hands the producer a copy of Env.Drift filled with the run-wide seat runner and clock.
 
 package shedrecipe
 
@@ -21,7 +22,7 @@ type driftSeams []struct {
 	seam  any
 }
 
-// requireDriftSeams errors naming the first seam of seams that is nil.
+// requireDriftSeams returns an error naming the first nil seam in seams.
 func requireDriftSeams(entry string, seams driftSeams) error {
 	for _, s := range seams {
 		if err := requireSeam(entry, s.field, s.seam); err != nil {
@@ -85,8 +86,10 @@ func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPr
 }
 
 // driftExpectEntry is the Constructor for the "DriftExpect" registry row.
-// The row's required "subject" is decision-record or board-entry, and its required "gates" holds exactly one entry, named expectation, which the agent's table runs at each turn end.
-// It checks Env.Seats and the Env.Drift seams the producer reads, and fills the producer's seat runner, clock and gate findings file from Env.
+// The row's required "subject" is decision-record or board-entry,
+// and its required "gates" holds exactly one entry, named expectation, which the agent's table runs at each turn end.
+// It checks Env.Seats and the Env.Drift seams the producer reads.
+// It fills the producer's seat runner, clock and gate findings file from Env.
 func driftExpectEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "DriftExpect"
 	if err := configRejectUnknown(cfg, "subject", "gates"); err != nil {
@@ -145,9 +148,12 @@ func driftAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProdu
 	return driftengine.NewDriftAwait(row.Name, driftDepsFrom(env)), nil
 }
 
-// driftVerifyEntry is the Constructor for the "DriftVerify" registry row, which the Drift-Verify and Drift-Recheck rows both build.
-// The row's required "subject" is decision-record or board-entry, and its required "gates" holds exactly one entry, named judgement, which the judge's table runs at each turn end; "gate_key" and every other key is refused.
-// It checks Env.Seats and the Env.Drift seams the producer reads, and fills the producer's seat runner, clock and gate findings file from Env.
+// driftVerifyEntry is the Constructor for the "DriftVerify" registry row.
+// The row's required "subject" is decision-record or board-entry,
+// and its required "gates" holds exactly one entry, named judgement, which the judge's table runs at each turn end;
+// "gate_key" and every other key is refused.
+// It checks Env.Seats and the Env.Drift seams the producer reads.
+// It fills the producer's seat runner, clock and gate findings file from Env.
 func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "DriftVerify"
 	if err := configRejectUnknown(cfg, "subject", "gates"); err != nil {

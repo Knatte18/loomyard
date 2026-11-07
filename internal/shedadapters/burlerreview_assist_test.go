@@ -1,5 +1,8 @@
 // burlerreview_assist_test.go pins the assistant reviewer and the attempt record of BurlerReviewProducer:
-// the per-round pick handed to the runner, the record written before each attempt spawns, the probe built from that record, and the assistant copy archived before a retry.
+// the per-round pick handed to the runner;
+// the record written before each attempt spawns;
+// the probe built from that record;
+// and the assistant copy archived before a retry.
 
 package shedadapters
 
@@ -31,7 +34,8 @@ func assistTestSettings() AssistSettings {
 	}
 }
 
-// TestBurlerReviewProducer_Call_AssistPick proves each round's review is spawned with the assistant the settings pick for it, with the round token and the settings' key, timeout and skip reason.
+// TestBurlerReviewProducer_Call_AssistPick proves each round's review gets its picked assistant;
+// it is also given the round token and the settings' key, timeout and skip reason.
 // A round whose entry has no model gets the zero assistant.
 func TestBurlerReviewProducer_Call_AssistPick(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -77,10 +81,11 @@ func TestBurlerReviewProducer_Call_AssistPick(t *testing.T) {
 	}
 }
 
-// TestBurlerReviewProducer_Call_RecordsAttempt proves the round's usage record carries the attempt token and the assistant before each attempt spawns:
-// 1 with the assistant before attempt 1, and 1b with the same assistant before attempt 2.
+// TestBurlerReviewProducer_Call_RecordsAttempt proves each attempt is recorded before it spawns:
+// the record holds token 1 with the assistant before attempt 1, and token 1b with the same assistant before attempt 2.
 // Its DuringReview hook reads the record, so each token proves the write came first.
-// It also proves the assistant's copy beside the review is archived before attempt 2, and a failed record write is a failure exit that spawns nothing.
+// It also proves the assistant's copy beside the review is archived before attempt 2.
+// A failed record write is a failure exit that spawns nothing.
 func TestBurlerReviewProducer_Call_RecordsAttempt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -165,7 +170,8 @@ func TestBurlerReviewProducer_Call_RecordsAttempt(t *testing.T) {
 	})
 }
 
-// TestBurlerReviewProducer_Call_RecordsAssistOutcome proves an accepted round's usage record says how its assistant ended and which lenses it returned no report for, and that a round with no assistant records neither.
+// TestBurlerReviewProducer_Call_RecordsAssistOutcome proves an accepted round records its assistant's ending;
+// it also records the lenses the assistant returned no report for, and a round with no assistant records neither.
 func TestBurlerReviewProducer_Call_RecordsAssistOutcome(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -211,8 +217,10 @@ func TestBurlerReviewProducer_Call_RecordsAssistOutcome(t *testing.T) {
 	}
 }
 
-// TestBurlerReviewProducer_Call_ProbeFromAttemptRecord proves the probe builds its options from the round's usage record, never from the deps' current assistant settings.
-// A recorded retry token and assistant are probed as recorded, and a record without the attempt key, as an older binary wrote it, is probed as the bare round with no assistant.
+// TestBurlerReviewProducer_Call_ProbeFromAttemptRecord proves the probe takes its options from the usage record;
+// never from the deps' current assistant settings.
+// A recorded retry token and assistant are probed as recorded.
+// A record without the attempt key, as an older binary wrote it, is probed as the bare round with no assistant.
 func TestBurlerReviewProducer_Call_ProbeFromAttemptRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -244,7 +252,7 @@ func TestBurlerReviewProducer_Call_ProbeFromAttemptRecord(t *testing.T) {
 				t.Fatalf("writeRoundUsage: %v", err)
 			}
 			spec := newHalfSpec()
-			// The deps now name another assistant for every round.
+			// The deps name another assistant for every round.
 			spec.assist = AssistSettings{Models: []shuttleengine.ModelChoice{{Model: "current-luna"}}, Fans: []string{"current-fan"}}
 			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
 			p := newReviewProducer(t, runDir, runner, spec)

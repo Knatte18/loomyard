@@ -1,6 +1,6 @@
 // roleguard.go refuses the mutating `lym fabric` verbs from a sandboxed task-session role.
-// It classifies each subcommand as a reader a sandboxed role may run or a verb it may not, and lets a merge task's writer run the merge verbs.
-// It also builds the refusal text addWeftVerbs's pre-run writes.
+// It classifies each subcommand as a reader that a sandboxed role may run, or as a verb it may not.
+// A merge task's writer may also run the merge verbs; the refusal text is built here as well.
 
 package fabriccli
 
@@ -14,8 +14,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mergeTaskVerb reports whether this invocation of cmd is one a merge task's writer needs in its own worktree: merge-in, merge-stage, and merge in its --continue and --abort forms.
-// The merge form that takes a branch stays Finalize's.
+// mergeTaskVerb reports whether this invocation of cmd is one a merge task's writer needs in its own worktree:
+// merge-in, merge-stage, and merge in its --continue and --abort forms.
+// The merge form that takes a branch is not one of them: a run's Finalize performs it.
 func mergeTaskVerb(cmd *cobra.Command) bool {
 	switch cmd.Name() {
 	case "merge-in", "merge-stage":
@@ -46,14 +47,16 @@ func readerVerb(cmd *cobra.Command) bool {
 	return true
 }
 
-// sandboxedRoleRefusal returns the refusal text when strandName names a sandboxed role running a verb it must not, and "" when the invocation may go on.
+// sandboxedRoleRefusal returns the refusal text when strandName names a sandboxed role running a verb it must not.
+// It returns "" when the invocation may go on.
 // A sandboxed role is a name that parses with a slug and a role other than the driver and the orch.
 // An unset, empty, unparseable or slug-free name passes.
-// The detached push child every commit spawns carries a hidden bypass flag and inherits the strand name, so a push with a bypass flag passes;
-// a bypass flag on any other subcommand is refused.
+// The detached push child every commit spawns inherits the strand name and carries a hidden bypass flag,
+// so a push with a bypass flag passes; a bypass flag on any other subcommand is refused.
 // The hidden teardown child a removal spawns inherits the strand name the same way, so it passes too.
 // A merge task's writer passes on the verbs its work is, since the merge of the parent branch is that task.
-// The guard reads the strand name and nothing else, so it stops a mistaken call, not a session that rewrites the variable.
+// The guard reads the strand name and nothing else, so it stops a mistaken call.
+// It does not stop a session that rewrites the variable.
 func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 	name, err := agentname.Parse(strandName)
 	if err != nil || name.Slug == "" {

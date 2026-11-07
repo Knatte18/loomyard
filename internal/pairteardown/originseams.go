@@ -1,5 +1,8 @@
-// originseams.go builds the seams the origin reconcile takes by injection: whether a pair is live, whether the prime branch's parent lock is free, how an ended entry's pair is torn down, and who owns an entry.
-// Every call site's CLI package builds them here, so the reconcile sees one reading of a live pair and one local removal.
+// originseams.go builds the seams the origin reconcile takes by injection.
+// The seams tell whether a pair is live and whether the prime branch's parent lock is free.
+// They also tear down an ended entry's pair and say who owns an entry.
+// Each call site's CLI package builds them here,
+// so the reconcile sees one reading of a live pair and one local removal.
 
 package pairteardown
 
@@ -19,12 +22,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// SeamOptions carries what the origin reconcile's call site knows and Teardown does not.
-// HubPaused reports whether a live hub pause entry covers slug, whose driver is then interrupted; LivePair calls it each time it is called, so a pause lifted meanwhile reads lifted.
+// SeamOptions carries what the origin reconcile's call site knows and the teardown does not.
+// HubPaused reports whether a live hub pause entry covers slug, whose driver is then interrupted;
+// it is called on every live-pair check, so a pause lifted meanwhile reads lifted.
 // PrimeParentLockFree reads once whether the prime branch's parent lock record is free; nil reads as free.
-// WakeHeld reports whether a live wake-written pair pause entry of slug exists, and LiftWakeHold lifts it; both nil read as no wake hold.
+// WakeHeld reports whether a live wake-written pair pause entry of slug exists, and LiftWakeHold lifts it;
+// both nil read as no wake hold.
 // Machine reads this machine's name, and a nil Machine builds no owner seam, so every entry reads as owned here.
-// ParentOf names the slug of the pair slug was forked from, or "" for the prime; nil reads every entry's parent as the prime.
+// ParentOf names the slug of the pair slug was forked from, or "" for the prime;
+// nil reads every entry's parent as the prime.
 type SeamOptions struct {
 	HubPaused           func(slug string) (bool, error)
 	PrimeParentLockFree func() (bool, error)
@@ -35,8 +41,10 @@ type SeamOptions struct {
 }
 
 // HubSeamOptions returns the options a call site with only the prime's location needs.
-// HubPaused reads the hub's pause record at each call, and PrimeParentLockFree lists the parent lock store once for the prime's branch.
-// Machine reads the machine's name, and ParentOf resolves an entry's parent slug through hubgeom.ParentOf over the prime's location.
+// HubPaused reads the hub's pause record at each call.
+// PrimeParentLockFree lists the parent lock store once for the prime's branch.
+// Machine reads the machine's name.
+// ParentOf resolves an entry's parent slug through hubgeom.ParentOf over the prime's location.
 // WakeHeld and LiftWakeHold are left nil, which read as no wake hold, for the call site that knows one to fill.
 func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 	return SeamOptions{
@@ -76,8 +84,10 @@ func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 	}
 }
 
-// OwnerReader builds the owner question the origin reconcile asks over one `board.json`: the effective owner of a slug, the subject `lym adopt` takes to move it, and whether that owner is another machine.
-// A machine error, an empty hostname included, a parentOf error and undecodable board bytes are returned, so no owner is ever compared with an empty name.
+// OwnerReader builds the reader of a slug's owner from one `board.json`:
+// the effective owner, the subject `lym adopt` takes to move it, and whether that owner is another machine.
+// A machine error, an empty hostname included, a parentOf error and undecodable board bytes are returned,
+// so no owner is ever compared with an empty name.
 // parentOf names the slug of a pair's parent in the hub at hubPath, or "" for the prime.
 func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {
 	return func(hubPath string, boardJSON []byte, slug string) (string, string, bool, error) {
@@ -105,8 +115,12 @@ func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug str
 // OriginSeams returns the seams the origin reconcile reaches by injection.
 // LivePair is the negation of the quiet rule's probe, except that a slug a live hub pause entry covers reads not live.
 // OwnerOf is the owner reader over the options' Machine and ParentOf, and nil when Machine is nil.
-// Teardown removes an ended entry's pair in local mode under the ended verdict, which skips the driver checks, refusing a driver lock or run lock still held after the owned processes are ended, and reports a busy driver or a busy lock as the report's busy flag.
-// The force case, a pair with a wake-written pause entry or an earlier snapshot tag, instead ends the driver, snapshots the pair's uncommitted paths and, once they are kept, lifts the wake hold.
+// Teardown removes an ended entry's pair in local mode under the ended verdict.
+// That verdict skips the driver checks.
+// It refuses a driver lock or run lock still held after the owned processes are ended.
+// It reports a busy driver or a busy lock as the report's busy flag.
+// A pair with a wake-written pause entry or an earlier snapshot tag is forced instead.
+// Forcing ends the driver, snapshots the pair's uncommitted paths, and, once they are kept, lifts the wake hold.
 func (t *Teardown) OriginSeams(opts SeamOptions) fabricengine.OriginSeams {
 	var ownerOf fabricengine.OwnerReader
 	if opts.Machine != nil {

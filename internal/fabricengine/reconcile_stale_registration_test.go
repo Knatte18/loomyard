@@ -1,21 +1,15 @@
-// reconcile_stale_registration_test.go proves Reconcile repairs a weft
-// worktree that was deleted by hand (plain rm, not `git worktree remove`),
-// the drift shape that leaves a stale git worktree registration still
-// claiming the weft branch. Pre-fix, `git worktree add` refused with
-// "missing but already registered worktree" on every reconcile run, so the
-// drift was permanently unrepairable by any fabric verb (a live review round
-// confirmed this); Reconcile now prunes stale registrations before adopting.
+// reconcile_stale_registration_test.go covers Reconcile repairing a weft worktree deleted by hand.
+// The deletion is a plain rm rather than `git worktree remove`.
+// That drift leaves a stale git worktree registration that still claims the weft branch,
+// and `git worktree add` refuses with "missing but already registered worktree" while it stands.
+// Reconcile prunes stale registrations before it adopts a worktree, so the drift is repaired.
 //
-// This file also carries the fabric-only standalone regression guards
-// backfilled from the now-deleted reconcile_differential_test.go:
-// Prune's launcher teardown on apply (R6) and its once-only stale-registration reporting (F2/F3), Cleanup's primary-weft-branch protection when the
-// primary is parked off its branch (F1), its refusal to ever delete a
-// non-suffixed (not fabric-managed) weft branch, and its checked-out protection for
-// a pair whose warp sits on a detached HEAD (R5); and Healthy's "real
-// directory in the junction's place" wording (R10). Each guards the same real
-// bug the differential file's subtest name/doc comment names — see git
-// history for reconcile_differential_test.go for the original differential
-// framing.
+// The file also holds standalone regression guards for Prune, Cleanup and Healthy.
+// Prune removes launcher directories on apply and reports each stale registration once.
+// Cleanup protects the primary's weft branch while the primary is parked off that branch,
+// and it never deletes a non-suffixed weft branch, one not fabric-managed.
+// It also treats a pair whose warp is on a detached HEAD as checked out.
+// Healthy reports a real directory in the junction's place with its own wording.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -37,9 +31,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// TestReconcile_RecreatesHandDeletedWeftWorktree deletes a pair's weft worktree directory with
-// plain os.RemoveAll (leaving the stale registration behind) and asserts one Reconcile run
-// recreates it from the surviving branch with no per-pair error.
+// TestReconcile_RecreatesHandDeletedWeftWorktree deletes a pair's weft worktree directory with plain os.RemoveAll.
+// The stale registration stays behind.
+// It asserts one Reconcile run recreates the worktree from the surviving branch with no per-pair error.
 func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -51,8 +45,8 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	// The drift injection: delete the weft worktree directory out from under
-	// git, exactly as a stray rm would — the registration and branch survive.
+	// Delete the weft worktree directory out from under git, as a stray rm would;
+	// the registration and branch survive.
 	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	if err := os.RemoveAll(weftPath); err != nil {
 		t.Fatalf("hand-delete weft worktree: %v", err)
@@ -63,8 +57,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// Find the pair for our slug and assert a clean recreate. Result paths are
-	// emitted forward-slashed, so normalize the expectation the same way.
+	// Result paths are emitted forward-slashed, so normalize the expectation the same way.
 	var found bool
 	for _, pair := range result.Pairs {
 		if pair.RecordsWorktree != filepath.ToSlash(weftPath) {
@@ -82,7 +75,6 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 		t.Fatalf("Reconcile result has no pair for slug %q: %+v", slug, result.Pairs)
 	}
 
-	// The weft worktree is back on disk, checked out on its suffixed branch.
 	if info, err := os.Stat(weftPath); err != nil || !info.IsDir() {
 		t.Fatalf("weft worktree not recreated at %s: %v", weftPath, err)
 	}
@@ -91,9 +83,10 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	}
 }
 
-// TestReconcile_MissingWeftRepoIsDiagnosedByName destroys the weft prime — the checkout holding the
-// weft repo's gitdir — and asserts reconcile reports the missing weft repo by name with a remedy,
-// instead of the raw chdir errors each corrective branch used to fail with.
+// TestReconcile_MissingWeftRepoIsDiagnosedByName destroys the weft prime:
+// the checkout that holds the weft repo's gitdir.
+// It asserts reconcile reports the missing weft repo by name with a remedy.
+// Raw chdir errors from each corrective branch are not reported instead.
 func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -135,11 +128,12 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	}
 }
 
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at fabricengine.BoltDir(hub), the Bolt checkout's _lym/config/fabric.yaml.
-// It is the base card 7's RepoWiredNames-migrated sites (checkJunctionHealth, Healthy, Reconcile, Topology.Checkout, Topology.Remove, junctionRepointedDetail) now read from.
-// A real hub built by hubforge.NewHub materializes the Bolt checkout via CloneAndWire, but not this repo-wide fabric.yaml, so this creates the file (and its _lym/config/) first.
-// Unlike gitkit.SeedConfig, the Bolt checkout is not a git repository, so the file is written directly with no git add/commit step.
-// Shared by every fabricengine_test fixture that exercises a migrated read.
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at fabricengine.BoltDir(hub).
+// That is the Bolt checkout's _lym/config/fabric.yaml.
+// A real hub built by hubforge.NewHub materializes the Bolt checkout via CloneAndWire but not this file,
+// so this creates the file and its _lym/config/ first.
+// The Bolt checkout is not a git repository, so the file is written directly, with no git add or commit.
+// Shared by every fabricengine_test fixture that exercises the repo-wide config reads.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
@@ -190,10 +184,10 @@ func findCleanupEntry(t *testing.T, entries []fabricengine.CleanupBranchEntry, b
 	return nil
 }
 
-// TestPrune_ApplyRemovesLaunchers is the R6 fix regression guard: when the warp worktree
-// is deleted by hand, apply Prune removes the orphaned weft — but before the fix it left the dead
-// slug's launcher directory behind forever, since no other verb
-// ever revisits a pruned slug (Remove would have, but the pair is already gone).
+// TestPrune_ApplyRemovesLaunchers guards Prune's launcher teardown on apply.
+// When the warp worktree is deleted by hand, apply Prune removes the orphaned weft and the slug's launcher directory.
+// No other verb revisits a pruned slug, so a launcher left behind would persist;
+// Remove would clean it up, but the pair is already gone by then.
 func TestPrune_ApplyRemovesLaunchers(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -212,8 +206,8 @@ func TestPrune_ApplyRemovesLaunchers(t *testing.T) {
 		t.Fatalf("setup: launcher dir missing after Add: %v", err)
 	}
 
-	// Delete the warp by hand (bare removal, not `git worktree remove`) — the
-	// live-reproduced R6 scenario, leaving a stale registration.
+	// Delete the warp by hand with a bare removal, not `git worktree remove`.
+	// That leaves a stale registration.
 	if err := os.RemoveAll(warpPath); err != nil {
 		t.Fatalf("remove warp dir: %v", err)
 	}
@@ -233,12 +227,11 @@ func TestPrune_ApplyRemovesLaunchers(t *testing.T) {
 	}
 }
 
-// TestPrune_StaleRegistrationReportedOnce is the F2/F3 regression guard: when a warp worktree
-// directory is deleted by a bare removal (leaving a stale git worktree registration) rather than
-// `git worktree remove`, Pass 1 (missing registered warp) and Pass 2 (weft with no warp sibling)
-// both see the same orphaned weft.
-// Prune must report it exactly once so dry-run and --apply agree,
-// and must not claim Removed=true when there is no weft directory to delete.
+// TestPrune_StaleRegistrationReportedOnce covers a warp worktree deleted by a bare removal.
+// That leaves its git worktree registration stale, unlike `git worktree remove`.
+// Pass 1 (missing registered warp) and Pass 2 (weft with no warp sibling) both see the same orphaned weft.
+// Prune must report it exactly once so dry-run and --apply agree;
+// it must not claim Removed=true when there is no weft directory to delete.
 func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("DoubleCountAvoided", func(t *testing.T) {
@@ -293,9 +286,8 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		warpPath := fabricengine.WorktreePath(l, slug)
 		weftPath := fabricengine.RecordsWorktreePath(l, slug)
 
-		// Bare-remove BOTH sides, leaving both registrations stale. With the
-		// weft directory gone, Pass 1's removeStalePair has nothing to
-		// delete.
+		// Bare-remove BOTH sides, leaving both registrations stale.
+		// With the weft directory gone, Pass 1's removeStalePair has nothing to delete.
 		if err := os.RemoveAll(warpPath); err != nil {
 			t.Fatalf("bare-remove warp worktree: %v", err)
 		}
@@ -317,12 +309,10 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 	})
 }
 
-// TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut is the F1 regression guard: it moves the
-// fabric weft primary OFF main-weft (exactly what a coordinated checkout of the primary to another
-// branch produces) so main-weft is no longer the checked-out branch, then runs apply+force Cleanup.
-// main-weft must still survive — protected by fabric's live-warp-branch logic, not merely by git's
-// refusal to delete a checked-out branch.
-// Before the fix, main-weft was deleted here.
+// TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut moves the weft primary off main-weft.
+// It then runs apply+force Cleanup, and main-weft must still survive.
+// It is protected by fabric's live-warp-branch logic;
+// git's refusal to delete a checked-out branch alone does not protect it.
 func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -353,9 +343,8 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	}
 }
 
-// TestCleanup_NonSuffixedBranchNeverDeleted covers a weft branch with no "-weft" suffix: it is not
-// fabric-managed, whatever its origin;
-// fabric must never delete it, even under apply+force.
+// TestCleanup_NonSuffixedBranchNeverDeleted covers a weft branch with no "-weft" suffix.
+// Such a branch is not fabric-managed, whatever its origin, so fabric must never delete it, even under apply+force.
 func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -384,12 +373,9 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	}
 }
 
-// TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch is the R5 fix: a live pair whose warp
-// worktree sits on a detached HEAD is invisible to the live-warp-branch liveness check (readBranch
-// reports the literal "HEAD"), so before the fix Cleanup listed the pair's weft branch as a
-// deletable orphan and apply+force attempted a git branch -D that only git's own checked-out
-// refusal stopped.
-// The checked-out protection must report the branch Protected in every mode instead.
+// TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch covers a live pair with a detached warp HEAD.
+// Branch-space liveness cannot see such a pair.
+// The checked-out protection must report the weft branch Protected in every mode.
 func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -400,9 +386,8 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	// Detach the warp worktree's HEAD so branch-space liveness cannot see the
-	// pair is live; only the checked-out protection stands between Cleanup
-	// and the pair's weft branch.
+	// Detach the warp worktree's HEAD so branch-space liveness cannot see the pair is live.
+	// Only the checked-out protection stands between Cleanup and the pair's weft branch.
 	warpPath := fabricengine.WorktreePath(l, slug)
 	gitkit.MustRun(t, warpPath, "git", "checkout", "--detach")
 
@@ -435,8 +420,8 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	}
 }
 
-// TestHealthy_RealDirNotAJunction is the R10 fix: a real (non-link) directory sitting where the _lym junction belongs must be reported as "warp _lym is not a junction" — the wording checkJunctionHealth already uses for the same drift shape — not as "junction missing".
-// The loom preflight will consume this reason string after cutover.
+// TestHealthy_RealDirNotAJunction checks the reason reported when a real directory sits where the _lym junction belongs.
+// The reason is "warp _lym is not a junction", not "junction missing".
 //
 //testtiming:keep a real directory where the _lym junction belongs reporting "warp _lym is not a junction"; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_RealDirNotAJunction(t *testing.T) {
@@ -456,8 +441,8 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
-	// Replace the junction with a real directory — the drift shape a
-	// pre-weft repo migration or a hand-created _lym leaves behind.
+	// Replace the junction with a real directory:
+	// the drift a hand-created _lym or a migration from a repo that predates weft leaves behind.
 	warpLink := fabricengine.WarpLymLinkHere(warpLayout)
 	if err := os.Remove(warpLink); err != nil {
 		t.Fatalf("remove warp junction: %v", err)
@@ -479,9 +464,8 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 }
 
 // TestReconcile_RecreatedWeftIsWiredInTheSamePass proves a single reconcile pass fully repairs a
-// pair whose weft worktree was deleted out from under it. Recreating the worktree alone leaves the
-// warp junctions pointing at directories that vanished with it, so the pair stayed unhealthy — with
-// a raw EvalSymlinks error as its reported reason — until a SECOND reconcile ran.
+// pair whose weft worktree was deleted out from under it.
+// Recreating the worktree alone leaves the warp junctions pointing at directories that vanished with it.
 func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
@@ -535,10 +519,8 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	}
 }
 
-// TestCleanup_DryRunMatchesApplyVerdict proves a dry run answers the question a dry run is for:
-// what the same flags plus --apply would actually do. An orphan weft branch is unprotected in both
-// the dry run and the apply, and --apply alone (no --force) actually deletes it — an orphan weft
-// branch is deletable under --apply alone, with no fold-back gate standing between it and deletion.
+// TestCleanup_DryRunMatchesApplyVerdict proves a dry run reports what the same flags plus --apply would actually do.
+// An orphan weft branch is unprotected in both the dry run and the apply, and --apply alone (no --force) deletes it.
 func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
@@ -599,14 +581,13 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	}
 }
 
-// TestCleanup_ForceIsReservedAndChangesNoVerdict pins the reserved-ness of Cleanup's force parameter
-// itself, which nothing pinned once raddleFoldedBack — force's only consumer — was deleted.
-// A reserved flag that nothing tests is a flag that quietly grows a gate again: `lym fabric cleanup
-// --force` is still accepted on the command line and still documented as answering no gate, so the
-// property has to be asserted rather than assumed. This compares the full verdict set from a dry run
-// with force=false against one with force=true over the same fixture — an unmanaged non-suffixed
-// branch beside a genuine orphan, so both a protected and an unprotected verdict are in the
-// comparison — and then confirms the apply pass with force=true deletes exactly the orphan.
+// TestCleanup_ForceIsReservedAndChangesNoVerdict pins that Cleanup's force parameter is reserved:
+// it changes no verdict and answers no gate.
+// A reserved flag that no test covers can quietly regrow a gate.
+// `lym fabric cleanup --force` is still accepted and documented as answering no gate, so the test asserts the property.
+// It compares the full verdict set from a dry run with force=false against one with force=true over the same fixture:
+// an unmanaged non-suffixed branch beside a genuine orphan, so both a protected and an unprotected verdict are covered.
+// It then confirms the apply pass with force=true deletes exactly the orphan.
 func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
@@ -666,7 +647,7 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	}
 }
 
-// reconcilePairFor returns the Reconcile result entry for slug's pair, failing the test when there is none.
+// reconcilePairFor returns the result entry for slug's pair, failing the test when the result has none.
 func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug string) fabricengine.ReconcilePairResult {
 	t.Helper()
 	for _, pair := range result.Pairs {
@@ -680,7 +661,7 @@ func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug st
 
 // TestReconcile_RestoresDeletedLaunchers proves Reconcile restores a pair's missing launcher directory and reports it.
 // It also proves a failed restore stays a Detail note.
-// Without the report a pair whose directory was deleted read already_healthy until it was removed and re-added.
+// The report matters: a pair whose directory was deleted must not read already_healthy.
 func TestReconcile_RestoresDeletedLaunchers(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

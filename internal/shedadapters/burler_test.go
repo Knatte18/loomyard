@@ -10,8 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
-// simpleBurlerProfile returns a minimal burlerengine.Profile suitable for passing through Call --
-// its content fields are irrelevant since the row producers never invoke burlerengine's own validation.
+// simpleBurlerProfile returns a minimal burlerengine.Profile for the row producers' tests.
+// Its content fields are irrelevant, since the row producers never invoke burlerengine's own validation.
 func simpleBurlerProfile() burlerengine.Profile {
 	return burlerengine.Profile{
 		Rubric:   "rubric text",

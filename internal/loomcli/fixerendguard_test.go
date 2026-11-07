@@ -21,7 +21,9 @@ type endCall struct {
 	callerPID        int
 }
 
-// TestEndGateFixers covers which processes a pair's fixer end reaches: each fixer role under the owner with the caller's pid, nothing for an empty slug, and the errors of the slug read and of an end.
+// TestEndGateFixers covers which processes a pair's fixer end reaches.
+// Each fixer role is ended under the owner with the caller's pid, and an empty slug ends nothing.
+// The errors of the slug read and of an end are checked too.
 func TestEndGateFixers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -82,7 +84,9 @@ func TestEndGateFixers(t *testing.T) {
 	}
 }
 
-// TestFixerEndingGuard covers when the wrapped goto guard ends the fixers: only once the inner guard admits, with the fixers' end error refusing the move, and a receiver with no location ending nothing.
+// TestFixerEndingGuard covers when the wrapped goto guard ends the fixers.
+// The fixers end only once the inner guard admits, and the fixers' end error refuses the move.
+// A receiver with no location ends nothing.
 func TestFixerEndingGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

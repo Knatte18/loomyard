@@ -1,4 +1,5 @@
-// gate_terminal_test.go covers the MayHold entry and the Terminal gate result, driven through gate_pending_test.go's fixture and fakes — hermetic, untagged, and never sleeping for real.
+// gate_terminal_test.go covers the MayHold entry and the Terminal gate result.
+// It is driven through gate_pending_test.go's fixture and fakes: hermetic, untagged, and never sleeping for real.
 
 package shuttleengine
 

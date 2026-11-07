@@ -1,4 +1,5 @@
-// timing_test.go tests ComputeTiming over a fake records repository: which runs it covers, each run's span and phases, machine sleep, the day and week buckets and the phase medians.
+// timing_test.go tests ComputeTiming over a fake records repository:
+// which runs it covers, each run's span and phases, machine sleep, the day and week buckets and the phase medians.
 
 package reportengine
 
@@ -24,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// secondsAfter returns the time seconds after base.
 func secondsAfter(base time.Time, seconds int) time.Time {
 	return base.Add(time.Duration(seconds) * time.Second)
 }
@@ -47,13 +47,16 @@ func seedStartedAt(start time.Time) string {
 	return fmt.Sprintf(`{"recipe":"tapestry","driver":"go","started_at":%q}`, start.Format(time.RFC3339))
 }
 
-// landedRun adds the archive tag of a full tapestry run of slug at hour holding the loom history and seed text, with each batten status committed in the hours before it.
+// landedRun adds the archive tag of a full tapestry run of slug at hour.
+// The tagged tree holds the loom history and seed text,
+// and each batten status is committed in the hours before hour.
 // The loom history must hold a Finalize entry for the tag to be a full run.
 func landedRun(w *world, slug, sha string, hour int, seed string, loom []shedengine.HistoryEntry, batten ...shedengine.Status) {
 	landedRunWith(w, slug, sha, hour, seed, loom, nil, batten...)
 }
 
-// landedRunWith is landedRun with extra record files, keyed by tree-relative path, in the tagged tree.
+// landedRunWith adds the archive tag of a full tapestry run of slug at hour.
+// It also adds the extra record files, keyed by tree-relative path, to the tagged tree.
 func landedRunWith(w *world, slug, sha string, hour int, seed string, loom []shedengine.HistoryEntry, extra map[string]string, batten ...shedengine.Status) {
 	for i, status := range batten {
 		w.battenRecord(fmt.Sprintf("%s-b%d", sha, i), hour-len(batten)+i, slug, status)
@@ -61,7 +64,9 @@ func landedRunWith(w *world, slug, sha string, hour int, seed string, loom []she
 	w.tagWith(slug, sha, at(hour), seed, statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: loom}), extra)
 }
 
-// parentRoundTimed returns the files of parent-review round number with a request opened at opened (none when zero), a verdict recorded at verdict (none when zero) and an alignment record spawned at spawned (none when zero).
+// parentRoundTimed returns the files of parent-review round number.
+// The request, verdict and alignment files take the times opened, verdict and spawned;
+// a zero time leaves its file out.
 func parentRoundTimed(number int, opened, verdict, spawned time.Time) map[string]string {
 	dir := path.Join(filepath.ToSlash(parentReviewDirRel()), fmt.Sprintf("round-%d", number))
 	files := map[string]string{path.Join(dir, "delivery.json"): `{}`}
@@ -82,7 +87,8 @@ func arbiterSpawnedFiles(t *testing.T, slug string, number int, spawned time.Tim
 	return arbiterAttemptFiles(t, slug, number, loomengine.ArbiterAttempt{SpawnedAt: spawned}, "", false)
 }
 
-// alignmentSpawnedFiles returns the files of attempt number of slug's alignment agent at point, spawned at spawned and recording applied.
+// alignmentSpawnedFiles returns the files of attempt number of slug's alignment agent at point.
+// The agent is spawned at spawned and records applied.
 func alignmentSpawnedFiles(t *testing.T, slug, point string, number int, spawned time.Time, applied string) map[string]string {
 	t.Helper()
 
@@ -138,7 +144,8 @@ func blockedNote(name, producer string) map[string]string {
 	return haltNoteFiles("", name, haltnote.Note{Producer: producer, State: "blocked", Anomaly: "watchdog", Reason: "stalled"})
 }
 
-// stopRun adds a landed run of slug whose loom history is loom and batten history is batten, with the loom file's settle records and batten's, and extra files in the tagged tree.
+// stopRun adds a landed run of slug whose loom history is loom and batten history is batten.
+// The settle records of the loom file and of batten are written, and extra files go in the tagged tree.
 func stopRun(w *world, slug string, loom, batten []shedengine.HistoryEntry, loomRecords, battenRecords []shedrun.SettleRecord, extra map[string]string) {
 	files := mergeFiles(extra)
 	if len(loomRecords) > 0 {
@@ -270,7 +277,8 @@ func wantFindings(t *testing.T, report TimingReport, want ...[2]string) {
 }
 
 // loomRowPhases lists every loom row with the phase it counts under, the retired rows of past runs included.
-// The Code and PR-Review rows come last, so the stamps of the rows before them stay where the batten rows' fixed times fall between them.
+// The Code and PR-Review rows come last,
+// so the stamps of the rows before them stay where the batten rows' fixed times fall between them.
 var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePreflight, PhaseSetup},
 	{loomshed.NameDiscussionWrite, PhaseDiscussion},
@@ -307,7 +315,8 @@ var loomRowPhases = []struct{ row, phase string }{
 	{retiredLoomPreflightRow, PhaseSetup},
 }
 
-// darnRowPhases lists every darn row, the retired writer and perch row names included, with the phase it counts under, in the order the rows run.
+// darnRowPhases lists every darn row with the phase it counts under, in the order the rows run.
+// The retired writer and perch row names are included.
 var darnRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePreflight, PhaseSetup},
 	{loomshed.NameDriftBaseline, PhaseSetup},
@@ -382,7 +391,8 @@ func TestComputeTiming(t *testing.T) {
 				if got1.State != RunStateLanded || got1.Tag != tagName("both", "t1") || !got1.Start.Equal(run) || !got1.End.Equal(secondsAfter(run, 2760)) {
 					t.Errorf("run = %s %s %v-%v; want landed under its archive tag over the batten record's span", got1.State, got1.Tag, got1.Start, got1.End)
 				}
-				// The Plan-Write row's gap to Webster is split by the Run-Shed row at 1500, which counts under the producer its change names.
+				// The Plan-Write row's gap to Webster is split by the Run-Shed row at 1500.
+				// That row counts under the producer its change names.
 				wantPhases(t, got1, map[string]int64{
 					PhaseSetup: 300, PhaseDiscussion: 300, PhasePlan: 660, PhaseWebster: 300,
 					PhaseMerge: 240, PhasePublishFinalize: 360, PhaseLand: 360,

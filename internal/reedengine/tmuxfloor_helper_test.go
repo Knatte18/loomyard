@@ -4,7 +4,8 @@ package reedengine
 
 import "testing"
 
-// setTmuxVersionProbeForTest replaces tmuxVersionProbe with probe and empties tmuxFloors for the test, restoring both on cleanup.
+// setTmuxVersionProbeForTest replaces tmuxVersionProbe with probe and empties tmuxFloors for the test;
+// it restores both on cleanup.
 // It changes process-global state, so the caller must not be parallel.
 func setTmuxVersionProbeForTest(t *testing.T, probe func(tmuxPath string) (string, error)) {
 	t.Helper()

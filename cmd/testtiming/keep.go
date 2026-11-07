@@ -17,9 +17,10 @@ const (
 
 var topLevelTestDecl = regexp.MustCompile(`^func (Test\w*)\(`)
 
-// scanKeeps returns the tests of the package directory marked with a `//testtiming:keep <reason>` line, by name with their reasons.
-// The directive sits on the line directly above the test's `func Test…` line, or above only `//lym:` directive lines that precede it.
-// A directive with an empty reason, or one not directly above a top-level test declaration, is an error naming the file and line.
+// scanKeeps maps each test of the package directory marked with a `//testtiming:keep <reason>` line to its reason.
+// The directive sits above the test's `func Test…` line, with only `//lym:` directive lines allowed between them.
+// A directive with an empty reason, or one not placed above a top-level test declaration, is an error.
+// The error names the file and line.
 func scanKeeps(dir string) (map[string]string, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
 	if err != nil {
@@ -58,7 +59,7 @@ func scanKeeps(dir string) (map[string]string, error) {
 	return keeps, nil
 }
 
-// keepReason returns the trimmed reason of a keep directive line and whether the line is one.
+// keepReason returns the trimmed reason of a keep directive line, and reports whether the line is one.
 func keepReason(line string) (string, bool) {
 	rest, ok := strings.CutPrefix(line, keepDirective)
 	if !ok || (rest != "" && rest[0] != ' ' && rest[0] != '\t') {

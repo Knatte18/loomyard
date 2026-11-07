@@ -28,7 +28,7 @@ func styledBox(caretLine string) string {
 	return rule + "\n" + caretLine + "\n" + rule + "\n  ? for shortcuts\n"
 }
 
-// plainBox is the plain capture Claude answers for a styled one.
+// plainBox converts a styled pane capture into the plain capture Claude gives for it.
 func plainBox(styled string) string {
 	return (&Claude{}).PlainBoxCapture(styled)
 }
@@ -221,7 +221,8 @@ func TestInputBoxText(t *testing.T) {
 	}
 }
 
-// TestPlainBoxCapture pins the plain capture a styled one answers: escapes removed, trailing ASCII spaces trimmed, and only a placeholder-only box blanked.
+// TestPlainBoxCapture pins the plain capture of a styled pane:
+// escapes removed, trailing ASCII spaces trimmed, and only a placeholder-only box blanked.
 func TestPlainBoxCapture(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

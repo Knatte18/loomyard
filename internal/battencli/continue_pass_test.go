@@ -1,4 +1,5 @@
-// continue_pass_test.go pins the continue pass dobby schedules into a run it already drives: what lets it through and skips, and the conditions that refuse it.
+// continue_pass_test.go pins the continue pass dobby schedules into a run it already drives:
+// what lets it through and what skips it, and the conditions that refuse it.
 
 package battencli
 
@@ -22,9 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBattenPreRun_ContinuePass runs the pre-run under --continue-pass over a hand-populated receiver and a temp dobby state, with a pause covering the slug:
+// TestBattenPreRun_ContinuePass runs the pre-run under --continue-pass over a hand-populated receiver.
+// It also uses a temp dobby state and a pause covering the slug, and checks these outcomes:
 // a continue pass of a running Run-Shed run the state names runs no reconcile, no reopening and no pause refusal;
-// a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name, a run with a full pass owed and a run with an origin-owed marker each refuse naming `lym batten run <slug>`, with the continue-refused exit code.
+// a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name;
+// a run with a full pass owed, and a run with an origin-owed marker;
+// each of these refuses, naming `lym batten run <slug>`, with the continue-refused exit code.
 func TestBattenPreRun_ContinuePass(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

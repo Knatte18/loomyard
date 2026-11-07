@@ -37,7 +37,8 @@ func currentHubPath(ctx context.Context) (string, error) {
 	return location.HubPath, nil
 }
 
-// daemonAnswers reports whether a daemon accepts a connection on the socket; it closes the connection at once and starts nothing.
+// daemonAnswers reports whether a daemon accepts a connection on the socket;
+// it closes the connection at once and starts nothing.
 func daemonAnswers(socketPath string) bool {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {

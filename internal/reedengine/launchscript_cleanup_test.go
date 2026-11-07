@@ -1,4 +1,5 @@
-// launchscript_cleanup_test.go proves every path that forgets a strand also deletes its launch script, and that no path deletes a script whose strand survives.
+// launchscript_cleanup_test.go tests that every path that forgets a strand deletes its launch script.
+// It also tests that no path deletes the script of a strand that survives.
 
 package reedengine
 
@@ -43,7 +44,8 @@ func assertScriptPresence(t *testing.T, path string, want bool) {
 	}
 }
 
-// newCleanupEngine returns a test engine whose tmux fake reports a live session and no pane output, with st saved as its state.
+// newCleanupEngine returns a test engine whose tmux fake reports a live session and no pane output.
+// It saves st as the engine's state.
 func newCleanupEngine(t *testing.T, st *ReedState) *Engine {
 	t.Helper()
 	e := newTestEngine(t)
@@ -58,8 +60,10 @@ func hiddenStrand(guid, parent string) Strand {
 	return Strand{GUID: guid, Name: guid, Parent: parent, Display: render.Display{Anchor: render.AnchorHidden}}
 }
 
-// TestLaunchScriptCleanup pins that every path forgetting a strand deletes exactly that strand's launch script (a recursive remove, the subtree's),
-// leaves every surviving strand's script, and succeeds without a launch-script warning when the strand had no script.
+// TestLaunchScriptCleanup pins that every path forgetting a strand deletes exactly that strand's launch script.
+// A recursive remove deletes the whole subtree's scripts.
+// Surviving strands keep their scripts.
+// A remove of a strand with no script succeeds without a launch-script warning.
 //
 //testtiming:keep pins every path forgetting a strand deleting exactly that strand's launch script, a recursive remove deleting the subtree's, a replace keeping the survivor's, and a remove without a script succeeding with no launch-script warning; its covering tests run this code without asserting it
 func TestLaunchScriptCleanup(t *testing.T) {

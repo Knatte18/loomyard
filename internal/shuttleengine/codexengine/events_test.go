@@ -20,12 +20,13 @@ const (
 	preToolUsePayload        = `{"session_id":"01a16d5e","turn_id":"t3","transcript_path":"/s/rollout.jsonl","cwd":"/w","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"}}`
 )
 
-// stampLine returns the stamp line a recording hook writes before the payload of hook at at.
+// stampLine returns the stamp line that a recording hook writes before the payload of hook, carrying at as its time.
 func stampLine(hook, at string) string {
 	return `{"` + stampHookKey + `":"` + hook + `","` + stampAtKey + `":"` + at + `"}`
 }
 
-// TestParseEvents pins that each Stop payload becomes a turn end carrying its message and that stamp lines, other hooks and malformed lines yield nothing.
+// TestParseEvents pins that each Stop payload becomes a turn end carrying its message.
+// Stamp lines, other hooks and malformed lines yield nothing.
 func TestParseEvents(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -41,8 +42,9 @@ func TestParseEvents(t *testing.T) {
 	}
 }
 
-// TestParseSessionSignals pins the four hooks' signals with each payload's stamp time and session id, and the exit record read as a process-ending session end with no time.
-// It also pins a slash command read as no instruction and a fork's source read as none.
+// TestParseSessionSignals pins the four hooks' signals, each with its payload's stamp time and session id.
+// The exit record reads as a process-ending session end with no time.
+// It also pins that a slash command reads as no instruction and a fork's source reads as none.
 // It pins consumed stopping before a trailing stamp with no payload yet.
 func TestParseSessionSignals(t *testing.T) {
 	tiergate.Require(t, 0)

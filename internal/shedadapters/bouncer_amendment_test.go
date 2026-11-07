@@ -1,4 +1,5 @@
-// bouncer_amendment_test.go covers the Bouncer's new review generation over a changed subject: the archive, the generation record, the amendment allowance and the note that scopes an amendment's review.
+// bouncer_amendment_test.go covers the Bouncer's review generation over a changed subject:
+// the archive, the generation record, the amendment allowance and the note that scopes an amendment's review.
 
 package shedadapters
 
@@ -23,7 +24,7 @@ const amendmentRubricBody = "# Rubric\n\nAmendment: {{.amendment}}\n"
 // amendmentDesignWrong is a ledger entry that keeps the soft-cap rule from accepting a round.
 var amendmentDesignWrong = taggedEntry{"alpha", "open", "design", "MEDIUM", "design-wrong"}
 
-// amendmentChangedSubject is a document subject that differs from the reentry harness's default.
+// amendmentChangedSubject is a document subject with its own hash and base, the subject an amendment reviews.
 var amendmentChangedSubject = Subject{Kind: SubjectDocument, Hash: "hash-2", Base: "base-2"}
 
 // amendmentRow is one TestBouncer_Amendment scenario.
@@ -32,7 +33,8 @@ type amendmentRow struct {
 	run  func(t *testing.T)
 }
 
-// verdictShuttle returns a shuttle whose judge run writes *verdict, the ledger ledger renders for the round and the next round's focus file, and whose seed run writes nothing.
+// verdictShuttle returns a shuttle whose judge run writes *verdict, the round's ledger and the next focus file.
+// Its seed run writes nothing.
 func verdictShuttle(verdict *string, ledger func(round int) string) *shedfake.Shuttle {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	shuttle.DuringRun = func() {
@@ -48,7 +50,8 @@ func verdictShuttle(verdict *string, ledger func(round int) string) *shedfake.Sh
 	return shuttle
 }
 
-// newAmendment builds a reentry whose rubric renders the amendment note and whose judge writes *verdict over the ledger, bouncerLedgerContent when ledger is nil.
+// newAmendment builds a reentry whose rubric renders the amendment note and whose judge writes *verdict.
+// The judge writes the ledger from ledger, or bouncerLedgerContent when ledger is nil.
 func newAmendment(t *testing.T, verdict *string, ledger func(round int) string, opts ...reentryOption) *reentry {
 	t.Helper()
 	if ledger == nil {
@@ -60,7 +63,7 @@ func newAmendment(t *testing.T, verdict *string, ledger func(round int) string, 
 	return newReentry(t, verdictShuttle(verdict, ledger), append([]reentryOption{rubric}, opts...)...)
 }
 
-// withAmendConfig tells the Bouncer an amendment allowance, a hard cap and a Bounces seam, which nil leaves unchanged.
+// withAmendConfig sets the amendment allowance and the hard cap, and the Bounces seam unless bounces is nil.
 func withAmendConfig(allowance, hardCap int, bounces func() (int, int, bool, error)) reentryOption {
 	return func(h *reentry, cfg *BouncerConfig) {
 		cfg.AmendAllowance = allowance
@@ -71,14 +74,16 @@ func withAmendConfig(allowance, hardCap int, bounces func() (int, int, bool, err
 	}
 }
 
-// withReviewInput tells the Bouncer a review input at path that was written offset after the harness's clock when the Call reads it.
+// withReviewInput makes the Bouncer read path as its review input, stamped offset after the harness's clock.
 func withReviewInput(path string, offset time.Duration) reentryOption {
 	return func(h *reentry, cfg *BouncerConfig) {
 		cfg.ReviewInput = func() (string, time.Time, bool, error) { return path, h.now.Add(offset), true, nil }
 	}
 }
 
-// layoutSettledRound1 lays out a settled round 1 in the run directory: its converged verdict and ledger, a generation record and a settle record over subject, settled at the harness's clock.
+// layoutSettledRound1 lays out a settled round 1 in the run directory.
+// It writes the converged verdict and ledger, a generation record, and a settle record over subject.
+// The records are settled at the harness's clock.
 func (h *reentry) layoutSettledRound1(subject Subject, patch []byte) {
 	h.t.Helper()
 	layoutBouncerRun(h.t, h.cfg, []bouncerJudgeFixture{{
@@ -144,8 +149,9 @@ func (h *reentry) requireSeedPromptHolds(wants ...string) {
 	}
 }
 
-// amendmentRoundsRow runs an amendment of stuckRounds CONTINUE rounds that return Stuck, each budget-exempt or not as wantExempt says.
-// When escalates is set, a further CONTINUE round escalates hard-cap offering accept alone.
+// amendmentRoundsRow runs an amendment of stuckRounds CONTINUE rounds that return Stuck.
+// Each round is budget-exempt exactly when wantExempt is set.
+// When escalates is set, a further CONTINUE round escalates to the hard cap, offering accept alone.
 func amendmentRoundsRow(name string, allowance, hardCap int, bounces func() (int, int, bool, error), stuckRounds int, wantExempt, escalates bool) amendmentRow {
 	return amendmentRow{name, func(t *testing.T) {
 		verdict := "CONTINUE"
@@ -175,7 +181,8 @@ func amendmentRoundsRow(name string, allowance, hardCap int, bounces func() (int
 	}}
 }
 
-// amendmentInputRow runs a changed subject over a review input written offset after the settle, and checks whether the record, the seed prompt and the amendment note name it.
+// amendmentInputRow runs a changed subject over a review input written offset after the settle.
+// It checks whether the record, the seed prompt and the amendment note name that input.
 func amendmentInputRow(name string, offset time.Duration, wantNamed bool) amendmentRow {
 	const inputPath = "/review/review-input.md"
 	return amendmentRow{name, func(t *testing.T) {

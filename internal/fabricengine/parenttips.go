@@ -1,4 +1,6 @@
-// parenttips.go implements the code-side reads a parent-merge needs — a branch's tips and their relation, the paths between two commits and the holds-work test — and FastForwardPair, the fast-forward-only move of a pair to its upstream.
+// parenttips.go holds the code-side reads a parent-merge needs.
+// They are a branch's tips and their relation, the paths between two commits, and the holds-work test.
+// It also holds FastForwardPair, the fast-forward-only move of a pair to its upstream.
 
 package fabricengine
 
@@ -38,7 +40,8 @@ type ParentTips struct {
 	Relation ParentRelation
 }
 
-// ReadParentTips returns the tips of branch in the pair's code repository, fetching the repository's remotes first when fetch is true.
+// ReadParentTips returns the tips of branch in the pair's code repository.
+// When fetch is true it fetches the repository's remotes first.
 // A missing local branch is an error naming it; a failed fetch is an error naming the command that reproduces it.
 // A branch with no configured or no fetched upstream returns ParentNoUpstream with an empty Upstream.
 func (f *Fabric) ReadParentTips(branch string, fetch bool) (ParentTips, error) {
@@ -85,8 +88,10 @@ func (f *Fabric) ReadParentTips(branch string, fetch bool) (ParentTips, error) {
 	return tips, nil
 }
 
-// LocalOnlyCommits lists the SHAs of the commits of the local branch that its origin tracking ref, as last fetched, lacks, newest first.
-// A branch level with, or behind, its tracking ref lists none, and so does one with no tracking ref, which leaves nothing to compare against.
+// LocalOnlyCommits lists the SHAs of the local branch's commits that its tracking ref lacks, newest first.
+// The tracking ref is as the last fetch left it.
+// A branch level with, or behind, its tracking ref lists none.
+// A branch with no tracking ref lists none either, since there is nothing to compare against.
 // A missing local branch is an error naming it.
 func (f *Fabric) LocalOnlyCommits(branch string) ([]string, error) {
 	local, err := f.code.RefSHA("refs/heads/" + branch)
@@ -107,7 +112,8 @@ func (f *Fabric) LocalOnlyCommits(branch string) ([]string, error) {
 	return commits, nil
 }
 
-// ChangedPaths returns the sorted repository-relative paths that differ between from and to in the pair's code repository.
+// ChangedPaths returns the paths that differ between from and to in the pair's code repository.
+// The paths are repository-relative and sorted.
 func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 	paths, err := diffNames(f.warpPath, from, to, nil)
 	if err != nil {
@@ -116,7 +122,8 @@ func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 	return paths, nil
 }
 
-// ChangedPathsBothSides returns every repository-relative path that differs between from and to in the pair's code repository, sorted and deduplicated.
+// ChangedPathsBothSides returns the paths that differ between from and to in the pair's code repository.
+// The paths are repository-relative, sorted and deduplicated.
 // A rename is reported by both its old and its new path, so a move out of a tree is seen by the tree it left.
 // Each path is read from NUL-separated output and arrives verbatim, never in core.quotePath's C-quoted form.
 func (f *Fabric) ChangedPathsBothSides(from, to string) ([]string, error) {
@@ -134,7 +141,8 @@ func (f *Fabric) ChangedPathsBothSides(from, to string) ([]string, error) {
 	return slices.Compact(paths), nil
 }
 
-// CommitLog lists the commits reachable from to and not from from in the pair's code repository, newest first, each as a seven-character SHA prefix and the commit's subject.
+// CommitLog lists the commits reachable from to and not from from in the pair's code repository, newest first.
+// Each entry is a seven-character SHA prefix and the commit's subject.
 // An empty range returns an empty slice, and a ref that does not resolve is an error naming it.
 func (f *Fabric) CommitLog(from, to string) ([]string, error) {
 	fromSHA, err := f.code.ResolveSHA(from)
@@ -179,7 +187,7 @@ func (f *Fabric) HeadHoldsCommitsNotIn(ref string) (bool, error) {
 	return len(shas) > 0, nil
 }
 
-// shortSHALength is how many leading characters of a SHA CommitLog prints.
+// shortSHALength is the number of leading SHA characters a commit log entry shows.
 const shortSHALength = 7
 
 // HoldsWork reports whether merging source into base adds nothing: the merge is clean and its tree equals base's tree.
@@ -208,7 +216,7 @@ func (f *Fabric) HoldsWork(base, source string) (bool, error) {
 	return merged == baseTree, nil
 }
 
-// FastForwardRefusal names why FastForwardPair left the pair unmoved without an error.
+// FastForwardRefusal names why a fast-forward left the pair unmoved without returning an error.
 type FastForwardRefusal string
 
 const (
@@ -220,7 +228,7 @@ const (
 	FastForwardNotFastForward FastForwardRefusal = "not-fast-forward"
 )
 
-// FastForwardResult reports what FastForwardPair did.
+// FastForwardResult reports what a fast-forward did to the pair.
 // It embeds MutationRecord, which is empty on a refusal.
 type FastForwardResult struct {
 	MutationRecord
@@ -231,8 +239,10 @@ type FastForwardResult struct {
 }
 
 // FastForwardPair moves the pair to its upstream only as a fast-forward and never rewrites it.
-// A merge record, a dirty code worktree and a local head that is not an ancestor of the freshly fetched upstream are refusals: nil error, nothing moved.
-// Once none applies it pulls the weft first, where a failure there is logged and does not stop the code side, then resets the code side to the upstream the fetch returned.
+// A merge record, a dirty code worktree, or a local head that is not an ancestor of the fetched upstream is a refusal.
+// A refusal returns a nil error and moves nothing.
+// Once none applies, it pulls the weft first; a failure there is logged and does not stop the code side.
+// It then resets the code side to the upstream the fetch returned.
 // opts.SkipGit skips the weft side.
 func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
@@ -281,13 +291,19 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 		return FastForwardResult{}, err
 	}
 	f.recordWarpAdvance(rec, localHEAD)
-	// The pair took in origin's commits; the worktree seam hears of them, and a failure is logged by the call and never fails the move.
+	// The pair took in origin's commits; the worktree seam hears of them.
+	// The call logs a failure and never fails the move.
 	f.fireTookIn(localHEAD, upstreamSHA)
 	return FastForwardResult{NewHead: upstreamSHA}, nil
 }
 
-// fastForwardWeft pulls the weft the way Pull's weft arm does: a weft with no upstream is skipped, a failure is logged, and a weft HEAD that moved appends KindRepoAdvanced.
-// A weft that carries a move record, one with an empty own anchor marker, and one whose upstream carries another marker, are not pulled: the warning names the way forward, and the code side goes on.
+// fastForwardWeft pulls the weft during a fast-forward.
+// A weft with no upstream is skipped.
+// A failed pull is logged, and the code side goes on.
+// A weft HEAD that moved appends KindRepoAdvanced.
+// A weft that carries a move record or an empty own anchor marker is not pulled.
+// Neither is a weft whose upstream carries another anchor marker.
+// For such a weft, the warning names the way forward.
 func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
 	hasUpstream, err := f.weftHasUpstream()
 	if err != nil {

@@ -1,8 +1,6 @@
-// seed.go implements "lym shed seed", the one command that writes a run's first seed.json, plus the
-// two testable workers behind its RunE: writeSeed (the whole resolution-free body: recipe lookup,
-// driver default/validation, and the shedrun.WriteSeed call) and parseSeedParams (the --param k=v
-// parser). It is a shedcli-only command, not a shedverbs verb: shedverbs is a leaf that derives no
-// path and knows no recipe table, and seeding needs both.
+// seed.go implements "lym shed seed", which writes a run's first seed.json and belongs to no recipe's Verbs set.
+// It holds the testable workers behind the command's RunE:
+// writeSeed, which validates and writes the seed, and parseSeedParams, which parses the --param flags.
 
 package shedcli
 
@@ -18,10 +16,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resolveSeedDriver returns flagVal, defaulting an empty flagVal to shedrun.DriverLLM when the
-// recipe has a bootstrap verb to boot a loom driver session and to shedrun.DriverGo when it does not,
-// since an llm-driven run is how runs are meant to be driven but a recipe without a bootstrap verb
-// cannot honour it.
+// resolveSeedDriver returns flagVal when it is set;
+// otherwise it returns shedrun.DriverLLM for a recipe with a bootstrap verb and shedrun.DriverGo for one without.
+// An llm driver is the intended default, but a recipe without a bootstrap verb cannot honour it.
 func resolveSeedDriver(flagVal string, hasBootstrapVerb bool) string {
 	if flagVal != "" {
 		return flagVal
@@ -32,10 +29,10 @@ func resolveSeedDriver(flagVal string, hasBootstrapVerb bool) string {
 	return shedrun.DriverGo
 }
 
-// parseSeedParams parses raw, each entry a "key=value" pair, into a map. It refuses an entry with
-// no "=" or an empty key. A nil raw yields a nil map, never an empty non-nil one, so an invocation
-// with no --param flags writes a seed with an omitted params key exactly as shedrun.Seed's own
-// json:",omitempty" tag intends.
+// parseSeedParams parses raw into a map, each entry a "key=value" pair.
+// It refuses an entry with no "=" or with an empty key.
+// A nil raw yields a nil map, never an empty one.
+// A seed written with no --param flags omits its params key, as the json:",omitempty" tag on shedrun.Seed intends.
 func parseSeedParams(raw []string) (map[string]string, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -58,13 +55,14 @@ func parseSeedParams(raw []string) (map[string]string, error) {
 // seedHereWayForward is the trailing clause on both "refuses to write here" wraps.
 const seedHereWayForward = "way forward: run \"lym shed seed\" from the worktree the recipe drives, which the cause names"
 
-// writeSeed is seed's whole resolution-free body: it validates runID, looks recipeName up through this package's own table (lookup) so a seed can only ever name an armable recipe, resolves and validates the driver, and calls shedrun.WriteSeed, returning the driver it recorded.
-// It performs no lymcwd.Resolve and no cwd read of its own -- location is already resolved, told rather than derived, by whichever caller holds it -- which is what lets seed_test.go drive it directly against a hand-built *lymcwd.Location, with no real git repository behind it, and stay Tier 1.
+// writeSeed validates runID and the driver, looks recipeName up in this package's table, and writes the seed.
+// The lookup means a seed names only a recipe that can be armed.
+// It returns the driver the seed records.
+// The caller resolves location, so writeSeed performs no location lookup of its own.
 func writeSeed(location *lymcwd.Location, runID, recipeName, driverFlag string, params map[string]string) (string, error) {
-	// Refused first, as every other shed verb over a batten seed already refuses through
-	// battencli's ArmAt: a seed written into one of fabric's own checkouts (the Board checkout or
-	// a pair's other side) lands in a repository no run is ever driven from, where the Board's own
-	// commit, which stages everything in that checkout, would sweep it onto its branch.
+	// This check runs first: a seed written into fabric's own checkouts lands in a repository no run is driven from.
+	// The checkouts are the Board and a pair's other side.
+	// The Board's commit stages everything in that checkout, so it would sweep the seed onto its branch.
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
 		return "", fmt.Errorf("shedcli: seed refuses to write here: %w; %s", err, seedHereWayForward)
 	}
@@ -75,8 +73,8 @@ func writeSeed(location *lymcwd.Location, runID, recipeName, driverFlag string, 
 	if err != nil {
 		return "", err
 	}
-	// The recipe's own location rule, after fabric's: a batten seed is drivable from prime alone,
-	// and a seed written where its recipe's verbs refuse is dirt no verb can ever consume.
+	// The recipe's own location rule runs after fabric's:
+	// a seed written where the recipe's verbs refuse is one no verb can consume.
 	if e.RefuseSeedAt != nil {
 		if err := e.RefuseSeedAt(location); err != nil {
 			return "", fmt.Errorf("shedcli: seed refuses to write here: %w; %s", err, seedHereWayForward)
@@ -86,9 +84,8 @@ func writeSeed(location *lymcwd.Location, runID, recipeName, driverFlag string, 
 	if err := shedrun.ValidateDriver(driver); err != nil {
 		return "", err
 	}
-	// The capability check is reached only for a legal driver value: an operator who typed a
-	// misspelling gets the vocabulary error above, not a capability error about a recipe that
-	// would have accepted the value they meant.
+	// The capability check runs only for a legal driver value: a misspelled value gets the vocabulary error above;
+	// it does not get a capability error about a recipe that would have accepted the value meant.
 	if driver == shedrun.DriverLLM && e.BootstrapVerb == "" {
 		return "", fmt.Errorf("shedcli: recipe %q has no bootstrap verb, so it cannot be driven by an LLM; way forward: re-run with \"--driver go\"", recipeName)
 	}
@@ -103,10 +100,8 @@ func writeSeed(location *lymcwd.Location, runID, recipeName, driverFlag string, 
 }
 
 // newSeedCommand builds "lym shed seed <run-id> --recipe <name> [--driver <name>] [--param k=v]".
-// It is exempt from resolvePersistentPreRun by that pre-run's own cmd.Name() == "seed"
-// short-circuit, for the reason that pre-run's whole sequence is predicated on a seed already
-// existing while "seed" is by definition the command invoked when one does not -- and it belongs to
-// no recipe's Verbs set, so the verb gate would refuse it for every recipe.
+// The command belongs to no recipe's Verbs set, so the verb gate would refuse it for every recipe.
+// The seed-read pre-run skips it: that pre-run needs an existing seed, and seed writes the first one.
 func newSeedCommand() *cobra.Command {
 	var recipeFlag string
 	var driverFlag string
@@ -187,10 +182,10 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&recipeFlag, "recipe", "", "the recipe this run's seed names (required)")
-	// MarkFlagRequired's own error surfaces through RunRootCtx's cobra-error wrapping as a JSON
-	// envelope, exactly as every other cobra-level validation failure does on this tree.
+	// A MarkFlagRequired error becomes a JSON envelope through RunRootCtx's cobra-error wrapping;
+	// every other cobra-level validation failure on this tree takes the same path.
 	_ = cmd.MarkFlagRequired("recipe")
-	// Empty by default rather than a named driver, because the default depends on the recipe --
+	// Empty by default, since the default depends on the recipe:
 	// resolveSeedDriver picks it once --recipe is known.
 	cmd.Flags().StringVar(&driverFlag, "driver", "", `the driver this run's child uses (default "llm", or "go" for a recipe with no bootstrap verb); "llm" is refused for a recipe with no bootstrap verb`)
 	cmd.Flags().StringArrayVar(&paramFlags, "param", nil, "a seed parameter as key=value (repeatable)")

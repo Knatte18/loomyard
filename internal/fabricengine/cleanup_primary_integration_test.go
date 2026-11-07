@@ -1,9 +1,7 @@
 // cleanup_primary_integration_test.go pins the carve-out that keeps `lym fabric cleanup` from
 // deleting the repo's primary weft branch.
-// Branch-space liveness alone protected "main-weft" only while the prime warp worktree sat on the
-// repo's default branch; one `lym fabric checkout <other>` promoted the durable weft line to a
-// deletable orphan, and `--apply --force` then deleted it together with any weft commit it alone
-// carried.
+// Branch-space liveness does not protect that branch once the prime warp worktree is off the default branch.
+// `--apply --force` would then delete it along with any weft commit only it carries.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -19,9 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout materialises a real Bolt checkout worktree on the
-// warp's default branch, moves the prime pair onto another branch, and asserts cleanup reports the
-// primary weft branch protected and leaves it on disk even under --apply --force.
+// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout moves the prime pair off the default branch.
+// The test starts from a real Bolt checkout worktree on the warp's default branch.
+// It asserts cleanup reports the primary weft branch as protected and leaves it on disk, even under --apply --force.
 func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -31,8 +29,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	primaryWeftBranch := fabricengine.RecordsBranchName("main")
 
 	// Move the prime pair off the default branch, exactly as `lym fabric checkout` does.
-	// The fixture's hub's Bolt checkout stays on "main", which is what records the repo's
-	// primary warp branch.
+	// The Bolt checkout worktree stays on "main", which records the repo's primary warp branch.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-b", fabricengine.RecordsBranchName("alt"))
 
@@ -63,9 +60,9 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	}
 }
 
-// TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable asserts the fail-closed direction: a hub
-// whose board worktree is not a readable git checkout gets no orphan sweep at all, since Cleanup's
-// deletions are irreversible.
+// TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable asserts that a hub gets no orphan sweep at all.
+// The case covered is a hub whose board worktree is not a readable git checkout.
+// Cleanup's deletions are irreversible, so an undeterminable primary branch must fail closed.
 func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

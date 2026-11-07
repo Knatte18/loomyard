@@ -1,6 +1,5 @@
-// mergeerrors_test.go asserts the pinned Error() strings, newMergeGuardError's sort/dedup
-// behaviour, and that no closed-set constant or Error() output leaks warp/weft/host vocabulary
-// across the merge error surface's public boundary.
+// mergeerrors_test.go asserts the pinned Error() strings and the sort and dedup of newMergeGuardError.
+// Error output and closed-set constants on the merge error surface must not leak warp/weft/host vocabulary.
 
 package fabricengine
 
@@ -102,14 +101,12 @@ func TestMergeErrors_NewMergeGuardErrorSortsAndDeduplicates(t *testing.T) {
 	}
 }
 
-// mergeVocabularyLeakTokens are the case-insensitive tokens that must never appear in a
-// fabric-crossing merge error string or closed-set reason: warp/weft naming is internal
-// vocabulary, and any "host " phrase is a git-internal spelling neither belongs on the public
-// error surface.
+// mergeVocabularyLeakTokens lists the case-insensitive tokens banned from fabric-crossing merge errors and reasons.
+// Warp/weft naming is internal vocabulary, and a "host " phrase is a git-internal spelling;
+// neither belongs on the public error surface.
 var mergeVocabularyLeakTokens = []string{"warp", "weft", "host "}
 
-// assertNoVocabularyLeak fails the test if s contains any token in mergeVocabularyLeakTokens,
-// case-insensitively.
+// assertNoVocabularyLeak fails the test if s contains any mergeVocabularyLeakTokens token, case-insensitively.
 func assertNoVocabularyLeak(t *testing.T, label, s string) {
 	t.Helper()
 	lower := strings.ToLower(s)
@@ -120,13 +117,13 @@ func assertNoVocabularyLeak(t *testing.T, label, s string) {
 	}
 }
 
-// TestMergeGuardError_WorktreeDirty pins the accessor's coupling to the unexported
-// mergeReasonWorktreeDirty constant: a guard error built with the dirty-worktree reason reports
-// true, one built with any other single reason reports false, and one carrying the dirty reason
-// alongside others still reports true. Placing this coverage here, rather than in the consumer
-// (internal/landingshed), is what makes the cross-package coupling pinned rather than merely
-// conventional -- this package's own tier asserts the accessor tracks the constant, and the
-// consumer's own tier asserts it branches on the accessor.
+// TestMergeGuardError_WorktreeDirty pins the accessor's coupling to the unexported mergeReasonWorktreeDirty constant.
+// A guard error with the dirty-worktree reason reports true; one with any other single reason reports false.
+// One carrying the dirty reason alongside others still reports true.
+// The coverage lives here rather than in the consumer (internal/landingshed),
+// so the coupling is pinned rather than merely conventional.
+// This package's tier asserts the accessor tracks the constant;
+// the consumer's tier asserts it branches on the accessor.
 func TestMergeGuardError_WorktreeDirty(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

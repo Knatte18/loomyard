@@ -1,4 +1,4 @@
-// cleangate_integration_test.go exercises NewCleanGate against a real scratch repo, so it carries the integration tier.
+// cleangate_integration_test.go exercises NewCleanGate against a real scratch repository, at the integration tier.
 
 package loomshed
 

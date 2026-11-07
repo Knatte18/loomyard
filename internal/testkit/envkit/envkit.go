@@ -1,7 +1,9 @@
-// Package envkit builds the fully filled seam structs the recipe tests share: a `shedrecipe.Env`, a `landingshed.Deps` and a `loomshed.PRReworkDeps`.
+// Package envkit builds the fully filled seam structs the recipe tests share:
+// a `shedrecipe.Env`, a `landingshed.Deps` and a `loomshed.PRReworkDeps`.
 //
 // A new required field is added to the kit once, instead of to every package's private copy.
-// Builders return plain values the caller mutates; there are no option structs, and a builder fails the test only on its own setup.
+// Builders return plain values the caller mutates; there are no option structs.
+// A builder fails the test only on its own setup.
 // NilSeams reports and never asserts, so the CLI wiring tests and this kit's own test assert on its answer.
 //
 // `shedrecipe` and `landingshed` cannot import the kit without a cycle, so each keeps one local builder.
@@ -137,7 +139,8 @@ func (noopSamplerSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenR
 
 func (noopSamplerSessions) StopStrand(string) error { return nil }
 
-// noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
+// noFindingsIndex is a planindex.Index that answers no findings,
+// so the packages built on the kit do not link the resolve-backed index.
 // Its Delta panics: a test that needs a delta supplies its own index.
 type noFindingsIndex struct{ planindex.Index }
 
@@ -149,8 +152,8 @@ func (noFindingsIndex) ValidateRework(*planparser.Plan, string, int) ([]planinde
 	return nil, nil
 }
 
-// nilFabricOpener is a typed-nil fabric handle with a nil error.
-// The Parent-Align and Finalize constructors only nil-check the interface the handle is stored behind, and never dereference it.
+// nilFabricOpener returns a typed-nil fabric handle with a nil error.
+// The constructors that take it only nil-check the interface the handle is stored behind, and never dereference it.
 func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
@@ -162,7 +165,8 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 	return seatengine.Result{}, nil
 }
 
-// noopSessions is a session runner that starts nothing and stops nothing, since the fixture's landing takes the local path and opens no session.
+// noopSessions is a session runner that starts nothing and stops nothing.
+// The fixture's landing takes the local path and opens no session, so the runner is never reached.
 type noopSessions struct{}
 
 func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
@@ -171,7 +175,8 @@ func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, 
 
 func (noopSessions) StopStrand(string) error { return nil }
 
-// LandingDeps returns a `landingshed.Deps` with every field the Parent-Align and Finalize constructors require, filled with told values derived from dir.
+// LandingDeps returns a `landingshed.Deps` with every field the landing constructors require.
+// The fields hold fixed values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
 		GateKey:          "parent-align",
@@ -275,7 +280,8 @@ func TemplateSetting(module, key string) (any, error) {
 	return value, nil
 }
 
-// fixedGateLists are the tier lists of the gate keys the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
+// fixedGateLists are the tier lists of the gate keys the kit's seams answer from,
+// so a resolved gate builds without a hub's gate.yaml.
 var fixedGateLists = map[string][]int{
 	"card":            {0, 1},
 	"batch":           {0, 1},
@@ -289,7 +295,8 @@ var fixedGateLists = map[string][]int{
 	"pr-review":       {0, 1},
 }
 
-// fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
+// fixedGateTiers answers a named gate's tier list from the kit's fixed lists.
+// It errors naming a gate the kit holds no list for.
 func fixedGateTiers(gate string) ([]int, error) {
 	list, ok := fixedGateLists[gate]
 	if !ok {
@@ -298,7 +305,8 @@ func fixedGateTiers(gate string) ([]int, error) {
 	return list, nil
 }
 
-// raddleWriteEnv returns the Raddle-Write row's seams with every path absolute under dir and every seam a no-op or an empty answer.
+// raddleWriteEnv returns the Raddle-Write row's seams.
+// Every path is absolute under dir, and every seam is a no-op or an empty answer.
 func raddleWriteEnv(dir string) shedrecipe.RaddleWriteEnv {
 	raddleDir := filepath.Join(dir, "raddle")
 	proposalPath := filepath.Join(raddleDir, "proposal.yaml")
@@ -333,7 +341,8 @@ func raddleWriteEnv(dir string) shedrecipe.RaddleWriteEnv {
 	}
 }
 
-// raddleFileDeps returns the Raddle-File row's deps with every path absolute under dir and every seam a no-op or an empty answer.
+// raddleFileDeps returns the Raddle-File row's deps.
+// Every path is absolute under dir, and every seam is a no-op or an empty answer.
 func raddleFileDeps(dir string) loomshed.RaddleFileDeps {
 	raddleDir := filepath.Join(dir, "raddle")
 	return loomshed.RaddleFileDeps{
@@ -359,8 +368,9 @@ func raddleFileDeps(dir string) loomshed.RaddleFileDeps {
 	}
 }
 
-// FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()` and every seam any registered engine requires filled.
-// A seam added to the registry's requirements must be filled here, which NilSeams(FullEnv(t)) catches.
+// FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()`.
+// Every seam any registered engine requires is filled.
+// A seam added to the registry's requirements must be filled here, and the nil-seam check fails on any left empty.
 func FullEnv(t testing.TB) shedrecipe.Env {
 	t.Helper()
 	dir := t.TempDir()
@@ -652,7 +662,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 	}
 }
 
-// driftDeps returns the Drift rows' seams over root with no-op seams, leaving the seat runner and the clock the registry entries fill from the Env.
+// driftDeps returns the drift engine's seams over root, with no-op seams.
+// It leaves the seat runner and the clock unset for the registry entries to fill from the Env.
 func driftDeps(root string) driftengine.Deps {
 	table := func() (seatengine.Table, error) { return seatengine.Table{}, nil }
 	return driftengine.Deps{
@@ -695,7 +706,8 @@ func driftDeps(root string) driftengine.Deps {
 	}
 }
 
-// darnRowNames returns the darn recipe's row names in file order, read from the embedded recipe so the order cannot go stale.
+// darnRowNames returns the darn recipe's row names in file order.
+// It reads the embedded recipe, so the order cannot go stale.
 // The darn recipe holds no block row, so its top-level producers are its rows.
 func darnRowNames() []string {
 	var recipe struct {
@@ -713,7 +725,8 @@ func darnRowNames() []string {
 	return names
 }
 
-// fullEnvSegment returns a review segment's settings with empty models and the given bounce budget, resolved from review_max_bounces in configFile.
+// fullEnvSegment returns a review segment's settings with empty models and the given bounce budget.
+// MaxBouncesKey names review_max_bounces in configFile.
 func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSettings {
 	return shedrecipe.SegmentSettings{
 		MaxBounces:      maxBounces,
@@ -723,8 +736,9 @@ func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSetting
 	}
 }
 
-// NilSeams returns the dotted path of every func, interface, pointer, map and slice-of-func field of env that is nil, recursing into nested structs.
-// It skips the paths in nilLegal, whose nil is a documented default.
+// NilSeams returns the dotted path of every nil func, interface, pointer, map and slice-of-func field of env.
+// It recurses into nested structs.
+// It skips the paths that nilLegal lists, whose nil is a documented default.
 // It reports and never asserts.
 func NilSeams(env shedrecipe.Env) []string {
 	var nils []string
@@ -770,7 +784,7 @@ func mustMkdir(t testing.TB, path string) string {
 	return path
 }
 
-// ResolveGlyphs answers every glyph found with no files.
+// ResolveGlyphs answers every glyph as found, without reading any file.
 func (noFindingsIndex) ResolveGlyphs(_ string, glyphs []string) ([]planindex.GlyphAnswer, error) {
 	answers := make([]planindex.GlyphAnswer, len(glyphs))
 	for i, glyph := range glyphs {

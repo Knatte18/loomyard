@@ -1,4 +1,5 @@
-// census.go counts the git processes a measured package spawns, by subcommand, through git's trace2 event files, and splits fixture setup from code under test on the fixture marker.
+// census.go counts the git processes a measured package spawns, per subcommand, from git's trace2 event files.
+// It splits fixture setup from code under test on the fixture marker.
 
 package main
 
@@ -30,7 +31,6 @@ type gitCensus struct {
 	code        int
 }
 
-// add records one git process.
 func (c *gitCensus) add(subcommand string, fixture bool) {
 	if c.subcommands == nil {
 		c.subcommands = map[string]subcommandCount{}
@@ -46,8 +46,9 @@ func (c *gitCensus) add(subcommand string, fixture bool) {
 	c.subcommands[subcommand] = count
 }
 
-// traceEnv returns the environment lines that make every git process under a child write one trace2 event file into dir.
-// The marker's name is exported into the events, and trace2.maxFiles is set to 0 so git never stops writing files at its cap.
+// traceEnv returns the environment lines that make each git process under a child write one trace2 event file to dir.
+// The lines also list the fixture marker's variable in GIT_TRACE2_ENV_VARS, so the events record whether it is set.
+// They set trace2.maxFiles to 0, so git never stops writing files at its cap.
 func traceEnv(dir string) []string {
 	return []string{
 		"GIT_TRACE2_EVENT=" + dir,
@@ -88,8 +89,9 @@ type traceEvent struct {
 }
 
 // parseTraceEvents reads one git process's trace2 event file.
-// The subcommand is the `cmd_name` event's name, or unknownSubcommand when the file has none; fixture is whether a `def_param` event names the marker.
-// ok is false when the file holds no event at all.
+// The subcommand is the `cmd_name` event's name, or unknownSubcommand when the file has none;
+// fixture is whether a `def_param` event names the marker.
+// ok reports whether the file holds any event.
 func parseTraceEvents(events []byte) (subcommand string, fixture bool, ok bool) {
 	subcommand = unknownSubcommand
 	for _, line := range bytes.Split(events, []byte("\n")) {

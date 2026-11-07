@@ -1,5 +1,5 @@
-// escalation.go defines the escalation record a Bouncer leaves when it hands a round to the run's parent:
-// a brief file with Go-owned frontmatter over the rendered brief, and a one-line parent notice file.
+// escalation.go defines the escalation record a Bouncer leaves when it hands a round to the run's parent.
+// The record is a brief file with Go-owned frontmatter over the rendered brief, and a one-line parent notice file.
 // The `circling` verbs read the cause to settle an escalation of any of the four causes.
 
 package shedadapters
@@ -15,7 +15,8 @@ import (
 
 // EscalationCause names why a Bouncer escalated a round to the parent.
 // `hard-cap` is a round at or past its perch's hard cap with a design-wrong finding open, or a recorded continue there.
-// `decision` is a round whose accepted review holds a finding the review cannot settle itself, a call for the arbiter and, when it hands on, the run's parent.
+// `decision` is a round whose accepted review holds a finding the review cannot settle itself.
+// It needs a call from the arbiter and, when the arbiter hands it on, from the run's parent.
 type EscalationCause string
 
 // The four legal EscalationCause spellings.
@@ -31,8 +32,9 @@ func (c EscalationCause) valid() bool {
 	return c == EscalationCircling || c == EscalationBudget || c == EscalationHardCap || c == EscalationDecision
 }
 
-// ErrEscalationMalformed reports that a round's escalation record is present but unreadable as a record:
-// its frontmatter is missing or invalid, its round disagrees with its filename, or its cause is not one of the four values.
+// ErrEscalationMalformed reports that a round's escalation record is present but unreadable as a record.
+// Its frontmatter is missing or invalid, or its round disagrees with its filename,
+// or its cause is not one of the four values.
 // A failure to read the file at all is a plain I/O error and never wraps it.
 var ErrEscalationMalformed = errors.New("shedadapters: escalation record is malformed")
 
@@ -43,7 +45,8 @@ type escalationHeader struct {
 }
 
 // writeEscalation writes round's escalation brief file and, when notice is non-empty, its parent notice file.
-// The frontmatter is written even when brief is empty, so a failed render still leaves the record the `circling` verbs read.
+// The frontmatter is written even when brief is empty,
+// so a failed render still leaves the record the `circling` verbs read.
 func writeEscalation(runDir string, round int, cause EscalationCause, brief, notice string) error {
 	if !cause.valid() {
 		return fmt.Errorf("shedadapters: escalation cause must be %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, cause)

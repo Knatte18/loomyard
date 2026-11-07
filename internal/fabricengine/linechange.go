@@ -1,4 +1,6 @@
-// linechange.go implements LineChange and DiffSize, the reads of how much one commit range changes the pair's code repository: its paths, its line count and the text of the lines it adds, and its added lines, deleted lines and changed files.
+// linechange.go reads how a commit range changes a pair's code repository.
+// It holds LineChange, which lists the changed paths, the line count and the added lines;
+// DiffSize totals the added and deleted lines and the changed files.
 
 package fabricengine
 
@@ -48,7 +50,7 @@ type DiffSize struct {
 	// LinesAdded and LinesDeleted are the added and deleted lines, a pure rename adding and deleting none.
 	LinesAdded   int
 	LinesDeleted int
-	// FilesChanged counts each changed file once, a renamed file and a binary file included; a binary file adds and deletes no line.
+	// FilesChanged counts each changed file once, renamed and binary files included; binary files add and delete no lines.
 	FilesChanged int
 }
 
@@ -66,7 +68,8 @@ func (f *Fabric) DiffSize(from, to string) (DiffSize, error) {
 	return size, nil
 }
 
-// diffSizeOfNumstat totals `git diff --numstat` output: each line is one file, and a binary file's "-" pair adds no lines.
+// diffSizeOfNumstat totals `git diff --numstat` output, which has one file per line.
+// A binary file's "-" pair adds no lines.
 func diffSizeOfNumstat(numstat string) (DiffSize, error) {
 	var size DiffSize
 	for _, line := range strings.Split(numstat, "\n") {
@@ -95,7 +98,8 @@ func diffSizeOfNumstat(numstat string) (DiffSize, error) {
 	return size, nil
 }
 
-// countNumstatLines sums the added and deleted counts of `git diff --numstat` output, counting a binary file's "-" pair as one line.
+// countNumstatLines sums the added and deleted counts of `git diff --numstat` output;
+// a binary file's "-" pair counts as one line.
 func countNumstatLines(numstat string) (int, error) {
 	total := 0
 	for _, line := range strings.Split(numstat, "\n") {

@@ -1,4 +1,5 @@
-// guards_run_test.go pins the behavior of the hook commands a Codex launch renders, by running them under sh against Codex PreToolUse payloads.
+// guards_run_test.go pins the behavior of the hook commands a Codex launch renders.
+// It runs them under sh against Codex PreToolUse payloads.
 
 package codexengine
 
@@ -11,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGuardCommand_DeniesAMatchingCommand runs rendered guard commands under sh against Codex PreToolUse payloads shaped as the spike recorded them.
+// TestGuardCommand_DeniesAMatchingCommand runs rendered guard commands under sh against Codex PreToolUse payloads.
 // A matching command prints the row's Codex deny, and any other prints the empty hook output.
 // A row of several patterns denies only when all match, and a pattern holding a single quote greps as written.
 func TestGuardCommand_DeniesAMatchingCommand(t *testing.T) {

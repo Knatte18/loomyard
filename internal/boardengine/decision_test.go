@@ -1,4 +1,4 @@
-// decision_test.go — tests for an entry's decision record: the store and read of it, and the payload rule for the discussed flag.
+// decision_test.go — tests of an entry's decision record: its store and read, and the discussed payload rule.
 
 package boardengine_test
 
@@ -15,10 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// readmeFile is the rendered overview file newRenameBoard's config names.
+// readmeFile is the rendered overview file that a test board's config names.
 const readmeFile = "Home.md"
 
-// TestStoreDecisionRecord pins what StoreDecisionRecord writes, when it writes nothing, what it refuses, and what DecisionRecord answers found.
+// TestStoreDecisionRecord pins what StoreDecisionRecord writes and when it writes nothing.
+// It also pins what StoreDecisionRecord refuses, and whether DecisionRecord finds the record.
 func TestStoreDecisionRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -170,7 +171,8 @@ func TestStoreDecisionRecord(t *testing.T) {
 	}
 }
 
-// TestDiscussedPayload pins the discussed payload rule on the upsert, batch and merge paths over an entry StoreDecisionRecord flagged.
+// TestDiscussedPayload pins the discussed payload rule on the upsert, batch and merge paths.
+// The entry under test is one that StoreDecisionRecord flagged.
 func TestDiscussedPayload(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -239,7 +241,8 @@ func TestDiscussedPayload(t *testing.T) {
 	})
 }
 
-// TestDecisionRecordFollowsEntry pins that the record file moves with a renamed entry and is removed with a removed one, and which writes keep it.
+// TestDecisionRecordFollowsEntry pins that the record file moves with a renamed entry.
+// It also pins that a removed entry takes its record file with it, and which writes keep the file.
 func TestDecisionRecordFollowsEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

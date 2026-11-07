@@ -1,4 +1,5 @@
-// starts_test.go pins the start condition of a board task and the start step's cap, task-limit hold, refusal notices and backoff.
+// starts_test.go pins the start condition of a board task.
+// It also pins the start step's cap, task-limit hold, refusal notices and backoff.
 
 package dobbyengine
 

@@ -1,8 +1,8 @@
-// verdict.go defines the review-file contract — Verdict, Severity, Finding — and ParseReview, the
-// strict parser that turns a round's raw review-file bytes into those types.
-// It also holds the review-parse gate (CheckReviewFile, ReviewGate, ReviewGateEntry) that lets a round's own reviewer repair an unparseable file.
-// The review file is YAML frontmatter over unconstrained prose;
-// ParseReview enforces every pinned rule fail-loud so a malformed round can never look approved.
+// verdict.go defines the review-file contract: the Verdict, Severity and Finding types.
+// It also holds ParseReview, the strict parser that turns a review file's bytes into those types.
+// The review-parse gate (CheckReviewFile, ReviewGate) lets a round's reviewer repair an unparseable review file.
+// The review file is YAML frontmatter over unconstrained prose.
+// ParseReview enforces every pinned rule fail-loud, so a malformed round can never look approved.
 
 package burlerengine
 
@@ -22,15 +22,14 @@ import (
 type Verdict string
 
 // The two legal Verdict values.
-// ParseReview rejects any other spelling, including a different case, since the review file is
-// machine-read.
+// ParseReview rejects any other spelling, including a different case, because the review file is machine-read.
 const (
 	VerdictApproved Verdict = "APPROVED"
 	VerdictBlocking Verdict = "BLOCKING"
 )
 
-// Severity is the per-finding severity tag, mapped onto the fixed four-value vocabulary a rubric's
-// criteria must resolve into.
+// Severity is the per-finding severity tag.
+// It is one of four fixed values, and every rubric criterion must resolve into one of them.
 type Severity string
 
 // The four legal Severity values.
@@ -41,8 +40,9 @@ const (
 	SeverityNit      Severity = "NIT"
 )
 
-// Class is the per-finding class tag:
-// what kind of finding it is, which decides who decides it and when a review loop stops — never whether it is fixed.
+// Class is the per-finding class tag.
+// It says what kind of finding it is.
+// It decides who decides the finding and when a review loop stops, never whether it is fixed.
 type Class string
 
 // The four legal Class values.
@@ -61,46 +61,43 @@ const (
 // A round with no finding of this class has nothing left that holds the loop open.
 const GatingClass = ClassDesign
 
-// Finding is one recorded review-file finding:
-// a stable ID (kept unique and fail-loud across rounds so cross-round hydration and audit can cite it unambiguously — the segment's Bouncer judges progress across rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from the fixed vocabulary, a Class from the fixed four, a Location pointing at the offending content, a prose Summary, and an optional Origin.
+// Finding is one review-file finding.
+// Its ID is unique within the file, so cross-round hydration and audit can cite it unambiguously.
+// Location points at the offending content, and Summary states the problem in prose.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`
 	Class    Class    `yaml:"class"`
 	Location string   `yaml:"location"`
 	Summary  string   `yaml:"summary"`
-	// Origin is optional free-text provenance (`lens:<name>` or `handler`)
-	// a cluster round writes onto each consolidated finding. It is never
-	// validated and never required — ParseReview accepts review files with
-	// and without it, so every existing (pre-cluster) review file keeps
-	// parsing identically.
+	// Origin is optional free-text provenance, such as `lens:<name>` or `handler`.
+	// A cluster round writes it onto each consolidated finding.
+	// It is never validated.
+	// The parser accepts review files with and without it,
+	// so a review file written without it parses the same way.
 	Origin string `yaml:"origin"`
-	// Fix is the exact change to make and where, so a fixer without the reviewer's orientation can act on the review alone.
-	// ParseReview does not require it, so a review written before the key existed still parses;
-	// ParseCurrentReview does.
+	// Fix is the exact change to make and where, so a fixer can act on the review alone.
+	// The parser does not require it, so a review file without it still parses;
+	// the strict parse of the current round rejects a finding whose fix is empty.
 	Fix string `yaml:"fix"`
 }
 
-// reviewHeader mirrors the review file's YAML frontmatter shape. Unknown
-// extra keys are tolerated (no KnownFields) per the yaml-strictness-split
-// decision: agent-written metadata in the header is harmless noise, unlike
-// the CLI's strict profile-YAML decode.
+// reviewHeader mirrors the review file's YAML frontmatter shape.
+// The decoder tolerates unknown keys, since agent-written metadata in the header is harmless.
 type reviewHeader struct {
 	Verdict  string    `yaml:"verdict"`
 	Findings []Finding `yaml:"findings"`
 }
 
-// ParseReview parses the raw bytes of a burler review file into a Verdict
-// and Findings. Every rule below is enforced fail-loud with a burler-prefixed
-// error because a self-contradictory or malformed file must never silently pass:
+// ParseReview parses the raw bytes of a review file into a Verdict and Findings.
+// It enforces every rule below fail-loud, with a burler-prefixed error for each failure.
+// A self-contradictory or malformed file must never silently pass:
 //   - the frontmatter must be present, closed, and valid YAML;
 //   - verdict must be exactly "APPROVED" or "BLOCKING" (case-sensitive);
 //   - every finding must have a non-empty id, severity, location, summary;
-//   - severity must be one of the four Severity constants;
-//   - every finding must have a non-empty class, one of the four Class constants;
-//   - finding ids must be unique (kept fail-loud for cross-round hydration
-//     and audit, not for Go-side cycle detection — the caller judges progress
-//     holistically via its own verdict judge);
+//   - severity must be one of the four legal values;
+//   - every finding must have a non-empty class, one of the four legal classes;
+//   - finding ids must be unique within the file;
 //   - a BLOCKING verdict must carry at least one BLOCKING-severity finding;
 //   - an APPROVED verdict must carry zero BLOCKING-severity findings.
 func ParseReview(content []byte) (Verdict, []Finding, error) {
@@ -144,17 +141,18 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 	return verdict, parsed.Findings, nil
 }
 
-// proseFindingHeading matches the heading line of a finding's prose block, `### [SEVERITY] <title>`, for one of the four legal severities.
+// proseFindingHeading matches the heading line of a finding's prose block.
+// The heading is `### [SEVERITY] <title>`, with SEVERITY one of the four legal severities.
 var proseFindingHeading = regexp.MustCompile(`(?m)^### \[(BLOCKING|MEDIUM|LOW|NIT)\]`)
 
 // ParseCurrentReview is the strict parse of the current round's review file.
-// It runs ParseReview, then refuses:
+// It first runs the base parse, then refuses:
 //   - a finding whose fix is empty or whitespace;
 //   - a top-level frontmatter key other than verdict and findings;
 //   - prose finding blocks whose count per severity differs from the frontmatter's.
 //
 // Each refusal is a burler-prefixed error that ends with what to rewrite.
-// A zero-findings result therefore means the reviewer wrote no finding.
+// A zero-findings result means the reviewer wrote no finding.
 func ParseCurrentReview(content []byte) (Verdict, []Finding, error) {
 	verdict, findings, err := ParseReview(content)
 	if err != nil {
@@ -198,7 +196,7 @@ func checkReviewKeys(header string) error {
 	return fmt.Errorf("burler: review file frontmatter has the top-level key %q; its only keys are `verdict` and `findings`, so rewrite the frontmatter with those two", stray[0])
 }
 
-// checkProseBlocks refuses a review body whose `### [SEVERITY]` blocks do not match the frontmatter findings in count per severity.
+// checkProseBlocks refuses a review body whose `### [SEVERITY]` block count per severity differs from the frontmatter.
 func checkProseBlocks(body string, findings []Finding) error {
 	severities := []Severity{SeverityBlocking, SeverityMedium, SeverityLow, SeverityNit}
 	prose := make(map[Severity]int, len(severities))
@@ -217,11 +215,11 @@ func checkProseBlocks(body string, findings []Finding) error {
 	return nil
 }
 
-// reviewGateAttempts is the re-prompt budget of the review-parse gate entry,
-// the same budget the recipe's artifact gates use.
+// reviewGateAttempts is the re-prompt budget of the review-parse gate.
 const reviewGateAttempts = 3
 
-// CheckReviewFile reads the review file at path and returns the error ParseCurrentReview raises for it, or nil when it parses.
+// CheckReviewFile reads the review file at path.
+// It returns the strict parse's error for the file, or nil when the file parses.
 // A read failure is returned wrapped with the path.
 func CheckReviewFile(path string) error {
 	content, err := os.ReadFile(path)
@@ -233,8 +231,8 @@ func CheckReviewFile(path string) error {
 }
 
 // ReviewGate returns a gate that passes when the review file at reviewPath parses.
-// A review file that is missing or does not parse is a failed result, never a gate error:
-// its findings carry the parse error verbatim, with any quoting hint, and a closing line naming the file to rewrite.
+// A missing or unparseable review file is a failed result, never a gate error:
+// its findings carry the parse error verbatim, with any quoting hint, and a closing line names the file to rewrite.
 func ReviewGate(reviewPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		err := CheckReviewFile(reviewPath)
@@ -247,23 +245,20 @@ func ReviewGate(reviewPath string) shuttleengine.Gate {
 	}
 }
 
-// ReviewGateEntry returns the gate entry that re-prompts a round's reviewer to repair an unparseable review file at reviewPath.
+// ReviewGateEntry returns a gate entry that re-prompts the reviewer to repair an unparseable review file at reviewPath.
 // It lets the run through once its re-prompt budget is spent,
 // so the strict parse after the gate still fails the round.
 func ReviewGateEntry(reviewPath string) shuttleengine.GateEntry {
 	return shuttleengine.GateEntry{Name: "review", Gate: ReviewGate(reviewPath), Attempts: reviewGateAttempts, PassOnCap: true}
 }
 
-// malformedQuotedSummary matches a `summary:` line whose value opens with a
-// double-quoted fragment and then carries more, unquoted content on the same
-// line (e.g. `summary: "capital" is misspelled as "captial"`) — invalid YAML,
-// since a quoted scalar must end the value. This is the single most common
-// way a reviewer agent has produced an unparseable review file live.
+// malformedQuotedSummary matches a `summary:` line whose value opens with a double-quoted fragment.
+// The value then carries more, unquoted content on the same line: `summary: "capital" is misspelled as "captial"`.
+// That is invalid YAML, since a quoted scalar must end the value.
 var malformedQuotedSummary = regexp.MustCompile(`(?m)^\s*summary:\s*"[^"]*"\s*\S`)
 
-// quotedSummaryHint returns a targeted diagnostic suffix when header matches
-// malformedQuotedSummary, so a reviewer agent (or the operator reading a hard
-// error) is pointed straight at the fix instead of a bare YAML parser error.
+// quotedSummaryHint returns a diagnostic suffix for a header with a quoted summary fragment and trailing prose.
+// The suffix points the reviewer or the operator at the fix instead of a bare YAML parser error.
 func quotedSummaryHint(header string) string {
 	if malformedQuotedSummary.MatchString(header) {
 		return " (a summary containing a \" character must be ONE double-quoted string covering the whole value, not a quoted fragment followed by trailing prose)"
@@ -271,8 +266,8 @@ func quotedSummaryHint(header string) string {
 	return ""
 }
 
-// splitFrontmatter extracts the YAML header text between the file's
-// opening and closing "---" delimiter lines, and the body below the closing one.
+// splitFrontmatter extracts the YAML header text between the file's opening and closing "---" delimiter lines.
+// It returns the body below the closing delimiter.
 // Each line is compared with its trailing "\r" trimmed so CRLF content parses identically to LF content.
 func splitFrontmatter(content []byte) (header, body string, err error) {
 	lines := strings.Split(string(content), "\n")
@@ -298,9 +293,8 @@ func splitFrontmatter(content []byte) (header, body string, err error) {
 	return header, strings.Join(lines[closingIdx+1:], "\n"), nil
 }
 
-// parseVerdict validates raw against the two legal Verdict spellings,
-// case-sensitively — the review file is machine-read, so a lowercase or
-// misspelled verdict must fail loud rather than silently defaulting.
+// parseVerdict validates raw against the two legal verdict values, case-sensitively.
+// The review file is machine-read, so a lowercase or misspelled verdict must fail loud rather than default silently.
 func parseVerdict(raw string) (Verdict, error) {
 	switch Verdict(raw) {
 	case VerdictApproved, VerdictBlocking:
@@ -310,8 +304,9 @@ func parseVerdict(raw string) (Verdict, error) {
 	}
 }
 
-// validateFindings enforces the per-finding rules that do not depend on the
-// verdict: every key non-empty, severity within vocabulary, and ids unique.
+// validateFindings enforces the per-finding rules that do not depend on the verdict:
+// every finding has a non-empty id, severity, location, summary and class;
+// severity and class are in their vocabularies; and ids are unique.
 func validateFindings(findings []Finding) error {
 	seenIDs := make(map[string]bool, len(findings))
 	for _, f := range findings {

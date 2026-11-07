@@ -1,11 +1,10 @@
-<!-- This is the Code-Review rubric. It is read by the Bouncer row and the review row of the Code-Review perch, in the tapestry, darn and sampler recipes alike:
-     the Code-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's rubric marker value, and the Code-Burler-Review row interpolates it
-     the same way into internal/burlerengine's own review prompt.
+<!-- This is the Code-Review rubric.
+     The Bouncer row and the review row of the Code-Review perch read it, in the tapestry, darn and sampler recipes alike.
+     The Code-Bouncer row interpolates it as the rubric marker value of bouncer-template-seed.md and bouncer-template-judge.md,
+     and the Code-Burler-Review row interpolates it the same way into internal/burlerengine's review prompt.
      Each recipe sets the perch's answer key through the rows' artifact_paths and fasit, never through this rubric.
-     It is a marker VALUE, never a template -- it carries no top-level stencil markers of its own, and
-     internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
-     sees it. -->
+     It is a marker VALUE, never a template: it carries no top-level stencil markers,
+     and internal/stencil's StripLeadingComment removes this comment before either consumer sees it. -->
 
 # Code-Review rubric
 

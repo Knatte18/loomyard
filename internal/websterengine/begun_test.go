@@ -1,5 +1,6 @@
-// begun_test.go pins DispatchScope, the one dispatch scoping begin-batch, run entry and validate share:
-// a batch begin-batch recorded counts as begun whether or not it reached a terminal record, only a non-terminal one is forthcoming, and a batch never begun is neither.
+// begun_test.go pins DispatchScope, the dispatch scoping that begin-batch, run entry and validate share.
+// A batch that begin-batch recorded counts as begun whether or not it reached a terminal record;
+// only a non-terminal one is forthcoming, and a batch never begun is neither.
 
 package websterengine
 
@@ -75,7 +76,10 @@ func TestLastBegunCard(t *testing.T) {
 	}
 }
 
-// TestEditedDoneCards pins what the plan gate's rows do not reach: a done batch's recorded id the plan lacks reports nothing, and a card file is judged through the plan's own source, so an overlaid card counts as edited exactly as the same edit on disk would.
+// TestEditedDoneCards pins what the plan gate's rows do not reach:
+// a done batch's recorded id that the plan lacks reports nothing,
+// and a card file is judged through the plan's own source,
+// so an overlaid card counts as edited exactly as the same edit on disk would.
 func TestEditedDoneCards(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -86,7 +86,7 @@ func weftExcludePath(t *testing.T, weftPath string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// readWeftExclude returns the content of the git info/exclude file that weftPath's repository uses, or "" when the file does not exist.
+// readWeftExclude returns the git info/exclude content of weftPath's repository, or "" when there is no such file.
 func readWeftExclude(t *testing.T, weftPath string) string {
 	t.Helper()
 	content, err := os.ReadFile(weftExcludePath(t, weftPath))

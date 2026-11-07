@@ -1,5 +1,6 @@
-// innerrun_parentlock_test.go covers the inner-run's parent lock duties over a fake clock and fake seams:
-// keeping or releasing the lock of the child's run on every probe check, with the idle watch carried from pass to pass in the memory record.
+// innerrun_parentlock_test.go covers the inner-run's parent lock duties over a fake clock and fake seams.
+// It covers keeping or releasing the lock of the child's run on every probe check;
+// the idle watch is carried from pass to pass in the memory record.
 
 package battenshed
 
@@ -23,7 +24,8 @@ const (
 )
 
 // lockHarness holds the fake child, the fake lock seams of InnerRun and what they recorded.
-// Every pass is a new producer over one scratch directory; each advances the fake clock by lockCheckGap and is a probe check.
+// Every pass is a new producer over one scratch directory;
+// each advances the fake clock by lockCheckGap and is a probe check.
 type lockHarness struct {
 	t     *testing.T
 	clock *fakeClock
@@ -40,9 +42,9 @@ type lockHarness struct {
 	keepsCalls int
 	spawns     *int
 	notices    []string
-	// coveredThrough makes the fake pause record cover the slug until that many Sleep calls have been made; zero never covers it.
+	// coveredThrough makes the fake pause record cover the slug until that many Sleep calls have run; zero never covers it.
 	coveredThrough int
-	// coverage, when set, is the fake pause record's reading after that many Sleep calls, in place of coveredThrough and the owner pause.
+	// coverage, when set, is the fake pause record's reading after that many Sleep calls, instead of the other two fakes.
 	coverage func(call int) pauserecord.Coverage
 	// scratchDir is the producer's scratch directory.
 	scratchDir string
@@ -52,7 +54,7 @@ type lockHarness struct {
 	ownerCalls int
 	// pauseErr is the error the fake owner pause answers its nth call with, counted from one; nil never fails.
 	pauseErr func(n int) error
-	// ownerPauses is the owner every fake owner pause was asked for, and heldByOwner whether one landed, which the fake pause record then reports as an owner hold.
+	// ownerPauses is the owner each fake owner pause asks for; heldByOwner reports whether one landed as an owner hold.
 	ownerPauses []string
 	heldByOwner bool
 	// parentHolds, restepped and their errors answer the Finalize carve-out seams.
@@ -63,7 +65,7 @@ type lockHarness struct {
 	// spawnErr is what the fake spawn returns.
 	spawnErr error
 
-	// newProducer builds the producer of one pass, and producer runs passes of it until one ends with something other than a Yield.
+	// newProducer builds the producer of one pass; producer runs passes until one ends with something other than a Yield.
 	newProducer func() shedengine.ShedProducer
 	producer    shedengine.ShedProducer
 }
@@ -158,7 +160,7 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 	return h
 }
 
-// runChecks runs passes, one check gap apart, up to the pass that ends at check n, the pause the fake batten status raises.
+// runChecks runs passes, one check gap apart, up to the pass that ends at check n, the pause the fake clock raises.
 func (h *lockHarness) runChecks(n int) {
 	h.t.Helper()
 	h.clock.pauseAtSleep = n
@@ -169,9 +171,11 @@ func awaitingAt(row string) shedengine.Status {
 	return shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: row, Error: "waiting on review"}
 }
 
-// TestInnerRun_ParentLockReleasesAStalledLoopsRecord asserts a record owned by the child's loop is released once every agent has waited for the idle bound with none busy.
+// TestInnerRun_ParentLockReleasesAStalledLoopsRecord asserts a record owned by the child's loop is released.
+// The release comes once every agent has waited for the idle bound with none busy.
 // It asserts the record is kept when the owner changed meanwhile, beside a busy agent and on a failed agent read.
-// It asserts the record is kept while KeepsLock answers true or fails, and released once the bound passes again after it answers false.
+// It asserts the record is kept while KeepsLock answers true or fails.
+// It asserts the record is released once the bound passes again after KeepsLock answers false.
 func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -187,7 +191,7 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 		keeps        func(n int) (bool, error)
 		newOwnerAt   int
 		coveredUntil int
-		// checks is how many checks the Call makes; zero means eleven, just past the bound.
+		// checks is how many checks the Call makes; zero means eleven, past the bound.
 		checks       int
 		wantReleased bool
 	}{

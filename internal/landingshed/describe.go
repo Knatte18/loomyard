@@ -1,7 +1,7 @@
 // describe.go implements the Describe row's two halves.
-// DescribeTable is the builder that turns the row's told values into a seatengine.Table: the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
-// NewDescriptionGate is the mechanical gate over that file.
-// Neither derives a path of its own (Told-Geometry Invariant).
+// DescribeTable builds the seatengine.Table from the row's told values:
+// the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
+// NewDescriptionGate is the mechanical gate over that file; neither derives a path of its own.
 
 package landingshed
 
@@ -22,11 +22,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// NewDescriptionGate returns the Describe row's gate closure: a shuttleengine.Gate that runs summaryparser.ValidateDescription over descriptionPath, the same function `lym loom validate-description` calls (Gate Self-Check Parity Invariant).
+// NewDescriptionGate returns the Describe row's gate closure:
+// a shuttleengine.Gate that runs summaryparser.ValidateDescription over descriptionPath.
 // A returned error passes through with the zero GateResult;
 // no findings is a pass;
-// findings are a failed result whose Findings joins each Finding's Error() with ";
-// ", preceded by a logger.Warn because that line is the only durable record of why a description was refused.
+// findings are a failed result: Findings joins each Finding's Error() with `"; "`, and a logger.Warn logs them first.
+// That Warn line is the only durable record of why a description was refused.
 func NewDescriptionGate(descriptionPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		findings, err := summaryparser.ValidateDescription(descriptionPath)
@@ -56,14 +57,15 @@ const describeRole = "describe"
 // describeSkills are the skills the Describe session loads before its prompt.
 var describeSkills = []string{"scribe:prose"}
 
-// DescribeInputs carries the told values one Describe session needs. Every field but the run record paths is required.
+// DescribeInputs carries the told values one Describe session needs.
+// Every field but RunRecordPath, PriorRunRecordPaths and DriftVerdict is required.
 type DescribeInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
 	// DecisionRecordPath is the run's decision record, which the agent reads.
 	DecisionRecordPath string
 	// RunRecordPath is the live generation's webster summary.md, read only for manual-check items.
-	// Optional: a run with no such record tells a path that does not exist, or none.
+	// Optional: a run with no such record passes a path that does not exist, or an empty string.
 	RunRecordPath string
 	// PriorRunRecordPaths are the summary.md files of the generations a rework round retired, oldest first.
 	// Optional: empty when no round has run.
@@ -74,7 +76,8 @@ type DescribeInputs struct {
 	TaskBranch string
 	// ParentBranch is the branch the task lands on.
 	ParentBranch string
-	// MergeBase is the commit the task's diff is taken from: the merge base of the task branch with the parent tip the task last merged.
+	// MergeBase is the commit the task's diff is taken from:
+	// the merge base of the task branch with the parent tip the task last merged.
 	MergeBase string
 	// Slug is the task's slug, the key for `lym board get`.
 	Slug string
@@ -107,12 +110,14 @@ func runRecordBullets(in DescribeInputs) (string, error) {
 }
 
 // DescribeTable builds the seatengine.Table of the Describe session: one lead that writes the change description.
-// An empty input field other than RunRecordPath, PriorRunRecordPaths and DriftVerdict is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
+// An empty input field other than RunRecordPath, PriorRunRecordPaths and DriftVerdict is an error naming the field.
+// A stencil missing from in.StencilsDir is an error too.
+// Both checks fail a mis-wired closure before the row runs, rather than rendering a blank path into the prompt.
 // A run record that does not exist is left out of the prompt, and a stat error on one is returned.
 // An empty DriftVerdict renders as a line saying no regression check ran.
-// The table's values are the stencil's markers; the seat engine renders the parent and edit directives from its geometry.
-// The table carries no gate; the producer entry sets it.
-// Segment is the describe segment, because the session writes the pull request description.
+// The table's values are the stencil's markers; `seatengine` renders the parent and edit directives from its geometry.
+// The table carries no gate; the caller that wires the producer sets it.
+// The `Segment` is the describe segment, because the session writes the pull request description.
 func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},

@@ -1,4 +1,4 @@
-// source.go declares the told geometry of a report, the read set the engine uses, and the single snapshot of refs every later read sees.
+// source.go declares the Geometry a caller passes in, the Reader interface, and the Sources snapshot of refs.
 
 package reportengine
 
@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// Geometry holds the absolute checkout paths and branch names a report reads, all told by the caller.
+// Geometry holds the absolute checkout paths and branch names a report reads, all supplied by the caller.
 type Geometry struct {
 	CodeRepo      string
 	RecordsRepo   string
@@ -20,7 +20,7 @@ type Geometry struct {
 	BoardBranch   string
 }
 
-// Reader is the read set the engine uses over one repository; *gitrepo.Repo satisfies it.
+// Reader is the read set the engine uses over one git repository.
 type Reader interface {
 	FileAtRevision(rev, relPath string) ([]byte, error)
 	FilesInDirAtRevision(rev, dir string) ([]string, error)
@@ -55,7 +55,8 @@ type Sources struct {
 	SnapshotAt time.Time
 }
 
-// Open builds a reader per repository of g, resolves each branch tip once, and lists the archive tags and the records repository's local branches once.
+// Open builds a reader per repository of g and takes one snapshot of their refs.
+// It resolves each branch tip, lists the archive tags, and lists the records repository's local branches.
 // It stamps SnapshotAt after the last ref is resolved.
 // A branch that does not resolve is an error naming it, and so is a failed listing.
 func Open(g Geometry) (Sources, error) {

@@ -1,7 +1,10 @@
-// smoke_seats_test.go is seatengine's opt-in live smoke: one chair and one advisor run against a real claude in real tmux panes.
+// smoke_seats_test.go is seatengine's opt-in live smoke test.
+// One chair and one advisor run against a real claude in real tmux panes.
 // The chair asks the advisor one question in creel mail and writes the answer into its output.
-// The test is the caller that wires the real substrate (reedengine, claudeengine and shuttleengine.Runner) in an external package, since seatengine itself never imports claudeengine (PATTERN-shuttle-provider-seam).
-// It proves the seat machinery and the file contract, never answer quality, and is run by hand: it is compiled by every gate and run by none.
+// The test wires the real substrate (reedengine, claudeengine and shuttleengine.Runner) in an external package.
+// The reason is that seatengine itself never imports claudeengine (PATTERN-shuttle-provider-seam).
+// It proves the seat machinery and the file contract, never answer quality.
+// It is run by hand: every gate compiles it, and none runs it.
 
 package seatengine_test
 

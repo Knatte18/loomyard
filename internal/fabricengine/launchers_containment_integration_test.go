@@ -1,16 +1,15 @@
 // launchers_containment_integration_test.go drives the real `add` verb end-to-end against a symlink
 // planted at the per-slug launcher directory (<hub>/_launchers/<anchor>/<slug>) and at the _launchers
-// container itself, both pointing OUTSIDE the hub — the create-side twin of the delete-side M3 the R2
-// crucible round reproduced against removeLaunchers.
+// container itself, both pointing outside the hub.
 //
-// It is the full-stack companion to the launchers containment fix (writeLaunchers rooting every write
-// through an os.Root at the hub): a raw os.MkdirAll+os.WriteFile followed the planted symlink and wrote
-// executable launcher scripts to the attacker's target while reporting ok:true, so this test proves the
-// whole Add call now (a) fails closed, (b) writes nothing outside the hub, and (c) never records a
-// launcher file_written that did not land inside the hub.
+// The test checks the whole Add call.
+// It must fail closed and write nothing outside the hub.
+// It must also never record a launcher file_written that did not land in the hub.
+// writeLaunchers roots every write through an os.Root at the hub;
+// a raw os.MkdirAll and os.WriteFile would follow the planted symlink.
+// It would write executable launcher scripts to the out-of-hub target while reporting success.
 //
-// Package fabricengine_test to reuse the shared TestMain, matching the convention
-// of the other integration tests in this package.
+// The file is package fabricengine_test, which reuses the shared TestMain as other integration tests here do.
 
 package fabricengine_test
 
@@ -25,10 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink asserts that a launcher directory (or the
-// _launchers container) pre-planted as a symlink escaping the hub makes Add fail closed rather than
-// writing launcher scripts to the symlink's out-of-hub target — the confirmed round-7 create-side
-// containment defect.
+// TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink asserts that a launcher directory, or the
+// _launchers container, pre-planted as a symlink that escapes the hub, makes Add fail closed:
+// it must not write launcher scripts to the symlink's out-of-hub target.
 func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -64,8 +62,8 @@ func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 			outside := t.TempDir()
 
 			planted := tt.plant(l.HubPath, slug)
-			// The container vector plants the symlink AT _launchers; the leaf vector plants it one level
-			// down, so _launchers must exist first for the leaf case.
+			// The container vector plants the symlink at _launchers;
+			// the leaf vector plants it one level down, so _launchers must exist first for the leaf case.
 			if err := os.MkdirAll(filepath.Dir(planted), 0o755); err != nil {
 				t.Fatalf("mkdir parent of planted symlink: %v", err)
 			}
@@ -86,8 +84,8 @@ func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 				}
 			}
 
-			// The mutation record must not claim a launcher file_written: a false-success record naming a
-			// hub-relative launcher path while the bytes escaped is precisely the M3 shape this fix closes.
+			// The mutation record must not claim a launcher file_written:
+			// a record naming a hub-relative launcher path while the bytes escaped would report a false success.
 			for _, m := range res.Mutated().Entries() {
 				if m.Kind == fabricengine.KindFileWritten && strings.Contains(m.Target, "_launchers") {
 					t.Fatalf("mutation record claims a launcher write %q that did not land inside the hub", m.Target)

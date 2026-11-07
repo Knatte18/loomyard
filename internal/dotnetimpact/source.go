@@ -1,4 +1,4 @@
-// source.go reads one C# source file into its identifier set and its type declarations, with the test attributes each carries.
+// source.go reads one C# file into its identifier set and its type declarations, with their test attributes.
 
 package dotnetimpact
 
@@ -19,7 +19,7 @@ type typeDecl struct {
 	Kind string
 	// Abstract reports an `abstract` modifier.
 	Abstract bool
-	// Base is the first name of the base list, without generic arguments or namespace qualifier; empty when there is none, and for an enum.
+	// Base is the base list's first name without generic arguments or qualifier; empty when there is none and for an enum.
 	Base string
 	// TestAttributed reports a `TestFixture` or `TestClass` attribute on the type.
 	TestAttributed bool
@@ -159,7 +159,8 @@ func (p *sourceParser) attributeList() {
 	}
 }
 
-// lastQualifiedName returns the last segment of the possibly namespace-qualified name starting at start, generic arguments and call arguments excluded.
+// lastQualifiedName returns the last segment of the possibly namespace-qualified name at start.
+// Generic and call arguments after the name are left out.
 func (p *sourceParser) lastQualifiedName(start int) string {
 	name := ""
 	for i := start; i < len(p.tokens) && p.tokens[i].ident; {
@@ -236,7 +237,8 @@ func (p *sourceParser) qualifiedName(start int) (string, int) {
 	return strings.Join(segments, "."), i
 }
 
-// startsTypeDecl reports whether the keyword at the cursor declares a type rather than constrains a type parameter or names a variable.
+// startsTypeDecl reports whether the keyword at the cursor declares a type.
+// It is false for a keyword that constrains a type parameter or names a variable.
 func (p *sourceParser) startsTypeDecl() bool {
 	if p.after(":") || p.after(",") || p.after(".") {
 		return false

@@ -16,8 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/toolfloor"
 )
 
-// TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
-// The non-zero row also shows the cwd parameter is respected: run in the package directory instead, `git status` would succeed.
+// TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0;
+// a non-zero exit is reported through the exit code and stderr with a nil error;
+// and an exec-level failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
+// The non-zero row also shows the cwd parameter is respected:
+// run in the package directory instead, `git status` would succeed.
 func TestRunGit(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -74,9 +77,15 @@ func TestRunGit(t *testing.T) {
 	}
 }
 
-// TestRun pins Run's contract: a successful command returns its stdout with a nil error; a non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the distinction every errors.As recovery site depends on.
-// One row sets GIT_DIR and GIT_WORK_TREE to a second repository and asserts the child still answers the directory it was run in, because git children never inherit those two variables.
-// Another sets GIT_OPTIONAL_LOCKS=1 and asserts the child sees it as 0 alone, so a read-only command never takes the index lock.
+// TestRun pins Run's contract: a successful command returns its stdout with a nil error;
+// a non-zero exit is recoverable via errors.As as *gitexec.GitError;
+// the error carries the exit code, the args and dir it was given, and non-empty stderr;
+// and an exec-level failure (a cwd that does not exist) returns a non-nil error;
+// errors.As does not match that error as *gitexec.GitError, the distinction every errors.As recovery site depends on.
+// One row sets GIT_DIR and GIT_WORK_TREE to a second repository;
+// the child must still answer the directory it was run in, because git children never inherit those two variables.
+// Another sets GIT_OPTIONAL_LOCKS=1 and asserts the child sees it as 0 alone,
+// so a read-only command never takes the index lock.
 // Those rows touch process-global state, the environment, so the test does not call t.Parallel; its table rows do.
 func TestRun(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -201,7 +210,8 @@ func TestRun(t *testing.T) {
 	})
 }
 
-// TestRun_StdoutOnError tests that stdout is still returned alongside a *GitError, using a command that writes to stdout and then exits non-zero:
+// TestRun_StdoutOnError tests that stdout is still returned alongside a *GitError.
+// It runs a command that writes to stdout and then exits non-zero:
 // `git diff --exit-code` prints the diff to stdout and exits 1 when the working tree differs from the last commit.
 //
 //testtiming:keep pins that stdout is returned alongside a *GitError, which the covering tests discard

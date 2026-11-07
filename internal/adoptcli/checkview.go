@@ -1,4 +1,4 @@
-// checkview.go renders each subject's adopt check record as the section `lym beam status` shows: its state as shown, the tier in flight, the tiers done and the paths of its log and output.
+// checkview.go renders each subject's adopt check record as the section `lym beam status` shows.
 
 package adoptcli
 
@@ -36,7 +36,8 @@ type CheckView struct {
 	Lines []string `json:"lines"`
 }
 
-// ReadCheckViews reads the adopt check of every subject of the hub at hubPath and returns their views sorted by subject, or none when no subject directory holds a record.
+// ReadCheckViews returns the adopt check of every subject of the hub at hubPath, sorted by subject.
+// It returns none when no subject directory holds a record.
 // An absent scratch directory or record creates no directory or lock file.
 // A running record whose process is gone, or whose pid a later boot reused, shows as ended without a verdict.
 func ReadCheckViews(hubPath string) ([]CheckView, error) {
@@ -68,7 +69,8 @@ func ReadCheckViews(hubPath string) ([]CheckView, error) {
 }
 
 // checkView builds the view of record, whose subject's scratch directory is dir.
-// alive says whether the process that wrote a running record is still running; it decides nothing for a record that ended.
+// alive says whether the process that wrote a running record is still running;
+// it decides nothing for a record that ended.
 func checkView(record CheckRecord, alive bool, dir string) CheckView {
 	view := CheckView{
 		Subject: record.Subject,

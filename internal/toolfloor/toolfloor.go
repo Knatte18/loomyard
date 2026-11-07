@@ -1,4 +1,4 @@
-// toolfloor.go declares the git and tmux version floor, parses a tool's version line and returns the floor error.
+// toolfloor.go declares the minimum git and tmux versions lym runs on, and checks a tool's version line against them.
 
 package toolfloor
 
@@ -46,14 +46,17 @@ func CheckGit(versionLine string) (parsed bool, err error) {
 	return check("git", gitVersionLine, GitFloor, versionLine)
 }
 
-// CheckTmux checks the output of `tmux -V` against TmuxFloor, with the same results as CheckGit.
+// CheckTmux checks the output of `tmux -V` against TmuxFloor.
+// A parsed version at or above the floor returns (true, nil), and one below it returns (true, *FloorError);
+// a line that does not parse returns (false, nil).
 // A trailing release letter, as in `tmux 3.4a`, is ignored.
 func CheckTmux(versionLine string) (parsed bool, err error) {
 	return check("tmux", tmuxVersionLine, TmuxFloor, versionLine)
 }
 
 // TmuxHasAllowSetTitle reports whether the output of `tmux -V` names a release at or above TmuxAllowSetTitle.
-// parsed is false for a line that does not parse, and then has is false too, so the caller decides how to treat an unknown version.
+// parsed is false for a line that does not parse, and has is then false too,
+// so the caller decides how to treat an unknown version.
 func TmuxHasAllowSetTitle(versionLine string) (parsed, has bool) {
 	match := tmuxVersionLine.FindStringSubmatch(strings.TrimSpace(versionLine))
 	if match == nil {

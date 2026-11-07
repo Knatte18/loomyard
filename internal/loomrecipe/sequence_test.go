@@ -24,35 +24,41 @@ type wantSequenceEntry struct {
 	outcome shedengine.Outcome
 }
 
-// wantSequenceOrder is the row 1-through-Merge-In name/outcome sequence a clean Run over buildSequenceFixture must produce.
-// It follows wantProducerTable's row order, which TestNew_ShapeMatchesRecipe pins against New,
-// so a reordering in contracts/recipes/tapestry-recipe.yaml's row order is a test failure.
+// wantSequenceOrder is the name and outcome sequence of the rows from 1 through Merge-In.
+// A clean Run over buildSequenceFixture must produce exactly this sequence.
+// It follows the row order of wantProducerTable, which TestNew_ShapeMatchesRecipe pins against New;
+// a reordering of the rows in contracts/recipes/tapestry-recipe.yaml therefore fails the test.
 //
-// Every entry but the three review segments and the trailing Merge-In carries a Done outcome by
-// rule; the segments themselves do not, so their entries are spelled out explicitly rather than
-// derived.
-// Each segment contributes exactly four entries in the same shape: NameXBouncer with Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never judging anything on its first call), NameXBurlerReview with Stuck (one completed review -- the review row reports every successful review as Stuck by contract, never Done, since its Stuck is a routine hand-off to the fix row rather than a real stuck condition), NameXBurlerFix with Stuck (the fix row's hand-back to the Bouncer, a Stuck for the same reason), and NameXBouncer again with Done (the judge call, whose fixture-scripted CONVERGED verdict is what advances the run past the segment).
-// With the standalone validate rows gone, the Plan-Review segment no longer carries
-// the trailing post-segment mechanical re-check the other two segments never had a counterpart
-// for either -- all three segments now share the identical four-entry shape.
-// Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
-// job.
+// Every entry but the three review segments and the trailing Merge-In carries a Done outcome by rule.
+// The segment entries carry no such rule, so they are spelled out explicitly.
+// Each segment contributes four entries in the same shape:
+// `NameXBouncer` with Stuck, the seed call, which spawns a focus-setting pass and never judges on its first call;
+// `NameXBurlerReview` with Stuck, since the review row reports every successful review as Stuck by contract;
+// `NameXBurlerFix` with Stuck, the fix row's hand-back to the Bouncer;
+// and `NameXBouncer` with Done, the judge call;
+// its fixture-scripted CONVERGED verdict advances the run past the segment.
+// Stuck entries mid-run are therefore each segment doing its job, not a failure signal.
 //
-// The sequence stops at Merge-In deliberately: Merge-In's OnStuck is "" (escalate), so a Stuck verdict blocks the run.
-// The fixture's fake tips report the local parent ahead of its upstream, which makes Merge-In report one before any merge.
-// Driving the landing producers' real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which stays out of this package's untagged tier.
+// The sequence stops at Merge-In because its OnStuck is "" (escalate), so a Stuck verdict blocks the run.
+// The fixture's fake tips report the local parent ahead of its upstream, so Merge-In reports one before any merge.
+// Driving the landing producers' real merge logic through a Shed run needs a genuine two-worktree pair;
+// that requires git, which stays out of this package's untagged tier.
 //
-// Discussion-Write passes because the fixture's fake seat runner writes both discussion output
-// files and reports Done, and Discussion-Write's own gate -- run inside that fake's gated method
-// rather than as a separate row below it -- accepts the pair it just wrote; the decorator's
-// injected commit closure then fires on the gate-passed Done.
+// Discussion-Write passes because the fake seat runner writes both discussion output files and reports Done.
+// Discussion-Write's gate runs inside that fake's gated method, so it accepts the pair the fake just wrote;
+// the decorator's injected commit closure then fires on the gate-passed Done.
 //
-// Plan-Write passes for the same reason: the fixture's fake shuttle rewrites the whole plan
-// directory on its "plan"-role branch, and Plan-Write's own gate, run inside that same gated
-// method, still finds a complete, zero-findings plan after the decorator's rotation archived the
-// seeded one away.
+// Plan-Write passes for the same reason.
+// The fixture's fake shuttle rewrites the whole plan directory on its "plan"-role branch.
+// Plan-Write's gate, run inside that same gated method, still finds a complete, zero-findings plan.
+// The decorator's rotation had already archived the seeded plan away.
 //
-// It is derived from wantProducerTable's order and types: a Bouncer row expands to its four entries (its review and fix rows follow it in the table), a review or fix row contributes only through its Bouncer, a Drift row is skipped since the kit's template answers drift.enabled false, a parts row is skipped since it answers tapestry.plan_split false, Merge-In is Stuck and ends the sequence, and every other row is Done.
+// It is derived from wantProducerTable's order and types.
+// A Bouncer row expands to its four entries, and its review and fix rows follow it in the table.
+// A review or fix row contributes only through its Bouncer.
+// A Drift row is skipped since the kit's template answers drift.enabled false.
+// A parts row is skipped since it answers tapestry.plan_split false.
+// Merge-In is Stuck and ends the sequence, and every other row is Done.
 var wantSequenceOrder = deriveSequenceOrder()
 
 func deriveSequenceOrder() []wantSequenceEntry {
@@ -80,16 +86,12 @@ func deriveSequenceOrder() []wantSequenceEntry {
 	return order
 }
 
-// TestSequence_FullRunBlocksAtMergeIn is the task's own verify requirement: the built row list
-// runs Preflight through Webster and blocks on Merge-In's Stuck verdict, never reaching the Code-Review perch --
-// see wantSequenceOrder's own doc comment for why, including for the review segments' entry
-// shapes. It also asserts the plan is left approved after the run: under the pre-fix code the fake
-// writer self-approved the plan it wrote, which masked Plan-Bouncer's approve_seam ever firing at
-// all -- a nil Env.ApprovePlan, a no-op closure, or a fake writer that started self-approving again
-// would each leave this history list passing for the wrong reason, and with the row-removal batch's
-// deletion of the post-segment mechanical re-check that used to confirm the approval flag survived,
-// the trailing planparser.ParsePlan check below is the ONLY standing guard left anywhere that
-// Plan-Bouncer's approve seam genuinely ran.
+// TestSequence_FullRunBlocksAtMergeIn runs the built row list from Preflight through Webster.
+// It checks that the run blocks on Merge-In's Stuck verdict, never reaching the Code-Review perch.
+// It also checks that the plan is left approved after the run.
+// The fake writer seeds and rewrites the plan unapproved.
+// A nil Env.ApprovePlan, a no-op closure, or a self-approving writer would let the history pass wrongly;
+// the trailing planparser.ParsePlan check is what shows Plan-Bouncer's approve seam ran.
 func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchorPath, env, paths := buildSequenceFixture(t)
@@ -138,7 +140,7 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		}
 	}
 
-	// The fixture's open parent-review round, as an older binary left it, no longer holds Discussion-Write:
+	// The fixture's open parent-review round, written by an older binary, does not hold Discussion-Write:
 	// the row is Done straight to Discussion-Bouncer, and the round directory stays on disk unchanged.
 	for i, entry := range result.History {
 		if entry.Producer != loomshed.NameDiscussionWrite {
@@ -170,14 +172,14 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NameParentAlign)
 	}
 
-	// This is the scenario proof that the Discussion-Bouncer commit_seam is genuinely reached through
-	// a real Shed run: both the Discussion-Write row's own commit and the Discussion-Bouncer row's
-	// approval commit invoke CommitDiscussion, so the count is 2, not 1.
+	// Discussion-Write's own commit and Discussion-Bouncer's approval commit both invoke CommitDiscussion,
+	// so a clean run calls it twice; a count of one means the Discussion-Bouncer commit seam never fired.
 	if commitDiscussionCalls != 2 {
 		t.Errorf("CommitDiscussion calls = %d; want exactly 2 after a clean run (Discussion-Write's commit plus Discussion-Bouncer's approval commit)", commitDiscussionCalls)
 	}
 
-	// The Discussion-Write row runs on the seat engine: one discussion table carrying the row's gates, and no single-agent discussion session.
+	// The Discussion-Write row runs on the seat engine: one discussion table carries the row's gates,
+	// and no single-agent discussion session runs.
 	seats := env.Seats.(*shedfake.SeatRunner)
 	if tables := countSeatRole(seats, "discussion"); tables != 1 {
 		t.Fatalf("seat runner ran %d discussion tables; want exactly 1", tables)
@@ -197,16 +199,16 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		t.Errorf("ApproveDiscussion calls = %d; want exactly 1 after a clean run (Discussion-Bouncer's approved settle)", approveDiscussionCalls)
 	}
 
-	// This is the scenario proof that the Plan-Bouncer commit_seam is genuinely reached through a
-	// real Shed run: both the Plan-Write row's own commit and the Plan-Bouncer row's approval commit
-	// invoke CommitPlan, so the count is 2, not 1.
+	// Plan-Write's own commit and Plan-Bouncer's approval commit both invoke CommitPlan,
+	// so a clean run calls it twice; a count of one means the Plan-Bouncer commit seam never fired.
 	if commitPlanCalls != 2 {
 		t.Errorf("CommitPlan calls = %d; want exactly 2 after a clean run (Plan-Write's commit plus Plan-Bouncer's approval commit)", commitPlanCalls)
 	}
 
-	// The scenario checks that both review segments before Merge-In genuinely ran rather than being silently short-circuited:
-	// the fake burler ran exactly one review and one fix per segment,
-	// and the fake shuttle recorded exactly two bouncer-judge spawns -- the judge calls whose fixture-scripted CONVERGED verdicts are what advanced the run past each segment.
+	// Both review segments before Merge-In must run, not be short-circuited:
+	// the fake burler runs exactly one review and one fix per segment,
+	// and the fake shuttle records exactly two bouncer-judge spawns;
+	// their fixture-scripted CONVERGED verdicts advance the run past each segment.
 	loomBurler := env.Burler.(*shedfake.BurlerHalfRunner)
 	if loomBurler.ReviewCalls != 2 || loomBurler.FixCalls != 2 {
 		t.Errorf("burler Review/Fix calls = %d/%d; want exactly 2/2 after a clean run", loomBurler.ReviewCalls, loomBurler.FixCalls)
@@ -215,11 +217,10 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		t.Errorf("bouncer-judge spawns = %d; want exactly 2 after a clean run", judgeCalls)
 	}
 
-	// This is the regression proof for F7: parse the fixture's own plan and assert Approved is
-	// true. The fake writer seeds and rewrites the plan unapproved on every "plan"-role Run, so this
-	// can only pass because Plan-Bouncer's approve_seam wrote the flag through env.ApprovePlan --
-	// and, with the removed Plan-Revalidate row's own re-check gone, this assertion is the only
-	// thing anywhere that still proves the seam fired at all.
+	// The parsed plan must be Approved.
+	// The fake writer seeds and rewrites the plan unapproved on every "plan"-role Run,
+	// so this passes only if Plan-Bouncer's approve_seam wrote the flag through env.ApprovePlan.
+	// This assertion is the only check that proves the seam fired.
 	plan, err := planparser.ParsePlan(planparser.PlanDir(env.AnchorPath))
 	if err != nil {
 		t.Fatalf("ParsePlan() error = %v; want nil", err)

@@ -1,4 +1,5 @@
-// fslinkonly_test.go enforces `PATTERN-lym-files`: no production Go file outside internal/fslink calls `os.Symlink` or `os.Link`.
+// fslinkonly_test.go enforces `PATTERN-lym-files`:
+// no production Go file outside internal/fslink calls `os.Symlink` or `os.Link` unless allowlisted.
 // A link is created through fslink.CreateDirLink.
 
 package main
@@ -26,7 +27,9 @@ var allowedLinkCalls = []scankit.Entry{
 // fslinkDir is the link package's own directory, whose files make the raw link calls.
 const fslinkDir = "internal/fslink/"
 
-// linkCallFailures walks the production Go files under opts and returns one failure line per osName.Symlink or osName.Link call outside internal/fslink, with the number of files scanned.
+// linkCallFailures walks the production Go files under opts.
+// It returns a failure line for each osName.Symlink or osName.Link call outside internal/fslink.
+// It also returns how many files it scanned.
 func linkCallFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, scanned int) {
 	t.Helper()
 	scanned = scankit.Walk(t, opts, func(f *scankit.File) {
@@ -68,7 +71,8 @@ func linkCallFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowli
 	return failures, scanned
 }
 
-// TestFslinkOnly_NoRawLinkCalls fails for every production os.Symlink or os.Link call outside internal/fslink, unless allowlisted.
+// TestFslinkOnly_NoRawLinkCalls fails for every production os.Symlink or os.Link call outside internal/fslink.
+// Calls named in allowedLinkCalls are exempt.
 //
 //lym:guard
 func TestFslinkOnly_NoRawLinkCalls(t *testing.T) {

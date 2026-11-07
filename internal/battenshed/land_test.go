@@ -160,7 +160,9 @@ func (f *landFixture) producer() shedengine.ShedProducer {
 // TestLand_Dispositions asserts which of the pull, the deploy and the prune the row runs for each landing.
 // A parent that is the prime's branch pulls, deploys once and prunes.
 // No landing with a clean pull queues a notice.
-// Another parent skips the pull and the deploy without reading the prime's tree, a parent outside the deploy list pulls only, and an empty deploy command runs nothing.
+// Another parent skips the pull and the deploy without reading the prime's tree.
+// A parent outside the deploy list pulls only.
+// An empty deploy command runs nothing.
 // A child that landed no code only prunes, even when its parent is the prime's branch.
 func TestLand_Dispositions(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -199,7 +201,8 @@ func TestLand_Dispositions(t *testing.T) {
 	}
 }
 
-// TestLand_FailingStepsAreStuckWithOneNotice asserts every failing step is Stuck naming the reason and posts no notice, on the first call and on a re-entry.
+// TestLand_FailingStepsAreStuckWithOneNotice asserts every failing step is Stuck naming the reason and posts no notice.
+// It holds on the first call and on a re-entry.
 func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -259,7 +262,9 @@ func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 	}
 }
 
-// TestLand_DirtyPrimeWait asserts a prime that turns clean within the bound lands, one still dirty past the bound is Stuck naming the paths, and a pause during the wait is Stuck with no notice and a reason naming the goto and run way forward.
+// TestLand_DirtyPrimeWait asserts a prime that turns clean within the bound lands.
+// A prime still dirty past the bound is Stuck naming the paths.
+// A pause during the wait is Stuck with no notice, and its reason names the goto and run way forward.
 func TestLand_DirtyPrimeWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -321,7 +326,10 @@ func TestLand_DirtyPrimeWait(t *testing.T) {
 	})
 }
 
-// TestLand_LandLockWait asserts a contended land lock is polled with sleeps doubling from the base to the ceiling until it frees, the prime lock is held only around the pull, a pause ends the wait with no notice, and a cancelled context is a hard error.
+// TestLand_LandLockWait asserts a contended land lock is polled with sleeps doubling from the base to the ceiling.
+// The wait lasts until the lock frees.
+// The prime lock is held only around the pull.
+// A pause ends the wait with no notice, and a cancelled context is a hard error.
 func TestLand_LandLockWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -396,7 +404,8 @@ func TestLand_LandLockWait(t *testing.T) {
 	})
 }
 
-// TestLand_RecordsStopNotice asserts a landing whose pull reports a records stop still deploys and queues the one records-stop line, once across a resumed row.
+// TestLand_RecordsStopNotice asserts a landing whose pull reports a records stop still deploys.
+// It queues the one records-stop line, once across a resumed row.
 // With no orch strand recorded nothing is queued and one Warn names the slug.
 // It is serial: it captures the process-global logger.
 func TestLand_RecordsStopNotice(t *testing.T) {

@@ -1,4 +1,5 @@
-// work.go declares advisorWork, the predicate the chair's held-turn notice defers on: whether advisor work is still outstanding.
+// work.go declares advisorWork, the predicate a chair's held-turn notice defers on:
+// whether advisor work is outstanding.
 
 package seatengine
 
@@ -9,7 +10,7 @@ import (
 )
 
 // advisorWork holds the advisors a table run has started and the notice sender that types their lines to the chair.
-// It reports whether any of that work is outstanding, which is what keeps a chair's planned wait on its advisors from reaching the parent as a stall.
+// Work still outstanding keeps a chair's planned wait on its advisors from reaching the parent as a stall.
 type advisorWork struct {
 	mu     sync.Mutex
 	sender *noticeSender
@@ -23,7 +24,7 @@ func (w *advisorWork) add(run *seatRun) {
 	w.runs = append(w.runs, run)
 }
 
-// bindSender sets the notice sender whose delivery of the up lines outstanding checks.
+// bindSender sets the notice sender used to check whether each advisor's up line has landed.
 func (w *advisorWork) bindSender(sender *noticeSender) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -31,12 +32,16 @@ func (w *advisorWork) bindSender(sender *noticeSender) {
 }
 
 // outstanding reports whether any started seat is still working.
-// An advisor whose run has not ended counts when it has an up line the sender has not landed or reads mid-turn.
+// An advisor whose run has not ended counts while its up line has not landed, or while its session reads mid-turn.
 // An unended assistant, which gets no up line either, counts when its session reads mid-turn.
-// A writer, which gets no up line, counts when its session reads mid-turn, whether its run has ended done or not, so a chair waiting on a fix it asked of a done writer is deferred.
+// A writer, which gets no up line, counts while its session reads mid-turn, including after its run has ended done,
+// so a chair waiting on a fix asked of that writer is deferred.
 // Any other ended run never counts, a timed-out one included.
-// Each seat's session state is read before its up line: one reading asking, idle-stalled, idle-done or dead is held or gone, so it never counts, whether or not an advisor's up line has landed.
-// A session-state reading that errors counts as neither held nor mid-turn, so only an advisor's up line can still count that seat.
+// A seat's session state is read before its up line.
+// A reading of asking, idle-stalled, idle-done or dead means the seat is held or gone,
+// so it never counts, whether or not its up line has landed.
+// A session-state reading that errors counts as neither held nor mid-turn.
+// Only an advisor's up line can still count that seat.
 func (w *advisorWork) outstanding() bool {
 	w.mu.Lock()
 	sender := w.sender

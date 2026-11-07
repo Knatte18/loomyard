@@ -1,7 +1,8 @@
-// wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a fake clock: all four
-// outcome classifications, KeepPane skipping cleanup, the startup probe's trust-dismiss and
-// fast-fail-on-timeout paths, multi-Stop offset tracking, events-offset resilience across a partial
-// line, and finalize's fork-audit attach (only for a fork-mode spec's done classification).
+// wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a fake clock.
+// Its cases cover every outcome classification and KeepPane skipping cleanup.
+// They also cover the startup probe's trust-dismiss and fast-fail-on-timeout paths.
+// They cover multi-Stop offset tracking and events-offset resilience across a partial line.
+// They cover finalize's fork-audit attach, which runs only for a fork-mode spec's done classification.
 
 package shuttleengine
 
@@ -23,10 +24,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
-// of blocking, so Wait's poll loop runs an arbitrarily long scripted
-// sequence at zero real wall-clock cost.
-// It is also an AwakeClock: Sleep advances the awake reading with wall time, and asleep advances wall time alone, as a machine sleep does.
+// fakeClock is a virtual clock: Sleep instantly advances Now() by d instead of blocking.
+// It lets Wait's poll loop run an arbitrarily long scripted sequence at zero real wall-clock cost.
+// It is also an AwakeClock:
+// Sleep advances the awake reading with wall time, and asleep advances wall time alone, as a machine sleep does.
 type fakeClock struct {
 	mu    sync.Mutex
 	now   time.Time
@@ -65,9 +66,8 @@ func (c *fakeClock) asleep(d time.Duration) {
 
 var _ AwakeClock = (*fakeClock)(nil)
 
-// scriptedClock wraps a fakeClock and runs onSleep once, after the first
-// Sleep call, letting a test mutate on-disk fixtures (e.g. completing a
-// partial events.jsonl line) exactly between two poll ticks.
+// scriptedClock wraps a fakeClock and runs onSleep once, after its first Sleep call.
+// onSleep lets a test mutate on-disk fixtures, such as completing a partial events.jsonl line, between two poll ticks.
 type scriptedClock struct {
 	*fakeClock
 	onSleep func()
@@ -84,7 +84,8 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 
 var _ Clock = (*scriptedClock)(nil)
 
-// TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms below one second, zero and negative included, is floored to one second rather than making Wait tick with a short sleep.
+// TestPollInterval_FloorsNonPositive pins the busy-spin guard for a poll_interval_ms below one second.
+// Zero and negative values are floored to one second too, so Wait never ticks with a short sleep.
 //
 //testtiming:keep pins the busy-spin guard: a poll_interval_ms below one second is floored to one second, which no Wait test measures
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
@@ -112,14 +113,13 @@ func TestPollInterval_FloorsNonPositive(t *testing.T) {
 
 // TestRun_Wait_MechanismFailure_KeepsRunIdentity pins that a Wait which reaches no classification
 // still hands its caller the run's identity.
-// A mechanism failure is exactly when those handles matter: finalize never ran, so the run
-// directory is still on disk and the strand may still be registered, and a wholly zero Result
-// leaves the caller unable to diagnose, resume, or tear down what it started.
-// Reproduced live by tearing the reed session down under an in-flight run.
+// A mechanism failure is when the handles matter most: finalize never ran, so the run directory is still on disk,
+// and the strand may still be registered.
+// A wholly zero Result would leave the caller unable to diagnose, resume, or tear down what it started.
 func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
 	tiergate.Require(t, 0)
-	// A permanently failing reed.Status is the live shape (a torn-down session answers every
-	// Status the same way), so Wait gives up after maxStatusRetries consecutive failures.
+	// A permanently failing reed.Status makes Wait give up after maxStatusRetries consecutive failures.
+	// A torn-down session answers every Status the same way.
 	reed := &fakeReed{StatusErr: errors.New(`no reed session; run "lym reed up"`)}
 	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 	runDir := t.TempDir()
@@ -160,32 +160,28 @@ const (
 	cleanupPerformed
 	// cleanupSkipped expects the strand kept and the run dir kept for diagnosis.
 	cleanupSkipped
-	// cleanupDiedCaptureKept expects the strand removed, the run dir kept and died-capture.txt holding the row's scripted capture.
+	// cleanupDiedCaptureKept expects the strand removed, the run dir kept, and the capture in died-capture.txt.
 	cleanupDiedCaptureKept
 )
 
-// TestRun_Wait_Classification drives Run.Wait over the pane, events and file states that decide an
-// outcome, and what each leaves behind. The file contract outranks every negative liveness answer:
-// an agent that wrote every output file finished its work, whatever reed still tracks — an
-// untracked strand, a dead pane, a cleared pane binding, a reed.Status that errors past its retry
-// cap, or an unparseable events file past its cap — and the same contract wins over a live ask.
-// The "died" and "mechanism failure" rows are R3-F1's and R4-F2's guards, which narrow the
-// not-live branch rather than remove it:
+// TestRun_Wait_Classification drives Run.Wait over each pane, events and file state that decides an outcome.
+// It also checks what each state leaves behind.
 //
-//   - Wait used to derive one boolean from reed's strand table and treat both negative answers
-//     alike, so a Status that succeeded with the run's guid simply ABSENT — reed's bookkeeping reset
-//     under a run whose agent is still working — classified OutcomeDied. Reproduced live twice:
-//     renaming the worktree under an in-flight run, and deleting .lym/reed.json both returned
-//     outcome:"died" ~6 s later while the claude process kept working in its pane.
-//   - Reed clears every pane binding in a state file whose recorded pane generation is not the
-//     session incarnation now running, and its Status then reports the strand with an EMPTY PaneID,
-//     which its liveness lookup answers false for. Wait read that as a dead pane. The hidden row is
-//     the one case that must NOT change: an anchor:hidden strand is never given a pane, so its empty
-//     PaneID is normal rather than cleared.
+// The file contract outranks every negative liveness answer:
+// an agent that wrote every output file finished its work, whatever reed still tracks.
+// That holds for an untracked strand, a dead pane, or a cleared pane binding.
+// It also holds past the retry cap of a failing reed.Status or of an unparseable events file.
+// The same contract wins over a live ask.
 //
-// A mechanism failure must keep the run's identity: the agent may still be live, so the caller
-// needs the handles to reach it. Finalize also logs the teardown through internal/logger, so the
-// durable Info+ trace file shows every shuttle run ending as well as beginning.
+// Reed clears the pane bindings of a state file whose pane generation is not the current session incarnation,
+// so the strand reports an empty PaneID.
+// For an ordinary strand that is a mechanism failure, not a dead pane.
+// An anchor:hidden strand never has a pane, so its empty PaneID is normal and its run is classified died.
+//
+// A mechanism failure must keep the run's identity.
+// The agent may still be live, so the caller needs the handles to reach it.
+// Finalize also logs the teardown through internal/logger.
+// The Info+ trace file therefore records every shuttle run's end as well as its start.
 //
 //testtiming:keep pins the outcome, hold log and cleanup of every pane, events and file state Wait classifies, of which the held-run test reaches only a few
 func TestRun_Wait_Classification(t *testing.T) {
@@ -210,14 +206,15 @@ func TestRun_Wait_Classification(t *testing.T) {
 		capture     string
 		anchor      render.Anchor
 		wantOutcome Outcome
-		// wantErr is the error Wait must wrap; wantErrIn a fragment it must name, wantIdentity that
-		// the Result still carries the run's identity.
+		// wantErr is the error Wait must wrap; wantErrIn is a fragment it must name.
+		// wantIdentity says whether the Result still carries the run's identity.
 		wantErr      error
 		wantErrIn    string
 		wantIdentity bool
 		wantCleanup  cleanupExpectation
 		wantLogged   []string
-		// death, when set, runs the wait over a session-signal engine whose registry reading starts at death.liveness and changes as the wait sleeps between ticks.
+		// death, when set, runs the wait over a session-signal engine.
+		// Its registry reading starts at death.liveness and changes as the wait sleeps between ticks.
 		death *deathScript
 	}{
 		{
@@ -266,7 +263,8 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
 		},
 		{
-			// The earlier launch's session end is the newest signal but lies before the first tick's size, so neither an unproven registry before the resumed process registers nor one after it read alive ends the run.
+			// The earlier launch's session end is the newest signal, but it lies before the first tick's size.
+			// Neither an unproven registry before the resumed process registers nor one after it reads alive ends the run.
 			name: "an earlier launch's process-ending session end ends nothing, before or after the resumed process reads alive", status: liveStrands, startup: ready, timeout: heldTestTimeout,
 			events:      "SESSIONEND:other\n",
 			death:       &deathScript{steps: []deathStep{{liveness: LivenessAlive}, {liveness: LivenessUnproven}}},
@@ -283,15 +281,15 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantLogged: []string{"shuttle: run finished", "outcome=done", "strand-1", "cleanedUp=false"},
 		},
 		{
-			// A Stop with output files missing never ends the run: it is held, logged with its message,
-			// and the run ends only at its unchanged deadline.
+			// A Stop with output files missing never ends the run.
+			// It is held and logged with its message, and the run ends only at its unchanged deadline.
 			name: "a stop with output missing is held to the deadline", status: liveStrands, startup: ready, events: "STOP:need operator input\n",
 			timeout: heldTestTimeout, wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
 			wantLogged: []string{"turn end held", "need operator input"},
 		},
 		{
-			// An EventAsk with no output files present is held just like the turn-end case,
-			// proving the one pollEventsTick branch also covers the live-ask signal ParseEvents emits.
+			// An EventAsk with no output files present is held like the turn-end case.
+			// It shows that the one pollEventsTick branch also covers the live-ask signal ParseEvents emits.
 			name: "a live ask with output missing is held to the deadline", status: liveStrands, startup: ready, events: "ASK:which approach?\n",
 			timeout: heldTestTimeout, wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
 			wantLogged: []string{"turn end held", "which approach?"},
@@ -318,15 +316,16 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantOutcome: "", wantErr: errStrandNotTracked, wantErrIn: "strand-1", wantIdentity: true, wantCleanup: cleanupSkipped,
 		},
 		{
-			// An agent that wrote every output file and was then untracked (its pane removed by a `lym reed remove`, say) finished its work, and a caller must not be told to go diagnose a run that actually succeeded.
+			// An agent that wrote every output file finished its work, even if it was then untracked.
+			// A caller must not be told to diagnose a run that succeeded.
 			name: "untracked strand with output files is still done", status: []reedengine.StatusResult{{Strands: nil}}, output: true,
 			wantOutcome: OutcomeDone,
 		},
 		{
-			// The pane died but every output file already exists on disk: the agent must have
-			// written its result and then been killed (or exited) before its Stop hook ever appended
-			// a turn-end line, so a caller must not needlessly respawn already-completed work. A done
-			// outcome without KeepPane still runs the normal cleanup path.
+			// The pane died but every output file already exists on disk.
+			// The agent must have written its result, then been killed or exited, before its Stop hook appended a turn-end line.
+			// A caller must not respawn work that is already complete.
+			// A done outcome without KeepPane still runs the normal cleanup path.
 			name: "dead pane with output files is done", status: deadPane, output: true,
 			wantOutcome: OutcomeDone, wantCleanup: cleanupPerformed,
 		},
@@ -339,24 +338,25 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped,
 		},
 		{
-			// The output files ARE the run's return value.
+			// The output files are the run's return value.
 			name: "cleared pane binding with output files is still done", status: clearedBinding, anchor: render.AnchorOwnWindow, output: true,
 			wantOutcome: OutcomeDone,
 		},
 		{
-			// reed.Status errors on every call (the shape a crash-corrupted or truncated reed.json, or
-			// a torn-down session, produces), so the run reaches maxStatusRetries consecutive liveness
-			// failures — but every declared output file is on disk, so it finished. events.jsonl is
-			// never created, so the ONLY path to done is the mechanism-failure cap's own file-contract
-			// check.
+			// reed.Status errors on every call.
+			// That is the shape a crash-corrupted or truncated reed.json, or a torn-down session, produces.
+			// The run reaches maxStatusRetries consecutive liveness failures.
+			// Every declared output file is on disk, so the run finishes done.
+			// events.jsonl is never created, so the only path to done is the mechanism-failure cap's file-contract check.
 			name:      "status failure cap with output files is done",
 			statusErr: errors.New(`reed state file is unreadable: unmarshal state: unexpected end of JSON input`), output: true,
 			wantOutcome: OutcomeDone,
 		},
 		{
 			// ParseEvents fails on every call, so the run reaches maxEventsReadRetries consecutive
-			// parse failures — but every declared output file is on disk. LivenessEveryNPolls is high
-			// so the events cap, not a liveness tick, is what fires.
+			// parse failures.
+			// Every declared output file is on disk, so the run finishes done.
+			// LivenessEveryNPolls is high, so the events cap fires, not a liveness tick.
 			name: "events unreadable cap with output files is done", cfg: sparseProbeConfig, status: boundLivePane(), events: "garbage that never parses\n", output: true,
 			parseEventsErr: errors.New("parse events: malformed"), wantOutcome: OutcomeDone,
 		},
@@ -525,9 +525,8 @@ func boundLivePane() []reedengine.StatusResult {
 	return []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}}}}
 }
 
-// multiStepClock wraps a fakeClock and runs the next entry of steps, in order, once per Sleep call —
-// a generalization of scriptedClock's single-shot onSleep for tests that need to mutate on-disk
-// fixtures between several ticks, not just the first two.
+// multiStepClock wraps a fakeClock and runs the next entry of steps once per Sleep call, in order.
+// It serves tests that mutate on-disk fixtures between several ticks, not just between two.
 // Once steps is exhausted, further Sleep calls run no step.
 type multiStepClock struct {
 	*fakeClock
@@ -562,7 +561,8 @@ func sessionEngine(liveness Liveness) func() Engine {
 // TestRun_Wait_HeldTurnEnd drives Run.Wait over turn ends that leave the output files missing:
 // each is held and polling continues, so the run ends only through done, died or timeout.
 // A later Stop with every output file finalizes done, also through a gate.
-// A held run finalizes died on a dead pane, done when its outputs appear as the pane dies, and timeout at its unchanged deadline.
+// A held run finalizes died on a dead pane, and done when its outputs appear as the pane dies.
+// It finalizes timeout at its unchanged deadline.
 func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -834,8 +834,8 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 				t.Errorf("Gate = %+v, want gate report = %v", result.Gate, tt.wantGate)
 			}
 
-			// A held turn end shows the held wait stamped with the hold's time, each later event replaces it with the next hold,
-			// and no return leaves a mark or a marker file behind.
+			// A held turn end shows the held wait stamped with the hold's time.
+			// Each later hold replaces it with the next, and a return that is not a hold leaves no mark or marker file behind.
 			if tt.wantHeld != nil && len(holds) != len(tt.wantHeld) {
 				t.Fatalf("script steps run = %d; want %d", len(holds), len(tt.wantHeld))
 			}
@@ -881,28 +881,22 @@ type wantLogLines struct {
 }
 
 // TestRun_Wait_StartupWindow drives Wait over a live pane that never reaches StartupReady, with the
-// run deadline (10 minutes) an order of magnitude beyond the startup deadline (1 second), so a run
-// that only ever classifies OutcomeTimeout is the pre-fix behaviour and one that classifies
-// OutcomeDied or OutcomeDone inside a minute of virtual time proves the startup window bound the
-// path under test.
+// run deadline (10 minutes) an order of magnitude beyond the startup deadline (1 second).
+// A run that classifies OutcomeDied or OutcomeDone within a minute of virtual time proves the window bound the path;
+// OutcomeTimeout would mean the run deadline did.
 //
-// R2-F9: the startup deadline used to be consulted from ONE arm of checkLivenessTick's switch,
-// StartupPending, so the two other ways a run can sit in the startup window — a trust prompt whose
-// dismissal never takes, and a pane that fails every capture — escaped it and ran on to the full run
-// deadline. A run whose persisted RunState.Started is false still runs the startup probe and
-// classifies OutcomeDied at the window's end, whatever an attach's own reed reads said of its pane's
-// liveness: the attached-but-never-actually-started shape a driver killed before its first liveness
-// tick, or a launch against a nonexistent binary, both leave behind.
+// The startup deadline bounds every way a run can sit in the startup window:
+// a trust prompt whose dismissal never takes, a pane that fails every capture, and a pane that stays booting.
+// A run whose persisted RunState.Started is false still runs the startup probe,
+// and it classifies OutcomeDied at the window's end, whatever an attach's own reed reads said of its pane's liveness.
+// That state is left by a driver killed before its first liveness tick, or by a launch against a nonexistent binary.
 //
-// F1 (crucible round opus5-high-r4): the window expiring is a NEGATIVE answer, and a satisfied file
-// contract outranks every negative answer — but classifyStartupWindow used to return a bare
-// OutcomeDied on the clock alone. With every declared output file ALREADY WRITTEN and events.jsonl
-// never created, the file contract is the only evidence the run finished and the startup deadline
-// is the only thing that ever classifies it.
+// The window expiring is a negative answer, and a satisfied file contract outranks every negative answer.
+// Every declared output file is already written and events.jsonl is never created.
+// The file contract is then the only evidence the run finished, so the window must not classify it as OutcomeDied.
 //
-// A dismissed trust prompt is recorded: the engine must be handed the SAME capture Startup
-// classified, not an empty or stale one, because a provider whose gate is a selection list can only
-// tell which key confirms the ACCEPTING option by reading the caret out of that capture.
+// A dismissed trust prompt is recorded: the engine must be handed the same capture Startup classified;
+// a provider whose gate is a selection list can only tell which key confirms the accepting option by reading its caret.
 //
 //testtiming:keep pins that the startup window, not the run deadline, classifies every not-ready path, and that a satisfied file contract outranks the expired window
 func TestRun_Wait_StartupWindow(t *testing.T) {
@@ -915,16 +909,16 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 		startupScript []StartupState
 		captureErr    error
 		captureQueue  []string
-		// captureErrQueue scripts the capture failures per probe, FIFO with the last entry sticking; a nil entry answers from captureQueue.
+		// captureErrQueue scripts capture failures per probe, FIFO, the last sticking; a nil entry uses captureQueue.
 		captureErrQueue []error
-		// sendKeyErr fails every key the dismissal sends, and sendKeyErrQueue scripts them per key, FIFO with the last entry sticking.
+		// sendKeyErr fails every key the dismissal sends; sendKeyErrQueue scripts them per key, FIFO, the last sticking.
 		sendKeyErr      error
 		sendKeyErrQueue []error
 		output          bool
 		wantOutcome     Outcome
 		// wantTrustDismissed asserts an Enter was sent and the engine saw gateCapture.
 		wantTrustDismissed bool
-		// recordsSessionStarts marks the record as one whose launch recorded session starts, so a ready pane needs a session-start line the never-created events file lacks.
+		// recordsSessionStarts marks a launch that records session starts; a ready pane then needs one.
 		recordsSessionStarts bool
 		// wantLogs are the exact counts of log lines by level and text across the window's probes.
 		wantLogs []wantLogLines
@@ -1052,7 +1046,7 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 }
 
 // TestRun_Wait_DeadlineExcludesSleptAndPausedTime pins that the run deadline counts awake, unpaused time:
-// a one-hour run across a three-hour machine sleep, and across a three-hour pause, times out one hour after the time it excluded.
+// a one-hour run across a three-hour machine sleep or pause times out one hour after the time it excluded.
 func TestRun_Wait_DeadlineExcludesSleptAndPausedTime(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1110,19 +1104,14 @@ func TestRun_Wait_DeadlineExcludesSleptAndPausedTime(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout is F2's regression guard (crucible
-// round opus5-high-r4): the run deadline expiring is the second place a clock used to publish
-// itself as a verdict on whether the run finished.
+// TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout pins that the file contract wins.
+// The expired run deadline does not decide whether a run finished: a satisfied file contract outranks it.
 //
-// The run here has already reached StartupReady (started is seeded true through the persisted
-// RunState, so the startup probe never runs and cannot be what classifies this), every declared
-// output file is on disk, and events.jsonl is never created — so the file contract is the only
-// evidence of completion and the RUN deadline is the only thing that ever fires. Reverting the fix
-// (a bare `return run.finalize(OutcomeTimeout)`) makes this fail on the outcome.
-//
-// Reproduced live before being written: a provider that rendered the ready marker, wrote both of
-// Discussion-Write's output files, and then stayed alive without appending to events.jsonl was
-// recorded as `run.json` outcome "timeout" with started true, and the step as a shed failure.
+// The run here has already reached StartupReady: started is seeded true through the persisted RunState,
+// so the startup probe never runs and cannot be what classifies this.
+// Every declared output file is on disk, and events.jsonl is never created,
+// so the file contract is the only evidence of completion and the run deadline is the only thing that ever fires.
+// A deadline that classifies OutcomeTimeout without consulting the file contract fails this test on the outcome.
 //
 //testtiming:keep pins that a satisfied file contract outranks the run deadline for a started run, with no startup probe run
 func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T) {
@@ -1135,8 +1124,8 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 	reed := &fakeReed{
 		StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
 	}
-	// StartupScript deliberately left empty: with started seeded true the startup probe must never
-	// run, so any Startup call at all would mean this test is measuring the wrong deadline.
+	// StartupScript is left empty: with started seeded true the startup probe must never run,
+	// so any Startup call would mean this test is measuring the wrong deadline.
 	engine := &fakeEngine{}
 	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 300}))
 	fc := newFakeClock(time.Now())
@@ -1157,11 +1146,10 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 	}
 }
 
-// TestRun_Wait_StartedRun_SkipsStartupProbe pins the seed from the other direction: a run obtained
-// from Runner.StartGated over readyStart-scripted fakes has already persisted Started: true through
-// Start's own successful probe, so a later Wait over the same handle must never re-run the startup
-// probe at all -- neither engine.StartupCalls nor the CapturePane count in reed.CallLog may grow past
-// what Start itself already recorded.
+// TestRun_Wait_StartedRun_SkipsStartupProbe pins that Wait over a started handle never re-runs the startup probe.
+// A run from Runner.StartGated over readyStart-scripted fakes has already persisted Started: true.
+// Start's own successful probe set it, so Wait must add no engine.StartupCalls entry;
+// it must add no CapturePane call in reed.CallLog beyond what Start recorded.
 //
 //testtiming:keep pins that Wait over a started handle never re-runs the startup probe, with no new engine Startup call and no new capture
 func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
@@ -1212,12 +1200,13 @@ func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_ForkAudit proves finalize's AuditForks wiring: a fork-authorized run record's done
-// classification calls engine.AuditForks(sessionID, the runner's paneCwd) and attaches its result to
-// Result.ForkAudit, while a record without authorization never calls AuditForks at all and
-// leaves Result.ForkAudit nil. The audit gets the runner's paneCwd rather than its anchorPath; the
-// two are the same value in the hub shape, so a detached runner whose pane runs at the worktree
-// root while its anchor sits outside it (standalone geometry) is what tells them apart.
+// TestRun_Wait_ForkAudit proves finalize's AuditForks wiring:
+// a fork-authorized run record's done classification calls engine.AuditForks(sessionID, the runner's paneCwd);
+// the result is attached to Result.ForkAudit.
+// A record without authorization never calls AuditForks and leaves Result.ForkAudit nil.
+// The audit gets the runner's paneCwd rather than its anchorPath.
+// The two are the same value in the hub shape, so only a detached runner tells them apart:
+// its pane runs at the worktree root while its anchor sits outside it (standalone geometry).
 func TestRun_Wait_ForkAudit(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1289,17 +1278,16 @@ func TestRun_Wait_ForkAudit(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome is R2-F2's regression guard.
+// TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome pins that an audit failure keeps the run's outcome.
 //
-// A fork-authorized run that satisfies the file contract has reached OutcomeDone before AuditForks is ever
-// called, so an audit failure is a failure of the AUDIT, not of the run. finalize used to hand back
-// run.identity() here — a Result with an empty Outcome — which is the shape Wait reserves for a
-// mechanism failure that reached no classification at all. Because this branch also skips cleanup,
-// leaving the strand and run dir in place exactly as a mechanism failure does, a caller had nothing
-// left to tell the two apart with.
+// A fork-authorized run that satisfies the file contract has reached OutcomeDone before AuditForks is called,
+// so an audit failure is a failure of the audit, not of the run.
+// Wait reserves an empty Outcome for a mechanism failure that reached no classification.
+// This branch also skips cleanup, leaving the strand and run dir in place as a mechanism failure does,
+// so the Outcome is what tells the two apart.
 func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 	tiergate.Require(t, 0)
-	// auditHidden wraps an Engine in a struct that exposes only the Engine interface, hiding the audit methods of the engine inside.
+	// auditHidden wraps an Engine so that only the Engine interface is visible, hiding the wrapped engine's audit methods.
 	type auditHidden struct{ Engine }
 	tests := []struct {
 		name       string
@@ -1361,14 +1349,14 @@ func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_EventsHandling drives Wait over an events file whose Stop events arrive in awkward
-// shapes, with the output file never created so a classified batch is a hold: two Stops in one read
-// classify as the LAST of them with both consumed; a ParseEvents error must NOT advance run.offset
-// past the bytes it failed to parse, or the batch's Stop event would be discarded unread once
-// parsing starts succeeding on the NEXT tick's (empty) read, so the same bytes are retried and DO
-// classify once the transient failure clears (maxEventsReadRetries is 3, so two failures stay under
-// the budget); and a partial line, with no trailing newline yet, is not consumed until a later tick
-// sees it complete.
+// TestRun_Wait_EventsHandling drives Wait over an events file whose Stop events arrive in awkward shapes.
+// The output file is never created, so a classified batch is a hold.
+// Two Stops in one read classify as the last of them, with both consumed.
+// A ParseEvents error must not advance run.offset past the bytes it failed to parse,
+// or the batch's Stop would be discarded unread once parsing succeeds on a later tick.
+// The same bytes are retried and classify once the transient failure clears;
+// the test's failures stay under maxEventsReadRetries.
+// A partial line, with no trailing newline yet, is not consumed until a later tick sees it complete.
 //
 //testtiming:keep pins the offset rules over the events file: the last of several Stops wins, a failed parse's bytes are re-read, and a partial line stays unconsumed
 func TestRun_Wait_EventsHandling(t *testing.T) {
@@ -1430,11 +1418,11 @@ func TestRun_Wait_EventsHandling(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome pins that finalize overwrites the
-// persisted RunState.Outcome with the matching classification string for every terminal outcome, not
-// only OutcomeDone — the fact on disk a later Attach relies on. The done outcome with KeepPane also
-// pins that the write happens before the done-outcome cleanup: the run dir survives cleanup, so its
-// persisted run.json must hold "done" rather than a stale "running".
+// TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome pins that finalize persists the outcome.
+// Each terminal outcome writes its matching classification string into RunState.Outcome in run.json.
+// A later Attach relies on that value.
+// The done outcome with KeepPane also pins that the write happens before the done cleanup:
+// the run dir survives cleanup, so its run.json must hold "done", not a stale "running".
 //
 //testtiming:keep pins that finalize persists the matching Outcome in run.json for every terminal outcome, and does so before the done cleanup
 func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) {
@@ -1537,12 +1525,9 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 	}
 }
 
-// TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult pins the best-effort
-// disposition: a saveRunState failure inside finalize must not fail the run — the classified Result
-// is returned unchanged, per attach-only-a-run-that-never-terminated's failed-write disposition.
-// saveRunState is made to fail by replacing run.json's path with a directory before Wait finalizes,
-// following fakeEngine.PrepareHook's precedent for planting on-disk state that breaks a later
-// saveRunState call.
+// TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult pins a best-effort write.
+// A saveRunState failure inside finalize does not fail the run; the classified Result is returned unchanged.
+// saveRunState is made to fail by replacing run.json's path with a directory before Wait finalizes.
 func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *testing.T) {
 	tiergate.Require(t, 0)
 	runDir := t.TempDir()
@@ -1579,7 +1564,7 @@ func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *t
 	}
 }
 
-// usageEngine is a fakeEngine that also implements UsageReader with a scripted reading and records its calls.
+// usageEngine is a fake engine that also implements UsageReader with a scripted reading and records its calls.
 type usageEngine struct {
 	fakeEngine
 	reading SessionUsage
@@ -1591,7 +1576,9 @@ func (e *usageEngine) SessionUsage(sessionID, workdir string) SessionUsage {
 	return e.reading
 }
 
-// TestRun_Finalize_ReportsUsageAndTimes covers finalize's usage and time reporting: a done run and a died run on a UsageReader engine each carry the reading, split counts included, read at the session and pane cwd, an engine without the capability leaves Usage unknown, every run carries its record's creation time and the clock's end time, and a run with a session reports one session end with its outcome, role, model, times and usage, a run that never started none.
+// TestRun_Finalize_ReportsUsageAndTimes covers the usage and times that finalize reports for each run.
+// A done or died run on a UsageReader engine carries the reading, and a run with a session reports one session end.
+// A run that never started reports no session end.
 //
 //testtiming:keep pins finalize's UsageReader wiring at every terminal outcome, which the Classification table covering its blocks does not assert
 func TestRun_Finalize_ReportsUsageAndTimes(t *testing.T) {

@@ -1,8 +1,10 @@
 //go:build !windows
 
-// naming_integration_test.go carries the standalone acceptance criterion at the engine `lym webster run --target-dir` and `lym burler run --target-dir` build,
-// since a CLI-level run would spawn live Claude producers.
-// On a plain checkout with no recorded shortname it builds the reed engine from standalonestate.Derive and ReedGeometry, as the standalone wiring does.
+// naming_integration_test.go carries the standalone acceptance criterion.
+// It checks the engine build of `lym webster run --target-dir` and `lym burler run --target-dir`.
+// It stays at the engine level, since a CLI-level run would spawn live Claude producers.
+// On a plain checkout with no recorded shortname it builds the reed engine.
+// It builds the engine from standalonestate.Derive and ReedGeometry, as the standalone wiring does.
 
 package standalonegeom_test
 

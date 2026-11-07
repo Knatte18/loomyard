@@ -1,11 +1,9 @@
-// checkout_rollback_test.go proves Checkout's all-or-nothing contract holds even
-// when junction wiring (step 5) fails AFTER the weft branch was already switched
-// (step 4). Pre-fix, the rollback reverted only the warp, stranding the weft on
-// the new branch — a half-switched pair, the exact state Checkout promises never
-// to produce (a live review round reproduced this by making the warp _lym a real
-// directory so seedLymJunction refuses). Checkout now rolls back BOTH sides.
+// checkout_rollback_test.go covers the all-or-nothing contract of Checkout when junction wiring (step 5) fails.
+// That failure comes after the weft branch has switched (step 4), so both sides must roll back.
+// The tests make the warp _lym a real directory, which seedLymJunction refuses.
+// Checkout rolls back both the warp and the weft.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// The package's single TestMain lives in testmain_test.go.
 
 package fabricengine_test
 
@@ -22,11 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair, then corrupts the
-// warp _lym into a real (non-junction) directory so the junction-wiring step of Checkout fails
-// after the weft has already switched.
-// It asserts Checkout errors AND leaves both the warp and the weft on their original branches —
-// never a half-switched pair.
+// TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair.
+// It then turns the warp _lym into a real directory, so the junction wiring fails after the weft has switched.
+// It asserts that Checkout errors and that both sides stay on their original branches, never a half-switched pair.
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -37,9 +33,8 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 
 	const targetBranch = "checkout-rollback-target"
 
-	// Establish the healthy primary junction and the target branch on both sides
-	// so Checkout's steps 3 (warp switch) and 4 (weft switch) can succeed and the
-	// failure is isolated to step 5 (junction wiring).
+	// Set up a healthy primary junction and the target branch on both sides.
+	// Steps 3 (warp switch) and 4 (weft switch) must succeed, so the failure is isolated to step 5 (junction wiring).
 	// Checkout derives the slug the same way (filepath.Base of the worktree root).
 	slug := filepath.Base(l.WorktreePath())
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
@@ -51,7 +46,8 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
 
-	// Corrupt the warp _lym into a real directory: WireJunctions -> seedLymJunction refuses a real (non-link) _lym, so Checkout's step 5 fails after step 4 has already moved the weft.
+	// Corrupt the warp _lym into a real directory: seedLymJunction refuses a real (non-link) _lym.
+	// So step 5 fails after step 4 has moved the weft.
 	warpLym := fabricengine.WarpLymLinkHere(l)
 	if err := os.Remove(warpLym); err != nil {
 		t.Fatalf("remove warp junction to corrupt it: %v", err)
@@ -65,8 +61,8 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 		t.Fatalf("Checkout(%q) error = nil; want a junction-wiring failure (res=%+v)", targetBranch, res)
 	}
 
-	// The all-or-nothing contract: both sides restored to their originals, never
-	// a half-switched pair (warp rolled back but weft stranded on the new branch).
+	// Both sides return to their originals.
+	// The warp must not roll back while the weft stays on the new branch.
 	if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
 		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
@@ -74,18 +70,16 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
-	// The target weft branch pre-existed this Checkout (adopted, not forked), so
-	// the rollback must NOT have deleted it.
+	// The target weft branch pre-existed this Checkout, so the rollback must leave it in place.
 	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), fabricengine.RecordsBranchName(targetBranch)) {
 		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.RecordsBranchName(targetBranch))
 	}
 }
 
-// TestCheckout_JunctionFailureDeletesForkedWeftBranch is the fork-path sibling of the rollback test
-// above: the target has no weft branch yet, so Checkout's step 4 forks one;
-// the junction-wiring failure at step 5 must then roll both sides back AND delete the branch this
-// very Checkout forked — otherwise every rolled-back fork-checkout strands an orphan weft branch
-// that cleanup later flags, created by fabric's own failed operation.
+// TestCheckout_JunctionFailureDeletesForkedWeftBranch covers the fork path of a failed Checkout.
+// The target has no weft branch yet, so Checkout's step 4 forks one.
+// When step 5 then fails, the rollback must restore both sides and delete the branch this Checkout forked,
+// or the failed operation leaves an orphan weft branch behind.
 func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -135,11 +129,10 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	}
 }
 
-// TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin covers the rollback of a checkout whose weft branch existed only on origin:
-// the local branch Checkout created tracking it is deleted,
-// origin's copy is untouched,
-// and both sides return to their original branches.
-// The failure is injected after the adoption, either at junction wiring or at the weft switch itself.
+// TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin covers a failed Checkout of an origin-only weft branch.
+// It deletes the local branch Checkout created to track it, and leaves origin's copy untouched.
+// Both sides return to their original branches.
+// The failure comes after the adoption, at junction wiring or at the weft switch.
 func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -159,7 +152,8 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 				t.Fatalf("create real _lym dir: %v", err)
 			}
 		}},
-		// An untracked file at the path the origin branch tracks passes the pre-switch tracked-dirty check and makes git refuse the switch.
+		// An untracked file at the path the origin branch tracks passes the pre-switch tracked-dirty check.
+		// Git therefore refuses the switch.
 		{"weft switch fails", func(t *testing.T, l *lymcwd.Location) {
 			path := filepath.Join(fabricengine.RecordsWorktree(l), markerRel)
 			if err := os.WriteFile(path, []byte("untracked\n"), 0o644); err != nil {
@@ -217,9 +211,9 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 	}
 }
 
-// TestCheckout_WarpSwitchFailureCarriesGitStderr proves a failing warp switch surfaces git's own
-// explanation rather than only an exit code. The everyday cause is a branch already checked out in
-// another worktree, and "git exit 128" alone leaves the operator nothing to act on.
+// TestCheckout_WarpSwitchFailureCarriesGitStderr proves that a failing warp switch reports git's own explanation.
+// The usual cause is a branch already checked out in another worktree.
+// A bare exit code such as "git exit 128" gives the operator nothing to act on.
 func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.

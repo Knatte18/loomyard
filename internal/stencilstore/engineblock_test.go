@@ -1,4 +1,5 @@
-// engineblock_test.go covers ReadSet over a stencils directory holding plain includes and per-engine copies of an engine block.
+// engineblock_test.go covers ReadSet over a stencils directory.
+// The directory holds plain includes and per-engine copies of an engine block.
 
 package stencilstore
 
@@ -15,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeNamed writes body as the stencil name under dir, at the path Path gives it.
+// writeNamed writes body as the stencil name under dir, creating its family directory.
 func writeNamed(t *testing.T, dir, name, body string) {
 	t.Helper()
 	path := Path(dir, name)

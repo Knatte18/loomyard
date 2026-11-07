@@ -1,4 +1,5 @@
-// detachrun.go implements the hidden `lym gate run-detached` verb, the runner of a gate call that outlasts its caller, and the run directory it keeps its state in.
+// detachrun.go implements the hidden `lym gate run-detached` verb, the runner of a gate call that outlasts its caller.
+// It also defines the run directory that keeps the run's state.
 
 package gatecli
 
@@ -85,7 +86,8 @@ type detachRun struct {
 	dir string
 }
 
-// detachRequest is the call a runner runs: the verb, the words after it, the directory it ran in and the role of the strand that made it.
+// detachRequest is the call a runner runs: its verb, its words, and the directory it resolves against.
+// It also carries the role of the strand that made the call.
 type detachRequest struct {
 	// Verb is `test` or `card-verify`.
 	Verb string `json:"verb"`
@@ -126,13 +128,13 @@ type processRecord struct {
 	Start string `json:"start"`
 }
 
-// path returns the path of the run's file name.
+// path returns the path of the named file inside the run directory.
 func (d detachRun) path(name string) string {
 	return filepath.Join(d.dir, name)
 }
 
 // writeLease makes deadline the lease's deadline unless a later one is stored.
-// The lease is thus the latest deadline any call wrote, though calls of different binaries rewrite it.
+// The lease therefore holds the latest deadline any call wrote, including calls from other binaries.
 func (d detachRun) writeLease(deadline time.Time) error {
 	path := d.path(leaseFile)
 	return state.UpdateJSON(path, path+".lock", func(current leaseRecord, found bool) (leaseRecord, error) {
@@ -187,7 +189,8 @@ func (d detachRun) claim(pid int, start string) error {
 }
 
 // readProcessRecord reads the run's process file and reports false for an absent file.
-// A file that exists but does not decode is a claim caught between its create and its write, so it is read again a few times before it counts as absent.
+// A file that exists but does not decode is a claim caught between its create and its write,
+// so it is read again a few times before it counts as absent.
 func (d detachRun) readProcessRecord() (processRecord, bool) {
 	for attempt := 0; ; attempt++ {
 		record, found := readRunFile[processRecord](d.path(processFile))
@@ -222,7 +225,8 @@ func (d detachRun) writeExit(exit detachExit) error {
 }
 
 // startReading reads a start for pid that tells a reused pid apart from the process that held it.
-// It is proc.StartTime's reading off Windows, and proc.CreationTime in Unix nanoseconds as a decimal string on Windows, where StartTime is unreadable.
+// On Windows, where proc.StartTime is unreadable, it uses proc.CreationTime in Unix nanoseconds as a decimal string.
+// Elsewhere it returns proc.StartTime's reading.
 func startReading(goos string, pid int, startTime func(int) (string, bool), creationTime func(int) (time.Time, bool)) (string, bool) {
 	if goos != "windows" {
 		return startTime(pid)
@@ -248,8 +252,10 @@ func phaseFrom(ctx context.Context) func(runPhase) {
 	return hook
 }
 
-// runnerCmd builds `lym gate run-detached <run-dir>`, the hidden verb that runs a front's request and keeps its state in the run directory.
-// gateTree builds a fresh gate command tree for the call to run in, and seams are the card fixer's seams the runner reaches.
+// runnerCmd builds the hidden `lym gate run-detached <run-dir>` verb.
+// The verb runs a front's request in this process and keeps its state in the run directory.
+// It takes gateTree, which builds the fresh gate command tree the call runs in.
+// It takes seams, the card fixer's seams the runner reaches.
 func runnerCmd(gateTree func() *cobra.Command, seams detachSeams) *cobra.Command {
 	return &cobra.Command{
 		Use:         "run-detached <run-dir>",
@@ -269,15 +275,18 @@ It is started by lym gate test and lym gate card-verify and refuses a run direct
 	}
 }
 
-// detachRefusal writes the refusal of the run directory dir, which reason describes, naming the gate verbs that start a run of their own.
+// detachRefusal writes the refusal of the run directory dir, with the reason it is given.
+// The way forward names the gate verbs which start their own runner.
 func detachRefusal(out io.Writer, dir, reason string) int {
 	return output.Err(out, fmt.Sprintf("gate run-detached: %s %s; way forward: run lym gate test or lym gate card-verify, which start and join their own runner", dir, reason))
 }
 
 // runDetached runs the request in runDir and returns 0 once the run's exit file is written.
-// It refuses, before it runs anything or writes an exit file, a directory with no live lease, a request that is missing or malformed, a verb it does not run and a run another runner claimed.
-// While the call runs it reads the lease once a second and cancels the call when the lease has passed; a terminating signal cancels it too.
-// A red `test` request is handed to a cold fixer and re-run, as runWithFixer says.
+// Before it runs anything or writes an exit file, it refuses a directory with no live lease.
+// It also refuses a request that is missing or malformed, a verb it does not run, and a run another runner claimed.
+// While the call runs it reads the lease once a second and cancels the call when the lease has passed;
+// a terminating signal cancels it too.
+// A red `test` request is handed to a cold fixer and re-run.
 func runDetached(ctx context.Context, out io.Writer, runDir string, gateTree func() *cobra.Command, seams detachSeams) int {
 	run := detachRun{dir: runDir}
 	if !run.leaseHolds(time.Now()) {
@@ -327,8 +336,10 @@ func (d detachRun) readRequest() (detachRequest, error) {
 	return request, nil
 }
 
-// runRequest runs request, a `test` request through a fresh gate tree and a `card-verify` request through runCard, with its output in the run's files, and returns how it ended.
-// The call's context is cancelled by a terminating signal, which ends it as {128 + signal, abandoned}, and by a passed lease, which ends it as {1, abandoned} with abandonedLine appended to stderr.
+// runRequest runs request and returns how it ended, with its output in the run's files.
+// A `test` request runs through a fresh gate tree, and a `card-verify` request through the card runner.
+// A terminating signal cancels the call's context and ends it as {128 + signal, abandoned}.
+// A lease that has passed cancels it too and ends it as {1, abandoned}, with an abandoned line appended to stderr.
 func (d detachRun) runRequest(ctx context.Context, request detachRequest, gateTree func() *cobra.Command) detachExit {
 	stdout, stdoutErr := os.Create(d.path(stdoutFile))
 	stderr, stderrErr := os.Create(d.path(stderrFile))
@@ -378,9 +389,10 @@ func (d detachRun) runRequest(ctx context.Context, request detachRequest, gateTr
 	return detachExit{Code: code}
 }
 
-// cancelOnPassedLease reads the lease once per leaseReadPeriod and calls cancel, after setting passed, once the lease has lapsed.
+// cancelOnPassedLease reads the lease once per leaseReadPeriod.
+// Once the lease has lapsed, it sets passed, calls cancel, and returns.
 // A lease that cannot be read is read again at the next period.
-// It returns when ctx ends.
+// It also returns when ctx ends.
 func (d detachRun) cancelOnPassedLease(ctx context.Context, cancel context.CancelFunc, passed *atomic.Bool) {
 	ticker := time.NewTicker(leaseReadPeriod)
 	defer ticker.Stop()

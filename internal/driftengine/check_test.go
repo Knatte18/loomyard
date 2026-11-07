@@ -1,4 +1,5 @@
-// check_test.go — tier 0 tests for Check and the drift gate over it, on the in-memory commit store with fakes for the capture and compare seams.
+// check_test.go — tier 0 tests for Check and the drift gate over it.
+// They run on the in-memory commit store, with fakes for the capture and compare seams.
 
 package driftengine
 
@@ -91,7 +92,8 @@ func countedScope() ScopeRecord {
 	return ScopeRecord{Scope: ScopeFull, AwaitedAt: "2026-01-01T00:00:00Z", Diff: DiffLines, KeyPatterns: []string{keyValuePattern}}
 }
 
-// seed writes the baseline files, a passed capture record at the store's code head, and the scope record with the baseline's digest in one records commit.
+// seed writes the baseline files and a passed capture record at the store's code head.
+// It commits the scope record with the baseline's digest as one records commit.
 func (f *checkFixture) seed(scope ScopeRecord, baseline map[string]string) {
 	f.t.Helper()
 	p := f.deps.Paths
@@ -126,7 +128,8 @@ func (f *checkFixture) edit(path, content string) {
 	}
 }
 
-// checkScenario is one scenario of TestCheck: how the fixture is set up, what the report must hold and what the gate must answer.
+// checkScenario is one scenario of TestCheck.
+// It sets the fixture up, then names what the report must hold and what the gate must answer.
 type checkScenario struct {
 	name  string
 	setup func(f *checkFixture)

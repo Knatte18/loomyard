@@ -1,7 +1,7 @@
-// profile.go defines Profile, treadle's per-block input contract: resolved plain data only (no
-// config file, no model-spec parsing — see the treadle-owns-no-config shared decision), plus Gate
-// and GateMode, the convergence-check vocabulary, and Profile.validate, the fail-loud structural
-// check treadle runs once per block before the loop starts.
+// profile.go defines Profile, treadle's per-block input: resolved plain data only;
+// it reads no config file and parses no model spec.
+// It also defines Gate and GateMode, the convergence-check vocabulary.
+// Profile.validate is the fail-loud structural check run once per block before the loop starts.
 
 package treadleengine
 
@@ -24,9 +24,10 @@ const (
 	GateBoth       GateMode = "both"
 )
 
-// Gate describes the convergence check: which signal(s) decide a round is clean (Mode), the argv to
-// run when Mode consults a command (Command — no shell, so argv is portable), and how long the
-// command may run (Timeout).
+// Gate describes the convergence check.
+// Mode selects which signal or signals decide that a round is clean.
+// Command is the argv to run when Mode consults a command; it runs without a shell, so the argv is portable.
+// Timeout bounds how long that command may run.
 type Gate struct {
 	Mode    GateMode
 	Command []string
@@ -53,13 +54,12 @@ type Profile struct {
 	PreRoundTargeting bool
 }
 
-// validate checks only the structural invariants treadle itself owns: a
-// non-empty ProfileHash, a non-empty strictly increasing RoundCaps ladder, a
-// legal Gate.Mode with its command-emptiness cross-checks, a non-empty GateDir when
-// Gate.Mode runs a command, and non-negative timeouts. Every message is
-// prefixed with name (the calling engine's own name, e.g. "tenter") so a
-// caller's diagnostics read exactly like today's engine-specific errors —
-// the name-parameterized-diagnostics shared decision.
+// validate checks only the structural invariants treadle owns.
+// It requires a non-empty ProfileHash and a non-empty, strictly increasing RoundCaps ladder.
+// It checks that Gate.Mode is legal, with its command-emptiness cross-checks,
+// and that GateDir is set when the mode runs a command.
+// It rejects negative timeouts.
+// Every message is prefixed with name, the calling engine's name, so the diagnostics name the engine that failed.
 func (p *Profile) validate(name string) error {
 	if p.ProfileHash == "" {
 		return fmt.Errorf("%s: profile.ProfileHash must not be empty", name)

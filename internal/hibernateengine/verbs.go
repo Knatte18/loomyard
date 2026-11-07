@@ -1,4 +1,5 @@
-// verbs.go implements the operator verbs over the request file: submit, cancel and status, with the caller and platform refusals they share.
+// verbs.go implements the operator verbs over the request file: submit, cancel and status.
+// It also holds the caller and platform refusals the verbs share.
 
 package hibernateengine
 
@@ -55,7 +56,7 @@ func liftOwned(deps Deps, r Request) (*tenderengine.ResumeReport, error) {
 	return &report, nil
 }
 
-// SubmitRequest asks for a hibernate.
+// SubmitRequest holds a hibernate request's options: what it waits for, and whether the wake lifts its pause.
 type SubmitRequest struct {
 	// After is the slug of the batten run to wait for; empty waits for nothing.
 	After string
@@ -65,8 +66,9 @@ type SubmitRequest struct {
 	ResumeOnWake bool
 }
 
-// refuseKeptPause refuses over a terminal request whose owned pause entry is still live, since replacing the request would lose the only record that lets "lym hibernate cancel" lift it.
-// A request that owns no entry, and one whose entry is already lifted, pass.
+// refuseKeptPause refuses a new request over a terminal request whose owned pause entry is still live.
+// Replacing that request would lose the only record that lets "lym hibernate cancel" lift the entry.
+// A request that owns no entry, or whose entry is already lifted, passes.
 func refuseKeptPause(deps Deps, r Request) error {
 	if r.Owned == nil {
 		return nil
@@ -91,9 +93,11 @@ type SubmitReport struct {
 	WayForward string `json:"way_forward,omitempty"`
 }
 
-// Submit records the hub's hibernate request, carried by no process yet, and returns at once; the prime's dobby takes it up.
+// Submit records the hub's hibernate request, carried by no process yet, and returns at once;
+// the prime's dobby takes it up.
 // The pending-request check and the write share one hold of the request lock, so of two racing submits one is refused.
-// A pending request is refused whether or not a process carries it, and a terminal request whose owned pause entry is still live is refused, so the entry a wake kept is not forgotten.
+// A pending request is refused whether or not a process carries it.
+// A terminal request whose owned pause entry is still live is refused too, so the entry a wake kept is not forgotten.
 // A prime's dobby that does not run, or whose liveness does not read, is reported with the way forward that starts it.
 func Submit(deps Deps, req SubmitRequest) (SubmitReport, error) {
 	if err := refuseCaller(deps.Caller); err != nil {
@@ -174,7 +178,7 @@ func requireRunStatus(deps Deps, slug string) error {
 	return fmt.Errorf("hibernate: %q has no batten status in this hub; way forward: name one of the slugs that has one: %s", slug, have)
 }
 
-// CancelReport is what a cancel did.
+// CancelReport is the outcome of a cancel: whether a live request was ended, and the pause entry lifted for it.
 type CancelReport struct {
 	// Cancelled reports whether a live request was ended.
 	Cancelled bool `json:"cancelled"`
@@ -184,10 +188,12 @@ type CancelReport struct {
 	Lifted *tenderengine.ResumeReport `json:"lifted,omitempty"`
 }
 
-// Cancel ends the pending request and lifts the pause entry the request owns; the dobby that carries it stops the request's sequence at its next step and lifts what that sequence added since.
+// Cancel ends the pending request and lifts the pause entry it owns.
+// The dobby that carries the request stops its sequence at the next step and lifts what that sequence added since.
 // No request, and a terminal one, succeed with nothing cancelled;
 // a terminal request still has the pause entry it owns lifted, so a pause its sequence left live is not kept.
-// A request a live daemon carries in the hibernating phase is refused; one no live daemon carries is cancelled in any phase.
+// A request a live daemon carries in the hibernating phase is refused;
+// one no live daemon carries is cancelled in any phase.
 func Cancel(deps Deps) (CancelReport, error) {
 	if err := refuseCaller(deps.Caller); err != nil {
 		return CancelReport{}, err

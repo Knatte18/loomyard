@@ -1,14 +1,22 @@
-// peers.go implements the `peers` loom subtree: `lym loom peers`, which lists the other in-flight runs of the hub beside the caller's own, and `lym loom peers show`, which prints one peer's decision record or plan.
-// An agent in one pair uses them to compare its run with the others and with the commits that landed on its parent, without forming another worktree's path itself.
+// peers.go implements the `peers` loom subtree.
+// `lym loom peers` lists the other in-flight runs of the hub beside the caller's own run.
+// `lym loom peers show` prints one peer's decision record or plan.
+// An agent in one pair uses them to compare its run with the others and with the commits that landed on its parent.
+// It never forms another worktree's path itself.
 //
-// The peer set is every board task whose status is a run status, whatever its state, with the caller's own slug left out.
-// Each peer is listed with its title, status, parent branch, the paths it changed since its merge base with that parent, and whether it holds a decision record and a plan.
-// A peer whose pair, origin record, branch or records cannot be read is listed with the reason in `unreadable`, never dropped.
+// The peer set is every board task whose status is a run status, whatever its state, except the caller's own slug.
+// Each peer is listed with its title, status and parent branch.
+// It lists the paths it changed since its merge base with that parent.
+// It also reports whether the peer holds a decision record and a plan.
+// A peer whose pair, origin record, branch or records cannot be read is still listed.
+// Its reason goes in `unreadable`.
 // From a task pair the list also carries the commits on the pair's parent branch since the pair forked.
 //
 // The verbs read only the board, the peers' records and git history through `internal/fabricengine`, and write nothing.
-// The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
-// The location resolves through lymcwd, not internal/cliwire, since every loom verb is hub-only.
+// The group carries its own PersistentPreRunE, and the loom parent's pre-run skips the group.
+// The skip keeps that pre-run from reading a slug as a run-id.
+// Cobra runs every ancestor's pre-run when EnableTraverseRunHooks is set.
+// The location resolves through lymcwd, since every loom verb is hub-only.
 
 package loomcli
 
@@ -67,7 +75,7 @@ type peersDeps struct {
 	board func() (tasks []boardengine.Task, hasBoard bool, err error)
 	// caller returns the caller's own slug, empty from the prime.
 	caller func() (string, error)
-	// readPeer fills the git and record fields of one peer's line; its identity fields are the verb's.
+	// readPeer fills the git and record fields of one peer's line, leaving its slug, title, status and row unset.
 	readPeer func(slug string) peerLine
 	// parentCommits returns the commits on the caller's parent branch since its pair forked, as "<short sha> <subject>" lines.
 	parentCommits func() ([]string, error)
@@ -77,14 +85,16 @@ type peersDeps struct {
 	rows func(task boardengine.Task) []string
 }
 
-// recipeRow returns the 1-based position of status's producer among rows, and 0 when status is no run status or its producer names no row.
+// recipeRow returns the 1-based position of status's producer among rows.
+// It returns 0 when status is no run status or its producer names no row.
 // A producer holding a retired row name counts as the row that replaced it.
 func recipeRow(status *string, rows []string) int {
 	producer, ok := boardengine.RunStatusProducer(status)
 	if !ok {
 		return 0
 	}
-	// A peer's status file is read unrenamed, so a peer parked on a retired row name is listed at its successor's position.
+	// A peer's status file is read unrenamed,
+	// so a peer parked on a retired row name is listed at its successor's position.
 	if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeTapestry)[producer]; retired {
 		producer = successor
 	} else if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeDarn)[producer]; retired {
@@ -96,7 +106,7 @@ func recipeRow(status *string, rows []string) int {
 	return 0
 }
 
-// runStatusTasks returns the tasks of tasks whose run holds the entry, in board order.
+// runStatusTasks returns the tasks whose run holds the entry, in board order.
 // A beam whose pawl run has not reached Finalize is no in-flight peer.
 func runStatusTasks(tasks []boardengine.Task) []boardengine.Task {
 	var held []boardengine.Task
@@ -228,7 +238,7 @@ func peerRecordPath(peer *lymcwd.Location, record string) string {
 	return planparser.PlanOverview(peer.AnchorPath())
 }
 
-// recordExists reports whether path is a file, and an error for any stat failure other than absence.
+// recordExists reports whether path exists, and an error for any stat failure other than absence.
 func recordExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	switch {
@@ -243,8 +253,9 @@ func recordExists(path string) (bool, error) {
 
 // peerRecipe returns the name of the recipe a peer's run follows, the tapestry recipe's for an empty name.
 // A peer whose worktree is on this machine and holds a self-run seed follows the seed's recipe.
-// Otherwise it follows the recipe Seed-Child seeds for the board entry, pawl for a project entry and the entry's recipe field for any other, which the board closure of `hubPeersDeps` has already filled from the board's default_recipe where the entry names none.
-// That is the rule `boardRecipe` in `internal/battencli/wire.go` applies; a cli package never imports another, so the rule is restated here.
+// Otherwise it follows the recipe Seed-Child seeds for a board entry, and pawl for a project entry.
+// Any other entry follows its recipe field, which the board's default_recipe fills where the entry names none.
+// A cli package never imports another, so this rule is restated here rather than shared.
 // A nil peer is a worktree that is not on this machine.
 func peerRecipe(peer *lymcwd.Location, task boardengine.Task) string {
 	recipe := task.Recipe
@@ -263,7 +274,8 @@ func peerRecipe(peer *lymcwd.Location, task boardengine.Task) string {
 	return recipe
 }
 
-// hubPeersDeps fills peersDeps for the resolved location from the hub's board, its pairs' origin records, git history and run records.
+// hubPeersDeps returns the peers group's data sources for the hub at location.
+// They read the hub's board, the pairs' origin records, git history and run records.
 func hubPeersDeps(location *lymcwd.Location) peersDeps {
 	return peersDeps{
 		rows: func(task boardengine.Task) []string {
@@ -271,7 +283,7 @@ func hubPeersDeps(location *lymcwd.Location) peersDeps {
 			if _, err := os.Stat(fabricengine.WorktreePath(location, task.Slug)); err == nil {
 				peer, _ = lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, task.Slug))
 			}
-			// A recipe that names no embedded recipe gives no rows, so the peer's row reads 0, as a status naming no row does.
+			// A recipe that names no embedded recipe gives no rows, so the peer's row reads 0.
 			names, _ := loomrecipe.RowNames(peerRecipe(peer, task))
 			return names
 		},
@@ -336,7 +348,8 @@ func hubPeersDeps(location *lymcwd.Location) peersDeps {
 	}
 }
 
-// readPeerLine fills the parent branch, changed paths and record flags of one peer's line, naming in Unreadable every part it could not read.
+// readPeerLine reads one peer's line: the parent branch, the changed paths and the record flags.
+// It names every part it could not read in Unreadable.
 func readPeerLine(location *lymcwd.Location, slug string) peerLine {
 	var line peerLine
 	unreadable := func(part string, err error) {
@@ -400,7 +413,7 @@ func readPeerLine(location *lymcwd.Location, slug string) peerLine {
 	return line
 }
 
-// peersState carries what the peers group's pre-run resolved for its verb.
+// peersState holds the deps resolved before a peers verb runs, and the value of show's --record flag.
 type peersState struct {
 	deps   peersDeps
 	record string
@@ -420,7 +433,8 @@ func (s *peersState) resolveDeps(cmd *cobra.Command) error {
 	return nil
 }
 
-// preRun resolves the deps for `show`; the group itself resolves them in its own RunE so that a bare or mistyped group call outside a worktree lists the verbs.
+// preRun resolves the deps before any peers verb other than the group itself runs.
+// The group resolves its deps in its own RunE, so a bare or mistyped group call outside a worktree lists the verbs.
 func (s *peersState) preRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == peersGroup {
 		return nil

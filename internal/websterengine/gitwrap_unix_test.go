@@ -19,8 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommitsNamedBy_OneBatchCheck pins that commitsNamedBy classifies every object a prefix names in a single `cat-file --batch-check` call, never one `cat-file -t` per object:
-// a recording git first on PATH logs each invocation, over a prefix naming a commit, a blob and a tree.
+// TestCommitsNamedBy_OneBatchCheck pins that commitsNamedBy classifies a prefix's objects in one git call.
+// It runs one `cat-file --batch-check` call, never one `cat-file -t` per object.
+// A recording git first on PATH logs each invocation, over a prefix naming a commit, a blob and a tree.
 // It sets PATH, process-global state, so it runs without t.Parallel.
 func TestCommitsNamedBy_OneBatchCheck(t *testing.T) {
 	tiergate.Require(t, 1)

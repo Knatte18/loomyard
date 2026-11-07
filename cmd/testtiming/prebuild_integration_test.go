@@ -1,5 +1,6 @@
 // prebuild_integration_test.go pins the harness's one lym build per tagged run.
-// It is Tier 2: the building rows spawn a real go build of a throwaway module, or the test binary as a stand-in go, so it needs the integration build tag.
+// It is Tier 2: the building rows spawn a real go build of a throwaway module, or the test binary as a stand-in go,
+// so it needs the integration build tag.
 
 package main
 
@@ -68,7 +69,8 @@ func TestPrebuildLym(t *testing.T) {
 
 			root := module(t, row.mainSource)
 			// VCS stamping is off because the throwaway module is part of no repository:
-			// it sits in the run's shared temp directory, where a sibling test's repository or any stray .git above it would make go run git there and fail the build.
+			// it sits in the run's shared temp directory.
+			// A sibling test's repository, or any stray .git above that directory, would make go run git there and fail the build.
 			noVCSStamping := "GOFLAGS=" + strings.TrimSpace(os.Getenv("GOFLAGS")+" -buildvcs=false")
 			goBinary, base := "go", append(os.Environ(), inherited, heldSlot, noVCSStamping)
 			record := filepath.Join(t.TempDir(), "go-args")

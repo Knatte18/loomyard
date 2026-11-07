@@ -1,4 +1,9 @@
-// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the append-system-prompt file carrying the deny notice and the creel trust sentence, ResumeSessionID adoption, and the skills-deferred prompt pointer.
+// prepare_test.go tests Prepare's handling of a spec.
+// Prepare rejects an unrealizable effort, permission mode, resume session id, or model-plus-version combination.
+// It does so before any artifact is written.
+// A valid spec's flags thread into Launch.Cmd and Launch.ResumeCmd.
+// The append-system-prompt file carries the deny notice and the creel trust sentence.
+// ResumeSessionID adoption and the skills-deferred prompt pointer are covered too.
 
 package claudeengine
 
@@ -19,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// ttlConfig returns a Config whose prompt-cache TTL and keep-warm cap fields come from the shipped claude.yaml template, so fixtures follow the template rather than restating it.
+// ttlConfig returns a Config with the prompt-cache TTL and keep-warm cap fields of the shipped claude.yaml template.
+// Fixtures then follow the template rather than restating it.
 // A non-empty defaultTTL or a non-nil roles replaces the template's value for that TTL field.
 func ttlConfig(t testing.TB, defaultTTL string, roles map[string]string) Config {
 	t.Helper()
@@ -42,7 +48,8 @@ func ttlConfig(t testing.TB, defaultTTL string, roles map[string]string) Config 
 	return claude
 }
 
-// keepWarmConfig returns the template's Config with the default keep-warm cap replaced by defaultCap and, when non-nil, the cap roles by capRoles.
+// keepWarmConfig returns the template's Config with the default keep-warm cap replaced by defaultCap.
+// A non-nil capRoles replaces the keep-warm cap roles.
 func keepWarmConfig(t testing.TB, defaultCap string, capRoles map[string]string) Config {
 	t.Helper()
 	claude := templateConfig(t)
@@ -60,7 +67,8 @@ func templateConfig(t testing.TB) Config {
 }
 
 // engineWithAnchor returns an engine that loads its claude.yaml from the temp anchor it returns alongside.
-// Its Claude Code config directory is an empty temp directory, so the scope it writes names no plugin of the machine running the test.
+// Its Claude Code config directory is an empty temp directory.
+// So the scope it writes names no plugin of the machine running the test.
 func engineWithAnchor(t testing.TB) (*Claude, string) {
 	t.Helper()
 	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "shuttle")
@@ -73,7 +81,7 @@ func engineWithAnchor(t testing.TB) (*Claude, string) {
 	return engine, anchor
 }
 
-// engineWith returns an engine whose claude.yaml is claude, written as the worktree layer of a temp anchor.
+// engineWith returns an engine whose claude.yaml holds claude, written as the worktree layer of a temp anchor.
 func engineWith(t testing.TB, claude Config) *Claude {
 	t.Helper()
 	engine, anchor := engineWithAnchor(t)
@@ -85,7 +93,8 @@ func engineWith(t testing.TB, claude Config) *Claude {
 	return engine
 }
 
-// engineWithInvalidConfig returns an engine over a temp anchor whose claude.local.yaml sets binary, a key the local layer refuses.
+// engineWithInvalidConfig returns an engine over a temp anchor whose claude.local.yaml sets binary.
+// The local layer refuses the binary key.
 func engineWithInvalidConfig(t testing.TB) *Claude {
 	t.Helper()
 	engine, anchor := engineWithAnchor(t)
@@ -93,7 +102,7 @@ func engineWithInvalidConfig(t testing.TB) *Claude {
 	return engine
 }
 
-// invalidConfigWant names what a refusal over engineWithInvalidConfig holds: the file, the key and the way forward.
+// invalidConfigWant holds the substrings a refusal must contain: the file, the key and the way forward.
 var invalidConfigWant = []string{"claude.local.yaml", "binary", "lym config claude", "--layer"}
 
 // promptCacheTTLAssignment returns the substring the pane shell's dialect renders for the TTL assignment of value.
@@ -102,7 +111,9 @@ func promptCacheTTLAssignment(value string) string {
 	return strings.TrimSuffix(shell.ForGOOS().WithEnv(promptCacheTTLEnvKey, value, marker), marker)
 }
 
-// TestPrepare_RejectedBeforeArtifacts proves every unrealizable spec value fails Prepare before prompt.md/settings.json are written — the same before-artifacts guarantee TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would look resumable to a later diagnosis pass.
+// TestPrepare_RejectedBeforeArtifacts proves every unrealizable spec value fails Prepare.
+// It fails before prompt.md and settings.json are written;
+// a half-prepared run dir would look resumable to a later diagnosis pass.
 // A dashed model with a Version is a contradiction: the id already pins its own version.
 func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -176,7 +187,8 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 	}
 }
 
-// TestPromptCacheLifetime proves PromptCacheLifetime parses the role's resolved TTL to a duration and passes a resolution error through with its claude.yaml advice.
+// TestPromptCacheLifetime proves PromptCacheLifetime parses the role's resolved TTL to a duration.
+// It also passes a resolution error through with its claude.yaml advice.
 func TestPromptCacheLifetime(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -227,7 +239,8 @@ func TestPromptCacheLifetime(t *testing.T) {
 	}
 }
 
-// TestKeepWarmCaps proves KeepWarmCaps answers a role's cap with the long cap, and refuses an unusable cap or config naming the key and the file to fix.
+// TestKeepWarmCaps proves KeepWarmCaps answers a role's cap with the long cap.
+// It also refuses an unusable cap or config, naming the key and the file to fix.
 func TestKeepWarmCaps(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -293,11 +306,12 @@ type flagExpectation struct {
 }
 
 // TestPrepare_ThreadsSpecIntoLaunchCmds proves Prepare threads the spec into the commands it returns.
-// A valid effort is rendered as buildLaunchCmd would; an empty effort emits no --effort flag at all, deferring entirely to claude's own default;
-// a bare-word model plus a dotted version composes the pinned id ("sonnet" + "4.5" -> "claude-sonnet-4-5") rather than the bare-word model;
-// ForkSubagents wraps the line in the CLAUDE_CODE_FORK_SUBAGENT env prefix;
-// an empty ResumeSessionID mints a session as before;
-// and the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
+// A valid effort is rendered as buildLaunchCmd renders it;
+// an empty effort emits no --effort flag, leaving the choice to claude's own default.
+// A bare-word model with a dotted version composes the pinned id: "sonnet" and "4.5" give "claude-sonnet-4-5".
+// ForkSubagents wraps the line in the CLAUDE_CODE_FORK_SUBAGENT env prefix.
+// An empty ResumeSessionID mints a new session.
+// The resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
 func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -360,8 +374,10 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 	}
 }
 
-// TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt-file naming the run directory's append-system-prompt.txt and no --append-system-prompt argument,
-// and that the file holds the deny notice and the creel trust sentence, space-separated, with the notice left out when empty.
+// TestPrepare_AppendSystemPromptMatchesDenyNotice proves, for every combination of the deny inputs:
+// Launch.Cmd and Launch.ResumeCmd pass --append-system-prompt-file for the run directory's append-system-prompt.txt;
+// they never pass --append-system-prompt.
+// The file holds the deny notice and the creel trust sentence, space-separated; the notice is left out when empty.
 //
 //testtiming:keep pins append-system-prompt.txt equal to the notice and the trust sentence, named on both lines over every deny combination, which its covering tests do not assert
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
@@ -407,7 +423,8 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	}
 }
 
-// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume and names the same id on the resume line and in Launch.SessionID.
+// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume.
+// It names the same id on the resume line and in Launch.SessionID.
 //
 //testtiming:keep pins that a ResumeSessionID launches with --resume, no --session-id, and the same id on the resume line and in Launch.SessionID, which its covering tests do not assert
 func TestPrepare_ResumeSessionID(t *testing.T) {
@@ -441,8 +458,9 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 	}
 }
 
-// TestPrepare_SkillsDeferPromptPointer proves, for a fresh and a resumed launch, that a spec naming skills carries the skill-load message on the launch line and returns the prompt pointer as PromptLine.
-// A spec without skills keeps the pointer on the line with an empty PromptLine.
+// TestPrepare_SkillsDeferPromptPointer proves that a spec naming skills puts the skill-load message on the launch line.
+// For fresh and resumed launches, it returns the prompt pointer as PromptLine.
+// Without skills, the pointer stays on the line and PromptLine is empty.
 // A skill-load message over the launch limit fails before any prompt file is written.
 func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -512,9 +530,11 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 	}
 }
 
-// TestPrepare_AppendsStandingPassages proves the append-system-prompt file carries the standing passages the reader finds for the claude engine and the spec's role after lym's own sentences, each after a blank line and in order.
+// TestPrepare_AppendsStandingPassages proves the append-system-prompt file carries the reader's standing passages.
+// The reader is asked for the claude engine and the spec's role.
+// Its passages follow lym's own sentences, each after a blank line and in order.
 // With no reader installed, or outside a hub, the file holds lym's sentences only and the reader is never called;
-// a reader error leaves the launch succeeded with lym's sentences only and logs the way to inspect the store.
+// a reader error leaves the launch successful, with lym's sentences only, and logs the way to inspect the store.
 // It installs the process-wide passage reader and captures the logger, so it does not run in parallel.
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)

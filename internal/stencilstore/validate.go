@@ -1,5 +1,5 @@
-// validate.go implements Validate, which compares each registry stencil's on-disk marker set
-// against its shipped default's marker set and reports the mismatches as Findings.
+// validate.go implements Validate, which checks each registry stencil's on-disk markers against its shipped default.
+// It reports each marker mismatch as a Finding.
 
 package stencilstore
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// Finding severities Validate can report.
+// Severities a Finding can carry.
 const (
 	SeverityError   = "error"
 	SeverityWarning = "warning"
@@ -27,13 +27,11 @@ type Finding struct {
 	Severity string
 }
 
-// Validate compares each registry stencil's on-disk marker set against its shipped default's marker
-// set via stencil.TopLevelMarkers, and reports the mismatches.
-// A marker present on disk but absent from the shipped default is SeverityError, since it will break
-// stencil.Fill at the point of use.
-// A shipped-default marker absent from the on-disk body is SeverityWarning: legal customisation that
-// silently drops that content.
-// Findings are sorted by name then marker.
+// Validate checks each registry stencil's on-disk marker set against its shipped default's marker set.
+// A marker on disk but not in the shipped default is SeverityError, since filling the stencil fails at that marker.
+// A shipped-default marker missing from the on-disk body is SeverityWarning:
+// legal customisation that silently drops that content.
+// Findings are sorted by name, then marker.
 // A stencil missing from disk is an error return, not a finding.
 func Validate(baseDir string, registry Registry) ([]Finding, error) {
 	var findings []Finding

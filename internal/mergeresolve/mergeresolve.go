@@ -1,5 +1,5 @@
-// mergeresolve.go implements Resolve, the full merge-and-conflict decision table this package
-// exists for.
+// mergeresolve.go implements Resolve, which merges a source into the current pair.
+// It clears the conflicts the merge leaves.
 
 package mergeresolve
 
@@ -17,27 +17,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// maxConflictAttempts is the number of conflict-resolution sessions Resolve spends on one Resolve
-// call before giving up and reporting stuck: one first attempt, one retry.
+// maxConflictAttempts is the number of conflict-resolution sessions one merge spends before it reports stuck:
+// one first attempt, one retry.
 const maxConflictAttempts = 2
 
-// Resolve merges source into the current pair and, if the merge produces conflicts, drives at most
-// two conflict-resolution sessions to clear them.
+// Resolve merges source into the current pair.
+// If the merge produces conflicts, it drives at most two conflict-resolution sessions to clear them.
 // A non-empty tip is the commit merged in place of source's own tip; an empty tip merges source by name.
 //
-// The mechanical marker re-scan (markers.go), not the session's own verdict, is what decides a
-// conflict is resolved, because the conclude step is irreversible at the Fabric layer and the abort
-// call is the only checkpoint covering the attempt window: once MergeContinue lands, there is no
-// undo, so Resolve never trusts a session's own claim of success and always re-verifies by content
-// before staging and concluding.
+// The mechanical marker re-scan (markers.go), not the session's own verdict, decides that a conflict is resolved.
+// The conclude step is irreversible at the Fabric layer.
+// The abort call is the only checkpoint covering the attempt window: once MergeContinue lands, there is no undo.
+// Resolve therefore never trusts a session's claim of success;
+// it re-verifies by content before staging and concluding.
 func (r *Resolver) Resolve(ctx context.Context, source, tip string) (Result, error) {
 	if err := entryErr(ctx); err != nil {
 		return Result{}, err
 	}
 
-	// Crash recovery: a half-resolved worktree left by a killed session is not a state the caller
-	// (which re-invokes Resolve verbatim after a crash) should resume into, so any in-progress merge
-	// is aborted unconditionally before a clean attempt starts.
+	// Crash recovery: a half-resolved worktree left by a killed session is not a state to resume into.
+	// The caller re-invokes Resolve verbatim after a crash.
+	// Any in-progress merge is therefore aborted unconditionally before a clean attempt starts.
 	inProgress, err := r.deps.Fabric.MergeInProgress()
 	if err != nil {
 		return Result{}, fmt.Errorf("mergeresolve: check merge in progress: %w", err)
@@ -48,7 +48,8 @@ func (r *Resolver) Resolve(ctx context.Context, source, tip string) (Result, err
 		}
 	}
 
-	// A report is one call's ephemeral diagnostics: one left by an earlier call would trip the spec validator's existing-output refusal on this call's first attempt.
+	// A report is one call's ephemeral diagnostics.
+	// A report an earlier call left would trip the spec validator's existing-output refusal on this call's first attempt.
 	if err := r.clearStaleReports(); err != nil {
 		return Result{}, err
 	}
@@ -74,12 +75,11 @@ func (r *Resolver) Resolve(ctx context.Context, source, tip string) (Result, err
 	return r.resolveConflicts(ctx, mergeRes.Conflicts)
 }
 
-// mergeInErrorResult classifies a MergeIn error into its own disposition. Every branch is a stuck
-// verdict with its own reason text, and none of them calls MergeAbort: a foreign merge state is real
-// state a human left behind and is never touched; an unmergeable-state error has already self-
-// aborted the whole attempt inside MergeIn itself, so a second abort would report no-merge-in-
-// progress and turn a clear diagnosis into a confusing one; and the guard errors behind every other
-// case refuse before mutating anything, so there is nothing to unwind.
+// mergeInErrorResult classifies a MergeIn error into a stuck verdict with its own reason text.
+// It never calls MergeAbort: a foreign merge state is real state a human left behind and is never touched.
+// An unmergeable-state error has already aborted the whole attempt inside MergeIn,
+// so a second abort would report no merge in progress and obscure the diagnosis.
+// The guard errors behind every other case refuse before mutating anything, so there is nothing to unwind.
 func (r *Resolver) mergeInErrorResult(ctx context.Context, mergeErr error) (Result, error) {
 	var foreign *fabricengine.ErrForeignMergeState
 	var unmergeable *fabricengine.ErrUnmergeableState
@@ -93,8 +93,8 @@ func (r *Resolver) mergeInErrorResult(ctx context.Context, mergeErr error) (Resu
 	}
 }
 
-// resolveConflicts drives the resolution loop over conflicts: at most maxConflictAttempts sessions,
-// each verified by a mechanical marker re-scan rather than trusted at its own word.
+// resolveConflicts runs at most maxConflictAttempts conflict-resolution sessions over conflicts.
+// Each session is verified by a mechanical marker re-scan, not trusted at its own word.
 func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Result, error) {
 	for attempt := 1; attempt <= maxConflictAttempts; attempt++ {
 		spec, err := buildConflictSpec(r.deps, conflicts, attempt)
@@ -111,10 +111,9 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		}
 
 		if runResult.Outcome != shuttleengine.OutcomeDone {
-			// died, timeout, or any outcome this package does not recognize: consult
-			// cancelErr first, then abort and report stuck; the conclude call is never reached.
-			// The Warn line lands before abortAndStuck so the diagnostic survives even when
-			// MergeAbort itself fails.
+			// Any outcome other than done ends the attempt: died, timeout, or one this package does not recognize.
+			// The merge is aborted and reported stuck; the conclude call is never reached.
+			// The warning below is logged first, so the diagnostic survives even when MergeAbort itself fails.
 			logger.Warn("mergeresolve: non-done conflict session outcome", "outcome", runResult.Outcome, "attempt", attempt, "sessionID", runResult.SessionID, "runDir", runResult.RunDir)
 			return r.abortAndStuck(ctx, fmt.Sprintf("conflict session outcome %q (attempt %d)", runResult.Outcome, attempt))
 		}
@@ -125,8 +124,8 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		}
 
 		if len(unresolved) == 0 {
-			// A new file is never part of a merge commit,
-			// so the session's untracked files halt the merge before anything is staged.
+			// A new file is never part of a merge commit.
+			// Untracked files the session left therefore halt the merge before anything is staged.
 			untracked, err := r.deps.Fabric.MergeUntrackedFiles()
 			if err != nil {
 				return Result{}, fmt.Errorf("mergeresolve: list untracked files (attempt %d): %w", attempt, err)
@@ -135,7 +134,8 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 				return r.abortAndStuck(ctx, fmt.Sprintf("conflict session left untracked file(s) (attempt %d): %s", attempt, strings.Join(untracked, ", ")))
 			}
 
-			// Clean scan: stage the conflicted paths, then every tracked edit the session made beyond them, then conclude, in that order — the ordering is the entire reason the staging verbs exist.
+			// Clean scan: stage the conflicted paths, then every other tracked edit, then conclude, in that order.
+			// The order is the reason the staging verbs are separate.
 			if _, err := r.deps.Fabric.MergeStageResolved(conflicts); err != nil {
 				return Result{}, fmt.Errorf("mergeresolve: stage resolved conflict paths (attempt %d): %w", attempt, err)
 			}
@@ -151,16 +151,15 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		if attempt == maxConflictAttempts {
 			return r.abortAndStuck(ctx, fmt.Sprintf("conflict markers still present after %d attempt(s) in: %s", attempt, strings.Join(unresolved, ", ")))
 		}
-		// Fewer than maxConflictAttempts spent: retry with a fresh attempt number, whose report
-		// path is distinct from this attempt's, so the spec validator's already-exists rejection
-		// cannot fire on the retry.
+		// Attempts remain, so the retry takes a fresh attempt number and its report path differs from this attempt's.
+		// The spec validator's already-exists rejection therefore cannot fire on the retry.
 	}
 
-	// Unreachable: the loop above always returns by its second iteration at the latest.
+	// Unreachable: the final attempt always returns from inside the loop.
 	return Result{}, fmt.Errorf("mergeresolve: resolveConflicts: exhausted attempts without a terminal result")
 }
 
-// clearStaleReports removes every resolution report an earlier Resolve call left in the scratch directory.
+// clearStaleReports removes every resolution report an earlier call left in the scratch directory.
 // An absent scratch directory has nothing to clear.
 func (r *Resolver) clearStaleReports() error {
 	entries, err := os.ReadDir(r.deps.ScratchDir)
@@ -182,10 +181,9 @@ func (r *Resolver) clearStaleReports() error {
 	return nil
 }
 
-// stuck consults cancelErr and returns either the context-cancellation error (when ctx was
-// cancelled during the run) or a stuck Result carrying reason — the point-7 obligation every
-// stuck-producing exit discharges: a stuck verdict returned under a cancelled context is
-// indistinguishable from a genuine verdict to the caller.
+// stuck returns the context-cancellation error if ctx was cancelled, and otherwise a stuck Result carrying reason.
+// A stuck verdict returned under a cancelled context would look like a genuine verdict to the caller,
+// so every stuck exit goes through here.
 func (r *Resolver) stuck(ctx context.Context, reason string) (Result, error) {
 	if err := cancelErr(ctx); err != nil {
 		return Result{}, err
@@ -193,8 +191,8 @@ func (r *Resolver) stuck(ctx context.Context, reason string) (Result, error) {
 	return Result{Outcome: OutcomeStuck, Reason: reason}, nil
 }
 
-// abortAndStuck aborts the in-progress merge unconditionally, then reports the stuck verdict
-// (or the context-cancellation error in its place, via stuck) naming reason.
+// abortAndStuck aborts the in-progress merge unconditionally, then reports reason as a stuck verdict.
+// If ctx was cancelled, the context-cancellation error is returned in its place.
 func (r *Resolver) abortAndStuck(ctx context.Context, reason string) (Result, error) {
 	if _, err := r.deps.Fabric.MergeAbort(); err != nil {
 		return Result{}, fmt.Errorf("mergeresolve: abort merge after %s: %w", reason, err)

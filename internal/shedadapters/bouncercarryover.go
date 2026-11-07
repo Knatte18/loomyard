@@ -1,5 +1,7 @@
-// bouncercarryover.go builds a judged round's carry-over entry from the round's ledger and hands it to the Bouncer's CarryOver seam.
-// The entry lists the findings still open when the segment closed, so the sessions that read the decision record next see what no fresh review has confirmed fixed.
+// bouncercarryover.go builds a judged round's carry-over entry from the round's ledger.
+// It hands the entry to the Bouncer's CarryOver seam.
+// The entry lists the findings still open when the segment closed,
+// so the sessions that read the decision record next see what no fresh review has confirmed fixed.
 
 package shedadapters
 
@@ -18,7 +20,8 @@ import (
 const carryOverUnlabelled = "unlabelled"
 
 // writeCarryOver calls the CarryOver seam for round with closing, when one is configured.
-// A failure comes back as the caller's own error, naming the file the seam's error names and the command that re-runs the settle.
+// A failure comes back as the caller's own error, naming the file the seam's error names.
+// It also names the command that re-runs the settle.
 func (b *Bouncer) writeCarryOver(round int, closing discussionparser.CarryOverClosing) error {
 	if b.cfg.CarryOver == nil {
 		return nil
@@ -88,7 +91,7 @@ func (b *Bouncer) buildCarryOver(round int, closing discussionparser.CarryOverCl
 	}, nil
 }
 
-// closesDecisionAccept reports whether round's escalation has cause decision and its decision is an accept.
+// closesDecisionAccept reports whether round's escalation has the decision cause and its decision is an accept.
 func (b *Bouncer) closesDecisionAccept(round int) bool {
 	cause, _, escalated, err := readEscalation(b.cfg.RunDir, round)
 	if err != nil || !escalated || cause != EscalationDecision {
@@ -98,10 +101,13 @@ func (b *Bouncer) closesDecisionAccept(round int) bool {
 	return err == nil && exists && decision == CirclingAccept
 }
 
-// addDecisionAcceptFindings adds to findings, the ledger's carried entries, what a decision accept passes the round over, whatever the ledger says.
-// Every decision-class finding of round's review is added at any severity, keyed by its id, with the `Added after Discussion` titles recorded since the escalation;
-// a ledger entry of the same key carries those titles instead of being repeated.
-// Every other BLOCKING finding of the review not already carried by key is added too, so one the judge closed still reaches `## Open risks`.
+// addDecisionAcceptFindings adds to findings what a decision accept passes the round over.
+// The findings it starts from are the ledger's carried entries, and the additions hold whatever the ledger says.
+// Every decision-class finding of round's review is added at any severity, keyed by its id.
+// It carries the `Added after Discussion` titles recorded since the escalation,
+// and a ledger entry of the same key takes those titles instead of being repeated.
+// Every other BLOCKING finding of the review not already carried by key is added too.
+// A finding the judge closed still reaches `## Open risks` this way.
 // Both match the ledger by exact key only, since a ledger entry records no review id.
 func (b *Bouncer) addDecisionAcceptFindings(round int, findings []discussionparser.CarryOverFinding) ([]discussionparser.CarryOverFinding, error) {
 	reviewFindings, err := b.reviewFindings(round)
@@ -151,7 +157,8 @@ func (b *Bouncer) addDecisionAcceptFindings(round int, findings []discussionpars
 	return findings, nil
 }
 
-// carriesOver reports whether an open ledger entry belongs in the carry-over: MEDIUM or BLOCKING, or missing a class or severity label.
+// carriesOver reports whether an open ledger entry belongs in the carry-over.
+// An entry belongs when it is MEDIUM or BLOCKING, or when its class or severity is missing.
 func carriesOver(e ledgerEntry) bool {
 	if e.Class == "" || e.Severity == "" {
 		return true

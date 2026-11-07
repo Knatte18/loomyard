@@ -22,7 +22,8 @@ type buttonRunCall struct {
 	shell, flag, script, dir string
 }
 
-// TestRunButtonVia drives one click through each path of runButtonVia and asserts what runs, what is prompted and what the clicking client is shown.
+// TestRunButtonVia drives one click through each path of runButtonVia.
+// It asserts what runs, what is prompted, and what the clicking client is shown.
 // It reads the logger's output through logcapture, which is process-global, so it does not call t.Parallel.
 func TestRunButtonVia(t *testing.T) {
 	tiergate.Require(t, 0)

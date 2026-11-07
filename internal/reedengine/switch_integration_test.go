@@ -1,8 +1,9 @@
 //go:build linux
 
-// switch_integration_test.go drives SwitchClient against a real tmux server with a real attached client:
-// it steps the client across three sessions in id order, wraps at both ends, and errors on an unknown client or a socket nothing listens on.
-// The client is attached through the pty harness attachgeometry_integration_test.go defines.
+// switch_integration_test.go drives SwitchClient against a real tmux server with a real attached client.
+// It steps the client across three sessions in id order and wraps at both ends.
+// It also expects an error for an unknown client and for a socket nothing listens on.
+// The client is attached through the pty harness that attachgeometry_integration_test.go defines.
 
 package reedengine
 

@@ -1,6 +1,6 @@
-// git.go declares Git, the git surface webster's verbs read a worktree through, and realGit, the implementation every production run uses.
-// Geometry carries the Git a run is told.
-// A nil one means realGit, so only a test that fakes git sets it.
+// git.go declares Git, the questions webster's verbs ask about a worktree's git repository.
+// realGit is the implementation every production run uses.
+// A Geometry whose Git is nil uses realGit, so only a test that fakes git sets one.
 
 package websterengine
 
@@ -21,8 +21,8 @@ type Git interface {
 	MergeInProgress(worktree string) (bool, error)
 	// CommitParents returns the parent SHAs of commit.
 	CommitParents(worktree, commit string) ([]string, error)
-	// MergeRejection returns why the merge commit does not qualify as a clean merge of the run's parent branch, or "" when it does.
-	// parents are the commit's own parents; a parentBranch that cannot be resolved is itself a rejection.
+	// MergeRejection returns why the merge commit is not a clean merge of the run's parent branch, or "" when it is.
+	// parents lists the commit's parent SHAs; a parentBranch that cannot be resolved is itself a rejection.
 	MergeRejection(worktree, commit string, parents []string, parentBranch ParentBranchFunc) string
 	// SHAExists reports whether sha names a commit in the worktree's repository.
 	SHAExists(worktree, sha string) bool
@@ -30,7 +30,8 @@ type Git interface {
 	CommitsNamedBy(worktree, prefix string) ([]string, error)
 	// IsAncestor reports whether sha is an ancestor of ref.
 	IsAncestor(worktree, sha, ref string) (bool, error)
-	// NonMergeCommitsBetween reports whether the first-parent range base..head holds a commit that is not a merge; a base the repository does not hold is an error.
+	// NonMergeCommitsBetween reports whether the first-parent range base..head holds a commit that is not a merge;
+	// a base the repository does not hold is an error.
 	NonMergeCommitsBetween(worktree, base, head string) (bool, error)
 	// IgnoredPath reports whether git ignores path in the worktree.
 	IgnoredPath(worktree, path string) (bool, error)
@@ -49,7 +50,7 @@ type Git interface {
 	CommitLog(worktree, base, head string) ([]CommitLogEntry, error)
 }
 
-// CommitLogEntry is one commit CommitLog returned, with the departures its message declares.
+// CommitLogEntry is one commit in a commit log, with the departures its message declares.
 type CommitLogEntry struct {
 	SHA     string
 	Subject string
@@ -66,7 +67,8 @@ func (e CommitLogEntry) DepartureLines() []string {
 	return lines
 }
 
-// realGit is Git over the repository on disk, each method delegating to the helper in gitwrap.go that owns the git call.
+// realGit implements Git over the repository on disk;
+// each method delegates to the helper in gitwrap.go that owns the git call.
 type realGit struct{}
 
 var _ Git = realGit{}
@@ -125,7 +127,7 @@ func (realGit) CommitLog(worktree, base, head string) ([]CommitLogEntry, error) 
 	return commitLog(worktree, base, head)
 }
 
-// git returns the Git the geometry was told, or the real one when none was.
+// git returns the Git the geometry carries, or realGit when it carries none.
 func (g Geometry) git() Git {
 	return orReal(g.Git)
 }

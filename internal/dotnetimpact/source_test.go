@@ -16,7 +16,7 @@ func TestParseSource(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
-		// present and absent are identifiers that must and must not be in the set.
+		// present lists identifiers that must be in the set, and absent lists those that must not be.
 		present, absent []string
 		want            []typeDecl
 	}{

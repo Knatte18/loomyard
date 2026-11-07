@@ -1,4 +1,5 @@
-// wiring.go fills a slackCLI's seams with their production values over a real hub: its geometry, the creel mailbox, the beams and pause readers and the relay's dependencies.
+// wiring.go fills a slackCLI's seams with their production values over a real hub.
+// The seams cover the hub's geometry, the creel mailbox, the beam and pause readers, and the relay's dependencies.
 
 package slackcli
 
@@ -38,7 +39,8 @@ func productionCLI() *slackCLI {
 }
 
 // wireProduction fills the seams the verb about to run reads.
-// A nil location is the relay verb's, which needs only the relay's three seams, each told the hub and the prime by its caller.
+// A nil location is the relay verb's, which needs only the relay's three seams:
+// each is told the hub and the prime by its caller.
 func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 	if location == nil {
 		c.spawnIntermediate = spawnIntermediate
@@ -109,7 +111,8 @@ func orchPaused(location *lymcwd.Location) (bool, error) {
 }
 
 // programMailbox is the relay's creel mailbox, a program client signing as `<shortname>:SLACK`.
-// The client is built on the first call and kept, so a creel that cannot be reached fails the call that needs it; it is safe for concurrent use.
+// The client is built on the first call and kept, so a creel that cannot be reached fails the call that needs it;
+// it is safe for concurrent use.
 type programMailbox struct {
 	newClient func() (*creelcli.GoClient, error)
 	once      sync.Once
@@ -212,7 +215,8 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 	return slackengine.RunRelay(ctx, geom, deps)
 }
 
-// receiverPaused reports whether a pause covers the orch named receiver: the prime's for the hub's own orch, and the beam's own for a beam's.
+// receiverPaused reports whether a pause covers the orch named receiver:
+// the prime's for the hub's own orch, and the beam's own for a beam's.
 func receiverPaused(hubPath string, prime *lymcwd.Location, receiver string) (bool, error) {
 	name, err := agentname.Parse(receiver)
 	if err != nil {

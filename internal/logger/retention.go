@@ -1,7 +1,6 @@
-// retention.go implements the durable trace-file retention sweep: a standalone function over a directory path that enforces an age bound and a count bound over trace groups.
-// A trace group is every file sharing one trace id,
-// and a group's activity time is the newest mtime among its files, so a long-running step that keeps writing stays recent even though its filename timestamp records only when it started.
-// It is deliberately independent of the durable sink, lymcwd, and trace identity — Sweep takes a directory path and bounds from its caller and needs only internal/proc's liveness probe plus the standard library.
+// retention.go implements the trace-file retention sweep: it deletes old and surplus trace groups from a directory.
+// The sweep takes a directory path and its bounds from the caller.
+// It stays independent of the durable sink and of trace identity.
 
 package logger
 
@@ -22,8 +21,9 @@ const traceFileTimestampLayout = "20060102T150405Z"
 
 var traceFilePattern = regexp.MustCompile(`^trace-(\d{8}T\d{6}Z)-([0-9a-f]{16})-(\d+)\.log$`)
 
-// TraceFilesFor lists the sink files of the trace group traceID in dir as absolute paths, sorted by name so the oldest file comes first.
-// A group may span several files, because a sink file is named by its timestamp and pid, which no caller can spell from the id alone.
+// TraceFilesFor lists the sink files of the trace group traceID in dir as absolute paths, sorted by name.
+// A group may span several files, because each name embeds a timestamp and pid that the id does not determine.
+// The name sort puts the oldest file first, because the timestamp has a fixed width.
 // An absent dir or a group with no file yields an empty list and no error.
 func TraceFilesFor(dir, traceID string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
@@ -49,15 +49,15 @@ func TraceFilesFor(dir, traceID string) ([]string, error) {
 	return paths, nil
 }
 
-// RetentionBounds is the pair of limits Sweep enforces.
-// Count is the number of non-live trace groups to keep,
-// and MaxAge is how long a non-live group may go without activity before it is deleted.
+// RetentionBounds holds the limits that decide which trace groups the retention sweep deletes.
+// Count is how many non-live trace groups to keep, newest first.
+// MaxAge is how long a non-live group may go without activity before its files are deleted.
 type RetentionBounds struct {
 	Count  int
 	MaxAge time.Duration
 }
 
-// DefaultRetentionBounds returns the compiled-in bounds every process sweeps with until the exit path passes configured ones: 200 traces and 14 days.
+// DefaultRetentionBounds returns the compiled-in bounds for a sweep that has no configured bounds.
 func DefaultRetentionBounds() RetentionBounds {
 	return RetentionBounds{Count: 200, MaxAge: 14 * 24 * time.Hour}
 }
@@ -68,26 +68,24 @@ type traceGroup struct {
 	live     bool
 }
 
-// Sweep enforces the trace-file directory's retention policy over trace groups.
-// Files are grouped by trace id,
-// and a group's activity time is the newest mtime among its files;
+// Sweep deletes the trace files in dir that fall outside bounds.
+// Files sharing a trace id form a trace group, and the bounds apply to whole groups.
+// A group's activity time is the newest mtime among its files;
 // a file whose stat fails contributes its filename timestamp instead.
-// A group is live when any of its files carries the sweeping process's pid or a pid that is alive.
-// Live groups are never deleted and do not consume count budget.
-// A non-live group with no activity within bounds.MaxAge has every file deleted.
-// The remaining non-live groups are ranked by activity time, newest first,
-// and only the first bounds.Count survive;
-// every file of each later group is deleted.
-// Non-matching files and subdirectories are untouched.
-// Delete failures are silently tolerated.
-// Empty or absent directories return nil.
+// A group is live when any of its files names the sweeping process's pid or a pid that is still alive.
+// Live groups are never deleted and do not count toward bounds.Count.
+// A non-live group idle for longer than bounds.MaxAge has all its files deleted.
+// The other non-live groups are ranked by activity time, newest first;
+// the first bounds.Count of them are kept, and the files of the rest are deleted.
+// Files that do not match the trace file name, and subdirectories, are untouched.
+// Failed deletes are ignored, and an empty or absent directory returns nil.
 func Sweep(dir string, bounds RetentionBounds) error {
 	return sweep(dir, bounds, time.Now(), os.Stat)
 }
 
-// SweepDir applies the trace-file retention policy to dir at the current time and returns the paths the policy deletes, sorted.
+// SweepDir applies the retention bounds to dir at the current time and returns the paths to delete, sorted.
 // It deletes them only when apply is true, so a dry run and an apply list the same paths.
-// Delete failures are silently tolerated, and an empty or absent directory returns no paths.
+// Failed deletes are ignored, and an empty or absent directory returns no paths.
 func SweepDir(dir string, bounds RetentionBounds, apply bool) ([]string, error) {
 	doomed := planSweep(dir, bounds, time.Now(), os.Stat)
 	if apply {
@@ -101,7 +99,7 @@ func sweep(dir string, bounds RetentionBounds, now time.Time, stat func(string) 
 	return nil
 }
 
-// planSweep decides Sweep's policy without deleting anything and returns the paths it deletes, sorted.
+// planSweep decides which trace files a sweep deletes and returns their paths, sorted, without deleting anything.
 func planSweep(dir string, bounds RetentionBounds, now time.Time, stat func(string) (fs.FileInfo, error)) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

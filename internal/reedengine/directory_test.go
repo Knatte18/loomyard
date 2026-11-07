@@ -1,4 +1,6 @@
-// directory_test.go pins the name directory on a fake tmux: which strands map to which rows, that a retiring strand's row carries the flag, and that a cold session reports every row dormant.
+// directory_test.go pins the name directory on a fake tmux:
+// which strands map to which rows, that a retiring strand's row carries the flag,
+// and that a cold session reports every row dormant.
 
 package reedengine
 
@@ -53,7 +55,8 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 		t.Errorf("cold rows:\n got %+v\nwant %+v", gotCold, wantCold)
 	}
 
-	// A pane present and not dead but missing from the alive set, such as a shell-only pane, reads dormant with an empty title.
+	// A pane that is present and not dead but missing from the alive set reads dormant with an empty title.
+	// A shell-only pane is one example.
 	shellOnly := []Strand{{GUID: "g5", Name: "tc:tslug:shell", Worktree: "tslug", PaneID: "%5"}}
 	shellOnlyLive := []LivePane{{ID: "%5", Title: "tc:tslug:shell"}}
 	wantShellOnly := []DirectoryRow{{Name: "tc:tslug:shell", GUID: "g5", Worktree: "tslug", PaneID: "%5"}}

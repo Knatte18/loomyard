@@ -1,9 +1,5 @@
-// mutationoracle_test.go proves AssertRecordMatchesDiff against hand-built Mutations and Change
-// values -- no hub, no git, no verb -- covering each rule mutationoracle.go's own doc comments state:
-// the omission and commission directions, segment-wise containment (including the sibling-prefix
-// negative), the worktree-admin and directory-ancestor coverage widenings, the git-state exemption,
-// the file_written ".git" split, net-commission-effect folding (both same-target inversion pairs and
-// the later-inverts-earlier ordering rule), and the "." target's commission/omission asymmetry.
+// Self-tests for AssertRecordMatchesDiff against hand-built Mutations and Change values, with no hub, git or verb.
+// They cover each rule the oracle's doc comments state, including the omission and commission directions.
 
 package fabricengine_test
 
@@ -16,32 +12,30 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// failureRecorder embeds a real testing.TB, satisfying its unexported method set by delegation, and
-// intercepts Error/Errorf/Fatal/Fatalf so a case can assert that AssertRecordMatchesDiff fails without
-// failing the enclosing test itself.
+// failureRecorder embeds a real testing.TB, which satisfies its unexported methods by delegation.
+// It intercepts Error, Errorf, Fatal and Fatalf, so a case can assert a failure without failing the enclosing test.
 type failureRecorder struct {
 	testing.TB
 	failed   bool
 	messages []string
 }
 
-// Helper overrides the embedded TB's Helper to a no-op: this recorder is the assertion target itself,
-// not a pass-through helper whose own caller should be blamed.
+// Helper is a no-op: the recorder is the assertion target itself, not a helper whose caller should be blamed.
 func (f *failureRecorder) Helper() {}
 
-// Error implements testing.TB by recording the failure instead of failing the embedded, real TB.
+// Error implements testing.TB by recording the failure rather than failing the embedded TB.
 func (f *failureRecorder) Error(args ...any) {
 	f.failed = true
 	f.messages = append(f.messages, fmt.Sprint(args...))
 }
 
-// Errorf implements testing.TB by recording the failure instead of failing the embedded, real TB.
+// Errorf implements testing.TB by recording the failure rather than failing the embedded TB.
 func (f *failureRecorder) Errorf(format string, args ...any) {
 	f.failed = true
 	f.messages = append(f.messages, fmt.Sprintf(format, args...))
 }
 
-// Fatal implements testing.TB by recording the failure instead of failing the embedded, real TB.
+// Fatal implements testing.TB by recording the failure rather than failing the embedded TB.
 func (f *failureRecorder) Fatal(args ...any) {
 	f.failed = true
 	f.messages = append(f.messages, fmt.Sprint(args...))
@@ -53,10 +47,10 @@ func (f *failureRecorder) Fatalf(format string, args ...any) {
 	f.messages = append(f.messages, fmt.Sprintf(format, args...))
 }
 
-// buildRecord constructs a fabricengine.Mutations value from entries in order, via a hubRoot-less
-// recorder so each Target is recorded exactly as written: Append's own hub-relative conversion is a
-// no-op when hubRoot is empty, which is what lets these cases spell a Target as the bare hub-relative
-// string the oracle itself operates on.
+// buildRecord constructs a fabricengine.Mutations value from entries in order.
+// It records through a recorder with an empty hub root, so each Target is kept exactly as written:
+// Append's hub-relative conversion does nothing when the hub root is empty.
+// A case can therefore spell a Target as the bare hub-relative string the oracle operates on.
 func buildRecord(entries ...fabricengine.Mutation) fabricengine.Mutations {
 	m := fabricengine.NewMutations("")
 	for _, e := range entries {
@@ -65,20 +59,18 @@ func buildRecord(entries ...fabricengine.Mutation) fabricengine.Mutations {
 	return m.Snapshot()
 }
 
-// mutation is a short constructor for a detail-less fabricengine.Mutation literal, for table
-// readability.
+// mutation is a short constructor for a detail-less fabricengine.Mutation literal, for table readability.
 func mutation(kind fabricengine.Kind, target string) fabricengine.Mutation {
 	return fabricengine.Mutation{Kind: kind, Target: target}
 }
 
-// mutationWithDetail is mutation's counterpart for a case that needs a specific Detail -- the
-// path_removed "recursive"/"single" distinction subtreeDestroyingKind reads.
+// mutationWithDetail builds a fabricengine.Mutation that carries a Detail.
+// For a path_removed, the Detail is "recursive" or "single", which decides whether the removal destroys a whole subtree.
 func mutationWithDetail(kind fabricengine.Kind, target, detail string) fabricengine.Mutation {
 	return fabricengine.Mutation{Kind: kind, Target: target, Detail: detail}
 }
 
-// addedChange returns a ChangeAdded Change at path with the given entry kind, for a hand-built
-// unfiltered diff.
+// addedChange returns a ChangeAdded Change at path with the given entry kind, for a hand-built unfiltered diff.
 func addedChange(path string, kind Kind) Change {
 	e := Entry{Kind: kind}
 	return Change{Path: path, Kind: ChangeAdded, After: &e}
@@ -90,8 +82,8 @@ func removedChange(path string, kind Kind) Change {
 	return Change{Path: path, Kind: ChangeRemoved, Before: &e}
 }
 
-// TestAssertRecordMatchesDiff drives AssertRecordMatchesDiff against hand-built Mutations/Change
-// values through failureRecorder, one case per rule the oracle carries.
+// TestAssertRecordMatchesDiff drives AssertRecordMatchesDiff with hand-built Mutations and Change values.
+// It has one case per rule the oracle carries, and each case records failures through failureRecorder.
 func TestAssertRecordMatchesDiff(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -121,8 +113,8 @@ func TestAssertRecordMatchesDiff(t *testing.T) {
 			wantFail:   false,
 		},
 		{
-			// "_portalsfoo/y" shares a name prefix with the "_portals/x" root but is not a segment-wise
-			// descendant of it, and must not be treated as one.
+			// "_portalsfoo/y" shares a name prefix with the "_portals/x" root but is not a segment-wise descendant of it.
+			// The oracle must not treat it as one.
 			name: "SegmentWiseContainment_SiblingPrefixNotCovered",
 			rec:  buildRecord(mutation(fabricengine.KindWorktreeCreated, "_portals/x")),
 			unfiltered: []Change{
@@ -150,9 +142,9 @@ func TestAssertRecordMatchesDiff(t *testing.T) {
 			wantFail:   false,
 		},
 		{
-			// The naive single-helper derivation (feeding a weft-suffixed target straight into the
-			// warp helper) would look for the admin entry under "warp-bare", not "warp-bare-weft"; this
-			// case proves that wrong location is NOT what covers a weft-side worktree_removed.
+			// A derivation that feeds a weft-suffixed target into the warp path looks in the wrong place:
+			// it finds the admin entry under "warp-bare", not "warp-bare-weft".
+			// This case proves that wrong location does not cover a weft-side worktree_removed.
 			name:       "WorktreeAdmin_WeftSideNaiveWarpDerivationUncovered",
 			rec:        buildRecord(mutation(fabricengine.KindWorktreeRemoved, weftname.SiblingPath("", "myslug"))),
 			unfiltered: []Change{removedChange("warp-bare/.git/worktrees/myslug-weft", KindDir)},
@@ -210,8 +202,8 @@ func TestAssertRecordMatchesDiff(t *testing.T) {
 			wantFail:   false,
 		},
 		{
-			// The rule is LATER inverts EARLIER: a path_removed that precedes the dir_created it
-			// happens to share a Target with does not exempt it.
+			// The rule is LATER inverts EARLIER:
+			// a path_removed that precedes a dir_created at the same Target does not exempt it.
 			name: "NetCommission_ReverseOrder_LaterInvertsEarlierOnly_NotExempt",
 			rec: buildRecord(
 				mutationWithDetail(fabricengine.KindPathRemoved, "x", "recursive"),
@@ -266,9 +258,8 @@ func TestAssertRecordMatchesDiff(t *testing.T) {
 			wantFail: false,
 		},
 		{
-			// Identical to the case above except the ancestor's own entry kind: a KindFile change
-			// beside a recorded target is still an uncovered change, never an implicitly-created
-			// ancestor directory.
+			// A KindFile change beside a recorded target stays uncovered:
+			// the change is never taken as an implicitly-created ancestor directory.
 			name: "AncestorCoverage_KindFileNotCovered",
 			rec:  buildRecord(mutation(fabricengine.KindWorktreeCreated, "a/b/c")),
 			unfiltered: []Change{

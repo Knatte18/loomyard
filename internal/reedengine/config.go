@@ -1,9 +1,7 @@
-// config.go — configuration for the reed module.
-//
-// Defines the Config type mirroring reed.yaml's keys and LoadConfig, which uses
-// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the reed config file,
-// degrading to the embedded template on proven absence; reed never reads config files or knows
-// their on-disk layout itself.
+// config.go defines Config, which mirrors the keys of reed.yaml, and LoadConfig, which reads it.
+// LoadConfig resolves the file through `configengine.LoadOrTemplate` with `ConfigTemplate()`.
+// When no layer holds the file, the embedded template is used.
+// Reed never reads config files or knows their on-disk layout itself.
 
 package reedengine
 
@@ -27,10 +25,12 @@ type Config struct {
 
 	Watchdog string `yaml:"watchdog"`
 
-	// OperatorQuietS is the seconds since an attached client's last activity on a strand's pane within which lym types nothing into that pane.
+	// OperatorQuietS is the quiet period in seconds after an attached client's last activity on a strand's pane.
+	// lym types nothing into that pane while the period lasts.
 	OperatorQuietS int `yaml:"operator_quiet_s"`
 
-	// WindowShareMax is the largest declared group size whose strands share one window; a larger group gives each strand a window of its own.
+	// WindowShareMax is the largest declared group size whose strands share one window;
+	// a larger group gives each strand a window of its own.
 	WindowShareMax int `yaml:"window_share_max"`
 
 	// WindowSplit is the direction a shared window splits in: "width" or "height".
@@ -41,12 +41,12 @@ type Config struct {
 	// SegmentColors maps a loom segment key to a palette color name.
 	SegmentColors map[string]string `yaml:"segment_colors"`
 
-	// Buttons is the buttons mapping of groups task, beam and prime, each the operator's own list of status-bar button entries.
+	// Buttons maps each of the groups task, beam and prime to the operator's own list of status-bar button entries.
 	// The node is decoded and validated only when the status bar renders, never by LoadConfig.
 	Buttons yaml.Node `yaml:"buttons"`
 }
 
-// ConfigOpenMaps returns the reed.yaml groups whose list is the operator's own button list, which a layer replaces whole.
+// ConfigOpenMaps returns the reed.yaml groups a layer replaces whole, each the operator's own button list.
 func ConfigOpenMaps() []string {
 	return []string{"buttons.task", "buttons.beam", "buttons.prime"}
 }

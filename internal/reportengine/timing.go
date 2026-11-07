@@ -1,4 +1,6 @@
-// timing.go declares the timing report's options and result types, ComputeTiming, which assembles it from one snapshot of sources, and the selection of the runs in flight it covers beside the landed ones.
+// timing.go declares the timing report's options and result types.
+// ComputeTiming assembles the report from one snapshot of sources.
+// It also selects the runs in flight on live pairs, beside the landed ones.
 
 package reportengine
 
@@ -28,13 +30,13 @@ const (
 	PhaseDiscussion = "discussion"
 	PhasePlan       = "plan"
 	PhaseWebster    = "webster"
-	// PhaseWrite is a darn run's writer and its rewrite of the change description, and PhaseReview the review of its committed diff.
+	// PhaseWrite is a darn run's writer and rewrite of the change description; PhaseReview reviews its committed diff.
 	PhaseWrite           = "write"
 	PhaseReview          = "review"
 	PhaseMerge           = "merge"
 	PhasePublishFinalize = "publish-finalize"
 	PhaseLand            = "land"
-	// PhasePaused is the time the child stood paused at a producer boundary, from batten's change into paused to its change out of it.
+	// PhasePaused is the time a child stands paused at a producer boundary, between batten's changes into and out of paused.
 	PhasePaused = "paused"
 	PhaseOther  = "other"
 )
@@ -56,7 +58,8 @@ type Interval struct {
 	To   time.Time `json:"to"`
 }
 
-// TimingOptions shapes a timing report; everything in it is told, since the engine runs no process and reads no clock.
+// TimingOptions shapes a timing report.
+// Every input is passed in, since the engine runs no process and reads no clock.
 type TimingOptions struct {
 	// Since is the UTC date the report's window opens at.
 	Since time.Time
@@ -81,7 +84,8 @@ type TimingSelection struct {
 	SnapshotAt    time.Time `json:"snapshot_at"`
 }
 
-// TimingRun is the time of one run of a recipe: its span from first to last stamp, the machine sleep inside it, and the span split over the phases.
+// TimingRun is the time of one run of a recipe:
+// its span from first to last stamp, the machine sleep inside it, and the span split over the phases.
 // Every duration is whole seconds, and a phase the run holds no row of is nil, never zero.
 type TimingRun struct {
 	Slug          string            `json:"slug"`
@@ -95,7 +99,7 @@ type TimingRun struct {
 	ActiveSeconds int64             `json:"active_seconds"`
 	Phases        map[string]*int64 `json:"phases"`
 
-	// Waits maps every wait kind to its net seconds, and Attempts holds the arbiter and alignment attempts that served the waits.
+	// Waits maps every wait kind to its net seconds; Attempts holds the arbiter and alignment attempts behind the waits.
 	// Active is the span less sleep, every net wait and the paused phase's time, a wait inside a pause taken out once.
 	Waits    map[string]int64 `json:"waits"`
 	Attempts TimingAttempts   `json:"attempts"`
@@ -106,12 +110,12 @@ type TimingRun struct {
 	// committed is the archive tag's committer time, the zero time for a run in flight.
 	committed time.Time
 
-	// span is the run's span, sleeps the machine sleep clipped to it, and parts the row intervals less that sleep, each under its phase.
+	// span is the run's span, sleeps the machine sleep clipped to it, parts the row intervals less that sleep by phase.
 	span   Interval
 	sleeps []Interval
 	parts  []phasedInterval
 
-	// waitParts are the net wait intervals per kind, and inactive the union of every kind's with the paused phase's parts, the time active leaves out beside sleep.
+	// waitParts are the net waits per kind; inactive unites them with the paused parts, the time active drops beside sleep.
 	waitParts map[string][]Interval
 	inactive  []Interval
 }
@@ -124,8 +128,10 @@ type PhaseMedian struct {
 
 // TimingBucket is the time of one day or ISO week of the window, summed over the runs overlapping it.
 // Two parallel runs add two hours to an hour, and a phase no run in the bucket holds is absent from Phases.
-// Waits holds every wait kind, and Attempts counts each spawn in the bucket its spawned_at falls in with its time clipped to the bucket.
-// Settlers maps a stop kind to a settler to the count of stops of that kind it settled, each stop in the bucket its time falls in.
+// Waits holds every wait kind.
+// Attempts counts each spawn in the bucket its spawned_at falls in, with its time clipped to that bucket.
+// Settlers maps each stop kind, then each settler, to the count of stops of that kind it settled.
+// Each stop counts in the bucket its time falls in.
 type TimingBucket struct {
 	Label         string                    `json:"label"`
 	Start         time.Time                 `json:"start"`
@@ -138,7 +144,7 @@ type TimingBucket struct {
 	ActiveSeconds int64                     `json:"active_seconds"`
 }
 
-// TimingReport is the result of ComputeTiming.
+// TimingReport holds what a timing report was computed over, its timed runs, buckets and phase medians.
 // Phases maps every selected recipe to its phases, each to its median.
 type TimingReport struct {
 	Selection TimingSelection                    `json:"selection"`
@@ -149,8 +155,10 @@ type TimingReport struct {
 	Findings  []Finding                          `json:"findings"`
 }
 
-// ComputeTiming times the runs of src: the landed runs convergence selects and the runs in flight on live pairs' records branches, from opts.Since to src.SnapshotAt.
-// A record that does not decode is a Finding and never an error; an error is a failed read of the repositories themselves or an unknown bucket width.
+// ComputeTiming times the runs of src between opts.Since and src.SnapshotAt.
+// It covers the landed runs convergence selects and the runs in flight on live pairs' records branches.
+// A record that does not decode is a Finding and never an error;
+// an error is a failed read of the repositories themselves or an unknown bucket width.
 func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 	if opts.By != BucketDay && opts.By != BucketWeek {
 		return TimingReport{}, fmt.Errorf("reportengine: unknown bucket width %q; way forward: use %q or %q", opts.By, BucketDay, BucketWeek)
@@ -216,9 +224,13 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 }
 
 // selectInFlight returns the runs of live pairs, read from the records branches in src.Branches.
-// Only a pair records branch counts: a branch other than src.RecordsBranch whose name is the one fabricengine.RecordsBranchName forms from a slug.
-// A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; a branch whose slug opts.Live names is in flight; any other is abandoned, left out with a finding.
-// A pair not seeded yet, or seeded to a recipe a report does not select, is left out silently, and a record that does not decode is a finding.
+// Only a pair records branch counts:
+// a branch other than src.RecordsBranch whose name is the one fabricengine.RecordsBranchName forms from a slug.
+// A branch whose tip is the commit of one of its slug's archive tags is landed and skipped;
+// a branch whose slug opts.Live names is in flight;
+// any other is abandoned, left out with a finding.
+// A pair not seeded yet, or seeded to a recipe a report does not select, is left out silently,
+// and a record that does not decode is a finding.
 func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]RunRow, error) {
 	live := map[string]bool{}
 	for _, slug := range opts.Live {
@@ -346,7 +358,7 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 }
 
 // pairSlug returns the slug whose pair records branch is named branch, and false when branch is no such name or names an empty slug.
-// The records branch name suffix is read off RecordsBranchName, the one place that forms it.
+// The suffix is taken from the fabric engine's records branch name, so the two cannot drift apart.
 func pairSlug(branch string) (string, bool) {
 	slug, ok := strings.CutSuffix(branch, fabricengine.RecordsBranchName(""))
 	return slug, ok && slug != ""
@@ -358,7 +370,7 @@ type bucketWindow struct {
 	Interval
 }
 
-// bucketWindows cuts window into UTC days labelled 2026-10-15, or ISO weeks labelled as isoWeekLabel does, with Monday first.
+// bucketWindows cuts window into UTC days labelled YYYY-MM-DD, or into ISO weeks starting Monday.
 // The first bucket opens at the window's start and the last closes at its end, so no bucket reaches outside the window.
 func bucketWindows(by string, window Interval) []bucketWindow {
 	var windows []bucketWindow
@@ -383,7 +395,8 @@ func bucketWindows(by string, window Interval) []bucketWindow {
 	return windows
 }
 
-// bucketRuns sums the runs over windows: each row interval and sleep is clipped to every bucket it overlaps, so an interval across midnight splits over both days.
+// bucketRuns sums the runs over windows: each row interval and sleep is clipped to every bucket it overlaps,
+// so an interval across midnight splits over both days.
 func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 	buckets := make([]TimingBucket, 0, len(windows))
 	for i, w := range windows {
@@ -430,7 +443,8 @@ func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 	return buckets
 }
 
-// phaseMedians returns, per selected recipe, each of its phases' median over the landed runs of that recipe holding it whose archive tag is committed in window.
+// phaseMedians returns, per selected recipe, each of its phases' median over the landed runs of that recipe.
+// A run counts only when it holds the phase and its archive tag is committed in window.
 // A run in flight never enters a median, and a phase no landed run holds has nil seconds.
 func phaseMedians(runs []TimingRun, window Interval) map[string]map[string]*PhaseMedian {
 	medians := map[string]map[string]*PhaseMedian{}

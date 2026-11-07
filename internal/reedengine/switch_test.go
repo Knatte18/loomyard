@@ -1,4 +1,5 @@
-// switch_test.go pins SwitchClient's session ordering and the exact tmux commands it issues, through TmuxCmd's execHook seam.
+// switch_test.go pins the session ordering SwitchClient uses and the exact tmux commands it issues.
+// It drives them through the execHook seam of TmuxCmd.
 
 package reedengine
 
@@ -55,7 +56,8 @@ func TestNextSessionID(t *testing.T) {
 func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// The listing is filtered to the sessions that count as reed's everywhere but Windows, spelled out here rather than built through listSessionsArgv.
+	// The listing is filtered to the sessions that count as reed's everywhere but Windows.
+	// It is spelled out here rather than built through listSessionsArgv.
 	wantList := []string{"list-sessions", "-f", "#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}}", "-F", "#{session_id} #{session_name}"}
 	if runtime.GOOS == "windows" {
 		wantList = []string{"list-sessions", "-F", "#{session_id} #{session_name}"}

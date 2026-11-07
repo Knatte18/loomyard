@@ -1,5 +1,5 @@
-// entries_multillm.go implements multiLLMEntry, the Constructor for the "MultiLLM" registry row:
-// it builds the seatengine.Table of one lead and its named advisors from the row's Config.
+// entries_multillm.go implements the "MultiLLM" registry row.
+// It builds the seatengine.Table of one lead and its named advisors from the row's Config.
 
 package shedrecipe
 
@@ -17,8 +17,9 @@ import (
 )
 
 // multiLLMEntry is the Constructor for the "MultiLLM" registry row.
-// It validates cfg and env, builds the seat table the row describes, checks it against the told stencils directory, and returns shedadapters.NewMultiLLMProducer(name, table, env.Seats, env.Now).KeepGateFindings(path), path being the row's gate findings file.
-// Table.Validate runs here, so an unreadable stencil, an unresolvable include, a nested include and a reserved or blank value fail at construction rather than at the first Call.
+// It validates cfg and env, builds the seat table the row describes, and checks that table against env.StencilsDir.
+// It returns a MultiLLM producer that keeps the row's gate findings file.
+// Table.Validate runs here, so a bad stencil, include or value fails at construction rather than at the first Call.
 func multiLLMEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	role, err := configString(cfg, "role", true)
 	if err != nil {
@@ -59,7 +60,8 @@ func multiLLMEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 		return nil, err
 	}
 
-	// Every root is validated whether or not a stencil names its marker, so a stencil edit never changes a recipe row's validity.
+	// Every root is validated whether or not a stencil names its marker,
+	// so a stencil edit never changes a recipe row's validity.
 	if err := requireAbsRoot("MultiLLM", "WorktreeRoot", env.WorktreeRoot); err != nil {
 		return nil, err
 	}
@@ -198,8 +200,9 @@ func resolveSeatModel(entry string, i int, spec string, reg modelspec.Registry) 
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// colorSegmentKey reads the optional color_segment key of cfg as the segment a Bouncer or Burler row's sessions are colored by.
-// An absent key returns the empty segment, which keeps the review color; an unknown value is refused naming the legal segments.
+// colorSegmentKey reads the optional color_segment key of cfg as the segment that colors a row's sessions.
+// An absent key returns the empty segment, which keeps the review color;
+// an unknown value is refused, naming the legal segments.
 func colorSegmentKey(entry string, cfg Config) (segmentcolor.Segment, error) {
 	raw, err := configString(cfg, "color_segment", false)
 	if err != nil || raw == "" {

@@ -30,7 +30,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestLandingDeps_ConfigNoticeSeamsOverRealHub asserts ConfigChanges reports a per-worktree module's changed config file and never a hub-wide module's, that Notify posts nothing without a recorded orch strand and fails with the notice line once one is recorded, and that CommitParentRecords commits the parent's run records alone, and nothing while it holds none.
+// TestLandingDeps_ConfigNoticeSeamsOverRealHub asserts three seams over a real hub.
+// ConfigChanges reports a per-worktree module's changed config file, never a hub-wide module's.
+// Notify posts nothing without a recorded orch strand, and fails with the notice line once one is recorded.
+// CommitParentRecords commits the parent's run records alone, and nothing while it holds none.
 // The steps share one hub and one prime orch state,
 // and the queueing step relies on the no-strand step having queued nothing,
 // so none runs in parallel.
@@ -135,8 +138,9 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	})
 }
 
-// TestParentRecordsCommitter_CommitsTheRecordedParent shows the notice walk does not reach Finalize's parent-records commit:
-// with member m forked from beam b, whose orch is stopped, the committer commits a run-records file left in b's records and leaves the prime's records untouched.
+// TestParentRecordsCommitter_CommitsTheRecordedParent checks the committer's parent-records commit.
+// Member m is forked from beam b, whose orch is stopped.
+// The committer commits a run-records file left in b's records and leaves the prime's records untouched.
 func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -174,8 +178,9 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_PullRequestModeReadsTheParent asserts the PR-Review row's ParentMode seam reads the receiving branch's beam.yaml and never the task worktree's own:
-// a task under the prime reads the prime's, a member under a beam reads the beam's, and the beam reads the prime's.
+// TestLandingDeps_PullRequestModeReadsTheParent asserts that ParentMode reads the receiving branch's beam.yaml.
+// It never reads the task worktree's own beam.yaml.
+// A task under the prime reads the prime's, a member under a beam reads the beam's, and the beam reads the prime's.
 // It also asserts EntryField reads the run's own board entry.
 func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -259,7 +264,10 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 	})
 }
 
-// TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam is false for a task branch level with its parent, true once the task branch holds a commit the parent lacks, and an error when the parent branch does not resolve.
+// TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam.
+// It reports false while the task branch is level with its parent.
+// It reports true once the task branch holds a commit the parent lacks.
+// It reports an error when the parent branch does not resolve.
 func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -302,7 +310,8 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 	})
 }
 
-// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads asserts the RecordLanding seam of a pair writes the commit into the prime's scratch of the run named for that pair, where shedrun.ReadLandedCommit reads it.
+// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads asserts the RecordLanding seam writes the commit.
+// It writes it into the prime's scratch of the run named for the pair, where shedrun.ReadLandedCommit reads it.
 func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -326,7 +335,8 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable asserts the RemoveFollowUp seam returns no step when the hub holds no readable prime.
+// TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable asserts the RemoveFollowUp seam returns no step.
+// It does so when the hub holds no readable prime.
 func TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -340,7 +350,9 @@ func TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable(t *testing.T)
 	}
 }
 
-// TestLandingDeps_BeamCommitsMissingLeavesOutAMergeOfTheParent asserts a pawl run's CommitsMissing seam lists the beam commits past a merged head and leaves out a merge that only brought the parent in, so Finalize reads a merged pull request as lacking what `lym beam ready` reads it as lacking.
+// TestLandingDeps_BeamCommitsMissingLeavesOutAMergeOfTheParent asserts the CommitsMissing seam of a pawl run.
+// It lists the beam commits past a merged head and leaves out a merge that only brought the parent in.
+// So Finalize reads a merged pull request as lacking what `lym beam ready` reads it as lacking.
 func TestLandingDeps_BeamCommitsMissingLeavesOutAMergeOfTheParent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

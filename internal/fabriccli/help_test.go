@@ -1,5 +1,6 @@
-// help_test.go pins the declared surface of the built fabric command tree: every verb's summary and the commit verb's flag set.
-// It inspects cobra commands only, spawning nothing, per the Test Tier Purity Invariant.
+// help_test.go pins the declared surface of the built fabric command tree.
+// It checks every verb's summary and the commit verb's flag set.
+// It inspects cobra commands only, spawning nothing.
 
 package fabriccli_test
 
@@ -11,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommand_VerbDeclarations asserts every verb declares a non-empty Short and the commit verb declares no --message flag.
+// TestCommand_VerbDeclarations asserts every verb declares a non-empty Short.
+// The commit verb declares no --message flag.
 //
 //testtiming:keep pins that every verb carries a summary and that commit's message stays fixed, assertions the arity test that covers its blocks does not make
 func TestCommand_VerbDeclarations(t *testing.T) {

@@ -36,7 +36,7 @@ func (d configDirs) layersHolding(module configreg.Module) string {
 }
 
 // menu presents an interactive picker of available config modules.
-// It prints a numbered list from configreg.Names().
+// It prints a numbered list from configreg.Modules().
 // Each module is marked with the layers that hold a file, as "(default, local)", or "(template)" when none does.
 // It reads one line from in and quits with 0 on 'q'.
 // Otherwise it parses the line as a 1-indexed number and routes a valid choice to editOne,

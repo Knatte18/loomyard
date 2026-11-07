@@ -1,6 +1,7 @@
-// contractevidence.go decides whether a suspect path that is one of the run's two contract files, outcome.yaml and summary.md, is cleared by evidence.
-// It is the one evidence function every site that classifies a suspect path consults before checkSuspectPaths,
-// since those two paths lie outside the tracked tree and would otherwise be unverifiable, leaving the reset-to-start route as the only way forward.
+// contractevidence.go decides whether a suspect path that is one of the run's two contract files is cleared by evidence.
+// The two files, outcome.yaml and summary.md, lie outside the tracked tree and would otherwise be unverifiable.
+// Every site that classifies a suspect path consults this check first.
+// Without this evidence, the reset-to-start route is the only way forward.
 
 package websterengine
 
@@ -48,7 +49,8 @@ const (
 )
 
 // contractFileStatus reports whether path is one of this run's contract files, and whether the audit finding on it is cleared.
-// A contract path is cleared when the file is absent, or when the latest successful Master write to it is later than every fork write and every recovery or verify-fixer write to it.
+// A contract path is cleared when its file is absent.
+// It is also cleared when Master's latest successful write to it postdates every fork, recovery or verify-fixer write.
 // A Master write whose result failed is not evidence.
 // An uncleared path's writer is writerFork or writerRecovery, whichever made the latest write at or after Master's;
 // it defaults to writerFork when the run recorded no write to the file.
@@ -126,7 +128,7 @@ type contractSplit struct {
 }
 
 // splitContractPaths sorts paths into contractSplit's groups, each in input order.
-// The error is contractFileStatus's.
+// The error is a link-resolution or stat failure.
 func splitContractPaths(geom Geometry, writes RunWrites, paths []string) (contractSplit, error) {
 	var s contractSplit
 	for _, p := range paths {
@@ -157,8 +159,9 @@ func splitContractPaths(geom Geometry, writes RunWrites, paths []string) (contra
 	return s, nil
 }
 
-// contractWritesFor loads the run's write history only when one of paths is a contract file, since no other path needs it.
-// A nil engines yields an empty history, under which a present contract file is never cleared.
+// contractWritesFor loads the run's write history only when one of paths is a contract file.
+// Other paths need no history.
+// A nil engines argument yields an empty history, under which a present contract file is never cleared.
 // The error is a link-resolution, engine-resolution or audit failure.
 func contractWritesFor(engines AuditEngines, st *State, geom Geometry, paths []string) (RunWrites, error) {
 	if engines == nil {
@@ -177,7 +180,8 @@ func contractWritesFor(engines AuditEngines, st *State, geom Geometry, paths []s
 	return RunWrites{}, nil
 }
 
-// contractDeleteClause is the delete route for contract paths a fork, recovery or verify-fixer session wrote last: remove the files, then re-run through rerun.
+// contractDeleteClause is the delete route for contract paths a fork, recovery or verify-fixer session wrote last:
+// remove the files, then re-run through rerun.
 // It names each path's writer.
 func contractDeleteClause(uncleared []unclearedContract, rerun string) string {
 	var wrote, paths []string

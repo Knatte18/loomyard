@@ -13,7 +13,7 @@ import (
 // A step at one of them is a live wait, not a stall.
 var OperatorWaitRows = []string{pawlengine.NameBeamAwait, NamePRReview, NameSamplerSession}
 
-// WaitsOnOperator reports whether row is one of OperatorWaitRows.
+// WaitsOnOperator reports whether row is a row where a step waits on something outside the child with no agent working.
 func WaitsOnOperator(row string) bool {
 	return slices.Contains(OperatorWaitRows, row)
 }

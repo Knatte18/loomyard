@@ -1,5 +1,5 @@
-// calibrate_test.go drives the calibration over an in-memory plan history and base tree and a fixture batcher.yaml: the row arithmetic, the skip reasons and the fit summary.
-// Tier-1 (no git, no spawn).
+// calibrate_test.go drives the calibration over an in-memory plan history, base tree and fixture batcher.yaml.
+// It checks the row arithmetic, the skip reasons and the fit summary at Tier-1, with no git and no spawn.
 
 package main
 
@@ -17,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestCalibrate asserts the per-fork peak rows with their positions and growth ratios, the skip reasons of runs, forks and cards, the start rows of runs left out for their plan or base, and the printed fit lines.
+// TestCalibrate asserts the per-fork peak rows with their positions and growth ratios.
+// It also asserts the skip reasons of runs, forks and cards.
+// It also asserts the start rows of runs left out for their plan or base, and the printed fit lines.
 func TestCalibrate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -170,7 +172,9 @@ func TestCalibrate(t *testing.T) {
 
 	t.Run("peak rows are priced at each fork's own position", func(t *testing.T) {
 		t.Parallel()
-		// The grow profile is fit with a batch_growth of 5, so alpha's forks at positions 1 to 4 estimate 110, 65, 70 and 75, each with an estimated growth of the same 100, 50, 50 and 50 once its own start is taken off.
+		// The grow profile is fit with a batch_growth of 5.
+		// Alpha's forks at positions 1 to 4 estimate 110, 65, 70 and 75.
+		// Each has an estimated growth of 100, 50, 50 and 50 once its own start is taken off.
 		grown, err := Calibrate(runs[:1], "grow", configDir, history, base, reads)
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
@@ -199,7 +203,8 @@ func TestCalibrate(t *testing.T) {
 		if len(based.Starts) != 1 || !based.Starts[0].HasBase || !near(based.Starts[0].Base, baseContext) || !near(based.Starts[0].Estimate, baseContext+10) {
 			t.Errorf("starts = %+v; want one row with base %v and estimated start %v", based.Starts, baseContext, baseContext+10)
 		}
-		// The peak adds the base to the card's 100 lines and the orientation of 10, and the in-fork growth is unchanged: the same base comes off the estimated start.
+		// The peak adds the base to the card's 100 lines and the orientation of 10.
+		// The in-fork growth is unchanged: the same base comes off the estimated start.
 		if len(based.Rows) != 1 || !near(based.Rows[0].Estimate, baseContext+110) || !near(based.Rows[0].EstimatedGrowth, 100) || !near(based.Rows[0].MeasuredGrowth, 210) {
 			t.Errorf("rows = %+v; want one row with estimate %v, estimated growth 100 and measured growth 210", based.Rows, baseContext+110)
 		}
@@ -217,7 +222,8 @@ func TestCalibrate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
 		}
-		// The measured lines are INSTRUCTIONS.md, the Master template and the directive with its wrapper, not the raw PATTERN.md.
+		// The measured lines are INSTRUCTIONS.md, the Master template and the directive with its wrapper.
+		// The raw PATTERN.md is not counted.
 		wantLines := instructionLines + templateLines + strings.Count(renderedDirective(), "\n")
 		wantRows := []FixedRow{{Run: "eps", Session: "m1.jsonl", Measured: 20000, Lines: wantLines, Fixed: float64(20000 - wantLines)}}
 		if !slices.Equal(measured.Fixed.Rows, wantRows) {
@@ -364,7 +370,11 @@ func TestCalibrate(t *testing.T) {
 	})
 }
 
-// TestCalibrateStartFit asserts the start rows' positions restart in each webster session, and the least-squares fit of the start coefficients over the measured start minus the run's computed base: exact on starts laid on a line above the base, not fitted from a single position, marked unusable when the growth comes out negative, and leaving a run without a readable base listed with its reason and outside the fit.
+// TestCalibrateStartFit asserts the start rows' positions restart in each webster session.
+// The start fit is least-squares over the measured start minus the run's computed base.
+// It is exact on starts laid on a line above the base, and it is not fitted from a single position.
+// It is marked unusable when the growth comes out negative.
+// A run without a readable base is listed with its reason and stays outside the fit.
 func TestCalibrateStartFit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -11,17 +11,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// Expand inlines the sub-recipe of every block row of r and returns the resulting Recipe; r itself is never mutated.
-// resolve maps a recipe name to its bytes, and each sub-recipe is parsed through Parse and expanded in turn, so a block may hold blocks.
+// Expand inlines the sub-recipe of every block row of r and returns the resulting Recipe.
+// r itself is never mutated.
+// resolve maps a recipe name to its bytes.
+// Each sub-recipe is parsed through Parse and expanded in turn, so a block may hold blocks.
 // A recipe with no block row is returned as it is, whatever resolve is.
 //
-// A block row is emitted with engine shedrecipe.EngineBlock, on_done the sub-recipe's entry and SkipTo the block's exit, followed by the sub-recipe's rows under their own names.
-// The block's exit is the row's on_done as its recipe file sets it, or, when that is empty, the exit of the block enclosing it.
-// An inlined row's empty on_done, and an inlined block row's empty skip target, become the exit of the innermost block enclosing the row.
+// A block row is emitted with engine shedrecipe.EngineBlock, on_done the sub-recipe's entry and SkipTo the block's exit.
+// The rows of the sub-recipe follow it under their own names.
+// The block's exit is the row's on_done as its recipe file sets it;
+// when that is empty, it is the exit of the block enclosing it.
+// An inlined row's empty on_done becomes the exit of the innermost block enclosing the row.
+// An inlined block row's empty skip target does too.
 // Each inlined row's BlockPath is the names of the block rows enclosing it, outermost first, joined by "/".
-// A sub-recipe's terminals and top-level keys are not read; the parent's stay the run's, so a recipe that runs alone may also be a block.
+// A sub-recipe's terminals and top-level keys are not read;
+// the parent's stay the run's, so a recipe that runs alone may also be a block.
 //
-// Every refusal names the block row and a way forward: a recipe the resolver cannot give, a nil resolver, a recipe that includes itself, a row name or segment an inlined row shares with a row outside its block, an inlined edge naming no row of its recipe, an outermost block row with no on_done, and an on_done inside the block.
+// Every refusal names the block row and a way forward.
+// It covers an unresolvable or cyclic recipe, and a name or segment clash with rows outside the block.
+// An on_done inside the block is refused too, as is an outermost block row with no on_done.
 func Expand(r Recipe, resolve func(name string) ([]byte, error)) (Recipe, error) {
 	if !slices.ContainsFunc(r.Producers, func(row Row) bool { return row.Block != "" }) {
 		return r, nil
@@ -59,8 +67,9 @@ func (e *expander) register(rows []Row) {
 	}
 }
 
-// expandRows returns rows with every block row replaced by its block row and inlined rows.
-// exit is the exit of the innermost enclosing block, empty at the top level; path is the block path of rows, and chain the names of the recipes entered to reach them.
+// expandRows returns rows with every block row replaced by an engine-block row followed by its inlined rows.
+// exit is the exit of the innermost enclosing block, empty at the top level;
+// path is the block path of rows, and chain the names of the recipes entered to reach them.
 func (e *expander) expandRows(rows []Row, exit, path string, chain []string) ([]Row, error) {
 	out := make([]Row, 0, len(rows))
 	for _, row := range rows {
@@ -98,8 +107,10 @@ func (e *expander) expandRows(rows []Row, exit, path string, chain []string) ([]
 	return out, nil
 }
 
-// inline resolves, parses and expands the recipe block names, returning its rows ready to follow the block row and the recipe's entry.
-// exit is the block's exit, path the block path of the block row, and chain the names of the recipes entered to reach it.
+// inline resolves, parses and expands the recipe that block names.
+// It returns the recipe's rows, ready to follow the block row, and its entry.
+// exit is the block's exit and path the block path of the block row;
+// chain lists the recipes entered to reach it.
 func (e *expander) inline(block Row, exit, path string, chain []string) (rows []Row, entry string, err error) {
 	if at := slices.Index(chain, block.Block); at >= 0 {
 		loop := append(slices.Clone(chain[at:]), block.Block)
@@ -161,7 +172,8 @@ func (e *expander) inline(block Row, exit, path string, chain []string) (rows []
 	return rows, sub.Entry, nil
 }
 
-// blockError returns a refusal prefixed with the block row's name, formatting the case and its way forward from format and args.
+// blockError returns a refusal prefixed with the block row's name.
+// format and args give the case and its way forward.
 func blockError(block Row, format string, args ...any) error {
 	return fmt.Errorf("shedbuild: block %q: "+format, append([]any{block.Name}, args...)...)
 }

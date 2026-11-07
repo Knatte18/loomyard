@@ -1,6 +1,6 @@
-// mergestage.go implements MergeStageResolved, the narrow verb that stages agent-resolved conflict
-// paths so MergeContinue's index guard — an index probe, ConflictedFiles(), that no amount of
-// content editing can clear — can pass.
+// mergestage.go implements the verbs that stage a conflict session's edits into the merge index.
+// MergeStageResolved stages agent-resolved conflict paths.
+// Content edits alone never clear the index's conflict state, which the continue guard reads.
 
 package fabricengine
 
@@ -9,44 +9,30 @@ import (
 	"path/filepath"
 )
 
-// StageResult is the mutating result type MergeStageResolved returns, embedding MutationRecord per
-// the Mutation Record Invariant.
+// StageResult is the result of the merge staging verbs; it embeds MutationRecord to report what was staged.
 type StageResult struct {
 	MutationRecord
 }
 
-// MergeStageResolved takes unified, worktree-relative paths and stages each on whichever side's
-// index actually lists it unmerged.
-// A path listed by neither side is an error rather than a silent skip — the caller passed something
-// that is not conflicted, and silently staging it would hide a caller bug.
-// Deletions stage rather than erroring, because a delete/modify conflict is legitimately resolved by
-// the file being gone.
-// An empty or nil paths is a no-op, returning StageResult{} with an empty mutation record and a nil
-// error.
-// MergeContinue's own conflict guard is deliberately left untouched by this verb — the two are
-// independent gates, not one relocated one.
+// MergeStageResolved takes unified, worktree-relative paths and stages each on the side whose index lists it unmerged.
+// A path listed by neither side is an error, not a silent skip:
+// the caller passed something that is not conflicted, and silently staging it would hide a caller bug.
+// Deletions stage rather than error, because a delete/modify conflict is resolved by the file being gone.
+// Empty or nil paths are a no-op: the call returns StageResult{} with an empty mutation record and a nil error.
+// It leaves the continue guard untouched: the two are independent gates.
 //
-// Foreign git-level merge state — a MERGE_HEAD or unmerged index entries fabric did not itself
-// start — refuses the whole call with *ErrForeignMergeState, leaving that state untouched, exactly
-// as every other mutating merge verb does. The probe runs only when no fabric record exists, the
-// same record-then-probe arm MergeIn and Merge use, so it costs one record read during a real merge
-// and never mistakes fabric's own conflicts for someone else's.
-// That refusal is not belt-and-braces: it is the case the no-lock argument below would otherwise be
-// wrong about. "No merge in progress" and "no conflicted paths" are NOT the same condition — an
-// operator's own conflicted `git merge` in the warp checkout leaves MergeInProgress() false while
-// ConflictedFiles() is non-empty, so without this arm the partition below would happily route those
-// paths to `git add -A` and stage into a merge fabric has no record of and no lock over.
+// Foreign git-level merge state, a MERGE_HEAD or unmerged index entries fabric did not start, is refused:
+// the call returns *ErrForeignMergeState and leaves that state untouched, as the other mutating merge verbs do.
+// The probe runs only when no fabric record exists, the same record-then-probe order the other merge verbs use.
+// During a real merge that costs one record read, and fabric's own conflicts are never taken for foreign ones.
+// An operator's own conflicted git merge can leave no fabric record while its index lists conflicts.
+// Staging into it would write to a merge that fabric has no record of, so the call refuses it.
 //
-// This is the one mutating verb in the merge surface that takes NO weft write lock and asserts no
-// merge-record precondition, and that is a decision rather than an omission. With the foreign case
-// refused above, the only remaining no-record state has both sides' ConflictedFiles() empty, so every
-// path fails the partition below and the call errors before staging anything — there is no state it
-// can reach where it writes outside a merge. While a merge IS in progress the four guarded sibling
-// verbs (Commit, Pull, Topology's Checkout and Remove) already refuse on the record, so no other
-// fabric writer can be in either index concurrently. A lock here would serialize this verb against
-// nothing.
-// The contrast with Merge's pre-merge sync — which does need the lock, because it mutates before
-// the record exists — is what makes the difference load-bearing rather than stylistic.
+// The verb takes no weft write lock and asserts no merge-record precondition.
+// While a merge record exists, the guarded sibling verbs refuse, so no other fabric writer can touch either index.
+// With no record and no foreign state, both sides list no conflicts,
+// so every path fails the partition and nothing is staged.
+// A lock would serialize the verb against nothing.
 func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -97,18 +83,17 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 		case weftSet[p]:
 			weftBatch = append(weftBatch, p)
 		default:
-			// A path listed by both sides cannot occur here: unifyConflictPaths already treats that
-			// collision as unmappable and self-aborts the merge before any caller could ever see the
-			// path, so the only remaining case reaching this branch is "neither side lists it".
-			// The message stays side-free — "on either side" would disclose that two subjects were
-			// checked, the exact tell the aggregated guards are worded to avoid — and it names the
-			// exact-spelling contract, since a `./`-prefixed or absolute spelling of a genuinely
-			// conflicted path lands here too.
+			// A path listed by both sides cannot reach this branch:
+			// the unified list marks that collision unmappable and aborts the merge before any caller sees the path.
+			// So the only case left is that neither side lists the path.
+			// The message names neither side, so it does not disclose which lists were checked.
+			// It also names the exact-spelling contract:
+			// a `./`-prefixed or absolute spelling of a conflicted path lands here too.
 			return StageResult{}, fmt.Errorf("fabricengine: %s is not a conflicted path in this merge; pass paths exactly as the conflicts list reported them", p)
 		}
 	}
 
-	// Warp first, then weft, matching concludeMergeSides' fixed side ordering.
+	// Warp first, then weft, in the fixed side order the merge conclusion uses.
 	if len(warpBatch) > 0 {
 		if err := f.code.StageResolved(warpBatch); err != nil {
 			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
@@ -126,13 +111,15 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 }
 
 // MergeStageTracked stages every tracked modification and deletion in the warp checkout of an in-progress fabric merge,
-// so edits a conflict session made to already-tracked files land in the merge commit MergeContinue writes.
+// so edits a conflict session made to tracked files land in the merge commit.
 // Untracked files are never staged;
 // MergeUntrackedFiles lists them so a caller can halt on them.
-// Only the warp side is staged: weft content is never a merge participant for a caller's own edits.
+// Only the warp side is staged, since weft content is never a merge participant for a caller's own edits.
 //
-// It refuses exactly as the guarded merge verbs do: with no fabric merge record it returns *ErrForeignMergeState when git-level merge state fabric did not start is present and *ErrNoMergeInProgress otherwise, staging nothing either way.
-// Like MergeStageResolved it takes no weft write lock, for the same reason: with a record present the guarded sibling verbs already refuse, so no other fabric writer can be in the index concurrently.
+// With no fabric merge record it refuses with *ErrForeignMergeState when foreign git-level merge state is present;
+// otherwise it refuses with *ErrNoMergeInProgress, and it stages nothing either way.
+// It takes no weft write lock: with a record present, the guarded sibling verbs already refuse,
+// so no other fabric writer can be in the index concurrently.
 func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -152,11 +139,12 @@ func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 	return StageResult{}, nil
 }
 
-// MergeUntrackedFiles returns the untracked, non-ignored paths in the task worktree's warp checkout, worktree-relative, so a caller never names a fabric side.
-// The weft is not read: it is no merge participant, so an untracked weft file can never enter the merge commit,
-// and listing one would only halt a merge that would have been right.
-// Junctioned `_lym` and `.lym` sit in `.git/info/exclude`, so they never appear.
-// It returns an empty, never nil, slice when there are none.
+// MergeUntrackedFiles returns the untracked, non-ignored, worktree-relative paths in the task worktree's warp checkout,
+// so a caller never names a fabric side.
+// The weft is not read, since it is no merge participant.
+// An untracked weft file never enters the merge commit, so listing one would only halt a merge that was right.
+// Junctioned `_lym` and `.lym` are excluded through `.git/info/exclude`, so they never appear.
+// It returns an empty slice, never nil, when there are none.
 func (f *Fabric) MergeUntrackedFiles() ([]string, error) {
 	untracked, err := f.code.UntrackedFiles()
 	if err != nil {

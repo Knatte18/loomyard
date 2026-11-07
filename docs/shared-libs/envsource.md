@@ -11,7 +11,8 @@ All modules that need env data call `envsource.Build()`.
 
 ### `DotEnv(baseDir string) string`
 
-Returns `filepath.Join(baseDir, ".env")` — the path to the environment variable overrides file. `Build` calls this to locate the `.env` file it reads.
+Returns `filepath.Join(baseDir, ".env")` — the path to the environment variable overrides file.
+`Build` calls this to locate the `.env` file it reads.
 
 ### `Build(baseDir string) (map[string]string, error)`
 
@@ -49,8 +50,7 @@ lym board status          # uses /new/path from OS env, not .env
 
 **Eager evaluation:**
 
-The entire map is built once per `Build()` call and returned;
-there is no lazy evaluation or incremental updates.
+The entire map is built once per `Build()` call and returned, with no lazy evaluation or incremental updates.
 
 **Returns:** A map of environment variable names to values,
 or an error if the `.env` file cannot be read (other than ENOENT).
@@ -82,13 +82,11 @@ There is only one place to change or extend env-sourcing behavior (adding suppor
 
 **OS takes precedence:**
 
-The OS environment always wins over `.env`.
-This matches common dotenv library behavior and keeps the highest-priority override available to users via standard process env.
+This matches common dotenv library behavior and keeps the highest-priority override available through the standard process environment.
 
 **Predictable, eager:**
 
-The map is built completely upfront, not lazily.
-This makes the behavior predictable and testable: no surprises from side effects during env lookup later.
+Building the whole map upfront keeps the behavior predictable and testable: env lookup has no later side effects.
 
 **Decoupled from the engine:**
 

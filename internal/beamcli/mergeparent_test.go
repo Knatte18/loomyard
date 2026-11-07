@@ -1,4 +1,6 @@
-// mergeparent_test.go drives the merge-parent sequence over the land test's fake hub: the entries that are not a beam, a beam with no parent branch or an open merge task, and the darn task filed with its perch on under the first free slug.
+// mergeparent_test.go drives the merge-parent sequence over the fake hub of landWorld.
+// It covers the entries that are not a beam and a beam with no parent branch or an open merge task.
+// It also covers the darn task, filed with its perch on under the first free slug.
 
 package beamcli
 

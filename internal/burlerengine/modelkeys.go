@@ -1,4 +1,5 @@
-// modelkeys.go holds the per-round model-spec grammar a module's reviewer and fixer model keys share: the ModelSpecList value, its shape error and the validation of every entry.
+// modelkeys.go holds the model-spec grammar that a module's reviewer and fixer model keys share.
+// It covers the list type, its shape error, and the validation of its entries.
 
 package burlerengine
 
@@ -9,7 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ModelSpecList is a reviewer or fixer model key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
+// ModelSpecList is a reviewer or fixer model key's value.
+// It holds one model-spec for every round, or a list of model-specs, one per round.
+// The last entry serves every later round.
 // A YAML scalar loads as a list of one.
 type ModelSpecList []string
 
@@ -47,7 +50,8 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
-// Unset reports whether the list is empty or a single empty string, which a segment's own key reads as "take the shared fallback".
+// Unset reports whether the list is empty or a single empty string.
+// A segment's own key reads that value as "take the shared fallback".
 func (l ModelSpecList) Unset() bool {
 	return len(l) == 0 || (len(l) == 1 && l[0] == "")
 }

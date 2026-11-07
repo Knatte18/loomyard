@@ -1,4 +1,5 @@
-// anchortarget.go judges what a change of a worktree's anchor starts from: the requested directory against the warp checkout, and the weft's paths against a clean tree.
+// anchortarget.go judges what a change of a worktree's anchor starts from.
+// It checks the requested directory against the warp checkout and the weft's paths against a clean tree.
 // Each judgment refuses before anything is touched, and each refusal names its next step.
 
 package fabricengine
@@ -20,10 +21,13 @@ import (
 const warpCostNote = "a code commit on the checked-out warp branch, shared by every machine that checks it out"
 
 // validateAnchorTarget refuses a target anchor the pair's warp checkout cannot hold.
-// The target must pass lymcwd.ValidateAnchorRel and be a directory the warp checkout's HEAD tracks.
-// None of its segments may be a link or a name fabric reserves: a wired name in names, `.lym`, `.scratch` or a hub-reserved name.
+// The target must pass `lymcwd.ValidateAnchorRel` and be a directory the warp checkout's HEAD tracks.
+// None of its segments may be a link or a name fabric reserves:
+// a wired name in names, `.lym`, `.scratch` or a hub-reserved name.
 // It may hold no real wired name either, since a junction cannot be wired over one.
-// A directory HEAD lacks while the warp's fetched upstream tracks it names the update of the warp checkout, and one neither tracks names the commit that brings it in, each with its cost.
+// If HEAD lacks the directory, the refusal names the update of the warp checkout when the fetched upstream tracks it.
+// Otherwise the refusal names the commit that brings the directory in.
+// Each refusal states its cost.
 // It reads the warp checkout and changes nothing.
 func validateAnchorTarget(pair *lymcwd.Location, target string, names []string) error {
 	anchor, err := lymcwd.ValidateAnchorRel(target)
@@ -111,8 +115,8 @@ func anchorNamePathspecs(anchor string, names []string) []string {
 	return specs
 }
 
-// refuseUnsettledMoveSource refuses a weft whose wired names under anchor, or whose marker, hold a change that is not committed.
-// An untracked path under the wired names counts, the never-tracked `.lym` bar.
+// refuseUnsettledMoveSource refuses a weft with an uncommitted change under anchor's wired names or in its marker.
+// An untracked path under the wired names counts as a change; `.lym` is excluded because no commit holds it.
 // The refusal names the commit or the restore that clears the change.
 func refuseUnsettledMoveSource(weftPath, slug, anchor string, names []string) error {
 	specs := append(anchorNamePathspecs(anchor, names), lymcwd.AnchorFileName)

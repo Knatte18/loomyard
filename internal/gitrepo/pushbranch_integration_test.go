@@ -1,4 +1,5 @@
-// pushbranch_integration_test.go covers PushBranch and DropRemoteTracking against a real bare remote and clones, reusing push_test.go's fixtures.
+// pushbranch_integration_test.go covers PushBranch and DropRemoteTracking against a real bare remote and clones.
+// It reuses push_test.go's fixtures.
 
 package gitrepo_test
 

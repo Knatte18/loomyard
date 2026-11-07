@@ -1,8 +1,8 @@
 <!-- This is the declared-changes fragment of a PATTERN directive.
-     internal/pattern.Directive reads it through stencilstore.Read when the caller passes declared changes,
-     strips this banner and fills the file's one marker, the pattern_change_list marker, with the declared bullet lines joined by newlines.
+     internal/pattern.Directive reads it through stencilstore.Read when the caller passes declared changes.
+     It strips this banner and fills the pattern_change_list marker with the declared bullet lines joined by newlines.
      The result fills the optional pattern_changes marker of the role's directive stencil.
-     This file declares that one marker and no other, and the marker is required. -->
+     This file declares only that marker, and the marker is required. -->
 
 ### Declared PATTERN changes
 

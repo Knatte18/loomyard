@@ -1,10 +1,7 @@
-// configreg.go — module registry for configuration management.
-//
-// Provides a neutral registry of available config modules and their templates,
-// used by the config CLI command and callers such as fabric clone.
-// Its second role is marking which modules are hub-wide, so every caller branches on the registry rather than on a module name.
-// The registry also lists every registered engine's config module, reached through shuttleengines so configreg imports no concrete engine.
-// It declares the cross-module key-move table, which carries a key's value from one module's file to another's.
+// configreg.go declares the registry of config modules and their templates, which the config CLI and its callers read.
+// The config modules of the registered shuttle engines come from shuttleengines.ConfigModules.
+// It also marks which modules are hub-wide, so callers branch on the registry rather than on a module name,
+// and it declares the cross-module key-move table, which carries a key's value from one module's file to another's.
 
 package configreg
 
@@ -48,68 +45,70 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// Module represents a single config module with its name and template function.
+// Module describes one config module: its name, default template, and the hooks that migrate, check and load its file.
 type Module struct {
 	// Name is the module identifier (e.g., "board", "fabric").
 	Name string
-	// Template is a function that returns the default YAML template for this module.
+	// Template returns the module's default YAML template.
 	Template func() string
 	// OpenMaps names the template's keys whose entries belong to the repository, as dotted paths.
 	// configsync carries them whole through reconcile.
 	OpenMaps []string
-	// PerNameMaps names the template's keys whose entries are named by the operator, as dotted paths.
-	// configsync keeps only the names the file changed, leaves out a name holding the template's value, never copies a template name in, and keeps every entry the template lacks.
+	// PerNameMaps names the template's keys whose entries the operator names, as dotted paths.
+	// configsync keeps the names the file changed and every entry the template lacks, and never copies a template name in.
 	PerNameMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the operator (e.g. models.yaml aliases).
-	// configsync materializes a seed-only module's template when its file is absent, and never prunes a present file down to the template or strips it sparse.
-	// This is unlike the default reconcile behavior applied to every other module, whose seed in a hub is sparse.
-	// The board dir's reconcile runs the module's Migrate hook over a present file, then carries each template change into it against the template base kept beside it, keeping every value the operator set, then runs the Unsettled hook.
-	// A worktree's copy is never rewritten.
+	// configsync materializes a seed-only module's template when its file is absent,
+	// and it never prunes a present file down to the template or strips it sparse.
+	// The board dir's reconcile runs Migrate on a present file, then merges each template change into it against its base;
+	// it keeps every value the operator set, then runs Unsettled. A worktree's copy is never rewritten.
 	SeedOnly bool
 	// HubWide marks a module that describes a hub-level fact.
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
 	// and is never read or written in a worktree's _lym/config/.
 	HubWide bool
-	// SeedsFromPrime marks a hub-wide module whose per-worktree copy was in effect before it moved hub-wide.
-	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps; the seed is sparse.
+	// SeedsFromPrime marks a hub-wide module whose absent hub file is seeded from the prime's worktree copy.
+	// The seed is sparse.
 	SeedsFromPrime bool
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
-	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired, renames a retired name to its replacement, rewrites a key's retired meaning into its replacement, or raises a key to its module's floor.
+	// It returns the rewritten bytes and one line per rewrite, changing only retired keys and keys raised to a floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
-	// Unsettled, when non-nil, lists the pairs a seed-only module's present file holds for the operator to settle, after Migrate and the template merge.
-	// Reconcile reports them and never changes them, since only the operator can tell which one holds.
+	// Unsettled, when non-nil, lists the pairs a seed-only module's present file holds for the operator to settle.
+	// It runs after the migration; reconcile reports these pairs and changes none, since only the operator can settle them.
 	Unsettled func(existing []byte) ([]string, error)
-	// MigrateHubBase, when non-nil, runs only over the module's hub base file: after Migrate on a present file, and over the prime or legacy seed on an absent one.
-	// It adds what only that file may gain, returns the rewritten bytes and one human-readable line per addition, and, like Migrate, leaves the registry fingerprint unchanged.
+	// MigrateHubBase, when non-nil, runs only over the module's hub base file:
+	// over a present file after the module's own migration, and over the prime or legacy seed on an absent one.
+	// It adds what only that file may gain, returns one line per addition, and leaves the registry fingerprint unchanged.
 	MigrateHubBase func(existing []byte) ([]byte, []string, error)
 	// CheckValues, when non-nil, checks the values of a local-layer document after its keys pass configengine.ValidateLocal.
 	// It checks only the keys its module names, and returns an error marked configengine.ErrInvalid that names the key.
 	CheckValues func(document []byte) error
-	// CheckLoad runs the module's own loader over the layer stack under dirs and returns its error, discarding the loaded config.
-	// Every module sets it, so a write can be checked against exactly what a later reader refuses.
+	// CheckLoad runs the module's loader over the layer stack under dirs and returns its error, discarding the config.
+	// Every module sets it, so a write is checked against what a later reader refuses.
 	CheckLoad func(dirs configengine.Dirs) error
-	// CheckDirs, when non-nil, loads the module under dirs and refuses a command dir that is no existing directory in the worktree at worktreeRoot, whose anchored directory is anchorDir.
-	// A module whose keys declare commands sets it, so a hub-wide write refuses a dir that would fail every run in the prime.
+	// CheckDirs, when non-nil, loads the module under dirs and refuses a command dir the worktree at worktreeRoot lacks.
+	// A module with command keys sets it, so a hub-wide write refuses a dir that would fail every run in the prime.
 	CheckDirs func(dirs configengine.Dirs, worktreeRoot, anchorDir string) error
-	// Reinterpretations are the changes a binary made to what a value in the module's hub base file means, in the order they were made.
-	// A binary that changes such a meaning adds one, so the hub-wide reconcile carries every hub's file across the change before the binary runs a command from it.
+	// Reinterpretations lists the changes a binary made to what a value in the hub base file means, in order.
+	// A binary that changes a meaning adds one, so reconcile carries each hub's file across it before any command runs.
 	Reinterpretations []Reinterpretation
-	// Spec returns the module's own layered-load spec: its name, template, open maps, hub-wide flag and per-key classification.
+	// Spec returns the module's layered-load spec: its name, template, open maps, hub-wide flag and per-key classification.
 	Spec func() configengine.Spec
-	// LocalKeys are the keys of a hub-wide module a local override may set, derived from Spec.
+	// LocalKeys are the keys of a hub-wide module that a local override may set, read from the module's spec.
 	// It is nil for a per-worktree module.
 	LocalKeys []string
-	// LocalDenied are the dotted key paths of a per-worktree module a local override may not set, derived from Spec.
+	// LocalDenied are the dotted key paths a local override may not set in a per-worktree module.
 	// It is nil for a hub-wide module.
 	LocalDenied []string
 }
 
-// Reinterpretation is one change a binary made to what a value in a module's hub base file means, with the rewrite that keeps what the hub meant by the value.
+// Reinterpretation records one change a binary made to what a value in a module's hub base file means.
+// It carries the rewrite that keeps the meaning each hub gave the value.
 type Reinterpretation struct {
-	// ID names the change; the hub-wide reconcile writes a board marker carrying it once the change is applied, so it is applied once per hub.
+	// ID names the change; once applied, the hub-wide reconcile records it as a board marker, so each hub applies it once.
 	ID string
-	// Rewrite is told the hub base file's bytes and the prime's worktree root and anchored directory.
-	// It returns the bytes, rewritten only when a value changed, one line per value it rewrote and one line per value it could not settle, the latter naming its way forward.
+	// Rewrite receives the hub base file's bytes and the prime's worktree root and anchored directory.
+	// It returns the bytes, rewritten only if a value changed; one line per change or unsettled value, naming a way forward.
 	Rewrite func(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error)
 }
 
@@ -140,10 +139,8 @@ func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), modu
 	}
 }
 
-// Modules returns the ordered list of all available config modules, each with its name and template
-// function.
-// The order is ALPHABETICAL and every caller-visible surface (help text, errors, menu numbering)
-// renders it this way — a misordered entry is user-visible.
+// Modules returns every config module in alphabetical order, each with its name and template function.
+// Help text, errors and menu numbering follow this order, so a misordered entry is user-visible.
 // Keep new entries in sort order.
 func Modules() []Module {
 	modules := []Module{
@@ -220,13 +217,14 @@ func Names() []string {
 	return names
 }
 
-// Fingerprint returns a hex digest of the registry that changes whenever a registered module's name, flags, open maps, per-name maps, template text, or overlay selector or overlay document changes.
+// Fingerprint returns a hex digest of the registry.
+// It changes whenever a registered module's name, flags, open maps, per-name maps, template text, or overlay changes.
 // A change that only swaps a module's Migrate hook leaves it unchanged, since a function value has no stable bytes.
 func Fingerprint() string {
 	return fingerprintOf(Modules())
 }
 
-// fingerprintOf hashes a canonical, length-prefixed encoding of modules in their given order and returns the lowercase hex SHA-256.
+// fingerprintOf returns the lowercase hex SHA-256 of modules in their given order, with length-prefixed fields.
 func fingerprintOf(modules []Module) string {
 	hash := sha256.New()
 	writeField := func(field string) {

@@ -1,5 +1,7 @@
 // stencil_test.go is the black-box contract test for stencil.Fill, stencil.FillOptional and stencil.FillWith:
-// one table covers the happy path, the unfilled-top-level-marker guard (including sorting/dedup), the incremental branch-internal guard, conditional sections, the leading-comment strip, the no-HTML-escaping guarantee, and FillOptional's optional-marker exemption from both guards.
+// one table covers the happy path, the unfilled-top-level-marker guard, and the incremental branch-internal guard.
+// It also covers conditional sections, the leading-comment strip, and the no-HTML-escaping guarantee.
+// FillOptional's optional-marker exemption from both guards is covered too.
 
 package stencil_test
 
@@ -12,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fillCase is one row of TestFill: a template and values rendered through stencil.Fill, or through stencil.FillOptional when optional is non-nil.
+// fillCase is one row of TestFill.
+// It renders a template and values through stencil.Fill, or through stencil.FillOptional when optional is non-nil.
 type fillCase struct {
 	name     string
 	template string
@@ -50,8 +53,10 @@ func errText(err error) string {
 }
 
 // TestFill renders every row and asserts the exact output or the error shape.
-// Every row must leave the caller's values map untouched, and rendered a second time must give byte-identical output and error text.
-// A row without optional names is also rendered through FillOptional(template, values, nil), which must match Fill byte for byte.
+// Every row must leave the caller's values map untouched.
+// Rendering a row a second time must give byte-identical output and error text.
+// A row without optional names is also rendered through FillOptional(template, values, nil).
+// That output must match Fill byte for byte.
 func TestFill(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -204,7 +209,8 @@ func TestFill(t *testing.T) {
 			errContains: "Body",
 		},
 		{
-			// The discriminator is absent from values, so the static guard adds nothing and the execution-time missingkey=error path fires.
+			// The discriminator is absent from values, so the static guard adds nothing.
+			// The execution-time missingkey=error path fires instead.
 			name:     "branch_present_but_empty_unresolvable_condition_left_to_execution",
 			template: branchTemplate,
 			values:   map[string]string{"Body": ""},

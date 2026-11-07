@@ -1,4 +1,7 @@
-// resources.go implements the -resources mode: it runs one package at a time through `go test` inside a gate slot and measures what each costs in wall time, CPU, peak memory and processes, and which processes it leaves behind.
+// resources.go implements the -resources mode.
+// It runs one package at a time through `go test` inside a gate slot.
+// It measures the wall time, CPU, peak memory and processes each package costs,
+// and it lists the processes it leaves behind.
 
 package main
 
@@ -38,7 +41,8 @@ type resourceRow struct {
 	peakBytes int64
 	// rusage marks a row whose CPU and memory come from the child's rusage rather than a cgroup.
 	rusage bool
-	// procs is the system-wide process count started across the child; procsKnown is false when /proc/stat was unreadable.
+	// procs is the system-wide count of processes created while the child ran;
+	// procsKnown is false when /proc/stat was unreadable.
 	procs      int64
 	procsKnown bool
 	// leftovers lists every process still carrying the package's marker after the child exited, as "pid argv".
@@ -49,20 +53,22 @@ type resourceRow struct {
 	noTests bool
 }
 
-// cgroupPollInterval is how often a running scope's cgroup counters are sampled; the scope vanishes with its last process, so the last sample is the reading.
+// cgroupPollInterval is how often a running scope's cgroup counters are sampled;
+// the scope vanishes with its last process, so the last sample is the reading.
 const cgroupPollInterval = 50 * time.Millisecond
 
 // cgroupDiscoveryWait bounds how long a started child may take to move into its scope.
 const cgroupDiscoveryWait = 2 * time.Second
 
-// leftoverMarkerEnv names the environment variable measurePackageResources sets to a value unique to one package's run, so every descendant of the child carries it.
+// leftoverMarkerEnv names the environment variable that each package's run sets to a value unique to that run,
+// so every descendant of the child carries it.
 const leftoverMarkerEnv = "LYM_TESTTIMING_PACKAGE"
 
 // cgroupRoot is where the unified cgroup hierarchy is mounted.
 const cgroupRoot = "/sys/fs/cgroup"
 
-// runResources measures every package matching pkgFlag, one at a time, inside one gate slot, and prints the resource table.
-// It returns an error when a package failed.
+// runResources measures every package matching pkgFlag, one at a time, inside one gate slot.
+// It prints the resource table, and it returns an error when a package failed.
 func runResources(tags, pkgFlag string) error {
 	patterns := strings.Split(pkgFlag, ",")
 	goTags := goTestTags(tags)
@@ -114,10 +120,13 @@ func runResources(tags, pkgFlag string) error {
 	})
 }
 
-// withGateSlot runs mode inside one gate slot held under site for as long as mode runs, and releases it when mode returns.
-// mode gets the process environment as gateslot.HolderEnv sets it for the held slot, and the `-p` value to run under: the pool's tier0 parallel, or the CPU count where the hub declares no tier0.
-// Outside every hub no slot is held, mode gets the environment with `-trimpath` alone, and the `-p` value is the CPU count.
-// Every mode appends the environment to each go command it runs, so a gate run inside inherits the slot.
+// withGateSlot holds one gate slot under site while mode runs, and releases it when mode returns.
+// mode gets the process environment carrying the held slot, and the `-p` value to run under.
+// That value is the pool's tier0 parallel, or the CPU count where the hub declares no tier0.
+// Outside every hub, no slot is held, and mode gets the environment with `-trimpath` alone;
+// the `-p` value is the CPU count.
+// Every mode appends the environment to each go command it runs,
+// so a gate run inside inherits the slot.
 func withGateSlot(cwd, site string, mode func(env []string, parallel int) error) error {
 	lease, tier0Parallel, release, err := takeGateSlot(context.Background(), cwd, site)
 	if err != nil {
@@ -132,7 +141,8 @@ func withGateSlot(cwd, site string, mode func(env []string, parallel int) error)
 	return mode(gateslot.HolderEnv(os.Environ(), lease, tier0Parallel), parallel)
 }
 
-// takeGateSlot holds one slot of the hub's pool under site, without a wait record, and returns the lease, the pool's tier0 parallel and the release.
+// takeGateSlot holds one slot of the hub's pool under site, without a wait record.
+// It returns the lease, the pool's tier0 parallel, and the release.
 // Outside a hub it holds no slot and returns a nil lease, a tier0 parallel of 0 and a release that does nothing.
 func takeGateSlot(ctx context.Context, cwd, site string) (lease *gateslot.Lease, tier0Parallel int, release func(), err error) {
 	location, err := lymcwd.ResolveWorktree(cwd)
@@ -162,9 +172,11 @@ func takeGateSlot(ctx context.Context, cwd, site string) (lease *gateslot.Lease,
 	return lease, limits.Tier0Parallel, release, nil
 }
 
-// measurePackageResources runs `go test` over importPath with leftoverMarkerEnv set in the child's environment and returns what the run cost.
+// measurePackageResources runs `go test` over importPath with a marker variable set in the child's environment.
+// It returns what the run cost.
 // The child runs under the build tags it is handed, none when tags is empty.
-// CPU and peak memory come from the child's systemd scope cgroup when systemd-run is on PATH and the scope is readable, and from the child's rusage otherwise.
+// CPU and peak memory come from the child's systemd scope cgroup when systemd-run is on PATH and the scope is readable.
+// Otherwise they come from the child's rusage.
 func measurePackageResources(tags, importPath string, env []string, parallel int) (resourceRow, error) {
 	goArgs := []string{"test", "-json", "-count=1", "-p", strconv.Itoa(parallel)}
 	if tags != "" {
@@ -249,7 +261,8 @@ func measurePackageResources(tags, importPath string, env []string, parallel int
 	return row, nil
 }
 
-// rusageStats returns the CPU time of a finished process and its waited descendants, and the largest max RSS among them in bytes, zero where the platform does not report it.
+// rusageStats returns the CPU time of a finished process and its waited descendants.
+// It also returns the largest max RSS among them, in bytes, or zero where the platform does not report it.
 func rusageStats(state *os.ProcessState) (cpu time.Duration, maxRSS int64) {
 	return state.UserTime() + state.SystemTime(), maxRSSBytes(state)
 }
@@ -259,7 +272,8 @@ var (
 	systemdScopeResult bool
 )
 
-// systemdScopeUsable reports whether `systemd-run --user --scope` is on PATH and can start a command here, probed once per process.
+// systemdScopeUsable reports whether `systemd-run --user --scope` is on PATH and can start a command here.
+// The probe runs once per process.
 func systemdScopeUsable() bool {
 	systemdScopeOnce.Do(func() {
 		if _, err := exec.LookPath("systemd-run"); err != nil {
@@ -280,7 +294,8 @@ type scopeSampler struct {
 	sampled bool
 }
 
-// newScopeSampler starts sampling pid's scope when scoped is true; an unscoped sampler reports nothing sampled.
+// newScopeSampler starts sampling pid's scope when scoped is true;
+// an unscoped sampler reports nothing sampled.
 func newScopeSampler(pid int, scoped bool) *scopeSampler {
 	s := &scopeSampler{done: make(chan struct{})}
 	if !scoped {
@@ -314,7 +329,8 @@ func (s *scopeSampler) stop() (cpu time.Duration, peakBytes int64, sampled bool)
 	return s.cpu, s.peak, s.sampled
 }
 
-// discoverScopeDir waits for pid to move into its systemd scope and returns the scope's cgroup directory, or "" when it never does or done closes first.
+// discoverScopeDir waits for pid to move into its systemd scope and returns the scope's cgroup directory.
+// It returns "" when pid never moves in, or when done closes first.
 func discoverScopeDir(pid int, done <-chan struct{}) string {
 	deadline := time.Now().Add(cgroupDiscoveryWait)
 	for time.Now().Before(deadline) {
@@ -332,7 +348,8 @@ func discoverScopeDir(pid int, done <-chan struct{}) string {
 	return ""
 }
 
-// scopeCgroupPath returns the cgroup path of a /proc/<pid>/cgroup listing that names a transient `.scope` unit, or "" when none does.
+// scopeCgroupPath returns the cgroup path of a /proc/<pid>/cgroup listing that names a transient `.scope` unit.
+// It returns "" when no line names one.
 func scopeCgroupPath(listing string) string {
 	for _, line := range strings.Split(listing, "\n") {
 		_, path, found := strings.Cut(line, "::")

@@ -1,14 +1,15 @@
-// shuttle.go declares the seam a seat run starts and probes its seats' shuttle runs through, and RunnerShuttle, which adapts a shuttleengine.Runner to it.
+// shuttle.go declares the Shuttle seam that a seat run starts and probes its shuttle runs through.
+// RunnerShuttle adapts a shuttleengine.Runner to that seam.
 
 package seatengine
 
 import "github.com/Knatte18/loomyard/internal/shuttleengine"
 
 // Handle is one started seat.
-// The engine stops it through Stop, which records the stop, waits on it for the seat's terminal result, and sends the chair a line through Send while it waits.
+// The engine stops it through Stop, which records the stop and waits for the seat's terminal result.
+// While it waits, Stop sends the chair a line through Send.
 // StrandName is the name reed formed for the seat's strand.
 // SessionState is the seat's own session-state reading, read from files, so it is safe to call while Wait runs.
-// *shuttleengine.Run satisfies it.
 type Handle interface {
 	StrandGUID() string
 	StrandName() string
@@ -21,10 +22,11 @@ type Handle interface {
 
 var _ Handle = (*shuttleengine.Run)(nil)
 
-// Shuttle is the seam Engine starts and probes its seats through.
+// Shuttle is the seam through which the engine starts and probes seats.
 // StartGated returns only once the seat's provider is past its startup gates;
 // a provider that never came up is an error wrapping shuttleengine.ErrNotStarted, with a nil Handle.
-// ProbeGated returns a live run matching the spec's output files as an unwaited Handle and true, or a nil Handle and false when there is none.
+// ProbeGated returns an unwaited Handle and true for a live run matching the spec's output files.
+// It returns a nil Handle and false when there is none.
 type Shuttle interface {
 	StartGated(shuttleengine.Spec, shuttleengine.GateSpec) (Handle, error)
 	ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (Handle, bool, error)

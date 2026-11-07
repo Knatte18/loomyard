@@ -1,8 +1,6 @@
-// focus_test.go covers readRoundFocus against the focus file the Bouncer actually writes: the
-// YAML-frontmatter round-<N>-focus.md shape renderFocus produces and parseFocus accepts.
-// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething is the two-sided regression guard -- it
-// writes through the writer and reads through the reader, so a future divergence in filename, format,
-// or field set fails here instead of silently emptying the judge's targeting channel in production.
+// focus_test.go covers readRoundFocus against the focus file the Bouncer writes.
+// Its tests write through the writer and read through the reader.
+// A divergence in filename, format or field set fails here instead of emptying the judge's targeting channel.
 
 package shedadapters
 
@@ -13,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath, treating a nil slice and an empty slice as equal -- readRoundFocus's choice between the two in any given branch is an implementation detail, not part of its contract.
+// assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath.
+// A nil and an empty slice compare equal: readRoundFocus's choice between them is not part of its contract.
 func assertFocus(t *testing.T, got RoundFocus, wantExclude []string, wantDirective string) {
 	t.Helper()
 	if !stringSlicesEqual(got.ExcludeLenses, wantExclude) {
@@ -37,9 +36,8 @@ func stringSlicesEqual(got, want []string) bool {
 }
 
 // writeFocusFile renders f through the Bouncer's own writer into round's focus path and returns that
-// path. Every well-formed fixture in this package goes through the real writer rather than a
-// hand-built string, so a fixture can never assert a shape the writer does not actually produce --
-// which is exactly how the reader/writer divergence this pair once carried stayed invisible.
+// path. Every well-formed fixture in this package goes through the real writer rather than a hand-built string.
+// A fixture can therefore never assert a shape the writer does not produce.
 func writeFocusFile(t *testing.T, runDir string, round int, f focusFile) string {
 	t.Helper()
 	path := focusPath(runDir, round)
@@ -49,8 +47,8 @@ func writeFocusFile(t *testing.T, runDir string, round int, f focusFile) string 
 	return path
 }
 
-// writeFocusFileRaw writes content verbatim to round's focus path, for the malformed-input rows that
-// cannot go through the renderer.
+// writeFocusFileRaw writes content verbatim to round's focus path.
+// It serves the malformed-input rows, which cannot go through the renderer.
 func writeFocusFileRaw(t *testing.T, runDir string, round int, content string) string {
 	t.Helper()
 	path := focusPath(runDir, round)
@@ -60,14 +58,11 @@ func writeFocusFileRaw(t *testing.T, runDir string, round int, content string) s
 	return path
 }
 
-// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething drives the writer and the reader against one
-// another, the guard for the defect this pair once carried: the writer emitted
-// round-<N>-focus.md as YAML frontmatter while the reader opened round-<N>-focus.json and strictly
-// decoded JSON, so every production read found nothing and the judge's directive never reached the
-// fixer round.
-// It also pins that a CONVERGED judge's mandatory but empty focus file carries no directive path:
-// handing the next round a document that asserts nothing is noise, not targeting.
-// The round token names the round the directives are FOR, so reading another round must not find the file.
+// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething drives the writer and the reader against one another.
+// The directive path appears only when the file says something.
+// A CONVERGED judge's mandatory but empty focus file carries no directive path.
+// Handing the next round a document that asserts nothing is noise, not targeting.
+// The round in the file's name is the round the directives are for, so reading another round must not find the file.
 //
 //testtiming:keep pins the focus reader against the file the writer produces: the directive path only when the file says something, the exclude lenses, and the target round's filename
 func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) {
@@ -157,7 +152,8 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 
 	t.Run("UnreadableFile", func(t *testing.T) {
 		dir := t.TempDir()
-		// A directory at the focus file's own path produces a deterministic read failure -- file
+		// A directory at the focus file's own path produces a deterministic read failure;
+		// file
 		// permissions do not fail for a privileged test process.
 		if err := os.Mkdir(focusPath(dir, 1), 0o755); err != nil {
 			t.Fatalf("Mkdir: %v", err)
@@ -195,24 +191,20 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 	})
 }
 
-// TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename is LS-1's own regression test
-// (crucible round sonnet-xhigh-r8): a focus file whose own round: frontmatter field disagrees with
-// the round number its own filename already encodes must be treated as malformed, exactly like
-// every other shape this fail-safe reader already degrades to the zero directive over -- never
-// trusted as if it agreed with the round it was read for.
+// TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename checks the focus reader's round match.
+// A focus file whose round: frontmatter field disagrees with the round its filename encodes is malformed.
+// The reader degrades such a file to the zero directive; it never trusts that round.
 func TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
-	// Lands at round-3-focus.md (per focusPath(dir, 3)) but its own frontmatter claims round: 1 --
-	// the exact shape a judge writing {{.round}} where the stencil should have said {{.next_round}}
-	// produced before that stencil bug was fixed alongside this check.
+	// The file lands at round-3-focus.md, per focusPath(dir, 3), but its frontmatter claims round: 1.
 	path := writeFocusFile(t, dir, 3, focusFile{Round: 1, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}})
 
 	got := readRoundFocus("bouncer", dir, 3)
 	assertFocus(t, got, []string{}, "")
 
-	// Sanity: the file genuinely exists and genuinely parses on its own -- the empty result above is
-	// the round-mismatch check firing, not some other failure swallowing it silently.
+	// The fixture must exist and parse on its own.
+	// Then the empty result above can only come from the round check.
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("fixture file missing: %v", err)
 	}
@@ -221,8 +213,8 @@ func TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename(t *testing.T) {
 	}
 }
 
-// mustReadFile reads path or fails the test, for a fixture-sanity assertion that has no reason to
-// tolerate an I/O error of its own.
+// mustReadFile reads path or fails the test.
+// It serves fixture checks, which must not tolerate an I/O error.
 func mustReadFile(t *testing.T, path string) []byte {
 	t.Helper()
 	content, err := os.ReadFile(path)

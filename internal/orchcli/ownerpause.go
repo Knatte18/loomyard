@@ -1,4 +1,5 @@
-// ownerpause.go holds what the bring-up does about machine ownership: the process's owner pause seam, the claim of the hub's prime for this machine and the read of the facts its refusals judge.
+// ownerpause.go holds what the bring-up does about machine ownership:
+// the owner pause seam, the claim of the hub's prime for this machine, and the read of the facts its refusals judge.
 
 package orchcli
 
@@ -26,7 +27,8 @@ var (
 	ownerPause   func(location *lymcwd.Location, slug string) error
 )
 
-// InstallOwnerPause stores the process's pause of a run owned by another machine, which a bring-up calls for each such entry of its reconcile.
+// InstallOwnerPause stores the process's pause of a run owned by another machine.
+// A bring-up calls it for each such entry of its reconcile.
 // The root pre-run installs it, since the pause lives in a package that imports this one.
 func InstallOwnerPause(pause func(location *lymcwd.Location, slug string) error) {
 	ownerPauseMu.Lock()
@@ -34,16 +36,19 @@ func InstallOwnerPause(pause func(location *lymcwd.Location, slug string) error)
 	ownerPause = pause
 }
 
-// installedOwnerPause returns the pause InstallOwnerPause stored, nil when none was.
+// installedOwnerPause returns the process's installed owner pause, or nil when none is installed.
 func installedOwnerPause() func(location *lymcwd.Location, slug string) error {
 	ownerPauseMu.Lock()
 	defer ownerPauseMu.Unlock()
 	return ownerPause
 }
 
-// readBeamFacts reads what the bring-up's refusals judge for the worktree at location, from the local Bolt and the move records.
-// The owner of a beam is the one hubgeom.ParentOf's chain gives its entry, read from the prime the beam belongs to, and the prime's owner is the board's prime owner.
-// A standing anchor change reads as the dobby start reads it, on the worktree or on the prime, and only a beam's entry is held by a run.
+// readBeamFacts reads the facts the bring-up's refusals judge for the worktree at location.
+// It reads them from the local Bolt and the move records.
+// The owner of a beam is the effective owner of its slug, resolved up the parent chain of its prime.
+// The prime's owner is the board's prime owner.
+// A standing anchor change is read from the prime's move in progress for the worktree's name.
+// Only a beam's entry is held by a run.
 func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
@@ -98,7 +103,8 @@ func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 	return facts, nil
 }
 
-// readOwnRunStatus reads the status of the pair's own run, the one its worktree's slug names, found false when the pair has none.
+// readOwnRunStatus reads the status of the pair's own run, the one its worktree's slug names.
+// found is false when the pair has no such run.
 func readOwnRunStatus(location *lymcwd.Location) (shedengine.Status, bool, error) {
 	statusPath := shedrun.StatusFile(location, shedrun.SelfRunID)
 	if _, err := os.Stat(statusPath); errors.Is(err, fs.ErrNotExist) {
@@ -111,8 +117,11 @@ func readOwnRunStatus(location *lymcwd.Location) (shedengine.Status, bool, error
 	return state.ReadJSON[shedengine.Status](statusPath, lockPath)
 }
 
-// claimPrimeFor records this machine as the owner of the hub's prime, writing only when the hub's board records no prime owner.
-// claimed is this machine's name after a claim that stands, lostTo the other machine's name when a competing claim won, and both are empty when the board already records a prime owner.
+// claimPrimeFor records this machine as the owner of the hub's prime.
+// It writes only when the hub's board records no prime owner.
+// claimed is this machine's name after a claim that stands;
+// lostTo is the other machine's name when a competing claim won.
+// Both are empty when the board already records a prime owner.
 func claimPrimeFor(location *lymcwd.Location) (claimed, lostTo string, err error) {
 	boardDir := fabricengine.BoardDir(location.HubPath)
 	owners, err := boardengine.ReadOwners(boardDir)

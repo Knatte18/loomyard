@@ -1,4 +1,5 @@
-// check_test.go covers Check: a valid proposal passes with no finding, and each row breaks one rule of the spec and asserts exactly the findings it brings.
+// check_test.go covers Check: a valid proposal passes with no finding.
+// Each row breaks one rule of the spec and asserts exactly the findings it brings.
 
 package raddleparser
 
@@ -120,7 +121,7 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-// dependOnGoneEntry makes the second part depend on an entry the proposal weighed that is no longer on the board.
+// dependOnGoneEntry makes the second part depend on an entry the proposal weighed that is not on the board.
 func dependOnGoneEntry(p *Proposal) {
 	p.BoardChecked = append(p.BoardChecked, BoardCheck{Slug: "landed-thing", Revised: "2026-11-01T08:00:00Z"})
 	p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "landed-thing")

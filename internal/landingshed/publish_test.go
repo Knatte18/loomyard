@@ -1,4 +1,5 @@
-// publish_test.go holds the in-package fixtures the Merge-In and Finalize tests share: the recording resolver, the one Deps builder, the summary writer and the transport push error.
+// publish_test.go holds the in-package fixtures the Merge-In and Finalize tests share:
+// the recording resolver, the one Deps builder, the summary writer and the transport push error.
 
 package landingshed
 
@@ -16,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// recordingResolver is the in-package fake standing in for the unexported resolver seam: it records
-// whether Resolve was called and what source it was called with, and returns a scripted result/err.
+// recordingResolver is a fake resolver that records whether Resolve was called, and the source and tip it got.
+// It returns a scripted result and err.
 type recordingResolver struct {
 	called    bool
 	gotSource string
@@ -33,9 +34,13 @@ func (r *recordingResolver) Resolve(ctx context.Context, source, tip string) (me
 	return r.result, r.err
 }
 
-// newTestDeps is the package's one Deps builder, for Merge-In and Finalize tests alike: a base-branch list requiring a pull request, a well-formed final-summary artifact already written at DescriptionPath (Finalize's top-of-Call parse requires one), and a scratch dir under t.TempDir().
-// Its parent lock seams are a temporary store and tip reads that equal a written merge record, so the lock-taking rows find the parent unmoved.
-// A test needing a different variant mutates the returned value.
+// newTestDeps is the one Deps builder that the Merge-In and Finalize tests share.
+// It lists a base branch that requires a pull request,
+// and it writes a well-formed final-summary artifact at DescriptionPath, which Finalize parses on entry.
+// Its ScratchDir lies under t.TempDir().
+// Its parent lock seams are a temporary store and tip reads that match a written merge record,
+// so the lock-taking rows find the parent unmoved.
+// A test that needs a different variant mutates the returned value.
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
 	summaryPath := summaryparser.Path(t.TempDir())
@@ -79,7 +84,7 @@ func newTestDeps(t *testing.T) Deps {
 	}
 }
 
-// testParentTip is the parent tip newTestDeps's merge record names and its tip reads report.
+// testParentTip is the parent branch tip that the test Deps' merge record names and its tip reads report.
 const testParentTip = "parent-tip"
 
 // writeSummary writes a well-formed summary artifact at path.
@@ -90,7 +95,8 @@ func writeSummary(t *testing.T, path, title, body string) {
 	}
 }
 
-// transportPushErr is the error a push returns when the remote is unreachable: a *gitexec.GitError whose stderr shedtransient classifies as git-transport.
+// transportPushErr is the error a push returns when the remote is unreachable:
+// a *gitexec.GitError whose stderr shedtransient classifies as git-transport.
 func transportPushErr() error {
 	return fmt.Errorf("gitrepo: git push: %w", &gitexec.GitError{
 		Args:     []string{"-c", "push.autoSetupRemote=true", "push"},

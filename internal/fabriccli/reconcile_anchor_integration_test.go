@@ -15,8 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_ReconcileFromAPairAtAnotherAnchor asserts a reconcile run from a pair at another anchor reseeds a missing hub-wide file from the prime's own base directory.
-// The prime sits at "." and holds a non-template unit of the board module; a read at <prime>/sub finds nothing and would seed the template only.
+// TestRunCLI_ReconcileFromAPairAtAnotherAnchor asserts a reconcile from another anchor reseeds a missing hub-wide file.
+// It reads the file from the prime's own base directory.
+// The prime sits at "." and holds a non-template unit of the board module;
+// a read at <prime>/sub finds nothing and would seed the template only.
 func TestRunCLI_ReconcileFromAPairAtAnotherAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

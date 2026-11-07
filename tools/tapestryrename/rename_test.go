@@ -66,7 +66,8 @@ func TestSubstitute(t *testing.T) {
 }
 
 // TestRenameTree runs the moves and substitutions over a small tree:
-// a listed file moves, a file outside the excluded paths is rewritten, a Go file is formatted after its rename, an excluded one is left, and a second run changes nothing.
+// a listed file moves, a file outside the excluded paths is rewritten, and a Go file is formatted after its rename.
+// An excluded one is left, and a second run changes nothing.
 func TestRenameTree(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

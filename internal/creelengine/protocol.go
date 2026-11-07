@@ -1,4 +1,5 @@
-// protocol.go declares the JSON-lines protocol between a client and the daemon: the verbs, the Request and Response of one connection, and the line framing.
+// protocol.go declares the JSON-lines protocol between a client and the daemon.
+// It holds the verbs, the Request and Response of one connection, and the line framing.
 
 package creelengine
 
@@ -13,7 +14,7 @@ import (
 // The verbs a Request names.
 const (
 	VerbPost = "post"
-	// VerbWaitReply waits again, on a fresh connection, for the reply to a message the client posted.
+	// VerbWaitReply opens a fresh connection that waits for the reply to a message the client posted.
 	VerbWaitReply = "wait-reply"
 	VerbReply     = "reply"
 	VerbRead      = "read"
@@ -21,24 +22,24 @@ const (
 	VerbForward   = "forward"
 	VerbLog       = "log"
 	VerbInject    = "inject"
-	// VerbWaitInject waits again, on a fresh connection, for the outcome of an inject the client queued.
+	// VerbWaitInject opens a fresh connection that waits for the outcome of an inject the client queued.
 	VerbWaitInject = "wait-inject"
 	VerbInterrupt  = "interrupt"
 	VerbHold       = "hold"
 	VerbRelease    = "release"
 	// VerbWithdraw removes a program's own queued injects and unread mail to one receiver; only the Go client sends it.
 	VerbWithdraw = "withdraw"
-	// VerbClaim hands a strand's tool-boundary hook its unread mail, acknowledged on the same connection as a read is.
+	// VerbClaim hands a strand's tool-boundary hook its unread mail, which the client acknowledges on the same connection.
 	VerbClaim = "claim"
-	// VerbHookWait holds a strand's idle waiter: it is answered with a ring when the daemon wakes the idle strand, and with a supersede when a newer waiter of the same strand replaces it.
-	// A ring to a waiter whose request set takes_mail carries the claimed messages and asks their acknowledgement on the same connection, as a read and a claim do.
+	// VerbHookWait holds a strand's idle waiter until the daemon rings it or a newer waiter supersedes it.
+	// A ring to a waiter whose request set takes_mail carries the claimed messages, which the client acknowledges.
 	VerbHookWait = "hook-wait"
 )
 
-// CodeStrandClaimOutsidePane is the Response.Code of the refusal of a strand claim that names a listed strand from a process in no strand pane.
+// CodeStrandClaimOutsidePane is the Response.Code of a refused strand claim for a listed strand, from no strand pane.
 const CodeStrandClaimOutsidePane = "strand-claim-outside-pane"
 
-// CodeProgramClaimInStrandPane is the Response.Code of the refusal of a program claim from the pane of a strand that is no orch's.
+// CodeProgramClaimInStrandPane is the Response.Code of a program claim refused from a non-orch strand's pane.
 const CodeProgramClaimInStrandPane = "program-claim-in-strand-pane"
 
 // maxRequestBytes bounds one request line: a 64 KiB body whose every byte is escaped fits.
@@ -56,11 +57,11 @@ type Request struct {
 	// Command and Argument make inject a command inject; Text is then empty.
 	Command  CommandName `json:"command,omitempty"`
 	Argument string      `json:"argument,omitempty"`
-	// ID is the message or inject a verb concerns: the message to reply to or forward, the id a wait resumes, the id filter of log.
+	// ID is the message or inject a verb concerns: a reply or forward target, a wait's id, or the log id filter.
 	ID int64 `json:"id,omitempty"`
 	// From is the sender filter of read and log.
 	From string `json:"from,omitempty"`
-	// Wait makes post wait for its reply, inject wait for its outcome, read wait for unread mail, and hook-wait wait for a ring.
+	// Wait makes the verb wait: post for its reply, inject for its outcome, read for unread mail, hook-wait for a ring.
 	Wait bool `json:"wait,omitempty"`
 	// Interrupt makes inject and post interrupt the receiver's running turn first.
 	Interrupt bool `json:"interrupt,omitempty"`
@@ -76,8 +77,8 @@ type Request struct {
 	Stop bool `json:"stop,omitempty"`
 	// StopHookActive is the Stop hook input's stop_hook_active, read by the claim verb alone.
 	StopHookActive bool `json:"stop_hook_active,omitempty"`
-	// TakesMail marks a hook-wait request's waiter as taking mail: its ring carries the claimed messages, which the client acknowledges.
-	// A daemon that predates it ignores the key and rings with no mail.
+	// TakesMail marks a hook-wait request's waiter as taking mail: its ring carries the claimed messages.
+	// The client acknowledges them; a daemon that predates the key ignores it and rings with no mail.
 	TakesMail bool `json:"takes_mail,omitempty"`
 	// Mail is the message a deliver offers and the tuple a confirm asks about; no other verb reads it.
 	Mail *HubMail `json:"mail,omitempty"`
@@ -93,7 +94,7 @@ type Response struct {
 	HubPath string `json:"hub_path"`
 	// Pending marks the interim response of a waiting verb: the request is accepted and the outcome follows.
 	Pending bool `json:"pending,omitempty"`
-	// Progress marks an interim response of a waiting inject: ID is the inject and Stall the stall its receiver's delivery waits on, read at StallAt.
+	// Progress marks an interim inject response; Stall is the stall its receiver's delivery waits on, read at StallAt.
 	Progress bool `json:"progress,omitempty"`
 	// Stall and StallAt also ride the expired answer of an inject, as the stall that stood when its TTL ran out.
 	Stall   Stall     `json:"stall,omitempty"`
@@ -102,9 +103,9 @@ type Response struct {
 	Sender string `json:"sender,omitempty"`
 	// ID is the id of the message or inject the verb created or waits on.
 	ID int64 `json:"id,omitempty"`
-	// Messages are the messages a read or a claim hands out, and a ring to a marked hook waiter carries; AckRequired says the client must ack them on the same connection.
+	// Messages are what a read, a claim or a marked hook ring hands out; AckRequired asks the client to ack them.
 	Messages []Message `json:"messages,omitempty"`
-	// Echo are the lines of ring mail a claim hands out ahead of its messages, shown to the operator alone; AckRequired covers them too.
+	// Echo holds ring-mail lines a claim shows the operator before its messages; AckRequired covers them too.
 	Echo        []string     `json:"echo,omitempty"`
 	AckRequired bool         `json:"ack_required,omitempty"`
 	Inbox       *InboxResult `json:"inbox,omitempty"`
@@ -120,14 +121,14 @@ type Response struct {
 	Released bool        `json:"released,omitempty"`
 	// Withdrawn is what a withdraw removed.
 	Withdrawn *WithdrawResult `json:"withdrawn,omitempty"`
-	// Delivery is a deliver's answer, accepted or refused, with the reason of a refusal in Reason and the receiver's id of an accepted message in ID.
+	// Delivery is a deliver's answer, accepted or refused; Reason is the refusal's cause, ID the receiver's id.
 	Delivery string `json:"delivery,omitempty"`
 	Reason   string `json:"reason,omitempty"`
 	// Confirmed is a confirm's answer, yes or no.
 	Confirmed string `json:"confirmed,omitempty"`
 }
 
-// ackLine is the client's acknowledgement that it wrote the messages of a read.
+// ackLine is the client's acknowledgement that it wrote the messages a read, a claim or a marked hook ring handed out.
 type ackLine struct {
 	Ack bool `json:"ack"`
 }

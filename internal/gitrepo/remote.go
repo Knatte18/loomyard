@@ -1,5 +1,4 @@
-// remote.go implements RemoteURL, a go-git-backed local config read of a named remote's configured
-// URL.
+// remote.go implements RemoteURL, a go-git-backed local config read of a named remote's configured URL.
 
 package gitrepo
 
@@ -14,9 +13,9 @@ import (
 // configured URL list is empty.
 var errRemoteHasNoURLs = errors.New("remote has no configured URL")
 
-// RemoteURL returns the configured URL of the remote named name, read via go-git's local config
-// rather than a git subprocess -- it resolves state already on disk and spawns no process, so it
-// stays outside PATTERN-gitrepo-client-boundary's pinned run/runChecked method list.
+// RemoteURL returns the configured URL of the remote named name, read via go-git's local config.
+// It resolves state already on disk and spawns no git process,
+// so it is not among the methods that `PATTERN-gitrepo-client-boundary` pins to run or runChecked.
 // A remote that exists but carries no configured URL is an error, never an index panic.
 func (r *Repo) RemoteURL(name string) (string, error) {
 	return readGoGit(r, func(repo *git.Repository) (string, error) {

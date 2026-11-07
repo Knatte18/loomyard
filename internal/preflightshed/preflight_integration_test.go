@@ -1,12 +1,10 @@
-// preflight_integration_test.go covers preflightshed.NewPreflight's wrapper against a hubforge
-// fixture hub. It is in-package because nothing in hubforge's dependency set reaches this new leaf
-// (go list -deps ./internal/hubforge contains internal/preflight but not internal/preflightshed),
-// unlike internal/loomshed's own former copy of this file, which stayed external because
-// internal/loomshed imports internal/loomengine, itself inside hubforge's dependency set.
+// preflight_integration_test.go tests preflightshed.NewPreflight's outcome mapping against a hubforge fixture hub.
+// It is in-package because nothing in hubforge's dependency set reaches this package:
+// go list -deps ./internal/hubforge lists internal/preflight but not internal/preflightshed.
 //
-// This file stays to the wrapper's outcome mapping and nothing more: preflight.Check's own checks
-// are already covered exhaustively by internal/preflight's own integration suite, and duplicating
-// them here would couple this package's tests to another package's check set.
+// This file tests only the outcome mapping.
+// The checks that preflight.Check runs are covered by internal/preflight's own integration suite.
+// Duplicating them here would couple this package's tests to another package's check set.
 
 package preflightshed
 
@@ -33,46 +31,48 @@ import (
 )
 
 // setupPreflightWrapperFixture builds a fully-configured real hub with fabric and junction setup.
-// Post-split, row 1's own test fixture never reads loom's status.json, so there is nothing to seed
-// here -- unlike internal/loomshed's former copy of this fixture, which seeded a status.json through
-// loomshed.Seed.
+// It seeds no loom status.json, since the tests in this file never read one.
 func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	slug := filepath.Base(h.Location.WorktreePath())
 
-	// fabricengine.ConfigTemplate() is already reconciled by fabriccli.CloneAndWire when NewHub
-	// built h; the repo-wide fabric.yaml override below is the genuine change, mirroring
-	// internal/preflight's own setupFixture.
+	// fabricengine.ConfigTemplate() is already reconciled by fabriccli.CloneAndWire when NewHub built h;
+	// the repo-wide fabric.yaml override below is the change this fixture makes.
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
 	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	// The wired junctions materialize through the _lym junction into the paired-sibling worktree's
-	// own git repo, where they start out untracked. Commit them so a freshly-built fixture is
-	// genuinely clean on both sides -- fabricengine.WireJunctions leaves untracked entries behind
-	// that the cleanliness check would otherwise report, mirroring internal/preflight's own
-	// setupFixture, which performs this same add-and-commit with no seed step at all.
-	// The commit is --allow-empty because after the clone-commit change the records prime already
-	// arrives clean, .lym is excluded through the records repo's .git/info/exclude, and the _extra
-	// junction target materializes as an empty directory git does not track -- so this pair becomes
-	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
-	// drop the guarantee if a future fixture change reintroduces untracked records content.
+	// The wired junctions materialize through the _lym junction into the paired-sibling worktree's own git repo.
+	// fabricengine.WireJunctions leaves them untracked, and the cleanliness check would otherwise report them.
+	// The fixture commits them, so a freshly-built fixture is clean on both sides.
+	// The commit is --allow-empty: the records prime arrives clean.
+	// .lym is excluded through the records repo's .git/info/exclude.
+	// The _extra junction target materializes as an empty directory that git does not track.
+	// The pair is then a no-op, and it must be kept.
+	// Deleting it would silently drop a guarantee:
+	// the fixture stays clean if a future change reintroduces untracked records content.
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "--allow-empty", "-m", "seed junctions")
 
 	return h
 }
 
-// TestPreflight_Scenario is a scenario over one fixture hub, run as named steps in one order:
-// preconditions that all pass yield shedengine.Done, a call on an already-cancelled context returns an error with no verdict, and a deliberately broken precondition -- an untracked file left in the prime worktree, failing the worktree cleanliness check -- yields shedengine.Stuck with its way forward, after which clearing the dirt lets the same row proceed.
+// TestPreflight_Scenario runs one fixture hub through named steps in a fixed order.
+// Preconditions that all pass yield shedengine.Done.
+// A call on an already-cancelled context returns an error with no verdict.
+// An untracked file in the prime worktree fails the cleanliness check and yields shedengine.Stuck with its way forward.
+// Clearing the dirt lets the same row proceed.
 // The steps share one hub, so the test is parallel as a whole and no step is.
 // The last step relies on being last: it dirties the worktree the earlier steps need clean.
 //
-// The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lymcwd.Resolve's git spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it returns -- the producer holds no injectable seam between entryErr and the Check call that would let it run without a real fixture.
+// The cancelled step is Tier 2: preflight.Check reaches lymcwd.Resolve's git spawn unconditionally,
+// so every path that calls Check is Tier 2 whatever it returns.
+// The producer has no injectable seam between entryErr and the Check call.
+// The step cannot run without a real fixture.
 func TestPreflight_Scenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -119,7 +119,6 @@ func TestPreflight_Scenario(t *testing.T) {
 			t.Errorf("Call() Reason = %q; want the worktree-clean way forward", ptr.Reason)
 		}
 
-		// Taking the way forward (clearing the dirt) lets the same row proceed.
 		if err := os.Remove(untracked); err != nil {
 			t.Fatalf("remove untracked file: %v", err)
 		}
@@ -135,7 +134,8 @@ func hubStampPath(h *hubforge.Hub) string {
 	return hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
 }
 
-// commitRetiredBatcherKey commits a batcher.yaml carrying the retired master_base key into the records worktree at recordsRoot.
+// commitRetiredBatcherKey commits a batcher.yaml carrying the retired master_base key.
+// The commit goes into the records worktree at recordsRoot.
 func commitRetiredBatcherKey(t *testing.T, recordsRoot string) {
 	t.Helper()
 
@@ -144,7 +144,9 @@ func commitRetiredBatcherKey(t *testing.T, recordsRoot string) {
 	gitkit.CommitFile(t, recordsRoot, configengine.ConfigFileRel("batcher"), content, "fixture: retired key")
 }
 
-// TestPreflight_StaleStampReconcilesBeforeTheCleanCheck verifies a stale hub's committed retired key is removed and committed ahead of the worktree-clean check, so the row still ends Done and the stamp is written.
+// TestPreflight_StaleStampReconcilesBeforeTheCleanCheck verifies the reconcile step runs first.
+// A stale hub's committed retired key is removed and committed before the clean check.
+// The row still ends Done and the stamp is written.
 func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -165,7 +167,9 @@ func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 	}
 }
 
-// TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck verifies an unparseable config in another pair, and a held hub lock, each let the row reach the check and settle Done on an otherwise clean hub, and leave no stamp.
+// TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck verifies a reconcile failure warns and does not stop the row.
+// An unparseable config in another pair, or a held hub lock, lets the row reach the check.
+// The row settles Done on an otherwise clean hub and writes no stamp.
 func TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

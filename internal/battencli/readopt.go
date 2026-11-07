@@ -1,4 +1,6 @@
-// readopt.go holds a batten resume's re-adoption of a live pair whose task worktree is gone: the seams it reaches git and origin through, and the pre-run step that judges origin, re-makes the pair and resumes.
+// readopt.go holds the re-adoption of a live pair whose task worktree is gone, during a batten resume.
+// It holds the seams that re-adoption reaches git and origin through.
+// It also holds the pre-run step that judges origin, re-makes the pair and resumes.
 
 package battencli
 
@@ -30,11 +32,12 @@ type readoptSeams struct {
 	SpawnPush func(slug string) error
 	// Notice posts line to the run's parent; nil posts nothing.
 	Notice func(slug, line string) error
-	// CommitFailed commits batten's status file after the failed stop of the row producer and spawns its push; nil commits nothing.
+	// CommitFailed commits batten's status file after the failed stop of the row producer and spawns its push.
+	// A nil CommitFailed commits nothing.
 	CommitFailed func(slug, producer string) error
 	// RecordsRoot returns the root of the records repository, which a way forward names.
 	RecordsRoot func() (string, error)
-	// Tags lists the archive and set-aside tags that keep slug's records, each with the files readoptRecordRels names.
+	// Tags lists the archive and set-aside tags that keep slug's records, each with the record files it keeps.
 	Tags func(slug string) ([]fabricengine.RecordsTag, error)
 	// BranchFile reads one anchored file of a records branch.
 	BranchFile func(branch, anchoredRel string) ([]byte, bool, error)
@@ -46,7 +49,8 @@ type readoptSeams struct {
 	TaskBranchGone func(slug string) (bool, error)
 }
 
-// hubTaskBranch returns slug's task branch name, read from what is left of its pair, or from origin when nothing is, under the hub's fabric config, with that config.
+// hubTaskBranch returns slug's task branch name and the hub's fabric config it was read under.
+// The name comes from what is left of the pair, or from origin when nothing is.
 func hubTaskBranch(location *lymcwd.Location, slug string) (string, fabricengine.Config, error) {
 	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
@@ -124,7 +128,8 @@ func hubReadoptSeams(location *lymcwd.Location) readoptSeams {
 	}
 }
 
-// reconcileGoneRun runs the run-scope origin reconcile of slug from the prime, judging a run whose pair worktree is absent.
+// reconcileGoneRun runs the run-scope origin reconcile of slug from the prime.
+// It judges a run whose pair worktree is absent.
 // The run scope tears no pair down and moves no ref of the absent pair.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
@@ -140,10 +145,13 @@ func reconcileGoneRun(location *lymcwd.Location, slug string) (fabricengine.Orig
 	return report, err
 }
 
-// readoptGonePair resumes a run whose task worktree is gone: it judges origin, prunes the stale registrations, re-makes the pair over its live branches, spawns the pair's push, and then runs the resume reconcile over the re-made pair.
-// An origin that ended, stopped or gave the run to another machine refuses, as any resume does, before the pair is touched.
+// readoptGonePair resumes a run whose task worktree is gone.
+// An origin that ended, stopped or gave the run to another machine is refused as in any resume.
+// That refusal comes before the pair is touched.
 // An unreachable origin refuses without writing the origin-owed marker, since a pair is never re-made unjudged.
-// A pair that can never be re-made, one of readoptPermanent's answers, fails the run once with a way forward by row.
+// Past those checks, it prunes the stale registrations and re-makes the pair over its live branches.
+// It then spawns the pair's push and runs the resume reconcile over the re-made pair.
+// A pair that can never be re-made fails the run once, with a way forward by row.
 // Any other failure refuses the pass and leaves the status as it is.
 func (c *battenCLI) readoptGonePair() error {
 	rerun := fmt.Sprintf("re-run lym batten run %s", c.slug)

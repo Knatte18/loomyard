@@ -1,11 +1,7 @@
-// config.go — configuration for the fabric module.
-//
-// Defines the Config type carrying the warp branch prefix (BranchPrefix), the weft-sync pathspec
-// (Pathspec) and the warp exclude list (WarpExclude) in one fabric.yaml file, unified from fabric's two predecessor config schemas into one
-// file, plus LoadConfig.
-// LoadConfig uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve
-// the fabric config file;
-// the fabric module never reads config files or knows their layout itself.
+// config.go holds fabric's configuration: the Config type, its layered-load spec and LoadConfig.
+// Config carries the warp branch prefix, the weft-sync pathspec and the warp exclude list, all in fabric.yaml.
+// LoadConfig resolves the fabric config file strictly through internal/configengine.Load and ConfigTemplate().
+// The fabric module never reads config files or knows their layout itself.
 
 package fabricengine
 
@@ -17,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the fabric configuration: warp branch prefix, weft-sync pathspec and the warp exclude list.
+// Config holds the settings every pair shares: the warp branch prefix, the weft-sync pathspec and the warp exclude list.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
 	Pathspec     string `yaml:"pathspec"`
@@ -29,14 +25,15 @@ func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
 
-// WarpExcludePaths returns the warp exclude list as a slice of paths relative to a warp worktree's anchor, split on whitespace.
+// WarpExcludePaths returns the warp exclude list as paths relative to a warp worktree's anchor, split on whitespace.
 // They are excluded through the warp repository's info/exclude and are never wired as junctions.
 func (c Config) WarpExcludePaths() []string {
 	return strings.Fields(c.WarpExclude)
 }
 
 // ConfigSpec returns fabric's layered-load spec.
-// Each key shapes a pair at creation, or reaches every worktree of the repository through the repository-wide exclude file, and is the one repo-wide fact every pair converges to, so none may be set in the local layer.
+// Each key either shapes a pair at creation or reaches every worktree through the repository-wide exclude file.
+// Every pair converges to the same value for each key, so none may be set in the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "fabric",
@@ -50,8 +47,8 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// LoadConfig loads and unmarshals fabric configuration strictly through the hub-wide layer stack under dirs, returning an error if not
-// initialized (no _lym/ directory).
+// LoadConfig loads and unmarshals fabric configuration strictly through the hub-wide layer stack under dirs.
+// It returns an error if the hub is not initialized, that is, if there is no _lym/ directory.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {

@@ -1,27 +1,22 @@
-// smoke_attachprobe_test.go is the live-substrate regression guard for the two ways a producer's
-// attach probe has failed a crashed run for real.
+// smoke_attachprobe_test.go is the live-substrate regression guard for a producer's attach probe.
+// It covers two ways a driver crash has failed a run.
+// In the first, the crash left the round's agent alive, and the next producer Call started a second agent over it;
+// two sessions wrote the same files and, on a fix-scope source row, committed to the same branch.
+// In the second, the crash came after the agent finished, with reed's strand table already gone,
+// and the probe refused to attach: the whole Shed step failed over a completed LLM turn instead of harvesting it.
+// The first is about not starting a second agent; the second is about not discarding that agent's result.
+// Both are answered by the same probe, which is why both are tested here.
 //
-// The duplicate-agent defect a crucible round reproduced twice: a driver crash inside a review
-// segment left the round's agent alive, and the next producer Call spawned a second one over it --
-// two sessions writing the same review and fixer-report files, and on a fix-scope: source row, two
-// sessions committing to the same branch.
+// It drives the real substrate: a hub, a reed session, a tmux pane and a shuttleengine.Runner writing run.json.
+// It spawns no provider subprocesses.
+// The one substitution is shuttleengine's provider seam:
+// a stub Engine whose Prepare returns a plain shell command instead of a provider launch line.
+// The probe matches on a persisted run.json's OutputFiles set and reed's liveness answer for its strand.
+// Both are produced the same whatever the pane runs,
+// so a shell pane exercises the probe end to end at no token cost.
 //
-// And its mirror image, crucible round opus5-high-r7's F1: a driver crash AFTER its agent finished,
-// with reed's own strand table then gone, made Attach refuse outright rather than harvest the
-// finished work -- failing the whole Shed step over an already-completed, already-paid-for LLM turn.
-// The first defect is about not starting a second agent; the second is about not throwing away the
-// first one's result. Both are answered by the same probe, which is why both live here.
-//
-// It drives the REAL substrate -- a real hub, a real reed session, a real tmux pane, a real
-// shuttleengine.Runner writing a real run.json -- and spawns ZERO provider subprocesses. The one
-// substitution is shuttleengine's own provider seam: a stub Engine whose Prepare returns a plain
-// shell command instead of a provider launch line. That substitution is the point rather than a
-// shortcut. What the probe matches on is a persisted run.json's OutputFiles set plus reed's own
-// liveness answer for its strand, and both are produced identically whatever the pane happens to be
-// running, so a shell pane exercises the probe end to end at no token cost.
-//
-// It lives in this package rather than in internal/shedadapters because everything it needs already
-// exists here: the hub fixture, the tmux skip, the reed engine probe, and the hermetic git TestMain.
+// It lives in this package rather than in internal/shedadapters because everything it needs already exists here:
+// the hub fixture, the tmux skip, the reed engine probe, and the hermetic git TestMain.
 
 package loomcli
 
@@ -51,19 +46,21 @@ import (
 )
 
 // shellLaunchEngine is a shuttleengine.Engine that launches a plain shell script instead of a provider session.
-// Prepare and ParseEvents carry behaviour;
-// every other method is the embedded shuttlefake.Engine's inert answer, because the attach path this suite exercises -- Start's run.json persistence, reed's liveness answer, and Wait's events-plus-output-files poll -- never reaches any of them.
+// Prepare and ParseEvents carry its behaviour.
+// Every other method is the embedded shuttlefake.Engine's inert answer.
+// The attach path this suite exercises never reaches them:
+// Start's run.json persistence, reed's liveness answer, and Wait's events-plus-output-files poll.
 // It is used through a pointer, since the embedded fake holds a mutex.
 //
-// The script it writes reproduces a real run's completion shape in the order shuttle's Wait requires
-// it: stay quiet for a moment (so the round is in flight when the probe runs), write every declared
-// output file, THEN append a turn-end line to events.jsonl, then keep running. Wait classifies done
-// only on an event whose tick also finds every output file present, so writing the event first would
-// leave the run held instead.
+// The script it writes reproduces a real run's completion shape in the order that shuttle's Wait requires.
+// It stays quiet for a moment, so the round is in flight when the probe runs.
+// It writes every declared output file first, then appends a turn-end line to events.jsonl, and keeps running.
+// Wait classifies done only on an event whose tick also finds every output file present;
+// so writing the event first would leave the run held instead.
 type shellLaunchEngine struct {
 	shuttlefake.Engine
-	// quietSeconds is how long the script waits before writing anything, so the run is genuinely
-	// in flight rather than already complete when the producer's probe runs.
+	// quietSeconds is how long the script waits before writing anything,
+	// so the run is in flight rather than already complete when the producer's probe runs.
 	quietSeconds int
 }
 
@@ -84,8 +81,8 @@ func (e *shellLaunchEngine) Prepare(runDir string, spec shuttleengine.Spec, _ sh
 	return shuttleengine.Launch{Cmd: "sh " + scriptPath, SessionID: "smoke-attach-probe"}, nil
 }
 
-// ParseEvents maps any non-empty events.jsonl content onto a single turn-end event, which is the one
-// provider fact Wait's completion test needs from this seam.
+// ParseEvents maps any non-empty events.jsonl content onto a single turn-end event.
+// That is the one provider fact Wait's completion test needs.
 func (e *shellLaunchEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	if len(data) == 0 {
 		return nil, nil
@@ -93,8 +90,11 @@ func (e *shellLaunchEngine) ParseEvents(data []byte) ([]shuttleengine.Event, err
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Raw: data}}, nil
 }
 
-// probingHalfRunner is a shedadapters.BurlerHalfRunner whose ProbeReview and ProbeFix probe the half's output file through the real shuttleengine.Runner, as burlerengine.Engine does, and whose ResumeReview and ResumeFix wait on the live half.
-// Review and Fix fail the test: they stand in for the burlerengine half this producer must NOT start while an equivalent one is still alive.
+// probingHalfRunner is a shedadapters.BurlerHalfRunner.
+// Its ProbeReview and ProbeFix probe the half's output file through the real shuttleengine.Runner.
+// Its ResumeReview and ResumeFix wait on the live half.
+// Review and Fix fail the test.
+// They stand in for a burlerengine half that this producer must not start while an equivalent one is still alive.
 type probingHalfRunner struct {
 	t       *testing.T
 	runner  *shuttleengine.Runner
@@ -144,8 +144,10 @@ func (r probingHalfRunner) probe(outputPath string) (burlerengine.LiveHalf, erro
 	return burlerengine.LiveHalf{State: burlerengine.HalfLive, Handle: run}, nil
 }
 
-// TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning starts one real, live shuttle run declaring a round's review.
-// It then calls BurlerReviewProducer.Call against the same run directory and asserts it resumed that run rather than starting a second reviewer.
+// TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning starts one real, live shuttle run.
+// The run declares a round's review as its output.
+// It then calls BurlerReviewProducer.Call against the same run directory.
+// It asserts it resumed that run rather than starting a second reviewer.
 // It also asserts the live run's own artifact was left where it wrote it and that the accepted review was recorded.
 func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -162,9 +164,8 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", runDir, err)
 	}
-	// The round-artifact convention is a durable two-sided contract (see internal/shedadapters'
-	// package documentation), so naming the files literally here is pinning that contract, not
-	// duplicating a derivation.
+	// The round-artifact convention is a durable two-sided contract.
+	// Naming the files literally here pins that contract instead of duplicating a derivation.
 	reviewPath := filepath.Join(runDir, "round-1-review.md")
 
 	// The stand-in run's quiet period is load-bearing:
@@ -218,7 +219,7 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	}
 
 	// The live run's own bytes must still be at the canonical path: archiving would have renamed
-	// them to a stamped sibling, which is precisely what breaks an attached run's file contract.
+	// them to a stamped sibling, which is what breaks an attached run's file contract.
 	content, readErr := os.ReadFile(reviewPath)
 	if readErr != nil {
 		t.Fatalf("os.ReadFile(%s) = %v; want the live run's own file left in place", reviewPath, readErr)
@@ -241,7 +242,9 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	}
 }
 
-// newLeadSeatProducer returns a MultiLLMProducer over a one-seat table whose lead declares outputFile under the role prefix "discussion" and round "1", run by a seat engine over runner.
+// newLeadSeatProducer returns a MultiLLMProducer over a one-seat table.
+// The lead declares outputFile under the role prefix "discussion" and round "1".
+// A seat engine built on runner runs the lead.
 // The lead's stencil is a one-line stencil written into a stencilkit-seeded directory.
 func newLeadSeatProducer(t *testing.T, reedGeom reedengine.Geometry, runner *shuttleengine.Runner, outputFile string) *shedadapters.MultiLLMProducer {
 	t.Helper()
@@ -272,20 +275,21 @@ func newLeadSeatProducer(t *testing.T, reedGeom reedengine.Geometry, runner *shu
 	return shedadapters.NewMultiLLMProducerSourced("Discussion-Write", func() (seatengine.Table, error) { return table, nil }, seats, nil, nil)
 }
 
-// TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone is the live-substrate guard for crucible round opus5-high-r7's F1:
+// TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone guards the harvest of a finished run whose reed state is gone.
 // Attach's reed-state gates must consult the run's file contract before refusing,
 // so a producer whose agent already finished advances instead of hard-failing the step.
 //
-// It exists as a smoke test on top of internal/shuttleengine's own hermetic coverage because the defect's cost is only visible at the composed layer.
-// Attach returning an error is not obviously wrong in isolation, since an unreadable strand table genuinely is a problem worth reporting.
-// But the seat producer turns that error into a hard Shed step failure over work that was already finished and sitting on disk, and nothing then removes the run directory, so every later resume re-refuses identically.
-// The defect was reproduced in exactly this shape against the real built binary before the fix.
-// The stand-in run is started by runner.Start, as a run started before the seat producer existed was,
-// so the producer must attach to it instead of respawning.
+// It is a smoke test on top of internal/shuttleengine's hermetic coverage.
+// The defect's cost shows only at the composed layer.
+// An unreadable strand table makes Attach return an error, which is a real problem worth reporting.
+// The seat producer turns that error into a hard Shed step failure over work already finished on disk.
+// Nothing then removes the run directory, so every later resume re-refuses identically.
+// The stand-in run is started by runner.Start, so the producer must attach to it instead of respawning.
 //
-// The substitution is the same one this file's other test makes and no more: a stub Engine launching a shell script instead of a provider.
-// Everything Attach reads is genuine: a real run.json written by a real Start, real output files, and reed's own real state file.
-// ZERO provider subprocesses are spawned.
+// A stub Engine launches a shell script instead of a provider.
+// Everything Attach reads is genuine.
+// It reads a real run.json written by a real Start, real output files, and reed's own state file.
+// No provider subprocess is spawned.
 func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
@@ -326,12 +330,14 @@ func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(started.StrandGUID(), false) })
 
-	// Wait for the script to satisfy the file contract. Start persisted run.json at "running" and
-	// nothing has classified the run since, so once the file lands this is exactly the state a driver
-	// crash after its agent finished leaves behind.
+	// Wait for the script to satisfy the file contract.
+	// Start persisted run.json at "running", and nothing has classified the run since.
+	// Once the file lands, this is the state a driver crash after its agent finished leaves behind.
 	waitForOutputFile(t, outputFile, 30*time.Second)
 
-	// Now take reed's strand table away under the still-"running" record -- the `git clean -xdf` of `.lym` the Durable-vs-Ephemeral State Invariant sanctions, or reed's own documented remedy for a corrupt state file.
+	// Now take reed's strand table away under the still-"running" record.
+	// It is the state a `git clean -xdf` of `.lym` leaves, which the Durable-vs-Ephemeral State Invariant sanctions.
+	// It is also the state reed's own documented remedy for a corrupt state file leaves.
 	// Restored on cleanup so registerBootstrapTeardown's own Down() can still find the session it has to tear down.
 	dotLymDir := filepath.Join(reedGeom.AnchorPath, lymdirs.DotLymDirName)
 	reedStatePath := filepath.Join(dotLymDir, "reed.json")
@@ -360,9 +366,9 @@ func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, outputFile)
 	}
 
-	// The agent's own bytes must still be at the canonical path: a respawn would have archived them to
-	// a stamped sibling and re-run the whole (expensive) step, which is the rework this guard exists
-	// to prevent.
+	// The agent's own bytes must still be at the canonical path.
+	// A respawn would have archived them to a stamped sibling and re-run the whole, expensive step.
+	// That is the rework this guard exists to prevent.
 	content, err := os.ReadFile(outputFile)
 	if err != nil {
 		t.Fatalf("os.ReadFile(%s) = %v; want the finished run's own file left in place", outputFile, err)
@@ -372,13 +378,13 @@ func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	}
 }
 
-// TestSmokeLeadSeat_RerunRemovesTheSupersededStrand is the live-substrate guard for re-running a producer over a halted run:
-// the earlier run's record sits at a terminal outcome with its shell strand still live,
+// TestSmokeLeadSeat_RerunRemovesTheSupersededStrand guards re-running a producer over a halted run.
+// The earlier run's record sits at a terminal outcome with its shell strand still live,
 // and the producer's fresh run must not start beside it.
 // A live strand with other output files, standing in for another producer's agent, survives.
-// That strand takes the role "other", since the seat engine refuses a lead whose strand name another live strand holds.
+// It takes the role "other", because the seat engine refuses a lead whose strand name another live strand holds.
 //
-// The stub Engine and the real Runner, reed session and tmux panes are the ones this file's other tests use.
+// The test uses a stub Engine, the real Runner, reed session and tmux panes.
 func TestSmokeLeadSeat_RerunRemovesTheSupersededStrand(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
@@ -474,7 +480,8 @@ func TestSmokeLeadSeat_RerunRemovesTheSupersededStrand(t *testing.T) {
 	}
 }
 
-// markRunTerminal rewrites the run.json of the run owning strandGUID under runRoot so its outcome reads outcome, leaving every other field as Start wrote it.
+// markRunTerminal sets the outcome of the run that owns strandGUID under runRoot.
+// It rewrites that run.json and leaves every other field as Start wrote it.
 func markRunTerminal(t *testing.T, runRoot, strandGUID, outcome string) {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(runRoot, "*", "run.json"))
@@ -506,9 +513,9 @@ func markRunTerminal(t *testing.T, runRoot, strandGUID, outcome string) {
 	t.Fatalf("no run record under %s names strand %s", runRoot, strandGUID)
 }
 
-// waitForOutputFile blocks until path exists or timeout elapses, failing the test when it never
-// appears. It polls rather than synchronising on the launched script, because the script is a real
-// subprocess in a real pane and this suite never assumes any timing from one.
+// waitForOutputFile blocks until path exists or timeout elapses, and fails the test when it never appears.
+// It polls rather than synchronising on the launched script.
+// The script is a real subprocess in a real pane, and the suite never assumes timing from one.
 func waitForOutputFile(t *testing.T, path string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

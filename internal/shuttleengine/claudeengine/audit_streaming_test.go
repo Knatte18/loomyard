@@ -1,7 +1,6 @@
-// audit_streaming_test.go is R2-F5's regression guard: it pins that forEachTranscriptLine walks a
-// session transcript as a STREAM rather than materialising it, and that the two edge cases a naive
-// streaming port breaks — a final line with no trailing newline, and a single line larger than
-// bufio.Scanner's default token cap — both still decode.
+// audit_streaming_test.go pins that forEachTranscriptLine streams a transcript rather than materialising it.
+// It also pins that two edge cases still decode:
+// a final line with no trailing newline, and a single line larger than bufio.Scanner's default token cap.
 
 package claudeengine
 
@@ -16,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeTranscript writes body to a fresh .jsonl file under t.TempDir() and returns its path and
-// size in bytes.
+// writeTranscript writes body to a new transcript.jsonl under t.TempDir() and returns its path and size in bytes.
 func writeTranscript(t *testing.T, body string) (path string, sizeBytes int64) {
 	t.Helper()
 	path = filepath.Join(t.TempDir(), "transcript.jsonl")
@@ -36,20 +34,14 @@ func assistantBashLine(commandBody string) string {
 	return fmt.Sprintf(`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"t1","input":{"command":"%s"}}]}}`, commandBody)
 }
 
-// TestForEachTranscriptLine_StreamsRatherThanMaterialising pins the memory property the streaming
-// rewrite exists for.
+// TestForEachTranscriptLine_StreamsRatherThanMaterialising pins the memory property of the walk.
+// forEachTranscriptLine holds one line at a time rather than the whole transcript.
 //
-// The previous implementation was os.ReadFile plus strings.Split(string(data), "\n"), which keeps
-// the raw bytes, a full string copy of them, a per-line slice header, and every decoded line ALIVE
-// AT ONCE — so live heap during the walk could never drop below roughly twice the file size. A
-// streaming walk holds one line. The threshold below is half the file size: measured, the streaming
-// implementation peaks around 0.02x on this fixture and the materialising one cannot get under 2x,
-// so there are roughly two orders of magnitude of margin either side of it and the assertion is not
-// sensitive to allocator or GC detail.
-//
-// runtime.GC() before each sample is what makes this deterministic: it collects everything already
-// unreachable, so HeapAlloc reports what the walk is actually still HOLDING rather than what it has
-// cumulatively allocated (TotalAlloc, which does not separate the two implementations at all).
+// The threshold is half the file size, which a materialising walk exceeds.
+// The margin on either side of it is wide, so the assertion does not depend on allocator or GC detail.
+// runtime.GC() before each sample makes the check deterministic:
+// it collects everything already unreachable, so HeapAlloc reports what the walk still holds.
+// TotalAlloc counts cumulative allocation, which cannot tell a holding walk from a streaming one.
 func TestForEachTranscriptLine_StreamsRatherThanMaterialising(t *testing.T) {
 	tiergate.Require(t, 0)
 	const (
@@ -68,9 +60,7 @@ func TestForEachTranscriptLine_StreamsRatherThanMaterialising(t *testing.T) {
 	var peakLiveBytes uint64
 	err := forEachTranscriptLine(path, func(transcriptLine) {
 		visited++
-		// Sampling every 500th line keeps the forced collections cheap while still covering the
-		// whole walk, including its final quarter where a materialising implementation is holding
-		// the most.
+		// Sampling every 500th line keeps the forced collections cheap while still covering the whole walk.
 		if visited%500 != 0 {
 			return
 		}
@@ -97,15 +87,13 @@ func TestForEachTranscriptLine_StreamsRatherThanMaterialising(t *testing.T) {
 
 // TestForEachTranscriptLine_EdgeCases pins the two shapes a naive streaming port silently breaks.
 //
-// Both are ordinary here rather than exotic: an abnormally ended session (the process died
-// mid-write, which is exactly when an operator wants the audit) leaves a final line with no
-// trailing newline, and a large tool result routinely produces a single line far past
-// bufio.Scanner's 64 KiB default token cap — which is why this reads with bufio.Reader.ReadString,
-// whose line length is unbounded, and not with a Scanner.
+// An abnormally ended session, one whose process died mid-write, leaves a final line with no trailing newline.
+// A large tool result can produce a single line far past bufio.Scanner's 64 KiB default token cap.
+// That is why the walk reads with bufio.Reader.ReadString, whose line length is unbounded, and not with a Scanner.
 func TestForEachTranscriptLine_EdgeCases(t *testing.T) {
 	tiergate.Require(t, 0)
-	// Comfortably past bufio.Scanner's 64 KiB default token cap, so a Scanner-based implementation
-	// would drop this line (or error) rather than decode it.
+	// This line is past bufio.Scanner's 64 KiB default token cap,
+	// so a Scanner-based implementation would drop it or fail rather than decode it.
 	const oversizedCommandBytes = 256 * 1024
 
 	tests := []struct {
@@ -150,9 +138,8 @@ func TestForEachTranscriptLine_EdgeCases(t *testing.T) {
 	}
 }
 
-// TestAuditForkTranscript_UnterminatedFinalLineStillCounted proves the edge case above reaches the
-// audit's own output rather than only forEachTranscriptLine's call count: a fork whose transcript
-// ends without a trailing newline still has that last line's Bash command reported.
+// TestAuditForkTranscript_UnterminatedFinalLineStillCounted proves the final line is still audited.
+// A transcript that ends without a trailing newline still has that last line's Bash command reported.
 func TestAuditForkTranscript_UnterminatedFinalLineStillCounted(t *testing.T) {
 	tiergate.Require(t, 0)
 	path, _ := writeTranscript(t, assistantBashLine("git status")+"\n"+assistantBashLine("git push"))

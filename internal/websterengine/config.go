@@ -1,10 +1,8 @@
-// config.go — configuration for the webster module.
-//
-// Defines the Config type mirroring webster.yaml's keys and LoadConfig, which uses
-// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve webster's config file,
-// degrading to the embedded template on proven absence, then validates each role model-spec's
-// grammar via modelspec.Parse so a typo'd spec fails loud at load time rather than hours into a run
-// when that role first spawns.
+// config.go defines the Config type, which mirrors the keys of webster.yaml, and LoadConfig, which loads it.
+// LoadConfig resolves the file through configengine.LoadOrTemplate with ConfigTemplate().
+// An absent file in every layer resolves to the embedded template.
+// It validates each role model-spec with modelspec.Parse,
+// so a malformed spec fails at load time rather than when its role first spawns.
 
 package websterengine
 
@@ -16,30 +14,30 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the resolved webster.yaml configuration: the two role model-specs (see
-// contracts/specs/llm-model-spec.md's "Roles that use this notation" section) and the numeric knobs the
-// Master session's bracket verbs consult.
+// Config is the resolved webster.yaml configuration.
+// It holds the two role model-specs, whose notation contracts/specs/llm-model-spec.md describes,
+// and the numeric knobs the Master session's bracket verbs consult.
 type Config struct {
-	// Master is the model-spec for the long-lived Master session that reads
-	// the plan once and forks one implementer per batch in-session.
+	// Master is the model-spec for the long-lived Master session.
+	// It reads the plan once and forks one implementer per batch in-session.
 	Master string `yaml:"master"`
-	// Recovery is the model-spec for the cold, fresh recovery strand
-	// recover-batch spawns when a fork reports stuck or writes no report.
+	// Recovery is the model-spec for the cold, fresh strand that recover-batch spawns.
+	// It runs when a fork reports stuck or writes no report.
 	Recovery string `yaml:"recovery"`
 
-	// SelfFixCap is the maximum number of self-fix attempts a forked
-	// implementer makes before reporting stuck.
+	// SelfFixCap is the maximum number of self-fix attempts a forked implementer makes.
+	// Once the cap is used up, it reports stuck.
 	SelfFixCap int `yaml:"self_fix_cap"`
-	// MasterTimeoutMin is the number of minutes the Master session's own
-	// shuttle spawn is allowed to run — the WHOLE-RUN timeout (the
-	// orchestrator_timeout_min analog, spanning every batch of the plan),
-	// never a per-batch timeout.
+	// MasterTimeoutMin is the number of minutes the Master session's own shuttle spawn may run.
+	// It is the whole-run timeout.
+	// It is never a per-batch timeout.
+	// It spans every batch of the plan, so each batch runs inside this window.
 	MasterTimeoutMin int `yaml:"master_timeout_min"`
-	// RecoveryTimeoutMin is the number of minutes since spawn after which
-	// the cold recovery strand with no report and no live strand classifies
-	// dead (dead_reason: timeout); applies only to recover-batch.
+	// RecoveryTimeoutMin is the number of minutes after spawn at which the cold recovery strand classifies dead.
+	// It applies only while the strand has no report and no live strand.
+	// Its dead reason is timeout, and it applies only to recover-batch.
 	RecoveryTimeoutMin int `yaml:"recovery_timeout_min"`
-	// VerifyGateAttempts is the number of attempts the plan-level verify gate on Merriam's strand gives Merriam before the gate stops the run.
+	// VerifyGateAttempts is how many attempts the plan-level verify gate gives the Master session before the run stops.
 	VerifyGateAttempts int `yaml:"verify_gate_attempts"`
 }
 
@@ -65,11 +63,11 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// LoadConfig loads configuration from the webster module's layer stack under dirs, validates role model-spec
-// grammar, and returns a Config struct.
-// An absent config file in every layer resolves the embedded template;
-// a layer file that exists but is invalid still errors.
-// module names the config file to read, so a caller may load a sibling file with webster's shape.
+// LoadConfig loads configuration from the webster module's layer stack under dirs.
+// It validates the role model-spec grammar and returns the resulting Config.
+// An absent config file in every layer resolves the embedded template.
+// A layer file that exists but is invalid still returns an error.
+// module names the config file to read, so a caller can load a sibling file with the same shape.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -98,12 +96,13 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	// The numeric knobs are validated for the same reason the role specs are.
 	// The template fill supplies a knob a file omits, so only an explicit non-positive value reaches this check.
-	// Such a value is not merely conservative, it breaks the run silently.
-	// RecoveryTimeoutMin at 0 makes classify's `Elapsed > BatchTimeout` true on the very first poll,
-	// so EVERY recovery batch classifies dead/timeout immediately.
-	// MasterTimeoutMin at 0 does the same to the Master spawn.
-	// VerifyGateAttempts at 0 turns the must-pass verify gate off, since shuttle skips an entry with no attempts, so the plan-level verify never runs.
-	// Nothing anywhere reported why.
+	// Such a value is not merely conservative; it breaks the run silently.
+	// A zero RecoveryTimeoutMin makes classify's `Elapsed > BatchTimeout` true on the first poll,
+	// so every recovery batch classifies dead with reason timeout immediately.
+	// A zero MasterTimeoutMin does the same to the Master spawn.
+	// A zero VerifyGateAttempts turns the must-pass verify gate off, since shuttle skips an entry with no attempts,
+	// so the plan-level verify never runs.
+	// Without this check, nothing reports why.
 	// Failing at load names the key instead.
 	knobs := []struct {
 		key   string

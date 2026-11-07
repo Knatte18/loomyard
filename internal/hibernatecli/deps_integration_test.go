@@ -1,7 +1,7 @@
 //go:build linux
 
 // deps_integration_test.go pins what hubDeps's Notify seam does over a real hub whose prime records no orch strand.
-// The test calls no t.Parallel: it sets the strand-name variable and captures the process-global logger.
+// The test calls no t.Parallel: it sets `agentname.StrandNameEnv` and captures the process-global logger.
 
 package hibernatecli
 

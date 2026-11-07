@@ -1,5 +1,8 @@
-// logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYM_LOG_LEVEL and LYM_LOG_FILE environment seams, and the SetOutput test seam.
-// Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel; every other test mutates process-global logger state (verbosity, the output writer, the durable sink, LYM_* environment variables) that the tests share.
+// logger_test.go tests how records route to stderr and the durable sink by level and verbosity.
+// It also covers the LYM_LOG_LEVEL and LYM_LOG_FILE environment seams and the SetOutput test seam.
+// Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel.
+// Every other test mutates process-global logger state:
+// verbosity, the output writer, the durable sink, and LYM_* environment variables.
 
 package logger
 
@@ -27,7 +30,8 @@ func withCapturedOutput(t *testing.T) *bytes.Buffer {
 
 var originalOut = out
 
-// TestDefaultOutput_DiscardsUnderGoTest pins that the stderr half defaults to io.Discard inside the test binary, both from DefaultOutput and from the value out held at package init.
+// TestDefaultOutput_DiscardsUnderGoTest pins that the stderr half defaults to io.Discard inside the test binary.
+// It checks both DefaultOutput and the value out holds at package init.
 // It reads no state it mutates, so it runs in parallel.
 func TestDefaultOutput_DiscardsUnderGoTest(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -40,8 +44,12 @@ func TestDefaultOutput_DiscardsUnderGoTest(t *testing.T) {
 	}
 }
 
-// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr and the durable sink only at -vv.
-// Every record a half receives carries the current trace ID, and a Warn with no durable sink armed still reaches stderr.
+// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out by level and verbosity.
+// Warn reaches stderr and the durable sink at every verbosity.
+// Info reaches the durable sink always and stderr from -v.
+// Debug reaches stderr and the durable sink only at -vv.
+// Every record a half receives carries the current trace ID.
+// A Warn with no durable sink armed still reaches stderr.
 func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -185,7 +193,8 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 	}
 }
 
-// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent writes produce one file and one marker.
+// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent writes.
+// Concurrent writes must produce one file and one truncation marker.
 //
 //testtiming:keep pins one sink file and one truncation marker under concurrent first writers, which the serial size-cap test does not exercise
 func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {

@@ -1,9 +1,11 @@
-// Package shuttlefake fakes the two seams a shuttle consumer is built over: shuttleengine.Engine and shuttleengine.ReedOps.
+// Package shuttlefake fakes the two seams a shuttle consumer is built over:
+// shuttleengine.Engine and shuttleengine.ReedOps.
 //
 // Engine is inert until a field or func override scripts it, and records what Prepare was handed.
 // Reed keeps a mutex-guarded strand table, so a test sees the liveness a real reed would report.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded fields and asserts itself.
-// SignalEngine is the kit's opt-in signal-reading engine: Engine implements no session-signal reading, so a consumer keeps the readings of an engine without one.
+// SignalEngine is the kit's opt-in signal-reading engine.
+// Engine implements no session-signal reading, so a consumer keeps the readings of an engine without one.
 // The kit also holds a golden of a Claude reading in neutral types, TokencountRunReads.
 //
 // internal/shuttleengine's own tests keep their richer in-package fake, because the import cycle forbids this kit there.
@@ -68,10 +70,13 @@ var (
 	_ shuttleengine.RewindPickerReader = (*Engine)(nil)
 )
 
-// SignalEngine is an Engine that also reads session signals, the opt-in beside the inert Engine, which implements no shuttleengine.SessionSignalParser.
-// ParseSessionSignals reads a line "@<RFC 3339 time>" as the stamp of the next line, and answers a turn-end signal with Event set and that stamp's time for each line on which the embedded ParseEvents, handed that line alone, yields an EventStop.
+// SignalEngine embeds Engine and adds the shuttleengine.SessionSignalParser reading of session signals.
+// A line of the form "@<RFC 3339 time>" stamps the next line.
+// The embedded ParseEvents reads each line alone.
+// A line it reads as an EventStop gives a turn-end signal, timed by the stamp before that line.
 // A Stop with no stamp or a malformed one gets the zero time.
-// A test that builds one sets the embedded ParseEventsFn to a per-line reading, since the default ParseEvents answers the fixed Events whatever its input.
+// A test that builds one sets the embedded ParseEventsFn to a per-line reading.
+// The default ParseEvents answers the fixed Events whatever its input.
 type SignalEngine struct {
 	*Engine
 }
@@ -79,13 +84,14 @@ type SignalEngine struct {
 var _ shuttleengine.SessionSignalParser = (*SignalEngine)(nil)
 
 // ParseSessionSignals returns the turn-end signals of data's complete lines in file order.
-// consumed ends at the last complete line, except that it stops before a trailing run of stamp lines with no payload line after them,
+// The int result is the count of bytes consumed.
+// It ends at the last complete line, but stops before a trailing run of stamp lines with no payload after them,
 // so the next read sees each such stamp together with its payload.
 func (e *SignalEngine) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
 	end := strings.LastIndexByte(string(data), '\n') + 1
 	var signals []shuttleengine.SessionSignal
 	var stamp time.Time
-	// stampRunStart is the offset of the earliest line of the trailing run of stamp lines, or end when the data does not finish with one.
+	// stampRunStart is the offset of the first line of the trailing stamp run, or end when there is none.
 	stampRunStart := end
 	offset := 0
 	for _, line := range strings.Split(string(data[:end]), "\n") {
@@ -121,8 +127,10 @@ func (e *SignalEngine) ParseSessionSignals(data []byte) ([]shuttleengine.Session
 //go:embed tokencount-run-reads.json
 var tokencountRunReadsJSON []byte
 
-// TokencountRunReads returns the reading of a located tokencount run in neutral types, one SessionRead per session in located order.
-// It is the golden of the Claude reader over its tokencount-run transcripts, and the reads a tokencount test feeds through a fake reader.
+// TokencountRunReads returns the reading of a located tokencount run in neutral types.
+// It holds one SessionRead per session, in located order.
+// It is the golden of the Claude reader over its tokencount-run transcripts,
+// and the reads a tokencount test feeds through a fake reader.
 // It panics when the embedded file does not decode, since the file is the kit's own.
 func TokencountRunReads() []shuttleengine.SessionRead {
 	var reads []shuttleengine.SessionRead
@@ -260,7 +268,7 @@ func (e *Engine) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.
 	return 0, nil
 }
 
-// KeepWarmCaps answers zero caps and no error, so no test-built gate or wait keeps a session warm, matching PromptCacheLifetime.
+// KeepWarmCaps answers zero caps and no error, so no session is kept warm.
 func (e *Engine) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
 	return 0, 0, nil
 }
@@ -394,7 +402,7 @@ func (r *Reed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 }
 
 // RemoveStrand answers RemoveStrandFn, else RemoveErr, else retires the strand and records its GUID.
-// An unknown GUID is recorded and answers an empty Removed, as a real reed's cascade over nothing does.
+// An unknown GUID is recorded and answers an empty Removed, since no strand matches it.
 func (r *Reed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	if r.RemoveStrandFn != nil {
 		return r.RemoveStrandFn(guid, recursive)

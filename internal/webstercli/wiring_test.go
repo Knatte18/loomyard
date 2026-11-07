@@ -1,26 +1,24 @@
-// wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
-// told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
-// cwd. websterCLI itself carries no *lymcwd.Location field (see cli.go's struct): that is a
-// compile-time property of this package, not something a test can additionally assert at runtime.
+// wiring_test.go pins wire's mode truth table at tier 0.
+// Every case drives c.wire directly with a told preflight.Mode, never through the real pre-run,
+// so no case spawns a process or resolves cwd.
+// websterCLI carries no *lymcwd.Location field: a compile-time property no test can assert at runtime.
 //
-// The hub-mode cases below hand wire fictional, on-disk-absent *lymcwd.Location values: every module config load wire performs (shuttleengine.LoadConfig, reedengine.LoadConfig, websterengine.LoadConfig, batcher.Active, modelspec.LoadRegistry) degrades to its embedded template on a proven-absent _lym/ directory, so a fictional anchor path drives the whole hub branch without touching disk.
-// The one entry each hub case creates is the worktree's .git directory, which hubgeom.ReedGeometry stats to tell the prime from a task worktree.
+// The hub-mode cases hand wire fictional *lymcwd.Location values whose anchor is absent on disk.
+// Every module config load in wire degrades to its embedded template on a proven-absent _lym/ directory,
+// so a fictional anchor drives the whole hub branch without touching disk.
+// The one entry each hub case creates is the worktree's .git directory.
+// hubgeom.ReedGeometry stats it to tell the prime from a task worktree.
 //
-// The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
-// ResolveStandalone, which owns the one production call site of Derive that exists anywhere in this
-// codebase since batch 2: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a
-// t.TempDir() BEFORE calling wire, so both of Derive's per-OS branches land inside the test's own temp
-// tree on every platform, and none of those cases is marked t.Parallel(), since t.Setenv panics under
-// a parallel test.
+// The standalone-mode cases reach standalonestate.Derive through cliwire.ResolveStandalone.
+// Each such case redirects XDG_STATE_HOME and LOCALAPPDATA to a t.TempDir() before calling wire,
+// so both of Derive's per-OS branches land inside the test's own temp tree on every platform.
+// None of these cases is parallel, because t.Setenv panics under a parallel test.
 //
-// Two structural facts a later reader might otherwise try to "fix": first, no (loc non-nil,
-// ModeStandalone) row exists in this file because no caller can produce one -- preflight.ResolveMode
-// returns a nil Location for both standalone causes. Second, the refuse case is deliberately absent
-// from this file because wire never receives it -- the error return aborts upstream in
-// resolvePersistentPreRun before c.wire is ever called -- and manufacturing one here would require
-// driving the real pre-run, which spawns git and breaches the Test Tier Purity Invariant, the exact
-// invariant wire's extraction exists to satisfy. The refusal is pinned instead in
-// internal/webstercli/cli_integration_test.go.
+// Two gaps are deliberate, not omissions.
+// No (loc non-nil, ModeStandalone) row exists; preflight.ResolveMode returns a nil Location for both standalone causes.
+// The refuse case is absent too: the error aborts in resolvePersistentPreRun before c.wire is called,
+// and the real pre-run would spawn git here, breaching the Test Tier Purity Invariant.
+// The refusal is pinned in internal/webstercli/cli_integration_test.go.
 
 package webstercli
 
@@ -46,7 +44,7 @@ import (
 )
 
 // hubLocation returns a *lymcwd.Location standing in for a real hub's prime.
-// Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.
+// Its only filesystem preparation is the worktree's .git directory; wire's hub branch tolerates the rest being absent.
 func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
 	loc := &lymcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
@@ -57,7 +55,7 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Loca
 }
 
 // seedLoomConfigWithFriction writes <anchorPath>/_lym/config/loom.yaml with a full literal.
-// Its friction key is the caller-chosen value -- empty to mean Tier 2 is off.
+// Its friction key is the caller-chosen value; empty means Tier 2 is off.
 // Every key is written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
@@ -82,8 +80,8 @@ driver: ""
 	}
 }
 
-// seedStandalonePlanDir writes one minimal, non-empty ".md" file into dir, satisfying
-// internal/cliwire's own planDirHasContent so a standalone wire() call reaches its own success path.
+// seedStandalonePlanDir writes one minimal, non-empty ".md" file into dir.
+// The plan directory then passes the content check that standalone wiring applies, so wire() reaches its success path.
 func seedStandalonePlanDir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -94,11 +92,11 @@ func seedStandalonePlanDir(t *testing.T, dir string) {
 	}
 }
 
-// TestWire_ModeHubSelectsHubMode covers the three healthy-but-unwired locations that run
-// webster verbs today under hub mode: an ordinary worktree standing in for the hub's Bolt checkout, an unpaired
-// sibling, and a worktree whose paired sibling has been removed. A Wired-keyed implementation would
-// silently send every one of these to standalone mode; none of them may be refused, and none of them
-// may land in standalone.
+// TestWire_ModeHubSelectsHubMode covers the locations that run webster verbs under hub mode without being wired.
+// One is an ordinary worktree standing in for the hub's Bolt checkout.
+// Another is an unpaired sibling, and the last is a worktree whose paired sibling has been removed.
+// Keying mode on whether a location is wired would send every one of these to standalone mode.
+// None of them may be refused, and none of them may land in standalone.
 func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -176,9 +174,8 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	}
 }
 
-// hash8For returns standalonestate.Derive's hash8 for target under the environment t.Setenv has
-// already redirected -- the caller must have already called t.Setenv("XDG_STATE_HOME", ...) (or the
-// per-OS equivalent) before calling this, exactly as it must before calling wire in standalone mode.
+// hash8For returns the hash8 that standalone state derivation computes for target.
+// The caller must first redirect the state home with t.Setenv("XDG_STATE_HOME", ...) or the per-OS equivalent.
 func hash8For(t *testing.T, target string) string {
 	t.Helper()
 	_, hash8, err := standalonestate.Derive(target)
@@ -188,8 +185,14 @@ func hash8For(t *testing.T, target string) string {
 	return hash8
 }
 
-// TestWire_StandaloneMode wires one standalone CLI over a plain target and checks everything the mode promises at once:
-// the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lym/.lym path and module config base resolves under the derived state directory), the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory), the default plan directory with its run-refusal mark clear, and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
+// TestWire_StandaloneMode wires one standalone CLI over a plain target and checks what the mode promises.
+// The worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target.
+// Every _lym/.lym path and module config base resolves under the derived state directory.
+// The seams are nil or eager.
+// The RefMatcher is non-nil and never matches; there is no fabric opener;
+// the in-process reed bring-up is armed, and the friction directory is empty.
+// The default plan directory has its run-refusal mark clear.
+// A runner's public entry points return their ordinary verdict, not a told-path refusal.
 // It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
 func TestWire_StandaloneMode(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -211,7 +214,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 	}
 
 	c := &websterCLI{}
-	// loc is nil for both causes preflight.ResolveMode folds into ModeStandalone (a plain downloaded repository and an unresolvable cwd): wire consults mode alone to choose the branch.
+	// loc is nil here, as it is for both causes that resolve to ModeStandalone:
+	// a plain downloaded repository and an unresolvable cwd.
+	// wire consults mode alone to choose the branch.
 	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -280,7 +285,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 		t.Error("geom.VerifyHold = nil; want the verify pause hold wired in standalone mode")
 	}
 
-	// A runner that is merely non-nil proves nothing: NewRunner holds a told-path verdict and surfaces it only when a verb runs, so this drives a public entry point with a guid no strand will ever match.
+	// A runner that is merely non-nil proves nothing.
+	// A new runner holds a told-path verdict and surfaces it only when a verb runs,
+	// so this drives a public entry point with a guid no strand will ever match.
 	err := c.runner.Interrupt("no-such-strand-guid")
 	if err == nil {
 		t.Fatal("runner.Interrupt() error = nil; want \"not a shuttle strand\", since no such strand exists")
@@ -293,7 +300,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 	}
 }
 
-// TestWire_PlanDirResolution covers an explicit --plan-dir override in each mode, a spelling of the hub default that is no override, and the standalone refusal for an absent default plan directory.
+// TestWire_PlanDirResolution covers an explicit --plan-dir override in each mode.
+// It covers a spelling of the hub default that is no override.
+// It covers the standalone refusal for an absent default plan directory.
 func TestWire_PlanDirResolution(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("ExplicitOverride_HubMode", func(t *testing.T) {
@@ -308,9 +317,10 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		if c.geom.PlanDir != override {
 			t.Errorf("geom.PlanDir = %q; want the override %q", c.geom.PlanDir, override)
 		}
-		// R6-8: Master's in-pane verbs are flagless in hub mode too, so a moved plan directory must
-		// be recorded here exactly as it is in standalone -- otherwise `lym webster run --plan-dir`
-		// spawns a Master told to read one directory whose own begin-batch re-wires against another.
+		// Master's in-pane verbs are flagless in hub mode too, so a moved plan directory must be recorded here.
+		// Standalone mode records it the same way.
+		// Otherwise `lym webster run --plan-dir` spawns a Master told to read one directory.
+		// Its own begin-batch would re-wire against another.
 		if !c.planDirOverridden {
 			t.Error("planDirOverridden = false; want true -- hub mode's Master types its verbs flagless too, so run must refuse a moved plan")
 		}
@@ -319,10 +329,10 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		}
 	})
 
-	// R6-9: the missing-plan refusal's recourse must not point at --plan-dir alone. Every first-time
-	// standalone operator hits this refusal before their plan is staged, and following "pass
-	// --plan-dir" passed wiring only to be refused by `run` itself, which cannot spawn Master over a
-	// moved plan. The message must name the DEFAULT location, which is what `run` requires.
+	// The missing-plan refusal's recourse must name the default location, not --plan-dir alone.
+	// Every first-time standalone operator hits this refusal before the plan is staged.
+	// Following "pass --plan-dir" got past wiring, only for `run` to refuse it.
+	// `run` cannot spawn Master over a moved plan, and the default location is what it requires.
 	t.Run("MissingPlanRefusalNamesTheDefaultLocation_StandaloneMode", func(t *testing.T) {
 		target := t.TempDir()
 		stateHome := t.TempDir()
@@ -390,16 +400,16 @@ func TestWire_PlanDirResolution(t *testing.T) {
 	})
 }
 
-// TestWire_RelativeFlagDirsResolveAgainstCwd is R4-23's direct regression test. --plan-dir and
-// --stencils-dir used to be stored verbatim, so a relative value reached the geometry unresolved: the
-// CLI process would read it against ITS working directory while the pane webster spawns runs at the
-// target (standalone) or the anchor (hub), and standalone's default-vs-override path equality could
-// never match a relative spelling of the default.
+// TestWire_RelativeFlagDirsResolveAgainstCwd proves that a relative --plan-dir or --stencils-dir resolves against cwd.
+// Unresolved, the value would be read against the CLI's working directory;
+// the pane webster spawns runs in the target (standalone) or the anchor (hub).
+// The standalone check of the default plan directory also depends on it:
+// a relative spelling of the default must not count as an override.
 //
-// The standalone row proves both halves at once: it passes the default plan directory spelled
-// RELATIVE to cwd, and asserts both that geom.PlanDir came out at the absolute default and that the
-// run-refusal marker stayed clear -- pre-fix that same call marked the plan as moved and `run`
-// refused to spawn Master over a plan sitting in the default location.
+// The standalone case checks both halves.
+// It passes the default plan directory spelled relative to cwd,
+// and it asserts that geom.PlanDir comes out at the absolute default and that planDirOverridden stays false.
+// A true planDirOverridden makes `run` refuse to spawn Master over a plan in the default location.
 func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("HubMode", func(t *testing.T) {
@@ -407,8 +417,8 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 		loc := hubLocation(t, hub, "pair", ".")
 		cwd := t.TempDir()
 
-		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
-		// resolution behavior under test here is unchanged.
+		// The told stencils directory must exist on disk, because the wiring boundary stats it.
+		// This test checks only how the path resolves.
 		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
 			t.Fatalf("MkdirAll() error = %v", err)
 		}
@@ -436,8 +446,8 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 		defaultPlanDir := filepath.Join(stateHome, "lym", hash8, "_lym", "plan")
 		seedStandalonePlanDir(t, defaultPlanDir)
 
-		// cwd is the state home itself, so the default plan directory has a short relative spelling
-		// from it -- exactly the shape an operator types.
+		// The working directory is the state home, so the default plan directory has a short relative spelling from it.
+		// That is the spelling an operator types.
 		relativeDefault, err := filepath.Rel(stateHome, defaultPlanDir)
 		if err != nil {
 			t.Fatalf("filepath.Rel(%q, %q) = %v; want nil", stateHome, defaultPlanDir, err)
@@ -456,10 +466,10 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 	})
 }
 
-// TestWireHub_AbsentStencilsDirIsRefused is R7-F2's hub-side regression test: a typo'd
-// --stencils-dir used to be honoured silently in hub mode and failed only at the first prompt
-// render, after the run lock and substrate boot. The boundary stat goes through the same
-// cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
+// TestWireHub_AbsentStencilsDirIsRefused proves that hub mode refuses a --stencils-dir that does not exist.
+// Without the check, a typo'd directory fails only at the first prompt render, after the run lock and substrate boot.
+// The boundary stat goes through the same cliwire.Module method as standalone's prologue,
+// so the two modes cannot drift apart on it.
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	hub := t.TempDir()
@@ -476,9 +486,8 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	}
 }
 
-// TestWire_TargetDirRefusedInHubMode proves --target-dir is refused in hub mode with an error
-// explaining why, and that the refusal happens before any config is loaded (an empty hub, no
-// module config on disk anywhere, still refuses on the flag alone).
+// TestWire_TargetDirRefusedInHubMode proves that hub mode refuses --target-dir with an error naming the flag.
+// The refusal comes before any config is loaded: it holds for an empty hub with no module config on disk.
 func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	tiergate.Require(t, 0)
 	hub := t.TempDir()
@@ -494,8 +503,9 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	}
 }
 
-// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub mode through the standalone sink redirect.
-// It sets a sentinel override before calling wireHub, then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten the override would have put the trace file somewhere else.
+// TestWireHub_LeavesDurableSinkDirUntouched proves that hub mode leaves the durable sink directory alone.
+// It sets a sentinel directory before calling wireHub, then asserts that the sink still writes there afterward.
+// A wireHub that overwrote the sentinel would send the trace file elsewhere.
 //
 //testtiming:keep pins that wireHub leaves the durable sink override untouched, which its covering test does not assert
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
@@ -523,10 +533,9 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	}
 }
 
-// seedGitRepositoryRoot marks dir as a git repository root by creating the ".git" entry
-// cliwire.RepositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git: the
-// walk this fixture feeds tests only the marker's presence, so a real repository would prove nothing
-// extra and would breach the Test Tier Purity Invariant to build.
+// seedGitRepositoryRoot marks dir as a git repository root by creating its ".git" entry, and returns dir.
+// It writes no git objects and runs no git: the repository-root lookup it feeds reads only the marker's presence.
+// A real repository would prove nothing more, and building one would breach the Test Tier Purity Invariant.
 func seedGitRepositoryRoot(t *testing.T, dir string) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
@@ -535,11 +544,10 @@ func seedGitRepositoryRoot(t *testing.T, dir string) string {
 	return dir
 }
 
-// TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot is R4-26's end-to-end half: wiring from
-// a repository subdirectory must land on the SAME derived state directory, and therefore the same
-// default plan directory, that wiring from the repository root lands on. Pre-fix this call failed
-// with webster's own "standalone plan directory ... does not exist" refusal, because the
-// subdirectory's own hash8 named a state directory nobody had ever seeded.
+// TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot wires from a repository subdirectory.
+// It proves that wiring resolves to the same derived state directory as wiring from the root;
+// the default plan directory follows from it.
+// A subdirectory must not derive a state directory of its own, one that nothing seeds.
 func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	repoRoot := seedGitRepositoryRoot(t, t.TempDir())
@@ -569,12 +577,9 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	}
 }
 
-// TestWireModule_DescriptorIsVerbatim pins webster's own wireModule descriptor, which converts from
-// batch 1's inline production strings into free-floating data on this var. Nothing else in this
-// package or in internal/cliwire asserts webster's own descriptor text after this batch:
-// internal/cliwire's own tests assert only their local fixtures, and every wiring_test.go case that
-// used to touch the nested-geometry and target-resolution messages is deleted above. Without this
-// test a reworded field would fail no test anywhere.
+// TestWireModule_DescriptorIsVerbatim pins the text of webster's wireModule descriptor.
+// No other test in this package or in internal/cliwire asserts that text.
+// Without this test, a reworded field would fail no test anywhere.
 func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 	tiergate.Require(t, 0)
 	if wireModule.Name != "webster" {
@@ -626,8 +631,8 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 		}
 	})
 
-	// The one path that exercises Name, StateArtifacts and TargetRole composed into a real message
-	// rather than read as bare fields: a state directory derived to nest INSIDE the target.
+	// This subtest composes Name, StateArtifacts and TargetRole into a real message
+	// rather than reading them as bare fields: it derives a state directory nested inside the target.
 	t.Run("ResolveStandalone_NestedStateDirRefusalNamesTheDescriptorFields", func(t *testing.T) {
 		target := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", filepath.Join(target, ".local", "state"))
@@ -655,11 +660,11 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 	})
 }
 
-// TestWireHub_FrictionDirResolution covers wireHub's tolerant friction-directory resolution: a
-// non-empty friction directory when loom's config enables Tier 2, "" when the friction key is
-// present but empty, and "" without an error when loom.yaml is absent -- the tolerance this CLI's
-// whole resolution depends on, since a `lym webster` verb must never fail because an unrelated
-// module's config could not be read.
+// TestWireHub_FrictionDirResolution covers the tolerant friction-directory resolution of wireHub.
+// It returns a non-empty directory when loom's config enables Tier 2.
+// It returns an empty directory with no error when the friction key is present but empty.
+// It returns an empty directory with no error when loom.yaml is absent.
+// That tolerance matters: a `lym webster` verb must never fail because an unrelated module's config could not be read.
 func TestWireHub_FrictionDirResolution(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("FrictionEnabled", func(t *testing.T) {
@@ -694,7 +699,9 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 	})
 
 	t.Run("LoomConfigAbsent_ResolvesEmptyWithoutError", func(t *testing.T) {
-		// Deliberately never seed loom.yaml: this fictional hub location's anchor has no _lym/config directory at all, so loomengine.LoadConfig fails with its own "not initialized" error -- which must never propagate out of wire.
+		// Leave loom.yaml unseeded: the hub location's anchor has no _lym/config directory.
+		// As a result, loomengine.LoadConfig fails with its own "not initialized" error.
+		// That error must never propagate out of wire.
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "pair", ".")
 
@@ -709,8 +716,12 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 	})
 }
 
-// TestWireHub_LanguageSkills asserts hub wiring loads the hub's language.yaml once and tells the list to both the master's and the recovery strand's deps, and that an unusable file refuses with the module's own way forward.
-// Writing the file creates the board directory, so every other module wireHub loads resolves from an absent board default and wire reaches the language load in every row.
+// TestWireHub_LanguageSkills asserts that hub wiring loads the hub's language.yaml once.
+// It hands the list to both the master's and the recovery strand's deps,
+// and an unusable file refuses with the module's own way forward.
+// Writing the file creates the board directory.
+// Every other module wireHub loads then resolves from an absent board default.
+// Wire therefore reaches the language load in every row.
 func TestWireHub_LanguageSkills(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -848,8 +859,9 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 	}
 }
 
-// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves this package's production files never reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path (fabricengine.HubScratchDir) and spawns no daemon (the "reed watchdog" verb).
-// Both belong to hub mode alone, per this batch's own scope note.
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves no production file uses the per-hub watchdog daemon.
+// It belongs to hub mode alone: standalone computes no hub lock path (fabricengine.HubScratchDir),
+// and it spawns no daemon (the "reed watchdog" verb).
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {

@@ -1,10 +1,7 @@
-// smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail path the hooks research flagged as unprobed
-// (docs/research/reed/reed-hooks-exploration.md: "the deny-and-steer path itself is not yet probed"):
-// a REAL claude, when its Bash launch of a headless claude is denied by the PreToolUse hook, resumes in-session on the steered instruction rather than stalling or aborting the turn,
-// and a REAL claude asked to pose a question stays held, notifies its parent once and finishes once answered.
-// Follows the same conventions as smoke_run_test.go,
-// whose helpers (deferHubRelease, reedStatusStrand) this
-// file reuses.
+// smoke_guardrail_test.go holds the live proof of the deny-and-steer guardrail, run against a real claude.
+// A real claude denied a headless Bash launch by the PreToolUse hook resumes in-session on the steered instruction.
+// The turn is neither stalled nor aborted.
+// A real claude asked to pose a question stays held, notifies its parent once and finishes once answered.
 
 package shuttlecli
 
@@ -27,9 +24,11 @@ import (
 )
 
 // TestSmokeGuardrailDeniesHeadlessClaude proves the deny-and-steer path for a headless claude launch.
-// The run's prompt tells the agent to have a headless claude, launched through its Bash tool, write the output file, and to fall back to another way only if that launch is refused.
+// The run's prompt tells the agent to have a headless claude, launched through its Bash tool, write the output file.
+// It tells the agent to fall back to another way only if that launch is refused.
 // The headless claude row's PreToolUse(Bash) hook denies the launch and steers the model to a subagent.
-// The run still reaching "done" with the file written is the live proof that the deny fired and the steer kept the work in this session, rather than the turn stalling.
+// A run that reaches "done" with the file written is the live proof that the deny fired.
+// The steer kept the work in this session, rather than the turn stalling.
 func TestSmokeGuardrailDeniesHeadlessClaude(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
@@ -84,11 +83,12 @@ func TestSmokeGuardrailDeniesHeadlessClaude(t *testing.T) {
 	}
 }
 
-// TestSmokeGuardrailQuestionHoldsRunUntilAnswered proves the AskUserQuestion PreToolUse deny's steer (claudeengine's steerAskUserQuestionDeny reason) leaves an autonomous run held:
-// an agent told to ask the operator a question before writing anything states it and ends its turn, Wait does not return,
-// and the parent's notifier is called exactly once for that held turn end.
-// The test then answers through Run.Send with a text ending in MessageTail, and the run finishes done with the output file written —
-// the same live state the sandbox suite's S2 hold scenario depends on.
+// TestSmokeGuardrailQuestionHoldsRunUntilAnswered proves that the AskUserQuestion deny's steer keeps the run held.
+// The agent is told to ask the operator a question before writing anything; it states the question and ends its turn.
+// Wait does not return, and the parent's notifier is called exactly once for that held turn end.
+// The test then answers through `Run.Send` with a text ending in `MessageTail`,
+// and the run finishes done with the output file written.
+// This is the same live state the sandbox suite's S2 hold scenario depends on.
 func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")

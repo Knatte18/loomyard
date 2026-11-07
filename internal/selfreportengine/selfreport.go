@@ -1,10 +1,10 @@
-// selfreport.go contains the go-github client seam and CreateIssue domain function for the
-// selfreportengine package.
-// It holds everything from the selfreport module that does not belong to the cobra command layer:
-// the NewGitHubClient seam, CreateIssue and the helpers every call shares.
+// selfreport.go holds the go-github client seam, CreateIssue, and the helpers every call shares.
+// Code for the cobra command layer is not in this file.
 
-// Package selfreportengine provides the domain kernel for filing LoomYard bugs and enhancements as GitHub issues on LoomYard's own repository, via githubclient's authenticated go-github client.
-// It files to that repository whatever hub lym runs in, and only there: an issue about another repository is filed to that repository's own issues, never through selfreport.
+// Package selfreportengine files LoomYard bugs and enhancements as GitHub issues on LoomYard's own repository.
+// It files to that repository whatever hub lym runs in, and only there.
+// An issue about another repository goes to that repository's own issues, never through selfreport.
+// It uses githubclient's authenticated go-github client.
 // It exposes CreateIssue and NewGitHubClient as a swappable factory seam for testing, keeping targetRepo unexported.
 package selfreportengine
 
@@ -22,45 +22,44 @@ import (
 )
 
 // targetRepo is the hardcoded "owner/repo" GitHub repository, LoomYard's own, that all issues are filed against.
-// It is a constant so that tests can verify the exact owner and repo arguments passed to the Issues calls without any config-file or environment-variable indirection.
-// githubclient resolves neither owner nor repo itself -- repoClient splits this constant and every call passes both as parameters.
+// It is a constant with no config-file or environment-variable indirection.
+// That lets tests verify the exact owner and repo arguments passed to the Issues calls.
+// githubclient resolves neither owner nor repo itself, so this constant is split into both before each call.
 const targetRepo = "Knatte18/loomyard"
 
-// defaultLabel is the label applied when a caller supplies no explicit
-// labels. It is unexported so DefaultLabels is the single way to observe it.
+// defaultLabel is the label applied when a caller supplies no explicit labels.
+// It is unexported so that DefaultLabels is the only way to observe it.
 const defaultLabel = "bug"
 
-// callTimeout bounds each request this package makes to GitHub, including a 401-triggered credential re-resolution and replay performed internally by githubclient's transport.
-// It matches the 30s budget githubclient's own transport applies from the end of a pause hold, so no call relies solely on a caller-supplied context.Background() to keep an autonomous run from hanging.
+// callTimeout bounds each request this package makes to GitHub.
+// The bound covers a 401-triggered credential re-resolution and replay performed inside githubclient's transport.
+// It matches the 30s budget that transport applies from the end of a pause hold.
+// So no call relies on a bare context.Background() alone to keep an autonomous run from hanging.
 const callTimeout = 30 * time.Second
 
-// NewGitHubClient is the seam through which CreateIssue obtains an authenticated *github.Client,
-// swappable for testing.
+// NewGitHubClient builds the authenticated *github.Client that CreateIssue uses.
+// It is a package variable so that tests can swap it.
 var NewGitHubClient = githubclient.New
 
-// DefaultLabels is the single owner of the label default shared by both the
-// automatic self-report path and the manual "selfreport create" path.
-// It returns a fresh []string{"bug"} on every call, never a shared
-// package-level slice, so a caller that appends to or mutates the returned
-// slice cannot corrupt the default seen by the next caller.
+// DefaultLabels returns the default label set for both the automatic self-report path and "selfreport create".
+// It returns a fresh []string{"bug"} on every call, never a shared slice,
+// so a caller that appends to or mutates the returned slice cannot corrupt the default seen by the next caller.
 func DefaultLabels() []string {
 	return []string{defaultLabel}
 }
 
 // CreateIssue files a GitHub issue with the given title, optional body, and labels.
 // It returns the issue's HTML URL and issue number on success.
-// Error handling distinguishes token-resolution failures (errors.Is(err,
-// githubclient.ErrTokenUnresolvable)), network failures (*github.ErrorResponse absent), and API
-// rejections (*github.ErrorResponse present).
+// A failure to resolve a token matches errors.Is(err, githubclient.ErrTokenUnresolvable).
+// A network failure carries no *github.ErrorResponse; an API rejection carries one.
 func CreateIssue(title string, body *string, labels []string) (url string, number int, err error) {
 	client, owner, repo, err := repoClient()
 	if err != nil {
 		return "", 0, err
 	}
 
-	// Bound the whole call, including a possible 401 re-resolution and
-	// replay performed internally by githubclient's transport, so a stalled
-	// connection can never hang an autonomous lym run indefinitely.
+	// Bound the whole call, including a possible 401 re-resolution and replay inside githubclient's transport.
+	// A stalled connection must not hang an autonomous lym run indefinitely.
 	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 	defer cancel()
 
@@ -80,12 +79,14 @@ func CreateIssue(title string, body *string, labels []string) (url string, numbe
 	return issue.GetHTMLURL(), issue.GetNumber(), nil
 }
 
-// repoClient returns an authenticated client and the owner and repo halves of targetRepo, the common start of every call this package makes.
+// repoClient returns an authenticated client and the owner and repo halves of targetRepo.
+// Every call this package makes starts here.
 func repoClient() (client *github.Client, owner, repo string, err error) {
 	client, err = NewGitHubClient()
 	if err != nil {
-		// A factory failure is the same operator-facing case as an unresolvable token:
-		// there is no authenticated client to even attempt the request with, so surface it the same way rather than risking a nil-client panic in the caller.
+		// A factory failure is the same operator-facing case as an unresolvable token.
+		// There is no authenticated client to attempt the request with.
+		// Surface it the same way rather than risk a nil-client panic in the caller.
 		logger.Warn("selfreportengine: github call failed", "action", "new github client", "cause", err)
 		return nil, "", "", fmt.Errorf("github client unavailable: %w", err)
 	}
@@ -93,7 +94,7 @@ func repoClient() (client *github.Client, owner, repo string, err error) {
 	owner, repo, ok := strings.Cut(targetRepo, "/")
 	if !ok {
 		// Unreachable given targetRepo's fixed "owner/repo" literal.
-		// Kept as a defensive guard so a future edit to the constant fails loudly instead of silently calling a malformed repo path.
+		// The guard stays so that a future edit to the constant fails loudly rather than silently calling a malformed repo path.
 		return nil, "", "", fmt.Errorf("selfreportengine: targetRepo %q is not \"owner/repo\" shaped", targetRepo)
 	}
 	return client, owner, repo, nil
@@ -102,16 +103,18 @@ func repoClient() (client *github.Client, owner, repo string, err error) {
 // classifyCallError logs a failed GitHub call and returns its operator-facing error.
 // action is the log's action field and apiFailure the prefix of an API rejection's message.
 func classifyCallError(action, apiFailure, owner, repo string, callErr error) error {
-	// A single Warn covers all three classified returns below, rather than one per branch, since they share the same action/owner/repo context and only the cause differs.
+	// One Warn covers all three returns below, not one per branch.
+	// They share the action, owner and repo context, and only the cause differs.
 	logger.Warn("selfreportengine: github call failed", "action", action, "owner", owner, "repo", repo, "cause", callErr)
 
-	// A token that could not be resolved (env, cache, and gh CLI all exhausted) surfaces distinctly from a generic network problem, so the operator knows to fix credentials rather than investigate connectivity.
+	// An unresolvable token (env, cache and gh CLI all exhausted) surfaces distinctly from a network problem.
+	// The operator then knows to fix credentials rather than investigate connectivity.
 	if errors.Is(callErr, githubclient.ErrTokenUnresolvable) {
 		return fmt.Errorf("github token not resolvable: %w", callErr)
 	}
 
-	// A non-2xx GitHub response decodes into *github.ErrorResponse;
-	// surfacing its Message directly is the closest equivalent to the old "gh issue create failed: <stderr>" text.
+	// A non-2xx GitHub response decodes into *github.ErrorResponse.
+	// Its Message is surfaced directly as the rejection's detail.
 	var ghErr *github.ErrorResponse
 	if errors.As(callErr, &ghErr) {
 		return fmt.Errorf("%s: %s", apiFailure, strings.TrimSpace(ghErr.Message))

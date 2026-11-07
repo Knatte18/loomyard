@@ -1,15 +1,10 @@
-// smoke_test.go walks the live-only webster behaviors the hermetic tests can
-// never exercise, against the REAL substrate (a real logged-in `claude`): the
-// fork-context guard that deterministically closes the fork-loop deadlock
-// (round opus-r2's R2-a — a fork's `lym webster` call is refused while
-// Master's own passes), a real Agent-tool fork's transcript audit (round
-// fable-r1's F2 — exactly one transcript, and the parent's own spawn replay is
-// NOT miscounted as a nested-Agent violation), and the await-batch poll loop
-// reaching a fork-written report (round fable-r1's F1 — forks are backgrounded,
-// so Master long-polls await-batch until the report lands). Every test
-// self-skips when its substrate is absent, and every substrate wait polls on a
-// deadline — never a fixed sleep — since substrate state transitions are
-// asynchronous by contract.
+// smoke_test.go runs the webster behaviors that only a real logged-in `claude` can exercise.
+// It covers the fork-context guard, which refuses a fork's `lym webster` call while Master's own passes.
+// It covers the transcript audit of a real Agent-tool fork, which expects exactly one transcript.
+// The parent's own spawn replay is not counted as a nested Agent call.
+// It covers the await-batch poll loop, which waits for the report a backgrounded fork writes.
+// Every test self-skips when its substrate is absent.
+// Every substrate wait polls against a deadline, never a fixed sleep, because substrate state changes asynchronously.
 
 package webstercli
 
@@ -322,10 +317,10 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 			1: {Slug: "alpha", StartSHA: startSHA, Kind: "fork", SessionID: crashedSession},
 		},
 	}
-	// Only WorktreeRoot and ReportsDir are read on this path (the head-SHA capture, the
-	// dirty-worktree check, the fork audit's workdir, and the batch-report join); the remaining
-	// Geometry fields stay zero rather than being invented, so a future read of one fails loudly
-	// here instead of silently resolving against a plausible-looking temp path.
+	// Only WorktreeRoot and ReportsDir are read on this path.
+	// They serve the head-SHA capture, the dirty-worktree check, the fork audit's workdir, and the batch-report join.
+	// The remaining Geometry fields stay zero rather than being invented,
+	// so a future read of one fails loudly here instead of silently resolving against a plausible-looking temp path.
 	// NeverMatches is the pinned supplier for a mode with no fabric repo -- this fixture is a bare
 	// git repo, never a wired hub -- and the field must be non-nil either way, since CheckParent
 	// and CheckFork call Matches unguarded.
@@ -336,9 +331,9 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 		Engines: shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": eng}),
 		Geom:    websterengine.Geometry{WorktreeRoot: dir, PaneCwd: dir, ReportsDir: reportsDir},
 		// RecordBatch's glyph passes (DoneChecks, BindHandles, DetectDrift) all take the parsed plan,
-		// so a nil Plan is refused outright. The card carries no targets, so every one of those passes
-		// is a clean no-op here and this fixture stays about the crashed-session report it exists to
-		// test.
+		// so a nil Plan is refused outright.
+		// The card carries no targets, so each of those passes is a no-op here.
+		// This fixture stays about the crashed-session report it exists to test.
 		Plan:        &planparser.Plan{Format: 5, Language: "go", Cards: cards},
 		RefMatcher:  websterengine.NeverMatches{},
 		OutcomePath: filepath.Join(dir, "outcome.yaml"),

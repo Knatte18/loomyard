@@ -1,6 +1,8 @@
-// test_integration_test.go drives `lym gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
-// the tier run, its slots, the slot wait, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL, a timeout and an orphan holding its output, the prebuild, the run record, and the refusals that need a hub.
-// It is Tier 2: it builds a real hub and spawns git, the stand-in and a few real go test runs, so it needs the integration build tag.
+// test_integration_test.go drives `lym gate test` over one hubforge hub and a stand-in tier command.
+// Each run is a process of its own, so a test can signal the gate it started.
+// The tests cover the tier run, slots, signals, timeouts, orphans, the prebuild and the run record.
+// It is Tier 2: it builds a real hub and spawns git, the stand-in and a few real go test runs,
+// so it needs the integration build tag.
 
 package gatecli
 
@@ -42,14 +44,15 @@ import (
 )
 
 const (
-	// helperRoleGate runs `lym gate test` over helperCwdEnv and the process arguments, with the stand-in as its go binary unless helperGoEnv is empty.
+	// helperRoleGate runs `lym gate test` over helperCwdEnv and the process arguments;
+	// the stand-in is its go binary unless helperGoEnv is empty.
 	helperRoleGate = "gate"
-	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
+	// helperRoleStandIn records its invocation, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed.
 	// Under helperShortageEnv a tier invocation prints a resource-shortage error and exits 1 instead.
-	// Under helperOrphanEnv, set to helperOrphanTier for a tier invocation or helperOrphanBuild for the shared build invocation, that invocation first starts a sleeper child that holds its stdout and exits without waiting for it.
-	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
-	// The hub's shared build step is such an invocation too, with `sharedbuild` as its first argument, and holds under helperHoldEnv like a tier does;
-	// when it exits non-zero it first prints helperBuildFailureLine.
+	// Under helperOrphanEnv, the invocation first starts a sleeper child that holds its stdout and exits without waiting.
+	// helperOrphanEnv holds helperOrphanTier for a tier invocation or helperOrphanBuild for the shared build.
+	// A build invocation writes helperBuildContentEnv to its `-o` file on success and exits with helperBuildExitEnv.
+	// Shared build runs it as `sharedbuild`: it holds under helperHoldEnv and prints helperBuildFailureLine when it fails.
 	helperRoleStandIn = "standin"
 	// helperRoleSleeper sleeps until killed.
 	helperRoleSleeper = "sleeper"
@@ -58,7 +61,8 @@ const (
 	helperGoEnv     = "GATECLI_TEST_GO"
 	helperRecordEnv = "GATECLI_TEST_RECORD"
 	helperExitEnv   = "GATECLI_TEST_EXIT"
-	// helperGuardExitEnv is the exit code of an invocation whose arguments hold a guard group's -run filter, in place of helperExitEnv.
+	// helperGuardExitEnv is the exit code of an invocation whose arguments hold a guard group's -run filter.
+	// It replaces helperExitEnv for that invocation.
 	helperGuardExitEnv    = "GATECLI_TEST_GUARD_EXIT"
 	helperBuildExitEnv    = "GATECLI_TEST_BUILD_EXIT"
 	helperBuildContentEnv = "GATECLI_TEST_BUILD_CONTENT"
@@ -66,30 +70,37 @@ const (
 	helperBuildFailureLine = "sharedbuild: compile failed"
 	helperHoldEnv          = "GATECLI_TEST_HOLD"
 	helperOrphanEnv        = "GATECLI_TEST_ORPHAN"
-	// helperOrphanTier and helperOrphanBuild are the values of helperOrphanEnv that name the invocation that leaves the orphan.
+	// helperOrphanTier and helperOrphanBuild are the helperOrphanEnv values that name the invocation leaving the orphan.
 	helperOrphanTier  = "tier"
 	helperOrphanBuild = "build"
-	// helperShortageEnv makes a tier invocation print a resource-shortage error and exit 1, on its first run when the value is `once` and on every run when it is `always`.
+	// helperShortageEnv makes a tier invocation print a resource-shortage error and exit 1.
+	// The value `once` does so on the first run only, and `always` does so on every run.
 	helperShortageEnv = "GATECLI_TEST_SHORTAGE"
-	// helperCeilingEnv, helperUnitEnv and helperPipeDelayEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
+	// helperCeilingEnv, helperUnitEnv and helperPipeDelayEnv are durations passed to newCommand in place of its defaults.
+	// The helper always passes a shortage-rerun delay of 0.
 	helperCeilingEnv   = "GATECLI_TEST_CEILING"
 	helperUnitEnv      = "GATECLI_TEST_UNIT"
 	helperPipeDelayEnv = "GATECLI_TEST_PIPE_DELAY"
 	// helperDelayEnv is how long a tier invocation sleeps, after printing a line, before it exits with its code.
 	helperDelayEnv = "GATECLI_TEST_DELAY"
-	// helperCapEnv is the keep-warm cap the gate helper's resolver answers: a duration, `0` for a zero cap, or `fallback` for DefaultAwaitCap with a fallback cause, as the real resolver answers over an unloadable claude.yaml.
+	// helperCapEnv is the keep-warm cap the gate helper's resolver answers: a duration, `0` for a zero cap, or `fallback`.
+	// `fallback` answers DefaultAwaitCap with a fallback cause, as the real resolver answers over an unloadable claude.yaml.
 	// Unset, the helper uses the real resolver.
 	helperCapEnv = "GATECLI_TEST_CAP"
-	// helperLongCapEnv and helperMaxRerunsEnv are the long cap and the break-even a numeric helperCapEnv adds to the resolver's answer: the long cap defaults to the cap and the break-even to 0.
+	// helperLongCapEnv and helperMaxRerunsEnv set the long cap and the break-even.
+	// A numeric helperCapEnv adds them to the resolver's answer; the long cap defaults to the cap, and the break-even to 0.
 	helperLongCapEnv   = "GATECLI_TEST_LONG_CAP"
 	helperMaxRerunsEnv = "GATECLI_TEST_MAX_RERUNS"
-	// helperLockMarginEnv, helperClaimBoundEnv and helperGraceEnv are durations the gate helper's front uses in place of its production bounds.
+	// helperLockMarginEnv, helperClaimBoundEnv and helperGraceEnv are durations that replace the front's production bounds.
 	helperLockMarginEnv = "GATECLI_TEST_LOCK_MARGIN"
 	helperClaimBoundEnv = "GATECLI_TEST_CLAIM_BOUND"
 	helperGraceEnv      = "GATECLI_TEST_GRACE"
-	// helperLaunchEnv picks how the gate helper's front launches its runner: `none` starts nothing, `late` starts it two seconds late and `error` fails the launch, and any other value, or none, starts it at once.
+	// helperLaunchEnv picks how the gate helper's front launches its runner.
+	// `none` starts nothing, `late` starts it two seconds late, and `error` fails the launch.
+	// Any other value, or none, starts it at once.
 	helperLaunchEnv = "GATECLI_TEST_LAUNCH"
-	// helperRoleRunGate calls RunGate over helperCwdEnv with the gate key in its first argument, in a process that carries a strand and helperCapEnv.
+	// helperRoleRunGate calls RunGate over helperCwdEnv with the gate key as its first argument.
+	// The process it runs in carries a strand and helperCapEnv.
 	helperRoleRunGate = "rungate"
 	// helperRoleEnded exits at once, so a front's launch seam can name the pid of a process that already ended.
 	helperRoleEnded = "ended"
@@ -133,7 +144,8 @@ type standInRecord struct {
 }
 
 func runGateHelper() int {
-	// The helper stands for `lym`'s main, whose logs reach the real stderr; under go test the logger defaults to discarding them.
+	// The helper stands for `lym`'s main, whose logs reach the real stderr.
+	// Under go test the logger defaults to discarding them.
 	logger.SetOutput(os.Stderr)
 	logger.SetVerbosity(1)
 	// The tier commands and the prebuild run this same binary, in the stand-in role.
@@ -162,7 +174,9 @@ func runGateHelper() int {
 	return code
 }
 
-// helperSeams returns the front seams the gate helper runs with: the production values with helperLaunch in place of the launcher, and the bounds and cap the helper's environment replaces.
+// helperSeams returns the front seams the gate helper runs with.
+// They are the production values, except that helperLaunch replaces the launcher,
+// and the helper's environment replaces the bounds and cap.
 // It reports false when a duration in the environment does not parse.
 func helperSeams() (detachSeams, bool) {
 	seams := defaultDetachSeams()
@@ -206,9 +220,13 @@ func helperSeams() (detachSeams, bool) {
 	return seams, true
 }
 
-// helperLaunch is the launcher of the gate helper's front: it re-runs this test binary in the gate helper role over `run-detached <run dir>`, detached, with the run's runner log as its output.
-// Under helperLaunchEnv `none` it starts nothing, writes runnerNeverStartedLine to the runner log and returns the pid of a process that already ended;
-// under `late` it starts the runner two seconds after it returned, naming the front's own pid meanwhile; under `error` it fails.
+// helperLaunch launches the gate helper's runner, detached, over `run-detached <run dir>`.
+// Its output goes to the run's runner log.
+// Under helperLaunchEnv `none` it writes runnerNeverStartedLine to the runner log and starts nothing;
+// it returns the pid of a process that already ended.
+// Under helperLaunchEnv `late` it starts the runner two seconds after it returns;
+// meanwhile it returns the calling process's pid.
+// Under helperLaunchEnv `error` it fails.
 func helperLaunch(spawn runnerSpawn) (int, error) {
 	switch os.Getenv(helperLaunchEnv) {
 	case "error":
@@ -235,7 +253,8 @@ func helperLaunch(spawn runnerSpawn) (int, error) {
 	return startHelperRunner(spawn)
 }
 
-// startHelperRunner starts the gate helper role over `run-detached <run dir>`, detached, without the strand name, and returns its pid.
+// startHelperRunner starts the gate helper role over `run-detached <run dir>`, detached, and returns its pid.
+// The runner's environment has no strand name.
 func startHelperRunner(spawn runnerSpawn) (int, error) {
 	logFile, err := os.OpenFile(filepath.Join(spawn.runDir, runnerLogFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -257,8 +276,9 @@ func startHelperRunner(spawn runnerSpawn) (int, error) {
 	return cmd.Process.Pid, nil
 }
 
-// runGateRoleHelper calls RunGate over helperCwdEnv with the gate key in its first argument, as the stand-in's tier command runs under it.
-// It runs in a process the test starts with a strand name and helperCapEnv, which RunGate never reads.
+// runGateRoleHelper calls RunGate over the directory in helperCwdEnv, with the gate key in its first argument.
+// The stand-in's tier command runs it.
+// The test starts it with a strand name and helperCapEnv, which RunGate never reads.
 func runGateRoleHelper() int {
 	logger.SetOutput(os.Stderr)
 	logger.SetVerbosity(1)
@@ -273,7 +293,8 @@ func runStandIn() int {
 	sharedBuild := len(os.Args) > 1 && os.Args[1] == "sharedbuild"
 	isBuild := sharedBuild || (len(os.Args) > 1 && os.Args[1] == "build")
 	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLymEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), NodeReuse: os.Getenv("MSBUILDDISABLENODEREUSE"), MSBuildServer: os.Getenv("DOTNET_CLI_USE_MSBUILD_SERVER"), PID: os.Getpid()}
-	// A prebuild invocation only records itself and exits with its own code; the hold belongs to the tier's invocation and the shared build's.
+	// A prebuild invocation only records itself and exits with its own code;
+	// the hold belongs to the tier's invocation and to the shared build's.
 	hold := (!isBuild || sharedBuild) && os.Getenv(helperHoldEnv) != ""
 	orphanTarget := os.Getenv(helperOrphanEnv)
 	orphan := (!isBuild && orphanTarget == helperOrphanTier) || (sharedBuild && orphanTarget == helperOrphanBuild)
@@ -366,7 +387,7 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	g.cmd = exec.CommandContext(ctx, os.Args[0], run.args...)
-	// The outer environment's slot, enclosing gate or strand, if any, must not make the gate think it is nested or an agent's.
+	// The outer environment's slot, enclosing gate or strand, must not make the gate think it is nested or an agent's.
 	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=")
 	})
@@ -375,7 +396,8 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 		g.cmd.Env = append(g.cmd.Env, helperGoEnv+"="+os.Args[0])
 	}
 	g.cmd.Env = append(g.cmd.Env, run.env...)
-	// A child that outlives its gate keeps the output pipe open, and the delay lets Wait return so the test reports that instead of hanging.
+	// A child that outlives its gate keeps the output pipe open,
+	// and the delay lets Wait return so the test reports that instead of hanging.
 	g.cmd.WaitDelay = 5 * time.Second
 	g.cmd.Stdout = &g.stdout
 	g.cmd.Stderr = &g.stderr
@@ -401,7 +423,8 @@ func (g *runningGate) wait(t *testing.T) int {
 	return exitErr.ExitCode()
 }
 
-// stop ends a gate that holds its tier, with a catchable signal where the platform has one so the gate kills its tier's whole tree, and waits for it.
+// stop ends a gate that holds its tier, and waits for it.
+// Where the platform has a catchable signal, it sends that, so the gate kills its tier's whole tree.
 func (g *runningGate) stop(t *testing.T) {
 	t.Helper()
 
@@ -550,7 +573,8 @@ func buildRunRecordOf(t *testing.T, output string, tier int) (record gateslot.Ru
 	return runRecordAt(t, summaryLogPathOf(t, output, tier, summaryBuild), tier)
 }
 
-// runRecordOf reads the run record and log that the last summary line of tier in output names, a guard group's line apart.
+// runRecordOf reads the run record and log that the last summary line of tier in output names.
+// It skips a guard group's line.
 func runRecordOf(t *testing.T, output string, tier int) (record gateslot.RunRecord, log string) {
 	t.Helper()
 
@@ -583,7 +607,10 @@ func runRecordAt(t *testing.T, logPath string, tier int) (record gateslot.RunRec
 }
 
 // scenarioConfig returns the gate.yaml the scenario's hub holds, after mutate has changed it.
-// tier0 runs the stand-in over targets and args with a GOFLAGS of its own, tier1 holds every slot, tier2 holds no placeholder, tier3 prebuilds lym, tier5 runs a real go test, tier6 runs the stand-in over targets and args and tier7 replaces its shell with the stand-in.
+// tier0 runs the stand-in over targets and args with a GOFLAGS of its own;
+// tier1 holds every slot; tier2 holds no placeholder; tier3 prebuilds lym;
+// tier5 runs a real go test; tier6 runs the stand-in over targets and args;
+// tier7 replaces its shell with the stand-in.
 func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 	t.Helper()
 
@@ -689,7 +716,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		return root
 	}
 
-	// The prime starts dirty, so the green record neither carries nor records in the rows below that repeat a command; the carry rows clean it for their own length.
+	// The prime starts dirty, so the green record neither carries nor records in the rows below that repeat a command;
+	// the carry rows clean it for their own length.
 	dirt := filepath.Join(prime, "dirt.txt")
 	writeDirt := func(t *testing.T) {
 		t.Helper()
@@ -740,7 +768,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		_ = secondLease.Release()
 	})
 
-	// withSharedBuild declares the hub's build step over the stand-in, run in dir, and sets shared_build on tier0 and tier6.
+	// withSharedBuild declares the hub's build step over the stand-in, run in dir.
+	// It also sets shared_build on tier0 and tier6.
 	withSharedBuild := func(dir string) func(cfg map[string]any) {
 		return func(cfg map[string]any) {
 			cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "dir": dir, "env": map[string]string{"BUILD_MARK": "1"}, "timeout_min": 1}
@@ -797,7 +826,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	// writeEnvFile writes the env module's file at path and removes it when the row ends, so no later row over the shared hub loads it.
+	// writeEnvFile writes the env module's file at path and removes it when the row ends.
+	// The removal keeps any later row over the shared hub from loading it.
 	writeEnvFile := func(t *testing.T, path, content string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -1404,7 +1434,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	// wrapComment writes a Go file into the prime whose new comment wraps in the middle of a sentence, so the comments lint finds it, and removes the file when the test ends.
+	// wrapComment writes a Go file into the prime whose new comment wraps in the middle of a sentence.
+	// The comments lint finds that file, and the file is removed when the test ends.
 	wrapComment := func(t *testing.T) {
 		t.Helper()
 		wrapped := filepath.Join(prime, "wrapped.go")
@@ -1455,7 +1486,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	// A stand-in exiting 134 with no test event is a tier that crashed its test runner on SIGABRT, as a shell reports one.
+	// A stand-in exiting 134 with no test event is a tier whose test runner crashed on SIGABRT, as a shell reports one.
 	crashEnv := []string{helperExitEnv + "=134"}
 	// closingOf returns the last closing line of failed runs in output.
 	closingOf := func(output string) string {
@@ -1763,7 +1794,8 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	if runtime.GOOS == "linux" {
 		t.Run("a SIGKILL of the gate ends the tier's command", func(t *testing.T) {
-			// Only the shell the gate started carries the parent-death signal, so the tier's command is the one `exec` replaces it with.
+			// Only the shell the gate started carries the parent-death signal,
+			// so the tier's command is the one `exec` replaces it with.
 			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "7", "./held"}, env: []string{helperHoldEnv + "=1"}})
 			record := g.standIn(t)
 			t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
@@ -1803,7 +1835,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		// buildAndExport runs one prebuilding gate whose stand-in build writes content, and returns the build path and the path the tier saw.
+		// buildAndExport runs one prebuilding gate whose stand-in build writes content.
+		// It returns the build path and the path the tier saw.
 		buildAndExport := func(t *testing.T, content string) (bin, exported string) {
 			t.Helper()
 			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{helperBuildContentEnv + "=" + content}})
@@ -1837,7 +1870,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
 			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
 		}
-		// The gate runs in a helper process of its own, so its run directory is a sibling of this process's, made by the temp package's beside-the-parent rule.
+		// The gate runs in a helper process of its own,
+		// so its run directory is a sibling of this process's, as the temp package's beside-the-parent rule places it.
 		parentRun, err := lymtemp.Dir()
 		if err != nil {
 			t.Fatal(err)
@@ -2172,7 +2206,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	// Each row writes its own module, so a broken one never disturbs another; makeUnreadable removes a path's permissions until the row ends.
+	// Each row writes its own module, so a broken one never disturbs another.
+	// makeUnreadable removes a path's permissions until the row ends.
 	makeUnreadable := func(t *testing.T, path string) {
 		t.Helper()
 		if os.Geteuid() == 0 {
@@ -2295,7 +2330,8 @@ func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
 	}
 }
 
-// TestGateRunner starts the gate helper as `run-detached` over run directories a test writes itself, with the stand-in as the tier command.
+// TestGateRunner starts the gate helper as `run-detached` over run directories the test writes itself.
+// The stand-in is the tier command.
 func TestGateRunner(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -2311,7 +2347,8 @@ func TestGateRunner(t *testing.T) {
 	// leaseLength outlasts the stand-in's start by a wide margin and is short enough to pass inside a row.
 	const leaseLength = 3 * time.Second
 
-	// startRunner writes a run directory holding a request for tier0 over ./pkg and a lease of length, and starts the runner over it.
+	// startRunner writes a run directory holding a request for tier0 over ./pkg and a lease of length.
+	// It starts the runner over that directory.
 	startRunner := func(t *testing.T, length time.Duration, env ...string) (*runningGate, detachRun) {
 		t.Helper()
 		run := detachRun{dir: t.TempDir()}

@@ -1,6 +1,5 @@
-// commitweftpaths_test.go — unit tests for weftCommitPathspec and CommitRecordsPaths' git-free early
-// return paths. Every test here builds inputs by hand and spawns no git, per the Test Tier Purity
-// Invariant.
+// commitweftpaths_test.go tests weftCommitPathspec and the git-free early returns of CommitRecordsPaths.
+// Every test here builds its inputs by hand and spawns no git, per the Test Tier Purity Invariant.
 
 package fabricengine
 
@@ -12,9 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWeftCommitPathspec covers anchorRel == "." (entries returned with no added segment) and
-// anchorRel == "backend" (each entry prefixed), asserting the result is positive-only with no
-// entry beginning with a ":(exclude)" marker.
+// TestWeftCommitPathspec covers anchorRel == "." (entries returned with no added segment).
+// It also covers anchorRel == "backend" (each entry prefixed).
+// The result is positive-only: no entry begins with a ":(exclude)" marker.
 //
 //testtiming:keep weftCommitPathspec staying positive-only and prefixing each entry by the anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftCommitPathspec(t *testing.T) {
@@ -59,9 +58,8 @@ func TestWeftCommitPathspec(t *testing.T) {
 	}
 }
 
-// TestCommitRecordsPaths_SkipGit asserts CommitRecordsPaths returns ("", false, nil) for
-// SyncOptions{SkipGit: true} against a path that does not exist, proving no lock was taken and no
-// directory created, and that the passed recorder's snapshot stays empty.
+// TestCommitRecordsPaths_SkipGit asserts CommitRecordsPaths returns ("", false, nil) for SyncOptions{SkipGit: true}.
+// With a path that does not exist, it takes no lock and creates no directory; the recorder's snapshot stays empty.
 //
 //testtiming:keep CommitRecordsPaths taking no lock and creating no directory under SkipGit against a nonexistent path, leaving the recorder empty; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitRecordsPaths_SkipGit(t *testing.T) {
@@ -81,9 +79,8 @@ func TestCommitRecordsPaths_SkipGit(t *testing.T) {
 	}
 }
 
-// TestCommitRecordsPaths_EmptyPaths asserts CommitRecordsPaths returns ("", false, nil) for an empty
-// relPaths slice against a path that does not exist, proving no lock was taken and no directory
-// created, and that the passed recorder's snapshot stays empty.
+// TestCommitRecordsPaths_EmptyPaths asserts CommitRecordsPaths returns ("", false, nil) for an empty relPaths slice.
+// With a path that does not exist, it takes no lock and creates no directory; the recorder's snapshot stays empty.
 func TestCommitRecordsPaths_EmptyPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")

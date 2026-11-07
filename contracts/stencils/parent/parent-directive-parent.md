@@ -1,6 +1,8 @@
-<!-- This is the parent directive for a run with a recorded parent: the variant internal/parentdirective.Directive renders when it is told a non-empty parent name.
+<!-- This is the parent directive for a run with a recorded parent.
+     internal/parentdirective.Directive renders this variant when it is told a non-empty parent name.
      Every spawning module renders it into its role's opening stencil through the parent_directive marker.
-     Its markers are the parent name and the operator-ban line, which Directive fills from parent-directive-operator-ban and leaves empty for an interactive role.
+     Its markers are the parent name and the operator-ban line,
+     which Directive fills from parent-directive-operator-ban and leaves empty for an interactive role.
      The decision-notice line quotes the opening internal/loomcli's decision notice starts with; a loomcli test pins the two together. -->
 
 ## Your parent

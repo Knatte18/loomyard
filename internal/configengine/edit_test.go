@@ -1,8 +1,4 @@
-// edit_test.go — unit tests for the interactive config editing machinery (edit.go).
-//
-// Tests cover: scaffold-when-missing, edit of existing file, re-edit loop on validation failure,
-// abort on unchanged-after-failure (both scaffolded and pre-existing), abort on editor error, and
-// not-initialized propagation.
+// edit_test.go holds the unit tests for the interactive config editing machinery in edit.go.
 
 package configengine_test
 
@@ -24,7 +20,12 @@ type editStep struct {
 	leave bool
 }
 
-// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, an empty or whitespace-only result aborts and restores the entry bytes of a pre-existing file while a comment-only one saves, and a base directory without _lym/ is refused with the not-initialized error before any editor runs.
+// TestEdit pins the editing loop.
+// A missing file is scaffolded from the template before the editor runs, and invalid YAML re-opens the editor.
+// An editor that leaves invalid YAML unchanged or fails aborts with ErrAborted, and removes only a file Edit scaffolded.
+// An empty or whitespace-only result aborts and restores the entry bytes of a pre-existing file;
+// a comment-only result saves.
+// A base directory without _lym/ is refused with the not-initialized error before any editor runs.
 func TestEdit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -51,11 +52,12 @@ func TestEdit(t *testing.T) {
 		categories map[string]configengine.Category
 		// localExisting is the local or machine file before the call; empty means it is absent.
 		localExisting string
-		// hubWide marks the spec hub-wide and gives the board dir its _lym/config/, as a machine edit needs; it needs board.
+		// hubWide marks the spec hub-wide and gives the board dir its _lym/config/, as a machine edit needs.
+		// It needs board.
 		hubWide bool
 		// seedOnly marks the spec seed-only, so a hub's default layer scaffolds from the template.
 		seedOnly bool
-		// overlay swaps in overlaySpec renamed testmod.
+		// overlay swaps in overlaySpec, renamed to testmod.
 		overlay bool
 		// existing is the worktree file's bytes before the call; empty keeps original.
 		existing string
@@ -365,7 +367,8 @@ func TestEdit(t *testing.T) {
 	}
 }
 
-// TestEditPath_ScaffoldsIntoMissingParentDir tests that EditPath on a path whose parent directory does not exist scaffolds the template there, applies the editor's write and returns nil.
+// TestEditPath_ScaffoldsIntoMissingParentDir pins that EditPath creates a missing parent directory.
+// It scaffolds the template there, applies the editor's write, and returns nil.
 //
 //testtiming:keep pins that EditPath creates a missing parent directory chain, which the covering Edit tests never exercise
 func TestEditPath_ScaffoldsIntoMissingParentDir(t *testing.T) {

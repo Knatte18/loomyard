@@ -1,4 +1,5 @@
-// view.go builds the View of one dobby from what a reader outside its process can read: its liveness, its state record, beam.yaml, the runs it drives and the board.
+// view.go builds the View of one dobby from what a reader outside its process can read.
+// It draws on the dobby's liveness, its state record, beam.yaml, the runs it drives and the board.
 
 package dobbyengine
 
@@ -8,7 +9,9 @@ import (
 	"time"
 )
 
-// View is what one reading of a dobby shows: whether it lives, its max_runs and land_notice, the runs it drives and the released tasks it has not started, each with whether it asks for a landing notice.
+// View is one reading of a dobby: whether it is alive, its max_runs and land_notice.
+// It also lists the runs it drives and the released tasks it has not started.
+// Each run and waiting task says whether it asks for a landing notice.
 type View struct {
 	// Alive reports whether the dobby's lock is held.
 	Alive bool `json:"alive"`
@@ -22,12 +25,12 @@ type View struct {
 	Waiting []WaitingTask `json:"waiting"`
 }
 
-// ViewRun is one run a dobby drives, as its batten status and the dobby's state record read.
+// ViewRun is one run a dobby drives, as read from its batten status and the dobby's state record.
 type ViewRun struct {
 	Slug     string `json:"slug"`
 	State    string `json:"state"`
 	Producer string `json:"producer"`
-	// PassInFlight reports whether the run's driver lock is held, which a pass in flight does.
+	// PassInFlight reports whether the run's driver lock is held, which means a pass is in flight.
 	PassInFlight bool `json:"pass_in_flight,omitempty"`
 	// LastPassExit is when the run's last pass exited; zero when the record holds none.
 	LastPassExit     time.Time `json:"last_pass_exit,omitzero"`
@@ -47,9 +50,10 @@ type WaitingTask struct {
 	OwnedElsewhere bool     `json:"owned_elsewhere,omitempty"`
 	// Paused reports whether a pause entry covers the hub or the slug.
 	Paused bool `json:"paused,omitempty"`
-	// StartRefusal is the refusal every start of the slug gets now, such as for a finished run record of the same slug, so no pass is spawned while it stands.
+	// StartRefusal is the refusal every start of the slug gets, such as one for a finished run record of the same slug;
+	// while it stands, no pass is spawned.
 	StartRefusal string `json:"start_refusal,omitempty"`
-	// Refusal is the text of the last refused start of the entry as it reads now.
+	// Refusal is the text of the last refused start of the entry, if that start was for the entry as it now reads.
 	Refusal string `json:"refusal,omitempty"`
 	// NextTry is when the refused start's backoff runs out; zero once it has.
 	NextTry time.Time `json:"next_try,omitzero"`
@@ -57,7 +61,7 @@ type WaitingTask struct {
 	AtMaxRuns bool `json:"at_max_runs,omitempty"`
 	// NotifyOnLand reports whether the task's board entry asks for a landing notice.
 	NotifyOnLand bool `json:"notify_on_land,omitempty"`
-	// FrontFirst is the slug of the open front task of the worktree that holds this released task back: no other task starts while one stands.
+	// FrontFirst is the slug of the worktree's open front task; while it stands, no other task starts.
 	FrontFirst string `json:"front_first,omitempty"`
 	// ReadyHold reports whether the beam is flagged ready, which holds every start of the worktree back.
 	ReadyHold bool `json:"ready_hold,omitempty"`
@@ -68,9 +72,9 @@ func (w WaitingTask) Ready() bool {
 	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.StartRefusal == "" && w.NextTry.IsZero() && !w.AtMaxRuns && w.FrontFirst == "" && !w.ReadyHold
 }
 
-// ViewInput is everything BuildView reads.
+// ViewInput is everything one view is built from.
 type ViewInput struct {
-	// Worktree is the name of the dobby's worktree, the prime's name for the prime.
+	// Worktree is the name of the dobby's worktree; for the prime's dobby, it is the prime's name.
 	Worktree string
 	// Project is the dobby's beam slug, empty for the prime's dobby; it names the front tasks that hold this dobby's starts.
 	Project string
@@ -85,7 +89,9 @@ type ViewInput struct {
 }
 
 // BuildView returns the View of the dobby in.
-// The runs are the listed ones that are not done, and a done run takes a slot only while its driver lock is held; a task waits while it is released to the worktree and not started, and its reasons are the conditions the dobby's start step checks, in the start step's own order for max_runs.
+// The runs are the listed ones that are not done; a done run takes a slot only while its driver lock is held.
+// A task waits while it is released to the worktree and not started.
+// Its reasons are the conditions the dobby's start step checks, in the start step's own order for max_runs.
 // An open front task of the worktree holds every other waiting task back and takes no slot under max_runs.
 // While the record carries the ready hold, every waiting task is held and none takes a slot.
 func BuildView(in ViewInput) View {

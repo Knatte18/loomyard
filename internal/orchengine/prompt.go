@@ -1,12 +1,12 @@
-// prompt.go renders the orch role and the orch stencils (orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload, orch-template-usage-limit-wake).
+// prompt.go renders the orch role and the orch stencils.
 // The role and its on-demand files are filled from their embedded bytes, since no hub may edit them.
-// Each stencil is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant.
-// Every text is filled with stencil.Fill, which drops the leading comment.
-// The role, its on-demand files and the note stencil render to files the session reads, and the two note requests render to the mail body creel posts.
-// Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
-// so each of those must render to one line;
+// Every other stencil is read at call time from the caller's stencils directory, per the Stencil Ownership Invariant.
+// Each text is filled with stencil.Fill, which drops the leading comment of the stencil.
+// The role, its on-demand files and the note template render to files a session reads;
+// the two note requests render to the mail body creel posts.
+// Every other render is one creel text line or a shuttle launch pointer, so it must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
-// WithPresence appends the presence line to a rendered pointer while the hub's presence is slack.
+// WithPresence appends the presence line to a pointer while the hub's presence is slack.
 
 package orchengine
 
@@ -25,12 +25,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// presenceLine is what a pointer gains, joined to its own line, while the hub's presence is slack.
+// presenceLine is appended to a pointer's own line while the hub's presence is slack.
 const presenceLine = " Presence is slack: also post every message meant for the operator to the hub's SLACK program, as the orch role's Slack rules say."
 
-// WithPresence returns pointer with the presence line appended while the hub's presence, read from p.SlackPresencePath, is slack, and pointer unchanged otherwise.
+// WithPresence returns pointer with the presence line appended while the hub's presence is slack.
+// The presence is read from p.SlackPresencePath.
 // The line joins the pointer's own line, since a typed pointer is one creel text line.
-// An empty path, a hub with no presence record and a record that cannot be read all leave the pointer as it is; a failed read is logged at Debug.
+// An empty path, a hub with no presence record and a record that cannot be read all leave the pointer as it is;
+// a failed read is logged at Debug.
 func WithPresence(p Paths, pointer string) string {
 	if p.SlackPresencePath == "" {
 		return pointer
@@ -64,9 +66,10 @@ const (
 // decisionNoteTitleMarker is the role's marker that the decision-note title form fills.
 const decisionNoteTitleMarker = "decision_note_title"
 
-// RenderRoleFile renders the orch role, the same for every orch in every repository, to path, and each of its on-demand files beside it, creating the directory.
+// RenderRoleFile renders the orch role to path and each of its on-demand files beside it, creating the directory.
+// The role is the same for every orch in every repository.
 // The texts come from the bytes built into the binary, never from a board copy, so no hub can change them.
-// The decision-note title marker is filled with the title form for the placeholder slug "<slug>", since the role is hub-wide.
+// The decision-note title marker is filled with the title form for the placeholder slug "<slug>".
 // The on-demand files are written first, so a role a session reads never names a file not yet there.
 // Each write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
 func RenderRoleFile(path string) error {
@@ -111,7 +114,8 @@ func RenderSoftHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath str
 	return renderMailBody(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath})
 }
 
-// renderMailBody renders one stencil with values to a mail body: surrounding whitespace is trimmed and any number of lines is kept.
+// renderMailBody renders one stencil with values to a mail body:
+// surrounding whitespace is trimmed and any number of lines is kept.
 func renderMailBody(stencilsDir, name string, values map[string]string) (string, error) {
 	out, err := render(stencilsDir, name, values, false)
 	if err != nil {

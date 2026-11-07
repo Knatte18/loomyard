@@ -1,4 +1,6 @@
-// raddlewiring.go builds the seams of the raddle recipe's two rows for the run at a location: Raddle-Write's paths, table source and proposal check, Raddle-File's board writes, and the child process that makes a filed project a beam.
+// raddlewiring.go builds the seams of the raddle recipe's rows for the run at a location.
+// Raddle-Write gets its paths, table source and proposal check;
+// Raddle-File gets its board writes and the child process that makes a filed project a beam.
 
 package loomcli
 
@@ -32,7 +34,8 @@ import (
 // raddleFileEngine is the engine of the recipe row that files the approved raddle proposal on the board.
 const raddleFileEngine = "RaddleFile"
 
-// raddleSettingModule and raddleAutoApproveKey name the setting that tells a raddle run to file without waiting for the operator's approval.
+// raddleSettingModule and raddleAutoApproveKey name the raddle auto-approve setting.
+// When it is true, a raddle run files without waiting for the operator's approval.
 const (
 	raddleSettingModule  = "loom"
 	raddleAutoApproveKey = "raddle_auto_approve"
@@ -48,9 +51,9 @@ func raddleRunHistory(location *lymcwd.Location) ([]shedengine.HistoryEntry, err
 	return status.History, err
 }
 
-// freshRaddleEntry reports whether the run's current attempt at Raddle-Write began with a Raddle-File return or an operator goto into the row, and the 1-based history position of that entry.
+// freshRaddleEntry reports whether the run's current attempt at Raddle-Write began with a return or a goto into the row.
 // The last history entry decides: a Raddle-File Stuck routed to Raddle-Write, or a goto routed to it.
-// The position is zero when the entry is not fresh.
+// It returns the 1-based history position of that entry, zero when the entry is not fresh.
 func freshRaddleEntry(history []shedengine.HistoryEntry) (fresh bool, position int) {
 	if len(history) == 0 {
 		return false, 0
@@ -79,7 +82,9 @@ func commitRaddle(location *lymcwd.Location, slug string) error {
 	return err
 }
 
-// raddleWriteEnv returns the Raddle-Write row's seams for the run slug at location: the run's raddle paths, the mode read from the raddle_auto_approve setting, the history seam and the commit, the seat table source and the proposal check.
+// raddleWriteEnv returns the Raddle-Write row's seams for the run slug at location.
+// It covers the run's raddle paths, the auto-approve mode read from the setting, the history seam and the commit.
+// It also covers the seat table source and the proposal check.
 // Every closure reads or writes on demand and opens nothing at build time.
 func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDir, specsDir string, reg modelspec.Registry, slug string, setting func(module, key string) (any, error)) shedrecipe.RaddleWriteEnv {
 	statePath := loomengine.RaddleStatePath(location)
@@ -133,7 +138,8 @@ func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDi
 	}
 }
 
-// raddleFileDeps returns the Raddle-File row's deps for the run slug at location: the run's raddle paths and the board writes of the filing.
+// raddleFileDeps returns the Raddle-File row's deps for the run slug at location.
+// It covers the run's raddle paths and the board writes of the filing.
 // Every closure opens the board or reads the run on a call, never at build time.
 func raddleFileDeps(location *lymcwd.Location, slug string) loomshed.RaddleFileDeps {
 	boardDir := fabricengine.BoardDir(location.HubPath)
@@ -223,7 +229,8 @@ func raddleFileDeps(location *lymcwd.Location, slug string) loomshed.RaddleFileD
 	}
 }
 
-// createBeamFromParent makes the project a beam by running `lym beam create <project>` through run in the worktree that is the parent of the run's slug, the prime when the slug's parent names none.
+// createBeamFromParent makes the project a beam by running `lym beam create <project>` through run.
+// It runs in the worktree that is the parent of the run's slug, or in the prime when that parent names none.
 // The beam create verb skips each step whose result exists, so a retry after a failed run finishes it.
 func createBeamFromParent(location *lymcwd.Location, project string, run func(dir string, args ...string) error) error {
 	prime, err := primeOfHub(location)

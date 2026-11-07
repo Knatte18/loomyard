@@ -9,9 +9,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// testGraph is a small module.
+// testGraph returns the package graph of a small module.
 // Package b imports a, c imports b, d is unrelated, and tmuxonly reaches a only through a test import.
-// The command package cmd/lym imports b, and e builds the binary in its tests and reaches nothing else, so it joins only for a change to cmd/lym itself.
+// The command package cmd/lym imports b,
+// and the package e builds the binary in its tests and reaches nothing else,
+// so it joins only for a change to cmd/lym itself.
 func testGraph() moduleGraph {
 	const m = "m/"
 	return newModuleGraph([]pkg{

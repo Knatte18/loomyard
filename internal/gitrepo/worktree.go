@@ -1,6 +1,7 @@
-// worktree.go adds WorktreeChangedFiles, the read-only working-tree scan Fabric.Status (a later
-// fabricengine batch) uses to report uncommitted changes — as opposed to gitrepo.go's
-// ChangedFilesSince, which compares two committed trees and never looks at the working tree at all.
+// worktree.go holds the read-only scans of the working tree and the index.
+// WorktreeChangedFiles reports every file with an uncommitted change.
+// UntrackedFiles lists the untracked, non-ignored files.
+// TrackedRootEntries lists the top-level names the index tracks.
 
 package gitrepo
 
@@ -16,11 +17,10 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
-// WorktreeChangedFiles returns repo-relative paths of every file with an uncommitted change
-// (tracked-and-modified, staged, or untracked).
+// WorktreeChangedFiles returns the repo-relative paths of every file with an uncommitted change:
+// tracked-and-modified, staged, or untracked.
 // The set is not ordered contractually.
-// It manually reads .git/info/exclude since go-git's Worktree.Status() skips it due to path
-// chrooting.
+// It reads .git/info/exclude itself, since go-git's Worktree.Status() skips that file because of path chrooting.
 func (r *Repo) WorktreeChangedFiles() ([]string, error) {
 	status, err := r.worktreeStatus()
 	if err != nil {
@@ -37,7 +37,7 @@ func (r *Repo) WorktreeChangedFiles() ([]string, error) {
 }
 
 // UntrackedFiles returns the repo-relative paths of every untracked, non-ignored file, sorted.
-// It reads go-git's worktree status the way WorktreeChangedFiles does, with .git/info/exclude honoured, so a junctioned `_lym` or `.lym` listed there never appears.
+// It honors .git/info/exclude, so a junctioned `_lym` or `.lym` listed there never appears.
 // It returns an empty, never nil, slice when there are none.
 func (r *Repo) UntrackedFiles() ([]string, error) {
 	status, err := r.worktreeStatus()
@@ -55,7 +55,7 @@ func (r *Repo) UntrackedFiles() ([]string, error) {
 	return files, nil
 }
 
-// worktreeStatus returns go-git's worktree status with .git/info/exclude honoured, read whole inside one readGoGit.
+// worktreeStatus returns go-git's worktree status, with .git/info/exclude honored and read in one readGoGit call.
 func (r *Repo) worktreeStatus() (git.Status, error) {
 	return readGoGit(r, func(repo *git.Repository) (git.Status, error) {
 		wt, err := repo.Worktree()
@@ -77,9 +77,9 @@ func (r *Repo) worktreeStatus() (git.Status, error) {
 	})
 }
 
-// readGitDirExcludePatterns reads repo's info/exclude file through the git-dir
-// filesystem, returning its non-comment, non-blank lines as gitignore.Pattern
-// values. A missing file returns empty, nil slice.
+// readGitDirExcludePatterns returns the patterns of repo's info/exclude file as gitignore.Pattern values.
+// Comment and blank lines are skipped.
+// A missing file yields a nil slice and no error.
 func readGitDirExcludePatterns(repo *git.Repository) ([]gitignore.Pattern, error) {
 	storer, ok := repo.Storer.(*filesystem.Storage)
 	if !ok {

@@ -1,5 +1,5 @@
-// ready_test.go covers Ready(l)'s three outcomes: sibling absent, sibling present, and a stat
-// failure other than not-exist.
+// ready_test.go covers Ready(l)'s three outcomes:
+// sibling absent, sibling present, and a stat failure other than not-exist.
 
 package fabricengine_test
 
@@ -41,8 +41,8 @@ func TestReady(t *testing.T) {
 			wantReady: true,
 		},
 		{
-			// A hub path under a regular file makes the sibling's stat fail with "not a directory",
-			// not "not exist"; no portable chmod-based simulation exists across platforms.
+			// A hub path under a regular file makes the sibling's stat fail with "not a directory", not "not exist";
+			// no portable chmod-based simulation exists across platforms.
 			name: "stat failure other than not-exist",
 			location: func(t *testing.T, tmp string) string {
 				regularFile := filepath.Join(tmp, "not-a-hub")

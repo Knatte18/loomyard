@@ -1,4 +1,5 @@
-// conditionedsend_test.go covers Runner.SendConditioned through a fake pane and a session-signal fake engine, with a fake clock so no row waits.
+// conditionedsend_test.go covers Runner.SendConditioned through a fake pane and a session-signal fake engine.
+// It runs on a fake clock, so no row waits.
 
 package shuttleengine
 
@@ -13,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// framedReed is a tuiReed whose capture is the fixed frame while one is set.
+// framedReed wraps a pane reed so that its capture returns the fixed frame while one is set.
 type framedReed struct {
 	*tuiReed
 
@@ -47,7 +48,7 @@ func TestRunner_SendConditioned(t *testing.T) {
 		box    string
 		frame  string
 		active bool
-		// pasteEngine runs the row over the engine that takes pastes, with a pending-send record of the line from an earlier send.
+		// pasteEngine runs the row over the paste-taking engine, with a pending-send record of the line from an earlier send.
 		pasteEngine bool
 		// swallowEnter keeps the pane from ever submitting the box.
 		swallowEnter bool

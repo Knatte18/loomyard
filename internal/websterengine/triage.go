@@ -1,4 +1,5 @@
-// triage.go holds the verify gate's flaky-failure notes: the warning and the friction note that name the identities that failed once and passed on rerun.
+// triage.go holds the verify gate's flaky-failure notes:
+// the warning and the friction note that name the identities failing once and passing on rerun.
 
 package websterengine
 
@@ -20,8 +21,8 @@ func triageWarnings(flaky []string) []string {
 	return []string{"integration verify: flaky failures passed or vanished on rerun: " + strings.Join(flaky, ", ")}
 }
 
-// writeTriageFrictionNote records the flaky identities as a friction note,
-// since a failure that vanishes on rerun is environment trouble the hub collects from friction notes.
+// writeTriageFrictionNote records the flaky identities as a friction note.
+// A failure that vanishes on rerun is environment trouble, which the hub collects from friction notes.
 // It is a no-op when frictionDir is empty or flaky is empty.
 func writeTriageFrictionNote(frictionDir string, flaky []string) error {
 	if frictionDir == "" || len(flaky) == 0 {
@@ -46,16 +47,18 @@ func writeTriageFrictionNote(frictionDir string, flaky []string) error {
 	return nil
 }
 
-// backgroundShellOutcome is how a run ended with a background shell still outstanding, and so what finally ends the shell.
+// backgroundShellOutcome records how a run ended with a background shell still outstanding.
+// It says what finally ends the shell.
 type backgroundShellOutcome struct {
 	// description is the run's final outcome.
 	description string
-	// strandReclaimed is true when Master's strand outlives the run until the next `lym webster run` reclaims it, and false when shuttle removes the strand as the run finishes.
+	// strandReclaimed is true when the next run reclaims Master's strand; false when shuttle removes it at run end.
 	strandReclaimed bool
 }
 
-// finishedShellOutcome describes a run that returned a RunResult:
-// the shuttle run ended done, so shuttle removes Master's strand when the run finishes, and the session and the shell end with it.
+// finishedShellOutcome describes a run that returned a RunResult.
+// The shuttle run ended done, so shuttle removes Master's strand when the run finishes.
+// The session and the shell end with it.
 func finishedShellOutcome(runResult RunResult) backgroundShellOutcome {
 	description := runResult.Outcome
 	switch runResult.Outcome {
@@ -66,14 +69,17 @@ func finishedShellOutcome(runResult RunResult) backgroundShellOutcome {
 }
 
 // errorShellOutcome describes a run that returned err.
-// strandReclaimed is true for an error that leaves Master's strand alive (died, timeout), and false for an error after a shuttle-done end, where shuttle still removes the strand.
+// strandReclaimed is true for an error that leaves Master's strand alive (died, timeout).
+// It is false for an error after a shuttle-done end, where shuttle still removes the strand.
 func errorShellOutcome(err error, strandReclaimed bool) backgroundShellOutcome {
 	return backgroundShellOutcome{description: "error (" + err.Error() + ")", strandReclaimed: strandReclaimed}
 }
 
-// expiredShellWarning states what happened to one background shell Master's run ended over: the run never read its result, lym did not stop it, what ends it, and the run's final outcome.
-// It names the shell's label, the signal that reported it and how long it was outstanding.
-// It is both the run warning and the friction note's line for that shell, so the two carry the same wording.
+// expiredShellWarning states what happened to one background shell that outlived Master's run.
+// It says the run never read the shell's result, and lym did not stop the shell.
+// It also gives what ends the shell and the run's final outcome.
+// It names the shell's label, the signal that reported it, and how long it was outstanding.
+// The run warning and the friction note use this same line, so the two carry the same wording.
 func expiredShellWarning(shell shuttleengine.EndedShell, outcome backgroundShellOutcome) string {
 	ends := "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it where the shell is in the pane's process tree"
 	if outcome.strandReclaimed {
@@ -82,7 +88,8 @@ func expiredShellWarning(shell shuttleengine.EndedShell, outcome backgroundShell
 	return fmt.Sprintf("background shell `%s` (reported by the %s signal) was still running, outstanding for %s, when the run ended; the run never read the shell's result, and lym did not stop the shell; %s; the run's final outcome: %s", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second), ends, outcome.description)
 }
 
-// writeBackgroundShellFrictionNote records the shells Master's run ended over and the run's final outcome,
+// writeBackgroundShellFrictionNote records the shells still outstanding when Master's run ended.
+// It also records the run's final outcome,
 // so reflection has the evidence a hang otherwise leaves only in events.jsonl.
 // It is a no-op when frictionDir is empty or shells is empty.
 func writeBackgroundShellFrictionNote(frictionDir string, shells []shuttleengine.EndedShell, outcome backgroundShellOutcome) error {

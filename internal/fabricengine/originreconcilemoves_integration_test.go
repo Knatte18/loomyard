@@ -1,4 +1,5 @@
-// originreconcilemoves_integration_test.go proves what the origin reconcile moves and what it leaves where it was, on hubforge hubs.
+// originreconcilemoves_integration_test.go tests what the origin reconcile moves and what it leaves in place.
+// Its hubs are hubforge hubs.
 // The other machine is a second clone of the hub's code or records bare repository.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -23,16 +24,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// liveWayForward is the line a pair kept live names, which ends in no re-entry.
+// liveWayForward is the line a pair kept live names: no step runs now, and the run or cleanup judges it later.
 const liveWayForward = "no step now: the run's own Parent-Align judges and moves its pair, and `lym cleanup --apply` re-judges it once the run has ended"
 
-// The lock files a pair weft's lock directory holds.
+// Names of the lock files in a pair weft's lock directory.
 const (
 	weftWriteLockName = "weft.write.lock"
 	weftPushLockName  = "fabric.push.lock"
 )
 
-// moveReconcile runs a reconcile with seams over hub.
+// moveReconcile runs the origin reconcile over hub with scope and seams, failing the test on error.
 func moveReconcile(t *testing.T, hub *originHub, scope fabricengine.ReconcileScope, seams fabricengine.OriginSeams) fabricengine.OriginReport {
 	t.Helper()
 	report, err := fabricengine.ReconcileOrigin(hub.Location, scope, seams, fabricengine.ReconcileOptions{})
@@ -123,7 +124,8 @@ func newMovesPair(t *testing.T) *movesPair {
 	return &movesPair{originHub: hub, code: code, codeBranch: codeBranch, records: records, recordsName: publishBranch(t, records)}
 }
 
-// TestReconcileOrigin_Moves covers the origin reconcile's moves: what it fast-forwards or replays, and what a dirty path, a live pair, a held lock or a conflict leaves where it was.
+// TestReconcileOrigin_Moves covers the origin reconcile's moves: what it fast-forwards or replays.
+// It also covers what a dirty path, a live pair, a held lock or a conflict leaves where it was.
 // It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Moves(t *testing.T) {
 	tiergate.Require(t, 1)

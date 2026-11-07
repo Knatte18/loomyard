@@ -1,4 +1,6 @@
-// interruptguard.go holds the guarded interrupt and the guarded rewind-picker close: every interrupt key shuttle sends into a pane passes the pane guard here, bar the guarded dismissal of a known mid-session picker during a send's idle wait.
+// interruptguard.go holds the guarded interrupt and the guarded rewind-picker close.
+// Every interrupt key shuttle sends into a pane passes the pane guard here.
+// The one exception is the rewind-picker close a send makes before it types.
 package shuttleengine
 
 import (
@@ -15,14 +17,16 @@ import (
 var ErrNoRunningTurn = errors.New("shuttle: the pane shows no running turn, so there is nothing to interrupt; way forward: \"lym creel post <strand> <text>\" gives the agent a turn")
 
 // ErrRewindPickerOpen marks an operation that found the provider's rewind picker open in the pane.
-// It never wraps ErrSessionBusy, so no caller retries a picker as a busy session.
+// It does not wrap the busy-session error, so no caller retries a picker as a busy session.
 var ErrRewindPickerOpen = errors.New("shuttle: the rewind picker was open in the pane")
 
 // guardedInterrupt plays the engine's interrupt sequence into guid's pane only when the pane shows a running turn.
 // The pane must classify as a ready agent pane first, and one fresh capture decides.
 // An open rewind picker is closed with one key and fails with ErrRewindPickerOpen.
 // A pane with no running turn gets nothing and fails with ErrNoRunningTurn, and a capture that fails sends nothing.
-// Bound: the guard only withholds a key, so a turn that ends between the capture and the key, or a capture quoting the running-turn hint, costs one key on an idle prompt, which opens nothing.
+// Bound: the guard only withholds a key.
+// A turn that ends between the capture and the key costs one key on an idle prompt, which opens nothing.
+// So does a capture quoting the running-turn hint.
 func guardedInterrupt(reed ReedOps, engine Engine, clock Clock, guid string) error {
 	if err := requireReadyAgentPane(reed, engine, guid); err != nil {
 		return err
@@ -48,15 +52,20 @@ func guardedInterrupt(reed ReedOps, engine Engine, clock Clock, guid string) err
 // A caller treats the interrupt as sent: the turn was stopped, and only the box may still hold the restored text.
 var ErrInterruptClearFailed = errors.New("shuttle: the interrupt key was sent, but clearing the prompt it restored did not finish; treat the interrupt as sent")
 
-// clearRestoredPrompt empties the prompt the provider restored into guid's input box after lym's own interrupt key, and does nothing for an engine without RestoredPromptClearer, InputBoxReader and InterruptGuard.
+// clearRestoredPrompt empties the prompt the provider restored into guid's input box after lym's own interrupt key.
+// It does nothing for an engine without RestoredPromptClearer, InputBoxReader or InterruptGuard.
 // It waits the engine's interrupt settle on clock and reads the box.
-// A box read empty gets one more settle and one more read, and a box still empty, or one the engine cannot read, returns nil.
-// A box holding text is cleared only behind a guard reading taken from that same capture plus one operator-activity query:
-// the provider pane reads ready with no running turn, and the operator is not active.
-// A reading that fails any of these sends nothing and returns nil, leaving the text as a draft for the next send to hold on.
-// The clear is the engine's RestoredPromptClearSequence, played at most once per call; the box then settles for SubmitSettle and is read once more, and text still there is logged and nothing more is sent.
+// A box read empty gets one more settle and one more read;
+// a box still empty, or one the engine cannot read, returns nil.
+// A box holding text is cleared only when the same capture reads the provider pane ready with no running turn;
+// one operator-activity query must also read the operator as not active.
+// A reading that fails any of these sends nothing and returns nil;
+// the text stays as a draft for the next send to hold on.
+// The clear is the engine's RestoredPromptClearSequence, played at most once per call.
+// The box then settles for SubmitSettle and is read once more; text still there is logged and nothing more is sent.
 // Its keys are the provider's restored-prompt clear, never an Escape, C-c or Enter.
-// A capture, the activity query or the play failing is logged and returned wrapping ErrInterruptClearFailed, and a failed guard reading sends no clear key.
+// A capture, the activity query or the play failing is logged and returned wrapping ErrInterruptClearFailed;
+// a failed guard reading sends no clear key.
 func clearRestoredPrompt(reed ReedOps, engine Engine, clock Clock, guid string) error {
 	clearer, canClear := engine.(RestoredPromptClearer)
 	reader, canRead := engine.(InputBoxReader)
@@ -146,7 +155,8 @@ func canonicalKeyName(key string) string {
 	return key
 }
 
-// closePickerBeforeSend gives a verified send's pane one capture and closes an open rewind picker in it, so nothing is typed into the picker.
+// closePickerBeforeSend gives a verified send's pane one capture and closes an open rewind picker in it;
+// so nothing is typed into the picker.
 // An engine that cannot read the picker pays no capture.
 // A failed capture fails the send when failClosed is set, since nothing after it reads the pane again;
 // otherwise the close is skipped and the idle wait's polls read the pane.
@@ -165,9 +175,11 @@ func closePickerBeforeSend(sc sendContext, failClosed bool) error {
 }
 
 // closeRewindPicker closes the provider's rewind picker when capture shows it, and otherwise does nothing.
-// It sends exactly one key, the first key of the engine's interrupt sequence, waits the engine's interrupt settle and captures the pane once more.
-// It never selects an entry and never sends a second key, and it fails with ErrRewindPickerOpen either way:
-// the key closed the picker and nothing was typed or interrupted, or the picker or another dialog is still on screen.
+// It sends exactly one key: the first key of the engine's interrupt sequence.
+// It then waits the engine's interrupt settle and captures the pane once more.
+// It never selects an entry and never sends a second key, and it fails with ErrRewindPickerOpen either way.
+// The error means either the key closed the picker and nothing was typed or interrupted,
+// or the picker or another dialog is still on screen.
 func closeRewindPicker(reed ReedOps, engine Engine, clock Clock, guid, capture string) error {
 	reader, ok := engine.(RewindPickerReader)
 	if !ok || !reader.RewindPicker(capture) {

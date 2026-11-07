@@ -1,4 +1,5 @@
-// batchpause_test.go covers the pause refusal begin-batch, recover-batch, fix-verify and fix-plan make before they read or change any state, and the lookup of Master's strand it claims.
+// batchpause_test.go covers the pause refusal of the batch verbs, checked before they read or change any state.
+// It also covers the lookup of Master's strand that the refusal claims.
 
 package webstercli
 

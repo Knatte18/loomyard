@@ -1,18 +1,7 @@
-// callerset_enforcement_test.go enforces half of the Cliwire Sole-Wiring Invariant: internal/cliwire
-// is the only PRODUCTION caller of internal/standalonestate's Derive, since every standalone-capable
-// CLI is supposed to reach the derived state directory through this package's ResolveStandalone
-// rather than deriving one of its own. This is the guard that catches a whole third copy of the
-// wiring built from the bottom up.
-//
-// The pin is production-only: it skips every _test.go file, following
-// internal/treadleengine/seam_enforcement_test.go's own skip rather than
-// internal/gitkit/callerset_enforcement_test.go's package-directory-only exclusion. Ten test call
-// sites legitimately remain and call Derive directly to build fixtures or to assert the real
-// derivation end-to-end -- they are not a second copy of the wiring, and forcing them through cliwire
-// would make packages with no reason to depend on it do so: four in
-// internal/burlercli/wiring_test.go, two in internal/webstercli/wiring_test.go, two in
-// internal/webstercli/cli_integration_test.go, and two in
-// internal/standalonegeom/reedgeom_symlink_integration_test.go.
+// callerset_enforcement_test.go pins the sole-wiring invariant:
+// internal/cliwire is the only production package that calls internal/standalonestate's Derive.
+// Standalone-capable CLIs get the derived state directory from cliwire's ResolveStandalone.
+// Test files are exempt: they call Derive directly to build fixtures or to assert the derivation end-to-end.
 
 package cliwire
 
@@ -37,17 +26,15 @@ const minDeriveScanFiles = 100
 // TestDeriveCallerSet_CliwireOnly verifies that no production file outside internal/cliwire calls
 // internal/standalonestate's Derive.
 // It spawns no process, so it carries no build tag.
-// It parses every non-_test.go .go file under the WHOLE repository — not just internal/ and cmd/,
-// since a caller under tools/ or a future top-level directory is exactly as much a production caller
-// (crucible round fable-high-r7, F3) — under scankit's shared skip set, excluding
-// internal/standalonestate itself (whose own definition and doc comments name Derive) and excluding
-// allowedDeriveCallerDir, looking for a selector call expression whose receiver identifier is this
-// file's standalonestate import and whose selected name is Derive.
-// A DOT-import of standalonestate is refused outright: it makes every Derive call a bare identifier
-// the selector match cannot see, and no production file has a legitimate reason to dot-import a
-// state-derivation package (same round, same finding).
-// The match is on the AST, never on raw text, so a doc comment naming the qualified call cannot trip
-// it.
+// It parses every non-_test.go .go file under the repository root,
+// so a caller under tools/ or any other top-level directory is caught.
+// Files are read under scankit's shared skip set.
+// The walk excludes internal/standalonestate itself, since its definition and doc comments name Derive.
+// It also skips allowedDeriveCallerDir.
+// It matches a selector call on this file's standalonestate import whose selected name is Derive.
+// The match runs on the AST, not raw text, so a doc comment naming the qualified call cannot trip it.
+// A dot-import of standalonestate is refused outright:
+// it turns every Derive call into a bare identifier the selector match cannot see.
 //
 //lym:guard
 func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
@@ -103,18 +90,14 @@ func standalonestateImportAlias(astFile *ast.File) (alias string, imported bool)
 	return "", false
 }
 
-// callsDerive reports whether astFile NAMES standalonestate's Derive -- either by calling it
+// callsDerive reports whether astFile names standalonestate's Derive, either by calling it
 // directly (standalonestate.Derive(...)) or by capturing it as a function value (var deriveFn =
-// standalonestate.Derive, later invoked as deriveFn(...)) -- matched on the AST selector
-// expression rather than on raw text.
+// standalonestate.Derive, later invoked as deriveFn(...)).
+// It matches on the AST selector expression rather than raw text.
 //
-// It walks every *ast.SelectorExpr in the file, not only ones sitting in a CallExpr.Fun position
-// (crucible round sonnet-xhigh-r8, CW-1): the pre-fix walk matched only the direct-call shape, so a
-// production file that captured Derive as a value first and called the captured identifier later
-// reached Derive exactly as much as a direct call does, but the assignment's own selector
-// expression -- standalonestate.Derive on the right-hand side of a var/const spec, unconnected to
-// any CallExpr -- was invisible to it. A selector naming Derive is exactly as much "this file
-// names the symbol" whether or not it happens to sit inside a call.
+// It walks every *ast.SelectorExpr in the file, not only those in a CallExpr.Fun position,
+// so the right-hand side of a var or const spec that captures Derive is matched too.
+// A selector naming Derive counts as naming the symbol whether or not it sits inside a call.
 func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 	found := false
 	ast.Inspect(astFile, func(n ast.Node) bool {
@@ -135,10 +118,12 @@ func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 	return found
 }
 
-// TestCallsDerive is a direct unit test over callsDerive rather than a planted whole-repo fixture, so each regression lives beside the function it protects.
-// A package that captures standalonestate.Derive as a function value first, rather than calling it directly, is exactly as much a second production caller as a direct-call package is, and must be caught the same way (crucible round sonnet-xhigh-r8, CW-1).
-// The ordinary direct-call form the pre-fix walk already caught must still be caught after widening the match to bare selector expressions.
-// The widened match must still discriminate on both the selected name and the receiver alias, so an unrelated method named Derive is not a false positive.
+// TestCallsDerive is a direct unit test over callsDerive, so each regression lives beside the function it protects.
+// Capturing Derive as a function value makes a package a production caller, just as a direct call does,
+// so it must be caught the same way.
+// Direct calls must still be caught after the match widens to bare selector expressions.
+// The match must still discriminate on both the selected name and the receiver alias,
+// so an unrelated method named Derive is not a false positive.
 //
 //testtiming:keep a guard self-check: pins that the selector walk catches a direct call and a captured function value and spares an unrelated Derive, which the real-tree scan never exercises
 func TestCallsDerive(t *testing.T) {

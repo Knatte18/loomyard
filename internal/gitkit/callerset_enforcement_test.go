@@ -1,5 +1,6 @@
-// callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin: internal/lymcwd is the only caller of this package's CopyRepo, since every other package takes a real hub from internal/hubforge instead.
-// This is the guard that catches a later migration leaving a hub-shaped call site on the primitive repo fixture rather than migrating it onto hubforge's real-hub factory.
+// callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin.
+// Only internal/lymcwd may call CopyRepo; every other package takes a real hub from internal/hubforge.
+// It catches a call site that stays on the primitive repo fixture instead of moving to hubforge's real-hub factory.
 
 package gitkit
 
@@ -14,21 +15,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allowedCopyRepoCallerDir is the only package directory (relative to the repository root) allowed
-// to call this package's CopyRepo.
+// allowedCopyRepoCallerDir is the only package directory, relative to the repository root, that may call CopyRepo.
 const allowedCopyRepoCallerDir = "internal/lymcwd"
 
-// minCopyRepoScanFiles is the vacuous-scan floor for the caller-set walk.
+// minCopyRepoScanFiles is the fewest files the caller-set walk must scan, so an empty scan cannot pass.
 const minCopyRepoScanFiles = 100
 
-// TestCopyRepoCallerSet_LymcwdOnly verifies that no file outside internal/lymcwd calls this
-// package's CopyRepo function.
+// TestCopyRepoCallerSet_LymcwdOnly verifies that no file outside internal/lymcwd calls CopyRepo.
 // It spawns no git, so it carries no build tag.
-// It parses every .go file under internal/ and cmd/ (excluding internal/gitkit/ itself, whose own
-// doc comment and definition mention CopyRepo by name) looking for a selector call expression whose
-// receiver identifier is this file's gitkit import and whose selected name is CopyRepo.
-// The match is on the AST, never on raw text, so a doc comment mentioning the qualified call cannot
-// trip it.
+// It parses every .go file under internal/ and cmd/ and skips internal/gitkit:
+// its own doc comment and definition name CopyRepo.
+// It looks for a selector call whose receiver is this file's gitkit import and whose selected name is CopyRepo.
+// The match runs on the AST, not on raw text, so a doc comment that mentions the qualified call cannot trip it.
 //
 //lym:guard
 func TestCopyRepoCallerSet_LymcwdOnly(t *testing.T) {
@@ -62,9 +60,9 @@ func TestCopyRepoCallerSet_LymcwdOnly(t *testing.T) {
 	}
 }
 
-// gitkitImportAlias returns the local identifier astFile uses to refer to the gitkit package, and
-// whether astFile imports gitkit at all. It honors an explicit import alias, falling back to the
-// default package name "gitkit" when the import carries no alias.
+// gitkitImportAlias returns the local identifier astFile uses for the gitkit package.
+// It reports whether astFile imports gitkit at all.
+// An explicit import alias wins; without one, the default name "gitkit" applies.
 func gitkitImportAlias(astFile *ast.File) (alias string, imported bool) {
 	const gitkitImportPath = `"github.com/Knatte18/loomyard/internal/gitkit"`
 	for _, imp := range astFile.Imports {
@@ -79,9 +77,8 @@ func gitkitImportAlias(astFile *ast.File) (alias string, imported bool) {
 	return "", false
 }
 
-// callsCopyRepo reports whether astFile contains a call expression whose receiver is gitkitAlias
-// and whose selected method name is CopyRepo, matched on the AST selector expression rather than on
-// raw text.
+// callsCopyRepo reports whether astFile contains a call to CopyRepo qualified by gitkitAlias.
+// It matches the selector on the AST, not on raw text.
 func callsCopyRepo(astFile *ast.File, gitkitAlias string) bool {
 	found := false
 	ast.Inspect(astFile, func(n ast.Node) bool {

@@ -12,13 +12,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestSmokeRemoveLastStrandThenAddRunsTheNewCommand exercises removing a session's last STRAND and then adding a new one, with the always-present Selvage pane in play:
+// TestSmokeRemoveLastStrandThenAddRunsTheNewCommand removes a session's last strand and adds a new one.
+// The always-present Selvage pane is in the session throughout.
 // removeStrandLocked collects pane ids from strands only, and Selvage is never a strand,
-// so the removed strand's pane is never the session's actual last pane — kill-pane removes it outright, on either backend, rather than corpsing it under remain-on-exit, and Selvage alone is left holding the session up.
-// The following add must split a fresh pane whose command genuinely runs and STAYS live across the next reconciling verb.
+// so the removed strand's pane is never the session's last pane.
+// kill-pane removes it outright on either backend, not leaving a corpse under remain-on-exit;
+// Selvage alone holds the session up.
+// The following add must split a fresh pane whose command runs and stays live across the next reconciling verb.
 //
-// This premise holds identically on tmux — see reedengine.RemoveStrand's emptied-session swallow (strand.go) for how that path is handled at the engine level — so the test runs only on Windows for coverage economy, not backend-specific behavior:
-// the equivalent removing-the-last-strand-then-add shape is already exercised on the tmux backend by TestRemoveStrand_SoleStrandEmptiesSessionSucceeds (contract_integration_test.go), so running this real-tmux-session variant there too would be redundant.
+// The same premise holds on tmux, where reedengine.RemoveStrand swallows the emptied-session outcome (strand.go).
+// The test runs only on Windows for coverage economy, not because the behavior is backend-specific:
+// The same shape is already exercised on tmux:
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds in internal/reedengine/contract_integration_test.go,
+// so a tmux variant here would be redundant.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxPath := tmuxBinaryPath(t)
@@ -46,9 +52,8 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 
 	second := addStrand(t, launch, "--name", "second")
 
-	// A genuine fresh split has no reason to wobble across a reconcile,
-	// but this is the shape a corpse-bound strand would have failed under:
-	// up reconciles; the strand must still be live.
+	// A fresh split should survive a reconcile; a corpse-bound strand would not.
+	// up reconciles, and the strand must still be live.
 	out.Reset()
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("post-add up = %d; want 0, output: %s", code, out.String())

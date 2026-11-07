@@ -1,7 +1,8 @@
-// circling.go defines the operator's recorded decision on an escalated round:
-// a small file the `lym loom circling` verbs write and the Bouncer reads, and `lym loom resume` checks for a pending one through PendingCirclingDecision.
-// The writer owns the mechanical precondition (the latest round is escalated, and no decision exists for it yet);
-// the run-state half (the run is awaiting at a Bouncer row) belongs to the verbs.
+// circling.go defines the operator's recorded decision on an escalated round, kept in a small decision file.
+// The `lym loom circling` verbs write the file, and the Bouncer reads it.
+// The writer checks the mechanical precondition: the latest round is escalated,
+// and no decision exists for it yet.
+// The run-state check, that the run is awaiting at a Bouncer row, belongs to the verbs.
 
 package shedadapters
 
@@ -32,8 +33,10 @@ var (
 )
 
 // circlingDecisionHeader mirrors a circling decision file's YAML frontmatter.
-// A file an older binary wrote carries no cause and reads as EscalationCircling.
-// Automatic is true for a decision the Bouncer recorded itself: an auto-accept, or the soft-cap rule's accept or continue; a parent's decision never sets it.
+// A file written without a cause, as older binaries did, reads as EscalationCircling.
+// Automatic is true for a decision the Bouncer recorded itself:
+// an auto-accept, or the soft-cap rule's accept or continue.
+// A parent's decision never sets it.
 type circlingDecisionHeader struct {
 	Round     int    `yaml:"round"`
 	Decision  string `yaml:"decision"`
@@ -43,15 +46,16 @@ type circlingDecisionHeader struct {
 }
 
 // LatestRound returns the run directory's latest round, 0 when it holds none.
-// It is the round RecordCirclingDecision records its decision for.
+// The latest round is the one a circling decision answers.
 func LatestRound(runDir string) (int, error) {
 	return ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
 }
 
-// RecordCirclingDecision records d as pending for the run directory's latest round and returns that round and its escalation cause.
-// It returns ErrNotEscalated unless that round carries an escalation record,
-// or, for a run directory an older binary wrote, a recorded CIRCLING verdict;
-// the decision file records the escalation's cause, EscalationCircling for the legacy case.
+// RecordCirclingDecision records d as pending for the run directory's latest round.
+// On success it returns that round and its escalation cause.
+// It returns ErrNotEscalated unless that round carries an escalation record.
+// For a run directory an older binary wrote, a recorded CIRCLING verdict counts instead;
+// the decision file then records EscalationCircling as the cause.
 // It returns ErrCirclingDecided when a decision file for the round already exists;
 // the existing file is left untouched.
 func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationCause, error) {
@@ -83,7 +87,7 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 }
 
 // recordAutoAccept records round's circling decision as an automatic, not yet settled accept with cause budget.
-// Its callers are an auto-accept perch's harvest at the soft cap and the soft-cap rule's accept over a ledger with no design-wrong entry.
+// It serves the automatic accepts recorded at the soft cap.
 // It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
 func recordAutoAccept(runDir string, round int) error {
 	return createCirclingDecision(runDir, round, CirclingAccept, EscalationBudget, true)
@@ -118,8 +122,8 @@ func createCirclingDecision(runDir string, round int, d CirclingDecision, cause 
 	return nil
 }
 
-// PendingCirclingDecision reports whether the run directory's latest round carries a circling decision file that is not settled.
-// The round resolves as RecordCirclingDecision resolves it; a run directory with no round has no pending decision.
+// PendingCirclingDecision reports whether the run directory's latest round carries an unsettled circling decision file.
+// A run directory with no round has no pending decision.
 // Every error names the path it concerns: the run directory or report file, or the decision file.
 func PendingCirclingDecision(runDir string) (bool, error) {
 	round, err := ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
@@ -139,18 +143,18 @@ func PendingCirclingDecision(runDir string) (bool, error) {
 	return exists && !settled, nil
 }
 
-// PendingEscalation reports whether the run directory's latest round carries a Bouncer-written escalation that no circling decision has answered yet.
+// PendingEscalation reports whether the run directory's latest round is escalated and still awaits a circling decision.
 // When pending, it returns that round and the path of its escalation brief.
-// The round resolves as PendingCirclingDecision resolves it.
-// A run directory with no round, a round with no escalation record and a round whose decision file exists, settled or not, are not pending;
-// a legacy round escalated only by a recorded CIRCLING verdict carries no escalation record, so it is not pending either.
+// A run directory with no round is not pending.
+// Nor is a round with no escalation record, or one whose decision file exists, settled or not.
+// A legacy round escalated only by a recorded CIRCLING verdict has no escalation record, so it is not pending either.
 // A malformed escalation record is returned as its error, wrapping ErrEscalationMalformed.
 func PendingEscalation(runDir string) (round int, briefPath string, pending bool, err error) {
 	round, _, briefPath, pending, err = pendingEscalation(runDir)
 	return round, briefPath, pending, err
 }
 
-// PendingEscalationCause reports a pending escalation as PendingEscalation does, returning its cause and brief path.
+// PendingEscalationCause returns the cause and brief path of a pending escalation, and whether one is pending.
 // The cause is empty where nothing is pending.
 func PendingEscalationCause(runDir string) (cause EscalationCause, briefPath string, pending bool, err error) {
 	_, cause, briefPath, pending, err = pendingEscalation(runDir)
@@ -180,16 +184,20 @@ func pendingEscalation(runDir string) (round int, cause EscalationCause, briefPa
 	return round, cause, escalationPath(runDir, round), true, nil
 }
 
-// readCirclingDecision reads round's decision file, returning the decision, its escalation cause, whether it is settled, and whether a file exists.
+// readCirclingDecision reads round's decision file.
+// It returns the decision, its escalation cause, whether it is settled, and whether a file exists.
 // A file without a cause reads as EscalationCircling.
 // A present file that is malformed is an error:
-// the round must match the filename, the decision and the cause must each be one of their values, and settled is legal only on an accept.
+// the round must match the filename;
+// the decision and the cause must each be one of their values;
+// settled is legal only on an accept.
 func readCirclingDecision(runDir string, round int) (CirclingDecision, EscalationCause, bool, bool, error) {
 	decision, cause, settled, _, exists, err := readCirclingFile(runDir, round)
 	return decision, cause, settled, exists, err
 }
 
-// readCirclingFile reads round's decision file as readCirclingDecision does, and also returns whether the accept was recorded automatically.
+// readCirclingFile reads round's decision file, returning its decision, escalation cause and whether it is settled.
+// It also reports whether the decision was recorded automatically, and whether a file exists.
 func readCirclingFile(runDir string, round int) (decision CirclingDecision, cause EscalationCause, settled, automatic, exists bool, err error) {
 	path := circlingDecisionPath(runDir, round)
 	raw, err := os.ReadFile(path)
@@ -228,7 +236,8 @@ func readCirclingFile(runDir string, round int) (decision CirclingDecision, caus
 }
 
 // settleCirclingAccept rewrites round's pending accept as settled.
-// It errors when the decision is absent or is not an accept, and keeps the record's automatic value.
+// It returns an error when the decision is absent or is not an accept,
+// and it keeps the record's automatic value.
 func settleCirclingAccept(runDir string, round int) error {
 	decision, cause, _, automatic, exists, err := readCirclingFile(runDir, round)
 	if err != nil {

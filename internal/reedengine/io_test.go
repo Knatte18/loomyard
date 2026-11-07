@@ -1,11 +1,7 @@
-// io_test.go drives resolveLivePaneID directly against fixture ReedState values: unknown guid,
-// hidden anchor, and empty-PaneID rejections, plus the happy path.
-// SendText, SendKey, AND CapturePane all resolve their target pane through this exact function
-// (there is no second lookup path), so this one table pins every pane-transport op's error behavior
-// at once.
-// It never calls SendText/SendKey/CapturePane themselves — those always make a real tmux round trip
-// once resolution succeeds, matching the discipline reconcileApplyPersistLocked's own note
-// establishes: hermetic tests exercise the pure lookup, never the live tmux seam.
+// io_test.go tests resolveLivePaneID against fixture ReedState values:
+// unknown guid, hidden anchor, empty PaneID, and the happy path.
+// SendText, SendKey and CapturePane all resolve their pane through it, so this table pins their shared lookup errors.
+// It never calls those three ops, since each makes a real tmux round trip once resolution succeeds.
 
 package reedengine
 
@@ -59,7 +55,8 @@ func TestResolveLivePaneID(t *testing.T) {
 	}
 }
 
-// TestCapturePaneArgv pins each capture read's tmux argv, that it returns the capture unchanged, and that a failed capture reaches the caller wrapped.
+// TestCapturePaneArgv pins each capture read's tmux argv.
+// It also pins that a capture comes back unchanged, and that a failed capture reaches the caller wrapped.
 func TestCapturePaneArgv(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -171,7 +168,9 @@ func TestPasteSubmitArgv(t *testing.T) {
 	}
 }
 
-// TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l, that an unresolvable strand fails before any invocation, and that a failed invocation deletes its named buffer.
+// TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l.
+// An unresolvable strand fails before any invocation.
+// A failed invocation deletes its named buffer.
 func TestPasteSubmit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -248,8 +247,9 @@ func TestPasteSubmit(t *testing.T) {
 	}
 }
 
-// TestActiveClientOnPane pins which client lines count as an active operator, and the quiet-window floor of a hand-built Config.
-// The floor sits here rather than in config_test.go because that file is an external test package and cannot reach operatorQuiet.
+// TestActiveClientOnPane pins which client lines count as an active operator.
+// It also pins the quiet-window floor of a hand-built Config.
+// The floor is tested here, not in config_test.go, which is an external test package and cannot reach operatorQuiet.
 func TestActiveClientOnPane(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

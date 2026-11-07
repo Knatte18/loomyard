@@ -1,4 +1,5 @@
-// resume.go classifies a half's seat for a previous session's work: the probed half states and the probe a half's ProbeReview or ProbeFix runs over its one-seat table.
+// resume.go classifies the halves of a round for a resumed session.
+// It defines the probed half states and the live table that a half's resume reuses.
 
 package burlerengine
 
@@ -28,12 +29,15 @@ type LiveHalf struct {
 	// Handle is the live run, set only when State is HalfLive.
 	// Its StrandGUID names the strand a caller stops when it will not resume the half.
 	Handle Handle
-	// table is what the seats engine's probe found, which a half's Resume hands back to it; it is nil unless the half was probed live by ProbeReview or ProbeFix.
+	// table is what the seats engine's probe found.
+	// A half's Resume hands it back to the seats engine.
+	// It is nil unless ProbeReview or ProbeFix probed the half live.
 	table *seatengine.LiveTable
 }
 
 // probeHalf reports the state of the one-seat table's chair, without waiting on it:
-// live when the seats engine's probe finds a live run, done when it finds none and outputPath exists, and gone otherwise.
+// live when the seats engine's probe finds a live run.
+// done when it finds none and outputPath exists, and gone otherwise.
 // A seat that could not be stopped is returned wrapped in ErrHalfNotStopped.
 func (e *Engine) probeHalf(table seatengine.Table, outputPath string) (LiveHalf, error) {
 	found, err := e.seats.Probe(table)
@@ -53,7 +57,9 @@ func (e *Engine) probeHalf(table seatengine.Table, outputPath string) (LiveHalf,
 	return half, nil
 }
 
-// classifyHalf classifies one half by its probed handle, nil for a seat the probe did not find, and failing a live run by its output file.
+// classifyHalf classifies one half from its probed handle: a non-nil handle is a live run.
+// Without one, the half is done when outputPath exists and gone otherwise.
+// A stat failure other than a missing file is returned.
 func classifyHalf(handle seatengine.Handle, outputPath string) (LiveHalf, error) {
 	if handle != nil {
 		return LiveHalf{State: HalfLive, Handle: handle}, nil

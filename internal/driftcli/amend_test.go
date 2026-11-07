@@ -1,4 +1,4 @@
-// amend_test.go — tier 0 test for the caller check `lym drift amend` and `lym drift defer` share.
+// amend_test.go is a tier 0 test of the caller check that `lym drift amend` and `lym drift defer` share.
 
 package driftcli
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckParentCaller covers the operator's unnamed shell, the run's parent, another session and a parent that cannot be resolved.
+// TestCheckParentCaller covers the unnamed shell, the run's parent, another session, and an unresolvable parent.
 func TestCheckParentCaller(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

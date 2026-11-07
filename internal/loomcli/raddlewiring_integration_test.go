@@ -1,5 +1,5 @@
 // raddlewiring_integration_test.go drives createBeamFromParent over a hub forged by hubforge.
-// This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
+// The package's testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
 package loomcli

@@ -1,4 +1,5 @@
-// windoworder.go fixes the order of a session's windows: the overview windows in ascending order key, agent windows in start order, then the window named shell, then the hidden windows.
+// windoworder.go fixes the order of a session's windows: overview windows in ascending order key;
+// agent windows in start order; the window named shell; then the hidden windows.
 // It lists the session's windows, computes where a new window goes and repairs a session booted by an older lym.
 
 package reedengine
@@ -19,7 +20,8 @@ const shellWindowName = "shell"
 // overviewWindowName is the name of the window that holds an overview strand whose display carries no title.
 const overviewWindowName = "overview"
 
-// overviewWindowTitle returns the name of the window an overview strand with display d opens: its Title, or overviewWindowName when it has none.
+// overviewWindowTitle returns the name of the window an overview strand with display d opens:
+// d.Title, or the name overview when that is empty.
 func overviewWindowTitle(d render.Display) string {
 	if d.Title == "" {
 		return overviewWindowName
@@ -36,15 +38,17 @@ type sessionWindow struct {
 	Index int
 	// Hidden reports that the window carries @lym_hidden.
 	Hidden bool
-	// ShellCheckFailed reports that the session's shell-check episode option is set, which every window of the session reads alike.
+	// ShellCheckFailed reports whether the session's shell-check episode option is set, shared by every window.
 	ShellCheckFailed bool
 	Name             string
 }
 
-// sessionWindowFormat is the session-wide window listing format of sessionWindow: window id, index, hidden flag, shell-check episode flag, then the window name.
+// sessionWindowFormat is the tmux list-windows format that prints one window per line.
+// The fields are the window id, the index, the hidden flag, the shell-check flag, then the window name.
 const sessionWindowFormat = "#{window_id} #{window_index} #{?#{@lym_hidden},1,0} #{?#{@lym_shell_check_failed},1,0} #{window_name}"
 
-// parseSessionWindows parses a sessionWindowFormat listing into windows in listing order, skipping a line it cannot parse.
+// parseSessionWindows parses the lines of a session window listing into windows in listing order.
+// It skips a line it cannot parse.
 func parseSessionWindows(out string) []sessionWindow {
 	var windows []sessionWindow
 	for _, line := range strings.Split(out, "\n") {
@@ -68,7 +72,7 @@ func parseSessionWindows(out string) []sessionWindow {
 }
 
 // listSessionWindows returns every window of session in index order.
-// The exact-match target keeps sibling sessions out.
+// The target matches the session name exactly, so sibling sessions stay out.
 func (p TmuxCmd) listSessionWindows(session string) ([]sessionWindow, error) {
 	out, err := p.output("list-windows", "-t", exactSessionTarget(session), "-F", sessionWindowFormat)
 	if err != nil {
@@ -86,7 +90,7 @@ func (p TmuxCmd) listSessionPaneWindows(session string) (map[string]string, erro
 	return parseSessionPaneWindows(out), nil
 }
 
-// findSessionWindow returns the window of windows with the given id.
+// findSessionWindow returns the window in windows with the given id, and reports whether one was found.
 func findSessionWindow(windows []sessionWindow, id string) (sessionWindow, bool) {
 	for _, w := range windows {
 		if w.ID == id {
@@ -129,7 +133,8 @@ func ownWindowInsertArgs(windows []sessionWindow, shellWindow, previousWindow st
 	return nil
 }
 
-// overviewWindowKeys maps the window id of each overview strand's bound pane to that strand's Display.Order, reading windowByPane, a session-wide pane-to-window listing.
+// overviewWindowKeys maps the window id of each overview strand's bound pane to that strand's Display.Order.
+// windowByPane is a session-wide pane-to-window listing.
 // A non-overview strand, a strand with no pane and a pane the listing lacks are left out.
 func overviewWindowKeys(strands []Strand, windowByPane map[string]string) map[string]int {
 	keys := make(map[string]int)
@@ -146,8 +151,9 @@ func overviewWindowKeys(strands []Strand, windowByPane map[string]string) map[st
 
 // overviewWindowInsertArgs returns the placement arguments for an overview window whose order key is order.
 // keys maps the overview windows to their order keys.
-// The window goes after the highest-index listed overview window whose key is not higher than order, so equal keys sit in the order they last opened;
-// with none it goes before the lowest-index window, hidden ones included, so it holds the lowest index.
+// The window goes after the highest-index listed overview window whose key is not higher than order.
+// Equal keys therefore sit in the order they last opened.
+// With no such window, it goes before the lowest-index window, hidden ones included, so it holds the lowest index.
 // With no window listed it returns nothing, which opens the plain form.
 func overviewWindowInsertArgs(windows []sessionWindow, keys map[string]int, order int) []string {
 	var lowest, after sessionWindow
@@ -179,8 +185,9 @@ func hiddenWindowInsertArgs(windows []sessionWindow) []string {
 	return nil
 }
 
-// planShellWindowFix decides what repairing the window shellWindow takes.
-// rename is set when its name is not shell; after is the id of the highest-index non-hidden window when one sits behind it, else empty.
+// planShellWindowFix decides how to repair the window shellWindow.
+// rename is set when its name is not shell;
+// after is the id of the highest-index non-hidden window when one sits behind it, else empty.
 // A shellWindow that windows does not list plans nothing.
 func planShellWindowFix(windows []sessionWindow, shellWindow string) (rename bool, after string) {
 	shell, ok := findSessionWindow(windows, shellWindow)
@@ -193,10 +200,13 @@ func planShellWindowFix(windows []sessionWindow, shellWindow string) (rename boo
 	return shell.Name != shellWindowName, after
 }
 
-// ensureShellWindowLocked brings the window holding the recorded console pane into its place: named shell, behind every non-hidden window.
+// ensureShellWindowLocked brings the window that holds the recorded console pane into its place.
+// That window is named shell and sits behind every non-hidden window.
 // It repairs a session that an older lym booted, and runs wherever a window opens and on attach.
-// A check that cannot read what it needs does nothing and logs at Debug, and a failed repair never fails the caller; the next open or attach retries.
-// A failed repair logs at Warn once per failure episode, which the session option shellCheckFailedOption keeps open, and at Debug while it stays open or on Windows.
+// A check that cannot read what it needs does nothing and logs at Debug,
+// and a failed repair never fails the caller; the next open or attach retries.
+// A failed repair logs at Warn once per failure episode, and at Debug while the episode stays open or on Windows.
+// An episode stays open while the session option shellCheckFailedOption is set.
 // A repair that succeeds with the episode open logs at Info and closes it.
 // Only the window of the recorded pane is renamed and moved; strands already placed stay where they are.
 // Assumes the op lock is already held.

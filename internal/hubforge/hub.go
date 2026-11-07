@@ -1,8 +1,7 @@
-// hub.go builds hubforge's real hub fixture: a sync.Once-cached warp/weft bare-repo template built
-// once per test binary, copied fresh per scenario via copyBares, and driven through
-// fabriccli.CloneAndWire by NewHub into a real, fully-wired fabric hub — junctions, repo-wide
-// fabric.yaml, and all — that a hostile-state cell can run a verb against.
-// The Hub type and its geometry accessors are the external interface batches 3-7 consume.
+// hub.go builds hubforge's real hub fixture, a warp/weft bare pair copied per scenario.
+// The pair comes from a template built once per test binary, and the clone is wired through fabriccli.CloneAndWire.
+// The result is a fully wired fabric hub, with junctions and a repo-wide fabric.yaml.
+// The Hub type and its path accessors are what tests use to run a verb against that fixture.
 
 package hubforge
 
@@ -25,8 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-// bareTemplateOnce guards buildBareTemplate so the warp/weft bare pair is built exactly once per test
-// binary; warpBareTemplate and weftBareTemplate hold the resulting paths.
+// The warp/weft bare pair is built exactly once per test binary.
+// bareTemplateOnce guards that build, and warpBareTemplate and weftBareTemplate hold the paths it sets.
 var (
 	bareTemplateOnce sync.Once
 	warpBareTemplate string
@@ -34,13 +33,14 @@ var (
 )
 
 // fixtureBuildMu guards fixtureBuilds, the number of hub builds in flight.
-// The process environment carries gitkit.FixtureGitEnv exactly while that count is above zero.
+// The process environment carries gitkit.FixtureGitEnv while that count is above zero.
 var (
 	fixtureBuildMu sync.Mutex
 	fixtureBuilds  int
 )
 
-// markFixtureBuild marks the process environment as building a fixture, so the git a build spawns through production code carries gitkit.FixtureGitEnv.
+// markFixtureBuild marks the process environment as building a fixture,
+// so the git a build spawns through production code carries gitkit.FixtureGitEnv.
 // Concurrent builds share the mark: the first starter sets it and the last release unsets it.
 func markFixtureBuild() func() {
 	fixtureBuildMu.Lock()
@@ -66,30 +66,27 @@ func markFixtureBuild() func() {
 	}
 }
 
-// TestShortname is the repo shortname every hub NewHub builds is cloned with, recorded as .lym-shortname, so every hub fixture has a shortname.
+// TestShortname is the repo shortname every hub built by this package is cloned with.
+// The clone records it in .lym-shortname.
 const TestShortname = "tst"
 
-// buildBareTemplate builds, once per test binary, the pushed-to warp bare and the genuinely empty
-// weft bare that NewHub's factory clones copies of.
-// It mirrors gitkit's buildWarpHub/buildWeftPrime pattern: a scratch work repo builds the content,
-// git init --bare backs each remote, fsmonitor/auto-maintenance/gc.auto are disabled and hook samples
-// stripped exactly as gitkit.initRepo/initBareRemote do, and every git spawn panics on failure rather
-// than swallowing it.
+// buildBareTemplate builds the warp and weft bare remotes that copyBares copies, once per test binary.
+// A scratch work repo builds the warp content, and git init --bare backs each remote.
+// The remotes have fsmonitor, auto-maintenance and gc.auto disabled, and their hook samples stripped.
+// Every git spawn panics on failure rather than swallowing it.
 //
-// The warp bare carries a root README plus backend/, nested/ and wts/some-task/ subdirectories in
-// the same commit, so one template serves every anchor NewHub's callers request — an anchor not
-// carried here can never be requested from NewHub, since CloneHub's anchor-resolution step
-// hard-errors unless the requested Subpath already exists as a directory in the warp's committed
-// history at clone time.
-// A "."-anchored hub simply ignores the rest.
-// Two gotchas are encoded here and nowhere else.
-// First, `git init --bare` leaves HEAD on master while the branch just pushed is main, so the warp
-// bare needs its HEAD re-pointed after the push — gitkit's own bares never hit this, because
-// initBareRemote adds a bare as origin but never pushes to it, so the mismatch is never observable
-// there.
-// Second, the weft bare must stay genuinely empty and is never pushed to: pushing anything to it would
-// trip CloneHub's bootstrap guard at clone.go:172 (`!probe.WeftLooksLikeWeft`), which refuses a weft
-// candidate whose history looks warp-shaped — the warp bare, by contrast, must have content pushed.
+// The warp bare carries a root README plus backend/, nested/ and wts/some-task/ subdirectories in one commit.
+// One template serves every anchor NewHub's callers request.
+// Anchor resolution in fabricengine.CloneHub hard-errors unless the subpath is a directory in the warp's history.
+// The check runs at clone time, so an anchor this commit does not carry can never be requested.
+// A "."-anchored hub ignores the rest.
+//
+// Two constraints shape the template.
+// First, git init --bare leaves HEAD on master while the pushed branch is main,
+// so the warp bare's HEAD is re-pointed after the push.
+// Second, the weft bare stays empty and is never pushed to.
+// A push would trip CloneHub's bootstrap guard, `probe.WeftLooksLikeWeft`.
+// That guard refuses a weft candidate whose history looks warp-shaped.
 func buildBareTemplate() (warpBare, weftBare string) {
 	defer markFixtureBuild()()
 
@@ -115,11 +112,7 @@ func buildBareTemplate() (warpBare, weftBare string) {
 		if err := os.WriteFile(filepath.Join(backendDir, "README"), []byte("hubforge backend anchor\n"), 0o644); err != nil {
 			panic(err)
 		}
-		// nested and wts/some-task/ exist purely so a caller can anchor a hub there:
-		// fabricengine.CloneHub's anchor-resolution step hard-errors unless the requested Subpath
-		// already exists as a directory in the warp's committed history at clone time, so any anchor
-		// this template does not carry here can never be requested from NewHub, no matter what a
-		// caller does after NewHub returns.
+		// nested and wts/some-task/ exist so that NewHub can anchor a hub at those paths.
 		nestedDir := filepath.Join(scratch, "nested")
 		if err := os.Mkdir(nestedDir, 0o755); err != nil {
 			panic(err)
@@ -140,10 +133,8 @@ func buildBareTemplate() (warpBare, weftBare string) {
 		initBareRepo(warp)
 		mustGit(scratch, "remote", "add", "origin", warp)
 		mustGit(scratch, "push", "origin", "main")
-		// Gotcha 1: re-point HEAD onto the branch actually pushed.
 		mustGit(warp, "symbolic-ref", "HEAD", "refs/heads/main")
 
-		// Gotcha 2: left empty on purpose, never pushed to.
 		weft := filepath.Join(tmpDir, "weft-bare")
 		initBareRepo(weft)
 
@@ -155,9 +146,9 @@ func buildBareTemplate() (warpBare, weftBare string) {
 }
 
 // copyBares copies the cached bare-pair template into tb's own tb.TempDir(), so each scenario pushes
-// to its own copy and cells never race.
-// Copying is the deliberate choice over building fresh bares per scenario, which would cost a full
-// git init --bare plus work repo plus commit plus push per cell.
+// to its own copy and no two cells race.
+// Copying is cheaper than building fresh bares per scenario.
+// Building them fresh would run an init, a work repo, a commit and a push for every cell.
 func copyBares(tb testing.TB) (warpBare, weftBare string) {
 	tb.Helper()
 
@@ -175,16 +166,15 @@ func copyBares(tb testing.TB) (warpBare, weftBare string) {
 	return warpBare, weftBare
 }
 
-// Hub is a real, fully-wired fabric hub built by NewHub: a warp/weft pair cloned from a hub-owned copy
-// of the bare template and driven through fabriccli.CloneAndWire, ready for a verb under test to run
-// against.
+// Hub is a real, fully-wired fabric hub: a warp/weft pair cloned from its own copy of the bare template.
+// The pair is cloned through fabriccli.CloneAndWire, ready for a verb under test to run against.
 type Hub struct {
 	// Path is the hub root, the <name>-LYMHUB container directory.
 	Path string
 	// Anchor is the resolved AnchorRel value, "." or "backend".
 	Anchor string
-	// Location is this hub's *lymcwd.Location, obtained from lymcwd.Resolve — never constructed by
-	// hand, per the Cwd Resolution Invariant.
+	// Location is this hub's *lymcwd.Location, obtained from lymcwd.Resolve.
+	// It is never constructed by hand.
 	Location *lymcwd.Location
 	// Topology is the fabricengine.Topology handle every pair-creating verb call goes through.
 	Topology *fabricengine.Topology
@@ -192,34 +182,32 @@ type Hub struct {
 	CodeBare string
 	// RecordsBare is this hub's own copy of the weft bare remote.
 	RecordsBare string
-	// WeftBase is the anchor-joined weft directory, populated verbatim from CloneResult.WeftBase —
-	// fabricengine's CloneHub computes it as filepath.Join(RecordsWorktree(l), l.AnchorRel), never
-	// re-derived here.
-	// It is deliberately not the same thing as PrimeRecords(), which returns the un-anchored weft
-	// worktree root: the two coincide at the "." anchor and diverge at "backend", where writing
-	// config to the un-anchored path produces a file no module loader ever reads, with no error at
-	// all.
-	// hubforge.SeedConfig writes here for exactly that reason.
+	// WeftBase is the anchor-joined weft directory, copied verbatim from CloneResult.WeftBase.
+	// fabricengine's CloneHub computes it as the weft worktree joined with the anchor.
+	// It is the path a module loader reads config from at this hub's anchor.
+	// It is not the same as PrimeRecords, which returns the un-anchored weft root:
+	// the two coincide at the "." anchor and differ at any other anchor.
+	// Config written to the un-anchored root at another anchor is a file no module loader reads,
+	// and no error reports it.
+	// hubforge.SeedConfig therefore writes to this path.
 	WeftBase string
 	// Container is the tb.TempDir() the hub was cloned into.
 	Container string
-	// Mutations is the mutation record fabriccli.CloneAndWire produced while building this hub,
-	// populated verbatim from CloneResult.Mutated(), never re-derived — exposed so a test can assert
-	// the record's shape without rebuilding the bare-template machinery this package owns.
+	// Mutations is the mutation record fabriccli.CloneAndWire produced while building this hub.
+	// It is copied verbatim from CloneResult.Mutated().
+	// A test asserts the record's shape through it, without rebuilding the bare-template machinery.
 	Mutations fabricengine.Mutations
 }
 
-// PrimeWorktree returns the path to this hub's prime warp worktree — the warp repository itself, not
-// a pair.
+// PrimeWorktree returns the path to this hub's prime warp worktree, the warp repository itself rather than a pair.
 func (h *Hub) PrimeWorktree() string {
 	return h.Location.WorktreePath()
 }
 
-// PrimeRecords returns the path to the weft sibling paired with the prime warp worktree — the
-// un-anchored weft worktree root, not the anchor-joined path.
-// A caller reaching for this to seed config should use h.WeftBase and hubforge.SeedConfig instead:
-// at a non-"." anchor, writing to the path this method returns produces a file no module loader ever
-// reads, with no error at all.
+// PrimeRecords returns the path to the weft sibling paired with the prime warp worktree.
+// It is the un-anchored weft worktree root, not the anchor-joined path.
+// To seed config, use h.WeftBase with hubforge.SeedConfig instead.
+// At a non-"." anchor, config written to this path is a file no module loader reads, and no error reports it.
 func (h *Hub) PrimeRecords() string {
 	return fabricengine.RecordsWorktree(h.Location)
 }
@@ -249,18 +237,17 @@ func (h *Hub) PairLauncherDir(slug string) string {
 	return fabricengine.LauncherDir(pair, slug)
 }
 
-// NewHub builds a real fabric hub at anchor ("." or "backend"): it copies the cached bare template
-// into tb's own temp dir, then drives fabriccli.CloneAndWire against the copies.
-// It calls CloneAndWire, and never replicates the wiring sequence by hand, because
-// fabricengine.CloneHub alone produces a partial hub — warp clone, weft clone, board, anchor marker,
-// warp binding, but no junctions and no repo-wide fabric.yaml — which leaves three of the gate's eight
-// path-ownership kinds (ownedWiredJunction, ownedDriftedWiredJunction, ownedUnderGeometryRoot)
-// structurally unreachable.
-// The hub CloneAndWire returns arrives with its weft prime worktree clean.
-// Each per-worktree module's repo default is committed on the board, and the prime carries only the per-worktree config files the records repository already held.
+// NewHub builds a real fabric hub at anchor ("." or "backend").
+// It copies the cached bare template into tb's own temp dir, then drives fabriccli.CloneAndWire against the copies.
+// It calls CloneAndWire rather than replicating the wiring sequence by hand.
+// fabricengine.CloneHub alone yields a partial hub: warp and weft clones, a board, an anchor marker and a warp binding.
+// It has no junctions and no repo-wide fabric.yaml.
+// Without those, these path-ownership kinds are unreachable:
+// `ownedWiredJunction`, `ownedDriftedWiredJunction` and `ownedUnderGeometryRoot`.
+// The hub CloneAndWire returns has a clean weft prime worktree.
+// Each per-worktree module's repo default is committed on the board,
+// and the prime carries only the per-worktree config files the records repository already held.
 // The clone's build stamp is removed, so a start verb driven in a test walks the hub as on a binary change.
-// CopyHub and SharedHub hand out a hub of the closed Shapes set from a template built once per test binary, and are the entry points for every hub a test does not need built fresh;
-// NewHub stays for a shape outside that set.
 // It calls tb.Fatalf on any error.
 func NewHub(tb testing.TB, anchor string) *Hub {
 	tb.Helper()
@@ -272,17 +259,17 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 
 	hub, _ := cloneHub(tb, anchor, warpBare, weftBare, container)
 
-	// Registered after both copyBares and the container := tb.TempDir() call above, so LIFO
-	// cleanup ordering runs junction removal before Go's own tb.TempDir() cleanup removes the
-	// container — a junction left wired when os.RemoveAll walks into it is a Win11 correctness bug,
-	// not a POSIX one, so this must hold on every platform even though only Windows can observe it
-	// directly.
+	// Registered after copyBares and the container's tb.TempDir() call.
+	// LIFO cleanup then runs junction removal before Go's tb.TempDir() cleanup removes the container.
+	// A junction still wired when os.RemoveAll walks into it is a Win11 correctness bug, not a POSIX one.
+	// The order must hold on every platform, even though only Windows can observe it directly.
 	registerTeardown(tb, hub.Path)
 
 	return hub
 }
 
-// CloneSecond clones a second hub from h's own bares, at h's anchor, into a container of tb's own, as a second machine working on the same remote.
+// CloneSecond clones a second hub from h's bares, at h's anchor, into a container of tb's own.
+// It stands for a second machine working on the same remote.
 // The second hub shares h's remotes and nothing else, so a push from either reaches the other through them.
 // It calls tb.Fatalf on any error.
 func CloneSecond(tb testing.TB, h *Hub) *Hub {
@@ -296,7 +283,8 @@ func CloneSecond(tb testing.TB, h *Hub) *Hub {
 	return second
 }
 
-// cloneHub drives fabriccli.CloneAndWire at anchor against the given bares into the existing container directory, and returns the Hub with the prime cwd its Location resolved from.
+// cloneHub drives fabriccli.CloneAndWire at anchor against the given bares, into the existing container directory.
+// It returns the Hub and the prime cwd its Location was resolved from.
 // It calls tb.Fatalf on any error.
 func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub, string) {
 	tb.Helper()
@@ -316,13 +304,16 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		tb.Fatalf("NewHub: CloneAndWire: %v", err)
 	}
 
-	// The clone's walk stamped the build; removing the stamp leaves the stale one a start verb driven in a test walks as on a binary change, while the seeded repo defaults stay committed.
+	// The clone's walk stamped the build.
+	// Removing the stamp makes a start verb driven in a test walk the hub as on a binary change.
+	// The seeded repo defaults stay committed.
 	stamp := hubreconcile.Geometry{BoardDir: res.BoardDir}.StampPath()
 	if err := os.Remove(stamp); err != nil && !os.IsNotExist(err) {
 		tb.Fatalf("NewHub: remove the clone's build stamp %s: %v", stamp, err)
 	}
 
-	// The clone's walk hands the board's push to a detached sync, which a test binary never spawns, so the hub-wide commit is pushed here and the board starts clean against its upstream.
+	// The clone's walk hands the board's push to a detached sync, which a test binary never spawns.
+	// So the hub-wide commit is pushed here, and the board starts clean against its upstream.
 	if err := fabricengine.NewBolt(res.BoardDir).Push(fabricengine.SyncOptions{}); err != nil {
 		tb.Fatalf("NewHub: push the clone's board commit: %v", err)
 	}
@@ -347,8 +338,9 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 	}, res.PrimeCwd
 }
 
-// forgetCloneCorrespondence drops the Warp-SHA trailer the clone's walk put on the weft prime's reconcile commit, and the correspondence entry that came with it.
-// A fresh fixture hub starts with no warp-to-weft correspondence, so a scenario that records its own sees only those.
+// forgetCloneCorrespondence drops the Warp-SHA trailer that the clone's walk put on the weft prime's reconcile commit.
+// It also drops the correspondence entry that came with the trailer.
+// A fresh fixture hub starts with no warp-to-weft correspondence, so a scenario sees only what it records itself.
 // The commit is local to the prime's branch, so rewording it leaves no remote diverged.
 func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lymcwd.Location) {
 	tb.Helper()
@@ -369,21 +361,20 @@ func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lymcwd.Locat
 	}
 }
 
-// registerTeardown installs a tb.Cleanup that removes every junction under hubPath before Go's own
-// tb.TempDir() cleanup removes the container directory it lives in.
-// It is a plain filepath.WalkDir from the hub root, calling fslink.IsLink on every entry and
-// fslink.Remove on each link found.
+// registerTeardown installs a tb.Cleanup that removes every junction under hubPath.
+// The cleanup runs before Go's own tb.TempDir() cleanup removes the container directory the hub lives in.
+// It walks the hub root with filepath.WalkDir, calling fslink.IsLink on every entry.
+// fslink.Remove removes each link found.
 //
-// Discovery is slug-free by design: the walk never consults a slug list, because for the live-state
-// matrix the pairs are created by the verb under test and some are destroyed by it, and because
-// enumerating worktrees through fabric requires fabric to still work against a hub those tests
-// deliberately corrupt.
+// Discovery is slug-free by design: the walk never consults a slug list.
+// The live-state matrix's pairs are created by the verb under test, and some are destroyed by it.
+// Enumerating worktrees through fabric would need fabric to still work on a hub those tests corrupt.
 //
-// A missing hub directory (a worktree removed by hand mid-test) simply yields no entries from
-// WalkDir, and fslink.Remove is documented idempotent, so neither case needs a special branch.
+// A missing hub directory, such as a worktree removed by hand mid-test, yields no entries from WalkDir.
+// fslink.Remove is documented idempotent, so neither case needs a special branch.
 //
-// Errors from WalkDir, IsLink and Remove are reported with tb.Logf and never tb.Fatalf or
-// tb.Errorf: teardown must not fail a test that already passed.
+// Errors from WalkDir, IsLink and Remove are reported with tb.Logf and never with tb.Fatalf or tb.Errorf:
+// teardown must not fail a test that already passed.
 func registerTeardown(tb testing.TB, hubPath string) {
 	tb.Helper()
 
@@ -406,15 +397,10 @@ func registerTeardown(tb testing.TB, hubPath string) {
 			if err := fslink.Remove(path); err != nil {
 				tb.Logf("hubforge: teardown Remove %s: %v", path, err)
 			}
-			// WalkDir already reports a link as a non-directory entry and never follows it, so
-			// non-descent is free. Returning filepath.SkipDir here — as it would from a directory
-			// callback — would instead skip the containing directory's remaining entries, since
-			// SkipDir from a non-directory callback means "stop visiting siblings in this
-			// directory", not "don't descend into this entry". That would leave every sibling
-			// junction wired: abandoning <hub>/<slug2> onward after removing
-			// <slug1>, and leaving _lym and the Bolt checkout behind after removing <worktree>/.lym.
-			// This is the single most reversible mistake in this file, so it is spelled out
-			// here rather than left to be rediscovered.
+			// WalkDir reports a link as a non-directory entry, which it never descends into.
+			// Returning nil here therefore keeps the walk out of it.
+			// Returning filepath.SkipDir here would skip the remaining files in the containing directory.
+			// That would leave the sibling junctions wired.
 			return nil
 		})
 		if walkErr != nil {
@@ -424,15 +410,18 @@ func registerTeardown(tb testing.TB, hubPath string) {
 }
 
 // AddPair drives h.Topology.Add for slug against h with zero AddOptions, fataling on error.
-// Several verbs' Arrange funcs need a pair to exist before the verb under test runs.
+// Several verb tests need a pair to exist before the verb under test runs.
 func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 	tb.Helper()
 
 	return AddPairWith(tb, h, slug, fabricengine.AddOptions{})
 }
 
-// AddPairWith drives h.Topology.Add for slug against h with opts, then pushes the new pair in the foreground unless opts skip pushing, fataling on error.
-// Add itself pushes nothing; the foreground push stands in for the detached one a production caller spawns, so fixtures see both branches on the remotes.
+// AddPairWith drives h.Topology.Add for slug against h with opts, fataling on error.
+// It then pushes the new pair in the foreground unless opts skip pushing.
+// Add pushes nothing itself.
+// The foreground push stands in for the detached push a production caller spawns.
+// Fixtures therefore see both branches on the remotes.
 func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabricengine.AddResult {
 	tb.Helper()
 
@@ -463,8 +452,8 @@ func OpenFabric(tb testing.TB, h *Hub) *fabricengine.Fabric {
 	return f
 }
 
-// initScratchRepo initializes a git repository at dir on branch main, disabling fsmonitor and
-// auto-maintenance, mirroring gitkit.initRepo.
+// initScratchRepo initializes a git repository at dir on branch main.
+// It disables fsmonitor and auto-maintenance, as gitkit.initRepo does.
 func initScratchRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
 	mustGit(dir, "config", "user.email", "test@test.com")
@@ -475,8 +464,8 @@ func initScratchRepo(dir string) {
 	stripHookSamples(filepath.Join(dir, ".git", "hooks"))
 }
 
-// initBareRepo initializes a bare git repository at dir, disabling fsmonitor and auto-maintenance,
-// mirroring gitkit.initBareRemote.
+// initBareRepo initializes a bare git repository at dir with fsmonitor and auto-maintenance disabled.
+// It panics if dir already exists.
 func initBareRepo(dir string) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		panic(err)
@@ -494,12 +483,10 @@ func commitAll(dir, message string) {
 	mustGit(dir, "commit", "-m", message)
 }
 
-// mustGit runs a git subcommand in dir, panicking on non-zero exit.
-// It is this file's equivalent local helper to gitkit.MustRun: the template builder runs once per
-// test binary via sync.Once, before any testing.TB is necessarily in scope for every caller, so it
-// panics rather than taking a tb — the same posture gitkit's own template builders take.
-// Every git spawn in this file goes through it; none is a bare exec.Command whose failure is silently
-// ignored.
+// mustGit runs a git subcommand in dir and panics on non-zero exit.
+// It panics rather than taking a testing.TB: the template builder runs once per test binary through sync.Once.
+// Not every caller has a testing.TB in scope at that point.
+// Every git spawn in this file goes through it, so no git failure is silently ignored.
 func mustGit(dir string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -509,8 +496,7 @@ func mustGit(dir string, args ...string) {
 	}
 }
 
-// stripHookSamples removes every *.sample file from hooksDir, best-effort, mirroring
-// gitkit.stripHookSamples.
+// stripHookSamples removes every *.sample file from hooksDir on a best-effort basis and ignores errors.
 func stripHookSamples(hooksDir string) {
 	matches, err := filepath.Glob(filepath.Join(hooksDir, "*.sample"))
 	if err != nil {
@@ -521,9 +507,8 @@ func stripHookSamples(hooksDir string) {
 	}
 }
 
-// copyDirRecursive recursively copies a directory tree from src to dest, refusing any symlink found
-// in the tree, mirroring gitkit's own copyDirRecursive: a template must stay plain files and
-// directories only.
+// copyDirRecursive recursively copies the directory tree at src to dest and fails on any symlink in it.
+// A template must stay plain files and directories, so a symlink is an error.
 func copyDirRecursive(src, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err

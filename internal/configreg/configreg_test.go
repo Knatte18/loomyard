@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestNames pins the registry's ORDER and shape: every `lym config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
+// TestNames pins the registry's ORDER and shape: every `lym config` surface renders it in registry order,
 // so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {
@@ -44,7 +44,9 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "profiles" carry an open-ended, operator-owned key set (model aliases and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "creel", "gate", "heddle", "hibernate", "ide", "landing", "darn", "desktop", "drift", "env", "language", "report", "sampler", "slack" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
+// TestModules_SeedOnlyAndHubWideFlags pins which modules carry the SeedOnly, HubWide and SeedsFromPrime flags.
+// Seed-only modules hold an open-ended, operator-owned key set; hub-wide modules describe facts about the hub.
+// The test body lists the members of each set.
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
@@ -70,8 +72,9 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 	}
 }
 
-// TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit and name only paths the template holds,
-// and that the derived LocalKeys and LocalDenied match the record.
+// TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit.
+// It also pins that Categories name only paths the template holds.
+// The derived LocalKeys and LocalDenied must match the record.
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -161,7 +164,8 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	})
 }
 
-// machineKeyRefusal returns the message refusing a per-worktree module that classifies a key CategoryMachine, and "" for any other module.
+// machineKeyRefusal returns the refusal for a per-worktree module that classifies a key CategoryMachine.
+// It returns "" for any other module.
 // Only a hub-wide module reads a machine file, so such a key would be a value no loader reads.
 func machineKeyRefusal(m Module) string {
 	machineKeys := configengine.MachineKeys(m.Spec())
@@ -191,7 +195,7 @@ func holdsPath(units []string, entry string) bool {
 	return false
 }
 
-// TestModules_LocalLayerRefusals pins the local-layer verdict of keys no loader card pins through its real load.
+// TestModules_LocalLayerRefusals pins the local-layer verdict of keys that no loader test pins through its real load.
 func TestModules_LocalLayerRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -321,7 +325,9 @@ func TestLookup(t *testing.T) {
 	}
 }
 
-// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps, per-name maps, name and overlay documents, and not its Migrate hook or an empty overlay.
+// TestFingerprint pins what the registry fingerprint is sensitive to.
+// It changes with a module's template, flags, open maps, per-name maps, name and overlay documents.
+// It does not change with its Migrate hook or an empty overlay.
 func TestFingerprint(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

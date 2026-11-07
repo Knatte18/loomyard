@@ -1,10 +1,7 @@
-// fakes_test.go implements the hermetic test doubles the rest of shuttleengine's tests drive the
-// run loop against: fakeReed (a ReedOps double that records every call and lets a test script
-// Status liveness/CapturePane content per call and inject a per-method error) and fakeEngine (an
-// Engine double with a canned Launch, a trivial fixture format for ParseEvents, a scriptable
-// Startup sequence, fixed InterruptSequence/ComposeSend choreographies, and a scriptable
-// AuditForks/AuditForksIncremental canned result/error).
-// Neither fake asserts anything itself — tests inspect their recorded calls.
+// fakes_test.go implements the hermetic test doubles that shuttleengine's run-loop tests drive.
+// fakeReed is a ReedOps double that records every call and scripts Status and CapturePane per call.
+// fakeEngine is an Engine double with canned or scripted launch, startup, interrupt, compose and audit results.
+// Neither fake asserts anything itself; tests inspect their recorded calls.
 
 package shuttleengine
 
@@ -22,7 +19,7 @@ import (
 )
 
 // fakeReed is a hermetic ReedOps double that never touches tmux.
-// CallLog records every call across all six methods as short formatted tags; Status and CapturePane are scripted via FIFO queues.
+// CallLog records every call as a short formatted tag; Status and CapturePane are scripted via FIFO queues.
 type fakeReed struct {
 	mu sync.Mutex
 
@@ -37,7 +34,7 @@ type fakeReed struct {
 		Recursive bool
 	}
 	RemoveStrandErr error
-	// RemoveStrandErrQueue is consumed FIFO by RemoveStrand, one entry per call, ahead of RemoveStrandErr; a nil entry succeeds.
+	// RemoveStrandErrQueue is consumed FIFO by RemoveStrand, one per call, before RemoveStrandErr; a nil entry succeeds.
 	RemoveStrandErrQueue []error
 
 	StatusQueue []reedengine.StatusResult // Consumed FIFO by Status; last value sticks once drained.
@@ -46,7 +43,7 @@ type fakeReed struct {
 	CaptureQueue []string // Consumed FIFO by CapturePane, like StatusQueue.
 	CaptureErr   error
 	// CaptureErrQueue is consumed FIFO by CapturePane, last entry sticking like CaptureQueue.
-	// A nil entry answers from CaptureQueue as usual and a non-nil entry fails that call; CaptureErr keeps failing every call.
+	// A nil entry answers from CaptureQueue, a non-nil entry fails that call, and CaptureErr fails every call.
 	CaptureErrQueue []error
 
 	SendTextCalls []struct {
@@ -59,10 +56,10 @@ type fakeReed struct {
 	SendKeyCalls []struct{ GUID, Key string }
 	SendKeyErr   error
 	// SendKeyErrQueue is consumed FIFO by SendKey, last entry sticking like CaptureErrQueue.
-	// A non-nil entry fails that call and a nil entry succeeds; SendKeyErr keeps failing every call while the queue is empty.
+	// A non-nil entry fails that call, a nil entry succeeds, and SendKeyErr fails every call while the queue is empty.
 	SendKeyErrQueue []error
 
-	// WaitMarkCalls records every SetWaitMark call, kept out of CallLog so the tests that pin the exact call sequence stay as they are.
+	// WaitMarkCalls records every SetWaitMark call, kept out of CallLog so exact-sequence tests stay valid.
 	WaitMarkCalls []waitMarkCall
 	WaitMarkErr   error
 
@@ -93,7 +90,8 @@ func countLevelLines(log, level, text string) int {
 	return count
 }
 
-// requireFailureEpisode requires log to hold exactly one WARN line of failure, debugLines DEBUG lines of it each stamped with failed_ticks=, and exactly one INFO line of recovery.
+// requireFailureEpisode requires log to hold exactly one WARN line of failure and exactly one INFO line of recovery.
+// It also requires debugLines DEBUG lines of the failure, each stamped with failed_ticks=.
 func requireFailureEpisode(t *testing.T, log, failure string, debugLines int, recovery string) {
 	t.Helper()
 	if got := countLevelLines(log, "WARN", failure); got != 1 {
@@ -243,7 +241,7 @@ func (m *fakeReed) CapturePane(guid string) (string, error) {
 	return m.capture("CapturePane")
 }
 
-// CapturePaneStyled answers from the same queues as CapturePane, logging CapturePaneStyled.
+// CapturePaneStyled answers from the same capture queues, logging its own name.
 func (m *fakeReed) CapturePaneStyled(guid string) (string, error) {
 	return m.capture("CapturePaneStyled")
 }
@@ -274,36 +272,35 @@ func (m *fakeReed) capture(logTag string) (string, error) {
 	return result, nil
 }
 
-// var _ ReedOps = (*fakeReed)(nil) is the compile-time proof fakeReed satisfies
-// the seam it doubles for.
+// fakeReed is checked at compile time against ReedOps.
 var _ ReedOps = (*fakeReed)(nil)
 
-// fakeEngine is a hermetic Engine double. Prepare returns a canned Launch
-// without writing any real files — tests that need pollEventsTick to see
-// something seed events.jsonl directly. ParseEvents splits a trivial
-// newline-delimited fixture format: a line of the form "STOP:<message>"
-// becomes an EventStop carrying <message> as Message, a line of the form
-// "ASK:<question>" becomes an EventAsk carrying <question> as Message, and
-// any other line (blank, or missing either prefix) is skipped — mirroring
-// the leniency a real engine's parser must have for partial appends. Startup replays
-// StartupScript in FIFO order (the last entry stays once the script drains,
-// same rule as fakeReed's queues; an empty script always reports
-// StartupPending). InterruptSequence/ComposeSend return fixed, inspectable
-// choreographies rather than scripted ones — Interrupt/Send tests assert
-// against these canonical sequences directly.
-// It implements InterruptGuard: a capture shows a running turn when it contains "RUNNING", and the interrupt settle is Settle.
+// fakeEngine is a hermetic Engine double.
+// Prepare returns a canned Launch and writes no files,
+// so a test that needs the poll loop to see events seeds events.jsonl itself.
+// ParseEvents reads a newline-delimited fixture.
+// A line "STOP:<message>" becomes an EventStop with Message set to <message>.
+// A line "ASK:<question>" becomes an EventAsk with Message set to <question>.
+// Any other line (blank, or missing either prefix) is skipped.
+// A real engine's parser must be lenient about partial appends.
+// as a real engine's parser must be lenient about partial appends.
+// Startup replays StartupScript in FIFO order, and the last entry stays once the script drains.
+// An empty script always reports StartupPending.
+// InterruptSequence and ComposeSend return fixed choreographies, not scripted ones.
+// It implements InterruptGuard: a capture shows a running turn when it contains "RUNNING",
+// and the interrupt settle is Settle.
 type fakeEngine struct {
 	mu sync.Mutex
 
-	// Settle is what InterruptSettle answers.
+	// Settle is the interrupt settle delay the fake reports.
 	Settle time.Duration
 
 	PrepareLaunch Launch
 	PrepareErr    error
-	// PrepareHook, when set, runs inside Prepare with the run directory
-	// before it returns — a test uses it to plant on-disk state (e.g. a
-	// run.json directory that makes the later saveRunState fail) without a
-	// bespoke Engine double.
+	// PrepareHook, when set, runs inside Prepare with the run directory before it returns.
+	// A test uses it to plant on-disk state.
+	// For example, a run.json directory makes the later run-state save fail.
+	// That spares the test a bespoke Engine double.
 	PrepareHook  func(runDir string)
 	PrepareCalls []struct {
 		RunDir string
@@ -312,17 +309,17 @@ type fakeEngine struct {
 	}
 
 	// ParseEventsErr, when set, makes every ParseEvents call fail.
-	// ParseEventsFailCount, when > 0, makes only the first N calls fail
-	// (ParseEventsErr's error, or a generic fixed error if ParseEventsErr is
-	// nil) before ParseEvents starts succeeding normally on the SAME bytes —
-	// the fake used to prove pollEventsTick re-reads and re-parses unconsumed
-	// bytes after a transient parse failure instead of discarding them.
+	// ParseEventsFailCount, when > 0, makes only the first N calls fail:
+	// with ParseEventsErr, or with a generic fixed error when ParseEventsErr is nil.
+	// After those calls, ParseEvents succeeds on the same bytes.
+	// It proves the poll loop re-reads and re-parses unconsumed bytes after a transient parse failure.
+	// The poll loop must keep those bytes, not discard them.
 	ParseEventsErr       error
 	ParseEventsFailCount int
 	parseEventsCallsSeen int
 
-	// trustDismissCaptures records every capture TrustDismissSequence was handed, in call order,
-	// guarded by mu because the wait loop calls it from its own goroutine.
+	// trustDismissCaptures records every capture TrustDismissSequence was handed, in call order.
+	// mu guards it, because the wait loop calls TrustDismissSequence from its own goroutine.
 	trustDismissCaptures []string
 
 	StartupScript []StartupState
@@ -331,9 +328,9 @@ type fakeEngine struct {
 	// NoColorInputs makes ColorSequence answer no inputs, like an engine without a color command.
 	NoColorInputs bool
 
-	// AuditForksResult is returned by AuditForks whenever AuditForksErr is
-	// nil; AuditForksCalls records every (sessionID, workdir) pair AuditForks
-	// was called with, so a test can assert it was — or was NOT — called.
+	// AuditForksResult is returned by AuditForks whenever AuditForksErr is nil.
+	// AuditForksCalls records every (sessionID, workdir) pair AuditForks was called with.
+	// A test uses it to assert whether AuditForks was called.
 	AuditForksResult ForkAudit
 	AuditForksErr    error
 	AuditForksCalls  []struct {
@@ -407,8 +404,8 @@ func (e *fakeEngine) Startup(capture string) StartupState {
 	return next
 }
 
-// InterruptSequence returns the canonical single-Escape interrupt choreography — fixed, not
-// scripted, so tests assert against it directly.
+// InterruptSequence returns the fixed single-Escape interrupt choreography.
+// It is not scripted, so a test can assert against it directly.
 func (e *fakeEngine) InterruptSequence() []PaneInput {
 	return []PaneInput{{Key: "Escape"}}
 }
@@ -419,10 +416,8 @@ func (e *fakeEngine) InterruptSettle() time.Duration { return e.Settle }
 
 var _ InterruptGuard = (*fakeEngine)(nil)
 
-// TrustDismissSequence records the capture it was handed and returns the canonical single-Enter
-// trust dismissal — fixed, not scripted, so tests assert against it directly.
-// The recording is what lets a wait-loop test prove the caller passes the SAME capture Startup
-// classified, rather than a stale or empty one, which is the whole point of the parameter.
+// TrustDismissSequence records the capture it was handed and returns the fixed single-Enter trust dismissal.
+// The recording lets a wait-loop test prove the caller passes the capture Startup classified, not a stale or empty one.
 func (e *fakeEngine) TrustDismissSequence(capture string) []PaneInput {
 	e.mu.Lock()
 	e.trustDismissCaptures = append(e.trustDismissCaptures, capture)
@@ -430,16 +425,15 @@ func (e *fakeEngine) TrustDismissSequence(capture string) []PaneInput {
 	return []PaneInput{{Key: "Enter"}}
 }
 
-// TrustDismissCaptures returns a copy of every capture TrustDismissSequence was handed, in call
-// order.
+// TrustDismissCaptures returns a copy of every capture handed to TrustDismissSequence, in call order.
 func (e *fakeEngine) TrustDismissCaptures() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]string(nil), e.trustDismissCaptures...)
 }
 
-// ComposeSend returns the canonical Escape-then-submit-text choreography — fixed, not scripted, so
-// tests assert against it directly.
+// ComposeSend returns the fixed Escape-then-submit-text choreography.
+// It is not scripted, so a test can assert against it directly.
 func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 	return []PaneInput{
 		{Key: "Escape"},
@@ -447,7 +441,8 @@ func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 	}
 }
 
-// ColorSequence returns a canonical submit-color-command choreography — fixed, not scripted, so tests assert against it directly — or no inputs when NoColorInputs is set.
+// ColorSequence returns the fixed submit-color-command choreography, or no inputs when NoColorInputs is set.
+// It is not scripted, so a test can assert against it directly.
 func (e *fakeEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 	if e.NoColorInputs {
 		return nil
@@ -465,19 +460,16 @@ func (e *fakeEngine) KeepWarmCaps(role string) (time.Duration, time.Duration, er
 	return 0, 0, nil
 }
 
-// AuditForks records the (sessionID, workdir) it was called with and returns
-// AuditForksResult/AuditForksErr — a test scripts the canned audit a fork-mode done classification
-// should attach to Result.ForkAudit.
-// It forwards to AuditForksIncremental with a nil seenTranscripts map, mirroring the real engine's
-// AuditForks-in-terms-of-AuditForksIncremental relationship.
+// AuditForks records the (sessionID, workdir) it was called with and returns the canned result and error.
+// A test scripts the audit that a fork-mode done classification attaches to Result.ForkAudit.
+// It forwards to AuditForksIncremental with a nil seenTranscripts map.
 func (e *fakeEngine) AuditForks(sessionID, workdir string) (ForkAudit, error) {
 	return e.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental records the (sessionID, workdir, seenTranscripts) it was called with and
-// returns AuditForksResult/AuditForksErr, filtering AuditForksResult.Forks down to reports whose
-// TranscriptPath is not a key of seenTranscripts (nil map == no filtering) — a test scripts the
-// canned audit an incremental caller should observe, and can assert the seen-set was applied.
+// AuditForksIncremental records the (sessionID, workdir, seenTranscripts) it was called with.
+// It returns AuditForksResult and AuditForksErr, minus the reports whose TranscriptPath is a key of seenTranscripts.
+// A nil seenTranscripts drops nothing, so a test can assert the seen-set was applied.
 func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -504,12 +496,13 @@ func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTransc
 	return result, nil
 }
 
-// var _ Engine = (*fakeEngine)(nil) is the compile-time proof fakeEngine
-// satisfies the seam it doubles for.
+// fakeEngine is checked at compile time against Engine.
 var _ Engine = (*fakeEngine)(nil)
 
-// resumeFakeEngine is fakeEngine plus the opt-in SessionResumer capability: a test that resumes a session wraps its fakeEngine in it, so the plain fakeEngine keeps satisfying Engine alone.
-// CheckResume records its (sessionID, workdir) and appends "CheckResume" to Order, then returns the canned Warning and Err.
+// resumeFakeEngine is a fakeEngine with the opt-in SessionResumer capability.
+// A test that resumes a session wraps its fake in it, so the plain fake keeps satisfying Engine alone.
+// CheckResume records its (sessionID, workdir) and appends "CheckResume" to Order.
+// It returns the canned Warning and Err.
 type resumeFakeEngine struct {
 	*fakeEngine
 
@@ -538,17 +531,16 @@ func (e *resumeFakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch
 	return e.fakeEngine.Prepare(runDir, spec, cfg)
 }
 
-// var _ SessionResumer = (*resumeFakeEngine)(nil) proves the opt-in double carries the capability.
+// resumeFakeEngine is checked at compile time against SessionResumer.
 var _ SessionResumer = (*resumeFakeEngine)(nil)
 
-// readyStart scripts reed and engine so a Start through the pair resolves its startup step ready on
-// the first probe: reed's StatusQueue reports reed.AddStrandResult.GUID live with a non-empty PaneID
-// (only when StatusQueue is empty, so a test that already scripted its own liveness answers is left
-// alone), and engine's StartupScript reports StartupReady (only when StartupScript is empty, for the
-// same reason). Card 4 makes Runner.StartGated probe the pane before returning a handle, which a test
-// built against fakeReed's empty StatusQueue (errStrandNotTracked) and fakeEngine's empty
-// StartupScript (always StartupPending) would otherwise fail, or sit out the whole startup window,
-// even though neither fake value is read by today's non-blocking Start.
+// readyStart scripts reed and engine so a Start through the pair resolves its startup step ready on the first probe.
+// reed's StatusQueue reports reed.AddStrandResult.GUID live with a non-empty PaneID.
+// It does so only when StatusQueue is empty, so a test's own liveness answers are kept.
+// engine's StartupScript reports StartupReady, but only when StartupScript is empty, for the same reason.
+// A gated start probes the pane before it returns a handle.
+// Against the empty fakes that probe fails (errStrandNotTracked) or waits out the startup window,
+// even though a non-blocking Start reads neither value.
 func readyStart(reed *fakeReed, engine *fakeEngine) {
 	if len(reed.StatusQueue) == 0 {
 		reed.StatusQueue = []reedengine.StatusResult{liveStatus(reed.AddStrandResult.GUID, "%1")}
@@ -558,19 +550,19 @@ func readyStart(reed *fakeReed, engine *fakeEngine) {
 	}
 }
 
-// skillFakeEngine is fakeEngine plus the opt-in SkillLoader capability.
+// skillFakeEngine is a fakeEngine with the opt-in SkillLoader capability.
 // SkillLoadMessage types "LOAD:<a,b>" for a list,
-// and ClassifySkillLoad answers each load turn's report from Reports in order, the last sticking once drained.
+// and ClassifySkillLoad answers each load turn's report from Reports in order; the last sticks once drained.
 type skillFakeEngine struct {
 	*fakeEngine
 
 	Timeout time.Duration
 	Reports []SkillLoadReport
-	// HookState makes skillStartFixtureWith run the start over a hookStateSkillEngine, with a SessionStart(startup) line already in the events file.
+	// HookState runs the start over a hookStateSkillEngine, with a SessionStart(startup) event already in the events file.
 	HookState bool
-	// APIErrorLine is the turn end line the hookStateSkillEngine's transcript marks as an API error.
+	// APIErrorLine is the turn end line that the transcript marks as an API error.
 	APIErrorLine string
-	// Interrupted makes the hookStateSkillEngine read every turn start as interrupted by the operator.
+	// Interrupted makes the engine read every turn start as interrupted by the operator.
 	Interrupted bool
 	// OnClassify, when set, runs after ClassifySkillLoad picked its report, once the load turn's end has been read.
 	OnClassify func()
@@ -583,7 +575,7 @@ func (e *skillFakeEngine) SkillLoadMessage(skills []string) string {
 	return "LOAD:" + strings.Join(skills, ",")
 }
 
-// Prepare delegates to fakeEngine.Prepare and, for a spec with skills, carries the load message on the launch line, as the Claude engine does.
+// Prepare delegates to the embedded fake and, for a spec with skills, puts the load message on the launch line.
 func (e *skillFakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, error) {
 	launch, err := e.fakeEngine.Prepare(runDir, spec, cfg)
 	if err != nil {
@@ -613,9 +605,12 @@ func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Tim
 
 var _ SkillLoader = (*skillFakeEngine)(nil)
 
-// hookStateSkillEngine is a skillFakeEngine that also reads hook state: the session signal parser, a live prober and the SessionCycler idle reading.
+// hookStateSkillEngine is a skillFakeEngine that also reads hook state:
+// the session signal parser, a live prober, and the idle reading of a session cycler.
 // A capture is idle when it starts with "IDLE".
-// A pane the test leaves busy is one the pane fallback refuses throughout, so every send of the start goes through on the hook fold's reading of the load turn's end, before the prompt offset moves past that end and after.
+// A pane the test leaves busy is one the pane fallback refuses throughout.
+// Every send of the start goes through on the hook fold's reading of the load turn's end.
+// That holds both before the prompt offset moves past that end and after it.
 type hookStateSkillEngine struct {
 	*skillFakeEngine
 
@@ -656,8 +651,8 @@ var (
 	_ ActivityReader      = (*hookStateSkillEngine)(nil)
 )
 
-// skillReed is a fakeReed whose pane capture echoes the load message the launch line carried, as the pane does, and every text typed into it,
-// so a verified send finds its text.
+// skillReed is a fakeReed whose pane capture echoes the load message the launch line carried.
+// As the pane does, it echoes every text typed into it, so a verified send finds its text.
 // It plays a scripted reaction to each "LOAD:<list>" load turn, counting turns from zero:
 // a typed one arrives through SendText and the launch-carried first one through AddStrand's Cmd.
 // A turn in Hangs never ends.
@@ -674,11 +669,11 @@ type skillReed struct {
 	LateEnds map[int]int
 	// TurnEnds maps a turn to the line that ends it in place of a plain turn end, such as an API error's.
 	TurnEnds map[int]string
-	// OpenTurns makes a hanging or late turn write its turn start at once, as a provider does for a turn it is still working on.
+	// OpenTurns makes a hanging or late turn write its turn start at once, as a provider does while it works on the turn.
 	OpenTurns bool
-	// Carries maps a turn to the turn the operator starts and ends on their own after it, in place of the load the shuttle would type again.
+	// Carries maps a turn to the turn the operator starts and ends after it, in place of the load the shuttle types again.
 	Carries map[int]carriedTurn
-	// LoadSendErrs is consumed FIFO by each typed "LOAD:<list>", ahead of the typing: a non-nil entry fails that send and types nothing, a nil entry types it.
+	// LoadSendErrs is consumed FIFO by each typed "LOAD:<list>": a non-nil entry fails that send, a nil one types it.
 	LoadSendErrs []error
 	// Notifier, when set, is the runner's notifier.
 	Notifier func(line string) error
@@ -707,7 +702,8 @@ type lateTurnEnd struct {
 }
 
 // carriedTurn is a turn the operator starts after startAfter Status calls and ends after endAfter.
-// The calls count from the turn it follows is played, and the startup probe takes the first, so a startAfter of 2 lands the turn start in the load poll's first call.
+// The count starts once the turn it follows is played, and the startup probe takes the first Status call.
+// A startAfter of 2 therefore lands the turn start in the load poll's first call.
 type carriedTurn struct {
 	startAfter, endAfter int
 }
@@ -752,7 +748,8 @@ func (r *skillReed) SendText(guid, text string, submit bool) error {
 }
 
 // playLoad is the reaction to one load turn for list, typed or carried on the launch line.
-// A turn in Dies arms the pane's death for the second Status call after it, so a launch-carried turn dies inside the load poll and not in the startup probe's single ready tick.
+// A turn in Dies arms the pane's death for the second Status call after it.
+// A launch-carried turn thus dies inside the load poll, not in the startup probe's single ready tick.
 func (r *skillReed) playLoad(list string) error {
 	turn := r.loads
 	r.loads++
@@ -795,7 +792,7 @@ func (r *skillReed) appendTurnEnd(line string) error {
 	return nil
 }
 
-// appendEvents appends text to the run's events file.
+// appendEvents appends text to the run's events file, creating the file when it is missing.
 func (r *skillReed) appendEvents(text string) error {
 	f, err := os.OpenFile(r.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -857,15 +854,23 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 
 var _ ReedOps = (*skillReed)(nil)
 
-// sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser, SessionProber and ActivityReader capabilities.
-// ParseSessionSignals reads "START" as a turn start, "START:<text>" as a turn start carrying <text> as its typed instruction, "APIERR" and "APIERR:<text>" as an API-error turn end carrying <text> as its error, "REJECT:<text>" as such a turn end marked ModelRejected, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask, "SESSIONSTART" or "SESSIONSTART:<source>" as a session start with that source and "SESSIONEND:<reason>" as a session end that ends the process unless its reason is "clear".
+// sessionFakeEngine is a test engine that parses session signals and answers liveness, interrupts, activity, progress.
+// ParseSessionSignals reads "START" as a turn start and "START:<text>" as one carrying <text> as its instruction.
+// "APIERR" and "APIERR:<text>" are API-error turn ends, the second carrying <text> as its error.
+// "REJECT:<text>" is such a turn end marked ModelRejected.
+// "STOP:<message>" is a turn end, and "WAIT:<message>" is a turn end carrying outstanding.
+// "ASK" is an ask, and "SESSIONSTART" or "SESSIONSTART:<source>" is a session start with that source.
+// "SESSIONEND:<reason>" is a session end that ends the process unless its reason is "clear".
 // Every signal names session-1, and the read consumes through the last complete line.
-// ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
+// ProcessLiveness answers liveness for any session id.
+// TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
 // TurnEndUsageLimited reads a turn end as usage-limited when its line is usageLimitLine.
 // TurnStartProgress answers progress for any turn start.
-// With markEvents set, ParseSessionSignals also reads "@<RFC 3339 time>" as the stamp of the next line and sets Event, with that time, on the lines the engine's ParseEvents yields an event from ("STOP:", "WAIT:" and "ASK:<message>", the last read as an ask) and on "MARK", a turn end no ParseEvents yields an event from;
-// a read then stops before a trailing run of stamp lines with no payload after them.
+// With markEvents set, ParseSessionSignals also reads "@<RFC 3339 time>" as the stamp of the next line.
+// It sets Event, with that time, on "STOP:", "WAIT:" and "ASK:<message>" lines the event parser yields events from.
+// It also sets it on "MARK", a turn end the event parser yields no event from.
+// A read then stops before a trailing run of stamp lines with no payload after them.
 type sessionFakeEngine struct {
 	waitingEngine
 
@@ -882,7 +887,8 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 	end := strings.LastIndexByte(string(data), '\n') + 1
 	var signals []SessionSignal
 	var stamp time.Time
-	// stampRunStart is the offset of the earliest line of the trailing run of stamp lines, or end when the data does not finish with one.
+	// stampRunStart is the offset of the earliest line of the trailing run of stamp lines.
+	// It equals end when the data does not finish with a stamp line.
 	stampRunStart := end
 	offset := 0
 	for _, line := range strings.Split(string(data[:end]), "\n") {
@@ -978,7 +984,8 @@ var (
 	_ UsageLimitReader    = (*sessionFakeEngine)(nil)
 )
 
-// openerFakeEngine is fakeEngine plus the SessionOpener capability: OpenLaunch records the directory and the spec it was given and returns the scripted launch, or the scripted error.
+// openerFakeEngine is a test engine with the SessionOpener capability.
+// OpenLaunch records the directory and the spec it was given and returns the scripted launch or error.
 type openerFakeEngine struct {
 	fakeEngine
 
@@ -998,7 +1005,7 @@ func (e *openerFakeEngine) OpenLaunch(dir string, spec OpenSpec, cfg Config) (La
 
 var _ SessionOpener = (*openerFakeEngine)(nil)
 
-// idleEngine is sessionFakeEngine plus the SessionCycler idle reading: a capture is idle when it starts with "IDLE".
+// idleEngine is a test engine whose SessionCycler reads a capture as idle when it starts with "IDLE".
 // Only IdleSession is scripted; the other SessionCycler methods answer empty.
 // A test sets StartupScript to StartupReady for the pane to classify ready.
 type idleEngine struct {
@@ -1017,7 +1024,7 @@ func (e *idleEngine) CompactSessionSequence(string) []PaneInput { return nil }
 
 var _ SessionCycler = (*idleEngine)(nil)
 
-// readinessEngine is idleEngine plus the InputBoxReader capability and a scripted PaneTooShort.
+// readinessEngine is a test engine with the InputBoxReader capability and a scripted PaneTooShort.
 // The input box is the text after the last caret "❯ " of a capture, and a capture with no caret shows no box.
 type readinessEngine struct {
 	idleEngine
@@ -1043,7 +1050,8 @@ var (
 	_ InputBoxReader = (*readinessEngine)(nil)
 )
 
-// pickerEngine is readinessEngine plus the RewindPickerReader capability: a capture shows the picker when it contains "REWIND-PICKER".
+// pickerEngine is a test engine with the RewindPickerReader capability:
+// a capture shows the picker when it contains "REWIND-PICKER".
 type pickerEngine struct {
 	readinessEngine
 }
@@ -1052,7 +1060,8 @@ func (e *pickerEngine) RewindPicker(capture string) bool {
 	return strings.Contains(capture, "REWIND-PICKER")
 }
 
-// pickerOnlyEngine is fakeEngine plus the RewindPickerReader capability with pickerEngine's needle, so it reads the picker without being a SessionCycler.
+// pickerOnlyEngine is a test engine that reads the picker without being a SessionCycler.
+// A capture shows the picker when it contains "REWIND-PICKER".
 type pickerOnlyEngine struct {
 	fakeEngine
 }
@@ -1061,7 +1070,8 @@ func (e *pickerOnlyEngine) RewindPicker(capture string) bool {
 	return strings.Contains(capture, "REWIND-PICKER")
 }
 
-// dismissPickerEngine is readinessEngine plus the DismissiblePickerReader capability: a capture shows the picker when it contains "COMPACT-PICKER", and Escape closes it.
+// dismissPickerEngine is a test engine with the DismissiblePickerReader capability:
+// a capture shows the picker when it contains "COMPACT-PICKER", and Escape closes it.
 type dismissPickerEngine struct {
 	readinessEngine
 }
@@ -1079,7 +1089,8 @@ var (
 	_ DismissiblePickerReader = (*dismissPickerEngine)(nil)
 )
 
-// guardedDismissPickerEngine is dismissPickerEngine plus the InterruptGuard capability: a capture shows a running turn when it contains "RUNNING", and the interrupt settle is settle.
+// guardedDismissPickerEngine is a test engine with the InterruptGuard capability:
+// a capture shows a running turn when it contains "RUNNING", and InterruptSettle returns settle.
 type guardedDismissPickerEngine struct {
 	dismissPickerEngine
 
@@ -1094,7 +1105,8 @@ func (e *guardedDismissPickerEngine) InterruptSettle() time.Duration { return e.
 
 var _ InterruptGuard = (*guardedDismissPickerEngine)(nil)
 
-// idleReed is a fakeReed whose pane reads busyFrame until idleAt on its clock and "IDLE" after, followed by the last text typed.
+// idleReed is a fakeReed whose pane reads busyFrame until idleAt on its clock.
+// After that it reads "IDLE" followed by the last text typed.
 // A zero idleAt reads idle at once, and a zero failAt never fails a capture.
 // From failAt on, every capture fails.
 type idleReed struct {
@@ -1137,9 +1149,11 @@ func (r *idleReed) CapturePane(guid string) (string, error) {
 var _ ReedOps = (*idleReed)(nil)
 
 // tuiReed is a fakeReed standing in for a Claude pane over time on its clock.
-// The pane reads "IDLE", then the history of submitted texts and the input box after a caret, and an operator is active in it until activeUntil.
+// The pane reads "IDLE", then the history of submitted texts and the input box after a caret.
+// An operator is active in it until activeUntil.
 // While working is set the pane reads a turn in flight in place of "IDLE".
-// Typed text lands in the box, C-u empties it, and Enter submits the box into the history once swallowEnterUntil has passed.
+// Typed text lands in the box, and C-u empties it.
+// Enter submits the box into the history once swallowEnterUntil has passed.
 // While picker is set the pane shows it alone, and Escape clears it unless pickerSticky is set.
 type tuiReed struct {
 	*fakeReed
@@ -1225,7 +1239,7 @@ func (r *tuiReed) CapturePane(guid string) (string, error) {
 	return r.frame(r.suggestion), nil
 }
 
-// CapturePaneStyled draws the pane as CapturePane does, with the suggestion wrapped in ~ marks the way a styled capture marks placeholder cells.
+// CapturePaneStyled draws the pane with the suggestion wrapped in ~ marks, as a styled capture marks placeholder cells.
 func (r *tuiReed) CapturePaneStyled(guid string) (string, error) {
 	if _, err := r.fakeReed.CapturePaneStyled(guid); err != nil {
 		return "", err
@@ -1260,7 +1274,8 @@ func (r *tuiReed) OperatorActive(guid string) (bool, time.Duration, error) {
 	return r.fakeReed.OperatorActive(guid)
 }
 
-// blankMarkedSpans replaces every ~…~ span of a fake capture, tildes included, by spaces, standing in for a provider's placeholder cells.
+// blankMarkedSpans replaces every ~…~ span of a fake capture, tildes included, by spaces.
+// The blanks stand in for a provider's placeholder cells.
 func blankMarkedSpans(styled string) string {
 	var out strings.Builder
 	for {
@@ -1281,7 +1296,7 @@ func blankMarkedSpans(styled string) string {
 	return out.String()
 }
 
-// styledReadinessEngine is a readinessEngine that reads a styled capture, blanking its ~…~ spans.
+// styledReadinessEngine is a test engine that reads a styled capture with its ~…~ spans blanked.
 type styledReadinessEngine struct {
 	*readinessEngine
 }
@@ -1290,8 +1305,9 @@ func (e *styledReadinessEngine) PlainBoxCapture(styled string) string {
 	return blankMarkedSpans(styled)
 }
 
-// guardedReadinessEngine is a readinessEngine plus the InterruptGuard capability: a capture shows a running turn when it contains "RUNNING".
-// A row on it has both the input box and the running-turn check that Claude's pane probe uses.
+// guardedReadinessEngine is a test engine with the InterruptGuard capability:
+// a capture shows a running turn when it contains "RUNNING".
+// The capture has both the input box and the running-turn check that Claude's pane probe uses.
 type guardedReadinessEngine struct {
 	*readinessEngine
 }
@@ -1304,15 +1320,19 @@ func (e *guardedReadinessEngine) InterruptSettle() time.Duration { return 0 }
 
 var _ InterruptGuard = (*guardedReadinessEngine)(nil)
 
-// restoreReed is a fakeReed whose pane is stateful across an interrupt, like Claude's: it draws a running turn and a box before the key, and after an Escape a box holding the restored prompt that C-u and BSpace then delete.
-// Each capture first runs the embedded fakeReed's capture, so CaptureErrQueue fails a scripted capture, counted over every capture of the call, and each key is recorded through the embedded fakeReed, whose SendKeyErrQueue fails a scripted key.
+// restoreReed is a fakeReed whose pane keeps its state across an interrupt, as Claude's does.
+// Before the key it draws a running turn and a box;
+// after an Escape it draws a box holding the restored prompt that C-u and BSpace then delete.
+// Each capture first runs the embedded fakeReed's capture;
+// CaptureErrQueue fails a scripted capture, counted over every capture of the call.
+// Each key is recorded through the embedded fakeReed, whose SendKeyErrQueue fails a scripted key.
 type restoreReed struct {
 	*fakeReed
 	// before is the box text before the key; empty for an empty box.
 	before string
 	// idleBefore draws no RUNNING before the key.
 	idleBefore bool
-	// suggestion is a placeholder drawn in an empty box before the key: plain in CapturePane and wrapped in ~ marks in CapturePaneStyled.
+	// suggestion is a placeholder drawn in an empty box before the key; plain in CapturePane, ~-marked in CapturePaneStyled.
 	suggestion string
 	// restored are the box lines drawn after the key.
 	restored []string
@@ -1416,7 +1436,8 @@ func (r *restoreReed) boxText() string {
 	return strings.Join(texts, " ")
 }
 
-// restoreEngine is a fakeEngine for a pane drawn by restoreReed: RUNNING reads as a running turn and the settle is 2 s, Startup reads ready unless the capture holds SHELL, and it clears a restored prompt as Claude does.
+// restoreEngine is a fake engine for a pane that draws RUNNING as a running turn, with a 2 s settle.
+// Its Startup reads ready unless the capture holds SHELL, and it clears a restored prompt as Claude does.
 type restoreEngine struct {
 	*fakeEngine
 	// singleClear makes RestoredPromptClearSequence answer one bare C-u whatever the box holds.
@@ -1449,7 +1470,8 @@ func (e *restoreEngine) TypeSequence(text string) []PaneInput {
 	return []PaneInput{{Text: text}}
 }
 
-// RestoredPromptClearSequence is n C-u with one BSpace between each pair, n counting from the first to the last row holding text with the blank rows between them.
+// RestoredPromptClearSequence returns one C-u per row from the first to the last row holding text;
+// blank rows between them are included, with a BSpace between each pair.
 func (e *restoreEngine) RestoredPromptClearSequence(capture string) []PaneInput {
 	if e.singleClear {
 		return []PaneInput{{Key: "C-u"}}
@@ -1480,7 +1502,8 @@ func (e *restoreEngine) RestoredPromptClearSequence(capture string) []PaneInput 
 	return keys
 }
 
-// boxRows returns the trimmed text of the caret row and every row after it; ok is false when the capture holds no caret row.
+// boxRows returns the trimmed text of the caret row and every row after it;
+// ok is false when the capture holds no caret row.
 func boxRows(capture string) (rows []string, ok bool) {
 	for _, line := range strings.Split(capture, "\n") {
 		if !ok {
@@ -1495,7 +1518,7 @@ func boxRows(capture string) (rows []string, ok bool) {
 	return rows, ok
 }
 
-// styledRestoreEngine is a restoreEngine that reads a styled capture, blanking its ~…~ spans.
+// styledRestoreEngine is a fake engine that reads a styled capture by blanking its ~…~ spans.
 type styledRestoreEngine struct {
 	*restoreEngine
 }
@@ -1510,7 +1533,7 @@ var (
 	_ StyledBoxReader       = (*styledRestoreEngine)(nil)
 )
 
-// styledPasteEngine is a strayPasteEngine that reads a styled capture, blanking its ~…~ spans.
+// styledPasteEngine is a fake engine that reads a styled capture by blanking its ~…~ spans.
 type styledPasteEngine struct {
 	*strayPasteEngine
 }
@@ -1526,7 +1549,7 @@ var (
 
 var _ ReedOps = (*tuiReed)(nil)
 
-// tuiEngine is clearableBoxEngine reading its input box off the caret of a tuiReed capture.
+// tuiEngine is a fake engine that reads its input box from the text after the last caret in a capture.
 type tuiEngine struct {
 	*clearableBoxEngine
 }
@@ -1540,7 +1563,7 @@ func (e *tuiEngine) InputBoxText(capture string) (string, bool) {
 }
 
 const (
-	// pasteCollapseRunes is the length from which a fake pane collapses a paste into pastePlaceholder.
+	// pasteCollapseRunes is the rune count from which a fake pane collapses a paste into a placeholder.
 	pasteCollapseRunes = 20
 	pastePlaceholder   = "[Pasted text #1]"
 )
@@ -1550,7 +1573,7 @@ func ownPastePlaceholder(boxText, text string) bool {
 	return boxText == pastePlaceholder && len([]rune(text)) >= pasteCollapseRunes
 }
 
-// pasteEngine is a tuiEngine that takes pastes, answering PasteSubmits from pasteSubmits.
+// pasteEngine is a fake engine that takes pastes, answering PasteSubmits from pasteSubmits.
 type pasteEngine struct {
 	*tuiEngine
 
@@ -1563,7 +1586,7 @@ func (e *pasteEngine) OwnPastePlaceholder(boxText, text string) bool {
 	return ownPastePlaceholder(boxText, text)
 }
 
-// scriptedPasteEngine is a clearableBoxEngine, whose input-box answers a test scripts, that takes pastes.
+// scriptedPasteEngine is a fake engine that takes pastes, with an input box answering what a test scripts.
 type scriptedPasteEngine struct {
 	*clearableBoxEngine
 
@@ -1581,8 +1604,9 @@ var (
 	_ TextPaster = (*scriptedPasteEngine)(nil)
 )
 
-// strayPasteEngine is a pasteEngine whose idle reading needs an empty box and that implements StrayInputReader:
-// a box holding exactly one character that is neither a letter, a digit nor whitespace is a candidate.
+// strayPasteEngine is a fake engine that takes pastes and implements StrayInputReader.
+// Its idle reading needs an empty box.
+// A box holding exactly one character that is neither a letter, a digit nor whitespace is a candidate.
 // The hook-derived reading decides once the events file holds a signal, and the pane decides while it holds none.
 type strayPasteEngine struct {
 	*pasteEngine
@@ -1604,7 +1628,7 @@ func (e *strayPasteEngine) StrayInput(capture string) (string, bool) {
 
 var _ StrayInputReader = (*strayPasteEngine)(nil)
 
-// newTUIEngine returns a tuiEngine whose pane starts ready and whose redraw settle is 100 ms.
+// newTUIEngine returns a fake engine whose pane starts ready and whose redraw settle is 100 ms.
 func newTUIEngine() *tuiEngine {
 	return &tuiEngine{&clearableBoxEngine{inputBoxEngine: &inputBoxEngine{fakeEngine: readyAgentEngine(), settle: 100 * time.Millisecond}}}
 }

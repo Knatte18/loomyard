@@ -1,9 +1,8 @@
-// hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every test package
-// whose tests spawn git — directly or via the fixture helpers now living in gitkit and hubforge —
-// must run under gitkit.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a
-// reason.
-// This is the repo-wide grep-guard companion to tierpurity_test.go, machine-enforcing what the
-// two-layer hermetic mechanism otherwise relies on every new package remembering to do.
+// hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant.
+// Every test package that spawns git, directly or through the gitkit and hubforge fixtures, must be hermetic.
+// Such a package runs under gitkit.HermeticGitEnv() via a TestMain, or is named on an allowlist with a reason.
+// It is the repo-wide grep guard for that invariant,
+// and it machine-enforces what the two-layer hermetic mechanism otherwise relies on every new package remembering to do.
 // See `PATTERN-test-isolation`.
 
 package main
@@ -19,20 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allowedNonHermetic is the Hermetic Git Test Environment Invariant allowlist, with
-// two distinct entry kinds distinguished by whether the key names a directory
-// (a path ending in "/", matching the package and everything below it) or a single *_test.go file:
-//
-//   - A directory entry (trailing "/") exempts the whole package from the
-//     "git-spawning ⇒ hermetic" requirement — the package's tests genuinely spawn
-//     non-git processes for which a git-hermetic TestMain would be meaningless.
-//   - A file entry (exact match, ending in "_test.go") is a per-file scan
-//     exclusion: it keeps that one file's own token content out of every
-//     package-level determination this guard makes (both "is this package
-//     git-spawning" and "does this package already contain the hermetic
-//     presence token"), because the file carries the guard's tokens as its own
-//     test data rather than as real evidence. It is NOT a package-level
-//     exemption — see hermeticenv_test.go's own entry below.
+// allowedNonHermetic is the Hermetic Git Test Environment Invariant allowlist, keyed two ways.
+// A key ending in "/" names a directory.
+// Its entry exempts the whole package and everything below it from the "git-spawning ⇒ hermetic" requirement.
+// Those tests spawn non-git processes, for which a git-hermetic TestMain would be meaningless.
+// A key ending in "_test.go" names one file.
+// Its entry keeps that file's own tokens out of every package-level determination this guard makes.
+// The file carries the guard's tokens as its own test data, not as real evidence.
+// A file entry does not exempt its package.
 var allowedNonHermetic = []scankit.Entry{
 	{Key: "internal/proc/", Why: "spawns generic non-git processes — process control is the package's subject"},
 	{Key: "cmd/lym/hermeticenv_test.go", Why: "this guard file itself; carries the tokens as its own test data"},
@@ -42,13 +35,11 @@ var allowedNonHermetic = []scankit.Entry{
 	{Key: "internal/termwindow/termwindow_integration_test.go", Why: "spawns bash over the window's shell line with a stub executable standing in for lym — a real non-git process, not a git spawn"},
 }
 
-// gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning for the Hermetic Git Test Environment Invariant.
-// A gitkit spawn is not a token here:
-// gitkitSpawnReference (cmd/lym/gitkitspawn_test.go) defines it once, shared with tierpurity_test.go,
-// and firstSpawnToken consults it after these tokens.
-// hubforge.NewHub joins the set because it drives a real fabriccli.CloneAndWire clone internally,
-// and hubforge.SeedConfig/SeedFabricConfig both take a *Hub only NewHub can produce,
-// so this one token already covers every package that can reach any of the three.
+// gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning for the hermetic invariant.
+// A gitkit spawn is not a token here; the gitkit definition in gitkitspawn_test.go matches it instead.
+// hubforge.NewHub joins the set because it drives a real fabriccli.CloneAndWire clone internally.
+// hubforge.SeedConfig and hubforge.SeedFabricConfig take a *Hub that only NewHub can produce,
+// so the hubforge.NewHub token already covers every package that can reach them.
 // hubforge.CopyHub and hubforge.SharedHub join it because each builds a real hub on first use.
 var gitSpawnTokens = []string{
 	"gitexec.Run",
@@ -58,36 +49,29 @@ var gitSpawnTokens = []string{
 	"hubforge.SharedHub",
 }
 
-// hermeticPresenceToken is the raw substring proving a package runs under the
-// hermetic git test environment: the bare, unqualified helper name. A bare-name
-// match (rather than the qualified "gitkit.HermeticGitEnv" form) is deliberate —
-// it matches both the qualified call form used by other packages and the
-// unqualified HermeticGitEnv() form gitkit's own package-gitkit tests use (see
-// the helper-name-HermeticGitEnv Shared Decision). This proves presence only — the
-// mechanical half of the check. The semantic half (a real TestMain that calls the
-// helper before m.Run()) is a review obligation, exactly like the repo's other
-// grep-guards (`PATTERN-shell-guard-table` and `PATTERN-shuttle-provider-seam`).
+// hermeticPresenceToken is the raw substring that proves a package runs under the hermetic git test environment.
+// It is the bare helper name.
+// That matches the qualified gitkit.HermeticGitEnv call and the unqualified HermeticGitEnv() call in gitkit's own tests.
+// It proves presence only;
+// the semantic half, a real TestMain that calls the helper before m.Run(), is a review obligation.
 const hermeticPresenceToken = "HermeticGitEnv"
 
-// pkgHermeticStatus accumulates, per package directory, the evidence the guard's
-// walk collects across that directory's *_test.go files: whether any file marks
-// the package git-spawning (and which file/token triggered it, for the failure
-// message), and whether any file in the package proves the hermetic presence
-// token is there.
+// pkgHermeticStatus holds, per package directory, the evidence the guard's walk collects across its *_test.go files.
+// It records whether any file marks the package git-spawning, and which file and token did so for the failure message.
+// It also records whether any file proves the hermetic presence token is there.
 type pkgHermeticStatus struct {
 	spawningFile  string
 	spawningToken string
 	hermetic      bool
 }
 
-// TestHermeticGitEnv_GitSpawningPackagesHaveTestMain walks every *_test.go file under the module
-// root and fails if any package whose test files contain a git-spawn token (directly or via the
-// gitkit fixture helpers) lacks the hermetic presence token anywhere in its test files, unless the
-// package is on the allowedNonHermetic allowlist.
-// Unlike TestTierPurity_UntaggedTestsSpawnNothing, which only scans untagged files (its subject is
-// Tier 1's offline guarantee), this guard scans every *_test.go file regardless of build
-// constraint: the git-spawning set is almost exactly the integration-tagged set, so skipping tagged
-// files the way tierpurity does would make this guard vacuous.
+// TestHermeticGitEnv_GitSpawningPackagesHaveTestMain walks every *_test.go file under the module root.
+// It fails for each package that spawns git and lacks the hermetic presence token.
+// A git-spawn token counts directly or via the gitkit fixture helpers.
+// A package on the allowedNonHermetic allowlist is exempt.
+// The walk includes files behind a build constraint.
+// The git-spawning set is almost exactly the integration-tagged set.
+// So skipping tagged files would make this guard vacuous.
 //
 //lym:guard
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
@@ -149,10 +133,10 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 			dir, status.spawningToken, status.spawningFile, hermeticPresenceToken,
 		))
 	}
-	// Ensure deterministic failure message ordering.
+	// Map iteration order is random; sort the failures so the message is stable.
 	sort.Strings(failures)
 
-	// Vacuous-scan protection: fewer than zero git-spawning packages means misconfiguration.
+	// Vacuous-scan protection: finding no git-spawning package means the walk is misconfigured.
 	if gitSpawningCount == 0 {
 		t.Fatal("hermetic git env guard: found zero git-spawning packages — the walk may be misconfigured")
 	}
@@ -164,7 +148,8 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	}
 }
 
-// firstSpawnToken returns the first entry of gitSpawnTokens (in declared order) that appears as a raw substring of content, else the first gitkit spawn reference, and whether any was found.
+// firstSpawnToken returns the first git-spawn token found as a raw substring of content, and whether one was found.
+// Plain tokens are checked in declared order before the gitkit fixture spawn reference.
 func firstSpawnToken(content string) (string, bool) {
 	for _, token := range gitSpawnTokens {
 		if strings.Contains(content, token) {

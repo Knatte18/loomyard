@@ -1,5 +1,7 @@
-<!-- This is the shared edit directive: internal/editdirective.Directive renders it unconditionally into the edit_directive marker of every spawned role's opening stencil.
-     It is its rules' only statement. It declares no marker and must stay marker-free. -->
+<!-- This is the shared edit directive.
+     internal/editdirective.Directive renders it unconditionally into the edit_directive marker of every spawned role's
+     opening stencil.
+     It declares no marker and must stay marker-free. -->
 
 ## Editing files
 

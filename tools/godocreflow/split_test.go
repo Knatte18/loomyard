@@ -23,10 +23,10 @@ func TestSplitSentences(t *testing.T) {
 			},
 		},
 		{
-			// Matches pydocreflow.py's actual behavior: the abbreviation guard checks the run of
-			// letters immediately before the trailing period of "e.g.", which is just "g" (the
-			// internal period breaks the run), so it does not suppress this split. Verified against
-			// the reference implementation directly; this is an accepted quirk, not a regression.
+			// The abbreviation guard checks only the letters before the trailing period of "e.g.".
+			// That run is just "g", since the internal period breaks it.
+			// So the guard does not suppress this split.
+			// This is an accepted quirk, not a regression.
 			name: "abbreviation guard does not reach across the internal period",
 			in:   "Use small inputs, e.g. a single file, to keep tests fast.",
 			want: []string{"Use small inputs, e.g.", "a single file, to keep tests fast."},

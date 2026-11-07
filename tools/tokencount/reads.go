@@ -1,4 +1,4 @@
-// reads.go finds and reads sessions through the shuttle engines: the read set tokencount is handed, and the locating and reading of a worktree's sessions across it.
+// reads.go locates and reads a worktree's sessions through the shuttle engines' read capabilities.
 
 package main
 
@@ -9,10 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ReadSet is the offline read capabilities of every registered shuttle engine, keyed by engine name.
+// ReadSet maps each shuttle engine's name to its offline read capabilities.
 type ReadSet map[string]shuttleengine.RecordReads
 
-// engines returns, sorted, the names of the engines that can locate and read transcripts and the names of those that cannot.
+// engines returns the sorted names of the engines that can locate and read transcripts, then of those that cannot.
 func (reads ReadSet) engines() (readable, unreadable []string) {
 	for name, capabilities := range reads {
 		if capabilities.Transcripts != nil {

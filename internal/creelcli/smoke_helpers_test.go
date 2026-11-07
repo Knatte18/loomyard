@@ -1,4 +1,6 @@
-// smoke_helpers_test.go builds what both smoke tiers share: a hub with a live reed session, a strand added through `lym reed add`, the creel daemon run in process on the real socket, and pane polling.
+// smoke_helpers_test.go builds what both smoke tiers share.
+// It builds a hub with a live reed session and a strand added through `lym reed add`;
+// it also runs the creel daemon in process on the real socket and polls panes.
 
 package creelcli
 
@@ -99,7 +101,8 @@ func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid str
 	return added.Name, added.GUID
 }
 
-// addProviderStrand adds a strand through the smoke hub's reed engine running command, with the provider tag set, and returns its name and guid.
+// addProviderStrand adds a strand running command through the smoke hub's reed engine, with the provider tag set.
+// It returns the strand's name and guid.
 // `lym reed add` names no provider, so a strand that needs one is added here.
 func (s *smokeHub) addProviderStrand(t *testing.T, role, command, provider string) (name, guid string) {
 	t.Helper()
@@ -110,7 +113,8 @@ func (s *smokeHub) addProviderStrand(t *testing.T, role, command, provider strin
 	return strand.Name, strand.GUID
 }
 
-// startDaemon runs the creel daemon in process on the hub's real socket, with the hub delivery over enginesFor, and stops it when the test ends.
+// startDaemon runs the creel daemon in process on the hub's real socket and stops it when the test ends.
+// The hub delivery takes its engines from enginesFor.
 func (s *smokeHub) startDaemon(t *testing.T, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) {
 	t.Helper()
 	ready := make(chan struct{})
@@ -156,7 +160,8 @@ func (s *smokeHub) lastPane(t *testing.T, guid string) string {
 	return capture
 }
 
-// awaitPane polls the strand's pane once a second until it shows want or smokePaneWindow passes, and returns the last capture.
+// awaitPane polls the strand's pane once a second until it shows want or smokePaneWindow passes.
+// It returns the last capture.
 // The pane has no event to wait on, so it polls on a tick under a real-time deadline.
 func (s *smokeHub) awaitPane(t *testing.T, guid, want string) (string, bool) {
 	t.Helper()

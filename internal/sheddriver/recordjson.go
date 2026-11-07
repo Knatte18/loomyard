@@ -26,7 +26,7 @@ func writeRecordJSON(path string, v any) error {
 	return nil
 }
 
-// readRecordJSON decodes the JSON file at path into v; an absent file returns found false.
+// readRecordJSON decodes the JSON file at path into v and reports whether the file was present.
 func readRecordJSON(path string, v any) (found bool, err error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {

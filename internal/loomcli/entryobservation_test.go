@@ -1,4 +1,5 @@
-// entryobservation_test.go holds the status-file helpers the entry-observation and handoff-voucher tests share, and the table of entries that write no crash-resume note.
+// entryobservation_test.go holds the status-file helpers shared by the entry-observation and handoff-voucher tests.
+// It also holds the table of entries that write no crash-resume note.
 
 package loomcli
 

@@ -1,4 +1,5 @@
-// drivewiring_test.go — untagged Tier-1 tests for the Park seam loom hands the shed driver, over a fake commit in a temp dir.
+// drivewiring_test.go tests the Park seam that loom hands the shed driver.
+// The tests are untagged Tier-1 tests that run over a fake commit in a temp dir.
 
 package loomcli
 
@@ -18,7 +19,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoomPark covers loom's Park seam: a clean commit writes the park marker and returns nil, a failing commit still writes the marker and returns nil, and a marker path whose directory cannot be created returns an error naming it.
+// TestLoomPark covers loom's Park seam.
+// A clean commit writes the park marker and returns nil.
+// A failing commit still writes the marker and returns nil.
+// A marker path whose directory cannot be created returns an error naming it.
 func TestLoomPark(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -72,7 +76,10 @@ func TestLoomPark(t *testing.T) {
 	}
 }
 
-// TestLoomArbiterSeam_JudgesFirst covers the arbiter seam loom hands the driver: its arbiter-first marking is set, the Webster row is marked with any reason, a landing row is marked only for an escalate reason, and no other stop is.
+// TestLoomArbiterSeam_JudgesFirst covers the arbiter seam loom hands the driver.
+// The seam's arbiter-first marking is set.
+// It marks the Webster row with any reason.
+// It marks a landing row only for an escalate reason and marks no other stop.
 func TestLoomArbiterSeam_JudgesFirst(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -105,7 +112,9 @@ func TestLoomArbiterSeam_JudgesFirst(t *testing.T) {
 	}
 }
 
-// TestGoDriverSeams_LabelShed covers the Go driver's goto and step seams: each records the shed label, the goto on the entry it appends and the step as the pending label before the loop is spawned.
+// TestGoDriverSeams_LabelShed covers the Go driver's goto and step seams.
+// The goto labels the entry it appends with the shed label.
+// The step sets the shed label as the pending label before the loop is spawned.
 func TestGoDriverSeams_LabelShed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

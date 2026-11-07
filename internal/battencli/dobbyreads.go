@@ -1,4 +1,6 @@
-// dobbyreads.go reads over the hub what the dobby of a worktree drives and may start: the batten runs whose parent is that worktree, their landings, the board's tasks, and the View of that dobby as a reader outside its process sees it.
+// dobbyreads.go reads over the hub what the dobby of a worktree drives and may start:
+// the batten runs whose parent is that worktree, their landings, and the board's tasks.
+// It also builds the dobbyengine.View of that dobby, as a reader outside its process sees it.
 
 package battencli
 
@@ -30,7 +32,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// DobbyParents answers hubgeom.ParentOf once per slug, since a run's parent never changes and the answer reads the worktree list.
+// DobbyParents caches the slug each pair was forked from, read once per slug.
+// A run's parent never changes, and each answer reads the worktree list.
 // It is safe for concurrent use.
 type DobbyParents struct {
 	prime *lymcwd.Location
@@ -43,7 +46,7 @@ func NewDobbyParents(prime *lymcwd.Location) *DobbyParents {
 	return &DobbyParents{prime: prime, known: map[string]string{}}
 }
 
-// Of returns the slug of the pair slug was forked from, "" for the prime.
+// Of returns the slug that slug was forked from, or "" for the prime.
 func (c *DobbyParents) Of(slug string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -64,9 +67,11 @@ type dobbyRun struct {
 	status shedengine.Status
 }
 
-// dobbyParentRuns lists the batten runs of the prime whose parent worktree is geom's, read from the prime's local status files whatever each run's state.
+// dobbyParentRuns lists the batten runs of the prime whose parent worktree is geom's.
+// It reads them from the prime's local status files, whatever each run's state.
 // A run whose seed or parent cannot be read is left out with one Warn, so one broken run never stops the rest.
-// A run whose pair holds an invalid anchor marker is no such read failure: it returns an error naming the pair and wrapping lymcwd.ErrInvalidAnchor.
+// An invalid anchor marker in a run's pair is not skipped like a read failure:
+// the call returns an error naming the pair and wrapping lymcwd.ErrInvalidAnchor.
 func dobbyParentRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]dobbyRun, error) {
 	slugs, err := shedrun.List(prime)
 	if err != nil {
@@ -121,13 +126,18 @@ func readDobbyRunStatus(path string) (shedengine.Status, bool, error) {
 	return status, true, nil
 }
 
-// unreadableReachedParent keeps one failure episode per paused run whose reached-parent judgment does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
+// unreadableReachedParent keeps one failure episode per paused run whose reached-parent judgment does not read.
+// It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unreadableReachedParent logger.EpisodeSet
 
-// DobbyRuns builds the RunView of every batten run whose parent worktree is geom's, with the pause coverage read from the record at pauseRecord.
-// A run's place against its Land row is battenrecipe.LandOutcomeOf's, and a landed run carries the landing commit its landing recorded, empty when none is readable.
-// A run's slot reading comes from its board entry on the local board at geom.BoardDir, which runTakesNoSlot judges.
-// A paused run also carries whether its work already reached its parent, judged as a cancel judges it; a judgment that does not read leaves it unreached with one Warn, so the run stays paused.
+// DobbyRuns builds the RunView of every batten run whose parent worktree is geom's.
+// The pause coverage is read from the record at pauseRecord.
+// A run's place against its Land row is read from its status,
+// and a landed run carries the landing commit its landing recorded, empty when none is readable.
+// Whether the run takes no slot is judged from its board entry on the local board at geom.BoardDir.
+// A paused run also carries whether its work already reached its parent.
+// That is read from the child's status in the task worktree,
+// and a read that fails leaves the run unreached, with one Warn, so the run stays paused.
 func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
@@ -210,8 +220,10 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 	return views, nil
 }
 
-// runTakesNoSlot reports whether the run behind task takes no slot under its dobby's max_runs: a beam project whose status is a run status and whose run does not hold the beam.
-// A pawl run stands at Worktree-Create, Preflight, Beam-Up and Beam-Await with no hold, waiting on its members, and takes a slot from Finalize on.
+// runTakesNoSlot reports whether the run behind task takes no slot under its dobby's max_runs:
+// a beam project whose status is a run status and whose run does not hold the beam.
+// A pawl run stands at Worktree-Create, Preflight, Record-Write, Beam-Up or Beam-Await with no hold.
+// It waits on its members there, and takes a slot from Finalize on.
 func runTakesNoSlot(task boardengine.Task) bool {
 	return task.Kind == boardengine.KindProject && task.Beam && boardengine.IsRunStatus(task.Status) && !boardengine.RunHolds(task)
 }
@@ -244,8 +256,9 @@ func lockHeld(path string) (bool, error) {
 	return false, held.Release()
 }
 
-// DobbyLandings lists the slugs of the runs of geom's parent worktree whose batten history holds a Land that finished on machine.
-// An entry with no machine, written before the history stamped one, and an entry naming another machine are never counted.
+// DobbyLandings lists the slugs of the runs whose parent worktree is geom's.
+// A run is listed when its batten history holds a Land that finished on machine.
+// An entry with no machine, and an entry naming another machine, are never counted.
 func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, machine string) ([]string, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
@@ -262,13 +275,16 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 	return landed, nil
 }
 
-// unreadableNoticeEntry keeps one failure episode per entry carrying notify_on_land whose parent or owner does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
+// unreadableNoticeEntry tracks failure episodes of entries carrying notify_on_land whose parent or owner does not read.
+// It keeps one episode per slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unreadableNoticeEntry logger.EpisodeSet
 
-// unreadableDoneRunStart keeps one failure episode per released task whose done run record's start judgment does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
+// unreadableDoneRunStart tracks failure episodes of released tasks whose done run record's start judgment does not read.
+// It keeps one episode per slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unreadableDoneRunStart logger.EpisodeSet
 
-// readTaskPlacement reads the parent worktree of slug, the prime's name for the prime, and whether another machine owns slug.
+// readTaskPlacement reads the parent worktree of slug and whether another machine owns it.
+// The parent is the prime's own worktree name when slug has no parent.
 func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boardengine.Owners, here, slug string) (parent string, ownedElsewhere bool, err error) {
 	parent, err = parents.Of(slug)
 	if err != nil {
@@ -285,10 +301,19 @@ func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boa
 }
 
 // DobbyTasks reads the local board under boardDir as TaskViews.
-// A released task, one with an empty status, and an entry carrying notify_on_land get their parent worktree and owner read; the others carry neither.
-// A parent or owner that does not read fails the whole read for a released task, and leaves an entry carrying notify_on_land with neither, logged once per episode, so one such entry never blocks the starts of the others.
-// A released task whose slug has a finished run record under the prime carries the refusal every start of that slug gets, except a done motif run of a task whose recipe the board resolves to raddle, which that start clears; a run status that does not read holds nothing.
-// A dependency is pending until its entry is done, whatever its kind, a plain project also once every landing member of it is done, and a dependency no longer on the board was pruned as done.
+// A released task is a task with an empty status.
+// Released tasks and entries carrying notify_on_land get their parent worktree and owner read.
+// The other entries carry neither.
+// A parent or owner that does not read fails the whole read for a released task.
+// For an entry carrying notify_on_land, that failure leaves both unset and logs once per episode.
+// Such an entry therefore never blocks the starts of the others.
+// A released task whose run record under the prime is done carries a start refusal.
+// The exception is a done motif run of a task whose recipe the board resolves to raddle.
+// Its start clears the run.
+// A run status that does not read holds no start.
+// A dependency is pending until its entry is done, whatever its kind.
+// A plain project is also pending until every landing member of it is done.
+// A dependency no longer on the board was pruned as done.
 func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
@@ -389,7 +414,7 @@ func (r *DobbyViewReader) Label() string {
 	return r.geom.Slug
 }
 
-// Read reads the dobby's liveness, its state record, beam.yaml, its runs, the board and the pause record, and builds its View at now.
+// Read builds the dobby's View at now from its liveness, state record, beam.yaml, runs, board and pause record.
 // It writes nothing; it takes the dobby's lock and each driver lock for an instant to learn whether it is held.
 func (r *DobbyViewReader) Read(now time.Time) (dobbyengine.View, error) {
 	alive, err := dobbyengine.Live(r.geom)

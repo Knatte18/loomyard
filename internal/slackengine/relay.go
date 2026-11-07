@@ -1,4 +1,6 @@
-// relay.go is the relay process's life: its lock, first creel read, inbound loop, outbound goroutine, re-exec onto a replaced binary and log, and the wait before it takes its lock.
+// relay.go runs the relay process.
+// It waits to be reparented, takes the relay lock, makes the first creel read, and runs the inbound and outbound loops.
+// It also re-execs onto a replaced binary and writes the relay log.
 
 package slackengine
 
@@ -17,28 +19,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// ErrRelayInStrandPane is what RunRelay returns when creel refused the relay's program claim because the relay runs in a strand's pane that is no orch's.
+// ErrRelayInStrandPane reports that creel refused the relay's program claim.
+// The relay runs in a strand's pane that is no orch's; the relay releases its lock before it returns this error.
 var ErrRelayInStrandPane = errors.New("slack: the relay runs in a strand pane that is no orch's")
 
-// errFirstReadAccepted is what the first read's handler returns, so the read is accepted and any mail it saw stays unread for the outbound read.
+// errFirstReadAccepted is what the first read's handler returns to accept the read.
+// The mail the read saw stays unread for the outbound read.
 var errFirstReadAccepted = errors.New("slack: the first read was accepted and its mail left for the outbound read")
 
-// RelayDeps is every seam RunRelay is told.
+// RelayDeps holds the seams a relay process runs against.
+// They are its creel mailbox, Slack client, hub, clock, and process operations.
 type RelayDeps struct {
 	// Mailbox is the relay's creel mailbox.
 	Mailbox Mailbox
-	// Slack is the Slack client; RunRelay records each of its successful calls.
+	// Slack is the Slack client, whose successful calls the relay records in its state.
 	Slack SlackClient
 	// Hub reads the hub's beams and pauses.
 	Hub Hub
-	// Clock is the relay's time.
+	// Clock is the relay's source of time.
 	Clock Clock
 	// PID returns the relay's process id.
 	PID func() int
-	// ReexecLockWait is how long a re-exec waits for the lock its old image released at the exec; zero waits only lock.ProbeGrace.
+	// ReexecLockWait is how long a re-exec waits for the lock its old image released; zero waits only lock.ProbeGrace.
 	ReexecLockWait time.Duration
 	// CheckBinary re-execs onto a replaced lym binary and returns when the binary is unchanged.
-	// It calls beforeExec right before an exec and failed with the error of an exec that failed.
+	// It calls beforeExec before each exec and failed with the error of each exec that fails.
 	CheckBinary func(beforeExec func(), failed func(error))
 	// ReapInherited waits in the background on the children the replaced image started.
 	ReapInherited func() error
@@ -63,7 +68,8 @@ func (l *relayLock) release() {
 	l.held = nil
 }
 
-// retake takes the lock again, waiting lock.ProbeGrace for a probe that holds it for a moment, and reports whether it did.
+// retake takes the lock again, waiting lock.ProbeGrace for a probe that holds it for a moment.
+// It reports whether it took the lock.
 func (l *relayLock) retake() bool {
 	held, acquired, err := lock.AcquireWriteLockWithin(l.path, lock.ProbeGrace)
 	if err != nil || !acquired {
@@ -144,7 +150,8 @@ func (s *recordingSlack) PostMessage(ctx context.Context, channel, text string) 
 	return err
 }
 
-// updateRelayState applies mutate to the relay state under the record's lock, so the relay's writes and the starter's keep each other's fields.
+// updateRelayState applies mutate to the relay state under the record's lock,
+// so the relay's writes and the starter's keep each other's fields.
 func updateRelayState(geom Geometry, mutate func(*RelayState)) error {
 	err := state.UpdateJSON(geom.RelayStatePath, recordLockPath(geom.RelayStatePath), func(current RelayState, _ bool) (RelayState, error) {
 		mutate(&current)
@@ -168,9 +175,13 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 
 // RunRelay runs the hub's relay until ctx ends, and returns nil when it ends or another relay holds the lock.
 // It refuses a hub with no token or no setup file.
-// It takes the relay lock, registers itself and records its pid, makes its first creel read before any Slack call, then polls the channel and reads its own mailbox, each loop on its own wait.
-// A creel refusal of the program claim from a strand's pane that is no orch's returns ErrRelayInStrandPane with the lock released; any other first-read refusal is retried while the lock is held.
-// At each poll it checks whether the lym binary was replaced and re-execs onto it, so a relay that cannot re-exec retakes its lock, or exits when another relay holds it.
+// It takes the relay lock, registers itself, and records its pid.
+// It makes the first creel read before any Slack call, then polls the channel and reads its own mailbox.
+// Each loop waits on its own schedule.
+// A creel refusal of the program claim from a strand's pane returns ErrRelayInStrandPane with the lock released.
+// Any other first-read refusal is retried while the lock is held.
+// At each poll it checks whether the lym binary was replaced and re-execs onto it.
+// A relay that cannot re-exec retakes its lock, or exits when another relay holds it.
 func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 	if _, _, err := RequireConfigured(geom); err != nil {
 		return err
@@ -215,8 +226,10 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 }
 
 // takeRelayLock takes the relay lock, and returns nil when another relay holds it.
-// A relay whose recorded pid is its own is a re-exec and waits up to deps.ReexecLockWait for the lock its old image released;
-// any other start waits only lock.ProbeGrace, so a liveness probe that holds the lock for a moment never makes a starting relay exit.
+// A relay whose recorded pid is its own is a re-exec.
+// A re-exec waits up to deps.ReexecLockWait for the lock its old image released.
+// Any other start waits only lock.ProbeGrace,
+// so a liveness probe that holds the lock for a moment never makes a starting relay exit.
 func takeRelayLock(geom Geometry, deps RelayDeps) (*relayLock, error) {
 	previous, found, err := ReadRelayState(geom)
 	if err != nil {
@@ -239,9 +252,12 @@ func takeRelayLock(geom Geometry, deps RelayDeps) (*relayLock, error) {
 	return &relayLock{path: geom.LockPath, held: held}, nil
 }
 
-// firstRead makes the relay's first creel read as the program, before any Slack call, and records the outcome in the relay state.
+// firstRead makes the relay's first creel read as the program, before any Slack call.
+// It records the outcome in the relay state.
 // The read is accepted with or without mail, the mail staying unread.
-// A refusal of a program claim from a strand's pane returns ErrRelayInStrandPane with the lock released; any other refusal is retried with the poll's backoff while the lock is held, and a stop of ctx ends the wait.
+// A refusal of a program claim from a strand's pane returns ErrRelayInStrandPane with the lock released.
+// Any other refusal is retried with the poll's backoff while the lock is held.
+// A stop of ctx ends the wait and returns nil.
 func firstRead(ctx context.Context, geom Geometry, deps RelayDeps, heldLock *relayLock, log *relayLog, floor *sharedFloor) error {
 	retryWait := newLoopWait(floor)
 	for {
@@ -283,7 +299,8 @@ func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog)
 	}
 }
 
-// runInbound polls the channel until ctx ends, then checks for a replaced binary and waits.
+// runInbound polls the channel until ctx ends.
+// After each poll it checks for a replaced binary and then waits.
 // The wait is the shared floor after activity, doubled while polls find nothing or fail, and a rate limit's retry wait.
 func runInbound(ctx context.Context, in *inbound, deps RelayDeps, heldLock *relayLock, log *relayLog, floor *sharedFloor) error {
 	wait := newLoopWait(floor)
@@ -330,8 +347,10 @@ func runInbound(ctx context.Context, in *inbound, deps RelayDeps, heldLock *rela
 	return nil
 }
 
-// AwaitReparent waits until the process is no longer a child of intermediate, reading its parent once a second, and errors after bound.
-// A relay started through a double fork calls it before it takes its lock, so it never runs in its starter's tree.
+// AwaitReparent waits until the process is no longer a child of intermediate, polling its parent once a second.
+// It returns an error once bound has passed.
+// A relay started through a double fork calls it before it takes its lock,
+// so it never runs in its starter's tree.
 func AwaitReparent(intermediate int, parentPID func() int, clock Clock, bound time.Duration) error {
 	started := clock.Now()
 	for parentPID() == intermediate {

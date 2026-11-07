@@ -1,4 +1,5 @@
-// hub.go fills the front task's seams over a real hub: the board, the cancel, the run-presence read, the owner read and the detached start of a land action.
+// hub.go builds the front task's seams over a real hub.
+// They cover the board, the cancel, the run-presence read, the owner read and the detached start of a land action.
 
 package fronttask
 
@@ -31,7 +32,7 @@ func recordPathOf(hubPath string) string {
 	return filepath.Join(fabricengine.FrontTaskScratchDir(hubPath), recordFileName)
 }
 
-// HubDeps fills Deps over the hub of prime.
+// HubDeps returns the filing and removal seams over the hub of prime.
 // The board writes carry no strand name, so the run-agent task guard does not judge them.
 // A slug has a run when its board status is a run status, its shed status file exists or its pair worktree exists.
 func HubDeps(prime *lymcwd.Location) (Deps, error) {
@@ -68,9 +69,11 @@ func HubDeps(prime *lymcwd.Location) (Deps, error) {
 	}, nil
 }
 
-// HubSettleDeps fills SettleDeps over the hub of prime for the worktree of beam, the prime's own when beam is empty.
+// HubSettleDeps returns the settle seams over the hub of prime for the worktree of beam.
+// An empty beam selects the prime's own worktree.
 // This machine owns the worktree's subject unless the board records another machine as its effective owner.
-// An action starts as a detached `lym` of the running executable in the prime's anchor, and starts nothing under a test binary.
+// An action starts as a detached `lym` of the running executable in the prime's anchor;
+// under a test binary it starts nothing.
 func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 	board, err := boardengine.OpenHub(prime.HubPath)
 	if err != nil {
@@ -110,7 +113,7 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 }
 
 // startDetached starts command detached, reaps it in the background and returns its pid.
-// It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test binary.
+// Under a test binary it returns an error instead, since forking the running binary would re-run the test binary.
 func startDetached(command *exec.Cmd) (int, error) {
 	if testing.Testing() {
 		return 0, errors.New("a front task's action is not started under go test")
@@ -123,7 +126,8 @@ func startDetached(command *exec.Cmd) (int, error) {
 	return command.Process.Pid, nil
 }
 
-// startAction builds the lym command of the action table's row key for subject, to run in the prime's anchor with its output appended to a file in the front-task directory, and starts it through start.
+// startAction builds the lym command of the action table's row key for subject and starts it through start.
+// The command runs in the prime's anchor, with its output appended to a file in the front-task directory.
 // It logs the spawn with the executable, arguments, directory, pid and output file, and logs a failed start.
 func startAction(prime *lymcwd.Location, key, subject string, start func(*exec.Cmd) (int, error)) error {
 	row, known := actions[key]

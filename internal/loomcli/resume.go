@@ -1,5 +1,8 @@
-// resume.go implements the `resume` loom verb: wake a halted run's live, parked driver with the resume line, spawn a Go driver for a halted go-seeded run that has none, and refuse everything else with a way forward.
-// A run awaiting at a review segment's Bouncer row with a pending circling decision takes the halted path, since its driver's step re-calls the Bouncer, which acts on the decision.
+// resume.go implements the `resume` loom verb.
+// It wakes a halted run's live, parked driver with the resume line.
+// It spawns a Go driver for a halted go-seeded run that has none, and refuses everything else with a way forward.
+// A run awaiting at a review segment's Bouncer row with a pending circling decision takes the halted path.
+// Its driver's step re-calls the Bouncer, which acts on the decision.
 // It spawns no LLM driver, adds no strand, never brings reed up and never switches a tmux client.
 
 package loomcli
@@ -25,7 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// resumeRefusal is one refusal the verb reports: its message, and the envelope kind when a caller tells the refusal apart by it.
+// resumeRefusal is one refusal the verb reports.
+// It carries the message and, when a caller tells refusals apart, the envelope kind.
 type resumeRefusal struct {
 	message string
 	kind    string
@@ -47,7 +51,8 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		output.Ok(out, fields)
 	}
 
-	// The status lock lives in the ephemeral scratch directory, which a pair re-created from its branch lacks while the status file is there.
+	// The status lock lives in the ephemeral scratch directory.
+	// A pair re-created from its branch lacks that directory while the status file is there.
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
 		refuse(resumeRefusal{message: err.Error()})
 		return
@@ -159,7 +164,8 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 	succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
 }
 
-// awaitingResumability decides whether a run awaiting at row may take the halted path: it may only when row is a review segment's Bouncer row whose latest round carries a pending circling decision.
+// awaitingResumability decides whether a run awaiting at row may take the halted path.
+// It may only when row is a review segment's Bouncer row whose latest round carries a pending circling decision.
 // Otherwise it returns the refusal to report.
 func (c *loomCLI) awaitingResumability(row string) (resumeRefusal, bool) {
 	subdir, isBouncer, err := c.bouncerSubdir(row)
@@ -196,7 +202,7 @@ func (c *loomCLI) runLockHeld() (bool, error) {
 }
 
 // driverLockHeld reports whether a Go driver holds the run's driver lock, probing it without keeping it.
-// The lock's directory is created first, as runLockHeld does.
+// The lock's directory is created first, since the lock opens with O_CREATE but never creates a parent.
 func (c *loomCLI) driverLockHeld() (bool, error) {
 	lockPath := shedrun.DriverLock(c.location, c.runID)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
@@ -212,7 +218,8 @@ func (c *loomCLI) driverLockHeld() (bool, error) {
 	return !free, nil
 }
 
-// noLiveDriverMessage is the refusal for a run with no driver to wake, its way forward told apart by what reed's directory holds for the driver strand.
+// noLiveDriverMessage is the refusal for a run with no driver to wake.
+// Its way forward depends on what reed's directory holds for the driver strand.
 func noLiveDriverMessage(driver reedengine.DirectoryRow, driverFound bool) string {
 	const head = "loom resume: the run has no live driver to wake, and resume starts none; "
 	switch {

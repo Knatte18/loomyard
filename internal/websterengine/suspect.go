@@ -1,9 +1,10 @@
-// suspect.go checks suspect paths against what the run recorded, the evidence accept-audit, run --fresh and recover-batch share.
-// A tracked file in the task worktree is checked against a commit its caller chooses:
-// the last batch head for accept-audit, the run's start commit for run --fresh (both picked by git ancestry, see runEvidenceBases), and the recovery report's head for recover-batch.
+// suspect.go checks suspect paths against what the run recorded.
+// Its evidence checks are shared by accept-audit, run --fresh and recover-batch.
+// A tracked file in the task worktree is checked against a commit its caller chooses.
+// accept-audit uses the last batch head, run --fresh the start commit, and recover-batch the recovery report's head.
+// The start and last commits are picked by git ancestry, not by batch number.
 // A plan file is checked against the run's plan hashes.
 // Every other path has nothing recorded to compare with, so it is reported unverifiable rather than guessed at.
-// suspectBlobs and checkRecoveredSuspects add the recovery half: the flagged blob a failed batch records, and the check that a recovery left none of it behind.
 
 package websterengine
 
@@ -21,7 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// evidenceBases are the two commits the suspect-path evidence is checked against, picked by git ancestry rather than batch number.
+// evidenceBases holds the two commits the suspect-path evidence is checked against.
+// They are picked by git ancestry rather than batch number.
 type evidenceBases struct {
 	// Start is the run's start commit: the recorded batch StartSHA that is an ancestor of every other.
 	Start string
@@ -29,14 +31,15 @@ type evidenceBases struct {
 	Last string
 	// Missing lists every recorded StartSHA and terminal HeadSHA absent from the repository, sorted and deduplicated.
 	Missing []string
-	// Starts lists every recorded StartSHA, sorted and deduplicated, so a caller can tell an empty Start with nothing recorded from one where no candidate qualifies.
+	// Starts lists every recorded StartSHA, sorted and deduplicated, to tell no recorded start from no qualifying one.
 	Starts []string
 }
 
 // runEvidenceBases picks st's start commit and last batch head by git ancestry, the integration key excluded.
 // A batch number names a batch and does not date it, so the pick follows ancestry.
-// A pick is "" when nothing is recorded, no candidate qualifies, or any recorded commit of its kind is missing from the repository:
-// a missing commit blanks the pick rather than being skipped, since the pick among the rest would name an older commit.
+// A pick is "" when nothing is recorded or no candidate qualifies.
+// It is also "" when any recorded commit of its kind is missing from the repository.
+// A missing commit blanks the pick rather than being skipped: the pick among the rest would name an older commit.
 // A state recording no SHA returns the zero value without running git.
 // The error is an IsAncestor failure.
 func runEvidenceBases(geom Geometry, st *State) (evidenceBases, error) {
@@ -88,7 +91,9 @@ func runEvidenceBases(geom Geometry, st *State) (evidenceBases, error) {
 	return out, nil
 }
 
-// pickByAncestry returns the commit of shas that is an ancestor of every other (oldest) or that every other is an ancestor of (!oldest), or "" when none qualifies.
+// pickByAncestry returns the commit of shas that is an ancestor of every other when oldest is true.
+// When oldest is false it returns the commit that every other is an ancestor of.
+// It returns "" when none qualifies.
 func pickByAncestry(git Git, worktree string, shas []string, oldest bool) (string, error) {
 	for _, cand := range shas {
 		qualifies := true
@@ -124,7 +129,8 @@ func missingCommitsClause(missing []string) string {
 	return fmt.Sprintf("commit(s) %s recorded by this run are not in this repository; way forward: fetch the task branch from the machine that ran those batches with git, then re-run the verb", strings.Join(missing, ", "))
 }
 
-// planPathClause is the way forward for plan paths that differ from the plan the run recorded, ending in the verb to re-run as next.
+// planPathClause is the way forward for plan paths that differ from the plan the run recorded.
+// It ends by naming next as the verb to re-run.
 func planPathClause(next string) string {
 	return fmt.Sprintf("restore them with \"lym webster restore-plan\", or accept an edit to a card no batch has begun with \"lym webster rebaseline --card NN\"; then re-run %s", next)
 }
@@ -150,7 +156,8 @@ func splitPlanPaths(geom Geometry, paths []string) (plan, rest []string, err err
 	return plan, rest, nil
 }
 
-// planFileName returns the slash-separated name of the plan path p relative to geom.PlanDir, the key State.PlanFileHashes uses.
+// planFileName returns the slash-separated name of the plan path p relative to geom.PlanDir.
+// It is the key State.PlanFileHashes is indexed by.
 func planFileName(geom Geometry, p string) (string, error) {
 	planDir, err := canonicalPath(geom.PlanDir)
 	if err != nil {
@@ -168,8 +175,11 @@ func planFileName(geom Geometry, p string) (string, error) {
 }
 
 // checkSuspectPaths sorts each of paths into differing or unverifiable, both returned sorted.
-// A plan file differs when its hash is not the one st.PlanFileHashes recorded, and is unverifiable when no hashes were recorded.
-// A tracked-or-new file in the task worktree outside its _lym, geom.ScratchDir and git-ignored paths differs when it changed against base, and is unverifiable when base is empty or not in the repository.
+// A plan file differs when its hash is not the one st.PlanFileHashes recorded.
+// It is unverifiable when no hashes were recorded.
+// A tracked or new file in the task worktree differs when it changed against base.
+// It is unverifiable when base is empty or not in the repository.
+// Paths under its _lym or under geom.ScratchDir, and git-ignored paths, are also unverifiable.
 // Any other path is unverifiable.
 // The error is a git probe's or a read's failure other than not-exist;
 // the check changes nothing.
@@ -261,8 +271,8 @@ func planFileDiffers(st *State, planDir, canon string) (differs, ok bool, err er
 	return !recorded || want != hex.EncodeToString(sum[:]), true, nil
 }
 
-// trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree:
-// inside the worktree, outside the _lym under paneCwd and not git-ignored.
+// trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree.
+// That tree is the part inside the worktree, outside the _lym under paneCwd and not git-ignored.
 // A relative p is resolved against paneCwd, the directory the session that recorded it ran in.
 // ok is false for every other path, which has no blob to compare.
 func trackedRel(git Git, paneCwd, worktree, p string) (rel string, ok bool, err error) {
@@ -294,10 +304,8 @@ func trackedRel(git Git, paneCwd, worktree, p string) (rel string, ok bool, err 
 	return filepath.ToSlash(r), true, nil
 }
 
-// uncheckableSuspects returns the paths of paths that checkRecoveredSuspects cannot check:
+// uncheckableSuspects returns the paths that cannot be checked:
 // neither under geom.PlanDir with st.PlanFileHashes recorded, nor accepted by trackedRel.
-// uncheckableReason classifies each path, so the reason a path cannot be checked comes from the same cases;
-// the record keeps the bare paths, and a refusal asks uncheckableReason for each path's reason.
 // The error is a link-resolution or git probe failure.
 func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, error) {
 	var out []string
@@ -313,7 +321,7 @@ func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, er
 	return out, nil
 }
 
-// suspectBlobs records, for each of paths, the blob of its worktree content now.
+// suspectBlobs records, for each path, the blob of its worktree content at call time.
 // A relative path is resolved against paneCwd.
 // A path outside the tracked tree, or an absent file, gets an empty Blob.
 func suspectBlobs(git Git, paneCwd, worktree string, paths []string) ([]SuspectPath, error) {
@@ -334,14 +342,16 @@ func suspectBlobs(git Git, paneCwd, worktree string, paths []string) ([]SuspectP
 	return out, nil
 }
 
-// checkRecoveredSuspects returns one reason per suspect path the recovery left unresolved at head:
-// a plan file differing from the run's recorded hashes, a tracked path differing from head, or the flagged blob still held at head under any path that did not hold it at the start commit.
+// checkRecoveredSuspects returns one reason per suspect path the recovery leaves unresolved at head.
+// A path differing from the run's recorded plan hashes, or differing from head, is unresolved.
+// A path is also unresolved when its flagged blob is still at head under another path:
+// a path that did not hold that blob at the start commit.
 // The blob search covers the whole head tree, so a strand that moves the flagged file keeps the finding.
-// It runs for every path recording a blob, which suspectBlobs records only for a path in the tracked tree when the batch failed,
+// Only a path in the tracked tree when the batch failed records a blob,
 // so a strand that untracks the original path still has its moved copy found.
-// A path checkSuspectPaths reports unverifiable is not checked here:
-// RecoverSpawnOrAttach refuses a batch recording one, so none reaches this check.
-// number is the batch's number, named in the plan-path way forward.
+// A suspect path that cannot be verified is not checked here:
+// the recovery entry point refuses a batch that records one, so none reaches this check.
+// Each reason about a plan file names the batch by number in its way-forward command.
 func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int, head string) ([]string, error) {
 	var paths []string
 	blobs := map[string]string{}
@@ -378,7 +388,7 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 		}
 		for _, lp := range listed {
 			// With no start commit recorded, nothing was held at the start;
-			// commitBlob would otherwise read ":<path>", the index entry.
+			// the commit lookup would otherwise read ":<path>", the index entry.
 			atStart := ""
 			if bs.StartSHA != "" {
 				if atStart, err = geom.git().CommitBlob(geom.WorktreeRoot, bs.StartSHA, lp); err != nil {

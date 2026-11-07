@@ -1,6 +1,7 @@
-// runlevel_helper_test.go holds the Run fixture the tier0 and tier1 run-level tests share:
-// the scripted Master starter and handle, the seeded plan directory and the fully-wired RunDeps over a temp worktree.
-// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
+// runlevel_helper_test.go holds the Run fixture the tier0 and tier1 run-level tests share.
+// It bundles the scripted Master starter and handle with the seeded plan directory,
+// and it builds the fully-wired RunDeps over a temp worktree.
+// The fixtures are package-local: the internal and external test packages do not share a test-helper package.
 
 package websterengine_test
 
@@ -34,7 +35,9 @@ func (s *recordingStopper) StopStrand(guid string) error {
 }
 
 // runFakeHandle is a hermetic websterengine.MasterHandle double.
-// Wait runs the caller-scripted onWait side effect, if any, modeling Master writing its contract files during the call Wait blocks on, then returns the scripted Result and error.
+// Wait runs the caller-scripted onWait side effect, if any.
+// That side effect models Master writing its contract files while Wait blocks.
+// Wait then returns the scripted Result and error.
 type runFakeHandle struct {
 	strandGUID string
 	result     shuttleengine.Result
@@ -54,7 +57,8 @@ func (h *runFakeHandle) Wait() (shuttleengine.Result, error) {
 var _ websterengine.MasterHandle = (*runFakeHandle)(nil)
 
 // runFakeStarter is a hermetic websterengine.MasterStarter double.
-// It records every spec and gate StartMaster was called with and hands back the caller-scripted handle, or startErr when the caller wants to prove a step never reaches the spawn at all.
+// It records every spec and gate StartMaster was called with, and it hands back the caller-scripted handle.
+// It returns startErr instead when the caller sets it, to prove a step never reaches the spawn.
 type runFakeStarter struct {
 	mu         sync.Mutex
 	startCalls []shuttleengine.Spec
@@ -82,11 +86,14 @@ func (s *runFakeStarter) callCount() int {
 
 var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 
-// seedRunPlanDir writes a syntactically complete, validation-clean plan with numCards cards into a fresh temp plan directory.
-// Each card carries a format-4 Create group whose single target is the card's own new-file path, so path-missing never fires: a Create group's targets stay exempt from on-disk existence checking.
-// The overview carries no plan-level "## verify:" section, deliberately, so the verify gate passes without running anything for every fixture built on this helper.
+// seedRunPlanDir writes a validation-clean plan of numCards cards into a fresh temp plan directory.
+// Each card carries a format-4 Create group whose single target is the card's own new-file path.
+// Path-missing never fires, because a Create group's targets stay exempt from on-disk existence checking.
+// The overview carries no plan-level "## verify:" section,
+// so the verify gate passes without running anything for every fixture built on this helper.
 // A test that needs one calls appendIntegrationVerify against an already-seeded plan dir.
-// numCards == 0 yields a "## Card Index" section with no entries at all, which ParsePlan's own parseCardIndex refuses loud ("no card index entries found"), the vehicle for the zero-batch refusal test.
+// With numCards == 0, the "## Card Index" section has no entries.
+// ParsePlan refuses it with "no card index entries found", which the zero-batch refusal test relies on.
 func seedRunPlanDir(t *testing.T, numCards int) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -138,7 +145,8 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 }
 
 // runFixture is a fully-wired set of Run dependencies.
-// A temp directory holds base.txt as WorktreeRoot over a fakeGit at one commit, beside a real on-disk plan directory, a fake reed and engine, and a fake Starter a test scripts per case.
+// WorktreeRoot is a temp directory holding base.txt, with git answered by a fakeGit at one commit.
+// PlanDir is a real on-disk plan directory; the reed and engine are fakes, and Starter is a fake that each test scripts.
 type runFixture struct {
 	Deps           websterengine.RunDeps
 	Stopper        *recordingStopper
@@ -171,7 +179,8 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	stopper := &recordingStopper{}
 	starter := &runFakeStarter{}
 	hubPath := filepath.Dir(worktree)
-	// webster's prompts are read from disk at call time, so the fixture's hub must carry them before Run reaches RenderMasterPrompt.
+	// webster's prompts are read from disk when Run renders the master prompt,
+	// so the hub must carry them before then.
 	seedHubStencils(t, hubPath)
 	shuttleRunRoot := t.TempDir()
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
@@ -181,7 +190,8 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 		websterengine.RoleRecovery: {Model: "recovery-model", Effort: "high"},
 	}
 
-	// The fixture's WorktreeRoot is a bare scratch git repo with no _lym/ tree, and Run needs no config tree, so the identity batcher is injected directly.
+	// The fixture's WorktreeRoot has no _lym/ tree, and Run does no config I/O,
+	// so the identity batcher is injected directly.
 	activeBatcher := batcher.Identity()
 
 	deps := websterengine.RunDeps{
@@ -217,7 +227,8 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	return &runFixture{Deps: deps, Stopper: stopper, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
 }
 
-// writeContractFiles writes the two files Merriam's last action writes: outcome.yaml carrying outcome and summary.md carrying summary.
+// writeContractFiles writes the two files the Master writes last.
+// outcome.yaml carries outcome and summary.md carries summary.
 func writeContractFiles(t *testing.T, fx *runFixture, outcome, summary string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte(outcome), 0o644); err != nil {
@@ -228,7 +239,7 @@ func writeContractFiles(t *testing.T, fx *runFixture, outcome, summary string) {
 	}
 }
 
-// writeDoneContract writes the two files Merriam's last action writes, outcome done.
+// writeDoneContract writes the two contract files the Master writes last, with outcome done.
 func writeDoneContract(t *testing.T, fx *runFixture) {
 	t.Helper()
 	writeContractFiles(t, fx, "outcome: done\nstuck_reason: null\nbatches_done: 1\n", "# Shipped\n\nAll good.\n")

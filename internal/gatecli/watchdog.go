@@ -1,4 +1,5 @@
-// watchdog.go samples the process tree of a running go test and sends one SIGQUIT to a test binary that keeps a CPU core busy for the configured window.
+// watchdog.go samples the process tree of a running go test.
+// It sends one SIGQUIT to a test binary that keeps a CPU core busy for the configured window.
 
 package gatecli
 
@@ -19,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// enclosingGateEnv carries the pid of the `lym gate test` that started go test, so a nested `lym gate test` can tell the outer run's watchdog already sees its test binaries.
+// enclosingGateEnv carries the pid of the `lym gate test` that started go test.
+// A nested `lym gate test` reads it to tell that the outer run's watchdog already sees its test binaries.
 const enclosingGateEnv = "LYM_GATE_TEST_PID"
 
 // defaultSamplePeriod is how often the watchdog samples the child tree.
@@ -76,7 +78,8 @@ type busyTrack struct {
 }
 
 // run samples the tree under root once per period until ctx ends.
-// A test binary whose CPU use stays at or above 90 percent of one core for window gets one SIGQUIT and the line gateslot.WatchdogLine renders.
+// A test binary whose CPU use stays at or above 90 percent of one core for window gets one SIGQUIT,
+// and the line gateslot.WatchdogLine renders.
 // A platform that cannot sample ends run after one log line.
 func (w watchdog) run(ctx context.Context, root int) {
 	logger.Info("gate test: CPU watchdog started", "window", w.window, "period", w.period)
@@ -144,7 +147,9 @@ func (w watchdog) quit(binary proc.ProcessCPU) {
 }
 
 // watchdogApplies decides whether the watchdog runs for a go test run, and returns the reason it logs.
-// It does not run with a window of 0, with -bench or -fuzz among flags, which keep a core busy by intent, or when enclosing names a live ancestor `lym gate test` whose watchdog already sees this run's test binaries.
+// It does not run with a window of 0, or with -bench or -fuzz among flags, which keep a core busy by intent.
+// It also does not run when enclosing names a live ancestor `lym gate test`.
+// That ancestor's watchdog already sees this run's test binaries.
 // An empty, unparsable or non-ancestor enclosing value is ignored.
 func watchdogApplies(window time.Duration, flags []string, enclosing string, isAncestor func(pid int) bool) (bool, string) {
 	if window <= 0 {

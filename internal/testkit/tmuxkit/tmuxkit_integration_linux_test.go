@@ -18,7 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly pins the sweep's reach: the server under its directory goes, with a pane child that ignores the hangup `kill-server` sends, and a server elsewhere stays.
+// TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly pins the sweep's reach.
+// The server under its directory goes, with a pane child that ignores the hangup `kill-server` sends.
+// A server elsewhere stays.
 func TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmux := requireTmux(t)

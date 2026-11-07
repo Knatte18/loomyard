@@ -1,4 +1,5 @@
-// build.go identifies the running lym build and records which strand a bootstrap launched from it, so a bootstrap keeps a live status strand of the current build and replaces one of an older build.
+// build.go identifies the running lym build and records which status strand a bootstrap launched from it.
+// A bootstrap uses that record to keep a live strand of the current build and replace one of an older build.
 
 package statuspane
 
@@ -9,7 +10,7 @@ import (
 	"path/filepath"
 )
 
-// BuildIdentity names one lym build by the running executable's symlink-resolved path, size and modification time.
+// BuildIdentity names one lym build by the symlink-resolved path, size and modification time of its executable.
 // A rebuilt binary at the same path changes size or mtime, which is the signal a live status strand launched from the older build needs to be replaced.
 type BuildIdentity struct {
 	Path    string `json:"path"`
@@ -46,7 +47,7 @@ func CurrentBuild() (BuildIdentity, error) {
 }
 
 // ReadSidecar reads the sidecar at path.
-// A missing or unreadable file yields nil, which StrandCurrent treats as not proven current.
+// A missing or unreadable file yields nil, which a caller must treat as not proven current.
 func ReadSidecar(path string) *Sidecar {
 	data, err := os.ReadFile(path)
 	if err != nil {

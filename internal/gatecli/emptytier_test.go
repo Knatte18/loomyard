@@ -1,4 +1,5 @@
-// emptytier_test.go covers the failure of a go-json tier whose command lacks its tag: a package that holds tests under the tier's tag yet ran none.
+// emptytier_test.go covers the failure of a go-json tier whose command lacks its tag.
+// That failure is a package that holds tests under the tier's tag yet ran none.
 
 package gatecli
 

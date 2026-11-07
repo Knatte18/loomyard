@@ -1,4 +1,5 @@
-// menu_test.go covers worktree discovery (excludes main, requires _lym/), board-facade titles, numeric selection, the zero-worktree path, and the missing-board hard error.
+// menu_test.go covers worktree discovery, which excludes the main worktree and requires a `_lym/` directory.
+// It also covers board-facade titles, numeric selection, the zero-worktree path, and the missing-board hard error.
 
 package ideengine
 
@@ -57,7 +58,8 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	return container, mainWorktreePath
 }
 
-// addChildWorktree adds a worktree named name next to the main one, with a _lym directory when withLym is set, and removes it with its branch on cleanup.
+// addChildWorktree adds a worktree named name next to the main one, with a _lym directory when withLym is set.
+// It removes the worktree and its branch when the test ends.
 func addChildWorktree(t *testing.T, container, mainWorktreePath, name string, withLym bool) {
 	t.Helper()
 
@@ -97,9 +99,13 @@ func writeBoard(t *testing.T, container, tasksJSON string) {
 	}
 }
 
-// TestMenuScenario drives Menu over one git repo: the hard error while no board config exists, then, once a board is written, worktree discovery (no _lym, main excluded) and numeric selection.
-// Each step adds the child worktrees it needs and removes them on cleanup; the board config written after the first step stays for the rest.
-// Serial by design: it sets BOARD_SKIP_GIT in the process environment and swaps the package-level CodeLauncher.
+// TestMenuScenario drives `Menu` over one git repo in steps.
+// The first step expects a hard error while no board config exists.
+// Once a board is written, the later steps check worktree discovery and numeric selection.
+// Discovery excludes main and requires a `_lym/` directory.
+// Each step adds the child worktrees it needs and removes them on cleanup.
+// The board config written after the first step stays for the rest.
+// It runs serially: it sets `BOARD_SKIP_GIT` in the process environment and swaps the package-level `CodeLauncher`.
 func TestMenuScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
@@ -122,7 +128,7 @@ func TestMenuScenario(t *testing.T) {
 		return
 	}
 
-	// The steps below rely on this board, which the first step proved absent.
+	// The steps below rely on this board config, which exists only from this line on.
 	writeBoard(t, container, `{"tasks":[]}`)
 
 	if !t.Run("requires lym dir", func(t *testing.T) {

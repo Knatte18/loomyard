@@ -1,4 +1,5 @@
-// cli.go builds the drift cobra command with its capture, check, amend, defer, status and hidden capture-child verbs, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the drift cobra command and its verbs: capture, check, amend, defer, status and hidden capture-child.
+// It also holds the RunCLI and RunCLIIn entry points that run that command over an io.Writer.
 
 package driftcli
 
@@ -26,7 +27,7 @@ import (
 const (
 	// captureRecordWait bounds how long a capture start waits for its child's running record.
 	captureRecordWait = 30 * time.Second
-	// captureRecordPoll is the interval a capture start reads that record at.
+	// captureRecordPoll is the interval at which a capture start reads that record.
 	captureRecordPoll = 50 * time.Millisecond
 	// captureLockRetry bounds how long a capture child retries a capture lock a reader's probe holds.
 	captureLockRetry = 2 * time.Second
@@ -54,12 +55,14 @@ drift for the capture and compare commands.`,
 	return drift
 }
 
-// runVerb resolves the worktree from the command's cwd and prints what run returns under key in the standard envelope, or a refusal through output.Err.
+// runVerb resolves the worktree from the command's cwd.
+// It prints what run returns under key in the standard envelope, or the refusal in an error envelope.
 func runVerb(cmd *cobra.Command, key string, run func(w *worktree) (any, error)) error {
 	return runVerbAt(cmd, key, "", run)
 }
 
-// runVerbAt is runVerb over the worktree of the board slug in this hub, or over the cwd's own worktree when slug is empty.
+// runVerbAt resolves the worktree of the board slug in this hub, or the cwd's own worktree when slug is empty.
+// It prints what run returns under key in the standard envelope, or the refusal in an error envelope.
 func runVerbAt(cmd *cobra.Command, key, slug string, run func(w *worktree) (any, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -145,8 +148,10 @@ func runCheck(ctx context.Context, w *worktree) (any, error) {
 	return checkResult(report), nil
 }
 
-// checkResult renders a check report for the envelope: whether the drift gate would pass, the skip, each fault by name, each unexpected cell and the report's findings.
-// The gate fails only on a capture fault or an unexpected cell, and only while no skip or baseline fault ended the check first, since no writer session clears those; a records or seal fault beside either still fails it.
+// checkResult renders a check report for the envelope.
+// It reports whether the drift gate would pass, the skip, the faults by name, the unexpected cells and the findings.
+// The gate fails on a capture fault or an unexpected cell, unless a skip or baseline fault ended the check first.
+// No writer session clears a skip or baseline fault. A records or seal fault does not stop the gate failing.
 func checkResult(report driftengine.CheckReport) map[string]any {
 	unexpected := report.Unexpected()
 	cells := make([]map[string]any, 0, len(unexpected))
@@ -244,7 +249,8 @@ It writes nothing to its log once the capture has returned.`,
 }
 
 // runCaptureChild runs the child's capture and sets the exit code.
-// Its only log writes come before the capture returns: a refusal of the precondition is written under the capture lock, because the Drift-Await row may commit the log once the lock is free.
+// Its only log writes come before the capture returns: a refusal of the precondition is written under the capture lock.
+// The Drift-Await row may commit the log once the lock is free.
 func runCaptureChild(cmd *cobra.Command) {
 	ctx, out := cmd.Context(), cmd.OutOrStdout()
 	fail := func(err error) { clihelp.SetExit(ctx, output.Err(out, err.Error())) }
@@ -424,12 +430,15 @@ func readStatus(w *worktree) (any, error) {
 	return result, nil
 }
 
-// RunCLI is the public seam for the drift module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the drift command over args, writes its output to out and returns the exit code.
+// It is the public entry point for the drift module CLI.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the drift command over args in the directory cwd, writes its output to out and returns the exit code.
+// An empty cwd reads the process's working directory;
+// any other value is seeded into the execution context, since seeding an empty directory panics.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

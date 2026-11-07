@@ -1,12 +1,11 @@
-// cli.go builds the cobra command tree for the burler module and the RunCLI seam that wires it into
-// the standard io.Writer-based call contract.
-// The parent "burler" command carries a PersistentPreRunE that resolves cwd, runs one
-// preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone
-// mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients
-// on burlerCLI exactly once per invocation.
-// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever
-// called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
-// burlercli is the module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
+// cli.go builds the cobra command tree for the burler module and the RunCLI seam that runs it over an io.Writer.
+// The parent command's PersistentPreRunE resolves cwd and runs one preflight.ResolveMode probe.
+// It then calls c.wire (wiring.go).
+// wire selects hub or standalone mode and builds the whole engine stack for the winning mode.
+// It stores the resolved ingredients on burlerCLI once per invocation.
+// A non-nil ResolveMode error refuses the run before c.wire is called.
+// Refusal is a resolution verdict, not a wiring choice.
+// burlercli is the module's claudeengine wiring point, mirroring the Shuttle Provider-Seam Invariant.
 
 package burlercli
 
@@ -21,54 +20,52 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// burlerCLI is the receiver the run verb hangs off of.
+// burlerCLI is the receiver of the run verb.
 type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
 
-	// languageSkills are the hub's language skills a profile marked as a code round has its seats load after burler's own.
-	// wireHub loads them from the hub's language.yaml; wireStandalone leaves them empty.
+	// languageSkills are the hub's language skills that a code round's seats load after burler's own skills.
+	// Hub mode loads them from the hub's language.yaml; standalone mode leaves them empty.
 	languageSkills []string
 
-	// cwd is the seam cwd resolvePersistentPreRun read via lymcwd.CwdFrom -- the SAME base wire
-	// resolves --target-dir and --stencils-dir against. It is stored so the run verb resolves
-	// --profile against it too, rather than against the process cwd, which under an in-process
-	// driver is a different directory (crucible round opus-medium-r6, R6-17).
+	// cwd is the directory that resolvePersistentPreRun read through lymcwd.CwdFrom.
+	// The wiring step resolves --target-dir and --stencils-dir against the same base,
+	// so the run verb resolves --profile against it too, not against the process cwd.
+	// Under an in-process driver the process cwd is a different directory.
 	cwd string
 
 	// reedUp brings the standalone reed session up, idempotently.
-	// It is set by wireStandalone alone — the run verb calls it immediately before driving a round, because standalone mode has no other way to a live session: `lym reed up` is hub-only (its pre-run requires lymcwd.Resolve), so the session on standalone's own geometry (socket "lym-<hash8>", state under the derived state directory) can only be booted in-process.
-	// It stays nil in hub mode, where bringing reed up remains the operator's (or loom's) own act.
+	// The run verb calls it right before it drives a round.
+	// Only standalone mode sets it, because standalone mode has no other way to a live session:
+	// `lym reed up` requires lymcwd.Resolve in its pre-run, so it runs only in hub mode.
+	// The standalone session's socket is "lym-<hash8>", with its state under the derived state directory,
+	// so that session can only be booted in-process.
+	// Hub mode leaves it nil, and bringing reed up stays the operator's (or loom's) own act.
 	reedUp func() error
 
-	// stencilsDirFlag and targetDirFlag hold the raw, as-parsed values of the two standalone-entry
-	// persistent flags (--stencils-dir, --target-dir). An empty value means the flag was not passed;
-	// each mode's own default is computed by the wiring function (wiring.go) rather than a
-	// zero-value fallback landing here.
+	// stencilsDirFlag and targetDirFlag hold the raw values of the --stencils-dir and --target-dir persistent flags.
+	// An empty value means the flag was not passed.
+	// Each mode computes its own default in the wiring step (wiring.go), not in a zero-value fallback here.
 	stencilsDirFlag string
 	targetDirFlag   string
 
-	// mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired, read off
-	// this receiver by run.go's success envelope. They are not results of a review round, which is
-	// why they are not threaded through burlerengine.ReviewResult or burlerengine.FixResult.
+	// mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired.
+	// They are not results of a review round, so they live here instead of in the round's result.
+	// run.go's success envelope reads them off this receiver.
 	mode        string
 	stateDir    string
 	stencilsDir string
 }
 
-// resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
-// decision and the whole engine stack construction to c.wire (wiring.go), storing the resolved
-// ingredients on c.
-// A non-nil ResolveMode error is the refuse case, and it is handled right here rather than inside
-// wire: the refusal deliberately stays in resolvePersistentPreRun because it is a resolution
-// verdict, not a wiring choice, so it is surfaced verbatim and aborts the pre-run before c.wire is
-// ever called -- wire's own two-row truth table never sees a third value.
-// Extracted from Command()'s PersistentPreRunE assignment so a test can invoke it directly against a
-// *burlerCLI it holds a reference to and inspect the populated fields afterward.
-// Skips resolution entirely when the group command itself is invoked (bare listing or
-// unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
-// be present -- preserved exactly as today because TestRunCLI_GroupGuard_OutsideGitRepo pins it.
-// The validate-review verb is skipped the same way: it reads one told path and needs no hub, mode or engine wiring.
+// resolvePersistentPreRun resolves cwd and calls preflight.ResolveMode(cwd).
+// It delegates the mode decision and the engine stack construction to c.wire (wiring.go).
+// A non-nil ResolveMode error is handled here rather than in wire: it is a resolution verdict, not a wiring choice.
+// It is surfaced verbatim and aborts the pre-run before c.wire is called.
+// It is a separate method so a test can call it on a burlerCLI and inspect the populated fields.
+// The group command skips resolution when it runs bare or on an unknown subcommand, through clihelp.GroupRunE.
+// Neither path needs a git repository.
+// The validate-review verb skips resolution too: it reads one told path and needs no hub, mode or engine wiring.
 func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "burler" || cmd.Name() == validateReviewVerb {
 		return nil
@@ -136,7 +133,8 @@ Example:
 
 Example (standalone, outside any lym hub):
   lym burler run --profile profile.yaml --target-dir /path/to/repo`,
-		// RunE is set so that bare "lym burler" lists subcommands and "lym burler bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		// RunE is set so that bare "lym burler" lists the subcommands.
+		// It also makes "lym burler bogus" emit a JSON error envelope instead of cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
@@ -152,16 +150,15 @@ Example (standalone, outside any lym hub):
 	return parent
 }
 
-// RunCLI is the public seam for the burler module CLI.
+// RunCLI runs the burler CLI with args, writes its output to out, and returns the exit code.
+// It reads the working directory from the process.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the burler CLI with args, writes its output to out, and returns the exit code.
+// An empty cwd reads the process working directory; any other value is seeded as the working directory.
+// The empty case is kept separate because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

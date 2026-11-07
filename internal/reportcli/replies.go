@@ -1,4 +1,6 @@
-// replies.go is the `report replies` verb: it resolves the prime, reads the creel journal as the REPORT program and hands its entries to the report engine to count per receiver role.
+// replies.go implements the `report replies` verb.
+// It resolves the prime and reads the creel journal as the REPORT program.
+// It hands the entries to the report engine, which counts them per receiver role.
 
 package reportcli
 

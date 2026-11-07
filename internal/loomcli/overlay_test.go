@@ -1,4 +1,6 @@
-// overlay_test.go covers `lym loom validate-plan --overlay`: that it reports what the flag-less run reports over the overlaid plan, writes no byte under the plan directory, and refuses each unusable input, name and flag combination with its cause and way forward.
+// overlay_test.go covers `lym loom validate-plan --overlay`.
+// The run reports what the flag-less run reports over the overlaid plan, writes no byte under the plan directory;
+// it refuses each unusable input, name and flag combination with its cause and way forward.
 // The verb is driven directly against the leaf command, as validate_test.go does, so every case is tier 1.
 
 package loomcli
@@ -27,7 +29,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// snapshotPlanDir returns every file under dir by its relative name, or nil when dir does not exist.
+// snapshotPlanDir returns every file under dir keyed by its path relative to dir;
+// a dir that does not exist yields an empty map.
 func snapshotPlanDir(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	files := make(map[string]string)

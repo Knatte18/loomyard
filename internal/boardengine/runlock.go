@@ -1,4 +1,4 @@
-// runlock.go — the run-status form and the lock that keeps a run-held board entry's scope fixed.
+// runlock.go holds the run-status form and the lock that keeps a run-held board entry's scope fixed.
 
 package boardengine
 
@@ -18,14 +18,14 @@ func RunStatus(state, producer string) string {
 	return state + runStatusSeparator + producer
 }
 
-// IsRunStatus reports whether status has the RunStatus form: non-nil, and two non-empty halves around the separator.
+// IsRunStatus reports whether status is a run status: non-nil, with two non-empty halves around ` · `.
 // Any other status, including nil, empty, `done` and a hand-set word, is not a run status.
 func IsRunStatus(status *string) bool {
 	_, ok := RunStatusProducer(status)
 	return ok
 }
 
-// RunStatusProducer returns the producer half of a status IsRunStatus accepts, and false for any other status.
+// RunStatusProducer returns the producer half of a run status, and false for any other status.
 func RunStatusProducer(status *string) (string, bool) {
 	if status == nil {
 		return "", false
@@ -37,18 +37,21 @@ func RunStatusProducer(status *string) (string, bool) {
 	return producer, true
 }
 
-// holdFreeProducers are the producer rows at which a beam project's run holds nothing of its entry: batten's claim row and the pawl run's rows before Finalize.
+// holdFreeProducers are the producer rows at which a beam project's run holds nothing of its entry.
+// They are batten's claim row and the pawl run's rows before Finalize.
 // A halt at any of them holds nothing either, since the hold is judged from the producer half of the status alone.
 var holdFreeProducers = []string{"Worktree-Create", "Preflight", "Record-Write", "Beam-Up", "Beam-Await"}
 
 // recordFreeProducers are the producer rows at which a beam project's run has not yet begun its project record: batten's claim row and the pawl run's Preflight.
 var recordFreeProducers = []string{"Worktree-Create", "Preflight"}
 
-// RunHolds reports whether the run behind task's status holds the entry: whether the entry's members may not join, fork from or run inside it, and its scope fields take no edit.
-// It is true for every entry whose status IsRunStatus accepts, except a beam project whose producer half is one of the hold-free rows.
+// RunHolds reports whether the run behind task's status holds the entry.
+// A holding run keeps the entry's members from joining, forking from or running inside it.
+// Its scope fields take no edit.
+// It is true for every entry with a run status, except a beam project whose producer half is a hold-free row.
 // The pawl run stands at those rows from Worktree-Create through Beam-Await, and holds its beam from Finalize on.
-// The readers that ask whether a run is in flight, rather than whether it holds its entry, use IsRunStatus.
-// `battenrecipe`'s claim row and the pawl recipe's rows are pinned against the hold-free names by the recipe's own test, since this package imports no recipe package.
+// The hold-free names are duplicated here, since this package imports no recipe package.
+// The recipe's own test pins them to `battenrecipe`'s claim row and the pawl recipe's rows.
 func RunHolds(task Task) bool {
 	producer, ok := RunStatusProducer(task.Status)
 	if !ok {
@@ -57,12 +60,16 @@ func RunHolds(task Task) bool {
 	return !(task.Kind == KindProject && task.Beam && slices.Contains(holdFreeProducers, producer))
 }
 
-// ProjectRecordHeld reports whether task is a beam project whose run has begun its project record, so its body changes only through the record.
-// It is true for a beam project whose status IsRunStatus accepts with a producer half past the record-free rows, a halt included.
-// The pawl run writes the record from the body at Record-Write, and `lym loom decision add <slug>` alone changes the record after that.
+// ProjectRecordHeld reports whether task is a beam project whose run has begun its project record.
+// Its body then changes only through the record.
+// It is true for a beam project whose run status has a producer half past the record-free rows, a halt included.
+// The pawl run writes the record from the body at Record-Write,
+// and `lym loom decision add <slug>` alone changes the record after that.
 // The hold is judged from the status alone, since this package reads no record file.
-// A run sent back to Preflight with a goto lifts it, and Record-Write keeps the record it finds, so a body edit made in that window never reaches the record.
-// The pawl recipe's rows are pinned against the record-free names by the recipe's own test, since this package imports no recipe package.
+// A run sent back to Preflight with a goto lifts it.
+// Record-Write keeps the record it finds, so a body edit made in that window never reaches the record.
+// The record-free names are duplicated here, since this package imports no recipe package.
+// The recipe's own test pins them to the pawl recipe's rows.
 func ProjectRecordHeld(task Task) bool {
 	producer, ok := RunStatusProducer(task.Status)
 	return ok && task.Kind == KindProject && task.Beam && !slices.Contains(recordFreeProducers, producer)
@@ -77,7 +84,8 @@ type RunLockedError struct {
 	Status string
 }
 
-// Error names the entry, its status and both ways forward: a note for the finding, and the batten cancel for an abandoned run.
+// Error names the entry and its status, and the ways forward:
+// a note for a new finding, the batten status unlock, or the batten cancel that abandons the run.
 func (e *RunLockedError) Error() string {
 	return fmt.Sprintf("entry %q is held by a run (status %q) and takes no scope edits: "+
 		"record the new finding as a note of its own with `lym board upsert` and \"kind\":\"note\"; "+
@@ -130,9 +138,13 @@ func (e *ProjectRecordLockedError) Is(target error) bool {
 }
 
 // checkRunLocks judges each run-status entry of loaded by its net change to after.
-// An entry RunHolds accepts is refused when it is absent from after, or when any field but Status differs; Unknown is never compared, since this binary cannot change a kept key.
-// A held task whose net change is becoming a Sketch with no status and no other scope change, as vocab's type labels judge it, passes, since that change ends its Discussion-only run; a title, body or other scope change alongside it is refused.
-// A beam project whose run holds nothing is refused only when it is absent from after, or its project, kind, recipe or beam differs, with a BeamRunLockedError.
+// An entry a run holds is refused when it is absent from after, or when any field but Status differs;
+// Unknown is never compared, since this binary cannot change a kept key.
+// A held entry whose net change turns it into a Sketch, as the vocabulary's type labels judge it, passes.
+// It passes only when its status is cleared and it makes no other scope change.
+// That change ends its Discussion-only run; a title, body or other scope change alongside it is refused.
+// A beam project whose run holds nothing is refused only when it is absent from after.
+// It is refused with a BeamRunLockedError also when its project, kind, recipe or beam differs.
 // Its body change is refused with a ProjectRecordLockedError once ProjectRecordHeld accepts it.
 // A dependency on a done entry that the same write removes does not count as a change, so prune passes.
 // It returns the first refusal in loaded order.
@@ -187,8 +199,11 @@ func removedDoneSlugs(loaded, after []Task) map[string]bool {
 // before's DependsOn and Order are first stripped of the slugs in removedDone.
 // Project, Order and Beam are compared, so a held entry takes no membership or beam change.
 // PullRequest is compared too, so a held entry takes no change to its pull-request override.
-// Front and OnLand are compared as Kind is: they never change after the filing, and a run-held entry takes no change to them.
-// RunSettings, Profile, NotifyOnLand, OwnerMachine and Discussed are never compared: a run settings, profile, landing-notice, owner or discussed-flag change is not a scope change, so a run-held entry takes it.
+// Front and OnLand are compared as Kind is: they never change after the filing,
+// and a run-held entry takes no change to them.
+// RunSettings, Profile, NotifyOnLand, OwnerMachine and Discussed are never compared:
+// a run settings, profile, landing-notice, owner or discussed-flag change is not a scope change,
+// so a run-held entry takes it.
 // Unknown is never compared either, since this binary cannot change a kept key.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 	dependsOn := slices.DeleteFunc(slices.Clone(before.DependsOn), func(slug string) bool {
@@ -244,7 +259,8 @@ func cloneSettingsValue(value any) any {
 	}
 }
 
-// cloneTasks copies tasks with their slice, map and status fields duplicated, so a later mutation of the store cannot alias the copy.
+// cloneTasks copies tasks with their slice, map and status fields duplicated,
+// so a later mutation of the store cannot alias the copy.
 func cloneTasks(tasks []Task) []Task {
 	cloned := make([]Task, len(tasks))
 	for i, task := range tasks {

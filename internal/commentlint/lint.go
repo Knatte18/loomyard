@@ -31,7 +31,6 @@ var (
 	auxiliaries        = wordSet("is", "are", "was", "were", "be", "been", "has", "have", "had", "do", "does", "did", "can", "could", "will", "would", "shall", "should", "may", "might", "must")
 )
 
-// wordSet returns the set of words.
 func wordSet(words ...string) map[string]bool {
 	set := make(map[string]bool, len(words))
 	for _, word := range words {
@@ -40,8 +39,9 @@ func wordSet(words ...string) map[string]bool {
 	return set
 }
 
-// Lint returns the new fixed-column-wrapped breaks in the `//` comment blocks of the `.go` files that differ in worktree.
-// An empty base compares the working tree, untracked files included, against HEAD; a base commit compares it against HEAD.
+// Lint returns the new fixed-column-wrapped breaks in `//` comment blocks of the `.go` files that differ in worktree.
+// An empty base compares the working tree, untracked files included, against HEAD;
+// a base commit compares it against HEAD.
 // Findings are ordered by file path, then line.
 func Lint(worktree, base string) ([]Finding, error) {
 	changes, err := changedGoFiles(worktree, base)
@@ -72,7 +72,8 @@ type commentLine struct {
 func (l commentLine) raw() string { return strings.TrimPrefix(l.literal, "//") }
 
 // commentBlocks returns the runs of consecutive `//` comment lines in src that each start their line.
-// An end-of-line comment belongs to no block and ends the run before it; so does a directive line, which belongs to no block either.
+// An end-of-line comment belongs to no block and ends the run before it;
+// so does a directive line, which belongs to no block either.
 func commentBlocks(src string) [][]commentLine {
 	fset := token.NewFileSet()
 	file := fset.AddFile("", fset.Base(), len(src))
@@ -188,8 +189,9 @@ func newBaseBreaks(src string) baseBreaks {
 }
 
 // carriesOver reports whether the break between two new lines already stood in the base text.
-// It did when the base holds the same word pair across a line end.
-// It also did when the base holds a line pair that differs from the two lines only by words substituted in place, such as a renamed word, and whose unchanged words outnumber the substituted ones.
+// It holds when the base holds the same word pair across a line end.
+// It also holds when the base holds a line pair that differs from the two lines only by words substituted in place.
+// A substitution such as a renamed word counts when the unchanged words outnumber the substituted ones.
 func (b baseBreaks) carriesOver(before, after commentLine) bool {
 	if b.wordPairs[lineEndPair(before, after)] {
 		return true
@@ -215,7 +217,8 @@ func countEqualPositions(first, second []string) int {
 	return count
 }
 
-// endsSemanticBreak reports whether a line may end where it does: at a sentence end, a semicolon, or a comma before a coordinating conjunction that opens a clause.
+// endsSemanticBreak reports whether a line may end where it does:
+// at a sentence end, a semicolon, or a comma before a coordinating conjunction that opens a clause.
 func endsSemanticBreak(before, after commentLine) bool {
 	trimmed := strings.TrimRight(before.content, " \t")
 	if sentenceEndPattern.MatchString(trimmed) || strings.HasSuffix(trimmed, ";") {
@@ -228,7 +231,8 @@ func endsSemanticBreak(before, after commentLine) bool {
 	return false
 }
 
-// clauseWords returns the words up to and including the first one that ends with `,`, `;`, `:` or a sentence end, or all of them when none does.
+// clauseWords returns the words up to and including the first one that ends with `,`, `;`, `:` or a sentence end.
+// It returns all the words when none does.
 func clauseWords(words []string) []string {
 	for i, word := range words {
 		if strings.HasSuffix(word, ",") || strings.HasSuffix(word, ";") || sentenceEndPattern.MatchString(word) {
@@ -273,12 +277,15 @@ func trimWordPunctuation(word string) string {
 	return strings.Trim(word, ".,;:!?()\"'`")
 }
 
-// isFiniteVerbCandidate reports whether a lower-case word may be a finite verb: an auxiliary or modal, or a word ending in `s` or `ed`.
+// isFiniteVerbCandidate reports whether a lower-case word may be a finite verb:
+// an auxiliary or modal, or a word ending in `s` or `ed`.
 func isFiniteVerbCandidate(word string) bool {
 	return auxiliaries[word] || strings.HasSuffix(word, "s") || strings.HasSuffix(word, "ed")
 }
 
-// findNewWrappedBreaks returns the lines of path's new text that end at a break, new against baseText, that is not a semantic one.
+// findNewWrappedBreaks returns the lines of path's new text that end at a break:
+// a break that is not semantic and does not carry over from baseText.
+// It returns nil for a generated file.
 func findNewWrappedBreaks(path, baseText, newText string) []Finding {
 	if generatedPattern.MatchString(newText) {
 		return nil

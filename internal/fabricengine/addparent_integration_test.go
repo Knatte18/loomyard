@@ -1,4 +1,5 @@
-// addparent_integration_test.go covers Add with AddOptions.Parent over a hubforge hub: the fork from a named pair, the beam mark, the refusals that precede any mutation and the dirt rule.
+// addparent_integration_test.go covers Add with AddOptions.Parent over a hubforge hub:
+// the fork from a named pair, the beam mark, the refusals that precede any mutation, and the dirt rule.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -32,7 +33,8 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(out)
 }
 
-// TestAdd_FromParentPairMadeBeforeBranchPrefix pins that --parent accepts a pair made under the empty prefix, which stands on its bare slug, once branch_prefix is set, and still refuses one switched to an unrelated branch.
+// TestAdd_FromParentPairMadeBeforeBranchPrefix pins that --parent accepts a pair made under the empty prefix;
+// the pair stands on its bare slug once branch_prefix is set; --parent still refuses one switched to another branch.
 func TestAdd_FromParentPairMadeBeforeBranchPrefix(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

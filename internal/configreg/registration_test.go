@@ -21,8 +21,8 @@ const (
 	minScannedFiles  = 100
 )
 
-// TestRegistration_MatchesDeclarers fails when a package under internal/ declares a package-level ConfigTemplate that Modules() does not reference,
-// or when Modules() references a ConfigTemplate no package declares.
+// TestRegistration_MatchesDeclarers fails on a declared ConfigTemplate that Modules() does not reference.
+// It also fails on a ConfigTemplate that Modules() references and no package declares.
 //
 //lym:guard
 func TestRegistration_MatchesDeclarers(t *testing.T) {
@@ -73,7 +73,8 @@ func declaresConfigTemplate(file *ast.File) bool {
 	return false
 }
 
-// registeredPackages returns the module-relative directory of every package whose ConfigTemplate configreg.go's Modules() references or shuttleengines.go's registry holds.
+// registeredPackages returns the module-relative directory of every package whose ConfigTemplate is registered.
+// A template is registered when configreg.go's Modules() references it or shuttleengines.go's registry holds it.
 // An engine's config module reaches Modules() through that registry.
 func registeredPackages(t *testing.T) map[string]bool {
 	t.Helper()
@@ -132,7 +133,8 @@ func registeredPackages(t *testing.T) map[string]bool {
 	return registered
 }
 
-// collectTemplatePackages records into registered the package of every ConfigTemplate selector under root, resolving import names through importPaths.
+// collectTemplatePackages records into registered the package of every ConfigTemplate selector under root.
+// It resolves import names through importPaths.
 func collectTemplatePackages(t *testing.T, root ast.Node, importPaths map[string]string, registered map[string]bool) {
 	t.Helper()
 	ast.Inspect(root, func(n ast.Node) bool {

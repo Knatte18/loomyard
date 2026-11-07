@@ -1,4 +1,5 @@
-// headsha_integration_test.go proves Fabric.HeadSHA and Fabric.RecordsHeadSHA track their checkout's HEAD over a real pair.
+// headsha_integration_test.go checks that Fabric.HeadSHA and Fabric.RecordsHeadSHA track their checkout's HEAD.
+// The check runs against a real paired hub.
 
 package fabricengine_test
 
@@ -11,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFabricHeadSHA_TracksWorktreeHead asserts HeadSHA equals git rev-parse HEAD of the task worktree
-// before and after a new commit, and RecordsHeadSHA does the same for the weft checkout.
+// TestFabricHeadSHA_TracksWorktreeHead asserts that HeadSHA equals git rev-parse HEAD of the task worktree.
+// It checks this before and after a new commit, and RecordsHeadSHA does the same for the weft checkout.
 func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,26 +1,23 @@
-// integration_driverbootstrap_test.go covers the one property no Tier 1 test in this task can reach:
-// that a real end-to-end llm driver launch -- the production driverStarter seam, backed by a real
-// *shuttleengine.Runner starting a real (stubbed) provider process in a real reed pane over a fixture
-// hub built through hubforge -- returns before the driver session itself has finished, rather than
-// waiting on it. Every Tier 1 test of this same branch drives it through a fake driverStarter that
-// returns immediately BY CONSTRUCTION, so none of them can catch a regression that made the real seam
-// start waiting on the driver -- the failure mode that would deadlock every parent run that spawns an
-// llm-driven child.
+// integration_driverbootstrap_test.go covers a property no unit test in this package can reach:
+// a real end-to-end llm driver launch returns before the driver session has finished.
+// The launch runs through the production driverStarter seam, backed by a real *shuttleengine.Runner;
+// it starts a stubbed provider process in a real reed pane over a fixture hub built through hubforge.
+// The unit tests drive the seam through a fake driverStarter that returns immediately by construction.
+// None of them can catch a regression that makes the real seam wait on the driver;
+// that failure would deadlock every parent run that spawns an llm-driven child.
 //
-// Like the batch's own scope note, this exercises a stubbed provider binary, never a real `claude`:
-// exercising the real thing spawns a live, billed Claude session bounded only by the task at hand.
+// This file runs a stubbed provider binary, never a real `claude`;
+// a real run would spawn a live, billed Claude session.
 //
-// This package's own testmain_test.go is untagged, so it already arms the hermetic git test
-// environment (gitkit.HermeticGitEnv()) for the whole test binary, this file's own integration tag
-// included -- exactly as wiring_commitstatus_integration_test.go already relies on, so this file adds
-// no TestMain of its own.
+// The package's testmain_test.go is untagged, so it arms gitkit.HermeticGitEnv() for the whole test binary.
+// That covers this file's integration tag too, so this file adds no TestMain of its own.
 //
-// This drives the llm arm's own launch machinery (startLLMDriverArm) directly over a *loomCLI wired through wire() -- the same production wiring "loom start" itself uses -- rather than through the full cobra RunE:
-// "loom start" on a go-driven run also spawns the status strand's own watcher pane via os.Executable(), which under go test resolves to this very test binary and would recursively re-run the whole suite inside that pane, exactly the hazard the Live-Substrate Spawn Observability invariant's "never re-exec os.Executable() under go test" clause and this package's own smoke suite (see its header) both exist to avoid.
-// wire() itself spawns no process and resolves no cwd,
-// so it carries none of that hazard,
-// and startLLMDriverArm never reaches the verb's success-envelope tail at all:
-// that is suppressed by construction, not by a flag.
+// This drives startLLMDriverArm directly over a *loomCLI wired through wire().
+// wire() is the production wiring `loom start` uses.
+// It skips the full cobra RunE, which on a go-driven run spawns the status watcher pane via os.Executable();
+// under go test that resolves to the test binary and would re-run the whole suite inside the pane.
+// wire() spawns no process and resolves no cwd, so it carries none of that hazard.
+// startLLMDriverArm never reaches the verb's success-envelope tail; that is by construction, not by a flag.
 package loomcli
 
 import (
@@ -43,15 +40,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this file's one spawn launches.
-// The driver spec names no skill, so the claude engine's launch line carries the prompt pointer as an argument, from which the script takes the prompt.md path and extracts the drive report path driverPrompt quoted into that file.
-// The script records a session start through stubRecordSessionStart, then prints claudeengine's own idle-input-box fixture at start and again after the one line it reads.
-// Shuttle's startup step blocks Start until it sees a ready marker, and the color step waits for a ready pane,
-// so a script that skipped the fixture would make every call here time out instead of returning fast.
+// integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary.
+// The driver spec names no skill, so the claude engine's launch line passes the prompt pointer as an argument.
+// The script takes the prompt.md path from that argument;
+// it extracts the drive report path that driverPrompt quoted into the file.
+// It records a session start through stubRecordSessionStart.
+// It prints claudeengine's idle-input-box fixture at start and again after the one line it reads.
+// Shuttle's startup step blocks Start until it sees a ready marker, and the color step waits for a ready pane;
+// a script without the fixture would make every call time out instead of returning fast.
 // The one typed line is the `/color` command shuttle types for the driver's colored segment.
-// It then sleeps settleDelay, giving the caller a window
-// to observe the run in flight, past readiness, before the report exists -- writes a one-line report
-// there, and exits.
+// It then sleeps settleDelay, so the caller can observe the run in flight, past readiness, before the report exists.
+// After that it writes a one-line report and exits.
 func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
@@ -80,8 +79,10 @@ exit 0
 	return path
 }
 
-// integrationDriverShuttleConfig returns shuttle's shipped config template probing startup every poll (liveness_every_n_polls: 1, 500ms) instead of the template's every tenth (5s).
-// Shuttle's startup step probes once immediately, before the stub has printed its ready marker, then sleeps a whole probe interval.
+// integrationDriverShuttleConfig returns shuttle's shipped config template with startup probed on every poll.
+// The shipped template probes every tenth poll (5s); this sets liveness_every_n_polls: 1 and a 500ms interval.
+// Shuttle's startup step probes once immediately, before the stub prints its ready marker;
+// it then sleeps a whole probe interval.
 // At the shipped cadence Start therefore returns no sooner than 5s regardless of how fast the provider is ready.
 // That is longer than the stub's settle delay this file's assertion measures against.
 func integrationDriverShuttleConfig() string {
@@ -89,8 +90,8 @@ func integrationDriverShuttleConfig() string {
 	return strings.Replace(cfg, "liveness_every_n_polls: 10 ", "liveness_every_n_polls: 1 ", 1)
 }
 
-// waitForDriveReport polls dir for a single "drive-report-*.md" file to appear, returning its path,
-// or fails the test after timeout.
+// waitForDriveReport polls dir for a single "drive-report-*.md" file and returns its path.
+// It fails the test once timeout elapses.
 func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -106,10 +107,18 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 	}
 }
 
-// TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three things: the launch call returns once the stub's ready marker lands and well before its settle delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates rather than waiting on the whole driver session to finish; the started run's persisted state file exists under the run directory the handle reports; and the drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
+// TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver launches one llm driver end to end.
+// The fixture hub is built through hubforge and seeded with the llm driver.
+// It asserts three things.
+// The launch call returns once the stub's ready marker lands and well before its settle delay elapses.
+// That shows shuttle's own blocking Start returns past the provider's startup gates.
+// It does not wait on the whole driver session to finish.
+// The started run's persisted state file exists under the run directory the handle reports.
+// The drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory.
+// It never lands in the ephemeral scratch directory.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
 	tiergate.Require(t, 2)
-	// Long enough that Start's own startup probing and its typing and settling of the color command finish well inside it.
+	// The settle delay outlasts Start's own startup probing and its typing and settling of the color command.
 	const stubSettleDelay = 5 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
 
@@ -130,9 +139,9 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 
-	// Seed the fixture worktree's own run with the llm driver directly, per shedrun's own
-	// sole-writer contract -- this test drives the launch machinery below the CLI's own bootstrap
-	// verb, so it needs no committed origin record and no "parent" param to agree with.
+	// Seed the fixture worktree's own run with the llm driver directly, as shedrun's sole-writer contract requires.
+	// This test drives the launch machinery below the CLI's bootstrap verb,
+	// so it needs no committed origin record and no "parent" param to agree with.
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverLLM}); err != nil {
 		t.Fatalf("seed the llm driver: %v", err)
 	}

@@ -1,13 +1,12 @@
-// slug.go holds the single worktree-slug validator every topology verb that takes a slug shares.
-// It lives in its own file because the rule binds both directions of the pair lifecycle: Add must
-// refuse a slug that would create a booby-trapped pair, and Remove must refuse the same names for
-// the stronger reason that they already exist as hub geometry — the Bolt checkout and the weft siblings
-// are real directories a teardown verb handed one of those names would otherwise walk straight into.
-// `.lym` is refused for a different reason: it is not hub geometry at all, but a worktree slug of
-// that name is barred via structuralNeverCommittedDirs, the same structural-reservation set that
-// keeps it out of every slug regardless of what a repo's fabric.yaml configures.
-// The same rule bars the relative path elements `.` and `..`, which name no reserved directory and
-// carry no separator yet resolve, once joined onto hub geometry, onto the hub itself.
+// slug.go holds validateWorktreeSlug, the one slug validator that every topology verb taking a slug shares.
+// The rule binds both directions of the pair lifecycle.
+// Adding a pair must refuse a slug that would create a booby-trapped pair.
+// Removing a pair must refuse names that already are hub geometry:
+// the Bolt checkout and the weft siblings are real directories.
+// A teardown given one of those names would otherwise walk straight into it.
+// `.lym` is refused as a structural reservation, whatever a repo's fabric.yaml configures.
+// `.` and `..` are refused too: they carry no separator and name no reserved directory,
+// yet they resolve onto the hub itself once joined onto hub geometry.
 
 package fabricengine
 
@@ -20,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// ErrInvalidSlug matches, under errors.Is, every refusal validateWorktreeSlug returns.
+// ErrInvalidSlug is the sentinel that every slug refusal in this package matches under errors.Is.
 // The refusal's own text still carries the specific reason.
 var ErrInvalidSlug = errors.New("invalid slug")
 
@@ -29,22 +28,23 @@ func invalidSlug(format string, args ...any) error {
 	return &sentinelError{sentinel: ErrInvalidSlug, msg: fmt.Sprintf(format, args...)}
 }
 
-// ValidatePairSlug reports whether slug may name a pair of the hub, returning the same refusal, matching ErrInvalidSlug, that Add and Remove return.
+// ValidatePairSlug checks that slug may name a pair of the hub.
+// The refusal it returns matches ErrInvalidSlug under errors.Is.
 // junctionNames is the repo's configured junction name set (Config.Dirs()).
 func ValidatePairSlug(slug string, junctionNames []string) error {
 	return validateWorktreeSlug(slug, junctionNames)
 }
 
-// validateWorktreeSlug reports whether slug may name a warp↔weft worktree pair, returning a
-// specific error when it may not.
+// validateWorktreeSlug returns nil when slug may name a warp↔weft worktree pair, and a specific error when it may not.
 //
-// junctionNames is the repo's own configured pathspec name-set (Config.Dirs()), folded into the
-// reserved set by IsReservedHubName so a name that wires a junction can never also be a worktree.
+// junctionNames is the repo's configured pathspec name set (Config.Dirs()).
+// Its names are reserved, so a name that wires a junction can never also be a worktree.
 //
-// A slug is by contract a single path component: every consumer re-derives it from a warp worktree
-// path via filepath.Base, and the hub scan only looks at the hub's top level, so a
-// separator-containing slug would create a pair the rest of the module cannot re-identify.
-// Both separators are rejected on every platform — a slash-free contract must not depend on GOOS.
+// A slug is by contract a single path component.
+// Every consumer re-derives it from a warp worktree path with filepath.Base.
+// The hub scan only reads the hub's top level,
+// so a slug with a separator would create a pair the module cannot re-identify.
+// Both separators are rejected on every platform, since a slash-free contract must not depend on GOOS.
 func validateWorktreeSlug(slug string, junctionNames []string) error {
 	if strings.TrimSpace(slug) == "" {
 		return invalidSlug("invalid slug %q: a slug must not be empty", slug)
@@ -54,12 +54,11 @@ func validateWorktreeSlug(slug string, junctionNames []string) error {
 		return invalidSlug("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
 	}
 
-	// "." and ".." carry no separator and name no reserved directory, so every check around this one
-	// waves them through — yet filepath.Join resolves them, so a slug of ".." turns
-	// <hub>/_launchers/<anchor>/<slug> into the hub itself and Remove's os.RemoveAll deletes the whole
-	// hub, warp clone and weft clone included.
-	// A slug must denote a directory BELOW its parent, never the parent or the parent's parent, so the
-	// rule is that joining it must not move anywhere: filepath.Clean must leave it untouched.
+	// "." and ".." carry no separator and name no reserved directory, so the checks around this one let them through.
+	// filepath.Join resolves them, though: a slug of ".." turns <hub>/_launchers/<anchor>/<slug> into the hub itself,
+	// so a teardown's os.RemoveAll would delete the whole hub, warp clone and weft clone included.
+	// A slug must denote a directory below its parent, never the parent or the parent's parent.
+	// So joining it must not move anywhere: filepath.Clean must leave it untouched.
 	if slug != filepath.Clean(slug) || slug == "." || slug == ".." {
 		return invalidSlug("invalid slug %q: a slug must name a directory, not a relative path element like \".\" or \"..\"", slug)
 	}

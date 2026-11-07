@@ -1,4 +1,5 @@
-// annotations_test.go asserts the exact literal values of this package's cobra-annotation constants, so a rename cannot silently decouple a producer command (e.g. reed switch) from the consumer gate (cmd/lym's skipStencilSeed).
+// annotations_test.go asserts the exact literal values of this package's cobra-annotation constants,
+// so a rename cannot silently decouple a producer command from its consumer, the skipStencilSeed gate in cmd/lym.
 
 package clihelp
 

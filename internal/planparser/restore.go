@@ -1,4 +1,4 @@
-// restore.go implements RestoreRenumber, the only reader of the renumber journal, which undoes an interrupted InsertCard or RemoveCard.
+// restore.go implements RestoreRenumber, which undoes an interrupted InsertCard or RemoveCard from the renumber journal.
 
 package planparser
 
@@ -15,7 +15,7 @@ import (
 var (
 	// ErrRenumberNoJournal marks a restore with no journal on disk.
 	ErrRenumberNoJournal = errors.New("planparser: no renumber journal to restore")
-	// ErrRenumberJournalInvalid marks a journal that does not decode, or names a file outside the plan directory's top level.
+	// ErrRenumberJournalInvalid marks a journal that does not decode, or names any file but the overview or a card file.
 	ErrRenumberJournalInvalid = errors.New("planparser: renumber journal is invalid")
 	// ErrRenumberRestoreFailed marks a restore whose file operation failed; the journal is kept, so a re-run completes it.
 	ErrRenumberRestoreFailed = errors.New("planparser: renumber restore failed")
@@ -24,14 +24,17 @@ var (
 // journalCardFileRe is the shape cardFileName renders for any slug the Card Index parser accepts.
 var journalCardFileRe = regexp.MustCompile(`^\d+-\S+\.md$`)
 
-// RestoreResult is what RestoreRenumber changed: the names it removed and the names it wrote back.
+// RestoreResult reports the files a restore removed and the files it wrote back.
 type RestoreResult struct {
 	Removed  []string
 	Restored []string
 }
 
-// RestoreRenumber undoes an interrupted InsertCard or RemoveCard from the journal it left at journalPath: it removes every file the call created, writes every file the call rewrote or deleted back, and removes the journal last.
-// A journal that names anything but the overview or a card file at the plan directory's top level is refused before any file is written.
+// RestoreRenumber undoes an interrupted card insert or removal from the journal it left at journalPath.
+// It removes every file the interrupted call created,
+// and it writes back every file the interrupted call rewrote or deleted, then removes the journal last.
+// A journal that names anything but the overview or a card file at the plan directory's top level is refused.
+// The refusal comes before any file is written.
 // A file operation that fails keeps the journal, and a re-run completes the restore.
 // The restore discards any edit made to the journaled files since the interrupted call.
 func RestoreRenumber(ops RenumberIO, planDir, journalPath string) (*RestoreResult, error) {
@@ -72,7 +75,7 @@ func journalNameOK(name string) bool {
 }
 
 // readRenumberJournal reads and decodes the journal at journalPath.
-// found is false when no journal is there, a temporary journal beside it being ignored.
+// found is false when no journal is there; a temporary journal beside it is ignored.
 func readRenumberJournal(ops RenumberIO, journalPath string) (journal renumberJournal, found bool, err error) {
 	data, err := ops.ReadFile(journalPath)
 	if errors.Is(err, fs.ErrNotExist) {

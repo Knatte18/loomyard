@@ -1,4 +1,5 @@
-// dialog.go holds the pending-dialog latch of an autonomous run's wait loop and the notice it sends the parent once a dialog has stood for a bound.
+// dialog.go holds the pending-dialog latch of an autonomous run's wait loop.
+// It also holds the notice sent to the parent once a dialog has stood for a bound.
 
 package shuttleengine
 
@@ -10,10 +11,11 @@ import (
 )
 
 // permissionNoticeBound is how long a permission or input dialog stands on a run's pane before its parent is notified.
-// It is long enough that an operator answering a dialog at once sees no notice, and short enough to surface a stall well inside any run's timeout.
+// It is long enough that an operator answering a dialog at once sees no notice.
+// It is short enough to surface a stall well inside any run's timeout.
 const permissionNoticeBound = 60 * time.Second
 
-// dialogLatch is the in-memory state of one Wait's pending-dialog watch.
+// dialogLatch is the in-memory state of a run's pending-dialog watch in its wait loop.
 type dialogLatch struct {
 	// cursor is the events-file offset the next ask read resumes from.
 	cursor int64
@@ -29,15 +31,18 @@ type dialogLatch struct {
 
 // dialogNotice builds the single-line notice for a dialog on the pane of the agent named strandName.
 // It names the strand and says the pane shows a permission or input dialog lym cannot answer.
-// The way forward it gives is that the operator answers it in the pane, reached with `lym reed attach` in the run's worktree.
+// It tells the operator to answer the dialog in the pane, reached with `lym reed attach` in the run's worktree.
 func dialogNotice(strandName string) string {
 	return fmt.Sprintf("Shuttle notice: Agent %s has a permission or input dialog on its pane that lym cannot answer. "+
 		"To answer it, attach to the pane with `lym reed attach` in the run's worktree.", strandName)
 }
 
-// watchDialog advances the dialog latch one tick and notifies the parent once when the latch has stood for permissionNoticeBound with no input box on the pane.
-// It does nothing for an interactive run, a runner with no notifier, or an engine that cannot parse session signals or read an input box.
-// A failed capture, which warns once per episode, or a pane too short to draw the box changes nothing and is retried on a later tick.
+// watchDialog advances the dialog latch one tick.
+// It notifies the parent once when the latch has stood for permissionNoticeBound with no input box on the pane.
+// It does nothing for an interactive run or for a runner with no notifier.
+// It also does nothing for an engine that cannot parse session signals or read an input box.
+// A failed capture, which warns once per episode, changes nothing and is retried on a later tick.
+// A pane too short to draw the box does the same.
 // While a pause covers the run the latch stands but no notice is sent.
 // It never types into the pane and never changes the run's outcome.
 func (run *Run) watchDialog() {
@@ -70,11 +75,13 @@ func (run *Run) watchDialog() {
 	}
 }
 
-// foldDialogAsks reads the events file from the latch's cursor and folds each ask that is not also an event into the latch.
+// foldDialogAsks reads the events file from the latch's cursor.
+// It folds each ask that is not also an event into the latch.
 // The first ask while the latch is clear sets it, stamped with the signal's time or, when that is zero, the run clock's;
 // a further ask while it is set keeps the stamp.
 // A later turn end or turn start never clears the latch.
-// When an ask folds into an episode whose notice was sent, the cursor after the batch is persisted as RunState.DialogNotifiedOffset,
+// When an ask folds into an episode whose notice was sent, the cursor after the batch is persisted.
+// It is stored as RunState.DialogNotifiedOffset,
 // so a reattach never rebuilds a latch from that episode's later asks.
 func (run *Run) foldDialogAsks(parser SessionSignalParser) {
 	data, _, err := readEventsFrom(run.state.EventsPath, run.dialog.cursor)
@@ -109,7 +116,8 @@ func (run *Run) foldDialogAsks(parser SessionSignalParser) {
 }
 
 // notifyDialog sends the parent one notice for the current dialog episode and reports whether the notice counts as sent.
-// The latest folded offset is persisted as RunState.DialogNotifiedOffset before the notifier is called, so a crash between the write and the call loses that one notice and never repeats it.
+// The latest folded offset is persisted as RunState.DialogNotifiedOffset before the notifier is called,
+// so a crash between the write and the call loses that one notice and never repeats it.
 // A write that fails skips the notice and returns false; a notifier error is only logged and still counts as sent.
 func (run *Run) notifyDialog() bool {
 	if err := run.persistDialogNotifiedOffset(run.dialog.latestOffset); err != nil {
@@ -126,7 +134,8 @@ func (run *Run) notifyDialog() bool {
 	return true
 }
 
-// persistDialogNotifiedOffset writes offset as RunState.DialogNotifiedOffset, restoring the previous value when the write fails.
+// persistDialogNotifiedOffset writes offset as RunState.DialogNotifiedOffset.
+// It restores the previous value when the write fails.
 func (run *Run) persistDialogNotifiedOffset(offset int64) error {
 	run.recordMu.Lock()
 	defer run.recordMu.Unlock()

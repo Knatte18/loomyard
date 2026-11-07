@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// loomConsumeAttempt is loom's ConsumeAttempt hook: it parses attempt as a positive attempt number of the run and consumes that attempt's directory.
+// loomConsumeAttempt applies a resume verdict when the driver relaunches the loop, naming its attempt.
+// It returns an error unless the attempt is a positive integer.
 func (c *loomCLI) loomConsumeAttempt(_ context.Context, attempt string) error {
 	number, err := strconv.Atoi(attempt)
 	if err != nil || number < 1 {

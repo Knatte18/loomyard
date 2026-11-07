@@ -1,5 +1,8 @@
-// template.go builds hubforge's per-binary hub templates and hands them out: CopyHub relocates a template into a test's own temp directory, SharedHub returns the template itself for a test that only reads.
-// A template is a fully-wired hub built once per test binary and per shape; the fingerprint taken at build time is how a write to a shared template is caught.
+// template.go builds hubforge's per-binary hub templates and hands them out.
+// CopyHub relocates a template into a test's own temp directory.
+// SharedHub returns the template itself for a test that only reads it.
+// A template is a fully wired hub built once per test binary and per shape,
+// and the fingerprint taken at build time catches a write to a shared template.
 
 package hubforge
 
@@ -26,7 +29,8 @@ import (
 // TemplatePairSlug is the slug of the one pair a pair-carrying Shape's template is built with.
 const TemplatePairSlug = "pair"
 
-// templatePrefix begins the last element of every template root, a name no tb.TempDir path element carries, so no copy path has a template root as a string prefix.
+// templatePrefix begins the last element of every template root.
+// No tb.TempDir path element carries this prefix, so no copy path has a template root as a string prefix.
 const templatePrefix = "hubforge-template-"
 
 // Shape is the hub a template is built as: the anchor ("." or "backend") plus the ordered slugs of the pairs added to it.
@@ -40,7 +44,8 @@ func (s Shape) name() string {
 	return s.Anchor + "+" + strings.Join(s.Pairs, ",")
 }
 
-// Shapes returns the closed set of shapes CopyHub and SharedHub accept: the "." and "backend" anchors, each with no pair and with the one pair TemplatePairSlug.
+// Shapes returns the closed set of shapes CopyHub and SharedHub accept:
+// the "." and "backend" anchors, each with no pair and with the one pair TemplatePairSlug.
 func Shapes() []Shape {
 	var shapes []Shape
 	for _, anchor := range []string{".", "backend"} {
@@ -49,7 +54,9 @@ func Shapes() []Shape {
 	return shapes
 }
 
-// hubTemplate is one built template: the root holding the bares and the hub, the Hub as built there, the prime cwd the Hub's Location resolves from, the build-time fingerprint, and whether a write has since been seen.
+// hubTemplate is one built template: the root that holds the bares and the hub, and the Hub built there.
+// primeCwd is the directory the Hub's Location resolves from, and fingerprint is the digest of the tree at build time.
+// poisoned is set once a write to the shared tree is seen.
 type hubTemplate struct {
 	name        string
 	root        string
@@ -66,7 +73,7 @@ var (
 )
 
 // templateFor returns shape's template, building it on first use in a directory that lives as long as the test binary.
-// A shape outside Shapes is a tb.Fatalf pointing at NewHub.
+// A shape outside Shapes fails tb with a message that points at NewHub.
 func templateFor(tb testing.TB, shape Shape) *hubTemplate {
 	tb.Helper()
 
@@ -125,7 +132,8 @@ func templateFor(tb testing.TB, shape Shape) *hubTemplate {
 	return template
 }
 
-// requireIntact fails tb, naming the fixture, when the template was poisoned by an earlier write or its tree no longer matches the build-time fingerprint.
+// requireIntact fails tb, naming the fixture, when an earlier write poisoned the template.
+// It also fails when the tree no longer matches the build-time fingerprint.
 func (template *hubTemplate) requireIntact(tb testing.TB) {
 	tb.Helper()
 
@@ -142,7 +150,8 @@ func (template *hubTemplate) requireIntact(tb testing.TB) {
 	}
 }
 
-// CopyHub returns a hub of shape that is the test's own: the shape's template relocated into tb's temp directory, with every path inside it rewritten to the copy's.
+// CopyHub returns a hub of shape that the test owns.
+// It is the shape's template relocated into tb's temp directory, with every path inside it rewritten to the copy's.
 // Every checkout of the copy is clean against its HEAD and upstream, as a fresh hub's is.
 // A write to the copy touches nothing shared.
 // It fails tb, naming the fixture, when the template is poisoned or its tree changed since it was built.
@@ -164,9 +173,12 @@ func CopyHub(tb testing.TB, shape Shape) *Hub {
 	return hub
 }
 
-// commitRelocatedBinding folds the board checkout's relocated `.lym-warp` binding into the board's one commit and force-pushes it to the copy's own records bare.
-// The relocation rewrites the binding's working-tree file, but the committed blob, compressed in the object store, still names the template's warp bare;
-// amending the commit leaves the board clean against its HEAD and its upstream, with the one-commit history a fresh hub's board has.
+// commitRelocatedBinding amends the board's one commit to fold in the relocated `.lym-warp` binding.
+// It then force-pushes that commit to the copy's own records bare.
+// The relocation rewrites the binding's working-tree file.
+// The committed blob, compressed in the object store, still names the template's warp bare.
+// Amending the commit leaves the board clean against its HEAD and upstream.
+// It keeps the one-commit history a fresh hub's board has.
 func commitRelocatedBinding(tb testing.TB, boardDir string) {
 	tb.Helper()
 
@@ -175,8 +187,11 @@ func commitRelocatedBinding(tb testing.TB, boardDir string) {
 	gitkit.Git(tb, boardDir, "push", "--force", "--quiet", "origin", "HEAD")
 }
 
-// SharedHub returns the template's own hub for a test that only reads it: a file read, a link read or an in-process go-git read.
-// Any other access is a write, and the test's cleanup then fails naming the fixture, poisons the template and says the blame may land on a parallel sharer.
+// SharedHub returns the template's own hub for a test that only reads it:
+// a file read, a link read or an in-process go-git read.
+// Any other access is a write.
+// The test's cleanup then fails naming the fixture and poisons the template.
+// The error says the blame may land on a parallel sharer.
 // It fails tb, naming the fixture, when the template is poisoned or its tree changed since it was built.
 func SharedHub(tb testing.TB, shape Shape) *Hub {
 	tb.Helper()
@@ -198,7 +213,8 @@ func SharedHub(tb testing.TB, shape Shape) *Hub {
 	return template.hub
 }
 
-// hubAt builds the Hub for a relocated template at root, rebasing every path of the template's own Hub, and registers the junction teardown NewHub registers.
+// hubAt builds the Hub for a template relocated to root, rebasing every path of the template's own Hub.
+// It also registers the junction teardown for the Hub's path.
 func hubAt(tb testing.TB, root string, shape Shape) *Hub {
 	tb.Helper()
 
@@ -232,7 +248,8 @@ func hubAt(tb testing.TB, root string, shape Shape) *Hub {
 }
 
 // relocateHub copies the tree at src into the existing, empty dst and rewrites it to stand at dst.
-// Regular files are copied without following links, and the src path, in both separator spellings, is replaced by dst in every text file.
+// Regular files are copied without following links.
+// The src path, in both separator spellings, is replaced by dst in every text file.
 // Each link is recreated, after the files so a junction's target exists, with its target rewritten the same way.
 // It fails when any file or link of the copy still names src.
 func relocateHub(src, dst string) error {
@@ -319,7 +336,8 @@ func pathReplacer(src, dst string) *strings.Replacer {
 	return strings.NewReplacer(pairs...)
 }
 
-// findRootReference returns the first file or link under dir whose content or target names root, in either separator spelling, or "" when none does.
+// findRootReference returns the first file or link under dir whose content or link target names root.
+// It matches root in either separator spelling, and returns "" when none does.
 func findRootReference(dir, root string) (string, error) {
 	needles := [][]byte{[]byte(root)}
 	if filepath.ToSlash(root) != root {
@@ -370,7 +388,8 @@ func findRootReference(dir, root string) (string, error) {
 	return found, err
 }
 
-// fingerprint is a digest of the sorted list of every regular file under root with its relative path, size and modification time.
+// fingerprint returns a digest of the sorted entries of every regular file under root.
+// Each entry holds the file's relative path, size and modification time.
 // A link is not followed and not listed.
 func fingerprint(root string) (string, error) {
 	var entries []string

@@ -4,21 +4,34 @@
 
 ## What it is
 
-Webster is Loomyard's implementer module: one long-lived **Master** session reads a plan once and forks one implementer per execution batch in-session, sequentially, until the plan is built.
-It is the `webster` implementer of tapestry's implementer row, whose in, out and outcomes [implementer-spec.md](implementer-spec.md) pins.
+Webster is Loomyard's implementer module.
+One long-lived **Master** session reads a plan once.
+It forks one implementer per execution batch in-session, sequentially, until the plan is built.
+It is the `webster` implementer of tapestry's implementer row.
+[implementer-spec.md](implementer-spec.md) pins that row's in, out and outcomes.
 This file pins only the shapes another module is entitled to depend on.
-Everything about *how* webster reaches those shapes — the fork mechanism, the bracket verbs, the audit policy, crash/resume, the verify gate's mechanics — is `internal/websterengine`'s own business; see its package documentation for that design.
+How webster reaches those shapes is `internal/websterengine`'s own business:
+the fork mechanism, the bracket verbs, the audit policy, crash/resume and the verify gate's mechanics.
+Its package documentation holds that design.
 
 ## Plan input
 
-Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lym/plan/` — the format itself is pinned in the plan-format blocks `contracts/stencils/loom/loom-block-plan-format.md`, `loom-block-plan-overview.md` and `loom-block-plan-cards.md`, which `contracts/stencils/loom/loom-template-plan.md` includes, not a separate reference doc.
-webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
-The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition, so a file the batches change never regroups the cards mid-run.
+Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lym/plan/`.
+The format itself is pinned in the plan-format blocks that `contracts/stencils/loom/loom-template-plan.md` includes;
+there is no separate reference doc.
+Webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
+The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition,
+so a file the batches change never regroups the cards mid-run.
 
 ## `_lym/webster/` as an ownership boundary
 
-Webster owns `_lym/webster/` and everything in it — `state.json`, the reports directory, `plan-baseline/` (the content store behind the recorded plan hashes), `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
-Its never-tracked siblings — the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lym/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
+Webster owns `_lym/webster/` and everything in it: `state.json`, the reports directory, `outcome.yaml` and `summary.md`.
+`plan-baseline/` is there too, the content store behind the recorded plan hashes.
+`internal/websterengine`'s `Dir` and `ReportsDir` helpers resolve these paths.
+They are the sole declarers of that path segment.
+Its never-tracked siblings are the rendered fork prompts and every `*.lock`.
+They live at the mirrored subpath under `.lym/webster/`, outside the fabric-committed pathspec.
+`internal/websterengine`'s `ScratchDir` and `PromptsDir` helpers resolve it.
 No other module writes into either directory.
 
 ## `outcome.yaml`
@@ -34,44 +47,61 @@ batches_done: <int>
 `outcome` is one of `done`, `stuck`.
 `stuck_reason` is required non-empty when `outcome: stuck` and empty otherwise.
 `batches_done` is the count of batches that reached `status: done` this run.
-The file is strictly decoded — unknown fields are rejected — and follows archive-never-refuse: a stale file is timestamp-renamed, never overwritten or refused.
+The file is strictly decoded, so unknown fields are rejected.
+It follows archive-never-refuse: a stale file is timestamp-renamed, never overwritten or refused.
 
 ## The summary artifact — `_lym/webster/summary.md`
 
-webster's `summary.md` is the run record: it no longer reaches landing directly, since landing reads the change description loom's `Describe` row writes instead.
-The format and validation it shares are pinned producer-agnostically in [loom-final-summary-spec.md](loom-final-summary-spec.md); this section states only webster's own writer-side additions.
-It is required and fail-loud only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
-A long-lived Master session is the only party with full oversight of what actually shipped, which is why it writes the run record.
+Webster's `summary.md` is the run record.
+Landing does not read it; landing reads the change description loom's `Describe` row writes instead.
+[loom-final-summary-spec.md](loom-final-summary-spec.md) pins the format and validation shared across producers.
+This section states only webster's own writer-side additions.
+The summary is required and fail-loud only when `outcome: done`.
+It follows the same archive-never-refuse discipline as every other stale artifact.
+A long-lived Master session alone has full oversight of what shipped, which is why it writes the run record.
 
 A `summary.md` may additionally carry two sections the verify gate produces.
-When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky, and `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them;
-the run keeps its outcome.
-When the gate sends a failure back to Merriam, Merriam answers with one fixer, a fork or the cold fixer, and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what that fixer says it changed and each `fix: <summary>` commit it made.
-Either section reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
+When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky.
+`internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them.
+The run keeps its outcome.
+When the gate sends a failure back to Merriam, Merriam answers with one fixer, a fork or the cold fixer.
+Merriam then rewrites `summary.md` with a `## Verify gate fixes` section.
+The section names the findings, what that fixer says it changed and each `fix: <summary>` commit it made.
+The `Describe` stencil carries either section into the change description as a check item for the PR reviewer.
+Publish does not pass `summary.md` through.
 
 ## The verify gate
 
-Merriam's strand carries the hub's `webster` gate, rendered from `gate.yaml` as the one call `lym gate test --wait --gate webster`, as one must-pass gate named `verify`, so the call runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
-A `gate.yaml` that cannot be loaded, or a `webster` key naming an undeclared tier, is the gate's error naming `lym config gate`, never a pass.
+Merriam's strand carries the hub's `webster` gate, rendered from `gate.yaml` as one must-pass gate named `verify`.
+The gate is the one call `lym gate test --wait --gate webster`.
+It runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
+A `gate.yaml` that cannot be loaded, or a `webster` key naming an undeclared tier, is the gate's error, never a pass.
+The error names `lym config gate`.
 Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
 A failing run is rerun once;
 a pass on the rerun passes the gate and records the failing identities as flaky.
-A run that exceeds the verify timeout is not rerun, since a hang is not flakiness: it fails the gate at once with the timeout, the log path and the log tail as findings.
-A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
+A run that exceeds the verify timeout is not rerun, since a hang is not flakiness:
+it fails the gate at once with the timeout, the log path and the log tail as findings.
+A failure that survives the rerun, or a tree that is not clean, is returned to Merriam as findings.
+The gate records it in `verify-gate.yaml` in the reports directory.
 Merriam answers each failure with one fixer, whose commits are `fix: <summary>` and are checked at the next attempt.
-The gate routes each failure to a fixer and records it as `fixer` in `verify-gate.yaml`: a fork in Merriam's session, on Merriam's model, or, for the last attempt, after a fixer that committed nothing and from then on, the cold fixer `lym webster fix-verify` spawns as its own strand at the `recovery` role.
+The gate routes each failure to a fixer and records it as `fixer` in `verify-gate.yaml`.
+The default fixer is a fork in Merriam's session, on Merriam's model.
+The cold fixer takes the last attempt, and every attempt after a fixer that committed nothing.
+`lym webster fix-verify` spawns the cold fixer as its own strand at the `recovery` role.
 `verify_gate_attempts` in `webster.yaml` bounds the attempts;
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
-`verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lym webster run --fresh`.
+Nothing runs the suite after the session ends.
 
-`lym webster verify` runs the same `webster` gate call through the same function, `internal/verifytree`, and boots no reed session.
+`lym webster verify` runs the same `webster` gate call through `internal/verifytree`, and boots no reed session.
 A pass records the verified tree, so a landing step or a later gate that finds the tree unchanged skips the run.
 
 ## See also
 
-- [loom-final-summary-spec.md](loom-final-summary-spec.md) — the producer-agnostic read contract for `summary.md`'s format, validation, and consumers.
-- `contracts/stencils/loom/loom-block-plan-format.md`, `loom-block-plan-overview.md` and `loom-block-plan-cards.md` — the flat-card format webster consumes via `internal/planparser`, pinned in the plan-format blocks `contracts/stencils/loom/loom-template-plan.md` includes rather than a separate doc.
+- [loom-final-summary-spec.md](loom-final-summary-spec.md) — the read contract for `summary.md`'s format and validation.
+- The plan-format blocks that `contracts/stencils/loom/loom-template-plan.md` includes:
+  the flat-card format webster consumes via `internal/planparser`.
 - [refusal-spec.md](refusal-spec.md) — the way forward every webster refusal names, and its classes.
 - [llm-model-spec.md](llm-model-spec.md) — the model-spec notation webster's roles resolve against.
-- [loom-status-spec.md](loom-status-spec.md) — loom's own status file, the analogous contract for loom's orchestration state.
+- [loom-status-spec.md](loom-status-spec.md) — the status file contract for loom's orchestration state.
 - `internal/websterengine` package documentation — the as-built code this doc summarizes.

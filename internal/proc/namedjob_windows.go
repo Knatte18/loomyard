@@ -1,4 +1,5 @@
-// namedjob_windows.go holds the Windows job objects: the unnamed per-child job and the named job a loop holds so a later process can end its tree.
+// namedjob_windows.go holds the Windows job objects:
+// the unnamed per-child job and the named job a loop holds so a later process can end its tree.
 
 package proc
 
@@ -15,7 +16,8 @@ const jobObjectTerminate uint32 = 0x0008
 
 var procOpenJobObject = windows.NewLazySystemDLL("kernel32.dll").NewProc("OpenJobObjectW")
 
-// createKillOnCloseJob creates a job object, named when name is non-nil, whose processes all end when its last handle closes.
+// createKillOnCloseJob creates a job object, named when name is non-nil.
+// The processes in the job all end when its last handle closes.
 // The job admits a CREATE_BREAKAWAY_FROM_JOB start, so only a process started with that flag outlives it;
 // without the limit Windows refuses such a start with ERROR_ACCESS_DENIED.
 func createKillOnCloseJob(name *uint16) (windows.Handle, error) {
@@ -47,7 +49,7 @@ func assignProcessToJob(job windows.Handle, pid int) error {
 	return nil
 }
 
-// holdNamedJobPlatform creates the named job, assigns the calling process to it and returns the release of the handle.
+// holdNamedJobPlatform puts the calling process in the named job until the returned release closes the job's handle.
 func holdNamedJobPlatform(name string) (func() error, error) {
 	namePointer, err := windows.UTF16PtrFromString(name)
 	if err != nil {
@@ -64,7 +66,7 @@ func holdNamedJobPlatform(name string) (func() error, error) {
 	return func() error { return windows.CloseHandle(job) }, nil
 }
 
-// terminateNamedJobPlatform opens the job by name and terminates it, reporting false when no job of that name exists.
+// terminateNamedJobPlatform ends every process in the named job, reporting false when no job of that name exists.
 func terminateNamedJobPlatform(name string) (bool, error) {
 	namePointer, err := windows.UTF16PtrFromString(name)
 	if err != nil {

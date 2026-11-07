@@ -1,5 +1,7 @@
-// ownwindow_test.go pins the own-window group placement: the pure plan that chooses between a shared window and a window of its own, and the join of a pane into a group's shared window.
-// It also pins the rule deciding which window a viewer leaves for a new agent window.
+// ownwindow_test.go pins the own-window group placement.
+// It pins the pure plan that chooses between a shared window and a window of its own.
+// It pins the join of a pane into a group's shared window.
+// It pins the rule deciding which window a viewer leaves for a new agent window.
 
 package reedengine
 
@@ -70,7 +72,9 @@ func TestPlanOwnWindowPlacement(t *testing.T) {
 	}
 }
 
-// TestNewAgentWindowSelected pins whether a new agent window takes the viewer: a Focus strand always does, a KeepViewer strand never does, and any other does exactly when the session's follow state reads on.
+// TestNewAgentWindowSelected pins whether a new agent window takes the viewer.
+// A Focus strand always does, and a KeepViewer strand never does.
+// Any other strand does exactly when the session's follow state reads on.
 // It captures the process-global logger output, so it does not run in parallel.
 func TestNewAgentWindowSelected(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -119,7 +123,9 @@ func TestNewAgentWindowSelected(t *testing.T) {
 	}
 }
 
-// TestJoinGroupWindowLocked_RefusesASilentlyReusedPane pins that a split answering the group window's own pane is refused as in window 0, runs no layout, and that a genuine join splits the group window's first pane detached in the told direction.
+// TestJoinGroupWindowLocked_RefusesASilentlyReusedPane pins a refused split of the group window's own pane.
+// A refused split runs no layout.
+// A genuine join splits the group window's first pane detached, in the told direction.
 func TestJoinGroupWindowLocked_RefusesASilentlyReusedPane(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

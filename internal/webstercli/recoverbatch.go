@@ -1,15 +1,16 @@
-// recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, blocking escalation call Master's own prompt makes, backgrounded, when a fork reports stuck or never reports at all.
-// It drives websterengine's three lease-scoped phases with a real, wall-clock Clock:
-// RecoverSpawnOrAttach under the state-mutation lease (saved and fabric-committed "...
-// spawn" when this call performed the spawn) -- the spawn phase under the lease now includes the
-// provider's startup window (bounded by startup_timeout_s) -- RecoverAwait with the lease RELEASED
-// (the wait phase that blocks up to recovery_timeout_min still runs with the lease released -- holding the
-// lease across it would stall every concurrent verb and run entry for minutes, the exact hold
-// AcquireStateMutation's contract forbids), and, on a terminal
-// digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed
-// by the "... <status>" terminal fabric commit -- webster's third and fourth fabric-commit points, each
-// now carrying exactly the mutation its label names.
-// A *BatchFailedError from that persist step saves the reloaded state and commits it "... failed" before the batch_failed error envelope.
+// recoverbatch.go implements the `recover-batch` webster verb.
+// The verb is the blocking escalation call that Master's prompt makes in the background.
+// It runs when a fork reports stuck or never reports.
+// The verb drives three lease-scoped phases of websterengine with a wall-clock Clock.
+// `RecoverSpawnOrAttach` runs under the state-mutation lease.
+// It includes the provider's startup window, which startup_timeout_s bounds.
+// When the call performs the spawn, it saves the state and commits it to fabric as "... spawn".
+// `RecoverAwait` blocks for up to recovery_timeout_min with the lease released.
+// Holding the lease across that wait would stall every concurrent verb and run entry.
+// On a terminal digest, `PersistRecoveryTerminal` runs on a freshly reloaded state under a re-acquired lease,
+// and the verb then commits it to fabric as "... <status>".
+// A *BatchFailedError from the persist step saves the reloaded state and commits it as "... failed".
+// Only then does the verb emit the batch_failed error envelope.
 package webstercli
 
 import (
@@ -35,7 +36,8 @@ func (recoverRealClock) Sleep(d time.Duration) { time.Sleep(d) }
 
 var _ websterengine.Clock = recoverRealClock{}
 
-// batchSlugFor returns the slug of the batcher.Batch whose identity matches batchNumber.
+// batchSlugFor returns the slug of the batch whose first card has number batchNumber.
+// It returns the empty string when no batch does.
 func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 	for _, b := range batches {
 		if len(b.Cards) > 0 && b.Cards[0].Number == batchNumber {
@@ -45,8 +47,9 @@ func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 	return ""
 }
 
-// recoveryNotDoneMessage is the error of a recover-batch call whose terminal digest is neither done nor waiting:
-// the recovery in session did not recover the batch, and the way forward is one more recovery when the batch has one left, else ending the run stuck.
+// recoveryNotDoneMessage is the error for a recover-batch call whose terminal digest is neither done nor waiting.
+// The recovery in session did not recover the batch.
+// The way forward is one more recovery when the batch has one left, else ending the run stuck.
 // Naming the session tells two consecutive refusals over different strands apart.
 func recoveryNotDoneMessage(batchName string, batchNumber int, status, session string, retry bool) string {
 	if retry {
@@ -192,17 +195,22 @@ Example:
 				waitBudget = websterengine.RecoveryWaitBudget(c.cfg)
 			}
 
-			// Standalone mode boots its own reed session here, idempotently, because nothing else can: `lym reed up` is hub-only, so the advice reed's own "no reed session" error gives cannot reach standalone geometry at all.
-			// recover-batch is not a read-only verb — it spawns a cold recovery strand through reed.AddStrand, which now self-heals a cold worktree on its own rather than requiring a live session — so this call is no longer the only thing standing between a standalone spawn and a dead end.
-			// It stays as a deliberate early, explicit boot: after a run ends its session is gone, and this keeps `lym webster recover-batch N` failing with its own envelope-reportable error rather than whatever AddStrand's own self-heal would surface.
+			// Standalone mode boots its own reed session here, idempotently, because nothing else can.
+			// `lym reed up` is hub-only.
+			// The advice that reed's own "no reed session" error gives therefore cannot reach standalone geometry.
+			// recover-batch is not read-only.
+			// It spawns a cold recovery strand through reed.AddStrand, which self-heals a cold worktree.
+			// This boot is an early, explicit step: once a run ends, its session is gone.
+			// It keeps `lym webster recover-batch N` failing with its own envelope-reportable error.
+			// Without the boot, that failure would be whatever the AddStrand self-heal surfaces.
 			// Nil in hub mode, where the session is the operator's or loom's own to manage.
 			//
-			// It runs HERE rather than at the top of this RunE so a call that refuses on a bad batch
-			// number, an unparseable plan, or an absent run boots no substrate at all — an ordering
-			// property the self-heal does not provide on its own, since AddStrand's boot now happens
-			// wherever AddStrand is called, not at a controlled chokepoint like this one; the
-			// state-mutation lease is already held across the spawn RecoverSpawnOrAttach itself
-			// performs, so bringing the session up under it adds no new hold.
+			// It runs here, not at the top of this RunE.
+			// A call that refuses on a bad batch number, an unparseable plan, or an absent run boots no substrate.
+			// The self-heal does not give that ordering on its own.
+			// AddStrand's boot happens wherever AddStrand is called, not at one controlled chokepoint like this one.
+			// The state-mutation lease is already held across the spawn that RecoverSpawnOrAttach performs.
+			// Booting the session under it therefore adds no new hold.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster recover-batch %02d`", err, batchNumber)))
@@ -280,12 +288,8 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
-				// Guarded by defer, the same shape every other lease in this package uses
-				// (beginbatch.go, recordbatch.go, and this verb's own first lease). Nothing between
-				// here and the explicit release below returns today, so this leaks nothing now — but
-				// a future `return nil` added inside this block, which is the shape used everywhere
-				// else in these RunEs, would hold mutate.lock for the process lifetime and block
-				// every subsequent bracket verb (crucible round opus-medium-r6, R6-23).
+				// Guarded by defer, so that a return added between here and the explicit release below cannot hold mutate.lock.
+				// Such a hold would last the process lifetime and block every later bracket verb.
 				terminalHeld := true
 				defer func() {
 					if terminalHeld {
@@ -314,10 +318,9 @@ Example:
 						batchFailed = false
 					}
 				} else if fresh != nil {
-					// The post-batch pass re-baselines the plan fingerprint the moment handle
-					// binding or the exact-tier drift repair rewrites the plan on disk, and it can
-					// then block on a finding computed from the same delta. Persist that
-					// re-baseline for the same reason both bracket verbs do.
+					// The post-batch pass re-baselines the fingerprint when a handle binding or exact-tier drift repair rewrites the plan,
+					// and it can then block on a finding computed from the same delta.
+					// Persist that re-baseline, since the plan on disk already carries the rewrite.
 					if saveErr := persistPlanFingerprintRebaseline(c.geom, fresh, fingerprintBefore); saveErr != nil {
 						err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err, saveErr)
 					}

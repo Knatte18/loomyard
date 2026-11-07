@@ -1,6 +1,5 @@
 // status_pollution_integration_test.go pins the anchor scoping of Topology.Status's warp-pollution scan.
-// The scan used a bare "_lym" pathspec at the warp worktree ROOT, so a subpath-anchored hub whose index genuinely tracked <anchor>/_lym/...
-// was reported clean — a false negative in the one verb (`lym fabric pairs`) that advertises the check.
+// A bare "_lym" pathspec at the warp worktree root misses a tracked <anchor>/_lym/ file under a subpath anchor.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -19,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lym/ in the warp
-// index of a subpath-anchored hub and asserts Status reports it with a git rm --cached remedy.
+// TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lym/ in the warp index.
+// It asserts Status reports that file with a git rm --cached remedy.
 //
 //testtiming:keep Status reporting a tracked <anchor>/_lym file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
 func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
@@ -47,8 +46,8 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 		t.Fatalf("AnchorRel = %q; want %q", anchoredLayout.AnchorRel, anchor)
 	}
 
-	// Pollute the warp index at the anchored durable path, the shape an operator produces by
-	// committing _lym content before fabric wired the junction.
+	// Pollute the warp index at the anchored durable path.
+	// An operator produces that shape by committing _lym content before fabric wires the junction.
 	pollutedRel := filepath.ToSlash(filepath.Join(anchor, lymdirs.LymDirName, "legacy.md"))
 	pollutedAbs := filepath.Join(l.WorktreePath(), filepath.FromSlash(pollutedRel))
 	if err := os.MkdirAll(filepath.Dir(pollutedAbs), 0o755); err != nil {

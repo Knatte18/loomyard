@@ -1,9 +1,6 @@
-// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage, AppendAuditWarnings and AppendBackgroundShells append further sections beside the one below):
-// ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
-// outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
-// re-implementing the same-second collision loop.
-// The artifact's read contract -- its path and its parse -- lives in internal/summaryparser, the sole
-// owner of that shape.
+// summary.go implements webster's write-side helpers over the final-summary artifact:
+// archiving a stale artifact and appending sections to it.
+// The artifact's read contract, its path and its parse, lives in internal/summaryparser, the sole owner of that shape.
 
 package websterengine
 
@@ -18,10 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// ArchiveStaleSummary renames websterDir's final-summary artifact to summary-<UTC compact
-// timestamp>.md, preserving it rather than deleting.
-// Absent file returns ("", nil).
-// Collision within the same clock-second appends a numeric suffix.
+// ArchiveStaleSummary renames websterDir's final-summary artifact to summary-<UTC compact timestamp>.md.
+// It preserves the artifact rather than deleting it.
+// It returns ("", nil) when the artifact is absent.
+// A collision within the same clock-second appends a numeric suffix.
 func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo string, err error) {
 	path := summaryparser.Path(websterDir)
 
@@ -46,8 +43,8 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 	return target, nil
 }
 
-// AppendIntegrationTriage appends a section listing the flaky identities the verify gate passed on rerun, by identity only.
-// It is a no-op when flaky is empty.
+// AppendIntegrationTriage appends a section listing the flaky identities the verify gate passed on rerun.
+// It lists identities only, and is a no-op when flaky is empty.
 func AppendIntegrationTriage(websterDir string, flaky []string) error {
 	if len(flaky) == 0 {
 		return nil
@@ -58,7 +55,8 @@ func AppendIntegrationTriage(websterDir string, flaky []string) error {
 	return appendToSummary(websterDir, "integration triage", b.String())
 }
 
-// AppendAuditWarnings appends an "Audit warnings" section listing findings recorded as warnings, one bullet each in the order given.
+// AppendAuditWarnings appends an "Audit warnings" section listing the findings recorded as warnings.
+// It lists one bullet per warning, in the order given.
 // It is a no-op when warnings is empty.
 func AppendAuditWarnings(websterDir string, warnings []string) error {
 	if len(warnings) == 0 {
@@ -72,7 +70,9 @@ func AppendAuditWarnings(websterDir string, warnings []string) error {
 	return appendToSummary(websterDir, "audit warnings", b.String())
 }
 
-// AppendBackgroundShells appends a "Background shells at the run's end" section listing the shells Master's run ended over, one bullet each in the order given with the shell's label, signal and time outstanding.
+// AppendBackgroundShells appends a "Background shells at the run's end" section.
+// It lists the shells still outstanding when Master's run ended, one bullet each in the order given.
+// Each bullet carries the shell's label, signal and time outstanding.
 // It is a no-op when shells is empty.
 func AppendBackgroundShells(websterDir string, shells []shuttleengine.EndedShell) error {
 	if len(shells) == 0 {
@@ -86,7 +86,8 @@ func AppendBackgroundShells(websterDir string, shells []shuttleengine.EndedShell
 	return appendToSummary(websterDir, "background shells", b.String())
 }
 
-// appendRebaselineWarning appends warning to the summary as its "Plan rebaselined" section, so the summary a step's Done points at names the rebaseline the run began with.
+// appendRebaselineWarning appends warning to the summary as its "Plan rebaselined" section.
+// It keeps the summary that a step's Done points at naming the rebaseline the run began with.
 // An empty warning appends nothing.
 func appendRebaselineWarning(websterDir, warning string) error {
 	if warning == "" {

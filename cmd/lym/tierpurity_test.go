@@ -1,9 +1,10 @@
-// tierpurity_test.go enforces the Test Tier Purity Invariant: a *_test.go file whose tests are `tier0` (their opening tiergate.Require names tier 0) performs no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
-// This is the repo-wide grep-guard that keeps the offline tier0 loop's premise from rotting silently again, machine-enforcing what was previously review discipline only.
-// A support file, one holding no test function, is not scanned: one test binary holds every tier, so its helpers may serve any tier's tests.
-// See `PATTERN-test-speed`.
-// It also flags a tier0 file containing a long literal time.Sleep(...)
-// (see cmd/lym/tiersleep_test.go).
+// tierpurity_test.go enforces the Test Tier Purity Invariant.
+// A *_test.go file whose tests are `tier0` (their opening tiergate.Require names tier 0) performs no expensive spawn.
+// The banned spawns are gitexec.Run, exec.Command, exec.CommandContext and hubforge.NewHub, which builds a real hub.
+// Every gitkit export is banned except the hermetic-environment helper.
+// A support file, one holding no test function, is not scanned.
+// One test binary holds every tier, so its helpers may serve any tier's tests.
+// It also flags a tier0 file that holds a long literal time.Sleep(...).
 
 package main
 
@@ -23,10 +24,8 @@ import (
 // tmuxTier is the lowest tier whose tests may start a tmux server.
 const tmuxTier = 2
 
-// allowedSpawners is the Test Tier Purity Invariant allowlist: module-relative,
-// slash-separated file paths, or directory paths ending in "/", that are permitted to contain
-// a banned spawn token in a tier0 test file, each with a one-line reason —
-// mirroring sandbox_coverage_test.go's excludedModules style.
+// allowedSpawners lists the files and directories that may contain a banned spawn token in a tier0 test file.
+// Each entry is a module-relative, slash-separated file path, or a directory path ending in "/", with a one-line reason.
 var allowedSpawners = []scankit.Entry{
 	{Key: "internal/proc/", Why: "process control is the package's subject — its tests must spawn"},
 	{Key: "cmd/lym/tierpurity_test.go", Why: "contains the banned token strings as its own test data"},
@@ -45,31 +44,29 @@ var allowedSpawners = []scankit.Entry{
 	{Key: "cmd/lym/interactivespawn_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as fixture source for the headless-spawn scan, which only parses it (`PATTERN-reed-panes` guard)"},
 }
 
-// allowedTmuxkitOutsideTmuxTier lists tier1 test files that reference a tmuxkit export, each with a reason they start no server.
+// allowedTmuxkitOutsideTmuxTier lists tier1 test files that reference a tmuxkit export.
+// Each entry gives a reason the file starts no server.
 var allowedTmuxkitOutsideTmuxTier = []scankit.Entry{
 	{Key: "internal/gatecli/test_integration_test.go", Why: "reads a process's state through the kit's spawn-free ProcState probe; starts no server"},
 }
 
 // bannedTokens are the raw substrings a tier0 *_test.go file may not contain.
-// Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
-// A gitkit spawn is not a token here: gitkitSpawnReference (cmd/lym/gitkitspawn_test.go) defines it once, for this scan and the Hermetic Env scan alike.
-// A tmuxkit spawn is not a token here either: tmuxkitSpawnReference (cmd/lym/tmuxkitspawn_test.go) defines it once, as every tmuxkit export but Main.
-// Comment or string-literal mentions trip the guard too — that is
-// accepted (rename the mention or make the file's tests tier1).
-// hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so a
-// tier0 test calling it is exactly the expensive-spawn violation this guard exists to catch.
-// hubforge.SeedConfig and hubforge.SeedFabricConfig need no separate entries — both take a *Hub that
-// only NewHub can produce, so this token already covers every package that can reach them.
+// Matching is raw-substring, not whole-token or AST, so exec.Command also matches exec.CommandContext.
+// The gitkit spawn is not a token here;
+// gitkitSpawnReference (cmd/lym/gitkitspawn_test.go) defines it once, for this scan and the Hermetic Env scan alike.
+// The tmuxkit spawn is not a token here either;
+// tmuxkitSpawnReference (cmd/lym/tmuxkitspawn_test.go) defines it once, as every tmuxkit export but Main.
+// Comment and string-literal mentions trip the guard too, which is accepted:
+// rename the mention or make the file's tests tier1.
+// hubforge.NewHub is banned:
+// it drives a real fabriccli.CloneAndWire clone, so a tier0 test calling it is an expensive-spawn violation.
+// hubforge.SeedConfig and hubforge.SeedFabricConfig need no entries of their own:
+// both take a *Hub that only NewHub can produce.
 // hubforge.CopyHub and hubforge.SharedHub are banned the same way, since each builds a real hub on first use.
-// DeltaGit is deliberately narrow and deliberately NOT quarry.Open: only DeltaGit spawns a
-// process, while Resolve, TOC, Glyphs and Expand read files and Name performs no I/O at all, so
-// banning the constructor would force tier1 onto tests that spawn nothing. Raw-substring
-// is the right shape here, matching this guard's own documented design.
-// bannedTokens scans tier0 *_test.go files, so it catches a DIRECT TEXTUAL DeltaGit call site
-// only — a test calling a planglyph wrapper that reaches DeltaGit transitively contains no such
-// token and still passes. The existing tokens accept exactly this limit and this one inherits it;
-// the guard narrows the gap, it does not close it, and a later change must not restate this as full
-// coverage.
+// Of quarry's methods, only DeltaGit spawns a process, so the token names DeltaGit alone.
+// The token catches only a direct textual DeltaGit call.
+// A test that calls a planglyph wrapper reaching DeltaGit transitively still passes.
+// The guard narrows this gap but does not close it.
 var bannedTokens = []string{
 	"gitexec.Run",
 	"exec.Command",
@@ -80,9 +77,11 @@ var bannedTokens = []string{
 	"lymbin.",
 }
 
-// TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module root.
-// It fails if a tier0 file, one whose tests impactset.FileTier reads as tier 0, contains a banned spawn token as a raw substring, unless the file (or its containing directory) is on the allowedSpawners allowlist.
-// It also fails if a tier1 file references a tmuxkit spawn, unless allowedTmuxkitOutsideTmuxTier lists it.
+// TestTierPurity_UntaggedTestsSpawnNothing walks every `*_test.go` file under the module root.
+// It fails if a tier0 file contains a banned spawn token as a raw substring.
+// A tier0 file is one whose tests `impactset.FileTier` reads as tier 0.
+// The file or its containing directory may still contain one if it is on the `allowedSpawners` allowlist.
+// It also fails if a tier1 file references a tmuxkit spawn, unless `allowedTmuxkitOutsideTmuxTier` lists it.
 // A support file holding no test function is skipped.
 //
 //lym:guard
@@ -107,7 +106,8 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	}
 }
 
-// tierPurityFailures returns the Test Tier Purity failures of one test file: rel is its module-relative path, abs its absolute path, data its source and file its parse.
+// tierPurityFailures returns the Test Tier Purity failures of one test file:
+// rel is its module-relative path, abs its absolute path, data its source and file its parse.
 // A support file holding no test function yields none.
 // A tier0 file fails on a banned spawn token or a long literal sleep unless the matching allowlist lists it;
 // a tier1 file fails on a tmuxkit spawn reference unless tmuxless lists it.
@@ -152,7 +152,8 @@ func tierPurityFailures(rel, abs string, data []byte, file *ast.File, spawners, 
 	return failures
 }
 
-// TestTierPurityFailures proves the scan body of the purity guard on source text: which files it skips, flags and lets through.
+// TestTierPurityFailures proves the per-file checks of `tierPurityFailures` on source text.
+// It checks which files are skipped, flagged and let through.
 func TestTierPurityFailures(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -197,7 +198,7 @@ func TestTierPurityFailures(t *testing.T) {
 	}
 }
 
-// TestFirstBannedToken_RecognizesDeltaGit proves the new token detection fires: a tier0 test file's raw source containing the literal DeltaGit token trips the guard exactly like every other bannedTokens entry.
+// TestFirstBannedToken_RecognizesDeltaGit proves `firstBannedToken` finds the literal DeltaGit token in test source.
 //
 //testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard fires on a tier0 file carrying the DeltaGit token
 func TestFirstBannedToken_RecognizesDeltaGit(t *testing.T) {
@@ -220,8 +221,8 @@ func TestFirstBannedToken_RecognizesDeltaGit(t *testing.T) {
 	}
 }
 
-// firstBannedToken returns the first entry of bannedTokens (in declared order) that
-// appears as a raw substring of data, and whether any was found.
+// firstBannedToken returns the first `bannedTokens` entry, in declared order, that appears in data as a raw substring.
+// It reports whether an entry was found.
 func firstBannedToken(data []byte) (string, bool) {
 	content := string(data)
 	for _, token := range bannedTokens {

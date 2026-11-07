@@ -1,6 +1,7 @@
-// Package orchrole holds the orch role: the hub orchestrator's whole procedure, one fixed text for every orch in every repository, and the on-demand files the role sends the session to for rarer events.
-// The role and its on-demand files are rendered from these embedded bytes alone and never seeded to a board copy, so no hub can edit them;
-// a repository's own orch rules reach the orch through heddle instead.
+// Package orchrole holds the orch role: the hub orchestrator's procedure, and its on-demand files.
+// The procedure is one fixed text for every orch in every repository.
+// The role and its on-demand files are rendered from these embedded bytes alone and never seeded to a board copy.
+// So no hub can edit them; a repository's own orch rules reach the orch through heddle instead.
 // The package imports nothing, so an engine and the stencil tests both import it without a cycle.
 package orchrole
 
@@ -24,7 +25,8 @@ var (
 	slack []byte
 )
 
-// OnDemand holds the texts the session reads only for a rarer event, keyed by the file name each renders to beside the role, the name the role calls it by.
+// OnDemand holds the texts the session reads only for a rarer event.
+// Each key is the file name its text renders to beside the role, the name the role calls it by.
 // Each text is a leading comment, then a body with no marker.
 var OnDemand = map[string][]byte{
 	"role-beams.md":         beams,

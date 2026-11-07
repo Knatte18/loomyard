@@ -1,9 +1,9 @@
 // attach_test.go pins AttachArgv's argv shape, its pre-flight and its window selection.
 //
-// Every case drives AttachArgv entirely through TmuxCmd's execHook seam — no external process spawn,
-// no live tmux server, no sleep — discriminating display-message responses on the format argument
-// (the last element of args), never on call order, so these tests do not silently pass if the call
-// sequence changes.
+// Every case drives AttachArgv entirely through TmuxCmd's execHook seam.
+// No case spawns an external process, starts a live tmux server or sleeps.
+// The fake answers display-message by its format argument (the last element of args), never by call order,
+// so these tests do not silently pass when the call sequence changes.
 
 package reedengine
 
@@ -19,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestClientAttached drives ClientAttached through a fake tmux: one attached client, none, a missing session and a failed listing.
+// TestClientAttached drives ClientAttached through a fake tmux:
+// one attached client, none, a missing session and a failed listing.
 func TestClientAttached(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -55,7 +56,8 @@ func TestClientAttached(t *testing.T) {
 	}
 }
 
-// TestParseClientList is a table of `list-clients` answer shapes, asserting the parsed attachedClient slice element by element.
+// TestParseClientList is a table of `list-clients` answer shapes.
+// It asserts the parsed attachedClient slice element by element.
 func TestParseClientList(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -99,18 +101,22 @@ const (
 	oneAttachListPane   = "%1 0 0 40 20 4321\n"
 )
 
-// goodAttachSelvagePane is the console pane newAttachTestEngine records when the strand table is not empty; it is the first pane of goodAttachListPanes and sits in the shell window.
+// goodAttachSelvagePane is the console pane newAttachTestEngine records when the strand table is not empty;
+// it is the first pane of goodAttachListPanes and sits in the shell window.
 const goodAttachSelvagePane = "%1"
 
-// goodAttachStrands is the strand table this file's tests persist via SaveState; its one strand is bound to the second pane of goodAttachListPanes.
+// goodAttachStrands is the strand table this file's tests persist via SaveState;
+// its one strand is bound to the second pane of goodAttachListPanes.
 func goodAttachStrands() []Strand {
 	return []Strand{
 		{GUID: "a", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 	}
 }
 
-// newAttachTestEngine builds a fixture engine with strands persisted to disk (loadOrInitStateLocked reads reed.json from disk, not from an in-memory struct) and a fakeTmux answering every round trip AttachArgv's pre-flight can issue with the fully-permissive script each test starts from and re-scripts exactly one answer of,
-// so each test isolates the single step it exists to pin.
+// newAttachTestEngine builds a fixture engine with strands persisted to disk.
+// The strands must be on disk because loadOrInitStateLocked reads reed.json from disk, not from an in-memory struct.
+// It installs a fakeTmux that answers every round trip AttachArgv's pre-flight can issue.
+// The script starts fully permissive, and each test re-scripts exactly one answer to isolate the step it pins.
 func newAttachTestEngine(t *testing.T, strands []Strand) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
@@ -122,17 +128,17 @@ func newAttachTestEngine(t *testing.T, strands []Strand) (*Engine, *fakeTmux) {
 		t.Fatalf("SaveState: %v", err)
 	}
 	fake := installFakeTmux(t, e)
-	// The pane-generation probe (loadOrInitStateLocked -> adoptPaneGenerationLocked) spends its own three-field format on display-message.
-	// Answering it well-formed keeps this hermetic fixture from spuriously clearing pane bindings via the probe's fail-open path.
+	// The pane-generation probe runs in loadOrInitStateLocked, through adoptPaneGenerationLocked.
+	// It queries display-message in a three-field format, and the fixture answers it well-formed.
+	// A malformed answer would make the probe's fail-open path clear pane bindings and break the hermetic fixture.
 	fake.answer("display-message", "$0|4321|1700000000", nil)
 	fake.answerFormat(liveBoxFormat, "", errors.New("AttachArgv must never query the live window size"))
 	fake.answer("list-panes", goodAttachListPanes, nil)
 	return e, fake
 }
 
-// wantBareAttachArgv builds the expected five-element argv for e, asserted element by
-// element rather than by length alone: this is where the two deleted CLI-side TestAttachArgv tests'
-// pinned "-L <socket> attach-session -t =<session>" expectation lands, so it is not lost with them.
+// wantBareAttachArgv builds the expected five-element argv for e.
+// Tests compare it element by element rather than by length alone.
 func wantBareAttachArgv(e *Engine) []string {
 	return []string{"-L", e.Socket(), "attach-session", "-t", "=" + e.SessionName()}
 }
@@ -150,7 +156,8 @@ func assertBareArgv(t *testing.T, e *Engine, got []string) {
 	}
 }
 
-// assertResizedUnpinned fails unless fake saw exactly the two window-resized unpins on target and no entry that installs one.
+// assertResizedUnpinned fails unless fake saw exactly the window-resized unpins for target.
+// Any other set-hook entry that installs that hook also fails it.
 func assertResizedUnpinned(t *testing.T, fake *fakeTmux, target string) {
 	t.Helper()
 	var want [][]string
@@ -165,7 +172,8 @@ func assertResizedUnpinned(t *testing.T, fake *fakeTmux, target string) {
 // TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv covers the pre-flight's remaining paths:
 // no client size, has-session failing, a pane listing that errors and a state with no strand owning a present pane.
 // Every one must yield exactly the bare argv, asserted element by element.
-// A path that gets past the session check still pins the geometry options, so it also unpins the window-resized hook and pins the unseen-clear hook.
+// A path that gets past the session check still pins the geometry options,
+// so it also unpins the window-resized hook and pins the unseen-clear hook.
 // The unpins land on the strand window where one resolves and on the session's current window where none does.
 // has-session failing returns before any pin.
 func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
@@ -209,11 +217,11 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 	}
 }
 
-// TestAttachArgv_PreflightOnAKnownGoodSession pins the pre-flight of one known-good AttachArgv call:
-// AttachArgv itself issues every geometry pin (not a second exported call the CLI has to remember),
+// TestAttachArgv_PreflightOnAKnownGoodSession pins the pre-flight of one known-good AttachArgv call.
+// AttachArgv itself issues every geometry pin,
 // and the window-resized unpin comes after the state and pane list are read.
-// It issues no pane-set mutation and leaves reed.json untouched; it does mutate window options and the hook pins, so "never mutates" is scoped to the pane set.
-// A set-hook error then does not change a single element of the returned argv.
+// It sets window options and hooks, but it issues no pane-set mutation and leaves reed.json untouched.
+// A set-hook error does not change a single element of the returned argv.
 //
 //testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, the window-resized unpin in both scopes after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the argv unchanged; its covering tests run this code without asserting it
 func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
@@ -235,7 +243,11 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	want := e.AttachArgv(80, 24)
 	assertBareArgv(t, e, want)
 
-	// The six bar pins plus the button row invocation, the window-size pin, the follow-command and button-command pins (each set, or unset when its line cannot be composed), the build-stamp unset, the window marker, the strand pane's two options and the console marker on the recorded Selvage pane.
+	// The set-option calls are the bar pins and the button row invocation.
+	// They also include the window-size pin, the follow-command and button-command pins, and the build-stamp unset.
+	// Each of the follow-command and button-command pins is set, or unset when its line cannot be composed.
+	// They also include the window marker and the strand pane's two options.
+	// The console marker goes on the recorded Selvage pane.
 	wantSetOptionCalls := 16 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
@@ -283,7 +295,7 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Error("no set-hook call recorded despite the failing hook, want the unpin statements still attempted")
 	}
 
-	// A prime session created by an older binary is marked after an attach; the pair run above carries no mark.
+	// A prime session created by an older binary gets the prime mark on attach, while a pair session gets none.
 	if slices.ContainsFunc(fake.ArgvFor("set-option"), func(call []string) bool { return slices.Contains(call, primeSessionOption) }) {
 		t.Errorf("pair AttachArgv() marked the prime: %v", fake.ArgvFor("set-option"))
 	}
@@ -304,8 +316,10 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 }
 
-// assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %2, and none on the console pane %1.
-// It also asserts the pre-flight issued exactly wantShellPins session shell pins, none where the configured shell does not resolve.
+// assertStrandOptionsReasserted asserts that the pre-flight marks the strand window.
+// The @strand label must land on the bound pane %2, never on the console pane %1.
+// The pre-flight must also issue exactly wantShellPins session shell pins.
+// None are issued where the configured shell does not resolve.
 func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins int) {
 	t.Helper()
 	var marked, labeled bool
@@ -331,7 +345,9 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins i
 	}
 }
 
-// relevantWindowFixture returns the state and the scripted window listings of a session with the shell window @0, the overviews runs @4 at index 0 and status @3 at index 1, and two agent windows, alpha @1 and beta @2 in start order.
+// relevantWindowFixture returns the strands and the scripted window and pane listings of a session.
+// The session has the shell window @0 and the overview windows runs @4 at index 0 and status @3 at index 1.
+// Its agent windows are alpha @1 and beta @2, in start order.
 // The pane listing lists status's pane after runs's, so a rule that keeps the last-listed overview answers status.
 // alphaDead and betaDead mark that agent's pane dead.
 // The strands also hold the strand of goodAttachStrands, whose pane is not listed.
@@ -360,8 +376,9 @@ func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows,
 
 // TestAttachArgv_SelectsTheRelevantWindow pins the window selection AttachArgv appends to the bare argv:
 // `; select-window -t <window>` for the newest live agent window, else the lowest-index overview, else nothing.
-// Beside another attached client, or a failed client listing, the selection is kept only while the follow state reads on, an unset option included, and dropped while it reads off or its read fails.
-// Attach reads the follow state only then and never writes it.
+// When another client is attached, or the client listing fails, the selection is kept only if the follow state reads on.
+// An unset option counts as on, and the selection is dropped when the state reads off or its read fails.
+// Attach reads the follow state only in that case, and it never writes it.
 func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 	tiergate.Require(t, 0)
 	const cols, rows = 80, 24
@@ -429,11 +446,13 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 	}
 }
 
-// TestAttachArgv_MultiClientWarning covers warnMismatchedClientsLocked's cardinality: exactly one
-// logger.Warn line per client whose listed size differs from the size this attach was told, none for
-// a matching client, and — in every case — an argv byte-identical to what the same script produces
-// with no attached clients at all, since the warning is a side effect that must never perturb it.
-// That holds while the follow state reads off or no window is relevant, which is when the other client's presence drops the window selection.
+// TestAttachArgv_MultiClientWarning checks the warning raised when an attached client lists a different size.
+// It expects exactly one logger.Warn line per client whose listed size differs from the attach's size.
+// It expects none for a matching client.
+// In every case the argv must be byte-identical to the no-client argv of the same script.
+// The warning is a side effect that must never perturb it.
+// The argv match holds while follow reads off or no window is relevant.
+// Only then does another client's presence drop the window selection.
 func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	tiergate.Require(t, 0)
 	const cols, rows = 80, 24

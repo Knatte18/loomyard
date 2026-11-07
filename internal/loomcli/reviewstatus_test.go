@@ -27,12 +27,14 @@ import (
 // fallthroughNote is the fixed note the fake next step returns, so a row can tell a fall-through from a reported wait.
 const fallthroughNote = "next step note"
 
-// fixedNextStep is the hook chain's next step in place of a real wait: it always returns fallthroughNote as both text and steady form.
+// fixedNextStep is the hook chain's next step in place of a real wait.
+// It always returns fallthroughNote as both text and steady form.
 func fixedNextStep(shedengine.Status) (shedverbs.WaitNote, error) {
 	return shedverbs.WaitNote{Text: fallthroughNote, Steady: fallthroughNote}, nil
 }
 
-// steadyOf returns text with each of the told elapsed renderings replaced by elapsedPlaceholder, the steady form a note of that text must carry.
+// steadyOf returns text with each of the elapsed renderings replaced by elapsedPlaceholder.
+// The result is the steady form that a note of text must carry.
 func steadyOf(text string, elapsed ...string) string {
 	for _, shown := range elapsed {
 		text = strings.ReplaceAll(text, shown, elapsedPlaceholder)
@@ -206,7 +208,8 @@ func writeVerifyMarker(t *testing.T, pid int, attempt int) string {
 	return path
 }
 
-// writeWaitingVerifyMarker writes a marker held by pid that still waits for a gate slot, since the same start time, and returns its path.
+// writeWaitingVerifyMarker writes a marker held by pid that waits for a gate slot, and returns its path.
+// Its start time is fixed at 2026-10-03T09:15:00Z.
 func writeWaitingVerifyMarker(t *testing.T, pid int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "running.yaml")
@@ -217,14 +220,15 @@ func writeWaitingVerifyMarker(t *testing.T, pid int) string {
 	return path
 }
 
-// TestVerifyWaiting asserts a live verify marker is reported ahead of the next step, and a dead or absent marker falls through to it.
+// TestVerifyWaiting asserts a live verify marker is reported ahead of the next step.
+// A dead or absent marker falls through to it.
 // Every note's steady form is its text with the elapsed time replaced by the placeholder.
 func TestVerifyWaiting(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		marker func(t *testing.T) string
-		// holders is the told holders read; nil reads no holder.
+		// holders is the holders the probe reads; nil reads no holder.
 		holders func() ([]gateslot.Holder, error)
 		check   func(t *testing.T, note string)
 	}{
@@ -347,7 +351,8 @@ func TestFormatElapsed(t *testing.T) {
 	}
 }
 
-// TestParentLockWaiting asserts a live lock wait record renders the waiting note with its elapsed time, and an absent record, a dead writer's record and an unreadable record fall through to next or fail.
+// TestParentLockWaiting asserts a live lock wait record renders the waiting note with its elapsed time.
+// An absent record, a dead writer's record and an unreadable record fall through to next or fail.
 func TestParentLockWaiting(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -399,7 +404,12 @@ func TestParentLockWaiting(t *testing.T) {
 	}
 }
 
-// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock, a held compare marker and a running agent run with a live waiter and a run status running at Sampler-Session, PR-Review or Beam-Await read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause, a lock file with no holder, a running agent run whose waiter is gone, a status running at Describe, a blocked status at Sampler-Session and an unreadable status file do not.
+// TestAgentActivity_LiveLockWaitReadsAsActivity asserts these read as activity now: a live parent lock wait record;
+// a live running verify marker; a held drift capture lock; a held compare marker;
+// a running agent run with a live waiter and a status running at Sampler-Session, PR-Review or Beam-Await.
+// These do not: a dead writer's record; a dead marker; a verify marker held by a pause; a lock file with no holder;
+// a running agent run whose waiter is gone; a status running at Describe; a blocked status at Sampler-Session;
+// and an unreadable status file.
 // A capture lock path the probe cannot take returns the probe's error.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	tiergate.Require(t, 0)

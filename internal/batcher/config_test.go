@@ -1,5 +1,5 @@
-// config_test.go verifies batcher.yaml's template parses and Active resolves the configured profile, including its two degrading-absence cases (absent _lym/, absent batcher.yaml) and its load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a filesystem _lym/config/<module>.yaml, no git repository, so this test stays in tier 0 and spawn-free.
-// Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
+// config_test.go tests batcher.yaml: its template, Active's profile resolution, ProfileWeights and MigrateConfig.
+// Its fixtures are plain files in a temporary directory, with no git repository.
 
 package batcher_test
 
@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// assertRetiredKey fails unless err wraps ErrRetiredKey and ends in the reconcile way forward exactly when want is set.
+// assertRetiredKey fails the test unless err wraps ErrRetiredKey exactly when want is set.
 func assertRetiredKey(t *testing.T, err error, want bool) {
 	t.Helper()
 	if got := errors.Is(err, batcher.ErrRetiredKey); got != want {
@@ -33,8 +33,8 @@ func assertRetiredKey(t *testing.T, err error, want bool) {
 	}
 }
 
-// seedConfig writes content to <baseDir>/_lym/config/<module>.yaml, creating the config directory (and its _lym parent) as needed.
-// It is a plain-filesystem stand-in for gitkit's own git-spawning config-seeding helper, deliberately avoiding that helper's git spawn since configengine.LoadOrTemplate never needs a repository.
+// seedConfig writes content to <baseDir>/_lym/config/<module>.yaml, creating the directories as needed.
+// It writes the file directly, with no git spawn, since the config loader needs no repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
 
@@ -48,9 +48,10 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestActive asserts Active resolves the configured profile from batcher.yaml:
-// the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its wide profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lym/ degrades to the embedded template's wide batchifier rather than erroring, and every load error names batcher.yaml.
-// A layer's profiles add to the template's by name, each merging key by key, so the error rows tune a profile the template lacks.
+// TestActive asserts Active resolves the configured profile from batcher.yaml.
+// Each layer's profiles add to the template's by name, merging key by key.
+// An absent batcher.yaml or _lym/ degrades to the embedded template's wide batchifier,
+// and every load error names batcher.yaml.
 func TestActive(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -64,7 +65,7 @@ func TestActive(t *testing.T) {
 		seed        func(t *testing.T, baseDir string)
 		wantName    string
 		wantErrWith []string
-		// wantRetired asserts the error wraps ErrRetiredKey and names the reconcile way forward.
+		// wantRetired asserts the error wraps ErrRetiredKey.
 		wantRetired bool
 	}{
 		{
@@ -218,7 +219,7 @@ func TestActive(t *testing.T) {
 		worktreeFile string
 		wantName     string
 		wantErrWith  []string
-		// wantDefaultFileInError asserts the error names the repo default's file and the hub-wide reconcile way forward.
+		// wantDefaultFileInError asserts the error names the repo default's file.
 		wantDefaultFileInError bool
 	}{
 		{
@@ -290,8 +291,9 @@ func TestActive(t *testing.T) {
 	}
 }
 
-// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key,
-// and that the template's wide and cautious profiles carry the same measured weights.
+// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients.
+// It also asserts that an absent or invalid profile fails with an error naming batcher.yaml.
+// The template's wide and cautious profiles carry the same weights.
 func TestProfileWeights(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -445,7 +447,9 @@ func TestProfileWeights(t *testing.T) {
 	})
 }
 
-// TestMigrateConfig pins the retired-key rewrite: each retired key goes, orientation is added at the template's value only where a retired weights key stood and none existed, everything else is carried, and the result loads through Active where the input carried only retired keys.
+// TestMigrateConfig pins the retired-key rewrite: retired keys are removed and everything else is carried.
+// Orientation is added at the template's value only where a retired weights key stood and none existed.
+// Where the input carried only retired keys, the result loads through Active.
 func TestMigrateConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

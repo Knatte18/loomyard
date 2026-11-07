@@ -1,7 +1,8 @@
 <!-- This is the loom-block-plan-overview plan-format block: the 00-overview.md format, glyph targets and plan: handles.
-     loom-template-plan, loom-template-part-writer and loom-template-parts-chair pull it in with the bare {{template "loom-block-plan-overview"}}, with no pipeline.
+     The loom stencils that write plans pull it in with the bare {{template "loom-block-plan-overview"}}, with no pipeline.
      The fill hands it the including seat's value map, so it declares one required marker: {{.specs_dir}}.
-     It names no step of the stencil around it; each including stencil states its own rule for the lines this block leaves out. -->
+     It names no step of the stencil around it;
+     each including stencil states its own rule for the lines this block leaves out. -->
 
 ### `00-overview.md`
 

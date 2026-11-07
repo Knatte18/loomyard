@@ -1,5 +1,4 @@
-// resolve.go declares the "resolve" subcommand: the check that a copied spelling names something
-// real.
+// resolve.go declares the "resolve" subcommand: the check that a copied spelling names something real.
 
 package quarrycli
 
@@ -13,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 )
 
-// newResolveCmd returns the "resolve" subcommand, reading the resolved repository root through
-// root at call time.
+// newResolveCmd returns the "resolve" subcommand, reading the resolved repository root through root at call time.
 func newResolveCmd(root func() string) *cobra.Command {
 	return &cobra.Command{
 		Use:         "resolve <glyph>...",

@@ -1,11 +1,11 @@
-// clusterexcludes_test.go pins the agreement between each Bouncer row's cluster_excludes and its
-// partner BurlerReview row's cluster fan.
+// clusterexcludes_test.go checks each Bouncer row's cluster_excludes against its partner BurlerReview row's cluster fan.
 //
 // The rule: a Bouncer whose on_stuck names a BurlerReview row sets cluster_excludes: true exactly
-// when that row's profile.cluster-fan is non-empty. The Bouncer's judge is asked for exclude_lenses
-// only when the partner round has a fan to trim (see cluster_excludes on bouncerEntry in
-// internal/shedrecipe); otherwise BurlerReviewProducer drops the excludes with a WARN. shedbuild.Build
-// runs no cross-row analysis, so this test is the only authoring-time guard.
+// when that row's profile.cluster-fan is non-empty.
+// The Bouncer's judge is asked for exclude_lenses only when the partner round has a fan to trim.
+// bouncerEntry in internal/shedrecipe reads cluster_excludes.
+// Otherwise BurlerReviewProducer drops the excludes with a WARN.
+// shedbuild.Build runs no cross-row analysis, so this test is the only authoring-time guard.
 //
 // The fix for a failing author: set cluster_excludes: true on the Bouncer row when adding
 // profile.cluster-fan to its BurlerReview partner (and remove it again when removing the fan).
@@ -24,9 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// clusterExcludesMismatches returns one message per Bouncer row, partnered with a BurlerReview row
-// through on_stuck, whose cluster_excludes disagrees with the partner's cluster fan, or whose
-// relevant config values have the wrong type.
+// clusterExcludesMismatches returns one message per Bouncer row that disagrees with its partner.
+// A Bouncer's partner is the BurlerReview row named by its on_stuck.
+// A row disagrees when its cluster_excludes differs from the partner's cluster fan.
+// A row is also flagged when its relevant config values have the wrong type.
 func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 	rows := make(map[string]shedbuild.Row, len(r.Producers))
 	for _, row := range r.Producers {
@@ -77,7 +78,8 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 	return msgs
 }
 
-// TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan asserts the shipped tapestry recipe has no Bouncer/BurlerReview pair whose cluster_excludes disagrees with the partner's cluster fan.
+// TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan asserts the shipped tapestry recipe has no mismatched pair.
+// A mismatched pair is a Bouncer whose cluster_excludes disagrees with its BurlerReview partner's cluster fan.
 //
 //testtiming:keep pins that no shipped Bouncer/BurlerReview pair disagrees on cluster_excludes, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan(t *testing.T) {

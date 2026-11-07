@@ -1,4 +1,8 @@
-// bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-judged, CONVERGED round at Call entry), its archive-naming and collision behaviour, every non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the clear's own failure degradation, and the cross-invocation and post-commit-failure cases the trigger is intended to reach.
+// bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step.
+// It checks the trigger, an already-judged CONVERGED round at Call entry, and the archive naming and collisions.
+// It checks that every non-triggering case is excluded and that the harvest path is immune.
+// It covers the clear's own failure degradation.
+// It also covers the cross-invocation and post-commit-failure cases the trigger is meant to reach.
 
 package shedadapters
 
@@ -21,7 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the Burler rows' own review and fixer-report pair (their artifacts) alongside the Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as one unit.
+// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir.
+// It writes the Bouncer's report, CONVERGED verdict and ledger.
+// It also writes the Burler rows' own review and fixer-report pair, their artifacts.
+// Together they are the complete on-disk state a clear must move as one unit.
 func layoutApprovedGeneration(t *testing.T, cfg BouncerConfig, round int) {
 	t.Helper()
 
@@ -39,9 +46,8 @@ func layoutApprovedGeneration(t *testing.T, cfg BouncerConfig, round int) {
 	}
 }
 
-// archivedRunDirPath returns the path archiveRunDir would rename runDir to when now resolves to
-// instant and suffix names the same-second collision slot ("" for the first, "-1" for the second,
-// and so on), mirroring archive.go's own directory-naming scheme.
+// archivedRunDirPath returns the sibling path an archived run directory takes for instant.
+// suffix names the same-second collision slot: "" for the first, "-1" for the second, and so on.
 func archivedRunDirPath(runDir string, instant time.Time, suffix string) string {
 	dir := filepath.Dir(runDir)
 	base := filepath.Base(runDir)
@@ -49,9 +55,8 @@ func archivedRunDirPath(runDir string, instant time.Time, suffix string) string 
 	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", base, stamp, suffix))
 }
 
-// assertNoArchivedRunDirSibling fails t if runDir's parent contains any entry named runDir's own
-// base name plus a "-" suffix, which is the shape every archived run-dir sibling this package
-// writes takes -- the assertion a non-triggering case's test uses to prove the clear did not fire.
+// assertNoArchivedRunDirSibling fails t if runDir's parent holds an entry named runDir's base name plus a "-" suffix.
+// Such an entry is the shape of an archived run directory, so its absence shows the clear did not fire.
 func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 	t.Helper()
 
@@ -68,13 +73,13 @@ func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 	}
 }
 
-// TestBouncer_Clear_ApprovedRunDirClearsAndReseeds also pins the clear's own log line and the
-// numeric suffix a second clear in the same clock second takes.
+// TestBouncer_Clear_ApprovedRunDirClearsAndReseeds pins the clear's log line.
+// It also pins the numeric suffix a second clear in the same clock second takes.
 // A Bouncer value constructed fresh over a run directory a previous process already settled clears
 // on its very first Call: the trigger reads only what a previous settle wrote to disk.
-// The clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1,
-// costing a fresh judge spawn plus a fresh round,
-// so an operator whose run suddenly cost a second generation needs the log line to read.
+// The clear is not cheap: it discards a settled CONVERGED generation.
+// It re-seeds from round 1, which costs a fresh judge spawn and a fresh round.
+// The log line tells an operator why a run suddenly cost a second generation.
 //
 //testtiming:keep pins that the whole approved generation moves to one archived sibling, the recreated run dir holds only the seed's focus file, the log line and the collision suffix
 func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
@@ -255,17 +260,15 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 }
 
 // TestBouncer_Clear_ArchiveFailureDegradesToStuck proves a failed clear degrades to Stuck with an
-// empty pointer and a nil error, matching seedCall's own stale-focus-archive degrade beside it.
+// empty pointer and a nil error.
 //
-// It exercises this via a rename failure -- the parent directory carries no write permission -- the
-// one reliable, portable trigger available here. A rename failure and a recreate failure both
-// surface through archiveRunDir's own wrapped error and are handled identically by this call site,
-// so this one trigger proves the wiring for both: under POSIX permission semantics, recreate's
-// write requirement on runDir's parent is a strict subset of rename's (rename both removes runDir's
-// old entry and adds the archived sibling's entry there; recreate only adds runDir's own entry back),
-// so any parent permission that lets the rename proceed necessarily lets the recreate proceed too --
-// the two failure causes are mechanically inseparable at this call site. archiveRunDir's own
-// rename-failure contract is unit-tested directly in archive_test.go.
+// The trigger is a rename failure: the parent directory carries no write permission.
+// A rename failure and a recreate failure both surface through archiveRunDir's wrapped error,
+// and this call site handles them identically, so this one trigger covers both.
+// Under POSIX permission semantics, recreate's write requirement on the parent is a subset of rename's:
+// rename removes runDir's old entry and adds the archived sibling, while recreate only adds runDir back.
+// Any parent permission that lets the rename proceed therefore lets the recreate proceed too.
+// archiveRunDir's rename-failure contract is unit-tested directly in archive_test.go.
 func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	tiergate.Require(t, 0)
 	logBuf := logcapture.Capture(t)
@@ -291,9 +294,10 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_AfterCommitFailureSubsequentCallClears is the accepted-regression case:
-// a Commit failure surfaces from settle unchanged (the run directory is left CONVERGED, since settle never archives on that path),
-// and the next Call over that same still-CONVERGED directory clears and re-seeds instead of retrying the commit -- both halves asserted in one test so the sequence is the subject.
+// TestBouncer_Clear_AfterCommitFailureSubsequentCallClears pins a known behavior after a Commit failure.
+// settle surfaces the Commit failure unchanged.
+// It leaves the run directory CONVERGED, since settle never archives on that path.
+// The next Call over that still-CONVERGED directory clears and re-seeds instead of retrying the commit.
 //
 //testtiming:keep pins the commit-failure then re-entry sequence: the failed commit leaves the directory CONVERGED and the next Call clears it instead of retrying the commit
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
@@ -349,7 +353,9 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_EndToEndSequence runs a full within-package sequence -- seed, judge CONTINUE, judge CONVERGED with Done, re-enter -- and asserts the re-entering Call is itself a seed call that writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
+// TestBouncer_Clear_EndToEndSequence runs one Bouncer through a seed, two judge rounds, and a re-entry.
+// It asserts the re-entering Call is itself a seed call.
+// It writes round-1-focus.md into a fresh run directory and keeps the prior generation beside it.
 //
 //testtiming:keep pins the whole seed, judge, approve and re-entry sequence on one Bouncer value across calls, which no single-call test chains
 func TestBouncer_Clear_EndToEndSequence(t *testing.T) {

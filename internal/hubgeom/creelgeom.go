@@ -12,8 +12,8 @@ import (
 )
 
 // CreelGeometry builds the creelengine.Geometry of the hub at hubPath, with the socket under tempRoot.
-// It takes the hub path rather than a location, since the daemon runs from the hub directory and that is no worktree.
-// It takes the temp root path rather than opening the root, so its caller owns the lymtemp root.
+// It takes the hub path, since the daemon runs from the hub directory, which is no worktree.
+// It takes the temp root path without opening it, so its caller owns the lymtemp root.
 // A hub with no recorded shortname is an error naming the shortname record and the hub.
 func CreelGeometry(hubPath, tempRoot string) (creelengine.Geometry, error) {
 	boltDir := fabricengine.BoltDir(hubPath)

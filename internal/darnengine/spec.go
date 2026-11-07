@@ -24,7 +24,8 @@ import (
 // darnStencilName is the registered name of the darn writer's stencil.
 const darnStencilName = "darn-template-write"
 
-// makeChangeStencil and makeChangeGatedStencil are the fragments that fill the writer stencil's Step 4 list, the first for a writer that runs the gate itself and the second for one whose verify gate has a cold fixer.
+// makeChangeStencil and makeChangeGatedStencil are the fragments that fill the writer stencil's Step 4 list.
+// The first serves a writer that runs the gate itself; the second serves one whose verify gate has a cold fixer.
 const (
 	makeChangeStencil      = "darn-fragment-make-change"
 	makeChangeGatedStencil = "darn-fragment-make-change-gated"
@@ -57,7 +58,7 @@ type DarnInputs struct {
 	DecisionRecordPath string
 	// StopMarkerPath is the absolute path the writer creates a marker at when it stops instead of making the change.
 	StopMarkerPath string
-	// ConditionStopMarkerPath is the absolute path the writer creates a second marker at when it stops on a condition the task's body names.
+	// ConditionStopMarkerPath is the absolute path of the marker the writer creates when a task-named condition stops it.
 	ConditionStopMarkerPath string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
@@ -65,16 +66,20 @@ type DarnInputs struct {
 	LanguageSkills []string
 	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
 	SubagentModel string
-	// GateFixed reports that a cold fixer clears the writer's verify gate, so the prompt has the writer and its subagents run no gate.
+	// GateFixed reports that a cold fixer clears the writer's verify gate, so the writer and its subagents run no gate.
 	GateFixed bool
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
 // An empty required field of in is refused by name, and cfg.Writer is resolved against reg.
-// The lead is non-interactive, carries the change description as its one output file, and the table runs for cfg.WriterTimeoutMin minutes.
-// The table's values are the stencil's markers, and the seat engine renders the parent and edit directives from its geometry.
+// The lead is non-interactive, carries the change description as its one output file,
+// and the table runs for cfg.WriterTimeoutMin minutes.
+// The table's values are the stencil's markers,
+// and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
-// With in.GateFixed the prompt's Step 4 has the writer and its subagents run no gate and act only on what the verify gate's fixer leaves; without it the step has them run the gate after each commit.
+// With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate;
+// they act only on what the verify gate's fixer leaves.
+// Otherwise the step has them run the gate after each commit.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ field, value string }{
@@ -143,7 +148,9 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 	}, nil
 }
 
-// makeChangeList returns the writer prompt's Step 4 list, read at call time from stencilsDir and filled with subagentModel: the gated fragment when gateFixed, otherwise the ungated one.
+// makeChangeList returns the writer prompt's Step 4 list.
+// It reads the list at call time from stencilsDir and fills subagentModel into it.
+// It uses the gated fragment when gateFixed is set, and the ungated one otherwise.
 func makeChangeList(stencilsDir string, gateFixed bool, subagentModel string) (string, error) {
 	name := makeChangeStencil
 	if gateFixed {

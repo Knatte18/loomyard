@@ -1,4 +1,4 @@
-// integrateweft_integration_test.go covers the weft integration that carries local commits onto a re-anchored upstream, over a plain records repository with a bare origin.
+// integrateweft_integration_test.go covers the weft integration of local commits onto a re-anchored upstream.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -19,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// integrateFixture is a records repository named like a pair's weft, with a bare origin and a second clone standing for the other machine.
+// integrateFixture is a records repository for a pair's weft, with a bare origin.
+// A second clone stands in for the other machine.
 type integrateFixture struct {
 	t     *testing.T
 	weft  string
@@ -45,7 +46,8 @@ func newIntegrateFixture(t *testing.T, base map[string]string) *integrateFixture
 	return &integrateFixture{t: t, weft: weft, other: other}
 }
 
-// upstreamReanchors moves the directory from to to on the other machine, sets the marker to the new anchor, pushes, and returns the fetched upstream tip.
+// upstreamReanchors moves the directory from `from` to `to` on the other machine, sets the marker to `to`, and pushes.
+// It returns the fetched upstream tip.
 func (f *integrateFixture) upstreamReanchors(from, to string) string {
 	f.t.Helper()
 
@@ -63,7 +65,8 @@ func (f *integrateFixture) upstreamReanchors(from, to string) string {
 	return gitkit.RevParse(f.t, f.weft, "origin/main")
 }
 
-// upstreamCommits commits rel with content on the other machine, pushes, fetches into the weft and returns the fetched upstream tip.
+// upstreamCommits commits rel with content on the other machine and pushes it.
+// It fetches the change into the weft and returns the upstream tip.
 func (f *integrateFixture) upstreamCommits(rel, content string) string {
 	f.t.Helper()
 

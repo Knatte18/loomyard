@@ -1,4 +1,5 @@
-// pane.go is the pane check every state-changing verb runs first: which strand's pane the process sits in, and whether that strand may run the verb.
+// pane.go is the pane check every state-changing verb runs first.
+// It decides which strand's pane the process sits in and whether that strand may run the verb.
 
 package slackcli
 
@@ -9,7 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 )
 
-// ancestryPlatform is the GOOS on which a process is placed in a pane by its process ancestry; elsewhere creel places it by environment.
+// ancestryPlatform is the GOOS on which a process is placed in a pane by its process ancestry;
+// elsewhere creel places it by environment.
 const ancestryPlatform = "linux"
 
 // paneCaller is what the pane check knows of the process that runs a verb.
@@ -28,8 +30,9 @@ type paneCaller struct {
 }
 
 // paneRefusal refuses a caller that runs in a live strand's pane, unless allowOrch holds and that strand is an orch.
-// It also refuses a caller in no known pane while a live strand's pane process, or the hub's strand listing, is unknown, since it then cannot be told from a strand's process.
-// wayForward is the closing clause of the first refusal, and the second names its own.
+// It also refuses a caller in no known pane while a live strand's pane process or the hub's strand listing is unknown.
+// Such a caller cannot be told apart from a strand's process.
+// wayForward is the closing clause of the first refusal's message; the second refusal words its own.
 // A process outside every pane while every live pane process is known passes.
 func paneRefusal(caller paneCaller, allowOrch bool, wayForward string) error {
 	strand, unreadable := callerPane(caller)
@@ -44,9 +47,11 @@ func paneRefusal(caller paneCaller, allowOrch bool, wayForward string) error {
 	return nil
 }
 
-// callerPane returns the strand whose pane the caller sits in, empty when it sits in none, and what keeps a caller in no known pane from being told from a strand's.
+// callerPane returns the strand whose pane the caller sits in, empty when it sits in none.
+// It also returns what keeps a caller in no known pane from being told apart from a strand's process.
 // On Linux the strand comes from the process ancestry, creel's own walk.
-// Elsewhere it is the strand $LYM_STRAND_NAME names among the hub's, as creel resolves a sender there, and nothing is unreadable.
+// Elsewhere it is the strand $LYM_STRAND_NAME names among the hub's, as creel resolves a sender there.
+// The unreadable result is always empty there.
 func callerPane(caller paneCaller) (strand, unreadable string) {
 	if caller.GOOS == ancestryPlatform {
 		pane, unreadable := creelengine.PaneOf(caller.PID, caller.Strands, caller.StrandsErr, caller.ParentPID)

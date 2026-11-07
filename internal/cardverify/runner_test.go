@@ -30,8 +30,8 @@ func newPool(t *testing.T, limits func() (gateslot.Limits, error)) *gateslot.Poo
 	return &gateslot.Pool{Dir: filepath.Join(t.TempDir(), "gate"), Limits: limits, Poll: 10 * time.Millisecond}
 }
 
-// TestRunner does not call t.Parallel: two subtests set the process environment through t.Setenv, which forbids it in the test and its ancestors.
-// Those subtests run first, in order, and the parallel ones resume after.
+// TestRunner does not call t.Parallel, because t.Setenv forbids it in the test and its ancestors.
+// The subtests that call t.Setenv run first, in order, and the parallel ones resume after.
 func TestRunner(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("a stale prebuilt-lym variable never reaches a line", func(t *testing.T) {

@@ -1,8 +1,6 @@
-// state.go implements generic locked typed JSON I/O for persistent state.
-//
-// This package provides WriteJSON and ReadJSON to atomically read and write JSON-serialized values
-// to disk with advisory file locking, ensuring concurrent readers and writers are properly
-// synchronized.
+// state.go implements locked, atomic reads and writes of persistent state, as typed JSON or as raw bytes.
+// Writes take an exclusive advisory file lock, and reads take a shared one.
+// So concurrent readers and writers stay synchronized.
 
 package state
 
@@ -20,13 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// ErrRead sentinels a read failure other than not-exist.
+// ErrRead is the sentinel a read failure other than not-exist wraps, so errors.Is can detect it.
 var ErrRead = errors.New("state: read failed")
 
-// ErrDecode sentinels a decode failure (malformed JSON).
+// ErrDecode is the sentinel a malformed file wraps, so errors.Is can tell it apart from a read failure.
 var ErrDecode = errors.New("state: decode failed")
 
-// WriteJSON writes a value as indented JSON to path atomically, keeping every key of the file it replaces that the value's type does not declare.
+// WriteJSON writes a value as indented JSON to path atomically under the write lock at lockPath.
+// It keeps every key of the file it replaces that the value's type does not declare.
 // It creates the directories of path and lockPath.
 func WriteJSON[T any](path, lockPath string, v T) error {
 	if err := mkdirParents(path, lockPath); err != nil {
@@ -42,8 +41,10 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 	return writeJSONUnlocked(path, v)
 }
 
-// WriteFile writes data verbatim to path atomically under the write lock at lockPath, creating the directories of path and lockPath.
-// It does no marshalling and keeps nothing of the file it replaces, so it fits a record that is not JSON, such as a patch.
+// WriteFile writes data verbatim to path atomically under the write lock at lockPath.
+// It creates the directories of path and lockPath.
+// It does no marshalling and keeps nothing of the file it replaces,
+// so it fits a record that is not JSON, such as a patch.
 func WriteFile(path, lockPath string, data []byte) error {
 	if err := mkdirParents(path, lockPath); err != nil {
 		return err
@@ -58,7 +59,8 @@ func WriteFile(path, lockPath string, data []byte) error {
 	return fsx.AtomicWriteBytes(path, data)
 }
 
-// mkdirParents creates the directories of a record at path and of its lock at lockPath, which may sit in another tree.
+// mkdirParents creates the directories of a record at path and of its lock at lockPath.
+// The lock may sit in another tree.
 func mkdirParents(path, lockPath string) error {
 	for _, dir := range []string{filepath.Dir(path), filepath.Dir(lockPath)} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -68,11 +70,10 @@ func mkdirParents(path, lockPath string) error {
 	return nil
 }
 
-// writeJSONUnlocked marshals v as indented JSON and writes it to path atomically, assuming the
-// caller already holds whatever lock guards path.
+// writeJSONUnlocked marshals v as indented JSON and writes it to path atomically.
+// The caller must already hold the lock that guards path.
 // It keeps every key of the file it replaces that T does not declare.
-// It exists so WriteJSON and UpdateJSON can share this body without either composing on top of the
-// other's own internal lock acquisition.
+// It takes no lock itself, because acquiring the same lock twice on one path hangs.
 func writeJSONUnlocked[T any](path string, v T) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -100,9 +101,11 @@ func writeJSONUnlocked[T any](path string, v T) error {
 
 // ReadJSON reads a JSON value from path under a shared lock at lockPath, accepting fields T does not declare.
 // It creates no directory: a file whose directory is absent reads as a missing file.
-// When the lock file's directory is absent it reads without the lock, since no writer can hold a lock there and every write replaces the file atomically.
+// When the lock file's directory is absent, it reads without the lock.
+// No writer can hold a lock there, and every write replaces the file atomically.
 // Returns (zero, false, nil) if the file does not exist and (value, true, nil) on success.
-// A read failure other than not-exist wraps ErrRead, and a malformed file wraps ErrDecode.
+// A read failure other than not-exist wraps ErrRead,
+// and a malformed file wraps ErrDecode.
 func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 
@@ -117,11 +120,10 @@ func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 	return readJSONUnlocked[T](path)
 }
 
-// readJSONUnlocked reads and decodes a JSON value from path, assuming the caller already holds
-// whatever lock guards path.
+// readJSONUnlocked reads and decodes a JSON value from path.
+// The caller must already hold the lock that guards path.
 // Returns (zero, false, nil) if the file does not exist.
-// It exists so ReadJSON and UpdateJSON can share this body without either composing on top of the
-// other's own internal lock acquisition.
+// It takes no lock itself, because acquiring the same lock twice on one path hangs.
 func readJSONUnlocked[T any](path string) (T, bool, error) {
 	var zero T
 
@@ -135,26 +137,22 @@ func readJSONUnlocked[T any](path string) (T, bool, error) {
 
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
-		// Wrapped in ErrDecode (alongside the underlying json error, both via %w) so a caller can tell a decode failure apart from a read or lock failure with errors.Is.
-		// loomshed.Seed relies on this to refuse — never overwrite — a present-but-undecodable status file rather than escalate it as bootstrap's own gate (crucible round fable5-high-r5, F3).
-		// The "unmarshal state" wording is kept for readers of the message.
+		// The error wraps ErrDecode and the json error via %w.
+		// errors.Is tells a decode failure from a read or lock failure.
+		// loomshed.Seed relies on this to refuse a present but undecodable status file.
 		return zero, false, fmt.Errorf("%w: unmarshal state: %w", ErrDecode, err)
 	}
 
 	return v, true, nil
 }
 
-// UpdateJSON performs a locked read-modify-write over the JSON value at path: it holds one
-// exclusive lock across the read, the caller-supplied mutate, and the write, so a concurrent
-// writer's value can never be clobbered by a payload this call composed from a base that writer
-// already superseded.
-// A missing file is not an error — mutate receives the zero T with found=false, matching
-// ReadJSON's own miss contract.
-// A decode failure on an existing file aborts before mutate ever runs, and no write happens;
-// UpdateJSON never hands mutate a zero value to paper over a corrupt file, since a corrupt file's
-// zero-value "fix" would silently discard whatever was actually on disk.
-// UpdateJSON must never be composed from ReadJSON and WriteJSON — both acquire lockPath
-// internally, so nesting one inside a held lock on the same path hangs rather than failing.
+// UpdateJSON performs a locked read-modify-write over the JSON value at path.
+// It holds one exclusive lock across the read, the caller-supplied mutate, and the write.
+// This keeps a concurrent writer's value from being overwritten by a payload built on a superseded base.
+// A missing file is not an error: mutate receives the zero T with found=false.
+// A decode failure on an existing file aborts before mutate runs, and no write happens.
+// The function never hands mutate a zero value in its place, since that would silently discard whatever is on disk.
+// mutate must not call any function that takes lockPath, since nesting hangs rather than fails.
 // It creates the directories of path and lockPath.
 func UpdateJSON[T any](path, lockPath string, mutate func(cur T, found bool) (T, error)) error {
 	if err := mkdirParents(path, lockPath); err != nil {

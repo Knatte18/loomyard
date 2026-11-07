@@ -1,5 +1,6 @@
-// anchormarker.go writes, commits, reads from git and retires the `.lym-anchor` markers: a worktree's own marker at the root of its weft branch, and the legacy hub-wide marker on the board.
-// It is the one marker writer outside the anchor move: clone's fresh bind, reconcile's migration and an adopted branch all record their marker through it.
+// anchormarker.go writes, commits, reads from git and retires the `.lym-anchor` markers.
+// A worktree's own marker sits at the root of its weft branch; the legacy hub-wide marker sits on the board.
+// It is the one marker writer outside the anchor move, and the verbs that record a marker all write through it.
 // It also refuses a marker left empty and derives the anchor of a branch that records none.
 
 package fabricengine
@@ -19,16 +20,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// boltAnchorRemoved is the verdict retireBoltAnchorMarker reports once the hub-wide marker is gone.
+// boltAnchorRemoved is the verdict reported once the hub-wide marker is gone.
 const boltAnchorRemoved = "removed"
 
-// boltAnchorKeptPrefix opens the verdict retireBoltAnchorMarker reports while the hub-wide marker stays, followed by the reason.
+// boltAnchorKeptPrefix opens the verdict reported while the hub-wide marker stays, followed by the reason.
 const boltAnchorKeptPrefix = "kept: "
 
-// refuseEmptyOwnMarker returns nil when the marker file at the root of the weft worktree at weftPath is absent or holds a value.
+// refuseEmptyOwnMarker returns nil unless the marker file at the weft worktree root at weftPath is blank.
 // It returns an error when the file is present and blank, naming the file and the way forward.
 // The way forward is restoring the file from git when the committed marker holds the anchor.
-// Otherwise it is writing the anchor (or "." for the repo root) into the file and committing it there; the verb is then re-run.
+// Otherwise it is writing the anchor (or "." for the repo root) into the file and committing it there;
+// the verb is then re-run.
 // It touches nothing.
 func refuseEmptyOwnMarker(weftPath string) error {
 	markerPath := filepath.Join(weftPath, lymcwd.AnchorFileName)
@@ -49,7 +51,8 @@ func refuseEmptyOwnMarker(weftPath string) error {
 // commitAnchorMarker writes anchor plus a newline into the marker file at the root of the weft worktree at weftPath.
 // It then commits that one path under subject on the branch checked out there.
 // It holds the weft write lock for the write and the commit, pushes nothing, and returns the commit's SHA.
-// The write goes through an os.Root at weftPath, so a marker path replaced by a link cannot redirect it out of the worktree.
+// The write goes through an os.Root at weftPath,
+// so a marker path replaced by a link cannot redirect it out of the worktree.
 // When the branch already holds the same bytes it commits nothing and returns an empty SHA.
 func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (string, error) {
 	lockDir, err := ensureWeftLockDirAt(weftPath)
@@ -85,7 +88,8 @@ func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (strin
 
 // committedMarker reads the marker file at the root of rev's tree in the repository at repoDir, through git objects only.
 // An absent file reports found false.
-// A file that is blank after trimming reports found true with an empty marker, so each caller decides what a blank record means.
+// A file that is blank after trimming reports found true with an empty marker,
+// so each caller decides what a blank record means.
 func committedMarker(repoDir, rev string) (marker string, found bool, err error) {
 	data, err := showFile(repoDir, rev, lymcwd.AnchorFileName)
 	if err != nil {
@@ -99,7 +103,8 @@ func committedMarker(repoDir, rev string) (marker string, found bool, err error)
 
 // treeAnchor answers the anchor of the branch at rev in the repository at repoDir.
 // A committed marker that is not blank is the answer.
-// Without one, the answer is the shallowest directory of rev's tree that holds one of names, "." when the root holds one, a tie at one depth going to the byte-wise smaller path.
+// Without one, the answer is the shallowest directory of rev's tree that holds one of names.
+// It is "." when the root holds one, and a tie at one depth goes to the byte-wise smaller path.
 // A tree holding none of names answers fallback.
 // A committed marker that is no usable anchor is an error naming it.
 func treeAnchor(repoDir, rev string, names []string, fallback string) (string, error) {
@@ -142,9 +147,11 @@ func treeAnchor(repoDir, rev string, names []string, fallback string) (string, e
 	return filepath.FromSlash(holder), nil
 }
 
-// recordAdoptedWeftAnchor gives the adopted weft branch checked out at weftPath the marker it lacks, and returns the Location of the pair slug at its own anchor.
-// A branch whose committed marker is absent or blank gets the anchor derived from its tip's tree committed on it, with names as the wired names;
-// a branch that carries a marker keeps it.
+// recordAdoptedWeftAnchor gives the adopted weft branch checked out at weftPath the marker it lacks.
+// It returns the Location of the pair slug at its own anchor.
+// A branch whose committed marker is absent or blank gets an anchor derived from the tree at its tip.
+// The derivation takes names as the wired names.
+// A branch that carries a marker keeps it.
 func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, names []string) (*lymcwd.Location, error) {
 	marker, _, err := committedMarker(weftPath, "HEAD")
 	if err != nil {
@@ -166,8 +173,10 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 	return lymcwd.NamedWorktree(hubPath, slug)
 }
 
-// retireBoltAnchorMarker removes the hub-wide marker from the board, and a leftover pre-rename marker beside it, once every worktree's own marker stands in for it.
-// The removal is one board commit pushed through Bolt, written only after Bolt is brought up to date, so it never writes over a stale board.
+// retireBoltAnchorMarker removes the hub-wide marker from the board once every worktree's own marker stands in for it.
+// The stale marker beside it, `lymcwd.StaleAnchorFileName`, goes too.
+// The removal is one board commit pushed through Bolt, written only after Bolt is brought up to date,
+// so it never writes over a stale board.
 // It reports "" for a hub with no board marker, "removed" once the marker is gone, and "kept: <reason>" while it stays:
 // a weft the census finds without a committed marker, or a board write that was skipped.
 // A board commit that landed but could not be pushed is reported "removed" with the push failure after it.
@@ -204,7 +213,8 @@ func retireBoltAnchorMarker(rec *Mutations, l *lymcwd.Location) (string, error) 
 	return boltAnchorRemoved, nil
 }
 
-// removeBoltAnchorMarkers deletes both marker files from the board directory through an os.Root, skipping an absent one, and returns the board-relative names it deleted.
+// removeBoltAnchorMarkers deletes both marker files from the board directory through an os.Root, skipping an absent one.
+// It returns the board-relative names it deleted.
 func removeBoltAnchorMarkers(boardDir string) ([]string, error) {
 	root, err := os.OpenRoot(boardDir)
 	if err != nil {
@@ -225,7 +235,8 @@ func removeBoltAnchorMarkers(boardDir string) ([]string, error) {
 	return removed, nil
 }
 
-// boltAnchorKeeper runs the census that decides whether the board's marker may go, and answers the first reason it may not, or "" when it may.
+// boltAnchorKeeper runs the census that decides whether the board's marker may go.
+// It answers the first reason it may not, or "" when it may.
 // The prime's weft and every local pair's weft must carry a non-blank committed marker at HEAD.
 // So must every weft branch, local or fetched, whose warp sibling is on origin, read from its remote-tracking ref.
 // A branch whose ref is not among the fetched ones keeps the marker.

@@ -1,4 +1,5 @@
-// childrecipe_test.go pins which recipes a task worktree's bootstrap verb can run as the child's own run, and the refusal that names them.
+// childrecipe_test.go pins which recipes a task worktree's bootstrap verb can run as the child's own run.
+// It also pins the refusal that names those recipes.
 
 package battencli
 

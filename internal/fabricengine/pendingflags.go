@@ -1,5 +1,6 @@
 // pendingflags.go holds the pending-flag protocol of fabric's records push lock, fabric.push.lock.
-// A pusher marks the sides it owes before it tries the lock, the holder pushes under the lock and re-reads the flags after releasing,
+// A pusher marks the sides it owes before it tries the lock.
+// The holder pushes under the lock and re-reads the flags after releasing,
 // so a pusher that finds the lock held may leave its commits to the holder and exit.
 
 package fabricengine
@@ -22,15 +23,17 @@ import (
 )
 
 const (
-	// pushSideCode and pushSideRecords name the two sides a push request can owe, the keys of coalesceFlagged's owed map.
+	// pushSideCode and pushSideRecords name the two sides a push request can owe; they are the keys of the owed map.
 	pushSideCode    = "code"
 	pushSideRecords = "records"
 )
 
-// errPendingFlagCorrupt is wrapped by the error takePending returns for a flag whose content does not decode.
+// errPendingFlagCorrupt marks a pending flag whose content does not decode.
+// Errors that report such a flag wrap it.
 var errPendingFlagCorrupt = errors.New("fabricengine: pending flag does not decode")
 
-// takenFlagCounter makes each takePending's private file name unique within the process.
+// takenFlagCounter numbers the private names a taken pending flag is renamed to.
+// Each name is unique within the process.
 var takenFlagCounter atomic.Uint64
 
 // pendingFlagPath returns the path of side's pending flag in lockDir, the lock directory that holds fabric.push.lock.
@@ -63,7 +66,8 @@ func pushDeferral(lockDir string, owed map[string]PushSpawn, pushed map[string]b
 	}
 }
 
-// markPending writes one flag per owed side into lockDir, each holding that side's path, the slugs of the push it serves and its parent-locked mark, and nothing else.
+// markPending writes one flag per owed side into lockDir.
+// Each flag holds that side's path, the slugs of the push it serves, and its parent-locked mark.
 // A flag is written atomically, so a reader sees no flag or a whole one.
 func markPending(lockDir string, owed map[string]PushSpawn) error {
 	for side, req := range owed {
@@ -90,7 +94,8 @@ func markPending(lockDir string, owed map[string]PushSpawn) error {
 // takePending takes side's pending flag out of lockDir and reports whether one was there.
 // It renames the flag to a name private to this call before reading and removing it,
 // so no process holds a file at a flag path open and a writer's rename onto that path never meets a sharing violation.
-// A flag whose content does not decode is still removed and reported found, with an error wrapping errPendingFlagCorrupt and the JSON error.
+// A flag whose content does not decode is still removed and reported found.
+// The error wraps errPendingFlagCorrupt and the JSON error.
 func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
 	flag := pendingFlagPath(lockDir, side)
 	taken := fmt.Sprintf("%s.taken.%d.%d", flag, os.Getpid(), takenFlagCounter.Add(1))
@@ -115,9 +120,12 @@ func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
 }
 
 // coalesceFlagged is the holder loop of fabric.push.lock under lockDir.
-// It marks the owed sides pending, acquires the lock, writes its holder record and runs step with the owed flags taken before each run, looping while step reports progress.
-// After the last run it releases the lock and re-reads the flags:
-// a flag of an owed side set again sends it back to acquiring, and a flag of a side it does not push is respawned as a detached push of that side.
+// It marks the owed sides pending and acquires the lock.
+// It writes its holder record.
+// It runs step with the owed flags taken before each run, looping while step reports progress.
+// After the last run it releases the lock and re-reads the flags.
+// A flag of an owed side set again sends the loop back to acquiring,
+// and a flag of a side it does not push is respawned as a detached push of that side.
 // acquired is false only when the first acquire missed, which leaves the commits and the flags to the current holder;
 // a missed re-acquire after a step ran reports true, since the caller's own push landed.
 // A step error releases the lock and is returned.
@@ -148,7 +156,8 @@ func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(loc
 	}
 }
 
-// runHeld runs step under the held push lock, taking the owed flags before each run, and calls release, the lock's release, before returning.
+// runHeld runs step under the held push lock, taking the owed flags before each run.
+// It calls release, the lock's release, before returning.
 func runHeld(release func() error, lockDir string, owed map[string]PushSpawn, step func() (bool, error)) (err error) {
 	defer func() {
 		if releaseErr := release(); err == nil {
@@ -182,8 +191,10 @@ func ownedFlagSet(lockDir string, owed map[string]PushSpawn) bool {
 	return false
 }
 
-// respawnForeignFlags takes the flag of each side owed is missing and spawns that side's push with the flag's validated side path and slugs.
-// A flag that does not decode, names a path that is not this lock directory's own worktree or carries a slug that is not a plain name is dropped with a Warn.
+// respawnForeignFlags takes the flag of each side the holder does not owe and spawns that side's push from it.
+// A flag that does not decode is dropped with a Warn.
+// A flag whose path is not this lock directory's own worktree is dropped with a Warn.
+// Likewise, a flag whose slug is not a plain name is dropped with a Warn.
 // The spawn starts in the board directory, never in the holder's own directory, which may be a pair worktree.
 func respawnForeignFlags(lockDir string, owed map[string]PushSpawn) {
 	for _, side := range []string{pushSideCode, pushSideRecords} {
@@ -213,7 +224,8 @@ func respawnForeignFlags(lockDir string, owed map[string]PushSpawn) {
 }
 
 // foreignFlagRequest builds the detached push request a flag of side asks for, or names why the flag cannot be trusted.
-// Only side's own path is kept, and it must be the worktree lockDir belongs to (records) or its paired code worktree (code).
+// Only side's own path is kept.
+// It must be the worktree lockDir belongs to for records, or the paired code worktree for code.
 func foreignFlagRequest(lockDir, side string, flag PushSpawn) (req PushSpawn, reason string) {
 	for name, slug := range map[string]string{"PauseSlug": flag.PauseSlug, "TeardownSlug": flag.TeardownSlug} {
 		if slug == ".." || strings.ContainsAny(slug, `/\`) {

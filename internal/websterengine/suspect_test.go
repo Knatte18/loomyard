@@ -1,4 +1,4 @@
-// suspect_test.go exercises the suspect-path check and AcceptPendingAudit's evidence rule over real scratch git repositories.
+// suspect_test.go covers the suspect-path check and AcceptPendingAudit's evidence rule in real scratch git repositories.
 
 package websterengine
 
@@ -135,7 +135,8 @@ func TestCheckSuspectPaths(t *testing.T) {
 		paneCwd := filepath.Join(root, "backend")
 		git := fx.geom.git()
 
-		// The second path leaves the pane cwd but stays in the worktree, so only a within-tree check on the worktree root accepts it.
+		// The second path leaves the pane cwd but stays in the worktree.
+		// Only a within-tree check on the worktree root accepts it.
 		for p, want := range map[string]string{"f.txt": "backend/f.txt", "../tracked.txt": "tracked.txt"} {
 			rel, ok, err := trackedRel(git, paneCwd, root, p)
 			if err != nil || !ok || rel != want {
@@ -172,8 +173,9 @@ func reversedOrderFixture(t *testing.T) (fx *suspectFixture, c0, c1, c2 string) 
 	return fx, c0, c1, c2
 }
 
-// TestCheckRecoveredSuspects_EmptyStartHoldsNothing proves a record with no StartSHA treats every copy of the flagged blob in the head tree as new,
-// rather than reading the index, which holds head's blob once the strand committed.
+// TestCheckRecoveredSuspects_EmptyStartHoldsNothing proves that a record with no StartSHA holds nothing:
+// every copy of the flagged blob in the head tree counts as new.
+// The check does not read the index, which holds head's blob once the strand committed.
 func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
 	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
@@ -300,7 +302,8 @@ func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 	}
 }
 
-// committedPastHead commits a change to tracked.txt on top of the fixture's head, then restores the worktree file to the head's content.
+// committedPastHead commits a change to tracked.txt on top of the fixture's head.
+// It then restores the worktree file to the head's content.
 func committedPastHead(t *testing.T, fx *suspectFixture) {
 	t.Helper()
 	root := fx.geom.WorktreeRoot

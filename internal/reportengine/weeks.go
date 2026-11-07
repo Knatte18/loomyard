@@ -1,5 +1,6 @@
-// weeks.go aggregates a report's runs, partial runs and landings per ISO week, and counts the runs lacking each source.
-// A week sums a figure over the runs holding its source and states how many lack it; a figure no run holds, and a mean or share nothing carries, is nil and never 0.
+// weeks.go aggregates a report's runs, partial runs and landings per ISO week.
+// A week sums a figure over the runs holding its source and states how many lack it;
+// a figure no run holds, and a mean or share nothing carries, is nil and never 0.
 
 package reportengine
 
@@ -42,7 +43,8 @@ type SegmentWeek struct {
 }
 
 // Week is the figures of one ISO week.
-// Recipes counts the week's runs per recipe, Lacking its runs lacking each source, and WakeRuns how many runs the wake mean covers.
+// Recipes counts the week's runs per recipe; Lacking counts the runs lacking each source.
+// WakeRuns counts the runs the wake mean covers.
 type Week struct {
 	Week    string         `json:"week"`
 	Runs    int            `json:"runs"`
@@ -97,7 +99,8 @@ func absentCounts(runs []RunRow) map[string]int {
 	return absent
 }
 
-// computeWeeks buckets runs and partial runs by their week and landings by their commit's week, and returns one Week per week holding any, ascending.
+// computeWeeks buckets runs and partial runs by their week and landings by their commit's week.
+// It returns one Week per week holding any, ascending.
 func computeWeeks(report Report) []Week {
 	runs := map[string][]RunRow{}
 	labels := map[string]bool{}
@@ -239,7 +242,8 @@ func sortedClasses(counts map[string]*ClassCount) []ClassCount {
 	return list
 }
 
-// fillLandings counts the week's landings per kind and hand landings, and rates the fix and unmapped landings' fresh-code verdicts.
+// fillLandings counts the week's landings per kind and the hand landings.
+// It rates the fresh-code verdicts of the fix and unmapped landings.
 func (w *Week) fillLandings(landings []Landing) {
 	w.Landings = map[string]int{LandingKindFix: 0, LandingKindFeature: 0, LandingKindOther: 0, LandingKindUnmapped: 0}
 	for _, landing := range landings {
@@ -300,7 +304,8 @@ func (w *Week) fillRounds(runs []RunRow) {
 	}
 }
 
-// fillRepairs sums the arbiter outcomes, LLM steps, drive reports, decisions and alignment outcomes over the runs holding each.
+// fillRepairs sums the arbiter outcomes, LLM steps, drive reports, decisions and alignment outcomes.
+// Each is summed over the runs holding it.
 func (w *Week) fillRepairs(runs []RunRow) {
 	arbiter := map[string]*ArbiterOutcome{}
 	type alignmentKey struct{ point, verdict string }

@@ -1,12 +1,12 @@
-// hubcontainment_integration_test.go gives the Hub Containment Invariant teeth: no hub-level
-// container is ever junctioned into a worktree, so <worktree>/<anchorRel>/<Bolt directory> must not exist
-// after any verb. One case per verb that used to wire the deleted Bolt checkout junction — clone, add, and
-// reconcile — asserts absence, never removal: nothing in this task sweeps a pre-existing junction, so
-// a case that wires one by hand and expects it gone would be testing behaviour the plan deliberately
-// does not build.
+// hubcontainment_integration_test.go checks the Hub Containment Invariant.
+// No hub-level container is junctioned into a worktree.
+// So <worktree>/<anchorRel>/<Bolt directory> must not exist after any verb.
+// There is one case per verb (clone, add, and reconcile), and each asserts absence, never removal.
+// Nothing sweeps a pre-existing junction,
+// so a case that wires one by hand and expects it gone would test behaviour the code lacks.
 //
-// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go);
-// shares the single TestMain in testmain_test.go — no new TestMain is added here.
+// Package fabricengine_test reuses makeBareRemote from clone_adopt_test.go.
+// It shares the TestMain in testmain_test.go, and this file adds none.
 package fabricengine_test
 
 import (
@@ -21,9 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHubContainment_CloneWiresNoBoardJunction drives fabricengine.CloneHub and asserts the resolved
-// prime worktree carries no Bolt checkout junction and no Bolt checkout line in the warp repo's
-// .git/info/exclude — the clone-time call this batch deleted used to wire both.
+// TestHubContainment_CloneWiresNoBoardJunction drives fabricengine.CloneHub.
+// The resolved prime worktree carries no Bolt checkout junction, and the warp repo's
+// .git/info/exclude carries no Bolt checkout line.
 func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -65,9 +65,9 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 	}
 }
 
-// TestHubContainment_AddWiresNoBoardJunction drives Topology.Add on a fixture and asserts the new
-// pair's anchored directory carries no Bolt checkout junction and no Bolt checkout line in the warp repo's
-// .git/info/exclude — the add-time call this batch deleted used to wire both.
+// TestHubContainment_AddWiresNoBoardJunction drives Topology.Add on a fixture.
+// It asserts that the new pair carries no Bolt checkout junction in its anchored directory.
+// It also asserts that the warp repo's .git/info/exclude has no Bolt checkout line.
 func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
@@ -95,10 +95,9 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 	}
 }
 
-// TestHubContainment_ReconcileWiresNoBoardJunction drives Topology.Reconcile and asserts every pair
-// it converges carries no Bolt checkout junction and no Bolt checkout line in its warp repo's
-// .git/info/exclude — reconcile is the verb that used to re-wire the link unconditionally on every
-// pass, regardless of junction health.
+// TestHubContainment_ReconcileWiresNoBoardJunction drives Topology.Reconcile.
+// It asserts that every pair it converges carries no Bolt checkout junction.
+// It also asserts that each pair's warp repo .git/info/exclude has no Bolt checkout line.
 func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.

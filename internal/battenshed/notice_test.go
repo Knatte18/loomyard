@@ -1,4 +1,6 @@
-// notice_test.go covers the notice step: the rendered line, each condition's one notice per episode, no notice for a running child, when a parked stop's notice may go, the awaiting relay rule, the arbiter hold, delivery and its retries, and a restart over the same scratch directory.
+// notice_test.go covers the notice step: the rendered line and each condition's one notice per episode;
+// no notice for a running child, when a parked stop's notice may go, the awaiting relay rule, the arbiter hold;
+// delivery and its retries, and a restart over the same scratch directory.
 // The tests that capture log output replace the process-global logger output, so they do not run in parallel.
 
 package battenshed
@@ -20,8 +22,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// noticeHarness drives passes of the Run-Shed row whose status, driver liveness, stop report and orch strand a test sets between them.
-// Every pass is a new producer over the harness's one scratch directory, so only the memory record carries state from one pass to the next.
+// noticeHarness drives passes of the Run-Shed row.
+// A test sets the status, driver liveness, stop report and orch strand between passes.
+// Every pass is a new producer over the harness's one scratch directory;
+// only the memory record carries state from one pass to the next.
 type noticeHarness struct {
 	t          *testing.T
 	scratch    string
@@ -53,7 +57,8 @@ type noticeHarness struct {
 	arbiterStop    ChildArbiterStop
 	arbiterStopErr error
 
-	// driverLock is what the fake ChildDriverLockHeld seam reports; tackler and tacklerFound are what the fake TacklerInFlight seam reports.
+	// driverLock is what the fake ChildDriverLockHeld seam reports;
+	// tackler and tacklerFound are what the fake TacklerInFlight seam reports.
 	driverLock   bool
 	tackler      ChildArbiter
 	tacklerFound bool
@@ -131,12 +136,13 @@ func parked(state shedengine.State) shedengine.Status {
 	return shedengine.Status{State: state, Error: "stuck", CurrentProducer: "Publish", History: make([]shedengine.HistoryEntry, 2)}
 }
 
-// writeReport makes the driver's park marker read as holding a stop report written at at.
+// writeReport makes the driver's park marker read as holding a stop report written at the time at.
 func (h *noticeHarness) writeReport(at time.Time) {
 	h.reportPath, h.reportAt, h.reportFound = "/wt/task/_lym/stop-report.md", at, true
 }
 
-// producer returns a producer whose every Call is one pass, run by a producer built anew over the harness's scratch directory.
+// producer returns a producer whose every Call is one pass;
+// each pass runs on a producer built anew over the harness's scratch directory.
 func (h *noticeHarness) producer() shedengine.ShedProducer {
 	return freshPerCall(h.newProducer)
 }
@@ -187,8 +193,10 @@ func (h *noticeHarness) newProducer() shedengine.ShedProducer {
 	return NewInnerRun("Run-Shed", "task", deps, h.poll, h.scratch, testGrace)
 }
 
-// drive runs passes of p, one poll interval apart, until one ends with a Stuck, which it requires to be a Stuck whatever the notice step did.
-// A change of state the child made before the first pass ends that pass at once, as the change back into the state the memory left; it counts as no check and the passes go on at the same time.
+// drive runs passes of p, one poll interval apart, until one ends with a Stuck.
+// It requires that Stuck whatever the notice step did.
+// A change of state the child made before the first pass ends that pass at once.
+// That change, back into the state the memory left, counts as no check, and the passes go on.
 func (h *noticeHarness) drive(p shedengine.ShedProducer) {
 	h.t.Helper()
 	for first := true; ; first = false {
@@ -234,7 +242,8 @@ func (h *noticeHarness) run(p shedengine.ShedProducer, checks int) {
 // call drives passes that end at the first check after the first pass.
 func (h *noticeHarness) call(p shedengine.ShedProducer) { h.t.Helper(); h.run(p, 1) }
 
-// leaveRunning drives passes over a running child that turns into status at the first check, so the run ends on the state change before the new state's notice has had a pass of its own.
+// leaveRunning drives passes over a running child that turns into status at the first check.
+// The run ends on the state change, before the new state's notice has had a pass of its own.
 func (h *noticeHarness) leaveRunning(p shedengine.ShedProducer, status shedengine.Status) {
 	h.t.Helper()
 	h.setStatus(shedengine.Status{State: shedengine.StateRunning})
@@ -253,7 +262,8 @@ func (h *noticeHarness) leaveRunning(p shedengine.ShedProducer, status shedengin
 	}
 }
 
-// secondCheck runs fn at the second check of the passes the test drives next, after the first check has had its chance to send, and ends them after four checks.
+// secondCheck runs fn at the second check of the passes the test drives next.
+// fn runs after the first check has had its chance to send, and the passes end after four checks.
 // It returns a function reporting how many notices had gone when fn ran.
 func (h *noticeHarness) secondCheck(fn func()) (sentBefore func() int) {
 	h.t.Helper()
@@ -405,7 +415,9 @@ func TestNotice_ReturnToRunningStartsNewEpisode(t *testing.T) {
 	}
 }
 
-// TestNotice_ARunningChildSendsNoNotice asserts the row sends nothing for a running child however long its driver stays dead, since a running child's notices are its dobby's.
+// TestNotice_ARunningChildSendsNoNotice asserts this:
+// the row sends nothing for a running child however long its driver stays dead.
+// A running child's notices are its dobby's.
 func TestNotice_ARunningChildSendsNoNotice(t *testing.T) {
 	tiergate.Require(t, 0)
 	h := newNoticeHarness(t)
@@ -472,7 +484,9 @@ func TestNotice_NilNotifyRunsNoStep(t *testing.T) {
 }
 
 // TestNotice_ParkedStopWaitsForTheStopReport covers when the state-changed notice of a parked stop goes:
-// once the driver's report exists, once the driver strand has ended or three minutes passed since the stop without one, never carrying a report older than the stop,
+// once the driver's report exists;
+// or once the driver strand has ended, or three minutes have passed since the stop without one;
+// never carrying a report older than the stop;
 // and always sent by the pass that begins in the new state, never by the pass that saw the change.
 func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -553,7 +567,8 @@ func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 	}
 }
 
-// TestNotice_SameStateRewriteMovesNeitherSinceNorTheKey asserts a rewrite of the status file in the same state, between two Calls, starts no new episode and sends nothing more.
+// TestNotice_SameStateRewriteMovesNeitherSinceNorTheKey asserts this:
+// a rewrite of the status file in the same state starts no new episode and sends nothing more between two Calls.
 func TestNotice_SameStateRewriteMovesNeitherSinceNorTheKey(t *testing.T) {
 	tiergate.Require(t, 0)
 	h := newNoticeHarness(t)
@@ -576,7 +591,9 @@ func TestNotice_SameStateRewriteMovesNeitherSinceNorTheKey(t *testing.T) {
 	}
 }
 
-// TestNotice_DoneChildSendsNoNotice asserts a done child's checks and its Done return call Notify zero times and write no episode key, also when an earlier blocked notice of the same run was sent.
+// TestNotice_DoneChildSendsNoNotice asserts this:
+// a done child's checks and its Done return call Notify zero times and write no episode key;
+// this holds also when an earlier blocked notice of the same run was sent.
 func TestNotice_DoneChildSendsNoNotice(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tt := range []struct {
@@ -630,7 +647,8 @@ func TestNotice_DoneChildSendsNoNotice(t *testing.T) {
 }
 
 // TestNotice_AwaitingLeavesTheRelayToTheDriver covers the awaiting child whose driver handed the parent a notice:
-// while this batten holds the watched marker its notice waits for the relay, and goes when the driver ends, after three minutes with no report, or ten minutes after the report with no decision.
+// while this batten holds the watched marker its notice waits for the relay, and goes when the driver ends;
+// or after three minutes with no report, or ten minutes after the report with no decision.
 func TestNotice_AwaitingLeavesTheRelayToTheDriver(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -681,8 +699,10 @@ func TestNotice_AwaitingLeavesTheRelayToTheDriver(t *testing.T) {
 	}
 }
 
-// TestNotice_LiveArbiterHoldsTheStateChange asserts the notice of a halted or awaiting child, which an ended driver would release at once, is held while a live arbiter or tackler marker is within its deadline plus the report wait.
-// It goes once that bound passes, and as today for a dead strand, a missing marker or an unreadable one.
+// TestNotice_LiveArbiterHoldsTheStateChange asserts this:
+// the notice of a halted or awaiting child is held, though an ended driver would release it at once;
+// the hold lasts while a live arbiter or tackler marker is within its deadline plus the report wait.
+// It goes once that bound passes, and at once for a dead strand, a missing marker or an unreadable one.
 // It is never sent when the arbiter's resume moves the child back to running.
 func TestNotice_LiveArbiterHoldsTheStateChange(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -758,7 +778,10 @@ func btoi(b bool) int {
 }
 
 // TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps covers the delivery seams:
-// a queued notice is recorded sent, a missing orch strand makes no Notify call and warns once, a failing or unqueued Notify is retried at most once per notice probe and three times, and a restarted batten sends what was not sent.
+// a queued notice is recorded sent;
+// a missing orch strand makes no Notify call and warns once;
+// a failing or unqueued Notify is retried at most once per notice probe and three times;
+// and a restarted batten sends what was not sent.
 func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testing.T) {
 	tiergate.Require(t, 0)
 	const probe = 30 * time.Second
@@ -844,7 +867,8 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		h.strand = false
 		h.run(h.producer(), 3)
 		h.strand = true
-		// The retry spacing outlives the producer: the unsent notice goes at the first pass a notice probe after the last try.
+		// The retry spacing outlives the producer:
+		// the unsent notice goes at the first pass a notice probe after the last try.
 		h.run(h.producer(), 3)
 		if len(h.notified) != 1 {
 			t.Errorf("notified = %v; want the unsent notice sent by a later pass", h.notified)

@@ -1,4 +1,4 @@
-// runsettings.go — the one migrate-then-validate step for a task's run settings and its run profile's, and their layering.
+// runsettings.go holds the one migrate-then-validate step for run settings and run profiles, and their layering.
 
 package configreg
 
@@ -34,15 +34,18 @@ func (e *RunSettingsError) Unwrap() error {
 	return e.Cause
 }
 
-// PrepareRunSettings migrates and validates a task's run settings, decoded from JSON as module name to an object of that module's keys.
+// PrepareRunSettings migrates and validates a task's run settings.
+// The settings are decoded from JSON as module name to an object of that module's keys.
 // It returns each named module's local-layer YAML document, and drops a module whose object is empty.
-// A key a declared move relocated (see KeyMoves) is first rewritten into its target module's object.
-// A module that is not registered is refused, and one a declared move retired is refused with the way forward of removing its object from the run settings.
-// A top-level key the module's Spec maps to a RetiredWayForward or a HubOnlyWayForward text is refused with that text, before the module's Migrate runs.
+// A key that a declared move relocated is first rewritten into its target module's object.
+// A module that is not registered is refused.
+// A module that a declared move retired is refused with the way forward of removing its object from the run settings.
+// A top-level key the module's Spec maps to a RetiredWayForward or HubOnlyWayForward text is refused with that text.
+// The check runs before the module's Migrate.
 // Every refusal is a [*RunSettingsError]; value semantics are left to the module's load.
 // Each line a module's Migrate returns is logged at Warn, naming the module, the migration and the way forward.
 // Nothing rewrites a profile or a run_settings document, so the Warn repeats at every read until the operator edits it.
-// A nil or empty settings returns an empty map.
+// Nil or empty settings return an empty map.
 func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 	settings = moveRunSettings(settings)
 	names := make([]string, 0, len(settings))
@@ -95,8 +98,9 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 	return documents, nil
 }
 
-// refuseRetiredKeys refuses the first top-level key, in name order, that the module's Spec maps to a RetiredWayForward text.
-// The refusal is marked [configengine.ErrInvalid], names the key and the module, and ends with that text as its way forward.
+// refuseRetiredKeys refuses the first key, in name order, that the module's Spec maps to a RetiredWayForward text.
+// The refusal is marked [configengine.ErrInvalid] and names the key and the module.
+// It ends with that text as its way forward.
 func refuseRetiredKeys(module Module, keys map[string]any) error {
 	wayForward := module.Spec().RetiredWayForward
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
@@ -107,8 +111,9 @@ func refuseRetiredKeys(module Module, keys map[string]any) error {
 	return nil
 }
 
-// refuseHubOnlyKeys refuses the first top-level key, in name order, that the module's Spec maps to a HubOnlyWayForward text.
-// The refusal is marked [configengine.ErrInvalid], names the key and the module, and ends with that text as its way forward.
+// refuseHubOnlyKeys refuses the first key, in name order, that the module's Spec maps to a HubOnlyWayForward text.
+// The refusal is marked [configengine.ErrInvalid] and names the key and the module.
+// It ends with that text as its way forward.
 func refuseHubOnlyKeys(module Module, keys map[string]any) error {
 	wayForward := module.Spec().HubOnlyWayForward
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
@@ -129,9 +134,12 @@ func retiredByKeyMove(name string) bool {
 	return false
 }
 
-// LayerRunSettings returns the local-layer documents of a task's run settings layered over the settings of its run profile, named profileName.
-// Both are prepared as PrepareRunSettings does, and each module's task document is laid over its profile document key by key through yamlengine.Merge with the module's open maps,
-// so a task key replaces the profile's and a profile key the task lacks stays; the merged document is checked again.
+// LayerRunSettings returns the local-layer documents of a task's run settings layered over the run profile profileName.
+// Both maps are migrated and validated per module before the merge.
+// Each module's task document is laid over its profile document key by key.
+// It is merged with yamlengine.Merge, using the module's open maps.
+// A task key replaces the profile's, and a profile key the task lacks stays.
+// The merged document is checked again.
 // Every refusal is a [*RunSettingsError], one in the profile's settings wrapped with the profile's name.
 func LayerRunSettings(profileName string, profile, settings map[string]any) (map[string][]byte, error) {
 	documents, err := PrepareRunSettings(profile)
@@ -173,7 +181,8 @@ func checkLocalDocument(module Module, document []byte) error {
 	return nil
 }
 
-// checkProfiles loads the run profiles under dirs and checks each recipe block of each profile as a task's run settings are checked, naming the profile and the recipe on a refusal.
+// checkProfiles loads the run profiles under dirs and prepares each recipe block of each profile as run settings.
+// A refusal names the profile and the recipe.
 func checkProfiles(dirs configengine.Dirs) error {
 	profiles, err := runprofile.Load(dirs)
 	if err != nil {
@@ -190,7 +199,8 @@ func checkProfiles(dirs configengine.Dirs) error {
 	return nil
 }
 
-// wholeNumbersAsIntegers rewrites every whole-valued float64 in a JSON-decoded value to an int64, so it marshals as a YAML integer.
+// wholeNumbersAsIntegers rewrites every whole-valued float64 in a JSON-decoded value to an int64,
+// so it marshals as a YAML integer.
 func wholeNumbersAsIntegers(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:

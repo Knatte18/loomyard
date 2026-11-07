@@ -1,4 +1,5 @@
-// entries_block.go implements the Block registry entry, the producer of an expanded block row, and the closed table of block gate checks a block row's gate is chosen from.
+// entries_block.go implements the Block registry entry and the producer of an expanded block row.
+// It also holds the closed table of block gate checks that a block row's gate is chosen from.
 
 package shedrecipe
 
@@ -19,13 +20,14 @@ const EngineBlock = "Block"
 const BlockGateAlways = "always"
 
 // BlockGateUndiscussed is the block gate check that holds unless the run's board entry is flagged discussed.
-// For a discussed entry it seeds the entry's stored decision record into the run through Env.SeedDiscussedRecord and passes over the block.
+// For a discussed entry it seeds the entry's stored decision record into the run through Env.SeedDiscussedRecord.
+// It then passes over the block.
 const BlockGateUndiscussed = "undiscussed"
 
 // undiscussedSkipReason is the reason the undiscussed gate records when it passes over its block.
 const undiscussedSkipReason = "the board entry is flagged discussed: its stored decision record is the run's, so the block's Discussion is passed over"
 
-// BlockGate builds a block row's entry gate from the told Env.
+// BlockGate builds a block row's entry gate from the Env it is given.
 type BlockGate func(env Env) (shedengine.EntryGate, error)
 
 // BlockGates is the closed table of block gate checks, keyed by the check name a block row's block_gate key writes.
@@ -43,8 +45,10 @@ func alwaysBlockGate(Env) (shedengine.EntryGate, error) {
 	return func() (bool, string, error) { return true, "", nil }, nil
 }
 
-// undiscussedBlockGate builds the gate of the BlockGateUndiscussed check over env.SeedDiscussedRecord, which must be non-nil.
-// The gate holds with an empty reason when the seam seeds nothing, and passes over the block with undiscussedSkipReason when it seeded the stored record.
+// undiscussedBlockGate builds the gate of the BlockGateUndiscussed check.
+// It requires env.SeedDiscussedRecord to be non-nil.
+// The gate holds with an empty reason when the seam seeds nothing.
+// When the seam seeded the stored record, the gate passes over the block with undiscussedSkipReason.
 // The seam's error is the gate's.
 func undiscussedBlockGate(env Env) (shedengine.EntryGate, error) {
 	if err := requireSeam("block gate "+BlockGateUndiscussed, "SeedDiscussedRecord", env.SeedDiscussedRecord); err != nil {
@@ -62,8 +66,8 @@ func undiscussedBlockGate(env Env) (shedengine.EntryGate, error) {
 	}, nil
 }
 
-// LookupBlockGate returns the block gate check name selects.
-// A name the table lacks is refused with the names the table holds.
+// LookupBlockGate returns the block gate check that name selects.
+// An unknown name is refused, and the error lists the known names.
 func LookupBlockGate(name string) (BlockGate, error) {
 	gate, ok := blockGates[name]
 	if !ok {
@@ -82,7 +86,7 @@ func BlockGateNames() []string {
 	return names
 }
 
-// blockEntry is the Constructor for the "Block" registry row: it takes no Config key and validates no Env field.
+// blockEntry is the Constructor for the "Block" registry row. It accepts no Config key and validates no Env field.
 func blockEntry(_ RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err

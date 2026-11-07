@@ -1,5 +1,6 @@
-// waitmark.go declares the wait marker and pane mark shuttle keeps while its Go side waits on a gate entry, on background shells or on a held turn end,
-// and ReadWaitMarker and ReadWaitMarkers, the readers `lym loom status` and batten use.
+// waitmark.go declares the wait marker and pane mark that shuttle keeps while the Go side waits.
+// The wait is on a gate entry, on background shells or on a held turn end.
+// ReadWaitMarker and ReadWaitMarkers read them for `lym loom status` and batten.
 // Both are display and status only: no shuttle decision reads them,
 // and a failure to write, remove, set or clear either is logged and changes nothing else.
 
@@ -31,8 +32,9 @@ const (
 // so the marker tests stay tier 1.
 var isAlive = proc.IsAlive
 
-// WaitMarker is the file `lym loom status` reads to see what a shuttle run waits on:
-// the wait's label (`gate <entry name>`, `background shells` or `held`), when it started, and the pid of the process running Wait.
+// WaitMarker is the file `lym loom status` reads to see what a shuttle run waits on.
+// It records the wait's label, when the wait started, and the pid of the process running Wait.
+// The label is `gate <entry name>`, `background shells` or `held`.
 // Batten's wait reading ignores a held marker, since a held run is idle at its turn end rather than working.
 type WaitMarker struct {
 	Kind    string    `yaml:"kind"`
@@ -59,8 +61,7 @@ type waitState struct {
 	shown string
 }
 
-// ReadWaitMarker returns the first wait marker with a live pid among the run directories under the run-directory root.
-// It is the first of ReadWaitMarkers.
+// ReadWaitMarker returns the first live wait marker under the run-directory root, and reports whether one was found.
 func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
 	markers, err := ReadWaitMarkers(cfg, anchorPath)
 	if err != nil || len(markers) == 0 {
@@ -69,9 +70,11 @@ func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
 	return markers[0], true, nil
 }
 
-// ReadWaitMarkers returns every wait marker with a live pid among the run directories under the run-directory root, in directory order.
+// ReadWaitMarkers returns the wait markers with a live pid among the run directories under the run-directory root.
+// The markers come in directory order.
 // A marker whose pid is dead reads as absent and the scan goes on.
-// An unreadable or undecodable marker is skipped with a warning logged once per episode, so one torn file cannot hide another run's wait.
+// An unreadable or undecodable marker is skipped with a warning logged once per episode.
+// This keeps one torn file from hiding another run's wait.
 func ReadWaitMarkers(cfg Config, anchorPath string) ([]WaitMarker, error) {
 	root := runDirRoot(cfg, anchorPath)
 	entries, err := os.ReadDir(root)
@@ -158,7 +161,8 @@ func (run *Run) endGateWait() {
 }
 
 // syncShellWait turns the background-shell wait on or off to match the recorded waiting turn end:
-// it is on exactly while every outstanding task is a non-awaited background shell and at least one has been outstanding for the bound.
+// it is on exactly while every outstanding task is a non-awaited background shell;
+// and at least one has been outstanding for the bound.
 func (run *Run) syncShellWait() {
 	active := run.shellWaitActive()
 	switch {
@@ -172,10 +176,12 @@ func (run *Run) syncShellWait() {
 	run.showWait()
 }
 
-// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells of either signal, at least one outstanding for the bound by its first-seen stamp.
+// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells:
+// the shells may be of either signal, and at least one has been outstanding for the bound by its first-seen stamp.
 // It shows only while shells are outstanding at staggered first-seen times, one past the bound and another not:
 // a lone shell crossing the bound expires an ungated wait in the same tick,
-// and a gated run with every output file present counts Done in the tick the last shell crosses the bound, so neither leaves a list to show.
+// and a gated run with every output file present counts Done in the tick the last shell crosses the bound;
+// neither leaves a list to show.
 func (run *Run) shellWaitActive() bool {
 	if len(run.waitingTasks) == 0 {
 		return false
@@ -194,7 +200,8 @@ func (run *Run) shellWaitActive() bool {
 	return pastBound
 }
 
-// beginHeldWait shows `held` from the run clock's now, when a held turn end is read, and records offset, the events-file offset just past that turn end's line.
+// beginHeldWait shows `held` from the run clock's now when a held turn end is read.
+// It also records offset, the events-file offset just past that turn end's line.
 // A hold already on show keeps its start and its offset.
 func (run *Run) beginHeldWait(offset int64) {
 	if !run.wait.heldStart.IsZero() {

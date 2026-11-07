@@ -1,4 +1,5 @@
-// deps.go fills the verbs' deps over a real hub: the board reads, the owner write and the merge task's filing, the batten run's status and first pass, the ready record, the landing's refusal and land request, the hub's Code-Review budget and the beam's change description.
+// deps.go fills the verb dependency structs over a real hub.
+// It covers the board, the run status, the ready record, the landing, the review budget and the change description.
 
 package beamcli
 
@@ -247,7 +248,8 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return cfg.Caps(loomengine.PerchCode), nil
 		},
-		// The stamp runs inside the description's own commit, after the description validated, so one commit holds both files and a refused description stamps nothing.
+		// The stamp runs inside the description's own commit, after the description validated.
+		// One commit then holds both files, and a refused description stamps nothing.
 		Describe: func(slug string, at time.Time) (string, error) {
 			beam, parentBranch, err := beamAndParent(slug)
 			if err != nil {
@@ -270,13 +272,14 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return write.DescriptionPath, nil
 		},
-		// The API opens only when the origin allows a pull request, so a missing origin fact reaches the verb as a refusal naming the fact.
+		// The API opens only if the origin allows a pull request; a missing origin fact reaches the verb as a refusal naming it.
 		PullRequestSide: func(slug string) (beamPullRequestSide, error) {
 			side, err := beamSideFacts(slug)
 			if err != nil {
 				return beamPullRequestSide{}, err
 			}
-			// A failure to open the API is the side's, so a verb that needs no API, such as `ready` for a beam with none recorded, is not stopped by an unusable token.
+			// A failure to open the API is recorded on the side,
+			// so a verb that needs no API, such as `ready` for a beam with none recorded, is not stopped by an unusable token.
 			if landingshed.OriginMissing(side.Origin) == "" {
 				side.API, side.APIErr = openAPI(side.Origin.URL)
 			}
@@ -296,7 +299,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return pair.HeadSHA()
 		},
-		// The read is the one Finalize makes of a task pair, so every verb that judges an empty beam judges it alike, records-only commits counted.
+		// The read matches Finalize's, so every verb that judges an empty beam judges it alike, records-only commits counted.
 		BeamHasCommits: func(slug string) (bool, error) {
 			beam, parentBranch, err := beamAndParent(slug)
 			if err != nil {
@@ -319,7 +322,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return pair.HeadSHA()
 		},
-		// The parent pair is the one the beam's origin record names, so the receiving branch's own beam.yaml decides, as it does for a run that lands on it.
+		// The origin record names the parent pair, so the receiving branch's own beam.yaml decides, as for a run landing on it.
 		PullRequestMode: func(slug string) (string, bool, error) {
 			_, origin, err := beamOrigin(slug)
 			if err != nil {
@@ -352,7 +355,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return nil
 			}
 		},
-		// The parent's tips are read after a fetch, under the remote-refs lock, when the parent has an upstream and the hub's push skip is unset, so the judgment reads the state origin holds.
+		// Origin decides: parent tips are read after a fetch under the remote-refs lock if upstream is set and pushes run.
 		ParentUnmerged: func(slug string) (bool, error) {
 			beam, parentBranch, err := beamAndParent(slug)
 			if err != nil {
@@ -404,7 +407,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return lines, nil
 		},
-		// A pawl run's Finalize reads a merged pull request through the same list, so ready and Finalize agree on what one lacks.
+		// A pawl run's Finalize reads merged pull requests through this list, so ready and Finalize agree on what one lacks.
 		MergedLacks: func(slug, mergedHead string) ([]string, error) {
 			beam, parentBranch, err := beamAndParent(slug)
 			if err != nil {
@@ -444,9 +447,12 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 	}
 }
 
-// beamDescribeDeps builds the description writer's deps over the beam pair at location, whose slug names its board entry, whose parentBranch is the branch it lands on and whose project record is at recordPath.
+// beamDescribeDeps builds the description writer's deps over the beam pair at location.
+// slug names the beam's board entry, and parentBranch is the branch the beam lands on.
+// recordPath is the project record the added decisions are read from.
 // Every closure reads or writes on demand and opens nothing at build time.
-// Commits lists the beam's line without the records-only commits, so a description lists neither its own commits nor the run's status commits.
+// Commits lists the beam's line without the records-only commits,
+// so a description lists neither its own commits nor the run's status commits.
 // An empty parentBranch, a pair with no origin record, is refused when the beam's commits are read.
 func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath string) landingshed.BeamDescribeDeps {
 	return landingshed.BeamDescribeDeps{

@@ -1,4 +1,5 @@
-// capabilities.go implements Codex's side of creel's hook delivery: the hook-input parse, the block that hands mail to the session, and the idle wake through `codex queue`.
+// capabilities.go implements Codex's side of creel's hook delivery:
+// the hook-input parse, the block that hands mail to the session, and the idle wake through `codex queue`.
 
 package codexengine
 
@@ -23,8 +24,9 @@ var (
 )
 
 // HookInput parses the JSON object Codex passes a hook on standard input.
-// PostToolUse maps to the tool-boundary event and Stop to the stop event; any other event leaves Event empty.
-// Codex runs no subagent whose calls reach these hooks, so no input is marked as one.
+// `PostToolUse` maps to the tool-boundary event and `Stop` to the stop event;
+// any other event leaves `Event` empty.
+// Codex runs no subagent whose calls reach these hooks, so no input is marked as a subagent call.
 func (c *Codex) HookInput(payload []byte) (shuttleengine.HookInput, error) {
 	if !bytes.HasPrefix(bytes.TrimSpace(payload), []byte("{")) {
 		return shuttleengine.HookInput{}, fmt.Errorf("parse hook input: the payload is not a JSON object")
@@ -46,9 +48,12 @@ func (c *Codex) HookInput(payload []byte) (shuttleengine.HookInput, error) {
 	return input, nil
 }
 
-// HookOutput renders the JSON a PostToolUse or Stop hook prints to hand mail to the session: a block whose reason is the mail, which Codex hands to the model at its next step and shows the operator as `Blocked by hook`.
-// With no mail it is the empty hook output.
-// The echo is dropped: the idle wake queued the same lines as a user turn the operator already sees, and Codex shows a system message beside the reason, so an echo would read as new mail.
+// HookOutput renders the JSON a `PostToolUse` or `Stop` hook prints to hand mail to the session.
+// The JSON sets `decision` to `block` and `reason` to the mail.
+// Codex hands the reason to the model at its next step and shows the block to the operator as `Blocked by hook`.
+// With no mail it returns `{}`, the empty hook output.
+// The echo is dropped: the idle wake queued the same lines as a user turn the operator already sees.
+// Codex shows a system message beside the reason, so an echo would read as new mail.
 func (c *Codex) HookOutput(_ shuttleengine.HookEvent, mail, _ string) ([]byte, error) {
 	if mail == "" {
 		return []byte("{}"), nil
@@ -63,7 +68,8 @@ func (c *Codex) HookOutput(_ shuttleengine.HookEvent, mail, _ string) ([]byte, e
 	return data, nil
 }
 
-// RewakeOutput returns no text and exit code 0: no exit of a Codex hook wakes an idle session, so WakeIdle starts the woken turn instead.
+// RewakeOutput returns no text and exit code 0:
+// no exit of a Codex hook wakes an idle session, so the idle wake starts the turn itself.
 func (c *Codex) RewakeOutput(string) (stderr []byte, exitCode int) {
 	return nil, 0
 }
@@ -71,9 +77,11 @@ func (c *Codex) RewakeOutput(string) (stderr []byte, exitCode int) {
 // queueTimeout bounds one `codex queue` call, which returns once Codex has queued the message.
 const queueTimeout = 30 * time.Second
 
-// WakeIdle starts a turn carrying text in the idle Codex session the waiter hook's payload names, through `codex queue --thread <session_id> --message <text>`.
-// It runs the executable the waiter's environment names in LYM_CODEX_BINARY, or codex on PATH, under the CODEX_HOME that environment sets.
-// A payload naming no session id, or a queue that fails or outlasts queueTimeout, returns an error and starts no turn.
+// WakeIdle starts a turn carrying text in the idle Codex session that the waiter hook's payload names.
+// It queues the text through `codex queue --thread <session_id> --message <text>`.
+// It runs the executable that `LYM_CODEX_BINARY` names in the waiter's environment, or `codex` on PATH if unset.
+// It runs under the CODEX_HOME that environment sets.
+// A payload naming no session id, or a queue that fails or outlasts its timeout, returns an error and starts no turn.
 func (c *Codex) WakeIdle(payload []byte, text string) error {
 	var parsed struct {
 		SessionID string `json:"session_id"`

@@ -1,4 +1,5 @@
-// raddlestore.go — the raddle store on the Bolt: one directory per Sketch a raddle run filed, its store.json record, and the read that answers which slugs it holds.
+// raddlestore.go holds the raddle store on the Bolt: one directory per Sketch a raddle run filed.
+// Its store.json records what the run filed, and the reads here answer which slugs the store holds.
 
 package boardengine
 
@@ -22,7 +23,7 @@ const (
 
 // RaddleStoreEntry is the record of one Sketch a raddle run filed: store.json of its store directory.
 type RaddleStoreEntry struct {
-	// Sketch is the slug of the Sketch, the name of the store directory; ReadRaddleStore fills it and store.json holds no such key.
+	// Sketch is the slug of the Sketch and names its store directory; store.json has no such key.
 	Sketch string `json:"-"`
 	// Created is the Sketch's created stamp, which tells the live run's own Sketch from a later entry under the same slug.
 	Created time.Time `json:"created,omitzero"`
@@ -39,7 +40,8 @@ type RaddleStore struct {
 	entries []RaddleStoreEntry
 }
 
-// Holds answers the entry of the Sketch whose slug is slug, or of the Sketch that filed slug, and reports whether the store holds either.
+// Holds returns the entry of the Sketch whose slug is slug, or of the Sketch whose run filed slug.
+// The second result reports whether the store holds either.
 func (s RaddleStore) Holds(slug string) (RaddleStoreEntry, bool) {
 	for _, entry := range s.entries {
 		if entry.Sketch == slug || slices.Contains(entry.Filed, slug) {
@@ -61,7 +63,7 @@ func (s RaddleStore) Slugs() []string {
 
 // RaddleProposal returns the approved proposal.yaml of the store directory that holds slug, reading without the lock.
 // slug is the Sketch's own slug or any slug the Sketch's run filed, and found is false when the store holds neither.
-// The store outlives prune, so the answer stands after the run's Land pruned the Sketch.
+// The store outlives the prune, so the answer holds after the Sketch is pruned.
 func (b *Board) RaddleProposal(slug string) ([]byte, bool, error) {
 	store, err := ReadRaddleStore(b.boardPath)
 	if err != nil {

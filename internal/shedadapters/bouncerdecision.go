@@ -1,5 +1,6 @@
 // bouncerdecision.go routes a judged round whose review holds a finding of class decision to the run's parent:
-// the escalation with cause decision, the parent's recorded answer, the refusal check that answer meets, and the snapshot of the decision record the carry-over compares against.
+// it escalates with cause decision, reads the parent's recorded answer, and checks it with the refusal check;
+// it also keeps the snapshot of the decision record that the carry-over compares against.
 
 package shedadapters
 
@@ -23,8 +24,11 @@ import (
 )
 
 // DecisionHaltPrefix opens the Reason of a halt that only the run's parent may settle.
-// Two producers open a reason with it: the Bouncer, for the halt a recorded accept over a held refusal meets at the budget and the hard cap, and Drift-Verify, for its decision halts.
-// A caller that must tell such a halt from any other Stuck reads the Reason for it, and arbiterstop hands every one of them to the parent.
+// Two producers open a reason with it:
+// the Bouncer, for the halt that a recorded accept held by a refusal meets at the budget and the hard cap;
+// Drift-Verify, for its decision halts.
+// A caller that must tell such a halt from any other Stuck reads the Reason for it;
+// arbiterstop hands every one of them to the parent.
 const DecisionHaltPrefix = "decision halt: "
 
 // decisionSnapshot mirrors a decision snapshot file's YAML.
@@ -76,13 +80,19 @@ func (b *Bouncer) decisionFindings(round int) ([]burlerengine.Finding, error) {
 	return decisions, nil
 }
 
-// routeDecisions settles a judged round whose review holds a finding of class decision, whatever the judge ruled, and reports handled true when it took the round.
-// It reports handled false and takes nothing when EscalateDecisions is off or the review does not parse or holds no such finding.
-// It does the same when the round carries an escalation record of another cause, a decision file of another cause or a settled accept.
-// By the round's decision file, none escalates with cause decision after writing the snapshot of the decision record.
-// A pending continue is re-judged when the dropped-key check refuses it, and otherwise runs another round, or at the hard cap is retired and escalated again.
-// A pending accept passes the round when the refusal check admits it, with the decision findings left out of its BLOCKING checks.
-// A refused accept is re-judged while budget is left, retired and escalated again at the budget below the hard cap, and halts the run at the budget at or past it.
+// routeDecisions settles a judged round whose review holds a finding of class decision, whatever the judge ruled;
+// it reports handled true when it took the round.
+// It reports handled false and takes nothing when EscalateDecisions is off;
+// the review does not parse or holds no such finding.
+// It does the same when the round's escalation or decision file has another cause;
+// it does the same for a settled accept.
+// A round with no decision yet escalates with cause decision after writing the snapshot of the decision record.
+// A pending continue is re-judged when the dropped-key check refuses it;
+// otherwise it runs another round, or at the hard cap it is retired and escalated again.
+// A pending accept passes the round when the refusal check admits it;
+// the decision findings are left out of its BLOCKING checks.
+// A refused accept is re-judged while budget is left;
+// at the budget it is retired and escalated again below the hard cap, and it halts the run at or past the hard cap.
 func (b *Bouncer) routeDecisions(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if !b.cfg.EscalateDecisions {
 		return "", shedengine.OutputPointer{}, nil, false
@@ -134,7 +144,8 @@ func (b *Bouncer) escalateUndecided(round int, verdict bouncerVerdict, ledger le
 
 // settleDecisionContinue acts on a pending continue recorded for a decision escalation.
 // A continue passes nothing, so only the dropped-key check applies: a refusal re-judges the round.
-// Otherwise a continue at or past the hard cap is retired and the round escalates again, and below it the next round starts.
+// Otherwise a continue at or past the hard cap is retired and the round escalates again;
+// below it the next round starts.
 func (b *Bouncer) settleDecisionContinue(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if refusal := b.decisionRefusal(round, verdict, ledger, CirclingContinue); refusal != "" {
 		return b.rejudge(ctx, round, verdict, refusal)
@@ -152,8 +163,10 @@ func (b *Bouncer) settleDecisionContinue(ctx context.Context, round int, verdict
 
 // settleDecisionAccept acts on a pending accept recorded for a decision escalation.
 // An admitted accept passes the round.
-// A refused one is re-judged while budget is left, and at the budget below the hard cap it is retired and the round escalates again.
-// At the budget at or past the hard cap the judge outputs are archived and the run halts, so a resume re-judges the round under the recorded accept.
+// A refused one is re-judged while budget is left;
+// at the budget below the hard cap it is retired and the round escalates again.
+// At the budget at or past the hard cap the judge outputs are archived and the run halts,
+// so a resume re-judges the round under the recorded accept.
 func (b *Bouncer) settleDecisionAccept(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	refusal := b.decisionRefusal(round, verdict, ledger, CirclingAccept)
 	switch {
@@ -187,7 +200,8 @@ func (b *Bouncer) escalateDecision(round int, refusal string, held bool, ptr she
 
 // decisionRefusal returns why the parent's recorded decision does not pass round yet, or "" when it does.
 // A continue passes nothing, so only the dropped-key check applies to it.
-// An accept faces judgmentRefusal's whole check with the round's decision-class findings and ledger entries left out of both BLOCKING checks.
+// An accept faces the full judgment check.
+// The round's decision-class findings and ledger entries are left out of both BLOCKING checks.
 func (b *Bouncer) decisionRefusal(round int, verdict bouncerVerdict, ledger ledgerFile, decision CirclingDecision) string {
 	if decision == CirclingContinue {
 		return b.droppedKeyRefusal(round, ledger)
@@ -195,9 +209,12 @@ func (b *Bouncer) decisionRefusal(round int, verdict bouncerVerdict, ledger ledg
 	return b.refusalLeavingOut(round, verdict, ledger, burlerengine.ClassDecision)
 }
 
-// renderDecisionDetail renders the decision fragment for round: its decision-class findings, every BLOCKING finding of its review, the refusal and the verbs that record the answer.
-// held tells that the refusal already retired an accept at the budget, which adds the sentence that an accept escalates the round again while the refusal holds.
-// A refusal over a dropped ledger key adds the sentence that a continue meets the same check.
+// renderDecisionDetail renders the decision fragment for round.
+// It holds the round's decision-class findings and every BLOCKING finding of its review.
+// It also holds the refusal and the verbs that record the answer.
+// held reports whether the refusal already retired an accept at the budget;
+// if so, the fragment says that an accept escalates the round again while the refusal holds.
+// A refusal over a dropped ledger key also makes the fragment say that a continue meets the same check.
 func (b *Bouncer) renderDecisionDetail(round int, refusal string, held bool) (string, error) {
 	template, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-fragment-decision")
 	if err != nil {
@@ -257,7 +274,8 @@ func oneLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
-// decideVerbs renders the verb lines that record the segment's outcome for round: continue and accept below the hard cap, accept alone at or past it.
+// decideVerbs renders the verb lines that record the segment's outcome for round.
+// Below the hard cap it offers continue and accept; at or past it, only accept.
 func (b *Bouncer) decideVerbs(round int) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
@@ -270,7 +288,8 @@ func (b *Bouncer) decideVerbs(round int) string {
 	return fmt.Sprintf("- `lym loom circling continue%s` for a round over the amended record\n%s", verbSuffix, accept)
 }
 
-// writeDecisionSnapshot writes round's decision snapshot, the titles of the decision record's `Added after Discussion` entries, when none exists yet.
+// writeDecisionSnapshot writes round's decision snapshot when none exists yet.
+// The snapshot holds the titles of the decision record's `Added after Discussion` entries.
 // An empty path or an absent record writes an empty list.
 // An existing snapshot is left as it is, so a round escalated again keeps its first one.
 func writeDecisionSnapshot(runDir string, round int, decisionRecordPath string) error {
@@ -294,7 +313,8 @@ func writeDecisionSnapshot(runDir string, round int, decisionRecordPath string) 
 	return nil
 }
 
-// addedSinceSnapshot returns the titles of the decision record's `Added after Discussion` entries that round's snapshot lacks, in record order.
+// addedSinceSnapshot returns the titles of the decision record's `Added after Discussion` entries.
+// It keeps only the titles that round's snapshot lacks, in record order.
 // A round with no snapshot has none.
 func addedSinceSnapshot(runDir string, round int, decisionRecordPath string) ([]string, error) {
 	path := decisionSnapshotPath(runDir, round)
@@ -328,7 +348,8 @@ func addedSinceSnapshot(runDir string, round int, decisionRecordPath string) ([]
 	return since, nil
 }
 
-// addedDecisionTitles returns the titles of the `Added after Discussion` entries of the decision record at path, in record order.
+// addedDecisionTitles returns the titles of the `Added after Discussion` entries in the decision record at path.
+// The titles keep record order.
 // An empty path and an absent record have none.
 func addedDecisionTitles(path string) ([]string, error) {
 	if path == "" {

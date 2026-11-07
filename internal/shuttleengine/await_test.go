@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// awaitClock is a fake clock whose Sleep advances the time, records each length and runs onSleep with the 1-based call number.
+// awaitClock is a fake clock whose Sleep advances the time and records each length.
+// It runs onSleep with the 1-based call number of each Sleep.
 type awaitClock struct {
 	*fakeClock
 	sleeps  []time.Duration
@@ -28,7 +29,10 @@ func (c *awaitClock) Sleep(d time.Duration) {
 	}
 }
 
-// TestAwaitForks pins the capped poll over a run's outstanding forks on a fake clock: when it answers ready, what it answers at the cap, what it returns on a read error or a cancelled context, and that no sleep passes one second or the remaining cap.
+// TestAwaitForks pins the capped poll over a run's outstanding forks on a fake clock.
+// It checks when the poll answers ready and what it answers at the cap.
+// On a read error or a cancelled context, it checks what the poll returns.
+// It also checks that no sleep passes one second or the remaining cap.
 func TestAwaitForks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -104,7 +108,8 @@ func TestAwaitForks(t *testing.T) {
 	}
 }
 
-// forkReaderEngine is a fakeEngine with the OutstandingForkReader capability: it records the arguments of each read and answers a fixed fork list.
+// forkReaderEngine is a fakeEngine with the OutstandingForkReader capability.
+// It records the arguments of each read and answers a fixed fork list.
 type forkReaderEngine struct {
 	fakeEngine
 
@@ -119,8 +124,9 @@ func (e *forkReaderEngine) OutstandingForks(sessionID, workdir string) ([]Backgr
 	return e.forks, nil
 }
 
-// TestRunnerAwaitForks pins the wrapper around the poll: its refusals for an unknown guid and an engine without the OutstandingForkReader capability,
-// and that the reader is handed the run's session id and the pane's cwd.
+// TestRunnerAwaitForks pins the wrapper around the poll.
+// It checks the refusals for an unknown guid and for an engine without the OutstandingForkReader capability.
+// It also checks that the reader is handed the run's session id and the pane's cwd.
 func TestRunnerAwaitForks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -181,7 +187,10 @@ func TestRunnerAwaitForks(t *testing.T) {
 	}
 }
 
-// TestAwaitAny pins the capped poll over a fake clock: which path it names, when it answers not ready, what it returns on a stat error or a cancelled context, and that no sleep passes one second or the remaining cap.
+// TestAwaitAny pins the capped poll over a fake clock.
+// It checks which path it names and when it answers not ready.
+// On a stat error or a cancelled context, it checks what the poll returns.
+// It also checks that no sleep passes one second or the remaining cap.
 func TestAwaitAny(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

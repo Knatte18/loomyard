@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestRemoveRecoveryStrands pins which recorded strands are stopped, in batch-number order, and that the first stop failure is reported with its guid.
+// TestRemoveRecoveryStrands pins which recorded strands are stopped, in batch-number order.
+// It also pins that the first stop failure is reported with its guid.
 func TestRemoveRecoveryStrands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

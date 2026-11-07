@@ -1,7 +1,8 @@
-<!-- This is the verify-gate fixer fork prefix, joined ahead of webster-body-verify-fix.md by RenderVerifyFixPrompt (render.go), filled via internal/stencil and written to a prompt file under the webster prompts directory at run entry;
-     Merriam's Agent-tool fork call is the same "Read this file and do exactly and only what it says: <this file's own path>" idiom used for a batch's own fork prompt.
-     {{.friction_directive}} is its one marker, optional (filled via stencil.FillOptional), rendering as nothing when Tier 2 is off.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the verify-gate fixer fork prefix.
+     RenderVerifyFixPrompt (render.go) joins it ahead of webster-body-verify-fix.md, fills it via internal/stencil, and writes it to a prompt file under the webster prompts directory at run entry.
+     Merriam's Agent-tool fork call tells the fork to read that file and do exactly and only what it says, as a batch's own fork prompt does.
+     Its one marker is {{.friction_directive}}, optional (filled via stencil.FillOptional), which renders as nothing when Tier 2 is off.
+     It holds no {{if}} or {{range}} conditional. -->
 
 # Webster verify-gate fixer fork — fix the recorded failures in source, commit, report
 

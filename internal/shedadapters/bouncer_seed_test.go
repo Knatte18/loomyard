@@ -1,8 +1,7 @@
 // bouncer_seed_test.go covers Bouncer.Call's seed call, seed-side harvest, and the re-bounce mode,
-// plus the prompt-shape guarantees shared by both templates: marker completeness against the
-// shipped stencils package bytes and the stamp-leak regression.
-// The judge, replay, harvest-on-judge, degradation, pointer-discipline, stale-output, and
-// cancellation scenarios are deliberately left to batch 4, which adds only test files.
+// plus the prompt-shape guarantees shared by both templates:
+// marker completeness against the shipped stencils package bytes and the stamp-leak regression.
+// The judge, replay, degradation, pointer-discipline, and stale-output scenarios live in the other bouncer test files.
 
 package shedadapters
 
@@ -28,8 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBouncer_SeedCall_HappyPath also pins the spec the seed passes the shuttle: its role and
-// round, the configured model, effort and version, and absolute output paths.
+// TestBouncer_SeedCall_HappyPath also pins the spec the seed passes the shuttle:
+// its role and round, the configured model, effort and version, and absolute output paths.
 //
 //testtiming:keep pins the seed call's spec, pointer and focus file, and that it writes no verdict or ledger
 func TestBouncer_SeedCall_HappyPath(t *testing.T) {
@@ -246,8 +245,8 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 	}
 }
 
-// TestBouncer_SeedSideHarvest_SurvivesALateFailure pins that a focus file the seed agent wrote
-// survives, byte-identical, a run that then errors or reports a non-Done outcome.
+// TestBouncer_SeedSideHarvest_SurvivesALateFailure pins that the seed agent's focus file survives byte-identical;
+// a late run error or a non-Done outcome leaves it unchanged.
 //
 //testtiming:keep pins that a focus file the seed agent wrote survives a late run error or a non-Done outcome byte-identical
 func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
@@ -285,22 +284,12 @@ func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
 	}
 }
 
-// TestBouncer_ReBounceProbesForALiveSeed is the regression guard for the one spawning mode that had
-// no live-agent probe.
-//
-// doc.go's "Every spawning adapter probes for a live agent first" enumerates the Bouncer's probe
-// sites as the seed pass, the judge pass, and the entry-time judge probe -- and the entry-time probe
-// is guarded by `n > 0 && judged(n)`, so it never covers the re-bounce. A parsing round-1 focus file
-// proves the seed agent wrote its one declared output, never that it exited, and shuttle's Wait
-// polls for bare existence at that path. So a driver killed in the window between the write and the
-// agent's own exit lands on this branch with a live seed still holding round-1-focus.md, and
-// returning Stuck without waiting abandons it while the segment's round producer starts reading that
-// very file.
-//
-// Reproduced live in crucible round 1: `lym loom step` SIGKILLed mid-Discussion-Bouncer seed with
-// exactly one agent alive, then re-invoked. It correctly did not double-spawn -- and left the
-// paid-for agent running behind it. That reproduction contradicted what the pre-rewrite driver
-// instructions told operators; the rewritten driver stencil makes no such claim.
+// TestBouncer_ReBounceProbesForALiveSeed guards the re-bounce's probe for a live seed agent.
+// The entry-time judge probe is guarded by `n > 0 && judged(n)`, so it never covers a re-bounce.
+// Parsing the round-1 focus file proves only that the seed agent wrote its one declared output.
+// It does not prove that the agent exited, and shuttle's Wait polls for bare existence at that path.
+// A driver killed between the write and the agent's own exit leaves a live seed holding round-1-focus.md.
+// On the re-bounce branch, returning Stuck without waiting abandons that seed while the round producer reads that file.
 func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 	tiergate.Require(t, 0)
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
@@ -347,7 +336,7 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 				t.Errorf("re-bounce probe Round = %q; want \"1\"", shuttle.GotAttachSpec.Round)
 			}
 
-			// The branch's own behaviour is unchanged either way: probing is not respawning.
+			// Probing is not respawning: the probe alone must not spawn.
 			if shuttle.Called {
 				t.Error("Call() spawned through the shuttle seam on a re-bounce; want the probe only, never a spawn")
 			}
@@ -369,8 +358,8 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 }
 
 // TestBouncer_ReBounceDegradesOnAnUndeterminableProbe pins that a probe which could not answer the
-// liveness question is never read as "nothing is running": the re-bounce degrades rather than
-// silently proceeding, the same rule awaitLiveJudge's caller already follows.
+// liveness question is never read as "nothing is running".
+// The re-bounce degrades rather than silently proceeding.
 func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 	tiergate.Require(t, 0)
 	shuttle := &shedfake.Shuttle{
@@ -396,7 +385,7 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 	}
 }
 
-// TestBouncer_MarkerCompleteness_BothTemplates also pins that no stamp banner of the rubric leaks into either filled prompt.
+// TestBouncer_MarkerCompleteness_BothTemplates pins that no rubric stamp banner leaks into either filled prompt.
 func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 	tiergate.Require(t, 0)
 	rubric := "<!-- lym-stencil: sha256=deadbeef -->\n# Rubric\n\nBe thorough.\n"

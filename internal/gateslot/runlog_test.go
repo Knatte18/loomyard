@@ -1,4 +1,5 @@
-// runlog_test.go covers the run record and log a tier run leaves behind, and the summary line a site reads back from a log.
+// runlog_test.go covers the run record and log a tier run leaves behind.
+// It also covers the summary line a site reads back from a log.
 
 package gateslot
 

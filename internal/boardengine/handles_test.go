@@ -1,4 +1,5 @@
-// handles_test.go — tests of entry handles: their assignment on write and load, the Handle selector and the title a handle opens.
+// handles_test.go — tests of entry handles: their assignment on write and load, and the Handle selector.
+// It also covers the title a handle opens.
 
 package boardengine_test
 
@@ -39,10 +40,12 @@ func sameHandles(got, want map[string]string) bool {
 	return true
 }
 
-// TestHandles_AssignedLowestFreeAndStable pins that a write gives a new task the lowest free T number and a new note the lowest free number of its type's letter.
-// It pins that adding or removing an entry changes no other entry's handle and that a removed entry's number is given out again.
-// It pins that a promote or a type change gives the entry the lowest free number of its new letter.
-// Each step after the first addresses its entry by Handle, so the steps also pin that every selector-taking write finds an entry by handle, its letter in either case.
+// TestHandles_AssignedLowestFreeAndStable pins that a write gives a new task the lowest free T number.
+// A new note takes the lowest free number of its type's letter.
+// Adding or removing an entry changes no other entry's handle, and a removed entry's number is given out again.
+// A promote or a type change gives the entry the lowest free number of its new letter.
+// Each step after the first addresses its entry by Handle.
+// Every write that takes a selector finds the entry by handle, with its letter in either case.
 func TestHandles_AssignedLowestFreeAndStable(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -120,8 +123,8 @@ func TestHandles_AssignedLowestFreeAndStable(t *testing.T) {
 	}
 }
 
-// TestHandles_AssignedOnLoad pins that a board.json written before handles reads with them, in id order, keeping a valid stored handle and reassigning a duplicate,
-// and that the first write persists them.
+// TestHandles_AssignedOnLoad pins that a board.json written before handles reads with them in id order.
+// It pins that a valid stored handle is kept, that a duplicate is reassigned, and that the first write persists them.
 func TestHandles_AssignedOnLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -166,7 +169,7 @@ func TestHandles_AssignedOnLoad(t *testing.T) {
 	}
 }
 
-// TestHandles_UndecidedLetterKeepsNoDuplicate pins that a note whose type label is no longer configured keeps its stored handle.
+// TestHandles_UndecidedLetterKeepsNoDuplicate pins that a note with an unconfigured type label keeps its stored handle.
 // It pins that the note loses the handle when an entry of lower id already holds it.
 func TestHandles_UndecidedLetterKeepsNoDuplicate(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -187,7 +190,8 @@ func TestHandles_UndecidedLetterKeepsNoDuplicate(t *testing.T) {
 	}
 }
 
-// TestTitleWithHandle pins that a name opens with its entry's handle, and that it stands alone when the board cannot give one.
+// TestTitleWithHandle pins that a name opens with its entry's handle,
+// and that it stands alone when the board cannot give one.
 func TestTitleWithHandle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

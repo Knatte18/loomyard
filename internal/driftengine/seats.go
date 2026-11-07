@@ -1,4 +1,4 @@
-// seats.go — the seat table of the expect agent, and the subject, told-value and model helpers every drift agent's table is built from.
+// seats.go — the expect agent's seat table, and the subject, told-value and model helpers it is built from.
 //
 // The expect agent is one lead seat whose one output is expected.yaml.
 // The builders are pure: they stat nothing they were not told to read, and spawn nothing.
@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The roles of the removed Drift-Baseline and Drift-Verify agents, whose live chairs a Drift row ends on entry.
+// The roles of the retired Drift-Baseline and Drift-Verify agents, whose live chairs a Drift row ends on entry.
 const (
 	baselineRole = "drift-baseline"
 	verifyRole   = "drift-verify"
@@ -33,9 +33,9 @@ const expectTimeout = 30 * time.Minute
 
 // The subject kinds a task's statement is read from.
 const (
-	// SubjectDecisionRecord reads the task from its decision record, as a tapestry run does.
+	// SubjectDecisionRecord reads the task from its decision record.
 	SubjectDecisionRecord = "decision-record"
-	// SubjectBoardEntry reads the task from its board entry, as a darn run does.
+	// SubjectBoardEntry reads the task from its board entry.
 	SubjectBoardEntry = "board-entry"
 )
 
@@ -139,7 +139,7 @@ type ExpectInputs struct {
 	Subject string
 	// Slug is the board entry's slug; required for SubjectBoardEntry.
 	Slug string
-	// DecisionRecordPath is the absolute path of the task's decision record, which a darn run's board entry shares.
+	// DecisionRecordPath is the absolute path of the task's decision record, which the prompt names for either subject.
 	DecisionRecordPath string
 	// PlanDir is the absolute path of the task's plan directory, and empty for a run that has no plan.
 	PlanDir string
@@ -153,9 +153,11 @@ type ExpectInputs struct {
 	DiffMode string
 }
 
-// ExpectTable builds the seatengine.Table of one Drift-Expect spawn: one non-interactive lead whose only output is expected.yaml.
+// ExpectTable builds the seatengine.Table of one Drift-Expect spawn.
+// The spawn is one non-interactive lead whose only output is expected.yaml.
 // An empty required field of in is refused by name, and cfg.ExpectModel is resolved against reg.
-// The prompt names the subject, the plan when the run has one, the listing, the baseline and the expectation format of the diff mode.
+// The prompt names the subject, the plan when the run has one, the listing and the baseline.
+// It also includes the expectation format of the diff mode.
 // The table carries no gate; the producer sets it.
 func ExpectTable(in ExpectInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	err := requireTold("ExpectTable", []struct{ field, value string }{

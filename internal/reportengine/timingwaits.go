@@ -1,5 +1,6 @@
-// timingwaits.go times what a run spent waiting on someone else and the arbiter and alignment attempts that served those waits.
-// A wait is an interval of one kind, netted so overlapping waits and machine sleep count once; an attempt is one spawn with the time it ran.
+// timingwaits.go times a run's waits on someone else and the arbiter and alignment attempts that served them.
+// A wait is an interval of one kind, netted so overlapping waits and machine sleep count once;
+// an attempt is one spawn with the time it ran.
 
 package reportengine
 
@@ -48,7 +49,8 @@ type AttemptFigure struct {
 	Seconds *int64 `json:"seconds"`
 }
 
-// TimingAttempts holds one figure per kind of attempt: the arbiter's, the PR-Gate alignment agent's and the parent-review rounds' alignment agent's.
+// TimingAttempts holds one figure per kind of attempt:
+// the arbiter's, the PR-Gate alignment agent's, and the parent-review rounds' alignment agent's.
 // An attempt's time lies inside the wait it serves and is reported beside the waits, never added to them.
 type TimingAttempts struct {
 	Arbiter               AttemptFigure `json:"arbiter"`
@@ -77,8 +79,8 @@ func latestBattenHistory(row RunRow) []shedengine.HistoryEntry {
 }
 
 // battenRowHalts returns the indexes of the history entries at which a batten row left batten awaiting or blocked.
-// Such an entry is at one of batten's own rows, never Run-Shed, and is an awaiting outcome or a stuck outcome no OnStuck edge bounced.
-// A stuck entry written before routed_to existed reads as a halt even when an edge bounced it.
+// Such an entry is one of batten's own rows, never Run-Shed's, and is an awaiting outcome or a stuck outcome.
+// A stuck outcome with no routed_to is a halt, so an entry written before routed_to was recorded reads as one.
 func battenRowHalts(history []shedengine.HistoryEntry) []int {
 	var halts []int
 	for i, entry := range history {
@@ -102,8 +104,11 @@ func stampAfter(rows []timedRow, from, end time.Time) time.Time {
 	return end
 }
 
-// runWaits returns the run's waits: its parent-review rounds, its child's changes into awaiting, blocked or failed, and its batten-row halts.
-// A change's or halt's wait runs from its entry to the next row of either history stamped after it, and a wait with no such row and no verdict runs to end.
+// runWaits returns the run's waits:
+// its parent-review rounds, its child's changes into awaiting, blocked or failed, and its batten-row halts.
+// A change's or halt's wait runs from its entry to the next row of either history stamped after it,
+// and a wait with no such row runs to end.
+// A parent-review round with no verdict runs to end as well.
 func runWaits(row RunRow, rows []timedRow, end time.Time) []waitInterval {
 	var waits []waitInterval
 	for _, round := range row.parentRounds {
@@ -164,7 +169,8 @@ func clipWaits(waits []waitInterval, span Interval) []waitInterval {
 }
 
 // netWaits returns each wait kind's time as disjoint intervals, every kind present.
-// Machine sleep comes out first, then each kind's union less every earlier kind's, so overlapping waits count once under the kind listed first and a sleep inside a wait counts as sleep alone.
+// Machine sleep comes out first, and each kind's union less every earlier kind's is then taken;
+// so overlapping waits count once under the kind listed first, and a sleep inside a wait counts as sleep alone.
 func netWaits(waits []waitInterval, sleeps []Interval) map[string][]Interval {
 	net := make(map[string][]Interval, len(timingWaitKinds))
 	var earlier []Interval
@@ -190,10 +196,12 @@ type spawn struct {
 	file      string
 }
 
-// runAttempts returns the figures of the run's arbiter attempts and its parent-review rounds' alignment records, each one spawn.
-// A PR-Gate alignment attempt of an old run is no spawn: its point is skipped.
-// An attempt's time runs, net of sleep, from its spawn to the first row of either history stamped after it, or to the span's close in a run in flight.
-// In a landed run an attempt spawned outside span, or with no row after it, has its time absent and adds a finding naming its file; its spawn still counts.
+// runAttempts returns the figures of the run's arbiter attempts and its parent-review rounds' alignment records.
+// Each record is one spawn; no spawn of the alignment kind is collected, so that figure stays at zero.
+// An attempt's time runs, net of sleep, from its spawn to the first row of either history stamped after it;
+// in a run in flight with no such row, it runs to the span's close.
+// In a landed run an attempt spawned outside span, or with no row after it, has its time absent;
+// it adds a finding naming its file, and its spawn still counts.
 func runAttempts(row RunRow, rows []timedRow, span Interval, sleeps []Interval) (TimingAttempts, []Finding) {
 	arbiterDir := ""
 	if rels, err := shedrun.TreeRunRels(row.Slug); err == nil {
@@ -258,8 +266,9 @@ func runAttempts(row RunRow, rows []timedRow, span Interval, sleeps []Interval) 
 	return attempts, findings
 }
 
-// attemptsInWindow returns the figures of parts for one bucket window: each spawn counted when its spawned_at falls in window, and each known time clipped to window.
-// A figure's seconds are nil when no attempt of its kind with a known time overlaps window.
+// attemptsInWindow returns the figures of parts for one bucket window.
+// Each spawn counts when its spawn time falls in window, and each known time is clipped to window.
+// A kind's Seconds stays nil when no attempt of that kind with a known time overlaps window.
 func attemptsInWindow(parts []attemptPart, window Interval) TimingAttempts {
 	var attempts TimingAttempts
 	figures := map[string]*AttemptFigure{attemptKindArbiter: &attempts.Arbiter, attemptKindAlignment: &attempts.Alignment, attemptKindParentReviewAlignment: &attempts.ParentReviewAlignment}

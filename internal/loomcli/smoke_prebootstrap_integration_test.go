@@ -1,5 +1,7 @@
-// smoke_prebootstrap_integration_test.go drives the built lym binary and the production seed primitives against real hub pairs in the states before a run bootstraps, and when the reed config is bad.
-// None of these behaviors reaches a tmux server: the refusals come before reed comes up, and the seed commit is plain git.
+// smoke_prebootstrap_integration_test.go drives the built lym binary against real hub pairs.
+// It uses the production seed primitives and covers the states before a run bootstraps, and a bad reed config.
+// None of these behaviors reaches a tmux server.
+// The refusals come before reed comes up, and the seed commit is plain git.
 
 package loomcli
 
@@ -26,7 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states in this order, each step building on the one before:
+// TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states, in order.
+// Each step builds on the one before:
 // no seed, a seed commit, then a second pair added to and removed from the same hub.
 func TestLoomPreBootstrapPair(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -36,7 +39,8 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 	hub, loc, worktree, slug := newWiredPairFixture(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
-	// The run verb on a never-seeded pair refuses on the envelope with a message naming the bootstrap verb, writes no driver log, and leaves the records worktree clean.
+	// The run verb on a never-seeded pair refuses on the envelope with a message naming the bootstrap verb.
+	// It writes no driver log and leaves the records worktree clean.
 	t.Run("run on a never-seeded pair refuses and writes nothing", func(t *testing.T) {
 		beforeCount := gitkit.RevListCount(t, recordsDir, "HEAD")
 
@@ -78,7 +82,9 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 		}
 	})
 
-	// The seed-then-commit mechanism driven directly, not through the full bootstrap: once a driver runs, its persists rewrite the status file's working tree without committing, which would dirty the records worktree for a reason unrelated to the ordering this step pins.
+	// This drives the seed-then-commit mechanism directly, not through the full bootstrap.
+	// Once a driver runs, its persists rewrite the status file's working tree without committing.
+	// That would dirty the records worktree for a reason unrelated to the ordering this step pins.
 	t.Run("seed commit leaves the records worktree clean and touches only the status file", func(t *testing.T) {
 		beforeCount := gitkit.RevListCount(t, recordsDir, "HEAD")
 
@@ -110,7 +116,8 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 		}
 	})
 
-	// A second pair of the same hub: the run launcher exists in the per-slug launcher directory after the add and is gone after the matching remove.
+	// A second pair of the same hub covers the run launcher.
+	// The launcher exists in the per-slug launcher directory after the add and is gone after the matching remove.
 	t.Run("run launcher exists after a pair is added and is gone after the remove", func(t *testing.T) {
 		const launcherSlug = "loom-smoke-launcher"
 		hubforge.AddPair(t, hub, launcherSlug)
@@ -133,8 +140,10 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 	})
 }
 
-// TestLoomStatusAndPauseOnNeverBootstrappedPair asserts the status and pause verbs on a seeded pair with no status file name the remedy.
-// A seed must be present so the verbs reach the lock-parent-directory bug this guards: the run-id arm refuses a seedless run before either verb's own absent-status-file check runs.
+// TestLoomStatusAndPauseOnNeverBootstrappedPair asserts that the status and pause verbs name the remedy.
+// The pair is seeded but has no status file.
+// A seed must be present so the verbs reach the lock-parent-directory bug this test guards.
+// Without a seed, the run-id arm refuses first, before either verb's own absent-status-file check runs.
 func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -178,9 +187,11 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 
 // TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp.
 // Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
-// Resume on an unparseable loom.yaml warns with the way forward, goes on, refuses at the loom config load that meets the same file, and writes no stamp.
-// Resume after the fix removes the key, commits it and writes the stamp, then refuses at reed Up before any server starts: the pair's reed config is bad.
-// The half past the reed config load, which needs a good reed config and a tmux server, is TestLoomResumeReconcilesThenRefusesWithoutLiveDriver.
+// Resume on an unparseable loom.yaml warns with the way forward and goes on.
+// It refuses at the loom config load that meets the same file and writes no stamp.
+// Resume after the fix removes the key, commits it and writes the stamp.
+// It then refuses at reed Up before any server starts: the pair's reed config is bad.
+// The second half, past the reed config load, needs a good reed config and a tmux server, so the smoke tier pins it.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -210,7 +221,8 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	if exit != 1 {
 		t.Errorf("loom resume on a broken loom.yaml exit = %d; want 1; output: %s", exit, out)
 	}
-	// The Warn precedes the loom config load's own refusal of the same broken file, which proves the failed reconcile no longer stopped the verb.
+	// The Warn precedes the loom config load's refusal of the same broken file.
+	// That order shows a failed reconcile does not stop the verb.
 	warnAt := strings.Index(out, "retry the reconcile")
 	loadAt := strings.LastIndex(out, configengine.ConfigFile(worktree, "loom"))
 	if warnAt < 0 || loadAt < warnAt {
@@ -242,7 +254,8 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	}
 }
 
-// TestLoomFailedReedUpRefuses asserts a bad reed config refuses the verbs that bring reed up, before any watchdog or driver is spawned.
+// TestLoomFailedReedUpRefuses asserts a bad reed config refuses the verbs that bring reed up.
+// They refuse before any watchdog or driver is spawned.
 // Each driver's seed gets its own pair, because a run's seed cannot be rewritten to the other driver.
 func TestLoomFailedReedUpRefuses(t *testing.T) {
 	tiergate.Require(t, 1)

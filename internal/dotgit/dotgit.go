@@ -1,4 +1,4 @@
-// dotgit.go holds the `.git` reader: a directory's Geometry, the repository check over it and the walk up to a worktree root.
+// dotgit.go reads a `.git` entry into a Geometry, checks it is a usable repository, and walks to a worktree root.
 
 package dotgit
 
@@ -10,8 +10,10 @@ import (
 	"strings"
 )
 
-// Geometry is where a directory's git data lives: GitDir is the directory holding HEAD and the worktree's own state, CommonDir the directory holding objects and refs.
-// Both are absolute and equal for a plain clone; they differ for a linked worktree.
+// Geometry locates a directory's git data.
+// GitDir is the directory holding HEAD and the worktree's own state.
+// CommonDir is the directory holding objects and refs.
+// Both are absolute; they are equal for a plain clone and differ for a linked worktree.
 type Geometry struct {
 	GitDir    string
 	CommonDir string
@@ -21,9 +23,12 @@ type Geometry struct {
 var ErrNotRepository = errors.New("dotgit: not a git repository")
 
 // Read reads dir's `.git` entry into a Geometry; dir must be absolute.
-// A `.git` directory is the git dir; a `.git` file is a gitfile whose `gitdir:` line, relative to dir when not absolute, names it.
-// The git dir's `commondir` file, relative to the git dir when not absolute, names the common dir; without the file the git dir is the common dir.
-// A missing `.git` entry, a gitfile without a `gitdir:` line, or a `gitdir:` or `commondir` target that does not exist is ErrNotRepository.
+// A `.git` directory is the git dir;
+// a `.git` file is a gitfile whose `gitdir:` line, relative to dir when not absolute, names it.
+// The git dir's `commondir` file, relative to the git dir when not absolute, names the common dir;
+// without the file, the git dir is the common dir.
+// A missing `.git` entry or a gitfile without a `gitdir:` line is ErrNotRepository.
+// So is a `gitdir:` or `commondir` target that does not exist.
 func Read(dir string) (Geometry, error) {
 	entry := filepath.Join(dir, ".git")
 	info, err := os.Stat(entry)
@@ -50,7 +55,8 @@ func Read(dir string) (Geometry, error) {
 	return Geometry{GitDir: gitDir, CommonDir: commonDir}, nil
 }
 
-// IsRepository reports whether g is a usable repository: HEAD present in the git dir, and the objects and refs directories present in the common dir.
+// IsRepository reports whether g is a usable repository:
+// HEAD is present in the git dir, and the objects and refs directories are present in the common dir.
 func IsRepository(g Geometry) bool {
 	if g.GitDir == "" || g.CommonDir == "" {
 		return false
@@ -62,11 +68,15 @@ func IsRepository(g Geometry) bool {
 	return requireDir(filepath.Join(g.CommonDir, "objects")) == nil && requireDir(filepath.Join(g.CommonDir, "refs")) == nil
 }
 
-// FindRoot walks up from start (absolute) to the nearest directory that is a worktree root, as `git rev-parse --show-toplevel` does, and returns it with its Geometry.
-// A directory whose `.git` is a directory ends the walk only when IsRepository holds; otherwise the walk skips it, as git does.
-// A directory whose `.git` is a file ends the walk too, but one whose target is missing or fails IsRepository is ErrNotRepository and never resolves to an enclosing repository.
+// FindRoot walks up from start to the nearest worktree root, as `git rev-parse --show-toplevel` does.
+// start must be absolute, and FindRoot returns the root with its Geometry.
+// A directory whose `.git` is a directory ends the walk only when it is a usable repository;
+// otherwise the walk skips it, as git does.
+// A directory whose `.git` is a file also ends the walk.
+// A missing target, or one that is not a usable repository, is ErrNotRepository;
+// the walk never resolves to an enclosing repository.
 // Reaching the filesystem root without a repository is ErrNotRepository.
-// The root is returned as walked from start, with symlinks unresolved, where git resolves them.
+// The returned root is spelled as walked from start, with symlinks left unresolved where git resolves them.
 func FindRoot(start string) (root string, g Geometry, err error) {
 	dir := filepath.Clean(start)
 	for {
@@ -112,7 +122,8 @@ func readGitFile(path string) (string, error) {
 	return "", fmt.Errorf("%w: %s: no gitdir line", ErrNotRepository, path)
 }
 
-// readCommonDir returns the common dir of gitDir: the directory its `commondir` file names, or gitDir itself when it has none.
+// readCommonDir returns the common dir of gitDir:
+// the directory its `commondir` file names, or gitDir itself when it has none.
 func readCommonDir(gitDir string) (string, error) {
 	content, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
 	if errors.Is(err, os.ErrNotExist) {

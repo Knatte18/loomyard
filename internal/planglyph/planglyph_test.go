@@ -1,5 +1,5 @@
-// planglyph_test.go covers ValidateFormat/Validate's composition over planparser's own checks,
-// resolvePass's language: none short-circuit, and collectGlyphTargets' deduplication.
+// planglyph_test.go covers the composition of ValidateFormat and Validate over planparser's own checks.
+// It also covers the language: none short-circuit of resolvePass and the deduplication in collectGlyphTargets.
 
 package planglyph
 
@@ -15,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// minimalPlan returns a *planparser.Plan carrying just enough to exercise ValidateFormat/Validate
-// without going through ParsePlan: Format 5, language none (so resolvePass opens no repository),
-// and no cards, so every card-scoped check reports clean.
+// minimalPlan returns a *planparser.Plan for tests of ValidateFormat and Validate that skips ParsePlan.
+// It sets Format 5 and language none, so resolvePass opens no repository.
+// It has no cards, so every card-scoped check reports clean.
 func minimalPlan(t *testing.T, dir string) *planparser.Plan {
 	t.Helper()
 	return &planparser.Plan{
@@ -28,9 +28,9 @@ func minimalPlan(t *testing.T, dir string) *planparser.Plan {
 	}
 }
 
-// TestValidateFormat_ConvertsFindingsUnchanged asserts ValidateFormat returns every
-// planparser.ValidateFormat finding unchanged apart from the SeverityBlocking stamp, with a nil
-// error under language: none.
+// TestValidateFormat_ConvertsFindingsUnchanged asserts that ValidateFormat returns planparser's findings unchanged:
+// each keeps its Check, Card and Detail, and its Severity is SeverityBlocking.
+// Under language: none the returned error is nil.
 func TestValidateFormat_ConvertsFindingsUnchanged(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -56,8 +56,8 @@ func TestValidateFormat_ConvertsFindingsUnchanged(t *testing.T) {
 	}
 }
 
-// TestValidate_AddsPlanUnapproved asserts Validate returns everything ValidateFormat does plus the
-// plan-unapproved finding.
+// TestValidate_AddsPlanUnapproved asserts that Validate returns everything ValidateFormat returns.
+// It also returns the plan-unapproved finding.
 func TestValidate_AddsPlanUnapproved(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -87,9 +87,9 @@ func TestValidate_AddsPlanUnapproved(t *testing.T) {
 	}
 }
 
-// TestResolvePass_LanguageNoneOpensNoRepository asserts resolvePass returns cleanly, with no
-// panic, no findings, and a nil error, when plan.Language is "none" even against a directory that
-// is not a quarry repository at all — proving no quarry call is made.
+// TestResolvePass_LanguageNoneOpensNoRepository asserts that resolvePass returns cleanly when plan.Language is "none":
+// no panic, no findings and a nil error, even against a directory that is not a quarry repository.
+// That proves no quarry call is made.
 func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 	tiergate.Require(t, 0)
 	plan := minimalPlan(t, t.TempDir())
@@ -104,9 +104,8 @@ func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 	}
 }
 
-// TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError asserts Validate returns
-// ErrQuarryUnavailable together with the pure findings it had already collected, when the
-// worktree root does not name a quarry repository at all.
+// TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError asserts Validate returns ErrQuarryUnavailable:
+// it also returns the pure findings it had already collected, when the worktree root does not name a quarry repository.
 func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -122,9 +121,11 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 	}
 }
 
-// TestCanonicalizeHandles_ReportsWhetherItRewrote pins the signal resolvePass hangs its reload on.
-// resolvePass must re-read the plan exactly when canonicalization changed it on disk, and must treat a failure of that re-read as an infrastructure error rather than silently falling back to the stale in-memory copy — which would run the resolve-backed passes against bytes no longer on disk and report a clean verdict over them.
-// Both halves depend on this second return being truthful.
+// TestCanonicalizeHandles_ReportsWhetherItRewrote pins the signal that resolvePass hangs its reload on.
+// resolvePass must re-read the plan exactly when canonicalization changed it on disk.
+// It must treat a failed re-read as an infrastructure error, not fall back silently to the stale in-memory copy:
+// that would run the resolve-backed passes against bytes not on disk, and report a clean verdict over them.
+// Both halves depend on the second return value being truthful.
 //
 //testtiming:keep pins the rewrote return value, which TestCanonicalizeHandles_Rewrites ignores
 func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
@@ -161,11 +162,9 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 		}
 	})
 
-	// F4's (round fable5-high-r3) regression subtest: canonicalization is idempotent, so a plan
-	// whose handles are already canonical must report rewrote=false and leave every card file's
-	// bytes untouched — against pre-fix source the identity substitution rewrote the files with
-	// identical bytes and reported rewrote=true, forcing a full plan re-parse on every validation
-	// pass for the plan's whole life.
+	// Canonicalization is idempotent, so a plan whose handles are already canonical must report rewrote=false:
+	// it must leave every card file's bytes untouched.
+	// Reporting rewrote=true for identical bytes would force a full plan re-parse on every validation pass.
 	t.Run("an already-canonical plan rewrites nothing", func(t *testing.T) {
 		dir, plan := writePlanFixture(t, map[int]string{
 			1: "**Create:**\n- `plan:sub#Actual` -> `func Actual() {}`\n\n**Intent:** one\n",
@@ -224,14 +223,14 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 	})
 }
 
-// TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError asserts a plan directory that cannot
-// be read reports as a gate/infrastructure failure, never as a plan finding — the gate could not
-// read the artifact, it did not find a defect in it.
+// TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError asserts an unreadable plan directory:
+// it is reported as a gate or infrastructure failure, never as a plan finding.
+// The gate could not read the artifact; it found no defect in it.
 //
-// R6-12: it must ALSO not be reported as a quarry outage. The failure comes from parsing and writing
-// the plan, so wrapping it in ErrQuarryUnavailable made every caller print "quarry could not answer"
-// for a read-only _lym/plan and sent the operator at the wrong subsystem. Both callers' non-quarry
-// branch already fails the gate with an accurate, plan-named message.
+// It must also not be reported as a quarry outage.
+// The failure comes from parsing and writing the plan.
+// Such a report would send the operator to the wrong subsystem.
+// The callers' non-quarry branch fails the gate with an accurate message that names the plan.
 func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
@@ -259,9 +258,8 @@ func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) 
 	if !strings.Contains(err.Error(), planDir) {
 		t.Errorf("ValidateFormat(...) error = %v; want it to name the plan directory %q an operator can act on", err, planDir)
 	}
-	// The pure findings already collected are still returned alongside the error, per this package's
-	// documented contract; what must NOT appear is any resolve-backed finding, since those passes
-	// would have had to run against a plan the gate could not confirm.
+	// The pure findings collected so far are still returned alongside the error.
+	// Resolve-backed findings must not appear: those passes would run against a plan the gate could not confirm.
 	for _, f := range got {
 		switch f.Check {
 		case "glyph-not-found", "glyph-ambiguous", "glyph-rejected", "create-already-exists", "create-new-unit":
@@ -270,9 +268,8 @@ func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) 
 	}
 }
 
-// TestCollectGlyphTargets_DeduplicatesAcrossCards asserts a glyph referenced by two cards
-// collapses into one target, and that non-glyph-shaped refs (a path, a bare symbol, a plan:
-// handle) are excluded.
+// TestCollectGlyphTargets_DeduplicatesAcrossCards asserts a glyph referenced by two cards collapses into one target.
+// Non-glyph-shaped refs (a path, a bare symbol, a plan: handle) are excluded.
 func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
 	tiergate.Require(t, 0)
 	plan := &planparser.Plan{
@@ -288,12 +285,10 @@ func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
 	}
 }
 
-// TestResolvePass_FileRenameNewSideIsNotAFinding is F1's (round fable5-high-r3) regression test: a
-// FILE-rename pair's New side canonicalizes to the self glyph of a file that only exists once the
-// rename lands, so it resolves not_found against the pre-rename tree — and the status policy must
-// treat that exactly as planparser's own path-missing check treats Pairs.New: never a finding.
-// Against pre-fix source this reported blocking glyph-not-found (twice, per F1b) and wedged every
-// plan carrying a file rename, including the plan spec's own worked example.
+// TestResolvePass_FileRenameNewSideIsNotAFinding asserts that a file rename's New side is never a finding.
+// The New side canonicalizes to the self glyph of a file that exists only once the rename lands,
+// so it resolves not_found against the pre-rename tree.
+// The status policy must not report that not_found as a finding.
 func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
@@ -310,7 +305,8 @@ func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
 	}
 }
 
-// TestValidateRework asserts ValidateRework returns ValidateFormat's findings, followed by a blocking rework-first-card finding only when first_card differs from the told number.
+// TestValidateRework asserts ValidateRework returns ValidateFormat's findings,
+// and it adds a blocking rework-first-card finding only when first_card differs from the told number.
 func TestValidateRework(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -358,7 +354,8 @@ func TestValidateRework(t *testing.T) {
 	})
 }
 
-// forthcomingFindings runs resolvePass over a two-card plan where card 1 is completed and card 2 is pending, with card 1 forthcoming only when forthcoming is true.
+// forthcomingFindings runs resolvePass over a two-card plan in which card 1 is completed and card 2 is pending.
+// Card 1 is marked forthcoming only when the forthcoming argument is true.
 func forthcomingFindings(t *testing.T, card1, card2 string, forthcoming bool) []Finding {
 	t.Helper()
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
@@ -384,7 +381,8 @@ func hasCheck(findings []Finding, check string) bool {
 	return false
 }
 
-// TestResolvePass_ForthcomingCreateTargetExcludedFromStatus asserts a pending card's Uses of a Create target declared by a completed card is excluded from the status check only when that card is forthcoming.
+// TestResolvePass_ForthcomingCreateTargetExcludedFromStatus asserts the status check excludes a Create target.
+// A pending card's Uses of that target are excluded only when the completed card declaring it is forthcoming.
 func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	card1 := "**Create:**\n- `sub#Gadget`\n\n**Intent:** add the gadget\n"
@@ -398,7 +396,9 @@ func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 	}
 }
 
-// TestValidateFormat_PartScope asserts the plan-gate form leaves out of the status policy a file self glyph the part scope's Paths hold, and reports it as glyph-not-found without the scope.
+// TestValidateFormat_PartScope asserts the plan-gate form keeps a file self glyph out of the status policy.
+// The exclusion applies to a glyph the part scope's Paths hold;
+// without the scope, it is reported as glyph-not-found.
 func TestValidateFormat_PartScope(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -426,7 +426,8 @@ func TestValidateFormat_PartScope(t *testing.T) {
 	}
 }
 
-// TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts a Rename New side declared by a forthcoming card is excluded from the status check the same way.
+// TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts the status check excludes a Rename New side.
+// A pending card's Uses of the New side are excluded only when the completed card declaring it is forthcoming.
 func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	card1 := "**Rename:**\n- `sub#Thing` -> `sub#Widget`\n\n**Intent:** rename the type\n"
@@ -440,7 +441,8 @@ func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
 	}
 }
 
-// TestResolvePass_ForthcomingCardIsNotResolved asserts a forthcoming card's own Create target that already exists draws no create-already-exists, since the card is not resolved.
+// TestResolvePass_ForthcomingCardIsNotResolved asserts a forthcoming card draws no create-already-exists.
+// The card is not resolved, so its own Create target, which already exists, draws no such finding.
 func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
 	tiergate.Require(t, 0)
 	card1 := "**Create:**\n- `sub#Foo`\n\n**Intent:** already landed\n"
@@ -451,7 +453,9 @@ func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
 	}
 }
 
-// TestValidateDispatch_DeleteTargetGone asserts a pending card's already-absent Delete target is the informational delete-target-gone only once a card is completed, and that a Uses or Edit of the same target keeps its blocking finding.
+// TestValidateDispatch_DeleteTargetGone asserts a pending card's already-absent Delete target is informational.
+// It is reported as delete-target-gone only once a card is completed.
+// A Uses or Edit of the same target keeps its blocking finding.
 func TestValidateDispatch_DeleteTargetGone(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

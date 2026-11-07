@@ -1,4 +1,5 @@
-// These tests set the prebuilt-binary variable through t.Setenv, so none of them calls t.Parallel: the process environment is the global state they share.
+// These tests set the prebuilt-binary variable through t.Setenv, so none of them calls t.Parallel.
+// The process environment is the global state they share.
 
 package lymbin
 
@@ -128,8 +129,9 @@ func TestBuild_ProducesExecutableBinary(t *testing.T) {
 	}
 }
 
-// TestBuildWithLDFlags_ReachTheBuild checks the ldflags through their effect: `-s -w` strips the symbol table and DWARF, so the binary is smaller than the unstripped Build one.
-// The build info cannot show them, since a `-trimpath` build, which a gate run's GOFLAGS makes, omits its `-ldflags` setting.
+// TestBuildWithLDFlags_ReachTheBuild checks the ldflags through their effect.
+// The `-s -w` flags strip the symbol table and DWARF, so the binary is smaller than the unstripped Build one.
+// The build info cannot show them: a `-trimpath` build, which a gate run's GOFLAGS makes, omits its `-ldflags` setting.
 func TestBuildWithLDFlags_ReachTheBuild(t *testing.T) {
 	tiergate.Require(t, 1)
 	prebuiltPath := Build(t)

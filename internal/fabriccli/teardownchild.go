@@ -1,4 +1,5 @@
-// teardownchild.go builds `lym fabric remote-teardown`, the hidden verb a removal, a task-branch discard or a cleanup sweep starts as a detached child to run its remote steps.
+// teardownchild.go builds the hidden `lym fabric remote-teardown` verb.
+// A parent command starts that verb as a detached child to run the remote steps of a teardown.
 
 package fabriccli
 
@@ -14,7 +15,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// warnWhenEnded makes a signal that ends the teardown child of slug in the hub at hubPath log and mail a notice naming the way forward, since the signal can arrive before the job's last remote step.
+// warnWhenEnded logs and mails a notice naming the way forward.
+// It does so when an interrupt or SIGTERM ends the teardown child of slug in the hub at hubPath.
+// The notice is needed because the signal can arrive before the job's last remote step.
 // The returned function stops the watch once the child's body has returned.
 func warnWhenEnded(hubPath, slug string) (stop func()) {
 	ended := make(chan os.Signal, 1)
@@ -35,7 +38,8 @@ func warnWhenEnded(hubPath, slug string) (stop func()) {
 }
 
 // teardownChildCmd builds the hidden teardown child verb.
-// It writes no envelope: its stdout carries the one line that tells the parent whether it holds the teardown lock, and the parent stops reading after it.
+// It writes no envelope: its stdout carries the one line that tells the parent whether it holds the teardown lock,
+// and the parent stops reading after it.
 func teardownChildCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         fabricengine.TeardownChildVerb,

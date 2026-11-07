@@ -1,14 +1,19 @@
 <!-- This is the burler fixer seat stencil: the only seat of the fix half's one-seat table.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/burler/` and read
-     from there at call time, then filled by internal/seatengine from the seat's value map and handed to the
-     fixer's shuttle run as the agent's entire visible instruction set — the fix step it names
-     below is read only when the fixer reaches it.
+     It is an embedded default in contracts/stencils/stencils.go,
+     seeded to the Bolt checkout's `_lym/stencils/burler/`, read from there at call time,
+     filled by internal/seatengine from the seat's value map,
+     and handed to the fixer's shuttle run as the agent's entire visible instruction set.
+     The fix step it names is read only when the fixer reaches it.
      Every marker below is a top-level {{.X}} substitution.
-     The reserved markers it uses, which the seats engine fills, are parent_directive and edit_directive;
-     the seat values it uses, which fixSeatValues gives it, are review_path, review_format_path and instruction_fix_path.
-     There are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
-     It names no reviewer and no channel to one: the fix half is spawned only once the review is accepted on disk, and never waits on or messages the review half.
-     This file deliberately never repeats the review-file format, which lives in the file review_format_path names, nor the fix-everything body, which lives in the fix step. -->
+     The seats engine fills the reserved markers it uses: parent_directive and edit_directive.
+     fixSeatValues supplies review_path, review_format_path and instruction_fix_path.
+     There are no {{if}}/{{range}} conditionals in this file:
+     a required marker inside a conditional branch would render silently blank when present-but-empty
+     (see internal/stencil/stencil.go).
+     It names no reviewer and no channel to one:
+     the fix half is spawned only once the review is accepted on disk, and never waits on or messages the review half.
+     It never repeats the review-file format, which lives in the file review_format_path names,
+     nor the fix-everything body, which lives in the fix step. -->
 
 # Burler — fix
 

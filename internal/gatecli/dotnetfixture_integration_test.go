@@ -1,4 +1,5 @@
-// dotnetfixture_integration_test.go drives `lym gate test` over a real .NET solution under the dotnet scoper, with the real `dotnet` for the shared build and the test run.
+// dotnetfixture_integration_test.go drives `lym gate test` over a real .NET solution under the dotnet scoper.
+// The shared build and the test run use the real `dotnet`.
 
 package gatecli
 
@@ -18,18 +19,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
-// dotnetPackageReferences are the test packages the fixture's test project references, at the versions the offline NuGet global-packages folder is expected to hold.
+// dotnetPackageReferences are the test packages the fixture's test project references.
+// They are at the versions the offline NuGet global-packages folder is expected to hold.
 const dotnetPackageReferences = `    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NUnit" Version="4.3.2" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
 `
 
-// TestGateTest_DotnetFixture runs `lym gate test --base` over a committed two-project .NET solution after an edit to one production type, and asserts the call builds the solution once, runs only the test class that names the type and exits 0.
-// A call that waited on an MSBuild node or compiler server holding the build's output pipe would end by its timeout instead.
-// It skips when `dotnet` is not on PATH, has no SDK, or when the global-packages folder lacks the test packages, so a machine without .NET stays green.
+// TestGateTest_DotnetFixture runs `lym gate test --base` over a committed two-project .NET solution.
+// It edits one production type first.
+// It then asserts that the call builds the solution once, runs only the test class naming that type, and exits 0.
+// A call that waited on an MSBuild node or compiler server holding the build's output pipe would time out instead.
+// It skips when `dotnet` is not on PATH, has no SDK, or the global-packages folder lacks the test packages.
+// That keeps a machine without .NET green.
 //
 // The build leaves an MSBuild node, and perhaps a compiler server, running until the SDK's idle timeout.
-// That is process-global state that outlives the test: `dotnet build-server shutdown` would also end the nodes of other gate runs, so the test leaves them to the idle timeout.
+// That is process-global state that outlives the test.
+// `dotnet build-server shutdown` would also end the nodes of other gate runs.
+// So the test leaves them to the idle timeout.
 func TestGateTest_DotnetFixture(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -74,9 +81,13 @@ func dotnetEnv() []string {
 	return []string{"DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_NOLOGO=1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1"}
 }
 
-// writeDotnetFixture commits a .NET solution in a fresh git repository outside every hub and returns its root and the NuGet global-packages folder its restores read.
-// The solution holds two production projects, Circles with a Circle type and Squares with a Square type, and one NUnit test project referencing both, with a test class naming each type, so MSBuild builds two projects in parallel and starts an out-of-process node.
-// The worktree's own gate.yaml selects the dotnet scoper, a shared build of the solution and a vstest tier that runs the test project without building.
+// writeDotnetFixture commits a .NET solution in a fresh git repository outside every hub.
+// It returns the repository root and the NuGet global-packages folder the restores read.
+// The solution holds two production projects, Circles with a Circle type and Squares with a Square type.
+// One NUnit test project references both, with a test class naming each type.
+// The fixture is shaped so MSBuild builds two projects in parallel and starts an out-of-process node.
+// The worktree's own gate.yaml selects the dotnet scoper.
+// It names a shared build of the solution and a vstest tier that runs the test project without building.
 // It skips the test when dotnet has no SDK or the test packages are not in the global-packages folder.
 func writeDotnetFixture(t *testing.T, dotnet string) (repo, packages string) {
 	t.Helper()
@@ -113,7 +124,8 @@ func writeDotnetFixture(t *testing.T, dotnet string) (repo, packages string) {
   </ItemGroup>
 </Project>
 `
-	// The probe restores a copy of the test project's package references outside the fixture, so a missing package skips the test and leaves no obj/ in the tree the gate diffs.
+	// The probe restores a copy of the test project's package references outside the fixture.
+	// A missing package then skips the test and leaves no obj/ in the tree the gate diffs.
 	probeDir := t.TempDir()
 	probeProject := `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -183,7 +195,8 @@ func writeDotnetFixture(t *testing.T, dotnet string) (repo, packages string) {
 	return repo, packages
 }
 
-// dotnetSolution is the classic solution file of the fixture's three projects, every configuration building every project.
+// dotnetSolution is the classic solution file of the fixture's three projects.
+// Every configuration builds every project.
 const dotnetSolution = `Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Circles", "Circles\Circles.csproj", "{11111111-1111-1111-1111-111111111111}"
@@ -214,7 +227,8 @@ Global
 EndGlobal
 `
 
-// runDotnetProbe runs dotnet with args in dir, with telemetry, the banner and the first-run setup off, and returns its combined output.
+// runDotnetProbe runs dotnet with args in dir and returns its combined output.
+// The run has telemetry, the banner and the first-run setup off.
 func runDotnetProbe(dotnet, dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command(dotnet, args...)
 	cmd.Dir = dir

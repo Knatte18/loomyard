@@ -1,4 +1,5 @@
-// engineset_test.go verifies EngineSet's name lookup, its default, its sorted names and its isolation from the map it was built over.
+// engineset_test.go verifies EngineSet's name lookup, its default and its sorted names.
+// It also checks that the set is isolated from the map it was built over.
 
 package shuttleengine
 
@@ -15,7 +16,8 @@ func singleEngineSet(engine Engine) EngineSet {
 	return NewEngineSet("fake", map[string]Engine{"fake": engine})
 }
 
-// requireEngineSkipEpisode asserts the log holds one engine-skip episode that names runDir: one Warn, two Debug lines and one recovery.
+// requireEngineSkipEpisode asserts the log holds one engine-skip episode that names runDir:
+// one Warn, two Debug lines and one recovery.
 func requireEngineSkipEpisode(t *testing.T, log, runDir string) {
 	t.Helper()
 	requireFailureEpisode(t, log, "skipping a run whose engine is not registered", 2, "run engine registered again")
@@ -24,8 +26,9 @@ func requireEngineSkipEpisode(t *testing.T, log, runDir string) {
 	}
 }
 
-// TestEngineSet_Lookup pins how a name resolves: the empty name to the default, a registered name to its own engine,
-// and an unknown name or an unregistered default to ErrEngineNotRegistered naming the sorted registered names.
+// TestEngineSet_Lookup pins how a name resolves.
+// The empty name resolves to the default; a registered name resolves to its own engine.
+// An unknown name, or an unregistered default, yields ErrEngineNotRegistered, which names the sorted registered names.
 func TestEngineSet_Lookup(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

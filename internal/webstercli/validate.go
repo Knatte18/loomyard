@@ -1,19 +1,21 @@
-// validate.go implements the `validate` webster verb: the standalone, lint-without-run half of the
-// automatic gate websterengine.Run runs itself before ever spawning Master.
-// It parses the plan and runs every plan-format machine check against it, printing exactly one
-// JSON envelope: ok with {"valid": true, "cards": <n>, "scope": <scope>} for a clean plan, or an
-// error envelope carrying every finding for a plan with findings -- exit non-zero either way a
-// blocking finding exists, never plain text.
-// The check set is SCOPED the way Run scopes its own,
-// and the "scope" key names which answer the call gave: the index's Validate, the whole-plan answer, while no batch has begun, and planglyph.ValidateDispatch's pending-cards answer once a run has begun any batch.
+// validate.go implements the `validate` webster verb.
+// It is the lint-without-run half of the automatic gate that websterengine.Run applies before it spawns Master.
+// It parses the plan and runs every plan-format machine check against it.
+// It prints exactly one JSON envelope.
+// An ok envelope, {"valid": true, "cards": <n>, "scope": <scope>}, marks a clean plan.
+// An error envelope carries every finding.
+// It exits non-zero whenever a blocking finding exists, and it never prints plain text.
+// The check set is scoped the way Run scopes its own, and the "scope" key names which answer the call gave:
+// the index's Validate, the whole-plan answer, while no batch has begun;
+// or planglyph.ValidateDispatch's pending-cards answer once a run has begun any batch.
 // See scopedValidate for why the two are not interchangeable.
-// webster's own Run pre-flight ALSO refuses a zero-batch plan outright
-// (nothing-to-build is a malformed plan, never a vacuous outcome: done, per websterengine's
-// runlevel.go);
-// validate surfaces that same emptiness through the findings set rather than a distinct check,
+// Run's pre-flight also refuses a zero-batch plan outright:
+// nothing to build is a malformed plan, never a vacuous done outcome (websterengine's runlevel.go).
+// validate surfaces that emptiness through the findings set rather than a distinct check,
 // since a zero-card plan already fails planparser's index-file-consistency checks.
 // With --batches the ok envelope also carries "profile" and "batches":
-// the fresh partition the active batchifier forms for the plan, each batch as its card numbers and estimated peak context.
+// the fresh partition the active batchifier forms for the plan.
+// Each batch lists its card numbers and estimated peak context.
 // It is computed without state, so it shows what a fresh run would form even while a run holds its recorded partition.
 package webstercli
 
@@ -33,18 +35,16 @@ import (
 )
 
 // scopeWholePlan and scopePending are the two values validate's envelopes report under "scope",
-// naming which of planglyph's two entry points answered this call. They are spelled out as
-// constants because the value is part of the verb's output contract, read by a Planner deciding
-// whether an absent finding means "clean" or "not re-checked on this call".
+// naming which of planglyph's two entry points answered the call.
+// They are constants because the value is part of the verb's output contract:
+// a Planner reads it to tell whether an absent finding means "clean" or "not re-checked on this call".
 const (
 	scopeWholePlan = "whole-plan"
 	scopePending   = "pending"
 )
 
-// findingsHaveBlocking reports whether findings carries at least one planglyph.SeverityBlocking
-// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and
-// internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides
-// the verdict on every side of this parity pair.
+// findingsHaveBlocking reports whether findings holds at least one planglyph.SeverityBlocking entry.
+// Severity, not finding count, decides the verdict: an informational finding never blocks.
 func findingsHaveBlocking(findings []planglyph.Finding) bool {
 	for _, f := range findings {
 		if f.Severity == planglyph.SeverityBlocking {
@@ -54,10 +54,9 @@ func findingsHaveBlocking(findings []planglyph.Finding) bool {
 	return false
 }
 
-// findingsEntries renders findings as the structured array both findingsEnvelope and validateCmd's
-// own informational-only pass path place under an envelope's "findings" key, each entry carrying
-// its own severity alongside check, card, and detail so an informational create-new-unit is
-// distinguishable from a blocking glyph-not-found in the one place this record exists.
+// findingsEntries renders findings as the array an envelope places under its "findings" key.
+// Each entry carries its severity beside check, card and detail,
+// so an informational finding can be told apart from a blocking one.
 func findingsEntries(findings []planglyph.Finding) []map[string]string {
 	entries := make([]map[string]string, len(findings))
 	for i, f := range findings {
@@ -66,10 +65,9 @@ func findingsEntries(findings []planglyph.Finding) []map[string]string {
 	return entries
 }
 
-// findingsEnvelope writes a JSON error envelope carrying findings via findingsEntries, plus the
-// scope those findings were collected under -- the refusal envelope needs it as much as the success
-// one does, since which cards were re-resolved is what decides whether a missing finding means
-// "clean" or "out of scope on this call".
+// findingsEnvelope writes a JSON error envelope carrying findings and the scope they were collected under.
+// The scope tells a reader whether a missing finding means "clean" or "not checked on this call",
+// so the refusal envelope carries it just as the success envelope does.
 // msg is the envelope's error text.
 func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, scope string) int {
 	data, _ := json.Marshal(map[string]any{
@@ -82,22 +80,24 @@ func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, s
 	return 1
 }
 
-// scopedValidate runs the check set this call's own scope calls for, and returns the scope name alongside the findings so every envelope can report it.
-// st is the state validateCmd already loaded under the lease; nil means no run has started.
+// scopedValidate runs the check set this call's scope calls for.
+// It returns the scope name with the findings, so every envelope can report it.
+// st is the state validateCmd loaded under the lease; nil means no run has started.
 //
-// With no begun card -- no run at all, or a run that has not begun a batch yet --
-// it runs the index's Validate: the whole plan, including the plan-unapproved approval gate, which is the honest answer for the pre-flight case this verb exists to serve.
+// With no begun card, it runs the index's Validate:
+// the whole plan, including the plan-unapproved approval gate.
+// That is the honest answer for the pre-flight case this verb serves.
 //
-// Once a run has begun any batch it runs planglyph.ValidateDispatch scoped by websterengine.DispatchScope,
-// the same call begin-batch and websterengine.Run make.
-// A begun card's own targets are not resolved, since its work may have landed or not;
-// a forthcoming card's Create and Rename New targets are excluded from the status check, so a later card that Uses them passes.
-// Approval is deliberately not re-checked on that branch, and nothing is lost by it:
-// a run cannot have begun a batch without having passed Run's own entry-time approval refusal first.
+// Once a run has begun any batch, it runs planglyph.ValidateDispatch scoped by websterengine.DispatchScope.
+// A begun card's own targets are not resolved, since its work may or may not have landed.
+// A forthcoming card's Create and Rename New targets are excluded from the status check,
+// so a later card that Uses them passes.
+// Approval is not re-checked on that branch:
+// a run cannot have begun a batch without first passing websterengine's entry-time approval refusal.
 //
-// With no state it computes the fresh partition first and refuses its batch-order error, as the first init would.
-// A nil batcher with a state on disk is a wiring bug rather than a state, and it is reported as one:
-// reading it as "no begun cards" would silently hand back the whole-plan answer this function exists to avoid.
+// With no state, it first computes the fresh partition and returns its batch-order error, as a first init would.
+// A nil batcher with a state on disk is a wiring bug, reported as websterengine.ErrNilBatcher.
+// Reading it as "no begun cards" would silently return the whole-plan answer this function exists to avoid.
 func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.State) ([]planglyph.Finding, string, error) {
 	if st == nil {
 		if c.batcher != nil {
@@ -125,8 +125,8 @@ func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.Sta
 	return findings, scopePending, err
 }
 
-// batchEntries renders batches as the structured array validate's --batches places under "batches":
-// each entry carries the batch's card numbers and its estimated peak context.
+// batchEntries renders batches as the array that validate's --batches output places under "batches".
+// Each entry carries the batch's card numbers and its estimated peak context.
 func batchEntries(batches []batcher.Batch) []map[string]any {
 	entries := make([]map[string]any, len(batches))
 	for i, b := range batches {
@@ -183,17 +183,12 @@ Examples:
 				return nil
 			}
 
-			// scopedValidate's own resolve pass can canonicalize a not-yet-canonical plan: handle,
-			// rewriting the plan on disk exactly as begin-batch's own ValidateDispatch call can
-			// (CanonicalizeHandles, resolve.go) -- but unlike every bracket verb, validate never
-			// restamped state.json's PlanFingerprint afterward, silently desyncing webster's own
-			// crash/resume guard: the plan on disk carried validate's own sanctioned edit while
-			// state.json kept the pre-rewrite fingerprint, so the next begin-batch/record-batch/run
-			// refused it as a foreign edit and forced --fresh, discarding a live run's progress over
-			// what looked like a read-only lint (crucible round sonnet-xhigh-r8, WS-1). The lease and
-			// reload-then-restamp shape below mirror begin-batch's own restamp discipline exactly —
-			// see persistPlanFingerprintRebaseline's own doc comment for why the restamp reloads
-			// state fresh rather than trusting an in-memory copy.
+			// scopedValidate's resolve pass can canonicalize a not-yet-canonical handle, rewriting the plan on disk.
+			// validate then restamps state.json's PlanFingerprint, so the rewrite is not taken for a foreign edit.
+			// Without the restamp, the next begin-batch, record-batch or run refuses the plan.
+			// It forces --fresh, which discards a live run's progress over what looked like a read-only lint.
+			// The restamp reloads state rather than trusting an in-memory copy;
+			// persistPlanFingerprintRebaseline's doc comment explains why.
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -211,8 +206,9 @@ Examples:
 				fingerprintBefore = st.PlanFingerprint
 			}
 
-			// The edit check runs before scopedValidate's own rewrite:
-			// the restamp below exists to adopt webster's own rewrites, so any difference seen here is someone else's edit and is refused, never adopted into the plan hashes.
+			// The edit check runs before scopedValidate rewrites the plan.
+			// The restamp below adopts webster's own rewrites, so a difference seen here is someone else's edit:
+			// it is refused and never adopted into the plan hashes.
 			var editErr error
 			if st != nil {
 				editErr = websterengine.PlanEditError(st, plan.Dir, c.geom.WebsterDir)
@@ -220,11 +216,11 @@ Examples:
 
 			findings, scope, validateErr := c.scopedValidate(plan, st)
 
-			// Re-baseline regardless of validateErr, exactly as begin-batch re-baselines ahead of
-			// every refusal below it: a sanctioned rewrite that already landed on disk is a durable
-			// fact about the plan whether or not a LATER step of this same call then fails. A nil
-			// st (no run in progress) means there is no state.json to desync, so this is a no-op.
-			// An edited plan skips it and leaves state.json untouched.
+			// Re-baseline regardless of validateErr.
+			// A sanctioned rewrite that already landed on disk is a durable fact about the plan.
+			// It stands whether or not a later step of this call fails.
+			// A nil st means no run is in progress: there is no state.json to desync, so the re-baseline is a no-op.
+			// An edited plan skips the re-baseline and leaves state.json untouched.
 			var rebaseErr error
 			if st != nil && editErr == nil {
 				if fpErr := websterengine.RestampPlanBaseline(st, plan.Dir, c.geom.WebsterDir); fpErr != nil {
@@ -235,11 +231,9 @@ Examples:
 			}
 
 			if validateErr != nil {
-				// Named for quarry, not the plan: an operator reading this envelope must never be
-				// told the plan is invalid when quarry simply could not answer. Any OTHER validator
-				// error still fails the verb rather than being dropped — printing "valid": true over
-				// a validation that did not finish is the failure mode internal/planglyph/repo.go's
-				// own rationale rejects outright.
+				// The message names quarry, not the plan, so an operator never reads the plan as invalid when quarry could not answer.
+				// Any other validator error still fails the verb rather than being dropped;
+				// printing "valid": true over an unfinished validation is a failure mode internal/planglyph/repo.go rejects outright.
 				msg := "webster: validating plan failed: " + validateErr.Error()
 				if errors.Is(validateErr, planglyph.ErrQuarryUnavailable) {
 					msg = "webster: quarry could not answer validating plan: " + validateErr.Error()

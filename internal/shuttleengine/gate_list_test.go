@@ -1,4 +1,5 @@
-// gate_list_test.go covers the ordered gate list: per-entry consecutive-failure counts, PassOnCap, off entries, and the per-entry GateOutcome report, driven through the same fake engine and scripted gate closures gate_test.go uses.
+// gate_list_test.go covers the ordered gate list, its per-entry consecutive-failure counts, PassOnCap and off entries;
+// it checks the per-entry GateOutcome report, driven through a fake engine and scripted gate closures.
 
 package shuttleengine
 
@@ -13,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// scriptedGate returns a Gate that answers from script, one element per call, repeating the last element once the script is spent, and counts its calls through calls.
+// scriptedGate returns a Gate that answers from script, one element per call;
+// once the script is spent it repeats the last element, and it counts its calls through calls.
 func scriptedGate(calls *int, script ...bool) Gate {
 	return func() (GateResult, error) {
 		i := *calls
@@ -28,7 +30,9 @@ func scriptedGate(calls *int, script ...bool) Gate {
 	}
 }
 
-// runGateList drives a gated Wait whose first arrival is already in the events file and which sees one further arrival per expected re-prompt, so a spec that re-prompts reprompts times settles on arrival reprompts+1.
+// runGateList drives a gated Wait whose first arrival is already in the events file;
+// the Wait sees one further arrival per expected re-prompt,
+// so a spec that re-prompts reprompts times settles on arrival reprompts+1.
 func runGateList(t *testing.T, spec GateSpec, reprompts int) (Result, *fakeReed, string) {
 	t.Helper()
 	runDir := t.TempDir()
@@ -87,7 +91,9 @@ func wantStates(t *testing.T, outcome *GateOutcome, want ...GateEntryState) {
 }
 
 // TestGateList_FailPassFailStartsBudgetAfresh pins the consecutive-failure reset:
-// an entry that failed, then passed on an arrival where a later entry failed, then fails again, has its whole budget back — so with Attempts 1 it is run and re-prompted again instead of finalizing (or, with PassOnCap, being let through without running).
+// an entry that fails, passes on an arrival where a later entry fails, then fails again gets its whole budget back.
+// So with Attempts 1 it is run and re-prompted again instead of finalizing;
+// with PassOnCap it is not let through without running.
 //
 //testtiming:keep pins the consecutive-failure reset: an entry that fails, passes and fails again gets its whole budget back, with and without pass_on_cap
 func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
@@ -129,7 +135,8 @@ func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 	}
 }
 
-// TestGateList_FinalArrivalAtFailingPassOnCapEntry covers both final arrivals that cannot re-prompt — a failed send and an expired deadline — stopping at a failing PassOnCap entry with a required entry after it:
+// TestGateList_FinalArrivalAtFailingPassOnCapEntry covers both final arrivals that cannot re-prompt:
+// a failed send and an expired deadline, each stopping at a failing PassOnCap entry with a required entry after it;
 // the outcome is failed and the later entry is reported not reached.
 //
 //testtiming:keep pins both final arrivals that cannot re-prompt, a failed send and an expired deadline, ending at a failing pass_on_cap entry with the later required entry reported not reached
@@ -219,12 +226,12 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 	})
 }
 
-// TestGateList_FinalReports drives runGateList over lists whose final per-entry report is the point:
-// an exhausted budget without pass_on_cap finalizes failed; a pass_on_cap entry is let through
-// without running again; an entry with zero Attempts is reported off and its closure never runs,
-// with and without pass_on_cap, and a list of nothing but off entries still yields a non-nil passed
-// outcome; and one list reaches all five per-entry states with GateOutcome.Attempts the sum of the
-// entries' sent counts.
+// TestGateList_FinalReports drives runGateList over lists whose final per-entry report is the point.
+// An exhausted budget without pass_on_cap finalizes failed.
+// A pass_on_cap entry is let through without running again.
+// An entry with zero Attempts is reported off and its closure never runs, with and without pass_on_cap.
+// A list of nothing but off entries still yields a non-nil passed outcome.
+// One list reaches all five per-entry states, and GateOutcome.Attempts is the sum of the entries' sent counts.
 func TestGateList_FinalReports(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -262,7 +269,7 @@ func TestGateList_FinalReports(t *testing.T) {
 					if !reflect.DeepEqual(spanKinds(b), []GateSpanKind{GateSpanGate, GateSpanRework, GateSpanGate, GateSpanRework, GateSpanGate}) {
 						t.Fatalf("b span kinds = %v, want gate, rework, gate, rework, gate", spanKinds(b))
 					}
-					// Each rework span opens after the gate span before it and ends at the next arrival, which is where a's next gate span starts.
+					// A rework span opens after the gate span before it and ends at the next arrival, where a's next gate span starts.
 					for k, rework := range []GateSpan{b[1], b[3]} {
 						previousGate, nextGate := b[2*k], b[2*k+2]
 						if rework.Start.Before(previousGate.End) || rework.End.Before(rework.Start) {
@@ -374,8 +381,9 @@ func TestGateList_FinalReports(t *testing.T) {
 	}
 }
 
-// offBeforeLive returns a list whose first entry has zero Attempts, with the given pass_on_cap, ahead
-// of a live passing entry, and the assertions that the off entry never ran and the list passed.
+// offBeforeLive returns a list whose first entry has zero Attempts, with the given pass_on_cap.
+// The list's second entry is a live passing entry.
+// The assertions check that the off entry never ran and the list passed.
 func offBeforeLive(passOnCap bool) (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
 	var offCalls, liveCalls int
 	spec := GateSpec{

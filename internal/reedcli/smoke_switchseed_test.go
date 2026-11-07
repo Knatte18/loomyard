@@ -1,4 +1,6 @@
-// smoke_switchseed_test.go pins noise class 3's suppression directly: TestSmokeSwitchDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lym's root PersistentPreRunE can reach (the dev-refusal warn and the port-back drift warn) and asserts that `lym reed switch`'s stderr is empty.
+// smoke_switchseed_test.go pins that `lym reed switch` writes nothing to stderr.
+// The test arms both stencilstore Warn emitters that cmd/lym's root PersistentPreRunE can reach.
+// They are the dev-refusal warn and the port-back drift warn.
 // The verb runs with a socket path nothing listens on, so it fails fast without touching a tmux server;
 // the assertion runs the built binary as a plain subprocess and reads its own stderr stream directly.
 
@@ -20,12 +22,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSmokeSwitchDeclinesStencilSeedPass is the regression pin: a dev-stamped real binary runs `lym reed switch` against a hub carrying both a stale-but-untouched board stencil (the dev-refusal warn's precondition) and a drifted contracts/stencils worktree copy (the port-back drift warn's precondition), and stderr must come back empty.
-// Assert emptiness only -- never a line count and never a particular message: either emitter alone is enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run at all for an opted-out command.
+// TestSmokeSwitchDeclinesStencilSeedPass runs `lym reed switch` from a dev-stamped binary.
+// The hub holds an untouched board stencil that differs from the shipped default,
+// and the worktree's contracts/stencils copy has drifted.
+// The test asserts emptiness only, never a line count or a particular message.
+// The seed pass does not run at all for a command that opts out, so stderr stays silent.
 func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
-	// The dev channel stamp makes stencilstore.ModeFor return ModeDev, which warns instead of refreshing an untouched stencil.
+	// The dev channel stamp makes stencilstore.ModeFor return ModeDev.
+	// ModeDev warns instead of refreshing an untouched stencil.
 	lymExe := lymbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -38,9 +44,9 @@ func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 	}
 	name := names[0]
 
-	// Arrange the dev-refusal warn: a stamp matching its own body plus a body differing from the
-	// shipped default is exactly StateUntouched with drift, which reconcileOne warns about and
-	// refuses to refresh under ModeDev.
+	// Arrange the dev-refusal warn: a stamp matching its body, and a body differing from the shipped default.
+	// That is StateUntouched with drift.
+	// reconcileOne warns about it and refuses to refresh it under ModeDev.
 	shipped, known := registry.Default(name)
 	if !known {
 		t.Fatalf("registry has no default for its own first name %q", name)
@@ -55,10 +61,10 @@ func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 		t.Fatalf("write board stencil %s: %v", boardPath, err)
 	}
 
-	// Arrange the port-back drift warn: a hubforge fixture worktree carries no contracts/ directory
-	// of its own, so seedStencilsAt sets sourceDir empty and warnPortBackDrift cannot fire without
-	// this step -- materialize contracts/stencils/<relPath> with a body differing from the board copy
-	// just planted.
+	// Arrange the port-back drift warn: a hubforge fixture worktree has no contracts/ directory of its own.
+	// seedStencilsAt therefore sets sourceDir empty.
+	// Without this step, warnPortBackDrift cannot fire.
+	// Materialize contracts/stencils/<relPath> with a body differing from the board copy planted above.
 	sourcePath := filepath.Join(h.PrimeWorktree(), "contracts", "stencils", filepath.FromSlash(stencilstore.RelPath(name)))
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
 		t.Fatalf("create contracts/stencils parent dir: %v", err)

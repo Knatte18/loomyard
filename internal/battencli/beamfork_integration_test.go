@@ -1,4 +1,5 @@
-// beamfork_integration_test.go drives the Worktree-Create row over a hubforge hub with a beam and a board of its members: where each task's pair forks from, and the start guard's dirt check.
+// beamfork_integration_test.go drives the Worktree-Create row over a hubforge hub holding a beam and its tasks.
+// It covers where each task's pair forks from, and the start guard's dirt check.
 
 package battencli
 
@@ -22,8 +23,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedBeamBoard seeds h's board with a beam project b holding tasks m, armed, late and crashed and the beam project inner, a grouping project g holding task grouped, and a task left, whose local branch the caller leaves behind.
+// seedBeamBoard seeds h's board with the beam project b, holding tasks m, armed, late, crashed and left.
+// It also seeds the beam project inner under b, and the grouping project g holding task grouped.
 // The beam project orphan sits under the beam far, which has no pair here.
+// The task left is one whose local branch the caller leaves behind.
 func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
@@ -67,10 +70,15 @@ func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// TestWorktreeCreate_ForksFromTheBeam asserts the create row forks a beam member's pair from the beam while the prime holds tracked dirt, and a task of a grouping project from the prime.
-// A run armed from the beam's own location forks the member from the beam, and a local branch left from a removed pair is refused with ErrBranchExists, since batten never adopts one.
-// A beam project forks from its parent beam unmarked, or is refused naming its parent's create when that beam's pair is absent here.
-// A member whose beam holds once its pair is made, or while the member resumes over a complete pair, loses the pair and is refused naming the two steps that progress.
+// TestWorktreeCreate_ForksFromTheBeam asserts the create row forks a beam member's pair from the beam.
+// The fork succeeds while the prime holds tracked dirt.
+// A task of a grouping project forks from the prime.
+// A run armed from the beam's own location forks the member from the beam,
+// and a local branch left from a removed pair is refused with ErrBranchExists, since batten never adopts one.
+// A beam project forks from its parent beam unmarked.
+// When that beam's pair is absent here, the project is refused, naming its parent's create.
+// A member whose beam holds once its pair is made loses the pair and is refused naming the two steps that progress.
+// A member that resumes over a complete pair while its beam holds does the same.
 func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,12 +1,12 @@
-// front.go — the front task's two board fields: the payload and fixed-fields guards, and the one write that sets them.
+// front.go — the guards on a front task's front and on_land fields, and FileFrontTask, the one write that sets them.
 //
-// A front task is a task lym files ahead of its worktree's other starts; only FileFrontTask sets its front and on_land fields.
+// A front task is a task lym files ahead of its worktree's other starts.
 
 package boardengine
 
 import "fmt"
 
-// frontPayloadRefusal is the refusal of a payload that carries front or on_land with any value but the entry's stored one.
+// frontPayloadRefusal is the refusal of a payload that carries front or on_land with a value the board does not accept.
 func frontPayloadRefusal(slug string) error {
 	return fmt.Errorf("entry %q: only lym files a front task and writes its front and on_land fields; way forward: drop the front and on_land keys from the payload", slug)
 }
@@ -16,8 +16,10 @@ func frontFixedRefusal(slug string) error {
 	return fmt.Errorf("entry %q is a front task, and a front task's project, kind and slug are fixed; way forward: remove it with `%s`, preceded by `lym batten cancel %s --remove` while a run holds the entry", slug, RemoveCommand(slug), slug)
 }
 
-// checkFrontPayload judges the front and on_land keys of an upsert payload against the entry fields["slug"] names, the entry being new when the store holds none.
-// A value equal to the stored one, false and empty for a new entry, is dropped from fields; any other value, or a front that is not a bool or an on_land that is not a string, is refused.
+// checkFrontPayload judges the front and on_land keys of an upsert payload against the entry `fields["slug"]` names.
+// A new entry has the stored values false and empty.
+// A value equal to the stored one is dropped from fields.
+// Any other value is refused, and so is a front that is not a bool or an on_land that is not a string.
 // On an entry whose stored Front is true, a project or kind value other than the stored one is refused too.
 func checkFrontPayload(s *Store, fields map[string]any) error {
 	slug, _ := fields["slug"].(string)
@@ -45,8 +47,10 @@ func checkFrontPayload(s *Store, fields map[string]any) error {
 	return nil
 }
 
-// FileFrontTask creates or updates the task fields describe under the write lock and stores it with Front true and OnLand set to onLand.
-// The payload carries neither front nor on_land, which the payload refusal of an upsert would also name; the board's draft rule makes a new task draft, so a caller releases it with a later SetStatus(slug, nil).
+// FileFrontTask creates or updates the task that fields describe, under the write lock.
+// It stores the task with Front true and OnLand set to onLand.
+// The fields must carry neither front nor on_land: the call refuses them.
+// A new task takes draft status, so a caller releases it with a later SetStatus(slug, nil).
 // Only the front-task package calls it: no board edit can set either field.
 func (b *Board) FileFrontTask(fields map[string]any, onLand string) (Task, error) {
 	slug, _ := fields["slug"].(string)

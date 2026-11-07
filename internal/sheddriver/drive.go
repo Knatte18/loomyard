@@ -1,6 +1,8 @@
-// drive.go holds the shed driver's settle loop:
-// it steps the run through the shared --until-stop loop body, decides each stop by the closed rule table and carries the decision out, leaving a settle record for every move and a stop report for every hand-back.
-// The loop works over injected seams, so every branch is testable without a process; the seams a recipe has no use for are optional groups.
+// drive.go holds the shed driver's settle loop, which steps the run through the shared --until-stop loop body.
+// It decides each stop by the closed rule table and carries the decision out.
+// Each move leaves a settle record, and each hand-back leaves a stop report.
+// The loop works over injected seams, so every branch is testable without a process;
+// the seams a recipe has no use for are optional groups.
 
 package sheddriver
 
@@ -47,7 +49,8 @@ const (
 )
 
 // Deps is the shed driver's whole surface to the world.
-// The groups below the required seams are optional: a nil group only removes rows or agents from the rule table, and a stop a removed row would have caught meets the later rows unchanged.
+// The groups below the required seams are optional: a nil group only removes rows or agents from the rule table,
+// and a stop a removed row would have caught meets the later rows unchanged.
 type Deps struct {
 	// RunID is the run the driver settles.
 	RunID string
@@ -71,19 +74,19 @@ type Deps struct {
 	PauseHold func(ctx context.Context) error
 	// NewReportPath returns a fresh stop report path.
 	NewReportPath func() string
-	// HandBack holds what a hand-back reads; its ReportPath is replaced by NewReportPath for each hand-back.
+	// HandBack holds what a hand-back reads; its report path is a fresh one for each hand-back.
 	HandBack HandBackDeps
 	// Tackler spawns the tackler for stop, or returns the verdict of an earlier attempt, writing its report at reportPath.
 	Tackler func(stop Stop, reportPath string) (TacklerEnvelope, error)
 	// ConsumeTackler applies the resume of the tackler attempt in attemptDir to the run.
 	ConsumeTackler func(attemptDir string) error
-	// OpenAttempts names the newest tackler and arbiter attempt directories recorded for key, empty when there is none, and whether the tackler attempt was applied.
+	// OpenAttempts names the newest tackler and arbiter attempts for key, empty if none, and whether the tackler applied.
 	OpenAttempts func(key StopKey) (tackler, arbiter string, tacklerApplied bool, err error)
 	// Now is the clock.
 	Now func() time.Time
 
 	// CommitRecords commits the run's records at a done stop; nil commits nothing.
-	// A done stop that reported friction: failed calls it a second time once its hand-back report is written, so a call over records already committed must be a no-op.
+	// A done stop that reported friction: failed calls it again after its hand-back report; repeat calls must do nothing.
 	CommitRecords func() error
 	// WriteFrictionNote writes the friction note of a paused stop that carries no reason; nil writes none.
 	WriteFrictionNote func(stop Stop) error
@@ -93,26 +96,26 @@ type Deps struct {
 	Arbiter *ArbiterSeam
 	// HandOver hands the run to a fresh driver of a newer build; nil means the driver reads no build and never hands over.
 	HandOver *HandOverSeam
-	// Tamper compares the worktree with the snapshot the tackler attempt recorded; nil acts on a tackler verdict without the comparison.
+	// Tamper compares the worktree with the snapshot the tackler recorded; nil acts on a verdict without the comparison.
 	Tamper *TamperSeam
-	// StartCheck judges the row a driver finds blocked at its start before it steps anything, and returns a refusal that hands the run back; nil checks nothing.
+	// StartCheck judges a blocked row before any step; a refusal hands the run back, and nil checks nothing.
 	StartCheck func(row string) (refusal string, err error)
-	// HandsBack is the recipe's told check of a blocked stop that goes to the orch, answering for a producer and the error its blocked status persists; nil marks nothing from a status.
+	// HandsBack reports whether a blocked stop with a producer and persisted error goes to the orch; nil marks none.
 	HandsBack func(producer, reason string) bool
-	// CompletedWake reads the stamp of the last wake the row completed, whether one is recorded, and the read's error; nil reads none.
-	// A stamp at least wakeRestartGap later than the stop key's last re-step restarts that key's repair count, so a row that waits for long is re-stepped again after each loop that lived through a wake.
+	// CompletedWake reads the stamp of the row's last completed wake, and whether one is recorded; nil reads none.
+	// A stamp at least wakeRestartGap after a key's last re-step restarts its repair count, so a long wait gets re-stepped.
 	CompletedWake func(row string) (at time.Time, found bool, err error)
 }
 
 // ArbiterSeam is the stronger agent a tackler escalation, or a stop only it may judge, goes to.
 type ArbiterSeam struct {
-	// EscalationPending reports whether the arbiter would admit the awaiting stop at producer: its eligibility, not mere pendency of an escalation.
+	// EscalationPending reports whether the arbiter admits the awaiting stop at producer: its eligibility, not pendency.
 	EscalationPending func(producer string) (bool, error)
 	// Judge spawns the arbiter for the stop envelope at envelopePath, or returns the verdict of an earlier attempt.
 	Judge func(envelopePath, reportPath, caseBriefPath string) (ArbiterOutcome, error)
 	// AttemptEnvelope returns the stop envelope the arbiter attempt in attemptDir recorded, for the restart read of an open attempt.
 	AttemptEnvelope func(attemptDir string) (envelopePath string, err error)
-	// JudgesFirst reports whether a blocked stop at producer with the persisted reason goes to the arbiter without the tackler judging it first; nil marks no stop.
+	// JudgesFirst reports whether a blocked stop goes to the arbiter before the tackler judges it; nil marks no stop.
 	JudgesFirst func(producer, reason string) bool
 }
 
@@ -159,7 +162,10 @@ type TamperSeam struct {
 }
 
 // goDriver settles one run's stops over its seams.
-// rules and attempts are what the stop report quotes for the stop in hand, pendingAttempt is the arbiter attempt the next step consumes, pendingNotice is the outcome line held until that step has consumed it, and exit is how the run ended.
+// rules and attempts are what the stop report quotes for the stop in hand.
+// pendingAttempt is the arbiter attempt the next step consumes;
+// pendingNotice is the outcome line held until that step consumes it.
+// exit is how the run ended.
 type goDriver struct {
 	deps           Deps
 	rules          []string
@@ -169,14 +175,17 @@ type goDriver struct {
 	exit           Exit
 }
 
-// arbiterSettledNotice is what the parent hears once the arbiter's resume is consumed: the awaiting stop the arbiter settled and the path of its verdict.
+// arbiterSettledNotice is what the parent hears once the arbiter's resume is consumed:
+// the awaiting stop the arbiter settled and the path of its verdict.
 type arbiterSettledNotice struct {
 	stop        Stop
 	verdictPath string
 }
 
-// Run steps the run and settles each stop until the run is done, another holder has it or a hand-back ends the driver, and returns how it ended.
-// A failure the driver cannot act on is handed back; only a failed hand-back or a cancelled context is returned as an error.
+// Run steps the run and settles each stop until the run is done or another holder has it.
+// A hand-back also ends the driver, and Run returns how it ended.
+// A failure the driver cannot act on is handed back;
+// only a failed hand-back or a cancelled context is returned as an error.
 func Run(ctx context.Context, deps Deps) (Exit, error) {
 	d := &goDriver{deps: deps}
 	err := d.run(ctx)
@@ -217,7 +226,8 @@ func (d *goDriver) run(ctx context.Context) error {
 			if attemptHeld && !attemptRefused {
 				d.noticeArbiterSettled()
 			}
-			// A yield decides nothing: no envelope, rule row, report, repair or budget applies, and the pass ends with the run as it was.
+			// A yield decides nothing: no envelope, rule row, report, repair or budget applies,
+			// and the pass ends with the run as it was.
 			// A run waiting at a row yields on every pass, so a saved envelope would be one more file per pass for the whole wait.
 			if stop.OK && stop.LoopState == string(shedengine.StateRunning) && stop.Outcome == string(shedengine.Yield) {
 				logger.Debug("sheddriver: drive: the step yielded; ending the pass", "run", d.deps.RunID, "producer", stop.CurrentProducer)
@@ -332,11 +342,13 @@ func handedOver(records []SettleRecord, key StopKey, build string) bool {
 	return false
 }
 
-// handOver hands the run to a fresh driver of the on-disk build at a binary-eligible stop whose last step ran another build, holding any pause first.
-// A tree with uncommitted paths outside the run's records hands back with the paths in the stop report and spawns nothing.
-// Otherwise it records the hand-over, leaves the stop report, the park and the unwatched parent's notice, releases the driver lock and spawns the successor.
-// A successor that fails to spawn leaves the parked run and its report for the parent, or a watching batten, to pick up.
-// The rule table reaches it only over facts the HandOver seam read, so the seam is set.
+// handOver hands the run to a fresh driver of the on-disk build at a binary-eligible stop.
+// It holds any pause first and runs only when the last step ran another build.
+// A tree with uncommitted paths outside the run's records hands back with them in the stop report and spawns nothing.
+// Otherwise it records the hand-over and leaves the stop report, the park and the unwatched parent's notice.
+// It then releases the driver lock and spawns the successor.
+// A failed spawn leaves the run parked with its report, for the parent or a watching batten to pick up.
+// The seam must be set: the rule table reaches a hand-over only over facts that seam reads.
 func (d *goDriver) handOver(ctx context.Context, stop Stop) error {
 	seam := d.deps.HandOver
 	if err := d.holdPause(ctx); err != nil {
@@ -374,7 +386,7 @@ func (d *goDriver) handOver(ctx context.Context, stop Stop) error {
 	return nil
 }
 
-// DriveLock names what DriveVerb holds and says for one recipe.
+// DriveLock names the driver lock a recipe's drive verb holds, and what it says when another driver holds it.
 type DriveLock struct {
 	// Path is the driver lock file.
 	Path string
@@ -387,8 +399,10 @@ type DriveLock struct {
 }
 
 // DriveVerb runs a driver under its driver lock and returns the exit code.
-// It waits lock.ProbeGrace for the lock and refuses when another driver still holds it, so a second driver never stacks and a momentary probe never refuses one.
-// With the lock held it removes each stale file, ignoring an absent one, and calls run, handing it the release that lets a hand-over free the lock early.
+// It waits lock.ProbeGrace for the lock and refuses when another driver still holds it,
+// so a second driver never stacks and a momentary probe never refuses one.
+// With the lock held it removes each stale file, ignoring an absent one, and calls run.
+// run receives release, which lets a hand-over free the lock early.
 // The lock is released exactly once, whether run released it early or not.
 // run returns the fields of the success envelope; a recipe whose verb prints its own envelope reuses the lock handling.
 func DriveVerb(out io.Writer, driveLock DriveLock, run func(release func() error) (map[string]any, error)) int {
@@ -439,8 +453,11 @@ func (d *goDriver) takePendingAttempt() string {
 
 // tackle asks a cold tackler to judge stop and acts on its verdict, holding any pause first.
 // The stop report so far is written for the tackler to read, and a fresh attempt leaves a spawn record.
-// A verdict is acted on only when the run is where the tackler found it: a moved run discards the verdict and the fresh state is acted on as a new stop, and a worktree the tackler changed hands back as tampered.
-// It returns the stop to go on with, marked Restep when the run is to be stepped, or exit true when the driver is finished.
+// A verdict is acted on only when the run is where the tackler found it:
+// a moved run discards the verdict and acts on the fresh state as a new stop,
+// and a worktree the tackler changed hands back as tampered.
+// It returns the stop to go on with, marked Restep when the run is to be stepped;
+// or exit true when the driver is finished.
 func (d *goDriver) tackle(ctx context.Context, stop Stop) (next Stop, exit bool, err error) {
 	if err := d.holdPause(ctx); err != nil {
 		return Stop{}, true, err
@@ -522,7 +539,9 @@ func (d *goDriver) tackle(ctx context.Context, stop Stop) (next Stop, exit bool,
 }
 
 // arbitrate asks the arbiter to judge stop and acts on its verdict, holding any pause first.
-// A resume leaves the attempt the next step consumes, and at an awaiting stop the outcome notice that step sends once it has consumed the attempt; a refusal or a hand-on hands back, and at an awaiting stop relays its parent notice.
+// A resume leaves the attempt the next step consumes;
+// at an awaiting stop it also leaves the outcome notice that step sends once it has consumed the attempt.
+// A refusal or a hand-on hands back, and at an awaiting stop relays its parent notice.
 // With no arbiter wired it hands back at once, relaying the same notice.
 // The moved-run and spawn-record rules are the tackler's.
 func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath string) (next Stop, exit bool, err error) {
@@ -574,9 +593,12 @@ func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath strin
 	return Stop{}, true, d.handBackAs(stop, h, "the arbiter handed the stop on")
 }
 
-// noticeArbiterSettled tells the run's parent that the arbiter settled the review escalation and resumed the run, so the parent hears the outcome and is asked nothing.
-// It is called once a step has consumed the arbiter's resume, and does nothing when no outcome is pending; a refused resume hands back and sends no outcome line.
-// With no orch strand recorded the line is logged and posted nowhere, and a failed send is logged; neither stops the driver.
+// noticeArbiterSettled tells the run's parent that the arbiter settled the review escalation and resumed the run,
+// so the parent hears the outcome and is asked nothing.
+// It is called once a step has consumed the arbiter's resume, and does nothing when no outcome is pending;
+// a refused resume hands back and sends no outcome line.
+// With no orch strand recorded the line is logged and posted nowhere;
+// a failed send is logged, and neither stops the driver.
 func (d *goDriver) noticeArbiterSettled() {
 	pending := d.pendingNotice
 	if pending == nil {
@@ -594,7 +616,8 @@ func (d *goDriver) noticeArbiterSettled() {
 	}
 }
 
-// recheckAfterVerdict re-reads the run after an agent's verdict, and when the run moved while the agent worked, notes the discarded verdict in the stop report at reportPath.
+// recheckAfterVerdict re-reads the run after an agent's verdict.
+// When the run moved while the agent worked, it notes the discarded verdict in the stop report at reportPath.
 // It returns the stop itself for an unmoved run.
 func (d *goDriver) recheckAfterVerdict(stop Stop, reportPath, agent string) (next Stop, exit bool, err error) {
 	next, exit, err = d.recheck(stop)
@@ -610,7 +633,7 @@ func (d *goDriver) recheckAfterVerdict(stop Stop, reportPath, agent string) (nex
 	return next, false, nil
 }
 
-// worktreeChangedBy reports whether the worktree differs from the snapshot the tackler attempt in attemptDir recorded at spawn.
+// worktreeChangedBy reports whether the worktree differs from the snapshot recorded at spawn for attemptDir.
 // The Tamper seam is set when it is called.
 func (d *goDriver) worktreeChangedBy(attemptDir string) (bool, error) {
 	spawned, err := d.deps.Tamper.AttemptSnapshot(attemptDir)
@@ -652,7 +675,8 @@ func appendToFile(path, text string) error {
 }
 
 // checkBlockedStart runs the start check once, before the first step, for a run whose status shows a blocked stop.
-// A refusal hands the run back at that stop with the refusal as the hand-back's rule, and a check error hands back as a failure; handedBack is true for both, and nothing is stepped.
+// A refusal hands the run back at that stop with the refusal as the hand-back's rule,
+// and a check error hands back as a failure; handedBack is true for both, and nothing is stepped.
 // An admit, a nil check and a status that is absent or not blocked leave the driver to step as usual.
 func (d *goDriver) checkBlockedStart(status shedengine.Status, statusFound bool) (handedBack bool, err error) {
 	if d.deps.StartCheck == nil || !statusFound || status.State != shedengine.StateBlocked {
@@ -668,11 +692,14 @@ func (d *goDriver) checkBlockedStart(status shedengine.Status, statusFound bool)
 	return true, d.handBackAs(stopFromStatus(status, d.deps.HandsBack), driveHandBack{Rules: []string{refusal}}, "the start check refused the blocked stop")
 }
 
-// resumeOpenAttempt finds, once before the first step, the stop a halted run left with an agent attempt still open, so a restarted driver reuses the attempt instead of spawning a second agent.
+// resumeOpenAttempt finds, once before the first step, the stop a halted run left with an agent attempt still open,
+// so a restarted driver reuses the attempt instead of spawning a second agent.
 // It decides on status, the first status read of the driver.
-// An attempt is open when the settle records hold no hand-back for its stop key later than its spawn: a stop the parent took and then resumed finds its attempt closed, and the driver steps.
+// An attempt is open when the settle records hold no hand-back for its stop key later than its spawn:
+// a stop the parent took and then resumed finds its attempt closed, and the driver steps.
 // An arbiter attempt is ignored when no arbiter is wired.
-// It returns the stop rebuilt from the envelope the attempt recorded; the rule table then sends it to the tackler or the arbiter, whose own call reuses the attempt.
+// It returns the stop rebuilt from the envelope the attempt recorded;
+// the rule table then sends it to the tackler or the arbiter, whose own call reuses the attempt.
 func (d *goDriver) resumeOpenAttempt(ctx context.Context, status shedengine.Status, statusFound bool) (stop Stop, found bool, err error) {
 	if !statusFound || status.State == shedengine.StateRunning || status.State == shedengine.StateDone {
 		return Stop{}, false, nil
@@ -750,7 +777,7 @@ func (d *goDriver) facts(stop Stop) (driveFacts, error) {
 		facts.EscalationPending = pending
 	}
 	if key.State == string(shedengine.StateBlocked) && d.deps.Arbiter != nil && d.deps.Arbiter.JudgesFirst != nil {
-		// A status-built stop carries the halt text in Error, as budgetExhausted reads it.
+		// A status-built stop carries the halt text in Error.
 		reason := stop.Reason
 		if stop.FromStatus {
 			reason = stop.Error
@@ -796,9 +823,12 @@ func (d *goDriver) watched() bool {
 	return d.deps.Watched != nil && d.deps.Watched()
 }
 
-// recheck re-reads the status before the driver acts on stop, so nothing the run's other actors did since the step goes unseen.
+// recheck re-reads the status before the driver acts on stop.
+// Nothing the run's other actors did since the step goes unseen.
 // A running status or a run lock another process holds ends the driver with a running-exit record.
-// A status at another stop key is a moved run: it returns the stop to act on, marked Restep when an orch goto moved the run, and otherwise decided afresh from the status.
+// A status at another stop key is a moved run.
+// It returns the stop to act on, marked Restep when an orch goto moved the run;
+// otherwise the stop is decided afresh from the status.
 // A moved run is never parked and gets no friction note.
 // An unmoved run returns stop itself.
 func (d *goDriver) recheck(stop Stop) (next Stop, exit bool, err error) {
@@ -875,8 +905,10 @@ func (d *goDriver) settle(stop Stop, settler, action, outcome, target string) {
 	}
 }
 
-// finishDone commits the run's records when CommitRecords is wired, and hands a run that finished with friction: failed to the parent without parking it.
-// The friction hand-back writes its report after the first commit, so the records are committed again once it is written.
+// finishDone commits the run's records when CommitRecords is wired.
+// A run that finished with friction: failed is handed to the parent without being parked.
+// The friction hand-back writes its report after the first commit,
+// so the records are committed again once it is written.
 func (d *goDriver) finishDone(stop Stop) error {
 	d.exit = ExitDone
 	if err := d.commitRecords(); err != nil {
@@ -904,7 +936,8 @@ func (d *goDriver) commitRecords() error {
 	return nil
 }
 
-// handBackStop hands the run back at stop on the decision's rule, after the friction note a paused stop without a reason asks for.
+// handBackStop hands the run back at stop on the decision's rule.
+// It first writes the friction note that a paused stop without a reason asks for.
 // cause, when set, is a failure that kept the driver from acting and goes into the rules the report quotes.
 func (d *goDriver) handBackStop(stop Stop, decision driveDecision, cause error) error {
 	if decision.FrictionNote && d.deps.WriteFrictionNote != nil {
@@ -923,13 +956,15 @@ func (d *goDriver) handBackStop(stop Stop, decision driveDecision, cause error) 
 	return d.handBackAs(stop, h, decision.Rule)
 }
 
-// handBackAs records the hand-back in the settle records, with outcome as its reason, and leaves the stop report, the park and the parent's notices.
+// handBackAs records the hand-back in the settle records, with outcome as its reason.
+// Then the stop report is written, the run parked and the parent notified.
 func (d *goDriver) handBackAs(stop Stop, h driveHandBack, outcome string) error {
 	d.settle(stop, shedrun.SettlerParent, shedrun.SettleHandBack, outcome, "")
 	return d.handBack(stop, h)
 }
 
-// handBackFailure hands the run back at the stop its status shows, or at an empty stop when the status cannot be read, for a failure that left no stop to decide.
+// handBackFailure hands the run back at the stop its status shows, or at an empty stop when the status cannot be read.
+// It serves a failure that left no stop to decide.
 func (d *goDriver) handBackFailure(cause error) error {
 	var stop Stop
 	if status, found, err := d.deps.ReadStatus(); err == nil && found {
@@ -940,7 +975,8 @@ func (d *goDriver) handBackFailure(cause error) error {
 	return d.handBackStop(stop, driveDecision{Action: driveActionHandBack, Rule: rule}, cause)
 }
 
-// handBack builds the stop report for stop and h, and leaves the report, the park and the parent's notices through handBackRun.
+// handBack builds the stop report for stop and h.
+// It then writes the report, parks the run and sends the parent's notices.
 // The report quotes the rules applied and the agents' attempts at the stop so far, then h's own.
 func (d *goDriver) handBack(stop Stop, h driveHandBack) error {
 	d.exit = ExitHandBack

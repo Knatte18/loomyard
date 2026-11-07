@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newFlaggedEnv is newEnv over a store told a flag directory, reconciled once as the daemon does at start.
+// newFlaggedEnv returns an env whose store has a flag directory, reconciled once as the daemon does at start.
 // seed names flag files that stand in the directory before the store opens.
 func newFlaggedEnv(t *testing.T, seed ...string) *env {
 	t.Helper()
@@ -137,7 +137,7 @@ func TestStore_MailFlags(t *testing.T) {
 			}
 		}},
 		{"AnOwedEchoKeepsTheFlagUntilTheClaimThatShowsItIsAcknowledged", nil, func(t *testing.T, e *env) {
-			// newFlaggedEnv scripts pane-mail strands that are never rung, so the row re-scripts alpha as a hook strand before the scheduler starts.
+			// The env's pane-mail strands are never rung, so the row re-scripts alpha as a hook strand before the scheduler starts.
 			e.del.SetStrands(creelfake.HookStrand(alpha), creelfake.LiveStrand(beta))
 			ringAndAck := func() {
 				t.Helper()

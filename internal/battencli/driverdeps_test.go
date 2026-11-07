@@ -1,4 +1,5 @@
-// driverdeps_test.go covers the seams batten fills the shed driver with: which are wired, which are left to remove their rule-table rows, and the paths and lock they name.
+// driverdeps_test.go covers the seams batten fills the shed driver with:
+// which are wired, which are left to remove their rule-table rows, and the paths and lock they name.
 
 package battencli
 
@@ -24,7 +25,8 @@ import (
 )
 
 // TestBattenDriverDeps asserts a batten run's driver is armed with exactly the seams its rule table needs and no more.
-// Every required seam is checked because a nil PauseHold panics only at the first re-step or tackler spawn, which no run test reaches.
+// Every required seam is checked because a nil PauseHold panics only at the first re-step or tackler spawn;
+// no run test reaches that spawn.
 //
 //testtiming:keep pins the wiring of the seams and paths without running a driver; the run tests step through the seams only along the paths they take
 func TestBattenDriverDeps(t *testing.T) {
@@ -131,7 +133,8 @@ func TestBattenDriverDeps(t *testing.T) {
 		t.Errorf("Notify(paused stop) left row notice markers %v (glob error %v); want none", markers, err)
 	}
 
-	// The goto and step seams label the run shed: the goto on the entry it appends, the step as the label pending before the loop is spawned.
+	// The goto and step seams label the run shed:
+	// the goto on the entry it appends, the step as the label pending before the loop is spawned.
 	if err := c.loadRouting(); err != nil {
 		t.Fatalf("loadRouting: %v", err)
 	}
@@ -193,7 +196,9 @@ func TestBattenDriverDeps(t *testing.T) {
 	}
 }
 
-// TestBattenRecordsCommitSeams asserts the hand-back's park and the done stop's CommitRecords both commit the run's records under the run's message, and that a failed commit never keeps the run from parking.
+// TestBattenRecordsCommitSeams asserts that the hand-back's park commits the run's records under the run's message.
+// It also asserts that the done stop's CommitRecords commits the run's records under the same message,
+// and that a failed commit never keeps the run from parking.
 func TestBattenRecordsCommitSeams(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -250,7 +255,8 @@ func TestBattenRecordsCommitSeams(t *testing.T) {
 	}
 }
 
-// TestBattenConsumeAttempt asserts the consume hook refuses an attempt that is no positive number, naming the hand-back to the run's parent, before it reads any attempt directory.
+// TestBattenConsumeAttempt asserts the consume hook refuses an attempt that is no positive number.
+// The refusal names the hand-back to the run's parent, and it comes before the hook reads any attempt directory.
 func TestBattenConsumeAttempt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -271,7 +277,10 @@ func TestBattenConsumeAttempt(t *testing.T) {
 	}
 }
 
-// TestBattenHandBackNotice asserts the hand-back router posts the row-stop line for a failed Land or Worktree-Teardown stop, nothing for a paused stop or a Land stop that honoured a pause, and the hand-back's own line for a stop at Run-Shed.
+// TestBattenHandBackNotice asserts what the hand-back router posts for each stop.
+// It posts the row-stop line for a failed Land or Worktree-Teardown stop.
+// It posts nothing for a paused stop or for a Land stop that honoured a pause.
+// It posts the hand-back's own line for a stop at Run-Shed.
 func TestBattenHandBackNotice(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

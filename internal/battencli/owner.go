@@ -1,4 +1,5 @@
-// owner.go holds batten's owner checks: the seams that read and write a task's owner machine, the start check, the first-act claim of the prime, the shared owner pre-flight of a run about to be driven, and the owner keys of the status envelope.
+// owner.go holds batten's owner checks: the seams over the owners, the start check, and the prime claim.
+// It also holds the owner pre-flight of a run about to be driven, and the owner keys of the status envelope.
 
 package battencli
 
@@ -23,12 +24,13 @@ import (
 )
 
 // ownerSeams carries what the owner checks need from the hub's board and this machine.
-// The zero value reads as no owner check, which only a receiver that calls no arm has.
+// The zero value skips every owner check, which only a receiver that calls no arm has.
 type ownerSeams struct {
 	// Machine returns this machine's name.
 	Machine func() (string, error)
 	// Pull brings the hub's Bolt level with origin.
-	// An unreachable origin returns an error wrapping boardengine.ErrOwnerOriginUnreachable, and a Bolt that cannot be brought level returns an error naming its detail and way forward.
+	// An unreachable origin returns an error wrapping boardengine.ErrOwnerOriginUnreachable.
+	// A Bolt that cannot be brought level returns an error naming its detail and way forward.
 	Pull func() error
 	// Read reads the owners the local Bolt records.
 	Read func() (boardengine.Owners, error)
@@ -106,12 +108,13 @@ func (e *OwnedElsewhereError) Error() string {
 	)
 }
 
-// ownedElsewhereFor is the one refusal for a run another machine owns, naming the subject `lym adopt` takes to move it, the slug when subject is empty.
+// ownedElsewhereFor builds the refusal of a run another machine owns.
+// The refusal names the subject that `lym adopt` takes to move the run, or the slug when subject is empty.
 func ownedElsewhereFor(slug, owner, subject string) error {
 	return &OwnedElsewhereError{Slug: slug, Owner: owner, Subject: subjectOrSlug(subject, slug)}
 }
 
-// subjectOrSlug returns the adopt subject, the slug when the owner reader left it empty.
+// subjectOrSlug returns the adopt subject, or the slug when that subject is empty.
 func subjectOrSlug(subject, slug string) string {
 	if subject == "" {
 		return slug
@@ -131,8 +134,10 @@ func (c *battenCLI) thisMachine() (string, error) {
 	return machine, nil
 }
 
-// refuseStartOwnedElsewhere is the check of a run about to start: it refuses when the slug's task is owned by another machine.
-// It pulls the Bolt, which needs origin, claims the prime when the Bolt records no prime owner, and then reads the slug's effective owner from the Bolt it just pulled.
+// refuseStartOwnedElsewhere refuses a run about to start when another machine owns the slug's task.
+// It pulls the Bolt, which needs origin.
+// It claims the prime when the Bolt records no prime owner.
+// It then reads the slug's effective owner from the Bolt it just pulled.
 // A slug with no board entry has no owner and passes, and a receiver with no owner seams passes unchecked.
 func (c *battenCLI) refuseStartOwnedElsewhere() error {
 	if c.owner.Machine == nil {
@@ -229,12 +234,17 @@ func (c *battenCLI) claimBoardEntry(slug string) error {
 }
 
 // ownerPreflight is the owner check of a run about to be driven.
-// With no status file, or a status still at Worktree-Create whose pair this machine does not hold, it is the start check;
-// a status at Worktree-Teardown whose task worktree is gone takes no reconcile, since the run-scope reconcile refuses a slug with no pair worktree and the teardown only finishes what is left of the pair:
-// the local board alone judges its owner, and no origin-owed marker is written;
-// a status at any other row whose task worktree is gone, on a receiver that carries the re-adoption seams, runs readoptGonePair in place of the resume reconcile;
-// otherwise it is the resume reconcile, which also judges the owner.
-// A receiver with no owner seams runs the resume reconcile for a found status bar that teardown, and checks nothing for an absent one.
+// A status at Worktree-Teardown whose task worktree is gone takes no reconcile.
+// The run-scope reconcile refuses a slug with no pair worktree.
+// The teardown only finishes what is left of the pair, and the local board alone judges its owner.
+// No origin-owed marker is written on that route.
+// A status at any row but Worktree-Create or Worktree-Teardown runs readoptGonePair when its task worktree is gone.
+// On a receiver without the re-adoption seams, the resume reconcile runs instead.
+// With owner seams, a run with no status file is checked as a start.
+// So is a Worktree-Create run whose task worktree is absent.
+// The start check pulls the Bolt, claims the prime when none is recorded, and refuses a run another machine owns.
+// Any other status takes the resume reconcile, which also judges the owner.
+// A receiver with no owner seams checks nothing for an absent status, and its routes run without owner judgment.
 func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
 	if found && status.CurrentProducer == battenrecipe.NameWorktreeTeardown {
 		present, err := taskWorktreePresent(c.location, c.slug)
@@ -276,9 +286,11 @@ func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
 	return c.reconcileResume()
 }
 
-// preflightRunOwner reads the run's status file and runs ownerPreflight over it.
-// A refusal whose text names `lym fabric remove` ends in the step that settles the run's batten record, which replaces the refusal's trailing re-run, since the removal leaves the record standing and the re-run would reach a pair that is gone.
-// A refusal naming no removal, a read of the owner pause that fails, which is logged, and an empty follow-up leave the refusal unchanged.
+// preflightRunOwner reads the run's status file and returns the refusal the owner check gives, or nil.
+// A status file that fails to read or decode returns an error.
+// A refusal that names `lym fabric remove` ends in the step that settles the run's batten record, not in the re-run.
+// The re-run would reach a pair that is gone, since the removal leaves the record standing.
+// The refusal is unchanged when it names no removal, the owner-pause read fails (logged), or the follow-up is empty.
 func (c *battenCLI) preflightRunOwner() error {
 	status, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
@@ -301,8 +313,9 @@ func (c *battenCLI) preflightRunOwner() error {
 }
 
 // refuseOwnedElsewhereOnLocalBoard judges a resume that ran no origin reconcile against the local Bolt.
-// A task the local board shows owned elsewhere refuses naming its owner, then retry, a clause ending in ", or " or empty, then the adopt that takes the task over;
-// a task owned here, run-held with no owner or unjudgeable resumes with no owner write.
+// The refusal for a task the local board shows owned elsewhere names its owner.
+// It puts the retry clause, empty or ending in ", or ", before the `lym adopt` command that takes the task over.
+// A task owned here, a run-held entry with no owner, or an unreadable board or owner resumes with no owner write.
 func (c *battenCLI) refuseOwnedElsewhereOnLocalBoard(retry string) error {
 	if c.owner.Machine == nil {
 		return nil
@@ -338,7 +351,8 @@ func (c *battenCLI) refuseOwnedElsewhereOnLocalBoard(retry string) error {
 }
 
 // ownerExtras returns the status keys naming the slug's effective owner on the local Bolt: owner_machine and owned_here.
-// A receiver with no owner seams and an unreadable board add nothing; the latter logs one Warn, so a status read never fails on the board.
+// It returns nil when the owner seams are absent, and when the machine name, the board or the owner cannot be read.
+// Each failed read logs a Warn, so a status read never fails on the board.
 func (c *battenCLI) ownerExtras() map[string]any {
 	if c.owner.Machine == nil {
 		return nil

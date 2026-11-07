@@ -1,7 +1,6 @@
-// findingtext.go holds the pure builders every audit and --fresh refusal shares:
-// the findings clause, which names each finding once with the path it carries,
-// and the reason a path cannot be checked, which replaces a bare "cannot be checked".
-// Each refusal ends in wayForwardSteps' numbered list, built from the step helpers here.
+// findingtext.go builds the text that audit and --fresh refusals share:
+// the findings clause, which names each finding once with its path,
+// and the reason a path cannot be checked; each refusal ends in a numbered list of steps from the helpers here.
 
 package websterengine
 
@@ -32,7 +31,8 @@ const (
 
 	// stepAcceptAudit is the step that accepts the pending findings.
 	stepAcceptAudit = "lym webster accept-audit"
-	// stepRestorePlan is the step that restores the plan files the run recorded, or accepts an edit to a card no batch has begun.
+	// stepRestorePlan is the step that restores the plan files the run recorded;
+	// its text also names rebaseline, which accepts an edit to a card no batch has begun.
 	stepRestorePlan = "lym webster restore-plan (or lym webster rebaseline --card NN for an edit to a card no batch has begun)"
 	// stepResetToStart is the step that moves the task branch back to the run's start commit.
 	stepResetToStart = "lym webster reset --to start"
@@ -40,12 +40,12 @@ const (
 	stepRun = "lym webster run"
 )
 
-// noteWroteLast is the note of a contract file that writer, writerFork or writerRecovery, wrote after Master's last write.
+// noteWroteLast is the note of a contract file that the named writer wrote after Master's last write.
 func noteWroteLast(writer string) string {
 	return writer + " wrote it after Master's last write"
 }
 
-// findingItem is one correctness finding as the findings clause names it.
+// findingItem is one correctness finding: its class, its detail, and the suspect paths it carries.
 type findingItem struct {
 	Class  string
 	Detail string
@@ -64,7 +64,8 @@ func findingsClause(items []findingItem, notes map[string]string) string {
 	return fmt.Sprintf("%d correctness finding(s): %s", len(items), strings.Join(parts, "; "))
 }
 
-// pathSuffix renders the parenthetical that carries the finding's paths and their notes, or "" when the detail already says it all.
+// pathSuffix renders the parenthetical that carries the finding's paths and their notes.
+// It returns "" when no path needs writing: none has a note, and the detail names them all.
 func pathSuffix(it findingItem, notes map[string]string) string {
 	if len(it.Paths) == 0 {
 		return " (" + reasonNoPath + ")"
@@ -84,8 +85,8 @@ func pathSuffix(it findingItem, notes map[string]string) string {
 	return " (" + strings.Join(parts, "; ") + ")"
 }
 
-// uncheckableReason says why nothing the run recorded can check path, or reports uncheckable == false when something can.
-// It mirrors checkSuspectPaths' unverifiable cases that do not depend on a base commit:
+// uncheckableReason reports whether what the run recorded cannot check path, and gives the reason when it cannot.
+// It covers the unverifiable cases that do not depend on a base commit:
 // a finding with no path, a plan path with no recorded hashes, and a path outside the task worktree's tracked tree.
 // The error is a link-resolution or git probe failure.
 func uncheckableReason(geom Geometry, st *State, path string) (reason string, uncheckable bool, err error) {

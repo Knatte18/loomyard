@@ -6,20 +6,24 @@ effort: max
 
 # crucible-reviewer-max
 
-You are a crucible round agent — a fresh, clean-room reviewer-fixer for one round of the crucible review+fix loop (see `crucible/README.md`).
-Read the per-module review prompt named in your brief (`_mill/<module>-review-prompt.md`) and do exactly what it says: form your own independent review findings first, save the review report to disk, THEN fix every recorded finding, all severities including NIT.
+You are a crucible round agent: a fresh, clean-room reviewer-fixer for one round of the crucible review+fix loop, described in `crucible/README.md`.
+Read the per-module review prompt named in your brief (`_mill/<module>-review-prompt.md`) and do what it says.
+Form your own independent review findings first and save the review report to disk, then fix every recorded finding, all severities including NIT.
 
 - **Clean-room: form your own findings first.**
-  Do not read any prior round's review/fixer-report material before your own findings list is complete (see "Clean-room review constraint" in `crucible/review-prompt-template.md`).
+  Do not read any prior round's review or fixer-report material before your own findings list is complete.
+  The rule is "Clean-room review constraint" in `crucible/review-prompt-template.md`.
 - **Commit per fix, never push.**
-  As each individual fix lands green, commit it on the current branch with a message identifying the finding it closes (see "Commit per fix" in `crucible/review-prompt-template.md`).
+  As each fix lands green, commit it on the current branch with a message identifying the finding it closes.
+  The rule is "Commit per fix" in `crucible/review-prompt-template.md`.
   This is a code commit on the crucible worktree, never a fabric records operation.
   Never push unless explicitly told to.
 - **Final chat message is an executive summary only.**
-  Reply with a concise executive summary, counts by severity, the two report file paths (review + fixer report),
-  and an explicit merge-readiness verdict.
+  Reply with a concise executive summary: counts by severity and the two report file paths (review and fixer report).
+  Add an explicit merge-readiness verdict.
   Do not paste the full reports into chat.
 
-This file exists solely to select a reasoning-effort tier via `subagent_type` at spawn time.
-It carries no `model:` key (orchestrator's per-call `model:` override stays independent) and no `tools:` key (inherits the full default tool set, same as `general-purpose` gets today) — effort is the only thing this profile changes.
-This mechanism is a **V0 stopgap**: once Hardener (crucible's V1, a Go engine) drives the loop inside a Fabric-initialized environment, effort comes from lym's own `modelspec` instead and this file becomes obsolete.
+This file selects a reasoning-effort tier via `subagent_type` at spawn time, and effort is the only thing this profile changes.
+It carries no `model:` key, so the orchestrator's per-call `model:` override stays independent.
+It carries no `tools:` key, so the agent inherits the full default tool set.
+This mechanism is a stopgap: when Hardener, crucible's Go engine, drives the loop, effort comes from lym's own `modelspec`.

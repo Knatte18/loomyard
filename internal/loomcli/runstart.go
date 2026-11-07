@@ -1,6 +1,6 @@
 // runstart.go declares seedRunStart, which reads the run's start from the `started_at` stamp of the pair's own run seed.
 // The start is the lower bound of the landing's pull-request lookup.
-// It also declares findRunPullRequest, the run-bounded pull-request lookup the approve and reject verbs use.
+// It also declares findRunPullRequest, the run-bounded pull-request lookup.
 
 package loomcli
 
@@ -16,12 +16,14 @@ import (
 	"github.com/google/go-github/v75/github"
 )
 
-// newGitHubClient is the seam through which findRunPullRequest obtains an authenticated *github.Client; a test swaps it for one pointed at a local server.
+// newGitHubClient is the seam that supplies the authenticated *github.Client for the pull-request lookup;
+// a test swaps it for one pointed at a local server.
 var newGitHubClient = githubclient.New
 
-// findRunPullRequest looks up the run's pull request from head to base in owner/repo: the newest one created at or after since, whatever its state, or nil when none exists.
+// findRunPullRequest looks up the run's pull request from head to base in owner/repo.
+// It returns the newest one created at or after since, in any state, or nil when none exists.
 // A zero since keeps the unbounded lookup.
-// The query is bounded by findRunPullRequestTimeout.
+// The query runs under a fixed timeout.
 func findRunPullRequest(ctx context.Context, owner, repo, head, base string, since time.Time) (*github.PullRequest, error) {
 	client, err := newGitHubClient()
 	if err != nil {

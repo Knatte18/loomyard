@@ -1,10 +1,13 @@
-// template_test.go pins the master template's digest-field and outcome-key lists against webster's Go definitions, the marker sets through stencil.Fill/FillOptional round-trips, the composition of the fork and recovery templates, and the rendered prompts' Go-filled values and Go-chosen fragments.
-// Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per the runtime-read-not-embed Shared Decision.
-// Every test here is tier0 and spawn-free: no subprocess exec, no git, no fixture trees (beyond
-// a plain t.TempDir() PATTERN.md fixture and the seeded stencils t.TempDir() itself) — only
-// on-disk bytes read via stencilstore.Read, stencil.Fill/FillOptional, and
-// RenderForkPrompt/RenderRecoveryPrompt/RenderProgress, per the batch's own
-// test-tiers-and-hermetic-git decision.
+// template_test.go pins the master template's digest-field and outcome-key lists against webster's Go definitions.
+// It also pins the marker sets through stencil.Fill/FillOptional round-trips.
+// It also pins the composition of the fork and recovery templates.
+// It also pins the rendered prompts' Go-filled values and Go-chosen fragments.
+// Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds itself:
+// newTestStencilsDir seeds a t.TempDir() through `stencilkit`.
+// Every test here is tier0 and spawn-free:
+// it runs no subprocess and no git, and it builds no fixture trees.
+// Its only fixtures are a plain t.TempDir() PATTERN.md and the seeded stencils directory.
+// It calls stencilstore.Read, stencil.Fill/FillOptional, RenderForkPrompt, RenderRecoveryPrompt, and RenderProgress.
 
 package websterengine_test
 
@@ -34,35 +37,36 @@ func newTestStencilsDir(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
-// testCardGates is the placeholder per-card gate list passed as RenderForkPrompt's and RenderRecoveryPrompt's cardGates parameter.
+// testCardGates is a placeholder per-card gate list for the card-gates input of the rendered fork and recovery prompts.
 const testCardGates = "- `_lym/plan/01-gate.md`:\n  - `lym gate test --wait --tier 0 --card 1-gate`"
 
-// testBatchGate is the placeholder batch gate passed as RenderForkPrompt's and RenderRecoveryPrompt's batchGate parameter.
+// testBatchGate is a placeholder batch gate for the batch-gate input of the rendered fork and recovery prompts.
 const testBatchGate = "- `lym gate test --wait --tier 0 --tier 1 --card 1-gate`"
 
-// testFixGate is the placeholder gate call passed as RenderVerifyFixPrompt's fixGate parameter.
+// testFixGate is a placeholder gate call for the fix-gate input of the rendered verify-fix prompt.
 const testFixGate = "lym gate test --wait --tier 0"
 
-// testOutcomePath and testSummaryPath are the placeholder contract-file paths passed as RenderForkPrompt's and RenderVerifyFixPrompt's outcomePath and summaryPath parameters.
+// testOutcomePath and testSummaryPath are placeholder contract-file paths.
+// They stand in for the outcome and summary inputs of the rendered fork and verify-fix prompts.
 const (
 	testOutcomePath = "/lym/webster/outcome.yaml"
 	testSummaryPath = "/lym/webster/summary.md"
 )
 
-// testVerifyFixPromptPath is the placeholder fixer-prompt path passed as RenderMasterPrompt's verifyFixPromptPath parameter.
+// testVerifyFixPromptPath is a placeholder fixer-prompt path for the verify-fix input of the rendered master prompt.
 const testVerifyFixPromptPath = "/lym/webster/prompts/verify-fix.md"
 
-// newTestSpecsDir returns a real, non-empty directory to pass as RenderForkPrompt's/
-// RenderRecoveryPrompt's specsDir parameter, alongside newTestStencilsDir. A real directory rather
-// than an empty-string placeholder is required: specs_dir is a required marker in the shared
-// implementer-job body, so an empty value would compile and pass today only because the body
-// carries no marker yet, and would start failing at run time the moment a later batch inserts it.
+// newTestSpecsDir returns a real, non-empty directory for the specs-dir input of the fork and recovery prompts.
+// It must be real because specs_dir is a required marker in the shared implementer-job body.
+// An empty value passes only while the body carries no such marker;
+// once the marker is added, an empty value fails at run time.
 func newTestSpecsDir(t *testing.T) string {
 	t.Helper()
 	return t.TempDir()
 }
 
-// mustMasterTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the matching accessor with a t.Fatalf on error, so call sites unrelated to the error path itself stay terse.
+// mustMasterTemplate, mustForkTemplate, and mustRecoveryTemplate wrap their accessor and call t.Fatalf on error.
+// Call sites that do not test the error path stay short.
 func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
 	t.Helper()
 	got, err := websterengine.MasterTemplate(stencilsDir)
@@ -99,13 +103,12 @@ func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
 	return got
 }
 
-// testLayout returns the told anchor root and stencils directory for a real t.TempDir() hub, seeded
-// with webster's five stencils at fabricengine.StencilsDir(hub) — every
-// RenderForkPrompt/RenderRecoveryPrompt/RenderMasterPrompt test in this file that does not itself
-// exercise pattern_directive's active branch uses this fixture. The returned anchor root's worktree
-// subdirectory is never created on disk, so pattern.Directive's stat on the never-existing
-// PATTERN.md path always resolves PATTERN inactive, matching every one of these tests'
-// pre-existing expectation of an empty pattern_directive.
+// testLayout returns the told anchor root and stencils directory for a real t.TempDir() hub.
+// The hub is seeded with webster's stencils at fabricengine.StencilsDir(hub).
+// Prompt renders that do not exercise pattern_directive's active branch use this fixture.
+// The anchor root's worktree subdirectory is never created on disk.
+// Its absence means pattern.Directive's stat on the PATTERN.md path always resolves PATTERN inactive.
+// That matches the empty pattern_directive these tests expect.
 func testLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -113,11 +116,9 @@ func testLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
-// patternActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub
-// that contains a real PATTERN.md file directly under the returned root, so pattern.Directive
-// returns non-empty — mirroring pattern.Directive's own told-root read (see
-// internal/pattern/pattern_test.go's writePatternFile fixture) —
-// and seeded with webster's five stencils at fabricengine.StencilsDir(hub) like testLayout.
+// patternActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub.
+// A real PATTERN.md file sits directly under the returned root, so pattern.Directive returns non-empty.
+// The hub is seeded with webster's stencils at fabricengine.StencilsDir(hub).
 func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -132,7 +133,9 @@ func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
-// frictionActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub seeded with every registry stencil, including the friction-directive pair a non-empty notePath call needs to resolve a real friction.Directive.
+// frictionActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub.
+// The hub is seeded with every registry stencil, including the friction-directive pair.
+// A non-empty notePath needs that pair to resolve a real friction.Directive.
 func frictionActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -140,7 +143,8 @@ func frictionActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
-// patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like patternActiveLayout — PATTERN active, every stencil seeded — but then removes the pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
+// patternActiveMissingPatternStencilsLayout returns a PATTERN-active anchor root and stencils directory.
+// Its pattern-directive stencils are removed, so a call site's hoisted pattern.Directive read fails.
 func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	anchorRoot, stencilsDir = patternActiveLayout(t)
@@ -148,10 +152,9 @@ func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stenci
 	return anchorRoot, stencilsDir
 }
 
-// stripFrictionMarker rewrites the named webster stencil under stencilsDir, dropping the literal
-// "{{.friction_directive}}" line from its bytes — the marker-free-template fixture WarnIfMarkerAbsent
-// exists to warn about, used to prove a composer still renders successfully (never errors) when its
-// own stencil carries no marker at all.
+// stripFrictionMarker drops the literal "{{.friction_directive}}" line from the named stencil under stencilsDir.
+// The result is the marker-free template that WarnIfMarkerAbsent exists to warn about.
+// It lets a test prove that a composer still renders, without error, when its own stencil carries no marker.
 func stripFrictionMarker(t *testing.T, stencilsDir, stencilName string) {
 	t.Helper()
 	path := stencilstore.Path(stencilsDir, stencilName)
@@ -168,8 +171,7 @@ func stripFrictionMarker(t *testing.T, stencilsDir, stencilName string) {
 	}
 }
 
-// requireContains fails the test, naming the missing needle, if text does
-// not contain it.
+// requireContains fails the test, naming the missing needle, if text does not contain it.
 func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
@@ -177,8 +179,7 @@ func requireContains(t *testing.T, text, needle string) {
 	}
 }
 
-// requireNotContains fails the test, naming the forbidden needle, if text
-// contains it — the negative half of requireContains.
+// requireNotContains fails the test, naming the forbidden needle, if text contains it.
 func requireNotContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if strings.Contains(text, needle) {
@@ -186,11 +187,8 @@ func requireNotContains(t *testing.T, text, needle string) {
 	}
 }
 
-// extractBacktickBullets returns, in order, the single backtick-quoted
-// token from every "- `token`" bullet line appearing strictly between
-// heading (matched by trimmed equality) and the next "## " heading or EOF —
-// the shape both the digest-field and outcome-key bullet lists take in
-// webster-template-master.
+// extractBacktickBullets returns, in order, the backtick-quoted token of each "- `token`" bullet line in a section.
+// The section runs from heading, matched by trimmed equality, to the next "## " heading or EOF.
 func extractBacktickBullets(text, heading string) []string {
 	lines := strings.Split(text, "\n")
 
@@ -219,22 +217,17 @@ func extractBacktickBullets(text, heading string) []string {
 	return tokens
 }
 
-// digestSectionHeading and outcomeKeysHeadingSub name the two headings whose
-// bullet lists the digest-fields and outcome-schema tests below scope their
-// extraction to — never the whole template body, since prose elsewhere
-// legitimately backtick-quotes a subset of the same field names without
-// that being an "other" field leaking into either pinned set.
+// digestSectionHeading and outcomeKeysHeadingSub name the headings whose bullet lists are the pinned field sets.
+// Extraction stays inside those sections, because prose elsewhere backtick-quotes some of the same field names.
+// Reading the whole body would pull those names into the pinned sets.
 const (
 	digestSectionHeading  = "## Read ONLY the digest fields — quoted here, exactly"
 	outcomeKeysHeadingSub = "`{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:"
 )
 
-// masterTemplateMarkerValues returns a values map with every one of
-// MasterTemplate's seven required top-level markers set to a non-empty
-// placeholder, plus pattern_directive and friction_directive — the two
-// optional markers, filled via stencil.FillOptional — set to a placeholder
-// too, so a test can fill the template cleanly or delete one key at a time
-// to prove stencil.FillOptional's per-marker error.
+// masterTemplateMarkerValues returns a values map with every required marker set to a non-empty placeholder.
+// The optional markers, pattern_directive and friction_directive, are set too.
+// A test fills the template cleanly, or deletes one key at a time to check the error for each missing marker.
 func masterTemplateMarkerValues() map[string]string {
 	return map[string]string{
 		"batch_index":            "01 — json-flag — add the --json flag",
@@ -253,13 +246,9 @@ func masterTemplateMarkerValues() map[string]string {
 	}
 }
 
-// forkTemplateMarkerValues returns a values map with every one of the
-// composed thin fork template's five required top-level markers set to a
-// non-empty placeholder — the fork-context-hygiene Shared Decision's marker
-// set: card_pointers replaces the old inlined cards field, and
-// shared_decisions/rename_mechanic/pattern_directive are gone entirely
-// (nothing already inherited from Master is re-injected) — plus
-// friction_directive, the fork template's own one optional marker.
+// forkTemplateMarkerValues returns a values map with every required marker set to a non-empty placeholder.
+// It omits the markers the master template already supplies, such as pattern_directive,
+// and it sets friction_directive, the fork template's optional marker.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
 		"card_pointers":      "- `_lym/plan/02-list-tests.md`",
@@ -278,11 +267,9 @@ func forkTemplateMarkerValues() map[string]string {
 	}
 }
 
-// recoveryTemplateMarkerValues returns a values map with every one of the
-// composed recovery template's five required top-level markers set to a
-// non-empty placeholder (mirroring forkTemplateMarkerValues), plus
-// pattern_directive and friction_directive — the recovery template's own two
-// optional markers.
+// recoveryTemplateMarkerValues returns a values map with every required marker set to a non-empty placeholder.
+// It starts from the fork template's values,
+// and it adds the optional markers pattern_directive, parent_directive and edit_directive.
 func recoveryTemplateMarkerValues() map[string]string {
 	values := forkTemplateMarkerValues()
 	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read the overview."
@@ -291,11 +278,8 @@ func recoveryTemplateMarkerValues() map[string]string {
 	return values
 }
 
-// cardWithSourcePath returns a minimal planparser.Card with SourcePath set
-// by hand: the inline fixture batches in this file are hand-built
-// batcher.Batch{Cards: [...]} values, not produced by ParsePlan, so
-// SourcePath — normally computed by planparser from planparser.PlanDirRel()
-// plus the card's own NN-<slug>.md filename — must be set explicitly here.
+// cardWithSourcePath returns a minimal card with SourcePath set to the plan directory and NN-<slug>.md filename.
+// Fixture batches are built by hand and never pass through the plan parser, so the path is set here.
 func cardWithSourcePath(number int, slug, summary string) planparser.Card {
 	return planparser.Card{
 		Number:     number,
@@ -306,11 +290,9 @@ func cardWithSourcePath(number int, slug, summary string) planparser.Card {
 	}
 }
 
-// assertCardPointerIsRelative fails the test if got does not contain the
-// card's own SourcePath, or if that pointer is not worktree-relative (an
-// absolute prefix, or a leaked t.TempDir() path, would mean the renderer
-// re-composed the pointer against some absolute base instead of rendering
-// planparser's own token verbatim).
+// assertCardPointerIsRelative fails the test if got does not contain sourcePath.
+// It also fails if the pointer has an absolute prefix, such as a leaked t.TempDir() path.
+// A prefix like that means the renderer built the pointer from an absolute base instead of printing it verbatim.
 func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 	t.Helper()
 	requireContains(t, got, sourcePath)
@@ -322,58 +304,65 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 	}
 }
 
-// renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
-// anchor root and the prompt worktree root, and the plan directory is derived under it.
+// renderFork renders the fork prompt for batch with the shared placeholder paths.
+// root is both the anchor root and the prompt worktree root,
+// and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string) (string, error) {
 	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath, false)
 	return string(prompt), err
 }
 
-// renderForkWithCardFixer renders the fork prompt for batch as renderFork does, for a pair whose card gate goes through a cold fixer.
+// renderForkWithCardFixer renders the fork prompt for batch.
+// Its card gate goes through a cold fixer.
 func renderForkWithCardFixer(batch batcher.Batch, root, stencilsDir, specsDir string) (string, error) {
 	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, 2, "", true)
 	return string(prompt), err
 }
 
-// renderForkWithLists renders the fork prompt for batch as renderFork does, with the given gate tiers and rename tools.
+// renderForkWithLists renders the fork prompt for batch with the given gate tiers and rename tools.
 func renderForkWithLists(batch batcher.Batch, root, stencilsDir, specsDir, gateTiers string, renameTools []string) (string, error) {
 	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "", false)
 	return string(prompt), err
 }
 
-// testGateTiers is the rendered tier and gate-list lines a prompt takes, the first holding a template marker that must reach the prompt verbatim.
+// testGateTiers is the rendered tier and gate-list lines a prompt takes.
+// The first line holds a template marker that must reach the prompt verbatim.
 const testGateTiers = "- tier1: unit tests of `{{.x}}`\n- gate card: [1]"
 
-// testRenameTools are two rename tools, the first holding a template marker that must reach the prompt verbatim.
+// testRenameTools are two rename tools.
+// The first tool holds a template marker that must reach the prompt verbatim.
 var testRenameTools = []string{"rename Go symbols with `{{.x}}`", "rename files with `git mv`"}
 
-// testRenameToolsBullets is testRenameTools rendered as the consecutive bullets a prompt carries.
+// testRenameToolsBullets is the rename tool list rendered as the consecutive bullets a prompt carries.
 const testRenameToolsBullets = "- rename Go symbols with `{{.x}}`\n- rename files with `git mv`\n"
 
-// renderRecovery renders the recovery prompt for batch with the shared placeholder paths; the plan
-// directory and prompt worktree root derive from anchorRoot, and PATTERN.md is read from repoRoot.
+// renderRecovery renders the recovery prompt for batch with the shared placeholder paths.
+// The plan directory and prompt worktree root derive from anchorRoot, and PATTERN.md is read from repoRoot.
 func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, notePath, parent string) (string, error) {
 	return renderRecoveryWithUncommitted(batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, "", notePath, parent, "none", nil, nil)
 }
 
-// renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
+// renderRecoveryWithUncommitted renders the recovery prompt for batch.
+// It takes the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
 func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent, gateTiers string, renameTools, patternChanges []string) (string, error) {
 	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent, false)
 	return string(got), err
 }
 
-// renderRecoveryWithCardFixer renders the recovery prompt for batch as renderRecovery does, for a pair whose card gate goes through a cold fixer.
+// renderRecoveryWithCardFixer renders the recovery prompt for batch.
+// Its card gate goes through a cold fixer.
 func renderRecoveryWithCardFixer(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir string) (string, error) {
 	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", "", "", "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, "none", nil, nil, 2, "", "", true)
 	return string(got), err
 }
 
-// renderMaster renders Merriam's prompt for batches with a nil state, the shared placeholder paths and the declared PATTERN changes.
+// renderMaster renders the master prompt for batches with a nil state.
+// It fills in the shared placeholder paths and the declared PATTERN changes.
 func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
 	return renderMasterWithDecisions(batches, anchorRoot, repoRoot, stencilsDir, notePath, parent, patternChanges, nil)
 }
 
-// renderMasterWithDecisions is renderMaster with the parent's added decisions.
+// renderMasterWithDecisions renders the master prompt with the parent's added decisions.
 func renderMasterWithDecisions(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges, parentDecisions []string) (string, error) {
 	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lym", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, parentDecisions, notePath, parent)
 	return string(got), err
@@ -385,10 +374,12 @@ func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (stri
 	return string(got), err
 }
 
-// testReplyPath is the placeholder reply path the cold fixer prompts are rendered with: the verify fixer's through gatefixer.RenderPrompt and the plan fixer's through RenderPlanFixPrompt.
+// testReplyPath is the placeholder reply path the cold fixer prompts are rendered with:
+// the verify fixer's through gatefixer.RenderPrompt, the plan fixer's through RenderPlanFixPrompt.
 const testReplyPath = "/lym/webster/verify-fix-reply.md"
 
-// coldFixerInputs returns the gatefixer.PromptInputs of the cold verify fixer for reportPath, with the shared placeholder paths, testReplyPath, testFixGate and webster's verify-fix body.
+// coldFixerInputs returns the gatefixer.PromptInputs of the cold verify fixer for reportPath.
+// It fills in the shared placeholder paths, testReplyPath, testFixGate and the `webster-body-verify-fix` stencil.
 func coldFixerInputs(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) gatefixer.PromptInputs {
 	return gatefixer.PromptInputs{
 		StencilsDir: stencilsDir,
@@ -415,8 +406,9 @@ func renderColdFixer(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, pa
 	return string(got), err
 }
 
-// promptCheck is one rendered prompt and the assertions its case makes on it: wantErr expects the
-// render to fail, otherwise every contains needle is present, every notContains needle is absent,
+// promptCheck is one rendered prompt and the assertions its case makes on it.
+// wantErr expects the render to fail.
+// Otherwise every contains needle is present, every notContains needle is absent,
 // and the inOrder needles appear in that order.
 type promptCheck struct {
 	text        string
@@ -454,10 +446,9 @@ func (c promptCheck) verify(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_QuotesBulletLists asserts the master template's digest-field bullet list names
-// exactly webster's own six Digest field names (json tags) in the struct's declared order, and its
-// outcome-file bullet list names exactly the outcome.yaml schema keys — no fewer, no extras — the
-// mechanical half of "Master reads only the minimal fork-return digest".
+// TestMasterTemplate_QuotesBulletLists asserts the master template's two bullet lists match the code they quote.
+// The digest-field list names exactly the Digest struct's json-tag field names, in declared order.
+// The outcome-file list names exactly the outcome.yaml schema keys, with no fewer and no extras.
 //
 //testtiming:keep pins the master template's digest-field and outcome-key bullet lists matching the Digest fields and outcome schema exactly, in order; the composition test checks markers and sections, not these lists
 func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
@@ -489,9 +480,8 @@ func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
 	}
 }
 
-// TestTemplates_FillRequiresEveryRequiredMarker asserts stencil.FillOptional succeeds for each of
-// the master, composed fork and composed recovery templates when every required marker plus the
-// optional ones is supplied, and fails — naming the marker — when any single required one is absent.
+// TestTemplates_FillRequiresEveryRequiredMarker asserts that every template fills when all markers are supplied.
+// It also asserts that a fill missing any one required marker fails, naming that marker.
 // The optional markers are excluded from the deletion sweep: deleting one must not error.
 //
 //testtiming:keep pins each template refusing a fill missing any single required marker, naming it, and accepting each optional marker absent; the render tests always supply every marker
@@ -556,10 +546,10 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 	}
 }
 
-// TestTemplates_Composition asserts the composed fork and recovery templates carry the shared
-// implementer body's exact pre-Fill bytes and no stencil banner, re-read the stencil files on every
-// call instead of caching them, and that a missing stencils directory is a hard error naming the
-// stencil rather than a fallback to an embedded default.
+// TestTemplates_Composition asserts the composed templates contain the implementer body's exact pre-Fill bytes.
+// The composed templates carry no stencil banner.
+// The stencil files are re-read on every call instead of cached.
+// A missing stencils directory is a hard error naming the stencil, not a fallback to an embedded default.
 func TestTemplates_Composition(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -576,8 +566,8 @@ func TestTemplates_Composition(t *testing.T) {
 			if !bytes.Contains(composed, body) {
 				t.Errorf("%s() does not contain ImplementerBodyTemplate()'s bytes", name)
 			}
-			// Every asset carries a real `lym-stencil:` banner stamp, so a leak here means the
-			// composition stopped stripping the second asset's banner.
+			// Every asset carries a real `lym-stencil:` banner stamp.
+			// A leak here means the composition stopped stripping the second asset's banner.
 			requireNotContains(t, string(composed), "lym-stencil:")
 			requireNotContains(t, string(composed), "<!--")
 		}
@@ -633,10 +623,10 @@ func TestTemplates_Composition(t *testing.T) {
 	})
 }
 
-// TestRenderPrompts asserts the rendered fork, recovery, master and fixer prompts: every required
-// marker resolves, nothing the fork-context-hygiene Shared Decision moved out of the fork prompt
-// leaks back in, the told roots land where they belong, and a missing or empty input fails the
-// render instead of producing a blank path.
+// TestRenderPrompts asserts the rendered fork, recovery, master and fixer prompts.
+// Every required marker resolves, and the fork prompt carries none of the content it must keep out.
+// The told roots land where they belong.
+// A missing or empty input fails the render instead of producing a blank path.
 func TestRenderPrompts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1001,10 +991,10 @@ func TestRenderPrompts(t *testing.T) {
 	}
 }
 
-// TestRenderPrompts_FrictionDirective covers every renderer's friction_directive marker: a
-// non-empty note path injects the composed directive verbatim, an empty note path composes cleanly
-// with no directive and no friction stencil read, and a marker-free stencil still composes
-// without error.
+// TestRenderPrompts_FrictionDirective covers every renderer's friction_directive marker.
+// A non-empty note path injects the composed directive verbatim.
+// An empty note path composes cleanly, with no directive and no friction stencil read.
+// A marker-free stencil still composes without error.
 func TestRenderPrompts_FrictionDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1052,9 +1042,8 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 
 			t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
 				t.Parallel()
-				// testLayout seeds no friction stencils at all, so a read attempt here would fail
-				// loud — a clean render proves friction.Directive's empty-notePath early return, not
-				// a swallowed error.
+				// testLayout seeds no friction stencils at all, so a read attempt would fail loudly.
+				// A clean render therefore proves the empty-notePath early return in friction.Directive, not a swallowed error.
 				anchorRoot, stencilsDir := testLayout(t)
 				text, err := tc.render(anchorRoot, stencilsDir, "")
 				promptCheck{text: text, err: err, notContains: []string{"Friction note"}}.verify(t)
@@ -1072,7 +1061,8 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 	}
 }
 
-// TestRenderPrompts_ParentDirective asserts the master, recovery and cold fixer prompts render the parent variant for a told name and the no-parent variant for an empty one, and that the fork prompt carries neither.
+// TestRenderPrompts_ParentDirective covers the parent directive in the master, recovery and cold fixer prompts.
+// A told name renders the parent variant, an empty one the no-parent variant, and the fork prompt carries neither.
 func TestRenderPrompts_ParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1124,9 +1114,9 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 	requireNotContains(t, fork, "## Your parent")
 }
 
-// TestRenderBatchLists asserts the batch index, progress trail and remaining list render the
-// batches in the slice's own order, never ascending batch number, and that progress and remaining
-// read only the persisted terminal records, skipping a nil one.
+// TestRenderBatchLists asserts that the batch index, progress trail and remaining list keep the slice's own order.
+// They never render in ascending batch number order.
+// Progress and remaining read only the persisted terminal records, skipping a nil one.
 //
 //testtiming:keep pins each list's exact text in slice order and its none forms; the covering prompt and run-exit tests check only that a list is present
 func TestRenderBatchLists(t *testing.T) {

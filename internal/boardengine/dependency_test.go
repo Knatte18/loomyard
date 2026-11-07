@@ -10,8 +10,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDependenciesPending pins which dependencies hold a task back: an entry not yet done, a beam until it landed, and a plain project until it is marked done or every landing member is done.
-// A stored membership loop, two projects each naming the other or one naming itself, holds a task back and ends the walk.
+// TestDependenciesPending pins which dependencies hold a task back.
+// An entry holds a task back until it is done, and a beam until it landed.
+// A plain project holds it until it is marked done or every landing member is done.
+// A stored membership loop holds a task back and ends the walk.
+// Such a loop covers two projects naming each other, or one naming itself.
 func TestDependenciesPending(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

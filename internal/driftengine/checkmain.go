@@ -1,4 +1,5 @@
-// checkmain.go — the precondition of a main capture, checked by the capture child under its lock and by the baseline row before it starts one.
+// checkmain.go checks the precondition of a main capture:
+// the capture child runs it under its lock, and the baseline row runs it before it starts one.
 
 package driftengine
 
@@ -16,7 +17,8 @@ const (
 )
 
 // CheckMainCapture checks that a main capture may run.
-// The status's current row must be Drift-Baseline, or Drift-Await while the status is blocked, HEAD must equal the branch point and the tracked tree must be clean.
+// The status's current row must be Drift-Baseline, or Drift-Await while the status is blocked.
+// HEAD must equal the branch point, and the tracked tree must be clean.
 // A blocked status at Drift-Baseline is admitted only when its error opens with CaptureHaltPrefix.
 // Each refusal opens "drift capture refused:" and names its way forward.
 func CheckMainCapture(status shedengine.Status, head, branchPoint string, dirty []string) error {

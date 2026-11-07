@@ -1,4 +1,5 @@
-// parent_test.go covers ResolveParent's decision table over the pure helper, and the one filesystem case a parent worktree that no longer exists.
+// parent_test.go covers ResolveParent's decision table over the pure helper;
+// it also covers the one filesystem case, a parent worktree that no longer exists.
 
 package hubgeom
 
@@ -89,7 +90,8 @@ func TestDecideParent(t *testing.T) {
 	}
 }
 
-// TestResolveParent_LegacySeedParentIsIgnored asserts a seed carrying a top-level parent key beside an origin record naming a parent worktree resolves to the origin's parent.
+// TestResolveParent_LegacySeedParentIsIgnored asserts that a seed's top-level parent key is ignored:
+// when an origin record names a parent worktree, ResolveParent resolves to the origin's parent.
 func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -112,7 +114,8 @@ func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
 	}
 }
 
-// hubWithOrigin builds a hub with shortname "tst" and an origin record holding record for the task worktree "child-task", and returns that worktree's location.
+// hubWithOrigin builds a hub with shortname "tst" and an origin record for worktree "child-task" holding record.
+// It returns that worktree's location.
 func hubWithOrigin(t *testing.T, record string) *lymcwd.Location {
 	t.Helper()
 	hub := filepath.Join(t.TempDir(), "some-hub-LYMHUB")

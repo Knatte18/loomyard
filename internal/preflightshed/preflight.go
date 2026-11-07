@@ -1,5 +1,6 @@
-// preflight.go implements NewPreflight and NewPreflightWithChecks, the general Preflight producer with its optional checks: a content-free
-// shedengine.ShedProducer wrapping internal/preflight.Check, constructed with a told name and cwd.
+// preflight.go holds the general Preflight producer.
+// It is a content-free shedengine.ShedProducer that wraps internal/preflight.Check.
+// NewPreflight constructs it from a told name and cwd, and NewPreflightWithChecks also takes optional checks.
 
 package preflightshed
 
@@ -16,11 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// formatFailures renders report's determined failures as a single "check: reason" list, semicolon
-// separated, for the log line that surfaces them.
-// It exists because a Report's Failures slice is the only account of WHY this row refused, and this
-// row carries no OnStuck: a human is the only recovery, and the driver log is the only place they
-// can read it.
+// formatFailures renders the failures in report as a "check: reason" list, separated by semicolons, for the log.
+// The failures are the only account of why this row refused.
+// This row carries no `OnStuck`, so a human is the only recovery,
+// and the driver log is the only place they can read the failures.
 func formatFailures(report preflight.Report) string {
 	parts := make([]string, len(report.Failures))
 	for i, f := range report.Failures {
@@ -29,8 +29,10 @@ func formatFailures(report preflight.Report) string {
 	return strings.Join(parts, "; ")
 }
 
-// wayForward returns the trailing "way forward" clause for report's failures, one fix per failed check that has one, or "" when none does.
-// A failed geometry check, and a junction failure from an unreadable fabric.yaml, have no operator-runnable fix and stay bare.
+// wayForward returns the trailing "way forward" clause for the failures in report.
+// It joins each distinct fix that a failed check calls for, and returns "" when none does.
+// A failed geometry check has no operator-runnable fix.
+// A junction failure from an unreadable fabric.yaml has none either.
 func wayForward(report preflight.Report) string {
 	var steps []string
 	seen := map[string]bool{}
@@ -60,18 +62,23 @@ func wayForward(report preflight.Report) string {
 	return "; way forward: " + strings.Join(steps, "; ") + "; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 }
 
-// Checks are the optional checks the Preflight row runs after the hub reconcile and before preflight.Check, in field order; a nil field runs no check.
+// Checks holds the optional checks the Preflight row runs after the hub reconcile and before preflight.Check.
+// They run in field order, and a nil field runs no check.
 type Checks struct {
-	// Batcher loads batcher.yaml; its failure is Stuck with the batchifier reason and the way forward its error calls for.
+	// Batcher loads batcher.yaml.
+	// A failure makes the row stuck, with the batchifier reason and the way forward its error calls for.
 	Batcher func() error
-	// Stencils composes the recipe's seat tables and refuses a stencil marker no value fills, or a table that cannot be built; its failure is Stuck with the stencils reason and the way forward its error carries.
+	// Stencils composes the recipe's seat tables.
+	// It refuses a stencil marker that no value fills, or a table that cannot be built.
+	// A failure makes the row stuck, with the stencils reason and the way forward its error carries.
 	Stencils func() error
-	// Drift loads drift.yaml and refuses a command a run would be refused at a Drift row; its failure is Stuck with the drift reason and the way forward its error carries.
+	// Drift loads drift.yaml and refuses a command a run would be refused at a Drift row.
+	// A failure makes the row stuck, with the drift reason and the way forward its error carries.
 	Drift func() error
 }
 
-// preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
-// determined Report onto shedengine's contract.
+// preflightProducer is the general Preflight producer.
+// It wraps preflight.Check and maps its determined Report onto shedengine's contract.
 type preflightProducer struct {
 	name   string
 	cwd    string
@@ -81,43 +88,53 @@ type preflightProducer struct {
 
 var _ shedengine.ShedProducer = (*preflightProducer)(nil)
 
-// batchifierReasonPrefix leads the Stuck reason of a failed batcher check; the error text follows.
+// batchifierReasonPrefix leads the stuck reason of a failed batcher check; the error text follows.
 const batchifierReasonPrefix = "active batchifier did not resolve: "
 
-// batchifierWayForward closes that reason; the fault sits in batcher.yaml, so the operator fixes it there.
+// batchifierWayForward closes the batchifier reason;
+// the fault is in batcher.yaml, so the operator fixes it there.
 const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
-// retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lym config reconcile --apply, which migrates a worktree or local file, or lym fabric reconcile for the repo default.
+// retiredKeyWayForward completes the way forward that a retired-key error already ends with.
+// It tells the operator to run `lym config reconcile --apply`, which migrates a worktree or local file.
+// For the repo default, it tells the operator to run `lym fabric reconcile`.
 const retiredKeyWayForward = ", then re-step"
 
-// stencilsReasonPrefix leads the Stuck reason of a failed stencils check; the error text, which carries its own way forward, follows.
+// stencilsReasonPrefix leads the stuck reason of a failed stencils check;
+// the error text, which carries its own way forward, follows.
 const stencilsReasonPrefix = "seat stencils check failed: "
 
-// driftReasonPrefix leads the Stuck reason of a failed drift check; the error text, which carries its own way forward, follows.
+// driftReasonPrefix leads the stuck reason of a failed drift check;
+// the error text, which carries its own way forward, follows.
 const driftReasonPrefix = "drift config check failed: "
 
 // NewPreflight returns a shedengine.ShedProducer that validates cwd via preflight.Check.
 //
-// name is told rather than hardcoded because a second product names this row independently.
-// Per internal/shedadapters' own package doc, the name is used only as a log field and in error
-// text -- never compared, parsed, or used for control flow.
+// name is told rather than hardcoded, because other products name this row independently.
+// The name is used only as a log field and in error text, never compared, parsed, or used for control flow.
 func NewPreflight(name, cwd string) shedengine.ShedProducer {
 	return NewPreflightWithChecks(name, cwd, Checks{})
 }
 
 // NewPreflightWithChecks returns the Preflight producer with the optional checks.
-// They run after the hub reconcile and before preflight.Check, so a broken batcher.yaml, a stencil the running binary cannot fill or a drift command a Drift row would refuse stops the run before any agent spends tokens.
+// They run after the hub reconcile and before preflight.Check,
+// so a failure stops the run before any agent spends tokens.
+// The checks catch a broken batcher.yaml and a stencil the running binary cannot fill.
+// They also catch a drift command that a Drift row would refuse.
 func NewPreflightWithChecks(name, cwd string, checks Checks) shedengine.ShedProducer {
 	return &preflightProducer{name: name, cwd: cwd, checks: checks}
 }
 
-// newPreflightWith is NewPreflight with told options for the hub config reconcile that runs ahead of the check.
+// newPreflightWith returns the producer for name and cwd, with opts for the hub config reconcile.
+// That reconcile runs ahead of the check.
 func newPreflightWith(name, cwd string, opts hubreconcile.Options) shedengine.ShedProducer {
 	return &preflightProducer{name: name, cwd: cwd, opts: opts}
 }
 
-// batcherFailure runs the told batcher check and returns the Stuck reason for its failure, or "" when it passed or none is told.
-// A retired-key error closes with the reconcile way forward its own text already carries, any other with the fix-batcher.yaml one.
+// batcherFailure runs the told batcher check and returns the stuck reason for its failure.
+// It returns "" when the check passed or none is told.
+// A retired-key error closes with the reconcile way forward its own text already carries;
+// any other error closes with the fix-batcher.yaml way forward.
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) batcherFailure(ctx context.Context) (string, error) {
 	if p.checks.Batcher == nil {
@@ -138,19 +155,23 @@ func (p *preflightProducer) batcherFailure(ctx context.Context) (string, error) 
 	return batchifierReasonPrefix + berr.Error() + wayForward, nil
 }
 
-// stencilsFailure runs the told stencils check and returns the Stuck reason for its failure, or "" when it passed or none is told.
+// stencilsFailure runs the told stencils check and returns the stuck reason for its failure.
+// It returns "" when the check passed or none is told.
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) stencilsFailure(ctx context.Context) (string, error) {
 	return p.prefixedFailure(ctx, p.checks.Stencils, stencilsReasonPrefix)
 }
 
-// driftFailure runs the told drift check and returns the Stuck reason for its failure, or "" when it passed or none is told.
+// driftFailure runs the told drift check and returns the stuck reason for its failure.
+// It returns "" when the check passed or none is told.
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) driftFailure(ctx context.Context) (string, error) {
 	return p.prefixedFailure(ctx, p.checks.Drift, driftReasonPrefix)
 }
 
-// prefixedFailure runs check, when told, and returns prefix and its error's text, which carries its own way forward, logging the failure; it returns "" when the check passed.
+// prefixedFailure runs check, when told, and logs its failure.
+// On failure it returns prefix followed by the error's text, which carries its own way forward.
+// It returns "" when the check passed or none is told.
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) prefixedFailure(ctx context.Context, check func() error, prefix string) (string, error) {
 	if check == nil {
@@ -167,7 +188,8 @@ func (p *preflightProducer) prefixedFailure(ctx context.Context, check func() er
 	return prefix + failure.Error(), nil
 }
 
-// reconcileHub reconciles the hub's config when the build stamp is stale, and does nothing for a repository outside a hub.
+// reconcileHub reconciles the hub's config when the build stamp is stale.
+// It does nothing for a repository outside a hub.
 // A failed reconcile is warned about and the row goes on.
 func (p *preflightProducer) reconcileHub() {
 	location, inHub := preflight.HubPresent(p.cwd)
@@ -181,13 +203,14 @@ func (p *preflightProducer) reconcileHub() {
 	hubreconcile.EnsureOrWarn(geometry, p.opts)
 }
 
-// Call implements shedengine.ShedProducer: it invokes preflight.Check(p.cwd) and maps its result --
-// a Report with OK true to shedengine.Done with an empty pointer, a Report with OK false to
-// shedengine.Stuck with an empty Path and the failures on Reason, and a non-nil error to a returned
-// error. That mapping is the whole producer -- Check reports a determined verdict rather than
-// erroring on anything short of an infra failure, so its OK false is a verdict to route and its
-// error is an undetermined failure to escalate. The resolved *lymcwd.Location Check also returns is
-// discarded: this package never touches the resolved location.
+// Call implements shedengine.ShedProducer by running preflight.Check on p.cwd.
+// A Report with OK true maps to shedengine.Done with an empty pointer.
+// A Report with OK false maps to shedengine.Stuck with an empty Path and the failures on Reason.
+// A non-nil error is returned.
+// That mapping is the whole producer.
+// Check reports a determined verdict rather than erroring on anything short of an infra failure.
+// So OK false is a verdict to route, and its error is an undetermined failure to escalate.
+// The resolved location that Check also returns is discarded, since this package never touches it.
 func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -221,11 +244,12 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		// The determined failures are surfaced rather than discarded: this row carries no OnStuck --
-		// by design, since nothing in the producer list produces what it gates -- so its Stuck halts
-		// the whole run for a human. The failures are returned as the row's reason, which reaches
-		// the persisted error and activity.wait, and are also logged. The pointer's Path stays
-		// empty: this is a gate signal, not an artifact.
+		// The determined failures are surfaced rather than discarded.
+		// This row carries no OnStuck by design:
+		// nothing in the producer list produces what it gates, so its Stuck halts the whole run for a human.
+		// The failures are returned as the row's reason, which reaches the persisted error and activity.wait,
+		// and they are also logged.
+		// The pointer's Path stays empty: this is a gate signal, not an artifact.
 		failures := formatFailures(report)
 		logger.Warn("preflightshed: preconditions not met", "producer", p.name, "cwd", p.cwd, "failures", failures)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: "preconditions not met: " + failures + wayForward(report)}, nil

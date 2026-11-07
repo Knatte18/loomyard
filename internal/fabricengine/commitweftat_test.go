@@ -1,8 +1,6 @@
-// commitweftat_test.go — integration coverage for commitWeftAt, the package-level, warp-untethered commit primitive:
-// a real commit on a dirty worktree, a no-op on a clean one, a seed-failure abort before staging, and the SkipGit early return.
-// Package fabricengine (internal), reusing index_integration_test.go's newPlainWarpRepo(t) as a generic plain-git-repo fixture.
-// It is not warp-specific despite its name, just `git init -b main` plus one commit, which is exactly the weft:main-shaped fixture these tests need.
-// Relies on testmain_test.go's package-wide TestMain for HermeticGitEnv(); no new TestMain is added here.
+// commitweftat_test.go covers commitWeftAt, the package-level commit that is not tied to a warp branch.
+// Its fixture is newPlainWarpRepo from export_integration_test.go, a plain git repository.
+// The tests rely on the package TestMain in testmain_test.go, which runs gitkit.HermeticGitEnv().
 
 package fabricengine
 
@@ -16,14 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// gitStatusPorcelain returns `git status --porcelain`'s raw output for dir —
-// non-empty means the worktree has uncommitted changes (staged, unstaged, or
-// untracked).
-// The shared helper is now gitkit.GitStatusPorcelain, and gitkit sits below fabric, so this file
-// importing it does not close a dependency cycle the way importing the old package-under-fabric copy
-// once would have — this copy is in fact now removable.
-// Folding it into gitkit.GitStatusPorcelain is left as follow-up work outside this task's scope; the
-// code here stays as-is.
+// gitStatusPorcelain returns the raw output of `git status --porcelain` for dir.
+// A non-empty result means the worktree has uncommitted changes: staged, unstaged, or untracked.
 func gitStatusPorcelain(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -36,10 +28,9 @@ func gitStatusPorcelain(t *testing.T, dir string) string {
 	return string(out)
 }
 
-// TestCommitWeftAt_CommitsDirtyWorktree asserts that commitWeftAt commits an untracked file via a
-// real wildcard-stage commit, with the exact message passed through verbatim — no Warp-SHA trailer,
-// unlike Fabric.CommitWeft, since commitWeftAt's caller (the Bolt checkout's weft:main checkout) has no
-// corresponding warp branch to trailer against.
+// TestCommitWeftAt_CommitsDirtyWorktree asserts that commitWeftAt commits an untracked file.
+// The message is passed through verbatim, and the commit carries no Warp-SHA trailer.
+// There is no warp branch for the commit to trail against.
 //
 //testtiming:keep commitWeftAt committing an untracked file with the message passed through verbatim and no Warp-SHA trailer; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
@@ -71,9 +62,8 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 	}
 }
 
-// TestCommitWeftAt_NoopOnCleanWorktree asserts that commitWeftAt is a true no-op — committed=false,
-// err=nil — when the worktree has nothing new to stage, called twice in a row with no changes in
-// between.
+// TestCommitWeftAt_NoopOnCleanWorktree asserts that commitWeftAt is a no-op when nothing is new to stage.
+// A second call with no changes in between reports committed=false, a nil error, and an empty sha.
 //
 //testtiming:keep commitWeftAt reporting committed=false with a nil error twice on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
@@ -98,7 +88,7 @@ func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 	}
 }
 
-// TestCommitWeftAt_SeedFailureFailsBeforeStaging asserts that a failure to seed the weft artifact excludes fails the commit before anything is staged:
+// TestCommitWeftAt_SeedFailureFailsBeforeStaging asserts that commitWeftAt fails when seeding the excludes fails:
 // a non-nil error, committed=false, an empty sha, and the dirty file left untracked.
 // The seed read is made to fail by replacing the repo's info/exclude file with a directory.
 //
@@ -141,9 +131,8 @@ func TestCommitWeftAt_SeedFailureFailsBeforeStaging(t *testing.T) {
 	}
 }
 
-// TestCommitWeftAt_SkipGitReturnsImmediately asserts that opts.SkipGit short circuits before any
-// git is spawned: the return is exactly ("", false, nil), and a dirty untracked file is left
-// completely untouched.
+// TestCommitWeftAt_SkipGitReturnsImmediately asserts that opts.SkipGit short circuits before any git is spawned:
+// the return is exactly ("", false, nil), and a dirty untracked file is left untouched.
 //
 //testtiming:keep opts.SkipGit short-circuiting commitWeftAt to ("", false, nil) before git spawns, leaving a dirty file untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_SkipGitReturnsImmediately(t *testing.T) {

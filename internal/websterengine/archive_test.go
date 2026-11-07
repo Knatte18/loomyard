@@ -1,6 +1,7 @@
-// archive_test.go covers the shared run-file archive (absent no-op, rename/preserve and collision
-// suffixing over state.json, outcome.yaml and summary.md), archiveReportsDir's recreate-after-archive
-// and absent-dir-still-recreates behavior, and ArchiveRunRecord's move, idempotence and refusals.
+// archive_test.go covers the shared run-file archive of state.json, outcome.yaml and summary.md.
+// It checks the absent no-op, rename/preserve, and collision suffixing.
+// It checks that archiveReportsDir recreates its dir after archiving, even when the dir was absent.
+// It also checks ArchiveRunRecord's move, idempotence and refusals.
 // Tier 1: no git, only t.TempDir() plus an injected now.
 
 package websterengine
@@ -23,9 +24,9 @@ func archiveFixedClock(t time.Time) func() time.Time {
 	return func() time.Time { return t }
 }
 
-// TestArchiveRunFile pins the archive every run-scoped file shares: an absent file is a no-op, a
-// present one is renamed to <name>-<UTC stamp><ext> with its content preserved, and a stamp already
-// taken, with or without suffixes, takes the first free numeric suffix instead of clobbering.
+// TestArchiveRunFile pins the archive every run-scoped file shares:
+// an absent file is a no-op; a present one is renamed to <name>-<UTC stamp><ext> with its content preserved;
+// a stamp already taken, with or without suffixes, takes the first free numeric suffix instead of clobbering.
 func TestArchiveRunFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

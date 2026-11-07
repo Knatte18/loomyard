@@ -1,12 +1,12 @@
-// judgeverdict.go defines the verdict-file contract treadle's progress judge reads back — JudgeVerdict (both progress-judge framings) — plus the strict parser that turns a verdict file's raw bytes into that type.
-// The file is YAML frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's contract and error posture:
-// every rule below is enforced fail-loud with a "treadle: "-prefixed
-// error (these parsers are package-level pure functions with no calling-engine name in scope,
-// unlike the rest of this package's diagnostics — see the pinned parser-prefix resolution in the
-// treadle-extraction batch notes), because a self-contradictory or malformed verdict file is an
-// agent defect that must never be silently accepted — the fail-safe posture lives one layer up, in
-// judge.go's spawners, which swallow these errors into a Warn + fail-safe fallback and never let
-// them surface through a caller's public API.
+// judgeverdict.go defines JudgeVerdict, the verdict type a progress judge writes into its verdict file,
+// and the strict parser that reads the file back into that type.
+// The file is YAML frontmatter over unconstrained prose.
+// The parser fails loud on every rule it checks, with a "treadle: "-prefixed error;
+// a self-contradictory or malformed verdict file is an agent defect and must never be silently accepted.
+// The parsers are package-level functions with no calling-engine name in scope;
+// so their errors carry the package name.
+// The fail-safe posture lives in the judge spawners in judge.go;
+// they turn these errors into a warning and a fail-safe fallback, so they never reach a caller's public API.
 package treadleengine
 
 import (
@@ -17,7 +17,7 @@ import (
 )
 
 // JudgeVerdict is the progress judge's verdict.
-// Its legal spellings depend on which judgeFraming was used.
+// Its legal spellings depend on the framing the judge ran under.
 type JudgeVerdict string
 
 // The five legal JudgeVerdict spellings across both framings.
@@ -29,9 +29,8 @@ const (
 	JudgeUncertain   JudgeVerdict = "UNCERTAIN"
 )
 
-// judgeFraming selects which of the two progress-judge prompt framings a
-// judge verdict file came from, and therefore which JudgeVerdict vocabulary
-// is legal for it.
+// judgeFraming selects which of the two progress-judge prompt framings a judge verdict file came from.
+// It also selects which JudgeVerdict vocabulary is legal for that file.
 type judgeFraming string
 
 const (
@@ -39,10 +38,8 @@ const (
 	framingMilestone judgeFraming = "milestone"
 )
 
-// judgeHeader mirrors a judge verdict file's YAML frontmatter
-// shape. Unknown extra keys are tolerated (no KnownFields), matching
-// burlerengine's reviewHeader: agent-written metadata in the header is
-// harmless noise.
+// judgeHeader mirrors the YAML frontmatter of a judge verdict file.
+// Unknown extra keys are tolerated, since agent-written metadata in the header is harmless noise.
 type judgeHeader struct {
 	Verdict   string `yaml:"verdict"`
 	Rationale string `yaml:"rationale"`
@@ -76,9 +73,8 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 	return verdict, parsed.Rationale, nil
 }
 
-// splitFrontmatter extracts the YAML header between opening and closing "---"
-// delimiter lines. kind names the file type for error messages ("verdict" or
-// "handoff").
+// splitFrontmatter extracts the YAML header between the opening and closing "---" delimiter lines.
+// kind names the file type for error messages ("verdict" or "handoff").
 func splitFrontmatter(content []byte, kind string) (string, error) {
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {

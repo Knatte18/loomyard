@@ -1,4 +1,5 @@
-// darntreescope_integration_test.go drives darnTreeScope against a real fabric pair and real git, since its answer depends on the merge base the pair's history leaves and on git's rename detection.
+// darntreescope_integration_test.go drives darnTreeScope against a real fabric pair and real git.
+// Its answer depends on the merge base the pair's history leaves and on git's rename detection.
 
 package loomcli
 
@@ -22,7 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestDarnTreeScope_ClassifiesAtEachCall steps one pair through the diffs a task branch can hold and pins the seam's answer after each, reading the hub-wide darn.yaml afresh at every call.
+// TestDarnTreeScope_ClassifiesAtEachCall steps one pair through the diffs a task branch can hold.
+// It pins the seam's answer after each step, reading the hub-wide darn.yaml afresh at every call.
 // The steps run in order over one pair, so each builds on the history the steps before left.
 func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -57,7 +59,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		t.Helper()
 		return darnTreeScope(resolve(t, slug))
 	}
-	// landing builds the pair's landing seams over the darn verify source, with the values the seams under test do not read left minimal.
+	// landing builds the pair's landing seams over the darn verify source.
+	// The values the seams under test do not read are left minimal.
 	landing := func(t *testing.T, slug string) landingshed.Deps {
 		t.Helper()
 		location := resolve(t, slug)
@@ -86,7 +89,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 			t.Errorf("VerifyCommand(finalize) = %q, %v; want %q, nil", command, err, wantCommand)
 		}
 	}
-	// assertAnswer pins the seam's answer for the darn-write key: wantTargets is the targets its call holds, and an empty one means no call at all.
+	// assertAnswer pins the seam's answer for the darn-write key:
+	// wantTargets is the targets its call holds, and an empty one means no call at all.
 	assertAnswer := func(t *testing.T, seam func(gateKey string) (string, bool, error), wantTargets string, wantScoped bool) {
 		t.Helper()
 		wantCommand := ""

@@ -1,9 +1,8 @@
-// cache.go implements the cross-platform half of githubclient's machine-global token cache:
-// directory resolution, the on-disk schema, freshness computation, and the atomic-replace write
-// path.
-// Platform-specific file hardening — stripping inherited ACLs on Windows so the cache file is
-// readable only by its owner — is delegated to the unexported hardenCacheFile hook, implemented per
-// platform in cache_windows.go and cache_other.go.
+// cache.go implements the cross-platform half of githubclient's machine-global token cache.
+// It resolves the cache directory, defines the on-disk schema, and computes freshness.
+// It writes the file by atomic replace.
+// File hardening, which keeps the cache file readable only by its owner, is delegated to the hardenCacheFile hook.
+// The hook is implemented per platform in cache_windows.go and cache_other.go.
 
 package githubclient
 
@@ -16,27 +15,28 @@ import (
 	"time"
 )
 
-// cacheFreshness is how long a cached token is trusted before falling back to
-// `gh auth token`. The TTL is applied at read time only; no disk migration needed.
+// cacheFreshness is how long a cached token is trusted before falling back to `gh auth token`.
+// The age check runs at read time, so changing this value needs no change to the stored file.
 const cacheFreshness = 12 * time.Hour
 
-// credentialFileName is the on-disk name of the cache file within its
-// resolved directory.
+// credentialFileName is the on-disk name of the cache file within its resolved directory.
 const credentialFileName = "credentials.json"
 
-// cachedCredentials is the on-disk token cache schema: exactly two fields, with
-// ResolvedAt as RFC 3339 UTC. Any deviation is a cache miss, never a fatal error.
+// cachedCredentials is the on-disk token cache schema, with exactly two fields.
+// ResolvedAt is an RFC 3339 UTC time.
+// A file that deviates from this schema is a cache miss, never a fatal error.
 type cachedCredentials struct {
 	Token      string `json:"token"`
 	ResolvedAt string `json:"resolved_at"`
 }
 
-// cacheMu serializes cache reads/writes within this process. The atomic-rename
-// in writeCachedToken keeps concurrent processes safe.
+// cacheMu serializes cache reads and writes within this process.
+// An atomic rename on write keeps concurrent processes safe.
 var cacheMu sync.Mutex
 
-// cacheDir resolves the cache directory: %LOCALAPPDATA%\lym on Windows, $XDG_CONFIG_HOME/lym or $HOME/.config/lym elsewhere.
-// Returns ("", false) when no usable environment variable is set.
+// cacheDir resolves the cache directory.
+// On Windows it is %LOCALAPPDATA%\lym; elsewhere it is $XDG_CONFIG_HOME/lym or $HOME/.config/lym.
+// It returns ("", false) when no usable environment variable is set.
 func cacheDir() (string, bool) {
 	if runtime.GOOS == "windows" {
 		base := os.Getenv("LOCALAPPDATA")
@@ -61,8 +61,8 @@ func CredentialDir() (string, bool) {
 	return cacheDir()
 }
 
-// credentialFilePath resolves the full path to the cache file, or ("", false)
-// when cacheDir itself cannot be resolved.
+// credentialFilePath resolves the full path to the cache file.
+// It returns ("", false) when cacheDir cannot resolve the directory.
 func credentialFilePath() (string, bool) {
 	dir, ok := cacheDir()
 	if !ok {
@@ -71,8 +71,8 @@ func credentialFilePath() (string, bool) {
 	return filepath.Join(dir, credentialFileName), true
 }
 
-// readCachedToken reads the cache file, returning the token only when it
-// exists, parses correctly, and is fresh. Any other outcome is a cache miss.
+// readCachedToken reads the cache file and returns the token only when it exists, parses, and is fresh.
+// Any other outcome is a cache miss.
 func readCachedToken() (string, bool) {
 	path, ok := credentialFilePath()
 	if !ok {
@@ -111,9 +111,9 @@ func readCachedToken() (string, bool) {
 	return creds.Token, true
 }
 
-// writeCachedToken atomically writes token to the cache file via a temp file
-// and rename. Hardens the file before rename to avoid a world-readable window.
-// Degradation to silent no-op on any failure.
+// writeCachedToken atomically writes token to the cache file, via a temp file and a rename.
+// It hardens the temp file before the rename, so the cache file never appears unhardened.
+// A failure at any step is silent and leaves the cache file unchanged.
 func writeCachedToken(token string) {
 	dir, ok := cacheDir()
 	if !ok {

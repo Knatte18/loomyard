@@ -10,9 +10,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// RaiseIntFloor raises the top-level integer key to floor when its stored value is below it or null, and returns the rewritten document with one line "<key>: raised from <old> to <floor>", the old value being null for a null.
+// RaiseIntFloor raises the top-level integer key to floor when its stored value is below it or null.
+// It returns the rewritten document and the line "<key>: raised from <old> to <floor>", with old null for a null.
 // Every other key, value and comment is carried through yaml node editing, re-encoded with two-space indent.
-// The document comes back unchanged with an empty line when it is empty, when key is absent, when the value is an integer at or above floor, or when it is any other scalar, an ${env:...} marker included, that does not decode as an integer.
+// The document comes back unchanged with an empty line when it is empty or when key is absent.
+// It also comes back unchanged when the value is an integer at or above floor.
+// It likewise comes back unchanged for a scalar that does not decode as an integer, and for an ${env:...} marker.
 // A document that does not parse, or whose root is not a mapping, returns an error.
 func RaiseIntFloor(existing []byte, key string, floor int) ([]byte, string, error) {
 	var document yaml.Node

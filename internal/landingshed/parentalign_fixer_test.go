@@ -1,4 +1,5 @@
-// parentalign_fixer_test.go drives Parent-Align's alignment through the merge fixer loop over the Parent-Align fixture's fake seat runner, tips, gate and line-change reads.
+// parentalign_fixer_test.go drives Parent-Align's alignment through the merge fixer loop.
+// The fake seat runner, tips, gate and line-change reads come from the Parent-Align fixture.
 
 package landingshed
 
@@ -24,7 +25,8 @@ func (fx *mergeInFixture) fixerReportPath() string {
 	return filepath.Join(fx.m.deps.ScratchDir, parentAlignName+"-fixer-report.md")
 }
 
-// fixerTurn scripts a turn that writes content as its report and moves the task head to head, as a turn that commits does.
+// fixerTurn scripts a turn that writes content as its report.
+// The turn moves the task head to head, as a committing turn does.
 func (fx *mergeInFixture) fixerTurn(t *testing.T, content, head string) func() {
 	t.Helper()
 	return func() {
@@ -65,7 +67,8 @@ func (fx *mergeInFixture) attemptsOnDisk(t *testing.T) (FixerAttempts, bool) {
 	return rec, true
 }
 
-// requireHalt asserts the call ended in a halting Stuck whose reason opens with LandingStopPrefix and holds every fragment, and returns the reason.
+// requireHalt asserts the call ended in a halting Stuck.
+// Its reason opens with LandingStopPrefix and holds every fragment, and requireHalt returns the reason.
 func requireHalt(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer, fragments ...string) string {
 	t.Helper()
 	if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) {
@@ -79,7 +82,8 @@ func requireHalt(t *testing.T, outcome shedengine.Outcome, ptr shedengine.Output
 	return ptr.Reason
 }
 
-// requireEscalateHalt asserts the call ended in a halting Stuck whose reason opens with EscalateStopPrefix, no hand-back for the orch, and holds every fragment.
+// requireEscalateHalt asserts the call ended in a halting Stuck.
+// Its reason opens with EscalateStopPrefix and holds every fragment, and it asserts no hand-back for the orch.
 func requireEscalateHalt(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer, producer string, fragments ...string) {
 	t.Helper()
 	if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, EscalateStopPrefix) {
@@ -95,13 +99,15 @@ func requireEscalateHalt(t *testing.T, outcome shedengine.Outcome, ptr shedengin
 	}
 }
 
-// resumeAfterMerge readies the fixture for a resumed Merge-In whose merge is already up to date, so the merge base is now the merged tip.
+// resumeAfterMerge readies the fixture for a resumed Merge-In whose merge is already up to date.
+// The merge base is now the merged tip.
 func (fx *mergeInFixture) resumeAfterMerge() {
 	fx.mergeBase = "p1"
 	fx.resolver.result.AlreadyUpToDate = true
 }
 
-// TestMergeIn_Fixer pins Merge-In's alignment: when the merge fixer spawns, how its attempts are kept across resumes, and where its halts and caps lead.
+// TestMergeIn_Fixer pins Merge-In's alignment for the merge fixer.
+// It covers when the fixer spawns, how its attempts are kept across resumes, and where its halts and caps lead.
 func TestMergeIn_Fixer(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,5 +1,5 @@
 // amendment.go owns the plan amendment record, the tracked file recording that a decision amends the approved plan.
-// It reads and writes the record over a told path and resolves no geometry.
+// It reads and writes the record at a path the caller passes and resolves no geometry.
 
 package loomshed
 
@@ -15,7 +15,8 @@ import (
 )
 
 // AmendmentRecord is the decoded plan amendment record.
-// Titles holds the title of every pending amending decision entry in append order, and WrittenAt the latest write in UTC.
+// Titles lists the title of every pending amending decision entry, in append order.
+// WrittenAt is the time of the latest write, in UTC.
 type AmendmentRecord struct {
 	Titles    []string  `yaml:"titles"`
 	WrittenAt time.Time `yaml:"written_at"`
@@ -23,7 +24,7 @@ type AmendmentRecord struct {
 
 // ReadAmendment decodes the amendment record at path and reports false for an absent file.
 // Unknown keys are read and dropped.
-// A file that does not decode is an error naming the path and the way forward, which every reader returns unchanged.
+// A file that does not decode is an error that names the path and the way forward; every reader returns it unchanged.
 func ReadAmendment(path string) (AmendmentRecord, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -39,7 +40,8 @@ func ReadAmendment(path string) (AmendmentRecord, bool, error) {
 	return record, true, nil
 }
 
-// AppendAmendment adds title to the record at path and sets its write time to at in UTC, creating the file and its directory when absent.
+// AppendAmendment adds title to the record at path and sets its write time to at, in UTC.
+// It creates the file and its directory when absent.
 func AppendAmendment(path, title string, at time.Time) error {
 	record, _, err := ReadAmendment(path)
 	if err != nil {

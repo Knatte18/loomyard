@@ -4,7 +4,11 @@ package battencli
 
 // BootstrapVerb records that batten has no bootstrap verb.
 //
-// This is a deliberate declaration, not an unfilled placeholder: batten has no "lym batten start", so "lym batten run <slug>"'s driver IS the process the operator typed, and there is no spawn seam to branch on a seed's driver.
-// batten's own --driver validator (arm.go) reads this constant directly, because battencli cannot import shedcli without an import cycle.
-// The value changes only if batten grows a bootstrap verb -- at which point driver: llm becomes supportable for batten with no edit to either validator.
+// The empty value is the declaration, not an unfilled placeholder.
+// batten has no `lym batten start`, so the driver of `lym batten run <slug>` is the process the operator typed,
+// and there is no spawn seam to branch on a seed's driver.
+// The `--driver` validator in arm.go reads this constant directly.
+// It does so because battencli cannot import shedcli without an import cycle.
+// The value changes only once batten grows a bootstrap verb.
+// At that point, `driver: llm` becomes supportable for batten with no edit to the validators that read this constant.
 const BootstrapVerb = ""

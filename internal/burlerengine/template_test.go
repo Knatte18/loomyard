@@ -1,6 +1,8 @@
-// template_test.go proves each of the shipped half-prompt assets actually fills through stencil with its own required marker subset, that the two optional directives of the explore step render cleanly empty and placed ahead of its first work instruction, and that the compose functions read a half prompt from disk at call time.
-// The Go-built blocks and the seat stencils' exclusion of the cluster block are pinned from full compose renders in prompt_test.go.
-// The assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateReviewer etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since the compose functions themselves read their prompts from disk at call time via stencilstore.Read (see prompt.go).
+// template_test.go pins that each shipped half-prompt asset fills through stencil with its required marker subset.
+// It also pins that the explore step's two optional directives render empty and sit ahead of its first work instruction.
+// It pins that the compose functions read a half prompt from disk at call time.
+// prompt_test.go pins the Go-built blocks and the seat stencils' cluster-block exclusion in full compose renders.
+// The assets are the exported embedded defaults of the top-level stencils package.
 
 package burlerengine
 
@@ -15,9 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// requireContains fails the test, naming the missing needle, if text does
-// not contain it. Shared across this package's tests (prompt_test.go
-// reuses it for composePrompt's rendered output).
+// requireContains fails the test, naming the missing needle, if text does not contain it.
+// The package's tests share it.
 func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
@@ -25,7 +26,7 @@ func requireContains(t *testing.T, text, needle string) {
 	}
 }
 
-// reviewerMarkerValues returns a values map with every one of the reviewer seat stencil's required top-level markers set to a non-empty placeholder.
+// reviewerMarkerValues returns a values map with a placeholder for each required marker of the reviewer seat stencil.
 func reviewerMarkerValues() map[string]string {
 	return map[string]string{
 		"instruction_1_path": "/tmp/instruction-1-explore.md",
@@ -35,7 +36,7 @@ func reviewerMarkerValues() map[string]string {
 	}
 }
 
-// fixerMarkerValues returns a values map with every one of the fixer seat stencil's required top-level markers set to a non-empty placeholder.
+// fixerMarkerValues returns a values map with a placeholder for each required marker of the fixer seat stencil.
 func fixerMarkerValues() map[string]string {
 	return map[string]string{
 		"review_path":          "/tmp/review.md",
@@ -45,7 +46,7 @@ func fixerMarkerValues() map[string]string {
 	}
 }
 
-// reviewStepMarkerValues returns a values map with every one of the review step's required top-level markers set to a non-empty placeholder.
+// reviewStepMarkerValues returns a values map with a placeholder for each required marker of the review step.
 func reviewStepMarkerValues() map[string]string {
 	return map[string]string{
 		"cluster_rules":      "cluster-rules placeholder",
@@ -55,7 +56,8 @@ func reviewStepMarkerValues() map[string]string {
 	}
 }
 
-// fixStepMarkerValues returns a values map with every one of the fix step's top-level markers set to a non-empty placeholder, friction_directive and self_check, its two optional markers, included.
+// fixStepMarkerValues returns a values map with a placeholder for each top-level marker of the fix step.
+// It includes the optional markers friction_directive and self_check.
 func fixStepMarkerValues() map[string]string {
 	return map[string]string{
 		"friction_directive": "## Friction note placeholder",
@@ -67,7 +69,9 @@ func fixStepMarkerValues() map[string]string {
 	}
 }
 
-// instruction1MarkerValues returns a values map with every one of the explore step's four required top-level markers set to a non-empty placeholder, plus pattern_directive, focus_directive and fork_reading — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
+// instruction1MarkerValues returns a values map with a placeholder for each marker of the explore step.
+// The optional markers pattern_directive, focus_directive and fork_reading are included too.
+// Tests delete one key at a time to prove the per-marker error of stencil.FillOptional.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
 		"pattern_directive": "## Constraints — do this before you judge anything\n\n- Read the overview.",
@@ -80,9 +84,11 @@ func instruction1MarkerValues() map[string]string {
 	}
 }
 
-// TestTemplate_FillsWithAllMarkers asserts each of the embedded assets fills through stencil when supplied its own full marker set (required markers plus, for the explore step, the optional pattern_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
-// pattern_directive and focus_directive are deliberately excluded from the explore step's deletion sweep:
-// they are the optional markers across the assets, so deleting any of them must not error.
+// TestTemplate_FillsWithAllMarkers asserts each embedded asset fills through stencil when given its full marker set.
+// For the explore step that set includes the optional pattern_directive and focus_directive.
+// The test fails, naming the marker, when any single required marker of an asset is absent.
+// pattern_directive and focus_directive are excluded from the explore step's deletion sweep.
+// They are optional markers, so deleting either must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -144,9 +150,8 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 
 			for _, marker := range tt.requiredMarkers {
 				t.Run("missing "+marker, func(t *testing.T) {
-					// Copy the shared values map before deleting from it —
-					// the same tt.values map backs every subtest in this
-					// asset's table entry.
+					// Copy the shared values map before deleting from it.
+					// Every subtest in the asset's table entry shares tt.values.
 					values := make(map[string]string, len(tt.values))
 					for k, v := range tt.values {
 						values[k] = v
@@ -166,7 +171,11 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplate_OptionalDirectives asserts pattern_directive, focus_directive and fork_reading each behave as an optional marker on the explore step: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the block where its row says: the two directives ahead of the first work instruction ("## What to review (the target)"), the fork reading after the tool-use rules at the end of the stencil.
+// TestTemplate_OptionalDirectives asserts the explore step's optional markers render cleanly when empty.
+// They are pattern_directive, focus_directive and fork_reading.
+// An empty value leaves no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block.
+// A non-empty value places the two directives ahead of the first work instruction.
+// It places the fork reading after the tool-use rules at the end of the stencil.
 // The fix step's friction_directive and self_check each render an empty value cleanly too.
 func TestTemplate_OptionalDirectives(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -244,8 +253,9 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 
 }
 
-// TestComposePrompt_ReadsEditedStencilFromDisk proves composeReviewPrompt reads a half prompt from stencilsDir on every call rather than from any compiled-in default: overwriting burler/burler-step-review.md on disk with a modified body, after building stencilsDir from the shipped defaults, must have that modified text — not the shipped default's own text — reach the composed review step file.
-// This pins the runtime-read-not-embed Shared Decision at the burlerengine call site.
+// TestComposePrompt_ReadsEditedStencilFromDisk proves the review prompt reads its stencil from disk.
+// It is not taken from a compiled-in default.
+// Overwriting burler/burler-step-review.md in stencilsDir with a modified body must reach the composed review step.
 //
 //testtiming:keep pins that an edited on-disk review-step body reaches the composed review step file, which the cluster test covering its blocks never edits
 func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
@@ -265,7 +275,8 @@ func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 	requireContains(t, prompt.Files[reviewStepFile].Content, modifiedMarker)
 }
 
-// TestComposePrompt_RendersEngineBlocksForTheHalfsEngine pins that an engine block an instruction stencil includes renders the copy of the engine the half runs on, in both halves.
+// TestComposePrompt_RendersEngineBlocksForTheHalfsEngine checks both halves.
+// An engine block that an instruction stencil includes renders the copy of the engine the half runs on.
 func TestComposePrompt_RendersEngineBlocksForTheHalfsEngine(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

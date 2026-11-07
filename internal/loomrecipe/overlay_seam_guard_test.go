@@ -1,11 +1,12 @@
-// overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level:
-// every BurlerFix row whose target paths reach into the overlay tree (the durable _lym directory) must run fix-scope: overlay,
-// and its partner Bouncer row must carry a commit_seam key matching the overlay subdirectory those target paths share.
-// Otherwise an approved overlay-round fix has no committer, and the round's own writes stay uncommitted in the records working tree.
+// overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level.
+// A BurlerFix row whose target paths enter the overlay tree (the durable _lym directory) must run fix-scope: overlay.
+// Its partner Bouncer row must carry a commit_seam key matching the overlay subdirectory those target paths share.
+// Otherwise an approved overlay-round fix has no committer,
+// and the round's own writes stay uncommitted in the records working tree.
 //
-// This is the parse-level regression guard the shipped Discussion-Burler-Fix row's fix-scope: source violation would have caught before it shipped.
-// assertOverlayBurlerCommitSeams is one rule shared by TestShippedRecipe_OverlayBurlersCommitThroughSeam (the real embedded recipe) and TestOverlayBurlerCommitSeams_RejectsBadShapes (synthetic negative and positive cases),
-// so the two halves can never drift into two hand-kept copies of the same rule.
+// The rule lives in one helper, assertOverlayBurlerCommitSeams.
+// Both the embedded-recipe check and the synthetic cases call it.
+// Sharing it keeps the two from drifting into separate copies of the rule.
 
 package loomrecipe
 
@@ -19,23 +20,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerFix" and, for each row that declares at least one overlay target path (a path whose first segment equals lymdirs.LymDirName), asserts both halves of the Fabric Git Invariant's overlay-seam rule: the row's profile.fix-scope must be "overlay", and the row's partner Bouncer row (same Segment) must carry a commit_seam config value equal to the single overlay subdirectory the row's overlay target paths share.
+// assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerFix".
+// For each row that declares an overlay target path, it asserts the Fabric Git Invariant's overlay-seam rule.
+// An overlay target path is one whose first segment equals lymdirs.LymDirName.
+// The row's profile.fix-scope must be "overlay".
+// The partner Bouncer row (same Segment) must carry a commit_seam config value.
+// That value must equal the single overlay subdirectory the row's overlay target paths share.
 //
-// A row declaring no profile, no target, or no target paths at all is outside the rule and is
-// skipped silently -- that absence is the structural exemption, not an allowlist entry. A row whose
-// target paths include none under the overlay tree is likewise skipped. An unexpected shape (paths
-// present but non-string, or profile/target present but not a map) is reported via t.Fatalf, naming
-// the row, because a silently-skipped row here is a guard that does not guard.
+// A row with no profile, no target, or no target paths is outside the rule and is skipped silently.
+// That absence is the structural exemption, not an allowlist entry.
+// A row whose target paths include none under the overlay tree is likewise skipped.
+// An unexpected shape fails the test via t.Fatalf: paths that are not strings, or a profile or target that is not a map.
+// A row skipped silently would leave the guard guarding nothing.
 //
-// Both rule-violation halves are reported via t.Errorf rather than t.Fatalf so a single run against
-// an unmodified recipe can surface both failures at once, which is the proof this guard's own
-// TDD step requires.
+// Both halves report via t.Errorf rather than t.Fatalf.
+// A single run against an unmodified recipe then surfaces both failures at once.
 //
-// t is typed testing.TB rather than the concrete *testing.T: TestOverlayBurlerCommitSeams_RejectsBadShapes
-// hands this function a capturingT so a case asserting rejection can observe the rule's own t.Errorf
-// calls without failing the outer test, which a concrete *testing.T's real Errorf makes impossible --
-// a subtest's real Errorf failure always propagates to fail every ancestor test, with no public API
-// to suppress it.
+// t is typed testing.TB so a caller can pass a capturing implementation.
+// That lets a rejection case observe the rule's t.Errorf calls without failing the enclosing test.
+// A concrete *testing.T cannot do this: its Errorf failure propagates to every ancestor test,
+// and the testing package offers no public API to suppress it.
 func assertOverlayBurlerCommitSeams(t testing.TB, r shedbuild.Recipe) {
 	t.Helper()
 
@@ -99,10 +103,8 @@ func assertOverlayBurlerCommitSeams(t testing.TB, r shedbuild.Recipe) {
 	}
 }
 
-// assertFixScopeOverlay reports whether row's profile.fix-scope key is present and equal to
-// "overlay", via two distinct t.Errorf calls naming row -- one for a missing key, one for a
-// non-overlay value -- so a single guard run can surface both this half's failure and
-// assertCommitSeam's failure together.
+// assertFixScopeOverlay checks that row's profile.fix-scope key is present and equal to "overlay".
+// A missing key and a non-overlay value each go to their own t.Errorf call, naming row.
 func assertFixScopeOverlay(t testing.TB, row shedbuild.Row) {
 	t.Helper()
 
@@ -117,10 +119,10 @@ func assertFixScopeOverlay(t testing.TB, row shedbuild.Row) {
 	}
 }
 
-// assertCommitSeam reports whether burlerRow's overlay target paths share a single overlay
-// subdirectory and, if so, whether burlerRow's partner Bouncer row (same Segment within r) carries a
-// commit_seam config value equal to that subdirectory. Every failure is reported via t.Errorf naming
-// the offending row, for the same both-halves-in-one-run reason assertFixScopeOverlay documents.
+// assertCommitSeam checks the seam half of the overlay-seam rule for burlerRow.
+// The overlay target paths of burlerRow must share one overlay subdirectory.
+// Its partner Bouncer row (same Segment within r) must carry a commit_seam config equal to that subdirectory.
+// Each failure goes to t.Errorf and names the offending row.
 func assertCommitSeam(t testing.TB, r shedbuild.Recipe, burlerRow shedbuild.Row, overlaySubdirs []string) {
 	t.Helper()
 
@@ -159,7 +161,8 @@ func assertCommitSeam(t testing.TB, r shedbuild.Recipe, burlerRow shedbuild.Row,
 	}
 }
 
-// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the real embedded recipes.TapestryRecipe and runs assertOverlayBurlerCommitSeams against it, unmodified -- a straight read of the shipped file, never a mutated copy.
+// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the embedded recipes.TapestryRecipe.
+// It runs assertOverlayBurlerCommitSeams on the result, a read of the shipped file.
 //
 //testtiming:keep pins that the shipped overlay Burlers commit through their partner Bouncer's seam, which TestOverlayBurlerCommitSeams_RejectsBadShapes only checks on hand-written recipes
 func TestShippedRecipe_OverlayBurlersCommitThroughSeam(t *testing.T) {
@@ -171,36 +174,28 @@ func TestShippedRecipe_OverlayBurlersCommitThroughSeam(t *testing.T) {
 	assertOverlayBurlerCommitSeams(t, r)
 }
 
-// capturingT is a minimal *testing.T-shaped recorder assertOverlayBurlerCommitSeams's t.Errorf calls
-// write into, letting TestOverlayBurlerCommitSeams_RejectsBadShapes assert a case reported a failure
-// without failing the outer test itself.
+// capturingT is a testing.TB that records failures instead of reporting them.
+// It lets a case of TestOverlayBurlerCommitSeams_RejectsBadShapes check for a rejection without failing the outer test.
 type capturingT struct {
 	testing.TB
 	failed bool
 }
 
-// Errorf implements the subset of testing.TB assertOverlayBurlerCommitSeams calls, recording that a
-// failure was reported rather than propagating it to the outer test.
+// Errorf records a reported failure without propagating it to the outer test.
 func (c *capturingT) Errorf(format string, args ...any) {
 	c.failed = true
 }
 
-// Fatalf implements the subset of testing.TB assertOverlayBurlerCommitSeams calls. It records the
-// failure the same way Errorf does and returns rather than halting the goroutine: every synthetic
-// case below is constructed so the rule never reaches a Fatalf-shaped condition on a case that must
-// continue past it, so a Fatalf that returns still leaves c.failed true, which is all this helper's
-// callers observe.
+// Fatalf records the failure the same way Errorf does, and returns instead of halting the goroutine.
 func (c *capturingT) Fatalf(format string, args ...any) {
 	c.failed = true
 }
 
-// Helper implements the subset of testing.TB assertOverlayBurlerCommitSeams calls; it is a no-op
-// here since capturingT tracks no call stack.
+// Helper does nothing, since capturingT tracks no call stack.
 func (c *capturingT) Helper() {}
 
-// runOverlaySeamRule runs assertOverlayBurlerCommitSeams against r using a capturingT wrapping t,
-// via a nested t.Run so the case's own name appears in test output, and returns whether the rule
-// reported any failure.
+// runOverlaySeamRule runs assertOverlayBurlerCommitSeams on r in a subtest named name.
+// It reports whether the rule reported any failure, captured through a capturingT wrapping t.
 func runOverlaySeamRule(t *testing.T, name string, r shedbuild.Recipe) (reported bool) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
@@ -212,7 +207,9 @@ func runOverlaySeamRule(t *testing.T, name string, r shedbuild.Recipe) (reported
 	return reported
 }
 
-// TestOverlayBurlerCommitSeams_RejectsBadShapes table-drives assertOverlayBurlerCommitSeams over small hand-written recipe YAML documents, each fed through the identical shedbuild.Parse the shipped-recipe test uses, asserting the rule reports (or, for the two accept cases, does not report) a failure for the shape each case names.
+// TestOverlayBurlerCommitSeams_RejectsBadShapes checks the rule against small hand-written recipe documents.
+// Each document is parsed by shedbuild.Parse.
+// The rule must report a failure for each rejected shape and none for each accepted one.
 //
 //testtiming:keep pins that the seam rule rejects each bad overlay shape, a guard self-check the shipped-recipe test never exercises
 func TestOverlayBurlerCommitSeams_RejectsBadShapes(t *testing.T) {
@@ -273,10 +270,9 @@ func TestOverlayBurlerCommitSeams_RejectsBadShapes(t *testing.T) {
 	}
 }
 
-// overlaySeamFixture returns a two-row recipe YAML document -- a Bouncer/BurlerFix pair sharing
-// segment "Fixture-Review" -- whose Burler row carries fixScope as its profile.fix-scope value and
-// whose Bouncer row carries commitSeam as its commit_seam config value (omitted entirely when
-// commitSeam is empty).
+// overlaySeamFixture returns a two-row recipe YAML document: a Bouncer and a BurlerFix row in segment "Fixture-Review".
+// The Burler row carries fixScope as its profile.fix-scope value.
+// The Bouncer row carries commitSeam as its commit_seam config value, and omits the key when commitSeam is empty.
 func overlaySeamFixture(fixScope, commitSeam string) string {
 	commitSeamLine := ""
 	if commitSeam != "" {
@@ -302,8 +298,8 @@ func overlaySeamFixture(fixScope, commitSeam string) string {
 		"        fix-scope: " + fixScope + "\n"
 }
 
-// overlaySeamFixtureNoBouncer returns a one-row recipe YAML document: an overlay-targeting Burler
-// row whose Segment names no Bouncer row anywhere in the document.
+// overlaySeamFixtureNoBouncer returns a one-row recipe YAML document:
+// an overlay-targeting Burler row whose segment names no Bouncer row in the document.
 func overlaySeamFixtureNoBouncer() string {
 	return "version: 1\n" +
 		"entry: Fixture-Burler\n" +
@@ -320,10 +316,10 @@ func overlaySeamFixtureNoBouncer() string {
 		"        fix-scope: overlay\n"
 }
 
-// overlaySeamFixtureStraddling returns a two-row recipe YAML document whose Burler row's target
-// paths span two different overlay subdirectories ("discussion" and "plan"), with a correctly
-// seamed partner Bouncer row for neither -- the straddle itself is the rejected shape, checked ahead
-// of the seam-value check.
+// overlaySeamFixtureStraddling returns a two-row recipe YAML document.
+// Its Burler row's target paths span two overlay subdirectories, "discussion" and "plan".
+// Its Bouncer row sets commit_seam to discussion.
+// The straddle is the rejected shape, checked ahead of the seam-value check.
 func overlaySeamFixtureStraddling() string {
 	return "version: 1\n" +
 		"entry: Fixture-Bouncer\n" +
@@ -346,9 +342,9 @@ func overlaySeamFixtureStraddling() string {
 		"        fix-scope: overlay\n"
 }
 
-// overlaySeamFixtureInstructionsOnly returns a two-row recipe YAML document whose Burler row
-// declares profile.target.instructions and no paths key at all, running fix-scope: source -- the
-// structural exemption the rule must pass without ever inspecting fix-scope or commit_seam.
+// overlaySeamFixtureInstructionsOnly returns a two-row recipe YAML document.
+// Its Burler row declares profile.target.instructions and no paths key, and runs fix-scope: source.
+// The rule must pass this shape as a structural exemption, without inspecting fix-scope or commit_seam.
 func overlaySeamFixtureInstructionsOnly() string {
 	return "version: 1\n" +
 		"entry: Fixture-Bouncer\n" +

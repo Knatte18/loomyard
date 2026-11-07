@@ -1,6 +1,7 @@
 //go:build !windows
 
-// check_integration_test.go drives the built `lym drift check` in a hubforge hub pair: the cells a changed capture leaves unexpected, the skip before Drift-Expect and the missing-baseline fault.
+// check_integration_test.go drives the built `lym drift check` in a hubforge hub pair.
+// It covers the cells a changed capture leaves unexpected, the skip before Drift-Expect, and the missing-baseline fault.
 
 package driftcli_test
 
@@ -66,7 +67,7 @@ func entryCount(t *testing.T, dir string) int {
 	return len(entries)
 }
 
-// TestCheck_PrintsTheFindings covers a check whose capture changes a value nothing expects, the same run before Drift-Expect, and a run whose baseline directory is gone.
+// TestCheck_PrintsTheFindings covers the findings a check prints when a capture changes an unexpected value.
 // The scenarios run in order over one hub, since each reseeds the run status and scope record.
 func TestCheck_PrintsTheFindings(t *testing.T) {
 	tiergate.Require(t, 1)

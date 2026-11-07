@@ -383,7 +383,7 @@ func TestSettle(t *testing.T) {
 
 	type step struct {
 		runErr error
-		// wantErr is a substring Settle's error must hold, empty for none.
+		// wantErr is a substring that the error of Settle must contain; empty means no error.
 		wantErr string
 	}
 	tests := []struct {

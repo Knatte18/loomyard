@@ -1,12 +1,10 @@
-// identity.go implements identityBatcher, the library's baseline Batcher: one card per Batch, in
-// input order.
-// Identity returns it, and the registry's identity kind builds it.
+// identity.go implements identityBatcher, the baseline Batcher: one card per Batch, in input order.
 
 package batcher
 
 import "github.com/Knatte18/loomyard/internal/planparser"
 
-// identityBatcher is the simplest Batcher: one card per Batch.
+// identityBatcher puts each card in a Batch of its own.
 type identityBatcher struct{}
 
 // Identity returns the identity batchifier, whatever profile is active.

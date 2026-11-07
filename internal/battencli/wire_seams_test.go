@@ -33,7 +33,7 @@ import (
 )
 
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
-// envkit.NilSeams already skips the seams whose nil is a documented default, so only wire's own gaps are listed.
+// Seams whose nil is a documented default are already skipped, so only wire's own gaps are listed.
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
 	"VerifyCommand":                       "loom-only seam, batten runs no verify gate",
@@ -233,7 +233,7 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
 
-	// envkit lists Awake as a legal nil, so wire's filling it is asserted here.
+	// Awake may be nil, so this asserts that wire sets it.
 	if c.env.InnerRun.Awake == nil {
 		t.Error("InnerRun.Awake is nil; want it set after wire()")
 	}
@@ -256,7 +256,8 @@ func TestWire_EverySeamFilled(t *testing.T) {
 	}
 }
 
-// TestRestepSkips pins which child statuses the binary re-step leaves alone: a blocked landing, decision or escalate halt, and nothing else.
+// TestRestepSkips pins which child statuses the binary re-step leaves alone:
+// a blocked landing, decision or escalate halt, and nothing else.
 func TestRestepSkips(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -300,7 +301,8 @@ func wiredPrime(t *testing.T) (*battenCLI, *lymcwd.Location) {
 	return c, location
 }
 
-// TestWire_PointsTheNetworkGateAtItsSlug installs a gate with no slug over a record holding a live entry for the wired slug, and asserts a network call made after wire waits.
+// TestWire_PointsTheNetworkGateAtItsSlug installs a gate with no slug over a live entry for the wired slug.
+// It asserts that a network call made after wire waits.
 // It is not parallel because the network gate is process-wide.
 func TestWire_PointsTheNetworkGateAtItsSlug(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -343,8 +345,9 @@ func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 	}
 }
 
-// TestWire_BattenStatusSeamsReadBattensOwnStatus asserts the wired seams that read batten's own status file agree on one fixture:
-// the pause seams of Run-Shed and Land report the pause_requested flag and false while the file is absent, and the row notices' history seam reports the history length and 0 while the file is absent.
+// TestWire_BattenStatusSeamsReadBattensOwnStatus asserts that the wired status seams agree on one fixture:
+// the pause seams of Run-Shed and Land report the pause_requested flag and false while the file is absent,
+// and the row notices' history seam reports the history length and 0 while the file is absent.
 func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -394,7 +397,8 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 	}
 }
 
-// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam, the run notices' agent and agent-end seams and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
+// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts a refusal, not a not-held or not-found answer.
+// The watched-marker, stop-report, run-notice and terminal-window seams refuse when their task worktree is absent.
 // The run notices read an absent task worktree's child as not found.
 func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -425,13 +429,20 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 		t.Errorf("ArbiterStop() eligible=%v, error=%v; want the absent-worktree refusal naming the slug", reading.Eligible, err)
 	}
 
-	// Every Command row reads its switch from the task worktree when it is reached, so the lookup refuses before any command runs.
+	// Every Command row reads its switch from the task worktree when it is reached,
+	// so the lookup refuses before any command runs.
 	if value, err := c.env.Setting("batten", "open_window"); err == nil || value != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Setting(batten, open_window) = %v, %v; want the absent-worktree refusal naming the slug", value, err)
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record, a child running at Beam-Await, PR-Review or Sampler-Session, or a live gate runner, or a fixer process younger than its timeout, registered under the pair's slug, ignoring a lock wait record whose writer is dead, a process of another role and a gate process of another slug.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading of a task worktree.
+// A live shuttle run maps onto dobbyengine's type with the session state of its stamped turn end,
+// and a stopped run is skipped.
+// Live wait markers, parent lock wait records and live gate runners are reported under the pair's slug.
+// Children running at Beam-Await, PR-Review or Sampler-Session are reported as well.
+// So are fixer processes younger than their timeout.
+// Lock wait records whose writer is dead, processes of another role and gate processes of another slug are ignored.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -588,7 +599,8 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	if err := os.WriteFile(gateConfigPath, []byte(gateslot.ConfigTemplate()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Each registration of this process under the pair's slug replaces the one before, since the record file is keyed by pid and start time.
+	// Each registration of this process under the pair's slug replaces the previous one.
+	// The record file is keyed by pid and start time.
 	for _, step := range []struct {
 		name         string
 		role         string
@@ -614,10 +626,11 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 }
 
-// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure claims the board entry for this machine before it touches the pair:
-// a setter error and an entry another machine owns each fail the row naming their cause, an absent entry passes the claim with nothing written, and the real setter records the claim status and no owner.
+// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the closure claims the board entry before it touches the pair.
+// A setter error and an entry another machine owns each fail the row, naming their cause.
+// An absent entry passes the claim with nothing written, and the real setter records the claim status and no owner.
 // Every row that passes the claim fails the closure on the absent fabric config, so no pair is created.
-// It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH, process-global, so it does not call t.Parallel.
+// It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH, which are process-global, so it does not call t.Parallel.
 func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Setenv("BOARD_SKIP_GIT", "1")
@@ -638,13 +651,13 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// beam is the beam project the task is a member of on the owner seams, which a board write cannot seed; empty reads a root task.
+		// beam is the beam project the task belongs to, which a board write cannot seed; empty reads a root task.
 		beam string
 		// set replaces the owner setter; nil keeps the real one over the hub's board.
 		set func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
 		// landing replaces the beam landing seams; nil keeps the real ones, which read the seeded task.
 		landing *landingSeams
-		// wantErr lists substrings the row's error carries; an empty list wants the absent fabric config, the row's own failure.
+		// wantErr lists substrings the row's error carries; empty wants the absent fabric config.
 		wantErr []string
 		// wantStatus is the seeded entry's status after the call, whose recorded owner stays empty; empty skips the read.
 		wantStatus string

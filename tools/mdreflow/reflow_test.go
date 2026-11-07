@@ -154,19 +154,16 @@ func TestReflowText(t *testing.T) {
 			want:  "e.g. this continues lowercase after the period.\n",
 		},
 		{
-			// Regression: the em-dash guard's lookahead window must be
-			// rune-based, not byte-based -- a byte-length window can
-			// truncate a multi-byte em dash right at the window edge,
-			// silently disabling the guard and over-splitting an
-			// appositive as if it were a new independent clause.
+			// The em-dash guard's lookahead window must count runes, not bytes.
+			// A byte-length window can truncate a multi-byte em dash at its edge, silently disabling the guard,
+			// and the appositive is then over-split as if it were a new independent clause.
 			name:  "em_dash_appositive_not_split_near_window_edge",
 			input: "Pane-shell command strings — argument quoting, the call operator, and the prompt-file read idiom — are built ONLY via `internal/shell`.\n",
 			want:  "Pane-shell command strings — argument quoting, the call operator, and the prompt-file read idiom — are built ONLY via `internal/shell`.\n",
 		},
 		{
-			// Regression: a code span inside a markdown link's text (a
-			// common pattern for linking to a term's own definition) must
-			// not leave a nested, unresolved mask placeholder in the output.
+			// A code span inside a markdown link's text is a common pattern for linking to a term's definition.
+			// It must not leave a nested, unresolved mask placeholder in the output.
 			name:  "code_span_inside_link_text_preserved",
 			input: "See the [`hardener`](../manifest/designs/hardener.md) concept. It runs a round loop.\n",
 			want:  "See the [`hardener`](../manifest/designs/hardener.md) concept.\nIt runs a round loop.\n",
@@ -183,8 +180,8 @@ func TestReflowText(t *testing.T) {
 	}
 }
 
-// TestReflowText_CollapsedInvariant enforces the safety invariant relied on
-// by the repo sweep: reflowing must never change content, only line breaks.
+// TestReflowText_CollapsedInvariant enforces the safety invariant the repo sweep relies on:
+// reflowing must never change content, only line breaks.
 func TestReflowText_CollapsedInvariant(t *testing.T) {
 	tiergate.Require(t, 0)
 	samples := []string{

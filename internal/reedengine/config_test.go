@@ -1,6 +1,5 @@
-// config_test.go verifies reed.yaml's template parses, defaults resolve through LoadConfig, and
-// environment overrides + the template-fallback path behave the way shuttleengine's config tests
-// establish the pattern.
+// config_test.go verifies that reed.yaml's template parses, that defaults resolve through LoadConfig,
+// and that environment overrides and the template fallback take effect.
 
 package reedengine_test
 
@@ -77,14 +76,14 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
 	}
-	// Mouse defaults ON: with it off tmux never claims the wheel, so the terminal's own
-	// alternate-screen translation delivers arrow keys into the live agent's input instead of
-	// scrolling anything -- which for an interactive producer means an operator's scroll gesture
-	// types into the interview.
+	// Mouse defaults ON: with it off, tmux never claims the wheel,
+	// so the terminal's own alternate-screen translation sends arrow keys into the live agent's input instead of scrolling.
+	// For an interactive producer, an operator's scroll gesture types into the interview.
 	if cfg.Mouse != "on" {
 		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "on")
 	}
-	// The package runs under tmuxkit.Main, which unsets LYM_REED_TMUX_CONF, so an operator's own value cannot reach this.
+	// The package runs under tmuxkit.Main, which unsets LYM_REED_TMUX_CONF,
+	// so an operator's own value cannot reach this.
 	if cfg.TmuxConf != "" {
 		t.Errorf("TmuxConf = %q, want empty", cfg.TmuxConf)
 	}
@@ -108,7 +107,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "merge-in", Run: "lym beam merge-parent {slug}", Confirm: "Merge the parent into {slug}?"},
 		{Label: "land", Run: "lym beam land {slug}", Confirm: "Land {slug}?"},
 	}
-	// The prime alone carries the board button: a board agent opened in a beam carries the beam's slug, and the board refuses a task write from a slug-carrying session.
+	// The prime alone carries the board button:
+	// a board agent opened in a beam carries the beam's slug,
+	// and the board refuses a task write from a slug-carrying session.
 	wantPrimeButtons := []buttonWant{
 		{Label: "code", Run: "lym ide spawn {slug}"},
 		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
@@ -244,7 +245,8 @@ var wantSegmentColors = map[string]string{
 	"merge":       "red",
 }
 
-// TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults pins that a reed.yaml lacking the whole block, or a single key of it, loads with the template defaults.
+// TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults pins the template defaults:
+// a reed.yaml that lacks the whole block, or a single key of it, loads with them.
 func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -302,10 +304,10 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
-	// Seed under a non-"reed" module name with a config whose width differs
-	// from the template default, so a hardcoded module name would be caught
-	// either way: this module reads back its seeded value, and the
-	// never-seeded "reed" module reads back the template default instead.
+	// Seed under a non-"reed" module name with a config whose width differs from the template default,
+	// so a hardcoded module name would be caught either way:
+	// this module reads back its seeded value,
+	// and the never-seeded "reed" module reads back the template default instead.
 	seeded := strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1)
 	seedLymConfig(t, tmpDir, "otherreed", seeded)
 
@@ -331,9 +333,9 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
-	// Do NOT create _lym/ -- LoadConfig must degrade to the embedded
-	// template. Only assert GOOS-invariant keys: Tmux/Shell differ between
-	// template_posix.yaml and template_windows.yaml.
+	// Do not create _lym/: LoadConfig must degrade to the embedded template.
+	// Only assert GOOS-invariant keys:
+	// Tmux and Shell differ between template_posix.yaml and template_windows.yaml.
 
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
@@ -345,9 +347,10 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored pins the no-removal-logic decision.
-// An un-reconciled reed.yaml that still carries a stale header: block, the retired strand_name key or the retired status_line block must unmarshal cleanly.
-// The old keys are simply ignored, because nothing unmarshals them into Config any more.
+// TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored pins that stale keys are ignored:
+// the loader does not remove them from the file.
+// An un-reconciled reed.yaml may still hold a stale header: block, a strand_name key or a status_line block.
+// Such a file must load, and nothing unmarshals those keys into Config, so they are ignored.
 //
 //testtiming:keep pins an older reed.yaml with a stale header block or the retired strand_name key loading cleanly with the rest of the config undisturbed; its covering tests run this code without asserting it
 func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
@@ -355,7 +358,7 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 	tests := []struct {
 		name  string
 		extra string
-		// droppedKeys are the retired keys the merged document must no longer name.
+		// droppedKeys are keys that the merged document must not name after load.
 		droppedKeys []string
 	}{
 		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n", nil},

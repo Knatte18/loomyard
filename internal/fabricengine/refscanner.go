@@ -1,6 +1,5 @@
-// refscanner.go implements RefScanner, fabric's answer to "does this command reference fabric's
-// two-checkout mechanism" — the audit policy a consumer like websterengine needs without ever
-// holding the weft path or the command-spelling pattern itself.
+// refscanner.go implements RefScanner, which reports whether a command references fabric's two-checkout mechanism.
+// A consumer runs that check without holding the weft path or the command-spelling pattern itself.
 
 package fabricengine
 
@@ -14,11 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// spellingPattern matches a fabric-driving command spelling (lym fabric/weft/warp) in command
-// position: the start of the command, or after a shell separator (`;`, `&`, `|`, `(`, a newline, `$(`
-// or a backtick), optionally behind command wrappers, env assignments and a directory prefix.
-// It runs over the command with its quoted spans blanked (see blankQuoted), so a search pattern
-// such as `grep "lym fabric remove" doc.md` is text, not an invocation.
+// spellingPattern matches a fabric-driving command spelling (lym fabric/weft/warp) in command position.
+// Command position is the start of the command or follows a shell separator.
+// The separators are `;`, `&`, `|`, `(`, newline, `$(` and backtick.
+// The spelling may sit behind command wrappers, env assignments and a directory prefix.
+// It runs over the command with quoted spans blanked,
+// so a search pattern such as `grep "lym fabric remove" doc.md` is text, not an invocation.
 // A spelling hidden inside a quoted `bash -c "…"` is not caught; the audit guards well-meaning
 // agents against a slip, not an adversary.
 var spellingPattern = regexp.MustCompile(
@@ -26,24 +26,29 @@ var spellingPattern = regexp.MustCompile(
 		`(?:\S*[/\\])?lym(?:\.exe)?\s+(?:fabric|weft|warp)\b`,
 )
 
-// gateSegmentPattern matches a `lym gate` invocation in command position, from the separator before it up to the next separator.
+// gateSegmentPattern matches a `lym gate` invocation in command position.
+// The segment runs from the separator before it up to the next separator.
 // It runs over a quote-blanked copy, so a separator inside a quoted argument does not end the segment.
-// The ampersand of a redirect (`2>&1`, `>&2`, `&>`) stays inside the segment, so an argument after it is still a gate argument.
+// The ampersand of a redirect (`2>&1`, `>&2`, `&>`) stays inside the segment,
+// so an argument after it is still a gate argument.
 var gateSegmentPattern = regexp.MustCompile(
 	"(?:^|[;&|(\\n`]|\\$\\()\\s*(?:(?:env|exec|command|nohup|time|xargs)\\s+|\\w+=\\S*\\s+)*" +
 		"(?:\\S*[/\\\\])?lym(?:\\.exe)?\\s+gate\\b(?:[0-9]*[<>]&[0-9-]*|&>|[^;&|()\\n`])*",
 )
 
-// heredocOpener matches a heredoc redirection (`<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`) and captures
-// its delimiter word.
+// heredocOpener matches a heredoc redirection (`<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`) and captures its delimiter word.
 var heredocOpener = regexp.MustCompile(`<<-?\s*['"]?(\w+)['"]?`)
 
 // ReferenceRule is the location-free part of the fabric-reference audit.
-// It knows the command spelling and the sibling-name shape, but not any one worktree's own sibling path, so a plan can be checked with it before any worktree exists.
+// It knows the command spelling and the sibling-name shape, but not any one worktree's own sibling path,
+// so a plan can be checked with it before any worktree exists.
 // Heredoc bodies are dropped before any match, since a file an agent writes is content, not a command it runs.
 // A weft sibling counts as a path when the name follows a path separator (`/hub/x-weft`, quoted or not).
-// A bare word ending in the weft suffix counts only outside quotes, so a string literal such as `"archive-happy-weft"` in a test is text.
-// It counts only outside a `lym gate` invocation as well, since a gate's arguments are gate keys, card IDs, tiers and package patterns resolved inside the worktree, and a card ID may end in the suffix.
+// A bare word ending in the weft suffix counts only outside quotes,
+// so a string literal such as `"archive-happy-weft"` in a test is text.
+// A bare word also counts only outside a `lym gate` invocation.
+// A gate's arguments are gate keys, card IDs, tiers and package patterns resolved inside the worktree,
+// and a card ID may end in the suffix.
 // Construct via NewReferenceRule; the zero value is not valid.
 type ReferenceRule struct {
 	pathPattern *regexp.Regexp
@@ -53,14 +58,15 @@ type ReferenceRule struct {
 // referenceTrim holds the separators a match may end on, trimmed from the returned text.
 const referenceTrim = " \t\r\n/\\\"'`;&|)"
 
-// NewReferenceRule returns the location-free reference rule, compiling its regexes once so repeated calls never recompile them.
+// NewReferenceRule returns the location-free reference rule.
+// It compiles its regexes once, so repeated calls never recompile them.
 func NewReferenceRule() *ReferenceRule {
 	weftSuffix := regexp.QuoteMeta(weftname.Suffix)
-	// The suffix must end the name: `\b` alone would also match inside a slug that merely contains
-	// it, such as the task worktree `/hub/fabric-readd-weft-push`, since `-` is a word boundary.
+	// The suffix must end the name: `\b` alone would also match inside a slug that contains it.
+	// A task worktree such as `/hub/fabric-readd-weft-push` would otherwise match, since `-` is a word boundary.
 	nameEnd := "(?:$|[\\s/\\\\\"'`;&|)])"
-	// A path segment never holds a shell or regex metacharacter, so a backslash escape inside a quoted
-	// search pattern (`grep "a\|-weft"`) is not read as a Windows separator before a weft name.
+	// A path segment never holds a shell or regex metacharacter,
+	// so a backslash escape in a quoted search pattern (`grep "a\|-weft"`) is not read as a Windows separator.
 	segment := "[^\\s/\\\\\"'`|&;()<>*?\\[\\]{}$]*"
 	return &ReferenceRule{
 		pathPattern: regexp.MustCompile("[/\\\\]" + segment + weftSuffix + nameEnd),
@@ -69,7 +75,8 @@ func NewReferenceRule() *ReferenceRule {
 }
 
 // MatchPath reports the sibling-name reference in cmd, if any.
-// A separator-prefixed name ending in the suffix is found with quotes intact, then a bare word ending in the suffix on a copy with quoted spans and `lym gate` invocations blanked.
+// A separator-prefixed name ending in the suffix is found with quotes intact.
+// A bare word ending in the suffix is then searched on a copy with quoted spans and `lym gate` invocations blanked.
 // The returned text comes from the copy the pattern ran on, without its trailing separator.
 func (r *ReferenceRule) MatchPath(cmd string) (string, bool) {
 	cmd = stripHeredocBodies(cmd)
@@ -85,7 +92,8 @@ func (r *ReferenceRule) MatchPath(cmd string) (string, bool) {
 	return "", false
 }
 
-// MatchSpelling reports the fabric-driving command spelling in cmd, if any, found on a copy with heredoc bodies stripped and quoted spans blanked.
+// MatchSpelling reports the fabric-driving command spelling in cmd, if any.
+// The search runs on a copy with heredoc bodies stripped and quoted spans blanked.
 // The returned text comes from that copy, without the separator that precedes the spelling.
 func (r *ReferenceRule) MatchSpelling(cmd string) (string, bool) {
 	m := spellingPattern.FindString(blankQuoted(stripHeredocBodies(cmd)))
@@ -96,16 +104,17 @@ func (r *ReferenceRule) MatchSpelling(cmd string) (string, bool) {
 }
 
 // RefScanner detects a command that references fabric's two-checkout mechanism.
-// That is a fabric-driving command spelling in command position, a path touching a weft sibling worktree, or the worktree's own sibling path spelled out exactly.
-// The first two are ReferenceRule's; only the exact path needs the worktree.
+// It reports a fabric-driving command spelling in command position.
+// It also reports a path touching a weft sibling worktree.
+// It reports the worktree's own sibling path when it is spelled out exactly.
 // Construct via NewRefScanner; the zero value is not valid.
 type RefScanner struct {
 	rule         *ReferenceRule
 	exactPattern *regexp.Regexp
 }
 
-// NewRefScanner returns a RefScanner for l's worktree, compiling its regexes once so repeated
-// Matches calls (e.g. over every Bash command in a transcript) never recompile them.
+// NewRefScanner returns a RefScanner for l's worktree.
+// It compiles its regexes once, so repeated calls, such as one per Bash command in a transcript, never recompile them.
 func NewRefScanner(l *lymcwd.Location) *RefScanner {
 	return &RefScanner{
 		rule:         NewReferenceRule(),
@@ -113,7 +122,9 @@ func NewRefScanner(l *lymcwd.Location) *RefScanner {
 	}
 }
 
-// Matches reports whether cmd references fabric's two-checkout mechanism, either by spelling (lym fabric/weft/warp, in command position) or by touching a weft sibling worktree's path.
+// Matches reports whether cmd references fabric's two-checkout mechanism.
+// It matches a fabric-driving spelling (lym fabric/weft/warp in command position).
+// It also matches any path touching a weft sibling worktree or the worktree's own sibling path.
 func (s *RefScanner) Matches(cmd string) bool {
 	if s.exactPattern.MatchString(stripHeredocBodies(cmd)) {
 		return true
@@ -125,9 +136,9 @@ func (s *RefScanner) Matches(cmd string) bool {
 	return ok
 }
 
-// stripHeredocBodies returns cmd with the body of every heredoc removed: for each line carrying a
-// heredoc opener, the following lines up to and including the one that is exactly the delimiter
-// (leading tabs allowed, as `<<-` permits) are dropped.
+// stripHeredocBodies returns cmd with the body of every heredoc removed.
+// Each line carrying a heredoc opener drops the following lines through the one that is exactly the delimiter.
+// Leading tabs are allowed, as `<<-` permits.
 // An unterminated heredoc drops everything after its opener line.
 func stripHeredocBodies(cmd string) string {
 	lines := strings.Split(cmd, "\n")
@@ -148,17 +159,17 @@ func stripHeredocBodies(cmd string) string {
 	return strings.Join(kept, "\n")
 }
 
-// blankQuoted returns cmd with the content of every single- and double-quoted span replaced by
-// spaces, quotes included, so a separator or a spelling inside a quoted argument can never look like
-// command position.
-// A backslash outside single quotes escapes the next character, as in POSIX shells; an unterminated
-// quote blanks to the end of the command.
+// blankQuoted returns cmd with every single- and double-quoted span replaced by spaces, quotes included.
+// A separator or a spelling inside a quoted argument can then never look like command position.
+// A backslash outside single quotes escapes the next character, as in POSIX shells;
+// an unterminated quote blanks to the end of the command.
 func blankQuoted(cmd string) string {
 	return blankQuotedSpans(cmd, false)
 }
 
-// blankQuotedSpans is blankQuoted's scan.
-// With singleOnly set it blanks single-quoted spans only and keeps double-quoted ones, since a shell runs a substitution inside double quotes but never inside single quotes.
+// blankQuotedSpans returns cmd with quoted spans replaced by spaces, quotes included.
+// With singleOnly set, it blanks single-quoted spans only and keeps double-quoted ones.
+// A shell runs a substitution inside double quotes but never inside single quotes.
 func blankQuotedSpans(cmd string, singleOnly bool) string {
 	var b strings.Builder
 	b.Grow(len(cmd))
@@ -198,7 +209,8 @@ var readOnlyCommands = map[string]bool{
 	"cat": true, "head": true, "tail": true, "ls": true, "wc": true, "grep": true, "jq": true, "cut": true,
 }
 
-// FabricReaderVerbs returns the names of the `lym fabric` verbs that only read: list, pairs, status, diff, shortname, prune and cleanup.
+// FabricReaderVerbs returns the names of the `lym fabric` verbs that only read:
+// list, pairs, status, diff, shortname, prune and cleanup.
 // It declares names only; the arguments each verb may take without mutating stay with the consumer that applies them.
 // Every call returns a fresh slice, so no caller can change another's set.
 func FabricReaderVerbs() []string {
@@ -208,24 +220,48 @@ func FabricReaderVerbs() []string {
 // substitutionMarkers are the spellings of command and process substitution.
 var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 
-// IsReadOnlyCommand reports whether cmd is built only from allow-listed read forms, each in command position, joined by `|`, `||`, `;`, `&&` or a newline.
-// The forms are the readers cat, head, tail, ls, wc, grep, jq and cut; `lym` help (command words then `--help` or `-h`); the `lym fabric` readers list, pairs, status, shortname, diff with one revision, prune and cleanup without flags; and a closed set of `git` reads, optionally behind `-C <dir>`.
-// A reader segment is not read-only when it holds an unquoted `(` or `)`, or a `$` its single-quote-blanked view keeps whose next raw character is anything but whitespace, a double quote or the segment's end, which rejects every parameter and arithmetic expansion and the ANSI-C quote `$'…'`, while a regex anchor such as `a$` stays read-only.
-// It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command or form, `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go` and every other `lym` or `git` invocation included.
-// A `lym`, `git` or `sed` segment is split into shell words, honouring single and double quotes, and judged on the dequoted text.
-// Such a word may hold neither `$` nor a backslash, quoted or not, nor an unquoted brace or parenthesis; a leading `~` is text.
+// IsReadOnlyCommand reports whether cmd is built only from allow-listed read forms, each in command position.
+// The forms may be joined by `|`, `||`, `;`, `&&` or a newline.
+// They are the readers cat, head, tail, ls, wc, grep, jq and cut.
+// They also include `lym` help (command words then `--help` or `-h`).
+// The `lym fabric` readers are list, pairs, status, shortname, diff with one revision, prune and cleanup without flags.
+// A closed set of `git` reads is also allowed, optionally behind `-C <dir>`.
+// A reader segment is not read-only when it holds an unquoted `(` or `)`.
+// It is also not read-only when it holds a `$` that the single-quote-blanked view keeps,
+// and the raw character after it is anything but whitespace, a double quote or the segment's end.
+// That rejects every parameter and arithmetic expansion and the ANSI-C quote `$'…'`.
+// A regex anchor such as `a$` stays read-only.
+// It reports false for any output redirection:
+// `>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, or `<>`.
+// It also reports false for command or process substitution and for backgrounding.
+// Any other command or form also reports false:
+// `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go`, and any `lym` or `git` invocation not admitted below.
+// A `lym`, `git` or `sed` segment is split into shell words honouring single and double quotes.
+// Each is judged on its dequoted text.
+// Such a word may hold neither `$` nor a backslash, quoted or not, nor an unquoted brace or parenthesis;
+// a leading `~` is text.
 // A quoted word starting with `-` is still a flag, so a quoted writing flag is rejected.
 // A glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lym` word, quoted or not.
-// In a `git` word a quoted one is text wherever a positional is admitted, and an unquoted one is rejected except after the `--` of `log`, `show`, `diff` and `status`, where every word is a pathspec.
-// `sed` is read-only only as the quiet flag (`-n`, `--quiet` or `--silent`), one script of print commands joined by `;` that each take a line-number or `/RE/` address or a range of two, and file words.
-// The two stderr redirections `2>&1` and `2>/dev/null`, each a whole token that does not open its segment, are dropped before the redirection scan; every other redirection fails it.
+// In a `git` word a quoted one is text wherever a positional is admitted,
+// and an unquoted one is rejected except after the `--` of `log`, `show`, `diff` and `status`;
+// after that `--`, every word is a pathspec.
+// `sed` is read-only only with the quiet flag (`-n`, `--quiet` or `--silent`) and one script of print commands:
+// joined by `;`, each taking a line-number or `/RE/` address or a range of two, and the other words are files.
+// The two stderr redirections `2>&1` and `2>/dev/null` are dropped before the redirection scan;
+// each must be a whole token that does not open its segment, and every other redirection fails the segment.
 // A separator or redirection character inside a quoted span is text.
 // A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
-// A command word is read in its original spelling, so a first word holding a quote or a backslash, quoted whole or only in part, is never read-only: it is not a name the list can match.
-// A trailing `--json` is a help form of a `lym` segment, except for a command that declares a `--json` of its own, local or persistent on a group, which shadows the global flag and runs.
-// The classifier does not know that set; a test over the real command tree pins it, so a new one is a reviewed change against this rule.
-// Today those are the generic shed `status` verbs under each mount, which only read.
-// The classifier assumes bash or zsh with any glob option set and sees static shape only, so a loop, an expansion, a substitution, a zsh glob qualifier, a bash extglob and a command behind `bash -c` stay non-read-only.
+// A command word is read in its original spelling.
+// A first word with a quote or a backslash, quoted whole or in part, is never read-only:
+// it is not a name the list can match.
+// A trailing `--json` is a help form of a `lym` segment.
+// A command that declares its own `--json`, local or persistent on a group, shadows the global flag and runs.
+// The classifier does not know that set of commands;
+// a test over the real command tree pins it, so a new one is a reviewed change against this rule.
+// The generic shed `status` verbs under each mount are in that set; they only read.
+// The classifier assumes bash or zsh with any glob option set, and it sees static shape only.
+// Loops, expansions, substitutions, zsh glob qualifiers and bash extglobs are never read-only.
+// Commands behind `bash -c` are not read-only either.
 func IsReadOnlyCommand(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -264,7 +300,8 @@ func IsReadOnlyCommand(cmd string) bool {
 // stderrRedirections are the two redirections of standard error that write nothing a reader could change.
 var stderrRedirections = []string{"2>&1", "2>/dev/null"}
 
-// dropStderrRedirections blanks, in cmd, each whitespace-delimited unquoted token spelled exactly as one of stderrRedirections that does not open its segment.
+// dropStderrRedirections blanks, in cmd, each whitespace-delimited unquoted token equal to one of stderrRedirections.
+// A token that opens its segment is kept.
 // The blanks keep cmd's length in runes, so the result stays aligned with a quote-blanked copy of itself.
 func dropStderrRedirections(cmd string) string {
 	original, view := []rune(cmd), []rune(blankQuoted(cmd))
@@ -301,8 +338,9 @@ func opensSegment(view []rune, at int) bool {
 	return true
 }
 
-// readOnlySegment reports whether one separated segment, in its raw text, is a listed reader, a read-only lym form, a read-only git form or a read-only sed print.
+// readOnlySegment reports whether one separated segment, judged in its raw text, is read-only.
 // A listed reader is read-only only when readOnlyReaderSegment admits it.
+// Otherwise the segment is read-only when it is a read-only lym form, a read-only git form or a read-only sed print.
 func readOnlySegment(segment string) bool {
 	fields := strings.Fields(segment)
 	if len(fields) == 0 {
@@ -327,9 +365,11 @@ func readOnlySegment(segment string) bool {
 	return readOnlySedSegment(words)
 }
 
-// readOnlyReaderSegment reports whether a segment whose command is a listed reader holds neither an unquoted parenthesis nor a dollar expansion.
-// A zsh glob qualifier runs code through a parenthesis and a parameter expansion through a `$`, and neither carries a substitution marker.
-// A `$` counts when the single-quote-blanked view keeps it and the next raw character is not whitespace or a double quote, so a regex anchor such as `a$` passes and the ANSI-C quote `$'…'` does not.
+// readOnlyReaderSegment reports whether a listed reader's segment has no unquoted parenthesis or dollar expansion.
+// A zsh glob qualifier runs code through a parenthesis, and a parameter expansion through a `$`;
+// neither is caught by the substitution markers, so this function rejects both.
+// A `$` counts when the single-quote-blanked view keeps it, unless whitespace or a double quote follows it;
+// so a regex anchor such as `a$` passes and the ANSI-C quote `$'…'` does not.
 // A `$` at the segment's end passes.
 func readOnlyReaderSegment(segment string) bool {
 	if strings.ContainsAny(blankQuoted(segment), "()") {
@@ -353,12 +393,14 @@ type shellWord struct {
 	text string
 	// quoted is whether any part of the word was quoted.
 	quoted bool
-	// glob is whether the word holds an unquoted glob character: `*`, `?`, `[` or `#` anywhere, or `^` at its start, which zsh's extended globbing reads as a glob.
+	// glob is whether an unquoted `*`, `?`, `[` or `#`, or a leading `^`, makes the word a zsh glob.
 	glob bool
 }
 
-// splitShellWords splits one segment into shellWords, honouring single and double quotes, with adjacent quoted and unquoted parts joining into one word.
-// It reports false when any word holds `$` or a backslash, quoted or not, an unquoted brace or parenthesis, or an unterminated quote, since the shell would expand or reinterpret it.
+// splitShellWords splits one segment into shellWords, honouring single and double quotes.
+// Adjacent quoted and unquoted parts join into one word.
+// It reports false when any word holds `$` or a backslash, quoted or not, or an unquoted brace or parenthesis.
+// An unterminated quote also reports false, since the shell would expand or reinterpret the word.
 func splitShellWords(segment string) ([]shellWord, bool) {
 	var words []shellWord
 	var current strings.Builder
@@ -419,8 +461,10 @@ func isLymCommandWord(word shellWord) bool {
 }
 
 // readOnlyLymSegment reports whether words, the words of one `lym` segment, are a help form or a `lym fabric` reader.
-// The help form is command words then `--help` or `-h` as the last word, or command words alone then `--json` as the last word, or `--help` or `-h` then `--json`, since the global `--json` raises help.
-// A fabric reader is one of FabricReaderVerbs under the argument rule that keeps it from mutating: `diff` takes exactly one word not starting with `-`, and the rest take none.
+// A help form is command words then `--help` or `-h` last, or command words then `--json` last.
+// The global `--json` raises help, so `--help` or `-h` then `--json` is a help form too.
+// A fabric reader is one of FabricReaderVerbs, under the argument rule that keeps it from mutating:
+// `diff` takes exactly one word not starting with `-`, and the rest take none.
 // A word holding a glob character, quoted or not, rejects the segment.
 func readOnlyLymSegment(words []shellWord) bool {
 	if slices.ContainsFunc(words, func(word shellWord) bool { return holdsGlobCharacter(word.text) }) {
@@ -453,16 +497,20 @@ func readOnlyLymSegment(words []shellWord) bool {
 	return len(args) == 0
 }
 
-// sedPrintScript matches one or more print commands joined by `;`, each an address or a range of two addresses followed by `p`, with nothing after the last `p`.
-// An address is a line number or a regex `/RE/` whose `RE` is non-empty and holds no `/`, `;` or newline, with no flag after the closing `/`.
-// No command but `p` is in the grammar and a regex address cannot end or split inside itself, so a match can only read.
+// sedPrintScript matches one or more print commands joined by `;`.
+// Each command is an address or a range of two addresses followed by `p`, with nothing after the last `p`.
+// An address is a line number or a regex `/RE/`.
+// The regex `RE` is non-empty and holds no `/`, `;` or newline, and no flag follows the closing `/`.
+// No command but `p` is in the grammar,
+// and a regex address cannot end or split inside itself, so a match can only read.
 var sedPrintScript = regexp.MustCompile(`^(?:(?:[0-9]+|/[^/;\n]+/)(?:,(?:[0-9]+|/[^/;\n]+/))?p)(?:;(?:[0-9]+|/[^/;\n]+/)(?:,(?:[0-9]+|/[^/;\n]+/))?p)*$`)
 
 // sedQuietFlags are the spellings of sed's quiet flag.
 var sedQuietFlags = []string{"-n", "--quiet", "--silent"}
 
-// readOnlySedSegment reports whether words, the words of one `sed` segment, are a quiet flag, one print script, then file words.
-// A file word may not start with `-` or hold an unquoted glob character, so no flag can follow the script; with no file word, sed prints its standard input.
+// readOnlySedSegment reports whether the words of one `sed` segment are a quiet flag, a print script, then file words.
+// A file word may not start with `-` or hold an unquoted glob character, so no flag can follow the script;
+// with no file word, sed prints its standard input.
 func readOnlySedSegment(words []shellWord) bool {
 	if len(words) < 3 || !slices.Contains(sedQuietFlags, words[1].text) || !sedPrintScript.MatchString(words[2].text) {
 		return false
@@ -480,7 +528,8 @@ type gitForm struct {
 	anyDigitsFlag bool
 	// flagPrefixes admit a word starting with one of them, `--format=`.
 	flagPrefixes []string
-	// globAfterDoubleDash admits an unquoted glob character in a word after `--`, where the form reads every word as a pathspec.
+	// globAfterDoubleDash admits an unquoted glob character in a word after `--`.
+	// After `--` the form reads every word as a pathspec.
 	globAfterDoubleDash bool
 }
 
@@ -513,7 +562,8 @@ var gitForms = map[string]gitForm{
 	"status":    {flags: gitFlagSet("-s", "--short", "--porcelain", "-b", "--branch"), globAfterDoubleDash: true},
 }
 
-// admits reports whether args, the words after a subcommand, are made only of flags the form lists and positionals; every word after a `--` is a positional.
+// admits reports whether args, the words after a subcommand, are made only of flags the form lists and positionals;
+// every word after a `--` is a positional.
 // A word with an unquoted glob character is rejected before the `--`, and after it unless the form admits one there.
 func (f gitForm) admits(args []shellWord) bool {
 	for i := 0; i < len(args); i++ {
@@ -555,9 +605,11 @@ func allDigits(s string) bool {
 
 // readOnlyGitSegment reports whether words, the words of one `git` segment, are a listed read form.
 // The only global option admitted is `-C <dir>`, both words unquoted and the directory free of a glob character.
-// Every word starting with `-` before a `--` must be a flag the subcommand's form lists, matched exactly, and every other word a positional the form admits.
+// Every word starting with `-` before a `--` must be a flag the subcommand's form lists, matched exactly.
+// Every other word must be a positional the form admits.
 // The subcommand word is unquoted, and so is each word that selects a `remote` or `branch` form.
-// A word the form does not judge, in `cat-file` and `config`, rejects an unquoted glob character, since the shell would expand it into names that could spell a flag.
+// A word the form does not judge, in `cat-file` and `config`, rejects an unquoted glob character.
+// The shell would otherwise expand that glob into names that could spell a flag.
 func readOnlyGitSegment(words []shellWord) bool {
 	rest := words[1:]
 	if len(rest) >= 2 && rest[0].text == "-C" && !rest[0].quoted {
@@ -589,7 +641,8 @@ func readOnlyGitSegment(words []shellWord) bool {
 	return false
 }
 
-// readOnlyGitRemote reports whether args, the words after `git remote`, are `-v` alone, `get-url` with `--push` or `--all` then one name, or `show` with `-n` then names.
+// readOnlyGitRemote reports whether args, the words after `git remote`, are a read form:
+// `-v` alone, `get-url` with `--push` or `--all` then one name, or `show` with `-n` then names.
 func readOnlyGitRemote(args []shellWord) bool {
 	if len(args) == 1 && args[0].text == "-v" {
 		return true
@@ -606,7 +659,8 @@ func readOnlyGitRemote(args []shellWord) bool {
 	return false
 }
 
-// readOnlyGitBranch reports whether args, the words after `git branch`, are listing flags with no positional, or `--list` then patterns.
+// readOnlyGitBranch reports whether args, the words after `git branch`, are a read form:
+// listing flags with no positional, or `--list` then patterns.
 // A pattern may hold a quoted glob character, which is text, but not an unquoted one.
 func readOnlyGitBranch(args []shellWord) bool {
 	if len(args) > 0 && args[0].text == "--list" {

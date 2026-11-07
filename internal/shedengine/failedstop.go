@@ -12,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// FailedStopRequest is everything WriteFailedStop needs.
-// All three paths are told.
+// FailedStopRequest is the input to WriteFailedStop:
+// the status file, the run lock, the status lock, and the failure to record.
 type FailedStopRequest struct {
 	StatusPath     string
 	LockPath       string
@@ -36,7 +36,9 @@ type FailedStopResult struct {
 	NotRunning bool
 }
 
-// WriteFailedStop writes state failed, the error text and the transient class into a status file that still reads running, leaving history, pause_requested and both pause conditions as they are.
+// WriteFailedStop records a failure stop in a status file that still reads running.
+// It writes state failed, the error text and the transient class;
+// history, pause_requested and both pause conditions stay as they are.
 // It takes the run lock without waiting and reports Busy when another holder has it.
 // It runs no CommitStatus: the next step's persist commits the file.
 // A missing or unreadable status file is an error.

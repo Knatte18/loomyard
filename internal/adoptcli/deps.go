@@ -1,4 +1,7 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift and hold, the holds and tries files, the deploy, the beam steps, the landing-hold read, the adopt check start and the reads behind the run reports.
+// deps.go fills adoptDeps over a real hub.
+// It covers the origin reconcile, the pair add, the owner write, and the pause lift and hold.
+// It also covers the holds and tries files, the deploy, the beam steps, and the landing-hold read.
+// The adopt check start and the reads behind the run reports make up the rest.
 
 package adoptcli
 
@@ -30,12 +33,14 @@ import (
 )
 
 // hubDeps fills adoptDeps over the hub the prime belongs to.
-// The reconcile's live-pair reading takes its pause cover from hubOnlyPaused, so a pair whose strands are alive under a slug-scope pause, an owner pause included, reads live.
+// The reconcile's live-pair reading treats a slug as paused only under a live hub-scope pause,
+// so a pair whose strands are alive under a slug-scope pause, an owner pause included, reads live.
 func hubDeps(prime *lymcwd.Location) (adoptDeps, error) {
 	return hubDepsAs(prime, machinename.Name)
 }
 
-// hubDepsAs is hubDeps with the machine's name read through machine, so a test can stand two clones of one host for two machines.
+// hubDepsAs fills adoptDeps over the hub the prime belongs to, with the machine's name read through machine,
+// so a test can stand two clones of one host for two machines.
 func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDeps, error) {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
@@ -178,7 +183,8 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 }
 
 // hubOnlyPaused returns a pause reading that covers a slug only by a live hub-scope entry of the record at recordPath.
-// A slug-scope entry, an owner pause among them, does not cover its slug, so a pair running under one reads live.
+// A slug-scope entry, an owner pause among them, does not cover its slug,
+// so a pair running under one reads live.
 func hubOnlyPaused(recordPath string) func(slug string) (bool, error) {
 	return func(string) (bool, error) {
 		record, err := pauserecord.Read(recordPath)
@@ -210,17 +216,23 @@ func readStatus(path string) (shedengine.Status, bool, error) {
 	return status, true, nil
 }
 
-// suiteLogName is the file the adopt check writes its output to.
+// suiteLogName is the file the adopt check's gate writes its output to.
 const suiteLogName = "suite.log"
 
-// suiteArgs returns the lym command line of the adopt check of subject: the hidden check, which runs the hub's adopt gate in the subject's worktree.
+// suiteArgs returns the lym command line of the adopt check of subject.
+// The hidden check runs the hub's adopt gate in the subject's worktree.
 func suiteArgs(subject string) []string {
 	return []string{"adopt", "check", subject}
 }
 
-// startSuite starts the adopt check of subject detached in dir, with its stdout and stderr appended to the file at outPath, and returns its pid.
-// The check is reaped in the background through proc.Reap rather than waited for, so the adopt returns while it runs; the file holds a losing check's envelope and a panic, and the gate's own output goes to the suite log the check truncates.
-// It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test binary.
+// startSuite starts the adopt check of subject detached in dir and returns its pid.
+// Its stdout and stderr are appended to the file at outPath.
+// The check is reaped in the background through `proc.Reap` rather than waited for,
+// so the adopt returns while it runs.
+// The file holds a losing check's envelope and a panic,
+// and the gate's own output goes to the suite log the check truncates.
+// In a test binary it starts nothing and returns an error.
+// Forking the running binary there would re-run the test binary.
 func startSuite(dir, outPath, subject string) (int, error) {
 	if testing.Testing() {
 		return 0, errors.New("the adopt check is not started under go test")
@@ -254,8 +266,11 @@ func startSuite(dir, outPath, subject string) (int, error) {
 	return pid, nil
 }
 
-// startCheckWithTiers returns the adopt check of the scratch directory dir as ensureCheck finds or starts it, with the tiers of the prime's adopt gate key set.
-// resolve runs first and reports whether the subject's worktree resolves: when it fails nothing is spawned and its error is returned, so a check that could never write a record is never reported started.
+// startCheckWithTiers returns the adopt check of the scratch directory dir: the running one, or a new one.
+// It sets the tiers of the prime's adopt gate key.
+// resolve runs first and reports whether the subject's worktree resolves.
+// When it fails, nothing is spawned and its error is returned,
+// so a check that could never write a record is never reported started.
 func startCheckWithTiers(prime *lymcwd.Location, dir string, resolve func() error, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
 	if err := resolve(); err != nil {
 		return suiteStart{}, err
@@ -268,7 +283,9 @@ func startCheckWithTiers(prime *lymcwd.Location, dir string, resolve func() erro
 	return start, nil
 }
 
-// adoptGateTiers returns the tiers of the hub's adopt gate key as the prime's gate config reads now, or none when the config does not read or its adopt key names no tier the hub declares, which the check's own reconcile may still repair.
+// adoptGateTiers returns the tiers of the hub's adopt gate key as the prime's gate config reads at the call.
+// It returns none when the config does not read, or when the adopt key names no tier the hub declares;
+// the check's own reconcile may still repair that.
 func adoptGateTiers(prime *lymcwd.Location) []int {
 	cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(prime))
 	if err != nil {
@@ -283,8 +300,10 @@ func adoptGateTiers(prime *lymcwd.Location) []int {
 	return tiers
 }
 
-// checkAlive reports whether the process that wrote record is still running: its pid is alive and, when both sides can read it, the live process started when the record says.
-// A record without start ticks, or a platform that cannot read a start time, reads alive on the pid alone; a reused pid after a reboot reads dead.
+// checkAlive reports whether the process that wrote record is still running.
+// Its pid is alive, and when both sides can read it, the live process started when the record says.
+// A record without start ticks, or a platform that cannot read a start time, reads alive on the pid alone;
+// a reused pid after a reboot reads dead.
 func checkAlive(record CheckRecord) bool {
 	if !proc.IsAlive(record.PID) {
 		return false
@@ -296,8 +315,10 @@ func checkAlive(record CheckRecord) bool {
 	return !readable || ticks == record.StartTicks
 }
 
-// ensureCheck returns the adopt check of the scratch directory dir: the running one when check.json reads running and alive passes, else a new one started by spawn.
-// The returned suiteStart names the check's pid, the paths of its log and record, and whether it was found running.
+// ensureCheck returns the adopt check of the scratch directory dir.
+// It is the running check when check.json records it as running and alive confirms it;
+// otherwise spawn starts a new one.
+// The returned suiteStart holds the check's pid, the paths of its log and record, and whether it was found running.
 func ensureCheck(dir string, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
 	start := suiteStart{Log: filepath.Join(dir, suiteLogName), Record: filepath.Join(dir, checkRecordName)}
 	record, found, err := ReadCheck(start.Record)

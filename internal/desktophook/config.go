@@ -25,16 +25,17 @@ const configModule = "desktop"
 type Config struct {
 	// WindowCommand is the shell command run after lym opens a window; empty runs nothing.
 	WindowCommand string `yaml:"window_command"`
-	// WindowWaitMs is the milliseconds lym waits after opening a window before it runs WindowCommand.
+	// WindowWaitMs is the milliseconds to wait after opening a window before the window command runs.
 	WindowWaitMs int `yaml:"window_wait_ms"`
 
-	// Buttons is the machine's additional status-bar buttons, a mapping of groups task, beam and prime shaped as reed.yaml's buttons.
+	// Buttons is the machine's additional status-bar buttons, a mapping of the groups task, beam and prime.
 	// The node is decoded and validated only where the status bar renders it.
 	Buttons yaml.Node `yaml:"buttons"`
 }
 
 // ConfigSpec returns the desktop module's layered-load spec.
-// Every key describes the machine's desktop, so each machine sets them in its own machine override and the local layer refuses them.
+// Every key describes the machine's desktop,
+// so each machine sets them in its own machine override and the local layer refuses them.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -49,7 +50,8 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals the desktop module's configuration through the hub-wide layer stack under dirs.
-// A hub whose base file is absent resolves the template under the machine and local layers present, so opening a window never fails on a hub not yet reconciled.
+// A hub whose base file is absent resolves the template under the machine and local layers present.
+// Opening a window therefore never fails on a hub not yet reconciled.
 // It refuses a negative window_wait_ms, naming the key.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())

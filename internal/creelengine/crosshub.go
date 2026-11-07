@@ -1,4 +1,5 @@
-// crosshub.go implements the sending half of mail across hubs: the names of other hubs, the refusal of the verbs that stay inside one hub, and a strand's post to a strand of another hub.
+// crosshub.go implements the sending half of mail across hubs.
+// It names other hubs, refuses verbs that stay inside one hub, and posts a strand's mail to another hub's strand.
 
 package creelengine
 
@@ -22,7 +23,7 @@ func (s *Store) otherHub(name string) (string, bool) {
 }
 
 // refuseOtherHub refuses verb for a receiver that is a name of another hub, and answers nil for every other name.
-// It needs no HubDirectory, so it holds for a daemon that serves no other hub too.
+// It needs no lookup of other hubs, so it holds for a daemon that serves no other hub too.
 func (s *Store) refuseOtherHub(receiver, verb string) error {
 	if _, other := s.otherHub(receiver); !other {
 		return nil
@@ -30,7 +31,8 @@ func (s *Store) refuseOtherHub(receiver, verb string) error {
 	return fmt.Errorf("creel: %s is a name of another hub, and %s stays inside one hub; way forward: lym creel post %s \"<text>\"", receiver, verb, receiver)
 }
 
-// widestStampedLine renders the longest line a message from another hub's strand from with that body can take: the marked form with the longer, untrusted stamp.
+// widestStampedLine renders the longest line a message from sender from with body can take.
+// It uses the marked form with the longer, untrusted stamp.
 func widestStampedLine(from, body string) string {
 	return MessageLine(Message{ID: math.MaxInt64, From: from, Body: body, ExpectReply: true, SendingHub: "hub", Trusted: false})
 }
@@ -46,8 +48,10 @@ func validateStampedLine(from, body string) error {
 	return nil
 }
 
-// postOtherHub queues a strand's post to a strand of the hub shortname in this hub's journal, as an outbound message, and answers its id.
-// It refuses a sender that is no strand, a receiver that is no strand, a shortname the machine record does not resolve to one hub and a line over the cap; nothing is delivered here.
+// postOtherHub journals a strand's post to a strand of the hub shortname as an outbound message in this hub's journal.
+// It answers the id of that message.
+// It refuses a non-strand sender or receiver, a shortname that does not resolve to one hub, and a line over the cap.
+// Nothing is delivered here.
 func (s *Store) postOtherHub(sender Sender, receiver, shortname, body string, opts PostOptions) (int64, *Waiter, error) {
 	if sender.Kind != KindStrand {
 		return 0, nil, fmt.Errorf("creel: only a strand posts to another hub, and %s is none; way forward: post from a strand pane, or run lym creel post from the receiving hub's directory", sender.Name)

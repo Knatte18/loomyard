@@ -13,8 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPrepareRunSettings pins how Seed-Child's prepare step lays a task's run settings over its run profile's block for the task's recipe, or the recipe's default profile when the task names none.
-// It also pins that an unknown profile, a profile without the recipe's block, a profiles file that does not decode, and a refused key each route to Stuck through ErrInvalidRunSettings.
+// TestPrepareRunSettings pins how Seed-Child's prepare step lays a task's run settings over its run profile's block.
+// The block is the recipe's block in the task's profile, or in the recipe's default profile when the task names none.
+// It also pins that each of these routes to Stuck through ErrInvalidRunSettings:
+// an unknown profile, a profile without the recipe's block, a profiles file that does not decode, or a refused key.
 func TestPrepareRunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

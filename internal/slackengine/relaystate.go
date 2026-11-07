@@ -13,7 +13,7 @@ import (
 type RelayState struct {
 	// PID is the relay's process id.
 	PID int `json:"pid"`
-	// StartTime is the relay's start time in the form proc.StartTime returns.
+	// StartTime is the relay's process start time, as the proc package reports it.
 	StartTime string `json:"start_time"`
 	// FirstReadAt is when the relay's first creel read was accepted, zero until then.
 	FirstReadAt time.Time `json:"first_read_at"`

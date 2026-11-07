@@ -1,4 +1,6 @@
-// cli_test.go covers the flag refusals and defaults of both report verbs, which come before any cwd resolution or read, the prime-only refusal decision, and the sleep and its note of the timing verb, journal-read or standing in from the hub's pauses.
+// cli_test.go covers the flag refusals and defaults of both report verbs, which come before any cwd resolution or read.
+// It also covers the prime-only refusal decision.
+// It also covers the timing verb's sleep and its note, which come from the journal or from the hub's pauses.
 
 package reportcli
 
@@ -102,7 +104,8 @@ func TestTimingSleepNote(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 	livePausedAt := now.Add(-time.Hour)
 	stamp := func(at time.Time) string { return at.Format(time.RFC3339) }
-	// pauses holds a resumed hub pause, a live hub pause and a resumed pair pause, which no reading of the hub's idle time takes.
+	// pauses holds a resumed hub pause, a live hub pause and a resumed pair pause.
+	// No reading of the hub's idle time takes any of them.
 	pauses := fmt.Sprintf(`{"live":[{"scope":"hub","paused_at":%q}],"resumed":[{"scope":"hub","paused_at":%q,"resumed_at":%q},{"scope":"some-task","paused_at":%q,"resumed_at":%q}]}`,
 		stamp(livePausedAt), stamp(slept), stamp(woke), stamp(now.Add(-3*time.Hour)), stamp(now.Add(-2*time.Hour)))
 	const noRecord = ""

@@ -1,7 +1,9 @@
 <!-- This is the loom Plan producer's prior-plan block.
-     It is read at call time by the Plan-Write rotator (via loomengine) and appended to the end of the Plan prompt on a respawn, rather than rendered through a marker in loom-template-plan.md.
-     Both markers below are top-level {{.X}} substitutions and both are required: archive_dir is the archive directory's absolute path, and moved_files is the list of file names moved into it.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     The Plan-Write rotator (via loomengine) reads it at call time and appends it to the end of the Plan prompt on a respawn,
+     rather than rendering it through a marker in loom-template-plan.md.
+     Both markers are top-level {{.X}} substitutions and both are required:
+     archive_dir is the archive directory's absolute path, and moved_files is the list of file names moved into it.
+     The file has no {{if}}/{{range}} conditionals. -->
 
 ## Prior plan
 

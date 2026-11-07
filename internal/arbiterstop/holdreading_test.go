@@ -53,7 +53,7 @@ func (f *holdFixture) writeConfig(content string) {
 	f.writeModuleConfig("loom.yaml", content)
 }
 
-// writeModuleConfig writes content as the config file name in both the board dir and the anchor.
+// writeModuleConfig writes content to the named file under _lym/config/ in both the board directory and the anchor.
 func (f *holdFixture) writeModuleConfig(name, content string) {
 	f.t.Helper()
 	for _, base := range []string{fabricengine.BoardDir(f.location.HubPath), f.location.AnchorPath()} {
@@ -75,7 +75,8 @@ func (f *holdFixture) seedRecipe(recipe string) {
 	}
 }
 
-// escalate lays out Plan-Bouncer's run directory with a round-1 review and an escalation of cause, and the decision file when decision is non-empty.
+// escalate lays out Plan-Bouncer's run directory with a round-1 review and an escalation of cause.
+// It also writes the round-1 circling decision file when decision is non-empty.
 func (f *holdFixture) escalate(cause, decision string) {
 	f.t.Helper()
 	runDir := filepath.Join(loomengine.LoomReviewsDir(f.location), "plan")
@@ -107,7 +108,7 @@ func (f *holdFixture) attempt(key sheddriver.StopKey, deadline time.Time) string
 	return dir
 }
 
-// envelope writes the attempt directory's envelope with verdict, written at at.
+// envelope writes the attempt directory's envelope with verdict, then sets the file's times to at.
 func (f *holdFixture) envelope(dir, verdict string, at time.Time) {
 	f.t.Helper()
 	path := loomengine.ArbiterEnvelopePath(dir)
@@ -117,7 +118,7 @@ func (f *holdFixture) envelope(dir, verdict string, at time.Time) {
 	f.chtimes(path, at)
 }
 
-// applied marks the attempt directory applied at at.
+// applied marks the attempt directory applied, and sets the applied file's times to at.
 func (f *holdFixture) applied(dir string, at time.Time) {
 	f.t.Helper()
 	if err := loomengine.MarkArbiterApplied(dir); err != nil {
@@ -133,7 +134,7 @@ func (f *holdFixture) chtimes(path string, at time.Time) {
 	}
 }
 
-// settle appends a settle record at key with action, at at.
+// settle appends a settle record at key with action and the time at.
 func (f *holdFixture) settle(key sheddriver.StopKey, action string, at time.Time) {
 	f.t.Helper()
 	path := shedrun.SettleRecords(f.location, shedrun.SelfRunID)
@@ -142,7 +143,8 @@ func (f *holdFixture) settle(key sheddriver.StopKey, action string, at time.Time
 	}
 }
 
-// utc normalizes every time of reading to UTC, so readings compare whatever zone a file time came back in.
+// utc normalizes every time in the reading to UTC.
+// This lets readings compare the same regardless of the zone a file time came back in.
 func utc(reading battenshed.ChildArbiterStop) battenshed.ChildArbiterStop {
 	reading.AttemptDeadline = reading.AttemptDeadline.UTC()
 	reading.HandOnAt = reading.HandOnAt.UTC()

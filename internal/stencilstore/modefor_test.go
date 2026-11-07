@@ -1,4 +1,4 @@
-// modefor_test.go pins ModeFor's truth table: it is the only place a build's channel and stamp become a Mode.
+// modefor_test.go pins the truth table of ModeFor, which maps a build's channel and stamp to a Mode.
 
 package stencilstore
 

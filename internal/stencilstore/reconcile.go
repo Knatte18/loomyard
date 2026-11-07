@@ -1,8 +1,6 @@
-// reconcile.go implements the runtime read path (Read), the once-per-process seed/refresh pass
-// (Reconcile, ForceRefresh), and the drift-notification warnings that accompany it.
-// Reconcile never blocks and never returns a non-zero-affecting error for a drift signal.
-// Its drift notices are log lines only, per the seeding-trigger Shared Decision.
-// The Source it is given carries the worktree's stencil directory and, optionally, its build-ancestry read.
+// reconcile.go implements the runtime read path (Read) and the once-per-process seed and refresh pass
+// (Reconcile, ForceRefresh), with the drift warnings that accompany it.
+// Drift notices are log lines only; they never fail a pass.
 
 package stencilstore
 
@@ -17,17 +15,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// gitattributesName is the file Reconcile seeds under baseDir so a checked-out stencil never
-// arrives CRLF-converted regardless of the operator's core.autocrlf setting.
+// gitattributesName is the file under baseDir that keeps a checked-out stencil from arriving CRLF-converted.
+// It keeps the stencil's line endings as shipped, whatever the operator's core.autocrlf setting.
 const gitattributesName = ".gitattributes"
 
-// gitattributesContent is the single line Reconcile writes into a fresh .gitattributes.
+// gitattributesContent is the single line written into a fresh .gitattributes.
 const gitattributesContent = "*.md text eol=lf\n"
 
-// Read reads name's current content from baseDir with a plain os.ReadFile on every call -- no
-// caching, so an on-disk edit takes effect immediately on the next Read.
-// It never falls back to a shipped default and never writes; a missing file is reported as an
-// error, not silently substituted, per the missing-board-is-a-hard-error Shared Decision.
+// Read reads name's current content from baseDir with a plain os.ReadFile on every call.
+// It does no caching, so an on-disk edit takes effect on the next Read.
+// It never falls back to a shipped default and never writes.
+// A missing file is reported as an error, not silently substituted.
 func Read(baseDir, name string) ([]byte, error) {
 	content, err := os.ReadFile(Path(baseDir, name))
 	if err != nil {
@@ -36,7 +34,7 @@ func Read(baseDir, name string) ([]byte, error) {
 	return content, nil
 }
 
-// BuildAncestry reports whether a worktree's HEAD holds the commit the running binary was built from.
+// BuildAncestry is the state of a worktree's HEAD relative to the commit the running binary was built from.
 type BuildAncestry int
 
 const (
@@ -73,24 +71,27 @@ type Source struct {
 	Older  func(recorded Writer) Ordering
 }
 
-// Reconcile is the once-per-process seed/refresh pass: for every name in registry.Names() it reads
-// the on-disk file, classifies it against the registry's shipped default, and acts per the
-// edit-detection table (see Classify) and Mode.
-// It also seeds baseDir/.gitattributes when absent, and, when source.Dir is non-empty, warns on any
-// board-copy-vs-worktree-source drift, consulting source.Build only for a stencil the source is ahead on.
-// It returns the baseDir-relative, slash-separated paths it actually wrote, in registry.Names()
-// order, and writes nothing at all when every file is already correct.
+// Reconcile is the once-per-process seed and refresh pass.
+// For every registry name it reads the on-disk file and classifies it against the shipped default.
+// It writes or restamps the file as the mode and the recorded writer allow.
+// It also seeds baseDir/.gitattributes when absent.
+// When source.Dir is non-empty, it warns on each board copy that drifts from the worktree source.
+// It consults source.Build only for a stencil the source is ahead on.
+// It returns the baseDir-relative, slash-separated paths it wrote, in registry.Names() order.
+// When every file is already correct, it writes nothing.
 func Reconcile(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
 	return reconcileAll(baseDir, registry, mode, source, false)
 }
 
-// WritesDue reports whether Reconcile under the same arguments would write any file, writing and logging nothing itself.
+// WritesDue reports whether a pass with these arguments would write any file.
+// It writes and logs nothing itself.
 func WritesDue(baseDir string, registry Registry, mode Mode, source Source) (bool, error) {
 	due, err := pendingWrites(baseDir, registry, mode, source)
 	return len(due) > 0, err
 }
 
-// reconcileAll is the shared walk behind Reconcile and ForceRefresh; force performs the refresh row whatever the mode or ordering.
+// reconcileAll walks the registry, writes each stencil that is due, and seeds .gitattributes.
+// When force is set, an untouched stencil is refreshed whatever the mode or the recorded writer's ordering.
 func reconcileAll(baseDir string, registry Registry, mode Mode, source Source, force bool) ([]string, error) {
 	var written []string
 	var notices []refreshNotice
@@ -138,8 +139,8 @@ func reconcileAll(baseDir string, registry Registry, mode Mode, source Source, f
 	return written, nil
 }
 
-// pendingWrites walks the registry and .gitattributes like reconcileAll, applying the same decision to each file but writing and logging nothing.
-// It returns the baseDir-relative, slash-separated paths a reconcile would write.
+// pendingWrites reports the paths a reconcile pass would write, without writing or logging anything.
+// Each path is baseDir-relative and slash-separated.
 func pendingWrites(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
 	var due []string
 
@@ -180,7 +181,7 @@ const (
 	actionRestamp
 )
 
-// noticeCase is why a stencil was left untouched, one of the four cases a refresh notice reports.
+// noticeCase is why a stencil was left untouched; each refresh notice carries one.
 type noticeCase int
 
 const (
@@ -195,7 +196,8 @@ const (
 	noticeEditedBehind
 )
 
-// refreshNotice is what a decision owes the log: the stencil, the case that left it untouched, and the recorded and running revisions where the case has them.
+// refreshNotice is one entry a decision owes the log.
+// It names the stencil, the case that left it untouched, and the recorded and running revisions if any.
 // The zero value owes nothing.
 type refreshNotice struct {
 	stencil  string
@@ -204,7 +206,8 @@ type refreshNotice struct {
 	running  string
 }
 
-// decision is the outcome of classifying one registry name: the action, the content a restamp writes, and the notice the decision owes.
+// decision is the outcome of classifying one registry name.
+// It holds the action, the content a restamp writes, and the notice owed.
 type decision struct {
 	kind    actionKind
 	restamp []byte
@@ -219,8 +222,8 @@ func writerFor(mode Mode, source Source) Writer {
 	return Writer{}
 }
 
-// decide applies Reconcile's per-row requirements to one classified registry name without touching disk or the log.
-// force performs the refresh row on an untouched stencil whatever the mode or ordering.
+// decide works out what one classified registry name needs, without touching disk or the log.
+// When force is set, an untouched stencil is refreshed whatever the mode or ordering.
 func decide(name string, state State, onDisk, shipped []byte, mode Mode, source Source, force bool) decision {
 	switch state {
 	case StateAbsent:
@@ -271,8 +274,8 @@ func decide(name string, state State, onDisk, shipped []byte, mode Mode, source 
 	}
 }
 
-// reconcileOne applies one registry name's classified state to disk, per Reconcile's per-row
-// requirements, and reports whether it wrote the file and the notice the decision owes.
+// reconcileOne applies one classified registry name's state to disk.
+// It reports whether it wrote the file, and the notice the decision owes.
 // The caller logs the notice, so a pass reports each case once.
 func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode Mode, source Source, force bool) (bool, refreshNotice, error) {
 	if state < StateAbsent || state > StateEdited {
@@ -297,10 +300,10 @@ func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode M
 	}
 }
 
-// logRefreshNotices emits one line per notice case, listing the stencils the case left untouched and naming its remedy once.
-// The remedy is named at the point of failure rather than left for a reader to find.
-// Without it these warnings read as benign housekeeping while they report that every producer reading the stencil will run on the OLDER on-disk text.
-// A dev or unstamped build refuses to refresh so it never clobbers a board's stencils with whatever is in a working tree.
+// logRefreshNotices emits one log line per notice case, listing the stencils that case left untouched.
+// Each warning names its remedy, because it reports that producers will read the older on-disk text.
+// A dev or unstamped build refuses to refresh,
+// so it never overwrites a board's stencils with whatever a working tree holds.
 func logRefreshNotices(notices []refreshNotice, running string) {
 	for _, kind := range []noticeCase{noticeNotOlder, noticeDevBuild, noticeUnstampedBuild, noticeEditedBehind} {
 		var listed []string
@@ -342,8 +345,8 @@ func writeStamped(path string, shipped []byte, hash string, writer Writer) error
 	return nil
 }
 
-// seedGitattributes writes baseDir/.gitattributes with gitattributesContent when it does not yet
-// exist, and reports whether it wrote the file.
+// seedGitattributes writes baseDir/.gitattributes with gitattributesContent when the file is absent.
+// It reports whether it wrote the file.
 // It never rewrites an existing .gitattributes.
 func seedGitattributes(baseDir string) (bool, error) {
 	path := filepath.Join(baseDir, gitattributesName)
@@ -362,8 +365,8 @@ func seedGitattributes(baseDir string) (bool, error) {
 	return true, nil
 }
 
-// driftClass names which sides of a board/source/embedded triple changed, and so which remedy the
-// port-back drift warning may recommend.
+// driftClass names which of the board copy, the source, and the embedded bytes changed.
+// The port-back drift warning recommends only the remedy that class allows.
 type driftClass int
 
 // String names the class for the warning's structured "class" attribute.
@@ -383,28 +386,27 @@ func (c driftClass) String() string {
 }
 
 const (
-	// driftHandEdited: the board body no longer matches its own stamp, and the source matches the
-	// embedded bytes this binary carries.
+	// driftHandEdited: the board body no longer matches its own stamp,
+	// and the source matches the embedded bytes this binary carries.
 	driftHandEdited driftClass = iota
 	// driftSourceAhead: the board copy is untouched, and the source differs from the embedded bytes.
 	driftSourceAhead
 	// driftBoth: the board copy was hand-edited and the source differs from the embedded bytes.
 	driftBoth
-	// driftNeither: the board copy is untouched and the source equals the embedded bytes, so the
-	// board copy is merely older than what this binary carries.
+	// driftNeither: the board copy is untouched and the source equals the embedded bytes,
+	// so the board copy is merely older than what this binary carries.
 	driftNeither
 	// driftBehind: the board copy is untouched and the source differs from the embedded bytes.
 	// The worktree also lacks the build commit that deployed the board copy.
 	driftBehind driftClass = 4
 )
 
-// driftMessagePrefix opens every message classifyPortBackDrift returns; the rest of the message is the remedy.
+// driftMessagePrefix opens every drift warning message; the rest of the message is the remedy.
 const driftMessagePrefix = "stencilstore: board copy has drifted from worktree source; "
 
-// classifyPortBackDrift classifies a differing board copy on the two signals the warning turns on:
-// hand-edited (Classify reports StateEdited against the embedded bytes) and source-ahead (the source
-// body differs from the embedded body).
-// A source-ahead copy calls build, once, to tell a worktree behind the build from one genuinely ahead of the deployed binary.
+// classifyPortBackDrift classifies a differing board copy on two signals:
+// whether the copy is hand-edited against the embedded bytes, and whether the source body differs from them.
+// A source-ahead copy calls build, once, to tell a worktree behind the build from one ahead of the deployed binary.
 // A nil build counts as unknown.
 // It returns the class and the warning's message, which names the remedy that class allows.
 func classifyPortBackDrift(boardContent, sourceContent, embedded []byte, build func() BuildAncestry) (driftClass, string) {
@@ -425,11 +427,12 @@ func classifyPortBackDrift(boardContent, sourceContent, embedded []byte, build f
 	}
 }
 
-// warnPortBackDrift compares each registry name's on-disk board copy against source.Dir's worktree copy.
-// It emits one log line for the pass, naming the count, each differing stencil with its drift class and, once, the remedies those classes allow (see classifyPortBackDrift).
-// The line logs at Info when every differing stencil is in the behind class, since a sync clears it; otherwise it logs at Warn.
-// A missing source file is skipped silently; this comparison never returns an error and never
-// affects an exit code, per the drift-notification-is-logger-warn-and-never-blocks Shared Decision.
+// warnPortBackDrift compares each registry name's on-disk board copy with the worktree copy under source.Dir.
+// It logs one line for the pass, counting the drifted stencils and naming each with its drift class.
+// The line also states each remedy those classes allow, once.
+// It logs at Info when every drifted stencil is behind, since a sync clears that; otherwise it logs at Warn.
+// A missing source file is skipped silently.
+// The comparison never returns an error and never affects an exit code.
 func warnPortBackDrift(baseDir string, registry Registry, source Source) {
 	var drifted []string
 	var remedies []string
@@ -474,10 +477,10 @@ func warnPortBackDrift(baseDir string, registry Registry, source Source) {
 	logger.Warn(line)
 }
 
-// ForceRefresh performs the refresh row even on a stencil a ModeDev or ModeUnstamped pass would leave untouched, whatever the recorded writer's ordering.
-// It is the entry point `lym stencil sync` calls, which is why an explicit sync refreshes even from
-// a -dev-stamped binary.
-// mode only decides whether the running binary is recorded as the writer: ModeProduction records it, any other mode leaves no recorded revision.
+// ForceRefresh refreshes an untouched stencil in every mode, whatever the recorded writer's ordering.
+// It is the entry point `lym stencil sync` calls, so an explicit sync refreshes even from a -dev-stamped binary.
+// mode only decides whether the running binary is recorded as the writer.
+// ModeProduction records it; any other mode leaves no recorded revision.
 func ForceRefresh(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
 	return reconcileAll(baseDir, registry, mode, source, true)
 }

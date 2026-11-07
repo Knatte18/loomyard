@@ -84,30 +84,30 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		noNotifier bool
 		notifyErr  error
 		strand     string
-		// session makes the engine parse session signals, and promptOffset is the run's persisted prompt offset, which is also where it starts reading.
+		// session makes the engine parse session signals, and promptOffset is where the run starts reading.
 		session      bool
 		promptOffset int64
 		// script returns the agent's actions between ticks, run once per Sleep.
 		// asleep moves wall time forward without the awake reading, as a machine sleep does.
 		script func(appendLine func(string), asleep func(time.Duration)) []func()
-		// apiError makes the engine read the "STOP:overloaded" turn end as an API error and the pane take the lines sent to it, and sendFails makes that send fail.
+		// apiError reads "STOP:overloaded" as an API error and lets the pane take sent lines; sendFails fails that send.
 		apiError  bool
 		sendFails bool
-		// prompt is the run's deferred prompt line, which makes the engine parse session signals and the pane take the lines sent to it.
+		// prompt is the run's deferred prompt line; it makes the engine parse session signals and the pane take sent lines.
 		prompt string
-		// pendingSend seeds the pending-send record a failed earlier send of the prompt line left, at the prompt offset, and promptSendFailures is how many leading sends into the pane fail.
+		// pendingSend seeds a failed prompt send's record at the prompt offset; promptSendFailures makes the leading sends fail.
 		pendingSend        bool
 		promptSendFailures int
 		// usageLimit makes the engine read the "STOP:limit" turn end as one the provider's usage limit caused.
 		usageLimit bool
-		// sleepJump is the clock jump per Sleep, nonzero to reach a wait bound in a few ticks, and timeout is the run's deadline, heldTestTimeout when zero.
+		// sleepJump is the clock jump per Sleep, nonzero to reach a bound; timeout is the deadline, heldTestTimeout when zero.
 		sleepJump time.Duration
 		timeout   time.Duration
-		// coveredSleeps, when positive, tells the runner a pause record whose live hub entry covers the run until that many Sleeps have passed.
+		// coveredSleeps, when positive, has a pause record's live hub entry cover the run until that many Sleeps pass.
 		coveredSleeps int
-		// deferral builds the run's Spec.HoldDeferral from the time elapsed since Wait began, nil for a run that notifies at once.
+		// deferral builds the run's Spec.HoldDeferral from the time since Wait began; nil for a run that notifies at once.
 		deferral func(t *testing.T, elapsed func() time.Duration) func() bool
-		// backgroundWake makes the engine meet RequirementBackgroundWake, and gated gives the run a gate entry that always passes.
+		// backgroundWake makes the engine meet RequirementBackgroundWake; gated gives the run a gate entry that always passes.
 		backgroundWake bool
 		gated          bool
 		// sentTexts are recorded as sends into the run before Wait.

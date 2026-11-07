@@ -1,6 +1,6 @@
-// anchorchange_integration_test.go covers the change of a worktree's anchor over hubforge hubs:
-// the move, every refusal, the failures that undo it, the records a killed run leaves and the re-runs that finish them, the integration of a change a second clone made, and the read of a run status at a weft's upstream.
-// A hub's prime warp tracks sub/ and other/ before any pair is added, so both are directories git tracks in every pair's warp.
+// anchorchange_integration_test.go covers the change of a worktree's anchor over hubforge hubs.
+// It tests the move, every refusal, the failures that undo it and the re-runs that finish a killed run's records.
+// It also tests the integration of a change a second clone made, and the read of a run status at a weft's upstream.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -65,7 +65,8 @@ func completeAnchorChange(t *testing.T, c *fabricengine.AnchorChange) {
 	}
 }
 
-// killAt installs a hook that panics with anchorKill at the commit or the branch move, before it when afterCommit is false and after it otherwise.
+// killAt installs a hook that panics with anchorKill at the commit or the branch move.
+// It panics before the step when afterCommit is false, and after it otherwise.
 func killAt(t *testing.T, afterCommit bool) {
 	t.Helper()
 
@@ -77,7 +78,8 @@ func killAt(t *testing.T, afterCommit bool) {
 	})
 }
 
-// applyUntilKilled applies c, which the installed hook must kill, and closes c, leaving the record standing and the move lock free as a dead process does.
+// applyUntilKilled applies c, which the installed hook must kill, and closes c.
+// It leaves the record standing and the move lock free, as a dead process does.
 func applyUntilKilled(t *testing.T, c *fabricengine.AnchorChange) {
 	t.Helper()
 
@@ -135,7 +137,8 @@ func requireWiredOnlyAt(t *testing.T, h *hubforge.Hub, slug, anchor string, othe
 	}
 }
 
-// requireMovedToSub fails the test unless slug's weft carries its content and its marker at sub in the HEAD commit, with a clean tree, and the pair is wired there.
+// requireMovedToSub fails the test unless slug's weft carries its content and its marker at sub in the HEAD commit.
+// It also fails unless the tree is clean and the pair is wired at sub.
 func requireMovedToSub(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
@@ -784,7 +787,8 @@ func TestAnchorChange(t *testing.T) {
 	})
 }
 
-// newIntegrateHub builds a "." hub whose prime weft holds a local commit of _lym/local.txt and whose upstream a second clone moved to sub, with the new tip fetched.
+// newIntegrateHub builds a "." hub whose prime weft holds a local commit of _lym/local.txt.
+// Its upstream is a second clone that moved the pair to sub, with the new tip fetched.
 // It returns the hub and the prime's Location at its own anchor.
 func newIntegrateHub(t *testing.T) (*hubforge.Hub, *lymcwd.Location) {
 	t.Helper()

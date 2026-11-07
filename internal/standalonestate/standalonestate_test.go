@@ -1,5 +1,7 @@
-// standalonestate_test.go drives both platform rows of derive through its unexported seam, so runtime.GOOS being a compile-time constant never leaves one row unexercised in CI.
-// A test that changes the working directory with t.Chdir cannot run in parallel; the one such test names that process-global state, and every other test here runs in parallel.
+// standalonestate_test.go drives both platform rows of derive through its unexported seam.
+// runtime.GOOS is a compile-time constant, so the seam keeps either row from going unexercised in CI.
+// A test that changes the working directory with t.Chdir cannot run in parallel,
+// so it is the only test here that does not call t.Parallel.
 
 package standalonestate
 
@@ -12,13 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDerive_StateDir pins which base each platform row of derive joins "lym" and hash8 onto, and which environments it refuses.
-// The Windows branch consults localAppData, the leaf separator being left to path/filepath rather than a literal backslash string; the non-Windows branch consults xdgStateHome, then home, and never consults localAppData.
+// TestDerive_StateDir pins the base each platform row of derive joins "lym" and hash8 onto.
+// It also pins which environment values derive refuses.
+// The Windows branch consults localAppData;
+// the non-Windows branch consults xdgStateHome, then home, and never consults localAppData.
+// The leaf separator comes from path/filepath, not a literal backslash.
 //
-// It is also the regression guard for the R4 review's R4-08: derive validated target for absoluteness but never the environment-supplied base it joined onto, so a relative XDG_STATE_HOME (or LOCALAPPDATA, or home) produced a RELATIVE stateDir -- which the standalone CLIs then resolved against the process working directory, i.e. the operator's own repository, writing lym state and trace logs inside the very checkout standalonegeom.LogsDir exists to keep them out of.
-// Reproduced live as `XDG_STATE_HOME=.relstate lym burler run` creating <repo>/.relstate/lym/<hash8>/.
-// The three bases answer a relative value differently because their specifications do: a relative XDG_STATE_HOME is ignored per the XDG Base Directory specification, while a relative LOCALAPPDATA or home has no fallback left and is refused.
-// Every surviving row asserts an ABSOLUTE stateDir, which is the property that actually matters.
+// A relative stateDir would resolve against the process working directory, which is the operator's checkout.
+// A relative XDG_STATE_HOME is ignored, as the XDG Base Directory specification requires;
+// a relative LOCALAPPDATA or home is refused, since it has no fallback left.
+// Every surviving row asserts an absolute stateDir.
 func TestDerive_StateDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -135,7 +140,9 @@ func TestDerive_StateDir(t *testing.T) {
 	}
 }
 
-// TestDerive_Hash8 pins the identity half of derive: hash8 is eight lowercase hex digits, stable across calls, taken over exactly what Normalize returns, and case-folded under windows only.
+// TestDerive_Hash8 pins the identity half of derive.
+// hash8 is eight lowercase hex digits, stable across calls and taken over exactly what Normalize returns.
+// It is case-folded under windows only.
 //
 //testtiming:keep pins hash8's shape, stability, Normalize input and per-platform case folding, which the state-directory table covering its blocks never reads
 func TestDerive_Hash8(t *testing.T) {
@@ -176,7 +183,8 @@ func TestDerive_Hash8(t *testing.T) {
 		}
 	})
 
-	// This is the property R4-24's fix rests on: a caller that spells the target through Normalize to build a session name is spelling it the way derive spelled it for the socket key and state directory, so the two halves of a standalone identity can never disagree.
+	// A caller that spells the target through Normalize matches the spelling derive hashes,
+	// so the two halves of a standalone identity cannot disagree.
 	t.Run("hash input is exactly what Normalize returns", func(t *testing.T) {
 		t.Parallel()
 
@@ -223,7 +231,9 @@ func TestDerive_Hash8(t *testing.T) {
 	})
 }
 
-// TestNormalize_AbsentTargetFallsBackToClean pins that a target that does not exist on disk yet normalizes to its cleaned self rather than failing: an unborn directory still needs a stable identity, and this is the branch every hermetic test of the geometry builders relies on.
+// TestNormalize_AbsentTargetFallsBackToClean pins that Normalize cleans a target absent from disk instead of failing.
+// An unborn directory still needs a stable identity,
+// and the hermetic tests of the geometry builders rely on this branch.
 //
 //testtiming:keep pins that Normalize cleans a target absent from disk instead of failing, which the state-directory table covering its blocks never reads
 func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
@@ -237,8 +247,12 @@ func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
 	}
 }
 
-// TestRelativeInputs_NeverConsultTheWorkingDirectory pins that a relative input's outcome does not vary with the test process' working directory, because "never consults the cwd" is only demonstrated by the answer not moving when the cwd does.
-// A relative target is rejected under both goos values; a relative environment base is ignored rather than resolved; and Normalize cleans a relative target instead of resolving it, the one branch of Normalize that exists purely to protect the Standalonestate Leaf Invariant (filepath.EvalSymlinks resolves a relative path against the process working directory).
+// TestRelativeInputs_NeverConsultTheWorkingDirectory pins that relative inputs never depend on the working directory.
+// The answer staying put when the working directory moves is what shows that the input is never resolved against it.
+// A relative target is rejected under both goos values; a relative environment base is ignored rather than resolved;
+// and Normalize cleans a relative target instead of resolving it.
+// That branch exists only to protect the Standalonestate Leaf Invariant:
+// filepath.EvalSymlinks resolves a relative path against the process working directory.
 // It changes the working directory with t.Chdir, which is process-global state, so neither it nor its subtests run in parallel.
 func TestRelativeInputs_NeverConsultTheWorkingDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -298,7 +312,10 @@ func TestRelativeInputs_NeverConsultTheWorkingDirectory(t *testing.T) {
 	}
 }
 
-// TestDerive_SymlinkNormalization pins that derive creates nothing on disk -- no directory, no file -- and that a symlink and its real target produce the same hash8, skipping the symlink half when os.Symlink fails with a permission error so a Windows host without Developer Mode does not fail the suite.
+// TestDerive_SymlinkNormalization pins that derive creates nothing on disk,
+// and that a symlink and its real target produce the same hash8.
+// The symlink half is skipped when os.Symlink fails with a permission error,
+// so a Windows host without Developer Mode does not fail the suite.
 func TestDerive_SymlinkNormalization(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -334,7 +351,8 @@ func TestDerive_SymlinkNormalization(t *testing.T) {
 	}
 }
 
-// TestUserStateDir pins that UserStateDir answers the `lym` directory under an absolute XDG_STATE_HOME, and under HOME's .local/state when XDG_STATE_HOME is relative.
+// TestUserStateDir pins where UserStateDir answers the `lym` directory.
+// Under an absolute XDG_STATE_HOME it answers there; under a relative one, under HOME's .local/state.
 // It sets process-global environment, so it is not parallel.
 func TestUserStateDir(t *testing.T) {
 	tiergate.Require(t, 0)

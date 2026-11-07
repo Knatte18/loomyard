@@ -1,7 +1,6 @@
-// seamsignature_test.go pins every module's RunCLI(io.Writer, []string) int seam function, and every module's RunCLIIn(string, io.Writer, []string) int seam function built alongside it, to their exact signatures at compile time.
-// This test has no test function and no runtime body: the assertion is that the package compiles, so a drifted RunCLI/RunCLIIn signature in any of these modules becomes a build failure instead of a silent divergence from `PATTERN-cli-cobra`.
-// The seam clause of `PATTERN-cli-cobra` was previously unenforced: cmd/lym/clitree_test.go's walk asserts only Short, bare-group listing and unknown-subcommand refusal,
-// and no test under cmd/lym referenced RunCLI at all.
+// seamsignature_test.go pins every module's RunCLI and RunCLIIn seam function to its exact signature at compile time.
+// It has no test function, so the package compiling is the assertion.
+// A drifted signature fails the build instead of diverging silently from `PATTERN-cli-cobra`.
 
 package main
 
@@ -29,8 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/webstercli"
 )
 
-// The blank identifier below pins every module's RunCLI to the RunCLI seam shape
-// declared by the CLI/Cobra Invariant. Nothing reads it; the compile itself is the assertion.
+// The blank identifier pins every module's RunCLI to the seam signature in `PATTERN-cli-cobra`; nothing reads it.
 var _ = []func(io.Writer, []string) int{
 	boardcli.RunCLI,
 	burlercli.RunCLI,
@@ -53,12 +51,10 @@ var _ = []func(io.Writer, []string) int{
 	webstercli.RunCLI,
 }
 
-// The blank identifier below pins every module's RunCLIIn to the RunCLIIn seam shape
-// declared by the CLI/Cobra Invariant. internal/selfreportcli is the one seam module deliberately
-// absent: it references lymcwd nowhere, so a RunCLIIn there would accept a cwd argument nothing
-// reads. internal/loomcli is on this slice rather than joining that exception: loom resolves cwd
-// throughout, so a seeded cwd is meaningful to it, which is the exact criterion the existing
-// exception rests on. Nothing reads this slice; the compile itself is the assertion.
+// The blank identifier pins every module's RunCLIIn to the seam signature in `PATTERN-cli-cobra`; nothing reads it.
+// A module belongs in this list when its RunCLIIn reads the cwd it is given.
+// internal/selfreportcli is left out: it references lymcwd nowhere, so a RunCLIIn there would accept an unread cwd.
+// loomcli reads cwd throughout, so a seeded cwd is meaningful to it.
 var _ = []func(string, io.Writer, []string) int{
 	boardcli.RunCLIIn,
 	burlercli.RunCLIIn,

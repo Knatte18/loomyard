@@ -1,16 +1,12 @@
-// snapshot_integration_test.go — integration coverage for
-// Fabric.snapshotWarpSHA: newest-tagged-commit-wins, tag isolation, the
-// multi-tag-on-one-commit split, the absent-is-not-an-error miss path, the
-// unborn-weft-HEAD tolerance, untagged/no-baseline commits, a Snapshot
-// trailer with no Warp-SHA sibling, byte-exact tag matching, per-branch
-// scoping, and (card 13) the one fixture that can actually discriminate
-// card 10's --topo-order change from git log's date-ordered default: a
-// back-dated merge commit, plus a RebuildIndex equivalence assertion on the
-// same history. Package fabricengine_test, reusing export_test.go's
-// NewPlainWarpRepoForTest, CurrentSHAForTest, CommitWarpForTest and
-// NewFabricForTest fixture shims, and syncweft_integration_test.go's
-// expireAndPruneUnreachable directly, since both files share package
-// fabricengine_test.
+// snapshot_integration_test.go covers Fabric.snapshotWarpSHA against real weft and warp repositories.
+// The newest tagged commit wins, and tags stay isolated from one another.
+// A commit carrying several tags resolves for each of them,
+// and a lookup that matches nothing reads as absent, not as an error.
+// Trailers without a Warp-SHA, byte-exact tag matching, and per-branch scoping are covered too.
+// A back-dated merge commit tells the --topo-order walk from git log's default date order,
+// and a RebuildIndex assertion covers the same history.
+// The file is package fabricengine_test.
+// It reuses the fixture shims in export_test.go and expireAndPruneUnreachable from syncweft_integration_test.go.
 
 package fabricengine_test
 
@@ -27,11 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// commitWeftTagged advances the warp repo by one commit, writes new content
-// into the weft worktree's tracked _lym/config.yaml, and lands it through
-// f.CommitWeft carrying tags — the standard way this file's tests build a
-// trailer history with Snapshot: entries. Returns the new warp and weft HEAD
-// SHAs. Passing zero tags produces a plain, untagged weft commit.
+// commitWeftTagged advances the warp repo by one commit.
+// It writes new content to the weft worktree's tracked _lym/config.yaml.
+// It then lands the commit through f.CommitWeft with the tags.
+// This file's tests build their Snapshot: trailer histories that way.
+// It returns the new warp and weft HEAD SHAs.
+// Passing zero tags makes a plain, untagged weft commit.
 func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, content string, tags ...string) (warpSHA, weftSHA string) {
 	t.Helper()
 
@@ -47,8 +44,11 @@ func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, 
 	return warpSHA, weftSHA
 }
 
-// commitWeftSnapshotOnlyTrailer commits content into weftPath's tracked _lym/config.yaml with a hand-crafted commit message carrying ONLY a "Snapshot: <tag>" trailer and no "Warp-SHA:" trailer at all — the shape snapshotWarpSHA's reader must skip rather than mistake for an empty baseline.
-// Built directly via git rather than through CommitWeft, since CommitWeft only ever appends a Snapshot trailer alongside a Warp-SHA one (and drops tags entirely on an unborn warp HEAD — see commitWeftLocked), so there is no CommitWeft call that produces this shape on its own.
+// commitWeftSnapshotOnlyTrailer commits content into weftPath's tracked _lym/config.yaml under a hand-written message.
+// The message carries only a "Snapshot: <tag>" trailer and no "Warp-SHA:" trailer:
+// the shape snapshotWarpSHA must skip rather than read as an empty baseline.
+// It is built with git directly, because CommitWeft writes a Snapshot trailer only alongside a Warp-SHA one.
+// CommitWeft also drops tags on an unborn warp HEAD (see `commitWeftLocked`), so no call produces this shape.
 func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) string {
 	t.Helper()
 
@@ -56,22 +56,13 @@ func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) 
 	return gitkit.CommitFile(t, weftPath, filepath.Join("_lym", "config.yaml"), content, msg)
 }
 
-// TestSnapshotWarpSHA_Lookup builds one weft history and reads it back, in this order:
-// plain untagged weft commits (CommitWeft called with zero tags) are skipped without error, so a
-// lookup for a tag never attached to any of them — one never recorded anywhere in history — resolves
-// as absent, ("", nil) and not an error, the decision that lets a first-ever consumer run read "no
-// baseline, generate everything" with no special-casing;
-// a commit carrying a Snapshot trailer but no Warp-SHA trailer is skipped entirely, never surfaced
-// as a match with an empty baseline;
-// three weft commits all tagged "raddle" at three different warp SHAs resolve to the newest one's
-// Warp-SHA, not the first or the middle;
-// interleaved "raddle" and "trace" commits resolve each tag to its own newest commit, never the
-// other tag's;
-// a single commit tagged both "raddle" and "trace" resolves correctly for each tag, the
-// integration-level witness for card 10's multi-line-value split;
-// and a tag recorded as "raddle" is not resolved by "Raddle" or "raddle ", both reading as absent.
-// Each step builds on the history of the steps before it and relies on its lookups being scoped to
-// a tag the earlier steps recorded no commit for.
+// TestSnapshotWarpSHA_Lookup checks the lookup over one weft history, where each step builds on the steps before it.
+// Untagged commits are skipped without error, so a tag no commit records resolves as absent, as ("", nil).
+// That absence lets a first-ever consumer read no baseline and generate everything.
+// A commit with a Snapshot trailer but no Warp-SHA trailer is never a match.
+// Several commits tagged the same resolve to the newest one's Warp-SHA.
+// Each tag resolves to its own newest commit, including a commit that carries both tags.
+// Tags match byte for byte, so "Raddle" and "raddle " both read as absent for a "raddle" tag.
 // The steps run serially on one fixture.
 func TestSnapshotWarpSHA_Lookup(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -138,9 +129,8 @@ func TestSnapshotWarpSHA_Lookup(t *testing.T) {
 	})
 }
 
-// TestSnapshotWarpSHA_UnbornWeftHEAD covers a weft repo with zero commits: it must exercise the
-// "does not have any commits yet" tolerance scanWarpSHATrailers already carries and resolve as
-// absent, not an error.
+// TestSnapshotWarpSHA_UnbornWeftHEAD covers a weft repo with zero commits.
+// It checks that the "does not have any commits yet" tolerance in scanWarpSHATrailers reads as absent, not as an error.
 func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -159,15 +149,12 @@ func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 	}
 }
 
-// TestSnapshotWarpSHA_PerBranchScoping records a tag on a side branch, then switches the weft
-// worktree to a different branch (forked from the weft worktree's ORIGINAL branch, before the
-// tagged commit landed) via a plain `git checkout -b`, and asserts snapshotWarpSHA reads the tag as
-// absent rather than answering cross-branch — the reader's per-branch contract.
+// TestSnapshotWarpSHA_PerBranchScoping records a tag on a side branch.
+// It then switches the weft worktree with a plain `git checkout -b` to a branch forked before the tagged commit landed.
+// It asserts that snapshotWarpSHA reads the tag as absent, since it scans only the weft worktree's current branch.
 //
-// Topology.Checkout is deliberately not used here even though this file can now reach it: it would
-// test the wrong thing — snapshotWarpSHA scans the weft worktree's CURRENT branch and
-// nothing else, so a weft-side branch switch by itself is the whole mechanism under test;
-// the coordinated warp+weft checkout is only how that state arises in production.
+// Topology.Checkout switches warp and weft together, the production path to this state.
+// This test needs the weft-side switch alone.
 //
 //testtiming:keep snapshotWarpSHA scanning only the weft worktree's current branch, so a tag on another branch reads absent; coverage of its blocks by other tests does not show an assertion of this
 func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
@@ -179,16 +166,15 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// The weft worktree's original branch is fabricengine.RecordsBranchName("main") ("main-weft"), never bare "main".
-	// A real hub's own weft:main is a SEPARATE worktree (the Bolt checkout), so this file's own branch stays suffixed.
+	// A real hub's own weft:main is a separate worktree (the Bolt checkout), so this file's own branch stays suffixed.
 	// Fork "tagged" off it and record the Snapshot tag there, so the mainline
 	// branch itself never advances past the fixture's initial commit.
 	mainlineBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "checkout", "-b", "tagged")
 	commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "tagged change", "raddle")
 
-	// Fork "other" off the mainline branch (NOT off "tagged"), so its history does not
-	// contain the tagged commit at all, and switch the weft worktree onto
-	// it — the branch snapshotWarpSHA must now scan.
+	// Fork "other" off the mainline branch, not off "tagged", so its history does not contain the tagged commit at all.
+	// Then switch the weft worktree onto "other": it is the branch snapshotWarpSHA must now scan.
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "checkout", "-b", "other", mainlineBranch)
 
 	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
@@ -200,21 +186,19 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	}
 }
 
-// commitWeftTaggedWithDate commits content into weftPath's tracked _lym/<file> (a caller-chosen filename, so a side-branch commit can avoid touching the same path a mainline commit touches and merge without conflict) at a caller-chosen GIT_COMMITTER_DATE, carrying a Warp-SHA trailer for warp's current HEAD (advanced first) and one Snapshot trailer per tag.
-// It then calls f.RecordCorrespondence itself, exactly as commitWeftLocked would have — building the back-dated commit directly, rather than committing normally through CommitWeft and amending the date afterward, means there is never an earlier, now-superseded correspondence entry to clean up before the equivalence assertion below runs.
+// commitWeftTaggedWithDate commits content into weftPath's tracked _lym/<file> at a caller-chosen GIT_COMMITTER_DATE.
+// The commit carries a Warp-SHA trailer for warp's current HEAD (advanced first) and one Snapshot trailer per tag.
+// The file name is caller-chosen.
+// A side-branch commit picks a path no mainline commit touches, so the merge is conflict-free.
+// It calls f.RecordCorrespondence itself, rather than committing through CommitWeft and amending the date afterward,
+// so no earlier correspondence entry is left to clean up before the equivalence assertion runs.
 //
-// The raw `git commit` call is a bare exec.Command, not
-// gitexec.RunGit/gitkit.MustRun: neither of those helpers accepts a
-// caller-supplied environment, and this is the only commit in this package
-// that needs one. cmd.Env is scoped to this ONE invocation — appended onto
-// os.Environ(), never replacing it — rather than a process-wide
-// os.Setenv(GIT_COMMITTER_DATE, ...): several tests in this package run
-// under t.Parallel(), so a process-wide override would leak into whichever
-// of them happens to be committing at the same moment and produce an
-// intermittent failure blamed on the wrong test. Appending onto
-// os.Environ() (rather than replacing it) preserves the
-// GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM pair this package's TestMain sets
-// via gitkit.HermeticGitEnv(), so this one raw commit stays hermetic too.
+// The raw `git commit` call is a bare exec.Command.
+// gitexec.RunGit and gitkit.MustRun accept no caller-supplied environment.
+// cmd.Env is scoped to this one invocation: it is appended onto os.Environ(), never replacing it.
+// A process-wide os.Setenv(GIT_COMMITTER_DATE, ...) would leak into other t.Parallel() tests committing at that moment.
+// Appending onto os.Environ() keeps the hermetic git config from gitkit.HermeticGitEnv(),
+// so this commit stays hermetic too.
 func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, file, content, committerDate string, tags ...string) (warpSHA, weftSHA string) {
 	t.Helper()
 
@@ -246,36 +230,28 @@ func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, we
 	return warpSHA, weftSHA
 }
 
-// TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate is the one fixture that can actually witness
-// card 10's --topo-order change: every other case in this file (and
-// TestRebuildIndex_EqualsIncrementallyBuiltIndex in syncweft_integration_test.go) is a linear
-// history where date order and topological order coincide, so they would pass identically with or
-// without the flag and prove nothing about it.
+// TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate covers a history where date order and topological order disagree.
+// Every other case in this file has a linear history, where date order and topological order coincide.
+// Such a case passes with or without --topo-order, so it proves nothing about the flag.
+// TestRebuildIndex_EqualsIncrementallyBuiltIndex in syncweft_integration_test.go is linear too.
 //
-// The fixture: a mainline commit carries the "raddle" tag at a normal (real, current) committer
-// date.
-// A "side" branch is then forked FROM that mainline commit — so the side commit is a genuine
-// topological descendant of it — and its own "raddle"-tagged commit is given a committer date
-// back-dated to the year 2000, simulating a skewed clock on whatever machine produced it.
+// The fixture: a mainline commit carries the "raddle" tag at the current committer date.
+// A "side" branch forks from that mainline commit, so the side commit is a topological descendant of it,
+// and its own "raddle"-tagged commit is back-dated to the year 2000, as a skewed clock would produce.
 // The side branch is merged back into mainline with --no-ff.
-// Because the side commit really is a descendant of the mainline one (regardless of what its clock
-// claims), --topo-order must never list it before its own ancestor;
-// a plain date-ordered scan would get this backwards and answer with the OLDER mainline baseline,
-// under-reporting staleness.
-// Both assertions below run against this same history: first, that snapshotWarpSHA resolves to the
-// topologically-newest (side) commit's warp SHA, not the date-newest (mainline) one;
-// second, reusing TestRebuildIndex_EqualsIncrementallyBuiltIndex's own comparison, that
-// RebuildIndex agrees with the incrementally-built index over the same history — proving the
-// ordering change did not desynchronize the two.
+// Whatever its clock claims, the side commit is a descendant of the mainline commit.
+// So --topo-order never lists it before that ancestor.
+// A date-ordered scan gets this backwards and answers with the older mainline baseline, under-reporting staleness.
+// The two assertions below run against this same history.
+// The first checks that snapshotWarpSHA picks the topologically newest commit (the side one), not the date-newest.
+// The second checks that RebuildIndex agrees with the incrementally built index over the same history.
+// That shows the ordering change did not desynchronize the two.
 //
-// A residual ambiguity is accepted here rather than solved: when two snapshot commits for the same
-// tag sit on genuinely CONCURRENT branches — neither an ancestor of the other, as opposed to this
-// fixture's genuine ancestor relationship — "newest" is a topological choice between incomparable
-// commits, and either could legitimately be returned.
-// Both are legitimate baselines in that case;
-// whichever is chosen, the consumer's ChangedFilesSince against it reports a superset or equal set
-// of the truly-changed files, and over-reporting is the safe direction, so no attempt is made to
-// define a tie-break between concurrent branches here.
+// Two snapshot commits for the same tag can sit on concurrent branches, neither an ancestor of the other.
+// So "newest" is a topological choice between incomparable commits, and either may be returned.
+// Both are legitimate baselines.
+// ChangedFilesSince against either reports a superset or an equal set of the truly changed files.
+// Over-reporting is the safe direction, so no tie-break between concurrent branches is defined.
 //
 //testtiming:keep a back-dated side commit merged back resolving to the topologically newest baseline, with RebuildIndex agreeing with the incremental index; coverage of its blocks by other tests does not show an assertion of this
 func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
@@ -287,8 +263,8 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main".
-	// "main" itself is already checked out by the hub's own Bolt checkout worktree (the repo-wide weft:main checkout), so switching this worktree onto literal "main" would
-	// collide with that second worktree rather than reaching the primary's own mainline.
+	// Bare "main" is already checked out by the hub's Bolt checkout worktree.
+	// Switching this worktree onto it would collide with that worktree instead of reaching the primary's own mainline.
 	mainlineBranch := fabricengine.RecordsBranchName("main")
 	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "mainline tagged", "raddle")
 
@@ -338,9 +314,8 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	}
 }
 
-// treeSHA resolves rev's tree object SHA in repoPath, via `git rev-parse
-// <rev>^{tree}` — used to compare two commits' trees directly, independent
-// of their own commit SHAs.
+// treeSHA resolves rev's tree object SHA in repoPath via `git rev-parse <rev>^{tree}`.
+// It lets two commits be compared by their trees, independent of their commit SHAs.
 func treeSHA(t *testing.T, repoPath, rev string) string {
 	t.Helper()
 
@@ -353,18 +328,15 @@ func treeSHA(t *testing.T, repoPath, rev string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins pins the case card 17 documents but
-// does not itself pin: a warp SHA recorded by TWO weft commits — a content commit under "raddle",
-// then a tags-only commit at the SAME (unchanged) warp HEAD under the same tag.
+// TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins covers one warp SHA recorded by two weft commits:
+// a content commit under "raddle", then a tags-only commit at the same unchanged warp HEAD under the same tag.
 // Three things are asserted.
-// First, WeftSHAForWarpSHA resolves to the newer, EMPTY commit — last recorded wins, exactly as
-// corrIndex.record already documents.
-// Second, RebuildIndex's full trailer rescan agrees with the incrementally-built index over this
-// same history, reusing the entries()-comparison TestRebuildIndex_EqualsIncrementallyBuiltIndex
-// (syncweft_integration_test.go) already establishes as the equivalence check.
-// Third — the assertion that makes the overwrite BENIGN rather than merely tolerated — the empty
-// commit's tree is byte-identical to the content commit's, so resolving through the overwritten
-// entry restores exactly the same weft state either commit would have.
+// First, WeftSHAForWarpSHA resolves to the newer, empty commit, so the last recorded entry wins.
+// Second, RebuildIndex's full trailer rescan agrees with the incrementally built index over the same history.
+// The comparison is the entries() check that TestRebuildIndex_EqualsIncrementallyBuiltIndex uses.
+// Third, the empty commit's tree is byte-identical to the content commit's.
+// So resolving through the overwritten entry restores the same weft state either commit would have.
+// That makes the overwrite benign, not merely tolerated.
 //
 //testtiming:keep a warp SHA recorded by a content commit and a tags-only commit resolving to the newer empty commit with identical trees and an agreeing rebuild; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T) {
@@ -377,10 +349,9 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 
 	warpSHA, contentWeftSHA := commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "content commit", "raddle")
 
-	// A genuine tags-only call (nil pathspec) at the same warp HEAD — warp is
-	// not advanced again here — so the empty-commit rule's `!positive`
-	// fall-through fires and RecordCorrespondence upserts over the entry the
-	// content commit just wrote for warpSHA.
+	// Make a tags-only call (nil pathspec) at the same warp HEAD, without advancing warp.
+	// The empty-commit rule takes its `!positive` fall-through.
+	// RecordCorrespondence then upserts over the entry the content commit wrote for warpSHA.
 	emptyWeftSHA, committed, err := fabricengine.CommitWeftForTest(f, nil, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")
 	if err != nil {
 		t.Fatalf("commitWeft() (tags-only, same warp HEAD) error = %v", err)
@@ -435,12 +406,11 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 	}
 }
 
-// TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse pins the reader's
-// validate-at-use posture: a recorded Warp-SHA whose warp commit is later rewritten away
-// (rebase/amend/reset+prune) is returned RAW by snapshotWarpSHA, with a nil error — not collapsed
-// to absent and not resolved to an older baseline — and f.code.SHAExists on the returned SHA
-// reports false, demonstrating the "read, then check SHAExists" consumer idiom snapshotWarpSHA's
-// own doc comment describes, in executable form.
+// TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse pins the reader's validate-at-use posture.
+// A recorded Warp-SHA whose warp commit is later rewritten away is returned raw by snapshotWarpSHA, with a nil error.
+// It is not collapsed to absent, and it is not resolved to an older baseline.
+// f.code.SHAExists on the returned SHA reports false.
+// This runs the read-then-check idiom that the doc comment of snapshotWarpSHA describes.
 //
 //testtiming:keep a recorded Warp-SHA whose warp commit was rewritten away being returned raw with SHAExists false; coverage of its blocks by other tests does not show an assertion of this
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
@@ -454,10 +424,9 @@ func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing
 	baseWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
 	danglingWarpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "will be rewritten away", "raddle")
 
-	// Rewrite warp history so danglingWarpSHA no longer resolves: reset back
-	// to the base commit, then force git to genuinely forget the orphaned
-	// object — a plain reset alone leaves it resolvable via the reflog for a
-	// while (expireAndPruneUnreachable, syncweft_integration_test.go).
+	// Reset warp back to the base commit, so danglingWarpSHA no longer resolves.
+	// A plain reset leaves the orphaned object resolvable through the reflog for a while.
+	// Git must also forget it: expireAndPruneUnreachable in syncweft_integration_test.go does that.
 	gitkit.MustRun(t, warpPath, "git", "reset", "--hard", baseWarpSHA)
 	expireAndPruneUnreachable(t, warpPath)
 

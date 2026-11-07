@@ -1,6 +1,7 @@
-// ownwindow_integration_test.go proves own-window strands against a real tmux.
-// An own-window strand opens in a detached window of its own named by its role without moving the viewer, keeps a dead pane bound across later operations, is found again by Resume after a server restart, is refused a move out of its anchor, and takes its window with it on removal.
-// One cold session serves every step.
+// ownwindow_integration_test.go proves own-window strands against a real tmux, with one cold session for every step.
+// An own-window strand opens in a detached window of its own, named by its role, and does not move the viewer.
+// It keeps a dead pane bound across later operations and is found again by Resume after a server restart.
+// It is refused a move out of its anchor and takes its window with it on removal.
 
 package reedengine
 
@@ -18,7 +19,8 @@ import (
 )
 
 // TestOwnWindow_RealTmux runs its steps in order on one cold session.
-// It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds.
+// It overrides the executable path,
+// so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds.
 func TestOwnWindow_RealTmux(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -53,7 +55,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		t.Helper()
 		return display(exactSessionWindowTarget(e.SessionName()), "#{window_id}")
 	}
-	// A booted session follows the run, which would move the viewer on every add, so the steps keep it off unless a step names the follow state.
+	// A booted session follows the run, which would move the viewer on every add.
+	// The steps keep follow off unless a step names the follow state.
 	setFollow := func(value string) {
 		t.Helper()
 		if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), followSessionOption, value); err != nil {
@@ -257,7 +260,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if got := readFollow(); got != "on" {
 			t.Errorf("follow state = %q after the server restart, want the booted session on", got)
 		}
-		// With follow on, every relaunched own window takes the viewer in turn, so it ends on the last one opened, the highest-index window of an own-window strand, dead or alive.
+		// With follow on, every relaunched own window takes the viewer in turn.
+		// The viewer therefore ends on the last one opened, the highest-index window of an own-window strand, dead or alive.
 		res, err := e.Status()
 		if err != nil {
 			t.Fatalf("Status: %v", err)
@@ -524,7 +528,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		return s
 	}
 
-	// The move off an ending window neither reads nor changes the follow state, so it runs with follow on and with follow off.
+	// The move off an ending window neither reads nor changes the follow state.
+	// The subtest therefore runs with follow on and with follow off.
 	t.Run("RemoveMovesAViewerOnTheEndingWindowToTheNewestLiveAgent", func(t *testing.T) {
 		t.Cleanup(func() { setFollow("off") })
 		for _, follow := range []string{"on", "off"} {
@@ -625,7 +630,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		}
 	})
 
-	// leftover splits a pane running cmd into the shell window and binds a new strand to it through a reed.json that records anchor below-parent, the shape an older binary left behind.
+	// leftover splits a pane running cmd into the shell window and binds a new strand to it.
+	// It binds the strand through a reed.json that records anchor below-parent, the shape an older binary wrote.
 	leftover := func(t *testing.T, guid, cmd string) Strand {
 		t.Helper()
 		out, err := e.tmux.output("split-window", "-d", "-t", strandWindow(), "-P", "-F", "#{pane_id}", cmd)

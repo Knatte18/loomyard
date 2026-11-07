@@ -1,11 +1,10 @@
 // cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository,
 // proving the standalone pre-run reaches a verb's own RunE rather than failing with a
-// cwd-resolution error -- the one property no untagged test in this package can observe, since it
-// requires the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end
-// pre-run. It follows the shape internal/webstercli/cli_integration_test.go already establishes for
-// a tagged CLI-level test; card 17's testmain_test.go supplies the hermetic git environment the
-// `git rev-parse` inside preflight.ResolveMode needs, since this package spawns git from no test
-// otherwise.
+// cwd-resolution error.
+// Only this test observes that property.
+// It needs the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end pre-run.
+// The hermetic git environment for `git rev-parse` in preflight.ResolveMode comes from testmain_test.go.
+// No other test in this package spawns git.
 
 package burlercli
 
@@ -17,15 +16,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run" from a temporary directory that is not a git repository at all -- lymcwd.Resolve fails there, so preflight.ResolveMode folds it into standalone mode rather than refusing outright.
-// It redirects the standalone state directory to a temporary one via XDG_STATE_HOME/LOCALAPPDATA before calling RunCLIIn, since without that redirect the real Derive would resolve into the operator's actual home directory.
-// The redirect is why this test is not marked t.Parallel():
-// t.Setenv panics under a parallel test.
+// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run".
+// It runs from a temporary directory that is not a git repository.
+// lymcwd.Resolve fails there, so preflight.ResolveMode folds the invocation into standalone mode instead of refusing it.
+// The test redirects the standalone state directory to a temporary one via XDG_STATE_HOME/LOCALAPPDATA.
+// Without the redirect, the real Derive would resolve into the operator's home directory.
+// That redirect is why the test is not marked t.Parallel(), since t.Setenv panics under a parallel test.
 //
-// No --profile is passed, so once the pre-run itself succeeds "run" reaches its own manual flag-shape gate and refuses there with "burler: --profile is required" -- proving the pre-run got all the way through wiring rather than dying earlier with a cwd-resolution error, which would produce a completely different message.
+// No --profile is passed, so once the pre-run succeeds, "run" reaches its own flag-shape gate.
+// That gate refuses with "burler: --profile is required", which shows the pre-run wired through;
+// a cwd-resolution failure would produce a different message.
 //
-// The same invocation proves the two-roots split's whole point: the target directory itself -- the operator's git repository -- gains no hidden state tree, no lock file, and no rendered prompt from a standalone invocation.
-// Every durable and scratch artifact lives under the derived state directory instead, and the absence needs a real Derive call and a real filesystem to assert against.
+// The target directory, the operator's git repository, gains no state tree, lock file or rendered prompt.
+// Every durable and scratch artifact lives under the derived state directory instead;
+// the test needs a real Derive call and a real filesystem to assert that absence.
 func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched(t *testing.T) {
 	tiergate.Require(t, 1)
 	target := t.TempDir()

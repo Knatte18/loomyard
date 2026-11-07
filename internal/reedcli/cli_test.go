@@ -1,7 +1,8 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's and switch's flag refusals and the not-a-git-repo error surface.
-// No live tmux session is required by any test in this file;
+// cli_test.go covers the reedcli cobra seam through RunCLI:
+// watchdog's and switch's flag refusals and the not-a-git-repo error surface.
+// No test in this file needs a live tmux session;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build tmux || llm.
-// Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test Tier Purity Invariant.
+// Config resolution against a real fixture hub is tested in cli_integration_test.go.
 // Every test here calls t.Chdir, which is process-global state, so none calls t.Parallel.
 
 package reedcli
@@ -15,15 +16,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses both an absent and a relative --hub-path on the envelope, before it ever blocks.
-// The non-git row also verifies that "watchdog" takes the PersistentPreRunE's early return: invoked from a directory that is not a git repository, it must not fail with lymcwd.Resolve's not-a-git-repository error — the verb must run with no git repository present at all.
-// Its own RunE then reports the missing --hub-path flag on the envelope instead, which is the observable proof that PersistentPreRunE returned nil (skipping c.eng population) rather than aborting into the git-repo error.
+// TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses an absent or relative --hub-path.
+// It refuses on the envelope, before the verb blocks.
+// The non-git row also checks that the verb runs with no git repository present.
+// PersistentPreRunE returns early for watchdog.
+// The verb's own RunE then reports the missing --hub-path flag, not lymcwd.Resolve's not-a-git-repository error.
 func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
-		// nonGitDir runs the verb from a directory that is not a git repository.
+		// nonGitDir runs the verb from a directory outside any git repository.
 		nonGitDir bool
 	}{
 		{name: "absent", args: []string{"watchdog", "--tmux", "/usr/bin/tmux"}},
@@ -54,8 +57,8 @@ func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 	}
 }
 
-// TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the
-// ErrNotAGitRepo error.
+// TestRunCLI_NotAGitRepo verifies that a real verb run from a non-git directory exits 1.
+// Its JSON error reads "not a git repository".
 func TestRunCLI_NotAGitRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
@@ -72,9 +75,14 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, follow refuses a missing --socket, --session or --tmux, and button refuses a missing --socket, --tmux, --session, --range or --client and a --confirmed or --answered without --hash, with a JSON error and a non-zero exit.
-// It also verifies that button with every flag and a socket that does not exist exits 0 with no output.
-// It runs from a directory that is not a git repository, so a refusal naming the flag, not lymcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
+// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies the flag checks of switch, follow and button.
+// Switch refuses a missing or doubled direction and a missing --client.
+// Follow refuses a missing --socket, --session or --tmux.
+// Button refuses a missing --socket, --tmux, --session, --range or --client.
+// It also refuses --confirmed or --answered without --hash.
+// Each refusal is a JSON error with a non-zero exit.
+// Button with every flag and a socket that does not exist exits 0 with no output.
+// It runs outside a git repository, so a refusal naming its flag proves the verb skips the root pre-run's resolution.
 func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

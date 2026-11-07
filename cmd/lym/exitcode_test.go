@@ -1,6 +1,6 @@
 // exitcode_test.go asserts the exit-code contract for the lym cobra root via the run() seam.
-// It covers four distinct exit paths: help (exit 0), unknown command (exit 1, cobra text), handler
-// failure (exit 1, JSON envelope), and confirms that help paths never emit a JSON error envelope.
+// It covers help (exit 0), unknown command (exit 1, cobra text), and handler failure (exit 1, JSON envelope).
+// It also confirms that help paths never emit a JSON error envelope.
 
 package main
 
@@ -38,7 +38,8 @@ func setupBoardConfig(t *testing.T) {
 	t.Chdir(cwd)
 }
 
-// TestExitCode_HelpPaths asserts help paths exit 0, never emit JSON error envelopes, and name the modules or text a help listing must carry.
+// TestExitCode_HelpPaths asserts help paths exit 0 and never emit JSON error envelopes,
+// and that each help listing names the modules or text it must carry.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_HelpPaths(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -79,7 +80,8 @@ func TestExitCode_HelpPaths(t *testing.T) {
 	}
 }
 
-// TestExitCode_UnknownModule asserts unknown modules, including the removed "update" verb, exit 1 with "unknown command" in the JSON error field.
+// TestExitCode_UnknownModule asserts that unknown modules, including "update", exit 1.
+// The JSON error field carries "unknown command".
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_UnknownModule(t *testing.T) {
 	tiergate.Require(t, 0)

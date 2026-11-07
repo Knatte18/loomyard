@@ -1,4 +1,4 @@
-// paths.go declares the orch module's directory name and the paths every orch file lives at, joined once from a worktree's anchor.
+// paths.go declares the orch directory name and the paths every orch file lives at, rooted at a worktree's anchor.
 
 package orchroute
 

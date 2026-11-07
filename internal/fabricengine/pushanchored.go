@@ -1,6 +1,6 @@
-// pushanchored.go holds PushAnchored and PushPairAnchored, the fabric-vocabulary-neutral synchronous pushes beside CommitAnchoredPaths' commit.
-// They are the entry points that let a caller outside the Fabric Vocabulary Invariant's owner set commit and push into the weft sibling, and push the code worktree with it, without ever naming a weft path.
-// In the hub's prime PushPairAnchored pushes the records side only and reports a code branch it left unpushed as PushResult.CodePushSkipped.
+// pushanchored.go holds PushAnchored and PushPairAnchored, the synchronous pushes that take the weft-side push lock.
+// They let a caller outside the Fabric Vocabulary Invariant's owner set push without naming a weft path.
+// In the hub's prime it pushes only the records side and reports the code branch as PushResult.CodePushSkipped.
 
 package fabricengine
 
@@ -16,24 +16,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// StatusPushLockWait is the bounded push-lock wait `commit-records` passes, and the default of the wait Remove gives a push of the pair for the pair's teardown lock.
+// StatusPushLockWait is the bounded push-lock wait that `commit-records` passes.
+// It is also the default for a pair's teardown lock.
 // It is long enough to ride out a detached push child, and short enough that a stuck holder never stalls a run.
 const StatusPushLockWait = 30 * time.Second
 
-// LockWaitUnbounded is the lockWait value that blocks until the push lock is free, as the detached push child does.
+// LockWaitUnbounded is the lockWait value that blocks until the push lock is free.
 const LockWaitUnbounded time.Duration = 0
 
 // ErrPushLockBusy is wrapped by the error a bounded push returns when the push lock is still held once its wait ran out.
-// Nothing was pushed, and the error names the lock's holder, its pid and how long it has held the lock, when the holder recorded them.
+// Nothing was pushed.
+// The error names the lock's holder, its pid and how long it has held the lock, when the holder recorded them.
 var ErrPushLockBusy = errors.New("fabricengine: push lock busy")
 
 // IsPushRejected reports whether err carries a remote's non-fast-forward rejection of a push.
-// It is the side-neutral form of errors.Is(err, gitrepo.ErrPushRejected).
 func IsPushRejected(err error) bool {
 	return errors.Is(err, gitrepo.ErrPushRejected)
 }
 
-// acquirePushLock returns the synchronous pushers' acquire of the absorbing push lock.
+// acquirePushLock returns a function that takes the push lock at the path it is given.
 // LockWaitUnbounded blocks until the lock is free.
 // A positive lockWait gives up once it expires, reporting the lock as not acquired.
 func acquirePushLock(lockWait time.Duration) func(lockPath string) (*lock.FileLock, bool, error) {
@@ -54,7 +55,7 @@ func acquirePushLock(lockWait time.Duration) func(lockPath string) (*lock.FileLo
 	}
 }
 
-// pushLockBusyError is the error of a synchronous push whose first acquire of the push lock under lockDir missed its wait.
+// pushLockBusyError returns the error for a synchronous push whose wait for the push lock under lockDir ran out.
 // It names the lock's holder as its holder record gives it.
 func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 	holder := describePushLockHolder(lockDir, time.Now(), proc.IsAlive)
@@ -62,13 +63,15 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 }
 
 // PushAnchored pushes unpushed commits in l's weft sibling worktree rebase-free.
-// It resolves its target the same way CommitAnchoredPaths does, from l alone via RecordsWorktree(l),
-// so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
-// It pushes the records side only, and waits for the push: it is the entry for a caller outside that owner set that needs the records side on the remote before it goes on.
+// It resolves the records worktree from l alone, via RecordsWorktree(l).
+// A caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
+// It pushes the records side only and waits for the push.
+// A caller that needs the records side on the remote before it continues calls it.
 //
 // The push runs under the weft-side absorbing push lock,
 // so it never races a detached push child or another pushing verb.
-// Contending with that child is the point, since a lock-free status push racing it can leave a stale remote-tracking ref behind and be rejected without any real divergence.
+// Taking the lock matters: a push that skips it can leave a stale remote-tracking ref;
+// it is then rejected without any real divergence.
 // lockWait bounds only the wait for the lock:
 // a positive value gives up with an error wrapping ErrPushLockBusy and pushes nothing;
 // LockWaitUnbounded blocks;
@@ -76,9 +79,10 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // The push marks the records side pending before it takes the lock and re-reads the flag after releasing it,
 // so a push that landed returns nil even when a later holder took the lock first.
 // A rejection is retried over the push backoff, through a fetch or a replay, before it is reported;
-// a rejection that stays still satisfies errors.Is(err, gitrepo.ErrPushRejected),
-// so a caller can discriminate it from every other push failure with errors.Is.
-// The underlying primitive is gitrepo.PushRebaseFree, never gitrepo.PushCoalesced, whose rejected-push path runs `git pull --rebase` and would rewrite this side's SHAs under a running weft.
+// a rejection that persists after the retries satisfies errors.Is(err, gitrepo.ErrPushRejected),
+// so a caller can tell it from every other push failure with errors.Is.
+// The push goes through `gitrepo.PushRebaseFree`, because a rejected push must not run `git pull --rebase`:
+// that would rewrite this side's SHAs under a running weft.
 //
 // Returns (PushResult{}, nil) immediately, with no lock taken and nothing recorded, when opts.SkipGit or opts.SkipPush is true.
 func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
@@ -115,23 +119,26 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 	return PushResult{}, nil
 }
 
-// PushPairAnchored pushes the unpushed commits of l's code worktree and of its paired records sibling, rebase-free, under the weft-side absorbing push lock.
-// When l is the hub's prime it pushes the records side only, since the prime's code branch is the operator's parent branch:
-// a code branch with unpushed commits is reported in PushResult.CodePushSkipped, naming the branch and saying it was left for the operator to push.
+// PushPairAnchored pushes the unpushed commits of l's code worktree and its paired records sibling.
+// It pushes rebase-free, under the weft-side absorbing push lock.
+// When l is the hub's prime it pushes the records side only, since its code branch is the operator's parent branch.
+// A code branch with unpushed commits is reported in PushResult.CodePushSkipped:
+// the note names the branch and says it was left for the operator to push.
 // Otherwise the code side is pushed first.
 // The records side is attempted even when the code side failed.
 // A side whose HEAD is unborn is skipped.
 // Each side retries a rejection over the push backoff, after a fetch, while the remote tip is contained in local HEAD.
-// A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named code or records,
-// so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
-// both failing returns the errors.Join of the two.
+// A failing side's error names the side, code or records, in `fabricengine: push <side> side at <path>: %w`.
+// errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
+// when both sides fail, the error is the errors.Join of the two.
 // lockWait bounds only the wait for the lock:
 // a positive value gives up with an error wrapping ErrPushLockBusy and neither side pushed;
 // LockWaitUnbounded blocks.
 // Each side it pushes is marked pending before the lock is taken and re-read after it is released,
 // so a code commit made while another holder pushes is pushed by whichever holder releases last.
 // For a pair, not the prime, it first takes the pair's teardown lock shared and holds it through the push.
-// While any holder has that lock exclusive it pushes nothing and returns an empty PushResult and an error wrapping ErrPairPushRunning that names the pair;
+// While any holder has that lock exclusive, it pushes nothing.
+// It returns an empty PushResult and an error wrapping ErrPairPushRunning that names the pair;
 // the commits stay local for the pair's next push.
 // The prime's records push takes no teardown lock.
 //
@@ -217,7 +224,8 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Durati
 	return PushResult{CodePushSkipped: codePushSkipped}, err
 }
 
-// unpushedCodeBranchNote returns the CodePushSkipped text for the code worktree at path, or "" when its branch has nothing unpushed or the state cannot be read.
+// unpushedCodeBranchNote returns the CodePushSkipped text for the code worktree at path.
+// It returns "" when the branch has nothing unpushed or its state cannot be read.
 func unpushedCodeBranchNote(path string) string {
 	head, err := headOrEmpty(path)
 	if err != nil || head == "" {

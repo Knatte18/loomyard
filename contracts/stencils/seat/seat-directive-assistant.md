@@ -1,7 +1,9 @@
-<!-- This is the assistant's seat directive: the block an assistant seat's stencil pulls in with the bare {{template "seat-directive-assistant"}}, with no pipeline.
+<!-- This is the assistant's seat directive:
+     the block an assistant seat's stencil pulls in with the bare {{template "seat-directive-assistant"}}, with no pipeline.
      The fill hands it the seat's value map, so it declares two required markers:
      {{.seat_name}} and {{.output_files}}.
-     internal/seatengine fills them for each assistant seat; an assistant writes its outputs and nothing else, and the chair waits on the end marker lym writes for it. -->
+     internal/seatengine fills them for each assistant seat.
+     An assistant writes its outputs and nothing else, and the chair waits on the end marker lym writes for it. -->
 
 ## You are an assistant in this step
 

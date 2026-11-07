@@ -1,5 +1,5 @@
-// bouncerprompt_test.go covers that BouncerConfig.ClusterExcludes and WebsterRecord reach the seed and judge fills
-// and that the judge prompt offers CIRCLING only from the checkpoint round.
+// bouncerprompt_test.go covers how BouncerConfig.ClusterExcludes and WebsterRecord reach the seed and judge fills.
+// It also covers the judge prompt offering CIRCLING only from the checkpoint round.
 
 package shedadapters
 
@@ -20,8 +20,9 @@ const (
 	excludeLensesRule        = "`exclude_lenses` is a list of strings, possibly empty."
 )
 
-// assertExcludeLensesText fails t unless prompt carries the exclude_lenses example line and rule
-// exactly when clusterExcludes is true, and no exclude_lenses substring at all when it is false.
+// assertExcludeLensesText fails t unless the prompt matches clusterExcludes:
+// the exclude_lenses example line and rule appear exactly when it is true,
+// and no exclude_lenses substring at all appears when it is false.
 func assertExcludeLensesText(t *testing.T, prompt string, clusterExcludes bool) {
 	t.Helper()
 
@@ -135,7 +136,7 @@ func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 	}
 }
 
-// The rubric carries the webster_record marker, so the same seed and judge calls also pin that the config's WebsterRecord note reaches the rubric each prompt carries.
+// The rubric carries the webster_record marker.
 //
 //testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord note reaches the rubric in both
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
@@ -202,7 +203,8 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 		})
 	}
 
-	// A judge call of round 1 over a record written the way the review row leaves it: the spawn's names, then the review half merged.
+	// A judge call of round 1 over a record written the way the review row leaves it:
+	// the spawn's names, then the review half merged.
 	recordedFan := func(fan string) func(t *testing.T, runDir string) {
 		return func(t *testing.T, runDir string) {
 			t.Helper()

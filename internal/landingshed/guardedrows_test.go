@@ -16,15 +16,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// guardedRowFixture is one lock-taking row built over deps, with a report of whether it did any work beyond taking the lock.
+// guardedRowFixture is one lock-taking row built over deps.
+// Its touched reports whether the row did work beyond taking the lock.
 type guardedRowFixture struct {
 	producer shedengine.ShedProducer
 	// touched reports whether the row merged anything.
 	touched func() bool
 }
 
-// guardedRow is one lock-taking row by its row name.
-// build is handed deps after the test has set its tip reads and lock seams.
+// guardedRow is one lock-taking row, identified by its row name.
+// build is handed deps once the test has set the row's tip reads and lock seams.
 type guardedRow struct {
 	name  string
 	build func(t *testing.T, deps Deps) guardedRowFixture
@@ -40,10 +41,12 @@ var guardedRows = []guardedRow{
 	}},
 }
 
-// guardedOwnerOther is a run other than the one newTestDeps names, holding the lock in the waiting cases.
+// guardedOwnerOther is a lock owner other than the test's own run, holding the lock in the waiting cases.
 var guardedOwnerOther = parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r9", PID: 111, StartTime: "t1"}
 
-// TestGuardedRows_PausedLockWaitHalts pins that a pause during the wait for a lock another run holds is a halting Stuck at each row, naming the goto back to that row, with no work done.
+// TestGuardedRows_PausedLockWaitHalts pins the halt of a paused lock wait.
+// A pause while another run holds the lock is a halting Stuck at each row.
+// The Stuck names the goto back to that row, and the row does no work.
 func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, row := range guardedRows {
@@ -71,7 +74,8 @@ func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
 }
 
 // TestGuardedRows_LockLifecycle pins when the lock leaves the run.
-// Finalize releases it on Done, whether it landed fresh or found the parent already holding the task's work, and on a Stuck or an error.
+// Finalize releases it on Done, whether it landed fresh or found the parent already holding the task's work.
+// It also releases it on a Stuck or an error.
 func TestGuardedRows_LockLifecycle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("Finalize releases the lock on every way out: Done, a Stuck and an error", func(t *testing.T) {

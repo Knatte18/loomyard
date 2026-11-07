@@ -1,4 +1,5 @@
-// open.go implements Runner.Open: it opens a named interactive provider session with no prompt in a window of its own, without a run directory, run record or output file.
+// open.go implements Runner.Open: it opens a named interactive provider session with no prompt in a window of its own.
+// It writes no run directory, run record or output file.
 
 package shuttleengine
 
@@ -21,33 +22,42 @@ import (
 // It sits beside, never inside, the run-directory root, so no run sweep or step stop reads it.
 const openMarkerDirName = "shuttle-open"
 
-// OpenResult identifies the strand and session Runner.Open opened.
+// OpenResult identifies the strand and session of an interactive session opened with no prompt.
 type OpenResult struct {
 	StrandGUID string
 	StrandName string
 	SessionID  string
-	// Engine is the resolved name of the engine the session opened under; Open writes no run record, so this is where it is recorded.
+	// Engine is the resolved name of the engine the session opened under.
+	// No run record is written, so this field is where the engine is recorded.
 	Engine string
 }
 
-// openMarkerPath returns the exit marker an opened session touches when its provider ends, under anchorPath's shuttle-open directory and named by token.
+// openMarkerPath returns the exit marker an opened session touches when its provider ends.
+// The marker lies under anchorPath's shuttle-open directory and is named by token.
 func openMarkerPath(anchorPath, token string) string {
 	return filepath.Join(anchorPath, lymdirs.DotLymDirName, openMarkerDirName, token+".exited")
 }
 
-// openSessionDir returns the directory an opened session's engine may write its launch files into, beside the exit marker and named by the same token.
+// openSessionDir returns the directory an opened session's engine may write its launch files into.
+// It sits beside the exit marker and is named by the same token.
 func openSessionDir(anchorPath, token string) string {
 	return filepath.Join(anchorPath, lymdirs.DotLymDirName, openMarkerDirName, token)
 }
 
 // Open opens a named interactive session with no prompt in its own window and returns without waiting.
-// The strand takes its name from spec.Role, numbered by reed when the role is held, and carries the launch's CreelHooks mark.
-// Its pane line runs the provider, then writes the exit marker, asks reed to remove the strand and exits the shell, so ending the session closes its window;
-// when the self-removal fails the strand stays as a dead pane until `lym reed remove`, and a resume drops it through the marker instead of relaunching it.
-// It writes no run directory, no run record and no output file; the engine may write its launch files into the session's own directory beside the marker.
-// spec.Engine names the engine, empty for the set's default;
-// an unregistered name, a covered pause geometry, an engine without SessionOpener and a non-empty spec.Skills for an engine without SkillLoader each refuse the open before anything is created.
-// Bound: one interactive session per call, in the caller's own worktree under its settings, with no turn but the load of spec.Skills; nothing caps the count.
+// The strand takes its name from spec.Role, numbered by reed when the role is held.
+// It carries the launch's CreelHooks mark.
+// Its pane line runs the provider, writes the exit marker and asks reed to remove the strand, then exits the shell.
+// Ending the session therefore closes its window.
+// When the self-removal fails, the strand stays as a dead pane until `lym reed remove`;
+// a resume drops it through the marker instead of relaunching it.
+// It writes no run directory, run record or output file;
+// the engine may write its launch files into the session's own directory beside the marker.
+// spec.Engine names the engine; empty selects the set's default.
+// An open refuses before creating anything if the engine name is unregistered or the pause geometry is covered.
+// It also refuses an engine without SessionOpener, and a non-empty spec.Skills for an engine without SkillLoader.
+// Each call opens one interactive session in the caller's own worktree under its settings.
+// The session takes no turn but the load of spec.Skills, and nothing caps how many calls open.
 func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	if r.toldErr != nil {
 		return OpenResult{}, r.toldErr

@@ -21,7 +21,8 @@ func writeBodyFile(t *testing.T, content string) string {
 	return path
 }
 
-// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file, and refuses a missing file, a body already in the payload and stdin claimed for both payload and body.
+// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file,
+// and it refuses a missing file, a body already in the payload, and stdin claimed for both payload and body.
 func TestApplyBodyFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -33,7 +34,7 @@ func TestApplyBodyFile(t *testing.T) {
 		fileContent *string
 		// bodyFile is the body-file argument when fileContent is nil; "missing" stands for a path that does not exist.
 		bodyFile string
-		// payloadSource is the source the payload was read from.
+		// payloadSource is the payload's source; "-" stands for stdin.
 		payloadSource string
 		stdin         string
 		// wantErr is a substring of the error; "missing" stands for the missing path.

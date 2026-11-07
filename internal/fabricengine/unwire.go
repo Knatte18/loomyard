@@ -1,16 +1,13 @@
-// unwire.go implements the Unwire verb: a per-warp-worktree full deactivation of fabric wiring, the
-// teardown successor to the deleted `lym init --undo`.
+// unwire.go implements the Unwire verb, a full per-worktree deactivation of fabric wiring.
 // Without `apply` the verb only reports what it would remove and changes nothing.
 //
-// Unwire is per-worktree and never touches the repo-wide `weft:main` records (`<BoardDir>/_lym/config/fabric.yaml`).
-// It leaves every worktree's `.lym-anchor` marker at its weft root alone too.
-// A later `lym fabric reconcile` re-wire still needs all of them.
-// An applied Unwire removes every fabric junction on disk but the anchor's scratch link, which stays with its exclude line.
-// It is distinct from Reconcile: Reconcile converges wiring toward the repo-wide pathspec (may add,
-// re-point, or remove junctions), while an applied Unwire always removes every fabric junction present on disk
-// and reverses their warp `.git/info/exclude` entries — nothing more. It never deletes weft-side
-// content: weft-side `_lym` and `.lym` are preserved, and no committed `.gitignore` block exists to
-// revert since `.lym` is excluded through the warp's `.git/info/exclude` alone.
+// Unwire leaves the repo-wide `weft:main` records (`<BoardDir>/_lym/config/fabric.yaml`) in place.
+// It also leaves every worktree's `.lym-anchor` marker at its weft root in place.
+// A later `lym fabric reconcile` still needs those records and markers to rewire.
+// An applied Unwire removes every fabric junction on disk, except the anchor's `.scratch` link and its exclude line.
+// It reverses the warp `.git/info/exclude` entries of the junctions it removes.
+// It never deletes weft-side content: `_lym` and `.lym` are preserved.
+// No committed `.gitignore` block needs reverting: `.lym` is excluded through `.git/info/exclude` alone.
 
 package fabricengine
 
@@ -29,32 +26,31 @@ type UnwireVerbResult struct {
 	// Applied is true only when the junctions and exclude lines were actually removed;
 	// false on a dry run.
 	Applied bool
-	// JunctionsRemoved lists the Name of each warp junction that was actually
-	// present and removed. Empty when no junction was wired.
+	// JunctionsRemoved lists the Name of each warp junction that was actually present and removed.
+	// It is empty when no junction was wired.
 	// On a dry run it lists the junctions that would be removed, all left in place.
 	JunctionsRemoved []string
-	// WeftContent describes _lym only — "preserved" or "not_present" — weft-side _lym content is preserved by design, never deleted by unwire.
-	// The weft-side .lym is never touched by unwire either;
-	// it disappears with the weft worktree when Remove tears the pair down, and on Windows an open handle inside it makes that `git worktree remove --force` fail with an OS error that surfaces as-is — remedy: stop the daemons and re-run.
+	// WeftContent is "preserved" when the weft-side _lym exists, and "not_present" otherwise.
+	// Unwire never deletes weft-side content, so .lym is never touched either.
+	// On Windows an open handle inside it makes the weft worktree's removal fail; stop the daemons and re-run.
 	WeftContent string
 	// GitExclude is "reverted" or "unchanged".
 	// On a dry run "reverted" means an exclude line would be stripped, and it is left in place.
 	GitExclude string
 }
 
-// Unwire reverses every warp junction wired for the worktree at cwd and their warp
-// `.git/info/exclude` entries — a full per-warp-worktree deactivation.
-// With apply false it is a dry run:
-// nothing is removed, and the result reports the junctions and exclude lines an applied run would remove, with Applied false.
+// Unwire reverses every warp junction wired for the worktree at cwd, and their warp `.git/info/exclude` entries.
+// It is a full per-worktree deactivation of fabric wiring.
+// With apply false it is a dry run: nothing is removed.
+// The result then reports what an applied run would remove, with Applied false.
 // A dry run still takes the exclude-file lock, creating the info directory and the lock file when they are absent.
-// The junction name-set is enumerated from a full on-disk scan, removing every fabric-owned
-// junction present on disk, including stale ones absent from the repo-wide pathspec.
-// The anchor's `.scratch` link is the exception: it and its exclude line stay.
-// Ownership is decided by where a link resolves (see scanOnDiskJunctionNames): a hand-authored
-// symlink checked into the warp repo beside the junctions is never claimed or removed.
+// The junction names come from a full on-disk scan, so stale junctions outside the repo-wide pathspec are removed too.
+// The anchor's `.scratch` link and its exclude line are kept.
+// Ownership is decided by where a link resolves.
+// A hand-authored symlink checked into the warp repo is never claimed or removed.
 // It never deletes weft-side content: every weft-side directory, including `.lym`, is left intact.
-// Unwire never touches the repo-wide weft:main records or any worktree's `.lym-anchor` marker at its weft root;
-// a later `lym fabric reconcile` re-wire can recreate this worktree's wiring.
+// It never touches the repo-wide `weft:main` records or any worktree's `.lym-anchor` marker at its weft root.
+// A later `lym fabric reconcile` can rewire this worktree.
 func Unwire(cwd string, apply bool) (res UnwireVerbResult, err error) {
 	var rec *Mutations
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -93,12 +89,9 @@ func Unwire(cwd string, apply bool) (res UnwireVerbResult, err error) {
 
 	result := UnwireVerbResult{Applied: apply}
 
-	// A pure observation, never a mutation: the weft-side _lym (and, since it is never
-	// touched by unwire either, .lym) is left exactly as it was found. It disappears
-	// with the weft worktree only when Remove tears the pair down — on Windows, an
-	// open handle inside it makes that `git worktree remove --force` fail with an OS
-	// error that surfaces as-is; the remedy is the same as adoption's: stop the
-	// daemons and re-run.
+	// The weft-side _lym is only observed, never mutated, and .lym is left alone too.
+	// It disappears with the weft worktree when the pair is torn down, and on Windows an open handle makes that fail.
+	// The remedy is to stop the daemons and re-run.
 	weftWorktree := RecordsWorktree(l)
 	if _, statErr := os.Stat(weftWorktree); statErr != nil && !os.IsNotExist(statErr) {
 		return UnwireVerbResult{}, statErr

@@ -1,5 +1,6 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate on Merriam's strand that holds a webster run's done until the hub's `webster` gate passes on the committed tree.
-// A failure goes back to Merriam's live session as findings, and Merriam fixes it through one fixer fork or, escalated, the cold fixer strand.
+// verifygate.go implements NewVerifyGate, the must-pass gate on Master's strand.
+// It holds a webster run's done until the hub's `webster` gate passes on the committed tree.
+// A failure returns to Master as findings; Master fixes it through a fixer fork, or the cold fixer when escalated.
 
 package websterengine
 
@@ -21,17 +22,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// verifyGateName is the name of the gate entry Run adds to Merriam's spec, and the name a `deps.Gate` entry may not carry.
+// verifyGateName names the gate entry Run adds to Master's spec; a `deps.Gate` entry may not carry this name.
 const verifyGateName = "verify"
 
 // verifyGateSite is the site label the gate's verify call writes to the running marker.
 const verifyGateSite = "webster gate"
 
-// verifyGateCrashFindingsPrefix opens the findings of a verify whose test runner crashed, which verifyGateStuckReason reads to end the stuck reason in reentry alone.
+// verifyGateCrashFindingsPrefix opens the findings of a verify whose test runner crashed.
+// verifyGateStuckReason reads that prefix to end the stuck reason in reentry alone.
 const verifyGateCrashFindingsPrefix = "The verify command's test runner crashed"
 
-// VerifyGateNotes collects what a gate's evaluations observed that is not a failure: the identities that failed once and passed on rerun, and the commits made above the pre-fix head.
-// Run applies it after the wait, so a flaky pass reaches the warnings, summary.md and a friction note, and the fixer's commits reach summary.md.
+// VerifyGateNotes collects what a gate's evaluations observed that is not a failure:
+// the identities that failed once and passed on rerun, and the commits made above the pre-fix head.
+// It is applied after the gate's wait, so a flaky pass reaches the warnings, summary.md and a friction note,
+// and the fixer's commits reach summary.md.
 // It also holds the fixer the latest failure went to, which the re-prompt line names.
 type VerifyGateNotes struct {
 	frictionDir string
@@ -109,10 +113,12 @@ func (n *VerifyGateNotes) Flaky() []string {
 	return append([]string(nil), n.flaky...)
 }
 
-// Apply writes the flaky identities into the summary.md under websterDir and a friction note, and returns the warnings that name them.
+// Apply writes the flaky identities into the summary.md under websterDir and a friction note.
+// It returns the warnings that name them.
 // It writes the flaky identities only when some were flaky, and returns no warnings otherwise.
-// It then appends the fixer's commits through AppendVerifyGateFixCommits, which Run's wait precedes, so the section lands after the Master's last rewrite of summary.md.
-// The friction note is best-effort, like the rest of the friction plumbing: a failed note is logged and never fails the run.
+// It then appends the fixer's commits to summary.md.
+// The gate's wait precedes this call, so the section lands after Master's last rewrite of summary.md.
+// The friction note is best-effort: a failed note is logged and never fails the run.
 func (n *VerifyGateNotes) Apply(websterDir string) ([]string, error) {
 	var warnings []string
 	if flaky := n.Flaky(); len(flaky) > 0 {
@@ -131,7 +137,8 @@ func (n *VerifyGateNotes) Apply(websterDir string) ([]string, error) {
 }
 
 // AppendVerifyGateFixCommits appends a "Verify gate fix commits" section to the summary.md under websterDir:
-// one bullet per `fix:` commit naming its SHA and subject, then one bullet per departure line of every commit in commits, a non-`fix:` commit's included.
+// one bullet per `fix:` commit naming its SHA and subject;
+// then one bullet per departure line of every commit in commits, a non-`fix:` commit's included.
 // It appends nothing when no commit's subject starts with `fix:`.
 func AppendVerifyGateFixCommits(websterDir string, commits []CommitLogEntry) error {
 	var b strings.Builder
@@ -154,7 +161,7 @@ func AppendVerifyGateFixCommits(websterDir string, commits []CommitLogEntry) err
 	return appendToSummary(websterDir, "verify gate fix commits", section)
 }
 
-// verifyGateSeams are the reads and runs the gate closure makes, injectable so the closure's own logic is testable offline.
+// verifyGateSeams are the reads and runs the gate closure makes, injected so its logic is testable offline.
 type verifyGateSeams struct {
 	// outcome returns the outcome outcome.yaml names.
 	outcome func() (string, error)
@@ -186,29 +193,38 @@ type verifyGateSeams struct {
 	clearPreFix func() error
 }
 
-// NewVerifyGate returns the must-pass shuttleengine.Gate Run adds to Merriam's spec, with the notes Run applies after the wait.
+// NewVerifyGate returns the must-pass shuttleengine.Gate for Master's spec, and the notes to apply after the wait.
 // geom is the told Geometry.
 // attempts is the cap the entry's budget carries, shown in the findings.
 // batches is the run's execution order, which orders the card hint.
-// parentBranch lets a clean parent merge made while fixing pass the commit check, and is nil in standalone mode, where no merge is accepted.
+// parentBranch lets a clean parent merge made while fixing pass the commit check.
+// It is nil in standalone mode, where no merge is accepted.
 // frictionDir is where the flaky note goes, empty when friction is off.
 // fixPromptPath is the absolute path of the verify-fix prompt, which the findings name in their way forward.
 //
 // At each arrival the closure does, in order:
 // it passes without verifying when outcome.yaml names an outcome other than done;
 // it fails with the dirty paths when the tree is not clean;
-// once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge, and otherwise records those commits in the notes;
-// it renders the hub's `webster` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lym config gate`, as its error;
-// otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike, reruns it once on a failure, and passes a flaky failure whose rerun passed.
+// once a pre-fix head is recorded, it fails `Terminal` on a merge above it other than a clean parent merge;
+// otherwise it records those commits in the notes;
+// it renders the hub's `webster` gate call over the whole tree from the told gate config;
+// it returns the config's refusal as its error, which names `lym config gate`;
+// otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike;
+// on a failure it reruns once, and a failure whose rerun passes is flaky and passes the gate.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
-// A run whose every failed tier run crashed its test runner with no failing test judged no code: it fails `Terminal` at once, on the first run or the rerun, naming the crashed runs, and no fixer gets it, no attempt is spent and no report is written.
+// A run whose every failed tier run crashed its test runner with no failing test judged no code:
+// it fails `Terminal` at once, on the first run or the rerun, naming the crashed runs,
+// and no fixer gets it, no attempt is spent and no report is written.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
-// Each failure goes to a fixer, which the report, the findings and the re-prompt line name:
-// the cold fixer for the failure that reaches attempts, for one after a fixer that added no commit above the pre-fix head, and for every failure after one that went cold;
-// the fixer fork otherwise.
+// Each failure goes to a fixer, which the report, the findings and the re-prompt line name.
+// A failure that reaches attempts goes to the cold fixer.
+// So does one that follows a fixer which added no commit above the pre-fix head.
+// Once a failure goes cold, every later failure does.
+// Every other failure goes to the fixer fork.
 // Every failed evaluation writes the verify-gate report.
-// Attempt and failure counts, the routing and the pre-fix head live in the closure for one shuttle run;
-// the pre-fix head is also persisted as state.json's PreFixHead when it is recorded, overwriting an earlier run's, and cleared on a passing evaluation.
+// Attempt and failure counts, the routing and the pre-fix head live in the closure for one shuttle run.
+// The pre-fix head is also persisted as state.json's PreFixHead when recorded, overwriting an earlier run's value.
+// A passing evaluation clears it.
 func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir, fixPromptPath string) (shuttleengine.Gate, *VerifyGateNotes) {
 	paths := verifytree.NewPaths(geom.PaneCwd, geom.VerifyDir)
 	seams := verifyGateSeams{
@@ -284,7 +300,7 @@ func setPreFixHead(geom Geometry, head string) error {
 	return SaveState(geom.WebsterDir, geom.ScratchDir, st)
 }
 
-// newVerifyGate is NewVerifyGate over injected seams.
+// newVerifyGate builds the gate closure over injected seams, which make its logic testable offline.
 func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixPromptPath string, s verifyGateSeams) shuttleengine.Gate {
 	attempt := 0
 	preFix := ""
@@ -293,7 +309,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 	cold := false
 	lastFixCommits := 0
 
-	// fail records the pre-fix head on the first failure, routes the failure to a fixer, then writes the report and returns its findings.
+	// fail records the pre-fix head on the first failure;
+	// it routes the failure to a fixer, then writes the report and returns its findings.
 	fail := func(report VerifyGateReport) (shuttleengine.GateResult, error) {
 		failures++
 		if preFix == "" {
@@ -310,8 +327,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		// The last failure the budget re-prompts, and one after a fixer that added no commit, go to the cold fixer;
-		// once a failure went cold, every later one does.
+		// A failure that reaches attempts goes to the cold fixer.
+		// So does one after a fixer that added no commit above the pre-fix head.
+		// Once a failure goes cold, every later one does.
 		cold = cold || failures >= attempts || (failures > 1 && len(fixCommits) == lastFixCommits)
 		lastFixCommits = len(fixCommits)
 		report.Fixer = FixerFork
@@ -356,8 +374,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		return output, nil
 	}
 
-	// failTimedOut fails the gate for res, a verify that outlived its timeout: a hang is not flakiness,
-	// so it is never rerun.
+	// failTimedOut fails the gate for res, a verify that outlived its timeout.
+	// A hang is not flakiness, so it is never rerun.
 	failTimedOut := func(res verifytree.Result) (shuttleengine.GateResult, error) {
 		output, err := readOutput(res)
 		if err != nil {
@@ -366,8 +384,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		return fail(VerifyGateReport{TimedOut: res.Detail, LogPath: res.Log, LogTail: logTail(output)})
 	}
 
-	// failHung fails the gate for res, a failed verify whose output classifyHang read as a hang: a hang is not flakiness,
-	// so it is never rerun.
+	// failHung fails the gate for res, a failed verify whose output classifyHang read as a hang.
+	// A hang is not flakiness, so it is never rerun.
 	failHung := func(res verifytree.Result, output string, hang verifyHang) (shuttleengine.GateResult, error) {
 		return fail(VerifyGateReport{
 			Failures:       parseVerifyFailures(output, false),
@@ -379,8 +397,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		})
 	}
 
-	// failRunnerCrash fails the gate terminally for res, a verify whose every failed tier run crashed its test runner with no failing test:
-	// no change to the code mends it, so no fixer gets it, and it is never re-run.
+	// failRunnerCrash fails the gate terminally for res, a verify whose failed tier runs all crashed the test runner:
+	// No failing test judged the code, and no change to the code mends it, so no fixer gets it and it is never rerun.
 	failRunnerCrash := func(res verifytree.Result) shuttleengine.GateResult {
 		logger.Warn("websterengine: verify gate's test runner crashed, so no fixer runs", "attempt", attempt, "detail", res.Detail, "log", res.Log)
 		findings := fmt.Sprintf("%s in its run and its one rerun, so no test judged the code: %s. No change to the code mends it, so no fixer runs and the run stops here; output: %s.", verifyGateCrashFindingsPrefix, res.Detail, res.Log)
@@ -498,10 +516,13 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 }
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
-// A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
+// A Terminal failure, the rejection of a fixer commit, names the gate's own reason.
+// It ends in the reset to the pre-fix head, then reentry.
 // A Terminal runner crash names the gate's own reason and ends in reentry alone, since no fixer commit exists to reset.
-// Otherwise it names the hang, the failing identities, the dirty paths or the verify timeout and its log the latest failed evaluation's report holds, and the attempts spent.
-// After a CPU watchdog quit the reason also names the window and the way forward for a package that is CPU-bound but healthy, then reentry.
+// Otherwise it names the hang, the failing identities, the dirty paths or the verify timeout.
+// It names the log the report holds, and the attempts spent.
+// After a CPU watchdog quit, the reason also names the busy window.
+// It names the way forward for a package that is CPU-bound but healthy, then reentry.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if strings.HasPrefix(gate.Reason, verifyGateCrashFindingsPrefix) {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps(reentry)
@@ -527,7 +548,9 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
 }
 
-// hangStuckReason describes a hang report for the stuck reason: the hang and that it was not re-run, then after a CPU watchdog quit the window, the way forward and reentry.
+// hangStuckReason describes a hang report for the stuck reason.
+// It names the hang and that the command was not re-run.
+// After a CPU watchdog quit it also names the window, the way forward and reentry.
 func hangStuckReason(report VerifyGateReport, reentry string) string {
 	what := fmt.Sprintf("the verify command was killed or exited with %s and was not re-run, see %s", report.Hang, report.LogPath)
 	if report.HangStacks {
@@ -539,12 +562,13 @@ func hangStuckReason(report VerifyGateReport, reentry string) string {
 	return what
 }
 
-// oneLine collapses s's line breaks into spaces, for a reason that rides a one-line outcome.
+// oneLine collapses the line breaks of s into spaces, so a multi-line reason fits a one-line outcome.
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// readModulePath returns the module path go.mod in worktree declares, or empty when there is no go.mod or it declares none.
+// readModulePath returns the module path that go.mod in worktree declares.
+// It returns empty when there is no go.mod or it declares no module.
 func readModulePath(worktree string) string {
 	f, err := os.Open(filepath.Join(worktree, "go.mod"))
 	if err != nil {

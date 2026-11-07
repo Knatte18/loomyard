@@ -1,5 +1,7 @@
-// config_test.go table-drives Load, ResolveFan and CheckLoad, and pins the embedded template.yaml's self-consistency:
-// every fan entry names a defined lens, the seeded fan lengths and orders, each writer fan holding its reviewer fan's lenses but the reviewer-only repo-invariants, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
+// config_test.go table-drives Load, ResolveFan and CheckLoad, and pins the embedded template.yaml's self-consistency.
+// Every fan entry must name a defined lens, and the seeded fan lengths and orders must hold.
+// Each writer fan must hold its reviewer fan's lenses, except the reviewer-only repo-invariants.
+// The emphasis-never-exclusion posture must hold too: no lens text carries "ignore " phrasing.
 // Untagged unit tier: no process spawns, fixtures written directly via os.WriteFile under t.TempDir.
 
 package lenses
@@ -43,10 +45,12 @@ func loadTemplateConfig(t *testing.T) Config {
 	return cfg
 }
 
-// emphasisLine closes every lens that is not a procedure lens and is not generic.
+// emphasisLine is the sentence that closes every lens which is neither a procedure lens nor generic.
 const emphasisLine = "Report anything else you notice too — emphasis, never exclusion."
 
-// emphasisLineGaps returns, sorted, the names in lensTexts, other than generic and those exempt holds, whose whitespace-normalised text does not end with the emphasis line.
+// emphasisLineGaps returns, sorted, the names in lensTexts whose text does not end with the emphasis line.
+// The text is compared after whitespace is normalised.
+// The generic lens and the names in exempt are skipped.
 func emphasisLineGaps(lensTexts map[string]string, exempt map[string]bool) []string {
 	var gaps []string
 	for name, text := range lensTexts {
@@ -58,7 +62,8 @@ func emphasisLineGaps(lensTexts map[string]string, exempt map[string]bool) []str
 	return gaps
 }
 
-// writerFanGaps returns one message per lens of a reviewer fan in writerOf that its writer fan's order lacks, neither itself nor through absorbedBy, and that reviewerOnly does not hold.
+// writerFanGaps returns one message per lens of a reviewer fan in writerOf that its writer fan's order lacks.
+// A lens counts as held when the order names it directly or through absorbedBy; reviewerOnly lenses are exempt.
 func writerFanGaps(orders map[string][]string, writerOf map[string]string, absorbedBy map[string]string, reviewerOnly map[string]bool) []string {
 	var gaps []string
 	for _, reviewerFan := range slices.Sorted(maps.Keys(writerOf)) {
@@ -73,7 +78,8 @@ func writerFanGaps(orders map[string][]string, writerOf map[string]string, absor
 	return gaps
 }
 
-// TestTemplateChecks_FlagBrokenTemplates drives the template checks' helpers over hand-built inputs that must fail, since the template itself holds none.
+// TestTemplateChecks_FlagBrokenTemplates drives the template checks' helpers over hand-built inputs that must fail.
+// The embedded template holds no such defect, so the inputs are built by hand.
 func TestTemplateChecks_FlagBrokenTemplates(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -132,7 +138,9 @@ func TestTemplateChecks_FlagBrokenTemplates(t *testing.T) {
 	})
 }
 
-// TestLoad covers Load's layer stack: the per-name fill from the template, per-name layer replacement, the local layer's refusal, the strict decode and the expansion of lens prose.
+// TestLoad covers Load's layer stack.
+// It checks the per-name fill from the template and per-name layer replacement.
+// It also checks the local layer's refusal, the strict decode, and the expansion of lens prose.
 // Its rows run serially, since logcapture.CaptureVerbose swaps the process-global logger.
 func TestLoad(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -330,10 +338,16 @@ func TestLoad(t *testing.T) {
 	})
 }
 
-// TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid lenses.yaml content -- a load over dirs holding no lenses.yaml resolves it, so every template fan resolves -- and that its internal cross-references and lengths hold: every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.
-// The spike (docs/research/burler/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
+// TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is valid lenses.yaml content.
+// A load over directories holding no lenses.yaml resolves it, so every template fan resolves.
+// It also checks the internal cross-references and lengths:
+// every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.
+// Lenses that say "ignore everything else" suppress cross-category coverage.
+// The spike (docs/research/burler/session-fork-spike.md, Q2) found this, so every lens is emphasis-only by design.
 //
-// It extends the same checks to every shipped language layer: each loads under its own lens_set, its lenses and fans replace or extend the base's by name, and a layer fan keeps the base fan's entries first.
+// It extends the same checks to every shipped language layer:
+// each loads under its own lens_set, its lenses and fans replace or extend the base's by name,
+// and a layer fan keeps the base fan's entries first.
 //
 //testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert, and the per-layer load and superset checks
 func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
@@ -402,9 +416,11 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	procedureLenses["board-scope"] = true
 
-	// A perch's writer runs every procedure its reviewer judges it by, itself or through the writer lens that absorbed it.
+	// A perch's writer runs every procedure its reviewer judges it by.
+	// It runs each one itself, or through the writer lens that absorbed it.
 	absorbedBy := map[string]string{"affected-set": "forced-edits"}
-	// repo-invariants is the one lens only a reviewer runs: the writer reads the repository's invariants through its own lenses.
+	// repo-invariants is the one lens only a reviewer runs.
+	// The writer reads the repository's invariants through its own lenses.
 	for _, gap := range writerFanGaps(wantOrders, map[string]string{"review-discussion": "twill-discussion", "review-plan": "twill-plan"}, absorbedBy, map[string]bool{"repo-invariants": true}) {
 		t.Error(gap)
 	}
@@ -463,7 +479,8 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		t.Errorf("lens %q text does not end with the emphasis line", name)
 	}
 
-	// The exemption from the emphasis line is computed from the base fans only, so a lens a layer adds to a review fan still ends with it.
+	// The exemption from the emphasis line is computed from the base fans only,
+	// so a lens a layer adds to a review fan still ends with it.
 	baseProcedureLenses := map[string]bool{"board-scope": true}
 	for fanName, entries := range cfg.Fans {
 		if strings.HasPrefix(fanName, "review-") || strings.HasPrefix(fanName, "fix-") {
@@ -659,7 +676,9 @@ func TestResolveFan(t *testing.T) {
 	})
 }
 
-// TestCheckLoad covers CheckLoad's outcomes: the template passes, every failing fan is joined in name order, and a load failure is returned alone with no fan resolved.
+// TestCheckLoad covers CheckLoad's outcomes.
+// The template passes, and every failing fan is joined in name order.
+// A load failure is returned alone, with no fan resolved.
 func TestCheckLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

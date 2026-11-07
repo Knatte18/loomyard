@@ -1,17 +1,6 @@
-// create_containment_toctou_integration_test.go guards the act-time containment binding that closed
-// R5's CREATE-side symlink-directed-write escape: containedWorktreeAdd must never let `git worktree
-// add` write a worktree OUTSIDE its container through a symlink standing at the target path, must still
-// place a legitimate worktree at target with its branch intact, and must name git's internal admin
-// directory after the slug rather than the staging token.
-//
-// It is the create-side twin of destroy_toctou_test.go's delete-side guard. The original defect
-// (reproduced live in R5) escaped because git resolves its destination-path argument itself and follows
-// a symlink there, carrying a whole worktree out of the hub during Add's wide check-then-act window.
-// The fix makes git's WRITE target only a collision-free staging path inside the container and moves the
-// result into place with os.Root.Rename, which refuses to follow a symlink at target — so pinning that
-// refusal with a symlink standing at target at act time is exactly what a regression back to a nominal
-// `git worktree add target` would fail. Because containedWorktreeAdd spawns git, this test is
-// integration-tagged (the untagged tier spawns nothing).
+// create_containment_toctou_integration_test.go tests that containedWorktreeAdd places a git worktree at its target.
+// It also covers a symlink planted at the target or at the staging leaf, where the call must fail closed.
+// Each test requires tiergate tier 1, because containedWorktreeAdd spawns git.
 
 package fabricengine
 
@@ -27,9 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestContainedWorktreeAdd_RefusesSymlinkedTarget plants a symlink at the target path pointing OUTSIDE
-// the container and asserts containedWorktreeAdd never writes a worktree through it: the outside
-// directory stays empty and the call fails at placement rather than following the link.
+// TestContainedWorktreeAdd_RefusesSymlinkedTarget plants a symlink at the target path, pointing outside the container.
+// It asserts that containedWorktreeAdd fails at placement and writes no worktree through the link:
+// the outside directory stays empty.
 func TestContainedWorktreeAdd_RefusesSymlinkedTarget(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -45,8 +34,8 @@ func TestContainedWorktreeAdd_RefusesSymlinkedTarget(t *testing.T) {
 		t.Fatalf("mkdir outside: %v", err)
 	}
 
-	// The target path is a symlink escaping the container — the live-at-act-time shape a toggle race
-	// leaves behind exactly when git resolves its destination argument.
+	// The target path is a symlink that escapes the container.
+	// A toggle race leaves this state while git resolves its destination argument.
 	target := filepath.Join(container, "escaped")
 	if err := os.Symlink(outside, target); err != nil {
 		t.Fatalf("plant escaping target symlink: %v", err)
@@ -68,9 +57,9 @@ func TestContainedWorktreeAdd_RefusesSymlinkedTarget(t *testing.T) {
 	}
 }
 
-// TestContainedWorktreeAdd_PlacesWorktreeAtTarget asserts the ordinary success path: the worktree lands
-// at the nominal target as a real directory on the requested branch, and git's admin directory is named
-// after the slug (the target base), never the internal staging token.
+// TestContainedWorktreeAdd_PlacesWorktreeAtTarget asserts the success path.
+// The worktree lands at target as a real directory on the requested branch.
+// git's admin directory is named after the slug, the base name of target, not the staging token.
 func TestContainedWorktreeAdd_PlacesWorktreeAtTarget(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -115,20 +104,17 @@ func TestContainedWorktreeAdd_PlacesWorktreeAtTarget(t *testing.T) {
 	}
 }
 
-// TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap reproduces R6's create-side observation escape:
-// an observer that watches the container for the random staging parent to appear and plants a symlink at
-// the predictable staging LEAF (target's base name) before git writes there, so git follows the link and
-// writes the worktree OUTSIDE the container. R5's design placed the worktree via os.Root.Rename — which
-// refuses a symlink at the rename DESTINATION but renames a symlink at the SOURCE's own final component
-// as a link — so before R6 this produced an out-of-hub worktree with the target left a dangling symlink,
-// all reported as a nil error (false success). The fail-closed containment checks R6 added must make
-// containedWorktreeAdd refuse instead: never a nil error while the worktree escaped, never a dangling
-// symlink at target, never staging debris left in the container, and the escaped worktree cleaned up.
+// TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap checks the fail-closed path of containedWorktreeAdd.
+// An observer waits for the random staging parent to appear, then plants a symlink at the predictable staging leaf.
+// The leaf is the target's base name, so git follows the link and writes the worktree outside the container.
+// The add must fail closed: no nil error while the worktree escaped, and no dangling symlink at target.
+// The container must hold no staging debris, and the escaped worktree must be cleaned up.
 //
-// The planter reliably wins because git's subprocess spawn latency vastly exceeds a busy poll's, but the
-// assertions do not depend on winning every attempt: the loop asserts the never-false-success invariant
-// on every attempt and requires at least one attempt where the planter won and the add failed closed, so
-// a run that never triggered the guarded path fails loudly rather than passing vacuously.
+// The planter reliably wins because git's subprocess spawn latency exceeds a busy poll's,
+// but the assertions do not depend on winning every attempt.
+// The loop asserts the never-false-success invariant on every attempt.
+// It also requires at least one attempt where the planter won and the add failed closed,
+// so a run that never triggered the guarded path fails loudly rather than passing vacuously.
 func TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -153,11 +139,10 @@ func TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap(t *testing.T) {
 			t.Fatalf("mkdir outside: %v", err)
 		}
 
-		// Planter: watch the container for the staging parent, then plant <parent>/<slug> -> outside so
-		// git follows it. It plants exactly ONCE and then idles until stop — the single-plant shape the
-		// documented repro uses (an observer racing one add), rather than a relentless re-planter that
-		// would fight containedWorktreeAdd's own cleanup and leave staging debris that is a test artifact,
-		// not a fabric integrity failure.
+		// Planter: watch the container for the staging parent, then plant <parent>/<slug> -> outside so git follows it.
+		// It plants exactly once and then idles until stop, so one observer races one add.
+		// A relentless re-planter would fight containedWorktreeAdd's own cleanup.
+		// The staging debris it leaves would be a test artifact, not a fabric integrity failure.
 		stop := make(chan struct{})
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -200,7 +185,7 @@ func TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap(t *testing.T) {
 			continue
 		}
 
-		// The planter won and the add failed closed. Assert nothing escaped and the container is clean.
+		// A non-nil error means the planter won and the add failed closed.
 		sawFailClosed = true
 		if info, statErr := os.Lstat(target); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
 			t.Fatalf("attempt %d: fail-closed left target a dangling symlink pointing outside the container", attempt)

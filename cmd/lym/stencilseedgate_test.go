@@ -1,11 +1,9 @@
-// stencilseedgate_test.go pins two things about the stencil-seed skip gate this batch adds:
-// skipStencilSeed's predicate against synthetic *cobra.Command values,
-// and that "lym reed switch", "lym reed follow", "lym reed button" and every creel command actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering
-// between skipStencilSeed and stencilSeedTarget, and does NOT assert "no `git rev-parse` was
-// spawned": seedStencils returns under testing.Testing() before either step runs, so an in-process
-// test can never observe their relative order, and "no git rev-parse was spawned" is the unfalsifiable
-// shape the discussion driving this task rejected. Building the command tree here only constructs
-// cobra values and runs no hook, so nothing spawns a process and the Test Tier Purity Invariant holds.
+// stencilseedgate_test.go pins skipStencilSeed's predicate against synthetic *cobra.Command values:
+// it checks that the reed and creel commands carry the annotation the predicate reads.
+// It does not pin the order of skipStencilSeed and stencilSeedTarget:
+// seedStencils returns under testing.Testing() before either runs.
+// Building the command tree only constructs cobra values and runs no hook:
+// nothing spawns a process, so the Test Tier Purity Invariant holds.
 
 package main
 
@@ -20,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// reedSubcommand returns the subcommand of reedcli.Command() named name, failing t when it is absent.
+// reedSubcommand returns the direct subcommand named name of the reed command, and fails t when there is none.
 func reedSubcommand(t *testing.T, name string) *cobra.Command {
 	t.Helper()
 	for _, sub := range reedcli.Command().Commands() {
@@ -32,7 +30,9 @@ func reedSubcommand(t *testing.T, name string) *cobra.Command {
 	return nil
 }
 
-// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lym reed switch", "lym reed follow" and "lym reed button" commands and every creel command, which must carry the annotation or the gate is worthless.
+// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed against synthetic *cobra.Command values,
+// and against the real reed commands it lists and every creel command.
+// Those commands must carry the annotation, or the gate is worthless for them.
 func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

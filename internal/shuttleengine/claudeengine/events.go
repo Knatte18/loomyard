@@ -1,15 +1,5 @@
-// events.go implements ParseEvents, the lenient reader over a run's events.jsonl: the Stop hook
-// (settings.go) appends one JSON line per turn end, and the live-ask marker hook (settings.go)
-// appends one JSON line the instant an AskUserQuestion tool call opens;
-// this file turns that raw byte stream into the shuttleengine.Events the run loop classifies
-// outcomes from.
-// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append to the same file for ParseSessionSignals (signals.go),
-// and every recording hook writes a stamp line before its payload;
-// ParseEvents skips all of them, since none yields an event.
-// A Stop line whose turn ended with background work outstanding becomes EventWaiting rather than
-// EventStop; background.go decides that from the Stop payload and the transcript it points at.
-// All Claude payload-shape knowledge (hook_event_name, tool_name, tool_input, the literal
-// AskUserQuestion tool name) lives only in this file, per the provider-seam containment decision.
+// events.go parses a run's events.jsonl into the shuttleengine events the run loop classifies outcomes from.
+// It keeps the Stop and AskUserQuestion lines and skips every other line, the stamp lines included.
 package claudeengine
 
 import (
@@ -19,10 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ParseEvents parses events.jsonl into Events: Stop lines become EventStop (EventWaiting when
-// background work is outstanding), PreToolUse+AskUserQuestion lines become EventAsk.
-// It is lenient: malformed or unrecognized lines are skipped, since the file may still be growing
-// during the run.
+// ParseEvents parses events.jsonl into Events.
+// A Stop line becomes EventStop, or EventWaiting when background work is outstanding.
+// A PreToolUse line for AskUserQuestion becomes EventAsk.
+// It is lenient: malformed or unrecognized lines are skipped, since the file may still be growing during the run.
 func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	var events []shuttleengine.Event
 

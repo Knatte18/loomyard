@@ -1,4 +1,6 @@
-// bouncer_verdict_test.go covers the Bouncer's verdict vocabulary: the strict parse, the legacy aliases read only at Call entry, the harvest rule that refuses a legacy word, and the three verdicts' outcome mapping.
+// bouncer_verdict_test.go covers the Bouncer's verdict vocabulary.
+// It tests the strict parse and the legacy aliases, which Call reads only at entry.
+// It also tests the harvest rule that refuses a legacy word, and the outcome each of the three verdicts maps to.
 
 package shedadapters
 
@@ -14,17 +16,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestParseVerdict_Vocabulary covers the strict parse, which accepts only the three current words,
-// and the recorded parse, which also aliases the two legacy words and flags them as legacy.
+// TestParseVerdict_Vocabulary covers the strict parse, which accepts only the three current words.
+// It also covers the recorded parse, which aliases the two legacy words and flags them as legacy.
 func TestParseVerdict_Vocabulary(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		word string
-		// strictOK is whether the strict parse accepts the word.
+		// strictOK reports whether the strict parse accepts the word.
 		strictOK bool
-		// recordedErr is whether the recorded parse rejects the word; otherwise it yields
-		// recorded, legacy.
+		// recordedErr reports whether the recorded parse rejects the word;
+		// otherwise it yields recorded, legacy.
 		recordedErr bool
 		recorded    bouncerVerdict
 		legacy      bool
@@ -90,8 +92,8 @@ func TestBouncer_Verdict_LegacyWordAtEntry(t *testing.T) {
 	tests := []struct {
 		name string
 		word string
-		// clears is whether the legacy word settles the round as approved, so the entry clears
-		// and re-seeds; otherwise it replays as a counted Stuck over the round's ledger.
+		// clears reports whether the legacy word settles the round as approved,
+		// so the entry clears and re-seeds; otherwise it replays as a counted Stuck over the round's ledger.
 		clears bool
 	}{
 		{"a legacy APPROVED clears and re-seeds", "APPROVED", true},
@@ -132,7 +134,7 @@ func TestBouncer_Verdict_JudgeWritingLegacyWordIsRejudged(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
-		// attached is whether a live judge is attached to rather than a fresh one spawned.
+		// attached reports whether a live judge is attached to, rather than a fresh one spawned.
 		attached bool
 	}{
 		{"a spawned judge", false},

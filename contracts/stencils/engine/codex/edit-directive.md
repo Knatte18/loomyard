@@ -1,5 +1,6 @@
-<!-- This is the Codex engine's copy of the edit directive: internal/editdirective.EngineDirective renders it into the edit_directive marker of an assistant seat that runs on Codex.
-     It states the shared edit directive's rule in Codex's own tool wording. It declares no marker and must stay marker-free. -->
+<!-- This is the Codex engine's copy of the edit directive.
+     internal/editdirective.EngineDirective renders it into the edit_directive marker of an assistant seat on Codex.
+     It declares no marker and must stay marker-free. -->
 
 ## Editing files
 

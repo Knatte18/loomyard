@@ -1,4 +1,5 @@
-// expect_test.go — tier 0 tests for the Drift-Expect producer and its expectation gate over the in-memory records store and a scripted seat runner.
+// expect_test.go — tier 0 tests for the Drift-Expect producer and its expectation gate.
+// They run over the in-memory records store and a scripted seat runner.
 
 package driftengine
 
@@ -29,7 +30,8 @@ const (
 	unknownCaseExpectation = "cases:\n  nope.txt:\n    keys:\n      - key: alpha\n        why: the task moves alpha\n"
 )
 
-// expectFixture is the fake world one DriftExpect pass runs in: a records store, a baseline of two cases and a seat runner whose agent writes expected.yaml.
+// expectFixture is the fake world one DriftExpect pass runs in.
+// It holds a records store, a baseline of two cases and a seat runner whose agent writes expected.yaml.
 type expectFixture struct {
 	t     *testing.T
 	store *commitStore
@@ -43,12 +45,13 @@ type expectFixture struct {
 	liveChair bool
 	// agentFile is what the scripted agent writes to expected.yaml at each arrival; it writes none when empty.
 	agentFile string
-	// listings is the listing file as each agent arrival found it, and listingPaths the path each ExpectTable call was handed.
+	// listings holds the listing file at each agent arrival, and listingPaths the path each ExpectTable call was handed.
 	listings     []string
 	listingPaths []string
 }
 
-// newExpectFixture returns a fixture whose baseline holds a.txt, with a repeated key, and b.txt, and whose drift config is diff lines with one key pattern.
+// newExpectFixture returns a fixture whose baseline holds a.txt, with a repeated key, and b.txt.
+// Its drift config is diff lines with one key pattern.
 func newExpectFixture(t *testing.T) *expectFixture {
 	t.Helper()
 	store := newCommitStore(t)
@@ -92,7 +95,7 @@ func writeExpectFile(t *testing.T, path, text string) {
 	}
 }
 
-// agentArrives is the scripted agent's action at each arrival: it reads the listing and writes agentFile to expected.yaml.
+// agentArrives is the scripted agent's action at each arrival: it reads the listing and writes agentFile.
 func (f *expectFixture) agentArrives() {
 	if listing, err := os.ReadFile(f.paths.Listing); err == nil {
 		f.listings = append(f.listings, string(listing))
@@ -102,7 +105,8 @@ func (f *expectFixture) agentArrives() {
 	}
 }
 
-// seed records a scope record that counted the baseline at the store's code head, with change applied, through the records guard.
+// seed records a scope record that counted the baseline at the store's code head, with change applied.
+// It writes the record through the records guard.
 func (f *expectFixture) seed(change func(*ScopeRecord)) {
 	f.t.Helper()
 	scope := ScopeRecord{
@@ -180,7 +184,9 @@ func requireExpectDone(t *testing.T, outcome shedengine.Outcome, err error) {
 	}
 }
 
-// TestDriftExpect covers the passes that need no agent, the agent's table and the seal that follows it, the sessions an earlier entry left, the stops for the run's parent, the diff mode recorded once, an exhausted entry, and the expectation gate alone.
+// TestDriftExpect covers the passes that need no agent and the agent's table with the seal that follows it.
+// It also covers the sessions an earlier entry left and the stops for the run's parent.
+// It also covers the diff mode recorded once, an exhausted entry, and the expectation gate alone.
 func TestDriftExpect(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,6 @@
-// export_test.go lets package gitexec_test shorten the remote deadline and the stall bound, run the stall check on its own signal, start the production stall timer, inject a git version line and make a git start fail.
+// export_test.go lets package gitexec_test shorten the remote deadline and the stall bound.
+// It runs the stall check on its own signal and starts the production stall timer.
+// It injects a git version line and makes a git start fail.
 
 package gitexec
 
@@ -9,7 +11,7 @@ import (
 	"time"
 )
 
-// defaultStallTimer is the production startStallTimer, kept reachable while SetStallCheckForTest has replaced it.
+// defaultStallTimer keeps the production stall timer reachable while a test replaces it.
 var defaultStallTimer = startStallTimer
 
 // StartDefaultStallTimerForTest starts the production stall timer, with no packet trace, and returns its stop.
@@ -17,8 +19,10 @@ func StartDefaultStallTimerForTest(bound time.Duration, check func()) (stop func
 	return defaultStallTimer(bound, "", check)
 }
 
-// SetStallCheckForTest runs each armed stall check once ready reports true, instead of once the stall bound passes, until the test ends.
-// ready receives the attempt's number, counted from 1 across the test, and the path of its packet trace, and is polled until it reports true or the attempt ends.
+// SetStallCheckForTest runs each armed stall check once ready reports true, not once the stall bound passes.
+// The override lasts until the test ends.
+// ready receives the attempt's number, counted from 1 across the test, and the path of the attempt's packet trace.
+// It is polled until it reports true or the attempt ends.
 // It returns a function that reports the bounds the checks were armed with so far, one per armed attempt.
 // It changes process-global state, so the calling test must not be parallel.
 func SetStallCheckForTest(t *testing.T, ready func(attempt int, tracePath string) bool) (armed func() []time.Duration) {
@@ -97,7 +101,8 @@ func SetStallBoundForTest(t *testing.T, d time.Duration) {
 	t.Cleanup(func() { stallBound = previous })
 }
 
-// SetStartFailuresForTest makes the next len(failures) git starts fail with failures in order, without starting git, and sets the wait before the first start retry to delay, until the test ends.
+// SetStartFailuresForTest makes the next len(failures) git starts fail with failures in order, without starting git.
+// It sets the wait before the first start retry to delay, until the test ends.
 // The waits between start retries are recorded instead of slept.
 // A nil entry starts git as usual.
 // It returns a function that reports how many starts were made and one that reports the waits recorded so far.

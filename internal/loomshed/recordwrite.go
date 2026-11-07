@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// RecordWriteDeps are the told seams and absolute paths of the Record-Write producer.
+// RecordWriteDeps are the injected seams and absolute paths of the Record-Write producer.
 type RecordWriteDeps struct {
 	// RecordPath is the absolute path of the decision record.
 	RecordPath string
@@ -23,7 +23,7 @@ type RecordWriteDeps struct {
 	DiscussionDir string
 	// ReadBody returns the run's board entry body, with found false when the board holds no entry for the run.
 	ReadBody func() (body string, found bool, err error)
-	// ReadStored returns the run's board entry's stored decision record, with found true only when the entry is flagged discussed and its record file exists.
+	// ReadStored returns the stored record; found is true only when the entry is flagged discussed and its file exists.
 	ReadStored func() (record []byte, found bool, err error)
 	// Commit commits the discussion directory.
 	// It is a no-op on a directory with no uncommitted change.
@@ -55,7 +55,7 @@ var recordSections = []string{
 
 // BoardRecord renders the decision record of a run whose task is body.
 // The Goal section holds body verbatim in one fenced markdown block, and the other required sections follow empty.
-// The fence is one backtick longer than the longest backtick run in body, and at least three long.
+// The fence is one backtick longer than the longest backtick run in body, and never shorter than three.
 // So no line of body, a heading or a fence of its own included, opens or closes a section of the record.
 func BoardRecord(body string) []byte {
 	fence := strings.Repeat("`", max(3, longestBacktickRun(body)+1))
@@ -102,7 +102,8 @@ func boardSupportLog() []byte {
 		"## Question ledger\n")
 }
 
-// StoredRecordSupportLog renders the support log of a run whose decision record is its board entry's stored record, approved in an earlier run.
+// StoredRecordSupportLog renders the support log of a run whose decision record is the board entry's stored record.
+// The stored record was approved in an earlier run.
 func StoredRecordSupportLog() []byte {
 	return []byte("## Interview\n\n" +
 		"The decision record is the board entry's stored record, approved in an earlier run, so this run held no Discussion.\n\n" +
@@ -113,9 +114,13 @@ func StoredRecordSupportLog() []byte {
 }
 
 // Call implements shedengine.ShedProducer.
-// It removes the torn temp files a crash left in the discussion directory, writes whichever of the record and the support log is missing, commits the pair and reports Done with the record as its pointer.
-// A missing record is the board entry's stored decision record, written verbatim, when the entry has one; otherwise it is rendered from the entry's body.
-// A missing support log is the stored-record log when the entry has a stored record and the board-rendered log otherwise, whether or not the record was missing too.
+// It removes the torn temp files a crash left in the discussion directory.
+// It writes whichever of the record and the support log is missing, and it commits the pair.
+// On success it reports Done with the record as its pointer.
+// A missing record is the board entry's stored decision record, written verbatim, when the entry has one;
+// otherwise it is rendered from the entry's body.
+// A missing support log is the stored-record log when the entry has a stored record;
+// otherwise it is the board-rendered log, whether or not the record was missing too.
 // A file that exists is never overwritten, so a resume keeps every entry added to the record after it was written.
 // The commit runs on every call, so a pair a crash left written but uncommitted is committed on resume.
 // A board with no entry for the run is Stuck, and a read, write or commit failure is a returned error.

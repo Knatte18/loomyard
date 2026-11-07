@@ -1,7 +1,11 @@
-// namerepair.go owns the per-hub watchdog's name repair: it keeps the two display mirrors of a strand's full name — the tmux pane title and the provider session's own name — equal to the name in the strand record.
-// The strand record stays the only key delivery and lookup resolve through, so a repair here costs display only.
+// namerepair.go holds the per-hub watchdog's name repair.
+// It keeps the two display mirrors of a strand's full name equal to the strand record's name:
+// the tmux pane title and the provider session's own name.
+// The strand record is the only key that delivery and lookup resolve through,
+// so a repair here changes only the display.
 //
-// The session-name half sits behind the SessionNamer seam, declared here and implemented by the provider package, so reed stays blind to provider specifics (Shuttle Provider-Seam Invariant).
+// The session-name half goes through the SessionNamer seam, declared here and implemented by the provider package.
+// Reed therefore stays free of provider specifics.
 
 package reedengine
 
@@ -13,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// nameRepairCycle is the name-repair loop's base wait between passes, the wait after a pass that repaired something.
+// nameRepairCycle is the base wait between name-repair passes, and the wait again after a pass that repaired something.
 const nameRepairCycle = 10 * time.Second
 
 // nameRepairCeiling is the longest wait the name-repair loop backs off to while nothing drifts.
@@ -35,8 +39,9 @@ func nameRepairDefaultTiming() nameRepairTiming {
 }
 
 // SessionNamer is the provider seam through which the watchdog reads and repairs a provider session's own name.
-// reedengine declares it and never implements it; the provider implementations reach reed keyed by the opaque tag strands carry.
-// SessionID is opaque to reed and is handed to the provider unread.
+// reedengine declares SessionNamer and never implements it.
+// Implementations are keyed by the opaque provider tag that each strand carries.
+// The session ID is opaque to reed and is handed to the implementation unread.
 type SessionNamer interface {
 	// SessionNameDrift reports whether the provider session's current name differs from want.
 	// An implementation that cannot read the name logs why and answers false.
@@ -57,7 +62,7 @@ type titleRepair struct {
 
 // planTitleRepairs lists every strand bound to a live pane whose title differs from the strand's name.
 // A strand with no pane binding, no name, or a pane that is absent or dead is skipped.
-// It is pure, so it is tested without tmux.
+// It does no I/O.
 func planTitleRepairs(strands []Strand, live []LivePane) []titleRepair {
 	panes := make(map[string]LivePane, len(live))
 	for _, p := range live {
@@ -80,7 +85,8 @@ func planTitleRepairs(strands []Strand, live []LivePane) []titleRepair {
 }
 
 // WatchNames runs the name-repair loop until ctx ends, one repairNames pass per wake.
-// The wait starts at nameRepairCycle, doubles up to nameRepairCeiling across passes that repair nothing, and returns to nameRepairCycle after one that repairs something.
+// The wait starts at nameRepairCycle and doubles up to nameRepairCeiling across passes that repair nothing.
+// A pass that repairs something resets the wait to nameRepairCycle.
 // A held op lock defers a tick rather than queueing behind it.
 // namers maps a strand's provider tag to the namer that repairs its session name;
 // a strand whose tag has no namer, or a nil map, gets no session-name repair.
@@ -89,7 +95,7 @@ func (e *Engine) WatchNames(ctx context.Context, namers map[string]SessionNamer)
 	return e.watchNames(ctx, namers, nameRepairDefaultTiming())
 }
 
-// watchNames is WatchNames over an injected timing.
+// watchNames runs the name-repair loop with the cadence and timer taken from t.
 func (e *Engine) watchNames(ctx context.Context, namers map[string]SessionNamer, t nameRepairTiming) error {
 	wait := t.Base
 	var passFailures logger.Episode
@@ -164,7 +170,9 @@ func (e *Engine) repairNames(namers map[string]SessionNamer) (repaired bool, err
 	return repaired, err
 }
 
-// repairSessionName renames s's provider session by typing the namer's rename text into its pane, when the session name has drifted and the pane is idle, and reports whether it typed the rename.
+// repairSessionName renames s's provider session by typing the namer's rename text into its pane.
+// It acts only when the session name has drifted and the pane is idle, and the operator is not active.
+// It reports whether it typed the rename.
 // A busy pane is left alone and retried on the next tick.
 func (e *Engine) repairSessionName(namer SessionNamer, s Strand) bool {
 	if !namer.SessionNameDrift(s.SessionID, e.geom.PaneCwd, s.Name) {

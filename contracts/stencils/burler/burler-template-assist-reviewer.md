@@ -1,12 +1,15 @@
-<!-- This is the burler assistant reviewer seat stencil: the assistant seat of an assisted review round, run on the engine its model-spec names, beside the reviewer chair.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/burler/` and read
-     from there at call time, then filled by internal/seatengine from the seat's value map.
+<!-- This is the burler assistant reviewer seat stencil:
+     the assistant seat of an assisted review round, run on the engine its model-spec names, beside the reviewer chair.
+     It is an embedded default in contracts/stencils/stencils.go,
+     seeded to the Bolt checkout's `_lym/stencils/burler/`, read from there at call time,
+     and filled by internal/seatengine from the seat's value map.
      Every marker below is a top-level {{.X}} substitution.
-     The reserved markers it uses, which the seats engine fills, are parent_directive, in its no-parent variant, and edit_directive, in the assistant engine's own wording;
-     its includes use seat_name and output_files;
-     the seat values it uses, which reviewSeatValues gives it for the assistant's own instruction files, are instruction_1_path, instruction_2_path and review_path.
+     The seats engine fills the reserved markers it uses:
+     parent_directive, in its no-parent variant, and edit_directive, in the assistant engine's own wording.
+     Its includes use seat_name and output_files.
+     reviewSeatValues supplies instruction_1_path, instruction_2_path and review_path for the assistant's own instruction files.
      The reading directions come from the engine-assist-reading engine block of the assistant's engine.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Burler — assistant review
 

@@ -1,5 +1,5 @@
-// parentdirective.go implements Directive, the renderer every spawning module calls to turn a told parent name into the parent directive its opening stencil carries.
-// See doc.go for the package-level rationale.
+// parentdirective.go implements Directive.
+// It turns a parent name into the parent directive an opening stencil carries.
 
 package parentdirective
 
@@ -13,7 +13,7 @@ import (
 // MarkerName is the stencil marker name every opening stencil carries for the rendered directive.
 const MarkerName = "parent_directive"
 
-// parentStencil, operatorBanStencil and noneStencil name the stencils Directive reads, one constant per name so each is written exactly once.
+// The stencil names the directive reads, one constant per name so each is written exactly once.
 const (
 	parentStencil      = "parent-directive-parent"
 	operatorBanStencil = "parent-directive-operator-ban"
@@ -56,7 +56,8 @@ func Directive(stencilsDir, parentName string, interactive bool) (string, error)
 	return string(filled), nil
 }
 
-// readStripped reads the marker-free stencil name from stencilsDir and returns its text without the leading banner and trailing newline.
+// readStripped reads the marker-free stencil name from stencilsDir.
+// It returns the text without the leading banner and trailing newlines.
 func readStripped(stencilsDir, name string) (string, error) {
 	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {

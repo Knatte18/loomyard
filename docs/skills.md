@@ -2,8 +2,8 @@
 
 > **Status: Design / plan — not built.** Authored once the `lym` spine (`shuttle → burler → shed → loom`) can consume it.
 
-In mill the skills *were* the orchestrator (LLM-driven).
-In lym, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lym` verbs, not skills. **~44 mill skills → ~10 real LY skills.**
+In mill the skills are the orchestrator (LLM-driven).
+In lym, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lym` verbs, not skills.
 
 ## Decision rules
 
@@ -86,9 +86,12 @@ the board stays dumb CRUD (`internal/boardengine`):
 | `fold_ins[]` | per fold: `GetTask(slug)` → append to body → `UpsertTask` (bounded, additive) |
 | `skips[]` | no board call — Go just closes/labels the source item |
 
-**Go-enforced invariants (fail-loud):** (1) every input `ref` appears exactly once across `new_tasks`∪`fold_ins`∪`skips`;
-(2) slug matches `[a-z][a-z0-9-]*`, no board collision;
-(3) fold target exists *and* is unclaimed (`status==null && !deferred`) — re-checked at apply time against the snapshot race.
+**Go-enforced invariants (fail-loud):**
+
+1. Every input `ref` appears once across `new_tasks`∪`fold_ins`∪`skips`.
+2. A slug matches `[a-z][a-z0-9-]*` and does not collide with a board slug.
+3. A fold target exists *and* is unclaimed (`status==null && !deferred`), re-checked at apply time because the board can change after the snapshot.
+
 The asymmetry mirrors burler: rich read-input, narrow validatable write.
 
 ### `craft` — generic authoring (language-agnostic)
@@ -119,8 +122,9 @@ The asymmetry mirrors burler: rich read-input, narrow validatable write.
 | `raddle-maintain` | Fix / repair existing docs |
 | `raddle-setup` | Initialise / activate raddle in a repo |
 
-The review-interpretation discipline (mill's `mill-receiving-review`) lives in the shared **review→fix prompt template**, not a skill — used by **both** consumers of that two-step pattern: `burler` (interprets its own A-review in B) and `hardener` (roadmap #23;
-shares the burler round discipline).
+The review-interpretation discipline (mill's `mill-receiving-review`) lives in the shared **review→fix prompt template**, not a skill.
+Both consumers of that two-step pattern use it:
+`burler` interprets its own A-review in B, and `hardener` (roadmap #23) shares the burler round discipline.
 
 ## Fate of every mill skill
 

@@ -45,7 +45,7 @@ func (u Usage) Total() int {
 	return u.Input + u.CacheCreate + u.CacheRead + u.Output
 }
 
-// Weight ranks a tally by rough relative cost; see the package doc for what it ignores.
+// Weight ranks a tally by rough relative cost, pricing each token kind at a multiple of an input token.
 func (u Usage) Weight() float64 {
 	return float64(u.Input) + 1.25*float64(u.CacheCreate) + 0.1*float64(u.CacheRead) + 5*float64(u.Output)
 }
@@ -131,7 +131,6 @@ func covered(set []Interval, window Interval) time.Duration {
 	return total
 }
 
-// max2 returns the later of a and b.
 func max2(a, b time.Time) time.Time {
 	if b.After(a) {
 		return b
@@ -139,7 +138,6 @@ func max2(a, b time.Time) time.Time {
 	return a
 }
 
-// min2 returns the earlier of a and b.
 func min2(a, b time.Time) time.Time {
 	if b.Before(a) {
 		return b
@@ -147,8 +145,9 @@ func min2(a, b time.Time) time.Time {
 	return a
 }
 
-// stallCap is the longest interval counted as working time, three times the harness's ten-minute cap on a foreground Bash call;
-// a longer interval is a stall such as a suspended host and counts as idle whole.
+// stallCap is the longest interval counted as working time.
+// It is three times the harness's ten-minute cap on a foreground Bash call;
+// a longer interval is a stall, such as a suspended host, and counts as idle whole.
 const stallCap = 30 * time.Minute
 
 // turnPoint is one transcript entry's timestamp and whether the entry ends or starts its session's turn.
@@ -158,7 +157,9 @@ type turnPoint struct {
 	Starts bool
 }
 
-// workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn, into a point that starts a turn, or longer than stallCap.
+// workingIntervals returns the interval from each point to the next, in timestamp order.
+// It leaves out an interval that begins at a point ending a turn, or ends at a point starting one.
+// It also leaves out any interval longer than stallCap.
 func workingIntervals(points []turnPoint) []Interval {
 	ordered := slices.Clone(points)
 	sort.SliceStable(ordered, func(a, b int) bool { return ordered[a].At.Before(ordered[b].At) })
@@ -181,8 +182,8 @@ type ForkTally struct {
 	Cards []string
 	// Messages counts the assistant messages tallied for the fork.
 	Messages int
-	// StartContext is the input + cache write + cache read of the first counted message, the context Merriam held when it spawned the fork;
-	// 0 when no message was counted.
+	// StartContext is the context the webster-role session held when it spawned the fork.
+	// It is the input + cache write + cache read of the first counted message, or 0 when no message was counted.
 	StartContext int
 	// PeakContext is the largest input + cache write + cache read of any counted message.
 	PeakContext int
@@ -193,14 +194,14 @@ type ForkTally struct {
 	Started time.Time
 }
 
-// MerriamStart is the start of one Merriam (webster-role) session.
+// MerriamStart is the start of one webster-role session.
 type MerriamStart struct {
 	// Session is the session transcript's file name.
 	Session string
 	// Started is the timestamp of the transcript's first line that carries one.
 	Started time.Time
-	// StartContext is the input + cache write + cache read of the first assistant message with usage after the line holding the result of Merriam's Read of its prompt file;
-	// 0 when no start was measured.
+	// StartContext is the input + cache write + cache read of the first assistant message with usage:
+	// the first after the line holding the result of the session's Read of its prompt file; 0 when no start was measured.
 	StartContext int
 	// NoStart says why no start was measured, empty when StartContext was measured.
 	NoStart string
@@ -214,16 +215,16 @@ type RunTally struct {
 	// Merriams holds one start per webster-role session, ordered by Started.
 	Merriams   []MerriamStart
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
-	// WebsterEngine is the name of the engine that located the run's first counted webster-role session, in located order;
-	// empty when the run has none.
-	// Calibration takes the run's instruction files from this engine, so it assumes every webster-role session of the run ran under one engine.
+	// WebsterEngine is the name of the engine that located the run's first counted webster-role session, in located order.
+	// It is empty when the run has none; calibration takes the run's instruction files from this engine,
+	// so it assumes every webster-role session of the run ran under one engine.
 	WebsterEngine string
-	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions, the HEAD before its first batch forked;
-	// empty when there is none.
+	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions:
+	// the HEAD before its first batch forked; empty when there is none.
 	BaseSHA string
 	// baseAt is the timestamp of the result BaseSHA came from.
 	baseAt time.Time
-	// First and Last bound the run's active window: the earliest and latest timestamp of a user or assistant line in any of its transcripts;
+	// First and Last bound the run's active window: earliest and latest user or assistant line timestamp in its transcripts;
 	// both are zero when no such line carries one.
 	First, Last time.Time
 	// Span is the window the time figures are measured over: First..Last.
@@ -271,7 +272,8 @@ func (run RunTally) awake(window Interval) time.Duration {
 	return window.Duration() - covered(run.Sleeps, window)
 }
 
-// subtractSleeps records the machine's sleeps on the run and removes the parts they cover from every working interval, the run's and each role's.
+// subtractSleeps records the machine's sleeps on the run and removes the parts they cover from every working interval.
+// That covers the run's own intervals and each role's.
 func (run *RunTally) subtractSleeps(sleeps []Interval) {
 	run.Sleeps = unionIntervals(sleeps)
 	run.Working = withoutIntervals(run.Working, run.Sleeps)
@@ -334,7 +336,8 @@ func cardPointers(text string) []string {
 // beginBatchCommand matches a shell command that invokes the webster begin-batch verb.
 var beginBatchCommand = regexp.MustCompile(`\blym\s+webster\s+begin-batch\b`)
 
-// recordBase scans one webster session's entries for begin-batch result envelopes and keeps the start_sha of the earliest-timestamped one across every session of the run.
+// recordBase scans one webster session's entries for begin-batch result envelopes.
+// It keeps the start_sha of the earliest-timestamped envelope across every session of the run.
 // An envelope is a tool result answering a begin-batch shell call whose text is a JSON object with a non-empty start_sha;
 // a refusal carries none, and a result entry without a timestamp is skipped.
 func (run *RunTally) recordBase(entries []shuttleengine.TranscriptEntry) {
@@ -367,7 +370,7 @@ func (run *RunTally) recordBase(entries []shuttleengine.TranscriptEntry) {
 
 // readMerriamStart measures one Merriam session's start in its read transcript.
 // The prompt path comes from the first user entry holding the engine's launch line;
-// the start is the context of the first assistant entry with usage after the result of the first file read of that path.
+// the start is the context of the first assistant entry with usage after the result of the first Read of that path.
 func readMerriamStart(read shuttleengine.TranscriptRead) MerriamStart {
 	start := MerriamStart{Session: read.ID, Started: read.Started}
 	var promptPath, readCallID string
@@ -420,10 +423,11 @@ func readMerriamStart(read shuttleengine.TranscriptRead) MerriamStart {
 
 var trailingNumber = regexp.MustCompile(`-\d+$`)
 
-// leadSuffix ends the role a seat table's lead carried before seats were named, `<prefix>-chair`; the lead's role is now the prefix alone.
+// leadSuffix is the suffix of a seat table's lead role in its legacy form, `<prefix>-chair`.
 const leadSuffix = "-chair"
 
-// roleOf turns a strand name into its role: the last colon-separated part, without a -N suffix and then without the pre-rename lead suffix.
+// roleOf returns the role a strand name stands for:
+// the part after its last colon, without a -N suffix and without a legacy -chair suffix.
 func roleOf(title string) string {
 	if title == "" {
 		return "untitled"
@@ -439,7 +443,7 @@ type ArchiveTag struct {
 	Committed time.Time
 }
 
-// finishedRuns reads the archive tags of the runs whose pairs were torn down from the weft repository at weft.
+// finishedRuns reads the archive tags of the finished runs from the weft repository at weft.
 // They are keyed by slug, each slug's tags newest first.
 // Archive tags are lightweight, so the object name each names is the commit.
 func finishedRuns(weft string) (map[string][]ArchiveTag, error) {
@@ -485,11 +489,14 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 	return slugs
 }
 
-// recentRuns names the finished runs of the hub whose sessions changed most recently, newest first, and, newest first, the runs it skipped on the way because they are not finished runs.
-// It names at most last of them when last is positive, and when since is not zero only the runs whose sessions changed at or after it.
-// A candidate is the slug of an archive tag in finished, except the prime's own, with a session located at the worktree <hub>/<slug> through some engine;
-// its recency is the newest modification time among those sessions.
-// finishedRun decides it from the archive tags read through trees.
+// recentRuns names the finished runs of hub whose sessions changed most recently, newest first.
+// It also returns, newest first, the candidates it skipped on the way because they are not finished runs.
+// At most last counted runs are named when last is positive;
+// when since is not zero, only runs whose sessions changed at or after it are considered.
+// A candidate is a slug other than prime with archive tags in finished.
+// It has a session located at hub/slug through some engine.
+// Its recency is the newest modification time among those sessions.
+// Whether a candidate is finished is decided from its archive tags, read through trees.
 func recentRuns(reads ReadSet, hub, prime string, finished map[string][]ArchiveTag, trees ArchiveTrees, last int, since time.Time) (counted, skipped []string, err error) {
 	type candidate struct {
 		slug    string
@@ -536,7 +543,8 @@ func recentRuns(reads ReadSet, hub, prime string, finished map[string][]ArchiveT
 }
 
 // runBound returns the lower bound of a slug's run from its archive tags, newest first.
-// The bound is the newest tag's commit date for a run in flight and the next-older tag's for a finished run, the zero time when there is no such tag.
+// The bound is the newest tag's commit date for a run in flight and the next-older tag's for a finished run;
+// it is the zero time when there is no such tag.
 func runBound(tags []ArchiveTag, inFlight bool) time.Time {
 	previous := 1
 	if inFlight {
@@ -561,7 +569,8 @@ func transcriptStart(read shuttleengine.TranscriptRead) (time.Time, bool) {
 }
 
 // CountRun tallies every session the engines in reads recorded under the worktree.
-// A non-zero bound leaves out, with its forks, every main-session transcript that starts before the bound or has no timestamped entry, and counts them in LeftOut.
+// A non-zero bound leaves out every main-session transcript that starts before it or has no timestamped entry.
+// The transcripts left out, with their forks, are counted in LeftOut.
 // It fails when no engine located a session, and when an engine fails to locate or read one.
 func CountRun(reads ReadSet, worktree, slug string, bound time.Time) (RunTally, error) {
 	located, err := locateSessions(reads, worktree)
@@ -614,8 +623,8 @@ func CountRun(reads ReadSet, worktree, slug string, bound time.Time) (RunTally, 
 	return run, nil
 }
 
-// countFile tallies one read transcript of an engine under role;
-// a non-nil fork also receives the transcript's own tally and card attribution.
+// countFile tallies one read transcript of an engine under role.
+// A non-nil fork also receives the transcript's usage and card attribution.
 // The read's repeats count as duplicates, and so does each message already seen under the same engine and message key.
 func (run *RunTally) countFile(engine string, pricer shuttleengine.MessagePricer, read shuttleengine.TranscriptRead, role string, seen map[string]bool, fork *ForkTally) {
 	tally := run.Roles[role]
@@ -662,12 +671,15 @@ func (run *RunTally) countFile(engine string, pricer shuttleengine.MessagePricer
 	run.Working = unionIntervals(append(run.Working, working...))
 }
 
-// messageKey identifies a message across the run's transcripts: the engine that read it and the engine's key for it.
+// messageKey identifies a message across the transcripts of a run.
+// It joins the engine that read the message with the engine's own key for it.
 func messageKey(engine string, e shuttleengine.TranscriptEntry) string {
 	return engine + "/" + e.MessageKey
 }
 
-// observe records, until a card pointer has been found, a fork entry's card attribution: the fork's prompt is the first tool result holding a card pointer line.
+// observe records a fork's card attribution.
+// It takes the attribution from the first user entry whose tool result holds a card pointer line.
+// Later entries are ignored.
 func (f *ForkTally) observe(e shuttleengine.TranscriptEntry) {
 	if f.Cards != nil || e.Role != shuttleengine.EntryUser {
 		return
@@ -689,8 +701,11 @@ type Report struct {
 	Detail bool
 }
 
-// WriteMarkdown writes the most expensive parts over all runs, the cost per run, the recipe comparison, the segment table summed over all runs, then the orchestrator section, then one segment table per run.
-// When the orch was counted, each segment table gains an Orch segment of the orch usage charged to its runs.
+// WriteMarkdown writes the report as markdown.
+// It opens with the most expensive parts over all runs, the cost per run, and the recipe comparison.
+// Then it writes the segment table summed over all runs, the orchestrator section, and one segment table per run.
+// When the orchestrator was counted, each segment table gains an Orch segment.
+// That segment holds the orchestrator usage charged to the table's runs.
 func (r Report) WriteMarkdown(w io.Writer) error {
 	perRun := make([][]Segment, len(r.Runs))
 	duplicates := 0
@@ -709,7 +724,8 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	}
 	summed := perRun
 	if r.Orch != nil {
-		// The orch usage charged to no run joins the summed Orch segment, so it carries the whole orch cost of the counted period.
+		// Usage charged to no run joins the summed Orch segment.
+		// That makes the segment carry the whole orchestrator cost of the counted period.
 		unattributed := r.Orch.Unattributed.Total()
 		summed = append(slices.Clip(perRun), []Segment{{Name: orchSegment, Parts: []*Part{
 			{Label: orchUnattributedLabel, Charged: true, Weight: unattributed.Weight, Cost: unattributed.Cost},

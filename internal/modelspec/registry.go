@@ -1,6 +1,6 @@
-// registry.go implements the pinned built-in fallback registry and Registry.Resolve, the
-// alias-lookup/default-merge half of the model-spec contract (Parse handles grammar only; this file
-// handles resolution).
+// registry.go implements the pinned built-in fallback registry and Registry.Resolve.
+// Resolve is the alias-lookup and default-merge step of the model-spec contract.
+// Grammar checking lives in parse.go.
 
 package modelspec
 
@@ -10,8 +10,10 @@ import (
 )
 
 // builtins returns the pinned fallback registry.
-// It holds the Claude aliases sonnet, opus, haiku and fable with no defaults, since the operator's Claude effort defaults live only in models.yaml.
-// It also holds the Codex aliases sol, astra and luna at effort medium, so a Codex spec naming no effort never launches at the provider's own default.
+// It holds the Claude aliases sonnet, opus, haiku and fable with no defaults.
+// Their effort defaults live only in models.yaml, so the registry holds none.
+// It also holds the Codex aliases sol, astra and luna at effort medium,
+// so a Codex spec naming no effort never launches at the provider's own default.
 func builtins() Registry {
 	codexDefaults := func() map[string]string { return map[string]string{"effort": "medium"} }
 	return Registry{
@@ -26,13 +28,12 @@ func builtins() Registry {
 }
 
 // Resolve resolves s against r and returns the fully realized Resolved.
-// For alias form, s.Alias is looked up in r (unknown alias is an error); Resolved.Params starts as
-// the entry's Defaults overlaid by s.Params.
+// For alias form, s.Alias is looked up in r, and an unknown alias is an error.
+// Resolved.Params starts as the entry's Defaults overlaid by s.Params.
 // For escape form, r is unused.
 // Resolved.Params is never nil.
 func (r Registry) Resolve(s Spec) (Resolved, error) {
-	// Escape form carries its own engine/model and bypasses the registry
-	// entirely — there is nothing to look up.
+	// Escape form carries its own engine and model and bypasses the registry: there is nothing to look up.
 	if s.Alias == "" {
 		return Resolved{
 			Engine: s.Engine,
@@ -46,8 +47,8 @@ func (r Registry) Resolve(s Spec) (Resolved, error) {
 		return Resolved{}, fmt.Errorf("modelspec: unknown alias %q; known aliases: %v", s.Alias, sortedKeys(r))
 	}
 
-	// Start from the registry entry's defaults, then let the spec's bracket
-	// params override per key — the contract's precedence rule.
+	// Start from the registry entry's defaults, then let the spec's bracket params override per key.
+	// This is the contract's precedence rule.
 	params := copyParams(entry.Defaults)
 	for k, v := range s.Params {
 		params[k] = v

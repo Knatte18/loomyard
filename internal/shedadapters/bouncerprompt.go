@@ -1,22 +1,25 @@
-// bouncerprompt.go holds the two variants of the focus-schema text both Bouncer stencils carry, so
-// the stencils stay conditional-free while the exclude_lenses channel is requested only from a
-// Bouncer told its round has a cluster fan.
+// bouncerprompt.go holds the two variants of the focus-schema text that both Bouncer stencils carry.
 // It also holds the judge's decision rule, whose CIRCLING bullet appears only from the circling checkpoint round on.
+// The variants live here so the stencils stay conditional-free:
+// the exclude_lenses channel is requested only from a Bouncer whose round has a cluster fan.
 
 package shedadapters
 
 // decisionRuleMarker returns the value of the judge stencil's decision_rule marker for round and checkpoint.
 //
 // Round 1 rules CONTINUE over any gating-class finding at MEDIUM or worse, or any BLOCKING finding.
-// From round 2 on the rule is lighter: only a BLOCKING finding, or a gating-class finding at MEDIUM or worse on a key the facts list as open in an earlier round, rules CONTINUE.
-// A gating finding on a key first raised in the latest round is carried into the decision record's `## Open risks` instead,
-// and a parse-error line in the facts' earlier-open list means the judge rules by round 1's rule.
+// From round 2 on the rule is lighter: a BLOCKING finding rules CONTINUE.
+// A gating-class finding at MEDIUM or worse on a key the facts list as open in an earlier round rules CONTINUE too.
+// A gating finding on a key first raised in the latest round does not block it.
+// It goes into the decision record's `## Open risks` for a later check.
+// A parse-error line in the facts' earlier-open list means the judge rules by round 1's rule.
 //
 // Below the checkpoint the rule offers CONVERGED and CONTINUE only and names no CIRCLING,
 // so a judge cannot rule on no-progress evidence before the run has had rounds to show progress.
-// At or above it the rule adds CIRCLING, earned only by a gating finding that sits on a key the facts list as open in an earlier round and is still open in this one.
-// The variant lives here rather than in the stencil for the same reason focusSchemaMarkers does:
-// the stencil stays conditional-free.
+// At or above it the rule adds CIRCLING.
+// CIRCLING is earned only by a gating finding on a key the facts list as open in an earlier round.
+// The key must still be open in this round.
+// The variant lives here so the stencil stays conditional-free.
 func decisionRuleMarker(round, checkpoint int) string {
 	const roundOneContinue = "`CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding.\n"
 	rule := "A finding is gating when its class is `design`.\n" +
@@ -40,17 +43,18 @@ func decisionRuleMarker(round, checkpoint int) string {
 	return rule
 }
 
-// focusSchemaMarkers returns the values of the three focus-schema markers -- focus_example_lists,
-// focus_list_rules, and approved_focus_lists -- for the Bouncer stencils.
+// focusSchemaMarkers returns the values of the three focus-schema markers for the Bouncer stencils:
+// focus_example_lists, focus_list_rules, and approved_focus_lists.
 //
-// The variant lives here rather than in the stencils because stencil.Fill's every-marker-non-empty
-// rule makes a marker inside a {{if}} branch render silently blank when present-but-empty, so a
-// conditional stencil could not hold the two variants safely.
+// The variants live here, not in the stencils, because stencil.Fill requires every marker non-empty:
+// a marker inside an {{if}} branch renders silently blank when present but empty,
+// so a conditional stencil could not hold the two variants safely.
 // Every value renders non-empty in both modes.
 //
-// With clusterExcludes true the values ask the judge for both exclude_lenses and focus, and state when a lens may be excluded;
-// with it false they ask for focus alone and name no exclude_lenses key anywhere, since a judge
-// invited to exclude lenses from a round with no cluster fan produces a breach the round can only drop.
+// With clusterExcludes true the values ask the judge for exclude_lenses and focus.
+// They also state when a lens may be excluded.
+// With it false they ask for focus alone and name no exclude_lenses key anywhere.
+// A judge invited to exclude lenses from a round with no cluster fan produces a breach the round can only drop.
 func focusSchemaMarkers(clusterExcludes bool) map[string]string {
 	if clusterExcludes {
 		return map[string]string{

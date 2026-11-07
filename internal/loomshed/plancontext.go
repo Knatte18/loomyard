@@ -1,5 +1,6 @@
-// plancontext.go holds the plan gate's context checks: rename-tool-missing, pattern-changes-mismatch, verify-raw-command, verify-gate-no-wait, test-tier-unstated, seam-test-unlisted, doc-go-unlisted and plan-verify-retired, and calls the PATTERN checks of patternplan.go.
-// Each compares the plan with something outside the plan directory, such as the hub's config or the decision record, so they live here rather than in planparser.
+// plancontext.go holds the plan gate's checks of a plan against the hub's config, the decision record and the worktree.
+// Each compares the plan with something outside the plan directory, such as the hub's config or the decision record.
+// So they live here rather than in planparser.
 
 package loomshed
 
@@ -17,23 +18,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// renameToolMissingCheck names the finding planContextFindings appends for a symbol Rename pair when the hub lists no rename tool.
+// renameToolMissingCheck names the finding for a symbol Rename pair when the hub lists no rename tool.
 const renameToolMissingCheck = "rename-tool-missing"
 
-// patternChangesMismatchCheck names the finding planContextFindings appends for a PATTERN change the plan and the decision record do not both declare.
+// patternChangesMismatchCheck names the finding for a PATTERN change declared by only one of plan and record.
 const patternChangesMismatchCheck = "pattern-changes-mismatch"
 
-// verifyRawCommandCheck names the finding planContextFindings appends for a card Verify command the hub's refuse_raw list names.
+// verifyRawCommandCheck names the finding for a card Verify command that the hub's refuse_raw list names.
 const verifyRawCommandCheck = "verify-raw-command"
 
-// verifyGateNoWaitCheck names the finding planContextFindings appends for a `lym gate test` call in a card Verify line without `--wait`.
+// verifyGateNoWaitCheck names the finding for a `lym gate test` call in a card Verify line without `--wait`.
 const verifyGateNoWaitCheck = "verify-gate-no-wait"
 
-// planVerifyRetiredCheck names the informational finding planContextFindings appends for an overview carrying a `## verify:` section.
+// planVerifyRetiredCheck names the informational finding for an overview that carries a `## verify:` section.
 const planVerifyRetiredCheck = "plan-verify-retired"
 
 // PlanContext is what the plan gate checks the plan against besides the code tree.
-// The zero value checks nothing: no rename tool is required to be missing, no record is compared and no Verify command is refused.
+// The zero value compares no record and refuses no Verify command.
+// An empty RenameTools reports every symbol Rename pair as missing a rename tool.
 type PlanContext struct {
 	// RenameTools is the hub's language.yaml rename_tools list.
 	// A symbol Rename pair needs it non-empty.
@@ -44,22 +46,25 @@ type PlanContext struct {
 	// TierTags is the hub's gate.yaml tier keys, each a test build tag.
 	// Nil skips the test-tier-unstated check, which is the state with no gate.yaml.
 	TierTags []string
-	// SeamTests returns the tests marked `//lym:seam` in the worktree, read once per check.
+	// SeamTests returns the tests marked `//lym:seam` in the worktree, called once per plan check.
 	// Nil skips the seam-test-unlisted check.
 	SeamTests func() ([]impactset.SeamTest, error)
 	// DecisionRecordPath is the decision record whose `## PATTERN changes` section the plan must carry.
 	// Empty skips the comparison.
 	DecisionRecordPath string
-	// PatternBase returns the PATTERN.md overview at the task branch's merge base with its parent, or at HEAD with no parent recorded; nil bytes mean the file is absent there.
+	// PatternBase returns the PATTERN.md overview at the task branch's base:
+	// its merge base with the parent, or at HEAD when no parent is recorded; nil bytes mean the file is absent there.
 	// Nil skips the PATTERN checks.
 	PatternBase func() ([]byte, error)
 }
 
-// planContextFindings returns the context checks' findings over cards, in this order: one rename-tool-missing per symbol Rename pair when pc.RenameTools is empty, one pattern-changes-mismatch per bullet the plan and the decision record do not both declare, then per card the verify-raw-command and verify-gate-no-wait findings of its Verify line, then the test-tier-unstated findings of testTierFindings, then the seam-test-unlisted findings of seamTestFindings, then the doc-go-unlisted findings of docGoFindings, then an informational plan-verify-retired when the overview carries a `## verify:` section.
+// planContextFindings returns the findings of the context checks over cards and plan, in the order they are appended.
 // The PATTERN findings of patternPlanFindings follow the mismatch findings; they read worktreeRoot's PATTERN.md.
 // The record comparison and the retired-section check are over plan, not cards.
-// An absent record adds nothing; a read error is returned, and so is a record whose section is malformed, since the plan writer cannot fix the record.
-// The seam-test-unlisted and doc-go-unlisted findings resolve through index, the first after reading pc.SeamTests once; a reader or index error is returned, since a marker fault sits in a test file the plan writer cannot fix.
+// An absent record adds nothing.
+// A read error is returned, and so is a record whose section is malformed, since the plan writer cannot fix the record.
+// The seam-test-unlisted and doc-go-unlisted findings resolve through index; the seam one reads pc.SeamTests once.
+// A reader or index error is returned, since a marker fault sits in a test file the plan writer cannot fix.
 func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	var findings []planindex.Finding
 	if len(pc.RenameTools) == 0 {
@@ -118,7 +123,9 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 // verifyLauncherWords are the command prefixes the verify checks read past to find the command they launch.
 var verifyLauncherWords = []string{"env", "exec", "xargs", "sudo", "time"}
 
-// verifyLineFindings returns, per card, a verify-raw-command finding for each command of its Verify line that opens with an entry of refuseRaw, then a verify-gate-no-wait finding for each `lym gate test` call without `--wait`.
+// verifyLineFindings returns, per card, the findings of its Verify line.
+// It raises a verify-raw-command finding for each command that opens with an entry of refuseRaw.
+// It raises a verify-gate-no-wait finding for each `lym gate test` call without `--wait`.
 // A command is read in command position: past a leading environment assignment and launcher word.
 func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex.Finding {
 	var findings []planindex.Finding
@@ -153,7 +160,8 @@ func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex
 	return findings
 }
 
-// commandFields splits command into fields and drops the leading launcher words and environment assignments, so the first field is the launched command.
+// commandFields splits command into fields and drops the leading launcher words and environment assignments,
+// so the first field is the launched command.
 func commandFields(command string) []string {
 	fields := strings.Fields(command)
 	for len(fields) > 0 && (slices.Contains(verifyLauncherWords, fields[0]) || isEnvironmentAssignment(fields[0])) {
@@ -226,7 +234,8 @@ func patternChangeMismatches(plan *planparser.Plan, recordPath string) ([]planin
 	return findings, nil
 }
 
-// planBullet renders a plan bullet for a finding: the bullet shape when the line fit it, else the line as written.
+// planBullet renders a plan bullet for a finding.
+// It uses the discussion bullet shape when the line has an ID, else the line text in backticks.
 func planBullet(c planparser.PatternChange) string {
 	if c.ID == "" {
 		return "`" + c.Text + "`"

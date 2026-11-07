@@ -1,4 +1,5 @@
-// owner_integration_test.go drives the run verb's persistent pre-run over a real hub, the one owner check that needs the prime-name refusal ahead of it.
+// owner_integration_test.go drives the run verb's persistent pre-run over a real hub.
+// It covers the one owner check that needs the prime-name refusal ahead of it.
 
 package battencli
 
@@ -17,7 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestArmAt_RunOwnedElsewhereWritesNoSeed asserts a first "lym batten run" of a task another machine owns is refused naming the owner and "lym adopt", with the owned-elsewhere exit code, before armSeed writes a seed.
+// TestArmAt_RunOwnedElsewhereWritesNoSeed asserts a first "lym batten run" of a task another machine owns is refused.
+// The refusal names the owner and "lym adopt" and uses the owned-elsewhere exit code;
+// it comes before armSeed writes a seed.
 func TestArmAt_RunOwnedElsewhereWritesNoSeed(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

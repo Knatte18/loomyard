@@ -11,7 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckRelevant asserts the relevant list's format check: a missing list is clean, an unreadable one is an error, and a present one yields the exact check names, in line order, for each defect the contract names.
+// TestCheckRelevant asserts the relevant list's format check.
+// A missing list is clean, an unreadable one is an error,
+// and a present one yields the exact check names, in line order, for each defect the contract names.
 func TestCheckRelevant(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,4 @@
-// citations.go implements the loom discussion check's citation test: the paths and symbols a decision record cites must exist in the worktree.
+// citations.go tests the citations in a loom decision record: each cited path and symbol must exist in the worktree.
 
 package loomshed
 
@@ -35,9 +35,11 @@ type citationItem struct {
 	glyph    string
 }
 
-// citationFindings tests the citations of a loom decision record against the tree at worktreeRoot and returns its findings in record order, with an empty Path the caller stamps.
+// citationFindings tests the citations of a loom decision record against the tree at worktreeRoot.
+// It returns the findings in record order, with an empty Path that the caller stamps.
 // A marked citation and a token holding whitespace or `<` are not tested.
-// Each remaining token is a path, a glyph or a qualified symbol, or none of them and then untested; all glyphs and qualified symbols are resolved in one index call, whose error is returned as is.
+// Each remaining token is a path, a glyph, a qualified symbol, or none of these, and then it is not tested.
+// All glyphs and qualified symbols are resolved in one index call, and its error is returned as is.
 func citationFindings(worktreeRoot string, index planindex.Index, citations []discussionparser.Citation) ([]discussionparser.Finding, error) {
 	var trackedRoots map[string]bool
 	var packageDirs []string
@@ -138,7 +140,8 @@ func citationFindings(worktreeRoot string, index planindex.Index, citations []di
 	return findings, nil
 }
 
-// isPathShaped reports whether token reads as a repository path: it holds a slash, none of the characters of a glyph, pattern or placeholder, and no `...` segment.
+// isPathShaped reports whether token reads as a repository path.
+// It holds a slash, none of the characters of a glyph, pattern or placeholder, and no `...` segment.
 func isPathShaped(token string) bool {
 	if !strings.Contains(token, "/") || strings.ContainsAny(token, "#>*{}$:") {
 		return false
@@ -175,7 +178,8 @@ func pathExists(worktreeRoot, token string) bool {
 	return info.IsDir() || !strings.HasSuffix(token, "/")
 }
 
-// isMemberGlyph reports whether token is a Go member glyph `<unit>#<member>` whose unit holds a slash or a dot and does not name an existing worktree file other than a `.go` or `.cs` one.
+// isMemberGlyph reports whether token is a Go member glyph `<unit>#<member>` whose unit holds a slash or a dot.
+// A unit that names an existing worktree file counts only when that file is a `.go` or `.cs` one.
 func isMemberGlyph(worktreeRoot, token string) bool {
 	if strings.HasPrefix(token, "plan:") {
 		return false
@@ -195,7 +199,8 @@ func isMemberGlyph(worktreeRoot, token string) bool {
 	return true
 }
 
-// qualifiedSymbol splits a `pkg.Member` or `pkg.Member.Sub…` token, ignoring a trailing parenthesised argument list, into its package name and first member.
+// qualifiedSymbol splits a `pkg.Member` or `pkg.Member.Sub…` token into its package name and first member.
+// A trailing parenthesised argument list is ignored.
 // The member must hold an upper-case letter, and every part must be an identifier.
 func qualifiedSymbol(token string) (pkg, member string, ok bool) {
 	if strings.HasSuffix(token, ")") {
@@ -232,7 +237,7 @@ func isIdentifier(s string) bool {
 }
 
 // goPackageDirs walks worktreeRoot and returns, sorted and slash-separated, every directory holding a `.go` file.
-// It skips a directory named `testdata` and any whose name starts with `_` or `.`, and the root itself.
+// It skips a directory named `testdata` and any whose name starts with `_` or `.`, and it never returns the root itself.
 func goPackageDirs(worktreeRoot string) ([]string, error) {
 	seen := map[string]bool{}
 	err := filepath.WalkDir(worktreeRoot, func(current string, entry fs.DirEntry, err error) error {

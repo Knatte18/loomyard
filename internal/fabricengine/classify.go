@@ -1,31 +1,20 @@
-// classify.go — the pure warp-vs-weft-vs-never-committed path classifier Fabric.Commit uses to split
-// a caller-supplied path list into the three pathspecs it treats differently: the warp-side and
-// weft-side paths it commits separately, and the never-committed paths it must refuse rather than
-// silently drop or commit.
-// Omission is not enough and is actively worse than a dedicated third bucket: classifyPaths is a
-// strict split where everything not matching a weft prefix falls through to **warp** — the user's
-// own repo — where `git add` on an ignored path fails the whole invocation with exit 1 and stages
-// nothing, taking every legitimate `_lym` file named in the same call down with it.
-// A `.lym` path routed to warp by accident would hit exactly that failure mode.
-// classifyPaths itself stays policy-free: the never-committed bucket is reported, and turning it
-// into an error is Commit's job, not this file's.
-// classifyPaths does no I/O and no path validation: it trusts its caller, the same posture
-// ScopedPathspec takes, and leaves config loading and hub-reserved-name filtering to the caller
-// (WiredNames/pathspecNames in junctionnames.go).
+// classify.go splits the paths a commit names into warp, weft, and never-committed buckets.
+// A never-committed path must not fall through to warp.
+// In the user's repo, `git add` on an ignored path fails the whole invocation with exit 1 and stages nothing.
+// One `.lym` path in the call would take every legitimate file named beside it down with it.
 
 package fabricengine
 
 import "path/filepath"
 
-// classifyPaths partitions files into warp, weft, and neverCommitted paths, in input order,
-// preserving originals unchanged (significant on Windows for path separators).
-// The neverCommittedNames prefixes (built from routingNames the same way ScopedPathspec builds the
-// weft prefixes) are evaluated FIRST: a path under one of them goes to neverCommitted and is not
-// considered for either of the other two buckets, so a never-committed path can never fall through
-// to warp — see this file's header comment for why that fallthrough would be actively worse than
-// omission.
-// Otherwise the existing weft-then-warp fallthrough is unchanged: a path is weft iff it equals or
-// falls under a routingNames prefix with segment boundary, else it is warp.
+// classifyPaths partitions files into warp, weft, and neverCommitted paths, in input order.
+// Each returned path is the input string unchanged, because separators matter on Windows.
+// A path under a neverCommittedNames prefix goes to neverCommitted and is never considered for warp or weft.
+// Prefixes come from relPath and each name list, normalized to forward slashes.
+// Otherwise a path is weft if it equals or falls under a routingNames prefix at a segment boundary, else warp.
+// classifyPaths does no I/O and no path validation; it trusts its caller.
+// Loading config and filtering hub-reserved names are the caller's job.
+// The never-committed bucket is only reported: turning it into an error is the caller's decision.
 func classifyPaths(relPath string, routingNames, neverCommittedNames []string, files []string) (warp, weft, neverCommitted []string) {
 	weftPrefixes := normalizedScopedPathspec(relPath, routingNames)
 	neverCommittedPrefixes := normalizedScopedPathspec(relPath, neverCommittedNames)
@@ -44,9 +33,8 @@ func classifyPaths(relPath string, routingNames, neverCommittedNames []string, f
 	return warp, weft, neverCommitted
 }
 
-// normalizedScopedPathspec builds relPath-scoped prefixes from names via ScopedPathspec, then
-// filepath.ToSlash-normalizes each one so isUnderAnyWeftPrefix can compare them against
-// filepath.ToSlash-normalized file paths regardless of platform separator.
+// normalizedScopedPathspec returns the relPath-scoped prefixes for names, with forward slashes.
+// The slash form lets them compare against filepath.ToSlash-normalized paths on any platform.
 func normalizedScopedPathspec(relPath string, names []string) []string {
 	prefixes := ScopedPathspec(relPath, names)
 	normalized := make([]string, len(prefixes))

@@ -1,5 +1,4 @@
 // name.go mints the durable 128-bit identity a strand is keyed on.
-// The strand's display name is formed separately, by strandNameLocked in strand.go.
 
 package reedengine
 

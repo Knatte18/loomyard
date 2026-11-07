@@ -1,6 +1,7 @@
-// skillload.go implements Codex's one-turn skill load: one line asks the model to read each named skill's SKILL.md by absolute path and follow it,
-// and the rollout the turn end names says which of those files a tool call of that turn named.
-// A skill is a file the model reads, since Codex's own skill discovery outside a repository is untested and a typed `$` opens a popup that takes the next Enter.
+// skillload.go implements Codex's one-turn skill load: the model reads and follows each SKILL.md by absolute path,
+// and the rollout that the turn end names says which of those files a tool call of that turn named.
+// A skill is a file the model reads, since Codex's own skill discovery outside a repository is untested,
+// and a typed `$` opens a popup that takes the next Enter.
 
 package codexengine
 
@@ -20,7 +21,8 @@ import (
 
 var _ shuttleengine.SkillLoader = (*Codex)(nil)
 
-// defaultSkillLoadTimeout bounds one load turn of the whole skill list: a load turn is one short model turn.
+// defaultSkillLoadTimeout bounds one load turn of the whole skill list.
+// A load turn is one short model turn.
 const defaultSkillLoadTimeout = 2 * time.Minute
 
 // The folder and file names of a skill in the Claude plugin cache's layout.
@@ -29,13 +31,15 @@ const (
 	skillFileName = "SKILL.md"
 )
 
-// DefaultSkillLoadTimeout returns the bound on one load turn of the whole skill list.
+// DefaultSkillLoadTimeout returns the engine-owned bound on one load turn of the whole skill list.
 func (c *Codex) DefaultSkillLoadTimeout() time.Duration {
 	return defaultSkillLoadTimeout
 }
 
-// SkillLoadMessage returns the one line that asks the model to read, in this one turn and in order, the SKILL.md of each of skills found under codex.yaml's skill roots, by absolute path, and follow it.
-// A skill found under no root is left out of the line, and ClassifySkillLoad reports it unknown.
+// SkillLoadMessage returns the one line asking the model to read each skill's SKILL.md by absolute path and follow it.
+// The line asks for all of them in one turn, in the order given.
+// A skill that no skill root holds is left out of the line,
+// and the load check reports it as unknown.
 func (c *Codex) SkillLoadMessage(skills []string) string {
 	return skillLoadOver(skills, c.skillRoots())
 }
@@ -45,10 +49,13 @@ func skillLoadOver(skills, roots []string) string {
 	return skillLoadLine(resolvedSkillPaths(skills, roots))
 }
 
-// ClassifySkillLoad classifies the load of skills SkillLoadMessage asked from the rollout turnEnd's transcript_path names.
+// ClassifySkillLoad sorts skills into loaded, missing and unknown, from the rollout turnEnd's transcript_path names.
 // The latest user message that is a load message starts the turn, and only the tool calls after it count;
-// a load message is recognised by its fixed text, not by the paths it names, so a skill file that appeared after the launch does not hide it.
-// A skill is unknown when no skill root holds it, loaded when a call names its skills/<name>/SKILL.md tail, and missing otherwise.
+// a load message is recognised by its fixed text, not by the paths it names,
+// so a skill file that appeared after the launch does not hide it.
+// A skill is unknown when no skill root holds it;
+// it is loaded when a call names its skills/<name>/SKILL.md tail;
+// otherwise it is missing.
 // The report is unverified when the rollout cannot be read or holds no load message.
 func (c *Codex) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport {
 	data, err := os.ReadFile(payloadField(turnEnd.Raw, payloadTranscriptPath))
@@ -75,7 +82,8 @@ func (c *Codex) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) 
 	return report
 }
 
-// The fixed texts of the load message: the whole line when no skill file was found, and the opening before the paths otherwise.
+// The fixed texts of the load message: the whole line when no skill file was found;
+// the opening before the paths otherwise.
 const (
 	skillLoadNone    = "No skill file is to be read now. Do nothing else, and reply only `ok`."
 	skillLoadOpening = "Read each of these skill files in full now, all in this one turn, in this order, and follow each as standing instructions for the rest of this session: "
@@ -96,8 +104,7 @@ func isSkillLoadMessage(text string) bool {
 	return text == skillLoadNone || strings.HasPrefix(text, skillLoadOpening)
 }
 
-// skillRoots returns codex.yaml's skill roots with a leading ~/ expanded.
-// A root that resolves to no absolute path is left out with a Warn, and a codex.yaml that does not load leaves none, with a Warn.
+// skillRoots returns codex.yaml's skill roots, or none with a Warn when codex.yaml does not load.
 func (c *Codex) skillRoots() []string {
 	codex, err := LoadConfig(c.dirs)
 	if err != nil {
@@ -107,7 +114,8 @@ func (c *Codex) skillRoots() []string {
 	return c.expandSkillRoots(codex)
 }
 
-// expandSkillRoots returns codex's skill roots with a leading ~/ expanded, leaving out with a Warn a root that resolves to no absolute path.
+// expandSkillRoots returns codex's skill roots with a leading ~/ expanded;
+// it leaves out, with a Warn, each root that resolves to no absolute path.
 func (c *Codex) expandSkillRoots(codex Config) []string {
 	var roots []string
 	for _, root := range codex.SkillRoots {
@@ -121,7 +129,7 @@ func (c *Codex) expandSkillRoots(codex Config) []string {
 	return roots
 }
 
-// resolvedSkillPaths returns the SKILL.md path of each of skills that roots hold, in order.
+// resolvedSkillPaths returns the SKILL.md path of each skill that some root holds, in order.
 func resolvedSkillPaths(skills, roots []string) []string {
 	var paths []string
 	for _, skill := range skills {
@@ -132,8 +140,9 @@ func resolvedSkillPaths(skills, roots []string) []string {
 	return paths
 }
 
-// skillPath returns the SKILL.md path of skill, `<plugin>:<name>`, under the first of roots that holds it, in the Claude plugin cache's layout:
-// `<root>/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`, the newest version's.
+// skillPath returns the SKILL.md path of skill, `<plugin>:<name>`, under the first of roots that holds it.
+// The path follows the Claude plugin cache's layout:
+// `<root>/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`, for the newest version.
 // It returns "" for a skill that names no plugin or that no root holds.
 func skillPath(skill string, roots []string) string {
 	plugin, name, ok := strings.Cut(skill, ":")
@@ -152,8 +161,10 @@ func skillPath(skill string, roots []string) string {
 	return ""
 }
 
-// skillFiles returns the SKILL.md of plugin's skill name in every marketplace and version folder under root, in folder order.
-// It lists folders rather than globbing, so a root holding a glob metacharacter resolves as written; an unreadable folder holds no skill.
+// skillFiles returns the SKILL.md of plugin's skill name in every marketplace and version folder under root.
+// The files come in folder order.
+// It lists folders rather than globbing, so a root holding a glob metacharacter resolves as written;
+// an unreadable folder holds no skill.
 func skillFiles(root, plugin, name string) []string {
 	var files []string
 	marketplaces, _ := os.ReadDir(root)
@@ -175,9 +186,10 @@ func skillVersion(skillFile string) string {
 	return filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(skillFile))))
 }
 
-// compareVersions orders two dotted versions field by field under one total order on fields:
+// compareVersions orders two dotted versions field by field, under one total order on fields:
 // two numeric fields compare as numbers, a numeric field orders above a text one, and two text fields compare as text.
-// A field with a numeric prefix and a suffix, such as a pre-release's 0-beta, is text, so a release orders above its pre-release.
+// A field with a numeric prefix and a suffix, such as a pre-release's 0-beta, is text,
+// so a release orders above its pre-release.
 // A version that is a prefix of the other orders first.
 func compareVersions(a, b string) int {
 	aFields, bFields := strings.Split(a, "."), strings.Split(b, ".")
@@ -205,7 +217,8 @@ func compareVersionFields(a, b string) int {
 	}
 }
 
-// skillFileTail returns the path tail a read of skill's SKILL.md names: skills/<name>/SKILL.md, <name> being what follows the plugin's colon.
+// skillFileTail returns the path tail that a read of skill's SKILL.md names:
+// skills/<name>/SKILL.md, with <name> being what follows the plugin's colon.
 func skillFileTail(skill string) string {
 	_, name, _ := strings.Cut(skill, ":")
 	return path.Join(skillsDirName, name, skillFileName)
@@ -222,7 +235,8 @@ const (
 // toolCallPayloads are the response item types that carry a tool call and its arguments.
 var toolCallPayloads = []string{"function_call", "custom_tool_call", "local_shell_call"}
 
-// loadTurnCalls returns the raw payload of every tool call after the latest load message in the rollout data, and whether such a message was found.
+// loadTurnCalls returns the raw payload of every tool call after the latest load message in the rollout data.
+// The second result reports whether such a message was found.
 // A user message is a response item of role user, its text blocks joined, or a user_message event.
 func loadTurnCalls(data []byte) ([]string, bool) {
 	var calls []string

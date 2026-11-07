@@ -1,4 +1,5 @@
-// relaunch.go decides whether a re-launch on a recorded judge attempt may proceed, for the tackler's consume and loom's arbiter alike.
+// relaunch.go decides whether a re-launch on a recorded judge attempt may proceed.
+// It serves the tackler's consume and loom's arbiter alike.
 
 package sheddriver
 
@@ -9,10 +10,13 @@ import (
 )
 
 // AdmitRelaunch decides whether a re-launch on a recorded attempt may proceed over the status held under the lock.
-// current is the status now, key and pauseBefore/pauseAfter are the stop key and pause conditions the attempt recorded at spawn, target is the verdict's goto row, and actor names the spawner in refusal texts.
+// current is the status now.
+// key, pauseBefore and pauseAfter are the stop key and pause conditions the attempt recorded at spawn.
+// target is the verdict's goto row, and actor names the spawner in refusal texts.
 // An unmoved run (same stop key) is admitted unless its pause conditions differ from the recorded ones.
-// A moved run is admitted as inEffect when it stands paused at target having had only goto entries since the spawn, the last naming target;
-// there only a pause condition present now that the spawn did not record refuses.
+// A moved run is admitted as inEffect when it stands paused at target.
+// That holds only when the spawn was followed by goto entries alone, the last naming target.
+// In that case only a pause condition present now that the spawn did not record refuses.
 // Any other move returns a refusal reason, and an empty reason with inEffect false is an ordinary admit.
 func AdmitRelaunch(current shedengine.Status, key StopKey, pauseBefore, pauseAfter, target, actor string) (inEffect bool, refusal string) {
 	paused := fmt.Sprintf("the run was paused since the %s spawned", actor)
@@ -31,7 +35,8 @@ func AdmitRelaunch(current shedengine.Status, key StopKey, pauseBefore, pauseAft
 	return true, ""
 }
 
-// verdictInEffect reports whether current stands paused at target with only goto entries added since the stop key was taken, the last naming target.
+// verdictInEffect reports whether current stands paused at target.
+// Only goto entries may have been added since the stop key was taken, the last of them naming target.
 func verdictInEffect(current shedengine.Status, key StopKey, target string) bool {
 	if target == "" || current.CurrentProducer != target || current.State != shedengine.StatePaused || len(current.History) <= key.HistoryLength {
 		return false

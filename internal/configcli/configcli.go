@@ -1,6 +1,7 @@
 // configcli.go — configuration CLI command.
 //
-// Implements the lym config command, which edits module configurations, committing a hub-wide module in the Bolt checkout and syncing fabric for any other.
+// Implements the lym config command, which edits module configurations.
+// A hub-wide module is committed in the Bolt checkout; any other module syncs fabric.
 
 package configcli
 
@@ -37,11 +38,12 @@ type syncFunc func(w io.Writer) int
 // printModule reads and writes the on-disk YAML for a single config module to out.
 //
 // It validates the module name against the registry before touching the filesystem,
-// returning an output.Err JSON envelope when the module is unknown or the file
-// cannot be read. On os.IsNotExist it returns a descriptive "not configured" message
-// rather than a raw OS error so the caller gets actionable output. On success the raw
-// file bytes are written verbatim and exit 0 is returned.
-// The file is the selected layer's: without --layer, a hub-wide module's at the board dir and any other at the worktree.
+// returning an output.Err JSON envelope when the module is unknown or the file cannot be read.
+// On os.IsNotExist it returns a descriptive "not configured" message rather than a raw OS error,
+// so the caller gets actionable output.
+// On success the raw file bytes are written verbatim and exit 0 is returned.
+// The file is the selected layer's:
+// without --layer, a hub-wide module's at the board dir and any other at the worktree.
 func printModule(dirs configDirs, out io.Writer, module string) int {
 	// Validate the module name against the registry before touching the filesystem.
 	mod, ok := configreg.Lookup(module)
@@ -67,7 +69,8 @@ func printModule(dirs configDirs, out io.Writer, module string) int {
 }
 
 // printResolved writes module's resolved configuration to out, each unit annotated with the layer it came from.
-// It resolves through the same stack the module's loader does, so an absent base layer or an invalid layer file is an error envelope naming the failure.
+// It resolves through the same stack the module's loader does,
+// so an absent base layer or an invalid layer file is an error envelope naming the failure.
 func printResolved(dirs configDirs, out io.Writer, module string) int {
 	mod, ok := configreg.Lookup(module)
 	if !ok {
@@ -83,14 +86,14 @@ func printResolved(dirs configDirs, out io.Writer, module string) int {
 
 // printAll writes a header-delimited YAML dump of all config modules to out.
 //
-// Each module section starts with a "# <name>" delimiter line. If the config file
-// exists its YAML content follows; if the file is absent a "# (not configured)"
-// comment is written instead. Read errors other than not-found are fatal and return
-// an output.Err envelope immediately rather than emitting partial output.
+// Each module section starts with a "# <name>" delimiter line.
+// If the config file exists, its YAML content follows;
+// if the file is absent, a "# (not configured)" comment is written instead.
+// Read errors other than not-found are fatal;
+// they return an output.Err envelope immediately rather than emitting partial output.
 //
-// The aggregate form never errors on absence — it exits 0 regardless of how many
-// modules are configured so callers can use it for inspection without a fully-seeded
-// workspace.
+// The aggregate form never errors on absence: it exits 0 whatever modules are configured.
+// It lets callers inspect config without a fully seeded workspace.
 // Each section is the module's own default file: a hub-wide module's at the board dir, any other at the worktree.
 func printAll(dirs configDirs, out io.Writer) int {
 	dirs.layer = ""
@@ -123,9 +126,9 @@ func printAll(dirs configDirs, out io.Writer) int {
 }
 
 // editOne edits a single config module's selected layer.
-// On success it commits a default-layer file in the Bolt checkout, leaves a local override uncommitted, or syncs fabric for a worktree file.
+// On success, a default-layer file is committed in the Bolt checkout;
+// a local override is left uncommitted, and a worktree file syncs fabric.
 func editOne(dirs configDirs, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
-	// Look up the template for this module.
 	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
@@ -149,14 +152,13 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 		return editLocal(dirs, out, mod, path, edit)
 	}
 
-	// Call configengine.Edit to open the file in the editor.
 	err = configengine.Edit(dirs.engineDirs(), mod.Spec(), configengine.LayerWorktree, edit)
 	if err != nil {
 		// Check if this is an abort (user saved without fixing YAML).
 		if errors.Is(err, configengine.ErrAborted) {
 			return output.Err(out, fmt.Sprintf("aborted: _lym/config/%s.yaml unchanged", module))
 		}
-		// Any other error (I/O, parse loop termination, etc.).
+		// Any other error (I/O, parse loop termination).
 		return output.Err(out, err.Error())
 	}
 
@@ -168,11 +170,9 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 		})
 	}
 
-	// Edit succeeded; now call sync and capture its output.
 	var buf bytes.Buffer
 	exitCode := sync(&buf)
 	if exitCode == 0 {
-		// Sync succeeded; emit a JSON envelope.
 		return output.Ok(out, map[string]any{
 			"module":  module,
 			"message": fmt.Sprintf("edited and synced _lym/config/%s.yaml", module),
@@ -183,13 +183,11 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 	return output.Err(out, fmt.Sprintf("edited _lym/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
-// parseSetFlags parses a list of raw "key=value" strings (as collected from
-// repeated --set flags) into yamlengine.KV pairs.
+// parseSetFlags parses raw "key=value" strings, as collected from repeated --set flags, into yamlengine.KV pairs.
 //
-// Each entry is split on the first '=' only, so a value may itself contain
-// '=' characters without truncating. An entry with no '=' at all is
-// malformed and returns a descriptive error rather than silently treating
-// the whole string as a key with an empty value.
+// Each entry is split on the first '=' only, so a value may itself contain '=' characters without being truncated.
+// An entry with no '=' at all is malformed;
+// it returns a descriptive error rather than silently treating the whole string as a key with an empty value.
 func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 	pairs := make([]yamlengine.KV, 0, len(raw))
 	for _, entry := range raw {
@@ -202,14 +200,13 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 	return pairs, nil
 }
 
-// setModule writes pairs into a single config module's file and optionally
-// syncs on success. Like editOne, but with no editor: configengine.Set performs
-// the write non-interactively in one call.
-// A default-layer file is written at the board dir and committed in the Bolt checkout, a local override is written uncommitted, and a worktree file syncs fabric.
+// setModule writes pairs into a single config module's file and optionally syncs on success.
+// It applies them with no editor: configengine.Set performs the write non-interactively in one call.
+// A default-layer file is written at the board dir and committed in the Bolt checkout;
+// a local override is written uncommitted, and a worktree file syncs fabric.
 // A value the module's loader refuses leaves the file as it was.
 func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc, commit hubCommitFunc) int {
-	// Look up the module;
-	// its declared open maps let --set add or rewrite one entry.
+	// Look up the module; its declared open maps let --set add or rewrite one entry.
 	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
@@ -240,7 +237,6 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 		return output.Err(out, err.Error())
 	}
 
-	// Set succeeded; now call sync and capture its output, exactly as editOne does.
 	// A worktree with no board is no hub's, so there is nothing to sync.
 	var buf bytes.Buffer
 	exitCode := 0
@@ -251,8 +247,8 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 		exitCode = sync(&buf)
 	}
 	if exitCode == 0 {
-		// Sync succeeded; emit a JSON envelope. "preserved" is only included
-		// when non-empty so a clean write's envelope carries no such field.
+		// "preserved" is only included when non-empty,
+		// so a clean write's envelope carries no such field.
 		fields := map[string]any{
 			"module":  module,
 			"message": message,
@@ -268,8 +264,8 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 }
 
 // setChecked writes pairs into the layer's file of module at path and checks the result with the module's own loader.
-// A write after which the stack fails to load with an error it did not fail with before is undone, putting path back as it was,
-// and its error names the module and carries the loader's, which names the key.
+// A write that leaves the stack failing to load with a new error is undone, and path is put back as it was.
+// The error names the module and carries the loader's, which names the key.
 // A stack that already failed to load lets a write through that leaves that same failure in place.
 func setChecked(dirs configengine.Dirs, module configreg.Module, layer configengine.Layer, path string, pairs []yamlengine.KV) ([]string, error) {
 	snap, err := snapshotFile(path)
@@ -287,7 +283,8 @@ func setChecked(dirs configengine.Dirs, module configreg.Module, layer configeng
 	return preserved, nil
 }
 
-// newLoadFailure returns a refusal when after, the module's check once a write is made, fails with an error other than before, the check's error ahead of the write.
+// newLoadFailure returns a refusal when the module's check, run after a write, fails with a new error.
+// The error is new when it differs from the one the check gave before the write.
 func newLoadFailure(module configreg.Module, before, after error) error {
 	if after == nil || (before != nil && before.Error() == after.Error()) {
 		return nil
@@ -296,7 +293,8 @@ func newLoadFailure(module configreg.Module, before, after error) error {
 }
 
 // setLocal writes pairs into a module's local override file at path.
-// A local override is never committed and runs no fabric sync, and a key the local layer refuses, or a value the module's loader refuses, leaves the file as it was.
+// A local override is never committed and runs no fabric sync.
+// A key the local layer refuses, or a value the module's loader refuses, leaves the file as it was.
 func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
 	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerLocal, path, pairs)
 	if err != nil {
@@ -313,7 +311,9 @@ func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string,
 }
 
 // setMachine writes pairs into a hub-wide module's machine override file at path.
-// A machine override is never committed and runs no fabric sync, and a key the machine layer refuses, or a value the module's loader refuses over the prime's worktree stack, leaves the file as it was.
+// A machine override is never committed and runs no fabric sync.
+// A key the machine layer refuses leaves the file as it was.
+// So does a value the module's loader refuses over the prime's worktree stack.
 func setMachine(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
 	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerMachine, path, pairs)
 	if err != nil {
@@ -331,7 +331,9 @@ func setMachine(dirs configDirs, out io.Writer, mod configreg.Module, path strin
 
 // editMachine edits a hub-wide module's machine override file at path in the editor.
 // A machine override is never committed and runs no fabric sync.
-// A saved key the machine layer refuses, or a save after which the stack newly fails to load, puts the file back to its previous bytes, or removes it when the edit created it.
+// A saved key the machine layer refuses puts the file back to its previous bytes.
+// So does a save that leaves the stack newly failing to load.
+// Where the edit created the file, it is removed rather than restored.
 func editMachine(dirs configDirs, out io.Writer, mod configreg.Module, path string, edit configengine.EditorFunc) int {
 	snap, err := snapshotFile(path)
 	if err != nil {
@@ -354,7 +356,8 @@ func editMachine(dirs configDirs, out io.Writer, mod configreg.Module, path stri
 }
 
 // editLocal edits a module's local override file at path in the editor.
-// A local override is never committed and runs no fabric sync, and a saved key the local layer refuses leaves the file as it was.
+// A local override is never committed and runs no fabric sync.
+// A saved key the local layer refuses leaves the file as it was.
 func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, edit configengine.EditorFunc) int {
 	if err := configengine.Edit(dirs.engineDirs(), mod.Spec(), configengine.LayerLocal, edit); err != nil {
 		if errors.Is(err, configengine.ErrAborted) {
@@ -368,19 +371,18 @@ func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string
 	})
 }
 
-// dispatch routes the config command to the print path (when printOnly is true),
-// the --set path (when setFlags is non-empty),
-// editOne (if a module is specified).
+// dispatch routes the config command to one of three paths.
+// It takes the --set path when setFlags is non-empty.
+// It takes the print path when printOnly is true, and otherwise editOne when a module is given.
 //
-// When printOnly is true the command is read-only: it writes on-disk YAML to out
-// without opening an editor.
-// The print path is evaluated before any edit logic.
-// The --set path is a fully non-interactive write: it never calls edit and is mutually exclusive with --print.
-// The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
-// layer is the --layer value, empty or one of the four layer names; any other value is refused before anything is read or written.
+// The print path is read-only: it writes the on-disk YAML to out and never opens an editor.
+// The --set path writes without calling edit and is mutually exclusive with --print.
+// layer is the --layer value, empty or one of the four layer names.
+// Any other value is refused before anything is read or written.
 // hubWriteGuard is called before a default-layer write and refuses it with its message; a nil guard allows every write.
-// terminal tells whether the command's input is an interactive terminal:
-// without one, an editor path is refused before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs.
+// terminal reports whether the command's input is an interactive terminal.
+// Without one, an editor path is refused before the layer is dispatched,
+// so no guard is consulted, no file is scaffolded and no editor runs.
 func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
 	if !validLayer(layer) {
 		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree, machine or local", layer))
@@ -389,10 +391,8 @@ func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengin
 	dirs.layer = layer
 	dirs.hubWriteGuard = hubWriteGuard
 
-	// Handle --set before any --print/edit dispatch:
-	// it is a fully non-interactive write path that never opens the editor,
-	// so its validation (mutual exclusivity with --print, module-required)
-	// must run before either of those branches gets a chance to act.
+	// The --set path never opens the editor, so its validation runs before the --print and edit branches can act:
+	// mutual exclusivity with --print, and a module being required.
 	if len(setFlags) > 0 && printOnly {
 		return output.Err(out, "--print and --set are mutually exclusive")
 	}
@@ -407,9 +407,7 @@ func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengin
 		return setModule(dirs, out, args[0], pairs, sync, commit)
 	}
 
-	// Handle --print before any edit dispatch;
-	// the print path is read-only
-	// and never opens the editor.
+	// The --print path is read-only and never opens the editor, so it runs before any edit dispatch.
 	if printOnly {
 		if len(args) >= 1 {
 			return printModule(dirs, out, args[0])
@@ -435,8 +433,9 @@ func stdinIsTerminal(in io.Reader) bool {
 	return ok && term.IsTerminal(int(file.Fd()))
 }
 
-// noTerminalRefusal words the refusal of an editor path run without a terminal, naming module in its way forward, or a placeholder when module is empty.
-// A non-empty layer is carried into both ways forward, so the call a refused --layer run is sent to addresses the same layer.
+// noTerminalRefusal words the refusal of an editor path run without a terminal.
+// The way forward names module, or a placeholder when module is empty.
+// A non-empty layer is carried into both suggested commands, so the retry addresses the same layer.
 func noTerminalRefusal(module, layer string) string {
 	if module == "" {
 		module = "<module>"
@@ -453,9 +452,8 @@ func baseDirOf(l *lymcwd.Location) string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel)
 }
 
-// buildConfigLong constructs the Long description for the config command,
-// embedding the live list of known modules from the registry so the help text
-// stays in sync without requiring manual updates when modules are added or removed.
+// buildConfigLong builds the long help text of the config command.
+// It embeds the hub-wide modules from the registry, so the text stays in sync when modules are added or removed.
 func buildConfigLong() string {
 	var hubWide []string
 	for _, mod := range configreg.Modules() {
@@ -507,7 +505,8 @@ func resolvedRefusal(args []string, printOnly bool, setFlags []string, layer str
 }
 
 // runResolved is the package-private handler for lym config <module> --resolved.
-// It resolves the location as runConfig does and prints the module's annotated resolved configuration.
+// It resolves the location from the working directory in the context.
+// It prints the module's resolved configuration, each unit annotated with its layer.
 func runResolved(ctx context.Context, out io.Writer, module string) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -522,13 +521,15 @@ func runResolved(ctx context.Context, out io.Writer, module string) int {
 
 // runReconcile is the package-private handler for the lym config reconcile subcommand.
 //
-// With no layer it reconciles the worktree's own and local config files against their templates via configsync.ReconcileAll;
-// with layer default it reconciles every file under the Bolt checkout instead, guarded and committed there on apply.
-// Any other layer is refused, and so is a run whose worktree is the Bolt checkout itself, which would reconcile the hub's files as a worktree's.
-// It emits a JSON envelope. When apply is false (dry-run) no files are written. Returns exit code 0 on success,
-// 1 on any error.
+// With no layer it reconciles the worktree's own and local config files against their templates.
+// With layer default it reconciles every file under the Bolt checkout instead, guarded and committed there on apply.
+// Any other layer is refused.
+// A run whose worktree is the Bolt checkout itself is refused too.
+// It would reconcile the hub's files as a worktree's.
+// It emits a JSON envelope.
+// When apply is false (dry-run) no files are written.
+// Returns exit code 0 on success, 1 on any error.
 func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) int {
-	// Resolve the seam cwd and layout.
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("getwd: %v", err))
@@ -536,8 +537,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 
 	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		// lymcwd.Resolve's error is already self-describing; pass it
-		// through bare rather than restating it with a redundant prefix.
+		// The resolve error is already self-describing, so it is passed through without a prefix.
 		return output.Err(out, err.Error())
 	}
 
@@ -552,10 +552,8 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 		return reconcileDefaultLayer(l, out, apply, realHubWriteGuard(l))
 	}
 
-	// Compute baseDir as the enclosing _lym parent: the worktree root joined with the relative path.
 	baseDir := baseDirOf(l)
 
-	// Reconcile all modules; apply controls whether changes are written to disk.
 	results, err := configsync.ReconcileAll(baseDir, boltDir, configsync.Options{Apply: apply, PruneUnknown: true})
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
@@ -575,26 +573,26 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 			"applied": result.Applied,
 			"layer":   string(result.Layer),
 		}
-		// migratedFrom is exceptional -- only "fabric", only when a
-		// pre-cutover legacy config file's values were folded in this round
-		// (see configsync.ReconcileAll) -- so it's omitted for every
-		// ordinary module rather than always present as an empty array.
+		// migratedFrom is set only when a pre-cutover legacy config file's values were folded in during this run.
+		// Ordinary modules omit it rather than carry an empty array.
 		if len(result.MigratedFrom) > 0 {
 			m["migratedFrom"] = result.MigratedFrom
 		}
-		// migrated is exceptional as well: only a module with a Migrate hook that rewrote its present file sets it.
+		// migrated is set only by a module with a Migrate hook that rewrote its present file.
 		if len(result.Migrated) > 0 {
 			m["migrated"] = result.Migrated
 		}
-		// retired and divergent are exceptional too: only a hub-wide module's leftover per-worktree copy sets them.
+		// retired and divergent are set only by a hub-wide module's leftover per-worktree copy.
 		if result.Retired {
 			m["retired"] = true
 		}
 		if len(result.Divergent) > 0 {
 			m["divergent"] = result.Divergent
 		}
-		// stripped and inherited are exceptional too: only a worktree without the sparse marker has them, and reconcile reports them as pending without stripping.
-		// A default-layer result carries stripped for an unmigrated board as well, where it lists the base units the hub reconcile of a start verb strips.
+		// stripped and inherited are set only on a worktree without the sparse marker;
+		// reconcile reports them there as pending without stripping.
+		// A default-layer result also carries stripped for an unmigrated board.
+		// It lists the base units that the hub reconcile of a start verb strips.
 		if len(result.Stripped) > 0 {
 			m["stripped"] = result.Stripped
 			if result.Layer == configengine.LayerDefault {
@@ -604,7 +602,7 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Inherited) > 0 {
 			m["inherited"] = result.Inherited
 		}
-		// moved, keptTarget and overwritten are exceptional too: only a declared key move sets them.
+		// moved, keptTarget and overwritten are set only by a declared key move.
 		if len(result.Moved) > 0 {
 			m["moved"] = result.Moved
 		}
@@ -614,26 +612,26 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Overwritten) > 0 {
 			m["overwritten"] = result.Overwritten
 		}
-		// copied is exceptional too: only a declared key copy sets it.
+		// copied is set only by a declared key copy.
 		if len(result.Copied) > 0 {
 			m["copied"] = result.Copied
 		}
-		// keptExtra is exceptional too: only a module with per-name maps whose file holds a name the template lacks sets it.
+		// keptExtra is set only by a module with per-name maps whose file holds a name the template lacks.
 		if len(result.KeptExtra) > 0 {
 			m["keptExtra"] = result.KeptExtra
 		}
-		// dropped is exceptional too: only a module with per-name maps whose base file holds a name with the template's value sets it.
+		// dropped is set only by a module with per-name maps whose base file holds a name with the template's value.
 		if len(result.Dropped) > 0 {
 			m["dropped"] = result.Dropped
 		}
-		// updated and differs are exceptional too: only a seed-only module's board file following its template sets them.
+		// updated and differs are set only by a seed-only module's board file that follows its template.
 		if len(result.Updated) > 0 {
 			m["updated"] = result.Updated
 		}
 		if len(result.Differs) > 0 {
 			m["differs"] = result.Differs
 		}
-		// unsettled is exceptional too: only a seed-only module whose file holds a pair its module leaves for the operator to settle sets it.
+		// unsettled is set only by a seed-only module whose file holds a pair the module leaves for the operator to settle.
 		if len(result.Unsettled) > 0 {
 			m["unsettled"] = result.Unsettled
 		}
@@ -655,12 +653,13 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 
 // Command returns the cobra command for lym config.
 //
-// The returned command uses a configCmd variable (closure pattern) so that the --print flag value is readable in the RunE handler.
 // The --print flag makes config read-only: it prints on-disk YAML without launching the editor.
-// Args is cobra.MaximumNArgs(1) so extra positionals are rejected.
-// ValidArgs is set to the known config module names for shell completion only.
-// A reconcile subcommand is registered so that "lym config reconcile" is routed there while "lym config <module>" continues to invoke the edit RunE.
-// The RunE decides before resolving any cwd: a bare invocation with neither --print nor --set prints the help, and an argument that is not a module is refused as an unknown subcommand.
+// Extra positional arguments are rejected.
+// ValidArgs names the config modules for shell completion only.
+// The reconcile subcommand is registered so that lym config reconcile routes there.
+// lym config <module> still invokes the edit RunE.
+// The RunE decides before resolving any cwd: a bare invocation with neither --print nor --set prints the help,
+// and an argument that is not a module is refused as an unknown subcommand.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:         "config [<module>]",
@@ -674,8 +673,7 @@ func Command() *cobra.Command {
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
 	configCmd.Flags().Bool("resolved", false, "print the module's resolved config, each unit annotated with the layer it came from")
 	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a hub-wide module's never-tracked override of its machine keys under the board dir's .lym, written from the prime")
-	// The RunE closure captures configCmd so the --print/--set flags are
-	// readable without consulting os.Args directly.
+	// The RunE closure captures configCmd so the --print and --set flags are readable without consulting os.Args.
 	configCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if clihelp.ShouldAbort(cmd.Context()) {
 			return nil
@@ -706,7 +704,8 @@ func Command() *cobra.Command {
 		return nil
 	}
 
-	// Build the reconcile subcommand and register it so cobra routes "lym config reconcile" here while "lym config <module>" continues to invoke the edit RunE above.
+	// reconcileCmd is registered on configCmd, so cobra routes "lym config reconcile" to it;
+	// "lym config <module>" still runs configCmd's RunE.
 	reconcileCmd := &cobra.Command{
 		Use:         "reconcile",
 		Short:       "reconcile module configs against templates",
@@ -744,8 +743,7 @@ module retired it, since a newer lym binary may have written it.`,
 	})
 	configCmd.AddCommand(reconcileCmd)
 
-	// The menu subcommand reads the choice from the command's input,
-	// which clihelp.WrapRunCtx does not carry,
+	// The menu subcommand reads the choice from the command's input, which clihelp.WrapRunCtx does not carry,
 	// so its RunE is written by hand.
 	menuCmd := &cobra.Command{
 		Use:         "menu",
@@ -765,20 +763,16 @@ module retired it, since a newer lym binary may have written it.`,
 	return configCmd
 }
 
-// RunCLI is the public seam for the lym config command.
-//
-// It delegates to clihelp.Execute(Command(), out, args) so that all existing in-process callers and
-// tests compile and pass unchanged.
-// The cobra command carries both stdout and stderr into out for single-buffer test capture.
+// RunCLI runs the lym config command with args and returns its exit code.
+// Both stdout and stderr go to out, so a caller can capture them in one buffer.
+// The working directory is the process's.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the lym config command with args, using cwd as the working directory.
+// An empty cwd means the process's working directory and goes to clihelp.Execute instead.
+// lymcwd.WithCwd panics on an empty directory, so an empty cwd must not reach clihelp.ExecuteIn.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)
@@ -786,23 +780,17 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
-// runConfig is the package-private handler for the lym config command.
-//
-// It resolves the layout from the seam cwd,
-// builds the real editor (DefaultEditor),
-// the real sync function (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the nested call re-derive it from process state)
-// and the real hub commit,
-// and dispatches to dispatch.
-// When printOnly is true the command is read-only: it prints on-disk YAML
-// without opening an editor or running sync. setFlags carries the raw
-// "key=value" strings collected from repeated --set flags.
+// runConfig runs the lym config command for args and returns its exit code.
+// It resolves the layout from the cwd in ctx and builds the real editor, sync, and hub commit.
+// The real sync runs fabriccli.RunCLIIn with "sync" in that same cwd, rather than re-deriving it from process state.
+// When printOnly is true the command is read-only: it prints on-disk YAML without opening an editor or running sync.
+// setFlags carries the raw "key=value" strings collected from repeated --set flags.
 func runConfig(ctx context.Context, in io.Reader, out io.Writer, args []string, printOnly bool, setFlags []string, layer string) int {
 	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	// Dispatch to the print path, --set path, or specific module.
 	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, layer, realHubWriteGuard(l), stdinIsTerminal(in))
 }
 
@@ -813,10 +801,10 @@ func realHubWriteGuard(l *lymcwd.Location) func() (string, error) {
 	}
 }
 
-// runMenu is the package-private handler for the lym config menu subcommand.
+// runMenu runs the lym config menu subcommand, which picks a module to edit interactively.
 //
-// It resolves the layout and builds the real sync and hub commit exactly as runConfig does,
-// then runs the picker over in with the real editor.
+// It resolves the layout from the cwd in ctx and builds the real sync and hub commit.
+// It then runs the picker reading from in, with the real editor.
 func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
@@ -827,11 +815,10 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 	return menu(dirs, in, out, configengine.DefaultEditor, realSync, realCommit, stdinIsTerminal(in))
 }
 
-// resolveReal resolves the layout from the seam cwd and builds the real sync function and hub commit.
+// resolveReal resolves the layout from the cwd in ctx and builds the real sync function and hub commit.
 //
-// The sync is fabriccli.RunCLIIn with "sync", carrying the already-resolved cwd
-// rather than letting the nested call re-derive it from process state;
-// doing so is precisely the bug this seam removes.
+// The sync is fabriccli.RunCLIIn with "sync" in that resolved cwd.
+// The nested call must not re-derive the cwd from process state.
 // The hub commit is newHubCommit over the Bolt checkout.
 func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc, error) {
 	cwd, err := lymcwd.CwdFrom(ctx)

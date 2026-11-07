@@ -1,6 +1,7 @@
 // state.go defines the persisted strand record and ReedState container, plus the .lym/reed.json load/save wrappers.
-// This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them semantically — only Display decides where a strand's pane goes.
-// Retiring is the one field reed itself owns: lifecycle bookkeeping set by a reed verb (MarkRetiring), never written by a caller of AddStrand.
+// Strand carries the fields a caller writes as opaque data.
+// Reed stores them and reads one only where its field comment says so.
+// Retiring is lifecycle bookkeeping that a reed verb sets (MarkRetiring); no caller of AddStrand writes it.
 
 package reedengine
 
@@ -16,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Strand is the persisted record for one tmux pane reedengine owns, reusing render.Display for the
-// display vocabulary.
+// Strand is the persisted record for one tmux pane reedengine owns.
+// Its Display field uses the display vocabulary of render.Display.
 type Strand struct {
 	GUID      string         `json:"guid"`
 	Name      string         `json:"name"`
@@ -31,20 +32,25 @@ type Strand struct {
 	// Retiring records that a caller of `reed remove --detach` asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool `json:"retiring,omitempty"`
-	// DoneWhen lists paths whose joint existence means the strand's work finished;
-	// its spawner sets it at add time.
-	// Reed only stats them: Resume drops a non-live strand whose list is non-empty and fully present, instead of relaunching it.
+	// DoneWhen lists paths whose joint existence means the strand's work finished.
+	// The spawner sets it at add time.
+	// Reed only stats them.
+	// Resume drops a non-live strand whose list is non-empty and fully present, instead of relaunching it.
 	DoneWhen []string `json:"doneWhen,omitempty"`
-	// Segment is the loom segment its spawner named, an opaque display field reed reads only to look up the segment's color.
+	// Segment is the loom segment its spawner named.
+	// It is an opaque display field: reed reads it only to look up the segment's color.
 	// A strand recorded before the field existed decodes with none.
 	Segment string `json:"segment,omitempty"`
-	// Provider is the opaque tag its spawner set; reed stores it and keys the session namers by it, never reading what it means.
+	// Provider is the opaque tag its spawner set.
+	// Reed stores it and keys the session namers by it, never reading what it means.
 	// A strand recorded before the field existed, or added outside shuttle, decodes with none.
 	Provider string `json:"provider,omitempty"`
-	// CreelHooks is the opaque mark its spawner sets when the strand's session runs creel's hook delivery; reed stores it and never reads what it means.
+	// CreelHooks is the opaque mark its spawner sets when the strand's session runs creel's hook delivery.
+	// Reed stores it and never reads what it means.
 	// A strand recorded before the field existed, or added outside shuttle, decodes with none.
 	CreelHooks bool `json:"creelHooks,omitempty"`
-	// LymBin is the absolute `lym` path the strand's pane prelude exported as LYM_BIN at its latest launch, empty when no prelude was composed.
+	// LymBin is the absolute `lym` path the strand's pane prelude exported as LYM_BIN at its latest launch.
+	// It is empty when no prelude was composed.
 	// A strand recorded before the field existed decodes with none.
 	LymBin string `json:"lymBin,omitempty"`
 	// Color is the palette color Segment resolved to, filled on the strand an add or replace returns.
@@ -52,82 +58,75 @@ type Strand struct {
 	Color segmentcolor.Color `json:"-"`
 }
 
-// ReedState is the persisted record for one hub's tmux server: the socket name, the session,
-// stripped env keys, and every strand as a flat list.
+// ReedState is the persisted record for one hub's tmux server.
+// It holds the socket name, the session, the stripped env keys, and every strand as a flat list.
 type ReedState struct {
 	Socket      string   `json:"socket"`
 	Session     string   `json:"session"`
 	StrippedEnv []string `json:"strippedEnv"`
 	Strands     []Strand `json:"strands"`
-	// SelvagePaneID is the tmux pane id of the always-present Selvage pane —
-	// deliberately outside Strands, since Selvage is a first-class but
-	// separate construct and never itself a strand (Shared Decision
-	// header-is-not-a-strand): it is excluded from strand accounting, from
-	// being the preferred split target, and from both halves of reconcile's
-	// kill schedule. Empty means Selvage has not yet been created (a fresh
-	// worktree, or a server rebirth that cleared every binding) and must be
-	// (re)created at the next up/resume boot.
+	// SelvagePaneID is the tmux pane id of the always-present Selvage pane.
+	// It sits outside Strands, since Selvage is a separate construct and never itself a strand:
+	// strand accounting, the preferred split target, and both halves of reconcile's kill schedule all skip it.
+	// Empty means Selvage has not yet been created: a fresh worktree, or a server rebirth that cleared every binding.
+	// It must then be (re)created at the next up/resume boot.
 	SelvagePaneID string `json:"selvagePaneId,omitempty"`
-	// PaneGeneration identifies the tmux session incarnation every PaneID
-	// above — the strands' and SelvagePaneID alike — was bound against. It is
-	// the one field in this struct reed reads back semantically rather than
-	// carrying for its caller: without it a persisted pane id cannot be told
-	// apart from a live pane belonging to something else, because tmux pane
-	// ids are server-global and restart at %0 on every server rebirth. See
-	// generation.go for the two guards built on it. A zero value means the
-	// state predates this field (or has no bindings yet) and is adopted
-	// rather than treated as a mismatch.
+	// PaneGeneration identifies the tmux session incarnation that every pane id in this state was bound against:
+	// the strands' ids and SelvagePaneID alike.
+	// It is the one field in this struct that reed reads back semantically rather than carrying for its caller.
+	// A persisted pane id cannot be told apart from a live pane belonging to something else without it.
+	// Tmux pane ids are server-global and restart at %0 on every server rebirth.
+	// See generation.go for the two guards built on it.
+	// A zero value means the state predates this field or has no bindings yet.
+	// Such a state is adopted rather than treated as a mismatch.
 	PaneGeneration PaneGeneration `json:"paneGeneration"`
 	// WindowGroups records the own-window groups that have a strand, keyed by group name.
 	// An older file decodes with none.
 	WindowGroups map[string]WindowGroup `json:"windowGroups,omitempty"`
 }
 
-// PaneGeneration identifies one tmux session incarnation, so a persisted pane id can be told apart
-// from a live pane that merely reuses its number.
-// The zero value means "no generation recorded" and is what Recorded reports on.
+// PaneGeneration identifies one tmux session incarnation.
+// It lets a persisted pane id be told apart from a live pane that merely reuses its number.
+// The zero value means no generation was recorded.
 type PaneGeneration struct {
-	// SessionName is the tmux session name the bindings were minted under. It is the lookup key for
-	// the still-alive-orphan check, and the only field that can change without the session becoming
-	// a different one (tmux rename-session), which is why SameIncarnation ignores it.
+	// SessionName is the tmux session name the bindings were minted under.
+	// It is the lookup key for the still-alive-orphan check.
+	// It is the only field that a tmux rename-session can change without the session becoming a different one.
+	// SameIncarnation therefore ignores it.
 	SessionName string `json:"sessionName,omitempty"`
 	// TmuxSessionID is tmux's own session id ("$0", "$1", …), unique per session within one server.
 	TmuxSessionID string `json:"tmuxSessionId,omitempty"`
 	// ServerPID is the tmux SERVER process's pid, which distinguishes two servers on one socket.
 	ServerPID string `json:"serverPid,omitempty"`
-	// Created is the session's creation time in epoch seconds, which distinguishes a session id
-	// reused by a later server on the same socket.
+	// Created is the session's creation time in epoch seconds.
+	// It distinguishes a session id reused by a later server on the same socket.
 	Created string `json:"created,omitempty"`
 }
 
-// Recorded reports whether this generation carries an identity at all, as opposed to being the zero
-// value a pre-field or freshly initialized state carries.
+// Recorded reports whether this generation carries an identity.
+// The zero value is what a pre-field or freshly initialized state carries.
 func (g PaneGeneration) Recorded() bool {
 	return g != PaneGeneration{}
 }
 
 // SameIncarnation reports whether g and other name the same live tmux session, ignoring SessionName.
-// The name is excluded deliberately: tmux rename-session changes a session's name in place without
-// making it a different session, and treating that as a new generation would discard a healthy
-// worktree's whole binding table.
+// The name is excluded: tmux rename-session changes it in place without making the session a different one.
+// Treating that as a new generation would discard a healthy worktree's whole binding table.
 func (g PaneGeneration) SameIncarnation(other PaneGeneration) bool {
 	return g.TmuxSessionID == other.TmuxSessionID &&
 		g.ServerPID == other.ServerPID &&
 		g.Created == other.Created
 }
 
-// reedStateFileName is the reed.json file name inside .lym directory.
+// reedStateFileName is the reed.json file name inside the .lym directory.
 const reedStateFileName = "reed.json"
 
-// UnmarshalJSON decodes a ReedState, refusing a file whose entire content is the JSON document
-// "null".
+// UnmarshalJSON decodes a ReedState and refuses a file whose entire content is the JSON document "null".
 //
-// encoding/json accepts "null" into any type and leaves the value untouched, so without this a
-// four-byte corrupt file decoded to a valid EMPTY ReedState and reed answered `status` with
-// ok:true and zero strands — discarding the whole persisted table silently (R5 review finding
-// R5-F1). Silence is the worst possible outcome for a state file: every other corruption shape
-// (truncation, a partial write, garbage bytes) already fails loud, and this one shape has to join
-// them rather than being papered over with a plausible-looking empty answer.
+// encoding/json accepts "null" into any type and leaves the value untouched.
+// Without this check such a file would decode to an empty ReedState.
+// Reed would then report zero strands, and the persisted table would go unseen.
+// Truncated, partial, and garbage files already fail loud, and this shape has to fail loud too.
 func (s *ReedState) UnmarshalJSON(data []byte) error {
 	if string(bytes.TrimSpace(data)) == "null" {
 		return errors.New(`the file's entire content is the JSON document "null", not a state object`)
@@ -144,9 +143,8 @@ func (s *ReedState) UnmarshalJSON(data []byte) error {
 }
 
 // LoadState reads the ReedState persisted at dotLymDir/reed.json.
-// Returns (nil, nil) if absent, (nil, err) on corrupt or read errors.
-// A corrupt-file error is self-describing — it names the file and both remedies — so callers pass
-// it through bare rather than prefixing it (see unreadableStateError).
+// It returns (nil, nil) if the file is absent, and (nil, err) on a corrupt file or a read error.
+// The error for a corrupt file names the file and both remedies, so callers return it unwrapped.
 func LoadState(dotLymDir string) (*ReedState, error) {
 	path := filepath.Join(dotLymDir, reedStateFileName)
 	lockPath := path + ".lock"
@@ -161,27 +159,18 @@ func LoadState(dotLymDir string) (*ReedState, error) {
 	return &v, nil
 }
 
-// unreadableStateError describes a reed.json that exists but cannot be decoded, naming the file and
-// the two ways out.
+// unreadableStateError describes a reed.json that exists but cannot be decoded.
+// It names the file and the two ways out, because a bare decode error names neither.
+// A crash, a partial write, or a full disk can leave such a file while the tmux session it describes keeps running.
+// Every verb that loads state then refuses to run.
+// The one verb that still works, `down`, destroys the running work.
 //
-// It exists because the bare decode error was not actionable and the situation it describes is not
-// rare: a crash, a `kill -9`, a full disk, or a power loss during a write leaves a partial or
-// invalid file, and reed then refuses EVERY verb that loads state — up, resume, status, add,
-// remove, even attach — with `load state: unmarshal state: unexpected end of JSON input`, naming
-// neither the file nor a remedy, while the tmux session and every strand process it describes stay
-// alive and healthy (R5 review finding R5-F1, reproduced live). The operator is left holding
-// running work they can no longer see, resume, or attach to, and the only verb that still functions
-// (`down`) is the one that destroys it.
+// Both remedies are named because they trade differently, and the operator, not reed, has to pick.
+// Deleting the file keeps the session: its panes and processes keep running and can be attached to.
+// They stay that way only until the next mutating verb (up, resume, add, or remove) reaps them.
+// An alive Selvage then authorizes reaping every other pane when that verb reconciles.
 //
-// Both remedies are named because they are genuinely different trades, and the operator — not
-// reed — has to pick. Deleting the file keeps the session: the panes and their processes keep
-// running and can be attached to, but only until the next mutating verb (up, resume, add, or
-// remove) reaps them, since an alive Selvage now authorizes reaping every other pane the moment
-// one of those verbs reconciles.
-//
-// Repairing the file automatically is deliberately not offered: every repair reed could perform
-// amounts to discarding the strand table, which is exactly the silent loss the "null" refusal above
-// exists to prevent.
+// Reed does not repair the file automatically, since every repair it could perform discards the strand table.
 func unreadableStateError(path string, err error) error {
 	return fmt.Errorf(
 		"reed state file %s is unreadable: %w — the tmux session it describes may still be running, "+

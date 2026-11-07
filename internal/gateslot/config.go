@@ -20,15 +20,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// roleClause closes every gate config refusal's way forward: the steps need the prime, so any other session reports and the orch takes them.
+// roleClause ends every gate config refusal's way forward.
+// The steps need the prime, so any other session reports and the orch takes them.
 const roleClause = "; a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them"
 
 // Config is the resolved gate config of the hub file and this machine's override.
-// The keys named in the tags are the gate.yaml keys; decodeConfig reads them, so a Config is never unmarshalled directly.
+// The yaml tags name the gate.yaml keys.
+// A Config is never unmarshalled directly; the load validates the file first.
 type Config struct {
 	// Slots is how many gate runs the hub executes at once.
 	Slots int `yaml:"slots"`
-	// BusyQuitSec is the continuous seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns the watchdog off.
+	// BusyQuitSec is the seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns it off.
 	BusyQuitSec int `yaml:"busy_quit_sec"`
 	// FixerTimeoutMin is the minutes a cold gate fixer may run before its caller stops waiting for it.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
@@ -72,7 +74,8 @@ type buildFile struct {
 }
 
 // configFile is gate.yaml as it is spelled, before defaults and validation.
-// A tier_parallel entry is a node because a scalar --set writes it as a string, and a gates entry is a node so decodeGates names the key a bad entry sits under.
+// A tier_parallel entry is a node because a scalar --set writes it as a string.
+// A gates entry is a node so decodeGates names the key a bad entry sits under.
 type configFile struct {
 	Slots           int                  `yaml:"slots"`
 	BusyQuitSec     int                  `yaml:"busy_quit_sec"`
@@ -86,11 +89,13 @@ type configFile struct {
 	InertPaths      []string             `yaml:"inert_paths"`
 }
 
-// ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml.
-// Its way forward is `lym fabric reconcile` in a hub, which writes the file from the template, and `lym config gate` outside every hub, which writes the worktree's own file.
+// ErrConfigAbsent is LoadConfig's error for a layer stack whose hub gate.yaml is missing.
+// The way forward is `lym fabric reconcile` in a hub, which writes the file from the template.
+// Outside every hub, `lym config gate` writes the worktree's own file.
 var ErrConfigAbsent = errors.New("gate config absent")
 
-// ConfigOpenMaps returns the gate.yaml keys whose entries belong to the operator, which configengine carries whole through reconcile and the layer stack.
+// ConfigOpenMaps returns the gate.yaml keys whose entries the operator owns.
+// configengine carries those entries whole through reconcile and the layer stack.
 func ConfigOpenMaps() []string {
 	return []string{"tiers", "tier_parallel", "build"}
 }
@@ -103,10 +108,14 @@ func ConfigPerNameMaps() []string {
 
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
-// `fixer_timeout_min` is cross-pair like `busy_quit_sec`, and a gate key's `fixer` sits inside `gates`, which is a guard key.
-// `tiers` and `build` run any shell command in a task worktree, so they are executable; the gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
-// `cli_wait_sec`, `go_parallel` and `guard_tier` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
-// `tiers` and `build` carry the shape their decode gives them, so `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`, and refuses a key neither holds.
+// `fixer_timeout_min` is cross-pair like `busy_quit_sec`; a gate key's `fixer` sits inside `gates`, a guard key.
+// `tiers` and `build` run any shell command in a task worktree, so they are executable.
+// The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
+// `cli_wait_sec`, `go_parallel` and `guard_tier` are retired;
+// a hub or machine file that still sets one loads, and reconcile prunes it.
+// `tiers` and `build` carry the shape their decode gives them.
+// So `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`;
+// it refuses a key neither holds.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "gate",
@@ -138,9 +147,10 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// ConfigFiles returns the gate config files a load under dirs stacks and that exist:
+// ConfigFiles returns the gate config files a load under dirs stacks:
 // the hub file, followed by the machine file when that layer applies and the file is present.
-// A machine file that cannot be statted for another reason is left out, since the load then fails reading it with an error naming its path.
+// A machine file that cannot be statted is left out;
+// the load then fails reading it with an error naming its path.
 func ConfigFiles(dirs configengine.Dirs) []string {
 	spec := ConfigSpec()
 	hubFile, _ := configengine.LayerFile(dirs, spec, configengine.BaseLayer(dirs, spec))
@@ -153,10 +163,12 @@ func ConfigFiles(dirs configengine.Dirs) []string {
 	return files
 }
 
-// LoadConfig loads the gate config strictly through the hub-wide layer stack under dirs, this machine's override included:
-// an absent hub file is ErrConfigAbsent, and a value below 1 fails naming its key.
-// Outside every hub, where dirs tell no board, the file is the worktree's own and its absence names `lym config gate` as the way to write it.
-// Every other failure names each file that can hold the value and its way forward, so each gate site that wraps it carries the clause.
+// LoadConfig loads the gate config strictly through the hub-wide layer stack under dirs, machine override included:
+// an absent hub file is ErrConfigAbsent, and a value out of range fails naming its key.
+// Outside every hub, where dirs name no board, the file is the worktree's own.
+// Its absence names `lym config gate` as the way to write it.
+// Every other failure names each file that can hold the value and its way forward;
+// each gate site that wraps it carries the clause.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	spec := ConfigSpec()
 	files := ConfigFiles(dirs)
@@ -194,7 +206,8 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 }
 
 // holdsUnits reports whether the layer file at path is readable and holds at least one config unit.
-// An empty or comment-only file is one the load drops, so removing it fixes nothing; an unparsable file counts as holding units, since the load fails naming it.
+// An empty or comment-only file is one the load drops, so removing it fixes nothing;
+// an unparsable file counts as holding units, since the load fails naming it.
 func holdsUnits(path string, spec configengine.Spec) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -205,7 +218,8 @@ func holdsUnits(path string, spec configengine.Spec) bool {
 }
 
 // withConfigWayForward appends to err the way forward for a gate config that is present but unusable.
-// files are the hub file and, when present, the machine file; local is the local override file, or "" when none takes part.
+// files are the hub file and, when present, the machine file;
+// local is the local override file, or "" when none takes part.
 // The clause for a session that is not the prime closes every form.
 func withConfigWayForward(err error, files []string, local string) error {
 	removeLocal := ""
@@ -230,7 +244,8 @@ func TemplateConfig() (Config, error) {
 }
 
 // decodeConfig decodes and validates a stacked gate document.
-// machineLayerApplies tells whether the load stacked a machine layer, which decides the steps the dropped-tier_parallel warning names.
+// machineLayerApplies tells whether the load stacked a machine layer;
+// it decides the steps the dropped-tier_parallel warning names.
 // Cross-references between gate lists and tiers are never checked here.
 func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	var file configFile
@@ -287,7 +302,8 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	}, nil
 }
 
-// decodeBuild validates the build step and fills its defaults; a build with no key set is no step and decodes to the zero BuildStep.
+// decodeBuild validates the build step and fills its defaults;
+// a build with no key set is no step and decodes to the zero BuildStep.
 func decodeBuild(file buildFile) (BuildStep, error) {
 	if file.About == "" && file.Command == "" && file.Dir == "" && len(file.Env) == 0 && file.TimeoutMin == nil {
 		return BuildStep{}, nil
@@ -308,9 +324,11 @@ func decodeBuild(file buildFile) (BuildStep, error) {
 }
 
 // ResolveCommandDir returns the directory a hub command whose configured dir is dir runs in:
-// the anchored directory anchorDir when dir is empty, dir itself when absolute, and otherwise dir joined onto the worktree root worktreeRoot.
+// the anchored directory anchorDir when dir is empty; dir itself when absolute;
+// otherwise dir joined onto the worktree root worktreeRoot.
 // It is the rule the drift steps and the hub-wide dir checks resolve a dir by.
-// The gate's own run path reaches the same directory by filling an unset dir with the anchor relative to the worktree root and joining the result onto the root, so one value means one directory in every config file.
+// The gate's own run path reaches the same directory by filling an unset dir with the anchor relative to the root.
+// Joining the result onto the root, one value means one directory in every config file.
 func ResolveCommandDir(worktreeRoot, anchorDir, dir string) string {
 	switch {
 	case dir == "":
@@ -322,7 +340,8 @@ func ResolveCommandDir(worktreeRoot, anchorDir, dir string) string {
 	}
 }
 
-// StatCommandDir returns the directory a hub command whose configured dir is dir runs in, resolved against worktreeRoot and anchorDir.
+// StatCommandDir returns the directory a hub command whose configured dir is dir runs in.
+// It resolves dir against worktreeRoot and anchorDir.
 // It refuses one that is no existing directory with an error naming dir and the resolved path.
 func StatCommandDir(worktreeRoot, anchorDir, dir string) (string, error) {
 	resolved := ResolveCommandDir(worktreeRoot, anchorDir, dir)
@@ -332,8 +351,10 @@ func StatCommandDir(worktreeRoot, anchorDir, dir string) (string, error) {
 	return resolved, fmt.Errorf("dir %q resolves to %s, which is no existing directory; want an existing directory, absolute or relative to the worktree root, or no dir to run in the worktree's anchor", dir, resolved)
 }
 
-// CheckDirs loads the gate config under dirs and refuses a tier or build dir that is no existing directory in the worktree at worktreeRoot, whose anchored directory is anchorDir.
-// A hub-wide gate config write runs it against the prime, so a dir that would fail every gate run is refused when it is written.
+// CheckDirs loads the gate config under dirs and refuses a tier or build dir that is no existing directory.
+// Relative dirs resolve against worktreeRoot, and an unset dir resolves to anchorDir.
+// A hub-wide gate config write runs it against the prime,
+// so a dir that would fail every gate run is refused when it is written.
 func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 	cfg, err := LoadConfig(dirs)
 	if err != nil {
@@ -376,13 +397,16 @@ func (c Config) AllInert(paths []string) bool {
 	return !slices.ContainsFunc(paths, func(rel string) bool { return !c.Inert(rel) })
 }
 
-// guidedError marks a decode refusal that already carries its own way forward, so LoadConfig returns it without the generic clause.
+// guidedError marks a decode refusal that already carries its own way forward;
+// LoadConfig returns it without the generic clause.
 type guidedError struct{ error }
 
 func (e guidedError) Unwrap() error { return e.error }
 
-// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape, which a deploy leaves until reconcile runs MigrateConfig.
-// The layered load would refuse it first as a shape mismatch against the template, naming no way forward that migrates it.
+// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape;
+// a deploy leaves such a file until reconcile runs MigrateConfig.
+// The layered load would refuse it first as a shape mismatch against the template;
+// it names no way forward that migrates it.
 func refuseRetiredGateLists(hubFile string) error {
 	data, err := os.ReadFile(hubFile)
 	if err != nil {
@@ -462,7 +486,7 @@ type gateTarget struct {
 	scope string
 }
 
-// The gate key of loom's Parent-Align row and the key it carried before its rename.
+// The gate key of the parent-align check, and the retired merge-in key that migrates to it.
 const (
 	parentAlignGateKey    = "parent-align"
 	retiredMergeInGateKey = "merge-in"
@@ -482,9 +506,12 @@ var retiredGateLists = map[string][]gateTarget{
 }
 
 // MigrateConfig migrates a gate.yaml document's retired gates and keys and returns one line per rewrite.
-// The retired gates.publish list and the retired guard_tier key are pruned, a landing, final or round list becomes the keys retiredGateLists names, and a card or batch list becomes a mapping with scope card.
+// The retired gates.publish list and the retired guard_tier key are pruned.
+// A landing, final or round list becomes the keys that `retiredGateLists` maps it to,
+// and a card or batch list becomes a mapping with scope card.
 // A gates.merge-in key is renamed to gates.parent-align, keeping its value.
-// A key the file already holds in the new shape keeps its value, and every comment and other key is carried through yaml node editing.
+// A key the file already holds in the new shape keeps its value,
+// and every comment and other key is carried through yaml node editing.
 // A document with nothing to migrate is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
@@ -523,7 +550,8 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return encoded, lines, nil
 }
 
-// encodeGateDocument encodes a parsed gate document with two-space indentation, and returns an error marked configengine.ErrInvalid that opens with what.
+// encodeGateDocument encodes a parsed gate document with two-space indentation.
+// It returns an error marked configengine.ErrInvalid whose message opens with what.
 func encodeGateDocument(document *yaml.Node, what string) ([]byte, error) {
 	var out bytes.Buffer
 	encoder := yaml.NewEncoder(&out)
@@ -537,9 +565,12 @@ func encodeGateDocument(document *yaml.Node, what string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// SeedAdoptGate adds the adopt gate to a hub's base gate document when the document tunes finalize, and returns the line that says so.
-// The new gates.adopt carries a copy of gates.finalize's value, so the adopt check runs the tiers the hub tuned for its landing.
-// A document with no gates.finalize, or already holding gates.adopt, is returned unchanged with no line, so a second pass changes nothing.
+// SeedAdoptGate adds the adopt gate to a hub's base gate document when the document tunes finalize;
+// it returns the line that says so.
+// The new gates.adopt carries a copy of gates.finalize's value,
+// so the adopt check runs the tiers the hub tuned for its landing.
+// A document with no gates.finalize, or already holding gates.adopt, is returned unchanged with no line,
+// so a second pass changes nothing.
 // A hub that tunes finalize cannot pin adopt to the template's own value:
 // the reconcile drops a template-equal entry, and the next pass seeds adopt again from finalize.
 // It runs over the hub base file alone: a local-layer file, a seed and a run-settings gate object are never seeded.
@@ -571,7 +602,8 @@ func SeedAdoptGate(existing []byte) ([]byte, []string, error) {
 	return encoded, lines, nil
 }
 
-// seedAdoptGate writes adopt into the gates mapping right after finalize, as a flow mapping holding a copy of finalize's value, and returns the line that says so.
+// seedAdoptGate writes adopt into the gates mapping right after finalize:
+// a flow mapping holding a copy of finalize's value; it returns the line that says so.
 // A mapping without a finalize mapping, or already holding adopt, is left as it is.
 func seedAdoptGate(gates *yaml.Node) []string {
 	at := mappingKeyIndex(gates, finalizeGateKey)
@@ -596,8 +628,9 @@ func cloneGateNode(node *yaml.Node) *yaml.Node {
 	return &clone
 }
 
-// migrateGateLists rewrites every list-shaped entry of the gates mapping into the keyed shape and returns one line per rewrite.
-// A retired key's list is dropped from its place and its targets, minus those the mapping already holds, take that place.
+// migrateGateLists rewrites every list-shaped gate entry into the keyed shape and returns one line per rewrite.
+// A retired key's list is dropped from its place;
+// its targets, minus those the mapping already holds, take that place.
 func migrateGateLists(gates *yaml.Node) []string {
 	held := make(map[string]bool)
 	for i := 0; i+1 < len(gates.Content); i += 2 {
@@ -645,7 +678,8 @@ func migrateGateLists(gates *yaml.Node) []string {
 	return lines
 }
 
-// renameGateKeys renames the gates mapping's retired merge-in key to parent-align, carrying its value and comments, and returns one line per rewrite.
+// renameGateKeys renames the gates mapping's retired merge-in key to parent-align and returns one line per rewrite.
+// The renamed key carries the value and comments of the retired one.
 // When the mapping already holds parent-align, that key keeps its value and the retired key is dropped.
 func renameGateKeys(gates *yaml.Node) []string {
 	at := mappingKeyIndex(gates, retiredMergeInGateKey)

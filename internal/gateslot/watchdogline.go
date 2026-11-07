@@ -1,4 +1,5 @@
-// watchdogline.go renders and finds the line `lym gate test`'s CPU watchdog prints after it quits a Go test binary, and names the way forward a halt gives after one.
+// watchdogline.go renders and finds the line `lym gate test`'s CPU watchdog prints after it quits a Go test binary.
+// It also holds the way forward a halt names after such a quit.
 
 package gateslot
 
@@ -17,7 +18,8 @@ const (
 // BusyQuitWayForward is the way forward a halt names after the CPU watchdog quit a test binary.
 const BusyQuitWayForward = "raise busy_quit_sec in the hub's gate.yaml through \"lym config gate\" from the prime"
 
-// WatchdogLine renders the line the watchdog prints after sending the test binary at pid one SIGQUIT, window in time.Duration's own form.
+// WatchdogLine renders the line the watchdog prints after it sends SIGQUIT to the test binary at pid.
+// window is written in the form time.Duration's String method gives.
 func WatchdogLine(binary string, pid int, window time.Duration) string {
 	return fmt.Sprintf("%s%s (pid %d)%s%s%s", watchdogLinePrefix, binary, pid, watchdogLineBusy, window, watchdogLineSuffix)
 }

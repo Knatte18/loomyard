@@ -98,7 +98,8 @@ func TestTurnEndActivity(t *testing.T) {
 		olderCall     = `{"type":"assistant","message":{"id":"msg_older","content":[{"type":"tool_use","id":"toolu_older","name":"Bash"}]}}`
 		finalText     = `{"type":"assistant","message":{"id":"msg_final","content":[{"type":"text","text":"done"}]}}`
 	)
-	// batchPadding is an entry of msg_batch longer than the first backward read, so an entry written before it lies outside that read.
+	// batchPadding is an entry of msg_batch longer than the first backward read,
+	// so an entry written before it lies outside that read.
 	batchPadding := `{"type":"assistant","message":{"id":"msg_batch","content":[{"type":"text","text":"` + strings.Repeat("x", initialReadChunk) + `"}]}}`
 	forkTests := []struct {
 		name      string

@@ -1,5 +1,5 @@
-// taskpatch_integration_test.go proves the code-identity reads of taskpatch.go over real git checkouts:
-// ReadTaskPatch's patch, hashes and skips, and MergeInOnly's verdict on each way a task's history can move.
+// taskpatch_integration_test.go tests the reads of taskpatch.go over real git checkouts.
+// It covers ReadTaskPatch's patch, hashes and skips, and MergeInOnly's verdict on each way a task's history can move.
 
 package fabricengine_test
 
@@ -79,7 +79,8 @@ func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string
 	return patch
 }
 
-// readPatchAroundScratchWrite edits lib.txt, wires the warp root `.scratch` and reads the patch before and after a file is written under it.
+// readPatchAroundScratchWrite edits lib.txt and wires the warp root `.scratch`,
+// and it reads the patch before and after a file is written under it.
 // With linked, `.scratch` is a link into a directory outside the warp excluded as `/.scratch`;
 // otherwise it is a real directory excluded as `/.scratch/`.
 func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool) (before, after fabricengine.TaskPatch) {
@@ -118,7 +119,8 @@ func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool)
 	return before, after
 }
 
-// TestFabric_ReadTaskPatch covers which changes the patch holds, how skip exempts untracked paths, what its hashes follow, and that a root `.scratch` never enters it.
+// TestFabric_ReadTaskPatch covers which changes the patch holds and how skip exempts untracked paths;
+// it also covers what its hashes follow, and that a root `.scratch` never enters the patch.
 func TestFabric_ReadTaskPatch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

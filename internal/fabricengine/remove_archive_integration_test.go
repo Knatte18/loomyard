@@ -1,5 +1,11 @@
-// remove_archive_integration_test.go covers Remove's archive step: after every refusal and before any mutation it tags the pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
-// It covers the tag's landing, its reuse when the same-tip tag is already on the origin, the commit-then-archive flow for a weft worktree holding uncommitted records, the fail-closed shape of an unreachable origin, the fact that neither force nor remote=false skips the step, the no-origin skip, and that a rolled-back Add never archives.
+// remove_archive_integration_test.go covers Remove's archive step.
+// After every refusal and before any mutation, Remove tags the pair's weft tip under archive/<slug>/;
+// it pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
+// It covers the tag's landing and its reuse when the origin already holds it.
+// It covers the commit-then-archive flow for a weft worktree with uncommitted records.
+// It covers the fail-closed shape of an unreachable origin.
+// It also checks that force and remote=false do not skip the step;
+// a missing origin skips it; and a rolled-back Add never archives.
 //
 // Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -249,7 +255,8 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	}
 }
 
-// installUpdateHook installs an update hook on the bare repository at bare whose script is body, over the hook's $1 (ref), $2 (old tip) and $3 (new tip).
+// installUpdateHook writes an update hook into the bare repository at bare.
+// The hook runs body, where $1 is the ref, $2 the old tip and $3 the new tip.
 func installUpdateHook(t *testing.T, bare, body string) {
 	t.Helper()
 
@@ -259,7 +266,10 @@ func installUpdateHook(t *testing.T, bare, body string) {
 	}
 }
 
-// TestRemove_ArchiveOrder covers the order and the extent of Remove's archive: the weft branch goes to origin before the tag that names its tip, a diverged or ahead origin tip gets a tag of its own, a retryable tag refusal is retried and a refused branch push never fails the removal.
+// TestRemove_ArchiveOrder covers the order and the extent of Remove's archive.
+// The weft branch goes to origin before the tag that names its tip,
+// and a diverged or ahead origin tip gets a tag of its own.
+// A retryable tag refusal is retried, and a refused branch push never fails the removal.
 // One hub per row, each topology's archive sleep shortened.
 // The retry row sets a package-level hook, so neither the test nor its rows are parallel.
 func TestRemove_ArchiveOrder(t *testing.T) {

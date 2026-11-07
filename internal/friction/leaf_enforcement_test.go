@@ -1,10 +1,8 @@
-// leaf_enforcement_test.go enforces the Friction Leaf Invariant: production code in
-// internal/friction imports ONLY the standard library, internal/logger, internal/stencil, and
-// internal/stencilstore — never a feature package (websterengine, burlerengine, loomengine, or any
-// other).
-// Modelled directly on internal/pattern/leaf_enforcement_test.go, this check is an ALLOWLIST: any
-// import outside the allowed set fails the test, so a future stray dependency is caught with no list
-// maintenance required.
+// leaf_enforcement_test.go enforces the Friction Leaf Invariant.
+// Production code in internal/friction imports only the standard library and the allowed internal packages.
+// The allowed internal packages are internal/logger, internal/stencil and internal/stencilstore.
+// A feature package is never allowed.
+// The check is an allowlist: an import outside the allowed set fails the test, and no denylist needs maintenance.
 
 package friction
 

@@ -1,6 +1,6 @@
-// env.go implements the three unexported helpers every entry uses to validate the Env fields it
-// reads: requireAbsRoot for a told absolute-path root, requireNonEmpty for a told plain-name value,
-// and requireSeam for a told injected seam.
+// env.go holds the unexported validators every entry runs over the Env fields it reads.
+// requireAbsRoot checks a told absolute-path root; requireNonEmpty checks a told plain-name value;
+// requireSeam checks a told injected seam.
 
 package shedrecipe
 
@@ -10,11 +10,8 @@ import (
 	"reflect"
 )
 
-// requireAbsRoot errors when value is empty or is not an absolute path per filepath.IsAbs, naming
-// entry and field in both messages.
-//
-// An entry validates exactly the fields it consumes and never a field it does not read, so a
-// caller filling only what its recipe needs is legal.
+// requireAbsRoot errors when value is empty or is not an absolute path per filepath.IsAbs.
+// The error names entry and field.
 func requireAbsRoot(entry, field, value string) error {
 	if value == "" {
 		return fmt.Errorf("shedrecipe: %s: Env.%s must not be empty", entry, field)
@@ -25,9 +22,8 @@ func requireAbsRoot(entry, field, value string) error {
 	return nil
 }
 
-// requireNonEmpty errors when value is empty, naming entry and field. It is a separate helper from
-// requireAbsRoot rather than a reuse of it, because Env.Slug is a plain name and not a path, so
-// requireAbsRoot's absoluteness half would be wrong for it.
+// requireNonEmpty errors when value is empty, naming entry and field.
+// It serves plain names rather than paths, so it does not check for an absolute path.
 func requireNonEmpty(entry, field, value string) error {
 	if value == "" {
 		return fmt.Errorf("shedrecipe: %s: Env.%s must not be empty", entry, field)
@@ -35,7 +31,7 @@ func requireNonEmpty(entry, field, value string) error {
 	return nil
 }
 
-// gateFindingsPath returns the gate findings file Env.GateFindingsFile tells the row named row, or "" when the seam is unset.
+// gateFindingsPath returns the gate findings file path for row, or "" when the GateFindingsFile seam is nil.
 func (e Env) gateFindingsPath(row string) string {
 	if e.GateFindingsFile == nil {
 		return ""
@@ -44,14 +40,8 @@ func (e Env) gateFindingsPath(row string) string {
 }
 
 // requireSeam errors when seam is nil, naming entry and field.
-//
-// It detects a typed-nil interface value as nil too, since Env.Shuttle and Env.Burler are
-// interfaces a caller can fill with a nil concrete pointer: reflect.ValueOf(seam) is inspected, and
-// a reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, or reflect.Func kind whose IsNil()
-// reports true is treated as nil.
-//
-// An entry validates exactly the fields it consumes and never a field it does not read, so a
-// caller filling only what its recipe needs is legal.
+// A typed nil also counts: a nil pointer, interface, map, slice or func in seam is treated as nil.
+// A caller can fill an interface field with such a value.
 func requireSeam(entry, field string, seam any) error {
 	if seam == nil {
 		return fmt.Errorf("shedrecipe: %s: Env.%s must not be nil", entry, field)

@@ -33,8 +33,10 @@ func endSessionFixture(t *testing.T, present bool, listed string) *fakeTmux {
 	return fake
 }
 
-// TestEndSessionByName pins which kills endSessionByNameVia issues: none for an absent session,
-// an exact-match kill-session alone while sibling sessions remain, and kill-server after the last session.
+// TestEndSessionByName pins which kills endSessionByNameVia issues.
+// An absent session gets no kill.
+// An exact-match kill-session runs alone while sibling sessions remain.
+// Kill-server runs after the last session.
 func TestEndSessionByName(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

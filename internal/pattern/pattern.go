@@ -1,7 +1,5 @@
-// pattern.go implements the PATTERN active check and Directive's role-keyed stencil read: which
-// stencil name a Role selects, and the stencilstore.Read, StripLeadingComment and Fill calls that
-// turn it into directive text carrying the PATTERN overview.
-// See doc.go for the package-level rationale.
+// pattern.go holds the PATTERN active check and the role-keyed directive read.
+// Directive picks the stencil for a Role and fills it with the PATTERN overview.
 
 package pattern
 
@@ -15,22 +13,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// patternFileName is the PATTERN overview filename at the repository's worktree root.
-// It is this package's single declaration of the filename.
+// patternFileName is the filename of the PATTERN overview at the worktree root.
 const patternFileName = "PATTERN.md"
 
-// patternDirName is the background-file directory beside the overview, relative to the repository's worktree root.
-// It is this package's single declaration of the directory name;
-// the directive stencils spell it as the fixed literal "pattern/".
+// patternDirName is the directory of background files beside the overview, relative to the worktree root.
+// The directive stencils spell the directory as the fixed literal "pattern/" rather than using this constant.
 const patternDirName = "pattern"
 
-// overviewMarker is the one marker every directive stencil carries, which Directive fills with the overview.
+// overviewMarker is the marker every directive stencil carries, filled with the PATTERN overview.
 const overviewMarker = "pattern_overview"
 
-// changesMarker is the optional marker every directive stencil carries, which Directive fills with the rendered declared changes.
+// changesMarker is the optional marker every directive stencil carries, filled with the rendered declared changes.
 const changesMarker = "pattern_changes"
 
-// changesFragmentStencil names the stencil that renders the declared changes, whose one required marker is changesListMarker.
+// changesFragmentStencil is the name of the stencil that renders the declared changes;
+// its one required marker is changesListMarker.
 const changesFragmentStencil = "pattern-fragment-changes"
 
 // changesListMarker is the fragment's marker, filled with the declared bullet lines.
@@ -41,10 +38,10 @@ func File(worktreeRoot string) string {
 	return filepath.Join(worktreeRoot, patternFileName)
 }
 
-// Role identifies which agent-facing directive variant Directive should render.
+// Role identifies which agent-facing directive variant to render.
 type Role int
 
-// The directive variants Directive knows how to render, one per agent shape.
+// The directive variants the package renders, one per agent shape.
 const (
 	// RoleImplementer selects the pre-edit checklist for any agent that edits code.
 	RoleImplementer Role = iota + 1
@@ -58,14 +55,11 @@ const (
 	RoleJudge
 )
 
-// The background pointer "pattern/" lives in the directive stencil files below rather than in Go,
-// and stays a plain fixed literal there too — never interpolated from patternDirName or any path.
-// That is what keeps this package's own tests' and every consumer template test's
-// fixed-string equality and substring comparisons meaningful.
+// The background pointer "pattern/" stays a fixed literal in the directive stencil files;
+// it is never interpolated from patternDirName or any path.
+// That keeps fixed-string equality and substring comparisons meaningful in tests, including consumer template tests.
 //
-// implementerDirectiveStencil, reviewFixDirectiveStencil, orchestratorDirectiveStencil,
-// designerDirectiveStencil and judgeDirectiveStencil name the stencil Directive reads for each Role,
-// one constant per role so each name is written exactly once.
+// Each Role's directive stencil name is a constant, so each name is written exactly once.
 const (
 	implementerDirectiveStencil  = "pattern-directive-implementer"
 	reviewFixDirectiveStencil    = "pattern-directive-review-fix"
@@ -74,27 +68,24 @@ const (
 	judgeDirectiveStencil        = "pattern-directive-judge"
 )
 
-// statFile and readFile are the stat and read implementations Directive calls.
-// They are package-level variables — rather than hardcoded os calls — purely so this
-// package's own test suite can simulate a stat or read failure (a
-// permission or I/O failure) portably across platforms, without depending
-// on process privilege or a POSIX-only permission trick. Production code
-// never reassigns them.
+// statFile and readFile are the stat and read calls the overview read makes.
+// They are variables rather than direct os calls so that tests can simulate a stat or read failure.
+// This works on every platform and needs no process privilege.
+// Production code never reassigns them.
 var (
 	statFile = os.Stat
 	readFile = os.ReadFile
 )
 
-// Directive returns the role's directive text to inject into the agent's prompt,
-// read from stencilsDir, stripped of its leading banner and carrying the PATTERN overview inlined at its marker.
+// Directive returns the role's directive text to inject into the agent's prompt.
+// It is read from stencilsDir, stripped of its leading banner, and carries the PATTERN overview inlined at its marker.
 // declared is the task's declared PATTERN changes as rendered bullet lines;
 // a non-empty declared adds the declared-changes fragment after the overview, and nil or empty adds nothing.
 // It returns ("", nil) with no read attempted for an empty worktreeRoot, and for an inactive PATTERN:
 // an absent File(worktreeRoot), a directory in its place, or whitespace-only content.
 // An unknown or zero role also returns ("", nil), and the stencil is never read.
-// It returns ("", err) when the file's stat fails for a reason other than not-existing,
-// when reading an existing file fails,
-// or when PATTERN is active, role is known, and a stencil read or fill fails.
+// It returns ("", err) when stat fails with an error other than not-existing, or when reading the overview fails.
+// It also returns ("", err) when PATTERN is active, the role is known, and a stencil read or fill fails.
 // Any other content is inlined verbatim, however malformed; format violations are the checker's job.
 func Directive(worktreeRoot, stencilsDir string, role Role, declared []string) (string, error) {
 	if worktreeRoot == "" {
@@ -114,9 +105,7 @@ func Directive(worktreeRoot, stencilsDir string, role Role, declared []string) (
 	case RoleJudge:
 		name = judgeDirectiveStencil
 	default:
-		// An unknown or zero Role renders no directive and attempts no read;
-		// this default case is what makes that behaviour defined and
-		// documented rather than an unhandled fall-through.
+		// An unknown or zero Role renders no directive and attempts no read.
 		return "", nil
 	}
 
@@ -130,9 +119,8 @@ func Directive(worktreeRoot, stencilsDir string, role Role, declared []string) (
 
 	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
-		// stencilstore.Read's own error already names both the stencil and
-		// the base directory, so this wrap adds only the calling package's
-		// house prefix, not the stencil name a second time.
+		// stencilstore.Read's error already names the stencil and its base directory,
+		// so this wrap adds only the package prefix.
 		return "", fmt.Errorf("pattern: directive stencil: %w", err)
 	}
 	changes, err := renderChanges(stencilsDir, declared)
@@ -142,15 +130,16 @@ func Directive(worktreeRoot, stencilsDir string, role Role, declared []string) (
 	return fillDirective(name, string(content), overview, changes)
 }
 
-// FillDirective renders a directive from stencil text and PATTERN overview text already in hand:
-// it strips the stencil's leading banner and fills its overview marker with the overview, and its optional changes marker with nothing.
+// FillDirective renders a directive from stencil text and overview text already in hand.
+// It strips the stencil's leading banner and fills the overview marker.
+// Its optional changes marker is filled with nothing.
 // A whitespace-only overview is an inactive PATTERN and returns ("", nil).
 // A fill failure is returned wrapped with stencilName, which appears only in that error text.
 func FillDirective(stencilName, stencilText, overview string) (string, error) {
 	return fillDirective(stencilName, stencilText, overview, "")
 }
 
-// fillDirective strips the stencil's leading banner and fills its overview marker with overview and its optional changes marker with changes.
+// fillDirective strips the stencil's leading banner and fills the overview and changes markers.
 // A whitespace-only overview returns ("", nil).
 func fillDirective(stencilName, stencilText, overview, changes string) (string, error) {
 	if strings.TrimSpace(overview) == "" {
@@ -182,9 +171,8 @@ func renderChanges(stencilsDir string, declared []string) (string, error) {
 	return string(filled), nil
 }
 
-// readOverview returns the content of File(worktreeRoot), or "" when PATTERN has no overview there:
-// the file is absent or a directory sits in its place.
-// A stat error that is not "not exist", or a read error on an existing file, is returned.
+// readOverview returns the content of File(worktreeRoot), or "" when that path is absent or a directory.
+// A stat error other than not-existing, or a read error on an existing file, is returned.
 func readOverview(worktreeRoot string) (string, error) {
 	path := File(worktreeRoot)
 	info, err := statFile(path)
@@ -194,8 +182,7 @@ func readOverview(worktreeRoot string) (string, error) {
 		}
 		return "", fmt.Errorf("pattern: stat %s: %w", path, err)
 	}
-	// A directory named PATTERN.md is not a readable overview; treat it the
-	// same as absent rather than reading something that isn't the file.
+	// A directory named PATTERN.md is not an overview, so it is treated as absent.
 	if info.IsDir() {
 		return "", nil
 	}

@@ -1,5 +1,7 @@
-// recordleak_integration_test.go pins, end to end through batten's own rows, that a task pair no longer inherits the batten run records prime has committed.
-// It stays a white-box "package battencli" test on a hubforge hub, for the reasons lifecycle_integration_test.go's header gives.
+// recordleak_integration_test.go pins that a task pair does not inherit the batten run records prime has committed.
+// It drives the check end to end through batten's own rows.
+// It is a white-box "package battencli" test on a hubforge hub.
+// It is white-box for the reasons lifecycle_integration_test.go's header gives.
 
 package battencli
 
@@ -17,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// commitPrimeBattenRecords writes and commits, on prime's own pair, a batten seed and status for slug plus a batten seed for otherSlug, the state a finished or running prime-side batten run leaves.
+// commitPrimeBattenRecords commits, on prime's pair, a batten seed and status for slug and a seed for otherSlug.
+// That is the state a finished or running prime-side batten run leaves.
 func commitPrimeBattenRecords(t *testing.T, h *hubforge.Hub, slug, otherSlug string) {
 	t.Helper()
 	seed := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
@@ -57,8 +60,10 @@ func commitPrimeBattenRecords(t *testing.T, h *hubforge.Hub, slug, otherSlug str
 	}
 }
 
-// stepSeedChild_IgnoresPrimesCommittedBattenRecords reproduces the reported "task worktree already seeded with a disagreeing seed" refusal:
-// prime tracks a batten seed for the child's own slug, and the child must still get its own loom seed and none of prime's other runs.
+// stepSeedChild_IgnoresPrimesCommittedBattenRecords reproduces a reported refusal.
+// The refusal read "task worktree already seeded with a disagreeing seed".
+// prime tracks a batten seed for the child's own slug.
+// The child must still get its own loom seed and none of prime's other runs.
 func stepSeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leak-seed"
 	otherSlug := "batten-leak-other"
@@ -107,7 +112,7 @@ func stepSeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T, h *hubforge
 }
 
 // stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug holds the unstubbed status read:
-// prime tracks a batten status for the child's slug, and the child must report its own status as simply absent.
+// prime tracks a batten status for the child's slug, and the child must report its own status as absent.
 func stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leak-status"
 	seedBoardTask(t, h, slug, "tapestry")

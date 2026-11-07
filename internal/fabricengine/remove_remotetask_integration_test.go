@@ -1,7 +1,10 @@
-// remove_remotetask_integration_test.go covers Remove's deletion of the pair's task branch on the warp repo's origin under remote:
-// a landed tip goes, an unlanded one stays with a reason (and is then the only copy of its work, the local step having deleted the pushed local branch), a tip that moved after it was observed fails the lease, and without remote the origin copy is untouched.
+// remove_remotetask_integration_test.go covers Remove's remote deletion of the pair's task branch on origin.
+// A landed tip is deleted, and an unlanded tip stays with a reason.
+// Once the local step has deleted the pushed local branch, the unlanded origin copy is the only copy of the work.
+// A tip that moved after it was observed fails the lease, and without remote the origin copy is untouched.
 //
-// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug, and h.CodeBare is the origin.
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
+// h.CodeBare is the origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -39,7 +42,7 @@ func pushedPair(t *testing.T, slug string) *hubforge.Hub {
 	return h
 }
 
-// squashLand lands slug's work on the prime with a different commit than the branch's own.
+// squashLand lands slug's work on the prime as one squash commit, which is not one of the branch's commits.
 func squashLand(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
@@ -95,7 +98,8 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 	if !originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q was deleted on origin despite unlanded work", slug)
 	}
-	// The local step counts the pushed origin copy as holding the work, so it deletes the local branch; the origin copy is then the only one left, which is why the remote gate excludes copies of the branch itself.
+	// The local step counts the pushed origin copy as holding the work, so it deletes the local branch;
+	// the origin copy is then the only one left, which is why the remote gate excludes copies of the branch itself.
 	if !res.CodeBranchDeleted {
 		t.Errorf("CodeBranchDeleted = false (kept reason %q); the pushed local branch is deleted by the local step", res.CodeBranchKeptReason)
 	}

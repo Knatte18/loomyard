@@ -1,5 +1,6 @@
-// pairparts_integration_test.go covers Topology.PairParts, Topology.TaskBranchOnOrigin and TaskBranchSlugs over hubforge hubs.
-// Every hub has an empty branch_prefix unless a test seeds one, so a pair's task branch is the bare slug.
+// pairparts_integration_test.go covers Topology.PairParts, TaskBranchOnOrigin and TaskBranchSlugs over hubforge hubs.
+// Every hub has an empty branch_prefix unless a test seeds one,
+// so a pair's task branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -17,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPairParts pins what PairParts reads of a pair across its life and what TaskBranchOnOrigin reads of the task repository's origin.
+// TestPairParts pins what PairParts reads of a pair across its life:
+// what TaskBranchOnOrigin reads of the task repository's origin.
 func TestPairParts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -120,14 +122,15 @@ func TestPairParts(t *testing.T) {
 	})
 }
 
-// TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads from the local branches and the origin remote-tracking branches, under the empty branch_prefix and under a set one.
+// TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads:
+// from the local branches and the origin remote-tracking branches, under the empty branch_prefix and under a set one.
 func TestTaskBranchSlugs(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// branchPrefix is the hub's branch_prefix; empty seeds none.
+		// branchPrefix is the hub's branch_prefix; an empty value seeds none.
 		branchPrefix string
 		prefix       string
 		want         []string

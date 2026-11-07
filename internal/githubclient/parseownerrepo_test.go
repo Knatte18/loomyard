@@ -1,7 +1,6 @@
-// parseownerrepo_test.go is the table-driven test suite for ParseOwnerRepo, covering every accepted
-// shape and every rejected one.
-// This file carries no build tag -- it spawns nothing, so the Test Tier Purity Invariant leaves it in
-// Tier 1.
+// parseownerrepo_test.go is the table-driven test suite for ParseOwnerRepo.
+// It covers every accepted remote-URL shape and every rejected one.
+// The file carries no build tag, because it spawns nothing and so stays in Tier 1 of the Test Tier Purity Invariant.
 
 package githubclient
 
@@ -9,9 +8,9 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// TestParseOwnerRepo covers every accepted remote-URL shape and every rejected one, asserting that
-// the three distinct-message error cases (non-GitHub host, no owner/repo pair, unparseable garbage)
-// each surface a message distinct from the other two.
+// TestParseOwnerRepo covers every accepted remote-URL shape and every rejected one.
+// It asserts that the three error cases each produce a message distinct from the other two:
+// a non-GitHub host, no owner/repo pair, and unparseable garbage.
 func TestParseOwnerRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -119,7 +118,7 @@ func TestParseOwnerRepo(t *testing.T) {
 		},
 	}
 
-	// errorsByCase collects the error messages for the three cases whose messages must be mutually distinct, keyed by test name.
+	// errorsByCase maps each test name to its error message for the three cases that must yield distinct messages.
 	// The subtests run serially because they share this map.
 	errorsByCase := map[string]string{}
 

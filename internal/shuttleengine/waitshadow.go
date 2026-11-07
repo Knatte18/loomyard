@@ -1,6 +1,6 @@
 // waitshadow.go logs the session state beside the wait loop's own classification, in shadow mode:
 // the loop never branches on it, and a failure to read it changes nothing.
-// The fold's states also reach the caller on Result.SessionStates, as a record the loop never branches on.
+// The fold's states also reach the caller on Result.SessionStates.
 
 package shuttleengine
 
@@ -26,7 +26,7 @@ const (
 	loopAPIError = "api-error"
 )
 
-// shadowPair is one pairing of the loop's classification with a session state, the unit a disagreement is logged once for.
+// shadowPair pairs the loop's classification with a session state, the unit a disagreement is logged once for.
 type shadowPair struct {
 	loop  string
 	name  SessionStateName
@@ -61,7 +61,9 @@ type sessionShadow struct {
 	unavailableLogged bool
 }
 
-// loopClassification returns the wait loop's classification of the run: outcome when it is a terminal done or died, else what the loop currently waits on.
+// loopClassification returns the wait loop's classification of the run.
+// A terminal outcome of done, died or api-error is its own classification;
+// otherwise the classification is held, waiting or running, by what the loop currently waits on.
 func (run *Run) loopClassification(outcome Outcome) string {
 	switch {
 	case outcome == OutcomeDone:
@@ -78,10 +80,13 @@ func (run *Run) loopClassification(outcome Outcome) string {
 	return loopRunning
 }
 
-// loopAgreesWithState reports whether the loop classification and the session state are a pairing the fixed mapping allows:
-// waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead, api-error reads idle-stalled.
-// Two further pairings are expected: a pending gate entry waiting beside idle-done once every output exists,
-// and a done run beside busy on background work, since a turn end counted at once leaves the session running tasks the loop no longer waits on.
+// loopAgreesWithState reports whether the fixed mapping allows the loop classification beside the session state:
+// waiting and running read busy, held reads idle-stalled, idle-fresh or asking;
+// done reads idle-done, died reads dead, api-error reads idle-stalled.
+// Two further pairings are expected:
+// a pending gate entry waiting beside idle-done once every output exists;
+// and a done run beside busy on background work.
+// A turn end counted at once leaves the session running tasks the loop no longer waits on.
 func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool {
 	busyOnBackground := state.Name == SessionBusy && state.Cause == SessionCauseBackground
 	switch loop {
@@ -101,11 +106,16 @@ func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool
 	return false
 }
 
-// logSessionState reads the signals appended since the shadow cursor, folds them with this tick's facts and logs a changed state and a new disagreement with the loop's classification.
+// logSessionState reads the signals appended since the shadow cursor and folds them with this tick's facts.
+// It logs a changed state and a new disagreement with the loop's classification.
 // outcome is the outcome Wait is about to finalize, empty on an ordinary tick;
-// refreshFacts re-reads the liveness and the transcript markers of the newest turn start and turn end folded so far, which are otherwise reused until new signals arrive.
-// A disagreement logs `stands=loop`: the loop's classification is the one every decision follows, and no action follows a disagreement.
-// It returns nothing Wait reads: an engine without a SessionSignalParser, an unreadable events file or a missing fact logs once at Debug and changes nothing.
+// refreshFacts re-reads the liveness and the transcript markers of the newest turn start and turn end folded so far;
+// otherwise they are reused until new signals arrive.
+// A disagreement logs `stands=loop`: the loop's classification is the one every decision follows,
+// and no action follows a disagreement.
+// It returns nothing Wait reads.
+// An engine without a SessionSignalParser, an unreadable events file or a missing fact changes nothing.
+// Such a case logs once per Wait at Debug.
 func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 	shadow := &run.shadow
 	if !shadow.active {

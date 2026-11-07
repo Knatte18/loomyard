@@ -22,7 +22,8 @@ const (
 	testJudgementRel   = "_lym/drift/judgement.yaml"
 )
 
-// judgeFixture holds two fake checkouts, a scratch directory and the records history a test changes between the snapshot and the comparison.
+// judgeFixture holds the fake code and records checkouts and a scratch directory.
+// It also holds the records history a test changes between the snapshot and the comparison.
 type judgeFixture struct {
 	code, records fabricengine.CheckoutState
 	// recordsChanged is what RecordsChangedSince answers.
@@ -80,7 +81,8 @@ func removeTestFile(t *testing.T, root, rel string) {
 	}
 }
 
-// TestJudgeSnapshot covers what the snapshot names as the judge's change and what it leaves out, and the snapshot's record on disk.
+// TestJudgeSnapshot covers what the snapshot names as the judge's change and what it leaves out.
+// It also covers the snapshot's record on disk.
 func TestJudgeSnapshot(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

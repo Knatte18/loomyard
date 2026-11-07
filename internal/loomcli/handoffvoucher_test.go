@@ -1,7 +1,8 @@
-// handoffvoucher_test.go is the untagged suite for the handoff voucher (crucible round 2,
-// R2-F1): recordHandoffVoucher and consumeHandoffVoucher directly, and observeEntry's consumption of
-// the voucher into EntryObservation.Vouched. Everything runs against t.TempDir() paths via
-// the production state primitives -- no tmux, no git, no real run.
+// handoffvoucher_test.go is the untagged suite for the handoff voucher.
+// It tests recordHandoffVoucher and consumeHandoffVoucher directly.
+// It also tests observeEntry's consumption of the voucher into EntryObservation.Vouched.
+// Every test runs against t.TempDir() paths through the production state primitives.
+// It uses no tmux, no git and no real run.
 
 package loomcli
 
@@ -101,9 +102,9 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 	}
 }
 
-// TestObserveEntry_ConsumesHandoffVoucherIntoObservation asserts the wiring: a voucher matching the
-// persisted status yields Vouched true, and -- the one-shot property -- a second identical
-// observation yields false, because the first consumed the voucher.
+// TestObserveEntry_ConsumesHandoffVoucherIntoObservation asserts the wiring:
+// a voucher matching the persisted status yields Vouched true.
+// The voucher is one-shot: a second identical observation yields false, because the first consumed it.
 func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,5 +1,6 @@
-// verifyfixer.go implements the cold verify-gate fixer `lym webster fix-verify` drives:
-// the spawn-or-attach of a strand at the recovery role with the cold verify-fix prompt, the bounded wait that classifies it done on its reply file or dead, and its terminal record.
+// verifyfixer.go implements the cold verify-gate fixer that `lym webster fix-verify` drives.
+// It spawns or attaches a strand at the recovery role with the cold verify-fix prompt;
+// it waits until the reply file exists or the strand is dead, and it records the terminal state.
 // The strand's spawn, wait and registration are internal/gatefixer's; this file is webster's adapter onto it.
 
 package websterengine
@@ -21,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// fixVerifyCommand is the verb that runs the cold fixer, as the gate's way forward names it and Master runs it.
+// fixVerifyCommand is the verb that runs the cold fixer, the one the gate's way forward message names.
 const fixVerifyCommand = "lym webster fix-verify"
 
 // verifyFixBodyStencil is the shared verify-gate fixer body both fixers' prompts carry.
@@ -36,7 +37,7 @@ func VerifyFixReplyPath(scratchDir string) string {
 }
 
 // FixVerifyDeps carries the seams the cold fixer's spawn and wait need.
-// Geom is the told Geometry every path is read from;
+// Geom is the Geometry every path is read from;
 // Reed answers the liveness read, and Stopper is the seam every stop goes through.
 type FixVerifyDeps struct {
 	Starter    Starter
@@ -48,10 +49,10 @@ type FixVerifyDeps struct {
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
 
-	// FrictionDir is the told absolute friction directory, empty when Tier 2 is off.
+	// FrictionDir is the absolute friction directory, empty when Tier 2 is off.
 	FrictionDir string
 
-	// LanguageSkills are the hub's language skills the fixer loads after roleSkills; empty for none.
+	// LanguageSkills are the language skills the fixer loads after its role skills; empty for none.
 	LanguageSkills []string
 
 	// Gate is the hub's gate config, from which the prompt renders the fixer's `webster-fix` gate call.
@@ -121,7 +122,8 @@ func fixerRecord(rec *VerifyFixerState) *gatefixer.Record {
 	}
 }
 
-// awaitFixerStrand waits on rec's strand through gatefixer.Await, with the given timeout and wait on clk, and prefixes each warning with label, the verb the fixer runs under.
+// awaitFixerStrand waits on rec's strand through gatefixer.Await, using timeout, wait and clk.
+// It prefixes each warning with label, the verb the fixer runs under.
 func awaitFixerStrand(engines AuditEngines, reed shuttleengine.ReedOps, stopper StrandStopper, rec *gatefixer.Record, label string, timeout, wait time.Duration, clk Clock) (*gatefixer.Result, error) {
 	result, err := gatefixer.Await(gatefixer.Deps{Stopper: stopper, Reed: reed, Engines: engines, Clock: clk}, rec, timeout, wait)
 	if err != nil {
@@ -135,9 +137,12 @@ func awaitFixerStrand(engines AuditEngines, reed shuttleengine.ReedOps, stopper 
 
 // FixVerifySpawnOrAttach returns the cold fixer strand fix-verify waits on, and whether this call spawned it into st.
 // A last record of st.VerifyFixers that is not terminal is attached to as it stands.
-// Otherwise it spawns a strand at the recovery role with the cold verify-fix prompt, whose shuttle output file is the reply file, registers it through deps.Register when set, and appends its record to st.VerifyFixers;
+// Otherwise it spawns a strand at the recovery role with the cold verify-fix prompt.
+// The strand's shuttle output file is the reply file.
+// It registers the strand through deps.Register when set, and it appends its record to st.VerifyFixers;
 // the caller saves st.
-// It refuses, spawning nothing, when no verify-gate report is on disk, when the recovery role's engine cannot audit forks, and when the gate config has no `webster-fix` key.
+// It refuses, spawning nothing, when no verify-gate report is on disk.
+// It also refuses when the recovery role's engine cannot audit forks, and when the gate config has no `webster-fix` key.
 // A stale reply file is removed before the spawn.
 // A spawned strand whose run cannot be resolved, registered or recorded is stopped, since no record of it will be saved.
 func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFixerState, bool, error) {
@@ -236,7 +241,9 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 
 // FixVerifyAwait blocks up to wait for rec's cold fixer to reach a terminal classification, polling on the shared tick.
 // The fixer is done once its reply file exists.
-// It is dead when its newest turn ended without one (DeadReasonAsking), when recovery_timeout_min has passed since the spawn (DeadReasonTimeout), or when its strand is gone (DeadReasonDied), checked in that order.
+// It is dead, checked in this order, when its newest turn ended without one (DeadReasonAsking);
+// when recovery_timeout_min has passed since the spawn (DeadReasonTimeout);
+// or when its strand is gone (DeadReasonDied).
 // Every terminal result stops the strand; only done also reads the reply and removes the run dir.
 // A failed stop, reply read or removal is a warning.
 // The caller holds no state-mutation lease across it.

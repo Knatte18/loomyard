@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// measuredPackage is one package a redundancy run measured, as the splice sees it.
+// measuredPackage is one package a redundancy run measured, with the report section that measurement rendered.
 type measuredPackage struct {
 	pkg     string // short import path
 	section string // the rendered section, ignored when noTests is set
@@ -30,7 +30,7 @@ func splitPatterns(pkgFlag string) []string {
 	return patterns
 }
 
-// requireSameTags refuses an existing report made under a tag set other than tags, read from the header line renderReport writes.
+// requireSameTags returns an error unless the report's tags header line names the tag set tags.
 func requireSameTags(report, tags string) error {
 	m := reportTagsLine.FindStringSubmatch(report)
 	if m == nil {
@@ -49,7 +49,8 @@ type reportSection struct {
 }
 
 // spliceReport rewrites only the measured packages' sections of an existing report.
-// A measured package's section is replaced, inserted in import-path order when it has none yet, or removed when the package lists no tests.
+// A measured package's section is replaced, or inserted in import-path order when it has none yet.
+// A package that lists no tests has its section removed.
 // A failed package keeps its old section and gets its error section only when it had none.
 // The header and every section of an unmeasured package come back byte-identical.
 // It refuses, writing nothing, when the existing report was made under a different tag set.

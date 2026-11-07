@@ -1,5 +1,6 @@
 // reconcile_migrates_markers_integration_test.go covers Reconcile's per-pair judging of the weft anchor markers:
-// a weft with no committed marker gets the one its content implies, and the hub-wide marker on the board is retired once every weft carries its own.
+// a weft with no committed marker gets the one its content implies,
+// and the hub-wide marker on the board is retired once every weft carries its own.
 // The same migration is shown for a weft branch Add adopts.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -39,8 +40,9 @@ func committedMarkerAt(t *testing.T, dir, rev string) string {
 	return gitkit.Git(t, dir, "show", rev+":"+lymcwd.AnchorFileName)
 }
 
-// seedBoardMarkers commits the legacy hub-wide marker and a leftover pre-rename marker beside it on the board, and pushes them.
-// It also pushes the prime's weft branch, which a fixture hub leaves local while its warp sibling is on origin, as a live hub's is.
+// seedBoardMarkers commits the legacy hub-wide marker and a leftover pre-rename marker on the board, then pushes them.
+// It also pushes the prime's weft branch.
+// A fixture hub leaves that branch local while its warp sibling is on origin; a live hub has it on origin.
 func seedBoardMarkers(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 
@@ -67,7 +69,8 @@ func reconcileWithoutPairErrors(t *testing.T, h *hubforge.Hub) fabricengine.Reco
 	return res
 }
 
-// TestReconcile_MigratesMarkerlessWefts covers the migration of markerless wefts, the census behind the Bolt marker's retirement, and the same migration on Add's adopt path.
+// TestReconcile_MigratesMarkerlessWefts covers the migration of markerless wefts.
+// It also covers the census behind the Bolt marker's retirement, and the same migration on Add's adopt path.
 func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.

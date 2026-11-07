@@ -1,4 +1,4 @@
-// cli_test.go covers the battencli cobra seam: each verb's argument-count rejection and the bare-group invocation's git-free guard -- mirroring internal/loomcli/cli_test.go's shape.
+// cli_test.go covers the battencli cobra seam: each verb's argument-count rejection and the bare-group git-free guard.
 
 package battencli
 
@@ -36,8 +36,9 @@ func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {
 	return nil
 }
 
-// TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked independently per verb rather than by reading one shared value, accepts both zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces ("lym shed", "lym batten", "lym loom") share -- and that two positionals fail the whole command through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
-// Accepting zero is what lets "lym batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
+// TestCommand_EveryVerbArity asserts that each verb's Args validator accepts zero and one positional and rejects two.
+// Two positionals fail the whole command with cobra's arity error before PersistentPreRunE runs, regardless of cwd.
+// Accepting zero lets "lym batten run" with no argument reach `refuseSelfAddress`, which refuses with a named message.
 func TestCommand_EveryVerbArity(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -73,12 +74,12 @@ func TestCommand_EveryVerbArity(t *testing.T) {
 	}
 }
 
-// TestArmSeed_DriverFlagMatrix pins the four-way matrix between --driver and --child-driver: batten's
-// own driver flag still accepts "go" and still refuses both "llm" and an unknown value, while
-// --child-driver accepts both "go" and "llm" -- the value it accepts reaches the auto-seeded seed's
-// own "child_driver" param, which wire.go's own ChildDriver reader consults -- and still refuses an
-// unknown value. The likeliest regression this batch names is lifting both refusals for symmetry;
-// only a case asserting the batten driver flag still refuses catches it.
+// TestArmSeed_DriverFlagMatrix pins the four-way matrix between --driver and --child-driver.
+// Batten's own driver flag accepts "go" and refuses both "llm" and an unknown value.
+// --child-driver accepts both "go" and "llm", and also refuses an unknown value.
+// The accepted value reaches the auto-seeded seed's "child_driver" param.
+// Lifting both refusals for symmetry is the likeliest regression.
+// Only the case asserting that the batten driver flag still refuses catches it.
 func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -92,7 +93,8 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false, false, ""},
 		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false, false, ""},
 		{"ChildDriverUntypedWritesNoParam", shedrun.DriverGo, "", true, false, ""},
-		// Batten has no bootstrap verb, so the driver it seeds itself with IS the process the operator typed and there is no spawn seam to branch on a seed's driver: the refusal names the missing bootstrap verb.
+		// Batten has no bootstrap verb, so the driver it seeds itself with is the process the operator typed.
+		// There is no spawn seam to branch on a seed's driver, so the refusal names the missing bootstrap verb.
 		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, false, true, "no bootstrap verb"},
 		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, false, true, "no bootstrap verb"},
 		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, false, true, ""},
@@ -135,9 +137,8 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym batten" invocation succeeds
-// without needing a git repository, proving the PersistentPreRunE guard for cmd.Name() ==
-// "batten" fires before any cwd resolution.
+// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym batten" invocation succeeds outside a git repository.
+// It proves the PersistentPreRunE guard for cmd.Name() == "batten" fires before any cwd resolution.
 func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -152,7 +153,7 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	}
 }
 
-// TestCommand_HelpCarriesNoTeardownGotoExample asserts no help text shows the forward move to Worktree-Teardown as an example.
+// TestCommand_HelpCarriesNoTeardownGotoExample asserts no help example shows the forward move to Worktree-Teardown.
 func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 	tiergate.Require(t, 0)
 	var walk func(cmd *cobra.Command)
@@ -167,12 +168,17 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 	walk(Command())
 }
 
-// TestStartFirstPass covers the detached first pass over a hand-populated receiver with fake pass, dobby-liveness, pair-start and parent-owner seams:
-// a done slug and a slug a pause covers return an envelope whose ok is false naming their way forward and start nothing;
-// a startable slug starts one pass with the prime's anchor as its working directory and brings its parent worktree up once, its dobby with its orch, when that dobby reads not live and never when it reads live;
-// a failed pair start still returns the started pass's envelope with a warning naming `lym beam start` for the parent;
-// a parent another machine owns starts no dobby and warns naming `lym adopt` for the parent, or `lym adopt root` for the prime;
-// a parent beam whose landing hold stands starts no dobby and warns naming `lym batten status`.
+// TestStartFirstPass covers the detached first pass over a hand-populated receiver.
+// It runs with fake pass, dobby-liveness, pair-start and parent-owner seams.
+// A done slug, or a slug a pause covers, returns an envelope with ok false naming its way forward, and starts nothing.
+// A startable slug starts one pass with the prime's anchor as its working directory.
+// It brings its parent worktree up once, and its dobby with its orch when that dobby reads not live.
+// It never brings the dobby up when that dobby reads live.
+// A failed pair start still returns the started pass's envelope.
+// It adds a warning naming `lym beam start` for the parent.
+// A parent another machine owns starts no dobby.
+// It warns naming `lym adopt` for the parent, or `lym adopt root` for the prime.
+// A parent beam whose landing hold stands starts no dobby and warns naming `lym batten status`.
 func TestStartFirstPass(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -192,7 +198,7 @@ func TestStartFirstPass(t *testing.T) {
 		pairStartErr error
 		parentOwner  string
 		landingHeld  bool
-		// anchor is the first pass's anchor option, which the seed the pass arms records as its anchor param.
+		// anchor is the first pass's anchor option, which the seed armed for the pass records as its anchor param.
 		anchor         string
 		wantRefusal    []string
 		wantPassArgs   []string
@@ -325,7 +331,7 @@ func TestStartFirstPass(t *testing.T) {
 			c.driverFlag, c.childDriverFlag = "go", "go"
 			c.driverFlagSet, c.childDriverFlagSet = tt.driverSet, tt.childSet
 			if tt.anchor != "" {
-				// StartFirstPass arms the run, which writes the seed, before the pass starts.
+				// Arming the run writes the seed before the pass starts.
 				c.firstPassAnchor = tt.anchor
 				if err := c.armSeed(c.location, c.slug, "run"); err != nil {
 					t.Fatalf("armSeed(run) = %v; want nil", err)

@@ -1,7 +1,9 @@
-<!-- This is the chair's seat directive: the block a seat stencil pulls in with the bare {{template "seat-directive-chair"}}, with no pipeline.
+<!-- This is the chair's seat directive:
+     the block a seat stencil pulls in with the bare {{template "seat-directive-chair"}}, with no pipeline.
      The fill hands it the seat's value map, so it declares three required markers:
      {{.advisor_names}}, {{.inputs}} and {{.output_files}}.
-     internal/seatengine fills them for the chair seat, and the seat-to-seat channel wording lives in this block and in seat-directive-advisor. -->
+     internal/seatengine fills them for the chair seat.
+     The seat-to-seat channel wording lives in this block and in seat-directive-advisor. -->
 
 ## You are the chair of this step
 

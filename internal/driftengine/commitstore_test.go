@@ -1,4 +1,5 @@
-// commitstore_test.go — the in-memory records store the driftengine tests share: a fake for the three seams that commit with trailers, find a trailer's commit and read a file at a commit.
+// commitstore_test.go — the in-memory records store the driftengine tests share.
+// It fakes the three seams that commit with trailers, find a trailer's commit and read a file at a commit.
 
 package driftengine
 
@@ -24,7 +25,8 @@ type fakeRecordsCommit struct {
 }
 
 // commitStore is a fake records store that keeps each commit's tree in memory.
-// A commit reads the told paths from root and keeps their bytes, or drops a path that is absent on disk, on top of the previous commit's tree.
+// A commit takes each path it is told to commit from root, or drops the path when it is absent on disk.
+// It starts from the previous commit's tree.
 type commitStore struct {
 	root string
 	// codeHead is the code HEAD the Head seam reports; a test sets it between commits.
@@ -40,7 +42,8 @@ func newCommitStore(t *testing.T) *commitStore {
 	return &commitStore{root: t.TempDir(), codeHead: "code-head-0"}
 }
 
-// deps returns a Deps over p whose commit, trailer and file-at seams read and write the store; a test sets any other seam on the returned value.
+// deps returns a Deps over p whose commit, trailer and file-at seams read and write the store.
+// A test sets any other seam on the returned value.
 func (s *commitStore) deps(p Paths) Deps {
 	return Deps{
 		Paths:        p,

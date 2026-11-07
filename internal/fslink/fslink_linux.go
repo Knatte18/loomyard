@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 )
 
-// CreateDirLink establishes a symlink from link to target, refusing to clobber and creating parent
-// directories.
+// CreateDirLink establishes a symlink from link to target.
+// It refuses to clobber an existing path and creates parent directories.
 func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
@@ -20,8 +20,10 @@ func CreateDirLink(link, target string) error {
 	return nil
 }
 
-// CreateFileLink establishes a symlink from link to the file target, refusing to clobber and creating parent directories.
-// A program that writes the file in place through the link writes target, and one that removes the file by name removes the link alone.
+// CreateFileLink establishes a symlink from link to the file target.
+// It refuses to clobber an existing path and creates parent directories.
+// A program that writes the file in place through the link writes target.
+// A program that removes the file by name removes only the link.
 func CreateFileLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
@@ -66,16 +68,10 @@ func PointsTo(link string) (string, error) {
 	return absTarget, nil
 }
 
-// RawTarget returns the literal, one-hop target recorded in link's own symlink data — what
-// os.Symlink(target, link) actually wrote — without resolving link's target further, and without
-// requiring that target (or anything past it) to exist.
-// This is the ownership-check primitive PointsTo cannot serve: PointsTo fully resolves the chain, so
-// it fails outright when a later segment is gone (the legitimate case of a stale-pair prune, where
-// one side of a wired junction's chain no longer exists), and it silently walks past a
-// target that is itself a further symlink (a Fabric junction wired at a path whose own immediate
-// target is another Fabric junction, e.g. a wired junction pointing at a further Fabric junction that
-// itself points at the paired repository) — comparing that fully-resolved end state against the
-// ONE HOP a wiring call actually recorded is a mismatch by construction, not a drift.
+// RawTarget returns the literal target recorded in link's own symlink data, one hop only.
+// That is the path os.Symlink wrote, returned without resolving it further and without requiring it to exist.
+// Ownership checks need this one hop: a fully resolved path differs from it whenever the target is a link,
+// and it fails outright when a later segment is missing.
 // Returns an error if link is not a symlink.
 func RawTarget(link string) (string, error) {
 	isLink, err := IsLink(link)

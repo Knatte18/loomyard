@@ -1,7 +1,8 @@
-// focus.go implements RoundFocus, the next-round directive a segment's Bouncer writes and its Burler review row reads, and readRoundFocus, the fail-safe reader that turns a missing, unreadable, or malformed focus file into the zero directive rather than an error.
-// The file it reads is the one the Bouncer writes -- round-<N>-focus.md, the YAML-frontmatter shape
-// bouncerfiles.go renders and the two bouncer stencils instruct the judge to produce. See
-// readRoundFocus for why that had to be said out loud.
+// focus.go implements RoundFocus, the next-round directive a segment's Bouncer writes and its Burler review row reads.
+// It also implements readRoundFocus, the fail-safe reader.
+// It turns a missing, unreadable, or malformed focus file into the zero directive rather than an error.
+// The file it reads is the one the Bouncer writes: round-<N>-focus.md.
+// Its YAML-frontmatter shape is the one bouncerfiles.go renders and the bouncer stencils instruct the judge to produce.
 
 package shedadapters
 
@@ -15,43 +16,38 @@ import (
 const burlerEngineLabel = "burler"
 
 // RoundFocus is the next-round directive a segment's Bouncer writes and its Burler review row reads.
-// Both fields are optional, and the zero value means "no directive", which every failure path
-// degrades to.
-// The round token in the filename this directive is read from names the round the directives are
-// for, not the round that produced them -- stated explicitly because getting it wrong fails
-// silently: a Bouncer rejecting round N writes the file for round N+1, and the seed call writes the
-// file for round 1.
+// Both fields are optional, and the zero value means "no directive", which every failure path degrades to.
+// The round token in the filename names the round the directive is for, not the round that produced it.
+// Getting this wrong fails silently: a Bouncer rejecting round N writes the file for round N+1,
+// and the seed call writes the file for round 1.
 type RoundFocus struct {
-	// ExcludeLenses names lenses the next round should skip, carried verbatim from the focus file's
-	// exclude_lenses list.
-	// It can be non-empty only when the writing Bouncer was told ClusterExcludes, since no other
-	// Bouncer is asked for the key.
+	// ExcludeLenses names lenses the next round should skip, carried verbatim from the focus file's exclude_lenses list.
+	// It can be non-empty only when the writing Bouncer was told ClusterExcludes; no other Bouncer is asked for the key.
 	ExcludeLenses []string
-	// DirectivePath is the focus file's own path when that file actually says something -- see readRoundFocus -- and empty otherwise.
-	// It reaches the round's profile as FocusDirective, which the explore step reads before findings are formed, outside the prior-rounds clean-room rule.
+	// DirectivePath is the focus file's own path when the file has a directive to deliver, and empty otherwise.
+	// The file has one when its focus list or its prose is non-empty.
+	// The round's profile receives it as FocusDirective.
+	// The explore step reads FocusDirective before findings are formed, outside the prior-rounds clean-room rule.
 	DirectivePath string
 }
 
 // readRoundFocus reads round's focus file in runDir and returns the RoundFocus it names,
 // identifying itself as name in every warning it logs.
 //
-// It reads focusPath(runDir, round) -- round-<N>-focus.md -- through parseFocus, the same path
-// builder and the same parser the Bouncer writes that file with. That agreement is the whole
-// substance of this function and is stated here because it was once absent: this reader used to open
-// a round-<N>-focus.json path and strictly decode JSON, a filename, a serialization, and a field set
-// the writer never produced, so the read failed on every call in production and the judge's entire
-// targeting channel was dead. The seed pass spent a real LLM spawn and a permanent unit of the
-// segment's bounce budget writing a file its only consumer could not read.
+// It reads focusPath(runDir, round) through parseFocus.
+// The Bouncer writes the file with the same builder and parser, so reader and writer agree on its name and shape.
 //
 // It is fail-safe end to end and never returns an error: an absent file, a read failure, or a file
 // parseFocus rejects each yields the zero RoundFocus after a logger.Warn.
 //
-// DirectivePath carries the focus file's own path, and carries it only when the file has a directive to deliver -- a non-empty focus list or non-empty prose.
-// That is how the judge's targeting reaches the round:
-// BurlerReviewProducer sets it as the profile's FocusDirective, which the explore step reads before findings are formed, so PriorReviews carries earlier rounds' reports only.
-// An APPROVED judge still writes a focus file (its third output file is unconditional, so the run classifies complete),
-// and that file carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose;
-// delivering it would hand the next round an empty document asserting nothing, so an empty directive stays empty.
+// The judge's targeting reaches the round through DirectivePath.
+// BurlerReviewProducer sets it as the profile's FocusDirective, which the explore step reads before findings are formed;
+// as a result, PriorReviews carries earlier rounds' reports only.
+// An APPROVED judge still writes a focus file;
+// its third output file is unconditional, so the run classifies complete on it.
+// That file carries empty lists and no prose;
+// delivering it would hand the next round an empty document asserting nothing,
+// so an empty directive stays empty.
 func readRoundFocus(name, runDir string, round int) RoundFocus {
 	path := focusPath(runDir, round)
 
@@ -70,10 +66,8 @@ func readRoundFocus(name, runDir string, round int) RoundFocus {
 		logger.Warn("shedadapters: focus file malformed", "producer", name, "engine", burlerEngineLabel, "path", path, "reason", err.Error())
 		return RoundFocus{}
 	}
-	// The focus file's own round: frontmatter field must agree with the round number ITS OWN
-	// FILENAME already encodes (focusPath(runDir, round)): treated the same as any other malformed
-	// input this reader already fails safe on, rather than trusting a directive that disagrees with
-	// itself about which round it targets (crucible round sonnet-xhigh-r8, LS-1).
+	// The frontmatter round must agree with the round the filename encodes, focusPath(runDir, round).
+	// A file that disagrees with itself about which round it targets is malformed, so it fails safe like any other.
 	if parsed.Round != round {
 		logger.Warn("shedadapters: focus file's own round does not match its filename", "producer", name, "engine", burlerEngineLabel, "path", path, "fileRound", round, "frontmatterRound", parsed.Round)
 		return RoundFocus{}
@@ -86,10 +80,12 @@ func readRoundFocus(name, runDir string, round int) RoundFocus {
 	return focus
 }
 
-// excludedLenses returns the lenses of fan that rounds 2 through `through` of the generation in runDir exclude, and the entries of round `through`'s own focus file it refused.
-// A round k entry is eligible only when round k-1's usage record names fan as its fan and lists the lens among those it ran;
-// a missing or unreadable record makes every entry of that file ineligible.
-// excluded is the union of the eligible entries in first-seen order, and dropped the ineligible entries of round `through`'s file.
+// excludedLenses returns the lenses of fan that rounds 2 through `through` of the generation in runDir exclude.
+// A round k entry is eligible only when round k-1's usage record names fan as its fan;
+// the record must also list the lens among the lenses it ran.
+// A missing or unreadable record makes every entry of that file ineligible.
+// excluded is the union of the eligible entries in first-seen order.
+// dropped holds the ineligible entries of round `through`'s own focus file.
 func excludedLenses(name, runDir string, through int, fan string) (excluded, dropped []string) {
 	seen := map[string]bool{}
 	for round := 2; round <= through; round++ {
@@ -114,7 +110,8 @@ func excludedLenses(name, runDir string, through int, fan string) (excluded, dro
 	return excluded, dropped
 }
 
-// lensesRunUnderFan returns the set of lenses round's usage record lists as run, empty when the record is missing, unreadable, carries no recorded fan names or names a fan other than fan.
+// lensesRunUnderFan returns the set of lenses round's usage record lists as run.
+// It returns nil when the record is missing or unreadable, carries no recorded fan names, or names a fan other than fan.
 func lensesRunUnderFan(name, runDir string, round int, fan string) map[string]bool {
 	usage, err := readCompletedRoundUsage(runDir, round)
 	if err != nil {

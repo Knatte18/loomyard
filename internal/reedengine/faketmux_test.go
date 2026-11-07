@@ -1,5 +1,5 @@
-// faketmux_test.go is the one scripted tmux fake the reedengine tests install on an engine's TmuxCmd.execHook,
-// so no test hand-writes its own recording closure.
+// faketmux_test.go holds the one scripted tmux fake the reedengine tests install on an engine's TmuxCmd.execHook.
+// Tests use it rather than hand-writing their own recording closure.
 
 package reedengine
 
@@ -53,8 +53,9 @@ type tmuxAnswer struct {
 
 // fakeTmux answers every tmux round trip from per-verb scripts and logs each call's argv.
 // An unscripted verb answers empty with no error.
-// The session-wide listing (list-panes -s) is its own verb, sessionListVerb:
-// unscripted, it answers the plain list-panes script, rendered as each pane's membership of window fakeStrandWindow when it asks for sessionPaneWindowFormat.
+// The session-wide listing (list-panes -s) is its own verb, sessionListVerb.
+// Unscripted, it answers the plain list-panes script.
+// When the call asks for sessionPaneWindowFormat, the script renders each pane as a member of fakeStrandWindow.
 // It is safe for one goroutine to script and read it while another drives the engine.
 type fakeTmux struct {
 	t *testing.T
@@ -101,8 +102,9 @@ func (f *fakeTmux) forwardTo(real TmuxCmd) {
 	f.real = &real
 }
 
-// answerFunc scripts verb's answer as a function of the call's argv, for an answer that depends on the target or on a side effect between calls.
-// It takes precedence over answer and answerFormat, and runs outside the fake's lock,
+// answerFunc scripts verb's answer as a function of the call's argv.
+// Use it when the answer depends on the target or on a side effect between calls.
+// It takes precedence over every other answer for verb, and runs outside the fake's lock,
 // so it may call the fake's own readers.
 func (f *fakeTmux) answerFunc(verb string, fn func(args []string) (string, error)) {
 	f.mu.Lock()
@@ -118,21 +120,23 @@ func (f *fakeTmux) answer(verb, out string, err error) {
 }
 
 // answerFormat scripts a display-message answer keyed by its trailing format string.
-// It takes precedence over answer("display-message", ...), which stays the answer for every other format.
+// A matching format takes precedence over the plain display-message answer; other formats keep that answer.
 func (f *fakeTmux) answerFormat(format, out string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.formats[format] = tmuxAnswer{out, err}
 }
 
-// answerWindowPanes scripts the session-wide windowPaneFormat listing from now on, replacing the one derived from the plain list-panes script.
+// answerWindowPanes scripts the session-wide windowPaneFormat listing from now on.
+// It replaces the default listing, which is derived from the list-panes script.
 func (f *fakeTmux) answerWindowPanes(out string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.windowPanes = &tmuxAnswer{out, err}
 }
 
-// answerSession scripts the answers a session with live panes gives: list-panes, the generation probe and the live window-size query.
+// answerSession scripts the answers a session with live panes gives:
+// list-panes, the generation probe and the live window-size query.
 func (f *fakeTmux) answerSession(live []LivePane, box string, boxErr error) {
 	f.answer("list-panes", encodeLivePanes(live), nil)
 	f.answerFormat(paneGenerationFormat, "$0|1|1000", nil)
@@ -201,7 +205,8 @@ func (f *fakeTmux) CapturedFor(verb string) []bool {
 	return out
 }
 
-// StdinFor returns, per call to verb in order, the standard input bytes the call carried as a string; empty for a call that carried none.
+// StdinFor returns, per call to verb in order, the standard input bytes the call carried as a string;
+// empty for a call that carried none.
 func (f *fakeTmux) StdinFor(verb string) []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -225,7 +230,8 @@ func (f *fakeTmux) SetHookCalls(hook string) [][]string {
 	return out
 }
 
-// unseenClearPinCount is how many unseen-clear hook pins one pinGeometryOptionsLocked run issues: one wherever set-hook exists, none on Windows.
+// unseenClearPinCount is how many unseen-clear hook pins one pinGeometryOptionsLocked run issues:
+// one wherever set-hook exists, none on Windows.
 func unseenClearPinCount() int {
 	if runtime.GOOS == "windows" {
 		return 0
@@ -233,7 +239,8 @@ func unseenClearPinCount() int {
 	return 1
 }
 
-// assertUnseenClearHookPinned fails unless fake saw exactly the unseen-clear hook pins one pinGeometryOptionsLocked run issues, each on e's session with the hook's own command.
+// assertUnseenClearHookPinned fails unless fake recorded exactly unseenClearPinCount pins.
+// Each pin must sit on e's session and carry the hook's own command.
 func assertUnseenClearHookPinned(t *testing.T, e *Engine, fake *fakeTmux) {
 	t.Helper()
 	want := []string{"set-hook", "-t", exactSessionWindowTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand}
@@ -305,7 +312,8 @@ func (f *fakeTmux) exec(capture bool, stdin []byte, args ...string) (string, err
 	return ans.out, ans.err
 }
 
-// sessionListingOf renders a per-window list-panes answer as the session-wide listing, placing every pane in window fakeStrandWindow.
+// sessionListingOf renders a per-window list-panes answer as the session-wide listing.
+// It places every pane in window fakeStrandWindow.
 func sessionListingOf(windowListing string) string {
 	out := ""
 	for _, line := range strings.Split(windowListing, "\n") {
@@ -316,7 +324,8 @@ func sessionListingOf(windowListing string) string {
 	return out
 }
 
-// windowPaneListingOf renders each pane of a per-window list-panes answer as one windowPaneFormat line in window fakeStrandWindow, not own and with no group, keeping its dead flag, pid and title.
+// windowPaneListingOf renders each pane of a per-window list-panes answer as one windowPaneFormat line.
+// Each line sits in window fakeStrandWindow, is not own, has no group, and keeps the dead flag, pid and title.
 func windowPaneListingOf(windowListing string) string {
 	out := ""
 	for _, line := range strings.Split(windowListing, "\n") {
@@ -333,8 +342,8 @@ func windowPaneListingOf(windowListing string) string {
 	return out
 }
 
-// encodeLivePanes renders live back into list-panes' own wire format, matching
-// overlay.go's listPanes/parsePaneList round trip.
+// encodeLivePanes renders live in the wire format list-panes prints.
+// A fake server's answer then parses the same way a real one does.
 // A pane with either command set gets the tail field of title, current command and start command;
 // a pane with neither writes the six leading fields alone, with no title.
 func encodeLivePanes(live []LivePane) string {

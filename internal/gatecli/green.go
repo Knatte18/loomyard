@@ -1,4 +1,5 @@
-// green.go keeps the per-worktree green record `lym gate test` carries a passed tier forward with, and plans which targets of a tier the record already holds green.
+// green.go keeps the per-worktree green record that `lym gate test` carries a passed tier forward with.
+// It also plans which targets of a tier the record already holds green.
 
 package gatecli
 
@@ -31,16 +32,20 @@ import (
 // greenFileName is the green record's file name in the worktree's gate directory.
 const greenFileName = "green.json"
 
-// greenWholeCommitsKept is how many of a tier fingerprint's newest whole-green commits a write keeps beside the current tree's entries.
+// greenWholeCommitsKept is how many of a tier fingerprint's newest whole-green commits a write keeps.
+// The current tree's entries are kept in addition.
 // Only whole entries with empty args count, as only they can serve as a diff base.
 const greenWholeCommitsKept = 20
 
-// greenCommandBudget bounds the targets a carried-over remainder renders into one command, in bytes; a longer remainder runs whole instead, since a shell refuses an overlong command line.
+// greenCommandBudget bounds the targets a carried-over remainder renders into one command, in bytes.
+// A longer remainder runs whole instead, since a shell refuses an overlong command line.
 const greenCommandBudget = 6000
 
-// greenEntry is one tier pass the green record holds: the tier's fingerprint, the tree and commit it passed on, the module directory and args it ran with, and either whole or the green packages.
+// greenEntry is one tier pass the green record holds.
+// It records the tier's fingerprint, the tree and commit it passed on, and the module directory and args it ran with.
+// Whole or the package list says which targets passed.
 type greenEntry struct {
-	// Fingerprint is the tierFingerprint of the tier that passed.
+	// Fingerprint identifies the tier's declaration that passed.
 	Fingerprint string `json:"fingerprint"`
 	// Tree and Commit are HEAD's tree and commit when the tier passed.
 	Tree   string `json:"tree"`
@@ -61,9 +66,10 @@ type greenRecord struct {
 	Entries []greenEntry `json:"entries"`
 }
 
-// tierFingerprint hashes tier's declaration without its parallel, timeouts and slots, so a changed command, env, targets, counter, filter or carry setting never carries a pass over.
-// build is hashed only for a tier with shared_build, and inert only when non-empty;
-// every key added after the original fields is hashed at a non-default value alone, so a tier that sets none of them keeps its fingerprint.
+// tierFingerprint hashes tier's declaration without its parallel, timeouts and slots.
+// A changed command, env, targets, counter, filter or carry setting therefore never carries a pass over.
+// build is hashed only for a tier with shared_build, and inert only when non-empty.
+// Optional keys are hashed only at a non-default value, so a tier that sets none of them keeps its fingerprint.
 func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []string) string {
 	declaration := struct {
 		About       string
@@ -96,7 +102,8 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 }
 
 // readGreen reads the green record at path.
-// An absent, unreadable or malformed file reads as an empty record, which only costs a re-run, and a failure other than an absent file is logged.
+// An absent, unreadable or malformed file reads as an empty record, which only costs a re-run,
+// and a failure other than an absent file is logged.
 func readGreen(path string) greenRecord {
 	record, _, err := state.ReadJSON[greenRecord](path, path+".lock")
 	if err != nil {
@@ -107,7 +114,9 @@ func readGreen(path string) greenRecord {
 }
 
 // recordGreen adds entry, stamped now, to the green record at path under the record's lock.
-// A same-key whole entry replaces the key's entries and a same-key package entry joins the key's packages; a write then drops the entries of other trees but each fingerprint's greenWholeCommitsKept newest whole-green commits, counting only whole entries with empty args.
+// A same-key whole entry replaces the key's entries and a same-key package entry joins the key's packages;
+// a write drops the entries of other trees, except the whole entries with empty args of the newest commits.
+// Each fingerprint keeps at most greenWholeCommitsKept of those commits.
 // A malformed file is replaced by a record holding entry alone.
 func recordGreen(path string, entry greenEntry, now time.Time) error {
 	update := func(current greenRecord, _ bool) (greenRecord, error) {
@@ -168,7 +177,8 @@ func (r greenRecord) with(entry greenEntry, now time.Time) greenRecord {
 
 // covered returns what the record holds green for the tier of fingerprint on tree, in moduleDir, under args:
 // whole when an entry passed over every target, else the union of the packages the matching entries passed.
-// An entry with empty args matches a request with empty args and the guard step's own -run filter; an entry with any other args matches only exactly.
+// An entry with empty args matches a request with empty args and the guard step's own -run filter;
+// an entry with any other args matches only exactly.
 func (r greenRecord) covered(fingerprint, tree, moduleDir string, args []string) (whole bool, packages []string) {
 	for _, held := range r.Entries {
 		if held.Fingerprint != fingerprint || held.Tree != tree || held.ModuleDir != moduleDir || !argsMatch(held.Args, args) {
@@ -182,10 +192,13 @@ func (r greenRecord) covered(fingerprint, tree, moduleDir string, args []string)
 	return false, packages
 }
 
-// newestWholeAncestor returns the commit of the newest whole-green entry for the tier of fingerprint in moduleDir whose commit is an ancestor of HEAD, and whether there is one.
+// newestWholeAncestor returns the commit of the newest whole-green entry for the tier of fingerprint in moduleDir.
+// The commit must be an ancestor of HEAD; the boolean reports whether there is one.
 // isAncestor reports whether its first commit is an ancestor of its second, which may be "HEAD".
-// Newest is by history: a commit another accepted commit descends from loses to it, and only commits unrelated by history compare by write time.
-// Only an entry that ran with empty args counts: a whole pass under `-- -run X` covers less than the tier, and a package entry covers only part of it.
+// Newest is by history: a commit that another accepted commit descends from loses to it.
+// Only commits unrelated by history compare by write time.
+// Only an entry that ran with empty args counts:
+// a whole pass under `-- -run X` covers less than the tier, and a package entry covers only part of it.
 func (r greenRecord) newestWholeAncestor(fingerprint, moduleDir string, isAncestor func(commit, of string) bool) (string, bool) {
 	var newest greenEntry
 	found := false
@@ -237,17 +250,19 @@ type greenRun struct {
 	record   greenRecord
 	scoperGo bool
 	goBinary string
-	// cfg is the call's gate config, whose build step and inert_paths join a tier's fingerprint and whose inert_paths decide an inert carry.
+	// cfg is the call's gate config.
+	// Its build step and inert_paths join a tier's fingerprint, and its inert_paths decide an inert carry.
 	cfg gateslot.Config
 }
 
-// fingerprint returns the fingerprint a pass of tier is recorded and looked up under in this call.
+// fingerprint returns the fingerprint a pass of tier is recorded and looked up under.
 func (g *greenRun) fingerprint(tier gateslot.Tier) string {
 	return tierFingerprint(tier, g.cfg.Build, g.cfg.InertPaths)
 }
 
-// openGreen reads the green record for a call at root when the worktree is clean, and returns nil when no record applies.
-// A failed status or HEAD read is logged and also returns nil, so the call runs every tier.
+// openGreen reads the green record for a call at root when the worktree is clean.
+// It returns nil when the worktree is dirty or a status or HEAD read fails, so the call runs every tier.
+// A failed read is logged.
 func openGreen(gateDir, root, goBinary string, cfg gateslot.Config) *greenRun {
 	dirty, err := verifytree.DirtyPaths(root)
 	if err != nil {
@@ -296,15 +311,19 @@ type greenPlan struct {
 	invocations []invocation
 	// carried maps a module key to the packages of its invocation the record held green.
 	carried map[string][]string
-	// inertCarried lists the module keys whose whole invocation is carried from an ancestor's whole entry over an inert-only diff; each needs a whole entry for the current tree.
+	// inertCarried lists module keys an ancestor's whole entry carries over an inert-only diff; each needs a whole entry.
 	inertCarried []string
 }
 
 // subtract returns run with what the record holds green for the current tree taken out.
-// A whole entry drops its module's invocation, and under the go scoper a package entry drops the packages it names from the invocation's targets.
-// A command that renders into more than greenCommandBudget bytes of targets, or whose packages cannot be listed, keeps the whole invocation.
+// A whole entry drops its module's invocation.
+// Under the go scoper, a package entry drops the packages it names from the invocation's targets.
+// A command whose targets render to more than greenCommandBudget bytes keeps the whole invocation.
+// A command whose packages cannot be listed also keeps the whole invocation.
 // A tier with carry: false keeps every invocation.
-// Under inert_paths, a whole invocation the record holds nothing for is also carried when a whole entry of an ancestor stands for it over an inert-only diff, and its module key joins the plan's inertCarried.
+// Under inert_paths, a whole invocation the record holds nothing for can still be carried.
+// That happens when an ancestor's whole entry stands for it over an inert-only diff,
+// and its module key then joins the plan's inertCarried.
 func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) greenPlan {
 	plan := greenPlan{carried: map[string][]string{}}
 	if run.tier.NoCarry {
@@ -349,9 +368,12 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 	return plan
 }
 
-// carriesOverInert reports whether the whole invocation inv of run, which the record holds no entry for on the current tree, is carried over an inert-only diff:
-// the record holds a whole entry under the same fingerprint, empty args and module key for an ancestor whose diff to the working tree is inert.
-// Only a whole invocation of a tier's own run qualifies, never the guard or vet step, a run with args or a partial invocation, and a hub with no inert_paths carries nothing this way.
+// carriesOverInert reports whether the whole invocation inv of run is carried over an inert-only diff.
+// The record must hold a whole entry under the same fingerprint, empty args and module key from an ancestor.
+// That ancestor's diff to the working tree must be inert.
+// Only a whole invocation of a tier's own run qualifies:
+// not the guard or vet step, not a run with args, not a partial invocation.
+// A hub with no inert_paths carries nothing this way.
 func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invocation, key, fingerprint string) bool {
 	if len(g.cfg.InertPaths) == 0 || len(run.args) > 0 || run.guardStep || run.vetStep || inv.partial {
 		return false
@@ -367,7 +389,8 @@ func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invoca
 	return found && allInertSince(ctx, g.cfg, g.root, base)
 }
 
-// recordInertCarried writes a whole entry for the current tree for each module key plan carried over an inert-only diff, so a later gate carries it directly.
+// recordInertCarried writes a whole entry for the current tree for each module key plan carried over an inert-only diff.
+// A later gate then carries each one directly.
 // A failed write is logged and decides nothing.
 func (g *greenRun) recordInertCarried(run tierRun, plan greenPlan, now time.Time) {
 	fingerprint := g.fingerprint(run.tier)
@@ -384,7 +407,8 @@ func subtractPackages(listed, green []string) []string {
 	return slices.DeleteFunc(slices.Clone(listed), func(pkg string) bool { return slices.Contains(green, pkg) })
 }
 
-// stillGreen reports whether the worktree is still clean and HEAD's tree is still the one the call started on, which a pass needs before it is recorded.
+// stillGreen reports whether the worktree is still clean and HEAD's tree is still the one the call started on.
+// A pass needs this before it is recorded.
 func (g *greenRun) stillGreen() bool {
 	dirty, err := verifytree.DirtyPaths(g.root)
 	if err != nil || len(dirty) > 0 {
@@ -394,9 +418,13 @@ func (g *greenRun) stillGreen() bool {
 	return err == nil && tree == g.tree
 }
 
-// recordPass records the invocations of run that just passed, with the carried packages plan names beside them, when the tree is still the one the call started on.
-// An invocation is recorded whole when it ran every target of its tier, or when the packages it ran and the packages carried cover every package the tier's all_targets expand to; otherwise, under the go scoper, it records the packages it ran.
-// A partial invocation, one narrowed to a selected project and its classes, is never recorded, so a filtered pass never stands in for a whole run.
+// recordPass records the invocations of run that just passed, when the tree is still the one the call started on.
+// The carried packages that plan names count toward a whole entry.
+// An invocation is recorded whole when it ran every target of its tier.
+// It is also recorded whole when the packages it ran and the carried ones cover all_targets.
+// Otherwise, under the go scoper, it records the packages it ran.
+// A partial invocation, one narrowed to a selected project and its classes, is never recorded.
+// A filtered pass therefore never stands in for a whole run.
 // A tier with carry: false records nothing.
 // A failed write is logged and decides nothing.
 func (g *greenRun) recordPass(ctx context.Context, run tierRun, ran []invocation, plan greenPlan, env []string, now time.Time) {
@@ -454,8 +482,9 @@ func (g *greenRun) coversAllTargets(ctx context.Context, tier gateslot.Tier, pac
 // buildTagsPattern finds the build tags a tier's command compiles with.
 var buildTagsPattern = regexp.MustCompile(`-tags[= ]+"?([A-Za-z0-9_,!.-]+)"?`)
 
-// expandPackages returns targets as module-relative package arguments of the tier's module at dir, sorted and without repeats.
-// A target with no `...` is only cleaned; a pattern is listed with `go list` under the build tags the tier's command names.
+// expandPackages returns the targets as sorted, unique, module-relative package arguments of the tier's module at dir.
+// A target with no `...` is only cleaned;
+// a pattern is listed with `go list` under the build tags the tier's command names.
 func (g *greenRun) expandPackages(ctx context.Context, dir string, tier gateslot.Tier, targets []string, env []string) ([]string, error) {
 	if !slices.ContainsFunc(targets, func(target string) bool { return strings.Contains(target, "...") }) {
 		packages := make([]string, len(targets))
@@ -490,7 +519,8 @@ func (g *greenRun) expandPackages(ctx context.Context, dir string, tier gateslot
 	return unionSorted(packages, nil), nil
 }
 
-// normalizePackage returns a relative package argument as "./<dir>" cleaned, "." for the module root, and any other argument unchanged.
+// normalizePackage returns a relative package argument as "./<dir>" cleaned, or "." for the module root;
+// any other argument is returned unchanged.
 func normalizePackage(target string) string {
 	if !strings.HasPrefix(target, ".") {
 		return target

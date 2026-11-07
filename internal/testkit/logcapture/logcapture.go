@@ -18,7 +18,7 @@ type Buffer struct {
 	sb strings.Builder
 }
 
-// Write appends p to the buffer.
+// Write implements io.Writer by appending p to the buffer.
 func (b *Buffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -39,7 +39,8 @@ func (b *Buffer) Reset() {
 	b.sb.Reset()
 }
 
-// Capture points logger output at a fresh Buffer and restores the logger's default output and the default verbosity in t.Cleanup.
+// Capture points logger output at a fresh Buffer.
+// It restores the logger's default output and the default verbosity in t.Cleanup.
 func Capture(t testing.TB) *Buffer {
 	t.Helper()
 	buf := &Buffer{}
@@ -51,7 +52,8 @@ func Capture(t testing.TB) *Buffer {
 	return buf
 }
 
-// CaptureVerbose is Capture with verbosity raised to Info for the duration.
+// CaptureVerbose points logger output at a fresh Buffer and raises the verbosity to Info.
+// Both are restored in t.Cleanup.
 func CaptureVerbose(t testing.TB) *Buffer {
 	t.Helper()
 	buf := Capture(t)

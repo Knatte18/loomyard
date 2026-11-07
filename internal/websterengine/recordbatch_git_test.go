@@ -1,6 +1,6 @@
-// recordbatch_git_test.go exercises RecordBatch's post-batch checks over a real scratch git repository:
-// the delta of the batch's own commits, which quarry computes from git's blobs, drives handle binding, the scope guard and drift detection,
-// so these tests need real commits.
+// recordbatch_git_test.go tests RecordBatch's post-batch checks over a real scratch git repository.
+// The delta of the batch's own commits drives handle binding, the scope guard and drift detection.
+// quarry computes that delta from git's blobs, so these tests need real commits.
 // Every other RecordBatch behavior is tested over a fakeGit in recordbatch_test.go.
 
 package websterengine_test
@@ -22,7 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// recordScenario is the one scratch repository the post-batch steps share: a base commit, then a work commit adding internal/foo/impl.go.
+// recordScenario is the one scratch repository the post-batch steps share:
+// a base commit, then a work commit adding internal/foo/impl.go.
 type recordScenario struct {
 	repo     string
 	startSHA string
@@ -59,7 +60,7 @@ func forkReturned() []shuttleengine.ForkAudit {
 	}
 }
 
-// forkRewroteReport scripts the next audits as the handed-back fork resumed: its bracket transcript wrote the batch's report again.
+// forkRewroteReport scripts the next audits for a handed-back fork that resumed and wrote the batch's report again.
 func forkRewroteReport(fx *recordFixture) {
 	report := filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
 	fx.Audit.scripted = []shuttleengine.ForkAudit{
@@ -67,10 +68,11 @@ func forkRewroteReport(fx *recordFixture) {
 	}
 }
 
-// seedDriftPlanDir writes a real, parseable two-card plan directory whose second card's Uses field
-// names every ref in uses. RecordBatch's own drift repair calls planparser.RewriteRefs against this
-// directory, which re-parses it from disk rather than reading RecordDeps.Plan, so a repair scenario
-// needs genuine card files here and not only the in-memory plan newRecordFixture builds.
+// seedDriftPlanDir writes a real, parseable two-card plan directory.
+// The second card's Uses field names every ref in uses.
+// RecordBatch's drift repair calls planparser.RewriteRefs against this directory.
+// It re-parses the directory from disk rather than reading RecordDeps.Plan,
+// so a repair scenario needs genuine card files here, not only the in-memory plan newRecordFixture builds.
 func seedDriftPlanDir(t *testing.T, uses []string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -94,15 +96,16 @@ func seedDriftPlanDir(t *testing.T, uses []string) string {
 	return dir
 }
 
-// TestRecordBatch_PostBatchChecks runs every case whose outcome depends on the real delta of the batch's commits over one scratch repository, one step per case.
+// TestRecordBatch_PostBatchChecks runs every case whose outcome depends on the real delta of the batch's commits.
+// It runs one step per case over one scratch repository.
 // Each step starts by restarting the repository from the work commit, so no step relies on another's state.
 func TestRecordBatch_PostBatchChecks(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 	s := newRecordScenario(t)
 
-	// A Create declaration whose symbol actually landed in the batch's own work commit is bound from the
-	// record-batch delta and rewritten on disk to its plain glyph, with the batch still terminating cleanly.
+	// A Create declaration whose symbol landed in the batch's work commit is bound from the record-batch delta.
+	// The declaration is rewritten on disk to its plain glyph, and the batch still terminates cleanly.
 	t.Run("binds a handle from the delta", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 
@@ -166,13 +169,14 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// A symbol the delta reports deleted with no corresponding rename, that the plan still references, hands the batch back to its fork once, leaving the batch open and its report in place;
-	// the next call warns about the later card and persists a terminal digest.
+	// The delta reports a symbol deleted with no rename, and the plan still references it.
+	// The batch goes back to its fork once, stays open, and keeps its report in place.
+	// The next call warns about the later card and persists a terminal digest.
 	t.Run("drift on a deleted still-referenced symbol hands back once, then warns about the later card", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
-		// A symbol must exist at the delta's START side to be reported deleted — the fixture's own
-		// StartSHA (base.txt only) predates internal/foo entirely, so the batch's own start boundary is
-		// moved to a commit that already carries the symbol, and a later commit removes it.
+		// A symbol must exist at the delta's start side to be reported deleted.
+		// The fixture's own StartSHA (base.txt only) predates internal/foo entirely,
+		// so the batch's start boundary moves to a commit that already carries the symbol, and a later commit removes it.
 		withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
 		fx.Deps.State.Batches[1].StartSHA = withSymbol
 		if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
@@ -227,17 +231,18 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// An inexact rename quarry classifies as an evidence-tier candidate hands the batch back once, naming the candidate.
+	// An inexact rename that quarry classifies as an evidence-tier candidate hands the batch back once.
+	// The error names the candidate.
 	// The next call lets the batch terminate with the informational rename-candidate finding on Warnings:
 	// a finding that kills the batch never reaches the reviewer whose decision the tier exists to inform.
 	t.Run("an evidence-tier rename candidate hands back once, then warns and does not block", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
-		// The symbol must exist at the delta's start side to be reported deleted, so the batch's own
-		// start boundary moves to a commit that already carries it.
+		// The symbol must exist at the delta's start side to be reported deleted,
+		// so the batch's start boundary moves to a commit that already carries it.
 		withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillMove() int { return 1 }\n", "01.2: add WillMove")
 		fx.Deps.State.Batches[1].StartSHA = withSymbol
-		// Renamed AND rewritten: the token streams differ in length, so quarry's exact tier declines it
-		// and offers it as a candidate instead.
+		// Renamed AND rewritten: the token streams differ in length, so quarry's exact tier declines it.
+		// It offers the rename as a candidate instead.
 		headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
 		writeReport(t, fx.ReportsDir, validReport(headSHA))
 		addPendingCard(fx, []string{"internal/foo#WillMove"})
@@ -265,7 +270,7 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// The same rename-and-rewrite quarry only offers as a candidate is repaired when the fork reports it:
+	// A rename-and-rewrite that quarry only offers as a candidate is repaired when the fork reports it:
 	// the pending card names the new glyph, and neither a candidate nor a later-card warning is left.
 	t.Run("a reported rename quarry cannot prove rewrites the later card", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
@@ -303,7 +308,8 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// A FAILED report goes to a recovery strand, so its batch is never handed back to its fork over a removed later target.
+	// A FAILED report goes to a recovery strand,
+	// so its batch is never handed back to its fork over a removed later target.
 	t.Run("a failed report is never handed back over a removed later target", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 		withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
@@ -326,9 +332,10 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// The batch being recorded is excluded from drift detection. Its work is exactly what the delta reports, so a Delete card
-	// referencing the symbol it just deleted was reporting its own success as
-	// plan-references-deleted-symbol — and no Delete card could ever be recorded at all.
+	// The batch being recorded is excluded from drift detection.
+	// Its work is exactly what the delta reports,
+	// so a Delete card naming the symbol it just deleted would be flagged as plan-references-deleted-symbol,
+	// and no Delete card could ever be recorded at all.
 	t.Run("a delete card deleting its own target is not drift", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 		withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
@@ -357,12 +364,12 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// A Create target whose symbol actually landed in the batch's own work commit passes the done-checks and the batch
-	// still terminates cleanly.
+	// A Create target whose symbol landed in the batch's work commit passes the done-checks.
+	// The batch still terminates cleanly.
 	t.Run("the done-checks pass on a landed create", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
-		// The fixture's own work commit adds internal/foo/impl.go with no declared symbol; add one
-		// the fixture's own Create target can resolve against.
+		// The fixture's own work commit adds internal/foo/impl.go with no declared symbol;
+		// the commit below declares a symbol the Create target can resolve against.
 		gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.2: add Bar")
 		headSHA := gitkit.CommitFile(t, fx.Worktree, "base.txt", "base updated", "01.3: bump base")
 		writeReport(t, fx.ReportsDir, validReport(headSHA))
@@ -379,15 +386,13 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// Regression for the round-4 review's R4-01. BindHandles and DetectDrift both rewrite the plan on disk BEFORE they report a
-	// finding, and a single call routinely does both: here the delta carries an exact-tier rename the
-	// pending card references (repaired, so planparser.RewriteRefs rewrites 02-pending.md) alongside a
-	// deletion the same card references (blocking, so RecordBatch returns ErrCardNotDone).
+	// BindHandles and DetectDrift both rewrite the plan on disk before they report a finding.
+	// One call often does both: here the delta carries an exact-tier rename that the pending card references.
+	// planparser.RewriteRefs rewrites that card in 02-pending.md.
+	// The same delta also carries a deletion that card references, which blocks the batch with ErrCardNotDone.
 	//
-	// With the re-baseline positioned after the refusal, state.json kept the pre-rewrite fingerprint
-	// while the plan on disk carried webster's own sanctioned edit, so every later begin-batch refused
-	// it as a foreign edit — and `--fresh`, the advised recourse, then refused the run outright over the
-	// cards that had already landed. The run was unrecoverable without hand-editing state.json.
+	// A re-baseline placed after the refusal leaves state.json with the pre-rewrite fingerprint.
+	// The plan on disk then carries webster's own edit, so every later begin-batch refuses it as a foreign edit.
 	t.Run("the plan fingerprint is restamped even when drift repairs the plan", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 
@@ -396,8 +401,8 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		seeded := mustFingerprint(t, planDir)
 		fx.Deps.State.PlanFingerprint = seeded
 
-		// Both symbols must exist at the delta's start side, so the batch's own start boundary moves to
-		// a commit that already carries them.
+		// Both symbols must exist at the delta's start side,
+		// so the batch's start boundary moves to a commit that already carries them.
 		withSymbols := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go",
 			"package foo\n\nfunc WillMove() int { return 1 }\n\nfunc WillGoAway() {}\n", "01.2: add both symbols")
 		fx.Deps.State.Batches[1].StartSHA = withSymbols
@@ -407,7 +412,8 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		writeReport(t, fx.ReportsDir, validReport(headSHA))
 		addPendingCard(fx, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
 
-		// The first call hands back the plain deletion only: the exact-tier rename is quarry's own pair, never a removed target.
+		// The first call hands back the plain deletion only:
+		// the exact-tier rename is quarry's own pair, never a removed target.
 		_, err := websterengine.RecordBatch(fx.Deps, 1)
 		var handBack *websterengine.LaterTargetRemovedError
 		if !errors.As(err, &handBack) {
@@ -439,7 +445,8 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 	})
 
 	// A C# re-sign whose edit landed is carried into the plan.
-	// The pending card that names the old glyph names the minted id, and the plan is re-baselined so the next begin-batch meets no fingerprint mismatch.
+	// The pending card that names the old glyph names the minted id,
+	// and the plan is re-baselined so the next begin-batch meets no fingerprint mismatch.
 	// Neither the scope guard nor drift detection holds the re-signed file against the batch.
 	// A re-sign whose edit did not land fails the batch.
 	// Each step runs over a repository of its own, whose base commit declares Draw(int count).

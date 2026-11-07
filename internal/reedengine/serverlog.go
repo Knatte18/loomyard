@@ -1,8 +1,7 @@
-// serverlog.go implements server-log concerns: mapping the opt-in debug_log config value to tmux
-// verbose-logging flags,
-// and boot-time pruning of the per-hub server's log files under the Bolt checkout's .lym/logs/.
-// Both are pure planning helpers (no filesystem or process I/O);
-// the caller (lifecycle.go) performs the actual tmux spawn and file removals.
+// serverlog.go maps the debug_log config value to tmux verbose-logging flags.
+// It also plans the boot-time pruning of the per-hub server's log files under the Bolt checkout's .lym/logs/.
+// Both functions are pure planning helpers with no filesystem or process I/O;
+// the caller in lifecycle.go performs the tmux spawn and the file removals.
 
 package reedengine
 
@@ -28,8 +27,8 @@ func debugLogArgs(level string) ([]string, error) {
 	}
 }
 
-// planLogPrune returns the subset of names to delete so only the keep newest
-// remain. Ties are broken by input order for deterministic results.
+// planLogPrune returns the names to delete so that only the keep newest remain.
+// Ties are broken by input order, so the result is deterministic.
 func planLogPrune(names []string, mtimes []time.Time, keep int) []string {
 	if keep < 0 {
 		keep = 0
@@ -46,9 +45,8 @@ func planLogPrune(names []string, mtimes []time.Time, keep int) []string {
 	for i, n := range names {
 		entries[i] = namedMtime{name: n, mtime: mtimes[i]}
 	}
-	// Stable sort newest-first; SliceStable preserves the input order for
-	// entries with equal mtimes, which is what makes tie-breaking
-	// deterministic rather than dependent on sort's internal pivot choice.
+	// Sort newest-first with a stable sort, which keeps the input order of entries with equal mtimes.
+	// Tie-breaking is therefore deterministic, not dependent on sort's internal pivot choice.
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].mtime.After(entries[j].mtime)
 	})

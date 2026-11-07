@@ -1,25 +1,17 @@
-// uncontainedwrite_test.go is the write-side twin of destructiveguard_test.go: it machine-checks that
-// internal/fabricengine's production source contains no raw filesystem-WRITE primitive
-// (os.MkdirAll/os.Mkdir/os.WriteFile/os.Create/os.OpenFile/os.Symlink/os.Link) outside an explicit
-// per-file allowlist, each allowlist entry naming why that site is safe to write raw.
+// uncontainedwrite_test.go machine-checks internal/fabricengine's production source.
+// It bans raw filesystem-WRITE primitives outside an explicit per-file allowlist.
+// The banned primitives are os.MkdirAll, os.Mkdir, os.WriteFile, os.Create, os.OpenFile, os.Symlink and os.Link.
+// Each allowlist entry names why that site is safe to write raw.
 //
-// It exists because five review rounds hardened one delete-side chain and the create-side worktree add while OTHER create-side writers on the same `add` code path — writeLaunchers, writing to the hub-level structural container _launchers an attacker can pre-plant a static symlink at — sat undiscovered with zero containment protection.
-// Nothing mechanically inventoried
-// the package's raw WRITE primitives the way TestNoDestructiveBypass_FabricengineProductionSource
-// inventories its removals, so a new uncontained write could always slip in unremarked. This guard makes
-// every raw write a deliberate, reasoned allowlist entry, so the eighth link in that chain fails a test
-// rather than being found by the next crucible round.
+// Without this guard, a new uncontained write could slip into the package unremarked.
 //
-// The banned tokens are the os.-qualified spellings, deliberately NOT the bare forms the delete-side
-// guard uses: the write-side containment fix routes the two exploitable writers through os.Root method
-// calls (root.MkdirAll/root.WriteFile), which are the write-side chokepoint and must PASS, exactly as the
-// bare delete-side "RemoveAll(" token catches destroy.go's own root.RemoveAll. Banning os.-qualified forms
-// targets what is actually forbidden — a raw write to a caller-derived path that follows a planted symlink
-// — while letting the rooted, contained writers through.
+// The tokens are the os.-qualified spellings, not bare names such as `WriteFile(`.
+// A bare name would also match the rooted calls, such as `root.WriteFile(`.
+// Those rooted calls are the contained write path and must pass.
+// The os.-qualified forms target a raw write to a caller-derived path that follows a planted symlink.
 //
-// The allowlist is per-file, so a NEW raw write added inside an allowlisted file is not caught — the same
-// limitation the delete-side guard it clones has. Each entry is one already-audited class of call, not a
-// blanket exemption for future writes in that file.
+// The allowlist is per file, so a raw write added to an allowlisted file is not caught.
+// Each entry covers one audited class of call, not a blanket exemption for future writes in that file.
 
 package main
 
@@ -32,16 +24,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// uncontainedWriteScanPackages is the module-relative package subtree this guard walks: the one package
-// the write-side containment audit covers, internal/fabricengine.
+// uncontainedWriteScanPackages lists the module-relative package subtrees the guard scans.
 var uncontainedWriteScanPackages = []string{
 	"internal/fabricengine",
 }
 
-// uncontainedWriteBannedTokens are the raw substrings a non-test .go file in
-// uncontainedWriteScanPackages may not contain unless the file is on uncontainedWriteAllowlist. Every
-// one names a raw filesystem-write primitive that resolves a caller-derived path itself and follows a
-// symlink planted on it, the create-side twin of the delete-side escape the destruction chokepoint closes.
+// uncontainedWriteBannedTokens are the raw substrings a scanned non-test .go file may not contain.
+// Each names a raw filesystem-write call.
+// Such a call resolves a caller-derived path itself and follows a symlink planted on it.
+// A file may hold one only if it is allowlisted.
 var uncontainedWriteBannedTokens = []string{
 	"os.MkdirAll(",
 	"os.Mkdir(",
@@ -52,13 +43,12 @@ var uncontainedWriteBannedTokens = []string{
 	"os.Link(",
 }
 
-// uncontainedWriteAllowlist is this guard's per-file allowlist (path module-relative, slash-separated →
-// reason). Every entry names why its raw write is safe: it writes into a git-owned path (never derived
-// from an operator slug), or into a worktree/board directory fabric just minted through a CONTAINED
-// minter (createExclusiveDir/containedWorktreeAdd) in the same call, where only a post-creation same-UID
-// race — the documented residual class, same as the gate's dirtiness window — could redirect it, never a
-// static pre-plant. The rooted hub-level writers (launchers.go's writeLaunchers, hubworkspace_write.go's writeHubWorkspace) are
-// deliberately ABSENT: they route through an os.Root at the hub, so they carry no banned token at all.
+// uncontainedWriteAllowlist maps each allowlisted file to the reason its raw writes are safe.
+// Keys are module-relative, slash-separated paths.
+// Most reasons rest on a git-owned path, never derived from an operator slug, or on a directory fabric created.
+// Such a directory comes from a contained minter, `createExclusiveDir` or `containedWorktreeAdd`.
+// A write into it is race-only: a same-UID race after creation could redirect it, never a static pre-plant.
+// Writers that route through an os.Root carry no banned token and need no entry.
 var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/hook.go", Why: "InstallPostCheckoutHook/chainUserHook/writeHookFile write into the git-resolved hooks " +
 		"directory (git rev-parse --git-path hooks), a git-owned path never derived from an operator slug; redirecting it " +
@@ -91,16 +81,15 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 		"its only non-comment line is the package clause, so it can never carry a real call"},
 }
 
-// uncontainedWriteMinScannedFiles is the vacuous-scan floor for this guard's one-package walk: comfortably
-// below the package's current production file count and above zero, catching a misconfigured walk rather
-// than tracking file-count churn.
+// uncontainedWriteMinScannedFiles is the floor on the files the guard must scan.
+// It sits comfortably below the package's production file count and above zero.
+// It catches a misconfigured walk without tracking file-count churn.
 const uncontainedWriteMinScannedFiles = 30
 
-// TestNoUncontainedWrite_FabricengineProductionSource walks internal/fabricengine's non-test .go files and
-// fails if any of them (other than a uncontainedWriteAllowlist entry) contains one of
-// uncontainedWriteBannedTokens — a raw filesystem-write primitive that must instead route through an
-// os.Root rooted at the hub (the write-side containment chokepoint) or be an allowlisted, reasoned
-// exemption. It is the write-side twin of TestNoDestructiveBypass_FabricengineProductionSource.
+// TestNoUncontainedWrite_FabricengineProductionSource scans internal/fabricengine's non-test .go files.
+// It fails when a file outside the allowlist holds a banned token.
+// A raw write must route through an os.Root rooted at the hub, the write-side containment chokepoint.
+// Otherwise its file needs a reasoned allowlist entry.
 //
 //lym:guard
 func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {

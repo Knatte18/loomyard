@@ -1,4 +1,5 @@
-// seam_test.go drives the worktree seam over temporary directories, without git, for a worktree with an anchor and for one without.
+// seam_test.go drives the worktree seam over temporary directories, without git.
+// It covers a worktree with an anchor and one without.
 
 package heddleengine
 
@@ -12,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seamFixture is a seam over a store holding a claude-file and a codex-file entry, in a worktree whose anchor lies anchorRel below its root.
+// seamFixture is a seam over a store holding a claude-file and a codex-file entry.
+// The worktree's anchor lies anchorRel below its root.
 type seamFixture struct {
 	renderFixture
 	root  string
@@ -37,7 +39,8 @@ func newSeamFixture(t *testing.T, anchorRel string) seamFixture {
 	}
 }
 
-// tookInAfterClearing fires a took-in event over paths after removing both renders, so a file present afterwards was rendered by the event.
+// tookInAfterClearing fires a took-in event over paths after removing both renders.
+// Any file present afterwards was rendered by the event.
 func (f seamFixture) tookInAfterClearing(t *testing.T, paths ...string) {
 	t.Helper()
 	for _, name := range []string{"CLAUDE.local.md", "AGENTS.override.md"} {

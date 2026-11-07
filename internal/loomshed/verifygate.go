@@ -1,4 +1,7 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, the told command being the row's own gate key call, or in the darn form the diff's tree-scoped command when the diff is wholly under the configured trees.
+// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff.
+// It holds the handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree.
+// The told command is the site's own gate call.
+// In the darn form it is the diff's tree-scoped command when the diff is wholly under the configured trees.
 
 package loomshed
 
@@ -24,35 +27,57 @@ import (
 // verifyLogTailBytes bounds how much of the verify log a failing verdict quotes.
 const verifyLogTailBytes = 4096
 
-// verifyFailuresBytes bounds the failures section a failing verdict quotes in place of the log tail; one failure longer than the bound is cut to it.
+// verifyFailuresBytes bounds the failures section a failing verdict quotes in place of the log tail;
+// one failure longer than the bound is cut to it.
 const verifyFailuresBytes = 8192
 
 // verifyFailureTruncated ends a failure cut to verifyFailuresBytes.
 const verifyFailureTruncated = "\n[truncated]"
 
-// NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
+// NewVerifyGate returns a must-pass shuttleengine.Gate.
+// At each arrival the gate reads the told verify command and lints the comments the work added.
+// It then runs the command through verifytree.Verify over worktreeRoot.
+// It keeps its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
-// command is the told verify-command source, the site's own `lym gate test --wait --gate <key>` call, read at each arrival; it runs as it is, since the gate derives its own diff base, and a pass keeps its record entry so a later arrival on the same tree skips.
-// hold is the told pause hold of the worktree's scope: a non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
+// command is the told verify-command source: the site's own `lym gate test --wait --gate <key>` call.
+// It is read at each arrival and runs as it is, since the gate derives its own diff base.
+// A pass keeps its record entry, so a later arrival on the same tree skips.
+// hold is the told pause hold of the worktree's scope.
+// A non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
 //
 // With treeScope nil the gate takes the round form.
-// The comment lint runs before any test from its own base: the commit of the told command's latest recorded pass when that commit is an ancestor of HEAD, else the merge base mergeBase reads, so a first round lints rather than skips.
+// The comment lint runs before any test, from its own base.
+// That base is the commit of the told command's latest recorded pass, when that commit is an ancestor of HEAD.
+// Otherwise it is the merge base mergeBase reads.
+// So a first round lints rather than skips.
 // With neither base, no comment lint runs.
 // An empty told command passes with a logged warning.
-// When mergeBase is non-nil, the headroom lint also runs from the merge base it reads to HEAD, before the comment lint and any test; nil skips it.
+// When mergeBase is non-nil, the headroom lint also runs before the comment lint and any test.
+// It runs from the merge base mergeBase reads to HEAD; nil skips it.
 //
 // With treeScope non-nil the gate takes the darn form, and mergeBase must be non-nil.
-// The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD, so every attempt diffs from the merge base.
-// Then treeScope is read: a tree-scoped diff runs the tree-scoped command it answers, and passes with a logged note, running nothing, when that command is empty;
-// any other diff runs the told command.
-// The form has no skip path: an empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
+// The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD.
+// So every attempt diffs from the merge base.
+// Then treeScope is read.
+// A tree-scoped diff runs the tree-scoped command it answers.
+// When that command is empty, it passes with a logged note and runs nothing.
+// Any other diff runs the told command.
+// The form has no skip path.
+// An empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
-// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the command's guard scan rejects, such as a misplaced `//lym:guard` marker, reaches the findings through that tail with its file and line.
-// A `StatusFailed` runner crash, every failed run having crashed its test runner with no failing test, fails terminally naming the crashed runs, since no change the writer makes mends it and no fixer gets it.
+// `StatusFailed` fails with the exit code, the log path and the log's tail.
+// After a CPU watchdog quit, it adds the window and the `busy_quit_sec` way forward.
+// The command's guard scan rejects a test file, such as one with a misplaced `//lym:guard` marker.
+// That rejection reaches the findings through the tail, with its file and line.
+// A `StatusFailed` result is a runner crash when every failed run crashed its test runner with no failing test.
+// That fails terminally and names the crashed runs.
+// No change the writer makes mends it, so no fixer gets it.
 // A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
-// A command, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
+// A command, merge base or tree scope read error is a returned error.
+// So is a failure to read git, a lint run error or a cancelled verify.
+// None is a defect the writer can fix.
 func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), hold *verifytree.PauseHold) shuttleengine.Gate {
 	attempt := 0
 	darnForm := treeScope != nil
@@ -143,7 +168,8 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 	}
 }
 
-// isAncestorOfHead reports whether commit is an ancestor of HEAD in worktreeRoot; any git refusal reads as not an ancestor.
+// isAncestorOfHead reports whether commit is an ancestor of HEAD in worktreeRoot;
+// any git refusal reads as not an ancestor.
 func isAncestorOfHead(worktreeRoot, commit string) bool {
 	ancestor, err := gitrepo.New(worktreeRoot).IsAncestor(commit, "HEAD")
 	return err == nil && ancestor
@@ -164,9 +190,13 @@ func commentLintFindings(findings []commentlint.Finding) string {
 	return b.String()
 }
 
-// verifyFailureFindings renders a StatusFailed result as the exit code, the timeout or the runner crash, the log path, and the failing tests and packages the log names, each with its own output, and the gate's closing line of failed runs;
-// a log that names no failing test or package is quoted as its tail instead, since in the output of parallel packages the last lines need not hold the failures.
-// When the whole log holds the CPU watchdog's line, a paragraph after the first sentence names the window and the way forward for a healthy package that is CPU-bound.
+// verifyFailureFindings renders a StatusFailed result with its exit code, timeout or runner crash, and log path.
+// It quotes each failing test and package the log names, with its own output.
+// It also quotes the gate's closing line of failed runs.
+// A log that names no failing test or package is quoted as its tail instead.
+// In the output of parallel packages, the last lines need not hold the failures.
+// When the whole log holds the CPU watchdog's line, the rendered text adds a paragraph after its first sentence.
+// That paragraph names the window and the way forward for a healthy package that is CPU-bound.
 func verifyFailureFindings(res verifytree.Result, logPath string) string {
 	log, _ := os.ReadFile(logPath)
 	var b strings.Builder
@@ -204,8 +234,10 @@ func logTail(log []byte) string {
 	return string(bytes.TrimSpace(log))
 }
 
-// failuresSection returns the failing tests and packages websterengine.ParseVerifyFailures names in log, each as its identity and its own output, within verifyFailuresBytes, or "" when it names none.
-// A test whose output the parser found nested under its header gets that output, and otherwise the output above its header, where `lym gate test` renders a test's output.
+// failuresSection returns the failing tests and packages named in log, each as its identity and its own output.
+// The result is capped at verifyFailuresBytes and is "" when log names no failure.
+// A test's output is the output nested under its header when the parser finds any;
+// otherwise it is the output above the header, where `lym gate test` renders a test's output.
 func failuresSection(log []byte) string {
 	lines := strings.Split(strings.ReplaceAll(string(log), "\r\n", "\n"), "\n")
 	var b strings.Builder
@@ -234,7 +266,8 @@ func failuresSection(log []byte) string {
 	return strings.TrimSpace(b.String())
 }
 
-// failedRunsLine returns the last line of log that `lym gate test` closes a failed call with, naming each failed run, or "" when log holds none.
+// failedRunsLine returns the last line of log that `lym gate test` closes a failed call with, or "" when log holds none.
+// The line names each failed run.
 func failedRunsLine(log []byte) string {
 	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -248,8 +281,11 @@ func failedRunsLine(log []byte) string {
 // verifyOutputAboveLines caps the output outputAboveHeader quotes for one test.
 const verifyOutputAboveLines = 40
 
-// outputAboveHeader returns the output lines directly above the first `--- FAIL: <test> ` header in the block of package pkg, back to the nearest `=== ` or `--- ` marker line, at most verifyOutputAboveLines of them, or "" when no block of pkg holds such a header.
-// A block runs from the line after the previous package's closing line to pkg's own `FAIL\t<pkg>` line, so a test name another package shares never borrows that package's output.
+// outputAboveHeader returns the output lines directly above the first `--- FAIL: <test> ` header in pkg's block.
+// The lines stop at the nearest `=== ` or `--- ` marker line, and at most verifyOutputAboveLines of them.
+// It returns "" when no block of pkg holds such a header.
+// A block runs from the line after the previous package's closing line to pkg's own `FAIL\t<pkg>` line;
+// so a test name another package shares never borrows that package's output.
 func outputAboveHeader(lines []string, pkg, test string) string {
 	header := "--- FAIL: " + test + " "
 	blockStart := 0

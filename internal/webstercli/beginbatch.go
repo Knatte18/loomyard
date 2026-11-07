@@ -1,11 +1,10 @@
-// beginbatch.go implements the `begin-batch` webster verb: Master's own bracket call immediately
-// before forking a batch's implementer.
-// It runs websterengine.BeginBatch under the state-mutation lease (load, mutate, save, release),
-// then performs the first of webster's four fabric-commit points (see the discussion's fabric-ownership
-// decision) -- state.json (the batch's start-SHA and record) durable before Master ever forks.
-// The freshly-written fork prompt is deliberately NOT part of that commit: the sync pathspec
-// excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own
-// prompt on every begin).
+// beginbatch.go implements the `begin-batch` webster verb.
+// Master calls it immediately before forking a batch's implementer.
+// It runs websterengine.BeginBatch under the state-mutation lease (load, mutate, save, release).
+// It then makes one of webster's fabric-commit points:
+// state.json, holding the batch's start-SHA and record, is durable before Master forks.
+// The fork prompt is not part of that commit:
+// the sync pathspec excludes prompts/*, which are machine-local artifacts that BeginBatch rewrites on every begin.
 package webstercli
 
 import (
@@ -30,8 +29,9 @@ const fabricSyncWayForward = "way forward: the state is saved locally; `lym fabr
 // rebaselineWayForward is the trailing clause of every refusal raised because persisting the plan-fingerprint re-baseline failed.
 const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"
 
-// beginDeps builds the websterengine.BeginDeps for this CLI's current wiring over the loaded plan, execution batches and run state.
-// It loads the gate config through the told geometry and refuses, before the caller mutates anything, a config whose `card` or `batch` gate the config cannot list.
+// beginDeps builds the websterengine.BeginDeps from this CLI's wiring and the loaded plan, batches and run state.
+// It loads the gate config through c.geom.
+// It refuses, before the caller mutates anything, a gate config that cannot list its `card` or `batch` gate.
 func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) (websterengine.BeginDeps, error) {
 	gate, err := c.loadGateConfig()
 	if err != nil {
@@ -52,13 +52,15 @@ func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, s
 	}, nil
 }
 
-// cardFixerOn reports whether a failed card gate call goes through a cold fixer first: the pair has a slug and the gate config's `card` key carries a non-empty `fixer`.
+// cardFixerOn reports whether a failed card gate call goes through a cold fixer first:
+// the pair has a slug and the gate config's `card` key carries a non-empty `fixer`.
 func cardFixerOn(gate gateslot.Config, slug string) bool {
 	key, found := gate.Gates["card"]
 	return slug != "" && found && key.Fixer != ""
 }
 
-// loadGateConfig reads the gate config through the told geometry and refuses one whose `card` or `batch` list the prompts cannot render.
+// loadGateConfig reads the gate config through c.geom.
+// It refuses one whose `card` or `batch` list the prompts cannot render.
 // The refusal carries the config's way forward and role clause.
 func (c *websterCLI) loadGateConfig() (gateslot.Config, error) {
 	gate, err := c.geom.GateConfig()
@@ -73,7 +75,6 @@ func (c *websterCLI) loadGateConfig() (gateslot.Config, error) {
 	return gate, nil
 }
 
-// beginBatchCmd builds the `begin-batch <nn>` subcommand.
 func (c *websterCLI) beginBatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "begin-batch <nn>",
@@ -127,10 +128,8 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			// Hold the state-mutation lease across the whole load ->
-			// BeginBatch (guards + mutate) -> SaveState sequence: every
-			// holder's section is bounded, so the blocking acquire is
-			// always short.
+			// Hold the state-mutation lease across the whole load -> BeginBatch (guards + mutate) -> SaveState sequence:
+			// every holder's section is bounded, so the blocking acquire is always short.
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -169,12 +168,10 @@ Example:
 
 			result, err := websterengine.BeginBatch(deps, batchNumber)
 			if err != nil {
-				// BeginBatch re-baselines st's plan fingerprint the moment its own
-				// ValidateDispatch canonicalizes handles and rewrites the plan on disk, which
-				// happens BEFORE that call reports a blocking finding and before the eight
-				// further fallible steps that follow it. Persist that re-baseline before
-				// releasing the lease; every other mutation on this path is still deliberately
-				// dropped, and an unchanged fingerprint writes nothing at all.
+				// BeginBatch re-baselines st's plan fingerprint as soon as ValidateDispatch rewrites the plan on disk.
+				// That happens before the call reports a blocking finding and before the later fallible steps that follow it.
+				// Persist that re-baseline before releasing the lease.
+				// Every other mutation on this path is dropped, and an unchanged fingerprint writes nothing at all.
 				saveErr := persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
 				var conflict *websterengine.PlanConflictError
 				isConflict := errors.As(err, &conflict)
@@ -213,13 +210,12 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			// The batch begun, any conflict last routed to plan review is history.
+			// Once the batch has begun, a conflict routed to plan review is no longer current.
 			if err := websterengine.RemoveRoutedConflict(c.geom.ScratchDir); err != nil {
 				logger.Warn("webstercli: routed plan-conflict file not removed", "err", err)
 			}
-			// The state phase is over; release the lease before the fabric
-			// push below so a network-slow push never serializes another
-			// verb's state mutation behind it.
+			// The state phase is over; release the lease before the fabric push below,
+			// so a network-slow push never serializes another verb's state mutation behind it.
 			_ = mutateLock.Release()
 			mutateHeld = false
 

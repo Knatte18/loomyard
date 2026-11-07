@@ -1,5 +1,7 @@
-// innerrun.go implements NewInnerRun, the producer that spawns the inner shed run inside the task worktree, if it has not spawned yet.
-// It then checks the child's persisted status once per Call and ends the Call with a verdict only when something worth a history entry happens:
+// innerrun.go implements NewInnerRun, the producer that spawns the inner shed run in the task worktree.
+// The producer spawns the run only if it has not spawned yet.
+// It then checks the child's persisted status once per Call,
+// and it ends the Call with a verdict only when something worth a history entry happens:
 // the child's state changes, its arm's own event fires, batten is paused, or the child's status file cannot be stat'ed.
 // A check that ends nothing yields, and what the next check needs to know rides in the memory record.
 
@@ -24,10 +26,11 @@ import (
 const pollFloor = time.Second
 
 // waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first.
-// It is the production value a nil Sleep resolves to, so a caller driving a producer
-// under a cancellable context gets it back promptly. The lym CLI itself never cancels its context:
-// an operator's Ctrl-C ends the process outright, and "lym batten pause" is read between rows, so
-// it waits out the current interval.
+// It is the production sleep, used when a caller supplies none.
+// A caller driving a producer under a cancellable context gets it back promptly.
+// The lym CLI itself never cancels its context:
+// an operator's Ctrl-C ends the process outright;
+// "lym batten pause" is read between rows, so it waits out the current interval.
 func waitOrCancel(ctx context.Context, d time.Duration) {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
@@ -37,16 +40,12 @@ func waitOrCancel(ctx context.Context, d time.Duration) {
 	}
 }
 
-// spawnConfirmedFileSuffix is the fixed suffix of the marker a producer writes under its scratch
-// directory once its spawn has returned success, joined onto the producer's own name.
-// The marker holds the pid of the process that wrote it,
-// so it confirms the spawn for that process only.
+// spawnConfirmedFileSuffix is the fixed suffix of the marker a producer writes once its spawn has returned success.
+// The marker holds the pid of the process that wrote it, so it confirms the spawn for that process only.
 const spawnConfirmedFileSuffix = "-spawned"
 
-// SpawnConfirmedFile returns the path of the marker innerRunProducer writes under scratchDir once
-// producer's spawn has returned success.
-// It is exported for the same reason StuckReasonFile is: the file's reader and writer share one
-// declarer of its name.
+// SpawnConfirmedFile returns the path of the marker a producer writes once its spawn has returned success.
+// It is exported so the file's reader and writer share one declarer of its name.
 func SpawnConfirmedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+spawnConfirmedFileSuffix)
 }
@@ -63,7 +62,7 @@ func haltedWaitReason(status shedengine.Status, startFallback bool) string {
 	return fmt.Sprintf("inner shed run is %s: error=%q current_producer=%q; %s; this run then keeps watching", status.State, status.Error, status.CurrentProducer, resume)
 }
 
-// haltWarnedFileSuffix is the fixed suffix of the marker recording the child's history length at the last halt Warn, joined onto the producer's own name.
+// haltWarnedFileSuffix is the fixed suffix of the marker recording the child's history length at the last halt Warn.
 const haltWarnedFileSuffix = "-halt-warned"
 
 // haltWarnedFile returns the path of the marker holding the child's history length, in decimal, at the last halt Warn.
@@ -71,7 +70,7 @@ func haltWarnedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+haltWarnedFileSuffix)
 }
 
-// revivedFileSuffix is the fixed suffix of the marker recording that a driver revive was already tried in the current halt episode, joined onto the producer's own name.
+// revivedFileSuffix is the fixed suffix of the marker recording that a driver revive was tried in this halt episode.
 // It holds the attempting process's pid and the attempt's result, `ok` or `failed`, on one line; only its presence is read.
 const revivedFileSuffix = "-revived"
 
@@ -80,15 +79,14 @@ func revivedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+revivedFileSuffix)
 }
 
-// decisionActedFileSuffix is the fixed suffix of the marker recording the decision identity the producer last resumed the child on, followed by the child's history length at that resume, joined onto the producer's own name.
-// A one-line marker reads as the old layout.
+// decisionActedFileSuffix is the fixed suffix of the marker recording the decision the child was last resumed on.
 const decisionActedFileSuffix = "-decision-acted"
 
-// doneSeenFileSuffix is the fixed suffix of the marker recording when the producer first saw the child done, joined onto the producer's own name.
+// doneSeenFileSuffix is the fixed suffix of the marker recording when the child was first seen done.
 const doneSeenFileSuffix = "-done-seen"
 
-// decisionActedFile returns the path of the marker holding the decision identity already resumed on and the child's history length at that resume;
-// a one-line marker reads as the old layout.
+// decisionActedFile returns the path of the marker holding the identity of the last decision resumed on.
+// The marker also holds the child's history length at that resume.
 func decisionActedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+decisionActedFileSuffix)
 }
@@ -112,7 +110,8 @@ func decisionActedContent(identity string, historyLen int) string {
 }
 
 // parseDecisionActed splits a marker into its identity line (through the first newline) and the recorded history length.
-// hasLen is false for the one-line old layout, an unparseable or negative length (a torn write), and input with no newline, which is returned whole as identity so it never matches a real identity line.
+// hasLen is false for a one-line marker, an unparseable or negative length (a torn write), and input with no newline;
+// such input is returned whole as identity, so it never matches a real identity line.
 func parseDecisionActed(raw string) (identity string, historyLen int, hasLen bool) {
 	i := strings.IndexByte(raw, '\n')
 	if i < 0 {
@@ -126,14 +125,18 @@ func parseDecisionActed(raw string) (identity string, historyLen int, hasLen boo
 	return identity, n, true
 }
 
-// awaitingHandOff is the operator instruction an awaiting child's wait carries: the child waits on a review segment's escalation, and only the operator can settle it from inside the task worktree.
+// awaitingHandOff is the operator instruction an awaiting child's wait carries.
+// The child waits on a review segment's escalation, and only the operator can settle it from inside the task worktree.
 // An escalation's circling decision is resumed by the operator's own `lym loom resume`.
 const awaitingHandOff = "at a review segment's escalation run \"lym loom circling accept <slug>\" or \"lym loom circling continue <slug>\" and then \"lym loom resume\" in the task worktree"
 
-// innerRunProducer spawns the inner shed run for a task worktree, once, and then checks the child's persisted status once per Call.
-// A Call returns Stuck, always budget-exempt, only when the check has something to record, so shedengine's own on_stuck self-route re-enters it as a new bounce;
-// a check with nothing to record returns Yield, which persists nothing.
-// Everything a Call remembers for the next one is in the memory record (innerRunMemory), loaded at the start of a Call and saved at every return.
+// innerRunProducer spawns the inner shed run for a task worktree once.
+// Each Call then checks the child's persisted status.
+// A Call returns Stuck, always budget-exempt, only when the check has something to record;
+// shedengine's on_stuck self-route then re-enters it as a new bounce.
+// A check with nothing to record returns Yield, which persists nothing.
+// Everything a Call remembers for the next one is in the memory record:
+// it is loaded at the start of a Call and saved at every return.
 type innerRunProducer struct {
 	name string
 	slug string
@@ -142,10 +145,10 @@ type innerRunProducer struct {
 	noticeProbe time.Duration
 	// cur is the wait state of the Call in progress, loaded from the memory record by loadMemory.
 	cur *childWait
-	// watched is the last answer of deps.MarkWatched, whether this batten holds the batten-watched marker, and watchedAnswer how it was reached.
+	// watched is whether the batten holds the marker, per deps.MarkWatched; watchedAnswer is how it was reached.
 	watched       bool
 	watchedAnswer watchedAnswer
-	// driverBusyNoticed is whether the orch was noticed of the current stall on a busy driver pane; a resume that lands clears it.
+	// driverBusyNoticed is whether the orch was noticed of the current busy-driver stall; a resume that lands clears it.
 	driverBusyNoticed bool
 	// episode is the child's current state episode and the delivery of its notices, across Calls.
 	episode    noticeEpisode
@@ -154,15 +157,15 @@ type innerRunProducer struct {
 	driverExitGrace time.Duration
 	// notices is true when the caller wired a Notify, before a nil one resolves to a no-op.
 	notices bool
-	// failures guards each polled seam's failure by its message, across Calls: Warn at the first, Debug while it repeats, Info at recovery.
+	// failures guards each polled seam's failure by message: Warn at first, Debug while it repeats, Info at recovery.
 	failures logger.EpisodeSet
 	// restepOn is true when the binary re-step is wired: both its build and dirty-path seams.
 	restepOn bool
 	// restep is the binary re-step's interval and last reading, across Calls.
 	restep restepWatch
-	// ownedBy is the machine the owner check last read as owning the run, empty while it reads as owned here, across Calls.
+	// ownedBy is the machine the owner check last read as owning the run, or empty while it reads as owned here.
 	ownedBy string
-	// ownedSubject is what `lym adopt` takes to move the run the owner check last read as owned elsewhere, empty when the verdict brought none, across Calls.
+	// ownedSubject is what `lym adopt` takes to move a run read as owned elsewhere; empty when the verdict brought none.
 	ownedSubject string
 	// ownerNoticed is whether the orch was noticed of the current owner episode.
 	ownerNoticed bool
@@ -223,22 +226,32 @@ func logAttempt(first bool, msg string, args ...any) {
 	logger.Debug(msg, args...)
 }
 
-// NewInnerRun returns a shedengine.ShedProducer that resolves the task worktree's status path and spawns the inner shed run via deps.Spawn the first time Call finds no status file.
-// It then checks the child once per Call and yields when the check ends nothing.
-// A told pollInterval below one second draws one Warn naming poll_interval_s; no wait reads it.
+// NewInnerRun returns a shedengine.ShedProducer that resolves the task worktree's status path.
+// The first Call that finds no status file spawns the inner shed run through deps.Spawn.
+// Each later Call checks the child once and yields when the check ends nothing.
+// A pollInterval below one second draws one Warn naming poll_interval_s, and no wait reads it.
 //
 // driverExitGrace bounds the wait for a done child's driver strand to end before the row returns Done anyway.
 //
-// A nil deps.Now resolves to time.Now, once here rather than on every Call, so a test's fixed clock is the only value ever substituted.
+// A nil deps.Now resolves to time.Now, once here rather than on every Call.
+// A test's fixed clock is the only substitute for it.
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
-// A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
-// A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld or deps.ChildDriverLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
+// A nil deps.OrchStrandRecorded resolves to reporting a strand recorded.
+// A nil deps.StopReport resolves to reporting no stop report.
+// A nil deps.DriverStrand resolves to reporting no driver strand.
+// A nil deps.ChildRunLockHeld or deps.ChildDriverLockHeld resolves to reporting no held lock.
+// A nil deps.ReviveStrands resolves to a revive that fails as not wired.
 // A nil deps.TacklerInFlight resolves to reporting no tackler.
 // A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
-// A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
-// A nil deps.MarkWatched resolves to reporting not held, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
+// A nil deps.PauseRequested resolves to never paused.
+// A nil deps.Pause resolves to never covered by a pause record.
+// A nil deps.MarkWatched resolves to reporting not held.
+// A nil deps.ArbiterInFlight resolves to reporting no arbiter.
+// A nil deps.ArbiterStop resolves to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step off.
-// A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
+// A nil deps.OwnerCheck switches the owner check off.
+// A nil deps.PauseOwned resolves to a no-op.
+// A nil deps.ParentHoldsTaskWork or deps.Restepped resolves to reporting false.
 // A nil deps.HandBack resolves to marking no status.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
@@ -319,68 +332,98 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Call implements shedengine.ShedProducer.
 //
 // It reads the child's status before doing anything else.
-// It spawns only when that status is absent, or is still running with no spawn confirmed by this batten process and no driver at work.
+// It spawns only when that status is absent.
+// It also spawns only when the status is running with no spawn confirmed by this batten process and no driver at work.
 // The child's status file alone cannot say whether a spawn happened:
 // the child's bootstrap seeds it as running before it starts the driver,
 // so a bootstrap that failed or was killed after seeding leaves a running status with no driver behind it.
-// The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it,
-// cleared before every spawn attempt and written only once deps.Spawn returns success;
-// a marker naming another pid, or in the old layout, reads as unconfirmed,
-// since batten's own run lock means a pid other than this process's is an earlier, dead batten process.
-// A running child with an unconfirmed spawn is adopted rather than spawned when deps.DriverStrand reports a live or retiring driver strand or deps.ChildRunLockHeld reports a held run lock:
-// the confirmation is recorded for this process and nothing is spawned.
-// Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is already alive,
-// and it never stacks a second driver.
-// A running child with no driver at work is respawned at most respawnCap times with no write to its status file between the respawns, counted in the memory record;
-// after that nothing is spawned until the file is written or the child's state changes, and the dobby's driver-dead notice names the cap.
-// A halted or done child is never re-spawned, marker or not: the outer run watches the child's own run and never restarts it.
+// The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it.
+// The marker is cleared before every spawn attempt and written only once deps.Spawn returns success.
+// A marker naming another pid, or one in the old layout, reads as unconfirmed.
+// Batten's own run lock means a pid other than this process's belongs to an earlier, dead batten process.
+// An unconfirmed running child is adopted, not spawned, when deps.DriverStrand reports a live or retiring driver.
+// It is also adopted when deps.ChildRunLockHeld reports a held run lock.
+// Adoption records the confirmation for this process and spawns nothing.
+// Re-spawning a running child with neither is safe, because the bootstrap it runs is idempotent against a live driver.
+// It never stacks a second driver.
+// A running child with no driver at work gets at most respawnCap respawns while its status file is unwritten.
+// The count lives in the memory record.
+// After that nothing is spawned until the file is written or the child's state changes.
+// The dobby's driver-dead notice names the cap.
+// A halted or done child is never re-spawned, marker or not.
+// The outer run watches the child's own run and never restarts it.
 //
-// The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
-// Spawn Observability lines around deps.Spawn), then one more read;
-// deps.Spawn returning an error is a hard error, not Stuck, since a failed spawn is mechanism failure, not an ordinary wait, and the next Call retries it; still no status file after a successful spawn is a hard error naming the spawn that returned success without producing one.
-// A spawn that a covering pause or a standing owner holds ends the pass at once with a Yield and the hold's reason, and spawns on the first pass that finds neither.
-// A spawn refused with a ChildOwnedElsewhereError is no failed spawn: the respawn of an unconfirmed running child pauses the run and returns a budget-exempt Stuck naming the owner, and the next Call spawns nothing while the owner stands.
-// Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
-// Any Call that finds the child out of a halted state likewise removes the halt-warned marker, which ends the halt episode.
-// A Call loads the memory record first and saves it on every return.
-// The state the memory holds as the child's current episode is the state this Call begins with:
-// a child whose state differs from it ends the Call at once with the state change as its Stuck, before any arm runs, even when the status file's modification time did not move since.
-// With no episode in the memory, the state read is the state this Call begins with.
-// Once the child's state is settled, the check (check) runs the notice step (noticeStep): informational only, one notice per condition per episode, never changing the outcome below.
-// Then by state, each arm does its actions in the one check (once):
+// The full disposition table is evaluated top to bottom.
+// A spawn as above logs two lines around deps.Spawn, then reads the status once more.
+// An error from deps.Spawn is a hard error, not Stuck: a failed spawn is a mechanism failure, not an ordinary wait.
+// The next Call retries it.
+// A successful spawn that leaves no status file is a hard error: the spawn returned success without producing one.
+// A spawn that a covering pause or a standing owner holds ends the pass at once with a Yield carrying the hold's reason.
+// It spawns on the first pass that finds neither.
+// A spawn refused with a ChildOwnedElsewhereError is not a failed spawn.
+// For an unconfirmed running child's respawn, the run is paused and Call returns a budget-exempt Stuck naming the owner.
+// The next Call spawns nothing while the owner stands.
+// Any Call that finds the child in a state other than done first removes a leftover done-seen marker.
+// So a marker from an earlier run of the same slug never shortens a later wait.
+// Any Call that finds the child out of a halted state likewise removes the halt-warned marker, ending the halt episode.
+// Call runs one pass of the child's check, loading the memory record first and saving it on every return.
+// The memory's episode, when it holds one, is the state this Call begins with; without one, it is the state read.
+// A child whose state differs from that state ends the Call at once with a Stuck naming the change,
+// before any arm runs, even when the status file's modification time did not move since.
+// Once the child's state is settled, the notice step runs.
+// It is informational only: one notice per condition per episode, never changing the outcome.
+// Then, by state, each arm does its actions once in this Call:
 //   - running reports its wait reason, naming the reviewer the child waits on when there is one;
-//   - awaiting first revives a dead driver strand once per episode; with no decision record it reports the hand-off;
-//   - awaiting with a decision not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved or rejected run), records the decision in the decision-acted marker only once the spawn succeeded, and goes on waiting until the child leaves awaiting;
-//     a spawn refused with ErrChildNotParked records nothing and is retried at most once per noticeProbe until the driver parks or the state changes;
-//     one refused with ErrChildDriverBusy is retried the same way and posts one orch notice per stall;
-//   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and reports that the resume was delivered and the child's driver has not re-stepped yet;
-//   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and reports the recovery of deciding again;
-//   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise reports the wait for the driver to finish its stop report;
-//   - blocked, paused or failed never spawns or resumes the child, except for the binary re-step (binaryRestep), logs one Info line per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
+//   - awaiting first revives the driver strand once per episode; with no decision record it reports the hand-off;
+//   - awaiting with a decision not yet acted on spawns the child's driver again;
+//     the child's own bootstrap resumes an approved or rejected run;
+//     the decision is recorded in the decision-acted marker only once the spawn succeeded,
+//     and the arm goes on waiting until the child leaves awaiting;
+//     a spawn refused with `ErrChildNotParked` records nothing and is retried at most once per `noticeProbe`;
+//     until the driver parks or the state changes;
+//     a spawn refused with `ErrChildDriverBusy` is retried the same way and posts one orch notice per stall;
+//   - awaiting with an acted-on decision does not spawn while the child's history is unchanged since that resume;
+//     the arm reports that the resume was delivered and the child's driver has not re-stepped yet;
+//   - awaiting with an acted-on decision does not spawn when the child's history is longer;
+//     an old-layout marker is treated the same, and the arm reports the recovery of deciding again;
+//   - done records the first-sight time in the done-seen marker;
+//     it returns Done once the driver strand is gone or `driverExitGrace` has elapsed since first sight;
+//     otherwise it reports the wait for the driver to finish its stop report;
+//   - blocked, paused or failed never spawns or resumes the child, except for the binary re-step;
+//     the arm logs one Info line per halt episode and revives a dead driver strand once per episode;
+//     it reports the child's State, Error and CurrentProducer and the resume command;
 //     a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
-// The check returns a verdict only when:
-//   - the child's State differs from the one the Call began with: a Stuck whose Path and Reason name the change (`child running → blocked at Plan-Review`), so each change is its own history entry and equal entries never fold across changes;
-//   - the arm's own event fires: the done arm's Done, or an awaiting child's decision, which is acted on and then waited out;
-//   - batten's own status carries pause_requested: a Stuck whose Path is `pause requested at <time>`, after which the engine pauses at the row boundary;
-//   - the stat of the child's status file fails: a Stuck naming the file, leaving the next Call's status read to decide;
+// A Call returns a verdict only when:
+//   - the child's State differs from the one the Call began with:
+//     a Stuck names the change in its Path and Reason, as `child running → blocked at Plan-Review`;
+//     each change is its own history entry, so equal entries never fold across changes;
+//   - the arm's own event fires: the done arm's Done, or an awaiting child's decision;
+//     an awaiting decision is acted on and then waited out;
+//   - batten's own status carries pause_requested: a Stuck whose Path is `pause requested at <time>`;
+//     the engine then pauses at the row boundary;
+//   - the stat of the child's status file fails: a Stuck naming the file;
+//     the next Call's status read decides;
 //   - the context is cancelled or the status file does not decode: hard errors.
 //
-// A check that ends nothing returns Yield with an empty pointer, which persists nothing and ends the pass; it is logged at Debug.
-// The next pass checks again, and a file that ends a wait between passes, such as a stop report or a strand's end, is seen at that pass.
+// A Call that ends nothing returns Yield with an empty pointer, which persists nothing and ends the pass;
+// it is logged at Debug.
+// The next pass runs the Call again.
+// A file that ends a wait between passes, such as a stop report or a strand's end, is seen at that pass.
 //
-// The self-route's "sole Stuck arm" reasoning still holds in the sense it exists for:
-// ProducerDef.OnStuck is a static per-producer value, so every Stuck this row returns routes back to the same self-route target.
-// Every Stuck here is budget-exempt and follows a real event, so the self-route can never burn the bounce budget in a tight loop before reaching a halt.
+// Every Stuck this Call returns routes back to this row: the row's OnStuck is a fixed per-producer value naming the row.
+// Every such Stuck is exempt from the bounce budget and follows a real event,
+// so a loop of them can never spend the budget before a halt.
 //
-// Bound: a running child is checked without a time limit.
-// "lym batten pause", honoured within one check, cancellation and the notices bound it;
-// a running child whose driver is dead and whose status file does not change yields on every check, the dobby's driver-dead notice being the only signal.
+// A running child has no time limit of its own.
+// `lym batten pause`, honoured within one check, cancellation and the notices bound its wait.
+// A running child whose driver is dead and whose status file does not change yields on every Call;
+// its driver-dead notice is the only signal.
 //
-// A ResolveStatus error and a ReadStatus error are both returned hard errors, not verdicts: the
-// task worktree is required to exist by the time this row runs, and a status file that exists but
-// does not decode, or a status lock that cannot be taken, is mechanism failure.
+// Errors from `ResolveStatus` and from `ReadStatus` are hard errors, not verdicts:
+// the task worktree is required to exist by the time this row runs,
+// and a status file that exists but does not decode, or a status lock that cannot be taken, is a mechanism failure.
 func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -400,7 +443,8 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 	p.refreshWatched(ctx)
 
-	// The baseline is stat'ed before the read that defines the state this Call begins with, so a write landing between the two is seen by the first check.
+	// The baseline is stat'ed before the status read,
+	// so a write that lands between the two is seen by the first check.
 	baseline := statusModTime(statusPath)
 	status, found, err := p.deps.ReadStatus(statusPath, statusLockPath)
 	if err != nil {
@@ -509,7 +553,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		}
 	}
 
-	// The state this Call begins with is the one the memory holds; observeState replaces the episode with the state just read.
+	// The state this Call begins with is the episode's state when the memory holds one, otherwise the state just read.
 	begun := status.State
 	if p.episode.known {
 		begun = p.episode.state
@@ -539,7 +583,8 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 }
 
 // statusModTime returns the modification time of the status file at path, or the zero time when it cannot be stat'ed.
-// A zero baseline differs from any real time, so the first check decodes the file, and a stat failure is the check's own to report.
+// A zero baseline differs from any real time, so the first check decodes the file,
+// and a stat failure is the check's own to report.
 func statusModTime(path string) time.Time {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -548,11 +593,11 @@ func statusModTime(path string) time.Time {
 	return info.ModTime()
 }
 
-// driverAtWork reports whether the child already has a driver at work: a live or retiring driver strand, a held child run lock, or a held Go driver lock.
+// driverAtWork reports whether the child already has a driver at work:
+// a live or retiring driver strand, a held child run lock, or a held Go driver lock.
 // A retiring strand counts as live, since someone already asked to remove it and `lym loom start` replaces it.
 // A held driver lock is a Go driver settling between steps, when the run lock is free.
-// A read error from any seam is returned as a hard error,
-// and the next Call retries.
+// A read error from any seam is returned as a hard error, and the next Call retries.
 func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
@@ -578,39 +623,40 @@ func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 	return strand == ChildDriverLive || strand == ChildDriverRetiring || held || driverLockHeld, nil
 }
 
-// childWait is the state of one Call's check of the child, with the part of it the memory record carries from pass to pass.
+// childWait is the state of one Call's check of the child.
+// It keeps the part of that state the memory record carries from pass to pass.
 type childWait struct {
 	statusPath     string
 	statusLockPath string
 	// begun is the state the Call began with; a decoded state that differs ends the check.
 	begun shedengine.State
-	// status is the newest decoded status, and baseline the status file's modification time when it was decoded.
+	// status is the newest decoded status; baseline is the status file's modification time when it was decoded.
 	status   shedengine.Status
 	baseline time.Time
 	// lastProbe is when a check last did the work that costs a process or a multiplexer round trip,
 	// and probeDue is true on the check that does it.
 	lastProbe time.Time
 	probeDue  bool
-	// reason is the wait reason last written to the reason file, and reasonKeys the keys reasons were logged under.
+	// reason is the wait reason last written to the reason file; reasonKeys holds the keys reasons were logged under.
 	reason     string
 	reasonKeys map[string]bool
 	// pauseWarned is the pause-flag read error last warned about, so a persistent one warns once.
 	pauseWarned string
-	// pause is the newest reading of the pause record's coverage of the slug, and coverageWarned the read error last warned about.
+	// pause is the newest reading of the slug's pause coverage; coverageWarned is the read error last warned about.
 	pause          pauserecord.Coverage
 	coverageWarned string
 
 	// revival is the halted arm's newest reading of the child's driver strand.
 	revival driverRevival
-	// alive is the newest reading of the driver strand and aliveKnown whether it succeeded; aliveStale is true on a probe check until the strand is read.
+	// alive is the newest strand reading; aliveKnown is whether it succeeded; aliveStale is true on a probe until read.
 	alive      bool
 	aliveKnown bool
 	aliveStale bool
-	// resumeRetryAt is when the awaiting arm may try a resume again after the child's driver refused one as not parked yet,
-	// and notParkedLogged whether that refusal was logged already.
+	// resumeRetryAt is when the awaiting arm may try a resume again after the child's driver refused one as not parked yet.
+	// notParkedLogged is whether that refusal was logged already.
 	resumeRetryAt   time.Time
 	notParkedLogged bool
-	// busyLogged is whether a refusal for a busy driver pane was logged already, and busyReason the report of the last such refusal, empty while the last refusal was not a busy one.
+	// busyLogged is whether a busy-pane refusal was logged already; busyReason is that refusal's report, empty otherwise.
 	// busyKey is busyReason without its spawn-error tail, which carries the driver pane's draft text.
 	busyLogged bool
 	busyReason string
@@ -636,7 +682,8 @@ func hardEnd(err error) *waitEnd {
 	return &waitEnd{err: err}
 }
 
-// exemptEnd ends the check with a budget-exempt Stuck whose Path and Reason both carry text, so each cause is its own history entry and equal entries never fold across causes.
+// exemptEnd ends the check with a budget-exempt Stuck whose Path and Reason both carry text,
+// so each cause is its own history entry and equal entries never fold across causes.
 // It logs at Info, since its callers end the check on a state change or a requested pause.
 func (p *innerRunProducer) exemptEnd(text string) *waitEnd {
 	reportWait(p.name, text, p.scratchDir, "slug", p.slug)
@@ -644,7 +691,9 @@ func (p *innerRunProducer) exemptEnd(text string) *waitEnd {
 	return stuckWaitEnd(text)
 }
 
-// failedEnd is exemptEnd for a check that ends because a read of the child failed, so the same verdict logs at Warn.
+// failedEnd is the verdict of a check that ends because a read of the child failed.
+// It ends the check with a budget-exempt Stuck whose Path and Reason both carry text.
+// The verdict logs at Warn.
 func (p *innerRunProducer) failedEnd(text string) *waitEnd {
 	reportStuck(p.name, text, p.scratchDir, "slug", p.slug)
 	p.cur.reason = text
@@ -656,8 +705,10 @@ func stuckWaitEnd(text string) *waitEnd {
 	return &waitEnd{outcome: shedengine.Stuck, pointer: shedengine.OutputPointer{Path: text, Reason: text, BudgetExempt: true}}
 }
 
-// report writes reason to the reason file when it differs from the last one written, so `lym batten status` shows what the child is waited on for.
-// It logs the reason at Info only the first time key is seen, so a reason whose text only counts up logs once per state of the child.
+// report writes reason to the reason file when it differs from the last one written,
+// so `lym batten status` shows what the child is waited on for.
+// It logs the reason at Info only the first time key is seen,
+// so a reason whose text only counts up logs once per state of the child.
 // An arm can alternate between reasons, so a set of keys, not the last key, keeps each from logging on every check.
 // key is the reason with its counters, countdowns and error tails left out.
 func (p *innerRunProducer) report(w *childWait, reason, key string) {
@@ -676,7 +727,7 @@ func (p *innerRunProducer) report(w *childWait, reason, key string) {
 	reportWait(p.name, reason, p.scratchDir, "slug", p.slug)
 }
 
-// reportState is report for a reason that carries no counter, countdown or error tail, so the reason is its own key.
+// reportState reports a reason that carries no counter, countdown or error tail, so the reason is its own key.
 func (p *innerRunProducer) reportState(w *childWait, reason string) {
 	p.report(w, reason, reason)
 }
@@ -686,8 +737,11 @@ func (e *waitEnd) results() (shedengine.Outcome, shedengine.OutputPointer, error
 	return e.outcome, e.pointer, e.err
 }
 
-// once runs the one check of a Call: the arm's step and everything around it, ending the Call when the check ends something and yielding when it ends nothing.
-// File stats and small file reads run on every check; anything costing a process or a multiplexer round trip runs only on a probe check, which is due when the memory holds no probe or the last one is noticeProbe old.
+// once runs the one check of a Call: the arm's step and everything around it.
+// It ends the Call when the check ends something, and it yields when the check ends nothing.
+// File stats and small file reads run on every check;
+// anything costing a process or a multiplexer round trip runs only on a probe check.
+// A probe check is due when the memory holds no probe or the last one is noticeProbe old.
 // A yield persists nothing in batten's status, so the next pass checks again.
 func (p *innerRunProducer) once(ctx context.Context, w *childWait, step armStep) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	now := p.deps.Now()
@@ -703,14 +757,19 @@ func (p *innerRunProducer) once(ctx context.Context, w *childWait, step armStep)
 	return shedengine.Yield, shedengine.OutputPointer{}, nil
 }
 
-// check is one check of the child: the child's status file, the owner check when it is due, the watched-marker refresh and the parent lock step on a probe check, the notice step, the arm's step, and last batten's own pause flag.
+// check is one check of the child.
+// It reads the child's status file and runs the owner check when it is due.
+// On a probe check it also runs the watched-marker refresh and the parent lock step.
+// Then it runs the notice step and the arm's step, and last it checks batten's own pause flag.
 // It returns nil when the check ends nothing.
-// While the pause record covers the slug, a state change still ends the check and a halted child's notice still goes, but the arm's step does not run.
+// While the pause record covers the slug, a state change still ends the check and a halted child's notice still goes,
+// but the arm's step does not run.
 func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep, now time.Time) *waitEnd {
 	p.coverage(w)
 	p.foldOwnerTrigger(w)
 	if end := p.checkChild(ctx, w); end != nil {
-		// Only an end that read a new status runs the owner check; a failed stat or a vanished file leaves it due for the next Call.
+		// Only an end that read a new status runs the owner check;
+		// a failed stat or a vanished file leaves it due for the next Call.
 		if w.status.State != w.begun {
 			p.ownerStep(ctx, w)
 		}
@@ -730,7 +789,9 @@ func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep
 	return nil
 }
 
-// checkChild stats the child's status file and decodes it again when its modification time moved since the Call decoded it, ending the check when the stat fails or the child's state is no longer the one the Call began with.
+// checkChild stats the child's status file.
+// It decodes the file again when its modification time moved since the Call decoded it.
+// It ends the check when the stat fails or the child's state is no longer the one the Call began with.
 // A decode error is a hard error, and a status file that vanished between the stat and the read is a stat failure.
 func (p *innerRunProducer) checkChild(ctx context.Context, w *childWait) *waitEnd {
 	info, err := os.Stat(w.statusPath)
@@ -759,8 +820,8 @@ func (p *innerRunProducer) checkChild(ctx context.Context, w *childWait) *waitEn
 	return nil
 }
 
-// stateChangeText names a change of the child's state, with the producer the child's new status is at.
-// ParseStateChange reads the text back, so the two change together.
+// stateChangeText renders a child's state change as wait-reason text, naming the producer its new status is at.
+// The text is parsed back elsewhere, so the format and the parser change together.
 func stateChangeText(from shedengine.State, to shedengine.Status) string {
 	text := fmt.Sprintf("child %s → %s", from, to.State)
 	if to.CurrentProducer != "" {
@@ -770,7 +831,8 @@ func stateChangeText(from shedengine.State, to shedengine.Status) string {
 }
 
 // pauseRequested reports whether batten's own status carries pause_requested.
-// A read error reads as not paused and is warned about once per distinct message, since the flag is only the operator's early exit.
+// The flag is only the operator's early exit, so a read error reads as not paused.
+// Each distinct read error is warned about once.
 func (p *innerRunProducer) pauseRequested(w *childWait) bool {
 	paused, err := p.deps.PauseRequested()
 	if err != nil {
@@ -790,8 +852,10 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 	return nil
 }
 
-// haltedStep is the halted arm for a blocked, paused or failed child: it logs one Info line per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
-// It never spawns or resumes the child, except for the one re-step of a driverless go child on a new lym build (binaryRestep).
+// haltedStep is the halted arm for a blocked, paused or failed child.
+// Each halt episode gets one Info log line and one revival attempt for a dead driver strand.
+// It reports the resume command the operator runs.
+// It never spawns or resumes the child, except for one re-step of a driverless go child on a new lym build.
 // The child is waited on until its state changes.
 func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEnd {
 	if err := p.warnHaltEpisode(w.status); err != nil {
@@ -808,8 +872,11 @@ func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEn
 }
 
 // warnHaltEpisode logs one Info line per halt episode.
-// An episode ends when the child is seen out of a halted state, which removes the halt-warned marker, or when the child's history length differs from the length the marker recorded at the last line:
-// a re-halt after an observed resume logs again even at the same history length, since a hard producer error or a mid-call pause appends no history entry, and the checks within one episode stay quiet.
+// An episode ends when the child is seen out of a halted state, which removes the halt-warned marker.
+// It also ends when the child's history length differs from the length the marker recorded at the last logged line:
+// a re-halt after an observed resume logs again even at the same history length;
+// since a hard producer error or a mid-call pause appends no history entry.
+// The checks within one episode stay quiet.
 // A marker read or write failure is a hard error, as the other markers' are.
 func (p *innerRunProducer) warnHaltEpisode(status shedengine.Status) error {
 	markerPath := haltWarnedFile(p.scratchDir, p.name)
@@ -836,21 +903,22 @@ func (p *innerRunProducer) warnHaltEpisode(status shedengine.Status) error {
 	return nil
 }
 
-// driverRevival is what reviveDeadDriver learned about the child's driver strand.
+// driverRevival reports what a revive of the child's driver strand found.
 type driverRevival struct {
-	// startFallback is true when the halted reason should also name `lym loom start`: the child has no driver strand in reed state,
-	// or a revive failed in this episode.
+	// startFallback is true when the halted reason should also name `lym loom start`:
+	// the child has no driver strand in reed state, or a revive failed in this episode.
 	startFallback bool
 }
 
-// reviveDeadDriver brings back the dead driver strand of a halted or awaiting child through deps.ReviveStrands, at most once per episode.
-// A retiring strand is left to `lym loom start`,
-// a live one needs nothing,
-// and a child with no driver strand has nothing to revive, which it never tells from a Go-driven child by the seed.
+// reviveDeadDriver brings back the dead driver strand of a halted or awaiting child, at most once per episode.
+// It does so by reviving the child's strands.
+// A retiring strand is left to `lym loom start`.
+// A live strand needs nothing.
+// A child with no driver strand has nothing to revive, which it never tells from a Go-driven child by the seed.
 // The attempt is recorded in the revived marker, which stands until the episode ends;
 // its presence alone says the episode was tried, since each pass is a new process.
-// It changes no run state and removes no park marker,
-// and every failure is warned about and never fails the row, a repeating strand read once per episode.
+// It changes no run state and removes no park marker.
+// Every failure is warned about and never fails the row; a repeating strand is read once per episode.
 func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
@@ -891,11 +959,14 @@ func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 	return driverRevival{startFallback: !revived}
 }
 
-// awaitingStep is the awaiting arm for a child halted at a human hand-off: it reports the hand-off while no decision exists and resumes the child once per decision.
-// A decision already acted on has two outcomes, told apart by the child's history length against the length the marker recorded at the resume:
+// awaitingStep is the awaiting arm for a child halted at a human hand-off.
+// It reports the hand-off while no decision exists, and it resumes the child once per decision.
+// A decision already acted on has two outcomes.
+// They are told apart by the child's history length against the length the marker recorded at the resume:
 // an equal length means the resume was delivered and the child's driver has not re-stepped yet,
 // and any other length (or an old-layout marker) means the child is awaiting again and gets the decide-again hint.
-// The length is a clock-free discriminator because a re-await appends at least the child's own Awaiting entry, which the history fold never folds onto.
+// The length is a clock-free discriminator.
+// A re-await appends at least the child's own Awaiting entry, which the history fold never folds onto.
 // The wait goes on after a resume until the child leaves awaiting.
 func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *waitEnd {
 	if w.probeDue {
@@ -945,10 +1016,13 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 	return nil
 }
 
-// resumeAwaitingChild resumes an awaiting child through deps.Spawn, and reports whether the resume landed.
+// resumeAwaitingChild resumes an awaiting child through the spawn dependency, and reports whether the resume landed.
 // subject names what the resume answers, for the wait reasons ("the approve at <time>").
-// A spawn refused with ErrChildNotParked or ErrChildDriverBusy leaves subject unacted and is retried at most once per noticeProbe, reporting the refusal as the wait reason; any other spawn error is a hard error.
-// A resume that landed has recorded the spawn and opened the terminal window once, and leaves the wait reason to the caller.
+// A spawn refused because the child is not parked or its driver is busy leaves subject unacted:
+// it is retried at most once per notice probe, reporting the refusal as the wait reason.
+// Any other spawn error is a hard error.
+// A resume that landed has recorded the spawn and opened the terminal window once,
+// and it leaves the wait reason to the caller.
 func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait, subject string) (resumed bool, end *waitEnd) {
 	if p.ownedBy != "" {
 		p.reportState(w, p.ownerHoldReason())
@@ -977,7 +1051,8 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 			return false, nil
 		}
 		if errors.Is(spawnErr, ErrChildNotParked) {
-			// The child's driver is between its stop and its park, so the resume stays unacted and is retried at most once per noticeProbe.
+			// The child's driver is between its stop and its park,
+			// so the resume stays unacted and is retried at most once per noticeProbe.
 			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
 			w.busyReason, w.busyKey = "", ""
 			if !w.notParkedLogged {
@@ -988,7 +1063,8 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 			return false, nil
 		}
 		if errors.Is(spawnErr, ErrChildDriverBusy) {
-			// A draft or an active operator in the parked driver's pane only delays the resume: it stays unacted and is retried at most once per noticeProbe.
+			// A draft or an active operator in the parked driver's pane only delays the resume:
+			// it stays unacted and is retried at most once per noticeProbe.
 			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
 			w.busyKey = fmt.Sprintf("%s is not acted on yet: the child's driver pane holds a draft or the operator is typing in it; clear the draft in the driver's pane and batten resumes it", subject)
 			w.busyReason = fmt.Sprintf("%s (%s)", w.busyKey, oneLine(spawnErr.Error(), noticeErrorMax))
@@ -1008,7 +1084,9 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 	return true, nil
 }
 
-// doneStep is the done arm: it ends the wait with Done once the driver strand has ended or the grace window counted from first sight has elapsed, and otherwise reports the wait for the driver's stop report.
+// doneStep is the done arm: it ends the wait with Done when the driver strand has ended.
+// It also ends it once the grace window, counted from first sight, has elapsed.
+// Otherwise it reports the wait for the driver's stop report.
 // The driver strand is read on the probe checks only, and the grace is judged on every check.
 func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd {
 	markerPath := doneSeenFile(p.scratchDir, p.name)
@@ -1024,7 +1102,8 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 		var parseErr error
 		firstSeen, parseErr = time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
 		if parseErr != nil {
-			// A marker that reads but does not parse (a write torn by a killed process) restarts the grace rather than failing every Call: no resume could clear it, and it only bounds a wait.
+			// A marker that reads but does not parse (a write torn by a killed process) restarts the grace.
+			// Failing instead would fail every Call: no resume could clear the marker, and it only bounds a wait.
 			logger.Warn("battenshed: unparseable done-seen marker; restarting the driver-exit grace", "producer", p.name, "slug", p.slug, "path", markerPath, "error", parseErr)
 			fresh = true
 		}
@@ -1065,8 +1144,10 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 	return nil
 }
 
-// driverAlive reports whether the child has a live driver: a live driver strand, or a held child driver lock or run lock, reading them at most once per probe and reusing the answer on the checks between.
-// known is false when the strand read failed; the done arm then treats the driver as live and the notice step skips what needs the answer.
+// driverAlive reports whether the child has a live driver: a live driver strand, or a held driver lock or run lock.
+// It reads them at most once per probe and reuses the answer on the checks between.
+// known is false when the strand read failed;
+// the done arm then treats the driver as live, and the notice step skips what needs the answer.
 // A lock read error reads as alive.
 // A failed strand or lock read warns once per episode.
 func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive, known bool) {
@@ -1087,7 +1168,8 @@ func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive
 }
 
 // driverLocksHeld reports whether the child's driver lock or run lock is held.
-// A read error warns once per episode and reads as held, since a lock that cannot be read must not make a working driver look dead.
+// A read error warns once per episode and reads as held.
+// A lock that cannot be read must not make a working driver look dead.
 func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 	for _, lock := range []struct {
 		name string
@@ -1112,7 +1194,8 @@ func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 }
 
 // spawnConfirmed reports whether the spawn-confirmation marker at path names this process's own pid.
-// A marker from an earlier process, one in the old `spawned` layout and any read failure all report false: the cost of a wrong false is one idempotent re-spawn or adoption check,
+// A marker from an earlier process, one that does not hold a pid, and any read failure all report false.
+// The cost of a wrong false is one idempotent re-spawn or adoption check;
 // the cost of a wrong true is a driverless child watched as running for the whole bounce budget.
 func spawnConfirmed(path string) bool {
 	raw, err := os.ReadFile(path)
@@ -1124,9 +1207,8 @@ func spawnConfirmed(path string) bool {
 }
 
 // recordSpawnConfirmed writes the spawn-confirmation marker at path, holding this process's pid.
-// A write failure is logged rather than escalated:
-// the spawn itself succeeded,
-// and a missing marker costs only one idempotent re-spawn or adoption check on the next Call.
+// A write failure is logged rather than escalated, since the spawn itself succeeded.
+// A missing marker costs only one idempotent re-spawn or adoption check on the next Call.
 func recordSpawnConfirmed(producer, slug, scratchDir, path string) {
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		logger.Warn("battenshed: create scratch directory for spawn confirmation failed", "producer", producer, "slug", slug, "scratchDir", scratchDir, "error", err)
@@ -1152,7 +1234,8 @@ const (
 )
 
 // refreshWatched asks deps.MarkWatched whether this batten holds the batten-watched marker and records the answer.
-// An error reads as not held and is warned about once per change of answer, since the marker only decides who messages the parent and never the row's outcome.
+// An error reads as not held and is warned about once per change of answer.
+// The marker only decides who messages the parent and never the row's outcome.
 func (p *innerRunProducer) refreshWatched(ctx context.Context) {
 	held, err := p.deps.MarkWatched(ctx)
 	answer := watchedNotHeld

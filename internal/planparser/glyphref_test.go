@@ -1,5 +1,5 @@
-// glyphref_test.go covers ParseRef's alphabet choice and planLanguage's mapping
-// from Plan.Language to the glyph package's own Language type.
+// glyphref_test.go covers ParseRef's alphabet choice.
+// It also covers planLanguage, which maps Plan.Language to the glyph package's own Language type.
 
 package planparser
 
@@ -86,7 +86,7 @@ func TestPlanGlyphLanguage(t *testing.T) {
 	}
 }
 
-// TestIsDiskCheckedTarget asserts IsDiskCheckedTarget keeps exactly the path-shaped keys and skips every glyph-spelled one.
+// TestIsDiskCheckedTarget asserts IsDiskCheckedTarget keeps only the path-shaped keys and skips every glyph-spelled one.
 func TestIsDiskCheckedTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

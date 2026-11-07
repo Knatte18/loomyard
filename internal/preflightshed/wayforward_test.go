@@ -1,6 +1,7 @@
-// wayforward_test.go covers wayForward's per-check mapping over in-memory Reports.
-// The rows reached from a real hub (a dirty task worktree, a `_lym` checkout off its paired branch) belong to the integration suite;
-// this file stays offline.
+// wayforward_test.go covers the per-check mapping of `wayForward` over in-memory preflight reports.
+// The rows that need a real hub belong to the integration suite:
+// a dirty task worktree, and a `_lym` checkout off its paired branch.
+// This file stays offline.
 
 package preflightshed
 

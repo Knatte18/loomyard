@@ -1,5 +1,7 @@
 // push_test.go covers Push, PushRebaseFree and PushCoalesced against real git repositories.
-// Two fixtures are kept deliberately separate, per discussion.md: a bare remote with several clones exercises cross-clone rebase-retry recovery (the single-pusher lock cannot be exercised there, since two clones have two distinct lock files), while a single clone with concurrent goroutines and processes exercises PushCoalesced's lock-blocking/coalescing behavior.
+// A bare remote with several clones exercises rebase-retry recovery across clones.
+// The single-pusher lock cannot be exercised across clones, since two clones have two distinct lock files.
+// A single clone with concurrent goroutines and processes exercises the lock-blocking and coalescing of PushCoalesced.
 
 package gitrepo_test
 
@@ -34,8 +36,8 @@ func newBareRemote(t *testing.T, dir string) string {
 	return bare
 }
 
-// newRepoWithRemote creates a fresh git repository on main with bareRemote
-// configured as "origin" but no upstream tracking yet.
+// newRepoWithRemote creates a fresh git repository on main with bareRemote configured as "origin".
+// The repository has no upstream tracking configured.
 func newRepoWithRemote(t *testing.T, dir, name, bareRemote string) (path string, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -48,9 +50,9 @@ func newRepoWithRemote(t *testing.T, dir, name, bareRemote string) (path string,
 	return path, gitrepo.New(path)
 }
 
-// cloneFromBare clones bareRemote into dir/name on branch main — used once
-// the bare remote already has history to check out, so the clone comes with
-// upstream tracking already established (unlike newRepoWithRemote).
+// cloneFromBare clones bareRemote into dir/name on branch main.
+// The bare remote must already have history on main to check out.
+// The clone starts with its upstream tracking for main already set.
 func cloneFromBare(t *testing.T, dir, name, bareRemote string) (path string, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -59,9 +61,8 @@ func cloneFromBare(t *testing.T, dir, name, bareRemote string) (path string, rep
 	return path, gitrepo.New(path)
 }
 
-// upstreamRef returns the checkout's configured upstream ref name (e.g.
-// "origin/main"), or "" if none is configured, used to assert that Push
-// establishes tracking on a repo's first push.
+// upstreamRef returns the upstream ref name of the checkout, such as "origin/main", or "" if none is configured.
+// Tests use it to check that a first push establishes tracking.
 func upstreamRef(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -75,7 +76,7 @@ func upstreamRef(t *testing.T, dir string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// remoteBranchSHA returns the SHA branch points at in bareRemote.
+// remoteBranchSHA returns the SHA that branch points to in bareRemote.
 func remoteBranchSHA(t *testing.T, bareRemote, branch string) string {
 	t.Helper()
 
@@ -89,7 +90,8 @@ func remoteBranchSHA(t *testing.T, bareRemote, branch string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// requireNoRebaseInProgress fails the test when dir carries rebase state, naming call as the operation that must not have left it.
+// requireNoRebaseInProgress fails the test when dir carries rebase state.
+// The failure names call as the operation that must not have left that state.
 func requireNoRebaseInProgress(t *testing.T, dir, call string) {
 	t.Helper()
 
@@ -108,13 +110,20 @@ func resetToUpstream(t *testing.T, dir string) {
 	gitkit.MustRun(t, dir, "git", "reset", "--hard", "@{u}")
 }
 
-// TestPush drives Push and PushRebaseFree through one bare remote and three clones.
-// Clone A's very first Push() has no upstream configured yet and must both succeed and establish tracking.
-// Clone B then pushes ahead, putting clone A's next push into a non-fast-forward that Push() must recover from via one pull --rebase retry, landing every commit on the remote.
-// The rebase-retry's refusals follow: a dirty tracked file aborts the pull --rebase so Push() surfaces an error instead of silently recovering (a caller-precondition failure, not a gitrepo bug — the caller owns a clean tree of tracked files), and a genuine content conflict stops the rebase mid-way, where Push must surface an error AND leave the repository fully restored — clean worktree, no rebase in progress, HEAD back on the local commit — because the rebase-retry's contract is to never leave a rebase half-done.
-// PushRebaseFree never recovers a non-fast-forward rejection: it returns an error satisfying errors.Is(err, gitrepo.ErrPushRejected) and leaves the working tree completely untouched, a remote refusing for want of permission returns gitrepo.ErrPushAuthRefused after one attempt, and on a fresh clone it establishes tracking exactly as Push's own first-push path does.
-// The steps run serially in that order and share the remote and clones A and B: the dirty and diverged steps each start by returning clone A to the remote's tip, and the steps after the first rely on clone A's upstream and on clone B, which the rebase-retry step clones.
-// The top-level test calls t.Parallel; no step does, because the steps share the fixture.
+// TestPush checks Push and PushRebaseFree against one bare remote and three clones.
+// Push establishes upstream tracking on a first push.
+// It recovers a non-fast-forward rejection with one pull --rebase retry, so every local commit lands on the remote.
+// When that retry meets a dirty tracked file, Push returns an error instead of recovering.
+// The caller owns a clean tree of tracked files, so a dirty one is a caller error, not a gitrepo bug.
+// When the retry stops on a content conflict, Push returns an error and restores the repository.
+// It leaves the worktree clean, with no rebase in progress and HEAD back on the local commit.
+// A rebase must never be left half-done.
+// PushRebaseFree never recovers a non-fast-forward rejection.
+// It returns an error satisfying errors.Is(err, gitrepo.ErrPushRejected) and leaves the working tree untouched.
+// A remote that refuses for want of permission makes it return gitrepo.ErrPushAuthRefused after one attempt.
+// On a fresh clone, its first push also establishes upstream tracking.
+// The steps run serially, in order, on this shared fixture; none of them calls t.Parallel.
+// The later steps rely on clone A's upstream, and on clone B, which the rebase-retry step clones.
 func TestPush(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -142,7 +151,7 @@ func TestPush(t *testing.T) {
 			}
 		}},
 		{"a push behind the remote recovers via one rebase-retry", func(t *testing.T) {
-			// Clone B checks out the bare remote now that it has history, so it starts with upstream tracking already in place from the clone itself.
+			// Clone B comes from the bare remote, which has history, so it starts with upstream tracking already set.
 			cloneBPath, repoB = cloneFromBare(t, container, "cloneB", bareRemote)
 			writeFile(t, cloneBPath, "b.txt", "from B")
 			commitAll(t, cloneBPath, "commit from B")
@@ -150,7 +159,8 @@ func TestPush(t *testing.T) {
 				t.Fatalf("Push() from clone B error = %v; want nil", err)
 			}
 
-			// Clone A is now behind the remote; a further local commit followed by Push() must hit a non-fast-forward rejection and recover via the rebase-retry rather than failing outright.
+			// Clone A is behind the remote: a further local commit followed by Push() hits a non-fast-forward rejection.
+			// Push() must recover via the rebase-retry rather than fail outright.
 			writeFile(t, cloneAPath, "a.txt", "from A, commit 2")
 			commitAll(t, cloneAPath, "commit from A #2")
 			if err := repoA.Push(); err != nil {
@@ -198,7 +208,7 @@ func TestPush(t *testing.T) {
 				t.Errorf("Push() rebase-conflict error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPullRebaseFailed)", err)
 			}
 
-			// The abort must have restored a fully clean, non-rebasing state.
+			// The abort must have restored a clean, non-rebasing state.
 			if status := statusOf(t, cloneAPath); strings.TrimSpace(status) != "" {
 				t.Errorf("git status --porcelain after aborted rebase = %q; want empty (clean tree)", status)
 			}
@@ -219,7 +229,8 @@ func TestPush(t *testing.T) {
 				t.Fatalf("Push() from clone B error = %v; want nil", err)
 			}
 
-			// Clone A commits again (now behind, so its next Push() will need the rebase-retry) and is then left with a dirty tracked file — the precondition violation under test.
+			// Clone A commits again while behind the remote, so its next Push() needs the rebase-retry.
+			// It is then left with a dirty tracked file: the precondition violation under test.
 			writeFile(t, cloneAPath, "a.txt", "from A, commit 3")
 			commitAll(t, cloneAPath, "commit from A #3")
 			writeFile(t, cloneAPath, "a.txt", "dirty uncommitted edit")
@@ -240,8 +251,9 @@ func TestPush(t *testing.T) {
 				t.Fatalf("PushRebaseFree() from clone B error = %v; want nil", err)
 			}
 
-			// Clone A is now behind the remote.
-			// A further local commit followed by a dirty tracked file (left uncommitted on purpose) sets up the state PushRebaseFree must leave untouched.
+			// Clone A is behind the remote.
+			// It makes a further local commit, then leaves a tracked file dirty on purpose:
+			// PushRebaseFree must leave that state untouched.
 			writeFile(t, cloneAPath, "a.txt", "from A, commit 4")
 			commitAll(t, cloneAPath, "commit from A #4")
 			const dirtyContent = "dirty uncommitted edit"
@@ -256,7 +268,7 @@ func TestPush(t *testing.T) {
 				t.Errorf("PushRebaseFree() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected)", err)
 			}
 
-			// A rejection names git's own line and claims no divergence, since a declining hook is rejected the same way.
+			// The error carries git's own rejection line and claims no divergence, since a declining hook is rejected the same way.
 			if line := strings.TrimPrefix(err.Error(), gitrepo.ErrPushRejected.Error()+": "); strings.Contains(err.Error(), "remote diverged") || line == "" || line == err.Error() {
 				t.Errorf("PushRebaseFree() error = %q; want git's rejection line and no \"remote diverged\" claim", err)
 			}
@@ -274,7 +286,8 @@ func TestPush(t *testing.T) {
 				t.Errorf("HEAD after rejected PushRebaseFree() = %q; want unchanged %q", head, localHead)
 			}
 		}},
-		// PushRebaseFree's first-push path: a checkout with no upstream tracking branch yet must both succeed and establish tracking, landing the local HEAD on the bare remote.
+		// A checkout with no upstream tracking branch yet must succeed on PushRebaseFree's first push.
+		// The first push establishes tracking and lands the local HEAD on the bare remote.
 		// The fresh clone pushes a branch of its own, since its unrelated root commit could never fast-forward main.
 		{"PushRebaseFree's first push establishes upstream tracking", func(t *testing.T) {
 			const branch = "rebasefree-first"
@@ -294,7 +307,9 @@ func TestPush(t *testing.T) {
 				t.Errorf("bare remote %s = %q; want it to match local HEAD %q", branch, got, localHead)
 			}
 		}},
-		// A remote whose pre-receive hook prints GitHub's 403 wording and declines: its "rejected" line must not read as a divergence, and the refusal is attempted once, never retried.
+		// The remote's pre-receive hook prints GitHub's 403 wording and declines.
+		// Its "rejected" line must not read as a divergence.
+		// The refusal is attempted once and never retried.
 		{"PushRebaseFree classifies an auth refusal as ErrPushAuthRefused and never retries it", func(t *testing.T) {
 			authContainer := t.TempDir()
 			authRemote := newBareRemote(t, authContainer)
@@ -337,11 +352,14 @@ func TestPush(t *testing.T) {
 	}
 }
 
-// TestUpdateRemoteBranchLeased drives UpdateRemoteBranchLeased against one bare remote whose main holds two commits pushed from one clone.
+// TestUpdateRemoteBranchLeased drives UpdateRemoteBranchLeased against one bare remote.
+// The remote's main holds two commits, pushed from one clone.
 // A leased update naming the remote's current tip moves the branch backwards to the first commit.
 // A lease naming the stale second commit then fails with ErrLeaseRejected and leaves the remote branch where it was.
-// An invalid SHA returns ErrInvalidSHA before any git spawn, which the not-a-repository clone path would otherwise surface as a different error.
-// A pre-receive hook that exits non-zero rejects a correctly leased update with an error that is not ErrLeaseRejected, so a moved remote and a refusing one stay distinguishable.
+// An invalid SHA returns ErrInvalidSHA before any git spawn;
+// without that, the not-a-repository clone path would surface a different error.
+// A pre-receive hook that exits non-zero rejects a correctly leased update.
+// Its error is not ErrLeaseRejected, so a moved remote and a refusing one stay distinguishable.
 // The steps run serially in that order and share the remote; the hook step is last because the hook stays installed.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestUpdateRemoteBranchLeased(t *testing.T) {
@@ -419,9 +437,11 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 	}
 }
 
-// TestPush_NoRemoteConfigured_SurfacesGitError covers a repo with zero remotes configured at all (not merely no upstream tracking branch — no "origin" either).
-// Push and PushCoalesced must not swallow this into a synthetic message: the wrapped error must still carry git's own stderr, matching Push's documented "any other push failure returns an error including git's stderr" contract.
-// PushCoalesced reaches the same path because HasUnpushed treats the missing upstream as "unpushed" regardless of the missing remote, so it proceeds to the same pushWithRebaseRetry and the lock machinery must not mask the error.
+// TestPush_NoRemoteConfigured_SurfacesGitError covers a repo with no remotes configured at all, not even "origin".
+// Push and PushCoalesced must not swallow this into a synthetic message:
+// the wrapped error must still carry git's own stderr.
+// PushCoalesced reaches the same path: HasUnpushed reports a missing upstream as unpushed, even with no remote.
+// PushCoalesced then proceeds to pushWithRebaseRetry, and the lock must not mask the error.
 func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -453,7 +473,8 @@ func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	}
 }
 
-// The child bodies TestPushCoalesced re-execs this test binary to run, keyed by the variable that names the clone.
+// Each variable selects a child-process body that a re-exec'd test binary runs.
+// The variable's value is the clone directory that body works on.
 const (
 	pushChildEnv       = "GITREPO_TEST_PUSH_DIR"
 	lockHolderChildEnv = "GITREPO_TEST_LOCKHOLD_DIR"
@@ -464,7 +485,8 @@ func init() {
 	childBodies[lockHolderChildEnv] = lockHolderChild
 }
 
-// pushCoalescedChild runs PushCoalesced against the clone at dir, so the single-pusher lock is exercised across separate OS processes.
+// pushCoalescedChild runs PushCoalesced against the clone at dir.
+// It runs in a separate OS process, so the single-pusher lock is exercised across processes.
 func pushCoalescedChild(dir string) int {
 	if err := gitrepo.New(dir).PushCoalesced(); err != nil {
 		fmt.Fprintf(os.Stderr, "PushCoalesced() in child process error = %v; want nil\n", err)
@@ -473,7 +495,8 @@ func pushCoalescedChild(dir string) int {
 	return 0
 }
 
-// lockHolderChild acquires the push lock of the clone at dir, prints a marker so the parent knows the lock is held, and blocks until the parent SIGKILLs it.
+// lockHolderChild acquires the push lock of the clone at dir.
+// It prints a marker so the parent knows the lock is held, then blocks until the parent SIGKILLs it.
 func lockHolderChild(dir string) int {
 	lockPath, err := gitrepo.New(dir).PushLockPath()
 	if err != nil {
@@ -486,20 +509,28 @@ func lockHolderChild(dir string) int {
 		return 1
 	}
 	fmt.Println("LOCK-HELD")
-	// Block until SIGKILLed. KeepAlive prevents the garbage collector from
-	// finalizing the lock's file handle, which would silently release it.
+	// Block until SIGKILLed.
+	// KeepAlive prevents the garbage collector from finalizing the lock's file handle, which would silently release it.
 	for {
 		time.Sleep(time.Hour)
 		runtime.KeepAlive(held)
 	}
 }
 
-// TestPushCoalesced drives PushCoalesced's single-pusher lock (one clone, one push lock) through goroutines, genuinely separate OS processes and a crashed lock holder.
-// Several commits land locally before any push runs, so concurrent PushCoalesced calls must coalesce them rather than each pushing its own subset, serializing on the lock: the second finds nothing unpushed once it acquires the lock and returns immediately.
-// The cross-process step proves the lock holds across real OS processes, not just goroutines sharing one process: several re-exec'd child processes call PushCoalesced against the same clone concurrently, and every commit must land on the bare remote with all children succeeding;
-// synchronization is the lock itself — no timing assumptions.
-// The crash step proves the push lock does not wedge the repo when its holder dies without releasing: a child process acquires the push lock (confirmed genuinely held cross-process via a failed TryAcquire), is SIGKILLed mid-hold, and a fresh PushCoalesced must then complete — the OS releases a flock on process death — and push the pending commit.
-// The steps run serially in that order and share the clone and the remote: each commits locally and leaves everything pushed for the next.
+// TestPushCoalesced drives PushCoalesced's push lock with goroutines, separate OS processes and a crashed lock holder.
+// Several commits land locally before any push runs.
+// Concurrent PushCoalesced calls must coalesce them rather than each pushing its own subset.
+// The second call to get the lock finds nothing unpushed and returns immediately.
+// The cross-process step proves the lock holds across real OS processes, not just goroutines sharing one process.
+// Several re-exec'd child processes call PushCoalesced against the same clone concurrently,
+// and every commit must land on the bare remote with all children succeeding.
+// Synchronization is the lock itself, with no timing assumptions.
+// The crash step proves the push lock does not wedge the repo when its holder dies without releasing.
+// A child process acquires the push lock; a failed `lock.TryAcquireWriteLock` then confirms it is held cross-process.
+// The test then SIGKILLs that child mid-hold.
+// A fresh PushCoalesced must complete and push the pending commit, because the OS releases a flock on process death.
+// The steps run serially in that order, sharing the clone and the remote.
+// Each commits locally and leaves everything pushed for the next.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPushCoalesced(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -555,7 +586,8 @@ func TestPushCoalesced(t *testing.T) {
 			t.Errorf("rev-list --count @{u}..HEAD = %q; want \"0\" after both PushCoalesced calls complete", got)
 		}
 
-		// The bare remote must have received every commit, landing exactly at the local HEAD captured before the concurrent pushes ran.
+		// The bare remote must have received every commit.
+		// Its main lands exactly at the local HEAD captured before the concurrent pushes ran.
 		if got := remoteBranchSHA(t, bareRemote, "main"); got != localHead {
 			t.Errorf("bare remote main = %q; want it to match local HEAD %q", got, localHead)
 		}
@@ -622,8 +654,8 @@ func TestPushCoalesced(t *testing.T) {
 			cmd.Wait()
 		})
 
-		// Wait on the child's explicit marker — a real state transition, not a
-		// timing guess — before trusting that the lock is held.
+		// Wait on the child's explicit marker before trusting that the lock is held.
+		// The marker is a state transition, not a timing guess.
 		markerSeen := make(chan struct{})
 		go func() {
 			scanner := bufio.NewScanner(stdout)
@@ -640,8 +672,7 @@ func TestPushCoalesced(t *testing.T) {
 			t.Fatal("lock-holder child never reported LOCK-HELD")
 		}
 
-		// The lock must be genuinely held by the other process before the kill,
-		// or the recovery below would prove nothing.
+		// The lock must be held by the other process before the kill, or the recovery below would prove nothing.
 		pushLockPath, err := repo.PushLockPath()
 		if err != nil {
 			t.Fatalf("PushLockPath() error = %v", err)
@@ -657,8 +688,8 @@ func TestPushCoalesced(t *testing.T) {
 		}
 		cmd.Wait()
 
-		// A fresh PushCoalesced must neither wedge nor fail: the OS released the
-		// dead holder's flock, and the pending commit gets pushed.
+		// A fresh PushCoalesced must neither wedge nor fail:
+		// the OS released the dead holder's flock, and the pending commit gets pushed.
 		done := make(chan error, 1)
 		go func() { done <- repo.PushCoalesced() }()
 		select {
@@ -733,7 +764,8 @@ func TestHasUnpulled(t *testing.T) {
 	}
 }
 
-// pushFromOtherClone clones bareRemote into a fresh directory under container, commits there and pushes, advancing the remote past every other clone.
+// pushFromOtherClone clones bareRemote into a fresh directory under container, commits there and pushes.
+// The push advances the remote past every other clone.
 func pushFromOtherClone(t *testing.T, container, bareRemote string) {
 	t.Helper()
 

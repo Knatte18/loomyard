@@ -1,6 +1,7 @@
 //go:build linux
 
-// buttonclick_integration_test.go drives runButtonVia against a real tmux server and an attached client, with the real process runner and a recorder script standing in for the lym binary.
+// buttonclick_integration_test.go drives runButtonVia against a real tmux server and an attached client.
+// The real process runner runs the click's commands, with a recorder script standing in for the lym binary.
 
 package reedengine
 
@@ -17,7 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunButton_RealTmux runs each kind of spec entry through a real server: a plain one in the run directory, one that exits non-zero, one behind a confirm prompt answered in the client's terminal, one naming {strand}, and one behind an ask prompt typed in the client's terminal.
+// TestRunButton_RealTmux runs each kind of spec entry through a real server.
+// The kinds are a plain entry in the run directory, one that exits non-zero, and one naming {strand}.
+// Two more run behind prompts answered in the client's terminal: a confirm prompt, and an ask prompt.
 // It reads the logger's output through logcapture, which is process-global, so it does not call t.Parallel.
 func TestRunButton_RealTmux(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -131,7 +134,8 @@ func TestRunButton_RealTmux(t *testing.T) {
 		t.Errorf("the strand entry wrote %q, want the clicking pane's name %q", gotStrand, strandName)
 	}
 
-	// The rows share one client and one session option, so they run in order: the Escape row comes before the empty row, which proves the empty one reads a fresh answer and not the first row's.
+	// The rows share one client and one session option, so they run in order.
+	// The Escape row comes before the empty row, which proves the empty one reads a fresh answer and not the first row's.
 	const askRun = "printf %s {answer} > answer"
 	answerPath := filepath.Join(runDir, "answer")
 	asks := []struct {

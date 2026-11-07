@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// funcProducer is a shedengine.ShedProducer fake that counts its calls, runs an optional hook, and
-// reports Done.
+// funcProducer is a shedengine.ShedProducer fake.
+// It counts its calls, runs an optional hook, and reports Done.
 type funcProducer struct {
 	calls int
 	hook  func()
@@ -28,8 +28,8 @@ func (p *funcProducer) Call(context.Context) (shedengine.Outcome, shedengine.Out
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// buildFrictionShed builds loom's Shed over env with the Finalize row's Producer replaced by
-// finalize, so the real landing producer never runs.
+// buildFrictionShed builds loom's Shed over env, with the Finalize row's Producer replaced by finalize.
+// The replacement keeps the real landing producer from running.
 func buildFrictionShed(t *testing.T, env shedrecipe.Env, paths shedbuild.ShedPaths, finalize shedengine.ShedProducer) *shedengine.Shed {
 	t.Helper()
 	shed, err := New(shedrun.RecipeTapestry, env, paths)

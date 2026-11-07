@@ -1,4 +1,5 @@
-// deps.go fills hibernateengine.Deps for a hub: the request and notice paths, the prime's batten status and land lock readers, the prime dobby's liveness, tender's engine over the hub's pairs, and the running process's identity; and builds the Carrier the prime's dobby runs.
+// deps.go fills hibernateengine.Deps for a hub, and builds the Carrier that the prime's dobby runs.
+// The Deps wire the hub's paths, the prime's batten and dobby readers, tender's pause seams and the process identity.
 
 package hibernatecli
 
@@ -39,7 +40,8 @@ const (
 	hibernateProgram = "HIBERNATE"
 )
 
-// hibernateDir is the hub's board-level directory holding the request, its lock and the whole text of a notice too long for one creel line.
+// hibernateDir returns the hub's board-level hibernate directory.
+// It holds the request, its lock and the whole text of a notice too long for one creel line.
 func hibernateDir(location *lymcwd.Location) string {
 	return filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
 }
@@ -49,7 +51,8 @@ func RequestPath(location *lymcwd.Location) string {
 	return filepath.Join(hibernateDir(location), requestFileName)
 }
 
-// NewDobbyCarrier returns the Carrier the prime's dobby carries the hub's hibernate request with, wired over the hub of prime as the verbs are, with the dobby's process as the carrier.
+// NewDobbyCarrier returns the Carrier the prime's dobby carries the hub's hibernate request with.
+// The Carrier is wired over the hub of prime.
 // It creates the hibernate directory, so the dobby's file watch can open it before the first request is written.
 func NewDobbyCarrier(prime *lymcwd.Location) (*hibernateengine.Carrier, error) {
 	deps, err := hubDeps(prime)
@@ -166,7 +169,9 @@ func readRunStatus(prime *lymcwd.Location, slug string) (hibernateengine.RunStat
 }
 
 // landLockHeld reports whether a Land row holds the land lock at path.
-// A lock whose directory does not exist is not held; otherwise the probe takes the lock once and releases it at once, so a landing that tries it in that instant polls again a second later, as a contended lock already makes it.
+// A lock whose directory does not exist is not held.
+// Otherwise the probe takes the lock once and releases it at once,
+// so a landing that tries it in that instant polls again a second later, as a contended lock already makes it.
 func landLockHeld(path string) (bool, error) {
 	if _, err := os.Stat(filepath.Dir(path)); os.IsNotExist(err) {
 		return false, nil

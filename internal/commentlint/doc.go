@@ -8,26 +8,40 @@
 //
 // A break between two consecutive prose lines of a paragraph is checked only when it is new:
 // the words on its two sides are not adjacent across a line end in the base text.
-// A line end an edit carries over unchanged is not new, so fixing one flagged break never makes another break of the block checked,
-// and a legacy wrapped block is flagged only where an edit creates a break.
-// A line end is not new either when the base holds a line pair of the same word counts that differs from the break's two lines only by words substituted in place, and whose unchanged words outnumber the substituted ones.
+// A line end an edit carries over unchanged is not new.
+// Fixing one flagged break therefore never makes another break of the block checked.
+// A legacy wrapped block is flagged only where an edit creates a break.
+// A line end is not new either when the base holds a line pair with the same word counts as the break's two lines.
+// The pair must differ from them only by words substituted in place,
+// and its unchanged words must outnumber the substituted ones.
 // A word rename inside a legacy wrapped paragraph therefore flags none of its breaks.
 // A rename that changes a line's word count still makes the breaks around that line new.
 //
-// A checked break passes when its line ends a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick), a semicolon, or a comma whose next line starts with a coordinating conjunction (`and`, `but`, `or`, `nor`, `yet` or `so`; `for` is left out because `, for example` is introductory) that opens an independent clause.
-// The words after the conjunction, up to the next `,`, `;`, `:` or sentence end, open a clause when they start with a subject and hold a finite-verb candidate after the subject's head word.
+// A checked break passes in one of three cases:
+// its line ends a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick);
+// its line ends in a semicolon;
+// or its line ends in a comma and the next line starts with a coordinating conjunction that opens an independent clause.
+// The conjunctions are `and`, `but`, `or`, `nor`, `yet` and `so`.
+// `for` is left out because `, for example` is introductory.
+// The words after the conjunction, up to the next `,`, `;`, `:` or sentence end, open a clause under two conditions.
+// They start with a subject, and a finite-verb candidate follows the subject's head word.
 // A subject is a subject or demonstrative pronoun, a determiner followed by a word, or a backticked identifier.
 // A finite-verb candidate is an auxiliary or modal from a closed set, or a word ending in `s` or `ed`.
-// A comma-plus-conjunction break that opens no clause, such as one that joins a list item or a compound predicate, is a finding.
+// A comma-plus-conjunction break that opens no clause is a finding.
+// Such a break joins a list item or a compound predicate.
 // An uncertain case errs toward flagging, since joining the two lines always passes.
 // A finding is the line of a checked break that passes none of these.
-// A directive comment (`//go:`, `//lym:`, `//testtiming:`, `//nolint`) ends the block it sits in, so the prose above it is still checked.
-// A paragraph, the lines of a block between blank comment lines, is skipped whole when any of its lines is indented code, a doc-comment list item or a heading.
+// A directive comment (`//go:`, `//lym:`, `//testtiming:`, `//nolint`) ends the block it sits in.
+// The prose above it is still checked.
+// A paragraph is the lines of a block between blank comment lines.
+// It is skipped whole when any of its lines is indented code, a doc-comment list item or a heading.
 // The paragraphs around it are still checked.
 // A generated file is skipped whole.
-// The kinds of line skipped follow `tools/godocreflow`; this package re-implements them, since `tools/` is not importable.
+// The kinds of line skipped follow `tools/godocreflow`.
+// This package re-implements them, since `tools/` is not importable.
 //
 // Bound: the clause check is a word-list heuristic, not a parser.
-// A plural noun read as a verb (`, and the gate tests`) passes, and a clause whose subject the opener set misses (`, and nothing runs`) is flagged and joined.
+// A plural noun read as a verb (`, and the gate tests`) passes.
+// A clause whose subject the opener set misses (`, and nothing runs`) is flagged and joined.
 // A comment's line breaks are never a review finding.
 package commentlint

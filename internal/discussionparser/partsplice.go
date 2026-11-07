@@ -1,4 +1,6 @@
-// partsplice.go implements SectionBullets, the read of a record section's top-level bullets, and SplicePart, which cuts the decision record of one part out of the Sketch's record.
+// partsplice.go implements two functions over the decision record.
+// SectionBullets reads the top-level bullets of a record section.
+// SplicePart cuts one part's decision record out of the record.
 
 package discussionparser
 
@@ -15,9 +17,10 @@ const (
 	autoModeAssumptionsHeading = "## Auto-mode assumptions"
 )
 
-// PartSplice is what SplicePart cuts one part's record from.
+// PartSplice holds the inputs for cutting one part's decision record out of the full record.
 // Goal and Scope are the text the caller renders from the part's contract and packages.
-// Decisions are the ids of the decisions the part builds, and OpenRisks and Criteria the texts of the Open risks and Acceptance criteria bullets it carries, as SectionBullets returns them.
+// Decisions are the ids of the decisions the part builds.
+// OpenRisks and Criteria are the texts of the Open risks and Acceptance criteria bullets the part carries.
 // PatternChanges are the ids of the PATTERN entries the part carries, such as `PATTERN-sole-parsers`.
 type PartSplice struct {
 	Goal           string
@@ -28,9 +31,12 @@ type PartSplice struct {
 	PatternChanges []string
 }
 
-// SectionBullets returns the top-level bullets of the record's `## <heading>` section, heading given without its `## `, in order.
-// A bullet is its text without the marker, followed by its continuation lines, each trimmed and joined by a newline; a continuation line is an indented line that follows it with no blank line between.
-// A bullet inside a fenced block and a bullet inside a `<!-- lym:carry-over … -->` block of the `## Open risks` section are not read.
+// SectionBullets returns the top-level bullets of the record's `## <heading>` section, in order.
+// The heading is given without its `## `.
+// A bullet is its text without the marker, followed by its continuation lines, each trimmed and joined by a newline;
+// a continuation line is an indented line that follows it with no blank line between.
+// A bullet inside a fenced block is not read.
+// Neither is a bullet inside a `<!-- lym:carry-over … -->` block of the `## Open risks` section.
 // A record without the section returns none.
 func SectionBullets(record []byte, heading string) []string {
 	lines := strings.Split(string(record), "\n")
@@ -78,9 +84,15 @@ func bulletBody(line string) string {
 }
 
 // SplicePart returns the decision record of one part, cut from record.
-// It holds `## Goal` and `## Scope` from part; `## Decisions` with each listed decision copied whole, heading and id included, in the record's order, then every `### Added after Discussion` entry of the record;
-// `## Constraints` and `## Auto-mode assumptions` copied whole; `## Open risks` and `## Acceptance criteria` holding only the listed bullets; and `## PATTERN changes`, only when the part carries one, holding the listed entries' bullets as the record holds them.
-// A listed decision id, bullet or PATTERN entry that the record does not hold, and a section it must copy that the record lacks, is an error naming it.
+// It holds `## Goal` and `## Scope` from part.
+// `## Decisions` holds each listed decision copied whole, heading and id included, in the record's order.
+// Every `### Added after Discussion` entry of the record follows them, copied whole.
+// `## Constraints` and `## Auto-mode assumptions` are copied whole.
+// `## Open risks` and `## Acceptance criteria` hold only the listed bullets.
+// `## PATTERN changes` is present only when the part carries one,
+// and it holds the listed entries' bullets as the record holds them.
+// A listed decision id, bullet or PATTERN entry that the record does not hold is an error naming it.
+// A section it must copy that the record lacks is an error naming it too.
 func SplicePart(record []byte, part PartSplice) ([]byte, error) {
 	lines := strings.Split(string(record), "\n")
 	fenced := fencedLines(lines)
@@ -134,8 +146,9 @@ func writeSection(b *strings.Builder, heading, body string) {
 	}
 }
 
-// listedDecisions returns the text of each decision of the `## Decisions` section whose id is in ids, whole and in record order.
-// A decision runs from its heading to the next H2 or H3 outside a fenced block, trailing blank lines left out, and an id the section holds twice yields its first decision.
+// listedDecisions returns each decision of the `## Decisions` section whose id is in ids, whole and in record order.
+// A decision runs from its heading to the next H2 or H3 outside a fenced block, trailing blank lines left out;
+// an id the section holds twice yields its first decision.
 func listedDecisions(lines []string, fenced []bool, ids []string) ([]string, error) {
 	first, end := sectionBounds(lines, fenced, decisionsHeading)
 	if first < 0 {
@@ -198,7 +211,7 @@ func requireBullets(record []byte, heading string, listed []string) error {
 	return nil
 }
 
-// listedPatternBullets returns the record's `## PATTERN changes` bullet line of each entry id in ids, verbatim and in ids' order.
+// listedPatternBullets returns the `## PATTERN changes` bullet line of each entry id, verbatim and in ids' order.
 func listedPatternBullets(content string, ids []string) ([]string, error) {
 	var bullets []string
 	for _, id := range ids {
@@ -211,7 +224,8 @@ func listedPatternBullets(content string, ids []string) ([]string, error) {
 	return bullets, nil
 }
 
-// renderBullets renders each text as a bullet, its continuation lines indented, one bullet per line group and no blank line between.
+// renderBullets renders each text as a bullet, with its continuation lines indented.
+// Each bullet follows the previous one with no blank line between.
 func renderBullets(texts []string) string {
 	var rendered []string
 	for _, text := range texts {

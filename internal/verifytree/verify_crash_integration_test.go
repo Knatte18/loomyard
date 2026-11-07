@@ -1,4 +1,5 @@
-// verify_crash_integration_test.go covers how Verify reads the gate's runner crash line and tier timeout line from a failed command's log, over real shell processes.
+// verify_crash_integration_test.go covers how Verify reads the gate's runner crash line and tier timeout line.
+// It reads them from a failed command's log, over real shell processes.
 
 package verifytree
 

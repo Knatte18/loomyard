@@ -1,5 +1,6 @@
-// cli.go builds the cobra command tree for the orch module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "orch" command's PersistentPreRunE resolves cwd and hands the location to wireCLI, which runs the prime-or-beam check -> orch, shuttle and reed config -> reed engine -> claude engine -> shuttleengine.Runner -> paths exactly once per invocation, into a receiver every verb closes over, so no verb re-resolves geometry itself.
+// cli.go builds the cobra command tree for the orch module and wires its verbs to the engines they call.
+// The parent "orch" command's PersistentPreRunE resolves the cwd and hands the location to wireCLI;
+// wireCLI fills one receiver that every verb closes over, so no verb re-resolves geometry itself.
 // BeamUp and BeamDown run the same wiring for a caller that is no orch verb.
 
 package orchcli
@@ -43,12 +44,10 @@ type reedStrandOps struct {
 	replace func(guid string, spec reedengine.AddSpec) (reedengine.Strand, error)
 }
 
-// newReedStrandOps wraps reed's own Status, RemoveStrand, AddStrand and ReplaceStrand.
 func newReedStrandOps(reed *reedengine.Engine) reedStrandOps {
 	return reedStrandOps{status: reed.Status, remove: reed.RemoveStrand, add: reed.AddStrand, replace: reed.ReplaceStrand}
 }
 
-// AddStrand adds a strand to reed's session.
 func (o reedStrandOps) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	return o.add(spec)
 }
@@ -58,7 +57,6 @@ func (o reedStrandOps) ReplaceStrand(guid string, spec reedengine.AddSpec) (reed
 	return o.replace(guid, spec)
 }
 
-// Strands returns the strands reed tracks in this session.
 func (o reedStrandOps) Strands() ([]reedengine.StrandStatus, error) {
 	result, err := o.status()
 	if err != nil {
@@ -73,7 +71,7 @@ func (o reedStrandOps) RemoveStrand(guid string) error {
 	return err
 }
 
-// orchCLI is the receiver every orch verb hangs off of, populated by wireCLI.
+// orchCLI is the receiver every orch verb hangs off, populated by wireCLI.
 type orchCLI struct {
 	location    *lymcwd.Location
 	cfg         orchengine.Config
@@ -83,7 +81,7 @@ type orchCLI struct {
 	strands     strandOps
 	paths       orchengine.Paths
 	stencilsDir string
-	// pauseRecordPath is the hub's pause record, which `status`, `refresh` and `distill` read to tell a request held by a hub pause.
+	// pauseRecordPath is the hub's pause record; status, refresh and distill read it to tell a request held by a hub pause.
 	pauseRecordPath string
 
 	reedUp  func() error
@@ -98,22 +96,22 @@ type orchCLI struct {
 	executable func() (string, error)
 	// currentBuild identifies the running lym build, which tells a runs strand of this build from an older one.
 	currentBuild func() (statuspane.BuildIdentity, error)
-	// runsWindowTitle names the runs strand's window when the strand is added or replaced: `beam: prime` in the prime, `beam: <slug>` in a beam, opened with the beam's board handle when the board names one.
-	// A live strand of the running build is kept as it is, so a handle the board assigns after the window opened shows from the strand's next replacement.
+	// runsWindowTitle names the strand's window on add or replace: `beam: prime` in the prime, `beam: <slug>` in a beam;
+	// with the beam's board handle once the board names one; a live strand of this build keeps its title until replaced.
 	runsWindowTitle func() string
-	// reconcile judges and moves the hub's branches against origin, which a bring-up with Prepare runs before it decides anything about the strand.
+	// reconcile judges and moves the hub's branches against origin; a Prepare bring-up runs it before any strand decision.
 	reconcile func() (fabricengine.OriginReport, error)
-	// readBeamFacts reads the owner, standing anchor change and landing hold the bring-up's refusals judge; nil, as in a hand-built harness, refuses nothing.
+	// readBeamFacts reads the owner, standing anchor change and landing hold a bring-up refuses on; nil refuses nothing.
 	readBeamFacts func() (beamFacts, error)
-	// claimPrime records this machine as the hub's prime owner when the board records none, which a bring-up with Prepare calls after its reconcile.
+	// claimPrime records this machine as prime owner if the board has none; a Prepare bring-up calls it after reconcile.
 	// claimed names this machine after a claim, lostTo the other machine when its claim won; nil skips the claim.
 	claimPrime func() (claimed, lostTo string, err error)
-	// pauseOwned pauses the pair of a run another machine owns, which a bring-up with Prepare calls for each owned_elsewhere entry of its reconcile; nil skips the pause.
+	// pauseOwned pauses the pair of each run another machine owns in a Prepare bring-up; nil skips the pause.
 	pauseOwned func(location *lymcwd.Location, slug string) error
-	// startDobby starts this worktree's dobby when it is not live and reports its outcome; nil starts none, as in a hand-built harness.
+	// startDobby starts this worktree's dobby when it is not live and reports the outcome; nil starts none.
 	// Its failure never stops the bring-up: it becomes a warning.
 	startDobby func() (dobbyengine.StartEntry, error)
-	// startRelay starts the hub's Slack relay when it is down and reports the outcome; nil, for a beam and in a hand-built harness, starts none.
+	// startRelay starts the hub's Slack relay when it is down and reports the outcome; nil, as for a beam, starts none.
 	// Its failure never stops the bring-up: it becomes a warning.
 	startRelay func() (slackengine.StartOutcome, error)
 	// dobbyLive reports whether this worktree's dobby holds its lock; nil leaves the dobby alone on a bring-down.
@@ -129,7 +127,7 @@ func Command() *cobra.Command {
 	return commandOf(&orchCLI{})
 }
 
-// commandOf returns the orch command tree whose verbs hang off c, so a test can read what PersistentPreRunE wires into c.
+// commandOf returns the orch command tree built on c, so a test can read what PersistentPreRunE wires into c.
 func commandOf(c *orchCLI) *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "orch",
@@ -173,7 +171,7 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 	return parent
 }
 
-// wireCLI fills c for the worktree at location: the prime-or-beam refusal, the orch, shuttle and reed config, the reed engine, the runner, the paths and every seam.
+// wireCLI fills c for the worktree at location: the config, the reed engine, the runner, the paths and every seam.
 // It refuses a worktree that is neither the hub's prime nor a beam before it reads any config.
 func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
@@ -272,12 +270,13 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	return nil
 }
 
-// RunCLI is the public seam for the orch module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the orch module CLI on args and writes its output to out.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the orch module CLI on args with cwd as the working directory, writing its output to out.
+// An empty cwd reads the process working directory instead, since the execution context panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

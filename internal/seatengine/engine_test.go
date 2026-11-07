@@ -1,5 +1,6 @@
-// engine_test.go covers Engine.Run: the start order, how the chair's result and failures end the step, advisor failures, the notices sent to the chair and the stop rule.
-// It also covers the engine Run, Probe and Resume resolve a seat's engine blocks for when the seat names none.
+// engine_test.go covers Engine.Run: the start order, how the chair's result and failures end the step;
+// advisor failures; the notices sent to the chair; and the stop rule.
+// It also covers how Run, Probe and Resume resolve a seat's engine blocks when the seat names none.
 
 package seatengine
 
@@ -239,7 +240,8 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 			table := engineTable(geom.WorktreeRoot, 2)
 			var reed *shuttlefake.Reed
 			if tt.unmetKey {
-				// Only this advisor runs on the real runner, whose fake engine supports no requirement, so its own requirement is the one unmet.
+				// Only this advisor runs on the real runner, whose fake engine supports no requirement,
+				// so its own requirement is the one unmet.
 				var runner Shuttle
 				runner, reed = realRunnerShuttle(t, geom.WorktreeRoot)
 				table.Seats[1].Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
@@ -372,7 +374,8 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 	}
 }
 
-// assistantTable returns engineTable's table with every seat after the lead an assistant whose end marker sits beside its output under dir.
+// assistantTable returns engineTable's table with every seat after the lead an assistant:
+// each such assistant's end marker sits beside its output under dir.
 func assistantTable(dir string, assistants int) Table {
 	table := engineTable(dir, assistants)
 	asAssistants(&table)
@@ -819,7 +822,8 @@ func TestEngine_Run_WriterEndDecidesTheJoin(t *testing.T) {
 	ender := newStepEnder()
 	run := newSeatRun(table.Seats[1], "ly:task:"+role(advisorName(1)), writer, engine.absolute(table.Seats[1].Outputs), "", sender, ender)
 
-	// The writer's end fires the step ender, then the chair ends, and only then does join run: both ends are ready whichever case its select takes.
+	// The writer's end fires the step ender, then the chair ends, and only then does join run:
+	// both ends are ready whichever case its select takes.
 	writer.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false}}, nil)
 	select {
 	case <-ender.signal:
@@ -934,7 +938,8 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			if predicate == nil {
 				t.Fatal("the chair spec carries no hold deferral")
 			}
-			// With no advisor counted the predicate is false, so it holding with the advisor mid-turn proves the advisor is counted.
+			// With no advisor counted the predicate is false,
+			// so it holding with the advisor mid-turn proves the advisor is counted.
 			advisor.setSession(midTurn, nil)
 			awaitCondition(t, "the advisor to be counted", predicate)
 			if !tt.upLineStuck && !tt.writer && !tt.assistant {
@@ -987,8 +992,8 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 	})
 }
 
-// TestEngine_EntryPoints_ReadEngineBlocksForTheGeometrysDefaultEngine proves Run, Probe and Resume resolve a seat's engine blocks for the geometry's DefaultEngine when the seat's model choice names no engine,
-// and that Run starts the seat with that engine's block text; with no default engine at all, each refuses.
+// Run, Probe and Resume resolve a seat's engine blocks from the geometry's DefaultEngine when a seat names no engine,
+// and Run starts the seat with that engine's block text; with no default engine at all, each refuses.
 func TestEngine_EntryPoints_ReadEngineBlocksForTheGeometrysDefaultEngine(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

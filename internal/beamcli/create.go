@@ -1,4 +1,6 @@
-// create.go is the "lym beam create" sequence: it judges the named board entry, then claims the root, records the owner and the beam flag, and starts the beam's pawl run as a detached first pass, each step skipped when its result is already there.
+// create.go holds the `lym beam create` sequence.
+// It judges the named board entry, then claims the root and records the owner and the beam flag.
+// It starts the beam's pawl run as a detached first pass, and it skips each step whose result already stands.
 
 package beamcli
 
@@ -10,15 +12,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
-// createDeps holds the seam of every create step, which hubCreateDeps fills over the hub and TestCreate fakes.
+// createDeps holds the seam of every create step, filled over the hub in production and faked in tests.
 // Acting names the worktree the verb runs from, and PrimeName the hub's prime.
 // ParentOf names the slug of the pair a slug was forked from, "" for the prime.
 // ParentBeam names the beam a board entry belongs to over its project links, "" for the prime.
 // PairPresent reports whether this machine holds the slug's pair worktree.
 // BranchOnOrigin reports whether the slug's task branch is on origin.
 // RunStatus reads the state of the slug's batten run, found false when it has no status file.
-// ClearMotifRun removes the slug's batten run records when that run is done and ran the motif recipe, and reports whether it did.
-// StartRun starts the slug's batten run as a detached first pass recording anchor, and returns the envelope of that start.
+// ClearMotifRun removes the slug's batten run records when the run is done and ran the motif recipe;
+// it reports whether it did.
+// StartRun starts the slug's batten run as a detached first pass recording anchor, and returns that start's envelope.
 type createDeps struct {
 	Acting         string
 	PrimeName      string
@@ -72,8 +75,11 @@ func create(deps createDeps, slug, anchor string) (createResult, error) {
 	return result, createSteps(deps, owners, here, slug, anchor, &result)
 }
 
-// refuseCreateHere refuses a create run from any worktree but the beam's parent: the prime, or the parent beam ParentBeam names.
-// The refusal names that worktree's path and the same command there, or, when the parent beam's pair is absent on this machine, the command that brings the pair first: its create, or its adopt when its branch is on origin.
+// refuseCreateHere refuses a create run from any worktree but the beam's parent.
+// That parent is the prime, or the parent beam the entry belongs to.
+// The refusal names that worktree's path and the same command there.
+// When the parent beam's pair is absent on this machine, it names the command that brings the pair first:
+// its create, or its adopt when its branch is on origin.
 func refuseCreateHere(deps createDeps, acting, slug string) error {
 	parent, err := deps.ParentBeam(slug)
 	if err != nil {
@@ -100,7 +106,8 @@ func refuseCreateHere(deps createDeps, acting, slug string) error {
 	return fmt.Errorf("lym beam create: %s is created from its parent's worktree, %s, and not from %s; way forward: run `lym beam create %s` in %s", slug, deps.WorktreePath(want), acting, slug, deps.WorktreePath(want))
 }
 
-// judgeCreateEntry refuses the entry slug unless it is an open project, whose beam is not another machine's and whose parent is not owned by another machine.
+// judgeCreateEntry refuses the entry slug unless it is an open project.
+// Its beam must not be another machine's, and its parent must not be owned by another machine.
 func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug string) error {
 	entry, held := owners.Entries[slug]
 	switch {
@@ -117,7 +124,8 @@ func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug str
 	return judgeParentOwner(deps, owners, here, slug)
 }
 
-// judgeParentOwner refuses the entry slug when its parent reads as owned by another machine, naming the adopt of the parent's subject: the nearest beam above it, else `root`.
+// judgeParentOwner refuses the entry slug when its parent reads as owned by another machine.
+// The refusal names the adopt of the parent's subject: the nearest beam above it, else `root`.
 func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug string) error {
 	parent, err := deps.ParentOf(slug)
 	if err != nil {
@@ -139,12 +147,15 @@ func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug str
 }
 
 // createSteps runs the three steps in order, each skipped when its result stands, and records what it did on result.
-// The root is claimed when the board records no root owner; a claim another machine wins is judged again, so a parent that now reads as theirs refuses.
-// The owner step records this machine as the beam's owner with the beam flag and the pawl recipe in one write, and a colour for the beam's VS Code windows when it has none;
-// a beam recorded here with no colour runs the step again to get one.
+// The root is claimed when the board records no root owner;
+// a claim another machine wins is judged again, so a parent that now reads as theirs refuses.
+// The owner step records this machine as the beam's owner, with the beam flag and the project recipe, in one write;
+// the write also picks a colour for the beam's VS Code windows when it has none.
+// A beam recorded here with no colour runs the step again to get one.
 // The run is the last step, so a beam's pair is made by the run's own Worktree-Create and marked by its Beam-Up.
-// A done run whose pair is gone is first offered to ClearMotifRun, since a motif run that wrote the project's decision record leaves a done record under the same slug;
-// any other done run stays, and the start refuses it.
+// A done run whose pair is gone is first offered to the motif-run clearing step:
+// a motif run that wrote the project's decision record leaves a done record under the same slug.
+// Any other done run stays, and the start refuses it.
 func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor string, result *createResult) error {
 	rerun := "run `lym beam create " + slug + "` again"
 

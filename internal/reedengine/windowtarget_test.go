@@ -1,4 +1,5 @@
-// windowtarget_test.go covers the strand-window seam: which window it resolves for each shape of recorded state and session listing, against the scripted multiplexer fake.
+// windowtarget_test.go covers the strand-window seam, which resolves a window from recorded state and session listings.
+// Each shape of state and listing is checked against the scripted multiplexer fake.
 
 package reedengine
 

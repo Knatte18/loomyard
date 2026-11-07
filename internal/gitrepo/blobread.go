@@ -1,5 +1,7 @@
-// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision lists the files directly in one directory as of a revision, PathRevisions walks the commits that touched a path, CommitsWithSubject finds the commits carrying one subject line, HeadContains asks whether HEAD's history holds a commit, UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA, and CommitDetail returns one commit's message and changed paths.
-// No method calls r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the package's Client Boundary Invariant.
+// blobread.go implements the read-only queries that resolve repository state through go-git, without running git.
+// They read file contents and directory listings at a revision, and walk commit history.
+// They also check whether HEAD's history holds a commit and resolve the current branch's upstream.
+// They also read one commit's message and changed paths.
 
 package gitrepo
 
@@ -16,14 +18,15 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
-// ErrPathNotAtRevision is returned by FileAtRevision when relPath is absent from rev's tree,
-// distinguishing "not there yet" from a real read failure.
+// ErrPathNotAtRevision reports that a path is absent from a revision's tree.
+// It separates that case from a real read failure.
 var ErrPathNotAtRevision = errors.New("gitrepo: path not present at revision")
 
-// FileAtRevision returns relPath's blob contents as stored in rev's tree, unaffected by any later
-// change to the working-tree copy. relPath is slash-separated and repo-relative, matching what
-// ChangedFilesSince returns. Returns ErrPathNotAtRevision when relPath is absent from that
-// revision's tree, or ErrInvalidSHA when rev is not a valid hex object name.
+// FileAtRevision returns relPath's blob contents as stored in rev's tree.
+// Later changes to the working-tree copy do not affect the result.
+// relPath is slash-separated and relative to the repository root.
+// It returns ErrPathNotAtRevision when relPath is absent from that revision's tree.
+// It returns ErrInvalidSHA when rev is not a valid hex object name.
 func (r *Repo) FileAtRevision(rev, relPath string) ([]byte, error) {
 	if !validSHA(rev) {
 		return nil, ErrInvalidSHA
@@ -51,15 +54,18 @@ func (r *Repo) FileAtRevision(rev, relPath string) ([]byte, error) {
 	})
 }
 
-// headContainsCommitterSlack is how much older than the target commit's committer time HeadContains lets a walked commit be before it stops walking.
+// headContainsCommitterSlack is how far before the target's committer time a history walk stops.
 const headContainsCommitterSlack = 24 * time.Hour
 
 // HeadContains reports whether sha names HEAD's commit or one of its ancestors.
 // An unborn HEAD, and a sha whose commit is absent from the local object store, report false with no error;
 // an invalid sha is ErrInvalidSHA.
 // It reads the object store through go-git and never runs git.
-// The walk goes newest committer time first and stops once a commit's committer time is more than 24 hours older than the target's, so a target absent from HEAD's history costs a bounded read.
-// A descendant of the target whose committer time is more than 24 hours older than the target's, from clock skew on the committing machine, therefore makes it answer false for a commit that is in HEAD.
+// The walk visits commits newest committer time first.
+// It stops once a commit's committer time is more than 24 hours older than the target's,
+// so a target absent from HEAD's history costs a bounded read.
+// Clock skew can leave a descendant of the target more than 24 hours older than the target's committer time.
+// The walk then stops before it reaches the target, so HeadContains answers false for a commit that is in HEAD.
 func (r *Repo) HeadContains(sha string) (bool, error) {
 	if !validSHA(sha) {
 		return false, ErrInvalidSHA
@@ -106,10 +112,9 @@ func (r *Repo) HeadContains(sha string) (bool, error) {
 	})
 }
 
-// PathRevisions returns the SHAs of the commits that touched relPath, newest first, capped at limit
-// when limit > 0 and uncapped when limit <= 0. Returns an empty slice and no error when relPath has
-// no history — an unrecoverable base is a normal outcome the caller reports explicitly, not an error
-// condition.
+// PathRevisions returns the SHAs of the commits that touched relPath, newest first.
+// A limit above zero caps the result at that many SHAs; a limit of zero or less leaves it uncapped.
+// A path with no history returns an empty slice and no error, a normal outcome rather than a failure.
 func (r *Repo) PathRevisions(relPath string, limit int) ([]string, error) {
 	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
 		commitIter, err := repo.Log(&git.LogOptions{
@@ -142,8 +147,8 @@ func (r *Repo) PathRevisions(relPath string, limit int) ([]string, error) {
 // FilesInDirAtRevision returns the names of the regular files directly in dir in rev's tree, sorted.
 // dir is slash-separated and repo-relative;
 // "" or "." names the root.
-// An absent directory is an empty result, not an error;
-// an invalid rev is ErrInvalidSHA.
+// An absent directory gives an empty result, not an error.
+// An invalid rev returns ErrInvalidSHA.
 func (r *Repo) FilesInDirAtRevision(rev, dir string) ([]string, error) {
 	if !validSHA(rev) {
 		return nil, ErrInvalidSHA
@@ -166,7 +171,7 @@ func (r *Repo) FilesInDirAtRevision(rev, dir string) ([]string, error) {
 	})
 }
 
-// SubjectCommit is a commit found by its subject line.
+// SubjectCommit identifies a commit by its full SHA and committer time.
 type SubjectCommit struct {
 	// SHA is the commit's full hex object name.
 	SHA string
@@ -175,7 +180,9 @@ type SubjectCommit struct {
 	Committed time.Time
 }
 
-// CommitsWithSubject returns every commit reachable from any branch or tag whose message's first line equals subject, once each however many refs reach it, newest committer time first.
+// CommitsWithSubject returns every commit whose message's first line equals subject.
+// It searches the history reachable from each local branch and tag.
+// A commit reached from several refs is returned once, newest committer time first.
 // No match is an empty slice and no error.
 func (r *Repo) CommitsWithSubject(subject string) ([]SubjectCommit, error) {
 	return readGoGit(r, func(repo *git.Repository) ([]SubjectCommit, error) {
@@ -217,7 +224,8 @@ func (r *Repo) CommitsWithSubject(subject string) ([]SubjectCommit, error) {
 	})
 }
 
-// branchAndTagCommits returns the commit every local branch and every tag points at, an annotated tag peeled to its commit.
+// branchAndTagCommits returns the commit each local branch and each tag points at.
+// An annotated tag is peeled to the commit it names.
 func branchAndTagCommits(repo *git.Repository) ([]plumbing.Hash, error) {
 	var tips []plumbing.Hash
 	collect := func(refs storer.ReferenceIter, peel bool) error {
@@ -255,10 +263,11 @@ func branchAndTagCommits(repo *git.Repository) ([]plumbing.Hash, error) {
 	return tips, nil
 }
 
-// ErrNoUpstream is returned by UpstreamSHA when the current branch has no upstream configured.
+// ErrNoUpstream reports that the current branch has no configured upstream, or that HEAD is detached.
 var ErrNoUpstream = errors.New("gitrepo: no upstream configured")
 
-// UpstreamSHA returns the SHA of the remote-tracking ref the current branch's configured upstream (branch.<name>.remote and branch.<name>.merge) names.
+// UpstreamSHA returns the SHA of the remote-tracking ref that the current branch's upstream names.
+// The upstream comes from the branch.<name>.remote and branch.<name>.merge settings.
 // A detached HEAD or a branch with no upstream returns ErrNoUpstream bare.
 // It reads the ref as last fetched and never contacts the remote.
 func (r *Repo) UpstreamSHA() (string, error) {
@@ -297,7 +306,8 @@ type CommitDetail struct {
 	Paths   []string
 }
 
-// CommitDetail returns sha's full message and the sorted paths its tree changes against its first parent, or every path in its tree for a root commit.
+// CommitDetail returns sha's full message and the sorted paths its tree changes against its first parent.
+// For a root commit it returns every path in the tree.
 // An invalid sha is ErrInvalidSHA.
 // It reads the object store through go-git and never runs git.
 func (r *Repo) CommitDetail(sha string) (CommitDetail, error) {
@@ -318,7 +328,9 @@ func (r *Repo) CommitDetail(sha string) (CommitDetail, error) {
 	})
 }
 
-// changedPaths returns the sorted paths commit's tree changes against its first parent, a deleted path included, or every path in its tree for a root commit.
+// changedPaths returns the sorted paths that commit's tree changes against its first parent.
+// A deleted path counts as changed.
+// For a root commit it returns every path in its tree.
 func changedPaths(commit *object.Commit) ([]string, error) {
 	sha := commit.Hash.String()
 	tree, err := commit.Tree()

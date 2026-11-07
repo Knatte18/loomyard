@@ -1,4 +1,5 @@
-// deploy_integration_test.go reads the deploy step's state over a hubforge hub whose landing config and prime history decide it.
+// deploy_integration_test.go reads the deploy step's state over a hubforge hub.
+// The hub's landing config and prime history decide that state.
 
 package adoptcli_test
 
@@ -16,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedLandingConfig writes yaml as the hub-wide landing config in h's Bolt checkout and commits it, since the deploy keys are barred from the worktree layer.
+// seedLandingConfig writes yaml as the hub-wide landing config in h's Bolt checkout and commits it.
+// The deploy keys are barred from the worktree layer, which is why the config lives in the Bolt checkout.
 func seedLandingConfig(t *testing.T, h *hubforge.Hub, yaml string) {
 	t.Helper()
 	boltDir := fabricengine.BoltDir(h.Path)
@@ -46,7 +48,8 @@ func TestReadDeployState(t *testing.T) {
 	tests := []struct {
 		name    string
 		landing func(branch string) string
-		// installed answers the running lym's build given the prime's commit before and at its head; nil fails the test when the build is read.
+		// installed answers the running lym's build given the prime's commit before and at its head;
+		// nil fails the test when the build is read.
 		installed  func(old, head string) (buildvcs.Identity, error)
 		wantEmpty  bool
 		wantBehind bool

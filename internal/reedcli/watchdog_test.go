@@ -1,6 +1,5 @@
-// watchdog_test.go pins the watchdog daemon's pure seams — planSessionDiff, sessionsAreIdle,
-// planReapCycle, worktreeRootGone, hubIsLiveDir, validateWatchdogFlags, watchdogDefaultTiming, discoveryWake and consumeDiscoverSignal —
-// against no tmux server and no filesystem at all beyond t.TempDir(), table-driven.
+// watchdog_test.go pins the watchdog daemon's pure planners and predicates, table-driven.
+// It runs against no tmux server and no filesystem beyond t.TempDir().
 
 package reedcli
 
@@ -142,10 +141,10 @@ func TestSessionsAreIdle(t *testing.T) {
 	}
 }
 
-// reapCycle is one planReapCycle call and the state it must leave behind.
+// reapCycle is one input to the reap planner and the state it must leave behind.
 // A nil inFlight means no name is in flight,
 // and a nil wantCounters means the counter map ends empty.
-// wantReap and wantRemaining are compared after sorting, since planReapCycle returns them in live order.
+// wantReap and wantRemaining are compared after sorting, since the planner returns them in live order.
 type reapCycle struct {
 	live          []string
 	hubDown       bool
@@ -312,8 +311,12 @@ func TestPlanReapCycle(t *testing.T) {
 
 // TestWorktreeRootGoneAndHubIsLiveDir drives both path predicates over the same path shapes.
 // A missing path and a plain file are gone and not live, a directory is the reverse.
-// The unreadable row pins the one case where treating an unreadable path as gone would destroy live work: a stat that fails with neither a not-exist result nor success (the EACCES shape) must answer false — conservative — from both predicates, and deliberately not each other's negation.
-// That row is skipped on Windows, where directory mode bits do not deny traversal this way, and skipped when the test runs as uid 0, where mode bits are not enforced at all — in both cases the stat would succeed and the assertion would pass for the wrong reason.
+// The unreadable row pins the one case where treating an unreadable path as gone would destroy live work.
+// A stat failing with neither a not-exist result nor success, as with EACCES, must answer false from both predicates.
+// Both predicates answer false on this row, so neither is the other's negation.
+// The row is skipped on Windows, where directory mode bits do not deny traversal this way.
+// It is also skipped as uid 0, where mode bits are not enforced at all.
+// In both cases the stat would succeed, and the assertion would pass for the wrong reason.
 func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -323,7 +326,7 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 		path     func(t *testing.T, root string) string
 		wantGone bool
 		wantLive bool
-		// modeBits marks a row resting on directory mode bits, which deny nothing on Windows, so Windows generates no subtest for it.
+		// modeBits marks a row resting on directory mode bits, which deny nothing on Windows, so it gets no subtest there.
 		modeBits bool
 	}{
 		{
@@ -405,7 +408,11 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 	}
 }
 
-// validateWatchdogFlags is asserted here rather than through watchdogCmd's RunE deliberately — a CLI-level test of the accepting case would fall through the pre-flight into a global logger mutation, a lock acquisition under a scratch directory the command never creates, and then the discovery loop, whose first tick shells out to tmux via the os/exec package and is forbidden in an untagged file.
+// validateWatchdogFlags is tested directly rather than through the command's RunE handler.
+// Running the accepting case through RunE would fall through the pre-flight.
+// That path would mutate the global logger and take a lock under a scratch directory the command never creates.
+// It would then reach the discovery loop, whose first tick shells out to tmux through os/exec.
+// An untagged test file may not do that.
 func TestValidateWatchdogFlags(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -437,7 +444,7 @@ func TestValidateWatchdogFlags(t *testing.T) {
 	}
 }
 
-// watchdogDefaultTiming guards against a test-only default silently becoming production's cadence, mirroring the coverage internal/reedengine/watchloop_test.go already gives its own default-timing constructor.
+// watchdogDefaultTiming guards against a test-only default silently becoming production's cadence.
 //
 //testtiming:keep a guard that fires when watchdogDefaultTiming diverges from the production cadence constants, which no covering test asserts
 func TestWatchdogDefaultTiming(t *testing.T) {
@@ -455,7 +462,7 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 	if got != want {
 		t.Errorf("watchdogDefaultTiming() = %+v, want %+v", got, want)
 	}
-	// A periodic wake below one second is the idle wake-up cost the daemon's cadence floor rules out.
+	// The daemon's cadence floor rules out a periodic wake below one second, an idle wake-up cost.
 	for name, period := range map[string]time.Duration{"DiscoveryCycle": got.DiscoveryCycle, "DiscoveryCeiling": got.DiscoveryCeiling, "StopFloor": got.StopFloor} {
 		if period < time.Second {
 			t.Errorf("watchdogDefaultTiming().%s = %v, want at least one second", name, period)
@@ -463,8 +470,12 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 	}
 }
 
-// TestDiscoveryWake pins the wake planner over scripted cycles and signals: the wait doubles to the ceiling across unchanged listings (order aside) and returns to the base on a changed set or a signal, and a signal runs its cycle once the base has passed since the last one, at once when it already has.
-// A signal carrying a stop request waits only for the stop floor, whichever signal arrives first, and the cycle that serves it restores the base.
+// TestDiscoveryWake pins the wake planner over scripted cycles and signals.
+// The wait doubles to the ceiling across unchanged listings, order aside.
+// It returns to the base on a changed set or a signal.
+// A signal runs its cycle once the base has passed since the last one, and at once when it already has.
+// A signal carrying a stop request waits only for the stop floor, whichever signal arrives first,
+// and the cycle that serves it restores the base.
 func TestDiscoveryWake(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -538,7 +549,10 @@ func TestDiscoveryWake(t *testing.T) {
 	}
 }
 
-// TestConsumeDiscoverSignal pins that a present signal file is consumed and removed, and reports a stop only for the stop marker; an absent file answers false, false and leaves nothing; a read or removal failure is an error with both results false.
+// TestConsumeDiscoverSignal pins that a present signal file is consumed and removed.
+// It reports a stop only for the stop marker.
+// An absent file answers false, false and leaves nothing.
+// A read or removal failure is an error with both results false.
 func TestConsumeDiscoverSignal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -549,7 +563,7 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 		wantStop     bool
 		wantErr      bool
 		wantRemoved  bool
-		// modeBits marks a row resting on directory mode bits, which deny nothing on Windows, so Windows generates no subtest for it.
+		// modeBits marks a row resting on directory mode bits; Windows enforces none, so it has no subtest there.
 		modeBits bool
 	}{
 		{
@@ -638,7 +652,8 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 	}
 }
 
-// TestExeReplaced pins the comparison over real files: only a baseline whose file is replaced or rewritten answers true,
+// TestExeReplaced pins the comparison over real files.
+// Only a baseline whose file is replaced or rewritten answers true,
 // and a missing baseline or a failed stat never does.
 func TestExeReplaced(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -653,7 +668,7 @@ func TestExeReplaced(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// outcome returns the start, now and statErr the comparison is called with, over files it creates under dir.
+		// outcome builds, over files it creates under dir, the start, now and statErr the comparison is called with.
 		outcome func(t *testing.T, dir string) (start, now os.FileInfo, statErr error)
 		want    bool
 	}{
@@ -733,20 +748,23 @@ func TestExeReplaced(t *testing.T) {
 
 // listerEnv is what a scripted session lister sees on one call.
 type listerEnv struct {
-	// call is the 1-based number of this call.
+	// call is this lister call's 1-based number.
 	call int
 	// goneCall is the number of the first call that found the stop marker consumed, 0 while none has.
 	goneCall int
-	// writeStop writes the stop marker onto the discover signal path, the way Engine.writeDiscoverStop does.
+	// writeStop writes the stop marker onto the discover signal path.
 	writeStop func()
 	cancel    context.CancelFunc
 }
 
 // TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping is the table of watchdogCmd's exit paths.
 // Losing the lock race returns nil, respawns nothing and writes no trace file at the default verbosity.
-// A replaced binary with a live hub releases the lock before it respawns and passes the hub, tmux and shell values and suppress true under go test.
-// A replaced binary, an idle-cycle exit or a stop respawns only when the re-check after the loop still finds a session, and a cancelled context respawns nothing.
-// A stop is seen with or without a discover signal watch, the rows with neither failWatch nor closedWatch using the real one where it opens.
+// A replaced binary with a live hub releases the lock before it respawns.
+// It passes the hub, tmux and shell values and suppress true under go test.
+// A replaced binary, an idle-cycle exit or a stop respawns only if the re-check after the loop finds a session.
+// A cancelled context respawns nothing.
+// A stop is seen with or without a discover signal watch;
+// the rows with neither failWatch nor closedWatch use the real one where it opens.
 // Each row asserts its own trace lines.
 // It points the process-global durable log sink at the hub's logs directory, so it is not parallel.
 func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
@@ -770,7 +788,7 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 		failWatch bool
 		// closedWatch makes the discover signal watch open on a channel that is already closed.
 		closedWatch bool
-		// wantRunning has the test wait for the stop-woken cycle and two more lister calls, assert the command is still running, then cancel it.
+		// wantRunning waits out the stop-woken cycle and two lister calls, checks the command runs, then cancels it.
 		wantRunning  bool
 		wantRespawns int
 		// wantNoCallsAfterGone asserts the lister is never called after the call that found the marker consumed.

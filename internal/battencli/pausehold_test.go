@@ -23,7 +23,8 @@ import (
 )
 
 // TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry:
-// an entry covering the slug refuses naming `lym tender resume <slug>` with nothing seeded, the run verb exiting with the covered code, and an entry for another slug seeds as before.
+// a covering entry refuses the run, naming `lym tender resume <slug>`, with nothing seeded and the covered exit code.
+// An entry for another slug seeds as before.
 func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -80,7 +81,9 @@ func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	}
 }
 
-// TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode asserts a Worktree-Create row that fails with an OwnedElsewhereError ends in the driver's own error envelope and exit, since the owned-elsewhere code is set only for a refusal before the step loop.
+// TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode asserts the driver's own exit for a lost claim.
+// A Worktree-Create row that fails with an OwnedElsewhereError ends in the driver's own error envelope and exit.
+// The owned-elsewhere code is set only for a refusal before the step loop.
 func TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -98,8 +101,8 @@ func TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode(t *testing.T) 
 	}
 }
 
-// TestBattenStatus_CarriesPausedSinceForACoveredSlug runs batten's status verb over a prime whose record holds a live entry:
-// the envelope carries paused_since and paused_by for the entry's slug and neither for an entry covering another slug.
+// TestBattenStatus_CarriesPausedSinceForACoveredSlug runs batten's status verb over a prime with a live entry.
+// The envelope carries paused_since and paused_by for the entry's slug and neither for an entry covering another slug.
 func TestBattenStatus_CarriesPausedSinceForACoveredSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

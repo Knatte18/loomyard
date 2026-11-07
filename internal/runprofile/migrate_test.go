@@ -1,4 +1,5 @@
-// migrate_test.go table-drives the profiles reconcile hooks, MigrateConfig and UnsettledFormerBlocks, and the Seed-Child lookups' refusal of a recipe held under its former name.
+// migrate_test.go table-drives the profiles reconcile hooks, MigrateConfig and UnsettledFormerBlocks.
+// It also covers the Seed-Child lookups' refusal of a recipe held under its former name.
 
 package runprofile_test
 
@@ -14,7 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMigrateConfig pins the rename of a recipe's former name in each profile and under defaults, keeping values and comments, the drop of a former block equal to the current one and the keeping of a differing one, an untouched document with no former name, and the refusal of a document that does not parse.
+// TestMigrateConfig pins the rename of a recipe's former name in each profile and under defaults.
+// It keeps values and comments.
+// A former block equal to the current one is dropped; a differing one is kept.
+// A document with no former name is left untouched.
+// It also refuses a document that does not parse.
 func TestMigrateConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -23,7 +28,7 @@ func TestMigrateConfig(t *testing.T) {
 		existing     string
 		wantLines    []string
 		wantContains []string
-		// wantProfiles is the light profile Load reads from the migrated document, and wantDefaults its defaults; nil skips the load.
+		// wantProfiles is the light profile Load reads after migration, and wantDefaults its defaults; nil skips the load.
 		wantProfiles map[string]map[string]any
 		wantDefaults map[string]string
 		wantRefusal  bool
@@ -106,7 +111,8 @@ func TestMigrateConfig(t *testing.T) {
 	}
 }
 
-// TestUnsettledFormerBlocks pins the report of the former blocks held beside a differing current one, and that an equal pair, a lacking block or an empty document lists nothing.
+// TestUnsettledFormerBlocks pins the report of former blocks held beside a differing current one;
+// an equal pair, a lacking block or an empty document lists nothing.
 func TestUnsettledFormerBlocks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -141,7 +147,8 @@ func TestUnsettledFormerBlocks(t *testing.T) {
 	}
 }
 
-// TestFormerRecipeNameRefusal pins that Settings and Default refuse a recipe a profile or the defaults hold only under its former name, naming the reconcile that renames it.
+// TestFormerRecipeNameRefusal pins that Settings and Default refuse a recipe under its former name.
+// A profile or the defaults may hold such a recipe; the refusal names the reconcile that renames it.
 func TestFormerRecipeNameRefusal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

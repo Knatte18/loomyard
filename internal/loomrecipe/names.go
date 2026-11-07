@@ -1,5 +1,6 @@
-// names.go declares RecipeEngines, the derived engine set the cross-consumer coverage guard in internal/shedrecipe trusts.
-// It also declares RowNames and Rows, a recipe's row names and rows in file order, RetiredRowNames, the rows its `retired` map declares, and EntryNumbers, the entry number of each row.
+// names.go derives facts from the embedded recipes.
+// It gives the engine set, the row names and rows in file order, and the retired row names.
+// It also gives the amendment target and the entry number of each row.
 
 package loomrecipe
 
@@ -13,16 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// RecipeEngines parses the tapestry, darn, pawl, sampler, motif and raddle recipes, expands each one's blocks, collects each row's engine name, de-duplicates, and returns the result sorted.
-// These recipes are the loom module's, so the set is their union, and it holds the Block engine of the tapestry recipe's Motif block row.
-// It exists as the input to the cross-consumer coverage guard, which
-// unions every recipe consumer's engine set -- deriving the set from the recipe rather than
-// writing it down is what keeps that union honest without a second hand-maintained table alongside
-// the one row table in shape_test.go.
+// RecipeEngines returns the sorted engine set of the tapestry, darn, pawl, sampler, motif and raddle recipes.
+// It parses each recipe, expands its blocks, and collects each row's engine name, without duplicates.
+// The recipes are the loom module's, so the set is their union.
+// It holds the Block engine of the tapestry recipe's Motif block row.
+// Deriving the set from the recipes, rather than writing it down, keeps every union of consumer engine sets honest.
+// It needs no second hand-maintained table alongside the recipes.
 //
-// RecipeEngines never returns a nil slice alongside an error: a parse failure panics, naming this
-// package, since a recipe that fails to parse is a build-time defect in an embedded file rather
-// than a runtime condition.
+// RecipeEngines never returns a nil slice alongside an error.
+// A parse failure panics, naming this package.
+// A recipe that fails to parse is a build-time defect in an embedded file, not a runtime condition.
 func RecipeEngines() []string {
 	seen := map[string]bool{}
 	var engines []string
@@ -46,9 +47,12 @@ func RecipeEngines() []string {
 
 // RecipeRow is one recipe row as a status reader needs it.
 // OnDone is the row its Done outcome routes to, empty for a row that ends the run.
-// Bouncer is true when the row's engine is the Bouncer.
-// IsBlock is true when the row is a block row, the row an expanded recipe runs before the rows of the block's sub-recipe; SkipTo is the row a skipped block row routes to.
-// BlockPath is the names of the block rows enclosing the row, outermost first, joined by "/", and empty for a row outside every block.
+// Bouncer reports whether the row's engine is the Bouncer.
+// IsBlock reports whether the row is a block row.
+// An expanded recipe runs a block row before the rows of the block's sub-recipe.
+// SkipTo is the row a skipped block row routes to.
+// BlockPath is the names of the block rows enclosing the row, outermost first and joined by "/".
+// It is empty for a row outside every block.
 type RecipeRow struct {
 	Name      string
 	Segment   string
@@ -60,8 +64,8 @@ type RecipeRow struct {
 	IsBlock   bool
 }
 
-// RowNames returns the row names of the named recipe in expanded order: shedrun.RecipeTapestry is the tapestry recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe, shedrun.RecipePawl the pawl recipe, shedrun.RecipeSampler the sampler recipe, shedrun.RecipeMotif the motif recipe and shedrun.RecipeRaddle the raddle recipe.
-// Any other recipe name is refused with an error naming it.
+// RowNames returns the row names of the named recipe in expanded order.
+// The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
 func RowNames(recipe string) ([]string, error) {
 	rows, err := Rows(recipe)
 	if err != nil {
@@ -74,8 +78,9 @@ func RowNames(recipe string) ([]string, error) {
 	return names, nil
 }
 
-// Rows returns the rows of the named recipe in expanded order, each block row followed by the rows of its sub-recipe: shedrun.RecipeTapestry is the tapestry recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe, shedrun.RecipePawl the pawl recipe, shedrun.RecipeSampler the sampler recipe, shedrun.RecipeMotif the motif recipe and shedrun.RecipeRaddle the raddle recipe.
-// Any other recipe name is refused with an error naming it.
+// Rows returns the rows of the named recipe in expanded order.
+// Each block row is followed by the rows of its sub-recipe.
+// The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
 func Rows(recipe string) ([]RecipeRow, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -97,9 +102,11 @@ func Rows(recipe string) ([]RecipeRow, error) {
 	return rows, nil
 }
 
-// RetiredRowNames returns the sorted row names the named recipe's `retired` map declares: the rows a run of an earlier version of the recipe may still stand at.
-// It reads the recipe's `retired` map and never RetiredRows, which holds the arm-time renames.
-// It is empty for a recipe that retires none; the recipe names are Rows', and any other name is refused with an error naming it.
+// RetiredRowNames returns the sorted row names the named recipe's `retired` map declares:
+// the rows a run of an earlier version of the recipe may still stand at.
+// It reads only the recipe's `retired` map, not the arm-time renames.
+// It is empty for a recipe that retires none.
+// The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
 func RetiredRowNames(recipe string) ([]string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -113,8 +120,9 @@ func RetiredRowNames(recipe string) ([]string, error) {
 	return names, nil
 }
 
-// AmendmentTarget returns the optional `amendment_target` of the named recipe: the row a plan amendment routes to, empty when the recipe sets none.
-// The recipe names are Rows': shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeBatten, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif and shedrun.RecipeRaddle, and any other name is refused with an error naming it.
+// AmendmentTarget returns the optional `amendment_target` of the named recipe:
+// the row a plan amendment routes to, empty when the recipe sets none.
+// The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
 func AmendmentTarget(recipe string) (string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -136,7 +144,7 @@ var embeddedRecipes = map[string][]byte{
 
 // embeddedRecipeSource returns the source of the embedded recipe the name selects, refusing a name that selects none.
 // An empty name reads as the tapestry recipe, as an unseeded run does.
-// It is the resolver every expansion of an embedded recipe is told.
+// It is the resolver handed to every expansion of an embedded recipe.
 func embeddedRecipeSource(recipe string) ([]byte, error) {
 	if recipe == "" {
 		recipe = shedrun.RecipeTapestry
@@ -148,7 +156,8 @@ func embeddedRecipeSource(recipe string) ([]byte, error) {
 	return nil, fmt.Errorf("loomrecipe: no embedded recipe named %q", recipe)
 }
 
-// parseEmbeddedRecipe parses the embedded recipe the name selects and expands its blocks, refusing a name that selects none.
+// parseEmbeddedRecipe parses the embedded recipe the name selects and expands its blocks.
+// It refuses a name that selects none.
 // An empty name reads as the tapestry recipe, as an unseeded run does.
 // A recipe holding no block row comes back as parsed.
 func parseEmbeddedRecipe(recipe string) (shedbuild.Recipe, error) {
@@ -168,7 +177,9 @@ func parseEmbeddedRecipe(recipe string) (shedbuild.Recipe, error) {
 }
 
 // EntryNumbers numbers a recipe's entries 1, 2, … in row order, the numbers every status pane draws.
-// A review segment, a non-empty segment holding a Bouncer row, is one entry: it takes one number, at the place of its first row, and every row of the segment maps to that number.
+// A review segment, a non-empty segment holding a Bouncer row, is one entry:
+// it takes one number, at the place of its first row,
+// and every row of the segment maps to that number.
 // Every other row, including a row of a segment with no Bouncer row, is an entry of its own.
 // A row that is not in rows has no key in the result.
 func EntryNumbers(rows []RecipeRow) map[string]int {

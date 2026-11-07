@@ -1,10 +1,16 @@
-// Package shedfake fakes the shed-layer seams: the shuttle, the burler half runner, the seat runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
+// Package shedfake fakes the shed-layer seams and the producer Call helpers.
+// The seams are the shuttle, the burler half runner, the seat runner, the merge shuttle and the webster run seams.
 //
-// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerHalfRunner satisfies shedadapters.BurlerHalfRunner, SeatRunner satisfies shedadapters.SeatRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle.
+// BurlerHalfRunner satisfies shedadapters.BurlerHalfRunner, and SeatRunner satisfies shedadapters.SeatRunner.
+// MergeShuttle satisfies mergeresolve.Shuttle.
+// Each fake satisfies its interface structurally, so no consumer package is imported here.
+// This lets shedadapters' and landingshed's in-package tests use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //
-// internal/burlerengine's in-package tests keep their own Shuttle fake, because this kit imports burlerengine for BurlerHalfRunner's types.
+// internal/burlerengine's in-package tests keep their own Shuttle fake.
+// The kit imports burlerengine for BurlerHalfRunner's types, so burlerengine's own tests cannot import it.
 package shedfake
 
 import (
@@ -22,7 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// Shuttle is a fake shuttle seam: Run and Attach answer the scripted fields, RunGated and AttachGated follow the "every test fake evaluates the gate once" contract.
+// Shuttle is a fake shuttle seam.
+// Run and Attach answer the scripted fields, and RunGated and AttachGated evaluate the gate once.
 // Fields are read after the code under test has returned; the fake locks only its own writes.
 type Shuttle struct {
 	mu sync.Mutex
@@ -44,7 +51,7 @@ type Shuttle struct {
 	AttachResult shuttleengine.Result
 	AttachFound  bool
 	AttachErr    error
-	// DuringAttach is DuringRun's twin for Attach.
+	// DuringAttach runs before Attach answers, so a test can act mid-attach.
 	DuringAttach func()
 	// AttachCalled reports whether Attach ran and GotAttachSpec is its latest Spec.
 	AttachCalled  bool
@@ -88,13 +95,14 @@ func (f *Shuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, e
 	return f.AttachResult, f.AttachFound, f.AttachErr
 }
 
-// AttachIfLive answers as Attach does and records no removal.
+// AttachIfLive answers from AttachResult, AttachFound and AttachErr, and records no removal.
 func (f *Shuttle) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
 	return f.Attach(spec)
 }
 
 // RunGated records gate, delegates to Run, then evaluates the gate once.
-// The gate is consulted only when it is non-empty and the delegated outcome is OutcomeDone: a closure's error is returned, otherwise a GateOutcome is stamped onto the Result.
+// The gate is consulted only when it is non-empty and the delegated outcome is OutcomeDone:
+// a closure's error is returned, otherwise a GateOutcome is stamped onto the Result.
 // No re-prompt loop is simulated.
 func (f *Shuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	f.mu.Lock()
@@ -117,7 +125,8 @@ func (f *Shuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec)
 	return result, nil
 }
 
-// AttachGated is RunGated's Attach twin, with the same gate-once contract.
+// AttachGated records gate, answers the scripted attach result, then evaluates the gate once.
+// The gate is consulted only when the attach was found, the gate is non-empty and the outcome is OutcomeDone.
 func (f *Shuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	f.mu.Lock()
 	f.GotAttachGateSpec = gate
@@ -136,7 +145,8 @@ func (f *Shuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSp
 	return result, found, nil
 }
 
-// evalGateList runs gate's entries once each in list order, skipping off entries (Attempts 0) and stopping at the first failure.
+// evalGateList runs gate's entries once each in list order: off entries (Attempts 0) are skipped,
+// and it stops at the first failure.
 func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 	for _, entry := range gate {
 		if entry.Attempts <= 0 {
@@ -153,8 +163,11 @@ func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 	return true, nil
 }
 
-// BurlerHalfRunner is a fake burler half runner: ReviewResults[i] and ReviewErrs[i] answer the (i+1)th Review, FixResults[i] and FixErrs[i] the (i+1)th Fix, and once either slice is exhausted its last entry repeats.
-// ProbeReview, ResumeReview, ProbeFix and ResumeFix answer their own scripted slices the same way, and unscripted probes answer a half that is gone.
+// BurlerHalfRunner is a fake burler half runner.
+// ReviewResults[i] and ReviewErrs[i] answer the (i+1)th Review, FixResults[i] and FixErrs[i] the (i+1)th Fix.
+// Once a slice is exhausted, its last entry repeats.
+// ProbeReview, ResumeReview, ProbeFix and ResumeFix answer their own scripted slices the same way.
+// An unscripted probe answers a half that is gone.
 // Every method counts its invocations and records the profile, options and digest it received.
 type BurlerHalfRunner struct {
 	mu sync.Mutex
@@ -175,7 +188,7 @@ type BurlerHalfRunner struct {
 	ResumeFixResults []burlerengine.FixResult
 	ResumeFixErrs    []error
 
-	// ReviewCalls, ProbeReviewCalls, ResumeReviewCalls, FixCalls, ProbeFixCalls and ResumeFixCalls count the invocations of each method.
+	// Each *Calls field counts the invocations of its method.
 	ReviewCalls       int
 	ProbeReviewCalls  int
 	ResumeReviewCalls int
@@ -183,16 +196,16 @@ type BurlerHalfRunner struct {
 	ProbeFixCalls     int
 	ResumeFixCalls    int
 
-	// GotReviewProfiles and GotReviewOpts hold every Profile and RunOpts handed to Review, in order; GotProbeReviewOpts, GotProbeFixOpts and GotResumeFixOpts hold the RunOpts of the other verbs.
+	// GotReviewProfiles and GotReviewOpts hold Review's inputs; the other Got*Opts fields hold the other verbs' RunOpts.
 	GotReviewProfiles  []burlerengine.Profile
 	GotReviewOpts      []burlerengine.RunOpts
 	GotProbeReviewOpts []burlerengine.RunOpts
 	GotProbeFixOpts    []burlerengine.RunOpts
 	GotResumeFixOpts   []burlerengine.RunOpts
-	// GotProbeReviewProfiles and GotResumeReviewProfiles hold every Profile handed to ProbeReview and ResumeReview, in order.
+	// GotProbeReviewProfiles and GotResumeReviewProfiles hold Profiles given to ProbeReview and ResumeReview, in order.
 	GotProbeReviewProfiles  []burlerengine.Profile
 	GotResumeReviewProfiles []burlerengine.Profile
-	// GotFixProfiles, GotFixOpts and GotFixDigests hold every Profile, RunOpts and digest handed to Fix, in order; GotResumeFixDigests holds the digests handed to ResumeFix.
+	// GotFixProfiles, GotFixOpts and GotFixDigests record Fix's inputs in order; GotResumeFixDigests the ResumeFix digests.
 	GotFixProfiles      []burlerengine.Profile
 	GotFixOpts          []burlerengine.RunOpts
 	GotFixDigests       []string
@@ -201,7 +214,7 @@ type BurlerHalfRunner struct {
 	GotLiveReviews []burlerengine.LiveHalf
 	GotLiveFixes   []burlerengine.LiveHalf
 
-	// DuringReview and DuringFix run from inside Review and Fix, before they answer, with the zero-based index of the invocation.
+	// DuringReview and DuringFix run before Review and Fix answer, with the zero-based index of the invocation.
 	DuringReview func(callIndex int)
 	DuringFix    func(callIndex int)
 }
@@ -267,7 +280,8 @@ func (f *BurlerHalfRunner) ProbeFix(_ burlerengine.Profile, opts burlerengine.Ru
 	return scripted(f.LiveFixes, i), scripted(f.ProbeFixErrs, i)
 }
 
-// ResumeFix counts the call, records opts, digest and live, and answers the scripted FixResult and error for this invocation.
+// ResumeFix counts the call and records opts, digest and live.
+// It answers the scripted FixResult and error for this invocation.
 func (f *BurlerHalfRunner) ResumeFix(_ burlerengine.Profile, opts burlerengine.RunOpts, digest string, live burlerengine.LiveHalf) (burlerengine.FixResult, error) {
 	f.mu.Lock()
 	i := f.ResumeFixCalls
@@ -291,10 +305,13 @@ func scripted[T any](entries []T, i int) T {
 	return zero
 }
 
-// SeatRunner is a fake seat runner: Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
-// Probe and Resume answer their own scripted slices the same way, and an unscripted Probe answers a table with no seat live.
+// SeatRunner is a fake seat runner.
+// Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
+// Probe and Resume answer their own scripted slices the same way.
+// An unscripted Probe answers a table with no seat live.
 // RunFn, ProbeFn and ResumeFn, when set, replace the scripted answer of their verb.
-// Run and Resume follow the "every test fake evaluates the gate once" contract: a done chair whose answered result carries no GateOutcome has the table's gate evaluated once and the outcome stamped onto it.
+// Run and Resume evaluate the table's gate once for a done chair whose result has no GateOutcome.
+// They stamp the outcome onto that chair.
 type SeatRunner struct {
 	mu sync.Mutex
 
@@ -316,19 +333,23 @@ type SeatRunner struct {
 	Calls       int
 	ProbeCalls  int
 	ResumeCalls int
-	// GotTables, GotProbeTables and GotResumeTables hold every Table handed to each verb, in order, and GotLive every LiveTable handed to Resume.
+	// GotTables, GotProbeTables and GotResumeTables record every Table, in order, and GotLive every LiveTable.
 	GotTables       []seatengine.Table
 	GotProbeTables  []seatengine.Table
 	GotResumeTables []seatengine.Table
 	GotLive         []seatengine.LiveTable
 
-	// GateAttempts is stamped onto the GateOutcome a gated Run or Resume builds, and GateReason onto it as Reason when the gate did not pass.
+	// GateAttempts is stamped onto the GateOutcome a gated Run or Resume builds.
+	// GateReason is stamped onto it as Reason when the gate did not pass.
 	GateAttempts int
 	GateReason   string
 }
 
-// stampGate evaluates table's gate once for a done chair whose result carries no GateOutcome, stamping the outcome onto result.Chair.
-// A non-empty err, an empty gate, a chair that is not done and a result already carrying a GateOutcome are returned unchanged; a closure's error is returned with result.
+// stampGate evaluates table's gate once for a done chair whose result carries no GateOutcome.
+// It stamps the outcome onto result.Chair.
+// It returns result and err unchanged unless err is nil, the gate is non-empty, the chair is done,
+// and the result carries no GateOutcome.
+// An error from evaluating the gate is returned with result.
 func (f *SeatRunner) stampGate(table seatengine.Table, result seatengine.Result, err error) (seatengine.Result, error) {
 	if err != nil || len(table.Gate) == 0 || result.Chair.Outcome != shuttleengine.OutcomeDone || result.Chair.Gate != nil {
 		return result, err
@@ -358,7 +379,7 @@ func (f *SeatRunner) Run(table seatengine.Table) (seatengine.Result, error) {
 	return f.stampGate(table, scripted(f.Results, i), scripted(f.Errs, i))
 }
 
-// Probe counts the call, records table, then answers ProbeFn, else the scripted LiveTable and error for this invocation.
+// Probe counts the call, records table, then answers ProbeFn, else the scripted LiveTable and error for this call.
 func (f *SeatRunner) Probe(table seatengine.Table) (seatengine.LiveTable, error) {
 	f.mu.Lock()
 	i := f.ProbeCalls
@@ -371,7 +392,7 @@ func (f *SeatRunner) Probe(table seatengine.Table) (seatengine.LiveTable, error)
 	return scripted(f.LiveTables, i), scripted(f.ProbeErrs, i)
 }
 
-// Resume counts the call, records table and live, then answers ResumeFn, else the scripted Result and error for this invocation.
+// Resume counts the call, records table and live, then answers ResumeFn, else the scripted Result and error.
 func (f *SeatRunner) Resume(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
 	f.mu.Lock()
 	i := f.ResumeCalls
@@ -386,7 +407,9 @@ func (f *SeatRunner) Resume(table seatengine.Table, live seatengine.LiveTable) (
 	return f.stampGate(table, scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i))
 }
 
-// MergeShuttle is a Run-only fake shuttle: Results[i] and Errs[i] answer the (i+1)th call, and a call past the scripted entries answers a zero Result and a nil error, so an unscripted MergeShuttle is a no-op.
+// MergeShuttle is a fake shuttle that supports only Run.
+// Results[i] and Errs[i] answer the (i+1)th call.
+// A call past the scripted entries answers a zero Result and a nil error, so an unscripted MergeShuttle is a no-op.
 type MergeShuttle struct {
 	mu sync.Mutex
 
@@ -434,8 +457,10 @@ type (
 	indexSeam      struct{ planindex.Index }
 )
 
-// WebsterSeams returns a RunDeps whose Starter, Stopper, Engines and RefMatcher, and the Index of its Geom, are placeholders, and whose Geom carries a verify pause hold over an empty pause record.
-// Each embeds its interface in an empty struct, so it is non-nil for a constructor check and panics if any method is called.
+// WebsterSeams returns a RunDeps of placeholder seams for constructor checks.
+// Starter, Stopper, Engines, RefMatcher and Geom.Index are placeholders.
+// Geom.VerifyHold is a verify pause hold over an empty pause record.
+// Each placeholder embeds its interface, so it is non-nil for a constructor check and panics if called.
 func WebsterSeams() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:    masterStarter{},
@@ -460,7 +485,8 @@ func CallOK(t testing.TB, p shedengine.ShedProducer) (shedengine.Outcome, sheden
 	return outcome, ptr
 }
 
-// RequireOutcome is CallOK followed by a non-fatal check of the outcome, and returns the pointer.
+// RequireOutcome calls p once and fails the test on a non-nil error.
+// It reports a mismatch with want without stopping the test, and returns the output pointer.
 func RequireOutcome(t testing.TB, p shedengine.ShedProducer, want shedengine.Outcome) shedengine.OutputPointer {
 	t.Helper()
 	outcome, ptr := CallOK(t, p)

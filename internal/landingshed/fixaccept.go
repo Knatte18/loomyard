@@ -1,4 +1,5 @@
-// fixaccept.go implements AcceptFixReview, the operator's acceptance of a merge fixer change Finalize's fix reviews did not approve within their rounds.
+// fixaccept.go implements AcceptFixReview, which records the operator's acceptance of a merge fixer change.
+// Finalize's fix review did not approve that change within its rounds.
 
 package landingshed
 
@@ -9,17 +10,22 @@ import (
 	"strings"
 )
 
-// ErrNoFixReviewHalt reports a Finalize entry that is not halted at its fix review round cap, so there is no change to accept.
+// ErrNoFixReviewHalt reports a Finalize entry that is not halted at its fix review round cap.
+// Such an entry has no fixer change to accept.
 var ErrNoFixReviewHalt = errors.New("the Finalize entry is not halted at its fix review round cap")
 
-// fixAcceptHeading opens the section AcceptFixReview appends to the change description.
+// fixAcceptHeading opens the change description section that lists the findings left open on an accepted fixer change.
 const fixAcceptHeading = "## Unresolved fix review findings"
 
-// AcceptFixReview records the operator's acceptance of the fixer change the Finalize entry halted on in the entry's attempt record under scratchDir.
-// It appends the findings the last fix review left open to the change description at descriptionPath, so the run lands with them on record.
-// The acceptance is bound to the task HEAD taskHead answers, so on resume Finalize lands the change at that HEAD as it stands and sends any later change to the fix review.
-// An entry not halted at its fix review round cap is ErrNoFixReviewHalt, and nothing is written.
-// A description that already holds the section is not appended to again, and an entry already accepted writes nothing, so a retry after a failed write is safe.
+// AcceptFixReview records the operator's acceptance of the fixer change the Finalize entry halted on.
+// It stores the acceptance in the entry's attempt record under scratchDir.
+// It appends the findings the last fix review left open to the change description at descriptionPath,
+// so the run lands with them on record.
+// The acceptance is bound to the task HEAD that taskHead returns.
+// On resume, Finalize lands the change at that HEAD as it stands and sends any later change to the fix review.
+// An entry not halted at its fix review round cap returns ErrNoFixReviewHalt and writes nothing.
+// A description that already holds the section is not appended to again.
+// An entry already accepted writes nothing, so a retry after a failed write is safe.
 func AcceptFixReview(scratchDir string, entry int, descriptionPath string, taskHead func() (string, error)) error {
 	path := FixerAttemptsPath(scratchDir, finalizeName)
 	rec, err := ReadFixerAttempts(path, entry)
@@ -50,7 +56,7 @@ func AcceptFixReview(scratchDir string, entry int, descriptionPath string, taskH
 	return WriteFixerAttempts(path, rec)
 }
 
-// fixAcceptSection renders the change description's section naming the fixer change the operator accepted and the findings left open on it.
+// fixAcceptSection renders the section that names the accepted fixer change and lists the findings left open on it.
 func fixAcceptSection(rec FixerAttempts) string {
 	var b strings.Builder
 	b.WriteString(fixAcceptHeading + "\n\n")

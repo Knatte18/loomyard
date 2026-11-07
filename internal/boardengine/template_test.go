@@ -1,6 +1,7 @@
-// template_test.go — tests for the boardengine ConfigTemplate generator.
+// template_test.go holds tests for the boardengine ConfigTemplate generator.
 //
-// Covers: ConfigTemplate parses as YAML and resolves to the correct defaults, every required key present, when the environment is empty.
+// It checks that ConfigTemplate parses as YAML and resolves to the correct defaults.
+// It also checks that every required key is present when the environment is empty.
 
 package boardengine
 
@@ -13,8 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestConfigTemplate_ResolvesToDefaults asserts the template resolves to correct defaults with
-// empty environment.
+// TestConfigTemplate_ResolvesToDefaults asserts the template resolves to correct defaults with an empty environment.
 func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

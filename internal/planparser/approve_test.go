@@ -1,6 +1,6 @@
-// approve_test.go covers SetApproved: the flip, no-op, and insert cases over the approved:
-// frontmatter key, byte-for-byte preservation of every other frontmatter key/order and of the
-// entire body, and SetApproved's error cases.
+// approve_test.go covers SetApproved over the approved: frontmatter key.
+// It tests the flip, no-op and insert cases, and SetApproved's error cases.
+// It also checks that the other frontmatter keys keep their order and value, and that the body stays byte for byte.
 
 package planparser_test
 
@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// richOverview is a format-4 overview carrying a root: key, a framing paragraph, a Card Index, and
-// a plan-level "## Shared Decisions" body section, with approved: set to approvedValue.
+// richOverview returns the text of an overview with a root: key, a framing paragraph, and a Card Index.
+// It adds a plan-level "## Shared Decisions" body section and sets the approved: key to approvedValue.
 func richOverview(approvedValue string) string {
 	return "---\n" +
 		"format: 5\n" +
@@ -51,8 +51,7 @@ func TestSetApproved(t *testing.T) {
 		wantErr bool
 		// wantContent is the exact expected 00-overview.md content after a successful call.
 		wantContent string
-		// wantRoundTripApproved, when withCardFile is set, additionally parses the result and
-		// asserts plan.Approved against this value.
+		// wantRoundTripApproved, when withCardFile is set, also parses the result and asserts plan.Approved against this value.
 		wantRoundTripApproved bool
 	}{
 		{

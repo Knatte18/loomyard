@@ -1,6 +1,6 @@
 // describe_test.go — tier0 unit tests for DescribeTable.
-// The stencil is a fixture written into a t.TempDir() stencils dir, so no shipped default is read;
-// the lead's prompt is composed through seatengine.Prompts, which starts nothing.
+// The stencil is a fixture written into a t.TempDir() stencils dir, so no shipped default is read.
+// The lead's prompt is composed through seatengine.Prompts, which starts nothing.
 
 package landingshed
 
@@ -56,7 +56,7 @@ func newDescribeInputs(t *testing.T) DescribeInputs {
 	}
 }
 
-// describeLeadPrompt returns the prompt of table's lead composed under a geometry over stencilsDir naming parentName.
+// describeLeadPrompt returns the prompt of table's lead, composed with stencilsDir and parentName.
 func describeLeadPrompt(t *testing.T, stencilsDir, parentName string, table seatengine.Table) string {
 	t.Helper()
 	prompts, err := seatengine.Prompts(seatengine.Geometry{
@@ -73,7 +73,9 @@ func describeLeadPrompt(t *testing.T, stencilsDir, parentName string, table seat
 	return prompts[""]
 }
 
-// requireDescribeLead asserts table is the Describe session's: the lead alone, in the describe role, segment and skills, writing wantOutput, with no version choice, non-interactive and without forks.
+// requireDescribeLead asserts that table is the Describe session: the lead alone.
+// The lead runs in the describe role, segment and skills, writes wantOutput, and has no version choice.
+// It runs non-interactively and without forks.
 func requireDescribeLead(t *testing.T, table seatengine.Table, wantOutput string) {
 	t.Helper()
 	lead := table.Chair()
@@ -166,7 +168,8 @@ func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
 	}
 }
 
-// TestDescribeSpec_RunRecordsOldestFirstLiveLast asserts the prompt lists each run record that exists, prior generations oldest first and the live one last, and `(none)` when none exists.
+// TestDescribeSpec_RunRecordsOldestFirstLiveLast asserts that the prompt lists each run record that exists.
+// Prior generations come oldest first and the live one last, and `(none)` appears when no record exists.
 func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -234,7 +237,8 @@ func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
 	})
 }
 
-// TestDescribeSpec_DriftVerdict asserts the prompt shows the told regression check, and a line saying none ran when none is told.
+// TestDescribeSpec_DriftVerdict asserts that the prompt shows the told regression check.
+// When no check is told, it shows a line saying none ran.
 func TestDescribeSpec_DriftVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

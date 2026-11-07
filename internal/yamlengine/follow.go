@@ -1,4 +1,5 @@
-// follow.go carries a template change into an operator-owned file unit by unit, judging each unit against the template the file last followed so a value the operator set is kept.
+// follow.go carries a template change into an operator-owned file, unit by unit.
+// Each unit is judged against the template the file last followed, so a value the operator set is kept.
 
 package yamlengine
 
@@ -13,7 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FollowReport lists, each sorted, what FollowTemplate changed in a file and the operator's values it kept against a template that holds them otherwise.
+// FollowReport lists, each sorted, what a follow changed in a file.
+// It also lists the operator's values it kept against a template that holds them otherwise.
 type FollowReport struct {
 	// Added lists the dotted path of each template unit the file gained.
 	Added []string
@@ -21,7 +23,8 @@ type FollowReport struct {
 	Updated []string
 	// Removed lists the dotted path of each unit the file held at the base's value and the template dropped.
 	Removed []string
-	// Differs lists, as "<path>: file <value>, template <value>", each unit the operator set that the template holds otherwise, kept as the file holds it.
+	// Differs lists each unit the operator set that the template holds otherwise.
+	// Each is shown as "<path>: file <value>, template <value>", and the file keeps it.
 	// A value absent from one side renders as "absent".
 	Differs []string
 }
@@ -31,18 +34,29 @@ func (r FollowReport) Changed() bool {
 	return len(r.Added)+len(r.Updated)+len(r.Removed) > 0
 }
 
-// ErrInvalidBase marks a FollowTemplate error caused by the base document, one that does not parse or whose top level is not a mapping, as opposed to the template or the file.
+// ErrInvalidBase marks an error caused by a base document that does not parse or whose top level is not a mapping.
+// It tells such an error apart from one caused by the template or the file.
 var ErrInvalidBase = errors.New("the template base is not a YAML mapping")
 
-// FollowTemplate carries template into existing, an operator-owned file seeded from an earlier template, and keeps every value the operator set.
-// base is the template the file last followed, and haveBase false says the file has no record of one, so base is not read.
-// A unit is a mapping key, descended into while the file, the template and the base each hold a mapping or nothing there, and otherwise compared whole, so a scalar or a sequence is always one unit.
-// With a base, a unit the file holds as the base does, absence included, takes the template's value, gaining, changing or losing it;
-// any other unit is the operator's and is kept, listed under Differs when the template holds a third value.
-// Without a base, a unit the file lacks is added from the template, one it holds with a value the template holds otherwise is kept and listed under Differs, and one only the file holds is kept silently.
-// A mapping a removal empties is removed with it, and a unit copied in from the template carries none of its comments.
-// An unchanged file comes back byte for byte; a changed one is re-encoded, keeping its comments and each node's style, a long flow mapping on one line, and dropping the blank lines between entries.
-// A document whose top level is not a mapping is an error naming the document, and an error caused by the base wraps ErrInvalidBase.
+// FollowTemplate carries template into existing, an operator-owned file seeded from an earlier template.
+// It keeps every value the operator set.
+// base is the template the file last followed.
+// haveBase false says the file has no record of one, so base is not read.
+// A unit is a mapping key, descended into while the file, template and base each hold a mapping or nothing there.
+// Otherwise a unit is compared whole, so a scalar or a sequence is always one unit.
+// With a base, a unit the file holds as the base does, absence included, takes the template's value.
+// Such a unit is gained, changed or lost accordingly.
+// Any other unit is the operator's and is kept, listed under Differs when the template holds a third value.
+// Without a base, a unit the file lacks is added from the template.
+// A unit the file holds with a value the template holds otherwise is kept and listed under Differs.
+// A unit only the file holds is kept silently.
+// A mapping a removal empties is removed with it,
+// and a unit copied in from the template carries none of its comments.
+// An unchanged file comes back byte for byte.
+// A changed file is re-encoded: it keeps comments and each node's style, and a long flow mapping stays on one line.
+// The blank lines between entries are dropped.
+// A document whose top level is not a mapping is an error naming the document,
+// and an error caused by the base wraps ErrInvalidBase.
 func FollowTemplate(base, template, existing []byte, haveBase bool) ([]byte, FollowReport, error) {
 	var baseRoot *yaml.Node
 	if haveBase {
@@ -89,7 +103,7 @@ func FollowTemplate(base, template, existing []byte, haveBase bool) ([]byte, Fol
 	return out.Bytes(), f.report, nil
 }
 
-// follower walks one FollowTemplate merge and gathers its report.
+// follower walks one follow of a file and gathers its report.
 type follower struct {
 	haveBase bool
 	report   FollowReport
@@ -108,7 +122,8 @@ func (f *follower) follow(path string, base, template, existing *yaml.Node) *yam
 	return f.followUnit(path, base, template, existing)
 }
 
-// followMapping merges the entries of the template and base mappings at path into existing in place, file keys first, then the keys only the template holds in its order.
+// followMapping merges the entries of the template and base mappings at path into existing in place.
+// The file's keys come first, then the keys only the template holds, in its order.
 // A nil base or template mapping holds no entry.
 func (f *follower) followMapping(path string, base, template, existing *yaml.Node) {
 	keys := mappingKeys(existing)

@@ -1,4 +1,6 @@
-// housekeeping_integration_test.go covers the hub stores' gc housekeeping end to end: Add and Remove write gc.auto=0 and maintenance.auto=false into both stores, Remove runs a foreground gc, and a gc failure is a warning that never fails the Remove.
+// housekeeping_integration_test.go covers the hub stores' gc housekeeping end to end.
+// Add and Remove write gc.auto=0 and maintenance.auto=false into both stores.
+// Remove runs a foreground gc, and a gc failure is a warning that never fails the Remove.
 
 package fabricengine_test
 
@@ -18,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// hubStorePaths returns h's code store and records store working directories, the two places the housekeeping keys live.
+// hubStorePaths returns the code store and records store working directories of h.
+// The housekeeping keys live in both stores.
 func hubStorePaths(t *testing.T, h *hubforge.Hub) (code, records string) {
 	t.Helper()
 
@@ -40,7 +43,8 @@ func unsetHousekeepingKeys(t *testing.T, dir string) {
 	}
 }
 
-// requireHousekeepingKeys fails the test unless dir's config holds both keys at their disabled values, or neither key when want is false.
+// requireHousekeepingKeys fails the test unless dir's config holds both keys at their disabled values.
+// When want is false, it requires neither key.
 func requireHousekeepingKeys(t *testing.T, dir string, want bool) {
 	t.Helper()
 
@@ -53,7 +57,8 @@ func requireHousekeepingKeys(t *testing.T, dir string, want bool) {
 	}
 }
 
-// fillSampledLooseObjects commits many files in the code store at dir so objects/17, the directory git samples for its auto gc, holds more than a threshold of 1 loose objects.
+// fillSampledLooseObjects commits many files in the code store at dir.
+// It leaves objects/17, the directory git samples for its auto gc, above the threshold.
 func fillSampledLooseObjects(t *testing.T, dir string) {
 	t.Helper()
 
@@ -84,7 +89,8 @@ func sampledLooseObjects(t *testing.T, dir string) int {
 	return len(entries)
 }
 
-// writeUnreachableObject writes content as a loose blob no ref reaches into the code store at dir and returns the object's file path.
+// writeUnreachableObject writes content as a loose blob that no ref reaches into the code store at dir.
+// It returns the object's file path.
 func writeUnreachableObject(t *testing.T, dir, content string) string {
 	t.Helper()
 
@@ -97,8 +103,10 @@ func writeUnreachableObject(t *testing.T, dir, content string) string {
 }
 
 // TestStoreHousekeeping drives Add's key writes and Remove's foreground gc over hubs from hubforge.
-// It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output at Info, all process-global state.
-// hubforge's clones may or may not carry the keys, so each subtest unsets them in both stores right before the step whose write it checks.
+// It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output at Info.
+// Both settings are process-global.
+// hubforge's clones may or may not carry the keys,
+// so each subtest unsets them in both stores right before the step whose write it checks.
 func TestStoreHousekeeping(t *testing.T) {
 	tiergate.Require(t, 1)
 	logs := logcapture.CaptureVerbose(t)
@@ -150,7 +158,8 @@ func TestStoreHousekeeping(t *testing.T) {
 		}
 	})
 
-	// The probe answers for the pair being removed: sessions of other pairs or an error skip the gc and keep the keys, an empty answer packs.
+	// The probe answers for the pair being removed.
+	// Sessions of other pairs or an error skip the gc and keep the keys; an empty answer packs.
 	for _, tc := range []struct {
 		name     string
 		probe    fabricengine.InFlightProbe

@@ -1,9 +1,13 @@
-<!-- This is the landing fix review session's entire instruction set. It is shipped as an embedded
-     default in the top-level stencils package (stencils/stencils.go), seeded to
-     the Bolt checkout's `_lym/stencils/landing/`, and read from there at call time by internal/seatengine,
-     which fills it from the lead's value map that landingshed's fixReviewTable builds, then hands it to shuttle as the reviewing agent's whole
-     prompt. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
-     marker non-empty except the table's Optional value fixer_report_path, parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the landing fix review session's entire instruction set.
+     It ships as an embedded default in contracts/stencils/stencils.go,
+     is seeded to the Bolt checkout's `_lym/stencils/landing/`, and is read from there at call time by internal/seatengine.
+     seatengine fills it from the lead's value map that landingshed's fixReviewTable builds,
+     then hands it to shuttle as the reviewing agent's whole prompt.
+     Every marker below is a top-level {{.X}} substitution, and stencil.FillWith requires every marker non-empty,
+     except the table's Optional value fixer_report_path.
+     parent_directive (rendered by internal/parentdirective) is always non-empty,
+     and so is edit_directive (rendered by internal/editdirective).
+     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Fix review — judge the merge fixer's change before it lands
 

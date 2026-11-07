@@ -1,4 +1,5 @@
-// testmain_test.go runs the package's tests under the hermetic git environment and tmuxkit.Main, so the hub-backed tests never reach the operator's gitconfig and every temp file lives in the process run directory.
+// testmain_test.go runs the package's tests under the hermetic git environment and tmuxkit.Main,
+// so the hub-backed tests never reach the operator's gitconfig and every temp file lives in the process run directory.
 
 package slackcli
 

@@ -1,4 +1,5 @@
-// prrework.go declares the rework round layout a run's earlier PR-Rework rounds left on disk, and the committed-plan reads the Plan-Review skip seam and the plan gates share.
+// prrework.go declares the rework round layout that a run's earlier PR-Rework rounds leave on disk;
+// it also reads the plan committed at HEAD for those rounds.
 //
 // The round layout is declared once here, by the constants below:
 // round-<N>/ holds record.json and prior-generation/,
@@ -18,7 +19,7 @@ const (
 	reworkRoundPrefix = "round-"
 	reworkRecordFile  = "record.json"
 
-	// reworkPriorDir holds a round's archived generation; reworkPriorWebster below is that generation's webster run record directory.
+	// reworkPriorDir holds a round's archived generation: its plan, webster's run record and its reviews.
 	reworkPriorDir     = "prior-generation"
 	reworkPriorWebster = "webster"
 
@@ -27,13 +28,14 @@ const (
 	ReworkClassRequired = "required"
 )
 
-// PRReworkDeps carries the told values and seams the Plan-Review skip seam, the plan gates and Plan-Write's rotation read.
+// PRReworkDeps carries the paths and seams a PR-Rework round needs to read its earlier rounds.
+// It also carries the seam that archives webster's run record.
 type PRReworkDeps struct {
 	// PlanDir is the absolute plan directory.
 	PlanDir string
 	// ReworkDir is the absolute directory holding the round-<N> directories.
 	ReworkDir string
-	// ReworkDirRel is ReworkDir relative to the anchor, the form ReadCommitted takes.
+	// ReworkDirRel is ReworkDir relative to the anchor, the form a committed-file read takes.
 	ReworkDirRel string
 	// ReviewsDir is the absolute root every review segment's run directory lives under.
 	ReviewsDir string
@@ -55,8 +57,10 @@ type roundRecord struct {
 	Class      string `json:"class,omitempty"`
 }
 
-// ParseCommittedPlan parses the plan at planDir as committed at HEAD, reading every plan file through readCommitted, which takes an anchor-relative path.
-// It is the retired generation a rework round archives: every card it carries was planned, built and committed before the round began.
+// ParseCommittedPlan parses the plan at planDir as committed at HEAD;
+// it reads every plan file through readCommitted, which takes an anchor-relative path.
+// The plan it returns is the generation a rework round archives:
+// every card it carries was planned, built and committed before that round began.
 // A plan file absent at HEAD is an error wrapping fs.ErrNotExist.
 func ParseCommittedPlan(planDir string, readCommitted func(anchorRel string) ([]byte, bool, error)) (*planparser.Plan, error) {
 	return planparser.ParsePlanFrom(planDir, func(name string) ([]byte, error) {
@@ -72,8 +76,10 @@ func ParseCommittedPlan(planDir string, readCommitted func(anchorRel string) ([]
 	})
 }
 
-// NextReworkCardNumber returns the number a rework round's first new card takes: one past the highest card of the plan committed at HEAD.
-// Its arguments are ParseCommittedPlan's.
+// NextReworkCardNumber returns the number a rework round's first new card takes:
+// one past the highest card of the plan committed at HEAD.
+// It reads planDir as committed at HEAD, through readCommitted;
+// a file absent at HEAD is an error wrapping fs.ErrNotExist.
 func NextReworkCardNumber(planDir string, readCommitted func(anchorRel string) ([]byte, bool, error)) (int, error) {
 	committed, err := ParseCommittedPlan(planDir, readCommitted)
 	if err != nil {

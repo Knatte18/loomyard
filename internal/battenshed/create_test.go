@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakePrimeLock builds a PrimeLock whose Acquire reports the told disposition and records whether
-// its release closure was invoked.
+// fakePrimeLock builds a PrimeLock whose Acquire reports the told disposition.
+// Its release closure records whether it was invoked.
 func fakePrimeLock(path string, ok bool, acquireErr error, releaseErr error, released *bool) PrimeLock {
 	return PrimeLock{
 		Path: path,
@@ -40,7 +40,8 @@ func fakePrimeLock(path string, ok bool, acquireErr error, releaseErr error, rel
 	}
 }
 
-// waitingPrimeLock builds a PrimeLock that reports contention for the first contendedPolls Acquire calls (forever when contendedPolls is negative), then acquires.
+// waitingPrimeLock builds a PrimeLock that reports contention for the first contendedPolls Acquire calls.
+// It acquires after that, and a negative contendedPolls reports contention forever.
 // laterErr, when non-nil, is returned as the Acquire error on the attempt after the first contended one.
 // sleeps counts Sleep calls, and onSleep, when non-nil, runs inside each of them.
 func waitingPrimeLock(path string, contendedPolls int, laterErr error, released *bool, sleeps *int, onSleep func()) PrimeLock {
@@ -69,7 +70,8 @@ func waitingPrimeLock(path string, contendedPolls int, laterErr error, released 
 	}
 }
 
-// holdingCreate returns a create closure that takes the prime lock through its hold and then runs work, which never runs when the hold fails.
+// holdingCreate returns a create closure that takes the prime lock through its hold and then runs work.
+// work never runs when the hold fails.
 func holdingCreate(work func() error) func(context.Context, HoldPrimeLock) error {
 	return func(_ context.Context, hold HoldPrimeLock) error {
 		if _, err := hold(); err != nil {
@@ -79,7 +81,10 @@ func holdingCreate(work func() error) func(context.Context, HoldPrimeLock) error
 	}
 }
 
-// TestWorktreeCreate_TakesThePrimeLockOnlyThroughItsHold asserts the row acquires the prime lock only when its closure takes the hold, even while the lock is held elsewhere, releases a hold once however often the closure releases it, and lets the closure take a second hold after releasing the first.
+// TestWorktreeCreate_TakesThePrimeLockOnlyThroughItsHold asserts the prime lock is taken only through the hold.
+// It is taken even while the lock is held elsewhere.
+// A hold releases the lock once, however often the closure releases it.
+// After a release the closure can take a second hold.
 func TestWorktreeCreate_TakesThePrimeLockOnlyThroughItsHold(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -174,7 +179,11 @@ func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.Out
 	return string(data)
 }
 
-// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases the prime lock; a PreconditionError, bare or wrapped, instead halts with a precondition-unmet reason naming what is unmet and its way forward.
+// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error parks the row Stuck.
+// The reason file holds the error's own text, unreworded, and the row releases the prime lock.
+// That includes fabric's pre-existing-branch remedy wording and its bare dirty-worktree string.
+// A PreconditionError, bare or wrapped, instead halts with a precondition-unmet reason.
+// The reason names what is unmet and its way forward.
 func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -288,8 +297,7 @@ func TestWorktreeCreate_CancelledContext(t *testing.T) {
 
 // TestWorktreeCreate_CancelledDuringAcquireError asserts the Acquire-error hard-error path
 // consults cancelErr before returning: when ctx is cancelled by the time Acquire itself returns
-// its own error, Call must report the "context cancelled during run" diagnosis, not the raw
-// Acquire error text -- the property F1 (crucible round sonnet-xhigh-r3) found missing here.
+// its own error, Call reports the "context cancelled during run" diagnosis, not the raw Acquire error text.
 func TestWorktreeCreate_CancelledDuringAcquireError(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -340,7 +348,9 @@ func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 	}
 }
 
-// TestWorktreeCreate_CreatesOnceTheLockIsFree asserts the row creates the worktree and reports Done whether the prime lock is free at once or contended for a few polls first, sleeping once per contended poll, and releases the lock afterwards.
+// TestWorktreeCreate_CreatesOnceTheLockIsFree asserts the row creates the worktree and reports Done.
+// The row does so whether the prime lock is free at once or contended for a few polls first.
+// It sleeps once per contended poll and releases the lock afterwards.
 func TestWorktreeCreate_CreatesOnceTheLockIsFree(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

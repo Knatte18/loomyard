@@ -1,6 +1,9 @@
-// capture.go — the main capture and the current capture: the body of the detached capture child and the one a check runs into a scratch directory.
+// capture.go holds the main capture and the current capture.
+// The main capture is the body of the detached capture child;
+// the current capture runs into a scratch directory for a check.
 //
-// Both render the declared capture command through the shared runner and hold the capture lock while it runs; only the main capture writes the capture record.
+// Both render the declared capture command through the shared runner and hold the capture lock while it runs;
+// only the main capture writes the capture record.
 
 package driftengine
 
@@ -21,7 +24,7 @@ import (
 // CaptureHaltPrefix opens every Drift-Baseline Stuck reason on a failed or refused capture.
 const CaptureHaltPrefix = "drift capture halt: "
 
-// CaptureRequest is the told input of a main or current capture.
+// CaptureRequest is the input a main or current capture runs on, supplied by its caller.
 type CaptureRequest struct {
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
@@ -36,9 +39,10 @@ type CaptureRequest struct {
 	// WaitDir is where the capture's wait record is written while it waits for a slot.
 	WaitDir string
 	// InheritedSlot is the lock path of the slot a gate holds around the caller, empty for a caller outside a gate.
-	// A capture told one that the pool reports held runs in it and acquires none; the wiring reads it from the process environment, since the engine never does.
+	// A capture given a slot that the pool reports as held runs in it and acquires none;
+	// the wiring reads it from the process environment, since the engine never does.
 	InheritedSlot string
-	// Sleep is the wait of a current capture for the capture lock, which nil leaves sleeping for real.
+	// Sleep is the wait of a current capture for the capture lock; nil sleeps for real.
 	Sleep func(context.Context, time.Duration) error
 	// Check is the precondition a main capture runs under its lock; its error is returned untouched.
 	// It returns the commit the capture runs on, which the capture record names.
@@ -49,7 +53,8 @@ type CaptureRequest struct {
 	Now func() time.Time
 	// LockRetry bounds how long a main capture retries a held capture lock before it refuses.
 	LockRetry time.Duration
-	// OnEnd, when non-nil, is called with the final record of a main capture whose command ran, once the record is written and while the capture lock is still held.
+	// OnEnd, when non-nil, receives the final record of a main capture whose command ran.
+	// It is called once the record is written and while the capture lock is still held.
 	OnEnd func(rec CaptureRecord)
 }
 
@@ -59,12 +64,16 @@ func lockHeldRefusal(lockPath string) error {
 }
 
 // RunCapture runs the main capture under the capture lock and returns its final record.
-// It takes its gate slot before the lock, so a capture waiting for a slot holds no lock and writes no record, and a lock holder always holds its slot.
+// It takes its gate slot before the lock, so a capture waiting for a slot holds no lock and writes no record,
+// and a lock holder always holds its slot.
 // A refusal of the lock or of Check is returned with no record written.
-// A command still holding the retired {skip_file} placeholder is refused first, before the slot, the lock and the baseline backup, with no record written.
-// A command that fails, times out or writes no file under the baseline directory is a record in state failed with no error,
-// and its reason names the directory the command ran in and the command's last output lines, or that it printed nothing.
-// An existing non-empty baseline directory is first moved to the first free numbered backup beside it, so no baseline is deleted or overwritten.
+// A command still holding the {skip_file} placeholder is refused before the slot, the lock and the baseline backup.
+// No record is written for it.
+// A command that fails, times out or writes no file under the baseline directory yields a failed record.
+// That record carries no error;
+// its reason names the directory the command ran in and the command's last output lines, or that it printed nothing.
+// An existing non-empty baseline directory is first moved to the first free numbered backup beside it,
+// so no baseline is deleted or overwritten.
 // Once the command ran, the final record is handed to OnEnd under the capture lock.
 func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) {
 	if err := refuseSkipFilePlaceholder(siteCapture, stepCapture, req.Step.Command); err != nil {
@@ -158,7 +167,9 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 	return rec, nil
 }
 
-// FailedCaptureError is the error of a main capture whose record ended failed: the record's reason and log, and the ways forward a Drift-Await halt over the record names while HEAD is on the branch point, where every main capture runs.
+// FailedCaptureError is the error of a main capture whose record ended failed.
+// It carries the record's reason and log, and it names the ways forward.
+// The ways forward apply because HEAD is on the branch point, where every main capture runs.
 func FailedCaptureError(rec CaptureRecord) error {
 	return fmt.Errorf("drift: the baseline capture ended %s (%s)%s; way forward: %s", rec.State, rec.Reason, logClause(rec.Log), awaitWaysForward(true))
 }
@@ -168,7 +179,7 @@ func noFileReason(baselineDir string) string {
 	return "exit 0 but wrote no file to " + baselineDir
 }
 
-// failCapture records rec as failed because err stopped the capture, and returns both.
+// failCapture records rec as failed because cause stopped the capture, and returns both.
 func failCapture(p Paths, rec CaptureRecord, now func() time.Time, cause error) (CaptureRecord, error) {
 	rec.State, rec.Reason, rec.EndedAt = CaptureFailed, cause.Error(), stamp(now())
 	return rec, errors.Join(cause, WriteCapture(p, rec))
@@ -184,7 +195,8 @@ func timeoutMinutes(timeout time.Duration) string {
 	return strconv.FormatFloat(timeout.Minutes(), 'f', -1, 64)
 }
 
-// backUpBaseline moves a non-empty baseline directory to the first free numbered backup beside it and leaves an empty baseline directory.
+// backUpBaseline moves a non-empty baseline directory to the first free numbered backup beside it.
+// It leaves an empty baseline directory in place.
 func backUpBaseline(baselineDir string) error {
 	entries, err := os.ReadDir(baselineDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -239,14 +251,20 @@ type CurrentCapture struct {
 	Log string
 	// Passed is true when the command exited 0 within its timeout and wrote at least one file.
 	Passed bool
-	// Reason says why the capture did not pass, where its command ran and what it printed last, or the refusal of its step; empty when it passed.
+	// Reason says why the capture did not pass: where its command ran, what it printed last, or the refusal of its step.
+	// It is empty when the capture passed.
 	Reason string
 }
 
-// CaptureCurrent runs the declared capture command into a fresh directory of its own under the current-capture directory, so a check can diff the current code against the baseline.
-// It takes its gate slot first and then waits for the capture lock with no bound of its own, since a lock holder already holds its slot, and holds the lock while the command runs.
+// CaptureCurrent runs the declared capture command into a fresh directory under the current-capture directory,
+// so a check can diff the current code against the baseline.
+// It takes its gate slot first, then waits for the capture lock without a bound of its own:
+// a lock holder already holds its slot, and this capture holds the lock while the command runs.
 // It writes no capture record and never touches the baseline directory or its backups.
-// A step refused before its command starts, such as a dir that is no directory or a command holding the retired {skip_file} placeholder, and a command that fails, times out or writes no file are results that did not pass, not errors; an error is an I/O failure.
+// A step refused before its command starts is a result that did not pass.
+// That covers a dir that is no directory and a command holding the {skip_file} placeholder.
+// So is a command that fails, times out or writes no file.
+// An error is an I/O failure.
 func CaptureCurrent(ctx context.Context, req CaptureRequest) (CurrentCapture, error) {
 	p := req.Paths
 	dir, err := newCurrentDir(p.CurrentDir, req.Now())
@@ -315,7 +333,8 @@ func CaptureCurrent(ctx context.Context, req CaptureRequest) (CurrentCapture, er
 	return result, nil
 }
 
-// newCurrentDir creates a fresh directory under currentDir named by the UTC stamp of now and the pid, with a counter suffix when a concurrent capture of this process took the same name.
+// newCurrentDir creates a fresh directory under currentDir, named by the UTC stamp of now and the pid.
+// A concurrent capture of this process that took the same name gets a counter suffix.
 func newCurrentDir(currentDir string, now time.Time) (string, error) {
 	if err := os.MkdirAll(currentDir, 0o755); err != nil {
 		return "", fmt.Errorf("drift: create %s: %w", currentDir, err)
@@ -336,7 +355,9 @@ func newCurrentDir(currentDir string, now time.Time) (string, error) {
 	}
 }
 
-// acquireCaptureLockWaiting takes the capture lock, sleeping through sleep from one second and doubling to thirty while another holder keeps it; a nil sleep sleeps for real.
+// acquireCaptureLockWaiting takes the capture lock, and it waits while another holder keeps it.
+// Each wait goes through sleep, starting at one second and doubling up to thirty.
+// A nil sleep waits for real.
 // It has no bound of its own and returns when it holds the lock or ctx ends.
 func acquireCaptureLockWaiting(ctx context.Context, lockPath string, sleep func(context.Context, time.Duration) error) (*lock.FileLock, error) {
 	if sleep == nil {

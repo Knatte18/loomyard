@@ -26,7 +26,8 @@ type SessionEnd struct {
 	Usage SessionUsage
 }
 
-// SetSessionEnd sets the function called once for each session that ends: at every terminal outcome of a run, and when the stop verb ends an unfinished run's record.
+// SetSessionEnd sets the function called once for each session that ends.
+// The hook runs at every terminal outcome of a run, and when the stop verb ends an unfinished run's record.
 // A session that never started, with no session id, is not reported.
 // A nil fn, the default, reports nothing.
 // fn runs synchronously and its panics are not recovered, so it must never block and must report its own failures.

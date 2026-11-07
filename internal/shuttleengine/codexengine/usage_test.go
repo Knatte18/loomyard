@@ -15,7 +15,9 @@ func totalCountLine(timestamp, total string) string {
 	return rolloutLine(timestamp, `"type":"token_count","info":{"total_token_usage":{`+total+`},"last_token_usage":{"total_tokens":7}}`)
 }
 
-// TestSessionUsage pins the rollout reading: the last total wins, input is net of cached input, output is not added to reasoning output, an absent cache-write key reads zero, and a rollout with no total or no file reads unknown.
+// TestSessionUsage pins the rollout reading: the last total wins; input is net of cached input;
+// output is not added to reasoning output; an absent cache-write key reads zero;
+// a rollout with no total or no file reads unknown.
 func TestSessionUsage(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

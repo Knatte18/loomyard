@@ -1,4 +1,5 @@
-// raddle.go is the `report raddle` verb: it validates its flag, resolves the prime and hands its snapshot to the report engine.
+// raddle.go is the `report raddle` verb:
+// it validates its flag, resolves the prime and hands its snapshot to the report engine.
 
 package reportcli
 

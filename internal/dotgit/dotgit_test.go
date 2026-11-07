@@ -33,7 +33,8 @@ func plainClone(t *testing.T, dir string) {
 	mkdirs(t, filepath.Join(dir, ".git", "objects"), filepath.Join(dir, ".git", "refs"))
 }
 
-// linkedWorktree lays out a worktree at dir whose gitfile holds gitdirLine, with an admin dir at adminDir that has a HEAD and a commondir file holding commondirLine.
+// linkedWorktree lays out a worktree at dir, whose gitfile holds gitdirLine.
+// The admin dir at adminDir has a HEAD and a commondir file holding commondirLine.
 func linkedWorktree(t *testing.T, dir, gitdirLine, adminDir, commondirLine string) {
 	t.Helper()
 	mkdirs(t, dir)

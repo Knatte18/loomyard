@@ -1,4 +1,5 @@
-// entries_raddle.go implements raddleWriteEntry and raddleFileEntry, the Constructors for the "RaddleWrite" and "RaddleFile" registry rows, and RaddleWriteEnv, the seams the first reads.
+// entries_raddle.go implements the Constructors of the "RaddleWrite" and "RaddleFile" registry rows:
+// raddleWriteEntry, raddleFileEntry, and RaddleWriteEnv, which holds the seams and paths the RaddleWrite row reads.
 
 package shedrecipe
 
@@ -11,19 +12,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// RaddleWriteEnv carries what the RaddleWrite entry reads: the Raddle-Write producer's paths and seams, the table source of the raddle agent's seat, and the check the row's raddle gate runs.
+// RaddleWriteEnv carries what the RaddleWrite entry reads:
+// the producer's paths and seams, the table source of the raddle agent's seat, and the check the raddle gate runs.
 type RaddleWriteEnv struct {
-	// Deps are the told paths and seams of the Raddle-Write producer.
+	// Deps are the paths and seams of the Raddle-Write producer.
 	Deps loomshed.RaddleWriteDeps
-	// Table builds the raddle agent's seat table for one session, told whether the seat is interactive and the reason of the last Raddle-File return, empty on a first session.
+	// Table builds the seat table for one session from the seat's mode and the last return reason, empty on a first session.
 	// It arrives as a closure because building the table needs a *lymcwd.Location, which this package may not import.
 	Table func(interactive bool, returnReason string) (seatengine.Table, error)
-	// Check carries the proposal and decision record paths and the board context the raddle gate judges the proposal against.
+	// Check carries the proposal and decision record paths and the board context the gate judges the proposal against.
 	Check loomshed.RaddleCheck
 }
 
-// raddleWriteEntry is the Constructor for the "RaddleWrite" registry row: it takes the "gates" Config key alone, validates Env.RaddleWrite and Env.Seats, and returns loomshed.NewRaddleWrite over a seat-table producer.
-// The table source reads the run's recorded mode and return reason from the raddle state at each Call, so a session started after a return or in the other mode gets its own table, and the resolved gate is stamped onto each table.
+// raddleWriteEntry is the Constructor for the "RaddleWrite" registry row.
+// It takes the "gates" Config key alone and validates Env.RaddleWrite and Env.Seats;
+// it returns loomshed.NewRaddleWrite over a seat-table producer.
+// The table source reads the run's recorded mode and return reason from the raddle state at each Call,
+// so a session started after a return or in the other mode gets its own table,
+// and the resolved gate is stamped onto each table.
 // Every path of Env.RaddleWrite.Deps must be absolute and every seam non-nil, or the refusal names the Env field.
 func raddleWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "RaddleWrite"
@@ -80,7 +86,8 @@ func raddleWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	return loomshed.NewRaddleWrite(row.Name, inner, deps), nil
 }
 
-// raddleFileEntry is the Constructor for the "RaddleFile" registry row: it takes no Config key and returns loomshed.NewRaddleFile over Env.RaddleFile.
+// raddleFileEntry is the Constructor for the "RaddleFile" registry row.
+// It takes no Config key and returns loomshed.NewRaddleFile over Env.RaddleFile.
 // Every path of Env.RaddleFile must be absolute and every seam non-nil, or the refusal names the Env field.
 func raddleFileEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "RaddleFile"

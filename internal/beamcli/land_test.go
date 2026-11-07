@@ -1,4 +1,4 @@
-// land_test.go drives the land and ready sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, and the ready record written once.
+// land_test.go drives the land and ready sequences over fake deps, covering their refusals and records.
 
 package beamcli
 
@@ -25,7 +25,7 @@ import (
 // landNow is the time the fake hub's clock reads.
 var landNow = time.Date(2026, 3, 1, 9, 30, 0, 0, time.UTC)
 
-// landWorld is the fake hub every landDeps seam reads, and the log of the land requests written.
+// landWorld is the fake hub behind the land seams, and it holds the land requests written.
 type landWorld struct {
 	owners  boardengine.Owners
 	parents map[string]string
@@ -33,8 +33,8 @@ type landWorld struct {
 	origins map[string]fabricengine.Origin
 	// children holds each beam's pawl run status; a beam with no entry has no pawl run.
 	children map[string]shedengine.Status
-	// ready holds each beam whose ready record flags it, marked the ready records written and markCalls the MarkReady calls, which commit a flagged beam's record too.
-	// readyErr and markErr are what the Ready and MarkReady seams fail with.
+	// ready holds each beam whose ready record flags it, and marked holds the ready records written.
+	// readyErr and markErr are what the Ready and MarkReady seams fail with; markCalls counts the MarkReady calls.
 	ready      map[string]bool
 	marked     []pawlengine.ReadyRecord
 	markCalls  int
@@ -44,14 +44,14 @@ type landWorld struct {
 	refusal    error
 	refusedFor []string
 	requests   []pawlengine.LandRequest
-	// tasks is the board's entries, filed the fields of each task FileTask filed and caps the hub's Code-Review budget.
+	// tasks is the board's entries, filed holds the fields of each task filed, and caps is the Code-Review budget.
 	tasks []boardengine.Task
 	filed []map[string]any
 	caps  reviewbudget.Caps
 	// described holds the slug of each Describe call, and describeErr is what the Describe seam fails with.
 	described   []string
 	describeErr error
-	// api is the fake GitHub every pull request side holds, and origin and sideErr the facts and the failure PullRequestSide answers with.
+	// api is the fake GitHub every pull request side holds; origin and sideErr are what PullRequestSide answers with.
 	api     *prkit.API
 	origin  landingshed.Origin
 	sideErr error
@@ -70,7 +70,7 @@ type landWorld struct {
 	modeErr       error
 	// slept is the time the fake clock has advanced by Sleep, which every read of the merge state waits through.
 	slept time.Duration
-	// parentUnmerged is what ParentUnmerged answers, findings what DescriptionFindings answers and mergedLacks what MergedLacks answers.
+	// parentUnmerged, findings and mergedLacks are what ParentUnmerged, DescriptionFindings and MergedLacks answer.
 	parentUnmerged bool
 	findings       []string
 	mergedLacks    []string
@@ -85,7 +85,9 @@ type landWorld struct {
 	body  string
 }
 
-// newLandWorld returns a hub owned by here with a beam "b" forked from main whose pair is here and marked and whose pawl run waits at Beam-Await, a task, a grouping project and a done beam.
+// newLandWorld returns a hub owned by here, with a beam "b" forked from main.
+// Beam "b" has a pair that is here and marked, and a pawl run that waits at Beam-Await.
+// The hub also holds a task, a grouping project and a done beam.
 func newLandWorld() *landWorld {
 	return &landWorld{
 		owners: boardengine.Owners{Prime: here, Entries: map[string]boardengine.OwnerEntry{
@@ -409,7 +411,7 @@ func TestMarkReady(t *testing.T) {
 		name  string
 		slug  string
 		setup func(w *landWorld)
-		// wantErr is empty for a ready that succeeds, else every substring the refusal names, and wantNoErr every one it must not name.
+		// wantErr is empty for a ready that succeeds, else the substrings the refusal names; wantNoErr those it must not name.
 		wantErr   []string
 		wantNoErr []string
 		// wantAlready says the beam read as flagged before the call, so nothing is written.

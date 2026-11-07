@@ -1,4 +1,5 @@
-// sleep.go detects machine sleep from the gap between wall and awake clock readings, and measures awake time net of sleeps and pauses.
+// sleep.go detects machine sleep from the gap between wall and awake clock readings;
+// it also measures awake time net of sleeps and pauses.
 
 package pauserecord
 
@@ -18,7 +19,8 @@ type SleepWatch struct {
 }
 
 // Observe folds one reading into the watch.
-// From the second reading on, the wall delta less the awake delta is a sleep when it exceeds SleepTolerance, recorded as the interval ending at wall.
+// From the second reading on, the wall delta less the awake delta is a sleep when it exceeds SleepTolerance,
+// and the sleep is recorded as the interval ending at wall.
 // Sleeps ending more than Retention before wall are dropped.
 // The wall delta is taken from UnixNano values so no monotonic part of wall hides a sleep.
 func (s *SleepWatch) Observe(wall time.Time, awake time.Duration) {
@@ -47,7 +49,7 @@ func (s *SleepWatch) Sleeps() []Interval {
 }
 
 // AwakeSince returns the time from at to now less the union of every excluded list within [at, now], never below zero.
-// A sleep is an interval, so an activity read at any time keeps exactly the slept time after it.
+// A sleep is an interval, so each sleep counts only for the part that falls within [at, now].
 func AwakeSince(at, now time.Time, excluded ...[]Interval) time.Duration {
 	var all []Interval
 	for _, intervals := range excluded {
@@ -60,7 +62,7 @@ func AwakeSince(at, now time.Time, excluded ...[]Interval) time.Duration {
 	return awake
 }
 
-// MonotonicAwake returns a reading of Go's monotonic clock from an origin taken at the call.
+// MonotonicAwake returns a function that reports Go's monotonic clock elapsed since this call.
 // That clock stops during suspend on Linux and macOS and keeps running on Windows.
 func MonotonicAwake() func() time.Duration {
 	origin := time.Now()

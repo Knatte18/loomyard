@@ -1,148 +1,257 @@
 // Package seatengine runs one step as a table of seats: a chair and its advisors, each a shuttle run in its own strand.
-// The chair's turn end, outputs and gate decide the step as a single agent's would; the advisors' outputs are the chair's inputs,
-// and the advisors talk to the chair through creel mail.
-// The seat-running logic lives here, below internal/shedadapters, whose MultiLLM producer maps the chair's result onto the Shed contract.
+// The chair's turn end, outputs and gate decide the step as a single agent's would;
+// the advisors' outputs are the chair's inputs, and the advisors talk to the chair through creel mail.
+// The seat-running logic lives here, below internal/shedadapters.
+// Its MultiLLM producer maps the chair's result onto the Shed contract.
 //
 // # The seat model
 //
-// A Table holds the ordered Seats and what they share: the role prefix, the loom segment, the chair's gate, the round that names every run directory, the timeout, the chair's interactivity and the marker values every seat's stencil takes.
+// A Table holds the ordered Seats and what they share.
+// The shared values are the role prefix, the loom segment, the chair's gate, the timeout and the chair's interactivity.
+// They also include the round that names every run directory and the marker values every seat's stencil takes.
 // An empty Round keeps the default run-directory naming.
-// A Seat names its stencil, its model choice, engine included, the files it reads (Inputs) and writes (Outputs), its skills and its own marker values.
-// An advisor Seat may also carry its own Gate, which adds a check to that advisor's run, and ForkSubagents, which authorizes the seat's session to spawn in-session fork subagents.
+// A Seat names its stencil, its model choice, engine included, its skills and its own marker values.
+// It also names the files it reads (Inputs) and writes (Outputs).
+// An advisor Seat may also carry its own Gate, which adds a check to that advisor's run.
+// It may carry ForkSubagents too, which authorizes the seat's session to spawn in-session fork subagents.
 // The engine audits no fork, so the caller that sets ForkSubagents owns the fork audit.
-// A Seat also lists the Requires its engine must meet and the ModelKey its model came from: a start refusal for an unmet requirement is wrapped with the seat's key so it names the config key to change.
-// An advisor may be Required, with an Accept hook that judges its terminal result: a step then depends on that advisor's accepted output before its chair goes on.
+// A Seat also lists the Requires its engine must meet and the ModelKey its model came from:
+// a start refusal for an unmet requirement is wrapped with the seat's key so it names the config key to change.
+// An advisor may be Required, with an Accept hook that judges its terminal result:
+// a step then depends on that advisor's accepted output before its chair goes on.
 // A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
-// The first seat is the lead, which the engine also calls the chair, and it carries no name; every later seat carries a name the table's builder takes from a recipe or config, valid under ValidateSeatName.
-// A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal: the lead's role is the prefix alone, and a later seat's is the prefix, a hyphen and its name.
-// Every seat strand, the chair and each advisor, declares the own-window anchor, the table's window group named by its role prefix and round, and its seat count, so reed shares one window for a small table and gives each seat its own for a large one.
+// The first seat is the lead, which the engine also calls the chair, and it carries no name;
+// every later seat carries a name the table's builder takes from a recipe or config, valid under ValidateSeatName.
+// A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal:
+// the lead's role is the prefix alone, and a later seat's is the prefix, a hyphen and its name.
+// Every seat strand, the chair and each advisor, declares the own-window anchor.
+// The anchor carries the table's window group, named by its role prefix and round, and its seat count.
+// Reed then shares one window for a small table and gives each seat its own for a large one.
 // A one-seat table gets a window of its own.
 //
 // # The table rules
 //
 // Table.Validate applies every rule as a loud error naming the seat.
 // An error names a seat by its strand role, so the lead, which carries no name, reads as the role prefix.
-// The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor, a writer or an assistant, one kind per table, with a unique valid name.
-// A table may hold no advisors: the lead then runs alone, and seat-directive-chair tells it to decide each question itself.
-// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, a writer table's lead includes seat-directive-writer-chair in its place and an assistant table's lead seat-directive-assistant-chair; a lone lead needs no such include.
+// The table has at least one seat, and its first seat is the unnamed lead.
+// Every later seat is an advisor, a writer or an assistant, one kind per table, with a unique valid name.
+// A table may hold no advisors:
+// the lead then runs alone, and seat-directive-chair tells it to decide each question itself.
+// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair;
+// a writer table's lead includes seat-directive-writer-chair in its place,
+// and an assistant table's lead includes seat-directive-assistant-chair.
+// A lone lead needs no such include.
 // The lead carries no gate, since the lead's gate is the table's.
-// Every seat has at least one output and no two seats share an output path, and every advisor output is among the lead's inputs.
+// Every seat has at least one output and no two seats share an output path;
+// every advisor output is among the lead's inputs.
 // The role prefix and every seat's formed role pass the agent-name role grammar.
-// Every seat's stencil is readable from the told stencils directory, as is every block it includes (stencil.IncludeNames over the bytes read), and an included block declares no include of its own.
-// An engine block, an include named `engine-<block>`, is read through stencilstore.ReadSet for the seat's engine: the engine its model choice names, else the geometry's DefaultEngine.
-// Validation, the marker check and composition all read a seat's blocks that way, so an engine block its seat's engine has no copy of refuses the table, naming the block, the engine and the file.
+// Every seat's stencil is readable from the told stencils directory.
+// So is every block it includes (stencil.IncludeNames over the bytes read).
+// An included block declares no include of its own.
+// An engine block, an include named `engine-<block>`, is read through stencilstore.ReadSet for the seat's engine:
+// the engine its model choice names, else the geometry's DefaultEngine.
+// Validation, the marker check and composition all read a seat's blocks that way,
+// so an engine block its seat's engine has no copy of refuses the table, naming the block, the engine and the file.
 // A table or seat value neither collides with a name in ReservedMarkers nor is empty or whitespace-only.
-// A table value named in Table.Optional may be empty and then renders as nothing in the stencil and in every block it includes; an Optional name may not be a reserved marker, and a seat value is never exempt.
-// Prompts composes every seat's prompt from a table without starting anything, so a table builder can test what its seats will read.
-// Table.CheckMarkers refuses a seat whose stencil, or a block it includes, holds a top-level marker no value fills, so a caller stops a stencil newer than the running binary, or a blank value, before any seat starts.
-// Validate leaves that check out, since a resumed seat keeps the prompt it started with and never fills its stencil again.
-// The list ReservedMarkers returns is declared once in this package; the table's collision check and the seats' value maps read that declaration, and a caller that builds a table reaches it through Table.Validate.
+// A table value named in Table.Optional may be empty.
+// It then renders as nothing in the stencil and in every block it includes.
+// An Optional name may not be a reserved marker, and a seat value is never exempt.
+// Prompts composes every seat's prompt from a table without starting anything,
+// so a table builder can test what its seats will read.
+// Table.CheckMarkers refuses a seat whose stencil, or a block it includes, holds a top-level marker no value fills,
+// so a caller stops a stencil newer than the running binary, or a blank value, before any seat starts.
+// Validate leaves that check out, since a resumed seat keeps the prompt it started with.
+// A resumed seat never fills its stencil again.
+// The list ReservedMarkers returns is declared once in this package;
+// the table's collision check and the seats' value maps read that declaration,
+// and a caller that builds a table reaches it through Table.Validate.
 //
 // # Told geometry
 //
-// The package is told the absolute paths it works on through Geometry and derives none of its own, so it imports neither internal/lymcwd nor a geometry constructor and runs in a directory that is not a git repository (PATTERN-cwd-resolution).
+// The package is told the absolute paths it works on through Geometry and derives none of its own,
+// so it imports neither internal/lymcwd nor a geometry constructor.
+// It runs in a directory that is not a git repository (PATTERN-cwd-resolution).
 //
 // # The shuttle seam
 //
-// Shuttle is the seam the engine starts and probes its seats through, handle-shaped because the engine holds several live runs at once and sends into the chair's while it waits:
-// StartGated and ProbeGated return a Handle, the seat's unwaited run, which also reads its own session state through SessionState.
+// Shuttle is the seam the engine starts and probes its seats through.
+// It is handle-shaped because the engine holds several live runs at once and sends into the chair's while it waits:
+// StartGated and ProbeGated return a Handle, the seat's unwaited run.
+// A Handle also reads its own session state through SessionState.
 // RunnerShuttle adapts a shuttleengine.Runner to it, and *shuttleengine.Run satisfies Handle.
 //
 // # Running a table fresh
 //
-// Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the chair first, then the advisors in table order.
-// The chair is the step's main agent: whoever talks to a producer running seats talks to the chair, and it holds the gate, the operator's channel and the step's outcome.
-// Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
-// A table's Amendment is appended verbatim to the lead's composed prompt on this fresh path only, and Prompts appends it the same way; a later seat's prompt never carries it, and Probe and Resume never read it, since a probe's spec carries no prompt and a resumed lead keeps the prompt it started with.
-// The chair starts with the table's gate and is the only interactive seat; an advisor starts with its seat's gate, ungated when it has none, keeps its pane and holds a turn end quietly.
-// The chair's held-turn notice to the parent is deferred while advisor work is outstanding, so the chair's planned wait on its advisors does not reach the parent as a stall notice.
-// The chair's spec carries a HoldDeferral predicate, backed by the advisors started so far and the notice sender:
-// it holds while an advisor whose run has not ended either has an up line the sender has not landed or reads mid-turn through Handle.SessionState (busy, cause turn).
-// An advisor whose run ended never counts, a timed-out one included, and a reading that errors counts as not mid-turn; no advisor's spec carries a predicate.
-// An advisor whose session reads asking, idle-stalled, idle-done or dead never counts, whether or not its up line has landed.
-// The settle interval and the maximum deferral are shuttle's, so a chair held while every counted advisor is idle notifies once after the settle interval, and never later than the maximum deferral whatever its advisors do.
-// A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
-// A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
-// Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line, and a writer gets no up line.
+// Engine.Run validates the table.
+// It forms every seat's strand name from the geometry's shortname and slug and the seat's role.
+// It starts the chair first, then the advisors in table order.
+// The chair is the step's main agent:
+// whoever talks to a producer running seats talks to the chair.
+// The chair holds the gate, the operator's channel and the step's outcome.
+// Each seat's prompt is its stencil filled, with the blocks it includes, from a value map.
+// The map holds the table's values, the seat's own and every reserved marker.
+// A table's Amendment is appended verbatim to the lead's composed prompt on this fresh path only.
+// Prompts appends it the same way.
+// A later seat's prompt never carries it.
+// Probe and Resume never read it, since a probe's spec carries no prompt,
+// and a resumed lead keeps the prompt it started with.
+// The chair starts with the table's gate and is the only interactive seat;
+// an advisor starts with its seat's gate, ungated when it has none, keeps its pane and holds a turn end quietly.
+// The chair's held-turn notice to the parent is deferred while advisor work is outstanding,
+// so the chair's planned wait on its advisors does not reach the parent as a stall notice.
+// The chair's spec carries a HoldDeferral predicate, backed by the advisors started so far and the notice sender.
+// No advisor's spec carries a predicate.
+// It holds while an advisor whose run has not ended has an up line the sender has not landed.
+// It also holds while such an advisor reads mid-turn through Handle.SessionState (busy, cause turn).
+// An advisor whose run ended never counts, a timed-out one included.
+// A reading that errors counts as not mid-turn.
+// An advisor whose session reads asking, idle-stalled, idle-done or dead never counts.
+// Whether its up line has landed does not matter.
+// The settle interval and the maximum deferral are shuttle's,
+// so a chair held while every counted advisor is idle notifies once after the settle interval.
+// It never notifies later than the maximum deferral, whatever its advisors do.
+// A started seat whose strand took a different name than expected is stopped and reported as a start error.
+// That happens when reed numbers a name an earlier strand still holds; the error names the holder and the way forward.
+// A chair that fails to start starts no advisor and returns the error.
+// The error wraps shuttleengine.ErrNotStarted when the provider never came up.
+// Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start;
+// seat-directive-chair tells the chair to send an advisor nothing before its up line, and a writer gets no up line.
 // An advisor that fails to start is recorded on its SeatResult and the step goes on without it.
 // A required advisor that fails to start ends the step instead: no later advisor starts and the chair is stopped.
-// An advisor whose misnamed strand could not be stopped ends the run: the chair and every started advisor are stopped and the error is returned.
+// An advisor whose misnamed strand could not be stopped ends the run:
+// the chair and every started advisor are stopped and the error is returned.
 //
 // # The notice sender
 //
 // The sender starts with the chair, so it carries the up and not-started lines as well as the endings.
-// Each started advisor is waited on from the moment its up line is queued, so an advisor's ending never reaches the chair before its up line.
+// Each started advisor is waited on from the moment its up line is queued.
+// An advisor's ending therefore never reaches the chair before its up line.
 // An advisor that reaches done queues nothing, since it stays reachable and the chair reads its file.
 // An advisor that dies, times out or whose wait errors queues one line for the chair.
 // A required advisor queues no line, neither an ending nor a not-started one, since its end stops the chair.
-// The sender carries advisor lines only, so a one-seat table queues no line and its lead's hold deferral never holds, since the deferral counts advisors.
-// One goroutine per chair types the queued lines through the chair's handle, one at a time, so two lines are never interleaved.
-// It retries a busy or unlanded send after the engine's notice interval until the line lands, the chair's outputs all exist or the sender is stopped, and logs a line that never lands rather than failing the step.
+// The sender carries advisor lines only, so a one-seat table queues no line.
+// Its lead's hold deferral never holds either, since the deferral counts advisors and writers only.
+// One goroutine per chair types the queued lines through the chair's handle, one at a time.
+// Two lines are never interleaved.
+// It retries a busy or unlanded send after the engine's notice interval.
+// It stops retrying when the line lands, the chair's outputs all exist or the sender is stopped.
+// A line that never lands is logged rather than failing the step.
 //
 // # The stop rule
 //
-// Run waits on the chair, stops the sender, then stops every started advisor, a kept done one included, before it returns.
-// A chair whose wait errored carries no terminal outcome and may still be running, and a chair that timed out keeps its strand live, so each is stopped as well.
-// A stop that fails is an error wrapping ErrSeatNotStopped whose message names the way forward; it is never retried and the seat is not waited for.
-// A required advisor ends the step before the chair does on every end Accept has not accepted: a run that is not done, done with its seat gate failed (Accept is not called), a wait error, an Accept error, or a failed start.
-// The advisor's own waiting goroutine calls Accept once, with the terminal result, for a run that ended done with its gate passed.
-// Ending the step, the engine stops the notice sender, stops the chair and waits for its result, stops every started advisor, the required one included, and sets EndedStep on that advisor's SeatResult.
+// Run waits on the chair and stops the sender.
+// It then stops every started advisor, a kept done one included, before it returns.
+// A chair whose wait errored carries no terminal outcome and may still be running,
+// and a chair that timed out keeps its strand live, so each is stopped as well.
+// A stop that fails is an error wrapping ErrSeatNotStopped whose message names the way forward;
+// it is never retried and the seat is not waited for.
+// A required advisor ends the step before the chair does on every end Accept has not accepted.
+// Those ends are a run that is not done, a wait error, an Accept error and a failed start.
+// So is a run done with its seat gate failed, for which Accept is not called.
+// The advisor's own waiting goroutine calls Accept once, with the terminal result.
+// It does so for a run that ended done with its gate passed.
+// To end the step, the engine stops the notice sender and stops the chair, waiting for its result.
+// It stops every started advisor, the required one included, and sets EndedStep on that advisor's SeatResult.
 // SeatResult then also carries the advisor's terminal Result, its WaitErr and its AcceptErr.
-// A required advisor that was accepted stays kept until the chair ends, as every done advisor does, and the chair's end decides the step.
+// A required advisor that was accepted stays kept until the chair ends, as every done advisor does,
+// and the chair's end decides the step.
 // Only a required advisor or a writer can end the step before the chair, and only through its own end or its own Accept.
-// The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-shuttle-provider-seam).
+// The result carries the chair's outcome, gate and NotStarted as shuttle reported them:
+// the engine judges nothing about finishing itself (PATTERN-shuttle-provider-seam).
 //
 // # Writers
 //
-// A Seat marked Writer is a writing assistant: it writes a product of its own, which the chair joins, where an advisor's output is advice the chair weighs.
+// A Seat marked Writer is a writing assistant:
+// it writes a product of its own, which the chair joins, where an advisor's output is advice the chair weighs.
 // A table holds advisors only or writers only after the lead, and the lead is never a writer.
-// The lead's stencil of a writer table includes seat-directive-writer-chair in place of seat-directive-chair, and every writer's stencil includes seat-directive-writer.
-// A writer is required by kind: every end of its run that its gate and its Accept hook do not pass ends the step, a failed start included, with no line queued to the chair.
-// Its held turn end does not notify the parent, as a required advisor's does, since a writer waits on the chair between turns.
-// A writer gets no up line; when it ended done with its gate and Accept passed, the chair is told in one line that its part stands and it keeps answering, so a chair waiting on its parts is woken.
+// The lead's stencil of a writer table includes seat-directive-writer-chair in place of seat-directive-chair,
+// and every writer's stencil includes seat-directive-writer.
+// A writer is required by kind:
+// every end of its run that its gate and its Accept hook do not pass ends the step, a failed start included.
+// No line is queued to the chair.
+// Its held turn end does not notify the parent, as a required advisor's does.
+// A writer waits on the chair between turns.
+// A writer gets no up line.
+// When it ended done with its gate and Accept passed, the chair is told in one line.
+// The line says its part stands and it keeps answering, so a chair waiting on its parts is woken.
 // A writer keeps its pane after done, as every seat after the lead does.
-// The chair's hold deferral counts a writer by its session alone, since a writer gets no up line: an unended writer counts while its session reads mid-turn, and a writer whose run ended done still counts while its kept session reads mid-turn, so a chair waiting on a fix it asked of a done writer is deferred; any other ended run never counts.
-// In a writer table, join marks a writer whose end ended the step EndedStep even when the chair's end arrives first or together with it: once the chair's end is received and before any seat is stopped, a fired step ender marks its writer, and stopping the kept writers afterwards never marks one.
+// The chair's hold deferral counts a writer by its session alone, since a writer gets no up line:
+// an unended writer counts while its session reads mid-turn.
+// A writer whose run ended done still counts while its kept session reads mid-turn,
+// so a chair waiting on a fix it asked of a done writer is deferred.
+// Any other ended run never counts.
+// In a writer table, join marks EndedStep on a writer whose end ended the step.
+// It does so even when the chair's end arrives first or together with it.
+// Once the chair's end is received and before any seat is stopped, a fired step ender marks its writer.
+// Stopping the kept writers afterwards never marks one.
 // A Seat's own Timeout, when non-zero, bounds its run in place of the table's, so a chair can outlast its writers.
-// A SeatResult carries Writer, the seat's absolute Outputs and its GateFindingsPath, a path the engine only carries for the producer that keeps a writer's failed gate findings there.
+// A SeatResult carries Writer, the seat's absolute Outputs and its GateFindingsPath.
+// The engine only carries GateFindingsPath for the producer that keeps a writer's failed gate findings there.
 //
 // # Assistants
 //
-// A Seat marked Assistant writes its outputs and nothing else: it gets no up line and no mail, sends none, and so never needs creel.
-// A table holds assistants only after the lead, the lead's stencil includes seat-directive-assistant-chair and a solo assistant's seat-directive-assistant, which tells it to ignore `[creel]` text in its pane; a fanned assistant's stencil includes seat-directive-assistant-fanned instead, as below.
-// Each assistant carries an EndMarker, a path no other seat's marker or output shares, which the engine writes once the assistant's run ends, whatever the ending, or when it does not start.
-// The marker's text names the ending: done, only once the seat gate has passed; gate failed for a done run whose gate failed; died, timeout or stopped; the wait error; not started with its reason; not found.
-// An assistant that runs subagents names the files it saves their reports in as SubagentReports: its stencil includes seat-directive-assistant-fanned in place of seat-directive-assistant, which says the subagents are its own work and no other session, and the output_files marker lists those files after its outputs.
+// A Seat marked Assistant writes its outputs and nothing else:
+// it gets no up line and no mail, sends none, and so never needs creel.
+// A table holds assistants only after the lead, and the lead's stencil includes seat-directive-assistant-chair.
+// A solo assistant's stencil includes seat-directive-assistant, which tells it to ignore `[creel]` text in its pane.
+// A fanned assistant's stencil includes seat-directive-assistant-fanned instead, as below.
+// Each assistant carries an EndMarker, a path no other seat's marker or output shares.
+// The engine writes it once the assistant's run ends, whatever the ending, or when it does not start.
+// The marker's text names the ending:
+// done, only once the seat gate has passed; gate failed for a done run whose gate failed; died, timeout or stopped;
+// the wait error; not started with its reason; not found.
+// An assistant that runs subagents names the files it saves their reports in as SubagentReports.
+// Its stencil includes seat-directive-assistant-fanned in place of seat-directive-assistant.
+// The fanned directive says the subagents are its own work and no other session.
+// The output_files marker lists those files after its outputs.
 // They are no outputs, so no run waits on one and no chair reads one.
 // A fresh Run removes every assistant's stale marker, outputs and subagent reports before the chair starts.
-// An assistant whose SkipReason is set, whose start fails, or whose engine lacks an engine block its stencil includes does not start: its marker reads not started with the reason, a Warn names it, and the step goes on; Validate and CheckMarkers pass such a missing block over for an assistant alone.
-// Its parent directive is the no-parent variant and its edit directive its engine's own copy, read through editdirective.EngineDirective.
-// An assistant is never required and never ends the step: its held turn end stays quiet, the chair's hold deferral counts an unended one that reads mid-turn, and the engine stops every assistant when the chair ends, marking a stopped one stopped.
-// The chair's prompt lists each assistant's report and marker through the reserved assistants marker, and seat-directive-assistant-chair tells it to wait on a marker with `lym shuttle await` and read the report only when the marker reads done.
-// Probe finds a live assistant by its outputs and Resume attaches it as a fresh run does; one the probe did not find keeps the marker its run wrote, or gets not found.
+// An assistant does not start when its SkipReason is set or its start fails.
+// It also does not start when its engine lacks an engine block its stencil includes.
+// Its marker then reads not started with the reason, a Warn names it, and the step goes on.
+// Validate and CheckMarkers pass such a missing block over for an assistant alone.
+// Its parent directive is the no-parent variant.
+// Its edit directive is its engine's own copy, read through editdirective.EngineDirective.
+// An assistant is never required and never ends the step:
+// its held turn end stays quiet, and the chair's hold deferral counts an unended one that reads mid-turn.
+// The engine stops every assistant when the chair ends, marking a stopped one stopped.
+// The chair's prompt lists each assistant's report and marker through the reserved assistants marker.
+// seat-directive-assistant-chair tells it to wait on a marker with `lym shuttle await`.
+// The chair reads a report only when its marker reads done.
+// Probe finds a live assistant by its outputs and Resume attaches it as a fresh run does;
+// one the probe did not find keeps the marker its run wrote, or gets not found.
 //
 // # Probe before archive
 //
-// Engine.Probe reports which seats have a live run, the chair probed with the table's gate and each advisor with its seat's gate, and archives and starts nothing.
-// A terminal advisor whose strand is still up, a done one kept by its pane or a timed-out one, is removed by the probe itself, keeping its record's outcome and its output file, and answers not found.
+// Engine.Probe reports which seats have a live run and archives and starts nothing.
+// It probes the chair with the table's gate and each advisor with its seat's gate.
+// The probe removes a terminal advisor whose strand is still up, a done one kept by its pane or a timed-out one.
+// The probe keeps its record's outcome and its output file, and the advisor answers not found.
 // With the chair live, Probe returns its handle and every advisor found.
-// With the chair not live, Probe stops every live advisor and returns an empty LiveTable, so a caller archives stale outputs and starts fresh only once no seat is live.
+// With the chair not live, Probe stops every live advisor and returns an empty LiveTable,
+// so a caller archives stale outputs and starts fresh only once no seat is live.
 // The engine never archives: the caller owns that step, between Probe and Run.
 //
 // # Resume
 //
-// Engine.Resume attaches to a live chair and the advisors the probe found, and joins them as a fresh run does; an advisor the probe did not find is never restarted.
+// Engine.Resume attaches to a live chair and the advisors the probe found, and joins them as a fresh run does;
+// an advisor the probe did not find is never restarted.
 // The chair is told again that each found advisor is up, since that line may not have landed before the interruption.
-// The chair is told of each such advisor once: one whose outputs all exist is finished and the line says its output stands and the seat no longer answers, any other has ended and the line says so as a mid-step death does.
+// The chair is told of each such advisor once:
+// one whose outputs all exist is finished, and the line says its output stands and the seat no longer answers;
+// any other has ended, and the line says so as a mid-step death does.
 // A notice sent before the interruption may land again, which costs the chair nothing.
-// Probe passes the chair's probe the same hold-deferral predicate and keeps the advisor work it reads on the LiveTable it returns; Resume binds its sender to that work and adds every found advisor, so an attached chair defers as a fresh one does.
+// Probe passes the chair's probe the same hold-deferral predicate.
+// It keeps the advisor work it reads on the LiveTable it returns.
+// Resume binds its sender to that work and adds every found advisor, so an attached chair defers as a fresh one does.
 // A LiveTable built without Probe carries no work.
-// A found required advisor is watched with the same Accept rule, and a required advisor the probe did not find ends the step at once with EndedStep set and no terminal result.
+// A found required advisor is watched with the same Accept rule.
+// A required advisor the probe did not find ends the step at once with EndedStep set and no terminal result.
 // A found writer is attached and watched as in a fresh run, with no up line queued.
-// A writer the probe did not find, which includes a done writer whose kept pane the probe removed, counts as finished when all its outputs exist and its Accept hook passes on a zero result, and the chair is then told once that the writer was stopped when the step was interrupted, that any fix asked of it is lost and that it no longer answers.
-// A writer not found whose outputs are not all there, or whose Accept hook fails, ends the step at once, with its Accept error kept on its result.
-//
-// # Imports
-//
-// The package imports shuttleengine, stencil, stencilstore, agentname, segmentcolor, logger, fsx, the directive renderers and the standard library.
+// A writer the probe did not find may be a done writer whose kept pane the probe removed.
+// Such a writer counts as finished when all its outputs exist and its Accept hook passes on a zero result.
+// The chair is then told once that the writer was stopped when the step was interrupted.
+// The line adds that any fix asked of it is lost and that it no longer answers.
+// A writer not found whose outputs are not all there, or whose Accept hook fails, ends the step at once.
+// Its Accept error is kept on its result.
 package seatengine

@@ -1,6 +1,5 @@
-// deps.go declares this package's told-value surface: the two narrow seams Reflect drives (Shuttle
-// over one shuttle run, Clock over the archive timestamp), the Deps struct every value in which is
-// told by the caller and derived by nobody here, and the Report Reflect returns.
+// deps.go declares the seams Reflect drives: Shuttle over one shuttle run, and Clock over the archive timestamp.
+// It also declares Deps, whose every value the caller tells, and Report, the value Reflect returns.
 
 package frictionengine
 
@@ -11,17 +10,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Shuttle is the seam this package drives to spawn the reflection agent (Run) and to find one a killed driving process left alive (Attach), both over shuttleengine.Runner.
+// Shuttle is the seam this package drives.
+// Run spawns the reflection agent, and Attach finds one that a killed driving process left alive.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
 }
 
-// The compile-time assertion that *shuttleengine.Runner satisfies Shuttle.
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
-// Clock is the archive timestamp's seam, so a test can assert an exact archive directory name rather
-// than a pattern.
+// Clock is the seam the archive timestamp is read through,
+// so a test can assert an exact archive directory name rather than a pattern.
 type Clock interface {
 	Now() time.Time
 }
@@ -34,8 +33,8 @@ func (realClock) Now() time.Time {
 	return time.Now()
 }
 
-// Deps carries every value Reflect needs, all of it told by the caller and derived by nobody in this
-// package.
+// Deps carries every value a reflection run needs.
+// The caller tells all of them, and this package derives none.
 type Deps struct {
 	// Shuttle is the seam this package spawns the reflection agent through. Told by the caller.
 	Shuttle Shuttle
@@ -43,30 +42,30 @@ type Deps struct {
 	// It is never renamed or removed.
 	// Told by the caller.
 	FrictionDir string
-	// ArchivePrefix is the absolute prefix an archive sibling's timestamp is appended to. Told by the
-	// caller.
+	// ArchivePrefix is the absolute prefix an archive sibling's timestamp is appended to.
+	// Told by the caller.
 	ArchivePrefix string
 	// StencilsDir is the absolute directory the reflection prompt is read from. Told by the caller.
 	StencilsDir string
 	// ParentName is the name of the session the reflection agent escalates to, rendered into its parent directive.
 	// Told by the caller; empty renders the no-parent variant.
 	ParentName string
-	// FrictionSpec is the model-spec string (see internal/modelspec) selecting the reflection agent's
-	// model. Told by the caller.
+	// FrictionSpec is the model-spec string (see internal/modelspec) that selects the reflection agent's model.
+	// Told by the caller.
 	FrictionSpec string
-	// Registry resolves FrictionSpec's alias, when it is one, to a concrete model. Told by the
-	// caller.
+	// Registry resolves FrictionSpec's alias, when it is one, to a concrete model.
+	// Told by the caller.
 	Registry modelspec.Registry
-	// TaskSlug names the task the notes came from;
-	// the reflection agent writes it into each issue's provenance line.
+	// TaskSlug names the task the notes came from.
+	// The reflection agent writes it into each issue's provenance line.
 	// Told by the caller.
 	TaskSlug string
 	// Timeout bounds one Reflect call's wall-clock budget, attach wait and spawn together.
 	// Zero defers to shuttle's own run_timeout_min for each spec, with no budget across them.
 	// Told by the caller.
 	Timeout time.Duration
-	// Clock is the archive timestamp's seam. A nil Clock selects a package-local realClock wrapping
-	// time.Now.
+	// Clock is the archive timestamp's seam.
+	// A nil Clock selects a package-local realClock, which wraps time.Now.
 	Clock Clock
 }
 
@@ -74,24 +73,24 @@ type Deps struct {
 type Report struct {
 	// Status is one of StatusSkipped, StatusReflected, or StatusFailed.
 	Status string
-	// ReportPath is the reflection agent's own report file, populated only for StatusReflected, and carrying the post-archive path of the last archive the call made.
+	// ReportPath is the post-archive path of the reflection agent's report file, set only for StatusReflected.
 	ReportPath string
 	// NoteCount is the number of friction notes the last archive covered;
 	// on a failure, the notes the failed step concerned.
 	NoteCount int
 }
 
-// The three outcomes Reflect can report. There is deliberately no "filed" status: nothing in Go
-// parses the agent's report file, so whether an issue was actually created is not something this
-// package can honestly assert.
+// The three outcomes Reflect can report.
+// There is no "filed" status: nothing in Go parses the agent's report file,
+// so this package cannot tell whether an issue was created.
 const (
-	// StatusSkipped reports that the scan found no notes worth reflecting on, so no agent was
-	// spawned.
+	// StatusSkipped reports that the scan found no notes worth reflecting on,
+	// so no reflection agent was spawned.
 	StatusSkipped = "skipped"
 	// StatusReflected reports that a reflection agent ran to completion and its covered files were archived.
 	StatusReflected = "reflected"
-	// StatusFailed reports a runtime failure: a Deps validation failure never reaches this status
-	// (that returns a non-nil error instead), so StatusFailed is reserved for a failure below the
-	// validation line.
+	// StatusFailed reports a runtime failure below the validation line.
+	// A Deps validation failure returns a non-nil error instead.
+	// This status therefore covers only failures that come after validation.
 	StatusFailed = "failed"
 )

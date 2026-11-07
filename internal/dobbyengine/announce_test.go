@@ -1,4 +1,6 @@
-// announce_test.go pins a beam's dobby's announcement of member landings over fake landing seams: one notice per new landing while a pull request is recorded, the announced head kept in its file, and a failed read or post retried at the next tick.
+// announce_test.go pins the beam's dobby announcing landings over fake landing seams.
+// It covers one notice per new landing while a pull request is recorded.
+// It covers the announced head kept in its file, and a failed read or post retried at the next tick.
 
 package dobbyengine
 
@@ -13,13 +15,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// announceCommit is one commit of the fake beam line: its object name, the text a landing notice names it by, and whether it only records lym's own state.
+// announceCommit is one commit of the fake beam line.
+// It holds the object name and the text a landing notice names the commit by.
+// It also says whether the commit only records lym's own state.
 type announceCommit struct {
 	sha, text   string
 	recordsOnly bool
 }
 
-// announceFake answers the two landing seams from a scripted beam line, as the hub wiring answers them from git.
+// announceFake answers the two landing seams from a scripted beam line.
 type announceFake struct {
 	recorded     bool
 	announceHead string
@@ -32,7 +36,8 @@ func (f *announceFake) landingPullRequest() (string, bool, error) {
 	return f.announceHead, f.recorded, f.recordErr
 }
 
-// landingsSince lists the landings past from as the wiring does: the commits after it on the line, records-only ones dropped, the whole line when from is not on it.
+// landingsSince lists the landings past from: the commits after it on the line, records-only ones dropped.
+// When from is not on the line, it lists every landing on it.
 func (f *announceFake) landingsSince(from string) (string, []string, error) {
 	if f.sinceErr != nil {
 		return "", nil, f.sinceErr

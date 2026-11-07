@@ -1,5 +1,7 @@
-// reset_test.go pins the PlanReset refusals that need no real git: the held run lock, the missing state, the --batch pairing and each target's resolution refusal.
-// Tier 1: package websterengine_test over the package's fakeGit, a reports directory under t.TempDir() and a fake reed; no git process.
+// reset_test.go pins the PlanReset refusals that need no real git.
+// They cover the held run lock, the missing state, the --batch pairing and each target's resolution refusal.
+// The tests run at tier 0 in package websterengine_test, with no git process.
+// They use the package's fakeGit, a reports directory under t.TempDir() and a fake reed.
 
 package websterengine_test
 
@@ -64,7 +66,8 @@ func TestPlanReset_NoStateNamesRun(t *testing.T) {
 	}
 }
 
-// resolutionFixture is a run in its second batch over a fake git: batch 1 done at head, batch 2 in flight from that head with a report on disk, batch 3 not begun.
+// resolutionFixture is a run in its second batch over a fake git.
+// Batch 1 is done at head, batch 2 is in flight from that head with a report on disk, and batch 3 is not begun.
 type resolutionFixture struct {
 	t     *testing.T
 	git   *fakeGit
@@ -116,17 +119,19 @@ func (fx *resolutionFixture) deps() websterengine.ResetDeps {
 	}
 }
 
-// archiveOnlyPlan leads a TestPlanReset_Resolution row's wanted parts when the row expects an archive-only plan, whose reason carries the rest.
+// archiveOnlyPlan leads the wanted parts of a TestPlanReset_Resolution row that expects an archive-only plan.
+// The plan's reason carries the rest.
 // movingPlan leads a row that expects a plan moving to the run's start commit.
 const (
 	archiveOnlyPlan = "<archive-only plan>"
 	movingPlan      = "<moving plan>"
 )
 
-// TestPlanReset_Resolution pins each refusal PlanReset reaches from state, report files, the reed seam and a fake Git alone,
-// and the archive-only plan a reset to start returns for a start it cannot move to:
-// the --batch pairing, an unknown target, and each target's own resolution.
-// The plans the targets resolve to are pinned in TestPlanReset over a real repository.
+// TestPlanReset_Resolution pins each refusal PlanReset reaches without real git.
+// The refusals come from state, report files, the reed seam and a fake Git.
+// It also pins the archive-only plan a reset to start returns for a start it cannot move to.
+// The refusals covered are the --batch pairing, an unknown target, and each target's own resolution.
+// The plans the targets resolve to are pinned by the integration tests over a real repository.
 func TestPlanReset_Resolution(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -180,7 +185,8 @@ func TestPlanReset_Resolution(t *testing.T) {
 		}, []string{"share no single latest commit", "run `lym webster reset --to start`"}},
 		{"batch-start of a batch with no start", websterengine.ResetToBatchStart, 3, nil, []string{"batch 3 recorded no start commit", "run `lym webster reset --to start`"}},
 		{"batch-start with a later recorded start", websterengine.ResetToBatchStart, 1, nil, []string{"batch 1 is not the run's last begun batch", "commits of batch 2", "run `lym webster reset --to start`"}},
-		// A pair's reset reads the dirty tracked paths with real git here; standalone leaves them to git's keep form, so the plan comes back without that read.
+		// A pair's reset reads the dirty tracked paths with real git here;
+		// standalone leaves them to git's keep form, so the plan comes back without that read.
 		{"standalone skips the foreign-dirty-path refusal", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
 			fx.standalone = true
 		}, []string{movingPlan}},

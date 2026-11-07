@@ -1,4 +1,6 @@
-// watch.go implements the hidden `watch` orch verb: the detached daemon `start` launches, which polls the orchestrator session and runs the handoff cycle until the strand is gone.
+// watch.go implements the hidden `watch` orch verb:
+// the detached daemon that `start` launches.
+// It polls the orchestrator session and runs the handoff cycle until the strand is gone.
 
 package orchcli
 
@@ -31,7 +33,8 @@ type realClock struct{}
 // Now returns the current time.
 func (realClock) Now() time.Time { return time.Now() }
 
-// orchAgentName returns the agent name of the orch this receiver's worktree hosts: `<shortname>:orch` in the prime and `<shortname>:<slug>:orch` in a beam.
+// orchAgentName returns the agent name of the orch this receiver's worktree hosts:
+// `<shortname>:orch` in the prime and `<shortname>:<slug>:orch` in a beam.
 // A hub with no recorded shortname yields the empty name, which the watcher reads as the prime's orch.
 func (c *orchCLI) orchAgentName() (string, error) {
 	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
@@ -49,8 +52,10 @@ func (c *orchCLI) orchAgentName() (string, error) {
 	return agentname.Format(shortname, slug, agentname.RoleOrch)
 }
 
-// beamOwnerElsewhere reads the owner of the worktree location on the hub's local board, the prime's owner for the prime and a beam's effective owner through hubgeom.ParentOf for a beam.
-// elsewhere is true when that owner names a machine other than this one; a worktree with no owner recorded is owned by no other machine.
+// beamOwnerElsewhere reads the owner of the worktree location on the hub's local board:
+// the prime's owner for the prime, and for a beam its effective owner, resolved through `hubgeom.ParentOf`.
+// elsewhere is true when that owner names a machine other than this one;
+// a worktree with no owner recorded is owned by no other machine.
 func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool, err error) {
 	here, err := machinename.Name()
 	if err != nil {
@@ -79,7 +84,8 @@ func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool
 	return owner, boardengine.OwnedElsewhere(owner, here), nil
 }
 
-// reapInheritedChildren waits on the children a watcher re-exec'd onto a new binary keeps from its old image, with nothing left waiting on them.
+// reapInheritedChildren waits on the children a watcher re-exec'd onto a new binary keeps from its old image.
+// Nothing else waits on them.
 func reapInheritedChildren() {
 	if pids, err := proc.ReapInheritedChildren(); err != nil {
 		logger.Warn("orch: the watcher's inherited children are not reaped", "error", err)

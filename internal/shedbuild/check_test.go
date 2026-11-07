@@ -1,6 +1,5 @@
-// check_test.go holds exactly two cases pinning that Check forwards a Recipe's told Entry and
-// Terminals to shedcheck.Check in the right argument positions. internal/shedcheck's own behaviour
-// is exhaustively tested in its own package and is deliberately not re-tested here.
+// check_test.go pins that Check passes a Recipe's Entry and Terminals to shedcheck.Check in the right positions.
+// The behaviour of internal/shedcheck is tested in its own package, so this file does not repeat it.
 
 package shedbuild
 

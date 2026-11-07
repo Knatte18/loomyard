@@ -1,4 +1,6 @@
-// cli_test.go covers the fabric CLI's clone and reconcile-backfill verbs against local bare remotes, and holds the helpers the package's other integration files share: the cwd-fallback subprocess entry point, runFabric and gitOutputCLI.
+// cli_test.go covers the fabric CLI's clone and reconcile-backfill verbs against local bare remotes.
+// It also holds the helpers the package's other integration files share:
+// the cwd-fallback subprocess entry point, runFabric, and gitOutputCLI.
 
 package fabriccli_test
 
@@ -24,10 +26,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// lymFabricCLISubprocessCwdEnv is the env var that gates this file's re-exec entry point below: when set, the process is not a normal `go test` run but a subprocess spawned by the cwd-fallback step of TestRunCLI_CleanHubScenario, deliberately standing in a target directory via exec.Command's Dir field so fabriccli.RunCLI's Getwd fallback can be observed for real, without any t.Chdir/os.Chdir call anywhere in this file — this file is on the cwdmutation guard's subject set in cmd/lym/cwdmutation_test.go and carries no exemption.
+// lymFabricCLISubprocessCwdEnv is the env var that gates the re-exec entry point in init.
+// When it is set, the process is a subprocess that the cwd-fallback step of TestRunCLI_CleanHubScenario spawns.
+// That step starts it with exec.Command's Dir field set to a target directory.
+// This exercises the Getwd fallback of fabriccli.RunCLI for real, without any t.Chdir or os.Chdir call.
+// This file is in the cwdmutation guard's subject set (cmd/lym/cwdmutation_test.go) and has no exemption.
 const lymFabricCLISubprocessCwdEnv = "LYM_FABRICCLI_SUBPROCESS_CWD"
 
-// init intercepts the subprocess-mode re-exec before testing.Main ever runs, so the child process's stdout carries only fabriccli.RunCLI's own JSON output — never the "=== RUN"/"--- PASS" noise `go test` would otherwise interleave with it, which would defeat the byte-for-byte comparison that step performs against fabriccli.RunCLIIn's output.
+// init intercepts the subprocess-mode re-exec before testing.Main runs.
+// The child's stdout then carries only the JSON output of fabriccli.RunCLI.
+// Any "=== RUN" or "--- PASS" line from go test would break the byte-for-byte comparison.
+// The cwd-fallback step makes that comparison against the output of fabriccli.RunCLIIn.
 func init() {
 	if os.Getenv(lymFabricCLISubprocessCwdEnv) == "" {
 		return
@@ -38,13 +47,9 @@ func init() {
 	os.Exit(code)
 }
 
-// makeCLICloneWarpBare creates a bare warp remote at <dir>/<name>.git seeded
-// with a README and a committed "backend" subdirectory, so a clone --subpath
-// backend test has a real subpath to anchor at. This package has no existing
-// two-repo clone fixture helper (hubforge.NewHub pre-materializes an
-// already-paired hub, not raw clone sources), so it is built minimally
-// inline, mirroring internal/fabricengine/clone_adopt_test.go's
-// makeBareRemoteWithSubdir.
+// makeCLICloneWarpBare creates a bare warp remote at <dir>/<name>.git.
+// It is seeded with a README and a committed "backend" subdirectory.
+// A clone with --subpath backend anchors at that subdirectory.
 func makeCLICloneWarpBare(t *testing.T, dir, name string) string {
 	t.Helper()
 
@@ -81,10 +86,9 @@ func makeCLICloneWarpBare(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// makeCLICloneWeftBare creates a genuinely empty (no commits) bare weft
-// remote at <dir>/<name>.git — the state a brand-new weft repo is in before
-// its first clone, exercising CloneHub's orphan Bolt checkout path end-to-end
-// through the CLI.
+// makeCLICloneWeftBare creates a bare weft remote at <dir>/<name>.git with no commits.
+// That is the state of a new weft repo before its first clone.
+// Cloning it through the CLI exercises the orphan Bolt checkout path.
 func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	t.Helper()
 
@@ -93,13 +97,14 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <weft> <warp>" against a local
-// two-repo fixture and asserts the end-to-end clone-does-everything contract: the JSON envelope
-// (including the "warp" and "warp_binding_recorded" keys), the wired warp junctions, the anchor
-// marker, repo-wide config, and warp-binding record committed onto weft:main, and per-worktree
-// module config reconciliation — i.e.
-// that the card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's own git-level
-// clone.
+// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <weft> <warp>" against a local two-repo fixture.
+// It asserts the clone-does-everything contract:
+// the JSON envelope, with the "warp" and "warp_binding_recorded" keys;
+// the wired warp junctions;
+// the anchor marker;
+// repo-wide config and the warp-binding record committed onto weft:main;
+// and per-worktree module config reconciliation.
+// The test checks the CLI orchestration itself, not only the git-level clone that fabricengine.CloneHub performs.
 func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
@@ -132,11 +137,10 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("RunCLI(clone) warp_binding_recorded = %v; want true", result.Raw["warp_binding_recorded"])
 	}
 
-	// The prime warp worktree's structural junctions (_lym and .lym) must be
-	// wired: .lym is structural (structuralNeverCommittedDirs) and is wired by
-	// every clone regardless of pathspec, so it is checked here rather than
-	// an optional config-driven name, which a genuinely empty bare weft
-	// clone (zero commits, no pre-existing weft:main fabric.yaml) never wires.
+	// The prime warp worktree's structural junctions (_lym and .lym) must be wired.
+	// .lym is structural (structuralNeverCommittedDirs), and every clone wires it regardless of pathspec.
+	// So the check uses it, not an optional config-driven name.
+	// An empty bare weft clone, with no commits and no fabric.yaml on weft:main, never wires such a name.
 	primeCwd := filepath.Join(hubPath, "clonecli-warp", "backend")
 	for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 		link := filepath.Join(primeCwd, name)
@@ -150,9 +154,10 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 
-	// The repo-wide fabric.yaml and warp binding must be committed onto weft:main (the board worktree), not merely present on disk.
+	// The repo-wide fabric.yaml and warp binding must be committed onto weft:main, the board worktree.
+	// Being present on disk is not enough.
+	// The checks use git ls-files to test tracked-ness directly, not a blanket `git status --porcelain` check.
 	// The .lym-anchor marker is tracked at the root of the prime's weft worktree and absent from the board.
-	// This checks tracked-ness directly (git ls-files) rather than a blanket `git status --porcelain` cleanliness assertion.
 	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
 		filepath.Join(lymdirs.LymDirName, "config", "fabric.yaml"),
@@ -182,7 +187,8 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("per-worktree board config materialized under %s; want it only at the board dir (stat err = %v)", weftBase, err)
 	}
 
-	// The board is seeded from nothing, so the clone marks it sparse in its own board commit, and the sparse hub files hold no template unit.
+	// The board is seeded from nothing, so the clone marks it sparse in its own board commit.
+	// The sparse hub files hold no template unit.
 	markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
 	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", markerRel)); tracked != markerRel {
 		t.Errorf("board tracks %q for the base-sparse marker; want %q", tracked, markerRel)
@@ -227,7 +233,8 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("board fabric.yaml = %q, %v; want the header alone %q", fabricYAML, err, configengine.SparseBaseHeader)
 	}
 
-	// A pre-commit hook rejecting the marker fails the board commit, and the clone then leaves no untracked marker for a later walk to mistake for a stripped board.
+	// A pre-commit hook rejecting the marker fails the board commit.
+	// The clone then leaves no untracked marker for a later walk to mistake for a stripped board.
 	// The test sets the process environment to point git's hook path at the hook, so it does not run in parallel.
 	hooks := t.TempDir()
 	rejectMarker := "#!/bin/sh\nif git diff --cached --name-only | grep -qx '" + markerRel + "'; then\n  echo 'pre-commit hook rejected the base-sparse marker' >&2\n  exit 1\nfi\n"
@@ -259,8 +266,10 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk clones a weft whose board already holds a full base file and whose prime holds a full loom.yaml at a former template value, with no marker anywhere.
-// The clone writes no marker of its own, so the walk it runs strips both once and commits the board marker in its own board commit.
+// TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk clones a weft with no marker anywhere.
+// Its board holds a full base file, and its prime holds a full loom.yaml at a former template value.
+// The clone writes no marker of its own.
+// The walk it runs strips both files once and commits the board marker in its own board commit.
 func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -307,7 +316,7 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	}
 
 	primeCwd := filepath.Join(hubPath, "unmigrated-warp", "backend")
-	// The strip leaves a full file that differs from the template in nothing else as an absent sparse file.
+	// The strip turns a full file that differs from the template in nothing else into an absent sparse file.
 	primeLoom, err := os.ReadFile(configengine.ConfigFile(primeCwd, "loom"))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("read the prime's loom.yaml: %v", err)
@@ -328,9 +337,10 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneDestination asserts where "fabric clone" puts the hub and which anchor it echoes:
-// with --into the hub lands under that directory and not under the seam cwd RunCLIIn was given, and without it the hub lands at the resolved seam cwd, --into's default.
-// With no --subpath the anchor is the default root anchor ".".
+// TestRunCLI_CloneDestination asserts where "fabric clone" puts the hub and which anchor it echoes.
+// With --into, the hub lands under that directory, not under the cwd given to RunCLIIn.
+// Without it, the hub lands at the resolved cwd, which is the --into default.
+// With no --subpath, the anchor is the default root anchor ".".
 func TestRunCLI_CloneDestination(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -388,8 +398,9 @@ func TestRunCLI_CloneDestination(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft carrying no recorded binding, and requires the envelope's error to equal the engine's own refusal text exactly.
-// The refusal's wording is owned by fabricengine's TestCloneHub_UnboundWeftNamesTwoArgForm.
+// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft.
+// That weft carries no recorded binding.
+// The test requires the envelope's error to equal the engine's refusal text exactly.
 func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
@@ -421,11 +432,8 @@ func runFabric(t *testing.T, cwd string, args ...string) (int, string) {
 	return code, out.String()
 }
 
-// gitOutputCLI runs a git command in dir and returns its trimmed stdout,
-// failing the test on any error — this package's capture-variant sibling of
-// gitkit.MustRun, which discards output. Named distinctly from
-// internal/fabricengine's own gitOutput test helper since the two packages
-// share no test code.
+// gitOutputCLI runs a git command in dir and returns its stdout.
+// It fails the test on any error.
 func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
@@ -437,13 +445,15 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-// TestRunCLI_ReconcileBacksFillsWarpBinding drives both the two-positional clone and reconcile
-// through fabriccli.RunCLI so the commit-and-push half of the backfill is actually exercised — the
-// record_failed value is set only by the handler and cannot be observed from an engine-only test. It
-// builds the hub, deletes the recorded binding with plain git and commits that deletion (the board is
-// already clean beforehand: the CLI clone commits the anchor and repo-wide config through Bolt as part
-// of its normal run), then asserts reconcile exits 0, reports "recorded", and leaves the record
-// tracked on the board worktree, with "pairs" still present and unchanged in shape.
+// TestRunCLI_ReconcileBacksFillsWarpBinding drives both the two-positional clone and reconcile through fabriccli.RunCLI.
+// The commit-and-push half of the backfill is exercised this way.
+// The record_failed value is set only by the handler, so an engine-only test cannot observe it.
+// The test builds the hub, deletes the recorded binding with plain git, and commits that deletion.
+// The board is already clean beforehand.
+// The CLI clone commits the anchor and repo-wide config through Bolt as part of its normal run.
+// It then asserts that reconcile exits 0 and reports "recorded".
+// It also asserts that the record stays tracked on the board worktree.
+// The "pairs" data is still present and unchanged in shape.
 func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
@@ -453,8 +463,8 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	cloneParent := t.TempDir()
 
 	var cloneOut bytes.Buffer
-	// No --force-bootstrap: makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
-	// the unborn-HEAD case the weft-candidate guard admits on its own.
+	// The clone runs without --force-bootstrap, because makeCLICloneWeftBare's fixture has no commits.
+	// That is the unborn-HEAD case the weft-candidate guard admits on its own.
 	exitCode := fabriccli.RunCLI(&cloneOut, []string{
 		"clone", "--shortname", "tst", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
@@ -472,9 +482,8 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName, baseRel)
 	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub and drop the profiles template base")
 
-	// Proving cwd is a per-call value and not a per-process one is exactly what this test exists to
-	// demonstrate: this reconcile runs against a different directory than the clone above, passed
-	// per-call rather than hoisted to a shared variable.
+	// cwd is a per-call value, passed here rather than hoisted to a shared variable.
+	// This reconcile runs against a different directory than the clone above.
 	var reconcileOut bytes.Buffer
 	exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-warp"), &reconcileOut, []string{"reconcile"})
 	if exitCode != 0 {
@@ -498,7 +507,8 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	}
 }
 
-// TestRunCLI_ReconcileBoardFailureFailsTheVerb runs reconcile over a cloned hub whose board commit or push fails, at the hub-wide heal, the warp-binding record or both.
+// TestRunCLI_ReconcileBoardFailureFailsTheVerb runs reconcile over a cloned hub whose board commit or push fails.
+// The failure is set at the hub-wide heal, the warp-binding record, or both.
 // Each row asserts a non-zero exit with the envelope kept:
 // it still carries "pairs", the error names the first failure, and each side's detail names its own failure.
 // The exit-code assertion is the point of this test.
@@ -605,7 +615,7 @@ func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 			gitkit.MustRun(t, boardDir, "git", "push", "origin", "HEAD")
 			tt.breakBoard(t, boardDir, fixtures)
 
-			// The reconcile runs against a different directory than the clone above, passed per-call, so cwd is a per-call value and not a per-process one.
+			// cwd is passed per call, so this reconcile runs against a different directory than the clone above.
 			var reconcileOut bytes.Buffer
 			exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
 			if exitCode == 0 {

@@ -1,6 +1,7 @@
-// config.go — configuration for the sampler recipe.
+// config.go holds the configuration of the sampler recipe.
 //
-// It defines the Config type mirroring sampler.yaml's keys, the ConfigTemplate and ConfigSpec accessors, and LoadConfig, which loads the file strictly.
+// It defines the Config type, which mirrors sampler.yaml's keys.
+// It also defines the ConfigTemplate and ConfigSpec accessors, and LoadConfig, which loads the file strictly.
 
 package samplerengine
 
@@ -47,7 +48,8 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// LoadConfig loads and unmarshals the sampler module's configuration strictly through the hub-wide layer stack under dirs.
+// LoadConfig loads and unmarshals the sampler module's configuration strictly.
+// The configuration is resolved through the hub-wide layer stack under dirs.
 // It refuses an agent value that fails the model-spec grammar, naming the key.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()

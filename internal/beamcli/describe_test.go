@@ -1,4 +1,6 @@
-// describe_test.go drives the describe sequence over fake deps: the beams it describes at Beam-Await in any state, each refusal with its way forward, and a description the writer refuses.
+// describe_test.go tests the describe sequence over fake deps.
+// It covers the beams described at Beam-Await in any state.
+// It also covers each refusal with its way forward and a description the writer refuses.
 
 package beamcli
 
@@ -22,7 +24,7 @@ func TestDescribe(t *testing.T) {
 		setup func(w *landWorld)
 		// wantErr is empty for a described beam, else every substring the refusal names.
 		wantErr []string
-		// wantDescribed says the Describe seam ran.
+		// wantDescribed reports whether the Describe seam ran.
 		wantDescribed bool
 	}{
 		{name: "BeamAtBeamAwaitRunningDescribed", slug: "b", wantDescribed: true},

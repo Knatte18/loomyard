@@ -23,7 +23,7 @@ type spawnFixture struct {
 }
 
 // newSpawnFixture returns a fixture whose fake child is the test process, so its runproc record stays alive.
-// onSpawn runs inside the seam and returns the child's exit channel.
+// The onSpawn callback runs inside the seam and returns the child's exit channel.
 func newSpawnFixture(t *testing.T, onSpawn func(f *spawnFixture, spec childSpawn) (<-chan struct{}, error)) *spawnFixture {
 	t.Helper()
 	f := &spawnFixture{}
@@ -54,7 +54,9 @@ func writeRunning(t *testing.T, p Paths, pid int) {
 	}
 }
 
-// TestStartCapture covers the child's argv and run-process record, the wait for the child's own running record, a child that ends or stalls before it with the error its log ends on, a lock held before the start, and both breakaway branches.
+// TestStartCapture covers the child's argv and run-process record and the wait for the child's own running record.
+// It covers a child that ends or stalls before recording, with the error its log ends on.
+// It also covers a lock held before the start, and both breakaway branches.
 func TestStartCapture(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -108,7 +110,7 @@ func TestStartCapture(t *testing.T) {
 		name     string
 		fallback bool
 		exits    bool
-		// log is what the child writes to its log before it ends.
+		// log is the child's log output before it ends.
 		log         string
 		want        []string
 		wantNot     []string

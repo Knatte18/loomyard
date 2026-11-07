@@ -229,7 +229,8 @@ func TestProcessTreeReads(t *testing.T) {
 	}
 }
 
-// awaitReaped polls until pid no longer answers a signal, which an exited child does only once its parent has waited on it.
+// awaitReaped polls until pid no longer answers a signal.
+// An exited child answers signals only until its parent has waited on it.
 func awaitReaped(t *testing.T, pid int) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); IsAlive(pid); time.Sleep(10 * time.Millisecond) {
@@ -251,7 +252,8 @@ func TestReap(t *testing.T) {
 	awaitReaped(t, child.Process.Pid)
 }
 
-// TestReapInheritedChildren is not parallel: it waits on every child of the test process, which would race the wait of a parallel test's own child.
+// TestReapInheritedChildren is not parallel.
+// It waits on every child of the test process, and a parallel test's own child would race that wait.
 func TestReapInheritedChildren(t *testing.T) {
 	tiergate.Require(t, 0)
 

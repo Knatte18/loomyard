@@ -1,4 +1,5 @@
-// fansettings_test.go pins that the shipped recipes name fan and auto-accept settings consistently within each review segment, and that each row names the setting its perch's wiring has always read.
+// fansettings_test.go pins how the shipped recipes name fan and auto-accept settings.
+// Within each review segment the settings must agree, and each row must name the setting its perch's wiring reads.
 
 package loomrecipe
 
@@ -22,7 +23,8 @@ func settingText(row *shedbuild.Row, key string) string {
 	return text
 }
 
-// fanSettingMismatches returns one message per fan-setting violation in r, grouping rows by segment among segments holding a Bouncer row.
+// fanSettingMismatches returns one message per fan-setting violation in r.
+// It groups the rows by segment and checks only the segments that hold a Bouncer row.
 // The rows of a segment naming reviewer_fan_setting name one reference, and likewise fixer_fan_setting.
 // The BurlerReview row names reviewer_fan_setting exactly when the Bouncer does.
 // The BurlerFix row names fixer_fan_setting exactly when the BurlerReview row names it or sets a profile fix-fan.
@@ -86,7 +88,8 @@ func fanSettingMismatches(r shedbuild.Recipe) []string {
 	return mismatches
 }
 
-// TestShippedRecipes_FanSettingsAgreeWithinSegment asserts the shipped tapestry and darn recipes have no fan-setting mismatch and that each shipped row names exactly the references its perch's wiring reads.
+// TestShippedRecipes_FanSettingsAgreeWithinSegment asserts the shipped recipes have no fan-setting mismatch.
+// It checks that every shipped row names exactly the references its perch's wiring reads.
 // It also runs hand-authored three-row recipes through fanSettingMismatches, so a rule that stops firing fails here.
 //
 //testtiming:keep pins the exact references of the shipped recipes, which a recipe edit pointing a row at another key must fail, and self-checks each rule of fanSettingMismatches over hand-authored segments

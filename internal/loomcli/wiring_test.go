@@ -1,9 +1,7 @@
-// wiring_test.go drives wire directly against a hand-built *lymcwd.Location over a temporary
-// directory seeded with the one module config load that does not tolerate absence (loomengine's own
-// strict configengine.Load): every other config load this task's wire performs
-// (reedengine.LoadConfig, shuttleengine.LoadConfig, websterengine.LoadConfig, modelspec.LoadRegistry,
-// batcher.Active) degrades to its embedded template on the same proven-present _lym/ directory, so
-// seeding loom.yaml alone is enough to drive the whole hub-only wire() without touching a real hub.
+// wiring_test.go drives wire directly against a hand-built *lymcwd.Location over a temporary directory.
+// The directory is seeded with loom.yaml, the one config load that does not tolerate absence.
+// Every other config load wire performs falls back to its embedded template on the same _lym/ directory.
+// Seeding loom.yaml alone therefore drives the whole hub-only wire without touching a real hub.
 
 package loomcli
 
@@ -46,8 +44,8 @@ import (
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
 // It matches the embedded template's own values except discussion_interactive, which takes the caller-chosen value.
-// Every key is written explicitly, rather than string-substituting the template, so the literal pins every value instead of relying on template fills --
-// an explicit literal is what internal/loomengine/config_test.go already does.
+// Every key is written explicitly, not substituted into the template.
+// The literal therefore pins every value rather than relying on template fills.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lym", "config")
@@ -70,8 +68,9 @@ driver: ""
 }
 
 // seedLoomConfigWithFriction overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
-// It matches the embedded template's own values except the friction key, which takes the caller-chosen value -- empty to mean Tier 2 is off.
-// Every key is written explicitly for the same pin-every-value reason seedLoomConfigWithInteractive already documents.
+// It matches the embedded template's own values except the friction key, which takes the caller-chosen value.
+// An empty value means Tier 2 is off.
+// Every key is written explicitly, so the literal pins every value.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lym", "config")
@@ -93,7 +92,8 @@ driver: ""
 	}
 }
 
-// TestWire_MissingHubLandingConfigNamesWayForward asserts a hub without the hub-wide landing config fails wire with an error ending in the way forward.
+// TestWire_MissingHubLandingConfigNamesWayForward asserts that wire fails on a hub without the hub-wide landing config,
+// and that the error ends in the way forward.
 func TestWire_MissingHubLandingConfigNamesWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -128,11 +128,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	// Every path field of the assembled shedrecipe.Env and shedbuild.ShedPaths equals the corresponding
-	// accessor's own output for the same location.
-	// StatusPath and StatusLockPath are told twice -- once on c.env and
-	// once on c.shedPaths (read by shedengine.Shed) -- so both copies are asserted against the same
-	// accessor, per the deliberate duplication ShedPaths' own doc comment describes.
+	// Each path field of shedrecipe.Env and shedbuild.ShedPaths equals its accessor's output for the same location.
+	// StatusPath and StatusLockPath appear on both c.env and c.shedPaths, and shedengine.Shed reads the latter.
+	// Both copies are checked against the same accessor, so a drift between them fails the test.
 	t.Run("path fields match the accessors", func(t *testing.T) {
 		if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.shedPaths.StatusPath != want {
 			t.Errorf("c.shedPaths.StatusPath = %q; want %q", c.shedPaths.StatusPath, want)
@@ -166,15 +164,15 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The run-lock path differs from the status-lock path, the pair shedengine.Shed rejects outright when equal.
+	// The run-lock path differs from the status-lock path, which shedengine.Shed rejects when they are equal.
 	t.Run("run lock differs from the status lock", func(t *testing.T) {
 		if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
 			t.Errorf("c.shedPaths.LockPath == c.shedPaths.StatusLockPath == %q; want them distinct", c.shedPaths.LockPath)
 		}
 	})
 
-	// c.env.Cwd is the Preflight row's cwd: preflightEntry builds the row from Env.Cwd,
-	// and the row's engine name is pinned by the recipe-side coverage guard in internal/loomrecipe.
+	// c.env.Cwd is the Preflight row's cwd, which preflightEntry builds from Env.Cwd.
+	// The row's engine name is pinned by the coverage guard in internal/loomrecipe.
 	t.Run("cwd is told to the env", func(t *testing.T) {
 		if c.env.Cwd != cwd {
 			t.Errorf("c.env.Cwd = %q; want %q", c.env.Cwd, cwd)
@@ -236,13 +234,15 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if deps.ReadOnly == nil {
 			t.Error("runDeps.ReadOnly = nil; want the read-only classifier beside the reference matcher")
 		}
-		// wire returned nil above and only stored the lister, so it looked no engine up for it: status and pause, which run wire, are never refused by the master key.
+		// wire only stores the lister and looks up no engine for it:
+		// status and pause, which run wire, are never refused by the master key.
 		if deps.InstructionFiles == nil {
 			t.Error("runDeps.InstructionFiles = nil; want Master's instruction file lister")
 		}
 
-		// The same value must also be embedded verbatim in c.env.WebsterDeps.
-		// A func field cannot be compared, so the gate config readers are checked for presence and cleared from the copies compared.
+		// The same value must also sit verbatim in c.env.WebsterDeps.
+		// A func field cannot be compared, so the gate config readers are checked for presence.
+		// They are then cleared from the copies compared.
 		envGeom, runGeom := c.env.WebsterDeps.Geom, deps.Geom
 		if envGeom.GateConfig == nil || runGeom.GateConfig == nil {
 			t.Error("a webster geometry carries no GateConfig reader; want hubgeom.WebsterGeometry's")
@@ -264,7 +264,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The reference matcher is a *fabricengine.RefScanner and never websterengine.NeverMatches, the standalone-only stand-in: loom is hub-only.
+	// The reference matcher is a *fabricengine.RefScanner.
+	// loom is hub-only, so it never uses websterengine.NeverMatches, the standalone stand-in.
 	t.Run("ref matcher is the real scanner", func(t *testing.T) {
 		if _, ok := c.runDeps.RefMatcher.(*fabricengine.RefScanner); !ok {
 			t.Errorf("runDeps.RefMatcher = %T; want *fabricengine.RefScanner", c.runDeps.RefMatcher)
@@ -272,7 +273,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 	})
 
 	// c.registry, c.runner and c.landingCfg are the three fields run.go passes to landingDeps.
-	// c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a DeployBranches []string field, which makes the struct non-comparable.
+	// c.landingCfg is compared with reflect.DeepEqual.
+	// landingshed.Config holds a DeployBranches []string field, which makes it non-comparable with !=.
 	t.Run("landing seam fields are populated", func(t *testing.T) {
 		if c.registry == nil {
 			t.Error("c.registry = nil; want the resolved model-spec registry")
@@ -320,9 +322,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The Env fields both review segments read, shared by the Discussion-Bouncer and Discussion-Burler-* rows and the Plan-Bouncer and Plan-Burler-* rows alike, are told.
-	// StencilsDir and RunRoot are told against their own loomengine/fabricengine accessor rather than a re-derived literal.
-	// Now is told non-nil, which envkit.NilSeams skips as a documented default.
+	// The Env fields that the Discussion and Plan review segments both read are checked here.
+	// StencilsDir and RunRoot are checked against their own accessor, not a re-derived literal.
+	// Now is checked non-nil, because envkit.NilSeams skips it as a documented default.
 	t.Run("review segment paths and clock", func(t *testing.T) {
 		if want := fabricengine.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
 			t.Errorf("c.env.StencilsDir = %q; want %q", c.env.StencilsDir, want)
@@ -335,9 +337,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The review and fix model lists and the timeout equal what loomengine.ResolveReview returns for the
-	// same loaded config and registry -- resolved here rather than hardcoded against the template's
-	// literal spec, so a later template edit does not silently break this assertion's meaning.
+	// The review and fix model lists and the timeout are what loomengine.ResolveReview returns.
+	// They are resolved from the loaded config and registry, not copied from the template's literal spec,
+	// so a template edit leaves this assertion's meaning intact.
 	t.Run("review models match the loaded config", func(t *testing.T) {
 		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 		if err != nil {
@@ -362,7 +364,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// A tapestry seed's Plan-Review segment is told the file that holds its keys, tapestry.yaml, and the other segments loom.yaml.
+	// A tapestry seed's Plan-Review segment is told the file that holds its keys, tapestry.yaml;
+	// the other segments are told loom.yaml.
 	t.Run("segment settings name the config file of their keys", func(t *testing.T) {
 		for segment, wantFile := range map[string]string{
 			"Discussion-Review": "loom.yaml",
@@ -407,7 +410,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Errorf("lead.Outputs = %v; want %v", lead.Outputs, wantOutputs)
 		}
 
-		// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
+		// The fixture hub records no shortname, so the wired parent is empty;
+		// the geometry supplies the parent and shortname instead.
 		prompts, err := seatengine.Prompts(seatengine.Geometry{
 			WorktreeRoot: loc.WorktreePath(),
 			AnchorPath:   loc.AnchorPath(),
@@ -435,7 +439,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 	})
 
 	// The wired Env carries the worktree's slug, and its SegmentBounces reads the status file on each call:
-	// a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
+	// A status fixture whose history holds Bouncer Stucks reports the count and budget that loomrecipe.Routing computes.
+	// An absent status file reports not-in-segment.
 	t.Run("bouncer slug and segment bounces", func(t *testing.T) {
 		if want := seedSlug(loc.WorktreeName); c.env.Slug != want {
 			t.Errorf("c.env.Slug = %q; want %q", c.env.Slug, want)
@@ -519,7 +524,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The fix rows' verify gate reads the call of the key its row names.
+	// The fix rows' verify gate reads the command of the key its row names.
 	t.Run("the verify gate's told command is read per key", func(t *testing.T) {
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 		const want = "lym gate test --wait --gate code-burler-fix"
@@ -529,7 +534,11 @@ func TestWire_DefaultConfig(t *testing.T) {
 	})
 }
 
-// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the lead's seat, and a lead prompt over the wired geometry that names the parent and carries no unrendered marker, then the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.
+// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable().
+// It runs for both discussion_interactive values.
+// It asserts the table's settings and the lead's seat.
+// It asserts that the lead prompt names the parent and carries no unrendered marker.
+// It then asserts the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.
 func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -589,7 +598,8 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 				t.Errorf("table has %d seats; want the lead alone under the template's empty advisors", len(table.Seats))
 			}
 
-			// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
+			// The fixture hub records no shortname, so the wired parent is empty;
+			// the geometry supplies the parent and shortname instead.
 			const parentName = "hub:orch"
 			prompts, err := seatengine.Prompts(seatengine.Geometry{
 				WorktreeRoot: loc.WorktreePath(),
@@ -612,8 +622,10 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		})
 	}
 
-	// discussion_advisors and discussion_lenses decide which seats the wired table holds and whether its lead may fork:
-	// the template's lens fan authorizes the lead's forks and no advisor's, each configured advisor adds a seat named by its entry, and an empty lens key keeps the lead from forking.
+	// The discussion_advisors and discussion_lenses keys decide the wired table's seats.
+	// They also decide whether its lead may fork.
+	// The template's lens fan authorizes the lead's forks and no advisor's;
+	// each configured advisor adds a seat named by its entry, and an empty lens key keeps the lead from forking.
 	const advisorEntries = `[{name: critic, model: "sonnet[low]"}, {name: skeptic, model: "opus[high]"}]`
 	keyTests := []struct {
 		name      string
@@ -662,9 +674,9 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 // drives producers needs wire()'s early config refusal, and getting that wrong moves the failure
 // from the operator's terminal into a detached driver log.
 //
-// validate-discussion/validate-plan want true as of crucible round sonnet5-xhigh-r8's F2: both are
-// standalone format self-checks the writer agents' own stencils run mid-task, so they must not
-// depend on an unrelated module's config health any more than status/pause do.
+// validate-discussion and validate-plan want true.
+// Both are standalone format self-checks that the writer agents' stencils run mid-task.
+// So, like status and pause, they must not depend on an unrelated module's config health.
 func TestVerbUsesLightweightWiring(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -699,20 +711,18 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 	}
 }
 
-// TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig is the regression guard for the defect:
-// "lym loom pause" and "lym loom status" used to run the whole of wire(), so a fault in any of eight
-// module configs refused them both -- taking away the operator's read-out and the documented
-// emergency brake for a run that was still going. Extended by crucible round sonnet5-xhigh-r8's F2
-// to also prove the four c.env path fields validate-discussion/validate-plan read get filled by this
-// same no-config-load path, rather than those two verbs staying on wire()'s full stack. The location
-// fixture here has no _lym/config directory at all, which is the strongest form of "no config is
-// loaded".
+// TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig guards the lightweight wiring used by pause and status.
+// Running the whole of wire() for them let a fault in any module config refuse both.
+// That took away the operator's read-out and the emergency brake for a run still in progress.
+// The test also proves the four c.env path fields that validate-discussion and validate-plan read are filled.
+// They are filled on this same path, so those verbs need not stay on wire()'s full stack.
+// The location fixture has no _lym/config directory at all, which is the strongest form of "no config is loaded".
 //
 //testtiming:keep pins the lightweight wiring filling the status, lock and plan-validation paths and the commit-status seam with no config loaded and no engine built; the covering test runs the wiring without asserting its fields
 func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	tiergate.Require(t, 0)
-	// Deliberately NOT hubLocation: this location's anchor has no _lym/config directory at all, so
-	// a path that loaded any module config could not possibly succeed here.
+	// This location's anchor has no _lym/config directory at all, so
+	// a path that loaded any module config could not succeed here.
 	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
@@ -735,8 +745,8 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
 		t.Error("LockPath and StatusLockPath name the same file; shedengine.validate rejects that outright")
 	}
-	// The four fields validate-discussion/validate-plan actually read must be filled -- this is the
-	// whole point of F2's fix -- from the told location's own cheap accessors, no I/O.
+	// The four fields that validate-discussion and validate-plan read must be filled.
+	// They come from the location's own cheap accessors, with no I/O.
 	if c.env.AnchorPath != location.AnchorPath() {
 		t.Errorf("env.AnchorPath = %q; want %q", c.env.AnchorPath, location.AnchorPath())
 	}
@@ -779,8 +789,8 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if darn.env.PatternRecordPath != loomengine.DiscussionDecisionRecord(location) {
 		t.Errorf("darn env.PatternRecordPath = %q; want %q", darn.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(location))
 	}
-	// Nothing that a module config would have filled may be populated: that is what proves no load
-	// happened rather than merely that none failed.
+	// Nothing that a module config would have filled may be populated.
+	// That proves no load happened, rather than that none failed.
 	if c.reed != nil {
 		t.Error("reed engine was constructed; want the lightweight path to build no engine")
 	}
@@ -790,12 +800,10 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 }
 
 // TestWire_FrictionDirFillsBurlerAndWebster asserts wire fills the resolved friction directory into
-// both told engines -- the burlerEngine constructor's fifth argument and
-// c.runDeps.FrictionDir -- when loom.yaml's friction key is non-empty, and fills the empty string
-// into both, and into c.frictionDir, when it is present-but-empty. Every non-empty assertion compares
-// against loomengine.LoomFrictionDir(loc)'s own return value, never a hand-built path literal, the
-// way TestWire_DefaultConfig already compares RunRoot against
-// loomengine.LoomReviewsDir(loc).
+// both told engines: the burlerEngine constructor's fifth argument and c.runDeps.FrictionDir.
+// The directory is filled when loom.yaml's friction key is non-empty;
+// when the key is present but empty, the empty string goes into both and into c.frictionDir.
+// Non-empty assertions compare against loomengine.LoomFrictionDir(loc)'s result, not a hand-built path literal.
 //
 //testtiming:keep pins the resolved friction directory filled into c.frictionDir, the webster run deps and its env copy when the friction key is set, and the empty string in all three when it is present but empty; the covering test wires with the default config only
 func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
@@ -838,8 +846,9 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	}
 }
 
-// seedLoomConfigWithKeys overwrites <anchorPath>/_lym/config/loom.yaml and tapestry.yaml with their embedded templates, each key line's value replaced by its entry in values.
-// A key goes into whichever of the two templates holds it, and a key neither holds fails the test.
+// seedLoomConfigWithKeys overwrites <anchorPath>/_lym/config/loom.yaml and tapestry.yaml with their embedded templates.
+// The value on each key's line is replaced by its entry in values;
+// a key neither template holds fails the test.
 func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]string) {
 	t.Helper()
 	replaced := map[string]bool{}
@@ -869,11 +878,13 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 	}
 }
 
-// TestWire_ReviewKeysReachTheEnv verifies the loom.yaml and tapestry.yaml keys that tune a review round reach the Env:
-// plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
-// Code-Review takes the template's own reviewer and fixer models (one sonnet entry of effort medium each).
+// TestWire_ReviewKeysReachTheEnv verifies the loom.yaml and tapestry.yaml keys tuning a review round reach the Env.
+// plan_reviewer_model lands in the Plan-Review segment's models alone.
+// Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
+// Code-Review takes the template's own reviewer and fixer models, one sonnet entry of effort medium each.
 // plan_judge, seed and code_seed land in each segment's Bouncer pair.
-// The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces, and every segment's entry is pinned whole.
+// The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces,
+// and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -929,10 +940,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
-	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
+	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys;
+	// the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
-	// With the template's empty assistant keys every segment's assistant holds one zero choice and one solo fan entry, and the default 60-minute bound, which fits inside review_timeout_min.
+	// With the template's empty assistant keys, every segment's assistant holds one zero choice and one solo fan entry.
+	// Its bound is the default 60-minute one, which fits inside review_timeout_min.
 	defaultAssist := func(module, segment string) shedadapters.AssistSettings {
 		return shedadapters.AssistSettings{
 			Models:   []shuttleengine.ModelChoice{{}},
@@ -1037,8 +1050,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Errorf("Segments[Plan-Review].Assist = %+v; want %+v", got, wantPlanAssist)
 	}
 
-	// A keep-warm cap below the default await cap changes the room the assistant's bound is capped to, so the bound proves the resolver's cap reaches it:
-	// review_timeout_min less shuttle's start allowance less that cap.
+	// A keep-warm cap below the default await cap changes the room the assistant's bound is capped to,
+	// so the bound proves the resolver's cap reaches it.
+	// The bound is review_timeout_min less shuttle's start allowance less that cap.
 	// The cap is looked up under the chair's strand name, which needs the hub's shortname record.
 	cappedLoc := hubLocation(t, "pair", ".")
 	if err := fabricengine.WriteShortname(fabricengine.BoardDir(cappedLoc.HubPath), "tst"); err != nil {
@@ -1067,7 +1081,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Errorf("Segments[Code-Review].Assist timeout %v skip reason %q; want %v and none", got.Timeout, got.SkipReason, wantCappedTimeout)
 	}
 
-	// A chair runs as its segment's prefixed role, so a keep_warm_cap_roles entry for code-burler-review caps Code-Review's assistant alone, and the bare burler-review entry caps none.
+	// A chair runs as its segment's prefixed role.
+	// So a keep_warm_cap_roles entry for code-burler-review caps Code-Review's assistant alone,
+	// and the bare burler-review entry caps none.
 	roleLoc := hubLocation(t, "pair", ".")
 	if err := fabricengine.WriteShortname(fabricengine.BoardDir(roleLoc.HubPath), "tst"); err != nil {
 		t.Fatalf("WriteShortname() = %v; want nil", err)
@@ -1099,7 +1115,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 }
 
-// TestWire_LanguageSkills asserts wire loads the hub's language.yaml once and tells the list to the Webster deps and the darn writer's table, and that an unusable file halts wire with the module's way forward.
+// TestWire_LanguageSkills asserts wire loads the hub's language.yaml once.
+// It tells the list to the Webster deps and the darn writer's table.
+// An unusable file halts wire with the module's way forward.
 func TestWire_LanguageSkills(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1107,9 +1125,9 @@ func TestWire_LanguageSkills(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		// gate is the hub's gate.yaml: empty for none, "two" for two declared tiers, "unloadable" for a file wire cannot load.
+		// gate is the hub's gate.yaml: empty for none, "two" for two declared tiers, "unloadable" for an unusable one.
 		gate string
-		// wantErr is the text the wire error must contain beside wantKey; empty means wire succeeds with wantSkills and wantGateTiers.
+		// wantErr is text the wire error must contain beside wantKey; empty means wire succeeds.
 		wantErr    string
 		wantKey    string
 		wantSkills []string
@@ -1195,7 +1213,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if got := table.Chair().Skills; !slices.Equal(got, want) {
 				t.Errorf("darn writer skills = %v; want %v", got, want)
 			}
-			// The plan table reads the plan perch's values, which only a recipe with a Plan-Review row applies, so a tapestry wiring over the same hub builds it.
+			// The plan table reads the plan perch's values, and only a recipe with a Plan-Review row applies them,
+			// so the tapestry wiring over the same hub builds it.
 			tapestry := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 			if err := tapestry.wire(loc, loc.AnchorPath()); err != nil {
 				t.Fatalf("wire() of a tapestry seed = %v; want nil", err)
@@ -1211,7 +1230,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 	}
 }
 
-// TestLoomRerouteCapWayForward_IsRowNeutral proves the reroute-cap clause serves every row's cap halt: it names the resume verb and the plan amendment route of a Webster plan conflict.
+// TestLoomRerouteCapWayForward_IsRowNeutral proves the reroute-cap clause serves every row's cap halt.
+// It names the resume verb and the plan amendment route of a Webster plan conflict.
 func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1223,7 +1243,8 @@ func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 	}
 }
 
-// TestLoomRerouteCapWayForward proves a loom shed that reroutes Webster past the cap halts blocked at Webster with the told clause, which names the plan amendment route and the resume.
+// TestLoomRerouteCapWayForward proves that a loom shed rerouting Webster past the cap halts blocked at Webster.
+// The told clause names the plan amendment route and the resume.
 func TestLoomRerouteCapWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

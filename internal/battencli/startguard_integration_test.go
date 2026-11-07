@@ -1,4 +1,6 @@
-// startguard_integration_test.go drives armAt and "lym batten run" over a hubforge hub to pin that the pre-run guard refuses before any write: no seed, no status file, no board pull or claim and no window.
+// startguard_integration_test.go drives armAt and "lym batten run" over a hubforge hub.
+// It pins that the pre-run guard refuses before any write.
+// A refused start leaves no seed, no status file, no board pull or claim, and no window.
 
 package battencli
 
@@ -19,15 +21,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestArmAt_StartGuardRefusesBeforeAnyWrite asserts the guard refuses a start before armAt pulls the board, claims the prime or writes a seed:
-// a dirty source refuses naming the path, a cancel marker refuses a step, and "run" on the dirty source refuses on the envelope with no seed.
+// TestArmAt_StartGuardRefusesBeforeAnyWrite asserts the guard refuses a start before any write:
+// no board pull, no prime claim, and no seed write.
+// A dirty source refuses naming the path.
+// A cancel marker refuses a step.
+// "run" on a dirty source refuses on the envelope.
 func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "guarded-task"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	// Added before the dirty-source rows, since a pair forks only from a clean source.
+	// The pair is added first: a pair forks only from a clean source.
 	hubforge.AddPairWith(t, h, "own-beam", fabricengine.AddOptions{SkipPush: true, Beam: true})
 	readme := filepath.Join(h.PrimeWorktree(), "README")
 	clean, err := os.ReadFile(readme)

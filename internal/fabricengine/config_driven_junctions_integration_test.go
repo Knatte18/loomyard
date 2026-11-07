@@ -1,16 +1,11 @@
-// config_driven_junctions_integration_test.go proves the two behaviors batch
-// 3 exists to prove: (1) the extensibility promise of the hybrid name-sourcing
-// seam — WireJunctions/UnwireJunctions wire and unwire exactly the name-set a
-// caller passes them, with no fabric/lymcwd code change needed for a
-// future module to append its own junction name to pathspec — and (2) that a
-// worktree whose pathspec is narrower than the default (only "_lym") is still
-// reported healthy by Healthy(), since a narrow pathspec is a legitimate,
-// unenforced reality (see doc.go's narrow-pathspec asymmetry note), not a
-// drift shape.
+// config_driven_junctions_integration_test.go proves two junction-wiring behaviors.
+// First, WireJunctions and UnwireJunctions wire and unwire exactly the names a caller passes to them,
+// so a future module can add its own junction name to the pathspec without a fabric or lymcwd change.
+// Second, a worktree with a narrower pathspec than the default ("_lym" only) is still reported healthy by Healthy().
+// A narrow pathspec is a legitimate, unenforced state, not a drift shape.
 //
-// Package fabricengine_test, mirroring junction_pattern_integration_test.go's
-// imports and hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}) fixture pattern; shares the single
-// TestMain in testmain_test.go.
+// It mirrors the imports and the hubforge.CopyHub fixture pattern of junction_pattern_integration_test.go.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -26,8 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWireJunctions_WiresEveryPassedName is the extensibility proof under the hybrid seam: WireJunctions/UnwireJunctions wire and unwire exactly the name-set they are given — here a three-name set including "_extra" and "_other", names that are neither part of the default pathspec nor hub-reserved — with no SeedConfig, because WireJunctions no longer reads config at all.
-// This is the proof that a future raddle/board append (one extra pathspec token) is wired with no fabric/lymcwd code change: a caller sourcing an extended pathspec would pass its names exactly this way.
+// TestWireJunctions_WiresEveryPassedName checks that wiring and unwiring cover exactly the names passed in.
+// The wired names are a set including `_extra` and `_other`, neither in the default pathspec nor hub-reserved.
+// No config is seeded, since WireJunctions reads none.
+// It shows that a pathspec extended by one token is wired with no fabric/lymcwd code change:
+// a caller that sources an extended pathspec passes its names exactly this way.
 //
 //testtiming:keep WireJunctions and UnwireJunctions wiring exactly the name set they are given, including names outside the default pathspec; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
@@ -78,20 +76,14 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	}
 }
 
-// TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy proof, re-based for the
-// structural-directories batch: `pathspec: _lym` is now redundant rather than narrow (`_lym` arrives
-// structurally regardless of pathspec), so this uses a repo-wide config whose pathspec names neither
-// structural directory at all.
-// Healthy loads its junction name-set from the repo-wide fabricengine.BoardDir(l.HubPath) fabric.yaml
-// (card 7), unions it with both structural directory sets (structuralCommittedDirs,
-// structuralNeverCommittedDirs), so a worktree with only "_lym" and ".lym" wired is still reported in
-// sync even though the config on disk names nothing recognisable.
-// A pathspec naming neither structural directory is a legitimate, unenforced reality (doc.go's
-// narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
+// TestHealthy_NarrowPathspecIsHealthy checks that a pathspec naming neither structural directory reads as healthy.
+// Healthy loads its junction names from the repo-wide fabric.yaml and unions them with both structural directory sets,
+// so a worktree with only `_lym` and `.lym` wired is still reported in sync.
+// Such a pathspec is a legitimate, unenforced reality, not a drift shape Healthy should flag.
 //
-// Healthy checks weft-branch correspondence (weftBranch == RecordsBranchName(warpBranch), drift.go:69-72) before the junction loop;
-// hubforge.NewHub's CloneAndWire already checks the weft primary out on the suffixed branch, so — unlike the raw local-worktree pair this test used to
-// build by hand — no explicit checkout is needed here.
+// Healthy checks weft-branch correspondence before the junction loop.
+// The hub from `hubforge.CopyHub` already has the weft primary checked out on the suffixed branch,
+// so this test needs no explicit checkout.
 //
 //testtiming:keep a redundant narrow pathspec reading healthy; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
@@ -99,18 +91,16 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	// The repo-wide pathspec (not the weft prime's own weft base) is what Healthy reads after card
-	// 7; override it with a pathspec naming neither structural directory, proving _lym is still
-	// wired structurally.
+	// Healthy reads the repo-wide pathspec, so the test overrides it with one naming neither structural directory;
+	// `_lym` is then expected only through the structural directories.
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _other\n")
 
 	l := h.Location
 	slug := l.WorktreeName
 
-	// The wired name-set must match what WiredNames/Healthy compute: both
-	// structural directories (_lym, .lym) unioned with the hub-reserved-filtered
-	// pathspec ("_other" here) — neither structural directory is named by the
-	// config itself.
+	// The wired names are both structural directories, `_lym` and `.lym`.
+	// They also include the pathspec names that survive hub-reserved filtering, here `_other`.
+	// The config names neither structural directory.
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", ".lym", "_other"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}

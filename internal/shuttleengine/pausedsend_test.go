@@ -1,4 +1,5 @@
-// pausedsend_test.go covers the refusal of a send into a session a pause covers: which slug judges the target, when coverage is read, and what a refused send leaves untyped.
+// pausedsend_test.go covers the refusal of a send into a session a pause covers.
+// It pins which slug judges the target, when coverage is read, and what a refused send leaves untyped.
 
 package shuttleengine
 
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// swallowingReed is a fakeReed whose pane reads busy until idleAt and idle after, then shows the last text that landed.
+// swallowingReed is a fakeReed whose pane reads busy until idleAt and idle after.
+// It shows the last text that landed.
 // The first swallow SendText calls land nowhere, as when a provider TUI drops the input.
 type swallowingReed struct {
 	*fakeReed
@@ -45,7 +47,8 @@ func (r *swallowingReed) CapturePane(string) (string, error) {
 	return "IDLE\n" + r.landed, nil
 }
 
-// TestSend_RefusesACoveredTarget pins the send refusal: a *PausedError wrapping ErrPaused, judged by the target's own slug, with nothing typed.
+// TestSend_RefusesACoveredTarget pins the send refusal with a *PausedError wrapping ErrPaused.
+// The target's own slug judges coverage, and nothing is typed.
 //
 // It is not parallel: logcapture redirects the process-global logger.
 func TestSend_RefusesACoveredTarget(t *testing.T) {
@@ -61,10 +64,12 @@ func TestSend_RefusesACoveredTarget(t *testing.T) {
 		// strand is the strand's name: on the run record, or in reed's status for a recordless send.
 		strand     string
 		recordless bool
-		// corrupt writes an undecodable record, and sends is how many sends the row makes, one when zero.
+		// corrupt writes an undecodable record.
+		// sends is how many sends the row makes; zero means one.
 		corrupt bool
 		sends   int
-		// lateScope, when set, adds an entry of that scope to the record at the first Sleep of the send's idle wait, or with swallowFirst at the first Sleep of its verify polls.
+		// lateScope, when set, adds an entry of that scope to the record at the first Sleep of the send's idle wait.
+		// With swallowFirst, the entry is added at the first Sleep of the verify polls instead.
 		lateScope    string
 		swallowFirst bool
 		// wantSlug is the refusal's slug; wantRefused false makes the row type.

@@ -1,13 +1,14 @@
-// panebin_enforcement_test.go enforces the pane-binary rule's two-sided
-// guarantee: no pane-creation site exists outside the named allowlist, and the one allowlisted
-// chokepoint still composes the prelude rather than silently becoming a plain pass-through.
-// It is modelled directly on selvagepane_enforcement_test.go: scankit walks every non-_test.go .go file directly inside internal/reedengine -- never internal/reedengine/render/, and never a sibling package.
+// panebin_enforcement_test.go enforces the pane-binary rule's two-sided guarantee.
+// No pane-creation site exists outside the named allowlist.
+// The one allowlisted chokepoint still composes the prelude rather than becoming a plain pass-through.
+// The scan walks every non-_test.go .go file directly inside internal/reedengine.
+// It skips internal/reedengine/render/ and any sibling package.
 // It spawns no process, so it carries no build tag.
 //
-// Honest residual, recorded here as this package's other enforcement test records its own: the scan
-// is a tripwire over string literals in this one package, so a pane created by a helper in another
-// package, or by a "split-window" value assembled from fragments or held in a variable defined
-// elsewhere, is not seen. It narrows the gap the invariant exists to close rather than closing it.
+// The scan is a tripwire over string literals in this one package.
+// A pane created by a helper in another package is not seen.
+// Nor is one created through a "split-window" value assembled from fragments or held in a variable defined elsewhere.
+// The test narrows the gap the invariant exists to close rather than closing it.
 
 package reedengine
 
@@ -20,9 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// panebinScanMinFiles is the plausible floor for how many non-test .go files
-// internal/reedengine holds. Guards against a misconfigured directory read reporting as a vacuous
-// pass instead of a failure, the way tools/sandbox/pathresolve_guard_test.go's own floor does.
+// panebinScanMinFiles is the plausible floor for how many non-test .go files internal/reedengine holds.
+// It guards against a misconfigured directory read passing vacuously instead of failing.
 const panebinScanMinFiles = 10
 
 // reedengineScanDir is the module-relative package directory both reedengine enforcement scans walk.
@@ -44,7 +44,8 @@ var paneCreationAllowlist = []scankit.Entry{
 	},
 }
 
-// windowCreationAllowlist names the files in this package permitted to contain the "new-window" string literal, each with the reason.
+// windowCreationAllowlist lists the files in this package that may contain the "new-window" string literal;
+// each entry gives the reason.
 var windowCreationAllowlist = []scankit.Entry{
 	{
 		Key: "internal/reedengine/spawn.go",
@@ -56,8 +57,11 @@ var windowCreationAllowlist = []scankit.Entry{
 	},
 }
 
-// TestPaneCreationSitesRouteThroughThePreludeChokepoint walks each parsed file for an *ast.BasicLit whose value is the string "split-window" or "new-window", and fails for any occurrence in a file outside its allowlist (paneCreationAllowlist, windowCreationAllowlist).
-// Scanning the AST rather than raw bytes is what keeps a doc comment mentioning split-window from tripping the check, since go/parser turns a comment into neither an identifier nor a basic literal.
+// TestPaneCreationSitesRouteThroughThePreludeChokepoint walks each parsed file.
+// It looks for an *ast.BasicLit whose value is the string "split-window" or "new-window".
+// It fails for such a literal in any file outside its allowlist (paneCreationAllowlist, windowCreationAllowlist).
+// Scanning the AST rather than raw bytes keeps a doc comment that mentions split-window from tripping the check;
+// go/parser turns a comment into neither an identifier nor a basic literal.
 //
 //testtiming:keep pins that no file outside the pane-creation allowlist holds the "split-window" string literal, so every strand pane is created through the prelude chokepoint; its covering tests run this code without asserting it
 func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
@@ -94,10 +98,9 @@ func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
 }
 
 // TestLaunchStrandLockedStillComposesThePrelude parses spawn.go, locates the launchStrandLocked
-// function declaration, and fails unless its body contains a call to composePaneLaunchLine. This is
-// what keeps the allowlisted chokepoint from silently becoming a plain pass-through: the previous test
-// proves no second pane-creation site exists, and this one proves the single site still composes the
-// prelude.
+// function declaration, and fails unless its body contains a call to composePaneLaunchLine.
+// It keeps the allowlisted pane-creation chokepoint from becoming a plain pass-through:
+// the single site must still compose the prelude.
 //
 //testtiming:keep pins launchStrandLocked still calling composePaneLaunchLine, so the allowlisted chokepoint cannot become a plain pass-through; its covering tests run this code without asserting it
 func TestLaunchStrandLockedStillComposesThePrelude(t *testing.T) {
@@ -138,7 +141,8 @@ func TestLaunchStrandLockedStillComposesThePrelude(t *testing.T) {
 	}
 }
 
-// fileContainsStringLiteral reports whether astFile contains an *ast.BasicLit whose value is quoted, the string literal as written in source.
+// fileContainsStringLiteral reports whether astFile contains an *ast.BasicLit whose value is quoted:
+// the string literal as written in source.
 func fileContainsStringLiteral(astFile *ast.File, quoted string) bool {
 	found := false
 	ast.Inspect(astFile, func(n ast.Node) bool {

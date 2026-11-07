@@ -1,5 +1,5 @@
-// treesitterlink_integration_test.go runs `go list` over the module under every test tag and holds the allowed list of the tree-sitter link guard.
-// The chain search and the comparison live in treesitterlink_test.go.
+// treesitterlink_integration_test.go runs `go list` over the module under every test tag.
+// It holds the allowed list of the tree-sitter link guard.
 
 package main
 
@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// treeSitterAllowedLinks are the packages whose test binary may link tree-sitter, each with the reason it still does.
+// treeSitterAllowedLinks are the packages whose test binary may link tree-sitter, each with the reason it does.
 var treeSitterAllowedLinks = []scankit.Entry{
 	{Key: "internal/planglyph", Why: "implements the code index over quarry"},
 	{Key: "internal/quarrycli", Why: "the quarry verbs call quarry directly"},
@@ -29,8 +29,10 @@ var treeSitterAllowedLinks = []scankit.Entry{
 // treeSitterLinkMinTestBinaries is the vacuous-scan floor for the test binaries `go list` reports.
 const treeSitterLinkMinTestBinaries = 100
 
-// TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt fails when a test binary outside treeSitterAllowedLinks links tree-sitter, or when an allowed one no longer does.
-// The tag set is every tier's under both spellings, so a binary that links it only through a `tier0`, `tier2` or `tier3` test file counts.
+// TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt fails when a test binary outside the allowed list links tree-sitter.
+// It also fails when an entry of the allowed list no longer links tree-sitter.
+// The scan runs under every tier's tag in both spellings.
+// A binary that links tree-sitter only through a tier test file counts.
 //
 //lym:guard
 func TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt(t *testing.T) {

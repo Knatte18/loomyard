@@ -1,4 +1,5 @@
-// parentalign_test.go drives Parent-Align's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
+// parentalign_test.go drives Parent-Align's Call against a real parentlock.Store in a temporary directory.
+// The tip reads, resolver and verify seams are fakes.
 
 package landingshed
 

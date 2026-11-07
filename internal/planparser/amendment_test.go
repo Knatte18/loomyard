@@ -1,4 +1,6 @@
-// amendment_test.go covers AppendAmendment: a first append creating the file with its heading and every field rendered; a second append leaving the first entry byte-identical and adding the second below it; and a wrapped error convention matching this package's other write paths.
+// amendment_test.go covers AppendAmendment: a first append creates the file with its heading and every field;
+// a second append leaves the first entry byte-identical and adds the second below it;
+// and an unreadable amendments file yields a wrapped error.
 
 package planparser_test
 
@@ -12,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestAppendAmendment_AppendsEntries asserts a first append creates the file with its fixed heading and every field, and a second append leaves the first entry byte-identical and adds the second below it.
+// TestAppendAmendment_AppendsEntries asserts a first append creates the file with its fixed heading and every field,
+// and a second append leaves the first entry byte-identical and adds the second below it.
 func TestAppendAmendment_AppendsEntries(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -67,8 +70,7 @@ func TestAppendAmendment_UnreadableAmendmentsFileIsWrappedError(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	// A directory named amendments.md is unreadable as a file, forcing os.ReadFile to fail with a
-	// non-not-exist error.
+	// A directory named amendments.md cannot be read as a file, so os.ReadFile fails with an error other than not-exist.
 	if err := os.Mkdir(filepath.Join(dir, planparser.AmendmentsFileName), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

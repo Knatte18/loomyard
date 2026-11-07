@@ -12,7 +12,7 @@ import (
 )
 
 // rerunCardVerifies runs each card's Verify through runner, in card order, with output discarded.
-// It returns one line per failing card, `card NN-<slug> verify <command> <how>`, as cardverify.Runner.RunCards defines it.
+// It returns one line per failing card, formatted `card NN-<slug> verify <command> <how>`.
 // A card with no Verify passes.
 // It returns no error: a verify that cannot start is a failed verify.
 func rerunCardVerifies(cards []planparser.Card, runner cardverify.Runner) []string {

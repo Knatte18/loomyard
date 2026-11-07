@@ -1,8 +1,10 @@
-// commitrecords.go implements the `commit-records` loom verb: it commits and pushes the run's records from Go when the driver stops.
+// commitrecords.go implements the `commit-records` loom verb, which commits and pushes the run's records at driver stop.
 // The driver writes its stop report after its last `lym shed step`, so no transition commit can capture it,
-// and the Fabric Git Invariant forbids the agent committing it itself: the agent triggers this verb, and the verb commits through fabricengine.
+// and the Fabric Git Invariant forbids the agent committing it itself:
+// the agent triggers this verb, and the verb commits through fabricengine.
 //
-// The cobra shell is thin over commitRecordsVerb, which takes the three fabric calls as commitStatusDeps so the disposition table is testable without git.
+// The cobra shell is thin over commitRecordsVerb, which takes its fabric calls through commitStatusDeps,
+// so the disposition table is testable without git.
 
 package loomcli
 
@@ -23,12 +25,17 @@ import (
 // commitRecordsMessage is the commit subject the verb lands under.
 const commitRecordsMessage = "loom: commit run records"
 
-// commitRecordsVerb commits the run's records and pushes them, with the task branch in a task pair, over d and reports a JSON envelope, returning the exit code.
-// A mid-merge sibling is skipped exactly as the status seam skips it, as a success with committed false;
-// a probe error, a commit error and a push error are each an error envelope.
-// A push skipped because a removal, an Add or a discard of the pair holds its teardown lock exclusive is no error: the envelope is ok with committed true and push_skipped carrying the reason, and the commit stays local for the pair's next push.
-// A commit or push the run's pre-push check stopped is no error either: the envelope is ok with push_stopped carrying the check's reason, the run is paused and the orch noticed;
-// committed is false when the check stopped the commit, which then pushes nothing, and true when it stopped the push after a commit.
+// commitRecordsVerb commits the run's records and pushes them over d, with the task branch in a task pair.
+// It reports a JSON envelope and returns the exit code.
+// A mid-merge sibling is a success with committed false and a skipped reason.
+// A probe error, a commit error and a push error are each an error envelope.
+// A push skipped because a removal, an Add or a discard of the pair holds its teardown lock exclusive is no error:
+// the envelope is ok with committed true and push_skipped carrying the reason,
+// and the commit stays local for the pair's next push.
+// A commit or push the run's pre-push check stopped is no error either:
+// the envelope is ok with push_stopped carrying the check's reason; the run is paused and the orch noticed.
+// committed is false when the check stopped the commit, which then pushes nothing.
+// committed is true when the check stopped the push after a commit.
 // A clean tree is not an error: committing an already-clean pathspec is a no-op.
 func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	active, err := d.MergeActive()
@@ -85,9 +92,9 @@ func writeParkMarker(markerPath, reportPath string) error {
 	return os.WriteFile(markerPath, []byte(reportPath), 0o644)
 }
 
-// commitAndPark commits the run's records over d, then writes the park marker at markerPath holding reportPath, whatever the commit's outcome.
-// The session parks whatever the commit's outcome, so the marker is written on every path;
-// a failed write is the one thing that would stall the run, so it fails the call.
+// commitAndPark commits the run's records over d, then writes the park marker at markerPath holding reportPath.
+// The marker is written whatever the commit's outcome, because the session parks either way.
+// A failed write is the one thing that would stall the run, so it fails the call.
 // It returns the exit code and prints the envelope to out.
 func commitAndPark(out io.Writer, d commitStatusDeps, markerPath, reportPath string) int {
 	code := commitRecordsVerb(out, d)

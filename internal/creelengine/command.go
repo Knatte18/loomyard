@@ -1,4 +1,5 @@
-// command.go declares the closed set of commands a creel inject may carry instead of a text line, and the rules that validate one.
+// command.go declares the closed set of commands a creel inject may carry instead of a text line.
+// It also holds the rules that validate one.
 
 package creelengine
 

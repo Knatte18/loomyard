@@ -1,19 +1,12 @@
-// approveseam_test.go's single subject: the approval seam is wired as shipped, and a mis-wiring is
-// rejected rather than silently accepted. Removing approve_seam from the shipped Plan-Bouncer row is
-// not reachable through the sequence fixture -- the recipe is parsed unconditionally from the
-// embedded document, and a nil Env.ApprovePlan fails at requireSeam before the run starts -- so the
-// negative case is expressed statically instead, by parsing hand-authored recipe YAML through
-// shedbuild.Parse the way overlay_seam_guard_test.go already does for its own fixtures.
-//
-// This file used to also carry a dynamic negative case, substituting env.ApprovePlan with a non-nil
-// no-op closure and driving a real run to prove Plan-Revalidate's require_approved: true key caught
-// the resulting no-op seam. That row -- and the whole class of standalone post-segment mechanical
-// re-check it belonged to -- is deleted by the row-removal batch, and nothing re-checks the approval
-// flag after Plan-Bouncer's settle writes it any more. The property this file's deleted case pinned
-// now rests on two things instead: the approve seam failing loudly at requireSeam if it is ever
-// wired nil (still covered below), and sequence_test.go's own trailing planparser.ParsePlan
-// approved-flag assertion, the only standing guard left anywhere that the seam genuinely ran on a
-// clean pass -- by design, no row re-checks the flag.
+// approveseam_test.go pins that the approval seam is wired as shipped, and that a mis-wiring is
+// rejected rather than silently accepted.
+// The sequence fixture cannot drive the removal of approve_seam from the shipped Plan-Bouncer row:
+// the recipe is parsed from the embedded document,
+// and a nil Env.ApprovePlan fails at requireSeam before the run starts.
+// The negative case is therefore expressed statically, by parsing hand-authored recipe YAML through shedbuild.Parse.
+// A seam wired nil fails loudly at requireSeam, which the tests below cover.
+// sequence_test.go's trailing planparser.ParsePlan assertion guards that the seam ran on a clean pass.
+// No row re-checks the approval flag after Plan-Bouncer's settle writes it.
 
 package loomrecipe
 
@@ -29,7 +22,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.TapestryRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row, approve_seam: discussion sits on the Discussion-Bouncer row, and no other row carries either key, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
+// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly asserts each seam key's shipped shape in the embedded tapestry recipe:
+// approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row;
+// approve_seam: discussion sits on the Discussion-Bouncer row, and no other row carries either key.
+// require_approved is recognized by no registry entry;
+// a row carrying it fails construction rather than silently doing nothing.
 //
 //testtiming:keep pins which shipped rows carry approve_seam and skip_seam, which TestApproveSeam_FailsToBuild never reads off the shipped recipe
 func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
@@ -95,7 +92,10 @@ func approveSeamFixture(approveSeam string) string {
 		approveSeamLine
 }
 
-// TestApproveSeam_FailsToBuild parses a one-row recipe naming approve_seam on a Bouncer row and builds it, asserting Build fails for a nil Env.ApprovePlan under approve_seam: plan -- a present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is guarded on env.CommitPlan/env.CommitDiscussion, so a document naming the key against a nil seam must never silently build a Bouncer whose Approve closure is nil -- and for a value bouncerEntry does not recognize: approve_seam accepts "plan" and "discussion", so any other value is a build-time error, not a silently-ignored key.
+// TestApproveSeam_FailsToBuild asserts Build fails for a one-row recipe that names approve_seam in two cases:
+// a nil Env.ApprovePlan under approve_seam: plan: requireSeam guards that key as commit_seam guards its seams;
+// so such a document never builds a Bouncer whose Approve closure is nil;
+// or a value bouncerEntry does not recognize, since approve_seam accepts only "plan" and "discussion".
 func TestApproveSeam_FailsToBuild(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -127,7 +127,8 @@ func TestApproveSeam_FailsToBuild(t *testing.T) {
 	}
 }
 
-// discussionApproveSeamFault returns the first way parsed breaks the discussion approve-seam rule, or "" when it keeps it.
+// discussionApproveSeamFault returns the first way parsed breaks the discussion approve-seam rule.
+// It returns the empty string when parsed keeps the rule.
 // The rule: the row that approves the discussion carries approve_seam: discussion, and no other Bouncer row does.
 func discussionApproveSeamFault(parsed shedbuild.Recipe) string {
 	approvalRow, _ := discussionApprovalRow(parsed)
@@ -146,7 +147,8 @@ func discussionApproveSeamFault(parsed shedbuild.Recipe) string {
 	return ""
 }
 
-// TestDiscussionApprovalRowsCarryApproveSeam pins the rule discussionApproveSeamFault judges over every embedded loom recipe, and over two fixtures that break it.
+// TestDiscussionApprovalRowsCarryApproveSeam checks the rule with discussionApproveSeamFault.
+// It runs the check on every embedded loom recipe and on two fixtures that break the rule.
 func TestDiscussionApprovalRowsCarryApproveSeam(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

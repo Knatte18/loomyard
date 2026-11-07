@@ -1,4 +1,5 @@
-// verdict.go renders a task's regression check from its committed drift records, as the markdown section a landing carries in its pull request and landing commit.
+// verdict.go renders a task's regression check from its committed drift records.
+// The result is the markdown section a landing carries in its pull request and landing commit.
 
 package driftengine
 
@@ -7,12 +8,15 @@ import (
 	"strings"
 )
 
-// verdictHeading opens the section Verdict renders.
+// verdictHeading is the heading that opens the regression check section.
 const verdictHeading = "## Regression check"
 
-// Verdict renders the task's regression check as a markdown section from the records ReadRecords returns, so a hand edit of a record never reaches the landing, and it runs no capture.
-// The section names the scope, the last check's counts, the expectation entries no cell used, the open ranges the judge looked into and the parent's amendments.
-// It returns "" when no scope record exists, so a task no Drift row recorded a scope for carries no section, and it creates no directory.
+// Verdict renders the task's regression check as a markdown section from its drift records,
+// so a hand edit of a record never reaches the landing, and it runs no capture.
+// The section names the scope, the last check's counts and the expectation entries no cell used.
+// It also names the open ranges the judge looked into and the parent's amendments.
+// It returns "" when no scope record exists,
+// so a task no Drift row recorded a scope for carries no section, and it creates no directory.
 func Verdict(d Deps) (string, error) {
 	records, err := ReadRecords(d)
 	if err != nil {
@@ -24,7 +28,7 @@ func Verdict(d Deps) (string, error) {
 	return renderVerdict(records), nil
 }
 
-// renderVerdict renders rec as Verdict's section.
+// renderVerdict renders rec as the markdown regression check section.
 func renderVerdict(rec Records) string {
 	scope := rec.Scope
 	lines := []string{verdictHeading, "", "- Scope: " + scopeText(scope)}
@@ -129,7 +133,9 @@ func amendmentLines(amendments []Amendment) []string {
 	return lines
 }
 
-// oldCheckLines renders a record no check was recorded in: the old compare, waiver and acceptance fields under a line saying the check ran under the old Drift, or that none ran.
+// oldCheckLines renders the check lines of a scope with no recorded last check.
+// It reads the old compare, waiver and acceptance fields.
+// It says the check ran under the old Drift, or that none ran.
 func oldCheckLines(scope ScopeRecord) []string {
 	if scope.ComparedAt == "" && scope.WaivedAt == "" && len(scope.Accepted) == 0 {
 		return []string{"- Check: not run."}

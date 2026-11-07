@@ -1,4 +1,5 @@
-// color_test.go covers the beam and worktree colour pickers, the sibling scan over the hub's settings files, and the luminance text colour.
+// color_test.go covers the beam and worktree colour pickers and the luminance text colour.
+// It also covers the sibling scan over the hub's settings files.
 
 package vscode
 

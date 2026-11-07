@@ -36,7 +36,8 @@ func replayEntry(slug, text string, order int) Entry {
 	return entryFor(slug, text, order, "claude-file")
 }
 
-// applyReplay saves origin into a fresh directory, replays one commit onto it and returns the result and the store afterwards.
+// applyReplay saves origin into a fresh directory and replays one commit onto it.
+// It returns the result and the store afterwards.
 func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabricengine.ReplayResult, Store) {
 	t.Helper()
 	dir := t.TempDir()

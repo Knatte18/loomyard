@@ -1,5 +1,8 @@
-// reset.go implements the `reset` webster verb: the guarded way to move the task branch back to a commit the run recorded.
-// It plans the reset with websterengine.PlanReset, performs it through fabricengine's pair-checkout reset (in standalone mode, with gitrepo's keep-reset), clears the persisted pre-fix head and fabric-syncs state.json.
+// reset.go implements the `reset` webster verb:
+// the guarded way to move the task branch back to a commit the run recorded.
+// It plans the reset with websterengine.PlanReset and performs it through fabricengine's pair-checkout reset.
+// In standalone mode it performs it through gitrepo's keep-reset instead.
+// It then clears the persisted pre-fix head and fabric-syncs state.json.
 // A reset to start ends by archiving the run record, or archives alone when the start cannot be moved to.
 // The verb runs no git of its own, so an agent that is denied `git reset --hard` still has a way to recover.
 package webstercli
@@ -207,7 +210,8 @@ Example:
 	return cmd
 }
 
-// remoteBranchMoved reports whether rec holds the entry of a remote task branch update, the state in which a failed reset is no longer a pre-flight refusal.
+// remoteBranchMoved reports whether rec holds a remote task branch update.
+// Once that update is recorded, a failed reset is no longer a pre-flight refusal.
 func remoteBranchMoved(rec *fabricengine.Mutations) bool {
 	for _, entry := range rec.Entries() {
 		if entry.Kind == fabricengine.KindRemoteBranchUpdated {
@@ -240,8 +244,9 @@ func (c *websterCLI) standaloneKeepReset(plan websterengine.ResetPlan) error {
 	return websterengine.KeepResetRefusal(plan, cause, overwritten)
 }
 
-// standaloneBranch is the branch probe PlanReset gets in standalone mode, where no fabric handle names the task branch.
-// Standalone has no pair and no recorded parent branch, so there is no foreign branch to refuse.
+// standaloneBranch returns an empty branch name with no error.
+// Standalone mode has no fabric handle to name the task branch.
+// It also has no pair or recorded parent branch, so there is no foreign branch to refuse.
 func standaloneBranch() (string, error) {
 	return "", nil
 }

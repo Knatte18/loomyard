@@ -1,4 +1,5 @@
-// graph.go builds a plan's card by ref matrix and derives the card dependency graph from it: direct edges, their transitive reduction and each card's depth.
+// graph.go builds a plan's card by ref matrix and the card dependency graph derived from it.
+// The graph holds the direct edges, their transitive reduction and each card's depth.
 
 package main
 
@@ -48,7 +49,8 @@ func markOf(kind planparser.RefKind) mark {
 	return markNone
 }
 
-// strength orders marks where two refs of one card fall in one column: a change outranks an Extends, which outranks a use.
+// strength orders marks where two refs of one card fall in one column:
+// a change outranks an Extends, which outranks a use.
 func (m mark) strength() int {
 	switch m {
 	case markChange:
@@ -88,9 +90,11 @@ type cardGraph struct {
 }
 
 // buildCardGraph derives the matrix and dependency graph of plan.
-// Each cell is the planparser.CardRefKind of the card's ref: a change under a type label, an Extends under that label alone, or a use under Uses alone.
+// Each cell is the planparser.CardRefKind of the card's ref:
+// a change under a type label, an Extends under that label alone, or a use under Uses alone.
 // A later card depends on an earlier one when planparser.DependencyEdge holds for an overlapping pair of their refs.
-// With additiveGuess set, a pair with no use on either side makes no edge when either column is guessed additive, unless some card labels that column Extends.
+// With additiveGuess set, a pair with no use on either side makes no edge when either column is guessed additive;
+// a column some card labels Extends is never guessed.
 func buildCardGraph(plan *planparser.Plan, additiveGuess bool) cardGraph {
 	g := cardGraph{cards: plan.Cards}
 	seen := map[string]bool{}
@@ -130,8 +134,8 @@ func buildCardGraph(plan *planparser.Plan, additiveGuess bool) cardGraph {
 }
 
 // columnKey returns the matrix column a card ref falls in.
-// A ref naming a member, a glyph or a `plan:` handle, is keyed by its canonical glyph string, so a handle and the glyph it becomes share a column;
-// any other ref is its own key.
+// A ref naming a member, a glyph or a `plan:` handle, is keyed by its canonical glyph string,
+// so a handle and the glyph it becomes share a column; any other ref is its own key.
 func columnKey(plan *planparser.Plan, ref string) string {
 	if member, ok := planparser.RefMember(plan, ref); ok {
 		return member
@@ -142,7 +146,8 @@ func columnKey(plan *planparser.Plan, ref string) string {
 // dependencyKind returns the strongest dependency between two cards' cells.
 // Each overlapping pair of columns makes an edge when planparser.DependencyEdge holds for its marks:
 // edgeChange when neither side is a use, edgeUse otherwise, and the pairs that make none leave edgeNone.
-// With guessAdditive set, a pair with no use on either side is skipped when either column is guessed additive, a column in labelled excepted so a labelled ref keeps its label.
+// With guessAdditive set, a pair with no use on either side is skipped when either column is guessed additive;
+// a column some card labels Extends is never guessed, so a labelled ref keeps its label.
 func dependencyKind(earlier, later planparser.Card, earlierCells, laterCells map[string]mark, labelled map[string]bool, plan *planparser.Plan, guessAdditive bool) edgeKind {
 	guessed := func(column string) bool {
 		return guessAdditive && !labelled[column] && additiveGuess(column)
@@ -169,7 +174,8 @@ func dependencyKind(earlier, later planparser.Card, earlierCells, laterCells map
 	return kind
 }
 
-// additiveGuess reports whether a matrix column is one that cards usually only add to, so two cards changing it need no order:
+// additiveGuess reports whether a matrix column is one that cards usually only add to:
+// two cards changing it need no order.
 // a path or self glyph whose file is a doc.go, anything under docs/, PATTERN.md or anything under contracts/specs/,
 // and a member glyph whose last dotted name segment starts with wire or is addWeftVerbs.
 // It is a heuristic for the report's measurement and never a statement that the change is safe to reorder.
@@ -193,7 +199,8 @@ func additiveGuess(column string) bool {
 }
 
 // columnsOverlap reports whether two columns name the same code:
-// they are equal, or both are member glyphs of one unit and one names a member of the other, as `pkg#T` and `pkg#T.M` do.
+// they are equal;
+// or both are member glyphs of one unit and one names a member of the other, as in `pkg#T` and `pkg#T.M`.
 func columnsOverlap(a, b string, plan *planparser.Plan) bool {
 	if a == b {
 		return true
@@ -214,7 +221,7 @@ func columnsOverlap(a, b string, plan *planparser.Plan) bool {
 	return slices.Equal(chainA, chainB[:len(chainA)])
 }
 
-// transitiveReduction keeps each edge i -> j of direct that no longer path from i to j implies.
+// transitiveReduction keeps each edge i -> j of direct unless a longer path from i to j implies it.
 // direct's edges all run from a lower to a higher index, so the graph is acyclic and index order is a topological order.
 func transitiveReduction(direct [][]edgeKind) [][]bool {
 	n := len(direct)

@@ -1,4 +1,5 @@
-// verbs_test.go — tests for the board verbs beyond the store verbs: promote, rename, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
+// verbs_test.go tests the board verbs beyond the store verbs:
+// promote, rename, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
@@ -114,7 +115,8 @@ func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepRaddle pins that raddle prints the stored proposal of a Sketch or a filed slug verbatim, and errors for a slug the raddle store does not hold, naming lym report raddle.
+// stepRaddle pins that raddle prints the stored proposal of a decision record or a filed slug verbatim.
+// It also pins that raddle errors for a slug the raddle store does not hold, naming lym report raddle.
 func stepRaddle(t *testing.T, f *cliFixture) {
 	storeDir := boardengine.RaddleStoreDir(fabricengine.BoardDir(filepath.Dir(f.cwd)), "plan")
 	if err := os.MkdirAll(storeDir, 0o755); err != nil {
@@ -223,7 +225,9 @@ func stepPrune(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepNotifyOnLandOnALandedEntry pins notify_on_land set after the run landed: the write on a done entry says so, prune keeps the entry while it carries the request, and a bare request on a slug the board no longer holds is refused.
+// stepNotifyOnLandOnALandedEntry pins notify_on_land set after the run landed.
+// The write on a done entry says so, prune keeps the entry while it carries the request,
+// and a bare request on a slug the board does not hold is refused.
 func stepNotifyOnLandOnALandedEntry(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"landed","title":"Landed","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"landed","status":"done"}`)
@@ -278,7 +282,7 @@ func stepFind(t *testing.T, f *cliFixture) {
 	}
 }
 
-// seedUndecidedLabel rewrites the seeded board.yaml of cwd to configure the undecided label, which the template no longer does.
+// seedUndecidedLabel rewrites the seeded board.yaml of cwd to configure the undecided label.
 func seedUndecidedLabel(t *testing.T, cwd string) {
 	t.Helper()
 	seedHubBoardConfig(t, filepath.Dir(cwd), "readme: Home.md\ndesign_prefix: proposal-\nlabels:\n  undecided: Not yet triaged\n")
@@ -354,7 +358,8 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepListShowsASketch asserts the hub's board takes a note of the built-in sketch type, whatever its board.yaml lists, and that list --text lists it last under the sketches: line with handle S1.
+// stepListShowsASketch asserts the hub's board takes a note of the built-in sketch type, whatever its board.yaml lists,
+// and that list --text lists it last under the sketches: line with handle S1.
 func stepListShowsASketch(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"sketched","title":"Sketched thing","kind":"note","labels":["sketch"]}`)
 
@@ -435,7 +440,9 @@ func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepOwners seeds a board.json that records a prime owner and a beam project's owner, straight into the file since the owner setter is not the subject, and reads the owners back through get and list.
+// stepOwners seeds a board.json that records a prime owner and a beam project's owner.
+// It writes the file directly, since the owner setter is not the subject.
+// It reads the owners back through get and list.
 // A task outside every beam reads as the prime's owner, a member of the beam as the beam's, and a note carries none;
 // list prints the prime owner as prime_owner and opens its --text listing with it.
 func stepOwners(t *testing.T, f *cliFixture) {
@@ -537,10 +544,12 @@ func stepRemoveCommandParses(t *testing.T, f *cliFixture) {
 }
 
 // stepProjects drives the project kind through a seeded hub:
-// list and get carry parent_beam, empty under a grouping project and the beam once the project is hand-marked a beam.
-// A task slug ending in the records suffix and one equal to a configured junction name are refused with fabric's reason.
-// A member's project change is refused naming `lym batten cancel <slug> --remove` while a worktree stands at its pair path;
-// a plain directory at another entry's pair path is no pair, so its project change and rename go through.
+// list and get carry parent_beam.
+// It is empty under a grouping project, and it names the beam once the project is hand-marked a beam.
+// A task slug ending in the records suffix, or one equal to a configured junction name, is refused with fabric's reason.
+// A member's project change is refused while a worktree stands at its pair path;
+// the refusal names `lym batten cancel <slug> --remove`.
+// A plain directory at another entry's pair path is no pair, so its project change and rename go through.
 func stepProjects(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}`)
@@ -741,8 +750,10 @@ func stepGetBodyRoundTrip(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepGetRecord shows the discussed flag in the envelope, prints the stored record byte for byte, and refuses each case that has no record to print.
-// The record is stored through the board engine on the fixture's hub board, which honours the BOARD_SKIP_GIT the test sets and spawns no sync.
+// stepGetRecord pins the discussed flag in the get envelope and the record that get --record prints.
+// The record prints byte for byte, and each case with no record to print is refused.
+// The record is stored through the board engine on the fixture's hub board.
+// The engine honours the BOARD_SKIP_GIT the test sets and spawns no sync.
 func stepGetRecord(t *testing.T, f *cliFixture) {
 	hub := filepath.Dir(f.cwd)
 	mustUpsert(t, `{"slug":"talked","title":"T","labels":["bug"]}`)
@@ -821,7 +832,8 @@ func labelPairs(t *testing.T, result map[string]any, key string) [][2]string {
 	return pairs
 }
 
-// sketchPair returns the first type label the labels verb printed, failing t unless it is the built-in sketch type label with a description, which leads every board's types.
+// sketchPair returns the first type label the labels verb printed.
+// It fails t unless that label is the built-in sketch type with a description, which leads every board's types.
 func sketchPair(t *testing.T, result map[string]any) [2]string {
 	t.Helper()
 	pairs := labelPairs(t, result, "types")
@@ -863,7 +875,10 @@ func stepLabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T, f *cliFi
 	}
 }
 
-// stepProfiles pins the profiles verb: with no profiles.yaml it prints the template's starting profiles with their settings in name order and its defaults, and a hub file without profiles prints an empty list.
+// stepProfiles pins the profiles verb.
+// With no profiles.yaml it prints the template's starting profiles in name order, each with its settings.
+// It also prints the template's defaults.
+// A hub file without profiles prints an empty list.
 func stepProfiles(t *testing.T, f *cliFixture) {
 	result := runJSON(t, 0, "profiles")
 	list, _ := result["profiles"].([]any)
@@ -893,7 +908,11 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepRunSettings pins run_settings and profile on the upsert verbs: a valid setting or known profile is stored, each refusal names the module, the key or the profile, a task session's change is refused while an identical re-write passes, a beam's orch changes the entries of its own beam and no other, and a change on an entry past Seed-Child returns the notice.
+// stepRunSettings pins run_settings and profile on the upsert verbs.
+// A valid setting or known profile is stored, and each refusal names the module, the key or the profile.
+// A task session's change is refused, while an identical re-write passes.
+// A beam's orch changes the entries of its own beam and no other.
+// A change on an entry past Seed-Child returns the notice.
 func stepRunSettings(t *testing.T, f *cliFixture) {
 	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review_max_bounces":2}}}`
 

@@ -1,5 +1,5 @@
-// startup_test.go covers the startup step (awaitStartup, abandonStartup) that Start, StartGated and RunGated run before ever issuing a run handle.
-// It covers the pending-to-ready path with a trust-gate dismissal recorded, the already-ready and already-satisfied-file-contract fast paths, the not-ready teardown (pane-died and never-clearing-gate refusal, both wrapping ErrNotStarted with the strand removed and the run dir kept), the status-retry-cap paths (transient recovery, exhaustion with and without a satisfied file contract, and the untracked-strand mechanism failure), the tick-count cap, the run-deadline-shorter-than-the-startup-window interaction, RunGated's own not-ready and mechanism-failure mappings, startupTickCap's own boundary arithmetic, and the probe backoff and gate-dismissal spacing.
+// startup_test.go covers the startup step (awaitStartup, abandonStartup) that Start, StartGated and RunGated run.
+// It covers the pending-to-ready path, the not-ready teardown, the retry and tick-count caps, and the probe backoff.
 // Every case runs on a fake clock; none sleeps on the real one.
 
 package shuttleengine
@@ -21,9 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// frozenClock never advances on its own: Now always returns the same fixed instant and Sleep is a
-// no-op, which is what the tick-count-cap cases need — a clock that never advances so the loop can
-// only ever be bounded by startupTickCap, never by the startup deadline.
+// frozenClock never advances on its own: Now always returns the same fixed instant and Sleep is a no-op.
+// The tick-count-cap cases need that, so the loop is bounded only by startupTickCap, never by the startup deadline.
 type frozenClock struct {
 	now time.Time
 }
@@ -33,9 +32,9 @@ func (c *frozenClock) Sleep(time.Duration) {}
 
 var _ Clock = (*frozenClock)(nil)
 
-// flakyStatusReed embeds *fakeReed and overrides Status to return a scripted error for its first
-// failFirst calls before delegating to the embedded fakeReed.Status — the double the retry-cap tests
-// need to script a bounded run of transient reed.Status failures.
+// flakyStatusReed embeds *fakeReed and overrides Status to return a scripted error for its first failFirst calls.
+// Later calls delegate to the embedded fakeReed.Status.
+// The retry-cap tests use it to script a bounded run of transient reed.Status failures.
 type flakyStatusReed struct {
 	*fakeReed
 	// passFirst is how many Status calls answer from the embedded reed before the failures begin.
@@ -55,9 +54,8 @@ func (r *flakyStatusReed) Status() (reedengine.StatusResult, error) {
 
 var _ ReedOps = (*flakyStatusReed)(nil)
 
-// undismissableEngine embeds *fakeEngine and overrides TrustDismissSequence to return no inputs —
-// the shape an implementation that cannot locate the gate's accepting option takes, per Engine's own
-// doc comment.
+// undismissableEngine embeds *fakeEngine and overrides TrustDismissSequence to return no inputs.
+// It models an engine that cannot locate the gate's accepting option.
 type undismissableEngine struct {
 	*fakeEngine
 }
@@ -79,9 +77,9 @@ func seedStartupFakes(reed *fakeReed, engine *fakeEngine) {
 	}
 }
 
-// soleStartupRunDir returns the one run directory under cfg/anchorPath's run-dir root, failing the
-// test if there is not exactly one — the way a test recovers the run directory a failed Start built,
-// since a StartGated error return carries no *Run handle to read RunDir() from.
+// soleStartupRunDir returns the one run directory under cfg/anchorPath's run-dir root.
+// It fails the test unless there is exactly one, the way a test recovers the directory a failed Start built.
+// A StartGated error carries no *Run handle to read RunDir() from.
 func soleStartupRunDir(t *testing.T, cfg Config, anchorPath string) string {
 	t.Helper()
 	root := runDirRoot(cfg, anchorPath)
@@ -92,7 +90,8 @@ func soleStartupRunDir(t *testing.T, cfg Config, anchorPath string) string {
 	return dirs[0]
 }
 
-// runDirsUnder returns the paths of the directories under root, skipping the files Start keeps beside them; an absent root holds none.
+// runDirsUnder returns the paths of the directories under root, skipping the files Start keeps beside them.
+// An absent root holds none.
 func runDirsUnder(t *testing.T, root string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(root)
@@ -108,10 +107,10 @@ func runDirsUnder(t *testing.T, root string) []string {
 	return dirs
 }
 
-// TestStartup_TrustPromptThenReady covers the readiness path that also dismisses a trust gate along
-// the way, driven through the real Start/StartGated flow: a handle is returned once StartupReady
-// lands, run.json records Started/running, and the capture handed to TrustDismissSequence is the one
-// Startup classified StartupTrustPrompt from.
+// TestStartup_TrustPromptThenReady covers the readiness path that also dismisses a trust gate along the way.
+// It is driven through the real Start/StartGated flow.
+// A handle is returned once StartupReady lands, run.json records Started/running,
+// and the capture handed to TrustDismissSequence is the one Startup classified StartupTrustPrompt from.
 //
 //testtiming:keep pins trust-gate dismissal through the real Start flow: the Enter key, the capture handed to the engine, the persisted Started and running Outcome, and the logged dismissal
 func TestStartup_TrustPromptThenReady(t *testing.T) {
@@ -165,9 +164,13 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	}
 }
 
-// TestStartup_NeedsSessionStartLine covers the startup criterion of a launch that records session starts: a ready pane starts the run only once the events file also holds a session-start line.
-// A session start followed by a turn start starts the run whatever the pane shows, and a turn start before the session start, or on a launch that does not record, does not.
-// A missing line and an unreadable events file each time the start out naming themselves and the events path, a gate on screen is dismissed whatever the file holds, and a launch that does not declare the recording starts on the pane alone.
+// TestStartup_NeedsSessionStartLine covers the startup criterion of a launch that records session starts.
+// A ready pane starts the run only once the events file also holds a session-start line.
+// A session start followed by a turn start starts the run whatever the pane shows.
+// A turn start before the session start, or on a launch that does not record, does not start the run.
+// A missing line and an unreadable events file each fail the start, naming the cause and the events path.
+// A gate on screen is dismissed whatever the file holds.
+// A launch that does not declare the recording starts on the pane alone.
 func TestStartup_NeedsSessionStartLine(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -267,8 +270,9 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 }
 
 // TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock.
-// Ready on the first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is returned.
-// Otherwise the startup step probes every poll interval while the pane redraws and backs off to the dismissal gap (here 10 s) while it does not.
+// Ready on the first probe is the fast path: no dismissal is attempted and no Sleep runs before the handle returns.
+// Otherwise the startup step probes every poll interval while the pane redraws.
+// While the pane does not redraw, the step backs off to the dismissal gap, here 10 s.
 //
 //testtiming:keep pins the ready path's virtual-clock timing: no sleep when ready on the first probe, the base interval while the pane redraws, and the backoff to the dismissal gap while it does not
 func TestStartup_ReadyProbeTiming(t *testing.T) {
@@ -340,16 +344,16 @@ func TestStartup_ReadyProbeTiming(t *testing.T) {
 	}
 }
 
-// TestStartup_PaneNotLiveMidStartup covers the pane going not-live before StartupReady: the run is
-// torn down as ErrNotStarted, the strand is removed, run.json's Outcome is died, the run directory is
-// kept, and startup-capture.txt holds the last successful capture.
+// TestStartup_PaneNotLiveMidStartup covers the pane going not-live before StartupReady.
+// The run is torn down as ErrNotStarted: the strand is removed and run.json's Outcome is died.
+// The run directory is kept, and startup-capture.txt holds the last successful capture.
 //
-// Further variants share that teardown. A removal that fails is tried again on the run clock, and one that succeeds on a later try reports the strand removed.
-// A teardown whose every removal try fails still reports
-// ErrNotStarted, says the strand could not be removed and carries reed's own error text, with the
-// Outcome still persisted. Spec.KeepPane is irrelevant to the not-ready teardown: the strand is
-// removed whatever KeepPane says, since KeepPane governs a COMPLETED run's pane retention, not a
-// startup failure's.
+// Further variants share that teardown.
+// A removal that fails is tried again on the run clock, and one that succeeds reports the strand removed.
+// A teardown whose every removal try fails still reports ErrNotStarted and says the strand could not be removed.
+// It carries reed's own error text and persists the Outcome.
+// Spec.KeepPane does not apply to the not-ready teardown: the strand is removed whatever KeepPane says.
+// KeepPane governs a COMPLETED run's pane retention, not a startup failure's.
 func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 	tiergate.Require(t, 0)
 	const lastCapture = "still booting..."
@@ -361,7 +365,7 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 		removeStrandErrs []error
 		keepPane         bool
 		wantRemoveCalls  int
-		// wantSleeps is every sleep of the run clock: the one poll before the pane is seen dead, then the waits between removal tries.
+		// wantSleeps is every run-clock sleep: the poll before the pane is seen dead, then the waits between removal tries.
 		wantSleeps []time.Duration
 		// wantCapture asserts startup-capture.txt holds the last successful capture.
 		wantCapture bool
@@ -447,10 +451,13 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 	}
 }
 
-// TestStartup_DiedStartLaunchesAgain covers Config.StartRetries: a start whose provider died before it was ready, and whose strand the teardown removed, is launched again in a fresh run directory;
-// with the retry off, a timed-out start, or a strand the teardown could not remove, the start fails after one launch.
+// TestStartup_DiedStartLaunchesAgain covers Config.StartRetries.
+// A start whose provider died before it was ready is launched again in a fresh run directory.
+// It is launched again only when the teardown removed its strand.
+// With the retry off, a timed-out start, or a strand the teardown could not remove, the start fails after one launch.
 // When every launch fails, the returned error is the last attempt's.
-// The waits run on the run clock: startRetryDelay between launches, and 1 s then 2 s between the removal tries of a strand that will not go.
+// The waits run on the run clock:
+// startRetryDelay between launches; 1 s then 2 s between the removal tries of a strand that will not go.
 func TestStartup_DiedStartLaunchesAgain(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -469,7 +476,7 @@ func TestStartup_DiedStartLaunchesAgain(t *testing.T) {
 		wantDied        int
 		// wantRetryWaits is how many startRetryDelay sleeps the run clock sees.
 		wantRetryWaits int
-		// wantRemoveWaits is the end of the run clock's sleeps, the waits between removal tries.
+		// wantRemoveWaits lists the run clock's sleeps between removal tries, in order.
 		wantRemoveWaits []time.Duration
 	}{
 		{name: "a died start launches again and returns the ready run", retries: 1, statusQueue: []reedengine.StatusResult{live, dead, live},
@@ -479,7 +486,7 @@ func TestStartup_DiedStartLaunchesAgain(t *testing.T) {
 		{name: "a died start whose strand was not removed is not launched again", retries: 1, statusQueue: []reedengine.StatusResult{live, dead, live},
 			script: []StartupState{StartupPending, StartupReady}, removeStrandErr: removeErr, wantErr: true, wantLaunches: 1, wantDied: 1,
 			wantRemoveWaits: []time.Duration{startupRemoveFirstDelay, 2 * startupRemoveFirstDelay}},
-		// The run's own deadline, five minutes, expires inside the hour-long startup window.
+		// The run's own deadline expires inside the startup window.
 		{name: "a start that timed out is not launched again", retries: 1, startupTimeoutS: 3600, statusQueue: []reedengine.StatusResult{live},
 			script: []StartupState{StartupPending}, wantErr: true, wantLaunches: 1},
 		{name: "a start that dies on every launch fails with the last attempt's error", retries: 1, statusQueue: []reedengine.StatusResult{live, dead, live, dead},
@@ -622,7 +629,8 @@ func (e *twoKeyEngine) TrustDismissSequence(string) []PaneInput {
 
 var _ Engine = (*twoKeyEngine)(nil)
 
-// TestStartup_GateNeverClearsUntilWindowExpires covers a startup gate that never clears: the startup window expires with the same not-ready teardown TestStartup_PaneNotLiveMidStartup pins.
+// TestStartup_GateNeverClearsUntilWindowExpires covers a startup gate that never clears:
+// the startup window expires with a not-ready teardown.
 // Each row pins the virtual times of the gate's dismissals, at most one play per dismissal gap.
 // It owns the process-global logger capture, so its rows do not run in parallel.
 //
@@ -746,12 +754,13 @@ func TestStartup_GateNeverClearsUntilWindowExpires(t *testing.T) {
 	}
 }
 
-// TestStartup_HandleReturned covers the startup paths that return a handle without the pane ever
-// reaching ready on a clean probe: a single transient reed.Status failure recovering before the
-// retry cap, the retry cap exhausted with the file contract already satisfied by then, and the file
-// contract winning through classifyStartupWindow while the pane stays pending forever (the strand
-// is never torn down). The output file cannot exist before Start (Spec.validate refuses a
-// pre-existing entry), so a multiStepClock writes it from inside the first Sleep call.
+// TestStartup_HandleReturned covers the startup paths that return a handle while the pane never reaches ready.
+// A single transient reed.Status failure recovers before the retry cap.
+// The retry cap is exhausted with the file contract already satisfied by then.
+// The file contract wins through classifyStartupWindow while the pane stays pending forever;
+// the strand is never torn down.
+// The output file cannot exist before Start, since Spec.validate refuses a pre-existing entry,
+// so a multiStepClock writes it from inside the first Sleep call.
 func TestStartup_HandleReturned(t *testing.T) {
 	tiergate.Require(t, 0)
 	liveStatusQueue := func() []reedengine.StatusResult {
@@ -831,7 +840,8 @@ func (e *startupCheckEngine) CheckAfterStartup() {
 	e.checks.Add(1)
 }
 
-// TestStartup_ChecksAfterStartup pins that a start whose provider came up runs the engine's check after startup once, before the handle is returned.
+// TestStartup_ChecksAfterStartup pins that a start whose provider came up runs the engine's check after startup once;
+// the check runs before the handle is returned.
 func TestStartup_ChecksAfterStartup(t *testing.T) {
 	tiergate.Require(t, 0)
 	reed := &fakeReed{
@@ -940,15 +950,17 @@ func TestRunner_StartSession(t *testing.T) {
 	})
 }
 
-// TestStartup_MechanismFailure covers the startup status-cap paths: the status retry cap exhausted with no output files, and reed never tracking the strand at all.
-// Each returns a non-nil error wrapping both ErrNotStarted and the failure's own sentinel, removes the strand once and finalizes run.json's Outcome to died.
+// TestStartup_MechanismFailure covers the startup status-cap paths.
+// One is the status retry cap exhausted with no output files; the other is reed never tracking the strand at all.
+// Each returns a non-nil error wrapping both ErrNotStarted and the failure's own sentinel;
+// it removes the strand once and finalizes run.json's Outcome to died.
 func TestStartup_MechanismFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	scriptedErr := errors.New("reed status: unavailable")
 	tests := []struct {
 		name string
-		// build returns the reed double (whose teardown calls are checked) and the error the start
-		// must wrap.
+		// build returns the reed double, whose teardown calls are checked;
+		// it also returns the error the start must wrap.
 		build   func() (ReedOps, *fakeReed)
 		wantErr error
 	}{
@@ -1026,8 +1038,8 @@ func TestStartup_MechanismFailure(t *testing.T) {
 	}
 }
 
-// TestStartup_TickCap covers the tick-count cap under a frozen clock, with a subtest for the
-// file-contract-satisfied variant.
+// TestStartup_TickCap covers the tick-count cap under a frozen clock;
+// its subtest covers the file-contract-satisfied variant.
 func TestStartup_TickCap(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := shortStartupConfig
@@ -1085,9 +1097,9 @@ func TestStartup_TickCap(t *testing.T) {
 		runner := newFixture(t, reed, engine, withConfig(cfg), withClock(fc)).Runner
 
 		outputFile := filepath.Join(t.TempDir(), "out.md")
-		// A frozen clock never advances via Sleep, and the run dir cannot be predicted before Start
-		// returns, so the file is created via the engine's PrepareHook -- which runs synchronously
-		// inside Start, before the startup probe's very first tick -- rather than a clock step.
+		// A frozen clock never advances via Sleep, and the run dir cannot be predicted before Start returns.
+		// The file is created by the engine's PrepareHook.
+		// It runs synchronously inside Start, before the startup probe's first tick, not by a clock step.
 		var createdOnce bool
 		engine.PrepareHook = func(runDir string) {
 			if createdOnce {
@@ -1169,10 +1181,12 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 	}
 }
 
-// TestStartup_RunGatedMappings pins RunGated's mapping of the two startup failures. A not-ready
-// start (errors.Is(err, ErrNotStarted)) is swallowed into a died Result with a nil error, carrying
-// the run's identity, and so is the status-cap exit, which tears the run down and wraps ErrNotStarted beside its own sentinel.
-// Either way the gate closure never runs (its counter stays at zero), since finalize never evaluates a gate for a non-Done outcome.
+// TestStartup_RunGatedMappings pins RunGated's mapping of the two startup failures.
+// A not-ready start (errors.Is(err, ErrNotStarted)) is swallowed into a died Result.
+// It carries the run's identity and a nil error.
+// The status-cap exit is swallowed the same way;
+// it tears the run down and wraps ErrNotStarted beside its own sentinel.
+// In both cases the gate closure never runs: finalize never evaluates a gate for a non-Done outcome.
 func TestStartup_RunGatedMappings(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1249,9 +1263,9 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 	}
 }
 
-// TestStartup_RunDeadlineShorterThanWindow_NeverReady pins the run-deadline-anchoring decision: a
-// Spec.Timeout far shorter than startup_timeout_s must still expire the run on its OWN schedule,
-// classified OutcomeTimeout, never OutcomeDied from the (much longer) startup window.
+// TestStartup_RunDeadlineShorterThanWindow_NeverReady pins the run-deadline anchoring:
+// a Spec.Timeout far shorter than startup_timeout_s still expires the run on its own schedule,
+// classified OutcomeTimeout rather than OutcomeDied from the longer startup window.
 func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 	tiergate.Require(t, 0)
 	newRig := func(t *testing.T) (*Runner, *fakeReed, time.Time) {
@@ -1299,19 +1313,17 @@ func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 			t.Errorf("RunGated() Outcome = %q; want %q -- the run's own deadline expired, not the startup window", result.Outcome, OutcomeTimeout)
 		}
 		elapsed := fc.Now().Sub(start)
-		// "Near Spec.Timeout" rather than exact: the loop only samples the deadline once per probe
-		// interval (1s here), so it can overshoot by up to one interval, but must land nowhere
-		// close to the 3600s startup window.
+		// The elapsed time lands near Spec.Timeout, not exactly on it: the loop samples the deadline once per probe
+		// interval (1s here), so it can overshoot by up to one interval, but it must not land near the 3600s startup window.
 		if elapsed < specTimeout || elapsed > specTimeout+5*time.Second {
 			t.Errorf("virtual elapsed = %s; want it near Spec.Timeout (%s), not the startup window", elapsed, specTimeout)
 		}
 	})
 }
 
-// TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline covers the same shorter-
-// deadline shape with the file contract satisfied by the time the run deadline arrives: a handle is
-// returned from StartGated, and RunGated goes on to classify OutcomeDone through the same run
-// deadline exit.
+// TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline covers the shorter deadline shape:
+// the file contract is satisfied by the time the run deadline arrives.
+// StartGated returns a handle, and RunGated classifies OutcomeDone through the same run deadline exit.
 func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *testing.T) {
 	tiergate.Require(t, 0)
 	newRig := func(t *testing.T, outputFile string) *Runner {
@@ -1353,12 +1365,11 @@ func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *tes
 	})
 }
 
-// TestStartup_FailedStartThenAttach_RespawnEligible covers the seam between card 4's not-ready
-// teardown and card 1's terminal-Outcome respawn rule: a failed start leaves a died run.json behind
-// with the strand removed, and a subsequent Attach over the same output files -- with reed rescripted
-// to no longer track the strand, and its state file now present -- does not harvest it as a leftover
-// to wait on (found == false, nil error), since a terminal Outcome makes it respawn-eligible
-// regardless of its directory's age.
+// TestStartup_FailedStartThenAttach_RespawnEligible covers a not-ready teardown followed by an Attach over its files.
+// The failed start leaves a died run.json behind with the strand removed.
+// A later Attach over the same output files does not harvest that run as a leftover to wait on.
+// With reed no longer tracking the strand and its state file present, Attach returns found == false and a nil error.
+// A terminal Outcome makes the run respawn-eligible regardless of its directory's age.
 //
 //testtiming:keep pins the seam between a not-ready teardown and Attach: the died run.json left behind is respawn-eligible, not attachable, at any directory age
 func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
@@ -1387,9 +1398,8 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	}
 
 	runDir := soleStartupRunDir(t, cfg, anchorPath)
-	// The run dir is younger than 2*StartupTimeoutS -- the leftover-then-age rule's own minAge --
-	// which is what proves the terminal-Outcome check, not the age escape, is what makes this
-	// respawn-eligible.
+	// The run dir is younger than 2*StartupTimeoutS, the leftover-then-age rule's own minAge.
+	// That makes the terminal-Outcome check, not the age escape, what marks this run respawn-eligible.
 	if info, statErr := os.Stat(runDir); statErr != nil || time.Since(info.ModTime()) >= 2*time.Duration(cfg.StartupTimeoutS)*time.Second {
 		t.Fatalf("run dir age check invalid: statErr=%v", statErr)
 	}
@@ -1412,14 +1422,17 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	}
 }
 
-// skillStartFixture starts a run whose launch defers its prompt, over a skillReed and skillFakeEngine, with reports scripting each load turn's classification and hangs and dies naming the load turns, counted from zero, that never end or kill the pane.
+// skillStartFixture starts a run whose launch defers its prompt, over a skillReed and skillFakeEngine.
+// The reports script each load turn's classification.
+// Hangs and dies name the load turns, counted from zero, that never end or kill the pane.
 // It returns the started run (nil with the error on a refused start), the reed double and the virtual time Start took.
 func skillStartFixture(t *testing.T, spec Spec, reports []SkillLoadReport, hangs, dies []int) (*Run, *skillReed, time.Duration, error) {
 	t.Helper()
 	return skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, spec, reports, hangs, dies, nil)
 }
 
-// skillStartFixtureWith is skillStartFixture over a reed that adds the given strand and, when configure is set, lets the test adjust the doubles before the start.
+// skillStartFixtureWith is skillStartFixture over a reed that adds the given strand;
+// when configure is set, it lets the test adjust the doubles before the start.
 func skillStartFixtureWith(t *testing.T, strand reedengine.Strand, spec Spec, reports []SkillLoadReport, hangs, dies []int, configure func(*skillReed, *skillFakeEngine)) (*Run, *skillReed, time.Duration, error) {
 	t.Helper()
 	base := &fakeReed{
@@ -1515,7 +1528,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 		elapsed    string
 		// afterClassify, when set, runs with the events file's path after each load turn is classified.
 		afterClassify func(t *testing.T, eventsPath string)
-		// hookState starts the run over an engine reading hook state, whose events file holds only a SessionStart(startup) line beside a busy-looking pane.
+		// hookState starts over a hook-state engine: its events file holds only SessionStart(startup), and the pane looks busy.
 		hookState bool
 	}{
 		{
@@ -1991,8 +2004,10 @@ func TestStartup_SkillsRefusedWithoutSkillLoader(t *testing.T) {
 	}
 }
 
-// startSendEngine is skillFakeEngine plus the idle reading, an input-box reader and session signals, so start's sends can be made busy or unlandable.
-// IdleSession answers idle for every capture, InputBoxText answers box and runs onRead first, and "START" is a turn start.
+// startSendEngine is skillFakeEngine plus the idle reading, an input-box reader and session signals;
+// so start's sends can be made busy or unlandable.
+// IdleSession answers idle for every capture, InputBoxText answers box and runs onRead first;
+// "START" is a turn start.
 type startSendEngine struct {
 	*skillFakeEngine
 
@@ -2042,7 +2057,8 @@ type startPasteEngine struct {
 func (e *startPasteEngine) PasteSubmits() bool                   { return true }
 func (e *startPasteEngine) OwnPastePlaceholder(_, _ string) bool { return false }
 
-// brokenRunRecordReed is a skillReed that, once a load turn is typed, replaces run.json with a non-empty directory so the next save of the record fails.
+// brokenRunRecordReed is a skillReed that, once a load turn is typed, replaces run.json with a non-empty directory,
+// so the next save of the record fails.
 type brokenRunRecordReed struct {
 	*skillReed
 }
@@ -2066,7 +2082,8 @@ func (r *brokenRunRecordReed) SendText(guid, text string, submit bool) error {
 
 // TestStartup_SendFailuresTearDown pins that a send failing past AddStrand tears the run down as not started:
 // the error wraps ErrNotStarted and the send's own sentinel, the strand is removed and the record reads died.
-// A prompt that fails ErrSubmissionNotLanded while a turn start lands past the pre-send offset landed late, and start returns the run.
+// A prompt that fails ErrSubmissionNotLanded landed late when a turn start lands past the pre-send offset;
+// and start returns the run.
 func TestStartup_SendFailuresTearDown(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2075,7 +2092,7 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 	tests := []struct {
 		name  string
 		skill bool
-		// reports scripts each load turn's classification; the skill-load rows name the skill missing, so the retry turn is the typed one.
+		// reports scripts each load turn's classification; skill-load rows name the skill missing, so the retry turn is typed.
 		reports []SkillLoadReport
 		// idle is what the idle reading answers.
 		idle bool

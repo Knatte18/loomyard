@@ -1,6 +1,6 @@
 // recoverbatch_helper_test.go holds the RecoverBatch fixture the tier0 and tier1 recover-batch tests share:
-// a scripted clock, the fully-wired RecoverDeps over a temp worktree and the driver that composes the recovery phases.
-// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
+// a scripted clock, the fully-wired RecoverDeps over a temp worktree, and the driver that composes the recovery phases.
+// The fixtures are package-local: the internal and external test packages do not share a test-helper package.
 
 package websterengine_test
 
@@ -21,8 +21,9 @@ import (
 )
 
 // recoverFakeClock is a package-local, scriptable clock double.
-// Now starts at a fixed base and only advances when Sleep is called or a test directly mutates Now, so a test controls exactly how much virtual time elapses without ever blocking for real.
-// That includes simulating the wall-clock gap between two separate RecoverBatch calls, which a real process boundary would otherwise supply for free.
+// Now starts at a fixed base and advances only when Sleep is called or a test mutates Now directly.
+// A test controls how much virtual time elapses and never blocks for real.
+// That covers the wall-clock gap between two RecoverBatch calls, the gap a real process boundary supplies.
 type recoverFakeClock struct {
 	now time.Time
 }
@@ -38,8 +39,10 @@ func namedEngines(name string, engine shuttleengine.Engine) shuttleengine.Engine
 }
 
 // recoverFixture is a fully-wired set of RecoverBatch dependencies.
-// A temp directory holds base.txt as WorktreeRoot over a fakeGit at one commit, with a one-batch plan backed by a seeded plan dir and its corresponding execution-batch list.
-// A real *shuttleengine.Runner over shuttlefake.Reed and shuttlefake.Engine is the Starter, and webster's two roles are pre-resolved.
+// A temp directory holds base.txt as WorktreeRoot over a fakeGit at one commit.
+// The plan has one batch, backed by a seeded plan dir and the execution-batch list that matches it.
+// A real *shuttleengine.Runner over shuttlefake.Reed and shuttlefake.Engine is the Starter.
+// Webster's two roles are pre-resolved.
 type recoverFixture struct {
 	Deps       websterengine.RecoverDeps
 	Reed       *shuttlefake.Reed
@@ -66,7 +69,8 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	return fx
 }
 
-// newRecoverFixtureOver builds the fixture over worktree, answering git questions from git; a nil git means the real repository at worktree.
+// newRecoverFixtureOver builds the fixture over worktree, answering git questions from git;
+// a nil git means the real repository at worktree.
 func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git) *recoverFixture {
 	t.Helper()
 
@@ -80,7 +84,8 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	reed := &shuttlefake.Reed{}
 	engine := &shuttlefake.Engine{}
 	hubPath := filepath.Dir(worktree)
-	// webster's prompts are read from disk at call time, so the fixture's hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
+	// webster's prompts are read from disk at call time,
+	// so the fixture's hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
 	seedHubStencils(t, hubPath)
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), worktree, worktree, shuttleCfg)
@@ -92,7 +97,8 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 
 	reportsDir := t.TempDir()
 
-	// The terminal recovery path refuses a plan that differs from the recorded fingerprint, so the state records this one.
+	// The terminal recovery path refuses a plan that differs from the recorded fingerprint,
+	// so the state records this one.
 	planDir := seedPlanDir(t)
 	websterDir := t.TempDir()
 	state := &websterengine.State{Batches: map[int]*websterengine.BatchState{}}
@@ -120,8 +126,8 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 			ReportsDir:   reportsDir,
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			SpecsDir:     fabricengine.SpecsDir(hubPath),
-			// A real (empty) plan directory: the terminal recovery path runs the same post-batch mechanical pass record-batch does, which re-baselines the plan fingerprint over this directory.
-			// No card in this fixture declares a handle, so nothing is ever written into it.
+			// A real (empty) plan directory; the terminal recovery path runs the same post-batch mechanical pass as record-batch.
+			// It re-baselines the plan fingerprint over this directory; no card declares a handle, so nothing is written there.
 			PlanDir: planDir,
 			Git:     git,
 			Index:   index,
@@ -131,7 +137,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	return &recoverFixture{Deps: deps, Reed: reed, Engine: engine, Worktree: worktree, ReportsDir: reportsDir, Index: fakeIdx}
 }
 
-// writeRecoverReport seeds fx's reportsDir with a batch-report YAML file for batch 1 at its plan-format-pinned filename.
+// writeRecoverReport seeds reportsDir with a batch-report YAML file for batch 1 at its plan-format-pinned filename.
 func writeRecoverReport(t *testing.T, reportsDir, content string) {
 	t.Helper()
 	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "json-flag"))
@@ -140,7 +146,8 @@ func writeRecoverReport(t *testing.T, reportsDir, content string) {
 	}
 }
 
-// appendClaudeHook appends one recorded Claude hook, its stamp line at at and its payload line, to batch 1's recovery events file.
+// appendClaudeHook appends one recorded Claude hook to batch 1's recovery events file.
+// It writes a stamp line stamped with at, then the payload line.
 func appendClaudeHook(t *testing.T, fx *recoverFixture, hook string, at time.Time, payload map[string]any) {
 	t.Helper()
 	payload["hook_event_name"] = hook
@@ -159,7 +166,8 @@ func appendClaudeHook(t *testing.T, fx *recoverFixture, hook string, at time.Tim
 	}
 }
 
-// recoverAtReportHead spawns the recovery strand, then seeds a done report at the worktree's current HEAD and returns that head.
+// recoverAtReportHead spawns the recovery strand and seeds a done report at the worktree's current HEAD.
+// It returns that head.
 func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) string {
 	t.Helper()
 	first, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
@@ -174,7 +182,8 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 	return head
 }
 
-// recoverDriveResult mirrors the composed per-call outcome the CLI verb assembles from the three lease-scoped phases, so each test keeps asserting one call's whole effect.
+// recoverDriveResult mirrors the composed per-call outcome the CLI verb assembles from the three lease-scoped phases,
+// so each test keeps asserting one call's whole effect.
 type recoverDriveResult struct {
 	Digest   *websterengine.Digest
 	Running  bool
@@ -183,8 +192,10 @@ type recoverDriveResult struct {
 	Warnings []string
 }
 
-// driveRecoverBatch composes RecoverSpawnOrAttach, RecoverAwait and PersistRecoveryTerminal against deps' in-memory state.
-// That is exactly the sequence webstercli's recover-batch verb drives, minus the lease and the SaveState and fabric steps the CLI owns, so every re-entrancy and classification test exercises the composition production runs.
+// driveRecoverBatch composes RecoverSpawnOrAttach, RecoverAwait and PersistRecoveryTerminal.
+// It runs them against deps' in-memory state.
+// It is the sequence the webstercli recover-batch verb drives, minus the CLI's lease, SaveState and fabric steps.
+// Every re-entrancy and classification test therefore exercises the composition production runs.
 func driveRecoverBatch(deps websterengine.RecoverDeps, batchNumber int, wait time.Duration, clk websterengine.Clock) (*recoverDriveResult, error) {
 	bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, clk)
 	if err != nil {

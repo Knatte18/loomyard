@@ -1,7 +1,6 @@
-// report.go defines the sandbox-report.json contract shared with the launcher's caller (the
-// loomyard tooling described in millhouse#586) and implements fetchReport, which reads the
-// agent-written report out of the Hub warp repo, validates and stamps it, then writes a normalized,
-// fingerprint-stamped copy into the loomyard root's .scratch directory.
+// report.go defines the sandbox-report.json shape that the agent writes into the Hub warp repo.
+// It also implements fetchReport, which reads that report, validates it, and stamps the lym fingerprint into it.
+// The normalized copy lands in the loomyard root's .scratch directory.
 
 package main
 
@@ -40,8 +39,7 @@ type reportFingerprint struct {
 	Source  string `json:"source"`
 }
 
-// reportItem is a single WARN/FAIL finding recorded by the agent during a
-// sandbox session.
+// reportItem is one WARN or FAIL finding that the agent records during a sandbox session.
 type reportItem struct {
 	Ref   string `json:"ref"`
 	Title string `json:"title"`
@@ -74,7 +72,7 @@ func runFetch(parentDir, loomyardRoot string) error {
 		return err
 	}
 	if count == 0 {
-		// Nothing to triage; no Next step to point at.
+		// A clean run has nothing to triage, so no next step is printed.
 		fmt.Printf("fetched 0 finding(s) -> %q (clean run -- nothing to triage)\n", destPath)
 		return nil
 	}
@@ -87,9 +85,8 @@ func runFetch(parentDir, loomyardRoot string) error {
 	return nil
 }
 
-// fetchReport reads sandbox-report.json, validates it, stamps meta.fingerprint,
-// and writes the normalized result to .scratch. Returns the written path and
-// finding count.
+// fetchReport reads and validates sandbox-report.json, then stamps its meta.fingerprint.
+// It writes the normalized result to .scratch and returns the written path and finding count.
 func fetchReport(warpRepoDir, loomyardRoot string, info binaryInfo) (string, int, error) {
 	reportPath := filepath.Join(warpRepoDir, reportFileName)
 

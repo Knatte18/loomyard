@@ -1,7 +1,8 @@
-// landingdeps_test.go drift-guards landingDeps: it asserts every field of the returned
-// landingshed.Deps is populated, via a reflection-based walk rather than an enumerated list of field
-// assertions, so a newly added field is caught automatically rather than silently passing. This test
-// needs no fixture, no hubforge, and no git init -- landingDeps performs no I/O -- so it stays Tier 1.
+// landingdeps_test.go drift-guards landingDeps.
+// It asserts every field of the returned landingshed.Deps is populated.
+// It walks the struct by reflection rather than an enumerated list of field assertions,
+// so a newly added field is caught automatically rather than silently passing.
+// This test needs no fixture, no hubforge, and no git init: landingDeps performs no I/O, so it stays Tier 1.
 
 package loomcli
 
@@ -36,9 +37,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestLandingDeps_EveryFieldPopulated asserts landingDeps populates every field of the
-// landingshed.Deps it returns, walking the struct by reflection so a field added later is
-// caught automatically rather than silently passing an enumerated list of assertions.
+// TestLandingDeps_EveryFieldPopulated asserts landingDeps populates every field of the landingshed.Deps it returns.
+// It walks the struct by reflection rather than an enumerated list of assertions,
+// so a field added later is caught automatically rather than silently passing.
 //
 //testtiming:keep drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
 //lym:seam internal/landingshed#Deps
@@ -125,7 +126,8 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
-	// FixerSeats is filled by wireLanding, from the seat engine wire built, and GateKey by each landing row's registry entry, on its own copy of Deps.
+	// FixerSeats is filled by wireLanding, from the seat engine wire it builds.
+	// GateKey is filled by each landing row's registry entry, on its own copy of Deps.
 	// LandBlockers and ParentWorktree are a pawl run's, which a tapestry run leaves unset.
 	unfilled := map[string]bool{
 		"FixerSeats":     true,
@@ -197,7 +199,8 @@ func TestRowEntry(t *testing.T) {
 	}
 }
 
-// TestFixerTestFileMatcher asserts the matcher a recipe with no Plan-Write row gets is the union over languages, and one with a Plan-Write row follows the live plan's language.
+// TestFixerTestFileMatcher asserts the matcher for a recipe with no Plan-Write row is the union over languages.
+// A recipe with a Plan-Write row follows the live plan's language.
 func TestFixerTestFileMatcher(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -247,7 +250,8 @@ func TestFixerTestFileMatcher(t *testing.T) {
 	}
 }
 
-// TestHoldsParentLock asserts a nil store reads not held, and a store whose directory is a file reads not held across two calls with one warning.
+// TestHoldsParentLock asserts a nil store reads not held.
+// It also asserts a store whose directory is a file reads not held across two calls with one warning.
 //
 // It stays serial because logcapture swaps the process-global logger.
 func TestHoldsParentLock(t *testing.T) {
@@ -270,7 +274,9 @@ func TestHoldsParentLock(t *testing.T) {
 	}
 }
 
-// TestDriverWaitMark asserts the callback marks the driver strand only while it is live and not retiring, is a no-op returning nil for a gone, dead or retiring one, and passes a failing strand read or mark op through.
+// TestDriverWaitMark asserts the callback marks the driver strand only while it is live and not retiring.
+// For a gone, dead or retiring driver strand it is a no-op that returns nil.
+// It passes a failing strand read or mark op through.
 func TestDriverWaitMark(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -327,8 +333,11 @@ func TestDriverWaitMark(t *testing.T) {
 	}
 }
 
-// TestConflictSessionStopper asserts the seam stops every non-retiring conflict strand of the run by guid, numbered forms included, when it is live or an own-window strand with a present pane.
-// It stops nothing for a retiring or absent one, or one with neither a live nor a present pane, and passes a failing table read or stop through with the guid the failure belongs to.
+// TestConflictSessionStopper asserts the seam stops every non-retiring conflict strand of the run by guid.
+// Numbered guid forms are included.
+// A strand is stopped when it is live, or when it is an own-window strand with a present pane.
+// It stops nothing for a retiring or absent one, or one with neither a live nor a present pane.
+// A failing table read or stop passes through with the guid the failure belongs to.
 func TestConflictSessionStopper(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -394,7 +403,9 @@ func TestConflictSessionStopper(t *testing.T) {
 	}
 }
 
-// TestPRSessionSeams asserts the liveness seam reads a strand as live only while it is live and not retiring, and the registrar registers the pane process of a strand that has one, and refuses a strand that is absent or has none, passing a failing table read through.
+// TestPRSessionSeams asserts the liveness seam reads a strand as live only while it is live and not retiring.
+// The registrar registers the pane process of a strand that has one, and refuses a strand that is absent or has none.
+// A failing table read passes through.
 func TestPRSessionSeams(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -451,7 +462,9 @@ func TestPRSessionSeams(t *testing.T) {
 	}
 }
 
-// TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes a status running at Publish and asserts the pause seam reports false with no condition, false with pause_after naming another row, true with it naming Publish, and false with only pause_requested set.
+// TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes Publish's status as running and asserts the pause seam.
+// It reports false with no pause condition, or with pause_after naming another row.
+// It reports true with pause_after naming Publish, and false with only pause_requested set.
 func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -508,7 +521,8 @@ func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
 	}
 }
 
-// TestPushRidingOutBusyLock covers the landing push's retry: a busy push lock is retried after each pause in turn, and any other outcome ends the retry at once.
+// TestPushRidingOutBusyLock covers the landing push's retry: a busy push lock is retried after each pause in turn,
+// and any other outcome ends the retry at once.
 func TestPushRidingOutBusyLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -574,7 +588,8 @@ func TestMergeableTips(t *testing.T) {
 // TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml pins that the budget-zero seam reads the Code-Review perch at call time:
 // a budget of 0 reports the perch off and a budget above 0 reports it on.
 // A loom.yaml that fails to load is returned as the seam's error.
-// On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out, and a non-bool value is returned as the gate's error.
+// On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out,
+// and a non-bool value is returned as the gate's error.
 func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

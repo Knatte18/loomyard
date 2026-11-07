@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// suspectRepo returns a scratch git repo holding the tracked file internal/x.go, committed as "orig" and then modified in the worktree to "forged".
+// suspectRepo returns a scratch git repo with the tracked file internal/x.go.
+// The file is committed as "orig", then modified in the worktree to "forged".
 func suspectRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -66,7 +67,8 @@ func TestFailBatch_RecordsSuspectBlobs(t *testing.T) {
 		t.Errorf("absent file = %+v, want empty blob", got[1])
 	}
 
-	// A pane cwd below the worktree root resolves a relative suspect path there, and the blob probe still runs on the worktree root.
+	// A pane cwd below the worktree root resolves a relative suspect path there,
+	// and the blob probe still runs on the worktree root.
 	split, _ := failBatchFixture(t, true)
 	split.WorktreeRoot = repo
 	split.PaneCwd = filepath.Join(repo, "internal")

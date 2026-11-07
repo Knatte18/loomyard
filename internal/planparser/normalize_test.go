@@ -1,12 +1,6 @@
-// normalize_test.go covers normalizeCardPath's three-case root:/// resolution rule directly: the
-// "//" worktree-root escape, a set root's join, the degenerate "root: ."
-// case,
-// and the malformed forms (a single-"/" prefix, a ".."
-// escape) that normalizeCardPath resolves but deliberately does not reject — that is Validate's
-// card-path-malformed check, not this package's job. It also covers normalizeCard's
-// classifier-gated application of that rule across Targets, Uses, both endpoints of every Rename
-// Pairs entry, and every TargetGroups entry's own Refs/Pairs, and the nil-vs-empty-non-nil
-// preservation those slices must keep.
+// normalize_test.go covers normalizeCardPath's root:/// resolution rule, including malformed forms it does not reject.
+// It also covers normalizeCard's classifier-gated application of that rule across the card's path lists and pairs.
+// It also checks that those slices keep nil and empty non-nil distinct.
 
 package planparser
 
@@ -72,26 +66,25 @@ func TestNormalizeCardPath(t *testing.T) {
 			want: "../secret.go",
 		},
 		{
-			// R6-5: joining onto root collapsed the doubled separator and erased the leading-"/"
-			// marker card-path-malformed keys on, so the malformed check was silently disabled for
-			// every plan that set a root.
+			// The join onto a set root must keep the leading "/" marker that card-path-malformed keys on.
+			// Without that marker, the check would be silently disabled for every plan that sets a root.
 			name: "malformed single-/ prefix survives a set root, not absorbed into it",
 			root: "internal/boardcli",
 			raw:  "/etc/passwd",
 			want: "/etc/passwd",
 		},
 		{
-			// R6-5: an empty entry became path.Clean("internal/boardcli/") == the root directory,
-			// making the validator's own "empty entry" branch unreachable under a set root.
+			// An empty entry must stay empty under a set root.
+			// Joining it onto root would yield the root directory and leave the validator's "empty entry" branch unreachable.
 			name: "empty entry survives a set root, not resolved to the root directory",
 			root: "internal/boardcli",
 			raw:  "",
 			want: "",
 		},
 		{
-			// A ".." needs no carve-out of its own: it is resolved against root, and only one that
-			// climbs PAST the worktree root survives as a leading "..", which is exactly what
-			// card-path-malformed keys on.
+			// A ".." gets no carve-out: it is resolved against root.
+			// Only one that climbs past the worktree root survives as a leading "..".
+			// Such a leading ".." is what card-path-malformed keys on.
 			name: "a .. that climbs past the worktree root survives a set root as an escape",
 			root: "internal/boardcli",
 			raw:  "../../../secret.go",
@@ -117,8 +110,15 @@ func TestNormalizeCardPath(t *testing.T) {
 	}
 }
 
-// TestNormalizeCard covers normalizeCard's root: join across a card, compared whole so that a nil-vs-empty-non-nil slice, an untouched RenameRaw bullet or a stray field all fail:
-// both endpoints of every Rename Pairs entry and every TargetGroups entry's Refs and Pairs are normalized, and Targets and Pairs agree afterwards; the shape classifier is consulted before an entry is touched, so a symbol, a glyph and a plan: handle pass through byte-identical while a path is root-joined and a "//" escape resolves against the worktree root (the single sharpest regression this migration can introduce); and the nil-vs-empty-non-nil distinction on Targets, Uses and every group's Refs survives.
+// TestNormalizeCard covers normalizeCard's root join across a whole card.
+// Both endpoints of every Rename Pairs entry and every TargetGroups entry's Refs and Pairs are normalized.
+// Targets and Pairs agree afterwards.
+// The shape classifier runs before an entry is touched.
+// A symbol, a glyph and a `plan:` handle pass through byte-identical;
+// a path is root-joined, and a "//" escape resolves against the worktree root.
+// The nil-versus-empty-non-nil distinction on Targets, Uses and every group's Refs survives.
+// The test compares each card whole.
+// A nil-versus-empty-non-nil slice, an untouched RenameRaw bullet or a stray field fails it.
 //
 //testtiming:keep pins normalizeCard's whole-card root join, nil-versus-empty preservation and classifier gate, which its covering tests do not assert
 func TestNormalizeCard(t *testing.T) {
@@ -172,7 +172,8 @@ func TestNormalizeCard(t *testing.T) {
 			},
 		},
 		{
-			// The group-scoped path-missing check stats this value, so an un-normalized group pair would make it stat the unprefixed path.
+			// The group-scoped path-missing check stats this value,
+			// so an un-normalized group pair would make it stat the unprefixed path.
 			name: "a rename group's own pairs are root-joined",
 			card: Card{TargetGroups: []TargetGroup{{
 				Type:  CardTypeRename,
@@ -209,15 +210,21 @@ func TestNormalizeCard(t *testing.T) {
 	}
 }
 
-// pipeline runs normalizeCard then canonicalizeCard on card, in the exact order ParsePlan runs them, and records the surface lexemes into surface.
+// pipeline normalizes card against root, then canonicalizes it under cardKey.
+// It records the surface lexemes into surface.
 func pipeline(card *Card, root, cardKey string, surface map[string]map[string][]string) {
 	normalizeCard(card, root)
 	canonicalizeCard(card, cardKey, glyph.Go, surface)
 }
 
-// TestCanonicalizeCard_Target covers how canonicalizeCard spells one Targets entry:
-// an extension-carrying path canonicalizes into its glyph string, as does a SLASH-FREE extensionless one -- classifyRef rule 4's repository-root filename, which left a bare token wedged every glyph-backed layer downstream (R9-1) -- while a SLASHED extensionless one survives untouched, leaving directory-target something to classify.
-// A glyph-shaped ref, copied verbatim from a quarry answer, is never root:-joined or touched, including a bare-filename surface glyph such as "focus.go#" under a non-"." root:, which names the repository-root file.
+// TestCanonicalizeCard_Target covers how canonicalizeCard spells one Targets entry.
+// An extension-carrying path canonicalizes into its glyph string.
+// So does a slash-free extensionless path, which names a repository-root file:
+// a bare token would wedge every glyph-backed layer downstream.
+// A slashed extensionless path survives untouched, leaving a directory target to classify.
+// A glyph-shaped ref, copied verbatim from a quarry answer, is never root:-joined or touched.
+// That includes a bare-filename surface glyph such as "focus.go#".
+// Under a non-"." root:, that glyph names the repository-root file.
 // A plain path and its own file self glyph land on the identical canonical string.
 func TestCanonicalizeCard_Target(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -253,7 +260,13 @@ func TestCanonicalizeCard_Target(t *testing.T) {
 	}
 }
 
-// TestCanonicalizeCard_SurfaceRefs covers the pre-canonicalization surface lexeme canonicalizeCard records under the owning card's own key and the canonical string, so RewriteRefs can restore the exact byte-form a card's file carried: a rule-4 repository-root filename is recorded under its new canonical string; two cards spelling one canonical string differently each keep their own entry; and one card spelling one canonical ref two ways across two fields keeps one deduplicated lexeme (R6-13: recording only the last left RewriteRefs rewriting one bullet and leaving the other stale).
+// TestCanonicalizeCard_SurfaceRefs covers the pre-canonicalization surface lexemes that canonicalizeCard records.
+// They are keyed by the owning card and by the canonical string.
+// That lets RewriteRefs restore the exact byte form a card's file carried.
+// A repository-root filename is recorded under its new canonical string.
+// Two cards that spell one canonical string differently each keep their own entry.
+// One card that spells one canonical ref two ways across two fields keeps one deduplicated lexeme.
+// Recording only the last spelling would make RewriteRefs rewrite one bullet and leave the other stale.
 func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

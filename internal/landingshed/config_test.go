@@ -1,7 +1,6 @@
 // config_test.go — tier0 unit tests for landingshed.LoadConfig.
 //
-// Seeds a bare t.TempDir() with just a _lym/config/landing.yaml file (no real hub, no SeedConfig,
-// no git spawn), modelled on internal/loomengine's own config_test.go.
+// Seeds a bare t.TempDir() with just a _lym/config/landing.yaml file: no real hub, no git spawn.
 
 package landingshed
 
@@ -33,7 +32,8 @@ func seedLandingConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig_TemplateDefaults verifies the template's default values round-trip, including the single-entry base-branch list, the squash default and the three Describe-related keys.
+// TestLoadConfig_TemplateDefaults verifies the template's default values round-trip.
+// It covers the single-entry base-branch list, the squash default and the Describe-related keys.
 func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -120,7 +120,8 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 }
 
-// TestConfig_IdleRelease verifies the idle bound is the configured minutes, and that a value below 1 reads as the default.
+// TestConfig_IdleRelease verifies the idle bound is the configured minutes.
+// A value below 1 reads as the default.
 func TestConfig_IdleRelease(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -141,7 +142,10 @@ func TestConfig_IdleRelease(t *testing.T) {
 	}
 }
 
-// TestConfig_CreditBlock verifies the credit block is the heading, then the LoomYard item, then the item of each engine that ran in name order, each once, and drops an empty or whitespace-only text, an engine with no entry, and the whole block when credit is off or no item remains.
+// TestConfig_CreditBlock verifies the credit block's shape:
+// the heading, then the LoomYard item, then one item per engine that ran, in name order.
+// Empty or whitespace-only text and an engine with no entry drop out,
+// and the whole block drops when credit is off or no item remains.
 func TestConfig_CreditBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -180,7 +184,10 @@ func TestConfig_CreditBlock(t *testing.T) {
 	}
 }
 
-// TestMigrateConfig verifies a retired require_pr_to_base moves to deploy_branches and a retired merge_fix_attempts to parent_align_fix_attempts keeping their values, the retired co-author and trailer keys are left for reconcile's prune with no value carried into credit_engines, and a migrated document passes unchanged.
+// TestMigrateConfig verifies the migration of retired keys, keeping their values:
+// require_pr_to_base moves to deploy_branches, and merge_fix_attempts to parent_align_fix_attempts.
+// The retired co-author and trailer keys are left for reconcile's prune, with no value carried into credit_engines.
+// A migrated document passes unchanged.
 func TestMigrateConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -255,7 +262,8 @@ func TestMigrateConfig(t *testing.T) {
 	})
 }
 
-// TestMigrateConfig_InvalidDocument verifies an unparsable document and a non-mapping root return an error marked configengine.ErrInvalid.
+// TestMigrateConfig_InvalidDocument verifies that MigrateConfig rejects invalid documents:
+// an unparsable one and a non-mapping root, each with an error marked configengine.ErrInvalid.
 func TestMigrateConfig_InvalidDocument(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -277,7 +285,9 @@ func TestMigrateConfig_InvalidDocument(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or a credit_engines key naming no engine fails loud at load time, naming the key, rather than being silently carried into the site that reads it.
+// TestLoadConfig_InvalidKeys verifies that LoadConfig fails loud at load time on a hand-edited landing.yaml:
+// an ungrammatical model spec, or a credit_engines key naming no engine.
+// The error names the key, rather than the value being silently carried into the site that reads it.
 func TestLoadConfig_InvalidKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -351,7 +361,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 }
 
 // writeLocalLandingConfig writes contents as anchor's local landing override and returns its path.
-// anchor gets an empty _lym/config/ so the layered load sees an initialised worktree.
+// anchor gets its config and scratch directories so the layered load sees an initialised worktree.
 func writeLocalLandingConfig(t *testing.T, anchor, contents string) string {
 	t.Helper()
 	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
@@ -366,9 +376,8 @@ func writeLocalLandingConfig(t *testing.T, anchor, contents string) string {
 	return localPath
 }
 
-// TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint -- an absent
-// config file is an error rather than a degrading default, which is the whole point of adopting the
-// strict loader.
+// TestLoadConfig_NotInitialized verifies that an uninitialized baseDir yields the recovery hint.
+// An absent config file is an error rather than a degrading default, as the strict loader intends.
 func TestLoadConfig_NotInitialized(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -385,7 +394,8 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_OptionalStringKeys verifies each optional string landing key loads as written, and that a landing.yaml without it loads the template's empty value.
+// TestLoadConfig_OptionalStringKeys verifies that each optional string landing key loads as written.
+// A landing.yaml that omits one of them loads the template's empty value.
 func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

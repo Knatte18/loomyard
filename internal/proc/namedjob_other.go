@@ -4,7 +4,7 @@
 
 package proc
 
-// holdNamedJobPlatform does nothing and returns a no-op release.
+// holdNamedJobPlatform holds no job off Windows, where there are no job objects to hold.
 func holdNamedJobPlatform(name string) (func() error, error) {
 	return func() error { return nil }, nil
 }

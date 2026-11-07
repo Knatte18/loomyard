@@ -1,4 +1,5 @@
-// innerrun_respawncap_test.go covers the cap on respawning a running child whose driver keeps dying: the count across passes and the memory record a reader outside the row reads the cap from.
+// innerrun_respawncap_test.go covers the cap on respawning a running child whose driver keeps dying.
+// The count runs across passes, and a reader outside the row reads the cap from the memory record.
 
 package battenshed
 
@@ -13,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// respawnHarness drives passes of a running child with no driver at work, one producer per pass over one scratch directory.
+// respawnHarness drives passes of a running child with no driver at work, one producer per pass.
 type respawnHarness struct {
 	t          *testing.T
 	clock      *fakeClock
@@ -49,7 +50,7 @@ func newRespawnHarness(t *testing.T) *respawnHarness {
 	return h
 }
 
-// pass runs one pass as a new process: the spawn marker names a foreign pid, so the child reads as not spawned by this process.
+// pass runs one pass as a new process; the spawn marker names a foreign pid, so the child reads as not spawned here.
 func (h *respawnHarness) pass() {
 	h.t.Helper()
 	if err := os.WriteFile(SpawnConfirmedFile(h.scratchDir, "innerrun"), []byte(strconv.Itoa(os.Getpid()+1)+"\n"), 0o644); err != nil {
@@ -62,8 +63,11 @@ func (h *respawnHarness) pass() {
 	}
 }
 
-// TestInnerRun_RespawnCapStopsWithoutProgress asserts a running child with no driver at work is respawned respawnCap times with no status write between.
-// It asserts the pass after spawns nothing and sends no notice, RespawnCapReached reads the cap from the memory record, and a live driver strand between two respawns does not reset the count.
+// TestInnerRun_RespawnCapStopsWithoutProgress asserts a running child with no driver at work stops at the respawn cap.
+// The child is respawned respawnCap times with no status write between.
+// It asserts the pass after spawns nothing and sends no notice.
+// It asserts RespawnCapReached reads the cap from the memory record.
+// It asserts a live driver strand between two respawns does not reset the count.
 // It asserts a rewrite of the status file starts the count again.
 func TestInnerRun_RespawnCapStopsWithoutProgress(t *testing.T) {
 	tiergate.Require(t, 0)

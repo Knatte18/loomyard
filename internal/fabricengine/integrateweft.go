@@ -1,4 +1,4 @@
-// integrateweft.go rebuilds a weft branch on its upstream tip and carries the branch's local commits across a change of anchor.
+// integrateweft.go carries a weft branch's local commits onto its upstream tip, across a change of anchor.
 // It builds every commit with git plumbing over a temporary index and moves the branch only once the result is whole.
 
 package fabricengine
@@ -17,27 +17,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-// ErrIntegrateConflict is wrapped by the stop of an integration whose local commit changed a path the upstream changed differently.
-// The weft is left as it was.
+// ErrIntegrateConflict is wrapped by the error that stops an integration.
+// It is returned when a local commit changed a path the upstream changed differently,
+// and the weft is left as it was.
 var ErrIntegrateConflict = errors.New("fabricengine: a local weft commit conflicts with the upstream")
 
 // IntegrateOutcome reports an integration.
 // Tip is the commit the weft branch now points at.
 // Replayed lists the local commits carried onto the upstream, oldest first.
-// Skipped lists the local commits not carried: those that changed the anchor marker, and those the upstream already holds the change of.
+// Skipped lists the local commits not carried:
+// those that changed the anchor marker, and those the upstream already holds the change of.
 type IntegrateOutcome struct {
 	Tip      string
 	Replayed []string
 	Skipped  []string
 }
 
-// integrateWeft rebuilds the weft checked out at weftPath on its upstream tip upstream, anchored at target.
-// It replays each local commit the upstream lacks, oldest first, skipping each commit that changed the anchor marker, and carries each changed path from under the anchor its parent commit names to under the upstream's anchor.
+// integrateWeft rebuilds the weft checked out at weftPath on the upstream ref upstream, anchored at target.
+// It replays each local commit the upstream lacks, oldest first, and skips each commit that changed the anchor marker.
+// Each changed path moves from under the anchor its parent commit names to under the upstream's anchor.
 // A parent without a marker names fallback, or the anchor its tree implies.
 // Paths outside every wired name in names, and the marker, are replayed unmoved.
-// When the upstream's anchor is not target, it then re-roots every wired name's tracked content to target and sets the marker, in one commit.
+// When the upstream's anchor is not target, it re-roots every wired name's tracked content to target.
+// The marker is set to target in that same commit.
 // Nothing of the weft changes until the result is whole, when the branch moves to it keeping uncommitted changes.
-// A local commit that changed a path the upstream changed differently stops the integration with ErrIntegrateConflict, naming the commit, its paths and the steps that settle it.
+// A local commit that changed a path the upstream changed differently stops the integration with ErrIntegrateConflict.
+// The error names the commit, its paths and the steps that settle it.
 // A tracked change on a path the result rewrites returns ErrReplayDirty.
 func integrateWeft(rec *Mutations, weftPath, upstream, target string, names []string, fallback string) (IntegrateOutcome, error) {
 	repo := gitrepo.New(weftPath)
@@ -94,7 +99,7 @@ func integrateWeft(rec *Mutations, weftPath, upstream, target string, names []st
 type integrateBuild struct {
 	weftPath string
 	names    []string
-	// head is the weft's local tip and target the anchor the integration ends at, both named by the way forward of a conflict.
+	// head is the weft's local tip and target the anchor the integration ends at; a conflict names both.
 	head, target string
 	// env points git at the temporary index and keeps pathspecs literal.
 	env []string
@@ -102,7 +107,8 @@ type integrateBuild struct {
 	tip string
 }
 
-// newIntegrateBuild begins a build at the commit upstreamSHA of the weft at weftPath, whose local tip is head and which ends at the anchor target.
+// newIntegrateBuild begins a build of the weft at weftPath on the commit upstreamSHA.
+// head and target are the local tip and the final anchor that a conflict reports.
 func newIntegrateBuild(weftPath, upstreamSHA, head, target string, names []string) (*integrateBuild, error) {
 	dir, err := lymtemp.MkdirTemp("integrate-index-*")
 	if err != nil {
@@ -122,7 +128,8 @@ func newIntegrateBuild(weftPath, upstreamSHA, head, target string, names []strin
 	return build, nil
 }
 
-// git runs git with args in the weft against the temporary index, with extraEnv after the index variables.
+// git runs a git command with args in the weft, against the temporary index.
+// extraEnv is appended after the index variables.
 func (b *integrateBuild) git(extraEnv []string, args ...string) (string, error) {
 	return gitexec.RunWithEnv(args, b.weftPath, append(slices.Clone(b.env), extraEnv...))
 }
@@ -132,7 +139,9 @@ type indexEntry struct {
 	mode, blob, path string
 }
 
-// treeChange is one path a commit changed against its parent, with the blob it had before (empty when added) and the entry it has after (zero blob when deleted).
+// treeChange is one path a commit changed against its parent.
+// oldBlob is the blob the path had before, empty when it was added.
+// newMode and newBlob are the entry it has after, a zero blob when it was deleted.
 type treeChange struct {
 	path             string
 	oldBlob          string
@@ -207,7 +216,8 @@ func (b *integrateBuild) replay(sha, frame, fallback string) (bool, error) {
 	return true, nil
 }
 
-// reroot moves every tracked file under a wired name from under the anchor from to under the anchor to, sets the marker to to, and commits the result.
+// reroot moves every tracked file under a wired name from under the anchor from to under the anchor to.
+// It then sets the marker to the anchor to and commits the result.
 func (b *integrateBuild) reroot(from, to string) error {
 	for _, name := range b.names {
 		dir := anchorJoin(from, name)
@@ -242,7 +252,8 @@ func (b *integrateBuild) reroot(from, to string) error {
 	return b.commit(fmt.Sprintf("fabric anchor: re-root the weft from %s to %s", from, to), nil)
 }
 
-// commit writes the temporary index as a tree and a commit with message on top of tip, with env as its author, and moves tip to it.
+// commit writes the temporary index as a tree and commits it with message on top of tip.
+// authorEnv names the author, and tip moves to the new commit.
 func (b *integrateBuild) commit(message string, authorEnv []string) error {
 	tree, err := b.git(nil, "write-tree")
 	if err != nil {
@@ -342,8 +353,9 @@ func anchorJoin(anchor, name string) string {
 	return path.Join(anchor, name)
 }
 
-// moveUnderAnchor returns filePath moved from under the anchor from to under the anchor to, when it lies under one of the wired names.
-// The marker and every path outside the wired names come back unmoved.
+// moveUnderAnchor returns filePath moved from under the anchor from to under the anchor to.
+// It moves a path only when it lies under one of names.
+// The marker file, lymcwd.AnchorFileName, and every other path come back unmoved.
 func moveUnderAnchor(filePath, from, to string, names []string) string {
 	if from == to || filePath == lymcwd.AnchorFileName {
 		return filePath
@@ -356,7 +368,7 @@ func moveUnderAnchor(filePath, from, to string, names []string) string {
 	return filePath
 }
 
-// commitAuthorEnv returns the variables that give a commit made on top of sha's change the author, address and date of sha.
+// commitAuthorEnv returns the environment variables that give a commit the author name, email and date of sha.
 func commitAuthorEnv(weftPath, sha string) ([]string, error) {
 	out, err := gitexec.Run([]string{"show", "-s", "--format=%an%x00%ae%x00%aI", sha}, weftPath)
 	if err != nil {
@@ -369,8 +381,10 @@ func commitAuthorEnv(weftPath, sha string) ([]string, error) {
 	return []string{"GIT_AUTHOR_NAME=" + fields[0], "GIT_AUTHOR_EMAIL=" + fields[1], "GIT_AUTHOR_DATE=" + fields[2]}, nil
 }
 
-// integrateConflict returns the ErrIntegrateConflict stop for the local commit sha, which changed conflicts differently than the upstream did.
-// Its way forward keeps every local commit reachable under a tag while the changes are saved and written back at the target anchor.
+// integrateConflict returns the ErrIntegrateConflict stop for the local commit sha.
+// The local commit changed paths that the upstream changed too.
+// The error message lists the manual steps.
+// A tag on the local tip keeps every dropped commit reachable until the saved changes are written back at target.
 func integrateConflict(weftPath, sha, head, target string, conflicts []string) error {
 	slug := filepath.Base(weftPath)
 	if warpSlug, ok := WeftWarpSlug(slug); ok {

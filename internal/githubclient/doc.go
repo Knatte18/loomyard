@@ -1,131 +1,101 @@
-// Package githubclient owns GitHub token resolution, token caching, and
-// construction of an authenticated *github.Client -- nothing else. This file
-// is the package's durable design record; see
-// PATTERN-github-auth for the machine-enforced half of the same contract.
+// Package githubclient owns GitHub token resolution, token caching, and construction of an authenticated *github.Client.
+// This file is the package's design record; see PATTERN-github-auth for the machine-enforced half of the same contract.
 //
-// # What this package deliberately is not
+// # Scope
 //
-// githubclient exposes no per-operation wrapper methods -- there is no
-// CreateIssue, no ListPullRequests, nothing beyond auth and client
-// construction. Consumers call go-github's typed API directly against the
-// *github.Client this package returns (c.Issues.Create(ctx, owner, repo,
-// ...), c.PullRequests.List(ctx, owner, repo, ...)), supplying owner and repo
-// themselves as ordinary call parameters. Hand-writing wrappers would
-// reinvent a typed, maintained library and create a surface that must track
-// every consumer's needs forever. The one thing that genuinely cannot be
-// duplicated this way is non-blocking credential resolution -- duplicating
-// that gets a caller two token chains, two shell-outs, two timeouts to keep
-// in sync -- and that is exactly, and only, what this package owns. Under
-// this shape, adding a GitHub operation to any consumer costs zero package
-// work: it is a go-github call, not a new method here. selfreportengine is
-// explicitly not extended to wrap this package either; it calls go-github
-// directly like every other consumer.
+// The package exposes no per-operation wrapper methods, only auth and client construction.
+// Consumers call go-github's typed API directly on the returned *github.Client.
+// They supply owner and repo as ordinary call parameters, as in c.Issues.Create(ctx, owner, repo, ...).
+// Wrappers would reinvent a maintained library and create a surface that must track every consumer's needs.
+// Credential resolution is what the package owns.
+// A second copy of it would give a caller two token chains, two shell-outs and two timeouts to keep in sync.
+// Adding a GitHub operation to a consumer therefore needs no change here.
 //
 // # Token resolution order and the cache
 //
-// resolveToken (token.go) tries, in fixed order: the GH_TOKEN environment
-// variable, then GITHUB_TOKEN, then the on-disk cache (cache.go), then a
-// bounded `gh auth token` shell-out whose result is written back to the
-// cache. Environment variables always outrank the cache -- an operator who
-// sets GH_TOKEN gets that value on every call, never a stale cached one.
-// Cached tokens are trusted for cacheFreshness (12 hours), applied entirely
-// at read time with no expiry field stored on disk, so changing the TTL
-// never requires migrating existing cache files. The cache exists purely to
-// avoid paying the `gh auth token` shell-out cost on every request; it is an
-// optimization, never a source of truth -- any unreadable, malformed, or
-// foreign-shaped cache file is treated as a miss, never a fatal error.
+// resolveToken (token.go) tries its sources in fixed order.
+// The first three are the GH_TOKEN environment variable, GITHUB_TOKEN, and the on-disk cache (cache.go).
+// The last is a bounded `gh auth token` shell-out whose result is written back to the cache.
+// Environment variables always outrank the cache, so an operator who sets GH_TOKEN gets that value on every call.
+// Cached tokens are trusted for cacheFreshness, applied at read time with no expiry field stored on disk.
+// Changing the TTL therefore never requires migrating existing cache files.
+// The cache only avoids the `gh auth token` shell-out cost on every request and is never a source of truth.
+// An unreadable, malformed, or foreign-shaped cache file is a miss, never a fatal error.
 //
-// The cache file lives at a machine-global location -- %LOCALAPPDATA%\lym on
-// Windows, $XDG_CONFIG_HOME/lym or $HOME/.config/lym elsewhere -- outside
-// every repository this process might operate on. This is deliberate: a
-// per-repository cache would multiply the number of places a token sits on
-// disk with every checkout lym touches, and would need its own gitignore
-// discipline in every one of them to avoid an accidental commit. State
-// plainly: this cache writes the operator's GitHub token to disk in
-// plaintext, in this one additional location, readable only by its owner
-// (0600 plus an owner-only DACL on Windows, since Windows otherwise ignores
-// Go's permission bits -- see cache_windows.go). That is a real, accepted
-// cost of the non-blocking property below, not an oversight.
+// The cache file lives at a machine-global location, outside every repository this process might operate on:
+// %LOCALAPPDATA%\lym on Windows, $XDG_CONFIG_HOME/lym or $HOME/.config/lym elsewhere.
+// A per-repository cache would multiply the places a token sits on disk with every checkout.
+// It would also need its own gitignore discipline in each to avoid an accidental commit.
+// The cache writes the operator's GitHub token to disk in plaintext in this one location.
+// That is an accepted cost of the non-blocking property below.
+// The file is readable only by its owner: 0600, plus an owner-only DACL on Windows, which ignores Go's permission bits.
+// The DACL is set in cache_windows.go.
 //
 // The package also names that directory, through CredentialDir, for the Slack credential file.
 // internal/slackengine alone reads and writes that file; this package resolves no Slack token itself.
 //
 // # Why WithAuthToken is banned
 //
-// Exactly one layer owns the Authorization header: authRT (transport.go),
-// installed as the client's outermost http.RoundTripper. github.WithAuthToken
-// is never used to construct a client here, because it captures a fixed
-// token inside go-github's own transport wrapper -- with authRT installed
-// too, the header would have two owners, and a 401 replay would re-send the
-// stale token from WithAuthToken's closure, defeating the entire
-// re-resolution authRT exists to provide. One owner removes the ordering
-// question rather than leaving it to be answered by whichever transport
-// happens to run last.
+// Exactly one layer owns the Authorization header: authRT (transport.go).
+// It is installed as the client's outermost http.RoundTripper.
+// github.WithAuthToken is never used to construct a client here.
+// It captures a fixed token in go-github's own transport wrapper.
+// With authRT installed too, the header would have two owners.
+// A 401 replay would then re-send the stale token from the WithAuthToken closure.
+// That defeats the re-resolution authRT provides.
 //
 // authRT also holds every request while a pause covers the process.
-// It waits at entry through pauserecord's network gate, before it resolves a token and outside the 401 replay, so a replay is not held twice.
+// It waits at entry through pauserecord's network gate, before it resolves a token and outside the 401 replay.
+// A replay is therefore not held twice.
 // The hold only delays the request; with no gate installed it does nothing.
-// A held call's caller deadline moves later by the time the gate held it, and authRT applies its 30s timeout from the end of the hold, so a hold does not use up the call's budget.
+// A held call's caller deadline moves later by the time the gate held it.
+// authRT applies its 30s timeout from the end of the hold, so a hold does not use up the call's budget.
 //
 // # The 401 replay, and why environment-sourced tokens skip it
 //
-// On a 401 response, authRT invalidates the token cache, re-resolves once,
-// rewinds the request body via req.GetBody, and replays exactly once with
-// the freshly resolved token; a second consecutive 401 is returned to the
-// caller unchanged, never a loop. The GetBody rewind is not incidental:
-// issue creation is a POST with a JSON body, and a naive replay without it
-// sends already-drained bytes, surfacing as a confusing GitHub validation
-// error rather than as an obviously missing rewind.
+// On a 401 response, authRT invalidates the token cache, re-resolves once, and rewinds the request body via req.GetBody.
+// It then replays once with the freshly resolved token.
+// A second consecutive 401 is returned to the caller unchanged.
+// The GetBody rewind is required: issue creation is a POST with a JSON body.
+// A replay without the rewind sends drained bytes and surfaces as a confusing GitHub validation error.
 //
-// A token resolved from GH_TOKEN or GITHUB_TOKEN never goes through this
-// replay. Environment variables outrank the cache by rule, so invalidating
-// the cache and re-resolving is guaranteed to reproduce the identical
-// environment value -- a replay in that case is a guaranteed-identical
-// second failure, not a chance at recovery, so authRT discards the response
-// and returns an error naming the rejected environment variable instead.
-// That error wraps ErrTokenRejected, so a caller can tell a refused token from a transport failure inside the same *url.Error.
+// A token resolved from GH_TOKEN or GITHUB_TOKEN never goes through this replay.
+// Environment variables outrank the cache, so invalidating the cache and re-resolving reproduces the identical value.
+// The replay would fail the same way.
+// authRT discards the response and returns an error naming the rejected environment variable instead.
+// That error wraps ErrTokenRejected.
+// A caller can therefore tell a refused token from a transport failure inside the same *url.Error.
 //
 // # The two deadlines
 //
 // Two independent timeouts bound every path through this package.
 // The `gh auth token` shell-out (token.go) is bounded at 5s via exec.CommandContext behind an injectable seam,
-// so a hung or unexpectedly prompting `gh` process can never stall an autonomous lym run.
-// Separately, the returned *github.Client's transport, authRT, applies a 30s timeout itself, from the end of the pause hold and no longer through http.Client.Timeout.
-// It is enforced through the request context, so it covers the original attempt and a 401 replay TOGETHER:
+// so a hung or prompting `gh` process cannot stall an autonomous lym run.
+// The returned *github.Client's transport, authRT, applies a 30s timeout itself, from the end of the pause hold.
+// It is enforced through the request context, so it covers the original attempt and a 401 replay together:
 // worst case 30s total across both HTTP round trips, not 30s per attempt.
-// A held call's caller deadline moves later by the held time.
-// Neither deadline is decoration: http.DefaultTransport sets no response timeout of its own,
-// and a credential path with no bound at all is indistinguishable, to an autonomous process, from a hang.
+// Both bounds are needed: http.DefaultTransport sets no response timeout of its own,
+// and a credential path with no bound is indistinguishable, to an autonomous process, from a hang.
 //
 // # Never-block-on-credentials is the package's reason for existing
 //
-// `gh auth login` is never invoked anywhere in this package, and there is no
-// code path from here to it. Every resolution step either returns quickly
-// (an environment read, a cache read, a bounded shell-out) or returns
-// ErrTokenUnresolvable as a typed error immediately -- never a prompt, never
-// an indefinite wait. lym runs autonomously, and a process blocked forever
-// on a credential prompt is indistinguishable from a hang; this property,
-// more than any particular resolution step, is why this package exists as
-// its own leaf rather than as a thin helper inside whichever module first
-// needed a GitHub token.
+// `gh auth login` is never invoked anywhere in this package, and no code path leads to it.
+// Every resolution step either returns quickly or returns ErrTokenUnresolvable immediately.
+// The quick steps are an environment read, a cache read and a bounded shell-out; none prompts or waits indefinitely.
+// lym runs autonomously, and a process blocked on a credential prompt is indistinguishable from a hang.
+// This property is why the package is its own leaf rather than a helper inside whichever module first needed a token.
 //
 // # The GitHub surface consumers need
 //
-// The set of GitHub operations lym's consumers need is derived from the
-// sibling millhouse toolchain's actual usage, not assumed: issue list,
-// issue view, issue create, issue close (comment-then-close), PR list, PR
-// view, PR create, repo view, and an auth probe. All of these are standard
-// authenticated REST calls that go-github already exposes, so "supporting"
-// them costs this package nothing beyond auth and construction being
-// sufficient -- which they are. Two consumption details are worth recording
-// here so a future consumer does not rediscover them the hard way: `gh
-// issue view` exits 0 on a closed issue, so the response's state field must
-// be read explicitly to distinguish open from closed -- a consumer that
-// checks only for a successful response will treat every closed issue as
-// open. And PR list results carry a state precedence of MERGED > OPEN >
-// CLOSED when a consumer needs to collapse multiple PRs touching the same
-// subject down to one representative state.
+// Consumers need issue list, view, create and close (comment-then-close).
+// They also need PR list, view and create, repo view, and an auth probe.
+// All are standard authenticated REST calls that go-github already exposes.
+// Supporting them needs nothing beyond auth and construction.
+// `gh issue view` exits 0 on a closed issue.
+// A consumer must therefore read the response's state field to tell open from closed.
+// PR list results carry a state precedence of MERGED > OPEN > CLOSED.
+// A consumer applies it to collapse several PRs touching one subject to a single state.
 //
-// `lym beam pr` is a consumer too: it opens, edits and reopens the pull request from a beam's branch into its parent and reads its status through internal/pullrequest, so its token reaches it only through this package.
-// It never merges a pull request.
+// `lym beam pr` opens, edits and reopens the pull request from a beam's branch into its parent, and never merges one.
+// It reads the status through internal/pullrequest, so its token reaches it only through this package.
 package githubclient

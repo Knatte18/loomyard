@@ -1,7 +1,8 @@
-// wiring_commitstatus_test.go pins loom's side of the per-transition status seam -- its board status write and both ShedPaths fill sites -- and the status pathspec.
-// The seam's three dispositions -- commit-hard-errors, spawn-warns, skip-while-mid-merge -- live in internal/statuscommit and are pinned there.
-// Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures, spawning no git
-// and no process, so the file stays Tier 1 with no hub fixture.
+// wiring_commitstatus_test.go pins loom's side of the per-transition status seam:
+// its board status write, both ShedPaths fill sites, and the status pathspec.
+// The seam's three dispositions live in internal/statuscommit, which pins them.
+// Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures.
+// It spawns no git and no process, so the file stays Tier 1 with no hub fixture.
 
 package loomcli
 
@@ -28,7 +29,10 @@ func selfStatusRel(location *lymcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
-// TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false and no board-status writer, a commit that landed something is followed by one Spawn, in that order, and a commit that landed nothing spawns nothing; both return nil.
+// TestNewCommitStatusSeam_OrdinaryPath checks the seam with MergeActive false and no board-status writer.
+// A commit that landed something is followed by one Spawn, in that order;
+// a commit that landed nothing spawns nothing.
+// Both return nil.
 //
 //testtiming:keep pins the seam with no board-status writer calling commit then spawn once each, in that order, and spawning nothing for a no-op commit; the board-status test always installs a writer
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
@@ -71,8 +75,9 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_BoardStatus asserts the seam writes "<state> · <producer>" to the board only when it changed,
-// writes nothing for a finished run, retries a failed write on the next transition, and still commits when the board write fails.
+// TestNewCommitStatusSeam_BoardStatus asserts the seam writes "<state> · <producer>" to the board only when it changed.
+// It writes nothing for a finished run.
+// It retries a failed write on the next transition and still commits when the board write fails.
 func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -131,7 +136,8 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_Finish asserts a finished run calls the seam's Finish after the run status it last wrote, retries a failed Finish at the next finished transition and calls it no more once it succeeded.
+// TestNewCommitStatusSeam_Finish asserts a finished run calls the seam's Finish after the run status it last wrote.
+// It retries a failed Finish at the next finished transition and calls it no more once it succeeded.
 func TestNewCommitStatusSeam_Finish(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -168,8 +174,10 @@ func TestNewCommitStatusSeam_Finish(t *testing.T) {
 	}
 }
 
-// TestStatusCommitPathspec asserts the pathspec always names the run's status file, and names each of the reviews directory, the loom durable directory and the drive-reports directory only when it holds a file at any depth:
-// empty directories, segment directories and subdirectories would make the commit's pathspec match nothing and fail, and an archive sibling alone still counts.
+// TestStatusCommitPathspec asserts the pathspec always names the run's status file.
+// It names the reviews, loom durable and drive-reports directories only when each holds a file at any depth.
+// Empty directories, segment directories and subdirectories would make the commit's pathspec match nothing and fail.
+// An archive sibling alone still counts.
 //
 //testtiming:keep pins the status commit pathspec naming the status file always and the reviews, loom durable and drive-reports directories only once they hold a file; the covering integration test commits one fixed layout
 func TestStatusCommitPathspec(t *testing.T) {
@@ -372,8 +380,11 @@ func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record
 	}
 }
 
-// TestPlanCommitPathspec asserts the plan commit always names the plan directory, and adds webster's durable directory only when it holds a file or Plan-Write's rotation archived a run record under the plan:
-// the moved-from deletions and the archive then land in one commit, while an empty or absent directory would make the pathspec match nothing and fail.
+// TestPlanCommitPathspec asserts the plan commit always names the plan directory.
+// It adds webster's durable directory only when it holds a file.
+// Plan-Write's rotation archiving a run record under the plan also adds it.
+// The moved-from deletions and the archive then land in one commit.
+// An empty or absent directory would make the pathspec match nothing and fail.
 func TestPlanCommitPathspec(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -474,7 +485,8 @@ func TestPlanCommitPathspec(t *testing.T) {
 	}
 }
 
-// TestRemoveSettledAmendment asserts the amendment record is removed only when the live settle's recorded round start is after the record's latest write.
+// TestRemoveSettledAmendment asserts the amendment record is removed only under one condition:
+// the live settle's recorded round start is after the record's latest write.
 func TestRemoveSettledAmendment(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

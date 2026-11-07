@@ -19,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRegisterRunProcess serves two roles: the loop's start hook and the driver's own call each register the test's pid under the slug, and a record directory that cannot be created registers nothing and warns once.
+// TestRegisterRunProcess covers two roles: the loop's start hook and the driver's own call.
+// Each registers the test's pid under the slug.
+// A record directory that cannot be created registers nothing and warns once.
 // Each role runs over its own hub, since one process keeps one record per owner.
 // It stays serial because logcapture swaps the process-global logger.
 func TestRegisterRunProcess(t *testing.T) {

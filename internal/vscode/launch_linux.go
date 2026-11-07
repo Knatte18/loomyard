@@ -1,6 +1,5 @@
 // launch_linux.go launches VS Code on Linux by invoking the "code" binary directly from PATH;
-// unlike Windows there is no cmd.exe PATH-resolution shim or console window to hide, so this is a
-// thin wrapper around exec.Command.
+// it has no cmd.exe PATH-resolution shim or console window to hide, so it is a thin wrapper around exec.Command.
 
 package vscode
 
@@ -12,11 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// Launch launches VS Code on Linux on target, a folder or a workspace file, opening each of files in an editor of the window.
+// Launch opens target, a folder or a workspace file, in VS Code on Linux.
+// Every file in files opens in an editor of that window.
 //
-// It starts the "code" command detached (cmd.Start(), not Run()) so the caller does not block on
-// the editor process.
-// Wraps start failures with context.
+// It starts the "code" command detached (cmd.Start(), not Run()) so the caller does not block on the editor process.
+// It wraps start failures with context.
 func Launch(target string, files ...string) error {
 	cmd := exec.Command("code", append([]string{target}, files...)...)
 

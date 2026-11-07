@@ -1,7 +1,9 @@
-// runwrites_test.go covers loadRunWrites: every recorded Master session is audited and its events merged,
-// a session id recorded twice is audited once, an audit error surfaces naming the session,
-// and writtenWorktreePaths turns the events into worktree-relative paths.
-// Tier0, with a shuttlefake.Engine — no git, no subprocess spawns.
+// runwrites_test.go covers loadRunWrites.
+// Every recorded Master session is audited and its events merged.
+// A session id recorded twice is audited once.
+// An audit error surfaces naming the session.
+// writtenWorktreePaths turns the events into worktree-relative paths.
+// Tier0, with a shuttlefake.Engine: no git, no subprocess spawns.
 
 package websterengine
 
@@ -156,7 +158,8 @@ func TestLoadRunWrites(t *testing.T) {
 			t.Errorf("writtenWorktreePaths = %v, want %v", got, want)
 		}
 
-		// A session that ran in a subdirectory resolves its relative writes there, while the within-tree check and the returned paths stay on the worktree root.
+		// A session that ran in a subdirectory resolves its relative writes there.
+		// The within-tree check and the returned paths stay on the worktree root.
 		paneCwd := filepath.Join(worktree, "backend")
 		if err := os.MkdirAll(paneCwd, 0o755); err != nil {
 			t.Fatal(err)

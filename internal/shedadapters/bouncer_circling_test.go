@@ -1,4 +1,5 @@
-// bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it writes for the parent and the way it acts on the recorded decision.
+// bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round.
+// It checks the Awaiting Reason written for the parent and how the recorded decision is acted on.
 
 package shedadapters
 
@@ -28,7 +29,8 @@ func (s *circlingSeams) install(cfg *BouncerConfig) {
 	cfg.Commit = func() error { s.order = append(s.order, "commit"); return s.commitErr }
 }
 
-// circlingBouncer builds a Bouncer over a run directory whose round 2 is judged CIRCLING over a gating key open in rounds 1 and 2.
+// circlingBouncer builds a Bouncer over a run directory whose round 2 is judged CIRCLING.
+// A gating key is open in rounds 1 and 2.
 // The shuttle is a fake that fails the test if a Run is attempted.
 func circlingBouncer(t *testing.T, tweak func(*BouncerConfig)) (*Bouncer, *BouncerConfig, *shedfake.Shuttle) {
 	t.Helper()
@@ -39,7 +41,8 @@ func circlingBouncer(t *testing.T, tweak func(*BouncerConfig)) (*Bouncer, *Bounc
 	})
 }
 
-// layoutCirclingBouncer builds a Bouncer over a run directory whose rounds 1..round are judged, the last CIRCLING and the earlier ones CONTINUE.
+// layoutCirclingBouncer builds a Bouncer over a run directory whose rounds 1..round are judged.
+// The last round is CIRCLING and the earlier ones are CONTINUE.
 // writeLedgers then replaces the placeholder ledgers with the test's own.
 // The shuttle is a fake that fails the test if a Run is attempted.
 func layoutCirclingBouncer(t *testing.T, checkpoint, round int, tweak func(*BouncerConfig), writeLedgers func(dir string)) (*Bouncer, *BouncerConfig, *shedfake.Shuttle) {
@@ -179,7 +182,9 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 	}
 }
 
-// TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling pins that a pending accept calls the CarryOver seam with CarryOverAccepted while the decision is still unsettled, and that a failing seam leaves it unsettled and unapproved so the re-call retries the write.
+// TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling pins the CarryOver seam call for a pending accept.
+// The call passes CarryOverAccepted while the decision is still unsettled.
+// A failing seam leaves it unsettled and unapproved, so the re-call retries the write.
 func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
 	tiergate.Require(t, 0)
 	seams := &circlingSeams{}

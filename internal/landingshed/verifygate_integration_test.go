@@ -1,6 +1,7 @@
-// verifygate_integration_test.go drives newVerifyGate's real verifytree functions against a scratch repo and real shell commands,
-// and pins the record-keyed behaviour the unit tests fake: the log holds the command's output on a pass and a fail,
-// a verify interrupted before the record write runs again, and a no-op merge onto a verified tree skips it.
+// verifygate_integration_test.go drives newVerifyGate's real verifytree functions against a scratch repo.
+// It runs them with real shell commands, and pins the record-keyed behaviour the unit tests fake.
+// The log holds the command's output on a pass and a fail.
+// A verify interrupted before the record write runs again, and a no-op merge onto a verified tree skips it.
 
 package landingshed
 
@@ -16,8 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newGateScratch returns a Deps over a fresh one-commit repo whose verify directory and counter file lie outside the worktree,
-// with a verify command that appends one line to the counter file, so a test counts how often the command ran.
+// newGateScratch returns a Deps over a fresh one-commit repo.
+// Its verify directory and counter file lie outside the worktree.
+// The verify command appends one line to the counter file, so a test counts how often it ran.
 func newGateScratch(t *testing.T) (deps Deps, counter string) {
 	t.Helper()
 	worktree := t.TempDir()
@@ -47,10 +49,17 @@ func runs(t *testing.T, counter string) int {
 	return strings.Count(string(data), "run")
 }
 
-// TestVerifyGate_RealVerifytreeScenario drives newVerifyGate's real verifytree functions through one scratch repo, a step at a time, and pins the record-keyed behaviour the unit tests fake: a verify cut off before the record write runs again, the log holds the command's output on a pass and a fail, a check over the tree already verified runs nothing, a tree the record does not name is verified, and the clean-tree seam sees an untracked file.
+// TestVerifyGate_RealVerifytreeScenario drives newVerifyGate's real verifytree functions through one scratch repo.
+// It runs the steps one at a time, and pins the record-keyed behaviour the unit tests fake.
+// A verify cut off before the record write runs again.
+// The log holds the command's output on a pass and a fail.
+// A check over a tree already verified runs nothing.
+// A tree the record does not name is verified.
+// The clean-tree seam sees an untracked file.
 //
-// The steps run in order on one repo and one verified-tree record, so no step runs in parallel and each relies on the state the one before it left;
-// the top-level test calls t.Parallel because the repo is its own.
+// The steps run in order on one repo and one verified-tree record, never in parallel.
+// Each relies on the state the one before it left.
+// The top-level test calls t.Parallel because the repo is its own.
 func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -69,7 +78,7 @@ func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 			t.Fatalf("command ran %d time(s); want %d", got, want)
 		}
 	}
-	// requireLogHas reads the n-th run's own log; the cancelled first step's run opens the first one.
+	// requireLogHas reads the log of the n-th run, counting from one; the cancelled first step is run one.
 	requireLogHas := func(t *testing.T, n int, want string) {
 		t.Helper()
 		got, err := os.ReadFile(filepath.Join(gate.paths.Dir, fmt.Sprintf("verify-%d.log", n)))

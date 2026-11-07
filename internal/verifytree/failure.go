@@ -15,7 +15,7 @@ type FailureKind string
 
 const (
 	// FailureKindLanding is the retired `landing` kind an older build wrote.
-	// A record carrying it reads as the gate key of the row that reads it: Parent-Align, Finalize or the merge fixer either spawns, since the record names no row and only those rows read it.
+	// A record carrying it reads as the gate key of whichever row reads it, since the record names no row.
 	FailureKindLanding FailureKind = "landing"
 	// FailureKindPublish means a tier of the `publish` gate failed.
 	FailureKindPublish FailureKind = "publish"
@@ -67,13 +67,13 @@ type FailureTrace struct {
 }
 
 // LandingFailure is the landing failure record.
-// Cards, LaterRange and Untraced are the optional trace of the failure: a record without them reads as it always did.
+// Cards, LaterRange and Untraced are the optional trace of the failure; a record without them carries no trace.
 type LandingFailure struct {
 	// Kind names the failing verify.
 	Kind FailureKind `yaml:"kind"`
-	// Tier is the number of the failing tier of Kind's gate; it is always written, since tier 0 is a real tier, and a record of a retired Kind carries none.
+	// Tier is the failing tier of Kind's gate, always written as tier 0 is real; a retired Kind's record carries none.
 	Tier int `yaml:"tier"`
-	// Build is set when the gate failed in its build step before any test ran, so Tier names the first tier the build blocked and Tests is empty.
+	// Build is set when the build step failed before any test ran; Tier is the first tier it blocked, and Tests is empty.
 	Build bool `yaml:"build,omitempty"`
 	// Tests are the failing tests the verify's log names.
 	Tests []FailedTest `yaml:"tests,omitempty"`
@@ -83,7 +83,7 @@ type LandingFailure struct {
 	Head string `yaml:"head"`
 	// MergeCommit is the merge-in commit the row made, empty when it made none.
 	MergeCommit string `yaml:"merge_commit,omitempty"`
-	// WrittenAt is the record's write time in RFC 3339 whole-second UTC, empty for a record written before the field existed.
+	// WrittenAt is the record's write time in RFC 3339 whole-second UTC, empty on a record written without it.
 	WrittenAt string `yaml:"written_at,omitempty"`
 	// Cards are the plan cards the failing locations were traced to.
 	Cards []TracedCard `yaml:"cards,omitempty"`

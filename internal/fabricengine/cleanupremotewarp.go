@@ -1,5 +1,5 @@
-// cleanupremotewarp.go implements Topology.CleanupRemoteWarp, the engine half of cleanup's sweep of leftover task branches on the warp repo's origin.
-// It is a sibling of Cleanup, which sweeps weft branches, and knows nothing of GitHub: the caller hands it the set of open pull request heads.
+// cleanupremotewarp.go implements the sweep of leftover task branches on the warp repo's origin.
+// It imports no GitHub client: the caller passes in the set of open pull request heads.
 
 package fabricengine
 
@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// RemoteWarpBranchEntry describes the fate of one branch on the warp origin under CleanupRemoteWarp.
+// RemoteWarpBranchEntry describes the fate of one branch on the warp origin in a sweep.
 type RemoteWarpBranchEntry struct {
 	// Branch is the branch name on origin.
 	Branch string `json:"branch"`
@@ -23,38 +23,51 @@ type RemoteWarpBranchEntry struct {
 	// Deleted reports whether the branch was observably deleted from origin.
 	Deleted bool `json:"deleted"`
 	// Reason names the condition that kept a non-candidate; empty for a candidate.
-	// Under apply it also names why a candidate was kept: its slug's teardown lock was held, or a hub worktree now has the branch checked out.
+	// Under apply a kept candidate's Reason also names a held teardown lock or a hub checkout.
 	Reason string `json:"reason,omitempty"`
-	// Error is non-empty when apply tried to delete a candidate and the gate refused, the lease failed or the slug's teardown lock could not be taken for a reason other than being held.
+	// Error is set when apply's delete of a candidate was refused, its lease was lost, or its teardown lock failed.
 	Error string `json:"error,omitempty"`
 }
 
-// RemoteWarpCleanupResult is CleanupRemoteWarp's result: one entry per branch on the warp origin, and the mutation record of the call.
+// RemoteWarpCleanupResult reports a sweep of the warp origin: one entry per branch, and the mutations the sweep made.
 type RemoteWarpCleanupResult struct {
 	MutationRecord
 	// Entries lists every branch on origin and its disposition; always an array.
 	Entries []RemoteWarpBranchEntry `json:"entries"`
-	// SkippedReason is non-empty when the sweep did not run, today only a warp repo with no origin remote.
+	// SkippedReason is non-empty when the sweep did not run, such as when the warp repo has no origin remote.
 	SkippedReason string `json:"skipped_reason,omitempty"`
 }
 
-// CleanupRemoteWarp classifies every branch on the warp repo's origin and, with apply, deletes the leftover task branches among them.
-// A branch is fabric-managed when the weft origin holds an archive/<slug>/* tag or a RecordsBranchName(branch) branch for it, where slug is the branch without the current branch prefix;
-// a branch lacking the prefix is read as the bare slug of a pair made before the prefix was set, and the weft evidence alone decides whether it is managed.
-// A managed branch is a deletion candidate unless it is origin's default branch, is checked out in a hub worktree, is in openPRHeads, or carries work not landed on the default branch.
+// CleanupRemoteWarp classifies the warp origin's branches and, with apply, deletes the leftover task branches.
+// A branch is fabric-managed when the weft origin holds one of two things:
+// an archive/<slug>/* tag, or a RecordsBranchName(branch) branch for it.
+// Here slug is the branch without the current branch prefix.
+// A branch lacking the prefix is read as the bare slug of a pair made before the prefix was set,
+// and the weft evidence alone decides whether it is managed.
+// A managed branch is a deletion candidate unless one of these holds:
+// it is origin's default branch;
+// a hub worktree has it checked out;
+// it heads an open pull request;
+// or it carries work not landed on the default branch.
 // Every other entry carries the reason it was kept.
-// Without apply nothing is deleted; with apply each candidate whose slug's teardown lock one try takes, and which no hub worktree has checked out under that lock, goes through the destructive gate, leased to the tip observed at enumeration,
-// and a refusal or a lost lease fills that entry's Error while the sweep continues.
-// A candidate whose lock is held, or which a worktree now has checked out, is kept with a Reason, and a lock error other than a held lock fills its Error.
-// Cleanup is untouched and fabricengine imports no GitHub client, so the caller composes the two.
-// A nil openPRHeads means the caller could not establish the open pull request set: every deletion is then refused and entries are returned only.
+// Without apply nothing is deleted.
+// With apply, each candidate goes through the destructive gate, leased to the tip observed at enumeration.
+// It is tried only when two things hold:
+// the slug's teardown lock can be taken on one try, and no hub worktree has it checked out under that lock.
+// A refusal or a lost lease fills that entry's Error, and the sweep continues.
+// A candidate whose lock is held, or that a worktree has checked out under the lock, is kept with a Reason.
+// Any other lock error fills its Error.
+// A nil openPRHeads means the caller could not establish the open pull request set:
+// every deletion is then refused and only entries are returned.
 // Callers that can establish it pass a non-nil map, empty when no pull request is open.
-// There is no force parameter, so nothing answers a kept branch.
+// There is no force parameter: nothing overrides a kept branch.
 func (t *Topology) CleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads map[string]bool) (RemoteWarpCleanupResult, error) {
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, nil)
 }
 
-// cleanupRemoteWarp is CleanupRemoteWarp with afterEnumerate, a hook run once the tips are observed and before any deletion, so a test can move a tip in between.
+// cleanupRemoteWarp classifies the warp origin's branches and, with apply, deletes the leftover ones.
+// afterEnumerate, when not nil, runs once the tips are observed and before any deletion;
+// a test uses it to move a tip in between.
 func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (res RemoteWarpCleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -93,7 +106,8 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 		return res, err
 	}
 
-	// One fetch makes every observed tip's objects local and brings the default branch's tracking ref up to date, which is the parent the landed check compares against.
+	// One fetch makes every observed tip's objects local and brings the default branch's tracking ref up to date;
+	// the landed check compares against that ref.
 	if _, err := gitrepo.New(repoDir).FetchWithArgs("--no-tags", originRemoteName); err != nil {
 		return res, fmt.Errorf("fetch %q: %w", originRemoteName, err)
 	}
@@ -139,9 +153,12 @@ func checkedOutBranches(repoDir string) (map[string]bool, error) {
 	return checkedOut, nil
 }
 
-// deleteLeftoverUnderLock deletes the candidate entry names on origin, leased to tip, under the teardown lock of its slug taken by one try.
-// A held lock keeps the candidate with a Reason and any other lock error fills Error.
-// It re-reads under the lock whether a hub worktree has the branch checked out, since the sweep read them before an Add of the slug may have finished, and keeps the candidate with a Reason when one does.
+// deleteLeftoverUnderLock deletes the candidate entry's branch on origin, leased to tip.
+// It takes the slug's teardown lock on one try:
+// a held lock keeps the candidate with a Reason, and any other lock error fills Error.
+// Under the lock it re-reads whether a hub worktree has the branch checked out.
+// The sweep's earlier read may predate an Add of the slug;
+// a checkout found now keeps the candidate with a Reason.
 func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, entry *RemoteWarpBranchEntry, defaultBranch, parent, tip string) {
 	repoDir := l.WorktreePath()
 	slug := slugOfBranch(t.cfg, entry.Branch)
@@ -189,7 +206,8 @@ func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, e
 	}
 }
 
-// keptReason names the first deletion condition branch fails before the landed check, or "" when it passes them all.
+// keptReason names the first deletion condition the branch fails before the landed check.
+// It returns the empty string when the branch passes them all.
 func (t *Topology) keptReason(branch, defaultBranch string, weftBranches map[string]string, archiveTagRefs []string, checkedOut map[string]bool, openPRHeads map[string]bool) string {
 	if branch == defaultBranch {
 		return "origin's default branch"
@@ -227,7 +245,8 @@ func hasWeftEvidence(slug, weftBranch string, weftBranches map[string]string, ar
 	return false
 }
 
-// unlandedReason runs the landed check against the tip and returns why it failed, or "" when the tip's work is landed on parent.
+// unlandedReason runs the landed check of tip against parent and returns why it failed.
+// It returns the empty string when the tip's work is landed on parent.
 func unlandedReason(repoDir, branch, tip, parent string) string {
 	err := checkUnlandedRemoteTip(remoteBranchRequest{
 		what:      "classify leftover task branch on remote",
@@ -279,7 +298,7 @@ func remoteTagRefs(dir, pattern string) ([]string, error) {
 	return refs, nil
 }
 
-// remoteDefaultBranch returns the branch origin's HEAD points at.
+// remoteDefaultBranch returns the branch that the HEAD of originRemoteName points at.
 func remoteDefaultBranch(dir string) (string, error) {
 	out, err := gitexec.Run([]string{"ls-remote", "--symref", originRemoteName, "HEAD"}, dir)
 	if err != nil {

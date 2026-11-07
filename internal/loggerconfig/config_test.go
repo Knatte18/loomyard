@@ -1,4 +1,5 @@
-// config_test.go verifies logger.yaml's template, Load's degrading-absence and validation paths, and ConfigPath, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() so the test stays spawn-free.
+// config_test.go tests logger.yaml's template, Load's degrading-absence and validation paths, and ConfigPath.
+// It seeds files with os.MkdirAll and os.WriteFile under a t.TempDir(), so it spawns no process.
 
 package loggerconfig_test
 
@@ -111,7 +112,8 @@ func TestLoad_ResolvesBounds(t *testing.T) {
 	})
 }
 
-// TestLoad_InvalidValueErrorsNamingKey includes a day count too large for a time.Duration, which must error instead of overflowing MaxAge into a negative duration that would sweep every non-live trace.
+// TestLoad_InvalidValueErrorsNamingKey includes a day count too large for a time.Duration.
+// Load must reject it: an overflowed MaxAge would go negative and sweep every non-live trace.
 func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,5 +1,6 @@
-// routing_test.go covers RoutingOf and RoutingFrom: the projection's routing fields equal those NewShed builds for
-// the same recipe, row for row, and a parse failure or an unexpanded block row surfaces unwrapped.
+// routing_test.go covers RoutingOf and RoutingFrom.
+// The projection's routing fields equal those NewShed builds for the same recipe, row for row,
+// and a parse failure or an unexpanded block row surfaces unwrapped.
 
 package shedbuild
 
@@ -157,7 +158,8 @@ producers:
 	})
 }
 
-// TestRoutingOf_ParseErrorSurfaces asserts a malformed recipe returns Parse's error, and a recipe holding a block row is refused naming Expand.
+// TestRoutingOf_ParseErrorSurfaces asserts a malformed recipe returns Parse's error.
+// It also asserts that a recipe holding a block row is refused, naming Expand.
 func TestRoutingOf_ParseErrorSurfaces(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

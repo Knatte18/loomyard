@@ -1,11 +1,6 @@
-// sink.go implements the durable second sink: a per-process trace file opened lazily on one of two
-// triggers (discussion.md's `sink-open-triggers` decision):
-// the first record the durable half admits, or the process exiting with a non-zero code.
-// It is written to under a size cap with a single truncation marker once that cap is crossed.
-// Unlike the stderr sink logger.go already provides, this file is never the default
-// `Debug`/`Info`/`Warn` output path itself;
-// batch 5 wires those helpers to fan out to it via ensureDurableSink once this file's open logic
-// has run.
+// sink.go implements the durable second sink: a per-process trace file, opened lazily.
+// The file opens on the first record the durable half admits, or when the process exits with a non-zero code.
+// Writes are capped in size, and a single truncation marker is written once the cap is crossed.
 
 package logger
 
@@ -24,17 +19,15 @@ import (
 
 const sinkMaxBytes = 8 * 1024 * 1024
 
-// LogsDir returns the path to the worktree-level directory where this package's durable trace sink
-// writes one file per process.
-// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lym tree —
-// the old WorktreePath-anchored name is gone because it would assert an anchor this function no
-// longer uses.
-// It lives under the ephemeral .lym directory, never the durable, fabric-synced _lym.
+// LogsDir returns the worktree-level directory where the durable trace sink writes one file per process.
+// The directory lies under the ephemeral `.lym` directory, which is anchored at `AnchorPath`.
+// It is never under the durable, fabric-synced `_lym` tree.
 func LogsDir(l *lymcwd.Location) string {
 	return LogsDirAt(l.AnchorPath())
 }
 
-// LogsDirAt returns the trace-file directory under anchorPath, for a caller that holds an anchor and no Location.
+// LogsDirAt returns the trace-file directory under anchorPath.
+// It is for a caller that holds an anchor path rather than a `lymcwd.Location`.
 func LogsDirAt(anchorPath string) string {
 	return filepath.Join(anchorPath, lymdirs.DotLymDirName, "logs")
 }
@@ -51,9 +44,8 @@ var headerOnce sync.Once
 var header sinkHeader
 
 // armHeader captures the static header fields once per sink generation.
-// Callers hold sinkMu: headerOnce is REASSIGNED by resetDurableSinkLocked, so reading and running it
-// outside that mutex would be a data race on the sync.Once value itself, not merely on the fields it
-// guards.
+// Callers hold sinkMu: headerOnce is reassigned when a sink generation resets.
+// Running it outside that mutex would race on the sync.Once value itself.
 func armHeader() {
 	headerOnce.Do(func() {
 		header.Command = os.Args[0]
@@ -64,9 +56,8 @@ func armHeader() {
 }
 
 // Arm captures the durable sink's static header fields ahead of the first log call.
-// It takes sinkMu for the same reason ensureDurableSink does: every reader and writer of headerOnce
-// and header must agree on one mutex, and this is the one exported entry point that would otherwise
-// touch them unguarded.
+// It takes sinkMu itself, because every reader and writer of headerOnce and header must agree on one mutex.
+// Callers outside the package cannot hold sinkMu, so Arm must take it.
 func Arm() {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()
@@ -74,15 +65,10 @@ func Arm() {
 	armHeader()
 }
 
-// sinkArmed reports whether the lazy first-open below has already run for the CURRENT sink
-// generation, and is a plain bool guarded by sinkMu rather than a sync.Once for one reason: the sink
-// is re-armable. resetDurableSinkLocked reassigns the generation whenever a caller redirects the
-// sink directory, and a sync.Once that is reassigned under sinkMu while ensureDurableSink reads and
-// runs it under no lock at all is a data race on the Once value itself -- with the losing order
-// leaving the PRE-redirect sinkPath installed (R4 review finding R4-20). That redirect is the
-// mechanism keeping a standalone run's trace files out of the operator's own repository, so the race
-// is worth closing even though both standalone CLIs redirect single-threaded in their cobra pre-run
-// today.
+// sinkArmed reports whether the lazy first open has run for the current sink generation.
+// It is a plain bool guarded by sinkMu rather than a sync.Once, because the sink is re-armable:
+// each redirect of the sink directory starts a new generation.
+// A sync.Once that is reassigned per generation would race with any reader outside sinkMu.
 var sinkArmed bool
 var sinkPath string
 var sinkOK bool
@@ -93,16 +79,12 @@ var sinkMu sync.Mutex
 var sinkBytesWritten int64
 var sinkTruncated bool
 
-// ensureDurableSink lazily resolves and arms the durable trace-file sink, at most once per sink
-// generation, under sinkMu -- the same mutex writeDurable, SetOutput, and every SetDurableSinkDir*
-// caller take, so the arm can never interleave with a redirect.
-// It never keeps a file handle open between calls: the trace file is opened, header-written, and
-// closed again here, and every subsequent record goes through writeDurable's own open-append-close
-// under sinkMu — this is what lets the sink survive its directory being renamed mid-process, since
-// no descriptor is ever held pinned to the old location.
-// It must never be reached from anything already holding sinkMu: sinkMu is a plain, non-reentrant
-// Mutex, and durableWriter.Write's sequential ensureDurableSink-then-writeDurable pair is the only
-// shape that is safe.
+// ensureDurableSink lazily resolves and arms the durable trace-file sink, at most once per sink generation.
+// It runs under sinkMu, which the sink's other entry points also take, so an arm never interleaves with a redirect.
+// It never keeps a file handle open between calls: the trace file is opened, header-written, and closed again here.
+// Every later record is written by opening, appending to and closing the file under sinkMu.
+// No descriptor is ever held pinned to the old location, so the sink survives its directory being renamed mid-process.
+// Callers must not hold sinkMu: it is a plain, non-reentrant Mutex, so a nested call deadlocks.
 func ensureDurableSink() bool {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()
@@ -114,11 +96,10 @@ func ensureDurableSink() bool {
 	return sinkOK
 }
 
-// armDurableSinkLocked performs the one-time resolve-open-header-write ensureDurableSink guards,
-// reporting whether the sink came up. Callers hold sinkMu.
-// It is split out from ensureDurableSink so every failure path is a plain `return false` at one
-// level of nesting rather than a sinkOK assignment inside a closure -- the shape that made the
-// unlocked writes easy to miss in the first place.
+// armDurableSinkLocked performs the one-time resolve, open and header write of the durable sink.
+// It reports whether the sink came up.
+// Callers hold sinkMu.
+// It is a separate function so every failure path is a plain `return false` at one level of nesting.
 func armDurableSinkLocked() bool {
 	dir, worktreeRoot, anchorPath, ok := resolveSinkDirLocked()
 	if !ok {
@@ -126,9 +107,8 @@ func armDurableSinkLocked() bool {
 	}
 
 	armHeader()
-	// header.WorktreeRoot records the worktree root as trace metadata, a
-	// separate concern from where the trace file itself lands (LogsDir is
-	// AnchorPath-anchored), so the two disagree by design.
+	// The header's `WorktreeRoot` is trace metadata only.
+	// The trace file's location is anchored at the anchor path, so the two differ by design.
 	if worktreeRoot != "" {
 		header.WorktreeRoot = worktreeRoot
 	}
@@ -163,8 +143,9 @@ func armDurableSinkLocked() bool {
 	return true
 }
 
-// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to record in the header and the lym anchor path the resolution used,
-// and reports whether a directory could be resolved.
+// resolveSinkDirLocked resolves the directory the durable sink writes to.
+// It also returns the worktree root to record in the header and the anchor path the resolution used.
+// It reports whether a directory could be resolved.
 // Callers hold sinkMu.
 // An override returns an empty worktreeRoot and anchorPath;
 // otherwise the cwd-anchored resolution applies, gated off under `go test` unless LYM_TRACE is "1".
@@ -189,11 +170,11 @@ func resolveSinkDirLocked() (dir, worktreeRoot, anchorPath string, ok bool) {
 	return LogsDir(layout), layout.WorktreePath(), layout.AnchorPath(), true
 }
 
-// SinkArmState describes the durable sink's state for the current sink generation.
+// SinkArmState is a snapshot of the durable sink's arm state for the current sink generation.
 type SinkArmState struct {
 	// Armed reports whether the sink came up in the current generation.
 	Armed bool
-	// Redirected reports whether a SetDurableSinkDir* override was in force.
+	// Redirected reports whether an override of the sink directory was in force.
 	Redirected bool
 	// Dir is the sink directory; empty until the sink arms.
 	Dir string
@@ -240,23 +221,22 @@ func TraceDir() string {
 	return dir
 }
 
-// isLymWorktree reports whether layout names a worktree lym actually owns, by the presence of the
-// durable _lym tree at its anchor.
+// isLymWorktree reports whether layout names a worktree lym owns, by the durable `_lym` tree at its anchor.
 //
-// It gates the cwd-anchored fallback above because lymcwd.Resolve succeeds for ANY plain git repository standing at its root — resolveCore defaults AnchorRel to "."
-// when no hub records one, so no hub is required — and the fallback then creates <repo>/.lym/logs/trace-*.log inside a checkout lym does not own.
-// cmd/lym's exit hook, through logger.NotifyExit(code), force-arms the sink on EVERY non-zero exit, so every refusal reached that fallback: a standalone webster or burler invocation refused before wireStandalone's own redirect could point the sink at the derived state directory, and an unknown subcommand that never reached wiring at all.
-// Standalone mode's whole premise is that nothing lym writes lands in the repository it drives, and this was the one path that did (crucible round opus-medium-r6, R6-6).
+// The gate is needed because `lymcwd.Resolve` succeeds for any plain git repository, since no hub is required.
+// Without the gate, the cwd-anchored resolution writes trace files into a checkout lym does not own.
+// A non-zero exit, reported through `NotifyExit`, force-arms the sink, so refused commands reach this gate too.
+// In standalone mode nothing lym writes may land in the repository it drives.
 //
-// The residual, stated rather than papered over: a command run inside a git worktree that is not yet lym-wired now writes no trace file at all.
-// That is the intended trade — it is precisely the case where writing one would be the defect — and it does not reach fabric's own bring-up verbs, which run from the hub, where lymcwd.Resolve already fails and the fallback was never armed.
+// A command run in a git worktree that lym has not wired therefore writes no trace file.
+// That is intended: writing one there would be the defect.
 func isLymWorktree(layout *lymcwd.Location) bool {
 	_, err := os.Stat(filepath.Join(layout.AnchorPath(), lymdirs.LymDirName))
 	return err == nil
 }
 
-// headerLine renders the durable sink's first-line header record as a
-// single plain-text line naming every sinkHeader field.
+// headerLine renders the durable sink's first-line header record as one plain-text line.
+// The line holds key=value pairs for command, argv, trace, pid and worktree_root, in that order.
 func headerLine() string {
 	var b strings.Builder
 	b.WriteString("command=")
@@ -274,10 +254,8 @@ func headerLine() string {
 }
 
 // writeDurable writes p to the durable sink, enforcing the size cap and truncation marker.
-// It opens sinkPath with the same open-append-close flags ensureDurableSink used for the header,
-// appends, and closes again, all under sinkMu — so the extra open/close pair sits under a lock this
-// function already takes, and no descriptor survives the call to be invalidated by a directory
-// rename.
+// Each write opens the sink file, appends, and closes it again, all under sinkMu.
+// No descriptor outlives the call, so a directory rename cannot invalidate one.
 func writeDurable(p []byte) (int, error) {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()
@@ -299,8 +277,8 @@ func writeDurable(p []byte) (int, error) {
 }
 
 // appendToSink opens sinkPath, appends p, and closes the file again.
-// Callers hold sinkMu; this is the sole place a durable-sink file descriptor is created after
-// ensureDurableSink's initial header write.
+// Callers hold sinkMu.
+// Every append to the durable sink after its header goes through here.
 func appendToSink(p []byte) (int, error) {
 	f, err := os.OpenFile(sinkPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -310,11 +288,9 @@ func appendToSink(p []byte) (int, error) {
 	return f.Write(p)
 }
 
-// resetDurableSinkLocked resets all durable-sink state and sets the sink directory override to
-// dir. Callers must hold sinkMu.
-// It zeroes header and headerOnce as part of the reset, which is why
-// SetDurableSinkDirWithWorktreeRoot must set header.WorktreeRoot only after calling this, never
-// before -- a worktree root set beforehand would be silently wiped here.
+// resetDurableSinkLocked resets all durable-sink state and sets the sink directory override to dir.
+// Callers must hold sinkMu.
+// It zeroes header and headerOnce, so any header field set before the call is lost.
 func resetDurableSinkLocked(dir string) {
 	sinkDirOverride = dir
 	sinkArmed = false
@@ -328,14 +304,9 @@ func resetDurableSinkLocked(dir string) {
 	sinkTruncated = false
 }
 
-// SetDurableSinkDir sets the durable sink directory to dir with no worktree root supplied,
-// resetting all sink state.
-// It is the documented shorthand for "this directory, no worktree root supplied", used by tests
-// and by production alike; a caller that has a worktree root to supply should call
-// SetDurableSinkDirWithWorktreeRoot instead.
-// The directory only takes effect if it is set before the first record that arms the sink,
-// because ensureDurableSink reads sinkDirOverride exactly once per sink generation and this call
-// starts a fresh generation rather than moving an already-opened file.
+// SetDurableSinkDir sets the durable sink directory to dir with no worktree root supplied, resetting all sink state.
+// The directory takes effect only if it is set before the first record arms the sink.
+// The directory is read once per sink generation, and this call starts a new generation.
 func SetDurableSinkDir(dir string) {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()
@@ -345,16 +316,11 @@ func SetDurableSinkDir(dir string) {
 
 // SetDurableSinkDirWithWorktreeRoot sets the durable sink directory to dir and the trace header's
 // worktree root to worktreeRoot, resetting all other sink state, in one atomic call.
-// worktreeRoot is trace metadata answering "which repository was this process working on", a
-// separate concern from where the trace file lands -- the same distinction the comment beside
-// header.WorktreeRoot = layout.WorktreePath() in ensureDurableSink already draws.
-// The directory only takes effect if it is set before the first record that arms the sink,
-// because ensureDurableSink reads sinkDirOverride exactly once per sink generation and this call
-// starts a fresh generation rather than moving an already-opened file.
-// The reset happens before the worktree root is set, never after: resetDurableSinkLocked zeroes
-// header as part of its reset, so setting worktreeRoot first would be silently wiped. Setting it
-// after the reset is safe because armHeader populates Command, Argv, TraceID, and PID only and
-// never writes WorktreeRoot.
+// worktreeRoot is trace metadata naming the repository the process worked on,
+// and it does not decide where the trace file lands.
+// The directory takes effect only if it is set before the first record arms the sink.
+// The directory is read once per sink generation, and this call starts a new generation.
+// The root is set after the reset, because the reset zeroes header and would wipe a root set before it.
 func SetDurableSinkDirWithWorktreeRoot(dir, worktreeRoot string) {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()

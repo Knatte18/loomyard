@@ -1,4 +1,5 @@
-// counters.go declares the counters a tier names: writers a tier command's output goes through, which pass it on as text and count its tests.
+// counters.go declares the counters a tier names: writers a tier command's output goes through.
+// They pass the output on as text and count the tests it reports.
 
 package gatecli
 
@@ -35,30 +36,38 @@ type tierCounts struct {
 }
 
 // counter is the writer a tier command's stdout and stderr go through.
-// It passes the output on as text and counts the tests it reports; the totals decide nothing about the run's outcome, while the per-package counts let a go-json tier fail a package that ran none of its tests.
+// It passes the output on as text and counts the tests it reports.
+// The totals decide nothing about the run's outcome;
+// the per-package counts let a go-json tier fail a package that ran none of its tests.
 type counter interface {
 	io.Writer
 	// Flush emits a trailing partial line that no newline ended.
 	Flush() error
 	// Counts returns the counts so far.
 	Counts() tierCounts
-	// TestsRun returns, per package the events named, how many tests ran in it, zero for a package that sent events but ran none; nil for a counter that does not read packages.
+	// TestsRun returns, per package the events named, how many tests ran in it.
+	// A package that sent events but ran none counts zero. It is nil for a counter that does not read packages.
 	TestsRun() map[string]int
-	// Launches returns, per package whose test binary ran, how long the binary took to launch and how long the package took, in the order the packages started; nil for a counter that does not read packages.
+	// Launches returns, per package whose test binary ran, its launch and elapsed seconds.
+	// They are in the order the packages started; the result is nil for a counter that does not read packages.
 	Launches() []gateslot.PackageLaunch
-	// Failures returns the failures so far in the order they failed: the failed tests, leaves only, and the failed packages no failed test of theirs explains; nil for a counter that does not read tests.
+	// Failures returns the failures so far in the order they failed:
+	// the failed tests, leaves only, and the failed packages no failed test of theirs explains.
+	// It is nil for a counter that does not read tests.
 	Failures() []runFailure
-	// Unparsed returns the first non-empty lines of output that no test event carried, such as a `go build` or `go vet` step's errors, at most unparsedLines of them; nil for a counter that does not read events.
+	// Unparsed returns the first non-empty lines of output that no test event carried, at most unparsedLines of them.
+	// Such lines include a `go build` or `go vet` step's errors. It is nil for a counter that does not read events.
 	Unparsed() []string
 }
 
 // runFailure is one failure the failure report lists: a failed test, a failed package no failed test of it explains, or one lint finding.
 type runFailure struct {
-	// pkg is the import path of the failed test's or package's package, empty for a lint finding.
+	// pkg is the import path of the package the failed test or failed package belongs to, empty for a lint finding.
 	pkg string
 	// test is the failed test's path, subtests included; empty for a package failure and a lint finding.
 	test string
-	// lines are the first lines the failure printed beside go test's own status and summary lines, trimmed, at most failureLines of them; a lint finding's one line.
+	// lines are the failure's first printed lines, trimmed and without go test's status lines, at most failureLines.
+	// A lint finding has its one line.
 	lines []string
 }
 
@@ -69,7 +78,7 @@ const (
 	unparsedLines = 12
 )
 
-// newCounter returns the counter kind names, writing the tier's text output to out.
+// newCounter returns the counter for kind, which writes the tier's text output to out.
 // Any kind but `go-json` and `vstest` is an error.
 func newCounter(kind string, out io.Writer) (counter, error) {
 	switch kind {
@@ -132,24 +141,26 @@ func (r *lineReader) passThrough(line []byte, terminated bool) error {
 	return err
 }
 
-// goJSONCounter reads `go test -json` events and writes their output text, so failures, panics and build errors read as plain `go test` prints them.
-// A line that is no JSON event, such as a `go build` or `go vet` step's output, passes through verbatim, and its first lines are kept for the failure report.
+// goJSONCounter reads `go test -json` events and writes their output text.
+// Failures, panics and build errors read as plain `go test` prints them.
+// A line that is no JSON event, such as a `go build` or `go vet` step's output, passes through verbatim,
+// and its first lines are kept for the failure report.
 type goJSONCounter struct {
 	lines  lineReader
 	counts tierCounts
-	// packages holds the launch timing of each package that sent a start event, and order the packages in the order they started.
+	// packages holds the launch timing of each package that sent a start event, order lists them in start order.
 	packages map[string]*packageTiming
 	order    []string
 	// testsRun holds, per package any event named, the number of tests that sent a run event.
 	testsRun map[string]int
-	// testLines holds, per test in flight, the first lines it printed beside go test's status lines; a test leaves it when it ends.
+	// testLines holds, per test in flight, its first printed lines except go test's status lines, until it ends.
 	testLines map[testKey][]string
-	// packageLines holds, per package, the first lines of its output outside any test, and buildLines, per build-output import path, the first lines of its build output.
+	// packageLines and buildLines hold the first lines outside tests and of build output, per package and import path.
 	packageLines map[string][]string
 	buildLines   map[string][]string
 	// failedPackages holds the packages with a failed test, whose own fail event the test explains.
 	failedPackages map[string]bool
-	// failures holds every failed test, parents of failed subtests included, and every failed package no test explains, in the order they failed.
+	// failures holds every failed test, parents of failed subtests included, and each failed package no test explains.
 	failures []runFailure
 	// unparsed holds the first non-empty lines that were no JSON event.
 	unparsed []string
@@ -184,7 +195,7 @@ type goTestEvent struct {
 	// Time is the event's RFC 3339 timestamp, kept as text so a missing or odd one never turns the line into plain output.
 	Time    string
 	Elapsed float64
-	// ImportPath names the package a `build-output` event's line belongs to, and FailedBuild, on a package's fail event, the import path whose build failed.
+	// ImportPath names a `build-output` event's package; FailedBuild, on a fail event, names the failed import path.
 	ImportPath  string
 	FailedBuild string
 }
@@ -199,14 +210,16 @@ func (c *goJSONCounter) Counts() tierCounts {
 	return c.counts
 }
 
-// TestsRun returns a copy of the per-package count of tests that sent a run event; a package whose events carry no test, such as one with only a `TestMain`, counts zero.
+// TestsRun returns a copy of the per-package count of tests that sent a run event;
+// a package whose events carry no test, such as one with only a `TestMain`, counts zero.
 func (c *goJSONCounter) TestsRun() map[string]int {
 	c.lines.mu.Lock()
 	defer c.lines.mu.Unlock()
 	return maps.Clone(c.testsRun)
 }
 
-// Launches returns the packages whose test binary ran, with the gap from the package's start event to its next event and the elapsed time of its closing event.
+// Launches returns the packages whose test binary ran.
+// Each launch holds the gap from the package's start event to its next event and the elapsed time of its closing event.
 // A package that reported a cached result or no test files, or that never closed, is left out.
 func (c *goJSONCounter) Launches() []gateslot.PackageLaunch {
 	c.lines.mu.Lock()
@@ -222,7 +235,8 @@ func (c *goJSONCounter) Launches() []gateslot.PackageLaunch {
 	return launches
 }
 
-// Failures returns the failures, leaving out a test with a failed subtest in the same package, since its own failure carries no line of its own.
+// Failures returns the failures, leaving out a test with a failed subtest in the same package.
+// Such a test's own failure carries no line of its own.
 func (c *goJSONCounter) Failures() []runFailure {
 	c.lines.mu.Lock()
 	defer c.lines.mu.Unlock()
@@ -268,7 +282,9 @@ func (c *goJSONCounter) observeTest(event goTestEvent) {
 	}
 }
 
-// observePackageOutcome folds a package-level output or build-output event into that package's first lines and, on a package's fail event that no failed test of it explains, adds the package to the failures with its own lines and those of its failed build.
+// observePackageOutcome folds a package-level output or build-output event into the first lines of its package or build.
+// On a package's fail event that no failed test explains, it adds a failure for the package.
+// The failure carries the package's own lines and those of its failed build.
 func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
 	switch {
 	case event.Action == "build-output" && event.ImportPath != "":
@@ -285,7 +301,8 @@ func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
 	}
 }
 
-// appendCapped appends line to the lines held under key, unless it is a status or summary line or key already holds failureLines lines, and returns the map, made when nil.
+// appendCapped appends line to the lines held under key and returns the map, made when nil.
+// It drops a status or summary line, and any line for a key that already holds failureLines lines.
 func appendCapped(held map[string][]string, key, line string) map[string][]string {
 	if isStatusLine(line) || strings.HasPrefix(line, "# ") || len(held[key]) >= failureLines {
 		return held
@@ -297,7 +314,9 @@ func appendCapped(held map[string][]string, key, line string) map[string][]strin
 	return held
 }
 
-// isStatusLine reports whether line, trimmed, is empty or one of go test's own status and summary lines, which name no cause: a `=== ` or `--- ` test status, a bare `PASS` or `FAIL`, or a package's `ok`, `FAIL` or `?` result line.
+// isStatusLine reports whether line, already trimmed, is empty or one of go test's own status or summary lines.
+// Such a line names no cause.
+// It is a `=== ` or `--- ` test status, a bare `PASS` or `FAIL`, or a package's `ok`, `FAIL` or `?` result line.
 func isStatusLine(line string) bool {
 	switch {
 	case line == "", line == "PASS", line == "FAIL":
@@ -386,7 +405,7 @@ func (c *goJSONCounter) handle(line []byte, terminated bool) error {
 	return err
 }
 
-// vstestCounter passes every line through and sums the counts of every VSTest summary line.
+// vstestCounter passes every line through and sums the counts of the VSTest summary lines.
 type vstestCounter struct {
 	lines  lineReader
 	counts tierCounts

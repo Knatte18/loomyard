@@ -1,4 +1,6 @@
-// spawn.go declares the production watcher spawn: the detached `lym orch watch` child `start` launches so the handoff cycle outlives the command that began it.
+// spawn.go holds the production watcher spawn.
+// It starts the detached `lym orch watch` child that `start` launches,
+// so the handoff cycle outlives the command that began it.
 
 package orchcli
 

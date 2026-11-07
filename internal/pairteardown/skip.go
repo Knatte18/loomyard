@@ -1,6 +1,9 @@
-// skip.go decides which pairs skip the quiet wait and waits for such a pair's run lock before its owned processes are ended.
-// A holder a pause or a network-gate wait leaves behind passes the wait, since the owned-process end and the loop end reach it.
-// It also holds EndBeforeSessionDown, the local-state reading and owned-process end `lym reed down` runs before it kills a pair's session.
+// skip.go decides which pairs skip the quiet wait.
+// It waits for such a pair's run lock before the owned processes are ended.
+// A holder that a pause or a network-gate wait leaves behind passes the wait;
+// the owned-process end and the loop end reach it.
+// It also holds EndBeforeSessionDown:
+// the local-state reading and owned-process end that `lym reed down` runs before it kills a pair's session.
 
 package pairteardown
 
@@ -20,8 +23,12 @@ import (
 
 // driverChecksSkipped reports whether the pair has nothing left to do, so the quiet wait is not run.
 // It is read only while the task worktree is present.
-// It reads true, stopping at the first reading that holds, for an ended or owned_elsewhere verdict, a live pause entry covering the slug, a board entry that reads done,
-// and a Finalize Done in the task worktree's status history with no live registered batten, since batten still runs Land and deploy after Finalize Done.
+// It returns true at the first of these readings that holds:
+// an ended or owned_elsewhere verdict;
+// a live pause entry covering the slug;
+// a board entry that reads done;
+// or a Finalize Done in the task worktree's status history with no live registered batten:
+// batten still runs Land and deploy after Finalize Done.
 // A read error is returned.
 func (t *Teardown) driverChecksSkipped(req Request) (bool, error) {
 	if req.Verdict == fabricengine.EntryEnded || req.Verdict == fabricengine.EntryOwnedElsewhere {
@@ -49,16 +56,22 @@ func (t *Teardown) driverChecksSkipped(req Request) (bool, error) {
 	return !alive, err
 }
 
-// ErrRunRunning is the sentinel EndBeforeSessionDown's refusal wraps when the pair's run is running and no pause covers it.
+// ErrRunRunning marks a refusal to end a pair's processes because its run is running and no pause covers it.
 var ErrRunRunning = errors.New("the run is running and unpaused")
 
-// EndBeforeSessionDown ends the pair's registered processes ahead of a session end that is not part of a teardown, and returns the processes it ended.
+// EndBeforeSessionDown ends the pair's registered processes ahead of a session end that is not part of a teardown,
+// and it returns the processes it ended.
 // It reads only local state, in order, and stops at the first reading that holds:
-// a live pause entry covers the slug, the slug's board entry reads done, the status history holds a Finalize Done with no registered batten alive,
-// or the run is not running, which is no Go-driver lock held, the loop lock free, no live driver strand and no registered batten alive.
-// It then waits for the run lock, which a holder a pause or a network-gate wait leaves passes, and ends the registered processes.
-// A run that is running and unpaused is refused with an error wrapping ErrRunRunning, nothing ended.
-// A refused run-lock wait is returned as it is, and processes that survive the end are returned wrapped with each survivor's pid.
+// a live pause entry covers the slug;
+// the slug's board entry reads done;
+// the status history holds a Finalize Done with no registered batten alive;
+// or the run is not running:
+// no Go-driver lock is held, the loop lock is free, no live driver strand exists, and no registered batten is alive.
+// It then waits for the run lock and ends the registered processes;
+// a holder that a pause or a network-gate wait leaves behind passes the wait.
+// A run that is running and unpaused is refused with an error that wraps ErrRunRunning, and nothing is ended.
+// A refused run-lock wait is returned as it is;
+// processes that survive the end are returned wrapped with each survivor's pid.
 func (t *Teardown) EndBeforeSessionDown(ctx context.Context, slug string) ([]runproc.Ended, error) {
 	covered, hubEntry, err := t.paused(slug)
 	if err != nil {
@@ -89,7 +102,10 @@ func (t *Teardown) EndBeforeSessionDown(ctx context.Context, slug string) ([]run
 	return ended, nil
 }
 
-// settledForSessionDown reports whether the run has nothing left to do without a pause: its board entry reads done, it finished a Finalize and no registered batten is alive, or it is not running.
+// settledForSessionDown reports whether the run has nothing left to do without a pause.
+// It is settled when its board entry reads done;
+// when it finished a Finalize with no registered batten alive;
+// or when it is not running.
 func (t *Teardown) settledForSessionDown(slug string) (bool, error) {
 	status, found, err := t.readClaim(slug)
 	if err != nil {
@@ -119,7 +135,8 @@ func (t *Teardown) settledForSessionDown(slug string) (bool, error) {
 	return !state.goDriver && !state.loop && state.driver == "", nil
 }
 
-// pausedIn reads the hub's pause record and reports whether a live entry covers the slug, and whether a hub entry is among the live entries.
+// pausedIn reads the hub's pause record.
+// It reports whether a live entry covers the slug and whether a hub entry is live.
 func (t *Teardown) pausedIn(slug string) (covered, hubEntry bool, err error) {
 	geometry, err := hubgeom.PauseGeometry(t.prime)
 	if err != nil {
@@ -139,8 +156,10 @@ func (t *Teardown) pausedIn(slug string) (covered, hubEntry bool, err error) {
 }
 
 // awaitRunLockOrPass waits, bounded by runLockWait, for the present task worktree's run lock to be released.
-// At the bound it reads the holder, the newest unfinished step's pid or else the slug's registered driver, and returns nil when runLockHolderPasses lets it pass;
-// any other holder is refused with runLockRefusal's error, which names retry as the step to run again.
+// At the bound it reads the holder: the newest unfinished step's pid, or else the slug's registered driver.
+// It returns nil when the holder passes:
+// a waiting marker of the slug names the holder's pid, or the slug is paused and no parent lock record names it.
+// Any other holder is refused with an error that names retry as the step to run again.
 func (t *Teardown) awaitRunLockOrPass(ctx context.Context, slug string, paused, hubEntry bool, retry string) error {
 	task, err := t.taskLocation(slug)
 	if err != nil {
@@ -175,9 +194,11 @@ func (t *Teardown) awaitRunLockOrPass(ctx context.Context, slug string, paused, 
 	return runLockRefusal(holder, holderKnown, slug, lockPath, t.goos, retry, paused, hubEntry, parentLocked)
 }
 
-// runLockHolderPasses reports whether the holder of the run lock is left for the owned-process end and the loop end to reach.
-// It passes when a waiting marker of the slug names the holder's own pid, which is a holder waiting at the network gate.
-// It also passes when a pause covers the slug with no parent lock record naming it, which is a step waiting on its interrupted agent.
+// runLockHolderPasses reports whether the run lock's holder is left for the owned-process and loop ends to reach.
+// It passes when a waiting marker of the slug names the holder's own pid;
+// that holder is waiting at the network gate.
+// It also passes when a pause covers the slug and no parent lock record names it;
+// such a holder is a step waiting on its interrupted agent.
 // The paused pass applies to a known and an unknown holder alike.
 func runLockHolderPasses(holder int, holderKnown bool, waiting []pauserecord.WaitingMarker, slug string, paused, parentLocked bool) bool {
 	if holderKnown {
@@ -190,9 +211,11 @@ func runLockHolderPasses(holder int, holderKnown bool, waiting []pauserecord.Wai
 	return paused && !parentLocked
 }
 
-// runLockRefusal builds the ErrDriverBusy refusal for a run lock holder that does not pass, naming the holder and the way forward.
-// A paused holder under a parent lock record is told to resume the run so its step finishes its merge, with the resume form hubEntry picks.
-// An unpaused holder is told to pause the run first, unless a parent lock record names the slug, and an unknown one also gets the lock's path and goos's way of finding its holder.
+// runLockRefusal builds the ErrDriverBusy refusal for a run lock holder that does not pass;
+// it names the holder and the way forward.
+// A paused holder is told to resume the run so its step finishes its merge, in the form that hubEntry selects.
+// An unpaused holder is told to pause the run first, unless a parent lock record names the slug.
+// An unknown holder also gets the lock's path and the goos-specific way to find its holder.
 // Every way forward ends with running retry again.
 func runLockRefusal(holder int, holderKnown bool, slug, lockPath, goos, retry string, paused, hubEntry, parentLocked bool) error {
 	holderText := "an unknown process"

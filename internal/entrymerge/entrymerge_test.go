@@ -1,4 +1,5 @@
-// entrymerge_test.go drives the merge over a two-field record, through the cases the board replay's own tests do not reach.
+// entrymerge_test.go drives the merge over a two-field record.
+// It covers the cases the board replay's own tests do not reach.
 
 package entrymerge_test
 

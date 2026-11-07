@@ -1,6 +1,8 @@
-// housekeeping.go keeps the hub's two object stores from auto-gc'ing under live steps:
-// disableStoreAutoGC turns git's automatic gc and maintenance off in both, and housekeepStores runs gc in the foreground where lym is already doing slow work, after a pair's removal.
-// It removes no worktree, branch or file the destruction gate protects: gc deletes only unreachable objects older than a day and expired reflog entries past git's own default expiry.
+// housekeeping.go keeps the hub's two object stores from running auto gc under live steps.
+// It disables git's automatic gc and maintenance in both stores,
+// and it runs gc in the foreground where lym is already doing slow work, after a pair's removal.
+// It removes no worktree, branch or file the destruction gate protects:
+// gc deletes only unreachable objects older than a day and expired reflog entries past git's own default expiry.
 
 package fabricengine
 
@@ -14,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// gcAutoThreshold is git's default gc.auto: the loose-object estimate above which a foreground `gc --auto` actually packs.
+// gcAutoThreshold is git's default gc.auto, the loose-object estimate above which `gc --auto` packs.
 // It is a variable only so a test can lower it.
 var gcAutoThreshold = 6700
 
@@ -24,7 +26,8 @@ type namedStore struct {
 	path string
 }
 
-// hubStores returns the code store and the records store of l's hub, the working directories git resolves each store's shared config and object database from.
+// hubStores returns the code store and the records store of l's hub.
+// Each path is the working directory from which git resolves that store's shared config and object database.
 func hubStores(l *lymcwd.Location) ([]namedStore, error) {
 	recordsPath, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -33,8 +36,10 @@ func hubStores(l *lymcwd.Location) ([]namedStore, error) {
 	return []namedStore{{name: "code", path: l.WorktreePath()}, {name: "records", path: recordsPath}}, nil
 }
 
-// disableStoreAutoGC sets gc.auto=0 and maintenance.auto=false in the shared config of the code store and of the records store.
-// gc.auto=0 stops git's post-command auto gc, and maintenance.auto=false stops its post-command `git maintenance run --auto`, whose repack tasks gc.auto does not govern.
+// disableStoreAutoGC sets gc.auto=0 and maintenance.auto=false in the shared config of both stores.
+// gc.auto=0 stops git's post-command auto gc.
+// maintenance.auto=false stops its post-command `git maintenance run --auto`.
+// gc.auto does not govern the repack tasks that command runs.
 // It attempts both stores whatever one returns, and its error joins every failure.
 func disableStoreAutoGC(l *lymcwd.Location) error {
 	stores, err := hubStores(l)
@@ -60,8 +65,12 @@ const gcPruneExpire = "1.day.ago"
 type InFlightProbe func(slug string) ([]string, error)
 
 // housekeepStores disables auto gc in both stores, then runs `git gc --auto` in the foreground in each.
-// The gc is skipped, with the keys still written, when probe reports another pair's live session or fails, since a live step may hold objects no ref reaches yet; a nil probe reports none.
-// The gc runs only when a store is above gcAutoThreshold, prunes unreachable loose objects older than gcPruneExpire, and never prunes a worktree's admin entry, which stays under the destruction gate.
+// The gc is skipped, with the keys still written, when probe reports another pair's live session or fails.
+// A live step may hold objects no ref reaches yet, which is why the gc is skipped.
+// A nil probe reports none.
+// The gc runs only when a store is above gcAutoThreshold.
+// It prunes unreachable loose objects older than gcPruneExpire,
+// and it never prunes a worktree's admin entry, which stays under the destruction gate.
 // It is best-effort and returns nothing: a failure is logged as a warning and never fails the caller.
 // A store another gc already holds is skipped silently, since git exits 0 without packing then.
 func housekeepStores(l *lymcwd.Location, slug string, probe InFlightProbe) {

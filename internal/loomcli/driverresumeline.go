@@ -1,4 +1,4 @@
-// driverresumeline.go composes the one line `lym loom start` types into a parked loom driver session to resume it.
+// driverresumeline.go composes the one line typed into a parked loom driver session to resume it.
 // It lives beside driverprompt.go, which composes the launch prompt the session parks under.
 
 package loomcli
@@ -6,10 +6,13 @@ package loomcli
 import "fmt"
 
 // driverResumeLine composes the single line that resumes a parked loom driver.
-// It names the run by run-id and tells the driver to take a fresh baseline, reset its repair and re-step budgets, and write its next stop report to reportPath.
+// It names the run by run-id.
+// It tells the driver to take a fresh baseline and to reset its repair and re-step budgets.
+// It also tells it to write its next stop report to reportPath.
 //
-// The line carries no newline, so shuttleengine.Runner.Send accepts it,
-// and it is prompt text alone: it names no provider flag or command line, per the Shuttle Provider-Seam Invariant.
+// The line carries no newline, so shuttleengine.Runner.Send accepts it.
+// It is prompt text alone.
+// It names no provider flag or command line, so the provider choice stays out of the prompt.
 //
 // A resume line that arrives while a step is in flight starts no second step.
 // The driver stencil owns that rule; the line only carries the report path and the reset.

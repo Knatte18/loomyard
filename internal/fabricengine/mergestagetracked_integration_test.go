@@ -1,4 +1,7 @@
-// mergestagetracked_integration_test.go covers MergeStageTracked and MergeUntrackedFiles against a real conflicted pair: a tracked, non-conflicted edit staged by the verb lands in the merge commit MergeContinue writes, a file created mid-merge in the warp is listed as untracked, an untracked weft file is not, and the verb refuses with no merge in progress.
+// mergestagetracked_integration_test.go covers MergeStageTracked and MergeUntrackedFiles against a real conflicted pair.
+// It checks that a tracked, non-conflicted edit staged by the verb lands in the merge commit MergeContinue writes.
+// It checks that a file created mid-merge in the warp is listed as untracked, that an untracked weft file is not,
+// and that the verb refuses with no merge in progress.
 
 package fabricengine_test
 
@@ -15,8 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed drives a conflicted MergeIn, edits a tracked file the merge did not conflict on and creates a new file,
-// then asserts the verb stages only the tracked edit and MergeContinue's commit carries it.
+// TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed drives a conflicted MergeIn.
+// It edits a tracked file the merge did not conflict on and creates a new file.
+// It then asserts the verb stages only the tracked edit, and MergeContinue's commit carries it.
 func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -82,7 +86,8 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 	}
 }
 
-// TestMergeStageTracked_NoMergeInProgressRefuses asserts the verb refuses, staging nothing, when no fabric merge record exists.
+// TestMergeStageTracked_NoMergeInProgressRefuses asserts the verb refuses when no fabric merge record exists.
+// It stages nothing.
 //
 //testtiming:keep the verb refusing and staging nothing when no fabric merge record exists; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
@@ -101,7 +106,8 @@ func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
 	}
 }
 
-// TestMergeStageTracked_ForeignMergeStateRefuses asserts the verb refuses a plain-git conflicted merge fabric did not start.
+// TestMergeStageTracked_ForeignMergeStateRefuses asserts the verb refuses a foreign merge.
+// The merge is a plain-git conflict that fabric did not start.
 func TestMergeStageTracked_ForeignMergeStateRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

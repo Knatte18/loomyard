@@ -1,10 +1,11 @@
 // constraintchokepoint_test.go enforces the Glyph Conversion Chokepoint Invariant in planparser's package doc:
 // loomyard performs no glyph<->path conversion of its own outside quarry's glyph package.
-// glyph.Self is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and
+// glyph.Self is the only path->glyph call.
+// Glyph.UnitPath is the only glyph->path call.
 // glyph.Parse plus Glyph.String are the only glyph grammar.
-// Like tierpurity_test.go's own bannedTokens, this is a same-line raw-substring heuristic over
-// production (non-test) source: it catches a direct textual call site, not a value threaded
-// through a local variable or a transitive helper, and it narrows the gap rather than closing it.
+// The check is a same-line raw-substring heuristic over production (non-test) source.
+// It catches a direct textual call site, not a value threaded through a local variable or a transitive helper,
+// so it narrows the gap without closing it.
 
 package main
 
@@ -17,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// glyphUnitPathContextTokens are the path-construction call substrings that, appearing on the same
-// line as ".Unit", mark a Glyph.Unit value being read as if it were a disk path -- the exact
-// violation Glyph.UnitPath exists to prevent.
+// glyphUnitPathContextTokens are the path-construction call substrings.
+// On a line that also contains ".Unit", one of them marks a Glyph.Unit value being read as a disk path.
+// Such a read is the violation that Glyph.UnitPath exists to prevent.
 var glyphUnitPathContextTokens = []string{
 	"filepath.Join(",
 	"filepath.Abs(",
@@ -34,17 +35,15 @@ var glyphUnitPathContextTokens = []string{
 	"os.ReadDir(",
 }
 
-// isHashTrimmingSuffixCallLine reports whether line contains a strings.TrimSuffix call trimming
-// the literal "#" suffix -- the loomyard-side glyph-string-stripping operation the
-// glyph-conversion-chokepoint decision forbids, since the "#"-trim rule is quarry's own contract
+// isHashTrimmingSuffixCallLine reports whether line calls strings.TrimSuffix on the literal "#" suffix.
+// Stripping that suffix in loomyard is forbidden, because the "#" rule is quarry's own contract,
 // and a loomyard copy would leak that assumption into a non-Go plan.
 func isHashTrimmingSuffixCallLine(line string) bool {
 	return strings.Contains(line, "TrimSuffix(") && strings.Contains(line, `"#"`)
 }
 
-// isGlyphUnitAsPathLine reports whether line reads a ".Unit" field alongside one of
-// glyphUnitPathContextTokens' own path-construction calls -- Glyph.Unit being treated as a disk
-// path rather than passed through Glyph.UnitPath.
+// isGlyphUnitAsPathLine reports whether line reads a ".Unit" field next to a path-construction call.
+// It flags Glyph.Unit being treated as a disk path, where it should pass through Glyph.UnitPath.
 func isGlyphUnitAsPathLine(line string) bool {
 	if !strings.Contains(line, ".Unit") {
 		return false
@@ -57,10 +56,9 @@ func isGlyphUnitAsPathLine(line string) bool {
 	return false
 }
 
-// glyphChokepointViolation returns the first offending line (1-indexed) and a human-readable
-// reason for the first chokepoint violation found in data, skipping comment-only lines so this
-// package's own doc comments describing the banned patterns are not themselves flagged. It
-// returns 0, "" when data carries no violation.
+// glyphChokepointViolation returns the first offending line of data, 1-indexed, and a human-readable reason.
+// It skips comment-only lines, so the doc comments that describe the banned patterns are not flagged.
+// It returns 0, "" when data carries no violation.
 func glyphChokepointViolation(data []byte) (line int, reason string) {
 	for i, l := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(l)
@@ -77,9 +75,8 @@ func glyphChokepointViolation(data []byte) (line int, reason string) {
 	return 0, ""
 }
 
-// TestGlyphConversionChokepoint_NoLocalConversion walks every non-test *.go file under internal/
-// and cmd/ and fails on the first file carrying a
-// chokepoint violation.
+// TestGlyphConversionChokepoint_NoLocalConversion walks every non-test *.go file under internal/ and cmd/.
+// It fails on each file carrying a chokepoint violation.
 //
 //lym:guard
 func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
@@ -99,7 +96,8 @@ func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
 	}
 }
 
-// TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant proves the guard itself fires on a synthetic offending source string and stays quiet on a compliant one, so the guard is tested rather than merely asserted.
+// TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant checks the guard itself.
+// It fires on a synthetic offending source and stays quiet on a compliant one.
 //
 //testtiming:keep proves the TestGlyphConversionChokepoint_NoLocalConversion guard fires on a synthetic offending source and stays quiet on a compliant one
 func TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant(t *testing.T) {

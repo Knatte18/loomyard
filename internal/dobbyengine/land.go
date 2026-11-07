@@ -1,4 +1,6 @@
-// land.go is a beam's dobby's landing step: once per episode in which the beam is flagged ready and nothing works under it, it asks the beam's pawl run to land, or posts why it cannot.
+// land.go is the landing step of a beam's dobby.
+// When the beam is flagged ready and nothing works under it, the step asks the beam's pawl run to land.
+// It posts a notice to the beam's orch when it cannot.
 
 package dobbyengine
 
@@ -11,7 +13,8 @@ import (
 
 // LandReading is what one read of a beam's landing state tells the dobby.
 // Passes reports whether the beam is flagged ready to merge and the landing's refusal finds nothing working under it.
-// ParentOwner and ParentSubject name the machine that owns the beam's parent and what `lym adopt` takes to move it, both empty unless another machine owns it.
+// ParentOwner and ParentSubject name the machine that owns the beam's parent and what `lym adopt` takes to move it.
+// Both are empty unless another machine owns the parent.
 type LandReading struct {
 	Passes        bool
 	ParentOwner   string
@@ -19,9 +22,11 @@ type LandReading struct {
 }
 
 // landBeam acts once per episode, where an episode runs from a passing reading to the next reading that does not pass.
-// It asks for the landing through the Land seam, and posts a notice to the beam's own orch only when it cannot: another machine owns the parent, or Land refused.
-// A refusal is posted once and Land is asked again each tick, since it may only wait on the run, until it succeeds or the reading stops passing.
-// The prime's dobby and a dobby with no CanLand seam do nothing.
+// It asks the beam's pawl run to land, and posts a notice to the beam's own orch only when it cannot:
+// another machine owns the parent, or the landing was refused.
+// A refusal is posted once, and the landing is asked again each tick.
+// It may only wait on the run, so it is asked until it succeeds or the reading stops passing.
+// The prime's dobby, and a dobby without a landing reader, do nothing.
 // A failed read or post is logged once per episode and changes nothing, so the next tick tries again.
 func (d *daemon) landBeam(ctx context.Context) error {
 	if d.deps.CanLand == nil || d.geom.Slug == "" {
@@ -65,7 +70,8 @@ func (d *daemon) landBeam(ctx context.Context) error {
 	return nil
 }
 
-// postLandNotice posts line to the beam's own orch and records the episode once it went out, open to a retry of the landing when refused.
+// postLandNotice posts line to the beam's own orch and, once it went out, records the episode.
+// When refused is set, the record leaves the landing open to a retry.
 func (d *daemon) postLandNotice(ctx context.Context, line string, refused bool) error {
 	if err := d.deps.Notice(ctx, line); err != nil {
 		d.landPost.Fail("dobbyengine: the landing notice did not go out; the next tick tries again", "worktree", d.geom.WorktreeName, "error", err)
@@ -76,7 +82,8 @@ func (d *daemon) postLandNotice(ctx context.Context, line string, refused bool) 
 	return nil
 }
 
-// recordLand records the episode, as acted on when refused is false, so neither this dobby nor a restarted one acts on it again.
+// recordLand records the episode as acted on when refused is false.
+// Neither this dobby nor a restarted one then acts on it again.
 func (d *daemon) recordLand(refused bool) {
 	at := d.deps.Now()
 	if err := UpdateState(d.geom.StatePath, func(s *State) error {

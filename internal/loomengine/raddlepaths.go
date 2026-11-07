@@ -1,4 +1,5 @@
-// raddlepaths.go declares the paths of a raddle run's own files under the worktree's anchor: the proposals, the approval record, the run's state and its lock, the staged store and the part records.
+// raddlepaths.go declares the paths of a raddle run's own files under the worktree's anchor.
+// They are the proposals, the approval record, the run's state and its lock, the staged store and the part records.
 
 package loomengine
 
@@ -11,7 +12,7 @@ import (
 )
 
 // The names of the raddle run's files within RaddleDir.
-// loomengine is the sole declarer of each.
+// The constants are unexported, so only package loomengine uses them.
 const (
 	raddleProposalFileName         = "proposal.yaml"
 	raddleColdProposalFileName     = "cold-proposal.yaml"
@@ -25,14 +26,15 @@ const (
 	raddlePartRecordSuffix         = ".md"
 )
 
-// RaddleDirRel returns the worktree-anchor-relative path of a raddle run's directory: the join of lymdirs.LymDirName and lymdirs.RaddleDirName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment lymdirs owns.
+// RaddleDirRel returns the worktree-anchor-relative path of a raddle run's directory.
+// It joins lymdirs.LymDirName and lymdirs.RaddleDirName.
+// It keeps callers that build a fabric commit pathspec from naming a directory segment lymdirs owns.
 func RaddleDirRel() string {
 	return filepath.Join(lymdirs.LymDirName, lymdirs.RaddleDirName)
 }
 
 // RaddleDir returns the path of a raddle run's directory in the worktree at l.
-// It is AnchorPath-anchored.
+// The path is rooted at `l.AnchorPath()`.
 func RaddleDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), RaddleDirRel())
 }
@@ -62,7 +64,8 @@ func RaddleStatePath(l *lymcwd.Location) string {
 	return filepath.Join(RaddleDir(l), raddleStateFileName)
 }
 
-// RaddleStateLockPath returns the path of the lock that guards RaddleStatePath's record, under the never-tracked lock directory at the file's mirrored path.
+// RaddleStateLockPath returns the path of the lock that guards the run's state record.
+// The lock sits in the never-tracked lock directory, mirroring the state file's path.
 func RaddleStateLockPath(l *lymcwd.Location) string {
 	return lock.TrackedFileLockPath(RaddleStatePath(l), raddleStateLockSuffix)
 }

@@ -1,7 +1,6 @@
-// cli.go builds the cobra command tree for the loom module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "loom" command carries a PersistentPreRunE that resolves cwd once into a *lymcwd.Location and delegates the whole engine-stack construction to c.wire (wiring.go), storing the resolved ingredients on loomCLI exactly once per invocation.
-// loom is hub-only: it resolves through lymcwd.Resolve the way internal/reedcli does, never through preflight.ResolveMode's degrade-to-standalone probe -- loom needs a wired fabric to commit its seed into, so there is no meaningful standalone mode (see the plan's hub-only-resolution-for-loom decision).
-// The resolved value is named "location" throughout, never "loc" or "cwd".
+// cli.go builds the cobra command tree for the loom module and the RunCLI seam, which takes an io.Writer.
+// The parent "loom" command's pre-run resolves cwd into a *lymcwd.Location; wire builds the engine stack from it.
+// loom is hub-only: it has no standalone mode, because it commits its seed into a wired fabric.
 
 package loomcli
 
@@ -32,149 +31,150 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// loomCLI carries the fields wire (wiring.go) populates; every loom verb hangs off this receiver.
+// loomCLI carries the state that every loom verb shares, filled in once per invocation.
 type loomCLI struct {
-	// location is the resolved *lymcwd.Location for this invocation. wire reads it to anchor every
-	// config load and to build the reed/webster geometries; no verb needs it directly.
+	// location is the resolved *lymcwd.Location for this invocation.
+	// wire reads it to anchor every config load and to build the reed/webster geometries; no verb needs it directly.
 	location *lymcwd.Location
-	// cwd is the resolved cwd string the pre-run read via lymcwd.CwdFrom.
-	// It travels to preflightEntry as Env.Cwd,
-	// and that entry makes the same preflightshed.NewPreflightWithChecks(name, env.Cwd, checks) call over this exact cwd.
-	// Preflight is the one row that spawns git.
+	// cwd is the resolved cwd string the pre-run reads via lymcwd.CwdFrom.
+	// It reaches the preflight row as Env.Cwd,
+	// and that row runs its checks over this exact cwd.
+	// That row is the only one that spawns git.
 	cwd string
-	// cfg is the loaded loom.yaml config. Batch 5's start/bootstrap verb reads its Discussion/Plan
-	// role model-specs and timeout knobs.
+	// cfg is the loaded loom.yaml config.
+	// The start/bootstrap verb reads its Discussion and Plan role model-specs and timeout knobs.
 	cfg loomengine.Config
-	// reed is the constructed reed engine. Batch 5's bootstrap spawn machinery reads it to add and
-	// resolve the driver's own strand.
+	// reed is the constructed reed engine.
+	// The bootstrap spawn machinery reads it to add and resolve the driver's own strand.
 	reed *reedengine.Engine
-	// env is the assembled shedrecipe.Env that runCmd (run.go) passes to loomrecipe.New.
+	// env is the assembled shedrecipe.Env that the recipe constructor loomrecipe.New takes with the shed paths.
 	env shedrecipe.Env
-	// shedPaths carries the five told values shedengine.Shed itself reads, which runCmd passes
-	// alongside env, and which statusCmd, pauseCmd, and startCmd read directly.
+	// shedPaths carries the shed paths that shedengine.Shed reads itself.
+	// loomrecipe.New takes it alongside env, and the shed verbs read it directly.
 	shedPaths shedbuild.ShedPaths
-	// languageSkills are the hub's language skills wire loaded from language.yaml, told to the darn writer, the Webster master and the merge conflict session.
+	// languageSkills are the hub's language skills that wire loads from language.yaml for the agent sessions.
 	languageSkills []string
 	// language is the whole language.yaml wire loaded, whose rename tools the Webster prompts render.
 	language languageconfig.Language
-	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is
-	// also kept here directly so a test can inspect it without unwrapping env.
+	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps.
+	// It is also kept here directly so a test can inspect it without unwrapping env.
 	runDeps websterengine.RunDeps
-	// registry is the resolved model-spec registry, carried onto the struct so run.go can pass
-	// it to landingDeps without a second modelspec.LoadRegistry call.
+	// registry is the resolved model-spec registry.
+	// It is carried on the struct so run.go can pass it to landingDeps without a second modelspec.LoadRegistry call.
 	registry modelspec.Registry
-	// frictionDir is the absolute Tier 2 friction directory resolved once in wire, empty when Tier 2
-	// is off. It is carried on the struct so start.go and run.go read it without re-resolving it or
-	// re-reading loom.yaml a second time. Left at its zero value by wireLightweight, whose verbs are
-	// all read-only and load no module config.
+	// frictionDir is the absolute Tier 2 friction directory, resolved once in wire.
+	// It is empty when Tier 2 is off.
+	// It is carried on the struct, so start.go and run.go read it without re-resolving it or re-reading loom.yaml.
+	// Left at its zero value by wireLightweight, whose verbs are all read-only and load no module config.
 	frictionDir string
-	// parentName is the name of the session that spawned this worktree's run, taken in wire from the reed geometry's origin record;
-	// empty when the worktree has no resolvable parent.
+	// parentName is the name of the session that spawned this worktree's run.
+	// wire takes it from the reed geometry's origin record; it is empty when the worktree has no resolvable parent.
 	// Every role loom wires renders its parent directive from it.
 	parentName string
 	// endFixers, when set, is what an admitted goto calls to end the pair's gate fixers; nil means endRunFixers.
 	// Tests set it to record the call.
 	endFixers func() error
-	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
-	// landingDeps as the landing seam's Shuttle value.
+	// runner is the constructed shuttle runner.
+	// It is carried on the struct so run.go can pass it to landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
-	// shuttleCfg is the loaded shuttle config, kept so the loop's activity reading finds the worktree's live agent runs;
-	// zero under the lightweight wiring, whose verbs never run the loop.
+	// shuttleCfg is the loaded shuttle config; the loop's activity reading uses it to find live runs in the worktree.
+	// It is zero under the lightweight wiring, whose verbs never run the loop.
 	shuttleCfg shuttleengine.Config
-	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed, from loom.yaml's step_idle_timeout_min;
-	// a step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed;
-	// zero under the lightweight wiring.
+	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed.
+	// It comes from loom.yaml's step_idle_timeout_min and is zero under the lightweight wiring.
+	// A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed.
 	stepIdleTimeout time.Duration
-	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
-	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
-	// the operator's own terminal on every verb, not only inside run's detached driver log.
+	// landingCfg is the loaded landing.yaml configuration, loaded once in wire().
+	// Loading it there lets an unreconciled hub's absent-config error reach the operator's own terminal on every verb;
+	// otherwise it would show only in run's detached driver log.
 	landingCfg landingshed.Config
-	// suppressWatchdogSpawn, initialised from testing.Testing(), makes spawnWatchdog's call a no-op
-	// under a test binary. It exists to enforce the Live-Substrate Spawn Observability invariant's
-	// "never re-exec os.Executable() under go test" clause -- without it, every test reaching the
-	// bootstrap would re-exec the test binary and run the whole suite recursively.
+	// suppressWatchdogSpawn, initialised from testing.Testing(), makes spawnWatchdog's call a no-op under a test binary.
+	// It enforces the Live-Substrate Spawn Observability invariant, which bars re-exec of os.Executable() under go test.
+	// Without it, every test that reaches the bootstrap would re-exec the test binary,
+	// and the whole suite would run recursively.
 	suppressWatchdogSpawn bool
-	// spawnWatchdog defaults to reedengine.SpawnWatchdog and is an injection point so a test can
-	// assert the call site's arguments -- under go test the real call returns immediately and
-	// leaves no process, no log line, and nothing else to assert against. Named after
-	// awaitRunLock's own four injected seams (bootstrap.go) and this file's own doc comment
-	// principle that the verb body is assembly over judgment already under test.
+	// spawnWatchdog defaults to reedengine.SpawnWatchdog.
+	// It is an injection point,
+	// so a test can assert the call's arguments.
+	// Under go test the real call returns at once,
+	// and it leaves no process, no log line, and nothing else to assert against.
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
 	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
-	// The Test Tier Purity Invariant bars an untagged test from building a real mid-merge pair, so a test substitutes a canned state or error.
+	// The Test Tier Purity Invariant bars real mid-merge pairs in untagged tests; tests substitute a canned state or error.
 	midMerge func(*lymcwd.Location) (fabricengine.MidMergeState, error)
-	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch, to tell a parked merge-in of that branch from any other merge state.
-	// A test substitutes a canned branch or error.
+	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch.
+	// It tells a parked merge-in of that branch from any other merge state; a test substitutes a canned branch or error.
 	recordedParentBranch func(*lymcwd.Location) (string, error)
-	// parentCodeDirt is the seam through which the Finalize goto guard reads the parent pair's code checkout, its tracked dirty paths and whether fabric holds a merge record on that pair.
-	// An untagged test cannot build a real parent pair, so it substitutes canned answers.
+	// parentCodeDirt is the seam through which the Finalize goto guard reads the parent pair's code checkout.
+	// It reports the tracked dirty paths and whether fabric holds a merge record; untagged tests substitute canned answers.
 	parentCodeDirt func() (checkout string, paths []string, mergeRecord bool, err error)
-	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
-	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
-	// same pointer to shedverbs.Verbs before the pre-run has ever run.
+	// spec is the shedverbs.Spec that the pre-run fills in place (arm.go).
+	// The shedverbs verbs read it at run time.
+	// It is non-nil after newLoomCLI, so Command() can hand the same pointer to shedverbs.Verbs before the pre-run has run.
 	spec *shedverbs.Spec
-	// parentFlag carries "run"'s and "step"'s own --parent value: a closure cannot carry it,
-	// since the flag variable lives in Command() while the PreStep hook that reads it is built
-	// inside arm, which sees only (cwd, verb, args) -- and a PersistentPreRunE's args are
-	// positional only, never parsed flags.
+	// parentFlag carries the --parent value of the run and step verbs.
+	// A closure cannot carry it, since the flag variable lives in Command().
+	// The PreStep hook that reads it is built inside arm, which sees only the cwd, verb and args.
+	// A PersistentPreRunE's args are positional only, never parsed flags.
 	parentFlag string
-	// runID is the run-id arm (arm.go) resolves from args[0] when present, shedrun.SelfRunID
-	// otherwise, and records here before either wiring call -- wireLightweight and wire (wiring.go)
-	// read it back to build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID, so a
-	// later card and batch 7's addressing surface can read it too.
+	// runID is the run id that arm (arm.go) resolves from args[0] when present.
+	// Otherwise it is shedrun.SelfRunID.
+	// arm records it here before either wiring call.
+	// wireLightweight and wire (wiring.go) read it back to build every shedrun.* path.
 	runID string
-	// recipe is the name of the recipe the run's seed records, read once in armAt right after the run-id (resolveRecipe);
-	// shedrun.RecipeTapestry when the run has no seed yet.
-	// The routing, the shed builder, the wiring branch, the landing verify source and the reject rework row all read it.
+	// recipe is the name of the recipe that the run's seed records.
+	// armAt reads it once, right after the run id, through resolveRecipe.
+	// It is shedrun.RecipeTapestry until the run has a seed; routing, the shed builder, wiring and landing read it.
 	recipe string
-	// loomPath is true when the `lym loom` subtree armed the receiver, which serves loom runs only;
-	// the arming `lym shed` shares leaves it false, so a refusal of a non-loom recipe never sits in `lym shed`'s path.
+	// loomPath is true when the `lym loom` subtree armed the receiver, which serves loom runs only.
+	// The arming `lym shed` shares leaves it false, so a refusal of a non-loom recipe never sits in `lym shed`'s path.
 	loomPath bool
 	// caller is the caller label armAt classifies from the strand variable and specFor copies onto the Spec;
 	// empty on a hand-populated receiver, which records none.
 	caller string
-	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
-	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
+	// routing is the recipe's producer-graph projection, which armAt loads through loadRouting.
+	// specFor copies it onto the Spec; it is zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing
-	// driverStarter is the seam through which the llm arm starts the loom driver session's shuttle run,
-	// wrapping the same *shuttleengine.Runner c.runner already carries. The seam exists because the
-	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
-	// a concrete type.
+	// driverStarter is the seam through which the llm arm starts the loom driver session's shuttle run.
+	// It wraps a *shuttleengine.Runner.
+	// The seam exists because *shuttleengine.Runner is a concrete type.
+	// The Test Tier Purity Invariant bars a real spawn from an untagged file.
 	driverStarter driverStarter
-	// driverSender is the seam through which `start` types the resume line into a parked, live driver's pane, wrapping the same *shuttleengine.Runner driverStarter does.
+	// driverSender is the seam through which `start` types the resume line into a parked, live driver's pane.
 	driverSender driverSender
 	// driverResumeWait is the pause between resume send attempts;
 	// a test substitutes a counting fake so no real sleep happens.
 	// A nil value means no pause.
 	driverResumeWait func()
-	// driverPaneProbe is the seam through which the llm arm reads and removes driver strands,
-	// wrapping the same *reedengine.Engine c.reed already carries. The seam exists for the same
-	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
-	// Invariant bars a real reed call from an untagged file.
+	// driverPaneProbe is the seam through which the llm arm reads and removes driver strands.
+	// It wraps the *reedengine.Engine that c.reed holds.
+	// The engine is a concrete type, and the Test Tier Purity Invariant bars a real reed call from an untagged file.
+	// The seam lets a test substitute a fake.
 	driverPaneProbe driverPaneProbe
-	// driverDirectory is the seam through which `resume` reads the driver strand from reed's sessionless directory, wrapping the same *reedengine.Engine c.reed already carries.
+	// driverDirectory is the seam through which `resume` reads the driver strand from reed's sessionless directory.
 	driverDirectory driverDirectoryProbe
-	// bouncerSubdir is the seam through which `resume` tells whether the row a run awaits at is a review segment's Bouncer row, and the run subdirectory it records its decision in.
+	// bouncerSubdir is the seam through which `resume` reads a row's run subdirectory and whether it is a Bouncer row.
 	// It is loomrecipe.BouncerRunSubdir in production and a test substitutes a canned answer.
 	bouncerSubdir func(row string) (subdir string, isBouncer bool, err error)
-	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
-	// It is the seam tests fake the reflection agent, and so its filing, through.
-	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
+	// reflectionShuttle is the shuttle every friction reflection goes through, wired to the shuttle runner in production.
+	// It is the seam through which tests fake the reflection agent and its filing.
+	// It stays nil on the lightweight wiring path, where a reflection reports a missing shuttle as a failure.
 	reflectionShuttle frictionengine.Shuttle
-	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
-	// empty when the row did not run here. loomPostRun reports it on RunDone.
+	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process.
+	// It is empty when the row did not run here, and loomPostRun reports it on RunDone.
 	rowFrictionStatus string
 	// spawnGoDriver is the seam through which a Go-driver spawn starts a detached `lym loom drive` and returns its pid.
-	// It is spawnDetachedDrive over the receiver's location in production; the Test Tier Purity Invariant bars a real spawn from an untagged file, so a test substitutes a counting fake.
+	// A test substitutes a counting fake, because the Test Tier Purity Invariant bars a real spawn from an untagged file.
 	spawnGoDriver func() (int, error)
-	// spawnGoDriverFrom is spawnGoDriver for a caller that resolved the lym executable path itself, as a driver handing over after a deploy replaced the file it runs from.
+	// spawnGoDriverFrom starts a detached drive from the executable a caller resolved, for a handover after a deploy.
 	spawnGoDriverFrom func(executable string) (int, error)
-	// ownerOf judges who owns the run of slug; newLoomCLI sets it to runOwnerVerdict over this machine's name, and nil reads as owned here and calls nothing.
+	// ownerOf judges who owns the run of slug, and a nil ownerOf reads the run as owned here without calling anything.
 	ownerOf func(l *lymcwd.Location, slug string) (ownerVerdict, error)
 }
 
-// newLoomCLI is the only place production code may build a *loomCLI: it is what keeps suppressWatchdogSpawn and spawnWatchdog set identically on every constructed receiver,
-// so no constructor can forget one and leave a nil spawnWatchdog to panic rather than degrade.
+// newLoomCLI is the only place production code may build a *loomCLI.
+// It sets suppressWatchdogSpawn and spawnWatchdog on every receiver it builds,
+// so that no constructor can forget one and leave a nil spawnWatchdog, which would panic rather than degrade.
 func newLoomCLI() *loomCLI {
 	c := &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
@@ -200,18 +200,17 @@ func newLoomCLI() *loomCLI {
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
 //
-// This is a deliberate duplication of the identical adapter in internal/webstercli, per the plan's
-// duplicated-cli-adapters-over-a-cli-to-cli-import decision: both types are unexported in their home
-// packages, and a <module>cli importing another <module>cli has no precedent in this repo and would
-// couple two independent cobra seams. Two small duplications are cheaper than that coupling.
+// The identical adapter in internal/webstercli is a deliberate duplicate.
+// Both types are unexported, and sharing one would need a cli package to import another.
+// That import would couple two independent cobra seams.
 type runnerMasterStarter struct {
 	runner *shuttleengine.Runner
 }
 
 // StartMaster implements websterengine.MasterStarter.
 //
-// It spends Runner.StartGated rather than Runner.Start so the gate reaches the run before the
-// caller blocks on it; a zero gate makes StartGated behave exactly as Start.
+// It starts the run with the gate attached, so the gate is in place before the caller blocks on the run.
+// A zero gate makes the start behave exactly as an ungated one.
 func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
 	run, err := s.runner.StartGated(spec, gate)
 	if err != nil {
@@ -220,10 +219,14 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 	return run, nil
 }
 
-// resolvePersistentPreRun resolves cwd via lymcwd.CwdFrom, resolves it into a *lymcwd.Location via lymcwd.Resolve, and delegates the whole engine-stack construction to c.wire (wiring.go), storing the resolved ingredients on c.
-// Skips resolution entirely when the loom group command itself is invoked (bare listing or unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to be present.
-// It also skips the circling, decision and peers groups and their verbs, which resolve their own target worktree in their own PersistentPreRunE: cmd/lym sets cobra.EnableTraverseRunHooks, so this pre-run still runs for them and would otherwise arm them, reading a slug as a run-id.
-// The checklist pane verb is skipped too, because arming refuses a missing seed and a pane must outlive one.
+// resolvePersistentPreRun reads cwd through lymcwd.CwdFrom, arms the invoked verb, and stores the result on c.spec.
+// Arming resolves the location and builds the engine stack through c.wire (wiring.go).
+// The pre-run skips the loom group command, so a bare listing or an unknown subcommand needs no git repository.
+// It also skips the circling, decision and peers groups and their verbs.
+// Those resolve their own target worktree in their own PersistentPreRunE.
+// cmd/lym sets cobra.EnableTraverseRunHooks, so cobra runs this pre-run for them too;
+// without the skip it would arm them and read a slug as a run-id.
+// The checklist pane verb is skipped as well, because arming refuses a missing seed and a pane must outlive one.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "loom" || cmd.Name() == "checklist" || inReviewGroup(cmd) {
 		return nil
@@ -241,9 +244,8 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 
 	armed, err := c.arm(cwd, cmd.Name(), args)
 	if err != nil {
-		// arm's own lymcwd.Resolve error is already self-describing (it IS the "not a git
-		// repository" sentinel); pass it through bare rather than doubling that same text on
-		// top of it -- exactly as every other arm/wire error is reported.
+		// The error arm returns from lymcwd.Resolve already says it is not a git repository.
+		// Report it as it is, so that text is not printed twice.
 		clihelp.Abort(ctx, c.reportArmFailure(out, cmd, args, err))
 		return nil
 	}
@@ -252,8 +254,8 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 }
 
 // reportArmFailure prints the refusal arm returned and gives the exit code.
-// A step carrying the --until-stop flag whose location was resolved is a loop stop, which writes the run's status file failed;
-// every other verb, a step without the flag, and a failed resolve, which names no run, report the plain arming refusal.
+// A `step` with `--until-stop` and a resolved location is a loop stop, which writes the run's status file as failed.
+// Every other verb, a step without the flag, and a failed resolve, which names no run, get the plain arming refusal.
 func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []string, err error) int {
 	untilStop, _ := cmd.Flags().GetBool(shedverbs.UntilStopFlag)
 	if cmd.Name() != "step" || !untilStop || c.location == nil {
@@ -277,7 +279,8 @@ func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []str
 }
 
 // inReviewGroup reports whether cmd is loom's circling, decision or peers group, or a command under any of them.
-// Each resolves its own target worktree, from an optional slug or from the caller's cwd, which the loom pre-run must never arm as a run-id.
+// They resolve their own target worktree, from an optional slug or the caller's cwd.
+// The loom pre-run must never arm them as a run-id.
 func inReviewGroup(cmd *cobra.Command) bool {
 	for p := cmd; p.HasParent(); p = p.Parent() {
 		if (p.Name() == "circling" || p.Name() == decisionGroup || p.Name() == peersGroup) && p.Parent().Name() == "loom" {
@@ -287,14 +290,11 @@ func inReviewGroup(cmd *cobra.Command) bool {
 	return false
 }
 
-// verbUsesLightweightWiring reports whether the named loom subcommand needs nothing beyond the
-// resolved location, the two status-file paths, and a handful of cheap path accessors -- no module
-// config, no engine, no producer.
-//
-// The set is the two read-only status verbs (status, pause), the four standalone format self-checks (validate-discussion, validate-plan, validate-parts, validate-description) and the two lints (lint-comments, lint-pattern), which read only c.env's path fields and never a loaded config, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act, and the three plan card verbs (insert-card, remove-card, restore-renumber), which read only c.env.AnchorPath, and the two raddle verbs (raddle-propose, raddle-approve), which read the location, the recipe and the run's own files and must not depend on an unrelated module's config health, and fmt, which reads only c.env.WorktreeRoot and c.cwd, the cwd the pre-run read through lymcwd.CwdFrom.
-// Crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated module's broken config, the identical hazard that got status/pause this lightweight path in the first place (see wireLightweight's own doc comment for that history).
-// Every other verb builds or drives producers and keeps the full wire(), including its early config refusal.
-// "step" is deliberately excluded from this set for that same reason: it drives a producer through shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as "start" and "run" do.
+// verbUsesLightweightWiring reports whether the named loom subcommand needs only cheap path accessors.
+// Such a verb needs no module config, engine or producer, so a broken module config must not refuse it.
+// It reads only paths, never a loaded config.
+// Every other verb builds or drives a producer, so it keeps the full wire() and its early config refusal.
+// That includes `step`, which drives a producer through `shedengine.Shed.Step`.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
 	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-parts", "validate-description", "lint-comments", "lint-pattern", "fmt", "commit-records", "insert-card", "remove-card", "restore-renumber", "raddle-propose", "raddle-approve":
@@ -460,7 +460,8 @@ Example:
 	},
 }
 
-// Command returns the cobra command tree for the loom module.
+// Command returns the cobra command tree for `lym loom`:
+// the generic shed verbs that act on a run, and the module's other subcommands.
 func Command() *cobra.Command {
 	c := newLoomCLI()
 
@@ -483,7 +484,7 @@ Example:
   lym loom start
   lym loom status --watch
   lym loom circling accept <slug>`,
-		// RunE is set so that bare "lym loom" lists subcommands and "lym loom bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		// RunE makes bare "lym loom" list subcommands; "lym loom bogus" gets a JSON error envelope, not cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
@@ -492,10 +493,9 @@ Example:
 	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
 	stepVerb.Flags().StringVar(&c.parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
 
-	// Each generic verb takes at most one positional argument -- the run-id arm resolves (arm.go). None declared an Args validator before this card, so a second positional
-	// was silently swallowed and the command addressed "self" regardless -- the worst of the
-	// available behaviours. "lym loom start" keeps its own arity (no positional at all): it takes
-	// no run-id.
+	// Each generic verb takes at most one positional argument, the run-id, which `resolveRunID` in arm.go reads.
+	// Without that cap, cobra accepts a second positional and the verb silently ignores it.
+	// `lym loom start` takes no positional, since it takes no run-id.
 	runVerb.Args = cobra.MaximumNArgs(1)
 	stepVerb.Args = cobra.MaximumNArgs(1)
 	statusVerb.Args = cobra.MaximumNArgs(1)
@@ -509,17 +509,17 @@ Example:
 
 // RunCLI is the public seam for the loom module CLI.
 //
-// It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer
-// for all output (including cobra's error text).
+// It delegates to clihelp.Execute with the cobra command tree.
+// All output, including cobra's error text, goes to out.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the loom module CLI in cwd, or in the process working directory when cwd is empty.
+// An empty cwd goes through clihelp.Execute.
+// Any other cwd is seeded into the execution context through clihelp.ExecuteIn.
+// The branch exists because lymcwd.WithCwd panics on an empty directory,
+// so an empty cwd must not reach clihelp.ExecuteIn.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

@@ -1,4 +1,4 @@
-// board.go — Board, the facade every caller uses over a board directory; the package documentation is in doc.go.
+// board.go implements Board, the facade that callers use over a board directory.
 
 package boardengine
 
@@ -25,15 +25,15 @@ type Board struct {
 	skipPush  bool
 	now       func() time.Time
 	parentOf  func(slug string) (string, error)
-	// pairExists is Config.PairExists, copied onto every store the board builds.
+	// pairExists is copied onto every store the board builds.
 	pairExists func(slug string) bool
-	// validateSlug is Config.ValidateSlug, applied to the task and project slugs a write makes.
+	// validateSlug is applied to the task and project slugs a write makes.
 	validateSlug func(slug string) error
-	// strandName is the writing session's agent name, which checkTaskCreation judges.
+	// strandName is the writing session's agent name, which the write's task-creation check judges.
 	strandName string
 }
 
-// New returns a Board operating with the given config.
+// New returns a Board that runs with cfg, and uses the wall clock when cfg.Clock is nil.
 func New(cfg Config) *Board {
 	now := cfg.Clock
 	if now == nil {
@@ -58,26 +58,34 @@ func (b *Board) RecipeOf(task Task) string {
 	return b.out.recipeOf(task)
 }
 
-// noWrite is returned as a mutation's result to end boardCriticalSection without a save, render or sync;
+// noWrite is returned as a mutation's result to end the write without a save, render or sync;
 // result is what the caller receives.
 type noWrite struct{ result any }
 
-// promoted is returned as a mutation's result when it made task a task out of a note;
-// boardCriticalSection unwraps it, and the promote keeps the note's dates.
+// promoted is returned as a mutation's result when it turns a note into a task;
+// the write unwraps it, and the promotion keeps the note's dates.
 type promoted struct{ task Task }
 
-// boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, migrates a board that has not been marked draft and every task left discussed, calls fn to mutate it, gives a new task the draft status bar a promoted raddle task, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, moves or removes the decision record files of the entries the write renamed or removed, renders outputs, and spawns a detached sync.
-// fn returning a RenameResult judges the dates and the run lock against the loaded entries with that rename applied.
+// boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
+// It takes the write lock and loads the store.
+// It migrates a board that has not been marked draft and every task left discussed.
+// It then calls fn to mutate the store, and it gives a new task the draft status except a promoted raddle task.
+// It stamps the entry dates and assigns the handles the mutation left missing or of another letter;
+// it refuses a net change to a run-held entry's scope and a run agent's new task.
+// It saves board.json and runs afterSave when non-nil.
+// It then moves or removes the decision record files of the entries the write renamed or removed;
+// it renders the outputs and spawns a detached sync.
+// A fn returning a RenameResult has its dates and run lock judged against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
-// The record step's error, a *DecisionRecordError, does not stop the render or the sync; it is returned last, with the write saved and the mutation's result.
-// fn returning a noWrite skips every step after the mutation.
+// A *DecisionRecordError does not stop the render or the sync;
+// it is returned last, with the write saved and the mutation's result.
+// A fn returning a noWrite skips every step after the mutation.
 func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
-	// Guard before any disk mutation: a Board built without output filenames
-	// (the --board-path shape, which carries only the data dir) can sync and
-	// read but must not write — otherwise the store would be saved and the
-	// render would then fail on an empty filename, leaving a half-applied,
-	// never-synced write behind.
+	// Guard before any disk mutation.
+	// A Board built without output filenames, the --board-path shape, carries only the data dir;
+	// it can sync and read but must not write.
+	// Otherwise the store would be saved and then the render would fail on an empty filename;
+	// that would leave a half-applied write that is never synced.
 	if b.out.Readme == "" {
 		return nil, fmt.Errorf("board outputs not configured; write commands require board config (not --board-path)")
 	}
@@ -124,7 +132,8 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	var released []string
 	if p, ok := result.(promoted); ok {
 		promotedSlug = p.task.Slug
-		// A Sketch promoted to a raddle run's entry is released in its own write, so its parent's dobby starts the run.
+		// A decision record promoted to a raddle run's entry is released in its own write,
+		// so its parent's dobby starts the run.
 		if p.task.Recipe == shedrun.RecipeRaddle {
 			released = []string{p.task.Slug}
 		}
@@ -212,7 +221,8 @@ func (b *Board) SetStatus(idOrSlug any, status *string) error {
 	return err
 }
 
-// SetRunStatus sets status on the entry slug under the write lock, and writes nothing when the entry is absent, done or already carries status.
+// SetRunStatus sets status on the entry slug under the write lock.
+// It writes nothing when the entry is absent, done, or already carries status.
 func (b *Board) SetRunStatus(slug, status string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		task, found := store.GetTask(slug)
@@ -224,7 +234,8 @@ func (b *Board) SetRunStatus(slug, status string) error {
 	return err
 }
 
-// ClearNotifyOnLand clears the notify_on_land field of the entry slug under the write lock, and writes nothing when the entry is absent or does not carry it.
+// ClearNotifyOnLand clears the notify_on_land field of the entry slug under the write lock.
+// It writes nothing when the entry is absent or its field is already clear.
 func (b *Board) ClearNotifyOnLand(slug string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		i, found := store.index(slug)
@@ -237,6 +248,7 @@ func (b *Board) ClearNotifyOnLand(slug string) error {
 	return err
 }
 
+// RemoveTask removes the entry that idOrSlug names under the write lock, and renders the outputs.
 func (b *Board) RemoveTask(idOrSlug any) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		return nil, store.RemoveTask(idOrSlug)
@@ -244,8 +256,9 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 	return err
 }
 
-// RemoveCommand returns the `lym board remove` command line that removes the entry slug names, its JSON payload single-quoted for a shell.
-// A way forward names it, since the verb takes a JSON payload or a bare handle and never a bare slug.
+// RemoveCommand returns the `lym board remove` command line that removes the entry slug names.
+// The JSON payload is single-quoted for a shell.
+// A way forward names this command, since the verb takes a JSON payload or a bare handle, never a bare slug.
 func RemoveCommand(slug string) string {
 	payload, _ := json.Marshal(map[string]string{"slug": slug})
 	return "lym board remove '" + string(payload) + "'"
@@ -254,7 +267,7 @@ func RemoveCommand(slug string) string {
 // MergeTasks atomically removes slugs, upserts one task, and optionally applies a status update.
 // setStatus carries the pre-resolved task selector and status value;
 // pass nil to skip the status step.
-// A status update that targets a missing task causes the entire merge to fail (boardCriticalSection discards the in-memory mutation).
+// A status update that targets a missing task fails the entire merge, and the in-memory mutation is discarded.
 // It also returns the siblings the merge created.
 func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, []Sibling, error) {
 	result, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
@@ -266,7 +279,8 @@ func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	return result.(Task), siblings, nil
 }
 
-// SetDeps replaces the depends_on of the task identified by selector under the write lock and returns the siblings the write created.
+// SetDeps replaces the depends_on of the task identified by selector under the write lock.
+// It returns the siblings the write created.
 func (b *Board) SetDeps(selector any, dependsOn []string) ([]Sibling, error) {
 	_, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
 		return nil, store.SetDeps(selector, dependsOn)
@@ -274,7 +288,8 @@ func (b *Board) SetDeps(selector any, dependsOn []string) ([]Sibling, error) {
 	return siblings, err
 }
 
-// UpsertTasksBatch upserts every task in tasks in one write under the write lock and returns the siblings the write created.
+// UpsertTasksBatch upserts every task in tasks in one write under the write lock.
+// It returns the siblings the write created.
 func (b *Board) UpsertTasksBatch(tasks []map[string]any) ([]Sibling, error) {
 	_, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
 		return nil, store.UpsertTasksBatch(tasks)
@@ -282,6 +297,7 @@ func (b *Board) UpsertTasksBatch(tasks []map[string]any) ([]Sibling, error) {
 	return siblings, err
 }
 
+// Rerender re-renders the board's output files under the write lock, without changing any entry.
 func (b *Board) Rerender() error {
 	_, err := b.boardCriticalSection(func(*Store) (any, error) {
 		return nil, nil
@@ -289,9 +305,9 @@ func (b *Board) Rerender() error {
 	return err
 }
 
-// Sync backs up pending local changes to the remote (commit + push), looping until nothing is left.
-// It is what the detached `lym board sync` process runs;
-// it can also be called directly to force a synchronous backup.
+// Sync backs up pending local changes to the remote (commit and push), looping until nothing is left.
+// The detached `lym board sync` process runs it.
+// It can also be called directly to force a synchronous backup.
 func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }
@@ -316,7 +332,8 @@ func (b *Board) HealthCheck() error {
 	return firstErr
 }
 
-// loadStore loads the one store for a read, persisting nothing.
+// loadStore loads the store for a read and persists nothing.
+// It wires in the board's vocabulary, parent lookup and pair check.
 func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
@@ -328,6 +345,8 @@ func (b *Board) loadStore() (*Store, error) {
 	return store, nil
 }
 
+// GetTask returns the task identified by idOrSlug and reports whether one was found.
+// A missing board directory yields no task and no error.
 func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return Task{}, false, nil
@@ -342,7 +361,8 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 	return task, found, nil
 }
 
-// EffectiveOwner returns the owner machine the entry slug reads as, "" meaning owned by no other machine, persisting nothing.
+// EffectiveOwner returns the owner machine the entry slug reads as; "" means owned by no other machine.
+// It persists nothing.
 func (b *Board) EffectiveOwner(slug string) (string, error) {
 	store, err := b.loadStore()
 	if err != nil {
@@ -351,7 +371,8 @@ func (b *Board) EffectiveOwner(slug string) (string, error) {
 	return store.effectiveOwner(slug)
 }
 
-// PrimeOwner returns the machine board.json records as owning the hub's prime, "" when none is recorded or the board directory is absent, persisting nothing.
+// PrimeOwner returns the machine that board.json records as owning the hub's prime.
+// It returns "" when none is recorded or the board directory is absent, and it persists nothing.
 func (b *Board) PrimeOwner() (string, error) {
 	store, err := b.loadStore()
 	if err != nil {
@@ -391,6 +412,7 @@ func (b *Board) ListTasksBrief(labels []string) ([]BriefTask, error) {
 	return store.ListTasksBrief(labels), nil
 }
 
+// ListTasksFull returns every task with all its fields, or nil when the board directory is absent.
 func (b *Board) ListTasksFull() ([]Task, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
@@ -410,11 +432,14 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 	return b.PromoteTo(idOrSlug, "")
 }
 
-// PromoteTo makes the entry identified by idOrSlug a task under the write lock, setting its recipe to recipe in the same write when recipe is not empty.
+// PromoteTo makes the entry identified by idOrSlug a task under the write lock.
+// When recipe is not empty, the same write sets the task's recipe to recipe.
 // An entry that is already a task is returned unchanged without a write.
-// A discussed note whose decision record is stored, or that carries the sketch label, takes the raddle recipe when recipe is empty;
-// promoting a note whose record is stored with the raddle recipe keeps the record and the flag, restores the sketch label a note write dropped, and releases the task in the same write.
-// A Sketch becomes a task only through that promotion; a promotion of it with any other recipe is refused, naming the plain promote.
+// When recipe is empty, a discussed note takes the raddle recipe if its decision record is stored.
+// The same holds for a note that carries the sketch label.
+// Promoting a note whose record is stored with the raddle recipe keeps the record and the flag.
+// It restores the sketch label that a note write dropped, and it releases the task in the same write.
+// A Sketch becomes a task only through that promotion; a promotion of it with any other recipe is refused.
 func (b *Board) PromoteTo(idOrSlug any, recipe string) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		task, changed, err := store.promoteTo(idOrSlug, recipe, b.recordStored)
@@ -432,9 +457,10 @@ func (b *Board) PromoteTo(idOrSlug any, recipe string) (Task, error) {
 	return result.(Task), nil
 }
 
-// Prune removes every done entry under the write lock, bar one still carrying notify_on_land, and returns the removed slugs;
-// the render that follows drops their design docs.
-// With apply false it is a dry run: the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
+// Prune removes every done entry under the write lock, except one still carrying notify_on_land.
+// It returns the removed slugs; the render that follows drops their design docs.
+// With apply false it is a dry run:
+// the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
 // A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.
 func (b *Board) Prune(apply bool) ([]string, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
@@ -450,7 +476,8 @@ func (b *Board) Prune(apply bool) ([]string, error) {
 	return result.([]string), nil
 }
 
-// Find returns the entries whose slug, title, brief or body contains text and that carry every label in labels, persisting nothing.
+// Find returns the entries whose slug, title, brief or body contains text and that carry every label in labels.
+// It persists nothing.
 func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
@@ -466,13 +493,16 @@ func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 	return store.Find(text, labels), nil
 }
 
-// RetireLegacy ends the pre-upgrade compatibility window under the write lock and returns the base names of the legacy files present, tasks file first.
+// RetireLegacy ends the pre-upgrade compatibility window under the write lock.
+// It returns the base names of the legacy files present, tasks file first.
 // It refuses when neither legacy file exists, whatever apply is.
 // With apply false it is a dry run: the names are reported and nothing is saved, rendered or deleted.
 // A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.
 // With apply true the load folds the last done marks and board.json is saved with legacy_done still in place.
-// The legacy files and their swap locks are then deleted, and only after that is legacy_done dropped and board.json saved again.
-// A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done, so a reload folds no mark twice and retire-legacy can be rerun.
+// The legacy files and their swap locks are then deleted.
+// Only after that is legacy_done dropped and board.json saved again.
+// A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done,
+// so a reload folds no mark twice and retire-legacy can be rerun.
 func (b *Board) RetireLegacy(apply bool) ([]string, error) {
 	legacyNames := []string{legacyTasksFile, legacyNotesFile}
 	legacyPaths := []string{

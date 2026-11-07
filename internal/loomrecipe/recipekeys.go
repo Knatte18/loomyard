@@ -1,4 +1,5 @@
-// recipekeys.go implements the accessors that answer a recipe's contract, engines, Code-Review perch gate, record engine, verify source and retired rows by recipe name.
+// recipekeys.go holds the accessors that answer questions about a recipe, selected by name.
+// They cover its contract, engines, Code-Review perch gate, record engine, verify source and retired rows.
 // Consumers read a recipe's rows and keys through them instead of comparing the recipe name.
 
 package loomrecipe
@@ -57,7 +58,8 @@ func HasEngine(recipe, engine string) (bool, error) {
 	return false, nil
 }
 
-// EngineRow returns the name of the first row of the named recipe that runs the given engine, and false when no row does.
+// EngineRow returns the name of the first row of the named recipe that runs the given engine.
+// It returns false when no row does.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func EngineRow(recipe, engine string) (string, bool, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
@@ -73,9 +75,11 @@ func EngineRow(recipe, engine string) (string, bool, error) {
 	return "", false, nil
 }
 
-// GateFixerSetting returns the `fixer` value of the gate element named gate on the first row of the named recipe that runs engine: the `<module>.<key>` setting that holds the row's cold fixer model-spec.
+// GateFixerSetting returns the `fixer` value of the gate element named gate on the first row that runs engine.
+// That value is the `<module>.<key>` setting that holds the row's cold fixer model-spec.
 // It is empty when the row has no such element or the element carries no `fixer`.
-// An empty recipe name reads as the tapestry recipe; a name that selects no embedded recipe, a recipe with no row running engine, and a `fixer` that is not a string are refused.
+// An empty recipe name reads as the tapestry recipe.
+// A name that selects no embedded recipe, a recipe with no row running engine, and a non-string `fixer` are refused.
 func GateFixerSetting(recipe, engine, gate string) (string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -108,7 +112,8 @@ func GateFixerSetting(recipe, engine, gate string) (string, error) {
 }
 
 // CodePerchGate returns the entry gate of the named recipe's Code-Review segment Bouncer row, built over env.
-// It is nil for a recipe with no such row and for a Bouncer row with no entry_gate, which leaves the perch's on or off to its budget alone.
+// It is nil for a recipe with no such row, and for a Bouncer row with no entry_gate.
+// A nil gate leaves the perch's on or off to its budget alone.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func CodePerchGate(recipe string, env shedrecipe.Env) (shedengine.EntryGate, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
@@ -124,7 +129,8 @@ func CodePerchGate(recipe string, env shedrecipe.Env) (shedengine.EntryGate, err
 	return nil, nil
 }
 
-// RecordEngine returns the engine of the named recipe's row that writes the decision record, empty when the recipe has none.
+// RecordEngine returns the engine of the named recipe's row that writes the decision record.
+// It is empty when the recipe has no such row.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func RecordEngine(recipe string) (string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
@@ -151,7 +157,7 @@ func VerifySource(recipe string) (string, error) {
 	return parsed.VerifySource, nil
 }
 
-// RetiredRows maps each row name a run of the named recipe may still carry in its status file from an earlier recipe onto the row that replaced it.
+// RetiredRows maps each row name that an earlier recipe left in a run's status file onto the row that replaced it.
 // It is nil for a recipe with none, and an empty name reads as the tapestry recipe.
 func RetiredRows(recipe string) map[string]string {
 	if recipe == "" {

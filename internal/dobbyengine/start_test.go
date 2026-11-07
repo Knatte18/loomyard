@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeStart is an in-memory stand-in for the hub: it serves the owners it holds, records the claims and spawns, and reads a spawned worktree as live afterwards.
+// fakeStart is an in-memory stand-in for the hub.
+// It serves the owners it holds, records the claims and spawns, and reads a spawned worktree as live afterwards.
 // A worktree in moving has an anchor change standing, and one in moveErr fails the read of whether it does.
 type fakeStart struct {
 	primeOwner string
@@ -270,7 +271,8 @@ func TestEnsureLive(t *testing.T) {
 	}
 }
 
-// TestOwnedWorktrees asserts the list holds the prime when this machine owns it or none is recorded, then every beam not owned elsewhere.
+// TestOwnedWorktrees asserts the list holds the prime when this machine owns it or none is recorded.
+// It also asserts that the list holds every beam not owned elsewhere.
 func TestOwnedWorktrees(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -307,7 +309,8 @@ func TestOwnedWorktrees(t *testing.T) {
 	}
 }
 
-// TestLive asserts a dobby reads live exactly while its lock is held, and a worktree with no beam directory reads not live.
+// TestLive asserts a dobby reads live exactly while its lock is held.
+// It also asserts that a worktree with no beam directory reads not live.
 func TestLive(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// cost.go declares the cost report's options and result types and ComputeCost, which prices the landed runs of one snapshot from the usage records each run keeps in its tree.
+// cost.go declares the cost report's options and result types, and ComputeCost, which prices landed runs.
+// Each run's figures come from the usage records it keeps in its tree.
 
 package reportengine
 
@@ -18,13 +19,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// CostNoteTooFewRuns is the note of a cell holding fewer runs than CostOptions.MinRuns, which then carries no figure.
+// CostNoteTooFewRuns is the note of a cell holding fewer runs than its minimum run count, which then carries no figure.
 const CostNoteTooFewRuns = "too few runs"
 
 // secondsPerHour converts a run's seconds into the hours the report states.
 const secondsPerHour = 3600
 
-// CostOptions shapes a cost report; everything in it is told, since the engine runs no process and reads no clock.
+// CostOptions shapes a cost report.
+// The engine runs no process and reads no clock, so the caller supplies every input.
 type CostOptions struct {
 	// Since is the UTC date the window opens at: a run enters when its archive tag is committed on or after it.
 	Since time.Time
@@ -42,7 +44,8 @@ type CostSelection struct {
 	SnapshotAt    time.Time `json:"snapshot_at"`
 }
 
-// CostFit is the least-squares line of a cost over the size of the diff a run landed: a fixed cost plus a cost per 100 changed lines.
+// CostFit is the least-squares line of a cost over the size of the diff a run landed:
+// a fixed cost plus a cost per 100 changed lines.
 // Runs is the number of sized runs the line was fitted over.
 // Correlation is the Pearson correlation of the cost with the size, 0 when the cost does not vary.
 type CostFit struct {
@@ -54,8 +57,9 @@ type CostFit struct {
 
 // CostCell is the cost of the landed runs of one recipe, profile and stored-record flag.
 // Runs counts every run of the cell, whether or not it carries a dollar or an hour figure.
-// A cell under CostOptions.MinRuns carries Note and no figure.
-// MeanUSD and MeanHours are over the runs holding that figure and nil when none does, and a fit is nil unless two sized runs of distinct sizes hold the figure.
+// A cell with fewer runs than its minimum run count carries Note and no figure.
+// MeanUSD and MeanHours are over the runs holding that figure and nil when none does,
+// and a fit is nil unless two sized runs of distinct sizes hold the figure.
 type CostCell struct {
 	Recipe       string   `json:"recipe"`
 	Profile      string   `json:"profile"`
@@ -83,7 +87,8 @@ type costCellKey struct {
 }
 
 // costRun is one landed run's figures.
-// usd and hours are nil when the run has no such figure, and sized says the run's landed diff size is known, size being its changed lines per 100.
+// usd and hours are nil when the run has no such figure.
+// sized says the run's landed diff size is known; size is its changed lines per 100.
 type costRun struct {
 	usd   *float64
 	hours *float64
@@ -91,12 +96,18 @@ type costRun struct {
 	size  float64
 }
 
-// ComputeCost prices the landed runs of src whose archive tag is committed on or after opts.Since, whatever their recipe.
-// A run's figures come from the usage files at its tag's commit, parsed by shedrun.ParseRunUsage and never from a review round's usage record.
+// ComputeCost prices the landed runs of src whose archive tag is committed on or after opts.Since.
+// Runs of every recipe are priced.
+// A run's figures are parsed by shedrun.ParseRunUsage from the usage files at its tag's commit;
+// they never come from a review round's usage record.
 // A run with no run record, or with a usage file that does not decode, is skipped and listed as a finding.
-// A run is landed when its usage holds a landed-size record, or, for a recipe with no Finalize row, when its status at the tag is done; any other run is left out.
-// A run's dollars are the sum of its sessions' costs and are absent when it has no session or any session has an unknown cost.
-// A run's hours are its active time from ComputeTiming for a run the timing report times, else the union of its sessions' spans.
+// A run is landed when its usage holds a landed-size record.
+// For a recipe with no Finalize row, a run is landed when its status at the tag is done.
+// Any other run is left out.
+// A run's dollars are the sum of its sessions' costs;
+// they are absent when it has no session or any session has an unknown cost.
+// A run's hours are its active time from the timing report when that report times the run;
+// otherwise they are the union of its sessions' spans.
 // An error is a failed read of the repositories themselves.
 func ComputeCost(src Sources, opts CostOptions) (CostReport, error) {
 	since := opts.Since.UTC()
@@ -199,7 +210,8 @@ func readRunUsage(records Reader, tag gitrepo.TagRef) (shedrun.RunUsage, *Findin
 	return usage, nil, nil
 }
 
-// terminalRowDone reports whether the run's status at tag's commit is done, the landed mark of a recipe with no Finalize row.
+// terminalRowDone reports whether the run's status at tag's commit is done.
+// A done status is the landed mark of a recipe with no Finalize row.
 // A status that does not decode is a finding and not done, and an absent status is not done.
 func terminalRowDone(records Reader, tag gitrepo.TagRef, slug string) (bool, *Finding, error) {
 	rels, err := shedrun.TreeRunRels(slug)
@@ -269,7 +281,8 @@ func sessionSpans(sessions []shedrun.SessionUsageRecord) time.Duration {
 	return lengthOf(unionIntervals(spans))
 }
 
-// costCell builds the cell of key over its runs: only the run count and the note when the cell is under minRuns, else the means and the fits.
+// costCell builds the cell of key over its runs.
+// Under minRuns it keeps only the run count and sets the note; otherwise it fills the means and the fits.
 func costCell(key costCellKey, runs []costRun, minRuns int) CostCell {
 	cell := CostCell{Recipe: key.recipe, Profile: key.profile, StoredRecord: key.storedRecord, Runs: len(runs)}
 	if len(runs) < minRuns {
@@ -311,7 +324,7 @@ func countHolding(runs []costRun, holds func(costRun) bool) int {
 	return count
 }
 
-// meanOf returns sum over count, nil for no count.
+// meanOf returns the mean of sum over count, or nil when count is zero.
 func meanOf(sum float64, count int) *float64 {
 	if count == 0 {
 		return nil
@@ -320,7 +333,7 @@ func meanOf(sum float64, count int) *float64 {
 	return &mean
 }
 
-// costPoint is one sized run: its landed lines per 100 and its cost.
+// costPoint is one sized run: its landed diff size in changed lines per 100 and its cost.
 type costPoint struct {
 	x, y float64
 }

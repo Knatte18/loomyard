@@ -1,15 +1,19 @@
-<!-- This is the shed driver's launch prompt: the whole procedure of the session that drives one seeded run through the detached `lym shed step --until-stop` loop.
-     It is filled via internal/stencil.Fill (internal/loomcli's driverPrompt) and typed into the driver session as its entire instruction set, replacing the skill the driver once loaded.
+<!-- This is the shed driver's launch prompt: the whole procedure of the session that drives one seeded run
+     through the detached `lym shed step --until-stop` loop.
+     It is filled via internal/stencil.Fill (internal/loomcli's driverPrompt)
+     and typed into the driver session as its entire instruction set.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.run_id}} is the run the session drives, {{.report_path}} the file every stop report is written to,
      {{.park_command}} the command a parking driver runs after its stop report,
-     {{.arbiter_command}} the command a driver runs at a stop it cannot settle, with its envelope and report placeholders left for the driver to fill,
+     {{.arbiter_command}} the command a driver runs at a stop it cannot settle,
+     with its envelope and report placeholders left for the driver to fill,
      {{.teardown_command}} the end-of-session command run at done and at busy,
      {{.guide_path}} the deployed repair guide the one-shot fork reads,
      {{.parent_directive}} the shared parent directive rendered by internal/parentdirective,
      {{.edit_directive}} the shared edit directive rendered by internal/editdirective,
-     and {{.parent_notify}} the parent-notification rule, whichever of the shed-template-driver-notify stencils fits the run.
-     The body is recipe-blind: it names no recipe, no state-directory path and no recipe-owned command, which arrive only through the markers.
+     and {{.parent_notify}} the parent-notification rule, the matching shed-template-driver-notify stencil.
+     The body is recipe-blind: it names no recipe, no state-directory path and no recipe-owned command,
+     which arrive only through the markers.
      Refusal text and its ways forward live in the refusal messages and are quoted from them, never restated. -->
 
 # Driver for run `{{.run_id}}`

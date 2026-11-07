@@ -1,4 +1,5 @@
-// verbs_test.go pins the pool's verbs over the fake delivery seam: mail, replies, reads, forwards, the log, injects, interrupts and holds.
+// verbs_test.go pins the pool's verbs over the fake delivery seam:
+// mail, replies, reads, forwards, the log, injects, interrupts and holds.
 
 package creelengine_test
 
@@ -31,7 +32,7 @@ const (
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
-// env is a store over a fake delivery of four strands and a fake clock.
+// env is a store over a fake delivery with its strands and a fake clock.
 type env struct {
 	store *creelengine.Store
 	del   *creelfake.Delivery
@@ -1292,12 +1293,14 @@ func TestStore_InjectAndHold(t *testing.T) {
 	}
 }
 
-// inboundLine renders the journal line of mail from another hub's strand id, delivered to the receiver; extra is more JSON members, such as `,"trusted":true`.
+// inboundLine renders the journal line of mail from another hub's strand id, delivered to the receiver.
+// extra is more JSON members, such as `,"trusted":true`.
 func inboundLine(id int, from, to, body, extra string) string {
 	return fmt.Sprintf(`{"event":"inbound","at":"2026-10-01T12:00:00Z","id":%d,"from":%q,"to":%q,"body":%q,"sending_hub":"/hubs/xx","sending_id":%d,"delivered_to":%q%s}`, id, from, to, body, id+100, to, extra)
 }
 
-// withJournal writes lines as the journal of the epoch's day and replaces the env's store with one folded over them, as a daemon restarted over mail from another hub.
+// withJournal writes lines as the journal of the epoch's day and replaces the env's store with one folded over them.
+// The store is reopened as a restarted daemon would open it, over mail from another hub.
 func (e *env) withJournal(t *testing.T, lines ...string) {
 	t.Helper()
 	if err := os.MkdirAll(e.geom.JournalDir, 0o755); err != nil {
@@ -1317,7 +1320,8 @@ func (e *env) withJournal(t *testing.T, lines ...string) {
 func TestStore_ClaimAtBoundary(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// claimWith claims as the strand at boundary and returns the claimed messages' lines, leaving the reading unacknowledged.
+	// claimWith claims as the strand at boundary and returns the claimed messages' lines.
+	// The reading is left unacknowledged.
 	claimWith := func(t *testing.T, e *env, as string, boundary creelengine.Boundary) (*creelengine.Reading, []string) {
 		t.Helper()
 		reading, err := e.store.ClaimAtBoundary(strand(as), boundary)

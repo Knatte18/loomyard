@@ -1,4 +1,5 @@
-// reviewstatus.go fills shedverbs.Hooks.Waiting for loom, so `lym loom status` reports a run that waits on a gate slot, the parent lock, a verify or a shuttle.
+// reviewstatus.go fills shedverbs.Hooks.Waiting for loom.
+// It makes `lym loom status` report a run that waits on a gate slot, the parent lock, a verify or a shuttle.
 
 package loomcli
 
@@ -20,10 +21,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// elapsedPlaceholder stands in for every elapsed time in a wait note's steady form, so that form changes only when what the run waits on changes.
+// elapsedPlaceholder replaces every elapsed time in a wait note's steady form.
+// The steady form then changes only when what the run waits on changes.
 const elapsedPlaceholder = "<elapsed>"
 
-// formatElapsed renders d as whole seconds under a minute, whole minutes under an hour and hours with minutes beyond: `45s`, `6m`, `1h12m`.
+// formatElapsed renders d as whole seconds under a minute, whole minutes under an hour and hours with minutes beyond.
+// Examples: `45s`, `6m`, `1h12m`.
 func formatElapsed(d time.Duration) string {
 	switch {
 	case d < time.Minute:
@@ -61,7 +64,8 @@ func formatHolders(holders []gateslot.Holder) string {
 	return strings.Join(named, ", ")
 }
 
-// readHolders returns the holders clause body, empty when the read fails or no slot is held, since the clause only explains a wait and status must not fail on it.
+// readHolders returns the holders clause body, empty when the read fails or no slot is held.
+// The clause only explains a wait, so status must not fail on a failed read.
 func readHolders(holders func() ([]gateslot.Holder, error)) string {
 	held, err := holders()
 	if err != nil {
@@ -71,8 +75,9 @@ func readHolders(holders func() ([]gateslot.Holder, error)) string {
 }
 
 // gateWaiting returns the Waiting hook that reports each live gate wait record in waitDir, and appends next's note.
-// Each record renders as `<producer>: <site> waiting for a gate slot <elapsed>`, oldest first and joined with `; `, followed once by `(holders: <worktree> <site>, ...)` when holders names any.
-// With no live record the note is next's; with one or more, next's non-empty note follows after `; `.
+// Each record renders as `<producer>: <site> waiting for a gate slot <elapsed>`, oldest first and joined with `; `.
+// When holders names any, `(holders: <worktree> <site>, ...)` follows the records once.
+// With no live record the note is next's; with one or more, next's non-empty note is appended after `; `.
 // A record whose process is dead reads as absent, so a crashed wait never sticks in the status line.
 func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
 	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
@@ -110,10 +115,13 @@ func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now 
 }
 
 // verifyWaiting returns the Waiting hook that reports a verify from the marker at markerPath, and falls through to next otherwise.
-// A running verify reads as `<producer>: verify running <elapsed> (<detail>)`, and one still waiting for a gate slot as `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
-// One held by a pause reads as `<producer>: verify held by a pause <elapsed> (<site>)`, elapsed measured from the hold start.
+// A running verify reads as `<producer>: verify running <elapsed> (<detail>)`.
+// A verify waiting for a gate slot reads as `<producer>: verify waiting for a gate slot <elapsed> (<site>)`.
+// When holders names any, a `; holders: <worktree> <site>, ...` clause is added to the detail.
+// A verify held by a pause reads as `<producer>: verify held by a pause <elapsed> (<site>)`.
+// Elapsed counts from the run's start while it runs, and from the wait's or hold's start otherwise.
 // The holders clause is dropped when holders names none or fails.
-// The note names the run's current producer and measures elapsed time from now.
+// The note names the run's current producer.
 // A marker whose pid is dead reads as absent, so a crashed verify never sticks in the status line.
 func verifyWaiting(markerPath string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
 	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
@@ -165,8 +173,9 @@ func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), n
 }
 
 // parentLockWaiting returns the Waiting hook that reports a live parent lock wait from the record at waitPath, and falls through to next otherwise.
-// The note reads `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
-// A record whose writer is dead under alive reads as absent, so a wait left by a dead step is ignored.
+// The note reads `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`.
+// Elapsed counts from the record's start.
+// A record whose writer `alive` reports as not alive reads as absent, so a wait left by a dead step is ignored.
 func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bool, now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
 	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
 		wait, found, err := parentlock.ReadWait(waitPath, alive)
@@ -183,7 +192,8 @@ func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bo
 }
 
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
-// A gate wait is reported first and never hides the rest; after it come a parent lock wait, a verify and a shuttle wait, of which the first live one wins.
+// A gate wait is reported first and never hides the rest.
+// After it come a parent lock wait, a verify and a shuttle wait; the first live one wins.
 func reviewWaitingFor(loc *lymcwd.Location) func(st shedengine.Status) (shedverbs.WaitNote, error) {
 	if loc == nil {
 		return nil

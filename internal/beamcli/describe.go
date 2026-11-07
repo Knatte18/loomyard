@@ -1,4 +1,5 @@
-// describe.go is the "lym beam describe" sequence: it judges the named beam and has its change description written, stamped in the landing record and committed.
+// describe.go implements `lym beam describe`: it judges the named beam and writes its change description.
+// It stamps the description in the landing record and commits it.
 
 package beamcli
 
@@ -8,7 +9,10 @@ import (
 )
 
 // describe has the beam slug's change description written and returns its path and the verbs that follow.
-// It refuses an entry that is no open beam of this machine's pair, a beam whose pawl run is absent or not at Beam-Await, and a beam whose ready record stands, so nothing at or after landing rewrites the description.
+// It refuses an entry that is no open beam of this machine's pair;
+// a beam whose pawl run is absent or not at Beam-Await;
+// or a beam whose ready record stands.
+// Together these keep anything at or after landing from rewriting the description.
 func describe(deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam describe"
 	owners, err := deps.ReadOwners()

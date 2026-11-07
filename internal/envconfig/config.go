@@ -1,4 +1,5 @@
-// config.go defines env.yaml: the Config type, the template and spec accessors, LoadConfig and the forms a process start takes the variables in.
+// config.go defines env.yaml: the Config type, its template and spec accessors, and LoadConfig.
+// It also holds the forms the variables take when a process starts.
 
 package envconfig
 
@@ -45,13 +46,15 @@ type Config struct {
 	Vars map[string]string `yaml:"vars"`
 }
 
-// ConfigPerNameMaps returns the env.yaml keys whose entries are named by the operator and merged name by name, so a machine value overrides one hub value and keeps the rest.
+// ConfigPerNameMaps returns the env.yaml keys whose entries the operator names.
+// Those entries merge name by name, so a machine value overrides one hub value and keeps the rest.
 func ConfigPerNameMaps() []string {
 	return []string{varsKey}
 }
 
 // ConfigSpec returns the env module's layered-load spec.
-// The module is hub-wide and `vars` is a machine key, so the machine layer may set a variable and the local layer may not.
+// The module is hub-wide and `vars` is a machine key,
+// so the machine layer may set a variable and the local layer may not.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:        configModule,
@@ -66,7 +69,8 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the env module's configuration through the hub-wide layer stack under dirs.
 // A hub whose base file is absent resolves the template, which sets no variable.
-// A name that is no environment variable name, is PATH or starts with LYM_, in any letter case, is an error marked configengine.ErrInvalid naming the key.
+// A name that is no environment variable name, or that is PATH or starts with LYM_ in any letter case, is an error.
+// The error is marked configengine.ErrInvalid and names the key.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

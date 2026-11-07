@@ -1,9 +1,9 @@
-// config_test.go — untagged Tier-1 unit tests for loomengine.LoadConfig.
+// config_test.go holds untagged Tier-1 unit tests for loomengine.LoadConfig.
 //
-// Seeds a bare t.TempDir() with just a _lym/config/loom.yaml file (no real hub, no SeedConfig, no
-// git spawn) since configengine.Load's env-source build tolerates a missing .env — a live fabric
-// fixture would be integration-tagged (like websterengine/config_test.go), which is out of scope
-// for this package's plain "go test ./internal/loomengine/" run.
+// Each test seeds a bare t.TempDir() with only a _lym/config/loom.yaml file, with no real hub and no git spawn.
+// configengine.Load's env-source build tolerates a missing .env.
+// A live fabric fixture would need an integration tag.
+// The plain "go test ./internal/loomengine/" run leaves it out.
 
 package loomengine
 
@@ -41,7 +41,7 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// malformedLensesYAML is a lenses.yaml that fails to parse, for the fan-key rows that pin when LoadConfig reads it.
+// malformedLensesYAML is a lenses.yaml that fails to parse, for tests that show when LoadConfig reads the file.
 const malformedLensesYAML = "fans: [unclosed\n"
 
 // seedLensesConfig creates <baseDir>/_lym/config/lenses.yaml with the given contents.
@@ -53,9 +53,9 @@ func seedLensesConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// writeLoomConfigWithKey seeds a loom.yaml built from the shipped template with exactly one key's
-// value replaced, so a test can vary a single knob without restating the whole file and drifting
-// from the template's key set (which configengine.Load is strict about).
+// writeLoomConfigWithKey seeds a loom.yaml from the shipped template with one key's value replaced.
+// It lets a test vary a single knob without restating the whole file.
+// The key set must match the template, since configengine.Load is strict about it.
 func writeLoomConfigWithKey(t *testing.T, baseDir, key, value string) {
 	t.Helper()
 	writeLoomConfigWithKeys(t, baseDir, map[string]string{key: value})
@@ -133,8 +133,9 @@ func templateConfig() Config {
 	}
 }
 
-// TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields:
-// the template's own values, an unparseable lenses.yaml beside empty fan keys (never read), a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the soft-cap rule instead).
+// TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields.
+// Zero timeouts must load as zero, since shuttleengine.Spec reads zero as "defer to shuttle's run_timeout_min",
+// so the negative guard must not sweep them up.
 func TestLoadConfig_Loads(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -540,7 +541,8 @@ func writeLocalLoomConfig(t *testing.T, anchor, contents string) string {
 	return localPath
 }
 
-// loomTemplateWith returns the shipped template text with each top-level line of overrides replacing the template's line for the same key.
+// loomTemplateWith returns the shipped template text with overrides applied.
+// Each top-level line of overrides replaces the template's line for the same key.
 func loomTemplateWith(t *testing.T, overrides string) string {
 	t.Helper()
 	replacements := map[string]string{}
@@ -566,7 +568,8 @@ func loomTemplateWith(t *testing.T, overrides string) string {
 	return b.String()
 }
 
-// TestSetDiscussionAdvisors_LoadsBack verifies a discussion_advisors list of name and model mappings written through configengine.Set loads back as those advisors.
+// TestSetDiscussionAdvisors_LoadsBack verifies the discussion_advisors round trip.
+// A list of name and model mappings written through configengine.Set must load back as the same advisors.
 func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -589,8 +592,11 @@ func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
-// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable lenses.yaml.
+// TestLoadConfig_Refuses verifies that each invalid loom.yaml is refused at load time, naming the offending key.
+// The refused cases are an ungrammatical model-spec, which would otherwise reach a producer's spawn site;
+// a review key below one, refused with the way forward, since zero does not defer to shuttle for it;
+// a negative timeout, which would otherwise surface only when the producer it governs first spawns;
+// and a set fan key beside an unparseable lenses.yaml.
 func TestLoadConfig_Refuses(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -836,7 +842,8 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
-// oldFormatLoomYAML returns the shipped template with its two lens keys swapped for the retired producer keys in producerLines, and advisorsLine, when non-empty, as its discussion_advisors line.
+// oldFormatLoomYAML returns the shipped template with its lens keys dropped and producerLines appended.
+// advisorsLine, when non-empty, replaces the discussion_advisors line.
 func oldFormatLoomYAML(advisorsLine, producerLines string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(strings.TrimSuffix(ConfigTemplate(), "\n"), "\n") {
@@ -852,7 +859,11 @@ func oldFormatLoomYAML(advisorsLine, producerLines string) string {
 	return b.String() + producerLines
 }
 
-// TestMigrateConfig pins the loom.yaml migration: each retired producer value becomes its lens key, discussion_advisors is rewritten or emptied to match, comments and other keys are carried, the step_idle_timeout_min floor still applies, a migrated or producer-free document is returned unchanged, and a migrated stack of layers loads with the advisors each layer's migration left.
+// TestMigrateConfig pins the loom.yaml migration.
+// Each old producer value becomes its lens key, and discussion_advisors is rewritten or emptied to match.
+// Comments and other keys are carried, and the step_idle_timeout_min floor still applies.
+// A migrated or producer-free document is returned unchanged.
+// A migrated stack of layers loads with the advisors each layer's migration left.
 func TestMigrateConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1043,12 +1054,15 @@ func TestMigrateConfig(t *testing.T) {
 	})
 }
 
-// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an unanchored and a subpath-anchored *lymcwd.Location, hand-built rather than spawned.
+// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock.
+// It runs each at an unanchored and at a subpath-anchored *lymcwd.Location, hand-built rather than spawned.
 //
-// It also proves the two survive card 12's status/run-lock relocation onto shedrun.RunDir:
-// LoomBootstrapLock must never collide with shedrun's own StatusLock or RunLock for the same location and shedrun.SelfRunID, exactly as it never collided with loomengine's own now-deleted LoomStatusLock/LoomRunLock before the relocation -- this is what makes the overview's loomDirName-survives-the-status-relocation decision checkable rather than asserted.
+// It also checks that LoomBootstrapLock differs from shedrun's StatusLock and RunLock.
+// Each is computed for the same location and shedrun.SelfRunID.
 //
-// LoomScratchDir names exactly the directory the driver log and the bootstrap lock share, so the three never drift apart, and that directory is loom's own scratch tree under .lym/loom/, distinct from the run directory's .lym/shed/<runID>/ mirror that shedrun.ScratchDir names.
+// LoomScratchDir names the directory the driver log and the bootstrap lock share, so the three never drift apart.
+// That directory is loom's own scratch tree under .lym/loom/.
+// It is distinct from the run directory's .lym/shed/<runID>/ mirror, which shedrun.ScratchDir names.
 func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1080,8 +1094,8 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 			}
 
 			// Three distinct lock files is a correctness property, not a coincidence:
-			// LoomBootstrapLock must never collide with either the per-persist status
-			// lock or the whole-run lock, both now on shedrun's run directory.
+			// LoomBootstrapLock must never collide with the per-persist status lock or the whole-run lock.
+			// Both of those live on shedrun's run directory.
 			if got := LoomBootstrapLock(l); got == shedrun.StatusLock(l, shedrun.SelfRunID) {
 				t.Errorf("LoomBootstrapLock() = %q; must differ from shedrun.StatusLock() = %q", got, shedrun.StatusLock(l, shedrun.SelfRunID))
 			}
@@ -1103,7 +1117,8 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	}
 }
 
-// TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the decision record paths for a hand-built location.
+// TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the decision record paths.
+// The location is hand-built.
 func TestLandingAndApprovalAccessors(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1144,8 +1159,10 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ContainsEveryConfigYAMLTag walks the fields of Config and TapestryConfig via reflection and asserts every yaml tag appears in its module's template text -- so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
-// The Config Strictness Invariant makes a struct field with no matching template key a silent hole rather than a load error, which is exactly what this check guards against.
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks the fields of Config and TapestryConfig via reflection.
+// It asserts every yaml tag appears in its module's template text, so a field without a template line fails here.
+// A struct field with no matching template key is a silent hole, not a load error.
+// This check guards against that.
 //
 //testtiming:keep pins that every Config and TapestryConfig yaml tag has a template line, a reflection check no LoadConfig case makes
 //lym:seam internal/loomengine#Config
@@ -1177,8 +1194,10 @@ func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key, which no config struct carries because the recipe reads it where it builds the Implementer row:
-// tapestry.yaml's template defaults it to webster and TapestryConfigSpec leaves it unguarded, so the local layer may set it.
+// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key.
+// No config struct carries it, since the recipe reads it where it builds the Implementer row.
+// tapestry.yaml's template defaults it to webster.
+// TapestryConfigSpec leaves it unguarded, so the local layer may set it.
 func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1196,7 +1215,10 @@ func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *tes
 	}
 }
 
-// TestPathsOutsideRunRecords pins that PathsOutsideRunRecords drops every path under the run directory, the loom durable directory and the reviews directory, and keeps a code path, a path that only shares a records directory's name as a prefix and every file of a raddle run, which sits under none of the three.
+// TestPathsOutsideRunRecords pins what PathsOutsideRunRecords drops:
+// every path under the run directory, the loom durable directory or the reviews directory.
+// It keeps a code path and a path that only shares a records directory's name as a prefix.
+// Every file of a raddle run is kept too, since none of those directories holds it.
 func TestPathsOutsideRunRecords(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1224,8 +1246,7 @@ func TestPathsOutsideRunRecords(t *testing.T) {
 	}
 }
 
-// containsConfigKey reports whether text contains a "<key>:" line-start token, the shape every one
-// of this template's keys takes.
+// containsConfigKey reports whether a line of text starts with "<key>:", the form each config template key takes.
 func containsConfigKey(text, key string) bool {
 	needle := key + ":"
 	for _, line := range strings.Split(text, "\n") {
@@ -1236,9 +1257,16 @@ func containsConfigKey(text, key string) bool {
 	return false
 }
 
-// TestMigrateConfig_RetiredKeys pins what MigrateConfig rewrites for skip_merge_review, removes for fan_review and renames for the retired reviewer, fixer and fan keys: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
-// a document without the key keeps its zeros as the zero-rounds meaning; a retired model or fan key takes its new name and the template's line comment unless the new name is already set, each webster_* review-perch key then takes its code_* name, Webster's retired models are copied onto unset Merge keys, and every Merge-Review key is then dropped;
-// a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
+// TestMigrateConfig_RetiredKeys pins how MigrateConfig handles the retired config keys.
+// An old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null.
+// Its skip_merge_review true is turned to merge_max_bounces: 0, and then the key goes.
+// A document without the key keeps its zeros as the zero-rounds meaning.
+// A retired model or fan key takes its new name and the template's line comment unless the new name is already set.
+// Each webster_* review-perch key then takes its code_* name.
+// Webster's retired models are copied onto unset Merge keys, and every Merge-Review key is then dropped.
+// The fan_review key is removed.
+// A second run changes nothing.
+// A below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
 func TestMigrateConfig_RetiredKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

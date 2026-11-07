@@ -1,4 +1,5 @@
-// removefields_test.go covers removeFields, the pure mapping from a RemoveResult and the composite's SessionResult to the `lym fabric remove` envelope fields:
+// removefields_test.go covers removeFields, the pure mapping from a RemoveResult and the composite's SessionResult.
+// The checks cover the `lym fabric remove` envelope fields it produces:
 // the warp-branch keys, the teardown keys, the conditional keys absent when empty, and the unchanged existing ones.
 
 package fabriccli

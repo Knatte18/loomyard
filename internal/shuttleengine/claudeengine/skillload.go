@@ -1,7 +1,5 @@
-// skillload.go implements Claude's one-turn skill load: one typed message asks the model to load a list of skills through the Skill tool,
-// and the transcript a Stop payload names says which loads happened.
-// The check reads the transcript backward through readBackward and degrades to an unverified report on every failure and never errors,
-// since the transcript format is a Claude Code internal.
+// skillload.go implements the one-turn skill load: a typed message asks the model to load skills.
+// The check reads the transcript that the Stop payload names, whose format is a Claude Code internal.
 // All message text and transcript shape knowledge stays in this file, per the Shuttle Provider-Seam Invariant.
 package claudeengine
 
@@ -14,19 +12,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// SkillLoadMessage returns the single line, with no leading slash, that asks the model to load each of skills through the Skill tool in this one turn.
-// The line is engine choreography like the clear and compact sequences, not a stencil.
+// SkillLoadMessage returns the single line, with no leading slash, that asks the model to load skills.
+// The model makes one Skill tool call per skill, in order, all in one turn.
+// The line is engine wording, not a stencil, and the transcript check finds the turn by matching it exactly.
 func (c *Claude) SkillLoadMessage(skills []string) string {
 	return "Load these skills now, all in this one turn, with one Skill tool call each, in this order: " +
 		strings.Join(skills, ", ") +
 		". Do nothing else, and reply only `ok` followed by the skill names in order."
 }
 
-// ClassifySkillLoad classifies the load of skills asked by SkillLoadMessage from the transcript turnEnd's transcript_path names.
-// The latest main-chain user entry equal to the load message starts the turn,
-// and only main-chain entries after it count.
-// A skill is loaded when its Skill call is answered by a successful result, unknown when that result is an error or the latest skill listing does not name it, and missing otherwise.
-// The report is unverified for a missing transcript_path, an unreadable file, a transcript with no matching load message, or one with no skill listing.
+// ClassifySkillLoad reports which of skills the turn loaded, from the transcript that turnEnd's Stop payload names.
+// The turn starts at the latest main-chain user entry equal to the load message;
+// only main-chain entries after it count.
+// A skill is loaded when its Skill call is answered by a successful result.
+// It is unknown when that result is an error or the latest skill listing does not name it, and missing otherwise.
+// The report is unverified when the payload yields no readable transcript.
+// It is also unverified when the transcript has no matching load message or no skill listing.
 func (c *Claude) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport {
 	var payload struct {
 		TranscriptPath string `json:"transcript_path"`
@@ -112,10 +113,9 @@ func (e loadEntry) resultSucceeded() bool {
 	return json.Unmarshal(e.ToolUseResult, &result) == nil && result.Success
 }
 
-// classifyWindow classifies the load of skills in the complete lines of data,
-// which end at the transcript end.
-// It reports found false when the window holds no load message or no skill listing yet,
-// so the caller widens the window.
+// classifyWindow classifies the load of skills in the complete lines of data, which end at the transcript end.
+// It reports whether the window holds the load message and a skill listing;
+// when it does not, the caller widens the window.
 func classifyWindow(data []byte, message string, skills []string) (shuttleengine.SkillLoadReport, bool) {
 	var entries []loadEntry
 	for _, line := range bytes.Split(data, []byte{'\n'}) {

@@ -1,4 +1,5 @@
-// renumber_test.go pins what loomcli owns of the card verbs: the lease held around every apply step, the begun bound, and the wording of each refusal.
+// renumber_test.go pins what loomcli owns of the card verbs:
+// the lease held around every apply step, the begun bound, and the wording of each refusal.
 // The renumber itself is pinned by internal/planparser's tests.
 
 package loomcli
@@ -23,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// cardVerbFixture is a plan of three cards under a temp anchor whose scratch directories do not exist yet.
+// cardVerbFixture is a plan of cards under a temp anchor whose scratch directories do not exist yet.
 type cardVerbFixture struct {
 	anchor  string
 	planDir string
@@ -47,7 +48,8 @@ func newCardVerbFixture(t *testing.T, cards ...plankit.Card) cardVerbFixture {
 	return cardVerbFixture{anchor: anchor, planDir: d.planDir, deps: d}
 }
 
-// leaseWatch records the lease's acquisition and release and fails the test at any watched call made while it is not held.
+// leaseWatch records the lease's acquisition and release.
+// It fails the test at any watched call made while the lease is not held.
 type leaseWatch struct {
 	t        *testing.T
 	held     bool
@@ -101,7 +103,7 @@ func (w *leaseWatch) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// failingOps returns d's file seam with the first times calls of op on the file with the given base name failing.
+// failingOps returns the file seam ops with the first times calls of op on the file with the given base name failing.
 func failingOps(ops planparser.RenumberIO, op, base string, times int) planparser.RenumberIO {
 	remaining := times
 	fail := func(name string) error {

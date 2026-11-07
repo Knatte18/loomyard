@@ -1,4 +1,6 @@
-// loop.go ends a pair's detached step loop ahead of the session end: it kills the loop and its in-flight step tree, holds the loop lock through the session end and waits for the run lock.
+// loop.go ends a pair's detached step loop ahead of the session end.
+// It kills the loop and its in-flight step tree.
+// It holds the loop lock through the session end and waits for the run lock.
 
 package pairteardown
 
@@ -18,12 +20,14 @@ import (
 // runLockWait bounds the wait for the loop lock to be taken and for the run lock to be released.
 const runLockWait = 2 * time.Minute
 
-// errRunLockHeld is the sentinel awaitRunLockFree returns once its bound is spent with the run lock still held.
+// errRunLockHeld is the sentinel returned once the wait for the run lock spends its bound with the lock still held.
 var errRunLockHeld = errors.New("the run lock is still held")
 
-// killLoop kills the loop the pid file at pidPath records and the step tree it recorded, and reports whether it killed anything.
+// killLoop kills the loop the pid file at pidPath records and the step tree it recorded.
+// It reports whether it killed anything.
 // An absent pid file, and the teardown's own mark, kill nothing.
-// On Linux the loop is killed by pid only while the loop lock at lockPath is held and the pid still has the recorded start time;
+// On Linux the loop is killed by pid only while the loop lock at lockPath is held,
+// and the pid still has the recorded start time;
 // on Windows the loop's named job jobName is terminated, which ends the loop, its child and their descendants at once.
 // The pid file is left in place.
 func killLoop(pidPath, lockPath, jobName string) (bool, error) {
@@ -38,8 +42,10 @@ func killLoop(pidPath, lockPath, jobName string) (bool, error) {
 	return loopKilled || treeKilled, errors.Join(loopErr, treeErr)
 }
 
-// seizeLoopLock takes the loop lock at lockPath, killing the loop through kill before each attempt, and returns the function that releases it.
-// A loop spawned between a kill and the take holds the lock, so the kill runs again and the take is retried through sleep, at quietPollInterval, for at most attempts retries.
+// seizeLoopLock takes the loop lock at lockPath, killing the loop through kill before each attempt.
+// It returns the function that releases the lock.
+// A loop spawned between a kill and the take holds the lock, so the kill runs again,
+// and the take is retried through sleep, at quietPollInterval, for at most attempts retries.
 func seizeLoopLock(ctx context.Context, kill func() (bool, error), lockPath string, attempts int, sleep func(context.Context, time.Duration) error) (func() error, error) {
 	for i := 0; ; i++ {
 		if _, err := kill(); err != nil {
@@ -61,7 +67,8 @@ func seizeLoopLock(ctx context.Context, kill func() (bool, error), lockPath stri
 	}
 }
 
-// holdLoopLock kills the loop through kill, takes the loop lock at lockPath and replaces the pid file at pidPath with the teardown's mark, a record naming no loop process and no child.
+// holdLoopLock kills the loop through kill and takes the loop lock at lockPath.
+// It replaces the pid file at pidPath with the teardown's mark, a record naming no loop process and no child.
 // The returned release function drops the lock.
 // With sessionEnded true it leaves the mark, which bars every later loop up to the removal;
 // with false it first puts back the pid file it replaced, or removes the mark when there was none.
@@ -92,7 +99,8 @@ func holdLoopLock(ctx context.Context, kill func() (bool, error), pidPath, lockP
 	}, nil
 }
 
-// awaitRunLockFree waits until the run lock at lockPath is released, retrying through sleep, at quietPollInterval, for at most attempts retries.
+// awaitRunLockFree waits until the run lock at lockPath is released.
+// It retries through sleep, at quietPollInterval, for at most attempts retries.
 // It returns errRunLockHeld once the bound is spent.
 func awaitRunLockFree(ctx context.Context, lockPath string, attempts int, sleep func(context.Context, time.Duration) error) error {
 	for i := 0; ; i++ {
@@ -112,9 +120,11 @@ func awaitRunLockFree(ctx context.Context, lockPath string, attempts int, sleep 
 	}
 }
 
-// awaitRunLockNamingHolder is awaitRunLockFree whose spent bound names the holder: the pid of the newest unfinished step record in stepsDir, or an unknown process when none is unfinished, as for a Go driver, which writes none.
+// awaitRunLockNamingHolder waits for the run lock at lockPath to be released, or fails once its bound is spent.
+// The error names the holder as the pid of the newest unfinished step record in stepsDir.
+// With no unfinished step record, the holder is an unknown process, as with a Go driver, which writes none.
 // The loop's pid file never names the holder, since the loop and its child are dead by then.
-// The error ends with the way forward of retrying the removal once the holder ends.
+// The error ends by saying to retry the removal once the holder ends.
 func awaitRunLockNamingHolder(ctx context.Context, lockPath, stepsDir, slug string, attempts int, sleep func(context.Context, time.Duration) error) error {
 	err := awaitRunLockFree(ctx, lockPath, attempts, sleep)
 	if !errors.Is(err, errRunLockHeld) {

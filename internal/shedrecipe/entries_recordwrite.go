@@ -8,8 +8,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// recordWriteEntry is the Constructor for the "RecordWrite" registry row: it takes no Config key and returns loomshed.NewRecordWrite over Env.RecordWrite.
-// The record, support log and discussion directory paths must be absolute, and ReadBody, ReadStored and Commit must be non-nil; the refusal names the Env field.
+// recordWriteEntry is the Constructor for the "RecordWrite" registry row.
+// It takes no Config key and returns loomshed.NewRecordWrite over Env.RecordWrite.
+// The record, support log and discussion directory paths must be absolute.
+// ReadBody, ReadStored and Commit must be non-nil; the refusal names the Env field.
 func recordWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "RecordWrite"
 	if err := configRejectUnknown(cfg); err != nil {

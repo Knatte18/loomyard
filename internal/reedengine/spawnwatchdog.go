@@ -1,12 +1,11 @@
-// spawnwatchdog.go owns the per-hub watchdog daemon's detached spawn for every caller: reedcli's
-// up/attach/resume, and (once internal/loomcli wires it in) loom's own start path. The daemon is
-// per-hub and deliberately outlives any one worktree's Engine — that is why cmd.Dir is pinned to
-// the hub below, and why SpawnWatchdog is a package-level function rather than an Engine method.
-// suppress is passed in rather than computed here so the "never re-exec os.Executable() under
-// go test" guard stays visible at each call site, instead of being buried inside this file.
+// spawnwatchdog.go owns the detached spawn of the per-hub watchdog daemon for every caller that starts it.
+// The daemon is per-hub and outlives any one worktree's Engine.
+// That is why cmd.Dir is pinned to the hub below, and why SpawnWatchdog is a package-level function.
+// suppress is passed in by the caller,
+// so the guard against re-executing os.Executable() under go test stays visible at each call site.
 //
-// internal/reedengine is also the standalone engine's own package, and this function is inert
-// unless called with a non-empty hubPath, which standalone never does.
+// internal/reedengine is also the standalone engine's own package.
+// SpawnWatchdog does nothing unless hubPath is non-empty, which the standalone engine never passes.
 
 package reedengine
 
@@ -22,20 +21,20 @@ import (
 
 // SpawnWatchdog attempts to spawn the per-hub watchdog daemon detached, best-effort.
 //
-// It returns immediately when suppress is set (a test binary, where re-exec'ing os.Executable()
-// would run the whole suite recursively) or when hubPath is empty (this caller was never given a
-// hub, e.g. the watchdog verb's own PersistentPreRunE early return).
+// It returns immediately when suppress is set, or when hubPath is empty.
+// A test binary sets suppress, because re-executing os.Executable() there would run the whole suite recursively.
 //
 // shellPath is passed unconditionally, empty or not.
-// This spawn is best-effort and nobody watches its child's stderr, so refusing here would silently cost the hub its entire watchdog daemon over one empty config value, while an empty shell costs only the descendant half of a reap on Windows.
+// The spawn is best-effort, and nobody reads the child's stderr.
+// Refusing an empty shell here would silently cost the hub its whole watchdog daemon over one empty config value.
+// An empty shell costs only the descendant half of a reap on Windows.
 //
-// The child's nil stdio gives it the null device, and its environment drops LYM_LOG_FILE so the operator's log file cannot reroute the daemon's stderr half.
+// The child's nil stdio gives it the null device,
+// and its environment drops LYM_LOG_FILE so the operator's log file cannot reroute the daemon's stderr half.
 // LYM_LOG_LEVEL passes on unchanged, so a spawn run at Debug verbosity starts a daemon at Debug.
 //
-// A spawn failure is never fatal to the caller's own operation: up, resume and attach each already
-// succeeded at their own engine op by the time this runs, and the daemon is a convenience the
-// operator can always start by hand (running `lym reed watchdog` in the foreground) if this
-// best-effort spawn does not land.
+// A spawn failure is never fatal to the caller's own operation, which has already succeeded by the time this runs.
+// The operator can always start the daemon by hand with `lym reed watchdog` in the foreground.
 func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	if suppress || hubPath == "" {
 		return
@@ -56,9 +55,9 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	}
 
 	cmd := exec.Command(exe, "reed", "watchdog", "--hub-path", hubPath, "--tmux", tmuxPath, "--shell", shellPath)
-	// The daemon is per-hub and outlives the worktree that spawned it. On Windows a held cwd handle
-	// on a worktree directory blocks that directory's deletion, which would break fabric teardown —
-	// pinning cmd.Dir to the hub instead avoids that entirely.
+	// The daemon is per-hub and outlives the worktree that spawned it.
+	// On Windows a held cwd handle on a worktree directory blocks that directory's deletion.
+	// That would break fabric teardown, so pinning cmd.Dir to the hub avoids it entirely.
 	cmd.Dir = hubPath
 	cmd.Env = spawnWatchdogEnv(os.Environ())
 	// Leave stdin/stdout/stderr nil so no parent handles are inherited.

@@ -12,7 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestResolveRound_NonNotExistStatErrorIsReturned arranges a stat failure that is not fs.ErrNotExist (a permission failure from an unsearchable run dir), asserting that it surfaces as an error rather than being read as absence -- which would otherwise truncate the scan or re-seed an already-judged segment.
+// TestResolveRound_NonNotExistStatErrorIsReturned arranges a stat failure that is not fs.ErrNotExist.
+// The failure is a permission error from an unsearchable run dir, and it must surface as an error.
+// Read as absence, it would truncate the scan or re-seed an already-judged segment.
 // Skipped when running as root, which bypasses directory permission checks.
 func TestResolveRound_NonNotExistStatErrorIsReturned(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -27,7 +29,7 @@ func TestResolveRound_NonNotExistStatErrorIsReturned(t *testing.T) {
 	}
 	writeReport(t, dir, 1)
 
-	// Remove the directory's search (execute) bit so stat-ing a file inside it fails with a permission error rather than not-exist.
+	// Remove the directory's search (execute) bit, so a stat inside it fails with a permission error.
 	if err := os.Chmod(dir, 0o000); err != nil {
 		t.Fatalf("Chmod(%q, 0o000) = %v; want nil", dir, err)
 	}

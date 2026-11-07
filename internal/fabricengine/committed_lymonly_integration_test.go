@@ -1,10 +1,5 @@
-// committed_lymonly_integration_test.go pins the value-identity argument from the discussion's
-// commit-result-committed-method decision: a Fabric.Commit call whose file list is
-// ScopedPathspec(AnchorRel, ["_lym"])-scoped -- _lym-only input, the same shape every one of the
-// three CLI callers passes -- never produces a warp commit, so Committed() equals today's
-// WeftCommitted for those callers. Package fabricengine (internal) to reuse
-// commit_integration_test.go's fixture helpers (newCommitFixture, swapPushRecorder,
-// writeWarpFile) and syncweft_integration_test.go's writeWeftConfigContent.
+// committed_lymonly_integration_test.go checks that a _lym-only Fabric.Commit never makes a warp commit.
+// It reuses fixture helpers from commit_integration_test.go and syncweft_integration_test.go.
 
 package fabricengine
 
@@ -12,19 +7,15 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// TestCommit_LymOnlyPathspec_NeverProducesWarpCommit asserts that a Commit call scoped to
-// ScopedPathspec(".", ["_lym"]) -- the pathspec shape every CLI caller uses -- never lands a warp
-// commit, so Committed() is value-identical to WeftCommitted for that call shape, even when an
-// unrelated warp-side file is also dirty in the worktree.
+// TestCommit_LymOnlyPathspec_NeverProducesWarpCommit asserts that a Commit scoped to _lym never lands a warp commit.
+// Committed() is therefore value-identical to WeftCommitted, even when an unrelated warp-side file is also dirty.
 func TestCommit_LymOnlyPathspec_NeverProducesWarpCommit(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
 
-	// Dirty an unrelated warp-side file to prove the _lym-only pathspec, not
-	// merely the absence of warp-side changes, is what keeps WarpCommitted
-	// false.
+	// Dirty an unrelated warp-side file, since a clean warp side keeps WarpCommitted false even without the pathspec.
 	writeWarpFile(t, warpPath, "README", "warp change not passed to Commit")
 	writeWeftConfigContent(t, weftPath, "lym-only change")
 

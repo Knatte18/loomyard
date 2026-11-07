@@ -1,7 +1,9 @@
 //go:build linux
 
-// cli_integration_test.go drives `lym hibernate status`, `cancel` and `request` through the cobra commands over a hubforge hub with one pair, the hub wiring's request path and dobby liveness, and the operator index the root renders.
-// The test calls no t.Parallel: it sets the strand-name variable.
+// cli_integration_test.go drives `lym hibernate status`, `cancel` and `request` through the cobra commands.
+// It runs them over a hubforge hub with one pair.
+// It covers the hub wiring's request path, dobby liveness, and the operator index the root renders.
+// The test calls no t.Parallel: it sets `agentname.StrandNameEnv`.
 
 package hibernatecli
 

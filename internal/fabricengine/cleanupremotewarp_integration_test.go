@@ -1,7 +1,10 @@
-// cleanupremotewarp_integration_test.go covers Topology.CleanupRemoteWarp against hubforge bare origins:
-// a dry run classifies every branch on the warp origin, apply deletes only the candidate, and a tip that moves after it was observed keeps the branch.
+// cleanupremotewarp_integration_test.go covers Topology.CleanupRemoteWarp against hubforge bare origins.
+// A dry run classifies every branch on the warp origin.
+// Apply deletes only the candidate, and a tip that moves after it was observed keeps its branch.
 //
-// Every hub is built through hubforge.CopyHub with an empty branch_prefix, so a branch is fabric-managed when the weft origin holds its weft branch; one test sets a prefix afterwards.
+// Every hub is built through hubforge.CopyHub with an empty branch_prefix.
+// A branch is fabric-managed when the weft origin holds its weft branch.
+// One test sets a prefix afterwards.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -25,14 +28,16 @@ func markManaged(t *testing.T, h *hubforge.Hub, branch string) {
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, h.Location), "git", "push", "origin", "HEAD:refs/heads/"+fabricengine.RecordsBranchName(branch))
 }
 
-// pushLandedLeftover pushes the prime's HEAD to origin as branch, so all its work is already on the default branch.
+// pushLandedLeftover pushes the prime's HEAD to origin as branch,
+// so all its work is already on the default branch.
 func pushLandedLeftover(t *testing.T, h *hubforge.Hub, branch string) {
 	t.Helper()
 
 	gitkit.MustRun(t, h.Location.WorktreePath(), "git", "push", "origin", "HEAD:refs/heads/"+branch)
 }
 
-// pushUnlandedLeftover pushes a commit reachable from no other ref to origin as branch, with force so it can also move an existing tip.
+// pushUnlandedLeftover pushes a commit reachable from no other ref to origin as branch.
+// It uses force, so it can also move an existing tip.
 func pushUnlandedLeftover(t *testing.T, h *hubforge.Hub, branch, file string) {
 	t.Helper()
 
@@ -231,8 +236,8 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 	})
 }
 
-// TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches pins that, with branch_prefix set, a branch lacking the prefix is read as the bare slug of a pair made before it was set:
-// the weft evidence makes it managed and deletable, and without evidence it is kept as not fabric-managed.
+// With branch_prefix set, a branch lacking the prefix is read as the bare slug of a pair made earlier.
+// Weft evidence makes it managed and deletable; without evidence it is kept as not fabric-managed.
 func TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -260,7 +265,8 @@ func TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches(t *testing.T) {
 	}
 }
 
-// TestCleanupRemoteWarp_BranchPrefixSetTakesTheBareSlugsLock pins that, with branch_prefix set, the sweep takes the teardown lock of a bare branch's own slug and keeps the branch while that lock is held.
+// With branch_prefix set, the sweep takes the teardown lock of a bare branch's own slug.
+// It keeps the branch while that lock is held.
 func TestCleanupRemoteWarp_BranchPrefixSetTakesTheBareSlugsLock(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,9 +1,6 @@
-// spawn_test.go — Tier-1 (untagged, no git spawn, no process fork) tests for SpawnDetachedPush's
-// skip-env/both-paths-empty gating and PushWarpAt's SkipGit/SkipPush gating.
-// The real fork path is intentionally not exercised here — forking from the test binary would
-// re-exec the test binary itself;
-// the real both-sides push is covered by the batch's integration test
-// (internal/fabriccli/pushbypass_integration_test.go).
+// spawn_test.go holds Tier-1 tests: untagged, with no git spawn and no process fork.
+// They cover SpawnDetachedPush's skip-env and empty-path gating, and PushWarpAt's SkipGit and SkipPush gating.
+// The real fork path is not exercised here: forking from the test binary would re-exec the test binary itself.
 
 package fabricengine
 
@@ -17,10 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where SpawnDetachedPush must return
-// nil without forking a child: FABRIC_SKIP_GIT set, FABRIC_SKIP_PUSH set, and both paths empty (with
-// neither env var set).
-// With both paths set and no skip env it returns ErrSpawnUnderTest instead of forking the test binary.
+// TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers the cases where SpawnDetachedPush returns nil without forking.
+// The cases are FABRIC_SKIP_GIT set, FABRIC_SKIP_PUSH set, and both paths empty with neither env var set.
+// With both paths set and no skip env, it returns ErrSpawnUnderTest instead of forking the test binary.
 func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -46,8 +42,8 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	}
 }
 
-// TestPushWarpAt_Gating covers PushWarpAt's SkipGit/SkipPush early-out, which returns nil without
-// ever constructing a real gitrepo.Repo push — no git spawn, since PushCoalesced is never reached.
+// TestPushWarpAt_Gating covers PushWarpAt's SkipGit and SkipPush early-out, which returns nil.
+// It never constructs a real gitrepo.Repo push, so it spawns no git process and never reaches PushCoalesced.
 func TestPushWarpAt_Gating(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -66,7 +62,9 @@ func TestPushWarpAt_Gating(t *testing.T) {
 	}
 }
 
-// TestPushSpawnCommand covers the child's arguments, working directory and owner: the owner is the teardown slug when set and the hub owner otherwise, and a flag is present only when its field is set, parent-locked included, except the pause flag, which is always present.
+// TestPushSpawnCommand covers the child's arguments, working directory and owner.
+// The owner is the teardown slug when set and the hub owner otherwise.
+// A flag is present only when its field is set, parent-locked included, except the pause flag, which is always present.
 func TestPushSpawnCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

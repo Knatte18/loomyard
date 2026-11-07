@@ -1,5 +1,5 @@
-// validate.go implements the `validate-review` burler verb: the read-only self-check of a review file,
-// running the same parse the review gate of every burler round runs.
+// validate.go implements the `validate-review` burler verb.
+// The verb is a read-only self-check of a review file: it runs the same parse every burler round's review gate runs.
 
 package burlercli
 
@@ -14,11 +14,12 @@ import (
 )
 
 // validateReviewVerb is the cobra name of the validate-review verb.
-// resolvePersistentPreRun skips hub, mode and engine wiring for it, since the check reads one told file.
+// The verb skips hub, mode and engine wiring, since the check reads only the file it is given.
 const validateReviewVerb = "validate-review"
 
 // validateReviewCmd builds `lym burler validate-review <review-file>`.
-// It prints ok with the absolute review file when the file parses, and the parse error verbatim with exit 1 otherwise.
+// It prints ok with the absolute review file when the file parses.
+// Otherwise it prints the parse error verbatim and exits with 1.
 // A relative path resolves against the seam cwd.
 func (c *burlerCLI) validateReviewCmd() *cobra.Command {
 	return &cobra.Command{

@@ -1,4 +1,5 @@
-// darnwrite_test.go exercises the Darn-Write row's producer at Tier 1: a fake session and in-memory seams recording the order of their calls.
+// darnwrite_test.go exercises the Darn-Write row's producer at Tier 1:
+// a fake session and in-memory seams recording the order of their calls.
 
 package loomshed
 
@@ -18,7 +19,9 @@ import (
 // darnStopReport is the stop report the fixture's description file holds.
 const darnStopReport = "The entry is outdated: landed work removed the module it names."
 
-// darnFixture is one Darn-Write producer setup over a temporary directory holding a record, a support log and a description: seams that log their calls and a fake session reporting a fixed verdict.
+// darnFixture is one Darn-Write producer setup.
+// It runs over a temporary directory holding a record, a support log and a description.
+// Its seams log their calls, and its fake session reports a fixed verdict.
 type darnFixture struct {
 	deps     DarnDeps
 	events   []string
@@ -106,7 +109,7 @@ func TestDarnWrite_Call(t *testing.T) {
 		wantResult shedengine.Outcome
 		wantErr    string
 		wantReason string
-		// wantReasonHas lists words the reason must hold beyond wantReason.
+		// wantReasonHas lists further words the reason must hold.
 		wantReasonHas []string
 		// wantReasonLacks is a text the reason must not hold.
 		wantReasonLacks string

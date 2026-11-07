@@ -1,5 +1,6 @@
-// sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant: every registered lym module must either be exercised by a scenario in one of the tools/sandbox/*SUITE.md suite files (declared via an explicit **Covers:** tag) or be named on this test's exclusion allowlist with a documented reason.
-// This is the sandbox-suite analogue of registration_test.go's "exists => registered" guard.
+// sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant:
+// every registered lym module needs a scenario in a tools/sandbox/*SUITE.md file, declared by a **Covers:** tag.
+// A module without one is named on this test's exclusion allowlist, with a documented reason.
 
 package main
 
@@ -16,15 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// coversLinePattern matches a "**Covers:** <module>[, <module>...]" line in any
-// tools/sandbox/*SUITE.md suite file, capturing the comma/whitespace-separated
-// module list.
+// coversLinePattern matches a **Covers:** line in a tools/sandbox/*SUITE.md suite file, capturing its module list.
 var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 
-// excludedModules is the Sandbox Suite Coverage allowlist: modules that are
-// intentionally never exercised by a sandbox scenario, each with a one-line
-// reason. Coverage is module-level (see tools/sandbox's command doc),
-// so each entry excludes the whole module, not individual subcommands.
+// excludedModules is the allowlist of modules that no sandbox scenario exercises;
+// each entry carries a written reason and excludes the whole module, since coverage is module-level.
 var excludedModules = []scankit.Entry{
 	{
 		Key: "ide",
@@ -74,8 +71,8 @@ var excludedModules = []scankit.Entry{
 //lym:guard
 func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	tiergate.Require(t, 0)
-	// Build the live cobra root and collect every registered module name, skipping cobra's completion subtree —
-	// mirrors clitree_test.go's walk skip so the module set here never drifts from what that walk already uses.
+	// Collect the module names registered on the live cobra root.
+	// The completion subtree is skipped, since it is cobra's and not a lym module.
 	root := newRoot()
 	registered := make(map[string]bool)
 	for _, child := range root.Commands() {
@@ -92,7 +89,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 
 	covered := parseCoveredModules(t)
 
-	// Sanity sub-test: both sets must be non-empty.
+	// An empty set would let the asserts below pass vacuously.
 	t.Run("discovered_non_empty", func(t *testing.T) {
 		if len(registered) == 0 {
 			t.Error("sandbox coverage guard: no registered modules found via newRoot().Commands(); the cobra root may be misconfigured")
@@ -102,7 +99,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 		}
 	})
 
-	// Assert 1: every registered module must be covered or excluded.
+	// A module without a covering tag must be on the allowlist, or the scenario coverage has a gap.
 	excluded := scankit.NewAllowlist(excludedModules)
 	for m := range registered {
 		if len(covered[m]) > 0 {
@@ -117,7 +114,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 		)
 	}
 
-	// Assert 2: every covered/excluded token must name a registered module (drift guard).
+	// A covered or excluded name must be a registered module, so a stale or misspelled name fails the guard.
 	for m, files := range covered {
 		if !registered[m] {
 			t.Errorf(
@@ -165,9 +162,7 @@ func parseCoveredModules(t *testing.T) map[string][]string {
 			if match == nil {
 				continue
 			}
-			// Scenarios without a Covers line are skipped, so every token that does
-			// appear is expected to be a bare registered-module name — no
-			// parenthesized-token stripping is needed here.
+			// Each token is trimmed and an empty one is skipped; a token that names no module fails the guard.
 			for _, token := range strings.Split(match[1], ",") {
 				token = strings.TrimSpace(token)
 				if token != "" {

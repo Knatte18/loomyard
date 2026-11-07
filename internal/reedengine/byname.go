@@ -11,16 +11,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
-// Parent-exit wait tuning for WaitPIDGone: the cap is on attempt COUNT, not only elapsed time, per
-// the Live-Substrate Spawn Observability invariant's retry-loop clause.
+// Parent-exit wait tuning for WaitPIDGone.
+// The cap counts attempts, not only elapsed time.
+// It follows the Live-Substrate Spawn Observability invariant's retry-loop clause.
 const (
-	// ParentExitMaxAttempts caps the liveness polls before WaitPIDGone gives up.
+	// ParentExitMaxAttempts is the number of liveness polls a parent-exit wait makes before it gives up.
 	ParentExitMaxAttempts = 100
-	// ParentExitPollInterval is the sleep between two liveness polls.
+	// ParentExitPollInterval is the sleep between two liveness polls of a parent-exit wait.
 	ParentExitPollInterval = 100 * time.Millisecond
 )
 
-// ResolveStrandGUID returns the guid of the one strand of this worktree's session that name addresses: its full name, its role segment, or a legacy exact name (agentname.Matches).
+// ResolveStrandGUID returns the guid of the one strand of this worktree's session that name addresses:
+// its full name, its role segment, or a legacy exact name (agentname.Matches).
 // An unknown name and an ambiguous one (two strands carrying it) are both refused, so a removal never lands on a guess.
 func (e *Engine) ResolveStrandGUID(name string) (string, error) {
 	res, err := e.Status()
@@ -30,7 +32,8 @@ func (e *Engine) ResolveStrandGUID(name string) (string, error) {
 	return guidByName(res.Strands, name)
 }
 
-// guidByName is ResolveStrandGUID's pure lookup over an already-read strand list.
+// guidByName returns the guid of the one strand in strands that name addresses.
+// It refuses an unknown name and an ambiguous one.
 func guidByName(strands []StrandStatus, name string) (string, error) {
 	var matches []StrandStatus
 	for _, s := range strands {
@@ -52,10 +55,10 @@ func guidByName(strands []StrandStatus, name string) (string, error) {
 	}
 }
 
-// WaitPIDGone polls alive(pid) up to maxAttempts times, sleeping interval between polls, and reports
-// whether the process was seen gone. Liveness, not a parent-pid change, is the predicate because
-// Windows never reparents an orphan. A false return means the cap was reached with the process
-// still alive.
+// WaitPIDGone reports whether the process is seen gone within maxAttempts polls of alive(pid).
+// It sleeps interval between polls.
+// Liveness, not a parent-pid change, is the predicate because Windows never reparents an orphan.
+// A false return means the cap was reached with the process still alive.
 func WaitPIDGone(pid int, alive func(int) bool, maxAttempts int, interval time.Duration) bool {
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if !alive(pid) {

@@ -1,22 +1,22 @@
-// Package lymcwd is the entry gate that converts "the process started somewhere" into "these are
-// the coordinates of a legal lym worktree,
-// or here is why this is not one".
-// It is no longer a geometry owner — constructing paths from structural tokens is precisely what it
-// stops doing — it resolves the active Location from a working directory and exposes typed
-// accessors for the paths every caller derives from that Location, so no other package recomputes
-// geometry from raw os.Getwd or git --show-toplevel calls.
-// WithCwd/CwdFrom are the per-call cwd-injection seam that carries this working directory through a
-// context.Context instead of the process cwd, and the value they carry is always absolute.
+// Package lymcwd is the entry gate for lym commands.
+// It resolves a working directory to the coordinates of a legal lym worktree, or reports why the directory is not one.
+// It exposes typed accessors for the paths every caller derives from that Location,
+// so no other package recomputes geometry from raw os.Getwd or git --show-toplevel calls.
+// WithCwd and CwdFrom carry a working directory through a context.Context instead of the process cwd.
+// The value they carry is always absolute.
 //
 // # The hub suffix
 //
-// `-LYMHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`.
-// The suffix is declared twice by sanction: this package's private hubSuffix, for RepoName derivation, and internal/fabricengine's exported HubSuffix, used by HubPath.
-// Both move together, with TestEnforcement_GeometryLiterals's geometryTokenOwners row as the third site.
-// Hub discovery is name-independent: the hub is the worktree root's parent and looksLikeHub is structural,
-// so a hub still carrying the retired suffix resolves, and only the display-only RepoName degrades.
-// Such a hub is never renamed in place, because launcher scripts and the tmux socket key are bound to the hub's absolute path;
-// the operator removes the old container by hand and re-clones, and `clone --reset` resolves the new suffix only.
+// `-LYMHUB` is the only hub container suffix; no code parses, trims or recognises the older `-HUB`.
+// The suffix is declared twice on purpose:
+// this package's private hubSuffix derives RepoName, and internal/fabricengine's exported HubSuffix backs HubPath.
+// Both change together, with the geometryTokenOwners row of TestEnforcement_GeometryLiterals as the third site.
+// Hub discovery ignores the name:
+// the hub is the worktree root's parent, and looksLikeHub checks its structure.
+// A hub that still carries the older suffix therefore resolves, and only the display-only RepoName degrades.
+// Such a hub is never renamed in place.
+// Launcher scripts and the tmux socket key are bound to the hub's absolute path.
+// An operator removes the old container by hand and re-clones; `clone --reset` resolves the new suffix only.
 package lymcwd
 
 import (
@@ -28,21 +28,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/dotgit"
 )
 
-// Location and geometry constants define directory and file names used by lym configuration and fabric/board/hub geometry.
+// Location and geometry constants name directories and files for lym configuration and fabric, board and hub geometry.
 // All path construction must use these constants, never inline string literals.
 const (
 	// hubSuffix is the suffix appended to a repo name to form the hub container directory
-	// (e.g. "loomyard" → "loomyard-LYMHUB"). It stays private to lymcwd: RepoName derives
-	// from it below, but the exported HubPath(parent, name) constructor moved to
-	// internal/fabricengine, which declares its own copy of this literal.
+	// (e.g. "loomyard" → "loomyard-LYMHUB").
+	// RepoName derives from it.
+	// HubPath is exported from internal/fabricengine, which declares its own copy of this literal.
 	hubSuffix = "-LYMHUB"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
 var ErrNotAGitRepo = errors.New("not a git repository")
 
-// Location represents the resolved coordinates of a legal lym worktree: the repo it belongs to, the hub container it lives inside, its own name within that hub, and the anchored subpath lym operates at.
-// It deliberately does not store Cwd or the worktree path themselves — under the strict cwd gate, cwd is provably equal to AnchorPath() after a successful resolve, and the worktree path is a direct child of HubPath by construction, so both are derivable rather than stored.
+// Location represents the resolved coordinates of a legal lym worktree.
+// It records the repo name, the hub path, the worktree name within that hub, and the anchor subpath in AnchorRel.
+// It stores neither the cwd nor the worktree path, since both derive from the other fields.
+// Under the strict cwd gate, the cwd equals AnchorPath() after a successful resolve.
+// The worktree path is always a direct child of HubPath.
 type Location struct {
 	RepoName     string
 	HubPath      string
@@ -62,45 +65,39 @@ func (l *Location) AnchorPath() string {
 
 // Getwd returns the current working directory.
 //
-// It wraps os.Getwd and is the ONLY permitted os.Getwd call outside cmd/lym/main.go.
-// Returns an error if the current directory cannot be determined.
+// It wraps os.Getwd. Code outside cmd/lym/main.go calls this instead of os.Getwd.
+// It returns an error if the current directory cannot be determined.
 func Getwd() (string, error) {
 	return os.Getwd()
 }
 
-// Resolve builds a Location from the given cwd by finding the worktree root in-process and reading
-// the recorded .lym-anchor marker for AnchorRel, then requires cwd to equal the anchored directory
-// exactly.
+// Resolve builds a Location from cwd.
+// It finds the worktree root in-process and reads the recorded .lym-anchor marker for AnchorRel.
+// It then requires cwd to equal the anchored directory exactly.
 //
-// AnchorRel defaults to "."
-// when no anchor is recorded.
-// Resolve does NOT check for _lym/ (that stays in internal/configengine).
+// AnchorRel defaults to "." when no anchor is recorded.
+// Resolve does not check for _lym/; internal/configengine checks it.
 //
-// Returns the Location on success, ErrNotAGitRepo when cwd is outside a git repo, or
-// ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
+// It returns the Location on success.
+// It returns ErrNotAGitRepo when cwd is outside a git repo.
+// It returns ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
 }
 
-// ResolveWorktree builds a Location like Resolve but applies NO cwd gate.
+// ResolveWorktree builds a Location like Resolve, without the cwd gate.
 //
-// It exists for callers holding a worktree root (not an acting cwd) where the gate would spuriously
-// fire.
-// The gate applies only to Resolve(cwd), not internal sibling-layout construction above a subpath
-// anchor.
+// It serves callers that hold a worktree root rather than an acting cwd, for whom the gate would fire wrongly.
+// Only Resolve applies the gate; layout construction above a subpath anchor does not need it.
 func ResolveWorktree(worktreeRoot string) (*Location, error) {
 	return resolveCore(worktreeRoot, false)
 }
 
-// ResolveWithAnchor builds a Location exactly as Resolve does,
-// but takes the anchor as a parameter instead of reading the recorded marker,
-// and applies NO cwd gate.
-// It is a deliberate bypass, not a general-purpose resolver: a caller reaching for it to escape a
-// gate failure is misusing it — the correct fix is to stand in the anchored directory.
-// It must stay ungated because both its callers stand somewhere the gate would reject: fabric's
-// clone passes the freshly-cloned worktree root while the anchor may be a non-"."
-// subpath,
-// and gitkit injects anchors into its fixture repos standing in for hubs.
+// ResolveWithAnchor builds a Location as Resolve does, but takes the anchor as a parameter.
+// It applies no cwd gate.
+// It is not a general resolver: a caller that uses it to escape a gate failure is misusing it,
+// and the fix is to stand in the anchored directory.
+// Its callers, such as a fresh clone, stand where the gate would reject them, so it must stay ungated.
 func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
 	return resolveWithAnchorCore(cwd, anchor, false)
 }
@@ -127,9 +124,11 @@ func NamedWorktree(hubPath, name string) (*Location, error) {
 }
 
 // resolveCore is the shared body behind Resolve and ResolveWorktree.
-// It finds the worktree root, reads the worktree's own recorded anchor for AnchorRel, and optionally applies the strict cwd gate.
-// applyGate is true only for Resolve's entry-point cwd.
-// ResolveWorktree passes false because its input is a worktree root, not an acting cwd, and must never be gated against itself.
+// It finds the worktree root and reads the worktree's recorded anchor for AnchorRel.
+// It applies the strict cwd gate when applyGate is set.
+// applyGate is true only for Resolve, whose input is the acting cwd.
+// ResolveWorktree passes false, because its input is a worktree root rather than an acting cwd,
+// and it must never be gated against itself.
 func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	workTreeRoot, err := gitWorktreeRoot(cwd)
 	if err != nil {
@@ -138,10 +137,9 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 
 	hubPath := filepath.Dir(workTreeRoot)
 
-	// AnchorRel falls back to "." rather than a cwd-derived relative path: the
-	// name Location makes a lie of a cwd-dependent answer, and _lym would
-	// otherwise resolve to a different place depending on where the user
-	// happened to stand.
+	// AnchorRel falls back to "." rather than a path derived from cwd.
+	// A cwd-dependent value would make Location lie.
+	// _lym would resolve to a different place depending on where the user stood.
 	anchorRel := "."
 	anchor, found, err := readRecordedAnchor(hubPath, filepath.Base(workTreeRoot))
 	if err != nil {
@@ -155,8 +153,7 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 }
 
 // resolveWithAnchorCore is the shared body behind ResolveWithAnchor.
-// It finds the worktree root exactly as resolveCore does, but takes anchor
-// as a parameter instead of reading the recorded marker.
+// It finds the worktree root from cwd and takes anchor as a parameter instead of reading the recorded marker.
 func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error) {
 	workTreeRoot, err := gitWorktreeRoot(cwd)
 	if err != nil {
@@ -167,10 +164,12 @@ func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error
 	return buildLocation(cwd, workTreeRoot, hubPath, anchor, applyGate)
 }
 
-// gitWorktreeRoot resolves the symlinks in cwd, then finds the worktree root at or above the resolved path in-process, as `git rev-parse --show-toplevel` does.
-// Resolving the start rather than the root found from it makes the walk climb the real parents, so a cwd reached through any symlinked path, to the root or below it, gets the same hub path, and with it the same reed socket key, as through its real path.
-// Any failure, including a missing cwd, a pruned worktree or a gitfile naming a missing git dir, is the bare sentinel.
-// It is returned unwrapped, so errors.Is(err, ErrNotAGitRepo) keeps matching at every consumer that pins its exact rendering.
+// gitWorktreeRoot finds the worktree root at or above cwd in-process, as `git rev-parse --show-toplevel` does.
+// It resolves the symlinks in cwd first, so the walk climbs the real parent directories.
+// A cwd reached through a symlinked path then gets the same hub path and reed socket key as through its real path.
+// Any failure returns the bare ErrNotAGitRepo sentinel.
+// That covers a missing cwd, a pruned worktree, and a gitfile naming a missing git dir.
+// It is returned unwrapped, so callers that pin the exact error text still see ErrNotAGitRepo.
 func gitWorktreeRoot(cwd string) (string, error) {
 	resolved, err := filepath.EvalSymlinks(cwd)
 	if err != nil {
@@ -183,8 +182,8 @@ func gitWorktreeRoot(cwd string) (string, error) {
 	return workTreeRoot, nil
 }
 
-// buildLocation assembles the Location from its resolved parts and optionally
-// applies the strict cwd gate before returning it.
+// buildLocation assembles the Location from its resolved parts.
+// When applyGate is set, it applies the strict cwd gate before returning.
 func buildLocation(cwd, workTreeRoot, hubPath, anchorRel string, applyGate bool) (*Location, error) {
 	if applyGate {
 		if err := checkCwdAnchorGate(filepath.Clean(cwd), anchorRel, workTreeRoot); err != nil {

@@ -1,4 +1,5 @@
-// bouncer_skip_test.go covers BouncerConfig.Skip -- the optional seam that settles a segment as approved without a seed or judge spawn when the caller says the artifact needs no review.
+// bouncer_skip_test.go covers BouncerConfig.Skip.
+// The seam settles a segment as approved without a seed or judge spawn when the caller says it needs no review.
 
 package shedadapters
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit pins that a true seam spawns no seed or judge, calls Approve strictly before Commit, and returns Done with an empty pointer.
+// TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit covers a true seam.
+// It spawns no seed or judge, calls Approve before Commit, and returns Done with an empty pointer.
 func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	tiergate.Require(t, 0)
 	var callLog []string
@@ -55,9 +57,10 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Skip_FalseOrErrorSeedsRoundOne pins that a false seam reviews exactly as an
-// unconfigured Bouncer does, and that an erroring seam warns and does the same, never halting and
-// never approving: the seed pass runs and the call returns Stuck.
+// TestBouncer_Skip_FalseOrErrorSeedsRoundOne covers a false seam and an erroring one.
+// A false seam reviews as an unconfigured Bouncer does.
+// An erroring seam warns and reviews the same way, never halting and never approving.
+// The seed pass runs and the call returns Stuck.
 func TestBouncer_Skip_FalseOrErrorSeedsRoundOne(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -97,7 +100,8 @@ func TestBouncer_Skip_FalseOrErrorSeedsRoundOne(t *testing.T) {
 	}
 }
 
-// TestBouncer_Skip_FailingApproveSkipsCommit pins that a failing Approve under a true seam skips Commit and fails the way settle does: an error wrapping the cause, never Stuck.
+// TestBouncer_Skip_FailingApproveSkipsCommit covers a failing Approve under a true seam.
+// Commit is skipped, and the call fails with an error wrapping the cause, never Stuck.
 func TestBouncer_Skip_FailingApproveSkipsCommit(t *testing.T) {
 	tiergate.Require(t, 0)
 	sentinel := errors.New("approve failed")

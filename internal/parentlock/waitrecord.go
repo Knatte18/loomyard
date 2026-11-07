@@ -1,4 +1,4 @@
-// waitrecord.go — the wait record a run keeps in its scratch directory while it waits for a parent lock.
+// waitrecord.go defines the wait record a run keeps in its scratch directory while it waits for a parent lock.
 
 package parentlock
 
@@ -33,7 +33,7 @@ func NewWait(branch, holder string) Wait {
 	return Wait{Branch: branch, Holder: holder, PID: pid, StartTime: startTime, Started: time.Now()}
 }
 
-// WaitRecordPath returns the wait record's path under the told run directory.
+// WaitRecordPath returns the path of the wait record in the run directory dir.
 func WaitRecordPath(dir string) string {
 	return filepath.Join(dir, waitRecordName)
 }
@@ -47,7 +47,7 @@ func WriteWait(path string, w Wait) error {
 }
 
 // ReadWait returns the wait record at path.
-// found is false for an absent record and for one whose writer is not alive under alive.
+// found is false when the record is absent or when alive reports that its writer is not running.
 func ReadWait(path string, alive func(pid int, startTime string) bool) (Wait, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {

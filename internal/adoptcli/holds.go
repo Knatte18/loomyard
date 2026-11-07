@@ -1,4 +1,6 @@
-// holds.go holds what an adopt keeps of the runs it holds until its subject's check: the per-subject holds and fix-tries files, the pause-record entries that gate a held run, and the choice of which slugs to hold.
+// holds.go keeps the runs that an adopt holds until its subject's check.
+// It reads and writes the per-subject holds and fix-tries files.
+// It gives the pause-record entries that gate a held run and chooses which slugs to hold.
 
 package adoptcli
 
@@ -93,8 +95,12 @@ func writeTries(dir string, count int) error {
 	return nil
 }
 
-// holdEntries gives each slug of slugs a pause entry of its own scope that gates it until its subject's check, in record, and returns the slugs now held and the slugs left alone.
-// A slug holding an owner entry has that entry's caller turned into the hold caller, keeping its pause time; one holding a hold entry keeps it; one holding an entry of any other caller keeps it and is returned in paused with that caller; any other gets a new hold entry at now.
+// holdEntries gives each slug of slugs a pause entry of its own scope that gates it until its subject's check.
+// It updates record in place, returns the slugs now held, and maps the slugs another caller pauses to that caller.
+// A slug holding an owner entry has that entry's caller turned into the hold caller, keeping its pause time.
+// A slug holding a hold entry keeps it.
+// A slug holding an entry of any other caller keeps it and is returned in paused with that caller.
+// Any other slug gets a new hold entry at now.
 // A new entry waits no grace, since no session is interrupted by it.
 func holdEntries(record *pauserecord.Record, slugs []string, now time.Time) (held []string, paused map[string]string) {
 	paused = map[string]string{}
@@ -115,9 +121,13 @@ func holdEntries(record *pauserecord.Record, slugs []string, now time.Time) (hel
 }
 
 // holdTargets returns, per subject, the slugs adopt holds.
-// A moved run is held when it went through takeOverSlug with no stop, error or warning, its owner in reconciled reads as another machine, and this call's owner write will make it this machine's: its project is a beam in writing or root while the prime is written, and an adopted beam's own run also needs its parent owned here or written.
+// A moved run is held when its takeover ran with no stop, error or warning.
+// Its reconciled owner must read as another machine, and this call's owner write must make it this machine's.
+// Its project is a beam in writing or root while the prime is written;
+// an adopted beam's own run also needs its parent owned here or written.
 // A run whose pair is live here is not held and reports running here.
-// A released task not done, not a front task, with an empty status, whose parent is a beam in writing or the prime while it is written, is held under that subject.
+// A released task not done, not a front task, with an empty status, is held under that subject.
+// Its parent must be a beam in writing, or the prime while it is written.
 func holdTargets(deps adoptDeps, here string, reconciled boardengine.Owners, tasks []boardengine.Task, runs []string, writing []string, rootGoing bool, outcomes map[string]*slugOutcome) (map[string][]string, error) {
 	targets := map[string][]string{}
 	add := func(subject, slug string) {
@@ -125,7 +135,8 @@ func holdTargets(deps adoptDeps, here string, reconciled boardengine.Owners, tas
 			targets[subject] = append(targets[subject], slug)
 		}
 	}
-	// subjectOf returns the subject an owner write for this call gives slug's parent chain to, "" when the write reaches no further than the entry's present owner.
+	// subjectOf returns the subject that this call's owner write gives the parent's chain to.
+	// It returns "" when no write reaches the parent's chain.
 	subjectOf := func(parent string) string {
 		switch {
 		case parent == "" && rootGoing:
@@ -188,8 +199,10 @@ func holdTargets(deps adoptDeps, here string, reconciled boardengine.Owners, tas
 	return targets, nil
 }
 
-// holdSubject returns the subject whose owner write makes slug's run this machine's, "" when no write of this call does.
-// A beam being written holds its own run under itself, provided its parent reads as this machine's or is written too; any other run is held under the subject its parent names.
+// holdSubject returns the subject whose owner write makes slug's run this machine's.
+// It returns "" when no write of this call does.
+// A beam being written holds its own run under itself, provided its parent reads as this machine's or is written too.
+// Any other run is held under the subject its parent names.
 func holdSubject(deps adoptDeps, reconciled boardengine.Owners, here, slug string, writing []string, subjectOf func(parent string) string) (string, error) {
 	parent, err := deps.ParentOf(slug)
 	if err != nil {

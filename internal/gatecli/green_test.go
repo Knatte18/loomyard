@@ -1,4 +1,7 @@
-// green_test.go covers the green record: a tier's fingerprint, what an entry covers, how a call subtracts it from a tier run, how writes merge and prune, and the malformed-file read.
+// green_test.go covers the green record.
+// It tests a tier's fingerprint and what an entry covers.
+// It tests how a call subtracts an entry from a tier run.
+// It also tests how writes merge and prune, and how a malformed file reads.
 
 package gatecli
 
@@ -27,8 +30,9 @@ func withTier(tier gateslot.Tier, change func(*gateslot.Tier)) gateslot.Tier {
 	return tier
 }
 
-// TestGreenRecord covers the rows the gate scenario does not reach:
-// the fingerprint's ignored fields, the args an entry covers, the none scoper carrying only a whole entry, the pruning of old trees, and a malformed file reading as empty.
+// TestGreenRecord covers which fields the fingerprint ignores and which args an entry covers.
+// It also covers the none scoper carrying only a whole entry and the pruning of old trees.
+// A malformed file reads as empty.
 func TestGreenRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -42,7 +46,7 @@ func TestGreenRecord(t *testing.T) {
 		if tierFingerprint(base, noBuild, nil) != tierFingerprint(same, noBuild, nil) {
 			t.Error("tierFingerprint changed with parallel, timeout_min, test_timeout_min and slots; want them ignored")
 		}
-		// wantBase was captured from tierFingerprint(greenTier()) before the filter, shared_build, carry, build and inert keys existed.
+		// wantBase pins the fingerprint of the base tier, so any change to what the fingerprint hashes fails here.
 		const wantBase = "a3839b7915cd21ad432412c4d7cb98e94605df7f6d1beb7f17c0515b7a6dd1af"
 		if got := tierFingerprint(base, noBuild, nil); got != wantBase {
 			t.Errorf("tierFingerprint(greenTier(), BuildStep{}, nil) = %s; want %s", got, wantBase)
@@ -262,7 +266,10 @@ func TestGreenRecord(t *testing.T) {
 	})
 }
 
-// TestGreenRecord_NewestWholeAncestor covers which entries become a diff base: only a whole pass with empty args, under the tier's current fingerprint and module directory, on an ancestor, and the newest of them.
+// TestGreenRecord_NewestWholeAncestor covers which entries become a diff base.
+// Only a whole pass with empty args qualifies.
+// It must match the tier's current fingerprint and module directory, and it must lie on an ancestor.
+// The base is the newest of them.
 func TestGreenRecord_NewestWholeAncestor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

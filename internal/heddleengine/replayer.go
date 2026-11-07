@@ -40,7 +40,8 @@ var entryFields = entrymerge.Table[Entry]{
 	},
 }
 
-// replayRun is the state of one Apply: origin's store, what the commit's three sides held and what has been applied or set aside so far.
+// replayRun is the state of one Apply.
+// It holds origin's store, the merge base, the findings so far, and whether a change has applied.
 type replayRun struct {
 	store   Store
 	base    Store
@@ -48,8 +49,11 @@ type replayRun struct {
 	applied bool
 }
 
-// Apply re-applies the request's heddle.json commit onto origin's store in req.Dir by entry, and reports what it kept and what it set aside.
-// A changed entry merges field by field with origin winning a field both sides changed, an added entry is appended unless origin added the slug too, and a removed entry is dropped only while origin still holds it as the commit's parent did.
+// Apply re-applies the request's heddle.json commit onto origin's store in req.Dir by entry.
+// It reports the changes it loses and the entries it refuses.
+// A changed entry merges field by field, and origin wins a field both sides changed.
+// An added entry is appended unless origin added the slug too.
+// A removed entry is dropped only while origin still holds it as the commit's parent did.
 // A change to an entry origin no longer holds is reported lost.
 // An entry that fails ValidateEntry is reported refused and the rest of the commit still lands.
 // It saves through Save, so every unknown key stays as origin holds it, and writes nothing when no change survived.
@@ -117,7 +121,9 @@ func (r *replayRun) originIndex(slug string) int {
 }
 
 // changeEntry applies the fields commit changed against before onto origin's entry.
-// A field origin already holds is skipped, a field origin moved to a third value is reported lost, and an entry origin no longer holds reports the change lost.
+// A field origin already holds is skipped.
+// A field origin moved to a third value is reported lost.
+// An entry origin no longer holds is reported lost.
 func (r *replayRun) changeEntry(before, commit Entry) {
 	if len(entryFields.Changed(before, commit)) == 0 {
 		return

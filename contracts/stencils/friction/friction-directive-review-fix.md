@@ -1,15 +1,13 @@
-<!-- This is the RoleReviewFix friction directive: the variant internal/friction.Directive renders
-     for the Burler fix half's fixer, the round's only note writer.
-     Its consuming call site is the fix step, burler-step-fix (internal/burlerengine/prompt.go),
-     filled through a stencil.FillOptional call.
-     internal/friction.Directive reads this file through stencilstore.Read, strips this banner with
-     stencil.StripLeadingComment, and substitutes the literal "{{.note_path}}" token below with the
-     composed absolute note path before returning the result.
-     The stripped, substituted result is injected as a producer template's optional
-     friction_directive marker value, so it is never itself passed through stencil.Fill.
-     This file declares no marker of its own beyond "{{.note_path}}" and must stay otherwise
-     marker-free, because stencilstore.Validate parses it regardless of whether anything ever fills
-     it. -->
+<!-- This is the RoleReviewFix friction directive, which internal/friction.Directive renders
+     for the Burler fix half's fixer, the only note writer of a round.
+     The fix step, burler-step-fix (internal/burlerengine/prompt.go), consumes it through a stencil.FillOptional call.
+     internal/friction.Directive reads this file through stencilstore.Read.
+     It strips this banner with stencil.StripLeadingComment.
+     It then substitutes the literal "{{.note_path}}" token below with the composed absolute note path.
+     The result is injected as a producer template's optional friction_directive marker value,
+     so it is never passed through stencil.Fill.
+     This file declares no marker beyond "{{.note_path}}" and must stay otherwise marker-free,
+     because stencilstore.Validate parses it whether or not anything fills it. -->
 
 ## Friction note — optional, only if something went wrong
 

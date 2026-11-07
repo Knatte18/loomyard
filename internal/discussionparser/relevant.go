@@ -13,10 +13,11 @@ import (
 // checkRelevantNoEntry names a Finding produced when a present relevant list holds no entry line.
 const checkRelevantNoEntry = "relevant-no-entry"
 
-// checkRelevantStrayLine names a Finding produced by a non-blank line that is neither the optional H1 title nor a top-level bullet.
+// checkRelevantStrayLine names a Finding produced by any line other than the optional H1 title or a top-level bullet.
 const checkRelevantStrayLine = "relevant-stray-line"
 
-// checkRelevantPathMalformed names a Finding produced by an entry whose backticked path is missing, unclosed, empty, absolute or climbing out of the worktree.
+// checkRelevantPathMalformed names a Finding produced by an entry whose backticked path is defective.
+// The path is missing, unclosed, empty, absolute, or climbs out of the worktree.
 const checkRelevantPathMalformed = "relevant-path-malformed"
 
 // checkRelevantReasonMissing names a Finding produced by an entry with no ` — ` and reason after its path.
@@ -26,7 +27,8 @@ const checkRelevantReasonMissing = "relevant-reason-missing"
 const relevantReasonSeparator = " — "
 
 // CheckRelevant checks that the relevant list at relevantPath is well-formed.
-// That is an optional H1 title followed by top-level bullets, each opening with one backticked worktree-relative path and ending in ` — ` and a reason.
+// A well-formed list is an optional H1 title followed by top-level bullets.
+// Each bullet opens with one backticked worktree-relative path, followed by ` — ` and a reason.
 // Member names between the path and the reason are not checked, and no named path or member is checked for existence.
 //
 // A missing file returns nil findings and a nil error, since the list is optional.
@@ -109,7 +111,8 @@ func checkRelevantEntry(text string) (check, problem string) {
 }
 
 // relevantPathProblem describes why path is not a worktree-relative path, or returns an empty string when it is.
-// It reads the path as text on any host, treating both "/" and "\" as separators, so a verdict never depends on the OS the check runs on.
+// It reads the path as text on any host, treating both "/" and "\" as separators.
+// A verdict therefore never depends on the OS the check runs on.
 func relevantPathProblem(path string) string {
 	if path == "" {
 		return "entry's backticked path is empty"

@@ -1,7 +1,8 @@
-// cli_tmux_test.go holds the one cli_integration_test.go test that starts a tmux server:
-// the standalone `run` pre-run boots a real reed session before the plan-validation gate, so the test sits in the `tmux` tier.
-// It follows the shape internal/reedcli/cli_integration_test.go already establishes for a tagged CLI-level test;
-// this package's hermetic TestMain (testmain_test.go) is untagged, so no new test-main wiring is needed here.
+// cli_tmux_test.go holds the webstercli test that starts a tmux server.
+// The standalone `run` pre-run boots a real reed session before the plan-validation gate,
+// so the test sits in the `tmux` tier.
+// It follows the tagged CLI-level test shape of internal/reedcli/cli_integration_test.go.
+// The package's TestMain in testmain_test.go is untagged, so the test needs no extra wiring.
 
 package webstercli
 

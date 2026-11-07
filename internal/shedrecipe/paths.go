@@ -1,5 +1,4 @@
-// paths.go implements resolveUnderRoot, the shared relative-Config-path resolver every entry joins
-// a recipe-relative value against a told Env root through.
+// paths.go holds resolveUnderRoot, which every entry uses to join a relative Config path onto an Env root.
 
 package shedrecipe
 
@@ -9,21 +8,17 @@ import (
 	"strings"
 )
 
-// resolveUnderRoot joins value onto root and returns the joined absolute path, naming entry and
-// key in every error message.
+// resolveUnderRoot joins value onto root and returns the joined path, naming entry and key in every error.
 //
-// It errors when value is empty, when value is absolute per filepath.IsAbs, and when the cleaned
-// value escapes root -- computed as joined := filepath.Join(root, value) and rejected unless
-// joined equals root or is under root with a separator, so a ".." segment cannot climb out. On
-// success it returns joined.
+// It errors when value is empty or absolute per filepath.IsAbs.
+// It also rejects a value that escapes root.
+// The joined path must equal root or sit under it with a separator, so a ".." segment cannot climb out.
 //
-// Absolute values are rejected rather than passed through because contracts/specs/shed-recipe-spec.md
-// bars absolute paths from Config outright, and accepting one would make a non-portable recipe
-// silently work on its author's machine.
+// Absolute values are rejected because contracts/specs/shed-recipe-spec.md bars them from Config.
+// Passing one through would let a non-portable recipe work only on its author's machine.
 //
-// The one documented exception that never calls this helper is BurlerReview's and BurlerFix's profile.target.paths
-// and profile.fasit.paths, passed through relative and unjoined because burlerengine.Profile.validate
-// resolves them against its own told worktree root.
+// The one exception is the profile.target.paths and profile.fasit.paths keys of the BurlerReview and BurlerFix rows.
+// They stay relative and unjoined, since their profile validator resolves them against the worktree root itself.
 func resolveUnderRoot(entry, key, root, value string) (string, error) {
 	if value == "" {
 		return "", fmt.Errorf("shedrecipe: %s: config key %q must not be empty", entry, key)

@@ -1,4 +1,5 @@
-// pool_integration_test.go pins the one behavior that needs a second process: a holder that dies without releasing frees its slot.
+// pool_integration_test.go pins the behavior that needs a second process:
+// a holder that dies without releasing frees its slot.
 
 package gateslot
 

@@ -36,32 +36,45 @@ func HubWorkspacePath(l *lymcwd.Location) string {
 }
 
 // beamWorkspaceMark is the top-level key a generated beam workspace file carries, set to true and written first.
-// VS Code ignores unknown keys, and the mark is what lets a regeneration tell its own beam file from an operator's file of the same name.
+// VS Code ignores unknown keys;
+// the mark lets a regeneration tell its own beam file from an operator's file of the same name.
 const beamWorkspaceMark = "lym.generated"
 
-// BeamWorkspacePath returns <hub>/<RepoName>-<beam>.code-workspace, the workspace file of the beam pair named beam, beside the hub's own.
+// BeamWorkspacePath returns <hub>/<RepoName>-<beam>.code-workspace, the workspace file of the beam pair named beam.
+// It sits beside the hub's own workspace file.
 func BeamWorkspacePath(l *lymcwd.Location, beam string) string {
 	return filepath.Join(l.HubPath, l.RepoName+"-"+beam+hubWorkspaceExt)
 }
 
-// HubWorkspaceLockPath returns the lock file that serializes regenerations of the hub workspace file: <HubScratchDir(hubPath)>/hub-workspace.lock.
+// HubWorkspaceLockPath returns the lock file that serializes regenerations of the hub workspace file:
+// <HubScratchDir(hubPath)>/hub-workspace.lock.
 func HubWorkspaceLockPath(hubPath string) string {
 	return filepath.Join(HubScratchDir(hubPath), hubWorkspaceLockFileName)
 }
 
-// RegenerateHubWorkspace rewrites the hub workspace file and a workspace file per beam from the hub's current worktrees, the pairs' origin records and the prime's .vscode/settings.json, and returns the hub file's path.
-// Each file splices its settings with the workspace look set: a title naming the workspace and the workspace colour on the activity bar.
-// The hub file lists the prime, the board as Bolt, then every pair whose parent is the prime, beams included, and no pair under a beam.
-// A beam's file, BeamWorkspacePath, lists the beam, its parent, Bolt and every pair whose parent is the beam, with the beam's own .vscode/settings.json when it has a readable one and the prime's otherwise, and a file of a beam that is gone is removed when it carries the generated mark.
+// RegenerateHubWorkspace rewrites the hub workspace file and a workspace file per beam.
+// It reads the hub's current worktrees, the pairs' origin records and the prime's .vscode/settings.json;
+// it returns the hub file's path.
+// Each file splices its settings with the workspace look set:
+// a title naming the workspace and the workspace colour on the activity bar.
+// The hub file lists the prime, the board as Bolt, and every pair whose parent is the prime, beams included;
+// it lists no pair under a beam.
+// A beam's file, BeamWorkspacePath, lists the beam, its parent, Bolt and every pair whose parent is the beam.
+// Its settings come from the beam's own .vscode/settings.json when readable, else from the prime's.
+// A file of a beam that is gone is removed when it carries the generated mark.
 // A pair with no readable origin record is listed in the hub file as a pair of the prime.
 // Each file is rewritten only when its bytes change; a write or removal is recorded in rec.
-// The regeneration runs under the hub workspace lock, so two callers never interleave their listing and write.
-// A prime that cannot be resolved, unreadable prime settings, a lock that stays held for the wait, or a failed write returns an error and writes nothing.
+// When the hub has a board, the regeneration runs under the hub workspace lock:
+// two callers never interleave their listing and write.
+// The regeneration returns an error and writes nothing when:
+// the prime cannot be resolved, its settings cannot be read, the lock stays held for the wait, or a write fails.
 func RegenerateHubWorkspace(rec *Mutations, l *lymcwd.Location) (string, error) {
 	return regenerateHubWorkspace(rec, l, hubWorkspaceLockWait)
 }
 
-// beamWorkspaceSettings returns the settings a beam's workspace file splices: the beam's own .vscode/settings.json, which carries its window title and colours, or primeSettings when the beam has none.
+// beamWorkspaceSettings returns the settings a beam's workspace file splices.
+// These are the beam's own .vscode/settings.json, which carries its window title and colours;
+// primeSettings stands in when the beam has none.
 // An unreadable anchor or settings file is an error.
 func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte) ([]byte, error) {
 	beamLoc, err := lymcwd.NamedWorktree(l.HubPath, beam)
@@ -97,7 +110,8 @@ func regenerateAfterVerb(rec *Mutations, l *lymcwd.Location, verb string) {
 	}
 }
 
-// regenerateHubWorkspace is RegenerateHubWorkspace with the lock wait as a parameter.
+// regenerateHubWorkspace rewrites the hub workspace file and the beam files.
+// lockWait bounds the wait for the hub workspace lock.
 // A hub without a board takes no lock and lists no Bolt folder.
 func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Duration) (string, error) {
 	prime, err := PrimeName(l)
@@ -182,20 +196,20 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 	return path, nil
 }
 
-// markBeamWorkspace returns the workspace file bytes content with beamWorkspaceMark set to true as the first top-level key.
+// markBeamWorkspace returns content with beamWorkspaceMark set to true as its first top-level key.
 // content is the output of vscode.BuildWorkspace, which opens with a bare "{" line.
 func markBeamWorkspace(content []byte) []byte {
 	marked := []byte("{\n  \"" + beamWorkspaceMark + "\": true,\n")
 	return append(marked, bytes.TrimPrefix(content, []byte("{\n"))...)
 }
 
-// errHubWorkspaceLockHeld is the sentinel lockHubWorkspace's error wraps when another regeneration holds the lock past the wait.
+// errHubWorkspaceLockHeld is the sentinel wrapped by the error when the hub workspace lock stays held past the wait.
 var errHubWorkspaceLockHeld = errors.New("the hub workspace lock is held")
 
 // lockHubWorkspace takes the hub workspace lock exclusive, waiting at most wait, and returns its release function.
 // A zero wait makes one attempt.
 // The scratch directory is created through an os.Root at the hub when absent.
-// A lock file this call brings into being is recorded in rec, whether or not the lock was won, since the file outlives the call.
+// A lock file this call creates is recorded in rec even when the lock is not won, since the file outlives the call.
 // The lock is a leaf lock: nothing else is locked while it is held.
 func lockHubWorkspace(rec *Mutations, hubPath string, wait time.Duration) (func(), error) {
 	lockPath := HubWorkspaceLockPath(hubPath)
@@ -242,7 +256,8 @@ type workspaceLayout struct {
 	hub []vscode.WorkspaceFolder
 	// beams are the beam files, ordered by slug.
 	beams []beamWorkspace
-	// unrecorded are the slugs of listed pairs whose origin record could not be read, whose beam file is kept if one exists.
+	// unrecorded are the slugs of listed pairs whose origin record cannot be read;
+	// a beam file of such a slug is kept when it exists.
 	unrecorded []string
 }
 
@@ -252,7 +267,8 @@ type beamWorkspace struct {
 	folders []vscode.WorkspaceFolder
 }
 
-// workspacePair is a listed pair: its slug, folder, the slug of its live parent pair ("" for the prime's) and whether it is a beam.
+// workspacePair is a listed pair: its slug, folder, beam flag and the slug of its live parent pair.
+// The parent is "" for a pair of the prime.
 type workspacePair struct {
 	slug   string
 	folder vscode.WorkspaceFolder
@@ -260,12 +276,18 @@ type workspacePair struct {
 	beam   bool
 }
 
-// hubWorkspaceFolders returns the folders of the hub workspace file and of each beam file, each path relative to the hub and slash-separated.
-// The hub file holds the prime's anchor dir, named after its branch (its directory name when HEAD is detached), then the board named Bolt, then every pair whose parent is the prime, named after its slug in byte order.
+// hubWorkspaceFolders returns the folders of the hub workspace file and of each beam file.
+// Each path is relative to the hub and slash-separated.
+// The hub file holds the prime's anchor dir, named after its branch (its directory name when HEAD is detached):
+// the board named Bolt, then every pair whose parent is the prime, named after its slug in byte order.
 // A beam file holds the beam, its parent, Bolt, then every pair whose parent is the beam.
-// A pair's parent is the ParentWorktree of its origin record; the prime when that is empty, names the prime or names no listed pair, and when the record is absent or cannot be read, the latter with a debug log.
+// A pair's parent is the ParentWorktree of its origin record.
+// A pair whose parent is empty, names the prime, or names no listed pair is a pair of the prime.
+// A pair whose origin record is absent is a pair of the prime;
+// one whose record cannot be read is logged at debug and treated the same way.
 // A folder whose directory does not exist is left out, and a stat error other than not-exist is returned.
-// A pair that fails to resolve, or whose worktree is not a direct child of the hub, is skipped with a debug log, so one half-made pair never drops the others.
+// A pair that fails to resolve, or whose worktree is not a direct child of the hub, is skipped with a debug log;
+// one half-made pair never drops the others.
 func hubWorkspaceFolders(l *lymcwd.Location, primeName string) (workspaceLayout, error) {
 	var layout workspaceLayout
 	var primeFolder, boltFolder *vscode.WorkspaceFolder
@@ -402,7 +424,8 @@ func hubWorkspaceFolders(l *lymcwd.Location, primeName string) (workspaceLayout,
 }
 
 // hubWorkspaceFolder returns the folder entry for dir, its path relative to the hub and slash-separated.
-// A filepath.Rel error propagates rather than collapsing to an empty path, because a wrong path written into the file is worse than a failed write.
+// A filepath.Rel error is returned rather than collapsed to an empty path:
+// a wrong path written into the file is worse than a failed write.
 func hubWorkspaceFolder(hubPath, name, dir string) (vscode.WorkspaceFolder, error) {
 	rel, err := filepath.Rel(hubPath, dir)
 	if err != nil {

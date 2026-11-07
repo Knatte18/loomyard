@@ -1,19 +1,5 @@
-// weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull, sync, diff) and
-// the merge lifecycle verbs (merge, merge-in, merge-stage) onto the "fabric" parent command built by
-// fabric.go.
-// addWeftVerbs installs two hidden persistent flags — --weft-path and --warp-path — and a
-// PersistentPreRunE scoped to these nine verb names only — the topology verbs built in fabric.go
-// resolve their own layout per invocation and never touch this file's closure state.
-// The pre-run opens with the sandboxed-role guard of roleguard.go, which covers every subcommand.
-// The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
-// handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
-// gate), driving fabricengine.Fabric's Status/Commit/Pull/Diff/MergeIn/Merge/MergeContinue/
-// MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushRequest's loop-until-clean coalescing push
-// directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
-// reaches the resolved Fabric handle through a getter closure over this file's fab local, since
-// PersistentPreRunE assigns it only at run time, after registration.
-// push and sync both push the code side and the records side, except in the hub's prime, where they push the records side only:
-// push in-process through fabricengine.PushPairAnchored, sync through a detached child that re-enters bypass mode.
+// weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull, sync, diff) onto the fabric command.
+// Their PersistentPreRunE resolves the warp and weft context, or enters bypass mode for the detached push child.
 
 package fabriccli
 
@@ -31,7 +17,7 @@ import (
 )
 
 // weftVerbNames is the set of leaf commands needing PersistentPreRunE resolution.
-// Topology verbs resolve independently.
+// Topology verbs are not listed, since they resolve their own layout per invocation.
 var weftVerbNames = map[string]bool{
 	"status":      true,
 	"commit":      true,
@@ -44,11 +30,11 @@ var weftVerbNames = map[string]bool{
 	"merge-stage": true,
 }
 
-// addWeftVerbs installs the hidden --weft-path/--warp-path persistent flags,
-// the weft-verb-scoped PersistentPreRunE, and the status/commit/push/pull/sync/diff
-// subcommands. Normal mode resolves cwd → layout → fabric config → pathspec → Fabric
-// handle. Bypass mode (injected --weft-path/--warp-path by detached push) permits
-// only push, rejecting others with "subcommand requires a worktree context".
+// addWeftVerbs installs the hidden persistent flags that a detached push child is spawned with;
+// it also installs the PersistentPreRunE and the status/commit/push/pull/sync/diff subcommands.
+// Normal mode resolves cwd → layout → fabric config → pathspec → Fabric handle.
+// Bypass mode, entered when a detached push child passes either path flag, permits only push;
+// it rejects the other verbs with "subcommand requires a worktree context".
 func addWeftVerbs(cmd *cobra.Command) {
 	var (
 		l        *lymcwd.Location
@@ -72,8 +58,8 @@ func addWeftVerbs(cmd *cobra.Command) {
 
 	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		// The role guard runs first, ahead of the topology verbs' early return.
-		// It runs only under a parent: configcli's in-process sync runs Command() as its own root and passes.
+		// The role guard runs before the early return for non-weft verbs, so it covers every subcommand.
+		// It runs only under a parent: configcli's in-process sync runs `Command()` as its own root and passes.
 		if fabricCmd.HasParent() && cmd != fabricCmd {
 			if refusal := sandboxedRoleRefusal(cmd, os.Getenv(agentname.StrandNameEnv)); refusal != "" {
 				output.Err(cmd.OutOrStdout(), refusal)
@@ -113,8 +99,9 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		// Build from fabricengine's own routing set (PathspecNames), never a raw, unfiltered Config.Dirs(): with _lym no longer in template.yaml's default, a repo's pathspec names only whatever optional directory an operator has added, so a raw-Dirs() sync would silently stop syncing _lym entirely.
-		// The routing set can never name .lym either, since it excludes structuralNeverCommittedDirs by construction.
+		// Build the pathspec from the routing set (`PathspecNames`), not from a raw `Config.Dirs()` list.
+		// A raw list would silently stop syncing `_lym`, which is code-injected and never listed in the fabric config.
+		// The routing set never names `.lym` either: it excludes `structuralNeverCommittedDirs` by construction.
 		routingNames, err := fabricengine.PathspecNames(fabricengine.ConfigDirs(l))
 		if err != nil {
 			output.Err(out, err.Error())
@@ -246,16 +233,16 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				// The bypass branch has no *lymcwd.Location in scope (it takes the injected
-				// --warp-path/--weft-path values and returns before resolveWarpLocation runs), so its
-				// recorder is built with an empty hub root: it appends no path-targeted entries of
-				// its own, only Extends CoalescePushRequest's already-converted record, and Extend
-				// performs no conversion — the hub root is never consulted on this path.
+				// The bypass branch takes the warp and weft paths from flags and returns before the location is resolved,
+				// so no location is in scope and its recorder is built with an empty hub root.
+				// It appends no path-targeted entries of its own; it only extends the record the detached push returns.
+				// Extending converts nothing, so the hub root is never consulted on this path.
 				rec := fabricengine.NewMutations("")
 				pauseSlug, _ := cmd.Flags().GetString(fabricengine.PauseSlugFlag)
 				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
 				parentLocked, _ := cmd.Flags().GetBool(fabricengine.ParentLockedFlag)
-				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root the ungated resolution finds there.
+				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root found from cwd.
+				// That lookup applies no cwd gate, because cwd is a worktree root here, not an acting directory.
 				cwd, err := lymcwd.CwdFrom(cmd.Context())
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -285,9 +272,9 @@ Related commands:
 				return nil
 			}
 
-			// The ordinary branch's envelope concatenates the commit call's record with the push
-			// call's record, in execution order: a commit that lands followed by a push that fails is
-			// "mutated, then errored", and only the combined record makes that visible.
+			// The ordinary branch's envelope concatenates the commit call's record with the push call's record, in execution order.
+			// A commit that lands followed by a push that fails is "mutated, then errored".
+			// Only the combined record makes that visible.
 			rec := fabricengine.NewMutations(l.HubPath)
 			opts := fabricengine.EnvSyncOptions()
 			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts)
@@ -401,9 +388,9 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			// The push happens in a detached child process after this one returns,
-			// so its outcome is unobservable here:
-			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
+			// The push happens in a detached child process after this one returns, so its outcome is unobservable here.
+			// Record one `KindPushSpawned` entry per side handed to the child, and no `branch_pushed` entry.
+			// A `branch_pushed` entry would assert an outcome this process did not observe.
 			if spawn.Request.WarpPath != "" {
 				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WarpPath, "detached")
 			}
@@ -455,8 +442,7 @@ Example:
 	addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab }, func() *lymcwd.Location { return l })
 }
 
-// changeEntriesMap flattens a []fabricengine.ChangeEntry into the map shape
-// output.Ok's JSON envelope expects.
+// changeEntriesMap flattens each change entry into a map of its path and side, the shape the JSON output envelope takes.
 func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 	out := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
@@ -465,11 +451,12 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 	return out
 }
 
-// pullResultMap converts a fabricengine.PullResult into the map shape output.Ok
-// expects.
-// weft_pulled is false inside a SUCCESS envelope only when the weft's origin could not be reached, so the warp side pulled while the weft did not.
+// pullResultMap converts a fabricengine.PullResult into the map shape the JSON output envelope expects.
+// weft_pulled is false inside a SUCCESS envelope only when the weft's origin could not be reached,
+// so the warp side pulled while the weft did not.
 // Re-running the pull once origin is reachable settles it.
-// A weft that a conflict or an uncommitted change keeps from being brought level is an error envelope naming the way forward, never a false field.
+// A weft that a conflict or an uncommitted change keeps from being brought level fails the verb.
+// The error envelope names the way forward, not a success envelope with weft_pulled false.
 // seam_warning is present only when a worktree event failed for the commits warp took in.
 func pullResultMap(result fabricengine.PullResult) map[string]any {
 	out := map[string]any{

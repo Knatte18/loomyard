@@ -1,10 +1,8 @@
-// mouse_boot_integration_test.go proves the mouse boot-option contract
-// against a real, running instance of the configured multiplexer binary:
-// a fresh Up() boot pins "-g mouse" to the resolved Config.Mouse value in
-// both directions, and an already-up session's Up() never re-applies it
-// (no live toggle without a server restart). It self-skips cleanly when
-// the configured binary is absent, mirroring contract_integration_test.go's
-// skip/scratch-socket harness.
+// mouse_boot_integration_test.go proves the mouse boot-option contract:
+// it runs against a real, running instance of the configured multiplexer binary.
+// A fresh Up() boot pins "-g mouse" to the resolved Config.Mouse value in both directions.
+// An already-up session's Up() never re-applies it: there is no live toggle without a server restart.
+// The test skips when the configured binary is absent.
 
 package reedengine
 
@@ -20,12 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// newIntegrationEngine builds an Engine rooted at a fresh t.TempDir() hub, with
-// Config.Mouse overridden to mouse, and registers a t.Cleanup that always kills
-// the scratch server so no server leaks across test runs. It skips the test
-// cleanly when the configured multiplexer binary is not present on this box —
-// this test's whole point is to validate whatever binary is actually
-// configured, so an absent binary is nothing to validate here, not a failure.
+// newIntegrationEngine builds an Engine rooted at a fresh t.TempDir() hub, with Config.Mouse overridden to mouse.
+// It registers a t.Cleanup that always kills the scratch server, so no server leaks across test runs.
+// It skips the test when the configured multiplexer binary is absent.
+// The test validates whatever binary is configured, so an absent one leaves nothing to validate.
 func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	t.Helper()
 
@@ -43,8 +39,8 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
-	// Override the template-resolved default with the value this test case
-	// wants to exercise, rather than relying on LYM_REED_MOUSE env plumbing.
+	// Override the template-resolved default with this case's value.
+	// It does not rely on the LYM_REED_MOUSE environment variable.
 	cfg.Mouse = mouse
 
 	geom := Geometry{
@@ -61,16 +57,13 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	}
 	e := New(cfg, geom, testScrub)
 
-	// Always torn down, success or failure: a leaked scratch server on a per-test-tempdir-derived socket is harmless to a real hub server, but leaves a stray process behind if the test does not clean up.
+	// Always torn down, on success or failure: a scratch server that leaks leaves a stray process behind.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	return e
 }
 
-// readMouseOption reads the live "mouse" server-global option back via a raw
-// show-options query, in the same command-construction/output-parsing style
-// contract_integration_test.go uses for its own list-sessions/display-message
-// queries (that test never reads an option back, so this models only the
-// style, not a preexisting show-options assertion there).
+// readMouseOption reads the live "mouse" server-global option back with a raw show-options query.
+// It returns the option's value without the name.
 func readMouseOption(t *testing.T, e *Engine) string {
 	t.Helper()
 	out, err := e.tmux.output("show-options", "-g", "mouse")
@@ -85,9 +78,7 @@ func readMouseOption(t *testing.T, e *Engine) string {
 	return fields[1]
 }
 
-// TestMouseBootIntegration_PinsOptionAtBoot boots a fresh engine with Mouse set to "off" and then,
-// on a separate fresh hub, "on", asserting the live server reports the matching value after Up() in
-// both directions.
+// TestMouseBootIntegration_PinsOptionAtBoot pins that Up boots the live server with the configured mouse option.
 func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -112,12 +103,11 @@ func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 	})
 }
 
-// TestMouseBootIntegration_NoLiveToggleWithoutRestart boots once with Mouse="off", confirms it,
-// then builds a second Engine on the SAME geometry with Mouse="on" and calls Up() again without
-// tearing the first session down.
-// The already-up session must hit ensureServerAndSessionLocked's early return and never re-apply
-// set-option, so the live value must stay "off" — proving there is no live toggle without a server
-// restart.
+// TestMouseBootIntegration_NoLiveToggleWithoutRestart pins that the live mouse option stays put without a restart.
+// It boots once with Mouse="off" and confirms it.
+// A second Engine on the same geometry with Mouse="on" then calls Up without tearing the first session down.
+// The already-up session hits ensureServerAndSessionLocked's early return and never re-applies set-option,
+// so the live value stays "off", since there is no live toggle without a server restart.
 func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -129,9 +119,8 @@ func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 		t.Fatalf("show-options -g mouse after first boot = %q, want %q", got, "off")
 	}
 
-	// Build a second Engine on the identical Config/Geometry shape, differing
-	// only in Mouse, and target the SAME socket/session by reusing e1's
-	// geometry and cfg (with Mouse overridden) rather than a fresh temp dir.
+	// Build a second Engine from e1's geometry and cfg, with only Mouse overridden,
+	// so it targets the same socket and session rather than a fresh temp dir.
 	cfg2 := e1.cfg
 	cfg2.Mouse = "on"
 	e2 := New(cfg2, e1.geom, testScrub)

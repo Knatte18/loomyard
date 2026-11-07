@@ -1,4 +1,6 @@
-// finalize_owner.go implements Finalize's owner checks, which let a run land only on the machine that owns it and its parent, and the repair note a failed parent push carries after an adopter-first landing.
+// finalize_owner.go implements the owner checks of Finalize.
+// The checks let a run land only on the machine that owns it and its parent.
+// The file also words the repair note that a failed parent push carries after an adopter-first landing.
 
 package landingshed
 
@@ -11,22 +13,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// OwnerHaltPrefix opens the reason of every halt Finalize's owner checks make, so a reader of a halt note or a test tells an owner halt from any other stop.
+// OwnerHaltPrefix opens the reason of every owner halt,
+// so a reader of a halt note or a test tells an owner halt from any other stop.
 const OwnerHaltPrefix = "owner check: "
 
 // ownerRerun is the way forward of an owner check that could not be judged: the run's re-entry once the cause is gone.
 const ownerRerun = `re-run "lym loom resume" in the task worktree`
 
 // ownerChecks halts a landing on a machine that does not own the run and its parent.
-// stop is false when the landing may go on, including a run whose pair has no batten run record, which the reconcile judges not at all and so reads as owned here.
-// Otherwise the other values are what Call returns at once.
+// stop is false when the landing may go on.
+// A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs,
+// but its parent's owner is still read.
+// Otherwise the first three values are what the check returns at once.
 //
 // A parent already holding the task's work marks a Finalize past its parent-side merge.
-// It is judged by the reconcile's ended and stopped verdicts only, so neither owner check nor the unreachable halt keeps it from finishing.
+// It is judged by the reconcile's ended and stopped verdicts only.
+// Neither the owner checks nor the unreachable halt keeps it from finishing.
 // An error reading that mark halts, so a doubt never skips the checks.
-// Otherwise the run-scope reconcile runs: an error is returned, an unreachable origin halts, and an ended or stopped entry stops as the reconcile's verdict.
-// The run's owner is the owner of its owned_elsewhere entry, and the parent's comes from Deps.ParentOwner;
-// a parent or run owned by another machine halts through ownerHaltReason, and so does a failed read of the parent's owner.
+// Otherwise the run-scope reconcile runs.
+// An error is returned, an unreachable origin halts, and an ended or stopped entry stops as the reconcile's verdict.
+// The run's owner is the owner of its `owned_elsewhere` entry,
+// and the parent's owner comes from `Deps.ParentOwner`.
+// A parent or run owned by another machine halts through ownerHaltReason.
+// A failed read of the parent's owner halts too.
 func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if fz.deps.ParentHoldsTaskWork != nil {
 		held, err := fz.deps.ParentHoldsTaskWork()
@@ -34,7 +43,8 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 			return fz.ownerHalt(ctx, fmt.Sprintf("could not read whether the parent branch already holds the task's work: %v; %s", err, ownerRerun))
 		}
 		if held {
-			// The work already reached the parent while the batten record still reads before Land, so a follow-up naming the cancel would release a landed entry.
+			// The work already reached the parent while the batten record still reads before Land;
+			// a follow-up naming the cancel would release a landed entry.
 			return reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile, nil)
 		}
 	}
@@ -75,7 +85,8 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 	return fz.ownerHalt(ctx, ownerHaltReason(fz.deps.Slug, fz.adoptSubject(), runOwner, parent))
 }
 
-// adoptSubject reads what `lym adopt` takes to move the run, "" when no seam is wired or the read fails, which ownerHaltReason reads as the slug.
+// adoptSubject reads what `lym adopt` takes to move the run.
+// It returns the empty string when no seam is wired or the read fails, so the halt names the slug.
 func (fz *Finalize) adoptSubject() string {
 	if fz.deps.AdoptSubject == nil {
 		return ""
@@ -88,7 +99,8 @@ func (fz *Finalize) adoptSubject() string {
 	return subject
 }
 
-// ownerHalt returns the halting Stuck of an owner check with reason behind OwnerHaltPrefix, which writes the loom halt note.
+// ownerHalt returns the Stuck that halts a landing, which writes the loom halt note.
+// The reason is marked as an owner check halt.
 func (fz *Finalize) ownerHalt(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	outcome, out, err := stuckVerdict(ctx, finalizeName, OwnerHaltPrefix+reason, true)
 	return outcome, out, err, true
@@ -125,9 +137,13 @@ func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) str
 	}
 }
 
-// adopterFirstRepair words the repair note a failed parent push carries after an adopter-first landing, or "" when none applies.
-// The landing is adopter-first when origin's parent branch already holds the task's work while this machine's parent branch carries the task's squash as a commit origin lacks.
-// The note names the squash by the parent's head SHA, then undoes it with a reset when it is the only commit origin lacks, or a rebase dropping it when another commit is listed, and ends in removing the pair.
+// adopterFirstRepair words the repair note a failed parent push carries after an adopter-first landing.
+// It returns the empty string when no note applies.
+// The landing is adopter-first when origin's parent branch already holds the task's work,
+// and this machine's parent branch carries the task's squash as a commit origin lacks.
+// The note names the squash by the parent's head SHA, then says how to undo it.
+// The undo is a reset when the squash is the only commit origin lacks.
+// A rebase drops it when another commit is listed, and the note ends in removing the pair.
 // An unreadable seam, origin's parent lacking the work and no commit to repair all add nothing.
 func (fz *Finalize) adopterFirstRepair(parentHandle parentMerger) string {
 	if fz.deps.OriginParentHoldsWork == nil || fz.deps.ParentCommitsOriginLacks == nil {

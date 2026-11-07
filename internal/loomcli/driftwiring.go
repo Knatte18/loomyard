@@ -1,4 +1,5 @@
-// driftwiring.go builds the seams the Drift rows are told: the run status, the git facts, the records commit, the expect and judge agents' tables and the capture and compare runs.
+// driftwiring.go builds the seams the Drift rows use:
+// the run status, git facts, records commit, the expect and judge agents' tables, and the capture and compare runs.
 // Every seam opens the fabric or reads a file on demand, since wire also runs for status and pause.
 
 package loomcli
@@ -49,17 +50,18 @@ type driftTables struct {
 	slug string
 	// decisionRecordPath is the absolute path of the task's decision record.
 	decisionRecordPath string
-	// planDir is the absolute path of the task's plan directory, which the expect agent reads, and empty for a run that has no plan.
+	// planDir is the absolute path of the task's plan directory, read by the expect agent; empty for a run with no plan.
 	planDir string
 	// rows is the run's recipe row order, which the seal check reads against the status row.
 	rows []string
 	// runID is the run's id, whose shed directory loom writes during a row.
 	runID string
-	// endRoles ends this worktree's live strands of the told roles, which a run of Drift-Baseline and Drift-Verify tells the roles of the removed drift agents.
+	// endRoles ends this worktree's live strands of the told roles, which the Drift-Baseline and Drift-Verify runs tell.
 	endRoles func(roles []string) error
 }
 
-// driftRecordsDeps builds the drift Deps whose seams read the committed drift records over location's worktree, which is all the verdict reads.
+// driftRecordsDeps builds the drift Deps whose seams read the committed drift records over location's worktree.
+// The verdict reads only these records.
 func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
 	return driftengine.Deps{
 		Paths: driftengine.NewPaths(location.AnchorPath()),
@@ -74,7 +76,8 @@ func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
 
 // driftDeps builds the seams the Drift rows read over location's worktree.
 // statusPath and statusLockPath locate the run status.
-// The seat runner, clock and gate findings file are left unset, since the registry entries fill them from the recipe's environment.
+// The seat runner, clock and gate findings file are left unset.
+// The registry entries fill them from the recipe's environment.
 func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
 	pool, waitDir := hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath())
@@ -246,9 +249,12 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 	}
 }
 
-// strandRoleStopper returns the seam that ends the chairs of the told roles, built over two seams so a test needs no tmux:
+// strandRoleStopper returns the seam that ends the chairs of the told roles.
+// It is built over two seams, so a test needs no tmux:
 // status reads reed's strand table, which is this worktree's own, and stop ends one strand by guid.
-// The table is read at call time, and every non-retiring strand whose role is exactly one of the told roles, a numbered form of it excluded, is stopped when it is live or an own-window strand whose pane is present.
+// The table is read at call time.
+// A strand is stopped when its role is exactly one of the told roles, so a numbered form of one is kept.
+// It must also not be retiring, and be either live or an own-window strand whose pane is present.
 // The first stop that fails ends the pass and is returned, naming the strand.
 func strandRoleStopper(
 	status func() (reedengine.StatusResult, error),
@@ -275,17 +281,21 @@ func strandRoleStopper(
 	}
 }
 
-// loomRecordsDirs returns the records paths loom itself writes during a row, relative to the records checkout's root and slash-separated:
-// the run's shed directory, the usage directory every session of the run records into, loom's friction directory and the prefix of its timestamped archive siblings, each under the location's anchor.
+// loomRecordsDirs returns the records paths loom itself writes during a row.
+// The paths are relative to the records checkout's root, slash-separated, and each sits under the location's anchor.
+// They cover the run's shed directory and the usage directory every session of the run records into.
+// They also cover loom's friction directory and the prefix of its timestamped archive siblings.
 func loomRecordsDirs(location *lymcwd.Location, runID string) []string {
 	underAnchor := func(rel string) string { return filepath.ToSlash(filepath.Join(location.AnchorRel, rel)) }
 	friction := underAnchor(loomengine.LoomFrictionDirRel())
 	return []string{underAnchor(shedrun.RunDirRel(location, runID)), underAnchor(shedrun.UsageDirRel()), friction, friction + "-"}
 }
 
-// driftCaptureRequest describes a capture of step over location's worktree, which the caller completes with its precondition and lock bound.
+// driftCaptureRequest describes a capture of step over location's worktree.
+// The caller completes it with its precondition and lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
-// InheritedSlot is the slot a gate this process runs inside holds, read from the process environment because the engine never reads it.
+// InheritedSlot is the slot held by the gate this process runs inside.
+// It is read from the process environment, since the engine never reads it.
 func driftCaptureRequest(location *lymcwd.Location, paths driftengine.Paths, pool *gateslot.Pool, waitDir string, step driftengine.CommandStep) driftengine.CaptureRequest {
 	return driftengine.CaptureRequest{
 		Paths:         paths,
@@ -300,7 +310,8 @@ func driftCaptureRequest(location *lymcwd.Location, paths driftengine.Paths, poo
 	}
 }
 
-// driftCompareRequest describes a compare of step over location's worktree, which the caller completes with its lock bound.
+// driftCompareRequest describes a compare of step over location's worktree.
+// The caller completes it with its lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
 func driftCompareRequest(location *lymcwd.Location, paths driftengine.Paths, pool *gateslot.Pool, waitDir string, step driftengine.CommandStep) driftengine.CompareRequest {
 	return driftengine.CompareRequest{

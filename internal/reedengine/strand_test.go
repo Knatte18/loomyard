@@ -1,15 +1,13 @@
-// strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lym: guid
-// generation/uniqueness, unknown/cyclic parent rejection, the hidden-add no-launch path, the
-// launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
-// itself is out of hermetic reach, see spawn_test.go), UpdateStrand's visible->hidden rejection,
-// and RemoveStrand's non-leaf guard/cascade.
-// None of the *Locked cases touch tmux: addStrandLocked/updateStrandLocked only reach tmux through
-// launchStrandLocked,
-// and every case here either stays hidden or is a rejection that never gets there;
-// removeStrandLocked never touches tmux at all.
-// The R5-F4 cases at the end of this file are the exception: they drive the pane-TARGETING half of
-// RemoveStrand and the transport ops, which is tmux-facing by definition, through TmuxCmd's
-// execHook seam rather than a live server.
+// strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lym.
+// It covers guid generation and uniqueness, unknown and cyclic parent rejection, and the hidden-add no-launch path.
+// It covers the launch-path decision seam, needsLaunchOnAdd and needsLaunchOnSurface.
+// It covers UpdateStrand's visible-to-hidden rejection, and RemoveStrand's non-leaf guard and cascade.
+// The real-tmux launch is out of hermetic reach here.
+// addStrandLocked and updateStrandLocked reach tmux only through launchStrandLocked.
+// Every case here either stays hidden or is a rejection that never reaches that launch.
+// removeStrandLocked never touches tmux.
+// The pane-targeting half of RemoveStrand and the transport ops are tmux-facing by definition.
+// Their cases, at the end of this file, drive that half through TmuxCmd's execHook seam rather than a live server.
 
 package reedengine
 
@@ -31,11 +29,15 @@ import (
 )
 
 // TestAddStrandLocked pins the hidden-add path and the engine-boundary rejections of one fresh state.
-// Hidden adds mint unique 32-hex guids, store the record without launching (no PaneID) and keep Cmd verbatim though unrun;
-// AddSpec.SessionID is opaque caller metadata, stamped verbatim and surviving a SaveState/LoadState round trip like every other carrier field (Cmd, ResumeCmd, Name);
-// a known parent is accepted.
-// An unknown parent, an own-window display with a negative window size, a mistyped anchor or an empty one is rejected before any pane is launched or record registered —
-// without that guard an in-process caller (shuttle) would persist the strand, launch its pane, and fail every subsequent apply in render until the strand was removed.
+// Hidden adds mint unique 32-hex guids and store the record without launching (no PaneID).
+// They keep Cmd verbatim though it is unrun.
+// AddSpec.SessionID is opaque caller metadata, stamped verbatim.
+// It survives a SaveState/LoadState round trip like every other carrier field (Cmd, ResumeCmd, Name).
+// A known parent is accepted.
+// An unknown parent, an own-window display with a negative window size, or a mistyped or empty anchor is rejected.
+// The rejection happens before any pane is launched or record registered.
+// Without that guard, an in-process caller such as shuttle would persist the strand and launch its pane;
+// every later apply in render would then fail until the strand was removed.
 func TestAddStrandLocked(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -232,7 +234,8 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 }
 
 // TestUpdateStrandLocked pins UpdateStrand's engine-boundary rules.
-// A visible->hidden update, a mistyped anchor, an unknown guid and a move into or out of the own-window anchor or between window groups are rejected with the strand's display unchanged.
+// A visible->hidden update, a mistyped anchor, and an unknown guid are rejected with the strand's display unchanged.
+// A move into or out of the own-window anchor, or between window groups, is rejected the same way.
 // A persisted display the pane does not match would poison every later apply.
 // A hidden->hidden update and a focus-only change of an own-window strand are accepted and launch nothing.
 // An overview strand's order change is rejected too, while a focus-only change of an overview strand is accepted.
@@ -299,9 +302,9 @@ func TestUpdateStrandLocked(t *testing.T) {
 }
 
 // TestRemoveStrandLocked pins the non-leaf guard and the cascade on one table:
-// a non-leaf removed without recursive is refused with the table unchanged,
-// and the recursive remove cascades to every descendant, lists each removed strand with its name and leaves unrelated strands alone.
-// A window group's record outlives all but the group's last strand.
+// a non-leaf removed without recursive is refused with the table unchanged;
+// the recursive remove cascades to every descendant and lists each removed strand with its name.
+// Unrelated strands are left alone.
 func TestRemoveStrandLocked(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -356,10 +359,9 @@ func TestRemoveStrandLocked(t *testing.T) {
 	}
 }
 
-// TestRemovalEmptiedSession pins the four-way classification removalEmptiedSession makes: the
-// success-swallow in RemoveStrand may only fire when the session is confirmed gone AND no remaining
-// strand is expected to still own a live pane (mirroring anyPlacedStrand's Anchor !=
-// render.AnchorHidden filter).
+// TestRemovalEmptiedSession pins the four-way classification removalEmptiedSession makes.
+// The success-swallow in RemoveStrand may fire only when the session is confirmed gone;
+// and no remaining strand that is not hidden is expected to own a live pane.
 func TestRemovalEmptiedSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -410,9 +412,10 @@ func TestRemovalEmptiedSession(t *testing.T) {
 	}
 }
 
-// TestClassifyIfAbsent drives every one of the four branch rows plus the extra cases the discussion's
-// Testing section enumerates: an empty-PaneID candidate, a candidate bound to a pane present but not
-// alive, and a hidden strand sharing a name with a not-alive visible one.
+// TestClassifyIfAbsent drives every branch of classifyIfAbsent and the edge cases around it.
+// An empty-PaneID candidate is one edge case.
+// A candidate bound to a pane that is present but not alive is another.
+// A hidden strand sharing a name with a visible strand that is not alive is the last.
 func TestClassifyIfAbsent(t *testing.T) {
 	tiergate.Require(t, 0)
 	visible := render.Display{Anchor: render.AnchorOwnWindow}
@@ -517,9 +520,9 @@ func TestClassifyIfAbsent(t *testing.T) {
 	}
 }
 
-// TestValidateIfAbsent pins the one requirement --if-absent adds: rejected (naming --name) whenever
-// IfAbsent is true and NameOverride is empty, and accepted otherwise — including the ordinary
-// IfAbsent-false case with no name at all.
+// TestValidateIfAbsent pins the one requirement --if-absent adds.
+// A spec with IfAbsent set and no NameOverride is rejected, with an error naming --name.
+// Every other spec is accepted, including an IfAbsent-false spec with no name at all.
 //
 //testtiming:keep pins --if-absent requiring a name: rejected naming --name when IfAbsent is set without one, accepted otherwise; its covering tests run this code without asserting it
 func TestValidateIfAbsent(t *testing.T) {
@@ -547,15 +550,16 @@ func TestValidateIfAbsent(t *testing.T) {
 	}
 }
 
-// installIfAbsentTmux installs a fakeTmux answering the tmux round trips AddStrand's --if-absent path
-// makes before it ever reaches a no-op return: has-session (the session is up), display-message (a
-// stable pane generation, so loadOrInitStateLocked's adoptPaneGenerationLocked stamp check never
-// clears the fixture's bindings), and list-panes (paneLines, both the substrate snapshot
-// ensureSessionLocked's sessionSubstrateLocked reads to decide the session is already usable and the
-// alive-pane snapshot classifyIfAbsent decides against — the same list-panes call answers both, since
-// both run against the identical fixture session). paneLines must therefore carry at least one pane
-// line whenever a case wants AddStrand to see the session as already usable and skip the boot path,
-// even when that pane is not any strand's own PaneID.
+// installIfAbsentTmux installs a fakeTmux that answers the round trips AddStrand's --if-absent path makes.
+// Those run before the path reaches a no-op return.
+// has-session reports that the session is up.
+// display-message reports a stable pane generation, so adoptPaneGenerationLocked never clears the fixture's bindings.
+// list-panes answers with paneLines for two reads at once.
+// One is the substrate snapshot that sessionSubstrateLocked reads to decide the session is already usable.
+// The other is the alive-pane snapshot that classifyIfAbsent decides against.
+// Both run against the identical fixture session.
+// A case where AddStrand should skip the boot path needs at least one pane line in paneLines.
+// That pane need not be any strand's own PaneID.
 func installIfAbsentTmux(t *testing.T, e *Engine, paneLines string) *fakeTmux {
 	t.Helper()
 	fake := installFakeTmux(t, e)
@@ -564,10 +568,12 @@ func installIfAbsentTmux(t *testing.T, e *Engine, paneLines string) *fakeTmux {
 	return fake
 }
 
-// TestAddStrand_IfAbsent_NoOps pins the no-op branches at the engine-call level:
-// AddStrand must return the matched strand unchanged and persist nothing,
-// even though the incoming spec carries a Focus:true Display and different Cmd/ResumeCmd/Parent than what is persisted.
-// An alive match is a no-op, a hidden-only match is a no-op regardless of any pane being alive, and a role-segment --name matches on the full name it resolves to.
+// TestAddStrand_IfAbsent_NoOps pins the no-op branches at the engine-call level.
+// AddStrand must return the matched strand unchanged and persist nothing.
+// The incoming spec carries a Focus:true Display and different Cmd, ResumeCmd and Parent values.
+// An alive match is a no-op.
+// A hidden-only match is a no-op regardless of any pane being alive.
+// A role-segment --name matches on the full name it resolves to.
 func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -585,8 +591,9 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 			},
 		},
 		{
-			// A header-only pane line (no strand's own PaneID) so ensureSessionLocked's substrate probe finds
-			// the session already usable and never boots: the hidden-only decision must not depend on any pane being alive.
+			// The header-only pane line has no strand's own PaneID.
+			// It lets ensureSessionLocked's substrate probe find the session usable, so it never boots.
+			// The hidden-only decision must not depend on any pane being alive.
 			name:      "HiddenOnlyNoOps",
 			paneLines: "%0 0 0 100 20 4321\n",
 			persisted: Strand{
@@ -631,12 +638,13 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 		})
 	}
 
-	// A name-matched own-window strand whose pane lists only its start shell past the launch grace is not alive: the add relaunches it onto a new pane.
+	// A name-matched own-window strand whose pane lists only its start shell past the launch grace is not alive.
+	// The add relaunches it onto a new pane.
 	t.Run("ShellOnlyPaneIsRelaunched", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.paneAge = func(pid int) (time.Duration, bool) { return 31 * time.Second, true }
 		fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321 t\tbash\t/bin/bash\n")
-		// The new pane shows up in the listings once it is created, so the reconcile after the launch keeps its binding.
+		// The new pane appears in the listings once it is created, so the reconcile after the launch keeps its binding.
 		fake.answerFunc("new-window", func(args []string) (string, error) {
 			fake.answer("list-panes", "%9 0 0 100 20 4399 t\tclaude\t/bin/bash\n", nil)
 			return "%9 @9\n", nil
@@ -659,7 +667,9 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 	})
 }
 
-// TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant (its pane gone) or hidden, and that a skip saves, launches and moves nothing.
+// TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant, or hidden.
+// A dormant strand is one whose pane is gone.
+// A skip saves, launches and moves nothing.
 func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -684,9 +694,9 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 			if err := SaveState(e.stateDir(), &ReedState{Strands: append(slices.Clone(tt.before), tt.orch)}); err != nil {
 				t.Fatalf("SaveState: %v", err)
 			}
-			// The seeded state carries no socket, session or pane-generation stamp,
-			// and every load stamps them in memory,
-			// so a SaveState on the skip path would change these bytes.
+			// The seeded state carries no socket, session or pane-generation stamp.
+			// Every load stamps them in memory.
+			// So a SaveState on the skip path would change these bytes.
 			statePath := filepath.Join(e.stateDir(), reedStateFileName)
 			stateBefore, err := os.ReadFile(statePath)
 			if err != nil {
@@ -765,8 +775,11 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 	}
 }
 
-// TestAddStrand_ReclaimsADeadHoldersName pins that an add removes a dead, visible, childless, unpaused holder of the exact asked-for name before naming, and leaves every other holder in place.
-// The holder is an own-window strand named tc:tslug:fix, and the new strand is added hidden so nothing launches.
+// TestAddStrand_ReclaimsADeadHoldersName pins that an add reclaims a name held by a dead holder.
+// The add removes a dead, visible, childless, unpaused holder of the exact asked-for name before naming.
+// Every other holder stays in place.
+// The holder is an own-window strand named tc:tslug:fix.
+// The new strand is added hidden, so nothing launches.
 func TestAddStrand_ReclaimsADeadHoldersName(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -929,10 +942,10 @@ func TestAddStrandUnless_UnformableNameRefusesBeforeTmux(t *testing.T) {
 	}
 }
 
-// TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact pins that validateIfAbsent's config
-// rejection still precedes any tmux contact at all, now that AddStrand's pre-flight is
-// ensureSessionLocked rather than requireSessionLocked: a --if-absent call with no name override must
-// fail with validateIfAbsent's own error, not the nonexistent multiplexer binary's.
+// TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact pins that validateIfAbsent runs before any tmux contact.
+// AddStrand's pre-flight is ensureSessionLocked.
+// A --if-absent call with no name override must fail with validateIfAbsent's own error.
+// It must not fail with the error of the nonexistent multiplexer binary.
 func TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -946,9 +959,13 @@ func TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact(t *testing.T) {
 	}
 }
 
-// TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage pins the self-heal behaviour change at the engine-call level: AddStrand against a cold engine (no live session, nothing booted) no longer refuses with noSessionMessage's friendly text.
-// The returned error IS still non-nil — the fixture's configured tmux/shell binaries do not exist on disk, so ensureSessionLocked's own sessionSubstrateLocked probe fails with that nonexistent binary's exec error, reached before anything else runs.
-// Asserting that binary error's exact text would pin an OS-specific string, so this only asserts what the self-heal change actually promises: neither the no-session phrase nor the `lym reed up` remedy noSessionMessage names appears in the error AddStrand now returns.
+// TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage pins that AddStrand self-heals a cold engine.
+// A cold engine has no live session and has booted nothing.
+// The returned error is still non-nil.
+// The fixture's tmux and shell binaries do not exist on disk.
+// So ensureSessionLocked's sessionSubstrateLocked probe fails with that exec error before anything else runs.
+// Asserting the exact text of that error would pin an OS-specific string.
+// So the test asserts only that the error lacks the no-session phrase and the `lym reed up` remedy.
 func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -965,25 +982,23 @@ func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
 	}
 }
 
-// Deliberately NOT tested hermetically: a validation-ordering test shaped like
-// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact, pinning that a config error (e.g. a bad header
-// template) fails AddStrand before any tmux contact. ensureSessionLocked's first act is
-// sessionSubstrateLocked's own session probe, so — unlike Up, whose pre-tmux validation block runs
-// ahead of any session check — AddStrand's cold path always contacts tmux first, and the config
-// validation buried inside upLocked's delegate only runs, if at all, after that probe. That ordering
-// is the point of the seam (a warm AddStrand must cost only the one extra probe round trip, never a
-// config validation it did not already perform — Shared Decision "the warm path changes only by
-// adding probe round trips"), not an ordering defect to fix. Cold-path validation ordering for
-// AddStrand is covered by the smoke tier instead (batch 5).
+// No hermetic test pins that a config error, such as a bad header template, fails AddStrand before any tmux contact.
+// ensureSessionLocked's first act is sessionSubstrateLocked's session probe.
+// Up runs its pre-tmux validation block ahead of any session check.
+// AddStrand's cold path contacts tmux first.
+// The config validation inside upLocked's delegate runs, if at all, only after that probe.
+// That ordering is intended.
+// A warm AddStrand adds only probe round trips and performs no config validation it did not already perform.
+// Cold-path validation ordering for AddStrand is covered by the smoke tier.
 
 // hiddenSpec is a hidden add, which never launches a pane, so addStrandLocked reaches no tmux.
 func hiddenSpec(role, nameOverride string) AddSpec {
 	return AddSpec{Role: role, NameOverride: nameOverride, Display: render.Display{Anchor: render.AnchorHidden}}
 }
 
-// TestStrandNameLocked_Names pins how an add forms its strand name:
-// the role is numbered by how many strands already hold it, a dormant strand still holds its role,
-// a legacy-shaped name holds nothing, an empty slug gives two segments and an empty role defaults to "strand".
+// TestStrandNameLocked_Names pins how an add forms its strand name.
+// The role is numbered by how many strands already hold it, and a dormant strand still holds its role.
+// A legacy-shaped name holds nothing, an empty slug gives two segments, and an empty role defaults to "strand".
 //
 //testtiming:keep pins how an add forms its strand name: the role numbered by the strands holding it, a dormant strand still counting, a legacy name holding nothing, an empty slug giving two segments and an empty role defaulting to strand; its covering tests run this code without asserting it
 func TestStrandNameLocked_Names(t *testing.T) {
@@ -1128,10 +1143,9 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	}
 }
 
-// TestAlivePanePIDs pins RemoveStrand's reap-root selection: only panes that are being removed AND
-// are present AND not dead contribute their pane pid — a dead pane's recorded pid may already have
-// been reused by an unrelated process, so it must never seed the descendant closure the reap
-// force-kills.
+// TestAlivePanePIDs pins the reap-root selection: only a requested, present, alive pane contributes its pid.
+// A dead pane's recorded pid may already have been reused by an unrelated process,
+// so it must never seed the descendant closure that the reap force-kills.
 //
 //testtiming:keep pins the reap-root selection: only a pane that is requested, present and alive contributes its pid, a dead, pid-less or absent one never does since a dead pane's recorded pid may have been reused; its covering tests run this code without asserting it
 func TestAlivePanePIDs(t *testing.T) {
@@ -1153,15 +1167,13 @@ func TestAlivePanePIDs(t *testing.T) {
 	}
 }
 
-// TestSessionReapRoots is the regression guard for the R2 review's R2-F2: Down snapshotted its
-// descendant-closure roots from EVERY pane the session listed, dead ones included, while
-// RemoveStrand correctly filtered to alive panes only. tmux keeps reporting a dead pane's recorded
-// #{pane_pid} indefinitely (remain-on-exit is on for every reed session, and reconcile deliberately
-// KEEPS the last dead pane and any dead Selvage corpse), so once the OS recycled that pid, Down would
-// expand an unrelated process's whole subtree, block on it for the full reapExitTimeout, and then
-// SIGKILL it.
-// The dead-pane row is the assertion that matters; the pid-less row pins that the two forms share
-// one predicate rather than each re-deriving it.
+// TestSessionReapRoots pins that Down's reap roots exclude a dead pane's recorded pid.
+// tmux keeps reporting a dead pane's #{pane_pid} indefinitely:
+// remain-on-exit is on for every reed session, and reconcile keeps the last dead pane and any dead Selvage corpse.
+// Once the OS recycles that pid, the root from the dead pane would expand an unrelated process's subtree:
+// Down would block on it for the full reapExitTimeout, and then SIGKILL it.
+// The dead-pane row is the assertion that matters;
+// the pid-less row pins that the two forms share one predicate rather than each re-deriving it.
 //
 //testtiming:keep pins that Down's reap roots exclude a dead pane's recorded pid, a pid-less pane and a corpse-only session; its covering tests run this code without asserting it
 func TestSessionReapRoots(t *testing.T) {
@@ -1209,12 +1221,10 @@ func TestSessionReapRoots(t *testing.T) {
 	}
 }
 
-// TestPaneIDsInSession is the regression guard for the R5 review's R5-F4: RemoveStrand spent every
-// persisted pane id as a kill-pane target with no check that it belonged to this worktree's
-// session. The -L socket is per hub and tmux pane ids are server-global, so a stale or copied
-// reed.json routinely carries a valid, addressable id belonging to a SIBLING worktree's live
-// session — reproduced live, one worktree's remove killed another's strand pane and its process
-// while reporting ok:true.
+// TestPaneIDsInSession pins the filter that keeps only this worktree's session panes among persisted pane ids.
+// The -L socket is per hub and tmux pane ids are server-global,
+// so a stale or copied reed.json can carry a valid id belonging to a sibling worktree's live session.
+// Without the filter, a remove kills a sibling worktree's strand pane and its process while reporting ok:true.
 //
 //testtiming:keep pins the kill-pane targets being filtered to panes of this worktree's session, a dead but present pane kept and a sibling worktree's pane id dropped; its covering tests run this code without asserting it
 func TestPaneIDsInSession(t *testing.T) {
@@ -1266,9 +1276,10 @@ func TestPaneIDsInSession(t *testing.T) {
 	}
 }
 
-// TestResolvePaneInThisSessionLocked is R5-F4's guard for the transport half: SendText, SendKey and
-// CapturePane share this resolution, and a pane id belonging to another worktree's session on the
-// shared socket is a target send-keys accepts — one agent's input typed into another agent's pane.
+// TestResolvePaneInThisSessionLocked pins that pane resolution admits only panes of this worktree's session.
+// Sends and captures share that resolution.
+// A pane id from another worktree's session on the shared socket is a target send-keys accepts:
+// without the check, one agent's input is typed into another agent's pane.
 func TestResolvePaneInThisSessionLocked(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1330,11 +1341,9 @@ func TestResolvePaneInThisSessionLocked(t *testing.T) {
 	}
 }
 
-// TestRemoveStrand_NeverKillsAPaneOutsideThisSession pins R5-F4 at the CALL SITE rather than at the
-// helper: paneIDsInSession is only worth having if RemoveStrand's kill-pane loop actually consults
-// it, and the destructive shape the R5 review reproduced live was a kill-pane issued against a
-// sibling worktree's live pane.
-// It drives the whole op through the fake tmux, recording every kill-pane target.
+// TestRemoveStrand_NeverKillsAPaneOutsideThisSession pins that the remove's kill-pane loop applies the session filter.
+// Without it, a kill-pane lands on a sibling worktree's live pane.
+// It drives the whole remove through the fake tmux, recording every kill-pane target.
 //
 //testtiming:keep pins RemoveStrand's kill-pane loop consulting the session filter, so a stale reed.json naming a sibling worktree's pane kills nothing there; its covering tests run this code without asserting it
 func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
@@ -1371,8 +1380,10 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 	}
 }
 
-// TestWriteOps_RefuseARetiredAnchor pins that each write op refuses a Go-built display naming a retired anchor before any pane or state changes.
-// ReplaceStrand removes the old strand and kills its pane before it adds, so its refusal has to come at its head, which the replace rows pin.
+// TestWriteOps_RefuseARetiredAnchor pins that each write op refuses a Go-built display naming a retired anchor.
+// The refusal comes before any pane or state changes.
+// ReplaceStrand removes the old strand and kills its pane before it adds,
+// so its refusal has to come at its head, which the replace rows pin.
 func TestWriteOps_RefuseARetiredAnchor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

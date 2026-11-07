@@ -1,4 +1,5 @@
-// fixaccept_test.go pins AcceptFixReview: what it writes into the change description and the attempt record, and what it refuses.
+// fixaccept_test.go pins AcceptFixReview: what it writes into the change description and the attempt record.
+// It also pins what it refuses.
 
 package landingshed
 

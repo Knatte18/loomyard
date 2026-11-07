@@ -1,6 +1,6 @@
-// selvagepane_test.go tests the seam helpers selvagepane.go owns: bottommostPaneID and
-// ensureSelvagePaneLocked's create/heal path (relocated from lifecycle_test.go, unchanged).
-// All are pure/hermetic or driven through the e.tmux.execHook fake — no live tmux required.
+// selvagepane_test.go tests the seam helpers that selvagepane.go owns.
+// They cover bottommostPaneID and the create and heal path of ensureSelvagePaneLocked.
+// Each test is pure or drives the e.tmux.execHook fake, so none needs a live tmux.
 
 package reedengine
 
@@ -13,10 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNewReapPolicy_ThreeQuestionsAssertedIndependently drives newReapPolicy's three consulting
-// questions independently rather than through a single combined predicate, so a future
-// fold-together fails here. The corpse case is the one that pins the distinction: it is exempt from
-// both kills and authorizes neither reap.
+// TestNewReapPolicy_ThreeQuestionsAssertedIndependently asserts each of newReapPolicy's three questions on its own.
+// A fold of them into one combined predicate fails here.
+// The corpse case pins the distinction: it is exempt from both kills and authorizes neither reap.
 //
 //testtiming:keep pins the reap policy's three questions apart: an alive Selvage is exempt from both kills and authorizes the reap, a present corpse is exempt from both but authorizes none, and an unrelated pane is never exempt; its covering tests run this code without asserting it
 func TestNewReapPolicy_ThreeQuestionsAssertedIndependently(t *testing.T) {
@@ -135,8 +134,8 @@ func TestClearSelvagePaneBinding(t *testing.T) {
 	})
 }
 
-// TestBottommostPaneID asserts the Selvage split target is chosen by pane_top rather than by
-// list-panes order, which tmux does not guarantee is top-to-bottom.
+// TestBottommostPaneID asserts the Selvage split target is chosen by pane_top, not by list-panes order.
+// tmux does not guarantee that list-panes order is top-to-bottom.
 //
 //testtiming:keep pins the split target being chosen by pane_top rather than list-panes order, which tmux does not guarantee is top to bottom; its covering tests run this code without asserting it
 func TestBottommostPaneID(t *testing.T) {
@@ -160,20 +159,18 @@ func TestBottommostPaneID(t *testing.T) {
 	}
 }
 
-// TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure pins the validateSplitCreatedNewPane
-// guard at its call site (against regression).
+// TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure checks the validateSplitCreatedNewPane guard.
 func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
-	// One alive, non-Selvage pane (%0) — the new-session initial pane a fresh
-	// boot leaves before Selvage exists. It is the only pane, so it is both
-	// the bottommost split target and the id psmux's silent-split shape re-prints.
+	// The one live pane, %0, is the new-session initial pane a fresh boot leaves before Selvage exists.
+	// It is the only pane, so it is both the bottommost split target and the id that psmux's silent-split shape re-prints.
 	const existingPaneID = "%0"
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
-	// Every other verb (send-keys, kill-pane) is only reached if the guard is (wrongly) bypassed;
-	// the fake answers it empty so the missing-guard regression returns nil and this test's error assertion catches it.
+	// Other verbs (send-keys, kill-pane) are reached only if the guard is bypassed.
+	// The fake answers them empty, so a missing guard returns nil and this test's error assertion catches it.
 	fake := installFakeTmux(t, e)
 	fake.answer("list-panes", listPanesOut, nil)
 	// psmux silent failure: exit 0, no new pane, an EXISTING pane's id
@@ -193,14 +190,18 @@ func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) 
 	}
 }
 
-// TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane pins the Selvage create path on a scripted two-pane session:
-//   - the split targets the bottommost pane, carries no -b and carries -f, so the new pane lands below it as a full-width split taking its rows from the whole window, which a short bottom pane cannot refuse;
-//   - it pins its pane to Geometry.PaneCwd, not AnchorPath (the two are distinct on newTestEngine's fixture, so this cannot pass by coincidence);
-//   - it launches the shell as split-window's own trailing shell-command argument, never by typing into the pane with send-keys;
+// TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane pins the Selvage create path on a two-pane session:
+//   - the split targets the bottommost pane, with -f and without -b,
+//     so the new pane is a full-width split taking its rows from the whole window;
+//     a short bottom pane cannot refuse that split;
+//   - it pins the pane to Geometry.PaneCwd, not AnchorPath;
+//     the two differ on newTestEngine's fixture, so a match cannot pass by coincidence;
+//   - it launches the shell as the trailing shell-command argument of split-window, never by typing it with send-keys;
 //   - it records the new pane's id onto state even though the fake tmux never runs a real shell.
 //
-// The new-session spawn site is not reachable from this seam, since it builds its argv and runs it
-// through the os/exec package's Command function directly rather than through e.tmux; the tagged reed suites cover that half.
+// The new-session spawn site is not reachable from this seam:
+// it builds its argv and runs it through os/exec directly, not through e.tmux.
+// The tagged reed suites cover that half.
 //
 //testtiming:keep pins the Selvage create path's split-window call: targeting the bottommost pane with no -b, pinned to PaneCwd, launching the shell as the trailing argument and never via send-keys, then recording the new pane id; its covering tests run this code without asserting it
 func TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane(t *testing.T) {
@@ -211,7 +212,7 @@ func TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane(t *testing.T) 
 	const newPaneID = "%2"
 	fake := installFakeTmux(t, e)
 	fake.answer("list-panes", topPaneID+" 0 0 100 10 4321\n"+bottomPaneID+" 0 10 100 10 4322\n", nil)
-	// A genuinely new pane id, distinct from the pre-split live set, so the silent-split guard (validateSplitCreatedNewPane) does not reject the call.
+	// The new pane id differs from the pre-split live set, so validateSplitCreatedNewPane accepts the call.
 	fake.answer("split-window", newPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}

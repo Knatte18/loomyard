@@ -1,4 +1,5 @@
-// reconcile.go runs the hub's origin reconcile ahead of cleanup's segments: the seams it takes, and the refusal text of a stop on the branches every pair shares.
+// reconcile.go runs the hub's origin reconcile ahead of cleanup's segments and supplies its seams.
+// It also renders the refusal text for a stop on the branches every pair shares.
 
 package cleanupcli
 
@@ -16,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
-// The repository sides a branch outcome names that a stop on is shared by every pair.
+// The repository sides on which a stop is shared by every pair.
 const (
 	sideBolt    = "bolt"
 	sideRecords = "records"
@@ -36,7 +37,8 @@ func reconcileHub(prime *lymcwd.Location, apply bool) (fabricengine.OriginReport
 }
 
 // cleanupSeamOptions returns the hub's seam options extended with the wake hold.
-// WakeHeld reads the pause record for a live entry of the slug whose caller is the hibernate request's wake, and LiftWakeHold lifts that entry by identity through tender.
+// WakeHeld reads the pause record for a live entry of the slug whose caller is the hibernate request's wake.
+// LiftWakeHold lifts that entry by identity through tender.
 func cleanupSeamOptions(prime *lymcwd.Location) pairteardown.SeamOptions {
 	opts := pairteardown.HubSeamOptions(prime)
 	opts.WakeHeld = func(slug string) (bool, error) {
@@ -76,7 +78,8 @@ func wakeEntry(prime *lymcwd.Location, slug string) (pauserecord.Entry, bool, er
 	return pauserecord.Entry{}, false, nil
 }
 
-// sharedStopText renders each stop on Bolt or the prime's records branch as its way forward, followed by the re-entry where one retries it.
+// sharedStopText renders each stop on Bolt or the prime's records branch as its way forward.
+// A stop that a re-run of cleanup retries also carries the re-entry.
 // It is empty when neither branch stopped.
 func sharedStopText(report fabricengine.OriginReport) string {
 	var stops []string

@@ -1,4 +1,5 @@
-// skillload_test.go pins the skill load: the lookup of a skill's SKILL.md under the skill roots, the load line, its classification from a rollout, and the launch that carries it as the first turn.
+// skillload_test.go pins the skill load: the lookup of a skill's SKILL.md under the skill roots and the load line.
+// It also pins the classification from a rollout and the launch that sends the load line first.
 
 package codexengine
 
@@ -13,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeSkill writes the SKILL.md of plugin's skill name at version under the marketplace folder of root, and returns its path.
+// writeSkill writes the SKILL.md of a plugin's skill at version under root's marketplace folder and returns its path.
 func writeSkill(t *testing.T, root, marketplace, plugin, version, name string) string {
 	t.Helper()
 	file := filepath.Join(root, marketplace, plugin, version, skillsDirName, name, skillFileName)
@@ -56,8 +57,10 @@ func rolloutExecCall(command string) string {
 	return rolloutToolCall("function_call", command)
 }
 
-// TestSkillPath pins the lookup: the newest version under the first root that holds the skill, and none for a skill no root holds or one that names no plugin.
-// The newest is the highest number field by field; a number orders above text, so a release beats its pre-release and a hash-named folder,
+// TestSkillPath pins that the lookup returns the newest version under the first root holding the skill.
+// It returns none for a skill no root holds or one that names no plugin.
+// The newest is the highest number field by field;
+// a number orders above text, so a release beats its pre-release and a hash-named folder,
 // and a set of versions that would cycle under a mixed comparison still yields one answer.
 // A root holding a glob metacharacter resolves as written.
 func TestSkillPath(t *testing.T) {
@@ -95,7 +98,8 @@ func TestSkillPath(t *testing.T) {
 	}
 }
 
-// TestSkillLoadMessage pins the load line: each found skill's path in order, an unfound one left out, and a line asking for no read when none is found.
+// TestSkillLoadMessage pins the load line: each found skill's path in order and an unfound one left out.
+// When no skill is found, the line asks for no read.
 func TestSkillLoadMessage(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -130,7 +134,8 @@ func TestSkillLoadMessage_ExpandsAHomeRoot(t *testing.T) {
 	}
 }
 
-// TestSkillLoadMessage_WarnsOnceWhenCodexYamlDoesNotLoad pins that a codex.yaml that does not load resolves no skill, with one Warn.
+// TestSkillLoadMessage_WarnsOnceWhenCodexYamlDoesNotLoad pins that a codex.yaml that does not load resolves no skill.
+// It logs one Warn.
 func TestSkillLoadMessage_WarnsOnceWhenCodexYamlDoesNotLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -149,7 +154,8 @@ func TestSkillLoadMessage_WarnsOnceWhenCodexYamlDoesNotLoad(t *testing.T) {
 }
 
 // TestClassifySkillLoad pins the classification from a rollout.
-// A tool call of any call payload type after the load message naming a skill's tail loads it, and a call before the message does not.
+// A tool call of any call payload type after the load message naming a skill's tail loads it,
+// and a call before the message does not.
 // A repeated load message restarts the count, and a truncated line is skipped.
 // A skill no root holds is unknown, and an unreadable rollout or one without the load message is unverified.
 func TestClassifySkillLoad(t *testing.T) {
@@ -213,7 +219,8 @@ func TestClassifySkillLoad(t *testing.T) {
 	}
 }
 
-// TestClassifySkillLoad_NewerVersionAfterTheLine pins that a skill version that appears after the load line was sent leaves the report verified.
+// TestClassifySkillLoad_NewerVersionAfterTheLine pins that a newer skill version leaves the report verified.
+// The version is written after the load line was sent.
 // The line is recognised by its fixed text and not by the paths it named.
 func TestClassifySkillLoad_NewerVersionAfterTheLine(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -232,7 +239,8 @@ func TestClassifySkillLoad_NewerVersionAfterTheLine(t *testing.T) {
 	}
 }
 
-// TestPrepare_SkillsLoadFirst pins that a spec naming skills launches with the load line as its first turn and returns the prompt pointer as the prompt line.
+// TestPrepare_SkillsLoadFirst pins that a spec naming skills launches with the load line as its first turn.
+// It returns the prompt pointer as the prompt line.
 func TestPrepare_SkillsLoadFirst(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

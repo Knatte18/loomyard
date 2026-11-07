@@ -1,4 +1,5 @@
-// waitreminder_test.go pins the wait reminders over a fake child reading and fake presence, interval and post seams: which waits are reminded, when, and what restarts them.
+// waitreminder_test.go pins the wait reminders over fake child reading, presence, interval and post seams.
+// It covers which waits are reminded, when, and what restarts them.
 
 package dobbyengine
 
@@ -26,7 +27,8 @@ type reminderFake struct {
 	posts       []string
 }
 
-// newReminderHarness returns a notice harness whose child waits at PR-Review with the operator away and a thirty-minute interval, and the fake its reminder seams read.
+// newReminderHarness returns a notice harness and the fake its reminder seams read.
+// The child waits at PR-Review with the operator away and a thirty-minute interval.
 func newReminderHarness(t *testing.T) (*passHarness, *noticeFake, *reminderFake) {
 	t.Helper()
 	h, f := newNoticeHarness(t)

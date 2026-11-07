@@ -1,7 +1,11 @@
-// refusal.go declares the pure decisions behind orch's refusals: the pre-run's rule that every orch verb runs from the hub's prime worktree or a beam, and the bring-up's refusals of a worktree.
+// refusal.go declares the pure decisions behind orch's refusals.
+// The pre-run's rule is that every orch verb runs from the hub's prime worktree or a beam.
+// The bring-up's refusals are the checks of a worktree and a beam before orch comes up.
 //
-// refuseNonPrime is battencli's shape with orch wording, duplicated rather than imported because a <module>cli importing another <module>cli would couple two cobra seams.
-// The caller runs fabricengine.RequireDrivableWorktree first, since the name comparison alone admits the prime's fabric sibling, whose own prime is itself.
+// refuseNonPrime repeats a sibling cli package's check with orch wording rather than importing it.
+// A cli package importing another would couple two cobra seams.
+// The caller runs fabricengine.RequireDrivableWorktree first.
+// The name comparison alone admits the prime's fabric sibling, whose own prime is itself.
 
 package orchcli
 
@@ -29,16 +33,21 @@ type beamFacts struct {
 	ownLanding bool
 }
 
-// ownLandingHold reports whether a held beam's hold is its own pawl run's: the beam pair's own run status is found, not done, and its current producer is the producer half of the board status.
-// That covers Finalize and Beam-Down, and a halt at a retired row an older binary left, before the move off it lifts it; a hold whose producer the pair's own run does not stand at is held by something else.
+// ownLandingHold reports whether a held beam's hold is its own pawl run's:
+// the beam pair's own run status is found, not done, and its current producer is the producer half of the board status.
+// That covers Finalize and Beam-Down, and a halt at a retired row an older binary left, before the move off it lifts it;
+// a hold whose producer the pair's own run does not stand at is held by something else.
 func ownLandingHold(boardStatus *string, run shedengine.Status, runFound bool) bool {
 	producer, isRunStatus := boardengine.RunStatusProducer(boardStatus)
 	return isRunStatus && runFound && run.State != shedengine.StateDone && run.CurrentProducer == producer
 }
 
 // beamUpRefusal returns nil when an orch may come up in the beam slug, or in the prime when slug is empty, on the machine here.
-// owner is the machine the worktree reads as owned by, empty for none, and moveWayForward the way forward of a standing anchor change, empty for none.
-// A worktree another machine owns is refused naming the owner and the takeover, a standing anchor change is refused naming its way forward, and a beam whose entry a run other than its own landing holds is refused naming that run's status verb.
+// owner is the machine the worktree reads as owned by, empty for none;
+// moveWayForward is the way forward of a standing anchor change, empty for none.
+// A worktree another machine owns is refused naming the owner and the takeover;
+// a standing anchor change is refused naming its way forward;
+// and a beam whose entry a run other than its own landing holds is refused naming that run's status verb.
 // A beam held by its own landing, ownLanding, is no refusal.
 func beamUpRefusal(slug, here, owner string, moveWayForward string, held, ownLanding bool, status string) error {
 	subject, adopted := fmt.Sprintf("beam %q", slug), slug

@@ -1,5 +1,7 @@
-// reconcile_integration_test.go holds the reconcile scenario that spawns gitexec.RunGit(["init"], …) to seed a real git repo: the dry-run and --apply round trips and the --set-then-reconcile drift check.
-// This file is integration-tagged per the Test Tier Purity Invariant; the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.
+// reconcile_integration_test.go holds the reconcile scenario that seeds a real git repo with gitexec.RunGit:
+// the dry-run and --apply round trips and the --set-then-reconcile drift check.
+// This file is integration-tagged per the Test Tier Purity Invariant;
+// the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.
 
 package configcli
 
@@ -45,9 +47,11 @@ func reconcileModule(t *testing.T, result map[string]any, module string) map[str
 	return nil
 }
 
-// TestConfigReconcileInGitRepo runs `lym config reconcile` over one git repository: a dry run reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost, and --apply prunes the sparse worktree layer without creating an absent file and retires a per-worktree hub-wide copy the hub file subsumes.
-// Its steps run in this order in one repository.
-// The scenario runs in one repository so it spawns git once.
+// TestConfigReconcileInGitRepo runs `lym config reconcile` over one git repository.
+// A dry run reports without writing, and a --set-planted orphan key is reported by reconcile instead of being lost.
+// --apply prunes the sparse worktree layer without creating an absent file.
+// It also retires a per-worktree hub-wide copy that the hub file subsumes.
+// Its steps run in order in that one repository, so the scenario spawns git once.
 func TestConfigReconcileInGitRepo(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

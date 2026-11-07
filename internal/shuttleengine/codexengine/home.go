@@ -1,6 +1,6 @@
 // home.go prepares the shared lym Codex home a launch runs under and reads the checkout the launch starts in.
-// The home holds links to the operator home's login and sessions, lym's record of the roots it trusts, and the config.toml rendered whole from that record.
-// The checkout gives the roots Codex keys folder trust on and the `.codex` folders in it, tracked by git or not, which a launch warns about or refuses.
+// The home links to the operator home's login and sessions, and holds lym's trust record and its rendered config.toml.
+// The checkout gives the roots Codex keys trust on and its `.codex` folders, which a launch warns about or refuses.
 
 package codexengine
 
@@ -41,9 +41,12 @@ type checkout struct {
 	root string
 	// mainRoot is the repository's main checkout root for a linked worktree, symlinks resolved; empty for a plain clone.
 	mainRoot string
-	// gitDir is the checkout's own git dir, symlinks resolved: under the main checkout's `.git/worktrees` for a linked worktree, the `.git` directory for a plain clone.
+	// gitDir is the checkout's own git dir, symlinks resolved.
+	// For a linked worktree it lies under the main checkout's `.git/worktrees`.
+	// For a plain clone it is the `.git` directory.
 	gitDir string
-	// commonDir is the git dir holding the repository's objects and refs, symlinks resolved; the same as gitDir for a plain clone.
+	// commonDir is the git dir holding the repository's objects and refs, symlinks resolved.
+	// For a plain clone it is the same as gitDir.
 	commonDir string
 }
 
@@ -55,7 +58,8 @@ func (c checkout) gitDirs() []string {
 	return []string{c.gitDir, c.commonDir}
 }
 
-// trustRoots returns the roots Codex keys folder trust on for a session in c: the worktree root, then the main checkout root of a linked worktree.
+// trustRoots returns the roots Codex keys folder trust on for a session in c:
+// the worktree root, then the main checkout root of a linked worktree.
 func (c checkout) trustRoots() []string {
 	if c.mainRoot == "" {
 		return []string{c.root}
@@ -96,11 +100,14 @@ func readCheckout(anchor string) (checkout, error) {
 	return found, nil
 }
 
-// checkCodexFolders warns about the Codex settings a launch in found and anchor runs, and refuses a launch under Codex rules.
+// checkCodexFolders warns about the Codex settings a launch in found and anchor runs.
 // It reads the folders on disk, whether git tracks them or not, since Codex reads them either way.
 // A `.codex/config.toml` in the worktree is named in a Warn.
-// For a linked worktree whose root holds a `.codex` folder, the main checkout's `.codex/config.toml` is named too, since Codex then takes its hooks from that file.
-// A `.codex/rules` directory in the worktree root or the anchor refuses the launch, since an allow rule there lifts the sandbox for its command, and the refusal is also logged.
+// For a linked worktree whose root holds a `.codex` folder, the main checkout's `.codex/config.toml` is named too.
+// Codex then takes its hooks from that file.
+// A `.codex/rules` directory in the worktree root or the anchor refuses the launch:
+// an allow rule there lifts the sandbox for its command.
+// The refusal is also logged.
 func (c *Codex) checkCodexFolders(found checkout, anchor string) error {
 	folders := []string{filepath.Join(found.root, codexFolderName)}
 	if resolvedAnchor, err := filepath.EvalSymlinks(anchor); err == nil && resolvedAnchor != found.root {
@@ -125,8 +132,11 @@ func (c *Codex) checkCodexFolders(found checkout, anchor string) error {
 }
 
 // prepareHome readies the lym Codex home for a launch that trusts roots.
-// It first links the home's auth.json and sessions to the operator home's, so a platform that cannot link a file refuses before anything is written.
-// Then, under the home's file lock, it adds roots to the trust record, drops recorded roots whose folder no longer exists, and renders config.toml from the result before the record is written.
+// It first links the home's auth.json and sessions to the operator home's,
+// so a platform that cannot link a file refuses before anything is written.
+// Then, under the home's file lock, it adds roots to the trust record.
+// It drops recorded roots whose folder no longer exists.
+// It renders config.toml from the result before the record is written.
 func (c *Codex) prepareHome(homes homeDirs, roots []string) error {
 	if err := c.ensureLink(filepath.Join(homes.lym, authFileName), filepath.Join(homes.operator, authFileName), fslink.CreateFileLink); err != nil {
 		return err
@@ -150,7 +160,8 @@ func (c *Codex) prepareHome(homes homeDirs, roots []string) error {
 
 // ensureLink makes link a link to target with create when nothing sits at link.
 // A link that already points at target is kept.
-// A regular file, or a link elsewhere, is kept and named in a Warn with the way forward, since it may hold a login made in the lym home.
+// A regular file, or a link elsewhere, is kept and named in a Warn with the way forward.
+// It may hold a login made in the lym home, which is why it is kept.
 // A create that fails because a concurrent launch made the same link meanwhile counts as made.
 func (c *Codex) ensureLink(link, target string, create func(link, target string) error) error {
 	info, err := os.Lstat(link)
@@ -196,7 +207,8 @@ func mergeRoots(recorded, added []string) []string {
 const configHeader = "# Rendered by lym from " + trustRecordFileName + " at every Codex launch; an edit here is lost at the next launch.\n" +
 	"# Put your own Codex settings in the operator home's config.toml.\n"
 
-// renderConfigTOML renders the lym home's config.toml: the `[tui]` settings Codex otherwise writes on its first start, then one trusted project table per root.
+// renderConfigTOML renders the lym home's config.toml:
+// the `[tui]` settings Codex otherwise writes on its first start, then one trusted project table per root.
 func renderConfigTOML(roots []string) string {
 	var b strings.Builder
 	b.WriteString(configHeader)
@@ -212,7 +224,8 @@ func projectTableHeader(root string) string {
 	return "[projects." + tomlString(root) + "]"
 }
 
-// CheckAfterStartup reads the lym home's config.toml back once a launch is past its startup gates and logs at Warn each trust root it no longer holds, since Codex writes the file itself and ignores lym's lock.
+// CheckAfterStartup reads the lym home's config.toml back once a launch is past its startup gates.
+// It logs at Warn each trust root the file no longer holds, since Codex writes the file itself and ignores lym's lock.
 // It checks the roots of the checkout this engine's anchor sits in, and reads at Warn whatever stops it from checking.
 func (c *Codex) CheckAfterStartup() {
 	codex, err := loadConfigOrRefuse(c.dirs)

@@ -12,8 +12,8 @@ import (
 )
 
 // Record is the state a run keeps about its pull request, one JSON file in the run's scratch directory.
-// Number is the pull request's number and the one field always written.
 type Record struct {
+	// Number is the pull request's number and the one field always written.
 	Number int `json:"number"`
 	// URL is the pull request's page on GitHub.
 	URL string `json:"url,omitempty"`
@@ -32,12 +32,15 @@ type Record struct {
 	Engine     string `json:"engine,omitempty"`
 	// Continue is the operator's continue flag, set by `lym loom pr-continue`.
 	Continue bool `json:"continue,omitempty"`
-	// ReviewEnded records that the review ended, either by the PR-Review row on the continue flag or by Finalize on the record it opens itself for a parent that takes its pull request with no review, leaving the pull request for Finalize to merge.
-	// Its key keeps the name of the older mark, set when the row closed the pull request on the flag, so a record an older build wrote reads the same.
+	// ReviewEnded records that the review ended.
+	// The PR-Review row sets it when it closes the pull request on the continue flag.
+	// Finalize sets it on the record it opens for a parent that takes its pull request with no review.
+	// In that case the pull request is left for Finalize to merge.
+	// The JSON key stays `closed_for_continue`, so a record written by an older build reads the same.
 	ReviewEnded bool `json:"closed_for_continue,omitempty"`
 }
 
-// ErrNoRecord is returned by UpdateRecord when the record's file does not exist.
+// ErrNoRecord is returned when the record's file does not exist.
 var ErrNoRecord = errors.New("pullrequest: no pull request record")
 
 // ReadRecord reads the record at path under the lock at lockPath.
@@ -46,7 +49,8 @@ func ReadRecord(path, lockPath string) (Record, bool, error) {
 	return state.ReadJSON[Record](path, lockPath)
 }
 
-// WriteRecord writes rec to path under the lock at lockPath, keeping any key of the replaced file that Record does not declare.
+// WriteRecord writes rec to path under the lock at lockPath.
+// A key of the replaced file that Record does not declare survives the write.
 func WriteRecord(path, lockPath string, rec Record) error {
 	return state.WriteJSON(path, lockPath, rec)
 }

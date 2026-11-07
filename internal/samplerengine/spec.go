@@ -21,13 +21,15 @@ const Role = "sampler"
 // stencilName is the registered name of the sampler agent's opening prompt.
 const stencilName = "sampler-template-agent"
 
-// patternDirectiveMarker is the stencil's one optional marker, filled with the PATTERN directive and left empty when the worktree has no PATTERN overview.
+// patternDirectiveMarker is the stencil's one optional marker.
+// It is filled with the PATTERN directive and left empty when the worktree has no PATTERN overview.
 const patternDirectiveMarker = "pattern_directive"
 
-// skills are the skills the sampler session loads before its prompt: it talks with the operator and writes code and tests.
+// skills are the skills the sampler session loads before its prompt:
+// it talks with the operator and writes code and tests.
 var skills = []string{"scribe:prose", "scribe:conversation", "scribe:code-quality", "scribe:testing"}
 
-// SessionInputs are the values SessionSpec is told; none is derived here.
+// SessionInputs holds the caller-supplied values the sampler agent's session spec is built from, none of them derived.
 type SessionInputs struct {
 	// StencilsDir is the directory the stencils are read from.
 	StencilsDir string
@@ -42,8 +44,10 @@ type SessionInputs struct {
 }
 
 // SessionSpec builds the spec the sampler agent's interactive session starts under.
-// It refuses an empty StencilsDir, Slug, WorktreeRoot or DecisionRecordPath by name, and an agent model-spec that does not resolve against reg.
-// The prompt carries paths only, never file content, bar the PATTERN overview the implementer directive renders from WorktreeRoot, since the agent writes and commits code.
+// It refuses an empty StencilsDir, Slug, WorktreeRoot or DecisionRecordPath by name.
+// It also refuses an agent model-spec that does not resolve against reg.
+// The prompt carries paths only, never file content, bar the PATTERN overview.
+// The implementer directive renders that overview from WorktreeRoot, since the agent writes and commits code.
 func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	required := []struct{ field, value string }{
 		{"StencilsDir", in.StencilsDir},

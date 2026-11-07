@@ -16,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writtenSessions returns a setup that writes a session named main.jsonl with the given lines and fork transcripts into a temporary projects root, and locates it.
+// writtenSessions returns a setup that writes a session named main.jsonl with the given lines and fork transcripts.
+// The setup writes them into a temporary projects root and returns the sessions it locates there.
 func writtenSessions(mainLines []string, forks map[string][]string) func(t *testing.T) []shuttleengine.LocatedSession {
 	return func(t *testing.T) []shuttleengine.LocatedSession {
 		t.Helper()
@@ -394,7 +395,7 @@ func TestLocateSessions(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// setup prepares the projects root and returns the project directory's path under it.
+		// setup prepares the projects root and the project directory under it.
 		setup func(t *testing.T, projects, projectDir string)
 		check func(t *testing.T, projects, projectDir string, got []shuttleengine.LocatedSession, err error)
 	}{

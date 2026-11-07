@@ -1,16 +1,8 @@
-// audit.go implements webster's own fail-loud policy over the provider-invariant
-// shuttleengine.ForkAudit/ForkReport fact shapes: the violation classes a forked implementer or
-// Master's own parent session can trigger,
-// and the fabric-reference matcher both checks share.
-// Unlike burlerengine's read-only cluster-round policy (a fork reviewer must never mutate
-// anything), webster's forks are implementers — Write/Edit and repo-native git are the whole point of
-// a batch, so CheckFork bans only nesting (Agent calls), fabric references, and writes to the run's
-// two contract files (outcome.yaml/summary.md — Master's alone), never batch writes.
-// Master's own parent transcript is the mirror image: writes are banned everywhere EXCEPT the run's
-// two contract files, since a Master that "helpfully" implements a batch itself or hand-writes a
-// batch report defeats the fork-audit design as silently as a named spawn does.
-// Every function here is pure — facts in, verdict out — per the discussion's TDD-centre framing;
-// all transcript reading stays in claudeengine, per the Shuttle Provider-Seam Invariant.
+// audit.go implements webster's fail-loud policy over the fork facts in shuttleengine.ForkAudit and ForkReport.
+// Forks are implementers, so CheckFork allows Write/Edit and repo-native git.
+// It bans nested Agent calls, fabric references, and writes to contract files, the plan, or run state.
+// CheckParent guards Master's own parent transcript, which may write only the two contract files.
+// Every function here is pure: facts in, verdict out. Transcript reading stays in claudeengine.
 
 package websterengine
 
@@ -27,77 +19,63 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// RefMatcher is the narrow seam CheckFork and CheckParent consult for the fabric-reference violation
-// class. *fabricengine.RefScanner satisfies it without any adapter, since that type already has the
-// identical method.
+// RefMatcher is the seam through which the fabric-reference violation class is detected.
+// Matches is called without a nil check, so a nil RefMatcher panics.
 type RefMatcher interface {
 	// Matches reports whether cmd references fabric's two-checkout mechanism.
 	Matches(cmd string) bool
 }
 
-// NeverMatches is the pinned RefMatcher supplier for a mode with no fabric repo at all — standalone
-// mode's answer where hub mode supplies a real *fabricengine.RefScanner.
-// It lives here, beside the interface it implements, rather than in a geometry package that has no
-// business knowing webster's audit vocabulary, and it is a named exported type rather than an inline
-// literal so every Deps-construction site shares one supplier instead of re-inventing it.
-// CheckFork and CheckParent call Matches unguarded, so a nil RefMatcher is a panic on the first
-// standalone record-batch — the field must therefore never be nil in either mode.
+// NeverMatches is the RefMatcher for a mode with no fabric repo, so no command can reference one.
+// Being a named type, every construction site shares this one supplier.
 type NeverMatches struct{}
 
-// Matches always returns false: NeverMatches never sees a fabric reference, because a mode that
-// supplies it has no fabric repo to reference.
+// Matches always reports false, because a mode with no fabric repo has no fabric reference to match.
 func (NeverMatches) Matches(string) bool {
 	return false
 }
 
-// AuditViolationClass discriminates the fail-loud violation classes CheckFork and CheckParent can
-// report.
-// It exists so a caller (e.g.
-// record-batch's error message,
-// or a future metrics hook) can branch on WHAT kind of violation occurred without parsing Detail's
-// free-text prose.
+// AuditViolationClass discriminates the fail-loud violation classes an audit can report.
+// It lets a caller branch on the kind of violation without parsing the free text of Detail.
 type AuditViolationClass string
 
-// The set of hard violation classes CheckFork and CheckParent can report.
+// The hard violation classes an audit can report.
 const (
-	// ClassNestedAgent means a fork's own transcript attempted an Agent tool call — forks cannot nest,
-	// even when Claude Code denied the attempt.
+	// ClassNestedAgent means a fork's transcript attempted an Agent tool call:
+	// forks cannot nest, so the attempt is a violation even when Claude Code denied it.
 	ClassNestedAgent AuditViolationClass = "nested-agent"
-	// ClassFabricReference means a Bash command (fork or parent) invoked lym fabric (or an older,
-	// pre-cutover single-word spelling of the same subcommand),
-	// or referenced the fabric worktree path — agents never touch the fabric repo directly.
+	// ClassFabricReference means a Bash command (fork or parent) invoked a lym fabric subcommand.
+	// It also means a Bash command referenced the fabric worktree path.
+	// Agents never touch the fabric repo directly.
 	ClassFabricReference AuditViolationClass = "fabric-reference"
-	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a
-	// name parameter — named forks silently lose inherited context.
+	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a name parameter.
+	// Named forks silently lose inherited context.
 	ClassNamedSpawn AuditViolationClass = "named-spawn"
-	// ClassParentWrite means Master's parent transcript wrote a file other than the run's two contract
-	// files (outcome.yaml, summary.md) — a Master implementing batches itself or hand-writing a batch
-	// report.
+	// ClassParentWrite means Master's parent transcript wrote a file besides the two contract files.
+	// Master may write only outcome.yaml and summary.md.
+	// Any other write means Master is implementing a batch itself or hand-writing a batch report.
 	ClassParentWrite AuditViolationClass = "parent-write"
-	// ClassForkContractWrite means a fork's own transcript wrote one of the run's two contract files
-	// (outcome.yaml, summary.md) — those are Master's only permitted writes, and a fork writing them
-	// forges the run's terminal judgment.
+	// ClassForkContractWrite means a fork's transcript wrote one of the run's two contract files.
+	// Master alone may write those, so a fork writing one forges the run's terminal judgment.
+	// A write to a contract file is reported only as this class, never also as a plan or state write.
 	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
-	// ClassForkPlanWrite means a fork's own transcript wrote under the run's plan directory, which only webster itself rewrites.
+	// ClassForkPlanWrite means a fork's transcript wrote under the run's plan directory, which only webster rewrites.
 	// A fork writing there can change a later card or its own card's Verify.
 	ClassForkPlanWrite AuditViolationClass = "fork-plan-write"
-	// ClassForkStateWrite means a fork's own transcript wrote under webster's run directory other than its own batch report.
-	// Only webster writes the run state, so a fork writing there can forge a batch record.
+	// ClassForkStateWrite means a fork's transcript wrote under webster's run directory outside its own batch report.
+	// Only webster writes the run state, so such a write can forge a batch record.
 	ClassForkStateWrite AuditViolationClass = "fork-state-write"
 )
 
-// AuditViolation is one hard fork-audit policy violation observed in either a fork's own transcript
-// or Master's parent transcript.
-// Every hard violation is an error — the fail-loud posture treats a detected violation as
-// build-breaking, not merely logged — so AuditViolation implements the error interface directly and
-// a caller can return a []AuditViolation entry (or an aggregate wrapping them) as an ordinary Go
-// error.
-// TranscriptPath is the fork's TranscriptPath for a CheckFork violation,
-// or "" for a CheckParent violation (ForkAudit carries no path for Master's own parent transcript —
-// webster tracks Master's session ID separately, in State.MasterSessionID).
-// Key is the finding's deterministic identity, filled by CheckFork and CheckParent:
-// `fork:<transcript path>:<class>:<ordinal>` for a fork finding (the ordinal counts that class within the transcript),
-// `parent:<class>:<ordinal>` for a parent one (1..NamedSpawns for named-spawn, the index into ParentWrites or ParentBashCommands otherwise).
+// AuditViolation is one hard policy violation found in a fork's transcript or in Master's parent transcript.
+// Every hard violation is an error, because the fail-loud posture treats it as build-breaking, not merely logged.
+// AuditViolation implements the error interface, so a caller can return one as an ordinary Go error.
+// TranscriptPath is the fork's transcript path for a fork violation, and empty for a parent violation.
+// A parent violation has no transcript path because webster tracks Master's session ID in State.MasterSessionID.
+// Key is the finding's deterministic identity.
+// A fork key is `fork:<transcript path>:<class>:<ordinal>`, where the ordinal counts that class within the transcript.
+// A parent key is `parent:<class>:<ordinal>`.
+// Its ordinal indexes ParentWrites or ParentBashCommands, or runs from 1 to NamedSpawns for named-spawn findings.
 // Path is the transcript-recorded write path for parent-write and fork-contract-write, empty for every other class.
 // Command is the Bash command a fabric-reference finding matched, empty for every other class.
 type AuditViolation struct {
@@ -109,7 +87,7 @@ type AuditViolation struct {
 	Command        string
 }
 
-// AuditSeverity is the D4 class of an audit finding: whether it endangers the batch's correctness or only breaks webster's process policy.
+// AuditSeverity classifies an audit finding as a correctness or a policy finding.
 type AuditSeverity string
 
 const (
@@ -152,16 +130,17 @@ func isOwnReportWrite(workdir, write, ownReport string) bool {
 	return err == nil && canonWrite == canonOwn
 }
 
-// CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
-// and repo-native git are explicitly allowed.
-// It bans five hard violations: any attempted Agent call, any write to the two contract files (outcomePath or summaryPath), any write under the plan directory, any write under webster's run directory other than the fork's own report, and any Bash command referencing the fabric repo.
-// planDirs and websterDirs hold the plan and webster directories' spellings (the told path and its link-resolved form, see planDirSpellings and websterDirSpellings);
+// CheckFork evaluates one fork's transcript facts against webster's implementer policy.
+// Write/Edit and repo-native git are allowed.
+// It bans any attempted Agent call and any Bash command referencing the fabric repo.
+// It also bans writes to a contract file (outcomePath or summaryPath);
+// writes under the plan directory;
+// and writes under webster's run directory other than the fork's own report.
+// planDirs and websterDirs hold the plan and webster directories' spellings: the told path and its link-resolved form.
 // ownReport is the report this fork may write, compared in its told and link-resolved spellings.
 // A write that is also a contract write yields only its fork-contract-write finding.
-// fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
-// *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
-// mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
-// exists as the pinned no-fabric supplier.
+// fabricRef reports whether a Bash command references the fabric repo.
+// It is called without a nil check, so a nil fabricRef panics.
 func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, planDirs, websterDirs []string, ownReport string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
@@ -243,21 +222,21 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	return violations
 }
 
-// planDirSpellings returns geom.PlanDir and its link-resolved form, deduplicated,
-// so a write spelled through the `_lym` link and one spelled through its target both match.
-// The error is canonicalPath's.
+// planDirSpellings returns geom.PlanDir and its link-resolved form, deduplicated.
+// A write spelled through the `_lym` link, or through its target, matches.
+// It returns an error when the directory cannot be canonicalized.
 func planDirSpellings(geom Geometry) ([]string, error) {
 	return dirSpellings(geom.PlanDir)
 }
 
 // websterDirSpellings returns geom.WebsterDir and its link-resolved form, deduplicated.
-// The error is canonicalPath's.
+// It returns an error when the directory cannot be canonicalized.
 func websterDirSpellings(geom Geometry) ([]string, error) {
 	return dirSpellings(geom.WebsterDir)
 }
 
 // dirSpellings returns dir and its link-resolved form, deduplicated.
-// The error is canonicalPath's.
+// It returns an error when dir cannot be canonicalized.
 func dirSpellings(dir string) ([]string, error) {
 	canon, err := canonicalPath(dir)
 	if err != nil {
@@ -281,30 +260,22 @@ func resolveWritePath(workdir, path string) string {
 	return filepath.Join(workdir, cleaned)
 }
 
-// isTranscriptPathAbsolute reports whether a transcript-recorded write path is
-// already absolute — in either the running OS's native sense (stdlib
-// filepath.IsAbs: a drive letter or UNC prefix on Windows) or POSIX-style (a
-// leading "/"). Transcript-recorded write paths and this package's own
-// workdir/contract-path arguments are always POSIX-style, regardless of the workdir's platform
-// (they come from the pane's own working-directory convention, not a raw
-// OS path) — so on Windows, stdlib filepath.IsAbs alone reports false for a
-// path like "/hub/master-builder/_lym/webster/outcome.yaml" (Windows requires
-// a drive letter or UNC prefix to consider a path absolute), and
-// resolveWritePath would incorrectly join an already-absolute path against
-// workdir a second time, producing a path that can never match the caller's
-// absolute contract paths.
+// isTranscriptPathAbsolute reports whether a transcript-recorded write path is absolute:
+// either in the running OS's sense or as a POSIX path with a leading "/".
+// Transcript-recorded write paths and the workdir and contract paths are always POSIX-style, whatever the platform.
+// On Windows, filepath.IsAbs alone misses a leading "/".
+// Joining such a path onto workdir again yields a path that never matches the contract paths.
 func isTranscriptPathAbsolute(path string) bool {
 	return filepath.IsAbs(path) || strings.HasPrefix(path, "/")
 }
 
-// CheckParent evaluates Master's own parent-session facts: the mirror image of CheckFork's policy.
-// Master must NOT write except to the two contract files (outcomePath and summaryPath).
-// It bans three hard violations: any named spawn, any parent write outside contract files, and any
-// Bash command referencing the fabric repo.
-// fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
-// *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
-// mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
-// exists as the pinned no-fabric supplier.
+// CheckParent reports the violations in Master's own parent session.
+// Master may write only to the two contract files (outcomePath and summaryPath).
+// It bans three hard violations:
+// any named spawn, any parent write outside the contract files, and any Bash command referencing the fabric repo.
+// fabricRef classifies fabric-reference commands.
+// It must not be nil: Matches is called unguarded, and a nil interface panics.
+// A hub run passes the fabric reference scanner; a standalone run passes a matcher that never matches.
 func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
@@ -356,8 +327,8 @@ func fabricReferenceDetail(cmd, rule string) string {
 	return fmt.Sprintf(fabricReferenceCommandOpen+"%q) that can rewrite run state — %s", cmd, rule)
 }
 
-// fabricReferenceCommand returns the unquoted command a fabric-reference entry records, taken from the text fabricReferenceDetail writes.
-// It is false for an entry with no such text, such as one an older record wrote.
+// fabricReferenceCommand returns the unquoted command a fabric-reference entry records.
+// It reports false for an entry without the quoted command text, such as one an older record wrote.
 func fabricReferenceCommand(entry string) (string, bool) {
 	_, quoted, found := strings.Cut(entry, fabricReferenceCommandOpen)
 	if !found {
@@ -374,19 +345,24 @@ func fabricReferenceCommand(entry string) (string, bool) {
 	return cmd, true
 }
 
-// ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
-// A fork-contract-write, a fork-plan-write and a fork-state-write are correctness.
-// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lym` directory (the parent of geom.WebsterDir).
-// It is correctness under the run's `.lym` state directory too (the parent of geom.ScratchDir), since webster's locks, another module's lock or pause flag, and a reed launch script all decide what a run does and are git-ignored.
-// A write within another worktree of the task repository, or within that worktree's `_lym`, is correctness;
-// the innermost worktree holding the write decides, so a worktree enclosing this one never claims a write inside it.
-// A write inside this worktree is correctness when git does not ignore it, and every other parent-write is policy.
+// ClassifyViolation assigns v its severity, checking the correctness rule first.
+// Fork contract, plan and state writes are always correctness.
 // A fabric-reference is policy when readOnly accepts its command, and correctness otherwise:
-// an agent never touches the fabric repo for a write, and a command that reaches it can rewrite run state that a re-run of the cards' verify commands cannot detect.
-// A nil readOnly accepts nothing, and the classifier sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness.
+// a command reaching the fabric repo can rewrite run state,
+// and a re-run of the verify commands cannot detect the rewrite.
+// A nil readOnly accepts nothing; the classifier sees only the command's static shape:
+// a command behind `bash -c`, a variable or a substitution stays correctness.
+// A parent write is correctness when its path lies under the run's state, reports or plan directory.
+// The run's `_lym` directory (the parent of geom.WebsterDir) counts too.
+// So does the `.lym` state directory (the parent of geom.ScratchDir), which git ignores:
+// it holds webster's locks, another module's lock or pause flag, and a reed launch script, which decide what a run does.
+// A write within another worktree of the task repository, or within that worktree's `_lym`, is correctness;
+// the innermost worktree holding the write decides, so an outer worktree never claims a write inside a nested one.
+// A write inside this worktree is correctness when git does not ignore it; every other parent write is policy.
+// Prefix tests compare link-resolved paths.
+// A write spelled through a link to the run's `_lym` is therefore still correctness.
+// The error is only the git probe's or the link resolution's failure.
 // Every other class is policy.
-// Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lym` still classes as correctness.
-// The error return is only the git probe's or the link resolution's failure.
 func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string) bool) (AuditSeverity, error) {
 	switch v.Class {
 	case ClassForkContractWrite, ClassForkPlanWrite, ClassForkStateWrite:
@@ -425,7 +401,8 @@ func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string
 		return "", err
 	}
 	for _, other := range others {
-		// The innermost worktree holding a write decides its class, so a worktree enclosing this one never claims a write inside it.
+		// The innermost worktree holding a write decides its class,
+		// so an enclosing worktree never claims a write inside this one.
 		if pathWithin(other, worktree) && pathWithin(worktree, written) {
 			continue
 		}
@@ -460,8 +437,8 @@ func pathWithin(dir, path string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-// canonicalPath resolves links in path through its nearest existing ancestor and re-joins the missing tail,
-// so a path that does not exist yet still compares against a link-resolved directory.
+// canonicalPath resolves links in path through its nearest existing ancestor.
+// It re-joins the missing tail, so a path that does not exist yet still compares against a link-resolved directory.
 func canonicalPath(path string) (string, error) {
 	cleaned := filepath.Clean(path)
 	var tail []string
@@ -486,11 +463,9 @@ func canonicalPath(path string) (string, error) {
 	}
 }
 
-// ForkWarnings evaluates f for webster's warning-only (never round-failing) classes: a fork that
-// never returned a final report is sloppiness no mechanism can prevent in advance (the fork ran
-// clean but never delivered its findings), so it is collected as a warning rather than a hard
-// violation — the same posture burlerengine's auditClusterRound takes for its own ReportReturned ==
-// false case.
+// ForkWarnings returns a warning for a fork that never returned a final report, and nil otherwise.
+// Such a fork ran clean but delivered no findings, which no mechanism can prevent in advance,
+// so it is a warning rather than a hard violation.
 func ForkWarnings(f shuttleengine.ForkReport) []string {
 	if !f.ReportReturned {
 		return []string{fmt.Sprintf("fork %q never returned a final report", f.TranscriptPath)}
@@ -498,42 +473,35 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 	return nil
 }
 
-// ErrNoForkTranscripts is the sentinel ClassifyAttribution's zero-counted-transcript case wraps.
-// record-batch's caller (batch 5) issues this as its own hard error AFTER SettleRetry's settle
-// window is exhausted — never on the first miss, since a fork's transcript file may not have
-// flushed to disk yet the instant the Agent tool call returns (the discussion's "first miss is
-// inconclusive" flush-timing caveat).
-// A report file existing alongside zero new transcripts does NOT save the batch from this error: a
-// report with no fork behind it means Master wrote it itself, which is exactly the defect this
-// check exists to catch (pinned check order: transcript count is decided BEFORE report presence).
-// A report on disk with no fork transcript is a state a forged report produces, but ALSO a legitimate cross-machine resume of the report-landed-before-record-batch crash window, since fork transcripts live under the machine-local ~/.claude projects dir while state.json and reports are fabric-synced (found live in crucible round fable-r1).
-// RecordBatch does not leave the batch wedged on it: it archives the report, keeps the batch record begun, and returns a *ReportArchivedError whose way forward is `begin-batch`, which re-drives the batch with the report path free.
+// ErrNoForkTranscripts reports that a batch has no counted fork transcript in its current bracket:
+// none is new since the previous batch boundary, and none of the bracket's own wrote the batch's report.
+// Issue it only after the settle window has run out, never on the first miss:
+// a fork's transcript file may not be flushed to disk when the fork call returns.
+// The transcript count is checked before report presence.
+// A report with no fork behind it, which means Master wrote it itself, fails too.
+// The same error fires for a crash window resumed on another machine:
+// fork transcripts are machine-local, so the report cannot be re-attributed there.
 var ErrNoForkTranscripts = errors.New("no counted fork transcript in the batch's current bracket (none new since the previous batch boundary, and none of the bracket's own that wrote the batch's report) — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report)")
 
-// DefaultSettleWindow is SettleRetry's recommended total wait budget before its caller gives up and
-// treats a zero-transcript result as final: a few seconds is enough slack for Claude Code to flush
-// a just-returned fork's subagents/<id>.jsonl to disk without meaningfully slowing down a normal
-// record-batch call (which almost always finds its transcript on the first scan).
+// DefaultSettleWindow is the default total wait budget before a zero-transcript result is treated as final.
+// The window leaves slack for Claude Code to flush a just-returned fork's subagents/<id>.jsonl to disk.
+// It does not slow a normal call, which almost always finds its transcript on the first scan.
 const DefaultSettleWindow = 3 * time.Second
 
-// DefaultSettleTick is SettleRetry's recommended re-scan interval within the settle window:
-// frequent enough that a normal (non-degenerate) call resolves within one or two ticks of the
-// transcript actually appearing.
+// DefaultSettleTick is the default re-scan interval within the settle window.
+// It is frequent enough that a normal call sees its transcript within one or two ticks of it appearing.
 const DefaultSettleTick = 250 * time.Millisecond
 
-// Sleeper abstracts time.Sleep so SettleRetry's wait loop never blocks for real under test — a
-// recording fake Sleeper lets a test assert exactly how many ticks were requested and drive
-// SettleRetry's retry loop to completion instantly, the same clock seam pattern
-// shuttleengine's wait.go already establishes for the same reason.
+// Sleeper abstracts time.Sleep so a wait loop never blocks for real under test.
+// A recording fake lets a test assert how many ticks were requested.
+// It also drives the retry loop to completion instantly.
 type Sleeper interface {
-	// Sleep blocks (in production) or records a request to block (under test)
-	// for d.
+	// Sleep blocks for d in production, and records the request under test.
 	Sleep(d time.Duration)
 }
 
-// NewTranscripts returns the ForkReport entries in audit whose TranscriptPath is NOT in seen.
-// It is a defensive re-filter for callers that may not have used AuditForksIncremental or that are
-// re-deriving after a settle retry.
+// NewTranscripts returns the fork reports in audit whose transcript path is not in seen.
+// It is a defensive re-filter: the caller may not have filtered the audit already, or may be re-deriving after a retry.
 func NewTranscripts(audit shuttleengine.ForkAudit, seen []string) []shuttleengine.ForkReport {
 	seenSet := make(map[string]bool, len(seen))
 	for _, path := range seen {
@@ -549,18 +517,13 @@ func NewTranscripts(audit shuttleengine.ForkAudit, seen []string) []shuttleengin
 	return newReports
 }
 
-// SettleRetry re-invokes fetch on tick's cadence, sleeping via s between attempts, until at least
-// one transcript new since seen appears or window elapses — implementing the flush-timing de-risk
-// from discussion.md's fork-audit-policy decision ("first miss is inconclusive"): the
-// zero-transcript hard error is only ever issued by the CALLER, and only after SettleRetry itself
-// has exhausted the settle window, never on this function's first fetch.
-// SettleRetry returns as soon as fetch reports one or more new transcripts — it never sleeps out
-// the rest of window once it has an answer.
-// A fetch error propagates immediately: an audit read that itself failed has nothing safe to retry
-// against.
-// When window elapses with zero new transcripts, SettleRetry returns the last fetched audit, a nil
-// (or empty) newReports slice, and a nil error — it is the caller's job (see ClassifyAttribution)
-// to turn that empty result into ErrNoForkTranscripts.
+// SettleRetry calls fetch repeatedly, sleeping tick between attempts through s.
+// It stops once fetch reports a transcript new since seen, or once window has elapsed.
+// A first empty result is inconclusive: a fork's transcript may not be flushed to disk when the fork call returns.
+// It returns as soon as fetch reports a new transcript and never sleeps out the rest of window.
+// A fetch error returns at once, since an audit read that failed has nothing safe to retry against.
+// When window elapses with no new transcript, it returns the last audit, a nil or empty newReports, and a nil error.
+// The caller decides whether that empty result is an error.
 func SettleRetry(
 	fetch func() (shuttleengine.ForkAudit, error),
 	seen []string,
@@ -590,19 +553,15 @@ func SettleRetry(
 	}
 }
 
-// ClassifyAttribution pins the fork-audit-policy decision's check order over
-// newReports, the counted transcripts: those SettleRetry (or a direct NewTranscripts call)
-// determined are new since the previous batch boundary, plus the bracket's own that wrote the report:
+// ClassifyAttribution classifies newReports, the counted fork transcripts:
+// those new since the previous batch boundary, plus the bracket's own that wrote the report.
 //
-//  1. Zero counted transcripts: hard error (ErrNoForkTranscripts), REGARDLESS of
-//     whether a batch report file exists — a report with no fork behind it means
-//     Master wrote it itself. Transcript-count-before-report-presence is what
-//     makes that defect unfakeable; the caller must check this BEFORE it even
-//     looks for a report file.
-//  2. Exactly one counted transcript: clean — the normal case. Returns ("", nil).
-//  3. More than one counted transcript: warning only, never hard — a fork whose
-//     Agent call errored mid-flight followed by a direct re-fork, with no
-//     record-batch call in between, is legitimate retry behavior, not a defect.
+//  1. Zero counted transcripts: returns ErrNoForkTranscripts, whether or not a batch report file exists.
+//     A report with no fork behind it means Master wrote it itself.
+//     The count is checked first, before the report file is looked for.
+//  2. Exactly one counted transcript: clean, the normal case. Returns ("", nil).
+//  3. More than one counted transcript: a warning, never an error.
+//     A fork whose call errored, followed by a direct re-fork, is legitimate retry behavior.
 func ClassifyAttribution(newReports []shuttleengine.ForkReport) (warning string, err error) {
 	switch len(newReports) {
 	case 0:

@@ -1,6 +1,7 @@
 //go:build !windows
 
-// termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lym, to pin when the window ends and when it keeps its shell.
+// termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lym.
+// It pins when the window ends and when it keeps its shell.
 
 package termwindow
 

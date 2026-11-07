@@ -23,9 +23,12 @@ type Targets struct {
 	Base string
 	// Modules are the impacted packages per module; empty with Whole, and empty when only Markdown files changed.
 	Modules []ModuleTargets
-	// Guards maps the directory of each package outside the set to its `//lym:guard` tests, sorted by name, each with its file's tier.
+	// Guards maps the directory of each package outside the set to its `//lym:guard` tests, sorted by name.
+	// Each test carries its file's tier.
 	Guards map[string][]GuardTest
-	// BinaryTests are the sorted worktree-relative directories of every package whose tests import `internal/testkit/lymbin`, inside the set or not; empty with Whole.
+	// BinaryTests are the sorted worktree-relative directories of each package whose tests import `internal/testkit/lymbin`.
+	// It includes packages inside the set and outside it,
+	// and it is empty with Whole.
 	BinaryTests []string
 }
 
@@ -37,8 +40,11 @@ type ModuleTargets struct {
 	Packages []string
 }
 
-// DeriveTargets derives the impacted set of the diff between base and the working tree in worktree, uncommitted and untracked files included.
-// A fallback is reported as Whole with its reason and is no error; an error is a failure to read git or a package directory, a cancelled ctx, or a *GuardScanError for a test file the guard scan cannot accept.
+// DeriveTargets derives the impacted set of the diff between base and the working tree in worktree.
+// The diff includes uncommitted and untracked files.
+// A fallback is reported as Whole with its reason and is no error.
+// An error is a failure to read git or a package directory, a cancelled ctx, or a *GuardScanError.
+// A *GuardScanError reports a test file the guard scan cannot accept.
 // ctx bounds the derivation: it is checked before each git read, and a cancelled ctx kills a stalled `go list`.
 func DeriveTargets(ctx context.Context, worktree, base string) (Targets, error) {
 	if _, err := os.Stat(filepath.Join(worktree, "go.mod")); err != nil {
@@ -85,7 +91,8 @@ func wholeTargets(base, fallback string) Targets {
 	return Targets{Whole: true, Fallback: fallback, Base: base}
 }
 
-// ChangedPaths returns every path that differs between base and the working tree: tracked changes, staged or not, a renamed file by both its old and new path, and untracked files that are not ignored.
+// ChangedPaths returns every path that differs between base and the working tree:
+// tracked changes, staged or not, a renamed file by both its old and new path, and untracked files that are not ignored.
 // ctx is checked before each git read.
 func ChangedPaths(ctx context.Context, worktree, base string) ([]string, error) {
 	if err := ctx.Err(); err != nil {
@@ -112,7 +119,8 @@ func ChangedPaths(ctx context.Context, worktree, base string) ([]string, error) 
 	return paths, nil
 }
 
-// targetsFor is the pure core of DeriveTargets: the impacted set of the changed paths over the graph as root-module targets, or a Whole fallback.
+// targetsFor is the pure core of the impacted-set derivation:
+// the changed paths' impacted set over the graph, as root-module targets, or a Whole fallback.
 // guards maps a package directory to its guard tests.
 func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]GuardTest) Targets {
 	set, fallback := impactedFor(graph, changedPaths)

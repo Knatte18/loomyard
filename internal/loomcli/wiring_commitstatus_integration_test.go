@@ -1,10 +1,8 @@
-// wiring_commitstatus_integration_test.go drives the per-transition status seam, and commitRecordsVerb over the same deps, against a REAL
-// fabric pair — real MergeStateActive, real CommitAnchoredPaths, real PushPairAnchored, real git — which
-// wiring_commitstatus_test.go's Tier 1 stub closures by construction cannot.
-// The distinction earned its keep: every stub test passes over a seam that stages the status file
-// into a foreign merge's index and then kills the run, because a stub Commit has no index to stage
-// into and no git to refuse it. Only the composed shape shows what the three dispositions actually
-// do to a repository.
+// wiring_commitstatus_integration_test.go drives the per-transition status seam and commitRecordsVerb.
+// Both run against a real fabric pair, with real MergeStateActive, CommitAnchoredPaths, PushPairAnchored, and git.
+// Stub-based tests pass over a seam that stages the status file into a foreign merge's index before killing the run.
+// A stub Commit has no index to stage into and no git to refuse it.
+// Only the composed shape shows what the three dispositions do to a repository.
 
 package loomcli
 
@@ -27,9 +25,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// realSeamFixture builds a hub, adds one pair, seeds a status file at loom's own status path, and
-// returns the seam wired to that pair through loomCommitStatusDeps — the same call wire() makes —
-// plus the pair's records sibling path for direct git inspection.
+// realSeamFixture builds a hub, adds one pair, and seeds a status file at loom's own status path.
+// It returns the seam wired to that pair through loomCommitStatusDeps, the same call wire() makes.
+// It also returns the pair's records sibling path, for direct git inspection.
 func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lymcwd.Location, recordsSibling string) {
 	t.Helper()
 
@@ -52,9 +50,9 @@ func realSeamStatusRel(location *lymcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
-// writeStatusFile writes content at loom's own status path for location, creating the directory the
-// first call needs. It goes through shedrun's own accessor rather than a hand-built join so the test
-// commits exactly the path the seam's own pathspec names.
+// writeStatusFile writes content at loom's own status path for location, creating the directory the first call needs.
+// It goes through shedrun's own accessor rather than a hand-built join,
+// so the test commits exactly the path the seam's own pathspec names.
 func writeStatusFile(t *testing.T, location *lymcwd.Location, content string) {
 	t.Helper()
 	path := shedrun.StatusFile(location, shedrun.SelfRunID)
@@ -66,9 +64,9 @@ func writeStatusFile(t *testing.T, location *lymcwd.Location, content string) {
 	}
 }
 
-// startForeignMergeInRecords leaves a live MERGE_HEAD in the records sibling by running plain git there —
-// the operator behaviour the Fabric Git Invariant's own carve-out permits, and the only way the records side
-// merge state exists at all now that no fabric verb puts it there.
+// startForeignMergeInRecords leaves a live MERGE_HEAD in the records sibling by running plain git there.
+// This is the operator behaviour the Fabric Git Invariant's carve-out permits.
+// No fabric verb puts merge state in the records, so this is the only way it gets there.
 func startForeignMergeInRecords(t *testing.T, recordsSibling string) {
 	t.Helper()
 	current := gitkit.CurrentBranch(t, recordsSibling)
@@ -97,10 +95,14 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 	return err == nil
 }
 
-// TestCommitStatusSeam_Real drives the status seam and the commit-records verb through every disposition over one real pair.
-// The steps run in this order and build on each other's state, so a step that relies on an earlier one says so:
-// the ordinary dispositions come first while the remote is healthy, then the mid-merge skips share one live foreign merge, and the remote-failure steps come last because they leave the branch diverged.
-// The seam spawns its push instead of running it, so the test swaps the package's spawnStatusPush for a recorder and only commit-records pushes to the remote.
+// TestCommitStatusSeam_Real drives the status seam and the commit-records verb through every disposition.
+// It runs them over one real pair.
+// The steps share state, so a step that relies on an earlier one says so.
+// The ordinary dispositions run first while the remote is healthy;
+// the mid-merge skips share one live foreign merge;
+// the remote-failure steps run last because they leave the branch diverged.
+// The seam spawns its push instead of running it, so the test swaps the package's spawnStatusPush for a recorder;
+// only commit-records pushes to the remote.
 // Each step changes the status file first, so every seam call has something of its own to commit.
 //
 // It is serial because it swaps a package variable.
@@ -316,7 +318,8 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// The skip disposition against a real foreign merge: nothing is committed, nothing is staged into the operator's index, and their MERGE_HEAD survives untouched.
+	// The skip disposition against a real foreign merge: nothing is committed or staged into the operator's index,
+	// and their MERGE_HEAD survives untouched.
 	// The merge stays live for the next step.
 	t.Run("mid-merge skips without touching the merge", func(t *testing.T) {
 		changeStatus()
@@ -339,8 +342,11 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// The lost race the unlocked probe leaves open, deterministically: MergeActive answers false once — as it would if the operator started their merge a millisecond later — while every other dep, including the re-probe, is the real one.
-	// Before the re-probe existed this returned git's "cannot do a partial commit during a merge" and halted the whole run; it must resolve as the skip, with the operator's merge intact.
+	// The lost race the unlocked probe leaves open, deterministically:
+	// MergeActive answers false once, as it would if the operator started their merge a millisecond later.
+	// Every other dep, including the re-probe, is the real one.
+	// Without the re-probe, git's "cannot do a partial commit during a merge" halts the whole run;
+	// the step must resolve as the skip, with the operator's merge intact.
 	// Relies on the foreign merge the step above left live, and ends it.
 	t.Run("merge going live after the probe skips instead of halting", func(t *testing.T) {
 		before := gitkit.RevParse(t, recordsSibling, "HEAD")
@@ -416,7 +422,8 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// The spawn-warns disposition: a push that cannot be spawned returns nil from the seam, and the local commit stays for the next transition's spawn to carry.
+	// The spawn-warns disposition: a push that cannot be spawned returns nil from the seam;
+	// the local commit stays for the next transition's spawn to carry.
 	t.Run("failing spawn warns and the commit stays", func(t *testing.T) {
 		spawnErr = errors.New("spawn failed")
 		t.Cleanup(func() { spawnErr = nil })

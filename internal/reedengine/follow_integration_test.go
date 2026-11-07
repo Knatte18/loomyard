@@ -1,7 +1,9 @@
 //go:build linux
 
 // follow_integration_test.go proves the follow state against a real tmux with real attached clients.
-// A run start turns follow on and moves every client to the relevant window, a second attach moves the clients only while follow is on, and a resume or a failed option write changes nothing it should not.
+// A run start turns follow on and moves every client to the relevant window.
+// A second attach moves the clients only while follow is on.
+// A resume or a failed option write changes nothing it should not.
 // One cold session serves every step.
 
 package reedengine
@@ -87,7 +89,8 @@ func TestFollow_RealTmux(t *testing.T) {
 		t.Helper()
 		return display(client, "#{window_id}")
 	}
-	// waitAllClientsOn waits until every attached client shows window, since an attach's chained select-window runs after the client appears in the listing.
+	// waitAllClientsOn waits until every attached client shows window.
+	// The wait is needed because an attach's chained select-window runs after the client appears in the listing.
 	waitAllClientsOn := func(window, what string) {
 		t.Helper()
 		waitUntil(t, 15*time.Second, what, func() bool {
@@ -108,7 +111,8 @@ func TestFollow_RealTmux(t *testing.T) {
 			}
 		}
 	}
-	// assertAllClientsStayOn asserts every attached client keeps showing window for a short settling window, long enough for an attach's chained commands to have run.
+	// assertAllClientsStayOn asserts every attached client keeps showing window for a short settling window.
+	// The window is long enough for an attach's chained commands to have run.
 	assertAllClientsStayOn := func(window, what string) {
 		t.Helper()
 		deadline := time.Now().Add(time.Second)

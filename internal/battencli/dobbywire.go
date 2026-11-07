@@ -1,4 +1,5 @@
-// dobbywire.go exports the two batten wirings the beam daemon reuses: the release of a run's parent lock record, and a shuttle runner over a worktree's reed geometry.
+// dobbywire.go exports the two battencli wirings the beam daemon reuses.
+// One releases a run's parent lock record; the other builds a shuttle runner over a worktree's reed geometry.
 
 package battencli
 
@@ -9,8 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ReleaseRunParentLock releases the parent lock record that names the run of slug's task pair, as the run's own owner pause does.
-// A pair absent on this machine, a run with no record and a Finalize past its parent-side merge, which keeps the record, release nothing.
+// ReleaseRunParentLock releases the parent lock record that names the run of slug's task pair.
+// It releases nothing when the pair is absent on this machine or the run has no record.
+// It also releases nothing when a Finalize past its parent-side merge keeps the record.
 func ReleaseRunParentLock(prime *lymcwd.Location, slug string) error {
 	present, err := taskWorktreePresent(prime, slug)
 	if err != nil || !present {
@@ -33,7 +35,8 @@ func ReleaseRunParentLock(prime *lymcwd.Location, slug string) error {
 	return err
 }
 
-// ShuttleRunner builds a shuttle runner over the reed geometry of the worktree location names, so a strand it starts opens a window in that worktree's session.
+// ShuttleRunner builds a shuttle runner over the reed geometry of the worktree location names,
+// so a strand it starts opens a window in that worktree's session.
 func ShuttleRunner(location *lymcwd.Location) (*shuttleengine.Runner, error) {
 	return primeShuttleRunner(location)
 }

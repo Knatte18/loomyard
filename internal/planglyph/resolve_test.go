@@ -1,5 +1,4 @@
-// resolve_test.go covers statusFindings, table-driven against a small fixture repository built
-// under t.TempDir().
+// resolve_test.go covers statusFindings, table-driven against a small fixture repository built under t.TempDir().
 
 package planglyph
 
@@ -12,8 +11,8 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// resolveFixture is the fixture source every test in this file resolves against: Foo is a free
-// function, Thing is a type with one member method.
+// resolveFixture is the fixture source every test in this file resolves against:
+// Foo is a free function, Thing is a type with one member method.
 const resolveFixture = "package sub\n\nfunc Foo() {}\n\ntype Thing struct{}\n\nfunc (t Thing) Method() {}\n"
 
 func TestStatusFindings(t *testing.T) {
@@ -87,9 +86,8 @@ func TestStatusFindings(t *testing.T) {
 			if !strings.Contains(got[0].Detail, cand.ID) {
 				t.Errorf("Detail = %q; want it to list candidate %q", got[0].Detail, cand.ID)
 			}
-			// The declaring file is required alongside the ID: both fixture candidates share the
-			// glyph ID amb#Foo, so an ID-only detail named the collision twice without locating
-			// either declaration (crucible round fable5-high-r2, F-R2-2).
+			// The declaring file is required alongside the ID: both fixture candidates share the glyph ID amb#Foo,
+			// so an ID-only detail would name the collision twice without locating either declaration.
 			if cand.File == "" {
 				t.Fatalf("fixture candidate %+v carries no File; the fixture assumption behind this assertion broke", cand)
 			}
@@ -99,9 +97,8 @@ func TestStatusFindings(t *testing.T) {
 		}
 	})
 
-	// A member declared once per mutually exclusive build-constraint set is one member to every
-	// target kind the policy covers; one whose declarations can coexist stays glyph-ambiguous,
-	// naming each file's constraint.
+	// Declarations in mutually exclusive build-constraint sets name one member for every target kind the policy covers;
+	// a member whose declarations can coexist stays glyph-ambiguous, naming each file's constraint.
 	t.Run("PartitionedByBuildConstraints", func(t *testing.T) {
 		const dup = "\n\npackage amb\n\nfunc Foo() {}\n"
 		cards := []struct {
@@ -211,10 +208,10 @@ func TestStatusFindings(t *testing.T) {
 	})
 }
 
-// TestTargetCards_IndexesACardOncePerTarget is F1b's (round fable5-high-r3) regression test: both
-// endpoints of every Pairs entry are also projected into Targets, so a Rename card references its
-// own endpoints twice — and targetCards must still attribute one finding per card, not one per
-// occurrence.
+// TestTargetCards_IndexesACardOncePerTarget checks that targetCards indexes each card once per target.
+// Both endpoints of every Pairs entry are also projected into Targets,
+// so a Rename card references its own endpoints twice.
+// The index must still hold one entry per card, not one per occurrence.
 func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	card := planparser.Card{
@@ -233,10 +230,10 @@ func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
 	}
 }
 
-// TestStatusFindings_UnrecognizedStatusFailsClosed is R9-6's sibling regression on the status
-// policy: quarry's four-value Status vocabulary is closed today, and a value outside it must fail
-// closed rather than fall out of the switch with no finding, so widening that vocabulary can only
-// ever be a deliberate change here.
+// TestStatusFindings_UnrecognizedStatusFailsClosed pins the policy for a status outside quarry's Status vocabulary.
+// Such a status yields a blocking glyph-rejected finding.
+// The vocabulary is closed, so no such status may fall out of the switch with no finding.
+// Widening the vocabulary is therefore a deliberate change to this policy.
 func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 	tiergate.Require(t, 0)
 	plan := &planparser.Plan{Cards: []planparser.Card{{
@@ -253,11 +250,9 @@ func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 	}
 }
 
-// TestCandidateList pins the shared ambiguous-candidate renderer both glyph-ambiguous
-// (statusFindings) and create-already-exists (createFindings) delegate to: a candidate carrying a
-// File is located as "ID (file, constraint)", one without keeps the bare ID, so identically-named declarations
-// — which share one glyph ID — stay tellable apart by their files (crucible round fable5-high-r2,
-// F-R2-2).
+// TestCandidateList pins how an ambiguous candidate is rendered.
+// A candidate carrying a File is located as "ID (file, constraint)"; one without keeps the bare ID.
+// Identically named declarations share one glyph ID, so their files are what tell them apart.
 func TestCandidateList(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

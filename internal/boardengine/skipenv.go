@@ -1,6 +1,6 @@
-// skipenv.go — the BOARD_SKIP_* environment fold.
+// skipenv.go holds ApplySkipEnv, which folds the BOARD_SKIP_* environment variables into a board Config.
 //
-// ApplySkipEnv is the one place BOARD_SKIP_GIT and BOARD_SKIP_PUSH are read;
+// It is the one place BOARD_SKIP_GIT and BOARD_SKIP_PUSH are read;
 // every CLI entry that builds a Config calls it, so no caller carries a second copy.
 
 package boardengine

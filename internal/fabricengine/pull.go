@@ -1,12 +1,11 @@
-// pull.go — the unified Fabric.Pull entry point: weft ff-pull followed by warp
-// fetch/inspect/reconcile, detecting a warp history rewrite (rebase or force-push) and, when it is
-// safe to do so, re-anchoring weft's own correspondence to the new upstream tip via the existing
-// empty-commit machinery.
-// This file defines PullResult and *PartialPullError — the result and partial-failure contract
-// batches 3-4 (the CLI and docs layers) consume — mirroring PartialCommitError's shape (commit.go),
-// with the two sides' roles swapped: PartialPullError reports a call whose warp-side work did not
-// complete, regardless of whether the weft arm completed alongside it.
-// A weft that cannot be brought level with origin is the other half of that contract: a *WeftStopError.
+// pull.go implements Fabric.Pull, the unified pull entry point.
+// It fast-forwards the weft, then fetches and inspects warp.
+// When warp's history was rewritten, it re-anchors weft's correspondence to the new upstream tip.
+// It does so through the existing empty-commit machinery.
+// The file also defines PullResult and *PartialPullError, the result and partial-failure contract.
+// PartialPullError reports a call whose warp-side work did not complete.
+// The weft arm may or may not have completed alongside it.
+// *WeftStopError reports a weft that cannot be brought level with origin.
 
 package fabricengine
 
@@ -28,69 +27,68 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// PullResult reports what Fabric.Pull actually did, on both sides independently, and — when a warp
-// history rewrite forced a reconcile — the re-anchor baseline.
+// PullResult reports what Fabric.Pull did on each side, independently.
+// When a warp history rewrite forced a reconcile, it also carries the re-anchor baseline.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type PullResult struct {
 	MutationRecord
-	// WeftPulled reports whether the weft was brought level with origin, by a fast-forward or a replay of its local commits onto origin's.
-	// It is also true when the weft branch has no upstream yet, as on a freshly bootstrapped hub whose suffixed primary branch exists only locally until the first push lands: there is nothing to pull from, so skipping is success, not failure.
-	// A weft that origin moved but a conflict or an uncommitted change keeps from being brought level is a *WeftStopError, never a false field.
+	// WeftPulled reports whether the weft was brought level with origin.
+	// That is by a fast-forward or by a replay of its local commits onto origin's.
+	// It is also true when the weft branch has no upstream yet, as on a freshly bootstrapped hub.
+	// Its suffixed primary branch exists only locally until the first push lands.
+	// There is nothing to pull from, so skipping is success, not failure.
+	// A weft that origin moved is a *WeftStopError when a conflict or an uncommitted change blocks the move.
+	// Then WeftPulled is never a false field.
 	// The field is false only on that error and when the weft's origin could not be reached.
-	// The warp fetch/reconcile runs regardless of its value.
+	// The warp fetch and reconcile run regardless of its value.
 	WeftPulled bool
-	// WarpFetched reports whether the warp fetch (f.code.Fetch) ran and
-	// succeeded.
+	// WarpFetched reports whether the warp fetch (f.code.Fetch) ran and succeeded.
 	WarpFetched bool
-	// WarpAdvanced reports whether the warp branch pointer actually moved,
-	// either via a clean fast-forward reset or a reconcile reset.
+	// WarpAdvanced reports whether the warp branch pointer actually moved.
+	// It moves either by a clean fast-forward reset or by a reconcile reset.
 	WarpAdvanced bool
-	// NewWarpHEAD is the fetched upstream tip SHA warp advanced to. It is
-	// empty when warp did not advance (already up to date, or an abort path).
+	// NewWarpHEAD is the fetched upstream tip SHA warp advanced to.
+	// It is empty when warp did not advance, either because it was already up to date or on an abort path.
 	NewWarpHEAD string
-	// RewriteDetected reports whether the warp pull was a non-fast-forward —
-	// i.e. local warp HEAD is not an ancestor of the fetched upstream tip,
-	// meaning upstream's history was rewritten (rebase/force-push), not
-	// merely advanced.
+	// RewriteDetected reports whether the warp pull was a non-fast-forward.
+	// Local warp HEAD is then not an ancestor of the fetched upstream tip.
+	// That means upstream's history was rewritten (rebase or force-push), not merely advanced.
 	RewriteDetected bool
-	// Reconciled reports whether a re-anchor weft commit was written to
-	// re-bind weft's correspondence to the new warp HEAD after a rewrite.
+	// Reconciled reports whether a re-anchor weft commit was written after a rewrite.
+	// The commit re-binds weft's correspondence to the new warp HEAD.
 	Reconciled bool
-	// AnchorWarpSHA is the surviving correspondence entry's warp SHA — the
-	// confirmed re-anchor baseline reachableAnchor resolved. Populated only
-	// when Reconciled is true.
+	// AnchorWarpSHA is the warp SHA of the surviving correspondence entry, the confirmed re-anchor baseline.
+	// It is populated only when Reconciled is true.
 	AnchorWarpSHA string
-	// AnchorWeftSHA is that same entry's weft SHA — the baseline the
-	// weft-side baseline of the re-anchor. Populated only when Reconciled is true.
+	// AnchorWeftSHA is the weft SHA of that same entry, the weft-side re-anchor baseline.
+	// It is populated only when Reconciled is true.
 	AnchorWeftSHA string
-	// ReanchorWeftSHA is the new empty weft anchor commit's own SHA, bound to
-	// NewWarpHEAD via its Warp-SHA trailer. Populated only when Reconciled is
-	// true.
+	// ReanchorWeftSHA is the SHA of the new empty weft anchor commit.
+	// The commit binds to NewWarpHEAD through its Warp-SHA trailer.
+	// It is populated only when Reconciled is true.
 	ReanchorWeftSHA string
-	// SeamWarning is the warning text of a failed worktree event fired for the commits warp took in, empty when none failed or no seam is installed.
-	// The pull itself is unaffected: a seam failure never fails it.
+	// SeamWarning is the warning text of a failed worktree event fired for the commits warp took in.
+	// It is empty when no event failed or no seam is installed.
+	// A seam failure never fails the pull.
 	SeamWarning string
 }
 
-// PartialPullError reports a Fabric.Pull call whose warp-side work did not complete — mirroring
-// PartialCommitError's shape (commit.go) with the two sides' roles swapped, per the
-// weft-first-ordering / report-not-rollback Shared Decision.
-// WeftPulled faithfully reports whether the weft arm completed, which may be false.
-// A *PartialPullError can be returned with the weft side never having pulled at all.
-// This type never reports a weft-side failure on its own: a weft stop is a *WeftStopError, joined with this error when both sides failed.
-// So *PartialPullError is only ever constructed alongside a genuine warp-side failure.
-// Stage names which warp-side step failed (e.g. "fetch", "reset", "reanchor"), so a caller (or an
-// operator reading the error) knows exactly where the call stopped without re-deriving it from
-// Err's message.
+// PartialPullError reports a Fabric.Pull call whose warp-side work did not complete.
+// WeftPulled reports whether the weft arm completed, which may be false when the weft never pulled at all.
+// This type never reports a weft-side failure on its own.
+// A weft stop is a *WeftStopError, joined with this error when both sides failed.
+// So a PartialPullError is only ever constructed alongside a genuine warp-side failure.
+// Stage names the warp-side step that failed, such as "fetch", "reset" or "reanchor".
+// A caller or an operator reads it to see where the call stopped, without deriving it from Err's message.
 type PartialPullError struct {
 	WeftPulled bool
 	Stage      string
 	Err        error
 }
 
-// Error implements the error interface, naming the warp-side stage that failed and, depending on
-// WeftPulled, either confirming the weft pull succeeded alongside it or naming the weft pull as a
-// second failure.
+// Error implements the error interface, naming the warp-side stage that failed.
+// Depending on WeftPulled, it either confirms the weft pull succeeded alongside it.
+// Otherwise it names the weft pull as a second failure.
 func (e *PartialPullError) Error() string {
 	if e.WeftPulled {
 		return fmt.Sprintf("fabricengine: weft pull succeeded, warp %s failed: %v", e.Stage, e.Err)
@@ -103,31 +101,30 @@ func (e *PartialPullError) Unwrap() error {
 	return e.Err
 }
 
-// ErrWarpDivergedUnpushed is returned by Fabric.Pull when the warp remote's history has been
-// rewritten AND local warp already carries unpushed commits of its own — the double-conflict case
-// Fabric.Pull refuses to reconcile automatically, since resolving it would require deciding what
-// happens to the caller's own unpushed work.
+// ErrWarpDivergedUnpushed is returned by Fabric.Pull when the warp remote's history has been rewritten:
+// local warp also carries unpushed commits of its own.
+// It refuses this double conflict, since reconciling it would decide what happens to the caller's unpushed work.
 // Fabric.Pull makes no change to either repo when this is returned.
 var ErrWarpDivergedUnpushed = errors.New("fabricengine: warp remote diverged and local warp has unpushed commits; aborting, no changes")
 
-// ErrNoSurvivingAnchor is returned by Fabric.Pull when the warp remote's history has been rewritten
-// so thoroughly that no entry in the correspondence index survives — reachableAnchor found nothing
-// reachable from the new upstream tip — leaving no safe baseline to re-anchor weft against.
+// ErrNoSurvivingAnchor is returned by Fabric.Pull when the new upstream tip reaches no recorded correspondence entry.
+// The warp remote's history was rewritten so thoroughly that nothing survives.
+// That leaves no safe baseline to re-anchor weft against.
 // Fabric.Pull makes no change to either repo when this is returned.
 var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and no recorded correspondence survives; aborting, no changes")
 
-// ErrWarpDirty is returned by Fabric.Pull when warp would have to move (fast-forward or reconcile)
-// while the warp worktree carries uncommitted tracked changes.
-// Every warp advance goes through ResetHard, which silently discards uncommitted tracked
-// modifications — strictly more destructive than the plain `git pull` an external actor would run —
-// so Pull refuses before mutating warp instead, mirroring Checkout's dirty-weft refusal.
-// The weft arm has already RUN when this is returned, but no longer necessarily SUCCEEDED: it
-// became non-fatal, so a failed upstream probe or a failed weft `git pull --ff-only` warns and
-// falls through to exactly this check. Read PullResult.WeftPulled for which of the two happened.
+// ErrWarpDirty is returned by Fabric.Pull when warp would have to move (fast-forward or reconcile).
+// It applies while the warp worktree carries uncommitted tracked changes.
+// Every warp advance goes through ResetHard, which silently discards uncommitted tracked modifications.
+// Pull therefore refuses before mutating warp.
+// The weft arm has already run when this is returned, and it may have failed.
+// A failed upstream probe or a failed weft `git pull --ff-only` is warned past and falls through to this check.
+// Read PullResult.WeftPulled for which of the two happened.
 // Warp itself is untouched either way.
 var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted changes; commit or stash them, then re-run pull; aborting, no warp changes")
 
-// ErrWarpRewound is returned, wrapped with the dropped commits and the two ways to settle it, by Fabric.Pull for a task pair's branch that origin rewound past commits this checkout holds.
+// ErrWarpRewound is returned by Fabric.Pull when origin rewound a task pair's branch past commits this checkout holds.
+// It is wrapped with the dropped commits and the two ways to settle it.
 // Pulling would reset the checkout away from commits origin dropped, so Pull changes nothing.
 var ErrWarpRewound error = errors.New("fabricengine: origin rewound this task branch past commits this checkout holds; aborting, no changes")
 
@@ -156,9 +153,9 @@ func (e *WeftStopError) Unwrap() error {
 	return e.Err
 }
 
-// RecordsStopMessage returns the message of err and true when err is exactly a *WeftStopError, by a direct type assertion.
+// RecordsStopMessage reports whether err is exactly a *WeftStopError, and returns its message when it is.
 // An error that joins a stop to another failure is not a stop here, so a caller never drops the other failure.
-// It gives a caller outside this package a side-neutral way to tell a records-side stop from any other pull error.
+// It lets a caller outside this package tell a weft stop from any other pull error.
 func RecordsStopMessage(err error) (message string, ok bool) {
 	stop, ok := err.(*WeftStopError)
 	if !ok {
@@ -167,22 +164,22 @@ func RecordsStopMessage(err error) (message string, ok bool) {
 	return stop.Error(), true
 }
 
-// NewRecordsStopError returns a *WeftStopError for branch stopped by cause, settled by wayForward.
-// It lets a test outside this package build the stop Fabric.Pull returns without spelling the side-named type.
+// NewRecordsStopError returns a *WeftStopError for branch, stopped by cause and settled by wayForward.
+// It lets a test outside this package build the stop Fabric.Pull returns, without spelling out the stop type.
 func NewRecordsStopError(branch string, cause error, wayForward string) error {
 	return &WeftStopError{Branch: branch, Err: cause, WayForward: wayForward}
 }
 
-// weftHasUpstream reports whether the weft worktree's current branch has a configured upstream
-// tracking ref.
-// No upstream (or a detached HEAD) is, for Pull's weft step, the nothing-to-pull-from case, never an error.
+// weftHasUpstream reports whether the weft worktree's current branch has a configured upstream tracking ref.
+// No upstream, or a detached HEAD, is for Pull's weft step the nothing-to-pull-from case, never an error.
 func (f *Fabric) weftHasUpstream() (bool, error) {
 	_, hasUpstream, err := upstreamSHAAt(f.weftPath)
 	return hasUpstream, err
 }
 
 // weftAnchorStopBeforePull runs the checks a weft pull makes before it moves anything, for a weft with an upstream.
-// It stops on a standing move record, then on an empty own anchor marker, then fetches the weft branch and stops when taking origin's tip in would cross an anchor change.
+// It stops on a standing move record, then on an empty own anchor marker.
+// It then fetches the weft branch and stops when taking origin's tip in would cross an anchor change.
 // A fetch that fails is warned past: the pull itself fails the same way and is warned past in turn.
 func (f *Fabric) weftAnchorStopBeforePull() (*AnchorStopError, error) {
 	if stop, err := moveRecordStop(f.weftPath); err != nil || stop != nil {
@@ -202,10 +199,9 @@ func (f *Fabric) weftAnchorStopBeforePull() (*AnchorStopError, error) {
 	return upstreamAnchorStop(f.weftPath, f.warpPath, upstream)
 }
 
-// warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
-// state ResetHard would silently destroy.
-// Untracked files are deliberately excluded: reset --hard leaves them alone, so they are no reason
-// to refuse a pull.
+// warpWorktreeDirty reports whether the warp worktree carries uncommitted tracked changes.
+// That is the state ResetHard would silently destroy.
+// Untracked files are excluded: reset --hard leaves them alone, so they are no reason to refuse a pull.
 func (f *Fabric) warpWorktreeDirty() (bool, error) {
 	dirty, _, err := worktreeDirty(scopeTracked, f.warpPath)
 	if err != nil {
@@ -214,9 +210,8 @@ func (f *Fabric) warpWorktreeDirty() (bool, error) {
 	return dirty, nil
 }
 
-// weftSHAOrEmpty returns f's weft repo's current HEAD SHA, mapping an unborn HEAD (no commits) to
-// ("", nil) — mirroring coalesce.go's headOrEmpty, the in-repo precedent for this exact tolerance,
-// adapted to a repo handle already in hand rather than a path.
+// weftSHAOrEmpty returns f's weft repo's current HEAD SHA.
+// An unborn HEAD, one with no commits yet, maps to the empty SHA with a nil error.
 func weftSHAOrEmpty(f *Fabric) (string, error) {
 	sha, err := f.records.CurrentSHA()
 	if err == nil {
@@ -228,14 +223,14 @@ func weftSHAOrEmpty(f *Fabric) (string, error) {
 	return "", err
 }
 
-// recordWarpAdvance records KindRepoAdvanced at f.warpPath with the new warp HEAD as Detail when a
-// ResetHard call this method's caller just made genuinely moved HEAD past before — the same
-// before/after CurrentSHA() predicate card 19 uses for push, applied to the warp advance here.
-// A reset to the SHA warp already carries advances nothing and must record nothing: ResetHard's own
-// worktree_reset entry (destroy.go) still fires either way, since that primitive ran regardless of
-// whether it moved anything — this entry names the effect, that one names the primitive.
-// If the after-sample errors, nothing is recorded and the error is not propagated: a failure to
-// observe is not a failure to advance.
+// recordWarpAdvance records KindRepoAdvanced at f.warpPath when the caller's ResetHard call moved HEAD past before.
+// The new warp HEAD is the entry's Detail.
+// A reset to the SHA warp already carries advances nothing and must record nothing.
+// ResetHard's own worktree_reset entry (destroy.go) still fires either way.
+// That primitive ran regardless of whether it moved anything.
+// This entry names the effect, that one names the primitive.
+// If the after-sample errors, nothing is recorded and the error is not propagated.
+// A failure to observe is not a failure to advance.
 func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
 	after, err := f.code.CurrentSHA()
 	if err != nil || after == before {
@@ -244,8 +239,10 @@ func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
 	rec.Append(KindRepoAdvanced, f.warpPath, after)
 }
 
-// warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking ref to a plain hex SHA.
-// Fabric.Pull calls this AFTER f.code.Fetch has refreshed the remote-tracking ref, so the SHA it returns is the freshly fetched upstream tip — usable directly by ResetHard and IsAncestor, which both require a plain commit SHA rather than symbolic revision syntax.
+// warpUpstreamSHA resolves the warp repo's upstream tracking ref to a plain commit SHA.
+// It must run after f.code.Fetch has refreshed the remote-tracking ref.
+// The SHA it returns is then the freshly fetched upstream tip.
+// ResetHard and IsAncestor require a plain commit SHA rather than symbolic revision syntax.
 // A branch with no resolvable upstream is an error.
 func (f *Fabric) warpUpstreamSHA() (string, error) {
 	sha, hasUpstream, err := upstreamSHAAt(f.warpPath)
@@ -258,18 +255,26 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 	return sha, nil
 }
 
-// Pull is fabric's unified pull entry point: it brings the weft level with origin first, then fetches and inspects warp, reconciling weft's correspondence when warp's history has been rewritten.
+// Pull is fabric's unified pull entry point.
+// It brings the weft level with origin first, then fetches and inspects warp.
+// It reconciles weft's correspondence when warp's history has been rewritten.
 // The weft arm fast-forwards when it can.
-// A weft that both this machine and origin moved has its local commits replayed onto origin's under the weft write lock and push lock.
-// The commits of a run origin has ended are kept under a local tag instead.
+// A weft both sides moved has its local commits replayed onto origin's, under the weft write lock and push lock.
+// Commits of a run that origin has ended are kept under a local tag instead.
 // A replay that stops on a conflict, or an uncommitted change that blocks the move, never stalls the warp side.
-// The warp fetch/reconcile runs regardless, and Pull then returns a *WeftStopError naming the weft branch, the paths and the way forward, beside the warp result.
-// A weft whose own anchor marker is empty, and one whose origin tip carries commits and another anchor marker, stop the pull before either side moves:
-// Pull returns a *WeftStopError wrapping ErrAnchorChange, naming `lym fabric anchor` as the way forward, and warp is not touched.
+// The warp fetch and reconcile run regardless.
+// Pull then returns a *WeftStopError beside the warp result, naming the weft branch, the paths and the way forward.
+// A weft whose own anchor marker is empty stops the pull before either side moves.
+// So does a weft whose origin tip carries commits and another anchor marker.
+// Pull then returns a *WeftStopError wrapping ErrAnchorChange, naming `lym fabric anchor` as the way forward.
+// Warp is not touched in that case.
 // A weft whose origin cannot be reached is warned past and leaves PullResult.WeftPulled false.
-// A weft infrastructure failure that is neither a stop nor an unreachable origin, such as an unreadable hub location, a failed weft write lock or a replay that failed for another reason, returns at once, before the warp arm runs:
-// warp is reset against the weft's correspondence, which such a failure leaves unknown.
-// A warp-side failure reports the accumulated result rather than unwinding the weft pull (weft-first-ordering / report-not-rollback), joined with a weft stop when both happened.
+// A weft infrastructure failure, neither a stop nor an unreachable origin, returns at once.
+// It does so before the warp arm runs.
+// Such a failure covers an unreadable hub location, a failed weft write lock, or a replay that failed otherwise.
+// Warp is not reset against the weft's correspondence, which such a failure leaves unknown.
+// A warp-side failure reports the accumulated result rather than unwinding the weft pull.
+// It is joined with a weft stop when both happened.
 // The warp arm judges a local commit as unpushed only when no value of the remote-tracking ref's reflog reaches it.
 // It refuses a task pair's branch that origin rewound, with ErrWarpRewound, before any reset.
 func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
@@ -280,9 +285,9 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		return PullResult{}, nil
 	}
 
-	// A pull hard-resets and re-anchors warp, which would discard an in-progress merge — refuse
-	// before any mutation whenever a fabric merge record exists on the pair. Record-only: the
-	// foreign-state disposition is Commit's alone, per the lock decision's consequence table.
+	// A pull hard-resets and re-anchors warp, which would discard an in-progress merge.
+	// It refuses before any mutation whenever a fabric merge record exists on the pair.
+	// It checks the record only: the foreign-state disposition belongs to Commit alone.
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
 		return PullResult{}, err
@@ -296,7 +301,8 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	if err != nil {
 		return result, err
 	}
-	// An anchor stop leaves warp alone as well: a pull that moved warp past a weft it could not bring level would split the pair across the marker change.
+	// An anchor stop leaves warp alone too.
+	// Moving warp past a weft it could not bring level would split the pair across the marker change.
 	if weftStop != nil && errors.Is(weftStop, ErrAnchorChange) {
 		return result, weftStop
 	}
@@ -313,11 +319,14 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 }
 
 // pullWeftArm brings the weft level with its upstream and records on result whether it did.
-// A weft branch with no upstream has nothing to pull from, as on the freshly bootstrapped hub's suffixed primary that exists only locally until the first push lands.
-// It counts as pulled rather than surfacing git's "no tracking information" failure.
-// A failed probe or an unreachable origin is warned past, so the warp side still runs, and leaves result.WeftPulled false.
+// A weft branch with no upstream has nothing to pull from, as on a freshly bootstrapped hub before its first push.
+// That counts as pulled, not as git's "no tracking information" failure.
+// A failed probe or an unreachable origin is warned past, so the warp side still runs.
+// It leaves result.WeftPulled false.
 // A weft stop is returned as a *WeftStopError beside a nil error, and any other failure as the error.
-// Once the weft has an upstream, a standing move record, an empty own anchor marker and an upstream with another anchor marker are weft stops raised before the pull moves anything.
+// With an upstream, a standing move record and an empty own anchor marker are weft stops.
+// So is an upstream carrying another anchor marker.
+// They are raised before the pull moves anything.
 func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOptions) (*WeftStopError, error) {
 	weftHasUpstream, err := f.weftHasUpstream()
 	if err != nil {
@@ -341,16 +350,15 @@ func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOption
 		return anchorStop.weftStop(branch), nil
 	}
 
-	// Sample the weft SHA before and after the pull, and record KindRepoAdvanced only on a
-	// change — PullWeft's own f.records.Pull() also returns nil when the weft is already up to
-	// date, so an unconditional entry would fabricate a mutation on that no-op path.
-	// This is load-bearing: PullWeft can succeed (result.WeftPulled = true below) and Pull can
-	// then still return a *PartialPullError on the warp side with no commit ever created and no
-	// gate primitive ever run — without this entry the record would be empty and partial would
-	// read false while the weft worktree had genuinely been advanced.
-	// gitrepo.ErrNoCommits is tolerated exactly as headOrEmpty (coalesce.go) tolerates it: an
-	// unborn weft HEAD reports as "" rather than an error, so a genuinely-empty repo before the
-	// pull is a legitimate before-sample rather than an observation failure.
+	// Sample the weft SHA before and after the pull, and record KindRepoAdvanced only on a change.
+	// PullWeft's own f.records.Pull() also returns nil when the weft is already up to date,
+	// so an unconditional entry would fabricate a mutation on that no-op path.
+	// This is load-bearing: PullWeft can succeed while Pull still returns a *PartialPullError on the warp side.
+	// No commit is created and no gate primitive runs in that case.
+	// Without this entry the record would be empty.
+	// Partial would then read false while the weft worktree had genuinely been advanced.
+	// gitrepo.ErrNoCommits is tolerated: an unborn weft HEAD reports as "" rather than an error.
+	// An empty repo before the pull therefore gives a legitimate before-sample, not an observation failure.
 	beforeWeftSHA, beforeErr := weftSHAOrEmpty(f)
 	pullErr := f.PullWeft(opts)
 	if pullErr != nil {
@@ -365,9 +373,11 @@ func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOption
 	return nil, nil
 }
 
-// settleUnmovedWeft decides what a weft that could not fast-forward needs, after the pull that failed with pullErr fetched origin's tip.
+// settleUnmovedWeft decides what a weft that could not fast-forward needs.
+// It runs after the pull that failed with pullErr has fetched origin's tip.
 // Origin holding nothing the weft lacks means the fetch itself failed, which is warned past.
-// A weft only behind is blocked by an uncommitted change, and a weft both sides moved has its local commits replayed onto origin's.
+// A weft only behind is blocked by an uncommitted change.
+// A weft both sides moved has its local commits replayed onto origin's.
 func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr error) (*WeftStopError, error) {
 	upstream, hasUpstream, err := upstreamSHAAt(f.weftPath)
 	var head string
@@ -504,7 +514,8 @@ func (f *Fabric) lockWeftForReplay() (release func(), err error) {
 	}, nil
 }
 
-// weftEndedByOrigin reads which of the runs the local weft commits ahead touch origin has ended, from the Bolt checkout's origin tip as last fetched.
+// weftEndedByOrigin reports which runs the local weft commits ahead touch that origin has ended.
+// It reads the Bolt checkout's origin tip as last fetched.
 // It returns an empty set for a hub with no Bolt checkout or one with no upstream, and reads no network.
 // It returns ErrReplayerMissing when a local commit touches a run and no run ledger is registered.
 func (f *Fabric) weftEndedByOrigin(l *lymcwd.Location, ahead []string) (EndedSet, error) {
@@ -581,7 +592,8 @@ func logWeftReplay(weftPath string, outcome ReplayOutcome) {
 }
 
 // pullWarpArm fetches warp and moves it level with its upstream, recording what it did on result.
-// A warp worktree with uncommitted tracked changes, an unpushed local commit and a task branch origin rewound each refuse before warp moves.
+// It refuses a warp worktree with uncommitted tracked changes before warp moves.
+// A rewritten upstream is refused too when a task branch was rewound or a local commit is unreachable from the reflog.
 func (f *Fabric) pullWarpArm(rec *Mutations, result *PullResult) error {
 	if err := f.code.Fetch(); err != nil {
 		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: "fetch", Err: err}
@@ -601,8 +613,8 @@ func (f *Fabric) pullWarpArm(rec *Mutations, result *PullResult) error {
 		return nil
 	}
 
-	// Every remaining branch moves warp via ResetHard, which discards uncommitted tracked changes
-	// without a trace — so a dirty warp worktree is refused here, before anything mutates warp.
+	// Every remaining branch moves warp via ResetHard, which discards uncommitted tracked changes without a trace.
+	// So a dirty warp worktree is refused here, before anything mutates warp.
 	dirty, err := f.warpWorktreeDirty()
 	if err != nil {
 		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: "dirty-check", Err: err}
@@ -635,8 +647,9 @@ func (f *Fabric) pullWarpArm(rec *Mutations, result *PullResult) error {
 	return f.reanchorAfterRewrite(rec, result, localHEAD, upstreamSHA)
 }
 
-// refuseUnsafeRewrite judges a warp branch whose upstream is not a fast-forward of localHEAD by the reflog of its remote-tracking ref, and refuses what a reset would lose.
-// A task pair's branch classifyRewrite reads as rewound is refused with ErrWarpRewound, naming the dropped commits.
+// refuseUnsafeRewrite judges a warp upstream that is not a fast-forward of localHEAD.
+// It judges by the reflog of the remote-tracking ref, and refuses what a reset would lose.
+// A task pair's branch that origin rewound is refused with ErrWarpRewound, naming the dropped commits.
 // The prime's branch takes no such refusal, since its code branch is the operator's and a reset follows the rewind.
 // A local commit no reflog value reaches refuses with ErrWarpDivergedUnpushed.
 func (f *Fabric) refuseUnsafeRewrite(weftPulled bool, localHEAD, upstreamSHA string) error {
@@ -691,18 +704,18 @@ func (f *Fabric) refuseUnsafeRewrite(weftPulled bool, localHEAD, upstreamSHA str
 	return nil
 }
 
-// reanchorAfterRewrite resets warp to upstreamSHA after a rewrite refuseUnsafeRewrite passed, and re-anchors weft's correspondence to it.
+// reanchorAfterRewrite resets warp to upstreamSHA after a rewrite is judged safe.
+// It then re-anchors weft's correspondence to upstreamSHA.
 func (f *Fabric) reanchorAfterRewrite(rec *Mutations, result *PullResult, localHEAD, upstreamSHA string) error {
 	partial := func(stage string, err error) error {
 		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: stage, Err: err}
 	}
 
-	// The index is a rebuildable cache, never authoritative on its own — and here it decides whether
-	// the pair can recover at all, so it must be rebuilt from the weft trailer history (the sole
-	// source of truth, already fast-forwarded above) before the anchor walk.
-	// A re-cloned hub starts with an empty per-pair index while its adopted weft history carries
-	// every recorded anchor; without the rebuild, the walk missed those surviving anchors and
-	// returned a false ErrNoSurvivingAnchor that no later call could ever clear.
+	// The index is a rebuildable cache, never authoritative on its own.
+	// Here it decides whether the pair can recover at all.
+	// So it is rebuilt from the weft trailer history, the sole source of truth, before the anchor walk.
+	// A re-cloned hub starts with an empty per-pair index, while its adopted weft history carries every recorded anchor.
+	// Without the rebuild, the walk would miss those anchors and return a false ErrNoSurvivingAnchor.
 	if err := f.RebuildIndex(); err != nil {
 		return partial("load-index", err)
 	}

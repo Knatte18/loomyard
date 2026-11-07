@@ -1,6 +1,5 @@
-// mergepaths_test.go is table-driven, pure-logic (Tier 1) coverage for unifyConflictPaths' mapping
-// rule: warp pass-through, weft identity mapping at "." and a subpath anchor, the unmappable
-// classes (outside-wired-set and both-sides-collision), sort order, and the empty-never-nil result.
+// mergepaths_test.go holds table-driven, pure-logic (Tier 1) tests for unifyConflictPaths' mapping rule.
+// The rows cover warp pass-through, weft identity mapping, unmappable classes, sort order, and the non-nil empty result.
 
 package fabricengine
 
@@ -48,10 +47,9 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 			wantUnified:   []string{"backend/_lym/pattern/foo.md"},
 		},
 		{
-			// A multi-segment anchor is reachable (`lym fabric clone --subpath apps/backend`) and is
-			// the shape the separator bug bites on Windows, where ValidateAnchorRel hands this
-			// function `apps\backend`. On Linux the value is already slash-form, so this row guards
-			// the mapping itself rather than the conversion.
+			// A multi-segment anchor is reachable (`lym fabric clone --subpath apps/backend`).
+			// On Windows, ValidateAnchorRel hands this function `apps\backend`, so the separator conversion maps it.
+			// On Linux the value is already slash-form, so this row guards the mapping itself rather than the conversion.
 			name:          "weft identity mapping at a multi-segment subpath anchor",
 			warpConflicts: nil,
 			weftConflicts: []string{"apps/backend/_lym/pattern/foo.md"},
@@ -60,11 +58,11 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 			wantUnified:   []string{"apps/backend/_lym/pattern/foo.md"},
 		},
 		{
-			// A backslash is an ordinary filename character on Linux, so an anchor directory really
-			// can be named `weird\name` there and git reports it verbatim. This row is what pins the
-			// conversion as filepath.ToSlash (identity when the OS separator is already '/') rather
-			// than a blanket strings.ReplaceAll, which would rewrite the name into a component
-			// boundary that does not exist and make every conflict under it unmappable.
+			// A backslash is an ordinary filename character on Linux.
+			// An anchor directory can be named `weird\name` there, and git reports it verbatim.
+			// This row pins the conversion as filepath.ToSlash, which is the identity where the OS separator is '/'.
+			// A blanket strings.ReplaceAll would split the name at a component boundary that does not exist.
+			// That would leave every conflict under the anchor unmappable.
 			name:          "single anchor segment containing a backslash is not split",
 			warpConflicts: nil,
 			weftConflicts: []string{`weird\name/_lym/foo.md`},
@@ -140,15 +138,13 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 	}
 }
 
-// TestMergePaths_WeftPathVisibleAcrossSeparators drives weftPathVisible's separator conversion with
-// an EXPLICIT separator, which is the only way this host can exercise it at all.
+// TestMergePaths_WeftPathVisibleAcrossSeparators checks weftPathVisible's separator conversion.
+// It passes an explicit separator, because a '/' host never runs the conversion.
 //
-// The conversion is a no-op whenever the OS separator already is '/', so on Linux and macOS a test
-// that goes through weftPathVisible cannot tell the conversion from its absence: deleting it left
-// the entire hermetic and integration suite green, and the campaign has no Windows host to run the
-// real thing on, two instalments and seven rounds in. Driving weftPathVisibleWithSeparator directly
-// with separator '\\' reproduces the Windows spelling of anchorRel here, so both wrong
-// implementations fail on this host:
+// The conversion is a no-op when the OS separator is '/'.
+// On Linux and macOS, a test through weftPathVisible therefore cannot tell the conversion from its absence.
+// Driving weftPathVisibleWithSeparator directly with separator '\\' reproduces the Windows spelling of anchorRel.
+// Both wrong implementations then fail on this host:
 //   - dropping the conversion → the WindowsMultiSegmentAnchor rows stop matching,
 //   - blanket-replacing every backslash regardless of the OS separator → the PosixBackslashInName
 //     rows start matching a component boundary that does not exist.
@@ -164,8 +160,10 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 		want      bool
 	}{
 		{
-			// The Windows shape round 6's fix is about: ValidateAnchorRel hands back `apps\backend` while git reports `apps/backend/_lym/…`.
-			// Without the conversion the prefix is `apps\backend/_lym/`, nothing matches, and MergeIn self-aborts the whole merge with *ErrUnmergeableState for a conflict squarely inside the fabric-managed tree.
+			// On Windows, ValidateAnchorRel hands back `apps\backend`, while git reports `apps/backend/_lym/…`.
+			// Without the conversion the prefix is `apps\backend/_lym/` and nothing matches.
+			// MergeIn would then self-abort the whole merge with *ErrUnmergeableState.
+			// The conflict lies inside the fabric-managed tree.
 			name:      "WindowsMultiSegmentAnchor_MapsUnderWiredName",
 			weftPath:  "apps/backend/_lym/pattern/foo.md",
 			anchorRel: `apps\backend`,
@@ -194,10 +192,10 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 			want:      true,
 		},
 		{
-			// The mirror case that a blanket strings.ReplaceAll(anchorRel, "\\", "/") would break: on
-			// a platform whose separator is '/', a backslash is an ordinary filename character and a
-			// directory really can be named `weird\name`. Rewriting it into a component boundary
-			// makes every conflict under that anchor unmappable.
+			// The mirror case: a blanket strings.ReplaceAll would break this row.
+			// On a platform whose separator is '/', a backslash is an ordinary filename character.
+			// A directory can really be named `weird\name` there.
+			// Rewriting it into a component boundary makes every conflict under that anchor unmappable.
 			name:      "PosixBackslashInName_IsNotSplitIntoComponents",
 			weftPath:  `weird\name/_lym/foo.md`,
 			anchorRel: `weird\name`,
@@ -231,17 +229,10 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 	}
 }
 
-// TestMergePaths_WeftPathVisibleUsesTheOSSeparator pins the wiring between weftPathVisible and its
-// separator-explicit form by SOURCE INSPECTION, not by calling it, and the reason is the same
-// identity problem that made the original defect invisible: on this host os.PathSeparator IS '/', so
-// a weftPathVisible that hardcoded '/' behaves identically to the correct one and no runtime
-// assertion can separate them. Verified by sabotage rather than assumed — replacing the argument
-// with a literal '/' leaves every runtime test in this package green.
+// TestMergePaths_WeftPathVisibleUsesTheOSSeparator checks by source inspection that the OS separator is passed.
+// On this host os.PathSeparator is '/', so a runtime test cannot tell a hardcoded '/' from the OS separator.
 //
-// The conversion LOGIC, which is where the defect actually lived, is fully exercised at runtime by
-// TestMergePaths_WeftPathVisibleAcrossSeparators. What is left over is one argument, and a source
-// scan is the proportionate guard for it — the same posture cmd/lym's destructive- and
-// uncontained-write guards take for facts no runtime assertion on this host can reach.
+// The conversion logic itself is covered at runtime; only this argument needs a source scan.
 //
 //testtiming:keep weftPathVisible being wired to its separator-explicit form, by source inspection; coverage of its blocks by other tests does not show an assertion of this
 func TestMergePaths_WeftPathVisibleUsesTheOSSeparator(t *testing.T) {

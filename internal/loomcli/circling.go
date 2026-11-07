@@ -1,17 +1,13 @@
-// circling.go implements the `circling` loom subtree: the two verbs through which the operator settles a review segment's escalation.
-// `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
-// At a Bouncer row each records a decision file in the Bouncer's run directory and nothing else; neither verb resumes the run, so the operator runs `lym loom resume` afterwards.
-// `accept` also settles a run halted at Finalize after its fix reviews ran out of rounds: it marks the fixer's change accepted in Finalize's attempt record and commits the change description with the open findings appended, and the resume lands the change as it stands.
+// circling.go implements the `circling` loom subtree: the `accept` and `continue` verbs that settle an escalation.
+// At a Bouncer row each verb only records a decision file, so the operator runs `lym loom resume` afterwards.
+// `accept` also settles a run halted at Finalize after its fix reviews ran out of rounds.
 //
-// The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
-// It resolves the target worktree through the same resolver the review group uses.
+// The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it.
+// Without the skip, arm would run for the group and read the slug as a run-id.
+// It resolves the target worktree through the shared resolver `review.go` holds.
 //
-// The verbs check no caller identity, like `lym loom review`:
-// any shell addressing the run can record a decision, an agent's tmux session in the task worktree included.
-// That is bounded by what names the verbs, the Bouncer escalation brief, the arbiter stencil and Finalize's halt at its fix review round cap only;
-// and by the refusal preconditions — the verbs refuse unless the run awaits at a Bouncer row with a pending escalation, the round carries an escalation the Bouncer wrote (a circling, hard-cap, budget or decision escalation), one decision per round, and only while the run awaits at that Bouncer row.
-// `continue` also refuses a round at or past its perch's hard cap, whoever asks, with `accept` or raising the cap as its way forward; `accept` is never refused by the cap.
-// The decision file in the committed run directory records the decision and the escalation's cause for that round.
+// The verbs check no caller identity: any shell addressing the run can record a decision.
+// They refuse unless the run awaits a pending escalation at a Bouncer row, or a halt at Finalize.
 
 package loomcli
 
@@ -53,25 +49,34 @@ const (
 	circlingWayFinalize  = `way forward: fix the findings on the task branch, then run "lym loom resume", which runs the fix reviews afresh; or run "lym loom circling accept %s" to land the change as it stands`
 )
 
-// circlingDeps is every side effect circlingVerb performs, injected so tests supply fakes.
+// circlingDeps holds every side effect of a circling verb, injected so tests can supply fakes.
 type circlingDeps struct {
 	// readStatus reads the target worktree's default run status; found is false when the run has no status file.
 	readStatus reviewStatusReader
 	// bouncerSubdir reports the run subdirectory of the named recipe row when that row is a Bouncer.
 	bouncerSubdir func(row string) (subdir string, isBouncer bool, err error)
-	// record writes decision for the latest round of the Bouncer run directory named by subdir and returns that round and its escalation cause.
+	// record writes decision for the latest round at subdir, and returns that round and its escalation cause.
 	record func(subdir string, decision shedadapters.CirclingDecision) (round int, cause shedadapters.EscalationCause, err error)
 	// latestRound returns the latest round of the Bouncer run directory named by subdir.
 	latestRound func(subdir string) (int, error)
-	// escalationPending reports whether the latest round of the Bouncer run directory named by subdir carries an escalation no decision has answered.
+	// escalationPending reports whether the latest round at subdir carries an escalation no decision has answered.
 	escalationPending func(subdir string) (bool, error)
 	// hardCap returns the row's resolved hard cap, 0 meaning none, and the way forward that raises it.
 	hardCap func(row string) (hardCap int, raise string, err error)
-	// acceptFinalize records the operator's acceptance of the fixer change a run halted at Finalize holds, for the Finalize row entry entry, and commits the change description it writes the open findings into.
+	// acceptFinalize records the fixer change as accepted from history index entry on, and commits the change description.
 	acceptFinalize func(entry int) error
 }
 
-// circlingVerb records decision for the run's escalated round, or refuses with a way forward.
+// circlingVerb records decision for the escalated round of the run, or refuses with a way forward.
+// `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
+// It refuses unless the run awaits at a Bouncer row and the latest round carries an escalation the Bouncer wrote.
+// The escalation is one of the circling, hard-cap, budget or decision kinds, and a round takes one decision.
+// `continue` also refuses a round at or past its perch's hard cap, whoever asks; `accept` is never refused by the cap.
+// It checks no caller identity:
+// any shell that addresses the run can record a decision, an agent's tmux session in the task worktree included.
+// That reach is limited only by what names the verbs:
+// the Bouncer escalation brief, the arbiter stencil and Finalize's halt at its fix review round cap.
+// The decision file in the committed run directory records the decision and the escalation's cause for that round.
 func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedadapters.CirclingDecision) int {
 	verb := string(decision)
 	refuse := func(format string, args ...any) int {
@@ -113,7 +118,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 			if err != nil && !errors.Is(err, shedadapters.ErrEscalationMalformed) {
 				return refuse("%s; %s", err, circlingWayRetry)
 			}
-			// A round with no open escalation, or a malformed one, falls through to record, whose refusal names the right way forward.
+			// A round with no open escalation, or a malformed one, falls through to record, whose refusal names the way forward.
 			if pending {
 				return refuse("round %d at %s is at or past its perch's hard cap %d, so no review round runs past it; way forward: run `lym loom circling accept %s`, or raise the hard cap: %s, then run `lym loom circling continue %s`", latest, st.CurrentProducer, hardCap, slug, raise, slug)
 			}
@@ -141,8 +146,10 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 }
 
 // finalizeCirclingVerb settles a run halted at Finalize after its fix reviews ran out of rounds.
-// accept records the operator's acceptance of the fixer's change as it stands, with the open findings written into the change description, and continue is refused, since a resume already runs the fix reviews afresh.
-// A halt at Finalize on any other cause refuses both.
+// accept marks the fixer's change accepted in Finalize's attempt record;
+// it commits the change description with the open findings appended, and the resume lands the change as it stands.
+// continue is refused, since a resume already runs the fix reviews afresh.
+// A halt at Finalize on any other cause refuses both verbs.
 func finalizeCirclingVerb(out io.Writer, slug string, deps circlingDeps, decision shedadapters.CirclingDecision, st shedengine.Status, refuse func(format string, args ...any) int) int {
 	if decision != shedadapters.CirclingAccept {
 		return refuse("the run is halted at %s, where only accept settles fix reviews that ran out of rounds; %s", st.CurrentProducer, fmt.Sprintf(circlingWayFinalize, slug))
@@ -162,13 +169,13 @@ func finalizeCirclingVerb(out io.Writer, slug string, deps circlingDeps, decisio
 	})
 }
 
-// circlingState carries what the circling group's pre-run resolved for its verbs.
+// circlingState holds the task slug and the dependencies the circling verbs use to settle an escalation.
 type circlingState struct {
 	deps circlingDeps
 	slug string
 }
 
-// preRun resolves the invoking cwd, then the target worktree, then the verbs' side effects.
+// preRun resolves the review target of the invoked verb and wires the dependencies that the verb runs against.
 func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == circlingGroup {
 		return nil
@@ -237,9 +244,11 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// perchHardCap returns the resolved hard cap of the Bouncer row's perch and the way forward that raises it, by the layer its value comes from.
-// Every perch's cap is in loom.yaml, a darn run's Code-Review perch's included, bar the plan perch's own, which tapestry.yaml holds: the cap of Plan-Bouncer is tapestry.yaml's plan_hard_max_bounces, or loom.yaml's review_hard_max_bounces while that is 0.
-// The way forward is routed through the module that owns the key the cap resolves from, and a load failure of either file is returned as is.
+// perchHardCap returns the hard cap of the Bouncer row's perch and the way forward that raises it.
+// Every perch's cap is in loom.yaml, a darn run's Code-Review perch's included, except the plan perch's.
+// The plan perch's cap is tapestry.yaml's plan_hard_max_bounces, or loom.yaml's review_hard_max_bounces while that is 0.
+// The way forward is routed through the module that owns the key the cap resolves from,
+// and a load failure of either file is returned as is.
 func perchHardCap(location *lymcwd.Location, row string) (int, string, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	perch, ok := loomPerches[row]
@@ -270,9 +279,10 @@ func perchHardCap(location *lymcwd.Location, row string) (int, string, error) {
 }
 
 // circlingStatusReader reads the status file at statusPath under the lock at statusLock.
-// Absence is decided by the committed status file alone:
-// the lock sits in the untracked scratch tree, which a fresh checkout of a task branch lacks even when its run is awaiting,
-// so a missing lock directory is created rather than read as a missing run.
+// Absence is decided by the committed status file alone.
+// The lock sits in the untracked scratch tree,
+// so a fresh checkout of a task branch lacks it even while its run is awaiting,
+// and a missing lock directory is created rather than read as a missing run.
 func circlingStatusReader(statusPath, statusLock string) reviewStatusReader {
 	return func() (shedengine.Status, bool, error) {
 		if _, err := os.Stat(statusPath); errors.Is(err, fs.ErrNotExist) {

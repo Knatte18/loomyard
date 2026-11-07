@@ -1,10 +1,7 @@
-// ancestry.go implements the reachability primitive rebase detection and the nearest-older anchor
-// walk both need: IsAncestor answers "is sha an ancestor of ref", CLI-bound via `git merge-base
-// --is-ancestor` because SHAExists' object-existence semantics cannot distinguish "this commit is
-// still reachable from ref" from "this commit's object merely survived a rebase that walked it off
-// history" — see the package's reachability, never object-existence decision.
-// MergeBase finds two commits' best common ancestor through go-git, a local read.
-// CommitsNotIn lists the commits one tip has over a base, CLI-bound beside it via `git rev-list`.
+// ancestry.go implements the reachability queries that rebase detection and the nearest-older anchor walk need.
+// IsAncestor and CommitsNotIn run git, because object existence does not show reachability.
+// A commit's object can stay in the store after a rebase walks it off history.
+// MergeBase reads the object store through go-git.
 
 package gitrepo
 
@@ -18,9 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// IsAncestor reports whether sha is an ancestor of ref via `git merge-base --is-ancestor`,
-// returning its tri-state exit code: true if an ancestor, false if not (both with nil error), or an
-// error on failure.
+// IsAncestor reports whether sha is an ancestor of ref, using `git merge-base --is-ancestor`.
+// A commit that is not an ancestor gives false with a nil error; any other git failure is an error.
 // sha and ref are validated before reaching git, returning ErrInvalidSHA.
 func (r *Repo) IsAncestor(sha, ref string) (bool, error) {
 	if !validSHA(sha) {
@@ -71,9 +67,10 @@ func (r *Repo) MergeBase(a, b string) (string, error) {
 	})
 }
 
-// CommitsNotIn returns the SHAs of the commits reachable from tip and not from base, newest first, via `git rev-list base..tip`.
+// CommitsNotIn returns the SHAs of the commits reachable from tip and not from base, newest first.
 // An empty slice means tip adds nothing over base.
-// tip and base are validated before reaching git, returning ErrInvalidSHA; an object git does not know is an error naming it.
+// tip and base are validated before reaching git, returning ErrInvalidSHA;
+// an object git does not know is an error naming it.
 func (r *Repo) CommitsNotIn(tip, base string) ([]string, error) {
 	if !validSHA(tip) || !validSHA(base) {
 		return nil, ErrInvalidSHA

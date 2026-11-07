@@ -22,7 +22,7 @@ const listPageSize = 100
 type State string
 
 const (
-	// StateOpen is a pull request still under review.
+	// StateOpen is a pull request that is neither closed nor merged.
 	StateOpen State = "open"
 	// StateClosed is a pull request closed without merging.
 	StateClosed State = "closed"
@@ -30,7 +30,7 @@ const (
 	StateMerged State = "merged"
 )
 
-// Status is what Client.Status reads about a pull request.
+// Status is a pull request's state, head commit and standing review verdicts as GitHub reports them.
 type Status struct {
 	State State
 	// HeadSHA is the pull request's current head commit.
@@ -41,7 +41,8 @@ type Status struct {
 	ChangesRequested bool
 	// Draft reports whether the pull request is a draft, which GitHub refuses to merge.
 	Draft bool
-	// MergeableState is GitHub's mergeable_state of the pull request: clean, dirty, blocked, behind, unstable, has_hooks, unknown or draft.
+	// MergeableState is GitHub's mergeable_state of the pull request:
+	// clean, dirty, blocked, behind, unstable, has_hooks, unknown or draft.
 	MergeableState string
 }
 
@@ -52,7 +53,8 @@ const CheckMissing = "missing"
 type Check struct {
 	// Name is the check's name, the context a rule requires.
 	Name string
-	// Conclusion is the check's conclusion at the head: empty while it has not finished, and CheckMissing when no check run or commit status of it exists there.
+	// Conclusion is the check's conclusion at the head:
+	// empty while it has not finished, and CheckMissing when no check run or commit status of it exists there.
 	Conclusion string
 }
 
@@ -70,7 +72,8 @@ const (
 	RefusalMethod RefusalKind = "method"
 	// RefusalPending means the base branch moved or GitHub is still computing mergeability, so a retry may succeed.
 	RefusalPending RefusalKind = "pending"
-	// RefusalOther covers every other refusal: a moved head, a missing approval, a required check or a conflict, none of which a retry clears.
+	// RefusalOther covers every other refusal:
+	// a moved head, a missing approval, a required check or a conflict, none of which a retry clears.
 	RefusalOther RefusalKind = "other"
 )
 
@@ -82,7 +85,7 @@ type MergeRefusal struct {
 	Message string
 }
 
-// Error returns GitHub's message prefixed with the refusal's source.
+// Error returns GitHub's message, prefixed with a note that GitHub refused the merge.
 func (r *MergeRefusal) Error() string {
 	return "pullrequest: github refused the merge: " + r.Message
 }
@@ -108,13 +111,14 @@ type API interface {
 	// Merge merges a pull request whose head is expectedHead, squashing when squash is set.
 	// A merge GitHub refuses returns a *MergeRefusal.
 	Merge(ctx context.Context, number int, expectedHead string, squash bool, title, message string) error
-	// RequiresPullRequest reports whether a repository rule active on branch requires a pull request, so GitHub refuses a direct push to it.
+	// RequiresPullRequest reports whether a repository rule active on branch requires a pull request.
+	// Such a rule makes GitHub refuse a direct push to branch.
 	RequiresPullRequest(ctx context.Context, branch string) (bool, error)
 	// RequiredChecks returns the status checks the repository's rules for base require, each with its conclusion at head.
 	RequiredChecks(ctx context.Context, base, head string) ([]Check, error)
 }
 
-// Client is the pull requests of one GitHub repository, reached through an authenticated client.
+// Client reaches the pull requests of one GitHub repository through an authenticated client.
 // It is safe for concurrent use.
 type Client struct {
 	gh    *github.Client
@@ -161,7 +165,7 @@ func (c *Client) FindOpen(ctx context.Context, head, base string) (Ref, bool, er
 	return Ref{Number: found[0].GetNumber(), URL: found[0].GetHTMLURL()}, true, nil
 }
 
-// Create opens a pull request from head into base with the told title and body.
+// Create opens a pull request from head into base with the given title and body.
 func (c *Client) Create(ctx context.Context, head, base, title, body string) (Ref, error) {
 	created, _, err := c.gh.PullRequests.Create(ctx, c.owner, c.repo, &github.NewPullRequest{
 		Title: &title,
@@ -184,7 +188,8 @@ func (c *Client) Edit(ctx context.Context, number int, title, body string) error
 	return nil
 }
 
-// Status reads a pull request's state, with merged winning over closed, its head commit, and the standing verdict of every page of its reviews.
+// Status reads a pull request's state, with merged winning over closed, and its head commit.
+// It reads the standing verdict across every page of its reviews.
 func (c *Client) Status(ctx context.Context, number int) (Status, error) {
 	pull, _, err := c.gh.PullRequests.Get(ctx, c.owner, c.repo, number)
 	if err != nil {
@@ -245,8 +250,9 @@ func (c *Client) Comment(ctx context.Context, number int, body string) error {
 	return nil
 }
 
-// SetDraft turns a pull request into a draft with draft set, and marks a draft ready for review without it.
-// GitHub's REST API sets neither, so it reads the pull request's node id and runs the GraphQL mutation that does.
+// SetDraft converts a pull request to a draft when draft is true, and marks it ready for review when draft is false.
+// GitHub's REST API does not set either state.
+// SetDraft therefore reads the pull request's node id and runs the GraphQL mutation that sets it.
 func (c *Client) SetDraft(ctx context.Context, number int, draft bool) error {
 	pull, _, err := c.gh.PullRequests.Get(ctx, c.owner, c.repo, number)
 	if err != nil {
@@ -263,7 +269,8 @@ func (c *Client) SetDraft(ctx context.Context, number int, draft bool) error {
 	return nil
 }
 
-// graphQL runs query with variables against GitHub's GraphQL endpoint, failing on a transport or HTTP failure and on any error GitHub lists in the response.
+// graphQL runs query with variables against GitHub's GraphQL endpoint.
+// It fails on a transport or HTTP failure and on any error that GitHub lists in the response.
 func (c *Client) graphQL(ctx context.Context, query string, variables map[string]any) error {
 	req, err := c.gh.NewRequest(http.MethodPost, "graphql", map[string]any{"query": query, "variables": variables})
 	if err != nil {
@@ -287,7 +294,8 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 	return nil
 }
 
-// RequiresPullRequest reads every page of the repository rules active on branch and reports whether any of them is a pull_request rule.
+// RequiresPullRequest reports whether the repository rules active on branch include a pull_request rule.
+// It reads the rules one page at a time and stops at the first page with a pull_request rule.
 func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, error) {
 	opts := &github.ListOptions{PerPage: listPageSize}
 	for {
@@ -305,9 +313,12 @@ func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, 
 	}
 }
 
-// RequiredChecks reads every page of the rules active on base for its required status-check contexts, then matches each context to its outcome at head.
-// A context's conclusion comes from the check run of that name, else from the commit status of that context with a pending one read as unfinished, else it is CheckMissing.
-// It makes no check call when base requires none.
+// RequiredChecks reads every page of the rules active on base for the status-check contexts they require.
+// It then matches each context to its outcome at head.
+// A context's conclusion comes from the check run of that name, else from the commit status of that context.
+// A pending commit status reads as unfinished, with an empty conclusion.
+// A context with neither is reported as missing.
+// When base requires no status checks, it returns no checks, without reading check runs or commit statuses.
 func (c *Client) RequiredChecks(ctx context.Context, base, head string) ([]Check, error) {
 	var contexts []string
 	ruleOpts := &github.ListOptions{PerPage: listPageSize}
@@ -386,8 +397,10 @@ func (c *Client) RequiredChecks(ctx context.Context, base, head string) ([]Check
 	return checks, nil
 }
 
-// Merge merges a pull request whose head must equal expectedHead, squashing when squash is set, with the told commit title and message.
-// Only HTTP 405 and 409 are read as a refusal; any other failure is returned wrapped so githubclient.IsTransient still judges it.
+// Merge merges a pull request whose head must equal expectedHead, squashing when squash is set.
+// It uses title as the commit title and message as the commit message.
+// Only HTTP 405 and 409 are read as a refusal.
+// Any other failure is returned wrapped, so a caller can still judge whether it is transient.
 func (c *Client) Merge(ctx context.Context, number int, expectedHead string, squash bool, title, message string) error {
 	method := "merge"
 	if squash {
@@ -422,10 +435,11 @@ func classifyRefusal(message string) RefusalKind {
 	}
 }
 
-// standingReviews reads each reviewer's latest APPROVED, CHANGES_REQUESTED or DISMISSED review, ignoring COMMENTED and PENDING.
-// approved is true when at least one standing review is APPROVED with a commit id equal to head.
-// changesRequested is true when any standing review is CHANGES_REQUESTED.
-// reviews are in the order GitHub lists them, oldest first.
+// standingReviews reads each reviewer's latest APPROVED, CHANGES_REQUESTED or DISMISSED review.
+// It ignores COMMENTED and PENDING reviews.
+// It reports whether a standing review approves the commit at head.
+// It reports whether any standing review requests changes.
+// The reviews must be in the order GitHub lists them, oldest first, so the last one from a reviewer is its latest.
 func standingReviews(reviews []*github.PullRequestReview, head string) (approved, changesRequested bool) {
 	standing := map[string]*github.PullRequestReview{}
 	for _, review := range reviews {

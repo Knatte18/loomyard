@@ -1,5 +1,5 @@
-// export_integration_test.go holds the git-spawning setup helpers behind export_test.go's seams:
-// they spawn git through gitkit, so they live in a tagged file and every caller is tagged too.
+// export_integration_test.go holds the git-spawning setup helpers behind export_test.go's seams.
+// They spawn git through gitkit, so this file and every caller of them are tagged.
 
 package fabricengine
 
@@ -11,15 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// NewPlainWarpRepoForTest re-exports newPlainWarpRepo (relocated fixture helper, formerly
-// index_integration_test.go): commitweftat_test.go (package fabricengine, never migrating) calls it
-// unqualified, and several of the nine relocating files need it before
-// index_integration_test.go's own migration card lands.
+// NewPlainWarpRepoForTest creates a minimal, isolated warp git repo for tests in package fabricengine_test.
 var NewPlainWarpRepoForTest = newPlainWarpRepo
 
-// newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on branch main with one
-// commit — everything RecordCorrespondence/warpSeq needs from a warp repo, without any of fabric's
-// own topology wiring (junctions, weft pairing), which the callers of this helper do not exercise.
+// newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on branch main with one commit.
+// The repo has no fabric topology wiring (junctions, weft pairing); the callers of this helper do not exercise it.
 func newPlainWarpRepo(t *testing.T) string {
 	t.Helper()
 
@@ -31,12 +27,12 @@ func newPlainWarpRepo(t *testing.T) string {
 	return dir
 }
 
-// NewCommitFixtureForTest re-exports newCommitFixture (relocated fixture helper, formerly commit_integration_test.go): commit_gating_integration_test.go, committed_lymonly_integration_test.go, commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never migrating) call it unqualified;
-// the nine relocating files call the exported form.
+// NewCommitFixtureForTest builds a fresh warp/weft pair with the fabric config seeded.
+// Tests in package fabricengine_test call it, since they cannot reach package fabricengine's unexported helpers.
 var NewCommitFixtureForTest = newCommitFixture
 
-// newCommitFixture builds a fresh warp/weft pair with the fabric config seeded, returning the Fabric
-// handle and both repo paths.
+// newCommitFixture builds a fresh warp/weft pair with the fabric config seeded.
+// It returns the Fabric handle and both repo paths.
 func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 	t.Helper()
 
@@ -47,10 +43,9 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 	return f, warpPath, weftPath
 }
 
-// newPlainWeftRepo creates a minimal, isolated git repo at t.TempDir() on branch main with a single
-// tracked _lym/config.yaml file and one commit — the weft-side sibling of newPlainWarpRepo, replacing
-// gitkit's own retired weft-only template for newCommitFixture's four in-package callers, which
-// cannot import the hubforge package.
+// newPlainWeftRepo creates a minimal, isolated git repo at t.TempDir() on branch main.
+// Its one commit tracks a single _lym/config.yaml file.
+// The in-package callers of newCommitFixture cannot import the hubforge package, so they need this helper.
 func newPlainWeftRepo(t *testing.T) string {
 	t.Helper()
 

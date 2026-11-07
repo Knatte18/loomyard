@@ -1,8 +1,11 @@
-// fixplan.go implements the `fix-plan` webster verb: the re-entrant, blocking call Master makes, backgrounded, after begin-batch refuses with a plan conflict.
+// fixplan.go implements the `fix-plan` webster verb.
+// It is the re-entrant, blocking call Master makes, backgrounded, after begin-batch refuses with a plan conflict.
 // It drives websterengine's plan-fixer phases with a real, wall-clock Clock.
-// FixPlanSpawnOrAttach runs under the state-mutation lease, and a spawn is saved and fabric-committed "fix-plan spawn".
+// FixPlanSpawnOrAttach runs under the state-mutation lease.
+// A spawn is saved and fabric-committed as "fix-plan spawn".
 // FixPlanAwait runs with the lease released, so the fixer's own rebaseline can take it.
-// A terminal result is recorded by RecordPlanFixerTerminal into a freshly reloaded state under a re-acquired lease, saved and committed "fix-plan <status>".
+// A terminal result is recorded by RecordPlanFixerTerminal into a freshly reloaded state under a re-acquired lease.
+// The state is then saved and fabric-committed as "fix-plan <status>".
 package webstercli
 
 import (
@@ -16,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fixPlanDeps builds the websterengine.FixPlanDeps for this CLI's current wiring.
+// fixPlanDeps returns the websterengine.FixPlanDeps that fix-plan runs with, wired from this CLI's fields.
 func (c *websterCLI) fixPlanDeps() websterengine.FixPlanDeps {
 	return websterengine.FixPlanDeps{
 		Starter:     c.starter,
@@ -31,12 +34,11 @@ func (c *websterCLI) fixPlanDeps() websterengine.FixPlanDeps {
 	}
 }
 
-// fixPlanNotDoneMessage is the error of a fix-plan call whose fixer ended dead for reason.
+// fixPlanNotDoneMessage returns the error text for a fix-plan call whose fixer ended dead for the given reason.
 func fixPlanNotDoneMessage(reason string) string {
 	return fmt.Sprintf("webster: the plan fixer ended dead (%s); way forward: write outcome: stuck to your outcome file, with a stuck_reason quoting begin-batch's plan_conflict refusal verbatim, so the conflict goes to the plan writer", reason)
 }
 
-// fixPlanCmd builds the `fix-plan` subcommand.
 func (c *websterCLI) fixPlanCmd() *cobra.Command {
 	var wait time.Duration
 
@@ -116,7 +118,7 @@ Example:
 				waitBudget = websterengine.RecoveryWaitBudget(c.cfg)
 			}
 
-			// Standalone mode boots its own reed session here, as fix-verify does, since nothing else can reach standalone geometry.
+			// Standalone mode boots its own reed session here, since nothing else can reach standalone geometry.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster fix-plan`", err)))
@@ -186,8 +188,9 @@ Example:
 	return cmd
 }
 
-// persistFixPlanTerminal records result as the terminal status of the plan fixer strandGUID names, in a state reloaded under a fresh state-mutation lease.
-// A state that no longer records the fixer, which a reset leaves, is left unsaved.
+// persistFixPlanTerminal records result as the terminal status of the plan fixer strandGUID names.
+// It reloads the state under a fresh state-mutation lease, records the status, and saves the state.
+// A state that no longer records that fixer, as a reset leaves it, is not saved.
 func (c *websterCLI) persistFixPlanTerminal(strandGUID string, result *websterengine.FixPlanResult) error {
 	lease, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 	if err != nil {

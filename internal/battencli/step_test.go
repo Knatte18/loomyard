@@ -1,8 +1,8 @@
-// step_test.go covers battenPreStep and the step verb's whole new path end to end, since none of
-// run_test.go's coverage touches it: seeding an absent status before shed.Step reads it, each of
-// the three refusal-kind mappings, and BuildShed being non-nil for verb == "step". Every fixture
-// here is newFakeReceiver (run_test.go), so no real I/O beyond t.TempDir(), no git spawn, and no
-// process spawn.
+// step_test.go tests battenPreStep and the step verb end to end.
+// It covers seeding an absent status before shed.Step reads it and each of the three refusal-kind mappings.
+// It also checks that BuildShed is non-nil for verb == "step".
+// Every fixture is newFakeReceiver (run_test.go).
+// So no real I/O goes beyond t.TempDir(), no git spawn, and no process spawn.
 
 package battencli
 
@@ -24,8 +24,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBattenPreStep_SeedsAbsentStatus asserts battenPreStep seeds a fresh status file -- current producer Worktree-Create, state running -- when none is persisted yet, before shed.Step ever reads it.
-// Without this, stepLocked's own read gate would hit an absent status and hard-error, which shedverbs/step.go reports as kind: "producer" -- a driver would repair that round after round, so an unseeded first step must not surface as a producer failure.
+// battenPreStep seeds a fresh status file, with producer Worktree-Create and state running, when none is persisted yet.
+// It runs before shed.Step reads the status.
+// Without the seed, stepLocked's read gate hits an absent status and hard-errors.
+// shedverbs/step.go reports that as kind: "producer".
+// A driver would then repair round after round, so an unseeded first step must not surface as a producer failure.
 //
 //testtiming:keep pins the seeded status's current producer and state, which the end-to-end step test never reads
 func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
@@ -64,7 +67,11 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	}
 }
 
-// TestBattenPreStep_RefusalKinds asserts each pre-producer failure maps to its own refusal kind, with a non-nil error that is never transient: a held run lock is shedverbs.KindBusy, a status file that exists but fails to decode is shedverbs.KindUnseeded, and a status already in StateDone -- "any other pre-producer failure" -- is shedverbs.KindBootstrap, whose remedy names the whole abandon path.
+// battenPreStep maps each pre-producer failure to its own refusal kind, with a non-nil error that is never transient.
+// A held run lock is shedverbs.KindBusy.
+// A status file that exists but fails to decode is shedverbs.KindUnseeded.
+// Any other pre-producer failure, such as a status already in StateDone, is shedverbs.KindBootstrap.
+// Its remedy names the whole abandon path.
 func TestBattenPreStep_RefusalKinds(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -96,7 +103,8 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			wantKind: shedverbs.KindUnseeded,
 		},
 		{
-			// A torn-down pair keeps its task branch locally and on the remote, so deleting the run directory alone leads straight into the create row's leftover-branch refusal.
+			// A torn-down pair keeps its task branch locally and on the remote.
+			// Deleting the run directory alone therefore leads straight into the create row's leftover-branch refusal.
 			name: "DoneSlugIsBootstrap",
 			arrange: func(t *testing.T, c *battenCLI) {
 				writeStatus(t, c, shedengine.Status{
@@ -108,7 +116,8 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			wantSubstr: []string{"lym batten cleanup --apply", "task branch", "locally and on the remote", "to run it again", "different slug"},
 		},
 		{
-			// A step drives no run another machine owns, so the reconcile's owned_elsewhere verdict refuses it as a bootstrap failure.
+			// A step drives no run another machine owns,
+			// so the reconcile's owned_elsewhere verdict refuses it as a bootstrap failure.
 			name: "RunOwnedElsewhereIsBootstrap",
 			arrange: func(t *testing.T, c *battenCLI) {
 				writeStatus(t, c, shedengine.Status{
@@ -149,11 +158,10 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 	}
 }
 
-// TestStepCmd_FreshSlugNeverSurfacesKindProducer drives the step verb end to end, against a fresh
-// slug with no persisted status at all, and asserts it never surfaces kind: "producer" -- the
-// likeliest regression here, since conflating the unseeded and producer cases both read as
-// "nothing here yet". battenPreStep's own seed lets shed.Step's Worktree-Create row run to
-// completion against newFakeReceiver's fakes.
+// TestStepCmd_FreshSlugNeverSurfacesKindProducer drives the step verb on a fresh slug with no persisted status.
+// It runs the verb end to end and asserts it never surfaces kind: "producer".
+// Conflating the unseeded and producer cases would make both read as "nothing here yet".
+// battenPreStep's seed lets shed.Step's Worktree-Create row run to completion against newFakeReceiver's fakes.
 func TestStepCmd_FreshSlugNeverSurfacesKindProducer(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := newFakeReceiver(t, nil)

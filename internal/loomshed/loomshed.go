@@ -2,20 +2,20 @@
 
 package loomshed
 
-// The producer names, verbatim per contracts/recipes/tapestry-recipe.yaml's own rows. The name is
-// the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
-// task, so every row below is built from these constants, never a repeated string literal.
+// The producer names, verbatim per the rows of contracts/recipes/tapestry-recipe.yaml.
+// Each name is the durable on-disk identity in current_producer.
+// A later rename breaks resume for any in-flight task.
+// So every row is built from these constants, never a repeated string literal.
 //
-// NameParentAlign and NameFinalize are not loom's own producers -- both are generic ShedProducers
-// shared by reference with Hardener's own list (see internal/landingshed's own package
-// documentation) -- but the name constants live here regardless, same as every other row, because
-// loom's own producer table names them, and the table is now the recipe's:
-// contracts/recipes/tapestry-recipe.yaml spells the same names as yaml strings, these
-// constants remain the authority, and internal/loomrecipe's coverage guard is what pins the two
-// declarations together by keying its row table off these symbols rather than off string literals.
+// NameParentAlign and NameFinalize are generic ShedProducers shared with the landing shed, not loom's own producers.
+// They are declared here like every other row, because the tapestry recipe names them too.
+// contracts/recipes/tapestry-recipe.yaml spells the same names as YAML strings; these constants remain the authority.
+// internal/loomrecipe's coverage guard pins the two declarations together.
+// It keys its row table off these constants rather than off string literals.
 //
-// The constants stay here rather than moving to internal/loomrecipe, because interruptpolicy.go reads them.
-// Moving them would make loomshed import loomrecipe, while loomrecipe imports shedbuild -> shedrecipe -> loomshed: the production cycle the consumer-package split exists to avoid.
+// The constants stay here rather than in internal/loomrecipe, because interruptpolicy.go reads them.
+// Moving them would make loomshed import loomrecipe, which imports shedbuild -> shedrecipe -> loomshed:
+// the production cycle the consumer-package split exists to avoid.
 const (
 	NamePreflight         = "Preflight"
 	NameDiscussionWrite   = "Discussion-Write"
@@ -46,7 +46,7 @@ const (
 	// NameMotif is the block row of the tapestry recipe that runs the motif recipe.
 	NameMotif = "Motif"
 
-	// NameRaddleWrite is the raddle recipe's row of the agent session that proposes the split of a Sketch.
+	// NameRaddleWrite is the raddle recipe's row of the agent session that proposes the split of a decision record.
 	NameRaddleWrite = "Raddle-Write"
 	// NameRaddleFile is the raddle recipe's Go row that files the approved proposal on the board.
 	NameRaddleFile = "Raddle-File"

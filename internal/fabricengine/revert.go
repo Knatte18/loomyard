@@ -1,8 +1,5 @@
-// revert.go resolves a warp SHA to its corresponding weft SHA via the correspondence index:
-// classifyCorrespondence is the pure gap-classification core, extracted so it is testable without
-// spawning git;
-// resolveRevertTarget wraps it with the git-backed staleness retry.
-// Fabric.Diff (diff.go) is the surviving caller of this resolution path.
+// revert.go resolves a warp SHA to the weft SHA it corresponds to, through the correspondence index.
+// It holds the pure gap classification and the git-backed resolution with its staleness retry.
 
 package fabricengine
 
@@ -10,22 +7,20 @@ import (
 	"fmt"
 )
 
-// revertResolution is classifyCorrespondence's pure result: whether
-// targetSHA had an exact entry in the index, and the entry resolution
-// settled on — the exact match itself, or the nearest at-or-before one.
+// revertResolution is the result of classifying a warp SHA against the correspondence index.
+// It reports whether the target SHA had an exact entry, and the entry the resolution settled on:
+// the exact match itself, or the nearest at-or-before one.
 type revertResolution struct {
 	Exact bool
 	Entry corrEntry
 }
 
-// classifyCorrespondence resolves targetSHA (whose ordering position is
-// targetSeq) against ix: an exact match always wins; otherwise the nearest
-// at-or-before entry is used, with Exact reported false so the caller can
-// flag the resulting gap. Returns wrapped ErrNoCorrespondence when ix has no
-// entry at or before targetSeq at all — there is nothing to revert weft to.
-// This function is pure (no git, no I/O), so it is unit-testable against a
-// hand-built index without spawning git, per the discussion's TDD-candidate
-// decision for gap classification.
+// classifyCorrespondence resolves targetSHA, whose ordering position is targetSeq, against ix.
+// An exact match always wins.
+// Otherwise the nearest at-or-before entry is used, and Exact is reported false so the caller can flag the gap.
+// It returns a wrapped ErrNoCorrespondence when ix has no entry at or before targetSeq.
+// Weft has nothing to revert to in that case.
+// It takes no git and no I/O, so a test can run it against a hand-built index.
 func classifyCorrespondence(ix *corrIndex, targetSeq int, targetSHA string) (revertResolution, error) {
 	if entry, ok := ix.exact(targetSHA); ok {
 		return revertResolution{Exact: true, Entry: entry}, nil
@@ -36,13 +31,10 @@ func classifyCorrespondence(ix *corrIndex, targetSeq int, targetSHA string) (rev
 	return revertResolution{}, fmt.Errorf("%w: warp SHA %s", ErrNoCorrespondence, targetSHA)
 }
 
-// resolveRevertTarget resolves warpSHA to the weft SHA Fabric.Diff's
-// weftAnchorForWarpSHA should bridge to, mutating nothing: it loads the
-// correspondence index, classifies the target via classifyCorrespondence,
-// and validates the resolved weft SHA with f.records.SHAExists — retrying once
-// via RebuildIndex on a stale hit, exactly like WeftSHAForWarpSHA's
-// self-correction. Returns wrapped ErrStaleSHA when the resolved weft SHA
-// still fails to exist after the rebuild retry.
+// resolveRevertTarget resolves warpSHA to the weft SHA that a diff since warpSHA bridges to.
+// It mutates nothing.
+// It checks that the resolved weft SHA still exists, and on a stale hit it rebuilds the index once and resolves again.
+// It returns a wrapped ErrStaleSHA when the resolved weft SHA still does not exist after the rebuild.
 func (f *Fabric) resolveRevertTarget(warpSHA string, targetSeq int) (revertResolution, error) {
 	path, err := f.corrIndexPath()
 	if err != nil {

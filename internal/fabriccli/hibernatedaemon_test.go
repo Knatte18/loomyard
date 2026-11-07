@@ -1,4 +1,5 @@
-// hibernatedaemon_test.go pins how the anchor verb reads the hub's hibernate request: which phases count as ended, and when a request holds a running carrier.
+// hibernatedaemon_test.go pins how the anchor verb reads the hub's hibernate request.
+// It covers which phases count as ended, and when a request holds a running carrier.
 
 package fabriccli_test
 

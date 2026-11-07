@@ -8,7 +8,8 @@ import (
 	"testing"
 )
 
-// writeVerifyLog makes every passed or failed fake verify write log to its own log path and name it on its result, as a real verify run does.
+// writeVerifyLog makes each fake verify, passed or failed, write its log to the path it is given.
+// It also names that path on the result, as a real verify run does.
 func writeVerifyLog(t *testing.T, gate *gateFixture, log string) {
 	t.Helper()
 	gate.fake.writeLog = func(path string) {

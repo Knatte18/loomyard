@@ -1,4 +1,5 @@
-// start_integration_test.go runs "lym beam start" through RunCLIIn over a hubforge hub, on every target it refuses before the hub is reconciled or an orch is started.
+// start_integration_test.go runs "lym beam start" through RunCLIIn over a hubforge hub.
+// It covers every target it refuses before the hub is reconciled or an orch is started.
 
 package beamcli_test
 

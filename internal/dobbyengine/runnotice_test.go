@@ -1,4 +1,6 @@
-// runnotice_test.go pins the run notices over a fake child reading: each condition and its guards, one notice per episode across ticks and a restart, the api-error revive streak, and delivery with its retries.
+// runnotice_test.go pins the run notices over a fake child reading.
+// It covers each condition and its guards, the api-error revive streak, and delivery with its retries.
+// One notice per episode holds across ticks and a restart.
 
 package dobbyengine
 
@@ -34,7 +36,8 @@ type noticeFake struct {
 	revives   int
 }
 
-// newNoticeHarness returns a pass harness over one running run, task, whose child is running at Plan-Write with a live driver and no agent run, and the fake its notice seams read.
+// newNoticeHarness returns a pass harness over one running run, task, and the fake its notice seams read.
+// The run's child is running at Plan-Write with a live driver and no agent run.
 func newNoticeHarness(t *testing.T) (*passHarness, *noticeFake) {
 	t.Helper()
 	h := newPassHarness(t, runningRun("task"))
@@ -70,7 +73,8 @@ func (h *passHarness) advance(d time.Duration) {
 	h.clock.sleep(context.Background(), d)
 }
 
-// restartDobby replaces the harness's dobby with a fresh one over the same state record, seams and probe interval, as a re-exec does.
+// restartDobby replaces the harness's dobby with a fresh one over the same state record and seams.
+// The fresh dobby keeps the probe interval, as a re-exec does.
 func (h *passHarness) restartDobby() {
 	h.d = &daemon{geom: h.d.geom, deps: h.d.deps, probe: h.d.probe, flights: map[string]flight{}, childSeen: map[string]time.Time{}, wasCovered: map[string]bool{}, liftPending: map[string]bool{}}
 }
@@ -423,7 +427,8 @@ func TestRunNotice_OncePerEpisode(t *testing.T) {
 	}
 
 	// A restarted dobby reads the memory and the marker, and sends nothing more.
-	// That holds when the child's status file was rewritten while it stayed running, because the episode's start comes from the memory.
+	// That holds when the child's status file was rewritten while it stayed running.
+	// The episode's start comes from the memory.
 	h.advance(time.Minute)
 	f.child.Modified = h.clock.now()
 	h.restartDobby()

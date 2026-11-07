@@ -1,4 +1,6 @@
-// timing.go is the `report timing` verb: it validates its flags, resolves the prime and the hub's live pairs, reads the machine's sleep from the systemd journal, or the hub's pauses when the journal cannot be read, and hands them to the report engine.
+// timing.go is the `report timing` verb.
+// It validates the flags, resolves the prime and the hub's live pairs, and hands the inputs to the report engine.
+// It reads the machine's sleep from the systemd journal, or the hub's pauses when the journal cannot be read.
 
 package reportcli
 
@@ -136,7 +138,7 @@ func parseTimingOptions(since, by, format string, now time.Time) (reportengine.T
 }
 
 // livePairs returns the slugs whose pair is live: the base names of the hub's code worktrees other than the main one.
-// The engine reads a pair records branch whose slug is not among them as abandoned.
+// The engine reads the record branch of any pair whose slug is not among them as abandoned.
 func livePairs(location *lymcwd.Location) ([]string, error) {
 	worktrees, err := fabricengine.CodeWorktrees(location.WorktreePath())
 	if err != nil {
@@ -151,7 +153,8 @@ func livePairs(location *lymcwd.Location) ([]string, error) {
 	return slugs, nil
 }
 
-// machineSleeps runs journalctl once for the machine's sleeps and returns the idle intervals with the note sleepsFromJournal words.
+// machineSleeps runs journalctl once for the machine's sleeps.
+// It returns the idle intervals and the note that says where they came from.
 // A journalctl that is not on PATH is handed on as the run error without a spawn.
 func machineSleeps(ctx context.Context, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
 	path, err := exec.LookPath("journalctl")
@@ -167,10 +170,12 @@ func machineSleeps(ctx context.Context, pauseRecordPath string, now time.Time) (
 	return sleepsFromJournal(out, stderr.Bytes(), err, pauseRecordPath, now)
 }
 
-// sleepsFromJournal maps the output, standard error and exit error of one journalctl run to the intervals the report leaves out and the note its sleep_note carries.
+// sleepsFromJournal maps one journalctl run to the intervals the report leaves out.
+// It also returns the note that the report's sleep_note carries.
 // A journal that was read gives its sleeps, and without them the note says why no machine sleep is subtracted.
-// A journal that could not be read gives the hub-wide pauses of the pause record at pauseRecordPath instead, a live one running to now, since a hub pause holds every run;
-// the note then names why the journal was not read and says the figures may include sleep no pause covers.
+// A journal that could not be read gives the hub-wide pauses of the pause record at pauseRecordPath instead.
+// A live pause runs to now, since a hub pause holds every run.
+// The note then names why the journal was not read and says the figures may include sleep no pause covers.
 func sleepsFromJournal(out, stderr []byte, runErr error, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
 	read, clause, journalRead := sleepjournal.Read(out, stderr, runErr)
 	if journalRead {

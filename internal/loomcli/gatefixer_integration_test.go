@@ -1,4 +1,5 @@
-// gatefixer_integration_test.go drives pairSlugOf against a real hub, since the pair slug is whatever the fabric origin record of the worktree answers.
+// gatefixer_integration_test.go drives pairSlugOf against a real hub.
+// The pair slug is whatever the fabric origin record of the worktree answers.
 
 package loomcli
 

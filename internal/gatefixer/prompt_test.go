@@ -1,4 +1,5 @@
-// prompt_test.go covers RenderPrompt over the shipped frame and a one-marker test body: the values it fills, the directives it renders and the inputs it refuses.
+// prompt_test.go covers RenderPrompt over the shipped frame and a one-marker test body.
+// It pins the values the prompt fills, the directives it renders and the inputs it refuses.
 
 package gatefixer
 
@@ -14,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// testBodyStencil is the caller body the test writes into the seeded stencils directory: one marker.
+// testBodyStencil is the name of a caller body with one marker, written into the seeded stencils directory.
 const testBodyStencil = "gatefix-body-test"
 
 // seededInputs returns the inputs of a render over a seeded stencils directory holding the test body.
@@ -33,7 +34,8 @@ func seededInputs(t *testing.T) PromptInputs {
 	}
 }
 
-// TestRenderPrompt pins the values the frame and body are filled with, the parent and friction directives' two variants, and each refusal.
+// TestRenderPrompt pins the values the frame and body are filled with.
+// It also pins the parent and friction directives in each variant, and each refusal.
 func TestRenderPrompt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

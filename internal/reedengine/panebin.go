@@ -1,10 +1,12 @@
-// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lym` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lym` command.
-// The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
-// so the property "every pane reed creates for a `lym` command resolves lym to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
-// It also composes the session-switch command the Alt-key bindings run, from the same executable-path lookup, which the engine passes in.
-// The same composition exports LYM_STRAND_NAME (the strand's full name), LYM_PARENT (the worktree's parent, when told) and the .NET build-server switches beside LYM_BIN,
-// and the file composes the exports of the variables the geometry's PaneEnv tells, which the launch puts ahead of the strand's command.
-// The file also owns the per-strand launch script the composed line is written to,
+// panebin.go owns the pane-binary seam.
+// The seam resolves `lym` to the binary that spawned each strand pane or detached window.
+// Two chokepoints reach it, launchStrandLocked for strand panes and OpenWindow for detached windows,
+// so every pane reed creates for a `lym` command resolves `lym` to its spawning binary by construction.
+// It also composes the session-switch and follow-jump commands.
+// The key and mouse bindings run them, built from the same executable-path lookup.
+// The launch line exports LYM_BIN, LYM_STRAND_NAME and LYM_PARENT when told.
+// It also exports the .NET build-server switches and the hub's PaneEnv variables, ahead of the strand's command.
+// The file also owns the per-strand launch script the line is written to,
 // so the pane types a short source statement instead of the full line.
 
 package reedengine
@@ -22,17 +24,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// paneBinPrelude returns the pure, injectable pane-binary composition for exe on sh's dialect: sh's
-// own PrependPathEntry of exe's parent directory, then sh's own ExportEnv of agentname.LymBinEnv to exe,
-// joined by sh.Chain. The prepend is unconditional — no guard against the directory already being on
-// the pane's PATH — because every strand pane is a fresh pane with a fresh shell, so nothing
-// accumulates across relaunches or resumes, and the one nesting case (a pane whose command itself
-// spawns another strand pane) produces a duplicate PATH entry that resolves identically.
+// paneBinPrelude returns the pure, injectable pane-binary composition for exe on sh's dialect.
+// It is sh's PrependPathEntry of exe's parent directory, then sh's ExportEnv of agentname.LymBinEnv to exe,
+// joined by sh.Chain.
+// The prepend is unconditional, with no guard against the directory already being on the pane's PATH:
+// Nothing accumulates across relaunches or resumes, because every strand pane is a fresh pane with a fresh shell.
+// The one nesting case is a pane whose command itself spawns another strand pane.
+// That produces a duplicate PATH entry, which resolves identically.
 func paneBinPrelude(sh shell.Shell, exe string) string {
 	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(agentname.LymBinEnv, exe))
 }
 
-// nameExports returns the statements exporting the strand's full name and, when parent is non-empty, its worktree's parent, on sh's dialect.
+// nameExports returns the statements exporting the strand's full name on sh's dialect.
+// It also exports the worktree's parent when parent is non-empty.
 // An empty name exports nothing, so a strand with no formed name never sees an empty LYM_STRAND_NAME.
 func nameExports(sh shell.Shell, name, parent string) string {
 	var parts []string
@@ -54,9 +58,11 @@ func envExports(sh shell.Shell, vars map[string]string) string {
 	return sh.Chain(parts...)
 }
 
-// paneEnvExports returns the statements exporting the variables the geometry's PaneEnv tells, on sh's dialect, empty when the geometry tells none.
+// paneEnvExports returns the statements exporting the variables from the geometry's PaneEnv, on sh's dialect.
+// It returns empty when PaneEnv is nil or returns none.
 // A failed read logs a named logger.Warn and exports nothing, so the strand still launches.
-// A variable named by proc.BuildServerOffEnv is left out, since the launch line exports those switches itself and a hub value must not undo them.
+// A variable named by proc.BuildServerOffEnv is left out.
+// The launch line exports those switches itself, and a hub value must not undo them.
 func (e *Engine) paneEnvExports(sh shell.Shell, strandGUID string) string {
 	if e.geom.PaneEnv == nil {
 		return ""
@@ -73,7 +79,8 @@ func (e *Engine) paneEnvExports(sh shell.Shell, strandGUID string) string {
 	return envExports(sh, vars)
 }
 
-// buildServerExports returns the statements exporting proc.BuildServerOffEnv on sh's dialect, so no .NET build the strand's process runs leaves MSBuild servers behind.
+// buildServerExports returns the statements exporting proc.BuildServerOffEnv on sh's dialect.
+// They keep any .NET build the strand's process runs from leaving MSBuild servers behind.
 func buildServerExports(sh shell.Shell) string {
 	parts := make([]string, 0, len(proc.BuildServerOffEnv))
 	for _, v := range proc.BuildServerOffEnv {
@@ -82,12 +89,14 @@ func buildServerExports(sh shell.Shell) string {
 	return sh.Chain(parts...)
 }
 
-// composePaneLaunchLine returns the launch script's content: the pane-binary prelude, the build-server exports, the name exports, then launchCmd, on sh's dialect.
-// launchStrandLocked writes it through stageLaunchScript and types only the source statement.
-// It reads the running process's own path via executablePath;
-// on error it logs a named logger.Warn and drops the prelude, so the pane launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades Shared Decision).
+// composePaneLaunchLine returns the launch script's content:
+// the pane-binary prelude, the build-server exports, the name exports, then launchCmd, on sh's dialect.
+// It reads the running process's own path via executablePath.
+// On error it logs a named logger.Warn and drops the prelude,
+// so the pane launches with no prelude rather than failing the strand launch.
 // The build-server and name exports do not depend on that lookup and stay either way.
-// Because Chain drops empty parts, an empty launchCmd yields the statements alone with no trailing separator and no empty command fragment.
+// Because Chain drops empty parts, an empty launchCmd yields the statements alone.
+// The result has no trailing separator and no empty command fragment.
 // It also returns the executable path the prelude exports, empty when the lookup failed and the prelude was dropped.
 func composePaneLaunchLine(sh shell.Shell, executablePath func() (string, error), launchCmd, strandGUID, name, parent string) (line, exe string) {
 	prelude := ""
@@ -101,9 +110,11 @@ func composePaneLaunchLine(sh shell.Shell, executablePath func() (string, error)
 	return sh.Chain(prelude, buildServerExports(sh), nameExports(sh, name, parent), launchCmd), exe
 }
 
-// composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lym` invoked with lymArgs, each quoted, on sh's dialect.
+// composeWindowCommand returns the shell line a detached reed window runs:
+// the pane-binary prelude, then `lym` invoked with lymArgs, each quoted, on sh's dialect.
 // No strand name exports, since a window is not a strand.
-// An unresolvable executable path logs a named logger.Warn and drops the prelude, as composePaneLaunchLine does.
+// An unresolvable executable path logs a named logger.Warn and drops the prelude,
+// so the window opens with no prelude.
 func composeWindowCommand(sh shell.Shell, executablePath func() (string, error), lymArgs []string) string {
 	prelude := ""
 	exe, err := executablePath()
@@ -120,9 +131,13 @@ func composeWindowCommand(sh shell.Shell, executablePath func() (string, error),
 	return sh.Chain(prelude, strings.Join(words, " "))
 }
 
-// composeSwitchCommand returns the shell line a key binding's run-shell runs to move the client one session along: the absolute path of this binary, then `reed switch` with the told socket and tmux paths and the key-press client, on sh's dialect.
-// It reads the running process's own path via executablePath, so the binding names the `lym` that pinned it, never the one PATH resolves.
-// Every pinned token is quoted once and then has each # doubled, because run-shell format-expands its whole command at key press;
+// composeSwitchCommand returns the shell line a key binding's run-shell runs to move the client one session along.
+// The line starts with the absolute path of this binary.
+// It then runs `reed switch` with the told socket and tmux paths and the key-press client, on sh's dialect.
+// It reads the running process's own path via executablePath,
+// so the binding names the `lym` that pinned it, never the one PATH resolves.
+// Every pinned token is quoted once and then has each # doubled.
+// The doubling keeps run-shell's format expansion at key press from touching the pinned tokens.
 // #{q:client_name} is the one value left for that expansion, as its own unquoted word.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no switch binding.
 func composeSwitchCommand(sh shell.Shell, executablePath func() (string, error), next bool, socketPath, tmuxPath string) (string, bool) {
@@ -145,10 +160,16 @@ func composeSwitchCommand(sh shell.Shell, executablePath func() (string, error),
 	return strings.Join(words, " "), true
 }
 
-// composeFollowCommand returns the shell line the follow button's run-shell runs to jump back to the run: the absolute path of this binary, then `reed follow` with the told socket and tmux paths and the clicking client's session, on sh's dialect.
-// It reads the running process's own path via executablePath, so the button names the `lym` that pinned it, never the one PATH resolves.
-// Every pinned token is quoted once and then has each # doubled, because the line is format-expanded when the button is clicked;
-// #{q:session_name} is the one value left for that expansion, as its own unquoted word, so the session reaches the verb as one quoted argument.
+// composeFollowCommand returns the shell line the follow button's run-shell runs to jump back to the run.
+// The line starts with the absolute path of this binary.
+// It then runs `reed follow` with the told socket and tmux paths and the clicking client's session, on sh's dialect.
+// It reads the running process's own path via executablePath,
+// so the button names the `lym` that pinned it, never the one PATH resolves.
+// Every pinned token is quoted once and then has each # doubled.
+// The line is format-expanded when the button is clicked,
+// and the doubling keeps that expansion from touching the pinned tokens.
+// #{q:session_name} is the one value left for that expansion, as its own unquoted word,
+// so the session reaches the verb as one quoted argument.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no follow jump.
 func composeFollowCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
 	exe, err := executablePath()
@@ -166,12 +187,18 @@ func composeFollowCommand(sh shell.Shell, executablePath func() (string, error),
 	return strings.Join(words, " "), true
 }
 
-// composeButtonCommand returns the shell line the click binding runs for a button range: a change into the session's run directory, then the absolute path of this binary with `reed button` and the told socket and tmux paths, the clicked session, range and client, on sh's dialect.
+// composeButtonCommand returns the shell line the click binding runs for a button range, on sh's dialect.
+// It changes into the session's run directory, then runs the absolute path of this binary with `reed button`.
+// The line also carries the told socket and tmux paths, and the clicked session, range and client.
 // The run directory rides in the line because run-shell format-expands its command but not its start directory;
-// it is read from the session option #{@lym_button_dir}, which the render pins already quoted in sh's dialect, so the word is left for the click's expansion unquoted.
-// Every pinned token is quoted once and then has each # doubled, because the line is format-expanded when the button is clicked;
+// it is read from the session option #{@lym_button_dir}, which the render pins already quoted in sh's dialect,
+// so the word is left for the click's expansion unquoted.
+// Every pinned token is quoted once and then has each # doubled.
+// The line is format-expanded when the button is clicked,
+// and the doubling keeps that expansion from touching the pinned tokens.
 // #{q:session_name}, #{q:mouse_status_range} and #{q:client_name} are left for that expansion, each as its own word.
-// The output of the directory change and of the verb is discarded and the line ends with status zero, so tmux opens no view mode whatever either does, a gone run directory included.
+// The output of the directory change and of the verb is discarded,
+// and the line ends with status zero, so tmux opens no view mode whatever either does, a gone run directory included.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no button click.
 func composeButtonCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
 	exe, err := executablePath()
@@ -191,16 +218,22 @@ func composeButtonCommand(sh shell.Shell, executablePath func() (string, error),
 	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
 }
 
-// The flags a button's prompt re-enters the click verb with: buttonStageAnswered after the ask prompt, buttonStageConfirmed after a yes to the confirm prompt.
+// The flags a button's prompt re-enters the click verb with.
+// buttonStageAnswered is passed after the ask prompt, and buttonStageConfirmed after a yes to the confirm prompt.
 const (
 	buttonStageAnswered  = "--answered"
 	buttonStageConfirmed = "--confirmed"
 )
 
-// composeButtonReentryLine returns the shell line a button's prompt runs once answered: a change into dir, then exe invoked as `reed button` with req's values, stage and `--hash <hash>`, then `--strand` and `--answer` with their values when values holds them, on sh's dialect.
+// composeButtonReentryLine returns the shell line a button's prompt runs once answered, on sh's dialect.
+// The line changes into dir, then runs exe as `reed button` with req's socket, tmux, session, range and client.
+// The line then adds the stage and `--hash <hash>`,
+// and it adds `--strand` and `--answer` with their values when values holds them.
 // Every value is quoted as one word.
-// The line opens with the directory change because run-shell does not format-expand its start directory, so the re-entered verb starts in the run directory.
-// The output of the directory change and of the verb is discarded and the line ends with status zero, so tmux opens no view mode on the target pane whatever either does.
+// The line opens with the directory change because run-shell does not format-expand its start directory,
+// so the re-entered verb starts in the run directory.
+// The directory change and the verb discard their output.
+// The line ends with status zero, so tmux opens no view mode on the target pane whatever either does.
 func composeButtonReentryLine(sh shell.Shell, exe string, req ButtonRequest, dir, stage, hash string, values map[string]string) string {
 	words := []string{
 		sh.Invoke(exe), "reed", "button",
@@ -219,13 +252,13 @@ func composeButtonReentryLine(sh shell.Shell, exe string, req ButtonRequest, dir
 	return sh.Chain(sh.DiscardOutput(sh.ChangeDir(dir)), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess())
 }
 
-// launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.
+// The two segments, joined under the state dir, name the directory that holds reed's per-strand launch scripts.
 const (
 	launchScriptReedSegment   = "reed"
 	launchScriptLaunchSegment = "launch"
 )
 
-// launchScriptDir returns the directory holding per-strand launch scripts under stateDir, the value Engine.stateDir returns.
+// launchScriptDir returns the directory under stateDir that holds per-strand launch scripts.
 func launchScriptDir(stateDir string) string {
 	return filepath.Join(stateDir, launchScriptReedSegment, launchScriptLaunchSegment)
 }
@@ -235,7 +268,8 @@ func launchScriptPath(sh shell.Shell, stateDir, strandGUID string) string {
 	return filepath.Join(launchScriptDir(stateDir), strandGUID+sh.ScriptExt())
 }
 
-// stageLaunchScript writes composedLine plus a trailing newline to the strand's launch script and returns sh's source statement for it, the send-keys payload.
+// stageLaunchScript writes composedLine plus a trailing newline to the strand's launch script.
+// It returns sh's source statement for that script, the send-keys payload.
 // On any write error it logs a named logger.Warn and returns composedLine unchanged,
 // so a cosmetic feature never fails a strand launch.
 func stageLaunchScript(sh shell.Shell, stateDir, strandGUID, composedLine string) string {
@@ -249,7 +283,8 @@ func stageLaunchScript(sh shell.Shell, stateDir, strandGUID, composedLine string
 
 // removeLaunchScripts deletes the launch script of every GUID in guids.
 // Deletion is best-effort: a missing file is silent,
-// and any other error is a logger.Warn, never returned, so a cosmetic file never fails the removal that triggered it.
+// and any other error is logged with logger.Warn and never returned,
+// so a cosmetic file never fails the removal that triggered it.
 func removeLaunchScripts(sh shell.Shell, stateDir string, guids []string) {
 	for _, guid := range guids {
 		path := launchScriptPath(sh, stateDir, guid)
@@ -261,7 +296,7 @@ func removeLaunchScripts(sh shell.Shell, stateDir string, guids []string) {
 
 // writeLaunchScript atomically writes content to path with mode 0o644.
 // The file is sourced, never executed, so it carries no exec bit.
-// fsx.AtomicWriteBytes is not reused because its temp file keeps mode 0o600.
+// The temp file that os.CreateTemp creates has mode 0o600, so the mode is set explicitly before the rename.
 func writeLaunchScript(path, content string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

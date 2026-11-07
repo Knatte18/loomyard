@@ -1,4 +1,6 @@
-// buttons.go tells reed, lazily, a session's status-bar button context: its place, the placeholder values and the machine's buttons, with the {beam} directory resolved only when the render needs it.
+// buttons.go builds the status-bar button context that reed asks for, lazily, for a session.
+// The context holds the session's place, its placeholder values and the machine's buttons.
+// The {beam} directory is resolved only when the render needs it.
 
 package hubgeom
 
@@ -14,7 +16,8 @@ import (
 )
 
 // buttonContext returns the function reed calls, at boot and attach only, to learn l's button context.
-// The place is the prime's, or else the beam's when the pair's own origin record carries the beam mark and the task's otherwise, an absent record included.
+// The place is the prime's when prime is set.
+// Otherwise it is the beam's when the pair's origin record exists and carries the beam mark, and the task's when not.
 // A failed desktop load is logged and leaves the machine's buttons empty, so the session's own buttons still render.
 func buttonContext(l *lymcwd.Location, prime bool) func() (reedengine.ButtonContext, error) {
 	return func() (reedengine.ButtonContext, error) {
@@ -47,9 +50,11 @@ func buttonContext(l *lymcwd.Location, prime bool) func() (reedengine.ButtonCont
 	}
 }
 
-// buttonBeam returns the function reed calls, only when a button's text names {beam}, to resolve the beam's directory for a session of the given place.
+// buttonBeam returns the function reed calls to resolve the beam directory for a session of the given place.
+// It is called only when a button's text names {beam}.
 // The prime and a beam session are their own beam.
-// A task's beam is its parent pair read through ParentOf over the prime's location, or the prime itself when that answers "".
+// A task's beam is its parent pair, read through ParentOf over the prime's location.
+// When that answers "", the beam is the prime itself.
 // A parent pair absent on this machine leaves the Anchor empty, since the parent's path is built without being checked.
 func buttonBeam(l *lymcwd.Location, place reedengine.ButtonPlace) func() (reedengine.ButtonBeam, error) {
 	return func() (reedengine.ButtonBeam, error) {

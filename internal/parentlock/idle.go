@@ -1,4 +1,5 @@
-// idle.go — the idle rule: a lock holder whose agents all wait, none busy, for a bound has stopped making progress.
+// idle.go holds the idle rule for a lock holder.
+// A holder is idle once no agent is busy and at least one agent has waited for a bound.
 
 package parentlock
 
@@ -13,7 +14,7 @@ type AgentState struct {
 
 // IdleWatch tracks how long each agent has been waiting, on the caller's awake clock.
 type IdleWatch struct {
-	// Bound is how long an agent must wait, with nothing busy, for Observe to report idle.
+	// Bound is how long an agent must wait, with nothing busy, before the watch reports idle.
 	Bound time.Duration
 
 	firstSeenWaiting map[string]time.Duration
@@ -29,7 +30,8 @@ func (w *IdleWatch) Waiting() map[string]time.Duration {
 	return waiting
 }
 
-// RestoreIdleWatch returns a watch with bound and the first-seen-waiting readings of waiting, which its next Observe treats as the earlier sightings.
+// RestoreIdleWatch returns a watch with bound and the first-seen-waiting readings of waiting.
+// Its next Observe treats those readings as the earlier sightings.
 // The readings are copied, and are on the same awake clock as the Observe calls that follow.
 func RestoreIdleWatch(bound time.Duration, waiting map[string]time.Duration) *IdleWatch {
 	restored := make(map[string]time.Duration, len(waiting))
@@ -39,8 +41,11 @@ func RestoreIdleWatch(bound time.Duration, waiting map[string]time.Duration) *Id
 	return &IdleWatch{Bound: bound, firstSeenWaiting: restored}
 }
 
-// Observe records one reading taken at awake and reports whether no agent is busy and at least one has been waiting for at least Bound since Observe first saw it waiting.
-// An agent no longer waiting, or absent, drops its first-seen time; read false, an unreadable state, counts every agent as not waiting.
+// Observe records one reading taken at awake and reports whether the lock holder is idle.
+// It is idle when no agent is busy and at least one agent has waited for at least Bound.
+// The wait is counted from the reading at which Observe first saw the agent waiting.
+// An agent that is no longer waiting, or is absent, drops its first-seen time.
+// A false read, an unreadable state, counts every agent as not waiting.
 // Awake is the caller's reading of a clock that does not run while the host is suspended, so suspended time never counts as waiting.
 func (w *IdleWatch) Observe(agents []AgentState, read bool, awake time.Duration) bool {
 	seen := map[string]time.Duration{}

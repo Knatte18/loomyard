@@ -1,7 +1,6 @@
-// deps.go declares this package's told-value surface: the two narrow seams it drives
-// (MergeSurface over the Fabric merge verbs, Shuttle over one shuttle run), the Deps struct every
-// value in which is told by the caller and derived by nobody here, the two-value Outcome and its
-// carrying Result, and the constructed Resolver type with its validating New.
+// deps.go declares the seams this package drives, the Deps struct, and the Outcome and Result types.
+// It also declares the Resolver type and its constructor New.
+// Every field of Deps is supplied by the caller; this package derives none of them.
 
 package mergeresolve
 
@@ -14,18 +13,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// MergeSurface is the narrow seam this package drives over Fabric's own merge verbs.
-// Every verb named here is vocabulary-free by construction — none names either
-// fabric-internal side — which is why this seam can exist in a package outside the Fabric
-// Vocabulary Invariant's owner set at all.
+// MergeSurface is the narrow seam this package drives over Fabric's merge verbs.
+// None of these verbs names a Fabric-internal side, so the seam needs no Fabric vocabulary.
 type MergeSurface interface {
-	// MergeIn merges source into the current pair, returning any conflicts as a result state rather
-	// than an error.
+	// MergeIn merges source into the current pair.
+	// A conflict comes back as a result state, not an error.
 	MergeIn(source string) (fabricengine.MergeResult, error)
-	// MergeInAt merges the commit tip into the current pair as a merge-in of source, returning any conflicts as a result state rather than an error.
+	// MergeInAt merges the commit at tip from source into the current pair.
+	// It merges tip rather than the freshness rule's pick, and conflicts come back as a result state, not an error.
 	MergeInAt(source, tip string) (fabricengine.MergeResult, error)
-	// MergeStageResolved stages the given, already-resolved conflict paths so MergeContinue's own
-	// index guard can pass.
+	// MergeStageResolved stages the given conflict paths, which are already resolved.
+	// It lets the merge's concluding step pass its index guard.
 	MergeStageResolved(paths []string) (fabricengine.StageResult, error)
 	// MergeStageTracked stages every tracked modification and deletion,
 	// so edits the conflict session made outside the conflicted paths land in the merge commit.
@@ -43,8 +41,7 @@ type MergeSurface interface {
 // The compile-time assertion that *fabricengine.Fabric satisfies MergeSurface.
 var _ MergeSurface = (*fabricengine.Fabric)(nil)
 
-// Shuttle is the one-method seam this package drives to spawn a fresh LLM session over a conflict,
-// the same shape shedadapters.Shuttle already uses over shuttleengine.Runner.
+// Shuttle is the one-method seam this package drives to spawn a fresh LLM session over a conflict.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
@@ -52,40 +49,40 @@ type Shuttle interface {
 // The compile-time assertion that *shuttleengine.Runner satisfies Shuttle.
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
-// Deps carries every value Resolve needs, all of it told by the caller and derived by nobody in
-// this package.
+// Deps carries every value a conflict resolution needs.
+// The caller supplies all of them; this package derives none.
 type Deps struct {
-	// Fabric is the merge seam this package drives. Told by the caller.
+	// Fabric is the merge seam this package drives. The caller supplies it.
 	Fabric MergeSurface
-	// Shuttle is the seam this package spawns a fresh conflict-resolution session through. Told by
-	// the caller.
+	// Shuttle is the seam this package spawns a fresh conflict-resolution session through.
+	// The caller supplies it.
 	Shuttle Shuttle
-	// WorktreeRoot is the absolute root the conflicted paths returned by the merge seam are relative
-	// to, needed for the marker scan's own file reads. Told by the caller.
+	// WorktreeRoot is the absolute root the conflicted paths from the merge seam are relative to.
+	// The marker scan reads files under it, and the caller supplies it.
 	WorktreeRoot string
 	// ScratchDir is the absolute scratch directory the conflict-resolution report is written into.
-	// Told by the caller; a caller writing into it creates it first, on every write path.
+	// The caller supplies it and creates it before every write into it.
 	ScratchDir string
-	// StencilsDir is the absolute directory the conflict-resolution stencil is read from. Told by
-	// the caller.
+	// StencilsDir is the absolute directory the conflict-resolution stencil is read from.
+	// The caller supplies it.
 	StencilsDir string
 	// ParentName is the name of the session the conflict session escalates to, rendered into its parent directive.
-	// Told by the caller; empty renders the no-parent variant.
+	// The caller supplies it; empty renders the no-parent variant.
 	ParentName string
-	// ConflictSpec is the model-spec string (see internal/modelspec) selecting the model the
-	// conflict-resolution session runs under. Told by the caller.
+	// ConflictSpec is the model-spec string that selects the model the conflict-resolution session runs under.
+	// The format is defined in internal/modelspec, and the caller supplies it.
 	ConflictSpec string
-	// Registry resolves ConflictSpec's alias, when it is one, to a concrete model. Told by the
-	// caller.
+	// Registry resolves a model alias to a concrete model, when the model spec is one.
+	// The caller supplies it.
 	Registry modelspec.Registry
-	// Timeout bounds the conflict-resolution session's wall-clock deadline. Told by the caller.
+	// Timeout bounds the conflict-resolution session's wall-clock deadline. The caller supplies it.
 	Timeout time.Duration
 	// LanguageSkills are the hub's language skills the conflict session loads after its own; empty for none.
-	// Told by the caller.
+	// The caller supplies it.
 	LanguageSkills []string
 }
 
-// Outcome is Resolve's two-value verdict.
+// Outcome is the two-value verdict of a conflict resolution.
 type Outcome string
 
 const (
@@ -95,27 +92,27 @@ const (
 	OutcomeStuck Outcome = "stuck"
 )
 
-// Result is Resolve's return value.
+// Result is the value a conflict resolution returns, carrying its verdict and explanation.
 type Result struct {
 	// Outcome is the two-value verdict.
 	Outcome Outcome
-	// Reason is the human-facing explanation of a stuck verdict. It is a returned string, never a
-	// log line or a file — writing it to disk and logging it is the calling producer's job, since
-	// the producer is what knows its own name and its own scratch path conventions.
+	// Reason is the human-facing explanation of a stuck verdict.
+	// It is a returned string, never a log line or a file: the calling producer writes and logs it.
+	// This package does not write or log it, because the producer knows its own name and scratch path conventions.
 	Reason string
-	// AlreadyUpToDate reports the degenerate case where the merge was a no-op because the pair was
-	// already ahead of source.
+	// AlreadyUpToDate reports whether the merge was a no-op.
+	// That happens when the pair was already ahead of source.
 	AlreadyUpToDate bool
 }
 
-// Resolver is the constructed type Resolve is a method of.
+// Resolver runs conflict resolutions over the Deps it was constructed with.
 type Resolver struct {
 	deps Deps
 }
 
-// New constructs a Resolver from deps, rejecting a nil Fabric, a nil Shuttle, and an empty
-// WorktreeRoot, ScratchDir, or StencilsDir up front with a distinct error each — rather than
-// nil-panicking or writing to the wrong place at call time.
+// New constructs a Resolver from deps.
+// It rejects a nil Fabric or Shuttle, and an empty WorktreeRoot, ScratchDir, or StencilsDir, each with its own error.
+// Checking up front keeps a bad Deps from panicking or writing to the wrong place at call time.
 func New(deps Deps) (*Resolver, error) {
 	if deps.Fabric == nil {
 		return nil, fmt.Errorf("mergeresolve: New: Deps.Fabric must not be nil")

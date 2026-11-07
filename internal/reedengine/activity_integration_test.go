@@ -1,7 +1,8 @@
 //go:build linux
 
 // activity_integration_test.go pins that a client's #{pane_id} in list-clients is its active pane.
-// It runs against a real tmux server and a client attached in a pty, whose keystroke makes OperatorActive read the pane active.
+// It runs against a real tmux server and a client attached in a pty.
+// A keystroke from that client makes OperatorActive read the pane active.
 
 package reedengine
 
@@ -34,7 +35,8 @@ func TestOperatorActive_ReadsAnAttachedClientsKeystroke(t *testing.T) {
 
 	client := startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(120, 30)...), 120, 30)
 	waitForClientAttached(t, e, 15*time.Second)
-	// The attach pre-flight selects the newest agent window, which is other's; move the client onto strand's window afterwards.
+	// The attach pre-flight selects the newest agent window, which is other's window.
+	// Move the client onto strand's window afterwards.
 	if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, strand.PaneID)); err != nil {
 		t.Fatalf("select-window: %v", err)
 	}

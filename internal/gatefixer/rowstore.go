@@ -1,4 +1,5 @@
-// rowstore.go implements the record store of one row gate entry's fixers: a JSON list of records in the row visit's directory, with the report and reply paths of each fixer.
+// rowstore.go implements the record store of one row gate entry's fixers.
+// The store is a JSON list of records in the row visit's directory, with the report and reply paths of each fixer.
 
 package gatefixer
 
@@ -16,7 +17,8 @@ const (
 	rowLockSuffix = ".lock"
 )
 
-// rowStore is a Store over `<visit dir>/<entry name>/records.json`, a list of Record in the order the fixers were spawned.
+// rowStore is a Store over `<visit dir>/<entry name>/records.json`.
+// The file holds a list of Record in the order the fixers were spawned.
 // Reads and rewrites go through the state package, which keeps the keys a newer binary wrote.
 type rowStore struct {
 	dir string
@@ -100,12 +102,12 @@ func (s rowStore) update(mutate func([]Record) ([]Record, error)) error {
 	return nil
 }
 
-// reportPath is the report file of the fixer that takes place n of the set, counted from 1.
+// reportPath is the report file of the fixer at position n in the set, counted from 1.
 func (s rowStore) reportPath(n int) string {
 	return filepath.Join(s.dir, fmt.Sprintf("report-%d.md", n))
 }
 
-// replyPath is the reply file of the fixer that takes place n of the set, counted from 1.
+// replyPath is the reply file of the fixer at position n in the set, counted from 1.
 func (s rowStore) replyPath(n int) string {
 	return filepath.Join(s.dir, fmt.Sprintf("reply-%d.md", n))
 }

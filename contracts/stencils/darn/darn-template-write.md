@@ -1,15 +1,19 @@
-<!-- This is the darn writer's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/darn/`
-     and read from there at call time by internal/seatengine, which fills it from the lead's value map that darnengine's DarnTable builds, then hands it to
-     shuttle as the writer's whole prompt.
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.FillWith requires every marker except pattern_directive, project_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
-     project_directive is rendered by internal/loomengine.ProjectRecordDirective for a run under a beam, and shares the pattern directive's line so an empty value leaves the prompt's bytes unchanged.
-     decision_record_path is a required marker, naming the decision record the writer reads as its scope; stop_marker_path is a required marker, naming the file the writer creates when it stops;
-     condition_stop_marker_path is a required marker, naming the second file the writer creates when it stops on a condition the task's body names.
-     prior_work is never empty: DarnTable fills it with (none) when it has nothing to tell.
-     edit_directive is a required marker, rendered unconditionally by internal/editdirective.
-     make_change is a required marker holding Step 4's list: DarnTable fills it with darn-fragment-make-change, or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate. -->
+<!-- This is the darn writer's entire instruction set.
+     It ships as an embedded default in the top-level stencils package (contracts/stencils/stencils.go).
+     It is seeded to the Bolt checkout's `_lym/stencils/darn/`, and internal/seatengine reads it from there at call time.
+     seatengine fills it from the lead's value map that `darnengine.DarnTable` builds.
+     It then hands the result to shuttle as the writer's whole prompt.
+     Every marker below is a top-level {{.X}} substitution, and the file has no {{if}}/{{range}} conditionals.
+     Every marker must be non-empty except pattern_directive, project_directive, friction_directive and parent_directive.
+     project_directive is rendered by internal/loomengine.ProjectRecordDirective for a run under a beam.
+     It shares the pattern directive's line, so an empty value leaves the prompt's bytes unchanged.
+     decision_record_path names the decision record the writer reads as its scope.
+     stop_marker_path names the file the writer creates when it stops.
+     condition_stop_marker_path names the second file the writer creates when it stops on a condition the task's body names.
+     prior_work is never empty: `darnengine.DarnTable` fills it with (none) when it has nothing to tell.
+     edit_directive is rendered unconditionally by internal/editdirective.
+     make_change holds Step 4's list: `darnengine.DarnTable` fills it with darn-fragment-make-change,
+     or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate. -->
 
 # Darn — make the change a board entry asks for, in one session
 

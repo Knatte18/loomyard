@@ -8,7 +8,9 @@ import "strings"
 // treeDir is the tier directory the shared tree sits under.
 const treeDir = "cs"
 
-// csTree is a small C# tree: a library, a test project with a fixture naming the library's type and one naming nothing, and files outside the tier directory.
+// csTree is a small C# tree.
+// It holds a library, and a test project with one fixture naming the library's type and one naming nothing.
+// It also holds files outside the tier directory.
 func csTree() map[string]string {
 	return map[string]string{
 		"cs/Lib/Lib.csproj":             "<Project />",

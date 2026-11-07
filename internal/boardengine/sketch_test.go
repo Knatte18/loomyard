@@ -1,4 +1,6 @@
-// sketch_test.go pins the Sketch end of a Discussion-only run: MakeSketch's one write on a run-held task, the entries it leaves alone or refuses, and the migration of a task an older binary left discussed.
+// sketch_test.go pins the Sketch end of a Discussion-only run.
+// It covers MakeSketch's one write on a run-held task and the entries it leaves alone or refuses.
+// It also covers the migration of a task an older binary left discussed.
 
 package boardengine_test
 
@@ -15,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newSketchBoard returns a board in a fresh directory whose vocabulary carries the sketch type label LoadConfig adds, the facade tests' types and the plain label board.
+// newSketchBoard returns a board in a fresh directory.
+// Its vocabulary holds the sketch type label LoadConfig adds and the facade tests' types;
+// its labels hold only the board label.
 func newSketchBoard(t *testing.T) *boardengine.Board {
 	t.Helper()
 	types := append([]boardengine.Label{{Name: boardengine.SketchType}}, testTypes...)
@@ -30,7 +34,7 @@ func mustUpsertEntry(t *testing.T, b *boardengine.Board, fields map[string]any) 
 	}
 }
 
-// mustGetEntry returns the entry slug of b, failing t when it is absent.
+// mustGetEntry returns the entry stored under slug in b, failing t when it is absent.
 func mustGetEntry(t *testing.T, b *boardengine.Board, slug string) boardengine.Task {
 	t.Helper()
 	task, found, err := b.GetTask(slug)
@@ -40,7 +44,8 @@ func mustGetEntry(t *testing.T, b *boardengine.Board, slug string) boardengine.T
 	return task
 }
 
-// TestMakeSketch asserts MakeSketch turns a run-held task into a Sketch in one write, leaves an absent or done entry alone and refuses an entry another depends on.
+// TestMakeSketch asserts MakeSketch turns a run-held task into a Sketch in one write.
+// It also asserts MakeSketch leaves an absent or done entry alone and refuses an entry another depends on.
 func TestMakeSketch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -197,8 +202,10 @@ func newPromotionBoard(t *testing.T) (*boardengine.Board, string) {
 	return boardengine.New(boardengine.Config{Path: path, Readme: "Home.md", DesignPrefix: "proposal-", Types: types, Labels: []boardengine.Label{{Name: "board"}}, SkipGit: true}), path
 }
 
-// TestDiscussedPromotion asserts a Sketch, or a discussed note a note write stripped of its label, becomes a task only through a promotion with recipe raddle, which a promotion with no recipe gives it and which releases it in the same write,
-// and that a note with no sketch label whose record file is missing, or that was never discussed, promotes as any note does.
+// TestDiscussedPromotion asserts that a Sketch becomes a task only through a promotion with recipe raddle.
+// So does a discussed note that a note write stripped of its label.
+// A promotion with no recipe gives the entry the raddle recipe and releases it in the same write.
+// A note with no sketch label, whose record file is missing or that was never discussed, promotes as any note does.
 func TestDiscussedPromotion(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

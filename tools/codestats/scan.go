@@ -1,6 +1,5 @@
 // scan.go implements the walk and the per-line classification codestats reports on:
-// which files are visited, which of them are tests, and how each line divides into
-// code, comment, and blank.
+// which files are visited, which of them are tests, and how each line divides into code, comment, and blank.
 
 package main
 
@@ -13,9 +12,9 @@ import (
 )
 
 // FileStats is one scanned file's tally.
-// Lines is always Code + Comment + Blank: a line carrying both code and a trailing
-// comment counts as code, so the three buckets partition the file rather than
-// overlapping, and a whitespace-only line inside a block comment counts as blank.
+// Lines is always Code + Comment + Blank: a line carrying both code and a trailing comment counts as code,
+// so the three buckets partition the file rather than overlapping,
+// and a whitespace-only line inside a block comment counts as blank.
 type FileStats struct {
 	Path    string `json:"path"`
 	Ext     string `json:"ext"`
@@ -27,9 +26,8 @@ type FileStats struct {
 }
 
 // skipDirs are directory names never descended into, whatever -hidden says.
-// Build output and vendored trees are not the scanned repo's own code, and .git is not
-// source at all -- counting any of them would make every figure depend on whether the
-// tree happened to be built before the scan.
+// Build output and vendored trees are not the scanned repo's own code, and .git is not source at all;
+// counting any of them would make every figure depend on whether the tree happened to be built before the scan.
 var skipDirs = map[string]bool{
 	".git":         true,
 	"node_modules": true,
@@ -38,14 +36,12 @@ var skipDirs = map[string]bool{
 	"obj":          true,
 }
 
-// commentFamily is how a language spells its comments, which is what decides whether a
-// line can be classified as comment at all.
+// commentFamily is how a language spells its comments, which decides whether a line can count as a comment.
 type commentFamily int
 
 const (
-	// familyNone is every extension with no comment syntax this tool reads -- markdown,
-	// JSON, plain text. Their non-blank lines all count as code, which is why the
-	// report gives them lines rather than a comment share.
+	// familyNone is every extension with no comment syntax this tool reads: markdown, JSON, plain text.
+	// Their non-blank lines all count as code, which is why the report gives them lines rather than a comment share.
 	familyNone commentFamily = iota
 	// familyC is the // and /* */ family: Go, C#, and their relatives.
 	familyC
@@ -54,9 +50,9 @@ const (
 )
 
 // familyFor maps an extension onto its comment family.
-// The list is deliberately explicit rather than a catch-all default: an unrecognised
-// extension reporting zero comments is honest, while guessing a family for it would
-// quietly invent a comment share.
+// The list is explicit rather than a catch-all default.
+// An unrecognised extension reporting zero comments is honest;
+// guessing a family for it would quietly invent a comment share.
 func familyFor(ext string) commentFamily {
 	switch ext {
 	case ".go", ".cs", ".java", ".js", ".jsx", ".ts", ".tsx",
@@ -69,10 +65,9 @@ func familyFor(ext string) commentFamily {
 }
 
 // cScanner classifies C-family lines.
-// It is a type rather than a function because two states survive a line break: an open
-// /* block comment, and Go's backtick raw string. C#'s @"" verbatim string is NOT
-// tracked across line breaks -- see the command doc comment for why that limit is
-// accepted.
+// It is a type rather than a function because two states survive a line break:
+// an open /* block comment, and Go's backtick raw string.
+// C#'s @"" verbatim string is not tracked across line breaks, a limit this tool accepts.
 type cScanner struct {
 	inBlock bool
 	inRaw   bool
@@ -122,10 +117,9 @@ func (s *cScanner) classify(line string) (code, comment bool) {
 	return code, comment
 }
 
-// skipQuoted returns the index just past the quoted literal opening at i, honouring
-// backslash escapes.
-// An unterminated literal consumes the rest of the line: that is a line continuation or
-// a malformed file, and neither adds a comment to the line.
+// skipQuoted returns the index just past the quoted literal opening at i, honouring backslash escapes.
+// An unterminated literal consumes the rest of the line:
+// that is a line continuation or a malformed file, and neither adds a comment to the line.
 func skipQuoted(line string, i int) int {
 	quote := line[i]
 	for i++; i < len(line); i++ {
@@ -141,10 +135,10 @@ func skipQuoted(line string, i int) int {
 }
 
 // hashClassify classifies a #-family line.
-// It is deliberately line-local and string-unaware: a # inside a quoted string is read
-// as a comment start, which overcounts slightly in shell and YAML. Tracking quoting
-// across those languages' very different rules would cost more than it buys a
-// statistics tool, and the overcount is bounded by how rarely a # appears in a string.
+// It is line-local and string-unaware:
+// a # inside a quoted string is read as a comment start, which overcounts slightly in shell and YAML.
+// Tracking quoting across those languages' very different rules would cost more than it buys a statistics tool,
+// and the overcount is bounded by how rarely a # appears in a string.
 func hashClassify(line string) (code, comment bool) {
 	if strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") {
 		return false, true
@@ -156,8 +150,7 @@ func hashClassify(line string) (code, comment bool) {
 }
 
 // isTestPath reports whether rel is a test file, by each ecosystem's own convention:
-// Go pins it in the file name, while C# and the rest put tests in a directory or a file
-// whose name says so.
+// Go pins it in the file name, while C# and the rest put tests in a directory or in a file whose name says so.
 func isTestPath(rel, ext string) bool {
 	base := filepath.Base(rel)
 	if ext == ".go" {
@@ -181,9 +174,8 @@ func isTestPath(rel, ext string) bool {
 	return false
 }
 
-// splitLines splits data into lines, dropping the empty element a trailing newline would
-// otherwise produce and normalising CRLF, so a file checked out with Windows line
-// endings does not report a stray \r on every line.
+// splitLines splits data into lines, dropping the empty element a trailing newline would otherwise produce.
+// It also normalises CRLF, so a file checked out with Windows line endings does not report a stray \r on every line.
 func splitLines(data []byte) []string {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	text = strings.TrimSuffix(text, "\n")
@@ -193,8 +185,8 @@ func splitLines(data []byte) []string {
 	return strings.Split(text, "\n")
 }
 
-// looksBinary reports whether data holds a NUL byte in its first 8 KiB -- the cheap
-// check a file must pass before its "lines" mean anything.
+// looksBinary reports whether data holds a NUL byte in its first 8 KiB:
+// the cheap check a file must pass before its "lines" mean anything.
 func looksBinary(data []byte) bool {
 	return bytes.IndexByte(data[:min(len(data), 8192)], 0) >= 0
 }
@@ -232,8 +224,8 @@ func classifyFile(rel string, data []byte) FileStats {
 }
 
 // Scan walks root and returns one FileStats per readable text file.
-// It skips the names in skipDirs, every dotted file and directory unless hidden is set,
-// anything matching excludes, any symlink, and any file that looks binary.
+// It skips the names in skipDirs, anything matching excludes, and any symlink or binary file.
+// Dotted files and directories are skipped unless hidden is set.
 func Scan(root string, hidden bool, excludes []string) ([]FileStats, error) {
 	var out []FileStats
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -274,9 +266,8 @@ func Scan(root string, hidden bool, excludes []string) ([]FileStats, error) {
 	return out, err
 }
 
-// matchesAny reports whether any pattern matches the path relative to the scan root, its
-// base name alone, or a directory prefix of it -- so -exclude takes 'docs/generated',
-// '*.pb.go', and 'crucible' alike.
+// matchesAny reports whether any pattern matches rel, its base name, or a directory prefix of rel.
+// rel is the path relative to the scan root, so -exclude takes 'docs/generated', '*.pb.go', and 'crucible' alike.
 func matchesAny(patterns []string, rel, name string) bool {
 	for _, pattern := range patterns {
 		if ok, _ := filepath.Match(pattern, rel); ok {

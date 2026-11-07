@@ -1,7 +1,8 @@
-// remove_leftoverdir_integration_test.go covers Remove finishing a pair worktree directory that `git worktree remove` deregistered but left on disk, on either side of the pair,
-// or that a late writer refilled after the removal, and PairWorktreeStands never reading such a directory as a pair.
+// remove_leftoverdir_integration_test.go covers Remove finishing pair worktree directories left on disk.
+// Either side of the pair can hold one, deregistered by git or refilled by a late writer after the removal.
+// PairWorktreeStands never reads such a directory as a pair.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// It shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemove_FinishesWorktreeDirGitLeftOnDisk asserts Remove deletes a worktree directory a late writer refilled with git-ignored build output after git's clean exit, and one git deregistered and failed to delete.
+// TestRemove_FinishesWorktreeDirGitLeftOnDisk asserts Remove finishes off a worktree directory left on disk.
+// Rows set up a read-only directory git cannot delete, or a directory a late writer refills after git's clean exit.
 func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -34,7 +36,8 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 		slug string
 		// sibling puts the sibling worktree under test, else the task worktree.
 		sibling bool
-		// readOnly commits a file under a directory made read-only in the worktree under test, so git deregisters it and fails to delete it;
+		// readOnly commits a file under a directory made read-only in the worktree under test.
+		// Git then deregisters it and fails to delete it;
 		// otherwise a late writer refills it after git's clean exit.
 		readOnly bool
 		// locked locks the worktree under test, so git refuses to remove it and it stays registered.
@@ -165,7 +168,8 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 	}
 }
 
-// TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval asserts Remove deletes a directory a late writer refills at the task worktree's path once the task worktree's removal is over, and reports no StrayPath.
+// TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval asserts Remove deletes the refilled directory.
+// The refill at the task worktree's path lands once that removal is over, and Remove reports no StrayPath.
 // It sets the process-global teardown hook, so it is not parallel.
 func TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -201,7 +205,9 @@ func TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval(t *testing.T) {
 	}
 }
 
-// TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted asserts Remove returns an error wrapping ErrStrayPathKept and naming the directory when the directory a late writer refilled at the task worktree's path cannot be deleted, leaves it on disk and reports its path in StrayPath.
+// TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted asserts that Remove keeps the directory:
+// a late writer refills the task worktree's path, and the directory cannot be deleted.
+// Remove then returns an error wrapping ErrStrayPathKept that names the directory and reports its path in StrayPath.
 // It sets the process-global teardown hook, so it is not parallel.
 func TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -245,7 +251,8 @@ func TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted
 	}
 }
 
-// TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory asserts Remove returns the failure of a remote step, not the error for a kept refilled directory, when both occur, and still reports the directory in StrayPath.
+// TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory asserts that Remove returns the remote failure:
+// when a remote step and a kept refilled directory both fail, and it still reports the directory in StrayPath.
 // It sets process-global hooks, so it is not parallel.
 func TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -295,7 +302,10 @@ func refillWithLockFile(t *testing.T, dir string) bool {
 	return true
 }
 
-// TestRemoveStrayTaskPath asserts a plain directory at a pair's task worktree path is deleted, an absent path is no error, a registered worktree, a directory holding a .git entry, an invalid slug and the prime's slug are refused and kept, and a failed delete wraps ErrStrayPathKept and keeps the directory.
+// TestRemoveStrayTaskPath asserts how Remove treats what stands at a pair's task worktree path:
+// a plain directory is deleted, and an absent path is no error.
+// A registered worktree, a directory holding a .git entry, an invalid slug and the prime's slug are refused and kept.
+// A failed delete wraps ErrStrayPathKept and keeps the directory.
 func TestRemoveStrayTaskPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -409,7 +419,8 @@ func TestRemoveStrayTaskPath(t *testing.T) {
 	}
 }
 
-// plantStrayDir returns a plant that creates a plain directory at the slug's task worktree path holding an empty entry named child.
+// plantStrayDir returns a plant that creates a plain directory at the slug's task worktree path.
+// The directory holds one empty entry, named child.
 func plantStrayDir(child string) func(t *testing.T, h *hubforge.Hub, slug string) {
 	return func(t *testing.T, h *hubforge.Hub, slug string) {
 		t.Helper()
@@ -419,7 +430,8 @@ func plantStrayDir(child string) func(t *testing.T, h *hubforge.Hub, slug string
 	}
 }
 
-// TestPairWorktreeStands_ReadsOnlyARegisteredWorktree asserts a registered task worktree reads as standing, while a plain directory at a pair's path and an absent path do not.
+// TestPairWorktreeStands_ReadsOnlyARegisteredWorktree asserts that a registered task worktree reads as standing:
+// a plain directory at a pair's path and an absent path do not.
 func TestPairWorktreeStands_ReadsOnlyARegisteredWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

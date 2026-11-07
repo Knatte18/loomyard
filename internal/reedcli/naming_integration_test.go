@@ -1,6 +1,10 @@
 //go:build !windows
 
-// naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process, survive a server kill and `resume`, address the right strand on `remove`, and that `lym reed list` shows strands of the prime and of a task worktree in one listing from the prime and flags a hand-retitled pane as drift.
+// naming_integration_test.go drives the reed verbs on a real hub.
+// It proves that a strand's full name and parent reach its process, and that they survive a server kill and `resume`.
+// It proves that `remove` addresses the right strand.
+// It also proves that `lym reed list` from the prime lists the prime's and a task worktree's strands together.
+// It also proves that the listing flags a hand-retitled pane as drift.
 
 package reedcli
 
@@ -84,7 +88,10 @@ func listRows(t *testing.T, worktree string) map[string]map[string]any {
 }
 
 // TestStrandNamingAndList runs the naming and listing claims against one hub with two task worktrees.
-// The steps run serially in a fixed order: the prime strand step adds the prime's worker strand, the listing step reuses it and adds a task strand, and the task naming step kills the hub's tmux server and resumes only its own worktree.
+// The steps run serially in a fixed order.
+// The prime strand step adds the prime's worker strand.
+// The listing step reuses that strand and adds a task strand.
+// The task naming step kills the hub's tmux server and resumes only its own worktree.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestStrandNamingAndList(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -126,7 +133,8 @@ func TestStrandNamingAndList(t *testing.T) {
 		return
 	}
 
-	// HubWideDirectoryAndDrift relies on the previous step's prime strand: the listing from the prime shows it and the task strand added here.
+	// HubWideDirectoryAndDrift relies on the previous step's prime strand:
+	// the listing from the prime shows it and the task strand added here.
 	if !t.Run("HubWideDirectoryAndDrift", func(t *testing.T) {
 		runVerb(t, listTask, "add", "--role", "worker", "--cmd", "sleep 300")
 
@@ -232,7 +240,8 @@ func TestStrandNamingAndList(t *testing.T) {
 			t.Errorf("add --anchor below-parent = %d, output %q; want a non-zero exit whose error lists own-window", code, rejected.String())
 		}
 
-		// An add with no --anchor opens its strand in a window of its own, with or without a --parent, and removing the parent recursively removes both.
+		// An add with no --anchor opens its strand in a window of its own, with or without a --parent;
+		// removing the parent recursively removes both.
 		tmuxOut := func(args ...string) string {
 			t.Helper()
 			out, err := exec.Command(cfg.Tmux, append([]string{"-L", reedengine.ServerName(h.Path)}, args...)...).Output()

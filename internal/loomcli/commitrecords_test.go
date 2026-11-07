@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// stubRecordsDeps builds commitStatusDeps counting Commit and Push calls.
+// stubRecordsDeps builds commitStatusDeps from stub outcomes and returns pointers to its Commit and Push counts.
 func stubRecordsDeps(active bool, probeErr, commitErr, pushErr error) (commitStatusDeps, *int, *int) {
 	commits, pushes := 0, 0
 	return commitStatusDeps{
@@ -28,7 +28,9 @@ func stubRecordsDeps(active bool, probeErr, commitErr, pushErr error) (commitSta
 	}, &commits, &pushes
 }
 
-// TestCommitRecordsVerb_Success asserts a clean tree commits then pushes once each, a mid-merge tree commits and pushes nothing and reports a skipped reason, and a push skipped under the pair's teardown lock is an ok envelope with push_skipped.
+// TestCommitRecordsVerb_Success asserts that a clean tree commits then pushes once each.
+// A mid-merge tree commits and pushes nothing and reports a skipped reason.
+// A push skipped under the pair's teardown lock is an ok envelope with push_skipped.
 func TestCommitRecordsVerb_Success(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -62,7 +64,8 @@ func TestCommitRecordsVerb_Success(t *testing.T) {
 	}
 }
 
-// TestCommitRecordsVerb_StoppedCommitPushesNothing asserts a commit the pre-push check stopped is an ok envelope with committed false and push_stopped, and that no push follows it.
+// TestCommitRecordsVerb_StoppedCommitPushesNothing asserts a commit the pre-push check stopped is an ok envelope:
+// the envelope has committed false and push_stopped, and no push follows it.
 func TestCommitRecordsVerb_StoppedCommitPushesNothing(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -84,7 +87,8 @@ func TestCommitRecordsVerb_StoppedCommitPushesNothing(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_StoppedCommitStartsNoPush asserts a commit the pre-push check stopped is no hard error of the status transition and starts no push.
+// TestNewCommitStatusSeam_StoppedCommitStartsNoPush asserts a commit the pre-push check stopped:
+// the status transition reports no hard error and starts no push.
 func TestNewCommitStatusSeam_StoppedCommitStartsNoPush(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -244,7 +248,9 @@ func TestPRContinueVerb(t *testing.T) {
 	})
 }
 
-// TestSamplerDoneVerb pins the refusals of the sampler-done verb, each with its way forward and the record left unchanged, the done flag it writes at the row's entry stamp, and the error envelope of a seam that cannot be read.
+// TestSamplerDoneVerb pins the refusals of the sampler-done verb.
+// Each refusal names its way forward and leaves the record unchanged.
+// The verb writes the done flag at the row's entry stamp, and a seam that cannot be read yields the error envelope.
 func TestSamplerDoneVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// cli.go builds the creel cobra command with its operator verbs and the hidden daemon verb, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the creel cobra command with its operator verbs and the hidden daemon verb.
+// The RunCLI and RunCLIIn seams wire it into the standard io.Writer-based call contract.
 
 package creelcli
 
@@ -37,7 +38,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
-// Exit codes beyond 0 for success and 1 for a refusal: the ways a waiting verb ends without the outcome the caller asked for.
+// Exit codes beyond 0 for success and 1 for a refusal:
+// the ways a waiting verb ends without the outcome the caller asked for.
 const (
 	// ExitInjectUnconfirmed is the exit of an inject --wait whose text was typed but not confirmed.
 	ExitInjectUnconfirmed = 2
@@ -56,10 +58,11 @@ func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // clientSeam is the clock, daemon spawn and orch liveness predicate every verb's client is built with.
-// spawn starts the daemon for a hub with its stderr appended to the log file at logPath and answers the daemon's pid with the signal of its exit.
+// spawn starts the daemon for a hub with its stderr appended to the log file at logPath.
+// It returns the daemon's pid with a signal that fires when the daemon exits.
 // live reports whether the orch of a worktree is live, which `post --parent` resolves its receiver with.
 // registryDir answers the per-user state directory the machine record of hubs sits in.
-// A test replaces it, and so does not run in parallel.
+// A test that replaces it must not run in parallel.
 type clientSeam struct {
 	clock       creelengine.Clock
 	spawn       func(hubPath, logPath string) (creelengine.Spawn, error)
@@ -93,7 +96,8 @@ reaches only a waiting post --wait-reply.`,
 	creel.AddCommand(
 		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), hubsCmd(), daemonCmd(), hookReadCmd(), hookWaitCmd(),
 	)
-	// Creel reads no stencils, and the seed pass's log lines would mix into the stderr its verbs use for refusals and stall progress.
+	// Creel reads no stencils,
+	// and the seed pass's log lines would mix into the stderr its verbs use for refusals and stall progress.
 	// The long-lived daemon must also never commit seed writes into the hub.
 	for _, cmd := range append([]*cobra.Command{creel}, creel.Commands()...) {
 		if cmd.Annotations == nil {
@@ -104,8 +108,10 @@ reaches only a waiting post --wait-reply.`,
 	return creel
 }
 
-// result is what a verb's body hands back: the fields to print, the exit code and, for a non-zero code, the message that goes with it.
-// done is the verb's own statement of what it already stored or changed before the answer is written, empty when it did nothing or nothing was changed.
+// result is what a verb's body hands back.
+// It holds the fields to print, the exit code and, for a non-zero code, the message that goes with it.
+// done is the verb's own statement of what it already stored or changed before the answer is written;
+// it is empty when the verb did nothing or changed nothing.
 type result struct {
 	fields map[string]any
 	code   int
@@ -121,9 +127,11 @@ func refuse(cmd *cobra.Command, err error) error {
 	return nil
 }
 
-// writeRefusal prints the JSON error envelope, with ok false, the trimmed msg and fields, to the command's stdout and records code as the exit.
-// When that write fails it writes one line to the command's stderr instead, so a refusal is never lost; the exit code stays code.
-// The line is "creel: <done>; <msg>" when done, what the verb already did before it refused, is non-empty.
+// writeRefusal prints the JSON error envelope, with ok false and the trimmed msg and fields, to the command's stdout.
+// It records code as the exit.
+// When that write fails it writes one line to the command's stderr instead, so a refusal is never lost;
+// the recorded exit is unchanged.
+// The line is "creel: <done>; <msg>" when done is non-empty; done is what the verb already did before it refused.
 // Otherwise it is msg with "creel: " prepended unless msg already opens with it.
 // The envelope carries no done.
 func writeRefusal(cmd *cobra.Command, done, msg string, fields map[string]any, code int) {
@@ -150,7 +158,7 @@ func writeRefusal(cmd *cobra.Command, done, msg string, fields map[string]any, c
 	}
 }
 
-// writeOk prints fields as one JSON line with ok set to true, as output.Ok does, and returns the write's error.
+// writeOk prints fields as one JSON line with ok set to true, and returns the write's error.
 func writeOk(w io.Writer, fields map[string]any) error {
 	fields["ok"] = true
 	data, err := json.Marshal(fields)
@@ -163,7 +171,9 @@ func writeOk(w io.Writer, fields map[string]any) error {
 
 // runVerb resolves the hub from the command's cwd, builds the verb's client and runs body, then prints what it returns.
 // A standalone directory is refused: creel needs a hub.
-// A success envelope that cannot be written records exit 1 and writes one line straight to stderr, naming what the verb already did when result.done says so; no error envelope follows.
+// A success envelope that cannot be written records exit 1.
+// It writes one line straight to stderr, naming what the verb already did when result.done says so.
+// No error envelope follows.
 func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creelengine.Client, out io.Writer) (result, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -226,7 +236,7 @@ func hubClient(ctx context.Context) (*creelengine.Client, error) {
 	return creelengine.NewClient(geometry, claimFor(cwd), func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock), nil
 }
 
-// parentReceiver resolves the strand name of the orch the worktree of the cwd ctx carries reaches as its parent, by the rule a hold notice uses.
+// parentReceiver resolves the strand name of the orch the worktree of the cwd ctx carries reaches as its parent.
 // A worktree whose orch state records no strand is refused with the way forward.
 func parentReceiver(ctx context.Context) (string, error) {
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -258,7 +268,8 @@ func claimFor(cwd string) creelengine.Claim {
 	}
 }
 
-// controllingTerminal returns the terminal standard input is attached to without its /dev/ prefix, empty when it is none or the platform cannot tell.
+// controllingTerminal returns the terminal standard input is attached to, without its /dev/ prefix.
+// It returns empty when standard input is attached to no terminal or the platform cannot tell.
 func controllingTerminal() string {
 	target, err := os.Readlink("/proc/self/fd/0")
 	if err != nil || !strings.HasPrefix(target, "/dev/") {
@@ -280,7 +291,8 @@ func parentProcessName() string {
 	return strings.TrimSpace(string(data))
 }
 
-// stallFields renders the stall a response carries as the stall, its reason text with the way forward and the time it was read; nil when it carries none.
+// stallFields renders a response's stall: its code, its reason text with the way forward, and the time it was read.
+// It returns nil when the response carries no stall.
 func stallFields(resp creelengine.Response) map[string]any {
 	if resp.Stall == "" {
 		return nil
@@ -332,7 +344,8 @@ func messagesFields(messages []creelengine.Message) []map[string]any {
 	return rendered
 }
 
-// timeoutWhenWaiting is the --timeout a call passes the client: the flag when the call waits, and none otherwise, since the client bounds every request by its timeout.
+// timeoutWhenWaiting returns the timeout a call passes the client when the call waits, and zero otherwise.
+// The client bounds every request by its timeout, so a call that does not wait passes none.
 func timeoutWhenWaiting(waiting bool, timeout time.Duration) time.Duration {
 	if waiting {
 		return timeout
@@ -602,9 +615,13 @@ Example:
 // readAgeShown is how old a message must be before read prints when it was posted.
 const readAgeShown = 5 * time.Minute
 
-// writeMessagesText prints messages as plain text for the agent that reads them, or "nothing unread" when there are none.
+// writeMessagesText prints messages as plain text for the agent that reads them.
+// It prints "nothing unread" when there are none.
 // Each message is a header line and then its body, and a blank line separates two messages.
-// The header names the id, the sender and the reply command, and also the message a reply answers, the receiver a returned message ended unread at, the posting time once the message is older than readAgeShown at now, and that the message expects a reply.
+// The header names the id, the sender and the reply command.
+// It also names the message a reply answers and the receiver a returned message ended unread at.
+// It shows the posting time once the message is older than `readAgeShown` as of `now`.
+// It marks a message that expects a reply.
 func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.Time) error {
 	if len(messages) == 0 {
 		_, err := fmt.Fprintln(out, "nothing unread")
@@ -639,8 +656,10 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 }
 
 // readCmd returns the `creel read` verb.
-// It acknowledges the messages only once its output was written; a write that fails leaves them unread and the verb refuses with the write's error.
-// A write that fails after part of the output went out leaves them unread too, so a consumer may hold a truncated output of messages it reads again later.
+// It acknowledges the messages only once its output was written;
+// a write that fails leaves them unread and the verb refuses with the write's error.
+// A write that fails after part of the output went out leaves them unread too,
+// so a consumer may hold a truncated output of messages it reads again later.
 func readCmd() *cobra.Command {
 	var (
 		from     string
@@ -937,8 +956,9 @@ the same hub it says so and exits 0.`,
 	return cmd
 }
 
-// pidLineWriter writes the lines it is handed to dst, each opened with the creel daemon log's pid prefix of this process.
-// It buffers a line until its newline arrives and writes each line to dst in one call, so two daemons appending to one file never interleave inside a line.
+// pidLineWriter writes lines to dst, each opened with the creel daemon log's pid prefix of this process.
+// It buffers a line until its newline arrives.
+// Each line goes to dst in one call, so two daemons appending to one file never interleave inside a line.
 type pidLineWriter struct {
 	dst     io.Writer
 	mu      sync.Mutex
@@ -946,7 +966,7 @@ type pidLineWriter struct {
 }
 
 // Write splits p into lines and writes each completed line, prefixed, to dst; a trailing partial line waits for its newline.
-// It reports len(p) written unless dst fails.
+// It always reports len(p), and it returns dst's error when a write to dst fails.
 func (w *pidLineWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -966,8 +986,8 @@ func (w *pidLineWriter) Write(p []byte) (int, error) {
 }
 
 // runDaemon serves the hub at hubPath until a signal or a replaced binary ends it.
-// It first writes the daemon start header to stderr, then sends the logger's warnings there, each line tagged with this process's pid.
-// A start that fails for any reason but another daemon already serving is logged at Warn before it is returned.
+// It writes the daemon start header to stderr first,
+// and it logs a failed start at Warn unless another daemon is already serving, then returns the error.
 func runDaemon(ctx context.Context, hubPath string, stderr io.Writer) error {
 	if _, err := fmt.Fprintln(stderr, creelengine.DaemonStartHeader(os.Getpid(), time.Now())); err != nil {
 		return fmt.Errorf("write the daemon start header: %w", err)
@@ -1004,12 +1024,15 @@ func serveDaemon(ctx context.Context, hubPath string) error {
 	})
 }
 
-// RunCLI is the public seam for the creel module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the creel module CLI on args, writes its output to out, and returns the exit code.
+// It takes the working directory from the process.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the creel module CLI on args with cwd as its working directory, and returns the exit code.
+// A non-empty cwd is seeded into the execution context, which panics on an empty directory,
+// so an empty cwd makes the CLI read the process working directory instead.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

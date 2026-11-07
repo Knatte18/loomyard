@@ -1,4 +1,5 @@
-// auditengine.go declares the audit engine type and the engine lookup webster is told, and resolves the engine one recorded session is read through.
+// auditengine.go declares the audit engine interface and the engine lookup webster reads its sessions through.
+// It also resolves the engine a recorded session ran under.
 
 package websterengine
 
@@ -9,7 +10,8 @@ import (
 )
 
 // AuditEngine is an engine that parses a run's events and audits its fork subagents.
-// Webster's recover path needs both: it reads the batch's turn ends through the Engine and its fork writes through the ForkAuditor.
+// Webster's recover path needs both:
+// it reads the batch's turn ends through the Engine and its fork writes through the ForkAuditor.
 type AuditEngine interface {
 	shuttleengine.Engine
 	shuttleengine.ForkAuditor
@@ -22,9 +24,11 @@ type AuditEngines interface {
 	DefaultName() string
 }
 
-// roleAuditEngine checks that the engine role's choice resolves to holds fork audit, which every session webster spawns is read through.
+// roleAuditEngine checks that the engine a role's choice resolves to can audit forks.
+// Webster needs fork audit to read every session it spawns.
 // An empty engine resolves the default engine.
-// The refusal names the role's key in webster.yaml and the engine, and wraps the lookup's error for an engine engines does not hold.
+// The refusal names the role's key in webster.yaml and the engine.
+// It wraps the lookup's error for an engine engines does not hold.
 func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.ModelChoice) error {
 	name := choice.Engine
 	if name == "" {
@@ -41,10 +45,12 @@ func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.Model
 	return nil
 }
 
-// MasterInstructionFiles returns a lister of the instruction file names Master's engine loads.
-// The lookup is lazy: it runs when the lister is called, so a verb that never calls it is never refused for the master key.
-// An engine without the shuttleengine.InstructionFileLister capability lists none;
-// an engine engines does not hold is refused wrapping the lookup's error, with the way forward to set master in webster.yaml.
+// MasterInstructionFiles returns a function that lists the instruction files the master role's engine loads.
+// The lookup is lazy: it runs when the lister is called.
+// A verb that never calls it is never refused for the master key.
+// An engine without the shuttleengine.InstructionFileLister capability lists none.
+// An engine engines does not hold is refused, wrapping the lookup's error.
+// The way forward is to set master in webster.yaml.
 func MasterInstructionFiles(engines AuditEngines, master shuttleengine.ModelChoice) func() ([]string, error) {
 	return func() ([]string, error) {
 		engine, err := engines.Lookup(master.Engine)
@@ -63,10 +69,12 @@ func MasterInstructionFiles(engines AuditEngines, master shuttleengine.ModelChoi
 	}
 }
 
-// sessionAuditEngine resolves the engine that session ran under from recorded, the engine name its state entry holds.
-// A name engines holds resolves to that engine; one without fork audit is an internal error, since every spawn checks its engine.
-// A name engines does not hold is refused wrapping the lookup's error, naming the session and the engine.
-// An empty name, an entry written before engines were recorded, reads as the default engine and is refused when that default has no fork audit.
+// sessionAuditEngine resolves the engine a session ran under, from the engine name recorded in its state entry.
+// A name the engine set holds resolves to that engine.
+// One without fork audit is an internal error, since every spawn checks its engine before it runs.
+// A name engines does not hold is refused, wrapping the lookup's error, naming the session and the engine.
+// An empty name, from an entry written before engines were recorded, reads as the default engine.
+// It is refused when that default has no fork audit.
 func sessionAuditEngine(engines AuditEngines, session, recorded string) (AuditEngine, error) {
 	engine, err := engines.Lookup(recorded)
 	if err != nil {

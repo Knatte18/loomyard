@@ -1,19 +1,13 @@
-// crosscompile_test.go is the durable in-repo cross-compile gate for Linux support.
-// It shells out to the real `go` toolchain with GOOS=linux and fails the build if any
-// package in the module — including every `_linux.go` file, which the host's native
-// `go test` on Windows never compiles — fails to build. This is the mechanical proof
-// that the whole module cross-compiles for Linux; it adds no CI, because the repo has
-// none and enforces every invariant via `go test`. The gate now runs on every Tier 2
-// (`-tags integration`) run rather than on every `go test`, because a whole-module
-// `GOOS=linux go build ./...` does not belong in the offline loop (Test Tier Purity
-// Invariant); the per-batch `GOOS=linux go build` development gates it mirrors are
-// unchanged.
+// crosscompile_test.go is the in-repo cross-compile gate for Linux support.
+// It runs the real `go` toolchain with GOOS=linux and fails if any package in the module does not build.
+// That includes every `_linux.go` file, which a native `go test` on Windows never compiles.
+// It is the mechanical proof that the whole module cross-compiles for Linux.
+// The test runs in the Tier 2 (`-tags integration`) run.
+// A whole-module `GOOS=linux go build ./...` does not belong in the offline loop (Test Tier Purity Invariant).
+// The per-batch `GOOS=linux go build` development gates mirror it.
 //
-// The build no longer runs under CGO_ENABLED=0: `github.com/Knatte18/quarry` links
-// tree-sitter's C grammars and its own internal/cgoguard fails the compile outright under
-// CGO_ENABLED=0, deliberately and unconditionally — a hard requirement this module inherited
-// the moment it took quarry on as a dependency, and cannot relax from this side since quarry
-// lives outside this worktree. README.md states the cgo build requirement.
+// The build requires cgo: `github.com/Knatte18/quarry` links tree-sitter's C grammars.
+// The module cannot relax that requirement, since quarry is a separate module.
 
 package main
 
@@ -27,33 +21,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCrossCompileLinux cross-compiles the entire module for GOOS=linux and fails on any non-zero
-// exit, surfacing the compiler's combined output.
-// It is the whole-module analogue of the per-batch `GOOS=linux go build ./<pkg>/...` gates run
-// during development: those check one package as it lands, this one is the durable guard that every
-// seamed package (proc, fslink, vscode, configengine, tools/deploy) plus every Linux-tagged file
-// added across the task still compiles together, indefinitely.
+// TestCrossCompileLinux cross-compiles the entire module for GOOS=linux.
+// It fails on any non-zero exit and surfaces the compiler's combined output.
+// It builds every package together, so a Linux-tagged file in any package fails it.
 func TestCrossCompileLinux(t *testing.T) {
 	tiergate.Require(t, 1)
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, so this
-	// gate never blocks environments (e.g. a minimal CI image) that lack it.
+	// Skip when the go toolchain is not on PATH, so a minimal CI image without it does not fail the gate.
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// quarry's cgo requirement (see the file doc comment) means this build now needs a real C
-	// compiler targeting linux/amd64. That is just the host's own "cc" when the host already IS
-	// linux/amd64 — a native build, no cross-toolchain involved — but is a genuine linux/amd64
-	// cross C toolchain anywhere else, which this repo does not provide or assume any developer
-	// has configured. Skip there rather than fail on infrastructure this gate was never meant to
-	// require; CC set is this test's signal that one has been deliberately wired up.
+	// The build needs a C compiler that targets linux/amd64.
+	// On a linux/amd64 host that is the host's own "cc", a native build with no cross-toolchain involved.
+	// Anywhere else it needs a linux/amd64 C cross-toolchain.
+	// This repo neither provides nor assumes that any developer has configured one.
+	// The test skips there rather than fail on infrastructure it was never meant to require;
+	// a set CC is its signal that such a toolchain has been deliberately wired up.
 	if (runtime.GOOS != "linux" || runtime.GOARCH != "amd64") && os.Getenv("CC") == "" {
 		t.Skip("host is not linux/amd64 and CC is unset: no linux/amd64 C cross-toolchain is configured, and quarry hard-requires CGO_ENABLED=1")
 	}
 
-	// Build every package for GOOS=linux, GOARCH=amd64, CGO_ENABLED=1: quarry's own cgoguard
-	// refuses CGO_ENABLED=0 outright, so this can no longer be the static, cgo-free cross-compile
-	// it once was — see the file doc comment.
+	// quarry's internal/cgoguard refuses CGO_ENABLED=0, so the build sets CGO_ENABLED=1.
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./...")
 	cmd.Dir = scankit.Root(t)
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=1")

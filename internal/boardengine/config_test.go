@@ -1,6 +1,4 @@
-// config_test.go — unit tests for boardengine.LoadConfig.
-//
-// Covers: scalar keys with template defaults, ignored path: keys, label maps and lists, label refusals, the not-initialized error path, Outputs and Vocabulary.
+// config_test.go holds the unit tests for boardengine.LoadConfig.
 
 package boardengine_test
 
@@ -18,9 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoadConfig_ScalarKeysAndTemplateDefaults asserts LoadConfig reads the scalar keys and resolves absent types and labels keys to the template defaults.
-// A path: key of any shape is ignored because Config.Path has yaml:"-":
-// the board data dir is geometry owned by fabricengine.BoltDir, with no relative-path resolution and no env override.
+// TestLoadConfig_ScalarKeysAndTemplateDefaults checks two things: that LoadConfig reads the scalar keys,
+// and that it resolves absent types and labels keys to the template defaults.
+// A path: key of any shape is ignored, because Config.Path is tagged yaml:"-".
+// The board data dir is owned by fabricengine.BoltDir, with no relative-path resolution and no env override.
 // It sets an environment variable, so it runs serially.
 func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -66,7 +65,9 @@ func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_NotInitialized tests that an absent _lym/ and an absent board.yaml under a present _lym/config/ both return the board-specific not-initialized error, naming the file and the way forward.
+// TestLoadConfig_NotInitialized checks the not-initialized error for two cases:
+// an absent _lym/, and an absent board.yaml under a present _lym/config/.
+// Both return the board-specific error, which names the file and the way forward.
 func TestLoadConfig_NotInitialized(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -120,7 +121,8 @@ func writeBoardConfig(t *testing.T, content string) string {
 	return tmpDir
 }
 
-// TestLoadConfig_DefaultRecipe asserts default_recipe resolves to the template's darn when absent and to the hub's own value when set.
+// TestLoadConfig_DefaultRecipe asserts default_recipe resolves to the template's darn when absent;
+// when set, it resolves to the hub's own value.
 func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -149,7 +151,8 @@ func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_DesignPrefixRefused asserts a design_prefix that would name a design file decision-<slug>.md is refused with its way forward, and an ordinary prefix loads.
+// TestLoadConfig_DesignPrefixRefused asserts a design_prefix naming a design file decision-<slug>.md is refused.
+// The error gives the way forward, and an ordinary prefix loads.
 func TestLoadConfig_DesignPrefixRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -232,8 +235,9 @@ labels: [urgent, later]
 	}
 }
 
-// TestLoadConfig_LabelsRefused asserts a scalar key and a non-scalar description are refused naming board.yaml and the key,
-// and that type labels that would share a handle letter, with each other or with tasks, or have none are refused naming board.yaml and the label.
+// TestLoadConfig_LabelsRefused asserts that a scalar key and a non-scalar description are refused.
+// Each such refusal names board.yaml and the key or label at fault.
+// Type labels that share a handle letter, with each other or with tasks, or that have none, are refused too.
 func TestLoadConfig_LabelsRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -283,7 +287,8 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 	})
 }
 
-// sketchLabel returns the first of types, failing t unless it is the built-in sketch type label with a description, which LoadConfig puts ahead of board.yaml's types.
+// sketchLabel returns the first of types, failing t unless it is the built-in sketch type label with a description.
+// LoadConfig puts that label ahead of the types board.yaml lists.
 func sketchLabel(t *testing.T, types []boardengine.Label) boardengine.Label {
 	t.Helper()
 	if len(types) == 0 || types[0].Name != boardengine.SketchType || types[0].Description == "" {
@@ -292,7 +297,8 @@ func sketchLabel(t *testing.T, types []boardengine.Label) boardengine.Label {
 	return types[0]
 }
 
-// TestLoadConfig_SketchListedInBoardYAML asserts a board.yaml listing the sketch type label keeps its own position and description, and gains no second sketch label.
+// TestLoadConfig_SketchListedInBoardYAML asserts that a listed sketch type label keeps its position and description.
+// The load adds no second sketch label.
 func TestLoadConfig_SketchListedInBoardYAML(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  bug: Broken\n  sketch: Approved, awaiting triage\n")
@@ -306,7 +312,8 @@ func TestLoadConfig_SketchListedInBoardYAML(t *testing.T) {
 	}
 }
 
-// TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the empty vocabulary of a path-only Config.
+// TestVocabulary asserts IsType and Known for a type, a plain label and an unknown label.
+// It also asserts that a path-only Config has an empty vocabulary that answers false to both.
 //
 //testtiming:keep pins the IsType and Known answers for a type, a plain label, an unknown label and the empty vocabulary, which its covering test never asserts
 func TestVocabulary(t *testing.T) {

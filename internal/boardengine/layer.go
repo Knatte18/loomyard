@@ -1,8 +1,8 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer, Independent or Draft, and RenderOrder orders tasks for output.
-// All computed at read time;
-// never stored.
+// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer, Independent or Draft.
+// RenderOrder orders tasks for output.
+// The values are computed at read time and never stored.
 
 package boardengine
 
@@ -11,7 +11,7 @@ import (
 	"sort"
 )
 
-// The non-letter layers: a running task, an open task waiting on nothing open, an isolated task, an unreleased task, an open project and a done entry.
+// The non-letter layers: running, ready (an open task waiting on nothing open), isolated, draft, project and done.
 const (
 	runningLayer  = "Running"
 	readyLayer    = "Ready"
@@ -23,14 +23,18 @@ const (
 
 // ComputeLayers assigns each task a bucket based on topological depth.
 // A task a run holds is runningLayer, by RunHolds as the run lock decides it.
-// An open project a run does not hold, a beam whose pawl run has not reached Parent-Align included, is projectLayer, never Ready or a letter.
-// An open draft task a run does not hold is draftLayer, whatever its dependencies or isolation, since nothing starts it until it is released;
-// a dependency on one weighs as one on a ready task.
-// An open task that is not a draft and has no open dependency is readyLayer, and every other task is the letter of its depth:
+// An open project a run does not hold is projectLayer, never Ready or a letter.
+// A beam whose pawl run has not reached Parent-Align is projectLayer too.
+// An open draft task a run does not hold is draftLayer, whatever its dependencies or isolation.
+// Nothing starts a draft until it is released, so a dependency on one weighs as one on a ready task.
+// An open task that is not a draft and has no open dependency is readyLayer.
+// Every other task is the letter of its depth:
 // A waits only on running, ready or draft tasks, B on something in A, and so on.
-// A met dependency adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
-// A dependency on a project that is not done weighs as one on its deepest open landing member, and as one on a ready task when it has none;
-// cycle detection follows a project to its landing members.
+// A met dependency adds no depth.
+// A dependency on a running task counts as one on a ready task, and cycle detection still follows running tasks.
+// A dependency on a project that is not done weighs as one on its deepest open landing member.
+// A project with no open landing member weighs as one on a ready task.
+// Cycle detection follows a project to its landing members.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
 	dependencies := NewDependencies(tasks)
 	layerMap := make(map[string]string)
@@ -149,7 +153,6 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		return d, nil
 	}
 
-	// Compute depths for all tasks.
 	for slug := range taskMap {
 		if _, ok := layerMap[slug]; ok {
 			continue // Skip already assigned.
@@ -198,7 +201,6 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		return nil, err
 	}
 
-	// Wrap tasks with their layers.
 	var result []TaskWithLayer
 	for _, t := range tasks {
 		result = append(result, TaskWithLayer{
@@ -222,7 +224,8 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		if result[i].Kind != result[j].Kind {
 			return kindRank(result[i].Kind) < kindRank(result[j].Kind)
 		}
-		// An open note's README group is its type label, which its handle letter already groups, and a project has no layer to order by, so only a task's layer plays a part.
+		// An open note's README group is its type label, which its handle letter already groups,
+		// and a project has no layer to order by, so only a task's layer plays a part.
 		if result[i].Kind != KindNote && result[i].Kind != KindProject {
 			bucketI := bucketOrder[result[i].Layer]
 			bucketJ := bucketOrder[result[j].Layer]

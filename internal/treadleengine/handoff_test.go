@@ -1,8 +1,7 @@
-// handoff_test.go table-drives ParseHandoff over the happy path (including prose extraction and an
-// empty ledger) and every fail-loud rule documented on it: missing/unclosed/empty frontmatter,
-// invalid YAML, empty covers_rounds, non-positive round numbers (in covers_rounds and in a ledger
-// entry's rounds), a ledger entry with an empty key, an empty rounds list, an out-of-vocabulary
-// status, and CRLF-tolerant content.
+// handoff_test.go table-drives ParseHandoff over the happy path, including prose extraction and an empty ledger.
+// It also covers every fail-loud rule of ParseHandoff: missing, unclosed or empty frontmatter, and invalid YAML;
+// empty covers_rounds, non-positive round numbers in covers_rounds or in a ledger entry's rounds;
+// a ledger entry with an empty key, an empty rounds list, an out-of-vocabulary status, and CRLF-tolerant content.
 
 package treadleengine
 

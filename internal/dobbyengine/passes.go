@@ -1,4 +1,5 @@
-// passes.go decides which batten passes dobby runs for the runs of its worktree, spawns them, and reads how each one exited.
+// passes.go decides which batten passes dobby runs for the runs of its worktree.
+// It spawns those passes and reads how each one exited.
 
 package dobbyengine
 
@@ -15,13 +16,13 @@ import (
 const (
 	// runStateRunning is the batten status state of a run that has not halted, paused, failed or finished.
 	runStateRunning = "running"
-	// runStatePaused is the batten status state of a run a pause request, a pause condition or a cancelled pass left paused.
+	// runStatePaused is the batten status of a run that a pause request, a pause condition or a cancelled pass left paused.
 	runStatePaused = "paused"
 	// runStateDone is the batten status state of a run that finished, which dobby drives no further.
 	runStateDone = "done"
 	// producerRunShed is the batten producer that waits on the child run, the only row a continue pass may re-enter.
 	producerRunShed = "Run-Shed"
-	// failingPassNoticeAfter is how many failures in a row with one text post the notice.
+	// failingPassNoticeAfter is the count of consecutive failures with one text that posts the notice.
 	failingPassNoticeAfter = 3
 )
 
@@ -52,7 +53,8 @@ type RunView struct {
 	Landed   bool
 	// LandingCommit is the commit the run's landing put on its parent branch, empty when none is recorded.
 	LandingCommit string
-	// ReachedParent reports whether the run's work already reached its parent branch, so only its Land and Worktree-Teardown rows are left.
+	// ReachedParent reports whether the run's work already reached its parent branch.
+	// Then only its Land and Worktree-Teardown rows are left.
 	// It is read for a paused run only.
 	ReachedParent bool
 }
@@ -69,7 +71,7 @@ type PassExit struct {
 	Error string
 }
 
-// passKind is the pass planPass decides on.
+// passKind is the kind of pass dobby gives a run.
 type passKind int
 
 const (
@@ -98,13 +100,19 @@ type passTrigger struct {
 }
 
 // planPass decides, for one run and trigger, none, a continue pass or a full pass.
-// There is none unless batten's state is running, or paused with the run's work already on its parent, none while the cancel marker exists or a pass is in flight, and a held driver lock reads as in flight.
-// Such a paused run gets only full passes, and none while a pause covers it but the one at the lift.
-// A write of batten's own status file triggers only when it is later than the run's last pass exit, so a pass's own writes never trigger the next.
-// A run a hold-caller entry covers gets none either, an owned-elsewhere run included, and its lift gives it the full pass.
-// While a pause covers the run, only a continue pass runs, and the full pass at the lift; an owed full pass waits for the lift.
-// A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer, and every other pass is full, with no reopen while the origin-owed marker stands.
-// A run recorded owned elsewhere gets a full pass at the lift of its covering pause, and while no pause covers it a full pass on each probe tick; no other trigger gives it one.
+// There is none unless batten's state is running, or paused with the run's work already on its parent.
+// There is also none while the cancel marker exists or a pass is in flight; a held driver lock reads as in flight.
+// Such a paused run gets only full passes, and none while a pause covers it, except at the lift.
+// A write of batten's own status file triggers only when it is later than the run's last pass exit,
+// so a pass's own writes never trigger the next.
+// A run a hold-caller entry covers gets none either, an owned-elsewhere run included;
+// the lift of that entry gives it the full pass.
+// While a pause covers the run, only a continue pass runs, and the full pass at the lift.
+// An owed full pass waits for the lift.
+// A continue pass needs the run at Run-Shed, with no full pass owed and no lift to answer.
+// Every other pass is full, and while the origin-owed marker stands it leaves the origin reconcile owed.
+// A run recorded owned elsewhere gets a full pass at the lift of its covering pause.
+// While no pause covers it, it gets a full pass on each probe tick; no other trigger gives it one.
 func planPass(run RunView, rs RunState, trigger passTrigger, covered bool) passKind {
 	if !drivable(run) || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
 		return passNone
@@ -145,13 +153,15 @@ func planPass(run RunView, rs RunState, trigger passTrigger, covered bool) passK
 type flight struct {
 	exit <-chan PassExit
 	full bool
-	// first marks the first pass of a task dobby started from the board, which has no run yet, and fingerprint is the board entry it read.
+	// first marks the first pass of a task dobby started from the board, which has no run yet.
+	// fingerprint is the board entry dobby read for it.
 	first       bool
 	fingerprint string
 }
 
 // drivePasses reads exited passes, owes full passes, and spawns the pass each listed run's trigger calls for.
-// A done run is driven no further: unless a pass of it is in flight, it takes no slot, is planned no pass, and its state entry is dropped.
+// A done run is driven no further.
+// Unless a pass of it is in flight, it takes no slot, is planned no pass, and its state entry is dropped.
 // It leaves d.busy set while any run is in flight or could be given a pass on the next probe tick.
 func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	d.tickCtx = ctx
@@ -217,10 +227,11 @@ func runLabel(run RunView) string {
 	return run.State + " at " + run.Producer
 }
 
-// logRunChanges logs each listed run whose label differs from the one last logged, and forgets the runs no longer listed.
+// logRunChanges logs each listed run whose label differs from the one last logged.
+// It forgets the runs that are not listed.
 // A run first seen logs its label alone.
-// The memory is in process only, so a re-exec logs no change it did not see:
-// the call after a start heartbeat that could not read the runs records the labels without logging.
+// The memory is in process only, so a re-exec logs no change it did not see.
+// The call after a start heartbeat that could not read the runs records the labels without logging.
 func (d *daemon) logRunChanges(now time.Time, runs []RunView) {
 	if d.primeOwed {
 		d.primeOwed = false
@@ -258,9 +269,11 @@ func (d *daemon) primeLoggedRuns(runs []RunView) {
 	}
 }
 
-// heartbeat logs one line naming every run still driven with its state and producer, or that there are none, and records now as the last heartbeat.
+// heartbeat logs one line naming every run still driven with its state and producer, or that there are none.
+// It records now as the last heartbeat.
 // It reads the runs from Deps.Runs when runs is nil, and a failed read is logged in the line's place.
-// The first heartbeat that reads the runs also records every listed run's label as logged, so a re-exec logs no change for a run that did not change.
+// The first heartbeat that reads the runs also records every listed run's label as logged,
+// so a re-exec logs no change for a run that did not change.
 func (d *daemon) heartbeat(now time.Time, runs []RunView) {
 	d.lastHeartbeat = now
 	if runs == nil {
@@ -337,8 +350,8 @@ func (d *daemon) triggerFor(run RunView) passTrigger {
 	return trigger
 }
 
-// spawn starts the pass kind names for slug.
-// A spawn that fails is a failed pass with the spawn error as its text.
+// spawn starts a pass of the given kind for slug.
+// A spawn that fails counts as a failed pass whose text is the spawn error.
 func (d *daemon) spawn(slug string, kind passKind, now time.Time) {
 	full := kind != passContinue
 	exit, err := d.deps.SpawnPass(slug, !full, kind == passFullNoReopen)
@@ -377,10 +390,12 @@ func (d *daemon) collectExits(now time.Time) {
 }
 
 // passExited reads how a pass of slug exited.
-// Exit 0 clears the run's failing-pass count and noticed texts, and its owed full pass when the pass was full and no origin-owed marker stands.
+// Exit 0 clears the run's failing-pass count and noticed texts.
+// It also clears the owed full pass when the pass was full and no origin-owed marker stands.
 // A refused continue pass owes a full pass, and a covered pass counts as no failure.
 // The owned-elsewhere exit is never a failing pass.
-// Any other exit counts a failure by its error text, and the third in a row with one text posts one notice to the nearest live orch.
+// Any other exit counts a failure by its error text.
+// Once the count reaches failingPassNoticeAfter, one notice per error text goes to the nearest live orch.
 func (d *daemon) passExited(slug string, full bool, code int, errText string, at time.Time) {
 	originOwed := false
 	if code == 0 && full {

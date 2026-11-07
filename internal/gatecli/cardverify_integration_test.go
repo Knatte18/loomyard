@@ -1,5 +1,6 @@
-// cardverify_integration_test.go drives `lym gate card-verify` in-process over a git worktree outside every hub holding a plan, whose card lines spawn a shell.
-// It is Tier 2: it spawns git and the shell.
+// cardverify_integration_test.go drives `lym gate card-verify` in-process.
+// It runs over a git worktree outside every hub holding a plan, whose card lines spawn a shell,
+// so it is Tier 2: it spawns git and the shell.
 
 package gatecli
 

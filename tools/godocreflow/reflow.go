@@ -1,8 +1,5 @@
-// reflow.go locates the doc-comment groups eligible for reflow (file-level header comments, package
-// doc comments, and comments immediately preceding an exported top-level declaration) using
-// go/parser and go/ast, and splices in their reflowed text via direct byte-offset edits on the
-// original source -- never through go/printer, so nothing outside the touched comment lines can
-// change.
+// reflow.go finds the doc-comment groups that reflow may change and splices their reflowed text into the source.
+// It edits by byte offset and never goes through go/printer, so nothing outside the touched comment lines changes.
 
 package main
 
@@ -23,8 +20,9 @@ var (
 	listItemRE  = regexp.MustCompile(`^([-*]\s|[0-9]{1,3}[.)]\s)`)
 )
 
-// isGenerated reports whether src carries a "Code generated ... DO NOT EDIT" marker anywhere in the file,
-// per the convention at https://go.dev/s/generatedcode. Such files are left alone entirely.
+// isGenerated reports whether src carries a "Code generated ... DO NOT EDIT" marker anywhere in the file.
+// The marker is the convention documented at https://go.dev/s/generatedcode.
+// Such files are left alone entirely.
 func isGenerated(src string) bool {
 	for _, line := range strings.Split(src, "\n") {
 		if generatedRE.MatchString(strings.TrimRight(line, "\r")) {
@@ -43,9 +41,9 @@ type edit struct {
 	wrapped    int // number of semantic lines that needed the last-resort width fallback
 }
 
-// collectEdits parses src and returns every reflow edit it qualifies for. maxWidth is the last-resort
-// word-wrap column budget (indentation + "// " + content); pass 0 to disable it. err is non-nil only on a
-// parse failure; a generated file always yields (nil, nil, nil).
+// collectEdits parses src and returns every reflow edit it qualifies for.
+// maxWidth is the last-resort word-wrap column budget, counting indentation, "// ", and content; 0 disables it.
+// err is non-nil only on a parse failure; a generated file yields no edits and no error.
 func collectEdits(fset *token.FileSet, filename, src string, maxWidth int) ([]edit, error) {
 	if isGenerated(src) {
 		return nil, nil
@@ -64,8 +62,8 @@ func collectEdits(fset *token.FileSet, filename, src string, maxWidth int) ([]ed
 	return edits, nil
 }
 
-// reflowSource returns the reflowed source for src (the contents of a .go file), or src unchanged if
-// nothing qualifies. err is non-nil only on a parse failure.
+// reflowSource returns src with its reflow edits applied, or src unchanged when nothing qualifies.
+// err is non-nil only on a parse failure.
 func reflowSource(fset *token.FileSet, filename, src string, maxWidth int) (string, error) {
 	edits, err := collectEdits(fset, filename, src, maxWidth)
 	if err != nil {
@@ -77,10 +75,11 @@ func reflowSource(fset *token.FileSet, filename, src string, maxWidth int) (stri
 	return applyEdits(src, edits), nil
 }
 
-// collectGroups returns every comment group eligible for reflow consideration: the file-level header
-// comment (if separated from the package clause by a blank line), the package doc comment, and the doc
-// comment immediately preceding each exported top-level declaration (including per-spec doc comments in a
-// grouped var/const/type block).
+// collectGroups returns every comment group eligible for reflow consideration.
+// The file-level header comment qualifies when a blank line separates it from the package clause.
+// The package doc comment qualifies too.
+// The doc comment before each exported top-level declaration qualifies.
+// So does each per-spec doc comment in a grouped var, const or type block.
 func collectGroups(file *ast.File) []*ast.CommentGroup {
 	var groups []*ast.CommentGroup
 
@@ -151,14 +150,14 @@ func specExported(spec ast.Spec) bool {
 	return false
 }
 
-// planEdit builds the replacement edit for one comment group, or returns nil if the group should be left
-// alone (too short, a directive, an indented code example, a heading/list line, or already correctly
-// reflowed). maxWidth (0 disables it) is the last-resort word-wrap fallback applied only to a semantic
-// line that is still too wide after sentence/clause splitting found no further boundary to break at.
+// planEdit builds the replacement edit for one comment group, or returns nil when the group stays as written.
+// A group stays as written when it is a directive, an indented code example, a heading or list, or already reflowed.
+// A one-line comment is reflowed only when it is wider than maxWidth.
+// maxWidth (0 disables it) is the last-resort word-wrap fallback.
+// It applies to a semantic line still too wide after sentence and clause splitting.
 func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup, maxWidth int) *edit {
-	// Reuse the actual indentation bytes preceding the comment (which may be tabs), rather than
-	// reconstructing col-1 spaces from the column number -- gofmt-indented blocks use tabs, and
-	// synthesizing spaces there would visibly misindent every continuation line.
+	// Reuse the indentation bytes that precede the comment, which may be tabs.
+	// Spaces rebuilt from the column number would misindent every continuation line of a tab-indented block.
 	firstPos := fset.Position(cg.List[0].Pos())
 	lineStartOffset := fset.Position(fset.File(cg.List[0].Pos()).LineStart(firstPos.Line)).Offset
 	indent := src[lineStartOffset:firstPos.Offset]
@@ -195,17 +194,16 @@ func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup, maxWidth in
 	}
 
 	if len(cg.List) < 2 {
-		// A comment that already occupies exactly one physical source line has no existing hard-wrap to
-		// reflow. Leave it alone unless it violates -max-width, in which case fall through to the same
-		// pipeline a multi-line group gets: semantic+clause splitting may resolve it on its own, and the
-		// last-resort word wrap below catches whatever is still too wide after that.
+		// A one-line comment has no hard wrap to reflow.
+		// It goes through the multi-line pipeline only when it is wider than maxWidth:
+		// sentence and clause splitting may bring it under, and the word wrap below catches what remains.
 		if maxWidth <= 0 || prefixLen+utf8.RuneCountInString(lines[0].content) <= maxWidth {
 			return nil
 		}
 	}
 
-	// Split into blank-line-delimited paragraphs and reflow each one independently, preserving the
-	// paragraph breaks (a bare "//" line is a meaningful paragraph separator in godoc's format).
+	// Split into blank-line-delimited paragraphs and reflow each one on its own.
+	// The bare "//" lines between them stay, since godoc treats them as paragraph separators.
 	var paragraphs [][]string
 	var current []string
 	for _, l := range lines {

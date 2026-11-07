@@ -1,4 +1,5 @@
-// goclient.go is the Go-side caller of creel: the calls other modules make from a program or a strand, each building its request here.
+// goclient.go is the Go-side client of creel, which programs and strands use to call the daemon.
+// Each method builds its request here.
 
 package creelcli
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-// goCallTimeout bounds every request a GoClient makes but a wait for mail, so a caller under a lock waits at most this long per call.
+// goCallTimeout bounds every request a GoClient makes except a wait for mail;
+// a caller holding a lock waits at most this long per call.
 const goCallTimeout = 30 * time.Second
 
 // GoClient calls the creel daemon of one hub as a program or as a strand.
@@ -24,21 +26,24 @@ type GoClient struct {
 	shortname string
 }
 
-// NewProgramClient returns a client that signs as the program named program, an upper-case name such as BATTEN, under the hub's shortname.
+// NewProgramClient returns a client that signs as the program named program under the hub's shortname.
+// program is an upper-case name such as BATTEN.
 // Its claim carries no strand name, whatever $LYM_STRAND_NAME holds, so it never claims a strand.
 // It refuses a location outside a hub, and a program name that is not well formed.
 func NewProgramClient(location *lymcwd.Location, program string) (*GoClient, error) {
 	return newGoClient(location, programClaim("", program))
 }
 
-// NewScopedProgramClient returns a client that signs as the program named program for the beam slug, as "<shortname>:<slug>:<NAME>".
-// An empty slug signs like NewProgramClient.
-// Its claim carries no strand name, and it refuses a location outside a hub, a malformed slug and a program name that is not well formed.
+// NewScopedProgramClient returns a client that signs as the program named program for the beam slug.
+// The sender is "<shortname>:<slug>:<NAME>", and an empty slug gives the two-segment sender instead.
+// Its claim carries no strand name.
+// It refuses a location outside a hub, a malformed slug and a program name that is not well formed.
 func NewScopedProgramClient(location *lymcwd.Location, slug, program string) (*GoClient, error) {
 	return newGoClient(location, programClaim(slug, program))
 }
 
-// programClaim returns the claim builder of a program client: the program sender scoped to slug, the two-segment sender for an empty slug.
+// programClaim returns the claim builder of a program client:
+// the program sender scoped to slug, or the two-segment sender for an empty slug.
 func programClaim(slug, program string) func(shortname string) (creelengine.Claim, error) {
 	return func(shortname string) (creelengine.Claim, error) {
 		full, err := agentname.FormatScopedProgram(shortname, slug, program)
@@ -58,7 +63,8 @@ func NewStrandClient(location *lymcwd.Location, strandName string) (*GoClient, e
 	})
 }
 
-// newGoClient resolves the creel geometry of the location's hub and builds a client signing with the claim that claim returns for the hub's shortname.
+// newGoClient resolves the creel geometry of the location's hub;
+// it builds a client signing with the claim that claim returns for the hub's shortname.
 func newGoClient(location *lymcwd.Location, claim func(shortname string) (creelengine.Claim, error)) (*GoClient, error) {
 	if location == nil || location.HubPath == "" {
 		return nil, errors.New("creel: a client needs a hub, and this location is not in one; way forward: call it from a worktree of a lym hub")
@@ -99,10 +105,15 @@ func (c *GoClient) ReadAll(handle func([]creelengine.Message) error) error {
 	return err
 }
 
-// ReadWait blocks until the caller has unread mail, hands it to handle and acknowledges it only when handle returns nil, returning nil once the daemon confirmed the acknowledgement.
-// Its timeout, which the caller tells, bounds the wait for mail, the handler and the confirmation together, so an ErrWaitTimeout can follow a handler that ran.
-// A connection lost before or after the handler ran sends the read again, up to creelengine.MaxReconnects, so the handler can run a second time for mail it already saw.
-// A refused confirmation, the timeout and exhausted reconnects return their error; a handle error releases the read unacknowledged and is returned as is.
+// ReadWait blocks until the caller has unread mail.
+// It hands the mail to handle and acknowledges it only when handle returns nil.
+// It returns nil once the daemon confirms the acknowledgement.
+// Its timeout bounds the wait for mail, the handler and the confirmation together;
+// an ErrWaitTimeout can follow a handler that ran.
+// A connection lost before or after the handler ran sends the read again, up to creelengine.MaxReconnects;
+// so the handler can run a second time for mail it already saw.
+// A refused confirmation, the timeout and exhausted reconnects return their error;
+// a handle error releases the read unacknowledged and is returned as is.
 func (c *GoClient) ReadWait(timeout time.Duration, handle func([]creelengine.Message) error) error {
 	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbRead, Wait: true}, timeout, func(resp creelengine.Response) error {
 		return handle(resp.Messages)
@@ -110,18 +121,21 @@ func (c *GoClient) ReadWait(timeout time.Duration, handle func([]creelengine.Mes
 	return err
 }
 
-// HubStrands lists the strands of the hub at hubPath, live or not, the way the creel daemon lists them, so a caller reads the same strand set creel does.
+// HubStrands lists the strands of the hub at hubPath, live or not.
+// It follows the creel daemon's listing, so a caller reads the same strand set the daemon does.
 func HubStrands(hubPath string) ([]creelengine.Strand, error) {
 	return newProductionHubDelivery(hubPath).Strands()
 }
 
-// Inject queues text to be typed into receiver's pane at its next idle and returns the inject's id; a zero ttl takes the default.
+// Inject queues text to be typed into receiver's pane at its next idle and returns the inject's id;
+// a zero ttl takes the default.
 func (c *GoClient) Inject(receiver, text string, ttl time.Duration) (int64, error) {
 	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbInject, Receiver: receiver, Text: text, TTLSeconds: int64(ttl / time.Second)}, goCallTimeout, nil)
 	return resp.ID, err
 }
 
-// InjectCommand queues command to be run in the orch strand receiver at its next idle and returns the inject's id; a zero ttl takes the default.
+// InjectCommand queues command to be run in the orch strand receiver at its next idle and returns the inject's id;
+// a zero ttl takes the default.
 func (c *GoClient) InjectCommand(receiver string, command creelengine.Command, ttl time.Duration) (int64, error) {
 	resp, err := c.client.Call(creelengine.Request{
 		Verb: creelengine.VerbInject, Receiver: receiver, Command: command.Name, Argument: command.Argument, TTLSeconds: int64(ttl / time.Second),
@@ -147,7 +161,8 @@ func (c *GoClient) Release(receiver string) (bool, error) {
 	return resp.Released, err
 }
 
-// Withdraw removes the caller's own queued injects to receiver and its own unread mail held by receiver, and answers what it removed.
+// Withdraw removes the caller's own queued injects to receiver and its own unread mail held by receiver;
+// it answers what it removed.
 func (c *GoClient) Withdraw(receiver string) (creelengine.WithdrawResult, error) {
 	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbWithdraw, Receiver: receiver}, goCallTimeout, nil)
 	if err != nil || resp.Withdrawn == nil {

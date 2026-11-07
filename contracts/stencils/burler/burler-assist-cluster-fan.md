@@ -1,7 +1,12 @@
-<!-- This is burler's fanned cluster-rules part for an assistant reviewer: the lens fan, the subagent rules and the consolidation rules the assistant's review step carries when its round names an assistant fan.
-     internal/burlerengine's clusterRulesBlock (prompt.go) reads and fills it in place of burler-cluster-fan for the assistant, and the result becomes the review step's cluster_rules marker value.
-     The spawn, the subagents' inherited context and the in-turn wait come from the engine-assist-fan engine block of the assistant's engine.
-     It declares three required markers: {{.lens_list}}, the round's lenses as one bullet per lens in fan order, {{.lens_report_path}}, the path each subagent's report is saved at, and {{.lens_report_spec_path}}, the deployed spec of that report's format. -->
+<!-- This is burler's fanned cluster-rules part for an assistant reviewer.
+     It carries the lens fan, the subagent rules and the consolidation rules of an assistant's fanned review step.
+     `clusterRulesBlock` (internal/burlerengine/prompt.go) fills it instead of burler-cluster-fan for an assistant.
+     The result becomes the review step's cluster_rules marker value.
+     The engine-assist-fan engine block supplies the spawn, the subagents' inherited context and the in-turn wait.
+     It declares three required markers.
+     {{.lens_list}} is the round's lenses as one bullet per lens in fan order;
+     {{.lens_report_path}} is the path each subagent's report is saved at;
+     and {{.lens_report_spec_path}} is the deployed spec of that report's format. -->
 This is a cluster round: after exploring the target fully, run one subagent per lens listed here, inside this one turn.
 
 Lenses for this round:

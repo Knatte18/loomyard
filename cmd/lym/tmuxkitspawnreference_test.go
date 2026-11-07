@@ -1,5 +1,5 @@
-// tmuxkitspawnreference_test.go pins the tmuxkit-spawn definition tmuxkitspawn_test.go holds.
-// This file names no tmuxkit export, so it never trips the scan that uses the definition.
+// tmuxkitspawnreference_test.go tests `tmuxkitSpawnReference`, the spawn matcher defined in tmuxkitspawn_test.go.
+// This file names no tmuxkit export, so the tier purity scan never flags it.
 
 package main
 

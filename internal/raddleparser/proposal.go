@@ -1,4 +1,5 @@
-// proposal.go declares the raddle proposal's types, Parse, which decodes the file and refuses an unknown key, and Hash, the approval hash.
+// proposal.go declares the raddle proposal's types.
+// Parse decodes a proposal file and refuses an unknown key; Hash returns the approval hash.
 
 package raddleparser
 
@@ -34,7 +35,7 @@ const (
 const TypeSketch = "sketch"
 
 // Proposal is the decoded proposal file.
-// Project is nil when the file holds no project key.
+// The Project field is nil when the file holds no project key.
 type Proposal struct {
 	Sketch       string       `json:"sketch"`
 	Shape        string       `json:"shape"`
@@ -44,14 +45,15 @@ type Proposal struct {
 	Cost         Cost         `json:"cost"`
 }
 
-// Project is the project a `project` or `beam` shape files: its slug, title and the board type label the agent picked for it.
+// Project is the project a `project` or `beam` shape files:
+// its slug, title and the board type label the agent picked for it.
 type Project struct {
 	Slug  string `json:"slug"`
 	Title string `json:"title"`
 	Type  string `json:"type"`
 }
 
-// BoardCheck is a board entry the agent weighed, with the `revised` stamp it read, RFC 3339.
+// BoardCheck is a board entry the agent weighed, with the `revised` stamp it read, in RFC 3339 form.
 type BoardCheck struct {
 	Slug    string `json:"slug"`
 	Revised string `json:"revised"`
@@ -78,7 +80,8 @@ type Part struct {
 	CostLine        string           `json:"cost_line"`
 }
 
-// PatternCluster moves one PATTERN change of the Sketch onto the live PATTERN.md entry that absorbs it, so the part's record declares that entry.
+// PatternCluster moves one PATTERN change of the Sketch onto the live PATTERN.md entry that absorbs it,
+// so the part's record declares that entry.
 // Text is the live entry's whole new text.
 type PatternCluster struct {
 	SketchID string `json:"sketch_id"`
@@ -86,7 +89,8 @@ type PatternCluster struct {
 	Text     string `json:"text"`
 }
 
-// PatternEntryIDs returns the entry ids the part's record declares: its PatternChanges in order, each one a cluster maps replaced by that cluster's entry.
+// PatternEntryIDs returns the entry ids the part's record declares:
+// its PatternChanges in order, each one a cluster maps replaced by that cluster's entry.
 func (p Part) PatternEntryIDs() []string {
 	ids := slices.Clone(p.PatternChanges)
 	for _, cluster := range p.PatternClusters {
@@ -134,8 +138,12 @@ type CostCell struct {
 }
 
 // Parse decodes the bytes of a proposal file.
-// It refuses a file that is not one JSON object of the spec's form, a value of the wrong type and a key the spec does not pin, each with an error naming the way forward.
-// It finds an unknown key by reading each object a second time as a map of raw values and comparing its keys with the json tags of the type that receives it, and never asks the decoder to disallow unknown fields.
+// It refuses a file that is not one JSON object of the spec's form.
+// It also refuses a value of the wrong type and a key the spec does not pin.
+// Each refusal is an error that names the way forward.
+// It finds an unknown key by reading each object a second time as a map of raw values.
+// It compares the keys of that map with the json tags of the type that receives the object.
+// It never asks the decoder to disallow unknown fields.
 func Parse(data []byte) (Proposal, error) {
 	var raw json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -151,7 +159,8 @@ func Parse(data []byte) (Proposal, error) {
 	return proposal, nil
 }
 
-// rejectUnknownKeys walks raw alongside typ and returns an error naming the first object key, in sorted order, that no json tag of the receiving struct holds.
+// rejectUnknownKeys walks raw alongside typ.
+// It returns an error naming the first object key, in sorted order, that no json tag of the receiving struct holds.
 // A value of the wrong shape is left to the typed decode, which names it.
 func rejectUnknownKeys(raw json.RawMessage, typ reflect.Type, path string) error {
 	for typ.Kind() == reflect.Pointer {

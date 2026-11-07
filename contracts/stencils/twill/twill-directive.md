@@ -1,10 +1,16 @@
-<!-- This is the twill directive: the host-neutral block that has a writer review its own finished record through lenses, one fork per lens, before it ends.
-     internal/twilldirective renders it, and the spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
+<!-- This is the twill directive: the host-neutral block that has a writer review its own finished record through lenses.
+     It spawns one fork per lens, before the writer ends.
+     internal/twilldirective renders it, and the spawning module hands that renderer every host value,
+     so this block names no file, step, verb or section of any one host.
      It declares these required markers:
-     {{.reviewed_files}}, {{.rubric_path}}, {{.lens_list}}, {{.closing_step}}, {{.spawn_point}}, {{.severity_rule}}, {{.lens_report_path}}, {{.lens_report_spec_path}} and {{.judge_steps}}.
+     {{.reviewed_files}}, {{.rubric_path}}, {{.lens_list}}, {{.closing_step}}, {{.spawn_point}}, {{.severity_rule}},
+     {{.lens_report_path}}, {{.lens_report_spec_path}} and {{.judge_steps}}.
      {{.judge_steps}} is filled by Directive with one of the two judge part stencils.
-     {{.closing_step}} is filled by Directive with the line that ends the writer's turn, which runs the final self-check first unless the host's files are checked by a gate after the turn.
-     It also names three optional markers, {{.writer_fork}} and {{.relaunch_rules}}, each filled by Directive with one part stencil and left empty otherwise, and {{.checked_clause}}, which Directive leaves empty when the writer runs no self-check. -->
+     {{.closing_step}} is filled by Directive with the line that ends the writer's turn.
+     That line runs the final self-check first, unless the host's files are checked by a gate after the turn.
+     It also names these optional markers:
+     {{.writer_fork}} and {{.relaunch_rules}}, each filled by Directive with one part stencil and left empty otherwise;
+     and {{.checked_clause}}, which Directive leaves empty when the writer runs no self-check. -->
 
 ## Lens review by forks
 

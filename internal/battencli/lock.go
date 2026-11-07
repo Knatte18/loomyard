@@ -1,4 +1,5 @@
-// lock.go implements the `lock` verb group of batten: `lym batten lock list` shows the hub's parent locks, and `lym batten lock release` frees one whose owner is alive but wedged.
+// lock.go implements the `lock` verb group of batten: `lym batten lock list` shows the hub's parent locks,
+// and `lym batten lock release` frees one whose owner is alive but wedged.
 
 package battencli
 
@@ -17,10 +18,9 @@ import (
 )
 
 // openLockStore resolves the store the lock verbs act on.
-// A test replaces it to skip the hub the real resolution needs, which makes such a test serial.
+// A test that replaces it to skip the hub the real resolution needs must not run in parallel.
 var openLockStore = lockStore
 
-// lockCommand returns the `lock` verb group.
 func lockCommand() *cobra.Command {
 	operator := map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator}
 	group := &cobra.Command{
@@ -61,7 +61,8 @@ func inLockGroup(cmd *cobra.Command) bool {
 	return cmd.Name() == "lock" || (cmd.Parent() != nil && cmd.Parent().Name() == "lock")
 }
 
-// lockStore resolves the cwd, refuses outside the hub's prime worktree and its beams and returns the store at the hub's parent lock directory.
+// lockStore returns the store at the hub's parent lock directory, resolved from the working directory.
+// It refuses a working directory outside the hub's prime worktree and its beams.
 func lockStore(ctx context.Context) (*parentlock.Store, error) {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -79,7 +80,9 @@ func lockStore(ctx context.Context) (*parentlock.Store, error) {
 }
 
 // runLockList prints one entry per parent lock record.
-// A record shows its branch, owner slug, pair, run id and pid, whether the owner is alive, its age from the time it was acquired and its queued waiters oldest first; a record that cannot be read shows its branch and the error.
+// Each entry shows the branch, the owner's slug, pair, run id and pid, and whether the owner is alive.
+// It also shows the age since the lock was acquired and the queued waiters, oldest first.
+// A record that cannot be read shows its branch and the error.
 func runLockList(cmd *cobra.Command, args []string) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -131,7 +134,8 @@ func runLockList(cmd *cobra.Command, args []string) error {
 }
 
 // runLockRelease force-releases the record of the one branch args names, or every record under --all.
-// A branch with no record, a branch beside --all, and neither form are refused naming the way forward.
+// It refuses a branch with no record, a branch given together with --all, and a call with neither form.
+// Each refusal names the way forward.
 func runLockRelease(cmd *cobra.Command, args []string) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil

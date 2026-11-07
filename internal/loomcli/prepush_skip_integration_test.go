@@ -1,4 +1,4 @@
-// prepush_skip_integration_test.go drives the skip closure newPrePushCheck builds against real hub pairs, which prepush_test.go's stub seams cannot reach.
+// prepush_skip_integration_test.go drives the skip closure newPrePushCheck builds against real hub pairs.
 
 package loomcli
 
@@ -12,8 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNewPrePushCheckSkip asserts the skip closure newPrePushCheck builds reads its environment and location as skipsCheck expects:
-// pushes off skip the check, the hub's prime skips it, a pair at Finalize skips it, and a pair with no pause and no status does not.
+// TestNewPrePushCheckSkip asserts the skip closure newPrePushCheck builds reads its inputs as skipsCheck expects.
+// Pushes off skip the check, the hub's prime skips it, and a pair at Finalize skips it;
+// a pair with no pause and no status does not skip it.
 //
 // It is serial because it sets environment variables.
 func TestNewPrePushCheckSkip(t *testing.T) {

@@ -1,4 +1,5 @@
-// settings_test.go covers buildSettings' JSON composition across the deny toggle matrix and the interactive/autonomous split, the absence of any Agent hook and the fork-mode Bash guard, asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and exercises Prepare end to end against a real temp directory.
+// settings_test.go tests the settings document buildSettings builds for a run, across the deny toggles and run modes.
+// It also runs Prepare end to end against a temp directory.
 
 package claudeengine
 
@@ -21,9 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// parseSettings unmarshals data into the generic shape buildSettings
-// produces so tests can assert on it without depending on the unexported
-// settingsDoc type's own (de)serialization.
+// parseSettings unmarshals the JSON from buildSettings into a generic map.
+// Tests assert on that map, not on the typed settings struct's (de)serialization.
 func parseSettings(t *testing.T, data []byte) map[string]any {
 	t.Helper()
 	var doc map[string]any
@@ -72,7 +72,8 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_CreditNoSessionInAHub pins `attribution` as empty commit and pull-request texts in a run document built with a creel flag directory, a path the golden test never reaches.
+// TestBuildSettings_CreditNoSessionInAHub pins `attribution` as empty commit and pull-request texts.
+// The run document is built with a creel flag directory.
 func TestBuildSettings_CreditNoSessionInAHub(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -87,15 +88,21 @@ func TestBuildSettings_CreditNoSessionInAHub(t *testing.T) {
 	}
 }
 
-// stampPrintf is the stamp line command a recording hook runs for hookEventName before its payload, written out by hand so the test pins the line shape.
+// stampPrintf writes out by hand the stamp line a recording hook for hookEventName runs before its payload.
+// Tests pin the line shape against this copy.
 func stampPrintf(hookEventName, quotedEventsPath string) string {
 	return `printf '{"lym_stamp":"` + hookEventName + `","lym_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath
 }
 
-// TestBuildSettings_RecordingHooks pins the recording hooks every document carries: one command entry per event with no tool matcher, each appending a stamp line and then the payload to the events path in its POSIX form.
-// Stop keeps the payload append's exit status, and the other hooks end in `; true` so they exit 0 whatever the append does.
-// Outside a hub, PostToolUse, PreCompact and PostCompact each carry the one command that touches the activity stamp beside the events file and exits 0.
-// A run directory path containing a literal apostrophe (an unusual but legal Windows path character, e.g. a worktree named "operator's-box") must not break out of the hooks' single-quoted shell argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
+// TestBuildSettings_RecordingHooks pins the recording hooks every document carries.
+// Each event gets one command entry with no tool matcher.
+// The entry appends a stamp line and then the payload to the events path in its POSIX form.
+// Stop keeps the payload append's exit status.
+// The other hooks end in `; true`, so they exit 0 whatever the append does.
+// Outside a hub, PostToolUse, PreCompact and PostCompact each carry one command.
+// It touches the activity stamp beside the events file and exits 0.
+// A run directory path with a literal apostrophe must not break out of the hooks' single-quoted shell argument.
+// The embedded quote is escaped with the standard sh idiom.
 //
 //testtiming:keep pins the recording hooks' exact commands and their single-quote escaping, which its covering test does not assert
 func TestBuildSettings_RecordingHooks(t *testing.T) {
@@ -162,7 +169,9 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 }
 
 // TestBuildSettings_SessionStartHook pins the SessionStart entries: every source is recorded exactly once.
-// An empty command gives one recording entry with no matcher; otherwise the sources but compaction record in one entry, and the compaction entry runs the recording command ending in `; true` and then the given command verbatim.
+// An empty command gives one recording entry with no matcher.
+// Otherwise the sources other than compaction record in one entry.
+// The compaction entry runs the recording command, which ends in `; true`, and then the given command verbatim.
 func TestBuildSettings_SessionStartHook(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -217,7 +226,8 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 }
 
 // TestHookContext pins the exact JSON the session-start hook and creel's hook output print, with the text escaped:
-// the mail is the additional context and the operator's system message is the echo, the mail after a tool call with no echo, and no output carries a decision or a reason.
+// The mail is the additional context, and the operator's system message is the echo.
+// The mail after a tool call comes with no echo, and no output carries a decision or a reason.
 func TestHookContext(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -252,7 +262,10 @@ func TestHookContext(t *testing.T) {
 }
 
 // TestBuildSettings_CreelMailHook pins the creel hooks in a hub and out of one:
-// the PostToolUse mail hook as an entry with no matcher after the activity stamp, testing the flag directory it is told, and the two Stop entries, the merged turn-end command and the idle waiter with asyncRewake and its 86400-second timeout.
+// PostToolUse carries the mail hook, an entry with no matcher after the activity stamp.
+// The hook checks the flag directory it is given.
+// Stop carries two entries: the merged turn-end command, and the idle waiter.
+// The idle waiter sets asyncRewake and an 86400-second timeout.
 // Told no flag directory, PostToolUse carries the activity stamp alone and Stop the one plain recording.
 func TestBuildSettings_CreelMailHook(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -339,9 +352,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}{
 		{"all_off_autonomous", false, false, false, false, false, false},
 		{"askuser_on_autonomous", true, false, true, false, false, false},
-		// Interactive runs always carry the non-denying AskUserQuestion
-		// marker entry, regardless of DenyAskUserQuestion — the deny
-		// is autonomous-only and the two are mutually exclusive.
+		// Interactive runs always carry the non-denying AskUserQuestion marker entry, regardless of DenyAskUserQuestion.
+		// The deny is autonomous-only, and the marker and the deny are mutually exclusive.
 		{"askuser_on_interactive_marker_not_deny", true, true, true, false, false, false},
 		{"askuser_off_interactive_marker_still_present", false, true, true, false, false, false},
 		{"askuser_on_fork", true, false, true, false, true, false},
@@ -384,8 +396,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				t.Errorf("AskUserQuestion PreToolUse entry present = %v; want %v (preToolUse: %v)", present, tt.wantAskUserEntry, preToolUse)
 			}
 			if present && tt.interactive {
-				// The interactive marker must be non-denying (no deny JSON)
-				// and must be the Stop hook's command with its stamp naming PreToolUse.
+				// The interactive marker must be non-denying, with no deny JSON.
+				// It must equal the Stop hook's command, with its stamp naming PreToolUse.
 				if strings.Contains(command, "permissionDecision") {
 					t.Errorf("interactive AskUserQuestion command = %q; want no deny JSON", command)
 				}
@@ -445,7 +457,9 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 }
 
-// TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row, the refuse-raw row of a non-empty list included, has exactly one standingDeniesFor entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.
+// TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row has exactly one standingDeniesFor entry.
+// Each entry has matcher Bash and carries its row's steer and notice and the command shape of its pattern count.
+// The refuse-raw row of a non-empty list is included, in table order after the Claude rows.
 func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -474,15 +488,14 @@ func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_NoForbiddenCharsInSteerText pins that no steer constant carries a character that would corrupt the hook command it rides in.
+// TestBuildSettings_NoForbiddenCharsInSteerText pins that no steer or notice text carries a forbidden character.
 //
 //testtiming:keep a guard that fires when a steer constant gains a forbidden character, which no covering test asserts
 func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	tiergate.Require(t, 0)
-	// Each steer constant rides inside a JSON string literal (so a literal
-	// `"` or `\` would corrupt the payload) nested inside a single-quoted
-	// echo argument under git-bash (so a literal `'` would corrupt the
-	// hook command) — all three characters must stay absent.
+	// Each steer constant rides inside a JSON string literal, so a literal `"` or `\` would corrupt the payload.
+	// The JSON sits inside a single-quoted echo argument under git-bash, so a literal `'` would corrupt the hook command.
+	// All three characters must stay absent.
 	for _, deny := range standingDeniesFor(sampleRefuseRaw) {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, deny.steer)
@@ -493,7 +506,8 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	}
 }
 
-// matcherCommands returns the first command of every PreToolUse entry with the given matcher; an entry with no hooks contributes an empty command.
+// matcherCommands returns the first command of every PreToolUse entry with the given matcher.
+// An entry with no hooks contributes an empty command.
 func matcherCommands(doc map[string]any, matcher string) []string {
 	var commands []string
 	for _, e := range hooksFor(doc, "PreToolUse") {
@@ -513,9 +527,13 @@ func matcherCommands(doc map[string]any, matcher string) []string {
 	return commands
 }
 
-// TestBuildSettings_NoAgentHookAndForkGuard covers how forkSubagents and the AskUserQuestion switch decide the PreToolUse entries beside the shell guards, and that no input installs an Agent entry.
-// Beside the always-installed raw go, shell-edit, computed-rm, sleep and headless claude denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
-// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lym webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
+// TestBuildSettings_NoAgentHookAndForkGuard covers the PreToolUse entries that forkSubagents and AskUserQuestion decide.
+// It also checks that no input installs an Agent entry.
+// The raw go, shell-edit, computed-rm, sleep and headless claude denies are the Bash entries every document carries.
+// The fork-loop-deadlock guard is the only other Bash entry, so no run mode installs a Bash stdin rewrite.
+// A fork-mode run emits a PreToolUse(Bash) hook that denies a call with steerWebsterForkDeny.
+// It matches only a fork-context agent_id together with a `lym webster` command.
+// The hook always exits 0 through the trailing `; true`.
 // The guard is absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
 //testtiming:keep pins the Agent and Bash PreToolUse entries for every fork and AskUserQuestion combination, which its covering test does not assert
@@ -552,7 +570,8 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 				t.Errorf("Agent PreToolUse entries = %q; want none (data: %s)", agentCommands, data)
 			}
 
-			// The raw go, shell-edit, computed-rm, sleep and headless claude denies are installed under every input; the rest of the Bash entries are the fork guard.
+			// The raw go, shell-edit, computed-rm, sleep and headless claude denies are installed under every input;
+			// the rest of the Bash entries are the fork guard.
 			var bashCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
@@ -600,7 +619,8 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 						t.Errorf("Bash guard command = %q; want it to contain %q", command, want)
 					}
 				}
-				// A non-matching grep exits non-zero; the trailing `; true` keeps the hook's own exit code 0 so a non-fork/non-webster call is allowed, never a spurious hook error.
+				// A non-matching grep exits non-zero, and the trailing `; true` keeps the hook's exit code 0.
+				// A non-fork or non-webster call is therefore allowed rather than reported as a hook error.
 				if !strings.HasSuffix(command, "; true") {
 					t.Errorf("Bash guard command = %q; want it to end with `; true` so a non-deny path exits 0", command)
 				}
@@ -626,8 +646,9 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 }
 
 // TestPrepare_PromptLaunchLimit pins that the launch line carries a pointer to prompt.md, never the prompt text,
-// so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
-// Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
+// so a prompt too large for the launch line still launches, and prompt.md holds all of it.
+// Only a pointer over maxLaunchPromptBytes is rejected, which a pathological run-directory path can cause.
+// The rejection happens before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := shuttleengine.Config{}
@@ -676,7 +697,9 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	})
 }
 
-// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory and marks the launch CreelHooks, and that an engine in no hub writes the activity stamp alone on PostToolUse and marks nothing.
+// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins the creel flag directory Prepare derives from the board.
+// It marks the launch CreelHooks.
+// An engine in no hub writes the activity stamp alone on PostToolUse and marks nothing.
 func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -744,7 +767,8 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	}
 }
 
-// TestPrepare_WritesArtifactsAndReturnsConsistentLaunch pins the artifacts Prepare leaves on disk and that the launch and resume lines agree with them.
+// TestPrepare_WritesArtifactsAndReturnsConsistentLaunch pins the artifacts Prepare leaves on disk.
+// It also pins that the launch and resume lines agree with them.
 //
 //testtiming:keep pins the prompt.md, settings.json and bash-env.sh contents and the env-file lead on both lines, which its covering test does not assert
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
@@ -828,7 +852,9 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		t.Errorf("Launch.ResumeCmd = %q; want it to lead with %q", launch.ResumeCmd, wantLead)
 	}
 
-	// The refuse list comes from the gate config under the engine's dirs: a seeded list reaches settings.json and the notice, an absent file adds no row, and an unparsable file refuses the spawn before any artifact.
+	// The refuse list comes from the gate config under the engine's dirs:
+	// a seeded list reaches settings.json and the notice, an absent file adds no row,
+	// and an unparsable file refuses the spawn before any artifact.
 	var refuseRow shellguard.Row
 	for _, row := range shellguard.Rows(bashForegroundPhrase, []string{"go test"}) {
 		if row.Name == "refuse-raw" {
@@ -897,7 +923,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	}
 }
 
-// TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs, over every deny combination.
+// TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs.
+// It checks every deny combination.
 //
 //testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the append-system-prompt.txt file
 func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
@@ -941,7 +968,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 	}
 }
 
-// TestBuildDenyNotice_SentenceContent pins the wording the notices carry in the autonomous, interactive and fork run modes.
+// TestBuildDenyNotice_SentenceContent pins the notice wording of the autonomous, interactive and fork run modes.
 //
 //testtiming:keep pins the computed-rm, sleep, headless claude, gate rule and final-message wording of the notice, which its covering test does not assert
 func TestBuildDenyNotice_SentenceContent(t *testing.T) {
@@ -977,7 +1004,8 @@ func goldenLabel(interactive, fork, denyAsk, denyPython bool) string {
 	return fmt.Sprintf("interactive=%t fork=%t denyAsk=%t denyPython=%t", interactive, fork, denyAsk, denyPython)
 }
 
-// TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte across every combination of the four deny inputs.
+// TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte.
+// It covers every combination of the four deny inputs.
 func TestBuildSettings_MatchesGolden(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,4 @@
-// discussion_test.go — untagged Tier-1 unit tests shared by the loom producers' prompts and the twill fixtures DiscussionTable's tests use.
+// discussion_test.go — untagged Tier-1 unit tests for the loom producers' prompts and the shared twill fixtures.
 // Pure Go over an in-memory Config and a temp-dir modelspec registry;
 // no live hub, reed, or network involved.
 
@@ -40,8 +40,9 @@ func lensNames(resolved []lenses.Lens) []string {
 	return names
 }
 
-// TestProducerSpecs_SkillsAndParentDirective verifies each loom producer carries its role's skills in order, names the told parent in its prompt, and renders the no-parent variant for an empty name.
-// Every row reads the lead's skills and prompt from its table through seatengine.Prompts under a geometry naming the parent.
+// TestProducerSpecs_SkillsAndParentDirective verifies each loom producer carries its role's skills in order.
+// It checks that the prompt names the told parent, and that an empty parent renders the no-parent variant.
+// Every row reads the lead's skills and prompt through seatengine.Prompts, under a geometry that names the parent.
 // The operator-ban line is absent only for the interactive Discussion.
 func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -55,7 +56,8 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	// leadOfTable returns the lead's skills and prompt of the table build makes over a seeded stencils directory, composed under a geometry naming parent.
+	// leadOfTable builds a table over a seeded stencils directory and returns the lead's skills and prompt.
+	// The prompt is composed under a geometry that names parent.
 	leadOfTable := func(build func(stencilsDir string) (seatengine.Table, error), parent string) ([]string, string, error) {
 		stencilsDir := newTestStencilsDir(t)
 		table, err := build(stencilsDir)

@@ -1,5 +1,7 @@
-<!-- This is the twill critical-judge part: the host-neutral steps that have the writer judge each lens finding as a critical fixer and record each disposition.
-     internal/twilldirective renders it into the twill directive for a host that asks for the critical fixer, and the spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
+<!-- This is the twill critical-judge part: the host-neutral steps that have the writer judge each lens finding as a critical fixer.
+     The writer also records each disposition.
+     internal/twilldirective renders it into the twill directive for a host that asks for the critical fixer.
+     The spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
      It declares these required markers:
      {{.governing_input}}, {{.dispute_evidence}} and {{.disposition_place}}. -->
 

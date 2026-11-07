@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// Command returns the help command: `help [<command>...]` prints the help of the named command, and `help index` prints the command index.
+// Command returns the help command.
+// `help [<command>...]` prints the help of the named command, and `help index` prints the command index.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "help [<command>...]",
@@ -104,12 +105,14 @@ The default audience is operator.`,
 	return cmd
 }
 
-// RunCLI is the public seam for the help module CLI.
+// RunCLI runs the help module CLI on args, writing to out, and returns its exit code.
+// It reads the process's working directory.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd", any other value seeds cwd into the execution context.
+// RunCLIIn runs the help module CLI on args, writing to out, and returns its exit code.
+// An empty cwd reads the process's working directory; any other value is seeded into the execution context as cwd.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

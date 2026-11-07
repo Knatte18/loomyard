@@ -30,13 +30,15 @@ func (c *waitChild) read(string, string) (shedengine.Status, bool, error) {
 	return c.current, true, nil
 }
 
-// TestInnerRun_WaitEndsOnlyOnAnEvent drives one running child through the events that end a pass and the writes it must notice.
+// TestInnerRun_WaitEndsOnlyOnAnEvent drives a running child through the events that end a pass.
+// It also covers the writes the pass must notice.
 func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 	tiergate.Require(t, 0)
 	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}
 	blocked := shedengine.Status{State: shedengine.StateBlocked, Error: "halted", CurrentProducer: "Plan-Review"}
 
-	// newWait builds the deps of a running fake child whose clock advances one second per pass, and returns a constructor of its producer, to be called once the test has adjusted the deps.
+	// newWait builds the deps of a running fake child whose clock advances one second per pass.
+	// It returns a constructor of the producer, to be called once the test has adjusted the deps.
 	newWait := func(t *testing.T, probe time.Duration) (*fakeClock, *waitChild, *InnerRunDeps, func() shedengine.ShedProducer) {
 		t.Helper()
 		clock := &fakeClock{}
@@ -195,7 +197,9 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 	})
 }
 
-// TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker asserts the producer keeps the batten-watched marker's answer: asked once at the start of every pass, an error read as not held with one Warn per change of answer across passes, and a nil seam read as not held.
+// TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker asserts the producer keeps the batten-watched marker's answer.
+// The producer asks once at the start of every pass.
+// An error reads as not held, with one Warn per change of answer across passes, and a nil seam reads as not held.
 func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 	tiergate.Require(t, 0)
 	// passesUntilPause runs one fresh producer per pass until the pause ends the run, and returns the last producer.
@@ -260,7 +264,9 @@ func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 	})
 }
 
-// TestInnerRun_SpawnHoldYields asserts a pass at Run-Shed under a covering pause yields at once with the pause reason and spawns nothing, and that a pause lifted between two Calls lets the second one spawn.
+// TestInnerRun_SpawnHoldYields asserts that a pass at Run-Shed under a covering pause yields at once.
+// It reports the pause reason and spawns nothing.
+// A pause lifted between two Calls lets the second Call spawn.
 func TestInnerRun_SpawnHoldYields(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,6 +1,6 @@
 # Proposal: how to build `reed` (single-worktree agent stack)
 
-> **Status:** proposal, separate from the older reed design (superseded — reed is now built as `internal/reedengine`; see the package documentation and [overview.md#modules](overview.md#modules)). It folds in the hands-on findings from [`research/reed/reed-hooks-exploration.md`](research/reed/reed-hooks-exploration.md) and the proven primitives in [`muxpoc.md`](overview.md#modules), and it adopts a **module split** (below). Nothing here is built yet. When accepted, the reed design should be re-scoped to match (its "column per worktree" content moves to `mplex`).
+> **Status:** proposal. Reed is built as `internal/reedengine` (see its package documentation and [overview.md#modules](overview.md#modules)), which does not necessarily implement this design, and `mplex` is not built. The proposal folds in the hands-on findings from [`research/reed/reed-hooks-exploration.md`](research/reed/reed-hooks-exploration.md) and the primitives proven in the muxpoc prototype, and it adopts a **module split** (below).
 
 ## The module split (recommended)
 
@@ -11,7 +11,8 @@ Two modules, built in priority order:
 | **`reed`** | **One worktree at a time.** You open a terminal in the worktree you're working in (as today); reed runs the tmux session *for that worktree* — an **orchestrator claude plus the sub-agents it spawns**, stacked as visible panes you can watch and type in. | **Now** |
 | **`mplex`** | **Many worktrees.** One tmux instance with **a column per work-folder**, tiling several worktrees at once. | **Later / low** |
 
-This split is endorsed because the single-worktree agent stack is where the hard parts are already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's event-driven model lands cleanly. `mplex` is additive layout work that can reuse `claude agents --json --cwd` and the supervisor for cross-worktree discovery — it loses nothing by waiting.
+This split is endorsed because the single-worktree agent stack is where the hard parts are already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's event-driven model lands cleanly.
+`mplex` is additive layout work that can reuse `claude agents --json --cwd` and the supervisor for cross-worktree discovery, so it loses nothing by waiting.
 
 The rest of this doc is **`reed` only**. `mplex` is sketched briefly at the end.
 
@@ -55,11 +56,15 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
      }
    }
    ```
-   - `Stop` is the **immediate** idle/needs-input edge (carries `last_assistant_message` + `background_tasks`) → on it, reed `select-pane`s focus back to the parent / next active pane.
+   - `Stop` is the **immediate** idle/needs-input edge and carries `last_assistant_message` + `background_tasks`.
+     On it, reed `select-pane`s focus back to the parent / next active pane.
    - `SessionStart` confirms/repairs the pane↔session map (carries the child's own `session_id`).
-   - **`lyx` is invoked PATH-resolved** so the git-bash hook executor finds it (a literal Windows path with backslashes is destroyed by bash — verified failure).
+   - **`lyx` is invoked PATH-resolved** so the git-bash hook executor finds it.
+     A literal Windows path with backslashes is destroyed by bash (verified failure).
 6. **Deny-guardrail keeps work visible.**
-   The `PreToolUse` matcher on `Agent` **denies** the in-process Agent tool and injects a reason steering the model to run `lyx reed spawn` instead — so nested delegation can't slip back to an invisible in-process subagent. (Deny path is a pending spike.)
+   The `PreToolUse` matcher on `Agent` **denies** the in-process Agent tool and injects a reason steering the model to run `lyx reed spawn` instead.
+   Nested delegation then cannot slip back to an invisible in-process subagent.
+   The deny path is a pending spike.
 7. **Layout: bottom-active-dominant vertical stack**, hand-rendered `window_layout` string (preset layouts can't express "bottom dominant");
    checksum reproducible in Go.
    Proven in muxpoc.
@@ -78,7 +83,8 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
   reed launches the child in a new bottom pane (decisions 1–5).
 - **Result out — the load-bearing part:** the child writes its **structured result to a file** (JSON / `<brief>.out.md`);
   the orchestrator reads that file.
-  *This file hand-off is what makes the child "return" the way the Agent tool's return value does.* `capture-pane` is a **liveness fallback only**, never the result channel.
+  *This file hand-off is what makes the child "return" the way the Agent tool's return value does.*
+  `capture-pane` is a **liveness fallback only**, never the result channel.
 - **Lifecycle:** the parent blocks on the child;
   while it runs the child is the active, dominant bottom pane;
   on the child's `Stop`, focus returns to the parent.
@@ -107,21 +113,26 @@ Stacking to ≤3 deep, `resume`, `status`, and the deny-guardrail come right aft
 **Do these spikes before committing the design:**
 1. **Result contract** — child-writes-file ↔ parent-reads, with a real reviewer brief.
 2. **Deny-guardrail** — confirm `PreToolUse(Agent)` deny + steer actually redirects the model to `lyx reed spawn`.
-3. **Orchestrator bootstrap + pre-granted permissions** — so it can run `lyx reed spawn` autonomously without hanging on a permission prompt (`--dangerously-skip-permissions` or a scoped allowlist).
+3. **Orchestrator bootstrap + pre-granted permissions** — so it can run `lyx reed spawn` autonomously without hanging on a permission prompt.
+   The options are `--dangerously-skip-permissions` or a scoped allowlist.
 
 ## Out of scope for `reed`
 
 - **Multi-worktree tiling** → `mplex` (below).
-- **Headless / fire-and-forget agents + monitoring** → could later use Claude Code's **supervisor** (`claude --bg`, `state`/`logs`/needs-input from `claude agents --json`) — see [`research/reed/reed-hooks-exploration.md` §D](research/reed/reed-hooks-exploration.md).
-  Deliberately not the interactive path (latency), but a natural home for "dispatch and walk away" work and the Slack signal (`state==blocked` = needs human).
+- **Headless / fire-and-forget agents + monitoring** → could later use Claude Code's **supervisor**.
+  The supervisor is `claude --bg`, with `state`/`logs`/needs-input from `claude agents --json`;
+  see [`research/reed/reed-hooks-exploration.md` §D](research/reed/reed-hooks-exploration.md).
+  It is not the interactive path (latency), but a natural home for "dispatch and walk away" work.
+  It also carries the Slack signal (`state==blocked` = needs human).
 
 ---
 
 ## `mplex` (future, low priority — sketch only)
 
-One tmux instance, **a column per worktree**, tiling several worktrees at once (the old reed design's "v1").
+One tmux instance, **a column per worktree**, tiling several worktrees at once.
 It composes over `reed`: each column is a worktree's orchestrator.
-Cross-worktree discovery can reuse **`claude agents --json --cwd <repo>`** (sessions per subtree) and the supervisor for headless columns.
+Cross-worktree discovery can reuse **`claude agents --json --cwd <repo>`** (sessions per subtree).
+The supervisor can serve headless columns.
 Overflow/orchestrator-switch via tmux **windows** inside one attached client (proven in `reed-exploration.md`).
 Build only after `reed` is solid.
 
@@ -129,7 +140,8 @@ Build only after `reed` is solid.
 
 ## Relationship to existing docs
 
-- [`muxpoc.md`](overview.md#modules) — already proves spawn, dominant-bottom layout, and crash recovery;
+- The muxpoc prototype, which is not in this repository, proves spawn, dominant-bottom layout, and crash recovery;
   `reed` productionises it.
 - [`research/reed/reed-hooks-exploration.md`](research/reed/reed-hooks-exploration.md) — the evidence for decisions 1, 4–6, 8–9 and the §A-vs-§D split.
-- `internal/reedengine` (see the package documentation and [overview.md#modules](overview.md#modules)) — the as-built module this proposal informed (its column-per-worktree part remains a candidate for a future `mplex`).
+- `internal/reedengine` (see its package documentation and [overview.md#modules](overview.md#modules)) is the built module this proposal informed.
+  Its column-per-worktree part remains a candidate for a future `mplex`.

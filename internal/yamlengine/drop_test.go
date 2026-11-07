@@ -6,7 +6,9 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// TestDropKeys pins which keys are removed with their comments, the reported lines, that a document without the keys comes back byte-identical, and the refusal of a document with no mapping root.
+// TestDropKeys pins which keys are removed with their comments and which lines are reported.
+// It also pins that a document without the keys comes back byte-identical,
+// and that a document with no mapping root is refused.
 func TestDropKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

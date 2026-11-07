@@ -1,9 +1,12 @@
-<!-- This is the landing Describe session's entire instruction set. It is shipped as an embedded
-     default in the top-level stencils package (stencils/stencils.go), seeded to
-     the Bolt checkout's `_lym/stencils/landing/`, and read from there at call time by internal/seatengine,
-     which fills it from the lead's value map that landingshed's DescribeTable builds, then hands it to shuttle as the describing agent's whole
-     prompt. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
-     marker non-empty, parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the landing Describe session's entire instruction set.
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
+     seeded to the Bolt checkout's `_lym/stencils/landing/`.
+     internal/seatengine reads it from there at call time.
+     It fills the template from the lead's value map, which landingshed's DescribeTable builds.
+     It then hands the result to shuttle as the describing agent's whole prompt.
+     Every marker below is a top-level {{.X}} substitution, and stencil.FillWith requires each to be non-empty.
+     internal/parentdirective renders parent_directive, and internal/editdirective renders edit_directive unconditionally.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Change description — write the one description this task lands under
 

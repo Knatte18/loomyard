@@ -1,4 +1,5 @@
-// batchpause.go holds the up-front refusal begin-batch, recover-batch, fix-verify and fix-plan make under a pause, and the lookup of Master's own strand that refusal claims into the pause.
+// batchpause.go holds the up-front refusal that begin-batch, recover-batch, fix-verify and fix-plan make under a pause.
+// It also holds the lookup of Master's own strand, which that refusal claims into the pause.
 
 package webstercli
 
@@ -12,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// envMasterStrand returns the lookup of the calling strand's name and guid: the name is read from the strand-name environment variable and the guid is resolved from it through resolve.
+// envMasterStrand returns a lookup of the calling strand's name and guid:
+// the name is read from the strand-name environment variable, and the guid is resolved from it through resolve.
 // An unset or empty variable is an error naming it, and a resolve error is returned as is.
 func envMasterStrand(resolve func(name string) (string, error)) func() (name, guid string, err error) {
 	return func() (string, string, error) {
@@ -28,14 +30,17 @@ func envMasterStrand(resolve func(name string) (string, error)) func() (name, gu
 	}
 }
 
-// refuseCoveredBatch returns the refusal message of a batch verb a pause holds, or the empty string when the verb goes on.
-// It is refuseCovered for the call `<verb> <batch>`.
+// refuseCoveredBatch returns the refusal message for `<verb> <batch>` when a pause holds the pair.
+// It returns the empty string when the call goes on.
+// The message says that the verb starts no new batch while a running batch finishes.
 func (c *websterCLI) refuseCoveredBatch(verb, batch string) string {
 	return c.refuseCovered(verb+" "+batch, verb+" starts no new batch", "a running batch finishes, and ")
 }
 
-// refuseCovered returns the refusal message of the `lym webster <call>` a pause holds, or the empty string when the call goes on.
-// held says what the refused call does not start, and running, empty or ending in a space, what keeps running meanwhile.
+// refuseCovered returns the refusal message for `lym webster <call>` when a pause holds the pair.
+// It returns the empty string when the call goes on.
+// held says what the refused call does not start.
+// running says what keeps running meanwhile; it is empty or ends in a space.
 // Under a covering entry it claims Master into the pause, so `lym tender resume` gives Master its resume line;
 // a Master that cannot be claimed is refused with a way forward that needs no resume line.
 // A pair with no pause geometry, an unreadable record and an entry lifted before the claim all go on.

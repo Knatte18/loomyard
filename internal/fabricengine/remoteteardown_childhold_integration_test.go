@@ -1,4 +1,5 @@
-// remoteteardown_childhold_integration_test.go covers the parent's side of the teardown handover over a started stand-in child process.
+// remoteteardown_childhold_integration_test.go covers the parent's side of the teardown handover.
+// It runs over a started stand-in child process.
 // It pins how spawnTeardownHold reads the child's answer and registers the child.
 // It pins what childHold.finish writes to the child's input, how it closes it, and whether it waits for the child.
 
@@ -27,7 +28,10 @@ const teardownStandInArg = "teardown-standin"
 
 // runTeardownStandIn plays the teardown child of slug in the way mode names and returns the process's exit code.
 // It runs from the hub's Bolt checkout, as the real child does.
-// held creates the lock file, answers held and reads its input until it closes; busy answers busy; error answers an error line and fails; closed ends with no answer.
+// held creates the lock file, answers held and reads its input until it closes;
+// busy answers busy;
+// error answers an error line and fails;
+// closed ends with no answer.
 func runTeardownStandIn(mode, slug string) int {
 	switch mode {
 	case "held":
@@ -54,8 +58,10 @@ func runTeardownStandIn(mode, slug string) int {
 }
 
 // TestSpawnTeardownHold covers the process boundary of the handover over a stand-in child:
-// a held answer returns a hold, records the lock file the child made and registers the child under the slug with the teardown role;
-// a busy answer returns the refusal of its mode; an error line or a closed output returns an error naming the answer, and records nothing.
+// a held answer returns a hold and records the lock file the child made;
+// it registers the child under the slug with the teardown role.
+// A busy answer returns the refusal of its mode.
+// An error line or a closed output returns an error naming the answer, and records nothing.
 func TestSpawnTeardownHold(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -128,7 +134,8 @@ func TestSpawnTeardownHold(t *testing.T) {
 	}
 }
 
-// TestChildHold_Finish_NoticesAnUnwritableJob covers a job the child never receives: the one creel notice names the slug and the reason.
+// TestChildHold_Finish_NoticesAnUnwritableJob covers a job the child never receives:
+// the one creel notice names the slug and the reason.
 // It installs the process's push notifier, so it is not parallel.
 func TestChildHold_Finish_NoticesAnUnwritableJob(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -152,7 +159,8 @@ func TestChildHold_Finish_NoticesAnUnwritableJob(t *testing.T) {
 	}
 }
 
-// recordingStdin is a child's input that records what is written to it and whether it was closed, and fails every write when writeErr is set.
+// recordingStdin is a child's input that records what is written to it and whether it was closed;
+// it fails every write when writeErr is set.
 type recordingStdin struct {
 	bytes.Buffer
 	writeErr error
@@ -172,7 +180,9 @@ func (s *recordingStdin) Close() error {
 }
 
 // TestChildHold_Finish covers the parent's side of the handover:
-// a job is written to the child and handed over at once, a job that cannot be written still closes the input, and no job closes the input and waits for the child to exit.
+// a job is written to the child and handed over at once;
+// a job that cannot be written still closes the input;
+// no job closes the input and waits for the child to exit.
 func TestChildHold_Finish(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -222,8 +232,9 @@ func TestChildHold_Finish(t *testing.T) {
 	}
 }
 
-// TestChildHold_Finish_CarriesThePauseExemption covers the exemption the job carries to the child:
-// set while this process's gate exempts every pause, clear otherwise, and never set on the caller's own job.
+// TestChildHold_Finish_CarriesThePauseExemption covers the pause exemption that the job carries to the child.
+// The exemption is set while this process's gate exempts every pause, and it is clear otherwise.
+// It is never set on the caller's own job.
 // It installs a process-wide gate, so neither the test nor its rows are parallel.
 func TestChildHold_Finish_CarriesThePauseExemption(t *testing.T) {
 	tiergate.Require(t, 1)

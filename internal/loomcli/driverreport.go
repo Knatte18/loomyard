@@ -1,6 +1,5 @@
-// driverreport.go implements the per-attempt drive report path: a pure composer over injected clock
-// and random seams, and the one production entropy source it composes over. It lives beside
-// bootstrap.go per the pure-decisions-live-in-bootstrap-go Shared Decision.
+// driverreport.go composes the path of one loom driver attempt's drive report.
+// It also holds the one production entropy source that path composes over.
 
 package loomcli
 
@@ -15,33 +14,34 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// driverReportPath composes the path to one loom driver attempt's drive report, under the run's durable drive-reports directory: shedrun.DriveReportsDir(l, runID) joined with sheddriver.ReportFileName's "drive-report-<compact-timestamp>-<4-hex>.md".
+// driverReportPath composes the path to one loom driver attempt's drive report.
+// The path is shedrun.DriveReportsDir(l, runID) joined with the file name that sheddriver.ReportFileName builds.
+// The file name has the form "drive-report-<compact-timestamp>-<4-hex>.md".
 //
 // now and rand are injected seams rather than read directly, so this composer stays pure and a test
-// can drive it with no real clock and no real entropy source. Both halves of the suffix are
-// load-bearing. The timestamp, from now(), is what keeps a directory listing of past attempts
-// readable in chronological order. The random component, from rand(), is what keeps a same-second
-// relaunch legal: Spec.validate rejects an output file that already exists, so a second bootstrap
-// after a driver stopped must not name the report the first one wrote -- and a same-second relaunch
-// is not hypothetical, since corpse removal plus a fresh start inside one second is exactly what
-// batch 7's instantly-exiting stub pane produces.
+// can drive it with no real clock and no real entropy source.
+// Both halves of the suffix are load-bearing.
+// The timestamp, from now(), keeps a directory listing of past attempts in chronological order.
+// The random part, from rand(), keeps a same-second relaunch legal.
+// `Spec.validate` rejects an output file that already exists,
+// so a relaunch after a driver stopped must not name the report the first attempt wrote.
 //
 // The directory is durable, so the reports can be committed and survive teardown.
-// It is composed through shedrun.DriveReportsDir and never by spelling "_lym" or "shed" in this package: the Lymdirs Single-Declarer Invariant and the Shed Run-Directory Invariant both make that a shedrun obligation.
+// The directory comes from shedrun.DriveReportsDir.
+// This package never spells the run-directory layout out, since shedrun owns it.
 func driverReportPath(l *lymcwd.Location, runID string, now func() time.Time, rand func() string) string {
 	return filepath.Join(shedrun.DriveReportsDir(l, runID), sheddriver.ReportFileName(now(), rand()))
 }
 
-// newDriverReportRand returns the production random source driverReportPath's rand seam consumes: a
-// closure reading crypto/rand and rendering four lowercase hex characters. It is the only place in
-// this package that reads a real entropy source, so driverReportPath itself stays pure.
+// newDriverReportRand returns the production random source for driverReportPath's rand seam.
+// It is a closure that reads crypto/rand and renders four lowercase hex characters.
+// It is the only place in this package that reads a real entropy source, so driverReportPath stays pure.
 func newDriverReportRand() func() string {
 	return func() string {
 		var b [2]byte
-		// A read failure here is not treated specially: rand.Read against crypto/rand's global
-		// reader practically never fails, and this suffix's job is collision-avoidance, not
-		// cryptographic security, so a zeroed buffer degrading to "0000" costs nothing worse than a
-		// same-second collision the timestamp component already makes unlikely.
+		// A read failure is not handled here: rand.Read on crypto/rand's global reader practically never fails.
+		// The suffix only avoids collisions, not guesses,
+		// so a zeroed buffer printing "0000" risks only a same-second collision, which the timestamp already makes unlikely.
 		_, _ = rand.Read(b[:])
 		return fmt.Sprintf("%04x", b)
 	}

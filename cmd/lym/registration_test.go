@@ -1,7 +1,6 @@
-// registration_test.go is a repo-wide guard that verifies every internal package exposing func
-// Command() *cobra.Command is wired into newRoot() in cmd/lym/main.go.
-// It uses source-level AST analysis so it catches missed registrations at test time without
-// executing any module code or performing live cobra tree introspection.
+// registration_test.go guards that every internal package with func Command() *cobra.Command is wired into newRoot().
+// The check reads the source's AST, so it catches a missed registration at test time.
+// It runs no module code and performs no live cobra tree introspection.
 
 package main
 
@@ -22,20 +21,15 @@ func isCommandFunc(fd *ast.FuncDecl) bool {
 	if fd.Name.Name != "Command" {
 		return false
 	}
-	// Must be a package-level function, not a method on a receiver type.
 	if fd.Recv != nil {
 		return false
 	}
-	// No input parameters — Command() takes nothing.
 	if fd.Type.Params.NumFields() != 0 {
 		return false
 	}
-	// Exactly one result field.
 	if fd.Type.Results == nil || fd.Type.Results.NumFields() != 1 {
 		return false
 	}
-	// Result type must be *cobra.Command: a StarExpr whose X is a SelectorExpr
-	// with pkg "cobra" and selector "Command".
 	star, ok := fd.Type.Results.List[0].Type.(*ast.StarExpr)
 	if !ok {
 		return false
@@ -102,12 +96,10 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 		if !ok {
 			return true
 		}
-		// Look for a selector call whose method is "AddCommand" or "SetHelpCommand" (e.g. root.AddCommand).
 		sel, ok := call.Fun.(*ast.SelectorExpr)
 		if !ok || (sel.Sel.Name != "AddCommand" && sel.Sel.Name != "SetHelpCommand") {
 			return true
 		}
-		// Each argument must be of the form <ident>.Command(); collect the ident name.
 		for _, arg := range call.Args {
 			argCall, ok := arg.(*ast.CallExpr)
 			if !ok {

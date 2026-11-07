@@ -57,7 +57,8 @@ var tmuxColors = map[Color]string{
 	Red:    "red",
 }
 
-// TmuxColor returns the tmux color name for a palette color, and false for a color outside the palette.
+// TmuxColor returns the tmux color name for a palette color.
+// The bool result is false for a color outside the palette.
 func TmuxColor(c Color) (string, bool) {
 	name, ok := tmuxColors[c]
 	return name, ok

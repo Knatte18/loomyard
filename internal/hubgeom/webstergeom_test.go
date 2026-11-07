@@ -1,8 +1,8 @@
-// webstergeom_test.go pins WebsterGeometry against the websterengine accessors, planparser.PlanDir
-// and fabricengine.StencilsDir themselves, so this test cannot drift from those packages' own joins.
-// Following hubgeom_test.go's fixture discipline, hub, worktree root, and anchor path stay three
-// distinct directories so a field mix-up inside WebsterGeometry surfaces instead of passing
-// silently.
+// webstergeom_test.go pins WebsterGeometry against the websterengine accessors.
+// It also pins it against planparser.PlanDir and fabricengine.StencilsDir,
+// so this test cannot drift from those packages' own joins.
+// The fixture keeps the hub, the worktree root and the anchor path in three distinct directories,
+// so a field mix-up inside WebsterGeometry surfaces instead of passing silently.
 
 package hubgeom
 

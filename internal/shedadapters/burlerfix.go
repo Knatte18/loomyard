@@ -1,6 +1,7 @@
-// burlerfix.go implements BurlerFixProducer, the shedadapters adapter over the fix half of a burlerengine round:
-// it reads the round's acceptance record, sends the review's decision-class findings to the run's parent, and runs one fixer session over the accepted review with a bounded retry on died/timeout.
-// It hands off to the segment's Bouncer as a routine Stuck -- never Done.
+// burlerfix.go implements BurlerFixProducer, the adapter over the fix half of a burlerengine round.
+// It reads the round's acceptance record and sends the review's decision-class findings to the run's parent.
+// It runs one fixer session over the accepted review, with a bounded retry on died/timeout.
+// It hands off to the segment's Bouncer as a routine Stuck, never Done.
 
 package shedadapters
 
@@ -22,7 +23,8 @@ import (
 
 // BurlerFixProducer is the shedadapters adapter over the fix half of a burlerengine round.
 //
-// Call returns shedengine.Stuck on every successful fix and never shedengine.Done -- that Stuck is a routine hand-off to the segment's Bouncer via OnStuck, never a real stuck condition.
+// Call returns shedengine.Stuck on every successful fix and never shedengine.Done.
+// That Stuck is a routine hand-off to the segment's Bouncer via OnStuck, not a real stuck condition.
 // A fixer that did not finish after the bounded retry is a hard error rather than Stuck.
 //
 // Both hand-backs for judgment, a finished fix and the highest complete round found still unjudged, are BudgetExempt.
@@ -49,12 +51,16 @@ type BurlerFixProducer struct {
 // Compile-time proof that *BurlerFixProducer satisfies shedengine.ShedProducer.
 var _ shedengine.ShedProducer = (*BurlerFixProducer)(nil)
 
-// NewBurlerFixProducer returns a BurlerFixProducer identified as name, driving profile through deps.Runner under opts, with round artifacts under runDir.
+// NewBurlerFixProducer returns a BurlerFixProducer identified as name.
+// It drives profile through deps.Runner under opts, with round artifacts under runDir.
 // reviewRow names the review row of the same segment, which the refusals' way forward sends the operator back to.
 // profile is a template whose ReviewPath and FixerReportPath fields are overwritten per round;
-// opts is a template whose Round, Review, Fix and NoteID fields are overwritten per attempt, the first three from the attempt and deps.Models, and whose Gate gates the fixer.
+// opts is a template whose Round, Review, Fix and NoteID fields are overwritten per attempt.
+// The first three come from the attempt and deps.Models.
+// The Gate field gates the fixer.
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's same-second collision suffix.
-// It returns a distinct error for each of: a nil runner, an empty name, an empty reviewRow, an empty runDir and a runDir that is not absolute.
+// It returns a distinct error for each of:
+// a nil runner, an empty name, an empty reviewRow, an empty runDir, and a runDir that is not absolute.
 // It never stats, creates or otherwise touches runDir -- creating it is Call's job.
 func NewBurlerFixProducer(name, reviewRow string, deps BurlerHalfDeps, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerFixProducer, error) {
 	if err := checkHalfProducerArgs(name, burlerFixEngineLabel, deps.Runner != nil, runDir); err != nil {
@@ -72,7 +78,8 @@ func NewBurlerFixProducer(name, reviewRow string, deps BurlerHalfDeps, profile b
 
 // sendDecisionFindings posts the decision-class findings of round's accepted review at reviewPath to the run's parent in one line.
 // It sends nothing without a notifier, with no such finding, or when the segment's Bouncer escalates the decisions itself.
-// A review that does not parse and a failed post are logged at Warn and never fail the round: the findings stay in the review on disk.
+// A review that does not parse and a failed post are logged at Warn and never fail the round.
+// The findings stay in the review on disk.
 func (p *BurlerFixProducer) sendDecisionFindings(round int, reviewPath string) {
 	if p.notifyParent == nil || p.decisionsEscalated {
 		return
@@ -121,22 +128,33 @@ func (p *BurlerFixProducer) archiveWholeRound(round int) {
 	p.archive(round, []string{roundReviewPath(p.runDir, round), roundFixerReportPath(p.runDir, round), roundAcceptancePath(p.runDir, round)})
 }
 
-// archiveReport archives round's fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.
+// archiveReport archives round's fixer report alone, keeping the accepted review and its record,
+// so a resume re-spawns the fixer without re-running the reviewer.
 func (p *BurlerFixProducer) archiveReport(round int) {
 	p.archive(round, []string{roundFixerReportPath(p.runDir, round)})
 }
 
-// Call runs one fix: resolve the round to fix from disk and hand control on without spawning when the highest complete round is still unjudged.
-// It refuses a round with no accepted review, and on a row told to require fans a round whose usage record holds no recorded fan names once no live fixer is found; the refusal archives the round's review, fixer report and acceptance record.
-// Otherwise it sends the review's decision-class findings to the run's parent, when told a notifier, and runs at most two attempts over the accepted review (a second only on a died/timeout first attempt), and maps the outcome onto shedengine's contract.
+// Call runs one fix.
+// It resolves the round to fix from disk.
+// When the highest complete round is still unjudged, it hands control on without spawning.
+// It refuses a round with no accepted review.
+// On a row told to require fans, it refuses a round whose usage record holds no recorded fan names.
+// It does so only once no live fixer is found.
+// The refusal archives the round's review, fixer report and acceptance record.
+// Otherwise it sends the review's decision-class findings to the run's parent when given a notifier.
+// It then runs at most two attempts over the accepted review, and maps the outcome onto shedengine's contract.
+// A second attempt runs only after a died/timeout first attempt.
 // The findings are sent once per call that starts a fresh fix, never on the resume of a live fixer.
 //
-// A live fixer is probed before anything is archived, because archiving renames the very file a live fixer is about to write.
+// A live fixer is probed before anything is archived.
+// Archiving would rename the very file that a live fixer is about to write.
 // Only a stale fixer report is archived before an attempt.
-// A fixer that finished with a failed gate, and a review that changed since it was accepted, archive the review, fixer report and acceptance record together.
+// A fixer that finished with a failed gate archives the review, fixer report and acceptance record together.
+// So does a review that changed since it was accepted.
 // The Bouncer's next round, or the operator's goto to the review row, then reviews afresh.
 // Every other failure archives the fixer report alone.
-// A fixer that could not be stopped returns its error with nothing archived, since a live session may still be writing the round's files.
+// A fixer that could not be stopped returns its error with nothing archived.
+// A live session may still be writing the round's files.
 func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, burlerFixEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -174,8 +192,10 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	profile.FixerReportPath = roundFixerReportPath(p.runDir, round)
 	archiveRound := func() { p.archiveWholeRound(round) }
 
-	// A row told to require fans runs the fixer fan its reviewer was spawned with, so a list edited between the halves cannot reach this round.
-	// A round with no recorded names can only hold a fixer an older binary spawned, which is probed as the single fixer it was; the refusal waits for that probe.
+	// A row told to require fans runs the fixer fan its reviewer was spawned with,
+	// so a list edited between the halves cannot reach this round.
+	// A round with no recorded names can only hold a fixer an older binary spawned.
+	// It is probed as the single fixer that binary ran, and the refusal waits for that probe.
 	var unrecorded error
 	if p.requiresFans {
 		_, fixFan, recordedErr := readRecordedFans(p.runDir, round)
@@ -222,7 +242,8 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		attemptOpts := p.opts
 		attemptOpts.Round = attemptToken
 		attemptOpts.Review, attemptOpts.Fix = p.models.Pick(round)
-		// The run directory's base is the segment's own run_subdir recipe value, so this stem distinguishes one segment's round from another's in one friction directory.
+		// The run directory's base is the segment's own run_subdir recipe value,
+		// so this stem tells one segment's round apart from another's in one friction directory.
 		attemptOpts.NoteID = "burler-" + filepath.Base(p.runDir) + "-r" + strconv.Itoa(round)
 
 		result, runErr := p.runner.Fix(profile, attemptOpts, digest)
@@ -255,7 +276,8 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerFixEngineLabel, round)
 }
 
-// reportFailureExit archives round's fixer report and returns err, unless the context was cancelled, whose error takes precedence.
+// reportFailureExit archives round's fixer report.
+// It returns the context's error if it was cancelled, and err otherwise.
 func (p *BurlerFixProducer) reportFailureExit(ctx context.Context, round int, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	p.archiveReport(round)
 	if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
@@ -264,7 +286,7 @@ func (p *BurlerFixProducer) reportFailureExit(ctx context.Context, round int, er
 	return "", shedengine.OutputPointer{}, err
 }
 
-// errorExit maps the error runErr of Fix or ResumeFix (verb names which) for attempt token onto Call's contract.
+// errorExit maps runErr, the error of the fix or resume call that verb names, onto a round's return values.
 // A fixer that could not be stopped returns bare with nothing archived.
 // A changed review archives the whole round and ends with the way forward back to the review row.
 // Any other error archives the fixer report alone.
@@ -285,11 +307,14 @@ func (p *BurlerFixProducer) errorExit(ctx context.Context, round int, token, ver
 	return p.reportFailureExit(ctx, round, fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: %s: %w", p.name, burlerFixEngineLabel, round, token, verb, runErr))
 }
 
-// fixedExit maps a fix that reached OutcomeDone onto Call's contract, for a spawned, a resumed and a skipped fix alike.
+// fixedExit maps a fix that reached OutcomeDone onto a round's return values.
+// It serves a spawned, a resumed and a skipped fix alike.
 //
-// A failed fixer gate archives the review, fixer report and acceptance record and returns a counted Stuck with an empty Path, the gate's reason and attempts.
+// A failed fixer gate archives the review, fixer report and acceptance record.
+// It returns a counted Stuck with an empty Path, plus the gate's reason and attempts.
 // The Bouncer's next round then reviews afresh; a gate exhaustion is a determinate verdict, so it consumes no retry.
-// Otherwise it merges the fix half's usage, and a twill fixer's lenses and fork count, into the round's usage record and returns Stuck with the review as Path, BudgetExempt.
+// Otherwise it merges the fix half's usage, and a twill fixer's lenses and fork count, into the round's usage record.
+// It then returns Stuck with the review as Path and BudgetExempt set.
 // A cancellation observed after the fix finished still yields an error, but a finished round's artifacts survive.
 func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result burlerengine.FixResult, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if result.Gate != nil && !result.Gate.Passed {
@@ -321,13 +346,14 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), BudgetExempt: true}, nil
 }
 
-// probeLiveFix asks the runner what became of a previous session's fixer for this round and resumes it, against digest, when it is still live.
+// probeLiveFix asks the runner what became of a previous session's fixer for this round.
+// When that fixer is still live, it resumes the fixer against digest.
 //
 // It reports handled=false whenever the caller should proceed to its ordinary archive-then-spawn path:
 // the fixer is not live, or the resumed fixer had already died or timed out, which falls through to a fresh attempt 1.
-// Every other case reports handled=true along with the three values Call must return.
-// A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned bare rather than through an archiving exit:
-// a fixer that may still be live may be mid-write on the round's files.
+// Every other case reports handled=true, along with the outcome, pointer and error the caller returns.
+// A probe error is returned bare, as is a resume error wrapping burlerengine.ErrHalfNotStopped.
+// Neither goes through an archiving exit: a fixer that may still be live may be mid-write on the round's files.
 func (p *BurlerFixProducer) probeLiveFix(ctx context.Context, round int, profile burlerengine.Profile, digest string, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	token := strconv.Itoa(round)
 	opts := p.opts

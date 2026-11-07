@@ -1,14 +1,14 @@
-// cleanupremote_integration_test.go covers Cleanup's remote branch deletion under --remote: the
-// opt-in deletion of an orphan weft branch's copy on the remote, its default-off regression guard,
-// the dry-run no-op, the idempotent never-pushed path, the protected-entry carve-out, the non-fatal
-// remote failure, and the once-per-verb no-origin pre-check across every combination of apply and
-// remote.
+// cleanupremote_integration_test.go covers Cleanup's remote branch deletion under --remote.
+// Deleting an orphan weft branch's remote copy is opt-in, and the default-off path is pinned here.
+// The tests also cover the dry-run no-op, the idempotent never-pushed path, and the protected-entry carve-out.
+// They cover the non-fatal remote failure and the once-per-verb no-origin pre-check across apply and remote.
 //
-// Every hub here is built through hubforge.CopyHub per the hubforge Fabric-Fixture Invariant, using the hub's own RecordsBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
-// so a test can push an orphan branch to it and then assert the ref is gone.
+// Every hub here is built through hubforge.CopyHub.
+// The hub's RecordsBare field is its private weft bare remote.
+// A test pushes an orphan branch to it and then asserts the ref is gone.
 //
-// Package fabricengine_test to reuse mustRecordsRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go) — every assertion here goes through exported API;
-// shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; assertions go through the exported API.
+// The package shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,9 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// mustCreateOrphanWeftBranch creates branch in the weft repo at weftRoot, pointed at HEAD, with no
-// worktree checkout — the shape Cleanup treats as an orphan candidate once it also carries the
-// "-weft" suffix WeftWarpSlug requires.
+// mustCreateOrphanWeftBranch creates branch in the weft repo at weftRoot, pointed at HEAD.
+// It leaves no worktree checkout.
+// Cleanup treats such a branch as an orphan candidate only with the "-weft" suffix that `WeftWarpSlug` requires.
 func mustCreateOrphanWeftBranch(t *testing.T, weftRoot, branch string) {
 	t.Helper()
 	gitkit.MustRun(t, weftRoot, "git", "branch", branch, "HEAD")
@@ -37,8 +37,8 @@ func mustPushBranch(t *testing.T, repoRoot, branch string) {
 	gitkit.MustRun(t, repoRoot, "git", "push", "origin", branch)
 }
 
-// mustBreakOrigin points repoRoot's origin remote at a filesystem path that does not exist, so a
-// push against it fails locally with no network involved.
+// mustBreakOrigin points repoRoot's origin remote at a filesystem path that does not exist.
+// A push against it fails locally, with no network involved.
 func mustBreakOrigin(t *testing.T, repoRoot string) {
 	t.Helper()
 	gitkit.MustRun(t, repoRoot, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote.git"))
@@ -50,8 +50,8 @@ func mustRemoveOrigin(t *testing.T, repoRoot string) {
 	gitkit.MustRun(t, repoRoot, "git", "remote", "remove", "origin")
 }
 
-// TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan covers case 1: apply and remote both true delete
-// both the local orphan weft branch and its copy on the remote.
+// TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan checks apply and remote both true.
+// Both the local orphan weft branch and its copy on the remote are deleted.
 func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -88,8 +88,8 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	}
 }
 
-// TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch of a pair made before branch_prefix was set:
-// it is read as the bare slug, so the sweep archives and deletes it under that slug.
+// TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch from before branch_prefix was set.
+// The branch is read as its bare slug, so the sweep archives and deletes it under that slug.
 func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -116,8 +116,8 @@ func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
 	}
 }
 
-// TestCleanup_RemoteFalseLeavesRemoteCopyIntact covers case 2: apply true and remote false is the
-// regression guard on the existing default — the feature is opt-in.
+// TestCleanup_RemoteFalseLeavesRemoteCopyIntact covers apply true with remote false.
+// It guards the existing default: the remote deletion is opt-in.
 func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -148,8 +148,7 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	}
 }
 
-// TestCleanup_DryRunWithRemoteDeletesNeither covers case 3: a dry run with remote true performs no
-// deletion on either side.
+// TestCleanup_DryRunWithRemoteDeletesNeither checks that a dry run with remote true deletes on neither side.
 func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -180,9 +179,9 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	}
 }
 
-// TestCleanup_NeverPushedOrphanIsIdempotentOnRemote covers case 4: an orphan branch that was never
-// pushed deletes locally, reports no remote deletion and no remote error, and records no
-// KindRemoteBranchDeleted entry.
+// TestCleanup_NeverPushedOrphanIsIdempotentOnRemote covers an orphan branch that was never pushed.
+// It deletes locally and reports no remote deletion or remote error.
+// It records no KindRemoteBranchDeleted entry.
 func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -193,7 +192,7 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	// Deliberately never pushed: the remote never had this ref to begin with.
+	// Never pushed, so the remote has no ref to delete.
 
 	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)
@@ -219,8 +218,8 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	}
 }
 
-// TestCleanup_ProtectedEntryUntouchedOnRemote covers case 5: a protected (here, unmanaged) branch
-// has neither its local nor its remote copy touched with remote true.
+// TestCleanup_ProtectedEntryUntouchedOnRemote checks that a protected entry keeps its local and remote copies.
+// Here the protected entry is an unmanaged branch, and remote true must not touch either copy.
 func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -230,7 +229,7 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
-	// No "-weft" suffix: unmanaged, reported but never deletable — WeftWarpSlug rejects it.
+	// Without the "-weft" suffix the branch is unmanaged: reported, never deletable, as `WeftWarpSlug` rejects it.
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
 
@@ -255,8 +254,10 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	}
 }
 
-// TestCleanup_RemoteFailureIsNonFatal covers case 6: a remote deletion failure leaves the verb returning a nil error, the local branch deleted, and RemoteError populated.
-// Induced by making the bare origin refuse ref deletions, so the archive tag push still succeeds ahead of the failing branch deletion and no network is needed.
+// TestCleanup_RemoteFailureIsNonFatal checks that a failed remote deletion returns a nil error.
+// The local branch is still deleted, and RemoteError is populated.
+// The test makes the bare origin refuse ref deletions.
+// The archive tag push still succeeds ahead of the failing branch deletion, and no network is needed.
 func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -288,10 +289,10 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	}
 }
 
-// TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce covers case 7: a weft repo with no
-// origin configured, under apply and remote both true: every orphan weft branch is deleted locally,
-// RemoteSkippedReason is non-empty exactly once on the result, every entry's RemoteError is empty,
-// and the verb returns a nil error.
+// TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce covers a weft repo with no origin.
+// Under apply and remote both true, every orphan weft branch is still deleted locally.
+// RemoteSkippedReason is non-empty exactly once on the result, and no entry carries a RemoteError.
+// The verb returns a nil error.
 func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -330,8 +331,8 @@ func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 	}
 }
 
-// TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing covers case 8: the
-// dry-run half of the no-origin pre-check.
+// Under a dry run with remote true, a repo with no origin still reports RemoteSkippedReason.
+// It deletes nothing.
 func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -363,9 +364,8 @@ func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing
 	}
 }
 
-// TestCleanup_NoOriginWithRemoteFalseReportsNoReason covers case 9: this guards the remote guard
-// itself — without it, a plain cleanup --apply against a remoteless repo would start reporting a
-// reason, an observable change to a path this task does not otherwise touch.
+// With remote false, a repo with no origin reports no RemoteSkippedReason.
+// It guards the remote guard itself: a plain cleanup --apply on a remoteless repo must not report a reason.
 func TestCleanup_NoOriginWithRemoteFalseReportsNoReason(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

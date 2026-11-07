@@ -1,4 +1,5 @@
-// stagetracked_integration_test.go covers StageTrackedChanges and UntrackedFiles against real git repositories, reusing gitrepo_test.go's fixture helpers.
+// stagetracked_integration_test.go covers StageTrackedChanges and UntrackedFiles against real git repositories.
+// It reuses gitrepo_test.go's fixture helpers.
 
 package gitrepo_test
 
@@ -15,9 +16,11 @@ import (
 
 // TestStageTrackedAndUntracked drives StageTrackedChanges and UntrackedFiles through one repository.
 // A clean repository first yields an empty, non-nil untracked slice.
-// StageTrackedChanges then follows `git add -u` semantics: a modified and a deleted tracked file are staged, an untracked one is left alone.
+// StageTrackedChanges then follows `git add -u` semantics:
+// a modified and a deleted tracked file are staged, an untracked one is left alone.
 // Last, a new file is listed as untracked while a path matched by .git/info/exclude and a tracked file are not.
-// The steps run serially in that order and share the repository's state: the last step relies on the untracked file the second one creates and leaves untracked.
+// The steps run serially in that order and share the repository's state:
+// the last step relies on the untracked file the second one creates and leaves untracked.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestStageTrackedAndUntracked(t *testing.T) {
 	tiergate.Require(t, 1)

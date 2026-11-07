@@ -1,11 +1,10 @@
 <!-- This is the RoleDesigner directive: the variant internal/pattern.Directive renders for the agent
-     that designs a task before any plan exists. internal/loomengine/discussion.go is its consuming
-     call site, passing pattern.RoleDesigner.
-     internal/pattern.Directive reads this file through stencilstore.Read, strips this banner with
-     stencil.StripLeadingComment and fills the file's required pattern_overview marker with
-     the content of PATTERN.md at the repository's worktree root, and its optional pattern_changes marker with the task's declared PATTERN changes.
-     The result is injected as a producer template's optional pattern_directive marker value, so it
-     is never itself passed through stencil.Fill again.
+     that designs a task before any plan exists.
+     internal/pattern.Directive reads this file through stencilstore.Read and strips this banner with stencil.StripLeadingComment.
+     It fills the required pattern_overview marker with the content of PATTERN.md at the repository's worktree root.
+     It fills the optional pattern_changes marker with the task's declared PATTERN changes.
+     The rendered text is injected as a producer template's optional pattern_directive marker value,
+     so it is never itself passed through stencil.Fill again.
      This file declares two markers, the required pattern_overview and the optional pattern_changes, and no other. -->
 
 ## Constraints — check every design decision against these

@@ -29,7 +29,9 @@ const (
 // Target is one place an entry's text is delivered to.
 // File is the anchor-relative path of a file target and empty for a prompt target.
 // ReRender lists the anchor-relative paths whose change re-renders a file target.
-// Engine and Role narrow the sessions a prompt target reaches: a session of that engine, and a session of that role or a numbered sibling of it; an empty field narrows nothing.
+// Engine and Role narrow the sessions a prompt target reaches.
+// Engine must equal the session's engine, and Role must match the session's role or a numbered sibling of it;
+// an empty field narrows nothing.
 type Target struct {
 	Name     string
 	Delivery string

@@ -1,5 +1,6 @@
-// darnwrite.go implements the Darn-Write row's producer: it wraps the gated darn writer session and does everything Go owns around it.
-// That is the refusal of a run whose decision record or support log is missing, the token text the session is told, the stop marker, and the commit of the landing directory after the session.
+// darnwrite.go implements the Darn-Write row's producer, which wraps the gated darn writer session.
+// It refuses a run whose decision record or support log is missing;
+// it tells the session its token text, reads the stop marker, and commits the landing directory after the session.
 
 package loomshed
 
@@ -22,7 +23,8 @@ const darnResumeWayForward = "way forward: run \"lym loom resume\" in the task w
 // Record-Write writes only the file that is missing, so the goto keeps every entry the record holds.
 const darnRecordGotoWayForward = "way forward: run \"lym loom goto --to Record-Write\", then \"lym loom resume\""
 
-// darnRecordRestoreWayForward is the way forward of a Darn-Write call that finds the decision record missing from the working copy while the committed copy holds it.
+// darnRecordRestoreWayForward is the way forward when the decision record is missing from the working copy.
+// The committed copy still holds it.
 // Writing the record again from the board entry would drop the committed `Added after Discussion` entries.
 const darnRecordRestoreWayForward = "way forward: restore the decision record from the committed copy under _lym with \"git -C _lym checkout HEAD -- discussion/decision-record.md\", then run \"lym loom resume\""
 
@@ -32,18 +34,21 @@ const darnStopWayForward = "way forward: record the answer with \"lym loom decis
 // darnStopReportMissing stands in for the stop report when the writer wrote the stop marker and no report.
 const darnStopReportMissing = "the writer stopped and wrote no stop report"
 
-// darnConditionStopReportMissing is the format of the Reason of a Darn-Write session whose writer stopped on the task body's condition and wrote an empty report; its argument is the stop marker path.
+// darnConditionStopReportMissing formats the Reason of a Darn-Write session stopped on the task body's condition.
+// The writer wrote an empty report, and the format takes the stop marker path as its argument.
 const darnConditionStopReportMissing = "the writer stopped on the task body's condition and wrote no report; the stop marker %s marks the stop"
 
 // decisionRecordRestoreWayForward is the way forward of a Darn-Write session that left the decision record invalid.
 // Restoring keeps every `Added after Discussion` entry the record held.
 const decisionRecordRestoreWayForward = "way forward: restore each failing file under _lym to its latest version \"lym loom validate-discussion\" accepts (the committed copy when the damage is uncommitted, restored with \"git -C _lym checkout HEAD -- discussion/<file>\"), commit it with \"lym fabric commit\", which the orch runs when a session lym refuses it from reports status: FAILED, then run \"lym loom resume\""
 
-// decisionsWinLine tells the darn writer that a decision recorded after the Discussion wins over a gate finding it forbids fixing.
+// decisionsWinLine tells the darn writer that a decision recorded after the Discussion wins over a gate finding.
+// Where the decision forbids fixing the finding, the writer leaves it unfixed.
 const decisionsWinLine = "Where a decision under `Added after Discussion` in the decision record forbids fixing a finding, follow the decision and leave that finding unfixed."
 
 // DarnGateReprompt returns the re-prompt line renderer of a Darn-Write gate entry.
-// The line names the findings file and decisionRecordPath, and lets a decision recorded after the Discussion win over a finding it forbids fixing, which the default "fix every finding" line contradicts.
+// The line names the findings file and the decision record.
+// A decision recorded after the Discussion wins over a finding it forbids fixing.
 // The rendered line carries no newline, as a gate re-prompt requires.
 func DarnGateReprompt(decisionRecordPath string) func(findingsPath string) string {
 	return func(findingsPath string) string {
@@ -59,13 +64,13 @@ type DarnTold struct {
 
 // DarnOutcome is the latest Darn-Write history entry as the producer reads it.
 type DarnOutcome struct {
-	// Outcome is the entry's outcome.
+	// Outcome is the result the history entry recorded for the spawn.
 	Outcome shedengine.Outcome
-	// FindingsPath is the row's kept gate findings file, which holds the text of the last failed gate; empty when no file is kept.
+	// FindingsPath is the row's kept gate findings file, which holds the last failed gate's text; empty when none is kept.
 	FindingsPath string
 }
 
-// DarnDeps carries the told seams NewDarnWrite needs.
+// DarnDeps carries the seams a Darn-Write producer uses for the record, the stop markers, the history and git.
 type DarnDeps struct {
 	// RecordPath is the absolute path of the decision record Record-Write wrote, the writer's scope.
 	RecordPath string
@@ -73,15 +78,19 @@ type DarnDeps struct {
 	SupportLogPath string
 	// StopMarkerPath is the absolute path of the marker the writer creates to say it stopped instead of making the change.
 	StopMarkerPath string
-	// ConditionStopMarkerPath is the absolute path of the marker the writer creates, beside the stop marker, to say it stopped on a condition the task's body names.
+	// ConditionStopMarkerPath is the absolute path of the marker the writer creates beside the stop marker.
+	// The writer creates it to say it stopped on a condition the task body names.
 	ConditionStopMarkerPath string
-	// CommittedRecord reports whether the committed history holds the decision record, which tells a record removed from the working copy from one that was never written.
+	// CommittedRecord reports whether the committed history holds the decision record.
+	// The answer tells a record removed from the working copy apart from one never written.
 	CommittedRecord func() (bool, error)
-	// Commit commits the landing directory.
+	// Commit commits the landing directory, so a session's work is kept even when the run halts.
 	Commit func() error
-	// LatestOutcome returns the latest Darn-Write history entry of the run that records a spawn; found is false when the row has no such entry yet.
+	// LatestOutcome returns the latest Darn-Write history entry of the run that records a spawn;
+	// found is false when the row has no such entry yet.
 	LatestOutcome func() (DarnOutcome, bool, error)
-	// CheckRecord validates the decision record once the writer session returns, returning the findings that halt the run; it commits nothing.
+	// CheckRecord validates the decision record once the writer session returns, returning the findings that halt the run;
+	// it commits nothing.
 	CheckRecord func() ([]discussionparser.Finding, error)
 }
 
@@ -101,14 +110,23 @@ func NewDarnWrite(name string, session func(DarnTold) shedengine.ShedProducer, d
 }
 
 // Call implements shedengine.ShedProducer.
-// A missing decision record, or a support log missing beside a present record, halts the run Stuck before any session, with the way forward that brings the file back.
+// A missing decision record, or a support log missing beside a present record, halts the run Stuck before any session.
+// The reason carries the way forward that brings the file back.
 // A stop marker and a condition stop marker left by an earlier spawn are removed before each session.
-// A failed read of the latest outcome, a Commit failure and a CheckRecord error are returned errors, never Stuck, because re-running the session cannot fix a git or filesystem fault.
-// The commit runs on every non-empty output pointer, a gate-failed Stuck included, so a halted run leaves the work committed.
+// A failed read of the latest outcome, a Commit failure and a CheckRecord error are returned errors, never Stuck.
+// Re-running the session cannot fix a git or filesystem fault.
+// The commit runs on every non-empty output pointer, a gate-failed Stuck included,
+// so a halted run leaves the work committed.
 // A gate-failed Stuck keeps its pointer and gains the resume way forward.
-// A stop marker the session wrote halts the run Stuck, Done or gate-failed alike, with the session's output as the reason, since the writer stopped instead of making the change.
-// When the condition stop marker is present beside it, the writer stopped on a condition the task's body names, and the reason is the stop report alone, whose own way forward stands, or a fixed message naming the stop marker when the report is empty; a condition stop marker with no stop marker is no stop.
-// A Done session is then guarded: CheckRecord runs once after the commit, and findings halt the run Stuck with no re-prompt, since the record is written by Go and a re-prompt could only push the writer to edit it.
+// A stop marker the session wrote halts the run Stuck, Done or gate-failed alike.
+// The reason is the session's output, since the writer stopped instead of making the change.
+// When the condition stop marker is present beside it, the writer stopped on a condition the task body names.
+// The reason is then the stop report alone, whose own way forward stands.
+// When the report is empty, the reason is a fixed message that names the stop marker.
+// A condition stop marker with no stop marker is no stop.
+// A Done session is then guarded.
+// CheckRecord runs once after the commit, and findings halt the run Stuck with no re-prompt.
+// The record is written by Go, so a re-prompt could only push the writer to edit it.
 // The Stuck reason names the findings and the way forward that restores the record.
 func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -183,7 +201,8 @@ func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	return outcome, pointer, nil
 }
 
-// checkSeams names the first unwired seam; the constructor returns the bare seam interface and so has no error to refuse a nil through.
+// checkSeams names the first unwired seam, or returns nil when every seam is wired.
+// It runs at call time, not at construction, because the constructor has no error to refuse a nil seam through.
 func (p *darnWrite) checkSeams() error {
 	seams := []struct {
 		name    string
@@ -207,8 +226,10 @@ func (p *darnWrite) checkSeams() error {
 	return nil
 }
 
-// scopeRefusal returns the Stuck reason of a run whose decision record or support log is missing, and empty when both are present.
-// A record missing from the working copy but held by the committed history is restored from there: writing it again from the board entry would drop its `Added after Discussion` entries.
+// scopeRefusal returns the Stuck reason for a run whose decision record or support log is missing.
+// It returns empty when both are present.
+// A record missing from the working copy but held by the committed history is restored from there:
+// writing it again from the board entry would drop its `Added after Discussion` entries.
 func (p *darnWrite) scopeRefusal() (string, error) {
 	recordPresent, err := fileExists(p.deps.RecordPath)
 	if err != nil {
@@ -255,8 +276,10 @@ func readStopReport(path string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// renderPriorWork returns the note that the change is already under way on the task branch, naming the latest outcome and its kept gate findings file.
-// It tells the writer that a decision recorded after the Discussion wins over a finding it forbids fixing, so a resumed spawn never works against the parent's call.
+// renderPriorWork returns the note that the change is already under way on the task branch.
+// The note names the latest outcome and its kept gate findings file.
+// It tells the writer that a decision recorded after the Discussion wins over a finding it forbids fixing,
+// so a resumed spawn never works against the parent's call.
 // It is empty when the row has no earlier entry.
 func renderPriorWork(latest DarnOutcome, found bool) string {
 	if !found {

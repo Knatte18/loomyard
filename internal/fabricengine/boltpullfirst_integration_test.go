@@ -1,4 +1,4 @@
-// boltpullfirst_integration_test.go proves Bolt.PullThenCommitWritten and the gated seed-commit drop under it.
+// boltpullfirst_integration_test.go proves Bolt.PullThenCommitWritten and the gated seed-commit drop it performs.
 // The hub is a hubforge hub whose records upstream a second clone moves.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -501,7 +501,8 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 			done <- err
 		}()
 
-		// The goroutine cannot signal that it is blocked on the lock, so the check waits a short while; a call that ignored the lock would already have moved HEAD.
+		// The goroutine cannot signal that it is blocked on the lock, so the check waits a short while;
+		// a call that ignored the lock would already have moved HEAD.
 		time.Sleep(300 * time.Millisecond)
 		if f.head() != tip {
 			t.Errorf("head moved to %s while the push lock was held, want %s", f.head(), tip)

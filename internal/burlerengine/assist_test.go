@@ -1,5 +1,6 @@
 // assist_test.go tables the review half's assistant reviewer against the same-package fakeShuttle.
-// It covers the assistant's report and end-marker paths, its seat and the chair's changed seat, the assisted round end to end, a skipped or unstartable assistant, the copy of a done assistant's report, the probed table, and the review step of a round with no assistant.
+// It covers the assistant's report and end-marker paths and the assisted round end to end;
+// it also covers the review step of a round with no assistant.
 
 package burlerengine
 
@@ -33,7 +34,8 @@ func assistOpts() RunOpts {
 	}
 }
 
-// newAssistProfile builds a valid Profile whose review path is absolute under a fresh root, which sits outside the anchor's _lym.
+// newAssistProfile builds a valid Profile whose review path is absolute under a fresh root.
+// The root sits outside the anchor's _lym.
 func newAssistProfile(t *testing.T) (string, Profile) {
 	t.Helper()
 	root, p := newEngineTestProfile(t)
@@ -48,7 +50,10 @@ func newAssistEngine(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
 	return New(shuttle, geom, lenses.Config{}, newTestStencilsDir(t), "", nil)
 }
 
-// newAssistShuttle scripts an assisted review round: the chair writes an approved review and is held until the assistant has written its report, so the assistant's own run ends first; assist scripts the assistant, which must end done.
+// newAssistShuttle scripts an assisted review round.
+// The chair writes an approved review and is held until the assistant has written its report,
+// so the assistant's own run ends first.
+// assist scripts the assistant, which must end done.
 func newAssistShuttle(assist halfScript) *fakeShuttle {
 	released := make(chan struct{})
 	assist.writes = approvedReview
@@ -59,7 +64,9 @@ func newAssistShuttle(assist halfScript) *fakeShuttle {
 	}
 }
 
-// TestAssistPaths proves the assistant's report and end marker sit under the anchor's .lym, at the review's subpath when the review sits under the anchor's _lym and under burler/assist otherwise, and that a retry's token gives other paths than the first attempt's.
+// TestAssistPaths proves the assistant's report and end marker sit under the anchor's .lym.
+// They sit at the review's subpath when the review is under the anchor's _lym, and under burler/assist otherwise.
+// A retry's token gives other paths than the first attempt's.
 func TestAssistPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -97,7 +104,8 @@ func TestAssistPaths(t *testing.T) {
 	}
 }
 
-// TestAssistCopyPath proves the copy of an assistant's report sits beside the review file under its stem and the seat's name.
+// TestAssistCopyPath proves the copy of an assistant's report sits beside the review file.
+// The copy is named by the review's stem and the seat's name.
 func TestAssistCopyPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -107,7 +115,10 @@ func TestAssistCopyPath(t *testing.T) {
 	}
 }
 
-// TestEngine_AssistSeat proves the table a round with an assistant builds: the chair on the assisted stencil reading the assistant's report as an input, and one assistant seat on its own stencil, model choice, key, report, end marker, review-parse gate, timeout and skip reason.
+// TestEngine_AssistSeat proves the table a round with an assistant builds.
+// The chair uses the assisted stencil and reads the assistant's report as an input.
+// The one assistant seat uses its own stencil.
+// It has its model choice, key, report, end marker, review-parse gate, timeout and skip reason.
 // It also proves a round with no assistant builds the one chair seat on the plain reviewer stencil.
 func TestEngine_AssistSeat(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -180,9 +191,11 @@ func TestEngine_AssistSeat(t *testing.T) {
 	}
 }
 
-// TestEngine_Review_AssistedRound proves an assisted round end to end over the fake shuttle:
-// the chair and the assistant both start, the assistant under its own spec and the chair's prompt and review step naming the assistant and its consolidation part,
-// and the report of an assistant whose end marker reads done is copied beside the review while any other ending copies nothing, the verdict staying the chair's.
+// TestEngine_Review_AssistedRound proves an assisted round end to end over the fake shuttle.
+// Both the chair and the assistant start, and the assistant runs under its own spec.
+// The chair's prompt and review step name the assistant and its consolidation part.
+// The report of an assistant whose end marker reads done is copied beside the review;
+// any other ending copies nothing, and the verdict stays the chair's.
 func TestEngine_Review_AssistedRound(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -271,8 +284,11 @@ func TestEngine_Review_AssistedRound(t *testing.T) {
 	}
 }
 
-// TestEngine_Review_AssistantPromptFollowsItsFan proves a fanned assistant's composed prompt names every lens report on its write surface, with the reports kept off its outputs, and that a solo assistant's prompt names none.
-// It also proves Review names the fan's lenses that returned no report in the assistant's outcome, in fan order, and none for a solo assistant.
+// TestEngine_Review_AssistantPromptFollowsItsFan proves a fanned assistant's prompt names every lens report.
+// The reports are kept off the assistant's outputs.
+// A solo assistant's prompt names none.
+// It also proves Review names the fan's lenses that returned no report in the assistant's outcome, in fan order.
+// A solo assistant names none.
 func TestEngine_Review_AssistantPromptFollowsItsFan(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -325,7 +341,8 @@ func TestEngine_Review_AssistantPromptFollowsItsFan(t *testing.T) {
 	}
 }
 
-// TestEngine_Review_AssistantThatDoesNotStart proves an assistant that is skipped, whose engine has no assist-reading block, or whose fan the lens library does not define, never starts and its end marker says so.
+// TestEngine_Review_AssistantThatDoesNotStart proves an assistant never starts, and its end marker says so.
+// It covers a skipped assistant, an engine with no assist-reading block, and a fan the lens library does not define.
 // The chair is started and the review half returns its accepted review.
 func TestEngine_Review_AssistantThatDoesNotStart(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -371,7 +388,9 @@ func TestEngine_Review_AssistantThatDoesNotStart(t *testing.T) {
 	}
 }
 
-// TestKeepAssistReports proves a seat whose end marker reads done has its report copied beside the review, any other ending, or no marker, copies nothing, and a seat that is no assistant is passed over.
+// TestKeepAssistReports proves a seat whose end marker reads done has its report copied beside the review.
+// Any other ending, or no marker, copies nothing.
+// A seat that is no assistant is passed over.
 func TestKeepAssistReports(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -428,7 +447,9 @@ func TestKeepAssistReports(t *testing.T) {
 	}
 }
 
-// TestKeepAssistReports_MissingLenses proves a done assistant's outcome names each lens of its fan with no returned lens report, in fan order, and that an assistant that did not end done names none, since its ending already says so.
+// TestKeepAssistReports_MissingLenses proves a done assistant's outcome names each fan lens that returned no report.
+// The names follow fan order.
+// An assistant that did not end done names none, since its ending already says so.
 func TestKeepAssistReports_MissingLenses(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -472,7 +493,8 @@ func TestKeepAssistReports_MissingLenses(t *testing.T) {
 	}
 }
 
-// TestEngine_ProbeReview_AssistantSeat proves ProbeReview probes a table holding the assistant seat when its RunOpts name one, and only the chair when they name none.
+// TestEngine_ProbeReview_AssistantSeat proves ProbeReview probes the assistant seat when RunOpts name an assistant.
+// With no assistant named, it probes only the chair.
 func TestEngine_ProbeReview_AssistantSeat(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -518,7 +540,8 @@ func TestEngine_ProbeReview_AssistantSeat(t *testing.T) {
 	}
 }
 
-// TestComposeReviewPrompt_AssistRules proves a round with no assistant renders the review step exactly as before the consolidation part existed, and an assisted round renders that same step with the part added after the cluster rules.
+// TestComposeReviewPrompt_AssistRules proves a round with no assistant renders the review step unchanged.
+// An assisted round renders that same step with the consolidation part added after the cluster rules.
 func TestComposeReviewPrompt_AssistRules(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

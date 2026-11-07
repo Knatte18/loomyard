@@ -1,10 +1,12 @@
 // Package verifyrun runs one shell command in-process and reports its exit code.
 //
-// It is the single shell runner shared by plan-verify (through internal/verifytree) and the per-card `**Verify:**` rerun,
-// so shell selection lives in one place.
+// It is the one shell runner for plan-verify (through internal/verifytree) and the per-card `**Verify:**` rerun.
+// So shell selection lives in one place.
 // The quoting of one literal argument for that shell, QuoteArg, sits beside the shell choice so the two cannot differ.
-// It cannot live in internal/shell: that package is stdlib-only under the Shell Mechanics Seam, and this one logs through internal/logger.
-// RunTied runs a command like Run for a caller that records the shell's process group and wants the shell to die with the calling process.
+// It cannot live in internal/shell: that package is stdlib-only under the Shell Mechanics Seam,
+// and this one logs through internal/logger.
+// RunTied runs a command like Run for a caller that records the shell's process group.
+// That caller wants the shell to die with the calling process.
 // It imports only the standard library, internal/logger and internal/proc.
 package verifyrun
 
@@ -26,12 +28,13 @@ import (
 
 // waitDelay bounds Wait's read after the shell exits or its context is cancelled,
 // so a child still holding the output pipe cannot hang the call.
-// It mirrors internal/treadleengine's gateWaitDelay.
+// Its value matches the gate wait in internal/treadleengine.
 const waitDelay = 10 * time.Second
 
 // Run runs command through the platform shell (sh -c, or cmd /C on Windows) with dir as its working directory.
 // Stdout and stderr both go to out.
-// An out of io.Discard is left as nil so the child writes to the null device directly, with no copy pipe a lingering child could hold open.
+// An out equal to io.Discard is left as nil, so the child writes to the null device directly.
+// That leaves no copy pipe a lingering child could hold open.
 //
 // A nil env runs the shell with the parent's environment; a non-nil env is the shell's whole environment.
 //
@@ -45,10 +48,11 @@ func Run(ctx context.Context, command, dir string, env []string, out io.Writer) 
 	return run(ctx, command, dir, env, out, waitDelay)
 }
 
-// RunTied is Run for a command tied to the calling process's life.
+// RunTied runs a command tied to the calling process's life.
 // On Linux the shell gets a parent-death SIGKILL, so it dies when the calling process does;
 // elsewhere the caller's own job ends the tree.
-// started is called with the shell's pid, process-group id and start time once the shell runs and before the wait, so the caller can record the group.
+// started is called with the shell's pid, process-group id and start time once the shell runs and before the wait;
+// so the caller can record the group.
 func RunTied(ctx context.Context, command, dir string, env []string, out io.Writer, started func(proc.TreeRecord)) (int, error) {
 	return runTied(ctx, command, dir, env, out, waitDelay, started)
 }
@@ -57,7 +61,7 @@ func RunTied(ctx context.Context, command, dir string, env []string, out io.Writ
 // cmd expands %NAME% even inside double quotes, so no quoting makes such a value one literal argument.
 var ErrPercentUnderCmd = errors.New("verifyrun: cmd expands % inside quotes; a value holding % cannot be passed as one literal argument")
 
-// ShellFor returns the shell and its command flag that Run uses on goos: sh -c everywhere but Windows, which gets cmd /C.
+// ShellFor returns the shell and its command flag for goos: sh -c everywhere but Windows, which gets cmd /C.
 // A caller that spawns a command itself starts the same shell this way.
 func ShellFor(goos string) (name, flag string) {
 	if goos == "windows" {
@@ -66,8 +70,8 @@ func ShellFor(goos string) (name, flag string) {
 	return "sh", "-c"
 }
 
-// QuoteArg quotes value as one literal argument for the shell ShellFor(goos) names,
-// so a caller can splice it into a command Run executes.
+// QuoteArg quotes value as one literal argument for the shell that goos selects,
+// so a caller can splice it into a shell command.
 // For sh it wraps the value in single quotes, writing each embedded single quote as '\”.
 // For cmd it wraps the value in double quotes, doubling each embedded double quote;
 // a value holding a percent sign returns ErrPercentUnderCmd and no quoted text.
@@ -81,7 +85,8 @@ func QuoteArg(goos, value string) (string, error) {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'", nil
 }
 
-// run is Run with the wait delay as a parameter, so a test can shorten the wait for a lingering pipe holder.
+// run runs command through the platform shell with delay as the wait delay,
+// so a test can shorten the wait for a lingering pipe holder.
 func run(ctx context.Context, command, dir string, env []string, out io.Writer, delay time.Duration) (int, error) {
 	return runTied(ctx, command, dir, env, out, delay, nil)
 }
@@ -106,8 +111,9 @@ func startAndWaitTied(cmd *exec.Cmd, started func(proc.TreeRecord)) error {
 	return <-result
 }
 
-// runTied is RunTied with the wait delay as a parameter.
-// A nil started runs the shell as Run does.
+// runTied runs command through the platform shell with delay as the wait delay.
+// A non-nil started ties the shell to the calling process and is called with its record before the wait.
+// A nil started leaves the shell untied.
 func runTied(ctx context.Context, command, dir string, env []string, out io.Writer, delay time.Duration, started func(proc.TreeRecord)) (int, error) {
 	shellName, flag := ShellFor(runtime.GOOS)
 

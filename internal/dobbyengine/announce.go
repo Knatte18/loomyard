@@ -1,4 +1,6 @@
-// announce.go is a beam's dobby's announcement step: while the beam's landing record holds a pull request, it tells the beam's orch about each landing into the beam branch, so the orch keeps the description and the pull request listing every member.
+// announce.go is the dobby's announcement step for a beam.
+// While the landing record holds a pull request, it tells the beam's orch about each landing into the beam branch,
+// so the orch keeps the description and the pull request listing every member.
 
 package dobbyengine
 
@@ -12,11 +14,16 @@ import (
 	"strings"
 )
 
-// announceLandings posts one line to the beam's own orch for the landings into the beam branch since the head it last announced, and records the head it read once the line went out.
+// announceLandings posts one line to the beam's orch for the beam-branch landings since the last announced head.
+// It then records the head it read, unless the head has not moved.
 // With no pull request recorded it does nothing.
-// The last announced head is read from the geometry's AnnouncePath, or from the landing record's announce head when that file is missing, so a fresh machine repeats at most one notice.
-// A head that moved past only commits that record lym's own state is recorded with no line, so the notice cannot feed itself.
-// Every landing counts, a member filed after the pull request opened included, and no entry's `notify_on_land` is read.
+// The last announced head is read from `AnnouncePath`.
+// When that file is missing or empty, it is the landing record's announce head.
+// So a fresh machine repeats at most one notice.
+// A head that moved only past commits recording lym's own state is recorded with no line.
+// The notice therefore cannot feed itself.
+// Every landing counts, including a member filed after the pull request opened.
+// No entry's `notify_on_land` is read.
 // A failed read, post or record is logged once per episode and retried at the next tick; nothing else depends on it.
 // The prime's dobby and a dobby with no landing seams do nothing.
 func (d *daemon) announceLandings(ctx context.Context) {

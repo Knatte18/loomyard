@@ -1,4 +1,5 @@
-// deliver_test.go pins delivery into panes through the fake seam: reminders, injects, the probe and sweep intervals, the removed-holder sweep and the chase clock.
+// deliver_test.go pins delivery into panes through the fake seam:
+// reminders, injects, the probe and sweep intervals, the removed-holder sweep and the chase clock.
 
 package creelengine_test
 
@@ -23,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// isProbeWait, isSweepWait and isChaseWait tell the waits of the delivery workers (1 to 8 seconds), the sweep (up to its 50-second ceiling) and the chasers (one to eight minutes) apart on the shared fake clock.
+// isProbeWait, isSweepWait and isChaseWait tell the waits apart on the shared fake clock:
+// those of the delivery workers, the sweep and the chasers.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
 func isSweepWait(d time.Duration) bool { return d > 8*time.Second && d <= 50*time.Second }
@@ -85,7 +87,8 @@ func (e *env) driveProbeWaits(count int) []time.Duration {
 	return waits[:count]
 }
 
-// awaitTyped waits until the delivery has typed exactly want into the strand, for the mail whose delivery no clock wait of the test marks.
+// awaitTyped waits until the delivery has typed exactly want into the strand.
+// It covers the mail whose delivery no clock wait of the test marks.
 // The real-time deadline only bounds a failing test.
 func awaitTyped(t *testing.T, e *env, strandName string, want ...string) {
 	t.Helper()
@@ -98,8 +101,11 @@ func awaitTyped(t *testing.T, e *env, strandName string, want ...string) {
 	}
 }
 
-// awaitMarkedProbe waits until the receiver's worker has begun the probe after the first one that read the pause once the caller took mark, and returns the clock time it advanced and the passes that took.
-// A caller takes seen, the probe-wait count, before the post that wakes the worker, and mark, the receiver's pause-read count, after that post returned.
+// awaitMarkedProbe waits once the caller took mark:
+// until the receiver's worker has begun the probe after the first one that read the pause.
+// It returns the clock time it advanced and the passes that took.
+// A caller takes seen, the probe-wait count, before the post that wakes the worker;
+// it takes mark, the receiver's pause-read count, after that post returned.
 // Each pass waits for one more probe wait than the pass before, then advances the clock by the probe ceiling,
 // so a probe that comes only after a clock advance is reached without the caller advancing first.
 // The real-time deadline only bounds a failing test.
@@ -154,7 +160,8 @@ func stalledReasons(e *env, receiver string) []string {
 	return reasons
 }
 
-// holdAfterAReminderProbeReadTheDraft leaves a draft standing in alpha's pane, read once by the probe of an unread message's reminder, and then holds alpha for batten.
+// holdAfterAReminderProbeReadTheDraft leaves a draft standing in alpha's pane.
+// The probe of an unread message's reminder reads that draft once, and then the hold on alpha for batten starts.
 // From then on the probe skips the pane read, since only the hold owner's mail and injects are delivered.
 func holdAfterAReminderProbeReadTheDraft(t *testing.T, e *env) {
 	t.Helper()
@@ -179,7 +186,8 @@ func (e *env) tickPastTheStallFreshness(t *testing.T) {
 	}
 }
 
-// reminderFor builds the reminder line for count unread messages listed as given; holdOwner is the owner of a hold on the receiver, empty for none.
+// reminderFor builds the reminder line for count unread messages listed as given;
+// holdOwner is the owner of a hold on the receiver, empty for none.
 func reminderFor(count int, holdOwner string, listed ...string) string {
 	command := "lym creel read"
 	if holdOwner != "" {
@@ -188,7 +196,8 @@ func reminderFor(count int, holdOwner string, listed ...string) string {
 	return fmt.Sprintf("[creel] %d unread: %s — run %s", count, strings.Join(listed, ", "), command)
 }
 
-// orchStrandIsRemindedAndTypedInto returns a row body that posts two messages and a text inject to the orch strand name, and expects the inject typed first and then one reminder of both messages.
+// orchStrandIsRemindedAndTypedInto returns a row body that posts two messages and a text inject to the orch strand name.
+// It expects the inject typed first, then one reminder of both messages.
 func orchStrandIsRemindedAndTypedInto(name string) func(t *testing.T, e *env) {
 	return func(t *testing.T, e *env) {
 		e.post(t, strand(alpha), name, "one")
@@ -217,7 +226,8 @@ func seconds(n ...int) []time.Duration {
 func TestScheduler_Reminders(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// awaitReminded waits until the journal holds count reminded records to receiver; the real-time deadline only bounds a failing test.
+	// awaitReminded waits until the journal holds count reminded records to receiver;
+	// the real-time deadline only bounds a failing test.
 	awaitReminded := func(t *testing.T, e *env, receiver string, count int) {
 		t.Helper()
 		deadline := time.Now().Add(10 * time.Second)
@@ -888,7 +898,8 @@ func TestScheduler_Injects(t *testing.T) {
 			e.clock.Advance(30 * time.Second)
 			second := inject(t, e, program(batten), alpha, "/second", time.Minute, false)
 			e.clock.Advance(5 * time.Second)
-			// A worker that probes once more before it sees the stop finds the receiver busy, so the second inject is never typed.
+			// A worker that probes once more before it sees the stop finds the receiver busy,
+			// so the second inject is never typed.
 			e.del.SetIdle(alpha, false)
 			stopped := make(chan struct{})
 			go func() {
@@ -1185,7 +1196,8 @@ func TestScheduler_Injects(t *testing.T) {
 			default:
 			}
 			e.probeWaits(before + 1)
-			// told drains what the last probe told the waiter: nothing for an empty want, else exactly that stall as it began at the probe.
+			// told drains what the last probe told the waiter:
+			// nothing for an empty want, else exactly that stall as it began at the probe.
 			told := func(want creelengine.Stall) {
 				t.Helper()
 				select {
@@ -1437,7 +1449,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			if _, err := e.store.Post(strand(alpha), "zz:orch", "across"); err != nil {
 				t.Fatalf("Post to zz:orch: %v", err)
 			}
-			// No sweep timer is armed for it, so one Advance past two sweep ceilings stands for the sweeps and retry waits that never come.
+			// No sweep timer is armed for it.
+			// So one Advance past two sweep ceilings stands for the sweeps and retry waits that never come.
 			e.clock.Advance(3 * time.Minute)
 			if sends := e.del.Sends(); len(sends) != 0 {
 				t.Errorf("typed %v; want nothing for an outbound message", sends)
@@ -1526,7 +1539,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			for range 4 {
 				e.sweepStep()
 			}
-			// A busy pane keeps the orch's worker, which the last sweep step's clock advance may have woken, from typing the notice and marking it read before the read below.
+			// A busy pane keeps the orch's worker from typing the notice and marking it read before the read below.
+			// The last sweep step's clock advance may have woken that worker.
 			e.del.SetIdle(absentOrch, false)
 			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(absentOrch))
 			wantBodies(t, e.readBodies(t, strand(absentOrch), ""), line)
@@ -1550,7 +1564,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			}
 			without(e, orch)
 			e.start(t)
-			// The 5-second wait left to the confirm deadline is below the probe ceiling, so the row tells the sweep's waits from the workers' by the workers' own doubling steps.
+			// The 5-second wait left to the confirm deadline is below the probe ceiling.
+			// The row tells the sweep's waits from the workers' by the workers' own doubling steps.
 			sweepOnly := func(d time.Duration) bool { return !slices.Contains(seconds(1, 2, 4, 8), d) }
 			e.clock.AwaitWaitsWhere(1, sweepOnly)
 			e.clock.Advance(30 * time.Second)
@@ -1568,7 +1583,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			}
 		}},
 		{"MailReturnsOneStepAtATimeThenIsUndeliveredAndAnswersItsWaiter", func(t *testing.T, e *env) {
-			// Over the carried-line cap, so the returned mail stays unread behind a reminder and returns again once orch2 is gone.
+			// The mail is over the carried-line cap, so it stays unread behind a reminder,
+			// and it returns again once orch2 is gone.
 			id, waiter, err := e.store.PostWait(external(), orch2, strings.Repeat("chain ", 700))
 			if err != nil {
 				t.Fatalf("PostWait: %v", err)
@@ -1584,7 +1600,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			if len(held) != 1 || held[0].Holder != orch2 || held[0].EndedUnreadBy != alpha || len(held[0].Path) != 0 {
 				t.Fatalf("after two sweeps the message is %+v; want it back with %s, marked as ended unread by %s", held, orch2, alpha)
 			}
-			// The returned mail's reminder may already be journaled, since the worker types it without the test advancing the clock.
+			// The returned mail's reminder may already be journaled:
+			// the worker types it without the test advancing the clock.
 			want := []string{"posted", "forwarded", "returned"}
 			got := slices.DeleteFunc(eventsOf(e.store.Log(creelengine.LogFilter{ID: id})), func(event string) bool { return event == "reminded" })
 			if !slices.Equal(got, want) {
@@ -1606,7 +1623,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			e.post(t, strand(alpha), orch, "orch kept")
 			without(e, beta)
 			e.start(t)
-			// The confirm sweep 10 seconds after the miss finds beta back, and ends the confirm at the 30-second base since the strand-name set changed.
+			// The confirm sweep 10 seconds after the miss finds beta back.
+			// It ends the confirm at the 30-second base, since the strand-name set changed.
 			e.sweepStep()
 			without(e)
 			e.sweepStep()
@@ -1616,7 +1634,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			if held := holderOf(t, e, beta); len(held) != 1 || held[0].Holder != beta || held[0].EndedUnreadBy != "" {
 				t.Errorf("the message is %+v; want it still with %s", held, beta)
 			}
-			// Beta is removed again for a first miss; at the confirm sweep beta is back and orch is gone, which is orch's first miss and a new confirm.
+			// Beta is removed again for a first miss.
+			// At the confirm sweep beta is back and orch is gone, which is orch's first miss and a new confirm.
 			without(e, beta)
 			e.sweepStep()
 			without(e, orch)
@@ -1743,10 +1762,14 @@ func TestSweep_RemovedHolders(t *testing.T) {
 	}
 }
 
-// TestScheduler_HookWake drives a store over the fake delivery and clock with hook strands, and pins when the daemon rings a strand's idle waiter and when it types the bell.
-// A strand's waiter is answered once per claimable set, and only while no turn is in progress, whatever the input box holds.
-// The bell follows a set no waiter reaches, once per set, after the grace of 5 seconds or after a ring unanswered for 30.
-// Within 30 seconds of a ring the bell is also held while no turn end was read after it, since the woken turn's Stop hands out the mail.
+// TestScheduler_HookWake drives a store over the fake delivery and clock with hook strands.
+// It pins when the daemon rings a strand's idle waiter and when it types the bell.
+// A strand's waiter is answered once per claimable set.
+// It is answered only while no turn is in progress, whatever the input box holds.
+// The bell rings once per set that no waiter reaches.
+// It rings after the grace of 5 seconds, or after a ring unanswered for 30.
+// Within 30 seconds of a ring, the bell is also held while no turn end was read after it.
+// The woken turn's Stop hands out the mail.
 func TestScheduler_HookWake(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1830,7 +1853,8 @@ func TestScheduler_HookWake(t *testing.T) {
 		}
 		return reading
 	}
-	// ackedRing rings a marked waiter of alpha for a post of body, acknowledges the ring and returns the line it carried, which is then owed as an echo.
+	// ackedRing rings a marked waiter of alpha for a post of body and acknowledges the ring.
+	// It returns the lines the ring carried, which the caller owes as echoes.
 	ackedRing := func(t *testing.T, e *env, body string) []string {
 		t.Helper()
 		waiter := registerTaking(t, e, alpha)
@@ -1872,7 +1896,8 @@ func TestScheduler_HookWake(t *testing.T) {
 		waits := e.probeWaits(1)
 		e.tick(waits[len(waits)-1])
 	}
-	// untilBell steps probes until the bell was sent into alpha, and returns the clock time since from; the fake-time minute only bounds a failing test.
+	// untilBell steps probes until the bell was sent into alpha, and returns the clock time since from.
+	// The fake-time minute only bounds a failing test.
 	untilBell := func(t *testing.T, e *env, from time.Time) time.Duration {
 		t.Helper()
 		for e.clock.Now().Sub(from) < time.Minute {
@@ -2533,7 +2558,8 @@ func TestScheduler_HookWake(t *testing.T) {
 	}
 }
 
-// chaseTick advances the clock by the chaser's current wait and waits until the chaser has rearmed, so the tick's charge, steps and journal records are done when it returns.
+// chaseTick advances the clock by the chaser's current wait and waits until the chaser has rearmed.
+// When it returns, the tick's charge, steps and journal records are done.
 func (e *env) chaseTick() {
 	waits := e.clock.AwaitWaitsWhere(1, isChaseWait)
 	e.clock.Advance(waits[len(waits)-1])
@@ -2547,13 +2573,15 @@ func (e *env) chaseTicks(n int) {
 	}
 }
 
-// chaseTickLast advances the clock by the chaser's current wait without waiting for a rearm, for the tick after which the chaser ends.
+// chaseTickLast advances the clock by the chaser's current wait without waiting for a rearm.
+// It is the tick after which the chaser ends.
 func (e *env) chaseTickLast() {
 	waits := e.clock.AwaitWaitsWhere(1, isChaseWait)
 	e.clock.Advance(waits[len(waits)-1])
 }
 
-// awaitEvent waits until the log of message id holds an event of the given name; the real-time deadline only bounds a failing test.
+// awaitEvent waits until the log of message id holds an event of the given name.
+// The real-time deadline only bounds a failing test.
 func (e *env) awaitEvent(t *testing.T, id int64, event string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -2576,7 +2604,8 @@ func (e *env) countEvents(id int64, event string) int {
 	return count
 }
 
-// tickToUnanswered runs the 45 ticks of two chases and the step after them, and waits for the unanswered record of message id.
+// tickToUnanswered runs every tick of two chases and the step after them.
+// It waits for the unanswered record of message id.
 // The last tick ends the chaser, so it waits for no rearm.
 func (e *env) tickToUnanswered(t *testing.T, id int64) {
 	t.Helper()
@@ -2605,7 +2634,8 @@ func chaseAgedSeconds(t *testing.T, e *env, id int64) []int64 {
 	return seconds
 }
 
-// writeJournal writes the lines as the journal file of the given day under the env's journal directory, for a store opened after it.
+// writeJournal writes the lines as the journal file of the given day under the env's journal directory.
+// It is read by a store opened after the write.
 func (e *env) writeJournal(t *testing.T, day string, lines ...string) {
 	t.Helper()
 	if err := os.MkdirAll(e.geom.JournalDir, 0o755); err != nil {
@@ -2634,7 +2664,8 @@ func (e *env) reopen(t *testing.T) {
 	e.start(t)
 }
 
-// awaitChaseLines waits until n chase lines were typed into the strand and returns them; the real-time deadline only bounds a failing test.
+// awaitChaseLines waits until n chase lines were typed into the strand and returns them.
+// The real-time deadline only bounds a failing test.
 func awaitChaseLines(t *testing.T, e *env, strandName string, n int) []string {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -2655,7 +2686,8 @@ func awaitChaseLines(t *testing.T, e *env, strandName string, n int) []string {
 	}
 }
 
-// awaitTypedWith waits until a line containing part was typed into the strand; the real-time deadline only bounds a failing test.
+// awaitTypedWith waits until a line containing part was typed into the strand.
+// The real-time deadline only bounds a failing test.
 func awaitTypedWith(t *testing.T, e *env, strandName, part string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -3171,7 +3203,8 @@ func TestScheduler_Chases(t *testing.T) {
 	}
 }
 
-// TestStore_ClaimLog pins the daemon log line of each hook delivery attempt and each bell send: its level, path, ids, echo ids, outcome and reason.
+// TestStore_ClaimLog pins the daemon log line of each hook delivery attempt and each bell send.
+// It checks the level, path, ids, echo ids, outcome and reason of each line.
 // It is not parallel because it redirects the process-global logger.
 func TestStore_ClaimLog(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -3218,7 +3251,8 @@ func TestStore_ClaimLog(t *testing.T) {
 		}
 		return reading
 	}
-	// owedEcho acknowledges a ring of one message, leaving its line owed as an echo, and clears the log of the ring's own line.
+	// owedEcho acknowledges a ring of one message, which leaves its line owed as an echo;
+	// it also clears the log of the ring's own line.
 	owedEcho := func(t *testing.T, e *env) {
 		t.Helper()
 		if err := ring(t, e).Ack(); err != nil {
@@ -3249,7 +3283,7 @@ func TestStore_ClaimLog(t *testing.T) {
 	tests := []struct {
 		name string
 		run  func(t *testing.T, e *env)
-		// msg is the one log message the row expects exactly once, and fields what its line carries, the level included.
+		// msg is the one log message the row expects exactly once; fields is what its line carries, the level included.
 		msg    string
 		fields map[string]string
 	}{

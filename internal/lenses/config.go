@@ -1,4 +1,5 @@
-// config.go defines the lenses.yaml configuration: the Config decode shape, the embedded seed template, the layered loader, the fan-to-lens resolver and the whole-config load check.
+// config.go defines the lenses.yaml configuration: its decode shape, its seed template and its layered loader.
+// It also resolves fans to their lenses and checks that every fan of the loaded config resolves.
 
 package lenses
 
@@ -41,7 +42,8 @@ func lensSets() map[string][]byte {
 	return sets
 }
 
-// MaxFanLenses caps the number of lenses a single fan may resolve to, the upper bound on how many parallel fork reviewers one cluster round spawns.
+// MaxFanLenses caps the number of lenses a single fan may resolve to.
+// It bounds how many parallel fork reviewers one cluster round spawns.
 const MaxFanLenses = 16
 
 // Config is the decode shape of lenses.yaml.
@@ -52,7 +54,7 @@ type Config struct {
 	Lenses map[string]string `yaml:"lenses"`
 	// Fans maps a fan name to an ordered list of lens names.
 	Fans map[string][]string `yaml:"fans"`
-	// Remove lists lens names Load drops from Lenses and from every fan after resolution.
+	// Remove lists lens names to drop from Lenses and from every fan once the layers are resolved.
 	Remove []string `yaml:"remove"`
 	// EmptiedFans maps each fan the removal emptied to the removed lens names it held, in its order.
 	// It is nil when no fan was emptied, and never decoded.
@@ -65,18 +67,21 @@ type Lens struct {
 	Text string
 }
 
-// ConfigTemplate returns the seed content for lenses.yaml: the standard lens library and its fans, embedded from template.yaml.
+// ConfigTemplate returns the seed content for lenses.yaml.
+// It is the standard lens library and its fans, embedded from template.yaml.
 func ConfigTemplate() string {
 	return configTemplate
 }
 
-// ConfigPerNameMaps returns the lenses.yaml keys whose entries are named by the operator: a name the template lacks is kept through reconcile and --set, never pruned.
+// ConfigPerNameMaps returns the lenses.yaml keys whose entries are named by the operator.
+// A name the template lacks is kept through reconcile and --set, never pruned.
 func ConfigPerNameMaps() []string {
 	return []string{"lenses", "fans"}
 }
 
 // ConfigSpec returns lenses's layered-load spec.
-// Both maps are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given, so no local override may hold them.
+// Both maps are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given,
+// so no local override may hold them.
 // lens_set is a guard key too, since the language layer it picks is the prose every review fork is given.
 // remove is a guard key as well: it lets a hub take a review lens out of every fan.
 // The module is per-worktree, not hub-wide.
@@ -97,8 +102,11 @@ func ConfigSpec() configengine.Spec {
 }
 
 // Load reads lenses.yaml through the layer stack under dirs and decodes the resolved document strictly.
-// An absent base file resolves the template, and a lens or fan the stack lacks resolves to its template value, so the returned Config holds every template entry.
-// The names in remove are then dropped from the lenses and every fan, and a name matching no lens is skipped with a warning.
+// An absent base file resolves the template,
+// and a lens or fan the stack lacks resolves to its template value,
+// so the returned Config holds every template entry.
+// The names in remove are then dropped from the lenses and every fan,
+// and a name matching no lens is skipped with a warning.
 // Every error carries the "lenses: " prefix.
 func Load(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
@@ -168,8 +176,10 @@ func applyRemove(cfg *Config) []string {
 }
 
 // ResolveFan resolves a fan name into its ordered lenses, preserving order and repeats.
-// It refuses a fan the removal emptied, an unknown fan, an empty fan, a fan longer than MaxFanLenses and a fan naming an undefined lens, each naming the fan and carrying the "lenses: " prefix.
-// cfg is read alone, so a Config that did not come from Load resolves only the names it holds.
+// It refuses a fan the removal emptied, an unknown fan or an empty fan.
+// It also refuses a fan longer than MaxFanLenses or naming an undefined lens.
+// Each error names the fan and carries the "lenses: " prefix.
+// It reads cfg alone and resolves only the names cfg holds.
 func ResolveFan(cfg Config, name string) ([]Lens, error) {
 	if removedNames, emptied := cfg.EmptiedFans[name]; emptied {
 		return nil, fmt.Errorf("lenses: fan %q is empty after remove dropped %s; way forward: drop a name from remove, or point the tapestry or darn fan key at another fan or \"\" for a later run", name, strings.Join(removedNames, ", "))
@@ -197,7 +207,8 @@ func ResolveFan(cfg Config, name string) ([]Lens, error) {
 }
 
 // CheckLoad loads lenses.yaml under dirs and resolves every fan of the loaded config in name order.
-// It returns every failure joined in that order, so the text is deterministic, or only the load's error when the load fails.
+// It returns every failure joined in that order,
+// so the text is deterministic, or only the load's error when the load fails.
 func CheckLoad(dirs configengine.Dirs) error {
 	cfg, err := Load(dirs)
 	if err != nil {

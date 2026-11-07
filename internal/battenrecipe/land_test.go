@@ -1,4 +1,4 @@
-// land_test.go pins the past-Land test and the outcome it tells apart.
+// land_test.go tests LandOutcomeOf, which reports the outcome of a land from the shed's status.
 
 package battenrecipe_test
 

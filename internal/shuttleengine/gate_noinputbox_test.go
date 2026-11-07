@@ -1,5 +1,7 @@
-// gate_noinputbox_test.go covers how the gated wait loop counts re-prompt sends held by a pane with no input box:
-// only holds in a row count, and a hold of another kind, a new arrival or a turn start after the boundary restarts the count, as does a delivered re-prompt followed by an arrival.
+// gate_noinputbox_test.go covers how the gated wait loop counts re-prompt sends held by a pane with no input box.
+// Only holds in a row count.
+// A hold of another kind, a new arrival, or a turn start after the boundary restarts the count;
+// a delivered re-prompt followed by an arrival does too.
 
 package shuttleengine
 
@@ -12,16 +14,19 @@ import (
 )
 
 // noInputBoxStep is one change a test makes to the pane and the events file once the clock reaches at.
-// picker replaces the pane's picker, so an empty one shows the input box, and line is appended to the events file when non-empty.
+// picker replaces the pane's picker, so an empty one shows the input box.
+// line is appended to the events file when non-empty.
 type noInputBoxStep struct {
 	at     time.Duration
 	picker string
 	line   string
 }
 
-// TestGate_NoInputBoxBoundCountsHoldsInARow pins that maxNoInputBoxReprompts counts consecutive holds by a pane with no input box.
-// A hold of another kind, a new arrival and a turn start after the boundary each restart the count.
-// A delivered re-prompt followed by an arrival is one row: the two resets cover for each other, so the row pins them together.
+// TestGate_NoInputBoxBoundCountsHoldsInARow pins that maxNoInputBoxReprompts counts consecutive holds.
+// A hold is a re-prompt send held by a pane with no input box.
+// A hold of another kind, a new arrival, and a turn start after the boundary each restart the count.
+// A delivered re-prompt followed by an arrival counts as one row:
+// the two resets cover for each other, so the row pins them together.
 // It is not parallel: it captures the process-wide logger.
 func TestGate_NoInputBoxBoundCountsHoldsInARow(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -30,7 +35,8 @@ func TestGate_NoInputBoxBoundCountsHoldsInARow(t *testing.T) {
 		boundWarn = "re-prompt held by a pane with no input box past the bound"
 	)
 
-	// A send waits out its one-second idle window and the loop sleeps one second between ticks, so a send starts every two seconds and ends one second later.
+	// A send waits out its one-second idle window and the loop sleeps one second between ticks,
+	// so a send starts every two seconds and ends one second later.
 	var alternating []noInputBoxStep
 	for at := 2 * time.Second; at < 30*time.Second; at += 2 * time.Second {
 		picker := ""
@@ -72,7 +78,8 @@ func TestGate_NoInputBoxBoundCountsHoldsInARow(t *testing.T) {
 			name:        "a turn start after the boundary restarts the count",
 			steps:       []noInputBoxStep{{at: 8 * time.Second, picker: menu, line: "START"}},
 			interrupted: true,
-			// Four holds precede the turn start at 8 s; the boundary it clears is restored at once, and its next hold would be the fifth without the restart.
+			// Four holds precede the turn start at 8 s; the boundary it clears is restored at once.
+			// Without the restart, its next hold would be the fifth.
 			wantEndAtLeast: 30 * time.Second,
 		},
 	}

@@ -21,8 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
-// segment is one module's cleanup.
-// run computes the same candidates whatever apply is and removes them only when apply is true; listed is what it removes, or in a dry run would remove.
+// segment is one module's cleanup step.
+// run computes the same candidates whatever apply is and removes them only when apply is true;
+// listed is what it removes, or in a dry run would remove.
 // A segment that fails still returns what it listed.
 type segment struct {
 	name string
@@ -36,7 +37,8 @@ type segmentResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// runSegments runs every segment in order and never stops early: a failing segment's error goes into its own result and the next segment still runs.
+// runSegments runs every segment in order and never stops early:
+// a failing segment's error goes into its own result, and the next segment still runs.
 // It reports false when any segment failed.
 func runSegments(segments []segment, apply bool) ([]segmentResult, bool) {
 	results := make([]segmentResult, 0, len(segments))
@@ -54,17 +56,19 @@ func runSegments(segments []segment, apply bool) ([]segmentResult, bool) {
 }
 
 // battenListed renders a batten cleanup pass as the batten segment prints it.
-// push_spawned says the records push was started and push_error that starting it failed, so an empty push_error alone never means the push landed.
+// push_spawned says the records push was started and push_error says that starting it failed,
+// so an empty push_error alone never means the push landed.
 func battenListed(report battencli.CleanupReport) map[string]any {
 	return map[string]any{"removed": report.Removed, "emptied": report.Emptied, "skipped": report.Skipped, "push_spawned": report.PushSpawned, "push_error": report.PushError}
 }
 
-// primeSegments returns the cleanup of the hub prime at location and of the handoffs of every orch of the hub, in the order the verb runs them: batten, board, orch, scratch, logs and temp.
+// primeSegments returns the cleanup segments of the hub prime at location and of the handoffs of every orch of the hub.
+// The verb runs them in the order they are listed here.
 func primeSegments(location *lymcwd.Location) []segment {
 	return segmentsOver(location, orchcli.HubOrchs)
 }
 
-// segmentsOver is primeSegments with hubOrchs, the lister of the worktrees the orch segment cleans.
+// segmentsOver returns the cleanup segments for location, with hubOrchs listing the orch worktrees to clean.
 func segmentsOver(location *lymcwd.Location, hubOrchs func(*lymcwd.Location) ([]*lymcwd.Location, error)) []segment {
 	openBoard := func() (*boardengine.Board, error) {
 		return boardengine.OpenHub(location.HubPath)

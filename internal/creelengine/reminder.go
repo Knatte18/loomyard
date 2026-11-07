@@ -1,4 +1,5 @@
-// reminder.go composes the lines typed to a receiver with unread mail, a program's notice and the reminder of the rest, and decides when the next reminder is due.
+// reminder.go composes the lines typed to a receiver with unread mail: a program's notice, and the reminder of the rest.
+// It also decides when the next reminder is due.
 
 package creelengine
 
@@ -23,15 +24,18 @@ const (
 	maxNoticeBytes = 4096
 )
 
-// isNotice reports whether msg is carried in full in its own line instead of being reminded: a message from a program or EXTERNAL, any sender but an agent strand, whose body is at most maxNoticeBytes long.
+// isNotice reports whether msg is carried in full on its own line instead of being reminded.
+// A notice is a message from a program or EXTERNAL that is not an agent strand, with a body of at most maxNoticeBytes.
 // Mail from an agent strand is never carried, so an agent's text cannot pose as an instruction in another agent's pane.
 func isNotice(msg *Message) bool {
 	return agentname.IsProgram(msg.From) && len(msg.Body) <= maxNoticeBytes
 }
 
-// MessageLine renders the one line that carries a message in full, as a notice typed into an idle pane or as mail handed over at a tool boundary:
-// its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
-// A message that expects a reply also carries the mark and the command that answers it.
+// MessageLine renders the one line that carries a message in full.
+// It is typed as a notice into an idle pane, or handed over as mail at a tool boundary.
+// The line starts with the message id, so the receiver can reply without a read, then gives the sender and the body.
+// Every run of control characters and line breaks in the body becomes one space.
+// A message that expects a reply also says so, with the command that answers it.
 // A message from another hub carries its stamp after the sender.
 func MessageLine(msg Message) string {
 	body := strings.TrimSpace(strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " "))
@@ -45,7 +49,8 @@ func MessageLine(msg Message) string {
 	return fmt.Sprintf("[creel] #%d from %s: %s", msg.ID, sender, body)
 }
 
-// reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set: 5 minutes, doubling to the 1-hour ceiling.
+// reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set.
+// The wait doubles from the base up to the ceiling.
 func reminderBackoff(step int) time.Duration {
 	wait := reminderBackoffBase
 	for i := 0; i < step && wait < reminderBackoffCeiling; i++ {
@@ -65,7 +70,8 @@ func reminderDue(last reminderEntry, hasLast bool, unread []int64, now time.Time
 
 // composeReminder renders the reminder line for the unread messages, oldest first.
 // The line names each message by id and sender and carries no sender-written text, so it cannot pose as an instruction.
-// Under a hold, holdOwner names the one sender whose mail may be read, and the command it tells the receiver to run reads only that sender's mail.
+// Under a hold, holdOwner names the one sender whose mail may be read,
+// and the command in the line reads only that sender's mail.
 func composeReminder(unread []Message, holdOwner string) string {
 	var listed []string
 	for i, msg := range unread {

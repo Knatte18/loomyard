@@ -1,5 +1,5 @@
-// glyphchain_helper_test.go holds the shape table and the fixture and plan builders the glyph-chain legs of both test tiers share.
-// glyphchain_test.go runs the plan-gate legs and glyphchain_integration_test.go the legs that need a real commit's delta.
+// glyphchain_helper_test.go holds the shape table and the fixture and plan builders.
+// The glyph-chain legs of both test tiers share them.
 
 package planglyph
 
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
-// findingKey is the part of a Finding a chain leg asserts: which check fired on which card at what severity.
+// findingKey is the part of a finding a chain leg asserts: which check fired on which card at what severity.
 type findingKey struct {
 	check    string
 	card     string
@@ -29,7 +29,8 @@ type createLeg struct {
 	canonical string
 }
 
-// renameLeg is a Rename leg: the draft to-side handle, spelled in the wrong unit, and the canonical handle in the Old glyph's unit.
+// renameLeg is a Rename leg: the draft to-side handle, spelled in the wrong unit.
+// The canonical handle is in the Old glyph's unit.
 type renameLeg struct {
 	draft     string
 	canonical string
@@ -56,13 +57,15 @@ type shapeRow struct {
 	rename       *renameLeg
 	// deleteGlyphs are the targets of the Delete leg's one card.
 	deleteGlyphs []string
-	// createEdits, renameEdits and deleteEdits are the code change each leg's card describes, applied to a fixture copy by the legs that need a real commit.
+	// createEdits, renameEdits and deleteEdits are the code change each leg's card describes.
+	// The legs that need a real commit apply them to a fixture copy.
 	createEdits []codeEdit
 	renameEdits []codeEdit
 	deleteEdits []codeEdit
 	// gap names a known defect the row's assertions record rather than fix.
 	gap string
-	// resignHead is the declaration head that re-signs glyph on the Edit arrow leg; resigns lists the arrows the leg writes, defaulting to glyph with resignHead.
+	// resignHead is the declaration head that re-signs glyph on the Edit arrow leg;
+	// resigns lists the arrows the leg writes, defaulting to glyph with resignHead.
 	resignHead string
 	resigns    []resignLeg
 	// resignFindings is the exact finding set ValidateFormat reports for the arrow leg, empty when it validates clean.
@@ -75,7 +78,8 @@ type resignLeg struct {
 	head  string
 }
 
-// newRenameLeg returns the Rename leg of glyph: a to-side handle carrying member name plus "Renamed" in wrongUnit, and the canonical handle in glyph's own unit.
+// newRenameLeg returns the Rename leg of glyph: a to-side handle carrying member name plus "Renamed" in wrongUnit.
+// The canonical handle is in glyph's own unit.
 func newRenameLeg(glyph, wrongUnit string) *renameLeg {
 	unit, member, _ := strings.Cut(glyph, "#")
 	return &renameLeg{
@@ -162,7 +166,8 @@ func shapeRows() []shapeRow {
 			deleteEdits:    []codeEdit{replaceText(shapesFile, "\tIfaceMethod() int\n", "")},
 		},
 		{
-			// The method cannot outlive its receiver type, so the Delete leg's card deletes both, and the rename carries the method's receiver along.
+			// The method cannot outlive its receiver type, so the Delete leg's card deletes both,
+			// and the rename carries the method's receiver along.
 			glyph:      "shapes#Generic",
 			resignHead: `type Generic[E any] struct{ value, extra E }`,
 			// The method names the type in its receiver, the member card 11 counts as a caller.
@@ -275,7 +280,8 @@ func shapeRows() []shapeRow {
 	return rows
 }
 
-// copyGlyphChainFixture copies the committed fixture module into a fresh temporary directory and returns it, so no leg touches the committed tree or another leg's copy.
+// copyGlyphChainFixture copies the committed fixture module into a fresh temporary directory and returns it,
+// so no leg touches the committed tree or another leg's copy.
 func copyGlyphChainFixture(t *testing.T) string {
 	t.Helper()
 	dst := t.TempDir()
@@ -285,7 +291,9 @@ func copyGlyphChainFixture(t *testing.T) string {
 	return dst
 }
 
-// writeLanguagePlan writes a valid on-disk plan directory declaring language, whose card N carries cards[N-1] as its body, with sections written after the overview's Card Index, and returns the directory with the parsed plan.
+// writeLanguagePlan writes a valid on-disk plan directory declaring language.
+// Card N carries cards[N-1] as its body, and the sections are written after the overview's Card Index.
+// It returns the directory with the parsed plan.
 func writeLanguagePlan(t *testing.T, language string, cards []string, sections ...plankit.Section) (string, *planparser.Plan) {
 	t.Helper()
 	dir := t.TempDir()
@@ -349,7 +357,8 @@ func bullets(targets []string) string {
 	return b.String()
 }
 
-// planGateKeys runs ValidateFormat over the plan in dir against the fixture copy at root and returns its findings as sorted keys.
+// planGateKeys runs ValidateFormat over plan against the fixture copy at root.
+// It returns the findings as sorted keys.
 func planGateKeys(t *testing.T, plan *planparser.Plan, root string) []findingKey {
 	t.Helper()
 	findings, err := ValidateFormat(plan, root)
@@ -429,7 +438,8 @@ var coverageFiles = []string{
 // nestedModuleFile is the go.mod of a nested module that replaces the fixture module with the checkout above it.
 const nestedModuleFile = "module example.com/nested\n\ngo 1.26\n\nrequire example.com/glyphchain v0.0.0\n\nreplace example.com/glyphchain => ../\n"
 
-// aliasedImporter and dotImporter are Go files that call callees.Target through an aliased import and a dot import.
+// aliasedImporter and dotImporter hold the source of Go files that call callees.Target.
+// The first reaches it through an aliased import, the second through a dot import.
 const (
 	aliasedImporter = "package callers\n\nimport c \"example.com/glyphchain/callees\"\n\nfunc aliased() int { return c.Target() }\n"
 	dotImporter     = "package dotted\n\nimport . \"example.com/glyphchain/callees\"\n\nfunc dotted() int { return Target() }\n"
@@ -449,12 +459,13 @@ func writeFixtureFiles(t *testing.T, root string, files map[string]string) {
 	}
 }
 
-// coveredTargetCard deletes callees#Target with every fixture caller of it covered, so a row's extra files are the only references left.
+// coveredTargetCard returns a card that deletes callees#Target, with covers and callers#UseTarget in its Edit group.
+// Covers must hold every fixture caller of the target, so the files outside covers are the only references left.
 func coveredTargetCard(covers []string) string {
 	return deleteWithEdit([]string{"callees#Target"}, append(slices.Clone(covers), "callers#UseTarget"))
 }
 
-// editWithResign is an Edit card whose bullets are the arrow for glyph and then the plain targets.
+// editWithResign is an Edit card whose first bullet maps glyphID to head with an arrow, followed by the plain targets.
 func editWithResign(glyphID, head string, targets ...string) string {
 	return fmt.Sprintf("**Edit:**\n- `%s` -> `%s`\n%s\n**Intent:** resign\n\n**ImpactSummary:** none\n", glyphID, head, bullets(targets))
 }
@@ -464,7 +475,8 @@ func deleteWithEdit(deleted, edited []string) string {
 	return "**Delete:**\n" + bullets(deleted) + "\n**Edit:**\n" + bullets(edited) + "\n**Intent:** delete\n\n**ImpactSummary:** none\n"
 }
 
-// coverageFileOf returns every coverage fixture file detail names, comma-separated in coverageFiles order, or "" when it names none.
+// coverageFileOf returns every coverage fixture file that detail names, comma-separated in fixture-list order.
+// It returns "" when detail names none.
 func coverageFileOf(detail string) string {
 	var named []string
 	for _, file := range coverageFiles {

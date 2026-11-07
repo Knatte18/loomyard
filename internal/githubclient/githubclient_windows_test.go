@@ -1,20 +1,12 @@
 //go:build windows
 
-// githubclient_windows_test.go carries the one case in this package's test
-// suite that is genuinely platform-specific: asserting the token cache
-// file's Windows security descriptor directly, rather than inferring the
-// hardening from os.Stat's mode bits (which, on Windows, reflect only the
-// read-only attribute and would report the same value whether or not
-// hardenCacheFile's DACL step ran at all). Every other case in this package
-// -- the resolution chain, the cache schema and concurrent-writer coverage,
-// and the authenticating RoundTripper's 401-replay behaviour -- is
-// platform-agnostic and lives in the untagged githubclient_test.go, which
-// this file shares its setCacheDir/seedCacheFile/credentialFileName helpers
-// with. Splitting the Windows-only piece into its own build-tagged file
-// mirrors this package's cache.go/cache_windows.go/cache_other.go split, and
-// is what lets `go test -race -count=1 ./internal/githubclient/...` actually
-// exercise the platform-agnostic suite on any machine, per the Test Tier
-// Purity Invariant.
+// githubclient_windows_test.go holds the one platform-specific test of this package.
+// It checks the cache file's Windows security descriptor directly.
+// Mode bits cannot show the hardening on Windows, since os.Stat reports only the read-only attribute there.
+// The package's other tests are platform-agnostic and live in githubclient_test.go.
+// This file shares that file's setCacheDir, seedCacheFile and credentialFileName helpers.
+// Keeping this file under a build tag lets the platform-agnostic suite run on any machine.
+// For example, `go test -race -count=1 ./internal/githubclient/...` runs that suite everywhere.
 
 package githubclient
 
@@ -29,11 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWriteCachedToken_CreatesFileWithRestrictivePermissions asserts the hardening this file
-// requires directly against the Windows security descriptor, rather than inferring it from
-// os.Stat's reported mode bits -- which, on Windows, reflect only the read-only attribute and would
-// report the same value regardless of whether hardenCacheFile's os.Chmod call or its DACL step ran
-// at all.
+// TestWriteCachedToken_CreatesFileWithRestrictivePermissions checks the cache file's DACL.
+// Mode bits cannot show the hardening on Windows, so the check reads the security descriptor directly.
 func TestWriteCachedToken_CreatesFileWithRestrictivePermissions(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -47,10 +36,9 @@ func TestWriteCachedToken_CreatesFileWithRestrictivePermissions(t *testing.T) {
 	}
 	path := filepath.Join(resolvedDir, credentialFileName)
 
-	// os.Stat's synthesized Mode() on Windows reflects only the read-only
-	// attribute bit, not the 0600 os.Chmod call hardenCacheFile makes --
-	// Windows has no Unix permission bits to report, which is exactly why
-	// the DACL assertion below, not this stat, is the real check.
+	// On Windows, os.Stat's Mode reflects only the read-only attribute bit.
+	// It does not reflect the 0600 os.Chmod call that hardenCacheFile makes.
+	// The DACL assertion below is therefore the real check; this stat only confirms the file exists.
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("Stat(%s): %v", path, err)
 	}
@@ -58,10 +46,8 @@ func TestWriteCachedToken_CreatesFileWithRestrictivePermissions(t *testing.T) {
 	assertOwnerOnlyDACL(t, path)
 }
 
-// assertOwnerOnlyDACL reads path's security descriptor via
-// golang.org/x/sys/windows and asserts its DACL grants access to exactly one
-// trustee: the file's own owner. This is the direct ACL assertion card 26
-// requires, as distinct from an inference drawn from mode bits.
+// assertOwnerOnlyDACL fails the test unless path's DACL grants access to exactly one trustee, the file's owner.
+// It reads the security descriptor through golang.org/x/sys/windows, since mode bits cannot show the ACL.
 func assertOwnerOnlyDACL(t *testing.T, path string) {
 	t.Helper()
 
@@ -91,9 +77,8 @@ func assertOwnerOnlyDACL(t *testing.T, path string) {
 	if err := windows.GetAce(dacl, 0, &ace); err != nil {
 		t.Fatalf("GetAce(dacl, 0): %v", err)
 	}
-	// The ACE's SID is stored inline immediately after its fixed fields;
-	// this is the same address-of-trailing-field pattern golang.org/x/sys's
-	// own tests use to read it back out.
+	// The ACE's SID is stored inline immediately after its fixed fields.
+	// Reading the address of SidStart therefore yields the SID.
 	aceSid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
 	if !owner.Equals(aceSid) {
 		t.Errorf("cache file DACL's sole ACE grants access to a SID other than the file's owner")

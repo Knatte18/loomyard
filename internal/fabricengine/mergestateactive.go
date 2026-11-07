@@ -1,6 +1,5 @@
-// mergestateactive.go holds MergeStateActive, the weft-only git-level mid-merge probe a
-// path-scoped commit must consult before landing — distinct from both Fabric.MergeInProgress and
-// the two-sided foreignMergeStatePresent.
+// mergestateactive.go holds MergeStateActive, the weft-only probe for git-level mid-merge state.
+// A path-scoped commit consults it before it lands.
 
 package fabricengine
 
@@ -11,28 +10,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// MergeStateActive reports whether l's weft sibling worktree is mid-merge AT THE GIT LEVEL — a live
-// MERGE_HEAD or a non-empty conflicted index — rather than whether fabric itself has a merge in
+// MergeStateActive reports whether the weft worktree of l is mid-merge at the git level: a live
+// MERGE_HEAD or a non-empty conflicted index, rather than whether fabric itself has a merge in
 // progress.
 //
-// It is weft-only by design, deliberately not the two-sided form foreignMergeStatePresent uses:
-// warp and weft are independent clones with independent .git directories, and the status commit
-// this probe exists for runs in the weft worktree alone, so warp-side git state cannot block it.
-// Inheriting the two-sided form would freeze every status commit for the whole duration of a live
-// warp conflict-resolution session — the one moment a resuming machine most needs to know the run
-// is Stuck and since when.
+// It is weft-only, because warp and weft are independent clones with independent .git directories.
+// The status commit this probe guards runs in the weft worktree alone, so warp-side git state cannot block it.
+// A two-sided check would freeze every status commit while a live warp conflict-resolution session runs.
+// That is the moment a resuming machine most needs to know the run is Stuck and since when.
 //
-// Fabric.MergeInProgress cannot serve as this probe: it is mergeRecordExists()'s bare boolean, never
-// consults foreignMergeStatePresent, and is therefore false in precisely the foreign-state case this
-// probe exists to catch — and it needs an open *Fabric, which a caller closure driving this probe
-// does not hold. MergeStateActive takes an l *lymcwd.Location instead, matching CommitAnchoredPaths
-// and PushAnchored.
+// The probe takes an l *lymcwd.Location rather than an open *Fabric.
+// A check on fabric's own merge record misses git-level merge state that fabric did not start.
+// That is the case this probe exists to catch, and callers of this probe do not hold an open Fabric.
 //
 // A non-nil error is surfaced rather than swallowed: the decision that an unreadable probe means
 // skip belongs to the caller, not to this function.
 //
-// This is a read-only probe, so it returns no result type and embeds no MutationRecord, per the
-// Mutation Record Invariant's "a read-only one must not" clause.
+// The probe is read-only, so it returns a plain bool and error, not a result type that embeds a mutation record.
 func MergeStateActive(l *lymcwd.Location) (bool, error) {
 	repo := gitrepo.New(RecordsWorktree(l))
 

@@ -1,8 +1,6 @@
 // specs_test.go pins the specs registry's names, defaults, RelPath placement, and stamp round-trip.
-// Unlike contracts/stencils/registry_test.go, this package's registry is deliberately not
-// cross-checked against an on-disk tree walk: the specs registry's two entries come from two
-// different directories, one of which is not this package's own, so a directory walk here would
-// have nothing meaningful to compare against.
+// The registry is not cross-checked against an on-disk tree walk:
+// this directory also holds specs the registry does not list.
 
 package specs
 
@@ -13,8 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRegistry_NamesAndDefaults pins Registry().Names() to the exact ordered slice: the order is the order `lym stencil list` prints them in, and the names are what stencilstore.RelPath derives the deployed family directory from.
-// It then verifies every registered name resolves to known, non-empty default bytes, and that an unregistered name resolves to nil, false.
+// TestRegistry_NamesAndDefaults pins Registry().Names() to the exact ordered slice:
+// the order is the one `lym stencil list` prints them in,
+// and the names are what stencilstore.RelPath derives the deployed family directory from.
+// It then verifies every registered name resolves to known, non-empty default bytes,
+// and that an unregistered name resolves to nil, false.
 func TestRegistry_NamesAndDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -48,7 +49,8 @@ func TestRegistry_NamesAndDefaults(t *testing.T) {
 	}
 }
 
-// TestRegistry_RelPathPlacesBothUnderLoomFamily verifies stencilstore.RelPath places every registered spec under its owning product's family directory.
+// TestRegistry_RelPathPlacesBothUnderLoomFamily verifies stencilstore.RelPath's placement of every registered spec:
+// each one lands under its owning product's family directory.
 // It fails loudly if a future rename reintroduces a one-file family directory.
 func TestRegistry_RelPathPlacesBothUnderLoomFamily(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -75,10 +77,11 @@ func TestRegistry_RelPathPlacesBothUnderLoomFamily(t *testing.T) {
 	}
 }
 
-// TestRegistry_DefaultsRoundTripTheStamp verifies stamping a registered default leaves its body
-// hash untouched. Both travelling docs open with a "# Heading" rather than a leading HTML comment,
-// so ApplyStamp prepends a fresh one-line banner; this test pins that the prepend leaves the body
-// hash untouched, so the deployed copy is never reclassified as edited on the next pass.
+// TestRegistry_DefaultsRoundTripTheStamp verifies that stamping a registered default leaves its body hash untouched.
+// Registered defaults open with a "# Heading" rather than a leading HTML comment,
+// so ApplyStamp prepends a one-line banner.
+// The body hash must not change across that prepend,
+// so the deployed copy is never reclassified as edited on the next pass.
 func TestRegistry_DefaultsRoundTripTheStamp(t *testing.T) {
 	tiergate.Require(t, 0)
 	reg := Registry()

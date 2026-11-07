@@ -1,16 +1,24 @@
-// watcher.go — the watcher's decision core: one poll of the persisted cycle, whose mode (State.CycleMode) picks between two machines.
-// Both modes start with the note gate: idle, then handoff-requested, which posts the note request as creel mail and waits for a turn end with the note written.
-// Clear mode then runs clearing and resuming;
-// compact mode then runs compacting, which injects `/compact` with a focus text.
-// Neither clears or compacts before the note gate passed.
-// The cycle's mode is the request's for an operator request and Config.Mode for an automatic trigger.
-// Both share the idle trigger selection, its gates and its re-read of the context.
+// watcher.go is the decision core of the orch cycle:
+// one poll of the persisted cycle, whose mode (State.CycleMode) picks between two machines.
+// Both modes start with the note gate: idle, then handoff-requested.
+// It posts the note request as creel mail and waits for a turn end with the note written.
+// Clear mode then runs clearing and resuming.
+// Compact mode then runs compacting, which injects `/compact` with a focus text.
+// Neither clears nor compacts before the note gate has passed.
+// The cycle's mode is the request's for an operator request, and Config.Mode for an automatic trigger.
+// Both share the idle trigger selection, its gates, and its re-read of the context.
 //
-// Every provider and reed interaction goes through the Session seam and every delivery into the orch through the Creel seam, so the whole state machine runs against fakes in untagged unit tests.
-// The watcher types nothing into the pane itself: each step is a creel post or inject, and creel's own idle check gates its delivery.
-// The watcher saves State, with the step it is about to send as State.Pending, before each send, and a restarted watcher resumes from it:
-// a pending step with no id is looked up in what creel journaled before it is sent again, and one with an id has its outcome read.
-// While a cycle runs the watcher holds the orch strand in creel, so other mail waits until the cycle returns to idle.
+// Every provider and reed interaction goes through the Session seam,
+// and every delivery into the orch goes through the Creel seam,
+// so the whole state machine runs against fakes in untagged unit tests.
+// The watcher types nothing into the pane itself: each step is a creel post or inject.
+// Creel's own idle check gates its delivery.
+// The watcher saves State before each send, with the step it is about to send as State.Pending,
+// and a restarted watcher resumes from it:
+// a pending step with no id is looked up in what creel journaled before it is sent again;
+// one with an id has its outcome read.
+// While a cycle runs the watcher holds the orch strand in creel;
+// other mail waits until the cycle returns to idle.
 
 package orchengine
 
@@ -28,9 +36,11 @@ import (
 )
 
 const (
-	// stepInjectTTL is how long a cycle step's inject may wait for the orch's next idle before creel expires it, which is creel's default inject time to live.
+	// stepInjectTTL is how long a cycle step's inject may wait for the orch's next idle before creel expires it.
+	// It is creel's default inject time to live.
 	stepInjectTTL = 10 * time.Minute
-	// cycleHoldDuration is how long one creel hold on the orch strand lasts; every tick outside idle renews it, and one a dead watcher leaves lapses on its own.
+	// cycleHoldDuration is how long one creel hold on the orch strand lasts.
+	// Every tick outside idle renews it, so a hold a dead watcher leaves lapses on its own.
 	cycleHoldDuration = 10 * time.Minute
 )
 
@@ -45,22 +55,26 @@ const (
 
 // The two bodies of a reply to the note request the watcher recognises.
 const (
-	// replyWritten opens a reply the watcher only recognises to ignore: the note gate reads the note itself.
+	// replyWritten marks a reply the watcher ignores, since the note gate reads the note itself.
 	replyWritten = "written"
 	// replyDefer declines a soft cycle.
 	replyDefer = "defer"
 )
 
-// errNotBound reports that the watcher has not yet set its events cursor for the recorded strand, so it cannot act on a reply.
+// errNotBound reports that the watcher has not yet set its events cursor for the recorded strand.
+// It cannot act on a reply until then.
 var errNotBound = errors.New("orch: the watcher is not bound to the recorded strand yet")
 
-// errCompactWithdrawHeld reports that withdrawing the still-queued `/compact` was held by a creel failure, so the compacting phase keeps its boundary for the next tick.
+// errCompactWithdrawHeld reports that withdrawing the still-queued `/compact` was held by a creel failure.
+// The compacting phase keeps its boundary for the next tick.
 var errCompactWithdrawHeld = errors.New("orch: withdrawing the queued compact is held by a creel failure")
 
-// errCompactInFlight reports that the queued `/compact` was in a creel delivery attempt the withdraw could not remove, so the compacting phase keeps its boundary and the pending step for the next tick.
+// errCompactInFlight reports that the queued `/compact` was in a creel delivery attempt the withdraw could not remove.
+// The compacting phase keeps its boundary and the pending step for the next tick.
 var errCompactInFlight = errors.New("orch: the queued compact is in a creel delivery attempt")
 
-// errResetPending reports that a phase belonging to another strand could not be reset because a creel call failed; the next tick runs the reset again.
+// errResetPending reports that a phase belonging to another strand could not be reset because a creel call failed;
+// the next tick runs the reset again.
 var errResetPending = errors.New("orch: resetting a phase of another strand is held by a creel failure")
 
 // Session is the seam between the cycle machine and the live orchestrator session.
@@ -70,28 +84,34 @@ type Session interface {
 	StrandAlive(guid string) (bool, error)
 	// ReadEvents returns the events past offset and the offset read through.
 	ReadEvents(guid string, offset int64) ([]shuttleengine.Event, int64, error)
-	// ContextTokens returns the context reading of the run identified by guid as of turnEnd; a reading with Known false means unreadable.
+	// ContextTokens returns the context reading of the run identified by guid as of turnEnd;
+	// a reading with Known false means unreadable.
 	ContextTokens(guid string, turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
-	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
+	// SessionIdle probes whether the session shows an empty input box with no turn in progress.
+	// It also reports whether the pane is too short to tell.
 	// Only the hub pause's handling reads it.
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
-	// SessionState returns the session's state as read from the run's files; the watcher logs its session start and records its session id.
+	// SessionState returns the session's state as read from the run's files;
+	// the watcher logs its session start and records its session id.
 	SessionState(guid string) (shuttleengine.RunSessionState, error)
-	// StrandName returns the full name of the strand guid, read from reed at each call, which the watcher addresses creel calls with.
+	// StrandName returns the full name of the strand guid, read from reed at each call.
+	// The watcher addresses its creel calls with this name.
 	// It fails when guid names no tracked strand.
 	StrandName(guid string) (string, error)
 	// StrandColor returns the strand's palette color from reed, empty for none.
 	StrandColor(guid string) (string, error)
 	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended in the run identified by guid.
 	ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
-	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, for the run identified by guid.
+	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names.
+	// It also returns the turn ends that follow it, for the run identified by guid.
 	CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
 	// UsageLimit returns the usage-limit reading of the transcript turnEnd names, for the run identified by guid.
 	UsageLimit(guid string, turnEnd shuttleengine.Event) (shuttleengine.UsageLimit, error)
 	// Interrupt stops the session's running turn with the provider's interrupt key, sent only into a pane showing one.
-	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows none, and with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
+	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows none.
+	// It fails with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
 	Interrupt(guid string) error
-	// InterruptSettle is how long after an interrupt key the pane of the run identified by guid needs before it is read again.
+	// InterruptSettle is the wait after an interrupt key before the pane of the run identified by guid is read again.
 	// It fails when guid resolves to no run or to an engine the set does not hold.
 	InterruptSettle(guid string) (time.Duration, error)
 }
@@ -115,7 +135,8 @@ type Watcher struct {
 	// zero when none.
 	// A tick that reads a turn end replaces it from its own evaluation,
 	// and binding to another strand clears it.
-	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
+	// It is memory only.
+	// A restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
 
 	// colorPending is true from binding to a session the color was not yet queued for until its inject settles.
@@ -136,7 +157,8 @@ type Watcher struct {
 	// sessionStartLogged is the newest session-start time logged; memory only, so a restarted watcher logs again.
 	sessionStartLogged time.Time
 
-	// creelFailedTick is true once a creel call failed in the running tick, which keeps that tick from clearing a creel failure.
+	// creelFailedTick is true once a creel call failed in the running tick.
+	// It keeps that tick from clearing a creel failure.
 	creelFailedTick bool
 	// lastCreelError is the text of the creel failure last logged, empty while the calls succeed.
 	lastCreelError string
@@ -155,19 +177,23 @@ type Watcher struct {
 	// pauseHandled holds the PausedAt, as Unix nanoseconds, of each hub entry already handled.
 	pauseHandled map[int64]bool
 	// pauseFirstEsc holds, per hub entry key, when the first interrupt key went.
-	// It is memory only: a watcher restarted during the settle has lost the time, finds the orch recorded in the entry, settles it through settledWithoutInterrupt and sends no second key.
+	// It is memory only: a watcher restarted during the settle has lost the time.
+	// It finds the orch recorded in the entry, settles it through settledWithoutInterrupt, and sends no second key.
 	pauseFirstEsc map[int64]time.Time
 	// pauseReadError is the text of the record read error last logged, empty while the record reads.
 	pauseReadError string
-	// netOpsFailures is the failure episode of the pause's network operation marker reads, which repeat on every tick of a pause's grace.
+	// netOpsFailures is the failure episode of the pause's network operation marker reads.
+	// The reads repeat on every tick of a pause's grace.
 	netOpsFailures logger.Episode
 	// owner is the told owner reading, nil when the watcher was never told one.
 	owner *OwnerWatch
-	// ownerReadFailures is the failure episode of the owner reads, which repeat on every tick while the board is unreadable.
+	// ownerReadFailures is the failure episode of the owner reads.
+	// They repeat on every tick while the board is unreadable.
 	ownerReadFailures logger.Episode
 }
 
-// phaseEvents records what the current non-idle phase has observed, which the cursor has moved past and a later tick must still know.
+// phaseEvents records what the current non-idle phase has observed.
+// It keeps what the cursor has moved past, which a later tick must still know.
 type phaseEvents struct {
 	// turnEnds lists the turn ends read since the phase or its current step began, oldest first.
 	turnEnds []shuttleengine.Event
@@ -198,7 +224,8 @@ func isTurnEnd(ev shuttleengine.Event) bool {
 // An error leaves the persisted phase as it was for the next tick or watcher.
 // A tick whose state is bound to another strand while it runs saves nothing and returns no error,
 // and the next tick follows the new strand.
-// A failed creel call is no error: it is recorded in State.Stuck and holds the cycle until a tick whose creel calls all succeed clears it.
+// A failed creel call is no error.
+// It is recorded in State.Stuck and holds the cycle until a tick whose creel calls all succeed clears it.
 func (w *Watcher) Tick() (done bool, err error) {
 	w.creelFailedTick = false
 	done, err = w.tick()
@@ -394,9 +421,10 @@ func (w *Watcher) tick() (done bool, err error) {
 	return false, fmt.Errorf("orch: unknown phase %q", st.Phase)
 }
 
-// recordSessionID records in st the session id shuttle's files-only reading of the strand names, when it differs from the recorded one.
-// It also logs the reading's session-start time once per new time.
-// An unreadable reading, such as a bound strand with no shuttle run, leaves the recorded id and never fails the tick; an empty reading id writes nothing.
+// recordSessionID stores in st the session id from shuttle's files-only reading of the strand, if it differs.
+// It also logs the reading's session-start time once for each new value.
+// An unreadable reading, such as a bound strand with no shuttle run, leaves the recorded id and never fails the tick.
+// An empty reading id writes nothing.
 // The save is strand-checked, so a strand a concurrent start bound is never written onto.
 func (w *Watcher) recordSessionID(st *State) error {
 	reading, err := w.session.SessionState(st.Strand)
@@ -421,8 +449,10 @@ func (w *Watcher) orchName(st State) (string, error) {
 	return w.session.StrandName(st.Strand)
 }
 
-// creelFailed records a failed creel call: it is logged once per change of error and written to st.Stuck with StuckByCreel set.
-// The failure is no tick error, so a creel outage holds the cycle and never ends the watcher; the returned error is only a failed save.
+// creelFailed records a failed creel call.
+// It is logged once per change of error and written to st.Stuck with StuckByCreel set.
+// The failure is no tick error, so a creel outage holds the cycle and never ends the watcher;
+// the returned error is only a failed save.
 func (w *Watcher) creelFailed(st *State, err error) error {
 	w.creelFailedTick = true
 	text := err.Error()
@@ -437,10 +467,16 @@ func (w *Watcher) creelFailed(st *State, err error) error {
 	return w.save(*st)
 }
 
-// retryFreshLaunch retries the withdraw and the release `start` made around a fresh launch and recorded as failed in State.FreshLaunchFailure, on the orch strand's name.
-// It answers true once both succeeded, having cleared the field and State.Stuck in one save and handed a withdrawn resume line to ClearResumeNoticed.
-// A failure, a failed ClearResumeNoticed included, rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it while the field is set, and answers false with no error.
-// A resume line the withdraw removed whose clear failed is kept in State.ResumeLineWithdrawn, so a later retry clears the mark although its own withdraw finds nothing.
+// retryFreshLaunch retries the withdraw and the release made around a fresh launch.
+// It acts on the orch strand's name, for the launch State.FreshLaunchFailure records as failed.
+// It answers true once both succeeded.
+// It clears the field and State.Stuck in one save,
+// and it hands a withdrawn resume line to ClearResumeNoticed.
+// A failure, a failed ClearResumeNoticed included, rewrites State.Stuck with the failure.
+// It leaves State.StuckByCreel unset, so no successful creel call clears it while the field is set.
+// It answers false with no error.
+// A resume line the withdraw removed whose clear failed is kept in State.ResumeLineWithdrawn,
+// so a later retry clears the mark although its own withdraw finds nothing.
 func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
 	var failures []string
 	lineWithdrawnBefore := st.ResumeLineWithdrawn
@@ -484,7 +520,8 @@ func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
 }
 
 // renewHold takes or renews the watcher's creel hold on the orch strand for cycleHoldDuration.
-// It answers whether the hold stands; a creel refusal or failure is recorded through creelFailed and answers false with no error.
+// It reports whether the hold stands.
+// A creel refusal or failure is recorded through `creelFailed`, and it reports false with no error.
 func (w *Watcher) renewHold(st *State) (bool, error) {
 	name, err := w.orchName(*st)
 	if err != nil {
@@ -497,7 +534,8 @@ func (w *Watcher) renewHold(st *State) (bool, error) {
 }
 
 // releaseHold ends the watcher's creel hold on the orch strand.
-// A failed release is recorded through creelFailed and changes nothing else: the hold lapses within cycleHoldDuration.
+// A failed release is recorded through `creelFailed` and changes nothing else:
+// the hold lapses within `cycleHoldDuration`.
 func (w *Watcher) releaseHold(st *State) error {
 	name, err := w.orchName(*st)
 	if err != nil {
@@ -509,8 +547,10 @@ func (w *Watcher) releaseHold(st *State) error {
 	return nil
 }
 
-// readMailbox reads the watcher's own creel mailbox without waiting, handing it to readReplies, and returns the state as the handler left it.
-// A handler error is a local failure and fails the tick; a failed read is a creel failure and holds the cycle.
+// readMailbox reads the watcher's own creel mailbox without waiting.
+// It hands the messages to `readReplies` and returns the state as the handler left it.
+// A handler error is a local failure and fails the tick;
+// a failed read is a creel failure and holds the cycle.
 func (w *Watcher) readMailbox(st State) (State, error) {
 	w.repliesRead = false
 	var handlerErr error
@@ -539,10 +579,14 @@ func (w *Watcher) readMailbox(st State) (State, error) {
 	return LoadState(w.paths)
 }
 
-// readReplies is the read handler of the watcher's mailbox: it runs before the client acknowledges the read, so a failure leaves the messages unread.
-// Only a reply from the orch strand whose reply_to is the pending note request counts; every other message is logged and dropped.
-// A `defer` body declines a soft cycle whose note is still unwritten, and is ignored in any other cycle.
-// A body starting with `written` is logged and dropped, since the note gate reads the note itself; every other body is logged and dropped.
+// readReplies handles the messages of the watcher's creel mailbox before the client acknowledges the read.
+// A failure leaves the messages unread.
+// Only a reply from the orch strand whose `reply_to` is the pending note request counts;
+// every other message is logged and dropped.
+// A `defer` body declines a soft cycle whose note is still unwritten.
+// It is ignored in every other case.
+// A body starting with `written` is logged and dropped, since the note gate reads the note itself.
+// Any other body is logged and dropped too.
 func (w *Watcher) readReplies(messages []CreelMessage) error {
 	st, err := LoadState(w.paths)
 	if err != nil {
@@ -591,10 +635,13 @@ func (w *Watcher) readReplies(messages []CreelMessage) error {
 	return nil
 }
 
-// sendStep persists the step as State.Pending with no id, then posts it as mail (mail true, body as the mail body) or injects it into the orch strand, and saves the id creel answers.
-// A mail ends as the note request: its id becomes State.RequestID and nothing stays pending.
-// A step is sent only after a re-read of the state file finds its phase still non-idle on its strand; otherwise nothing is persisted or sent and the tick ends.
-// A failed call is recorded through creelFailed and leaves the step pending with no id for adoptPending to look up on a later tick.
+// sendStep persists the step as `State.Pending` with no id, then posts it as mail or injects it into the orch strand.
+// A mail posts `body`, and an inject sends `step`; the id creel answers is saved either way.
+// A mail ends as the note request: its id becomes `State.RequestID` and nothing stays pending.
+// A step is sent only after a re-read of the state file finds its phase still non-idle on its strand;
+// otherwise nothing is persisted or sent and the tick ends.
+// A failed call is recorded through `creelFailed` and leaves the step pending with no id;
+// a later tick's `adoptPending` looks the step up.
 func (w *Watcher) sendStep(st *State, mail bool, step CreelStep, body string, now time.Time) error {
 	current, err := LoadState(w.paths)
 	if err != nil {
@@ -635,7 +682,8 @@ func (w *Watcher) sendStep(st *State, mail bool, step CreelStep, body string, no
 	return w.save(*st)
 }
 
-// recoverPending resolves a pending step that has no id: it adopts what creel journaled for it, and sends it again only when creel journaled nothing.
+// recoverPending resolves a pending step that has no id.
+// It adopts what creel journaled for the step, and it sends the step again only when creel journaled nothing.
 func (w *Watcher) recoverPending(st *State, now time.Time) error {
 	settled, err := w.adoptPending(st)
 	if err != nil || settled {
@@ -645,9 +693,11 @@ func (w *Watcher) recoverPending(st *State, now time.Time) error {
 	return w.sendStep(st, pending.Mail, CreelStep{Command: pending.Command, Argument: pending.Argument, Text: pending.Text}, pending.Text, now)
 }
 
-// adoptPending looks up what creel journaled for the pending step that has no id, since the step was persisted: a failed call may have journaled its request.
+// adoptPending looks up what creel journaled for a pending step that has no id.
+// The step was persisted before its call, and a failed call may still have journaled its request.
 // It adopts only a post or inject whose command and argument, or text (a post's first line), match the step.
-// It answers true when the tick must not send the step: an id was adopted, or the lookup failed and is held through creelFailed.
+// It reports whether the tick must not send the step:
+// an id was adopted, or the lookup failed and is held through `creelFailed`.
 func (w *Watcher) adoptPending(st *State) (bool, error) {
 	pending := st.Pending
 	if pending == nil || pending.ID != 0 {
@@ -689,9 +739,10 @@ func pendingMatches(pending PendingStep, sent CreelSent) bool {
 }
 
 // stepOutcome reads the pending inject's outcome from creel without blocking the tick.
-// It answers true when the inject was typed, injected or unconfirmed, and the outcome says which;
-// an expired inject is queued again with its stall reason recorded in State.Stuck, and a withdrawn one is left to the caller, which returns the cycle to idle.
-// A pending step with no id, or a post, has no outcome to read and answers the zero outcome.
+// It reports whether the inject was typed (injected or unconfirmed), and the outcome says which.
+// An expired inject is sent again with its stall reason recorded in `State.Stuck`;
+// a withdrawn inject is left to the caller, which returns the cycle to idle.
+// A pending step with no id, or a post, has no outcome to read, so the zero outcome is returned.
 func (w *Watcher) stepOutcome(st *State) (CreelOutcome, bool, error) {
 	pending := st.Pending
 	if pending == nil || pending.ID == 0 || pending.Mail {
@@ -722,8 +773,10 @@ func (w *Watcher) stepOutcome(st *State) (CreelOutcome, bool, error) {
 	return outcome, false, nil
 }
 
-// turnEndAfterSending returns the first turn end read since the current step began whose hook-side second is after the second of sendingAt, the newest sending record of the step's inject.
-// A turn end with no time never counts, and neither does any turn end while sendingAt is zero.
+// turnEndAfterSending returns the first turn end read since the current step began.
+// The turn end's hook-side second must be after the second of `sendingAt`.
+// `sendingAt` is the newest sending record of the step's inject.
+// A turn end with no time never counts, and none counts while `sendingAt` is zero.
 func (w *Watcher) turnEndAfterSending(sendingAt time.Time) (shuttleengine.Event, bool) {
 	if sendingAt.IsZero() {
 		return shuttleengine.Event{}, false
@@ -736,7 +789,8 @@ func (w *Watcher) turnEndAfterSending(sendingAt time.Time) (shuttleengine.Event,
 	return shuttleengine.Event{}, false
 }
 
-// typeStartColor queues the strand's color on the first tick after binding, before anything else that tick queues, then reads its outcome until it settles.
+// typeStartColor queues the strand's color on the first tick after binding, before anything else that tick queues.
+// It then reads the color's outcome until it settles.
 // A session resumed at the reload sequence's color step is left to that step.
 // A failed or expired color is logged and dropped, since the color is display only; an unconfirmed one counts as typed.
 func (w *Watcher) typeStartColor(st *State) error {
@@ -766,7 +820,8 @@ func (w *Watcher) typeStartColor(st *State) error {
 	return nil
 }
 
-// typeColor queues the strand's color as a creel command inject and remembers its id for typeStartColor to read.
+// typeColor queues the strand's color as a creel command inject and remembers the inject's id.
+// Its outcome is read on a later tick.
 // A strand with no color queues nothing and counts as done.
 // A failure is logged and drops the color instead of failing the tick, so the color never wedges a start or a reload.
 func (w *Watcher) typeColor(st *State) error {
@@ -791,15 +846,17 @@ func (w *Watcher) typeColor(st *State) error {
 	return nil
 }
 
-// recordColorTyped records in st that the strand's color counts as typed for its current strand and launch, so a watcher binding to the same session queues no start color.
+// recordColorTyped records in st that the strand's color counts as typed for its current strand and launch,
+// so a watcher binding to the same session queues no start color.
 func (w *Watcher) recordColorTyped(st *State) error {
 	st.ColorStrand, st.ColorLaunchedAt = st.Strand, st.LaunchedAt
 	return w.save(*st)
 }
 
 // initCursor sets the read cursor from st on the watcher's first tick for a strand.
-// A phase belonging to another strand is reset to idle through resetForOtherStrand.
-// A Stuck that neither a pending step, a creel failure nor a recorded fresh-launch failure owns is cleared, since only the old watcher's hold bookkeeping could have left it.
+// A phase that belongs to another strand is reset to idle, which withdraws the watcher's queued injects and unread mail.
+// A Stuck that neither a pending step, a creel failure nor a recorded fresh-launch failure owns is cleared.
+// Only an earlier watcher's hold bookkeeping could have left it.
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen = nil, phaseEvents{}
@@ -826,9 +883,13 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	return st, w.save(st)
 }
 
-// resetForOtherStrand resets a phase that belongs to another strand to idle: it withdraws the watcher's queued injects and unread mail to the orch strand, releases its hold and drops its pending ids.
-// The resume-noticed mark of each pause entry whose resume line the withdraw removed is cleared, so a continued session gets the line posted again.
-// A failed withdraw or release goes through creelFailed, saves no reset and leaves the watcher unbound, so the next tick runs the reset again; it then answers errResetPending.
+// resetForOtherStrand resets a phase that belongs to another strand to idle.
+// It withdraws the watcher's queued injects and unread mail to the orch strand.
+// It then releases the hold and drops the pending ids.
+// The resume-noticed mark of each pause entry whose resume line the withdraw removed is cleared,
+// so a continued session gets the line posted again.
+// A failed withdraw or release leaves the watcher unbound and saves no reset.
+// The next tick runs the reset again and then answers errResetPending.
 func (w *Watcher) resetForOtherStrand(st State) (State, error) {
 	held := func(err error) (State, error) {
 		w.started = false
@@ -911,8 +972,8 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	return st, w.save(st)
 }
 
-// markStuck records reason as the stall creel reported for the pending inject, for `status`,
-// saving and logging it only when it changes so a long wait logs once.
+// markStuck records reason as the stall creel reported for the pending inject, so `status` can show it.
+// It saves and logs the stall only when it changes, so a long wait logs once.
 func (w *Watcher) markStuck(st *State, reason string) error {
 	if st.Stuck == reason && !st.StuckByCreel {
 		return nil
@@ -1053,7 +1114,8 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	st.PendingHandoff = path
 	st.CycleTrigger = trigger
 	st.CycleMode, st.CycleRequestedAt = mode, requestedAt
-	// The fields enter sets, saved together with the marker's removal so a withdrawn or replaced request is never consumed.
+	// The phase fields below are saved with the request marker's removal,
+	// so a withdrawn or replaced request is never consumed.
 	st.Phase = PhaseHandoffRequested
 	st.PhaseStrand = st.Strand
 	st.PhaseEnteredAt = now
@@ -1073,8 +1135,8 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	return w.sendStep(&st, true, CreelStep{}, body, now)
 }
 
-// unpausedSince returns the time from to now less the time a hub pause held the watcher's cycle machine.
-// A watcher told no pause record, or one whose record cannot be read, discounts nothing.
+// unpausedSince returns the time from `from` to `now`, less the time a hub pause held the watcher's cycle machine.
+// A watcher with no pause record, or one whose record cannot be read, discounts nothing.
 func (w *Watcher) unpausedSince(from, now time.Time) time.Duration {
 	if w.pause == nil {
 		return now.Sub(from)
@@ -1086,7 +1148,8 @@ func (w *Watcher) unpausedSince(from, now time.Time) time.Duration {
 	return pauserecord.AwakeSince(from, now, record.CoverageOf("", now).Intervals)
 }
 
-// renderHandoffRequest renders the note template file, then the note request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
+// renderHandoffRequest renders the note template file, then returns the note request for trigger.
+// A soft cycle gets the soft stencil; any other trigger gets the plain one.
 func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, error) {
 	if err := RenderNoteTemplateFile(w.stencilsDir, w.paths.NoteTemplatePath); err != nil {
 		return "", err
@@ -1097,7 +1160,9 @@ func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, err
 	return RenderHandoffInstruction(w.stencilsDir, handoffPath, w.paths.NoteTemplatePath)
 }
 
-// notePassed reports whether the note gate passes: the newest session event read since the phase began is a turn end, and the requested note file exists and is not empty.
+// notePassed reports whether the note gate passes.
+// The gate passes when the newest session event read since the phase began is a turn end,
+// and the requested note file exists and is not empty.
 func (w *Watcher) notePassed(st State) (bool, error) {
 	if w.newest == nil || !isTurnEnd(*w.newest) {
 		return false, nil
@@ -1105,7 +1170,7 @@ func (w *Watcher) notePassed(st State) (bool, error) {
 	return handoffWritten(st.PendingHandoff)
 }
 
-// tickHandoff passes the note gate once the orch has ended a turn with the requested note written, and times the phase out.
+// tickHandoff passes the note gate once the orch ends a turn with the requested note written, and times the phase out.
 // A request not yet posted, because a restart came before the post was persisted, is posted again.
 func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
@@ -1124,7 +1189,7 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 		return err
 	}
 	if passed {
-		// The new phase's first tick runs in this call, as it did when the reply handler made the move before the phase switch.
+		// The new phase's first tick runs in this call, so entering the phase and its first tick happen in one step.
 		start := w.startClearing
 		if st.CycleMode == CycleCompact {
 			start = w.startCompacting
@@ -1154,7 +1219,8 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	return w.sendStep(&st, true, CreelStep{}, body, now)
 }
 
-// requestReadAt returns when the orch read the posted note request, zero while it is unread, none was posted or creel could not be asked.
+// requestReadAt returns when the orch read the posted note request.
+// It returns zero while the request is unread, when none was posted, or when creel could not be asked.
 // The first time creel answers a read it is recorded in State.RequestReadAt, so a restarted watcher keeps it.
 // A failed lookup is recorded through creelFailed and answers zero, holding the timeout until creel answers.
 func (w *Watcher) requestReadAt(st *State) (time.Time, error) {
@@ -1185,7 +1251,8 @@ func handoffWritten(path string) (bool, error) {
 	return info.Size() > 0, nil
 }
 
-// startClearing renders the role file and the resume prompt first, so what the cleared session needs is known good before /clear is injected, then persists clearing.
+// startClearing renders the role file and the resume prompt, then persists the clearing phase.
+// Rendering first means what the cleared session needs is known good before /clear is injected.
 // The `/clear` itself is sent by the next tickClearing.
 func (w *Watcher) startClearing(st State, now time.Time) error {
 	if err := w.renderRoleFile(); err != nil {
@@ -1226,11 +1293,13 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 	return w.startReload(st, now, false)
 }
 
-// removeSatisfiedRequest removes a pending cycle request of mode made no later than effectAt, the time the running cycle's action took effect.
+// removeSatisfiedRequest removes a pending cycle request of mode made no later than effectAt.
+// effectAt is the time the running cycle's action took effect.
 // A cycle start clears the request pending at that moment, so a request found during the cycle was made after it started;
 // the cycle's action did what that request asks, so a second cycle for it is pointless.
-// Bound: it removes only a request made after the cycle started and before its action took effect, for the same thing the action did;
-// the request time is CLI-written and the boundary time is the transcript's, both wall clock on one host.
+// The removal reaches only a request made after the cycle started and before its action took effect.
+// The request must also be of the same mode as the action.
+// The request time is CLI-written and the boundary time is the transcript's, both wall clock on one host.
 func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error {
 	req, pending, err := CycleRequested(w.paths)
 	if err != nil || !pending || req.Mode != mode || req.RequestedAt.After(effectAt) {
@@ -1246,7 +1315,7 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the creel hold is taken.
 // The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
-// A role-file render failure returns to idle with the reason, as a clear cycle's does.
+// A role-file render failure returns to idle with the reason.
 // It also forgets the boundary, so the failure is reported once and the next turn end retries it.
 // A refused hold keeps the boundary and tries again on the next tick.
 func (w *Watcher) startAutoReload(st State, now time.Time) error {
@@ -1270,7 +1339,8 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 }
 
 // startReload enters the resuming phase at its color step and queues it.
-// skipsSkills is true for a reload after a compaction, which keeps the session's skills, and false after `/clear`, which loses them.
+// skipsSkills is true for a reload after a compaction, which keeps the session's skills;
+// it is false after `/clear`, which loses them.
 // The caller must have set st.PendingResume to the pointer line.
 func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepColor, time.Time{}, nil, skipsSkills
@@ -1282,10 +1352,9 @@ func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
 	return w.typeReloadStep(st, now)
 }
 
-// reloadStep returns the step st is in, normalised:
-// a reload that skips the skills has no skills step, an empty skill list has none either,
-// a retry step with nothing to retry has no retry,
-// and any value that is none of these is the pointer step.
+// reloadStep returns the step st is in, normalised.
+// A reload that skips the skills has no skills step, and an empty skill list has none either.
+// A retry step with nothing to retry has no retry, and any value that is none of these is the pointer step.
 func (w *Watcher) reloadStep(st State) int {
 	switch {
 	case st.ReloadStep == ReloadStepColor:
@@ -1300,9 +1369,12 @@ func (w *Watcher) reloadStep(st State) int {
 	return ReloadStepPointer
 }
 
-// typeReloadStep queues the current step, the color, the plugins reload, the skills load, the retry load or the pointer, as one creel inject.
-// The first queueing persists the step's time and events offset first, so a turn end read before it never confirms the step.
-// A requeue after a restart or an expiry keeps both, so the step's timeout never restarts.
+// typeReloadStep queues the current step as one creel inject.
+// The step is the color, the plugins reload, the skills load, the retry load or the pointer.
+// The first queueing persists the step's time and events offset first,
+// so a turn end read before it never confirms the step.
+// A requeue after a restart or an expiry keeps both,
+// so the step's timeout never restarts.
 // A strand with no color has no color step to queue and moves straight to the plugins step.
 func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	if st.ReloadTypedAt.IsZero() {
@@ -1339,14 +1411,15 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	return w.sendStep(&st, false, CreelStep{Text: st.PendingResume}, "", now)
 }
 
-// finishColorStep moves the reload from its color step to the plugins step, recording the strand's color as typed for the session.
+// finishColorStep moves the reload from its color step to the plugins step.
+// It records the strand's color as typed for the session.
 func (w *Watcher) finishColorStep(st State, now time.Time) error {
 	st.ColorStrand, st.ColorLaunchedAt = st.Strand, st.LaunchedAt
 	return w.advanceReload(st, now, ReloadStepPlugins, nil)
 }
 
-// hookDelivered returns the delivery mark and true when the session-start hook already delivered the pending pointer:
-// a mark dated at or after State.PointerMarkSince whose text is the pending pointer.
+// hookDelivered reports the delivery mark and whether the session-start hook already delivered the pending pointer.
+// A mark counts when it is dated at or after State.PointerMarkSince and its text is the pending pointer.
 // An unreadable mark counts as no delivery, so the pointer is typed.
 func (w *Watcher) hookDelivered(st State) (ResumeMark, bool) {
 	mark, found, err := ReadResumeMark(w.paths)
@@ -1357,7 +1430,8 @@ func (w *Watcher) hookDelivered(st State) (ResumeMark, bool) {
 	return mark, found && !mark.At.Before(st.PointerMarkSince) && mark.Text == st.PendingResume
 }
 
-// advanceReload persists the move to step, with retry as the skills its retry step loads and its offset taken at the cursor, and goes on to queue it.
+// advanceReload persists the move to step, with retry as the skills its retry step loads.
+// It takes the events offset at the cursor and goes on to queue the step.
 // The move ends the stall reason of the step it leaves.
 func (w *Watcher) advanceReload(st State, now time.Time, step int, retry []string) error {
 	st.ReloadStep, st.ReloadRetry = step, retry
@@ -1375,13 +1449,12 @@ func (w *Watcher) advanceReload(st State, now time.Time, step int, retry []strin
 	return w.tickResuming(st, now)
 }
 
-// skipSkill logs the skipped skill and its cause.
 func (w *Watcher) skipSkill(st State, skill, cause string) {
 	logger.Warn("orch: skill skipped", "skill", skill, "cause", cause, "strandGUID", st.Strand)
 }
 
-// settleSkillTurn classifies the load turn of skills that turnEnd ended, logs what is skipped and moves on:
-// to the retry step when the skills step left skills missing, else to the pointer.
+// settleSkillTurn classifies the load turn of skills that turnEnd ended and logs what is skipped.
+// It moves to the retry step when the skills step left skills missing, and to the pointer otherwise.
 // An unreadable turn is confirmed unverified, with no retry.
 func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []string, turnEnd shuttleengine.Event) error {
 	report, err := w.session.ClassifySkillLoad(st.Strand, turnEnd, skills)
@@ -1404,11 +1477,16 @@ func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []st
 	return w.advanceReload(st, now, ReloadStepPointer, nil)
 }
 
-// tickResuming walks the reload sequence: the color step, the plugins step, the skills step after `/clear`, the retry step when skills were left missing, then the pointer.
+// tickResuming walks the reload sequence one step at a time.
+// The sequence runs the color step, the plugins step, and the skills step after `/clear`.
+// Then come the retry step, when skills were left missing, and the pointer step.
 // The color and plugins steps move on once creel typed their inject, injected or unconfirmed.
-// A skills or retry step is confirmed by a turn end read after its inject's newest sending record, and settled from that turn.
+// A skills or retry step is confirmed by a turn end read after its inject's newest sending record.
+// It is then settled from that turn.
 // The pointer step ends the phase at such a turn end.
-// Every step times out from its first queueing: the color and plugins steps are logged as skipped, the skills every skill it loads, and the pointer ends the phase as `resume timed out`.
+// Every step times out from its first queueing.
+// A timed-out color or plugins step is logged as skipped.
+// A timed-out skills or retry step skips every skill it loads, and the pointer ends the phase as `resume timed out`.
 // A withdrawn inject returns to idle.
 func (w *Watcher) tickResuming(st State, now time.Time) error {
 	step := w.reloadStep(st)
@@ -1493,8 +1571,9 @@ func (w *Watcher) startCompacting(st State, now time.Time) error {
 	return nil
 }
 
-// reloadAfterCompaction renders the role file and the resume pointer naming the cycle's note, then enters the reload sequence.
-// A stencil failure returns to idle with the reason, as a clear cycle's does.
+// reloadAfterCompaction renders the role file and the resume pointer naming the cycle's note.
+// It then enters the reload sequence.
+// A stencil failure returns to idle with the reason.
 func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	if err := w.renderRoleFile(); err != nil {
 		return w.toIdle(st, err.Error())
@@ -1507,16 +1586,22 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
-// withdrawQueuedCompact withdraws the `/compact` inject still queued when the session compacted on its own, so it never compacts the session a second time.
-// The inject counts as still queued when its step is pending, not yet typed, and either creel never answered its send or creel reads it queued or sending.
+// withdrawQueuedCompact withdraws the `/compact` inject still queued after the session compacted on its own.
+// This keeps the session from compacting a second time.
+// The inject counts as still queued when its step is pending and not yet typed.
+// That holds when creel never answered its send, or when creel reads it queued or sending.
 // The withdraw is receiver-wide: it also removes any other queued watcher item to the orch.
-// Creel's withdraw leaves an inject a delivery attempt holds, and a busy attempt puts it back in the queue, so the outcome is read again after the withdraw.
+// Creel's withdraw leaves an inject a delivery attempt holds,
+// and a busy attempt puts it back in the queue,
+// so the outcome is read again after the withdraw.
 // One still queued or sending keeps the step pending and answers errCompactInFlight, so the next call withdraws again.
 // Past the handoff timeout from the phase entry, such a step is dropped with a warning.
-// A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops a withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
+// A resume line the withdraw removed has its pause-record mark cleared;
+// a failed clear drops a withdrawn step, keeps the line in State.ResumeLineWithdrawn, and fails the call,
 // and a later call clears the mark although no withdraw runs.
-// A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry;
-// a failure of the read after the withdraw also keeps a withdrawn resume line in State.ResumeLineWithdrawn.
+// A creel failure is recorded through creelFailed.
+// It is answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry.
+// A failure of the read after the withdraw also keeps a withdrawn resume line in State.ResumeLineWithdrawn.
 func (w *Watcher) withdrawQueuedCompact(st *State) error {
 	if st.Pending == nil || st.PhaseInjected {
 		return w.clearWithdrawnResumeLine(st)
@@ -1579,7 +1664,8 @@ func (w *Watcher) withdrawQueuedCompact(st *State) error {
 	return nil
 }
 
-// clearWithdrawnResumeLine clears the pause-record mark of a resume line an earlier withdraw removed and whose clear failed, then unsets State.ResumeLineWithdrawn.
+// clearWithdrawnResumeLine retries the pause-record mark clear of a resume line that an earlier withdraw removed.
+// On success it unsets State.ResumeLineWithdrawn.
 // It does nothing when no such line is recorded.
 func (w *Watcher) clearWithdrawnResumeLine(st *State) error {
 	if !st.ResumeLineWithdrawn || w.pause == nil {
@@ -1592,7 +1678,8 @@ func (w *Watcher) clearWithdrawnResumeLine(st *State) error {
 	return nil
 }
 
-// holdOnCreelFailure records a failed creel call through creelFailed and answers errCompactWithdrawHeld, or the failed save.
+// holdOnCreelFailure records a failed creel call through creelFailed and answers errCompactWithdrawHeld;
+// when saving the record fails, it answers that save error instead.
 func (w *Watcher) holdOnCreelFailure(st *State, err error) error {
 	if saveErr := w.creelFailed(st, err); saveErr != nil {
 		return saveErr
@@ -1600,11 +1687,16 @@ func (w *Watcher) holdOnCreelFailure(st *State, err error) error {
 	return errCompactWithdrawHeld
 }
 
-// tickCompacting searches the transcript State.ReadingTurnEnd names for a compaction boundary every tick, since a compaction ends without a turn end.
-// The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
-// The phase completes on a boundary after the phase was entered, whatever follows it; an earlier boundary never completes it.
-// Past the handoff timeout it returns to idle and holds the next automatic trigger for the soft idle, through LastDeferral.
-// The `/compact` is injected once: an expired one is queued again, and an unconfirmed one keeps the search going for the boundary.
+// tickCompacting searches the transcript from State.ReadingTurnEnd for a compaction boundary on every tick.
+// It searches every tick because a compaction ends without a turn end.
+// The boundary is searched for rather than read off the newest entry.
+// A message answered right after the boundary would hide it there.
+// The phase completes on a boundary after the phase was entered, whatever follows it;
+// an earlier boundary never completes it.
+// Past the handoff timeout it returns to idle.
+// It sets LastDeferral, which holds the next automatic trigger for the soft idle.
+// The `/compact` is injected once: an expired one is queued again,
+// and an unconfirmed one keeps the search going for the boundary.
 func (w *Watcher) tickCompacting(st State, now time.Time) error {
 	var boundary shuttleengine.CompactionBoundary
 	qualifying := false

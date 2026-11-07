@@ -1,5 +1,6 @@
 // innerrun_owner_test.go covers the inner-run's owner check over a fake clock and fake seams:
-// when the check runs, what an owned-elsewhere verdict does to the parent lock, the pause and the notice, and how a spawn refused as owned elsewhere is held.
+// when the check runs; what an owned-elsewhere verdict does to the parent lock, the pause and the notice;
+// and how a spawn refused as owned elsewhere is held.
 
 package battenshed
 
@@ -52,9 +53,14 @@ func elsewhereVerdict(int) (OwnerVerdict, error) {
 	return OwnerVerdict{Owner: "m2", Elsewhere: true}, nil
 }
 
-// TestInnerRun_OwnerCheck asserts the owner check runs when the memory holds it due and after a pause hold ends, and that an owned-elsewhere verdict releases the child's parent lock record, pauses with the owner and sends one notice.
-// It asserts a Finalize past its parent-side merge keeps the record, an unreachable verdict or a check error is retried at the next check, a done child waits out an owner hold, and a spawn refused as owned elsewhere pauses, writes no marker and spawns nothing more while the owner stands.
-// A machine wake does not trigger the check here: it reaches the verdict through the full pass the scheduling dobby owes.
+// TestInnerRun_OwnerCheck asserts the owner check runs when the memory holds it due and after a pause hold ends.
+// An owned-elsewhere verdict releases the child's parent lock record, pauses with the owner and sends one notice.
+// It asserts a Finalize past its parent-side merge keeps the record.
+// It asserts an unreachable verdict or a check error is retried at the next check.
+// It asserts a done child waits out an owner hold.
+// It asserts a spawn refused as owned elsewhere pauses, writes no marker and spawns nothing more while the owner stands.
+// A machine wake does not trigger the check here:
+// it reaches the verdict through the full pass the scheduling dobby owes.
 func TestInnerRun_OwnerCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -204,7 +210,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 	adoptTests := []struct {
 		name    string
 		subject string
-		// wantAdopt is the adopt command the hold reason and the notice name.
+		// wantAdopt is the adopt command that the hold reason and the notice name.
 		wantAdopt string
 	}{
 		{"a beam member names its beam", "beam", "lym adopt beam"},
@@ -336,10 +342,10 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 
 	spawnHoldTests := []struct {
 		name string
-		// probeDue is whether the memory's last probe is older than the notice probe.
+		// probeDue reports whether the memory's last probe is older than the notice probe.
 		probeDue bool
 		verdict  OwnerVerdict
-		// pauseCovers is whether an owner pause covers the slug.
+		// pauseCovers reports whether an owner pause covers the slug.
 		pauseCovers bool
 		wantChecks  int
 		wantSpawns  int

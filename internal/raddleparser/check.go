@@ -1,4 +1,5 @@
-// check.go declares the board context the checks read, Finding, and Check, which judges a proposal against the Sketch's decision record and the board.
+// check.go holds the rules that judge a proposal against the Sketch's decision record and the board;
+// it also holds the board context the rules read and the Finding type they return.
 
 package raddleparser
 
@@ -11,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 )
 
-// The names of the checks Check and RecheckBoard report.
+// The names of the rules a proposal can break; each finding carries one of them.
 const (
 	CheckDecisionUnbuilt        = "decision-unbuilt"
 	CheckDecisionUnknown        = "decision-unknown"
@@ -54,7 +55,8 @@ const (
 	sectionCriteria  = "Acceptance criteria"
 )
 
-// Finding is one broken rule: the check, the part, slug or entry it concerns when it concerns one, and what to fix.
+// Finding reports one broken rule: the check it breaks and what to fix.
+// Part is the slug of the part or entry it concerns, when it concerns one.
 type Finding struct {
 	Check  string `json:"check"`
 	Part   string `json:"part,omitempty"`
@@ -62,7 +64,9 @@ type Finding struct {
 }
 
 // BoardEntry is one board entry as the checks read it.
-// Kind is KindTask, KindProject or the board's other kind, Open is false for a done entry, and Revised is its `revised` stamp in RFC 3339.
+// Kind is the entry's kind, such as task or project.
+// Open is false for a done entry.
+// Revised is the entry's `revised` stamp in RFC 3339.
 type BoardEntry struct {
 	Slug    string
 	Kind    string
@@ -74,7 +78,8 @@ type BoardEntry struct {
 // BoardContext is what the checks read of the board, built by the caller.
 // Sketch is the Sketch's slug and Entry the slug of the run's own entry.
 // ModuleLabels are the Sketch's labels that are not type labels.
-// Store holds the slugs the raddle store keeps, as Sketch slug or filed slug, and TypeLabels the board's type labels.
+// Store holds the slugs the raddle store keeps, each as a Sketch slug or a filed slug.
+// TypeLabels are the board's type labels.
 // Profiles maps each part recipe to the profiles of `profiles.yaml` that hold a block for it.
 // Filing is true at Raddle-File's run, where a dependency on an entry gone from the board is dropped.
 // LivePattern reports whether the run's PATTERN.md holds the entry id.
@@ -90,12 +95,14 @@ type BoardContext struct {
 	LivePattern  func(id string) bool
 }
 
-// decisionIDPattern matches a decision id as a whole word; a longer id such as D10 is matched whole.
+// decisionIDPattern matches a decision id as a whole word;
+// a longer id such as D10 is matched whole.
 var decisionIDPattern = regexp.MustCompile(`\bD[1-9][0-9]*\b`)
 
-// Check judges p against record, the Sketch's decision record, and board, and returns one finding per broken rule, in the order of the rules.
+// Check judges p against record, the Sketch's decision record, and board.
+// It returns one finding for each instance of a broken rule, in the order the checks run.
 // It reads the record only through internal/discussionparser.
-// A proposal that breaks none returns no finding.
+// A proposal that breaks no rule returns no finding.
 func Check(p Proposal, record []byte, board BoardContext) []Finding {
 	c := checker{proposal: p, record: record, board: board, recordIDs: discussionparser.DecisionIDs(record)}
 	var findings []Finding
@@ -113,7 +120,7 @@ func Check(p Proposal, record []byte, board BoardContext) []Finding {
 	return findings
 }
 
-// checker holds what the rules of Check share.
+// checker holds the inputs that the rules share, including the decision ids parsed from the record.
 type checker struct {
 	proposal  Proposal
 	record    []byte
@@ -126,7 +133,8 @@ func partBuilds(parts []Part, id string) bool {
 	return slices.ContainsFunc(parts, func(part Part) bool { return slices.Contains(part.Decisions, id) })
 }
 
-// coverage reports the decisions, criteria, risks and PATTERN changes the parts leave out, carry twice or invent.
+// coverage reports the decisions, criteria, risks and PATTERN changes the parts leave out or invent.
+// It also reports a PATTERN change that more than one part carries.
 func (c *checker) coverage() []Finding {
 	var findings []Finding
 	parts := c.proposal.Parts
@@ -191,7 +199,10 @@ func (c *checker) coverage() []Finding {
 	return append(findings, c.patternClusters(changes)...)
 }
 
-// patternClusters reports a pattern_clusters mapping the filing could not write: one of a change its part does not carry, a change mapped twice or a text that is no one-line entry text within the cap, one onto an entry PATTERN.md does not hold, and one onto an entry another declared change or mapping already claims.
+// patternClusters reports the pattern_clusters mappings the filing could not write.
+// A mapping fails when its part does not carry its change, or when its change is mapped twice.
+// It also fails when its text is empty, spans more than one line, or is over the cap of a PATTERN.md entry.
+// Its entry must be one PATTERN.md holds, and no other declared change or mapping may already claim it.
 func (c *checker) patternClusters(changes []discussionparser.PatternChange) []Finding {
 	claimedBy := make(map[string]string, len(changes))
 	for _, change := range changes {
@@ -234,7 +245,8 @@ func namesDecision(texts []string, id string) bool {
 	return slices.ContainsFunc(texts, func(text string) bool { return slices.Contains(decisionIDPattern.FindAllString(text, -1), id) })
 }
 
-// criteriaNameDecisions reports a part whose carried criteria leave a built decision unnamed, and a carried criterion or risk that names a decision no part on the carrier's path builds.
+// criteriaNameDecisions reports a part whose carried criteria leave a built decision unnamed.
+// It also reports a carried criterion or risk that names a decision neither it nor a part on its depends_on path builds.
 func (c *checker) criteriaNameDecisions() []Finding {
 	var findings []Finding
 	for _, part := range c.proposal.Parts {
@@ -262,7 +274,7 @@ func (c *checker) criteriaNameDecisions() []Finding {
 	return findings
 }
 
-// reachable returns the slugs of the parts on slug's depends_on path: the parts it depends on, directly or through other parts.
+// reachable returns the slugs that slug depends on, directly or through a chain of depends_on entries.
 func (c *checker) reachable(slug string) map[string]bool {
 	seen := map[string]bool{}
 	var visit func(string)
@@ -283,12 +295,13 @@ func (c *checker) reachable(slug string) map[string]bool {
 	return seen
 }
 
-// moduleLabelShared reports whether the entry carries a label of the Sketch.
+// moduleLabelShared reports whether the entry shares a module label with the Sketch.
 func moduleLabelShared(entry BoardEntry, board BoardContext) bool {
 	return slices.ContainsFunc(entry.Labels, func(label string) bool { return slices.Contains(board.ModuleLabels, label) })
 }
 
-// uncheckedEntries returns the slugs of the open tasks and projects, other than the run's own entry, that carry a module label of the Sketch and are absent from board_checked.
+// uncheckedEntries returns the slugs of the open tasks and projects that share a module label with the Sketch.
+// The run's own entry is never returned, and an entry counts as checked when board_checked lists it.
 func uncheckedEntries(p Proposal, board BoardContext) []string {
 	var unchecked []string
 	for _, entry := range board.Entries {
@@ -303,7 +316,7 @@ func uncheckedEntries(p Proposal, board BoardContext) []string {
 }
 
 // dependencies reports a depends_on cycle and a depends_on that names no part, no board entry and no board_checked entry.
-// A board_checked entry gone from the board passes as landed whatever board.Filing says.
+// A board_checked entry gone from the board passes as landed, whether or not the run is filing.
 func (c *checker) dependencies() []Finding {
 	var findings []Finding
 	parts := c.proposal.Parts
@@ -381,7 +394,9 @@ func validType(label string, board BoardContext) bool {
 	return label != TypeSketch && slices.Contains(board.TypeLabels, label)
 }
 
-// vocabulary reports a part recipe that is neither tapestry nor darn, a profile with no block for the recipe, and a part or project type outside the board's vocabulary.
+// vocabulary reports a part whose recipe is neither tapestry nor darn.
+// It also reports a part whose profile holds no block for its recipe.
+// It also reports a part or project whose type is not a type label of the board other than the Sketch.
 func (c *checker) vocabulary() []Finding {
 	var findings []Finding
 	for _, part := range c.proposal.Parts {
@@ -413,7 +428,8 @@ func filedSlugs(p Proposal) []string {
 }
 
 // takenSlug reports whether slug is on the board or in the raddle store.
-// The Sketch's slug and the run's own entry are exempt: slug-sketch judges the Sketch's.
+// The Sketch's slug and the run's own entry are exempt.
+// A filed Sketch slug gets its own finding, not a taken one.
 func takenSlug(slug string, board BoardContext) bool {
 	if slug == board.Entry || slug == board.Sketch {
 		return false
@@ -440,7 +456,8 @@ func (c *checker) slugs() []Finding {
 	return findings
 }
 
-// shape reports a shape the spec does not name, a tapestry that is not one part building every decision, and a project that does not match the shape.
+// shape reports a shape the spec does not name.
+// It also reports a tapestry that is not one part building every decision, and a project that does not match the shape.
 func (c *checker) shape() []Finding {
 	p := c.proposal
 	invalid := func(detail string) []Finding {

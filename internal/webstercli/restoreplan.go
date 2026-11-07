@@ -1,4 +1,5 @@
-// restoreplan.go implements the `restore-plan` webster verb: it writes every plan file that differs from the plan the run recorded back from webster's own stored copy.
+// restoreplan.go implements the `restore-plan` webster verb:
+// it writes every plan file that differs from the plan the run recorded back from webster's own stored copy.
 // It runs websterengine.RestorePlan under the state-mutation lease (load, restore, release), then fabric-syncs.
 package webstercli
 

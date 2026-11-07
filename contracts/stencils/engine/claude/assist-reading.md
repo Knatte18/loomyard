@@ -1,5 +1,8 @@
-<!-- This is the Claude engine's copy of the assist-reading engine block: the reading directions an assistant reviewer on Claude follows, the benches' block v2 with the decision record as a yardstick.
-     burler-template-assist-reviewer pulls it in with {{template "engine-assist-reading"}}; internal/stencilstore reads it for the assistant's engine. It declares no marker. -->
+<!-- This is the Claude engine's copy of the assist-reading engine block:
+     the reading directions an assistant reviewer on Claude follows, with the decision record as a yardstick.
+     burler-template-assist-reviewer pulls it in with {{template "engine-assist-reading"}}.
+     internal/stencilstore reads it for the assistant's engine.
+     It declares no marker. -->
 ## How to read for this review
 
 - Check every claim the target makes about existing code by reading that code and its callers, and read the code paths the target reaches beyond what it names.

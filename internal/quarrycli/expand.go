@@ -1,5 +1,4 @@
-// expand.go declares the "expand" subcommand: the detail query over a type glyph that replaces
-// the stencil's old lookups.
+// expand.go declares the "expand" subcommand: the detail query over a type glyph, listing the type and its members.
 
 package quarrycli
 
@@ -15,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 )
 
-// newExpandCmd returns the "expand" subcommand, reading the resolved repository root through root
-// at call time.
+// newExpandCmd returns the "expand" subcommand, reading the resolved repository root through root at call time.
 func newExpandCmd(root func() string) *cobra.Command {
 	return &cobra.Command{
 		Use:         "expand <glyph>",

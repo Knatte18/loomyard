@@ -1,15 +1,13 @@
-// states.go defines the ten named hostile states every cell in the cross-product matrix batches 6-7
-// build can be run against: a dirtiness state modifies or creates content in one of the checkouts a
-// verb under test acts on, and a structural state plants a foreign, stale, or operator-owned entity at
-// the fabric-owned path a verb under test acts on.
-// Each state's Apply resolves against a StateTarget the cell computed for the verb under test — never a
-// fixed path of the state's own choosing — because a state that dirties or plants at a path the verb
-// never touches asserts nothing about that verb.
+// livestate_states_test.go defines the hostile states each cross-product cell applies before the verb under test runs.
+// A dirtiness state modifies or creates content in a checkout the verb acts on.
+// A structural state plants a foreign, stale, or operator-owned entity at the fabric-owned path the verb acts on.
+// Each state's Apply resolves against a StateTarget the cell computes for the verb under test.
+// It never uses a fixed path of its own choosing:
+// a state that dirties or plants at a path the verb never touches asserts nothing about that verb.
 //
-// Every state's Apply asserts its own establishment inline, via tb.Fatalf, in addition to the
-// self-assertion suite states_test.go carries.
-// The inline check is what protects a cell running months from now;
-// the suite is what protects the state builders during development.
+// Every state's Apply asserts its own establishment inline, via tb.Fatalf.
+// states_test.go carries a self-assertion suite for the state builders as well.
+// The inline check protects every cell run; the suite protects the builders during development.
 // Neither substitutes for the other.
 
 package fabricengine_test
@@ -25,26 +23,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// StateTarget carries the paths one cell resolved for the verb under test: the warp checkout a
-// dirtiness state should dirty, the weft checkout a dirtiness state should dirty, and the fabric-owned
-// path — a wired junction path, or another fabric-owned path — a structural state should plant at.
-// A cell resolves these per verb, never fixed by the state, which is what makes the dirty-what-per-cell
-// rule expressible: a tranche-1 hub has at least four checkouts, and the gate probes a different one
-// per verb, so a state that dirties a checkout the verb never touches asserts nothing.
+// StateTarget carries the paths one cell resolves for the verb under test.
+// The warp and weft checkouts are what a dirtiness state dirties.
+// The fabric-owned path is what a structural state plants at.
+// A cell resolves these per verb, never fixed by the state.
+// A hub holds several checkouts, and each verb acts on only some of them.
+// A state that dirties a checkout the verb never touches asserts nothing.
 type StateTarget struct {
 	// WarpCheckout is the warp-side git checkout a dirtiness state should dirty.
 	WarpCheckout string
 	// WeftCheckout is the weft-side git checkout a dirtiness state should dirty.
 	WeftCheckout string
-	// StructuralPath is the fabric-owned path a structural state should plant at — a wired junction
-	// path for trackedSymlinkAtWiredPath and staleWiredJunction, or another fabric-owned path for
-	// foreignDirAtFabricOwnedPath and unrelatedGitCloneAtWeftNamedPath.
+	// StructuralPath is the fabric-owned path a structural state plants at:
+	// a wired junction path for a state that plants a symlink or junction;
+	// another fabric-owned path for a state that plants a directory or clone.
 	StructuralPath string
 }
 
-// State is one named hostile or clean condition a cell can plant before the verb under test runs.
-// Apply plants the condition against target and asserts inline that the condition actually took — see
-// this file's doc comment for why both the inline assertion and states_test.go's suite exist.
+// State is one named hostile or clean condition a cell plants before the verb under test runs.
+// Apply plants the condition against target and asserts inline that it took.
 type State struct {
 	// Name identifies the state; it is also embedded into every sentinel file a dirtiness or
 	// structural state plants, so a failure message names the state that failed to establish itself.
@@ -53,7 +50,7 @@ type State struct {
 	Apply func(tb testing.TB, h *hubforge.Hub, target StateTarget)
 }
 
-// States is the ordered ten-member hostile-state matrix every cross-product cell draws from.
+// States is the ordered hostile-state matrix every cross-product cell draws from.
 // The order is stable so a driven failure's cell name is reproducible across runs.
 var States = []State{
 	cleanState(),
@@ -68,23 +65,23 @@ var States = []State{
 	staleWiredJunctionState(),
 }
 
-// sentinelFileName returns the sentinel file name state stateName plants: a name that identifies the
-// state, so a failure message reads "the operator's uncommitted file is gone" rather than "a path list
-// changed".
-// The checkout or directory it is planted into is what identifies the cell — each cell resolves its own
-// StateTarget, so the file name itself need not repeat that.
+// sentinelFileName returns the sentinel file name state stateName plants.
+// The name identifies the state,
+// so a failure message reads "the operator's uncommitted file is gone" rather than "a path list changed".
+// The checkout or directory the file is planted into identifies the cell.
+// Each cell resolves its own StateTarget, so the name need not repeat that.
 func sentinelFileName(stateName string) string {
 	return "livestate-sentinel-" + stateName + ".txt"
 }
 
-// trackedDirtMarker is the line plantTrackedDirt appends to a sentinel file's committed content to
-// produce its own local modification. Its presence on disk is what assertTrackedContentSurvives checks
-// for, independent of whatever git status shape (" M" tracked-modified, or "??" if a branch switch
-// carried it into a tree that never tracked it) the sentinel currently reports.
+// trackedDirtMarker is the line plantTrackedDirt appends to a sentinel file's committed content.
+// Its presence on disk is what assertTrackedContentSurvives checks, whatever git status the sentinel reports.
+// The reported status is " M" when the file stays tracked and modified;
+// it is "??" when a branch switch carries the file into a tree that never tracked it.
 const trackedDirtMarker = "livestate sentinel dirty"
 
-// plantTrackedDirt commits a fresh sentinel file into checkout, then modifies it, so `git status
-// --porcelain` reports the sentinel with the tracked-modification " M" shape.
+// plantTrackedDirt commits a fresh sentinel file into checkout, then modifies it.
+// This makes `git status --porcelain` report the sentinel with the tracked-modification " M" shape.
 func plantTrackedDirt(tb testing.TB, checkout, stateName string) string {
 	tb.Helper()
 
@@ -97,14 +94,10 @@ func plantTrackedDirt(tb testing.TB, checkout, stateName string) string {
 	return name
 }
 
-// assertTrackedContentSurvives fails tb unless checkout still carries sentinel on disk with
-// plantTrackedDirt's own local modification intact, regardless of whatever git status shape the
-// sentinel currently reports.
-// This is what makes the check usable for a cell whose outcome is declared
-// KindEitherProceedsOrRefusedBefore -- e.g. checkoutCase's dirtyWarpTracked cell, where `git switch`
-// itself decides whether the modification stays tracked-modified at the original branch or is carried
-// across as untracked content in a tree that never had this path -- rather than only for a cell with a
-// single git-status shape it can assert via assertDirtyContains.
+// assertTrackedContentSurvives fails tb unless sentinel in checkout still holds its tracked modification.
+// It ignores the git status shape, which the verb under test may change.
+// A cell whose outcome is proceed or refuse cannot fix the shape in advance:
+// the modification may stay tracked-modified, or be carried across as untracked content.
 func assertTrackedContentSurvives(tb testing.TB, checkout, sentinel string) {
 	tb.Helper()
 
@@ -133,9 +126,8 @@ func plantUntrackedDirt(tb testing.TB, checkout, stateName string) string {
 
 // assertDirtyContains fails tb unless checkout's `git status --porcelain` output contains a line for
 // sentinel carrying exactly wantPrefix (" M" for tracked, "??" for untracked).
-// The shape check is load-bearing, not decorative: a tracked-dirty state that silently also satisfied
-// an untracked probe (or vice versa) would collapse the Proceeds derivation dirtyWeftUntracked exists
-// to make observable.
+// The shape check is load-bearing: it stops a tracked-dirty state satisfying an untracked probe, or the reverse.
+// Otherwise the two probes would not tell their states apart.
 func assertDirtyContains(tb testing.TB, checkout, sentinel, wantPrefix string) {
 	tb.Helper()
 
@@ -156,8 +148,7 @@ func assertDirtyContains(tb testing.TB, checkout, sentinel, wantPrefix string) {
 	tb.Fatalf("sentinel %s not present in git status --porcelain output: %s", sentinel, status)
 }
 
-// assertLinkTarget fails tb unless path is a link whose raw one-hop target, from fslink.RawTarget, is
-// exactly want.
+// assertLinkTarget fails tb unless path is a link whose raw one-hop target, from fslink.RawTarget, is exactly want.
 func assertLinkTarget(tb testing.TB, path, want string) {
 	tb.Helper()
 
@@ -177,9 +168,9 @@ func assertLinkTarget(tb testing.TB, path, want string) {
 	}
 }
 
-// cleanState is the no-op tautology-guard baseline: it plants nothing, so a cell run against it proves
-// only that the verb under test succeeds (or refuses) against a genuinely clean hub — the control every
-// other state's result is measured against.
+// cleanState is the control state: it plants nothing, so it guards against tautological cells.
+// A cell run against it proves only that the verb under test succeeds or refuses on a clean hub,
+// and every other state's result is measured against that.
 func cleanState() State {
 	return State{
 		Name:  "clean",
@@ -187,9 +178,9 @@ func cleanState() State {
 	}
 }
 
-// dirtyWarpTrackedState modifies a tracked file in the target warp checkout — born from R2, where a
-// destructive verb proceeded against a warp worktree carrying uncommitted tracked changes because its
-// dirtiness probe never ran against the checkout the verb actually acted on.
+// dirtyWarpTrackedState modifies a tracked file in the target warp checkout.
+// It guards against a destructive verb proceeding on a warp worktree with uncommitted tracked changes:
+// the dirtiness probe checked a checkout other than the one the verb acts on.
 func dirtyWarpTrackedState() State {
 	return State{
 		Name: "dirtyWarpTracked",
@@ -202,9 +193,9 @@ func dirtyWarpTrackedState() State {
 	}
 }
 
-// dirtyWarpUntrackedState writes a new untracked file into the target warp checkout — born from R3,
-// where an operator's not-yet-staged file was destroyed alongside a worktree removal that only checked
-// tracked-file dirtiness.
+// dirtyWarpUntrackedState writes a new untracked file into the target warp checkout.
+// It guards against a worktree removal that checks only tracked-file dirtiness:
+// such a removal destroys an operator's not-yet-staged file.
 func dirtyWarpUntrackedState() State {
 	return State{
 		Name: "dirtyWarpUntracked",
@@ -217,8 +208,7 @@ func dirtyWarpUntrackedState() State {
 	}
 }
 
-// dirtyWeftTrackedState modifies a tracked file in the target weft checkout, the weft-side counterpart
-// to dirtyWarpTracked.
+// dirtyWeftTrackedState modifies a tracked file in the target weft checkout.
 func dirtyWeftTrackedState() State {
 	return State{
 		Name: "dirtyWeftTracked",
@@ -232,10 +222,8 @@ func dirtyWeftTrackedState() State {
 }
 
 // dirtyWeftUntrackedState writes a new untracked file into the target weft checkout.
-// This is the state that makes the dirtiness-scope parameter observable at all: Checkout's dirtiness
-// probe at checkout.go:42 is worktreeDirty(scopeTracked, …), which must proceed past this state, while
-// Remove's refuseDirtyWeftWorktree at remove.go:79/:144 probes worktreeDirty(scopeAll, …), which must
-// refuse against the identical planted condition.
+// It makes the dirtiness scope observable: a tracked-only probe must proceed past this state,
+// and a probe over all files must refuse against the same planted condition.
 func dirtyWeftUntrackedState() State {
 	return State{
 		Name: "dirtyWeftUntracked",
@@ -248,9 +236,8 @@ func dirtyWeftUntrackedState() State {
 	}
 }
 
-// bothDirtyState applies warp and weft dirtiness together — a tracked modification and an untracked
-// file on each side — so a cell can prove a verb's dirtiness handling holds even when both checkouts it
-// might probe are simultaneously dirty, not just whichever one a single-sided state happens to hit.
+// bothDirtyState dirties both checkouts: a tracked modification and an untracked file in each.
+// A cell can then prove that a verb's dirtiness handling holds when both checkouts it might probe are dirty at once.
 func bothDirtyState() State {
 	return State{
 		Name: "bothDirty",
@@ -270,25 +257,22 @@ func bothDirtyState() State {
 	}
 }
 
-// trackedSymlinkAtWiredPathState replaces a wired junction path with a link the operator owns — born
-// from R1, where fabric silently adopted or destroyed a git-tracked symlink an operator had committed
-// at a path fabric itself wires, because the gate's ownership check never distinguished "fabric's own
-// wiring" from "a link fabric did not create".
+// trackedSymlinkAtWiredPathState replaces a wired junction path with a link the operator owns.
+// It guards against fabric adopting or destroying a git-tracked symlink an operator committed at a wired path:
+// the ownership check must tell fabric's own wiring apart from a link fabric did not create.
 //
-// A git-tracked symlink needs core.symlinks=true plus Developer Mode on Windows; building it through
-// fslink.CreateDirLink materialises it as a junction there instead, and the gate's ownedWiredJunction
-// check compares fslink.RawTarget, so the assertion keeps its shape even though the on-disk artifact
-// differs by platform.
-// See doc.go's "Windows gap" section for the fuller account of this divergence.
+// A git-tracked symlink needs core.symlinks=true, and on Windows it also needs Developer Mode.
+// Built through fslink.CreateDirLink, the link is a junction on Windows instead,
+// so the on-disk artifact differs by platform while the raw target the ownership check compares stays the same.
 func trackedSymlinkAtWiredPathState() State {
 	return State{
 		Name: "trackedSymlinkAtWiredPath",
 		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
-			// The path already carries fabric's own wired junction; remove it before planting the
-			// operator-owned link in its place. Legal here per this package's directory exclusion from
-			// the destructive-bypass guard (see this file's own doc comment).
+			// The path already carries fabric's own wired junction, so remove it before planting the
+			// operator-owned link in its place.
+			// This package's directory is excluded from the destructive-bypass guard, so the removal is legal here.
 			if err := fslink.Remove(target.StructuralPath); err != nil {
 				tb.Fatalf("trackedSymlinkAtWiredPath: remove existing entry at %s: %v", target.StructuralPath, err)
 			}
@@ -305,9 +289,9 @@ func trackedSymlinkAtWiredPathState() State {
 			if err != nil {
 				tb.Fatalf("trackedSymlinkAtWiredPath: relativize %s against %s: %v", target.StructuralPath, target.WarpCheckout, err)
 			}
-			// WireJunctions seeded this exact path into .git/info/exclude so fabric's OWN junction
-			// never shows as untracked; "-f" is what an operator committing a link of their own at that
-			// same path would need too, and is exactly the shape this state models.
+			// WireJunctions seeded this exact path into .git/info/exclude.
+			// That keeps fabric's own junction from showing as untracked.
+			// The "-f" flag is what an operator committing their own link at that path needs, so this state models that shape.
 			gitkit.Git(tb, target.WarpCheckout, "add", "-f", rel)
 			gitkit.Git(tb, target.WarpCheckout, "commit", "-m", "livestate: track operator-owned link at wired path")
 
@@ -316,11 +300,9 @@ func trackedSymlinkAtWiredPathState() State {
 	}
 }
 
-// staleWiredJunctionState replaces a wired junction with one whose raw target no longer resolves — R1's
-// repair-side counterpart: the junction genuinely is fabric's own wiring, but its target has gone stale
-// (the paired worktree it pointed at was removed by hand, mirrored here by materialising the target and
-// then removing it after linking), and a verb's repair or unwire path must handle a dangling target
-// rather than fail obscurely against it.
+// staleWiredJunctionState replaces a wired junction with one whose raw target no longer resolves.
+// The junction is still fabric's own wiring, but its target has gone stale.
+// A verb's repair or unwire path must handle a dangling target rather than fail obscurely against it.
 func staleWiredJunctionState() State {
 	return State{
 		Name: "staleWiredJunction",
@@ -338,10 +320,10 @@ func staleWiredJunctionState() State {
 			if err := fslink.CreateDirLink(target.StructuralPath, staleTarget); err != nil {
 				tb.Fatalf("staleWiredJunction: create link %s -> %s: %v", target.StructuralPath, staleTarget, err)
 			}
-			// Remove the target after linking to it, mirroring the real defect this state is named
-			// for: an operator removing the paired worktree a wired junction still points at, by hand,
-			// without going through fabric's own teardown. Legal here per this package's directory
-			// exclusion from the destructive-bypass guard.
+			// Remove the target after linking to it, so the junction dangles.
+			// This mirrors an operator removing the paired worktree a wired junction still points at, by hand,
+			// without going through fabric's own teardown.
+			// This package's directory is excluded from the destructive-bypass guard, so the removal is legal here.
 			if err := os.Remove(staleTarget); err != nil {
 				tb.Fatalf("staleWiredJunction: remove planted target %s to make it stale: %v", staleTarget, err)
 			}
@@ -360,10 +342,9 @@ func staleWiredJunctionState() State {
 	}
 }
 
-// foreignDirAtFabricOwnedPathState parks an ordinary operator directory at a fabric-owned path — born
-// from R4, where fabric treated a plain directory an operator had placed at a path fabric itself owns
-// as though it were fabric's own content, and destroyed it without the ownership check ever
-// distinguishing "fabric put this here" from "an operator's directory happens to sit here".
+// foreignDirAtFabricOwnedPathState parks an ordinary operator directory at a fabric-owned path.
+// The ownership check must tell a directory fabric put there from one an operator placed there.
+// A destructive verb must not treat the operator's directory as fabric's own content and destroy it.
 func foreignDirAtFabricOwnedPathState() State {
 	return State{
 		Name: "foreignDirAtFabricOwnedPath",
@@ -385,10 +366,10 @@ func foreignDirAtFabricOwnedPathState() State {
 	}
 }
 
-// unrelatedGitCloneAtWeftNamedPathState parks a complete, independently git init-ed repository — a
-// committed file and a clean working tree — at a weft-named path: R4's second shape, where the foreign
-// entity is not a plain directory but a genuine repository the dirty gate has nothing to say about (its
-// tree is clean), so only the ownership gate stands between a destructive verb and the whole clone.
+// unrelatedGitCloneAtWeftNamedPathState parks an independently git init-ed repository at a weft-named path.
+// The repository has a committed file and a clean working tree.
+// It is not a plain directory, and its clean tree gives the dirty gate nothing to say about it.
+// Only the ownership gate stands between a destructive verb and the whole clone.
 func unrelatedGitCloneAtWeftNamedPathState() State {
 	return State{
 		Name: "unrelatedGitCloneAtWeftNamedPath",

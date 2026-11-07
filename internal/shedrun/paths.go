@@ -1,5 +1,9 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lym (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lym (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root and the driver records that hold a file), the tree-relative seed and status paths a git tree read takes, and the hub-scoped ephemeral files that sit one level above any single run-id: its locks and the notice log.
-// Every constructor that returns an absolute path joins onto the given *lymcwd.Location's AnchorPath(), per the Cwd Resolution Invariant; the *Rel constructors and TreeRunFileRels return relative paths; none of them calls os.Getwd or any git command.
+// paths.go declares the shed run-directory path constructors.
+// They cover the durable paths under _lym and the ephemeral paths under .lym.
+// They also cover the anchor-relative paths for commit pathspecs and the tree-relative seed and status paths.
+// The hub-scoped locks and notice log sit above any single run-id.
+// Every constructor that returns an absolute path joins onto the given *lymcwd.Location's AnchorPath().
+// The *Rel constructors and TreeRunFileRels return relative paths, and none of them calls os.Getwd or any git command.
 
 package shedrun
 
@@ -18,8 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// shedDirName is the relative-path segment shedrun joins onto lymdirs.LymDirName or lymdirs.DotLymDirName to scope every shed-run-owned path under its own subdirectory.
-// internal/shedrun is this segment's sole declarer, per the Shed Run-Directory Invariant.
+// shedDirName is the relative-path segment that scopes every shed-run-owned path under its own subdirectory.
+// It is joined onto lymdirs.LymDirName or lymdirs.DotLymDirName.
+// internal/shedrun is this segment's sole declarer.
 const shedDirName = "shed"
 
 // driveReportsDirName is the segment under a run's directory that holds its drive reports.
@@ -63,11 +68,15 @@ const arbiterMarkerFileName = "arbiter-inflight.json"
 const ParkMarkerFileName = "driver-parked"
 
 // BattenWatchedFileName is the filename of the batten-watched marker, whose path BattenWatchedMarker returns.
-// The file holds the pid, in decimal, of the live batten process watching the run on its first line, then, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two lines.
-// A batten writes it while it watches and removes it when it stops; a driver launched fresh renders its parent-notification rule from whether the pid in it is live.
+// The file holds, on its first line, the pid in decimal of the live batten process watching the run.
+// When known, the next two lines hold the prime's batten scratch directory and the Run-Shed row's name.
+// A batten writes it while it watches and removes it when it stops;
+// a driver launched fresh renders its parent-notification rule from whether the pid in it is live.
 const BattenWatchedFileName = "batten-watched"
 
-// BattenWatchedContent renders the batten-watched marker's content: pid in decimal on the first line, then, when either is non-empty, scratchDir and producer on the next two lines.
+// BattenWatchedContent renders the batten-watched marker's content.
+// The pid goes in decimal on the first line;
+// when either scratchDir or producer is non-empty, both go on the next two lines.
 func BattenWatchedContent(pid int, scratchDir, producer string) []byte {
 	content := strconv.Itoa(pid) + "\n"
 	if scratchDir != "" || producer != "" {
@@ -76,7 +85,8 @@ func BattenWatchedContent(pid int, scratchDir, producer string) []byte {
 	return []byte(content)
 }
 
-// ParseBattenWatched reads a batten-watched marker's content: the first line is the pid, and the next two lines, when present, are the scratch directory and the row's name.
+// ParseBattenWatched reads a batten-watched marker's content: the first line is the pid.
+// The next two lines, when present, are the scratch directory and the row's name.
 // A one-line marker parses with an empty scratch directory and producer.
 // A marker whose first line is not a positive pid is an error.
 func ParseBattenWatched(data []byte) (pid int, scratchDir, producer string, err error) {
@@ -94,32 +104,42 @@ func ParseBattenWatched(data []byte) (pid int, scratchDir, producer string, err 
 	return pid, scratchDir, producer, nil
 }
 
-// StartNotParkedKind is the envelope "kind" of the `lym loom start` refusal for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
-// That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
+// StartNotParkedKind is the envelope "kind" of the `lym loom start` refusal.
+// It fires for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
+// That refusal is retryable.
+// The driver is still writing its stop report and committing its records, and parks within seconds.
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartNotParkedKind = "driver_not_parked"
 
-// StartDriverBusyKind is the envelope "kind" of the `lym loom start` and `lym loom resume` refusal for a parked driver whose pane would not take the resume line:
+// StartDriverBusyKind is the envelope "kind" of the `lym loom start` and `lym loom resume` refusal.
+// It is for a parked driver whose pane would not take the resume line:
 // shuttle held the send on a draft, an active operator or another busy reading.
 // That refusal is retryable once the draft is cleared or sent.
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartDriverBusyKind = "driver_busy"
 
-// StartOwnedElsewhereKind is the envelope "kind" of the `lym loom start` and `lym loom resume` refusal for a run another machine owns.
+// StartOwnedElsewhereKind is the envelope "kind" of the `lym loom start` and `lym loom resume` refusal.
+// It is for a run another machine owns.
 // That refusal is NOT retryable: the run is taken over with `lym adopt` or left alone.
-// It is exported so batten's InnerRun row recognises the refusal by this one declared value rather than by its message text, and never counts it as a failed spawn.
+// It is exported so batten's InnerRun row recognises the refusal by this one declared value, not by its message text.
+// Batten's InnerRun row never counts it as a failed spawn.
 const StartOwnedElsewhereKind = "owned_elsewhere"
 
 // ResumeReportFileName is the filename of the resume-report file, whose path ResumeReport returns.
-// The file holds the park marker's content on its first line and, on its second, the stop-report path the resume branch picked for that park.
+// The file holds the park marker's content on its first line.
+// On its second line it holds the stop-report path the resume branch picked for that park.
 const ResumeReportFileName = "driver-resume-report"
 
-// StartMergeInProgressKind is the envelope "kind" of the `lym loom start` refusal for a start that would spawn or resume a driver over a pair carrying an unfinished merge.
+// StartMergeInProgressKind is the envelope "kind" of the `lym loom start` refusal.
+// It is for a start that would spawn or resume a driver over a pair carrying an unfinished merge.
 // That refusal is NOT retryable: the operator must resolve, conclude or abort the merge first.
-// It is exported so an unattended caller tells it apart from the retryable StartNotParkedKind by this one declared value rather than by message text.
+// It is exported so an unattended caller recognises it by this one declared value rather than by message text.
 const StartMergeInProgressKind = "merge_in_progress"
 
-// RunDir returns the path to the durable, fabric-synced directory holding a single run's seed.json and status.json: the given *lymcwd.Location's AnchorPath() joined with lymdirs.LymDirName, shedDirName, and the run's directory segment (runSegment: the worktree slug for SelfRunID, or the legacy "self" directory when only that one exists).
+// RunDir returns the path to the durable, fabric-synced directory holding a single run's seed.json and status.json.
+// It joins the given *lymcwd.Location's AnchorPath() with lymdirs.LymDirName, shedDirName and the run's segment.
+// runSegment picks the segment: the worktree slug for SelfRunID.
+// The legacy "self" directory serves when only that one exists.
 func RunDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName, runSegment(l, runID))
 }
@@ -127,7 +147,8 @@ func RunDir(l *lymcwd.Location, runID string) string {
 // StopMarkerFileName is the filename of a run's writer stop marker, whose path StopMarker returns.
 const StopMarkerFileName = "stop-marker"
 
-// StopMarker returns the path to the marker a run's writer creates to say it stopped instead of making the change, StopMarkerFileName under RunDir(l, runID).
+// StopMarker returns the path to the marker a run's writer creates to say it stopped instead of making the change.
+// The file is StopMarkerFileName under RunDir(l, runID).
 // The run's producer removes it before each spawn and reads its presence after the session as a halt.
 func StopMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), StopMarkerFileName)
@@ -136,8 +157,11 @@ func StopMarker(l *lymcwd.Location, runID string) string {
 // ConditionStopMarkerFileName is the filename of a run's writer condition-stop marker, whose path ConditionStopMarker returns.
 const ConditionStopMarkerFileName = "condition-stop-marker"
 
-// ConditionStopMarker returns the path to the marker a run's writer creates, beside its stop marker, to say it stopped on a condition the task's body names, ConditionStopMarkerFileName under RunDir(l, runID).
-// The run's producer removes it before each spawn and reads its presence, together with the stop marker, after the session.
+// ConditionStopMarker returns the path to the marker a run's writer creates beside its stop marker.
+// It says the writer stopped on a condition the task's body names.
+// The file is ConditionStopMarkerFileName under RunDir(l, runID).
+// The run's producer removes it before each spawn.
+// It reads its presence, together with the stop marker, after the session.
 func ConditionStopMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), ConditionStopMarkerFileName)
 }
@@ -152,81 +176,91 @@ func StatusFile(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), "status.json")
 }
 
-// ScratchDir returns the path to the ephemeral, never-tracked scratch directory mirroring RunDir at the .lym subpath: the given *lymcwd.Location's AnchorPath() joined with lymdirs.DotLymDirName, shedDirName, and the same directory segment RunDir joins.
+// ScratchDir returns the path to the ephemeral, never-tracked scratch directory of a run.
+// It joins AnchorPath() with lymdirs.DotLymDirName, shedDirName and the same run segment RunDir uses.
 // Per the Durable-vs-Ephemeral State Invariant, it sits at the mirrored subpath of RunDir.
 func ScratchDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, shedDirName, runSegment(l, runID))
 }
 
-// StepsDir returns the path to the ephemeral directory holding a run's `lym shed step` records, under
-// ScratchDir(l, runID), so it sits under .lym per the Durable-vs-Ephemeral State Invariant.
+// StepsDir returns the path to the ephemeral directory of a run's `lym shed step` records.
+// It sits under ScratchDir(l, runID).
 func StepsDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "steps")
 }
 
-// RunLock returns the path to a run's ephemeral advisory lock guarding the whole duration of the
-// run, under ScratchDir(l, runID).
-// It must never equal StatusLock(l, runID): shedengine.Shed's own validation rejects
-// LockPath == StatusLockPath outright, and a shared file would hang on the first persist rather than
-// fail.
+// RunLock returns the path to a run's ephemeral advisory lock guarding the whole duration of the run.
+// It sits under ScratchDir(l, runID).
+// It must never equal StatusLock(l, runID):
+// shedengine.Shed's own validation rejects LockPath == StatusLockPath outright,
+// and a shared file would hang on the first persist rather than fail.
 func RunLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "run.lock")
 }
 
-// StatusLock returns the path to the advisory lock guarding concurrent access to
-// StatusFile(l, runID), under ScratchDir(l, runID).
+// StatusLock returns the path to the advisory lock guarding concurrent access to StatusFile(l, runID).
+// It sits under ScratchDir(l, runID).
 func StatusLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "status.json.lock")
 }
 
-// PullRequestRecord returns the path to the ephemeral, never-tracked record of the run's pull request, pull-request.json under ScratchDir(l, runID).
+// PullRequestRecord returns the path to the ephemeral, never-tracked record of the run's pull request.
+// It is pull-request.json under ScratchDir(l, runID).
 func PullRequestRecord(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "pull-request.json")
 }
 
-// PullRequestRecordLock returns the path to the advisory lock guarding PullRequestRecord(l, runID), beside it under ScratchDir(l, runID).
+// PullRequestRecordLock returns the path to the advisory lock guarding PullRequestRecord(l, runID).
+// It sits beside that record under ScratchDir(l, runID).
 func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "pull-request.json.lock")
 }
 
-// ParentNoticeFile returns the path to the ephemeral file holding the key of the parent-branch notice a run's pre-push check last posted, pre-push-parent-notice under ScratchDir(l, runID).
+// ParentNoticeFile returns the path to the ephemeral file, pre-push-parent-notice under ScratchDir(l, runID).
+// It holds the key of the parent-branch notice a run's pre-push check last posted.
 func ParentNoticeFile(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "pre-push-parent-notice")
 }
 
-// SamplerRecord returns the path to the ephemeral, never-tracked record of the run's Sampler-Session row, sampler.json under ScratchDir(l, runID).
+// SamplerRecord returns the path to the ephemeral, never-tracked record of the run's Sampler-Session row.
+// It is sampler.json under ScratchDir(l, runID).
 func SamplerRecord(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "sampler.json")
 }
 
-// SamplerRecordLock returns the path to the advisory lock guarding SamplerRecord(l, runID), beside it under ScratchDir(l, runID).
+// SamplerRecordLock returns the path to the advisory lock guarding SamplerRecord(l, runID).
+// It sits beside that record under ScratchDir(l, runID).
 func SamplerRecordLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "sampler.json.lock")
 }
 
-// LastCommitMarker returns the path to the ephemeral marker recording the last commit this run's
-// fabric sync observed, under ScratchDir(l, runID).
+// LastCommitMarker returns the path to the ephemeral marker recording the last commit this run's fabric sync observed.
+// It sits under ScratchDir(l, runID).
 func LastCommitMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "last-commit")
 }
 
-// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the full step envelope, held by the step record, reports as scratch_dir.
+// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID).
+// It sits in the directory that the step record in the full step envelope reports as scratch_dir.
 func ParkMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
 }
 
-// ResumeReport returns the path to the ephemeral resume-report file, ResumeReportFileName under ScratchDir(l, runID), beside the park marker.
-// It keeps the stop-report path the resume branch picked for the current park, so every rerun against that park types the same resume line.
+// ResumeReport returns the path to the ephemeral resume-report file, ResumeReportFileName under ScratchDir(l, runID).
+// It keeps the stop-report path the resume branch picked for the current park,
+// so every rerun against that park types the same resume line.
 func ResumeReport(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ResumeReportFileName)
 }
 
-// BattenWatchedMarker returns the path to the ephemeral batten-watched marker, BattenWatchedFileName under ScratchDir(l, runID).
+// BattenWatchedMarker returns the path to the ephemeral batten-watched marker.
+// The file is BattenWatchedFileName under ScratchDir(l, runID).
 func BattenWatchedMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), BattenWatchedFileName)
 }
 
-// GateFindingsFile returns the path to the ephemeral gate findings file of the row named row, under ScratchDir(l, runID).
+// GateFindingsFile returns the path to the ephemeral gate findings file of the row named row.
+// It sits under ScratchDir(l, runID).
 // There is one file per row: the row's producer writes it when its gate is exhausted,
 // and the row's next call whose gates pass removes it.
 // A goto, a resume and a pause leave the scratch directory alone, so the file outlives them.
@@ -234,27 +268,33 @@ func GateFindingsFile(l *lymcwd.Location, runID, row string) string {
 	return filepath.Join(ScratchDir(l, runID), gateFindingsDirName, row+gateFindingsFileSuffix)
 }
 
-// SeedRel returns the worktree-anchor-relative form of SeedFile's path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and "seed.json".
-// It exists so a caller building a fabric commit pathspec for fabricengine.CommitAnchoredPaths' relPaths argument never has to name a directory segment shedrun owns.
+// SeedRel returns the worktree-anchor-relative form of SeedFile's path:
+// the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and "seed.json".
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment shedrun owns.
+// Such a pathspec is the relPaths argument of fabricengine.CommitAnchoredPaths.
 // It takes l for the same alias resolution RunDir applies, so it names the file WriteSeed writes.
 func SeedRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), "seed.json")
 }
 
-// StatusRel returns the worktree-anchor-relative form of StatusFile's path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and "status.json".
-// It exists so a caller building a fabric commit pathspec for fabricengine.CommitAnchoredPaths' relPaths argument never has to name a directory segment shedrun owns.
+// StatusRel returns the worktree-anchor-relative form of StatusFile's path:
+// the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and "status.json".
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment shedrun owns.
+// Such a pathspec is the relPaths argument of fabricengine.CommitAnchoredPaths.
 // It takes l for the same alias resolution RunDir applies, so it names the file StatusFile addresses.
 func StatusRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), "status.json")
 }
 
-// SettleRecordsRel returns the worktree-anchor-relative form of SettleRecords' path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and settleRecordsFileName.
+// SettleRecordsRel returns the worktree-anchor-relative form of SettleRecords' path:
+// the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and settleRecordsFileName.
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func SettleRecordsRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), settleRecordsFileName)
 }
 
-// noticeEpisodeFileName is the file in a run's durable directory holding the episode keys of the run notices dobby sent for it, one per line.
+// noticeEpisodeFileName is the file in a run's durable directory holding the keys of the notices dobby sent for it.
+// It holds one key per line.
 const noticeEpisodeFileName = "notice-episode"
 
 // NoticeEpisodeFile returns the path of the run notices' marker: RunDir(l, runID) joined with noticeEpisodeFileName.
@@ -263,7 +303,8 @@ func NoticeEpisodeFile(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), noticeEpisodeFileName)
 }
 
-// NoticeEpisodeRel returns the worktree-anchor-relative form of NoticeEpisodeFile's path, for a records commit's pathspec.
+// NoticeEpisodeRel returns the worktree-anchor-relative form of NoticeEpisodeFile's path:
+// the pathspec a records commit takes for it.
 func NoticeEpisodeRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), noticeEpisodeFileName)
 }
@@ -274,7 +315,8 @@ func DriveReportsDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), driveReportsDirName)
 }
 
-// DriveReportsRel returns the worktree-anchor-relative form of DriveReportsDir's path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and driveReportsDirName.
+// DriveReportsRel returns the worktree-anchor-relative form of DriveReportsDir's path:
+// the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and driveReportsDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func DriveReportsRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), driveReportsDirName)
@@ -286,18 +328,21 @@ func ArbiterDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), arbiterDirName)
 }
 
-// ArbiterRel returns the worktree-anchor-relative form of ArbiterDir's path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and arbiterDirName.
+// ArbiterRel returns the worktree-anchor-relative form of ArbiterDir's path:
+// the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and arbiterDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func ArbiterRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), arbiterDirName)
 }
 
-// ArbiterAttemptDir returns the path to one arbiter attempt's durable directory, attempt-<N> under ArbiterDir(l, runID), where attempt is the attempt's 1-based number.
+// ArbiterAttemptDir returns the path to one arbiter attempt's durable directory, attempt-<N> under ArbiterDir(l, runID).
+// The attempt argument is the attempt's 1-based number.
 func ArbiterAttemptDir(l *lymcwd.Location, runID string, attempt int) string {
 	return filepath.Join(ArbiterDir(l, runID), "attempt-"+strconv.Itoa(attempt))
 }
 
-// ArbiterMarker returns the path to the ephemeral arbiter in-flight marker, arbiterMarkerFileName under ScratchDir(l, runID).
+// ArbiterMarker returns the path to the ephemeral arbiter in-flight marker.
+// The file is arbiterMarkerFileName under ScratchDir(l, runID).
 func ArbiterMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), arbiterMarkerFileName)
 }
@@ -314,14 +359,17 @@ func TacklerDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), tacklerDirName)
 }
 
-// TacklerRel returns the worktree-anchor-relative form of TacklerDir's path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and tacklerDirName.
+// TacklerRel returns the worktree-anchor-relative form of TacklerDir's path:
+// the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and tacklerDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func TacklerRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), tacklerDirName)
 }
 
-// DriverRecordsRel returns the anchor-relative paths of a run's driver records for a commit pathspec: DriveReportsRel, ArbiterRel and TacklerRel, in that order, each only when its directory holds a file anywhere beneath it.
-// A directory with no file is left out, since a pathspec that matches nothing fails the commit.
+// DriverRecordsRel returns the anchor-relative paths of a run's driver records for a commit pathspec.
+// They are DriveReportsRel, ArbiterRel and TacklerRel, in that order.
+// Each is included only when its directory holds a file anywhere beneath it.
+// A pathspec that matches nothing fails the commit, so an empty directory is left out.
 func DriverRecordsRel(l *lymcwd.Location, runID string) []string {
 	dirs := []struct{ abs, rel string }{
 		{DriveReportsDir(l, runID), DriveReportsRel(l, runID)},
@@ -337,7 +385,8 @@ func DriverRecordsRel(l *lymcwd.Location, runID string) []string {
 	return rels
 }
 
-// HoldsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
+// HoldsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it.
+// It stops the walk at the first such entry.
 // An absent, unreadable or non-directory dir holds none.
 // A commit pathspec names a directory only when this holds, since a pathspec that matches nothing fails the commit.
 func HoldsFile(dir string) bool {
@@ -360,29 +409,35 @@ func HoldsFile(dir string) bool {
 	return found
 }
 
-// TacklerAttemptDir returns the path to one tackler attempt's durable directory, attempt-<N> under TacklerDir(l, runID), where attempt is the attempt's 1-based number.
+// TacklerAttemptDir returns the path to one tackler attempt's durable directory, attempt-<N> under TacklerDir(l, runID).
+// The attempt argument is the attempt's 1-based number.
 func TacklerAttemptDir(l *lymcwd.Location, runID string, attempt int) string {
 	return filepath.Join(TacklerDir(l, runID), "attempt-"+strconv.Itoa(attempt))
 }
 
-// TacklerMarker returns the path to the ephemeral tackler in-flight marker, tacklerMarkerFileName under ScratchDir(l, runID).
+// TacklerMarker returns the path to the ephemeral tackler in-flight marker.
+// The file is tacklerMarkerFileName under ScratchDir(l, runID).
 func TacklerMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
 }
 
-// OriginOwedMarker returns the path to the ephemeral marker of a resume that judged its owner without origin, originOwedMarkerFileName under ScratchDir(l, runID).
+// OriginOwedMarker returns the path to the ephemeral marker of a resume that judged its owner without origin.
+// The file is originOwedMarkerFileName under ScratchDir(l, runID).
 // While it stands, the run's passes stay full until one reaches origin.
 func OriginOwedMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), originOwedMarkerFileName)
 }
 
-// CancelMarker returns the path to the ephemeral batten cancel marker, <run segment>.cancel.json directly under ScratchRoot(l).
-// It sits beside the per-slug scratch directories, never inside RunDir or ScratchDir, so removing a slug's records and scratch leaves it in place.
+// CancelMarker returns the path to the ephemeral batten cancel marker.
+// The file is <run segment>.cancel.json directly under ScratchRoot(l).
+// It sits beside the per-slug scratch directories, never inside RunDir or ScratchDir.
+// Removing a slug's records and scratch leaves it in place.
 func CancelMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchRoot(l), runSegment(l, runID)+".cancel.json")
 }
 
-// CancelMarkerLock returns the path to the lock whose holder is the cancel marker's live writer, <run segment>.cancel.lock directly under ScratchRoot(l).
+// CancelMarkerLock returns the path to the lock whose holder is the cancel marker's live writer.
+// The file is <run segment>.cancel.lock directly under ScratchRoot(l).
 func CancelMarkerLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchRoot(l), runSegment(l, runID)+".cancel.lock")
 }
@@ -393,26 +448,30 @@ func SettleRecords(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), settleRecordsFileName)
 }
 
-// RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lymdirs.LymDirName and shedDirName, the directory every run's RunDir sits under.
-// It takes no *lymcwd.Location, because the root carries no run-id and so needs none of runSegment's alias resolution.
+// RunsRootRel returns the worktree-anchor-relative path of the run-records root:
+// the join of lymdirs.LymDirName and shedDirName, the directory every run's RunDir sits under.
+// It takes no *lymcwd.Location: the root carries no run-id, so it needs none of runSegment's alias resolution.
 // A caller that needs the whole run-records tree uses it, so none of them names the shed segment itself.
-// The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable as a fabricengine commit's relPaths.
+// The path is anchor-relative, so it is suitable as a fabricengine commit's relPaths.
 func RunsRootRel() string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName)
 }
 
-// RunsRoot returns the absolute durable directory every run directory sits under: the given *lymcwd.Location's AnchorPath() joined with RunsRootRel().
+// RunsRoot returns the absolute durable directory every run directory sits under:
+// the given *lymcwd.Location's AnchorPath() joined with RunsRootRel().
 func RunsRoot(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), RunsRootRel())
 }
 
-// ScratchRoot returns the absolute ephemeral directory every run's scratch directory sits under, the mirror of RunsRoot at the .lym subpath.
+// ScratchRoot returns the absolute ephemeral directory every run's scratch directory sits under:
+// the given *lymcwd.Location's AnchorPath() joined with lymdirs.DotLymDirName and shedDirName.
 // The hub-scoped prime run lock and landing lock live in it too.
 func ScratchRoot(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, shedDirName)
 }
 
-// RunDirRel returns the anchor-relative form of the run's durable directory, with the same directory-segment alias resolution the run's status path applies.
+// RunDirRel returns the anchor-relative form of the run's durable directory.
+// It resolves the directory segment the same way the run's status path does.
 // It is the pathspec a records commit takes to delete a whole run directory.
 func RunDirRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID))
@@ -431,7 +490,8 @@ type RunTreeRels struct {
 }
 
 // TreeRunRels returns the tree-relative record paths of runID.
-// It validates runID and applies no "self" alias and no legacy directory fallback, since a tree read from git has no disk to resolve against.
+// It validates runID and applies no "self" alias and no legacy directory fallback:
+// a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and a zero value.
 func TreeRunRels(runID string) (RunTreeRels, error) {
 	if err := ValidateRunID(runID); err != nil {
@@ -449,8 +509,10 @@ func TreeRunRels(runID string) (RunTreeRels, error) {
 	}, nil
 }
 
-// TreeRunFileRels returns the slash-separated, tree-relative paths of a run's seed.json and status.json, as a git tree read takes them.
-// It validates runID and applies no "self" alias and no legacy directory fallback, since a tree read from git has no disk to resolve against.
+// TreeRunFileRels returns the tree-relative paths of a run's seed.json and status.json.
+// They are slash-separated, as a git tree read takes them.
+// It validates runID and applies no "self" alias and no legacy directory fallback:
+// a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and empty paths.
 func TreeRunFileRels(runID string) (seedRel, statusRel string, err error) {
 	if err := ValidateRunID(runID); err != nil {
@@ -461,19 +523,21 @@ func TreeRunFileRels(runID string) (seedRel, statusRel string, err error) {
 		nil
 }
 
-// PrimeRunLock returns the path to the hub-scoped ephemeral advisory lock that sits one level above any single run-id's own RunLock: the given *lymcwd.Location's AnchorPath() joined with lymdirs.DotLymDirName, shedDirName, and "run.lock".
-// Unlike RunLock, PrimeRunLock takes no runID: the lock it names is shared across every run this hub addresses, not scoped to one.
+// PrimeRunLock returns the path to the hub-scoped ephemeral advisory lock that every run this hub addresses shares:
+// the given *lymcwd.Location's AnchorPath() joined with lymdirs.DotLymDirName, shedDirName, and "run.lock".
+// It takes no runID, since the lock is not scoped to any one run.
 func PrimeRunLock(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, shedDirName, "run.lock")
 }
 
-// LandLock returns the path to the hub-scoped ephemeral advisory lock one landing holds for its whole body, beside PrimeRunLock and built the same way:
+// LandLock returns the path to the hub-scoped ephemeral advisory lock one landing holds for its whole body:
 // the given *lymcwd.Location's AnchorPath() joined with lymdirs.DotLymDirName, shedDirName, and "land.lock".
 func LandLock(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, shedDirName, "land.lock")
 }
 
-// LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID), which the detached loop holds for its whole life.
+// LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID).
+// The detached loop holds it for its whole life.
 func LoopLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(StepsDir(l, runID), "loop.lock")
 }
@@ -499,14 +563,16 @@ func LoopDelivered(l *lymcwd.Location, runID, loopID string) string {
 	return filepath.Join(StepsDir(l, runID), "loop-envelope."+loopID+".delivered.json")
 }
 
-// LoopJobName returns the Windows job-object name of a run's loop: "lym-loop-" followed by a hex hash of the steps directory's absolute path.
+// LoopJobName returns the Windows job-object name of a run's loop:
+// "lym-loop-" followed by a hex hash of the steps directory's absolute path.
 // It is unique across hubs and free of path separators.
 func LoopJobName(l *lymcwd.Location, runID string) string {
 	sum := sha256.Sum256([]byte(StepsDir(l, runID)))
 	return "lym-loop-" + hex.EncodeToString(sum[:8])
 }
 
-// StepTraceCopy returns the path to the copy of a step's trace the loop writes beside the step record, <traceID>.trace.log under StepsDir(l, runID).
+// StepTraceCopy returns the path to the copy of a step's trace the loop writes:
+// <traceID>.trace.log under StepsDir(l, runID), beside the step record.
 // Retention sweeps the trace directory alone, so it never reaches the copy.
 func StepTraceCopy(l *lymcwd.Location, runID, traceID string) string {
 	return filepath.Join(StepsDir(l, runID), traceID+".trace.log")

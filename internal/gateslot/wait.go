@@ -33,7 +33,8 @@ func WaitDir(anchorRoot string) string {
 	return filepath.Join(anchorRoot, lymdirs.DotLymDirName, gateDirName)
 }
 
-// WriteWait writes w as a uniquely named record in dir and returns its path, which the writer removes once the wait ends.
+// WriteWait writes w as a uniquely named record in dir and returns its path.
+// The writer removes the record once the wait ends.
 func WriteWait(dir string, w Wait) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create gate wait directory: %w", err)

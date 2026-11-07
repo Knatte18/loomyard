@@ -20,9 +20,12 @@ type noFabricReference struct{}
 func (noFabricReference) MatchPath(string) (string, bool)     { return "", false }
 func (noFabricReference) MatchSpelling(string) (string, bool) { return "", false }
 
-// TestIndex_AppendsPlanChecks asserts the index reports a declared host-geometry name (fabric-vocabulary-name) and a test file under Edit (edit-test-file) through its format, rework and dispatch validations.
-// A completed card is dropped at dispatch for the first check, and at format validation for the second, which dispatch never runs.
-// A test file the repository holds with no symbol is admitted; one with a member, one the repository lacks and one quarry cannot parse are not.
+// TestIndex_AppendsPlanChecks asserts the index reports two checks in its format, rework and dispatch validations.
+// `fabric-vocabulary-name` flags a declared host-geometry name, and `edit-test-file` flags a test file under Edit.
+// A completed card is dropped at dispatch for the first check;
+// for the second, it is dropped at format validation, which dispatch never runs.
+// A test file the repository holds with no symbol is admitted;
+// a file with a member, a file the repository lacks, and a file quarry cannot parse are rejected.
 func TestIndex_AppendsPlanChecks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -231,7 +234,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 	}
 }
 
-// TestResolveGlyphs asserts the index answers each glyph by the same status policy a card ref gets, positionally, and reports a quarry failure as an error.
+// TestResolveGlyphs asserts the index answers each glyph by the same status policy a card ref gets.
+// The answers keep the glyphs' order, and a quarry failure comes back as an error.
 func TestResolveGlyphs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

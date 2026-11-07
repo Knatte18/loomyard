@@ -1,4 +1,5 @@
-// call.go implements the arbiter call: at a stop the run's driver cannot settle, it spawns a cold arbiter agent through shuttle, waits for its verdict file and returns the validated verdict.
+// call.go implements the arbiter call for a stop the run's driver cannot settle.
+// It spawns a cold arbiter agent through shuttle, waits for its verdict file and returns the validated verdict.
 // The call works over injected seams, so every branch is testable with a fake shuttle and clock.
 
 package shedarbiter
@@ -37,22 +38,23 @@ type Deps struct {
 	Settings sheddriver.ArbiterSettings
 	// ArbiterDir is the durable directory holding every attempt of the run.
 	ArbiterDir string
-	// AttemptDir names the directory of attempt number.
+	// AttemptDir returns the directory of the attempt with the given number.
 	AttemptDir func(number int) string
 	// MarkerPath is the ephemeral in-flight marker's path.
 	MarkerPath string
 	// Producers is the run's producer list, for goto checks.
 	Producers []shedengine.ProducerDef
-	// GotoGuard is the recipe's told check of a verdict's goto target; nil admits every target.
+	// GotoGuard is the recipe's check of a verdict's goto target, returning why it is refused; nil admits every target.
 	GotoGuard shedengine.GotoGuard
 	// Stop holds the reads that decide whether the stop is eligible.
 	Stop arbiterstop.Readers
-	// PendingCirclingDecision reports, at a Bouncer row, whether a circling decision is recorded and unsettled; false elsewhere.
+	// PendingCirclingDecision reports whether a circling decision is recorded and unsettled at a Bouncer row;
+	// it is false at any other row.
 	PendingCirclingDecision func(producer string) (bool, error)
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the arbiter stencil is read from.
 	Prompt      PromptInput
 	StencilsDir string
-	// AmendmentTarget answers the row a plan amendment routes to, or "none"; it is read at each spawn, never at wiring time, since the plan is approved mid-drive.
+	// AmendmentTarget is the row a plan amendment routes to, or "none"; read per spawn, as the plan is approved mid-drive.
 	AmendmentTarget func() string
 	// Shuttle starts, attaches to and stops the arbiter.
 	Shuttle sheddriver.AgentShuttle
@@ -113,9 +115,12 @@ func NewCall(deps Deps, in Input) (*Call, error) {
 	return &Call{deps: deps, in: in, status: status, stop: stop, key: sheddriver.StopKeyOf(status)}, nil
 }
 
-// Settle returns the validated verdict for the call's stop: an earlier attempt's when one arbitrated this stop, else a fresh attempt's.
-// It spawns at most Settings.MaxSpawns agents per run, counted from the attempt records on disk so no restart resets the count, and moves no run itself.
-// A call for the stop an attempt already arbitrated spawns nothing: it returns that attempt's verdict, or waits on its live arbiter.
+// Settle returns the validated verdict for the call's stop:
+// an earlier attempt's when one arbitrated this stop, else a fresh attempt's.
+// It spawns at most Settings.MaxSpawns agents per run, counted from the attempt records on disk,
+// so no restart resets the count, and it moves no run itself.
+// A call for the stop an attempt already arbitrated spawns nothing:
+// it returns that attempt's verdict, or waits on its live arbiter.
 func (c *Call) Settle() (loomengine.ArbiterEnvelope, error) {
 	attempts, err := loomengine.ListArbiterAttempts(c.deps.ArbiterDir)
 	if err != nil {
@@ -255,7 +260,8 @@ func (c *Call) recordStartedArbiter(dir string, attempt loomengine.ArbiterAttemp
 }
 
 // concludeWait concludes attempt after a wait ended with result and waitErr.
-// A verdict on disk wins whatever the wait reported; otherwise a run that did not finish is stopped through stop and reads as a hand-on.
+// A verdict on disk wins whatever the wait reported;
+// otherwise a run that did not finish is stopped through stop and reads as a hand-on.
 func (c *Call) concludeWait(attempt loomengine.ArbiterAttempt, result shuttleengine.Result, waitErr error, stop func() error, guid string) (loomengine.ArbiterEnvelope, error) {
 	if _, found, verdictErr := loomengine.ReadArbiterVerdict(loomengine.ArbiterVerdictPath(attempt.Dir)); found || verdictErr != nil {
 		return c.conclude(attempt)
@@ -273,13 +279,14 @@ func (c *Call) concludeWait(attempt loomengine.ArbiterAttempt, result shuttleeng
 	return c.handOn(attempt, sheddriver.CauseMissing, "the arbiter finished without writing a verdict")
 }
 
-// stopAndHandOn stops the strand guid names through shuttle's stop verb, logs it and reads the attempt as a hand-on with cause.
+// stopAndHandOn stops strand guid through the shuttle, logs it and reads the attempt as a hand-on with cause.
 func (c *Call) stopAndHandOn(attempt loomengine.ArbiterAttempt, guid, cause, detail string) (loomengine.ArbiterEnvelope, error) {
 	return c.stopRunAndHandOn(attempt, func() error { return c.deps.Shuttle.StopStrand(guid) }, guid, cause, detail)
 }
 
 // stopRunAndHandOn runs stop, logs it and reads the attempt as a hand-on with cause.
-// A stop that fails is returned as an error, since the arbiter may still be live and the run must not proceed beside it.
+// A failed stop is returned as an error:
+// the arbiter may still be live, and the run must not proceed beside it.
 func (c *Call) stopRunAndHandOn(attempt loomengine.ArbiterAttempt, stop func() error, guid, cause, detail string) (loomengine.ArbiterEnvelope, error) {
 	logger.Warn("loom: arbiter stopped", "run", c.in.RunID, "attempt", attempt.Number, "strand", guid, "cause", cause)
 	if err := stop(); err != nil {
@@ -351,7 +358,8 @@ func (c *Call) resumePrecondition(verdict loomengine.ArbiterVerdict) string {
 	return ""
 }
 
-// handOn finishes the call with a hand-on the call made itself, naming cause, and for an API error the error itself, in the question.
+// handOn finishes the call with a hand-on the call made itself.
+// Its question names cause and, for an API error, the error itself.
 func (c *Call) handOn(attempt loomengine.ArbiterAttempt, cause, detail string) (loomengine.ArbiterEnvelope, error) {
 	return c.finish(loomengine.ArbiterEnvelope{
 		Verdict:     loomengine.ArbiterVerdictHandOn,

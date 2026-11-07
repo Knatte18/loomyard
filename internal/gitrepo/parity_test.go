@@ -1,5 +1,8 @@
-// parity_test.go carries the differential-parity harness lifted from internal/gitnativepoc/harness_test.go into package gitrepo_test: fixture builders beyond newRepo/writeFile/commitAll (already defined in gitrepo_test.go and reused directly here), repo-shaping helpers the parity cases need, and comparison helpers that report an oracle-vs-implementation divergence with both values so a failing case is diagnosable without re-running it under a debugger.
-// The parity cases built on this scaffolding follow the helpers; the linked-worktree parity cases live in gogit_test.go.
+// parity_test.go holds the differential-parity harness that checks gitrepo against the git CLI oracle.
+// It has fixture builders, repo-shaping helpers and comparison helpers.
+// A comparison helper reports the oracle's value and gitrepo's value on a divergence.
+// That makes a failing case diagnosable without re-running it under a debugger.
+// The linked-worktree parity cases are in gogit_test.go.
 
 package gitrepo_test
 
@@ -27,9 +30,7 @@ func newEmptyRepoFixture(t *testing.T) (dir string) {
 	return dir
 }
 
-// assertParitySHA fails the test unless oracle and impl — the SHAs returned
-// by the CLI oracle and gitrepo's method for the same operation and fixture —
-// are identical.
+// assertParitySHA fails the test unless the CLI oracle and gitrepo return the same SHA.
 func assertParitySHA(t *testing.T, oracle, impl string) {
 	t.Helper()
 
@@ -38,9 +39,7 @@ func assertParitySHA(t *testing.T, oracle, impl string) {
 	}
 }
 
-// assertParityBool fails the test unless oracle and impl — the boolean
-// results returned by the CLI oracle and gitrepo's method for the same
-// operation and fixture — agree.
+// assertParityBool fails the test unless the CLI oracle and gitrepo return the same boolean.
 func assertParityBool(t *testing.T, oracle, impl bool) {
 	t.Helper()
 
@@ -49,10 +48,8 @@ func assertParityBool(t *testing.T, oracle, impl bool) {
 	}
 }
 
-// assertParityFileList fails the test unless oracle and impl contain the same
-// set of file paths, ignoring order — both sides are sorted before
-// comparison, since neither ChangedFilesSince's godoc nor any consumer
-// contracts on result order, only on the set of changed paths.
+// assertParityFileList fails the test unless the CLI oracle and gitrepo return the same set of file paths.
+// Order is not part of the contract: no consumer relies on it, so both lists are sorted before comparison.
 func assertParityFileList(t *testing.T, oracle, impl []string) {
 	t.Helper()
 
@@ -73,15 +70,11 @@ func assertParityFileList(t *testing.T, oracle, impl []string) {
 	}
 }
 
-// assertParityErrClass fails the test unless oracleErr and implErr represent
-// the same error class: both nil, or both non-nil with each side's error
-// satisfying errors.Is against its OWN package's sentinel. The oracle and
-// gitrepo define independent sentinel values for the same condition (the
-// oracle must not import gitrepo's sentinels — doing so would reintroduce
-// exactly the coupling the oracle exists to avoid), so a single shared target
-// cannot bridge them; this is the cross-target comparison
-// gitnativepoc/read_test.go's assertParityErrClassCrossTarget already
-// established for the same reason.
+// assertParityErrClass fails the test unless oracleErr and implErr belong to the same error class:
+// both nil, or each satisfies errors.Is against its own package's sentinel.
+// The oracle and gitrepo define independent sentinels for the same condition.
+// The oracle must not import gitrepo's, because that would couple it to the code it checks.
+// So a single shared target cannot match both sides.
 func assertParityErrClass(t *testing.T, oracleErr, oracleTarget, implErr, implTarget error) {
 	t.Helper()
 
@@ -93,10 +86,9 @@ func assertParityErrClass(t *testing.T, oracleErr, oracleTarget, implErr, implTa
 	}
 }
 
-// assertParityErrPresence fails the test unless oracleErr and implErr are
-// either both nil or both non-nil — used where neither side defines a typed
-// sentinel to compare against (e.g. CurrentBranch's detached-HEAD failure),
-// so only error-vs-no-error agreement is meaningful.
+// assertParityErrPresence fails the test unless oracleErr and implErr are either both nil or both non-nil.
+// Use it where neither side defines a typed sentinel, such as a detached-HEAD failure.
+// Only error-versus-no-error agreement is meaningful there.
 func assertParityErrPresence(t *testing.T, oracleErr, implErr error) {
 	t.Helper()
 
@@ -105,10 +97,7 @@ func assertParityErrPresence(t *testing.T, oracleErr, implErr error) {
 	}
 }
 
-// assertParityString fails the test unless oracle and impl are identical
-// strings — the general string-equality comparison CurrentBranch's parity
-// cases use. assertParitySHA exists separately for the SHA-shaped case so its
-// failure message names the value it is actually comparing.
+// assertParityString fails the test unless the CLI oracle and gitrepo return identical strings.
 func assertParityString(t *testing.T, oracle, impl string) {
 	t.Helper()
 
@@ -117,10 +106,9 @@ func assertParityString(t *testing.T, oracle, impl string) {
 	}
 }
 
-// resolveRevOrFatal resolves rev to its object SHA via `git rev-parse`,
-// failing the test outright on any failure — used by fixtures that need a
-// tree or blob SHA (HEAD^{tree}, HEAD:<path>) rather than a commit SHA, which
-// no fixture builder in this package hands back directly.
+// resolveRevOrFatal resolves rev to its object SHA via `git rev-parse` and fails the test on any error.
+// Use it for tree or blob SHAs, such as HEAD^{tree} or HEAD:<path>.
+// The fixture builders return only commit SHAs.
 func resolveRevOrFatal(t *testing.T, dir, rev string) string {
 	t.Helper()
 
@@ -134,7 +122,7 @@ func resolveRevOrFatal(t *testing.T, dir, rev string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// requireBranchExists returns repo.BranchExists(branch), failing the test on an error.
+// requireBranchExists reports whether branch exists in repo, and fails the test if the check errors.
 func requireBranchExists(t *testing.T, repo *gitrepo.Repo, branch string) bool {
 	t.Helper()
 
@@ -145,8 +133,11 @@ func requireBranchExists(t *testing.T, repo *gitrepo.Repo, branch string) bool {
 	return exists
 }
 
-// TestParity drives the oracle and gitrepo through one committed repository, asserting they agree on CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, the geometry reads and the ref reads.
-// The steps run serially in one order and share the repository's state: the file-list steps each take their own base commit and add commits on main, and the detached-HEAD step runs before the orphan step because both leave HEAD off main.
+// TestParity runs the CLI oracle and gitrepo over one committed repository.
+// It asserts they agree on the SHA, branch, changed-file, geometry and ref reads.
+// The steps run in one fixed order.
+// The file-list steps each take their own base commit and add commits on main,
+// and the detached-HEAD step runs before the orphan step because both leave HEAD off main.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestParity(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -160,8 +151,7 @@ func TestParity(t *testing.T) {
 		name string
 		run  func(t *testing.T)
 	}{
-		// Trivially true while gitrepo.CurrentSHA is CLI-backed;
-		// the value of this case is established before the method flips onto go-git.
+		// This case checks gitrepo.CurrentSHA, which reads through go-git, against the oracle on a committed repository.
 		{"CurrentSHA agrees on a committed repo", func(t *testing.T) {
 			oracleSHA, oracleErr := gitoracle.CurrentSHA(t, dir)
 			if oracleErr != nil {
@@ -174,8 +164,11 @@ func TestParity(t *testing.T) {
 
 			assertParitySHA(t, oracleSHA, implSHA)
 		}},
-		// A well-formed-but-absent SHA and a non-hex string both fold into false without either side treating the lookup itself as a failure worth surfacing.
-		// A tree or blob SHA — a real, valid-hex object name, just not a commit — is false too, never true: the `^{commit}` peel is what makes this so, and it is exactly what the missing and non-hex rows cannot distinguish, since neither of those SHAs resolves to any object at all.
+		// A well-formed but absent SHA and a non-hex string both report false.
+		// Neither side treats the lookup itself as a failure worth surfacing.
+		// A tree or blob SHA is a valid-hex object name but not a commit, so it reports false, never true.
+		// The `^{commit}` peel is what makes this so.
+		// The missing and non-hex rows cannot show it, since neither of those SHAs resolves to any object.
 		{"SHAExists agrees on committed, missing, non-hex, tree and blob shas", func(t *testing.T) {
 			tests := []struct {
 				name string
@@ -213,7 +206,8 @@ func TestParity(t *testing.T) {
 				t.Errorf("CurrentBranch() = %q, want %q", implBranch, "main")
 			}
 		}},
-		// The linked worktree's git dir sits under the primary's common dir, so the two reads differ there and agree on the primary.
+		// The linked worktree's git dir sits under the primary's common dir,
+		// so the two reads differ there and agree on the primary.
 		{"GitDir and CommonDir agree on the primary and on a linked worktree", func(t *testing.T) {
 			linkedDir := filepath.Join(t.TempDir(), "linked")
 			gitkit.MustRun(t, dir, "git", "worktree", "add", "-b", "linked-geometry", linkedDir)
@@ -325,13 +319,14 @@ func TestParity(t *testing.T) {
 				}
 			}
 		}},
-		// Each side returns its own ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
+		// gitrepo returns ErrInvalidSHA before it resolves or diffs anything.
 		{"ChangedFilesSince rejects a non-hex sha", func(t *testing.T) {
 			if _, err := repo.ChangedFilesSince("not-a-sha!!"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
 				t.Errorf("ChangedFilesSince(non-hex) error = %v, want gitrepo.ErrInvalidSHA", err)
 			}
 		}},
-		// Both return a non-ASCII filename verbatim — the on-disk literal, never core.quotePath's C-quoted escape form — and agree with each other.
+		// Both return a non-ASCII filename verbatim: the on-disk literal, never core.quotePath's C-quoted escape form.
+		// The two results agree with each other.
 		{"ChangedFilesSince returns a non-ASCII path verbatim on both sides", func(t *testing.T) {
 			since := requireCurrentSHA(t, repo)
 			const filename = "å.txt"
@@ -356,7 +351,9 @@ func TestParity(t *testing.T) {
 
 			assertParityFileList(t, oracleFiles, implFiles)
 		}},
-		// Both report a pure rename (identical content, the case git's default rename detection folds into one entry) as its old path (deleted) and new path (added) separately, never folded into one entry, exercising the --no-renames convention both the oracle and the implementation must apply; and agree with each other.
+		// A pure rename (identical content) is one entry under git's default rename detection.
+		// Both sides instead report it as two entries: the old path as deleted, the new path as added.
+		// Both must apply the --no-renames convention, and they agree with each other.
 		{"ChangedFilesSince reports both sides of a rename on both sides", func(t *testing.T) {
 			const oldName, newName = "old.txt", "new.txt"
 			writeFile(t, dir, oldName, "content that stays identical")
@@ -384,7 +381,8 @@ func TestParity(t *testing.T) {
 			}
 			assertParityFileList(t, oracleFiles, implFiles)
 		}},
-		// A detached HEAD must be an error, never an empty string — a caller never mistakes "no branch captured" for a legitimate branch name.
+		// A detached HEAD must be an error, never an empty string:
+		// a caller never mistakes "no branch captured" for a legitimate branch name.
 		{"CurrentBranch agrees on a detached HEAD", func(t *testing.T) {
 			gitkit.MustRun(t, dir, "git", "checkout", "--detach", requireCurrentSHA(t, repo))
 
@@ -434,7 +432,10 @@ func TestParity(t *testing.T) {
 }
 
 // TestParity_UnbornHEAD asserts the oracle and gitrepo agree on an unborn HEAD.
-// CurrentSHA maps git's ambiguous-HEAD stderr shape to each side's own sentinel (gitoracle.ErrNoCommits and gitrepo.ErrNoCommits), so the cross-target class comparison — never a raw string comparison, since the two sides never produce byte-identical errors — is what proves agreement.
+// Each side's CurrentSHA maps an unborn HEAD to its own sentinel:
+// gitoracle.ErrNoCommits for the oracle, gitrepo.ErrNoCommits for gitrepo.
+// The test compares error classes, never raw strings, since the two sides never produce byte-identical errors.
+// That class comparison is what proves agreement.
 // CurrentBranch succeeds on an unborn HEAD and prints the branch name even with no commit yet.
 func TestParity_UnbornHEAD(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -490,9 +491,12 @@ func TestParity_UnbornHEAD(t *testing.T) {
 	}
 }
 
-// forcePackIndexFreeze forces repo's go-git handle to build (and freeze) its internal packfile index against whatever packs exist on disk at the moment of the call, by driving one object-lookup miss through the exported SHAExists.
-// It is the shared setup step every "hard variant" mixed-backend case below builds on:
-// a subsequent commit-then-repack sequence produces a packfile-only object the frozen index predates, so a later read can only resolve it correctly by going through the whole-read reindex retry of readGoGit.
+// forcePackIndexFreeze makes repo's go-git handle build and freeze its internal packfile index.
+// The index is built against whatever packs exist on disk at the moment of the call.
+// The call drives one object-lookup miss through the exported SHAExists.
+// Every "hard variant" mixed-backend case builds on this shared setup step:
+// a subsequent commit-then-repack sequence produces a packfile-only object the frozen index predates,
+// so a later read can only resolve it correctly by going through the whole-read reindex retry of readGoGit.
 func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -501,8 +505,10 @@ func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 	}
 }
 
-// TestMixedBackend_PreWarmedHandleSeesCLICommit asserts the trailing r.CurrentSHA() call of StageAndCommit and of its wildcard sibling StageAllAndCommit — a go-git ref read — sees the commit its own preceding `git commit` call just wrote, even when the Repo's go-git handle was warmed (opened and cached) before that commit landed.
-// This is the call-granular boundary's central mixed-backend site: a stale answer here would hand a wrong SHA to any caller that records the return value as the checkout's new baseline.
+// TestMixedBackend_PreWarmedHandleSeesCLICommit asserts that the trailing r.CurrentSHA() call sees the CLI commit.
+// StageAndCommit and StageAllAndCommit end with that call, a go-git ref read.
+// That call must see the commit even when the Repo's go-git handle was warmed before that commit landed.
+// A stale answer would hand a wrong SHA to any caller that records the return value as the checkout's new baseline.
 // The rows run serially against one repository and one warmed handle.
 func TestMixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -544,9 +550,13 @@ func TestMixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	}
 }
 
-// TestMixedBackend_RepackBetweenCommitAndRead is the #468 regression, the hard variant of the mixed-backend interop cases:
-// each row's go-git handle is frozen (via forcePackIndexFreeze) against a pack-less on-disk state, a second commit then lands, and `git repack -d` with `git prune-packed` leaves it packfile-only BEFORE the row's one read — the shape Push's own pull --rebase retry can produce in production.
-// Every row builds its own repository and Repo: the first row's retry reindexes the handle it uses, so a shared fixture would let every later row pass even if its method bypassed the whole-read retry.
+// TestMixedBackend_RepackBetweenCommitAndRead is the hard variant of the mixed-backend interop cases:
+// Each row's go-git handle is frozen, via forcePackIndexFreeze, against a pack-less on-disk state.
+// A second commit lands, and `git repack -d` with `git prune-packed` leaves it packfile-only before the row's one read.
+// That is the shape Push's own pull --rebase retry can produce in production.
+// Every row builds its own repository and Repo.
+// The first row's retry reindexes the handle it uses.
+// A shared fixture would therefore let every later row pass even if its method bypassed the whole-read retry.
 // SHAExists' failure-swallowing posture means its row would fail silently (report false forever), never loudly.
 func TestMixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -554,7 +564,8 @@ func TestMixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// check makes the row's one read against a frozen, now-stale handle, after dirtying the worktree if the read is about it.
+		// check makes the row's one read against a frozen, now-stale handle.
+		// When the read is about the worktree, check first dirties it.
 		check func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string)
 	}{
 		{"SHAExists", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
@@ -627,17 +638,11 @@ func TestMixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 	}
 }
 
-// TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo pins the fingerprint gate
-// against a per-instance counter gate: repoA's go-git index is frozen against the pack-less on-disk
-// state, then a SEPARATE gitrepo.New value on the identical path builds and repacks a new commit —
-// a distinct *Repo, so repoA's own call count is never touched by any of it — and repoA's own
-// SHAExists must still resolve the new, now-packed commit.
-// A per-*Repo call counter would never observe this write at all, since it only ever counts repoA's
-// own calls;
-// the pack fingerprint is shared, on-disk ground truth every *Repo addressing the same checkout can
-// observe regardless of which one performed the write.
-// This is the case that fails under a counter gate and passes under the fingerprint gate, so it
-// pins the design rather than merely restating it.
+// TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo pins a write from another Repo:
+// a second Repo on the same path builds and repacks a commit, and the first Repo's SHAExists must still resolve it.
+// The first Repo's index is frozen against the pack-less on-disk state before that write.
+// The reindex gate compares the on-disk pack fingerprint:
+// every Repo on the checkout observes it, whichever Repo wrote the pack.
 func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -648,8 +653,8 @@ func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *te
 
 	forcePackIndexFreeze(t, repoA)
 
-	// A genuinely separate *Repo value on the same path — repoA's own handle
-	// is never touched by anything below.
+	// A separate Repo value on the same path is built below.
+	// Nothing below touches repoA's own handle.
 	repoB := gitrepo.New(dir)
 	writeFile(t, dir, "b.txt", "from repoB")
 	commitAll(t, dir, "commit via repoB's path")

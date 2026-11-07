@@ -1,13 +1,7 @@
-// weftgit_exclude_test.go proves fabric's own lock artifacts (.weft/ from Fabric.Commit's write lock, and a legacy lock file left by an earlier binary) never surface as untracked dirt in the weft worktree: ensureWeftLockDir seeds them into the weft repo's info/exclude, so Remove's no-force dirty gate (a raw `git status --porcelain`, untracked included) never dead-ends on them, while a lock file that strays into _lym shows.
-// It also proves every module's machine-local artifact — locks, pause flags, rendered prompts — is kept out of weft history structurally, by living under .lym and so never falling inside a weft-commit pathspec, rather than by an exclude-layer pattern.
-//
-// Package fabricengine_test to construct a real *fabricengine.Fabric against a real hubforge.NewHub
-// hub; shares the TestMain in testmain_test.go. newFabricPair/writeWeftConfig below are this file's
-// own fixture helpers, relocated here from weftgit_differential_test.go before its deletion (this
-// file was already its only other consumer), then rebuilt onto a real hub in this batch: a real hub
-// materializes config at BoardDir and WeftBase for real, so no stand-in-hub scaffolding is seeded by
-// hand any more.
-// gitStatusPorcelain moved to gitkit.GitStatusPorcelain, which this file now calls directly.
+// weftgit_exclude_test.go tests that fabric's lock artifacts never show as untracked dirt in the weft worktree.
+// ensureWeftLockDir seeds them into the weft repo's info/exclude, so Remove's no-force dirty gate never stops on them.
+// Machine-local artifacts (locks, pause flags, rendered prompts) live under .lym.
+// No _lym-scoped weft pathspec matches them.
 
 package fabricengine_test
 
@@ -25,9 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newFabricPair returns a *fabricengine.Fabric obtained through fabricengine's ordinary exported
-// constructor against a fresh hubforge.NewHub hub's own genuine warp/weft pair, plus the weft
-// worktree path callers write directly into.
+// newFabricPair returns a *fabricengine.Fabric opened on a fresh hubforge hub.
+// It also returns the hub's weft worktree path, where callers write files directly.
 func newFabricPair(t *testing.T) (*fabricengine.Fabric, string) {
 	t.Helper()
 
@@ -39,8 +32,8 @@ func newFabricPair(t *testing.T) (*fabricengine.Fabric, string) {
 	return f, h.PrimeRecords()
 }
 
-// writeWeftConfig overwrites the tracked _lym/config.yaml file a real hub's weft worktree ships
-// with, the standard way this file dirties a weft worktree's pathspec-covered content.
+// writeWeftConfig overwrites the tracked _lym/config.yaml in a hub's weft worktree.
+// The change falls under the _lym pathspec, so a commit has content to pick up.
 func writeWeftConfig(t *testing.T, weftPath, content string) {
 	t.Helper()
 
@@ -49,9 +42,9 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 	}
 }
 
-// TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content (which creates the
-// .weft lock dir) and drops a legacy push lock file, then asserts neither artifact appears in `git status
-// --porcelain` — the exact check Remove's no-force weft dirty gate runs — while a stray lock file under _lym does.
+// TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content, which creates the .weft lock dir.
+// It then drops a legacy push lock file, and it asserts neither artifact appears in `git status --porcelain`.
+// The check is the one Remove's no-force dirty gate runs; a stray lock file under _lym must still show.
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -65,13 +58,12 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 		t.Fatal("Commit WeftCommitted = false; want true")
 	}
 
-	// Precondition: the commit really did materialize the lock dir — the
-	// artifact this test claims is excluded must actually exist on disk.
+	// Precondition: the lock dir exists on disk, so its absence from status proves an exclusion, not a missing file.
 	if _, err := os.Stat(filepath.Join(weftPath, ".weft")); err != nil {
 		t.Fatalf(".weft lock dir missing after Commit: %v", err)
 	}
 
-	// Materialize the push lock an earlier binary left at the worktree root.
+	// Create the legacy push lock an older binary left at the worktree root.
 	const legacyPushLock = ".gitrepo-push.lock"
 	if err := os.WriteFile(filepath.Join(weftPath, legacyPushLock), nil, 0o644); err != nil {
 		t.Fatalf("write legacy push lock: %v", err)
@@ -93,9 +85,8 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	}
 }
 
-// nonEmptyExcludeLines splits raw info/exclude content into its non-empty,
-// non-comment lines, in file order — the shape seedWeftArtifactExcludes'
-// entries take, with git's own boilerplate `#`-comment lines filtered out.
+// nonEmptyExcludeLines returns the non-empty lines of raw info/exclude content, in file order.
+// Lines starting with `#`, git's comment lines, are dropped.
 func nonEmptyExcludeLines(content string) []string {
 	var lines []string
 	for _, line := range strings.Split(content, "\n") {
@@ -108,7 +99,9 @@ func nonEmptyExcludeLines(content string) []string {
 	return lines
 }
 
-// TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent proves seedWeftArtifactExcludes' shape: it seeds fabric's own .weft/ lock directory, lymdirs.DotLymDirName + "/" and the legacy lock file names into the weft repo's info/exclude, removes the retired *.lock / *.swaplock lines, and seeds none of the retired cross-module machine-local patterns.
+// TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent checks the entries seeded into the weft repo's info/exclude.
+// They are fabric's own .weft/ lock dir, the .lym/ dir, and the legacy lock file names, and no cross-module pattern.
+// The test first writes retired *.lock and *.swaplock lines, which the commit must remove.
 // Re-seeding via a second commit leaves the file byte-identical.
 func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -159,9 +152,8 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 		}
 	}
 
-	// A second Commit re-runs ensureWeftLockDir/seedWeftArtifactExcludes;
-	// the exclude file must come out byte-identical, not merely
-	// equivalent, proving the re-seed is a true no-op.
+	// A second Commit re-runs ensureWeftLockDir and seedWeftArtifactExcludes,
+	// and the exclude file must come out byte-identical, not merely equivalent, so the re-seed is a true no-op.
 	writeWeftConfig(t, weftPath, "modified again for exclude test")
 	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("second Commit: %v", err)
@@ -175,8 +167,7 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// mustWriteFile writes content to path, creating parent directories as
-// needed, failing the test on any error.
+// mustWriteFile writes content to path, creating parent directories, and fails the test on any error.
 func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 
@@ -188,26 +179,21 @@ func mustWriteFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth proves the structural replacement for F-B's fix (formerly the Weft Git Invariant's "Cross-module exclusions"): fabric's OWN sync pathspec — fabricengine.ScopedPathspec(relPath, []string{lymdirs.LymDirName}), positive entries only, no exclusions, the exact shape internal/fabriccli/weft_verbs.go builds for `lym fabric sync`/`lym config <module> --set ...`
-// — never stages another module's lock file, pause flag, or rendered-prompt directory, because those now live under .lym and so fall outside the _lym-scoped pathspec entirely rather than being caught by a git-exclude pattern.
+// TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth proves the sync never stages machine-local files.
+// Another module's lock file, pause flag, or rendered-prompt directory is one such file.
+// Those files live under .lym, outside the _lym-scoped pathspec, so no git-exclude pattern is needed.
 //
-// Exercised at the weft worktree root AND at two nested anchor depths, one real hub per anchor —
-// proving the exclusion holds at every depth Fabric.Commit's classification can be resolved at, not
-// just the root. hubforge's warp template carries "backend" and "wts/some-task" as real anchors
-// alongside ".", which is what makes each depth here a genuine hubforge.NewHub hub rather than the
-// old fixture's hand-written .lym-anchor marker naming an arbitrary "sub" path no real hub can
-// produce; each anchor's Fabric.Commit call resolves its own AnchorRel from lymcwd, which is what
-// classifyPaths needs to route an anchored pathspec to the weft side at all, so one Fabric handle
-// cannot stand in for all three depths the way a single shared weft checkout would suggest. A
-// durable per-module state file is written under _lym and committed alongside the .lym artifacts at
-// every depth, proving the property is exact and does not over-match real state.
+// The test runs at the weft root and at two nested anchors, each on its own real hub.
+// Each anchor's Fabric.Commit resolves its own anchor-relative path, so one Fabric cannot stand in for all three.
+// Each depth also commits a durable state file under _lym next to the .lym artifacts,
+// so the test shows the pathspec is exact: real state under _lym is still committed.
 func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "backend", "wts/some-task"} {
 		t.Run(anchor, func(t *testing.T) {
-			// The shape set holds only "." and "backend"; the nested anchor has no template.
+			// Only the "." and "backend" anchors have a template, so the nested anchor is built with NewHub.
 			var h *hubforge.Hub
 			if anchor == "wts/some-task" {
 				h = hubforge.NewHub(t, anchor)
@@ -249,15 +235,13 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 	}
 }
 
-// TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp is the --exclude-standard
-// regression: without it, entryMatchesWeft's `git ls-files --cached --others` probe matches a file
-// that exists only because it is untracked, INCLUDING one hidden by .gitignore/info-exclude, so
-// weftPathspecFilter forwards a doomed entry to `git add`, which then refuses an ignored path and
-// fails the whole StageAndCommit call with exit 1 — toppling a commit that had no other content in
-// this call. With --exclude-standard, the ignored-only entry is filtered out, positive stays false,
-// and the call degrades to a clean no-op (WeftCommitted=false, no error).
-// This test has a verified pre-fix failure: on the pre-card-41 code it fails with a
-// "gitrepo: git add:" error instead of landing a clean no-op.
+// TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp covers an entry matching only a git-ignored file.
+// The entryMatchesWeft probe (`git ls-files --cached --others`) matches untracked files, including ignored ones.
+// weftPathspecFilter then forwards that entry to `git add`;
+// git refuses an ignored path and fails the whole StageAndCommit call.
+// The --exclude-standard flag keeps ignored files out of the probe,
+// so the entry is dropped and the call degrades to a clean no-op (WeftCommitted=false, no error).
+// Without the flag, the call fails with a "gitrepo: git add:" error instead of a clean no-op.
 func TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,5 +1,6 @@
 // auditledger.go is the durable ledger webster's audit dispositions record into.
-// A finding is dispositioned at most once per run, by identity: the whole-session parent audit repeats every earlier finding on each record-batch,
+// A finding is dispositioned at most once per run, by identity.
+// The whole-session parent audit repeats every earlier finding on each record-batch,
 // so the ledger is what lets a finding warn or refuse once and then stay quiet.
 // The ledger lives in state.json (State.AuditDispositions, plus the batch-level and run-level AuditWarnings lists);
 // every helper here mutates the in-memory *State and leaves persisting to the caller.
@@ -59,7 +60,7 @@ func markDisposition(st *State, id, disposition string) {
 
 // recordBatchWarning records id as warned and appends one AuditWarning to bs.AuditWarnings.
 // It returns added == false, and appends nothing, when id is already dispositioned.
-// It takes class and detail as strings so a later-card drift warning records through the same path as an audit finding.
+// It takes class and detail as strings, so any warning, not only an audit finding, records through the same path.
 func recordBatchWarning(st *State, bs *BatchState, id, class, detail string) (text string, added bool) {
 	if isDispositioned(st, id) {
 		return "", false
@@ -70,7 +71,8 @@ func recordBatchWarning(st *State, bs *BatchState, id, class, detail string) (te
 	return auditWarningText(w), true
 }
 
-// recordRunWarning is recordBatchWarning for the run-level list.
+// recordRunWarning records id as warned and appends one AuditWarning to st.AuditWarnings, the run-level list.
+// It returns added == false, and appends nothing, when id is already dispositioned.
 func recordRunWarning(st *State, id, class, detail string) (text string, added bool) {
 	if isDispositioned(st, id) {
 		return "", false
@@ -86,28 +88,27 @@ func recordFailedFinding(st *State, id string) {
 	markDisposition(st, id, dispositionFailed)
 }
 
-// ErrAuditNotAcceptable is the sentinel AcceptPendingAudit returns while a pending finding's evidence is missing.
+// ErrAuditNotAcceptable is the sentinel that a refused audit acceptance wraps, so callers can match it with errors.Is.
 var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot be accepted")
 
-// acceptAuditHeadRefusal words AcceptPendingAudit's HEAD refusal, which records no batch and is cleared by re-running accept-audit.
+// acceptAuditHeadRefusal words the HEAD refusal of accept-audit, which records no batch and is cleared by re-running it.
 var acceptAuditHeadRefusal = headRefusal{resetStep: "lym webster reset --to last-batch-head", rerun: `re-run "lym webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
 
-// AcceptPendingAudit clears st.PendingAuditFindings and returns what it cleared, once every finding's suspect paths are back at the last recorded batch head.
-// The evidence rule: checkSuspectPaths runs over every pending path with the last batch head as base, picked by git ancestry (runEvidenceBases),
-// and any differing path, any unverifiable path and any finding with no path refuses with ErrAuditNotAcceptable, mutating nothing.
-// It refuses first, with the missing-commit way forward, when a commit the run recorded is not in the repository.
-// The evidence covers HEAD as well as the worktree:
-// when the last batch head is known, reconcileReportHead must accept HEAD (the head itself, or a clean parent merge on top of it), else the verb refuses with ErrAuditNotAcceptable;
-// the paths are then checked against that reconciled HEAD, which the differing clause names in its git checkout.
-// A differing plan path never gets a git checkout, which cannot restore a plan file:
-// its way forward is planPathClause (restore-plan or rebaseline --card).
-// It records no disposition, because a later run's audit covers a new Master session whose finding identities never repeat these.
-// It never saves;
-// the caller holds the state-mutation lease and saves.
-//
-// A path that is one of the run's two contract files is judged by contractFileStatus before the check, over the write history engines' audit yields (nil engines: none):
-// a cleared one is resolved, and an uncleared one refuses naming the path, why, and the delete route.
-// The returned bool is true when a path was accepted on an absent contract file, so the caller can tell the operator Master must write the files again.
+// AcceptPendingAudit clears the pending audit findings and returns what it cleared, once their evidence holds.
+// The evidence first needs HEAD to be the last recorded batch head, or a clean parent merge on top of it.
+// Every pending path must then match that head.
+// A differing or unverifiable path, or a finding with no path, refuses with ErrAuditNotAcceptable.
+// A refusal mutates nothing.
+// A missing recorded commit refuses first, with the way forward for it.
+// A contract file is judged by its write history.
+// An uncleared one refuses, naming the path, why, and the delete route.
+// A differing plan path cannot be restored by a git checkout.
+// Its refusal names restore-plan or rebaseline --card as the way forward.
+// Accepting records no disposition.
+// A later run's audit covers a new Master session, whose finding identities never repeat these.
+// The returned bool reports that a path was accepted on an absent contract file,
+// so the caller can tell the operator that Master must write the files again.
+// It never saves; the caller holds the state-mutation lease and saves.
 func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBranch ParentBranchFunc) (accepted []PendingAuditFinding, onAbsentContract bool, err error) {
 	pending := st.PendingAuditFindings
 	var paths []string
@@ -188,20 +189,27 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
 
-// AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch's evidence holds,
-// so `lym webster recover-batch n` can proceed instead of refusing toward the reset-to-start route.
-// verb names the caller that accepts, `accept-audit --batch` or `recover-batch`, in the re-run the evidence refusals name and in each recorded warning's detail.
-// The evidence rule: the batch's recorded start commit is set and the worktree is clean apart from the run's own state, and one of two routes holds.
-// Either HEAD is that start, or the start is an ancestor of HEAD and every entry records a command that readOnly accepts.
-// A fabric reference stays correctness everywhere else: this clears it only on that evidence and only through a verb that vouches for it,
-// and each cleared entry is recorded on the batch as an AuditWarning, so a recovery carries it and summary.md names it.
-// The bound of the committed route: the evidence shows the start still lies in HEAD's history and nothing is uncommitted;
-// no command readOnly accepts writes tracked content, a ref, config or a remote, and `git status` may refresh the index's stat cache, which changes no content.
+// AcceptBatchFabricReference clears the Uncheckable entries of failed batch n.
+// It clears them only when every entry is a pathless fabric-reference finding and the batch's evidence holds,
+// so that `lym webster recover-batch n` can proceed instead of refusing toward the reset-to-start route.
+// The verb argument names the caller that accepts, `accept-audit --batch` or `recover-batch`.
+// It appears in the re-run that the evidence refusals name, and in each recorded warning's detail.
+// The evidence is that the batch's recorded start commit is set,
+// and the worktree is clean apart from the run's own state.
+// One of two routes must hold:
+// HEAD is that start, or the start is an ancestor of HEAD and every entry records a command that readOnly accepts.
+// The committed route shows only that the start lies in HEAD's history and that nothing is uncommitted.
+// No command readOnly accepts writes tracked content, a ref, config or a remote,
+// and `git status` may refresh the index's stat cache, which changes no content.
 // It does not inspect the batch's commits.
-// What the evidence cannot cover, the fabric repo's own state, the caller vouches for by running the verb.
-// Any other entry, a batch that is not terminal failed, or missing evidence refuses with ErrAuditNotAcceptable, mutating nothing.
-// It never saves;
-// the caller holds the state-mutation lease and saves.
+// The fabric repo's own state is outside the evidence, so the caller vouches for it by running the verb.
+// Everywhere else a fabric reference stays a correctness failure.
+// This clears it only on that evidence, and only through a verb that vouches for it.
+// Each cleared entry is recorded on the batch as an AuditWarning,
+// so a recovery carries it and summary.md names it.
+// Any other entry, a batch that is not terminal failed, or missing evidence refuses with ErrAuditNotAcceptable.
+// The refusal mutates nothing.
+// It never saves; the caller holds the state-mutation lease and saves.
 func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(cmd string) bool, verb string) (accepted []string, err error) {
 	basis, err := batchFabricReferenceEvidence(st, geom, n, readOnly, fmt.Sprintf("re-run \"lym webster %s %d\"", verb, n))
 	if err != nil {
@@ -218,9 +226,12 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 	return accepted, nil
 }
 
-// batchFabricReferenceEvidence reports, mutating nothing, whether failed batch n's uncheckable entries may be accepted, and returns the basis that holds.
-// Every entry must be a pathless fabric reference, the batch must have recorded a start commit, and the worktree must be clean apart from the run's own state.
-// HEAD must be that start, or descend from it with every entry recording a command readOnly accepts.
+// batchFabricReferenceEvidence reports whether failed batch n's uncheckable entries may be accepted.
+// On success it returns the basis that holds.
+// It mutates nothing.
+// Every entry must be a pathless fabric reference, the batch must have recorded a start commit,
+// and the worktree must be clean apart from the run's own state.
+// HEAD must be that start, or descend from it with every entry recording a command that readOnly accepts.
 // A nil readOnly accepts none.
 // rerun is the step a refusal names for running the accepting verb again once the evidence is restored.
 // A refusal wraps ErrAuditNotAcceptable and ends in its way forward;
@@ -268,7 +279,8 @@ func batchFabricReferenceEvidence(st *State, geom Geometry, n int, readOnly func
 	return "the batch's commits were kept as the command is read-only and the tree clean", nil
 }
 
-// UncommittedPaths returns, sorted, the worktree-relative paths of the task's uncommitted work: every tracked change and untracked file git status names, minus the run's own state.
+// UncommittedPaths returns, sorted, the worktree-relative paths of the task's uncommitted work:
+// every tracked change and untracked file that git status names, minus the run's own state.
 // A clean tree returns none, and a git read failure is returned.
 func UncommittedPaths(geom Geometry) ([]string, error) {
 	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
@@ -285,9 +297,12 @@ func UncommittedPaths(geom Geometry) ([]string, error) {
 	return uncommitted, nil
 }
 
-// runOwnPath reports whether rel, a worktree-relative path git status names, is the run's own state rather than the task's content:
-// webster's run directory, the plan directory or the scratch directory, a path under one, or a directory holding one (git collapses an untracked directory).
-// In a standalone run those live inside the worktree, so they show as changes there; in a hub they live on the fabric side and never appear.
+// runOwnPath reports whether rel, a worktree-relative path that git status names, is the run's own state.
+// Such a path is not the task's content.
+// The run's own state is webster's run directory, the plan directory or the scratch directory:
+// a path under one of them, or a directory that holds one, as git collapses an untracked directory.
+// In a standalone run those live inside the worktree, so they show as changes there;
+// in a hub they live on the fabric side and never appear.
 func runOwnPath(geom Geometry, rel string) bool {
 	p := filepath.Join(geom.WorktreeRoot, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
 	for _, dir := range []string{geom.WebsterDir, geom.PlanDir, geom.ScratchDir} {
@@ -301,7 +316,8 @@ func runOwnPath(geom Geometry, rel string) bool {
 	return false
 }
 
-// fabricReferencePrefix opens an Uncheckable entry recorded for a pathless fabric-reference finding ("<class>: <detail>").
+// fabricReferencePrefix starts every Uncheckable entry recorded for a pathless fabric-reference finding.
+// Such an entry has the form "<class>: <detail>".
 const fabricReferencePrefix = string(ClassFabricReference) + ": "
 
 // allPathlessFabricReference reports whether entries is non-empty and every entry is a pathless fabric-reference finding.
@@ -317,7 +333,8 @@ func allPathlessFabricReference(entries []string) bool {
 	return true
 }
 
-// allReadOnlyFabricReferences reports whether entries is non-empty, every entry is a pathless fabric-reference finding, and every entry records a command readOnly accepts.
+// allReadOnlyFabricReferences reports whether entries is non-empty and holds only pathless fabric-reference findings:
+// each records a command that readOnly accepts.
 // A nil readOnly accepts nothing.
 func allReadOnlyFabricReferences(entries []string, readOnly func(cmd string) bool) bool {
 	if readOnly == nil || !allPathlessFabricReference(entries) {

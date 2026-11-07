@@ -1,6 +1,6 @@
 // mutation_test.go covers the mutation-record vocabulary declared in mutation.go: append ordering,
-// the hub-relative Target conversion, ref recording, copy/isolation semantics, JSON marshalling, and
-// the nil-safety and value-receiver contracts the doc comments promise.
+// the hub-relative Target conversion, ref recording, copy and isolation semantics, JSON marshalling,
+// and the nil-safety and value-receiver contracts the doc comments promise.
 // It is untagged Tier 1: pure table/data tests with no git spawn and no filesystem access.
 
 package fabricengine
@@ -16,9 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMutations_Append_HubRelativeConversion covers Append's hub-relative Target conversion: a
-// target below the hub root, the hub root itself, a target outside the hub root, and an empty
-// hubRoot.
+// TestMutations_Append_HubRelativeConversion covers Append's hub-relative Target conversion:
+// a target below the hub root, the hub root itself, a target outside the hub root, and an empty hubRoot.
 func TestMutations_Append_HubRelativeConversion(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -74,8 +73,7 @@ func TestMutations_Append_HubRelativeConversion(t *testing.T) {
 	}
 }
 
-// TestMutations_AppendRef covers that AppendRef records its ref verbatim and is unaffected by
-// hubRoot.
+// TestMutations_AppendRef covers that AppendRef records its ref verbatim and is unaffected by hubRoot.
 //
 //testtiming:keep AppendRef recording its ref verbatim with a hubRoot set; coverage of its blocks by other tests does not show an assertion of this
 func TestMutations_AppendRef(t *testing.T) {
@@ -93,11 +91,12 @@ func TestMutations_AppendRef(t *testing.T) {
 	}
 }
 
-// TestMutations_EntriesAndSnapshotAreCopies covers that Entries() returns a copy — mutating the
-// returned slice does not change what a second Entries() call reports — that an empty record
-// returns a non-nil zero-length slice, that appending through the recorder after taking a snapshot
-// does not change the snapshot's Len(), and that Entries() and Len() are callable directly on the
-// result of a function returning Mutations (the reason those two methods carry value receivers).
+// TestMutations_EntriesAndSnapshotAreCopies covers that Entries() returns a copy:
+// mutating the returned slice does not change what a second Entries() call reports.
+// It also covers that an empty record returns a non-nil zero-length slice.
+// Appending through the recorder after taking a snapshot does not change the snapshot's Len().
+// It also covers that Entries() and Len() are callable directly on the result of a function returning Mutations:
+// which is why those two methods carry value receivers.
 //
 //testtiming:keep Entries() and Snapshot() returning copies, an empty record returning a non-nil slice, and value-receiver callability; coverage of its blocks by other tests does not show an assertion of this
 func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
@@ -218,9 +217,8 @@ func TestMutations_MarshalJSON(t *testing.T) {
 	}
 }
 
-// TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey covers that a MutationRecord embedded in a
-// throwaway local struct marshals its record under the "mutations" key, and that Mutated() returns
-// the same entries.
+// TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey covers a MutationRecord embedded in a local struct.
+// It checks that the record marshals under the "mutations" key, and that Mutated() returns the same entries.
 //
 //testtiming:keep an embedded MutationRecord marshalling under the "mutations" key; coverage of its blocks by other tests does not show an assertion of this
 func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
@@ -252,8 +250,8 @@ func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
 	}
 }
 
-// TestMutations_Extend covers that Extend appends other's entries verbatim in order, that it is a
-// no-op on an empty source, and that it is safe on a nil receiver.
+// TestMutations_Extend covers that Extend appends other's entries verbatim and in order.
+// It also covers that Extend is a no-op on an empty source and safe on a nil receiver.
 func TestMutations_Extend(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -294,16 +292,15 @@ func TestMutations_Extend(t *testing.T) {
 	nilRec.Extend(other.Snapshot())
 }
 
-// mutationsFromFunc returns a non-addressable Mutations value, mirroring the shape batches 5-7 rely
-// on: a result type's Mutated() accessor returns Mutations, not *Mutations.
+// mutationsFromFunc returns a non-addressable Mutations value.
+// It has the shape of a result type's Mutated() accessor, which returns Mutations, not *Mutations.
 func mutationsFromFunc() Mutations {
 	m := NewMutations("")
 	m.Append(KindDirCreated, "/hub/one", "")
 	return m.Snapshot()
 }
 
-// armTraceSink arms the durable trace sink in a fresh temp dir and returns a reader for its
-// "fabric: mutation" lines.
+// armTraceSink arms the durable trace sink in a fresh temp dir and returns a reader for its "fabric: mutation" lines.
 // Tests using it never call t.Parallel: the sink override is package-level state.
 func armTraceSink(t *testing.T) func() []string {
 	t.Helper()
@@ -332,11 +329,11 @@ func armTraceSink(t *testing.T) func() []string {
 	}
 }
 
-// TestMutations_TraceLogging covers that one Append or one AppendRef writes exactly one trace
-// record with the recorded values, that Extend adds no trace record, and that a nil *Mutations logs
-// nothing and snapshots to the zero Mutations rather than panicking — CloneHub and Unwire both
-// install their populating defer before the recorder exists, so the defer can observe a nil
-// recorder on the earliest failure paths.
+// TestMutations_TraceLogging covers that each Append or AppendRef writes one trace record with its values.
+// It also covers that Extend writes no trace record.
+// A nil *Mutations logs nothing and snapshots to the zero Mutations rather than panicking.
+// CloneHub and Unwire install their populating defer before the recorder exists,
+// so that defer can observe a nil recorder on the earliest failure paths.
 // It does not call t.Parallel because the trace sink is package-level state.
 func TestMutations_TraceLogging(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -403,8 +400,8 @@ func TestMutations_TraceLogging(t *testing.T) {
 	})
 }
 
-// TestRefDetail covers refDetail's exact grammar: create without remote, push with remote, and a
-// relative repo made absolute.
+// TestRefDetail covers refDetail's exact grammar: create without remote and push with remote.
+// It also covers a relative repo made absolute.
 func TestRefDetail(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

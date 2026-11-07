@@ -1,4 +1,6 @@
-// down_test.go pins the wait `reed down` makes for the hub's watchdog lock, through the fake engine seam and an injected probe and sleep so no test waits out the production bound.
+// down_test.go pins the wait `reed down` makes for the hub's watchdog lock.
+// It drives that wait through a fake engine seam, an injected probe and an injected sleep.
+// No test waits out the production bound.
 
 package reedcli
 
@@ -22,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer drives downCmd over a fake engine and asserts the envelope, the number of lock probes and the single Warn a timed-out wait logs.
+// TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer drives downCmd over a fake engine.
+// It asserts the envelope, the number of lock probes and the single Warn a timed-out wait logs.
 // It captures the process-global logger, so it is not parallel.
 func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -34,7 +37,7 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 		downErr error
 		// scratchDir has the hub's scratch directory created, so the real probe can take the lock.
 		scratchDir bool
-		// free scripts the probe's answers by call number, true meaning the lock is free, and its last answer repeats; nil runs the real probe.
+		// free scripts the probe's answers in order, true meaning the lock is free, repeating the last; nil runs the real probe.
 		free         []bool
 		wantErr      string
 		wantProbes   int
@@ -44,7 +47,7 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 		// endErr is what the pre-step seam returns, and ended what it answers.
 		endErr error
 		ended  []runproc.Ended
-		// wantEnded is the ended_processes list the envelope carries, empty when nil; a refusing seam leaves Down uncalled, any other row calls it once.
+		// wantEnded is the expected ended_processes, empty when nil; a refusing seam leaves Down uncalled, others call it once.
 		wantEnded []any
 	}{
 		{

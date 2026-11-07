@@ -1,10 +1,12 @@
-// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/landingshed takes every absolute path it operates on from its caller and has no
-// direct production import of internal/lymcwd. Modelled directly on internal/loomshed's own
-// seam_enforcement_test.go.
+// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership.
+// Production code in internal/landingshed takes every absolute path it operates on from its caller,
+// and it has no direct production import of internal/lymcwd.
 //
-// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist: it catches the excluded import and anything else that would drag geometry resolution in, with no list maintenance beyond a genuine new dependency.
-// A transitive reach through an allowlisted dependency (internal/fabricengine and internal/githubclient both import internal/lymcwd themselves) is explicitly fine -- the invariant's membership predicate is about a direct production import, and transitive is never policed.
+// The allowlist is a membership list, not an internal/lymcwd denylist.
+// It catches the excluded import and any other new dependency that would drag geometry resolution in.
+// It needs upkeep only for a genuine new dependency.
+// A transitive reach through an allowlisted dependency is fine.
+// Such a dependency may import internal/lymcwd itself; the predicate checks only direct production imports.
 
 package landingshed
 
@@ -15,8 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// landingshedAllowedImports are the only non-stdlib import paths production code in this package
-// may use.
+// landingshedAllowedImports lists the only non-stdlib import paths that production code in this package may use.
 var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/boardengine", // names the merge-in pull_request value
 	"github.com/Knatte18/loomyard/internal/fabricengine",

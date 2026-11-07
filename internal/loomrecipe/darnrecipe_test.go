@@ -1,4 +1,7 @@
-// darnrecipe_test.go covers New and Routing over the darn recipe: the darn recipe's row order, engines and producer types, its PR-Review and Code-Review routing through Describe, the perch shared with loom's recipe bar its answer key, the verify budget stamped onto both verify-gated rows, the review budget applied to the perch, and the refusal of a budget out of range.
+// darnrecipe_test.go covers New and Routing over the darn recipe.
+// It pins the row order, engines and producer types, and the PR-Review and Code-Review routing through Describe.
+// It pins the perch shared with loom's recipe bar its answer key, and the verify budget on both verify-gated rows.
+// It pins the review budget on the perch, and the refusal of a budget out of range.
 
 package loomrecipe
 
@@ -69,8 +72,10 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	}
 }
 
-// TestDarnPerch_SharesLoomsPerchBarTheAnswerKey pins that the darn recipe's Code-Review rows carry loom's segment, run directory, role prefix, rubric and loom.yaml setting keys,
-// and that only their answer key differs: the decision record alone, whose fasit instructions read it as the task's scope with its added entries as amendments.
+// TestDarnPerch_SharesLoomsPerchBarTheAnswerKey pins the darn recipe's Code-Review rows against loom's perch.
+// They carry loom's segment, run directory, role prefix, rubric and loom.yaml setting keys.
+// Only their answer key differs:
+// the decision record alone, whose fasit instructions read it as the task's scope with its added entries as amendments.
 func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
 	tiergate.Require(t, 0)
 	rowsOf := func(source []byte) map[string]shedbuild.Row {
@@ -132,7 +137,11 @@ func setCodeBudget(env *shedrecipe.Env, budget int) {
 	env.Segments[codeReviewSegment] = settings
 }
 
-// TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize with no reroute edge, no Merge-In row, and a review budget of 0 keeping every edge and gating Describe off.
+// TestNewDarn_Routing pins the darn tail.
+// The Code-Review perch comes first, then Describe, PR-Review and Finalize after Darn-Write.
+// The review budget applies to all three perch rows.
+// Finalize has no reroute edge and no Merge-In row.
+// A review budget of 0 keeps every edge and gates Describe off.
 func TestNewDarn_Routing(t *testing.T) {
 	tiergate.Require(t, 0)
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
@@ -392,7 +401,8 @@ func TestDarnVerifyBudget(t *testing.T) {
 	})
 }
 
-// TestDarnRouting pins the projection's rows and its review budget applied as New applies it, the kept edges under a budget of 0, and the refusal of a budget below 0.
+// TestDarnRouting pins the projection's rows and the review budget as New applies it.
+// It also pins the kept edges under a budget of 0, and the refusal of a budget below 0.
 func TestDarnRouting(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("rows and the review budget on the perch", func(t *testing.T) {

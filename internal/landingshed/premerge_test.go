@@ -1,4 +1,5 @@
-// premerge_test.go covers the pre-merge step Merge-In and Finalize run ahead of their merge-in, driven through each producer's Call with the package's fake resolver and recording seam closures.
+// premerge_test.go covers the pre-merge step that Merge-In and Finalize run ahead of their merge-in.
+// It drives each producer's Call with the package's fake resolver and recording seam closures.
 // It captures the process-global logger output, so its tests do not run in parallel.
 
 package landingshed
@@ -21,8 +22,9 @@ const (
 	resolverRanReason     = "the resolver ran"
 )
 
-// TestPreMerge_ClearsOwnParkedMergeIn pins, for Merge-In and Finalize, what the step does before the merge-in for each merge state the pair can be in:
-// the seam calls it makes, whether the merge-in follows, and the Stuck reason or error it ends the call with.
+// TestPreMerge_ClearsOwnParkedMergeIn pins what Merge-In and Finalize do before their merge-in.
+// For each merge state the pair can be in, the test checks the seam calls made.
+// It also checks whether the merge-in follows, and the Stuck reason or error the call ends with.
 // A last subtest pins that Finalize probes again before the merge-in it repeats after the parent moved.
 func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 	tiergate.Require(t, 0)

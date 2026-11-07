@@ -1,4 +1,6 @@
-// pausedsend.go holds the refusal of a send into a session a pause covers: the ErrPaused sentinel, the PausedError that carries the judgment, and the runner's coverage reading of a send's target.
+// pausedsend.go holds the refusal of a send into a session a pause covers.
+// The file defines the ErrPaused sentinel and the PausedError, which carries the judgment.
+// It also holds the runner's coverage reading of a send's target.
 
 package shuttleengine
 
@@ -12,11 +14,13 @@ import (
 )
 
 // ErrPaused marks a send refused because a live pause entry covers the target session: nothing was typed.
-// It is its own sentinel and never wraps ErrSessionBusy, so a caller that holds a busy send does not mistake a paused one for it.
+// It is its own sentinel and never wraps a busy-session error, so a paused send is never mistaken for a busy one.
 var ErrPaused = errors.New("shuttle: a pause covers the session")
 
 // PausedError is the refusal of a send into a session a live pause entry covers.
-// Slug is the slug the coverage read judged, Entry the covering entry, and Err the full error, whose text names the resume that lifts the hold.
+// Slug is the slug the coverage read judged.
+// Entry is the covering entry.
+// Err is the full error, whose text names the resume that lifts the hold.
 // A caller that renders its own retry reads Entry and Slug.
 type PausedError struct {
 	Slug  string
@@ -34,15 +38,19 @@ func (e *PausedError) Unwrap() error {
 	return e.Err
 }
 
-// targetSlug returns the slug of the target strand's own name as reed reports it, the empty slug for a prime name, which only a hub entry covers.
-// name is the strand name the caller already holds; only when it is empty does targetSlug ask reed for the strand's name by guid.
-// A name that does not parse and a strand reed does not list fall back to the runner's geometry slug, as does a failed reed status, which warns once per change of error.
+// targetSlug returns the slug of the target strand's own name as reed reports it.
+// For a prime name it returns the empty slug, which only a hub entry covers.
+// name is the strand name the caller already holds.
+// Only when it is empty does targetSlug ask reed for the strand's name by guid.
+// A name that does not parse, and a strand reed does not list, falls back to the runner's geometry slug.
+// A failed reed status does the same, and warns once per change of error.
 func (r *Runner) targetSlug(guid, name string) string {
 	slug, _ := r.resolveTargetSlug(guid, name)
 	return slug
 }
 
-// resolveTargetSlug is targetSlug that also reports whether the slug came from a parsed strand name rather than the runner's geometry slug.
+// resolveTargetSlug returns the target slug for guid and name.
+// resolved reports whether the slug came from a parsed strand name, not the runner's geometry slug.
 func (r *Runner) resolveTargetSlug(guid, name string) (slug string, resolved bool) {
 	if name == "" {
 		status, err := r.reed.Status()
@@ -64,8 +72,11 @@ func (r *Runner) resolveTargetSlug(guid, name string) (slug string, resolved boo
 	return parsed.Slug, true
 }
 
-// pausedTarget returns a *PausedError when a live pause entry covers the strand guid names, judged by the strand's own slug at the runner's clock.
-// A runner told no pause geometry reads uncovered, and so does an unreadable record, which warns once per change of error so a corrupt file never freezes sends.
+// pausedTarget returns a *PausedError when a live pause entry covers the strand that guid names.
+// It judges the strand's own slug at the runner's clock.
+// A runner with no pause geometry reads uncovered.
+// An unreadable record also reads uncovered.
+// It warns once per change of error, so a corrupt file never freezes sends.
 // It only reads: it types nothing, records nothing and never waits.
 func (r *Runner) pausedTarget(guid, name string) error {
 	if r.pause.RecordPath == "" {
@@ -84,7 +95,8 @@ func (r *Runner) pausedTarget(guid, name string) error {
 	}
 }
 
-// warnOnChange logs msg at Warn when err is non-nil and its text differs from *last, then keeps err's text in *last, cleared by a nil err.
+// warnOnChange logs msg at Warn when err is non-nil and its text differs from *last.
+// It then keeps err's text in *last, and a nil err clears it.
 func (r *Runner) warnOnChange(last *string, msg string, err error, args ...any) {
 	r.pauseWarnMu.Lock()
 	defer r.pauseWarnMu.Unlock()
@@ -99,7 +111,8 @@ func (r *Runner) warnOnChange(last *string, msg string, err error, args ...any) 
 	logger.Warn(msg, append(args, "error", err)...)
 }
 
-// pausedRefusal returns the refusal of a send into a session a pause covers, nil for a context built with no coverage reading.
+// pausedRefusal returns the refusal of a send into a session a pause covers.
+// It returns nil for a context built with no coverage reading.
 func (sc sendContext) pausedRefusal() error {
 	if sc.paused == nil {
 		return nil

@@ -2,16 +2,21 @@
 //
 // It provides atomic writes and per-module reconciliation via yamlengine.Reconcile, tracking
 // added/removed keys and applying changes when requested.
-// In a hub every non-seed-only base file is sparse over the template, seeded sparse and pruned but never filled, and stripped once by the walk behind the board marker;
-// only a standalone worktree base and a seed-only file stay full, and every layer above a base is sparse.
-// A seed-only board file follows its template against the template base kept beside it, keeping every value the operator set.
+// In a hub, every non-seed-only base file is sparse over the template.
+// It is seeded sparse and pruned but never filled, and the walk behind the board marker strips it once.
+// Only a standalone worktree base and a seed-only file stay full, and every layer above a base is sparse.
+// A seed-only board file follows its template against the template base kept beside it.
+// It keeps every value the operator set.
 // ReconcileHubWideAt covers every module's file at the board dir, hub files and per-worktree repo defaults;
 // ReconcileAll covers a worktree's sparse and local layers.
-// A key the template lacks and no retired key of its module covers leaves a hub base or worktree file only under the options' PruneUnknown;
-// any other run keeps it and reports it as Preserved, so a binary older than the one that wrote a key never strips it.
-// Every strip, prune, reconcile and template-equal drop judges a file against the effective template its base layer picks, the module's template with the overlay its selector names laid over it;
-// key-move scaffolds and the seed-only paths use the base template.
-// Every reconcile entry point, and run-settings preparation through configreg, applies the key-move table to each layer as its first step, before any module of the layer is seeded or reconciled.
+// A key the template lacks and no retired key covers is pruned only under the options' PruneUnknown;
+// any other run on a hub base or worktree file keeps it and reports it as Preserved,
+// so a binary older than the one that wrote a key never strips it.
+// Every strip, prune, reconcile and template-equal drop judges a file against its base layer's effective template.
+// That is the module's template with the overlay its selector names laid over it.
+// Key-move scaffolds and the seed-only paths use the base template.
+// Every reconcile entry point, and run-settings preparation through configreg, applies the key-move table to each layer.
+// This is the first step, before any module of the layer is seeded or reconciled.
 // Reconcile failures are *FileError values naming the file that failed.
 
 package configsync
@@ -33,16 +38,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// legacyConfigModules maps a module to the pre-cutover config modules whose values it now covers.
+// legacyConfigModules maps a module to the legacy config modules whose values it covers.
 // fabric covers warp.yaml, which held branch_prefix, and weft.yaml, which held pathspec.
 // Both are flat, single-key top-level documents that fabric.yaml's two-key template subsumes.
 var legacyConfigModules = map[string][]string{
 	"fabric": {"warp", "weft"},
 }
 
-// formerTemplateValues maps a module name to a top-level key to the template value its replaced units held immediately before the tuned defaults replaced them, as YAML text.
-// An open map is one unit, so a whole map is compared whole; under any other mapping, a per-name map included, each leaf unit is compared alone.
-// Only the replaced units are listed; an older template generation's value is kept as tuned.
+// formerTemplateValues maps a module name and a top-level key to a superseded template value, as YAML text.
+// An open map is one unit, so a whole map is compared whole.
+// Under any other mapping, a per-name map included, each leaf unit is compared alone.
+// Only the superseded units are listed; a value an older template generation held is kept as set.
 var formerTemplateValues = map[string]map[string]string{
 	"loom":     formerLoomValues(),
 	"tapestry": formerTapestryValues(),
@@ -80,7 +86,7 @@ func formerLoomValues() map[string]string {
 	return former
 }
 
-// formerTapestryValues returns tapestry's former template values, the ones the plan perch's keys held in loom.yaml before they moved.
+// formerTapestryValues returns tapestry's former template values for the plan perch's keys.
 func formerTapestryValues() map[string]string {
 	former := map[string]string{}
 	for _, unit := range []string{
@@ -125,38 +131,40 @@ const (
 	SeedHub = "hub"
 	// SeedPrime is the prime worktree's copy, read only when the hub file is absent.
 	SeedPrime = "prime"
-	// SeedLegacy is the pre-cutover legacy files folded in when the hub file is absent.
+	// SeedLegacy is the legacy files folded in when the hub file is absent.
 	SeedLegacy = "legacy"
 	// SeedTemplate is the module's embedded template.
 	SeedTemplate = "template"
 )
 
 // Result represents the reconciliation result for a single config module.
-// A key-move result instead reports one file the move changed, and a module may appear in a move result and in its own reconcile result.
+// A key-move result instead reports one file the move changed,
+// and a module may appear in a move result and in its own reconcile result.
 type Result struct {
 	// Module is the name of the config module (e.g., "board", "worktree", "fabric").
 	Module string
 	// Added is the slice of key-paths newly discovered in the template.
-	// A hub base seed copies no template key, so it reports none; only a full base file, a seed-only seed and a seed-only board file following its template do.
+	// A hub base seed copies no template key, so it reports none;
+	// only a full base file, a seed-only seed and a seed-only board file following its template do.
 	Added []string
 	// Removed is the slice of key-paths that existed in the file but not in the template.
 	// For a seed-only board file it lists the units the template dropped while the file held its template base's value.
 	Removed []string
-	// Updated lists, as "<dotted.key>: <old> -> <new>", each unit of a seed-only board file left at its template base's value that now holds the template's new value.
-	// Set only by ReconcileHubWideAt, on a dry run too.
+	// Updated lists, as "<dotted.key>: <old> -> <new>", each seed-only board unit still at its template base's value.
+	// Set only by ReconcileHubWideAt, on a dry run too; the template value has changed.
 	Updated []string
-	// Differs lists, as "<dotted.key>: file <value>, template <value>", each unit of a seed-only board file the operator set that the template holds otherwise; reconcile keeps the operator's value.
-	// Set only by ReconcileHubWideAt, on a dry run too.
+	// Differs lists, as "<dotted.key>: file <value>, template <value>", each operator-set unit where the template differs.
+	// Set only by ReconcileHubWideAt, on a dry run too, for a seed-only board file; reconcile keeps the operator's value.
 	Differs []string
 	// Applied reports whether the file was written to disk, or deleted when Retired.
 	Applied bool
-	// MigratedFrom names the pre-cutover legacy config modules (e.g. "warp",
-	// "weft") whose on-disk values were folded into this reconcile instead of
-	// the bare template default. Non-empty only for "fabric", only when its
-	// own config file is absent AND at least one legacy file is present and
-	// parseable -- see legacyConfig. Populated on a dry run too (apply
-	// false), so the operator can see the migration is pending before it
-	// applies; the legacy files themselves are only pruned when Applied.
+	// MigratedFrom names the legacy config modules (e.g. "warp", "weft") whose on-disk values this reconcile uses.
+	// They replace the bare template default.
+	// It is non-empty only for "fabric".
+	// That needs its own config file absent and at least one legacy file present and parseable.
+	// It is populated on a dry run too.
+	// The operator can see the migration pending before it applies.
+	// The legacy files are pruned only when Applied.
 	MigratedFrom []string
 	// Migrated lists the rewrites the module's Migrate hook made to a present file, in the hook's order.
 	// Set on a dry run too; the file is rewritten only when Applied.
@@ -169,46 +177,51 @@ type Result struct {
 	// Applied reports the deletion happened.
 	// Set only by ReconcileAll, on a dry run too.
 	Retired bool
-	// Divergent lists, as "<dotted.key>: <value>" sorted, each entry of a hub-wide module's per-worktree copy that the hub file lacks or holds with a different value.
-	// The copy is left in place.
+	// Divergent lists, sorted, as "<dotted.key>: <value>", each entry of a hub-wide module's per-worktree copy.
+	// The hub file lacks such an entry or holds a different value for it; the copy is left in place.
 	// Set only by ReconcileAll.
 	Divergent []string
 	// Layer names the layer the result reports: the repo default or hub file, the worktree file, or the local override.
 	Layer configengine.Layer
-	// Stripped lists, sorted, the dotted keys of a worktree file that equal what the layers below resolve to, and are therefore redundant in a sparse layer, and the keys equal to a former template value.
-	// Reported as pending unless the run migrates.
-	// ReconcileAll sets it on a worktree that carries no sparse marker;
-	// ReconcileHubWideAt sets it on a board that carries no base-sparse marker, for the keys equal to the template or a former template value.
+	// Stripped lists, sorted, the dotted keys of a worktree file that equal what the layers below resolve to.
+	// Such keys are redundant in a sparse layer, and they are reported as pending unless the run migrates.
+	// ReconcileAll sets it on a worktree with no sparse marker;
+	// ReconcileHubWideAt sets it on a board with no base-sparse marker, for template-equal or superseded keys.
 	Stripped []string
-	// Inherited lists, sorted, the dotted keys the repo default holds that the worktree file lacked and whose value differs from the template's or that the template lacks.
-	// After the strip the worktree resolves each of them to the default's value, so the operator can pin the old value with lym config.
-	// Set only by ReconcileAll, together with Stripped.
+	// Inherited lists, sorted, the dotted keys the repo default holds that the worktree file lacks.
+	// Each has a value that differs from the template's or that the template lacks.
+	// Set only by ReconcileAll, together with Stripped; the worktree then resolves each to the default's value.
 	Inherited []string
-	// Moved lists, sorted, the declared key moves that changed this file, each as "<source module>.<source key> -> <target module>.<target key>".
+	// Moved lists, sorted, each declared key move that changed this file, as "<source>.<key> -> <target>.<key>".
 	// Set only by a key move, on a dry run too.
 	Moved []string
-	// KeptTarget lists, sorted, each move whose source value was dropped because the target already held its own, as "<source>: <value> dropped, <target>: <value> kept".
-	// A source value that is its key's former template default is dropped as "<source>: <value> dropped, a former template default".
-	// A move that keeps whatever the target holds renders "<source> dropped, <target> kept", without the values.
+	// KeptTarget lists, sorted, each move that dropped a source value: "<source>: <value> dropped, <target>: <value> kept".
+	// A source equal to a former template default reads "<source>: <value> dropped, a former template default".
+	// A move that keeps whatever the target holds reads "<source> dropped, <target> kept", without the values.
 	// Set only by a key move, on a dry run too.
 	KeptTarget []string
-	// Overwritten lists, sorted, each move whose source value replaced the target's template default, as "<source>: <value> replaced <target>'s template default <value>".
+	// Overwritten lists, sorted, each move whose source value replaced the target's template default.
+	// Each entry reads "<source>: <value> replaced <target>'s template default <value>".
 	// Set only by a key move, on a dry run too.
 	Overwritten []string
-	// Copied lists, sorted, the declared key copies that placed a value in this file, each as "<source module>.<source key> -> <target module>.<target key>".
+	// Copied lists, sorted, the declared key copies that placed a value in this file.
+	// Each entry reads "<source module>.<source key> -> <target module>.<target key>".
 	// Set only by a key copy, on a dry run too.
 	Copied []string
 	// KeptExtra lists, sorted, each "<path>.<name>" a per-name map of the file holds and the template lacks.
 	// Such a name is kept in place and never pruned.
 	// Set on a dry run too.
 	KeptExtra []string
-	// Dropped lists, sorted, each "<path>.<name>" a per-name map of a base-layer file held with the template's value, left out of the file because the load resolves it from the template.
+	// Dropped lists, sorted, each "<path>.<name>" a per-name map of a base-layer file holds with the template's value.
+	// The file leaves such a name out, because the load resolves it from the template.
 	// Set on a dry run too.
 	Dropped []string
-	// Preserved lists, sorted, the dotted keys a sparse file holds that the template lacks and no retired key covers, left in place because the run did not prune unknown keys.
+	// Preserved lists, sorted, the dotted keys a sparse file holds that the template lacks and no retired key covers.
+	// They stay in place because the run did not prune unknown keys.
 	// Set on a dry run too.
 	Preserved []string
-	// Unsettled lists the pairs a seed-only module's file holds for the operator to settle, as its module's Unsettled hook reports them; reconcile never changes them.
+	// Unsettled lists the pairs a seed-only module's file holds for the operator to settle.
+	// The module's Unsettled hook reports them; reconcile never changes them.
 	// Set only by ReconcileHubWideAt, on a dry run too.
 	Unsettled []string
 	// WroteTemplateBase reports that the apply wrote the template base beside a seed-only module's board file.
@@ -216,8 +229,8 @@ type Result struct {
 	WroteTemplateBase bool
 }
 
-// ChangedFilesRel returns, relative to the board dir, each file an applied ReconcileHubWideAt result wrote or removed:
-// the module's file and the legacy files it folded in when Applied, and the template base when WroteTemplateBase.
+// ChangedFilesRel returns, relative to the board dir, each file that an applied hub-wide reconcile wrote or removed.
+// It holds the module's file and the legacy files folded into it, plus the template base when one was written.
 func (r Result) ChangedFilesRel() []string {
 	var files []string
 	if r.Applied {
@@ -253,37 +266,40 @@ func readTemplateBase(m configreg.Module, boardDir string) (base []byte, present
 	return base, true, nil
 }
 
-// Options configures ReconcileAll.
+// Options holds the switches that control how a reconcile of every config module writes and removes files.
 type Options struct {
 	// Apply writes and removes files; false reports what would change.
 	Apply bool
-	// Migrate lets an Apply run strip a worktree's full files to sparse overrides and write the sparse marker; without it Stripped and Inherited are only reported as pending.
+	// Migrate lets an Apply run strip a worktree's full files to sparse overrides and write the sparse marker;
+	// without it Stripped and Inherited are only reported as pending.
 	Migrate bool
 	// PruneUnknown removes from a hub worktree file each key the template lacks that no retired key of the module covers.
-	// Without it such a key stays and is reported in Preserved, so a binary older than the one that wrote the key never removes it.
+	// Without it such a key stays and is reported in Preserved,
+	// so a binary older than the one that wrote the key never removes it.
 	// A local file is pruned of every such key either way, since its load refuses one.
 	PruneUnknown bool
 }
 
-// HubWideOptions configures ReconcileHubWideAt.
+// HubWideOptions holds the switches that control how a hub-wide reconcile writes and removes files.
 type HubWideOptions struct {
 	// Apply writes and removes files; false reports what would change.
 	Apply bool
 	// PruneUnknown removes from a present file each key the template lacks that no retired key of the module covers.
-	// Without it such a key stays and is reported in Preserved, so a binary older than the one that wrote the key never removes it from the committed board.
+	// Without it such a key stays and is reported in Preserved,
+	// so a binary older than the one that wrote the key never removes it from the committed board.
 	PruneUnknown bool
 	// SeedDefaults seeds a per-worktree module's absent repo default; false leaves an absent default absent.
 	SeedDefaults bool
-	// StripBase lets an Apply run strip a present base file of the units equal to the template or a former template value, and write the board marker after the files.
+	// StripBase lets an Apply run strip a present base file of the units equal to the template or a former template value.
+	// The run then writes the board marker after the files.
 	// Only hubreconcile's walk sets it; without it the strip is only reported as pending.
 	StripBase bool
 }
 
-// legacyConfig reads the pre-cutover config files the module covers, present under baseDir's config dir,
-// and concatenates them into a single YAML document.
-// A legacy file that is missing, empty, or fails to parse contributes nothing
-// and is NOT named in migratedFrom — callers must not delete unparseable files,
-// since their values were never carried forward.
+// legacyConfig reads the pre-cutover config files of the module that exist under baseDir's config dir;
+// it concatenates them into a single YAML document.
+// A legacy file that is missing, empty, or fails to parse contributes nothing and is not named in migratedFrom.
+// Callers must not delete unparseable files, since their values were never carried forward.
 func legacyConfig(module, baseDir string) (existing []byte, migratedFrom []string) {
 	for _, legacy := range legacyConfigModules[module] {
 		data, err := os.ReadFile(configengine.ConfigFile(baseDir, legacy))
@@ -324,7 +340,8 @@ func (e *FileError) Unwrap() error {
 	return e.Err
 }
 
-// effectiveTemplateOf composes the template m's base document picks, failing as a *FileError that names path, the file holding the selector value.
+// effectiveTemplateOf composes the template m's base document picks.
+// It fails as a *FileError that names path, the file holding the selector value.
 func effectiveTemplateOf(m configreg.Module, base []byte, hub bool, path string) ([]byte, error) {
 	template, err := configengine.EffectiveTemplate(m.Spec(), base, hub)
 	if err != nil {
@@ -333,7 +350,8 @@ func effectiveTemplateOf(m configreg.Module, base []byte, hub bool, path string)
 	return template, nil
 }
 
-// templateUnderBase composes the template the base layer's file under dirs picks, failing as a *FileError that names that file.
+// templateUnderBase composes the template the base layer's file under dirs picks.
+// It fails as a *FileError that names that file.
 func templateUnderBase(m configreg.Module, dirs configengine.Dirs) ([]byte, error) {
 	spec := m.Spec()
 	template, err := configengine.TemplateUnder(dirs, spec)
@@ -344,7 +362,8 @@ func templateUnderBase(m configreg.Module, dirs configengine.Dirs) ([]byte, erro
 	return template, nil
 }
 
-// primeSeedError names the prime's copy of m in a seed failure its selector caused, and adds the step the refusal's way forward lacks:
+// primeSeedError names the prime's copy of m in a seed failure its selector caused.
+// It adds the step the refusal's way forward lacks:
 // a prime worktree file holding a selector the base does not hold is refused at load, so its line must go too.
 // The delete step is added only for a module with an overlay selector.
 // It returns err unchanged for any other failure.
@@ -390,9 +409,11 @@ func decodeLeafValues(data []byte) (map[string]any, error) {
 	return leaves, nil
 }
 
-// retireHubWideCopy decides the outcome of a hub-wide module's per-worktree copy against what the hub resolves to: the template merged under the sparse hub file.
+// retireHubWideCopy decides a hub-wide module's per-worktree copy against what the hub resolves to:
+// the template merged under the sparse hub file.
 // A missing copy, a missing hub file or an empty boardDir yields an empty result and leaves the copy alone.
-// A copy whose every leaf is present in that merge at the same key path with an equal value is Retired, and apply deletes it.
+// A copy whose every leaf is present in that merge at the same key path with an equal value is Retired;
+// with apply set, it deletes the copy.
 // Any other copy is Divergent, listing each leaf the merge lacks or holds differently, and stays.
 func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, error) {
 	result := Result{Module: module, Layer: configengine.LayerWorktree}
@@ -453,20 +474,28 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 	return result, nil
 }
 
-// ReconcileAll reconciles a worktree's layers under baseDir against the module templates,
-// returning the slice of results and any I/O or YAML parsing error.
-// Standalone (boardDir empty) the worktree file is the base layer and is fully reconciled, whatever opts.PruneUnknown says;
-// in a hub it is sparse: a present file is migrated and pruned of its retired keys, and of every other key the template lacks only under opts.PruneUnknown, nothing is added, and an absent one stays absent.
-// The local file of every module is a sparse layer reconciled the same way, bar that every key the template lacks is pruned from it, and is reported with layer local only when present.
-// A seed-only module's worktree and local files are never rewritten; standalone, an absent worktree file materializes the template verbatim.
+// ReconcileAll reconciles the layers of a worktree under baseDir against the module templates.
+// It returns one Result per reconciled file and any I/O or YAML parsing error.
+// Standalone (boardDir empty), the worktree file is the base layer, fully reconciled whatever opts.PruneUnknown says.
+// In a hub, the worktree file is sparse: a present file is migrated and pruned of its retired keys.
+// Every other key the template lacks is pruned only under opts.PruneUnknown, and nothing is added.
+// An absent file stays absent.
+// The local file of every module is a sparse layer reconciled the same way;
+// every key the template lacks is pruned from it.
+// It is reported with layer local only when present.
+// A seed-only module's worktree and local files are never rewritten;
+// standalone, an absent worktree file materializes the template verbatim.
 // A hub-wide module is never reconciled or written as a worktree file.
-// Its result reports whether a leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds, and apply deletes it)
-// or Divergent (the copy holds something the hub file lacks, and it stays).
+// Its result reports Retired when the hub file at boardDir holds everything the leftover copy holds.
+// Apply deletes such a copy.
+// It reports Divergent when the copy holds something the hub file lacks, and the copy stays.
 // A file emptied by a prune or a strip is deleted.
-// In a hub, a worktree without the sparse marker has each per-worktree module's worktree file compared with the layers below it, and the keys that add nothing are reported as Stripped, with the keys the repo default adds as Inherited;
-// the comparison runs only when every per-worktree module's repo default exists.
-// Only with opts.Migrate and opts.Apply are the files stripped and the marker written, after them.
-// The declared key moves run first, at the worktree layer and then the local layer, and their results lead the returned slice.
+// In a hub without the sparse marker, each per-worktree module's worktree file is compared with the layers below it.
+// Keys that add nothing are reported as Stripped, and keys the repo default adds as Inherited.
+// The comparison runs only when every per-worktree module's repo default exists.
+// Only with opts.Migrate and opts.Apply are the files stripped and the sparse marker written.
+// The declared key moves run first, at the worktree layer and then the local layer;
+// their results lead the returned slice.
 // When opts.Apply is false, files are never written or removed.
 func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 	results, err := moveKeys(baseDir, "", configengine.LayerWorktree, boardDir == "", opts.Apply)
@@ -529,8 +558,9 @@ type migration struct {
 	write bool
 }
 
-// pendingMigration returns the strip a worktree still owes, or nil when none is due:
-// standalone, with the sparse marker present, or while any per-worktree module's repo default is absent under boardDir.
+// pendingMigration returns the strip a worktree still owes, or nil when none is due.
+// Nothing is due standalone or when the sparse marker is present.
+// Nothing is due while any per-worktree module's repo default is absent under boardDir.
 func pendingMigration(baseDir, boardDir string) *migration {
 	if boardDir == "" {
 		return nil
@@ -549,7 +579,8 @@ func pendingMigration(baseDir, boardDir string) *migration {
 	return &migration{dirs: configengine.Dirs{Anchor: baseDir, Board: boardDir}}
 }
 
-// reconcileBaseWorktreeFile fully reconciles a per-worktree module's worktree file, the base layer of a standalone stack.
+// reconcileBaseWorktreeFile fully reconciles a per-worktree module's worktree file.
+// That file is the base layer of a standalone stack.
 // A seed-only module's present file is reported untouched and an absent one materializes the template verbatim.
 func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (Result, error) {
 	cfgPath := configengine.ConfigFile(baseDir, m.Name)
@@ -617,11 +648,13 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 	return result, nil
 }
 
-// reconcileSparseFile reconciles one sparse layer file of a module: its Migrate hook runs over it, it is pruned of its retired keys, and of every other key the template lacks with pruneUnknown, and nothing is ever added.
-// An absent file stays absent and reports present false;
-// a seed-only module's present file is otherwise untouched.
-// With a non-nil strip, the file's keys that equal what the layers below it resolve to are reported as Stripped, and removed when strip.write is set;
-// a seed-only module takes the strip as well.
+// reconcileSparseFile reconciles one sparse layer file of a module.
+// Its Migrate hook runs over the file first, then the file is pruned of its retired keys.
+// Every other key the template lacks is pruned only when pruneUnknown is set, and nothing is added.
+// An absent file stays absent and reports present false.
+// A seed-only module's present file is otherwise untouched, but it still takes the strip.
+// With a non-nil strip, the file's keys that equal what the layers below it resolve to are reported as Stripped.
+// They are removed when strip.write is set.
 // A file emptied by a prune or a strip is deleted and reported applied.
 func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string, layer configengine.Layer, apply, pruneUnknown bool, strip *migration) (result Result, present bool, err error) {
 	result = Result{Module: m.Name, Layer: layer}
@@ -681,9 +714,11 @@ func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string
 	return result, true, nil
 }
 
-// pruneSparse prunes current, a sparse file of m, of the units template lacks, and returns the pruned bytes with the removed and kept paths as yamlengine.Prune reports them.
+// pruneSparse prunes current, a sparse file of m, of the units template lacks.
+// It returns the pruned bytes with the removed, kept and preserved paths.
 // Without pruneUnknown only the units a retired key of m covers are removed;
-// the others stay and come back as preserved, so a key a newer binary wrote survives a reconcile by an older one.
+// the others stay and come back as preserved,
+// so a key a newer binary wrote survives a reconcile by an older one.
 func pruneSparse(m configreg.Module, template, current []byte, pruneUnknown bool) (pruned []byte, removed, kept, preserved []string, err error) {
 	pruned, removed, kept, err = yamlengine.Prune(template, current, m.PerNameMaps, m.OpenMaps...)
 	if err != nil || pruneUnknown || len(removed) == 0 {
@@ -704,8 +739,12 @@ func pruneSparse(m configreg.Module, template, current []byte, pruneUnknown bool
 	return withoutRetired, removed, kept, preserved, nil
 }
 
-// stripToSparse strips current, a worktree file of m, of every key that equals what the layers below the worktree layer resolve to or equals a former template value of m, and returns the stripped bytes with the removed keys.
-// inherited lists the keys the repo default holds that original, the file as read, lacked and whose value differs from the template's or that the template lacks.
+// stripToSparse strips current, a worktree file of m.
+// It removes each key equal to what the layers below the worktree resolve to.
+// It also removes each key equal to a former template value of m.
+// It returns the stripped bytes, the removed keys, and the inherited keys.
+// An inherited key is a key the repo default sets to a value the template lacks or differs from;
+// original, the file as read, does not hold it.
 func stripToSparse(m configreg.Module, dirs configengine.Dirs, original, current []byte) (stripped []byte, strippedKeys, inherited []string, err error) {
 	spec := m.Spec()
 	below, err := configengine.BelowLayer(dirs, spec, configengine.LayerWorktree)
@@ -755,7 +794,8 @@ func stripToSparse(m configreg.Module, dirs configengine.Dirs, original, current
 	return stripped, strippedKeys, inherited, nil
 }
 
-// stripFormerValues removes from current every unit equal to a former template value of m, and returns the stripped bytes with removedKeys followed by the keys it removed, sorted.
+// stripFormerValues removes from current every unit equal to a former template value of m.
+// It returns the stripped bytes and removedKeys with the keys it removed appended, sorted.
 func stripFormerValues(m configreg.Module, current []byte, removedKeys []string) ([]byte, []string, error) {
 	former := formerValuesDoc(m.Name)
 	if former == nil || len(bytes.TrimSpace(current)) == 0 {
@@ -771,9 +811,12 @@ func stripFormerValues(m configreg.Module, current []byte, removedKeys []string)
 	return stripped, removedKeys, nil
 }
 
-// stripBase removes from current, units of a base file of m, every unit equal to the effective template's or to a former template value of m, and returns the stripped bytes with the removed keys, sorted.
-// base is the base document whose selector picks the effective template; it is current itself unless current is only part of the file.
-// An open map is compared whole, and a base left with no unit comes back empty.
+// stripBase removes from current every unit equal to the effective template's unit.
+// It also removes units equal to a former template value of m.
+// It returns the stripped bytes and the removed keys, sorted.
+// base is the whole file whose selector picks the effective template; current may be only part of it.
+// An open map is compared whole.
+// If stripping leaves no unit, the result is empty.
 func stripBase(m configreg.Module, base, current []byte) ([]byte, []string, error) {
 	spec := m.Spec()
 	effective, err := configengine.EffectiveTemplate(spec, base, true)
@@ -787,7 +830,9 @@ func stripBase(m configreg.Module, base, current []byte) ([]byte, []string, erro
 	return stripFormerValues(m, stripped, removedKeys)
 }
 
-// sparseSeed returns the sparse base file a seed of m becomes: the seed after the module's Migrate hook and a prune, holding only the units that differ from the template and, with dropFormer, from the module's former template values.
+// sparseSeed returns the sparse base file that a seed of m becomes.
+// It runs the seed through m's migration, if any, and prunes it to the units that differ from the template;
+// with dropFormer, it also drops the units equal to a former template value of m.
 // A seed with no such unit becomes the header-only base.
 func sparseSeed(m configreg.Module, seed []byte, dropFormer bool) ([]byte, error) {
 	current := seed
@@ -821,8 +866,9 @@ func sparseSeed(m configreg.Module, seed []byte, dropFormer bool) ([]byte, error
 	return current, nil
 }
 
-// WriteBaseSparseMarker writes the tracked marker under boardDir that says the board's base files are sparse over the template.
-// A failure is a *FileError naming the marker path with an empty Module, since the marker belongs to no config module.
+// WriteBaseSparseMarker writes the tracked marker under boardDir.
+// The marker records that the board's base config files are sparse over the template.
+// A failure is a *FileError with the marker path and an empty Module, because the marker belongs to no config module.
 func WriteBaseSparseMarker(boardDir string) error {
 	marker := configengine.BaseSparseMarker(boardDir)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
@@ -834,7 +880,10 @@ func WriteBaseSparseMarker(boardDir string) error {
 	return nil
 }
 
-// splitTopLevel splits a document into the entries whose top-level key is in keys and the rest, each as bytes empty when it holds no entry.
+// splitTopLevel splits data, a YAML document, into the entries whose top-level key is in keys, and the rest.
+// Each part is empty when it holds no entry.
+// A document that is not a mapping comes back whole as the rest.
+// It returns an error when data is not valid YAML.
 func splitTopLevel(data []byte, keys []string) (picked, rest []byte, err error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(data, &document); err != nil {
@@ -868,9 +917,11 @@ func splitTopLevel(data []byte, keys []string) (picked, rest []byte, err error) 
 	return picked, rest, nil
 }
 
-// stripMovedUnits strips from current, a base file of m that a key move created, only the units of the top-level keys named by movedKeys, and returns the file with the removed keys.
-// The units a prime seed put in the file are left, since the seed already dropped what a strip drops.
-// The moved units are judged against the effective template the whole file's selector picks.
+// stripMovedUnits strips the units of the top-level keys in movedKeys from current.
+// current is a base file of m that a key move created.
+// It returns the file with the removed keys.
+// The units a prime seed put in the file stay, because the seed already dropped what a strip would drop.
+// The moved units are judged against the effective template that the whole file's selector picks.
 func stripMovedUnits(m configreg.Module, current []byte, movedKeys []string) ([]byte, []string, error) {
 	picked, rest, err := splitTopLevel(current, movedKeys)
 	if err != nil {
@@ -891,7 +942,7 @@ func stripMovedUnits(m configreg.Module, current []byte, movedKeys []string) ([]
 	return merged, removedKeys, nil
 }
 
-// movedTargetKeys returns, per target module, the top-level keys the move results show moved into it.
+// movedTargetKeys returns, for each target module, the top-level keys that the move results show moved into it.
 func movedTargetKeys(moves []Result) map[string][]string {
 	targets := map[string][]string{}
 	for _, move := range moves {
@@ -926,35 +977,47 @@ func primeConfig(primeBaseDir, module string) []byte {
 	return data
 }
 
-// ReconcileHubWideAt reconciles every module's file at configengine.ConfigFile(boardDir, name),
-// in registry order, and returns one Result per module with Layer default:
-// a hub-wide module's hub file and a per-worktree module's repo default, which is that module's full base layer.
+// ReconcileHubWideAt reconciles each registered module's file in the board dir, in registry order.
+// The declared key moves run first and their results lead the returned slice, then the declared key copies.
+// Under opts.SeedDefaults an absent board source is the prime's copy.
+// A default seeded in the same pass therefore carries the moved values.
+// The returned slice holds one Result per module, with Layer default for the module's full base layer.
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
 // A seed-only module is reconciled as a full file, never pruned down to the template or stripped.
-// A present one, or the prime's copy seeding an absent default, runs the module's Migrate hook and then follows the template through yamlengine.FollowTemplate, against the template base at configengine.TemplateBaseFile when the board file is present:
-// a unit the file holds as the base does takes the template's value and is reported Added, Updated or Removed, and any other unit is the operator's, kept and reported under Differs when the template holds a third value.
-// With no base, a unit the file lacks is added and one it holds otherwise than the template is kept and reported under Differs.
-// The file is written only when the migration or the merge rewrote it, and the module's Unsettled hook's report goes in the result.
-// An absent one with no prime copy is seeded whole from the template.
-// An apply also writes the template base, the template under a header, when it is absent or stale, and reports WroteTemplateBase.
-// Every other module's file is a sparse base over the template: a present file runs the module's Migrate hook and is pruned of its retired keys, and nothing is ever added.
-// Under opts.PruneUnknown it is pruned of every other key the template lacks as well; without it such a key stays and is reported as Preserved.
-// A module's MigrateHubBase hook runs right after Migrate on a present hub file, and over the bytes of a prime or legacy seed on an absent one, so a hub file seeded in a pass holds what the hook adds at once, since the build stamp gates the next reconcile; no other reconcile path runs it.
-// Its per-name entries equal to the template's are dropped on every pass.
-// An absent file of a module with open maps, or one marked SeedsFromPrime, is seeded from the prime's copy when that copy exists and parses;
-// any other hub-wide module never reads the prime, since its per-worktree copy was never in effect.
-// Otherwise an absent hub file folds in the module's pre-cutover legacy files, and failing that starts as the header-only base.
-// A seed holds only the units that differ from the template, and from the module's former template values while the prime carries no sparse marker.
-// An absent per-worktree default is seeded only under opts.SeedDefaults, from the prime's copy when it exists and parses, else as the header-only base;
-// without it the default stays absent.
+// A present file runs the module's Migrate hook, then follows the template through yamlengine.FollowTemplate.
+// Against the template base, a unit the base holds as it is takes the template's value;
+// it is reported as Added, Updated or Removed.
+// Any other unit is kept, and it is reported under Differs when the template holds a third value.
+// Without a base, a unit the file lacks is added,
+// and a unit it holds otherwise than the template is kept and reported under Differs.
+// The file is written only when the migration or the merge rewrote it,
+// and the Unsettled hook's report goes in the result.
+// An absent seed-only file is seeded from the prime's copy when one exists, and from the template otherwise.
+// Apply also writes the template base when it is absent or stale, and reports WroteTemplateBase.
+//
+// Every other module's file is a sparse base over the template.
+// A present file runs the Migrate hook and is pruned of its retired keys, and nothing is added.
+// Keys the template lacks are pruned only under opts.PruneUnknown, and otherwise kept and reported as Preserved.
+// The MigrateHubBase hook runs right after Migrate on a present hub file.
+// It also runs over a prime or legacy seed of an absent one.
+// A seeded hub file therefore holds what the hook adds at once, since the build stamp gates the next reconcile.
+// Per-name entries equal to the template's are dropped on every pass.
+// The prime's copy seeds an absent file of a module with open maps, or one marked SeedsFromPrime, when it parses.
+// Any other hub-wide module never reads the prime.
+// Otherwise an absent hub file folds in the module's pre-cutover legacy files.
+// Failing that, it starts as the header-only base.
+// A seed keeps only the units that differ from the template.
+// While the prime has no sparse marker, it also drops the units equal to a former template value.
+// An absent per-worktree default is seeded only under opts.SeedDefaults.
+// It comes from the prime's copy when it exists and parses, else as the header-only base.
+// Without opts.SeedDefaults it stays absent.
 // A file the prune leaves with no unit is written as the header-only base, never deleted.
-// While the board's base-sparse marker is absent, each base file present when the pass began also reports the units equal to the template or a former template value as Stripped;
-// with opts.StripBase and opts.Apply the pass removes them, and writes the marker once every registered module's file exists.
+// While the board's base-sparse marker is absent, each base file present when the pass began;
+// it reports the units equal to the template or a former template value as Stripped.
+// With opts.StripBase and opts.Apply those units are removed,
+// and the marker is written once every registered module's file exists.
 // Legacy files are pruned only when opts.Apply succeeds.
-// The declared key moves run first at the board dir as a base layer, and their results lead the returned slice;
-// under opts.SeedDefaults an absent board source is the prime's copy, so a default seeded in the same pass carries the moved values.
-// The declared key copies follow the moves, and their results follow the moves' in the slice.
 // When opts.Apply is false, nothing is written or removed.
 func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]Result, error) {
 	seedDir := ""
@@ -1030,7 +1093,8 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 		changed := fileAbsent
 		switch {
 		case m.SeedOnly:
-			// An absent seed-only file with no prime copy is the template verbatim; a present file or prime copy is migrated and then follows the template.
+			// An absent seed-only file with no prime copy is the template verbatim;
+			// a present file or prime copy is migrated and then follows the template.
 			mergedBytes = existing
 			if mergedBytes == nil {
 				mergedBytes = []byte(m.Template())

@@ -1,7 +1,7 @@
 // warplayout_fastpath_test.go pins warpLayoutFor's spawn-free hub-sibling branch in Tier 0.
 // Every Location field must be carried over from the caller's layout or derived from the sibling path,
 // and the anchor must come from the sibling's own marker rather than the caller's.
-// The integration-tagged warplayout_test.go proves equivalence against the spawning resolver, but an untagged run never compiles it.
+// The warplayout_test.go file checks the same equivalence against the lymcwd.ResolveWorktree fallback.
 
 package fabricengine
 

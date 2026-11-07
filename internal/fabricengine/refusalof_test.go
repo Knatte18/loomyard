@@ -1,7 +1,7 @@
-// refusalof_test.go covers RefusalOf's errors.As traversal: a bare refusal, one wrapped several
-// layers deep, a nil error, an ordinary error, and remove.go's own dirty pre-flight shape, which is
-// not a gate refusal at all. It is a pure-data table test with no git spawn, per the Test Tier
-// Purity Shared Decision.
+// refusalof_test.go covers RefusalOf's errors.As traversal.
+// It tests a bare refusal, a refusal wrapped several layers deep, a nil error, and an ordinary error.
+// It also tests remove.go's own dirty pre-flight shape, which is not a gate refusal at all.
+// It is a pure-data table test with no git spawn.
 
 package fabricengine
 
@@ -13,9 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRefusalOf covers the accessor's behaviour across every shape it must distinguish: a bare
-// refusal, a deeply wrapped one, a nil error, an ordinary error, and a bare pre-flight error that
-// merely resembles a gate refusal's own dirtiness reason text.
+// TestRefusalOf covers the accessor's behavior across every shape it must distinguish:
+// a bare refusal; a deeply wrapped one; a nil error; an ordinary error;
+// and a bare pre-flight error that merely resembles a gate refusal's own dirtiness reason text.
 func TestRefusalOf(t *testing.T) {
 	tiergate.Require(t, 0)
 	bareRefusal := &destructiveRefusal{
@@ -44,8 +44,8 @@ func TestRefusalOf(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			// errors.As, not a type assertion, is what makes this pass: the refusal is wrapped several
-			// layers deep via fmt.Errorf's %w verb.
+			// errors.As, not a type assertion, is what makes this pass:
+			// the refusal is wrapped several layers deep via fmt.Errorf's %w verb.
 			name:   "WrappedSeveralLayersDeep",
 			err:    fmt.Errorf("outer: %w", fmt.Errorf("middle: %w", bareRefusal)),
 			want:   wantRefusal,
@@ -65,7 +65,7 @@ func TestRefusalOf(t *testing.T) {
 		},
 		{
 			// remove.go's own dirty pre-flight shape: a bare fmt.Errorf, never a *destructiveRefusal.
-			// This is the case batch 6's envelope relies on to omit the refusal object on Remove's dirty pre-flight refusal.
+			// The Remove envelope relies on this case to omit the refusal object for its dirty pre-flight refusal.
 			name:   "RemovePreFlightDirtyError",
 			err:    fmt.Errorf("worktree has uncommitted changes; use --force"),
 			want:   Refusal{},
@@ -85,10 +85,9 @@ func TestRefusalOf(t *testing.T) {
 	}
 }
 
-// TestCheck_RendersThreeSpellings pins the three Check constants' exact string spellings, since
-// this package's own live-state harness's duplicate copy (batch 7, the livestate_-prefixed package
-// fabricengine_test files) and destructiveRefusal.Error()'s composed message both depend on them
-// staying byte-identical.
+// TestCheck_RendersThreeSpellings pins the exact string spellings of the three Check constants.
+// The live-state harness's duplicate copy of the spellings depends on them staying byte-identical.
+// So does destructiveRefusal.Error()'s composed message.
 //
 //testtiming:keep the three Check constants' exact spellings the live-state harness copy and the refusal message depend on; coverage of its blocks by other tests does not show an assertion of this
 func TestCheck_RendersThreeSpellings(t *testing.T) {
@@ -111,10 +110,11 @@ func TestCheck_RendersThreeSpellings(t *testing.T) {
 	}
 }
 
-// TestCheck_HasNoFourthMemberForForce documents, rather than mechanically enforces via reflection,
-// the rule that Check must never grow a CheckForce constant: force is consulted only inside
-// checkPathDirtiness, where it makes the dirtiness check PASS rather than fail, so a refusal can
-// never be attributed to it. A refusal always carries one of exactly these three checks.
+// TestCheck_HasNoFourthMemberForForce documents the rule that Check never grows a CheckForce constant.
+// It documents the rule rather than enforcing it by reflection.
+// Force is consulted only inside checkPathDirtiness, where it makes the dirtiness check pass rather than fail,
+// so a refusal is never attributed to it.
+// A refusal always carries one of exactly these three checks.
 //
 //testtiming:keep Check having exactly three members and no force check; coverage of its blocks by other tests does not show an assertion of this
 func TestCheck_HasNoFourthMemberForForce(t *testing.T) {

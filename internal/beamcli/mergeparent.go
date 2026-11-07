@@ -1,4 +1,4 @@
-// mergeparent.go is the "lym beam merge-parent" sequence: it judges the named beam and files the darn task, in the beam's project, whose run merges the beam's parent branch into the beam with its Code-Review perch on.
+// mergeparent.go implements `lym beam merge-parent`, which files the task merging a beam's parent branch into the beam.
 
 package beamcli
 
@@ -13,14 +13,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// mergeParentMinRounds is the fewest Code-Review rounds a merge task runs, so its perch is on whatever the hub's budget.
+// mergeParentMinRounds is the fewest Code-Review rounds a merge task runs, even when the hub's budget is lower.
 const mergeParentMinRounds = 1
 
-// mergeParent files the merge task of the beam slug and returns the task's slug, the parent branch it merges and how the run follows.
-// It refuses what `land`'s entry check refuses, a beam whose origin record names no parent branch, and a beam that holds an open merge task already.
-// The task is a released darn task in the beam's project, carrying the beam's labels, so the beam's dobby starts it as any member.
-// Its run settings set the Code-Review budget to the hub's, or to mergeParentMinRounds when the hub's is lower, with a hard cap above it.
-// Its pull_request field lands it with no pull request, by a true merge, so the beam keeps the parent's commit as an ancestor.
+// mergeParent files the merge task of the beam named by slug.
+// It returns the task's slug, the parent branch it merges, and how the run follows.
+// It refuses a beam that cannot land from here, and a beam whose origin record names no parent branch.
+// It also refuses a beam that already holds an open merge task.
+// The task is a released darn task in the beam's project, carrying the beam's labels,
+// so the beam's dobby starts it as any member.
+// Its run settings set the Code-Review budget to the hub's, or to one round when the hub's is lower.
+// A hard cap sits above it.
+// Its pull_request field lands it with no pull request, by a true merge,
+// so the beam keeps the parent's commit as an ancestor.
 func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam merge-parent"
 	owners, err := deps.ReadOwners()
@@ -96,7 +101,8 @@ func openMergeTask(tasks []boardengine.Task, beam string) (string, bool) {
 	return "", false
 }
 
-// freeMergeTaskSlug returns the first merge task slug of beam no board entry holds: the beam's slug and the suffix, then the same with -2, -3 and so on.
+// freeMergeTaskSlug returns the first merge task slug of beam that no board entry holds.
+// The candidates are the beam's slug with the merge task suffix, then the same with -2, -3 and so on.
 // The beam's slug is cut so the whole fits the board's slug length.
 func freeMergeTaskSlug(tasks []boardengine.Task, beam string) string {
 	taken := make(map[string]bool, len(tasks))

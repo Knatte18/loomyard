@@ -1,7 +1,11 @@
-// smoke_coldstart_test.go pins the headline scenario this task adds: `lym reed add` and `lym reed attach`, run against a worktree that was never brought up and carries no persisted state file at all, boot the substrate themselves rather than refusing with the friendly no-session error.
-// The scenario drives a real multiplexer against one forged hub, giving each step its own never-brought-up sibling worktree, using the package's existing fixture vocabulary (see smoke_test.go) rather than any new fixture machinery.
+// smoke_coldstart_test.go pins the cold-start behavior of `lym reed add` and `lym reed attach`.
+// Each step runs in its own sibling worktree that was never brought up and holds no persisted state file.
+// Both verbs boot the substrate themselves instead of refusing with the no-session error.
 //
-// A freshly forged worktree still refuses the status verb before anything boots, so a test that needs this worktree's socket and session name before any boot derives them from reedengine's own exported ServerName and SessionName free functions rather than from socketAndSessionIn, which drives `status` under the hood.
+// The scenario drives a real multiplexer against one forged hub, with the fixtures of smoke_test.go.
+//
+// A freshly forged worktree refuses the status verb before anything boots.
+// So a test derives the socket and session name before any boot from reedengine.ServerName and reedengine.SessionName.
 
 package reedcli
 
@@ -23,10 +27,10 @@ import (
 )
 
 // runReedCLINoFatal runs the built lym binary with args in dir and returns its combined
-// stdout+stderr, never failing the test itself: the cold-attach scenario this backs needs to inspect
-// a non-zero exit and the multiplexer's own error text on stdout/stderr, neither of which the
-// in-process RunCLIIn seam can produce, since the terminal-handover tail's stdio belongs to the real
-// OS process, not to an io.Writer this package controls.
+// stdout+stderr, never failing the test itself.
+// The cold-attach scenario needs the exit status and the multiplexer's own error text.
+// The terminal-handover tail writes to the OS process's stdio, not to a writer the test controls;
+// an in-process capture cannot see that output.
 func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, args ...string) string {
 	t.Helper()
 	out, _, err := lymbin.Run(exe, dir, timeout, args...)
@@ -36,8 +40,11 @@ func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, arg
 	return out
 }
 
-// TestSmokeColdStart runs the cold-start claims against one hub, each step on its own fresh sibling worktree so the worktree is never brought up and carries no state file when the step begins.
-// The steps are independent of each other's results; they run serially because they share the hub's one tmux server, and the scenario calls t.Parallel but no step does for that reason.
+// TestSmokeColdStart runs the cold-start claims against one hub.
+// Each step runs on its own fresh sibling worktree.
+// That worktree is never brought up and carries no state file when the step begins.
+// The steps do not depend on each other's results, but they share the hub's one tmux server, so they run serially.
+// The test as a whole still calls t.Parallel.
 func TestSmokeColdStart(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -61,13 +68,17 @@ func TestSmokeColdStart(t *testing.T) {
 		return worktree
 	}
 
-	// ColdAddBootsAndAddsInOneCall is the headline scenario this task adds: on a worktree never brought up, with no persisted state file, `add` exits zero, its envelope carries a guid, and the multiplexer afterwards lists this worktree's session on the hub socket.
-	// The session holds the header pane as well as the strand's own pane, proving the delegate path ran the whole boot body an explicit `up` plus `add` would, rather than only spawning a bare server.
+	// ColdAddBootsAndAddsInOneCall pins the main cold-start claim.
+	// On a worktree never brought up, with no persisted state file, `add` exits zero and its envelope carries a guid.
+	// The multiplexer afterwards lists this worktree's session on the hub socket.
+	// The session holds the header pane as well as the strand's own pane.
+	// That proves the delegate path ran the whole boot body that an explicit `up` plus `add` would run:
+	// it did not only spawn a bare server.
 	if !t.Run("ColdAddBootsAndAddsInOneCall", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-headline")
 
-		// addStrandIn already fails the test unless the add exits zero and its envelope carries a
-		// non-empty guid -- both halves of the headline assertion.
+		// addStrandIn already fails the test unless the add exits zero and its envelope carries a non-empty guid:
+		// both halves of the scenario's assertion.
 		addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "cold-headline")
 
 		session := reedengine.SessionName(worktree)
@@ -82,8 +93,13 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession pins the other self-healing verb: on a worktree never brought up, `attach` run without a controlling terminal must fail with the multiplexer's own terminal error, never with the friendly no-session JSON envelope, and the session must exist on the socket afterwards either way.
-	// The distinction between those two failure modes is the whole assertion -- a no-session refusal would mean attach never reached the boot at all, while the terminal error is only reachable once the boot has already succeeded and the handover tail took over stdio.
+	// ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession pins `attach` on a worktree never brought up:
+	// run without a controlling terminal, it must fail with the multiplexer's own terminal error.
+	// It must never fail with the no-session JSON envelope.
+	// The session must exist on the socket afterwards either way.
+	// The distinction between those two failure modes is the assertion.
+	// A no-session refusal would mean attach never reached the boot at all.
+	// The terminal error is reachable only once the boot has succeeded and the handover tail took over stdio.
 	if !t.Run("ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-attach")
 
@@ -104,7 +120,10 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand pins the observable consequence of up semantics rather than resume semantics on the --if-absent path: with two strands persisted and the server dead, a cold `add --if-absent` naming one of them must boot and relaunch exactly that strand -- one pane for it, not two entries under one name -- and must leave the other strand unrelaunched, since a cold boot (unlike resume) never replays the whole persisted table.
+	// ColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand pins what `add --if-absent` does on a cold worktree.
+	// With two strands persisted and the server dead, it boots and relaunches exactly the named strand.
+	// That strand gets one pane, not two entries under one name, and the other strand stays unrelaunched.
+	// A cold boot never replays the whole persisted table.
 	// It kills the hub's tmux server, so it runs after the steps that need a live session of their own.
 	if !t.Run("ColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-ifabsent")
@@ -167,9 +186,14 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted pins the Shared Decision that corrupt `reed.json` boots the session first and then fails with the state loader's corrupt-file diagnosis, leaving a bare session behind: on a worktree never brought up whose .lym/reed.json holds truncated bytes, `add` exits non-zero naming the file and the teardown verb, AND a session now exists on the socket.
-	// Both halves are the assertion.
-	// The residue is the deliberately accepted cost of matching `up`'s own behaviour -- a later change to that posture must fail this step loudly instead of passing silently.
+	// ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted pins the corrupt-state case.
+	// A corrupt `reed.json` boots the session first and then fails with the state loader's corrupt-file diagnosis.
+	// The failure leaves a bare session behind.
+	// On a worktree never brought up whose .lym/reed.json holds truncated bytes, `add` exits non-zero.
+	// The error names the file and the teardown verb.
+	// Both the non-zero exit and the surviving session are the assertion.
+	// The residue is an accepted cost of matching `up`'s behaviour.
+	// A later change to that posture must fail this step loudly instead of passing silently.
 	t.Run("ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-unreadable")
 
@@ -177,8 +201,8 @@ func TestSmokeColdStart(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 			t.Fatalf("create %s: %v", filepath.Dir(statePath), err)
 		}
-		// A truncated write is the ordinary way this file becomes unreadable: a crash, a kill -9, a full
-		// disk, or a power loss partway through a save.
+		// A truncated write is the ordinary way this file becomes unreadable:
+		// a crash, a kill -9, a full disk, or a power loss partway through a save.
 		if err := os.WriteFile(statePath, []byte(`{"socket":"lym-x","strands":[{"gu`), 0o600); err != nil {
 			t.Fatalf("write %s: %v", statePath, err)
 		}
@@ -194,9 +218,8 @@ func TestSmokeColdStart(t *testing.T) {
 			}
 		}
 
-		// Deliberately accepted residue: add boots the session before ever loading state, matching `up`'s
-		// own behaviour, so a corrupt reed.json leaves a bare session behind rather than refusing
-		// pre-boot.
+		// The residue is accepted:
+		// add boots the session before loading state, matching `up`, so a corrupt reed.json leaves a bare session behind.
 		session := reedengine.SessionName(worktree)
 		if !sessionAlive(tmuxPath, socket, session) {
 			t.Errorf("session %s not alive on socket %s after a cold add on an unreadable state file; want the boot's residue left behind, matching up's own accepted behaviour", session, socket)

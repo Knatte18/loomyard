@@ -1,11 +1,9 @@
-<!-- This is the Plan-Review rubric. It is read by the Bouncer row and the review row of the Plan-Review perch:
-     the Plan-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's rubric marker value, and the Plan-Burler-Review row interpolates it the
-     same way into internal/burlerengine's own review prompt.
-     It is a marker VALUE, never a template -- its only markers are the ones ReadRubric fills, and
-     internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
-     sees it.
-     Among those markers, gate_tiers is filled by ReadRubric from the hub's gate.yaml tiers and gate lists, or none. -->
+<!-- This is the Plan-Review rubric, read by the Bouncer row and the review row of the Plan-Review perch.
+     The Plan-Bouncer row passes it as the rubric marker value to bouncer-template-seed.md and bouncer-template-judge.md.
+     The Plan-Burler-Review row passes it the same way into internal/burlerengine's own review prompt.
+     It is a marker VALUE, never a template: its only markers are the ones ReadRubric fills.
+     ReadRubric fills gate_tiers from the hub's gate.yaml tiers and gate lists, or with none.
+     internal/stencil's StripLeadingComment removes this leading comment before either consumer sees it. -->
 
 # Plan-Review rubric
 

@@ -1,5 +1,6 @@
-// addanchor.go lets Add make a new pair at an anchor other than its fork point's, and lets a re-run of a create settle the anchor of a pair that already exists.
-// The new pair's weft is forked at the fork point's anchor and moved to the requested one under a move record, which Add removes once the pair is wired there.
+// addanchor.go places a new pair at a requested anchor, and settles a pair's anchor on a re-run of create.
+// A new pair's weft is forked at the fork point's anchor and moved to the requested anchor under a move record.
+// `Add` removes that record once the pair is wired there.
 
 package fabricengine
 
@@ -14,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// newPairAnchor returns the anchor a new pair forked at fork is to be moved to for the requested anchor, and "" when no move is asked for.
+// newPairAnchor returns the anchor that a new pair forked at fork moves to, or "" when no move is asked for.
 // An empty request and one equal to the fork point's own anchor ask for none.
-// A request that is invalid, untracked in the fork point's warp checkout, or reaches it through a link is refused with the text of validateAnchorTarget.
+// A request that is invalid, untracked in the fork point's warp checkout, or reaches it through a link returns an error.
 // It reads the warp checkout and changes nothing.
 func newPairAnchor(fork *lymcwd.Location, requested string) (string, error) {
 	if requested == "" {
@@ -39,10 +40,13 @@ func newPairAnchor(fork *lymcwd.Location, requested string) (string, error) {
 	return anchor, nil
 }
 
-// moveForkedWeftToAnchor moves the content of the new pair slug's freshly forked weft from the anchor of fork to the anchor to, in one weft commit that also writes the marker.
-// It takes the move lock and writes the move record first, and leaves the record standing for the caller to remove once the pair is wired at to;
-// the lock is released on return, since only the record outlives this step.
-// When the fork point tracked run records, which the fork left off the disk, their deletion is staged first and the move commit carries it.
+// moveForkedWeftToAnchor moves the content of the new pair's forked weft from the anchor of fork to the anchor to.
+// It takes the move lock and writes the move record first.
+// The move is one weft commit, which also writes the marker when the branch records none.
+// It leaves the record standing for the caller to remove once the pair is wired at to.
+// Both locks are released on return, since only the record outlives this step.
+// When the fork point tracked run records, which the fork left off the disk, their deletion is staged first.
+// The move commit carries that deletion.
 func moveForkedWeftToAnchor(rec *Mutations, fork *lymcwd.Location, slug, to string, runRecordsTracked bool) error {
 	weftPath := RecordsWorktreePath(fork, slug)
 	names, err := RepoWiredNames(fork)
@@ -89,7 +93,8 @@ func moveForkedWeftToAnchor(rec *Mutations, fork *lymcwd.Location, slug, to stri
 	return err
 }
 
-// stageNewMarker writes anchor into the marker file of the weft worktree at weftPath and stages it, for a branch that records none.
+// stageNewMarker writes anchor into the marker file of the weft worktree at weftPath and stages it.
+// It is for a branch that records no marker.
 // The move commit names the marker by pathspec, which git matches only for a path it knows.
 func stageNewMarker(weftPath, anchor string) error {
 	root, err := os.OpenRoot(weftPath)
@@ -107,9 +112,12 @@ func stageNewMarker(weftPath, anchor string) error {
 }
 
 // EnsureAnchor settles the anchor of the existing pair at pair for a re-run of a create.
-// A standing move record is recovered first, as `lym fabric anchor` recovers it: an uncommitted move is undone and made again, and a committed one goes on to the wiring.
-// A failed recovery names `lym beam create <slug>` as the re-run, and a held move lock is refused with the text of MoveInProgress.
-// An anchor equal to the pair's, or an empty one, then rewires the pair's junctions and scratch link and rewrites its launchers, all idempotently.
+// A standing move record is recovered first.
+// An uncommitted move is undone and made again, and a committed one goes on to the wiring.
+// A failed recovery says to run `lym beam create <slug>` again.
+// A held move lock is refused with the message that names the change in progress.
+// An anchor equal to the pair's, or an empty one, rewires the pair's junctions and scratch link.
+// The pair's launchers are then rewritten, and both steps are idempotent.
 // Any other anchor is refused with the two commands that move the pair and then finish the create.
 // The record is removed here and no push is spawned, since the create spawns the pair's push next.
 func (t *Topology) EnsureAnchor(rec *Mutations, pair *lymcwd.Location, anchor string) error {

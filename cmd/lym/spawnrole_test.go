@@ -1,6 +1,6 @@
-// spawnrole_test.go enforces the role-constant rule of agentname's package doc:
-// the module that spawns an agent owns its role name as a constant, so no spawn spec carries an inline role literal.
-// It is a tripwire over production source: it flags a `shuttleengine.Spec` or `reedengine.AddSpec` composite literal whose `Role` field is a string literal.
+// spawnrole_test.go is a tripwire over production source:
+// it flags a `shuttleengine.Spec` or `reedengine.AddSpec` composite literal whose `Role` field is a string literal.
+// The module that spawns an agent owns its role name as a constant, so no spawn spec carries an inline role literal.
 // It does not see a spec built field by field, or a literal reached through a variable.
 
 package main
@@ -22,7 +22,7 @@ var spawnSpecTypes = map[string]bool{
 	"reedengine.AddSpec": true,
 }
 
-// roleLiteralFindings returns one finding per spawn-spec composite literal in file whose Role field is a string literal.
+// roleLiteralFindings returns one finding per spawn-spec composite literal in file with a string-literal Role field.
 func roleLiteralFindings(fset *token.FileSet, file *ast.File, rel string) []string {
 	var findings []string
 	ast.Inspect(file, func(n ast.Node) bool {

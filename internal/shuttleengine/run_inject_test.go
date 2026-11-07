@@ -1,6 +1,7 @@
-// run_inject_test.go covers Runner.Inject: the happy path plays every input in order through the
-// reed seam, a dead strand's pane refuses delivery, an unknown guid refuses before ever touching
-// reed, and empty inputs is a rejected no-op.
+// run_inject_test.go covers Runner.Inject.
+// The happy path plays every input in order through the reed seam.
+// A dead strand's pane refuses delivery, and an unknown guid refuses before touching reed.
+// Empty inputs are a rejected no-op.
 
 package shuttleengine
 
@@ -24,17 +25,15 @@ func TestRunner_Inject_HappyPath_PlaysEveryInputInOrder(t *testing.T) {
 		t.Fatalf("Inject() error: %v", err)
 	}
 
-	// playInputs' own ordering is proven by run_test.go's Send/Interrupt
-	// coverage; here the assertion is that Inject reached playInputs at all,
-	// with every step delivered, in order, through the reed seam.
+	// playInputs' own ordering is covered by run_test.go's Send and Interrupt tests.
+	// Here the assertion is that Inject reaches playInputs, and every step is delivered in order through the reed seam.
 	if len(reed.SendKeyCalls) != 1 || reed.SendKeyCalls[0].Key != "C-u" {
 		t.Errorf("SendKey calls = %+v, want exactly one C-u", reed.SendKeyCalls)
 	}
 	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "go test ./..." || !reed.SendTextCalls[0].Submit {
 		t.Errorf("SendText calls = %+v, want one submitted \"go test ./...\"", reed.SendTextCalls)
 	}
-	// CallLog leads with Status (requireLiveStrand's liveness check) before
-	// the two played inputs land, in order.
+	// CallLog leads with Status, the requireLiveStrand liveness check, before the two played inputs land in order.
 	if len(reed.CallLog) != 3 || reed.CallLog[0] != "Status" || reed.CallLog[1] != "SendKey:C-u" || reed.CallLog[2] != "SendText:go test ./..." {
 		t.Errorf("CallLog = %v, want [Status, SendKey:C-u, SendText:go test ./...]", reed.CallLog)
 	}
@@ -42,9 +41,8 @@ func TestRunner_Inject_HappyPath_PlaysEveryInputInOrder(t *testing.T) {
 
 func TestRunner_Inject_DeadStrand_Refuses(t *testing.T) {
 	tiergate.Require(t, 0)
-	// Unlike Send/Interrupt's requireReadyAgentPane, Inject deliberately does
-	// NOT require the pane to show an input-ready TUI — only that the strand
-	// is live at all (requireLiveStrand). A dead pane must still refuse.
+	// Inject does not require the pane to show an input-ready TUI.
+	// It requires only that the strand is live (requireLiveStrand), so a dead pane must still refuse.
 	reed := &fakeReed{StatusQueue: liveStrandStatus(false)}
 	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
@@ -59,8 +57,7 @@ func TestRunner_Inject_DeadStrand_Refuses(t *testing.T) {
 func TestRunner_Inject_UnknownGUID_RefusesBeforeTouchingReed(t *testing.T) {
 	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	// No run seeded at all: FindRun must fail before Status/SendKey/SendText
-	// are ever called.
+	// With no run seeded, FindRun must fail before Status, SendKey or SendText is called.
 	runner := newFixture(t, reed, &fakeEngine{}).Runner
 
 	if err := runner.Inject("does-not-exist", []PaneInput{{Key: "C-u"}}); err == nil {

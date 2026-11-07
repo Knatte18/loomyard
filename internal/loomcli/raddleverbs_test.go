@@ -21,12 +21,14 @@ import (
 const (
 	// raddleTestRow is the name the injected row seam answers for the recipe's RaddleWrite row.
 	raddleTestRow = "Raddle-Write"
-	// raddleTestRecord is a decision record of one decision with one criterion, which the one-part tapestry proposal below builds.
+	// raddleTestRecord is a decision record with one decision and one criterion, matching the one-part tapestry proposal.
 	raddleTestRecord = "## Decisions\n\n### D1 — First\n\nThe first decision.\n\n## Acceptance criteria\n\n- D1: first holds.\n"
 )
 
-// raddleTestProposal returns the bytes of a tapestry proposal that passes every check against raddleTestRecord and raddleTestBoard.
-// checked lists the board entries the proposal weighed, each with the revised stamp it read, and costLine changes the file without changing its validity.
+// raddleTestProposal returns the bytes of a tapestry proposal that passes every check.
+// The checks run against raddleTestRecord and raddleTestBoard.
+// checked lists the board entries the proposal weighed, each with the revised stamp it read.
+// costLine changes the file without changing its validity.
 func raddleTestProposal(t *testing.T, costLine string, checked ...raddleparser.BoardCheck) []byte {
 	t.Helper()
 	data, err := json.Marshal(raddleparser.Proposal{
@@ -46,7 +48,8 @@ func raddleTestProposal(t *testing.T, costLine string, checked ...raddleparser.B
 	return data
 }
 
-// raddleTestBoard returns the board context raddleTestProposal passes under: the Sketch is the run's own entry and "other" is one open entry.
+// raddleTestBoard returns the board context that raddleTestProposal passes under.
+// The Sketch is the run's own entry, and "other" is one open entry.
 func raddleTestBoard() raddleparser.BoardContext {
 	return raddleparser.BoardContext{
 		Sketch: "the-sketch",
@@ -70,7 +73,8 @@ type raddleVerbFixture struct {
 	notifyErr error
 }
 
-// newRaddleVerbFixture writes proposal and the decision record into a temp directory and returns the fixture whose run stands at the Raddle-Write row.
+// newRaddleVerbFixture writes proposal and the decision record into a temp directory.
+// It returns the fixture whose run stands at the Raddle-Write row.
 func newRaddleVerbFixture(t *testing.T, proposal []byte) *raddleVerbFixture {
 	t.Helper()
 	dir := t.TempDir()

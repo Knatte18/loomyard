@@ -1,16 +1,14 @@
-// finalize_integration_test.go drives Finalize against a real two-worktree pair on both the task
-// side and the parent side, built by the standard hub fixture (internal/hubforge), with only the
-// model seam faked: fakeResolutionShuttle stands in for a real conflict-resolution session, writing
-// real content to the conflicted file rather than asking a model. No test in this file contacts a
-// real service or a real model.
+// finalize_integration_test.go drives Finalize against a real two-worktree pair on the task side and the parent side.
+// The pairs come from the standard hub fixture in internal/hubforge, and only the model seam is faked.
+// resolutionShuttle stands in for a conflict-resolution session by writing resolved content to the conflicted file.
+// No test in this file contacts a real service or a real model.
 //
-// The scenario deliberately conflicts on the code side only -- the byte-identical conflict shape
-// across both sides is already covered exhaustively by internal/fabricengine's own mergein_integration_test.go,
-// and duplicating that matrix here would couple this file to another package's own check set (see
-// this batch's own decision that the integration tier here stays small and purposeful). A second,
-// non-conflicting file diverges on the records side instead, so "the records side is not a merge participant"
-// (the records-local-only-files task's own Fabric.Merge/MergeIn change) has something concrete to
-// assert: the task pair's records-only file must NOT reach the parent pair's records side.
+// The conflict is on the code side only.
+// The byte-identical conflict shape is covered by internal/fabricengine's own tests.
+// Duplicating that coverage here would couple this file to another package's checks.
+// A second, non-conflicting file diverges on the records side instead.
+// It lets the test check that the records side is not a merge participant:
+// a file that exists only in the task pair's records must not reach the parent pair's records side.
 
 package landingshed_test
 
@@ -35,15 +33,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// finalizeConflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two
-// markers mergeresolve's own spec builder fills, mirroring mergeresolve_test.go's own fixture --
-// this package's own conflict-resolution session never spawns a real model, so the stencil's prose
-// content is irrelevant to this test, only its two placeholders.
+// finalizeConflictStencilFixture is a minimal, valid conflict stencil.
+// Its placeholders are `parent_directive`, `edit_directive`, `conflicted_paths` and `report_path`.
+// The test's conflict-resolution session is a fake, so no model reads the stencil's prose.
 const finalizeConflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n{{.edit_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
 
-// seedConflictStencil writes finalizeConflictStencilFixture at the layout mergeresolve's spec
-// builder reads (stencilstore.Path's own baseDir/landing/<name>.md shape) and returns the baseDir a
-// Deps.StencilsDir field should carry.
+// seedConflictStencil returns a new temporary stencils directory that holds the conflict stencil fixture.
+// The fixture is written to landing/landing-template-conflict.md under that directory.
 func seedConflictStencil(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -55,9 +51,9 @@ func seedConflictStencil(t *testing.T) string {
 	return root
 }
 
-// resolutionShuttle is the model seam this file fakes: on every Run call it overwrites each of
-// paths (joined onto worktreeRoot) with resolved, marker-free content, standing in for a real
-// conflict-resolution session's own file edits.
+// resolutionShuttle returns a merge shuttle fake that stands in for a conflict-resolution session.
+// Each Run overwrites every path, joined onto worktreeRoot, with the resolved content.
+// That content carries no conflict markers.
 func resolutionShuttle(worktreeRoot, resolved string, paths ...string) *shedfake.MergeShuttle {
 	return &shedfake.MergeShuttle{RunFn: func(shuttleengine.Spec) (shuttleengine.Result, error) {
 		for _, p := range paths {
@@ -69,7 +65,8 @@ func resolutionShuttle(worktreeRoot, resolved string, paths ...string) *shedfake
 	}}
 }
 
-// openFabricAtLanding opens a *fabricengine.Fabric on the code worktree at path, via lymcwd.ResolveWorktree + fabricengine.Open -- the only production constructor either producer's pair-opener closures may legally wrap.
+// openFabricAtLanding opens a *fabricengine.Fabric on the code worktree at path.
+// It opens through the only production constructor that producers' pair-opener closures may wrap.
 func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	t.Helper()
 	l, err := lymcwd.ResolveWorktree(path)
@@ -83,7 +80,9 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	return f
 }
 
-// configNoticeSeams wires Deps.ConfigChanges to fabricengine.ReadConfigChanges on the real pair at taskCode, against branch parent, and returns it with a Deps.Notify that appends every notice to notices.
+// configNoticeSeams returns the two config-notice seams for a landing test on the real pair at taskCode.
+// The first reads the loom config changes that the task branch commits against the branch named `parent`.
+// The second appends every notice to `notices`.
 func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabricengine.ConfigChanges, error), func(string) error) {
 	t.Helper()
 	l, err := lymcwd.ResolveWorktree(taskCode)
@@ -100,9 +99,9 @@ func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]str
 	return changes, notify
 }
 
-// newFinalizeAt builds a Finalize that lands the task pair at taskCode into the parent pair at parentCode, over the fake conflict-resolution session shuttle.
-// squash is the landing's squash setting;
-// configChanges and notify fill the two config-notice seams and may be nil.
+// newFinalizeAt builds a `Finalize` that lands the task pair at taskCode into the parent pair at parentCode.
+// Its conflict-resolution sessions run through `shuttle`, a fake.
+// `configChanges` and `notify` fill the config-notice seams and may be nil.
 func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabricengine.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
 	t.Helper()
 	deps := landingshed.NewTestDeps(t)
@@ -139,19 +138,27 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 
 // TestFinalize_OverRealHub lands tasks into a parent pair of one hub, a step at a time.
 //
-// The first step builds a task pair and a parent pair off the hub, diverges both on conflict.txt (a genuine code-side conflict) and diverges the task pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real resolution to the conflicted file, and lands in that one call, resolving the conflict with one conflict session, and asserts that the parent pair's code side afterward carries the task's resolved content and the squash setting took effect there, that the parent pair's records side is left byte-identical -- the records side is not a merge participant, per this task's own no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge record is left behind on either pair.
+// The first step builds a task pair and a parent pair off the hub.
+// Both pairs diverge on conflict.txt, a genuine code-side conflict.
+// The task pair alone also diverges on a second, clean records-side file.
+// `Finalize` runs with a fake session that writes a real resolution to the conflicted file and lands in one call.
+// The first step asserts three things:
+// the parent pair's code side carries the resolved content, and the squash setting took effect there;
+// the parent pair's records side stays byte-identical;
+// and no merge record is left behind on either pair.
 //
-// The second step lands a second task into the same parent once, then calls Finalize again on the same pair, and asserts the second call is Done with no second landing commit.
-// A fresh Finalize over a parent that already carries the task's squashed diff behaves the same way.
-// Both Finalize calls of that step report the task's committed loom config change through the notice seam,
-// and the parent's own copy of the file is left byte-identical.
+// The second step lands a second task into the same parent once, then calls `Finalize` again on the same pair.
+// It asserts that the second call is `Done`, with no second landing commit.
+// A fresh `Finalize` over a parent that already carries the task's squashed diff behaves the same way.
+// Both `Finalize` calls of the step report the task's committed loom config change through the notice seam,
+// and the parent's own copy of the file stays byte-identical.
 //
-// The third step lands a fresh task with squash off and asserts the same notice and the same untouched parent config.
+// The third step lands a fresh task with squash off.
+// It asserts the same notice and the same untouched parent config.
 //
-// The steps share one hub and one parent pair,
-// and the later ones rely on the first having landed into that parent,
-// so no step runs in parallel;
-// the top-level test calls t.Parallel because the hub is its own.
+// The steps share one hub and one parent pair.
+// The later steps rely on the first having landed into that parent, so no step runs in parallel.
+// The top-level test calls `t.Parallel`, because it owns its hub.
 func TestFinalize_OverRealHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -164,21 +171,18 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	if !t.Run("resolves a conflict and squash merges into the parent", func(t *testing.T) {
 		taskCode, taskRecords := h.PairCodeWorktree("task"), h.PairRecordsSibling("task")
 
-		// The genuine code-side conflict: both branches add conflict.txt independently, off a common
-		// ancestor where it does not exist.
+		// The genuine code-side conflict:
+		// both branches add conflict.txt independently, off a common ancestor where it does not exist.
 		gitkit.CommitFile(t, taskCode, "conflict.txt", "task content\n", "task: add conflict.txt")
 		gitkit.CommitFile(t, parentCode, "conflict.txt", "parent content\n", "parent: add conflict.txt")
 
-		// A clean, non-conflicting records-side divergence on the task pair alone, so "the parent pair
-		// carries the task's content on both sides" has a concrete records-side fact to assert.
+		// A clean, non-conflicting records-side divergence on the task pair alone gives the records check below a concrete fact.
 		gitkit.CommitFile(t, taskRecords, "task-note.txt", "task records note\n", "task: add task-note.txt")
 
 		shuttle := resolutionShuttle(taskCode, "resolved content\n", "conflict.txt")
 		fz := newFinalizeAt(t, "task", taskCode, parentCode, shuttle, true, nil, nil)
 
-		// Captured before Call so the records-side-not-a-merge-participant assertion below has a concrete
-		// before/after pair to compare, mirroring internal/fabricengine's own before/HEAD
-		// convention for its records side (see e.g. its merge-local integration test).
+		// The parent records HEAD is captured before the landing, so the assertion below has a value to compare.
 		parentRecordsBefore := gitkit.RevParse(t, parentRecords, "HEAD")
 
 		// One Finalize call resolves the conflict with one conflict session under the parent lock and lands.
@@ -189,7 +193,6 @@ func TestFinalize_OverRealHub(t *testing.T) {
 			t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
 		}
 
-		// The parent pair's code side carries the task's resolved content.
 		codeContent, err := os.ReadFile(filepath.Join(parentCode, "conflict.txt"))
 		if err != nil {
 			t.Fatalf("read parent code conflict.txt: %v", err)
@@ -198,10 +201,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 			t.Errorf("parent code conflict.txt = %q; want the resolved content %q", codeContent, "resolved content\n")
 		}
 
-		// The parent pair's records side is left byte-identical: it is not a merge participant, so the
-		// task pair's records-only task-note.txt never reaches it, on either the file-tree or the commit
-		// graph -- mirroring internal/fabricengine's own "records side is not a merge participant" assertion
-		// shape (see e.g. its merge-local integration test's byte-identical check).
+		// The parent records side stays byte-identical, because the records side is not a merge participant:
+		// the task pair's records-only task-note.txt reaches it neither in the file tree nor in the commit graph.
 		if _, err := os.Stat(filepath.Join(parentRecords, "task-note.txt")); !os.IsNotExist(err) {
 			t.Errorf("os.Stat(parent records task-note.txt) error = %v; want a not-exist error -- the records side is not a merge participant", err)
 		}
@@ -215,8 +216,9 @@ func TestFinalize_OverRealHub(t *testing.T) {
 			t.Errorf("parent code HEAD %s has %d parents; want exactly 1 (a squash commit)", codeHEAD, got)
 		}
 
-		// The landing commit's subject is the description title, its body is the description body,
-		// and its credit block is the heading, the LoomYard line and the line of the one engine that ran, as plain lines with no trailer.
+		// The landing commit's subject is the description title, and its body is the description body.
+		// Its credit block is plain lines with no trailer:
+		// the heading, the LoomYard line, and the line of the one engine that ran.
 		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
 		msgCmd.Dir = parentCode
 		msgOut, err := msgCmd.Output()
@@ -228,9 +230,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
 		}
 
-		// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is
-		// a test-only export reachable only from fabricengine's own test binary, so this package checks
-		// the same fact through the public MergeInProgress accessor instead.
+		// No merge record is left behind on either pair.
+		// The record reader is exported only to its own package's tests, so this test checks each pair's `MergeInProgress`.
 		taskHandle := openFabricAtLanding(t, taskCode)
 		if inProgress, err := taskHandle.MergeInProgress(); err != nil || inProgress {
 			t.Errorf("task pair MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
@@ -243,7 +244,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		return
 	}
 
-	// Relies on the first step having landed into the parent pair, so this task's merge-in carries that landing in cleanly.
+	// Relies on the first step having landed into the parent pair,
+	// so this task's merge-in carries that landing in cleanly.
 	if !t.Run("an already landed parent is idempotent", func(t *testing.T) {
 		hubforge.AddPair(t, h, "second-task")
 		secondCode := h.PairCodeWorktree("second-task")
@@ -257,7 +259,7 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		requireOneConfigNotice(t, notices, "second-task")
 		headAfterFirst := gitkit.RevParse(t, parentCode, "HEAD")
 
-		// A second Finalize over the now already-landed parent queues the notice again.
+		// A second Finalize over an already-landed parent queues the notice again.
 		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, ""), true, changes, notify), shedengine.Done)
 		if got := gitkit.RevParse(t, parentCode, "HEAD"); got != headAfterFirst {
 			t.Errorf("parent code HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
@@ -313,7 +315,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	})
 }
 
-// commitTaskLoomConfig commits a loom config change on the task pair's tracked side, which is the change Finalize reports and never carries.
+// commitTaskLoomConfig commits a loom config change on the task pair's tracked side.
+// That is the change Finalize reports and never carries.
 func commitTaskLoomConfig(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 	gitkit.CommitFile(t, h.PairRecordsSibling(slug), configengine.ConfigFileRel("loom"), "task_setting: "+slug+"\n", slug+": change loom config")

@@ -1,6 +1,8 @@
 // fixture_test.go builds the on-disk fixtures the engine's tests run against.
-// They are a fake repository with linked worktrees and plain clones, a records checkout beside each worktree, and an operator Codex home.
-// They also include the codex.yaml local layer that points the engine at them, and a worktree layer that names no writable root, so no test reaches the template's.
+// They are a fake repository with linked worktrees and plain clones, each beside a records checkout.
+// They also include an operator Codex home.
+// The codex.yaml local layer points the engine at them,
+// and a worktree layer names no writable root, so no test reaches the template's.
 // No git process runs: the `.git` entries are written as git writes them.
 
 package codexengine
@@ -25,7 +27,8 @@ type repoFixture struct {
 	operatorHome string
 }
 
-// newRepoFixture writes a main checkout with a `.git` directory, and an operator home holding auth.json and sessions; the lym home is left unmade.
+// newRepoFixture writes a main checkout with a `.git` directory, and an operator home holding auth.json and sessions;
+// the lym home is left unmade.
 func newRepoFixture(t *testing.T) repoFixture {
 	t.Helper()
 	base, err := filepath.EvalSymlinks(t.TempDir())
@@ -61,8 +64,8 @@ func (r repoFixture) addWorktree(t *testing.T, name string) (anchor, records str
 	return anchor, records
 }
 
-// addClone writes a plain clone named name, whose `.git` is a directory of its own and which has no main checkout,
-// and the codex.yaml layers, and returns the clone's root.
+// addClone writes a plain clone named name and the codex.yaml layers, and returns the clone's root.
+// The clone's `.git` is a directory of its own, and the clone has no main checkout.
 func (r repoFixture) addClone(t *testing.T, name string) string {
 	t.Helper()
 	anchor := filepath.Join(r.base, name)
@@ -75,7 +78,8 @@ func (r repoFixture) addClone(t *testing.T, name string) string {
 }
 
 // wantGitDirs returns the git dirs a launch in the fixture checkout at anchor adds as writable roots:
-// a plain clone's `.git` directory, or a linked worktree's git dir under the main checkout and then the main checkout's `.git`.
+// a plain clone's `.git` directory;
+// for a linked worktree, its git dir under the main checkout, then the main checkout's `.git`.
 func (r repoFixture) wantGitDirs(anchor string) []string {
 	if isDir(filepath.Join(anchor, ".git")) {
 		return []string{filepath.Join(anchor, ".git")}
@@ -84,7 +88,7 @@ func (r repoFixture) wantGitDirs(anchor string) []string {
 	return []string{filepath.Join(commonDir, "worktrees", filepath.Base(anchor)), commonDir}
 }
 
-// routeGitDirsThroughLink makes the linked worktree at anchor reach its git dir and, through that, its common dir by way of a symlink to the main checkout:
+// routeGitDirsThroughLink makes the linked worktree at anchor reach its git dir and common dir through a symlink:
 // the worktree's `.git` gitfile names the `gitdir:` under the link, and the `commondir` file resolves under it too.
 func (r repoFixture) routeGitDirsThroughLink(t *testing.T, anchor string) {
 	t.Helper()
@@ -96,7 +100,8 @@ func (r repoFixture) routeGitDirsThroughLink(t *testing.T, anchor string) {
 	writeFile(t, filepath.Join(anchor, ".git"), "gitdir: "+gitDir+"\n")
 }
 
-// writeWritableRoots writes anchor's codex.yaml worktree layer, the one layer that may set writable_roots, naming roots as the YAML list's items.
+// writeWritableRoots writes anchor's codex.yaml worktree layer, the one layer that may set writable_roots;
+// it names roots as the YAML list's items.
 func writeWritableRoots(t *testing.T, anchor, roots string) {
 	t.Helper()
 	path := configengine.ConfigFile(anchor, "codex")

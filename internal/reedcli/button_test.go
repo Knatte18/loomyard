@@ -1,4 +1,5 @@
-// button_test.go pins the `button` verb's flag checks and the run directory it hands a click: the anchor recorded now for the worktree holding the rendered directory.
+// button_test.go pins the `button` verb's flag checks and the run directory it hands a click:
+// the anchor recorded for the worktree holding the rendered directory.
 
 package reedcli
 
@@ -76,7 +77,8 @@ func TestButtonRunDirectory(t *testing.T) {
 			}
 			worktree := filepath.Join(hub, "task")
 			if tt.rendered == "" {
-				// A gitfile naming a missing git dir ends the walk up, so a temporary directory inside some repository still resolves to none.
+				// A gitfile naming a missing git dir ends the walk up,
+				// so a temporary directory inside some repository still resolves to none.
 				if err := os.MkdirAll(worktree, 0o755); err != nil {
 					t.Fatalf("mkdir %s: %v", worktree, err)
 				}

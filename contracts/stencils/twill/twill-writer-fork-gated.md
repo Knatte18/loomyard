@@ -1,5 +1,8 @@
-<!-- This is the twill writer-fork part for a host whose reviewed files are checked by a gate after the writer ends its turn: the host-neutral procedure in which one fork, fork0, writes the reviewed files while the writer explores before it and reviews what it wrote after, and no one runs a validator.
-     internal/twilldirective renders it into the twill directive in place of the writer-fork part that runs the validator, and the spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
+<!-- This is the twill writer-fork part for a host whose reviewed files are checked by a gate after the writer ends its turn.
+     It is the host-neutral procedure in which one fork, fork0, writes the reviewed files.
+     The writer explores before fork0 and reviews what it wrote after, and no one runs a validator.
+     internal/twilldirective renders it into the twill directive in place of the writer-fork part that runs the validator.
+     The spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
      It declares these required markers:
      {{.explore_step}}, {{.input_record}}, {{.reviewed_files}}, {{.last_file}}, {{.files_dir}}, {{.format_step}} and {{.disposition_place}}. -->
 

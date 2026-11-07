@@ -1,9 +1,8 @@
-// wiring.go implements wire, the package-private method resolvePersistentPreRun (cli.go) delegates
-// to once it has resolved cwd and told mode via preflight.ResolveMode: the mode decision itself, and
-// the whole engine stack construction for whichever mode wins.
-// The mode decision lives HERE, inside the extracted function, rather than upstream in
-// resolvePersistentPreRun, precisely so a test can drive it with a told preflight.Mode and stay
-// tier 1 -- driving the real pre-run would reach lymcwd.Resolve and its git spawn.
+// wiring.go builds webster's engine stack once the pre-run has resolved the mode.
+// wire picks hub or standalone mode from the Location and Mode that preflight.ResolveMode reported.
+// It also builds the whole stack for whichever mode wins.
+// The mode decision lives in wire, not in the pre-run,
+// so a test can drive it with a given preflight.Mode without reaching lymcwd.Resolve or its git spawn.
 
 package webstercli
 
@@ -37,12 +36,9 @@ import (
 // websterProgram is the program name webster signs its notices to the orch with.
 const websterProgram = "WEBSTER"
 
-// wireModule carries webster's own per-CLI variance for internal/cliwire's shared wiring
-// prologue -- the message-bearing data cliwire needs but does not itself declare, since no
-// production file in that package may name webster or burler. cliwire carries the shared
-// implementation; the data that varies by caller lives here, with the caller, exactly the way
-// internal/shedrecipe's constructors live in that package while the rows that vary live outside
-// it.
+// wireModule holds the per-CLI values for internal/cliwire's shared wiring prologue.
+// cliwire carries the shared implementation.
+// No production file in it names a caller, so the values that vary by caller live here, next to the caller.
 var wireModule = cliwire.Module{
 	Name:             "webster",
 	StateArtifacts:   "state, locks, rendered prompts and trace logs",
@@ -57,47 +53,37 @@ var wireModule = cliwire.Module{
 	},
 }
 
-// wire computes hub-or-standalone mode from loc/mode -- the *lymcwd.Location and preflight.Mode a
-// preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: module
-// configs, the model registry, resolved roles, the reed/claude engines, the shuttleengine.Runner and
-// its three adapted seams, the told websterengine.Geometry, the injected RefMatcher, and the lazy
-// fabric opener.
+// wire selects hub or standalone mode and builds the whole engine stack onto c for it.
+// It takes loc and mode as preflight.ResolveMode reported them for cwd.
 //
 // mode == preflight.ModeHub selects hub mode, because the Location's paths are real.
-// preflight.ModeStandalone selects standalone mode, which covers BOTH a plain downloaded git
-// repository and an unresolvable cwd -- preflight.ResolveMode returns a nil Location for each, and
-// the two are indistinguishable from here.
+// preflight.ModeStandalone selects standalone mode, for both a plain downloaded git repository and an unresolvable cwd.
+// preflight.ResolveMode returns a nil Location for both, so wire cannot tell them apart.
 //
-// wire never sees the refused case at all: a ResolveMode error aborts upstream in
-// resolvePersistentPreRun, because a refusal is a resolution verdict rather than a wiring choice --
-// which is why mode carries only two reachable values here and no third Mode value exists for
-// refusal.
+// A ResolveMode refusal never reaches wire: it is a resolution verdict, not a wiring choice.
+// So mode has only two reachable values here, and no Mode value exists for the refusal.
 //
-// preflight.Wired is deliberately never consulted: Wired is a per-worktree question ("is fabric wired
-// for the worktree at this exact cwd"), not a mode-selection one, and it is false in three healthy hub
-// locations that run webster verbs today -- an ordinary worktree at the Bolt checkout, an unpaired sibling,
-// and a worktree whose paired sibling has been removed. Keying mode selection on Wired would either
-// refuse those three (no fabric-sync path exists for standalone to fall back to `run`'s pre-flight
-// against) or, worse, relocate a live hub's state into the standalone state directory. HubPresent asks
-// the honest question instead: does a hub-level directory exist for this write to target.
+// preflight.Wired is never consulted: it asks whether fabric is wired for this worktree.
+// That is a per-worktree question, not a mode-selection one.
+// It is false in three healthy hub locations that run webster verbs.
+// They are an ordinary worktree, an unpaired sibling, and a worktree whose paired sibling was removed.
+// Keying mode on Wired would refuse all three, or relocate a live hub's state into the standalone state directory.
+// HubPresent asks the right question instead: whether the hub-level directory this write targets exists.
 //
-// cwd is the already-resolved cwd resolvePersistentPreRun read via lymcwd.CwdFrom -- wire needs it
-// as standalone's --target-dir default and as the base every relative flag value is made absolute
-// against, never to resolve or re-resolve anything itself.
-// stencilsDirFlag, planDirFlag, and targetDirFlag are the three persistent flags' raw, as-parsed
-// values (empty string when the operator did not pass one).
+// cwd is the already-resolved working directory, the base every relative flag value is made absolute against.
+// It is also the default --target-dir in standalone mode.
+// stencilsDirFlag, planDirFlag, and targetDirFlag are the raw flag values as parsed, empty when none was passed.
 //
-// All three are made absolute HERE, at the one boundary that still knows which working directory the
-// operator typed them from, via cliwire.ResolveToldDir. A relative value stored verbatim is not a
-// smaller version of an absolute one: this process resolves it against ITS cwd while the pane webster
-// spawns runs at the target (standalone) or the anchor (hub), so one string named two different
-// directories, and the standalone default-vs-override comparison below could never match a relative
-// spelling of the default. Every other told path in this codebase is required absolute for exactly
-// that reason.
+// The stencils and plan directories are made absolute here, by cliwire.ResolveToldDir.
+// This is the last boundary that still knows the directory the operator typed them from.
+// A relative value resolves against this process's cwd,
+// but the pane webster spawns runs at the target or the anchor, so one string would name two directories,
+// and the default-versus-override comparison in standalone mode could never match a relative spelling of the default.
+// Every other told path in the codebase is required to be absolute for the same reason.
 //
-// wire performs no cwd resolution and spawns no process -- every path it touches is either supplied by
-// the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) -- so a
-// test can drive it directly and stay inside the Test Tier Purity Invariant.
+// wire resolves no cwd and spawns no process.
+// Every path it touches comes from the caller or is a plain filesystem read,
+// so a test can drive it directly and stay inside the Test Tier Purity Invariant.
 func (c *websterCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
 	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
 	planDir := cliwire.ResolveToldDir(cwd, planDirFlag)
@@ -108,19 +94,24 @@ func (c *websterCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stenci
 	return c.wireStandalone(cwd, stencilsDir, planDir, targetDirFlag)
 }
 
-// wireHub builds the engine stack for hub mode: every module config and the model registry loaded
-// over the anchor path, hubgeom's geometry builders, a real fabricengine.RefScanner, and a lazy
-// fabricengine.Open closure.
+// wireHub builds the engine stack for hub mode.
+// It loads the module configs and the model registry from the anchor path.
+// It builds the geometry with hubgeom, and it wires a real fabricengine.RefScanner and a lazy fabricengine.Open closure.
 //
-// stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
-// sees a raw flag value and must never start honouring one.
+// stencilsDir and planDir arrive already absolute or empty, because wire made them so.
+// wireHub never sees a raw flag value, and it must never start honouring one.
 func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetDirFlag string) error {
 	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
 		return err
 	}
 
-	// The friction directory is resolved tolerantly, here rather than deferred to loomcli: this is what makes the per-batch implementer fork and the cold recovery strand actually receive the directive under `lym loom start`, since Master drives the batch loop by running `lym webster begin-batch <NN>` and `lym webster recover-batch <NN>` as separate processes, so their prompts are composed here and not in internal/loomcli/wiring.go -- see the webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
-	// A load error, or an empty Friction key, both leave it "": a `lym webster` verb must never fail because an unrelated module's config could not be read, and the whole value is optional bookkeeping.
+	// The friction directory is resolved tolerantly here, not in loomcli.
+	// That lets the per-batch implementer fork and the cold recovery strand receive the directive under `lym loom start`.
+	// Master runs `lym webster begin-batch <NN>` and `lym webster recover-batch <NN>` as separate processes,
+	// so their prompts are composed here.
+	// See the webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
+	// A load error or an empty Friction key leaves it empty.
+	// A `lym webster` verb must never fail over an unrelated module's config, since the value is optional bookkeeping.
 	c.frictionDir = ""
 	if loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(loc), "loom"); err != nil {
 		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
@@ -165,26 +156,22 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 		return err
 	}
 	if stencilsDir != "" {
-		// The same boundary stat standalone's prologue applies, through the same descriptor method,
-		// so the two modes can never drift on what a told stencils directory must be: a typo'd
-		// --stencils-dir refused here costs nothing, while unchecked it failed only at the first
-		// prompt render, after the run lock and substrate boot (crucible round fable-high-r7, F2).
+		// Standalone's prologue runs the same check through the same descriptor method,
+		// so the two modes agree on what a told stencils directory must be.
+		// Refusing a mistyped --stencils-dir here costs nothing.
+		// Unchecked, it fails only at the first prompt render, after the run lock and substrate boot.
 		if err := wireModule.RefuseUnreadableStencilsDir(stencilsDir); err != nil {
 			return err
 		}
 		geom.StencilsDir = stencilsDir
 	}
 	if planDir != "" {
-		// Hub mode records a moved plan directory for exactly the reason standalone does: Master's own
-		// in-pane verb invocations are typed flagless from the stencil in BOTH modes, so they resolve
-		// the hub default and would refuse against a plan they cannot see. Every other verb keeps
-		// honoring the override -- see the planDirOverridden field's own doc for the failure this
-		// closes on the hub path.
+		// Hub mode records a moved plan directory for the same reason standalone does.
+		// Master types its in-pane verbs flagless from the stencil in both modes, so they resolve the hub default.
+		// Against a plan they cannot see, they would refuse; every other verb keeps honoring the override.
 		//
-		// The comparison is against geom.PlanDir -- the value hubgeom.WebsterGeometry actually built --
-		// and deliberately not wireModule.Plan.DefaultPlanDir(anchorPath), even though the two are the
-		// same string today; comparing against the geometry's own field is what keeps the override
-		// check correct if internal/hubgeom ever changes how it computes PlanDir.
+		// The comparison is against geom.PlanDir, the value hubgeom.WebsterGeometry built, not wireModule.Plan.DefaultPlanDir.
+		// Reading the geometry's own field keeps the override check correct if hubgeom ever changes how it computes PlanDir.
 		resolvedPlanDir, overridden := cliwire.ResolvePlanDir(planDir, geom.PlanDir)
 		if overridden {
 			c.planDirOverridden = true
@@ -223,10 +210,10 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
-	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail. The
-	// fabric handle stays a closure and must NOT be opened here: fabricengine.Open stat-checks the
-	// paired sibling and would fail this pre-run in the three healthy-but-unwired locations that run
-	// validate and status today, neither of which ever commits to the fabric.
+	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail.
+	// The fabric handle stays a closure and must not be opened here.
+	// fabricengine.Open stat-checks the paired sibling, and a healthy location can lack one.
+	// Opening it here would fail the verbs that never commit to the fabric before they run.
 	c.refMatcher = fabricengine.NewRefScanner(loc)
 	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) }
 	c.parentBranch = func() (string, error) {
@@ -249,7 +236,8 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 }
 
 // gateTiersValue reads the gate config through read once and returns its rendered tier and gate-list lines.
-// An absent gate.yaml renders `none`; any other load error is returned as is, since it already names `lym config gate`.
+// An absent gate.yaml renders `none`.
+// Any other load error is returned as is, since it already names `lym config gate`.
 func gateTiersValue(read func() (gateslot.Config, error)) (string, error) {
 	cfg, err := read()
 	if errors.Is(err, gateslot.ErrConfigAbsent) {
@@ -261,18 +249,15 @@ func gateTiersValue(read func() (gateslot.Config, error)) (string, error) {
 	return cfg.TiersValue(), nil
 }
 
-// wireStandalone builds the engine stack for standalone mode by calling wireModule.ResolveStandalone
-// -- internal/cliwire's single ordered standalone prologue -- and composing webster's own engines onto
-// the result: a pinned websterengine.NeverMatches RefMatcher, a shuttleengine.NewDetachedRunner-
-// constructed runner -- standalone's anchor (the derived state directory) is deliberately outside its
-// worktree root (the target), which NewRunner's containment assertion would refuse -- and a nil fabric
-// opener.
+// wireStandalone builds the engine stack for standalone mode from the shared standalone prologue.
+// It composes webster's own engines onto that stack.
+// They are a never-matching RefMatcher, a detached runner, and a nil fabric opener.
+// The detached runner exists because the standalone anchor, the derived state directory, lies outside the worktree root.
+// The ordinary runner's containment check would refuse that.
 //
-// stencilsDir and planDir arrive already absolute (or empty), made so by wire via
-// cliwire.ResolveToldDir. Re-resolving them again inside ResolveStandalone is idempotent on an
-// already-absolute value, and is deliberate rather than an oversight to hoist out: see
-// cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation, which this
-// function's body no longer needs to restate.
+// stencilsDir and planDir arrive already absolute (or empty), made so by the caller.
+// The standalone prologue resolves them again, which is idempotent on an absolute value.
+// That repeat is deliberate, not an oversight to hoist out.
 func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag string) error {
 	// c.frictionDir is left at its zero value: a standalone webster run is not a tapestry run and has no
 	// friction directory.
@@ -334,13 +319,14 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	pauseGeom := standalonegeom.PauseGeometry(res.StateDir)
 	runner.SetPause(pauseGeom)
 
-	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach — `lym reed up` is hub-only — so the verbs that need one boot it in-process through this seam (see the field's own doc comment).
-	// Assigned here, executed by the verbs that spawn an agent themselves, run, recover-batch, fix-verify and fix-plan: wiring runs for EVERY verb, and validate, status and await-batch must boot no tmux server at all.
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach.
+	// `lym reed up` is hub-only, so the verbs that need a session boot it in-process through `reedUp`.
+	// Wiring assigns it for every verb.
+	// Only the verbs that spawn an agent call it, since the read-only verbs must boot no tmux server.
 	//
-	// Standalone reed is never booted by `lym reed up` — that verb is hub-only — it is booted
-	// in-process by a long-lived supervising run that exists for exactly the session's working
-	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
-	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case.
+	// A long-lived supervising run owns that boot for the session's working lifetime.
+	// Hub mode needs a detached daemon because it lacks that supervising process.
+	// Reusing the in-process boot here is the smaller mechanism, not a special case.
 	// Standalone computes no hub lock path and spawns no daemon.
 	c.reedUp = func() error {
 		_, err := reedEngine.Up()
@@ -368,7 +354,8 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	return nil
 }
 
-// configLoadRefusal is the refusal a verb's config load returns before its body runs: the message, and whether the cause was a content failure of the config file.
+// configLoadRefusal is the refusal a verb's config load returns before its body runs.
+// It carries the message, whether the config file's content is invalid, and the cause.
 // configLoadError is the only code that constructs one.
 type configLoadRefusal struct {
 	message string
@@ -380,11 +367,16 @@ func (r configLoadRefusal) Error() string { return r.message }
 
 func (r configLoadRefusal) Unwrap() error { return r.cause }
 
-// configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal that names the file and the way forward.
-// A content failure (configengine.ErrInvalid) is invalid and names the fix, or the reconcile run when the cause is a retired batcher key;
-// a languageconfig.ErrUnusable cause is invalid and ends in its own way forward, since the hub-wide language.yaml never lives under a worktree's _lym/config;
-// any other cause is a file that exists but cannot be read, which is transient.
-// Both wiring prologues return it before any verb's body runs, so a config that does not load leaves the recorded partition and state untouched.
+// configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal.
+// The refusal names the file and the way forward.
+// A content failure (configengine.ErrInvalid) is invalid and names the fix.
+// A retired batcher key (batcher.ErrRetiredKey) is invalid too, and its cause already ends in the reconcile way forward.
+// A languageconfig.ErrUnusable cause is invalid and ends in its own way forward.
+// The hub-wide language.yaml never lives under a worktree's _lym/config.
+// That is why this cause gets its own way forward.
+// Any other cause is a file that exists but cannot be read, which is transient.
+// Both wiring prologues return it before any verb's body runs,
+// so a config that does not load leaves the recorded partition and state untouched.
 func configLoadError(file string, cause error) error {
 	switch {
 	case errors.Is(cause, languageconfig.ErrUnusable):
@@ -399,7 +391,8 @@ func configLoadError(file string, cause error) error {
 	}
 }
 
-// setRunner stores runner and its adapted seams (starter, masterStarter) plus the engine set and the reed engine onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
+// setRunner stores runner on c and derives the starter and master starter from it;
+// it also stores the engine set and the reed engine, so the adaptation lives in one place.
 func (c *websterCLI) setRunner(runner *shuttleengine.Runner, engines shuttleengine.EngineSet, reedEngine shuttleengine.ReedOps) {
 	c.runner = runner
 	c.starter = runner

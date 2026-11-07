@@ -1,4 +1,5 @@
-// detachfront_test.go covers the join decision of a capped `lym gate test` call's front, which needs no process and no hub.
+// detachfront_test.go covers the join decision of a capped `lym gate test` call's front.
+// It needs no process and no hub.
 
 package gatecli
 
@@ -133,7 +134,8 @@ func withCurrent(state joinState, current treeRecord) joinState {
 	return state
 }
 
-// callRecords returns the records of one finished call of the gate key with the listed tiers: a record per tier, each with a command and an equal share of wall, the call starting at begin.
+// callRecords returns the records of one finished call of the gate key over the listed tiers.
+// One record per tier, each with a command and an equal share of wall; the call starts at begin.
 func callRecords(key, id string, begin time.Time, wall time.Duration, tiers ...int) []gateslot.RunRecord {
 	share := wall / time.Duration(len(tiers))
 	var records []gateslot.RunRecord
@@ -175,7 +177,8 @@ func TestLongWait(t *testing.T) {
 
 	const key = "finalize"
 	begin := time.Unix(1_700_000_000, 0)
-	// calls returns count full calls of the given wall time, the first starting offset after begin and each a minute after the one before.
+	// calls returns count full calls of wall time, the first starting offset after begin.
+	// Each call starts a minute after the one before.
 	calls := func(prefix string, offset time.Duration, count int, wall time.Duration) []gateslot.RunRecord {
 		var records []gateslot.RunRecord
 		for i := range count {
@@ -236,7 +239,8 @@ func TestLongWait(t *testing.T) {
 	}
 }
 
-// buildFirstCalls returns count calls of wall time, each with a build record that has no wait start followed by a tier record that waited for its slot after the build.
+// buildFirstCalls returns count calls of wall time, each with a build record that has no wait start.
+// Each call's tier record waited for its slot after the build.
 func buildFirstCalls(key string, begin time.Time, count int, wall time.Duration) []gateslot.RunRecord {
 	var records []gateslot.RunRecord
 	for i := range count {

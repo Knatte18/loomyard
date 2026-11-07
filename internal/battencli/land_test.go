@@ -1,4 +1,6 @@
-// land_test.go covers the Land row's wiring: how a pull's error splits into a records-side stop and a failure, and what the landed-child seam reads from the task worktree's status.
+// land_test.go covers the Land row's wiring:
+// how a pull's error splits into a records-side stop and a failure.
+// It also covers what the landed-child seam reads from the task worktree's status.
 
 package battencli
 
@@ -17,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLandDeps_ChildLandedReadsTheTaskWorktreeStatus asserts the wired seam reports a child landed only when its status history holds a Finalize with outcome Done, so a run with no Finalize row, a motif run, reads as landing nothing.
+// TestLandDeps_ChildLandedReadsTheTaskWorktreeStatus asserts the wired seam reports a child landed only when:
+// its status history holds a Finalize with outcome Done.
+// A run with no Finalize row, a motif run, reads as landing nothing.
 func TestLandDeps_ChildLandedReadsTheTaskWorktreeStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -66,7 +70,8 @@ func TestLandDeps_ChildLandedReadsTheTaskWorktreeStatus(t *testing.T) {
 	}
 }
 
-// TestPullStopOutcome asserts a lone records-side stop comes back as its message with a nil error, and a stop joined with a code-side error or any other error comes back as that error with no stop.
+// TestPullStopOutcome asserts a lone records-side stop comes back as its message with a nil error.
+// It also asserts that a stop joined with a code-side error or any other error comes back as that error with no stop.
 func TestPullStopOutcome(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,6 +1,6 @@
-// planpath_test.go tests the told-anchor PlanDir/PlanOverview path constructors — pure filepath.Join
-// arithmetic, no spawning, no fixture tree, untagged (Tier 1). It is the ported successor of
-// internal/loomengine/planpath_test.go (deleted in batch 2).
+// planpath_test.go tests the told-anchor `PlanDir` and `PlanOverview` path constructors.
+// Both are pure `filepath.Join` arithmetic, so the tests spawn nothing and build no fixture tree.
+// The tests are untagged (Tier 1).
 
 package planparser
 

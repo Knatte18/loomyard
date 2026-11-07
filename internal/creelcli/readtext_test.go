@@ -1,4 +1,6 @@
-// readtext_test.go pins the plain text `lym creel read` prints for each kind of sender and message; it is an internal test because the CLI cannot post as a program, and the delivery carries a program's or EXTERNAL's mail before a read could reach it.
+// readtext_test.go pins the plain text `lym creel read` prints for each kind of sender and message.
+// It is an internal test because the CLI cannot post as a program,
+// and the delivery carries a program's or EXTERNAL's mail before a read could reach it.
 
 package creelcli
 

@@ -1,4 +1,6 @@
-// scopes_integration_test.go drives `lym gate test` over a hubforge hub with a task pair, whose fabric origin record names the prime's branch as its parent, to reach the computed, --base and --card scope forms.
+// scopes_integration_test.go drives `lym gate test` over a hubforge hub with a task pair.
+// The task pair's fabric origin record names the prime's branch as its parent.
+// It reaches the computed, --base and --card scope forms.
 // It is Tier 2: it builds a real hub and spawns git, `go list` and the stand-in tier command.
 
 package gatecli
@@ -32,7 +34,7 @@ func scopesConfig(t *testing.T, scoper string) []byte {
 	return scopesConfigWith(t, scoper, nil)
 }
 
-// scopesConfigWith is scopesConfig after mutate has changed the config.
+// scopesConfigWith returns the gate.yaml of the scopes hub with the given scoper, then lets mutate change the config.
 func scopesConfigWith(t *testing.T, scoper string, mutate func(cfg map[string]any)) []byte {
 	t.Helper()
 
@@ -64,7 +66,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	}
 	writeScoper(t, "go")
-	// writeDotnet switches the hub to the dotnet scoper with Markdown files inert, and the stand-in command `{targets} {filter}` on both tiers, after mutate has changed the config.
+	// writeDotnet writes the hub config with the dotnet scoper and Markdown files inert.
+	// The stand-in command `{targets} {filter}` runs on both tiers, and mutate, when not nil, changes the config last.
 	writeDotnet := func(t *testing.T, mutate func(cfg map[string]any)) {
 		t.Helper()
 		config := scopesConfigWith(t, "dotnet", func(cfg map[string]any) {
@@ -83,7 +86,9 @@ func TestGateTest_Scopes(t *testing.T) {
 	}
 	pool := hubgeom.GateSlots(h.Location)
 
-	// The module lives on the prime's branch and the pair is fast-forwarded onto it, so the merge base the pair diffs from holds the module and a computed scope sees only the edits a row makes.
+	// The module lives on the prime's branch, and the pair is fast-forwarded onto it,
+	// so the merge base the pair diffs from holds the module,
+	// and a computed scope sees only the edits a row makes.
 	files := map[string]string{
 		"go.mod":             "module example.com/scopes\n\ngo 1.21\n",
 		"lib/lib.go":         "package lib\n\nfunc One() int { return 1 }\n",
@@ -213,7 +218,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		requireFree(t)
 	})
 
-	// writeInert switches the hub to scoper with Markdown files inert, after mutate has changed the config.
+	// writeInert writes the hub config with scoper and Markdown files inert, then lets mutate change the config.
 	writeInert := func(t *testing.T, scoper string, mutate func(cfg map[string]any)) {
 		t.Helper()
 		config := scopesConfigWith(t, scoper, func(cfg map[string]any) {
@@ -226,7 +231,7 @@ func TestGateTest_Scopes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// noCarryTier1 lists tier1 apart from tier0 with carry: false.
+	// noCarryTier1 drops tier1's covers and sets its carry to false.
 	noCarryTier1 := func(cfg map[string]any) {
 		tier1 := cfg["tiers"].(map[string]any)["tier1"].(map[string]any)
 		delete(tier1, "covers")
@@ -280,7 +285,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
-	// withSharedBuild declares the hub's build step over the stand-in, sets shared_build on tier0 and leaves tier1 out of it and no longer covering tier0.
+	// withSharedBuild declares the hub's build step over the stand-in and sets shared_build on tier0.
+	// It also clears the covers of tier1.
 	withSharedBuild := func(cfg map[string]any) {
 		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "timeout_min": 1}
 		tiers := cfg["tiers"].(map[string]any)
@@ -584,7 +590,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, gate(t, pair, nil, "--base", base), []string{"./..."})
 	})
 
-	// The rows from here commit to the pair's branch and run in order; the one row after them runs whole and reads no history.
+	// The rows from here commit to the pair's branch and run in order;
+	// the one after them runs whole and reads no history.
 	// real runs `lym gate test args...` from the pair with the real go command, which the green record lists packages with.
 	real := func(t *testing.T, args ...string) *runningGate {
 		t.Helper()
@@ -652,7 +659,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 
 		second := real(t, "--card", "1")
-		// wantCarried names the all scope form, which a --card call never prints.
+		// A --card call never prints the all scope form, so this call counts carried lines instead of using wantCarried.
 		if got := second.tierArgs(t); second.exit != 0 || len(got) != 0 || strings.Count(second.stdout.String(), " carried ") != 3 {
 			t.Errorf("second call = exit %d, tier invocations %q, stdout %q; want the listed tier, the vet run and the guard step carried", second.exit, got, second.stdout.String())
 		}
@@ -681,7 +688,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
-	// The rows from here read the diff base each tier takes: the merge base is the commit the prime stands on, since the pair was fast-forwarded onto it.
+	// The rows from here read the diff base each tier takes.
+	// The merge base is the commit the prime stands on, since the pair was fast-forwarded onto it.
 	mergeBase := gitkit.RevParse(t, prime, "HEAD")
 	wantDerivation := func(t *testing.T, g *runningGate, base, tiers string) {
 		t.Helper()
@@ -859,7 +867,9 @@ func TestGateTest_Scopes(t *testing.T) {
 		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", "HEAD") })
 		recordPath := filepath.Join(t.TempDir(), "standin.json")
 		standInEnv := map[string]string{helperEnv: helperRoleStandIn, helperRecordEnv: recordPath}
-		// writeGate declares the finalize key over gateTiers, tier1 exiting tier1Exit and, with sharedBuild, tier0 opting into a build that exits buildExit; neither tier covers the other.
+		// writeGate declares the finalize key over gateTiers, with tier1 exiting tier1Exit.
+		// With sharedBuild, tier0 opts into a build that exits buildExit.
+		// Neither tier covers the other.
 		writeGate := func(t *testing.T, gateTiers []int, tier1Exit string, sharedBuild bool, buildExit string) {
 			t.Helper()
 			config := scopesConfigWith(t, "go", func(cfg map[string]any) {

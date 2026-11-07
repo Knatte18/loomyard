@@ -1,4 +1,5 @@
-// dobbygeom.go tells dobby's engine its paths for one worktree of a hub, and fills the deps that start every dobby this machine owns.
+// dobbygeom.go tells dobby's engine its paths for one worktree of a hub.
+// It also fills the deps that start every dobby this machine owns.
 
 package hubgeom
 
@@ -18,10 +19,13 @@ import (
 )
 
 // DobbyGeometry tells dobbyengine its paths for the worktree named worktree, the prime's name or a beam's slug.
-// The lock, state, log and output paths, the announced-head file and the tidy directory lie under that worktree's `.lym/beam/` directory at the worktree's own anchor, and the batten runs directory under the prime.
+// The lock, state, log, output, announced-head and tidy paths lie in the worktree's `.lym/beam/` directory.
+// That directory is at the worktree's own anchor, and the batten runs directory lies under the prime.
 // The slug is empty for the prime.
-// MoveRecords holds the anchor-move record paths of the worktree's own records worktree and of the prime's, the prime's once when the worktree is the prime.
-// A worktree with no directory in the hub is an error naming it, and so is a lym executable that cannot be located or an anchor that cannot be read.
+// MoveRecords holds the anchor-move record paths of the worktree's own records worktree and of the prime's.
+// The prime's path appears once when the worktree is the prime.
+// A worktree with no directory in the hub is an error naming it.
+// So is a lym executable that cannot be located or an anchor that cannot be read.
 func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometry, error) {
 	root := filepath.Join(prime.HubPath, worktree)
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {
@@ -65,13 +69,16 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 	}, nil
 }
 
-// DobbyBeamDir returns the `.lym/beam/` directory of the worktree at worktree, at the worktree's own anchor, where the dobby keeps its lock, state, log and output files.
+// DobbyBeamDir returns the `.lym/beam/` directory of worktree, at the worktree's own anchor.
+// The dobby keeps its lock, state, log and output files there.
 func DobbyBeamDir(worktree *lymcwd.Location) string {
 	return filepath.Join(worktree.HubPath, worktree.WorktreeName, worktree.AnchorRel, lymdirs.DotLymDirName, lymdirs.BeamDirName)
 }
 
-// PawlPaths tells the pawl producers the land request, dobby-stop marker, await marker and hand-off marker paths of the beam whose pair is at beam, and the path of a reopen request an older binary wrote.
-// They all lie directly under the beam worktree's `.lym/beam/` directory at the worktree's own anchor, where DobbyGeometry puts the dobby's files, so the dobby, `lym beam land` and Beam-Await read one directory.
+// PawlPaths returns the paths the pawl producers use for the beam whose pair is at beam.
+// They are the land request, dobby-stop, await and hand-off markers, and the reopen request an older binary wrote.
+// They all lie directly in the `.lym/beam/` directory of the beam worktree, at its own anchor.
+// That is the directory the dobby's files use, so the dobby, `lym beam land` and Beam-Await read one directory.
 func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 	beamDir := filepath.Join(beam.AnchorPath(), lymdirs.DotLymDirName, lymdirs.BeamDirName)
 	return pawlengine.Paths{
@@ -84,8 +91,12 @@ func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 }
 
 // DobbyStart fills dobbyengine.StartDeps over the hub of prime.
-// The owners come from the board, the prime owner claim is the one a batten resume makes, and the local beams are the pairs whose origin record carries the beam mark, each with the owner it effectively reads as through ParentOf.
-// An anchor change standing on a worktree's own records worktree or on the prime's reads through fabricengine.MoveInProgress, and a landing hold reads from the local board's entry of the worktree.
+// The owners come from the board.
+// The prime owner claim is the one a batten resume makes.
+// The local beams are the pairs whose origin record carries the beam mark.
+// Each carries the owner it effectively reads as through its parent.
+// The move check reads an anchor change standing on a worktree's own records worktree or on the prime's.
+// A landing hold is read from the local board's entry of the worktree.
 func DobbyStart(prime *lymcwd.Location) dobbyengine.StartDeps {
 	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
@@ -137,7 +148,8 @@ func LandingHeld(prime *lymcwd.Location, worktree string) (bool, error) {
 	return false, nil
 }
 
-// moveGateSlugs returns the worktrees whose anchor change stops the dobby of worktree: worktree itself, then the prime, once when they are the same.
+// moveGateSlugs returns the worktrees whose anchor change stops the dobby of worktree:
+// worktree itself, then the prime, once when they are the same.
 func moveGateSlugs(prime *lymcwd.Location, worktree string) []string {
 	if worktree == prime.WorktreeName {
 		return []string{worktree}
@@ -145,7 +157,8 @@ func moveGateSlugs(prime *lymcwd.Location, worktree string) []string {
 	return []string{worktree, prime.WorktreeName}
 }
 
-// localBeams lists the pairs of the hub present on this machine whose origin record carries the beam mark, each with the owner it effectively reads as.
+// localBeams lists the pairs of the hub present on this machine whose origin record carries the beam mark.
+// Each pair carries the owner it effectively reads as.
 func localBeams(prime *lymcwd.Location, boardDir string) ([]dobbyengine.BeamPair, error) {
 	entries, err := fabricengine.List(prime.AnchorPath())
 	if err != nil {

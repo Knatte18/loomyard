@@ -1,4 +1,5 @@
-// cli.go builds the beam cobra command with its create, describe, pr, ready, land, merge-parent, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the cobra command tree of `lym beam`, one constructor per verb.
+// It also holds RunCLI and RunCLIIn, which run that tree with output written to an io.Writer.
 
 package beamcli
 
@@ -28,7 +29,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Command returns the cobra command for the beam module.
+// Command returns the root cobra command of the beam module, with its verb groups attached.
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
@@ -63,7 +64,6 @@ flagged the beam.`,
 	return pr
 }
 
-// prOpenCmd returns the `beam pr open` verb.
 func prOpenCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "open <slug>",
@@ -101,7 +101,6 @@ Example:
 	}
 }
 
-// prUpdateCmd returns the `beam pr update` verb.
 func prUpdateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "update <slug>",
@@ -131,7 +130,6 @@ Example:
 	}
 }
 
-// prStatusCmd returns the `beam pr status` verb.
 func prStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status <slug>",
@@ -165,7 +163,6 @@ Example:
 	}
 }
 
-// prCloseCmd returns the `beam pr close` verb.
 func prCloseCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "close <slug>",
@@ -200,7 +197,6 @@ Example:
 	}
 }
 
-// describeCmd returns the `beam describe` verb.
 func describeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "describe <slug>",
@@ -274,13 +270,15 @@ Example:
 	}
 }
 
-// statusResult is the envelope of `beam status`: one entry per local beam, the prime's first, and one adopt check item per subject the hub holds a record of.
+// statusResult is the envelope of `beam status`:
+// one entry per local beam, the prime's first, and one adopt check item per subject the hub holds a record of.
 type statusResult struct {
 	Dobbies     []statusEntry        `json:"dobbies"`
 	AdoptChecks []adoptcli.CheckView `json:"adopt_checks,omitempty"`
 }
 
-// statusEntry is one beam's view in `beam status`: the dobby's structured view and the lines a beam's window draws for it, and the orch's view, or why either did not read.
+// statusEntry is one beam's view in `beam status`:
+// the dobby's structured view and the lines its window draws for it, and the orch's view, or why either did not read.
 type statusEntry struct {
 	Worktree  string            `json:"worktree"`
 	View      *dobbyengine.View `json:"view,omitempty"`
@@ -322,7 +320,7 @@ Example:
 	}
 }
 
-// dobbyStatus reads the view of the prime's dobby and orch and of the dobby and orch of every local beam at now.
+// dobbyStatus reads the dobby and orch views of the prime and of every local beam at the given time.
 // A view that does not read is reported in its entry and joins the returned error, and the others still read.
 func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 	beams, err := hubgeom.DobbyStart(prime).Beams()
@@ -388,8 +386,10 @@ type startResult struct {
 	Beams []startEntry `json:"beams"`
 }
 
-// startEntry is one beam's outcome of `beam start`: the dobby's outcome and detail, what the orch start did, and the error that stopped it.
-// Reconcile, FailedPushes, OwnerPauses and Mutations are what the one prepared beam gathered for the hub, and are absent on the others.
+// startEntry is one beam's outcome of `beam start`:
+// the dobby's outcome and detail, what the orch start did, and the error that stopped it.
+// Reconcile, FailedPushes, OwnerPauses and Mutations hold what the one prepared beam gathered for the hub;
+// they are absent on the others.
 type startEntry struct {
 	Worktree         string                     `json:"worktree"`
 	Outcome          string                     `json:"outcome,omitempty"`
@@ -559,7 +559,8 @@ func stop(cmd *cobra.Command, slug string) (*orchcli.BeamDownReport, error) {
 	return &report, nil
 }
 
-// actingLocation resolves the worktree the command runs in, refusing outside a hub with the resolver's own error and where to run the verb.
+// actingLocation resolves the worktree the command runs in.
+// A refusal carries the resolver's error and where to run the verb.
 func actingLocation(cmd *cobra.Command, verb string) (*lymcwd.Location, error) {
 	cwd, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
@@ -610,13 +611,17 @@ machine owns the beam. It is launched by "lym beam start", never by hand.`,
 	}
 }
 
-// runDobby places the worktree at root, registers this process as its dobby and runs it until ctx ends, and prints the outcome.
-// A worktree dobby cannot be placed is refused before anything is registered or locked, and the registration waits for the lock, so a dobby that finds another one holding it ends the call with nothing registered.
+// runDobby places the worktree at root, registers this process as its dobby, and runs it until ctx ends.
+// It prints the outcome.
+// A worktree that cannot be placed is refused before anything is registered or locked.
+// The registration waits for the lock,
+// so a dobby that finds another one holding it ends the call with nothing registered.
 func runDobby(ctx context.Context, out io.Writer, root string) int {
 	return runDobbyWith(ctx, out, root, hubDobbyDeps, orchcli.NotifyFromScoped, reapInheritedChildren)
 }
 
-// reapInheritedChildren waits on the batten passes a dobby re-exec'd onto a new binary keeps from its old image, with nothing left waiting on them.
+// reapInheritedChildren waits on the batten passes a dobby re-exec'd onto a new binary keeps from its old image.
+// Nothing is left waiting on them.
 func reapInheritedChildren() {
 	if pids, err := proc.ReapInheritedChildren(); err != nil {
 		logger.Warn("beamcli: the dobby's inherited children are not reaped", "error", err)
@@ -625,10 +630,15 @@ func reapInheritedChildren() {
 	}
 }
 
-// runDobbyWith is runDobby over the seams that wire the dobby over the hub, post a notice to the nearest live orch and reap the children it inherited.
-// The reap runs once the worktree is placed and before the dobby starts anything, so a refused start waits on no child of the process.
+// runDobbyWith places the worktree at root and runs its dobby until ctx ends.
+// The wire seam builds the dobby's dependencies over the hub.
+// The notify seam posts a notice to the nearest live orch,
+// and the reap seam waits on the children the dobby inherited.
+// The reap runs once the worktree is placed and before the dobby starts anything,
+// so a refused start waits on no child of the process.
 // Each exit it takes before dobbyengine.Run leaves a line in the dobby's log, and one after a re-exec also a notice.
-// Where selfexec execs, it moves the process's standard output and error onto the beam's `dobby.out`, and rotates that file once it holds the lock.
+// Where selfexec execs, the process moves its standard output and error onto the beam's `dobby.out`.
+// It rotates that file once it holds the lock.
 func runDobbyWith(
 	ctx context.Context, out io.Writer, root string,
 	wire func(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error),
@@ -672,7 +682,8 @@ func runDobbyWith(
 }
 
 // placeDobby resolves the worktree at root into its own location, the prime's location and the dobby's geometry.
-// Only the prime and a local pair whose origin record carries the beam mark are placed, as `lym beam start` reads them; any other directory is refused naming that verb.
+// Only the prime and a local pair whose origin record carries the beam mark are placed, as `lym beam start` reads them.
+// Any other directory is refused with an error that names that verb.
 // A refusal made once the worktree resolved still returns its location, which is nil for a refusal before that.
 func placeDobby(root string) (*lymcwd.Location, *lymcwd.Location, dobbyengine.Geometry, error) {
 	refuse := func(format string, args ...any) error {
@@ -848,7 +859,7 @@ Example:
 	}
 }
 
-// onHubLandDeps runs verb, such as `beam land`, `beam ready` or `beam describe`, over the land deps of the hub the command's cwd belongs to.
+// onHubLandDeps runs verb over the land deps of the hub that holds the command's cwd.
 // It resolves the hub's prime from the cwd's own worktree, so a task pair reaches the verb's own refusals.
 // A nil result is a refusal made before the request was written.
 func onHubLandDeps(cmd *cobra.Command, verb string, run func(deps landDeps) (map[string]any, error)) (*map[string]any, error) {
@@ -875,7 +886,8 @@ func onHubLandDeps(cmd *cobra.Command, verb string, run func(deps landDeps) (map
 	return &result, nil
 }
 
-// runVerb resolves the prime from the command's cwd, runs the verb over it and prints the verb's result in the standard envelope.
+// runVerb resolves the prime from the command's cwd and runs the verb over it.
+// It prints the verb's result in the standard envelope.
 // The verb is told the name of the worktree it was run from beside the prime's location.
 // A verb's error is printed with the result it returned beside it.
 func runVerb(cmd *cobra.Command, run func(ctx context.Context, acting string, prime *lymcwd.Location) (any, error)) error {
@@ -911,12 +923,14 @@ func runVerb(cmd *cobra.Command, run func(ctx context.Context, acting string, pr
 	return nil
 }
 
-// RunCLI is the public seam for the beam module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the beam CLI on args, writes its output to out, and returns the exit code.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the beam CLI on args from cwd, writes its output to out, and returns the exit code.
+// An empty cwd reads the process working directory; any other value seeds cwd into the execution context.
+// The seed is needed because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

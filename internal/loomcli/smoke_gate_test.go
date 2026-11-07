@@ -1,28 +1,22 @@
-// smoke_gate_test.go is the live-substrate regression guard for the gate re-prompt loop
-// (internal/shuttleengine's Wait, batch 1): the one mechanism no untagged test can exercise, because
-// every hermetic test fake in internal/shedrecipe and internal/shedadapters evaluates a gate closure
-// exactly once rather than running the real send-and-poll loop (see the "every test fake evaluates
-// the gate once" Shared Decision) -- the loop's own coverage belongs against the real wait loop,
-// which is here.
+// smoke_gate_test.go is the live-substrate guard for the gate re-prompt loop in shuttleengine's Wait.
+// Hermetic test fakes evaluate a gate closure exactly once, so they never run the send-and-poll loop;
+// this test runs that loop against the real wait loop.
 //
-// It drives the REAL substrate -- a real hub, a real reed session, a real tmux pane, a real
-// shuttleengine.Runner writing a real run.json, and a real loomshed.NewDiscussionGate closure --
-// and spawns ZERO provider subprocesses, following smoke_attachprobe_test.go's own substitution: a
-// stub Engine whose Prepare launches a plain shell script rather than a provider. That script plays
-// the one part a real substrate is needed for: it writes a deliberately-invalid first artifact,
-// blocks reading its next turn from the pane (exactly where a real agent would block reading a
-// Send), and only writes a valid artifact once that turn arrives -- proving the gate's re-prompt
-// text was genuinely typed into a real pane and genuinely read back out of it, which no fake Send
-// can stand in for.
+// It drives the real substrate: a hub, a reed session, a tmux pane, and a shuttleengine.Runner writing run.json.
+// It also runs a real loomshed.NewDiscussionGate closure, and it spawns no provider subprocess.
+// A stub Engine's Prepare launches a plain shell script in place of a provider.
+// The script writes a deliberately invalid first artifact.
+// It then blocks reading its next turn from the pane, which is where a real agent blocks between turns;
+// it writes a valid artifact only once that turn arrives.
+// This proves the gate's re-prompt text was typed into a real pane and read back out of it;
+// no fake Send can show that.
 //
-// It lives in this package rather than in internal/shuttleengine because it needs the same hub
-// fixture, tmux skip, reed engine probe, and hermetic git TestMain smoke_attachprobe_test.go already
-// built here.
+// The test lives in this package because it reuses the fixtures the package's smoke tests already build:
+// the hub fixture, the tmux skip, the reed engine probe, and the hermetic git TestMain.
 //
-// This file's compile gate is its only automatic guard: its build tag excludes it from every
-// untagged run and from the repo-wide done gate, and the task's own chained tagged invocation
-// (`go test -tags tmux -run '^$' ./internal/loomcli/...`) type-checks it without ever executing it.
-// An operator runs this test itself, by hand, against a real substrate.
+// The build tag excludes this file from untagged runs and from the repo-wide done gate.
+// Its only automatic guard is a compile check under the tag: `go test -tags tmux -run '^$' ./internal/loomcli/...`.
+// An operator runs the test by hand against a real substrate.
 
 package loomcli
 
@@ -45,32 +39,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// gateRepromptReadEngine is a shuttleengine.Engine that launches a plain shell script standing in
-// for a re-prompted agent, and that -- unlike shellLaunchEngine's own no-op -- gives ComposeSend
-// real behaviour: it types text into the pane and submits it, exactly what the script's own `read`
-// needs to unblock.
+// gateRepromptReadEngine is a shuttleengine.Engine that launches a shell script in place of a re-prompted agent.
+// ComposeSend types text into the pane and submits it, which unblocks the script's `read`.
 //
-// Every other method is the embedded shuttlefake.Engine's inert answer, because the path this
-// suite exercises (Start's run.json persistence, reed's liveness answer, Wait's events-plus-
-// output-files poll, and now Send's real delivery) never reaches any of them.
+// Every other method is the embedded shuttlefake.Engine's inert answer, as the suite never reaches them.
 // It is used through a pointer, since the embedded fake holds a mutex.
 type gateRepromptReadEngine struct {
 	shuttlefake.Engine
-	// quietSeconds is how long the script waits before writing its first, deliberately-invalid
-	// artifact, so the run is genuinely in flight rather than already complete when Wait's first
-	// tick runs.
+	// quietSeconds is how long the script sleeps before its first, deliberately invalid artifact.
+	// The delay keeps the run in flight, not already complete, when Wait's first tick runs.
 	quietSeconds int
 }
 
-// Prepare writes a script that: waits quietSeconds, writes an invalid decision record plus an
-// existing support log, appends a turn-end event, blocks on a `read` of its next turn exactly as a
-// real agent's pane blocks between turns, then -- once that turn arrives -- overwrites the decision
-// record with a valid one and appends a second turn-end event before sitting idle.
+// Prepare writes a script that waits quietSeconds, then writes an invalid decision record and an existing support log;
+// it appends a turn-end event and blocks on a `read` of its next turn, as a real agent's pane does between turns.
+// Once that turn arrives, the script overwrites the decision record with a valid one.
+// It then appends a second turn-end event and sits idle.
 //
-// The `read` line is what makes this a genuine live-substrate proof rather than a restatement of the
-// gate contract: the shell's own tty driver is what echoes the re-prompt text into the pane's visible
-// viewport, which is the same evidence sendVerified (run.go) demands of a real agent's pane, and the
-// script does not react until that evidence-producing delivery actually lands.
+// The `read` line makes this a live-substrate proof rather than a restatement of the gate contract.
+// The shell's tty driver echoes the re-prompt text into the pane's visible viewport;
+// the run loop requires that same evidence of a real agent's pane, and the script waits until that delivery lands.
 func (e *gateRepromptReadEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 	if len(spec.OutputFiles) != 2 {
 		return shuttleengine.Launch{}, fmt.Errorf("gateRepromptReadEngine: want exactly 2 output files (decision record, support log), got %d", len(spec.OutputFiles))
@@ -109,8 +97,7 @@ func (e *gateRepromptReadEngine) Prepare(runDir string, spec shuttleengine.Spec,
 	return shuttleengine.Launch{Cmd: "sh " + scriptPath, SessionID: "smoke-gate-reprompt"}, nil
 }
 
-// ParseEvents maps any non-empty events.jsonl content onto a single turn-end event, matching
-// shellLaunchEngine's own reading of this stub's events file.
+// ParseEvents maps any non-empty events.jsonl content onto a single turn-end event.
 func (e *gateRepromptReadEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	if len(data) == 0 {
 		return nil, nil
@@ -118,18 +105,19 @@ func (e *gateRepromptReadEngine) ParseEvents(data []byte) ([]shuttleengine.Event
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Raw: data}}, nil
 }
 
-// ComposeSend types text into the pane and submits it with an Enter, which is what unblocks the script's own `read` -- the one method this stub gives real behaviour besides Prepare and ParseEvents, unlike shellLaunchEngine's own inert ComposeSend, which this suite's send-verification path never needs to reach.
+// ComposeSend types text into the pane and submits it with an Enter, which unblocks the script's `read`.
 func (e *gateRepromptReadEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
 }
 
-// TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact proves the one thing no untagged test can:
-// a real agent, re-prompted through a real pane after a deliberately-invalid first artifact, fixes it and the row reports Done.
+// TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact proves that a real agent fixes its artifact.
+// The agent is re-prompted through a real pane after an invalid first attempt, and the row reports Done.
 //
-// It runs loomshed.NewDiscussionGate, the same closure a gated Discussion-Write row builds through resolveGateSpec, over a real shuttleengine.Runner's RunGated.
-// gateRepromptReadEngine stands in for the provider exactly as shellLaunchEngine does in smoke_attachprobe_test.go.
-// It asserts the run reaches a passed-gate shuttleengine.OutcomeDone, the shape a gated MultiLLMProducer.Call maps onto shedengine.Done.
-// It also asserts that the gate's reported Attempts is at least 1, and that the artifact on disk passes the same gate closure afterwards.
+// It runs loomshed.NewDiscussionGate over a real shuttleengine.Runner's RunGated.
+// gateRepromptReadEngine stands in for the provider, as shellLaunchEngine does in smoke_attachprobe_test.go.
+// It asserts the run reaches shuttleengine.OutcomeDone with a passed gate.
+// It also asserts that the gate's reported Attempts is at least 1.
+// The artifact on disk must also pass the same gate closure afterwards.
 func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
@@ -166,7 +154,8 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 		Timeout:     3 * time.Minute,
 	}
 
-	// The same closure resolveGateSpec builds for a row's "gates" entry named "discussion" (see internal/shedrecipe/entries_gate.go), driven here over a real Runner instead of a fake one.
+	// resolveGateSpec builds this same closure for a row's "gates" entry named "discussion".
+	// See internal/shedrecipe/entries_gate.go.
 	gate := loomshed.NewDiscussionGate(loomshed.DiscussionCheck{
 		RecordPath:     decisionRecordPath,
 		SupportLogPath: supportLogPath,
@@ -177,8 +166,8 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 		Citations:      true,
 	})
 
-	// RunGated blocks until Wait reaches a terminal outcome, bounded by spec.Timeout above -- no
-	// separate test-level deadline is needed on top of it.
+	// RunGated blocks until Wait reaches a terminal outcome, bounded by spec.Timeout;
+	// the test needs no separate deadline.
 	result, err := runner.RunGated(spec, shuttleengine.GateSpec{{Gate: gate, Attempts: 3}})
 	if err != nil {
 		t.Fatalf("RunGated() error = %v; want nil", err)
@@ -197,9 +186,9 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 		t.Errorf("RunGated() Result.Gate.Attempts = %d; want at least 1 -- the first, invalid attempt must have burned one re-prompt", result.Gate.Attempts)
 	}
 
-	// The artifact left on disk must itself pass the same gate closure a fresh evaluation would run
-	// -- proving the fix that unblocked the pane's read is the same fix that satisfies the mechanical
-	// check, not an artifact of the run loop's own bookkeeping.
+	// The artifact left on disk must pass the gate closure as a fresh evaluation would run it.
+	// That shows the fix that unblocked the pane's read also satisfies the mechanical check.
+	// The result is not an artifact of the run loop's own bookkeeping.
 	verdict, gerr := gate()
 	if gerr != nil {
 		t.Fatalf("gate() error = %v; want nil", gerr)
@@ -208,8 +197,8 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 		t.Errorf("gate() Passed = false (Findings: %q); want true -- the on-disk artifact must pass the gate after the re-prompt fix", verdict.Findings)
 	}
 
-	// No agent pane left behind: a Done run's own strand is reaped by finalize's cleanup step, and no
-	// respawn or stray attempt in this test ever spawned a second one.
+	// No agent pane is left behind: a Done run's own strand is reaped by finalize's cleanup step,
+	// and no respawn or stray attempt in this test spawned a second one.
 	status, err := reedEngine.Status()
 	if err != nil {
 		t.Fatalf("reed status: %v", err)

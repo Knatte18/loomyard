@@ -1,8 +1,4 @@
-// template.go — batcher.yaml template accessor.
-//
-// ConfigTemplate provides the default YAML template for batcher configuration, embedded directly
-// from template.yaml at build time, matching reedengine's and websterengine's own
-// embed-and-accessor pattern.
+// template.go holds the default batcher.yaml template and the accessor that returns it.
 
 package batcher
 
@@ -11,8 +7,7 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for batcher configuration: the name of the
-// active batchifier.
+// ConfigTemplate returns the default batcher.yaml template, embedded from template.yaml at build time.
 func ConfigTemplate() string {
 	return configTemplate
 }

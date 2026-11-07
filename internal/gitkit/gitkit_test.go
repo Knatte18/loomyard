@@ -28,8 +28,7 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	dir := t.TempDir()
 	MustRun(t, dir, "git", "init")
 
-	// The file is integration-tagged, so spawning git directly via exec.Command
-	// for these two read-only assertions is legal here.
+	// The file is integration-tagged, so a direct exec.Command is legal here for these two read-only assertions.
 	cmd := exec.Command("git", "config", "core.fsmonitor")
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
@@ -62,7 +61,9 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 }
 
 // TestCopiedRepoScenario drives one CopyRepo fixture through the fixture and query helpers.
-// The steps run serially in one order and share the fixture's repository state: the query steps start on the fixture's main branch, and the branches-and-ancestry step switches the checkout to the side branch last.
+// The steps run serially in one order and share the fixture's repository state.
+// The query steps start on the fixture's main branch,
+// and the branches-and-ancestry step switches the checkout to the side branch last.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestCopiedRepoScenario(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -75,7 +76,7 @@ func TestCopiedRepoScenario(t *testing.T) {
 		MustRun(t, repo, "git", "rev-parse", "HEAD")
 
 		// Origin points at the copied bare, not the template.
-		// Normalize to forward slashes: git returns forward-slash paths on Windows while filepath.Join uses backslashes; both are equivalent local paths.
+		// Normalize to forward slashes: git returns forward-slash paths on Windows; filepath.Join uses backslashes.
 		gotURL := filepath.ToSlash(Git(t, repo, "remote", "get-url", "origin"))
 		if gotURL != filepath.ToSlash(fixture.Bare) {
 			t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
@@ -176,7 +177,8 @@ func TestCopiedRepoScenario(t *testing.T) {
 	})
 }
 
-// TestFixtureGitMarker_ReachesHelperChildren verifies that git spawned by Git carries the fixture marker, read back through git's trace2 env-var events.
+// TestFixtureGitMarker_ReachesHelperChildren verifies that git spawned by Git carries the fixture marker.
+// The marker is read back through git's trace2 env-var events.
 // It sets process environment variables through t.Setenv, so it does not call t.Parallel.
 func TestFixtureGitMarker_ReachesHelperChildren(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -209,8 +211,8 @@ func TestFixtureGitMarker_ReachesHelperChildren(t *testing.T) {
 	}
 }
 
-// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern
-// to confirm non-zero exit.
+// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure.
+// It re-runs itself as a subprocess to confirm the non-zero exit.
 func TestMustRun_Failure(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -226,7 +228,7 @@ func TestMustRun_Failure(t *testing.T) {
 	// Build a fixture so the subprocess has a valid git repo to run against.
 	fixture := CopyRepo(t)
 
-	// Re-invoke this test as a subprocess; the -tags flag must match the current build.
+	// Re-invoke this test binary as a subprocess, so it runs with the same build tags.
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMustRun_Failure$", "-test.v")
 	cmd.Env = append(os.Environ(),
 		"GO_TEST_SUBPROCESS=MUSTRUN_FAILURE",
@@ -238,8 +240,7 @@ func TestMustRun_Failure(t *testing.T) {
 	}
 }
 
-// TestCopyDirRecursive_RefusesSymlinks verifies that copyDirRecursive returns an error instead of
-// following or copying a symlink planted in the source tree.
+// TestCopyDirRecursive_RefusesSymlinks verifies that copyDirRecursive returns an error for a symlink in the source tree.
 func TestCopyDirRecursive_RefusesSymlinks(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -270,20 +271,17 @@ func TestSeedConfig(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	// Create a temp git repo to seed
 	tmpDir := t.TempDir()
 	MustRun(t, tmpDir, "git", "init", "-b", "main")
 	MustRun(t, tmpDir, "git", "config", "user.email", "test@test.com")
 	MustRun(t, tmpDir, "git", "config", "user.name", "Test")
 
-	// Seed config
 	configContent := "test_key: test_value\n"
 	SeedConfig(t, tmpDir, map[string]string{
 		"module1": configContent,
 		"module2": "other: value\n",
 	})
 
-	// Verify files exist with correct content
 	module1Path := configengine.ConfigFile(tmpDir, "module1")
 	content1, err := os.ReadFile(module1Path)
 	if err != nil {
@@ -302,7 +300,6 @@ func TestSeedConfig(t *testing.T) {
 		t.Errorf("module2 content = %q; want %q", string(content2), "other: value\n")
 	}
 
-	// Verify files are tracked in git
 	cmd := exec.Command("git", "ls-files")
 	cmd.Dir = tmpDir
 	output, err := cmd.CombinedOutput()
@@ -317,7 +314,6 @@ func TestSeedConfig(t *testing.T) {
 		t.Errorf("module2.yaml not in git ls-files: %s", lsOutput)
 	}
 
-	// Verify working tree is clean (all committed)
 	cmd = exec.Command("git", "status", "--porcelain")
 	cmd.Dir = tmpDir
 	output, err = cmd.CombinedOutput()

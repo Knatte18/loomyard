@@ -1,5 +1,7 @@
-// cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", the pinned refusal precedence (run-id listing, unknown recipe, verb gate, the recipe's own refusal), and run's positional-argument arity.
-// It stays in tier 0 throughout: armFromSeed performs no lymcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lymcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lymcwd.Resolve spawn belongs only in an integration-tagged file (internal/lymcwd/lymcwd_test.go is the precedent).
+// cli_test.go covers armFromSeed's seed-driven arming: run-id defaulting, refusal precedence, and run's argument arity.
+// It stays in tier 0: armFromSeed performs no lymcwd.Resolve of its own,
+// so each case drives it against a hand-built *lymcwd.Location with no git repository.
+// A real lymcwd.Resolve spawn belongs only in an integration-tagged file.
 package shedcli
 
 import (
@@ -24,16 +26,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fixtureLocation builds a synthetic *lymcwd.Location by hand, mirroring the field derivation
-// Resolve performs, without spawning git.
+// fixtureLocation builds a synthetic *lymcwd.Location by hand, deriving its fields as lymcwd.Resolve does.
+// It spawns no git process.
 func fixtureLocation(t *testing.T) *lymcwd.Location {
 	t.Helper()
 	return &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 }
 
-// TestArmFromSeed_RunIDDefaultsToSelf asserts an omitted run-id positional (nil args) addresses
-// shedrun.SelfRunID: seeding only "self" and calling with nil args succeeds, while calling with an
-// explicit different run-id -- which has no seed -- refuses.
+// TestArmFromSeed_RunIDDefaultsToSelf asserts that an omitted run-id positional addresses shedrun.SelfRunID.
+// Seeding only "self" lets a nil-args call succeed, while an explicit run-id with no seed refuses.
 func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
 	tiergate.Require(t, 0)
 	loc := fixtureLocation(t)
@@ -50,12 +51,13 @@ func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
 	}
 }
 
-// loopRun is the world of a row rendered through ReportLoopArmError: whether the run's status file exists and which locks are held.
+// loopRun is the world a ReportLoopArmError row is rendered in:
+// whether the run's status file exists and which locks are held.
 type loopRun struct {
 	seedStatus   bool
 	holdRunLock  bool
 	holdLoopLock bool
-	// wantStop is the loop object's stop.
+	// wantStop is the stop reason the loop object must report.
 	wantStop string
 	// wantState is the status file's state afterwards; empty means no status file exists.
 	wantState string
@@ -132,9 +134,11 @@ func (l *loopRun) assertLoop(t *testing.T, envelope map[string]any) {
 	}
 }
 
-// TestArmFromSeed_RefusalEnvelopeKinds renders armFromSeed's refusal through shedverbs.ReportArmError, the path resolvePersistentPreRun uses, and pins the envelope's kind per verb.
-// A missing run stays kind-less on step, since a missing run is not a step kind and a driver never re-seeds;
-// every other arming refusal on step is a bootstrap error with a trace file and a way forward, and on any other verb it stays kind-less.
+// TestArmFromSeed_RefusalEnvelopeKinds pins the envelope's kind per verb for each armFromSeed refusal.
+// It renders each refusal through shedverbs.ReportArmError, as the CLI does.
+// A missing run stays kind-less on step, since a missing run is not a step kind and a driver never re-seeds.
+// Every other arming refusal on step is a bootstrap error with a trace file and a way forward;
+// on any other verb it stays kind-less.
 // Rows replace an entry of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -163,7 +167,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 		wantSuffix string
 		// wantWayForwardCount is how many "way forward:" clauses the error message holds, when kind is bootstrap.
 		wantWayForwardCount int
-		// loopRun, when set, renders through ReportLoopArmError, the path a step carrying --until-stop takes, over an ArmStop in a fresh directory.
+		// loopRun, when set, renders the refusal through ReportLoopArmError, as a step carrying --until-stop does.
 		loopRun *loopRun
 	}{
 		{
@@ -308,8 +312,10 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 }
 
 // TestArmFromSeed_RefusalPrecedence pins armFromSeed's refusals as a table, in the order they fire.
-// Stage 1 (lymcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside resolvePersistentPreRun, which calls lymcwd.Resolve unconditionally before ever calling armFromSeed -- first by construction, not by a value armFromSeed itself could reorder -- and is exercised by lymcwd's own integration-tagged suite (internal/lymcwd/lymcwd_test.go).
-// The rows pin stages 2 through 4 against the identical location and verb shape, so a regression reordering any of them shows up as the wrong row's assertion failing rather than a passing test for the wrong reason.
+// The first stage is lymcwd.Resolve's not-a-git-repository refusal.
+// It runs before armFromSeed by construction, and lymcwd's integration-tagged suite exercises it.
+// The rows pin stages 2 through 4 against the identical location and verb shape.
+// A regression that reorders them fails the wrong row's assertion, rather than passing for the wrong reason.
 // Rows shrink or replace entries of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,6 +1,7 @@
-// portals_sweep_integration_test.go proves Reconcile sweeps the retired portal links and the old hub workspace file, keeps and reports everything else.
-// It also proves a regeneration warns while a retired artifact remains.
-// Shares the single TestMain in testmain_test.go.
+// portals_sweep_integration_test.go proves Reconcile sweeps the retired portal links and the retired hub workspace file.
+// It keeps and reports everything else.
+// It also proves that a regeneration warns while a retired artifact remains.
+// The package's single TestMain lives in testmain_test.go.
 
 package fabricengine_test
 
@@ -20,15 +21,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// retiredArtifactWarning is the text of the regeneration's retired-artifact warning that tells it from the failed-regeneration one.
+// retiredArtifactWarning is the text of the regeneration's warning about retired artifacts.
+// It tells that warning apart from the failed-regeneration one.
 const retiredArtifactWarning = "retired portal links"
 
-// portalsAnchorDir returns <hub>/_portals/<AnchorRel>, where the retired portal links lived.
+// portalsAnchorDir returns <hub>/_portals/<AnchorRel>, the directory that holds the retired portal links.
 func portalsAnchorDir(h *hubforge.Hub) string {
 	return filepath.Join(h.Path, "_portals", h.Location.AnchorRel)
 }
 
-// plantPortalLink plants the link a retired fabric verb created for name: <hub>/_portals/<AnchorRel>/<name> pointing at <hub>/<name>/<AnchorRel>/_lym, which need not exist.
+// plantPortalLink creates the retired portal link for name at <hub>/_portals/<AnchorRel>/<name>.
+// The link points at <hub>/<name>/<AnchorRel>/_lym, which need not exist.
 func plantPortalLink(t *testing.T, h *hubforge.Hub, name string) string {
 	t.Helper()
 	link := filepath.Join(portalsAnchorDir(h), name)
@@ -41,12 +44,12 @@ func plantPortalLink(t *testing.T, h *hubforge.Hub, name string) string {
 	return link
 }
 
-// retiredWorkspacePath returns the path of the old hub workspace file under _launchers.
+// retiredWorkspacePath returns the path of the retired hub workspace file under _launchers.
 func retiredWorkspacePath(h *hubforge.Hub) string {
 	return filepath.Join(h.Path, "_launchers", h.Location.AnchorRel, filepath.Base(h.PrimeWorktree())+".code-workspace")
 }
 
-// plantRetiredWorkspaceFile writes a file at the old workspace path and returns the path.
+// plantRetiredWorkspaceFile writes a file at the retired workspace path and returns the path.
 func plantRetiredWorkspaceFile(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()
 	file := retiredWorkspacePath(h)
@@ -59,7 +62,6 @@ func plantRetiredWorkspaceFile(t *testing.T, h *hubforge.Hub) string {
 	return file
 }
 
-// reconcileAt runs Reconcile at l on h and fails the test on an error.
 func reconcileAt(t *testing.T, h *hubforge.Hub, l *lymcwd.Location) fabricengine.ReconcileResult {
 	t.Helper()
 	result, err := h.Topology.Reconcile(l)
@@ -79,7 +81,7 @@ func recordedEntry(result fabricengine.ReconcileResult, kind fabricengine.Kind, 
 	return false
 }
 
-// assertAbsent fails the test when path exists, a link counting as present.
+// assertAbsent fails the test when path exists; a link counts as present even when its target is missing.
 func assertAbsent(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); !os.IsNotExist(err) {
@@ -87,7 +89,7 @@ func assertAbsent(t *testing.T, path string) {
 	}
 }
 
-// assertPresent fails the test when path does not exist, a link counting as present.
+// assertPresent fails the test when path does not exist; a link counts as present even when its target is missing.
 func assertPresent(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); err != nil {
@@ -116,7 +118,8 @@ func assertDetailNames(t *testing.T, details []string, want ...string) {
 }
 
 // TestReconcile_SweepsRetiredHubArtifacts runs each sweep row on a root-anchored and a nested-anchor hub.
-// The top level is not parallel: the warning row captures the logger, so every serial row runs before its parent releases the parallel ones.
+// The top level is not parallel, because the warning row captures the logger.
+// Every serial row then runs before its parent releases the parallel ones.
 func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
 	tiergate.Require(t, 1)
 	for _, anchor := range []string{".", "backend"} {

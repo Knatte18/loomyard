@@ -1,8 +1,10 @@
-// bouncer_commit_test.go covers BouncerConfig.Commit and BouncerConfig.Approve -- the two seams
-// that let a segment whose round producer runs no git of its own still have its reviewed artifacts
-// approved and committed by the loop owner. Every case below builds on the harvest vehicle:
-// judgeFakeShuttle writes the round's verdict and ledger during the run, so judgeCall harvests and
-// settle runs within the same Call that produced them, and nothing but the seam(s) is under test.
+// bouncer_commit_test.go covers BouncerConfig.Commit and BouncerConfig.Approve.
+// Those seams let a segment whose round producer runs no git still have its reviewed artifacts
+// approved and committed by the loop owner.
+// Each case uses the judgeFakeShuttle harvest.
+// The fake writes the round's verdict and ledger during the run.
+// Harvest and settle then both run within the same Call, through judgeCall.
+// Only the seams are under test.
 
 package shedadapters
 
@@ -21,8 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seamLog is a call log both the Approve and Commit closures append a marker to; one shared log,
-// never two independent booleans, since two booleans cannot distinguish the two orderings.
+// seamLog is the call log that the Approve and Commit closures append a marker to.
+// It is one shared log, because two independent booleans cannot distinguish the two orderings.
 type seamLog struct{ calls []string }
 
 func (l *seamLog) approve(err error) func() error {
@@ -39,11 +41,12 @@ func (l *seamLog) commit(err error) func() error {
 	}
 }
 
-// TestBouncer_ConvergedSettle_CallsApproveThenCommit pins that a CONVERGED verdict calls each
-// non-nil seam exactly once, Approve strictly before Commit, before Done is returned with the
-// ledger as pointer. A nil seam is not an error and does nothing: the no-seam row is what pins the
-// shipped Webster-Bouncer row's behaviour as unchanged, since that row carries no commit_seam key
-// -- its Burler partner commits its own fixes, so BouncerConfig never sets Commit for it.
+// TestBouncer_ConvergedSettle_CallsApproveThenCommit pins that a CONVERGED verdict calls each non-nil seam exactly once.
+// Approve runs strictly before Commit, and then Done is returned with the ledger as a pointer.
+// A nil seam is not an error and does nothing.
+// The no-seam row pins that the Webster-Bouncer row behaves unchanged:
+// that row sets no commit_seam key.
+// Its Burler partner commits its own fixes, so BouncerConfig never sets Commit for it.
 //
 //testtiming:keep pins that each non-nil seam runs exactly once, Approve strictly before Commit, and that a nil seam is not an error
 func TestBouncer_ConvergedSettle_CallsApproveThenCommit(t *testing.T) {
@@ -88,7 +91,7 @@ func TestBouncer_ConvergedSettle_CallsApproveThenCommit(t *testing.T) {
 	}
 }
 
-// evidenceLedgerContent returns the bytes writeEvidenceLedger writes for round, for the fakes that write a ledger during a run.
+// evidenceLedgerContent returns the ledger bytes for round, for the fakes that write a ledger during a run.
 func evidenceLedgerContent(t *testing.T, round int, entries ...evidenceEntry) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -100,8 +103,10 @@ func evidenceLedgerContent(t *testing.T, round int, entries ...evidenceEntry) st
 	return string(content)
 }
 
-// TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit pins that a CONVERGED round calls the CarryOver seam once, before Approve and Commit.
-// The entry holds the round's open MEDIUM-or-worse and unlabelled findings sorted by key, each with the ledger rounds its key was open in and an "unlabelled" label where the ledger has none, and anchor-relative slash-separated paths.
+// TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit pins that a CONVERGED round calls the seam once.
+// The seam receives the round's open MEDIUM-or-worse and unlabelled findings, sorted by key.
+// Each finding carries the ledger rounds its key was open in, with an "unlabelled" label where the ledger has none.
+// Paths are anchor-relative and slash-separated.
 // A round with no such finding calls the seam with an empty list.
 func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -176,8 +181,10 @@ func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing
 	}
 }
 
-// TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle pins that a failed carry-over returns an error naming its cause with a way forward, never Stuck, and runs neither Approve nor Commit.
-// The failure is either the seam's own error or a run directory outside the anchor, which fails before the seam is called.
+// TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle pins that a failed carry-over returns an error.
+// The error names its cause with a way forward, is never Stuck, and neither Approve nor Commit runs.
+// The failure is either the seam's own error or a run directory outside the anchor.
+// The check on the run directory fails before the seam is called.
 func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -262,13 +269,13 @@ func TestBouncer_BlockingNeverCallsApproveOrCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_FailingSeamIsAnError pins that a failing seam makes settle return that error rather
-// than degrading to shedengine.Stuck, and that a failing Approve skips Commit. A regression that
-// reroutes the failure through degrade is silent and its consequence is severe: an approved
-// artifact would be bounced into a findings-free fixer round, re-approving and re-committing every
-// bounce until the budget is spent, because judged(n) stays true on re-entry. The explicit
-// non-Stuck assertion below is what catches that regression here rather than leaving it for a
-// reader to notice.
+// TestBouncer_FailingSeamIsAnError pins that settle returns a failing seam's error, not shedengine.Stuck.
+// A failing Approve also skips Commit.
+// Degrading the failure to Stuck would be silent and severe:
+// an approved artifact would be bounced into a findings-free fixer round,
+// and it would re-approve and re-commit on every bounce until the budget is spent.
+// The cause is that judged(n) stays true on re-entry.
+// The non-Stuck assertion below catches that regression rather than leaving it to a reader.
 func TestBouncer_FailingSeamIsAnError(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -322,17 +329,17 @@ func TestBouncer_FailingSeamIsAnError(t *testing.T) {
 	}
 }
 
-// TestBouncer_Commit_CancelledContextStillCommits pins that a cancelled context still runs
-// Commit, and that the commit's own result -- not a cancellation error -- governs the return. An
-// approved verdict is the one exception cancelErr never applies to, and that rule covers side
-// effects, not just the returned outcome: leaving approved work uncommitted because an operator
-// pressed Ctrl-C is precisely the dirt this seam exists to prevent.
+// TestBouncer_Commit_CancelledContextStillCommits pins that a cancelled context still runs Commit.
+// The commit's own result, not a cancellation error, governs the return.
+// An approved verdict is the one exception cancelErr never applies to.
+// That rule covers side effects, not only the returned outcome:
+// leaving approved work uncommitted because an operator pressed Ctrl-C is the dirt this seam exists to prevent.
 //
-// This case calls b.settle directly rather than b.Call: Call's own entryErr rejects an
-// already-cancelled context before ResolveRound ever runs, which is the correct behaviour for a
-// call that has not started anything yet, but it means the replay-via-Call vehicle every other
-// case in this file uses cannot exercise cancellation once judged(n) already holds. settle itself
-// never consults ctx on the approved branch, which is exactly the property under test here.
+// This case calls b.settle directly rather than b.Call.
+// Call's entryErr rejects an already-cancelled context before ResolveRound runs.
+// That is correct for a call that has not started anything yet.
+// It also means the replay-via-Call vehicle cannot exercise cancellation once judged(n) already holds.
+// settle never consults ctx on the approved branch, and this case tests that property.
 //
 //testtiming:keep pins that an already-cancelled context still commits an approved verdict, which no Call-driven test can reach
 func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {

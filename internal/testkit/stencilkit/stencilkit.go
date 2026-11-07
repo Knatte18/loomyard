@@ -1,6 +1,9 @@
 // Package stencilkit seeds stencil fixtures from the registry through `stencilstore`.
-// Seeding runs `stencilstore.Reconcile` over `stencils.Registry()`, the owner the Stencil Ownership Invariant names, so seeded files carry the hash stamp production's do.
-// Seed seeds a fresh temp directory, SeedInto seeds a caller-given directory such as a fixture hub's stencils directory, and Remove deletes named stencils for deliberate-absence tests.
+// Seeding runs `stencilstore.Reconcile` over `stencils.Registry()` in production mode.
+// Seeded files carry the hash stamp production's files do.
+// Seed seeds a fresh temp directory.
+// SeedInto seeds a caller-given directory, such as a fixture hub's stencils directory.
+// Remove deletes named stencils for deliberate-absence tests.
 // Its only assertions are `t.Fatalf` on its own setup.
 package stencilkit
 

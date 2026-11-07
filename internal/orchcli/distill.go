@@ -1,4 +1,5 @@
-// distill.go implements the `distill` orch verb: an operator's request that the watcher write a note and compact the session, whatever cycle_mode says.
+// distill.go implements the `distill` orch verb:
+// an operator's request that the watcher write a note and compact the session, whatever cycle_mode says.
 
 package orchcli
 
@@ -8,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// distillCmd builds the `distill` subcommand.
 func (c *orchCLI) distillCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "distill",

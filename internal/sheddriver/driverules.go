@@ -1,6 +1,9 @@
-// driverules.go holds the shed driver's closed rule table as pure functions:
-// the stop it acts on, parsed from the loop's envelope or built from a status, the disk facts the loop reads before deciding, and the one decision the table returns.
-// No branch reads a row or recipe name; each reads the envelope's fields, its kind, its transient class and the facts, and the budget-exhausted row alone reads the prefix of the reason or error text.
+// driverules.go holds the shed driver's closed rule table as pure functions.
+// It parses the stop the loop's envelope names, or builds one from a status.
+// It also holds the disk facts the loop reads before deciding, and the one decision the table returns.
+// No branch reads a row or recipe name.
+// Each branch reads the envelope's fields, its kind, its transient class and the facts,
+// and the budget-exhausted and precondition-unmet rows alone read the prefix of the reason or error text.
 
 package sheddriver
 
@@ -35,7 +38,8 @@ type Stop struct {
 	EnvelopePath string
 	Error        string
 
-	// Outcome is the stepped producer's outcome as the step envelope reports it; a stop built from a status or a resumed attempt carries none.
+	// Outcome is the stepped producer's outcome as the step envelope reports it.
+	// A stop built from a status or a resumed attempt carries none.
 	Outcome string
 
 	Stop            string
@@ -115,8 +119,10 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 }
 
 // stopFromStatus builds the stop the driver acts on from a status alone.
-// It has FromStatus set and no kind, and a paused status carries its pause_reason as the stop's reason; a failed status reads as an error stop.
-// handsBack is the told check of a landing halt, answered for a blocked status's current producer and error; nil marks nothing.
+// It has FromStatus set and no kind.
+// A paused status carries its pause_reason as the stop's reason, and a failed status reads as an error stop.
+// handsBack is the told check of a landing halt, answered for a blocked status's current producer and error.
+// A nil handsBack marks nothing.
 func stopFromStatus(st shedengine.Status, handsBack func(producer, reason string) bool) Stop {
 	reason := ""
 	if st.State == shedengine.StatePaused {
@@ -148,7 +154,8 @@ func (s Stop) Key() StopKey {
 
 // driveFacts carries the disk reads the loop makes before deciding.
 type driveFacts struct {
-	// EscalationPending is true when the arbiter would admit the awaiting stop: its eligibility, not mere pendency of an escalation.
+	// EscalationPending is true when the arbiter would admit the awaiting stop:
+	// its eligibility, not whether an escalation is pending.
 	EscalationPending bool
 	// Watched is true when a live batten watches the run.
 	Watched bool
@@ -268,7 +275,9 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 	return driveDecision{Action: driveActionHandBack, Rule: "no rule names the stop: hand back"}
 }
 
-// budgetExhausted reports whether stop is a blocked stop whose reason, or whose error for a stop built from a status, starts with shedengine.ReasonBounceBudgetExhausted.
+// budgetExhausted reports whether stop is a blocked stop halted by an exhausted bounce budget.
+// The halt shows as a reason starting with shedengine.ReasonBounceBudgetExhausted.
+// For a stop built from a status, the error carries that prefix instead.
 // Only the parent's resume lifts such a halt, so the table hands it back and never resumes it.
 func budgetExhausted(stop Stop) bool {
 	if stop.Key().State != string(shedengine.StateBlocked) {
@@ -277,7 +286,9 @@ func budgetExhausted(stop Stop) bool {
 	return strings.HasPrefix(stop.Reason, shedengine.ReasonBounceBudgetExhausted) || strings.HasPrefix(stop.Error, shedengine.ReasonBounceBudgetExhausted)
 }
 
-// preconditionUnmet reports whether stop is a blocked stop whose reason, or whose error for a stop built from a status, starts with shedengine.ReasonPreconditionUnmet.
+// preconditionUnmet reports whether stop is a blocked stop halted by an unmet precondition.
+// The halt shows as a reason starting with shedengine.ReasonPreconditionUnmet.
+// For a stop built from a status, the error carries that prefix instead.
 // No tackler can settle such a halt, so the table hands it back and never resumes it.
 func preconditionUnmet(stop Stop) bool {
 	if stop.Key().State != string(shedengine.StateBlocked) {

@@ -1,4 +1,4 @@
-// vocabname.go holds CheckFabricVocabularyName, the plan check that refuses a declared name the fabric-vocabulary scan would refuse.
+// vocabname.go holds CheckFabricVocabularyName, which refuses a declared name the fabric-vocabulary scan would refuse.
 
 package planparser
 
@@ -12,13 +12,13 @@ import (
 // fabricVocabularyNameCheck is the Check ID of a declared name that breaks the fabric vocabulary.
 const fabricVocabularyNameCheck = "fabric-vocabulary-name"
 
-// CheckFabricVocabularyName reports one fabric-vocabulary-name finding per name a plan declares that the fabric-vocabulary scan would refuse once the name lands.
+// CheckFabricVocabularyName reports a finding per declared name the fabric-vocabulary scan would refuse once it lands.
 // A name is the member half of a Create handle or of a Rename pair's New handle.
-// It fails when it carries a bare fabric side token in a file the scan polices, or is a retired host-geometry identifier in non-test code under `internal/` or `cmd/`.
-// A handle that does not split into a unit and a member is skipped, since the handle checks already report it.
-// The member's own name is the Name of ParseRef over the handle's body with a C# generic arity suffix stripped, and the member's last dot-segment only for a body ParseRef rejects.
-// A name failing both rules gets one finding; its way forward is to rename the member.
-// It sits outside ValidateFormat and Validate, since the plan index appends it beside CheckCardFabricReference.
+// It fails when the name is a bare fabric side token in a file the scan polices.
+// It also fails when it is a retired host-geometry identifier in non-test code under `internal/` or `cmd/`.
+// A handle that does not split into a unit and a member is skipped, because the handle checks already report it.
+// A name that breaks both rules gets one finding, and the way forward is to rename the member.
+// It is not part of plan validation, so a caller runs it as its own check.
 // It reads plan text only, under any `language:`, and only refuses.
 func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 	var findings []ValidationError
@@ -41,7 +41,8 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 	return findings
 }
 
-// fabricVocabularyBreak returns handle's member half and the rule that member breaks as a phrase, read under plan's language.
+// fabricVocabularyBreak returns handle's member half, and the rule that member breaks as a phrase.
+// The phrase is read under plan's language.
 // broken is "" when the member breaks no rule or the handle does not split into a unit and a member.
 func fabricVocabularyBreak(plan *Plan, handle string) (member, broken string) {
 	unit, unitOK := HandleUnit(handle)
@@ -60,12 +61,12 @@ func fabricVocabularyBreak(plan *Plan, handle string) (member, broken string) {
 
 // brokenFabricVocabularyRule names the rule a declared member breaks as a phrase, or returns "" when it breaks none.
 // unit is the handle's package half, member its whole member half and last the member's last dot-segment.
-// goToolchain says whether the plan's language is Go, the only alphabet whose unit string carries the external-test pseudo-unit.
+// goToolchain says whether the plan's language is Go, whose unit strings carry the external-test `_test` suffix.
 func brokenFabricVocabularyRule(unit, member, last string, goToolchain bool) string {
 	first, _, _ := strings.Cut(unit, "/")
 	dir := unit
 	if goToolchain {
-		// An external test package sits in its package's directory, which is what the scan's owner check reads.
+		// An external test package sits in its package's directory, the directory the owner set is keyed by.
 		dir = goPackageDir(unit)
 	}
 	isTestName := hasTestPrefix(last)

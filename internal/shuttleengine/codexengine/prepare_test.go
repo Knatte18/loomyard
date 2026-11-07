@@ -1,6 +1,8 @@
 // prepare_test.go covers Prepare and the lym Codex home.
 // It covers the launch Prepare returns, the trust record and config.toml it renders, and the links it makes.
-// It also covers the refusals that write nothing, the warnings about a Codex folder in the worktree or a home entry that is not lym's link, and the check after startup.
+// It also covers the refusals that write nothing.
+// It covers the warnings about a Codex folder in the worktree and about a home entry that is not lym's link.
+// It covers the check after startup.
 
 package codexengine
 
@@ -21,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// readRecord reads the trust record of the lym home at home.
 func readRecord(t *testing.T, home string) trustRecord {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(home, trustRecordFileName))
@@ -36,10 +37,13 @@ func readRecord(t *testing.T, home string) trustRecord {
 }
 
 // TestPrepare_Launch pins the launch a valid spec gets.
-// The line is built from the lym home, the model and effort, and the writable roots:
-// the told records checkout (none when the engine is told none), the git dirs of a linked worktree or a plain clone, then the configured roots that exist.
-// It carries the run's hooks with a guard per row the python switch and the publish guard install, and the prompt pointer.
-// It also pins the resume line that exits, recorded session starts, no creel hooks for an engine told no board, and no session id.
+// The line is built from the lym home, the model and effort, and the writable roots.
+// The writable roots are the told records checkout (none when the engine is told none).
+// After it come the git dirs of a linked worktree or a plain clone, then the configured roots that exist.
+// The hooks of the run are carried, with a guard per row that the python switch and the publish guard install.
+// The line also carries the prompt pointer.
+// It also pins the resume line, which exits and records the session start.
+// An engine told no board gets no creel hooks, and the resume line has no session id.
 // The prompt file holds the deny notice, the creel trust sentence and the spec's prompt.
 func TestPrepare_Launch(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -135,7 +139,7 @@ func TestPrepare_Launch(t *testing.T) {
 	}
 }
 
-// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in codex.yaml's writable_roots, the form the template default uses, names a folder under the user's home directory.
+// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in writable_roots expands to the user's home.
 // It sets the home environment variables, so it does not run in parallel.
 func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -171,7 +175,8 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 }
 
 // TestPrepare_InstallsGuardsFromItsInputs pins which inputs reach the installed guard rows.
-// The python switch and the publish guard each install their own row alone, a seeded refuse_raw list of the hub's gate config reaches the hook and the prompt file's deny notice,
+// The python switch and the publish guard each install their own row alone;
+// a seeded refuse_raw list of the hub's gate config reaches the hook and the prompt file's deny notice;
 // and a gate config that is present but does not load refuses the launch before the prompt file is written.
 func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -238,9 +243,11 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 	}
 }
 
-// TestPrepare_AppendsStandingPassages pins that the prompt file opens with the deny notice and the passages the reader finds for engine codex and the spec's role, each before a blank line.
-// The told board's base layer names the fixture's homes, since a told board hides the local layer of a worktree with no `_lym` folder,
-// and the test checks the launch readied the fixture's lym home, so it never reaches the operator's.
+// TestPrepare_AppendsStandingPassages pins that the prompt file opens with the deny notice;
+// the passages the reader finds for engine codex and the spec's role follow, each before a blank line.
+// A told board hides the local layer of a worktree with no `_lym` folder;
+// its base layer names the fixture's homes.
+// The test also checks that the launch readied the fixture's lym home, so it never reaches the operator's.
 // It installs the process-wide passage reader, so it does not run in parallel.
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -308,7 +315,8 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 }
 
 // TestPrepare_ReadiesHome pins the lym home a launch leaves.
-// It has auth.json and sessions linked to the operator home's, and the worktree root trusted, with the main checkout root too for a linked worktree and alone for a plain clone.
+// It checks that auth.json and sessions link to the operator home's, and that the worktree root is trusted.
+// A linked worktree also trusts the main checkout root, and a plain clone trusts only its own root.
 // It drops a vanished root, and it renders config.toml from the record with both [tui] settings.
 func TestPrepare_ReadiesHome(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -370,7 +378,8 @@ func TestPrepare_ReadiesHome(t *testing.T) {
 	}
 }
 
-// TestRenderConfigTOML pins the rendered config.toml: the header, both [tui] settings, then one trusted table per root with the path TOML-quoted.
+// TestRenderConfigTOML pins the rendered config.toml:
+// the header, both [tui] settings, then one trusted table per root with the path TOML-quoted.
 func TestRenderConfigTOML(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -384,7 +393,8 @@ func TestRenderConfigTOML(t *testing.T) {
 	}
 }
 
-// TestPrepare_ConcurrentLaunchesLoseNoRoot pins that worktrees preparing at once into one lym home all end in its record and config.toml.
+// TestPrepare_ConcurrentLaunchesLoseNoRoot pins that concurrent launches into one lym home keep every root.
+// Every root must end up in both the record and config.toml.
 func TestPrepare_ConcurrentLaunchesLoseNoRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -425,7 +435,8 @@ func TestPrepare_ConcurrentLaunchesLoseNoRoot(t *testing.T) {
 	}
 }
 
-// TestPrepare_RefusesBeforeWriting pins each refusal and that a refused spec writes neither the prompt file nor anything in the lym home.
+// TestPrepare_RefusesBeforeWriting pins each refusal;
+// a refused spec writes neither the prompt file nor anything in the lym home.
 func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -508,7 +519,8 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 	}
 }
 
-// TestPrepare_Warnings pins the warnings a launch goes on despite: a worktree config, the main checkout's config behind a worktree's `.codex` folder,
+// TestPrepare_Warnings pins the warnings a launch goes on despite:
+// a worktree config, the main checkout's config behind a worktree's `.codex` folder,
 // and a home auth.json or sessions that is a regular file or a link elsewhere, which Prepare keeps.
 func TestPrepare_Warnings(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -579,7 +591,8 @@ func TestPrepare_Warnings(t *testing.T) {
 	}
 }
 
-// TestCheckAfterStartup pins that the check warns about each trust root config.toml lost, naming it, and stays silent while every root is there.
+// TestCheckAfterStartup pins that the check warns about each trust root config.toml lost, naming it;
+// it stays silent while every root is there.
 func TestCheckAfterStartup(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -603,7 +616,9 @@ func TestCheckAfterStartup(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_Template pins codex.yaml's template: the codex binary on PATH, the homes under ~/, the efforts low to high, the Claude plugin cache as the skill root and the Go build cache as the writable root.
+// TestLoadConfig_Template pins codex.yaml's template:
+// the codex binary on PATH, the homes under ~/, the efforts low to high;
+// the Claude plugin cache as the skill root, and the Go build cache as the writable root.
 func TestLoadConfig_Template(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -621,7 +636,8 @@ func TestLoadConfig_Template(t *testing.T) {
 	}
 }
 
-// TestExpandHomePath pins the home keys' resolution: a leading ~/ under the user's home, an absolute path kept, and an empty or relative value refused by its key.
+// TestExpandHomePath pins the home keys' resolution:
+// a leading ~/ under the user's home, an absolute path kept, and an empty or relative value refused by its key.
 func TestExpandHomePath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

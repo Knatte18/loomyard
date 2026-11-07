@@ -1,4 +1,5 @@
-// remove.go holds the seam-driven body of `lym fabric remove`: the run-scope origin reconcile of the slug, the verdict it gives, and the choice between the local removal of an ended or foreign run and the ordinary removal.
+// remove.go implements the removal behind `lym fabric remove`, which reconciles the slug's run against origin.
+// It turns the reconcile report into a verdict, and the verdict picks between a local removal and the ordinary one.
 
 package fabriccli
 
@@ -21,7 +22,8 @@ const (
 )
 
 // localReading is what the local board says about a slug's run, read when origin cannot judge it.
-// ownedElsewhere is whether the entry's effective owner is another machine, and done whether the entry reads done.
+// ownedElsewhere is whether the entry's effective owner is another machine.
+// done is whether the entry's task status is done.
 type localReading struct {
 	ownedElsewhere bool
 	done           bool
@@ -29,7 +31,10 @@ type localReading struct {
 
 // remover carries the seams `lym fabric remove` wires and its test fakes.
 // exemptAll lets every live pause entry pass this process's network gate and returns the restore.
-// gone reports whether the slug's task worktree is gone, reconcile runs the run-scope origin reconcile of the slug, local reads the local board for the slug, and teardown removes the pair.
+// gone reports whether the slug's task worktree is gone.
+// reconcile runs the run-scope origin reconcile of the slug.
+// local reads what the local board says about the slug.
+// teardown removes the pair.
 type remover struct {
 	exemptAll func() (restore func())
 	gone      func(slug string) (bool, error)
@@ -40,10 +45,12 @@ type remover struct {
 
 // run removes the pair of slug.
 // The gate exemption is taken first and restored on return, so the removal's own network calls pass under any pause.
-// A pair whose task worktree is gone takes no reconcile, since there is no pair worktree to reconcile: the local board decides its verdict, as for an unreachable origin.
-// An ended or owned_elsewhere verdict removes the pair locally, dropping a requested --remote and naming it in the result;
-// any other verdict removes it with the quiet wait and the typed flags.
-// A refusal or a reconcile error ends nothing.
+// A pair whose task worktree is gone takes no reconcile, since there is no pair worktree to reconcile:
+// the local board decides its verdict, as for an unreachable origin.
+// An ended or owned_elsewhere verdict removes the pair locally.
+// A requested --remote is dropped, and the result names it.
+// Any other verdict removes it with the quiet wait, passing force and remote through unchanged.
+// A refusal or a reconcile error returns before the removal starts.
 func (r remover) run(ctx context.Context, slug string, force, remote bool) (pairteardown.Result, error) {
 	restore := r.exemptAll()
 	defer restore()
@@ -100,10 +107,13 @@ func (r remover) run(ctx context.Context, slug string, force, remote bool) (pair
 }
 
 // removeVerdict turns a reconcile report into the verdict on the slug's entry.
-// An ended or owned_elsewhere entry is returned as it is, and an active entry or none gives the empty verdict, the ordinary removal.
-// A stopped entry is refused with the way forward of the first branch that stops it, then the re-run of the removal;
-// the one exception is a stop made only by gone branches of the slug, which gives the empty verdict, since the removal is what clears a gone branch.
-// With an unreachable origin the local reading decides: another machine's ownership reads owned_elsewhere, a done entry reads ended, and neither gives the empty verdict.
+// An ended or owned_elsewhere entry is returned as it is.
+// An active entry, or none, gives the empty verdict, which is the ordinary removal.
+// A stopped entry is refused with the way forward of the first branch that stops it, then the re-run of the removal.
+// A stop that no branch refuses gives the empty verdict.
+// A gone branch of the slug is one such stop, since the removal clears it.
+// With an unreachable origin the local reading decides.
+// Ownership by another machine gives owned_elsewhere, a done entry gives ended, and otherwise the verdict is empty.
 func removeVerdict(report fabricengine.OriginReport, slug string, local localReading) (verdict fabricengine.EntryState, refusal error) {
 	if report.Unreachable {
 		switch {
@@ -130,7 +140,8 @@ func removeVerdict(report fabricengine.OriginReport, slug string, local localRea
 	return "", nil
 }
 
-// stoppedRemoveRefusal builds the refusal for a stopped entry from the first branch that stops it, or returns nil when only gone branches of the slug do.
+// stoppedRemoveRefusal builds the refusal for a stopped entry from the first branch that stops it.
+// It returns nil when no branch refuses the removal.
 // The entry's own way forward is never used: it can hold the gone branch's text, which names the refused verb.
 // A busy records branch of the slug and a busy shared branch stop nothing here, as the reconcile judges them.
 func stoppedRemoveRefusal(slug string, branches []fabricengine.BranchOutcome) error {
@@ -164,8 +175,9 @@ func stopsRemoval(state fabricengine.BranchState) bool {
 	return false
 }
 
-// readLocalReading reads the local board for slug: whether its effective owner is another machine and whether its entry reads done.
-// An unreadable board, or an owner the board cannot resolve, is returned.
+// readLocalReading reads the local board for slug.
+// It reports whether the effective owner of the entry is another machine, and whether the entry reads done.
+// An unreadable board, or an owner the board cannot resolve, is returned as an error.
 func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error) {
 	options := pairteardown.HubSeamOptions(prime)
 	machine, err := options.Machine()
@@ -194,8 +206,10 @@ func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error)
 	}, nil
 }
 
-// reconcileForRemove runs the run-scope origin reconcile of slug from the prime, with the seams pairteardown builds for a hub, and logs each entry of its mutation record.
-// A hub whose warp or weft repository has no origin remote has nothing to judge against, so it reads as an unreachable origin and the local board decides.
+// reconcileForRemove runs the run-scope origin reconcile of slug from the prime.
+// It uses the seams pairteardown builds for a hub and logs each entry of the report's mutation record.
+// A hub whose warp or weft repository has no origin remote has nothing to judge against,
+// so it reads as an unreachable origin and the local board decides.
 // The run scope tears no pair down, so the report never shows the slug's pair already removed.
 func reconcileForRemove(prime *lymcwd.Location, td *pairteardown.Teardown, slug string) (fabricengine.OriginReport, error) {
 	recordsRoot, err := fabricengine.RecordsRepoRoot(prime)

@@ -1,4 +1,4 @@
-// addparent.go resolves the parent pair that Add forks a new pair from when AddOptions.Parent names one.
+// addparent.go resolves the parent pair that a new pair forks from, when the caller names one.
 // It holds the pre-flight refusals for a parent that cannot be forked from, each naming the way forward.
 
 package fabricengine
@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// addParent is the pair Add forks a new pair from: its worktree location, the branch checked out there, the records branch of that branch and the commit its HEAD stands at.
+// addParent is the pair that a new pair forks from:
+// its worktree location, the branch checked out there, the records branch of that branch, and the commit at its HEAD.
 type addParent struct {
 	location      *lymcwd.Location
 	branch        string
@@ -22,8 +23,12 @@ type addParent struct {
 }
 
 // resolveAddParent resolves the pair slug parent of l's hub into the fork point of a new pair.
-// It refuses a parent that is not a live pair of the hub, the prime, a parent on a detached HEAD or unborn branch,
-// and a parent whose checked-out branch is not its own pair branch, under the current branch prefix, as the bare slug, or as any branch that has a records branch (a pair made under an earlier prefix), each naming the way forward.
+// It refuses a parent that is not a live pair of the hub, or that is the prime.
+// It refuses a parent on a detached HEAD or an unborn branch.
+// It refuses a parent whose checked-out branch is not its own pair branch.
+// A branch is its own pair branch under the configured prefix, as the bare slug, or as any branch with a records branch;
+// the last case covers a pair made under another prefix.
+// Each refusal names the way forward.
 // It reads and mutates nothing.
 func resolveAddParent(l *lymcwd.Location, cfg Config, parent string) (addParent, error) {
 	entries, err := List(l.AnchorPath())

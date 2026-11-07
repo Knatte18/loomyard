@@ -1,8 +1,7 @@
-// status.go implements the `status` reed verb: a read-only cross-reference of this worktree's
-// tracked strands against the live pane set, reporting each strand's live/dead state.
-// Unlike the mutating verbs it never reconciles (no pane kills, no binding rewrites) and never
-// re-applies the layout.
-// v1 reports only the current session — enumerating stray servers across the hub is deferred.
+// status.go implements the `status` reed verb, a read-only cross-reference of this worktree's tracked strands.
+// It checks them against the live pane set and reports each strand's live/dead state.
+// It never kills dead panes, rewrites bindings, or re-applies the layout.
+// It reports only the current session; stray servers across the hub are not listed.
 
 package reedcli
 

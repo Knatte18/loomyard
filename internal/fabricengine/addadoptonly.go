@@ -1,4 +1,6 @@
-// addadoptonly.go holds what AddOptions.AdoptOnly adds to Add: the typed answers of a pair that cannot be re-made or a path that blocks it, the reuse test for a records worktree that already stands, and the prune of stale worktree registrations a caller runs before re-making a pair.
+// addadoptonly.go holds the adopt-only part of pair creation.
+// Its typed refusals cover a pair that cannot be re-made and a path that blocks it.
+// It also holds the reuse test for a standing records worktree and the prune of stale worktree registrations.
 
 package fabricengine
 
@@ -10,12 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// ErrPairNotLive is matched with errors.Is against the *ErrNotLive an adopt-only Add returns when a branch of the pair is gone for good,
-// so a caller tests the closed set by this sentinel and reads which branch with errors.As.
+// ErrPairNotLive is the sentinel that errors.Is matches when a branch of a pair is gone for good.
+// A caller tests this one value for every such branch, and errors.As reads the branch from the matching error.
 var ErrPairNotLive = errors.New("fabricengine: the pair is not live")
 
-// ErrNotLive is an adopt-only Add's refusal when a branch of the pair is not live: it neither stands locally nor on origin, or origin's weft tip is covered by an archive tag.
-// It is returned before any mutation, and it matches ErrPairNotLive under errors.Is.
+// ErrNotLive is the refusal of an adopt-only re-make of a pair whose branch is not live.
+// The branch is absent locally and on origin, or, for the weft branch, origin's tip is covered by an archive tag.
+// It is returned before any mutation, and errors.Is matches it against ErrPairNotLive.
 type ErrNotLive struct {
 	// Branch is the branch that is not live, prefix and suffix included.
 	Branch string
@@ -31,10 +34,11 @@ func (e *ErrNotLive) Error() string {
 	return fmt.Sprintf("task branch %q is not live: it is absent locally and on origin, so the pair cannot be re-made over it", e.Branch)
 }
 
-// Is reports whether target is ErrPairNotLive.
+// Is reports whether target is ErrPairNotLive, so errors.Is tests every not-live branch with one sentinel.
 func (e *ErrNotLive) Is(target error) bool { return target == ErrPairNotLive }
 
-// ErrRecordsWorktreeNotPair is Add's refusal when the records worktree directory of the new pair stands without being a registered worktree on the pair's weft branch.
+// ErrRecordsWorktreeNotPair is the refusal to create a pair whose records worktree directory already stands:
+// the directory is not a registered worktree on the pair's weft branch.
 type ErrRecordsWorktreeNotPair struct {
 	// Path is the directory that stands.
 	Path string
@@ -45,7 +49,7 @@ func (e *ErrRecordsWorktreeNotPair) Error() string {
 	return fmt.Sprintf("weft worktree directory already exists: %s", e.Path)
 }
 
-// ErrAdoptLocalCheckedOut is an AdoptLocal Add's refusal when a worktree holds the branch it would adopt:
+// ErrAdoptLocalCheckedOut is the refusal of an adopt-local pair when a worktree holds the branch to adopt:
 // the warp branch checked out in a worktree, or the weft branch checked out in a records worktree.
 type ErrAdoptLocalCheckedOut struct {
 	// Branch is the branch another worktree holds.
@@ -66,7 +70,7 @@ func (e *ErrAdoptLocalCheckedOut) Error() string {
 	return fmt.Sprintf("--adopt-local: branch %q is checked out in %s; way forward: run `lym fabric checkout <other branch>` in %s to move it off the branch, then re-run `lym fabric add %s --adopt-local`", e.Branch, e.Path, e.Path, e.slug)
 }
 
-// ErrTaskPathTaken is Add's refusal when the task worktree's directory already exists.
+// ErrTaskPathTaken is the refusal to create a pair when the task worktree's directory already exists.
 type ErrTaskPathTaken struct {
 	// Path is the directory that exists.
 	Path string
@@ -74,9 +78,11 @@ type ErrTaskPathTaken struct {
 
 // Error implements the error interface, naming the directory and the ways out.
 func (e *ErrTaskPathTaken) Error() string {
-	// Name the recovery path, since a directory here is not always a live pair.
-	// A leftover, such as a directory a late writer refilled after a remove, is invisible to `lym fabric list`, which enumerates only git-registered worktrees, so the message names `lym fabric prune`, which reports it.
-	// If it IS a live pair, a different slug is the answer.
+	// A directory here is not always a live pair, so the message offers a recovery path.
+	// A leftover, such as a directory a late writer refilled after a remove, is not a worktree.
+	// `lym fabric list` enumerates only git-registered worktrees, so it cannot show a leftover.
+	// `lym fabric prune` reports leftovers, so the message names it.
+	// If it is a live pair, a different slug is the answer.
 	return fmt.Sprintf(
 		"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory that is not a worktree, which `lym fabric prune` reports, save anything worth keeping from it, delete it and retry",
 		e.Path)

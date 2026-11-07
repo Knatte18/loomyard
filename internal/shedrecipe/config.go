@@ -1,5 +1,5 @@
-// config.go implements the typed Config accessors every entry extracts its recognised keys through,
-// plus configRejectUnknown, the shared unknown-key rejector every entry ends its extraction with.
+// config.go implements the typed Config accessors that every entry extracts its keys through.
+// It also implements configRejectUnknown, the unknown-key check every entry ends its extraction with.
 
 package shedrecipe
 
@@ -8,15 +8,14 @@ import (
 	"sort"
 )
 
-// absenceRule tells a present cfg value apart from an absent one: a key missing from cfg, or
-// present with an empty-string value, or present with an empty slice or empty map, all count as
-// absent. Absent and required is an error naming key; absent and not required returns the Go zero
-// value with a nil error.
+// The string, slice and map accessors treat a present empty value as absent:
+// an error when the key is required, otherwise the zero value with a nil error.
 
-// configString extracts key from cfg as a string. A key missing, or present with an empty string,
-// counts as absent -- an error when required, else the zero value with a nil error. A present value
-// of any other type is an error naming key, the expected shape, and the actual %T, whether or not
-// key is required.
+// configString extracts key from cfg as a string.
+// A key that is missing, or present with an empty string, counts as absent:
+// an error when required, otherwise the zero value with a nil error.
+// A present value of any other type is an error naming key, the expected shape, and the actual type.
+// This holds whether or not key is required.
 func configString(cfg Config, key string, required bool) (string, error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -38,10 +37,10 @@ func configString(cfg Config, key string, required bool) (string, error) {
 	return s, nil
 }
 
-// configStringSlice extracts key from cfg as a []string. It accepts both a []string and a []any
-// whose every element is a string; a []any carrying a non-string element is an error naming key and
-// the offending element's index. A missing key, or a present empty slice of either shape, counts as
-// absent.
+// configStringSlice extracts key from cfg as a []string.
+// It accepts both a []string and a []any whose every element is a string.
+// A []any with a non-string element is an error naming key and the offending element's index.
+// A missing key, or a present empty slice of either shape, counts as absent.
 func configStringSlice(cfg Config, key string, required bool) ([]string, error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -77,10 +76,9 @@ func configStringSlice(cfg Config, key string, required bool) ([]string, error) 
 	return out, nil
 }
 
-// configBool extracts key from cfg as a bool. A key missing counts as absent -- an error when
-// required, else the zero value with a nil error. There is no empty-value absence case for a bool,
-// unlike the string/slice/map accessors: false is a legitimate present value, not an absence
-// signal.
+// configBool extracts key from cfg as a bool.
+// A missing key counts as absent: an error when required, otherwise the zero value with a nil error.
+// A bool has no empty-value absence case: false is a legitimate present value, not an absence signal.
 func configBool(cfg Config, key string, required bool) (bool, error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -96,12 +94,12 @@ func configBool(cfg Config, key string, required bool) (bool, error) {
 	return b, nil
 }
 
-// configInt extracts key from cfg as an int. It accepts both an int and a float64 whose value is
-// integral -- a YAML decoder into any yields int while a JSON-shaped one yields float64, and piece 2
-// picks the format, so accepting both without truncating keeps this package format-agnostic. A
-// fractional float64 is an error naming key. A key missing counts as absent -- an error when
-// required, else the zero value with a nil error; zero itself is a legitimate present value, not an
-// absence signal.
+// configInt extracts key from cfg as an int.
+// It accepts an int, and a float64 with an integral value.
+// Decoders for different formats yield different numeric types, so the package accepts both.
+// A fractional float64 is an error naming key.
+// A missing key counts as absent: an error when required, otherwise the zero value with a nil error.
+// Zero is a legitimate present value, not an absence signal.
 func configInt(cfg Config, key string, required bool) (int, error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -123,9 +121,10 @@ func configInt(cfg Config, key string, required bool) (int, error) {
 	}
 }
 
-// configStringMap extracts key from cfg as a map[string]string. It accepts a map[string]any whose
-// every value is a string; a non-string value is an error naming both the outer key and the
-// offending inner key. A missing key, or a present empty map, counts as absent.
+// configStringMap extracts key from cfg as a map[string]string.
+// It accepts a map[string]any whose every value is a string.
+// A non-string value is an error naming both the outer key and the offending inner key.
+// A missing key, or a present empty map, counts as absent.
 func configStringMap(cfg Config, key string, required bool) (map[string]string, error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -155,9 +154,9 @@ func configStringMap(cfg Config, key string, required bool) (map[string]string, 
 	return out, nil
 }
 
-// configMap extracts key from cfg as a Config, so a nested map can be fed straight back through
-// these same accessors. It accepts a map[string]any. A missing key, or a present empty map, counts
-// as absent.
+// configMap extracts key from cfg as a Config, so a nested map can be read with the same typed accessors.
+// It accepts a map[string]any.
+// A missing key, or a present empty map, counts as absent.
 func configMap(cfg Config, key string, required bool) (Config, error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -179,11 +178,12 @@ func configMap(cfg Config, key string, required bool) (Config, error) {
 	return Config(m), nil
 }
 
-// configMapList extracts key from cfg as a []Config, so each element can be fed back through these same accessors.
+// configMapList extracts key from cfg as a []Config, so each element can be read with the same typed accessors.
 // It accepts a []any whose every element is a map[string]any, and a []map[string]any;
 // an element of any other type is an error naming key and the element's index.
-// present reports whether key is in cfg at all.
-// Unlike the other accessors, a present empty list is not absent: it returns an empty slice with present true, so a caller can tell an author mistake apart from a missing key.
+// present reports whether key is in cfg.
+// A present empty list is not absent: it returns an empty slice with present true,
+// so a caller can tell an author mistake from a missing key.
 func configMapList(cfg Config, key string) (out []Config, present bool, err error) {
 	raw, ok := cfg[key]
 	if !ok {
@@ -210,12 +210,11 @@ func configMapList(cfg Config, key string) (out []Config, present bool, err erro
 	return out, true, nil
 }
 
-// configRejectUnknown errors naming the first unrecognised key in cfg, in sorted order, so the
-// message is deterministic across runs. A cfg with only recognised keys, and a nil or empty cfg,
-// both return nil.
+// configRejectUnknown errors naming the first unrecognized key in cfg, in sorted order,
+// so the message is deterministic across runs.
+// A cfg with only recognized keys, and a nil or empty cfg, both return nil.
 //
-// This runs at nested levels too, not only on the outer map -- BurlerReview's profile,
-// profile.target, and profile.fasit each get their own call.
+// It is also called on nested maps, not only the outer one, so each nested level rejects its own unknown keys.
 func configRejectUnknown(cfg Config, known ...string) error {
 	if len(cfg) == 0 {
 		return nil

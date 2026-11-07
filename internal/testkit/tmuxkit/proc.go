@@ -1,4 +1,4 @@
-// proc.go holds the kit's read-only /proc probes: the process list, a process's argv, cwd, executable, session id, parent pid, state letter and command name, and the recognizer for a reed watchdog daemon.
+// proc.go holds the kit's read-only /proc probes for processes and the recognizer for a reed watchdog daemon.
 // Each probe reports nothing where /proc does not exist.
 
 package tmuxkit
@@ -26,7 +26,8 @@ func Pids() []int {
 }
 
 // ProcArgv reads pid's argv from /proc/<pid>/cmdline.
-// The bool is false when the process is gone or unreadable; a process with an empty command line answers a nil slice and true.
+// The bool is false when the process is gone or unreadable;
+// a process with an empty command line answers a nil slice and true.
 func ProcArgv(pid int) ([]string, bool) {
 	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
 	if err != nil {
@@ -126,7 +127,8 @@ func readProcLink(pid int, name string) (string, bool) {
 }
 
 // IsWatchdog reports whether argv is a `lym reed watchdog` daemon: an adjacent `reed`, `watchdog` pair.
-// The daemon detaches into its own session and idles out on its own production schedule, so it outlives the test that spawned it.
+// The daemon detaches into its own session and idles out on its own production schedule,
+// so it outlives the test that spawned it.
 func IsWatchdog(argv []string) bool {
 	for i := 0; i+1 < len(argv); i++ {
 		if argv[i] == "reed" && argv[i+1] == "watchdog" {

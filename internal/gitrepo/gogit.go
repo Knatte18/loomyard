@@ -1,5 +1,5 @@
-// gogit.go implements the go-git handle infrastructure every go-git read builds on: goGit, the lazily-opened and cached *git.Repository accessor, and readGoGit, the whole-read helper that retries once after a pack-fingerprint-gated reindex.
-// Every go-git read in this package goes through readGoGit, the only caller of goGit.
+// gogit.go holds the go-git handle accessor, goGit, and readGoGit, which runs one read against that handle.
+// readGoGit holds the shared lock for the read and retries it once after a reindex gated on the pack fingerprint.
 
 package gitrepo
 
@@ -15,10 +15,9 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
-// goGit returns this Repo's cached go-git handle, opening it on first use via
-// git.PlainOpenWithOptions(r.path, &git.PlainOpenOptions{
-// EnableDotGitCommonDir: true}). Failed opens are not cached; new calls may
-// still succeed later. It takes r.goGitMu itself, so readGoGit is its only caller.
+// goGit returns this Repo's cached go-git handle, opening it on first use with EnableDotGitCommonDir set.
+// A failed open is not cached, so a later call may still succeed.
+// goGit takes r.goGitMu itself, so the caller must not hold it.
 func (r *Repo) goGit() (*git.Repository, error) {
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
@@ -40,9 +39,11 @@ func (r *Repo) goGit() (*git.Repository, error) {
 }
 
 // readGoGit runs read against this Repo's go-git handle under the shared lock and returns its result.
-// A cached handle can read a stale pack index after a repack, so when read fails with plumbing.ErrObjectNotFound and the pack set has changed since the read began, readGoGit reindexes the handle and runs read once more.
+// A repack can leave the cached handle with a stale pack index, so readGoGit retries a failed read once.
+// The retry needs read to fail with plumbing.ErrObjectNotFound and the pack set to have changed since it began.
 // Every other error, and a not-found over an unchanged pack set, passes through unchanged.
-// read runs whole on each attempt, so it must resolve everything it needs from the handle it is given and must not call another Repo method.
+// read runs whole on each attempt,
+// so it must resolve everything it needs from the handle it is given and must not call another Repo method.
 func readGoGit[T any](r *Repo, read func(repo *git.Repository) (T, error)) (T, error) {
 	var zero T
 
@@ -68,8 +69,10 @@ func readGoGit[T any](r *Repo, read func(repo *git.Repository) (T, error)) (T, e
 	return read(repo)
 }
 
-// reindexIfPacksChanged reports whether the pack set differs from snapshot, the fingerprint a failed read began under, reindexing repo's storer first unless another caller already did for this pack set.
-// It returns false, leaving the failed read's error to stand, for a storer that is not filesystem-backed and for a fingerprint it cannot read.
+// reindexIfPacksChanged reports whether the pack set differs from snapshot, the fingerprint a failed read began under.
+// When it differs, it reindexes repo's storer unless an earlier call already did so for the same pack set.
+// It returns false, leaving the failed read's error to stand, for a storer that is not filesystem-backed.
+// It also returns false when the fingerprint cannot be read.
 // The index rebuild is forced under the exclusive lock because go-git rebuilds it unsynchronized on the next read.
 // Readers holding only the shared lock would otherwise race into a half-built index.
 func (r *Repo) reindexIfPacksChanged(repo *git.Repository, snapshot string) bool {
@@ -94,9 +97,8 @@ func (r *Repo) reindexIfPacksChanged(repo *git.Repository, snapshot string) bool
 	return true
 }
 
-// packFingerprint computes the sorted (name, size) list of every *.idx file
-// in objects/pack, joined into one comparable string. Missing pack directory
-// is not an error, returning empty string.
+// packFingerprint joins the sorted (name, size) of every *.idx file in objects/pack into one comparable string.
+// A missing pack directory is not an error and yields the empty string.
 func packFingerprint(storer *filesystem.Storage) (string, error) {
 	entries, err := storer.Filesystem().ReadDir("objects/pack")
 	if err != nil {

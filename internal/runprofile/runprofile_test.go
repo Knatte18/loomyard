@@ -29,7 +29,9 @@ func boardWithProfiles(t *testing.T, contents string) string {
 	return board
 }
 
-// TestLoad pins what Load reads: the hub file as it stands, never filled from the template, the template when no file is present, and a refusal naming the entry for a wrong shape or a default that names no fitting profile.
+// TestLoad pins what Load reads: the hub file as it stands, never filled from the template;
+// the template when no file is present;
+// a refusal naming the entry for a wrong shape or a default that names no fitting profile.
 func TestLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -92,8 +94,10 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-// TestTemplateLadder pins the template's ladder: each profile's review rounds and hard caps per perch for loom, and the Code perch's for darn, every hard cap its rounds plus one.
-// It also pins that each profile's sampler block carries its darn block's loom values, with sampler.code_review on from light up, and that sampler has no default profile.
+// TestTemplateLadder pins the template's ladder: each profile's review rounds and hard caps per perch for loom;
+// the Code perch's for darn, every hard cap its rounds plus one.
+// It also pins that each profile's sampler block carries its darn block's loom values;
+// sampler.code_review is on from light up, and sampler has no default profile.
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
 func TestTemplateLadder(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -188,7 +192,9 @@ func TestTemplateLadder(t *testing.T) {
 	}
 }
 
-// TestTemplateDocsProfile pins the template's darn-only docs profile: a Sonnet medium writer, one Code round with its hard cap, and drift scope off, since a docs task changes no captured value.
+// TestTemplateDocsProfile pins the template's darn-only docs profile:
+// a Sonnet medium writer, one Code round with its hard cap, and drift scope off.
+// Drift scope is off since a docs task changes no captured value.
 func TestTemplateDocsProfile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -213,7 +219,8 @@ func TestTemplateDocsProfile(t *testing.T) {
 	}
 }
 
-// TestSettings pins the lookups of a loaded file: a profile's block for a recipe, a refusal naming the way forward for an unknown profile or a missing recipe block, and a recipe's default.
+// TestSettings pins the lookups of a loaded file: a profile's block for a recipe, and a recipe's default.
+// It also pins a refusal naming the way forward for an unknown profile or a missing recipe block.
 func TestSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

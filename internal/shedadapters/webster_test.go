@@ -20,9 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// fakeWebsterRunner records the RunDeps/RunOptions it was handed and returns a caller-configured
-// websterengine.RunResult/error. An optional duringRun hook lets a test cancel the context (or
-// otherwise act) as if it happened mid-run, mirroring shedfake.Shuttle's own hook.
+// fakeWebsterRunner returns a configured websterengine.RunResult and error.
+// It records the RunDeps and RunOptions it was handed.
+// The optional duringRun hook runs mid-run, so a test can cancel the context or otherwise act during the run.
 type fakeWebsterRunner struct {
 	result websterengine.RunResult
 	err    error
@@ -45,9 +45,8 @@ func (f *fakeWebsterRunner) run(deps websterengine.RunDeps, opts websterengine.R
 
 // --- Outcome mapping table ---
 
-// TestWebsterProducer_OutcomeDone covers a completed run, which survives a cancellation that
-// arrives during the run. The run is never asked for a fresh start: RunOptions.Fresh is false as a
-// safety property, not a default.
+// TestWebsterProducer_OutcomeDone covers a completed run, which survives a cancellation that arrives during the run.
+// The run is never asked for a fresh start: RunOptions.Fresh is false as a safety property, not a default.
 //
 //testtiming:keep pins that a done run returns the summary as pointer carrying its gate count and spans, is never asked for a fresh start, and survives a cancellation during the run
 func TestWebsterProducer_OutcomeDone(t *testing.T) {
@@ -103,7 +102,8 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 	}
 }
 
-// websterDepsWithScratch returns RunDeps whose scratch directory is a fresh temporary one, so a stuck outcome's conflict claim never resolves against the test's working directory.
+// websterDepsWithScratch returns RunDeps whose scratch directory is a fresh temporary one.
+// A stuck outcome's conflict claim then never resolves against the test's working directory.
 func websterDepsWithScratch(t *testing.T) websterengine.RunDeps {
 	t.Helper()
 	return websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: t.TempDir(), ScratchDir: t.TempDir()}}
@@ -136,7 +136,8 @@ func requireWebsterFile(t *testing.T, filePath, want string) {
 }
 
 // TestWebsterProducer_OutcomeStuck proves a stuck outcome maps by the conflict record it follows:
-// no record is a plain Stuck with the stuck reason, a new conflict is a Reroute, and a repeated one, a record naming no finding or an unreadable or unwritable file is a plain Stuck.
+// no record gives a plain Stuck with the stuck reason; a new conflict gives a Reroute;
+// a repeated one, a record naming no finding, and an unreadable or unwritable file give a plain Stuck.
 // Every mapping carries the run's gate count and spans.
 func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -337,9 +338,9 @@ func pendingAuditErr() error {
 	return fmt.Errorf("%w: 1 correctness finding(s): 1) parent-write: wrote internal/x.go; way forward: 1) lym webster accept-audit; 2) re-step the loom row", websterengine.ErrPendingAuditFindings)
 }
 
-// TestWebsterProducer_PendingAuditFindingsIsStuck covers a pending-audit refusal: it is a Stuck
-// with the refusal's own text as reason and no path, and the adapter hands the run its row's
-// re-entry step while keeping one a caller set.
+// TestWebsterProducer_PendingAuditFindingsIsStuck covers a pending-audit refusal:
+// it is a Stuck with the refusal's own text as reason and no path.
+// The adapter hands the run its row's re-entry step, but keeps one a caller set.
 //
 //testtiming:keep pins the pending-audit refusal's reason, which is the refusal's own text, and the re-entry step the run is handed
 func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
@@ -509,8 +510,9 @@ func (doneProducer) Call(context.Context) (shedengine.Outcome, shedengine.Output
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// TestWebsterProducer_ConflictRerouteCapThenRepeatHalts proves a new plan conflict that meets shed's reroute cap halts with the told clause and counts as routed.
-// Resuming the halt without the hand edit halts again as a repeat and adds no reroute.
+// TestWebsterProducer_ConflictRerouteCapThenRepeatHalts proves that a new plan conflict meeting the reroute cap halts.
+// The halt carries the told clause and counts as routed.
+// Resuming without the hand edit halts again as a repeat and adds no reroute.
 func TestWebsterProducer_ConflictRerouteCapThenRepeatHalts(t *testing.T) {
 	tiergate.Require(t, 0)
 	const capWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\""

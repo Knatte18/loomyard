@@ -1,4 +1,5 @@
-// calleefailures_test.go pins that a failure repeating on every tick of the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
+// calleefailures_test.go pins that a failure repeating on every tick of the name-repair loop logs once per episode:
+// Warn at the first failure, Debug while it goes on, Info at recovery.
 
 package reedengine
 
@@ -14,8 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCalleeFailuresLogOncePerEpisode drives each guarded site three times while its tmux call fails and once after it is healed, on one engine.
-// Each site logs its failure message at one level=WARN line and two level=DEBUG lines carrying failed_ticks, and its recovery message at one level=INFO line.
+// TestCalleeFailuresLogOncePerEpisode drives each guarded site on one engine:
+// three calls while its tmux call fails, then one after it is healed.
+// Each site logs its failure message at one level=WARN line and two level=DEBUG lines carrying failed_ticks;
+// its recovery message logs at one level=INFO line.
 // It captures the process-global logger at Debug, so it stays serial.
 func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 	tiergate.Require(t, 0)

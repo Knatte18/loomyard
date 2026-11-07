@@ -1,4 +1,5 @@
-// shortcuts_test.go checks the embedded shortcut file against the real root and pins how the mounted shortcuts list in help and in the command index.
+// shortcuts_test.go checks the embedded shortcut file against the real root.
+// It also pins how the mounted shortcuts are listed in help and in the command index.
 
 package main
 
@@ -16,8 +17,11 @@ import (
 )
 
 // shortcutProblems returns one problem per defect of shortcuts against root.
-// A name must not equal a root command outside the shortcut group nor repeat, and an argv must be non-empty and resolve, through root.Find, to an invocable command that is not the root and not a shortcut.
-// An argv that resolves to `reed attach` must be the shortcut's last, since the attach replaces the process on Unix and nothing runs after it.
+// A name must not equal a root command outside the shortcut group, and no name may repeat.
+// An argv must be non-empty.
+// It must resolve, through root.Find, to an invocable command that is neither the root nor a shortcut.
+// An argv that resolves to `reed attach` must be the shortcut's last.
+// Attach replaces the process on Unix, so nothing may run after it.
 func shortcutProblems(root *cobra.Command, shortcuts []shortcutcli.Shortcut) []string {
 	var problems []string
 	seen := map[string]bool{}

@@ -1,8 +1,9 @@
-// reconcile_test.go table-tests planReconcile's pure decision logic against saved strand tables and
-// fake list-panes results (including pane_dead=1 rows and the Selvage exemption),
-// exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
-// touches tmux and so stays hermetic, and pins reconcileLocked's reap log line via
-// logcapture.CaptureVerbose.
+// reconcile_test.go table-tests planReconcile's pure decision logic.
+// The cases run against saved strand tables and fake list-panes results.
+// The cases cover pane_dead=1 rows and the Selvage exemption.
+// It also exercises reconcileLocked's real-record mutation on the no-dead-panes path.
+// That path never touches tmux, so it stays hermetic.
+// It pins reconcileLocked's reap log line via logcapture.CaptureVerbose.
 
 package reedengine
 
@@ -64,9 +65,8 @@ func TestPlanReconcile(t *testing.T) {
 			wantSolePane: "%1",
 		},
 		{
-			// Every pane is dead: one must be spared so the session survives
-			// (killing the last pane ends it). The first dead pane is kept
-			// (binding stays), the rest are killed and their bindings cleared.
+			// Every pane is dead: one must be spared, because killing the last pane ends the session.
+			// The first dead pane is kept with its binding, and the rest are killed and their bindings cleared.
 			name: "AllDeadKeepsFirstPaneAndKillsTheRest",
 			strands: []Strand{
 				{GUID: "g1", PaneID: "%1"},
@@ -93,10 +93,9 @@ func TestPlanReconcile(t *testing.T) {
 			wantCleared: []string{"gone"},
 		},
 		{
-			// A live pane no strand owns (operator split / mid-op-crash
-			// orphan) is killed deterministically while a strand is bound to
-			// a present pane — never left to select-layout's positional
-			// reaping, which can destroy a tracked pane instead.
+			// A live pane no strand owns is killed deterministically while a strand is bound to a present pane.
+			// Such a pane is an operator split or a mid-op-crash orphan.
+			// It must not be left to select-layout's positional reaping, which can destroy a tracked pane instead.
 			name:                     "UntrackedAlivePaneKilledWhileBoundContentPresent",
 			strands:                  []Strand{{GUID: "g1", PaneID: "%1"}},
 			live:                     []LivePane{{ID: "%1", Dead: false}, {ID: "%7", Dead: false}},
@@ -104,30 +103,19 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// With no strand bound to any present pane and no alive Selvage
-			// (selvagePaneID unset, so policy.authorizesReap() is false), reed has
-			// nothing to lay out and leaves foreign panes strictly alone
-			// (the apply is skipped too — anyPlacedStrand). This is the
-			// absent-Selvage shape of "nothing authorizes the reap"; see
-			// SelvageAloneNeverMakesAnyBoundPresentTrue and the two
-			// policy.authorizesReap()-false-with-a-live-Selvage cases below for the other
-			// shapes.
+			// No strand is bound to a present pane, and no Selvage is alive.
+			// selvagePaneID is unset, so policy.authorizesReap() is false.
+			// reed has nothing to lay out and leaves foreign panes alone; the apply is skipped too (anyPlacedStrand).
 			name:        "UntrackedPanesUntouchedWhenNoSelvageAndNothingBound",
 			strands:     []Strand{{GUID: "cleared", PaneID: ""}},
 			live:        []LivePane{{ID: "%7", Dead: false}, {ID: "%8", Dead: false}},
 			wantCleared: nil,
 		},
 		{
-			// Selvage must never be reaped as an "untracked" pane even
-			// while a strand is bound and anyBoundPresent is true —
-			// exemptPaneIDs (boundPaneIDs plus Selvage) is what protects
-			// it, distinct from boundPaneIDs itself (which must stay
-			// strand-only so anyBoundPresent is never inflated by a merely
-			// live Selvage). This shape also covers "alive Selvage alongside a
-			// bound strand" for the policy.authorizesReap() disjunct: the reap already
-			// fires via anyBoundPresent here, so policy.authorizesReap() contributes
-			// nothing new to this case, and no separate case is needed for
-			// it.
+			// Selvage is never reaped as an untracked pane, even while a strand is bound and anyBoundPresent is true.
+			// exemptPaneIDs (boundPaneIDs plus Selvage) protects it.
+			// boundPaneIDs itself stays strand-only, so a merely live Selvage never inflates anyBoundPresent.
+			// The reap already fires via anyBoundPresent in this case, so policy.authorizesReap() adds nothing here.
 			name:          "SelvageNeverReapedAsUntrackedWhileStrandBound",
 			strands:       []Strand{{GUID: "g1", PaneID: "%1"}},
 			live:          []LivePane{{ID: "%1", Dead: false}, {ID: "%selvage", Dead: false}, {ID: "%7", Dead: false}},
@@ -138,12 +126,10 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// Selvage is alive and no strand is bound to any present
-			// pane: anyBoundPresent stays false (derived from boundPaneIDs
-			// alone, never Selvage — folding Selvage in would wrongly
-			// flip it), but policy.authorizesReap() is true, so the untracked reap fires
-			// from that disjunct alone and %7 is killed while Selvage
-			// itself stays exempt.
+			// Selvage is alive and no strand is bound to a present pane.
+			// anyBoundPresent stays false, since it derives from boundPaneIDs alone, and folding Selvage in would wrongly flip it.
+			// policy.authorizesReap() is true, so the untracked reap fires from that disjunct alone.
+			// %7 is killed and Selvage itself stays exempt.
 			name:                     "SelvageAloneNeverMakesAnyBoundPresentTrue",
 			strands:                  []Strand{{GUID: "cleared", PaneID: ""}},
 			live:                     []LivePane{{ID: "%selvage", Dead: false}, {ID: "%7", Dead: false}},
@@ -152,9 +138,8 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// An alive Selvage with zero strands and one untracked alive
-			// pane: that pane is killed as an untracked kill (not a dead-pane
-			// kill) and Selvage itself is spared.
+			// An alive Selvage with zero strands and one untracked alive pane: that pane is killed as an untracked kill.
+			// It is not a dead-pane kill, and Selvage itself is spared.
 			name:                     "AliveSelvageNoStrandsReapsOneUntrackedPane",
 			strands:                  nil,
 			live:                     []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan", Dead: false}},
@@ -163,10 +148,9 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%orphan"},
 		},
 		{
-			// An alive Selvage with zero strands and several untracked panes
-			// (an old Selvage pane plus an orphaned strand pane, M22's
-			// shape): all of them are killed and the current Selvage is
-			// spared.
+			// An alive Selvage with zero strands and several untracked panes: all of them are killed.
+			// The untracked panes include an old Selvage pane and an orphaned strand pane.
+			// The current Selvage is spared.
 			name:    "AliveSelvageNoStrandsReapsSeveralUntrackedPanes",
 			strands: nil,
 			live: []LivePane{
@@ -179,9 +163,8 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%oldselvage", "%orphanstrand"},
 		},
 		{
-			// Selvage present but Dead: true, with no strand bound and one
-			// alive untracked pane: policy.authorizesReap() is false (the Selvage entry
-			// is present but dead), so nothing is reaped.
+			// Selvage is present but Dead: true, with no strand bound and one alive untracked pane.
+			// policy.authorizesReap() is false, because the Selvage entry is present but dead, so nothing is reaped.
 			name:          "PresentButDeadSelvageDoesNotAuthorizeReap",
 			strands:       nil,
 			live:          []LivePane{{ID: "%selvage", Dead: true}, {ID: "%orphan", Dead: false}},
@@ -189,12 +172,9 @@ func TestPlanReconcile(t *testing.T) {
 			wantCleared:   nil,
 		},
 		{
-			// A non-empty selvagePaneID naming no entry in live at all, with
-			// no strand bound and one alive untracked pane: policy.authorizesReap()'s
-			// third way of being false, distinct from the empty-id and
-			// present-but-dead cases above. Reachable on the add path once
-			// an operator kills Selvage outright, since no verb but
-			// up/resume rebuilds it.
+			// A non-empty selvagePaneID naming no entry in live at all, with no strand bound and one alive untracked pane:
+			// policy.authorizesReap() is false, a third way distinct from the empty id and the present-but-dead case.
+			// The add path reaches this state once an operator kills Selvage outright: no verb but up/resume rebuilds it.
 			name:          "SelvageIDNamingNoLivePaneDoesNotAuthorizeReap",
 			strands:       nil,
 			live:          []LivePane{{ID: "%orphan", Dead: false}},
@@ -202,9 +182,8 @@ func TestPlanReconcile(t *testing.T) {
 			wantCleared:   nil,
 		},
 		{
-			// A dead Selvage alongside a strand bound to a present pane: the
-			// reap fires anyway via anyBoundPresent, and the Selvage corpse
-			// is still spared.
+			// A dead Selvage alongside a strand bound to a present pane: the reap fires anyway via anyBoundPresent,
+			// and the Selvage corpse is still spared.
 			name:                     "DeadSelvageAlongsideBoundStrandStillReapsViaAnyBoundPresent",
 			strands:                  []Strand{{GUID: "g1", PaneID: "%1"}},
 			live:                     []LivePane{{ID: "%selvage", Dead: true}, {ID: "%1", Dead: false}, {ID: "%7", Dead: false}},
@@ -213,14 +192,11 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// A DEAD Selvage pane must not be scheduled for killing either —
-			// the dead-pane kill loop, not only the untracked reap, spares
-			// it. Nothing outside up/resume rebuilds Selvage, so killing
-			// the corpse here would leave every intermediate add/remove
-			// without a Selvage, holding a stale SelvagePaneID (the
-			// fable-header-r1 layout-scramble-then-wedged-up defect). The
-			// kept corpse stays enumerable; ensureSelvagePaneLocked heals it
-			// at the next boot.
+			// A dead Selvage pane must not be scheduled for killing either:
+			// the dead-pane kill loop, not only the untracked reap, spares it.
+			// Nothing outside up/resume rebuilds Selvage.
+			// Killing the corpse would leave every intermediate add/remove without a Selvage, holding a stale SelvagePaneID.
+			// The kept corpse stays enumerable; ensureSelvagePaneLocked heals it at the next boot.
 			name:          "DeadSelvagePaneKeptNotKilled",
 			strands:       []Strand{{GUID: "g1", PaneID: "%1"}},
 			live:          []LivePane{{ID: "%selvage", Dead: true}, {ID: "%1", Dead: false}},
@@ -228,8 +204,8 @@ func TestPlanReconcile(t *testing.T) {
 			wantCleared:   nil,
 		},
 		{
-			// A dead Selvage alongside a dead strand pane: the strand corpse
-			// is still killable business-as-usual (an alive pane remains),
+			// A dead Selvage alongside a dead strand pane:
+			// the strand corpse is still killable business-as-usual (an alive pane remains),
 			// while the Selvage corpse stays exempt.
 			name:                "DeadSelvageExemptWhileDeadStrandPaneStillKilled",
 			strands:             []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}},
@@ -329,9 +305,8 @@ func findStrandPaneID(strands []Strand, guid string) string {
 //testtiming:keep pins reconcileLocked mutating the real state record, clearing a gone strand's binding and keeping a present one's, with no tmux call; its covering tests run this code without asserting it
 func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *testing.T) {
 	tiergate.Require(t, 0)
-	// cfg.Tmux points at a nonexistent binary (newTestEngine's fixture): if
-	// reconcileLocked ever shelled out here, this test would fail loudly
-	// rather than silently passing against a stray real server.
+	// cfg.Tmux points at a nonexistent binary (newTestEngine's fixture).
+	// If reconcileLocked ever shelled out here, this test would fail loudly, not silently pass against a stray real server.
 	e := newTestEngine(t)
 
 	st := &ReedState{Strands: []Strand{
@@ -355,7 +330,9 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 	}
 }
 
-// TestReconcileLocked_KeepsABindingFoundInAnotherSession pins that reconcile keeps an own-window strand's binding when the server-wide listing finds its pane in another session, kills nothing, and clears the binding when that lookup fails.
+// TestReconcileLocked_KeepsABindingFoundInAnotherSession pins that reconcile keeps a strand's binding.
+// When the server-wide listing finds an own-window strand's pane in another session, reconcile kills nothing.
+// It clears the binding when that lookup fails.
 func TestReconcileLocked_KeepsABindingFoundInAnotherSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -396,10 +373,10 @@ func TestReconcileLocked_KeepsABindingFoundInAnotherSession(t *testing.T) {
 	}
 }
 
-// TestReconcileLocked_LogsTheUntrackedPanesItReaps pins reconcileLocked's reap log line (see
-// reconcile.go's reconcileLocked doc comment): one Info line naming the panes ACTUALLY destroyed,
-// never plan.deadPanesToKill/plan.untrackedPanesToKill directly, on both the success path and the
-// partial-kill error path, and no line at all when nothing was killed.
+// TestReconcileLocked_LogsTheUntrackedPanesItReaps pins reconcileLocked's reap log line.
+// The line is one Info line naming the panes that were destroyed,
+// never the planned plan.deadPanesToKill or plan.untrackedPanesToKill.
+// It is written on both the success path and the partial-kill error path, and never when nothing was killed.
 func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("KillsUntrackedPanes_LogsTheirIDs", func(t *testing.T) {
@@ -478,12 +455,11 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	})
 }
 
-// TestClearConflictingPaneBindings is the regression guard for the R5 review's R5-F3: a corrupt
-// reed.json whose strand pane bindings contradict each other (a strand naming Selvage's pane, or
-// two strands naming one pane) made `up` destroy unrelated live panes and their processes while
-// reporting ok:true, then report the strand live against a pane it does not own.
-// The repair is first-writer-wins, so the table order of the cleared GUIDs is part of the contract,
-// not an implementation detail.
+// TestClearConflictingPaneBindings pins the repair of contradicting strand pane bindings in a corrupt reed.json:
+// a strand naming Selvage's pane, or two strands naming one pane.
+// Left in place, such bindings make `up` destroy unrelated live panes and their processes while reporting ok:true,
+// and they report the strand live against a pane it does not own.
+// The repair is first-writer-wins, so the table order of the cleared GUIDs is part of the contract.
 //
 //testtiming:keep pins the first-writer-wins repair of contradicting bindings: a strand naming Selvage's pane or sharing another strand's pane is cleared in table order, unbound strands never conflict and Selvage's own binding is never cleared; its covering tests run this code without asserting it
 func TestClearConflictingPaneBindings(t *testing.T) {
@@ -552,9 +528,9 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Copy the strand slice, not just the struct: clearConflictingPaneBindings mutates
-			// elements in place, and a shared backing array would let one subtest rewrite another
-			// subtest's fixture.
+			// Copy the strand slice, not just the struct:
+			// clearConflictingPaneBindings mutates elements in place,
+			// and a shared backing array would let one subtest rewrite another subtest's fixture.
 			st := tt.state
 			st.Strands = append([]Strand(nil), tt.state.Strands...)
 			got := clearConflictingPaneBindings(&st)

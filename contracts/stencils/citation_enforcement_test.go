@@ -1,16 +1,21 @@
-// citation_enforcement_test.go is the permanent guard behind the class of bug this task closes: a stencil body naming a loomyard-internal path an agent working in some other repository cannot open.
-// It scans each stencil's agent-facing body -- the bytes StripLeadingComment produces, the same stripping Fill and FillOptional apply before a template is ever executed, so a banner-only reference (this package's own doc comments about where a file lives on the loomyard side) is never flagged: an agent never sees the banner, so it is not a citation an agent could act on.
+// citation_enforcement_test.go guards stencil bodies against naming a loomyard-internal path:
+// an agent working in another repository cannot open it.
+// It scans each stencil's agent-facing body: the bytes StripLeadingComment produces.
+// Fill and FillOptional apply the same stripping before a template executes.
+// A reference that lives only in the stripped banner is never flagged:
+// an agent never sees the banner, so it cannot act on the citation.
 //
-// The token rule has three conjunctive parts, each earning its keep against real stencil content:
+// The token rule has three conjunctive parts:
 //  1. the token sits under one of three repository-relative prefixes: "contracts/", "docs/", "internal/";
-//  2. the token ends in ".md" or ".go" -- this is what keeps a bare package reference (the internal/planglyph mention at the end of the implementer body) out of scope while still catching a Go-file citation;
-//  3. the token contains no "#" and is not "plan:"-prefixed -- applied to the FULL surrounding token, not to a regex match that begins at the prefix, because a `plan:`-handle's "plan:" sits to the LEFT of where a prefix-anchored match would start (see the Card-model handle grammar in loom-template-plan.md), and matching only from the prefix onward would silently discard the very evidence part 3 exists to see.
+//  2. the token ends in ".md" or ".go";
+//     this keeps a bare package reference out of scope while a Go-file citation is still caught;
+//  3. the token contains no "#" and is not "plan:"-prefixed, both checked on the full surrounding token:
+//     a `plan:` handle's "plan:" sits left of the prefix, so a prefix-anchored match would silently drop it.
 //
-// An occurrence passes when it is "{{.specs_dir}}"-prefixed (the deployed-copy spelling every rewrite in this task lands on) or when it is named on citationAllowlist below.
+// An occurrence passes when it is "{{.specs_dir}}"-prefixed (the deployed-copy spelling) or named in citationAllowlist.
 //
-// Scenario coverage: a rewritten normative citation (an {{.specs_dir}}-prefixed token) passes; a bare re-added one (a loomyard-relative path with no {{.specs_dir}} prefix and no allowlist entry) fails; an allowlisted entry passes; an allowlist entry whose token has vanished from its stencil's stripped body fails as stale (both in TestStencils_NoBareCrossRepoCitations).
-//
-// TestStencils_NameNoConstraintsFile is a separate, narrower assertion, not a fourth part of the token rule above: "CONSTRAINTS.md" is a repository-ROOT token, under none of the four prefixes, so the prefix rule structurally cannot see it.
+// TestStencils_NameNoConstraintsFile is a separate assertion:
+// "CONSTRAINTS.md" sits at the repository root, under none of the three prefixes, so the prefix rule cannot match it.
 // The file is retired, so any stencil naming it fails.
 
 package stencils
@@ -27,24 +32,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// citationPrefixes are the four repository-relative prefixes a bare cross-repository citation
-// token must sit under to be in scope for TestStencils_NoBareCrossRepoCitations.
+// citationPrefixes are the three repository-relative prefixes that make a token a cross-repository citation candidate.
 var citationPrefixes = []string{"contracts/", "docs/", "internal/"}
 
-// citationAllowKey is the allowlist key identifying one (stencil name, token) pair TestStencils_NoBareCrossRepoCitations is told to pass despite matching the bare-citation token rule.
+// citationAllowKey returns the allowlist key for a token in one stencil, formatted as "stencil:token".
+// An allowance covers only the stencil it names.
 func citationAllowKey(stencilName, token string) string {
 	return stencilName + ":" + token
 }
 
-// citationAllowlist is the justification-carrying allowlist for tokens the bare-citation rule would
-// otherwise flag but that are not citations at all.
-// Each entry's Why is its own justification, carried as data rather than as a comment beside the entry,
-// so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lymcwd's Markdown Link Integrity allowlist already uses.
+// citationAllowlist lists tokens that the bare-citation check would flag but that are not citations.
+// Each entry's Why field states why its token is not a citation.
 //
-// A small allowlist is the design here, not a workaround.
-// Its first entry names loom-block-plan-overview's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
-// the plain-file-path spelling rule for a reader of the stencil, it is not a pointer the agent is
-// meant to open.
+// The loom-block-plan-overview entry names that stencil's glyph-grammar worked example:
+// `internal/boardcli/list.go` illustrates the plain-file-path spelling rule for a reader of the stencil,
+// and it is not a pointer the agent is meant to open.
 var citationAllowlist = []scankit.Entry{
 	{
 		Key: "loom-block-plan-overview:internal/boardcli/list.go",
@@ -60,11 +62,9 @@ var citationAllowlist = []scankit.Entry{
 	},
 }
 
-// citationCandidateTokens returns every maximal non-whitespace, non-backtick run in body that
-// contains one of citationPrefixes as a substring anywhere in the run -- not merely at its start --
-// which is what keeps a `plan:`-prefixed token's full spelling in view for the exclusion rule in
-// citationIsBare to test, rather than only the "internal/..." suffix a prefix-anchored match would
-// see.
+// citationCandidateTokens returns the runs of body that contain one of the repository-relative prefixes.
+// Runs are split at whitespace and backticks, and a prefix matches anywhere in a run, not only at its start.
+// That keeps the "plan:" in a `plan:` handle visible to the check that excludes it.
 func citationCandidateTokens(body string) []string {
 	var tokens []string
 	for _, run := range strings.FieldsFunc(body, func(r rune) bool {
@@ -80,10 +80,9 @@ func citationCandidateTokens(body string) []string {
 	return tokens
 }
 
-// citationIsBare reports whether token is a bare cross-repository citation under the token rule's
-// three conjunctive parts: it ends in ".md" or ".go", it contains no "#", and it is not
-// "plan:"-prefixed. citationCandidateTokens has already established that token sits under one of
-// the four repository-relative prefixes, so this function checks only parts 2 and 3.
+// citationIsBare reports whether token is a bare cross-repository citation:
+// it ends in ".md" or ".go", it contains no "#", and it is not "plan:"-prefixed.
+// It does not check for a repository prefix, so the token must already contain one.
 func citationIsBare(token string) bool {
 	if !strings.HasSuffix(token, ".md") && !strings.HasSuffix(token, ".go") {
 		return false
@@ -97,9 +96,9 @@ func citationIsBare(token string) bool {
 	return true
 }
 
-// TestStencils_NoBareCrossRepoCitations fails on every bare cross-repository citation left in any stencil's agent-facing body -- see the file comment for the full token rule and its rationale.
-// It also fails when a citationAllowlist entry matches no bare citation in its named stencil's stripped body:
-// without that check the allowlist would silently accumulate dead rows that would re-permit a reintroduced bare citation carrying the same token.
+// TestStencils_NoBareCrossRepoCitations fails on each bare cross-repository citation in a stencil's agent-facing body.
+// It also fails when a citationAllowlist entry matches no bare citation in that stencil's agent-facing body.
+// Without that check, dead entries would accumulate and re-permit a bare citation that reappears with the same token.
 func TestStencils_NoBareCrossRepoCitations(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -117,7 +116,8 @@ type bareCitation struct {
 	token   string
 }
 
-// scanBareCitations applies the token rule to every stencil's stripped body and returns the violations the allowlist does not cover, together with the allowlist recording which entries matched.
+// scanBareCitations returns the uncovered bare citations in every stencil's agent-facing body.
+// It also returns the allowlist, which records the entries that matched, so the caller can find stale ones.
 func scanBareCitations(t *testing.T) ([]bareCitation, *scankit.Allowlist) {
 	t.Helper()
 
@@ -153,8 +153,6 @@ func namesConstraintsFile(body string) bool {
 
 // TestStencils_NameNoConstraintsFile fails when any stencil's stripped body names "CONSTRAINTS.md".
 // The file is retired in favour of the PATTERN directive a prompt carries, so no stencil points at it, guarded or not.
-// See the file comment for why this is a separate assertion rather than a fourth part of the bare-citation token rule.
-// It first proves the rule fails a body naming the retired file and passes one that does not.
 //
 //testtiming:keep pins the ban on a stencil naming the retired CONSTRAINTS.md, a guard that fires which the repository-relative citation rule cannot see
 func TestStencils_NameNoConstraintsFile(t *testing.T) {

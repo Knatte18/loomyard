@@ -1,6 +1,9 @@
-// smoke_warmpath_test.go pins the other half of this task's hard boundary: a `reed add` or `reed attach` against a live session holding at least one pane performs no reconcile, no layout apply, no SaveState, and no config validation it did not already perform -- add gains one round trip (list-panes), attach gains two (has-session, list-panes), and nothing else.
-// The scenario boots the session explicitly first, so the self-healing pre-flight under test takes its early return rather than its delegate-to-boot branch.
-// See smoke_test.go for the shared fixture vocabulary this file builds on, and smoke_coldstart_test.go for its cold-path counterpart.
+// smoke_warmpath_test.go covers `reed add` and `reed attach` against a live session that holds at least one pane.
+// On that path neither command reconciles, applies the layout, or calls SaveState.
+// It adds no config validation.
+// Their only extra work is the tmux list-panes and has-session queries the warm path needs.
+// The scenario boots the session explicitly first,
+// so the self-healing pre-flight under test takes its early return rather than its delegate-to-boot branch.
 
 package reedcli
 
@@ -22,11 +25,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// writeReedConfigWithOverride seeds worktree's reed config the way the engine's own integration
-// fixture seeds it (contract_integration_test.go's seedReedConfig): the full config template,
-// written to the config path the config engine resolves for the reed module under this worktree's
-// anchor -- with exactly one key's value replaced, rather than a single-key fragment that would fail
-// LoadOrTemplate's key-completeness check.
+// writeReedConfigWithOverride writes the reed config for worktree from the full config template.
+// Exactly one key's value is replaced, and the file lands at the path the config engine resolves for the reed module.
+// A single-key fragment would fail LoadOrTemplate's key-completeness check, so the whole template is written.
 func writeReedConfigWithOverride(t *testing.T, worktree, key, value string) {
 	t.Helper()
 	lines := strings.Split(reedengine.ConfigTemplate(), "\n")
@@ -54,8 +55,11 @@ func writeReedConfigWithOverride(t *testing.T, worktree, key, value string) {
 	}
 }
 
-// TestSmokeWarmPath runs the warm-path claims against one hub whose prime worktree is brought up once with one strand, so each step reuses that live session instead of building its own hub and server.
-// The steps run serially in a fixed order: each leaves the session up with the strand's state intact for the next, except the last, which tears the session down.
+// TestSmokeWarmPath runs the warm-path claims against one hub.
+// Its prime worktree is brought up once with one strand,
+// so each step reuses that live session instead of building its own hub and server.
+// The steps run serially in a fixed order:
+// each leaves the session up with the strand's state intact for the next step, except the last, which tears it down.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and session.
 func TestSmokeWarmPath(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -82,7 +86,8 @@ func TestSmokeWarmPath(t *testing.T) {
 	session := reedengine.SessionName(worktree)
 	statePath := filepath.Join(worktree, ".lym", "reed.json")
 
-	// WarmAddIsUnchanged pins the control case: warm add against a live session still yields exactly one session, one header pane, one live strand.
+	// WarmAddIsUnchanged pins the control case:
+	// warm add against a live session still yields exactly one session, one header pane, and one live strand.
 	if !t.Run("WarmAddIsUnchanged", func(t *testing.T) {
 		if !sessionAlive(tmuxPath, socket, session) {
 			t.Fatalf("session %s not alive on socket %s after a warm add", session, socket)
@@ -116,7 +121,8 @@ func TestSmokeWarmPath(t *testing.T) {
 		return
 	}
 
-	// WarmAttachWritesNoState pins the third additive-only assertion: the modification time and bytes of .lym/reed.json before a warm attach must be identical afterward.
+	// WarmAttachWritesNoState pins that a warm attach leaves .lym/reed.json untouched:
+	// its modification time and bytes must be identical afterward.
 	if !t.Run("WarmAttachWritesNoState", func(t *testing.T) {
 		before, err := os.ReadFile(statePath)
 		if err != nil {
@@ -147,8 +153,10 @@ func TestSmokeWarmPath(t *testing.T) {
 		return
 	}
 
-	// WarmAttachDoesNotReapAnOperatorsPane pins the sharpest warm-path assertion: with the session already up and an untracked pane created directly through the multiplexer (the operator hand-split case), attach must leave that pane alive.
-	// This is the step that fails loudly if the pre-flight is ever routed back through the boot path -- upLocked's tail reaches planReconcile, which adds every live non-exempt pane to its kill list the moment the header is alive.
+	// WarmAttachDoesNotReapAnOperatorsPane pins that attach leaves an untracked pane alive.
+	// The pane is created directly through the multiplexer, as an operator's hand-split does, while the session is up.
+	// This step fails if the pre-flight is ever routed back through the boot path.
+	// upLocked's tail reaches planReconcile. It adds every live non-exempt pane to its kill list once the header is alive.
 	// It leaves the foreign pane in the session for the steps after it.
 	if !t.Run("WarmAttachDoesNotReapAnOperatorsPane", func(t *testing.T) {
 		before := map[string]bool{}
@@ -179,8 +187,11 @@ func TestSmokeWarmPath(t *testing.T) {
 		return
 	}
 
-	// WarmAttachStillRefusesOnAnUnreadableStateFile pins that a warm attach still aborts on the JSON envelope with the state loader's diagnosis, exactly as it does today, when .lym/reed.json becomes unparseable underneath a live session.
-	// This is the step that fails if the Status call is ever dropped from attach's pre-flight -- EnsureSession's own early return reads no state at all.
+	// WarmAttachStillRefusesOnAnUnreadableStateFile pins that a warm attach aborts on an unparseable .lym/reed.json.
+	// The state file is made unparseable under a live session,
+	// and the abort is the JSON envelope with the state loader's diagnosis.
+	// This step fails if the Status call is ever dropped from attach's pre-flight:
+	// EnsureSession's own early return reads no state at all.
 	// It restores the state file afterwards, so the steps after it find the strand's state intact.
 	if !t.Run("WarmAttachStillRefusesOnAnUnreadableStateFile", func(t *testing.T) {
 		original, err := os.ReadFile(statePath)
@@ -210,9 +221,11 @@ func TestSmokeWarmPath(t *testing.T) {
 		return
 	}
 
-	// WarmAttachSurvivesAConfigErrorButColdStillRefuses pins that the liveness probe precedes the boot path's whole pre-tmux config-validation block: with the session already up, an invalid mouse value written into this worktree's reed config must not make attach refuse.
-	// The cold direction is asserted too, against the identical bad config with no session up, where the same config error must still fire -- together the two pin that EnsureSession's early return is what skips validation, not a weakened check.
-	// It ends by bringing the session down, so it is the last step.
+	// WarmAttachSurvivesAConfigErrorButColdStillRefuses pins that the liveness probe runs before config validation.
+	// With the session up, an invalid mouse value in this worktree's reed config must not make attach refuse.
+	// The cold direction is asserted too: with no session up, the identical bad config must still fire the same error.
+	// Together the two pin that EnsureSession's early return is what skips validation, not a weakened check.
+	// It ends by bringing the session down.
 	t.Run("WarmAttachSurvivesAConfigErrorButColdStillRefuses", func(t *testing.T) {
 		writeReedConfigWithOverride(t, worktree, "mouse", "sideways")
 

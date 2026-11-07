@@ -1,10 +1,10 @@
-// beginbatch.go implements BeginBatch, the first of webster's two bracket verbs Master calls around each in-session fork: the fingerprint refusal gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
-// BeginBatch never touches fabric (webster is fabric-blind throughout) and never persists deps.State
-// itself — the caller holds the state-mutation lease (AcquireStateMutation) across its whole
-// begin-batch call and saves state via SaveState once BeginBatch returns successfully, webster's
-// own fabric-commit-boundary discipline.
+// beginbatch.go implements BeginBatch, the first of the two bracket verbs around each in-session fork;
+// it runs the fingerprint refusal gate and captures the start SHA;
+// it renders the previous batch's persisted digest into the fork prompt and writes the prompt file.
+// BeginBatch never touches fabric and never persists deps.State itself.
+// The caller holds the state-mutation lease (AcquireStateMutation) across its whole begin-batch call,
+// and it saves state via SaveState once BeginBatch returns successfully.
 // Master's model is set once at spawn and BeginBatch never reads or changes it.
-// Under the flat card-list model there is no deferred-verify chain and no oversized-batch escalation, and there is no --restart-chain surface.
 
 package websterengine
 
@@ -26,17 +26,20 @@ import (
 )
 
 // ErrFingerprintMismatch is the sentinel BeginBatch returns when the on-disk plan's recomputed
-// fingerprint disagrees with State.PlanFingerprint — webster's own crash/resume guard, with its own
-// sentinel identity (webster-owns-its-own-domain-types).
+// fingerprint disagrees with State.PlanFingerprint.
+// It guards a crashed or resumed run against a plan edited since the run recorded its fingerprint.
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
-// planOverviewFile is the plan's overview file, which carries the integration verify; rebaseline accepts a change to its Card Index only.
+// planOverviewFile is the plan's overview file, which carries the integration verify.
+// rebaseline accepts a change to its Card Index only.
 const planOverviewFile = "00-overview.md"
 
 // fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
-// It reads the changed plan files so the clause names the cards to pass to rebaseline;
-// a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
-// An overview change confined to the Card Index names rebaseline with the changed and added cards, and any other overview change names the follow-up card landing.
+// It reads the changed plan files, so the clause names the cards to pass to rebaseline.
+// A state without PlanFileHashes names rebaseline without card numbers.
+// A changedPlanFiles error falls back to the generic text.
+// An overview change confined to the Card Index names rebaseline with the changed and added cards,
+// and any other overview change names the follow-up card landing.
 // The reset route it names ends in reentry.
 func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry string) string {
 	fresh := freshRestartSteps(reentry)
@@ -86,24 +89,26 @@ func cardNumberOf(name string) string {
 	return num
 }
 
-// ErrPlanConflict is the sentinel a *PlanConflictError unwraps to: the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reported a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrFingerprintMismatch via errors.Is.
-// Dispatching a fork on a re-resolve that failed is strictly worse than not dispatching.
+// ErrPlanConflict is the sentinel a *PlanConflictError unwraps to.
+// It marks a begin refused because the plan re-resolution at dispatch reported a blocking finding.
+// Callers match it with errors.Is.
+// Dispatching a fork on a re-resolve that failed is worse than not dispatching.
 var ErrPlanConflict = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
 // The three causes a PlanConflictError carries, and the only values its Cause takes.
 const (
-	// ConflictCausePlanDefect is a conflict found while no batch was begun: the approved plan contradicts the tree before any work started.
+	// ConflictCausePlanDefect is a conflict found before any batch was begun: the approved plan contradicts the tree.
 	ConflictCausePlanDefect = "plan_defect"
 	// ConflictCauseTreeMoved is a conflict found after a batch was begun: the tree moved under the plan.
 	ConflictCauseTreeMoved = "tree_moved"
-	// ConflictCausePlanOrder is a conflict whose every blocking finding is a delete a later card's Edit code still references, begun batches or not: the cards run in the wrong order, and moving the delete settles it.
+	// ConflictCausePlanOrder marks a conflict where every blocking finding is a delete a later card still references.
 	ConflictCausePlanOrder = "plan_order"
 )
 
-// PlanConflictError is the refusal BeginBatch returns when the dispatch-boundary re-resolution reports blocking findings.
+// PlanConflictError is the refusal BeginBatch returns when the re-resolution at dispatch reports blocking findings.
 // Batch is the batch whose begin was refused.
 // Cause is ConflictCausePlanDefect, ConflictCauseTreeMoved or ConflictCausePlanOrder.
-// Findings is every blocking finding as Finding.Error renders it, in the order the re-resolution reported them.
+// Findings is every blocking finding as an error string, in the order the re-resolution reported them.
 type PlanConflictError struct {
 	Batch    int
 	Cause    string
@@ -122,14 +127,19 @@ func (e *PlanConflictError) Error() string {
 // Unwrap returns ErrPlanConflict, so errors.Is identifies the refusal.
 func (e *PlanConflictError) Unwrap() error { return ErrPlanConflict }
 
-// BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently:
-// Plan is the already-parsed plan;
-// Batches is the execution order, the batchifier's own order read from the recorded partition by ExecutionBatches — predecessorDigestLine's lookup depends on Batches already being in that order;
-// State is the already-loaded run state BeginBatch reads and mutates;
-// Config is the loaded webster.yaml;
-// Stopper is the seam the prior-recovery-strand reclaim stops a leftover strand through (a dead-but-live recovery record a fork batch is about to overwrite);
-// Geom is the told Geometry BeginBatch reads every path from: WorktreeRoot is the git worktree HeadSHA is captured from and the plan's card paths resolve against, PaneCwd is RenderForkPrompt's promptWorktreeRoot, WebsterDir and ReportsDir are the reports directory,
-// and PromptsDir and StencilsDir feed the prompt write and the fork template's read location.
+// BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently.
+// Plan is the already-parsed plan.
+// Batches is the execution order, read from the recorded partition by ExecutionBatches.
+// The previous batch's digest lookup depends on Batches already being in that order.
+// State is the already-loaded run state BeginBatch reads and mutates.
+// Config is the loaded webster.yaml.
+// Stopper is the seam that stops a leftover recovery strand:
+// a dead but still live one that a fork batch is about to overwrite.
+// Geom supplies every path BeginBatch reads.
+// WorktreeRoot is the git worktree that HeadSHA is captured from and the plan's card paths resolve against.
+// PaneCwd is the worktree root the fork prompt renders with.
+// WebsterDir and ReportsDir locate the reports directory.
+// PromptsDir and StencilsDir feed the prompt write and the fork template's read location.
 type BeginDeps struct {
 	Plan    *planparser.Plan
 	Batches []batcher.Batch
@@ -138,13 +148,12 @@ type BeginDeps struct {
 	Stopper StrandStopper
 	Geom    Geometry
 
-	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
-	// is off. It lives here rather than on Geometry because internal/hubgeom and
-	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
-	// this value needs no geometry derivation.
+	// FrictionDir is the absolute friction directory (see internal/friction), empty when Tier 2 is off.
+	// It needs no geometry derivation.
 	FrictionDir string
 
-	// GateTiers are the hub's rendered tier and gate-list lines the fork prompt's gate_tiers marker takes; "none" when no tier is declared.
+	// GateTiers are the hub's rendered tier and gate-list lines that the fork prompt's gate_tiers marker takes;
+	// it is "none" when no tier is declared.
 	GateTiers string
 
 	// RenameTools are the hub's structure-aware rename tools the fork prompt renders; empty for none.
@@ -153,7 +162,7 @@ type BeginDeps struct {
 	// Gate is the hub's gate config, from which the fork prompt renders its card and batch gate calls.
 	Gate gateslot.Config
 
-	// CardFixer says a failed card gate call goes through a cold fixer first, so the fork prompt says so.
+	// CardFixer reports whether a failed card gate call goes through a cold fixer first.
 	CardFixer bool
 }
 
@@ -163,26 +172,23 @@ type BeginResult struct {
 	BatchName string
 	// PromptPath is the absolute path of the fork prompt file BeginBatch just wrote.
 	PromptPath string
-	// StartSHA is the value recorded in the batch's state: the repo HEAD captured before this call returns,
-	// or — on a re-begin over a record that already carries one — that earlier value,
+	// StartSHA is the repo HEAD captured before this call returns.
+	// A re-begin over a record that already carries one keeps that earlier value,
 	// so it stays the HEAD from before the batch's first fork.
 	StartSHA string
-	// Advisories is every informational finding the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them without the run stopping — a non-empty blocking findings set never reaches this far, since it returns ErrPlanConflict instead.
+	// Advisories are the informational findings the re-resolution reported; the run continues past them.
 	Advisories []string
 	// ArchivedReport is the path a report left with no begin-batch record was archived to, empty when there was none.
 	ArchivedReport string
 }
 
-// completedCards returns every card belonging to a batch that has already reached a terminal
-// classification, in batches' own order.
+// completedCards returns the cards of every batch that has reached a terminal classification, in batches' own order.
 //
-// It is what scopes the dispatch-boundary re-resolution (and record-batch's drift detection) to work
-// that has NOT landed yet. A plan describes intended change, so a card already built necessarily
-// contradicts the tree it would otherwise be re-resolved against — its Create target now exists, its
-// Delete target is gone, its Rename's old side no longer resolves — and reporting that as a plan
-// defect wedged every multi-batch plan carrying one of those card types.
-// exclude, when non-zero, additionally counts that batch as completed: record-batch calls this while
-// the batch it is recording is still non-terminal, and that batch's own work has just landed.
+// It scopes the dispatch-boundary re-resolution and record-batch's drift detection to work that has not landed yet.
+// A plan describes intended change, so a card already built contradicts the tree it is re-resolved against:
+// its Create target exists, its Delete target is gone, and its Rename's old side no longer resolves.
+// A non-zero exclude also counts that batch as completed:
+// record-batch calls this while the batch it records is still non-terminal, and that batch's work has just landed.
 func completedCards(batches []batcher.Batch, st *State, exclude int) []planparser.Card {
 	if st == nil {
 		return nil
@@ -202,16 +208,17 @@ func completedCards(batches []batcher.Batch, st *State, exclude int) []planparse
 	return done
 }
 
-// DispatchScope computes the one dispatch scoping begin-batch, run entry and `lym webster validate` share.
-// begun is every card of a batch begin-batch recorded, terminal or not, in batches' own order.
+// DispatchScope computes the one dispatch scoping shared across webster's begin, run and validate paths.
+// begun is every card of a batch that begin-batch recorded, terminal or not, in batches' own order.
 // forthcoming is the cards of every begun batch whose record is not terminal.
 // A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
 // A nil state returns two nil slices.
 //
-// A batch begun but never recorded (its record-batch refused, or the run died between the fork's commit and the record) may already have landed its work, so its Create targets can legitimately exist;
-// validating it as unstarted reported them as create-already-exists and refused the very resume that would record the batch.
+// A batch begun but never recorded may already have landed its work, so its Create targets can exist.
+// Validating it as unstarted would refuse the very resume that records it.
 // Its targets may equally not have landed yet, which is why forthcoming exists:
-// planindex.Index.ValidateDispatch excludes a forthcoming card's Create and Rename New targets from the status check, so a later card that Uses them is not refused.
+// the dispatch validation excludes a forthcoming card's Create and Rename New targets from its status check,
+// so a later card that Uses them is not refused.
 // Master re-drives such a batch through record-batch or recover-batch, which apply their own checks.
 func DispatchScope(batches []batcher.Batch, st *State) (begun, forthcoming []planparser.Card) {
 	if st == nil {
@@ -233,11 +240,13 @@ func DispatchScope(batches []batcher.Batch, st *State) (begun, forthcoming []pla
 }
 
 // DoneCards returns the cards of plan, in plan order, that belong to a batch st records terminal with status done.
-// It reads the batch records alone, so it needs no batchifier: a record's own card ids name its cards, and a record written before those ids existed names the single card NN-<Slug>.
+// It reads the batch records alone: a record's own card ids name its cards,
+// and a record written before those ids existed names the single card NN-<Slug>.
 // A recorded id the plan lacks is skipped, so a card renamed since its batch ran counts as not done.
 // A nil state returns nil.
 //
-// It is what the loom plan gate scopes its tree-dependent checks by: a done card's work is already in the tree, so it is history, not a target.
+// The loom plan gate uses it to scope its tree-dependent checks:
+// a done card's work is already in the tree, so it is history, not a target.
 func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
 	if st == nil {
 		return nil
@@ -266,10 +275,11 @@ func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
 	return cards
 }
 
-// LastBegunCard returns the highest card number among the cards of every batch record st holds, terminal or not, and 0 when there is none.
-// A record's cards are its own card ids, and a record written before those ids existed names the single card numbered by its key.
-// It reads the records alone, so it needs no batchifier: it is the bound of the begun set, whose cards are frozen, not of the done set.
-// A nil state returns 0.
+// LastBegunCard returns the highest card number among the cards of every batch record st holds, terminal or not.
+// It returns 0 when there is none, including for a nil state.
+// A record's cards are its own card ids.
+// A record written before those ids existed names the single card numbered by its key.
+// It bounds the begun set, whose cards are frozen, so it reads the records alone.
 func LastBegunCard(st *State) int {
 	if st == nil {
 		return 0
@@ -291,13 +301,16 @@ func LastBegunCard(st *State) int {
 	return last
 }
 
-// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file no longer hashes to the CardHashes entry the batch recorded at begin.
-// A card file is read through the plan's own source, so a card of a plan parsed through an overlay is judged by its proposed bytes.
-// It hashes the card files as batchCardHashes does and reads the record and those bytes alone, never parsing the plan.
-// A nil state, a record without CardHashes, a batch not terminal done and a recorded id plan lacks each contribute nothing;
-// an unreadable card file is returned as an error.
+// EditedDoneCards returns, sorted, the NN-slug ids of edited cards whose batch is terminal and done.
+// A card is edited when its file no longer hashes to the CardHashes entry recorded at begin.
+// The plan's own source reads each card file, so an overlaid plan is judged by its proposed bytes.
+// It hashes the files the way the recorded CardHashes were computed,
+// and it reads only the record and those bytes, never parsing the plan.
+// A nil state contributes nothing.
+// So does a record without CardHashes, a batch not terminal done, or a recorded id the plan lacks.
+// An unreadable card file is returned as an error.
 //
-// It is what the loom plan gate reads to refuse an edit to a card whose work has landed.
+// The plan gate uses it to refuse an edit to a card whose work has landed.
 func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 	if st == nil {
 		return nil, nil
@@ -333,7 +346,8 @@ func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 	return edited, nil
 }
 
-// findBatch returns the batcher.Batch in batches whose identity matches number.
+// findBatch returns the batch in batches whose number matches number.
+// When none matches, it returns an error that names the way forward.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {
 		if n, _ := batchIdentity(b); n == number {
@@ -343,12 +357,14 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lym webster status` lists the run's batches, name one of those", number)
 }
 
-// ErrRenameToolMissing is the sentinel a refusal unwraps to when a batch holds a symbol Rename pair and the hub lists no rename tool.
+// ErrRenameToolMissing is the sentinel error a refusal wraps.
+// It applies when a batch holds a symbol Rename pair and the hub lists no rename tool.
 var ErrRenameToolMissing = errors.New("webster: the batch holds a symbol Rename pair and the hub lists no rename tool")
 
-// renameToolRefusal refuses a batch holding a symbol Rename pair when renameTools is empty, because the fork has no tool to run the rename with.
+// renameToolRefusal refuses a batch holding a symbol Rename pair when renameTools is empty.
+// The fork has no tool to run the rename with.
 // It returns nil when renameTools is non-empty or the batch holds only file pairs.
-// verb names the webster verb the way forward re-runs.
+// verb names the webster verb that the way forward re-runs.
 func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools []string, verb string) error {
 	if len(renameTools) > 0 {
 		return nil
@@ -364,7 +380,8 @@ func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools [
 	return nil
 }
 
-// digestSummaryLine renders d into the one-line summary RenderForkPrompt's prevDigest parameter expects.
+// digestSummaryLine renders d as the one-line summary a fork prompt takes as its previous digest.
+// A nil d renders as the empty string.
 func digestSummaryLine(d *Digest) string {
 	if d == nil {
 		return ""
@@ -380,14 +397,13 @@ func digestSummaryLine(d *Digest) string {
 	return line
 }
 
-// predecessorDigestLine renders the digest of whichever batch actually ran immediately before
-// batchNumber in execution order.
-// batches is required to already be in execution order, the batchifier's order that ExecutionBatches returns at every call site;
-// batchNumber-1 arithmetic would be correct only while batch number and execution position coincide.
-// It locates batchNumber's position in batches by batchIdentity, exactly as findBatch does, and
-// returns "" when the batch is absent from batches or sits at index 0 (nothing executed before
-// it), or when the predecessor's state entry or its digest is absent.
-// It tolerates a nil st and a nil st.Batches by returning "".
+// predecessorDigestLine renders the digest of the batch that ran immediately before batchNumber in execution order.
+// batches must already be in execution order, which need not match batch number order.
+// The predecessor is found by position: batchNumber-1 is right only while batch number and execution position coincide.
+// It locates batchNumber's position in batches by batchIdentity.
+// It returns "" when the batch is absent from batches or sits at index 0, which means nothing ran before it.
+// It also returns "" when the predecessor's state entry or its digest is absent.
+// A nil st or nil st.Batches also yields "".
 func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) string {
 	idx := -1
 	for i, b := range batches {
@@ -411,9 +427,12 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 	return digestSummaryLine(prev.Digest)
 }
 
-// existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
-// retry is RecoveryRetry's verdict: a dead recovery that earns a retry names recover-batch once more.
-// A terminal record other than done is worded in recover-batch's own order: the exhausted case first, which also reports true, then a dead recovery with a retry, any other dead recovery, and a stuck or failed record.
+// existingReportRemedy names the one step the recorded state of batch number calls for.
+// It applies when begin-batch finds the batch's report already on disk.
+// retry reports whether a dead recovery should be retried; if so, the step names recover-batch once more.
+// For a terminal record other than done, the wording follows recover-batch's cases in order.
+// The exhausted case comes first and also reports true.
+// Then come a dead recovery with a retry, any other dead recovery, and a stuck or failed record.
 func existingReportRemedy(number int, recorded *BatchState, retry bool) (string, bool) {
 	if !recorded.Terminal {
 		if recorded.Kind == "recovery" {
@@ -437,20 +456,20 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 	return fmt.Sprintf("`lym webster recover-batch %d`", number), false
 }
 
-// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
-// The caller holds the state-mutation lease across this whole call and is responsible for
-// persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
-// never calls SaveState and never touches fabric.
+// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer.
+// It runs the fingerprint gate and captures the start SHA;
+// it renders the previous batch's persisted digest into the fork prompt, and it writes the prompt file.
+// The caller holds the state-mutation lease across this whole call,
+// and it must persist deps.State via SaveState once BeginBatch returns successfully.
+// BeginBatch never calls SaveState and never touches fabric.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
-	// The plan is a hard precondition, refused loudly rather than dereferenced below, for the same
-	// reason RecordBatch refuses one: a nil here is a wiring mistake in a caller, and a nil-pointer
-	// panic names neither the missing field nor the verb that failed to supply it.
+	// The plan is a hard precondition, refused loudly rather than dereferenced below.
+	// A nil here is a wiring mistake in a caller,
+	// and a nil-pointer panic names neither the missing field nor the verb that failed to supply it.
 	if deps.Plan == nil {
 		return nil, fmt.Errorf("webster: begin-batch requires a parsed plan; BeginDeps.Plan is nil")
 	}
-	// State is the same kind of hard precondition, and was the half-applied one: it is dereferenced a
-	// few lines below for PlanFingerprint, so the discipline the Plan check states was only actually
-	// enforced for one of the two fields (crucible round opus-medium-r6, R6-21).
+	// State is a hard precondition too: it is dereferenced below, so a nil one is refused here, not left to panic.
 	if deps.State == nil {
 		return nil, fmt.Errorf("webster: begin-batch requires loaded run state; BeginDeps.State is nil")
 	}
@@ -467,26 +486,30 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 
 	// Re-resolve the plan against the current tree before the fork prompt is written, never from a cache.
-	// deps.Geom.WorktreeRoot is the same root BeginBatch already reads for its head-SHA capture
-	// below, so this adds no path derivation and no internal/lymcwd import. An infrastructure error
-	// (errors.Is(err, planindex.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
-	// dispatching a fork on a re-resolve that failed is strictly worse than not dispatching.
-	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
-	// re-resolving it reports the plan working correctly as a blocking defect.
-	// DispatchScope, not completedCards: the batch record is written further down,
-	// so on a first begin this batch is still validated, while a re-begin of a batch whose earlier fork already landed its work is not refused for it.
+	// An infrastructure error (errors.Is(err, planindex.ErrQuarryUnavailable)) blocks exactly like a blocking finding:
+	// dispatching a fork on a re-resolve that failed is worse than not dispatching.
+	// The scope is the cards still to be built:
+	// a card already built contradicts the tree by design;
+	// re-resolving it would report a working plan as a blocking defect.
+	// The batch record is written further down, so on a first begin this batch is still validated;
+	// a re-begin of a batch whose earlier fork already landed its work is not refused for it.
 	// The forthcoming half keeps the Create targets of begun, unrecorded batches out of the status check,
-	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them (#329).
-	// Once any batch is begun, a pending card's Delete target that is already gone arrives in the advisories below as delete-target-gone, not as a blocking finding.
+	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them.
+	// Once any batch is begun, a pending card's Delete target that is already gone,
+	// and it arrives in the advisories below as delete-target-gone, not as a blocking finding.
 	begun, forthcoming := DispatchScope(deps.Batches, deps.State)
 	index, err := deps.Geom.index()
 	if err != nil {
 		return nil, err
 	}
 	resolveFindings, resolveErr := index.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
-	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it then keeps going: the status and Create-inversion passes both run after the rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the rewrite also survives the pass's own hard-error paths.
-	// The staleness re-baseline therefore runs HERE, ahead of every refusal below, rather than once past them — otherwise state.json keeps the pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every later begin-batch refuses it as a foreign one.
-	// See this package's doc.go.
+	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk.
+	// The status and Create-inversion passes run after that rewrite,
+	// so a rewritten plan routinely also reports a blocking finding,
+	// and the rewrite also survives the pass's own hard-error paths.
+	// The staleness re-baseline therefore runs before every refusal below.
+	// Otherwise state.json keeps the pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit,
+	// and every later begin-batch refuses it as a foreign one.
 	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
 	if err := restampFingerprint(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil && resolveErr == nil {
 		return nil, err
@@ -506,7 +529,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 	if len(blocking) > 0 {
-		// begun is computed before this call records its batch, so a first begin of batch 1 has none begun (plan_defect) and a re-begin of a recorded batch has it begun (tree_moved).
+		// begun is computed before this call records its batch:
+		// a first begin of batch 1 has none begun (plan_defect), and a re-begin of a recorded batch has it begun (tree_moved).
 		// A set holding any other finding keeps those two causes, since moving a delete would not settle it.
 		cause := ConflictCauseTreeMoved
 		switch {
@@ -529,7 +553,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster begin-batch %d`", err, batchNumber)
 	}
 
-	// The gate calls render before the first mutation, so a gate list the config lacks refuses with no prompt written and no state recorded.
+	// The gate calls render before the first mutation,
+	// so a gate list the config lacks refuses with no prompt written and no state recorded.
 	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
 		return nil, err
@@ -539,21 +564,24 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, err
 	}
 
-	// The fork writes its report here with whatever tool it likes — a plain
-	// shell redirect included, which unlike an agent Write tool never creates
-	// missing parents. Only the --fresh archive path recreated this dir
-	// before; the ordinary first run left it absent (found live in crucible
-	// round fable-r1).
+	// The fork writes its report here with whatever tool it likes;
+	// a plain shell redirect never creates missing parents, unlike an agent Write tool.
+	// The directory must therefore exist on every begin.
 	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
 	}
 
-	// webster's own pre-existing-report guard, applied to the fork path: a batch whose report already landed is finished work — silently overwriting its BatchState (and letting a fresh fork overwrite the report) must never happen by accident.
-	// A no_report re-fork never calls begin-batch again (the bracket is still open), with ONE exception:
-	// a run resumed after a crash that landed between the fork's report and record-batch re-drives a batch whose report IS on disk — that report is consumed by record-batch (the audit keys on the bracket-opening session, see RecordBatch),
-	// so the refusal message names the one remedy the recorded state calls for.
-	// Bound: only a batch with no record in state.json has its report archived and the begin proceeds, since such a report cannot be attributed to any begun batch and record-batch would only archive it and send the caller back here;
-	// a recorded batch's report is never archived by begin-batch.
+	// A batch whose report already landed is finished work.
+	// begin-batch must never overwrite its report or its BatchState by accident.
+	// A no_report re-fork never calls begin-batch again, because the bracket is still open.
+	// The one exception is a run resumed after a crash that landed between the fork's report and record-batch:
+	// it re-drives a batch whose report is on disk; record-batch consumes that report,
+	// and the audit keys on the bracket-opening session.
+	// So the refusal names the one remedy the recorded state calls for.
+	// Only a batch with no record in state.json has its report archived and the begin proceeds.
+	// Such a report cannot be attributed to any begun batch.
+	// Otherwise record-batch would only archive it and send the caller back here.
+	// A recorded batch's report is never archived by begin-batch.
 	existingReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	var archivedReport string
 	if _, statErr := os.Stat(existingReport); statErr == nil {
@@ -606,9 +634,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
 	}
-	// The prompt file is a re-renderable artifact, never a durable record —
-	// overwriting an existing one (a re-run begin-batch for the same batch)
-	// is expected, not an error.
+	// The prompt file is a re-renderable artifact, never a durable record.
+	// Overwriting an existing one, as a re-run of begin-batch for the same batch does, is expected, not an error.
 	if err := os.WriteFile(promptPath, prompt, 0o644); err != nil {
 		return nil, fmt.Errorf("webster: write fork prompt %s: %w", promptPath, err)
 	}
@@ -616,12 +643,11 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if deps.State.Batches == nil {
 		deps.State.Batches = map[int]*BatchState{}
 	}
-	// If a prior recovery attempt for this batch left a recorded strand (a
-	// dead classification keeps its substrate alive by design, and it may
-	// still be genuinely working), stop it before the record below erases
-	// its StrandGUID: an unreclaimed recovery strand would race this batch's
-	// fresh fork on the repo, so this respawn path reclaims the kept strand
-	// first.
+	// A prior recovery attempt for this batch may have left a recorded strand.
+	// A dead classification keeps its substrate alive by design, and that strand may still be working.
+	// Stop it before the record below erases its StrandGUID:
+	// an unreclaimed recovery strand would race this batch's fresh fork on the repo,
+	// so the respawn path reclaims the kept strand first.
 	// A plain fork batch's record has an empty StrandGUID, which the reclaim skips.
 	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {
 		if err := deps.Stopper.StopStrand(prior.StrandGUID); err != nil {
@@ -629,16 +655,20 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 
-	// A re-begin keeps the StartSHA the batch was first recorded with: the captured head may already sit past commits an earlier fork landed,
-	// and the recorded start must name the base of the whole bracket (recover-batch applies the same inheritance to a recovery record).
+	// A re-begin keeps the StartSHA the batch was first recorded with:
+	// the captured head may already sit past commits an earlier fork landed,
+	// and the recorded start must name the base of the whole bracket.
+	// recover-batch applies the same inheritance to a recovery record.
 	startSHA := head
 	prior := deps.State.Batches[number]
 	if prior != nil && prior.StartSHA != "" {
 		startSHA = prior.StartSHA
 	}
 	// Recorded warnings carry over too: their identities stay dispositioned, so no later call would record them again.
-	// So do the fork transcripts already attributed to the batch, so the run-exit audit still knows which report each of those forks owns.
-	// The recovery count and its start commit carry over as well, so a re-begin does not hand a batch a fresh pair of recoveries.
+	// The fork transcripts already attributed to the batch carry over,
+	// so the run-exit audit still knows which report each of those forks owns.
+	// The recovery count and its start commit carry over as well,
+	// so a re-begin does not hand a batch a fresh pair of recoveries.
 	var priorWarnings []AuditWarning
 	var priorTranscripts []string
 	var priorRecoveries int
@@ -667,9 +697,9 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		RecoveryEngines:  priorRecoveryEngines,
 		RecoveryStartSHA: priorRecoveryStart,
 		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
-		// Stamp the opening Master session so the run-exit audit cross-check
-		// can scope its begun-batch count to the session whose forks the
-		// whole-session audit actually covers.
+		// Stamp the opening Master session.
+		// The run-exit audit cross-check scopes its begun-batch count to that session;
+		// the whole-session audit covers that session's forks.
 		SessionID: deps.State.MasterSessionID,
 		Engine:    deps.State.MasterEngine,
 	}

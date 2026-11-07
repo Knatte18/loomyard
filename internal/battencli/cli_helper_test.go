@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// battenVerbCommand builds the single shedverbs command named verb ("run", "step", "status", or "pause"), armed against c.specFor(verb) assigned onto c.spec.
-// That is the seam arm.go's specFor/arm split exists for, letting a test fill a Spec with no resolution and no git spawn.
-// It sets Args: cobra.ExactArgs(1), a stricter arity than Command() itself sets on these four verbs (cobra.MaximumNArgs(1)) but a harmless one for these tests: every caller supplies exactly one positional.
+// battenVerbCommand returns the shedverbs command named verb, with c.spec set to a Spec built for that verb.
+// The Spec is filled with no resolution and no git spawn, so a test can run the command without either.
+// It sets Args to cobra.ExactArgs(1), since every caller supplies exactly one positional.
 func battenVerbCommand(c *battenCLI, verb string) *cobra.Command {
 	spec := c.specFor(verb)
 	c.spec = &spec

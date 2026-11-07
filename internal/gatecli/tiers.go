@@ -1,4 +1,5 @@
-// tiers.go plans the tier runs of one `lym gate test` call from the loaded gate config and the request, and renders a tier's command.
+// tiers.go plans the tier runs of one `lym gate test` call from the loaded gate config and the request.
+// It also renders a tier's command.
 
 package gatecli
 
@@ -24,7 +25,8 @@ const (
 	scopeVet     = "vet"
 )
 
-// roleClause closes every refusal that sends the caller to `lym config gate`: the steps need the prime, so any other session reports and the orch takes them.
+// roleClause closes every refusal that sends the caller to `lym config gate`: the steps need the prime,
+// so any other session reports and the orch takes them.
 const roleClause = "; a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them"
 
 // invocation is one run of a tier's command: the directory it runs in and the words its {targets} takes.
@@ -32,9 +34,9 @@ type invocation struct {
 	// dir is the run directory, relative to the worktree root unless absolute.
 	dir     string
 	targets []string
-	// terms are the class filter terms of an invocation the dotnet scoper narrowed to one selected project; nil for every other invocation.
+	// terms are the class filter terms of a dotnet invocation narrowed to one project; nil for every other one.
 	terms []string
-	// partial marks an invocation narrowed to one selected project of a dotnet share, which runs part of its tier and so is never recorded as a whole pass.
+	// partial marks a dotnet invocation narrowed to one project, which never counts as a whole pass.
 	partial bool
 }
 
@@ -54,7 +56,7 @@ type tierRun struct {
 	guardStep bool
 	// vetStep marks the run of `go vet` under a tier's build tag over a --card scope's packages.
 	vetStep bool
-	// buildOnly marks a shared_build tier whose share selected no test class and so has no invocation: it takes its slots to run the build step and runs no test command.
+	// buildOnly marks a shared_build tier whose share selected no test class: it runs only the build step.
 	buildOnly bool
 }
 
@@ -63,13 +65,21 @@ func tierName(number int) string {
 	return "tier" + strconv.Itoa(number)
 }
 
-// planTierRuns builds the run list of request over cfg and the scope sc without touching the disk:
-// the listed tiers ascending with the tiers another listed tier covers dropped, each over its own share of the scope, which a diff scope derives per base, then, for a --card scope under the go scoper, one vet run per tier of sc.tagTiers that no listed tier is or covers, ascending, then one guard run per tier that sc.guards holds guard tests for, when --guards or the scope's form asks for the guard step, ascending and leaving out a tier the listed tiers already ran whole.
+// planTierRuns builds the run list of request over cfg and the scope sc without touching the disk.
+// It lists the tiers ascending, with the tiers another listed tier covers dropped;
+// each runs over its own share of the scope, which a diff scope derives per base.
+// For a --card scope under the go scoper, it adds one vet run per tier of sc.tagTiers that no listed tier is or covers.
+// It adds the guard step when --guards or the scope's form asks for it:
+// one guard run per tier that sc.guards holds guard tests for, ascending.
+// It leaves out a tier the listed tiers already ran whole.
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
-// It refuses, naming `lym config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry, words after `--` for a tier whose command lacks {args}, a guard group whose tier is undeclared or whose command lacks {targets} or {args}, and --guards under the none scoper.
-// It refuses --guards under the dotnet scoper too, naming only dropping --guards, since no config change gives a C# hub the guard tests.
+// It refuses, naming `lym config gate`: a hub with no tier0; an undeclared tier; a dangling covers entry;
+// words after `--` for a tier whose command lacks {args};
+// a guard group whose tier is undeclared or whose command lacks {targets} or {args}; and --guards under the none scoper.
+// It refuses --guards under the dotnet scoper too, naming only dropping --guards:
+// no config change gives a C# hub the guard tests.
 func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun, error) {
 	if _, err := cfg.Tier(0); err != nil {
 		return nil, fmt.Errorf("gate test: %w", err)
@@ -173,8 +183,10 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 }
 
 // scopeInvocations returns the invocations one tier makes over sc, and whether its command ignores the scope's narrowing.
-// Explicit targets run in the -C directory, else the tier's dir; a whole scope runs the tier's all_targets, split at spaces, in the tier's dir.
-// A narrower scope runs the tier once per module in that module's directory, and the empty scope makes none; a dotnet share's module is a selected project, whose invocation carries its class filter terms and is partial.
+// Explicit targets run in the -C directory, else the tier's dir.
+// A whole scope runs the tier's all_targets, split at spaces, in the tier's dir.
+// A narrower scope runs the tier once per module in that module's directory, and the empty scope makes none.
+// A dotnet share's module is a selected project, whose invocation carries its class filter terms and is partial.
 // A scope that selected no test class makes no invocation for a tier with shared_build, and runs any other tier whole.
 // A tier with carry: false runs whole under every scope form but explicit targets, the empty scope included.
 // A command without {targets} runs once, whole, under explicit targets and under a non-empty narrower scope.
@@ -204,7 +216,9 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 	return invocations, false
 }
 
-// vetStepRun returns the vet run of the tier numbered number over modules: `<goBinary> vet -tags tierN` over each module's packages in that module's directory, under the tier's env, parallel and timeout_min, holding one slot.
+// vetStepRun returns the vet run of the tier numbered number over modules.
+// It runs `<goBinary> vet -tags tierN` over each module's packages in that module's directory:
+// the run takes the tier's env, parallel and timeout_min, and holds one slot.
 // A goBinary the platform shell cannot quote is refused.
 func vetStepRun(cfg gateslot.Config, number int, goBinary string, modules []moduleTargets) (tierRun, error) {
 	tier, err := cfg.Tier(number)
@@ -240,7 +254,8 @@ func configRefusal(format string, args ...any) error {
 	return fmt.Errorf("gate test: %s; way forward: fix it with \"lym config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
 }
 
-// listedTiers returns the tier numbers request names, ascending and without repeats: the --tier values and, with --upto N, every tier cfg declares numbered 0 through N that is not manual.
+// listedTiers returns the tier numbers request names, ascending and without repeats.
+// They are the --tier values and, with --upto N, every tier cfg declares numbered 0 through N that is not manual.
 // Each manual tier --upto skips and --tier does not name is named on request.stderr when it has one.
 // With --gate it returns the tiers of that key, ascending and without repeats, and with neither flag it returns tier0.
 func listedTiers(cfg gateslot.Config, request testRequest) []int {
@@ -274,7 +289,8 @@ func listedTiers(cfg gateslot.Config, request testRequest) []int {
 	return slices.Compact(numbers)
 }
 
-// dropCovered returns the tier numbers of numbers that no higher kept tier covers, ascending, naming each dropped tier on request.stderr.
+// dropCovered returns the tier numbers of numbers that no higher kept tier covers, ascending.
+// It names each dropped tier on request.stderr when it has one.
 func dropCovered(numbers []int, tiers map[int]gateslot.Tier, request testRequest) []int {
 	var kept []int
 	for i := len(numbers) - 1; i >= 0; i-- {
@@ -299,8 +315,10 @@ func ranWhole(runs []tierRun, number int, sc scope) bool {
 	})
 }
 
-// renderTierCommand fills {targets}, {args}, {parallel}, {filter} and {test_timeout} in the tier's command, each target and each arg quoted for the platform shell.
-// number is the tier's number and terms are the class filter terms of the invocation; {filter} renders as filterArgument says.
+// renderTierCommand fills {targets}, {args}, {parallel}, {filter} and {test_timeout} in the tier's command.
+// Each target and each arg is quoted for the platform shell.
+// number is the tier's number and terms are the class filter terms of the invocation.
+// {filter} renders the tier's filter ANDed with the terms ORed together.
 // A placeholder the command does not hold is not added, so terms given to a command without {filter} filter nothing.
 func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []string) (string, error) {
 	quotedTargets, err := quoteAll(targets)
@@ -326,10 +344,11 @@ func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []st
 	).Replace(tier.Command), nil
 }
 
-// filterArgument returns the `--filter` argument for the shell of goos that a tier's {filter} placeholder renders to, or "" when there is no expression.
+// filterArgument returns the `--filter` argument for the shell of goos, or "" when there is no expression.
 // With no terms the expression is the tier's filter.
 // With terms it is the tier's filter, when it has one, ANDed with the terms ORed together.
-// Terms that push the expression past greenCommandBudget are dropped, and the tier's filter stands alone, so the project runs whole within itself.
+// Terms that push the expression past greenCommandBudget are dropped.
+// The tier's filter then stands alone, so the project runs whole within itself.
 func filterArgument(goos string, number int, tier gateslot.Tier, terms []string) (string, error) {
 	expression := tier.Filter
 	if len(terms) > 0 {
@@ -381,9 +400,11 @@ func renderTierEnv(tier gateslot.Tier) []string {
 	return entries
 }
 
-// trimpathLine returns the line that tells a test author the tier builds with `-trimpath`, or "" when the GOFLAGS that env gives a child carries no enabled `-trimpath`.
+// trimpathLine returns the line that tells a test author the tier builds with `-trimpath`.
+// It returns "" when the GOFLAGS that env gives a child carries no enabled `-trimpath`.
 // A child sees the last GOFLAGS entry of env, so that entry alone decides.
-// Under `-trimpath` `runtime.Caller` reports module-relative file paths, and the line names the way forward of locating the repository from the working directory or `go.mod`.
+// Under `-trimpath` `runtime.Caller` reports module-relative file paths.
+// The line names the way forward of locating the repository from the working directory or `go.mod`.
 func trimpathLine(tier string, env []string) string {
 	goFlags := ""
 	for _, entry := range env {

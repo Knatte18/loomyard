@@ -54,7 +54,8 @@ type baselineFixture struct {
 	scopeAtEnd []bool
 }
 
-// newBaselineFixture returns a fixture whose HEAD is on the branch point and whose capture is declared, over a fresh records store.
+// newBaselineFixture returns a fixture whose HEAD is on the branch point and whose capture is declared.
+// It runs over a fresh records store.
 func newBaselineFixture(t *testing.T) *baselineFixture {
 	t.Helper()
 	store := newCommitStore(t)
@@ -108,7 +109,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 	return f
 }
 
-// seedScopeRecord writes rec as the scope record, as a run seeded before the records guard existed holds it.
+// seedScopeRecord writes rec as the scope record, as a run seeded without the records guard holds it.
 func (f *baselineFixture) seedScopeRecord(rec ScopeRecord) {
 	f.t.Helper()
 	if err := UpdateScope(f.paths, func(ScopeRecord, bool) (ScopeRecord, error) { return rec, nil }); err != nil {
@@ -151,7 +152,8 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 	return release
 }
 
-// checkRecordedScope fails t unless the scope record holds want's scope, source, diff mode, key patterns and volatile keys.
+// checkRecordedScope fails t unless the scope record matches want.
+// It compares the scope, source, diff mode, key patterns and volatile keys.
 func checkRecordedScope(t *testing.T, f *baselineFixture, want ScopeRecord) {
 	t.Helper()
 	got, found, err := ReadScope(f.paths)
@@ -160,7 +162,8 @@ func checkRecordedScope(t *testing.T, f *baselineFixture, want ScopeRecord) {
 	}
 }
 
-// requireRecordsCommits fails t unless the records store holds exactly n commits and each carries the Drift-Records trailer.
+// requireRecordsCommits fails t unless the records store holds exactly n commits.
+// Each of them must carry the Drift-Records trailer.
 func requireRecordsCommits(t *testing.T, f *baselineFixture, n int) {
 	t.Helper()
 	f.store.mu.Lock()
@@ -175,7 +178,8 @@ func requireRecordsCommits(t *testing.T, f *baselineFixture, n int) {
 	}
 }
 
-// TestDriftBaseline covers the scope the row records from config, the capture start and refusal, the pass with drift switched off, and the paths it commits on every way out.
+// TestDriftBaseline covers the scope the row records from config and the capture start and refusal.
+// It also covers the pass with drift switched off and the paths committed on every way out.
 func TestDriftBaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -194,7 +198,7 @@ func TestDriftBaseline(t *testing.T) {
 		wantNoReason []string
 		wantStarts   int
 		wantRuns     int
-		// wantCommit nil wants no commit through Deps.Commit at all.
+		// wantCommit nil wants no commit at all.
 		wantCommit []string
 		// wantDeferrable is true for a Stuck that lym drift defer settles.
 		wantDeferrable bool

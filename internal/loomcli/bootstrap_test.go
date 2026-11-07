@@ -27,9 +27,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMustSpawnDriver's two mixed rows are the finding the predicate was widened for: a table covering only the two pure rows (both false, both true) passes against the narrow single-argument version that read the run lock alone.
-// LockHeld_NoStrand_NoSpawn is the hand-started "lym loom run" case: an operator ran the go driver by hand against an llm-seeded run, so the lock is held but no driver strand exists -- the bootstrap must still not spawn a second driver.
-// LockFree_LiveStrand_NoSpawn is the driver-between-steps case: the driver session takes the run lock only inside each "lym shed step" and releases it between steps, so the lock reads free while the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
+// The mixed rows catch a predicate that reads only the run lock; the two pure rows alone would pass it.
+// LockHeld_NoStrand_NoSpawn covers a driver run by hand: the lock is held but no driver strand exists,
+// and the bootstrap must still not spawn a second driver.
+// LockFree_LiveStrand_NoSpawn covers a driver between steps.
+// It takes the run lock only inside each step, so the lock reads free while the strand is live,
+// and the bootstrap must not read that gap as no driver running.
 //
 //testtiming:keep pins the spawn predicate over the run lock, the driver lock and the live driver strand, including the mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
 func TestMustSpawnDriver(t *testing.T) {
@@ -58,7 +61,7 @@ func TestMustSpawnDriver(t *testing.T) {
 	}
 }
 
-// TestResolveDriverStrandAction covers resolveDriverStrandAction's three arms.
+// TestResolveDriverStrandAction covers every arm of `resolveDriverStrandAction`.
 //
 //testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring, full-name and legacy-named; its covering tests resolve it without asserting each arm
 func TestResolveDriverStrandAction(t *testing.T) {
@@ -153,15 +156,17 @@ func TestStartEnvelopeFields_PinsSuccessEnvelope(t *testing.T) {
 	}
 }
 
-// countingWait returns a wait seam that counts its own invocations, for use in place of a real
-// sleep in awaitRunLock tests.
+// countingWait returns a wait seam that counts its own invocations.
+// It stands in for a real sleep in the awaitRunLock tests.
 func countingWait(count *int) func() {
 	return func() {
 		*count++
 	}
 }
 
-// TestAwaitRunLock asserts the handshake's poll order and outcomes: lock held wins over everything, then a gone child, then a halted machine, and only an alive child that never takes the lock while the machine keeps running reaches the deadline.
+// TestAwaitRunLock asserts the handshake's poll order and outcomes.
+// A held lock wins over every other signal, then a gone child, then a halted machine;
+// only an alive child that never takes the lock while the machine keeps running reaches the deadline.
 func TestAwaitRunLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -181,24 +186,23 @@ func TestAwaitRunLock(t *testing.T) {
 		{name: "child died", aliveTrueCalls: 1, deadline: 10, want: awaitRunLockChildDied, wantWaits: 1},
 		{name: "deadline", aliveTrueCalls: -1, deadline: 5, want: awaitRunLockDeadline, wantWaits: 5},
 		{name: "lock seam errors", lockErr: errors.New("boom"), aliveTrueCalls: -1, deadline: 10, wantErr: true},
-		// The order is load-bearing: a child that took the lock and is about to exit must still be
-		// reported ready, so lockHeld reporting true must win even when alive would report false.
+		// The order is load-bearing: a child that took the lock and is about to exit must still be reported ready,
+		// so `lockHeld` must win even when the alive check would report false.
 		{name: "ready before the alive check, child about to exit", lockHeldOnCall: 1, deadline: 10, want: awaitRunLockReady},
-		// The regression guard for the defect Tier 2 introduced in `lym loom start`'s handshake.
-		// shedengine.Run releases the run lock on return, and `lym loom run` then spends up to
-		// friction_timeout_min -- thirty minutes in the shipped template -- running the friction
-		// reflection agent, against a handshake budget of thirty seconds. Before the halted seam existed,
-		// that combination (lock free, child alive, machine finished) fell through to awaitRunLockDeadline,
-		// which dispositionForHandshake refuses: a healthy run was reported as "driver did not take the run
-		// lock" and the bootstrap refused.
-		// A driver whose machine finished but whose process is still doing post-run bookkeeping is not a wedged spawn, and the halt is observable on the first poll.
+		// The regression guard for a finished driver that is still alive with the lock free.
+		// shedengine.Run releases the run lock on return, and the driver then runs the friction reflection agent.
+		// That agent can take up to `friction_timeout_min`, against a handshake budget far shorter than that.
+		// A finished machine with a live child and a free lock must report halted;
+		// otherwise it falls through to the deadline, which dispositionForHandshake refuses.
+		// That refusal reports a healthy run as a driver that did not take the run lock.
+		// A driver whose machine has finished but whose process still does post-run bookkeeping is not a wedged spawn,
+		// and the halt is observable on the first poll.
 		{name: "halted while the child is still alive", aliveTrueCalls: -1, halted: true, deadline: 10, want: awaitRunLockHalted},
-		// The seam order: a child that is already gone reports child-died even when halted would also
-		// report true, so the more specific signal wins and the child-died scenario keeps its meaning.
+		// A child that is already gone reports child-died even when the machine is also halted:
+		// the more specific signal wins.
 		{name: "halted is checked after the alive check", halted: true, deadline: 10, want: awaitRunLockChildDied},
-		// The other half of the guard: the halted seam must not make the genuine refusal unreachable.
-		// A child that is alive, never takes the lock, and leaves the machine in running is still a
-		// wedged spawn and must still hit the deadline.
+		// An alive child that never takes the lock while the machine stays running is still a wedged spawn.
+		// It must still reach the deadline: halted must not make that refusal unreachable.
 		{name: "still running with a live child still reaches the deadline", aliveTrueCalls: -1, deadline: 4, want: awaitRunLockDeadline, wantWaits: 4},
 	}
 	for _, tt := range tests {
@@ -303,8 +307,7 @@ func TestStatusStrandCmd(t *testing.T) {
 	}
 }
 
-// containsSubstring is a tiny local helper so this test file adds no new import for a one-line
-// substring check.
+// containsSubstring is a local helper, so this test file needs no new import for a one-line substring check.
 func containsSubstring(s, substr string) bool {
 	for i := 0; i+len(substr) <= len(s); i++ {
 		if s[i:i+len(substr)] == substr {
@@ -315,13 +318,10 @@ func containsSubstring(s, substr string) bool {
 }
 
 // TestDispositionForHandshake pins that only a deadline refuses the bootstrap.
-// The ChildDied row is the original regression guard: the verb used to test
-// `result != awaitRunLockReady`, which collapsed a driver that ran and finished into the same
-// refusal as a wedged spawn, reported "driver did not take the run lock" for a run that had taken it
-// and released it, and withheld the success envelope.
-// The Halted row guards the same failure arriving through Tier 2's door: a driver whose machine has
-// finished but whose process is still running the friction reflection agent is alive with the lock
-// free, which used to land on the refusal below.
+// The ChildDied row guards a driver that ran and finished.
+// Refusing it as a wedged spawn would report the run lock as never taken and withhold the success envelope.
+// The Halted row guards a driver whose machine has finished but whose process is still alive:
+// it holds the lock free, and it must not be refused either.
 func TestDispositionForHandshake(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -344,12 +344,11 @@ func TestDispositionForHandshake(t *testing.T) {
 	}
 }
 
-// TestResolveStatusStrandAction is the regression guard for a status pane that never came back.
-// The DeadEntry row is the defect: the bootstrap used to decide by presence alone, and reed keeps
-// tracking a strand whose pane is gone, so after any reed server restart -- a reboot, a crash, a
-// kill-server, or reed's own zombie-boot force-reap -- every subsequent "lym loom start" in that
-// worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
-// no status read-out at all.
+// TestResolveStatusStrandAction guards against a status pane that never comes back.
+// The DeadEntry row covers a strand whose pane is gone while reed still tracks it.
+// Reed keeps such entries after a server restart, a reboot, a crash, a kill-server, or its zombie-boot force-reap.
+// A bootstrap that decides by the entry's presence alone reports the pane as already there.
+// It never brings the status pane back.
 func TestResolveStatusStrandAction(t *testing.T) {
 	tiergate.Require(t, 0)
 	cur := statuspane.BuildIdentity{Path: "/bin/lym", Size: 10, ModTime: 100}
@@ -437,9 +436,9 @@ func TestResolveStatusStrandAction(t *testing.T) {
 	}
 }
 
-// driverFieldRead records one `<seedTypedIdent>.Driver` field read the Driver Choice Single-Site
-// Invariant's scan found, at the file (repo-root-relative, slash-normalized), enclosing top-level
-// function (empty outside any function), and line it occurred at.
+// driverFieldRead records one `<seedTypedIdent>.Driver` read found by the Driver Choice Single-Site Invariant.
+// It holds the file (repo-root-relative, slash-normalized) and the line of the read.
+// Its enclosing top-level function is empty outside any function.
 type driverFieldRead struct {
 	relPath  string
 	function string
@@ -470,27 +469,24 @@ func isShedrunReadSeedCall(expr ast.Expr) bool {
 	return ok && ident.Name == "shedrun" && sel.Sel.Name == "ReadSeed"
 }
 
-// scanFileForDriverFieldReads parses one Go source file and returns every "<ident>.Driver" selector
-// where ident is, within that same file, either a function parameter typed shedrun.Seed, a var/const
-// declared with that explicit type, or a short-var-decl target of a shedrun.ReadSeed(...) call's
-// first return value.
+// scanFileForDriverFieldReads parses one Go source file and returns every "<ident>.Driver" selector.
+// An ident counts as seed-typed when the file declares it with type shedrun.Seed.
+// It also counts when the file assigns it the first result of a shedrun.ReadSeed call with :=.
 //
-// This is a tripwire, not a completeness proof, in the same sense the Completion Signal Invariant's
-// own scan is: it recognizes the concrete patterns this codebase's own driver-seeding code uses, not
-// every conceivable way a future diff could alias a shedrun.Seed value. A pattern it cannot see is a
-// gap to close by hand when found, not a promise this scan already keeps.
+// It is a tripwire, not a completeness proof:
+// it recognizes the patterns the driver-seeding code uses, not every way a diff could alias a shedrun.Seed value.
+// A pattern it cannot see is a gap to close by hand when found.
 func scanFileForDriverFieldReads(path string) ([]driverFieldRead, error) {
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
-		// A file that fails to parse outright is not this scan's concern -- go build already
-		// catches that.
+		// A file that fails to parse outright is not this scan's concern, since go build already catches it.
 		return nil, nil //nolint:nilerr
 	}
 	return driverFieldReadsIn(fset, astFile), nil
 }
 
-// driverFieldReadsIn is scanFileForDriverFieldReads' matcher over an already-parsed file.
+// driverFieldReadsIn returns every ".Driver" selector in an already-parsed file whose operand is a shedrun.Seed.
 func driverFieldReadsIn(fset *token.FileSet, astFile *ast.File) []driverFieldRead {
 	seedTyped := map[string]bool{}
 	ast.Inspect(astFile, func(n ast.Node) bool {
@@ -525,8 +521,8 @@ func driverFieldReadsIn(fset *token.FileSet, astFile *ast.File) []driverFieldRea
 		return true
 	})
 
-	// Each hit is stamped with its enclosing top-level declaration's function name, so a carve-out
-	// can name one reading function rather than a whole file.
+	// Each hit is stamped with its enclosing top-level declaration's function name,
+	// so an allowlist entry can name one reading function rather than a whole file.
 	var found []driverFieldRead
 	for _, decl := range astFile.Decls {
 		function := ""
@@ -549,12 +545,14 @@ func driverFieldReadsIn(fset *token.FileSet, astFile *ast.File) []driverFieldRea
 	return found
 }
 
-// driverScanMinFiles is the plausible floor for how many production .go files the module holds outside internal/shedrun;
-// below it the walk has read the wrong tree.
+// driverScanMinFiles is the floor for the number of production .go files the scan reads outside internal/shedrun.
+// A scan that reads fewer files than this has walked the wrong tree.
 const driverScanMinFiles = 100
 
-// scanRepoForDriverFieldReads walks every production (non-test) .go file in the module, skipping internal/shedrun (the sole legitimate parser and writer of the Seed struct, per the Shed Run-Directory Invariant),
-// and returns every driver-field read driverFieldReadsIn finds, each stamped with its repo-root-relative, slash-normalized path, together with the count of files scanned.
+// scanRepoForDriverFieldReads walks every production (non-test) .go file in the module.
+// It skips internal/shedrun, the only package that parses and writes the seed.
+// It returns every driver-field read it finds, each with its repo-root-relative, slash-normalized path.
+// It also returns the count of files scanned.
 func scanRepoForDriverFieldReads(t *testing.T) ([]driverFieldRead, int) {
 	t.Helper()
 	var all []driverFieldRead
@@ -572,20 +570,15 @@ func scanRepoForDriverFieldReads(t *testing.T) ([]driverFieldRead, int) {
 	return all, scanned
 }
 
-// driverFieldReadCarveOuts are the production functions, outside internal/loomcli and
-// internal/shedrun, that may read a seed's Driver field, each keyed "<repo-root-relative file>:<function>".
-// The key names a function rather than a file, so a second reader added anywhere else in the same
-// file still fails the scan.
+// driverFieldReadCarveOuts lists the production functions that may read a seed's Driver field.
+// Each entry is keyed "<repo-root-relative file>:<function>" and must lie outside internal/loomcli and internal/shedrun.
+// The key names a function rather than a file, so a second reader added to the same file still fails the scan.
 //
-// Exactly one entry, and it is a deliberate carve-out rather than a widening: internal/battencli's
-// refuseAdoptedSeed compares a --driver value the operator just typed against the one the addressed
-// run is already seeded with, and refuses on the envelope when they disagree. That is the loud,
-// command-line-visible failure the Driver Choice Single-Site Invariant's own rationale prefers, not
-// the silent divergence it is written against -- the comparison selects no spawn, gates no
-// behaviour, and is unreachable from any producer, engine, or generic verb. Dropping it would
-// restore the defect it was added for: silently discarding a typed --driver against a seeded run.
-//
-// Every other new entry needs the same explicit justification here, next to the one it joins.
+// Each entry is a deliberate exception, not a widening, and states its justification beside the entry it joins.
+// The entry below compares a --driver value the operator typed against the run's recorded one.
+// It refuses on the envelope when they differ: a loud, command-line-visible failure.
+// Dropping it would restore the silent discard it prevents, a typed --driver ignored against a seeded run.
+// It selects no spawn, gates no behaviour, and no producer, engine or generic verb reaches it.
 var driverFieldReadCarveOuts = []scankit.Entry{
 	{
 		Key: "internal/battencli/arm.go:refuseAdoptedSeed",
@@ -593,12 +586,12 @@ var driverFieldReadCarveOuts = []scankit.Entry{
 	},
 }
 
-// TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField is the Driver Choice
-// Single-Site Invariant's tripwire: the only production readers of the seed's Driver field outside
-// internal/shedrun (the field's sole parser/writer) must be internal/loomcli, that recipe's own
-// bootstrap package, and the functions named in driverFieldReadCarveOuts. Adding a reader anywhere else
-// fails this test and forces a human to confirm the new site really belongs to a recipe's bootstrap
-// verb rather than a producer, a generic verb, or an engine gating behaviour on the recorded value.
+// TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField guards the seed's Driver field.
+// Only internal/loomcli may read the field outside internal/shedrun, its sole parser and writer.
+// The functions listed in driverFieldReadCarveOuts are the only other allowed readers.
+// Adding a reader anywhere else fails this test.
+// A human then confirms the new site belongs to a recipe's bootstrap verb:
+// not a producer, a generic verb, or an engine gating behaviour on the recorded value.
 //
 //lym:guard
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
@@ -634,9 +627,8 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 	}
 }
 
-// TestScanFileForDriverFieldReads_StampsTheEnclosingFunction pins the granularity the carve-out
-// relies on: two readers in one file are told apart by their enclosing function, so a carve-out for
-// one never admits the other.
+// TestScanFileForDriverFieldReads_StampsTheEnclosingFunction pins that two readers in one file are told apart:
+// by their enclosing function, so an allowlist entry for one never admits the other.
 //
 //testtiming:keep pins the driver-field scan telling two readers in one file apart by enclosing function, which the carve-out key relies on; the repo-wide scan asserts only that no reader sits outside
 func TestScanFileForDriverFieldReads_StampsTheEnclosingFunction(t *testing.T) {
@@ -701,7 +693,8 @@ func TestStatusStrandAddSpec(t *testing.T) {
 	}
 }
 
-// TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe pins that the spec ensureStatusStrand hands to reed carries the handle-opened recipe title and the checklist command.
+// TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe pins the spec handed to reed for the status strand:
+// the recipe title opened from the run's handle, and the checklist command.
 func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -719,7 +712,8 @@ func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T
 	}
 }
 
-// TestStatusWindowTitle pins that the status window opens its recipe with the run's board handle, and keeps the bare recipe when the board names none.
+// TestStatusWindowTitle pins that the status window opens its recipe with the run's board handle.
+// It also pins that the bare recipe is kept when the board names none.
 func TestStatusWindowTitle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

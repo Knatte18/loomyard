@@ -1,32 +1,25 @@
-// Command godocreflow reflows the text of Go doc-comment blocks -- file-level header comments, package doc
-// comments, and comments immediately preceding an exported declaration -- to semantic line breaks (one
-// sentence per line, plus a break at an internal independent-clause boundary), per the golang-comments
-// skill's "Line-wrap style" section.
+// Command godocreflow reflows the text of Go doc comments to semantic line breaks.
+// It puts each sentence on its own line, and it breaks again at an internal independent-clause boundary.
+// It reflows file-level header comments, package doc comments, and comments before an exported declaration.
 //
-// It is a pure mechanical transform: only re-breaks existing comment text onto different lines, never
-// adds, drops, or reorders a word. Comment discovery uses go/parser and go/ast (not regex over raw text),
-// so a "//" inside a string literal can never be mistaken for a comment. The sentence/clause-splitting
-// heuristics (abbreviations, backtick/paren-span guards, the Oxford-comma "first eligible comma" rule) are
-// ported from millhouse's plugins/mill/scripts/tools/pydocreflow/pydocreflow.py; see split.go.
+// It is a pure mechanical transform.
+// It only re-breaks existing comment text onto different lines; it never adds, drops, or reorders a word.
+// It finds comments with go/parser and go/ast, not with a regex over raw text;
+// so a "//" inside a string literal is never taken for a comment.
 //
-// A semantic line that still exceeds -max-width after sentence/clause splitting -- and has no further
-// semicolon/conjunction boundary left to break at -- gets one last-resort greedy word-wrap. This is a
-// targeted exception for the rare over-wide outlier (uncomfortable in side-by-side diff view), not a
-// return to general fixed-column wrapping; see wrapLongLine in split.go. -max-width is a flag rather than
-// a compiled-in constant specifically so the column budget can be tuned per run with no rebuild.
+// A semantic line still wider than -max-width after splitting gets one last-resort greedy word wrap.
+// The wrap is a narrow exception for the rare over-wide outlier, which reads badly in a side-by-side diff;
+// it does not return to fixed-column wrapping.
+// -max-width is a flag rather than a constant so the column budget can be tuned per run without a rebuild.
 //
-// Left untouched: single-line comments that already fit on one line, end-of-line inline comments,
-// build/tool directive comments (//go:generate, //go:build, //nolint, struct-tag-adjacent comments a
-// linter parses), any comment block containing indented example code or a Go 1.19 doc-comment
-// heading/list, struct-field and interface-method doc comments, and generated files ("Code generated ...
-// DO NOT EDIT" header).
+// Single-line comments that already fit, end-of-line comments, and directive comments stay unchanged.
+// Comment blocks with indented example code or a Go 1.19 heading or list stay unchanged too.
+// So do struct-field and interface-method doc comments, and generated files.
 //
 //	go run ./tools/godocreflow [-check] [-max-width N] <file_or_dir> ...
 //
 //	-check		print before/after blocks instead of writing files (dry run)
 //	-max-width	last-resort word-wrap column budget, 0 disables it (default 100)
-//
-// Last run: 2026-08-06, repo-wide sweep (golang-comments-linebreak-sweep task).
 package main
 
 import (

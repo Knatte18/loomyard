@@ -21,9 +21,11 @@ import (
 // sessionScopeKey is claude.yaml's key of the session_scope block.
 const sessionScopeKey = "session_scope"
 
-// ScopeConfig is claude.yaml's session_scope block: whether lym scopes what each session loads, and the skills it turns off in every session.
+// ScopeConfig is claude.yaml's session_scope block:
+// whether lym scopes what each session loads, and the skills it turns off in every session.
 type ScopeConfig struct {
-	// Enabled writes the scope into every session's settings; off, a session's plugins, skills, connectors, memory and tools follow its other settings layers.
+	// Enabled writes the scope into every session's settings;
+	// when off, a session's plugins, skills, connectors, memory and tools follow its other settings layers.
 	Enabled bool `yaml:"enabled"`
 	// SkillsOff names the skills turned off in every session that does not preload them, as Claude Code lists them.
 	// A plugin's skill named here stays listed, because Claude Code ignores skillOverrides for an installed plugin's skills.
@@ -33,10 +35,12 @@ type ScopeConfig struct {
 // skillOff is the skillOverrides value that turns a skill off.
 const skillOff = "off"
 
-// listAgentsTool is the Claude Code tool every session but the orch is denied: it lists the sessions a session can message, and their messages go through creel.
+// listAgentsTool is the Claude Code tool every session but the orch is denied:
+// it lists the sessions a session can message, and their messages go through creel.
 const listAgentsTool = "ListAgents"
 
-// claudeConfigDirEnv names the variable that moves Claude Code's config directory away from claudeConfigDirName under the home directory.
+// claudeConfigDirEnv names the variable that moves Claude Code's config directory away from the default.
+// The default is claudeConfigDirName under the home directory.
 const claudeConfigDirEnv = "CLAUDE_CONFIG_DIR"
 
 // claudeConfigDirName is Claude Code's config directory under the home directory.
@@ -46,7 +50,8 @@ const claudeConfigDirName = ".claude"
 var installedPluginsPath = filepath.Join("plugins", "installed_plugins.json")
 
 // sessionScope is the part of a settings document that scopes what a session loads.
-// Every field is omitted when zero, so a document built without a scope carries none of it and leaves each to the session's other settings layers.
+// Every field is omitted when zero,
+// so a document built without a scope carries none of it and leaves each to the session's other settings layers.
 type sessionScope struct {
 	// EnabledPlugins switches each installed plugin on or off by its id.
 	EnabledPlugins map[string]bool `json:"enabledPlugins,omitempty"`
@@ -65,17 +70,21 @@ type sessionScope struct {
 	Permissions *scopePermissions `json:"permissions,omitempty"`
 }
 
-// scopePermissions is the permissions object of a scoped settings document: the tools it denies, which Claude Code adds to the deny rules of the other layers.
+// scopePermissions is the permissions object of a scoped settings document:
+// the tools it denies, which Claude Code adds to the deny rules of the other layers.
 type scopePermissions struct {
 	Deny []string `json:"deny"`
 }
 
-// resolveSessionScope returns the scope of a session that preloads the skills preloaded, given the ids of the plugins Claude Code has installed.
+// resolveSessionScope returns the scope of a session from its preloaded skills and the installed plugin ids.
 // A disabled cfg returns the zero scope.
-// Otherwise an installed plugin is on exactly when the session preloads a skill listed under the plugin's name, and off otherwise;
-// claude.ai connectors, bundled skills and the Workflow tool are off, and every skill of cfg.SkillsOff the session does not preload is off.
+// Otherwise an installed plugin is on exactly when the session preloads a skill listed under the plugin's name;
+// it is off.
+// The claude.ai connectors, bundled skills and the Workflow tool are off,
+// and every skill of cfg.SkillsOff the session does not preload is off.
 // A plugin that is on lists all of its skills: no setting hides one skill of it.
-// The orch session alone keeps its auto-memory and the ListAgents tool; every other session has auto-memory off and the tool denied.
+// The orch session alone keeps its auto-memory and the ListAgents tool;
+// every other session has auto-memory off and the tool denied.
 func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string, orch bool) sessionScope {
 	if !cfg.Enabled {
 		return sessionScope{}
@@ -116,8 +125,10 @@ func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string
 	return scope
 }
 
-// sessionScopeFor returns the scope of a session of strand role role that preloads skills, reading the installed plugins from the engine's Claude Code config directory.
-// A directory or plugins file it cannot read is logged and names no plugin, so the scope still turns off the connectors, the bundled skills, the Workflow tool and cfg's skills.
+// sessionScopeFor returns the scope of a session that preloads skills and has the given strand role.
+// It reads the installed plugins from the engine's Claude Code config directory.
+// A directory or plugins file it cannot read is logged and names no plugin,
+// so the scope still turns off the connectors, the bundled skills, the Workflow tool and cfg's skills.
 func (c *Claude) sessionScopeFor(cfg ScopeConfig, skills []string, role string) sessionScope {
 	if !cfg.Enabled {
 		return sessionScope{}
@@ -129,7 +140,8 @@ func (c *Claude) sessionScopeFor(cfg ScopeConfig, skills []string, role string) 
 	return resolveSessionScope(cfg, installed, skills, agentname.MatchesRole(role, agentname.RoleOrch))
 }
 
-// installedPlugins reads the ids of the plugins installed under the engine's Claude Code config directory, resolved from the environment when the engine holds none.
+// installedPlugins reads the ids of the plugins installed under the engine's Claude Code config directory.
+// When the engine holds no directory, it resolves one from the environment.
 func (c *Claude) installedPlugins() ([]string, error) {
 	dir := c.claudeDir
 	if dir == "" {
@@ -142,7 +154,8 @@ func (c *Claude) installedPlugins() ([]string, error) {
 	return readInstalledPlugins(dir)
 }
 
-// claudeConfigDir returns Claude Code's config directory: the directory claudeConfigDirEnv names, else claudeConfigDirName under the home directory.
+// claudeConfigDir returns Claude Code's config directory:
+// the directory claudeConfigDirEnv names, else claudeConfigDirName under the home directory.
 func claudeConfigDir() (string, error) {
 	if dir := os.Getenv(claudeConfigDirEnv); dir != "" {
 		return dir, nil
@@ -154,7 +167,8 @@ func claudeConfigDir() (string, error) {
 	return filepath.Join(home, claudeConfigDirName), nil
 }
 
-// readInstalledPlugins returns the sorted `<name>@<marketplace>` ids, the keys Claude Code's enabledPlugins setting takes, of the plugins configDir names as installed.
+// readInstalledPlugins returns the sorted `<name>@<marketplace>` ids of the plugins configDir names as installed.
+// These are the keys Claude Code's enabledPlugins setting takes.
 // An absent plugins file names none.
 func readInstalledPlugins(configDir string) ([]string, error) {
 	path := filepath.Join(configDir, installedPluginsPath)

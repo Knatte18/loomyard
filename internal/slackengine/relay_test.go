@@ -1,4 +1,5 @@
-// relay_test.go covers the relay process, its starter and the waits of a start, over the in-memory seams of inbound_test.go and temp-dir files.
+// relay_test.go covers the relay process, its starter and the waits of a start.
+// It runs over the in-memory seams of inbound_test.go and temp-dir files.
 
 package slackengine_test
 
@@ -79,7 +80,8 @@ func newRelayRun(t *testing.T) *relayRun {
 	block := make(chan struct{})
 	h.mailbox.blockReadWait = block
 	t.Cleanup(func() {
-		// The blocked outbound read wakes once the block closes and takes one more wait; no hook of a finished test may run then.
+		// The blocked outbound read wakes once the block closes and takes one more wait;
+		// no hook of a finished test may run then.
 		h.clock.mu.Lock()
 		h.clock.onWait = nil
 		h.clock.mu.Unlock()
@@ -340,7 +342,8 @@ func TestRunRelay(t *testing.T) {
 	t.Run("ReplacedBinary", func(t *testing.T) {
 		t.Parallel()
 
-		// replaced returns a CheckBinary that stands for a replaced binary on its first check: it releases the lock in beforeExec, runs during, and then reports a failed exec.
+		// replaced returns a CheckBinary that stands for a replaced binary on its first check:
+		// it releases the lock in beforeExec, runs during, and then reports a failed exec.
 		replaced := func(during func()) func(func(), func(error)) {
 			calls := 0
 			return func(beforeExec func(), failed func(error)) {

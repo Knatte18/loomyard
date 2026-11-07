@@ -1,6 +1,6 @@
 // raddletable_test.go — tier-0 unit tests for RaddleTable.
-// Pure Go over an in-memory Config, the built-in model registry and a seeded stencils directory;
-// the seat prompt is composed through seatengine.Prompts, which starts nothing.
+// The tests are pure Go over an in-memory Config, the built-in model registry and a seeded stencils directory.
+// The seat prompt is composed through seatengine.Prompts, which starts nothing.
 
 package loomengine
 

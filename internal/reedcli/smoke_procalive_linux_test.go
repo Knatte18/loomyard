@@ -1,14 +1,9 @@
-// smoke_procalive_linux.go answers "is this pid still running" on Linux via
-// signal 0 (syscall.Kill with sig=0 checks existence/permission without
-// actually signaling: ESRCH means gone, nil or EPERM means it still
-// exists) — the POSIX-correct way to check an arbitrary pid's liveness,
-// unlike os.Process.Wait(), which only ever succeeds for a true CHILD of
-// the calling process (wait4/waitid return ECHILD immediately otherwise;
-// see processGone's doc comment in smoke_test.go). Filename-suffixed to
-// match internal/reedengine/proctree_linux.go's / proctree_windows.go's own
-// GOOS-split pattern: this and smoke_procalive_windows.go provide the same
-// posixProcessAlive symbol so smoke_test.go's runtime.GOOS-branching
-// processGone compiles on both platforms.
+// smoke_procalive_linux_test.go answers whether a pid is still running on Linux, via signal 0.
+// Signal 0 checks existence without signaling: ESRCH means gone, while nil or EPERM means it still exists.
+// This is the POSIX-correct check for an arbitrary pid;
+// os.Process.Wait returns ECHILD at once for a pid that is not a child.
+// Both this file and smoke_procalive_windows_test.go define posixProcessAlive,
+// so the runtime.GOOS branch in smoke_test.go compiles on either platform.
 
 package reedcli
 

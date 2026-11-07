@@ -1,8 +1,8 @@
-// overlay_test.go pins ListSessions' parsing half against TmuxCmd's execHook seam, driving the
-// three outcomes the watchdog daemon's idle rule distinguishes: a multi-line listing, an exit-0
-// empty listing, and an error — with no live tmux server required. It also pins the reap seam's
-// two tmux-only halves (reapSessionPanes, reapSessionKill) and ReapSession's call ordering, at the
-// level decidable without real processes — none of this touches the live process table.
+// overlay_test.go pins ListSessions' parsing half against TmuxCmd's execHook seam, with no live tmux server.
+// It drives the three outcomes the watchdog daemon's idle rule distinguishes:
+// a multi-line listing, an exit-0 empty listing, and an error.
+// It also pins the reap seam's two tmux-only halves and ReapSession's call ordering.
+// It stays at the level decidable without real processes, so nothing here touches the live process table.
 
 package reedengine
 
@@ -66,8 +66,8 @@ func TestListSessions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// listSessionsVia is ListSessions' parsing half, factored out so a test can drive it
-			// through TmuxCmd's execHook seam directly rather than a real server.
+			// listSessionsVia runs ListSessions' parsing half through TmuxCmd's execHook seam.
+			// No real server is needed.
 			cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
 			fake := installFakeTmuxOn(t, &cmd)
 			fake.answer("list-sessions", tt.out, tt.hookErr)
@@ -127,9 +127,9 @@ func TestListSessions(t *testing.T) {
 	}
 }
 
-// unreachablePaneLine is a list-panes response line whose pid (999999) descendantClosurePIDs'
-// real /proc walk finds absent, so its closure collapses to just itself — keeping these untagged
-// reap-seam tests fast and free of real-process dependence, per the batch's Requirements.
+// unreachablePaneLine is a list-panes response line whose pid (999999) is absent from /proc.
+// descendantClosurePIDs therefore collapses the closure to that pane alone;
+// these reap-seam tests stay fast and free of real-process dependence.
 const unreachablePaneLine = "%1 0 0 80 24 999999\n"
 
 //testtiming:keep pins the exact kill-session argv with the exact-match target and that it runs uncaptured; its covering tests run this code without asserting it
@@ -192,13 +192,12 @@ func TestReapSessionPanes(t *testing.T) {
 	})
 }
 
-// TestReapSession_CallOrdering pins ReapSession's call ordering at the level decidable without
-// real processes: list-panes must run before kill-session, a list-panes failure must not abort
-// the reap, and the pane list reapSessionPanes returns is exactly what feeds sessionReapRoots —
-// mirroring ReapSession's own steps 1-3 against one shared TmuxCmd carrying the execHook, since
-// ReapSession itself builds a fresh, unhookable TmuxCmd internally via NewTmuxCmd. This does not
-// re-test sessionReapRoots' own safeReapRoot filter, which strand.go's existing coverage already
-// owns.
+// TestReapSession_CallOrdering pins ReapSession's call ordering at the level decidable without real processes.
+// list-panes must run before kill-session, and a list-panes failure must not abort the reap.
+// The pane list reapSessionPanes returns is exactly what feeds sessionReapRoots.
+// It mirrors ReapSession's steps 1-3 against one shared TmuxCmd carrying the execHook.
+// ReapSession itself builds its own unhookable TmuxCmd via NewTmuxCmd, so it cannot be driven this way.
+// The safeReapRoot filter in sessionReapRoots is left to strand.go's existing coverage.
 //
 //testtiming:keep pins list-panes running before kill-session and a list-panes failure still reaching kill-session, with the pane list feeding the reap roots; its covering tests run this code without asserting it
 func TestReapSession_CallOrdering(t *testing.T) {
@@ -268,7 +267,8 @@ func TestReapSession_CallOrdering(t *testing.T) {
 	}
 }
 
-// TestTmuxExecRetriesEAGAIN pins the exec seam's retry: a tmux the host could not start for EAGAIN is tried again after a doubling wait, up to execAgainAttempts tries.
+// TestTmuxExecRetriesEAGAIN pins the exec seam's retry.
+// A tmux the host could not start for EAGAIN is tried again after a doubling wait, up to execAgainAttempts tries.
 // Any other failure, a tmux that ran and exited nonzero included, is returned at once.
 func TestTmuxExecRetriesEAGAIN(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -324,7 +324,8 @@ func TestTmuxExecRetriesEAGAIN(t *testing.T) {
 		}
 	}
 
-	// This pins the hook seam only: the real exec path rebuilds its reader per attempt, and a test cannot make a real fork fail with EAGAIN.
+	// This pins the hook seam only.
+	// The real exec path rebuilds its reader per attempt, and a test cannot make a real fork fail with EAGAIN.
 	t.Run("runStdin hands a retry the same stdin", func(t *testing.T) {
 		t.Parallel()
 		wantStdin := []byte("pasted text")

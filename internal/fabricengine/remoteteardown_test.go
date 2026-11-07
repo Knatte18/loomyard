@@ -16,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// recordNotices installs a push notifier that records every line it is given until the test ends, and returns a reader of those lines.
+// recordNotices installs a push notifier that records every line it is given until the test ends.
+// It returns a reader of the recorded lines.
 // It changes process-global state, so the calling test must not be parallel.
 func recordNotices(t *testing.T) (lines func() []string) {
 	t.Helper()
@@ -29,8 +30,9 @@ func recordNotices(t *testing.T) (lines func() []string) {
 	return func() []string { return slices.Clone(got) }
 }
 
-// TestNoticeRemoteTeardown covers the log line and the one creel notice of a failed remote step:
-// each carries the slug, the operation and the way forward, a job reports every failed step in one notice, and a kept branch or a clean outcome mails nothing.
+// TestNoticeRemoteTeardown covers the log line and the one creel notice of a failed remote step.
+// Each carries the slug, the operation and the way forward.
+// A job reports every failed step in one notice, and a kept branch or a clean outcome mails nothing.
 // The rows install the process's push notifier, so neither the test nor its rows are parallel.
 func TestNoticeRemoteTeardown(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -149,7 +151,8 @@ func TestNoticeRemoteTeardownEnded(t *testing.T) {
 	}
 }
 
-// TestRunTeardownChild_NoticesAnUnreadableJob covers a job the child cannot decode: the remote steps never run, the error is returned, and one notice names the slug and the way forward.
+// TestRunTeardownChild_NoticesAnUnreadableJob covers a job the child cannot decode.
+// The remote steps never run, the error is returned, and one notice names the slug and the way forward.
 // It installs the process's push notifier, so it is not parallel.
 func TestRunTeardownChild_NoticesAnUnreadableJob(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -212,7 +215,8 @@ func TestRunTeardownChild_HoldsTheLockUntilItsInputCloses(t *testing.T) {
 	_ = held.Release()
 }
 
-// TestRunTeardownChild_AnswersBusyOnAHeldLock covers a child that meets the lock held: it answers busy, reads no job and leaves the holder's lock alone.
+// TestRunTeardownChild_AnswersBusyOnAHeldLock covers a child that meets the lock already held.
+// It answers busy, reads no job, and leaves the holder's lock alone.
 func TestRunTeardownChild_AnswersBusyOnAHeldLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -248,7 +252,8 @@ func TestRunTeardownChild_AnswersBusyOnAHeldLock(t *testing.T) {
 	}
 }
 
-// TestTeardownChildArgs covers the child's command line: the verb, the slug and the wait always, and the try flag only when set.
+// TestTeardownChildArgs covers the child's command line.
+// The verb, the slug and the wait are always passed, and the try flag only when set.
 func TestTeardownChildArgs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

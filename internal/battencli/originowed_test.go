@@ -1,4 +1,5 @@
-// originowed_test.go pins the origin-owed marker a resume writes when it judged its owner without origin, and the reading of it.
+// originowed_test.go pins the origin-owed marker a resume writes when it judged its owner without origin.
+// It also pins the reading of that marker.
 
 package battencli
 
@@ -13,7 +14,10 @@ import (
 )
 
 // TestOriginOwedMarker drives reconcileResume over a hand-populated receiver with a fake reconcile:
-// an unreachable resume writes the marker and resumes, one refused for another owner on the local board writes none, a resume whose marker path cannot be written is refused naming the cause and the re-run, and a resume that reached origin leaves none.
+// an unreachable resume writes the marker and resumes;
+// a resume refused for another owner on the local board writes none;
+// a resume whose marker path cannot be written is refused, naming the cause and the re-run;
+// and a resume that reached origin leaves none.
 func TestOriginOwedMarker(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

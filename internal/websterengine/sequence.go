@@ -1,6 +1,7 @@
-// sequence.go asserts that a batch list runs in dependency order, derived from card-level Targets/Uses ref matching.
-// internal/batcher owns grouping and order (batches come back in plan card order);
-// this file only checks that no batch depends on one that runs after it, so the order is asserted, never derived.
+// sequence.go checks that a batch list runs in dependency order.
+// Dependencies come from card-level Targets and Uses ref matching.
+// internal/batcher owns grouping and order, and batches come back in plan card order.
+// This file asserts the order rather than deriving it: no batch may depend on one that runs after it.
 
 package websterengine
 
@@ -14,13 +15,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// ErrBatchOrder is the sentinel CheckBatchOrder's error wraps when a batch depends on a batch that runs after it.
+// ErrBatchOrder is the sentinel that CheckBatchOrder's error wraps when a batch depends on one that runs after it.
 var ErrBatchOrder = errors.New("webster: batch order: dependency on a later batch")
 
-// CheckBatchOrder returns an error wrapping ErrBatchOrder that names every dependency edge running from a batch to an earlier one, and nil when every batch follows the batches it depends on.
+// CheckBatchOrder returns an error that wraps ErrBatchOrder and names every dependency edge.
+// Each such edge runs from a batch to an earlier one.
+// It returns nil when every batch follows the batches it depends on.
 // Each finding names both batch numbers and the card and ref that make the dependency.
-// A cycle between batches always holds such an edge, so it is refused by the same rule.
-// The way forward names step: an empty step keeps the manual text naming `lym webster rebaseline --card NN` and `lym webster run --fresh`, and a set step says to fix the plan's card order and take step.
+// A cycle between batches always holds such an edge, so the same rule refuses it.
+// When step is empty, the way forward names `lym webster rebaseline --card NN` and `lym webster run --fresh`;
+// otherwise it names step.
 func CheckBatchOrder(batches []batcher.Batch, step string) error {
 	edges := deriveEdges(batches)
 	var findings []string
@@ -44,7 +48,8 @@ func CheckBatchOrder(batches []batcher.Batch, step string) error {
 		ErrBatchOrder, strings.Join(findings, "; "), wayForward)
 }
 
-// backwardEdgeFinding describes why the batch that runs first must run after the batch that runs later, naming both batch numbers and the first card pair and ref that make the dependency.
+// backwardEdgeFinding describes why the batch that runs first must wait for the batch that runs later.
+// It names both batch numbers and the first card pair and ref that make the dependency.
 // producer is the later batch in the list, consumer the earlier one.
 func backwardEdgeFinding(producer, consumer batcher.Batch) string {
 	producerNumber, _ := batchIdentity(producer)
@@ -66,8 +71,10 @@ func backwardEdgeFinding(producer, consumer batcher.Batch) string {
 	return fmt.Sprintf("batch %d depends on batch %d, which runs later", consumerNumber, producerNumber)
 }
 
-// firstSharedRef returns the first ref the two cards share that makes a dependency edge under planparser.DependencyEdge, or "" when there is none.
-// With consumerUses it walks the consumer's Uses entries against the producer's Targets; otherwise it walks the producer's Targets against the consumer's.
+// firstSharedRef returns the first shared ref that makes a dependency edge, or "" when there is none.
+// planparser.DependencyEdge decides whether a shared ref makes one.
+// With consumerUses it walks the consumer's Uses entries against the producer's Targets;
+// otherwise it walks the producer's Targets against the consumer's.
 func firstSharedRef(producer, consumer planparser.Card, consumerUses bool) string {
 	left, right := producer.Targets, consumer.Targets
 	if consumerUses {
@@ -92,16 +99,16 @@ func firstSharedRef(producer, consumer planparser.Card, consumerUses bool) strin
 // deriveEdges builds the vertex adjacency list, one entry per input batch index, by comparing every ordered pair of cards drawn from different batches.
 // Each vertex's successor list is deduplicated and sorted ascending, which keeps the result deterministic.
 //
-// An edge i -> j is added when:
+// An edge i -> j is added when one of these holds, and planparser.DependencyEdge accepts the shared ref:
 //   - batch j's card b has a Uses entry matching batch i's card a's Targets entry (producer before consumer); or
-//   - batch i's card a and batch j's card b share a Targets entry and a.Number < b.Number (declared card order settles two writers of the same ref);
+//   - batch i's card a and batch j's card b share a Targets entry and a.Number < b.Number.
+//     Declared card order then settles two writers of the same ref.
 //
-// and planparser.DependencyEdge holds for that shared ref.
 // Two Extends on one ref therefore make no edge unless both cards fence a line for one PATTERN.md entry ID.
 //
 // A shared entry between two cards' Uses never produces an edge, since a read creates no ordering against another read.
 // Refs that are empty or whitespace-only after strings.TrimSpace are ignored on both sides of every comparison.
-// Ref classification (symbol-shaped vs. path-shaped) is not consulted: both kinds participate identically.
+// Ref shape, symbol or path, is not checked: both kinds take part identically.
 func deriveEdges(batches []batcher.Batch) [][]int {
 	n := len(batches)
 	adj := make([][]int, n)
@@ -145,8 +152,9 @@ func deriveEdges(batches []batcher.Batch) [][]int {
 	return adj
 }
 
-// refsIntersect reports whether left and right share at least one entry, compared by exact string
-// equality after trimming whitespace; an entry that trims to empty is ignored on both sides.
+// refsIntersect reports whether left and right share at least one entry.
+// Entries compare by exact string equality after trimming whitespace;
+// an entry that trims to empty is ignored on both sides.
 func refsIntersect(left, right []string) bool {
 	set := make(map[string]bool, len(left))
 	for _, ref := range left {

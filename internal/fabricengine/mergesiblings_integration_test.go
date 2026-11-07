@@ -1,13 +1,14 @@
-// mergesiblings_integration_test.go asserts the sibling-verb disposition table card 13 wires: every
-// mutating verb whose write would corrupt or be corrupted by a live merge refuses with the single
-// typed, side-free *ErrMergeInProgress while a fabric merge record exists on the pair, Commit
-// additionally refuses foreign git-level merge state with no record — pre-empting git's own raw
-// "cannot do a partial commit during a merge" — Cleanup needs no new guard because its own structure
-// already protects a mid-merge pair, PushWeft and every read-only verb stay unaffected, and every
-// guarded verb works again once MergeAbort clears the record.
+// mergesiblings_integration_test.go tests how the sibling verbs behave while a fabric merge is live.
+// While a fabric merge record exists on the pair, each mutating verb that would conflict with the merge refuses.
+// The refusal is typed (*ErrMergeInProgress) and side-free.
+// Commit also refuses foreign git-level merge state with no record.
+// It does so before git's own "cannot do a partial commit during a merge" error can surface.
+// Cleanup needs no guard, because its structure already protects a mid-merge pair.
+// PushWeft and the read-only verbs stay unaffected.
+// Every guarded verb works again once MergeAbort clears the record.
 //
-// Package fabricengine_test, reusing newMergePairFixture and its sibling helpers (commitOnBranch, setupConflictingDivergence, branchAtCurrentHEAD) from mergein_integration_test.go;
-// shares the single TestMain in testmain_test.go.
+// Reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go.
+// Shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -25,11 +26,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newMergeSiblingsFixture builds a real hubforge pair — deliberately NOT the hub's prime, since
-// Topology.Remove refuses the prime slug unconditionally and this file needs Remove's own
-// merge-in-progress refusal to be reachable — plus the *fabricengine.Fabric handle open on it and its
-// own *lymcwd.Location, for driving the Topology verbs (Checkout, Remove, Cleanup) this file also
-// covers.
+// newMergeSiblingsFixture builds a real hubforge pair and opens its Fabric and Location for the Topology verbs.
+// The pair is not the hub's prime, because Topology.Remove refuses the prime slug unconditionally.
+// This file must still reach Remove's merge-in-progress refusal.
 func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fabric, l *lymcwd.Location, slug string) {
 	t.Helper()
 
@@ -49,12 +48,12 @@ func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fab
 	return h, f, l, slug
 }
 
-// TestMergeSiblings_Dispositions drives a real conflicted MergeIn on a non-prime pair to establish a
-// live recorded merge, then asserts the full sibling-verb disposition table in sequence: every
-// mutating verb refuses with *ErrMergeInProgress and mutates nothing, Cleanup succeeds unaffected in
-// every apply/force combination and never touches the pair's own weft branch, PushWeft and every
-// read-only verb succeed unaffected, and every guarded verb works again once MergeAbort clears the
-// record.
+// TestMergeSiblings_Dispositions establishes a live recorded merge with a real conflicted MergeIn on a non-prime pair.
+// It then asserts the sibling-verb disposition table in sequence.
+// Every mutating verb refuses with *ErrMergeInProgress and mutates nothing.
+// Cleanup succeeds in every apply/force combination and never touches the pair's own weft branch.
+// PushWeft and every read-only verb succeed unaffected.
+// Every guarded verb works again once MergeAbort clears the record.
 func TestMergeSiblings_Dispositions(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -63,9 +62,9 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	warpDir := h.PairCodeWorktree(slug)
 	weftDir := h.PairRecordsSibling(slug)
 
-	// The pair's own branches — captured before MergeIn ever runs, since these (not the "feature"/
-	// "feature-weft" merge-source branches) are what Cleanup's existing liveWarpBranches skip
-	// protects, and what every other guarded verb must leave untouched.
+	// The pair's own branches are captured before MergeIn runs.
+	// Cleanup's liveWarpBranches skips them, and every other guarded verb must leave them untouched.
+	// The "feature" and "feature-weft" merge-source branches are not these.
 	pairWarpBranch := gitkit.CurrentBranch(t, warpDir)
 	pairWeftBranch := gitkit.CurrentBranch(t, weftDir)
 
@@ -151,7 +150,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	})
 
 	t.Run("RemoveWithForce", func(t *testing.T) {
-		// force answers dirtiness only, never a live merge record — the gate's own rule (card 13).
+		// force answers dirtiness only, never a live merge record.
 		_, err := h.Topology.Remove(l, slug, true, false)
 		var refused *fabricengine.ErrMergeInProgress
 		if !errors.As(err, &refused) {
@@ -251,7 +250,12 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	})
 }
 
-// TestMergeSiblings_CommitRefusesForeignMergeState covers Commit's foreign-git-state disposition: a plain-git conflicted merge in the warp checkout, driven with no MergeIn involved and so no fabric merge record, still refuses — with *ErrForeignMergeState, the same typed error every merge verb gives foreign state, rather than surfacing git's own raw "cannot do a partial commit during a merge" or *ErrMergeInProgress's misdirecting "run \"lym fabric merge --continue\" or \"lym fabric merge --abort\" first" (fabric has no merge of its own in progress here, and both of those verbs would refuse).
+// TestMergeSiblings_CommitRefusesForeignMergeState covers Commit's disposition of foreign git-level merge state.
+// A plain-git conflicted merge in the warp checkout, with no MergeIn and so no fabric merge record, still refuses.
+// It refuses with *ErrForeignMergeState, the typed error every merge verb gives foreign state.
+// It does not surface git's raw "cannot do a partial commit during a merge" error.
+// Nor does it surface *ErrMergeInProgress, whose "fabric merge --continue or --abort" advice misdirects here.
+// Fabric has no merge in progress in this test, so both of those verbs would refuse.
 func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

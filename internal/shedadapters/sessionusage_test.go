@@ -53,7 +53,10 @@ func assistantMessage(model string, input, cacheWrite, cacheRead, output int) sh
 	}
 }
 
-// TestRecordSessionUsage pins the writer: counts summed per model and priced per message, the models list only for several models, the fallback to the counts shuttle read when a transcript cannot be had, and a write failure that is logged and stops nothing.
+// TestRecordSessionUsage pins the writer: counts summed per model and priced per message.
+// The models list appears only for several models.
+// A transcript that cannot be had falls back to the counts shuttle read.
+// A write failure is logged and stops nothing.
 // It runs serially because it captures the process-global logger output.
 func TestRecordSessionUsage(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -163,7 +166,9 @@ func TestRecordSessionUsage(t *testing.T) {
 	})
 }
 
-// TestUsageRecorder pins the session-end hook of a run: a session end writes the record under the status file's current row, an absent status writes it under an empty row, and an engine with no readers entry is recorded unpriced.
+// TestUsageRecorder pins the session-end hook of a run.
+// A session end writes the record under the status file's current row; an absent status gives an empty row.
+// An engine with no readers entry is recorded unpriced.
 func TestUsageRecorder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

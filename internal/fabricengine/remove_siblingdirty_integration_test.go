@@ -1,4 +1,7 @@
-// remove_siblingdirty_integration_test.go pins that an uncommitted run record in a pair's other worktree is committed and archived rather than refused, and that a pair dirty only on the task side is refused without satisfying errors.Is(err, fabricengine.ErrPairSiblingDirty).
+// remove_siblingdirty_integration_test.go pins Remove's sibling-dirty handling.
+// An uncommitted run record in a pair's other worktree is committed and archived, not refused.
+// A pair dirty only on the task side is refused,
+// and that refusal does not satisfy errors.Is(err, fabricengine.ErrPairSiblingDirty).
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -16,7 +19,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemove_UntrackedDriveReportIsCommittedAndArchived leaves a new file inside a not-yet-tracked _lym/shed/<slug>/drive-reports/ directory — the uncommitted stop report the done-wait rests on — and asserts a no-force Remove commits it and the archive tag contains it, with no sibling-dirty refusal.
+// TestRemove_UntrackedDriveReportIsCommittedAndArchived leaves a new file in an untracked drive-reports/ directory.
+// The file is the uncommitted stop report the done-wait rests on.
+// It asserts that a no-force Remove commits the file and the archive tag contains it;
+// it raises no sibling-dirty refusal.
 func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -49,7 +55,8 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 	}
 }
 
-// TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty dirties only the task-side worktree and asserts its refusal is not the sibling-dirty sentinel.
+// TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty dirties only the task-side worktree.
+// It asserts that the resulting refusal is not the sibling-dirty sentinel.
 func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

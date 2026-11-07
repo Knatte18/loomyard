@@ -17,12 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// liveSeatLead is a non-nil seatengine.Handle the fake seat runner hands back as a live lead; the producer never calls it.
+// liveSeatLead is the non-nil seatengine.Handle the fake seat runner returns as a live lead.
+// The producer never calls it.
 var liveSeatLead seatengine.Handle = (*shuttleengine.Run)(nil)
 
-// countingProducer is a shedengine.ShedProducer fake that always reports Done and counts every
-// call, used to prove crash-recovery's unconditional re-call: a producer whose output already
-// exists must still be called again, never skipped.
+// countingProducer is a shedengine.ShedProducer fake that always reports Done and counts every call.
+// It proves the crash-recovery re-call is unconditional:
+// a producer whose output already exists must still be called again, never skipped.
 type countingProducer struct {
 	calls int
 }
@@ -32,9 +33,10 @@ func (p *countingProducer) Call(context.Context) (shedengine.Outcome, shedengine
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// resetCurrentProducer patches the status file at statusPath/statusLockPath to name
-// currentProducer, state running, and pauseRequested, via state.UpdateJSON -- never by hand-writing
-// JSON -- simulating the on-disk snapshot a crash, a bounce, or a pending pause leaves behind.
+// resetCurrentProducer patches the status file at statusPath and statusLockPath.
+// It sets CurrentProducer to currentProducer, State to running, and PauseRequested to pauseRequested.
+// It writes through state.UpdateJSON, never hand-written JSON.
+// The result simulates the on-disk snapshot a crash, a bounce, or a pending pause leaves behind.
 func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProducer string, pauseRequested bool) {
 	t.Helper()
 	err := state.UpdateJSON(statusPath, statusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
@@ -48,13 +50,14 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 	}
 }
 
-// TestResume_DoesNotRestartAtRowOne drives a run to shedengine.RunBlocked at Webster (whose
-// OnStuck is empty, per the real Webster producer genuinely failing on a malformed batcher config -- never a
-// substituted fake row), fixes the on-disk cause, and asserts that a freshly constructed Shed over
-// the same status file re-calls Webster directly rather than restarting the whole list at
-// Preflight. The fixed second run blocks again, at Merge-In (see sequence_test.go's
-// wantSequenceOrder doc comment for why) -- resuming past Webster, not reaching Done, is this
-// test's own point.
+// TestResume_DoesNotRestartAtRowOne drives a run to shedengine.RunBlocked at Webster.
+// The real Webster producer genuinely fails on a malformed batcher config, so its OnStuck is empty.
+// No substituted fake row stands in for it.
+// The test fixes that on-disk cause.
+// It then asserts that a freshly constructed Shed over the same status file re-calls Webster directly.
+// It does not restart the whole list at Preflight.
+// The fixed second run blocks again at Merge-In, where the fixture's verdict is Stuck.
+// Resuming past Webster, not reaching Done, is this test's own point.
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -94,9 +97,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameParentAlign)
 	}
 
-	// result2.History is the full persisted history, including the first run's own appended
-	// entries (Result.History docs this explicitly) -- so "did not restart at row 1" is proven by
-	// Preflight appearing exactly once across both runs, not by History[0] naming Webster.
+	// result2.History is the full persisted history: it includes the first run's own entries.
+	// So the proof is Preflight appearing exactly once across both runs, not History[0] naming Webster.
 	preflightCount := 0
 	for _, e := range result2.History {
 		if e.Producer == loomshed.NamePreflight {
@@ -108,18 +110,19 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	}
 }
 
-// TestResume_CrashRecoveryRecallsUnconditionally proves the re-call is unconditional: after a run
-// that reaches its terminal row, resetting current_producer back to Preflight -- as if Preflight's
-// output already exists from the first pass -- still makes a fresh Shed call it again, rather than
-// skip it.
+// TestResume_CrashRecoveryRecallsUnconditionally proves the re-call is unconditional.
+// After a run reaches its terminal row, it resets CurrentProducer to Preflight.
+// That mimics Preflight's output already existing from the first pass.
+// A fresh Shed still calls Preflight again rather than skipping it.
 //
-// Both runs end shedengine.RunBlocked at Merge-In (see sequence_test.go's wantSequenceOrder doc comment for why):
-// after resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1 and then runs the later rows over the first run's history.
+// Both runs end at shedengine.RunBlocked at Merge-In, where the fixture's verdict is Stuck.
+// After resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1;
+// it then runs the later rows over the first run's history.
 // This test's own point is the re-call count, not the terminal state.
 //
-// It holds one counting := &countingProducer{} across both builds and asserts counting.calls == 2
-// at the end: substituting a fresh &countingProducer{} at the second site would leave the count at
-// 1 and quietly invert what the test measures.
+// It holds one counting := &countingProducer{} across both builds and asserts counting.calls == 2 at the end:
+// substituting a fresh &countingProducer{} at the second site would leave the count at 1.
+// That would quietly invert what the test measures.
 func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -160,10 +163,10 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	}
 }
 
-// TestResume_PauseStopsAtBoundaryAndClearsFlag sets pause_requested on a status file already
-// mid-list, asserts the run stops at that boundary with shedengine.RunPaused without calling the
-// halted producer, that the flag is cleared in the same persist, and that a subsequent run resumes
-// rather than re-pausing on the flag it is resuming from.
+// TestResume_PauseStopsAtBoundaryAndClearsFlag sets pause_requested on a status file already mid-list.
+// It asserts the run stops at that boundary with shedengine.RunPaused without calling the halted producer.
+// It also asserts that the flag is cleared in the same persist.
+// A subsequent run must resume rather than re-pause on it.
 func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -214,9 +217,8 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
 	}
-	// A subsequent run must resume rather than re-pause on the flag it is resuming from -- it
-	// blocks at Merge-In (see sequence_test.go's wantSequenceOrder doc comment for why), never
-	// shedengine.RunPaused again.
+	// A subsequent run must resume rather than re-pause on the flag it is resuming from.
+	// It blocks at Merge-In, where the fixture's verdict is Stuck, and never returns shedengine.RunPaused again.
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q -- a subsequent run must resume rather than re-pause on the flag it is resuming from", result2.Outcome, shedengine.RunBlocked)
 	}
@@ -229,12 +231,11 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // genuinely Stuck by scripting its judge round's verdict as non-approving, and asserts the run
 // continues at its declared OnStuck target, Discussion-Burler-Review, immediately afterward.
 //
-// Discussion-Validate is gone, and with it the standalone-validator vehicle this test used to drive:
-// a real, repeatably bounceable producer ring is what this test needs.
-// The Discussion-Review segment's on_stuck ring (Discussion-Bouncer, Discussion-Burler-Review, Discussion-Burler-Fix) is the one this task's new writer-row gates have no bearing on.
-// The loom burler never reads burlerengine.RunOpts.Gate at all, so the ring is what remains, matching the same assertion shape over a ring that still exists.
-// This test asserts only that routing continues at the declared target after one Stuck -- the
-// budget-exhaustion property belongs to TestBounceRouting_BudgetExhaustionBlocks below.
+// TestBounceRouting_StuckContinuesAtDeclaredTarget checks that a Stuck bounce continues at the declared target.
+// It drives Discussion-Bouncer, a real producer, through the Discussion-Review segment's on_stuck ring.
+// The loom burler never reads burlerengine.RunOpts.Gate, so the ring does not depend on the writer-row gates.
+// It asserts only that routing continues at the target after one Stuck.
+// The budget-exhaustion property is covered by TestBounceRouting_BudgetExhaustionBlocks.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -268,9 +269,9 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	}
 }
 
-// TestBounceRouting_EmptyTargetBlocksInstead drives Webster (a real producer, OnStuck: "")
-// genuinely Stuck via a malformed on-disk batcher config, and asserts the run ends shedengine.RunBlocked
-// rather than bouncing anywhere.
+// TestBounceRouting_EmptyTargetBlocksInstead checks that a Stuck producer with no OnStuck target blocks the run.
+// It makes Webster, a real producer, Stuck with a malformed on-disk batcher config.
+// The run then ends in shedengine.RunBlocked rather than bouncing anywhere.
 func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -291,32 +292,28 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	if result.HaltedProducer != loomshed.NameWebster {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameWebster)
 	}
-	// The block carries the batcher fault's own cause, not the generic no-OnStuck reason.
+	// The block reason carries the batcher fault's own cause, not a generic missing-OnStuck message.
 	const wantPrefix = "active batchifier did not resolve: "
 	if !strings.HasPrefix(result.Reason, wantPrefix) {
 		t.Errorf("Run() Reason = %q; want prefix %q", result.Reason, wantPrefix)
 	}
 }
 
-// TestBounceRouting_BudgetExhaustionBlocks drives Discussion-Bouncer (a real producer) genuinely and repeatedly Stuck by scripting its judge round's verdict as CONTINUE every time, and asserts Discussion-Bouncer's own bounce budget is consumed and exhausting it blocks -- MaxBounces+1 Stuck entries authored by Discussion-Bouncer, then shedengine.RunBlocked.
+// TestBounceRouting_BudgetExhaustionBlocks checks that exhausting a producer's bounce budget blocks the run.
+// It drives Discussion-Bouncer, a real producer, Stuck on every round by scripting its judge to CONTINUE.
+// It asserts MaxBounces+1 Stuck entries authored by Discussion-Bouncer, then shedengine.RunBlocked.
 //
-// Discussion-Validate is no longer this test's vehicle.
-// Discussion-Write now carries its own "gates" entry named "discussion" (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first bounce rather than letting Discussion-Validate cycle it repeatedly.
-// Discussion-Bouncer's on_stuck ring with Discussion-Burler-Review and Discussion-Burler-Fix (segment: Discussion-Review) has no such dependency on this task's new gates -- the loom burler, this fixture's shedfake.BurlerHalfRunner, never reads burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real producer ring under the new design, matching the property this test exists to prove (a real producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a generic engine mechanism the recipe's own graph never exercises).
-//
-// The budget here is per-producer and episode-scoped, counted from the persisted history[] -- never
-// a run-wide counter. blockBouncerJudge makes the judge round reject on every pass, so
-// Discussion-Bouncer never returns Done and its episode (the run of its own history entries since
-// its last Done) is therefore the whole run: every Stuck entry it authors counts.
-// The Burler rows it bounces through consume none of Discussion-Bouncer's own budget, since each producer's episode count is its own.
-//
-// Discussion-Bouncer's budget is the fixture's Env.Segments["Discussion-Review"].MaxBounces, which New applies to the row
-// (the recipe declares none), not inherited from ShedPaths.MaxBounces the way
-// Discussion-Validate's budget once was, so this test drives that budget+1 round
-// trips rather than parameterizing a small paths.MaxBounces.
+// The budget is per producer and episode-scoped, counted from the persisted history.
+// blockBouncerJudge rejects every judge round, so Discussion-Bouncer never returns Done,
+// and its episode is the whole run: every Stuck entry it authors counts.
+// The Burler rows it bounces through spend none of its budget, since each producer's episode count is its own.
+// The budget is the fixture's Env.Segments["Discussion-Review"].MaxBounces.
+// New applies it to the row because the recipe declares none; it is not taken from ShedPaths.MaxBounces.
+// So this test drives that budget+1 round trips rather than parameterizing a small paths.MaxBounces.
 //
 // The Bouncer is what this test binds its assertion to, never the Burler.
-// Every Discussion-Burler-Review and Discussion-Burler-Fix hand-back is budget-exempt, so Discussion-Bouncer's own budget is the segment's one budget on judged rounds and the Burler rows' is never spent.
+// Discussion-Burler-Review and Discussion-Burler-Fix hand-backs are budget-exempt.
+// So Discussion-Bouncer's budget is the segment's one budget on judged rounds.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -342,9 +339,8 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 		t.Errorf("Run() Reason = %q; want prefix %q", result.Reason, shedengine.ReasonBounceBudgetExhausted)
 	}
 
-	// The blocking Stuck entry is itself appended to history before the inner switch decides
-	// whether to bounce or block, so it counts toward the total even though it is the one that
-	// triggers the block rather than one the budget check let through -- MaxBounces+1 total.
+	// The blocking Stuck entry is appended to history before the inner switch decides whether to bounce or block,
+	// so it counts toward the total: MaxBounces+1 in all.
 	stuckCount := 0
 	for _, e := range result.History {
 		if e.Producer == loomshed.NameDiscussionBouncer && e.Outcome == shedengine.Stuck {
@@ -356,22 +352,18 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	}
 }
 
-// TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence is one half of the
-// The "interactive-mode trap" regression pair, retargeted onto the row it was
-// always really about now that Discussion-Validate, the bounce that used to reach it, is gone:
-// current_producer is planted directly at Discussion-Write with both discussion artifacts already
-// present and complete on disk -- the identical on-disk shape a crash mid-interview leaves -- and
-// the fake seat runner's Probe reports no live lead, so Discussion-Write must
-// respawn rather than report Done off bare file existence.
+// TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence checks the interactive-mode trap.
+// current_producer is planted at Discussion-Write, with both discussion artifacts present and complete on disk.
+// That is the on-disk shape a crash mid-interview leaves.
+// The fake seat runner's Probe reports no live lead.
+// So Discussion-Write must respawn rather than report Done off bare file existence.
 //
-// current_producer is planted directly at Discussion-Write via resetCurrentProducer, per the
-// resume tests above, rather than driven through the whole sequence from row 1 -- the point under
-// test is what Discussion-Write does when re-entered, not how the run got there.
+// The test plants it through resetCurrentProducer.
+// It targets what the row does when re-entered, not how the run reached it.
 //
-// The fake's default writeOutputs=true means the respawned run rewrites both output files with
-// valid content, so Discussion-Write's own gate passes on the respawned run's very next call: this
-// is what proves the respawn resolves to a genuine Done rather than reporting Done straight off the
-// pre-existing files without ever calling Run again.
+// The fake's default writeOutputs=true makes the respawned run rewrite both output files with valid content.
+// The row's gate therefore passes on the respawned run's next call.
+// That shows the Done came from a Run, not from the files already on disk.
 func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
@@ -412,20 +404,20 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 	}
 }
 
-// TestResume_LiveMatchingRunAttachesInsteadOfRespawning is the other half of the regression pair:
-// the identical on-disk shape as the bounce case above -- both discussion artifacts present -- but
-// this time the fake seat runner's Probe reports a live lead whose run ended done, the
-// crash-mid-interview case where the agent already finished before the driver noticed. Discussion-Write
-// must resume that lead rather than archive the artifacts and start a second lead on top of
-// one that (as far as this run's own state on disk is concerned) may still be working.
+// TestResume_LiveMatchingRunAttachesInsteadOfRespawning covers Discussion-Write re-entered with a live match.
+// Both discussion artifacts are on disk, and the fake seat runner's Probe reports a live lead whose run ended done.
+// This is the crash-mid-interview case where the agent finished before the driver noticed.
+// Discussion-Write must resume that lead.
+// It must not archive the artifacts and start a second lead beside one that may still be working.
 //
-// current_producer is planted directly at Discussion-Write, since this test's whole point is what
-// that row does when re-entered with a live match, not how the run got there.
+// current_producer is planted directly at Discussion-Write.
+// The test targets what that row does when re-entered with a live match, not how the run reached it.
 func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 
-	// The live answer is scoped to the discussion prefix: a table of any other prefix is not live, so later rows still run and write their outputs.
+	// The live answer covers only the discussion prefix.
+	// A table with any other prefix is not live, so later rows still run and write their outputs.
 	seats := env.Seats.(*shedfake.SeatRunner)
 	seats.ProbeFn = func(table seatengine.Table) (seatengine.LiveTable, error) {
 		if table.RolePrefix == "discussion" {

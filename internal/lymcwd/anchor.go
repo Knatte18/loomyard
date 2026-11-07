@@ -1,8 +1,5 @@
-// anchor.go implements the recorded lym-anchor subpath marker.
-// The marker is the plain single-line ".lym-anchor" file that records the subpath lym anchors at (e.g. "backend" or ".").
-// A worktree's own marker sits at the root of its records sibling, and the legacy hub-wide marker sits at the root of the Bolt checkout.
-// The read order is the own marker, then the Bolt checkout's marker, then ".".
-// It is read here, never written: only fabricengine writes the marker or reads it from git.
+// anchor.go reads the recorded lym-anchor subpath marker: a single-line file naming the subpath lym anchors at.
+// The marker is read here and never written: only fabricengine writes it or reads it from git.
 // This file imports the standard library and internal/weftname only, so lymcwd never gains a YAML dependency.
 
 package lymcwd
@@ -21,58 +18,50 @@ import (
 )
 
 // BoltDirName is the name of the Bolt checkout inside a hub, re-exported from lymdirs.
-// lymcwd reads the hub-wide anchor marker in the Bolt checkout.
-// fabricengine and runproc take the name from here, since lymcwd cannot import either.
+// Callers take the name from here rather than declaring their own copy.
 const BoltDirName = lymdirs.BoltDirName
 
-// boardDir returns the absolute path to the Bolt checkout inside hub.
-// It is the one reader of BoltDirName in lymcwd, to find the recorded-anchor marker.
+// boardDir returns the absolute path to the Bolt checkout inside hub, where the hub-wide anchor marker lives.
 func boardDir(hub string) string {
 	return filepath.Join(hub, BoltDirName)
 }
 
 // AnchorFileName is the filename of the recorded lym-anchor subpath marker.
-// It sits at the root of a worktree's records sibling for that worktree's own anchor.
-// It sits at the root of the Bolt checkout for the legacy hub-wide fallback the own marker overrides.
-// It holds only the subpath string (e.g. "backend" or ".").
-// This is a structural geometry artifact recorded when the worktree is created or moved, never a config/env override;
-// per the Cwd Resolution Invariant, only lymcwd constructs and reads this path.
-// There is no compatibility fallback read for the pre-rename ".fabric-anchor" name: the marker
-// anchors the whole repo, not the fabric module, so the old name is simply wrong now, not
-// merely renamed — see clone.go's stale-marker guard.
+// A worktree's own anchor sits at the root of its records sibling.
+// The legacy hub-wide anchor sits at the root of the Bolt checkout, and the own marker overrides it.
+// The marker holds only the subpath string, such as "backend" or ".".
+// It is a structural geometry artifact recorded when the worktree is created or moved.
+// It is never a config or env override.
+// Per the Cwd Resolution Invariant, only lymcwd constructs and reads this path.
+// The pre-rename ".fabric-anchor" name has no compatibility read.
+// The marker anchors the whole repo, not the fabric module, so the old name is wrong now, not merely renamed.
 const AnchorFileName = ".lym-anchor"
 
 // StaleAnchorFileName is the pre-rename spelling of the recorded lym-anchor marker.
-// It is never read as an anchor value — the marker anchors the whole repo, not the fabric module,
-// so the old name is simply wrong now rather than merely renamed — but its presence must be
-// DETECTED, because falling back to "." for a hub that recorded a real subpath under the old name
-// silently re-anchors the whole repo at its root.
-// It is exported so fabric's clone-time guard names the same literal this package's read-time guard
-// does, rather than each declaring its own copy.
+// Its value is never read as an anchor.
+// Its presence must still be detected.
+// Otherwise a hub that recorded a subpath under the old name would fall back to "." and re-anchor at the root.
+// It is exported so the clone-time guard in fabricengine names the same literal as the read-time guard here.
 const StaleAnchorFileName = ".fabric-anchor"
 
-// ErrStaleAnchorMarker is the hard-error sentinel returned when a hub's Bolt checkout carries the
-// pre-rename StaleAnchorFileName marker with no AnchorFileName beside it.
-// Resolving such a hub at all would mean re-anchoring it at ".", so every resolver refuses instead
-// of guessing.
+// ErrStaleAnchorMarker is returned for a hub whose Bolt checkout carries the pre-rename StaleAnchorFileName marker.
+// No AnchorFileName sits beside that marker.
+// Resolving such a hub would re-anchor it at ".", so every resolver returns this error instead of guessing.
 var ErrStaleAnchorMarker = errors.New("stale pre-rename fabric anchor marker with no renamed marker beside it")
 
-// ErrInvalidAnchor is the hard-error sentinel returned for an anchor subpath that is not a
-// worktree-relative path staying inside the worktree.
+// ErrInvalidAnchor is returned for an anchor subpath that is not a relative path inside the worktree.
 var ErrInvalidAnchor = errors.New("invalid lym anchor subpath")
 
-// ValidateAnchorRel normalizes raw into the worktree-relative form AnchorRel holds, rejecting
-// anything that is not one.
-// It is the single validator for the anchor value on both sides of the marker: fabric's clone calls
-// it before recording a --subpath, and readRecordedAnchor calls it on every read, so a value that
-// could never be recorded today can also never be honoured if an older binary recorded it.
+// ValidateAnchorRel normalizes raw into the worktree-relative form that `AnchorRel` holds, and rejects anything else.
+// It is the single validator for the anchor value, on both the write side and the read side of the marker.
+// A value that could never be recorded today must also never be honoured when an older binary recorded it.
 //
 // An empty or whitespace-only raw normalizes to ".", the repo-root anchor.
-// An absolute path, a Windows volume-rooted path, and a path whose first segment escapes the
-// worktree (".." or "../…") are all rejected: filepath.Join silently swallows a leading separator,
-// so an absolute anchor LOOKS like it resolves, while every anchor-scoped git pathspec later built
-// on top of it becomes an absolute path git refuses outright — permanently breaking every commit
-// routed through the anchored subtree.
+// An absolute path and a Windows volume-rooted path are rejected.
+// So is a path whose first segment escapes the worktree, such as ".." or "../…".
+// filepath.Join silently drops a leading separator, so an absolute anchor looks like it resolves.
+// Every anchor-scoped git pathspec built on such an anchor then becomes an absolute path that git refuses,
+// and every commit routed through the anchored subtree fails permanently.
 func ValidateAnchorRel(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -94,23 +83,19 @@ func ValidateAnchorRel(raw string) (string, error) {
 	return cleaned, nil
 }
 
-// ErrCwdOutsideAnchor is the hard-error sentinel Resolve returns when cwd does not equal the
-// anchored directory exactly.
-// It exists so a lym invocation from anywhere else in the worktree — a subdirectory, a parent, or a
-// sibling of a subpath-anchored repo — fails loudly and immediately instead of resolving the wrong
-// AnchorRel and dying later downstream with a confusing error.
+// ErrCwdOutsideAnchor is returned when cwd is not exactly the anchored directory.
+// A lym invocation from elsewhere in the worktree fails here at once.
+// Without this check it would resolve the wrong anchor and fail later, downstream, with a confusing error.
 var ErrCwdOutsideAnchor = errors.New("cwd is outside the recorded fabric anchor subtree")
 
-// samePath reports whether a and b name the same filesystem location. Each
-// side is normalized through filepath.EvalSymlinks then filepath.Clean,
-// falling back to Clean-only for whichever side EvalSymlinks fails on (the
-// path may not exist yet, e.g. during clone). Normalization is not optional:
-// the worktree side comes from git rev-parse --show-toplevel while cwd comes
-// from os.Getwd, and the two disagree routinely — macOS's /tmp is a symlink
-// to /private/tmp, gitkit fixtures live under symlinked temp dirs, and
-// Windows/macOS filesystems are case-insensitive while Go string comparison
-// is not. Comparison is byte-exact on Linux/macOS and case-insensitive
-// (strings.EqualFold) on Windows.
+// samePath reports whether a and b name the same filesystem location.
+// Each side is normalized through filepath.EvalSymlinks and then filepath.Clean.
+// A side that EvalSymlinks fails on falls back to filepath.Clean alone.
+// That happens when the path does not exist yet, as during clone.
+// The worktree side comes from git rev-parse --show-toplevel and cwd from os.Getwd, and the two disagree routinely.
+// macOS's /tmp is a symlink to /private/tmp, and test fixtures live under symlinked temp dirs.
+// Windows and macOS filesystems are case-insensitive, while Go string comparison is not.
+// Comparison is byte-exact on Linux and macOS, and case-insensitive (strings.EqualFold) on Windows.
 func samePath(a, b string) bool {
 	na := normalizePath(a)
 	nb := normalizePath(b)
@@ -120,8 +105,8 @@ func samePath(a, b string) bool {
 	return na == nb
 }
 
-// normalizePath resolves symlinks in p, falling back to filepath.Clean alone
-// when EvalSymlinks fails (p may not exist on disk yet).
+// normalizePath resolves symlinks in p and cleans the result.
+// When EvalSymlinks fails, as it does for a path that does not exist yet, it cleans p alone.
 func normalizePath(p string) string {
 	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {
@@ -130,9 +115,8 @@ func normalizePath(p string) string {
 	return filepath.Clean(resolved)
 }
 
-// checkCwdAnchorGate returns nil when cwd is exactly the anchored directory
-// (filepath.Join(worktreePath, anchorRel)), and otherwise wraps
-// ErrCwdOutsideAnchor in a message naming both sides and the marker file.
+// checkCwdAnchorGate returns nil when cwd is exactly the anchored directory, worktreePath joined with anchorRel.
+// Otherwise it wraps ErrCwdOutsideAnchor in an error that names both paths and the marker file.
 func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 	anchorAbs := filepath.Join(worktreePath, anchorRel)
 	if samePath(cwd, anchorAbs) {
@@ -144,20 +128,21 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 
 // readRecordedAnchor reads the recorded lym-anchor subpath marker of the worktree named worktreeName in hub.
 // It reports whether a usable anchor was found.
-// It reads the worktree's own marker at the root of its records sibling first.
-// It reads the legacy hub-wide marker at the root of the Bolt checkout second.
-// An own marker that fails ValidateAnchorRel is an error naming the file;
-// an empty or whitespace-only own marker counts as absent and the read falls through to the Bolt checkout's marker.
-// An own marker that exists but cannot be read is an error naming the file, as an invalid one is.
-// It returns ("", false, nil) when neither marker is usable:
-// an absent directory, an absent file or an empty one each mean the caller must fall back to "."
-// (mid-clone, a gitkit fixture repo standing in for a hub, or a non-fabric git repo).
+// It reads the worktree's own marker first, at the root of its records sibling.
+// It reads the legacy hub-wide marker second, at the root of the Bolt checkout.
+// An own marker with an invalid anchor value is an error naming the file.
+// An empty or whitespace-only own marker counts as absent, and the read falls through to the Bolt checkout's marker.
+// An own marker that exists but cannot be read is an error naming the file.
+// It returns ("", false, nil) when neither marker is usable.
+// An absent directory, an absent file or an empty one each mean the caller must fall back to ".".
+// That covers a hub mid-clone, a test fixture repo standing in for a hub, and a git repo that is not a fabric hub.
 // An anchor must never resolve to an empty subpath.
 // This helper spawns no git.
 //
-// The one absence that is NOT a fallback is a hub whose Bolt checkout still carries the pre-rename StaleAnchorFileName marker, no renamed one and no own marker.
-// That hub did record a subpath under the old name.
-// Answering "." for it re-anchors the whole repo at its root, after which `lym fabric reconcile` wires a second junction set there.
+// The one absence that is not a fallback: a Bolt checkout still carrying the pre-rename StaleAnchorFileName marker.
+// That hub recorded a subpath under the old name.
+// Answering "." would re-anchor the whole repo at its root.
+// After that, `lym fabric reconcile` wires a second junction set there.
 // That case returns ErrStaleAnchorMarker so every resolver refuses rather than guessing.
 func readRecordedAnchor(hub, worktreeName string) (anchor string, found bool, err error) {
 	ownMarker := filepath.Join(weftname.SiblingPath(hub, worktreeName), AnchorFileName)

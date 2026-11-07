@@ -1,14 +1,11 @@
-// junction_repoint_test.go proves WireJunctions (via seedLymJunction) repairs a corrupted warp _lym junction — one that dangles, or resolves to the wrong target — instead of refusing it as a real pre-existing directory.
-// A live review round found the pre-fix code fell through the "predates weft" refusal for both drift shapes, and Reconcile's documented contract ("handles both the missing-junction and the wrong-target cases") was false as a result;
-// only the missing-junction case had test coverage (TestReconcile_DifferentialEquivalence/JunctionRepointed).
-// This file adds the two drift shapes that were unrepairable pre-fix.
-// Fabric-only: warp's seedLymJunction has the same unfixed gap, so a differential harness would diverge here.
+// junction_repoint_test.go tests WireJunctions repairs a warp junction that dangles or points at the wrong target.
+// Such a junction is repaired through seedLymJunction, not refused as a real pre-existing directory.
+// Each case runs against both the _lym junction and the non-_lym junction.
+// Warp's seedLymJunction does not repair these drift shapes, so no differential harness covers them.
 //
-// From card 15 onward, seedLymJunction's per-junction repair loop runs over two junctions (_lym and a second, non-_lym junction), so this file also carries the non-_lym counterparts of both repoint cases: the per-junction refusal/repair behaviour must hold identically for the second, non-_lym junction, which has no _lym-shaped shortcut to fall back on.
-//
-// Package fabricengine_test to reuse the external-test-package fixture idiom
-// of lifecycle_differential_test.go; shares the single TestMain in
-// testmain_test.go.
+// The file is in package fabricengine_test,
+// and it uses the external-test-package fixture idiom of lifecycle_differential_test.go.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,12 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWireJunctions_RepairsCorruptedJunctions points a warp junction at an unrelated (but real)
-// directory, and at a target that does not exist, once for the _lym junction and once for the
-// second, non-_lym junction, then asserts WireJunctions removes and recreates each at the correct
-// weft target instead of refusing it as pre-existing user content.
-// The steps share one hub and run serially in table order: each step's WireJunctions call leaves
-// every junction healthy again, so the next step starts from a repaired hub.
+// TestWireJunctions_RepairsCorruptedJunctions points a warp junction at an unrelated real directory.
+// The test also points a junction at a target that does not exist, once for each of the two junctions.
+// It asserts WireJunctions removes and recreates each at the correct weft target.
+// The junction must not be refused as pre-existing user content.
+// The steps share one hub and run serially in table order.
+// Each step's WireJunctions call leaves every junction healthy, so the next step starts from a repaired hub.
 func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

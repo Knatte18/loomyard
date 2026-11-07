@@ -1,8 +1,7 @@
-// warplayout.go provides the guarded per-warp-worktree Location deriver shared by Status and
-// Reconcile: it avoids re-spawning git for the common case where the enumerated worktree is a hub
-// sibling of the caller's already-resolved Location.
-// Its non-sibling fallback resolves via the gate-free lymcwd.ResolveWorktree, not the gated
-// Resolve, since it derives another worktree's geometry from its root, above any subpath anchor.
+// warplayout.go derives the Location of each warp worktree from the caller's already-resolved Location.
+// It avoids spawning git for a hub sibling of that Location.
+// Any other worktree goes through the gate-free lymcwd.ResolveWorktree, not the gated Resolve.
+// That resolver derives another worktree's geometry from its root, above any subpath anchor.
 
 package fabricengine
 

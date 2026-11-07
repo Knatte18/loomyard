@@ -1,4 +1,5 @@
-// pairrule_test.go covers CardRefKind and DependencyEdge, the pair rule that decides whether two cards' overlapping refs make a dependency edge.
+// pairrule_test.go covers CardRefKind and DependencyEdge:
+// the pair rule that decides whether two cards' overlapping refs make a dependency edge.
 
 package planparser
 
@@ -6,7 +7,8 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// extendsCard returns a card whose only target group is an Extends group of ref, fencing a PATTERN.md line for each of entryIDs.
+// extendsCard returns a card whose only target group is an Extends group of ref.
+// Its text fences a PATTERN.md line for each of entryIDs.
 func extendsCard(number int, ref string, entryIDs ...string) Card {
 	text := ""
 	if len(entryIDs) > 0 {

@@ -22,19 +22,20 @@ const (
 	LogFileName = "dobby.log"
 	// OutFileName is the file in the worktree's `.lym/beam/` directory that a spawned dobby's raw standard output and error go to.
 	OutFileName = "dobby.out"
-	// PrimeLabel is the worktree label a StartReport gives the prime's dobby.
+	// PrimeLabel is the worktree label reported for the prime's dobby.
 	PrimeLabel = "prime"
-	// OutcomeStarted is the outcome of a dobby EnsureLive spawned.
+	// OutcomeStarted is the outcome of a dobby that the start spawned.
 	OutcomeStarted = "started"
 	// OutcomeLive is the outcome of a dobby that was live already.
 	OutcomeLive = "live"
-	// OutcomeRefused is the outcome of a dobby EnsureLive did not start, with the reason in the entry's detail.
+	// OutcomeRefused is the outcome of a dobby that was not started, with the reason in the entry's detail.
 	OutcomeRefused = "refused"
 	// OutcomeFailed is the outcome of a dobby whose start failed, with the cause in the entry's detail.
 	OutcomeFailed = "failed"
 )
 
-// ErrSpawnUnderTest is returned by SpawnDetached in a test binary, where forking the running binary would re-run the test suite.
+// ErrSpawnUnderTest is returned when a detached spawn runs in a test binary:
+// forking the running binary would re-run the test suite.
 var ErrSpawnUnderTest = errors.New("dobbyengine: dobby not spawned under test")
 
 // BeamPair is a local beam pair and the owner it reads as.
@@ -45,7 +46,7 @@ type BeamPair struct {
 	Owner string
 }
 
-// StartDeps is every seam EnsureLive reads and writes through.
+// StartDeps holds every seam a start reads and writes through.
 type StartDeps struct {
 	// Machine returns this machine's name.
 	Machine func() (string, error)
@@ -81,7 +82,7 @@ type StartEntry struct {
 	Detail string
 }
 
-// StartReport is the outcome of one EnsureLive call, one entry per worktree it considered, the prime first.
+// StartReport records the outcome of one start, with one entry per worktree it considered, the prime first.
 type StartReport struct {
 	Entries []StartEntry
 }
@@ -113,8 +114,12 @@ func OwnedWorktrees(deps StartDeps) ([]string, error) {
 }
 
 // EnsureLive starts the dobby of each named worktree, the prime's name or a beam's slug, each only when it is not live already.
-// The prime is handled first when named; a prime with no recorded owner is claimed for this machine first, and a claim that fails is reported for the prime with its cause and the `lym beam start` re-run, the prime's dobby is not started, and the beams go on.
-// A named prime another machine owns is reported with its owner and `lym adopt root`, and a named beam another machine owns is reported with its owner and `lym adopt <slug>`; neither starts a dobby.
+// The prime is handled first when named.
+// A prime with no recorded owner is claimed for this machine first;
+// a claim that fails is reported for the prime with its cause and the `lym beam start` re-run;
+// the prime's dobby is not started, but the beams go on.
+// A named prime another machine owns is reported with its owner and `lym adopt root`;
+// a named beam another machine owns is reported with its owner and `lym adopt <slug>`, and neither starts a dobby.
 // A named beam whose landing hold stands is reported naming `lym batten status <slug>` and starts no dobby.
 // A failed spawn is reported for its worktree and the others still start; the returned error lists every failure.
 // A second call reports every dobby live and changes nothing.
@@ -138,7 +143,7 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 
 	var report StartReport
 	var failures []error
-	// A start's failure joins the returned error; a prime claim that did not land is only reported, as a batten resume warns and goes on.
+	// A start's failure joins the returned error; a prime claim that did not land is only reported, and the start goes on.
 	startOne := func(label, worktree string) {
 		entry := ensureOne(deps, label, worktree)
 		report.Entries = append(report.Entries, entry)
@@ -203,7 +208,9 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 }
 
 // ensureOne starts the dobby of the worktree named worktree unless it is live, and reports it under label.
-// A worktree with an anchor change standing is refused with the change's way forward as the detail and starts nothing, a worktree whose landing hold stands is refused naming `lym batten status`, and an unreadable record is a failure.
+// A worktree with an anchor change standing is refused with the change's way forward as the detail, and starts nothing;
+// a worktree whose landing hold stands is refused naming `lym batten status`;
+// an unreadable record is a failure.
 func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 	geom, err := deps.Geometry(worktree)
 	if err != nil {
@@ -257,8 +264,10 @@ func Live(geom Geometry) (bool, error) {
 	return false, held.Release()
 }
 
-// SpawnDetached starts `<lym> beam dobby <worktree root>` for geom as a detached process with the hub root as its working directory.
-// The child's output is appended to the file at geom.OutPath, and the child is reaped in the background while this process lives.
+// SpawnDetached starts `<lym> beam dobby <worktree root>` for geom as a detached process.
+// The child runs with the hub root as its working directory.
+// The child's output is appended to the file at geom.OutPath,
+// and the child is reaped in the background while this process lives.
 // It returns ErrSpawnUnderTest, starting nothing, in a test binary.
 func SpawnDetached(geom Geometry) error {
 	if testing.Testing() {
@@ -273,7 +282,8 @@ func SpawnDetached(geom Geometry) error {
 	})
 }
 
-// spawnDetached rotates the raw-output file where the platform needs it, opens geom.OutPath for append, builds the dobby command with stdout and stderr on that file and starts it through start.
+// spawnDetached rotates the raw-output file where the platform needs it and opens geom.OutPath for append.
+// It builds the dobby command with stdout and stderr on that file, and starts it through start.
 func spawnDetached(geom Geometry, start func(cmd *exec.Cmd) error) error {
 	rotateOutBeforeSpawn(geom, runtime.GOOS)
 	if err := os.MkdirAll(filepath.Dir(geom.OutPath), 0o755); err != nil {
@@ -303,8 +313,11 @@ func spawnDetached(geom Geometry, start func(cmd *exec.Cmd) error) error {
 	return nil
 }
 
-// rotateOutBeforeSpawn rotates the raw-output file past its bound on windows alone, where a running dobby holds the file open and cannot rotate it itself, and only when the dobby's lock reads free.
-// This is the one rotation a process without the dobby lock makes; a failed rename, as when a refused process still holds the file, is logged and leaves the file for the next spawn.
+// rotateOutBeforeSpawn rotates the raw-output file past its bound on windows alone.
+// There a running dobby holds the file open and cannot rotate it itself.
+// It rotates only when the dobby's lock reads free.
+// This is the one rotation a process without the dobby lock makes;
+// a failed rename, as when a refused process still holds the file, is logged and leaves the file for the next spawn.
 func rotateOutBeforeSpawn(geom Geometry, goos string) {
 	if goos != "windows" {
 		return

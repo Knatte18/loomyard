@@ -1,6 +1,6 @@
 //go:build windows
 
-// dobbyreopen_windows.go is the Windows counterpart of the output reopen, which selfexec's absence of an exec there makes unnecessary.
+// dobbyreopen_windows.go holds the Windows no-op of the stdio reopen, since a dobby there never re-execs.
 
 package beamcli
 

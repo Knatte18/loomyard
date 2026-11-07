@@ -1,4 +1,5 @@
-// wiring_beam_test.go covers the wiring a pawl run adds to wire: the Pawl seams, the six-row routing, and the landing deps a pawl run's Finalize is built with.
+// wiring_beam_test.go covers the wiring a pawl run adds to wire.
+// It checks the Pawl seams, the routing, and the landing deps a pawl run's Finalize is built with.
 // wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -193,7 +194,8 @@ func TestWire_BeamRecipe(t *testing.T) {
 				if deps.PlanDir != "" {
 					t.Errorf("pawl: PlanDir = %q; want none", deps.PlanDir)
 				}
-				// A pawl run has Parent-Align, so its seam reads the perch's budget from loom.yaml, which the fixture seeds above 0.
+				// A pawl run has Parent-Align, so its seam reads the perch's budget from loom.yaml.
+				// The fixture seeds that budget above 0.
 				if off, err := deps.CodeReviewOff(); err != nil || off {
 					t.Errorf("pawl: CodeReviewOff() = %v, %v; want false, nil", off, err)
 				}

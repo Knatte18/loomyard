@@ -1,16 +1,23 @@
-<!-- This is the loom Plan producer's autonomous prompt. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/loom/`
-     and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
+<!-- This is the loom Plan producer's autonomous prompt.
+     It ships as an embedded default in the stencils package (contracts/stencils/stencils.go),
+     seeded to the Bolt checkout's `_lym/stencils/loom/`.
+     internal/seatengine reads it from there at call time and fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
      then hands it to shuttle as the plan agent's entire instruction set.
-     The stencil includes the four plan-format blocks loom-block-plan-glyphs, loom-block-plan-format, loom-block-plan-overview and loom-block-plan-cards with the bare {{template "<name>"}}; specs_dir and gate_tiers reach them through the same value map.
+     The stencil includes the four plan-format blocks loom-block-plan-glyphs, loom-block-plan-format,
+     loom-block-plan-overview and loom-block-plan-cards with the bare {{template "<name>"}}.
+     specs_dir and gate_tiers reach them through the same value map.
      gate_tiers is a required marker filled by loomengine.PlanTable from the hub's gate.yaml; a hub declaring no tier renders it as none.
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
-     parent_directive is a third optional marker, rendered by internal/parentdirective.
-     twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
+     Every marker is a top-level {{.X}} substitution, and the file has no {{if}}/{{range}} conditionals.
+     A required marker inside a conditional branch would render silently blank when present-but-empty (see internal/stencil/stencil.go).
+     stencil.FillOptional requires every required marker non-empty.
+     pattern_directive and friction_directive are optional markers, each filled via stencil.FillOptional.
+     Each renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
+     parent_directive is an optional marker, rendered by internal/parentdirective.
+     twill_directive is an optional marker, rendered by internal/twilldirective through internal/loomengine;
      it sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
-     self_check is a required marker, the body of Step 5, filled by internal/loomengine's PlanTable with the fragment that has the writer run the validator or, when the row's gate has a cold fixer, the one that has it run none.
+     self_check is a required marker, the body of Step 5, filled by internal/loomengine's PlanTable.
+     It carries the fragment that has the writer run the validator or, when the row's gate has a cold fixer, the one that has it run none.
      subagent_model is a required marker, filled from loom.yaml's subagent_model. -->
 
 # Plan — read the decision record, write a plan-format flat-card plan

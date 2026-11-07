@@ -1,5 +1,7 @@
-// gateattempts.go implements the helpers every gated producer (MultiLLMProducer, BurlerFixProducer, BurlerReviewProducer, WebsterProducer) shares to carry a gate's re-prompt count and spans onto shedengine.OutputPointer.GateAttempts and GateSpans.
-// It also holds the findings-file helpers: keeping an exhausted gate's findings in a told file, naming it in the Stuck reason and clearing it once a gate passes.
+// gateattempts.go holds the helpers that gated producers share.
+// They carry a gate's attempt count and spans onto shedengine.OutputPointer.
+// The findings-file helpers keep an exhausted gate's findings in a file and name it in the Stuck reason,
+// and they clear it once a gate passes.
 
 package shedadapters
 
@@ -17,11 +19,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// gateFindingsReasonLimit is the most characters of the gate's findings text a Stuck reason carries when the findings file could not be written.
+// gateFindingsReasonLimit caps the findings text a Stuck reason carries in runes.
+// It applies only when the findings file could not be written.
 const gateFindingsReasonLimit = 400
 
-// gateFailedReason is the one-line Stuck reason for a gate that did not pass, shared by both gated
-// producers so the wording never diverges.
+// gateFailedReason is the one-line Stuck reason for a gate that did not pass.
+// The gated producers share it so the wording never diverges.
 // A terminal entry's own explanation (GateOutcome.Reason) replaces the generic text and writes no file.
 // With a non-empty findingsPath it keeps gate.Findings there, overwriting an earlier file, and names that file;
 // a failed write is logged and the reason carries the findings text, cut to one line, in place of the path.
@@ -59,10 +62,9 @@ func clearGateFindings(path string) {
 	}
 }
 
-// gateAttemptsPointer returns a pointer to gate.Attempts, or nil when gate itself is nil (the
-// producer applied no gate to this call). Read shedengine.OutputPointer.GateAttempts's own doc
-// comment for why a nil/non-nil distinction is kept rather than collapsing an ungated call and a
-// gate that passed on its first attempt onto the same zero value.
+// gateAttemptsPointer returns a pointer to gate.Attempts, or nil when gate is nil.
+// A nil pointer means the producer applied no gate to the call,
+// so an ungated call and a gate that passed on its first attempt stay apart.
 func gateAttemptsPointer(gate *shuttleengine.GateOutcome) *int {
 	if gate == nil {
 		return nil
@@ -71,9 +73,11 @@ func gateAttemptsPointer(gate *shuttleengine.GateOutcome) *int {
 	return &attempts
 }
 
-// gateSpansOf flattens gate's entries into the history entry's span list: one span per recorded span, in entry order and, within an entry, span order.
-// Each span carries its entry's name, its kind's string and its start and end as RFC 3339 UTC times with fractional seconds.
-// A nil gate, and a gate whose entries recorded no span, give nil, so a call that applied no gate and a call whose shuttle recorded nothing keep the field off disk.
+// gateSpansOf flattens gate's entries into one span per recorded span, in entry order and, within an entry, span order.
+// Each span carries its entry's name and its kind's string;
+// its start and end are RFC 3339 UTC times with fractional seconds.
+// Both a nil gate and a gate whose entries recorded no span yield nil.
+// That keeps the spans field off disk for a call that applied no gate and for a call whose shuttle recorded nothing.
 func gateSpansOf(gate *shuttleengine.GateOutcome) []shedengine.GateSpan {
 	if gate == nil {
 		return nil

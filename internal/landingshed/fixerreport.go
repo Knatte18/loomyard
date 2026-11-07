@@ -1,4 +1,5 @@
-// fixerreport.go declares the merge fixer's report model and ParseFixerReport, the one reader of the report format contracts/specs/landing-fixer-report-spec.md defines.
+// fixerreport.go declares the merge fixer's report model and ParseFixerReport.
+// ParseFixerReport is the one reader of the report format that contracts/specs/landing-fixer-report-spec.md defines.
 
 package landingshed
 
@@ -36,7 +37,8 @@ type FixerReport struct {
 
 // ParseFixerReport reads the fixer report at path.
 // A missing file is an error wrapping fs.ErrNotExist.
-// A first line that is no known verdict, and an escalate report without a non-empty `## Conflict` section, are errors naming the line and the spec.
+// A first line that is no known verdict is an error naming the line and the spec.
+// An escalate report without a non-empty `## Conflict` section is an error too, naming the spec.
 func ParseFixerReport(path string) (FixerReport, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

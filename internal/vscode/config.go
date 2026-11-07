@@ -1,24 +1,9 @@
-// Package vscode generates VS Code configuration and manages VS Code-specific launch behavior for
-// worktrees.
-// It is responsible for config generation (settings.json and tasks.json), color-palette selection, and launching VS Code.
-//
-// A window is coloured in the two areas that keep their colour in an unfocused window:
-// the title bar takes the project's colour, the prime's green or its beam's colour, and the activity bar the worktree's own colour.
-// A task's activity-bar colour is any palette colour but its project's, avoiding its siblings', the worktrees whose title bar holds the same project colour, while one is free.
-// Text on either bar is black or white by the background's luminance.
-// No status-bar, border or tab colour is written: the status bar loses its background in an unfocused window, the active border is not drawn, and tab colours follow the selected tab.
-// lym owns those keys and window.title in a worktree's settings.json and rewrites them at every seed.
-// Every other key is the operator's, but for the "*.md" entry of workbench.editorAssociations:
-// a seed asked to render markdown points that entry at the markdown preview, so a markdown file opens rendered, unless the operator holds the setting in its array form, which is left as it is.
-// Launch opens a folder or workspace file and any files beside it in the new window.
-// A workspace window keeps its project's colour on the title bar and takes WorkspaceColor, which no worktree takes, on its activity bar;
-// WorkspaceSettings sets that look in the settings a workspace file splices.
-// It also seeds the marked block of key bindings into the user's keybindings.json (see SeedKeybindings):
-// the Alt-arrow keys the integrated terminal forwards to reed's tmux bindings, and ctrl+alt+a, which runs the reed attach task.
-// A user-level binding applies in every VS Code window, so the Alt-arrow keys reach reed in any hub.
-// The mill values (palette, settings keys, cmd /c code) are baked in — no external Python is read.
-//
-// Limitation: the hub workspace file at <hub>/<RepoName>.code-workspace carries the prime's settings, so a relative path value (starting with ./ or ../) resolves against the hub directory, no longer against the prime's own folder.
+// config.go writes a worktree's VS Code configuration under .vscode.
+// settings.json sets the window's title and colours, and the markdown editor association when asked;
+// tasks.json holds the reed attach task.
+// Every other settings key is the operator's and is kept.
+// Limitation: the hub workspace file at <hub>/<RepoName>.code-workspace carries the prime's settings,
+// so a relative path value (starting with ./ or ../) resolves against the hub directory, not the prime's own folder.
 // RelativeSettingKeys names such keys so the caller can warn; no relative path value is rewritten.
 
 package vscode
@@ -47,14 +32,18 @@ const (
 	inactiveForegroundAlphaHex    = "aa"
 )
 
-// The editor association lym owns in a worktree's settings.json: the "*.md" entry, pointed at VS Code's markdown preview.
+// The editor association lym owns in a worktree's settings.json: the "*.md" entry.
+// It points at VS Code's markdown preview.
 const (
 	editorAssociationsKey = "workbench.editorAssociations"
 	markdownPattern       = "*.md"
 	markdownPreviewEditor = "vscode.markdown.preview.editor"
 )
 
-// Look is how a worktree's VS Code window shows itself: its window title, the project colour its title bar takes and the worktree's own colour its activity bar takes, each a #rrggbb colour.
+// Look is how a worktree's VS Code window shows itself.
+// It holds the window title.
+// The project colour takes the title bar, and the worktree's own colour takes the activity bar.
+// Each colour is a #rrggbb string.
 type Look struct {
 	Title         string
 	ProjectColor  string
@@ -63,15 +52,20 @@ type Look struct {
 
 // WriteConfig writes a worktree's VS Code configuration under <worktreeDir>/<relpath>/.vscode.
 // A missing settings.json is created with look and lym's defaults.
-// In an existing one only the keys lym owns are set from look: window.title and the title-bar and activity-bar keys of workbench.colorCustomizations;
-// every other key is kept, though comments are not, and a file that does not decode as JSONC is left untouched with a warning.
-// With renderMarkdown on, either file's "*.md" editor association is set to the markdown preview, so a markdown file opens rendered, unless the file holds the setting in its array form, which is left as it is;
-// with it off, that entry is removed while it names the preview, so an editor the operator chose stays.
-// tasks.json is always written, overwriting any existing file, and holds one "reed attach" task, run on demand or by its seeded key binding;
+// In an existing one only the keys lym owns are set from look:
+// window.title and the title-bar and activity-bar keys of workbench.colorCustomizations.
+// Every other key is kept, though comments are not;
+// a file that does not decode as JSONC is left untouched with a warning.
+// With renderMarkdown on, settings.json's "*.md" editor association is set to the markdown preview.
+// A setting held in its array form is left as it is.
+// With renderMarkdown off, that entry is removed while it names the preview, so an editor the operator chose stays.
+// tasks.json is always written, overwriting any existing file.
+// It holds one "reed attach" task, run on demand or by its seeded key binding;
 // no task runs on folder open, so opening the folder starts no session and no agent.
 // Neither file touches .gitignore; the caller keeps .vscode/ out of git through info/exclude.
-// lymPath is the resolved absolute lym path stamped into the task;
-// an empty lymPath becomes "lym", so a resolution failure upstream still produces a runnable (PATH-dependent) task file rather than a broken one.
+// lymPath is the resolved absolute lym path stamped into the task.
+// An empty lymPath becomes "lym",
+// so a resolution failure upstream still produces a runnable, PATH-dependent task file rather than a broken one.
 // Returns an error if I/O fails.
 func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, lymPath string) error {
 	if lymPath == "" {
@@ -88,7 +82,8 @@ func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, ly
 	return writeAttachTask(filepath.Join(vscodePath, "tasks.json"), lymPath)
 }
 
-// writeSettings creates settingsPath with lym's defaults, look and the markdown association renderMarkdown asks for, or sets those keys in the existing file, keeping its other keys.
+// writeSettings creates settingsPath with lym's defaults, look and the markdown association renderMarkdown asks for.
+// An existing file has those keys set in place, and its other keys are kept.
 // An existing file that does not decode as a JSONC object is logged and left untouched.
 func writeSettings(settingsPath string, look Look, renderMarkdown bool) error {
 	content, err := os.ReadFile(settingsPath)
@@ -126,7 +121,9 @@ func writeSettings(settingsPath string, look Look, renderMarkdown bool) error {
 	return os.WriteFile(settingsPath, data, 0o644)
 }
 
-// applyLook sets the keys lym owns in settings from look: window.title and the title-bar and activity-bar keys of workbench.colorCustomizations, keeping every other colour customization.
+// applyLook sets the keys lym owns in settings from look:
+// window.title and the title-bar and activity-bar keys of workbench.colorCustomizations.
+// Every other colour customization is kept.
 func applyLook(settings map[string]any, look Look) {
 	customizations, _ := settings[colorCustomizationsKey].(map[string]any)
 	if customizations == nil {
@@ -145,9 +142,12 @@ func applyLook(settings map[string]any, look Look) {
 	settings[windowTitleKey] = look.Title
 }
 
-// applyMarkdownPreview sets the "*.md" entry of settings' workbench.editorAssociations to the markdown preview when render is on, keeping every other association.
-// When render is off it removes that entry only while it names the preview, and drops an association map left empty.
-// A value that is neither a map nor null, such as the array form of the setting, is left as it is, since lym cannot set its entry without replacing the operator's.
+// applyMarkdownPreview points the "*.md" association at the markdown preview when render is on.
+// Every other association is kept.
+// When render is off, it removes that entry only while it names the preview,
+// and it drops an association map left empty.
+// A value that is neither a map nor null, such as the array form of the setting, is left as it is.
+// lym cannot set its entry without replacing the operator's.
 func applyMarkdownPreview(settings map[string]any, render bool) {
 	existing := settings[editorAssociationsKey]
 	associations, isMap := existing.(map[string]any)
@@ -175,7 +175,8 @@ func applyMarkdownPreview(settings map[string]any, render bool) {
 const attachTaskLabel = "reed attach"
 
 // writeAttachTask writes a tasks.json holding the single on-demand "reed attach" task, overwriting any existing file.
-// The task carries no runOptions, so VS Code runs it only from "Tasks: Run Task" or its seeded key binding, never on folder open.
+// The task carries no runOptions.
+// VS Code runs it only from "Tasks: Run Task" or its seeded key binding, never on folder open.
 func writeAttachTask(tasksPath, lymPath string) error {
 	tasks := map[string]any{
 		"version": "2.0.0",

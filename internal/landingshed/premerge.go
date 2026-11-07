@@ -1,4 +1,4 @@
-// premerge.go implements the pre-merge step both producers run ahead of their clean-tree check:
+// premerge.go implements the pre-merge step the landing producers run ahead of their clean-tree check:
 // it clears the merge-in the row itself left parked, so the merge that follows starts afresh.
 
 package landingshed
@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// preMerge holds the three told seams of the pre-merge step.
+// preMerge holds the three functions the pre-merge step uses to probe and change the pair's merge state.
 // A nil mergeState skips the whole step, so a producer built by a struct literal runs no probe.
 type preMerge struct {
 	mergeState          func() (fabricengine.MidMergeState, error)
@@ -18,7 +18,6 @@ type preMerge struct {
 	stopConflictSession func() (string, error)
 }
 
-// newPreMerge copies the pre-merge seams out of deps.
 func newPreMerge(deps Deps) preMerge {
 	return preMerge{
 		mergeState:          deps.MergeState,
@@ -29,8 +28,11 @@ func newPreMerge(deps Deps) preMerge {
 
 // clear probes the pair's merge state and discards the row's own parked merge-in, if any.
 //
-// It returns a Stuck reason when the state cannot be cleared, an error when the probe or the strand table cannot be read, and ("", nil) when the pair is free for a fresh merge-in.
-// A parked merge-in of parentBranch is stopped over: every live conflict session of the run is stopped first, then the merge is aborted.
+// It returns a Stuck reason when the state cannot be cleared.
+// It returns an error when the probe or the strand table cannot be read.
+// It returns ("", nil) when the pair is free for a fresh merge-in.
+// A parked merge-in of parentBranch is stopped over:
+// every live conflict session of the run is stopped first, then the merge is aborted.
 // A failed stop leaves the merge untouched.
 // Any other parked merge, and git merge state fabric did not start, is never stopped over or touched.
 func (m preMerge) clear(producer, parentBranch string) (string, error) {

@@ -1,14 +1,13 @@
-// smoke_bootstrapwiring_test.go covers bootstrap behaviours that are correct in their own helper
-// and were wrong in production anyway, which is the one shape a Tier 1 test over that helper can
-// never catch: a helper nothing calls.
+// smoke_bootstrapwiring_test.go covers bootstrap behaviours that a Tier 1 test over their helper never catches.
+// Each is correct in its own helper but wrong in production: the helper is called from nowhere.
 //
-// The defects were found by crucible rounds driving a real hub, and none is visible from a
-// hermetic fixture. ensureFrictionDirAfterSeed had four green unit tests while being called from
-// nowhere at all, so only a test that goes through the real bootstrap can tell the two states apart.
+// The defects show only through a real hub, never a hermetic fixture.
+// ensureFrictionDirAfterSeed had passing unit tests while nothing called it.
+// Only a test that goes through the real bootstrap can tell the two states apart.
 //
-// Like its siblings, every test here spawns ZERO real LLM subprocesses: the fixture wires
-// providerlessShuttleConfig (see its doc comment), and each test dispatches at most the two pure-Go
-// precondition rows, never an LLM row.
+// No test here spawns a real LLM subprocess.
+// The fixture wires providerlessShuttleConfig.
+// Each test dispatches only pure-Go precondition rows, never an LLM row.
 package loomcli
 
 import (
@@ -28,9 +27,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// plantFrictionNote writes a friction note named name inside loc's Tier 2 friction directory --
-// composed through the production accessor, never a hand-built literal -- creating the directory if
-// it is absent, and returns the path it wrote.
+// plantFrictionNote writes a friction note named name into loc's Tier 2 friction directory and returns its path.
+// It builds the path through the production accessor, never a hand-built literal.
+// It creates the directory if it is absent.
 func plantFrictionNote(t *testing.T, loc *lymcwd.Location, name string) string {
 	t.Helper()
 	path := filepath.Join(loomengine.LoomFrictionDir(loc), name)
@@ -46,9 +45,10 @@ func plantFrictionNote(t *testing.T, loc *lymcwd.Location, name string) string {
 // TestSmokeStepBootstrapWiring drives `lym loom step` over one go-seeded pair, in this order:
 // a genuine first seed, the handoff voucher that step left, then a re-entry over the same task.
 // Each step builds on the state the one before left.
-// A last subtest drives a second go-seeded pair whose seed names a wrong parent, through the refusal and its way forward.
+// The last subtest drives a second go-seeded pair whose seed names a wrong parent.
+// It runs through the refusal and its way forward.
 //
-// Every behavior here is the regression guard for a helper that was correct and unit-tested and still wrong in production, because nothing called it;
+// Every behavior here guards against a helper that passes its unit tests yet is never called in production;
 // only a test through the real bootstrap tells the two states apart.
 func TestSmokeStepBootstrapWiring(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -64,19 +64,18 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		t.Fatalf("commit the inherited friction note: %v", err)
 	}
 
-	// The regression guard for the once-per-task friction clear that never shipped.
+	// The regression guard for the once-per-task friction clear.
 	//
-	// ensureFrictionDirAfterSeed was written, documented, and unit-tested in start.go, and called from
-	// nowhere: neither startCmd's RunE nor seedAndCommitBootstrap reached it. Its four tests were green
-	// over an orphan. The consequence, reproduced live against a real hub in crucible round 1: notes
-	// left in .lym/loom/friction/ by an earlier task, or by an earlier run that never reached a
-	// reflection trigger, survived a genuine first seed and were handed to the NEXT task's reflection
-	// agent as that task's own friction -- which then filed a GitHub issue about them.
+	// A unit-tested helper can be wired to nothing, and its tests then stay green over an orphan.
+	// Without the clear, notes in .lym/loom/friction/ survive a genuine first seed.
+	// They may come from an earlier task, or from an earlier run that never reached a reflection trigger.
+	// The next task's reflection agent then reads them as that task's own friction.
 	//
-	// Both branches are asserted through the real bootstrap, because the branch is not the thing that
-	// was broken; reaching it was. `lym loom step` is the driving verb rather than `lym loom start`
-	// precisely because `step` spawns no driver: `start` delegates to `run`, which calls
-	// friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
+	// Both branches are asserted through the real bootstrap.
+	// The branch itself is not what breaks; reaching it is.
+	// `lym loom step` is the driving verb rather than `lym loom start`, because `step` spawns no driver.
+	// `start` delegates to `run`, which calls friction.EnsureDir itself.
+	// That call would mask an unwired clear behind a directory that exists anyway.
 	//
 	// The first `step` is a genuine first seed.
 	// It dispatches Preflight, a pure-Go row, and nothing else.
@@ -102,14 +101,15 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		}
 	})
 
-	// The wiring guard for the handoff voucher (crucible round 2, R2-F1): recordHandoffVoucher and its
-	// consume/detect halves are unit-tested in handoffvoucher_test.go, but a helper nothing calls stays
-	// green over an orphan, so this asserts the voucher landed beside the ephemeral tree's other loom
-	// files, matching the persisted status.
+	// The wiring guard for the handoff voucher.
+	// recordHandoffVoucher and its consume and detect halves are unit-tested in handoffvoucher_test.go,
+	// but a helper that nothing calls stays green over an orphan.
+	// So this asserts that the voucher landed beside the ephemeral tree's other loom files.
+	// It also checks that the voucher matches the persisted status.
 	//
-	// Without the voucher, a completed step leaves state running with a live history and a free run
-	// lock, which is byte-identical to a mid-run driver death: the next `lym loom run` with
-	// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
+	// Without the voucher, a completed step leaves state running with a live history and a free run lock.
+	// That state is byte-identical to a mid-run driver death:
+	// the next `lym loom run` with Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
 	//
 	// Relies on the first step's completed `step`.
 	// It must run before the re-entry step changes the status again.
@@ -150,7 +150,9 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		}
 	})
 
-	// The way forward the disagreeing-seed refusal names must lead to a driven producer: a go seed with a wrong parent refuses `step`, and removing it and re-seeding with the recorded parent lets `step` dispatch Preflight.
+	// The way forward that the disagreeing-seed refusal names must lead to a driven producer.
+	// A go seed with a wrong parent refuses `step`.
+	// Removing that seed and re-seeding with the recorded parent lets `step` dispatch Preflight.
 	// It builds its own pair, since the pair above holds a seed that agrees.
 	t.Run("wrong-parent seed is cleared and re-seeded", func(t *testing.T) {
 		_, loc, worktree, _ := newWiredPairFixture(t)

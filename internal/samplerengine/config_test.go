@@ -27,7 +27,7 @@ func seedHubConfig(t *testing.T, board, contents string) {
 }
 
 // writeLocalConfig writes contents as anchor's local sampler override.
-// anchor gets an empty _lym/config/ so the layered load sees an initialised worktree.
+// anchor gets an empty _lym/config/ and scratch dir so the layered load sees an initialised worktree.
 func writeLocalConfig(t *testing.T, anchor, contents string) {
 	t.Helper()
 	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
@@ -41,7 +41,9 @@ func writeLocalConfig(t *testing.T, anchor, contents string) {
 	}
 }
 
-// TestLoadConfig covers the template's defaults for a hub with no file, a hub file and a local layer setting code_review, an agent failing the model-spec grammar, and a base directory with no config.
+// TestLoadConfig covers the template's defaults for a hub with no file;
+// a hub file and a local layer setting code_review; an agent failing the model-spec grammar;
+// and a base directory with no config.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

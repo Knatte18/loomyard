@@ -1,5 +1,8 @@
-// timingspans.go times one run: it merges the loom and batten histories into stamped rows, opens and closes the run's span, counts each row interval under a phase, and takes the machine's sleep out of them.
-// The interval arithmetic on sets of Intervals lives here too.
+// timingspans.go times one run.
+// It merges the loom and batten histories into stamped rows.
+// It opens and closes the run's span.
+// It counts each row interval under a phase and takes the machine's sleep out of them.
+// The file also holds the interval arithmetic on sets of Intervals.
 
 package reportengine
 
@@ -18,16 +21,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// phaseTable maps the rows of one recipe's run to their phase: exact names a row by its whole name, and families names every row whose first dash-separated segment it holds.
+// phaseTable maps the rows of one recipe's run to their phase:
+// exact names a row by its whole name, and families names every row whose first dash-separated segment it holds.
 type phaseTable struct {
 	exact    map[string]string
 	families map[string]string
 }
 
-// retiredBatchifierRow is the loom row that batched the plan before the implementer took batching over; a past run's history still carries it.
+// retiredBatchifierRow is the loom row that batched the plan before the implementer took batching over;
+// a past run's history still carries it.
 const retiredBatchifierRow = "Batchifier"
 
-// The loom rows the recipes no longer hold, written as literals so a past run's history and status still read.
+// The loom rows that the recipes do not hold, written as literals so a past run's history and status still read.
 const (
 	retiredPublishRow             = "Publish"
 	retiredPRAlignRow             = "PR-Align"
@@ -43,7 +48,8 @@ const (
 	retiredWebsterBurlerFixRow    = "Webster-Burler-Fix"
 )
 
-// The darn perch rows the darn recipe no longer holds, now that it runs loom's Code-Review rows; a past darn run's history still carries them.
+// The darn perch rows that the darn recipe does not hold, because it runs loom's Code-Review rows;
+// a past darn run's history still carries them.
 const (
 	retiredDarnBouncerRow      = "Darn-Bouncer"
 	retiredDarnBurlerReviewRow = "Darn-Burler-Review"
@@ -88,7 +94,8 @@ func tapestryPhaseTable() phaseTable {
 	}
 }
 
-// loomPhases maps every row of a tapestry run that a phase table names whole, the retired rows of past runs included, to its phase.
+// loomPhases maps every row of a tapestry run that a phase table names whole to its phase.
+// The retired rows of past runs are included.
 func loomPhases() map[string]string {
 	phases := map[string]string{
 		loomshed.NamePreflight:       PhaseSetup,
@@ -109,7 +116,8 @@ func loomPhases() map[string]string {
 	return phases
 }
 
-// darnPhases maps every row of a darn run, and each retired row name a darn status may still carry, to its phase.
+// darnPhases maps every row of a darn run to its phase.
+// It also maps each retired row name a darn status may still carry.
 func darnPhases() map[string]string {
 	phases := map[string]string{
 		loomshed.NamePreflight:        PhaseSetup,
@@ -141,7 +149,8 @@ func darnPhases() map[string]string {
 	return phases
 }
 
-// recipePhases returns, in report order, the phases a run of recipe can hold: those its phase table names, and setup, land, paused and other, which every run can.
+// recipePhases returns, in report order, the phases a run of recipe can hold:
+// those its phase table names, and setup, land, paused and other, which every run can.
 func recipePhases(recipe string) []string {
 	named := map[string]bool{PhaseSetup: true, PhaseLand: true, PhasePaused: true, PhaseOther: true}
 	table := recipePhaseTables[recipe]
@@ -177,7 +186,9 @@ func childRowPhase(recipe, producer string) (string, bool) {
 }
 
 // timedRow is one history entry of a run, from the loom history or from the batten record.
-// position is the entry's index in its own history, and stamp is its last_at when set, else its at; stamped is false when neither is a usable time.
+// position is the entry's index in its own history.
+// stamp is its last_at when set, else its at.
+// stamped is false when neither is a usable time.
 type timedRow struct {
 	batten   bool
 	position int
@@ -216,9 +227,11 @@ func statusFileOf(slug string) string {
 	return rels.Status
 }
 
-// mergeRows merges the loom history and the batten record's history in stamp order, each history keeping its own order.
+// mergeRows merges the loom history and the batten record's history in stamp order.
+// Each history keeps its own order.
 // A row with no usable stamp is placed at its history's head and gets a finding naming the row and the file.
-// A skipped entry is left out: the row it passed through was never called, so its time counts under the row before it.
+// A skipped entry is left out:
+// the row it passed through was never called, so its time counts under the row before it.
 func mergeRows(row RunRow) ([]timedRow, []Finding) {
 	var findings []Finding
 	file := statusFileOf(row.Slug)
@@ -265,10 +278,13 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 	return merged, findings
 }
 
-// phaseOf returns the phase the row at index of a run of recipe counts under, and false when it is a child row the recipe's phase table does not name, which counts under PhaseOther.
-// A batten row counts by position: before batten's first Run-Shed entry under PhaseSetup, after it under PhaseLand.
-// A Run-Shed entry records the child's state changes: a change from paused closes the pause and counts under PhasePaused,
-// and any other counts under the phase of the producer its change names, else the phase of the latest child row before it, else PhaseSetup.
+// phaseOf returns the phase the row at index of a run of recipe counts under.
+// It returns false for a child row the recipe's phase table does not name, which counts under PhaseOther.
+// A batten row counts by position: under PhaseSetup before batten's first Run-Shed entry, under PhaseLand after it.
+// A Run-Shed entry records the child's state changes.
+// A change from paused closes the pause and counts under PhasePaused.
+// Any other change counts under the phase of the producer it names.
+// Failing that, it counts under the phase of the latest child row before it, and otherwise under PhaseSetup.
 func phaseOf(recipe string, rows []timedRow, index int) (string, bool) {
 	row := rows[index]
 	if !row.batten {
@@ -310,8 +326,10 @@ func phaseOf(recipe string, rows []timedRow, index int) (string, bool) {
 	return PhaseSetup, true
 }
 
-// spanOpening returns where a run's span opens: the first entry of the batten record, else the seed's started_at, else the first stamped child row.
-// The last case adds a finding saying so, and found is false when no row carries a stamp at all.
+// spanOpening returns where a run's span opens.
+// It is the first entry of the batten record, else the seed's started_at, else the first stamped child row.
+// Opening at the first stamped child row adds a finding saying so.
+// found is false when no row carries a stamp at all.
 func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, finding *Finding) {
 	if n := len(row.battenSnapshots); n > 0 {
 		if history := row.battenSnapshots[n-1].History; len(history) > 0 {
@@ -332,8 +350,12 @@ func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, fi
 }
 
 // timeRun times one run: its span, the sleep inside it and the span split over the phases.
-// The span opens as spanOpening says and closes at the last stamp of either history, or at snapshot for a run in flight, whose trailing interval counts under the phase of its loom status's current producer, or under PhasePaused while its child stands paused.
-// Each row's interval runs from the latest stamp so far to the row's own stamp; a stamp earlier than the latest, or none, gives a zero interval and a finding.
+// The span opens at the first entry of the batten record, else the seed's started_at, else the first stamped child row.
+// It closes at the last stamp of either history, or at snapshot for a run in flight.
+// The trailing interval of a run in flight counts under the phase of its loom status's current producer.
+// While its child stands paused, that interval counts under PhasePaused instead.
+// Each row's interval runs from the latest stamp so far to the row's own stamp.
+// A stamp earlier than the latest, or none, gives a zero interval and a finding.
 // A run no stamp opens a span for comes back as the zero TimingRun with a finding.
 // Every boundary is cut to a whole second, as the row stamps are, so the truncated figures add up to the truncated span.
 func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []Finding) {
@@ -455,7 +477,8 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 	return run, findings
 }
 
-// standsPaused reports whether the last of rows is batten's record of the child's change into paused, so the child has not resumed since.
+// standsPaused reports whether the last of rows is batten's record of the child's change into paused.
+// Such a record means the child has not resumed since.
 func standsPaused(rows []timedRow) bool {
 	if len(rows) == 0 {
 		return false

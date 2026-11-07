@@ -1,4 +1,5 @@
-// raddle_test.go tests ComputeRaddle over a fake board holding a raddle store and a fake records repository holding the filed parts' runs.
+// raddle_test.go tests ComputeRaddle over a fake board holding a raddle store.
+// A fake records repository holds the runs of the filed parts.
 
 package reportengine
 
@@ -20,7 +21,8 @@ func proposalText(expected string) string {
 	return fmt.Sprintf(`{"sketch":"s","cost":{"expected_usd":%s}}`, expected)
 }
 
-// storeSketch commits the store directory of sketch to the board: its store.json recording filed and project, the approved proposal and the cold proposal.
+// storeSketch commits the store directory of sketch to the board:
+// its store.json recording filed and project, the approved proposal and the cold proposal.
 func storeSketch(t *testing.T, w *world, sketch string, filed []string, project, approved, cold string) {
 	t.Helper()
 
@@ -35,7 +37,8 @@ func storeSketch(t *testing.T, w *world, sketch string, filed []string, project,
 	})
 }
 
-// landedPart adds the archive tag of the filed part slug at hour, its run holding one session per cost, each a JSON number or null.
+// landedPart adds the archive tag of the filed part slug at hour.
+// Its run holds one session per cost, each a JSON number or null.
 func landedPart(w *world, slug string, hour int, costs ...string) {
 	sessions := map[string]string{}
 	for i, cost := range costs {
@@ -44,7 +47,8 @@ func landedPart(w *world, slug string, hour int, costs ...string) {
 	w.tagWith(slug, "sha-"+slug, at(hour), seedText("tapestry"), "", usageFiles(sessions, runText("tapestry", "p", false), ""))
 }
 
-// TestComputeRaddle covers the predicted and actual cost of a Sketch, its unlanded parts, a changed proposal, a partial actual cost, the filed project and an undecodable store file.
+// TestComputeRaddle covers the predicted and actual cost of a Sketch:
+// its unlanded parts, a changed proposal, a partial actual cost, the filed project and an undecodable store file.
 func TestComputeRaddle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

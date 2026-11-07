@@ -1,8 +1,6 @@
-// archive.go implements archiveStaleOutputs, the archive-never-refuse helper MultiLLMProducer runs
-// over an already-told, already-absolute list of output files before starting a table fresh.
-// firstFreeArchivePath is a package-local same-second collision helper, re-implemented here rather
-// than shared from websterengine because that package's own copy is unexported and the
-// no-new-engine-surface rule forbids exporting it.
+// archive.go holds the helpers that move a run's previous output out of the way before a run starts fresh.
+// archiveStaleOutputs renames each present output file; archiveRunDir renames a run directory and recreates it empty.
+// Both give a taken archive name a numeric suffix.
 
 package shedadapters
 
@@ -15,8 +13,7 @@ import (
 	"time"
 )
 
-// archiveTimestampFormat is the UTC compact timestamp format archiveStaleOutputs uses, mirroring
-// websterengine's own ArchiveStaleSummary stamp.
+// archiveTimestampFormat is the UTC compact timestamp format that archive names carry.
 const archiveTimestampFormat = "20060102T150405Z"
 
 // archiveStaleOutputs renames every entry of files that exists on disk to a timestamped sibling
@@ -51,11 +48,10 @@ func archiveStaleOutputs(files []string, now func() time.Time) error {
 }
 
 // archiveRunDir renames runDir to a timestamped sibling beside it and recreates runDir as an empty directory.
-// It then carries the settle record, its patch and the generation record into the recreated directory, so the Bouncer's own generation archive keeps them.
+// It carries the settle record, its patch and the generation record into the recreated directory,
+// so the Bouncer's own generation archive keeps them.
 // now resolves the archive stamp; the caller is responsible for defaulting a nil now to time.Now.
-// A directory has no extension to preserve, so the candidate closure appends nothing after the collision suffix.
-// The recreate is not optional: ResolveRound hard-errors when the run directory is absent,
-// so a caller that skipped the recreate would turn its very next call into a hard error rather than a seed.
+// The recreate is required: a missing run directory makes the next round a hard error, not a fresh seed.
 func archiveRunDir(runDir string, now func() time.Time) error {
 	dir := filepath.Dir(runDir)
 	base := filepath.Base(runDir)
@@ -81,10 +77,10 @@ func archiveRunDir(runDir string, now func() time.Time) error {
 	return nil
 }
 
-// archivedRunDirPattern matches the name archiveRunDir gives a sibling: a segment, the UTC stamp and an optional numeric collision suffix.
+// archivedRunDirPattern matches a sibling name: a segment, the UTC stamp, and an optional numeric collision suffix.
 var archivedRunDirPattern = regexp.MustCompile(`^(.+)-\d{8}T\d{6}Z(?:-\d+)?$`)
 
-// ArchivedRunDirSegment returns the segment a timestamped run-directory sibling belongs to, with true.
+// ArchivedRunDirSegment returns the segment a timestamped run-directory sibling belongs to, and true.
 // A name that does not end in the archive stamp, with or without a `-<n>` collision suffix, returns "" and false.
 func ArchivedRunDirSegment(dirName string) (string, bool) {
 	match := archivedRunDirPattern.FindStringSubmatch(dirName)
@@ -94,8 +90,8 @@ func ArchivedRunDirSegment(dirName string) (string, bool) {
 	return match[1], true
 }
 
-// firstFreeArchivePath returns the first path in the sequence candidate(""), candidate("-1"),
-// candidate("-2"), ... that does not exist.
+// firstFreeArchivePath returns the first path that candidate builds and that does not exist.
+// It tries the suffixes "", "-1", "-2", and so on, in that order.
 // Any os.Stat error other than not-exist is returned as-is.
 func firstFreeArchivePath(candidate func(suffix string) string) (string, error) {
 	for n := 0; ; n++ {

@@ -1,11 +1,8 @@
-// hook.go installs the embedded post-checkout drift-warning hook into the repo's common hooks
-// directory.
-// The install is idempotent (sentinel-guarded) and non-clobbering: an existing user hook is chained
-// rather than overwritten.
+// hook.go installs the embedded post-checkout drift-warning hook into the repo's hooks directory.
+// The install is idempotent, guarded by a sentinel, and never clobbers an existing user hook.
+// An existing user hook is chained instead.
 //
-// The install sentinel is fabric's own ("FABRIC_SENTINEL: post-checkout drift warning"), so a
-// fabric-installed hook can chain cleanly alongside any other hook already installed on the same
-// repo.
+// The sentinel is fabric's own, so a fabric hook chains alongside any other post-checkout hook on the same repo.
 
 package fabricengine
 
@@ -27,22 +24,18 @@ import (
 var postCheckoutScript string
 
 // hookSentinel is the unique marker written into every fabric-managed hook file.
-// Its presence on any line means the file already contains the fabric hook body,
-// making re-installation idempotent, and it is what lets fabric chain cleanly
-// alongside a post-checkout hook installed by anything else on the same repo
-// rather than clobbering it.
+// Its presence on any line means the file already contains the fabric hook body, so re-installation is idempotent.
+// The marker also lets fabric chain alongside any other post-checkout hook on the same repo.
 const hookSentinel = "FABRIC_SENTINEL: post-checkout drift warning"
 
 // chainedHookPreamble is prepended when chaining around an existing user hook.
-// It runs the prior hook first, then runs the fabric check regardless of the
-// user hook's outcome, so the drift warning is always visible even when the
-// user hook fails. The user hook's exit code is deliberately not propagated:
-// the fabric body ends in exit 0 because a drift warning must never hard-block
-// a checkout.
-// The executable test around the chained call preserves the operator's own
-// intent: git ignores a non-executable hook, so a hook disabled with chmod -x
-// must stay disabled once fabric has moved it aside, and invoking it anyway
-// would print a "Permission denied" line on every checkout.
+// It runs the prior hook first, then the fabric check, whatever the user hook's outcome,
+// so the drift warning shows even when the user hook fails.
+// The user hook's exit code is not propagated.
+// The fabric body always ends in exit 0, because a drift warning must never hard-block a checkout.
+// The executable test around the chained call keeps the operator's own enable or disable decision.
+// git ignores a non-executable hook; a hook disabled with chmod -x must stay disabled once fabric moves it aside.
+// Invoking it anyway would print a "Permission denied" line on every checkout.
 const chainedHookPreamble = `#!/bin/sh
 # post-checkout — user hook chain wrapper written by fabric.
 # The original hook was moved to post-checkout.user and is invoked first.
@@ -54,18 +47,15 @@ fi
 
 `
 
-// InstallPostCheckoutHook installs the embedded post-checkout drift-warning hook into the repo's
-// common hooks directory.
-// Idempotent if already installed;
-// chains around any existing hook without clobbering.
-// On POSIX platforms, marks the file executable;
+// InstallPostCheckoutHook installs the embedded post-checkout drift-warning hook into the repo's hooks directory.
+// It is idempotent once the hook is installed, and it chains around an existing hook without clobbering it.
+// On POSIX platforms, it marks the file executable;
 // on Windows, git ignores the mode.
 func InstallPostCheckoutHook(l *lymcwd.Location) error {
-	// Ask git for the hooks directory rather than composing <git-common-dir>/hooks: that composition
-	// ignores core.hooksPath, so on a repo that sets it fabric wrote a hook into a directory git no
-	// longer consults, reported success, and the drift warning simply never fired again.
-	// --git-path hooks answers with the core.hooksPath directory when one is set and with the COMMON
-	// gitdir's hooks/ otherwise, including when called from a linked worktree.
+	// Ask git for the hooks directory rather than composing <git-common-dir>/hooks.
+	// That composition ignores core.hooksPath, so on a repo that sets it the hook lands where git does not look.
+	// `--git-path hooks` answers with the core.hooksPath directory when one is set.
+	// Otherwise it answers with the common gitdir's hooks/, also when called from a linked worktree.
 	hooksDirOut, err := gitexec.Run(
 		[]string{"rev-parse", "--git-path", "hooks"},
 		l.WorktreePath(),
@@ -75,9 +65,8 @@ func InstallPostCheckoutHook(l *lymcwd.Location) error {
 	}
 
 	// git emits the path with forward slashes; convert to native separators.
-	// When the path is relative (e.g. ".git/hooks" in a standard clone), resolve it
-	// relative to the worktree root so the hook lands in the correct directory
-	// regardless of the test process's working directory.
+	// A relative path, as `.git/hooks` is in a standard clone, is resolved against the worktree root,
+	// so the hook lands in the same directory whatever the process's working directory.
 	hooksDir := filepath.FromSlash(strings.TrimSpace(hooksDirOut))
 	if !filepath.IsAbs(hooksDir) {
 		hooksDir = filepath.Join(l.WorktreePath(), hooksDir)
@@ -89,10 +78,8 @@ func InstallPostCheckoutHook(l *lymcwd.Location) error {
 		return fmt.Errorf("mkdir hooks dir: %w", err)
 	}
 
-	// Check whether the fabric sentinel is already present — idempotent re-install.
 	existing, readErr := os.ReadFile(hookPath)
 	if readErr == nil && strings.Contains(string(existing), hookSentinel) {
-		// Already installed; nothing to do.
 		return nil
 	}
 
@@ -127,11 +114,10 @@ func existingMode(path string) os.FileMode {
 	return info.Mode().Perm()
 }
 
-// chainUserHook backs up the existing hook to post-checkout.user and writes
-// a wrapper that invokes both hooks. The backup is created first, and if
-// writing the wrapper fails, the original is restored.
-// originalMode is the mode the existing hook carried, preserved on the backup so the wrapper's
-// executable test reproduces the operator's own enable/disable decision.
+// chainUserHook backs up the existing hook to post-checkout.user and writes a wrapper that invokes both hooks.
+// The backup is created first, and if writing the wrapper fails, the original is restored.
+// originalMode is the mode the existing hook carried, preserved on the backup.
+// It lets the wrapper's executable test reproduce the operator's own enable or disable decision.
 func chainUserHook(hookPath string, original []byte, originalMode os.FileMode) error {
 	userHookPath := hookPath + ".user"
 
@@ -162,13 +148,13 @@ func chainUserHook(hookPath string, original []byte, originalMode os.FileMode) e
 }
 
 // writeHookFile writes content to path and marks it executable.
-// The file mode 0o755 satisfies git's hook execution requirement on POSIX;
-// on Windows, git-for-Windows reads hooks via its bundled bash and ignores the
-// file mode, but setting it here is harmless and future-proofs for WSL use.
+// The file mode 0o755 satisfies git's hook execution requirement on POSIX.
+// On Windows, git-for-Windows runs hooks through its bundled bash and ignores the mode;
+// setting it here is harmless and future-proofs for WSL use.
 //
-// The explicit Chmod is what actually enforces the mode: os.WriteFile applies its perm argument only
-// when it CREATES the file, so chaining around an existing non-executable user hook produced a
-// wrapper git then refused to run, silently retiring both that hook and fabric's drift warning.
+// The explicit Chmod is what enforces the mode.
+// os.WriteFile applies its perm argument only when it creates the file.
+// Writing over an existing hook therefore keeps that hook's old mode without the Chmod.
 func writeHookFile(path, content string) error {
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		return fmt.Errorf("write hook file %s: %w", path, err)

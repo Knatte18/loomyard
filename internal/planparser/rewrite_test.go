@@ -1,6 +1,6 @@
-// rewrite_test.go covers RewriteRefs: substitution across Targets, Uses, and both endpoints of a
-// Pairs entry; substitution finding a surface lexeme that differs from the canonical key; two
-// cards spelling one canonical string differently each being rewritten from their own lexeme;
+// rewrite_test.go covers RewriteRefs: substitution across Targets, Uses, and both endpoints of a Pairs entry;
+// substitution finding a surface lexeme that differs from the canonical key;
+// two cards spelling one canonical string differently, each rewritten from its own lexeme;
 // idempotence; a no-op map; and prose left untouched.
 
 package planparser_test
@@ -40,9 +40,8 @@ func TestRewriteRefs_SubstitutesTargetsUsesAndPairs(t *testing.T) {
 	subs := map[string]string{
 		"internal/foo#Old":      "internal/foo#Renamed",
 		"plan:internal/foo#New": "internal/foo#Bound",
-		// internal/bar.go canonicalizes to internal/bar.go# at parse time; the surface lexeme on
-		// disk is the bare path, so the key here is the canonical form RewriteRefs' callers
-		// natively produce.
+		// internal/bar.go canonicalizes to internal/bar.go# at parse time.
+		// The surface lexeme on disk is the bare path, so the key is the canonical form RewriteRefs' callers natively produce.
 		"internal/bar.go#": "internal/baz.go#",
 	}
 
@@ -93,10 +92,11 @@ func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
 		"02-card2.md":    "# Card 2 — card2\n\n**Edit:**\n- `internal/foo/bar.go`\n**Uses:**\n- `internal/foo#Bar`\n**Intent:** placeholder.\n",
 	})
 
-	// Card 1 spells the canonical string "internal/foo/bar.go#" as the plain path (canonicalized
-	// at parse time); a second card carries the same target already spelled canonically on disk,
-	// alongside its own unrelated glyph Uses entry. Both cards' own copy must be rewritten from
-	// each one's own lexeme, and the unrelated ref must be left untouched.
+	// Card 1 spells the canonical string "internal/foo/bar.go#" as the plain path; it is canonicalized at parse time.
+	// A second card carries the same target already spelled canonically on disk.
+	// It also carries its own unrelated glyph Uses entry.
+	// Both cards' own copy must be rewritten from each one's own lexeme.
+	// The unrelated ref must be left untouched.
 	subs := map[string]string{"internal/foo/bar.go#": "internal/foo/baz.go#"}
 
 	if err := planparser.RewriteRefs(dir, subs); err != nil {
@@ -123,7 +123,8 @@ func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
 	}
 }
 
-// TestRewriteRefs_NothingToSubstituteLeavesFileUntouched asserts a substitution map that is empty, or whose keys match nothing the plan carries, leaves a card file byte-identical.
+// TestRewriteRefs_NothingToSubstituteLeavesFileUntouched asserts that a card file stays byte-identical.
+// That holds when the substitution map is empty or its keys match nothing the plan carries.
 func TestRewriteRefs_NothingToSubstituteLeavesFileUntouched(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

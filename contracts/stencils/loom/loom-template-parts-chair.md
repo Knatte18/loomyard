@@ -1,7 +1,10 @@
-<!-- This is the Parts-Plan-Write chair's opening prompt: the lead of the table internal/loomengine's PartsPlanTable builds, filled by internal/seatengine from the lead's value map.
-     plan_dir, overview_path and join_path are seat values; decision_record_path, parts_path, parts_dir and specs_dir are table values;
-     parent_directive and edit_directive are rendered by the seat engine, and pattern_directive and friction_directive are optional.
-     It includes seat-directive-writer-chair and the plan-format blocks loom-block-plan-glyphs, loom-block-plan-format, loom-block-plan-overview and loom-block-plan-cards, each rendered from the same map; the blocks' gate_tiers and specs_dir come from the table.
+<!-- This is the Parts-Plan-Write chair's opening prompt.
+     It is the lead of the table internal/loomengine's PartsPlanTable builds, and internal/seatengine fills it from the lead's value map.
+     plan_dir, overview_path and join_path are seat values; decision_record_path, parts_path, parts_dir and specs_dir are table values.
+     parent_directive and edit_directive are rendered by the seat engine; pattern_directive and friction_directive are optional.
+     It includes seat-directive-writer-chair and the plan-format blocks, each rendered from the same map:
+     loom-block-plan-glyphs, loom-block-plan-format, loom-block-plan-overview and loom-block-plan-cards.
+     The blocks' gate_tiers and specs_dir come from the table.
      On a fresh start after a plan rotation the seat engine appends the prior-plan block to this prompt. -->
 
 # Parts chair — join the parts into one plan

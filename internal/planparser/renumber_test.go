@@ -1,4 +1,6 @@
-// renumber_test.go pins InsertCard and RemoveCard: the renumbered plan, the refusals that leave the plan directory untouched, and the reversal of an apply that fails at each step.
+// renumber_test.go pins `InsertCard` and `RemoveCard`.
+// It checks the renumbered plan and the refusals that leave the plan directory untouched.
+// It checks that an apply that fails at any step is reversed.
 
 package planparser_test
 
@@ -24,7 +26,8 @@ const (
 	renumberOverview    = "00-overview.md"
 )
 
-// renumberFixture is a plan of four cards plus archived generations, and the journal path whose parent directory does not exist yet.
+// renumberFixture is a plan of four cards plus archived generations.
+// Its `journalPath` lies in a directory that does not exist yet.
 type renumberFixture struct {
 	root        string
 	planDir     string
@@ -32,13 +35,16 @@ type renumberFixture struct {
 	first       int
 }
 
-// newRenumberFixture writes cards alpha, beta, gamma and delta numbered from first, with card references in the framing, a command example in the framing that no renumber may change, a plan section (a list and two ranges) and gamma's intent, and a bare reference in delta's Card Index line.
+// newRenumberFixture writes cards alpha, beta, gamma and delta numbered from first.
+// The framing holds card references and a command example that no renumber may change.
+// The plan section holds a list and two ranges.
+// gamma's intent holds card references, and delta's Card Index line holds a bare reference.
 func newRenumberFixture(t *testing.T, first int) renumberFixture {
 	t.Helper()
 	return newRenumberFixtureWithBeta(t, first, "beta")
 }
 
-// newRenumberFixtureWithBeta is newRenumberFixture with the second card named betaSlug.
+// newRenumberFixtureWithBeta writes the four-card plan numbered from first, with the second card named betaSlug.
 func newRenumberFixtureWithBeta(t *testing.T, first int, betaSlug string) renumberFixture {
 	t.Helper()
 	root := t.TempDir()
@@ -75,7 +81,8 @@ func gammaIntent(first int) string {
 	return fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+1, first+2, first+3)
 }
 
-// insertSecondProse maps each prose line of the fixture to its text once a card is inserted second: every bare reference moves up by one.
+// insertSecondProse maps each prose line of the fixture to its text once a card is inserted second:
+// every bare reference moves up by one.
 func insertSecondProse(first int) map[string]string {
 	return map[string]string{
 		fmt.Sprintf("Covers cards %d–%d.", first+1, first+2):            fmt.Sprintf("Covers cards %d–%d.", first+2, first+3),
@@ -92,7 +99,8 @@ func insertSecondMentions(first int) []string {
 	}
 }
 
-// insertThirdProse maps each prose line of the fixture that changes once a card is inserted third: a reference to the second card stays, and later ones move up by one.
+// insertThirdProse maps each prose line of the fixture that changes once a card is inserted third:
+// a reference to the second card stays, and later ones move up by one.
 func insertThirdProse(first int) map[string]string {
 	return map[string]string{
 		fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+2): fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+3),
@@ -100,7 +108,8 @@ func insertThirdProse(first int) map[string]string {
 	}
 }
 
-// insertThirdMentions are the lines left holding a range the card inserted third ends at; the range ending before it stays unlisted.
+// insertThirdMentions are the lines left holding a range the card inserted third ends at;
+// the range ending before it stays unlisted.
 func insertThirdMentions(first int) []string {
 	return []string{
 		renumberOverview + ": " + fmt.Sprintf("Covers cards %d–%d.", first+1, first+2),
@@ -108,7 +117,8 @@ func insertThirdMentions(first int) []string {
 	}
 }
 
-// removeSecondProse maps gamma's intent to its text once the second card is removed: the reference naming the removed card stays, and the later one moves down by one.
+// removeSecondProse maps gamma's intent to its text once the second card is removed:
+// the reference naming the removed card stays, and the later one moves down by one.
 func removeSecondProse(first int) map[string]string {
 	return map[string]string{gammaIntent(first): fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+1, first+1, first+2)}
 }
@@ -177,7 +187,7 @@ func requireSameTree(t *testing.T, before, after map[string]string) {
 	t.Fatalf("tree differs from before: %v", diff)
 }
 
-// fault fails the next times calls of one RenumberIO operation on the file with the given base name.
+// fault fails the next times calls of one file system operation on the file with the given base name.
 type fault struct {
 	op    string
 	base  string
@@ -397,7 +407,8 @@ func TestRenumber(t *testing.T) {
 	}
 }
 
-// newCardIDFixture writes cards alpha, beta, gamma and delta numbered from 8, whose framing, alpha's intent and delta's intent name cards by card id.
+// newCardIDFixture writes cards alpha, beta, gamma and delta numbered from 8.
+// The plan's framing, alpha's intent and delta's intent name cards by card id.
 // Numbering from 8 makes a move cross from one digit to two.
 func newCardIDFixture(t *testing.T) renumberFixture {
 	t.Helper()
@@ -416,8 +427,12 @@ func newCardIDFixture(t *testing.T) renumberFixture {
 	return renumberFixture{root: root, planDir: planDir, journalPath: filepath.Join(root, "scratch", renumberJournalName), first: 8}
 }
 
-// TestRenumber_RewritesCardIDs covers the card-id rewrite of a renumber: every `<N>-<slug>` and zero-padded file form naming a moved card moves to the new number, in a moved card, a card that keeps its number and the overview.
-// A token that runs on into a longer slug or word and a removed card's id stay, a card id is never read as a bare reference, and a bare reference moves with its card unless it names the removed one, which is reported.
+// TestRenumber_RewritesCardIDs covers the card-id rewrite of a renumber.
+// Every `<N>-<slug>` and zero-padded file form naming a moved card moves to the new number.
+// The rewrite applies in a moved card, in a card that keeps its number, and in the overview.
+// A token that runs on into a longer slug or word and a removed card's id stay.
+// A card id is never read as a bare reference.
+// A bare reference moves with its card unless it names the removed one, which is reported.
 func TestRenumber_RewritesCardIDs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -507,7 +522,8 @@ func TestRenumber_RewritesCardIDs(t *testing.T) {
 	}
 }
 
-// TestRenumber_CardIDRewriteFailureReversed covers a renumber that fails writing a card it rewrote in place: every file, that card included, is back as it was.
+// TestRenumber_CardIDRewriteFailureReversed covers a renumber that fails writing a card it rewrote in place:
+// every file, that card included, is back as it was.
 func TestRenumber_CardIDRewriteFailureReversed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -621,7 +637,8 @@ func TestRenumber_Refusals(t *testing.T) {
 	}
 }
 
-// referenceCardFour rewrites the first card so it keeps its number under an insert at the second position and changes only by its bare reference to card 4.
+// referenceCardFour rewrites the first card so it keeps its number under an insert at the second position.
+// It changes only by its bare reference to card 4.
 func referenceCardFour(t *testing.T, fx renumberFixture) {
 	t.Helper()
 	plankit.WriteTree(t, fx.planDir, map[string]string{"01-alpha.md": "# Card 1 — alpha\n\n**Intent:** Waits for card 4.\n"})
@@ -637,7 +654,7 @@ func TestRenumber_IOFailureReversed(t *testing.T) {
 		fault fault
 		// prepare, when set, changes the fixture before the call.
 		prepare func(t *testing.T, fx renumberFixture)
-		// want is the sentinel the failure ends in; a ErrRenumberReversalFailed row keeps the journal.
+		// want is the sentinel the failure ends in; an ErrRenumberReversalFailed row keeps the journal.
 		want error
 	}{
 		{name: "insert: journal directory creation", call: insertAt(1), fault: fault{op: "MkdirAll", base: "sub", times: 1}},

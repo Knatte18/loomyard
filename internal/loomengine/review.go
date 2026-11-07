@@ -1,8 +1,8 @@
-// review.go implements ResolveReview, the review segment's config-to-settings resolver:
-// a pure composer that parses and resolves each review segment's reviewer and fixer model-spec lists and pairs them with the review round timeout.
-// Unlike DiscussionTable and PlanTable, it returns no seatengine.Table.
-// There is no seat to build here, because the review segment's prompts are the Bouncer's own stencils, composed inside internal/shedadapters at call time.
-// The caller threads ReviewSettings' values onto shedrecipe.Env instead.
+// review.go resolves the review segments' config into the settings the review rounds run with.
+// It resolves each segment's reviewer and fixer model-spec lists and pairs them with the review round timeout.
+// It returns no seat table, since the review segment has no seat to build.
+// Its prompts are the Bouncer's own stencils, composed inside internal/shedadapters at call time.
+// The caller threads ReviewSettings' values onto shedrecipe.Env.
 
 package loomengine
 
@@ -17,12 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ReviewSettings is the review segment's run-wide model and timeout settings, resolved once from
-// Config and threaded onto shedrecipe.Env for every review-segment row to fall back to.
+// ReviewSettings holds the review segment's run-wide model and timeout settings.
+// They are resolved once from Config and threaded onto shedrecipe.Env for every review-segment row to fall back to.
 type ReviewSettings struct {
-	// Models holds the resolved shared reviewer and fixer model lists, the fallback of every segment whose own key is empty.
+	// Models holds the resolved shared reviewer and fixer model lists.
+	// They are the fallback of every segment whose own key is empty.
 	Models burlerengine.RoundModels
-	// Discussion, Plan and Code hold each loom review segment's resolved models: its own list where loom.yaml sets one, else the shared list in Models.
+	// Discussion, Plan and Code hold each loom review segment's resolved models.
+	// A segment uses its own list where loom.yaml sets one, else the shared list in Models.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Code       burlerengine.RoundModels
@@ -38,7 +40,8 @@ type ReviewSettings struct {
 	CodeAssist       AssistModels
 }
 
-// AssistModels is one review segment's resolved assistant reviewer lists: a model choice per round, the zero choice for an empty entry, and the fan list, with the keys they came from.
+// AssistModels is one review segment's resolved assistant reviewer lists, with the config keys they came from.
+// Models holds one model choice per round, the zero choice for an empty entry; Fans holds the fan list.
 type AssistModels struct {
 	Models   []shuttleengine.ModelChoice
 	Fans     lenses.FanList
@@ -46,9 +49,13 @@ type AssistModels struct {
 	FanKey   string
 }
 
-// CapAssistTimeout returns the assistant reviewer's run bound: assist_reviewer_timeout_min, capped so the assistant's start with its start retries, its run and one await cap end before the chair's own timeout.
-// chairTimeout is review_timeout_min, or shuttle's run_timeout_min when that key is 0; startAllowance is what shuttle grants a launch and its start retries, and awaitCap is the chair's keep-warm cap.
-// A bound of 0 takes the whole room, so a zero never reaches a seat, where it would read as the chair's own timeout.
+// CapAssistTimeout returns the assistant reviewer's run bound, capped to fit the chair's timeout.
+// The uncapped bound is assist_reviewer_timeout_min.
+// The cap keeps the assistant's launch and its start retries, its run and one await cap inside the chair's timeout.
+// The chair's timeout is review_timeout_min, or shuttle's run_timeout_min when that key is 0.
+// startAllowance is what shuttle grants a launch and its start retries; awaitCap is the chair's keep-warm cap.
+// A zero assist_reviewer_timeout_min takes the whole room,
+// so a zero bound never reaches a seat, where it would read as the chair's own timeout.
 // A capped bound logs one Warn naming assist_reviewer_timeout_min and review_timeout_min.
 // A cap that leaves no time returns a zero bound and a non-empty reason naming both keys, and logs a Warn.
 func CapAssistTimeout(cfg Config, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
@@ -73,8 +80,8 @@ func CapAssistTimeout(cfg Config, runTimeout, startAllowance, awaitCap time.Dura
 	return want, ""
 }
 
-// SegmentKeys names the config keys one review segment's reviewer and fixer model lists came from:
-// the segment's own key when it is set, else loom.yaml's shared key.
+// SegmentKeys names the config keys one review segment's reviewer and fixer model lists came from.
+// Each key is the segment's own key when it is set, else loom.yaml's shared key.
 type SegmentKeys struct {
 	Review shuttleengine.ModelKey
 	Fix    shuttleengine.ModelKey
@@ -86,8 +93,9 @@ type segmentModelSource struct {
 	review, fix       burlerengine.ModelSpecList
 }
 
-// loomSegmentModelSource returns the model lists of the review segment named segment, held by <segment>_reviewer_model and <segment>_fixer_model.
-// The plan segment's keys are tapestry.yaml's and every other segment's are loom.yaml's, which the keys' module names.
+// loomSegmentModelSource returns the model lists of the review segment named segment.
+// They are held by <segment>_reviewer_model and <segment>_fixer_model.
+// The plan segment's keys live in tapestry.yaml; every other segment's live in loom.yaml.
 func loomSegmentModelSource(segment string, review, fix burlerengine.ModelSpecList) segmentModelSource {
 	module := loomModule
 	if Perch(segment) == PerchPlan {
@@ -107,21 +115,24 @@ var sharedSegmentKeys = SegmentKeys{
 	Fix:    shuttleengine.ModelKey{Module: loomModule, Key: "fixer_model"},
 }
 
-// BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved engine, model, effort and version.
+// BouncerModels is one review segment's resolved seed and judge pair.
+// Each is an already-resolved engine, model, effort and version.
 type BouncerModels struct {
 	Seed  shuttleengine.ModelChoice
 	Judge shuttleengine.ModelChoice
 }
 
-// JudgeSettings is each review segment's resolved Bouncer models, resolved once from Config and threaded onto shedrecipe.Env per Bouncer row.
-// It carries no timeout, since BouncerConfig carries none.
+// JudgeSettings holds each review segment's resolved Bouncer models.
+// They are resolved once from Config and threaded onto shedrecipe.Env for each Bouncer row.
+// It carries no timeout, since the Bouncer config carries none.
 type JudgeSettings struct {
 	Discussion BouncerModels
 	Plan       BouncerModels
 	Code       BouncerModels
 }
 
-// ResolveJudge resolves each review segment's judge and seed models from cfg, returning the JudgeSettings the caller threads onto shedrecipe.Env.
+// ResolveJudge resolves each review segment's judge and seed models from cfg.
+// The caller threads the returned JudgeSettings onto shedrecipe.Env.
 // A segment's judge is its own judge key when non-empty, else judge.
 // A segment's seed is its own seed key when non-empty, else seed when non-empty, else the segment's resolved judge.
 // An error names the key the failing value came from.
@@ -141,7 +152,9 @@ func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	return JudgeSettings{Discussion: discussion, Plan: plan, Code: code}, nil
 }
 
-// resolveSegmentBouncerModels resolves one segment's judge and seed pairs, applying the fallback order ResolveJudge documents.
+// resolveSegmentBouncerModels resolves one segment's judge and seed models.
+// The judge falls back to the shared judge key when the segment's is empty.
+// The seed falls back to the segment's resolved judge when neither the segment's seed nor the shared seed is set.
 // segment prefixes the per-segment key names in an error.
 func resolveSegmentBouncerModels(segment, segmentJudge, segmentSeed string, cfg Config, reg modelspec.Registry) (BouncerModels, error) {
 	judgeKey, judgeRaw := "judge", cfg.Judge
@@ -180,8 +193,9 @@ func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (shuttleen
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// ResolveReview resolves every entry of the shared reviewer and fixer model-spec lists and of each loom segment's set list through reg,
-// and pairs them with the review round timeout, returning the ReviewSettings the caller threads onto shedrecipe.Env.
+// ResolveReview resolves every entry of the shared reviewer and fixer model-spec lists through reg.
+// It also resolves the list each loom segment sets, and pairs the result with the review round timeout.
+// It returns the ReviewSettings the caller threads onto shedrecipe.Env.
 // Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 	review, err := resolveModelChoices(sharedSegmentKeys.Review, cfg.ReviewerModel, reg)
@@ -229,7 +243,8 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 	return settings, nil
 }
 
-// resolveAssistModels resolves one segment's assistant model list through reg and pairs it with the segment's assistant fan list and the keys both came from.
+// resolveAssistModels resolves one segment's assistant model list through reg.
+// It pairs the resolved choices with the segment's assistant fan list and the keys both came from.
 // An empty entry resolves to the zero choice, which runs no assistant that round.
 func resolveAssistModels(segment string, models burlerengine.ModelSpecList, fans lenses.FanList, reg modelspec.Registry) (AssistModels, error) {
 	module := loomModule
@@ -252,7 +267,8 @@ func resolveAssistModels(segment string, models burlerengine.ModelSpecList, fans
 	return AssistModels{Models: choices, Fans: fans, ModelKey: key, FanKey: segment + "_assist_reviewer_fan"}, nil
 }
 
-// resolveSegmentModels resolves one review segment's reviewer and fixer lists and returns them with the keys they came from.
+// resolveSegmentModels resolves one review segment's reviewer and fixer lists.
+// It returns them with the keys they came from.
 // Each list falls back independently to shared when its key is unset.
 func resolveSegmentModels(source segmentModelSource, shared burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, SegmentKeys, error) {
 	models, keys := shared, sharedSegmentKeys
@@ -286,7 +302,8 @@ func resolveModelChoices(key shuttleengine.ModelKey, specs burlerengine.ModelSpe
 	return choices, nil
 }
 
-// resolveModelEntry parses and resolves the entry raw at the 0-based index of key's list, naming key, its file and the 1-based entry index in an error.
+// resolveModelEntry parses and resolves the entry raw at the 0-based index of key's list.
+// Its error names key, its file and the 1-based entry index.
 func resolveModelEntry(key shuttleengine.ModelKey, index int, raw string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	spec, err := modelspec.Parse(raw)
 	if err != nil {

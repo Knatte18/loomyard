@@ -1,4 +1,5 @@
-// buttons_test.go pins the decoding and validation of button entries and the placeholder filling of their run, confirm and ask text.
+// buttons_test.go pins the decoding and validation of button entries.
+// It also pins the placeholder filling of their run, confirm and ask text.
 
 package reedengine
 
@@ -26,7 +27,8 @@ func buttonsNode(t *testing.T, doc string) yaml.Node {
 	return holder.Buttons
 }
 
-// TestPlaceButtons pins which entries each place takes from a buttons node and which invalid shapes are skipped with a Warn.
+// TestPlaceButtons pins which entries each place takes from a buttons node.
+// It also pins which invalid shapes are skipped with a Warn.
 // It captures the process-global logger output, so it does not run in parallel.
 func TestPlaceButtons(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -112,7 +114,7 @@ func TestPlaceButtons(t *testing.T) {
 	}
 }
 
-// TestFillButtonPlaceholders pins the quoting of run values, the literal brace text, and the doubling of prompt values, in both dialects.
+// TestFillButtonPlaceholders pins run-value quoting, literal brace text, and prompt-value doubling, in both dialects.
 func TestFillButtonPlaceholders(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// end.go implements the one end sequence of a run's processes: End, EndSparing and EndRole for an owner's registered processes and EndProcess for one unregistered pid.
+// end.go implements the one end sequence of a run's processes:
+// End, EndSparing and EndRole for an owner's registered processes and EndProcess for one unregistered pid.
 
 package runproc
 
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	// endGrace is the time in all that processes get to exit after SIGTERM before SIGKILL.
+	// endGrace is how long processes get to exit after SIGTERM, before SIGKILL is sent.
 	endGrace = 5 * time.Second
 	// killBound is the time processes get to disappear after SIGKILL before they count as survivors.
 	killBound = 2 * time.Second
@@ -49,41 +50,44 @@ func (e *SurvivorsError) Error() string {
 	return "runproc: processes survived the end: " + strings.Join(names, ", ")
 }
 
-// End ends every live process registered under owner in dir, and the processes below them, except callerPID and its ancestors.
-// Each is sent SIGTERM and, once the grace is spent, SIGKILL; a signal reaches a pid only while its start time matches the last reading, and a process group only while a live process still reports it.
+// End ends every live process registered under owner in dir.
+// It also ends the processes below them, except callerPID and its ancestors.
+// Each process is sent SIGTERM and, once the grace is spent, SIGKILL.
+// A signal reaches a pid only while its start time matches the last reading.
+// A process group receives a signal only while a live process still reports it.
 // It returns each process it ended and, when some survive SIGKILL, a *SurvivorsError.
 // On Windows, where no process or group can be told apart or signalled, it signals nothing.
 func End(dir, owner string, callerPID int) ([]Ended, error) {
 	return productionEnder().end(dir, owner, callerPID, endsEveryRole)
 }
 
-// EndSparing ends like End, leaving alone every live process registered under owner with a role in spare, and the processes below it.
+// EndSparing ends like End, leaving alone every live process registered under owner with a role in spare.
+// The processes below such a process are left alone as well.
 // It serves an end of a session that is not a teardown of the owner's run.
 func EndSparing(dir, owner string, callerPID int, spare ...string) ([]Ended, error) {
 	return productionEnder().end(dir, owner, callerPID, endsEveryRoleBut(spare))
 }
 
-// EndRole ends like End, but only the live processes registered under owner with the given role, and the processes below them.
+// EndRole ends like End, but only the live processes registered under owner with the given role.
+// The processes below them are ended too.
 // Every record of another role, and every process below such a record, is left alone.
 // It serves the end of one part of a run, such as a beam's dobby, while the rest of the owner's processes go on.
 func EndRole(dir, owner, role string, callerPID int) ([]Ended, error) {
 	return productionEnder().end(dir, owner, callerPID, endsOnlyRole(role))
 }
 
-// endsEveryRole selects every role for an end.
 func endsEveryRole(string) bool { return true }
 
-// endsEveryRoleBut selects every role not in spare for an end.
 func endsEveryRoleBut(spare []string) func(role string) bool {
 	return func(role string) bool { return !slices.Contains(spare, role) }
 }
 
-// endsOnlyRole selects the one role for an end.
 func endsOnlyRole(role string) func(string) bool {
 	return func(candidate string) bool { return candidate == role }
 }
 
-// EndProcess ends one process that is registered nowhere, by the same SIGTERM, grace, SIGKILL and bound as End, once its start time still matches startTime.
+// EndProcess ends one process that is registered nowhere.
+// It sends SIGTERM, then SIGKILL after the grace, and signals only while startTime still matches.
 // It returns a *SurvivorsError when the process is alive after the bound.
 func EndProcess(pid int, startTime, role string) ([]Ended, error) {
 	return productionEnder().endProcess(pid, startTime, role)
@@ -133,13 +137,15 @@ type unit struct {
 }
 
 // recordLister returns the lister an end reads records through.
-// A record whose leader is a zombie stays listed: members of its group may still run, and the group signal must reach them.
+// A record whose leader is a zombie stays listed:
+// members of its group may still run, and the group signal must reach them.
 // The lister's running check is therefore the alive check.
 func (e ender) recordLister() lister {
 	return lister{startTime: e.startTime, isAlive: e.isAlive, isRunning: e.isAlive}
 }
 
-// end is the sequence behind End, EndSparing and EndRole: a live record whose role the ends predicate rejects is treated like the caller, left out of every signalled set with the processes below it.
+// end signals every live record of owner in dir whose role ends selects, and the processes below it.
+// A record that ends rejects is skipped like callerPID, with the processes below it.
 func (e ender) end(dir, owner string, callerPID int, ends func(role string) bool) ([]Ended, error) {
 	if e.goos == "windows" {
 		return nil, nil
@@ -221,7 +227,8 @@ func (e ender) endProcess(pid int, startTime, role string) ([]Ended, error) {
 	return ended, nil
 }
 
-// runUnits sends SIGTERM to every unit that still holds against first and waits endGrace for the signalled members to go.
+// runUnits sends SIGTERM to every unit that still holds against first.
+// It waits endGrace for the signalled members to go.
 // It then sends SIGKILL to the units of those left, against a fresh reading, and waits killBound.
 func (e ender) runUnits(units []unit, first []proc.StatEntry) (ended, survivors []Ended, err error) {
 	var signalled []watched
@@ -258,7 +265,8 @@ func (e ender) runUnits(units []unit, first []proc.StatEntry) (ended, survivors 
 	return ended, survivors, nil
 }
 
-// signal sends SIGTERM, or SIGKILL when kill is set, to the unit when it still holds against stats, and reports whether a signal was attempted.
+// signal sends SIGTERM, or SIGKILL when kill is set, to the unit if it still holds against stats.
+// It reports whether a signal was attempted.
 // A failed call still counts as attempted, so the unit's members are awaited and a member still running is reported.
 func (e ender) signal(u unit, kill bool, stats []proc.StatEntry) bool {
 	signalName := "SIGTERM"
@@ -279,7 +287,8 @@ func (e ender) signal(u unit, kill bool, stats []proc.StatEntry) bool {
 	return true
 }
 
-// await polls stats until none of members is running or bound is spent, and returns the members still running with the last reading.
+// await polls stats until no member is running or bound is spent.
+// It returns the members still running, with the last reading.
 // A member is gone when its pid is absent, a zombie, or carries another start time.
 func (e ender) await(members []watched, bound time.Duration) ([]watched, []proc.StatEntry, error) {
 	deadline := e.now().Add(bound)
@@ -302,8 +311,10 @@ func (e ender) await(members []watched, bound time.Duration) ([]watched, []proc.
 }
 
 // planRecords builds the signals that end records and everything below them in one reading.
-// A leader's group is signalled as a whole, a process outside a group already signalled is signalled by pid, and one that leads its own group through that group.
-// A group unit's members are its leader and every other live process of the group, so each is awaited and escalated; skip names the processes never watched.
+// A leader's group is signalled as a whole.
+// A process outside a group already signalled is signalled by pid, and one that leads its own group through that group.
+// A group unit's members are its leader and every other live process of the group, so each is awaited and escalated;
+// skip names the processes never watched.
 func planRecords(records []Record, stats []proc.StatEntry, skip func(pid int) bool) []unit {
 	byPID := map[int]proc.StatEntry{}
 	children := map[int][]proc.StatEntry{}
@@ -374,7 +385,8 @@ func planRecords(records []Record, stats []proc.StatEntry, skip func(pid int) bo
 	return units
 }
 
-// groupMembers returns the live processes of group that no unit claims yet, bar recorded pids, which each form their own unit, and skipped pids.
+// groupMembers returns the live processes of group that no unit claims yet.
+// It leaves out recorded pids, which each form their own unit, and the pids skip reports.
 // It marks the returned processes claimed.
 func groupMembers(group int, role string, stats []proc.StatEntry, claimed, recorded map[int]bool, skip func(pid int) bool) []watched {
 	var members []watched
@@ -398,7 +410,8 @@ func hasRunning(member watched, stats []proc.StatEntry) bool {
 	return false
 }
 
-// groupHolds reports whether a live process other than a reused pid still reports the unit's group with a start time at or after the unit's.
+// groupHolds reports whether a live process still holds the unit's group, with a start time at or after the unit's.
+// A pid reused under another start time does not count.
 // Linux keeps a group id unassigned while any member lives, so a match is the recorded group.
 func groupHolds(u unit, stats []proc.StatEntry) bool {
 	unitStart, err := strconv.ParseUint(u.startTime, 10, 64)

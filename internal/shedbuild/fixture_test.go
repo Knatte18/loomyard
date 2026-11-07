@@ -1,6 +1,5 @@
-// fixture_test.go holds the one test helper shedbuild's tests keep to themselves:
-// writeStencilFile.
-// The full Env every test builds from comes from envkit.FullEnv.
+// fixture_test.go holds writeStencilFile, the one helper shedbuild's tests keep to themselves.
+// Tests that need the full Env take it from envkit.FullEnv.
 
 package shedbuild
 
@@ -12,10 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// writeStencilFile writes content to the on-disk location stencilstore.Path(dir, name) resolves
-// name to, creating any parent directory the family convention requires -- stencilstore.RelPath
-// splits a hyphenated stencil name on its first hyphen into a family subdirectory, so writing
-// straight into a fresh temp directory would otherwise fail with a missing-parent error.
+// writeStencilFile writes content to the on-disk location stencilstore.Path(dir, name) resolves name to.
+// It creates the parent directory first:
+// stencilstore.RelPath puts a stencil name's family, the text before its first hyphen, in a subdirectory.
 func writeStencilFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	path := stencilstore.Path(dir, name)

@@ -44,7 +44,8 @@ const csharpFixtureProject = `<Project Sdk="Microsoft.NET.Sdk">
 </Project>
 `
 
-// TestCSharpFixtures_CompileWithDotnet builds each directory of `.cs` files under a `testdata/` directory as one C# project and fails on a compiler error.
+// TestCSharpFixtures_CompileWithDotnet builds each `testdata/` directory of `.cs` files as one C# project.
+// It fails on a compiler error.
 // It skips when `dotnet` is not on PATH or has no SDK installed, so a machine without .NET stays green.
 //
 //lym:guard
@@ -77,7 +78,8 @@ func TestCSharpFixtures_CompileWithDotnet(t *testing.T) {
 	}
 }
 
-// csharpFixtureDirs returns the absolute paths of the `.cs` files under a `testdata/` directory of root, keyed by their slash-separated directory relative to root.
+// csharpFixtureDirs returns the absolute paths of the `.cs` files under a `testdata/` directory of root.
+// It keys each list by the slash-separated directory relative to root.
 func csharpFixtureDirs(t *testing.T, root string) map[string][]string {
 	t.Helper()
 	dirs := map[string][]string{}
@@ -110,7 +112,8 @@ func csharpFixtureDirs(t *testing.T, root string) map[string][]string {
 	return dirs
 }
 
-// dotnetTargetFramework returns the target framework moniker of the installed SDK's major version, such as `net10.0` for SDK 10.0.113.
+// dotnetTargetFramework returns the target framework moniker for the major version of the installed .NET SDK.
+// For SDK major version 10 it returns `net10.0`.
 // It skips the test when `dotnet --version` fails, which a host with the runtime but no SDK does.
 func dotnetTargetFramework(t *testing.T, dotnet string) string {
 	t.Helper()
@@ -126,7 +129,8 @@ func dotnetTargetFramework(t *testing.T, dotnet string) string {
 	return "net" + major + ".0"
 }
 
-// runDotnet runs dotnet with args in dir, with telemetry, the banner and the first-run setup off, and returns its combined output.
+// runDotnet runs dotnet with args in dir, with telemetry, the banner and the first-run setup off.
+// It returns the combined output.
 func runDotnet(dotnet, dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command(dotnet, args...)
 	cmd.Dir = dir

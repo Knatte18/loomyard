@@ -1,6 +1,5 @@
-// moverecord_test.go covers the move record: its read and removal, and the way forward MoveInProgress names for a standing record.
-//
-// Package fabricengine_test.
+// moverecord_test.go covers the move record.
+// It tests its read and removal, and the forward path that MoveInProgress names for a standing record.
 
 package fabricengine_test
 

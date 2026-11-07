@@ -1,4 +1,5 @@
-// start_midmerge_test.go pins runDriverSpawnAndWait's mid-merge check: it refuses a spawn or a resume over an unfinished merge, and leaves a live working driver alone.
+// start_midmerge_test.go pins the mid-merge check in runDriverSpawnAndWait.
+// It refuses a spawn or a resume over an unfinished merge, and it leaves a live working driver alone.
 // Fakes only, no git.
 
 package loomcli
@@ -105,7 +106,8 @@ func assertMergeRefusal(t *testing.T, out string, want []string) midMergeEnvelop
 	return env
 }
 
-// assertNothingPutToWork asserts a refusal neither started a driver, typed a resume line, nor opened the go arm's driver log.
+// assertNothingPutToWork asserts a refusal starts no driver and types no resume line;
+// it also leaves the go arm's driver log unopened.
 func assertNothingPutToWork(t *testing.T, c *loomCLI, starter *fakeDriverStarter, sender *fakeDriverSender) {
 	t.Helper()
 	if starter.called {
@@ -136,7 +138,8 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		// producer is the row the persisted status names as current;
 		// empty leaves it unset.
 		producer string
-		// parentErr makes the recorded-parent-branch seam fail, so a refusal that is still a merge_in_progress one pins that the guard never read it.
+		// parentErr makes the recorded-parent-branch seam fail.
+		// A refusal that is still a merge_in_progress one pins that the guard never read the seam.
 		parentErr error
 		// statusBody, when set, is written verbatim as the status file instead of one naming producer.
 		statusBody string

@@ -1,4 +1,5 @@
-// request.go declares the hibernate request file's types, the seams the engine is told, and the locked read and write of the file.
+// request.go declares the hibernate request file's types and the dependencies the engine is given.
+// It also holds the locked read and write of the file.
 
 package hibernateengine
 
@@ -41,13 +42,13 @@ const (
 	PhaseCancelled   Phase = "cancelled"
 )
 
-// PauseCaller is the caller label the hub pause entry a request adds carries.
+// PauseCaller is the caller label of the hub pause entry a request adds.
 const PauseCaller = "hibernate"
 
-// requesterExternal is the requester recorded for a caller that is no strand.
+// requesterExternal is the requester recorded for a caller with no strand.
 const requesterExternal = "EXTERNAL"
 
-// Request is the hub's one hibernate request, the file at Deps.RequestPath.
+// Request is the hub's one hibernate request, as stored in the request file.
 type Request struct {
 	Trigger Trigger `json:"trigger"`
 	// Slug is the run an after trigger waits for.
@@ -55,7 +56,7 @@ type Request struct {
 	// Requester is the caller's strand name, or EXTERNAL.
 	Requester   string    `json:"requester"`
 	RequestedAt time.Time `json:"requested_at"`
-	// DaemonPID and DaemonStart identify the daemon that carries the request, the prime's dobby, and are zero until one takes it up.
+	// DaemonPID and DaemonStart identify the daemon that carries the request, the prime's dobby; zero until one takes it up.
 	DaemonPID   int    `json:"daemon_pid"`
 	DaemonStart string `json:"daemon_start"`
 	// Owned names the pause entry the request's sequence added, nil until it adds one.
@@ -87,7 +88,7 @@ type RunStatus struct {
 	Producer string
 }
 
-// Deps is everything the engine is told: its paths, its identity and every probe and action.
+// Deps is everything the engine is given: its paths, its identity and every probe and action.
 type Deps struct {
 	// RequestPath is the request file; its lock is RequestPath + ".lock".
 	RequestPath string
@@ -98,7 +99,7 @@ type Deps struct {
 	LookPath func(file string) (string, error)
 	// DobbyLive reports whether the prime's dobby, which carries the request, runs.
 	DobbyLive func() (bool, error)
-	// SelfPID and SelfStart are the running process's own identity, recorded as the request's carrier when it takes the request up.
+	// SelfPID and SelfStart are the running process's identity, recorded as the carrier of a request it takes up.
 	SelfPID   int
 	SelfStart string
 	// Alive reports whether the process with pid and start time is running.
@@ -128,11 +129,11 @@ type Deps struct {
 	Sleep      func(time.Duration)
 	// Awake is the awake clock: it does not run while the machine sleeps.
 	Awake func() time.Duration
-	// phased is told each phase the sequence writes; nil tells nothing.
+	// phased is called with each phase the sequence writes; nil skips the call.
 	phased func(Phase)
 }
 
-// tellPhase tells phased the phase the sequence wrote.
+// tellPhase passes the phase the sequence wrote to phased, when phased is set.
 func (deps Deps) tellPhase(phase Phase) {
 	if deps.phased != nil {
 		deps.phased(phase)
@@ -158,7 +159,8 @@ func readRequest(path string) (Request, bool, error) {
 	return request, true, nil
 }
 
-// updateRequest is the one writer of the request file: mutate runs with the request lock held across the read and the write.
+// updateRequest is the one writer of the request file.
+// mutate runs with the request lock held across the read and the write.
 // A mutate returning errUnchanged writes nothing and updateRequest returns nil.
 func updateRequest(path string, mutate func(cur Request, found bool) (Request, error)) error {
 	err := state.UpdateJSON(path, path+".lock", mutate)

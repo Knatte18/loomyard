@@ -1,5 +1,6 @@
-// entries_darnwrite.go implements darnWriteEntry, the Constructor for the "DarnWrite" registry row:
-// it runs the told one-seat table of the darn writer on a gated shedadapters.MultiLLMProducer inside loomshed.NewDarnWrite's commit decorator, so it lives in its own file like prReworkEntry.
+// entries_darnwrite.go implements darnWriteEntry, the Constructor for the "DarnWrite" registry row.
+// The row runs the told one-seat table of the darn writer on a gated shedadapters.MultiLLMProducer.
+// The producer sits inside loomshed.NewDarnWrite's commit decorator.
 
 package shedrecipe
 
@@ -10,15 +11,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// darnWriteEntry is the Constructor for the "DarnWrite" registry row:
-// it resolves the row's "gates" Config key through resolveRowGateSpec, so its "verify" gate runs the "gate_key" key and reads as "<row> gate", validates Env.DarnTable, Env.Seats, the three absolute paths and every seam of Env.Darn, then builds a seat-table producer behind loomshed.NewDarnWrite.
+// darnWriteEntry is the Constructor for the "DarnWrite" registry row.
+// It resolves the row's "gates" key, so its "verify" gate runs the "gate_key" key and reads as "<row> gate".
+// It validates Env.DarnTable, Env.Seats, the absolute paths of Env.Darn and its seams.
+// It then builds a seat-table producer behind loomshed.NewDarnWrite.
 // Env.Shuttle is never read: the writer runs through Env.Seats.
 //
-// The table arrives as an injected func(loomshed.DarnTold) for the reason planWriteEntry gives, evaluated with the values the producer tells each session it builds.
+// The table arrives as an injected func(loomshed.DarnTold), evaluated with the values each built session is told.
 // The resolved gate is stamped onto each table it returns, so the row's "gates" key guards the writer.
-// Each gate entry re-prompts with the darn line, which names Env.DecisionRecordPath so a recorded decision wins over a finding it forbids fixing.
+// Each gate entry re-prompts with the darn line, which names Env.DecisionRecordPath,
+// so a recorded decision wins over a finding it forbids fixing.
 //
-// A "fixer" key on a gate element is read through splitGateFixer, and the spec, once every entry carries its re-prompt line, goes through applyGateFixer.
+// A "fixer" key on a gate element is read first, and the fixer is applied once every entry carries its re-prompt line.
 func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	cfg, fixer, err := splitGateFixer("DarnWrite", cfg, env)
 	if err != nil {

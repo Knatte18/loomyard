@@ -1,4 +1,7 @@
-// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a tapestry, darn or sampler run's review segments, the record head and merge-in-only reads that go with them, the review input seams, and the merge base reader of the task's diff.
+// subjects.go builds the identities a Bouncer re-entry compares.
+// It covers the document, code and merge-in subjects of a tapestry, darn or sampler run's review segments.
+// It also covers the record head and merge-in-only reads that go with them.
+// It also covers the review input seams and the merge base reader of the task's diff.
 
 package loomcli
 
@@ -40,10 +43,14 @@ const planOverviewFile = "00-overview.md"
 var planCardFilePattern = regexp.MustCompile(`^\d+-\S+\.md$`)
 
 // documentSubject returns the identity of the artifacts paths name, in order.
-// The decision record is hashed through its identity text, so a carry-over block or an entry added after the discussion never changes it.
-// A directory is hashed as the plan it holds: its overview through its identity text, so Approve's flag never changes it, then each top-level card file in name order; archived generations, the lens review and every other file are left out.
+// The decision record is hashed through its identity text,
+// so a carry-over block or an entry added after the discussion never changes it.
+// A directory is hashed as the plan it holds.
+// Its overview is hashed through its identity text, so Approve's flag never changes it.
+// Each top-level card file follows, in name order.
+// Archived generations, the lens review and every other file are left out.
 // An absent path hashes as absent, so creating it changes the subject.
-// The answer is always found; Base is left to the caller, which reads the record head.
+// When it returns no error, it always reports found and leaves Base empty.
 func documentSubject(location *lymcwd.Location, paths []string) (shedadapters.Subject, bool, error) {
 	decisionRecord := filepath.Clean(loomengine.DiscussionDecisionRecord(location))
 	digest := sha256.New()
@@ -74,7 +81,8 @@ func documentSubject(location *lymcwd.Location, paths []string) (shedadapters.Su
 	return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: hex.EncodeToString(digest.Sum(nil))}, true, nil
 }
 
-// hashPlanDirectory adds the plan generation in dir to digest: the overview's identity text, then each top-level card file in name order.
+// hashPlanDirectory adds the plan generation in dir to digest.
+// It hashes the overview's identity text first, then each top-level card file in name order.
 func hashPlanDirectory(digest hash.Hash, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -109,9 +117,12 @@ func writeSubjectPart(digest hash.Hash, name, kind string, content []byte) {
 	digest.Write(content)
 }
 
-// taskMergeBase returns the reader of the commit the task's diff is taken from: the merge base of the task pair's HEAD with the parent tip the run's merge record names.
-// The local parent branch can lag a tip the task merged, so with no merge record it falls back to the merge base with that branch.
-// An unreadable merge record is logged at Warn and read as absent, so no reader errors on it and the next Parent-Align or Finalize rewrites it.
+// taskMergeBase returns the reader of the commit the task's diff is taken from.
+// That commit is the merge base of the task pair's HEAD with the parent tip the run's merge record names.
+// The local parent branch can lag a tip the task merged.
+// With no merge record, it falls back to the merge base with that branch.
+// An unreadable merge record is logged at Warn and read as absent,
+// so no reader errors on it and the next Parent-Align or Finalize rewrites it.
 // The record and the fabric are read on each call, so a merge made after bootstrap is read as it stands.
 func taskMergeBase(l *lymcwd.Location) func() (string, error) {
 	fallback := pairMergeBase(l)
@@ -133,10 +144,12 @@ func taskMergeBase(l *lymcwd.Location) func() (string, error) {
 	}
 }
 
-// codeSubject returns the identity of the task's diff against its merge base from taskMergeBase.
+// codeSubject returns the identity of the task's diff against its merge base.
 // A run with no recorded parent branch, a standalone run, answers not found, so its code segments write no records.
-// The diff leaves out the run's own state directories and harnessOwnFiles while untracked; the run's records live on the records side of the fabric, so no diff of the task's code holds them.
-// Bound: a change confined to harnessOwnFiles reads as an unchanged subject; the landing gate at Parent-Align and Finalize bounds it.
+// The diff leaves out the run's own state directories and harnessOwnFiles while they are untracked.
+// The run's records live on the records side of the fabric, so no diff of the task's code holds them.
+// Bound: a change confined to harnessOwnFiles reads as an unchanged subject.
+// The landing gate at Parent-Align and Finalize bounds it.
 func codeSubject(location *lymcwd.Location, runID string) (shedadapters.Subject, bool, error) {
 	origin, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
@@ -168,7 +181,8 @@ func codeSubject(location *lymcwd.Location, runID string) (shedadapters.Subject,
 	}, true, nil
 }
 
-// patchSkipEntries returns the skip entries of a code subject's patch: each of the run's own state directories under the worktree as a `/`-ended entry, then harnessOwnFiles.
+// patchSkipEntries returns the skip entries of a code subject's patch.
+// They are each of the run's own state directories under the worktree, as `/`-ended entries, then harnessOwnFiles.
 // A standalone run keeps those directories inside the worktree, which is where they would show as untracked.
 func patchSkipEntries(location *lymcwd.Location, runID string) []string {
 	geometry := hubgeom.WebsterGeometry(location)
@@ -195,7 +209,8 @@ func recordHead(location *lymcwd.Location) func() (string, error) {
 	}
 }
 
-// parentMergeInOnly returns the seam that reports whether the task's history since a commit holds only merge-ins of the recorded parent branch, read against that branch's tip as it stands.
+// parentMergeInOnly returns the seam that reports whether the task's history since a commit holds only merge-ins.
+// The merge-ins are of the recorded parent branch, read against its tip as it stands on each call.
 func parentMergeInOnly(location *lymcwd.Location) func(since string) (bool, error) {
 	return func(since string) (bool, error) {
 		parent, err := readRecordedParentBranch(location)
@@ -214,7 +229,8 @@ func parentMergeInOnly(location *lymcwd.Location) func(since string) (bool, erro
 	}
 }
 
-// documentSubjectWithHead returns the document subject seam: documentSubject with Base set to the record head read after the artifacts.
+// documentSubjectWithHead returns the seam that reports the identity of the given paths.
+// Its Base is the record head, read after the paths are hashed.
 func documentSubjectWithHead(location *lymcwd.Location, head func() (string, error)) func(paths []string) (shedadapters.Subject, bool, error) {
 	return func(paths []string) (shedadapters.Subject, bool, error) {
 		subject, found, err := documentSubject(location, paths)
@@ -229,8 +245,11 @@ func documentSubjectWithHead(location *lymcwd.Location, head func() (string, err
 	}
 }
 
-// fixerReportInput returns the review input seam of a tapestry run: the merge fixer's latest Parent-Align report under scratchDir, with the time it was written.
-// A run past the row under its former name, Merge-In, left its report under that name, so the seam reads it when the row's own is absent.
+// fixerReportInput returns the review input seam of a tapestry run.
+// The seam reads the merge fixer's latest Parent-Align report under scratchDir.
+// It also returns the time the report was written.
+// It falls back to a report under the name Merge-In when the Parent-Align report is absent.
+// Older runs wrote their report under that name.
 // A session that never ran leaves no report, which answers not found.
 func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {
 	current := reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
@@ -244,7 +263,8 @@ func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error)
 	}
 }
 
-// reviewInputFile returns the seam that reports the file at path and its modification time, and not found while the file is absent.
+// reviewInputFile returns the seam that reports the file at path and its modification time.
+// The seam reports not found while the file is absent.
 func reviewInputFile(path string) func() (string, time.Time, bool, error) {
 	return func() (string, time.Time, bool, error) {
 		info, err := os.Stat(path)

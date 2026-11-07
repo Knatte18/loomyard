@@ -1,5 +1,4 @@
-// standalone.go holds StandaloneRequest and Standalone, the request/result types for the single
-// ordered standalone prologue, plus ResolveStandalone itself.
+// standalone.go holds StandaloneRequest and Standalone, the types of the standalone prologue.
 
 package cliwire
 
@@ -19,12 +18,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// StandaloneRequest carries one standalone-mode wiring call's raw, as-parsed flag values, exactly as
-// they reach each CLI's own wire. ResolveStandalone makes them absolute itself via ResolveToldDir.
+// StandaloneRequest carries one standalone-mode wiring call's raw flag values, as parsed.
+// ResolveStandalone makes them absolute itself, through ResolveToldDir.
 //
-// This deliberately re-resolves values each wire has already resolved for its own hub branch --
-// harmless, because ResolveToldDir is idempotent on an absolute input, and named here so a later
-// reader does not "fix" the apparent double resolution by hoisting it back out.
+// Each wire has already resolved these values for its own hub branch, so this resolves them again.
+// That is harmless, because ResolveToldDir is idempotent on an absolute input.
+// The repeat is intended: do not hoist the wires' resolution back out of this request to remove it.
 type StandaloneRequest struct {
 	Cwd             string
 	StencilsDirFlag string
@@ -32,8 +31,8 @@ type StandaloneRequest struct {
 	TargetDirFlag   string
 }
 
-// Standalone is ResolveStandalone's result: the resolved target and derived state identity, plus
-// every told directory the caller needs to finish building its own engine stack.
+// Standalone is the resolved target and derived state identity of a standalone-mode run.
+// It also carries every told directory the caller needs to finish building its engine stack.
 //
 // DefaultPlanDir is the mode's own default, carried so a caller can record it for a refusal's
 // recourse text. PlanDir and PlanDirOverridden are the zero value when the module carries no Plan.
@@ -42,41 +41,37 @@ type Standalone struct {
 	StateDir    string
 	Hash8       string
 	StencilsDir string
-	// SpecsDir is the resolved standalone deployed-specs directory. Unlike StencilsDir it is never
-	// told by a flag -- there is no --specs-dir -- so it is always the derived default.
+	// SpecsDir is the resolved standalone deployed-specs directory.
+	// No flag sets it, since there is no --specs-dir, so it is always the derived default.
 	SpecsDir          string
 	PlanDir           string
 	PlanDirOverridden bool
 	DefaultPlanDir    string
 }
 
-// ResolveStandalone performs the whole ordered standalone prologue: target resolution,
-// standalonestate.Derive, the nested-geometry refusal, the durable-sink redirect, the stencils
-// resolve-and-seed, the specs resolve-and-seed, and plan-dir resolution with override detection.
+// ResolveStandalone performs the whole ordered standalone prologue.
+// It resolves the target and derives the state identity, then refuses nested geometry.
+// It redirects the durable sink, seeds the stencils and specs directories, and resolves the plan directory.
 // Every fallible step returns the zero Standalone alongside its error, and no step is best-effort.
 //
-// The durable sink is armed lazily on the first Info-or-above record, so the redirect below binds
-// only if it runs before anything in the sequence can log; it cannot be first, because it is
-// Derive's own stateDir that tells it where to point. The obligation a later editor inherits is
-// therefore that every statement above the redirect stays log-free and no logging statement is added
-// below it that could be hoisted above.
+// The durable sink is armed lazily, on the first Info-or-above record.
+// The redirect therefore binds only if no statement before it logs.
+// It cannot come first, because Derive's stateDir is what tells it where to point.
+// Every statement above the redirect must stay log-free.
+// No logging statement may be added below the redirect where it could be hoisted above it.
 //
-// The nested-geometry refusal must run after standalonestate.Derive and before both the sink
-// redirect and any substrate boot. The stencils seed's failure is a hard error in standalone because
-// nothing else will ever create that directory (unlike the root pre-run's best-effort logged seed),
-// and the seed runs only for the derived default so a curated stencil set named by --stencils-dir is
-// never rewritten from under the operator. These asymmetries are deliberate and must not be
-// "simplified" away.
+// The nested-geometry refusal runs after standalonestate.Derive and before the sink redirect.
+// It also runs before any substrate boot.
+// The stencils seed failure is a hard error here, because nothing else will ever create that directory.
+// The seed runs only for the derived default.
+// A curated stencil set named by --stencils-dir is never rewritten from under the operator.
+// These asymmetries must not be simplified away.
 //
-// The specs seed runs unconditionally, outside the stencils-override guard: --stencils-dir is a
-// stencils override and says nothing about specs, there is no --specs-dir flag and none is being
-// added, and a spec has no customisation story a curated set would express. Inheriting the stencils
-// skip would leave the specs directory resolvable but empty, reproducing the dead reference this
-// task exists to remove in the one mode hardest to notice it. An operator who has edited a deployed
-// spec is still protected, because the reconcile policy is unchanged and its edited-file row warns
-// and never overwrites. Like the stencils seed, its failure is a hard error, for the same reason:
-// nothing else will ever create this directory, so a reconcile failure here would otherwise surface
-// much later as a far less informative prompt-render failure.
+// The specs seed runs unconditionally, outside the stencils-override guard.
+// --stencils-dir overrides the stencils set only, and no flag overrides specs.
+// An edited deployed spec is still protected: the reconcile policy warns on it and never overwrites it.
+// Like the stencils seed, its failure is a hard error, because nothing else creates this directory.
+// Otherwise a reconcile failure would surface much later as a less informative prompt-render failure.
 func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 	target, err := m.resolveStandaloneTarget(req.Cwd, req.TargetDirFlag)
 	if err != nil {
@@ -92,32 +87,27 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 		return Standalone{}, err
 	}
 
-	// The redirect runs before the first statement below that CAN log -- see the function's own
-	// doc comment for the full ordering obligation.
+	// The redirect must come before any statement below that can log.
 	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	stencilsDir := ResolveToldDir(req.Cwd, req.StencilsDirFlag)
-	// The told-override stat mirrors resolveStandaloneTarget's own reason for being fallible: a
-	// curated stencil set that is not there must refuse HERE, before the caller takes the run lock
-	// and boots substrate, not at the first prompt render (crucible round fable-high-r7, F2).
+	// A curated stencil set that is missing must refuse here, before the caller takes the run lock and boots substrate.
+	// Refusing later would fail at the first prompt render.
 	if err := m.RefuseUnreadableStencilsDir(stencilsDir); err != nil {
 		return Standalone{}, err
 	}
 	if stencilsDir == "" {
-		// An operator who named a curated stencil set must not have it rewritten from under them --
-		// seed only the standalone DEFAULT, never an explicit override.
+		// Seed only the standalone default: a curated stencil set the operator named is never rewritten.
 		stencilsDir = standalonegeom.StencilsDir(stateDir)
 		if _, err := stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), buildvcs.Running().Clean()), stencilstore.Source{}); err != nil {
-			// Unlike the root pre-run's best-effort, logged-only seed pass, nothing else will ever
-			// create this directory: a reconcile failure here is a hard error, since every prompt
-			// render would otherwise fail later with a far less informative message.
+			// Nothing else creates this directory, so a reconcile failure is a hard error here.
+			// Otherwise every prompt render would fail later with a less informative message.
 			return Standalone{}, fmt.Errorf("%s: seed the standalone stencils directory %s: %w", m.Name, stencilsDir, err)
 		}
 	}
 
-	// This block sits OUTSIDE the stencils-override guard above, deliberately -- see the function's
-	// own doc comment for why. It logs nothing, so it stays below the durable-sink redirect without
-	// widening the log-free obligation that redirect statement carries.
+	// This block sits outside the stencils-override guard above.
+	// It logs nothing, so it does not widen the log-free obligation of the redirect above it.
 	specsDir := standalonegeom.SpecsDir(stateDir)
 	if _, err := stencilstore.Reconcile(specsDir, specs.Registry(), stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), buildvcs.Running().Clean()), stencilstore.Source{}); err != nil {
 		return Standalone{}, fmt.Errorf("%s: seed the standalone specs directory %s: %w", m.Name, specsDir, err)
@@ -138,9 +128,7 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 	defaultPlanDir := m.Plan.DefaultPlanDir(stateDir)
 	planDir, overridden := ResolvePlanDir(ResolveToldDir(req.Cwd, req.PlanDirFlag), defaultPlanDir)
 	if !planDirHasContent(planDir) {
-		// The recourse names the DEFAULT location, never the override the operator just supplied --
-		// see MissingPlanRefusal's own doc comment for why the parameter is named recourse rather
-		// than defaultPlanDir.
+		// The recourse names the default location, never the override the operator supplied.
 		recourse := planDir
 		if overridden {
 			recourse = defaultPlanDir
@@ -154,42 +142,39 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 	return result, nil
 }
 
-// resolveStandaloneTarget resolves standalone mode's --target-dir into the one spelling of the one
-// directory every downstream consumer must agree on: cwd when targetDirFlag is empty, or
-// targetDirFlag made absolute against cwd otherwise, then symlink-normalized, then lifted to the
-// root of the repository it sits in.
+// resolveStandaloneTarget resolves standalone mode's --target-dir to one spelling of one directory.
+// Every downstream consumer must agree on that directory.
+// The target is cwd when targetDirFlag is empty, and otherwise targetDirFlag made absolute against cwd.
+// It is then symlink-normalized and lifted to the root of the repository it sits in.
 //
-// The result is always absolute, which is standalonestate.Derive's own precondition, because Derive
-// normalises through EvalSymlinks+Clean and compares case-insensitively on Windows, so two spellings
-// of the same directory must not produce different <state> values.
+// The result is always absolute, which is a precondition of standalonestate.Derive.
+// Derive normalises through EvalSymlinks and Clean and compares case-insensitively on Windows.
+// Two spellings of the same directory must therefore not produce different <state> values.
 //
-// Both normalizations exist because the target is an IDENTITY here, not merely a path.
-// standalonestate.Derive hashes it into hash8, which names the state directory, the reed socket and
-// the tmux session, and standalonegeom builds the session name's readable half from it — so two
-// spellings of one repository produce two of everything. Normalize is Derive's own rule, exported by
-// the package that owns the identity precisely so the CLI boundary can apply it once here rather
-// than each site re-deriving it.
+// Both normalizations exist because the target is an identity here, not merely a path.
+// standalonestate.Derive hashes it into hash8.
+// hash8 names the state directory, the reed socket and the tmux session.
+// standalonegeom builds the readable half of the session name from it.
+// Two spellings of one repository would therefore produce two of everything.
+// Normalize is the rule Derive applies, exported by the package that owns the identity.
+// The CLI boundary applies it once here, rather than each site re-deriving it.
 //
-// The repository-root lift answers the other half. preflight.ResolveMode returns ModeStandalone for
-// a plain repository's SUBDIRECTORY too, so a verb run from repo/ and from repo/src/ would otherwise
-// derive two different hash8 values, two state directories, two reed sessions, and (for a caller
-// that also resolves a relative profile or fasit path) two different resolutions of that path
-// against the wrong base — silently resolving the profile's own relative target and fasit paths
-// against the subdirectory rather than the repository. Where an operator stands inside a repository
-// is not supposed to change which repository they are driving.
+// The repository-root lift covers the other half.
+// preflight.ResolveMode returns ModeStandalone for a plain repository's subdirectory too.
+// Without the lift, a verb run from repo/ and one from repo/src/ would derive two hash8 values:
+// two state directories and two reed sessions.
+// A caller that also resolves a relative profile or fasit path would then resolve it against the subdirectory.
+// Where an operator stands inside a repository must not change which repository they drive.
 //
-// A target with no repository above it is returned unchanged: standalone mode legitimately covers a
-// plain directory that is no git repository at all, which ResolveMode folds into the same verdict.
+// A target with no repository above it is returned unchanged.
+// Standalone mode legitimately covers a plain directory with no git repository.
+// ResolveMode folds that case into the same verdict.
 //
-// A told --target-dir must EXIST and be a directory, and that check is the reason this function is
-// fallible. Without it the resolution silently succeeded against the wrong repository:
-// standalonestate.Normalize falls back to Clean for a path that does not exist, and RepositoryRootOf
-// then climbs until it finds a ".git" — so from inside /repo, a mistyped `--target-dir ./reposs`
-// resolved to /repo/reposs, found no repository there, climbed, and returned /repo. The run then
-// drove the repository the operator was standing in rather than the one they named, with the same
-// hash8, state directory and reed session as the no-flag invocation, so nothing in the output told
-// the two apart — and for a caller whose fix phase writes, that is an edit to the wrong tree
-// (crucible round opus-medium-r6, R6-7). A --target-dir naming a FILE resolved the same way.
+// A told --target-dir must exist and be a directory; that check is why this function can fail.
+// A missing path must not resolve silently.
+// Normalize falls back to Clean for it, and RepositoryRootOf climbs to the enclosing repository.
+// The run would then drive that repository instead of the one the operator named.
+// A --target-dir naming a file resolves the same way, so the directory check refuses it too.
 //
 // cwd itself is never stat'd: it is where the process already is.
 func (m Module) resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
@@ -207,10 +192,11 @@ func (m Module) resolveStandaloneTarget(cwd, targetDirFlag string) (string, erro
 	return RepositoryRootOf(standalonestate.Normalize(told)), nil
 }
 
-// planDirHasContent reports whether dir exists and contains at least one "*.md" file -- the minimal
-// on-disk shape an authored plan directory carries. It never distinguishes "missing directory" from
-// "empty directory" from "directory with no .md files": all three are the same usage error to a
-// standalone operator, which has no bootstrap and no empty-plan fallback to fall back to.
+// planDirHasContent reports whether dir exists and holds at least one "*.md" file.
+// That file is the minimal on-disk shape an authored plan directory carries.
+// It reports false for a missing directory, an empty one, and one without .md files alike:
+// a standalone operator gets the same usage error for each.
+// Standalone mode has no bootstrap and no empty-plan fallback.
 func planDirHasContent(dir string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

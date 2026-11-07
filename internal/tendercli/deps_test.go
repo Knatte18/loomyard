@@ -1,4 +1,5 @@
-// deps_test.go pins the readings shuttlePair derives from a run's session state: running turn, and background work left by an ended turn, and the pending reading of tender's orch revive injects.
+// deps_test.go pins the readings shuttlePair derives from a run's session state:
+// running turn, background work left by an ended turn, and the pending reading of tender's orch revive injects.
 // It spawns nothing and touches neither reed nor the runner, so it stays out of the integration-tagged cli_test.go.
 
 package tendercli
@@ -253,7 +254,8 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 	tests := []struct {
 		name   string
 		status shedengine.Status
-		// battenRun is the batten run record the follow-up reads, absent when nil; wantFollowUp is whether a failed end must name the cancel after the removal.
+		// battenRun is the batten run record the follow-up reads, absent when nil;
+		// wantFollowUp is whether a failed end must name the cancel after the removal.
 		battenRun    *shedengine.Status
 		wantFollowUp bool
 		noStatus     bool

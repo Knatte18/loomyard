@@ -24,7 +24,8 @@ func writeConfigFile(t *testing.T, path, content string) {
 	}
 }
 
-// withTemplateValue returns template with the line opening "<key>: " rewritten to carry value, failing the test when the key is absent.
+// withTemplateValue returns template with the line opening "<key>: " rewritten to carry value.
+// It fails the test when the key is absent.
 func withTemplateValue(t *testing.T, template, key, value string) string {
 	t.Helper()
 	prefix := key + ": "
@@ -180,7 +181,8 @@ func TestSettingLookup(t *testing.T) {
 	}
 }
 
-// writeLoomDefault returns an arranger writing loom's default file from the template, with review_max_bounces set to bounces when it is not empty.
+// writeLoomDefault returns an arranger that writes loom's default file from the template.
+// When bounces is not empty, it first sets review_max_bounces to bounces.
 func writeLoomDefault(bounces string) func(t *testing.T, dirs configengine.Dirs) {
 	return func(t *testing.T, dirs configengine.Dirs) {
 		t.Helper()

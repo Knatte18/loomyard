@@ -1,5 +1,8 @@
-// cli_test.go drives `lym tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
-// No test but TestNewShuttlePair_TellsTheHubsPauseGeometry calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
+// cli_test.go drives `lym tender pause`, `status`, `resume` and `revive` through the cobra commands.
+// The commands run over a hubforge hub with one pair and no agents running.
+// The network gate installer runs over the same hub.
+// No test but TestNewShuttlePair_TellsTheHubsPauseGeometry calls t.Parallel:
+// each sets the strand-name variable or reads the process-wide network gate.
 
 package tendercli
 
@@ -441,7 +444,8 @@ func ptr(s string) *string {
 	return &s
 }
 
-// TestNewShuttlePair_TellsTheHubsPauseGeometry pins that a pair's runner reads the hub's pause record with no slug of its own, so each send judges its target by the target's strand name.
+// TestNewShuttlePair_TellsTheHubsPauseGeometry pins that a pair's runner reads the hub's pause record.
+// The runner has no slug of its own, so each send judges its target by the target's strand name.
 // It sets no process-wide state, so it runs parallel beside the file's serial tests.
 func TestNewShuttlePair_TellsTheHubsPauseGeometry(t *testing.T) {
 	tiergate.Require(t, 1)

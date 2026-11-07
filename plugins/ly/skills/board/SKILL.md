@@ -19,18 +19,25 @@ Every entry carries a `kind`:
 - `task`: concrete and claimable; only a task can run, and only a task carries `depends_on`.
 - `note`: an idea or observation that is not yet a task, one note per entry.
 - `project`: a group of entries, with the handle letter `P`.
-  A task or note joins one through its `project` field, naming the project's slug, and a project lists the order of its members in `order`.
-  A project's `beam` field marks it a beam, a long-lived pair that spawns its members from its own worktree; it is set only by `lym beam create`, never by a board write.
-  `lym board list` and `lym board get` carry an entry's `parent_beam`: the slug of the nearest beam above it, empty when the prime is its parent.
+  A task or note joins one through its `project` field, naming the project's slug,
+  and a project lists the order of its members in `order`.
+  A project's `beam` field marks it a beam, a long-lived pair that spawns its members from its own worktree;
+  it is set only by `lym beam create`, never by a board write.
+  `lym board list` and `lym board get` carry an entry's `parent_beam`:
+  the slug of the nearest beam above it, empty when the prime is its parent.
 
 A new entry without `kind` lands as a note, so claimable work must pass `kind: "task"`.
-A note stays as written until the operator decides to build it; then suitable notes are merged into one task, promoted, and removed.
+A note stays as written until the operator decides to build it;
+then suitable notes are merged into one task, promoted, and removed.
 
 ## Handles
 
-The board gives every entry a short handle, such as `T4`, `P1`, `B2` or `E7`: `T` for a task, `P` for a project, and for a note the first letter of its type label, upper-cased.
-The number is the lowest of its letter not in use, and it stays while the entry lives; a promote or a type change gives the entry a new handle of its new letter.
-The operator names entries by handle, and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle as its whole argument:
+The board gives every entry a short handle, such as `T4`, `P1`, `B2` or `E7`:
+`T` for a task, `P` for a project, and for a note the first letter of its type label, upper-cased.
+The number is the lowest of its letter not in use, and it stays while the entry lives;
+a promote or a type change gives the entry a new handle of its new letter.
+The operator names entries by handle,
+and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle as its whole argument:
 
 ```
 lym board get B4
@@ -43,15 +50,25 @@ A new task is `draft`; a null status on a task releases it rather than clearing 
 
 Every entry carries `labels`, validated against two maps in the hub's `board.yaml`, each from label to description:
 
-- `types`: the type labels, such as `bug` and `enhancement`. A note carries exactly one, and a task one or more. Every board also has the built-in type `sketch`, which only lym writes.
+- `types`: the type labels, such as `bug` and `enhancement`.
+  A note carries exactly one, and a task one or more.
+  Every board also has the built-in type `sketch`, which only lym writes.
 - `labels`: every other label, such as an area.
 
 Run `lym board labels` before choosing labels: it prints both maps in file order with their descriptions.
-Beside its type label, every entry carries a label for each lym module it touches; an entry that spans the whole tool takes the modules its work would change first.
-A label in neither map is refused; add it with `lym config board --set labels.<name>=<description>`, or edit the maps in the `lym config board` editor.
-A recipe name goes in `recipe`, never in a label: `tapestry`, `darn` or `motif`, empty meaning the hub's `default_recipe` in `board.yaml`, which is `darn` unless the hub changed it.
-A `motif` task runs Discussion alone: it stores the approved decision record on the entry, flags it `discussed`, lands no code and makes the entry a Sketch, a note of the built-in type `sketch` (handle `S`) that keeps its module labels and never runs; triage breaks a Sketch down into tasks or a project.
-A run profile goes in `profile`, never in `run_settings`: `lym board profiles` prints the hub's profiles with one settings block per recipe, and a task without one takes its recipe's default profile, listed under `defaults`.
+Beside its type label, every entry carries a label for each lym module it touches;
+an entry that spans the whole tool takes the modules its work would change first.
+A label in neither map is refused.
+Add it with `lym config board --set labels.<name>=<description>`, or edit the maps in the `lym config board` editor.
+A recipe name goes in `recipe`, never in a label: `tapestry`, `darn` or `motif`.
+An empty `recipe` means the hub's `default_recipe` in `board.yaml`, which is `darn` unless the hub changed it.
+A `motif` task runs Discussion alone:
+it stores the approved decision record on the entry, flags it `discussed`, lands no code and makes the entry a Sketch.
+A Sketch is a note of the built-in type `sketch` (handle `S`) that keeps its module labels and never runs;
+triage breaks a Sketch down into tasks or a project.
+A run profile goes in `profile`, never in `run_settings`.
+`lym board profiles` prints the hub's profiles with one settings block per recipe,
+and a task without a profile takes its recipe's default profile, listed under `defaults`.
 
 ## Verbs
 
@@ -80,7 +97,8 @@ lym board upsert '{"slug":"my-task","title":"My Task","kind":"task","labels":["b
 lym board merge '{"remove_slugs":["old"],"upsert":{"slug":"my-task","title":"My Task","kind":"task","labels":["bug"]}}' --body-file body.md
 ```
 
-A merge carries the removed entries' issues onto the upserted entry, after the numbers it already records, whether or not the payload names `issues`.
+A merge carries the removed entries' issues onto the upserted entry after the numbers it already records.
+It does so whether or not the payload names `issues`.
 
 Edit a body as a file: `get --body` prints the body alone, verbatim, so write it out, edit it and read it back in:
 
@@ -95,7 +113,8 @@ Promote a note to a task:
 lym board promote '{"slug":"my-note"}'
 ```
 
-Promoting a Sketch, by slug or by its handle such as `lym board promote S3`, makes it a task with recipe `raddle`, which splits its decision record into tasks or a project.
+Promoting a Sketch, by slug or by its handle such as `lym board promote S3`, makes it a task with recipe `raddle`.
+That task splits the Sketch's decision record into tasks or a project.
 A Sketch takes no other recipe.
 
 Rename an entry, keeping every other field and rewriting the old slug in every other entry's `depends_on`:
@@ -104,21 +123,29 @@ Rename an entry, keeping every other field and rewriting the old slug in every o
 lym board rename '{"slug":"old-name","to":"new-name"}'
 ```
 
-Prose is never rewritten: `mentions` lists the entries whose body or brief still name the old slug, so fix those by hand.
+Prose is never rewritten:
+`mentions` lists the entries whose body or brief still name the old slug, so fix those by hand.
 A claimed entry cannot be renamed.
-A discussed entry's decision record file moves with it. When that step fails the entry is still renamed, and the verb reports one of two errors:
-`rename moved the entry but not its decision record` names the record file left at the old slug's name, which the entry's next Discussion approval stores again under the new slug;
-`rename saved the entry, but the orphaned decision record ... could not be removed` names the file at the new slug's name, to remove by hand.
+A discussed entry's decision record file moves with it.
+When that step fails the entry is still renamed, and the verb reports one of two errors:
+`rename moved the entry but not its decision record` names the record file left at the old slug's name.
+The entry's next Discussion approval stores that record again under the new slug.
+`rename saved the entry, but the orphaned decision record ... could not be removed` names the file at the new slug's name.
+Remove that file by hand.
 
-Find entries whose slug, title, brief or body contains the text, done entries included; `--label` narrows to entries carrying every named label and repeats:
+Find entries whose slug, title, brief or body contains the text, done entries included;
+`--label` narrows to entries carrying every named label and repeats:
 
 ```
 lym board find --text retry backoff
 lym board find --label bug retry
 ```
 
-`list` names the machine that owns the hub's prime: `prime_owner` in its JSON, and the first line of its `--text` output.
-List every entry, with `--text` for a one-line-per-entry scan that opens with each entry's handle and shows its age and time since its last revision, `--sort age` or `--sort revised` to put the longest-lying entries first, and fetch one entry in full:
+`list` names the machine that owns the hub's prime:
+`prime_owner` in its JSON, and the first line of its `--text` output.
+List every entry and fetch one in full.
+`--text` prints one line per entry, opening with its handle and showing its age and time since its last revision.
+`--sort age` or `--sort revised` puts the longest-lying entries first:
 
 ```
 lym board list --text
@@ -127,13 +154,15 @@ lym board list --label bug --label enhancement
 lym board get '{"slug":"my-task"}'
 ```
 
-A task whose run's Discussion was approved shows `"discussed": true` in `get`, and `--record` prints its stored decision record alone, verbatim:
+A task whose run's Discussion was approved shows `"discussed": true` in `get`,
+and `--record` prints its stored decision record alone, verbatim:
 
 ```
 lym board get '{"slug":"my-task"}' --record
 ```
 
-`--record` refuses an absent entry, an entry that is not discussed, a discussed entry whose record file is missing, and `--body` beside it.
+`--record` refuses an absent entry, an entry that is not discussed, and a discussed entry whose record file is missing.
+It also refuses `--body` beside it.
 
 Remove every done entry:
 
@@ -147,16 +176,21 @@ An entry whose status reads `<state> · <producer>`, such as `running · Webster
 A claimed entry takes no scope edits: a write that changes anything but its status, or removes it, is refused.
 Record a new finding as a note of its own with `lym board upsert` and `"kind":"note"`.
 The refusal names the way to unlock an abandoned run's entry.
-Owners sit on root and beam projects: a task's owner is its beam's or root's, and it moves only through `lym adopt <beam>` or `lym adopt root`; an upsert naming another owner is refused.
+Owners sit on root and beam projects:
+a task's owner is its beam's or root's, and it moves only through `lym adopt <beam>` or `lym adopt root`;
+an upsert naming another owner is refused.
 
 ## Tasks from a run session
 
-A session whose `LYM_STRAND_NAME` carries a task slug under a role other than `orch` or a numbered orch role such as `orch-2` cannot create or promote a task: only the operator decides what becomes a task.
+A session whose `LYM_STRAND_NAME` carries a task slug cannot create or promote a task.
+The roles `orch` and a numbered orch role such as `orch-2` are exempt.
+Only the operator decides what becomes a task.
 File the follow-up with `lym board upsert` and `"kind":"note"`; the operator may promote it.
 
 ## Intake
 
-Intake takes the GitHub issues of the hub's own repository onto the board, the one list: the repository the hub's recorded binding names, else its origin remote.
+Intake takes the GitHub issues of the hub's own repository onto the board, the one list:
+the repository the hub's recorded binding names, else its origin remote.
 It never reads the repository `selfreport` files LoomYard bugs to, unless that is the hub's own.
 Run intake only when the operator asks for it.
 Take each open issue onto the board, then close it:
@@ -169,8 +203,10 @@ lym board intake import '{"issue":13,"into":"retry-backoff"}'
 lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 ```
 
-- `list` prints the number and title of each open issue no entry records; `--full` adds body, labels, url, comment count and creation time.
-- `import` with `slug` records the issue as a new note; with `into` it folds the issue into an existing entry. Either way it comments on the issue with a pointer and closes it.
+- `list` prints the number and title of each open issue no entry records;
+  `--full` adds body, labels, url, comment count and creation time.
+- `import` with `slug` records the issue as a new note; with `into` it folds the issue into an existing entry.
+  Either way it comments on the issue with a pointer and closes it.
   A new note gets its type and module labels through `import`'s `labels`.
   `import` prints the slug, issue, labels and dropped labels, not the entry; `lym board get` shows the entry.
   A label `upsert` on a folded entry carries the entry's whole label list, since `labels` replaces it.
@@ -181,8 +217,13 @@ lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 A `body` renders as ordinary markdown with semantic line breaks.
 A single newline is a soft break, so structure a body with headings and lists rather than relying on line breaks for layout.
 Never name another task as a dependency in a task's brief or body: put it in `depends_on` with `lym board set-deps`.
-The README computes each task's After column and its Ready or layer subsection from `depends_on`, drops a finished entry from After, and `prune` strips it, while a dependency written as prose goes stale once that entry lands.
-Whenever you set `depends_on`, check the other tasks waiting on the same entry for overlap, not only the running ones, and act on the `notice` warning `set-deps` and the upsert verbs print by chaining overlapping tasks with `lym board set-deps`.
+The README computes each task's After column and its Ready or layer subsection from `depends_on`.
+It drops a finished entry from After, and `prune` strips it;
+a dependency written as prose goes stale once that entry lands.
+Whenever you set `depends_on`, check the other tasks waiting on the same entry for overlap, not only the running ones.
+Act on the `notice` that `set-deps` and the upsert verbs print: chain overlapping tasks with `lym board set-deps`.
 A relation between notes has no `depends_on`, so it is a sentence in a body.
 A body holds an entry's design while it is unbuilt.
-The task that builds it documents the result in the repository and never rewrites its own entry's body or scope: the landing marks the entry done and `lym board prune` removes it, keeping one that still carries `notify_on_land` until its dobby has sent the line and cleared the field.
+The task that builds it documents the result in the repository and never rewrites its own entry's body or scope:
+the landing marks the entry done, and `lym board prune` removes it.
+Prune keeps an entry that still carries `notify_on_land` until its dobby has sent the line and cleared the field.

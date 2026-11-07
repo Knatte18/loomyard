@@ -1,12 +1,5 @@
-// rewrite.go implements RewriteRefs, the plan's second write path: the single primitive every
-// later ref-substitution occasion calls -- handle canonicalization, handle binding at card
-// completion, and drift auto-repair -- rather than each growing its own writer. A full re-render
-// from the parsed model is rejected for a sharper reason than triplication: planparser is
-// deliberately lenient at the card level, preserving malformed bullets so the validator can
-// enumerate every defect, so a round-trip would silently normalize away exactly the defects the
-// validator exists to report, and would additionally rewrite backup-mode paths the operator chose
-// to allow. RewriteRefs instead substitutes in place, one card file at a time, touching only the
-// backtick-wrapped sub-bullet payloads a substitution's key actually names.
+// rewrite.go implements RewriteRefs, which substitutes refs in place across the card files of a plan.
+// It rewrites only the backtick-wrapped sub-bullet payloads that a substitution's key names.
 
 package planparser
 
@@ -18,29 +11,20 @@ import (
 	"strings"
 )
 
-// singleRefLineRe matches a "- `ref`" sub-bullet's payload after the leading "- " bullet marker is
-// trimmed off, mirroring the exact shape parseRefField recognises (a lone backtick-wrapped token
-// with nothing else on the line).
+// singleRefLineRe matches a bullet payload that is one backtick-wrapped ref and nothing else.
+// The payload is the bullet's text with its leading "- " marker trimmed.
 var singleRefLineRe = regexp.MustCompile("^`([^`]+)`$")
 
-// RewriteRefs substitutes, across every card file under planDir, every occurrence of subs' own
-// keys with their corresponding replacement value, and returns a "planparser:"-prefixed wrapped
-// error for a missing plan directory, an unreadable card file, or a failed write.
-// subs is keyed on canonical model strings -- matching what every one of RewriteRefs' three
-// callers natively produces -- rather than on-disk lexemes: RewriteRefs bridges the surface<->model
-// gap itself, by parsing planDir with ParsePlan to obtain Plan.SurfaceRefs and looking each key up
-// in the card being rewritten's own inner map, which holds every lexeme that card spelled the
-// canonical ref with, so a card carrying two spellings of one ref has both rewritten. A key with no entry in that card's own SurfaceRefs
-// map substitutes itself, which is correct for a ref that was already canonical on disk -- so a
-// canonical string two cards spell differently on disk resolves to each card's own lexeme, never to
-// whichever card ParsePlan happened to visit last.
-// Substitution only ever touches a backtick-wrapped sub-bullet payload matching the same "- `ref`"
-// or "- `old` -> `new`" shapes parseRefField and parseRenameField recognise, so prose that happens
-// to contain the same string is never rewritten. A card file whose bytes do not actually change is
-// left byte-identical (not even rewritten with identical bytes), and an empty or fully-unmatched
-// subs map writes nothing at all.
-// The one shape-changing case -- a Create declaration bullet collapsing to a plain ref when its
-// handle binds to a real glyph -- is documented on rewriteBulletLine.
+// RewriteRefs substitutes every occurrence of subs' keys with their replacements across the card files under planDir.
+// The keys are canonical refs, and each card's own on-disk spellings of a ref are rewritten.
+// Only a backtick-wrapped sub-bullet payload of the form "- `ref`" or "- `old` -> `new`" is substituted.
+// Prose that contains the same text is left alone.
+// A Create declaration bullet whose handle binds to a real glyph collapses to a plain ref bullet.
+// A card file whose bytes do not change is left byte-identical, and an empty or unmatched subs map writes nothing.
+// It edits the card text in place rather than re-rendering the plan from the parsed model.
+// A re-render would normalize away the malformed bullets the validator reports.
+// It would also rewrite the backup-mode paths the operator chose to allow.
+// It returns an error for a missing plan directory, an unreadable card file, or a failed write.
 func RewriteRefs(planDir string, subs map[string]string) error {
 	return rewriteRefsIn(
 		planDir, subs,
@@ -49,7 +33,7 @@ func RewriteRefs(planDir string, subs map[string]string) error {
 	)
 }
 
-// rewriteRefsIn is RewriteRefs over a plan source: it parses the plan through read and writes each changed card file through write, both taking a plan file name.
+// rewriteRefsIn applies subs to the plan whose files read returns, writing each changed card file through write.
 func rewriteRefsIn(planDir string, subs map[string]string, read func(name string) ([]byte, error), write func(name string, data []byte) error) error {
 	if len(subs) == 0 {
 		return nil
@@ -69,11 +53,8 @@ func rewriteRefsIn(planDir string, subs map[string]string, read func(name string
 	return nil
 }
 
-// rewriteCardFile rewrites one card file's backtick-wrapped sub-bullet payloads per subs, first
-// resolving every substitution's canonical key against c's own SurfaceRefs entry into the on-disk
-// lexeme actually being searched for, then applying that lexeme-keyed map line by line. The file is
-// written back only when at least one line actually changed.
-// The file is read and written through read and write, by its name under plan.Dir.
+// rewriteCardFile applies subs to one card file's sub-bullet payloads, matching keys by their on-disk spellings.
+// It reads and writes the card by its name under plan.Dir, and writes back only when a line changed.
 func rewriteCardFile(plan *Plan, c Card, subs map[string]string, read func(name string) ([]byte, error), write func(name string, data []byte) error) error {
 	fileName := cardFileName(c.Number, c.Slug)
 	filePath := filepath.Join(plan.Dir, fileName)
@@ -91,9 +72,9 @@ func rewriteCardFile(plan *Plan, c Card, subs map[string]string, read func(name 
 	lines := strings.Split(string(data), "\n")
 	changed := false
 	for i, line := range lines {
-		// The newLine != line guard is what makes the byte-identical promise above hold even for a
-		// substitution that maps a payload to itself: rewriteBulletLine reports ok for any matched
-		// payload, including one whose reconstruction is identical.
+		// The newLine != line guard keeps a card file byte-identical when a substitution maps a payload to itself.
+		// rewriteBulletLine reports ok for any matched payload, even one whose reconstruction is identical.
+		// Without the guard, the file would be written back with identical bytes.
 		if newLine, ok := rewriteBulletLine(line, lexemeSubs); ok && newLine != line {
 			lines[i] = newLine
 			changed = true
@@ -109,13 +90,10 @@ func rewriteCardFile(plan *Plan, c Card, subs map[string]string, read func(name 
 	return nil
 }
 
-// cardLexemeSubs resolves subs' canonical keys into cardKey's own on-disk lexemes, via
-// plan.SurfaceRefs[cardKey]. A canonical key absent from that inner map resolves to itself.
-//
-// It emits one substitution per RECORDED LEXEME, not one per canonical key: a card that spells one
-// canonical ref two ways across two of its own fields carries two lexemes, and emitting only one
-// rewrote one bullet and left the other stale — a half-rewritten card (crucible round
-// opus-medium-r6, R6-13).
+// cardLexemeSubs resolves each canonical key in subs to the on-disk spellings that cardKey uses for it.
+// A key with no recorded spelling resolves to itself.
+// It emits one substitution per spelling:
+// a card can spell one ref two ways across its own fields, and one substitution alone leaves the other stale.
 func cardLexemeSubs(plan *Plan, cardKey string, subs map[string]string) map[string]string {
 	lexemeSubs := make(map[string]string, len(subs))
 	for canonical, replacement := range subs {
@@ -131,23 +109,19 @@ func cardLexemeSubs(plan *Plan, cardKey string, subs map[string]string) map[stri
 	return lexemeSubs
 }
 
-// rewriteBulletLine substitutes line's own bullet payload -- either a single "- `ref`" or an
-// "- `old` -> `new`" pair -- per lexemeSubs, and reports whether it changed anything. A line that is
-// not one of these two shapes, or whose payload carries no entry in lexemeSubs, reports false and
-// returns line unmodified.
+// rewriteBulletLine substitutes a bullet line's payload per lexemeSubs.
+// The payload is either a single "- `ref`" or a "- `old` -> `new`" pair.
+// It reports whether the line changed.
+// A line of neither shape, or whose payload has no entry in lexemeSubs, comes back unmodified.
 //
-// One arrow bullet is rewritten to a DIFFERENT shape rather than in place: a Create group's
-// declaration bullet, `plan:<handle>` -> `<declaration head>`, whose handle is being bound to its
-// real glyph. Substituting in place there leaves `<glyph>` -> `<declaration head>`, which is no
-// longer a handle declaration but still carries the arrow, so parseCreateField routes it to
-// CreateRaw and the card parses with a blocking handle-malformed AND an empty target list
-// (card-field-empty) -- observed live, and it wedged every batch after the one that bound the
-// handle. The declaration head existed only to compute the glyph that has now been computed, so the
-// bullet collapses to the plain `- <glyph>` ref every other Create target already uses.
+// A Create declaration bullet, `plan:<handle>` -> `<declaration head>`, collapses once its handle binds to a glyph.
+// It becomes a plain `- <glyph>` ref.
+// An in-place substitution would leave `<glyph>` -> `<declaration head>`, which no longer parses as a declaration.
+// The card would then fail to parse.
 //
-// The collapse is deliberately narrow: it requires the LEFT token to be a handle whose replacement
-// is not one. Canonicalization substitutes one handle for another (still `plan:`-prefixed) and does
-// not collapse; a Rename pair's left side is a glyph by contract and does not collapse either.
+// The collapse applies only when the left token is a handle and its replacement is not one.
+// Canonicalization swaps one `plan:` handle for another and does not collapse;
+// a Rename pair's left side is a glyph by contract, so it does not collapse either.
 func rewriteBulletLine(line string, lexemeSubs map[string]string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	if !strings.HasPrefix(trimmed, "- ") {

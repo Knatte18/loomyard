@@ -1,11 +1,11 @@
-// fabric_test.go — unit tests for the Fabric handle, sync options, and ScopedPathspec.
-// No git spawn: newPaired only stat-checks paths, and Open needs nothing beyond a hand-built *lymcwd.Location for that same stat-only contract to hold.
-// The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is restated here through Open(l), the constructor the contract now belongs to, using a hand-built Location rather than a real git fixture.
+// fabric_test.go holds the unit tests for the Fabric handle, its sync options, and ScopedPathspec.
+// The tests spawn no git: newPaired only stat-checks paths, and Open needs only a hand-built *lymcwd.Location.
+// The missing-path contract is tested through Open.
+// Open checks warp first and returns *ErrMissingPath naming the absent side.
 //
-// TestNew_HappyPath below is this package's only remaining NewPairedFromPathsForTest consumer: a
-// tier0 unit test of the newPaired constructor itself, spawning no git and having nothing to do
-// with hub fixtures, so it stays tier0 and must never gain a hubforge import — the Test Tier
-// Purity Invariant bans a tier0 test from calling the hubforge package's hub constructor.
+// TestNew_HappyPath tests the newPaired constructor at tier 0, spawning no git and using no hub fixtures.
+// It must not import hubforge.
+// The Test Tier Purity Invariant bans a tier-0 test from calling the hubforge package's hub constructor.
 
 package fabricengine_test
 
@@ -21,11 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestOpen covers Open over a hand-built Location:
-// a missing warp worktree errors with *ErrMissingPath naming the warp path, with the weft sibling
-// present so a failure can only be the warp side — proving Open checks warp first;
-// a missing weft sibling errors naming the weft path when the warp worktree is present;
-// and both existing returns a non-nil handle.
+// TestOpen covers Open over a hand-built Location.
+// A missing warp worktree errors with *ErrMissingPath naming the warp path.
+// The weft sibling exists in that case, so only the warp side can fail, which proves Open checks warp first.
+// A missing weft sibling errors naming the weft path when the warp worktree is present.
+// When both exist, Open returns a non-nil handle.
 //
 //testtiming:keep Open returning *ErrMissingPath naming the warp path first, then the weft path, and a non-nil handle when both exist; coverage of its blocks by other tests does not show an assertion of this
 func TestOpen(t *testing.T) {
@@ -86,8 +86,7 @@ func TestOpen(t *testing.T) {
 	}
 }
 
-// TestNew_HappyPath asserts that newPaired yields a non-nil warp and weft when both paths exist as
-// directories.
+// TestNew_HappyPath asserts that both warp and weft are non-nil when both paths exist as directories.
 //
 //testtiming:keep newPaired yielding a non-nil warp and weft when both paths exist as directories, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
 func TestNew_HappyPath(t *testing.T) {
@@ -114,8 +113,7 @@ func TestNew_HappyPath(t *testing.T) {
 	}
 }
 
-// TestEnvSyncOptions covers the FABRIC_SKIP_GIT / FABRIC_SKIP_PUSH mapping: unset, "1", and other
-// values.
+// TestEnvSyncOptions covers the FABRIC_SKIP_GIT / FABRIC_SKIP_PUSH mapping: unset, "1", and other values.
 func TestEnvSyncOptions(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -155,8 +153,7 @@ func TestEnvSyncOptions(t *testing.T) {
 	}
 }
 
-// TestScopedPathspec covers ScopedPathspec's cases: root relPath (no-op join) and a nested relPath
-// (prefixed join).
+// TestScopedPathspec covers a root relPath, which joins nothing, and a nested relPath, which prefixes each entry.
 //
 //testtiming:keep ScopedPathspec returning the entries unchanged at the root and prefixed by a nested relPath; coverage of its blocks by other tests does not show an assertion of this
 func TestScopedPathspec(t *testing.T) {
@@ -186,10 +183,11 @@ func TestScopedPathspec(t *testing.T) {
 	}
 }
 
-// TestRequireWarpWorktree covers the guard that keeps a cwd inside one of fabric's own checkouts
-// from driving a verb against invented geometry. lymcwd resolves such a cwd cleanly — it has no
-// notion of a weft sibling or the board checkout — so the refusal has to happen here.
-// No git spawn: the guard is pure name math over a hand-built Location.
+// TestRequireWarpWorktree covers the guard that refuses a cwd inside one of fabric's own checkouts.
+// Such a cwd would otherwise drive a verb against invented geometry.
+// lymcwd resolves such a cwd without error, because it knows neither the weft sibling nor the board checkout.
+// The refusal therefore has to happen in fabric.
+// The guard is pure name math over a hand-built Location, so the test spawns no git.
 func TestRequireWarpWorktree(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

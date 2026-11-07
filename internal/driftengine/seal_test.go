@@ -48,7 +48,7 @@ func commitBaselineDigest(t *testing.T, d Deps) {
 	}
 }
 
-// TestSealAndBaseline covers CheckSeal's order and each of its faults, the baseline digest read from its commit, and the row order.
+// TestSealAndBaseline covers each fault CheckSeal reports, the baseline digest read from its commit, and the row order.
 func TestSealAndBaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,6 +1,7 @@
 // Package loggerconfig owns _lym/config/logger.yaml, the trace-retention bounds the exit sweep reads.
 //
-// It lives outside internal/logger because internal/configengine imports internal/logger, so the logger cannot load its own config without an import cycle.
+// It lives outside internal/logger because internal/configengine imports internal/logger,
+// so the logger cannot load its own config without an import cycle.
 // Load never resolves cwd itself: the caller hands it the anchor (see PATTERN-cwd-resolution).
 package loggerconfig
 
@@ -29,7 +30,7 @@ const day = 24 * time.Hour
 // and the sweep would then delete every non-live trace.
 const maxRetentionDays = int(math.MaxInt64 / int64(day))
 
-// config mirrors logger.yaml's two keys as raw nodes, so Load can check each one's YAML tag.
+// config mirrors the trace-retention keys of logger.yaml as raw nodes, so Load can check each one's YAML tag.
 type config struct {
 	Count yaml.Node `yaml:"trace_retention_count"`
 	Days  yaml.Node `yaml:"trace_retention_days"`
@@ -55,9 +56,9 @@ func ConfigSpec() configengine.Spec {
 }
 
 // Load resolves the trace-retention bounds from logger.yaml through the layer stack under dirs.
-// An absent logger.yaml in every layer resolves the embedded ConfigTemplate() instead of erroring;
+// An absent logger.yaml in every layer resolves to the embedded default template instead of erroring;
 // a file that exists but is invalid, or carries a non-positive or non-integer value, errors naming the key.
-// A trace_retention_days value above maxRetentionDays also errors naming the key.
+// A trace_retention_days value too large for a time.Duration also errors naming the key.
 func Load(dirs configengine.Dirs) (logger.RetentionBounds, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -97,7 +98,8 @@ func LoadOrDefault(dirs configengine.Dirs) logger.RetentionBounds {
 }
 
 // positiveInt decodes node as a positive integer.
-// The tag check rejects a float: yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by truncation without an error.
+// The tag check rejects a float.
+// yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by truncation without an error.
 func positiveInt(key string, node *yaml.Node) (int, error) {
 	if node.Kind != yaml.ScalarNode || node.ShortTag() != "!!int" {
 		return 0, fmt.Errorf("logger config: %s must be a positive integer", key)

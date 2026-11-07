@@ -1,7 +1,6 @@
-// argsarity_test.go pins every fabric verb's declared positional-argument arity. It is a pure
-// cobra-tree inspection with no git spawn and no hub fixture, per the Test Tier Purity Invariant —
-// the end-to-end per-verb assertions that need a real hub live in the tier1
-// cli_test.go instead.
+// argsarity_test.go pins every fabric verb's declared positional-argument arity.
+// It is a pure cobra-tree inspection with no git spawn and no hub fixture, per the Test Tier Purity Invariant.
+// The end-to-end per-verb assertions that need a real hub live in the tier1 cli_test.go instead.
 
 package fabriccli_test
 
@@ -12,26 +11,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommand_EveryVerbRejectsExtraPositionalArgs proves each fabric verb declares an Args validator
-// that refuses arguments it does not consume.
+// TestCommand_EveryVerbRejectsExtraPositionalArgs proves each fabric verb declares an Args validator.
+// The validator refuses arguments the verb does not consume.
 //
-// This is fabric's R8 finding L3. Only `diff` set an Args validator; every other command left Args
-// nil, which cobra defaults to ArbitraryArgs for a leaf command, so extra positional arguments were
-// accepted and silently dropped. Observed live: `lym fabric unwire bogus-typo` performed the full
-// unwire and exited 0, and `lym fabric commit <some-file>` committed the whole configured pathspec
-// while ignoring the named file, reporting success either way. The usage strings advertise an arity
-// the binary did not enforce.
+// A command with no Args validator gets cobra's ArbitraryArgs for a leaf command.
+// Extra positional arguments are then accepted and silently dropped.
 //
-// The check is on the declared validator rather than on a driven invocation, deliberately: most of
-// these verbs need a real hub to reach their RunE at all, and the defect was the absence of the
-// declaration itself.
+// The check reads the declared validator rather than driving an invocation.
+// Most verbs need a real hub to reach their RunE at all.
 func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// tooMany is one more argument than each verb legitimately takes, so a verb with a correct
-	// validator refuses it. Keyed by command name; every subcommand of `lym fabric` must appear,
-	// which is what stops a newly added verb from quietly inheriting ArbitraryArgs.
+	// tooMany is one more argument than each verb legitimately takes,
+	// so a verb with a correct validator refuses it.
+	// Keyed by command name; every subcommand of `lym fabric` must appear.
+	// Otherwise a newly added verb would quietly inherit ArbitraryArgs.
 	tooMany := map[string][]string{
 		"add":             {"a", "b"},
 		"remove":          {"a", "b"},
@@ -55,19 +50,18 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 		"merge-in":        {"a", "b"},
 	}
 
-	// variadicArity names the verbs that legitimately take an UNBOUNDED number of positional
-	// arguments, so "one more than it consumes" does not exist for them and the tooMany table cannot
-	// express their arity. Their arity is pinned from the other direction instead: they must refuse
-	// TOO FEW. Leaving such a verb out of every table entirely would let it inherit ArbitraryArgs with
-	// nothing noticing, which is the whole defect this test exists for.
+	// variadicArity names the verbs that legitimately take an unbounded number of positional arguments.
+	// For them "one more than it consumes" does not exist, so the tooMany table cannot express their arity.
+	// Their arity is pinned from the other direction: each must refuse too few arguments.
+	// Omitting such a verb from every table would let it inherit ArbitraryArgs unnoticed.
 	variadicArity := map[string]string{
 		"merge-stage": "takes one or more conflicted paths; refusing zero is the only arity it can pin",
 	}
 
-	// handRolledArity names the verbs that refuse a wrong argument COUNT in their own handler rather
-	// than through a cobra Args validator, with the reason. clone's own check rejects both too-few and
-	// too-many and carries a fuller usage message than cobra's generic "accepts at most 2 arg(s)", so
-	// adding a validator there would replace a better error with a worse one.
+	// handRolledArity names the verbs that refuse a wrong argument count in their own handler.
+	// They do not go through a cobra Args validator; the map gives the reason each one does so.
+	// clone's own check rejects both too few and too many, with a fuller usage line than cobra's generic one.
+	// A validator there would replace a better error with a worse one.
 	handRolledArity := map[string]string{
 		"clone": "clone.go's own len(args) != 1 && != 2 check refuses both directions with the full usage line",
 	}

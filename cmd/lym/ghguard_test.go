@@ -1,5 +1,5 @@
-// ghguard_test.go enforces the GitHub Auth Invariant's shell-out half: no production (non-test)
-// package outside internal/githubclient may shell out to the `gh` CLI.
+// ghguard_test.go enforces the GitHub Auth Invariant's shell-out half:
+// no production (non-test) package outside internal/githubclient may shell out to the `gh` CLI.
 // internal/githubclient owns the one bounded, timeout-guarded `gh auth token` shell-out (token.go);
 // every other package must go through it rather than growing its own credential path.
 // See `PATTERN-github-auth`.
@@ -15,32 +15,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// ghGuardAllowlist names the single package directory permitted to shell out to
-// `gh`: the one place the GitHub Auth Invariant designates as owning token
-// resolution.
+// ghGuardAllowlist names the single package directory permitted to shell out to `gh`.
+// It is the one place the GitHub Auth Invariant designates as owning token resolution.
 var ghGuardAllowlist = []scankit.Entry{
 	{Key: "internal/githubclient/", Why: "owns the one bounded `gh auth token` shell-out"},
 }
 
-// ghExecSpawnTokens are the substrings identifying an exec.Command or
-// exec.CommandContext call, matched on the SAME LINE as the quoted "gh" argument
-// (see lineHasBannedGHSpawn) rather than as a whole-file substring together with
-// the argument. exec.CommandContext takes its context.Context argument first, so
-// the literal exec.CommandContext("gh" never appears in compilable Go -- exactly
-// the call shape internal/githubclient/token.go itself uses -- and a whole-file
-// substring scan for it can never match.
+// ghExecSpawnTokens are the substrings that identify an exec.Command or exec.CommandContext call.
+// Each token is matched only on the same line as the quoted "gh" argument, never as a whole-file substring.
+// exec.CommandContext takes its context.Context argument first,
+// so the literal `exec.CommandContext("gh"` never appears in compilable Go, and a whole-file scan for it can never match.
 var ghExecSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 
-// ghLookPathLiteral is the one banned token still matched as a whole-line
-// substring: a direct bare LookPath("gh") call, which has no argument-order
-// ambiguity to worry about.
+// ghLookPathLiteral is the banned token matched as a whole-line substring.
+// A direct bare LookPath("gh") call has no argument-order ambiguity, so the plain substring is enough.
 const ghLookPathLiteral = `LookPath("gh")`
 
-// TestGHGuard_NoShellOutOutsideGithubclient walks every non-test *.go file under the module root
-// and fails if any file outside the ghGuardAllowlist directory contains a banned `gh` shell-out token.
-// A bare "gh" substring is unusable as a banned token -- it matches "through", "right", "highlight"
-// and hundreds of other words repo-wide -- so, following tools/sandbox/pathresolve_guard_test.go's
-// precedent, both banned forms carry the quoted binary name so no English word can match.
+// TestGHGuard_NoShellOutOutsideGithubclient walks every non-test *.go file under the module root.
+// It fails if any file outside the ghGuardAllowlist directory contains a banned `gh` shell-out token.
+// A bare "gh" substring cannot be a banned token: it matches words such as "through", "right" and "highlight".
+// Both banned forms therefore carry the quoted binary name, so no English word can match.
 //
 //lym:guard
 func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
@@ -97,21 +91,22 @@ func lineHasBannedGHSpawn(line string) (token string, bad bool) {
 // pullRequestMutationCalls are go-github's calls that open, edit, merge or close a pull request.
 var pullRequestMutationCalls = []string{".PullRequests.Create(", ".PullRequests.Edit(", ".PullRequests.Merge("}
 
-// issueEditCall is go-github's call that closes an issue, and so a pull request, since a pull request is an issue.
+// issueEditCall is go-github's call that closes an issue;
+// since a pull request is an issue, the call also closes a pull request.
 const issueEditCall = ".Issues.Edit("
 
-// pullRequestCallAllowlist names the one package directory permitted to open, edit, merge or close a pull request through go-github.
+// pullRequestCallAllowlist names the one package directory permitted to make go-github's pull request mutating calls.
 var pullRequestCallAllowlist = []scankit.Entry{
 	{Key: "internal/pullrequest/", Why: "owns the run's pull request calls"},
 }
 
-// issueEditAllowlist names the package directories permitted to close an issue through go-github: the pull request client, and the hub's issue intake, which closes issues only.
+// issueEditAllowlist names the package directories permitted to close an issue through go-github, each with its reason.
 var issueEditAllowlist = []scankit.Entry{
 	{Key: "internal/pullrequest/", Why: "closes a pull request through its issue"},
 	{Key: "internal/hubissues/", Why: "closes a taken-in hub issue"},
 }
 
-// pullRequestImportAllowlist names the package directories permitted to import internal/pullrequest: the two producers that hold its API, the CLI that wires their seams and the `pr-continue` verb, the CLI of the `beam pr` verbs, the kit whose landing stub names the API in a func literal, and the kit that fakes the API.
+// pullRequestImportAllowlist names the package directories permitted to import internal/pullrequest.
 var pullRequestImportAllowlist = []scankit.Entry{
 	{Key: "internal/landingshed/", Why: "PR-Review and Finalize hold the API"},
 	{Key: "internal/pairteardown/", Why: "a teardown closes the run's open pull request"},
@@ -124,8 +119,12 @@ var pullRequestImportAllowlist = []scankit.Entry{
 // pullRequestImportLine is the import line of internal/pullrequest.
 const pullRequestImportLine = `"github.com/Knatte18/loomyard/internal/pullrequest"`
 
-// TestPullRequestGuard_OnlyLandingAndTeardown walks every non-test *.go file under the module root and enforces the pull request clause of `PATTERN-github-auth`.
-// Only internal/pullrequest calls go-github's mutating pull request calls, only it and internal/hubissues call the issue edit, and only the allowlisted directories import internal/pullrequest, so only PR-Review, Finalize and pair teardown open, merge or close one.
+// TestPullRequestGuard_OnlyLandingAndTeardown enforces the pull request clause of `PATTERN-github-auth`.
+// It walks every non-test *.go file under the module root.
+// Only internal/pullrequest calls go-github's mutating pull request calls.
+// Only it and internal/hubissues call the issue edit.
+// Only the allowlisted directories import internal/pullrequest.
+// So only they can open, merge or close a pull request through it.
 // The read-only `.PullRequests.List(` calls open, merge and close nothing and stay allowed.
 //
 //lym:guard
@@ -157,7 +156,8 @@ func TestPullRequestGuard_OnlyLandingAndTeardown(t *testing.T) {
 
 	scankit.RequireFloor(t, scanned, 20, "pull request guard")
 	calls.RequireNoStale(t)
-	// edits is left out of the stale check: internal/pullrequest holds an entry for a close through the issue that its client does not make today.
+	// edits is left out of the stale check:
+	// internal/pullrequest holds an entry for a close through the issue that its client does not make.
 	imports.RequireNoStale(t)
 
 	if len(failures) > 0 {

@@ -10,8 +10,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// pausedExtras returns the status keys a live pause entry covering this worktree's slug adds: paused_since (the entry's time, RFC 3339) and paused_by (its scope).
-// An uncovered run, a receiver without a location and an unreadable record add nothing; the last logs one Warn, so a status read never fails on the record.
+// pausedExtras returns the status keys a live pause entry covering this worktree's slug adds.
+// paused_since is the entry's time in RFC 3339, and paused_by is its scope.
+// An uncovered run, a receiver without a location and an unreadable record add nothing;
+// an unreadable geometry or record logs one Warn, so a status read never fails on the record.
 func (c *loomCLI) pausedExtras() map[string]any {
 	if c.location == nil {
 		return nil
@@ -35,7 +37,8 @@ func (c *loomCLI) pausedExtras() map[string]any {
 	}
 }
 
-// refuseCovered returns the refusal naming "lym tender resume" and the retry when a live pause entry covers this worktree's slug, and nil otherwise.
+// refuseCovered returns the refusal when a live pause entry covers this worktree's slug, and nil otherwise.
+// The refusal names "lym tender resume" and the retry.
 // A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a restart.
 func (c *loomCLI) refuseCovered(retry string) error {
 	geometry, err := hubgeom.PauseGeometry(c.location)

@@ -4,20 +4,17 @@ package shedbuild
 
 import "github.com/Knatte18/loomyard/internal/shedengine"
 
-// RoutingOf parses recipe and projects its graph into a shedengine.Routing through RoutingFrom.
+// RoutingOf parses recipe and projects its graph into a shedengine.Routing.
 //
-// RoutingOf parses through Parse, the sole recipe parser, and calls no registry entry, so it needs
-// no shedrecipe.Env and constructs no engine. That is what lets a status verb, which never builds
-// a Shed, compute recipe progress.
+// RoutingOf parses recipe with Parse and calls no registry entry,
+// so it needs no shedrecipe.Env and constructs no engine.
+// That lets a status verb compute recipe progress without building a Shed.
 //
-// RoutingOf takes a recipe holding no block row.
-// A parsed recipe holding one is refused with the way forward of expanding it with Expand and projecting it with RoutingFrom.
+// A recipe holding a block row is refused: expand it with Expand, then project the result with RoutingFrom.
 //
-// The returned Routing.MaxBounces is 0: the shed-level default travels in ShedPaths, and the
-// arming module fills it.
+// The returned Routing.MaxBounces is 0: the shed-level default travels in ShedPaths, and the arming module fills it.
 //
-// RoutingOf returns Parse's error unwrapped, as NewShed does; its callers add their own package
-// prefix.
+// RoutingOf returns Parse's error unwrapped; its callers add their own package prefix.
 func RoutingOf(recipe []byte) (shedengine.Routing, error) {
 	parsed, err := Parse(recipe)
 	if err != nil {
@@ -30,12 +27,11 @@ func RoutingOf(recipe []byte) (shedengine.Routing, error) {
 	return RoutingFrom(parsed), nil
 }
 
-// RoutingFrom projects the graph of an already-expanded recipe into a shedengine.Routing: Entry, plus each row's
-// Name, OnDone, OnStuck, OnReroute, Segment, MaxBounces, SkipTo and Block as a shedengine.ProducerDef with a nil Producer.
-// A row's Block is its BlockPath.
+// RoutingFrom projects the graph of an already-expanded recipe into a shedengine.Routing with the same Entry.
+// Each row becomes a shedengine.ProducerDef with a nil Producer, and its Block is the row's BlockPath.
 //
 // RoutingFrom calls no registry entry and parses nothing, so it needs no shedrecipe.Env and constructs no engine.
-// The returned Routing.MaxBounces is 0, as RoutingOf's is.
+// The returned Routing.MaxBounces is 0: the shed-level default travels in ShedPaths, and the arming module fills it.
 func RoutingFrom(r Recipe) shedengine.Routing {
 	producers := make([]shedengine.ProducerDef, len(r.Producers))
 	for i, row := range r.Producers {

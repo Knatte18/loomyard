@@ -1,30 +1,29 @@
-// Package shedcli builds the "lym shed" subtree: a named-recipe arming table plus the three CLI
-// seams (Command, RunCLI, RunCLIIn) that register it under the lym root.
+// Package shedcli builds the "lym shed" subtree.
+// It holds a named-recipe arming table.
+// The CLI seams (Command, RunCLI, RunCLIIn) register it under the lym root.
 //
-// This package is a separate package from internal/shedverbs because one package cannot hold both
-// halves — the arming functions this package's table calls are built over the loomCLI and
-// battenCLI receivers, so whichever package owns the table must import internal/loomcli and
-// internal/battencli, and those two packages import internal/shedverbs' own verb bodies.
-// Splitting them puts the bodies at a leaf (internal/shedverbs) and the table at the composition
-// layer (this package), which is what the dependency direction already demands.
+// The verb bodies live in internal/shedverbs, a leaf package, and the table lives here, in the composition layer.
+// The split follows the import direction:
+// the arming functions the table calls are built over the loomCLI and battenCLI receivers,
+// so the package owning the table imports internal/loomcli and internal/battencli,
+// and those two packages import the verb bodies.
 //
-// The table this package declares (table.go) is a different table from internal/shedrecipe's own registry, and the two must never be merged:
-// this package's table maps the recipe names ("tapestry", "batten", "darn", "motif", "pawl", "raddle", "sampler") to arming functions, while internal/shedrecipe's registry maps engine names to shedengine.ShedProducer constructors.
-// The two tables answer different questions for different callers.
-// This one is read by shedcli's own pre-run to decide which module arms a given "lym shed" invocation.
-// The other is read by every recipe's own row list to decide which producer constructor backs a given row.
-// Collapsing them would conflate a recipe name with an engine name, which are drawn from disjoint vocabularies today and have no reason to start colliding.
+// The table in table.go maps recipe names to arming functions.
+// shedcli's own pre-run reads it to decide which module arms a given "lym shed" invocation.
+// internal/shedrecipe's registry is a separate table.
+// It maps engine names to shedengine.ShedProducer constructors, and every recipe's row list reads it.
+// The two must stay apart, since a recipe name and an engine name come from disjoint vocabularies.
 //
-// The table binds a recipe name to an arming *function* rather than to a recipe file path, for two
-// reasons. First, a recipe alone cannot arm a Shed: shedverbs.Spec's BuildShed closure needs
-// injected seams (Shuttle, Burler, WebsterRun) and told strings no file can name — see spec.go's own
-// build-time-texts-run-time-spec Shared Decision. Second, a path-taking flag would imply a runtime
-// on-disk location for recipe files, which internal/shedbuild's own doc comment and the
-// Recipe-Format Sole-Parser Invariant both forbid: a recipe is a compiled Go function, never a
-// parsed file, anywhere in this tree.
+// The table binds a recipe name to an arming function, not to a recipe file path, for two reasons.
+// A recipe alone cannot arm a Shed:
+// shedverbs.Spec's BuildShed closure needs injected seams (Shuttle, Burler, WebsterRun).
+// It also needs told strings no file can name.
+// A path-taking flag would also imply a run-time on-disk location for recipe files.
+// internal/shedbuild's doc comment rules that out: a recipe is a compiled Go function, never a parsed file.
 //
-// Every entry's arming function shares one positional-argument contract, cobra.MaximumNArgs(1),
-// set statically on each generic verb rather than read off the table:
-// an addressed run is named by run-id, not by a per-recipe argument shape, so there is nothing left for a per-recipe contract to vary. The run-id itself is resolved once, ahead of the recipe lookup, by
-// resolvePersistentPreRun's own seed read — see cli.go's own doc comment for the full sequence.
+// Every arming function shares one positional-argument contract, cobra.MaximumNArgs(1).
+// It is set statically on each generic verb, not read off the table.
+// An addressed run is named by run-id, so no recipe has an argument shape of its own.
+// The run-id is resolved once, ahead of the recipe lookup, by resolvePersistentPreRun's seed read;
+// cli.go's doc comment gives the full sequence.
 package shedcli

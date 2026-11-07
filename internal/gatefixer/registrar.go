@@ -9,8 +9,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Registrar returns the Deps.Register seam for a fixer under role: it finds the strand in reed's strand table and registers its pane process under owner in runProcDir, so runproc's end verbs stop the fixer with the rest of its run.
-// It returns nil for an empty owner, which leaves the strand unregistered, as a caller outside a hub or on the prime has no pair to own it.
+// Registrar returns the Deps.Register seam for a fixer under role.
+// The seam finds the strand in reed's strand table and registers its pane process under owner in runProcDir.
+// Through that registration, runproc's end verbs stop the fixer with the rest of its run.
+// It returns nil for an empty owner, which leaves the strand unregistered.
+// A caller outside a hub or on the prime has no pair to own it.
 // A strand absent from the table, or with no pane process, is an error.
 func Registrar(reed shuttleengine.ReedOps, runProcDir, owner, role string) func(guid string) error {
 	if owner == "" {

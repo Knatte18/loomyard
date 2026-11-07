@@ -1,5 +1,4 @@
-// validate_test.go covers Validate against a bare t.TempDir(), reusing fakeRegistry from
-// reconcile_test.go.
+// validate_test.go covers Validate against a bare t.TempDir(), reusing fakeRegistry from reconcile_test.go.
 
 package stencilstore
 

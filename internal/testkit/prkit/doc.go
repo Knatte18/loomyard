@@ -1,3 +1,4 @@
-// Package prkit is the shared fake of pullrequest.API: one scripted answer list and one recorded call list per method, guarded by a mutex, so the beam verbs' tests and the merge-state reader's drive GitHub through the same stub.
+// Package prkit is a scripted fake of pullrequest.API, shared by tests that drive GitHub through one stub.
+// Each method has one scripted answer list and one recorded call list, guarded by a mutex.
 // It asserts nothing.
 package prkit

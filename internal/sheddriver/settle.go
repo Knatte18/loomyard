@@ -1,6 +1,7 @@
-// settle.go declares the Go driver's appender and reader of the settle-records file:
-// one JSON line per action the driver takes at a stop, in the told settle-records file.
-// The repair cap, the one verify retry and the one hand-over per build are counted from these records, so a restarted driver keeps every cap.
+// settle.go declares the Go driver's appender and reader of the settle-records file.
+// The file holds one JSON line per action the driver takes at a stop.
+// The repair cap, the one verify retry and the one hand-over per build are counted from these records.
+// A restarted driver therefore keeps every cap.
 
 package sheddriver
 
@@ -44,7 +45,8 @@ func AppendSettleRecord(path string, r SettleRecord) error {
 }
 
 // ReadSettleRecords reads every record of the file at path, in order.
-// An absent file reads nil, an unknown key is kept readable, and a line that does not decode is skipped with one Warn, so a torn append never blocks a cap.
+// An absent file reads nil, and an unknown key stays readable.
+// A line that does not decode is skipped with one Warn, so a torn append never blocks a cap.
 func ReadSettleRecords(path string) ([]SettleRecord, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -60,7 +62,8 @@ func ReadSettleRecords(path string) ([]SettleRecord, error) {
 	return records, nil
 }
 
-// RestepRecorded reports whether a settle record re-stepped the stop status names: its stop key equals the status's and its action is a restep.
+// RestepRecorded reports whether a settle record re-stepped the stop that status names.
+// The record matches when its stop key equals the status's and its action is a restep.
 func RestepRecorded(records []shedrun.SettleRecord, status shedengine.Status) bool {
 	key := StopKeyOf(status)
 	for _, record := range records {

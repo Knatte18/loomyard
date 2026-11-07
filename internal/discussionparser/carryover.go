@@ -1,6 +1,6 @@
-// carryover.go implements WriteCarryOver, the decision record's second write path.
-// It keeps one review segment's carry-over entry in the record's `## Open risks` section,
-// so the findings a closing review round left open reach the sessions that read the record next.
+// carryover.go implements WriteCarryOver, which writes one review segment's carry-over entry into a decision record.
+// The entry sits in the record's `## Open risks` section.
+// It lists the findings a closing review round left open, so the sessions that read the record next see them.
 
 package discussionparser
 
@@ -16,7 +16,7 @@ import (
 	"unicode"
 )
 
-// openRisksHeading is the H2 heading WriteCarryOver writes under.
+// openRisksHeading is the H2 heading of the section that holds carry-over entries.
 const openRisksHeading = "## Open risks"
 
 const (
@@ -46,7 +46,9 @@ const (
 // CarryOverFinding is one finding that was open when its segment closed.
 // It holds the key, the class and severity labels (the caller passes "unlabelled" for a missing label),
 // and the ledger rounds the key was open in.
-// AddedSince holds the titles, in record order, of the `Added after Discussion` entries recorded since the finding was escalated to the run's parent; nil means none.
+// AddedSince holds the titles of the `Added after Discussion` entries.
+// It lists only entries recorded since the finding was escalated to the run's parent, in record order.
+// It is nil when there are none.
 type CarryOverFinding struct {
 	Key        string
 	Class      string
@@ -57,8 +59,9 @@ type CarryOverFinding struct {
 
 // CarryOver is one review segment's carry-over entry.
 // It holds the segment, the round that closed it and how it closed.
-// It also holds the anchor-relative slash-separated paths of that round's review and fixer report, and the findings still open.
-// A CarryOver with no Findings asks WriteCarryOver to remove the segment's entry.
+// It also holds the anchor-relative, slash-separated paths of that round's review and fixer report.
+// The findings still open are in Findings.
+// With no Findings, writing the entry removes the segment's entry from the record.
 type CarryOver struct {
 	Segment         string
 	Round           int
@@ -75,15 +78,18 @@ type CarryOver struct {
 // The rendering is deterministic, so a replay writes the same bytes.
 //
 // Every line outside the written entry stays byte-identical.
-// A record with no entry for the segment and an entry without findings is not rewritten.
+// A record with no entry for the segment is not rewritten when the entry has no findings.
 // A malformed marker set in the section is an error, and nothing is written.
-// So is a record with no `## Open risks` heading (ErrNoOpenRisksHeading) and a Segment that is empty or holds anything but letters, digits and hyphens.
+// A record with no `## Open risks` heading fails with ErrNoOpenRisksHeading, and nothing is written.
+// A Segment that is empty or holds anything but letters, digits and hyphens is refused, and nothing is written.
 // The new bytes are checked against the prior ones before they replace the record through a sibling temporary file.
 // A failed write or check leaves the record unchanged.
 //
 // A concurrent writer of the record, such as `lym loom decision add`, is detected by two checks and no lock.
-// When the record differs from the bytes read at the start just before the rename, the write is refused and nothing is written.
-// When the record differs from the bytes written just after the rename, an error is returned and the other writer's bytes stay in place.
+// The record is checked just before the rename.
+// When it differs from the bytes read at the start, the write is refused and nothing is written.
+// It is checked again just after the rename.
+// When it differs from the bytes written, an error is returned and the other writer's bytes stay in place.
 // A write landing between the pre-rename check and the rename is still overwritten unseen.
 // Re-running the write after the other writer is done writes the same entry, since the rendering is deterministic.
 //
@@ -224,13 +230,15 @@ func sanitizeCarryOverField(field string) string {
 }
 
 // openRisksSection is the line range of the `## Open risks` section.
-// head is the heading line, end the next H2 line or len(lines), and inFence marks the fence lines and the lines inside a fenced block.
+// head is the heading line.
+// end is the next H2 line, or len(lines) when there is none.
+// inFence marks the fence lines and the lines inside a fenced block.
 type openRisksSection struct {
 	head, end int
 	inFence   []bool
 }
 
-// locateOpenRisks finds the `## Open risks` section, reading headings and fences with the same rule as the `## Decisions` insertion.
+// locateOpenRisks finds the `## Open risks` section, ignoring headings inside fenced blocks.
 func locateOpenRisks(lines []string) (openRisksSection, error) {
 	section := openRisksSection{head: -1, end: len(lines), inFence: fencedLines(lines)}
 	for i, line := range lines {
@@ -266,7 +274,7 @@ func lastNonBlankEnd(lines []string, section openRisksSection) int {
 // carryOverPair is the line span of one well-formed entry: its opening and closing marker lines.
 type carryOverPair struct{ open, close int }
 
-// carryOverMarker reports whether line is a marker line, and which kind and segment.
+// carryOverMarker reports whether line is a marker line, and returns its segment and whether it opens the entry.
 func carryOverMarker(line string) (segment string, isOpen, ok bool) {
 	trimmed := strings.TrimRight(line, " \t\r")
 	prefix := carryOverOpenPrefix
@@ -322,8 +330,9 @@ func scanCarryOverPairs(lines []string, section openRisksSection) (map[string]ca
 }
 
 // checkCarryOverSplice verifies the spliced lines before they are written.
-// They must keep the same H2 heading sequence and a well-formed marker set with exactly one entry for the written segment (none after a removal),
-// and every line outside the replaced span must equal the prior file's.
+// They must keep the same H2 heading sequence and a well-formed marker set.
+// The set holds exactly one entry for the written segment, or none after a removal;
+// every line outside the replaced span must equal the prior file's.
 // The replaced span is prior[priorStart:priorEnd] and next[priorStart:nextEnd].
 func checkCarryOverSplice(prior, next []string, priorStart, priorEnd, nextEnd int, segment string, wantEntry bool) error {
 	nextSection, err := locateOpenRisks(next)
@@ -359,7 +368,7 @@ func h2Headings(lines []string) []string {
 	return headings
 }
 
-// carryOverHooks are optional callbacks run around the rename in replaceFile, so a test can interleave another writer.
+// carryOverHooks are optional callbacks run around the rename of a file, so a test can interleave another writer.
 // Both are nil in production.
 type carryOverHooks struct {
 	beforeRename func()
@@ -368,8 +377,9 @@ type carryOverHooks struct {
 
 // replaceFile writes data to a sibling temporary file and renames it over path.
 // prior is the content of path the caller read before computing data.
-// When path no longer holds prior just before the rename, the temporary file is removed and an error is returned with nothing written.
-// When path does not hold data just after the rename, an error is returned and the other writer's bytes stay in place.
+// When path no longer holds prior before the rename, nothing is written;
+// the temporary file is removed and an error is returned.
+// When path does not hold data after the rename, an error is returned and the other writer's bytes stay in place.
 func replaceFile(path string, prior, data []byte, perm os.FileMode, hooks carryOverHooks) error {
 	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {

@@ -1,4 +1,5 @@
-// parentlock_test.go covers the seams of Run-Shed's parent lock backstop: the record lookup by run and the landing-in-flight read.
+// parentlock_test.go covers the seams of Run-Shed's parent lock backstop:
+// the record lookup by run and the landing-in-flight read.
 
 package battencli
 
@@ -18,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// TestChildParentLock asserts Read finds the lock record whose owner is the child's run by slug and pair and Release frees it.
+// TestChildParentLock asserts Read finds the lock record owned by the child's run, matched by slug and pair.
+// It asserts Release frees that lock.
 // It asserts KeepsLock holds the lock for a task pair running Finalize or verifying.
 func TestChildParentLock(t *testing.T) {
 	tiergate.Require(t, 0)

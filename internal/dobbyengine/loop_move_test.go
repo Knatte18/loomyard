@@ -1,4 +1,5 @@
-// loop_move_test.go pins the loop's gate on an anchor change: with a move record standing it spawns nothing, and the first tick after the record is gone starts the work it held back.
+// loop_move_test.go pins the loop's gate on an anchor change.
+// While a move record stands, the loop spawns nothing; the first tick after it is gone starts the held-back work.
 
 package dobbyengine
 
@@ -14,7 +15,8 @@ import (
 )
 
 // TestRun_NoPassWhileAMoveStands drives ticks with a move record present and then removed.
-// While it stands, no pass, no task and no tidy agent starts, though the landing is counted; the next tick starts the due pass, the ready task and the tidy agent.
+// While the record stands, no pass, task or tidy agent starts, though a landing is still counted.
+// The next tick starts the due pass, the ready task and the tidy agent.
 func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

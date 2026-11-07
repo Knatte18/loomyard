@@ -1,4 +1,4 @@
-// diff.go lists the `.go` files that differ between the base and the worktree, and reads each side of a changed file through git.
+// diff.go lists the `.go` files that differ between the base and the worktree, and reads both sides of each through git.
 
 package commentlint
 
@@ -89,7 +89,8 @@ func parseNameStatus(output string) []fileChange {
 }
 
 // readChange returns the base text and the new text of one changed file.
-// The base side comes from git at the base commit, or at HEAD when the base is empty; the new side comes from the working tree when the base is empty, and from HEAD otherwise.
+// The base side comes from git at the base commit, or at HEAD when the base is empty;
+// the new side comes from the working tree when the base is empty, and from HEAD otherwise.
 // A file with no base side has an empty base text.
 func readChange(worktree, base string, change fileChange) (baseText, newText string, err error) {
 	baseRevision := base

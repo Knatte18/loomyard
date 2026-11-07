@@ -28,16 +28,16 @@ var (
 	errOwnedElsewhere = errors.New("tenderengine: another live pause entry owns the session")
 )
 
-// PauseRequest asks for a pause.
+// PauseRequest names the scope of one pause and how long its grace runs.
 type PauseRequest struct {
 	// Slug is the pair to pause; empty pauses the whole hub.
 	Slug string
 	// Grace is how long busy sessions and network operations get to finish before the Esc.
 	Grace time.Duration
-	// Caller, when set, is the Caller the added entry carries instead of the deps' caller.
-	// The caller's own session is still the one the deps' caller names.
+	// Caller, when set, is the caller the added entry records in place of the default.
+	// Only the record changes; the session the pause skips as the caller's own does not.
 	Caller string
-	// Added, when set, is called once with the entry the pause adds, right after the record update and before the grace's first poll, so no Esc has gone yet.
+	// Added, when set, is called once with the entry the pause adds, after it is on disk and before any Esc.
 	// A scope that already had a live entry adds none and calls no Added.
 	// An error ends the pause at once with it wrapped; the entry stays live.
 	Added func(entry pauserecord.Entry) error
@@ -53,8 +53,8 @@ type PauseReport struct {
 	AlreadyPaused bool `json:"already_paused"`
 	// ResumedDuringGrace reports that the entry was resumed before the interrupts were done; no Esc went after that.
 	ResumedDuringGrace bool `json:"resumed_during_grace"`
-	// Interrupted holds the strands an Esc stopped:
-	// the state read no running turn after the first key's settle, the guarded second key found none, or the pane read none after the second key's settle.
+	// Interrupted holds the strands an Esc stopped, when a later reading showed no running turn.
+	// The readings: the state after the first key's settle, the guarded second key, the pane after the second settle.
 	// They are recorded, so resume gives each a line.
 	Interrupted []string `json:"interrupted"`
 	// NoRunningTurn holds the strands whose state read a running turn but whose guarded first key found none on the pane.
@@ -68,9 +68,9 @@ type PauseReport struct {
 	Background []BackgroundSession `json:"background"`
 	// StillBusy holds the strands whose pane still showed a running turn after the second key's settle.
 	StillBusy []string `json:"still_busy"`
-	// Refused holds the sessions whose interrupt or reading was refused, such as a pane that is not ready, a failed capture or an open rewind picker, each with the error's message.
+	// Refused holds the sessions refused on interrupt or reading, with the error's message.
 	Refused []SessionNote `json:"refused"`
-	// Skipped holds the sessions left alone: the caller's own and one another entry owns.
+	// Skipped holds the sessions left alone: the caller's own and those owned by another live entry.
 	Skipped []SessionNote `json:"skipped"`
 	// NetOps holds the covered network operations still in flight.
 	NetOps []NetOpReport `json:"net_ops"`
@@ -95,7 +95,7 @@ type session struct {
 	pair Pair
 }
 
-// Pause runs the pause sequence.
+// Pause runs the pause sequence: it records the entry, waits out the grace, then interrupts the covered sessions.
 // The entry is on disk before the first Esc, and each session is recorded in it before its Esc.
 // The Added callback runs after the entry is on disk and before the grace.
 func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
@@ -246,7 +246,8 @@ func sameEntry(a, b pauserecord.Entry) bool {
 }
 
 // claimSession records s in entry under the record lock.
-// It fails with errEntryGone when entry is no longer live and errOwnedElsewhere when another live entry owns the session.
+// It fails with errEntryGone when entry is no longer live.
+// It fails with errOwnedElsewhere when another live entry owns the session.
 func claimSession(deps Deps, entry pauserecord.Entry, s session) error {
 	_, err := pauserecord.Update(deps.RecordPath, deps.Now(), func(record *pauserecord.Record) error {
 		if owner, owned := record.Owner(s.GUID); owned && !sameEntry(owner, entry) {
@@ -284,8 +285,10 @@ const (
 	keyEntryGone
 )
 
-// interruptSession interrupts every session in sessions that reads a running turn, at most maxInterrupts times each, recording the outcomes in report.
-// The keys go in passes over the sessions, each pass followed by one settle, so a pause waits each settle once whatever the number of sessions.
+// interruptSession interrupts every session in sessions that reads a running turn, at most maxInterrupts times each.
+// It records each outcome in report.
+// The keys go in passes over the sessions, and each pass is followed by one settle.
+// A pause therefore waits each settle once, whatever the number of sessions.
 // A session whose pane still shows a running turn after its last key's settle is StillBusy.
 // stop is true when the entry was no longer live at a check, which ends the interrupt step.
 func interruptSession(deps Deps, entry pauserecord.Entry, sessions []session, report *PauseReport) (stop bool) {
@@ -350,8 +353,10 @@ func interruptSession(deps Deps, entry pauserecord.Entry, sessions []session, re
 	return false
 }
 
-// noteNotRunning records a session that reads no running turn: listed under Background with its tasks when its turn ended with background work, else AlreadyIdle.
-// A failed background reading is Refused.
+// noteNotRunning records a session that reads no running turn.
+// It lists the session under Background with its tasks when its turn ended with background work;
+// otherwise it goes under AlreadyIdle.
+// A failed background reading is recorded as Refused.
 func noteNotRunning(s session, report *PauseReport) {
 	labels, background, err := s.pair.Background(s.GUID)
 	switch {
@@ -365,7 +370,8 @@ func noteNotRunning(s session, report *PauseReport) {
 }
 
 // guardedKey records s in entry and sends it one guarded interrupt.
-// Any refusal, such as a pane that is not ready, an open rewind picker or a failed capture, is recorded in report with its message.
+// A refusal is recorded in report with its message.
+// Refusals include a pane that is not ready, an open rewind picker and a failed capture.
 func guardedKey(deps Deps, entry pauserecord.Entry, s session, report *PauseReport) keyOutcome {
 	if err := claimSession(deps, entry, s); err != nil {
 		if errors.Is(err, errEntryGone) {
@@ -388,8 +394,9 @@ func guardedKey(deps Deps, entry pauserecord.Entry, s session, report *PauseRepo
 	return keyRefused
 }
 
-// settle waits the longest interrupt settle among the sessions whose settle resolved once, and waits not at all for none.
-// A session whose settle fails is logged at Warn and adds nothing to the wait.
+// settle waits for the longest InterruptSettle among the sessions whose reading succeeds.
+// A failed reading is logged at Warn and adds nothing to the wait;
+// with no readable session, settle waits not at all.
 func settle(deps Deps, sessions []session) {
 	if len(sessions) == 0 {
 		return
@@ -428,8 +435,9 @@ func goProducers(deps Deps, scope string, sessions []session) ([]GoProducer, err
 	return producers, nil
 }
 
-// orchCase says what becomes of the orch under a hub entry.
-// An orch caller ran the pause itself, and otherwise any orch of the hub with a live watcher reads the pause as delegated.
+// orchCase reports what becomes of the orch under a hub entry.
+// An orch caller ran the pause itself, which leaves nothing to interrupt it;
+// otherwise an orch of the hub with a live watcher means the pause is delegated.
 func orchCase(deps Deps) (OrchCase, error) {
 	if isOrchStrand(deps.Caller) {
 		return OrchRanPause, nil

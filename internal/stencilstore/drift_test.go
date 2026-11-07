@@ -16,7 +16,7 @@ func stampedBody(body string) []byte {
 	return ApplyStamp([]byte(body), BodyHash([]byte(body)))
 }
 
-// TestClassifyPortBackDrift pins each of the four classes' message and remedy.
+// TestClassifyPortBackDrift pins each class's message and remedy.
 func TestClassifyPortBackDrift(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -31,7 +31,7 @@ func TestClassifyPortBackDrift(t *testing.T) {
 		wantClass    driftClass
 		wantContains []string
 		wantPromote  bool
-		// ancestry is what the build func reports; nilBuild passes no func at all.
+		// ancestry is what the build func reports; nilBuild passes no func.
 		ancestry   BuildAncestry
 		nilBuild   bool
 		wantCalls  int
@@ -137,7 +137,8 @@ func TestClassifyPortBackDrift(t *testing.T) {
 }
 
 // TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils drives the warning end to end:
-// the differing stencils are listed with their classes on one line, with their remedies once, and an equal one is not listed.
+// the differing stencils are listed with their classes on one line, with their remedies once,
+// and an equal one is not listed.
 // The line is a Warn unless every differing stencil is in the behind class, when it is an Info.
 // It captures the logger's output, which is process-global state, so it stays serial.
 func TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils(t *testing.T) {

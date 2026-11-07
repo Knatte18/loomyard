@@ -1,5 +1,5 @@
-// engineset.go defines EngineSet, the named engines a shuttle consumer holds in place of one Engine,
-// and the lookup that resolves a spec's or a run record's engine name to its engine.
+// engineset.go defines EngineSet, the named engines a shuttle consumer holds in place of one Engine.
+// It also defines the lookup that resolves a spec's or a run record's engine name to its engine.
 
 package shuttleengine
 
@@ -11,19 +11,19 @@ import (
 	"strings"
 )
 
-// ErrEngineNotRegistered is wrapped by the error EngineSet.Lookup returns for a name the set does not hold.
+// ErrEngineNotRegistered is the sentinel error for an unregistered engine name; callers match it with errors.Is.
 var ErrEngineNotRegistered = errors.New("shuttle: the engine is not registered")
 
 // EngineSet is the engines a shuttle consumer can resolve by name, with the name of the default engine.
 // The zero value is an empty set that resolves nothing.
-// It is safe for concurrent use, since nothing mutates it after NewEngineSet.
+// It is safe for concurrent use, since nothing mutates it once it is built.
 type EngineSet struct {
 	defaultName string
 	engines     map[string]Engine
 }
 
 // NewEngineSet returns a set over a copy of engines whose default is defaultName.
-// It does not check that defaultName is registered; Lookup reports that.
+// It does not check that defaultName is registered; resolving the default fails when it is not.
 func NewEngineSet(defaultName string, engines map[string]Engine) EngineSet {
 	copied := make(map[string]Engine, len(engines))
 	for name, engine := range engines {
@@ -47,7 +47,8 @@ func (s EngineSet) Lookup(name string) (Engine, error) {
 }
 
 // engineOfRun resolves the engine rs was started with, the default engine for a record naming none.
-// A record naming an engine the set does not hold reads as not resolved: the skip is logged once per episode under a key of its own in runDir, and recovered once the engine resolves again.
+// A record naming an engine the set does not hold reads as not resolved:
+// the skip is logged once per episode under a key of its own in runDir, and recovered once the engine resolves again.
 func (s EngineSet) engineOfRun(runDir string, rs RunState) (Engine, bool) {
 	key := filepath.Join(runDir, "engine")
 	engine, err := s.Lookup(rs.Engine)
@@ -60,7 +61,7 @@ func (s EngineSet) engineOfRun(runDir string, rs RunState) (Engine, bool) {
 }
 
 // engineFor resolves the engine rs names and the name it resolved to, the default's name for a record naming none.
-// A name the runner's set does not hold returns the lookup's error.
+// The error for a name the runner's set does not hold is returned unchanged.
 func (r *Runner) engineFor(rs RunState) (Engine, string, error) {
 	engine, err := r.engines.Lookup(rs.Engine)
 	if err != nil {
@@ -83,7 +84,7 @@ func (s EngineSet) Names() []string {
 	return names
 }
 
-// DefaultName returns the name of the engine an empty name resolves to, as NewEngineSet was told.
+// DefaultName returns the name of the engine an empty name resolves to, as it was given at construction.
 func (s EngineSet) DefaultName() string {
 	return s.defaultName
 }

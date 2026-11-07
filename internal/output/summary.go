@@ -1,5 +1,6 @@
-// summary.go renders a JSON envelope as a short readable summary for a person at a terminal:
-// the outcome, what the verb did, and every error, warning and way forward, one line each, with long lists collapsed to a count.
+// summary.go renders a JSON envelope as a short readable summary for a person at a terminal.
+// It shows the outcome, what the verb did, and every error, warning and way forward, one line each.
+// Long lists collapse to a count.
 
 package output
 
@@ -49,7 +50,7 @@ const summaryFooter = "full envelope: rerun with --" + EnvelopeFlag
 // a list of plain values under an error, warning or way-forward key one line per value;
 // an object as its fields, indented, or its field count when it lies deeper than the depth limit;
 // and a list of objects one line per item, naming the item's label and its line field.
-// Whatever a count or a one-line item hides still shows its errors, warnings and ways forward, one line each, by their path.
+// Errors, warnings and ways forward that a count or a one-line item hides still show, one line each, by their path.
 // A summary that hid anything ends naming the flag that prints the full envelope.
 func Summary(line []byte) (string, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(line))
@@ -128,7 +129,8 @@ func (r *summaryRenderer) field(depth int, key string, value any) {
 	}
 }
 
-// list writes a list of plain values on one line, or its count past the list limit, and a list holding an object one line per item.
+// list writes a list of plain values on one line, or its count past the list limit.
+// A list holding an object writes its key, then one line per item.
 // A list of plain values under a note key is never collapsed: each of its non-empty values is one line.
 func (r *summaryRenderer) list(depth int, key string, items []any) {
 	if !holdsObject(items) {
@@ -183,7 +185,8 @@ func (r *summaryRenderer) item(depth int, item any) {
 	r.notes(depth+1, "", object)
 }
 
-// notes writes every error, warning and way forward value holds at any depth, one line each, named by its path below the written context.
+// notes writes each error, warning and way-forward value held by value, at any depth, one line each.
+// Each line is named by its key path, prefixed by path.
 func (r *summaryRenderer) notes(indent int, path string, value any) {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -247,7 +250,8 @@ func firstString(object map[string]any, keys []string) keyValue {
 	return keyValue{}
 }
 
-// plainFields joins object's non-empty plain fields that are not notes as `key=value` in key order, and returns the keys it showed.
+// plainFields joins object's non-empty plain fields, other than notes, as `key=value` in key order.
+// It also returns the set of keys it showed.
 func plainFields(object map[string]any) (string, map[string]bool) {
 	shown := map[string]bool{}
 	var parts []string

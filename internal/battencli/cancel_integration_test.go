@@ -1,5 +1,5 @@
-// cancel_integration_test.go drives "lym batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, a kept pair whose reconcile only judges, and a pair removed with its task branch.
-// It stays a white-box "package battencli" test, like the other integration files here.
+// cancel_integration_test.go drives "lym batten cancel" through RunCLIIn over hubforge hubs.
+// It covers a blocked run with no pair, a kept pair whose reconcile only judges, and a removed pair.
 
 package battencli
 
@@ -30,7 +30,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedCancelRun writes and commits a batten seed and a status at producer in rowState for slug on h's prime, and claims slug's board entry with claim.
+// seedCancelRun writes and commits a batten seed and a status for slug on h's prime.
+// The status is at producer in rowState, and slug's board status is set to claim.
 func seedCancelRun(t *testing.T, h *hubforge.Hub, slug, producer string, rowState shedengine.State, claim string) {
 	t.Helper()
 	seedBoardTask(t, h, slug, "tapestry")
@@ -94,8 +95,10 @@ func overviewListsSlug(t *testing.T, h *hubforge.Hub, slug string) bool {
 	return slices.ContainsFunc(view.Runs, func(run dobbyengine.ViewRun) bool { return run.Slug == slug })
 }
 
-// TestCancelIntegration_BlockedRunWithNoPair cancels a run blocked at Worktree-Create with no pair, a claim and a tackler marker naming a guid no strand holds:
-// the records are removed and committed, the tackler is stopped, the claim is cleared, the run leaves the overview, and a second cancel finds nothing left.
+// TestCancelIntegration_BlockedRunWithNoPair cancels a run blocked at Worktree-Create with no pair.
+// The run has a claim and a tackler marker naming a guid that no strand holds.
+// The cancel removes and commits the records, stops the tackler, and clears the claim.
+// The run leaves the overview, and a second cancel finds nothing left.
 func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -138,7 +141,8 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 
 	envelope.RequireErr(t, runCancel(t, h.PrimeWorktree(), slug), "nothing of "+slug+" is left to cancel")
 
-	// A blocked run whose directory is committed and then deleted on disk, with no pair or claim, has only its records deletion outstanding.
+	// A blocked run whose directory is committed and then deleted on disk has no pair or claim.
+	// Its only outstanding step is the deletion of its records.
 	const deleted = "cancel-deleted-on-disk"
 	seedCancelRun(t, h, deleted, battenrecipe.NameWorktreeCreate, shedengine.StateBlocked, "running · Worktree-Create")
 	board, err := boardengine.OpenHub(h.Path)
@@ -162,8 +166,10 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 	}
 }
 
-// TestCancelIntegration_KeptPairJudgeOnly cancels, without --remove, a paused run whose pair's records branch on origin is ahead of the local one:
-// the pair is kept, the reconcile the cancel ran moved no ref, the claim is cleared, and the way forward names the cancel with --remove.
+// TestCancelIntegration_KeptPairJudgeOnly cancels a paused run without --remove.
+// The run's pair has a records branch on origin that is ahead of the local one.
+// The pair is kept, the reconcile the cancel ran moved no ref, and the claim is cleared.
+// The way forward names the cancel with --remove.
 func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -203,8 +209,11 @@ func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 	}
 }
 
-// TestCancelIntegration_RemoveTearsDownPairAndBranch cancels with --remove a paused run whose pair holds an unpushed commit and an uncommitted file, and whose slug holds a live pause entry:
-// the pair is removed with its uncommitted file snapshotted, the task branch is archived and deleted locally and on origin, the pause entry is lifted and the claim is cleared.
+// TestCancelIntegration_RemoveTearsDownPairAndBranch cancels a paused run with --remove.
+// The run's pair holds an unpushed commit and an uncommitted file, and its slug holds a live pause entry.
+// The pair is removed with its uncommitted file snapshotted.
+// The task branch is archived and deleted locally and on origin.
+// The pause entry is lifted and the claim is cleared.
 func TestCancelIntegration_RemoveTearsDownPairAndBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

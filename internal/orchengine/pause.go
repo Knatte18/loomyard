@@ -1,4 +1,6 @@
-// pause.go is the orch watcher's reading of the hub pause record: it holds the cycle machine while a hub entry is live, interrupts a busy orch at the entry's grace end, and posts the orch's resume line as creel mail after the entry is resumed.
+// pause.go is the orch watcher's reading of the hub pause record.
+// It holds the cycle machine while a hub entry is live and interrupts a busy orch at the entry's grace end.
+// It posts the orch's resume line as creel mail once the entry is resumed.
 // The guarded interrupt is the watcher's only keystroke here; a slug entry never covers the orch.
 
 package orchengine
@@ -33,7 +35,8 @@ func (w *Watcher) WatchPause(p PauseWatch) {
 	w.pause = &p
 }
 
-// SetOrchName tells the watcher the agent name of the orch it watches, which the pause checks match an orch caller or a network operation marker against.
+// SetOrchName tells the watcher the agent name of the orch it watches.
+// The pause checks match an orch caller or a network operation marker against this name.
 // A watcher never told one reads the prime's orch: any orch name with an empty slug.
 func (w *Watcher) SetOrchName(name string) {
 	w.ownOrchName = name
@@ -53,8 +56,10 @@ func (w *Watcher) isOwnOrch(strand string) bool {
 
 // pauseTick reads the pause record and acts on it for this tick.
 // held is true while a live hub entry stands, and the caller then runs nothing else this tick.
-// Under a live hub entry a busy orch gets the first guarded key at the entry's grace end, and a second only on a tick at least the provider's settle time later that still reads it busy;
-// with no live entry, the resume line of an orch the last entry interrupted is posted once.
+// Under a live hub entry, a busy orch gets the first guarded key at the entry's grace end.
+// A second and last key follows only on a tick at least the provider's settle time after the first.
+// It is sent only if that tick still reads the orch busy.
+// With no live entry, the resume line of an orch the last entry interrupted is posted once.
 // An unreadable record holds nothing and logs one Warn per change of error.
 func (w *Watcher) pauseTick(st State, now time.Time) (held bool, err error) {
 	if w.firstTick.IsZero() {
@@ -80,9 +85,10 @@ func (w *Watcher) pauseTick(st State, now time.Time) (held bool, err error) {
 	return true, w.handleHubEntry(entry, record, st, now)
 }
 
-// handleHubEntry acts on each live hub entry until it is handled, remembered in memory by its PausedAt.
-// A tick after the first key waits out the provider's settle, then re-probes the orch and sends the second and last key only to a busy one.
-// That step runs before settledWithoutInterrupt, because the first key's record already makes the entry own the orch.
+// handleHubEntry acts on a live hub entry until it is handled, which it remembers in memory by the entry's PausedAt.
+// After the first key, a later tick waits out the provider's settle.
+// Then it re-probes the orch and sends the second and last key only to a busy one.
+// The re-probe runs before the settled check, because the first key's record already makes the entry own the orch.
 func (w *Watcher) handleHubEntry(entry pauserecord.Entry, record pauserecord.Record, st State, now time.Time) error {
 	key := entry.PausedAt.UnixNano()
 	if w.pauseHandled[key] {
@@ -146,7 +152,8 @@ func (w *Watcher) handleHubEntry(entry pauserecord.Entry, record pauserecord.Rec
 }
 
 // pauseInterrupt sends the orch one guarded interrupt and reports whether the key went.
-// A pane the guard finds with no running turn reads as an idle orch and is logged at Info; an open rewind picker is closed by the guard and logged at Warn.
+// A pane the guard finds with no running turn reads as an idle orch and is logged at Info.
+// An open rewind picker is closed by the guard and logged at Warn.
 func (w *Watcher) pauseInterrupt(st State) (sent bool) {
 	err := w.session.Interrupt(st.Strand)
 	switch {
@@ -162,7 +169,9 @@ func (w *Watcher) pauseInterrupt(st State) (sent bool) {
 	return false
 }
 
-// settledWithoutInterrupt reports whether entry needs no interrupt and no record of the orch: the orch ran the pause, the entry already owns the orch, the orch started under it, or the watcher was not running at its grace end.
+// settledWithoutInterrupt reports whether entry needs neither an interrupt nor a record of the orch.
+// That holds when the orch ran the pause, or when the entry already owns the orch.
+// It also holds when the orch started under the entry, or when the watcher was not running at the grace end.
 func (w *Watcher) settledWithoutInterrupt(entry pauserecord.Entry, st State) bool {
 	if w.isOwnOrch(entry.Caller) {
 		return true
@@ -213,7 +222,8 @@ func (w *Watcher) orchNetworkOperationInFlight() bool {
 }
 
 // recordOrchInEntry adds the orch's session to the live hub entry with entry's PausedAt, under the record lock.
-// It fails with errPauseEntryGone when no such entry is live and errPauseAlreadyOwned when a live entry already owns the session.
+// It fails with errPauseEntryGone when no such entry is live.
+// It fails with errPauseAlreadyOwned when a live entry already owns the session.
 func (w *Watcher) recordOrchInEntry(entry pauserecord.Entry, st State, now time.Time) error {
 	_, err := pauserecord.Update(w.pause.RecordPath, now, func(record *pauserecord.Record) error {
 		if _, owned := record.Owner(st.Strand); owned {
@@ -231,8 +241,11 @@ func (w *Watcher) recordOrchInEntry(entry pauserecord.Entry, st State, now time.
 	return err
 }
 
-// queueResumeLine posts the resume line of the newest resumed entry that owns the orch and has not yet noticed it as creel mail to the orch strand, then marks it noticed under the record lock.
-// The line reaches the orch through its hooks, or the bell when it is idle, once no pause or hold mutes it, and mail has no TTL, so the line cannot expire while the orch stays busy.
+// queueResumeLine posts the resume line as creel mail to the orch strand.
+// It picks the newest resumed entry that owns the orch and has not yet noticed it.
+// It then marks that entry noticed under the record lock.
+// The line reaches the orch through its hooks, or the bell when idle, once no pause or hold mutes it.
+// Mail has no TTL, so the line cannot expire while the orch stays busy.
 // The line is posted before the mark, so a crash or a failed post between the two posts it again rather than never.
 func (w *Watcher) queueResumeLine(record pauserecord.Record, st State, now time.Time) error {
 	var resumed pauserecord.Entry
@@ -272,8 +285,10 @@ func (w *Watcher) queueResumeLine(record pauserecord.Record, st State, now time.
 	return err
 }
 
-// ClearResumeNoticed clears, under the pause record's lock, the resume-noticed mark of each resumed entry's orch session on strand.
-// It acts only when withdrawn holds the resume line itself: a withdraw removed the line before the orch read it, so a later queueResumeLine must post it again.
+// ClearResumeNoticed clears the resume-noticed mark of each resumed entry's orch session on strand.
+// The clear runs under the pause record's lock.
+// It acts only when withdrawn holds the resume line itself.
+// Such a withdraw removes the line before the orch reads it, so the line must be posted again later.
 // A withdraw that removed no resume line changes nothing.
 func ClearResumeNoticed(recordPath, strand string, withdrawn []CreelWithdrawn, now time.Time) error {
 	removed := false

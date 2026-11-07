@@ -1,4 +1,6 @@
-// prebuild.go builds `lym` once for a tagged `lym gate test` run, so every package of the run shares the one binary through gateslot.PrebuiltLymEnv, and inside a hub keeps it in the hub's content-addressed store.
+// prebuild.go builds `lym` once for a tagged `lym gate test` run, so every package of the run shares one binary.
+// Every package reaches it through gateslot.PrebuiltLymEnv.
+// Inside a hub, the binary is kept in the hub's content-addressed store.
 
 package gatecli
 
@@ -36,9 +38,12 @@ func buildRoot(location *lymcwd.Location, dir string) string {
 	return dir
 }
 
-// prebuildLym builds `<root>/cmd/lym` into a fresh directory in the process run directory with goBinary under the run's `-p` cap and `-trimpath`, and returns the binary path and a cleanup that removes what the run does not keep.
-// With storeDir non-empty the binary is published into storeDir under a name derived from its content and that path is returned, so two runs on an unchanged tree export the same path and go test's cache keys stay stable;
-// the build directory is then removed at once, and the store keeps the binary for later runs.
+// prebuildLym builds `<root>/cmd/lym` with goBinary into a fresh directory in the process run directory.
+// The build runs under the run's `-p` cap and with `-trimpath`,
+// and it returns the binary path and a cleanup that removes what the run does not keep.
+// With storeDir non-empty, the binary is published into storeDir under a name derived from its content,
+// and that path is returned, so two runs on an unchanged tree export the same path and go test's cache keys stay stable.
+// The build directory is then removed at once, and the store keeps the binary for later runs.
 // With storeDir empty the returned path is the build directory's, which the cleanup removes.
 // A root without `cmd/lym` builds nothing and returns an empty path and a cleanup that does nothing.
 // A build failure returns an error carrying the build's output.
@@ -72,10 +77,13 @@ func prebuildLym(ctx context.Context, goBinary, root string, parallel int, store
 	return stored, func() {}, nil
 }
 
-// storePrebuilt publishes the binary at bin into storeDir under `lym-` and the first 16 hex digits of its SHA-256, and returns the stored path.
+// storePrebuilt publishes the binary at bin into storeDir under `lym-` plus the first 16 hex digits of its SHA-256.
+// It returns the stored path.
 // A binary already stored under that name is kept and its modification time set to now, which marks its last use.
-// A new one, or an existing one a concurrent prune removes around that refresh, is copied in under a name unique to this process and renamed into place, so a concurrent run never sees half a binary.
-// It then prunes every other entry of storeDir last modified more than prebuiltRetention before now; a failed removal is logged, never returned.
+// A new binary, or one a concurrent prune removed around that refresh, is copied in.
+// The copy uses a name unique to this process and is renamed into place, so a concurrent run never sees half a binary.
+// It then prunes every other entry of storeDir last modified more than prebuiltRetention before now;
+// a failed removal is logged, never returned.
 func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	sum, err := fileSHA256(bin)
 	if err != nil {
@@ -99,8 +107,10 @@ func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	return stored, nil
 }
 
-// refreshStored sets the modification time of the entry at stored to now, which marks its last use, and reports whether the entry is there to use.
-// An entry that is missing, or that a concurrent prune removes right after the refresh, reports false with no error, so the caller publishes it again.
+// refreshStored sets the modification time of the entry at stored to now, which marks its last use.
+// It reports whether the entry is there to use.
+// An entry that is missing, or that a concurrent prune removes right after the refresh, reports false with no error,
+// so the caller publishes it again.
 func refreshStored(stored string, now time.Time) (bool, error) {
 	if err := os.Chtimes(stored, now, now); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -117,8 +127,10 @@ func refreshStored(stored string, now time.Time) (bool, error) {
 	return true, nil
 }
 
-// copyIntoPlace copies the executable at src to dst through a sibling staging file named for this process, with its modification time set to now.
-// On a platform whose rename refuses an existing target, a dst another run published first is kept and the staging file removed.
+// copyIntoPlace copies the executable at src to dst through a sibling staging file named for this process.
+// The staging file's modification time is set to now.
+// On a platform whose rename refuses an existing target, a dst another run published first is kept.
+// The staging file is removed whenever the rename fails.
 func copyIntoPlace(src, dst string, now time.Time) error {
 	staging := dst + ".partial-" + strconv.Itoa(os.Getpid())
 	if err := copyExecutable(src, staging); err != nil {
@@ -171,7 +183,7 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// pruneStore removes every entry of storeDir other than keep whose modification time is more than prebuiltRetention before now.
+// pruneStore removes every entry of storeDir, other than keep, last modified more than prebuiltRetention before now.
 // A failure is logged and the entry left for a later prune.
 func pruneStore(storeDir, keep string, now time.Time) {
 	entries, err := os.ReadDir(storeDir)

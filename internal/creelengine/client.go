@@ -1,4 +1,6 @@
-// client.go is the Go client of the daemon: it starts the daemon when none answers, checks which hub answers, and resumes the waiting verbs across a dropped connection.
+// client.go is the Go client of the daemon:
+// it starts the daemon when none answers and checks which hub answers;
+// it resumes the waiting verbs across a dropped connection.
 
 package creelengine
 
@@ -26,11 +28,11 @@ const (
 	maxResponseBytes = 64 << 20
 )
 
-// Spawn is what a client's spawn seam answers for a daemon it started.
+// Spawn describes a daemon that a client's spawn function started.
 type Spawn struct {
 	// PID is the pid of the started daemon.
 	PID int
-	// Exited fires once when that process exits; nil for a seam that gives no signal.
+	// Exited receives a value once when that process exits; it is nil when the spawn gives no exit signal.
 	Exited <-chan SpawnExit
 }
 
@@ -51,13 +53,16 @@ type Client struct {
 }
 
 // NewClient returns a Client for the hub in geom.
-// claim states who the caller says it is, and spawn starts the daemon when none answers and answers the pid it started with the signal of its exit; nil spawns nothing.
+// claim states who the caller says it is.
+// spawn starts the daemon when none answers.
+// It returns the pid it started, with the signal of that daemon's exit; a nil spawn starts nothing.
 // A client that gives up connecting after a spawn quotes that pid's lines from geom.DaemonLogPath.
 func NewClient(geom Geometry, claim Claim, spawn func() (Spawn, error), clock Clock) *Client {
 	return &Client{geom: geom, claim: claim, spawn: spawn, clock: clock}
 }
 
-// ErrAckUnsent marks a failed write of the acknowledgement line: the daemon never received it, so it journaled nothing of what it handed out.
+// ErrAckUnsent marks a failed write of the acknowledgement line:
+// the daemon never received it, so it journaled nothing of what it handed out.
 // A confirmation the daemon refused or that was lost never matches it, since the acknowledgement was written.
 var ErrAckUnsent = errors.New("creel: the acknowledgement could not be sent, so the daemon journaled nothing")
 
@@ -68,8 +73,9 @@ func (e *connLostError) Error() string { return e.err.Error() }
 
 func (e *connLostError) Unwrap() error { return e.err }
 
-// daemonRefusal marks a refusal the daemon answered, as opposed to a connection that dropped or an answer that could not be read.
-// Its text is the daemon's message, and a refusal that carried a code also matches that code's sentinel under errors.Is.
+// daemonRefusal marks a refusal the daemon answered, not a dropped connection or an unreadable answer.
+// Its text is the daemon's message.
+// A refusal that carried a code also matches that code's sentinel under errors.Is.
 type daemonRefusal struct{ err error }
 
 func (e *daemonRefusal) Error() string { return e.err.Error() }
@@ -77,8 +83,10 @@ func (e *daemonRefusal) Error() string { return e.err.Error() }
 func (e *daemonRefusal) Unwrap() error { return e.err }
 
 // connect dials the daemon's socket.
-// When nothing answers it starts the daemon once and retries up to ConnectAttempts times, sleeping on the told clock from one second between tries.
-// A spawned daemon that exits other than by a lost start race ends the wait after one last connect; a lost race keeps the backoff, since the winner may not answer yet.
+// When nothing answers it starts the daemon once and retries up to ConnectAttempts times.
+// It sleeps on the client's clock between tries, the wait starting at one second and doubling up to a ceiling.
+// A spawned daemon that exits other than by a lost start race ends the wait after one last connect;
+// a lost race keeps the backoff, since the winner may not answer yet.
 // When it gives up, its error names the socket and the daemon log and quotes the log's lines from that start.
 func (c *Client) connect() (net.Conn, error) {
 	conn, err := net.Dial("unix", c.geom.SocketPath)
@@ -123,7 +131,7 @@ func (c *Client) connect() (net.Conn, error) {
 	return nil, c.gaveUp(spawned.PID, connects, err)
 }
 
-// gaveUp builds the error of a client that started a daemon and still could not connect after the given number of connects.
+// gaveUp builds the error for a client whose spawned daemon never answered, after the given number of connects.
 func (c *Client) gaveUp(pid, connects int, err error) error {
 	return &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w; daemon log %s: %s",
 		c.geom.SocketPath, connects, err, c.geom.DaemonLogPath, daemonLogExcerpt(c.geom.DaemonLogPath, pid))}
@@ -137,16 +145,22 @@ type waitState struct {
 }
 
 // Call sends the request as the client's claim and returns the final response.
-// A refusal by the daemon comes back as an error carrying its message; one that carries a code also matches that code's sentinel under errors.Is.
-// The timeout is measured on the client's clock over the whole request, waiting or not, and zero means none; its expiry returns ErrWaitTimeout.
-// A waiting call whose connection drops reconnects up to MaxReconnects times, starting the daemon if needed, and resumes the same wait.
-// A hook-wait resumes only until a ring reaches handle; a connection lost after that ends the call, since the daemon may already have journaled the mail the ring carried.
-// A read's response is handed to handle, and acknowledged only when handle returns nil; a handle that fails leaves the messages unread.
+// A refusal by the daemon comes back as an error carrying its message.
+// One that carries a code also matches that code's sentinel under errors.Is.
+// The timeout is measured on the client's clock over the whole request, waiting or not; zero means none.
+// Its expiry returns ErrWaitTimeout.
+// A waiting call whose connection drops reconnects up to MaxReconnects times.
+// It starts the daemon if needed and resumes the same wait.
+// A hook-wait resumes only until a ring reaches handle.
+// A connection lost after that ends the call, since the daemon may already have journaled the mail the ring carried.
+// A read's response is handed to handle and acknowledged only when handle returns nil.
+// A handle that fails leaves the messages unread.
 func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) error) (Response, error) {
 	return c.CallWatching(req, timeout, handle, nil)
 }
 
-// CallWatching is Call that also hands every progress response of a waiting inject to progress, in the order they arrive; a nil progress ignores them.
+// CallWatching sends the request as the client's claim and returns the final response.
+// It hands every progress response of a waiting inject to progress, in arrival order; a nil progress ignores them.
 func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Response) error, progress func(Response)) (Response, error) {
 	req.Claim = c.claim
 	var timer <-chan time.Time
@@ -187,7 +201,8 @@ func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Re
 }
 
 // resume builds the request that continues a waiting call on a new connection.
-// A read and a hook-wait resume by sending the same request again, since neither waits on an id; a hook-wait whose ring reached the handler is never resumed, and CallWatching ends it before it gets here.
+// A read and a hook-wait resume by sending the same request again, since neither waits on an id.
+// A hook-wait whose ring reached the handler is never resumed.
 func (c *Client) resume(req Request, state *waitState) (Request, error) {
 	resumed := Request{Claim: c.claim, ID: state.id, Wait: true}
 	switch {

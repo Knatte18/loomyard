@@ -1,4 +1,4 @@
-// configchanges.go implements ReadConfigChanges, the read-only diff of a task's per-worktree config files since the task's fork point.
+// configchanges.go reports the per-worktree config files a task changed since its fork point and differ from its parent.
 
 package fabricengine
 
@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// ConfigChanges is the set of per-worktree config files a task changed on its weft branch away from both its fork point and its parent's current copy.
+// ConfigChanges is the set of per-worktree config files a task changed on its weft branch.
+// A change counts only when the task's copy differs from both its fork point and its parent's current copy.
 type ConfigChanges struct {
 	// Files are the changed files, repository-relative and slash-separated, sorted.
 	Files []string
@@ -27,18 +28,19 @@ type ConfigChanges struct {
 	Contents map[string]ConfigFileContents
 }
 
-// ConfigFileContents is one config file's bytes at the task's fork point, the task's tip and the parent's tip; a file absent at a revision is nil there.
+// ConfigFileContents is one config file's bytes at the task's fork point, the task's tip and the parent's tip;
+// a file absent at a revision is nil there.
 type ConfigFileContents struct {
 	Base, Tip, Parent []byte
 }
 
-// ReadConfigChanges reports which of configRels changed on taskBranch's weft branch away from both its fork point from parentBranch's weft branch and the parent's current tip.
-// configRels are anchor-relative paths the caller supplies;
-// an empty configRels returns an empty ConfigChanges without running git.
-// A file is reported only when the task tip differs from the merge-base and from the parent's tip,
-// so a parent-side change the task never took, one it took through a sync, and a task edit the parent holds identically all drop out.
-// For each reported file it also reads the bytes at the fork point, the task tip and the parent tip, so the caller can compare the files key by key.
-// A failure is wrapped naming both branches compared.
+// ReadConfigChanges reports which of configRels taskBranch's weft branch changed since its fork point with parentBranch;
+// a file counts only when it also differs from the parent's current tip.
+// configRels are anchor-relative paths the caller supplies.
+// An empty configRels returns an empty ConfigChanges without running git.
+// For each reported file it also reads the bytes at the fork point, the task tip and the parent tip,
+// so the caller can compare the files key by key.
+// An error names both branches compared.
 // It writes nothing.
 func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {
 	if len(configRels) == 0 {

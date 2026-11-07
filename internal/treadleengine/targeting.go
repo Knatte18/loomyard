@@ -1,10 +1,9 @@
-// targeting.go implements treadle's third ephemeral judge framing: optional pre-round targeting,
-// gated by Profile.PreRoundTargeting.
-// Unlike runCircling/runMilestone in judge.go, this call produces no verdict — it reads the latest
-// valid handoff and writes a free-form prose seed brief for the upcoming round's runner.
-// It follows the exact same fail-safe posture as every other call in this package: any failure
-// degrades to "no seed" with a logger.Warn, never an error, since a missed targeting call only
-// costs the round the guidance it would have added, not correctness.
+// targeting.go implements the pre-round targeting call, an ephemeral judge that runs before a round.
+// The call runs only when Profile.PreRoundTargeting is set.
+// It reads the latest valid handoff and writes a free-form prose seed brief for the round's runner.
+// It produces no verdict.
+// Any failure logs a warning through logger.Warn and degrades to running the round without a seed.
+// It never returns an error, because a missed targeting call only costs the round guidance, not correctness.
 
 package treadleengine
 
@@ -22,19 +21,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// targetingRole is the agent-name role this module's targeting spawn carries.
-// The spawn names the review segment.
+// targetingRole is the agent-name role the targeting spawn carries.
+// The spawn runs in the review segment.
 const targetingRole = "targeting"
 
 // targetingSkills are the skills the targeting spawn loads before its prompt.
 var targetingSkills = []string{"scribe:prose"}
 
-// runTargeting spawns the pre-round targeting call: reads a handoff and
-// writes a prose seed brief. Fail-safe: any failure — including the prompt's
-// stencilstore.Read — logs a Warn and returns ("", false), so the round runs
-// without a seed. stencilsDir is the absolute stencils directory this call
-// reads its prompt from, leading rather than trailing so a mis-ordered call
-// site still compiles.
+// runTargeting spawns the pre-round targeting call, which reads a handoff and writes a prose seed brief.
+// Any failure, including reading the prompt template, logs a Warn and returns ("", false),
+// so the round runs without a seed.
+// stencilsDir is the absolute stencils directory the prompt is read from.
 func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath string, choice shuttleengine.ModelChoice) (string, bool) {
 	targetingTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-targeting")
 	if err != nil {

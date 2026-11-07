@@ -1,4 +1,6 @@
-// prreview.go implements the PR-Review row: it decides whether the landing goes through a pull request, and when it does pushes the task branch, opens or finds the pull request and records it, then waits on the pull request until the review ends.
+// prreview.go implements the PR-Review row: it decides whether the landing goes through a pull request.
+// When it does, it pushes the task branch, opens or finds the pull request, and records it.
+// Then it waits on the pull request until the review ends.
 
 package landingshed
 
@@ -16,7 +18,7 @@ import (
 )
 
 const (
-	// prWaitFloor is the shortest time between two wakes of the wait, and the one a moved task head returns it to.
+	// prWaitFloor is the shortest time between two wakes of the wait, and the wait returns to it when the task head moves.
 	prWaitFloor = time.Second
 	// prWaitCeiling is the longest time between two wakes while nothing changes.
 	prWaitCeiling = time.Minute
@@ -24,10 +26,21 @@ const (
 	prPollInterval = time.Minute
 )
 
-// PRReview is the ShedProducer that lands a run through a GitHub pull request when ResolvePullRequest says so.
-// A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing.
-// A yes the resolver marks MergeAtOnce passes at once, since Finalize opens and merges that pull request with no review; any other yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body, the regression check and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
-// The wait gates and pushes the agent's commits, sets the title and body again when the text yielded from the change description, the regression check and the credit block changes, and ends when the pull request is merged or approved, or closed or continued by the operator.
+// PRReview is the ShedProducer that lands a run through a GitHub pull request when the landing goes through one.
+// That is decided from the parent's mode, the beam's settings, the landing entry and GitHub's rules for the parent.
+// When the landing does not go through one, the row closes any recorded pull request GitHub reports open, and passes.
+// With a pull request recorded, a failed read of GitHub's rules is Stuck and closes nothing.
+// A transient failure is an error the driver re-steps; a token failure falls back to the beam and the entry.
+// When the parent merges its pull request at once, the row passes at once,
+// and the landing's merge step opens and merges it with no review.
+// Otherwise the row pushes the task branch and finds or opens the pull request.
+// The pull request's title comes from the change description.
+// Its body comes from the description's body, the regression check and the credit block.
+// The row records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// The wait gates and pushes the agent's commits.
+// The text is built from the change description, the regression check and the credit block.
+// When it changes, the wait sets the title and body again.
+// The wait ends when the pull request is merged or approved, or closed or continued by the operator.
 // It takes no parent lock.
 type PRReview struct {
 	name string
@@ -37,7 +50,7 @@ type PRReview struct {
 
 var _ shedengine.ShedProducer = (*PRReview)(nil)
 
-// NewPRReview constructs a PRReview that reports under name and reads its told values from deps.
+// NewPRReview constructs a PRReview that reports under name and reads the values it needs from deps.
 func NewPRReview(name string, deps Deps) *PRReview {
 	gate := newVerifyGate(deps)
 	if deps.PullRequest.DirtyPaths != nil {
@@ -46,10 +59,14 @@ func NewPRReview(name string, deps Deps) *PRReview {
 	return &PRReview{name: name, deps: deps, gate: gate}
 }
 
-// Call runs the row once and is safe to re-enter: a record, an open pull request on the task branch or a recorded ending of the review each keep a re-entry from opening a second pull request.
-// A yes starts or resumes the run's one interactive session and ends in the wait on the pull request, which has no timeout.
+// Call runs the row once and is safe to re-enter.
+// A record, an open pull request on the task branch or a recorded review ending keeps a re-entry from opening another.
+// When the landing goes through a pull request, the row starts or resumes the run's one interactive session.
+// It then waits on the pull request, which has no timeout.
 // The session is stopped on every verdict, Stuck or error of the row, and left running when the context is cancelled.
-// A cancelled context is an error, as for every landing row; a transient push, GitHub or session-start failure is an error the driver re-steps, and any other failure is Stuck with Halt.
+// A cancelled context returns an error.
+// A transient push, GitHub or session-start failure is an error the driver re-steps.
+// Any other such failure is Stuck with Halt.
 func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -108,7 +125,7 @@ func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.O
 	return p.openPullRequest(ctx, origin)
 }
 
-// checkWiring returns an error naming the first told value the row needs and Deps leaves unset.
+// checkWiring returns an error naming the first value the row needs that Deps leaves unset.
 func (p *PRReview) checkWiring() error {
 	pr := p.deps.PullRequest
 	var missing string
@@ -158,8 +175,9 @@ func (p *PRReview) checkWiring() error {
 	return nil
 }
 
-// closeRecordedPullRequest ends the run's pull request when the landing no longer goes through one.
-// It logs reason, closes a recorded pull request GitHub reports open, stops the recorded session, drops the record, and returns Done.
+// closeRecordedPullRequest ends the run's pull request when the landing does not go through one.
+// It logs reason and closes a recorded pull request GitHub reports open.
+// It then stops the recorded session, drops the record, and returns Done.
 func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	logger.Info("landingshed: no pull request for this landing", "row", p.name, "reason", reason)
 	pr := p.deps.PullRequest
@@ -185,7 +203,8 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 			return p.githubFailure(ctx, "close the pull request", err)
 		}
 	}
-	// The session is found through the record, so it is stopped before the record goes, and a failed stop keeps the record for the re-step to retry.
+	// The session is found through the record, so it is stopped before the record goes,
+	// and a failed stop keeps the record for the re-step to retry.
 	if _, err := p.stopLiveSession(rec); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -195,7 +214,10 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// openPullRequest pushes the task branch, then finds or opens the run's pull request, sets its title from the change description and its body from the description's body and the credit block, records it and waits on it.
+// openPullRequest pushes the task branch, then finds or opens the run's pull request.
+// It sets the title from the change description.
+// It sets the body from the description's body, the regression check and the credit block.
+// It records the pull request and waits on it.
 // A pause that covers the run holds the call before the push.
 func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	pr := p.deps.PullRequest
@@ -224,7 +246,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	}
 	if found && rec.ReviewEnded {
 		// The operator already ended this review.
-		// A head past the one gated then means commits were added since that need review, so the review starts afresh.
+		// A head other than the gated head means commits were added that need review, so the review starts afresh.
 		if head == rec.GatedHead {
 			return p.wait(ctx, api, rec, nil, time.Time{}, prText{})
 		}
@@ -239,7 +261,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
 	}
 
-	// A recorded pull request GitHub no longer reports open is left as it is, for the wait to judge.
+	// A recorded pull request that GitHub reports as not open is left as it is, for the wait to judge.
 	var ref pullrequest.Ref
 	var entryStatus *pullrequest.Status
 	var entryReadAt time.Time
@@ -258,7 +280,8 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 			}
 		}
 		if status.State != pullrequest.StateOpen {
-			// A merged pull request has nothing left to discuss, so only a closed one gets a session, for the agent to clean the tree under a continue flag.
+			// A merged pull request has nothing left to discuss, so only a closed one gets a session.
+			// The session is for the agent to clean the tree under a continue flag.
 			if status.State != pullrequest.StateMerged {
 				if rec, err = p.ensureSession(ctx, rec); err != nil {
 					return "", shedengine.OutputPointer{}, err
@@ -306,7 +329,9 @@ type prText struct {
 	body  string
 }
 
-// pullRequestText returns the title and body the pull request carries for the change description as it reads now: the description's title, and its body followed by the regression check and the credit block.
+// pullRequestText returns the title and body the pull request carries for the change description read at the call.
+// The title is the description's title,
+// and the body is the description's body followed by the regression check and the credit block.
 func (p *PRReview) pullRequestText() (prText, error) {
 	summary, err := summaryparser.Parse(p.deps.DescriptionPath)
 	if err != nil {
@@ -323,9 +348,12 @@ func (p *PRReview) pullRequestText() (prText, error) {
 	return prText{title: summary.Title, body: bodyWithCredit(withSection(summary.Body, verdict), credit)}, nil
 }
 
-// syncText sets the pull request's title and body again when the change description no longer yields the text they were last set to, so an edit of the description reaches the pull request at the next poll.
-// A wait that knows no last-set text takes the description's present text as it, and edits nothing.
-// A text that cannot be built is logged once per episode and left for a later poll, since the agent may be mid-edit; a failed edit is judged as pollFailure judges one, with a transient failure's Warn logged once per episode of failed edits.
+// syncText sets the pull request's title and body again when the change description yields other text than the last set,
+// so an edit of the description reaches the pull request at the next poll.
+// A wait that knows no last-set text records the description's text as the last set, and edits nothing.
+// A text that cannot be built is logged once per episode and left for a later poll, since the agent may be mid-edit.
+// A transient failure of the edit is logged once per episode of failed edits and left for a later poll;
+// any other failed edit ends the call with a verdict.
 // It reports whether it ended the call.
 func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	text, err := p.pullRequestText()
@@ -359,7 +387,9 @@ func (p *PRReview) pushHalt(ctx context.Context, err error) (shedengine.Outcome,
 }
 
 // recordPullRequest writes ref into the run's record.
-// A new record is written whole with head as its gated head; an existing one gets only the pull request's fields, plus the gated head when it carries none, so a continue flag written meanwhile survives.
+// A new record is written whole with head as its gated head;
+// an existing one gets only the pull request's fields, plus the gated head when it carries none,
+// so a continue flag written meanwhile survives.
 func (p *PRReview) recordPullRequest(ref pullrequest.Ref, head string, hadRecord bool) error {
 	pr := p.deps.PullRequest
 	var err error
@@ -387,7 +417,8 @@ func (p *PRReview) recordPullRequest(ref pullrequest.Ref, head string, hadRecord
 	return nil
 }
 
-// nextPRWait is the wait after current: a second once the task head moved, otherwise double current up to a minute and never under a second.
+// nextPRWait returns the wait that follows current.
+// It is a second once the task head moved; otherwise it doubles current, up to a minute and never under a second.
 func nextPRWait(current time.Duration, moved bool) time.Duration {
 	if moved {
 		return prWaitFloor
@@ -397,7 +428,7 @@ func nextPRWait(current time.Duration, moved bool) time.Duration {
 
 // holdWhileCovered returns once no pause covers the run, sleeping with a growing interval while one does.
 // The first covered read stops a live session, and the first uncovered read after that resumes it.
-// A PauseCovered error is logged on every read and read as uncovered, and a cancelled context is an error.
+// An unreadable pause record is logged on every read and read as uncovered, and a cancelled context is an error.
 func (p *PRReview) holdWhileCovered(ctx context.Context) error {
 	pr := p.deps.PullRequest
 	wait := prWaitFloor
@@ -440,7 +471,7 @@ type prWaitState struct {
 	head string
 	// continueSeen is the continue flag the last wake read, or the starting record's before the first.
 	continueSeen bool
-	// pending is the status Call read on entry, which the first wake takes as its poll while it is fresh.
+	// pending is the status read before the wait starts, which the first wake takes as its poll while it is fresh.
 	pending *pullrequest.Status
 	// lastPoll is when the status was last read, the entry read's time before the first poll.
 	lastPoll time.Time
@@ -448,18 +479,28 @@ type prWaitState struct {
 	transientWarned bool
 	// synced is the title and body the pull request was last set to, zero until the wait knows them.
 	synced prText
-	// textWarned is set after a failure to build the pull request text logged its Warn and cleared by the next build that succeeds.
+	// textWarned is set after a failure to build the pull request text logged its Warn.
+	// The next build that succeeds clears it.
 	textWarned bool
-	// editWarned is set after a transient failure of the title and body edit logged its Warn and cleared by the next edit that succeeds.
+	// editWarned is set after a transient failure of the title and body edit logged its Warn.
+	// The next edit that succeeds clears it.
 	editWarned bool
 }
 
 // wait holds the call on the pull request until the review ends.
-// Each wake reads the pull request's status at most once a minute, gates and pushes the agent's new commits unless the pull request is merged, and judges the status: merged, closed, approved or continued by the operator is Done or Stuck, anything else keeps waiting.
+// Each wake reads the pull request's status at most once a minute.
+// It gates and pushes the agent's new commits unless the pull request is merged,
+// and it judges the status: merged, closed, approved or continued by the operator is Done or Stuck;
+// anything else keeps waiting.
 // A wake with a head to gate reads the status whatever the minute says.
-// A change to the record ends the sleep between two wakes early, so a continue flag the agent writes is read within a second.
-// A poll that finds the pull request open and the review going sets its title and body again when the text yielded from the change description, the regression check and the credit block changed since they were last set.
-// rec is the record the wait starts from, entryStatus and entryReadAt are the status Call read and its time, nil and zero when Call read none, and synced is the title and body Call set, zero when it set none.
+// A change to the record ends the sleep between two wakes early,
+// so a continue flag the agent writes is read within a second.
+// A poll that finds the pull request open and the review going re-sets its title and body when the text has changed.
+// The text is yielded from the change description, the regression check and the credit block.
+// It has changed when it differs from the text last set.
+// rec is the record the wait starts from.
+// entryStatus and entryReadAt are the status read before the wait and its time, nil and zero when none was read.
+// synced is the title and body set before the wait, zero when none was set.
 // A cancelled context is an error.
 func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	label := fmt.Sprintf("PR #%d", rec.Number)
@@ -483,8 +524,9 @@ func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullreques
 	}
 }
 
-// pause sleeps interval, or until changes delivers a change to the record.
-// A change still waits out the rest of prWaitFloor since wokeAt, so no wake follows another by less than a second.
+// pause sleeps `interval`, or until `changes` delivers a change to the record.
+// A change still waits out the rest of `prWaitFloor` since `wokeAt`,
+// so no wake follows another by less than `prWaitFloor`.
 func (p *PRReview) pause(ctx context.Context, interval time.Duration, wokeAt time.Time, changes <-chan struct{}) error {
 	pr := p.deps.PullRequest
 	sleepCtx, cancel := context.WithCancel(ctx)
@@ -504,7 +546,9 @@ func (p *PRReview) pause(ctx context.Context, interval time.Duration, wokeAt tim
 	}
 }
 
-// wake runs one wake of the wait and reports whether it ended the call with the returned verdict.
+// wake runs one wake of the review:
+// it reads the task head and the pull request record, gates the head when one is due, and judges the review.
+// It reports whether the wake ended the call with the returned verdict.
 func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitState, label string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	pr := p.deps.PullRequest
 	end := func(outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
@@ -529,7 +573,8 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 		return end("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err))
 	}
 
-	// The status is read before the gate, and forced when a gate is due, so that a pull request merged at a head the row never gated is not gated, pushed and recorded as if it had been.
+	// The status is read before the gate, and forced when a gate is due,
+	// so a pull request merged at a head the row never gated is not gated, pushed and recorded as if it had been.
 	gateDue := len(dirty) == 0 && head != rec.GatedHead && head != rec.MailedHead
 	status, polled, outcome, pointer, ended, err := p.pollStatus(ctx, api, state, rec, gateDue)
 	if err != nil || ended {
@@ -557,7 +602,8 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 		}
 	}
 
-	// The session is stopped before the read that may end the review, so the agent cannot change the tree between the read and the verdict.
+	// The session is stopped before the read that may end the review;
+	// so the agent cannot change the tree between the read and the verdict.
 	stopped := false
 	if sessionStopWanted(status, rec) {
 		if stopped, err = p.stopLiveSession(rec); err != nil {
@@ -577,8 +623,9 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	return outcome, pointer, ended, err
 }
 
-// sessionStopWanted reports whether the read of status against rec may end the review, or act on the operator's ending, so the session must be stopped before the tree is read.
-// That is a merged pull request, the continue flag on any state, and an approval of the head the row gated.
+// sessionStopWanted reports whether the read of status against rec may end the review or act on the operator's ending,
+// so the session must be stopped before the tree is read.
+// The cases are a merged pull request, the continue flag on any state, and an approval of the head the row gated.
 func sessionStopWanted(status pullrequest.Status, rec pullrequest.Record) bool {
 	switch {
 	case status.State == pullrequest.StateMerged, rec.Continue:
@@ -603,8 +650,10 @@ func (p *PRReview) readTree() (string, []string, error) {
 }
 
 // gateHead runs the pr-review gate over head, a clean tree whose head the record has not gated.
-// A pass pushes head and records it as gated, and a failure pushes nothing and mails its reason to the PR-Review session once per head.
-// A runner crash judges no code, so it halts the row naming the crash and mails nothing; the resume gates the head again.
+// A pass pushes head and records it as gated,
+// and a failure pushes nothing and mails its reason to the PR-Review session once per head.
+// A runner crash judges no code, so it halts the row naming the crash and mails nothing;
+// the resume gates the head again.
 // A head moved or a tree dirtied during the gate discards the verdict.
 // It reports whether it ended the call.
 func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Record, label string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
@@ -676,9 +725,11 @@ func (p *PRReview) updateRecord(mutate func(rec *pullrequest.Record)) error {
 }
 
 // pollStatus returns the pull request's status for this wake when one is due, and reports whether it did.
-// The status Call read on entry is the first wake's poll while it is under a minute old; after that a poll is due once a minute, and at once on the wake whose record first carries the continue flag.
+// The status read on entry is the first wake's poll while it is under a minute old;
+// after that a poll is due once a minute, and at once on the wake whose record first carries the continue flag.
 // A forced poll is also due whenever no fresh entry status is at hand.
-// A failed poll is judged as a GitHub failure, except that a transient one logs one Warn per episode and leaves the wake without a status.
+// A failed poll is judged as a GitHub failure, unless it is transient:
+// it logs one Warn per episode and leaves the wake without a status.
 func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *prWaitState, rec pullrequest.Record, force bool) (pullrequest.Status, bool, shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	now := p.deps.PullRequest.Now()
 	due := state.lastPoll.IsZero() || now.Sub(state.lastPoll) >= prPollInterval
@@ -702,7 +753,8 @@ func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *p
 }
 
 // pollFailure judges a failed GitHub call of the wait named by action.
-// A token failure and any other failure but a transient one end the call as githubFailure judges them; a transient failure logs one Warn per episode, tracked in warned, and lets the wait go on.
+// A transient failure that is not a token failure logs one Warn per episode, tracked in warned, and lets the wait go on.
+// Any other failure, token failures included, ends the call with the outcome of judging it as a GitHub failure.
 // It reports whether it ended the call.
 func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -721,7 +773,8 @@ func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string,
 
 // judge reads the pull request's status against the record and the task worktree, and reports whether it ends the call.
 // A merged pull request takes the merged verdicts whatever the continue flag says, since nothing is left to merge.
-// The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub, so ending the review never lands the run by a direct push to the parent.
+// The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub.
+// Ending the review therefore never lands the run by a direct push to the parent.
 func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	done := func() (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 		return shedengine.Done, shedengine.OutputPointer{}, true, nil
@@ -798,7 +851,8 @@ func (p *PRReview) dirtyEndReason(number int, dirty []string) string {
 }
 
 // githubFailure judges a failed GitHub call named by action.
-// A token failure is Stuck with Halt first, since the HTTP client wraps it in a type the transient classifier reads as transient; then a transient failure is an error the driver re-steps; any other failure is Stuck with Halt.
+// A token failure is Stuck with Halt: the HTTP client wraps it in a type the transient classifier reads as transient.
+// Otherwise a transient failure is an error the driver re-steps, and any other failure is Stuck with Halt.
 func (p *PRReview) githubFailure(ctx context.Context, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if !tokenFailure(err) {
 		if terr := transientFailure(ctx, p.name, action, err); terr != nil {

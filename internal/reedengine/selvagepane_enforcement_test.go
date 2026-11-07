@@ -1,23 +1,14 @@
-// selvagepane_enforcement_test.go enforces the Selvage-confinement rule this batch's extraction exists to satisfy: every identifier naming Selvage lives in selvagepane.go, with one narrow carve-out elsewhere.
-// selvagepane.go owns the whole Selvage seam;
-// state.go is allowed only for the SelvagePaneID field declaration ReedState carries (state.go's subject is the persisted record in general, not Selvage specifically).
+// selvagepane_enforcement_test.go enforces that every identifier naming Selvage lives in selvagepane.go.
+// One narrow carve-out is allowed elsewhere: state.go may declare the SelvagePaneID field that ReedState carries.
+// That file's subject is the persisted record in general, not Selvage.
 //
-// The match is case-insensitive on purpose: a case-sensitive rule would silently permit exactly the
-// selvagePaneID-shaped parameters and locals this extraction exists to eliminate from the four host
-// files, since Go identifiers conventionally start a local or parameter with a lowercase letter.
+// The match is case-insensitive.
+// A case-sensitive rule would silently permit selvagePaneID-shaped parameters and locals.
+// Go identifiers conventionally start a local or parameter with a lowercase letter.
 //
-// Honest residual: the call-position exemption below covers same-package calls only, so a
-// Selvage-named function exported from another package would be exempt at its call site and
-// unscanned at its declaration. That is latent rather than open today: internal/reedengine/render/
-// exports no Selvage-named identifier, so nothing currently exploits the gap.
-//
-// This file introduces the file-level allowlist pattern to the repository: no existing enforcement
-// test here uses one. The nearest precedent is internal/gitkit/callerset_enforcement_test.go's single
-// allowed-directory const -- the same allow shape, at coarser (directory rather than file) granularity.
-// internal/cliwire/bannedecl_enforcement_test.go is cited only for what it actually supplies: the AST
-// walk, the runtime.Caller(0) repository-root resolution, and the house style of recording a residual
-// in a doc comment -- its own policy is a ban-list, the inverse of an allowlist, so it is not itself an
-// allowlist precedent.
+// Honest residual: the call-position exemption below covers same-package calls only.
+// A Selvage-named function exported from another package is exempt at its call site and unscanned at its declaration.
+// The gap is latent: internal/reedengine/render/ exports no Selvage-named identifier.
 
 package reedengine
 
@@ -32,22 +23,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// selvageScanMinFiles is the plausible floor for how many non-test .go files internal/reedengine holds.
+// selvageScanMinFiles is the floor on how many non-test .go files internal/reedengine holds;
+// a scan below it has missed files.
 const selvageScanMinFiles = 10
 
-// selvagePaneAllowlist names the files in this package permitted to carry a Selvage-naming
-// identifier outside a call position or composite-literal key.
+// selvagePaneAllowlist names the files in this package that may carry a Selvage-naming identifier.
+// Elsewhere, such an identifier is allowed only in a call position or as a composite-literal key.
 var selvagePaneAllowlist = []scankit.Entry{
 	{Key: "internal/reedengine/selvagepane.go", Why: "owns the whole Selvage seam"},
 	{Key: "internal/reedengine/state.go", Why: "carries the SelvagePaneID field declaration of ReedState"},
 }
 
-// TestSelvageIdentifiersConfinedToSelvagePane verifies that no file in internal/reedengine, other
-// than the two named in selvagePaneAllowlist, declares or references a Selvage-naming identifier
-// outside the two exemptions selvageIdentViolations knows about.
+// TestSelvageIdentifiersConfinedToSelvagePane checks that rule over internal/reedengine.
+// Outside selvagePaneAllowlist, no file may use a Selvage-naming identifier except as selvageIdentViolations exempts.
 // It spawns no process, so it carries no build tag.
-// It parses every non-_test.go .go file directly inside internal/reedengine -- never
-// internal/reedengine/render/, and never any sibling package.
+// It parses every non-test .go file directly inside internal/reedengine;
+// it never enters internal/reedengine/render/ or any sibling package.
 func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(selvagePaneAllowlist)
@@ -71,9 +62,8 @@ func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
 	}
 }
 
-// TestSelvageIdentViolations_ExemptionsAndFlags drives selvageIdentViolations directly over
-// synthetic source parsed from an in-memory string, rather than from disk, so the two exemptions stay
-// verified rather than assumed and keep being verified after the extraction lands.
+// TestSelvageIdentViolations_ExemptionsAndFlags drives selvageIdentViolations over synthetic in-memory source.
+// It checks both exemptions and each flagged form, so a scanner that stops exempting or stops flagging fails here.
 //
 //testtiming:keep pins the Selvage identifier scanner's exemptions and flags over a synthetic source, so the confinement scan cannot pass vacuously; its covering tests run this code without asserting it
 func TestSelvageIdentViolations_ExemptionsAndFlags(t *testing.T) {
@@ -106,9 +96,8 @@ func example(e *engine, st *state, selvagePaneID string) {
 		return n
 	}
 
-	// Flagged: the render.Selvage{} composite-literal TYPE and the e.cfg.Selvage selector each end
-	// the violation string in ": Selvage" -- two occurrences, neither of them the composite-literal
-	// KEY in render.Params{Selvage: x}, which selveageIdentViolations must exempt.
+	// The render.Selvage{} composite-literal type and the e.cfg.Selvage selector each produce a ": Selvage" violation.
+	// The composite-literal key in render.Params{Selvage: x} produces none, because it is exempt.
 	if n := countSuffix(": Selvage"); n != 2 {
 		t.Errorf("selvageIdentViolations() = %v; want exactly 2 violations ending \": Selvage\" (the render.Selvage{} composite-literal type and the e.cfg.Selvage selector), got %d", got, n)
 	}
@@ -123,23 +112,22 @@ func example(e *engine, st *state, selvagePaneID string) {
 	}
 }
 
-// selvageIdentViolations returns one formatted "position: identifier" string per *ast.Ident in
-// astFile whose strings.ToLower form contains "selvage", except for two exemptions.
+// selvageIdentViolations returns one "position: identifier" string per flagged identifier in astFile.
+// An identifier is flagged when its name contains "selvage" in any case, unless one of two exemptions applies.
 //
-// Exemption (i) is the function position of a call expression: the Fun of an *ast.CallExpr, whether
-// a bare f(...) identifier or the Sel of an x.f(...) selector. A host file is allowed to CALL a
-// Selvage-named helper, since that is exactly what this extraction leaves behind at every host call
-// site.
+// Exemption (i) is the function position of a call expression:
+// the Fun of an *ast.CallExpr, whether a bare f(...) identifier or the Sel of an x.f(...) selector.
+// A file may call a Selvage-named helper.
 //
-// Exemption (ii) is a composite-literal field key: the Key of a *ast.KeyValueExpr appearing inside a
-// *ast.CompositeLit. A host file is allowed to populate a struct field literally named Selvage (e.g.
-// render.Params{Selvage: x}), since the field's own declaration -- not its use as a key -- is what
-// carries the name.
+// Exemption (ii) is a composite-literal field key:
+// the Key of an *ast.KeyValueExpr inside an *ast.CompositeLit.
+// A file may populate a struct field named Selvage, as in render.Params{Selvage: x}.
+// The field's declaration carries the name, not the key.
 //
-// Everything else is flagged: field selectors, composite-literal types, func/method/type/var
-// declarations, struct field declarations, parameters and locals. Comments and string literals are
-// never read, so a package-doc paragraph naming Selvage and a `yaml:"selvage"` struct tag both pass
-// untouched -- go/parser does not turn either into an *ast.Ident.
+// Every other occurrence is flagged:
+// field selectors, composite-literal types, func/method/type/var declarations, struct fields, parameters and locals.
+// Comments and string literals are never read, since go/parser does not turn either into an *ast.Ident.
+// A comment naming Selvage and a `yaml:"selvage"` struct tag both pass.
 func selvageIdentViolations(fset *token.FileSet, astFile *ast.File) []string {
 	exempt := make(map[*ast.Ident]bool)
 

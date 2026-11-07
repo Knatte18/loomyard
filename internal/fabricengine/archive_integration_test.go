@@ -1,4 +1,7 @@
-// archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
+// archive_integration_test.go covers archiveWeftTip, which tags the weft origin at the branch tip.
+// It checks that a repeat call on an unchanged tip succeeds.
+// Each degraded shape answers as the helper documents:
+// no origin, an unreachable origin, a branch only on origin, or a clashing tag.
 //
 // Every hub is built through hubforge.CopyHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -38,15 +41,15 @@ func countKind(rec *fabricengine.Mutations, kind fabricengine.Kind) int {
 	return n
 }
 
-// TestArchiveWeftTip builds one hub and archives distinct branches on it, each step using its own
-// slug and branch so the steps do not interact:
-// the happy path and idempotence — the tag exists on the origin at the tip, and a second call on the
-// same tip succeeds with the same tag;
-// a branch present only on origin is archived from the fetched tip;
-// a branch present nowhere has nothing to archive;
-// and a tag of the archive name already present at another commit is an error with nothing pushed.
-// The degraded shapes that break the shared origin — no origin, an unreachable origin — keep their
-// own hubs in the tests below.
+// TestArchiveWeftTip builds one hub and archives distinct branches on it.
+// Each step uses its own slug and branch, so the steps do not interact.
+// It covers the happy path and idempotence: the tag exists on the origin at the tip,
+// and a second call on the same tip succeeds with the same tag.
+// A branch present only on origin is archived from the fetched tip.
+// A branch present nowhere has nothing to archive.
+// A tag of the archive name already present at another commit is an error with nothing pushed.
+// The degraded shapes, no origin and an unreachable origin, would break the shared origin,
+// so they keep their own hubs in the tests below.
 func TestArchiveWeftTip(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

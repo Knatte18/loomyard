@@ -1,5 +1,6 @@
-// testmain_test.go runs the test binary under tmux isolation through tmuxkit.Main, and lets the integration test re-execute the binary as a helper process.
-// It carries no build tag, so it compiles into every tag set; the helper roles themselves register from the integration-tagged file, since they spawn.
+// testmain_test.go runs the test binary under tmux isolation through tmuxkit.Main.
+// It has no build tag, so it compiles into every tag set; the integration test re-executes it as a helper process.
+// The helper roles register from the integration-tagged file, since they spawn.
 
 package lymbin
 

@@ -1,20 +1,15 @@
-// clone_adopt_test.go proves CloneHub's weft-primary-branch handling: the
-// adopt path (an existing remote main-weft branch is checked out as a
-// tracking local branch, inheriting the accumulated weft content and a
-// working upstream, instead of forking a new, untracked branch that silently
-// disowns that history), the fresh path (no existing remote main-weft branch,
-// so the suffixed branch is created new at the cloned HEAD — a genuinely new
-// hub, formerly covered by clone_differential_test.go's "fresh" subtest
-// before its deletion), and the strict-abort teardown path (a failing weft
-// clone leaves no residual Hub directory, torn down through fabricengine's
-// own RemoveAll teardown seam in clone.go's teardownHub — formerly covered by
-// clone_differential_test.go's TestCloneHub_DifferentialStrictAbort).
+// clone_adopt_test.go proves CloneHub's weft-primary-branch handling on three paths.
+// The adopt path checks out an existing remote main-weft branch as a tracking local branch.
+// The local branch inherits the accumulated weft content and a working upstream.
+// The alternative would fork a new, untracked branch that silently disowns that history.
+// The fresh path covers no existing remote main-weft branch.
+// The suffixed branch is then created new at the cloned HEAD.
+// The strict-abort path covers a failing warp clone, which must leave no residual Hub directory.
+// Teardown runs through teardownHub in clone.go.
 //
-// Package fabricengine_test to isolate real end-to-end git fixtures from the
-// package's internal unit tests; shares the TestMain in testmain_test.go.
-// makeBareRemote and currentBranch (below) are this file's own bare-remote
-// fixture helpers, relocated here from clone_differential_test.go before its
-// deletion (this file was already their only other consumer).
+// Package fabricengine_test keeps its real end-to-end git fixtures apart from the internal unit tests.
+// It shares the TestMain in testmain_test.go.
+// This file defines its own bare-remote fixture helpers, makeBareRemote and makeBareRemoteWithSubdir.
 
 package fabricengine_test
 
@@ -33,12 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// makeBareRemote creates a bare git repository with a single commit on the main
-// branch.
-//
-// It initializes a bare repo at <dir>/<name>.git, then seeds it by initializing
-// a working repository, creating and committing a README, and pushing back to
-// the bare repo. Returns the path to the bare repository.
+// makeBareRemote creates a bare git repository at dir/name.git and returns its path.
+// The repository's main branch holds a single commit.
 func makeBareRemote(t *testing.T, dir, name string) string {
 	t.Helper()
 
@@ -71,9 +62,7 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// gitOutput runs a git command in dir and returns its trimmed stdout, failing
-// the test on any error — the capture-variant sibling of gitkit.MustRun,
-// which discards output.
+// gitOutput runs a git command in dir and returns its trimmed stdout, failing the test on any error.
 func gitOutput(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
@@ -85,9 +74,8 @@ func gitOutput(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// makeBareRemoteWithSubdir behaves exactly like makeBareRemote, but seeds an
-// additional committed file at <subdir>/marker.txt so the warp repo carries a
-// real subdirectory a lym-anchor subpath test can point at.
+// makeBareRemoteWithSubdir creates a bare git repository at dir/name.git whose main branch holds a README.
+// It also commits a file at subdir/marker.txt, so a subpath test has a real directory to point at.
 func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 	t.Helper()
 
@@ -133,11 +121,9 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 	return bare
 }
 
-// commitFileOnBranch clones bareRemote into a scratch dir, checks out branch
-// (creating it if absent, seeded from the remote's default branch tip),
-// writes relPath with contents, commits, and pushes it back — used to seed a
-// weft remote fixture with a pre-committed .lym-anchor marker for the
-// adopt-path tests, mirroring how a real prior clone would have left it.
+// commitFileOnBranch commits relPath with contents on branch in bareRemote and pushes it back.
+// It creates the branch from the remote's default branch tip when the branch is absent.
+// Tests use it to seed a weft remote with a .lym-anchor marker, as a prior clone would have left it.
 func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents string) {
 	t.Helper()
 
@@ -149,10 +135,8 @@ func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents
 	gitkit.Git(t, scratch, "push", "origin", branch)
 }
 
-// makeEmptyBareRemote creates a bare git repository with no commits at all —
-// a genuinely empty remote, unlike makeBareRemote's seed-and-push. It exists
-// to exercise ensureBoardWorktree's orphan path, which only fires when clone
-// leaves no local warpBranch ref to adopt.
+// makeEmptyBareRemote creates a bare git repository with no commits at all.
+// A clone of it leaves no local branch to adopt, which exercises the orphan-branch path.
 func makeEmptyBareRemote(t *testing.T, dir, name string) string {
 	t.Helper()
 
@@ -162,9 +146,8 @@ func makeEmptyBareRemote(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// resolveGitCommonDir returns the absolute, cleaned git-common-dir for the
-// repo at repoDir, resolving a relative result (e.g. ".git") against repoDir
-// itself rather than the test process's own cwd.
+// resolveGitCommonDir returns the absolute, cleaned git common directory of the repo at repoDir.
+// A relative result, such as `.git`, resolves against repoDir, not the test process's working directory.
 func resolveGitCommonDir(t *testing.T, repoDir string) string {
 	t.Helper()
 	common := gitOutput(t, repoDir, "rev-parse", "--git-common-dir")
@@ -178,9 +161,9 @@ func resolveGitCommonDir(t *testing.T, repoDir string) string {
 	return filepath.Clean(abs)
 }
 
-// assertBoardIsWeftWorktree asserts that the Bolt checkout shares its git-common-dir with weftPrime.
-// The checkout is resolved via fabricengine.BoltDir(hubPath).
-// Sharing proves it is a linked worktree of the same weft repo and not a separate clone.
+// assertBoardIsWeftWorktree asserts that the Bolt checkout of hubPath is a linked worktree of the weft repo.
+// The checkout is located with fabricengine.BoltDir and must share weftPrime's git common directory.
+// That shared directory proves the checkout is not a separate clone.
 // It also asserts the checkout is on wantBranch.
 func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch string) {
 	t.Helper()
@@ -197,9 +180,8 @@ func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch stri
 	}
 }
 
-// hasNoCommits reports whether `git log` fails or returns no output in dir —
-// the unborn-HEAD signature of a freshly orphan-created branch with no
-// commits yet.
+// hasNoCommits reports whether `git log` fails or prints nothing in dir.
+// That is the unborn-HEAD state of a freshly orphan-created branch.
 func hasNoCommits(t *testing.T, dir string) bool {
 	t.Helper()
 	cmd := exec.Command("git", "log")
@@ -211,10 +193,9 @@ func hasNoCommits(t *testing.T, dir string) bool {
 	return strings.TrimSpace(string(out)) == ""
 }
 
-// TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch re-clones against a weft remote whose
-// main-weft branch is ahead of main and asserts the fresh weft primary adopted it: checked out on
-// main-weft, at the remote branch's tip (the synced marker file present), with origin/main-weft as
-// its upstream.
+// TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch asserts the weft primary adopts the remote main-weft branch.
+// The remote branch is ahead of main.
+// The adopted branch is checked out at the remote tip, with origin/main-weft as its upstream.
 func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -224,9 +205,8 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	warpBare := makeBareRemote(t, fixtures, "adopt-warp")
 	weftBare := makeBareRemote(t, fixtures, "adopt-weft")
 
-	// Advance the weft remote's main-weft past main, the way a previously
-	// active hub's synced weft history would have: one extra commit carrying a
-	// marker file that only exists on main-weft.
+	// Advance the weft remote's main-weft past main, as a previously active hub's synced weft history would.
+	// That is one extra commit carrying a marker file that exists only on main-weft.
 	seedWork := filepath.Join(fixtures, "seed-weft")
 	gitkit.MustRun(t, fixtures, "git", "clone", filepath.ToSlash(weftBare), "seed-weft")
 	gitkit.Git(t, seedWork, "config", "user.email", "test@test.com")
@@ -240,8 +220,8 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 
 	// Clone the hub fresh, as a second machine (or clone --reset) would.
 	cloneParent := t.TempDir()
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lym-anchor.
+	// ForceBootstrap is needed because weftBare is a plain seeded remote, not a weft that has ever been one.
+	// It carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -255,16 +235,17 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	hubPath := res.HubPath
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
-	// The weft prime directory is the warp name's weft sibling — resolved via lymcwd so the assertion cannot rot against clone's own geometry.
+	// The weft prime directory is the warp's weft sibling.
+	// The test resolves it with weftname.SiblingPath rather than deriving it from clone's own layout.
 	weftPrime := weftname.SiblingPath(hubPath, "adopt-warp")
 
 	if got := gitkit.CurrentBranch(t, weftPrime); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 
-	// The adopted branch must sit on the remote main-weft tip — the synced
-	// history — not on main's HEAD, with the fresh bind's anchor marker as the one commit above it.
-	// The marker file existing is the user-visible form of the same assertion.
+	// The adopted branch sits on the remote main-weft tip, the synced history, and not on main's HEAD.
+	// The anchor commit that this clone adds is the one commit above that tip.
+	// The marker file's presence is the user-visible form of the same assertion.
 	localParent := gitOutput(t, weftPrime, "rev-parse", "HEAD^")
 	if localParent != remoteTip {
 		t.Errorf("weft prime HEAD^ = %s; want remote main-weft tip %s (existing weft history adopted)", localParent, remoteTip)
@@ -273,22 +254,20 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 		t.Errorf("weft prime marker file %s missing: %v; want the synced weft content checked out", markerName, err)
 	}
 
-	// The adopted branch must track origin/main-weft so the first push (and any
-	// rebase-recovery) has an upstream to work against.
+	// The adopted branch tracks origin/main-weft, so the first push and any rebase recovery have an upstream.
 	upstream := gitOutput(t, weftPrime, "rev-parse", "--abbrev-ref", "main-weft@{u}")
 	if upstream != "origin/main-weft" {
 		t.Errorf("weft prime upstream = %q; want %q", upstream, "origin/main-weft")
 	}
 
-	// The Bolt checkout must be a second worktree of the same weft repo, checked out on
-	// the unsuffixed warp branch "main" — adopted from the local ref
-	// cloneRepo already created, proving the Bolt checkout is not a separate clone.
+	// The Bolt checkout must be a second worktree of the same weft repo, not a separate clone.
+	// It is checked out on the unsuffixed warp branch `main`, adopted from the local ref that the clone created.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 }
 
-// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft remote carries no existing RecordsBranchName-suffixed branch (a genuinely new hub — the non-adopt path), CloneHub creates the
-// weft primary's suffixed branch fresh at the cloned HEAD rather than requiring a pre-existing
-// remote ref to adopt.
+// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that CloneHub creates the weft primary branch fresh.
+// The branch, named by `fabricengine.RecordsBranchName`, starts at the cloned HEAD.
+// It is created only when the weft remote has no such branch to adopt.
 func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -299,8 +278,8 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "fresh-weft")
 
 	cloneParent := t.TempDir()
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lym-anchor.
+	// ForceBootstrap is needed because weftBare is a plain seeded remote, not a weft that has ever been one.
+	// It carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -324,14 +303,11 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
 	}
 
-	// The Bolt checkout must be a second worktree of the same weft repo, checked out on
-	// the unsuffixed warp branch "main" — a linked worktree, not a separate
-	// clone (a plain ".git" file existing would no longer distinguish the two).
+	// The Bolt checkout must be a second worktree of the same weft repo, not a separate clone.
+	// It is checked out on the unsuffixed warp branch `main`.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 
-	// The freshly-created branch carries no upstream — that is deliberately
-	// left to the first push, distinguishing it from the adopt path's
-	// origin-tracking branch (TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch).
+	// The freshly created branch has no upstream, which is left to the first push.
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", want+"@{u}")
 	cmd.Dir = weftPrime
 	if err := cmd.Run(); err == nil {
@@ -339,12 +315,9 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	}
 }
 
-// TestCloneHub_StrictAbortRemovesHubOnFailure covers teardownHub's cleanup-on-failure behaviour: a
-// failing warp clone leaves no residual Hub directory behind, torn down through fabricengine's own
-// RemoveAll teardown seam (clone.go's teardownHub). The weft side must be a valid fixture so the
-// pre-hub probe succeeds and the hub directory is actually created — pointing the weft at a
-// nonexistent path instead would fail at the probe, before teardownHub is ever reached, which is now
-// covered as a probe-taxonomy hard error rather than this residual-hub path.
+// TestCloneHub_StrictAbortRemovesHubOnFailure asserts that a failing warp clone leaves no hub directory behind.
+// The weft remote is a valid fixture, so the probe passes and the hub directory is created before the failure.
+// A nonexistent weft path would fail at the probe instead, before teardown runs, so this test does not use one.
 func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -357,9 +330,8 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	cloneParent := t.TempDir()
 	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(nonExistentWarp)))
 
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lym-anchor; without this the old-order
-	// guard would fire before the warp clone is even attempted.
+	// ForceBootstrap is needed because weftBare is a plain seeded remote, not a weft that has ever been one.
+	// It carries no .lym-anchor, so without ForceBootstrap the guard fails before the warp clone is attempted.
 	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(nonExistentWarp),
@@ -375,25 +347,23 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	}
 }
 
-// TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote asserts that when the weft remote is
-// genuinely empty (no commits, so cloneRepo leaves no local warpBranch ref to adopt),
-// ensureBoardWorktree's orphan path fires: the Bolt checkout is materialized as a second weft worktree on a
-// freshly orphan- created "main" branch that shares no history with the weft primary's "main-weft"
-// branch — both end up with no commits at all.
+// TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote asserts the orphan path for an empty weft remote.
+// The Bolt checkout becomes a second weft worktree on a new orphan `main` branch.
+// That branch shares no history with the weft primary's `main-weft` and has no commits.
 func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
 
-	// The warp remote needs a real commit for suffixWeftPrimaryBranch to read
-	// a checked-out branch; the weft remote is genuinely empty.
+	// The warp remote needs a real commit, because the weft primary is named after the warp's branch.
+	// The weft remote is empty.
 	warpBare := makeBareRemote(t, fixtures, "orphan-warp")
 	weftBare := makeEmptyBareRemote(t, fixtures, "orphan-weft")
 
 	cloneParent := t.TempDir()
-	// weftBare is a genuinely empty remote (makeEmptyBareRemote): the probe's unborn-HEAD check
-	// sets WeftLooksLikeWeft, so the old-order guard never fires and no ForceBootstrap is needed.
+	// weftBare is empty, so the probe finds an unborn HEAD and sets `WeftLooksLikeWeft`.
+	// That clears the guard that requires ForceBootstrap, so none is needed.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:   filepath.ToSlash(weftBare),
 		WarpURL:   filepath.ToSlash(warpBare),
@@ -410,13 +380,10 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	if got := gitkit.Git(t, weftPrime, "branch", "--show-current"); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
-	// The weft prime's suffixed branch must be BORN — a real ref, not merely the checked-out name.
-	// This assertion is inverted from what it was: it used to require an unborn HEAD here, which
-	// pinned a defect rather than a contract. `git checkout -b` on an unborn HEAD writes no ref, so
-	// refs/heads/main-weft did not exist, and every verb that forks a new pair from the primary died
-	// on `fatal: invalid reference: main-weft` — `lym fabric add` included, which is the example both
-	// the parent command and `add` document. CloneHub now lands an initialising empty commit on that
-	// branch (bornWeftPrimaryBranch, clone.go).
+	// The weft prime's `main-weft` branch must be born: a real ref, not only the checked-out name.
+	// An unborn HEAD writes no ref, so every verb that forks a pair from the primary fails with `invalid reference`.
+	// `lym fabric add` is one such verb.
+	// CloneHub lands an initialising empty commit on that branch (bornWeftPrimaryBranch, clone.go).
 	if hasNoCommits(t, weftPrime) {
 		t.Errorf("weft prime at %s has an unborn HEAD; want its suffixed branch born so a pair can fork from it", weftPrime)
 	}
@@ -431,10 +398,10 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	}
 }
 
-// TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch asserts that the weft primary and the Bolt checkout are
-// named after the warp prime's branch, not after the empty weft remote's own unborn HEAD: a weft
-// bare created by `git init --bare` on a host whose default branch is "master" must still yield
-// "main-weft" and a Bolt checkout on "main" for a warp on "main", or `lym fabric add` can never fork a pair.
+// TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch asserts the naming of the weft primary and the Bolt checkout.
+// They are named after the warp prime's branch, not after the empty weft remote's own unborn HEAD.
+// A weft bare created by `git init --bare` on a host whose default branch is "master" must still yield
+// "main-weft" and a Bolt checkout on "main" for a warp on "main"; otherwise `lym fabric add` can never fork a pair.
 func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -468,7 +435,8 @@ func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 }
 
 // TestCloneHub_AnchorCreatePath asserts the create path:
-// a first-ever clone with an existing "backend" subdirectory in the warp commits the marker at the prime weft's root, not on the board, and returns a fully-populated CloneResult naming it.
+// a first-ever clone with an existing "backend" subdirectory in the warp commits the marker at the prime weft's root;
+// it commits nothing to the board, and it returns a fully-populated CloneResult naming it.
 func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -479,8 +447,8 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "anchor-create-weft")
 
 	cloneParent := t.TempDir()
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lym-anchor.
+	// ForceBootstrap: true, because weftBare is an ordinary seeded bare remote standing in for a weft;
+	// it has never been a repo, so it carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -509,7 +477,8 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	assertMarkerCommittedOnPrimeWeftNotBoard(t, res, "anchor-create-warp", "backend")
 }
 
-// assertMarkerCommittedOnPrimeWeftNotBoard asserts the hub's prime weft worktree holds want as its .lym-anchor at HEAD, and the board worktree holds none.
+// assertMarkerCommittedOnPrimeWeftNotBoard asserts that the hub's prime weft HEAD holds want as its .lym-anchor,
+// and that the board worktree holds no such file.
 func assertMarkerCommittedOnPrimeWeftNotBoard(t *testing.T, res fabricengine.CloneResult, warpName, want string) {
 	t.Helper()
 
@@ -522,12 +491,10 @@ func assertMarkerCommittedOnPrimeWeftNotBoard(t *testing.T, res fabricengine.Clo
 	}
 }
 
-// TestCloneHub_AnchorGuardHardErrors asserts that a create-path clone against an unusable subpath is
-// a hard error and that teardownHub removes the hub, mirroring
-// TestCloneHub_StrictAbortRemovesHubOnFailure's coverage for the anchor guard: a subpath that does
-// not exist in the warp worktree (a typo like "backedn"), and a subpath naming an existing FILE,
-// which is refused with a message that says so — "does not exist" alone misled, since the path
-// plainly exists.
+// TestCloneHub_AnchorGuardHardErrors asserts that a create-path clone against an unusable subpath is a hard error,
+// and that teardownHub removes the hub.
+// Two cases are refused: a subpath missing from the warp worktree (a typo like "backedn");
+// and a subpath naming an existing file, refused with a message saying it is not a directory.
 func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -558,8 +525,8 @@ func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
 			cloneParent := t.TempDir()
 			expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
-			// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-			// not a repo that has ever been one, so it carries no .lym-anchor.
+			// ForceBootstrap: true, because weftBare is an ordinary seeded bare remote standing in for a weft;
+			// it has never been a repo, so it carries no .lym-anchor.
 			_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 				WeftURL:        filepath.ToSlash(weftBare),
 				WarpURL:        filepath.ToSlash(warpBare),
@@ -580,9 +547,8 @@ func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorRootDefaultPath asserts the create path with an explicit "."
-// subpath commits "."
-// as the prime weft's marker and returns Anchor == ".".
+// TestCloneHub_AnchorRootDefaultPath asserts the create path with an explicit "." subpath:
+// it commits "." as the prime weft's marker and returns Anchor == ".".
 func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -593,8 +559,8 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "anchor-root-weft")
 
 	cloneParent := t.TempDir()
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lym-anchor.
+	// ForceBootstrap: true, because weftBare is an ordinary seeded bare remote standing in for a weft;
+	// it has never been a repo, so it carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -614,7 +580,8 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 	assertMarkerCommittedOnPrimeWeftNotBoard(t, res, "anchor-root-warp", ".")
 }
 
-// seedWeftBranchFromMain pushes a branch named branch at the weft bare's main tip, so a later commit on either branch leaves the other markerless.
+// seedWeftBranchFromMain pushes a branch named branch at the main tip of bareRemote.
+// A commit later made on either branch leaves the other one markerless.
 func seedWeftBranchFromMain(t *testing.T, dir, bareRemote, branch string) {
 	t.Helper()
 
@@ -623,21 +590,20 @@ func seedWeftBranchFromMain(t *testing.T, dir, bareRemote, branch string) {
 	gitkit.Git(t, scratch, "push", "origin", "main:"+branch)
 }
 
-// TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote already carrying a committed .lym-anchor="backend", wherever the marker sits:
-// on main-weft, which the prime's weft worktree checks out and which wins, or only on the Bolt legacy branch, the fallback.
-// A re-clone with no --subpath reads the recorded value;
-// a conflicting non-default --subpath hard-errors;
-// a matching --subpath succeeds;
-// and no re-clone writes a Bolt marker the weft's own branch did not already carry.
+// TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote with .lym-anchor="backend" committed.
+// The marker sits on main-weft, which the prime's weft worktree checks out and which wins;
+// or it sits only on the Bolt legacy branch, the fallback.
+// A re-clone with no --subpath reads the recorded value; a conflicting non-default --subpath hard-errors;
+// a matching --subpath succeeds; and no re-clone writes a Bolt marker the weft's own branch did not already carry.
 func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// seed commits the marker on the weft bare's branch under test.
+		// seed commits the marker on the branch under test of the weft remote.
 		seed func(t *testing.T, fixtures, weftBare string)
-		// wantBoardMarker reports whether the board is expected to hold the marker the weft bare's main carries.
+		// wantBoardMarker reports whether the board is expected to hold the marker on the weft remote's main.
 		wantBoardMarker bool
 	}{
 		{"MainWeftMarker", func(t *testing.T, fixtures, weftBare string) {
@@ -659,8 +625,9 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			weftBare := makeBareRemote(t, fixtures, "anchor-adopt-weft")
 			tt.seed(t, fixtures, weftBare)
 
-			// No --subpath: the recorded anchor is read and returned as-is. No ForceBootstrap needed: the
-			// weft already carries the .lym-anchor marker seeded above, so the guard admits it regardless.
+			// With no --subpath, the recorded anchor is read and returned as-is.
+			// ForceBootstrap is not needed; the weft already carries the .lym-anchor marker seeded above,
+			// so the guard admits it regardless.
 			cloneParent := t.TempDir()
 			res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
@@ -679,8 +646,8 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 				t.Errorf("board holds a %s = %v; want %v (the adopt writes nothing)", lymcwd.AnchorFileName, gotBoardMarker, tt.wantBoardMarker)
 			}
 
-			// A conflicting non-default --subpath must hard-error rather than
-			// silently re-anchor: the record is authoritative on adopt.
+			// A conflicting non-default --subpath must hard-error rather than silently re-anchor:
+			// the recorded anchor is authoritative on adopt.
 			conflictParent := t.TempDir()
 			_, err = fabricengine.CloneHub(conflictParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
@@ -709,11 +676,10 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_StaleFabricAnchorHardErrors asserts that a weft remote carrying a leftover
-// pre-rename ".fabric-anchor" marker with no ".lym-anchor" beside it is a hard error naming
-// re-clone as the remedy,
-// and that teardownHub removes the hub — an old clone must never silently fall through to the
-// create path and re-anchor under the new name.
+// TestCloneHub_StaleFabricAnchorHardErrors asserts a hard error for a weft remote with a stale marker.
+// The stale marker is ".fabric-anchor" with no ".lym-anchor" beside it; the error names the marker rename as the remedy,
+// and teardownHub removes the hub.
+// An old clone must never silently fall through to the create path and re-anchor under ".lym-anchor".
 func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -723,17 +689,16 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "stale-anchor-warp", "backend")
 	weftBare := makeBareRemote(t, fixtures, "stale-anchor-weft")
 
-	// Seed the weft remote's main branch with a committed .fabric-anchor
-	// under the pre-rename name only — no .lym-anchor beside it — mirroring
-	// what an old clone's Bolt checkout would carry.
+	// Seed the weft remote's main branch with a committed .fabric-anchor and no .lym-anchor beside it;
+	// that is what an old clone's Bolt checkout would carry.
 	commitFileOnBranch(t, fixtures, weftBare, "main", ".fabric-anchor", "backend\n")
 
 	cloneParent := t.TempDir()
 	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
-	// No ForceBootstrap: the guard admits this fixture on its own (card 3's probe recognises the
-	// stale pre-rename marker), and the test asserts on the stale-marker error naming the marker
-	// rename as the remedy — a message the bootstrap guard never produces.
+	// No ForceBootstrap: the guard admits this fixture, since its probe recognises a stale .fabric-anchor marker.
+	// The test asserts the stale-marker error that names the marker rename as the remedy;
+	// the bootstrap guard never produces that message.
 	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: filepath.ToSlash(warpBare),
@@ -742,7 +707,7 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CloneHub() against a stale .fabric-anchor with no .lym-anchor should have failed")
 	}
-	// The remedy must be the marker rename, never "re-clone": this error is produced BY a clone, so
+	// The remedy must be the marker rename, never "re-clone": this error is produced by a clone;
 	// prescribing another clone is a loop the operator cannot exit.
 	if !strings.Contains(err.Error(), "git mv .fabric-anchor .lym-anchor") {
 		t.Errorf("CloneHub() error = %q; want it to name the marker rename as the remedy", err.Error())
@@ -755,11 +720,11 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	}
 }
 
-// TestCloneHub_RejectsUnusableSubpath asserts a structurally impossible --subpath is refused
-// BEFORE anything is created. An absolute subpath used to be accepted and recorded verbatim,
-// producing a hub whose every weft commit failed with git's "Invalid path '/backend'" because
-// ScopedPathspec built an absolute pathspec from it; an escaping subpath was caught only much
-// later, by an unrelated resolver, with a diagnosis blaming a marker that had never been written.
+// TestCloneHub_RejectsUnusableSubpath asserts that an impossible --subpath is refused before anything is created.
+// An absolute subpath is recorded verbatim, and every weft commit then fails with git's "Invalid path '/backend'";
+// ScopedPathspec builds an absolute pathspec from it.
+// An escaping subpath must be refused up front as well;
+// left to a later resolver, it would be blamed on a marker that was never written.
 func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -803,17 +768,14 @@ func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch is R2's regression for a clone
-// that reported total success against a hub that could never work.
+// TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch pins that CloneHub refuses such a remote.
 //
-// A bare repo created without -b main has HEAD -> refs/heads/master; pushing only `main` to it leaves
-// HEAD naming a ref that does not exist. `git clone` warns on stderr and exits 0, so cloneRepo
-// reported success and CloneHub went on to wire every junction, record the anchor and the binding, and
-// return ok:true — for a warp prime with an unborn HEAD and zero tracked files.
+// Such a remote's HEAD names a branch that does not exist, while other branches exist.
+// `git clone` exits 0 on it, so the refusal cannot rely on the clone's exit status.
 //
-// The counter-assertion in the second subtest is what keeps the refusal narrow: a warp remote with NO
-// branches at all is the genuine empty-remote bootstrap and must still clone, since an unborn warp
-// HEAD is a legitimate documented state on its own. Only the conjunction is refused.
+// A warp remote with no branches at all is the empty-remote bootstrap and must still clone;
+// an unborn warp HEAD is a legitimate documented state on its own.
+// Only the combination of an unborn HEAD and existing branches is refused.
 func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -824,8 +786,8 @@ func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.
 		dir := t.TempDir()
 		weftRemote := makeBareRemote(t, dir, "dangling-head-weft")
 		warpRemote := makeBareRemote(t, dir, "dangling-head-warp")
-		// makeBareRemote pushes `main`; repoint the bare repo's HEAD at a branch that was never
-		// created, which is exactly the state `git init --bare` (no -b) leaves behind.
+		// makeBareRemote pushes `main`; this repoints the bare repo's HEAD at a branch that is never created.
+		// That is the state `git init --bare` (no -b) leaves behind.
 		gitkit.MustRun(t, warpRemote, "git", "symbolic-ref", "HEAD", "refs/heads/master")
 
 		into := filepath.Join(dir, "into-dangling")
@@ -846,8 +808,7 @@ func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.
 			t.Errorf("CloneHub error = %q; want it to name the unchecked-out clone", err)
 		}
 
-		// The strict-abort teardown must leave no residual hub, exactly as every other CloneHub
-		// failure site does.
+		// The strict-abort teardown must leave no residual hub, as every CloneHub failure does.
 		entries, readErr := os.ReadDir(into)
 		if readErr != nil {
 			t.Fatalf("read into dir: %v", readErr)

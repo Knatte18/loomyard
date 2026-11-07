@@ -1,12 +1,15 @@
-// fixer.go declares the spawn-and-wait seam a caller drives one cold fixer through, and its production implementation over a strand.
+// fixer.go declares the spawn-and-wait seam a caller drives one cold fixer through.
+// It also holds the production implementation of that seam over reed strands.
 
 package gatefixer
 
 import "time"
 
-// Fixer is the seam a caller spawns, waits on and stops one cold fixer through, so a test drives the caller over a scripted fixer.
+// Fixer is the seam a caller spawns, waits on and stops one cold fixer through.
+// It lets a test drive the caller over a scripted fixer.
 type Fixer interface {
-	// SpawnOrAttach attaches to the live record store holds, and otherwise spawns a strand under spec and records it in store.
+	// SpawnOrAttach attaches to the live record store holds.
+	// Without one, it spawns a strand under spec and records it in store.
 	// It reports whether this call spawned the fixer.
 	SpawnOrAttach(store Store, spec Spec) (*Record, bool, error)
 	// Await blocks up to wait for rec's fixer to reach a terminal classification, bounding its run by timeout.

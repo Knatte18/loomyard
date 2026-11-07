@@ -1,8 +1,6 @@
-// index_test.go — Tier-1 unit coverage for parseTrailerScanRecord, the pure per-record parser
-// scanWarpSHATrailers's git-log scan loop calls.
-// No git spawn: every case here operates on hand-built record strings, never a real commit history,
-// so this file carries no build constraint and must never import "os/exec" or reference a
-// git-spawning helper.
+// index_test.go — Tier-1 unit coverage for parseTrailerScanRecord, which scanWarpSHATrailers calls per git-log record.
+// No git spawn: every case operates on hand-built record strings, never a real commit history.
+// The file carries no build constraint, so it must never import "os/exec" or call a git-spawning helper.
 
 package fabricengine
 
@@ -12,12 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestParseTrailerScanRecord_MultipleTagsSplitOnNewline is the TDD case for this card: a commit
-// carrying several "Snapshot:" trailers renders as a MULTI-LINE value for the one Snapshot
-// placeholder (one line per trailer occurrence), so the parser must split within that field on "\n"
-// rather than treating the whole multi-line value as a single tag.
-// Written first and run against the pre-split implementation to confirm it fails before the split
-// is added.
+// TestParseTrailerScanRecord_MultipleTagsSplitOnNewline covers a commit carrying several "Snapshot:" trailers.
+// Such a commit renders as a multi-line value for the one Snapshot placeholder, one line per trailer occurrence,
+// so the parser must split that field on "\n" rather than treat the whole value as a single tag.
 //
 //testtiming:keep a multi-line Snapshot value splitting into one tag per line; coverage of its blocks by other tests does not show an assertion of this
 func TestParseTrailerScanRecord_MultipleTagsSplitOnNewline(t *testing.T) {
@@ -49,9 +44,9 @@ func TestParseTrailerScanRecord_MultipleTagsSplitOnNewline(t *testing.T) {
 	}
 }
 
-// TestParseTrailerScanRecord covers the remaining record shapes as a table: no Snapshot field at
-// all, exactly one tag, a Warp-SHA-less record (skipped even though it carries a Snapshot value),
-// an empty record, and surrounding-newline trimming.
+// TestParseTrailerScanRecord covers the remaining record shapes as a table:
+// no Snapshot field at all, exactly one tag, an empty record, and surrounding-newline trimming,
+// and a record without a Warp-SHA is skipped even when it carries a Snapshot value.
 //
 //testtiming:keep the record shapes of the trailer scan: no Snapshot field, one tag, a Warp-SHA-less record skipped, an empty record and newline trimming; coverage of its blocks by other tests does not show an assertion of this
 func TestParseTrailerScanRecord(t *testing.T) {

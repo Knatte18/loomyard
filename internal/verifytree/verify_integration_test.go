@@ -1,4 +1,4 @@
-// verify_integration_test.go exercises Verify against a real scratch repo and real shell processes, so it carries the integration tag.
+// verify_integration_test.go exercises Verify against a real scratch repo and real shell processes.
 
 package verifytree
 
@@ -46,7 +46,11 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// TestVerify_PerCommandRecord covers the per-command record: a round command's pass leaves the plan-verify entry in place and skips on a repeat, a write drops another command's entry naming a different tree while keeping the base command's and replacing its own, LatestPass returns the pass's commit, and an old-format record reads as none.
+// TestVerify_PerCommandRecord covers the per-command record.
+// A round command's pass leaves the plan-verify entry in place and skips on a repeat.
+// A write drops another command's entry naming a different tree, keeps the base command's entry, and replaces its own.
+// LatestPass returns the pass's commit.
+// An old-format record reads as none.
 // The steps share one repo and run in order, so the test is parallel as a whole and no step is.
 func TestVerify_PerCommandRecord(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -132,9 +136,11 @@ func TestVerify_PerCommandRecord(t *testing.T) {
 	})
 }
 
-// TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and only when HEAD did not move during the run, the marker is present only while the command runs, a skip needs a record naming HEAD's tree and the same command, each run writes its own log and pruning bounds them while keeping the failure record's, and DirtyPaths names special and renamed paths verbatim.
+// TestVerify_Scenario runs one scratch repo through named steps, each reaching one rule of Verify.
 // The steps share one repo, so the test is parallel as a whole and no step is.
-// The steps up to the first pass rely on no record existing yet, so they run before it; each step after it relies on the record the one before left, and the last step relies on being last because it dirties the tree.
+// The steps up to the first pass need no record to exist yet, so they run before it.
+// Each step after it relies on the record the one before left.
+// The last step relies on being last, because it dirties the tree.
 func TestVerify_Scenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -363,7 +369,7 @@ func TestVerify_Scenario(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// A record an older build left under its old file name names a log that pruning does not keep.
+		// A record under the old file name names a log that pruning does not keep.
 		oldRecord := filepath.Join(p.Dir, "publish-failure.yaml")
 		if err := os.WriteFile(oldRecord, []byte("kind: plan_verify\nlog_path: "+named+"\nhead: abc\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -566,15 +572,18 @@ func (e *pauseEnv) holdOpenCommand() string {
 	return "echo ran >> " + e.counter + "; while [ ! -f " + e.release + " ]; do sleep 0.05; done"
 }
 
-// stoppableCommand appends a line to the counter file and, on its first run only, loops until a SIGTERM makes its trap write a line to the term file and exit.
+// stoppableCommand appends a line to the counter file.
+// On its first run only, it loops until a SIGTERM makes its trap write a line to the term file and exit.
 // The loop's children are short sleeps.
-// One forked as the group SIGTERM lands and missing it ends within 50 ms, instead of holding the process group until the SIGKILL after the wait delay.
+// A child forked as the group SIGTERM lands misses the signal and ends within 50 ms;
+// it does not hold the process group until the SIGKILL after the wait delay.
 func (e *pauseEnv) stoppableCommand() string {
 	return "trap 'echo term >> " + e.term + "; exit 0' TERM; echo ran >> " + e.counter + `; [ "$(wc -l < ` + e.counter + `)" -ge 2 ] && exit 0; while :; do sleep 0.05; done`
 }
 
-// TestVerify_PauseHold table-drives Verify under a pause hold over a scratch repo and a temp pause record:
-// the hold at entry, the stop at the grace end and the start over after each, a caller's cancel, the parent-lock exemption and the readings that never stop a verify.
+// TestVerify_PauseHold table-drives Verify under a pause hold over a scratch repo and a temp pause record.
+// Its rows cover the hold at entry, the stop at the grace end and the start over after each.
+// They also cover a caller's cancel, the parent-lock exemption and the readings that never stop a verify.
 // It is not parallel as a whole because one row captures the process-global logger; its other rows are.
 func TestVerify_PauseHold(t *testing.T) {
 	tiergate.Require(t, 1)

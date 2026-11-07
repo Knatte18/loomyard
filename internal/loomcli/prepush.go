@@ -1,4 +1,5 @@
-// prepush.go judges a loom run against origin and its owners right before the run commits or pushes its work, and stops one whose owner or branches moved since the run last looked.
+// prepush.go judges a loom run against origin and its owners right before the run commits or pushes its work.
+// It stops a run whose owner or branches moved since the run last looked.
 
 package loomcli
 
@@ -28,13 +29,13 @@ var errPushStopped = errors.New("loomcli: the push was stopped before it ran")
 type prePushCheck struct {
 	// slug names the run in its notices.
 	slug string
-	// skip reports whether the push needs no check: pushes are off, the pair is the prime, a pause covers the run, whose network gate holds the push, or the run stands at Finalize, which judges origin and its owners itself.
+	// skip reports whether the push needs no check: pushes are off, the pair is the prime, or a pause covers the run.
 	skip func() (bool, error)
-	// reconcile runs the run-scope origin reconcile, which takes in each tip of the run's own branches origin moved where a fast-forward or replay can, and returns the report narrowed to the run's own entry.
+	// reconcile runs the run-scope origin reconcile and returns the report narrowed to the run's own entry.
 	reconcile func() (fabricengine.OriginReport, error)
 	// parentBranch names the branch the run lands on, which the run-scope reconcile judges beside the run's own branches.
 	parentBranch func() (string, error)
-	// parentNoticed records key as the parent-branch notice posted and reports whether it already was, so a parent that stays behind origin is announced once per origin tip.
+	// parentNoticed records key as posted and reports whether it already was, so each origin tip is announced once.
 	parentNoticed func(key string) bool
 	// landed reports whether the run's parent already holds the run's work.
 	landed func() (bool, error)
@@ -85,9 +86,11 @@ func newPrePushCheck(location *lymcwd.Location, runID string) prePushCheck {
 }
 
 // skipsCheck reports whether a run's commit or push needs no pre-push check.
-// It does not when pushes or git are off, the pair is the prime, a pause covers the run, or the run stands at Finalize.
+// It needs none when pushes or git are off, the pair is the prime, or a pause covers the run.
+// It also needs none when the run stands at Finalize, which judges origin and its owners itself.
 // Each read runs only when the ones before it left the answer open, and a failed read is returned with false.
-// isPrime reads whether the pair is the prime, pauseCovers whether a pause covers the run, and currentProducer the producer the run's status file names, empty when it has no status.
+// isPrime reads whether the pair is the prime, pauseCovers whether a pause covers the run;
+// currentProducer returns the producer the run's status file names, empty when it has no status.
 func skipsCheck(opts fabricengine.SyncOptions, isPrime func() (bool, error), pauseCovers func() bool, currentProducer func() (string, error)) (bool, error) {
 	if opts.SkipGit || opts.SkipPush {
 		return true, nil
@@ -106,12 +109,19 @@ func skipsCheck(opts fabricengine.SyncOptions, isPrime func() (bool, error), pau
 	return producer == loomshed.NameFinalize, nil
 }
 
-// guard runs the check and returns nil when the work may go, and an error wrapping errPushStopped, naming why, when it stopped it.
-// The work goes when the check is skipped, when origin is unreachable or the check fails, since the push's own failure is then recorded, when a read of whether the parent holds the run's work fails, and when the run's entry reads active;
-// an active entry whose own branches the reconcile moved posts one notice naming them, and one whose parent branch origin moved past this machine's tip posts another naming it, once per origin tip.
-// An entry another machine owns pauses the run under the owner and names `lym adopt` with the verdict's subject, the slug when it brought none.
+// guard runs the check and returns nil when the work may go.
+// It returns an error wrapping errPushStopped, naming why, when it stops the work.
+// The work goes when the check is skipped or cannot tell whether it applies;
+// when origin is unreachable or the origin reconcile fails, so the push's own failure is recorded;
+// when a read of whether the parent holds the run's work fails; and when the run's entry reads active.
+// An active entry whose own branches the reconcile moved posts one notice naming them.
+// One whose parent branch origin moved past this machine's tip posts another naming it, once per origin tip.
+// An entry another machine owns pauses the run under the owner;
+// it names `lym adopt` with the verdict's subject, or the slug when it brought none.
 // An entry origin ended pauses the run unless its parent already holds the run's work, as after its own landing.
-// An entry a branch stops pauses the run and names each of the run's branches, and its parent branch, that stopped, with its state, or a branch every run shares when none did, then the way forward and `lym tender resume`.
+// An entry a branch stops pauses the run and names the stopped branches with their state;
+// they are the run's own branches and its parent branch, or a branch every run shares when none did.
+// The notice then gives the way forward and `lym tender resume`.
 // Every stop posts one notice, which names a failed pause.
 func (c prePushCheck) guard() error {
 	skip, err := c.skip()
@@ -157,7 +167,9 @@ func (c prePushCheck) guard() error {
 	return fmt.Errorf("%w: %s", errPushStopped, reason)
 }
 
-// guardedCommit returns commit behind the check: a commit the check stops runs nothing and returns the check's error, which wraps errPushStopped, so the records origin has moved stay as they are.
+// guardedCommit returns commit behind the check.
+// A commit the check stops runs nothing and returns the check's error, which wraps errPushStopped,
+// so the records origin has moved stay as they are.
 // A caller that pushes after its commit reads that error as the stop of the push too.
 func (c prePushCheck) guardedCommit(commit func(msg string) (bool, error)) func(msg string) (bool, error) {
 	return func(msg string) (bool, error) {
@@ -168,7 +180,8 @@ func (c prePushCheck) guardedCommit(commit func(msg string) (bool, error)) func(
 	}
 }
 
-// guardedSpawn returns spawn behind the check: a push the check stops is not started, returns nil and leaves its commits local.
+// guardedSpawn returns spawn behind the check.
+// A push the check stops is not started; it returns nil and leaves its commits local.
 func (c prePushCheck) guardedSpawn(spawn func() error) func() error {
 	return func() error {
 		if err := c.guard(); err != nil {
@@ -179,7 +192,8 @@ func (c prePushCheck) guardedSpawn(spawn func() error) func() error {
 	}
 }
 
-// guardedPush returns push behind the check: a push the check stops runs nothing and returns the check's error, which wraps errPushStopped.
+// guardedPush returns push behind the check.
+// A push the check stops runs nothing and returns the check's error, which wraps errPushStopped.
 func (c prePushCheck) guardedPush(push func() error) func() error {
 	return func() error {
 		if err := c.guard(); err != nil {
@@ -189,8 +203,10 @@ func (c prePushCheck) guardedPush(push func() error) func() error {
 	}
 }
 
-// stopReason returns why the run's entry stops its push, empty when it does not, and whether the stop is another machine's ownership.
-// A failed read of whether the parent holds the run's work stops nothing, so the push goes and its own failure is recorded.
+// stopReason returns why the run's entry stops its push, empty when it does not;
+// owned reports whether the stop is another machine's ownership.
+// A failed read of whether the parent holds the run's work stops nothing;
+// the push goes and its own failure is recorded.
 func (c prePushCheck) stopReason(report fabricengine.OriginReport) (reason string, owned bool) {
 	for _, entry := range report.Entries {
 		if entry.Slug != c.slug {
@@ -224,9 +240,11 @@ func (c prePushCheck) stopReason(report fabricengine.OriginReport) (reason strin
 	return "", false
 }
 
-// stoppedBranches returns each of the run's own branches whose state stops its entry, and its parent branch when origin's move of it stops it, as the branch name with its state.
-// A parent branch held back by this machine's own live pair, dirty path or lock is not named, since origin moved nothing there.
-// The run's own busy records branch is not named either, since the run's own driver holds it and the reconcile reads it as no stop.
+// stoppedBranches returns each of the run's own branches whose state stops its entry, as the branch name with its state.
+// It also returns the parent branch when origin's move of it stops the entry.
+// A parent branch held back by this machine's own live pair, dirty path or lock is not named.
+// Origin moved nothing there.
+// The run's own busy records branch is not named either: its driver holds it, and the reconcile reads that as no stop.
 func (c prePushCheck) stoppedBranches(report fabricengine.OriginReport) []string {
 	var stopped []string
 	for _, branch := range c.ownBranches(report) {
@@ -294,7 +312,8 @@ func (c prePushCheck) ownBranches(report fabricengine.OriginReport) []fabricengi
 	return own
 }
 
-// parentOutcome returns the verdict on the run's parent branch, with found false when the reconcile judged none or the parent branch cannot be read.
+// parentOutcome returns the reconcile's verdict on the run's parent branch.
+// found is false when the reconcile judged none, or when the parent branch cannot be read.
 // Only a branch of the code repository counts, since the hub's board branch may carry the same name.
 func (c prePushCheck) parentOutcome(report fabricengine.OriginReport) (fabricengine.BranchOutcome, bool) {
 	name, err := c.parentBranch()

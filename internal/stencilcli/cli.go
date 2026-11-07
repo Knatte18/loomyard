@@ -1,12 +1,8 @@
-// cli.go exposes the cobra command tree for the stencil module: list, validate, diff, sync, and
-// promote.
-// Geometry is resolved once in the parent's PersistentPreRunE, following the pattern
-// internal/idecli/cli.go establishes, so a bare "lym stencil" listing never requires a git repo.
+// cli.go exposes the cobra command tree for the stencil module: list, validate, diff, sync, and promote.
+// Geometry is resolved once in the parent's PersistentPreRunE;
+// so a bare "lym stencil" listing never requires a git repo.
 // list, validate, and sync are declared here; diff.go and promote.go each add their own subcommand
-// via a closure-returning accessor over the same resolved *lymcwd.Location.
-//
-// stencilcli is a named deviation from the CLI/Cobra Invariant's package-naming rule: its kernel is
-// internal/stencilstore, not stencilengine. See PATTERN-cli-cobra.
+// through a closure-returning accessor over the same resolved *lymcwd.Location.
 
 package stencilcli
 
@@ -85,8 +81,8 @@ Examples:
 			out := cmd.OutOrStdout()
 
 			list := listRegistryEntries(fabricengine.StencilsDir(l.HubPath), stencils.Registry(), kindStencil)
-			// list is the only remaining verb that surfaces a deployed spec whose state is edited,
-			// which the unchanged reconcile policy depends on an operator being able to see.
+			// list is the only verb that surfaces a deployed spec's edit state;
+			// the reconcile policy depends on an operator seeing it.
 			list = append(list, listRegistryEntries(fabricengine.SpecsDir(l.HubPath), specs.Registry(), kindSpec)...)
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"stencils": list}))
@@ -127,11 +123,9 @@ Examples:
 
 			code := output.Ok(out, map[string]any{"findings": findingMaps})
 			if hasError {
-				// A marker present on disk but absent from the shipped default breaks
-				// stencil.Fill at the point of use, so the response is still the ok
-				// envelope carrying the findings -- but the exit code must fail the
-				// invocation, which output.Ok's own return value cannot do since it is
-				// hardcoded to 0.
+				// A marker present on disk but absent from the shipped default breaks stencil.Fill at the point of use.
+				// The response stays the ok envelope carrying the findings,
+				// but the exit code must fail the invocation, because output.Ok's return value is hardcoded to 0.
 				code = 1
 			}
 			clihelp.SetExit(cmd.Context(), code)
@@ -152,13 +146,12 @@ Examples:
 			stencilsDir := fabricengine.StencilsDir(l.HubPath)
 			sourceDir := resolveSourceDir(l)
 
-			// ForceRefresh's returned written slice is a plain list of stencil names, not a
-			// fabricengine.Mutations record -- no rec exists yet at this point (it is constructed
-			// below, scoped to the CommitSeededStencils call only), and stencilstore is not a
-			// fabricengine verb, so there is no Kind to classify these writes under. Treated as a
-			// pre-flight-style failure: a bare output.Err deliberately, not errWithRecord's
-			// mutations/partial pair. Any partially-written state is re-detected and completed by
-			// the next sync via Classify, so this is a reporting gap, not a correctness bug.
+			// The written slice from ForceRefresh is a plain list of stencil names, not a fabricengine.Mutations record.
+			// No record exists yet at this point, and stencilstore is not a fabricengine verb,
+			// so there is no Kind to classify these writes under.
+			// The failure is a pre-flight failure: it returns a bare output.Err, not errWithRecord's mutations and partial pair.
+			// The next sync re-detects and completes any partially written state through Classify,
+			// so this is a reporting gap, not a correctness bug.
 			running := buildvcs.Running()
 			binaryLabel := fabricengine.BinaryLabel()
 			mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean())
@@ -175,16 +168,16 @@ Examples:
 				return nil
 			}
 
-			// The specs half repeats the stencils half's force-refresh-plus-commit pair against the
-			// deployed-specs subtree, accumulating into the same rec so one envelope reports both
-			// passes' mutations. Its sourceDir is empty for the same reason the seeding pass' is: see
-			// the specs-reconcile-passes-no-source-dir Shared Decision.
+			// The specs half repeats the stencils half's force-refresh and commit pair against the deployed-specs subtree.
+			// It accumulates into the same rec, so one envelope reports both passes' mutations.
+			// Its sourceDir is empty because specs have no worktree source tree;
+			// see the specs-reconcile-passes-no-source-dir Shared Decision.
 			//
-			// A failure in this half returns through the same shapes the stencils half above already
-			// used -- a force-refresh failure returns a bare output.Err, and a commit failure returns
-			// errWithRecord carrying the record snapshot accumulated so far, which by then already
-			// includes the stencils half's own mutations. Both return early, leaving the stencils
-			// commit landed and reported as partial.
+			// A failure here returns the same shapes as the stencils half:
+			// a force-refresh failure is a bare output.Err,
+			// and a commit failure is errWithRecord carrying the snapshot so far.
+			// That snapshot already includes the stencils half's mutations.
+			// Both return early, leaving the stencils commit landed and reported as partial.
 			specsDir := fabricengine.SpecsDir(l.HubPath)
 			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), "", running))
 			if specsErr != nil {
@@ -218,11 +211,8 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the stencil CLI in cwd, or in the process working directory when cwd is empty.
+// The empty case goes through clihelp.Execute, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)
@@ -230,15 +220,15 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
-// Kind labels distinguish list's two registry-sourced row classes: kindStencil for a row read
-// against fabricengine.StencilsDir and stencils.Registry, kindSpec for a row read against
-// fabricengine.SpecsDir and specs.Registry.
+// Kind labels distinguish list's two row classes.
+// kindStencil marks a row read from fabricengine.StencilsDir and stencils.Registry.
+// kindSpec marks a row read from fabricengine.SpecsDir and specs.Registry.
 //
-// validate, diff, and promote deliberately do not gain a specs pass alongside list and sync.
-// validate compares top-level marker sets via stencil.TopLevelMarkers; a spec is not a template, so
-// both sides are empty and the pass would be a guaranteed no-op that falsely implies a check ran.
-// diff and promote both need a worktree sourceDir, which specs deliberately do not have (see
-// resolveSourceDir and the specs-reconcile-passes-no-source-dir Shared Decision).
+// validate, diff, and promote do not run a specs pass.
+// validate compares top-level marker sets through stencil.TopLevelMarkers; a spec is not a template,
+// so both sides are empty and the pass would be a guaranteed no-op that falsely implies a check ran.
+// diff and promote both need a worktree sourceDir, which specs do not have;
+// see resolveSourceDir and the specs-reconcile-passes-no-source-dir Shared Decision.
 const (
 	kindStencil = "stencil"
 	kindSpec    = "spec"
@@ -253,9 +243,9 @@ type stencilInfo struct {
 	Kind  string `json:"kind"`
 }
 
-// listRegistryEntries runs registry's full Names()/Default() loop against baseDir and returns one
-// stencilInfo per known name, tagged with kind. It is the shared body list's two passes (stencils,
-// specs) both call, so the per-registry loop is written once rather than twice.
+// listRegistryEntries returns one stencilInfo per known name in registry, tagged with kind.
+// Each row's board copy is read from baseDir.
+// The stencils and specs passes of list share this loop.
 func listRegistryEntries(baseDir string, registry stencilstore.Registry, kind string) []stencilInfo {
 	var list []stencilInfo
 	for _, name := range registry.Names() {
@@ -278,11 +268,11 @@ func listRegistryEntries(baseDir string, registry stencilstore.Registry, kind st
 	return list
 }
 
-// classifyLabel maps a stencilstore.State to the three-value vocabulary lym stencil list reports.
-// StateReconciled is folded into "untouched" alongside StateUntouched, since both describe a board
-// copy that already matches what a future refresh would write -- StateReconciled differs only in
-// carrying a stamp for the wrong (superseded) default, which reconciliation corrects invisibly on
-// the next seed/refresh pass.
+// classifyLabel maps a stencilstore.State to the three-value vocabulary that lym stencil list reports.
+// StateReconciled folds into "untouched" with StateUntouched:
+// both describe a board copy that already matches what a refresh would write.
+// StateReconciled differs only in carrying a stamp for a superseded default.
+// The next seed or refresh corrects that stamp invisibly.
 func classifyLabel(state stencilstore.State) string {
 	switch state {
 	case stencilstore.StateAbsent:
@@ -294,8 +284,9 @@ func classifyLabel(state stencilstore.State) string {
 	}
 }
 
-// resolveSourceDir computes the worktree-relative contracts/stencils/ source tree path the same way cmd/lym/stencilseed.go does: filepath.Join(l.WorktreePath(), "contracts", "stencils") when it exists, and the empty string otherwise.
-// The empty string is what keeps the port-back drift warning silent in a consumer repo, whose worktree carries no such tree, rather than firing on every run forever.
+// resolveSourceDir returns the worktree's contracts/stencils tree, or the empty string when that tree is absent.
+// The empty string keeps the port-back drift warning silent in a consumer repo.
+// A consumer's worktree has no such tree, so the warning would otherwise fire on every run.
 func resolveSourceDir(l *lymcwd.Location) string {
 	sourceDir := filepath.Join(l.WorktreePath(), "contracts", "stencils")
 	if _, err := os.Stat(sourceDir); err != nil {
@@ -304,17 +295,15 @@ func resolveSourceDir(l *lymcwd.Location) string {
 	return sourceDir
 }
 
-// okWithRecord and errWithRecord mirror internal/fabriccli's envelope helpers of the same name: they
-// lay down the fixed mutations/partial key pair the Mutation Record Invariant requires of every
-// mutating verb outcome. sync is stencilcli's only mutating verb, so these live inline here rather
-// than in a dedicated envelope.go.
+// okWithRecord and errWithRecord write the mutations and partial keys of the envelope.
+// The Mutation Record Invariant requires that every mutating verb outcome carry them.
 func okWithRecord(w io.Writer, rec fabricengine.Mutations, fields map[string]any) int {
 	fields["mutations"] = rec.Entries()
 	fields["partial"] = false
 	return output.Ok(w, fields)
 }
 
-// errWithRecord mirrors internal/fabriccli's helper of the same name; see okWithRecord's comment.
+// errWithRecord reports err with the record's mutations, and sets partial when the record holds any entry.
 func errWithRecord(w io.Writer, rec fabricengine.Mutations, err error) int {
 	fields := map[string]any{
 		"mutations": rec.Entries(),

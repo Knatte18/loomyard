@@ -1,7 +1,6 @@
-// roles.go implements the role-resolution pre-flight: mapping webster.yaml's two role model-spec
-// strings onto shuttle model choices, once, before any agent spawns. `run`
-// calls ResolveRoles at entry so a typo'd alias in webster.yaml fails loud before Master ever
-// starts, never mid-run when a role first spawns.
+// roles.go resolves webster.yaml's two role model-spec strings to shuttle model choices, once, before any agent spawns.
+// `run` calls ResolveRoles at entry, so a typo'd alias in webster.yaml fails loud before Master starts;
+// it never fails mid-run, when a role first spawns.
 
 package websterengine
 
@@ -32,9 +31,9 @@ const (
 // Forks get none: they inherit the master's context.
 var roleSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
-// MerriamStrandRole is the reed strand role Merriam, the Master session, runs under,
+// MerriamStrandRole is the reed strand role the Master session runs under,
 // so reed names the strand `<shortname>:<slug>:webster`.
-// It is distinct from RoleMaster, which stays the webster.yaml model key.
+// The webster.yaml model key of the Master session is `master`, a separate name.
 // Its spec names the webster segment.
 const MerriamStrandRole = "webster"
 

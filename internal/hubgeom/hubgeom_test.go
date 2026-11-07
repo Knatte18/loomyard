@@ -1,8 +1,6 @@
-// hubgeom_test.go is the load-bearing guard against this refactor's one silent failure mode: a
-// swapped anchor/worktree pair compiles cleanly and passes every test built on a fixture where the
-// two happen to coincide. The fixture below deliberately keeps hub, worktree root, and anchor path
-// three distinct directories, with RepoName differing from every basename, so a field mix-up inside
-// ReedGeometry or BurlerGeometry surfaces instead of passing silently.
+// hubgeom_test.go tests ReedGeometry and BurlerGeometry, guarding the anchor path and worktree root against a swap.
+// A swap goes uncaught where the two coincide, so each fixture keeps hub, worktree root and anchor path apart.
+// RepoName also differs from every basename, so a field mix-up surfaces instead of passing silently.
 
 package hubgeom
 
@@ -27,8 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and anchor path are distinct directories.
-// The prime is told no slug and a task worktree its own name as the slug.
+// TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and anchor path differ.
+// The prime gets no slug, and a task worktree gets its own name as the slug.
 //
 //testtiming:keep pins the field-by-field geometry of a prime and of an anchored task worktree, which the integration tests covering its blocks only see through a real hub
 func TestReedGeometry(t *testing.T) {
@@ -85,10 +83,8 @@ func TestReedGeometry(t *testing.T) {
 				t.Errorf("ReedGeometry(l).PaneCwd = %q; want %q (l.AnchorPath())", got.PaneCwd, l.AnchorPath())
 			}
 			if tt.anchorRel != "." && got.PaneCwd == worktreeRoot {
-				// The subpath-anchored row must catch a later "simplification"
-				// that repoints the spawn sites at WorktreeRoot: the two only
-				// coincide when AnchorRel is ".", which this row deliberately is
-				// not.
+				// Only a subpath-anchored fixture catches a change that points the spawn sites at WorktreeRoot:
+				// the two coincide only when AnchorRel is ".".
 				t.Errorf("ReedGeometry(l).PaneCwd = %q; want != WorktreeRoot %q", got.PaneCwd, worktreeRoot)
 			}
 			if got.WorktreeRoot != worktreeRoot {
@@ -132,7 +128,7 @@ func TestReedGeometry(t *testing.T) {
 			if buttons.Place != wantPlace {
 				t.Errorf("Buttons().Place = %q; want %q", buttons.Place, wantPlace)
 			}
-			// The anchor path, not the worktree root: only the subpath-anchored row tells them apart.
+			// Buttons().Worktree is the anchor path, not the worktree root; only a subpath-anchored fixture tells them apart.
 			if buttons.Worktree != anchorPath {
 				t.Errorf("Buttons().Worktree = %q; want %q (the anchor path)", buttons.Worktree, anchorPath)
 			}
@@ -152,7 +148,8 @@ func TestReedGeometry(t *testing.T) {
 	}
 }
 
-// TestReedGeometry_ButtonContext pins how the button-context teller reads the place from the pair's origin record and the machine's buttons from the desktop machine layer.
+// TestReedGeometry_ButtonContext pins how the button-context teller reads the place and the machine's buttons.
+// The place comes from the pair's origin record, and the buttons come from the desktop machine layer.
 func TestReedGeometry_ButtonContext(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -188,7 +185,8 @@ func TestReedGeometry_ButtonContext(t *testing.T) {
 		})
 	}
 
-	// writeMachineButtons gives l's hub a Bolt checkout whose desktop machine layer holds contents, and l's anchor a _lym directory.
+	// writeMachineButtons gives l's hub a Bolt checkout whose desktop machine layer holds contents.
+	// It also gives l's anchor a _lym directory.
 	writeMachineButtons := func(t *testing.T, contents string) *lymcwd.Location {
 		t.Helper()
 		l := hubWithOrigin(t, `{"parent_branch":"main"}`)
@@ -247,7 +245,8 @@ func TestReedGeometry_ButtonContext(t *testing.T) {
 	})
 }
 
-// TestBurlerGeometry pins BurlerGeometry's roots against a subpath-anchored fixture, whose hub, worktree root and anchor path are three distinct directories.
+// TestBurlerGeometry pins BurlerGeometry's roots against a subpath-anchored fixture.
+// The fixture's hub, worktree root and anchor path are all distinct.
 //
 //testtiming:keep pins that WorktreeRoot is the anchor path while RepoRoot stays the worktree path, which the origin-record test covering its blocks never reads
 func TestBurlerGeometry(t *testing.T) {
@@ -298,12 +297,14 @@ func TestBurlerGeometry(t *testing.T) {
 		t.Errorf("BurlerGeometry(l).SpecsDir = %q; want %q", got.SpecsDir, want)
 	}
 	if got.WorktreeRoot == worktreeRoot {
-		// The subpath-anchored fixture must catch a later "simplification" that repoints BurlerGeometry's WorktreeRoot fill at l.WorktreePath(): the two only coincide when AnchorRel is ".", which this fixture deliberately is not.
+		// Only a subpath-anchored fixture catches a change that repoints the WorktreeRoot fill at l.WorktreePath():
+		// the two coincide only when AnchorRel is ".".
 		t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)
 	}
 }
 
-// TestBurlerGeometry_ParentNameFromOriginRecord pins ParentName to what the worktree's origin record names, and to empty when the record names no parent worktree.
+// TestBurlerGeometry_ParentNameFromOriginRecord pins ParentName to the parent named by the worktree's origin record.
+// ParentName is empty when the record names no parent worktree.
 //
 //testtiming:keep pins ParentName from a hand-written origin record, which the roots test covering its blocks never builds
 func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
@@ -321,8 +322,8 @@ func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
 	}
 }
 
-// TestIsPrimeWorktree pins the .git-entry rule ReedGeometry tells the prime from a task worktree by.
-// A directory, or a gitdir file pointing straight at a git directory, is the main worktree.
+// TestIsPrimeWorktree pins the rule that tells the prime worktree from a task worktree by its .git entry.
+// A .git directory, or a gitdir file pointing straight at a git directory, is the main worktree.
 // A gitdir file pointing into worktrees/ is a linked one, and anything else is an error.
 func TestIsPrimeWorktree(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -366,7 +367,8 @@ func TestIsPrimeWorktree(t *testing.T) {
 	}
 }
 
-// TestReconcileGeometry verifies a hub with a board-level lym dir yields exactly the board dir and worktree root, and a layout without one yields the zero value and false.
+// TestReconcileGeometry verifies a hub with a board-level lym dir yields exactly the board dir and worktree root,
+// and a layout without one yields the zero value and false.
 func TestReconcileGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -405,8 +407,9 @@ func TestReconcileGeometry(t *testing.T) {
 	}
 }
 
-// TestCreelGeometry pins every creel geometry field, that its flag directory is the one a Claude strand's mail hook tests, that one hub gives one socket path, that two hubs of one shortname get different ones,
-// and that a hub with no shortname record is refused naming it.
+// TestCreelGeometry pins every creel geometry field.
+// One hub gives one socket path, and two hubs of one shortname get different ones.
+// A hub with no shortname record is refused, naming it.
 func TestCreelGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -467,8 +470,12 @@ func TestCreelGeometry(t *testing.T) {
 	}
 }
 
-// TestSlackGeometry pins every Slack geometry field, that the token path lies in the credential directory while every other path lies under the hub's Slack directory, that a hub with no shortname record is refused as CreelGeometry refuses it, and that a machine with no credential directory is refused naming the environment variables that decide it.
-// It redirects the credential directory through t.Setenv, which is process-global state, so it does not run in parallel.
+// TestSlackGeometry pins every Slack geometry field.
+// The token path lies in the credential directory, while every other path lies under the hub's Slack directory.
+// A hub with no shortname record is refused.
+// A machine with no credential directory is refused, naming the environment variables that decide it.
+// The test redirects the credential directory through t.Setenv, which is process-global state,
+// so it does not run in parallel.
 func TestSlackGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	credentialRoot := t.TempDir()

@@ -1,4 +1,5 @@
-// loop_worktreegone_test.go pins the exit of a beam dobby whose worktree a teardown removed: when the loop tests it, what it writes to the prime's log and which tidy agent it stops.
+// loop_worktreegone_test.go pins how a beam dobby exits once a teardown has removed its worktree.
+// It checks what the loop writes to the prime's log and which tidy agent it stops.
 
 package dobbyengine
 
@@ -16,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// goneRig is a loop harness over a worktree on disk, with its raw log writes landing in files and a recording tidy shuttle.
+// goneRig is a loop harness over an on-disk worktree, with log writes going to files and a recording tidy shuttle.
 type goneRig struct {
 	h        *loopHarness
 	root     string

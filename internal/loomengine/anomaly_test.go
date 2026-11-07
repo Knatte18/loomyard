@@ -1,6 +1,6 @@
-// anomaly_test.go is the TDD driver for DetectCrashResume and ClassifyHalt: table tests over
-// hand-built observations and hand-built states and reasons. It is untagged (Tier 1): no spawn,
-// no git, no filesystem I/O -- the classifier is pure.
+// anomaly_test.go holds table tests for DetectCrashResume and ClassifyHalt.
+// The tests use hand-built observations, states and reasons.
+// It is untagged (Tier 1): no spawn, no git, no filesystem I/O, since the classifier is pure.
 
 package loomengine
 
@@ -89,9 +89,8 @@ func TestDetectCrashResume(t *testing.T) {
 			want: false,
 		},
 		{
-			// A completed `lym loom step` leaves exactly the crash signature -- state running, no
-			// lock held, live history -- so the voucher is the one thing separating an
-			// operator's step-to-driver handoff from a mid-run driver death.
+			// A completed `lym loom step` leaves exactly the crash signature: state running, no lock held, live history.
+			// Only the voucher separates an operator's step-to-driver handoff from a mid-run driver death.
 			name: "RunningWithHistory_Vouched_None",
 			entry: EntryObservation{
 				Observed:      true,

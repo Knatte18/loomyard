@@ -1,4 +1,6 @@
-// overlay_test.go covers Overlay: which names it admits, that a plan parsed through it reads, rewrites and re-parses in memory while the plan directory stays byte-identical, and that the checks which re-read a card file follow it.
+// overlay_test.go covers Overlay: which plan file names it admits.
+// It checks that a plan parsed through Overlay reads, rewrites and re-parses in memory,
+// and that the plan directory stays byte-identical, and that the checks which re-read a card file follow it.
 
 package planparser_test
 

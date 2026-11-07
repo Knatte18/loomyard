@@ -1,4 +1,5 @@
-// live.go declares what other modules read of the hub's orchs: HubOrchs, the worktrees an orch may run in, and OrchLive, the liveness predicate of one worktree's orch, the same reading `lym orch status` makes of the strand.
+// live.go declares the reads other modules make of the hub's orchs:
+// HubOrchs lists the worktrees an orch may run in, and OrchLive reports whether one worktree's orch is live.
 
 package orchcli
 
@@ -9,9 +10,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchroute"
 )
 
-// HubOrchs lists the worktrees of the hub that location belongs to in which an orch may run: the prime's location first, then each local pair whose origin record carries the beam mark.
-// A pair whose origin record cannot be read is skipped with a warning, since a reader that must keep working under a pause cannot stop on one half-present pair.
-// A pair still being created, one in its staging directory or without its _lym junction yet, is skipped silently and has nothing read through it.
+// HubOrchs lists the worktrees of the hub that location belongs to in which an orch may run:
+// the prime's location first, then each local pair whose origin record carries the beam mark.
+// A pair whose origin record cannot be read is skipped with a warning.
+// A reader that must keep working under a pause cannot stop on one half-present pair.
+// A pair still being created, in its staging directory or without its _lym junction yet, is skipped silently.
+// Nothing is read through such a pair.
 func HubOrchs(location *lymcwd.Location) ([]*lymcwd.Location, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
@@ -53,8 +57,10 @@ func HubOrchs(location *lymcwd.Location) ([]*lymcwd.Location, error) {
 	return orchs, nil
 }
 
-// OrchLive reports whether the orch of worktree is live: its orch state records a strand that reed tracks and reports live.
-// A worktree whose orch never started, whose reed session is gone, or whose recorded strand reed no longer tracks, is not live.
+// OrchLive reports whether the orch of worktree is live:
+// its orch state records a strand that reed tracks and reports live.
+// A worktree whose orch never started, or whose reed session is gone, is not live.
+// Nor is one whose recorded strand reed no longer tracks.
 func OrchLive(worktree *lymcwd.Location) (bool, error) {
 	return orchroute.Live(worktree)
 }

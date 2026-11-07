@@ -1,5 +1,6 @@
-// remoterefslock_integration_test.go covers the remote-refs lock against real git repositories: one lock per repository, the pause gate passed before it is taken, and every fetch and pull method waiting on it.
-// It also covers every push method transferring outside the lock and writing its tracking ref only under it, and concurrent fetches and pushes of one repository that all succeed.
+// remoterefslock_integration_test.go covers the remote-refs lock against real git repositories.
+// It checks that the pause gate is passed before the lock is taken and that fetch and pull methods wait on the lock.
+// Pushes transfer outside the lock and write their tracking ref only under it; concurrent fetches and pushes succeed.
 
 package gitrepo_test
 
@@ -75,7 +76,8 @@ func TestHoldRemoteRefs_OneLockServesEveryWorktreeOfARepository(t *testing.T) {
 	_ = probe.Release()
 }
 
-// TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheRelease is not parallel: it installs the process-wide network gate.
+// TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheRelease is not parallel.
+// The reason is that it installs the process-wide network gate.
 func TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheRelease(t *testing.T) {
 	tiergate.Require(t, 1)
 	clone, _ := publishedClone(t)
@@ -134,7 +136,8 @@ func TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheR
 }
 
 // remoteRefsHeldWindow is how long a call must stay blocked behind a held remote-refs lock to count as waiting on it.
-// A call that ignored the lock finishes a local git operation well inside it; a blocked call can never fail the check, so the window only bounds how fast a missing lock is caught.
+// A call that ignored the lock finishes a local git operation well inside it;
+// a blocked call can never fail the check, so the window only bounds how fast a missing lock is caught.
 const remoteRefsHeldWindow = 500 * time.Millisecond
 
 func TestRemoteRefsLock_EveryFetchAndPullMethodWaitsWhileTheLockIsHeld(t *testing.T) {
@@ -190,7 +193,7 @@ const originLandedWithin = 30 * time.Second
 // originLandedTick is how often the bare remote is read while waiting for a push transfer to land.
 const originLandedTick = 20 * time.Millisecond
 
-// branchSHA returns the commit ref names in the repository at dir, or "" when the ref does not exist.
+// branchSHA returns the full SHA that ref resolves to in the repository at dir, or "" when the ref does not exist.
 func branchSHA(t *testing.T, dir, ref string) string {
 	t.Helper()
 	stdout, _, code, err := runGit(t, dir, "rev-parse", "--verify", "--quiet", ref)
@@ -203,7 +206,8 @@ func branchSHA(t *testing.T, dir, ref string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// pushUnderHeldLock holds the clone's remote-refs lock, starts call, and waits until the bare remote's branch reads want, failing if call returns first.
+// pushUnderHeldLock holds the clone's remote-refs lock and starts call.
+// It waits until the bare remote's branch reads want, and fails if call returns first.
 // It returns the function that releases the lock and then waits for call's error.
 func pushUnderHeldLock(t *testing.T, clone, bareRemote, branch, want string, call func() error) (releaseAndWait func() error) {
 	t.Helper()
@@ -258,7 +262,8 @@ func TestRemoteRefsLock_APushTransfersWhileTheLockIsHeldAndWritesItsTrackingRefO
 	tests := []struct {
 		name   string
 		branch string
-		// prepare readies the clone and returns the push to run and the commit origin's branch and its tracking ref hold afterwards, empty for a deleted branch.
+		// prepare readies the clone and returns the push to run.
+		// It also returns the commit that origin's branch and its tracking ref hold afterwards, or "" for a deleted branch.
 		prepare      func(t *testing.T, clone string, repo *gitrepo.Repo) (call func() error, want string)
 		wantUpstream string
 	}{
@@ -324,7 +329,8 @@ func TestRemoteRefsLock_APushTransfersWhileTheLockIsHeldAndWritesItsTrackingRefO
 	}
 }
 
-// TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere covers a fetch that read origin after the push's transfer and wrote the tracking ref before the push took the lock.
+// TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere covers a fetch that interleaves with a push.
+// The fetch reads origin after the push's transfer and writes the tracking ref before the push takes the lock.
 func TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -348,7 +354,8 @@ func TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere(t *
 	}
 }
 
-// TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed reproduces two lym processes writing one repository's tracking refs at once.
+// TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed reproduces two lym processes at once.
+// Both write the tracking refs of one repository.
 // Without the lock, git fails the loser with "incorrect old value provided" or "cannot lock ref".
 func TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed(t *testing.T) {
 	tiergate.Require(t, 1)

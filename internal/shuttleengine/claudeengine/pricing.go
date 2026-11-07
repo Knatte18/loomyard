@@ -1,4 +1,5 @@
-// pricing.go implements shuttleengine.MessagePricer for Claude: the per-model API list-price table and the price of one message's usage.
+// pricing.go implements shuttleengine.MessagePricer for Claude.
+// It holds the per-model API list-price table and prices one message's usage.
 
 package claudeengine
 
@@ -21,12 +22,16 @@ type modelPrice struct {
 }
 
 // prices is the Claude API first-party list price of every model id the transcripts carry, in USD per million tokens.
-// Source: the claude-api skill (Claude Code 2.1.294, models cached 2026-10-06):
-// input and output from its "Current Models" table, cache reads from shared/models.md where it names one ($0.25 Fable 5.1, $1 Fable 5, $0.20 Opus 5.5, Sonnet 5.5) and 0.1x input elsewhere, and cache writes from shared/prompt-caching.md's "Economics": 1.25x input for the five-minute lifetime, 2x for the one-hour one.
-// Haiku 5.5 is the one model the skill gives a long-prompt rate card (shared/model-migration.md, "Migrating to Claude Haiku 5.5"):
-// $0.10 / $0.50 input / output "when the prompt is 100K tokens or fewer, and $0.50 / $2.50 when it is longer", cache reads 0.1x input and writes 1.25x and 2x on either card.
-// The skill measures the prompt with count_tokens, which counts the whole prompt whether cached or not, so a message's prompt is its input + cache write + cache read.
-// The skill states that Opus 4.7 and 4.8 have no long-context premium and names none for any other model.
+// Source: the claude-api skill (Claude Code 2.1.294, models cached 2026-10-06).
+// Input and output come from its "Current Models" table.
+// Cache reads come from shared/models.md where it names a price, and are 0.1x input elsewhere.
+// Cache writes come from shared/prompt-caching.md's "Economics":
+// 1.25x input for the five-minute lifetime and 2x for the one-hour one.
+// Haiku 5.5 is the one model with a long-prompt rate card.
+// Its source is shared/model-migration.md, "Migrating to Claude Haiku 5.5".
+// The long-prompt card applies to prompts over 100K tokens and keeps the same cache multipliers.
+// The skill measures the prompt with count_tokens, which counts the whole prompt whether cached or not,
+// so a message's prompt is its input + cache write + cache read.
 var prices = map[string]modelPrice{
 	"claude-fable-5-1":  {Input: 10, CacheWrite5m: 12.5, CacheWrite1h: 20, CacheRead: 0.25, Output: 50},
 	"claude-fable-5":    {Input: 10, CacheWrite5m: 12.5, CacheWrite1h: 20, CacheRead: 1, Output: 50},
@@ -42,7 +47,7 @@ var prices = map[string]modelPrice{
 
 // PriceMessage prices one message's usage at its model's list price in USD, on the rate card its prompt size selects.
 // A message whose usage is all zero costs nothing whatever its model, so a placeholder message is never unpriced.
-// priced is false for a model the price table lacks.
+// The second result reports whether the message was priced; it is false only for a model the price table lacks.
 func (c *Claude) PriceMessage(model string, u shuttleengine.MessageUsage) (float64, bool) {
 	if u == (shuttleengine.MessageUsage{}) {
 		return 0, true

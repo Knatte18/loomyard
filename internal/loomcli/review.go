@@ -1,8 +1,8 @@
-// review.go holds the target resolver the slug-taking loom groups share.
+// review.go holds resolveReviewTarget, the target resolver the slug-taking loom groups share.
 //
-// Each such group carries its own PersistentPreRunE, and the loom parent's pre-run skips the group, so arm never runs for it and never reads a slug as a run-id.
+// Each such group carries its own PersistentPreRunE, and the loom parent's pre-run skips the group.
+// As a result, arm never runs for it and never reads a slug as a run-id.
 // The skip is what holds under cmd/lym's cobra.EnableTraverseRunHooks, which runs every ancestor's pre-run.
-// circling.go, decision.go and peers.go point at this file for that reason.
 
 package loomcli
 
@@ -17,7 +17,7 @@ import (
 
 const reviewWaySlugForm = `pass the task's slug as listed by "lym board list"`
 
-// reviewTargetDeps is every side effect resolveReviewTarget performs, injected so tests supply fakes.
+// reviewTargetDeps is every side effect the target resolution performs, injected so tests supply fakes.
 type reviewTargetDeps struct {
 	// primeName resolves the base name of the hub's main worktree.
 	primeName func(*lymcwd.Location) (string, error)
@@ -30,7 +30,7 @@ type reviewTargetDeps struct {
 	seedRecipe func(target *lymcwd.Location) (string, error)
 }
 
-// defaultReviewTargetDeps are the production seams.
+// defaultReviewTargetDeps returns the production seams.
 func defaultReviewTargetDeps() reviewTargetDeps {
 	return reviewTargetDeps{
 		primeName: fabricengine.PrimeName,
@@ -44,8 +44,10 @@ func defaultReviewTargetDeps() reviewTargetDeps {
 }
 
 // resolveReviewTarget returns the worktree a verb of the named group (`circling` or `decision`) acts on.
-// A given slug resolves to its sibling worktree of the hub; with no slug a task worktree addresses itself and the prime refuses.
-// A target whose run records a recipe `lym loom` does not serve is refused, since it has no decision record or review perch the verb acts on.
+// A given slug resolves to its sibling worktree of the hub;
+// with no slug, a task worktree addresses itself and the prime refuses.
+// A target whose run records a recipe `lym loom` does not serve is refused.
+// It has no decision record or review perch for the verb to act on.
 func resolveReviewTarget(group, verb string, location *lymcwd.Location, slug string, d reviewTargetDeps) (*lymcwd.Location, error) {
 	target, err := locateReviewTarget(group, verb, location, slug, d)
 	if err != nil {

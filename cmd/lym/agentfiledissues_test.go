@@ -1,5 +1,7 @@
-// agentfiledissues_test.go enforces `PATTERN-github-auth`: lym files a GitHub issue only through `lym selfreport create`,
-// run by an agent or the operator, so no production package outside the selfreport module calls selfreportengine.CreateIssue.
+// agentfiledissues_test.go enforces `PATTERN-github-auth`:
+// lym files a GitHub issue only through `lym selfreport create`.
+// An agent or the operator runs that verb,
+// so no production package outside the selfreport module calls selfreportengine.CreateIssue.
 
 package main
 
@@ -22,8 +24,8 @@ var agentFiledIssuesAllowlist = []scankit.Entry{
 // createIssueCall is the qualified call no other production package may contain.
 const createIssueCall = "selfreportengine.CreateIssue"
 
-// TestAgentFiledIssues_NoCreateIssueOutsideSelfreport walks every non-test *.go file under the module root
-// and fails if a file outside the allowlisted selfreport directories contains selfreportengine.CreateIssue.
+// TestAgentFiledIssues_NoCreateIssueOutsideSelfreport walks every non-test *.go file under the module root.
+// It fails on a file outside the allowlisted selfreport directories that contains selfreportengine.CreateIssue.
 //
 //lym:guard
 func TestAgentFiledIssues_NoCreateIssueOutsideSelfreport(t *testing.T) {

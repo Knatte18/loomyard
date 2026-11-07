@@ -107,7 +107,7 @@ func TestValidateLabels(t *testing.T) {
 	}
 }
 
-// newVocabStore builds a store whose writes are label-checked, which only store-level tests do.
+// newVocabStore builds a store whose writes are checked against the given vocabulary.
 func newVocabStore(v Vocabulary) *Store {
 	s := NewStore("")
 	s.vocab = &v

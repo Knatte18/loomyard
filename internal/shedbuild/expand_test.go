@@ -1,4 +1,5 @@
-// expand_test.go covers Expand over a map resolver of YAML sources built from Stub rows: the shape an expansion yields and each refusal it makes.
+// expand_test.go covers Expand over a map resolver of YAML sources built from Stub rows:
+// the shape an expansion yields and each refusal it makes.
 
 package shedbuild
 
@@ -16,7 +17,8 @@ func stubRowYAML(name string, keys ...string) string {
 	return rowYAML(name, append([]string{"engine: Stub"}, keys...))
 }
 
-// blockRowForExpand returns a producers-list item for a block row running recipe behind the always check, with each key a "key: value" line of the row.
+// blockRowForExpand returns a producers-list item for a block row running recipe behind the always check.
+// Each key is a "key: value" line of the row.
 func blockRowForExpand(name, recipe string, keys ...string) string {
 	return rowYAML(name, append([]string{"block: " + recipe, "block_gate: always"}, keys...))
 }

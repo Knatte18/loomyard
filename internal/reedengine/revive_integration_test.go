@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// newReviveHub builds one engine per worktree name under a single hub, so they share one socket,
-// and tells each the spawn order of names with the real Revive of every engine.
+// newReviveHub builds one engine per worktree name under a single hub, so they share one socket.
+// It tells each engine the spawn order of names, using the real Revive of every engine.
 // A test replaces a returned entry to script a worktree's Revive.
 func newReviveHub(t *testing.T, names ...string) (engines []*Engine, entries []ReviveEntry) {
 	t.Helper()

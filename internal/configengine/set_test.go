@@ -1,6 +1,6 @@
 // set_test.go — unit tests for the non-interactive Set entry point (set.go).
 //
-// Tests cover: scaffold-then-set when the config file is missing, rollback of a freshly-scaffolded file on an unknown key, byte-for-byte preservation of a pre-existing file on a refused key, preservation of untouched keys when setting one key on an existing multi-key file, open-map entries, and end-to-end reporting of Set's returned preserved-keys list for an orphaned key.
+// The cases cover scaffolding a missing file, rolling back on a refused key, and keeping untouched keys.
 
 package configengine_test
 
@@ -16,7 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestSet pins what Set writes: a missing file is scaffolded from the template and the pairs applied in one call, other keys keep their values, an orphaned top-level key survives and is reported, and a refused pair removes a file Set scaffolded or leaves a pre-existing one byte for byte unchanged, a machine write included.
+// TestSet pins what Set writes: a missing file is scaffolded from the template and the pairs applied in one call.
+// Other keys keep their values. An orphaned top-level key survives and is reported.
+// A refused pair removes a file Set scaffolded, or leaves a pre-existing one byte for byte unchanged;
+// a machine write is included.
 func TestSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

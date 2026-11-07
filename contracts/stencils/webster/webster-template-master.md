@@ -1,8 +1,21 @@
-<!-- This is the webster Master session prompt (plan-format, the flat card
-     list).
-     It is filled by `run`'s engine core via internal/stencil and handed to the shuttle as the Master session's entire instruction set for one whole plan run: the long-lived session that reads the plan's overview and the repo's rules once, never the code, then forks one implementer per execution batch in-session (Claude Code's Agent tool, subagent_type "fork").
+<!-- This is the webster Master session prompt for the plan format, a flat card list.
+     The engine fills it via internal/stencil and hands it to the shuttle as the Master session's entire
+     instruction set for one whole plan run.
+     The Master is the long-lived session that reads the plan's overview and the repo's rules once, never the code,
+     then forks one implementer per execution batch in-session (Claude Code's Agent tool, subagent_type "fork").
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires every marker but pattern_directive and friction_directive non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). plan_dir renders hub-relative ("_lym/plan") in hub mode and absolute (the derived state directory's plan dir) in standalone, added when the standalone Master proved unable to see a plan it was told about only in hub-relative terms. verify_fix_prompt_path is the Go-rendered verify-gate fixer fork prompt file. parent_decisions is every added-decision entry of the task's decision record, verbatim, or the literal `none`. pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive. parent_directive is a third optional marker, rendered by internal/parentdirective. edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
+     stencil.FillOptional requires every marker but pattern_directive, friction_directive and parent_directive
+     to be non-empty.
+     The file has no {{if}}/{{range}} conditionals:
+     a required marker inside a conditional branch would render silently blank when present but empty
+     (see internal/stencil/stencil.go).
+     plan_dir renders hub-relative ("_lym/plan") in hub mode, and as the absolute plan directory of the derived state
+     directory in standalone mode.
+     verify_fix_prompt_path is the rendered prompt file of the verify-gate fixer fork.
+     parent_decisions is every added-decision entry of the task's decision record, verbatim, or the literal `none`.
+     pattern_directive and friction_directive each render as nothing when their own tier is inactive.
+     parent_directive is rendered by internal/parentdirective and is optional too.
+     edit_directive is required and is rendered unconditionally by internal/editdirective. -->
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 

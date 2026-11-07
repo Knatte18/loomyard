@@ -8,7 +8,8 @@ import (
 	"os"
 )
 
-// stdinPath is the --body-file value that reads stdin, and the payload argument spelling the helper refuses to share it with.
+// stdinPath is the --body-file value that reads stdin.
+// It is also the payload argument spelling that the helper refuses to combine with it.
 const stdinPath = "-"
 
 // applyBodyFile sets fields["body"] from the file named by bodyFile, or from stdin when bodyFile is "-".

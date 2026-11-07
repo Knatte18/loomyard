@@ -1,5 +1,5 @@
-// classify_test.go table-tests classifyRef's five-rule shape classification directly, pinning both
-// the documented cases and the documented shedrecipe.lookup misclassification-as-path.
+// classify_test.go table-tests the shape classification of classifyRef directly.
+// It pins the documented cases and the known misclassification of shedrecipe.lookup as a path.
 
 package planparser
 

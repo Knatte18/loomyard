@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// StatusPoll is one StatusCache.Poll's answer.
+// StatusPoll is the answer to one poll of a status file.
 type StatusPoll struct {
 	// Status is the decoded status, the last good one while a first failure is being tolerated.
 	Status shedengine.Status
@@ -39,10 +39,14 @@ func NewStatusCache() *StatusCache {
 	return &StatusCache{}
 }
 
-// Poll reads the status at path without the run's status lock, which is safe because internal/state writes it atomically, so it never blocks or slows a run.
+// Poll reads the status at path without the run's status lock.
+// That is safe because internal/state writes the file atomically, so the read never blocks or slows a run.
 // It stats the file and decodes it only when its modification time differs from the last good decode's.
 // An absent file is Found false and no failure.
-// A failed stat, read or decode is a failure: the first in a row returns the last good status, Found false when there was none, and a second in a row, or a later poll of the same failed modification time, returns Unreadable; the next good decode clears the count.
+// A failed stat, read or decode counts as a failure.
+// The first failure in a row returns the last good status, with Found false when there was none.
+// A second in a row, or a later poll of the same failed modification time, returns Unreadable.
+// The next good decode clears the count.
 func (c *StatusCache) Poll(path string) StatusPoll {
 	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {

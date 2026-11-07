@@ -1,15 +1,11 @@
-// pull_integration_test.go — the end-to-end integration matrix for
-// Fabric.Pull: clean fast-forward, warp history rewrite detection and
-// reconcile (single-back, multi-back, no-surviving-anchor, empty-index),
-// idempotency after a reconcile, the
-// double-conflict abort, and the weft-first partial-failure contract.
-// Package fabricengine_test. Reuses export_test.go's fixture shims
-// (NewPlainWarpRepoForTest, CommitWarpForTest, CurrentSHAForTest,
-// NewFabricForTest, WriteWeftConfigContentForTest) and, unqualified,
-// coalesce_integration_test.go's addWarpBareRemote, since both
-// files share package fabricengine_test — plus hubforge.NewHub for the weft
-// side, whose upstream tracking lets PullWeft's ff-pull no-op cleanly in
-// every test that does not deliberately diverge weft.
+// pull_integration_test.go is the end-to-end integration matrix for Fabric.Pull.
+// It covers a clean fast-forward and warp history rewrite detection.
+// Reconcile is tested with single-back, multi-back, no-surviving-anchor and empty-index cases.
+// It also covers idempotency after a reconcile, the double-conflict abort, and the weft-first partial-failure contract.
+// The tests reuse the fixture shims in export_test.go and addWarpBareRemote in coalesce_integration_test.go.
+// Both files share package fabricengine_test.
+// They also use hubforge.NewHub for the weft side.
+// Its upstream tracking lets PullWeft's ff-pull no-op cleanly in every test that does not deliberately diverge weft.
 
 package fabricengine_test
 
@@ -60,11 +56,11 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricen
 	return f, warpPath, bareDir, weftFixture, initWarpSHA, warpSHAs, weftSHAs
 }
 
-// rewriteWarpRemoteHistory simulates an upstream rebase/force-push: it clones
-// bareDir fresh, resets that clone to resetToSHA, commits one new, distinct
-// commit, and force-pushes — rewriting the bare remote's main branch to a
-// history that diverges from resetToSHA rather than descending from whatever
-// main pointed at before. Returns the new remote tip SHA.
+// rewriteWarpRemoteHistory simulates an upstream rebase or force-push.
+// It clones bareDir fresh, resets that clone to resetToSHA, commits one new distinct commit, and force-pushes.
+// The bare remote's main branch then holds a history that diverges from resetToSHA.
+// It does not descend from the tip it had before.
+// Returns the new remote tip SHA.
 func rewriteWarpRemoteHistory(t *testing.T, fixturesDir, bareDir, resetToSHA string) string {
 	t.Helper()
 
@@ -78,10 +74,9 @@ func rewriteWarpRemoteHistory(t *testing.T, fixturesDir, bareDir, resetToSHA str
 	return fabricengine.CurrentSHAForTest(t, clone)
 }
 
-// TestPull_DetectsDriftUnreachableUnprunedObject asserts that Fabric.Pull detects a warp history
-// rewrite via ancestry, not object-existence: after fetch, the rebased-away commit's object still
-// resolves (git fetch never prunes) yet Pull still classifies the pull as a rewrite and reconciles
-// — guarding against any regression to SHAExists-style detection.
+// TestPull_DetectsDriftUnreachableUnprunedObject asserts that Fabric.Pull detects a warp history rewrite via ancestry.
+// After fetch, the rebased-away commit's object still resolves, because git fetch never prunes.
+// Pull must still classify the pull as a rewrite and reconcile, so detection never keys off object existence.
 func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -105,9 +100,8 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 		t.Errorf("Pull() AnchorWarpSHA = %q; want %q", result.AnchorWarpSHA, warpSHAs[0])
 	}
 
-	// The rebased-away commit's object still exists — fetch never prunes —
-	// yet it is not an ancestor of the new tip. Detection must key off the
-	// latter, never the former.
+	// The rebased-away commit's object still exists, because fetch never prunes.
+	// It is not an ancestor of the new tip, so detection must key off ancestry, not existence.
 	if !fabricengine.WarpForTest(f).SHAExists(warpSHAs[1]) {
 		t.Errorf("SHAExists(%q) = false after fetch; want true (fetch never prunes)", warpSHAs[1])
 	}
@@ -120,8 +114,8 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 	}
 }
 
-// TestPull_ReanchorsSingleCommitBack covers a rewrite that orphans only the single newest
-// correspondence entry: the anchor resolves to the one directly before it.
+// TestPull_ReanchorsSingleCommitBack covers a rewrite that orphans only the single newest correspondence entry.
+// The anchor resolves to the one directly before it.
 func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -149,8 +143,8 @@ func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
 	}
 }
 
-// TestPull_ReanchorsMultiCommitBack covers a rewrite that orphans several correspondence entries at
-// once: the anchor resolves to the nearest older one that still survives, several steps back.
+// TestPull_ReanchorsMultiCommitBack covers a rewrite that orphans several correspondence entries at once.
+// The anchor resolves to the nearest older entry that still survives, several steps back.
 func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -175,9 +169,9 @@ func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
 	}
 }
 
-// TestPull_IdempotentAfterReconcile asserts that a second, immediate Fabric.Pull call against an
-// already-reconciled pair reports no further rewrite or reconcile: the new re-anchor commit's own
-// Warp-SHA trailer makes detection idempotent.
+// TestPull_IdempotentAfterReconcile asserts that a second, immediate Fabric.Pull on a reconciled pair:
+// it reports no further rewrite or reconcile.
+// The re-anchor commit's own Warp-SHA trailer makes detection idempotent.
 func TestPull_IdempotentAfterReconcile(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -207,9 +201,8 @@ func TestPull_IdempotentAfterReconcile(t *testing.T) {
 	}
 }
 
-// TestPull_LeavesWeftHistoryUntouched asserts that a reconcile adds exactly one new weft commit
-// (the re-anchor commit) on top of pre-existing weft history, without altering any commit that was
-// already there.
+// TestPull_LeavesWeftHistoryUntouched asserts that a reconcile adds exactly one new weft commit.
+// The re-anchor commit lands on top of the pre-existing weft history, and no existing commit changes.
 func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -241,7 +234,9 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	}
 }
 
-// TestPull_AbortsOnUnpushedPlusDiverged covers the double-conflict abort: local warp has a commit no value of the tracking ref's reflog reaches AND the remote diverged, judged after the fetch.
+// TestPull_AbortsOnUnpushedPlusDiverged covers the double-conflict abort.
+// Local warp holds a commit that no value of the tracking ref's reflog reaches,
+// and the remote has diverged, judged after the fetch.
 // Fabric.Pull must return fabricengine.ErrWarpDivergedUnpushed and mutate neither repo.
 func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -269,8 +264,8 @@ func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	}
 }
 
-// TestPull_NoSurvivingAnchorAborts covers a rewrite so thorough that no recorded correspondence
-// entry survives at all: Fabric.Pull must return fabricengine.ErrNoSurvivingAnchor and mutate neither repo.
+// TestPull_NoSurvivingAnchorAborts covers a rewrite so thorough that no recorded correspondence entry survives.
+// Fabric.Pull must return fabricengine.ErrNoSurvivingAnchor and mutate neither repo.
 func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -296,9 +291,8 @@ func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	}
 }
 
-// TestPull_CleanFastForwardAdvancesWarp covers a plain fast-forward remote: warp's local branch
-// must actually move to the fetched tip, with no rewrite detected and weft history untouched — a
-// regression guard against a fetch-only no-op.
+// TestPull_CleanFastForwardAdvancesWarp guards against a fetch-only no-op on a plain fast-forward remote.
+// Warp's local branch must move to the fetched tip, with no rewrite detected and weft history untouched.
 func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -340,10 +334,10 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	}
 }
 
-// TestPull_NoWeftUpstreamIsACleanNoOp guards the freshly-bootstrapped-hub case: the suffixed weft
-// primary is created locally at clone time and gains an upstream only when the first push lands, so
-// until then Pull's weft step must skip as a vacuous success — not surface git's "no tracking
-// information" exit — and the warp side must still be processed.
+// TestPull_NoWeftUpstreamIsACleanNoOp guards the freshly bootstrapped hub.
+// Its suffixed weft primary is created locally at clone time and gains an upstream only when the first push lands.
+// Until then Pull's weft step must skip as a vacuous success, not surface git's "no tracking information" exit.
+// The warp side must still be processed.
 func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -353,7 +347,7 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
 	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
 
-	// A weft repo whose branch has no upstream at all — the post-bootstrap state before any push.
+	// A weft repo whose branch has no upstream: the post-bootstrap state before any push.
 	weftPath := t.TempDir()
 	gitkit.Git(t, weftPath, "init", "-q", "-b", "main-weft")
 	gitkit.Git(t, weftPath, "config", "user.email", "test@test.com")
@@ -382,10 +376,9 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	}
 }
 
-// TestPull_StaleIndexRebuiltBeforeAnchorWalk guards the false fabricengine.ErrNoSurvivingAnchor a stale
-// correspondence index produced: a re-cloned hub's per-pair index can be empty (or missing older
-// entries) while the adopted weft trailer history — the sole source of truth — still carries a
-// surviving anchor.
+// TestPull_StaleIndexRebuiltBeforeAnchorWalk guards against a false fabricengine.ErrNoSurvivingAnchor.
+// A re-cloned hub's per-pair index can be empty or missing older entries;
+// the adopted weft trailer history, the sole source of truth, still carries a surviving anchor.
 // Pull must rebuild the index from trailers before the anchor walk and reconcile, never abort.
 func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -421,10 +414,9 @@ func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
 	}
 }
 
-// TestPull_DirtyWarpRefusesBeforeMovingWarp guards the data-loss hole where Pull's ResetHard
-// discarded uncommitted tracked warp changes on a routine fast-forward: with a modified tracked file
-// in the warp worktree and an advanced remote, Pull must return fabricengine.ErrWarpDirty, leave warp HEAD
-// unmoved, and leave the modification intact on disk.
+// TestPull_DirtyWarpRefusesBeforeMovingWarp guards against data loss on a routine fast-forward.
+// With a modified tracked file in the warp worktree and an advanced remote, Pull must return fabricengine.ErrWarpDirty.
+// Warp HEAD must stay unmoved, and the modification must stay intact on disk.
 func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -441,7 +433,7 @@ func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 	gitkit.CommitFile(t, clone, "ff-file.txt", "ff change", "ff change")
 	gitkit.MustRun(t, clone, "git", "push")
 
-	// Dirty a TRACKED warp file — the exact state ResetHard would destroy.
+	// Dirty a tracked warp file, the state a fast-forward must not overwrite.
 	dirtyFile := filepath.Join(warpPath, "README")
 	const dirtyContent = "uncommitted local edit that must survive pull"
 	if err := os.WriteFile(dirtyFile, []byte(dirtyContent), 0o644); err != nil {
@@ -468,9 +460,8 @@ func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 	}
 }
 
-// TestPull_EmptyIndexNoDrift covers a non-fast-forward remote with an empty correspondence index
-// (warp commits that were never synced to weft at all): warp must still advance, with no reconcile
-// commit written.
+// TestPull_EmptyIndexNoDrift covers a non-fast-forward remote with an empty correspondence index.
+// The warp commits were never synced to weft, so warp must still advance, with no reconcile commit written.
 func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -482,8 +473,7 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// Warp commits happen, but nothing is ever synced to weft — the
-	// correspondence index stays empty.
+	// Warp commits happen, but nothing is ever synced to weft, so the correspondence index stays empty.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change never synced 1")
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change never synced 2")
 	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
@@ -509,8 +499,11 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 }
 
 // TestPull_WeftDivergedAndWarpFetchFails_PartialError forces a weft replay stop combined with a warp-side failure.
-// The stop is a local weft commit and a remote-advanced upstream commit changing the same path, and the warp failure is warpPath carrying no configured remote, so f.code.Fetch() itself fails.
-// The weft stop never stalls the warp side, and the combined failure must surface as both a *fabricengine.WeftStopError and a *PartialPullError whose WeftPulled is false.
+// The stop comes from a local weft commit and an upstream commit that change the same path.
+// The warp failure is warpPath carrying no configured remote, so f.code.Fetch() itself fails.
+// The weft stop never stalls the warp side.
+// The combined failure must surface as a *fabricengine.WeftStopError.
+// It must also surface as a *PartialPullError whose WeftPulled is false.
 // Its Error() names both failures rather than claiming the weft pull succeeded.
 func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -522,12 +515,12 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main", and that suffixed branch carries no upstream at all until something pushes
-	// it -- CloneAndWire never does, since a fresh hub's primary is local-only until the first real
-	// push.
-	// Establish that upstream explicitly here, or PullWeft finds nothing to track and
-	// weftHasUpstream() reports false, skipping the pull as a vacuous success instead of the genuine
-	// divergence this test needs.
+	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName), never bare "main".
+	// That branch carries no upstream until something pushes it.
+	// A fresh hub's primary stays local-only until the first real push.
+	// Establish that upstream explicitly here.
+	// Without it, weftHasUpstream() reports false, so the weft pull is skipped as a vacuous success.
+	// The genuine divergence this test needs never happens.
 	weftBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 
@@ -541,8 +534,7 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	// Diverge local weft too, on the same path, so the replay of the local commit conflicts.
 	gitkit.CommitFile(t, weftFixture.PrimeRecords(), "status.json", "local weft change", "local weft change")
 
-	// warpPath has no configured remote at all -- f.code.Fetch() fails, giving this test its
-	// warp-side failure alongside the weft-side one.
+	// warpPath has no configured remote, so f.code.Fetch() fails and gives this test its warp-side failure.
 	result, err := f.Pull(fabricengine.SyncOptions{})
 	var stopErr *fabricengine.WeftStopError
 	if !errors.As(err, &stopErr) {
@@ -563,7 +555,8 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	}
 }
 
-// divergedWeftFixture is a reconcile fixture whose weft branch both this machine and origin moved, and whose warp remote advanced by one commit.
+// divergedWeftFixture is a reconcile fixture whose weft branch moved both locally and on origin.
+// Its warp remote advanced by one commit.
 type divergedWeftFixture struct {
 	f           *fabricengine.Fabric
 	warpPath    string
@@ -575,11 +568,12 @@ type divergedWeftFixture struct {
 	weftHeadWas string
 }
 
-// removeMarker, as a marker argument of newDivergedWeftFixture, commits the removal of the weft's anchor marker.
+// removeMarker is a marker value that asks for the weft's anchor marker to be removed.
 const removeMarker = "<remove the marker>"
 
-// commitWeftSide commits rel with content, and then the anchor marker as marker says, in the weft checkout at dir.
-// An empty rel commits no file and an empty marker leaves the marker alone; removeMarker deletes it and any other value is written.
+// commitWeftSide commits rel with content, then writes the anchor marker in the weft checkout at dir.
+// An empty rel commits no file, and an empty marker leaves the marker alone.
+// removeMarker deletes the marker, and any other value is written.
 // It returns the checkout's HEAD.
 func commitWeftSide(t *testing.T, dir, rel, content, marker, message string) string {
 	t.Helper()
@@ -598,10 +592,13 @@ func commitWeftSide(t *testing.T, dir, rel, content, marker, message string) str
 	return gitkit.RevParse(t, dir, "HEAD")
 }
 
-// newDivergedWeftFixture commits originRel on the weft's origin from a second clone and localRel on this machine's weft, each with its own content.
-// originMarker and localMarker, when set, change the anchor marker in a commit of their side after the file's; removeMarker deletes it.
-// An empty originRel and originMarker mean origin gains no commit, and an empty localRel and localMarker mean the weft gains none.
-// It then advances warp's remote with a clean commit, so a Pull has both arms to run.
+// newDivergedWeftFixture commits originRel on the weft's origin, from a second clone.
+// It commits localRel on this machine's weft; originContent and localContent are the files' contents.
+// originMarker and localMarker, when set, change the anchor marker in a later commit on their side;
+// removeMarker deletes it.
+// An empty originRel and originMarker mean origin gains no commit,
+// and an empty localRel and localMarker mean the weft gains none.
+// It then advances warp's remote with a clean commit, so a pull runs both of its arms.
 func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker, localRel, localContent, localMarker string) divergedWeftFixture {
 	t.Helper()
 	boardkit.InstallReplay(t)
@@ -623,7 +620,7 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
 	localSHA := commitWeftSide(t, weftPath, localRel, localContent, localMarker, "local weft change")
 
-	// Advance warp's remote with a clean, non-rewritten commit -- no history rewrite is involved.
+	// Advance warp's remote with a clean, non-rewritten commit.
 	clone := filepath.Join(fixturesDir, "warp-clone-weft-diverge")
 	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
 	gitkit.Git(t, clone, "config", "user.email", "test@test.com")
@@ -637,9 +634,10 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 	}
 }
 
-// TestPull_WeftDivergedWarpAdvancesCleanly covers a weft that both this machine and origin moved while warp's own remote simply advanced.
+// TestPull_WeftDivergedWarpAdvancesCleanly covers a weft that this machine and origin both moved.
 // The weft's local commit replays onto origin's and the pull succeeds.
-// A replay conflict and an uncommitted change on a replayed path each return a *WeftStopError after the warp arm ran, leaving the weft where it was.
+// A replay conflict and an uncommitted change on a replayed path each return a *WeftStopError.
+// The warp arm runs before the stop, and the weft stays where it was.
 func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -732,7 +730,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 
 		tests := []struct {
 			name string
-			// fixture builds the diverged weft with the marker changes of the row.
+			// fixture builds the diverged weft for this case, with the marker changes it sets.
 			fixture func(t *testing.T) divergedWeftFixture
 			// wantSet is the anchor the way forward must name.
 			wantSet string
@@ -863,7 +861,8 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 	})
 }
 
-// TestPull_WeftUpstreamUnreadableIsAnError covers a weft whose pull fails because origin is unreachable and whose tracking ref names an object the repository lacks, so its commits against head cannot be listed.
+// TestPull_WeftUpstreamUnreadableIsAnError covers a weft whose pull fails because origin is unreachable.
+// Its tracking ref names an object the repository lacks, so its commits against head cannot be listed.
 // A failed local read is an infrastructure error: Pull returns it rather than a nil error with WeftPulled false.
 func TestPull_WeftUpstreamUnreadableIsAnError(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -887,7 +886,7 @@ func TestPull_WeftUpstreamUnreadableIsAnError(t *testing.T) {
 	}
 }
 
-// TestPull_ReflogJudgesUnpushedAndRewinds covers what the reflog tests decide that no other pull test reaches.
+// TestPull_ReflogJudgesUnpushedAndRewinds covers the pull decisions that rest on the reflog.
 // A branch fetched but never pushed from this clone is not unpushed and takes the anchor walk.
 // A task branch origin rewound is refused with ErrWarpRewound before and after its tracking ref was fetched.
 // A weft whose only commits replay empty pulls clean.
@@ -904,7 +903,8 @@ func TestPull_ReflogJudgesUnpushedAndRewinds(t *testing.T) {
 		clone := filepath.Join(fixturesDir, "warp-clone-never-pushed")
 		gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
 		f := fabricengine.NewFabricForTest(t, clone, weftFixture.PrimeRecords())
-		// A clone records no reflog entry for its tracking ref, so the ref is recreated by a fetch, as in a checkout that fetched its branch and never pushed it.
+		// A clone records no reflog entry for its tracking ref, so the ref is recreated by a fetch.
+		// That matches a checkout that fetched its branch and never pushed it.
 		gitkit.MustRun(t, clone, "git", "update-ref", "-d", "refs/remotes/origin/main")
 		gitkit.MustRun(t, clone, "git", "fetch")
 		newTip := rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
@@ -993,9 +993,9 @@ func TestPull_ReflogJudgesUnpushedAndRewinds(t *testing.T) {
 	})
 }
 
-// TestPull_HealthyPairBothSidesPullCleanly pins the ordinary path against a regression that simply
-// stops pulling the weft: with a healthy weft upstream and an advanced warp remote, both sides must
-// still report success and the weft HEAD must actually advance.
+// TestPull_HealthyPairBothSidesPullCleanly pins the ordinary path against a regression that stops pulling the weft:
+// with a healthy weft upstream and an advanced warp remote, both sides must still report success,
+// and the weft HEAD must advance.
 func TestPull_HealthyPairBothSidesPullCleanly(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

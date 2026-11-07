@@ -6,8 +6,10 @@
 ## What it is
 
 The final-summary artifact is the prose final-summary a run's last content-producing step writes: a first non-blank line `# <title>`, then free-form prose describing the change.
-Today that step is the `Describe` row of the tapestry, darn and sampler recipes, or the darn writer when the darn review is off, which writes `_lym/landing/summary.md`; its body is a change description — what the change does and why, for a PR reviewer — rather than a run narrative.
-The contract names no producer — a future last-content-producing step (e.g. Tenter) can satisfy it too.
+That step is the `Describe` row of the tapestry, darn and sampler recipes, or the darn writer when the darn review is off.
+It writes `_lym/landing/summary.md`.
+Its body is a change description, what the change does and why for a PR reviewer, rather than a run narrative.
+The contract names no producer, so any last-content-producing step can satisfy it.
 
 ## Format and validation
 
@@ -24,28 +26,39 @@ Everything after the heading line is the body, carried verbatim.
 ## Sole declarer, sole parser
 
 `internal/summaryparser` is the sole declarer of the artifact's filename and the sole parser of its format.
-It takes a told path — a caller resolves the containing directory and hands it in — or content the caller read elsewhere, such as from an archived revision, and declares no location of its own.
+It takes a told path, which a caller resolves from the containing directory and hands in, or content the caller read elsewhere, such as from an archived revision.
+It declares no location of its own.
 
-The contract names no location: the artifact's directory belongs to whichever producer writes it, and the consumer is handed the path, never a directory it derives itself.
+The contract names no location:
+the artifact's directory belongs to whichever producer writes it, and the consumer is handed the path, never a directory it derives itself.
 
 ## Consumers
 
-The artifact has two consumers today, both in `internal/landingshed`:
+The artifact's consumers are both in `internal/landingshed`:
 
 - **`Publish`** uses the parsed title and body as the pull request's own title and body fields.
-- **`Finalize`** uses `LandingMessage` — the title, a blank line, the body with its leading whitespace trimmed, then, after a blank line, the credit block Go composes from `landing.yaml`'s `credit_*` keys and the engines that ran a session in the task — as the landing merge commit's message.
+- **`Finalize`** uses `LandingMessage` as the landing merge commit's message.
+  `LandingMessage` is the title, a blank line, the body with its leading whitespace trimmed, then, after a blank line, the credit block.
+  Go composes the credit block from `landing.yaml`'s `credit_*` keys and the engines that ran a session in the task.
   The pull request's body carries the same body and credit block.
 
-Both consumers append the task's regression check after the body and before the credit block, a `## Regression check` section `internal/driftengine` renders from the task's Drift records, when the task has one.
-The artifact never holds that section itself, so it reaches the pull request and the landing commit whichever producer wrote the artifact last.
+Both consumers append the task's regression check, when the task has one, after the body and before the credit block.
+It is a `## Regression check` section that `internal/driftengine` renders from the task's Drift records.
+The artifact never holds that section itself,
+so it reaches the pull request and the landing commit whichever producer wrote the artifact last.
 
 `Finalize`'s read is unconditional: a missing or malformed artifact there is a hard error.
-`Publish`'s read is reached only when the parent branch requires a pull request: it opens one from the artifact, or refreshes an open one's title and body, so a re-run Publish carries a rewritten description onto the pull request.
-While its review runs, PR-Review reads the artifact again at each status poll of an open pull request, and sets the title and body again when the artifact yields other text, so the pr-reviewer changes them by rewriting the artifact; a read that fails there is logged and retried at the next poll, never an error.
+`Publish`'s read is reached only when the parent branch requires a pull request:
+it opens one from the artifact, or refreshes an open one's title and body,
+so a re-run Publish carries a rewritten description onto the pull request.
+While its review runs, PR-Review reads the artifact at each status poll of an open pull request.
+It sets the title and body again when the artifact yields other text, so the pr-reviewer changes them by rewriting the artifact.
+A read that fails there is logged and retried at the next poll, never an error.
 
 ## Producer-appended sections
 
-A producer may append its own sections to the body after writing it, and any such section rides into both consumers unchanged — this contract makes no distinction between the heading-adjacent prose and anything appended after it.
+A producer may append its own sections to the body after writing it, and any such section rides into both consumers unchanged.
+The contract makes no distinction between the heading-adjacent prose and anything appended after it.
 
 ## See also
 

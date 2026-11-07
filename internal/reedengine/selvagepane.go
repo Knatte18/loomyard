@@ -1,7 +1,6 @@
-// selvagepane.go owns every piece of Selvage-specific code in this package: the pane's create/heal
-// lifecycle, the reconcile exemption policy and the strand-claim seed.
-// lifecycle.go, reconcile.go and spawn.go each call into this
-// file's narrow seams rather than carrying their own Selvage logic inline.
+// selvagepane.go holds the Selvage-specific code of this package:
+// the pane's create and heal lifecycle, the reconcile exemption policy and the strand-claim seed.
+// Other files in the package call into these seams rather than carrying Selvage logic of their own.
 
 package reedengine
 
@@ -12,18 +11,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// reapPolicy answers the three Selvage-related questions planReconcile asks: whether a given pane is
-// exempt from the dead-pane kill, whether it is exempt from the untracked-pane reap, and whether the
-// Selvage pane's own state authorizes the untracked reap to run at all.
-// The zero value has an empty pane id and reports not-alive, matching a state with no Selvage pane
-// recorded.
+// reapPolicy answers the Selvage questions of a reconcile pass.
+// It reports whether a pane is exempt from the dead-pane kill and whether it is exempt from the untracked-pane reap.
+// It also reports whether the Selvage pane's own state authorizes the untracked reap to run at all.
+// The zero value has an empty pane id and reports not-alive, matching a state with no Selvage pane recorded.
 type reapPolicy struct {
 	paneID string
 	alive  bool
 }
 
-// newReapPolicy builds the reap policy planReconcile consults from st's recorded Selvage pane id and
-// the current live pane set.
+// newReapPolicy builds the reap policy for a reconcile pass.
+// It reads st's recorded Selvage pane id and checks it against the current live pane set.
 func newReapPolicy(st *ReedState, live []LivePane) reapPolicy {
 	policy := reapPolicy{paneID: st.SelvagePaneID}
 	if policy.paneID == "" {
@@ -38,36 +36,31 @@ func newReapPolicy(st *ReedState, live []LivePane) reapPolicy {
 	return policy
 }
 
-// exemptFromDeadKill reports whether paneID is Selvage's own pane and so must never be scheduled by
-// the dead-pane kill loop: nothing outside up/resume ever rebuilds Selvage, so killing a
-// pane_dead=1 Selvage here would leave the session without its always-on operator console with a
-// stale SelvagePaneID until the next up/resume. A kept Selvage corpse
-// instead stays enumerable and is healed — killed and
-// re-split — by ensureSelvagePaneLocked on the next up/resume.
+// exemptFromDeadKill reports whether paneID is Selvage's own pane, which the dead-pane kill loop must never schedule.
+// Nothing outside up/resume rebuilds Selvage.
+// Killing a pane_dead=1 Selvage here would leave the session without its always-on operator console.
+// It would leave a stale SelvagePaneID in place until the next up/resume.
+// A kept Selvage corpse stays enumerable.
+// ensureSelvagePaneLocked heals it on the next up/resume by killing and re-splitting it.
 // The non-empty guard is explicit rather than relying on a live pane id never being the empty string.
 func (p reapPolicy) exemptFromDeadKill(paneID string) bool {
 	return p.paneID != "" && p.paneID == paneID
 }
 
-// exemptFromUntrackedReap reports whether paneID is Selvage's own pane and so must never be reaped as
-// an untracked pane, regardless of whether Selvage itself is alive: Selvage stays exempt from being
-// killed by mere presence (a Selvage corpse is still never killed), distinct from authorizesReap,
-// which governs only whether killing anything else is allowed at all. Presence-exemption and
-// aliveness-authorization must not be folded together — see authorizesReap's doc comment for why.
+// exemptFromUntrackedReap reports whether paneID is Selvage's own pane, which the untracked reap must never kill.
+// This holds whether or not Selvage is alive: presence alone exempts it, a corpse included.
+// Whether killing anything else is allowed is a separate question, answered by the aliveness of the Selvage pane.
+// The two must not be folded together.
 // The non-empty guard is explicit rather than relying on a live pane id never being the empty string.
 func (p reapPolicy) exemptFromUntrackedReap(paneID string) bool {
 	return p.paneID != "" && p.paneID == paneID
 }
 
-// authorizesReap reports whether an alive Selvage pane authorizes the untracked-pane reap to run:
-// killing an alive pane at worst corpses it under remain-on-exit, so the surviving Selvage always
-// keeps the session alive. This is a separate question from exemptFromUntrackedReap/exemptFromDeadKill
-// and must never be folded into them: Selvage stays exempt from being killed by mere presence (a
-// Selvage corpse is still never killed), while only an ALIVE Selvage may authorize killing anything
-// else. This disjunct exists because this reap fires from AddStrand/UpdateStrand once the
-// reap-before-allocate chokepoint lands, and neither of those paths ever calls
-// ensureSelvagePaneLocked — so a dead-but-present Selvage must not be allowed to authorize reaping the
-// session's only alive pane.
+// authorizesReap reports whether an alive Selvage pane authorizes the untracked-pane reap to run.
+// Killing an alive pane at worst corpses it under remain-on-exit,
+// so the surviving Selvage always keeps the session alive.
+// The reap fires from the strand add and update paths, and neither of those ever calls ensureSelvagePaneLocked.
+// A dead-but-present Selvage must therefore not authorize reaping the session's only alive pane.
 func (p reapPolicy) authorizesReap() bool {
 	return p.paneID != "" && p.alive
 }
@@ -82,18 +75,17 @@ func seedSelvageClaim(st *ReedState, claimed map[string]bool) {
 }
 
 // clearSelvagePaneBinding clears st's Selvage pane binding.
-// It is the single writer of that clear; its three callers are upLocked's and Resume's own
-// server-rebirth handling (lifecycle.go) and adoptPaneGenerationLocked's pane-generation mismatch
-// handling (generation.go) — all three clear it for the identical reason: a reborn or foreign session
-// incarnation's reused pane id must never be mistaken for the still-live Selvage pane.
+// It is the single writer of that clear.
+// Every caller clears it for the same reason:
+// a reborn or foreign session incarnation's reused pane id must never be mistaken for the still-live Selvage pane.
 func clearSelvagePaneBinding(st *ReedState) {
 	st.SelvagePaneID = ""
 }
 
 // ensureSelvagePaneLocked ensures Selvage exists and is alive.
-// (Re)creates it when missing, dead, or gone. Selvage is separate from
-// strands and must land physically bottom-most.
-// The (re)creation itself is splitSelvagePaneAtBottomLocked's job.
+// It (re)creates Selvage when it is missing, dead, or gone.
+// Selvage is separate from strands and must land physically bottom-most.
+// The (re)creation itself is done by splitSelvagePaneAtBottomLocked.
 func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	session := e.SessionName()
 	live, err := e.listStrandPanes(st)
@@ -102,27 +94,23 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	}
 
 	if len(live) == 0 {
-		// A zero-pane husk cannot host a split; surface it rather than
-		// panicking on an empty slice below. ensureServerAndSessionLocked
-		// kills husks before this runs, so reaching this means the session
-		// emptied between the two probes — an error, not an invariant.
+		// A zero-pane husk cannot host a split: report it as an error, not a panic on the empty slice below.
+		// ensureServerAndSessionLocked kills husks before this runs.
+		// Reaching this means the session emptied between the two probes: an error, not an invariant.
 		return fmt.Errorf("session %s has no panes to split Selvage from", session)
 	}
 
 	if st.SelvagePaneID != "" && aliveIDSet(live)[st.SelvagePaneID] {
-		// Present AND alive: idempotent no-op across up/resume. Aliveness,
-		// not mere presence, is the check — a dead-but-present Selvage
-		// corpse (kept enumerable by reconcile's deliberate exemption) must
-		// be healed here, not mistaken for a working Selvage.
+		// Present and alive: an idempotent no-op across up and resume.
+		// Aliveness, not mere presence, is the check.
+		// A dead-but-present Selvage corpse must be healed here, not mistaken for a working Selvage.
 		return nil
 	}
 
-	// A dead-but-present Selvage corpse is killed before the replacement is
-	// split, so its bottom row is freed and the bottommost target below is a
-	// real (usually alive) pane — unless the corpse is the session's SOLE
-	// pane, where killing first would end the session; then the corpse
-	// itself is the split target and it is killed after the new pane
-	// exists.
+	// A dead-but-present Selvage corpse is killed before the replacement is split,
+	// so its bottom row is freed and the bottommost target below is a real, usually alive, pane.
+	// The exception is a corpse that is the session's only pane: killing it first would end the session,
+	// so the corpse itself is the split target and is killed after the new pane exists.
 	corpseID := ""
 	if st.SelvagePaneID != "" && liveIDSet(live)[st.SelvagePaneID] {
 		corpseID = st.SelvagePaneID
@@ -141,20 +129,18 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 		}
 	}
 
-	// Selvage's trailing split-window argument is e.cfg.Shell, the same way
-	// new-session already launches the session's first pane — an ordinary
-	// interactive shell, never a re-exec of lym.
+	// Selvage's split-window argument is e.cfg.Shell, the same command new-session uses for the session's first pane.
+	// It is an ordinary interactive shell, never a re-exec of lym.
 	paneID, err := e.splitSelvagePaneAtBottomLocked(live, e.cfg.Shell)
 	if err != nil {
 		return fmt.Errorf("split Selvage pane: %w", err)
 	}
 
 	if corpseID != "" {
-		// The sole-pane corpse the new Selvage was split off of: now that a
-		// second pane exists, killing it can no longer end the session.
-		// Best-effort — a corpse that somehow vanished already is fine; the
-		// discard is still worth a Debug line so the step is observable at
-		// the trace level without upgrading routine cleanup to a Warn.
+		// The corpse is the one the new Selvage was split off of, when it was the session's only pane.
+		// Now that a second pane exists, killing it cannot end the session.
+		// This is best-effort: a corpse that already vanished is fine,
+		// but the discard still gets a Debug line so the step is observable without upgrading routine cleanup to a Warn.
 		if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
 			logger.Debug("reed: best-effort kill of Selvage corpse pane failed", "socket", e.Socket(), "pane", corpseID, "err", err)
 		}
@@ -168,7 +154,8 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	return nil
 }
 
-// markSelvagePaneLocked sets the display-only console marker (consolePaneOption) on the recorded Selvage pane, when there is one.
+// markSelvagePaneLocked sets the display-only console marker (consolePaneOption) on the recorded Selvage pane.
+// It does nothing when no Selvage pane is recorded.
 // A failure is logged and never fails the step.
 func (e *Engine) markSelvagePaneLocked(st *ReedState) {
 	if st.SelvagePaneID == "" {
@@ -179,8 +166,8 @@ func (e *Engine) markSelvagePaneLocked(st *ReedState) {
 	}
 }
 
-// bottommostPaneID returns the id of the pane sitting physically lowest in the window — the largest
-// pane_top — which is the only place Selvage may be split in.
+// bottommostPaneID returns the id of the physically lowest pane in the window, the one with the largest pane_top.
+// That is the only place Selvage may be split in.
 // live must be non-empty.
 func bottommostPaneID(live []LivePane) string {
 	bottommost := live[0]
@@ -202,20 +189,22 @@ func (e *Engine) splitSelvagePaneAtBottomLocked(live []LivePane, launchCmd strin
 	return e.splitPaneBelowLocked(bottommostPaneID(live), live, launchCmd)
 }
 
-// splitPaneBelowLocked splits a new pane below target and returns its id, refusing an id that was already present in preSplitLive.
+// splitPaneBelowLocked splits a new pane below target and returns its id.
+// It refuses an id that was already present in preSplitLive.
 //
-// The split carries -f, a full-width split that takes its rows from the whole window, so a short target pane cannot make it fail.
+// The split carries -f, a full-width split taking its rows from the whole window.
+// A short target pane therefore cannot make it fail.
 // tmux's default split direction is vertical with the new pane below, which is where Selvage must land.
 //
-// The genuinely-new-pane guard is the same one launchStrandLocked runs: psmux's silent
-// too-small-to-split failure prints an EXISTING pane's id with exit 0, and recording that id as
-// Selvage would bind Selvage to a strand's pane (see validateSplitCreatedNewPane).
+// The check that the new pane is genuinely new guards against psmux's silent too-small-to-split failure.
+// That failure prints an existing pane's id with exit 0.
+// Recording that id as Selvage would bind Selvage to a strand's pane.
 func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, launchCmd string) (string, error) {
 	argv := []string{"split-window", "-f", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}"}
 	if launchCmd != "" {
-		// A single trailing shell-command argument, exactly like an interactive `tmux split-window`
-		// invocation's own trailing-command syntax: the pane then runs launchCmd directly rather than
-		// an interactive shell, so nothing types it, echoes it, or reads a shell rc file for it.
+		// The launch command is one trailing argument, as in an interactive `tmux split-window`.
+		// The pane runs launchCmd directly instead of an interactive shell.
+		// Nothing types the command, echoes it, or reads a shell rc file for it.
 		argv = append(argv, launchCmd)
 	}
 	out, err := e.tmux.output(argv...)
@@ -229,7 +218,8 @@ func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, la
 	return paneID, nil
 }
 
-// shellWindowOf returns the id of the window holding the recorded console pane, alive or a dead corpse, read from windowByPane, a session-wide pane-to-window listing.
+// shellWindowOf returns the id of the window that holds the recorded console pane, alive or dead.
+// It reads the window from windowByPane, a pane-to-window listing of the session.
 // It reports false when st records no console pane or the listing does not carry it.
 // It never falls back to another window: a session with no recorded console pane has no shell window.
 func shellWindowOf(st *ReedState, windowByPane map[string]string) (string, bool) {
@@ -240,8 +230,8 @@ func shellWindowOf(st *ReedState, windowByPane map[string]string) (string, bool)
 	return windowID, ok
 }
 
-// recordedPaneIDs lists the pane ids st records in the shell window, which is the recorded Selvage pane alone.
-// A strand's pane is skipped, since every strand lives in a window of its own.
+// recordedPaneIDs lists the pane ids st records in the shell window: the recorded Selvage pane alone.
+// A strand's pane is not listed, since every strand lives in a window of its own.
 func recordedPaneIDs(st *ReedState) []string {
 	if st == nil || st.SelvagePaneID == "" {
 		return nil
@@ -249,9 +239,11 @@ func recordedPaneIDs(st *ReedState) []string {
 	return []string{st.SelvagePaneID}
 }
 
-// planShellWindowMoves returns, in listing order, the ids of the panes of shellPanes that a strand of st is bound to, alive or dead.
+// planShellWindowMoves returns the ids of the shellPanes that a strand of st is bound to, alive or dead.
+// The ids come in listing order.
 // The recorded Selvage pane and any unbound pane are never returned.
-// With the Selvage pane absent from shellPanes the last bound pane stays, since breaking out a window's only pane would take the whole window with it.
+// When shellPanes lacks the Selvage pane, the last bound pane stays.
+// Breaking out a window's only pane would take the whole window with it.
 func planShellWindowMoves(st *ReedState, shellPanes []LivePane) []string {
 	bound := make(map[string]bool, len(st.Strands))
 	for _, s := range st.Strands {

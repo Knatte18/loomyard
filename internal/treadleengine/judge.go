@@ -1,10 +1,9 @@
-// judge.go implements treadle's ephemeral progress-judge LLM calls (per-round circling check, milestone continuation gate) as fail-safe spawns over a package-local Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern.
-// Unlike a round-runner attempt, neither call here ever returns an error:
-// any infrastructure failure degrades to the safe default and logs a logger.Warn, per the original
-// error-and-fail-safe-posture decision (03-judge-triage.md) — a false STUCK is the costly failure
-// mode, not a few extra bounded rounds.
-// Every Warn label is prefixed with the calling engine's name (threaded in as name), per the
-// name-parameterized-diagnostics shared decision.
+// judge.go runs treadle's ephemeral progress-judge calls:
+// the per-round circling check and the milestone continuation gate.
+// Each call is a fail-safe spawn made through the package-local Shuttle seam.
+// Neither call returns an error; any infrastructure failure degrades to the safe default.
+// The default leans toward continuing, because a false STUCK is the costly failure, not a few extra bounded rounds.
+// Every logger.Warn label starts with the calling engine's name, passed in as name.
 
 package treadleengine
 
@@ -35,9 +34,8 @@ type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
 
-// var _ Shuttle = (*shuttleengine.Runner)(nil) is the compile-time proof
-// that *shuttleengine.Runner satisfies Shuttle as-is, so production wiring
-// never needs an adapter type.
+// Compile-time proof that *shuttleengine.Runner satisfies Shuttle as-is.
+// Production wiring therefore needs no adapter type.
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
 // judgeInputs bundles values for composing a judge call's prompt and shuttle spec.
@@ -49,20 +47,19 @@ type judgeInputs struct {
 	PreviousHandoffPath string
 	HandoffPath         string
 	Choice              shuttleengine.ModelChoice
-	// StencilsDir is the absolute stencils directory runCircling and
-	// runMilestone read their prompt from via stencilstore.Read, told by the
-	// caller rather than derived — see Options.StencilsDir.
+	// StencilsDir is the absolute directory the judge prompt templates are read from.
+	// The caller supplies it; the judge does not derive it.
+	// Templates are read through stencilstore.Read.
 	StencilsDir string
-	// ParentName is the told parent name the judge prompt's directive is
-	// rendered for — see Options.ParentName.
+	// ParentName is the parent name the judge prompt's directive is rendered for.
+	// The caller supplies it.
 	ParentName string
 }
 
-// runCircling spawns the per-round circling-check progress judge. Fail-safe:
-// any failure — including a stencilstore.Read failure for the prompt itself —
-// logs a Warn and returns (JudgeProgressing, "", false) rather than an error.
-// ok is false on every fail-safe path and true only when a real verdict was
-// parsed.
+// runCircling spawns the per-round circling-check progress judge.
+// Fail-safe: any failure logs a Warn and returns (JudgeProgressing, "", false) instead of an error.
+// That includes a stencilstore.Read failure for the prompt itself.
+// ok is false on every fail-safe path and true only when a real verdict was parsed.
 func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
 	template, err := stencilstore.Read(in.StencilsDir, "treadle-template-judge-circling")
 	if err != nil {
@@ -91,9 +88,9 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Choice, JudgeProgressing, "circling judge")
 }
 
-// runMilestone spawns the milestone continuation-gate progress judge. Fail-safe
-// posture mirrors runCircling: defaults to (JudgeContinue, "", false) on any
-// failure, including a stencilstore.Read failure for the prompt itself.
+// runMilestone spawns the milestone continuation-gate progress judge.
+// Fail-safe: any failure logs a Warn and returns (JudgeContinue, "", false) instead of an error.
+// That includes a stencilstore.Read failure for the prompt itself.
 func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
 	template, err := stencilstore.Read(in.StencilsDir, "treadle-template-judge-milestone")
 	if err != nil {
@@ -123,12 +120,11 @@ func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string
 	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Choice, JudgeContinue, "milestone judge")
 }
 
-// previousHandoffMarker renders a judgeInputs.PreviousHandoffPath value into
-// the previous_handoff stencil marker: the path itself when a previous
-// handoff exists, or the literal "(none)" when this is the first handoff a
-// block has ever produced — stencil.Fill requires every marker to resolve
-// to some value (no conditionals in templates), so the "none yet" case
-// needs its own literal rather than an empty string.
+// previousHandoffMarker renders the previous_handoff marker value for a judge prompt.
+// It returns the path when a previous handoff exists,
+// or the literal "(none)" for the first handoff a block produces.
+// Templates have no conditionals and the stencil fill requires every marker to resolve,
+// so the "none yet" case needs its own literal rather than an empty string.
 func previousHandoffMarker(path string) string {
 	if path == "" {
 		return "(none)"
@@ -136,10 +132,10 @@ func previousHandoffMarker(path string) string {
 	return path
 }
 
-// runJudgeCall composes the prompt, builds and runs the shuttle spec, then
-// reads and parses the verdict file. Every failure point degrades to
-// (fallback, "", false) rather than an error, logging the call's name and
-// cause. ok is true only on the success path.
+// runJudgeCall runs one judge call.
+// It composes the prompt, runs the shuttle spec, and parses the verdict file.
+// Every failure degrades to (fallback, "", false) and logs the call's name and cause.
+// ok is true only on the success path.
 func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, choice shuttleengine.ModelChoice, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {

@@ -1,6 +1,7 @@
-// transient.go declares the transient mark: a class a producer boundary attaches to an error so a caller can tell an infrastructure failure a single re-step may clear from every other stop.
-// The mark is stdlib-only on purpose (Shed Producer-Seam Invariant);
-// the classifier that decides which failure gets which class is told to Shed, never imported here.
+// transient.go declares the transient mark: the class a producer boundary attaches to an error,
+// so a caller can tell an infrastructure failure that one re-step may clear from every other stop.
+// The mark imports only the standard library (Shed Producer-Seam Invariant);
+// the classifier that decides which failure gets which class is handed to Shed and never imported here.
 
 package shedengine
 
@@ -13,22 +14,23 @@ import "errors"
 type TransientClass string
 
 const (
-	// TransientGitTransport is a git network or transport failure: the remote was unreachable or the connection dropped mid-operation.
+	// TransientGitTransport is a git transport failure: the remote was unreachable or the connection dropped mid-operation.
 	// A non-fast-forward rejection or an auth failure never qualifies.
 	TransientGitTransport TransientClass = "git-transport"
 	// TransientGitHubAPI is a GitHub API failure that a retry can clear: a network error, a 5xx, or a timeout.
-	// A 4xx that names a bad request, a missing resource or bad credentials never qualifies, and neither does a rate limit, since an immediate retry hits the same limit.
+	// A 4xx and a rate limit never qualify: a retry of either fails the same way.
 	TransientGitHubAPI TransientClass = "github-api"
 	// TransientAgentStart is an agent session that never became ready or never took its first input.
 	// An agent that started and then died or timed out never qualifies here.
 	TransientAgentStart TransientClass = "agent-start"
-	// TransientHostResources is a process start the host refused for a temporary resource shortage, EAGAIN from fork or exec, or an agent that died shortly after the step's own process saw such a refusal.
-	// An agent that died with no such refusal behind it, or timed out, never qualifies.
+	// TransientHostResources is a process start the host refused for a temporary resource shortage:
+	// EAGAIN from fork or exec, or an agent dying soon after such a refusal; any other death or a timeout never qualifies.
 	TransientHostResources TransientClass = "host-resources"
 )
 
 // transientError carries a class beside the error it wraps.
-// Error and Unwrap pass the wrapped error through untouched, so the status file's error text and every errors.Is match stay as before.
+// Error and Unwrap pass the wrapped error through untouched,
+// so the status file's error text and every errors.Is match come from the wrapped error alone.
 type transientError struct {
 	class TransientClass
 	err   error

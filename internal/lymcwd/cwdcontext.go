@@ -1,8 +1,8 @@
-// cwdcontext.go implements the context-carried per-call cwd-injection seam: WithCwd seeds an
-// absolute directory into a context.Context, and CwdFrom reads it back, falling to Getwd (this
-// package's sole os.Getwd wrapper) when the context carries none.
-// This is what lets a caller thread an explicit cwd through a call chain instead of every callee
-// reading the process working directory directly.
+// cwdcontext.go carries an explicit working directory through a context.Context.
+// WithCwd seeds an absolute directory into a context.
+// CwdFrom reads it back, falling back to Getwd when the context carries none.
+// Getwd is this package's sole wrapper around os.Getwd.
+// Threading the cwd down a call chain keeps callees from reading the process working directory directly.
 
 package lymcwd
 
@@ -12,17 +12,14 @@ import (
 	"path/filepath"
 )
 
-// cwdKey is the unexported key type WithCwd stores its value under, so no
-// other package can collide with it by using the same string key.
+// cwdKey is the unexported context key type under which the injected cwd is stored.
+// Its unexported type keeps other packages from colliding with it, even when they use the same string key.
 type cwdKey struct{}
 
-// WithCwd returns a copy of ctx carrying dir as the injected cwd that CwdFrom
-// reads back.
-// dir must be an absolute path;
-// WithCwd panics otherwise, since a relative seed would resolve against
-// whatever the process cwd happens to be — silently reintroducing the
-// dependency this seam exists to remove.
-// WithCwd never normalizes dir via filepath.Abs and never returns an error.
+// WithCwd returns a copy of ctx that carries dir as its injected working directory.
+// It panics unless dir is absolute.
+// A relative path would resolve against the process working directory, the dependency injection removes.
+// It does not normalize dir with filepath.Abs and never returns an error.
 func WithCwd(ctx context.Context, dir string) context.Context {
 	if dir == "" {
 		panic(fmt.Sprintf("lymcwd.WithCwd: dir must be an absolute path, got %q", dir))
@@ -33,10 +30,9 @@ func WithCwd(ctx context.Context, dir string) context.Context {
 	return context.WithValue(ctx, cwdKey{}, dir)
 }
 
-// CwdFrom returns the cwd injected into ctx by WithCwd.
-// When ctx carries no injected value, it falls back to Getwd, returning that
-// call's error unchanged;
-// this is the one place that fallback happens.
+// CwdFrom returns the cwd injected into ctx.
+// When ctx carries none, it falls back to Getwd and returns that call's error unchanged.
+// This is the one place that fallback happens.
 func CwdFrom(ctx context.Context) (string, error) {
 	if dir, ok := ctx.Value(cwdKey{}).(string); ok {
 		return dir, nil

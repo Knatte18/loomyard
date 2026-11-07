@@ -36,7 +36,7 @@ func stateChanges(log string) []string {
 }
 
 // TestLoopAgreesWithState_APIError pins the pairing the fixed mapping allows for the api-error loop classification.
-// The drive of TestWait_LogsSessionStateBesideItsClassification cannot hold it, since an engine without the parser never ends a run api-error.
+// It is checked here in isolation, since an engine without the session parser never ends a run api-error.
 func TestLoopAgreesWithState_APIError(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -59,9 +59,10 @@ func TestLoopAgreesWithState_APIError(t *testing.T) {
 	}
 }
 
-// TestWait_LogsSessionStateBesideItsClassification drives Wait over scripted events with an engine that parses session signals,
-// and again over the same events with an engine that cannot:
-// the state changes and disagreements are logged by the first run only, and both runs return the same Result and notify the same lines.
+// TestWait_LogsSessionStateBesideItsClassification drives Wait over the same scripted events twice:
+// once with an engine that parses session signals, and once with an engine that cannot.
+// The state changes and disagreements are logged by the first run only,
+// and both runs return the same Result and notify the same lines.
 // The log is captured process-wide, so the test does not run in parallel.
 func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -78,7 +79,7 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		// jump is the clock advance per Sleep, zero for the scripted steps below.
 		jump time.Duration
 		// script returns the agent's actions between ticks, run once per Sleep;
-		// markInterrupt makes the transcript mark every turn start as interrupted, and markAPIError marks the turn end whose line is line as an API error;
+		// markInterrupt marks each transcript turn start interrupted; markAPIError marks the turn end at line as an API error;
 		// both are no-ops on an engine without the session capabilities.
 		script func(appendLine func(string), touchOutput func(), markInterrupt func(), markAPIError func(line string)) []func()
 

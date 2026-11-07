@@ -1,4 +1,5 @@
-// await_test.go covers Await's classification order, what each outcome stops, reads and removes, and the errors it returns before it stops anything.
+// await_test.go covers Await's classification order and what each outcome stops, reads and removes.
+// It also covers the errors Await returns before it stops anything.
 
 package gatefixer
 
@@ -27,7 +28,8 @@ func appendTurnEnd(t *testing.T, fx *fixture, rec *Record) {
 	}
 }
 
-// TestAwait pins the order done, asking, timeout and died are decided in, and that every terminal result stops the strand once.
+// TestAwait pins the order done, asking, timeout and died are decided in.
+// It also pins that every terminal result stops the strand once.
 func TestAwait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

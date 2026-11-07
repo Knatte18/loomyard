@@ -1,4 +1,5 @@
-// originreconcileended_integration_test.go proves what the origin reconcile does with the runs origin has ended, on hubforge hubs.
+// originreconcileended_integration_test.go proves what the origin reconcile does with the runs origin has ended.
+// It runs on hubforge hubs.
 // The teardown seam is a recording fake, since the local removal's own effects belong to the removal.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -38,7 +39,6 @@ func (r *teardownRecorder) seams() fabricengine.OriginSeams {
 	}}
 }
 
-// slugsCalled returns the slug of each request, in order.
 func (r *teardownRecorder) slugsCalled() []string {
 	slugs := make([]string, 0, len(r.calls))
 	for _, call := range r.calls {
@@ -64,7 +64,7 @@ func publishBoard(t *testing.T, hub *originHub, entries ...boardengine.Task) str
 	return branch
 }
 
-// originBoard has origin's Bolt hold entries.
+// originBoard commits a board holding entries to branch in origin's records repository.
 func originBoard(t *testing.T, hub *originHub, branch string, entries ...boardengine.Task) {
 	t.Helper()
 	originCommitFile(t, hub.RecordsBare, branch, "board.json", boardFileOf(t, entries...))
@@ -82,7 +82,8 @@ func writePairStatus(t *testing.T, hub *originHub, slug, producer string, histor
 	}
 }
 
-// endedHub is a hub with the pairs slugs, each holding a batten run record at the prime before its Finalize, whose board origin has marked done.
+// endedHub is a hub with the pair slugs, each holding a batten run record at the prime before its Finalize.
+// Origin's board marks each of those runs done.
 func endedHub(t *testing.T, slugs ...string) (*originHub, string) {
 	t.Helper()
 	hub := newOriginHub(t)
@@ -98,7 +99,8 @@ func endedHub(t *testing.T, slugs ...string) (*originHub, string) {
 	return hub, branch
 }
 
-// TestReconcileOrigin_Ended covers the origin reconcile's handling of runs origin has ended: which entries it ends, what it hands the teardown seam and how it reports each outcome.
+// TestReconcileOrigin_Ended covers the origin reconcile's handling of runs origin has ended.
+// It checks which entries it ends, what it hands the teardown seam, and how it reports each outcome.
 // It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Ended(t *testing.T) {
 	tiergate.Require(t, 1)

@@ -1,6 +1,11 @@
-// friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own:
-// the once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own unconditional ensure, and the reflection call reflectFriction implements (the reflection runs only inside the Friction-Reflect row; a halt's note without a reflection is covered by halt_test.go).
-// Every test here is untagged Tier 1: it spawns no subprocess, drives no real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
+// friction_test.go covers the Tier 2 friction wiring that the runCmd and startCmd call sites own.
+// It tests the once-per-task clear-and-create split of ensureFrictionDirAfterSeed for the shared bootstrap.
+// It also tests run's own unconditional ensure and the reflection that reflectFriction implements.
+// The reflection runs only inside the Friction-Reflect row.
+// A halt's note without a reflection is covered by halt_test.go.
+// Every test here is untagged Tier 1.
+// It spawns no subprocess and drives no real git operation.
+// It builds no real hub fixture and contains no time.Sleep at or above one second.
 
 package loomcli
 
@@ -79,18 +84,18 @@ func TestEnsureFrictionDirAfterSeed(t *testing.T) {
 	})
 
 	// An empty frictionDir is a no-op: Tier 2 is off and neither the clear nor the ensure runs.
-	// No panic and no filesystem effect is the whole assertion: an empty dir gives
-	// os.RemoveAll/os.MkdirAll nothing to act on, and this call must not attempt either.
+	// No panic and no filesystem effect is the whole assertion.
+	// An empty dir gives os.RemoveAll and os.MkdirAll nothing to act on, and this call must attempt neither.
 	t.Run("an empty directory skips both operations", func(t *testing.T) {
 		t.Parallel()
 		ensureFrictionDirAfterSeed("", nil)
 		ensureFrictionDirAfterSeed("", loomshed.ErrSeedExists)
 	})
 
-	// A failed create (frictionDir's parent is a regular file, not a directory) leaves the call's own
-	// outcome unchanged: ensureFrictionDirAfterSeed has no error return, so a caller (startCmd)
-	// proceeds with the seed's own outcome regardless of whether the directory could be created --
-	// friction.EnsureDir's own contract is to warn and continue.
+	// A failed create, where frictionDir's parent is a regular file, leaves the call's outcome unchanged.
+	// ensureFrictionDirAfterSeed has no error return.
+	// So startCmd proceeds with the seed's outcome whether or not the directory could be created.
+	// friction.EnsureDir's contract is to warn and continue.
 	t.Run("a failed create does not error", func(t *testing.T) {
 		t.Parallel()
 		blocker := filepath.Join(t.TempDir(), "blocker")
@@ -101,9 +106,8 @@ func TestEnsureFrictionDirAfterSeed(t *testing.T) {
 		ensureFrictionDirAfterSeed(filepath.Join(blocker, "friction"), nil)
 	})
 
-	// The same friction.EnsureDir call run.go makes at startup creates an absent friction directory
-	// before the run proceeds -- mirrored here directly, since run's own RunE is not independently
-	// invocable without a real Shed.
+	// The friction.EnsureDir call that run.go makes at startup creates an absent friction directory.
+	// This test mirrors that call directly, since run's RunE is not invocable on its own without a real Shed.
 	t.Run("run's ensure creates an absent directory", func(t *testing.T) {
 		t.Parallel()
 		dir := filepath.Join(t.TempDir(), "friction")
@@ -119,10 +123,11 @@ func TestEnsureFrictionDirAfterSeed(t *testing.T) {
 	})
 }
 
-// TestReflectFriction_DepsValidationFailureReportsFailed asserts a malformed Deps -- a relative
-// frictionDir here, which frictionengine.Reflect's own validateDeps rejects -- is logged and reported
-// as frictionengine.StatusFailed on c.reflectFriction's return, never surfaced as an error and never
-// "filed": frictionengine has no such status, since nothing in Go parses the agent's own report file.
+// TestReflectFriction_DepsValidationFailureReportsFailed asserts that a malformed Deps is reported as failed:
+// c.reflectFriction returns frictionengine.StatusFailed, and the failure is never surfaced as an error.
+// A relative frictionDir is the malformed value here, and frictionengine.Reflect's validateDeps rejects it.
+// The status is never "filed":
+// frictionengine has no such status, since nothing in Go parses the agent's own report file.
 //
 //testtiming:keep pins a malformed deps value reporting failed rather than an error or a filed status, and the reflection lock being released for the next call; the covering tests reflect through other paths
 func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
@@ -145,15 +150,15 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 	if got == "filed" {
 		t.Error("c.reflectFriction() = \"filed\"; that status must never exist")
 	}
-	// The lock is not leaked: once a reflection returns, a later one against the same task must be able
-	// to take it, or the call would wait on the first one's lock for the process's life.
+	// The lock is not leaked: once a reflection returns, a later one against the same task must be able to take it,
+	// or the call would wait on the first one's lock for the process's life.
 	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
 		t.Errorf("second c.reflectFriction() = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
 	}
 }
 
-// newRelativeFrictionCLI builds a receiver whose relative frictionDir makes frictionengine.Reflect
-// fail Deps validation: StatusFailed proves a reflection was attempted, StatusSkipped that it was not.
+// newRelativeFrictionCLI builds a receiver whose relative frictionDir makes frictionengine.Reflect fail Deps validation.
+// StatusFailed shows a reflection was attempted; StatusSkipped shows it was not.
 func newRelativeFrictionCLI(t *testing.T) *loomCLI {
 	t.Helper()
 	return &loomCLI{
@@ -163,7 +168,8 @@ func newRelativeFrictionCLI(t *testing.T) *loomCLI {
 	}
 }
 
-// TestReflectFrictionRow asserts an empty frictionDir never reflects, and the row attempts the reflection whenever Tier 2 is on, whichever verb drives the run.
+// TestReflectFrictionRow asserts an empty frictionDir never reflects.
+// It also asserts the row attempts the reflection whenever Tier 2 is on, whichever verb drives the run.
 //
 //testtiming:keep pins an empty friction directory never reflecting and a set one attempting the reflection, recorded on the receiver; the covering test waits on the lock rather than asserting the skip
 func TestReflectFrictionRow(t *testing.T) {

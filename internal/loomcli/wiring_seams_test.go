@@ -9,8 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
-// envkit.NilSeams already skips the seams whose nil is a documented default, so only wire's own gaps are listed.
+// intentionallyNil maps each shedrecipe.Env field path that wire leaves nil to the reason.
+// Seams whose nil is a documented default are already skipped, so only wire's own gaps are listed.
 var intentionallyNil = map[string]string{
 	"Landing.BaseCommand":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.VerifyHold":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
@@ -132,7 +132,8 @@ var intentionallyNil = map[string]string{
 	"Sampler.Sleep":                       "sampler-only seam, filled by wire for a sampler seed",
 }
 
-// TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them, bar the batten-only ones.
+// TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them.
+// The batten-only seams are the exception.
 //
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
@@ -174,7 +175,7 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	// envkit lists GateFixer as a legal nil, so wire's filling it is asserted here.
+	// GateFixer may legally stay nil, so this assertion checks that wire fills it.
 	if c.env.GateFixer == nil {
 		t.Error("GateFixer is nil; want it set after wire()")
 	}

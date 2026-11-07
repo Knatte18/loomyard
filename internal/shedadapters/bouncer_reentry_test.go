@@ -1,4 +1,5 @@
-// bouncer_reentry_test.go covers the Bouncer's settle record and its re-entry over a settled verdict: the records an approved settle writes, and the cases that re-settle, harvest or clear.
+// bouncer_reentry_test.go covers the Bouncer's settle record and its re-entry over a settled verdict.
+// Those tests check the records an approved settle writes, and the cases that re-settle, harvest or clear.
 
 package shedadapters
 
@@ -18,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// reentry is a Bouncer over a nested run directory whose Subject, clock, Commit and Bounces seams the test steers through its fields.
+// reentry is a Bouncer over a nested run directory.
+// The test steers its Subject, clock, Commit and Bounces seams through its fields.
 // Review reports are named as the recipe names them, so the settle record's liveness reads them.
 type reentry struct {
 	t       *testing.T
@@ -44,7 +46,8 @@ type reentryOption func(h *reentry, cfg *BouncerConfig)
 
 var errReentryCommit = errors.New("commit failed")
 
-// convergingShuttle returns a shuttle whose judge run writes a CONVERGED verdict, the ledger ledger renders for the round and the next round's focus file.
+// convergingShuttle returns a shuttle whose judge run writes its outputs:
+// a CONVERGED verdict, the ledger that ledger renders for the round, and the next round's focus file.
 func convergingShuttle(ledger func(round int) string) *shedfake.Shuttle {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	shuttle.DuringRun = func() {
@@ -102,7 +105,8 @@ func (h *reentry) call() (shedengine.Outcome, shedengine.OutputPointer, error) {
 	return h.b.Call(context.Background())
 }
 
-// settleRoundOne lays out round 1's review and runs one Call, which judges and settles it with Commit answering commitErr.
+// settleRoundOne lays out round 1's review and runs one Call.
+// The Call judges and settles it, with Commit answering commitErr.
 func (h *reentry) settleRoundOne(commitErr error) error {
 	h.t.Helper()
 	layoutBouncerRun(h.t, h.cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
@@ -160,7 +164,8 @@ func openFindingLedger(t *testing.T) func(round int) string {
 	}
 }
 
-// reentryInputRow settles round 1 over an unchanged subject, then re-enters it with a review input written offset after the settle.
+// reentryInputRow settles round 1 over an unchanged subject.
+// It then re-enters the subject with a review input written offset after the settle.
 // It checks whether the Call starts an amendment generation over the input or re-settles with no spawn.
 func reentryInputRow(name string, offset time.Duration, wantAmendment bool) amendmentRow {
 	const inputPath = "/review/review-input.md"

@@ -1,4 +1,6 @@
-// stophold_test.go covers the eligible-stop hold: when the state-changed notice of an arbiter-eligible stop waits for the arbiter, and when the report wait starts after the hold.
+// stophold_test.go covers the eligible-stop hold.
+// It pins two timings: the state-changed notice of an arbiter-eligible stop waits for the arbiter,
+// and the report wait starts after the hold.
 
 package battenshed
 
@@ -19,14 +21,17 @@ type holdScenario struct {
 	since time.Time
 }
 
-// holdStep moves the fake clock to at after the stop began, applies mutate, makes one check and requires wantSent notices in all by then.
+// holdStep moves the fake clock to at after the stop began and applies mutate.
+// It then makes one check and requires wantSent notices in all by then.
 type holdStep struct {
 	at       time.Duration
 	mutate   func(s *holdScenario)
 	wantSent int
 }
 
-// TestNotice_EligibleStopHold pins the hold over a blocked or awaiting stop whose reading is eligible: no notice while the arbiter may still settle the stop, and noticeReportWait counted from the hold's end.
+// TestNotice_EligibleStopHold pins the hold over a blocked or awaiting stop whose reading is eligible.
+// No notice is sent while the arbiter may still settle the stop.
+// The noticeReportWait is counted from the hold's end.
 func TestNotice_EligibleStopHold(t *testing.T) {
 	tiergate.Require(t, 0)
 	const timeout = 30 * time.Minute
@@ -39,7 +44,8 @@ func TestNotice_EligibleStopHold(t *testing.T) {
 			s.h.arbiterStop = r
 		}
 	}
-	// attempt gives the reading an attempt at the stop's key whose deadline is the usual timeout after the stop began, then applies change.
+	// attempt gives the reading an attempt at the stop's key whose deadline is the usual timeout after the stop began.
+	// It then applies change.
 	attempt := func(change func(since time.Time, r *ChildArbiterStop)) func(s *holdScenario) {
 		return func(s *holdScenario) {
 			r := s.h.arbiterStop

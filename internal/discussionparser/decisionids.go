@@ -26,11 +26,14 @@ const (
 )
 
 // CheckDecisionIDs checks the record's `## Decisions` section for decision ids and their acceptance coverage.
-// Each H3 of the section must read `### D<n> — <title>`, with n a positive integer and the title non-empty, except an added-decision entry heading, which carries no id.
-// Ids must be unique, and when the record has an `## Acceptance criteria` section, each id must appear as a whole word in one of its bullets.
+// Each H3 of the section must read `### D<n> — <title>`, with n a positive integer and the title non-empty.
+// An added-decision entry heading is exempt and carries no id.
+// Ids must be unique.
+// When the record has an `## Acceptance criteria` section, each id must appear as a whole word in one of its bullets.
 // A range such as "D1 to D4" covers only the ids it spells.
 // Lines inside fenced blocks are not read.
-// A record without a `## Decisions` section yields no finding, and one without an acceptance section gets no coverage finding.
+// A record without a `## Decisions` section yields no finding.
+// A record without an acceptance section gets no coverage finding.
 // The findings carry an empty Path, which the caller stamps.
 func CheckDecisionIDs(record []byte) []Finding {
 	lines := strings.Split(string(record), "\n")
@@ -84,7 +87,8 @@ func CheckDecisionIDs(record []byte) []Finding {
 }
 
 // DecisionIDs returns the ids `D<n>` of the record's `## Decisions` section, in record order, each listed once.
-// Each unfenced H3 of the section that reads `### D<n> — <title>` gives its id; an added-decision entry heading and a malformed heading give none.
+// Each unfenced H3 of the section that reads `### D<n> — <title>` gives its id;
+// an added-decision entry heading and a malformed heading give none.
 // A record without a `## Decisions` section gives an empty list.
 func DecisionIDs(record []byte) []string {
 	lines := strings.Split(string(record), "\n")
@@ -104,7 +108,8 @@ func DecisionIDs(record []byte) []string {
 	return ids
 }
 
-// walkDecisionHeadings calls visit for each unfenced H3 in [first, end) that is not an added-decision entry heading, with the line index, the trimmed heading and the id parseDecisionHeading read from it, ok false for a malformed heading.
+// walkDecisionHeadings calls visit for each unfenced H3 in [first, end) that is not an added-decision entry heading.
+// visit gets the line index, the trimmed heading, the id read from it, and ok, which is false for a malformed heading.
 func walkDecisionHeadings(lines []string, fenced []bool, first, end int, visit func(i int, heading, id string, ok bool)) {
 	for i := first; i < end; i++ {
 		if fenced[i] {
@@ -161,7 +166,8 @@ func parseDecisionHeading(heading string) (string, bool) {
 	return "D" + digits, true
 }
 
-// bulletLines returns the unfenced lines in [first, end) that belong to a list item: the bullet line itself and the indented lines continuing it.
+// bulletLines returns the unfenced lines in [first, end) that belong to a list item:
+// the bullet line itself and the indented lines continuing it.
 func bulletLines(lines []string, fenced []bool, first, end int) []string {
 	var bullets []string
 	inItem := false

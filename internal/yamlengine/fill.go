@@ -14,7 +14,8 @@ import (
 // FillMissing merges every mapping key the template holds and existing lacks into existing's own document.
 // It returns the merged bytes and the sorted dotted key-paths it inserted.
 //
-// Unlike Reconcile, it builds on existing: file keys the template lacks stay, file values are never replaced, and a shape mismatch is an error rather than a replacement.
+// It builds on existing: file keys the template lacks stay, file values are never replaced,
+// and a shape mismatch is an error rather than a replacement.
 // A missing key is appended to its mapping after the file's own keys, in template order, as a deep copy of the template's nodes.
 // The reported path is the inserted key's own path, never its descendants.
 //
@@ -22,7 +23,8 @@ import (
 // so a list at that path against a mapping template is no mismatch;
 // a missing one is appended whole like any other key.
 //
-// Sequences are carried whole and never descended into, so a template key missing inside an element of a present list stays missing, for MissingKeys to report.
+// Sequences are carried whole and never descended into,
+// so a template key missing inside an element of a present list stays missing and is not reported.
 // An empty or comments-only existing returns the template bytes verbatim, reporting every top-level template key.
 // When nothing is missing, existing is returned byte-for-byte with an empty key list.
 func FillMissing(template, existing []byte, openMaps ...string) (filled []byte, keys []string, err error) {

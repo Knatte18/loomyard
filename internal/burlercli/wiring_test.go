@@ -1,41 +1,40 @@
-// wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
-// told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
-// cwd.
+// wiring_test.go pins wire's mode truth table at tier 0.
+// Every case drives c.wire directly with a told preflight.Mode, never through the real pre-run,
+// so no case spawns a process or resolves cwd.
 //
-// The hub-mode cases below hand wire a fictional, on-disk-absent *lymcwd.Location:
-// every module config load wire performs (shuttleengine.LoadConfig, lenses.Load, reedengine.LoadConfig) degrades to its embedded template on a proven-absent _lym/ directory,
-// so a fictional anchor path drives the whole hub branch without touching disk.
-// The one entry each hub case creates is the worktree's .git directory, which hubgeom.ReedGeometry stats to tell the prime from a task worktree.
+// The hub-mode cases hand wire a fictional, on-disk-absent *lymcwd.Location.
+// Every module config load wire performs degrades to its embedded template on a proven-absent _lym/ directory:
+// shuttleengine.LoadConfig, lenses.Load, and reedengine.LoadConfig all do so.
+// A fictional anchor path therefore drives the whole hub branch without touching disk.
+// The one entry each hub case creates is the worktree's .git directory;
+// hubgeom.ReedGeometry stats it to tell the prime from a task worktree.
 //
-// The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
-// ResolveStandalone, which owns the one production call site of Derive that exists anywhere in this
-// codebase since batch 2: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a
-// t.TempDir() BEFORE calling wire, so both of Derive's per-OS branches land inside the test's own
-// temp tree on every platform, and none of those cases is marked t.Parallel(), since t.Setenv panics
-// under a parallel test.
+// The standalone-mode cases reach standalonestate.Derive through internal/cliwire's ResolveStandalone.
+// Each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a t.TempDir() before calling wire,
+// so both of Derive's per-OS branches land inside the test's own temp tree on every platform.
+// None of those cases is marked t.Parallel(), since t.Setenv panics under a parallel test.
 //
-// Two structural facts a later reader might otherwise try to "fix": first, no (loc non-nil,
-// ModeStandalone) row exists in this file because no caller can produce one -- preflight.ResolveMode
-// returns a nil Location for both standalone causes (the plain downloaded git repo and a genuine
-// non-repository directory -- the plain-git-repo cause is what the design's r5 review caught).
-// Second, the refuse case is deliberately absent from this file because wire never receives it -- the
-// error return aborts upstream in resolvePersistentPreRun before c.wire is ever called -- and
-// manufacturing one here would require driving the real pre-run, which spawns git and breaches the
-// Test Tier Purity Invariant, the exact invariant wire's extraction exists to satisfy. The refusal is
-// pinned instead in internal/preflight's own integration table and in
+// Two structural facts a later reader might otherwise try to "fix".
+// First, no (loc non-nil, ModeStandalone) row exists in this file, because no caller can produce one:
+// preflight.ResolveMode returns a nil Location for both standalone causes:
+// a plain downloaded git repo, and a directory outside any repository.
+// Second, the refuse case is absent from this file, because wire never receives it:
+// the error return aborts upstream in resolvePersistentPreRun before c.wire is called.
+// Manufacturing one here would require driving the real pre-run;
+// that spawns git and breaches the Test Tier Purity Invariant, which wire's extraction exists to satisfy.
+// The refusal is pinned instead in internal/preflight's own integration table and in
 // internal/burlercli/cli_integration_test.go.
 //
-// What this file does NOT assert: the reed geometry's field values. burlerengine.Engine exposes only
-// Run and holds its geom, cfg, and stencilsDir unexported; shuttleengine.Runner holds reed, engine,
-// anchorPath, worktreeRoot, and cfg unexported with no geometry accessor. Both are different packages
-// from this in-package test, so SocketKey, SessionName, LogsDir and HubPath are
-// unreachable from here, and none of the three reporting fields (c.mode, c.stateDir, c.stencilsDir)
-// encodes them. Those values are already pinned one layer down, by TestReedGeometry in
-// internal/standalonegeom/standalonegeom_test.go, which asserts the geometry's fields against told
-// parameters. What that leaves uncovered by any test is the *linkage* -- that wireStandalone calls
-// standalonegeom.ReedGeometry with this invocation's own target, stateDir, and hash8 rather than some
-// other triple. No seam exposes it, so it is a review obligation rather than an assertion, recorded
-// here so a later reader knows the gap is recorded rather than overlooked.
+// This file does not assert the reed geometry's field values.
+// burlerengine.Engine exposes only Run and holds its geom, cfg, and stencilsDir unexported;
+// shuttleengine.Runner holds reed, engine, anchorPath, worktreeRoot, and cfg unexported with no geometry accessor.
+// Both live in other packages, so SocketKey, SessionName, LogsDir and HubPath are unreachable from this test.
+// None of the three reporting fields (c.mode, c.stateDir, c.stencilsDir) encodes them.
+// TestReedGeometry in internal/standalonegeom/standalonegeom_test.go pins those values one layer down.
+// It asserts the geometry's fields against told parameters.
+// Left uncovered is the linkage:
+// wireStandalone calls standalonegeom.ReedGeometry with this invocation's own target, stateDir, and hash8.
+// No seam exposes it, so it is a review obligation, recorded here so the gap is not mistaken for an oversight.
 
 package burlercli
 
@@ -72,7 +71,7 @@ import (
 )
 
 // hubLocation returns a *lymcwd.Location standing in for a real hub's prime.
-// Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.
+// It creates only the worktree's .git directory; wire's hub branch tolerates the rest being absent.
 func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
 	loc := &lymcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
@@ -82,13 +81,12 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Loca
 	return loc
 }
 
-// setStandaloneStateRoot redirects both env vars standalonestate.Derive reads to fresh t.TempDir()
-// values, so a case that reaches wireStandalone stays hermetic. Not t.Parallel() -- t.Setenv panics
-// under a parallel test.
-// It also registers the sink-override cleanup every caller here needs, per the overview's
-// sink-override-is-process-global decision: every case that calls this helper reaches wireStandalone,
-// which now sets the process-global durable sink override, and a leaked override would defeat the
-// testing.Testing() sink suppression for every later test in this binary.
+// setStandaloneStateRoot points the environment variables standalonestate.Derive reads at fresh t.TempDir() values,
+// so a case that reaches wireStandalone stays hermetic.
+// It must not run under t.Parallel, since t.Setenv panics there.
+// It also registers a cleanup that clears the durable sink override:
+// wireStandalone sets that process-global override,
+// and a leaked one would defeat the testing.Testing() sink suppression for every later test in the binary.
 func setStandaloneStateRoot(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -107,9 +105,13 @@ func stateDirFor(t *testing.T, target string) string {
 }
 
 // TestWire_SelectsModeAndWiresItsFields covers wire's dispatch on the told mode.
-// Hub mode (loc non-nil) reports mode "hub", an empty stateDir and the hub stencils directory, and leaves the reed bring-up seam nil: hub mode's reed session is not run's to boot.
-// Standalone mode (loc nil, which is what ResolveMode returns for both a plain downloaded repository and a non-repository directory, so wire cannot tell them apart) reports mode "standalone", the derived state directory and its stencils directory, and arms the in-process reed bring-up seam.
-// The standalone subtest sets the process environment, so the test is not t.Parallel; the hub subtest touches no global state and runs in parallel.
+// Hub mode (loc non-nil) reports mode "hub", an empty stateDir and the hub stencils directory.
+// It leaves the reed bring-up seam nil, since hub mode's reed session is not run's to boot.
+// Standalone mode (loc nil) reports mode "standalone" with the derived state directory and its stencils directory.
+// It also arms the in-process reed bring-up seam.
+// A nil loc covers both a plain downloaded repository and a non-repository directory, which wire cannot tell apart.
+// The standalone subtest sets the process environment, so the test is not t.Parallel;
+// the hub subtest touches no global state and runs in parallel.
 //
 //testtiming:keep pins the mode, stateDir, stencilsDir and reed-seam values per mode, which the stencils-dir and runner tests covering its blocks do not assert
 func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
@@ -218,9 +220,8 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 	})
 }
 
-// TestWire_TargetDirRefusedInHubMode proves --target-dir is refused in hub mode with an error
-// explaining why, and that the refusal happens before any config is loaded (an empty hub, no module
-// config on disk anywhere, still refuses on the flag alone).
+// TestWire_TargetDirRefusedInHubMode proves that --target-dir is refused in hub mode, with an error naming the flag.
+// The refusal happens before any config loads, so it holds on an empty hub with no module config on disk.
 func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -238,8 +239,9 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	}
 }
 
-// TestWire_StencilsDirFlag covers --stencils-dir in both modes: an absolute value is honoured as given, and a relative value resolves against cwd.
-// A relative value used to be stored verbatim, so the CLI process would read it against its working directory while the pane burler spawns runs at the target (standalone) or the anchor (hub), and one string named two different directories.
+// TestWire_StencilsDirFlag covers --stencils-dir in both modes.
+// An absolute value is honoured as given, and a relative value resolves against cwd.
+// Stored as an absolute path, one string names one directory for the CLI and for the pane burler.
 // The told directory must exist on disk, since wiring stats it at the boundary.
 // The standalone subtests set the process environment and so are not t.Parallel.
 func TestWire_StencilsDirFlag(t *testing.T) {
@@ -309,10 +311,11 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 	})
 }
 
-// TestWireHub_AbsentStencilsDirIsRefused is R7-F2's hub-side regression test for this module: a
-// typo'd --stencils-dir used to be honoured silently in hub mode and failed only at the first
-// instruction render, after the run lock and substrate boot. The boundary stat goes through the
-// same cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
+// TestWireHub_AbsentStencilsDirIsRefused proves that hub mode refuses a --stencils-dir that does not exist.
+// Without this check, a typo'd directory fails only at the first instruction render.
+// That happens after the run lock and substrate boot.
+// The boundary stat goes through the same cliwire.Module method standalone's prologue uses,
+// so the two modes cannot drift apart on it.
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -330,24 +333,22 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	}
 }
 
-// TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError is F16's direct regression
-// test. It fails against pre-fix source, where wireStandalone constructed its runner via
-// shuttleengine.NewRunner: NewRunner's containment assertion refuses standalone's deliberately
-// detached anchor/worktree-root pair (the derived state directory sits outside the target
-// repository), setting the runner's held toldErr, which every public entry point returns
-// immediately without ever reaching reed.
-// A runner that is merely non-nil proves nothing here, so this test drives a public entry point reachable from this package.
-// That is c.engine.Review, with a minimal but validateReview-passing Profile, and the test asserts the returned error is some non-nil error other than a told-path refusal.
+// TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError checks a standalone runner reaches reed.
+// NewRunner's containment assertion refuses the anchor and worktree-root pair that standalone detaches.
+// Standalone detaches the pair because the derived state directory sits outside the target repository.
+// The refusal sets the runner's held toldErr, which every public entry point returns at once, without reaching reed.
+// A runner that is merely non-nil proves nothing.
+// The test therefore drives c.engine.Review with a minimal validateReview-passing Profile,
+// and it asserts the returned error is non-nil and is not a told-path refusal.
 //
-// AddStrand now self-heals a cold worktree rather than failing fast on requireSessionLocked, so this
-// test can no longer rely on a bare wire to reach its assertion without spawning a real tmux server.
-// It instead pins its configured multiplexer binary out of existence before the engine call: a first
-// wire call resolves the standalone state directory onto the receiver and spawns nothing (wireStandalone
-// only assigns its boot closure, never executes it), then a reed config is seeded under that state
-// directory with the tmux key pointed at a path that is never created, so sessionSubstrateLocked's own
-// session probe fails at process lookup and nothing is ever spawned. A fresh CLI receiver then wires
-// again -- picking up the seeded config -- and drives the same entry point. This is what keeps this
-// tier0 test inside the Test Tier Purity Invariant.
+// AddStrand self-heals a cold worktree instead of failing fast, so a bare wire would spawn a real tmux server.
+// The test points its configured multiplexer binary at a path that is never created.
+// A first wire call resolves the standalone state directory onto the receiver and spawns nothing.
+// wireStandalone only assigns its boot closure and never executes it.
+// A reed config is then seeded under that state directory with the tmux key set to the missing path.
+// The session probe of sessionSubstrateLocked then fails at process lookup, so nothing is spawned.
+// A fresh CLI receiver wires again to pick up the seeded config and drives the same entry point.
+// This keeps the tier0 test inside the Test Tier Purity Invariant.
 func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
 	tiergate.Require(t, 0)
 	target := t.TempDir()
@@ -358,20 +359,17 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 		t.Fatalf("write fixture file: %v", err)
 	}
 
-	// The first wire call only resolves and assigns the standalone state directory onto the
-	// receiver -- wireStandalone assigns its c.reedUp boot closure without ever executing it -- so
-	// this call spawns nothing.
+	// The first wire call only resolves and assigns the standalone state directory onto the receiver.
+	// wireStandalone assigns its c.reedUp boot closure without executing it, so this call spawns nothing.
 	primer := &burlerCLI{}
 	if err := primer.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	// Seed a reed config under the state directory this invocation derived, with the multiplexer
-	// key pointed at a path that is never created, so no process is ever spawned. MkdirAll, not
-	// os.Mkdir: the first wire call above has already created this state directory's _lym tree --
-	// ResolveStandalone seeds the standalone stencils and specs directories beneath it, and
-	// internal/stencilstore's reconcile creates their parents on the way -- so a single-level Mkdir
-	// would fail against an already-existing directory before the config is ever written.
+	// Seed a reed config under the state directory this invocation derived.
+	// Its multiplexer key points at a path that is never created, so no process is ever spawned.
+	// MkdirAll, not os.Mkdir: the first wire call has already created this state directory's _lym tree,
+	// so a single-level Mkdir would fail before the config is written.
 	configDir := configengine.ConfigDir(primer.stateDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", configDir, err)
@@ -379,8 +377,8 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 	noSuchTmux := filepath.Join(t.TempDir(), "no-such-tmux-binary")
 	rawTemplate := reedengine.ConfigTemplate()
 	lines := strings.SplitN(rawTemplate, "\n", 2)
-	// The whole template is written, not a single-key fragment -- the degrading config loader
-	// resolves a present file rather than merging it over the template.
+	// The whole template is written, not a single-key fragment.
+	// The degrading config loader resolves a present file rather than merging it over the template.
 	seededConfig := fmt.Sprintf("tmux: %s\n%s", noSuchTmux, lines[1])
 	configFile := configengine.ConfigFile(primer.stateDir, "reed")
 	if err := os.WriteFile(configFile, []byte(seededConfig), 0o644); err != nil {
@@ -411,8 +409,9 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 	}
 }
 
-// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub mode through the standalone sink redirect.
-// It sets a sentinel override before calling wireHub, then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten the override would have put the trace file somewhere else.
+// TestWireHub_LeavesDurableSinkDirUntouched guards against hub mode being routed through the standalone sink redirect.
+// It sets a sentinel override before calling wireHub, then asserts the sink still writes to that sentinel.
+// A wireHub that overwrote the override would send the trace file somewhere else.
 //
 //testtiming:keep pins that wireHub leaves the durable sink override untouched, which the mode test covering its blocks never reads back
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
@@ -440,10 +439,9 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	}
 }
 
-// seedGitRepositoryRoot marks dir as a git repository root by creating the ".git" entry
-// cliwire.RepositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git:
-// the walk this fixture feeds tests only the marker's presence, so a real repository would prove
-// nothing extra and would breach the Test Tier Purity Invariant to build.
+// seedGitRepositoryRoot marks dir as a git repository root by creating its ".git" entry, and returns dir.
+// It writes no git objects and spawns no git.
+// A real repository would prove nothing extra, and building one would breach the Test Tier Purity Invariant.
 func seedGitRepositoryRoot(t *testing.T, dir string) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
@@ -452,12 +450,8 @@ func seedGitRepositoryRoot(t *testing.T, dir string) string {
 	return dir
 }
 
-// TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot is R4-26's end-to-end half: wiring
-// from a repository subdirectory must land on the SAME derived state directory that wiring from the
-// repository root lands on. It mirrors internal/webstercli's test of the same name -- the pure-function
-// resolution-lift assertions this test used to accompany moved into
-// internal/cliwire/cliwire_test.go's TestRepositoryRootOf and TestModule_ResolveStandaloneTarget in
-// batch 1; this is burler's own end-to-end composition regression left behind.
+// TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot checks wiring from a repository subdirectory.
+// It must land on the same derived state directory that wiring from the repository root lands on.
 func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	repoRoot := seedGitRepositoryRoot(t, t.TempDir())
@@ -479,11 +473,8 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	}
 }
 
-// TestWireModule_DescriptorIsVerbatim pins burler's own wireModule descriptor, mirroring
-// internal/webstercli's test of the same name and existing for the same reason: nothing else in this
-// package or in internal/cliwire asserts burler's own descriptor text after this batch, since
-// internal/cliwire's own tests assert only their local fixtures, and every wiring_test.go case that
-// used to touch the nested-geometry and target-resolution messages is deleted above.
+// TestWireModule_DescriptorIsVerbatim pins burler's own wireModule descriptor field values.
+// The shared wiring package asserts only its local fixtures, so this test is the check on burler's descriptor text.
 func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 	tiergate.Require(t, 0)
 	if wireModule.Name != "burler" {
@@ -520,8 +511,8 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 		}
 	})
 
-	// The one path that exercises Name, StateArtifacts and TargetRole composed into a real message
-	// rather than read as bare fields: a state directory derived to nest INSIDE the target.
+	// This case composes Name, StateArtifacts and TargetRole into a real message, not bare fields:
+	// the derived state directory nests inside the target.
 	t.Run("ResolveStandalone_NestedStateDirRefusalNamesTheDescriptorFields", func(t *testing.T) {
 		target := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", filepath.Join(target, ".local", "state"))
@@ -550,13 +541,14 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 }
 
 const (
-	// reviewChairRole and fixChairRole are the strand roles of the review half's and the fix half's one seat.
+	// The strand roles that the review half's and the fix half's chair seats run under.
 	reviewChairRole = "burler-review"
 	fixChairRole    = "burler-fix"
 )
 
 // halfShuttle is a seatengine.Shuttle double whose started seats finish at once.
-// A reviewer writes review to its output file and is done, or dies when review is empty; a fixer writes a fixer report to its output file and is done.
+// A reviewer writes review to its output file and is done, or dies when review is empty;
+// a fixer writes a fixer report to its output file and is done.
 // It records every spec it starts.
 type halfShuttle struct {
 	review string
@@ -631,8 +623,10 @@ func (h halfHandle) Wait() (shuttleengine.Result, error) {
 func (h halfHandle) Stop() error { return nil }
 
 // TestRunCmd drives burler's run verb through its own RunE with seams in place of the live substrate.
-// One row proves it calls c.reedUp once, through a recording fake that fails, so the call ends right after the reedUp check and c.engine stays nil.
-// One row proves a review with findings runs the fixer, maps the four model flags onto the two halves and reports each half's identity.
+// One row proves it calls c.reedUp once, through a recording fake that fails;
+// the call then stops there, with c.engine nil.
+// One row proves a review with findings runs the fixer and maps the four model flags onto the two halves;
+// it also reports each half's identity.
 // One row proves a review with no findings runs no fixer and reports fixSkipped beside the Go-written fixer report.
 // One row proves a reviewer that died runs no fixer and reports the death as the outcome.
 // One row proves it rejects the retired --model flag.
@@ -658,7 +652,8 @@ fixer-report-path: reviews/fixer-report.md
 			"---\n### [BLOCKING] colors do not match\n**Location:** target.txt:1\n**Issue:** found a mismatch\n"
 	)
 
-	// newRoundWith builds a CLI over an engine on a halfShuttle whose reviewer writes review, rooted at a fresh directory holding profile and told cfg.
+	// newRoundWith builds a CLI over an engine on a halfShuttle whose reviewer writes review;
+	// the root is a fresh directory holding profile, and the engine takes cfg.
 	newRoundWith := func(t *testing.T, review, profile string, cfg lenses.Config) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
 		t.Helper()
 		root = t.TempDir()
@@ -677,7 +672,7 @@ fixer-report-path: reviews/fixer-report.md
 		return c, shuttle, profilePath, root
 	}
 
-	// newRound is newRoundWith over the plain profile and an empty lenses.Config.
+	// newRound builds a round whose reviewer writes review, over the plain profile and an empty lenses.Config.
 	newRound := func(t *testing.T, review string) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
 		t.Helper()
 		return newRoundWith(t, review, profileYAML, lenses.Config{})
@@ -868,11 +863,13 @@ fixer-report-path: reviews/fixer-report.md
 	})
 }
 
-// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog).
-// All three belong to hub mode alone, per this batch's own scope note.
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone never touches the hub watchdog.
+// The scan forbids three things that belong to hub mode alone: the hub lock path (fabricengine.HubScratchDir).
+// It also forbids the daemon spawn verb ("reed watchdog").
+// It also forbids the seam that owns the detached spawn (reedengine.SpawnWatchdog).
 //
-// The scanned file set widened to include internal/standalonegeom's production files, reached by a relative glob from this package's directory, when the spawn moved into internal/reedengine: that package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no longer structurally obvious from this package's own files alone.
-// This is the guard _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the boundary unpinned.
+// The scan also covers internal/standalonegeom, because reedengine is also standalone's engine,
+// so this package's own files alone do not show the property.
 // This test spawns nothing and stays tier0.
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test

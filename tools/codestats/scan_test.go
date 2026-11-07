@@ -10,13 +10,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// testClock is the fixed instant every build() call in this file is given, so a report's
-// rendered timestamp is assertable rather than whatever the wall clock said.
+// testClock is the fixed instant every build() call in this file is given.
+// It makes a report's rendered timestamp assertable rather than whatever the wall clock said.
 var testClock = time.Date(2026, 9, 23, 9, 15, 0, 0, time.UTC)
 
-// TestCScanner_Classify covers the C-family classifier line by line, including the two
-// states that must survive a line break and the two ways a // can appear without being a
-// comment at all.
+// TestCScanner_Classify covers the C-family classifier line by line.
+// It checks the two states that must survive a line break.
+// It also checks the two ways a // can appear without being a comment at all.
 func TestCScanner_Classify(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -85,9 +85,8 @@ func TestCScanner_Classify(t *testing.T) {
 	}
 }
 
-// TestHashClassify pins the #-family classifier, including the documented overcount: a #
-// inside a quoted string reads as a comment, which is the accepted cost of staying
-// string-unaware.
+// TestHashClassify pins the #-family classifier, including the documented overcount:
+// a # inside a quoted string reads as a comment, which is the accepted cost of staying string-unaware.
 func TestHashClassify(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -111,8 +110,8 @@ func TestHashClassify(t *testing.T) {
 	}
 }
 
-// TestIsTestPath covers both conventions: Go pins test-ness in the file name, everything
-// else in a directory or file name that says so.
+// TestIsTestPath covers both conventions:
+// Go pins test-ness in the file name, everything else in a directory or file name that says so.
 func TestIsTestPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -137,8 +136,8 @@ func TestIsTestPath(t *testing.T) {
 	}
 }
 
-// TestSplitLines asserts a trailing newline adds no phantom line and CRLF is normalised,
-// since every per-file count is built on this.
+// TestSplitLines asserts a trailing newline adds no phantom line and CRLF is normalised.
+// Every per-file count is built on this.
 func TestSplitLines(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -168,8 +167,8 @@ func TestSplitLines(t *testing.T) {
 	}
 }
 
-// TestClassifyFile asserts the three buckets partition the file: a line is code, comment
-// or blank, never two of them, so Lines always equals their sum.
+// TestClassifyFile asserts the three buckets partition the file:
+// a line is code, comment or blank, never two of them, so Lines always equals their sum.
 func TestClassifyFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	src := "// header\npackage main\n\n/* block\n   continues */\nfunc f() {} // trailing\n"
@@ -196,9 +195,10 @@ func TestClassifyFile(t *testing.T) {
 	}
 }
 
-// TestScan_SkipsAndCollects drives the walk over a temp tree: dotted and build
-// directories are never descended, an exclude pattern removes a file, and a binary file
-// is left out while its text siblings are counted.
+// TestScan_SkipsAndCollects drives the walk over a temp tree:
+// dotted and build directories are never descended;
+// an exclude pattern removes a file,
+// and a binary file is left out while its text siblings are counted.
 func TestScan_SkipsAndCollects(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := t.TempDir()
@@ -242,7 +242,8 @@ func TestScan_SkipsAndCollects(t *testing.T) {
 	}
 }
 
-// TestScan_SkipsDirectoryLink asserts a link to a directory outside the tree, like the `_lym` junction, is skipped rather than read as a file.
+// TestScan_SkipsDirectoryLink asserts a link to a directory outside the tree is skipped rather than read as a file.
+// The `_lym` junction is such a link.
 func TestScan_SkipsDirectoryLink(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := t.TempDir()
@@ -266,8 +267,8 @@ func TestScan_SkipsDirectoryLink(t *testing.T) {
 	}
 }
 
-// TestBuild_SplitsSourceFromProse asserts markdown is counted in Total but never in
-// Source, which is what keeps the test share a share of code rather than of prose.
+// TestBuild_SplitsSourceFromProse asserts markdown is counted in Total but never in Source.
+// That keeps the test share a share of code rather than of prose.
 func TestBuild_SplitsSourceFromProse(t *testing.T) {
 	tiergate.Require(t, 0)
 	files := []FileStats{
@@ -292,14 +293,15 @@ func TestBuild_SplitsSourceFromProse(t *testing.T) {
 	if got := pct(r.Test.Code, r.Source.Code); got != "38.5%" {
 		t.Errorf("test share = %s; want 38.5%% (5 of 13)", got)
 	}
-	// An empty bucket prints a dash: a language with no lines has no comment share, and 0.0% would read as one measured at zero.
+	// An empty bucket prints a dash.
+	// A language with no lines has no comment share, and 0.0% would read as one measured at zero.
 	if got := pct(0, 0); got != "-" {
 		t.Errorf("pct(0, 0) = %q; want %q", got, "-")
 	}
 }
 
-// TestRender_ReportsEverySection asserts the rendered table carries the three questions
-// the command exists to answer, so a section cannot silently go missing.
+// TestRender_ReportsEverySection asserts the rendered table carries every question the command exists to answer.
+// It guards against a section silently going missing.
 func TestRender_ReportsEverySection(t *testing.T) {
 	tiergate.Require(t, 0)
 	report := build("/root", testClock, []FileStats{

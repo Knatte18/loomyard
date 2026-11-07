@@ -1,5 +1,5 @@
 // archivedrecords.go decodes the parent-review rounds and alignment attempts that archived runs hold.
-// Nothing writes these records any more; the readers only decode what past runs left in their trees.
+// Nothing writes these records; the readers only decode what archived runs left in their trees.
 
 package reportengine
 
@@ -107,7 +107,9 @@ func parentReviewRoundNumber(dirName string) (int, bool) {
 }
 
 // parseParentReviewRound decodes one round directory's files, keyed by file name, as they sit in a git tree.
-// Number is set and Dir stays empty; each file is decoded only when present, an unknown key reads, and a file that does not decode is an error naming it.
+// Number is set and Dir stays empty.
+// Each file is decoded only when present, and unknown keys are ignored.
+// A file that does not decode is an error naming it.
 func parseParentReviewRound(number int, files map[string][]byte) (parentReviewRound, error) {
 	round := parentReviewRound{Number: number}
 	if data, ok := files[parentReviewRequestFile]; ok {
@@ -172,8 +174,10 @@ type alignmentVerdict struct {
 }
 
 // parseAlignmentAttempt decodes an attempt directory's files, keyed by file name, as they sit in a git tree.
-// The verdict is the file `verdict-<token>.yaml` the attempt's token names, nil when that file is absent, and it is not validated.
-// It errors, naming the file, for an attempt.json that is absent or does not decode and for a verdict file that does not decode.
+// The verdict is the file `verdict-<token>.yaml` the attempt's token names; it is nil when that file is absent,
+// and it is not validated.
+// It errors, naming the file, when attempt.json is absent or does not decode;
+// it errors the same way when the verdict file does not decode.
 func parseAlignmentAttempt(files map[string][]byte) (alignmentAttempt, *alignmentVerdict, error) {
 	attemptData, ok := files[alignmentAttemptFile]
 	if !ok {

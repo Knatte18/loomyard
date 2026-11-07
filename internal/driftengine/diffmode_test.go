@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMigrateConfig pins that the three retired model keys are renamed keeping their values.
+// TestMigrateConfig pins that the retired model keys are renamed keeping their values.
 // It also pins that a document already holding a new key keeps it and drops the old one,
 // and that a document with no retired key is returned unchanged.
 func TestMigrateConfig(t *testing.T) {
@@ -71,7 +71,8 @@ func TestMigrateConfig(t *testing.T) {
 	}
 }
 
-// TestMigrateConfig_SkipFileArgument pins that each form of an argument handing {skip_file} to a variable leaves both commands whole, and that any other use of the placeholder stays.
+// TestMigrateConfig_SkipFileArgument pins that each form handing {skip_file} to a variable leaves both commands whole,
+// and that any other use of the placeholder stays.
 func TestMigrateConfig_SkipFileArgument(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

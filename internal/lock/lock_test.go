@@ -1,6 +1,5 @@
-// lock_test.go — unit tests for file locking (lock.go).
-//
-// Acquire/release and exclusive-lock contention between holders.
+// lock_test.go holds the unit tests for file locking in lock.go.
+// They cover acquire and release, and exclusive-lock contention between holders.
 
 package lock_test
 
@@ -29,7 +28,6 @@ func TestAcquireWriteLock(t *testing.T) {
 		}
 		defer lock.Release()
 
-		// Check that lock file was created
 		_, err = os.Stat(lockPath)
 		if err != nil {
 			t.Fatalf("lock file not created: %v", err)
@@ -52,7 +50,6 @@ func TestAcquireWriteLock(t *testing.T) {
 	t.Run("acquire after release succeeds", func(t *testing.T) {
 		lockPath := filepath.Join(tmpDir, "test3.lock")
 
-		// First acquire and release
 		lock1, err := lock.AcquireWriteLock(lockPath)
 		if err != nil {
 			t.Fatalf("first AcquireWriteLock failed: %v", err)
@@ -61,7 +58,6 @@ func TestAcquireWriteLock(t *testing.T) {
 			t.Fatalf("first Release failed: %v", err)
 		}
 
-		// Second acquire should succeed
 		lock2, err := lock.AcquireWriteLock(lockPath)
 		if err != nil {
 			t.Fatalf("second AcquireWriteLock failed: %v", err)
@@ -134,7 +130,8 @@ func TestTryAcquireWriteLock(t *testing.T) {
 	})
 }
 
-// TestAcquireWriteLockWithin verifies bounded acquisition: success on a free or released path, expiry without an error on a held one.
+// TestAcquireWriteLockWithin verifies bounded acquisition.
+// It succeeds on a free or released path, and expires without an error on a held one.
 func TestAcquireWriteLockWithin(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -184,7 +181,9 @@ func TestAcquireWriteLockWithin(t *testing.T) {
 	}
 }
 
-// TestTryAcquireReadLock verifies shared holders coexist, an exclusive holder makes the attempt report false without an error, and the lock is acquirable once the exclusive holder releases.
+// TestTryAcquireReadLock verifies that shared holders coexist.
+// An exclusive holder makes the attempt report false without an error,
+// and the lock is acquirable once the exclusive holder releases.
 func TestTryAcquireReadLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -243,7 +242,6 @@ func TestAcquireReadLock(t *testing.T) {
 		}
 		defer lock.Release()
 
-		// Check that lock file was created
 		_, err = os.Stat(lockPath)
 		if err != nil {
 			t.Fatalf("lock file not created: %v", err)
@@ -264,6 +262,5 @@ func TestAcquireReadLock(t *testing.T) {
 	})
 }
 
-// NOTE: gofrs/flock's OS-level implementation (flock on Unix, LockFileEx on Windows)
-// guarantees that locks are automatically released on process death. No subprocess
-// test is required to verify this property.
+// NOTE: gofrs/flock's OS-level implementation guarantees that locks are automatically released on process death.
+// It uses flock on Unix and LockFileEx on Windows, so no subprocess test is required to verify this property.

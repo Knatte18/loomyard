@@ -1,6 +1,6 @@
-// junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices — no build tag, since it touches only plain directories and fslink, never git.
-// It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second entry is batch 5's job), so the abort-and-accumulate contract this card gives unseedLymJunction cannot be driven through the exported (l, slug) surface with more than one junction;
-// this file drives the extracted loop directly instead.
+// junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices.
+// It has no build tag, since it touches only plain directories and fslink, never git.
+// The synthetic slices let a test set up any number of junctions.
 
 package fabricengine
 
@@ -15,10 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wireTestJunction creates a real link at link pointing to target (creating
-// target first, since fslink.CreateDirLink does not require it to pre-exist
-// but this helper wants a healthy, resolvable junction for the "removable"
-// cases below).
+// wireTestJunction creates a real link at link that points to target, creating target first.
+// fslink.CreateDirLink does not need target to exist.
+// The helper creates it so the junction resolves and tests can remove it as a healthy junction.
 func wireTestJunction(t *testing.T, link, target string) {
 	t.Helper()
 
@@ -30,7 +29,7 @@ func wireTestJunction(t *testing.T, link, target string) {
 	}
 }
 
-// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug — moved here from lymcwd's own unit test now that fabricengine is the sole owner of this path shape (the method it replaced, (*lymcwd.Location).WorktreePath(slug), collided with the no-arg accessor the coming reshape introduces on the same type).
+// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug.
 //
 //testtiming:keep WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreePath(t *testing.T) {
@@ -47,11 +46,9 @@ func TestWorktreePath(t *testing.T) {
 	}
 }
 
-// TestUnseedJunctionRecords_AccumulatesBeforeAbort is card 8's regression guard for the bug it
-// fixes: when a later junction in the slice fails to unwire after an earlier one succeeded, the
-// returned removed slice names the earlier one and is not the zero value.
-// This is only exercisable against a synthetic multi-record slice — see the file doc comment for
-// why.
+// TestUnseedJunctionRecords_AccumulatesBeforeAbort checks that removals survive a later unwire failure.
+// The returned removed slice names the earlier junction, which was removed before the abort.
+// The case needs a synthetic slice with more than one record.
 func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -62,9 +59,9 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	firstTarget := filepath.Join(root, "first-target")
 	wireTestJunction(t, firstLink, firstTarget)
 
-	// The second junction's warp path is a real, non-link directory —
-	// exactly the "not a junction" refusal unseedJunctionRecords must abort
-	// on, without having touched anything past the first junction.
+	// The second junction's warp path is a real, non-link directory.
+	// unseedJunctionRecords must refuse it as not a junction and abort there.
+	// It must not touch anything past the first junction.
 	secondLink := filepath.Join(root, "second-link")
 	if err := os.MkdirAll(secondLink, 0o755); err != nil {
 		t.Fatalf("mkdir real second-link dir: %v", err)
@@ -83,7 +80,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 		t.Errorf("removed = %v; want %v (the earlier junction, accumulated before the abort)", removed, want)
 	}
 
-	// The first junction really is gone; the second (never a junction) is untouched.
+	// The first junction is gone; the second, never a junction, is untouched.
 	if _, statErr := os.Lstat(firstLink); !os.IsNotExist(statErr) {
 		t.Errorf("first junction %s still exists after removal", firstLink)
 	}
@@ -92,12 +89,9 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	}
 }
 
-// TestUnseedJunctionRecords_RemovesEveryHealthyJunction asserts the base case this card's
-// generalisation must not regress: every junction in the slice that is present and healthy is
-// removed,
-// and every removed Name is reported.
-// An empty junctions slice (matching WarpJunctions(l, slug) before any junction has ever been wired)
-// is a legitimate no-op: (nil, nil), not an error.
+// TestUnseedJunctionRecords_RemovesEveryHealthyJunction asserts that every healthy junction in the slice is removed.
+// It also asserts that every removed Name is reported.
+// An empty junctions slice, the state before any junction is wired, is a no-op: (nil, nil), not an error.
 //
 //testtiming:keep every healthy junction being removed with each removed name reported, and an empty slice being a (nil, nil) no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
@@ -142,10 +136,10 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 	}
 }
 
-// TestExcludePatternFor_AnchorsToRepoRoot pins the anchored git-exclude pattern in Tier 1: a bare
-// name matches at every depth in gitignore semantics, so the pattern must be slash-anchored at the
-// repo root and carry the anchor subpath — the integration-tagged exclude tests prove the on-disk
-// file, but an untagged run never compiles them.
+// TestExcludePatternFor_AnchorsToRepoRoot pins the anchored git-exclude pattern in Tier 1.
+// A bare name matches at every depth in gitignore semantics,
+// so the pattern must be slash-anchored at the repo root and carry the anchor subpath.
+// The integration-tagged exclude tests prove the on-disk file, but an untagged run never compiles them.
 //
 //testtiming:keep the git-exclude pattern being slash-anchored at the repo root and carrying the anchor subpath, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
 func TestExcludePatternFor_AnchorsToRepoRoot(t *testing.T) {

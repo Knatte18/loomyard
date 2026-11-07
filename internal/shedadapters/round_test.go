@@ -10,8 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// reportName is a small test convention naming a stand-in round-report artifact, independent of
-// any real round producer's own naming.
+// reportName names a stand-in round-report artifact, independent of any real round producer's naming.
 func reportName(round int) string {
 	return fmt.Sprintf("round-%d-report.md", round)
 }

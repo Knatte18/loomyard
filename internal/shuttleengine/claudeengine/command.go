@@ -1,13 +1,6 @@
-// command.go composes the opaque pane-shell command lines Prepare (settings.go) hands back as a
-// Launch: the launch line that starts a fresh session and the resume line that reattaches an
-// existing one.
-// It also holds OpenLaunch, which writes an opened session's creel settings and composes its lines.
-// Both are single-line strings typed verbatim into a pane via tmux send-keys (see
-// reedengine/spawn.go's launchStrandLocked) — no newline may appear in either, since send-keys
-// submits a line at a time.
-// Argument quoting and the call operator are pane-shell mechanics
-// owned entirely by internal/shell (the Shell Mechanics Seam invariant);
-// this file only ever calls into that seam and never emits raw pwsh/posix syntax of its own.
+// command.go composes the pane-shell command lines that start, resume and open a claude session.
+// They are typed into a pane with tmux send-keys, which submits a line at a time, so none may hold a newline.
+// Quoting and the call operator belong to internal/shell, and this file emits no raw pwsh or posix syntax of its own.
 
 package claudeengine
 
@@ -25,9 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// maxLaunchPromptBytes is the largest launch argument Prepare accepts without failing.
-// The Windows command-line limit is 32,767 UTF-16 characters;
-// the argument is the fixed pointer to prompt.md, never the prompt itself, so only a pathological run-directory path reaches this bound.
+// maxLaunchPromptBytes is the largest launch argument, in bytes, that a launch accepts without failing.
+// The Windows command-line limit is 32,767 UTF-16 characters, and this bound keeps the argument under it.
 const maxLaunchPromptBytes = 30000
 
 // launchPointer returns the one argument a fresh session starts with: a pointer to the prompt file at promptPath.
@@ -44,7 +36,7 @@ var validEfforts = map[string]bool{
 	"max":    true,
 }
 
-// validateEffort reports an error unless effort is empty or an exact-lowercase member of validEfforts.
+// validateEffort reports an error unless effort is empty or one of the exact-lowercase values claude accepts.
 // claude ignores invalid efforts rather than failing, so shuttle must reject them here to prevent silent drops.
 func validateEffort(effort string) error {
 	if effort == "" {
@@ -56,18 +48,18 @@ func validateEffort(effort string) error {
 	return fmt.Errorf("claudeengine: invalid effort %q; valid values are low, medium, high, xhigh, max (case-sensitive, exact-lowercase)", effort)
 }
 
-// Legal Spec.PermissionMode values besides the empty default.
+// The permission modes a spec may name besides the empty default, which means bypass.
 const (
 	permissionModeBypass = "bypass"
 	permissionModePrompt = "prompt"
 )
 
-// validatePermissionMode resolves a run's or an opened session's permission mode into whether its launch lines carry --dangerously-skip-permissions.
-// An opened session is always interactive.
-// Empty and "bypass" skip in either run mode, because every session lym launches into reed needs bypass to work unattended;
+// validatePermissionMode resolves a permission mode into whether launch lines carry --dangerously-skip-permissions.
+// It serves both runs and opened sessions, and an opened session is always interactive.
+// Empty and "bypass" skip in either mode, because every session lym launches into reed needs bypass to work unattended;
 // "prompt" adds nothing and is the per-call opt-out.
 // "prompt" on an autonomous run is an error, since a run that prompts with nobody to answer stalls;
-// any other value is an error naming the three legal values.
+// any other value is an error that names the legal values.
 func validatePermissionMode(mode string, interactive bool) (skipPermissions bool, err error) {
 	switch mode {
 	case "", permissionModeBypass:
@@ -82,8 +74,11 @@ func validatePermissionMode(mode string, interactive bool) (skipPermissions bool
 }
 
 // resolveModelID translates a bare-word model plus an optional version into the final model id.
-// Empty version defers to the caller's model; a version with no model or a dashed model with version is an error.
-// Otherwise, model and version compose into "claude-<model>-<version, dots as dashes>" (e.g. "sonnet" + "4.5" → "claude-sonnet-4-5").
+// An empty version returns model unchanged.
+// A version with no model is an error.
+// A dashed model already pins its own version, so a version with it is an error too.
+// Otherwise the id is "claude-<model>-<version>", with the version's dots as dashes.
+// For example, "sonnet" and "4.5" give "claude-sonnet-4-5".
 func resolveModelID(model, version string) (string, error) {
 	if version == "" {
 		return model, nil
@@ -97,7 +92,6 @@ func resolveModelID(model, version string) (string, error) {
 	return "claude-" + model + "-" + strings.ReplaceAll(version, ".", "-"), nil
 }
 
-// claudeBinary returns claude.Binary if set, otherwise "claude".
 func claudeBinary(claude Config) string {
 	if claude.Binary != "" {
 		return claude.Binary
@@ -110,19 +104,20 @@ func claudeBinary(claude Config) string {
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
 // promptCacheTTLEnvKey is the variable Claude Code reads to pick the TTL of the prompt cache it writes.
-// It rides the pane line for the same reason forkSubagentEnvKey does,
+// It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot,
 // and it outranks every Claude Code control for the TTL but FORCE_PROMPT_CACHING_5M.
 const promptCacheTTLEnvKey = "CLAUDE_CODE_PROMPT_CACHE_TTL"
 
 // bashMaxTimeoutEnvKey is the variable Claude Code reads as the ceiling on the Bash tool's timeout parameter.
-// It rides the pane line for the same reason forkSubagentEnvKey does.
-// BASH_DEFAULT_TIMEOUT_MS is left at Claude Code's default, so only a call that sets an explicit timeout runs past the default.
+// It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
+// BASH_DEFAULT_TIMEOUT_MS is left at Claude Code's default.
+// Only a call that sets an explicit timeout runs past that default.
 const bashMaxTimeoutEnvKey = "BASH_MAX_TIMEOUT_MS"
 
 // bashMaxTimeout is the Bash tool timeout ceiling every lym-spawned session runs under.
 const bashMaxTimeout = time.Hour
 
-// bashMaxTimeoutMS is bashMaxTimeout as the decimal millisecond string bashMaxTimeoutEnvKey takes.
+// bashMaxTimeoutMS is the Bash tool timeout ceiling in milliseconds, as the decimal string the pane line carries.
 var bashMaxTimeoutMS = strconv.FormatInt(bashMaxTimeout.Milliseconds(), 10)
 
 // validPromptCacheTTLs is the set of exact, case-sensitive prompt-cache TTL values Claude Code accepts.
@@ -131,7 +126,7 @@ var validPromptCacheTTLs = map[string]bool{
 	"1h": true,
 }
 
-// validatePromptCacheTTL reports an error unless value is a member of validPromptCacheTTLs.
+// validatePromptCacheTTL reports an error unless value is one of the TTLs Claude Code accepts.
 // key names the claude.yaml entry the value came from, so the error points at what to fix.
 func validatePromptCacheTTL(key, value string) error {
 	if validPromptCacheTTLs[value] {
@@ -141,7 +136,8 @@ func validatePromptCacheTTL(key, value string) error {
 }
 
 // resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
-// It first validates claude.PromptCacheTTL and every value in claude.PromptCacheTTLRoles, in sorted key order so the reported entry is deterministic.
+// It first validates claude.PromptCacheTTL and every value in claude.PromptCacheTTLRoles.
+// The roles are checked in sorted key order, so the reported entry is deterministic.
 // One bad entry therefore refuses every role until claude.yaml is fixed.
 // It then returns the map's entry for role when one exists, and the default otherwise;
 // an empty role takes the default.
@@ -168,7 +164,7 @@ func resolvePromptCacheTTL(role string, claude Config) (string, error) {
 	return claude.PromptCacheTTL, nil
 }
 
-// PromptCacheLifetime returns the prompt-cache TTL Prepare puts on the pane line for spec's role, parsed as a duration.
+// PromptCacheLifetime returns the prompt-cache TTL of a session of spec's role, parsed as a duration.
 // It loads claude.yaml first; a load or resolution error is returned with its claude.yaml advice.
 func (c *Claude) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.Config) (time.Duration, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
@@ -182,13 +178,15 @@ func (c *Claude) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.
 	return time.ParseDuration(ttl)
 }
 
-// longKeepWarmCap is the long cap KeepWarmCaps answers and the ceiling of a configured keep-warm cap: the Bash tool timeout ceiling less five minutes, so a long wait ends before the tool kills it.
+// longKeepWarmCap is the cap a long gate wait uses, and the ceiling of a configured keep-warm cap.
+// It sits five minutes under the Bash tool timeout ceiling, so a long wait ends before the tool kills it.
 const longKeepWarmCap = bashMaxTimeout - 5*time.Minute
 
 // minKeepWarmCap is the floor of a configured keep-warm cap.
 const minKeepWarmCap = 60 * time.Second
 
-// checkKeepWarmCap reports an error unless value parses as a Go duration within [minKeepWarmCap, longKeepWarmCap] and below lifetime, and returns the parsed cap.
+// checkKeepWarmCap checks value as a keep-warm cap and returns the parsed cap, or an error.
+// A cap must parse as a Go duration, lie in [minKeepWarmCap, longKeepWarmCap] and be below lifetime.
 // key names the claude.yaml entry the value came from, so the error points at what to fix.
 func checkKeepWarmCap(key, value string, lifetime time.Duration) (time.Duration, error) {
 	capWait, err := time.ParseDuration(value)
@@ -206,7 +204,7 @@ func checkKeepWarmCap(key, value string, lifetime time.Duration) (time.Duration,
 	return capWait, nil
 }
 
-// keepWarmCapFor returns the cap string claude holds for role: its keep_warm_cap_roles entry when one exists, else keep_warm_cap.
+// keepWarmCapFor returns the cap string for role: its keep_warm_cap_roles entry, else keep_warm_cap.
 func keepWarmCapFor(role string, claude Config) string {
 	if value, ok := claude.KeepWarmCapRoles[role]; ok {
 		return value
@@ -215,9 +213,12 @@ func keepWarmCapFor(role string, claude Config) string {
 }
 
 // ValidateKeepWarm reports an error unless every keep-warm cap in claude is usable.
-// It first resolves the prompt-cache TTLs, so a bad TTL is reported before a bad cap.
-// It then checks the default cap against the default prompt-cache lifetime and, for every role named in prompt_cache_ttl_roles or keep_warm_cap_roles in sorted order, that role's cap against that role's lifetime.
-// A cap must parse as a Go duration, be at least 60s, be below its lifetime and be at most 55m.
+// A cap must parse as a Go duration that is at least minKeepWarmCap and at most longKeepWarmCap.
+// It must also be below its prompt-cache lifetime.
+// The prompt-cache TTLs are resolved first, so a bad TTL is reported before a bad cap.
+// The default cap is checked against the default lifetime first.
+// Each role named in prompt_cache_ttl_roles or keep_warm_cap_roles is then checked against its own lifetime.
+// Roles are visited in sorted order, so the reported error is deterministic.
 func ValidateKeepWarm(claude Config) error {
 	defaultTTL, err := resolvePromptCacheTTL("", claude)
 	if err != nil {
@@ -262,7 +263,7 @@ func ValidateKeepWarm(claude Config) error {
 	return nil
 }
 
-// KeepWarmCaps returns the longest one keep-warm wait of a session of role blocks and the long cap a long gate wait uses.
+// KeepWarmCaps returns the cap on one keep-warm wait of a session of role, and the long cap a long gate wait uses.
 // The cap is role's keep_warm_cap_roles entry, else keep_warm_cap, from claude.yaml.
 // It loads and validates claude.yaml first; a load or validation error is returned with its claude.yaml advice.
 func (c *Claude) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
@@ -281,25 +282,33 @@ func (c *Claude) KeepWarmCaps(role string) (time.Duration, time.Duration, error)
 }
 
 // envFileKey is the variable Claude Code reads to find a file whose content it runs in the Bash tool's shell before each command.
-// It rides the pane line for the same reason forkSubagentEnvKey does.
+// It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
 const envFileKey = "CLAUDE_ENV_FILE"
 
-// envFileName is the file Prepare writes beside settings.json for envFileKey to name.
+// envFileName is the name of the Bash env file in a run's directory, which the pane line points at.
 const envFileName = "bash-env.sh"
 
 // envFileContentPosix is the env file's content on a host whose Bash tool reads native paths.
-// Its first statement makes /dev/null the default stdin of the Bash tool's shell, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
-// Its second prepends the parent directory of the spawning binary's path, which reed's pane prelude exports in LYM_BIN, to PATH,
-// so the tool's shell resolves `lym` to that binary after the operator's rc has reordered PATH.
+// Its first statement makes /dev/null the default stdin of the Bash tool's shell,
+// so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
+// Its second statement prepends the parent directory of LYM_BIN to PATH,
+// so the tool's shell resolves `lym` to the spawning binary after the operator's rc has reordered PATH.
+// reed's pane prelude exports LYM_BIN as that binary's absolute path.
 // It adds nothing when LYM_BIN is unset or empty.
-// The file runs those two statements and nothing else, and every expansion is double-quoted so a path with spaces holds.
-// It changes only the default stdin and PATH of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
-// a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
+// The file runs those two statements and nothing else.
+// Every expansion is double-quoted, so a path with spaces holds.
+// It changes only the default stdin and PATH of the tool's own shell.
+// A heredoc, pipe or redirect attached to a command still supplies that command's stdin.
+// A child `bash` the agent starts does not re-run the file.
+// It grants or denies nothing, so the agents' permission rules are untouched.
 const envFileContentPosix = "exec </dev/null\n" +
 	"if [ -n \"${" + agentname.LymBinEnv + ":-}\" ]; then PATH=\"${" + agentname.LymBinEnv + "%/*}:$PATH\"; fi\n"
 
-// envFileContentWindows is the env file's content on a Windows host, where LYM_BIN holds a native path the Bash tool's shell must convert first.
-// It behaves as the POSIX content, but converts LYM_BIN with `cygpath -u` into the scratch variable __lym_bin_dir before taking the parent directory, and unsets the variable afterwards.
+// envFileContentWindows is the env file's content on a Windows host, where LYM_BIN holds a native path.
+// The Bash tool's shell must convert that path first, so the content runs `cygpath -u` on LYM_BIN.
+// The result goes into the scratch variable __lym_bin_dir, which the content unsets afterwards.
+// Apart from the conversion, it sets the default stdin to /dev/null.
+// It also prepends the parent directory of that path to PATH.
 // It changes nothing about PATH when `cygpath` is absent or LYM_BIN is unset or empty.
 const envFileContentWindows = "exec </dev/null\n" +
 	"if [ -n \"${" + agentname.LymBinEnv + ":-}\" ] && command -v cygpath >/dev/null 2>&1; then " +
@@ -318,20 +327,16 @@ func envFileContentFor(goos string) string {
 // A fresh session is named with --session-id;
 // when resume is true the line takes over the existing session sessionID names with --resume instead,
 // and everything else on the line is identical, so the run's own settings file routes the adopted session's hooks.
-// It passes pointer as the first message when non-empty, and none otherwise (a launch that loads skills passes the skill-load message there and sends the prompt pointer afterwards),
-// quotes all interpolated values, and appends --effort/--model only when non-empty.
+// It passes pointer as the first message when non-empty, and none otherwise.
+// A launch that loads skills passes the skill-load message there and sends the prompt pointer afterwards.
+// It quotes every interpolated value and appends --model and --effort only when non-empty.
 // When appendPromptPath is non-empty it rides the line as --append-system-prompt-file,
 // so the session is told which tools are denied and how to trust and answer creel mail;
 // the text rides a file because a quote in it would be dropped by an argument passed through pwsh's Legacy mode.
-// An empty path leaves the line unchanged.
-// It names the session with --name, passed as a reference to LYM_STRAND_NAME rather than a value:
-// shuttle builds this line before reed forms the strand's name,
-// so the pane shell expands the variable from the export reed's launch script makes.
-// It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
-// When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
-// It assigns promptCacheTTL, the non-empty value Prepare validated, to promptCacheTTLEnvKey.
-// It assigns bashMaxTimeoutMS to bashMaxTimeoutEnvKey, so the line carries the Bash timeout ceiling.
-// It then wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
+// It names the session with --name as a reference to LYM_STRAND_NAME, not a value.
+// Shuttle builds this line before reed forms the strand's name,
+// so the pane shell expands the reference from the export that reed's launch script makes.
+// It wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
 func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
@@ -365,11 +370,15 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 
 // buildOpenCmd composes the pane-shell line of a named interactive session that takes no task prompt.
 // A non-empty firstTurn goes after the binary as the session's first turn.
-// A fresh session is named with --session-id; when resume is true the line takes over the session sessionID names with --resume instead.
-// It names the session with --name as a reference to LYM_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
+// A fresh session is named with --session-id;
+// when resume is true the line takes over the session sessionID names with --resume instead.
+// It names the session with --name as a reference to LYM_STRAND_NAME.
+// The pane shell expands that reference from the export that reed's launch script makes.
+// It appends --model and --effort only when non-empty.
 // It appends --dangerously-skip-permissions when skipPermissions is true, on the fresh and the resume form alike.
 // Reed replays the resume line verbatim, so a resume without the flag would bring a bypass session back prompting.
-// A non-empty settingsPath adds --settings naming it, which Claude Code stacks over the worktree's own settings, and a non-empty appendPromptPath adds --append-system-prompt-file naming it.
+// A non-empty settingsPath adds --settings naming it, which Claude Code stacks over the worktree's own settings.
+// A non-empty appendPromptPath adds --append-system-prompt-file naming it.
 // It passes no environment assignment, so the line is one pipeline that OrElse may join.
 func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, settingsPath, appendPromptPath string, skipPermissions, resume bool) string {
 	sessionFlag := " --session-id "
@@ -400,19 +409,26 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 }
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
-// It loads claude.yaml, validates the effort and the permission mode and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
-// An engine told a hub board directory then creates dir and writes into it settings.json, holding creel's hook delivery, the empty attribution and the session's scope for spec.Skills and nothing else, and the append-system-prompt file, holding the creel trust sentence alone;
-// both lines name the two files, and the launch is marked CreelHooks, so the session gets its mail through its hooks as a run session does.
-// A failure after it creates dir removes dir.
-// An engine told no board directory writes nothing, leaves dir uncreated and marks nothing.
-// Bypass is the default, and spec.PermissionMode "prompt" opts out per call;
-// the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle guard.
+// It validates the effort, the permission mode and the model before it writes anything.
+// With a hub board directory, it creates dir and writes two files into it:
+// settings.json holds creel's hook delivery, the empty attribution and the session's scope for spec.Skills alone.
+// The append-system-prompt file holds the creel trust sentence.
+// The Cmd and ResumeCmd lines both name these files, and the launch is marked CreelHooks,
+// so the session gets its mail through its hooks, as a run session does.
+// Without a hub board directory, it writes nothing, creates no dir and marks nothing.
+// A failure after dir is created removes it.
+// Bypass is the default, and spec.PermissionMode "prompt" opts out per call.
 // "prompt" adds nothing, so it cannot override a default mode the settings set.
-// A non-empty spec.Skills puts their load message on the fresh line as the session's first turn, and a message past the launch limit refuses the open before anything is written; the resume line carries none.
-// The session takes no other turn until text reaches its pane through the operator or creel, each bounded by its own rules.
-// ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
-// Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
-// a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
+// The session still loads Claude Code's own settings layers, whose deny rules and hooks apply in bypass too,
+// and it carries no shuttle guard.
+// A non-empty spec.Skills puts their load message on the fresh line as the session's first turn.
+// A message past the launch limit refuses the open before anything is written, and the resume line carries none.
+// The session takes no other turn until the operator or creel sends text to its pane, each bounded by its own rules.
+// The ResumeCmd line resumes the session and falls back to a fresh start under the same id:
+// Claude Code keeps no transcript for a session that never took a turn, so resuming it fails.
+// The fresh line runs whenever the resume line exits nonzero, even after a working life.
+// A fresh start under a session id whose transcript exists fails at once,
+// so the fallback never starts a second live session over a recorded one.
 func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -462,7 +478,10 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID, CreelHooks: creelFlagDirForHook != ""}, nil
 }
 
-// writeOpenFiles creates dir and writes an opened session's settings.json, holding creel's hook delivery over the flag directory creelFlagDirPosix, the empty attribution and scope, and its append-system-prompt file, holding the creel trust sentence.
+// writeOpenFiles creates dir and writes an opened session's two files into it.
+// settings.json holds creel's hook delivery over the flag directory creelFlagDirPosix;
+// its attribution is empty, and its scope is the one passed in.
+// The append-system-prompt file holds the creel trust sentence.
 // It returns the two files' absolute paths.
 // A failure after the directory is created removes it, so a failed launch leaves nothing behind.
 func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope) (settingsPath, appendPromptPath string, err error) {
@@ -499,20 +518,22 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // buildResumeCmd composes the pane-shell line that reattaches an existing claude session by id.
 // It always uses --resume, never --continue, to avoid ambiguity under concurrent runs.
 //
-// It carries the SAME model, effort, and permission mode as buildLaunchCmd, because reed replays
-// this string verbatim when it rebuilds a session (lifecycle.go's resume path) and the resumed
-// process is a fresh claude that inherits none of them from the launch.
-// Dropping them silently downgraded a resumed run: an autonomous run came back permission-gated and
-// stalled at its first tool dialog with no operator present, which shuttle can only classify as a
-// timeout, and it came back on the provider default model rather than the one the caller pinned.
-// It carries the append-system-prompt file too, when its path is non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
-// so a resume line without --append-system-prompt-file would lose the deny notice and the creel trust sentence.
-// It carries --name as a reference to LYM_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
-// and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
+// The resumed claude is a fresh process that inherits nothing from the launch,
+// so the line carries the same model, effort and permission mode as the launch line.
+// Without them a resumed run comes back on the provider's default model,
+// and an autonomous run stalls at a tool dialog with no operator present, which shuttle can only classify as a timeout.
+// It carries the append-system-prompt file too, when its path is non-empty:
+// Claude Code re-renders the system prompt from the current flags after a compaction;
+// where recording is not enabled, a resume line without the file loses the deny notice and the creel trust sentence.
+// It carries --name as a reference to agentname.StrandNameEnv, not a value:
+// the strand's name is formed after the line is built, so the pane shell expands the variable at run time.
+// A session rebuild replays this string verbatim, so a line without --name would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
-// It carries the promptCacheTTLEnvKey assignment too: the resumed claude inherits nothing from the launch, so without it the session would fall back to Claude Code's default TTL.
+// It carries the promptCacheTTLEnvKey assignment too, since the resumed claude inherits nothing from the launch:
+// without it the session falls back to Claude Code's default TTL.
 // It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
-// It carries the envFileKey assignment naming envFilePath, leading the line, so a resumed session keeps the default stdin of its Bash tool.
+// It leads with the envFileKey assignment naming envFilePath:
+// a resumed session keeps the default stdin of its Bash tool.
 func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)

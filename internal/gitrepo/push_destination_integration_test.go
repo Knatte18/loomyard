@@ -1,5 +1,6 @@
 // push_destination_integration_test.go covers where a push lands against real git repositories.
-// It covers the remote a default push picks from the branch's and repository's settings, and the pushes that record no remote-tracking ref.
+// It covers the remote a default push picks from the branch's and repository's settings.
+// It also covers the pushes that record no remote-tracking ref.
 
 package gitrepo_test
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// featureClone returns a clone of a published bare remote, checked out on a new branch "feature" with one unpushed commit, and that commit.
+// featureClone returns a clone of a published bare remote and that remote's path.
+// The clone is checked out on a new branch "feature" with one unpushed commit, and featureClone returns that commit.
 func featureClone(t *testing.T) (clone, origin, commit string) {
 	t.Helper()
 	clone, origin = publishedClone(t)
@@ -75,7 +77,8 @@ func TestPush_AFailedRecordAfterALandedTransferStillSucceeds(t *testing.T) {
 	tests := []struct {
 		name   string
 		branch string
-		// prepare readies the clone and returns the push to run and the commit origin's branch holds afterwards, empty for a deleted branch.
+		// prepare readies the clone and returns the push to run.
+		// It also returns the commit that origin's branch holds afterwards, or an empty string for a deleted branch.
 		prepare func(t *testing.T, clone string, repo *gitrepo.Repo) (call func() error, want string)
 	}{
 		{"PushBranch", "feature", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {

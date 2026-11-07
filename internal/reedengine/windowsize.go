@@ -1,7 +1,8 @@
-// windowsize.go owns the geometry option pins (the three-line status bar and window-size latest), the session shell options,
-// and the unpin of the `window-resized` hook an older binary pinned on the shell window.
-// Every tmux interaction here is non-fatal, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere:
-// a failure is logged via logger.Warn and answered with a safe fallback, never returned as an error.
+// windowsize.go pins the geometry options of a reed session: the three-line status bar, window-size latest,
+// and the session shell options.
+// It also clears the window-resized hook that an older binary may have pinned on the shell window.
+// Every tmux call here is non-fatal.
+// A failure is logged with logger.Warn and answered with a safe fallback, never returned as an error.
 
 package reedengine
 
@@ -23,7 +24,8 @@ func resolveShellPath(shell string) (string, error) {
 	return path, nil
 }
 
-// shellOptionArgvs is the two session-scoped pins that make tmux start a pane's shell without the login flag: `default-shell` and an equal non-empty `default-command`.
+// shellOptionArgvs returns the two session-scoped pins that make tmux start a pane's shell without the login flag.
+// They set `default-shell` and `default-command` to the same shellPath.
 // They are never global, because one server serves every worktree of the hub.
 // An empty shellPath yields no pins.
 func shellOptionArgvs(target, shellPath string) [][]string {
@@ -36,14 +38,17 @@ func shellOptionArgvs(target, shellPath string) [][]string {
 	}
 }
 
-// primeGeometry reports whether this engine's geometry is a hub's prime: a hub geometry (DiscoverSignalPath non-empty, since a standalone geometry leaves it empty) with an empty NameSlug.
+// primeGeometry reports whether this engine's geometry is the hub's prime session.
+// A hub geometry has a non-empty DiscoverSignalPath, which a standalone geometry leaves empty.
+// The prime session also has an empty NameSlug.
 // A pair's session and a standalone session are never the prime.
 func (e *Engine) primeGeometry() bool {
 	return e.geom.DiscoverSignalPath != "" && e.geom.NameSlug == ""
 }
 
 // statusFormatPinArgvs returns the global pins of every status format and the bar style, in order.
-// The status formats are one tmux array, so each is pinned with -g: a per-session index would drop the global lines for that session.
+// The status formats are one tmux array, so each is pinned with -g.
+// A per-session index would drop the global lines for that session.
 func statusFormatPinArgvs() [][]string {
 	return [][]string{
 		{"set-option", "-g", "status-format[0]", statusFormatButtons},
@@ -53,28 +58,21 @@ func statusFormatPinArgvs() [][]string {
 	}
 }
 
-// pinGeometryOptionsLocked pins the three-line status bar (bar.go) and this session's window to "window-size latest".
-// It also clears the `window-resized` hook an older binary pinned on the shell window.
+// pinGeometryOptionsLocked pins the three-line status bar and this session's window to "window-size latest".
+// It pins the session shell options when shellPath is non-empty.
+// It also marks a prime session with "@lym_prime_session", which line 2 of the bar lists first.
+// It re-renders the button row.
+// A config edit or a pair marked a beam after boot reaches a live session at its next attach.
+// It also pins the navigation bindings, so a server booted by an older lym gets them at the next attach.
+// On every platform but Windows it pins the unseen-clear hook on the session.
+// It also clears the window-resized hook that an older binary may have pinned on the shell window.
 //
-// It issues, in order: statusFormatPinArgvs, the three status formats and "status-style" with -g, so the gaps between the buttons are dark grey instead of tmux's default green;
-// and "status" "3" and "status-position" "bottom" on the session.
-// When primeGeometry holds it then marks the session with the user option "@lym_prime_session" "1", which line 2 of the bar lists first.
-// Right after those pins it renders the session's button row (buttonrow.go) in one tmux invocation, so a config edit or a pair marked a beam after boot reaches a live session at its next attach.
-// After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lym gets them at the next attach.
-// Then, everywhere but Windows, it pins the session hook `session-window-changed` with `set-option -w -u @lym_unseen`, which unsets the unseen mark on the window the client moved to and nothing else.
-// Last, everywhere but Windows, it unpins `window-resized` twice: `set-hook -u -w -t <target> window-resized`, the window-scoped clear, and `set-hook -u -t <target> window-resized`, the session-scoped form, so an entry an older binary pinned in either scope goes.
-// The unpin clears only that one hook on the shell window, which only reed ever pinned.
-//
-// Each call's error is logged via logger.Warn and then ignored.
-// Every later step, including the hook block, is attempted even when an earlier one failed, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere.
-// No runtime.GOOS == "windows" branch guards any of the set-option calls: per the Shared
-// Decision windows-status-line-is-an-unbranched-accepted-degrade they are attempted on every platform,
-// and psmux may refuse some or all of them.
-//
-// It runs both at boot (lifecycle.go) and in the attach pre-flight (attach.go), so a session booted by an older lym loses the hook at the next attach.
+// Every step runs even when an earlier one fails: each failure is logged via logger.Warn and ignored.
+// Windows skips the hook steps, because psmux lacks set-hook.
+// The option pins still run there, and psmux may refuse some of them.
 // target is the strands' window, as resolved by the window seam;
 // the session-wide options ride the window's session.
-// After the option pins it issues shellOptionArgvs for shellPath, each non-fatal like them; the empty string skips both.
+// It runs at boot and in the attach pre-flight, so a session booted by an older lym loses its hook at the next attach.
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 	for _, argv := range statusFormatPinArgvs() {

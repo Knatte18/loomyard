@@ -1,12 +1,6 @@
-// diff_integration_test.go — integration coverage for the unified
-// Fabric.Diff and Fabric.Status added in diff.go: the exact-correspondence
-// merge, the nearest-older weft-anchor bridge, the no-correspondence case,
-// and Status's live worktree merge (including that it genuinely honors the
-// weft repo's git-excluded artifacts, not merely asserts on an untested
-// assumption). Package fabricengine_test, reusing export_test.go's fixture
-// shims (NewPlainWarpRepoForTest, CommitWarpForTest, NewFabricForTest,
-// CurrentSHAForTest, WriteWeftConfigContentForTest, SeedFabricConfigForTest)
-// rather than redefining them.
+// diff_integration_test.go holds the integration tests for Fabric.Diff and Fabric.Status, which diff.go defines.
+// It covers the exact-correspondence merge, the nearest-older weft-anchor bridge, and the no-correspondence case.
+// It also covers Status's live worktree merge, which honours the weft repo's git-excluded artifacts.
 
 package fabricengine_test
 
@@ -24,8 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// changeEntryPaths returns the Path of every entry in entries whose Side
-// matches side, for assertion convenience.
+// changeEntryPaths returns the Path of every entry in entries whose Side equals side, for test assertions.
 func changeEntryPaths(entries []fabricengine.ChangeEntry, side fabricengine.ChangeSide) []string {
 	var paths []string
 	for _, e := range entries {
@@ -36,10 +29,9 @@ func changeEntryPaths(entries []fabricengine.ChangeEntry, side fabricengine.Chan
 	return paths
 }
 
-// TestDiff_MergesWarpAndWeftSides covers the exact-correspondence path: two Commit rounds record
-// correspondence for both warp SHAs,
-// and diffing since the first must report both sides' changes made in the second round, correctly
-// side-labelled.
+// TestDiff_MergesWarpAndWeftSides covers the exact-correspondence path.
+// Two Commit rounds record correspondence for both warp SHAs.
+// Diff since the first round must report both sides' changes made in the second round, each side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -81,11 +73,11 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	}
 }
 
-// TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline covers the nearest-older
-// bridge: a warp SHA advanced past the last synced round has no correspondence of its own, so Diff
-// must anchor the weft side to the nearest older synced weft SHA — proven by a manual, unrecorded
-// weft commit made ahead of that baseline showing up in the weft-side result, rather than the weft
-// side coming back empty (which is what a strictly exact-only anchor would produce).
+// TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline covers the nearest-older anchor.
+// A warp SHA advanced past the last synced round has no correspondence of its own.
+// So Diff anchors the weft side to the nearest older synced weft SHA.
+// The test makes a manual, unrecorded weft commit ahead of that baseline,
+// and the weft side of the result must show it rather than come back empty.
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -101,14 +93,11 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 		t.Fatalf("Commit: %+v, err=%v", res1, err)
 	}
 
-	// A further warp commit with no corresponding weft sync at all.
+	// This warp commit is never synced to weft, so no correspondence entry records it.
 	warpSHA2 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 2, never synced")
 
-	// A manual weft commit made after the last synced baseline but never
-	// recorded in the correspondence index — proof that the anchor genuinely
-	// resolved to the nearest older synced weft SHA (res1.WeftSHA), not an
-	// empty/absent one: only a real anchor makes ChangedFilesSince surface
-	// this file.
+	// This manual weft commit lands after the last synced baseline and is never recorded in the correspondence index.
+	// The file reaches the diff only when the anchor resolves to the nearest older synced weft SHA, `res1.WeftSHA`.
 	manualPath := filepath.Join(weftFixture.PrimeRecords(), "manual-ahead.txt")
 	if err := os.WriteFile(manualPath, []byte("weft change 2, manual, not recorded"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -130,9 +119,10 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	}
 }
 
-// TestDiff_NoWeftCorrespondence_BeforeFirstSync covers the no-correspondence case: a sinceWarpSHA
-// older than the first weft commit — no entry exists at or before it — must not be an error;
-// it must report warp entries, empty weft entries, and NoWeftCorrespondence = true.
+// TestDiff_NoWeftCorrespondence_BeforeFirstSync covers the case with no weft correspondence.
+// A `sinceWarpSHA` older than the first weft commit has no entry at or before it.
+// The Diff call must not fail.
+// It must report the warp entries, empty weft entries, and `NoWeftCorrespondence` set to true.
 func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -143,9 +133,8 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// Advance warp and synchronize weft — this records correspondence for
-	// the NEW warp commit, never for initialWarpSHA, which predates any
-	// recorded correspondence entirely.
+	// Advancing warp and syncing weft records correspondence for the new warp commit only.
+	// `initialWarpSHA` predates any recorded correspondence, so it never gets an entry.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
 	res, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
@@ -169,14 +158,14 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	}
 }
 
-// TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts covers Fabric.Status's live
-// worktree merge: uncommitted changes on both sides must be reported with correct side labels,
-// and the weft side must never surface fabric's own git-excluded artifacts (the .weft/ lock dir and
-// the gitrepo push lock file) — a regression guard over the verified go-git exclude behavior
-// WorktreeChangedFiles' doc comment documents, not an unexercised assumption.
-// The push lock file is created explicitly here because CommitWeft never writes it — only
-// PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
-// It also covers Fabric.DirtyPaths: both sides' modified tracked paths come back absolute under their checkouts, and an untracked file does not.
+// TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts covers Fabric.Status's live worktree merge.
+// Uncommitted changes on both sides must be reported with the correct side labels.
+// The weft side must never surface fabric's git-excluded artifacts:
+// the .weft/ lock dir and the gitrepo push lock file.
+// Only `PushCoalesced` writes the push lock file, so the test creates it explicitly;
+// leaving it out would make the exclusion assertion vacuous.
+// It also covers Fabric.DirtyPaths: both sides' modified tracked paths come back absolute under their checkouts,
+// and an untracked file does not.
 // Fabric.CodeDirtyPaths returns the code checkout and only its tracked path, relative to it.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -186,24 +175,23 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// One CommitWeft round first, so ensureWeftLockDir has already seeded
-	// the weft repo's .git/info/exclude with both artifact patterns before
-	// Status is asked to filter them out.
+	// One weft commit round runs first, so `ensureWeftLockDir` has already seeded both artifact patterns;
+	// they sit in the weft repo's `.git/info/exclude` before `Status` filters them out.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
 	if _, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil || !committed {
 		t.Fatalf("commitWeft() committed=%v err=%v; want committed=true, err=nil", committed, err)
 	}
 
-	// Dirty both worktrees with genuinely uncommitted changes.
+	// Dirty both worktrees with uncommitted changes.
 	warpDirtyPath := filepath.Join(warpPath, "uncommitted.txt")
 	if err := os.WriteFile(warpDirtyPath, []byte("warp dirty"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft dirty, uncommitted")
 
-	// CommitWeft never creates the push lock file, only PushCoalesced does.
-	// It is created where it now lives, in the records git dir, so the test proves nothing of it surfaces in the worktree.
+	// `commitWeft` never creates the push lock file; only `PushCoalesced` does.
+	// The file lives in the records git dir, so the worktree listing must not show it.
 	pushLockPath, err := gitrepo.New(weftFixture.PrimeRecords()).PushLockPath()
 	if err != nil {
 		t.Fatalf("PushLockPath() error = %v", err)
@@ -261,8 +249,8 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 		t.Errorf("Status() weft-side paths = %v; want it to contain _lym/config.yaml", weftPaths)
 	}
 
-	// The git-excluded lock dir must not appear on the weft side, and the push lock in the git dir must not appear anywhere.
-	// Scoped to weft only: the warp side deliberately does not seed these excludes.
+	// Neither the git-excluded lock dir nor the push lock in the git dir may appear in the weft listing.
+	// The warp side does not seed these excludes, so the check covers only the weft side.
 	for _, p := range weftPaths {
 		if strings.HasPrefix(p, fabricengine.WeftLockDirNameForTest+"/") || filepath.Base(p) == gitrepo.PushLockFileName {
 			t.Errorf("Status() weft-side paths = %v; want neither %s/ nor any %s entry", weftPaths, fabricengine.WeftLockDirNameForTest, gitrepo.PushLockFileName)

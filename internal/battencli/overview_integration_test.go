@@ -1,4 +1,5 @@
-// overview_integration_test.go drives "lym batten overview" through RunCLIIn over a hubforge hub: its refusals, which both end before any pane starts.
+// overview_integration_test.go drives "lym batten overview" through RunCLIIn over a hubforge hub.
+// It pins the refusals, which both end before any pane starts.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
 package battencli

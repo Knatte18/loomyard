@@ -1,4 +1,5 @@
-// add_anchor_integration_test.go covers Add forking a pair at a requested anchor and EnsureAnchor settling the anchor of a present pair, over hubforge hubs whose prime warp tracks y/.
+// add_anchor_integration_test.go covers Add forking a pair at a requested anchor.
+// It also covers EnsureAnchor settling the anchor of a present pair, over hubforge hubs whose prime warp tracks y/.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -27,7 +28,8 @@ func newAtAnchorHub(t *testing.T) *hubforge.Hub {
 	return h
 }
 
-// requireWeftAtY fails the test unless slug's weft carries its content and its marker at y in the HEAD commit, with a clean tree, and the pair is wired there with no move record left.
+// requireWeftAtY fails the test unless slug's weft carries its content and its marker at y in the HEAD commit.
+// It also requires a clean tree, the pair wired there, and no move record left.
 func requireWeftAtY(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
@@ -47,7 +49,8 @@ func requireWeftAtY(t *testing.T, h *hubforge.Hub, slug string) {
 	requireNoMoveRecord(t, weft)
 }
 
-// writeMoveRecordByHand writes the move record of slug's weft for a move from a to b, as a process killed in the middle of the move leaves it.
+// writeMoveRecordByHand writes the move record of slug's weft for a move from a to b.
+// It mimics what a process killed in the middle of the move leaves behind.
 func writeMoveRecordByHand(t *testing.T, h *hubforge.Hub, slug, a, b string) {
 	t.Helper()
 

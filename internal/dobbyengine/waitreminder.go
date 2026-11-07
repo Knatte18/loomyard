@@ -1,4 +1,6 @@
-// waitreminder.go implements the wait reminders: it keeps the start of each child's wait on the operator in the state record, and posts one reminder line per interval to the hub's Slack program while the operator is away.
+// waitreminder.go implements the wait reminders.
+// It keeps the start of each child's wait on the operator in the state record.
+// It also posts one reminder line per interval to the hub's Slack program while the operator is away.
 
 package dobbyengine
 
@@ -15,8 +17,9 @@ import (
 // waitCheckInterval is the shortest gap between two checks of the waits.
 const waitCheckInterval = time.Minute
 
-// WaitReminderDeps is every seam the wait reminders read besides the child and pause reads of RunNoticeDeps, told by the hub wiring.
-// A nil Post, or a nil RunNoticeDeps.ReadChild, keeps no wait and sends no reminder.
+// WaitReminderDeps holds the seams the wait reminders read, apart from the child and pause reads.
+// The hub wiring supplies them.
+// A nil Post, or a nil child read, keeps no wait and sends no reminder.
 type WaitReminderDeps struct {
 	// Rows are the child rows that wait on the operator alone.
 	Rows []string
@@ -60,7 +63,8 @@ func (d *daemon) waitReminders(ctx context.Context, now time.Time) {
 	d.remindOfWaits(ctx, now, waits)
 }
 
-// readWaits returns the wait of each run whose batten state is running with no cancel marker, by slug, and the slugs whose reading failed, which stand as recorded and get no reminder.
+// readWaits returns the wait of each run whose batten state is running with no cancel marker, by slug.
+// It also returns the slugs whose reading failed, which stand as recorded and get no reminder.
 // A run in no wait has no key in the waits.
 func (d *daemon) readWaits(now time.Time, recorded map[string]RunState) (waits map[string]OperatorWaitState, unread map[string]bool) {
 	waits, unread = map[string]OperatorWaitState{}, map[string]bool{}
@@ -82,8 +86,11 @@ func (d *daemon) readWaits(now time.Time, recorded map[string]RunState) (waits m
 	return waits, unread
 }
 
-// readWait returns the wait of the child of slug at now, given the one recorded: zero unless the child runs at a reminded row with no pause covering it.
-// A wait starts at the first such reading of its row, and a later resume of a pause covering the child moves its start to that resume, so a pause and resume no check saw restarts it too.
+// readWait returns the wait of the child of slug at now, given the one recorded:
+// zero unless the child runs at a reminded row with no pause covering it.
+// A wait starts at the first such reading of its row.
+// A later resume of a pause covering the child moves its start to that resume,
+// so a pause and resume no check saw restarts it too.
 func (d *daemon) readWait(now time.Time, slug string, recorded OperatorWaitState) (OperatorWaitState, error) {
 	child, found, err := d.deps.RunNotices.ReadChild(slug)
 	if err != nil {
@@ -113,7 +120,8 @@ func (d *daemon) readWait(now time.Time, slug string, recorded OperatorWaitState
 	return wait, nil
 }
 
-// recordWaits writes every wait that differs from the record's, clearing the wait of each recorded run in none, and forgets the last reminder of every wait that ended.
+// recordWaits writes every wait that differs from the record's and clears the wait of each recorded run in none.
+// It also forgets the last reminder of every wait that ended.
 // The slugs in unread stay as they are.
 // A write failure is a Warn: a lost start only delays a reminder.
 func (d *daemon) recordWaits(recorded map[string]RunState, waits map[string]OperatorWaitState, unread map[string]bool) {
@@ -151,7 +159,8 @@ func (d *daemon) recordWaits(recorded map[string]RunState, waits map[string]Oper
 	}
 }
 
-// remindOfWaits posts one line for each wait at least an interval old whose last reminder is an interval old or absent, while the operator is away.
+// remindOfWaits, while the operator is away, posts one line for each wait at least an interval old.
+// A wait is posted only if it has no reminder or its last reminder is an interval old.
 // A presence other than away forgets every last reminder, so a return reminds at once of a wait past the interval.
 // A post that fails is logged at Warn and tried at the next check.
 func (d *daemon) remindOfWaits(ctx context.Context, now time.Time, waits map[string]OperatorWaitState) {

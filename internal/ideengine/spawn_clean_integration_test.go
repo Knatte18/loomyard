@@ -1,6 +1,6 @@
-// spawn_clean_integration_test.go holds the .vscode/ config Spawn checks that run against task pairs and the prime of one hubforge hub:
+// spawn_clean_integration_test.go holds the .vscode/ config checks of Spawn for task pairs and the prime:
 // a clean tree through info/exclude, the overwrite of an untracked tasks.json and the tracked-tasks.json skip.
-// Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
+// Each check is a step of a scenario in `spawn_scenario_integration_test.go`, which names why they run serially.
 
 package ideengine
 
@@ -60,7 +60,8 @@ func commitFile(t *testing.T, dir, rel, content string) {
 	gitkit.Git(t, dir, "commit", "-m", "add "+rel)
 }
 
-// assertAttachTaskOnly fails the test unless anchorDir's tasks.json holds only the on-demand reed attach task, with an absolute command and no folder-open trigger.
+// assertAttachTaskOnly fails the test unless anchorDir's tasks.json holds only the on-demand reed attach task.
+// The task must have an absolute command and no folder-open trigger.
 func assertAttachTaskOnly(t *testing.T, anchorDir string) {
 	t.Helper()
 	tasks := readTasks(t, anchorDir)
@@ -75,7 +76,8 @@ func assertAttachTaskOnly(t *testing.T, anchorDir string) {
 	}
 }
 
-// checkTaskPairStaysClean asserts a repo with a tracked .gitignore stays clean after Spawn, with .vscode/ ignored through info/exclude or already ignored by the repo.
+// checkTaskPairStaysClean asserts a repo with a tracked .gitignore stays clean after Spawn.
+// The .vscode/ directory is ignored through info/exclude or already ignored by the repo.
 func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore string, wantExclude bool) {
 	l := h.Location
 	launched := recordLauncher(t)
@@ -109,7 +111,8 @@ func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore stri
 	assertAttachTaskOnly(t, anchorDir)
 }
 
-// checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced and an existing settings.json keeps its keys and gains the title and colours.
+// checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced.
+// An existing settings.json keeps its keys and gains the title and colours.
 func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug string) {
 	l := h.Location
 	recordLauncher(t)
@@ -138,8 +141,9 @@ func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug strin
 	}
 }
 
-// checkSkipsTrackedVSCode asserts a committed tasks.json is left alone, no settings.json or exclude line is written, and the launch still happens, on a task pair and on the prime.
-// It commits to the prime when onPrime is set, so no later step may rely on a clean prime.
+// checkSkipsTrackedVSCode asserts a committed tasks.json is left alone.
+// No settings.json or exclude line is written, and the launch still happens, on a task pair and on the prime.
+// When onPrime is set, the check commits to the prime, so no later step may rely on a clean prime.
 func checkSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string, onPrime bool) {
 	l := h.Location
 	launched := recordLauncher(t)
@@ -188,12 +192,14 @@ func checkSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string, onPrime
 	}
 }
 
-// checkPrimeNameFailureOpensBareFolder asserts a Location whose worktree is not a git checkout logs the resolve-prime-name warning and launches the pair's bare folder.
+// checkPrimeNameFailureOpensBareFolder covers a Location whose worktree is not a git checkout.
+// It asserts that Spawn logs the resolve-prime-name warning and launches the pair's bare folder.
 func checkPrimeNameFailureOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	launched, opened := recordLaunches(t)
 	setIDEConfig(t, h, "open_files:\n  task: [\"{beam}.md\"]\n")
 	hubforge.AddPair(t, h, slug)
-	// A file named ".md" is what the entry reads as if the placeholder were replaced by nothing.
+	// The entry {beam}.md names ".md" when {beam} resolves to nothing.
+	// Writing that file makes a launch which opens it fail the check.
 	writeFileUnder(t, filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel), ".md")
 	notGit := "not-a-checkout"
 	notGitDir := filepath.Join(h.Path, notGit)

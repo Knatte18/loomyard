@@ -7,9 +7,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// moveStrandTo returns strands with the strand guid moved to index idx, the others keeping their
-// relative order. An unknown guid or an out-of-range idx returns strands unchanged. It is pure so a
-// Tier 1 test can pin the first, middle and last slot without a tmux session.
+// moveStrandTo returns strands with the strand guid moved to index idx, the others keeping their relative order.
+// An unknown guid or an out-of-range idx returns strands unchanged.
+// It is pure, so tests can pin the first, middle and last slot without a tmux session.
 func moveStrandTo(strands []Strand, guid string, idx int) []Strand {
 	from := strandIndex(strands, guid)
 	if from == -1 || idx < 0 || idx >= len(strands) || from == idx {
@@ -27,16 +27,15 @@ func moveStrandTo(strands []Strand, guid string, idx int) []Strand {
 	return out
 }
 
-// ReplaceStrand atomically replaces the leaf strand guid with a new strand built from spec, and the
-// new strand takes the replaced strand's slot in the strand table — and so its place in the stack —
-// rather than the bottom.
-// It runs under one op lock: it requires the session, removes guid (a strand with children is
-// refused), kills and reaps its pane exactly as RemoveStrand does, adds the new strand, moves it to
-// the removed strand's index, launches its pane, and reconciles and re-applies the layout once.
-// The old pane is killed before the new one launches because launching reconciles away any untracked
-// pane, which would otherwise kill it without the reap.
-// An overview replacement that ends the window the operator is viewing selects the new overview window once the launch succeeded;
-// any other replacement moves such a viewer to the strands' window as RemoveStrand does.
+// ReplaceStrand replaces the leaf strand guid with a new strand built from spec, under one op lock.
+// The new strand takes the replaced strand's slot in the strand table, so it keeps its place in the stack.
+// It requires the session, and it refuses a strand with children.
+// The old pane is killed and reaped before the new one launches.
+// Launching reconciles away any untracked pane, which would kill the old one without reaping it.
+// Once the new pane launches, the layout is reconciled and reapplied once.
+// An overview replacement that ends the window the operator is viewing selects the new overview window.
+// It does so only once the launch succeeds.
+// Any other replacement that ends that window moves the operator's view to the strands window.
 // A replacement whose old strand shared a window that stays open ends no window and switches nothing.
 func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 	var result Strand
@@ -44,7 +43,8 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		if _, err := e.validateNaming(spec); err != nil {
 			return err
 		}
-		// Refused before the old strand is removed and its pane killed: addStrandLocked's own check comes too late to keep it.
+		// Refuse an invalid display before the old strand is removed and its pane killed.
+		// A check that runs later, once the old strand is gone, could not keep it.
 		if err := validateDisplay(spec.Display); err != nil {
 			return err
 		}
@@ -102,8 +102,10 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		// the removal is persisted and the dying subtree is never left holding the worktree.
 		_, applyErr := e.reconcileApplyPersistLocked(st)
 		reapPaneChildren(reapPIDs, reapExitTimeout)
-		// reconcileApplyPersistLocked ends in SaveState, so a nil applyErr means the new strand's record was persisted after all and its launch script stays.
-		// When the post-add save failed and the tail failed too, no save carrying the new strand ever succeeded, so its script is deleted.
+		// reconcileApplyPersistLocked ends in SaveState.
+		// A nil applyErr therefore means the new strand's record was persisted after all, so its launch script stays.
+		// When the post-add save failed and the tail failed too, no save carrying the new strand ever succeeded,
+		// so its script is deleted.
 		if postAddSaveFailed && applyErr != nil {
 			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
 		}

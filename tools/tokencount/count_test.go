@@ -39,7 +39,7 @@ func TestRunTimeByRole(t *testing.T) {
 		return e
 	}
 
-	// burler: two turns of 1m and 2m with a 10m gap, then an interrupted turn of 1m followed by 5m of idle and a typed local command.
+	// burler: turns of 1m and 2m with a 10m gap, then an interrupted 1m turn followed by 5m idle and a typed local command.
 	// tool: a tool call turn whose result arrives 3m later counts the gap.
 	// An overlapping second burler session adds only its uncovered tail, and a fork counts under burler+sub.
 	run := build(t,
@@ -475,7 +475,7 @@ func TestRecentRuns(t *testing.T) {
 	touch(filepath.Join(hub, "bench"), time.Hour)
 	archive("bench", shedrun.RecipeTapestry, "Preflight", "Discussion-Write")
 	touch(filepath.Join(hub, "parked"), 0)
-	// A finished slug with no session located under the hub, and one whose session sits in another hub, are never candidates.
+	// A finished slug with no session under the hub, and one whose session sits in another hub, are never candidates.
 	archive("empty", shedrun.RecipeTapestry, full...)
 	touch("/other/newest", 0)
 	archive("newest", shedrun.RecipeTapestry, full...)
@@ -740,7 +740,7 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 		})
 	}
 
-	// The report prints the Producers table for a run with a record, the no-status line for one without, and the summed table in All runs.
+	// The report prints the Producers table with a record, the no-status line without, and the summed table in All runs.
 	rec, err := readShedRecord(tests[0].files, "r", tests[0].tags)
 	if err != nil {
 		t.Fatal(err)
@@ -778,7 +778,7 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 		t.Errorf("All runs section prints a Producers table with no record:\n%s", buf.String())
 	}
 
-	// A sleep 10:01-10:09 is no time at all: it leaves the span, both working intervals it straddles and every Producers row.
+	// A sleep 10:01-10:09 is no time: it leaves the span, both working intervals it straddles and every Producers row.
 	slept := counted(t)
 	slept.useShedRecord(*rec)
 	slept.subtractSleeps([]Interval{{at("10:01:00"), at("10:09:00")}})

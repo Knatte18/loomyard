@@ -1,12 +1,12 @@
 //go:build linux
 
-// attachgeometry_integration_test.go proves the attach handover works against a real tmux, real pty, and real attaching client.
+// attachgeometry_integration_test.go proves the attach handover against real tmux, real pty and real client.
 // It also holds the pty harness the other tmux-tier suites attach through.
 //
-// Linux-only: the pty harness below is built directly on golang.org/x/sys/unix's /dev/ptmx ioctls
-// (TIOCSPTLCK, TIOCGPTN, TIOCSWINSZ), which have no portable equivalent, and psmux's behaviour under
-// a real pty is unverified anywhere in this repo — this file must not even attempt to compile off
-// Linux.
+// Linux-only: the pty harness below is built directly on golang.org/x/sys/unix's /dev/ptmx ioctls:
+// TIOCSPTLCK, TIOCGPTN and TIOCSWINSZ, which have no portable equivalent.
+// psmux's behaviour under a real pty is unverified anywhere in this repo.
+// This file must not attempt to compile off Linux.
 
 package reedengine
 
@@ -28,8 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// attachGeometryPTY is a running child process attached to a real pty of a fixed initial size, with
-// the master file descriptor kept open so a caller can drive further ioctls or reads against it.
+// attachGeometryPTY is a running child process attached to a real pty of a fixed initial size.
+// It keeps the master file descriptor open, so a caller can drive further ioctls or reads against it.
 type attachGeometryPTY struct {
 	master *os.File
 	cmd    *exec.Cmd
@@ -55,13 +55,13 @@ func (p *attachGeometryPTY) forget() {
 }
 
 // startInPTY opens a fresh /dev/ptmx master sized to cols x rows and starts argv[0] with the pty
-// slave as its stdin/stdout/stderr and as its controlling terminal (SysProcAttr{Setsid: true,
-// Setctty: true} — Setctty's zero-value Ctty names fd 0 in the CHILD's own descriptor table, which is
-// the slave since it is also wired to stdin).
+// slave as its stdin, stdout and stderr.
+// It sets Setsid and Setctty, which make the slave the controlling terminal.
+// Ctty's zero value names fd 0 in the child's descriptor table, and fd 0 is the slave because stdin is wired to it.
 //
-// The master is drained continuously in a background goroutine so the child never blocks writing to
-// a full pty buffer, and both the master and the started process are torn down via t.Cleanup so a
-// failing assertion never leaks either.
+// The master is drained continuously in a background goroutine, so the child never blocks writing to
+// a full pty buffer.
+// Both the master and the started process are torn down via t.Cleanup, so a failing assertion never leaks either.
 func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY {
 	t.Helper()
 
@@ -71,7 +71,7 @@ func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY 
 	}
 	fd := int(master.Fd())
 
-	// Clear the slave's lock before it can be opened at all — /dev/ptmx starts every new pty locked.
+	// Clear the slave's lock before it can be opened: /dev/ptmx starts every new pty locked.
 	if err := unix.IoctlSetPointerInt(fd, unix.TIOCSPTLCK, 0); err != nil {
 		master.Close()
 		t.Fatalf("TIOCSPTLCK (clear pty lock): %v", err)
@@ -81,9 +81,9 @@ func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY 
 		master.Close()
 		t.Fatalf("TIOCGPTN (resolve slave number): %v", err)
 	}
-	// Size the pty before the child ever reads/writes it: TIOCSWINSZ on either end of a pty pair sets
-	// the size both sides observe, and setting it here means the child's very first #{window_width}/
-	// #{window_height} are already the size this test drives.
+	// Size the pty before the child reads or writes it: TIOCSWINSZ on either end of a pty pair sets
+	// the size both sides observe.
+	// Setting it here makes the child's very first #{window_width} and #{window_height} match the test's size.
 	if err := unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(cols), Row: uint16(rows)}); err != nil {
 		master.Close()
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", cols, rows, err)
@@ -103,8 +103,8 @@ func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY 
 	cmd.Env = append(os.Environ(), "TERM=xterm")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
 	startErr := cmd.Start()
-	// The child holds its own copy of the slave once started (or forever, on a failed start); the
-	// test only ever needs the master.
+	// The child keeps its own copy of the slave once started, or for good after a failed start.
+	// The test needs only the master.
 	slave.Close()
 	if startErr != nil {
 		master.Close()
@@ -134,8 +134,8 @@ func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY 
 	return pty
 }
 
-// setupAttachGeometryFixture boots a fresh integration engine and adds two strands — a
-// parent and its child, in that insertion order — so the session carries a Selvage pane and two strand panes.
+// setupAttachGeometryFixture boots a fresh integration engine and adds two strands.
+// The parent is added first and its child second, so the session carries a Selvage pane and two strand panes.
 func setupAttachGeometryFixture(t *testing.T) *Engine {
 	t.Helper()
 
@@ -171,16 +171,17 @@ func waitForClientAttached(t *testing.T, e *Engine, timeout time.Duration) {
 	})
 }
 
-// TestAttachGeometry_DegradedPathStillAttaches asserts AttachArgv(0, 0)'s argv still
-// lands a working attach: attach is the operator's escape hatch, and this pins
-// that a pre-flight with no client size known is a working attach, not a broken one.
+// TestAttachGeometry_DegradedPathStillAttaches asserts AttachArgv(0, 0)'s argv still lands a working attach.
+// Attach is the operator's escape hatch.
+// This pins that a pre-flight with no client size known is a working attach, not a broken one.
 func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
 	e := setupAttachGeometryFixture(t)
 
 	argv := e.AttachArgv(0, 0)
-	// The strands live in own windows, so an agent window is relevant and the bare prefix carries the chained select-window tail.
+	// The strands live in their own windows, so an agent window is relevant,
+	// and the bare prefix carries the chained select-window tail.
 	bare := bareAttachArgv(e.Socket(), e.SessionName())
 	if len(argv) != len(bare)+4 {
 		t.Fatalf("AttachArgv(0, 0) = %v (%d argv elements), want the bare form plus a 4-element select-window tail", argv, len(argv))
@@ -205,8 +206,10 @@ func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
 	}
 }
 
-// TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown pins the tmux exit statuses the run window's close rule rests on:
-// a client attached to a session that is killed while the server lives on exits 0, and a client attached to a session whose server is killed exits non-zero.
+// TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown pins tmux's client exit statuses.
+// The run window's close rule rests on these statuses.
+// A client attached to a session that is killed while the server lives on exits 0.
+// A client attached to a session whose server is killed exits non-zero.
 // A second session is created up front, so killing the first leaves the server running under tmux's exit-empty.
 func TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown(t *testing.T) {
 	tiergate.Require(t, 2)

@@ -1,4 +1,5 @@
-// entries_settings.go implements what the review entries share to read a row's segment settings and the config settings a row's Config names through Env.Setting.
+// entries_settings.go implements the helpers the review entries share:
+// they read a row's segment settings and the config settings a row's Config names through Env.Setting.
 
 package shedrecipe
 
@@ -37,7 +38,8 @@ func rowSegment(entry string, row RowIdentity, env Env) (SegmentSettings, error)
 
 // settingRef reads the `module.key` reference cfg holds under key, a string.
 // An absent or empty value is not named.
-// A named value is split at its first dot, and one with no dot, an empty module or an empty key is refused, as is a nil env.Setting.
+// A named value is split at its first dot.
+// A value with no dot, an empty module or an empty key is refused, as is a nil env.Setting.
 func settingRef(entry string, row RowIdentity, cfg Config, key string, env Env) (ref settingReference, named bool, err error) {
 	text, err := configString(cfg, key, false)
 	if err != nil || text == "" {
@@ -68,7 +70,8 @@ func readSetting(entry string, row RowIdentity, cfg Config, key string, env Env)
 }
 
 // fanSetting reads the setting cfg's key names as a per-round fan list.
-// A string is a one-entry list and a list of strings is the list, a null entry of it counting as ""; a null, an empty string and a list whose every entry is "" give a nil list with named still true.
+// A string is a one-entry list, and a list of strings is the list itself, a null entry of it counting as "".
+// A null, an empty string and a list whose every entry is "" give a nil list with named still true.
 // Any other shape is refused naming the entry, the row, the key, the reference and the shape.
 func fanSetting(entry string, row RowIdentity, cfg Config, key string, env Env) (fans []string, ref settingReference, named bool, err error) {
 	value, ref, named, err := readSetting(entry, row, cfg, key, env)
@@ -107,7 +110,8 @@ func fanSetting(entry string, row RowIdentity, cfg Config, key string, env Env) 
 	}
 }
 
-// boolSetting reads the setting cfg's key names as a bool: false for a key that names none and for a null, and a refusal for any other shape.
+// boolSetting reads the setting cfg's key names as a bool:
+// false for a key that names none and for a null, and a refusal for any other shape.
 func boolSetting(entry string, row RowIdentity, cfg Config, key string, env Env) (bool, error) {
 	value, ref, named, err := readSetting(entry, row, cfg, key, env)
 	if err != nil || !named {

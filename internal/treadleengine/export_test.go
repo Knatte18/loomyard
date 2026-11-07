@@ -1,8 +1,6 @@
-// export_test.go re-exports runCircling and judgeInputs for the package treadleengine_test file
-// that needs to drive the circling-check judge seam directly: internal/treadleengine sits inside
-// internal/fabriccli's dependency set, so its fixture-using test cannot live in-package without
-// closing a compile cycle through internal/hubforge — the standard Go export_test.go idiom, per the
-// export-test-shim decision.
+// export_test.go re-exports runCircling, judgeInputs and framingCircling for package treadleengine_test.
+// That package needs them to drive the circling-check judge directly.
+// A test that needs the hubforge fixture cannot live in this package, because that import would close a compile cycle.
 
 package treadleengine
 
@@ -10,13 +8,11 @@ package treadleengine
 // per-round circling-check progress judge directly against a real Shuttle.
 var RunCirclingForTest = runCircling
 
-// JudgeInputsForTest re-exports judgeInputs as a type alias (not a defined type) for package
-// treadleengine_test files that need to construct it with runCircling's own field names.
+// JudgeInputsForTest is a type alias for judgeInputs.
+// It lets package treadleengine_test files build the judge's inputs with the same field names.
 type JudgeInputsForTest = judgeInputs
 
-// FramingCirclingForTest re-exports framingCircling for package treadleengine_test files that parse
-// a circling judge's verdict file via the exported ParseJudgeVerdict, whose judgeFraming parameter
-// type stays unexported.
-// Added beyond card 37's original two identifiers because smoke_judge_test.go's move to package
-// treadleengine_test (card 38) also needs this seam to compile.
+// FramingCirclingForTest re-exports framingCircling for package treadleengine_test files.
+// They parse a circling judge's verdict file via the exported ParseJudgeVerdict.
+// Its judgeFraming parameter type is unexported, so this value supplies it.
 var FramingCirclingForTest = framingCircling

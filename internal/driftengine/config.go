@@ -1,6 +1,6 @@
-// config.go — configuration for the drift module.
+// config.go defines the drift module's configuration: the Config and CommandStep types that mirror drift.yaml's keys.
 //
-// It defines the Config and CommandStep types mirroring drift.yaml's keys, the ConfigTemplate and ConfigSpec accessors, and LoadConfig, which loads the file strictly.
+// It holds ConfigTemplate, ConfigSpec and LoadConfig, which loads the file strictly.
 // The module is hub-wide, so every path here is told by the caller.
 
 package driftengine
@@ -30,7 +30,8 @@ func ConfigTemplate() string {
 // configModule is the config module name drift.yaml is loaded under.
 const configModule = "drift"
 
-// baselineDirPlaceholder is the placeholder a declared command holds for the directory a capture writes to and a compare reads from.
+// baselineDirPlaceholder is the placeholder a declared command holds for the baseline directory.
+// A capture writes that directory, and a compare reads it.
 const baselineDirPlaceholder = "{baseline_dir}"
 
 // Step names of the two command steps.
@@ -55,7 +56,7 @@ const hubOnlyWayForward = "set it in the hub's drift.yaml with lym config drift 
 type CommandStep struct {
 	// Command is the shell command the step runs, holding the {baseline_dir} placeholder.
 	Command string `yaml:"command"`
-	// Dir is the run directory, absolute or relative to the worktree root; empty runs the step in the worktree's anchored directory.
+	// Dir is the run directory, absolute or relative to the worktree root; empty means the worktree's anchored directory.
 	Dir string `yaml:"dir"`
 	// Env is the environment the command runs with, over the process environment.
 	Env map[string]string `yaml:"env"`
@@ -73,7 +74,7 @@ type Config struct {
 	Compare CommandStep
 	// Diff is how a run compares a capture with the baseline: DiffLines or DiffCommand.
 	Diff string
-	// KeyPatterns are the regular expressions, tried in order, that key a captured line; each holds the named groups `key` and `value`.
+	// KeyPatterns are regular expressions, tried in order, that key a captured line; each has the groups `key` and `value`.
 	KeyPatterns []string
 	// Volatile is what the diff ignores under DiffLines, from the keys `volatile_files` and `volatile_keys`.
 	Volatile Volatile
@@ -83,10 +84,10 @@ type Config struct {
 	JudgeModel string
 	// JudgeInteractive makes the judge a session with the operator in its pane, who decides each ruling.
 	JudgeInteractive bool
-	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent; empty records full.
-	// A stored partial reads as ScopeFull.
+	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent.
+	// An empty scope records full, and a stored partial reads as ScopeFull.
 	Scope string
-	// ScopeWasPartial is true when the stored scope was partial, which Scope reads as full.
+	// ScopeWasPartial is true when the stored scope was partial, which reads as full.
 	ScopeWasPartial bool
 }
 
@@ -113,16 +114,21 @@ type stepFile struct {
 	TimeoutMin *int              `yaml:"timeout_min"`
 }
 
-// ConfigOpenMaps returns the drift.yaml keys whose value is the operator's own mapping, which configengine carries whole through reconcile and --set.
+// ConfigOpenMaps returns the drift.yaml keys whose value is the operator's own mapping.
+// configengine carries such a value whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{stepCapture, stepCompare}
 }
 
 // ConfigSpec returns drift's layered-load spec.
 // capture and compare run commands, so they are executable keys and closed to the local layer.
-// diff, key_patterns, volatile_files and volatile_keys decide what counts as drift, so they are guard keys, and a task's run settings are refused them with the hub's drift.yaml as the way forward.
-// Both steps carry the shape their decode gives them, so `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`, or reaches one key inside it, such as `capture.env.NAME`, and refuses a key a step lacks.
-// skip and verify_max_runs are retired keys: a task's run settings that still carry one seed, the load drops it, and a reconcile prunes it from a hub base.
+// diff, key_patterns, volatile_files and volatile_keys decide what counts as drift, so they are guard keys.
+// A task's run settings that set one are refused, with the hub's drift.yaml as the way forward.
+// Both steps carry the shape their decode gives them.
+// `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`.
+// It also reaches one key inside a step, such as `capture.env.NAME`, and refuses a key a step lacks.
+// skip and verify_max_runs are retired keys.
+// The load drops one that a task's run settings still carry, and a reconcile prunes it from a hub base.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -163,7 +169,8 @@ func ConfigSpec() configengine.Spec {
 // A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1;
 // an all-empty step is undeclared and loads as the zero CommandStep.
 // A scope must be empty, off, partial or full; a stored partial reads as full and sets ScopeWasPartial.
-// A diff must be lines or command, every key_patterns entry must compile with the named groups key and value, and diff command needs a declared compare.
+// A diff must be lines or command, and diff command needs a declared compare.
+// Every key_patterns entry must compile with the named groups key and value.
 // Every volatile_files entry must be a valid glob and no volatile_files or volatile_keys entry may be blank.
 // Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
@@ -251,7 +258,7 @@ func checkVolatile(files, keys []string) error {
 }
 
 // checkScope refuses a scope other than empty, off, partial or full.
-// A stored partial passes, since LoadConfig reads it as full.
+// A stored partial passes, since it reads as full.
 // The refusal names the key and its ways forward, the task's run_settings among them, since a task sets its scope there.
 func checkScope(scope string) error {
 	switch scope {
@@ -261,7 +268,8 @@ func checkScope(scope string) error {
 	return fmt.Errorf("drift config key \"scope\": %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", scope, ScopeOff, ScopeFull, ScopeFull)
 }
 
-// decodeStep validates one declared command step and fills its defaults; a step with no key set is undeclared and decodes to the zero CommandStep.
+// decodeStep validates one declared command step and fills its defaults.
+// A step with no key set is undeclared and decodes to the zero CommandStep.
 func decodeStep(name string, file stepFile) (CommandStep, error) {
 	if file.Command == "" && file.Dir == "" && len(file.Env) == 0 && file.TimeoutMin == nil {
 		return CommandStep{}, nil
@@ -281,8 +289,10 @@ func decodeStep(name string, file stepFile) (CommandStep, error) {
 	return CommandStep{Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}, nil
 }
 
-// CheckDirs loads the drift config under dirs and refuses a declared step whose dir is no existing directory in the worktree at worktreeRoot, whose anchored directory is anchorDir.
-// A hub-wide drift config write runs it against the prime, so a dir that would fail every capture or compare is refused when it is written.
+// CheckDirs loads the drift config under dirs and refuses a declared step whose dir is no existing directory.
+// The dir is resolved in the worktree at worktreeRoot, whose anchored directory is anchorDir.
+// A hub-wide drift config write runs it against the prime.
+// So a dir that would fail every capture or compare is refused when it is written.
 func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 	cfg, err := LoadConfig(dirs)
 	if err != nil {
@@ -303,8 +313,10 @@ func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 	return nil
 }
 
-// CheckRetiredPlaceholders loads the drift config under dirs and, while drift is enabled, refuses a step a run executes that still holds the retired {skip_file} placeholder, with the refusal the step itself would meet.
-// Preflight runs it, so a leftover the reconcile could not remove stops a run before its first agent and not at a Drift row.
+// CheckRetiredPlaceholders loads the drift config under dirs and, while drift is enabled, refuses a retired placeholder.
+// It refuses a step a run executes that still holds {skip_file}, with the refusal the step itself would meet.
+// Preflight runs it, so a leftover the reconcile could not remove stops a run before its first agent.
+// The stop comes there, not at a Drift row.
 // The compare runs only under diff command, so under diff lines its command is left alone.
 func CheckRetiredPlaceholders(dirs configengine.Dirs) error {
 	cfg, err := LoadConfig(dirs)
@@ -341,8 +353,8 @@ func (c Config) Step(name string) (CommandStep, error) {
 	return step, nil
 }
 
-// StepWithHubEnv returns the declared step as Step does, with the env config module's variables loaded under dirs laid beneath the step's own env,
-// so the command runs with both and the step's value wins a name both hold.
+// StepWithHubEnv returns the declared capture or compare step, its env laid over the env config module's variables.
+// The variables are loaded under dirs, so the command runs with both and the step's value wins a name both hold.
 // A refused step and an env config that fails to load are errors.
 func (c Config) StepWithHubEnv(name string, dirs configengine.Dirs) (CommandStep, error) {
 	step, err := c.Step(name)

@@ -1,18 +1,11 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand dispatch.
-// It supports these subcommands.
-// "build" (default) clones the Hub.
-// "suite" runs the embedded SANDBOX-CORE-SUITE agent.
-// "reed-suite" runs the embedded SANDBOX-REED-SUITE agent.
-// "reed-watch-suite" runs the embedded SANDBOX-REED-WATCH-SUITE agent, the non-destructive single-attach-session counterpart to reed-suite.
-// "shuttle-suite" runs the embedded SANDBOX-SHUTTLE-SUITE agent.
-// "creel-suite" runs the embedded SANDBOX-CREEL-SUITE agent.
-// "burler-suite" runs the embedded SANDBOX-BURLER-SUITE agent.
-// "webster-suite" runs the embedded SANDBOX-WEBSTER-SUITE agent.
-// "fabric-suite" runs the embedded SANDBOX-FABRIC-SUITE agent.
-// "fetch" collects the agent-written report into .scratch.
-// fabric-suite runs against the same shared Hub every other suite uses -- it has no dedicated hub or clone step of its own, matching the other suites.
-// Only -parent and -loomyard live at the top level.
-// -reset is a build-subcommand flag, parsed after the "build" token like suite/reed-suite/reed-watch-suite/shuttle-suite/creel-suite/burler-suite/webster-suite/fabric-suite parse their -claude/-prompt flags.
+// The build subcommand is the default: it clones the Hub, and with -reset it removes an existing Hub first.
+// Each suite subcommand runs one embedded agent suite against the shared Hub.
+// Every suite uses the same Hub, and none has a hub or clone step of its own.
+// The fetch subcommand collects the agent-written report into .scratch.
+// Only -parent and -loomyard are top-level flags, parsed before the subcommand.
+// -reset is a build flag, and each suite subcommand parses its own -claude and -prompt flags.
+// Those flags follow the subcommand token.
 
 package main
 
@@ -41,20 +34,21 @@ var cloneRun = func(parentDir, lymPath string) error {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		if _, isExitError := err.(*exec.ExitError); isExitError {
-			// Subprocess printed its own error; just propagate the exit code
+			// The subprocess printed its own error; propagate its exit code.
 			return err
 		}
-		// Startup error (resolved binary vanished, permission denied, etc.); add
-		// context pointing at deploy-dev as an alternative to the resolved path.
+		// Startup error (resolved binary vanished, permission denied, etc.).
+		// Add context that points at deploy-dev as an alternative to the resolved path.
 		return fmt.Errorf("failed to start resolved lym binary %s (deploy it, or run deploy-dev): %w", lymPath, err)
 	}
 	return nil
 }
 
-// removeAll is a testability seam for os.RemoveAll, matching the pattern in internal/fabricengine/clone.go.
+// removeAll is a testability seam for os.RemoveAll.
 var removeAll = os.RemoveAll
 
-// decideClone determines whether to clone the Hub. Returns error on failure.
+// decideClone clones the Hub at hubPath when none exists or reset is set; with reset, it removes the existing Hub first.
+// It returns an error if the removal or the clone fails.
 func decideClone(hubPath string, reset bool) error {
 	_, err := os.Stat(hubPath)
 	if err == nil {
@@ -63,7 +57,6 @@ func decideClone(hubPath string, reset bool) error {
 			fmt.Println("Use -reset to rebuild it")
 			return nil
 		}
-		// Reset: remove the Hub and proceed to clone
 		if err := removeAll(hubPath); err != nil {
 			return fmt.Errorf("remove hub: %w", err)
 		}
@@ -77,13 +70,12 @@ func decideClone(hubPath string, reset bool) error {
 		return err
 	}
 
-	// Run the clone command
 	parentDir := filepath.Dir(hubPath)
 	return cloneRun(parentDir, lymPath)
 }
 
-// run is the testable entry point. Parses argv, resolves -parent, and
-// dispatches to the appropriate subcommand. Returns 0 on success, 1 on error.
+// run is the testable entry point: it parses argv, resolves -parent, and dispatches to the subcommand.
+// It returns 0 on success and 1 on error.
 func run(argv []string) int {
 	fs := flag.NewFlagSet("sandbox", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)

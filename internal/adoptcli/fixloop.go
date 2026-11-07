@@ -1,4 +1,5 @@
-// fixloop.go is the fix loop of a failed adopt check: it files the subject's fix task through the front-task package, up to the try limit, and words the slug and the body of that task.
+// fixloop.go files the fix task of a failed adopt check through the `fronttask` package, up to the try limit.
+// It also words that task's slug and body.
 
 package adoptcli
 
@@ -27,25 +28,30 @@ import (
 const (
 	// fixSlugPrefixHead opens the slug of every fix task.
 	fixSlugPrefixHead = "adopt-fix-"
-	// fixSlugNumberRoom is the room the `-t999` suffix of a fix slug keeps within boardengine.MaxSlugLength.
+	// fixSlugNumberRoom is the room the `-t999` suffix of a fix slug keeps within `boardengine.MaxSlugLength`.
 	fixSlugNumberRoom = len("-t999")
 	// fixSlugHashDigits is the count of hex digits of the subject's SHA-256 a cut prefix carries.
 	fixSlugHashDigits = 6
-	// fixExcerptLeadLines and fixExcerptLines bound the suite.log excerpt of one failed test: the lines before its first line and the lines in all.
+	// fixExcerptLeadLines and fixExcerptLines bound each excerpt: lead lines before the test's first line, and total lines.
 	fixExcerptLeadLines = 2
 	fixExcerptLines     = 12
 	// fixRecipe and fixProfile are the darn recipe and run profile every fix task runs.
 	fixRecipe  = "darn"
 	fixProfile = "light"
-	// fixLabelBug is the type label every fix task carries, and fixLabelGate the label added when the board's vocabulary knows it.
+	// fixLabelBug is the type label every fix task carries; fixLabelGate is added when the board's vocabulary knows it.
 	fixLabelBug  = "bug"
 	fixLabelGate = "gate"
 )
 
-// fixDeps holds the seams of one subject's failed end: the subject, its scratch directory, its project (none for `root`), this machine's name and the try limit.
-// Tasks reads the board's entries, and RunRecord reads the batten run record of a slug, reporting false when none exists.
-// EscalationEligible reports whether the run of a slug that is awaiting stands at a producer whose escalation the arbiter admits.
-// RunRecordSlugs lists the names of the batten run directories, TaskBranchSlugs the slugs starting with a prefix whose task branch exists, and Known reports whether the board's vocabulary knows a label.
+// fixDeps holds the seams of one subject's failed end.
+// Subject names the subject; Dir is its scratch directory; Project is its project, none for `root`;
+// Machine is this machine's name, and TryLimit is the try limit.
+// Tasks reads the board's entries.
+// RunRecord reads the batten run record of a slug, reporting false when none exists.
+// EscalationEligible reports whether a slug's awaiting run stands at a producer whose escalation the arbiter admits.
+// RunRecordSlugs lists the names of the batten run directories.
+// TaskBranchSlugs lists the slugs starting with a prefix whose task branch exists.
+// Known reports whether the board's vocabulary knows a label.
 // FrontDeps are the seams the front task's filing and removal read.
 type fixDeps struct {
 	Subject            string
@@ -62,7 +68,8 @@ type fixDeps struct {
 	FrontDeps          fronttask.Deps
 }
 
-// fixRunHalted reads a batten run's status as halted: the state blocked or failed, or awaiting with no admitted escalation.
+// fixRunHalted reports whether the batten run that status describes is halted:
+// its state is blocked or failed, or awaiting with no admitted escalation.
 func fixRunHalted(status shedengine.Status, escalationEligible bool) bool {
 	switch status.State {
 	case shedengine.StateBlocked, shedengine.StateFailed:
@@ -73,8 +80,11 @@ func fixRunHalted(status shedengine.Status, escalationEligible bool) bool {
 	return false
 }
 
-// fixSlugPrefix returns the slug prefix of the subject's fix tasks: `adopt-fix-<subject>` when that and `-t999` fit boardengine.MaxSlugLength.
-// Otherwise it is `adopt-fix-`, the subject cut short, a hyphen and the first six hex digits of the full subject's SHA-256, cut to leave the same room, so two long subjects sharing their cut get two prefixes.
+// fixSlugPrefix returns the slug prefix of the subject's fix tasks:
+// `adopt-fix-<subject>` when that and `-t999` fit `boardengine.MaxSlugLength`.
+// Otherwise the prefix is `adopt-fix-`, the subject cut short, and a hyphen;
+// the tail is the first `fixSlugHashDigits` hex digits of the full subject's SHA-256.
+// The cut leaves room for the tail, so two long subjects sharing their cut get two prefixes.
 func fixSlugPrefix(subject string) string {
 	if full := fixSlugPrefixHead + subject; len(full)+fixSlugNumberRoom <= boardengine.MaxSlugLength {
 		return full
@@ -85,7 +95,8 @@ func fixSlugPrefix(subject string) string {
 	return fixSlugPrefixHead + strings.TrimRight(subject[:room], "-") + tail
 }
 
-// nextFixSlug returns `<prefix>-t<N>` with N one more than the highest N of a `<prefix>-t<N>` slug among taken, 1 when none; any other slug is ignored.
+// nextFixSlug returns `<prefix>-t<N>` with N one more than the highest N among the `<prefix>-t<N>` slugs in taken.
+// N is 1 when none of them exists, and any other slug is ignored.
 func nextFixSlug(prefix string, taken []string) string {
 	highest := 0
 	for _, slug := range taken {
@@ -102,7 +113,8 @@ func nextFixSlug(prefix string, taken []string) string {
 	return prefix + "-t" + strconv.Itoa(highest+1)
 }
 
-// failedTiers returns the record's failed tiers as `tier<N>` words and its failed tests as `<package> <test>` lines, the tests capped at maxListedFailures.
+// failedTiers returns the failed tiers of record as `tier<N>` words and its failed tests as `<package> <test>` lines.
+// The lines are capped at `maxListedFailures`, and more counts the failed tests past that cap.
 func failedTiers(record CheckRecord) (tiers, tests []string, more int) {
 	for _, tier := range record.Tiers {
 		if tier.Outcome != checkFailed {
@@ -120,8 +132,11 @@ func failedTiers(record CheckRecord) (tiers, tests []string, more int) {
 	return tiers, tests, more
 }
 
-// fixBody renders the body of the subject's fix task: the failing tiers, the failed tests the gate named, an excerpt of suiteLog around each failed test's first line, the instruction to diagnose first and the stop condition for a machine failure.
-// An excerpt starts a few lines before the test's first line in suiteLog and holds a bounded number of lines; a test whose first line suiteLog does not hold gets none.
+// fixBody renders the body of the subject's fix task.
+// It names the failing tiers and failed tests, quoting an excerpt of suiteLog around each failed test's first line.
+// It tells the agent to diagnose the failure first, and gives the stop condition for a machine failure.
+// An excerpt starts a few lines before the test's first line in suiteLog and holds a bounded number of lines.
+// A test whose first line, or its name when it has none, appears in no line of suiteLog gets no excerpt.
 func fixBody(subject string, record CheckRecord, suiteLog string) string {
 	tiers, _, _ := failedTiers(record)
 	logLines := strings.Split(suiteLog, "\n")
@@ -177,11 +192,17 @@ func fixBody(subject string, record CheckRecord, suiteLog string) string {
 
 // failedEnd handles a failed adopt check that recorded a failed tier, and returns the lines of its notice.
 // In order, each case ends the call with its lines:
-//  1. The subject's own fix task stands open and healthy (released, starting, running, paused, or awaiting with an admitted escalation): nothing is filed or removed.
-//  2. Another front task stands open in the subject's worktree: nothing is filed or removed.
-//  3. The try count is at the limit: nothing is filed or removed.
-//  4. The own fix task is a draft or halted: it is removed, and a failed removal files nothing.
-//  5. A fix task is filed, with the next free slug, and the try count rises by one between the entry's creation and its release.
+//  1. The subject's own fix task stands open and healthy:
+//     released, starting, running, paused, or awaiting with an admitted escalation.
+//     Nothing is filed or removed.
+//  2. Another front task stands open in the subject's worktree.
+//     Nothing is filed or removed.
+//  3. The try count is at the limit.
+//     Nothing is filed or removed.
+//  4. The own fix task is a draft or halted, and it is removed.
+//     A failed removal files nothing.
+//  5. A fix task is filed with the next free slug.
+//     The try count rises by one between the entry's creation and its release.
 //
 // It never starts a pass of the task: its parent's dobby starts it from the empty status.
 func failedEnd(deps fixDeps, record CheckRecord) []string {
@@ -263,7 +284,8 @@ func failedEnd(deps fixDeps, record CheckRecord) []string {
 
 // judgeOwnFix reads the state of the subject's own fix task.
 // halted is true for a task to remove: a draft or other closed status, or a run the batten run record reads halted.
-// Otherwise state words the open task and handStep names what the operator takes to move or drop it.
+// Otherwise state describes the open task.
+// handStep names what the operator takes to move or drop it.
 func judgeOwnFix(deps fixDeps, own boardengine.Task) (state, handStep string, halted bool, err error) {
 	drop := fmt.Sprintf("to drop it run `lym batten cancel %s --remove`, then `%s`, whose removal runs its adopt-check action", own.Slug, boardengine.RemoveCommand(own.Slug))
 	if boardengine.IsEmptyStatus(own.Status) {
@@ -290,7 +312,8 @@ func judgeOwnFix(deps fixDeps, own boardengine.Task) (state, handStep string, ha
 	return string(status.State), drop, false, nil
 }
 
-// takenFixSlugs returns the slugs a new fix task of the subject must not reuse: the board's, the batten run directories' and the task branches' of its prefix.
+// takenFixSlugs returns the slugs a new fix task of the subject must not reuse:
+// the board's, the batten run directories' and the task branches' of its prefix.
 func takenFixSlugs(deps fixDeps, tasks []boardengine.Task) ([]string, error) {
 	taken := make([]string, 0, len(tasks))
 	for _, task := range tasks {
@@ -318,7 +341,8 @@ func fixFilingError(deps fixDeps, err error) string {
 }
 
 // fixRemovalError words a failed removal of the halted or draft fix task slug.
-// A step before the record's drop leaves the record standing, so the hand removal alone is the way forward; a failure of the entry's removal adds the re-run.
+// A step before the record's drop leaves the record standing, so the hand removal alone is the way forward;
+// a failure of the entry's removal adds the re-run.
 func fixRemovalError(deps fixDeps, slug string, err error) string {
 	line := fmt.Sprintf("the fix task %s of %s was not removed, so no new one was filed: %v", slug, deps.Subject, err)
 	var removal *fronttask.RemoveError
@@ -329,7 +353,8 @@ func fixRemovalError(deps fixDeps, slug string, err error) string {
 }
 
 // hubFixDeps fills fixDeps for the failed end of the check of subject over the hub of prime.
-// The try limit is `adopt_fix_tries` of the config stack of the subject's worktree, and the board's vocabulary is the prime's.
+// The try limit is `adopt_fix_tries` of the config stack of the subject's worktree,
+// and the board's vocabulary is the prime's.
 func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 	worktree, err := resolveSubjectWorktree(prime, subject)
 	if err != nil {
@@ -389,7 +414,9 @@ func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 	}, nil
 }
 
-// hubEscalationEligible returns the escalation read of the hub of prime: whether the batten run of a slug stands at a producer whose escalation the arbiter admits, over the readers of the slug's pair.
+// hubEscalationEligible returns the escalation read of the hub of prime:
+// whether the batten run of a slug stands at a producer whose escalation the arbiter admits.
+// The read goes through the readers of the slug's pair.
 // A run record or a pair that does not read counts as not eligible.
 func hubEscalationEligible(prime *lymcwd.Location) func(slug string) bool {
 	return func(slug string) bool {

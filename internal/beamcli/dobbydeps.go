@@ -1,4 +1,7 @@
-// dobbydeps.go fills dobbyengine's seams over a real hub: the runs and tasks it reads, the pass it spawns, the notices, owner pause and board tidy it sends, the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
+// dobbydeps.go fills the seams of dobbyengine.Run over a hub.
+// It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
+// It also covers the owner pause and board tidy it sends.
+// It also covers the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
 
 package beamcli
 
@@ -57,14 +60,15 @@ const (
 	defaultNoticeQuiet = 30 * time.Minute
 	// tidyModelSpec is the model spec the board-tidy agent runs on.
 	tidyModelSpec = "sonnet[medium]"
-	// passErrorTailBytes bounds the output of a pass dobby keeps to read its error text from.
+	// passErrorTailBytes bounds how much of a pass's output dobby keeps to read its error text from.
 	passErrorTailBytes = 16 << 10
 	// passErrorTextRunes bounds the error text of a pass that printed no envelope.
 	passErrorTextRunes = 500
 )
 
 // registerDobby records this process as the dobby of geom in the run-process registry under runProcDir.
-// The owner is the beam's slug, so the pair teardown of a landed beam ends its dobby, and the hub owner for the prime.
+// The owner is the beam's slug, so the pair teardown of a landed beam ends its dobby;
+// the prime's dobby has the hub owner instead.
 func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
 	owner := geom.Slug
 	if owner == "" {
@@ -73,8 +77,10 @@ func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
 	return runproc.Register(runProcDir, owner, runproc.SelfRecord(runproc.RoleDobby))
 }
 
-// hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom, with its log lines appended to the file the dobby tells.
-// The dobby's own working directory is the hub root, so every path comes from prime and geom, and only the pass spawn starts its process in the prime's anchor.
+// hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
+// Its log lines are appended to the file the dobby tells.
+// The dobby's own working directory is the hub root, so every path comes from prime and geom.
+// Only the pass spawn starts its process in the prime's anchor.
 func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
 	worktree, err := lymcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
@@ -237,7 +243,8 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 }
 
 // waitReminderDeps fills the wait reminder seams of the dobby of worktree, whose beam slug is slug, over the hub of prime.
-// The rows are the ones of loomshed.OperatorWaitRows that wait on the operator alone: Beam-Await waits on the beam's members too.
+// Only the wait rows that wait on the operator alone get reminders:
+// a row such as Beam-Await also waits on the beam's members, so it gets none.
 // The Slack geometry resolves at each read, so a hub it fails for loses its reminders and never its dobby.
 func waitReminderDeps(prime, worktree *lymcwd.Location, slug, pauseRecordPath string, dirs configengine.Dirs) dobbyengine.WaitReminderDeps {
 	return dobbyengine.WaitReminderDeps{
@@ -306,7 +313,8 @@ func beamLandingsSince(prime, beam *lymcwd.Location, slug, from string) (string,
 	return head, landingsPast(line, from), nil
 }
 
-// landingsPast lists the commits of line after the one named from, each as a short object name and subject, and leaves out every commit that only records lym's own state.
+// landingsPast lists the commits of line after the one named from, each as a short object name and subject.
+// It leaves out every commit that only records lym's own state.
 // A from not on the line lists the whole line.
 func landingsPast(line []fabricengine.LineCommit, from string) []string {
 	start := 0
@@ -327,7 +335,8 @@ func landingsPast(line []fabricengine.LineCommit, from string) []string {
 	return landed
 }
 
-// holdReexec returns a binary check that runs check only while holds reports false, so a re-exec never cuts what holds guards.
+// holdReexec returns a binary check that runs check only while holds reports false.
+// It keeps a re-exec from cutting what holds guards.
 func holdReexec(holds func() bool, check func(beforeExec func(), failed func(error))) func(beforeExec func(), failed func(error)) {
 	return func(beforeExec func(), failed func(error)) {
 		if holds() {
@@ -342,7 +351,8 @@ const slackRelayGaveUpEpisode = "slack-relay-gave-up"
 
 // ensureSlackRelay brings the hub's Slack relay back on a tick of the prime's dobby, while the operator is away.
 // It starts nothing for a hub with no Slack setup and nothing while the presence is terminal.
-// A start that gave up, because the relay died young five starts in a row, is logged at Warn once per episode through episodes and is no error, so the tick goes on.
+// A start that gave up is logged at Warn once per episode through episodes.
+// It gave up because the relay died young too many starts in a row, and it is not an error, so the tick goes on.
 func ensureSlackRelay(prime *lymcwd.Location, episodes *logger.EpisodeSet) error {
 	geometry, err := hubgeom.SlackGeometry(prime.HubPath)
 	if err != nil {
@@ -360,7 +370,10 @@ func ensureSlackRelay(prime *lymcwd.Location, episodes *logger.EpisodeSet) error
 	return nil
 }
 
-// beamLandReading reads whether the beam slug can land, which it can once it is flagged ready and nothing works under it, and, for a beam that can, which other machine owns its parent and what `lym adopt` takes to move it.
+// beamLandReading reads whether the beam slug can land.
+// A beam can land once it is flagged ready and nothing works under it.
+// For a beam that can land, it reports the owner of its parent when another machine holds it.
+// That report also carries the subject `lym adopt` takes to move the beam.
 func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReading, error) {
 	ready, err := hubLandDeps(prime).Ready(slug)
 	if err != nil || !ready {
@@ -402,8 +415,10 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 	return reading, nil
 }
 
-// runShedDuration reads key from the batten recipe's Run-Shed row as a count of unit, or fallback when the row names none or a count that is not positive.
-// The row's notice_probe_s is the cadence the run's own wait probes at, and its notice_quiet_min the run notices' quiet window.
+// runShedDuration reads key from the batten recipe's Run-Shed row as a count of unit.
+// It returns fallback when the row names no count or a count that is not positive.
+// The row's notice_probe_s is the cadence the run's own wait probes at.
+// Its notice_quiet_min is the quiet window of the run notices.
 func runShedDuration(key string, unit, fallback time.Duration) (time.Duration, error) {
 	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
 	if err != nil {
@@ -418,7 +433,8 @@ func runShedDuration(key string, unit, fallback time.Duration) (time.Duration, e
 	return fallback, nil
 }
 
-// durationFromCount reads a recipe value as a count of unit, or fallback when the value is absent, not a number or not positive.
+// durationFromCount reads a recipe value as a count of unit.
+// It returns fallback when the value is absent, not a number or not positive.
 func durationFromCount(value any, unit, fallback time.Duration) time.Duration {
 	switch count := value.(type) {
 	case int:
@@ -494,7 +510,8 @@ func liftOwnerPause(prime *lymcwd.Location, recordPath, slug string) error {
 	return nil
 }
 
-// spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor, and delivers its exit once, which reaps it.
+// spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor.
+// It delivers the process's exit once, which reaps it.
 // The pass registers itself in the run-process registry as the run's batten, so dobby registers nothing.
 func spawnPass(geom dobbyengine.Geometry, slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 	if testing.Testing() {
@@ -550,7 +567,8 @@ func (b *tailBuffer) Bytes() []byte {
 	return slices.Clone(b.data)
 }
 
-// passErrorText reads the error text of a pass from what it printed: the error of the last JSON envelope line, else the tail of the output, else the wait error.
+// passErrorText reads the error text of a pass from what it printed:
+// the error of the last JSON envelope line, else the tail of the output, else the wait error.
 func passErrorText(printed []byte, waitErr error) string {
 	lines := strings.Split(strings.TrimSpace(string(printed)), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {

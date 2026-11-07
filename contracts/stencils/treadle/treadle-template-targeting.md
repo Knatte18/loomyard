@@ -1,8 +1,12 @@
-<!-- This is the pre-round targeting judge prompt. It is filled via
-     internal/stencil.Fill (targeting.go's runTargeting) and handed to the shuttle as the agent's entire instruction set — the call runs as a single clean-room agent told only "read this file and do exactly what it says".
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires every marker non-empty, parent_directive included (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective), and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
-     Unlike the judge templates, this call produces no verdict — its only output is the seed brief itself, free-form prose with no frontmatter. -->
+<!-- This is the pre-round targeting judge prompt.
+     internal/stencil.Fill fills it in runTargeting.
+     It is the shuttle agent's entire instruction set:
+     the call runs as a single clean-room agent told only "read this file and do exactly what it says".
+     Every marker below is a top-level {{.X}} substitution.
+     stencil.Fill requires every marker non-empty, including parent_directive (rendered by internal/parentdirective)
+     and edit_directive (rendered unconditionally by internal/editdirective).
+     The file has no {{if}}/{{range}} conditionals, because a required marker inside a conditional branch renders silently blank when present-but-empty.
+     The call produces no verdict; its only output is the seed brief, free-form prose with no frontmatter. -->
 
 # Treadle pre-round targeting judge
 

@@ -1,5 +1,4 @@
 // verifyparse.go parses a verify command's combined output into failure identities.
-// It lives in websterengine because the verify gate is its only consumer.
 
 package websterengine
 
@@ -20,13 +19,15 @@ type VerifyFailure struct {
 	ID string `yaml:"id"`
 	// Kind is one of FailureKindTest, FailureKindPackage, FailureKindOpaque.
 	Kind string `yaml:"kind"`
-	// Package is the import path the identity belongs to: the test's package or the failing package itself, and empty for an opaque identity.
+	// Package is the import path the identity belongs to: the test's package, or the failing package itself.
+	// It is empty for an opaque identity.
 	Package string `yaml:"package,omitempty"`
 	// Tail is the last lines of the identity's output.
 	Tail string `yaml:"tail"`
 }
 
-// opaqueFailureID is the id of the single identity reported when a red verify run yields nothing parseable: a failing go vet, go build, or non-Go command.
+// opaqueFailureID is the id of the single identity reported when a red verify run yields nothing parseable.
+// It covers a failing go vet, go build, or non-Go command.
 const opaqueFailureID = "verify-command"
 
 // failureTailMaxLines caps every VerifyFailure.Tail.
@@ -46,16 +47,19 @@ const (
 const subtestIndent = 4
 
 // ParseVerifyFailures returns the failure identities of a failed verify run's output, as the verify gate names them.
-// `lym webster verify` calls it so the verb reports the identities the gate does.
+// Callers that report a failed run use it so they name the same identities the gate does.
 func ParseVerifyFailures(output string) []VerifyFailure {
 	return parseVerifyFailures(output, false)
 }
 
 // parseVerifyFailures returns the failure identities in output, in first-seen order and deduplicated by id.
 // It returns nil when passed is true.
-// A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it, so a failing TestX/a and a failing TestX/b are distinct identities.
-// A package identity is "<package>" and marks a failure no named test explains:
-// a build or setup failure, a failing package with no failing test, or a test binary that crashed (a panic, a fatal error, a timeout) or exited before reporting its result, which also hides every test it never ran.
+// A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it.
+// So a failing TestX/a and a failing TestX/b are distinct identities.
+// A package identity is "<package>" and marks a failure no named test explains.
+// That covers a build or setup failure and a failing package with no failing test.
+// It also covers a test binary that crashed (a panic, a fatal error, a timeout) or exited before reporting its result.
+// Such a binary hides every test it never ran.
 // Each test and package identity carries its import path in Package.
 // The opaque identity has none.
 // When neither is found, one opaque identity (opaqueFailureID) carries the output tail.
@@ -132,10 +136,12 @@ type packageBlock struct {
 	crashed bool
 }
 
-// addHeader records the failing test name whose header sits at indent, with the following lines nested deeper than it as its tail.
-// go test prints a top-level header at column 0 and nests each subtest header four spaces per level under its parent's block,
-// so an indented header is accepted only at exactly its name's nesting depth and under an already-recorded parent;
-// any other indented header is a test's own log output, never a new identity.
+// addHeader records the failing test name whose header sits at indent.
+// The following lines nested deeper than indent become its tail.
+// go test prints a top-level header at column 0.
+// It nests each subtest header four spaces per level under its parent's block,
+// so an indented header is accepted only at exactly its name's nesting depth and under an already-recorded parent.
+// Any other indented header is a test's own log output, never a new identity.
 func (b *packageBlock) addHeader(name string, indent int, following []string) {
 	if indent != 0 {
 		slash := strings.LastIndex(name, "/")

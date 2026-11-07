@@ -1,12 +1,6 @@
-// split.go implements the sentence/clause-splitting core that decides where a semantic line break
-// goes.
-// It is a Go port of the portable layer of millhouse's
-// plugins/mill/scripts/tools/pydocreflow/pydocreflow.py (split_sentences, _semicolon_split,
-// _conjunction_split, _has_subject_and_verb, the abbreviations set, the backtick/paren-span guards,
-// and the Oxford-comma "only the first eligible comma" heuristic).
-// The AST/tokenize discovery layer and the Args:/Returns:-style structural reflow layer from that
-// script are Python- and Google-docstring-specific and are intentionally not ported;
-// see reflow.go instead.
+// split.go holds the splitter that decides where a semantic line break goes.
+// It breaks at sentence ends, semicolons, and independent-clause conjunctions.
+// The docstring structure handling is not here; reflow.go does that part.
 
 package main
 
@@ -83,8 +77,8 @@ func lastIndexAny(s string, cutset string) int {
 	return best
 }
 
-// looksLikeListMarker reports whether the period at pos closes a numbered-list marker like "1." at the
-// start of an item, not a decimal/sentence-ending period.
+// looksLikeListMarker reports whether the period at pos ends a numbered-list marker.
+// Such a marker is a number like "1." at the start of an item, not a sentence end.
 func looksLikeListMarker(text string, pos int) bool {
 	return listMarkerRE.MatchString(text[:pos])
 }
@@ -144,8 +138,10 @@ func splitClauses(sentence string) []string {
 	return out
 }
 
-// semicolonSplit splits text at semicolons, skipping ones inside a backtick/paren span or followed by a
-// bare past-participle/gerund continuation phrase ("serialised to X") rather than a new independent clause.
+// semicolonSplit splits text at semicolons.
+// It skips a semicolon inside a backtick or paren span.
+// It also skips one followed by a bare past-participle or gerund phrase such as "serialised to X".
+// That phrase continues the sentence rather than starting a new clause.
 func semicolonSplit(text string) []string {
 	var parts []string
 	last := 0
@@ -165,19 +161,19 @@ func semicolonSplit(text string) []string {
 	return parts
 }
 
-// hasSubjectAndVerb is a cheap proxy for "has its own subject and verb": an independent clause needs at
-// least two real words. A bare one-word tail ("or None.") is a compound object/alternative, not a new clause.
+// hasSubjectAndVerb is a cheap proxy for "has its own subject and verb".
+// An independent clause needs at least two real words.
+// A bare one-word tail such as "or None." is a compound object or alternative, not a new clause.
 func hasSubjectAndVerb(clauseTail string) bool {
 	return len(wordRE.FindAllString(clauseTail, -1)) >= 2
 }
 
-// conjunctionSplit splits at ", and/but/or/nor " when it looks like an independent-clause join rather than
-// a list item or compound predicate.
+// conjunctionSplit splits at ", and/but/or/nor " when the text after it looks like an independent clause.
+// A list item or a compound predicate is not split.
 //
-// Heuristic: only the FIRST comma in the sentence is eligible -- a comma that already has an earlier
-// sibling comma in the same sentence signals an enumerated list (Oxford comma), not a two-clause join --
-// and the clause after the conjunction must itself contain at least two words (a proxy for "has its own
-// subject and verb").
+// Heuristic: only a comma with no earlier comma before it in the piece being split is eligible.
+// A later comma belongs to an enumerated list (an Oxford comma), not a two-clause join.
+// The clause after the conjunction must contain at least two words, a proxy for "has its own subject and verb".
 func conjunctionSplit(text string) []string {
 	var parts []string
 	last := 0
@@ -221,8 +217,8 @@ func conjunctionSplit(text string) []string {
 	return parts
 }
 
-// reflowText collapses existing hard-wraps in text and re-splits it into semantic lines (no indentation,
-// no trailing whitespace).
+// reflowText collapses existing hard-wraps in text and re-splits it into semantic lines.
+// Each returned line has no indentation and no trailing whitespace.
 func reflowText(text string) []string {
 	joined := strings.Join(strings.Fields(text), " ")
 	var lines []string
@@ -232,16 +228,14 @@ func reflowText(text string) []string {
 	return lines
 }
 
-// wrapLongLine is a last-resort fallback for a single already-atomic semantic line (one that
-// splitSentences/splitClauses found no further sentence, semicolon, or conjunction boundary to break at)
-// that is still too wide to read comfortably, especially in a side-by-side diff view. prefixLen is the
-// visual width of everything that precedes the content on its rendered line (indentation plus "// "). If
-// prefixLen+content already fits within maxWidth, or maxWidth is non-positive (disabled), content is
-// returned unchanged as a single-element slice.
+// wrapLongLine is a last-resort fallback for a line that no sentence, semicolon or conjunction split can shorten.
+// prefixLen is the visual width of everything before the content on its rendered line: indentation plus "// ".
+// The content is returned unchanged as a single-element slice when the line fits.
+// It fits when prefixLen plus the content's width is at most maxWidth, or when maxWidth is non-positive (disabled).
 //
-// This is a targeted exception, not a return to general fixed-column wrapping: it only ever fires on the
-// rare line semantic+clause splitting could not shorten, and it greedily packs words up to the column
-// budget rather than breaking mid-phrase at an arbitrary column.
+// This is a targeted exception to semantic line breaks, not general fixed-column wrapping.
+// It fires only on a line the boundary splitting could not shorten,
+// and it greedily packs words up to the column budget rather than breaking mid-phrase at an arbitrary column.
 func wrapLongLine(content string, prefixLen, maxWidth int) []string {
 	if maxWidth <= 0 || prefixLen+utf8.RuneCountInString(content) <= maxWidth {
 		return []string{content}

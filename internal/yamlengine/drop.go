@@ -9,9 +9,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DropKeys removes each named top-level key of the document's mapping together with its value and comments, and returns the rewritten document with one line "<key>: retired, removed" per key removed, in keys' order.
+// DropKeys removes each named top-level key of the document's mapping, with its value and comments.
+// It returns the rewritten document and one line "<key>: retired, removed" per key removed, in keys' order.
 // Every other key and comment is carried through yaml node editing, re-encoded with two-space indent.
-// The document comes back unchanged, with no lines, when it is empty or holds none of the keys, so a second pass is a no-op.
+// The document comes back unchanged, with no lines, when it is empty or holds none of the keys,
+// so a second pass is a no-op.
 // A document that does not parse, or whose root is not a mapping, returns an error.
 func DropKeys(existing []byte, keys []string) ([]byte, []string, error) {
 	document, root, err := parseMappingRoot(existing, "config")

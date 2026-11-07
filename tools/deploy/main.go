@@ -1,13 +1,18 @@
 // Command deploy is the only route by which lym and the loomyard plugins are installed.
 //
-// Production is the default and is what update-plugins.sh / update-plugins.cmd run: it puts the checked-out, committed code into production in one step.
-// It refuses a dirty working tree or a HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked files into the Claude Code plugin cache, and builds lym into the Go bin dir (`go env GOBIN`, else GOPATH/bin).
+// Production is the default and is what update-plugins.sh / update-plugins.cmd run:
+// it puts the checked-out, committed code into production in one step.
+// It refuses a dirty working tree or a HEAD that is not pushed to origin/main;
+// it mirrors every installed loomyard plugin's git-tracked files into the Claude Code plugin cache,
+// and it builds lym into the Go bin dir (`go env GOBIN`, else GOPATH/bin).
 // Nothing reaches production except through this step.
-// Every deploy installs lym by building it beside its target and renaming it over the target, so a process starting lym while it deploys never finds the file open for writing.
-// No pointer on origin records the deployed commit: each machine deploys on its own, so a shared one could not say what any one machine runs.
+// Every deploy installs lym by building it beside its target and renaming it over the target,
+// so a process starting lym while it deploys never finds the file open for writing.
+// No pointer on origin records the deployed commit:
+// each machine deploys on its own, so a shared one could not say what any one machine runs.
 //
-// -dev (deploy-dev / deploy-dev.cmd) builds the working tree as-is into <repoRoot>/.dev-bin (see
-// tools/internal/devbin) for internal tests, and touches nothing else.
+// -dev (deploy-dev / deploy-dev.cmd) builds the working tree as-is for internal tests:
+// it writes lym into <repoRoot>/.dev-bin (see tools/internal/devbin) and touches nothing else.
 //
 //	go run ./tools/deploy        # production: plugins + lym into the Go bin dir
 //	go run ./tools/deploy -dev   # dev: lym into <repoRoot>/.dev-bin
@@ -74,7 +79,8 @@ func run(dev bool) error {
 	tag := gitTag(root)
 	fmt.Printf("Building lym @ %s -> %s\n", tag, dest)
 
-	// Stamp internal/buildinfo.Channel so a dev-installed binary seeds but does not refresh an untouched stencil, and only a production-stamped binary refreshes one.
+	// Stamp internal/buildinfo.Channel so a dev-installed binary seeds but does not refresh an untouched stencil.
+	// Only a production-stamped binary refreshes one.
 	ldflags := "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=production"
 	if dev {
 		ldflags = "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"
@@ -82,9 +88,8 @@ func run(dev bool) error {
 	err = installBinary(dest, func(out string) error {
 		build := exec.Command("go", "build", "-o", out, "-ldflags", ldflags, "./cmd/lym")
 		build.Dir = root
-		// lym links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1
-		// explicitly: an environment that has disabled cgo must fail here at the
-		// compiler rather than produce a binary silently missing that linkage.
+		// lym links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1 explicitly:
+		// an environment that has disabled cgo must fail at the compiler, not produce a binary silently missing that linkage.
 		build.Env = append(os.Environ(), "CGO_ENABLED=1")
 		build.Stdout, build.Stderr = os.Stdout, os.Stderr
 		if err := build.Run(); err != nil {
@@ -116,8 +121,10 @@ func run(dev bool) error {
 	return nil
 }
 
-// installBinary has build write the binary to a temporary file beside dest and renames it over dest, so a process starting or running the old binary never finds dest open for writing, which exec refuses with ETXTBSY.
-// The rename stays on dest's filesystem, where it replaces the directory entry at once and a running process keeps the old file.
+// installBinary has build write the binary to a temporary file beside dest and renames it over dest,
+// so a process starting or running the old binary never finds dest open for writing, which exec refuses with ETXTBSY.
+// The rename stays on dest's filesystem, where it replaces the directory entry at once,
+// and a running process keeps the old file.
 // A failed build or rename removes the temporary file and leaves dest as it was.
 func installBinary(dest string, build func(out string) error) error {
 	tmp := filepath.Join(filepath.Dir(dest), "."+filepath.Base(dest)+".deploy-"+strconv.Itoa(os.Getpid()))
@@ -139,7 +146,7 @@ func binaryName() string {
 	return "lym"
 }
 
-// dirtyError refuses a production deploy from a working tree with any change git reports, since
+// dirtyError refuses a production deploy from a working tree with any change git reports:
 // production must be exactly a commit.
 func dirtyError(porcelain string) error {
 	if strings.TrimSpace(porcelain) == "" {
@@ -151,10 +158,12 @@ func dirtyError(porcelain string) error {
 // workBranch is where all work lands, and the only branch production deploys from.
 const workBranch = "main"
 
-// lymMainPackage is the main package path lym's Go build info carries, which tells a copy of lym on PATH from a foreign program of the same name.
+// lymMainPackage is the main package path lym's Go build info carries:
+// it tells a copy of lym on PATH from a foreign program of the same name.
 const lymMainPackage = "github.com/Knatte18/loomyard/cmd/lym"
 
-// pushedGate fetches origin and refuses a HEAD that is not on origin's workBranch, so production only ever runs pushed work.
+// pushedGate fetches origin and refuses a HEAD that is not on origin's workBranch;
+// production only ever runs pushed work.
 func pushedGate(root string) error {
 	if _, err := gitOut(root, "fetch", "--quiet", "origin"); err != nil {
 		return fmt.Errorf("git fetch origin: %w", err)
@@ -217,10 +226,11 @@ func parseMarketplace(data []byte) (marketplace, error) {
 	return m, nil
 }
 
-// syncPlugins mirrors each installed plugin's git-tracked files into its Claude Code cache
-// directory, <home>/.claude/plugins/cache/<marketplace>/<plugin>/<version>. `/plugin update` is
-// version-gated and skips an unchanged version, so this mirrors regardless of version. A plugin not
-// yet installed is skipped with the install command to run.
+// syncPlugins mirrors each installed plugin's git-tracked files into its Claude Code cache directory:
+// <home>/.claude/plugins/cache/<marketplace>/<plugin>/<version>.
+// `/plugin update` is version-gated and skips an unchanged version,
+// so this mirrors regardless of version.
+// A plugin not yet installed is skipped with the install command to run.
 func syncPlugins(root string) error {
 	data, err := os.ReadFile(filepath.Join(root, ".claude-plugin", "marketplace.json"))
 	if err != nil {
@@ -257,8 +267,8 @@ func syncPlugins(root string) error {
 }
 
 // mirrorFiles replaces target with exactly files, each a repo-relative slash path under sourceRel.
-// Clearing target first also removes anything built inside the cache (a plugin's build-on-first-run
-// binary), forcing a rebuild from the new source instead of running old code.
+// Clearing target first also removes anything built inside the cache, such as a plugin's build-on-first-run binary.
+// That forces a rebuild from the new source instead of running old code.
 func mirrorFiles(root, sourceRel string, files []string, target string) error {
 	if err := os.RemoveAll(target); err != nil {
 		return err
@@ -310,10 +320,12 @@ func copyEntry(src, dst string) error {
 	return out.Close()
 }
 
-// otherLymBinaries returns every file called name on PATH outside destDir whose Go build info names mainPackage, in PATH order:
-// a copy that shadows or is shadowed by the production binary is a stale install waiting to be run by mistake.
-// A foreign program of the same name is skipped,
-// and a file reached through a linked directory is reported once, under the first PATH entry that reaches it, or not at all when it is the production binary itself.
+// otherLymBinaries returns the files called name on PATH whose Go build info names mainPackage, in PATH order.
+// It leaves out destDir and the production binary itself.
+// A copy that shadows or is shadowed by the production binary is a stale install waiting to be run by mistake.
+// A foreign program of the same name is skipped.
+// A file reached through a linked directory is reported once, under the first PATH entry that reaches it.
+// The production binary is never reported, even when a linked directory reaches it.
 func otherLymBinaries(pathDirs []string, destDir, name, mainPackage string) []string {
 	var found []string
 	seenDirs := map[string]bool{normDir(destDir): true}

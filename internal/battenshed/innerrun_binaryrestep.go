@@ -1,5 +1,6 @@
-// innerrun_binaryrestep.go implements the halted arm's binary re-step:
-// after a Go driver hands back and exits, a deploy of a new lym re-steps the halted child once, through its bootstrap, so a fix lands without a parent turn.
+// innerrun_binaryrestep.go implements the halted arm's binary re-step.
+// After its Go driver hands back and exits, a deploy of a new lym re-steps the halted child once through its bootstrap.
+// The re-step lands a fix without a parent turn.
 
 package battenshed
 
@@ -17,15 +18,16 @@ import (
 )
 
 const (
-	// binaryRestepFileSuffix is the fixed suffix of the marker naming the halt and the build already re-stepped, joined onto the producer's own name.
+	// binaryRestepFileSuffix is the suffix joined onto the producer's name for the marker of a re-stepped halt and build.
 	binaryRestepFileSuffix = "-binary-restep"
 	// binaryRestepCeiling caps how far the interval between two build checks backs off while nothing changes.
 	binaryRestepCeiling = 30 * time.Minute
-	// binaryRestepAttemptCap is how many refused or failed spawns one halt and build take before the re-step gives up on them.
+	// binaryRestepAttemptCap caps the refused or failed spawns of one halt and build before the re-step gives up.
 	binaryRestepAttemptCap = 5
 )
 
-// binaryRestepFile returns the path of the binary re-step marker: the halt's stop key on its first line and the build label on its second.
+// binaryRestepFile returns the path of the binary re-step marker:
+// the halt's stop key on its first line and the build label on its second.
 func binaryRestepFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+binaryRestepFileSuffix)
 }
@@ -35,7 +37,7 @@ type restepWatch struct {
 	// stop is the stop key of the halt last seen, and build the on-disk build label last read for it.
 	stop  string
 	build string
-	// interval is the wait between two build checks, nextAt when the next one is due, and attempts the spawns refused or failed for this halt and build.
+	// interval is the wait between build checks; nextAt is the next due check; attempts counts refused or failed spawns.
 	interval time.Duration
 	nextAt   time.Time
 	attempts int
@@ -50,14 +52,21 @@ func restepStopKey(status shedengine.Status) string {
 
 // binaryRestep re-steps a halted driverless go child once per halt and build, through the child's bootstrap.
 // It acts only when every condition holds:
-// the child is blocked or failed, is not a landing halt, decision halt or tapestry, darn or sampler escalate halt that deps.HandBack marks, and its reed state holds no driver strand;
+// the child is blocked or failed;
+// its halt is not one that deps.HandBack marks as a landing, decision, tapestry, darn or sampler escalate halt;
+// its reed state holds no driver strand;
 // neither its run lock nor its driver lock is held;
-// the on-disk build differs from the child's last step's, and the task pair has no uncommitted path outside the run's records;
+// the on-disk build differs from the child's last step's,
+// and the task pair has no uncommitted path outside the run's records;
 // and the marker does not already name this halt and this build.
-// It spawns nothing while another machine owns the run, and a spawn refused as owned elsewhere pauses the run and writes no marker.
+// It spawns nothing while another machine owns the run,
+// and a spawn refused as owned elsewhere pauses the run and writes no marker.
 // The marker is written only after the spawn returns success, so a batten restart repeats nothing.
-// A refused spawn writes no marker and is retried at the next due check, at most binaryRestepAttemptCap times, and a dirty tree is retried the same way; neither fails the row.
-// The build and the dirty paths cost a process each, so the check runs once per interval, which starts at the notice probe, doubles up to binaryRestepCeiling while the halt and the build stay the same, and returns to the probe on a change.
+// A refused spawn writes no marker and is retried at the next due check, at most binaryRestepAttemptCap times,
+// and a dirty tree is retried the same way; neither fails the row.
+// The build and the dirty paths cost a process each, so the check runs once per interval.
+// The interval starts at the notice probe and doubles up to binaryRestepCeiling while the halt and build stay the same.
+// It returns to the probe on a change.
 func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *waitEnd {
 	status := w.status
 	if !p.restepOn || p.ownedBy != "" || (status.State != shedengine.StateBlocked && status.State != shedengine.StateFailed) || p.deps.HandBack(status) {
@@ -146,7 +155,8 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 	return nil
 }
 
-// restepSkipped counts a seam failure of the re-step check, named by failure, and leaves the halt to the usual handling, ending the wait only when the context was cancelled.
+// restepSkipped counts a seam failure of the re-step check, named by failure.
+// The halt then goes to the usual handling, and the wait ends only when the context was cancelled.
 func (p *innerRunProducer) restepSkipped(ctx context.Context, failure string, err error) *waitEnd {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return hardEnd(cerr)
@@ -155,7 +165,8 @@ func (p *innerRunProducer) restepSkipped(ctx context.Context, failure string, er
 	return nil
 }
 
-// restepRecorded reports whether the marker already names this halt and this build; an unreadable marker reads as not recorded.
+// restepRecorded reports whether the marker already names this halt and this build.
+// An unreadable marker reads as not recorded.
 func (p *innerRunProducer) restepRecorded(stop, build string) bool {
 	raw, err := os.ReadFile(binaryRestepFile(p.scratchDir, p.name))
 	if err != nil {

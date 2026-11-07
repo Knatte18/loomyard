@@ -1,4 +1,5 @@
-// usagelimit.go holds the orch's creel deliveries while the provider's usage limit stops its session, and wakes it once the limit should have reset.
+// usagelimit.go holds the orch's creel deliveries while the provider's usage limit stops its session.
+// It wakes the session once the limit should have reset.
 
 package orchengine
 
@@ -10,14 +11,19 @@ import (
 )
 
 const (
-	// usageLimitWakeDelay is how long after a limit's stated reset time the wake line goes, so the limit has lifted when the orch acts on it.
+	// usageLimitWakeDelay is how long after a limit's stated reset time the wake line goes,
+	// so the limit has lifted when the orch acts on it.
 	usageLimitWakeDelay = time.Minute
-	// usageLimitRetry is how long the watcher waits for an answer before it types the wake line again, and the first wait when the limit states no reset time.
+	// usageLimitRetry is how long the watcher waits for an answer before it types the wake line again.
+	// It is also the first wait when the limit states no reset time.
 	usageLimitRetry = 30 * time.Minute
 )
 
-// recordUsageLimit records in st the usage-limit reading of the orch's newest turn end, read at now, and reports whether it ended a limit st recorded.
-// A limited reading keeps the first sight's UsageLimitAt and sets the reset time and the next wake: one usageLimitWakeDelay past the reset time, at once when that has already passed, and usageLimitRetry from now when the limit states no reset time.
+// recordUsageLimit records in st the usage-limit reading of the orch's newest turn end, read at now.
+// It reports whether that reading ended a limit st recorded.
+// A limited reading keeps the first sight's UsageLimitAt and sets the reset time and the next wake:
+// one usageLimitWakeDelay past the reset time, or at once when that has already passed;
+// usageLimitRetry from now when the limit states no reset time.
 // A reading with no limit clears the record.
 func recordUsageLimit(st *State, limit shuttleengine.UsageLimit, now time.Time) (ended bool) {
 	if !limit.Limited {
@@ -44,9 +50,12 @@ func recordUsageLimit(st *State, limit shuttleengine.UsageLimit, now time.Time) 
 	return false
 }
 
-// tickUsageLimit is the idle tick while a usage limit stands: it renews the creel hold on the orch strand, so no mail reaches a session that cannot act on it, and starts no cycle.
-// Once UsageLimitWakeAt has passed it queues the wake line, the watcher's own delivery, which the hold lets through, and moves the next wake usageLimitRetry on.
-// A wake line that fails to render is warned about and skipped until the next wake; a creel failure goes through creelFailed and leaves the wake due, so the next tick tries again.
+// tickUsageLimit is the idle tick while a usage limit stands:
+// it renews the creel hold on the orch strand, so no mail reaches a session that cannot act on it, and starts no cycle.
+// Once UsageLimitWakeAt has passed, it queues the wake line, the watcher's own delivery which the hold lets through.
+// It moves the next wake usageLimitRetry on.
+// A wake line that fails to render is warned about and skipped until the next wake;
+// a creel failure goes through creelFailed and leaves the wake due, so the next tick tries again.
 func (w *Watcher) tickUsageLimit(st State, now time.Time) error {
 	held, err := w.renewHold(&st)
 	if err != nil || !held {

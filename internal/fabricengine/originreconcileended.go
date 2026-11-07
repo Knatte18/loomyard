@@ -1,5 +1,6 @@
-// originreconcileended.go holds the origin reconcile's ended-entries half.
-// It tears down, through the injected seam, the local pair of each run origin has ended, and clears the failed-push records of branches that are no longer local.
+// originreconcileended.go applies the origin reconcile's removal of ended runs.
+// It tears down each ended run's local pair through the injected teardown seam,
+// and it clears the failed-push records of branches that are no longer local.
 
 package fabricengine
 
@@ -25,7 +26,7 @@ func resolvePrime(l *lymcwd.Location) (*lymcwd.Location, error) {
 }
 
 // recordedRuns returns the slugs of the runs this machine holds a batten run record of at the prime, in order.
-// The run scope reads only its own run.
+// When scope names a run, only that run is read.
 func recordedRuns(l *lymcwd.Location, scope ReconcileScope) ([]string, error) {
 	prime, err := resolvePrime(l)
 	if err != nil {
@@ -73,7 +74,8 @@ func onlyRuns(ended EndedSet, runs []string) EndedSet {
 	return kept
 }
 
-// pairHasLocalPart reports whether this machine holds any part of slug's pair: its task worktree path, its sibling worktree path, its launchers or either local branch.
+// pairHasLocalPart reports whether this machine holds any part of slug's pair.
+// The parts are its task worktree path, its sibling worktree path, its launchers or either local branch.
 // A branch counts when it is named by the slug alone.
 func pairHasLocalPart(l *lymcwd.Location, slug string) (bool, error) {
 	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
@@ -98,11 +100,15 @@ func busyWayForward(busyOn string) string {
 	return "wait for the holder of the pair's teardown or weft write lock to release it, then re-run `lym cleanup --apply`"
 }
 
-// reconcileEnded applies the removal of an ended run to each entry of ended, in slug order, and reports each one in res.Entries as ended.
+// reconcileEnded applies the removal of an ended run to each entry of ended, in slug order;
+// it reports each one in res.Entries as ended.
 // ended holds only runs with a batten run record and none this machine's own landing has reached.
-// An entry with a local part of its pair is handed to seams.Teardown with the slug and whether an earlier run left a snapshot tag; one with none is reported with no teardown and no network call.
-// A busy teardown leaves the pair, and the entry is ended with the busy flag; any other teardown error is on the entry, and no other entry is stopped by it.
-// A judge-only scope, and the run scope's own run, whose driver is the caller, tear nothing down.
+// An entry with a local part of its pair is handed to seams.Teardown with the slug;
+// it also carries whether an earlier run left a snapshot tag.
+// One with none is reported with no teardown and no network call.
+// A busy teardown leaves the pair, and the entry is ended with the busy flag;
+// any other teardown error is on the entry, and no other entry is stopped by it.
+// A judge-only scope tears nothing down, and neither does the scope's own run, whose driver is the caller.
 // A nil Teardown seam tears nothing down either.
 // Each teardown's mutations are appended to res's record.
 func reconcileEnded(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams, ended EndedSet, res *OriginReport) error {
@@ -172,7 +178,9 @@ func withoutRemovedPairs(branches []BranchOutcome, entries []EntryOutcome) []Bra
 	return kept
 }
 
-// mergeEndedEntries returns classified with each slug an ended entry covers taken from ended, and the ended entries of no classified slug after them.
+// mergeEndedEntries returns classified with each slug an ended entry covers taken from ended;
+// it appends the ended entries of no classified slug after them.
+// The result is sorted by slug.
 func mergeEndedEntries(classified, ended []EntryOutcome) []EntryOutcome {
 	merged := slices.Clone(classified)
 	for _, entry := range ended {

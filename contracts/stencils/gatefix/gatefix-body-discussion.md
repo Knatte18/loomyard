@@ -1,7 +1,9 @@
-<!-- This is the job body of the cold fixer for the Discussion-Write row's gate, joined behind the shared cold frame gatefix-frame-cold by internal/gatefixer's RenderPrompt and filled via internal/stencil.
-     Its four markers are required top-level {{.X}} substitutions ({{.decision_record_path}}, {{.support_log_path}}, {{.relevant_path}}, {{.recheck_command}});
-     stencil.FillOptional requires all of them non-empty.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the job body of the cold fixer for the Discussion-Write row's gate.
+     internal/gatefixer's RenderPrompt joins it behind the shared cold frame gatefix-frame-cold and fills it via internal/stencil.
+     Its markers are required top-level {{.X}} substitutions
+     ({{.decision_record_path}}, {{.support_log_path}}, {{.relevant_path}}, {{.recheck_command}}),
+     and stencil.FillOptional requires each to be non-empty.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 ## The failure
 

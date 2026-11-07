@@ -1,10 +1,9 @@
 //go:build !windows
 
-// cache_other.go implements the non-Windows half of the token cache's file
-// hardening hook. On these platforms os.Chmod's mode bits are honored by the
-// filesystem, so the 0600 applied here is sufficient and no ACL work is
-// needed — unlike cache_windows.go, which must additionally strip inherited
-// ACLs because mode bits alone are ignored there.
+// cache_other.go implements the non-Windows half of the token cache's file hardening hook.
+// On these platforms the filesystem honors os.Chmod's mode bits,
+// so the 0600 applied here is sufficient and no ACL work is needed.
+// cache_windows.go must also strip inherited ACLs, because mode bits alone are ignored there.
 
 package githubclient
 

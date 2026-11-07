@@ -1,11 +1,9 @@
-// warpforward_integration_test.go is the Tier-2 real-git coverage for the
-// warp-only Fabric methods added in warpforward.go: CurrentBranch, IsAncestor,
-// and ResetHard. Each test drives a real paired
-// Fabric built from a hubforge hub's warp worktree and asserts the
-// resulting git state directly — no fake, no mock — since the whole point of
-// this file is proving the thin delegation actually reaches real git.
+// warpforward_integration_test.go is the Tier-2 real-git coverage for the warp-only Fabric methods in warpforward.go.
+// It covers CurrentBranch, IsAncestor and ResetHard.
+// Each test builds a real paired Fabric from a hubforge hub's warp worktree and asserts the git state directly.
+// There is no fake or mock, because the point is to prove the delegation reaches real git.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// The file is package fabricengine_test and shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -47,10 +45,9 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree proves ResetHard discards a later commit,
-// landing HEAD exactly at the older sha, when the warp checkout has no uncommitted changes.
-// This is the half of ResetHard's contract that is unaffected by the gate: a clean tracked
-// worktree is never dirty, so dirtyScopeTracked never refuses it.
+// TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree proves ResetHard discards a later commit.
+// It lands HEAD exactly at the older sha when the warp checkout has no uncommitted changes.
+// A clean tracked worktree is never dirty, so dirtyScopeTracked never refuses it.
 //
 //testtiming:keep ResetHard discarding a later commit and landing HEAD at the older sha on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
 func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
@@ -65,8 +62,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 
 	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
-	// A committed change past olderSHA, with no uncommitted change on top —
-	// ResetHard must still discard the committed history.
+	// A committed change past olderSHA, with no uncommitted change on top, is still discarded.
 	laterPath := filepath.Join(h.PrimeWorktree(), "reset-hard-later.txt")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 
@@ -82,11 +78,9 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_ResetHardRefusesDirtyWarpCheckout proves ResetHard refuses to run, leaving both
-// the later commit and the uncommitted working-tree change on disk, when the warp checkout has
-// uncommitted tracked changes. This is card 11's deliberate hardening of ResetHard's contract:
-// it no longer unconditionally discards, matching Pull's own pre-existing ErrWarpDirty check but
-// enforced at the ResetHard call site itself rather than only by callers who wrap it in Pull.
+// TestFabricWarp_ResetHardRefusesDirtyWarpCheckout proves ResetHard refuses to run on uncommitted tracked changes.
+// It leaves both the later commit and the uncommitted working-tree change on disk.
+// The check lives in ResetHard itself, not only in callers that guard it.
 //
 //testtiming:keep ResetHard refusing a dirty tracked checkout and leaving the commit and the change on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
@@ -101,7 +95,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 
 	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
-	// A committed change past olderSHA, then an uncommitted change on top —
+	// A committed change past olderSHA, then an uncommitted change on top:
 	// ResetHard must refuse rather than discard either one.
 	laterPath := filepath.Join(h.PrimeWorktree(), "reset-hard-later.txt")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
@@ -130,9 +124,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_CurrentBranchErrorsOnDetachedHead proves CurrentBranch returns a non-nil error
-// when warp's HEAD is already detached, matching gitrepo.Repo.CurrentBranch's documented
-// detached-HEAD rejection.
+// TestFabricWarp_CurrentBranchErrorsOnDetachedHead proves CurrentBranch errors when warp's HEAD is detached.
 func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -150,7 +142,8 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	}
 }
 
-// TestStencilSource_BuildAncestryFollowsTheRevision pins StencilSource's source shapes, the ancestry its Build reports and the ordering its Older reports.
+// TestStencilSource_BuildAncestryFollowsTheRevision pins the source shapes of StencilSource.
+// It checks the ancestry its Build reports and the ordering its Older reports.
 // The ancestry is memoized, so a second call returns the first answer.
 func TestStencilSource_BuildAncestryFollowsTheRevision(t *testing.T) {
 	tiergate.Require(t, 1)

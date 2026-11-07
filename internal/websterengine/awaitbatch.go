@@ -1,8 +1,6 @@
-// awaitbatch.go implements AwaitBatch, a bounded wait for one batch's report file behind the
-// `await-batch` verb an operator can call while a run is in flight.
-// It is a pure watch on the batch's report path — no state read, no state mutation, no fabric —
-// mirroring recover-batch's re-entrant long-poll idiom: each call blocks at most one wait window,
-// and the caller re-calls until the report is present.
+// awaitbatch.go implements AwaitBatch, a bounded wait for one batch's report file, behind the `await-batch` verb.
+// The wait only watches the report path: it reads and mutates no state and calls no fabric.
+// Each call blocks at most one wait window, and the caller re-calls until the report is present.
 
 package websterengine
 
@@ -15,15 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 )
 
-// awaitTick is the fixed re-check cadence AwaitBatch polls the report path on.
+// awaitTick is the interval between checks of the report path while waiting.
 const awaitTick = time.Second
 
-// DefaultAwaitWaitS is await-batch's default per-call block when --wait is not given.
-// Short so an agent caller's foreground call stays under Claude Code's ~2-minute auto-background
-// threshold.
+// DefaultAwaitWaitS is the default block of one await-batch call, in seconds, when --wait is not given.
+// It is short so that an agent's foreground call stays under the ~2-minute auto-background threshold of Claude Code.
 const DefaultAwaitWaitS = 30
 
-// AwaitResult is what one AwaitBatch call returns to its caller.
+// AwaitResult reports the outcome of one bounded wait for a batch report.
 type AwaitResult struct {
 	BatchName     string
 	ReportPresent bool

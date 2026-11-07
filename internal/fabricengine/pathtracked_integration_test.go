@@ -1,5 +1,5 @@
 // pathtracked_integration_test.go pins PathTracked's index-only answer on a real repo.
-// It is integration-tagged because the query spawns real git.
+// It requires tier 1 through tiergate because the query spawns real git.
 
 package fabricengine
 

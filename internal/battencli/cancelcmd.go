@@ -1,6 +1,7 @@
-// cancelcmd.go builds "lym batten cancel <slug> [--remove]" and wires cancelRun's seams over the hub's prime worktree.
+// cancelcmd.go builds "lym batten cancel <slug> [--remove]".
+// It wires the cancel run's dependencies over the hub's prime worktree.
 //
-// The decisions and their order are cancelRun's, in cancel.go; this file only reads and writes the hub's substrates on its behalf.
+// This file makes no cancel decisions; it reads and writes the hub's substrates on the run's behalf.
 
 package battencli
 
@@ -131,10 +132,11 @@ Example:
 	return cmd
 }
 
-// Cancel ends the batten run of slug for good in this process, as "lym batten cancel <slug>" does for a slug addressed from the prime, with --remove when remove is set.
-// A cancel that nothing of the slug is left for returns an error matching ErrNothingLeft through errors.Is.
-// A cancel that could not reach origin and so only ended the run's processes returns an error naming the cancel to run again, since it removed nothing.
-// It skips the verb's self-address and own-pair refusals, so its caller must not run inside the slug's task pair.
+// Cancel ends the batten run of slug for good in this process, on the hub of prime, with --remove when remove is set.
+// A cancel with nothing of the slug left returns an error matching ErrNothingLeft through errors.Is.
+// A cancel that could not reach origin only ends the run's processes;
+// it returns an error naming the cancel to run again, since it removed nothing.
+// It skips the self-address and own-pair refusals, so its caller must not run inside the slug's task pair.
 func Cancel(ctx context.Context, prime *lymcwd.Location, slug string, remove bool) error {
 	deps, err := hubCancelDeps(prime, slug)
 	if err != nil {
@@ -143,7 +145,8 @@ func Cancel(ctx context.Context, prime *lymcwd.Location, slug string, remove boo
 	return cancelJudgingEndOnly(ctx, slug, remove, deps)
 }
 
-// cancelEnvelope renders report as the verb's JSON envelope fields; every list is an array, empty when nothing was listed.
+// cancelEnvelope renders report as the cancel command's JSON envelope fields;
+// every list is an array, empty when nothing was listed.
 func cancelEnvelope(report cancelReport) map[string]any {
 	ended := make([]map[string]any, 0, len(report.Ended))
 	for _, process := range report.Ended {
@@ -171,7 +174,7 @@ func cancelEnvelope(report cancelReport) map[string]any {
 	}
 }
 
-// hubCancelDeps wires each of cancelRun's seams over the hub of the prime location for slug.
+// hubCancelDeps returns the dependencies of a cancel of slug, each wired over the hub of the prime location.
 func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
@@ -238,7 +241,8 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			if !errors.Is(err, fs.ErrNotExist) {
 				return false, err
 			}
-			// A run directory deleted on disk but still tracked at the records HEAD has its deletion outstanding, which the cancel's records removal commits.
+			// A run directory deleted on disk but still tracked at the records HEAD has its deletion outstanding.
+			// The cancel's records removal commits that deletion.
 			return runRecordsTracked(location, slug, func(rel string) ([]byte, bool, error) {
 				return fabricengine.CommittedAnchoredFile(location, rel)
 			})
@@ -373,8 +377,9 @@ func readBattenStatus(location *lymcwd.Location, slug string) (shedengine.Status
 	return status, found, err
 }
 
-// hubChildReachedParent returns the reader of whether the work of slug's run reached its parent, given batten's status, from the child's status in the task worktree.
-// A run that reached it is one only `lym batten run` finishes, so a cancel refuses it.
+// hubChildReachedParent returns a reader that reports whether the work of slug's run reached its parent.
+// The reader takes batten's status and reads the child's status from the task worktree.
+// A run that reached its parent is one only `lym batten run` finishes, so a cancel refuses it.
 func hubChildReachedParent(location *lymcwd.Location, slug string) func(batten shedengine.Status, battenFound bool) (bool, error) {
 	reader := &battenCLI{location: location, slug: slug}
 	return func(batten shedengine.Status, battenFound bool) (bool, error) {
@@ -391,7 +396,7 @@ func hubChildReachedParent(location *lymcwd.Location, slug string) func(batten s
 	}
 }
 
-// childRestepped returns the reader of the task worktree's settle records for a re-step of the stop a status names.
+// childRestepped returns a reader that reports whether the task worktree's settle records re-step a status's stop.
 func childRestepped(location *lymcwd.Location, slug string) func(shedengine.Status) (bool, error) {
 	return func(status shedengine.Status) (bool, error) {
 		task, err := taskWorktreeLocation(location, slug)
@@ -406,7 +411,7 @@ func childRestepped(location *lymcwd.Location, slug string) func(shedengine.Stat
 	}
 }
 
-// childParentHolds returns the reader of whether the parent branch already holds the task worktree's work.
+// childParentHolds returns a reader that reports whether the parent branch already holds the task worktree's work.
 func childParentHolds(location *lymcwd.Location, slug string) func() (bool, error) {
 	return func() (bool, error) {
 		task, err := taskWorktreeLocation(location, slug)
@@ -503,8 +508,10 @@ func liftSlugPauses(location *lymcwd.Location, slug, recordPath string) ([]strin
 	return lifted, nil
 }
 
-// clearRunClaim releases the run's claim on the board entry by writing the draft status through write when read shows a run-form status.
-// A done status, any other non-run status and an absent entry write nothing; found reports whether the entry exists.
+// clearRunClaim releases the run's claim on a board entry.
+// It writes the draft status when read reports a run-form status,
+// and it writes nothing for any other status or for an absent entry.
+// found reports whether the entry exists.
 func clearRunClaim(read func() (status *string, found bool, err error), write func(status *string) error) (cleared, found bool, err error) {
 	status, found, err := read()
 	if err != nil || !found {
@@ -520,8 +527,9 @@ func clearRunClaim(read func() (status *string, found bool, err error), write fu
 	return true, true, nil
 }
 
-// stopRecordedTackler stops the strand the tackler marker at markerPath names and returns its guid, or "" when no marker is there.
-// The stop's error is returned with no guid.
+// stopRecordedTackler stops the tackler strand that the marker at markerPath names.
+// It returns the strand's guid, or "" when no marker is there.
+// An error from reading the marker or from the stop is returned with an empty guid.
 func stopRecordedTackler(markerPath string, stop func(guid string) error) (string, error) {
 	marker, found, err := sheddriver.ReadTacklerMarker(markerPath)
 	if err != nil || !found {
@@ -534,7 +542,9 @@ func stopRecordedTackler(markerPath string, stop func(guid string) error) (strin
 }
 
 // takeBattenLocks takes batten's driver lock and then its run lock, each waited for at most wait.
-// A lock still held at the bound returns its path as busy with nothing held, the driver lock already taken included, so a retry takes neither against this process's own handle.
+// A lock still held at the bound returns its path as busy with nothing held.
+// A busy run lock also releases the driver lock already taken,
+// so a retry does not find either lock held by this process.
 // The returned release drops both.
 func takeBattenLocks(driverLockPath, runLockPath string, wait time.Duration) (release func(), busy string, err error) {
 	driver, acquired, err := lock.AcquireWriteLockWithin(driverLockPath, wait)

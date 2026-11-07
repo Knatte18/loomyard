@@ -1,6 +1,7 @@
-// config_test.go — tier 0 unit tests for darnengine.LoadConfig, darnengine.TreeScopedTargets and darnengine.MigrateConfig.
+// config_test.go holds the tier 0 unit tests for darnengine's config functions.
+// It covers LoadConfig, TreeScopedTargets and MigrateConfig.
 //
-// Seeds a bare t.TempDir() with just a _lym/config/darn.yaml file (no real hub, no SeedConfig, no git spawn).
+// Seeds a bare t.TempDir() with a _lym/config/darn.yaml file only (no real hub, no SeedConfig, no git spawn).
 
 package darnengine
 
@@ -45,7 +46,7 @@ func withTreeScope(trees string) string {
 	return strings.Replace(ConfigTemplate(), "tree_scope: {}", "tree_scope:"+trees, 1)
 }
 
-// TestLoadConfig covers the template's defaults, the tree_scope key's loading and refusals, a retired key, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
+// TestLoadConfig covers the template's defaults, the tree_scope key, and the load's refusals.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -229,7 +230,7 @@ func writeLocalDarnConfig(t *testing.T, anchor, contents string) string {
 	return localPath
 }
 
-// TestTreeScopedTargets covers tree scope being off with no tree, a path lying in a tree by equality or prefix and never by a shared name prefix, a path under nested trees touching each, the touched trees' targets deduplicated in tree-path order, a diff with a production path, and a scoped diff with no target answering no targets.
+// TestTreeScopedTargets covers the targets tree scope answers for a path, for nested trees, and for a diff.
 func TestTreeScopedTargets(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -268,7 +269,11 @@ func TestTreeScopedTargets(t *testing.T) {
 	}
 }
 
-// TestMigrateConfig covers the three states of a hub file's tree_scope_verify: held empty empties tree_scope and prunes the key, held set prunes the key and keeps tree_scope, absent changes nothing; a second pass over each changes nothing, and a malformed document is an invalid-config error.
+// TestMigrateConfig covers the three states of a hub file's tree_scope_verify.
+// With held empty, it empties tree_scope and prunes the key.
+// With held set, it prunes the key and keeps tree_scope.
+// With the key absent, it changes nothing.
+// A second pass over each state changes nothing, and a malformed document is an invalid-config error.
 func TestMigrateConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// landings.go reads the landings of the parent branch: it maps each first-parent commit to the run that landed it, classifies its kind from the board labels, and judges whether a fix repaired freshly landed code.
+// landings.go maps each first-parent commit of the parent branch to the run that landed it.
+// It classifies each landing's kind from the board labels and judges whether a fix repaired freshly landed code.
 
 package reportengine
 
@@ -39,11 +40,12 @@ const (
 	FreshnessNoPreImage = "no-pre-image"
 )
 
-// LLMStepsLanding is the RunRow.LLMSteps source counting a run that was landed by hand.
+// LLMStepsLanding is the LLMSteps key that counts a run landed by hand.
 const LLMStepsLanding = "landing"
 
 const (
-	// firstTrailerPage is the page size of the first walk down a tag's history for a task-commit trailer; each later page doubles it.
+	// firstTrailerPage is the page size of the first walk down a tag's history for a task-commit trailer;
+	// each later page doubles it.
 	firstTrailerPage = 64
 
 	// boardStatusDone is the status a board entry carries once its task is done.
@@ -57,7 +59,8 @@ const (
 // Landing is one first-parent commit of the parent branch.
 // Slug and Tag name the run that landed it, Join says how it was mapped and is empty for an unmapped commit.
 // Hand marks a commit landed without a finished run.
-// LandIncomplete is nil unless a tagged full run's Finalize is done and its batten record is present, and then says the record never reaches Land.
+// LandIncomplete is nil unless a tagged full run's Finalize is done and its batten record is present.
+// Then it reports whether the record never reaches Land.
 // Fresh is the fresh-code verdict of a fix or unmapped landing, and empty for any other kind.
 type Landing struct {
 	Commit         string    `json:"commit"`
@@ -73,7 +76,7 @@ type Landing struct {
 }
 
 // landingClaim is a run's claim on one parent-branch commit.
-// selected indexes landingInputs.selected, and is -1 for a slug with no archive tag to claim for.
+// selected indexes `landingInputs.selected`, and is -1 for a slug with no archive tag to claim for.
 type landingClaim struct {
 	slug     string
 	tag      string
@@ -91,7 +94,8 @@ type landingJoiner struct {
 	chain    []gitrepo.LogCommit
 	position map[string]int
 
-	// absorbed marks the chain indexes of a fast-forwarded branch's own commits, and owner maps each to the landing commit it belongs to.
+	// absorbed marks the chain indexes of a fast-forwarded branch's own commits.
+	// owner maps each of those commits to the landing commit it belongs to.
 	absorbed map[int]bool
 	owner    map[string]string
 
@@ -150,9 +154,11 @@ func readLandings(src Sources, opts Options, report *Report) error {
 	return j.judgeFreshness()
 }
 
-// taskCommitBelow returns the task commit named by the newest trailer in the first-parent history of tagCommit, down to the commit that opened slug's pair.
+// taskCommitBelow returns the task commit named by the newest trailer in the first-parent history of tagCommit.
+// The walk stops at the commit that opened slug's pair.
 // A trailer below that commit is the parent's and names one of the parent's landings, so the walk never reads it.
-// It walks in growing pages, re-reading from the tag, until a trailer or the pair's opening commit is found or a page comes back short.
+// It walks in growing pages, re-reading from the tag.
+// It stops at a trailer, at the pair's opening commit, or when a page comes back short.
 func (j *landingJoiner) taskCommitBelow(tagCommit, slug string) (string, bool, error) {
 	for limit := firstTrailerPage; ; limit *= 2 {
 		commits, err := j.src.Records.Log(tagCommit, gitrepo.LogQuery{FirstParent: true, Limit: limit})
@@ -174,7 +180,8 @@ func (j *landingJoiner) taskCommitBelow(tagCommit, slug string) (string, bool, e
 	}
 }
 
-// landingOfTask returns the chain index of the first-parent commit that landed task: the task commit itself, a merge having it as a parent, or a squash holding its tree.
+// landingOfTask returns the chain index of the first-parent commit that landed task:
+// the task commit itself, a merge having it as a parent, or a squash holding its tree.
 func (j *landingJoiner) landingOfTask(task string) int {
 	if index, ok := j.position[task]; ok {
 		return index
@@ -244,7 +251,8 @@ func (j *landingJoiner) joinExact() (map[int]bool, error) {
 	return attempted, nil
 }
 
-// absorbBranches marks the first-parent commits a fast-forwarded task branch brought before its task commit as that landing's own.
+// absorbBranches marks the first-parent commits a fast-forwarded task branch brought before its task commit.
+// Those commits belong to that landing.
 // A branch reaches back to the nearest older merge commit or exact-joined landing.
 func (j *landingJoiner) absorbBranches(order []int, claims map[int][]int, taskOf map[int]string) {
 	for _, index := range order {
@@ -278,7 +286,8 @@ func (j *landingJoiner) boardDoneAfter(slug string, open time.Time) (time.Time, 
 	return time.Time{}, false, nil
 }
 
-// tasksAt returns the board entries at a board commit; a commit holding no board, or one that does not parse, holds none.
+// tasksAt returns the board entries at a board commit.
+// A commit holding no board, or one that does not parse, holds none.
 func (j *landingJoiner) tasksAt(sha string) ([]boardengine.Task, error) {
 	if tasks, ok := j.boardTasks[sha]; ok {
 		return tasks, nil
@@ -298,7 +307,8 @@ func (j *landingJoiner) tasksAt(sha string) ([]boardengine.Task, error) {
 	return tasks, nil
 }
 
-// newestCheckpoint returns the newest checkpoint time of times that falls after floor, when set, and at or before ceiling, when set.
+// newestCheckpoint returns the newest of the times that lie after floor and at or before ceiling.
+// A nil floor or ceiling leaves that bound open.
 func newestCheckpoint(times []time.Time, floor, ceiling *time.Time) (time.Time, bool) {
 	for k := len(times) - 1; k >= 0; k-- {
 		if (floor == nil || times[k].After(*floor)) && (ceiling == nil || !times[k].After(*ceiling)) {
@@ -308,8 +318,10 @@ func newestCheckpoint(times []time.Time, floor, ceiling *time.Time) (time.Time, 
 	return time.Time{}, false
 }
 
-// joinTime maps the tags the exact join left unmapped, and the slugs whose pair has checkpoints after their newest tag, through their landing checkpoint and the board's done mark.
-// A tag whose exact join was attempted is not retried; two runs claiming one commit are both left unmapped and the clash is a finding.
+// joinTime maps two groups through their landing checkpoint and the board's done mark:
+// the tags the exact join left unmapped, and the slugs whose pair has checkpoints after their newest tag.
+// A tag whose exact join was attempted is not retried;
+// two runs claiming one commit are both left unmapped, and the clash is a finding.
 func (j *landingJoiner) joinTime(attempted map[int]bool) error {
 	type windowOwner struct {
 		slug     string
@@ -439,7 +451,8 @@ func (j *landingJoiner) assemble() error {
 	return nil
 }
 
-// applyRun sets what the claiming tag says about its landing: whether it was landed by hand, and whether the batten record never reached Land.
+// applyRun sets what the claiming tag says about its landing:
+// whether it was landed by hand, and whether the batten record never reached Land.
 // A full run also points at the landing and counts a hand landing as an LLM step.
 func (j *landingJoiner) applyRun(landing *Landing, claim landingClaim) {
 	if claim.selected < 0 {
@@ -462,7 +475,7 @@ func (j *landingJoiner) applyRun(landing *Landing, claim landingClaim) {
 	}
 }
 
-// judgeFreshness decides, for each fix and unmapped landing, whether its modified lines mostly came from freshly landed code.
+// judgeFreshness rates each fix and unmapped landing by whether its modified lines mostly came from freshly landed code.
 // Runs after assemble, so it also points each full run at its finished landing.
 func (j *landingJoiner) judgeFreshness() error {
 	for i := range j.report.Landings {
@@ -491,7 +504,8 @@ func (j *landingJoiner) judgeFreshness() error {
 	return nil
 }
 
-// freshnessOf blames the lines landing modifies or deletes in its first parent and rates the share that came from recent landings.
+// freshnessOf blames the lines landing modifies or deletes in its first parent.
+// It rates the share of those lines that came from recent landings.
 func (j *landingJoiner) freshnessOf(landing Landing) (string, error) {
 	preImage, err := j.src.Code.PreImageLines(landing.Commit)
 	if err != nil {
@@ -531,7 +545,8 @@ func (j *landingJoiner) freshnessOf(landing Landing) (string, error) {
 	return FreshnessAged, nil
 }
 
-// landingCommitted returns the commit time of the landing that brought the blamed commit sha: the commit itself, or the fast-forward landing its task-branch commit belongs to.
+// landingCommitted returns the commit time of the landing that brought the blamed commit sha:
+// the commit itself, or the fast-forward landing its task-branch commit belongs to.
 // A commit the walk did not reach has no owner.
 func (j *landingJoiner) landingCommitted(sha string) (time.Time, bool) {
 	if landing, ok := j.owner[sha]; ok {

@@ -1,6 +1,6 @@
-// check.go implements Check, the authoring-time structural analysis of an assembled
-// shedengine.ProducerDef graph: it walks OnDone/OnStuck routing the same way shedengine.Run would,
-// and reports every structural defect it finds instead of stopping at the first one.
+// check.go implements Check, the authoring-time structural analysis of a shedengine.ProducerDef graph.
+// It walks OnDone and OnStuck routing the way `shedengine.Run` does,
+// and it reports every structural defect rather than stopping at the first.
 
 package shedcheck
 
@@ -11,26 +11,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// The three states a node passes through while check walks the done-edge subgraph looking for
-// cycles: unvisited, currently on the walk's own path (visiting), or fully resolved (finished, no
-// cycle through it remains to be found).
+// The three states a node passes through while Check searches the done-edge subgraph for cycles:
+// unvisited, visiting (on the current walk's path), or finished (no cycle through it remains to be found).
 const (
 	stateUnvisited = iota
 	stateVisiting
 	stateFinished
 )
 
-// Check inspects an assembled OnDone/OnStuck graph and reports every structural defect it finds,
-// in the fixed order documented on the Kind constants. It reads only Name, OnDone, and OnStuck off
-// each shedengine.ProducerDef -- it never dereferences Producer, so a ProducerDef with a nil
-// Producer is valid input, and it never reads Segment or MaxBounces. Check never panics and never
-// returns an error; a clean graph returns nil, not an empty non-nil slice.
+// Check inspects an assembled OnDone/OnStuck graph and reports every structural defect it finds.
+// Its findings come in a fixed order that its tests pin.
+// It reads only Name, OnDone, and OnStuck from each shedengine.ProducerDef.
+// It never dereferences Producer, so a ProducerDef with a nil Producer is valid input,
+// and it never reads Segment or MaxBounces.
+// Check never panics and never returns an error; a clean graph returns nil, not an empty non-nil slice.
 func Check(producers []shedengine.ProducerDef, entry string, terminals []string) []Finding {
 	indexByName := buildIndexByName(producers)
 
-	// Endpoint findings short-circuit every check below: reachability and terminality are
-	// meaningless without told endpoints, so an endpoint defect is reported alone rather than
-	// alongside an avalanche of derived noise.
+	// Endpoint findings short-circuit every check below.
+	// Reachability and terminality are meaningless without the told endpoints,
+	// so an endpoint defect is reported alone, not beside derived noise.
 	var endpointFindings []Finding
 	if entry == "" {
 		endpointFindings = append(endpointFindings, Finding{Kind: KindBadEntry, Producer: entry, Target: "", Message: "entry is empty"})
@@ -53,11 +53,12 @@ func Check(producers []shedengine.ProducerDef, entry string, terminals []string)
 		return endpointFindings
 	}
 
-	// liveIdx holds every live row's list index, in list order: a row is live when its own index
-	// equals indexByName's recorded first occurrence of its Name, and shadowed otherwise. A
-	// shadowed row contributes no edges to the graph -- it is skipped by every check below except
-	// unreachable, which always reports it, because shedengine.findProducer's linear first-match
-	// scan means Run would never reach or walk it either.
+	// liveIdx holds the list index of every live row, in list order.
+	// A row is live when its index is the first one indexByName records for its Name;
+	// otherwise it is shadowed.
+	// A shadowed row contributes no edges to the graph.
+	// Every check below skips it, except unreachable, which always reports it.
+	// The first-match scan in `shedengine.findProducer` means a run never reaches a shadowed row.
 	liveIdx := make([]int, 0, len(producers))
 	for i, p := range producers {
 		if indexByName[p.Name] == i {
@@ -65,13 +66,12 @@ func Check(producers []shedengine.ProducerDef, entry string, terminals []string)
 		}
 	}
 
-	// The field-value vs. graph-structure rule, resolved once here: a check keyed on a raw field
-	// value (unexpectedTerminal's raw OnDone == "") reads the field as supplied, while a check
-	// keyed on graph structure (reachability, doneCycle, blindGate) reads the post-drop graph
-	// built below, where a dangling edge has already been removed. Its two pinned consequences: a
-	// row with a dangling (therefore non-empty) OnDone is never also reported as
-	// unexpectedTerminal, and a row whose stuck edge is dangling has no stuck edge at all in the
-	// post-drop graph and therefore can never be a blindGate.
+	// A check keyed on a raw field value reads the field as supplied: the unexpected-terminal check reads OnDone == "".
+	// A check keyed on graph structure (reachability, done-cycle, blind-gate) reads the post-drop graph.
+	// In that graph a dangling edge is already removed.
+	// Two consequences follow.
+	// A row with a dangling OnDone is never also reported as an unexpected terminal,
+	// and a row whose stuck edge dangles has no stuck edge at all in the post-drop graph, so it can never be a blind gate.
 	onDoneIdx := make(map[int]int, len(liveIdx))
 	onStuckIdx := make(map[int]int, len(liveIdx))
 	var danglingFindings []Finding
@@ -127,8 +127,8 @@ func Check(producers []shedengine.ProducerDef, entry string, terminals []string)
 		p := producers[i]
 		target, ok := onStuckIdx[i]
 		if !ok || target == i {
-			// No stuck edge at all (the escalate-to-human sentinel), or a self-bounce, which is
-			// trivially not blind and is legal and budgeted.
+			// No stuck edge at all (the escalate-to-human sentinel), or a self-bounce.
+			// A self-bounce is trivially not blind, and it is legal and budgeted.
 			continue
 		}
 		fromTarget := reachableIndices(target, onDoneIdx, onStuckIdx)
@@ -149,10 +149,10 @@ func Check(producers []shedengine.ProducerDef, entry string, terminals []string)
 	return result
 }
 
-// buildIndexByName records the first list index at which each Name occurs, in a single forward
-// pass -- matching findProducer's linear first-match scan in internal/shedengine/run.go. The
-// returned map is used for lookups only and must never be range-iterated: Go map iteration order
-// is randomised, and Check's whole output order is a pinned contract.
+// buildIndexByName records the first list index at which each Name occurs, in a single forward pass.
+// It matches the first-match scan of `findProducer` in `internal/shedengine/run.go`.
+// The returned map is for lookups only and must never be range-iterated:
+// Go map iteration order is randomised, and the output order of Check is a pinned contract.
 func buildIndexByName(producers []shedengine.ProducerDef) map[string]int {
 	indexByName := make(map[string]int, len(producers))
 	for i, p := range producers {
@@ -163,8 +163,8 @@ func buildIndexByName(producers []shedengine.ProducerDef) map[string]int {
 	return indexByName
 }
 
-// reachableIndices walks both done and stuck edges (post-drop) from start, over list indices, and
-// returns every index the walk reaches, including start itself.
+// reachableIndices walks both done and stuck edges (post-drop) from start, over list indices.
+// It returns every index the walk reaches, including start itself.
 func reachableIndices(start int, onDoneIdx, onStuckIdx map[int]int) map[int]bool {
 	visited := map[int]bool{start: true}
 	queue := []int{start}
@@ -181,10 +181,10 @@ func reachableIndices(start int, onDoneIdx, onStuckIdx map[int]int) map[int]bool
 	return visited
 }
 
-// findDoneCycles reports one KindDoneCycle finding per cycle member, over live, reachable rows and
-// done edges only. The done-edge subgraph is functional -- every row has at most one outgoing done
-// edge -- so a single walk with visited marks per node finds every cycle; no general
-// strongly-connected-components algorithm is needed.
+// findDoneCycles reports one KindDoneCycle finding per cycle member, over live, reachable rows and done edges only.
+// The done-edge subgraph is functional: every row has at most one outgoing done edge.
+// So a single walk with visited marks per node finds every cycle.
+// No general strongly-connected-components algorithm is needed.
 func findDoneCycles(producers []shedengine.ProducerDef, liveIdx []int, reachable map[int]bool, onDoneIdx map[int]int) []Finding {
 	state := make([]int, len(producers))
 	var cycles [][]int
@@ -197,9 +197,9 @@ func findDoneCycles(producers []shedengine.ProducerDef, liveIdx []int, reachable
 		}
 	}
 
-	// Discovery order is not the required order: a walk starting at a row outside a cycle can
-	// reach a high-index cycle before a lower-index one is ever visited, so the collected cycles
-	// are sorted explicitly by their own lowest member index before emitting.
+	// Discovery order is not the required order.
+	// A walk starting at a row outside a cycle can reach a high-index cycle before a lower-index one is visited,
+	// so the collected cycles are sorted by their lowest member index before emitting.
 	sort.Slice(cycles, func(a, b int) bool {
 		return minInt(cycles[a]) < minInt(cycles[b])
 	})
@@ -216,9 +216,9 @@ func findDoneCycles(producers []shedengine.ProducerDef, liveIdx []int, reachable
 	return findings
 }
 
-// walkForCycle follows done edges from start until it either closes a cycle back onto its own
-// path or runs off the path's end, mutating state as it goes so no node is walked twice across
-// calls. It returns the cycle's member indices (unordered) when one is found, and nil otherwise.
+// walkForCycle follows done edges from start until it closes a cycle onto its own path or runs off the path's end.
+// It mutates state as it goes, so no node is walked twice across calls.
+// It returns the cycle's member indices (unordered), or nil when it finds none.
 func walkForCycle(start int, onDoneIdx map[int]int, state []int) []int {
 	var path []int
 	cur := start
@@ -244,8 +244,7 @@ func walkForCycle(start int, onDoneIdx map[int]int, state []int) []int {
 	}
 }
 
-// markFinished marks every node on path as fully resolved: no cycle through any of them remains
-// to be found by a later walk.
+// markFinished marks every node on path as finished: no later walk can find a cycle through them.
 func markFinished(path []int, state []int) {
 	for _, node := range path {
 		state[node] = stateFinished

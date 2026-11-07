@@ -1,6 +1,5 @@
-// Command codestats scans a source tree and writes a markdown report of how its lines
-// divide: code, comment and blank per language, tests against production, and markdown's
-// share of the whole.
+// Command codestats scans a source tree and writes a markdown report of how its lines divide:
+// code, comment and blank per language, tests against production, and markdown's share of the whole.
 //
 //	go run ./tools/codestats
 //	go run ./tools/codestats -root ../some-other-repo
@@ -8,25 +7,26 @@
 //	go run ./tools/codestats -json -out .scratch/codestats.json
 //	go run ./tools/codestats -exclude crucible -exclude '*.pb.go'
 //
-// The two launchers beside this file, codestats.sh and codestats.cmd, are the intended
-// entry points: each writes .scratch/codestats.md, one fixed path overwritten per run,
-// with the run's instant recorded inside the report rather than in its name.
+// The two launchers beside this file, codestats.sh and codestats.cmd, are the intended entry points.
+// Each writes .scratch/codestats.md, one fixed path overwritten per run;
+// the run's instant is recorded inside the report rather than in its name.
 //
-// -out writes UTF-8 whatever the shell is, which a redirect does not: PowerShell's own >
-// still produces UTF-16 on the Windows machines this repo is worked from.
+// -out writes UTF-8 whatever the shell is, which a redirect does not:
+// PowerShell's own > still produces UTF-16 on Windows.
 //
-// A line carrying both code and a trailing comment counts as code, so the three buckets
-// partition each file rather than overlapping, and the percentages add up.
+// A line carrying both code and a trailing comment counts as code.
+// The three buckets then partition each file rather than overlapping, so the percentages add up.
 //
-// Comment counting knows two families. The C family (Go, C#, and the other // and /* */
-// languages) honours string literals and Go's backtick raw strings, so a // inside a
-// string is code. The # family (Python, shell, YAML, TOML) is line-local and
-// string-unaware, so a # inside a quoted string overcounts. C#'s @"" verbatim strings
-// are not tracked across line breaks, which can misread a // inside one as a comment --
-// accepted because the alternative is a per-language lexer, and the error is bounded by
-// how rarely those strings span lines at all. Every other extension is counted for lines
-// only, markdown among them, which is why the markdown section reports files and lines
-// rather than a comment share.
+// Comment counting knows two families.
+// The C family (Go, C#, and the other // and /* */ languages) honours string literals and Go's backtick raw strings,
+// so a // inside a string is code.
+// The # family (Python, shell, YAML, TOML) is line-local and string-unaware,
+// so a # inside a quoted string overcounts.
+// C#'s @"" verbatim strings are not tracked across line breaks, so a // inside one can be misread as a comment.
+// The error is accepted, since the alternative is a per-language lexer,
+// and it is bounded by how rarely those strings span lines at all.
+// Every other extension is counted for lines only, markdown among them.
+// The markdown section therefore reports files and lines rather than a comment share.
 package main
 
 import (
@@ -41,8 +41,7 @@ import (
 	"time"
 )
 
-// excludeList collects a repeatable -exclude flag, the one flag that must accumulate
-// rather than overwrite.
+// excludeList collects a repeatable -exclude flag, the one flag that must accumulate rather than overwrite.
 type excludeList []string
 
 func (e *excludeList) String() string { return strings.Join(*e, ",") }
@@ -52,8 +51,7 @@ func (e *excludeList) Set(v string) error {
 	return nil
 }
 
-// Bucket is an aggregate over some set of files -- one language, one side of the
-// test/production split, or the whole tree.
+// Bucket aggregates some set of files: one language, one side of the test/production split, or the whole tree.
 type Bucket struct {
 	Files   int `json:"files"`
 	Lines   int `json:"lines"`
@@ -73,15 +71,15 @@ func (b *Bucket) add(f FileStats) {
 // Report is one scan's full result, shaped so -json emits it directly.
 type Report struct {
 	Root string `json:"root"`
-	// GeneratedAt is when the scan ran, carried in the report rather than only in a file
-	// name so a report stays self-describing once it is copied, pasted, or committed.
+	// GeneratedAt is when the scan ran, recorded in the report rather than only in a file name.
+	// It keeps a report self-describing once it is copied, pasted, or committed.
 	GeneratedAt string `json:"generated_at"`
-	// DurationMS is how long the walk and the tally took, in milliseconds. It measures
-	// this process only: `go run`'s own compile of the tool happens before main starts and
-	// is outside it, so the launcher's wall-clock time is the larger of the two on a cold
-	// build cache.
-	// One numeric field rather than a number beside a pre-rendered string: render formats
-	// it for a reader, and a consumer comparing two runs gets a value it can subtract.
+	// DurationMS is how long the walk and the tally took, in milliseconds.
+	// It measures this process only.
+	// The `go run` compile of the tool happens before main starts, outside this measurement.
+	// On a cold build cache, the launcher's wall-clock time is the larger of the two.
+	// It is a single number rather than a number beside a pre-rendered string:
+	// render formats that for a reader, while a consumer comparing two runs gets a value it can subtract.
 	DurationMS int64             `json:"duration_ms"`
 	ByExt      map[string]Bucket `json:"by_ext"`
 	Source     Bucket            `json:"source"`
@@ -92,9 +90,9 @@ type Report struct {
 }
 
 // build aggregates files into a Report.
-// Source counts only the extensions with a comment family, because the test/production
-// split and the comment share are both meaningless for the rest; Total counts everything
-// scanned, which is what markdown's share is taken against.
+// Source counts only extensions with a comment family.
+// The test/production split and the comment share are meaningless for the rest.
+// Total counts everything scanned, which is what markdown's share is taken against.
 func build(root string, at time.Time, files []FileStats) Report {
 	report := Report{
 		Root:        root,
@@ -123,8 +121,8 @@ func build(root string, at time.Time, files []FileStats) Report {
 	return report
 }
 
-// pct renders part of whole as a percentage, or "-" when whole is zero, so a language
-// with no lines prints a dash rather than a misleading 0.0%.
+// pct renders part of whole as a percentage, or "-" when whole is zero.
+// A language with no lines then prints a dash rather than a misleading 0.0%.
 func pct(part, whole int) string {
 	if whole == 0 {
 		return "-"
@@ -169,11 +167,9 @@ func main() {
 	}
 }
 
-// openSink returns the writer the report goes to and the close that must run after it,
-// which is a no-op for stdout: closing os.Stdout would break a caller that pipes this
-// command into another.
-// It creates the parent directories of path, so -out .scratch/stats.txt works in a tree
-// that has no .scratch yet.
+// openSink returns the writer the report goes to and the close that must run after it.
+// The close is a no-op for stdout: closing os.Stdout would break a caller that pipes this command into another.
+// It creates the parent directories of path, so -out .scratch/stats.txt works in a tree that has no .scratch yet.
 func openSink(path string) (io.Writer, func() error, error) {
 	if path == "" {
 		return os.Stdout, func() error { return nil }, nil
@@ -191,7 +187,7 @@ func openSink(path string) (io.Writer, func() error, error) {
 }
 
 // emit writes report to out in whichever of the two shapes was asked for.
-// The two paths are joined here rather than at each call site so -out and -json compose:
+// The two paths are joined here rather than at each call site, so -out and -json compose:
 // every combination of the two goes through one writer.
 func emit(out io.Writer, r Report, asJSON bool) error {
 	if asJSON {
@@ -203,24 +199,23 @@ func emit(out io.Writer, r Report, asJSON bool) error {
 	return nil
 }
 
-// fail prints msg and exits non-zero, the one error path every argument and I/O fault
-// takes.
+// fail prints msg and exits non-zero, the one error path every argument and I/O fault takes.
 func fail(msg string) {
 	fmt.Fprintln(os.Stderr, "codestats:", msg)
 	os.Exit(1)
 }
 
 // render writes the report as markdown.
-// Each section answers one question, in the order a reader asks them: how big is this
-// tree, how much of it is test, and how much of it is prose.
-// Markdown rather than an aligned text table because the report is read in an editor and
-// on GitHub, where a fixed-width table only lines up in one of the two; numeric columns
-// are right-aligned through the separator row, which is where markdown puts that.
+// Each section answers one question, in the order a reader asks them:
+// how big this tree is, how much of it is test, and how much of it is prose.
+// The report is markdown rather than an aligned text table, since it is read in an editor and on GitHub.
+// A fixed-width table lines up in only one of the two.
+// Numeric columns are right-aligned by the separator row, the place markdown takes column alignment.
 func render(out io.Writer, r Report) {
 	fmt.Fprintln(out, "# codestats")
 	fmt.Fprintln(out)
-	// A list, not two bare lines: consecutive lines are one paragraph in markdown, so a
-	// renderer would run the two onto the same line.
+	// A list rather than two bare lines, since consecutive lines form one paragraph in markdown,
+	// and a renderer would run the two onto the same line.
 	fmt.Fprintf(out, "- **Root:** `%s`\n", r.Root)
 	fmt.Fprintf(out, "- **Generated:** %s\n", r.GeneratedAt)
 	fmt.Fprintf(out, "- **Scan took:** %s\n", time.Duration(r.DurationMS)*time.Millisecond)
@@ -276,7 +271,7 @@ func render(out io.Writer, r Report) {
 		r.Markdown.Lines, r.Total.Lines, pct(r.Markdown.Lines, r.Total.Lines))
 }
 
-// sortedExts orders the extension rows by size, biggest first, with ties broken by name
+// sortedExts orders the extension rows by size, biggest first, with ties broken by name,
 // so two runs over an unchanged tree produce byte-identical reports.
 func sortedExts(r Report) []string {
 	exts := make([]string, 0, len(r.ByExt))

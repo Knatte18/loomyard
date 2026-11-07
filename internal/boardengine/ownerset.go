@@ -1,4 +1,4 @@
-// ownerset.go — the owner setter, the only writer of a beam project's owner machine and of the hub's prime owner, and the local owner read.
+// ownerset.go holds the owner write, the only writer of a beam project's owner machine and of the hub's prime owner.
 //
 // SetOwners records a machine as the owner of named beam projects in one pull-first Bolt commit and pushes it;
 // ReadOwners reads the owners a board directory's local board.json records.
@@ -23,13 +23,15 @@ import (
 // OwnerWritePrime is the key under which OwnerWrite names the hub's prime owner in Recorded and Lost.
 const OwnerWritePrime = "prime"
 
-// ownerPushRetryWait is how long SetOwners waits before it pushes again after a held lock deferred the first push.
+// ownerPushRetryWait is how long the owner write waits before it pushes again after a held lock deferred the first push.
 const ownerPushRetryWait = time.Second
 
-// ErrOwnerOriginUnreachable matches, through errors.Is, an owner write that needs origin and found it unreachable.
+// ErrOwnerOriginUnreachable is returned, wrapped, by an owner write that needs origin and found it unreachable.
+// Callers match it with errors.Is.
 var ErrOwnerOriginUnreachable = errors.New("board: origin is unreachable, so the owner write was not pushed")
 
-// OwnerRequest asks SetOwners to record Machine as the owner of the root project and of beam projects, or to claim one entry for it.
+// OwnerRequest describes an owner write.
+// It records Machine as the owner of the root project and of beam projects, or claims one entry for it.
 type OwnerRequest struct {
 	// Machine is the owner to record, this machine's name; empty is refused.
 	Machine string
@@ -40,14 +42,14 @@ type OwnerRequest struct {
 	Prime bool
 	// Takeover writes over an owner that reads as another machine; without it such an entry is left alone and reported in OwnerWrite.Lost.
 	Takeover bool
-	// Claim is a run status written on the request's one slug in the same commit, on a task or a beam project alone, and it records no owner; it needs exactly one slug.
-	// A claim on an entry whose effective owner is another machine writes nothing and is reported in OwnerWrite.Lost.
+	// Claim is a run status written on the one slug in the same commit; it records no owner and needs exactly one slug.
+	// Only a task or beam project takes a claim, and an entry another machine owns is reported in OwnerWrite.Lost.
 	Claim string
-	// Beam sets the beam flag and the project recipe on each named project the write records, in the same commit as the owner; only the beam verbs ask for it.
+	// Beam sets the beam flag and the project recipe on each project the write records, in the same commit as the owner.
 	Beam bool
-	// BeamColor picks the colour a Beam request records on a beam that has none, given the colours the board's other open beams hold, in the same write; nil records none.
+	// BeamColor picks the colour of a beam without one, given the colours the other open beams hold; nil records none.
 	BeamColor func(held []string) string
-	// ParentOf names the slug of an entry's parent pair, "" for the prime, so the effective owner is judged as a read judges it; nil reads every parent as the prime.
+	// ParentOf gives an entry's parent slug, "" for the prime, as a read judges it; nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error)
 	// Sleep waits out the retry delay after a held lock deferred the push; nil sleeps.
 	Sleep func(time.Duration)
@@ -55,7 +57,7 @@ type OwnerRequest struct {
 	BeforePush func()
 }
 
-// OwnerWrite reports what SetOwners recorded.
+// OwnerWrite reports the entries an owner write recorded, and those that another owner keeps.
 type OwnerWrite struct {
 	// Recorded lists the slugs, and OwnerWritePrime when asked, whose owner reads as the request's Machine after the push.
 	Recorded []string
@@ -63,12 +65,17 @@ type OwnerWrite struct {
 	Lost map[string]string
 }
 
-// SetOwners records req.Machine as the owner of the beam projects among req.Slugs, and of the prime when req.Prime is set, in one commit of the board at boardDir, then pushes it.
+// SetOwners records req.Machine as owner of the beam projects among req.Slugs, and of the prime if req.Prime is set.
+// It makes one commit of the board at boardDir, then pushes it.
 // With req.Claim it writes the run status of the one slug instead, and records no owner.
 // The commit is made after the board is brought up to date with its upstream, so a stale copy is never written over.
-// Without req.Takeover an entry whose effective owner is another machine is neither written nor claimed and is reported in Lost.
-// A competing write origin already holds wins the replay of this one, and the re-read after the push reports what stands.
-// An unreachable origin returns ErrOwnerOriginUnreachable, wrapped with its detail, and a pull that cannot bring the board up to date, or a push that stays deferred, is refused with its way forward.
+// Without req.Takeover, an entry whose effective owner is another machine is neither written nor claimed,
+// and it is reported in Lost.
+// A competing write that origin already holds wins over the replay of this one,
+// and the re-read after the push reports what stands.
+// An unreachable origin returns ErrOwnerOriginUnreachable, wrapped with its detail.
+// A pull that cannot bring the board up to date is refused with an error naming the way forward.
+// A push that stays deferred is refused the same way.
 // BOARD_SKIP_GIT writes board.json with no pull, commit or push, and BOARD_SKIP_PUSH commits with no pull or push.
 func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	if req.Machine == "" {
@@ -157,7 +164,8 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	return OwnerWrite{Recorded: recorded, Lost: lost}, nil
 }
 
-// writeOwners loads the board at boardDir, sets the owners req asks for, saves and renders it, and returns the names it wrote, OwnerWritePrime among them, with the board-relative paths changed.
+// writeOwners sets the owners req asks for on the board at boardDir, then saves and renders it.
+// It returns the names it wrote, OwnerWritePrime among them, and the board-relative paths it changed.
 // An entry left alone for an owner elsewhere is added to lost with that owner.
 // The caller holds the board write lock.
 func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (written, paths []string, err error) {
@@ -198,7 +206,7 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 		}
 		isBeam := entry.Kind == KindProject && entry.Beam
 		switch {
-		// A claim writes the run status alone; only a task, or a project that is a beam, is claimable, and any other project keeps its status.
+		// A claim writes only the run status: a task or a beam project takes it, and any other project keeps its status.
 		case req.Claim != "":
 			if entry.Kind != KindTask && !isBeam {
 				continue
@@ -225,7 +233,8 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	return written, append([]string{boardFile}, rendered...), nil
 }
 
-// renderOwnerWrite renders the board's output files when its config loads, and returns the paths the render wrote or removed.
+// renderOwnerWrite renders the board's output files when its config loads.
+// It returns the paths the render wrote or removed.
 // A board whose config does not load is left unrendered, and the next write renders it.
 func renderOwnerWrite(boardDir string, tasks []Task, primeOwner string) ([]string, error) {
 	cfg, err := LoadConfig(configengine.Dirs{Board: boardDir}, "board")
@@ -255,8 +264,10 @@ func renderOwnerWrite(boardDir string, tasks []Task, primeOwner string) ([]strin
 	return paths, nil
 }
 
-// pushOwnerCommit pushes the committed owner write, and pushes once more after sleep when a held lock deferred the first push.
-// An unreachable origin is ErrOwnerOriginUnreachable wrapped with the push's error, and any other failed push is returned wrapped with its way forward.
+// pushOwnerCommit pushes the committed owner write.
+// When a held lock deferred the first push, it pushes once more after sleep.
+// An unreachable origin is ErrOwnerOriginUnreachable wrapped with the push's error,
+// and any other failed push is returned wrapped with its way forward.
 func pushOwnerCommit(bolt *fabricengine.Bolt, opts fabricengine.SyncOptions, rec *fabricengine.Mutations, sleep func(time.Duration)) error {
 	for attempt := 1; ; attempt++ {
 		if err := bolt.PushRecorded(opts, rec); err != nil {

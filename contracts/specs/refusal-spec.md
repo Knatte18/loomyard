@@ -10,15 +10,19 @@ A refusal has a way forward when its message names one of these:
 
 1. a `lym` verb that makes progress from the refused state;
 2. a transition the run takes by itself: a re-step, the next Master retry, a failure ladder rung;
-3. a plain `git` command in a checkout the message names, when the work there is the operator's and no `lym` verb covers it.
+3. a plain `git` command in a checkout the message names, when that work is the operator's and no `lym` verb covers it.
 
-A way forward never names a command the agents' settings deny (`PATTERN-refusal-way-forward` holds the list); when a step needs one, lym performs it itself, as `lym webster reset` does.
+A way forward never names a command the agents' settings deny (`PATTERN-refusal-way-forward` holds the list);
+when a step needs one, lym performs it itself, as `lym webster reset` does.
 
-Hand-editing a lym-owned state file (`state.json`, `status.json`, `seed.json`, report files) never counts, and neither does a code fix plus a deploy.
+Hand-editing a lym-owned state file (`state.json`, `status.json`, `seed.json`, report files) never counts,
+and neither does a code fix plus a deploy.
 Waiting for a lock holder counts when the message names how to see the holder (`status`).
-A way forward that names a `lym fabric` verb the role guard refuses from a task session, and that such a session can reach, ends with the clause `; a session lym refuses the verb from reports status: FAILED and the orch runs it`.
+A way forward may name a `lym fabric` verb that the role guard refuses from a task session.
+When a task session can reach that refusal, the way forward ends with the clause:
+`; a session lym refuses the verb from reports status: FAILED and the orch runs it`.
 The message carries it as a trailing `way forward: <verb | transition | git command>` clause.
-A message that named its way forward in its own wording before the trailing clause became the rule keeps that wording.
+A message that names its way forward in its own wording instead of the trailing clause keeps that wording.
 
 ## Classes
 
@@ -31,12 +35,14 @@ Every refusal sits in one class, and the class fixes its disposition.
 | transient | a condition that clears by itself or by a named action: lock held, merge in progress, I/O | halt without mutating state; the message names the retry |
 | wiring guard | nil deps, an invalid producer list, empty paths; unreachable from any on-disk state a run can produce | fail loud; no reaching test |
 
-A validation verb's findings envelope, such as `lym webster validate`'s, is that verb's verdict, not a refusal, and so is a test run that ends in go's own exit code.
+A validation verb's findings envelope, such as `lym webster validate`'s, is that verb's verdict, not a refusal.
+A test run that ends in go's own exit code is not a refusal either.
 
 ## Reaching tests
 
-Every refusal a verb can return has a test that reaches it and asserts its message, way forward included; one table-driven test may reach many refusals.
+Every refusal a verb can return has a test that reaches it and asserts its message, way forward included;
+one table-driven test may reach many refusals.
 Two kinds of refusal need no test of their own:
 
-- a raw I/O failure (`stat`, `mkdir`, `read`, `write`, `rename`, `remove`) propagated with its context, which is transient;
+- a transient raw I/O failure (`stat`, `mkdir`, `read`, `write`, `rename`, `remove`) propagated with its context;
 - a fail-loud wiring guard, which no on-disk state a run can produce reaches.

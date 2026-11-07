@@ -1,8 +1,6 @@
-// merge.go implements the single-repo merge primitives fabricengine's two-sided coordination
-// composes: MergeStart (normal and squash) with four-way outcome classification, MergeConclude,
-// ConflictedFiles, MergeHeadPresent, HeadDetached, the fast-forward-only MergeFFOnly advance, and
-// the general ref->SHA resolver ResolveSHA.
-// CommitTree and the side-effect-free MergeTree let a caller check that a merge commit's tree is exactly the clean merge of its parents.
+// merge.go holds the single-repo merge primitives: MergeStart and MergeConclude drive a merge.
+// The other methods stage files, probe merge state, and resolve refs.
+// They also read commits and compute a merge tree, and MergeFFOnly advances a repo fast-forward only.
 
 package gitrepo
 
@@ -21,10 +19,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// MergeOutcome classifies what state MergeStart left the repo in.
+// MergeOutcome names the state a merge leaves a repo in.
 type MergeOutcome int
 
-// The four outcomes MergeStart can classify a repo into.
+// The four states a merge can leave a repo in.
 const (
 	MergeStaged          MergeOutcome = iota // merged into index/worktree, uncommitted
 	MergeConflicted                          // unmerged index entries present
@@ -32,37 +30,29 @@ const (
 	MergeAlreadyUpToDate                     // nothing to do
 )
 
-// MergeStart runs `git merge --ff --no-commit <ref>` (squash false) or `git merge --squash <ref>`
-// (squash true) and classifies the result.
-// The `--ff` spelling is mandatory rather than redundant: it is git's default only until an operator
-// sets `merge.ff = only` or `merge.ff = false` in their config, at which point every non-fast-forward
-// merge aborts with `Not possible to fast-forward` (or every fast-forward fabricates a merge commit)
-// and the four-way classification below is reading a repo state fabric never asked for.
-// Pinning it on the command line is the same posture MergeConclude takes with --no-edit: the
-// behaviour fabric depends on is stated, never inherited from whatever config the caller happens to
-// be running under. The squash form needs no such pin — `merge.ff` does not apply to `--squash`.
-// A conflicted merge exits non-zero, so runChecked returns *gitexec.GitError;
-// MergeStart classifies on repo state, never on exit code alone, and adds no raw gitexec site.
-// It captures HEAD before the call, then on any error uses errors.As to recover the GitError and
-// probes ConflictedFiles: a non-empty result means MergeConflicted;
-// otherwise the error is genuine and returned.
-// On success it probes staged state via `git diff --cached --quiet`, live merge state via
-// MergeHeadPresent, and HEAD movement.
-// A live MERGE_HEAD means MergeStaged whatever the index diff says, and that arm is not redundant
-// with the staged one: a real, non-fast-forward merge whose result tree happens to equal HEAD's own
-// tree — the shape produced whenever the same change reached both branches independently, by
-// cherry-pick, backport, or a duplicated hand-edit — stages nothing and moves no HEAD, yet git has
-// genuinely started a merge and `git commit` would land a proper two-parent commit for it.
-// Classifying that as MergeAlreadyUpToDate made fabric report a clean no-op, delete its own
-// merge-state record, and abandon a live MERGE_HEAD in the checkout — a record-versus-git
-// disagreement no fabric verb could then clear.
-// The squash form writes no MERGE_HEAD, so the probe is vacuous there and a squash with an empty
-// result keeps classifying as MergeAlreadyUpToDate, which is the honest answer: nothing to commit.
+// MergeStart merges ref into the repo without committing, and classifies the resulting state.
+// With squash false it runs `git merge --ff --no-commit <ref>`; with squash true it runs `git merge --squash <ref>`.
+// The `--ff` is pinned on the command line, not left to config.
+// Git's default changes when an operator sets `merge.ff` to `only` or `false`.
+// Then every non-fast-forward merge aborts, or every fast-forward makes a merge commit.
+// The classification below would otherwise read a state the caller never asked for.
+// The squash form needs no pin, because `merge.ff` does not apply to `--squash`.
+// A conflicted merge exits non-zero, so the error is a *gitexec.GitError.
+// MergeStart classifies on repo state, never on the exit code alone.
+// On a GitError it probes ConflictedFiles: a non-empty result means MergeConflicted,
+// and an empty one returns the merge error.
+// On success it probes the index with `git diff --cached --quiet` and the live merge via MergeHeadPresent.
+// It also checks whether HEAD moved since before the call.
+// A live MERGE_HEAD means MergeStaged, whatever the index diff says.
+// The arm is not redundant: a real merge whose result tree equals HEAD's stages nothing and moves no HEAD,
+// yet `git commit` would still land a two-parent commit for it.
+// Such a merge happens when the same change reaches both branches independently.
+// Classifying it as MergeAlreadyUpToDate would have the caller drop its merge record while MERGE_HEAD stays live.
+// The squash form writes no MERGE_HEAD, so an empty squash result is MergeAlreadyUpToDate: there is nothing to commit.
 // Otherwise HEAD moved with nothing staged means MergeFastForwarded;
-// nothing staged, no MERGE_HEAD and HEAD unmoved means MergeAlreadyUpToDate;
+// nothing staged, no MERGE_HEAD and an unmoved HEAD means MergeAlreadyUpToDate;
 // anything else means MergeStaged.
-// A ref with a leading '-' is rejected as ErrInvalidSHA before any git spawn, mirroring
-// IsAncestor's argument pre-check.
+// A ref with a leading '-' is rejected as ErrInvalidSHA before git runs.
 func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 	if strings.HasPrefix(ref, "-") {
 		return MergeStaged, ErrInvalidSHA
@@ -129,11 +119,10 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 }
 
 // MergeConclude commits a staged merge or staged squash.
-// With a non-empty msg it runs `git commit -m <msg>`;
-// with an empty msg it runs `git commit --no-edit`, which takes git's prepared
-// MERGE_MSG/SQUASH_MSG without opening an editor — the --no-edit spelling is mandatory, since a bare
-// `git commit` with no -m would launch the configured editor and hang a non-interactive caller
-// forever.
+// With a non-empty msg it runs `git commit -m <msg>`.
+// With an empty one it runs `git commit --no-edit`, which takes the prepared MERGE_MSG or SQUASH_MSG.
+// The `--no-edit` is mandatory: without it, `git commit` opens the configured editor.
+// A non-interactive caller would then hang forever.
 func (r *Repo) MergeConclude(msg string) error {
 	var err error
 	if msg != "" {
@@ -147,14 +136,11 @@ func (r *Repo) MergeConclude(msg string) error {
 	return nil
 }
 
-// ConflictedFiles enumerates unmerged paths, repo-root-relative, via
-// `git diff --name-only --diff-filter=U -z`.
-// The `-z` spelling is mandatory rather than cosmetic: without it git C-quotes any path whose
-// bytes fall outside core.quotepath's default ASCII set (a conflicted `ä.txt` comes back as the
-// literal `"\303\244.txt"`, quotes included), which is not a real worktree path — fabricengine's
-// visible-tree mapping then misclassifies a perfectly mappable conflict as unmergeable, and no
-// caller-supplied real path can ever match the quoted form. `-z` emits raw path bytes,
-// NUL-separated, unconditionally.
+// ConflictedFiles lists the unmerged paths, relative to the repo root, via `git diff --name-only --diff-filter=U -z`.
+// The `-z` is mandatory: without it git C-quotes any path with bytes outside core.quotepath's default ASCII set.
+// A conflicted `ä.txt` then comes back as the literal `"\303\244.txt"`, quotes included, which is no worktree path.
+// Callers could then never match that form against a real path.
+// `-z` emits raw path bytes, NUL-separated, unconditionally.
 // It returns an empty, never nil, slice when there are none.
 func (r *Repo) ConflictedFiles() ([]string, error) {
 	stdout, err := r.runChecked("diff", "--name-only", "--diff-filter=U", "-z")
@@ -171,23 +157,10 @@ func (r *Repo) ConflictedFiles() ([]string, error) {
 	return files, nil
 }
 
-// StageResolved stages paths, repo-root-relative, that a caller has resolved on disk mid-merge,
-// including removals.
-// An empty or nil paths is a no-op, returning nil without invoking git at all.
-// It runs `git add -A -- <paths>`, the -A form rather than the plain form StageAndCommit uses,
-// because a delete/modify conflict is legitimately resolved by the file being gone and the removal
-// must stage rather than error.
-// The `-A` is a version pin, not a behavioural difference on any git in use today, and the
-// distinction matters because the two readings suggest different things to a maintainer. Plain
-// `git add <pathspec>` acquired removal-staging in git 2.0 (2014); before that it ignored deletions
-// and the two forms genuinely diverged on exactly this case. On a modern git they are equivalent
-// here — verified directly: a modify/delete conflict resolved by deleting the file stages with plain
-// `git add -- <path>`, exit 0, unmerged set empty afterwards, on git 2.53. So no test can separate
-// the two forms, and the earlier claim that the plain form "errors on a missing pathspec" was simply
-// false against the git this repo runs on.
-// It stays `-A` for the same reason MergeStart pins `--ff` and MergeConclude pins `--no-edit`: the
-// behaviour fabric depends on is stated on the command line, never inherited from whatever git
-// version or config the caller happens to be running under.
+// StageResolved stages the repo-root-relative paths a caller has resolved on disk mid-merge, including removals.
+// An empty or nil paths slice is a no-op that never runs git.
+// It runs `git add -A -- <paths>`, with `-A` pinned on the command line.
+// The behavior then does not depend on the git version or config in use.
 func (r *Repo) StageResolved(paths []string) error {
 	if len(paths) == 0 {
 		return nil
@@ -200,10 +173,9 @@ func (r *Repo) StageResolved(paths []string) error {
 	return nil
 }
 
-// StageTrackedChanges stages every tracked modification and deletion in the working tree and nothing untracked, via `git add -u`.
-// It is how a caller lands edits made to already-tracked files mid-merge: `-u` takes no pathspec,
-// so it cannot be steered at an untracked or ignored path,
-// and it never force-adds (see the Never Force-Add Invariant).
+// StageTrackedChanges stages every tracked modification and deletion, and nothing untracked, via `git add -u`.
+// It lets a caller land edits to tracked files mid-merge.
+// `-u` takes no pathspec, so it cannot be aimed at an untracked or ignored path, and it never force-adds.
 // A tree with nothing tracked to stage is a successful no-op.
 func (r *Repo) StageTrackedChanges() error {
 	if _, err := r.runChecked("add", "-u"); err != nil {
@@ -212,23 +184,16 @@ func (r *Repo) StageTrackedChanges() error {
 	return nil
 }
 
-// MergeHeads enumerates EVERY commit the live merge is merging in — the full contents of MERGE_HEAD,
-// one SHA per entry, in git's own recorded order — returning an empty, never nil, slice when no merge
-// is live.
-// It answers WHICH merge is in progress, where MergeHeadPresent answers only THAT one is. A caller
-// concluding a recorded merge needs the former: `git commit` commits whatever MERGE_HEAD names, so
-// without comparing that against the merge the caller thinks it is finishing, an unrelated merge an
-// operator started with plain git is committed and claimed as the caller's own.
-//
-// It is deliberately not built on `git rev-parse --verify --quiet MERGE_HEAD`, and that is the whole
-// reason this method reads the file rather than shelling a second query. MERGE_HEAD is multi-valued
-// for an octopus merge, and every rev-parsing spelling collapses it to the FIRST entry: on git 2.53,
-// `rev-parse --verify --quiet MERGE_HEAD` and `rev-list --no-walk MERGE_HEAD` both print one SHA for a
-// two-head MERGE_HEAD, while `for-each-ref MERGE_HEAD` and `show-ref MERGE_HEAD` print nothing at all
-// (it is not under refs/). A first-entry-only answer would let `git merge --no-commit <expected> <decoy>`
-// pass an equality test against the expected SHA, which is exactly the octopus a caller must reject.
+// MergeHeads returns every commit the live merge merges in, one SHA per MERGE_HEAD entry, in git's recorded order.
+// It returns an empty, never nil, slice when no merge is live.
+// It answers which merge is in progress, where MergeHeadPresent answers only whether one is.
+// A caller concluding a recorded merge must compare these SHAs, since `git commit` commits whatever MERGE_HEAD names.
+// Without that check, an operator's plain-git merge would be committed as the caller's own.
+// It reads the file rather than shelling a rev-parse query, because MERGE_HEAD may hold several entries.
+// Every rev-parse spelling collapses it to the first entry, and for-each-ref and show-ref print nothing for it.
+// A first-entry answer would let an octopus merge pass an equality check against the expected SHA.
 // The file itself is the only complete source.
-// It lives in the per-worktree git dir, which for a linked worktree is under `.git/worktrees/<name>/` rather than beside the repo's own `.git`, and GitDir names exactly that directory.
+// It lives in the per-worktree git directory, which GitDir names.
 func (r *Repo) MergeHeads() ([]string, error) {
 	gitDir, err := r.GitDir()
 	if err != nil {
@@ -269,13 +234,10 @@ func (r *Repo) MergeHeadPresent() (bool, error) {
 }
 
 // HeadDetached reports whether HEAD points straight at a commit instead of at a branch.
-// fabric's merge verbs need this as a precondition: a merge concluded on a detached HEAD lands a
-// commit no ref reaches, so the next checkout discards it silently while the paired repo's half of
-// the same merge stays landed.
-// CurrentBranch cannot answer it — that method collapses detachment into an error indistinguishable
-// from a genuine read failure — so this is a separate, boolean-returning probe.
-// Like ResolveSHA it is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary
-// Invariant's pinned CLI list.
+// A merge concluded on a detached HEAD lands a commit no ref reaches, and the next checkout discards it silently.
+// Callers need it as a precondition, since the other half of a two-sided merge may already have landed.
+// Detachment is reported as a boolean rather than an error, so it is never mistaken for a failed read.
+// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's pinned CLI list.
 func (r *Repo) HeadDetached() (bool, error) {
 	return readGoGit(r, func(repo *git.Repository) (bool, error) {
 		head, err := repo.Reference(plumbing.HEAD, false)
@@ -286,11 +248,9 @@ func (r *Repo) HeadDetached() (bool, error) {
 	})
 }
 
-// MergeFFOnly advances the repo to ref via `git merge --ff-only <ref>`, failing loudly (never
-// silently discarding local commits the way `reset --hard` would) when the advance is not a
-// fast-forward.
-// A ref with a leading '-' is rejected as ErrInvalidSHA before any git spawn, mirroring
-// IsAncestor's argument pre-check.
+// MergeFFOnly advances the repo to ref via `git merge --ff-only <ref>`.
+// It fails rather than discarding local commits, as `reset --hard` would, when the advance is not a fast-forward.
+// A ref with a leading '-' is rejected as ErrInvalidSHA before git runs.
 func (r *Repo) MergeFFOnly(ref string) error {
 	if strings.HasPrefix(ref, "-") {
 		return ErrInvalidSHA
@@ -301,18 +261,13 @@ func (r *Repo) MergeFFOnly(ref string) error {
 	return nil
 }
 
-// CommitParents returns sha's parent SHAs in git's own recorded order — first parent first, so
-// parents[0] is the branch the merge was made ON and parents[1:] are the merged-in tips.
+// CommitParents returns sha's parent SHAs in git's recorded order, first parent first.
+// A merge's parents[0] is the branch it was made on, and parents[1:] are the merged-in tips.
 // A root commit returns an empty, never nil, slice.
-// It exists so a caller can tell a merge commit apart from an ordinary one, and tell WHICH merge a
-// given merge commit is, by exact parentage rather than by inference from HEAD movement:
-// fabricengine's conclude-adoption arm needs positive evidence that the commit sitting on a
-// checkout is this merge's own conclude and not some unrelated commit an operator landed while the
-// merge record was live.
-// Returns ErrInvalidSHA when sha is not a valid hex object name, mirroring FileAtRevision's own
-// argument pre-check.
-// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's
-// pinned CLI list.
+// Callers use exact parentage, not HEAD movement, to tell which merge a commit concludes.
+// While a merge record is live, an operator may land an unrelated commit; parentage tells the two apart.
+// Returns ErrInvalidSHA when sha is not a valid hex object name.
+// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's pinned CLI list.
 func (r *Repo) CommitParents(sha string) ([]string, error) {
 	if !validSHA(sha) {
 		return nil, ErrInvalidSHA
@@ -332,11 +287,10 @@ func (r *Repo) CommitParents(sha string) ([]string, error) {
 	return parents, nil
 }
 
-// ResolveSHA resolves an arbitrary ref — a branch, a remote-tracking ref such as
-// "origin/<branch>", or a SHA — to a full SHA via go-git.
-// A resolution failure returns a wrapped error the caller can treat as "not found".
-// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's
-// pinned CLI list.
+// ResolveSHA resolves a ref to a full SHA via go-git.
+// The ref may be a branch, a remote-tracking ref such as `origin/<branch>`, or a SHA.
+// A resolution failure returns a wrapped error that callers can treat as not found.
+// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's pinned CLI list.
 func (r *Repo) ResolveSHA(ref string) (string, error) {
 	hash, err := readGoGit(r, func(repo *git.Repository) (*plumbing.Hash, error) {
 		return repo.ResolveRevision(plumbing.Revision(ref))
@@ -347,8 +301,8 @@ func (r *Repo) ResolveSHA(ref string) (string, error) {
 	return hash.String(), nil
 }
 
-// CommitTree returns the tree SHA sha's commit records.
-// Returns ErrInvalidSHA when sha is not a valid hex object name, mirroring CommitParents.
+// CommitTree returns the tree SHA that sha's commit records.
+// It returns ErrInvalidSHA when sha is not a valid hex object name.
 // This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's pinned CLI list.
 func (r *Repo) CommitTree(sha string) (string, error) {
 	if !validSHA(sha) {
@@ -364,11 +318,14 @@ func (r *Repo) CommitTree(sha string) (string, error) {
 	return commit.TreeHash.String(), nil
 }
 
-// MergeTree computes the merge of ours and theirs without touching the index or working tree, via `git merge-tree --write-tree`.
-// It returns the resulting tree SHA and clean=true when the merge has no conflicts;
-// a conflicted merge returns clean=false with an empty tree, since a conflicted tree carries markers no commit should be compared against.
-// ours and theirs are validated before reaching git, returning ErrInvalidSHA.
-// It is CLI-bound because go-git has no merge machinery, so it sits on the gitrepo Client Boundary Invariant's pinned list.
+// MergeTree computes the merge of ours and theirs via `git merge-tree --write-tree`.
+// It touches neither the index nor the working tree.
+// It returns the resulting tree SHA and clean=true when the merge has no conflicts.
+// A conflicted merge returns clean=false with an empty tree.
+// The conflicted tree would carry markers that no commit should be compared against.
+// ours and theirs are validated before git runs, and an invalid one returns ErrInvalidSHA.
+// It runs the CLI, since go-git has no merge machinery.
+// It is therefore on the gitrepo Client Boundary Invariant's pinned list.
 func (r *Repo) MergeTree(ours, theirs string) (tree string, clean bool, err error) {
 	if !validSHA(ours) || !validSHA(theirs) {
 		return "", false, ErrInvalidSHA

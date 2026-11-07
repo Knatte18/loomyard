@@ -1,5 +1,7 @@
-// beamfork_test.go covers beamForkPrecondition over told reads: each refusal that stops a beam member's create, the pass, and a probe error;
-// and the member-hold read after a pair is made, with the refusal it words and the anchor Worktree-Create reads from the seed.
+// beamfork_test.go covers beamForkPrecondition over reads each case fixes:
+// each refusal that stops a beam member's create, the pass, and a probe error.
+// It also covers the member-hold read after a pair is made and the refusal it words.
+// It also covers the anchor that Worktree-Create reads from the seed.
 
 package battencli
 
@@ -19,7 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBeamForkPrecondition asserts a beam member's create is stopped with a precondition naming the beam's create or adopt when the beam's pair is absent here, the landing and the cancel of the member when the beam's entry is run-held, and the cancel with remove when the beam is flagged ready or its ready record does not read, and passes otherwise.
+// TestBeamForkPrecondition asserts a beam member's create is stopped with a precondition.
+// The precondition names the beam's create or adopt when the beam's pair is absent here.
+// It also asserts the landing and the cancel of the member when the beam's entry is run-held.
+// It also asserts the cancel with remove when the beam is flagged ready or its ready record does not read.
+// Any other case passes.
 // A failed origin probe is returned as is.
 func TestBeamForkPrecondition(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -151,7 +157,8 @@ func TestBeamForkPrecondition(t *testing.T) {
 	}
 }
 
-// TestMemberHoldRefusal asserts the refusal names the member's cancel from the beam's parent worktree, the board move off the beam, and the member's run once the beam's status shows Beam-Await.
+// TestMemberHoldRefusal asserts the refusal names the member's cancel from the beam's parent worktree.
+// It also asserts the board move off the beam, and the member's run once the beam's status shows Beam-Await.
 func TestMemberHoldRefusal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -208,8 +215,10 @@ func TestAnchorFromSeed(t *testing.T) {
 	}
 }
 
-// TestRefuseHeldMember asserts a member is judged against its beam's hold read through beamHold: a slug outside a beam and a beam that is not held pass untouched, and a failed read is returned.
-// None of them takes the prime lock, which only a removal needs; a held beam takes it first and returns its failure as is.
+// TestRefuseHeldMember asserts a member is judged against its beam's hold read through beamHold.
+// A slug outside a beam and a beam that is not held pass untouched, and a failed read is returned.
+// None of them takes the prime lock, which only a removal needs;
+// a held beam takes it first and returns its failure as is.
 // The held case that removes a real pair is driven by the integration tests.
 func TestRefuseHeldMember(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,5 +1,7 @@
-// anchor.go is `lym fabric anchor [<slug>] [--set <dir>]`: it prints a worktree's anchor, or moves it to another directory of the warp.
-// The refusals, the waits and the session, run and dobby steps around the move are this file's; the move itself is fabricengine's AnchorChange.
+// anchor.go implements `lym fabric anchor [<slug>] [--set <dir>]`.
+// It prints a worktree's anchor, or moves it to another directory of the warp.
+// The refusals, the waits and the session, run and dobby steps around the move are this file's;
+// the move itself is fabricengine's AnchorChange.
 
 package fabriccli
 
@@ -53,9 +55,11 @@ type anchorResult struct {
 	NoOp bool
 	// PushError is the failure of the detached push a finished change spawns, which the next push of the worktree makes up.
 	PushError string
-	// DobbyStartError is the failure to start the worktree's dobby after a finished change, whose way forward is `lym beam start`.
+	// DobbyStartError is the failure to start the worktree's dobby after a finished change.
+	// Its way forward is `lym beam start`.
 	DobbyStartError string
-	// RelayStartError is the failure to start the hub's Slack relay again after a finished prime move, which names `lym slack start`.
+	// RelayStartError is the failure to start the hub's Slack relay again after a finished prime move.
+	// Its message names `lym slack start` as the way forward.
 	RelayStartError string
 	// Mutations is the record of what the call changed.
 	Mutations fabricengine.Mutations
@@ -83,7 +87,7 @@ func (r anchorResult) fields() map[string]any {
 	return fields
 }
 
-// anchorChange is the engine's AnchorChange as the verb drives it.
+// anchorChange is one change of a worktree's anchor, from the anchor it leaves to the anchor it sets.
 type anchorChange interface {
 	NoOp() bool
 	From() string
@@ -99,17 +103,21 @@ type anchorDeps struct {
 	GOOS string
 	// Acting and Prime name the acting worktree and the hub's prime worktree.
 	Acting, Prime string
-	// Worktree returns the Location of the worktree called slug at its own anchor, and reports false when this machine holds no such worktree.
+	// Worktree returns the Location of the worktree called slug at its own anchor.
+	// held reports whether this machine holds that worktree.
 	Worktree func(slug string) (location *lymcwd.Location, held bool, err error)
 	// IsBeam reports whether the pair called slug is a beam, which runs a dobby.
 	IsBeam func(slug string) (bool, error)
 	// LocalBeams lists the beams this machine holds.
 	LocalBeams func() ([]string, error)
-	// ForeignOwner returns the machine other than this one that the board names as the worktree's effective owner, empty when none does.
+	// ForeignOwner returns the machine other than this one that the board names as the worktree's effective owner.
+	// It returns empty when the board names none.
 	ForeignOwner func(slug string) (string, error)
-	// AdoptSubject returns the beam or `root` that `lym adopt` takes to move the worktree called slug, read from the local board.
+	// AdoptSubject returns the beam or `root` that `lym adopt` takes to move the worktree called slug.
+	// It reads the subject from the local board.
 	AdoptSubject func(slug string) (string, error)
-	// UpstreamAnchor returns the anchor the worktree's weft records at its fetched upstream tip, and found false when it has no upstream.
+	// UpstreamAnchor returns the anchor the worktree's weft records at its fetched upstream tip.
+	// found is false when the worktree has no upstream.
 	UpstreamAnchor func(location *lymcwd.Location) (anchor string, found bool, err error)
 	// MoveRecord reads the move record of the worktree's weft.
 	MoveRecord func(location *lymcwd.Location) (record fabricengine.MoveRecord, found bool, err error)
@@ -121,7 +129,8 @@ type anchorDeps struct {
 	BattenLive func(location *lymcwd.Location) (bool, error)
 	// RunUnfinished reports whether the worktree's own run status, as checked out, names an unfinished run.
 	RunUnfinished func(location *lymcwd.Location) (bool, error)
-	// UpstreamRunUnfinished reports the same from the tree of the worktree's weft's fetched upstream tip.
+	// UpstreamRunUnfinished reports whether the worktree's run status names an unfinished run.
+	// It reads the status from the tree at the fetched upstream tip of the worktree's weft.
 	UpstreamRunUnfinished func(location *lymcwd.Location) (bool, error)
 	// PrimeRunUnfinished reports whether the prime's batten status of the run called slug names an unfinished run.
 	PrimeRunUnfinished func(slug string) (bool, error)
@@ -141,13 +150,17 @@ type anchorDeps struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Note tells the operator what the verb waits on.
 	Note func(line string)
-	// AcquireParentLock takes the parent lock of the worktree's branch as the verb's own owner, queuing behind a holder, and returns its release.
+	// AcquireParentLock takes the parent lock of the worktree's branch as the verb's own owner, queuing behind a holder.
+	// It returns the release function.
 	AcquireParentLock func(ctx context.Context, location *lymcwd.Location) (release func(), err error)
-	// EndDobbies ends the dobbies of the worktrees, leaving alone the processes registered with a role in spare, and returns the ones it ended.
+	// EndDobbies ends the dobbies of the worktrees, leaving alone the processes registered with a role in spare.
+	// It returns the ones it ended.
 	EndDobbies func(worktrees []string, spare ...string) (ended []string, err error)
-	// EnsureDobbies brings up each worktree named, its dobby with its orch, as `lym beam start` does, and returns every refusal and failure.
+	// EnsureDobbies brings up each worktree named, its dobby with its orch, as `lym beam start` does.
+	// It returns every refusal and failure.
 	EnsureDobbies func(worktrees []string) error
-	// StartRelay starts the hub's Slack relay when it is down, which the end of the prime's dobbies may have ended; a hub with no Slack setup starts none and is no error.
+	// StartRelay starts the hub's Slack relay when it is down, which the end of the prime's dobbies may have ended;
+	// a hub with no Slack setup starts none and is no error.
 	StartRelay func() error
 	// Begin begins the change of the worktree's anchor in the engine.
 	Begin func(location *lymcwd.Location, target string) (anchorChange, error)
@@ -156,11 +169,16 @@ type anchorDeps struct {
 }
 
 // changeAnchor prints the anchor of the worktree req names, or with req.Set moves it.
-// A move is refused before anything is touched when the board names another machine as owner, when the worktree's reed state, run or dobby is live, and for the prime when anything of the hub is.
+// A move is refused before anything is touched when the board names another machine as owner.
+// It is also refused when the worktree's reed state, run or dobby is live.
+// For the prime, it is also refused when anything of the hub is held or live.
 // The engine's own refusals follow, and a worktree already at the anchor is reported as such.
-// Otherwise it waits out the passes in flight, takes the parent lock, ends the dobbies, moves the worktree and starts the dobby again.
-// A failure before the record the engine wrote lands leaves nothing standing and restarts the dobbies; a failure with the record standing names the re-run of the same --set and starts none.
-// A move of the prime also starts the Slack relay again, which ending the dobbies ends too, on every path once the dobbies were ended, whatever dobbies it starts.
+// Otherwise it waits out the passes in flight and takes the parent lock.
+// It then ends the dobbies, moves the worktree and starts the dobby again.
+// A failure before the record the engine wrote lands leaves nothing standing and restarts the dobbies;
+// a failure with the record standing names the re-run of the same --set and starts none.
+// A move of the prime also starts the Slack relay again, because ending the dobbies ends the relay too.
+// On every path once the dobbies were ended, the relay starts again, whatever dobbies the move starts.
 func changeAnchor(ctx context.Context, deps anchorDeps, req anchorRequest) (anchorResult, error) {
 	slug := req.Slug
 	if slug == "" {
@@ -188,7 +206,8 @@ func changeAnchor(ctx context.Context, deps anchorDeps, req anchorRequest) (anch
 	return moveAnchor(ctx, deps, location, target, result)
 }
 
-// refuseAnchorChange returns the refusal that stops the move of location's anchor to target before anything is touched, nil when none does.
+// refuseAnchorChange returns the refusal that stops the move of location's anchor to target before anything is touched.
+// It returns nil when none does.
 func refuseAnchorChange(deps anchorDeps, location *lymcwd.Location, target string) error {
 	slug := location.WorktreeName
 	again := fmt.Sprintf("then run `lym fabric anchor %s --set %s` again", slug, target)
@@ -228,8 +247,10 @@ func refuseAnchorChange(deps anchorDeps, location *lymcwd.Location, target strin
 	return refuseLiveDobbies(deps, location, target)
 }
 
-// refuseForeignOwner refuses a move of a worktree another machine owns, unless target is the anchor the weft's fetched upstream tip already records.
-// The refusal names the three ways forward: adopting the worktree here, running the move on the owner machine, and taking the upstream tip's anchor when it differs from the checked-out one.
+// refuseForeignOwner refuses a move of a worktree another machine owns.
+// It lets the move through when target is the anchor the weft's fetched upstream tip already records.
+// The refusal names the ways forward: adopting the worktree here, and running the move on the owner machine.
+// It also names the upstream tip's anchor as a way forward, when that differs from the checked-out one.
 func refuseForeignOwner(deps anchorDeps, location *lymcwd.Location, owner, target string) error {
 	slug := location.WorktreeName
 	upstream, hasUpstream, err := deps.UpstreamAnchor(location)
@@ -257,7 +278,8 @@ func refuseForeignOwner(deps anchorDeps, location *lymcwd.Location, owner, targe
 }
 
 // refuseUnfinishedRun refuses a worktree whose run status names an unfinished run.
-// The status is the worktree's own, read from the weft's fetched upstream tip when another machine owns the worktree, since the weft pull that would refresh the checked-out copy stops at the marker change.
+// The status is the worktree's own, read from the weft's fetched upstream tip when another machine owns the worktree.
+// That is because the weft pull that would refresh the checked-out copy stops at the marker change.
 // A pair's batten status in the prime counts too.
 func refuseUnfinishedRun(deps anchorDeps, location *lymcwd.Location, owner, target string) error {
 	slug := location.WorktreeName
@@ -294,7 +316,8 @@ func refuseUnfinishedRun(deps anchorDeps, location *lymcwd.Location, owner, targ
 	return nil
 }
 
-// refuseLiveDobbies refuses the move on Windows when a dobby it would end is live, and for the prime when anything of the hub is.
+// refuseLiveDobbies refuses the move on Windows when a dobby it would end is live.
+// For the prime, it also refuses the move when anything of the hub is held or live.
 func refuseLiveDobbies(deps anchorDeps, location *lymcwd.Location, target string) error {
 	slug := location.WorktreeName
 	again := fmt.Sprintf("then run `lym fabric anchor %s --set %s` again", slug, target)
@@ -341,7 +364,8 @@ func refuseLiveDobbies(deps anchorDeps, location *lymcwd.Location, target string
 	return nil
 }
 
-// dobbyWorktrees returns the worktrees whose dobby a move of slug ends: the prime's dobby and every local beam's for the prime, the beam's own for a beam, and none for any other pair.
+// dobbyWorktrees returns the worktrees whose dobby a move of slug ends:
+// the prime's dobby and every local beam's for the prime, the beam's own for a beam, and none for any other pair.
 func dobbyWorktrees(deps anchorDeps, slug string) ([]string, error) {
 	if slug == deps.Prime {
 		beams, err := deps.LocalBeams()
@@ -357,7 +381,7 @@ func dobbyWorktrees(deps anchorDeps, slug string) ([]string, error) {
 	return []string{slug}, nil
 }
 
-// moveAnchor carries the move of location's anchor to target out, around the engine's three calls.
+// moveAnchor carries the move of location's anchor to target out, around the engine's Begin, Apply and Finish calls.
 func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location, target string, result anchorResult) (anchorResult, error) {
 	slug := location.WorktreeName
 	rec := fabricengine.NewMutations(location.HubPath)
@@ -378,7 +402,8 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 
 	var releaseParentLock func()
 	var ended []string
-	// relayMayBeEnded is set once the prime's move has called EndDobbies, which ends the hub's Slack relay with the dobbies and may do so before it fails.
+	// relayMayBeEnded is set as the prime's move calls EndDobbies, which ends the hub's Slack relay with the dobbies.
+	// The relay may already be ended before the call fails.
 	relayMayBeEnded := false
 	// restartRelay starts the Slack relay again when this move may have ended it, and words a failure with the way forward.
 	restartRelay := func() error {
@@ -390,7 +415,10 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 		}
 		return nil
 	}
-	// fail ends the verb on cause: it releases the parent lock, closes the change, decides by the record that is left whether the dobbies it ended start again, and starts the Slack relay again when the move may have ended it.
+	// fail ends the verb on cause.
+	// It releases the parent lock and closes the change.
+	// It then decides by the record that is left whether the dobbies it ended start again.
+	// It also starts the Slack relay again when the move may have ended it.
 	fail := func(cause error) (anchorResult, error) {
 		if releaseParentLock != nil {
 			releaseParentLock()
@@ -483,7 +511,7 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 	return result, nil
 }
 
-// passesInFlight describes every pass in flight of the dobbies of worktrees.
+// passesInFlight returns the pass in flight for each worktree whose dobby has one.
 func passesInFlight(deps anchorDeps, worktrees []string) ([]string, error) {
 	var busy []string
 	for _, worktree := range worktrees {
@@ -498,9 +526,10 @@ func passesInFlight(deps anchorDeps, worktrees []string) ([]string, error) {
 	return busy, nil
 }
 
-// startDobbies starts the dobbies of worktrees and reports a start that failed.
-// A move that finished names every dobby it was to end, and a move that failed names the ones it ended.
-// It starts nothing when none are named.
+// startDobbies starts the dobbies named in ended and returns the error of a start that failed.
+// When the move finished, ended names every dobby the move was to end.
+// When the move failed, ended names only the dobbies it ended.
+// It starts nothing when ended is empty.
 func startDobbies(deps anchorDeps, ended []string) error {
 	if len(ended) == 0 {
 		return nil

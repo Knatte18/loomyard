@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// isAlive is the liveness seam, so marker tests stay tier 1.
+// isAlive reports whether the process with a pid is alive.
+// It is a variable so tests can replace it without starting real processes.
 var isAlive = proc.IsAlive
 
 // The three states of a Marker.
@@ -27,7 +28,8 @@ const (
 )
 
 // Marker is the running marker: which site is verifying which command, since when, and the pid that holds it.
-// State says whether the run waits for a gate slot, runs its command or is held by a pause; WaitStarted is when a wait or hold began, zero for an unslotted run that never waited.
+// State says whether the run waits for a gate slot, runs its command, or is held by a pause.
+// WaitStarted is when a wait or hold began; it is zero for an unslotted run that never waited.
 type Marker struct {
 	Site        string    `yaml:"site"`
 	Attempt     int       `yaml:"attempt"`
@@ -40,7 +42,7 @@ type Marker struct {
 
 // ReadMarker reads the marker at path.
 // It reports false for an absent marker and for one whose pid is no longer alive, which a crashed run leaves behind.
-// A marker written before it had a state reads as running.
+// A marker with no state reads as running.
 // A malformed marker is an error.
 func ReadMarker(path string) (Marker, bool, error) {
 	data, err := os.ReadFile(path)

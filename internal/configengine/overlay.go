@@ -1,4 +1,5 @@
-// overlay.go implements the template overlay: the one composer of a module's effective template, the base-layer selector that picks it and the refusals around that selector.
+// overlay.go composes a module's effective template from the overlay that its base-layer selector picks.
+// It also refuses a selector value held by a file other than the base layer's.
 // Every load, write and reconcile path judges a document against the effective template, never the bare spec template.
 
 package configengine
@@ -25,7 +26,8 @@ type Overlay struct {
 
 // EffectiveTemplate returns the template a document is judged against:
 // the spec's template with the overlay document picked by the selector in base laid over it.
-// base is the base layer's document, nil when absent, and hub says whether the module is read inside a hub, which only picks the way forward of a refusal.
+// base is the base layer's document, nil when absent.
+// hub says whether the module is read inside a hub, which only picks the way forward of a refusal.
 // An unknown or non-scalar selector value is an [ErrInvalid] error naming a way forward.
 func EffectiveTemplate(spec Spec, base []byte, hub bool) ([]byte, error) {
 	value, _, err := selectorValue(spec, base)
@@ -51,7 +53,8 @@ func TemplateUnder(dirs Dirs, spec Spec) ([]byte, error) {
 
 // overlayTemplate composes the effective template for a selector value.
 // An empty value or a spec with no overlay returns the template unchanged;
-// otherwise the value's document is merged over the template under the spec's open maps, so an overlay name under a per-name map replaces or adds one entry whole.
+// otherwise the value's document is merged over the template under the spec's open maps,
+// so an overlay name under a per-name map replaces or adds one entry whole.
 func overlayTemplate(spec Spec, value string, hub bool) ([]byte, error) {
 	if value == "" || len(spec.Overlay.Documents) == 0 {
 		return spec.Template, nil
@@ -128,7 +131,7 @@ func baseDocument(dirs Dirs, spec Spec, layers []LayerDoc) []byte {
 	return nil
 }
 
-// worktreeSelectorOther reports whether the worktree document of a hub holds the selector with a value other than the base document's.
+// worktreeSelectorOther reports whether a hub's worktree document holds the selector with a value other than the base's.
 // A non-scalar value counts as other.
 func worktreeSelectorOther(spec Spec, worktree, base []byte) (other bool, err error) {
 	value, held, err := selectorValue(spec, worktree)

@@ -1,4 +1,6 @@
-// beamfork.go decides where Worktree-Create forks a task's pair from: the prime for a task outside any beam, the task's beam for a member of one, and the refusals that stop a member's create while its beam cannot take it.
+// beamfork.go decides where Worktree-Create forks a task's pair from:
+// the prime for a task outside any beam, and the task's beam for a member of one.
+// It also holds the refusals that stop a member's create while its beam cannot take it.
 
 package battencli
 
@@ -16,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// beamForkParent returns the beam slug's pair forks from over the local board, "" meaning the prime.
-// A beam goes through beamForkPrecondition first, which stops the create with a precondition when the beam cannot take the member.
+// beamForkParent returns the slug of the beam that slug's pair forks from, or "" for the prime.
+// It returns a *battenshed.PreconditionError when that beam cannot take slug.
 func beamForkParent(prime *lymcwd.Location, slug string, branchOnOrigin func(beam string) (bool, error)) (string, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
@@ -53,11 +55,17 @@ func beamForkParent(prime *lymcwd.Location, slug string, branchOnOrigin func(bea
 	return beam, nil
 }
 
-// beamForkPrecondition stops the create of slug's pair with a *battenshed.PreconditionError when its beam cannot take the member.
-// A beam whose pair is absent here names the beam and the command that brings it: the beam's create when branchOnOrigin reports its branch off origin, its adopt when on origin.
-// A beam whose board entry beamEntry is held by its own landing run, from Finalize on and not from Parent-Align, names the landing and the cancel of slug that lets the landing go on.
-// A beam whose ready record ready reads as flagged takes no member, since ready is final and the member could not land into the beam: the refusal names the cancel that removes slug.
-// A ready read that fails refuses too, naming the error and the same cancel once it is fixed.
+// beamForkPrecondition stops the create of the pair of slug when beam cannot take slug.
+// The stop is a *battenshed.PreconditionError that names the way forward.
+// When the beam's pair is not on this machine, the way forward names the command that brings it:
+// `lym adopt` when the beam's branch is on origin, otherwise `lym beam create`.
+// When the beam's own landing run holds its board entry, the way forward names the landing.
+// The hold counts from Finalize on, not from Parent-Align.
+// The way forward also names the cancel of slug, which lets the landing go on.
+// A beam whose ready record reads as flagged takes no member:
+// the record is final, so the member could not land into the beam.
+// The way forward names the cancel that removes slug.
+// A ready read that fails is also refused, naming the error, a retry of the run, and the cancel that removes slug.
 // An error from branchOnOrigin is returned as is.
 func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFound, pairPresent bool, branchOnOrigin func() (bool, error), ready func() (bool, error)) error {
 	if !pairPresent {
@@ -97,10 +105,14 @@ func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFou
 	return nil
 }
 
-// memberHoldRefusal is the refusal of a member whose beam's own run holds the beam's entry once the member's pair was made, and whose pair was removed.
-// It names the two steps that progress from there, since the member keeps its claim and stays an open member that stops the beam's landing:
-// the member's cancel from the beam's parent worktree, which ends it and releases its claim, then moving its project off the beam, since a draft member still blocks the landing and the beam's next land request lands it;
-// or, once the beam's run is back at Beam-Await, the member's run, which resumes the halted member.
+// memberHoldRefusal returns the refusal of a member whose beam's run holds the beam's entry.
+// It applies once the member's pair is removed.
+// The member keeps its claim and stays an open member, so it still stops the beam's landing.
+// The refusal names two ways forward.
+// One is the member's cancel from the beam's parent worktree, which ends it and releases its claim.
+// Then the project moves off the beam with `lym board upsert`, since a draft member still blocks the landing.
+// After that, the beam's next land request lands the member.
+// The other, once the beam's run is back at Beam-Await, is the member's run, which resumes the halted member.
 func memberHoldRefusal(slug, beam, status string) error {
 	return &battenshed.PreconditionError{
 		Unmet: fmt.Sprintf("%s belongs to beam %s, which its own landing holds (%s), so the pair of %s was removed", slug, beam, status, slug),
@@ -128,8 +140,11 @@ func readBeamHold(prime *lymcwd.Location, beam string) (status string, held bool
 	return "", false, nil
 }
 
-// refuseHeldMember reads slug's beam again once slug's pair is made, or found complete, and removes the pair and refuses with memberHoldRefusal when the beam's run holds its entry.
-// The beam's accept may write its hold between the fork precondition's read and the pair's making, and a member that crashed after the pair was made is judged here when it is resumed; either way this read or the beam's own re-check sees the other.
+// refuseHeldMember refuses slug when its beam's run holds the beam's entry, after removing slug's pair.
+// It runs once slug's pair is made or found complete.
+// The beam's accept may write its hold between the fork precondition's read and the pair's making,
+// and a member that crashed after its pair was made is judged here when it is resumed.
+// Either way this read or the beam's own re-check sees the other.
 // The member keeps its claim, so the removal settles none.
 // The removal runs under holdPrime, since it writes the hub's worktree registry.
 // A slug outside a beam is never refused.

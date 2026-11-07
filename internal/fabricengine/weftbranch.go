@@ -1,6 +1,6 @@
 // weftbranch.go implements resolveWeftBranch, the one place a verb decides where a pair's weft branch comes from.
-// The order is fixed: the local branch, else the branch on origin adopted as a local tracking branch, else none,
-// and the caller forks.
+// The order is fixed: the local branch, else the branch on origin adopted as a local tracking branch, else none.
+// When none exists, the caller forks.
 
 package fabricengine
 
@@ -14,11 +14,12 @@ import (
 
 // resolveWeftBranch finds weftBranch for a verb about to use it.
 // A local refs/heads/<weftBranch> returns exists=true, fromOrigin=false.
-// Otherwise, when consultOrigin is true and the weft repo has an origin remote, a branch on origin is fetched into its remote-tracking ref and a local branch tracking it is created;
-// that returns exists=true, fromOrigin=true and records KindBranchCreated on rec.
+// Otherwise, if consultOrigin is true and the weft repo has an origin remote, the branch is fetched from origin.
+// It then creates a local tracking branch and returns exists=true, fromOrigin=true, recording KindBranchCreated on rec.
 // Otherwise it returns exists=false and the caller forks.
 // A weft repo with no origin remote skips the origin step.
-// A failed probe, fetch or branch creation is a returned error naming origin and the branch, never a fall-through to exists=false.
+// A failed probe, fetch or branch creation returns an error that names origin and the branch.
+// It never falls through to exists=false.
 // It pushes, replaces and deletes nothing on origin.
 func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, consultOrigin bool) (exists bool, fromOrigin bool, err error) {
 	if weftBranchExists(l, weftBranch) {

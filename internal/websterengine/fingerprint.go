@@ -1,9 +1,6 @@
-// fingerprint.go implements fingerprint, webster's own plan-identity hash constructor,
-// deliberately module-local rather than shared.
-// webster's state.json records the fingerprint at first init,
-// and every later run/begin-batch entry recomputes and compares it against the on-disk plan, so a
-// --fresh crash/resume guard (wired into state and runlevel in batch 7) can detect a stale plan
-// across a crash/resume boundary.
+// fingerprint.go computes the plan-identity hash that webster records in state.json at first init.
+// Every later run and begin-batch entry recomputes it and compares it with the plan on disk,
+// so the crash/resume guard can detect a plan that went stale across a crash/resume boundary.
 
 package websterengine
 
@@ -22,11 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// fingerprint computes a SHA-256 digest over every "*.md" file's name and
-// contents in planDir (sorted lexically).
-// Non-.md entries are ignored, and so are planparser.AmendmentsFileName, planparser.LensReviewFileName and the lens reports saved beside the lens review.
-// The amendment log is an append-only record OF plan changes written by the pipeline itself, and the lens review and its lens reports are records ABOUT the plan written by the pipeline's writer.
-// None is plan content an author wrote, so folding any of them into plan identity made webster's own drift repair invalidate the plan it had just repaired.
+// fingerprint computes a SHA-256 digest over the name and contents of each plan file in planDir.
 func fingerprint(planDir string) (string, error) {
 	names, err := planFileNames(planDir)
 	if err != nil {
@@ -49,7 +42,10 @@ func fingerprint(planDir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// planFileNames lists the plan files fingerprint covers, sorted: every ".md" file in planDir but planparser.AmendmentsFileName, planparser.LensReviewFileName and the lens reports saved beside it, none of which is plan content.
+// planFileNames lists the ".md" files in planDir that are plan content, sorted.
+// The pipeline's own records are left out: the amendment log, the lens review, and the lens reports saved beside it.
+// They record changes to the plan rather than plan content.
+// Including them would make webster's own drift repair invalidate the plan it had just repaired.
 func planFileNames(planDir string) ([]string, error) {
 	entries, err := os.ReadDir(planDir)
 	if err != nil {
@@ -66,7 +62,7 @@ func planFileNames(planDir string) ([]string, error) {
 	return names, nil
 }
 
-// planFileHashes hashes the same file set fingerprint reads, one hex SHA-256 per file name.
+// planFileHashes returns the hex SHA-256 of each plan file in planDir, keyed by file name.
 func planFileHashes(planDir string) (map[string]string, error) {
 	names, err := planFileNames(planDir)
 	if err != nil {
@@ -84,7 +80,8 @@ func planFileHashes(planDir string) (map[string]string, error) {
 	return hashes, nil
 }
 
-// overviewFrameHash hashes planDir's 00-overview.md with its Card Index section cut out, as the hex SHA-256 State.PlanOverviewFrameHash records.
+// overviewFrameHash returns the hex SHA-256 of planDir's 00-overview.md with its Card Index section cut out.
+// It is the frame that State.PlanOverviewFrameHash records.
 // A plan directory without an overview has no frame and hashes to "", the value that makes Rebaseline refuse any overview change.
 func overviewFrameHash(planDir string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(planDir, planOverviewFile))
@@ -101,7 +98,7 @@ func overviewFrameHash(planDir string) (string, error) {
 	return hash, nil
 }
 
-// overviewFrameHashOf hashes overview, the content of a 00-overview.md, with its Card Index section cut out, as the hex SHA-256 State.PlanOverviewFrameHash records.
+// overviewFrameHashOf returns the hex SHA-256 of overview, a 00-overview.md's content, with its Card Index cut out.
 // It fails when overview has no Card Index or no well-formed frontmatter.
 func overviewFrameHashOf(overview []byte) (string, error) {
 	frame, err := planparser.OverviewWithoutCardIndex(overview)
@@ -134,7 +131,7 @@ func changedPlanFiles(st *State, planDir string) ([]string, error) {
 }
 
 // PlanEditError returns nil when the plan on disk fingerprints to st.PlanFingerprint, and otherwise the ErrFingerprintMismatch wrap naming the way forward.
-// BeginBatch, RecordBatch, PersistRecoveryTerminal and webstercli's validate call it before their own rewrites,
+// Callers that rewrite the plan call it before their own rewrites,
 // so any difference it sees is someone else's edit rather than webster's own.
 func PlanEditError(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
@@ -170,38 +167,35 @@ func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir, web
 	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir, websterDir, stepRun))
 }
 
-// Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know
-// the SAME plan-identity digest webster's own bracket verbs compute, without going through
-// BeginBatch/RecordBatch's own State-restamping side effect.
+// Fingerprint returns the hex SHA-256 digest of the plan files in planDir.
+// The crash/resume guard in state.json compares this digest against the fingerprint the run recorded.
 //
-// webstercli's validate verb is the one caller (crucible round sonnet-xhigh-r8, WS-1): unlike every
-// bracket verb, it runs the same rewrite-capable planglyph pass (handle canonicalization) without
-// ever restamping state.json's PlanFingerprint afterward, so a plan rewritten mid-validate silently
-// desynced the crash/resume guard until this seam existed for it to close that gap with.
+// It does not restamp state.json,
+// so a plan rewritten after the call leaves the recorded fingerprint stale.
 func Fingerprint(planDir string) (string, error) {
 	return fingerprint(planDir)
 }
 
-// restampFingerprint recomputes planDir's fingerprint into st.PlanFingerprint and its per-file hashes into st.PlanFileHashes.
-// Each bracket verb calls it after any planglyph pass that may have rewritten the plan on disk.
+// restampFingerprint re-baselines planDir's fingerprint into st.PlanFingerprint.
+// It sets st.PlanFileHashes to the per-file hashes of planDir too.
+// Callers call it after any planglyph pass that may have rewritten the plan on disk.
 //
-// The staleness guard exists to catch a plan edited from OUTSIDE the run between two batches, and
-// it cannot tell that apart from webster's own sanctioned rewrites — handle canonicalization at
-// begin-batch, handle binding and exact-tier drift repair at record-batch — unless the run
-// re-baselines after making them.
-// Without this, the first batch that bound a handle or repaired drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse (the reset route, then a plain `lym webster run`) restarts the same plan into the same wall.
+// The staleness guard catches a plan edited from outside the run between two batches,
+// and it cannot tell such an edit apart from webster's own rewrites unless the run re-baselines after making them.
+// Sanctioned rewrites: handle canonicalization at begin-batch; handle binding and drift repair at record-batch.
+// Without the re-baseline, one rewrite would make every later begin-batch fail with ErrFingerprintMismatch.
 //
-// Re-baselining costs nothing the guard was actually providing: a foreign edit landing between this
-// call and the next begin-batch is still caught, which is the whole window the guard covers.
+// Re-baselining gives up nothing the guard provides:
+// an edit that lands between this call and the next begin-batch is still caught.
 //
-// It also stores the hashed content under websterDir (see storePlanBaseline) before mutating st, so a store failure leaves the state's hashes unchanged.
+// It stores the hashed content under websterDir before it mutates st.
+// A store failure therefore leaves the state's hashes unchanged.
 //
-// It moves each begun batch's recorded CardHashes entry along with the rewrite (see moveBegunCardHashes),
-// so a card webster's own rewrite changed is not later refused as an operator edit.
+// It moves each begun batch's recorded CardHashes entry along with the rewrite,
+// so a card that webster's own rewrite changed is not later refused as an operator edit.
 // The move is bounded: only a card whose recorded hash equals the pre-rewrite PlanFileHashes entry for its file moves.
-// Every caller runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused rather than adopted;
-// an edit landing between that check and this restamp is adopted with the rewrite.
-// Rebaseline calls restampBaseline instead and never moves a begun card's hash.
+// Callers run a foreign-edit check first, so an edit already on disk is refused rather than adopted;
+// an edit that lands between that check and this restamp is adopted with the rewrite.
 func restampFingerprint(st *State, planDir, websterDir string) error {
 	before := st.PlanFileHashes
 	if err := restampBaseline(st, planDir, websterDir); err != nil {
@@ -234,8 +228,9 @@ func restampBaseline(st *State, planDir, websterDir string) error {
 	return nil
 }
 
-// moveBegunCardHashes sets each batch record's CardHashes entry for card id to after[id+".md"] when it equals before[id+".md"].
-// A card whose recorded hash differs from before keeps it, so a card an earlier untracked rewrite already moved stays refused.
+// moveBegunCardHashes moves each batch record's CardHashes entry for a card to that card's hash in after.
+// It moves only an entry equal to the card's hash in before.
+// An entry that differs keeps its hash, so a card an earlier untracked rewrite already moved stays refused.
 // A file absent from either map is left alone, and so is every record when before is empty.
 func moveBegunCardHashes(st *State, before, after map[string]string) {
 	if len(before) == 0 {
@@ -256,16 +251,14 @@ func moveBegunCardHashes(st *State, before, after map[string]string) {
 	}
 }
 
-// RestampPlanBaseline is restampFingerprint's exported seam for webstercli's validate verb, which re-baselines after its own rewrite-capable pass.
+// RestampPlanBaseline re-baselines the plan fingerprint for a caller that has rewritten the plan and must record the new baseline.
 func RestampPlanBaseline(st *State, planDir, websterDir string) error {
 	return restampFingerprint(st, planDir, websterDir)
 }
 
-// restampAndSaveFingerprint is restampFingerprint followed by SaveState, for Run — the one
-// re-baseline site that owns its own state persistence rather than handing the state back to a CLI
-// verb to save. Both halves are needed together: a re-baseline held only in memory is discarded by
-// every path that returns before Run's later saves, which is exactly the wedge the re-baseline
-// exists to prevent.
+// restampAndSaveFingerprint re-baselines the plan fingerprint and persists the state in one step.
+// The two must happen together: an in-memory re-baseline is lost on any return before the next save,
+// and that loss is the wedge the re-baseline exists to prevent.
 func restampAndSaveFingerprint(geom Geometry, st *State) error {
 	if err := restampFingerprint(st, geom.PlanDir, geom.WebsterDir); err != nil {
 		return err

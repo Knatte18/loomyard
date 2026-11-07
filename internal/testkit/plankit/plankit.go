@@ -1,6 +1,8 @@
 // Package plankit is the one test-side writer of valid plans.
-// It renders a plan directory through `planparser`'s format constant and its Card Index and card-file grammar, so a format bump fails at one site instead of in every fixture.
-// Render returns the bytes per file, so a rejection test can corrupt one file of an otherwise valid plan without spelling the format itself.
+// It renders a plan directory using the format constant and the Card Index and card-file grammar of `planparser`.
+// A format bump therefore fails at one site, not in every fixture.
+// Render returns the bytes of each file, so a rejection test can corrupt one file of a valid plan.
+// That spares the test from spelling the format itself.
 // WriteTree and Repo write the file-tree fixture glyph resolution needs.
 // Its only assertions are `t.Fatalf` on its own setup.
 package plankit
@@ -56,7 +58,8 @@ type Card struct {
 }
 
 // Group is one type label, without its colon, and its target bullets.
-// Each target is written inside backticks, except under `Rename`, whose targets are written verbatim as complete "`old` -> `new`" lines.
+// Each target is written inside backticks.
+// Targets under `Rename` are written verbatim as complete "`old` -> `new`" lines.
 type Group struct {
 	Label   string
 	Targets []string

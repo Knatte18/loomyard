@@ -1,38 +1,49 @@
-// Package gitkit is the below-fabric leaf holding test git plumbing: the spawn, query and commit helpers, config seeding, the hermetic git environment and the primitive repo fixture CopyRepo.
+// Package gitkit is the below-fabric leaf holding test git plumbing.
+// It provides the spawn, query and commit helpers, config seeding, and the hermetic git environment.
+// It also provides the primitive repo fixture CopyRepo.
 // It never imports fabric.
-// 23 packages call HermeticGitEnv from TestMain, and eleven of them sit inside
-// internal/fabriccli's dependency set, so a fabric import in this package would stop those
-// TestMain files compiling.
+// Many packages call HermeticGitEnv from TestMain, and some sit inside internal/fabriccli's dependency set,
+// so a fabric import in this package would stop those TestMain files compiling.
 //
-// CopyRepo is pinned to internal/lymcwd alone, enforced by
-// internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LymcwdOnly) — every other
-// package takes a real hub from internal/hubforge instead.
-// Every other export is unpinned;
-// any package may call it.
+// CopyRepo is pinned to internal/lymcwd alone.
+// internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LymcwdOnly) enforces the pin.
+// Every other package takes a real hub from internal/hubforge instead.
+// Every other export is unpinned, and any package may call it.
 //
-// Git is the one spawning primitive for queries,
-// and query.go builds the rev, branch, ancestry, ls-files and exclude queries and the commit helpers on it.
-// Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists, because this package cannot import internal/logger.
+// Git is the one spawning primitive for queries.
+// query.go builds the rev, branch, ancestry, ls-files and exclude queries and the commit helpers on it.
+// Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists.
+// This package cannot import internal/logger.
 //
-// Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lymcwd, internal/weftname, internal/configengine, internal/lymdirs, and internal/lymtemp, with internal/configreg and every feature package (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli) excluded by construction — feature packages' own tests import gitkit, so a reverse import would close a test-build cycle.
-// This is enforced by internal/gitkit/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) and recorded in PATTERN-leaf-packages.
-// Tests that need real configuration seed it via SeedConfig, which takes a configreg-free map[string]string (module name to YAML content), converting configreg.Modules() or a feature's ConfigTemplate() at the test site instead of inside gitkit.
+// Leaf Invariant: internal/gitkit production code imports only the standard library and these packages.
+// They are internal/lymcwd, internal/weftname, internal/configengine, internal/lymdirs, and internal/lymtemp.
+// internal/configreg is excluded by construction.
+// So is every feature package: the engine and cli pairs for board, fabric, ide and selfreport.
+// Feature packages' own tests import gitkit, so a reverse import would close a test-build cycle.
+// internal/gitkit/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) enforces this.
+// PATTERN-leaf-packages records it.
+// Tests that need real configuration seed it via SeedConfig, which takes a configreg-free map[string]string.
+// The map holds module name to YAML content.
+// A test converts configreg.Modules() or a feature's ConfigTemplate() at the test site.
 //
-// Fixture marker: git spawned to build a fixture is told apart from git the code under test runs by the environment variable FixtureGitEnv, value "1".
-// The spawn helpers in gitkit.go set it on the child's environment, and hubforge sets it process-wide for the duration of a hub build.
+// Fixture marker: the environment variable FixtureGitEnv, value "1", tells fixture-building git from test git.
+// Test git here means git the code under test runs.
+// The spawn helpers in gitkit.go set it on the child's environment.
+// hubforge sets it process-wide for the duration of a hub build.
 // A census of git processes reads it through git's trace2 env-var events.
 //
-// Hermetic Git Test Environment: gitkit also implements the two-layer mechanism that keeps
-// git-spawning tests from depending on the operator's global or system gitconfig.
-// Layer A (template quiet-config) sets core.fsmonitor=false, maintenance.auto=false, and gc.auto=0
-// on every template repo at build time, so fixtures built by initRepo/initBareRemote and their
-// Copy* copies are quiet by construction.
-// Layer B (HermeticGitEnv, hermetic.go) is a process-wide override a package's TestMain calls
-// before m.Run(), pointing GIT_CONFIG_GLOBAL at a neutral config and setting GIT_CONFIG_NOSYSTEM=1,
-// which also covers git spawned by raw `git init`/`git clone` inside tests and by any child process
-// the test binary launches.
+// Hermetic Git Test Environment: gitkit also implements a two-layer mechanism.
+// It keeps git-spawning tests from depending on the operator's global or system gitconfig.
+// Layer A (template quiet-config) applies at build time to every template repo:
+// it sets core.fsmonitor=false, maintenance.auto=false, and gc.auto=0.
+// Fixtures built by initRepo/initBareRemote and their Copy* copies are therefore quiet by construction.
+// Layer B (HermeticGitEnv, hermetic.go) is a process-wide override a package's TestMain calls before m.Run().
+// It points GIT_CONFIG_GLOBAL at a neutral config and sets GIT_CONFIG_NOSYSTEM=1.
+// It covers git spawned by raw `git init`/`git clone` inside tests, and any child process the test binary launches.
 // The neutral config also sets gc.autoDetach=false, so any gc that still runs is foreground and waited for.
-// The neutral config file lives in the process run directory of internal/lymtemp, so it goes with that directory when tmuxkit.Main removes it after the run.
-// The variables reach every `lym` child a test runs through lymbin.Run, which inherits the process environment, and reed's clean environment already passes them through.
+// The neutral config file lives in the process run directory of internal/lymtemp,
+// so it goes with that directory when tmuxkit.Main removes it after the run.
+// The variables reach every `lym` child a test runs through lymbin.Run, which inherits the process environment.
+// Reed's clean environment already passes them through.
 // See PATTERN-test-isolation for the machine-enforced half of this contract.
 package gitkit

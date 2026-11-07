@@ -1,4 +1,5 @@
-// start_test.go drives the start sequence over a fake bring-up: which target is prepared and how one beam's failure shows beside the others.
+// start_test.go drives the start sequence over a fake bring-up.
+// It covers which target is prepared and how one beam's failure shows beside the others.
 
 package beamcli
 
@@ -22,7 +23,8 @@ func TestStartBeams(t *testing.T) {
 	alpha := beamTarget{Slug: "alpha", Label: "alpha"}
 	beta := beamTarget{Slug: "beta", Label: "beta"}
 
-	// entryView is what a startEntry shows of one beam: its label, dobby outcome, orch action, error and whether it carries the hub's reconcile.
+	// entryView is what a startEntry shows of one beam.
+	// It holds the label, dobby outcome, orch action, error and whether it carries the hub's reconcile.
 	type entryView struct {
 		Worktree  string
 		Outcome   string

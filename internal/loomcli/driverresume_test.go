@@ -62,9 +62,11 @@ func notReady() error {
 	return fmt.Errorf("pane: %w", shuttleengine.ErrPaneNotReady)
 }
 
-// TestResumeParkedDriver asserts the resume sends one single-line message naming the drive-reports directory and removes the park marker once the send is verified,
-// waits through a not-ready pane, retries a never-ready pane only up to driverResumeSendAttempts, and never retries any other error;
-// a refused resume leaves the marker on disk.
+// TestResumeParkedDriver asserts the resume sends one single-line message naming the drive-reports directory.
+// It removes the park marker once the send is verified.
+// It waits through a not-ready pane.
+// It retries a never-ready pane only up to driverResumeSendAttempts, and never retries any other error.
+// A refused resume leaves the marker on disk.
 //
 //testtiming:keep pins the resume send: one single-line message naming the drive-reports directory and the marker removed on success, waits through a not-ready pane, the attempt bound, and a non-readiness error never retried, with the marker kept on refusal; the covering tests assert the outcome of the resume, not each send
 func TestResumeParkedDriver(t *testing.T) {

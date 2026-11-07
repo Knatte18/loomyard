@@ -1,4 +1,6 @@
-// parentlock.go wires the seams of Run-Shed's parent lock backstop: the lock record of the child's run, its release, the child's agent states and the landing-in-flight read.
+// parentlock.go wires the seams of Run-Shed's parent lock backstop.
+// The seams read and release the child's lock record, read its agent states, and report whether landing is in flight.
+// The lock's idle bound also comes from the landing config.
 
 package battencli
 
@@ -24,7 +26,8 @@ import (
 
 // childParentLock builds the parent lock seams of the task pair for slug, over the lock store under boltDir.
 // bound is landing's idle bound for the lock.
-// The task pair is located at call time, so a pair that is not there yet fails the seam and not the wiring.
+// The task pair is located only when a seam calls for it.
+// A pair that is not there yet fails that seam, not the wiring.
 func childParentLock(slug string, locateTask func() (*lymcwd.Location, error), boltDir string, bound time.Duration) *battenshed.ChildParentLock {
 	store := &parentlock.Store{Dir: parentlock.Dir(boltDir)}
 	return &battenshed.ChildParentLock{
@@ -56,8 +59,11 @@ func childParentLock(slug string, locateTask func() (*lymcwd.Location, error), b
 	}
 }
 
-// landingInFlight reports whether the task pair's run is at Finalize and running, or a verify marker of the pair is live, which holds the run's parent lock.
-// A status directory that does not exist yet reads as no status; any other failed read of the status file or the marker returns its error.
+// landingInFlight reports whether the task pair's run is at Finalize and running,
+// or a verify marker of the pair is live.
+// Either one holds the run's parent lock.
+// A status directory that does not exist yet reads as no status;
+// any other failed read of the status file or the marker returns its error.
 func landingInFlight(taskLocation *lymcwd.Location) (bool, error) {
 	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -80,7 +86,8 @@ func lockIdleBound(prime *lymcwd.Location) time.Duration {
 	return cfg.IdleRelease()
 }
 
-// runLockRecord returns the lock record in store whose owner is the run for slug in the pair at pairPath, and false when none is.
+// runLockRecord returns the lock record in store whose owner is the run for slug in the pair at pairPath.
+// The bool result reports whether such a record is found.
 // A record that cannot be read is skipped: it names no run.
 func runLockRecord(store *parentlock.Store, slug, pairPath string) (parentlock.Record, bool, error) {
 	entries, err := store.List()

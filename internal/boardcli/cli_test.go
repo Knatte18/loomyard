@@ -1,12 +1,16 @@
 // cli_test.go — tests for the board CLI (cli.go).
 //
-// Drives RunCLI in-process and asserts the JSON + exit-code contract for each subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success, 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
+// Drives RunCLI in-process and asserts the JSON envelope and exit code of each subcommand.
+// The envelope carries ok=true or ok=false; success exits 0 and error exits 1.
+// Each verb's distinctive field (task, tasks[], Home.md written) is checked too.
 //
-// Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd so that PersistentPreRunE can call lymcwd.Resolve without error.
+// TestCLI seeds one git repo (git init) as its cwd, so PersistentPreRunE can call lymcwd.Resolve without error.
 // The board data dir is then the Bolt checkout under Hub, where Hub = filepath.Dir(cwd).
 // This is the production code path; no --board-path injection is used for operational tests.
 //
-// seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via lymcwd.Resolve, so this file is integration-tagged per the Test Tier Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
+// seedCwd spawns "git init", and every RunCLI call spawns "git rev-parse" via lymcwd.Resolve,
+// so this file is integration-tagged per the Test Tier Purity Invariant.
+// Spawn-free CLI tests live in cli_unit_test.go.
 
 package boardcli_test
 
@@ -26,8 +30,10 @@ import (
 // defaultHubBoardConfig is the hub board.yaml every step starts from.
 const defaultHubBoardConfig = "readme: Home.md\ndesign_prefix: proposal-\n"
 
-// seedCwd creates a temp directory with the default hub board.yaml, initialises a git repo there (so lymcwd.Resolve succeeds), changes to that directory, and returns the cwd path.
-// The board data dir is the Bolt checkout under Hub, where Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
+// seedCwd creates a temp directory, seeds the default hub board.yaml, and initialises a git repo there.
+// The git repo lets lymcwd.Resolve succeed, and seedCwd changes into the directory and returns its path.
+// The board data dir is the Bolt checkout under Hub, where Hub = filepath.Dir(cwd).
+// Callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
@@ -44,7 +50,8 @@ func seedCwd(t *testing.T) string {
 	return cwd
 }
 
-// seedHubBoardConfig writes content as the board.yaml in the hub's board dir, the one file every board reader loads, and the default fabric.yaml beside it, which the slug rule of a write reads.
+// seedHubBoardConfig writes content as the board.yaml in the hub's board dir, the one file every board reader loads.
+// It also writes the default fabric.yaml beside it, which the slug rule of a write reads.
 func seedHubBoardConfig(t *testing.T, hub, content string) {
 	t.Helper()
 	boardDir := fabricengine.BoardDir(hub)
@@ -76,7 +83,8 @@ type cliFixture struct {
 	cwd string
 }
 
-// reset empties the fixture's board, restores the default hub board.yaml, drops any worktree copy of the board config, and returns the cwd.
+// reset empties the fixture's board and restores the default hub board.yaml.
+// It also drops any worktree copy of the board config, and returns the cwd.
 func (f *cliFixture) reset(t *testing.T) string {
 	t.Helper()
 	hub := filepath.Dir(f.cwd)
@@ -93,7 +101,8 @@ func (f *cliFixture) reset(t *testing.T) string {
 // TestCLI runs every board CLI contract against one seeded repository, in the order below.
 // Each step starts from an empty board with the default board.yaml, so a step relies on no earlier step's state;
 // the fixed order only lets a failing step stop the run.
-// It calls no t.Parallel, and neither does a step, because t.Setenv, t.Chdir and the os.Stdin swap of pipeStdin are process-global state.
+// It calls no t.Parallel.
+// Neither does a step, because t.Setenv, t.Chdir and the os.Stdin swap of pipeStdin are process-global state.
 func TestCLI(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
@@ -149,7 +158,8 @@ func TestCLI(t *testing.T) {
 }
 
 // stepSiblingWarning tests the sibling warning in the success envelope's notice:
-// each write verb that sets depends_on names the sibling, the dependency and the shared label, and a write without a sibling prints no notice.
+// each write verb that sets depends_on names the sibling, the dependency and the shared label,
+// and a write without a sibling prints no notice.
 func stepSiblingWarning(t *testing.T, f *cliFixture) {
 	seed := func(t *testing.T, extra ...string) {
 		t.Helper()
@@ -221,8 +231,6 @@ func stepSiblingWarning(t *testing.T, f *cliFixture) {
 // stepContract tests the JSON envelope shape and exit code behavior for each happy-path verb:
 // upsert, list, get, set-status, rerender.
 // Each case asserts exit 0 + ok=true + the verb's distinctive field.
-//
-// Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase, TestCLIRerender (as subtests preserving original names)
 func stepContract(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
@@ -250,7 +258,6 @@ func stepContract(t *testing.T, f *cliFixture) {
 			name: "TestCLIListTasks",
 			setup: func(t *testing.T) string {
 				cwd := f.reset(t)
-				// First upsert a task
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
 			},
@@ -264,7 +271,6 @@ func stepContract(t *testing.T, f *cliFixture) {
 				if !ok || len(tasks) == 0 {
 					t.Fatalf("expected non-empty tasks array, got %v", result)
 				}
-				// Check first task has layer and has_proposal fields
 				taskMap, ok := tasks[0].(map[string]any)
 				if !ok {
 					t.Fatalf("expected task to be map, got %T", tasks[0])
@@ -281,7 +287,6 @@ func stepContract(t *testing.T, f *cliFixture) {
 			name: "TestCLIGetTask",
 			setup: func(t *testing.T) string {
 				cwd := f.reset(t)
-				// First upsert a task
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
 			},
@@ -295,7 +300,6 @@ func stepContract(t *testing.T, f *cliFixture) {
 			name: "TestCLISetPhase",
 			setup: func(t *testing.T) string {
 				cwd := f.reset(t)
-				// First upsert a task
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
 			},
@@ -316,7 +320,7 @@ func stepContract(t *testing.T, f *cliFixture) {
 			wantOK:         true,
 			wantFieldExist: "ok",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
-				// The fixture initialised a git repo at cwd; Hub = filepath.Dir(cwd);
+				// The fixture initialised a git repo at cwd, so Hub is filepath.Dir(cwd);
 				// lymcwd.Resolve derives Hub from the git root, so board renders in the Bolt checkout under Hub.
 				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
@@ -361,10 +365,8 @@ func stepContract(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error for nonexistent remove.
-// The not-initialized refusal is covered by the LoadsHubBoardConfig step.
-//
-// Folds: TestCLIGetNonexistentTask (null task case), TestCLIRemoveNonexistentTask (exit 1 + error)
+// stepErrorAndEdgeCases tests error paths and edge cases.
+// A nonexistent get returns a null task, and a nonexistent remove exits 1 with an error.
 func stepErrorAndEdgeCases(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
@@ -445,7 +447,8 @@ func stepErrorAndEdgeCases(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepStrictPayloadShapes verifies the strict key/shape validation added in Card 5 for set-deps, upsert-batch, and merge (top-level and inner set_status object).
+// stepStrictPayloadShapes verifies the strict key and shape validation of set-deps, upsert-batch, and merge.
+// The check covers each payload's top-level keys and merge's inner set_status object.
 func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
@@ -634,8 +637,8 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 				}
 			},
 		},
-		// merge: a non-string upsert slug must produce an envelope error, not a
-		// store-level interface-conversion panic (which would crash the CLI).
+		// merge: a non-string upsert slug must produce an envelope error, not a store-level interface-conversion panic.
+		// That panic would crash the CLI.
 		{
 			name: "merge_numeric_upsert_slug_errors",
 			setup: func(t *testing.T) {
@@ -693,11 +696,9 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepLookupContract covers the slug-or-id lookup contract on get, set-status, remove and set-deps: both key forms succeed;
-// id=0 resolves the first-created task;
-// neither key and both keys error;
-// unknown keys (e.g.
-// old id_or_slug) error.
+// stepLookupContract covers the slug-or-id lookup contract on get, set-status, remove and set-deps.
+// Both key forms succeed, and id=0 resolves the first-created task.
+// Supplying neither key or both keys errors, and so do unknown keys such as id_or_slug.
 // The step also pins that get, list-full and the task envelope of upsert, promote and merge print an entry's kept keys with exact digits.
 func stepLookupContract(t *testing.T, f *cliFixture) {
 	// seedKeptBoard starts from an empty board holding tasks a and b and a note n, a and n each carrying the kept key zz_kept.
@@ -776,8 +777,8 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			wantExitCode: 0,
 			wantOK:       true,
 			assertResult: func(t *testing.T, result map[string]any) {
-				// id:0 must resolve the first-created task; verifies the int-vs-float64
-				// JSON-number decode boundary (JSON decodes 0 as float64(0)).
+				// id:0 must resolve the first-created task.
+				// It pins the int-versus-float64 JSON-number decode boundary, since JSON decodes 0 as float64(0).
 				task, ok := result["task"].(map[string]any)
 				if !ok {
 					t.Fatalf("get_by_id: expected task object for id=0, got %v", result["task"])
@@ -935,7 +936,7 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			wantExitCode: 0,
 			wantOK:       true,
 		},
-		// Card 3: set-status requires the status key and errors on missing target.
+		// set-status requires the status key and errors on a missing target.
 		{
 			name: "set_status_absent_status_key_errors",
 			setup: func(t *testing.T) {
@@ -987,7 +988,7 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			wantOK:       false,
 			wantError:    "task not found",
 		},
-		// Stray old key "phase" in set-status payload must error; the strict
+		// A stray key such as "phase" in a set-status payload must error.
 		// resolveLookup allows only {slug, id, status} and rejects all others.
 		{
 			name: "set_status_stray_phase_errors",
@@ -1139,8 +1140,9 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepLoadsHubBoardConfig verifies the board config is the hub's board.yaml, whatever the worktree's own copy holds:
-// a hub-declared type and label are accepted and rendered, and without the hub file the verb refuses naming `lym fabric reconcile`.
+// stepLoadsHubBoardConfig verifies the board config is the hub's board.yaml, whatever the worktree's own copy holds.
+// A hub-declared type and label are accepted and rendered.
+// Without the hub file the verb refuses, naming `lym fabric reconcile`.
 func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 	tests := []struct {
 		name         string
@@ -1198,13 +1200,14 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE:
-// without --board-path the CLI uses fabricengine.BoardDir(hub) derived from lymcwd.Resolve;
-// with --board-path the supplied path takes precedence.
+// stepBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE.
+// Without --board-path, the CLI uses fabricengine.BoardDir(hub), derived from lymcwd.Resolve.
+// With --board-path, the supplied path takes precedence.
 // The fixture's real git repo lets lymcwd.Resolve succeed.
 func stepBoardPathResolution(t *testing.T, f *cliFixture) {
-	// The fixture's repository is the worktree and its parent is the hub:
-	// lymcwd.Resolve(worktree) derives Hub = topDir, so fabricengine.BoardDir(Hub) = filepath.Join(topDir, fabricengine.BoltDirName).
+	// The fixture's repository is the worktree, and its parent is the hub.
+	// lymcwd.Resolve(worktree) derives Hub = topDir.
+	// fabricengine.BoardDir(Hub) is therefore filepath.Join(topDir, fabricengine.BoltDirName).
 	topDir := filepath.Dir(f.cwd)
 
 	expectedBoardDir := fabricengine.BoardDir(topDir)
@@ -1225,12 +1228,11 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	t.Run("board_path_flag_overrides_resolution", func(t *testing.T) {
 		// --board-path bypasses lymcwd.Resolve and uses the supplied path directly.
 		// list is a read-only operation that works under --board-path (no render step),
-		// so we verify redirection by comparing task counts: absOverride is a fresh
-		// empty dir (0 tasks) while expectedBoardDir already has the "path-test" task
-		// from the first subtest (1 task).
+		// so this subtest verifies redirection by comparing task counts.
+		// absOverride is a fresh empty dir with 0 tasks.
+		// expectedBoardDir already holds the "path-test" task from the first subtest, so it holds 1 task.
 		absOverride := t.TempDir()
 
-		// list from the override dir returns 0 tasks (empty board).
 		exitOverride, outOverride := runCLI(t, "--board-path", absOverride, "list")
 		if exitOverride != 0 {
 			t.Fatalf("list --board-path exit %d; stdout: %s", exitOverride, outOverride)
@@ -1245,7 +1247,7 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 				len(overrideTasks), absOverride)
 		}
 
-		// list via the default (git-resolved) path returns the "path-test" task.
+		// list without --board-path resolves the board through git.
 		exitDefault, outDefault := runCLI(t, "list")
 		if exitDefault != 0 {
 			t.Fatalf("list (default path) exit %d; stdout: %s", exitDefault, outDefault)
@@ -1262,8 +1264,8 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	})
 
 	t.Run("intake_under_board_path_is_refused_naming_a_hub_worktree", func(t *testing.T) {
-		// --board-path leaves no resolved worktree, so the hub repository cannot be found;
-		// list under the same flag succeeding in the subtest above shows the other verbs never ask for it.
+		// --board-path leaves no resolved worktree, so the hub repository cannot be found.
+		// Only the intake verbs need the hub; list works under the same flag.
 		exitCode, stdout := runCLI(t, "--board-path", t.TempDir(), "intake", "list")
 		if exitCode != 1 || !strings.Contains(stdout, "worktree of the hub") {
 			t.Errorf("intake list --board-path exit %d, stdout %s; want exit 1 naming a worktree of the hub", exitCode, stdout)

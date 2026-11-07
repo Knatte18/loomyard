@@ -1,6 +1,7 @@
-// state.go — the orch module's persisted state, told paths and cycle request.
+// state.go holds the orch module's persisted state: State, the Paths it reads, and PendingStep.
 //
-// State is the record the cycle state machine persists before each side effect, which `status` reports and a restarted watcher resumes from.
+// State is the record the cycle state machine persists before each side effect.
+// `status` reports it, and a restarted watcher resumes from it.
 // Every path is told through Paths and derived nowhere here (Told-Geometry Invariant).
 
 package orchengine
@@ -57,7 +58,7 @@ type PendingStep struct {
 	ID int64 `json:"id"`
 }
 
-// Phase is a step of a cycle: the four-phase clear cycle, or the compact cycle's one non-idle phase.
+// Phase is a step of a cycle: a phase of the clear cycle, or the compact cycle's one non-idle phase.
 type Phase string
 
 // The cycle phases.
@@ -81,7 +82,8 @@ type State struct {
 	Strand string `json:"strand"` // Guid of the orch strand, written by start.
 
 	// SessionID is the provider session id of the session Strand runs:
-	// written by start at every fresh launch, cleared when start binds another live strand, and kept current by the watcher.
+	// written by start at every fresh launch and kept current by the watcher;
+	// cleared when start binds another live strand.
 	// It is optional on read: a state file an older binary wrote decodes with it empty.
 	SessionID string `json:"session_id"`
 
@@ -109,19 +111,25 @@ type State struct {
 	LastContextTokens   int   `json:"last_context_tokens"`   // Latest context reading.
 	LastContextKnown    bool  `json:"last_context_known"`    // Whether LastContextTokens is a real reading.
 
-	// ReadingTurnEnd is the turn end the current reading was taken through, so a restarted watcher in compacting can re-read the transcript with no turn end in memory; nil when none.
+	// ReadingTurnEnd is the turn end the current reading was taken through.
+	// It lets a restarted watcher in compacting re-read the transcript without one in memory.
+	// It is nil when none.
 	ReadingTurnEnd *shuttleengine.Event `json:"reading_turn_end"`
 
 	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear, plus compactions that completed.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
-	// Stuck is the stall reason creel last reported for the pending inject, or the creel failure holding the cycle; empty while neither stands.
+	// Stuck is the stall reason creel last reported for the pending inject, or the creel failure holding the cycle;
+	// empty while neither stands.
 	Stuck string `json:"stuck"`
-	// StuckByCreel is true when Stuck is a creel failure rather than a stall reason; a tick whose creel calls all succeed clears both.
+	// StuckByCreel is true when Stuck is a creel failure rather than a stall reason;
+	// a tick whose creel calls all succeed clears both.
 	StuckByCreel bool `json:"stuck_by_creel"`
-	// FreshLaunchFailure is the error text of a withdraw or release `start` made around a fresh launch that failed; empty when none did.
+	// FreshLaunchFailure is the error text of a withdraw or release `start` made around a fresh launch that failed;
+	// empty when none did.
 	// While it is set the watcher retries both on every tick and posts and queues nothing.
 	FreshLaunchFailure string `json:"fresh_launch_failure"`
-	// ResumeLineWithdrawn is true when a withdraw removed the resume line but the pause record's noticed mark was not cleared, because the clear failed or a creel call before it did.
+	// ResumeLineWithdrawn is true when a withdraw removed the resume line but did not clear the pause record's noticed mark.
+	// That happens when the clear failed or a creel call before it did.
 	// A later withdraw answers an empty list, so this field stands in for the removed line until the clear succeeds.
 	ResumeLineWithdrawn bool   `json:"resume_line_withdrawn"`
 	WatcherExit         string `json:"watcher_exit"` // Why the last watcher exited; empty while one runs.
@@ -139,7 +147,8 @@ type State struct {
 	// A hub pause that began at or before it never interrupts this session.
 	LaunchedAt time.Time `json:"launched_at"`
 
-	// ColorStrand and ColorLaunchedAt are the Strand and LaunchedAt the strand's color was last typed for; empty and zero until it was.
+	// ColorStrand and ColorLaunchedAt are the Strand and LaunchedAt the strand's color was last typed for;
+	// empty and zero until it was.
 	// A watcher binding to a session they match types no start color, since that session already shows it.
 	ColorStrand     string    `json:"color_strand"`
 	ColorLaunchedAt time.Time `json:"color_launched_at"`
@@ -147,11 +156,14 @@ type State struct {
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`
-	// PointerMarkSince is the earliest time a session-start hook's resume mark counts as delivering PendingResume: the compaction baseline as it stood before the reload moved it, or the baseline itself after `/clear`;
-	// zero outside a reload.
-	// The hook runs before the compaction boundary is written, so the new baseline is later than its mark, while every earlier compaction's hook ran before the previous one.
+	// PointerMarkSince is the earliest time a session-start hook's resume mark counts as delivering PendingResume.
+	// It is the compaction baseline as it stood before the reload moved it, or the baseline itself after `/clear`.
+	// It is zero outside a reload.
+	// The hook runs before the compaction boundary is written, so the new baseline is later than its mark;
+	// every earlier compaction's hook ran before the previous one.
 	PointerMarkSince time.Time `json:"pointer_mark_since"`
-	// ReloadStep is the resuming phase's current step: ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
+	// ReloadStep is the resuming phase's current step:
+	// ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
 	ReloadStep int `json:"reload_step"`
 	// ReloadTypedAt is when the current step was first queued; zero while it has not been.
 	// It is kept across every requeue and restart, and the step's timeout counts from it.
@@ -162,7 +174,8 @@ type State struct {
 	// false after `/clear`.
 	ReloadSkipsSkills bool `json:"reload_skips_skills"`
 
-	// UsageLimitAt is when the watcher first read the orch's newest turn end as the provider's usage limit; zero while no limit stands.
+	// UsageLimitAt is when the watcher first read the orch's newest turn end as the provider's usage limit;
+	// zero while no limit stands.
 	// While it is set the watcher holds the orch's creel deliveries and starts no cycle.
 	UsageLimitAt time.Time `json:"usage_limit_at"`
 	// UsageLimitResetsAt is when that limit resets as the limit message states; zero when it states no readable time.
@@ -172,7 +185,7 @@ type State struct {
 }
 
 // The resuming phase's steps, persisted in State.ReloadStep.
-// Any other persisted value, including a per-skill index written before the one-turn load, is read as the pointer step.
+// Any other persisted value is read as the pointer step.
 const (
 	ReloadStepColor   = -3
 	ReloadStepPlugins = -2
@@ -193,8 +206,9 @@ func LoadState(p Paths) (State, error) {
 	return s, nil
 }
 
-// PeekState reads the persisted state without taking p.StateLockPath and without creating any directory or file, so a status pane polling it never blocks the watcher.
-// This is safe because internal/state writes the file atomically.
+// PeekState reads the persisted state without taking p.StateLockPath and without creating any directory or file.
+// So a status pane polling it never blocks the watcher.
+// Reading without the lock is safe because internal/state writes the file atomically.
 // An absent file returns a zero State, false and no error; a read or decode failure returns an error.
 func PeekState(p Paths) (State, bool, error) {
 	data, err := os.ReadFile(p.StatePath)
@@ -227,7 +241,7 @@ var errStrandReplaced = errors.New("orch: state was bound to another strand sinc
 
 // saveStateForStrand writes s only while the persisted record still names s.Strand, checked and written under one lock.
 // It returns errStrandReplaced without writing when the record names another strand,
-// so a watcher can never overwrite the binding a concurrent `start` just recorded.
+// so a watcher never overwrites the binding that a concurrent `start` recorded.
 // The persisted WatcherStopping is kept, since only the signal goroutine and a new run set or clear it,
 // and a tick's save is made from a state loaded before the signal.
 func saveStateForStrand(p Paths, s State) error {
@@ -246,7 +260,8 @@ func saveStateForStrand(p Paths, s State) error {
 	return err
 }
 
-// updateState applies mutate to the persisted state under one lock, starting from a zero State in phase idle when the file is absent.
+// updateState applies mutate to the persisted state under one lock.
+// When the file is absent, mutate starts from a zero State in phase idle.
 func updateState(p Paths, mutate func(State) State) error {
 	err := state.UpdateJSON(p.StatePath, p.StateLockPath, func(cur State, found bool) (State, error) {
 		if !found {
@@ -288,7 +303,8 @@ func RequestCycle(p Paths, mode string, at time.Time) error {
 }
 
 // CycleRequested returns the pending cycle request and whether one is pending.
-// A marker that does not parse, or names no known mode, is pending with a zero request, so its age is unbounded and the watcher treats it as stale.
+// A marker that does not parse, or names no known mode, is pending with a zero request.
+// Its age is then unbounded, so the watcher treats it as stale.
 func CycleRequested(p Paths) (CycleRequest, bool, error) {
 	data, err := os.ReadFile(p.CycleRequestPath)
 	if errors.Is(err, os.ErrNotExist) {
@@ -304,7 +320,8 @@ func CycleRequested(p Paths) (CycleRequest, bool, error) {
 	return req, true, nil
 }
 
-// lockMarker creates p.Dir when it is absent and takes the orch state lock, which every writer and remover of the cycle request marker holds.
+// lockMarker creates p.Dir when it is absent and takes the orch state lock.
+// Every writer and remover of the cycle request marker holds that lock.
 func lockMarker(p Paths) (*lock.FileLock, error) {
 	if err := os.MkdirAll(p.Dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create request dir: %w", err)
@@ -329,7 +346,8 @@ func WithdrawCycleRequest(p Paths) (bool, error) {
 	return true, nil
 }
 
-// RemoveCycleRequestIf removes the cycle request under the orch state lock only while it still holds req, and reports whether it removed it.
+// RemoveCycleRequestIf removes the cycle request under the orch state lock only while it still holds req.
+// It reports whether it removed the request.
 // A request written after req was read is left in place.
 func RemoveCycleRequestIf(p Paths, req CycleRequest) (bool, error) {
 	l, err := lockMarker(p)
@@ -340,9 +358,10 @@ func RemoveCycleRequestIf(p Paths, req CycleRequest) (bool, error) {
 	return takeMarkerUnlocked(p, req, true)
 }
 
-// takeMarkerUnlocked is the lock-free body of the locked marker callers, which hold the orch state lock.
-// It reads the marker as CycleRequested does.
-// When its pending flag equals pending and its request equals req (the same mode and an equal RequestedAt), it removes the marker if pending and answers true;
+// takeMarkerUnlocked is the lock-free body that callers run while they hold the orch state lock.
+// It reads the current marker first.
+// When the pending flag equals pending and the request equals req (same mode, equal RequestedAt):
+// it removes the marker if pending and answers true;
 // otherwise it changes nothing and answers false.
 // An unparseable marker reads as pending with the zero request on both reads, so a stale removal of one still matches.
 func takeMarkerUnlocked(p Paths, req CycleRequest, pending bool) (bool, error) {
@@ -361,9 +380,11 @@ func takeMarkerUnlocked(p Paths, req CycleRequest, pending bool) (bool, error) {
 	return true, nil
 }
 
-// saveCycleStart persists s, the first state of a cycle, and consumes the cycle request marker in one save under the orch state lock.
+// saveCycleStart persists s, the first state of a cycle, and consumes the cycle request marker.
+// It does both in one save under the orch state lock.
 // req and pending are what the tick read of the marker; the marker is removed only while it still holds them.
-// It checks the strand as saveStateForStrand does, answering errStrandReplaced and keeping the persisted WatcherStopping, with the marker left pending.
+// When the record names another strand, it answers errStrandReplaced and leaves the marker pending.
+// Otherwise it keeps the persisted WatcherStopping.
 // When the marker changed and s.CycleTrigger is TriggerRequested it writes nothing and answers errMarkerChanged;
 // for a hard or soft trigger it writes s and leaves the newer marker pending for the next idle.
 func saveCycleStart(p Paths, s State, req CycleRequest, pending bool) error {
@@ -431,7 +452,7 @@ func ClearResumeMark(p Paths) error {
 	return nil
 }
 
-// NewHandoffPath returns a new file path under HandoffsDir named from now's UTC time to the second.
+// NewHandoffPath returns a handoff file path under HandoffsDir, named by now's UTC time to the second.
 func NewHandoffPath(p Paths, now time.Time) string {
 	return filepath.Join(p.HandoffsDir, "handoff-"+now.UTC().Format("20060102T150405Z")+".md")
 }
@@ -439,11 +460,14 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
-// The pending step, the pointer mark bound, the note request's id, the stuck reason and the recorded fresh-launch failure are cleared too, since they belong to the abandoned phase or the earlier launch.
-// A usage limit the earlier session stood on is cleared, and the new session's first usage-limited turn end records it again.
+// The pending step, the pointer mark bound and the note request's id are cleared too.
+// The stuck reason and the recorded fresh-launch failure are cleared as well:
+// they belong to the abandoned phase or an earlier launch.
+// A usage limit is cleared, and the new session's first usage-limited turn end records it again.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
-// CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
+// CompactionBaseline becomes launchedAt.
+// A compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
 // LastHandoff, CycleCount, CycleTrigger, LastDeferral and SessionID survive;
 // the caller sets SessionID for the session it launched or bound.
 func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {

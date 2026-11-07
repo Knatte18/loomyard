@@ -1,5 +1,7 @@
 // recoverbatch_git_test.go exercises recover-batch's suspect-path evidence over a real scratch git repository:
-// the flagged blob a failed batch recorded is looked up by git in the recovery report's head, at the start commit and in the worktree, so these tests need git's own object and ignore semantics.
+// Git looks up the flagged blob a failed batch recorded.
+// It searches the recovery report's head, the start commit, and the worktree.
+// These tests need git's own object and ignore semantics.
 // Every other RecoverBatch behavior is tested over a fakeGit in recoverbatch_test.go.
 
 package websterengine_test
@@ -100,7 +102,8 @@ func TestRecoverBatch_SuspectEvidence(t *testing.T) {
 	})
 
 	// A re-failed recovery keeps the blob the audit first flagged:
-	// a strand that deletes the committed flagged file without committing the delete fails, and a later strand that restores it is failed again.
+	// a strand that deletes the committed flagged file without committing the delete fails,
+	// and a later strand that restores it is failed again.
 	t.Run("a re-failed recovery keeps the flagged blob", func(t *testing.T) {
 		fx, start, blob := s.suspectRecovery(t)
 		clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -241,7 +244,7 @@ func TestRecoverBatch_SuspectEvidence(t *testing.T) {
 	})
 
 	// The recovery record keeps the failed record's suspect paths and its fork transcripts,
-	// so the run-exit audit still maps the original fork to its own batch report.
+	// so the run-exit audit maps the original fork to its own batch report.
 	t.Run("the recovery record carries the suspect paths and transcripts", func(t *testing.T) {
 		fx, _, blob := s.suspectRecovery(t)
 		fx.Deps.State.Batches[1].ForkTranscripts = []string{"subagents/f1.jsonl"}
@@ -259,7 +262,8 @@ func TestRecoverBatch_SuspectEvidence(t *testing.T) {
 	})
 }
 
-// TestRecoverBatch_UncommittedPathsPrompt spawns a recovery over a real dirty worktree and asserts the prompt groups each uncommitted path by whether some session of the run wrote it.
+// TestRecoverBatch_UncommittedPathsPrompt spawns a recovery over a real dirty worktree.
+// It asserts the prompt groups each uncommitted path by whether some session of the run wrote it.
 // The run-written paths are a file and a file inside a directory git collapses; the foreign path no session wrote.
 func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
 	tiergate.Require(t, 1)

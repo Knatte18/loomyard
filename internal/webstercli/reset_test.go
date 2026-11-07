@@ -1,6 +1,8 @@
 // reset_test.go covers the reset verb through its cobra.Command over one hubforge hub, each step on its own task pair.
-// Each success path checks the branch, the files and the mutation record; each refusal checks its way forward and that nothing moved.
-// FABRIC_SKIP_GIT=1 is set for the whole scenario, so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
+// Each success path checks the branch, the files and the mutation record;
+// each refusal checks its way forward and that nothing moved.
+// FABRIC_SKIP_GIT=1 is set for the whole scenario,
+// so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
 // The reset's remote update ignores SkipGit, so the remote-branch steps run it under that setting.
 
 package webstercli
@@ -99,8 +101,8 @@ func startedAt(sha string) *websterengine.State {
 	}
 }
 
-// withRecoveryStrands records, beside a fork batch, one recovery batch per strand guid,
-// and seeds the fixture's reed with each strand's liveness.
+// withRecoveryStrands records, beside a fork batch, one recovery batch per strand guid.
+// It also seeds the fixture's reed with each strand's liveness.
 func (fx *resetFixture) withRecoveryStrands(st *websterengine.State, liveness map[string]bool) {
 	reed := fx.cli.reed.(*shuttlefake.Reed)
 	number := 2
@@ -131,7 +133,8 @@ func (fx *resetFixture) reset(t *testing.T, args ...string) (int, map[string]any
 	return code, envelope
 }
 
-// wantRefusal runs `reset` with args, and fails unless it refuses with every part in its error and leaves HEAD at the later commit.
+// wantRefusal runs `reset` with args and fails unless it refuses with every part in its error.
+// It also requires HEAD to stay at the later commit.
 func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string) {
 	t.Helper()
 	head := gitkit.RevParse(t, fx.checkout, "HEAD")
@@ -153,7 +156,8 @@ func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string
 	}
 }
 
-// TestResetCmd runs every reset case as a step over one hub, each step adding its own pair so no step relies on another's state.
+// TestResetCmd runs every reset case as a step over one hub.
+// Each step adds its own pair, so no step relies on another's state.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestResetCmd(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -680,7 +684,7 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, startedAt(fx.base))
 				fx.cli.openFabric = nil
 				fx.cli.parentBranch = nil
-				// own.txt is a path the run wrote and other.txt one it did not; both differ between HEAD and the start, and both are dirty.
+				// own.txt is a run-written path and other.txt is not; both differ between HEAD and the start and are dirty.
 				gitkit.CommitFile(t, fx.checkout, "own.txt", "v2", "own.txt v2")
 				gitkit.CommitFile(t, fx.checkout, "other.txt", "other", "other.txt")
 				for _, name := range []string{"own.txt", "other.txt"} {
@@ -737,7 +741,8 @@ func mutationKinds(mutations any) []string {
 }
 
 // statusFailingGit is a websterengine.Git that finds no merge in progress and fails every git status read.
-// An archive-only reset to start of a state recording no start reaches no other method, so any other call panics on the nil embedded Git.
+// An archive-only reset to start of a state recording no start reaches no other method,
+// so any other call panics on the nil embedded Git.
 type statusFailingGit struct {
 	websterengine.Git
 }

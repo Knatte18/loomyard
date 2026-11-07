@@ -1,12 +1,7 @@
-// stencilseed.go implements the once-per-process stencil and deployed-specs seed/refresh pass run
-// from newRoot's PersistentPreRunE: seedStencils resolves geometry and is a deliberate no-op under go
-// test, stencilSeedTarget decides whether this process should seed at all and against which hub and
-// worktree, and seedStencilsAt does the work of reconciling the board's stencils and specs subtrees
-// against their shipped registries.
-// The shared seedSubtree helper yields each subtree's write, and both land through one pull-first Bolt write.
-// Neither function references internal/output or any envelope key: the mutation record this pass
-// produces is logged, never surfaced in a command's JSON envelope, per the
-// mutation-record-is-logged-not-enveloped-at-the-pre-run Shared Decision.
+// stencilseed.go runs the stencil and deployed-specs seed pass once per process, from `newRoot`'s `PersistentPreRunE`.
+// The pass reconciles the board's stencils and specs subtrees against their shipped registries.
+// It writes both in one pull-first Bolt write.
+// The pass logs its mutation record and never puts it in a command's JSON envelope.
 
 package main
 
@@ -32,25 +27,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// seedStencils is the thin pre-run wrapper newRoot's PersistentPreRunE calls: it resolves this
-// process' seed target via stencilSeedTarget and delegates to seedStencilsAt when one is found.
+// seedStencils runs the seed pass for the hub this process is in.
+// It does nothing under go test, for a command that opts out, or when the invocation resolves no hub.
 func seedStencils(cmd *cobra.Command) {
-	// Return immediately under go test, before resolving anything: lymcwd.Resolve spawns `git
-	// rev-parse --show-toplevel`, and cobra runs this root PersistentPreRunE for every Runnable
-	// command -- every parent group included, since each carries RunE: clihelp.GroupRunE. Without
-	// this guard, dozens of existing untagged cmd/lym tests that drive a Runnable command would
-	// newly spawn git as a side effect, breaking the Test Tier Purity Invariant for the whole
-	// package.
+	// Return immediately under go test, before resolving anything.
+	// lymcwd.Resolve spawns `git rev-parse --show-toplevel`.
+	// Cobra runs this root PersistentPreRunE for every Runnable command.
+	// Parent groups count as Runnable, since each carries RunE: clihelp.GroupRunE, so the hook runs for them too.
+	// Without this guard, the untagged cmd/lym tests that drive a Runnable command would spawn git as a side effect.
+	// That would break the Test Tier Purity Invariant for the whole package.
 	if testing.Testing() {
 		return
 	}
 
-	// A command that carries the skip annotation reads no stencils, so the pass is pure waste for
-	// it -- and skipping also keeps a long-lived process (e.g. lym reed watchdog, the detached
-	// per-hub daemon) from ever reaching fabricengine.Bolt.PullThenCommitWritten and performing a git
-	// commit in the hub. This
-	// early return sits ahead of stencilSeedTarget so an opted-out command resolves no geometry and
-	// spawns no `git rev-parse`.
+	// A command that carries the skip annotation reads no stencils, so the pass is pure waste for it.
+	// Skipping also matters for a long-lived process, such as the detached per-hub daemon.
+	// Without it, the process could reach fabricengine.Bolt.PullThenCommitWritten and commit in the hub.
+	// This early return sits ahead of stencilSeedTarget,
+	// so an opted-out command resolves no geometry and spawns no `git rev-parse`.
 	if skipStencilSeed(cmd) {
 		return
 	}
@@ -63,11 +57,8 @@ func seedStencils(cmd *cobra.Command) {
 	seedStencilsAt(hub, worktree, stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean()), running)
 }
 
-// skipStencilSeed reports whether cmd carries clihelp.SkipStencilSeedAnnotation set to
-// clihelp.AnnotationEnabled, and is therefore declining the root pre-run's stencil-seed pass.
-// It is extracted as its own directly-assertable function rather than inlined into seedStencils, for
-// the reason stencilSeedTarget's own comment already records: seedStencils returns immediately under
-// testing.Testing(), so a test can never observe the gate through it.
+// skipStencilSeed reports whether cmd opts out of the stencil seed pass.
+// It does so by carrying clihelp.SkipStencilSeedAnnotation set to clihelp.AnnotationEnabled.
 func skipStencilSeed(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
@@ -75,30 +66,27 @@ func skipStencilSeed(cmd *cobra.Command) bool {
 	return cmd.Annotations[clihelp.SkipStencilSeedAnnotation] == clihelp.AnnotationEnabled
 }
 
-// stencilSeedTarget decides whether this process should seed stencils and, when it should, against
-// which hub and worktree.
-// It is a separate value-returning function -- rather than being inlined into seedStencils -- because
-// seedStencils returns immediately under testing.Testing(), so a test can never observe the gate
-// through it; extracting the decision here is what makes the gate directly assertable, the same
-// rationale seedStencilsAt already carries.
+// stencilSeedTarget decides whether this process should seed stencils.
+// When it should, it reports the hub and worktree to seed against.
+// It is a separate function so that a test can observe the gate.
+// The pre-run returns early under testing.Testing(), so the gate is unreachable through it.
 //
-// The gate is preflight.HubPresent, never preflight.Wired: the write this pass performs targets the
-// hub-level stencils directory, so the honest precondition is that the hub-level directory exists.
-// preflight.Wired probes this worktree's own pairing instead, and would stop seeding in three real-hub
-// situations that seed correctly today -- an ordinary worktree at the Bolt checkout, an unpaired sibling,
-// and a worktree whose paired sibling has been removed. Narrowing this gate to Wired is a regression,
-// not a tightening.
+// The gate checks that the hub-level directory exists, not this worktree's own pairing.
+// The write targets the hub-level stencils directory.
+// Checking the pairing would stop seeding in situations that seed correctly:
+// an ordinary worktree at the Bolt checkout, an unpaired sibling, and a worktree whose paired sibling has been removed.
+// Narrowing the gate to the pairing is a regression, not a tightening.
 func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool) {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
-		// No geometry to resolve for this invocation; the root pre-run resolves no hub for
-		// commands that legitimately have none (e.g. lym fabric clone), so the pass is skipped
-		// rather than failing.
+		// No geometry to resolve for this invocation.
+		// The root pre-run resolves no hub for commands that legitimately have none, such as `lym fabric clone`.
+		// The pass is therefore skipped rather than failing.
 		return "", "", false
 	}
 
 	// preflight.HubPresent performs the lymcwd.Resolve this pass needs;
-	// calling lymcwd.Resolve again here would double the `git rev-parse` spawn this pre-run performs before every single command.
+	// calling lymcwd.Resolve again would double the `git rev-parse` spawn this pre-run makes before every command.
 	l, present := preflight.HubPresent(cwd)
 	if !present {
 		return "", "", false
@@ -107,20 +95,21 @@ func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool) {
 	return l.HubPath, l.WorktreePath(), true
 }
 
-// seedStencilsAt reconciles the board's stencils and deployed-specs subtrees against their shipped
-// registries and commits whatever each one wrote.
-// It takes no context, so a test can drive it directly against a real hub without going through seedStencils' testing.Testing() guard.
-// It takes the mode and the running identity as parameters, so a test can drive a production mode under a chosen identity without a stamped test binary.
+// seedStencilsAt reconciles the board's stencils and deployed-specs subtrees against their shipped registries.
+// It commits whatever each one wrote.
+// A test can drive it directly against a real hub, because the go test guard sits in the pre-run and not here.
+// It takes the mode and the running identity as parameters.
+// That lets a test drive a production mode under a chosen identity without a stamped test binary.
 //
-// With neither subtree due it runs no git and touches no network.
+// With neither subtree due, it runs no git and touches no network.
 // With either due, one pull-first Bolt write carries both subtrees' writes, stencils then specs:
-// one pull and one seed-commit drop precede both writes, so the specs write never drops the stencils commit the same pass made.
+// one pull and one seed-commit drop precede both writes,
+// so the specs write never drops the stencils commit the same pass made.
 // The pass is best-effort: a skipped pull or a failed write is logged and never fails the command.
 func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildvcs.Identity) {
 	sourceDir := filepath.Join(worktree, "contracts", "stencils")
 	if _, err := os.Stat(sourceDir); err != nil {
-		// The empty string means "no source tree here", which is what keeps the port-back drift
-		// warning silent in a consumer repo instead of firing on every run forever.
+		// The empty string means "no source tree here", which keeps the port-back drift warning silent in a consumer repo instead of firing on every run.
 		sourceDir = ""
 	}
 
@@ -129,12 +118,12 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 		writes = append(writes, write)
 	}
 
-	// sourceDir is deliberately empty here rather than derived from worktree: sourceDir exists only
-	// to drive the port-back drift warning, which serves an authoring workflow specs do not have --
-	// the loomyard-side file is the single source of truth and a deployed copy is never authored.
-	// A per-name source mapping is deliberately not built either: the two travelling docs live in
-	// different directories and one's basename differs from its registered name, so no single
-	// sourceDir shape fits.
+	// sourceDir is empty here rather than derived from worktree.
+	// sourceDir exists only to drive the port-back drift warning, which serves an authoring workflow specs do not have;
+	// the loomyard-side file is the single source of truth,
+	// and a deployed copy is never authored.
+	// A per-name source mapping is not built either: the travelling docs live in different directories.
+	// Also, one's basename differs from its registered name, so no single sourceDir shape fits.
 	if write, due := seedSubtree(fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, fabricengine.StencilSource(worktree, "", running), "specs"); due {
 		writes = append(writes, write)
 	}
@@ -155,9 +144,14 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 	logger.Info("stencilseed: seeded", "commits", len(res.SHAs), "shas", res.SHAs)
 }
 
-// seedSubtree reports whether reconciling baseDir (the subtreeRel-rooted subtree of the board) against registry would write anything, and returns the board write that does it, committed under the seed subject for label ("stencils" or "specs") and the running binary.
-// The write reconciles against the copy the pull-first Bolt write has just brought up to date, and returns the paths it wrote prefixed with subtreeRel.
-// A due-check failure is logged at Warn and reports nothing due, since the root pre-run runs before every lym invocation.
+// seedSubtree reports whether reconciling baseDir against registry would write anything.
+// baseDir is the board subtree rooted at subtreeRel.
+// When it would, it returns the board write.
+// The write commits under the seed subject for label, "stencils" or "specs", and the running binary.
+// The write reconciles against the copy the pull-first Bolt write has just brought up to date,
+// and it reports the paths it wrote, prefixed with subtreeRel.
+// A due-check failure is logged at Warn and reports nothing due.
+// The root pre-run runs before every lym invocation, so a failure here must not fail any of them.
 func seedSubtree(baseDir, subtreeRel string, registry stencilstore.Registry, mode stencilstore.Mode, source stencilstore.Source, label string) (fabricengine.BoltWrite, bool) {
 	due, err := stencilstore.WritesDue(baseDir, registry, mode, source)
 	if err != nil {

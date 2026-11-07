@@ -1,11 +1,6 @@
-// usage.go implements shuttleengine.SessionCycler.ContextTokens and CompactedSince for Claude: the context a session holds is read from its own transcript, which a Stop payload names through transcript_path.
-// A /clear starts a new session ID and transcript file and every later Stop payload names the new file,
-// so reading the path from the turn end being evaluated follows the session through a clear with no state.
-// The reader walks the file from its end in growing chunks and stops at the latest qualifying entry,
-// either a main-chain assistant usage entry or a compaction boundary, so a long transcript costs one small read.
-// The reader degrades to "usage unknown" on every failure and never errors, since the transcript format is a Claude Code internal.
-// It also implements shuttleengine.UsageReader: SessionUsage sums a finished session's tokens from its transcript and its fork transcripts.
-// The transcript shape knowledge stays in this package, the parse here and the locator in transcriptread.go.
+// usage.go reads a Claude session's token readings from its transcript.
+// It provides the context reading, the compaction boundary, and the session's usage totals.
+// The transcript format is a Claude Code internal, so a failed read degrades to unknown or not found, never an error.
 package claudeengine
 
 import (
@@ -26,7 +21,9 @@ import (
 // initialReadChunk is the size of the first backward read; each further round doubles the window.
 const initialReadChunk = 64 * 1024
 
-// ContextTokens reads the context reading the transcript named by turnEnd's transcript_path holds.
+// ContextTokens returns the context reading of the transcript that turnEnd's transcript_path names.
+// A /clear starts a new session ID and transcript file, and every later Stop payload names the new file.
+// Reading the path from the turn end being evaluated follows the session through a clear with no state.
 // It returns an unknown reading for a missing transcript_path, an unreadable file, or a transcript with no usable entry.
 func (c *Claude) ContextTokens(turnEnd shuttleengine.Event) shuttleengine.ContextReading {
 	var payload struct {
@@ -48,12 +45,10 @@ func (c *Claude) ContextTokens(turnEnd shuttleengine.Event) shuttleengine.Contex
 }
 
 // readContext returns the reading of the latest qualifying entry in the size bytes of the JSONL transcript r.
-// It reads a window from the end, doubling it from chunk until a qualifying entry turns up or the window reaches the file start,
-// and parses only complete lines: the window's first line is dropped unless the window starts the file,
-// so an entry spanning the window edge is read whole once a later round widens the window past its start.
-// A qualifying entry is a main-chain assistant entry whose input, cache-creation and cache-read tokens do not sum to zero
-// (a synthetic entry for an API error or interrupt says nothing about the context),
-// or a main-chain compact_boundary system entry with a positive postTokens and an RFC 3339 timestamp.
+// It reads backward from the end, so a long transcript is read only as far back as that entry.
+// A main-chain assistant entry qualifies when its input, cache-creation and cache-read tokens sum above zero.
+// A main-chain compact_boundary system entry qualifies when it has a positive postTokens and an RFC 3339 timestamp.
+// A zero-sum entry, such as a synthetic one for an API error or an interrupt, says nothing about the context.
 // Sidechain entries and malformed lines are skipped.
 func readContext(r io.ReaderAt, size int64, chunk int) shuttleengine.ContextReading {
 	var reading shuttleengine.ContextReading
@@ -65,8 +60,10 @@ func readContext(r io.ReaderAt, size int64, chunk int) shuttleengine.ContextRead
 	return reading
 }
 
-// readBackward hands scan the complete lines of a window from the end of the size bytes of r, doubling the window from chunk until scan returns true or the window reaches the file start.
-// The window's first line is dropped unless the window starts the file, so an entry spanning the window edge is scanned whole once a later round widens the window past its start.
+// readBackward calls scan with the complete lines of the last size bytes of r, in windows that double from chunk.
+// The walk ends once scan returns true or the window reaches the file start.
+// A window's first line is dropped unless the window starts the file.
+// A line that spans the window edge is scanned whole once a later window reaches its start.
 // A read error ends the walk without a further scan.
 func readBackward(r io.ReaderAt, size int64, chunk int, scan func(data []byte) bool) {
 	if chunk < 1 {
@@ -97,13 +94,13 @@ func readBackward(r io.ReaderAt, size int64, chunk int, scan func(data []byte) b
 	}
 }
 
-// CompactedSince returns the newest main-chain compaction boundary after since in the transcript turnEnd names, with the main-chain turn ends that follow it.
-// ReadTurnEndAfter compares the turn end's last_assistant_message with the final text block of the newest of those turn ends, ignoring surrounding whitespace;
-// a Stop payload without a message cannot be matched,
-// so it reports false.
-// Claude writes a turn's assistant entry before its Stop hook fires,
-// so the turn end being read is already in the transcript.
-// Like ContextTokens it degrades to not found on every failure and never errors.
+// CompactedSince returns the newest main-chain compaction boundary after since in the transcript turnEnd names.
+// The boundary counts the main-chain turn ends that follow it.
+// It reports a match when the newest of them has final text equal to the Stop payload's last_assistant_message.
+// Surrounding whitespace is ignored on both sides.
+// Without a message or a turn end after the boundary, there is no match.
+// Claude writes a turn's assistant entry before its Stop hook fires.
+// So the turn end being read is already in the transcript.
 func (c *Claude) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool) {
 	var payload struct {
 		TranscriptPath       string `json:"transcript_path"`
@@ -124,8 +121,8 @@ func (c *Claude) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (s
 	return compactedSince(f, info.Size(), initialReadChunk, since, payload.LastAssistantMessage)
 }
 
-// compactedSince walks the transcript backward and returns the first compaction boundary after since, with the turn ends after it.
-// It stops at the first entry whose timestamp is not after since, so the walk reads only what is newer than since.
+// compactedSince walks the transcript backward and returns the first compaction boundary after since.
+// It stops at the first entry whose timestamp is not after since, so the walk goes no further back than that entry.
 // readMessage is the Stop payload's last_assistant_message.
 func compactedSince(r io.ReaderAt, size int64, chunk int, since time.Time, readMessage string) (shuttleengine.CompactionBoundary, bool) {
 	var boundary shuttleengine.CompactionBoundary
@@ -153,7 +150,8 @@ type transcriptEntry struct {
 	} `json:"message"`
 }
 
-// isTurnEnd reports whether e is a main-chain assistant entry that ends a turn: its stop reason is set and is not tool_use.
+// isTurnEnd reports whether e is a main-chain assistant entry that ends a turn.
+// Its stop reason is set and is not tool_use.
 func (e transcriptEntry) isTurnEnd() bool {
 	return !e.IsSidechain && e.Type == "assistant" && e.Message.StopReason != "" && e.Message.StopReason != "tool_use"
 }
@@ -180,9 +178,9 @@ func (e transcriptEntry) finalText() string {
 	return ""
 }
 
-// boundarySince scans the complete lines of data from the last to the first and returns the first main-chain compaction boundary after since,
-// counting the turn ends it passes on the way.
-// reachedSince is true when it met an entry whose timestamp is not after since, which ends the backward walk whether or not a boundary was found.
+// boundarySince scans data backward, line by line, and returns the first main-chain compaction boundary after since.
+// It also counts the main-chain turn ends it passes on the way.
+// reachedSince reports whether it met an entry timestamped at or before since, which ends the walk with no boundary.
 func boundarySince(data []byte, since time.Time, readMessage string) (boundary shuttleengine.CompactionBoundary, found, reachedSince bool) {
 	turnEnds := 0
 	newestText := ""
@@ -219,8 +217,8 @@ func boundarySince(data []byte, since time.Time, readMessage string) (boundary s
 	return shuttleengine.CompactionBoundary{}, false, false
 }
 
-// latestReading scans the complete lines of data from the last to the first and returns the reading of the first qualifying entry.
-// It reads the sidechain entries of a subagent's transcript when sidechain is true, and the main-chain entries otherwise.
+// latestReading scans data backward and returns the reading of the latest qualifying entry.
+// When sidechain is true it reads the sidechain entries of a subagent's transcript; otherwise the main-chain entries.
 func latestReading(data []byte, sidechain bool) (shuttleengine.ContextReading, bool) {
 	type usage struct {
 		Input         int `json:"input_tokens"`
@@ -271,10 +269,13 @@ func latestReading(data []byte, sidechain bool) (shuttleengine.ContextReading, b
 
 var _ shuttleengine.UsageReader = (*Claude)(nil)
 
-// SessionUsage reads the tokens of session sessionID, recorded under the pane cwd workdir: the parent transcript <project dir>/<session id>.jsonl and every fork transcript under <project dir>/<session id>/subagents/.
-// The totals include the forks, which are also broken out as their count and their own sums.
+// SessionUsage reads the tokens of session sessionID from its transcripts in the project directory of workdir.
+// The parent transcript is <project dir>/<session id>.jsonl,
+// and the forks are the .jsonl files under <project dir>/<session id>/subagents/.
+// The totals include the forks, which are also reported separately as their count and their own sums.
 // A missing subagents directory is zero forks.
-// An unreadable parent or fork transcript makes the whole reading unknown, never an error, since the layout is a Claude Code internal.
+// An unreadable parent transcript, fork transcript or subagents directory makes the whole reading unknown:
+// it is not an error, since the layout is a Claude Code internal.
 func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUsage {
 	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
@@ -331,7 +332,7 @@ type claudeUsage struct {
 	CacheCreation int `json:"cache_creation_input_tokens"`
 	CacheRead     int `json:"cache_read_input_tokens"`
 	Output        int `json:"output_tokens"`
-	// CacheCreationSplit breaks the cache write down by lifetime.
+	// CacheCreationSplit holds the part of the cache write that has a one-hour lifetime.
 	CacheCreationSplit struct {
 		OneHour int `json:"ephemeral_1h_input_tokens"`
 	} `json:"cache_creation"`
@@ -346,7 +347,7 @@ type claudeMessage struct {
 	Usage      *claudeUsage    `json:"usage"`
 }
 
-// claudeRecord is the part of a transcript line the parse reads.
+// claudeRecord is the part of a transcript line that is decoded from its JSON.
 type claudeRecord struct {
 	Type      string `json:"type"`
 	UUID      string `json:"uuid"`
@@ -359,7 +360,9 @@ type claudeRecord struct {
 	Message          *claudeMessage `json:"message"`
 }
 
-// endsTurn reports whether the record ends its session's turn: an assistant line whose stop reason is not tool_use, or a user line that interrupts the turn or holds a local command's output.
+// endsTurn reports whether the record ends its session's turn:
+// an assistant line whose stop reason is set and is not tool_use;
+// or a user line that interrupts the turn or holds a local command's output.
 func (r claudeRecord) endsTurn() bool {
 	if r.Message == nil {
 		return false
@@ -377,7 +380,8 @@ func (r claudeRecord) endsTurn() bool {
 	return false
 }
 
-// startsTurn reports whether the record starts a turn: a user line holding text and no tool result, other than a line that ends a turn or a compaction summary.
+// startsTurn reports whether the record starts a turn:
+// a user line that holds text and no tool result, and is neither a turn-ending line nor a compaction summary.
 func (r claudeRecord) startsTurn() bool {
 	if r.Type != "user" || r.Message == nil || r.IsCompactSummary || r.endsTurn() {
 		return false
@@ -404,7 +408,8 @@ func (r claudeRecord) startsTurn() bool {
 	return hasText
 }
 
-// recordUserTexts returns the text of a user message's content, which is a string or a list of items, the text items of which count.
+// recordUserTexts returns the texts of a user message's content, which is a string or a list of items;
+// only the text items of a list count.
 func recordUserTexts(content json.RawMessage) []string {
 	var text string
 	if json.Unmarshal(content, &text) == nil {
@@ -493,7 +498,8 @@ func recordToolResults(content json.RawMessage) []shuttleengine.ToolResult {
 	return results
 }
 
-// parsedTranscript is one Claude transcript read: its user and assistant entries, its name, its start and its repeat count.
+// parsedTranscript is the result of reading one Claude transcript:
+// its user and assistant entries, its name, its start time and its repeat count.
 type parsedTranscript struct {
 	entries []shuttleengine.TranscriptEntry
 	// name is the latest non-empty customTitle of a custom-title line.
@@ -506,7 +512,8 @@ type parsedTranscript struct {
 	countedIDs map[string]struct{}
 }
 
-// tokens sums the usage the entries carry: fresh is input plus cache-creation plus output tokens, cacheRead is cache-read tokens.
+// tokens sums the usage the entries carry:
+// fresh is input plus cache-creation plus output tokens, and cacheRead is cache-read tokens.
 func (p parsedTranscript) tokens() (fresh, cacheRead int) {
 	for _, entry := range p.entries {
 		if entry.Usage != nil {
@@ -519,9 +526,12 @@ func (p parsedTranscript) tokens() (fresh, cacheRead int) {
 
 // parseTranscript reads the transcript at path into entries for every user and assistant line.
 // Sidechain lines get an entry only when includeSidechain is set, as a fork transcript needs.
-// transcriptKey names the transcript among all the engine records and keeps the keys of id-less lines unique across transcripts.
-// An assistant line whose message id is in skipIDs carries no usage, since a fork transcript replays the parent's spawning message as its first entry.
-// A message streamed over several lines carries usage on its last line only, since the earlier lines hold a partial output count.
+// transcriptKey names the transcript in the keys of lines with neither a message id nor a uuid;
+// it keeps those keys unique across transcripts.
+// An assistant line whose message id is in skipIDs carries no usage:
+// a fork transcript replays the parent's spawning message as its first entry.
+// A message streamed over several lines carries usage on its last line only;
+// the earlier lines hold a partial output count.
 // Malformed lines, a half-written last line included, are skipped, and an unreadable file is an error.
 func parseTranscript(path, transcriptKey string, includeSidechain bool, skipIDs map[string]struct{}) (parsedTranscript, error) {
 	f, err := os.Open(path)

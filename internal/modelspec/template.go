@@ -1,7 +1,5 @@
-// template.go — models.yaml seed template accessor.
-// Mirrors shuttleengine's embed pattern: the seed content lives in template.yaml and is embedded
-// verbatim at build time, with ConfigTemplate as the sole accessor configreg consumes for
-// materialization.
+// template.go holds the models.yaml seed template, embedded verbatim from template.yaml at build time.
+// ConfigTemplate is the accessor configreg uses to materialize that seed.
 
 package modelspec
 

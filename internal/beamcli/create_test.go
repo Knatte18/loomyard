@@ -1,4 +1,6 @@
-// create_test.go drives the create sequence over fake deps: each refusal with its text, a fresh create running its steps in order with the run start last, and a re-run finishing only the steps whose result is not yet there.
+// create_test.go drives the create sequence over fake deps.
+// It covers each refusal with its text and a fresh create, which runs its steps in order with the run start last.
+// A re-run finishes only the steps whose result is not yet there.
 
 package beamcli
 

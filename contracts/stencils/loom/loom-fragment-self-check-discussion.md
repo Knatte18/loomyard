@@ -1,5 +1,6 @@
-<!-- This is the Discussion-Write prompt's self-check step body for a run whose discussion gate has no cold fixer: the writer runs the validator itself.
-     It is filled whole into loom-template-discussion's self_check marker by internal/loomengine's DiscussionTable.
+<!-- This is the Discussion-Write prompt's self-check step body for a run whose discussion gate has no cold fixer.
+     The writer runs the validator itself.
+     internal/loomengine's DiscussionTable fills it whole into loom-template-discussion's self_check marker.
      It declares no marker. -->
 
 Before ending your turn, run the mechanical gate standalone against what you just wrote:

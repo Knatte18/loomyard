@@ -1,10 +1,6 @@
-// bouncerfiles.go defines the three file contracts the Bouncer owns — the bouncer verdict file, the
-// finding-identity ledger file, and the structured next-round focus file — plus the strict parsers
-// that turn each file's raw bytes into a Go value.
-// Every parser here is fail-loud: a self-contradictory or malformed file must never be mistaken for
-// a valid one. The fail-safe swallow of such an error into a logger.Warn plus shedengine.Stuck lives
-// one layer up, in Call, exactly mirroring the two-layer posture internal/treadleengine/judgeverdict.go
-// and internal/treadleengine/handoff.go already establish across two packages.
+// bouncerfiles.go holds the strict parsers for the Bouncer's three file contracts: verdict, ledger and focus.
+// Parsers fail loud on a malformed file;
+// the Bouncer's Call turns that error into a logger warning and shedengine.Stuck.
 
 package shedadapters
 
@@ -28,16 +24,16 @@ const (
 	verdictCircling  bouncerVerdict = "CIRCLING"
 )
 
-// Retired spellings an older binary's judge wrote.
-// They are read only through parseRecordedVerdict, as the aliases named beside them.
+// Legacy spellings an older binary's judge wrote.
+// Only parseRecordedVerdict reads them.
 const (
 	legacyVerdictApproved = "APPROVED"
 	legacyVerdictBlocking = "BLOCKING"
 )
 
 // verdictHeader mirrors a bouncer verdict file's YAML frontmatter shape.
-// Unknown extra keys are tolerated (no KnownFields), matching burlerengine's reviewHeader and
-// treadleengine's judgeHeader: agent-written metadata in the header is harmless noise.
+// Unknown extra keys are tolerated, because the decoder does not set KnownFields:
+// agent-written metadata in the header is harmless noise.
 type verdictHeader struct {
 	Verdict   string `yaml:"verdict"`
 	Rationale string `yaml:"rationale"`
@@ -45,7 +41,8 @@ type verdictHeader struct {
 
 // parseVerdict parses a bouncer verdict file into a bouncerVerdict and its rationale.
 // Fails loud: the frontmatter must be present, closed, and valid YAML;
-// verdict must be exactly verdictConverged, verdictContinue or verdictCircling (case-sensitive), so a retired word is rejected;
+// verdict must be exactly verdictConverged, verdictContinue or verdictCircling;
+// the match is case-sensitive, so a legacy word is rejected;
 // rationale must be non-empty after strings.TrimSpace.
 func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
@@ -73,9 +70,10 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 }
 
 // parseRecordedVerdict parses a verdict that was already on disk at Call entry.
-// It tries parseVerdict first,
-// and otherwise reads a legacy APPROVED as verdictConverged and a legacy BLOCKING as verdictContinue, reporting legacy true for either alias.
-// The rest of the file is held to parseVerdict's rules: the frontmatter and a non-empty rationale.
+// It tries parseVerdict first.
+// Otherwise it reads a legacy APPROVED as verdictConverged, and a legacy BLOCKING as verdictContinue.
+// The legacy result is true for either alias.
+// The rest of the file must meet parseVerdict's rules: valid frontmatter and a non-empty rationale.
 func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale string, legacy bool, err error) {
 	verdict, rationale, strictErr := parseVerdict(content)
 	if strictErr == nil {
@@ -102,24 +100,23 @@ func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale str
 	return "", "", false, strictErr
 }
 
-// recordedVerdict reads and parses round's verdict file inside runDir, then reads and parses that round's ledger file;
-// it returns the parsed verdict and ledger, and false on any read or parse failure of either.
-// It is the "this round has been judged" predicate, and the parsed verdict and ledger ride along so a caller that needs them never re-reads the same files.
+// recordedVerdict reads and parses round's verdict file and ledger file inside runDir.
+// It returns the parsed verdict and ledger, and false if either file is missing or does not parse;
+// it also returns false when the ledger names another round.
+// It is the predicate for whether the round has been judged.
+// The parsed values come back with it, so a caller that needs them does not re-read the files.
 //
-// It is a free function over a told run directory rather than a Bouncer method because the question
-// is two-sided, and both sides must answer it identically: the Bouncer asks whether it still owes
-// round N a judgment, and the round producer sharing that directory asks whether it may advance past
-// N -- and a round the Bouncer is about to re-judge is exactly a round the round producer must not
-// have already written over. Requiring the ledger as well as the verdict is what keeps the two
-// answers the same, since a verdict whose ledger is missing or malformed sends the Bouncer back for
-// a fresh judgment just as an absent verdict does.
+// It is a free function over the run directory, not a Bouncer method, because two callers must answer it identically:
+// one asks whether a round still needs a judgment, and the other asks whether the run may advance past it.
+// A round about to be re-judged must not already have been written over by the producer.
+// Requiring the ledger as well as the verdict keeps the two answers the same:
+// a verdict whose ledger is missing or malformed reads as unjudged, just as an absent verdict does.
 //
-// The focus file is deliberately excluded, because it is an input to the next round rather than
-// evidence about this one, and is synthesizable -- including it would let a missing focus file
-// invalidate a judgment that provably happened.
+// The focus file is left out: it is an input to the next round rather than evidence about this one,
+// and it can be synthesized, so including it would let a missing focus file invalidate a judgment that happened.
 //
-// The verdict is read through parseRecordedVerdict, so a run directory an older binary judged still reads as judged:
-// the clear, the replay and BurlerReviewProducer's may-advance check all go through here.
+// The verdict is read through parseRecordedVerdict,
+// so a run directory that an older binary judged still reads as judged.
 func recordedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, _, err := parseRecordedVerdict(content)
@@ -127,8 +124,8 @@ func recordedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool
 	})
 }
 
-// harvestedVerdict is recordedVerdict for a judge this Call spawned or attached:
-// it reads the strict vocabulary only, so a legacy word never counts as a harvest and the caller re-judges the round.
+// harvestedVerdict reads the verdict of a judge that this Call spawned or attached.
+// It accepts the strict vocabulary only, so a legacy word counts as no harvest and the caller judges the round again.
 func harvestedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, err := parseVerdict(content)
@@ -136,8 +133,8 @@ func harvestedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, boo
 	})
 }
 
-// readJudgment is the shared body of recordedVerdict and harvestedVerdict:
-// it reads round's verdict through parse, then requires round's ledger to parse and to name the same round.
+// readJudgment reads round's verdict through parse, then requires round's ledger to parse and to name the same round.
+// It returns false on any read or parse failure, or when the ledger names another round.
 func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, error)) (bouncerVerdict, ledgerFile, bool) {
 	verdictRaw, err := os.ReadFile(verdictPath(runDir, round))
 	if err != nil {
@@ -155,13 +152,9 @@ func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, 
 	if err != nil {
 		return "", ledgerFile{}, false
 	}
-	// The ledger file's own round: frontmatter field must agree with the round number ITS OWN
-	// FILENAME already encodes (ledgerPath(runDir, round)): a mismatch here means the judge wrote
-	// the wrong round's own claim into a file that landed at the right path anyway, which is
-	// exactly the shape a malformed-ledger read is meant to fail closed on -- reporting false
-	// (this round has NOT been judged, per this function's own doc comment) so the Bouncer
-	// re-judges it, rather than trusting a ledger that disagrees with itself about which round it
-	// belongs to (crucible round sonnet-xhigh-r8, LS-1).
+	// The ledger's round field must match the round its filename encodes (ledgerPath(runDir, round)).
+	// A mismatch means the judge wrote another round's claim into this round's file,
+	// so the round reads as unjudged and the Bouncer judges it again.
 	if ledger.Round != round {
 		return "", ledgerFile{}, false
 	}
@@ -170,7 +163,8 @@ func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, 
 
 // ledgerEntry is one finding-identity record in a ledger file: a Key the judge uses to recognize
 // recurring findings, the Rounds it was seen in, and its Status.
-// Class and Severity label the finding the judge mapped to the key; both are empty on an unlabelled entry, which reads as non-gating.
+// Class and Severity label the finding the judge mapped to the key.
+// Both are empty on an unlabelled entry, which reads as non-gating.
 // Fix is the judge's fix kind: `mechanical`, `design-wrong`, or empty when the judge wrote none.
 type ledgerEntry struct {
 	Key      string
@@ -181,8 +175,7 @@ type ledgerEntry struct {
 	Fix      string
 }
 
-// ledgerFile is a parsed bouncer ledger file: the Round it pertains to, its Entries, and its prose
-// narrative.
+// ledgerFile is a parsed bouncer ledger file: the Round it pertains to, its Entries, and its prose narrative.
 type ledgerFile struct {
 	Round   int
 	Entries []ledgerEntry
@@ -195,8 +188,7 @@ type ledgerHeader struct {
 	Ledger []ledgerEntryYAML `yaml:"ledger"`
 }
 
-// ledgerEntryYAML mirrors one ledger entry's YAML shape before validation promotes it into a
-// ledgerEntry.
+// ledgerEntryYAML mirrors one ledger entry's YAML shape before validation promotes it into a ledgerEntry.
 type ledgerEntryYAML struct {
 	Key      string `yaml:"key"`
 	Rounds   []int  `yaml:"rounds"`
@@ -207,13 +199,13 @@ type ledgerEntryYAML struct {
 }
 
 // parseLedger parses a bouncer ledger file into a ledgerFile.
-// Fails loud: the frontmatter must be present, closed, and valid YAML; round must be a positive
-// int; the (legally empty) ledger list's entries must each have a non-empty key, a non-empty
-// rounds list of positive ints, and a status of exactly "open" or "resolved".
+// Fails loud: the frontmatter must be present, closed, and valid YAML; round must be a positive integer;
+// each entry of the ledger list (which may be empty) must have a non-empty key;
+// its rounds must be a non-empty list of positive integers, and its status must be exactly "open" or "resolved".
 // An entry's optional class and severity, when present, must be burlerengine vocabulary.
 // An entry's optional fix is kept unvalidated: a missing or unknown value is legal.
-// parseLedger compares nothing against any previous ledger — carry-forward is stated in the judge
-// prompt and is deliberately not enforced here.
+// parseLedger compares nothing against any previous ledger;
+// carry-forward is stated in the judge prompt and is not enforced here.
 func parseLedger(content []byte) (ledgerFile, error) {
 	header, err := splitFrontmatter(content, "ledger")
 	if err != nil {
@@ -300,8 +292,8 @@ func designWrongKeys(ledger ledgerFile) map[string]bool {
 	return keys
 }
 
-// focusFile is a parsed bouncer focus file: the Round it targets, the lenses excluded from that
-// round, the round's own focus directives, and its prose narrative.
+// focusFile is a parsed bouncer focus file.
+// It holds the round the file targets, the lenses excluded from that round, its focus directives, and its prose.
 type focusFile struct {
 	Round         int
 	ExcludeLenses []string
@@ -317,9 +309,9 @@ type focusHeader struct {
 }
 
 // parseFocus parses a bouncer focus file into a focusFile.
-// Fails loud: the frontmatter must be present, closed, and valid YAML; round must be a positive
-// int; exclude_lenses and focus must each be lists of strings, legally empty — a scalar where a
-// list is required is a parse error, which yaml.Unmarshal into a []string field already produces.
+// Fails loud: the frontmatter must be present, closed, and valid YAML, and round must be a positive int.
+// exclude_lenses and focus must each be lists of strings, legally empty;
+// a scalar where a list is required is a parse error, which yaml.Unmarshal into a []string field already produces.
 // Both list fields yield empty, non-nil slices when absent or empty.
 func parseFocus(content []byte) (focusFile, error) {
 	header, err := splitFrontmatter(content, "focus")
@@ -353,13 +345,13 @@ func parseFocus(content []byte) (focusFile, error) {
 	}, nil
 }
 
-// renderFocus marshals f into a bouncer focus file's bytes: a YAML frontmatter header carrying
-// round, exclude_lenses, and focus, wrapped between an opening and a closing "---" line, with
-// f.Prose appended below the closing delimiter when non-empty.
-// Marshalling the header through yaml.Marshal rather than hand-formatting it is what makes a lens
-// name containing a YAML metacharacter round-trip instead of corrupting the file.
-// Both list fields render as an explicit empty list rather than as null when f's corresponding
-// slice is empty, so renderFocus itself always writes both lists;
+// renderFocus marshals f into a bouncer focus file's bytes.
+// The output is a YAML frontmatter header, wrapped between opening and closing "---" lines.
+// The header carries round, exclude_lenses, and focus; f.Prose is appended below the closing delimiter when non-empty.
+// Marshalling the header through yaml.Marshal rather than hand-formatting it is what keeps the file intact.
+// A lens name containing a YAML metacharacter then round-trips instead of corrupting the file.
+// Both list fields render as an explicit empty list rather than as null when f's corresponding slice is empty.
+// renderFocus therefore always writes both lists;
 // parseFocus does not require that, and accepts a file with either list key absent.
 func renderFocus(f focusFile) ([]byte, error) {
 	excludeLenses := f.ExcludeLenses
@@ -406,8 +398,7 @@ func writeFocus(path string, f focusFile) error {
 
 // splitFrontmatter extracts the YAML header text between the file's opening and closing "---"
 // delimiter lines. kind names the file type for error messages ("verdict", "ledger", or "focus").
-// Each line is compared with its trailing "\r" trimmed so CRLF content parses identically to LF
-// content.
+// Each line is compared with its trailing "\r" trimmed, so CRLF content parses identically to LF content.
 func splitFrontmatter(content []byte, kind string) (string, error) {
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
@@ -432,12 +423,8 @@ func splitFrontmatter(content []byte, kind string) (string, error) {
 	return header, nil
 }
 
-// frontmatterProse returns everything after a file's closing "---" frontmatter delimiter line,
-// CRLF-normalized and trimmed, and "" when there is nothing after it.
-// It is called only after splitFrontmatter has already validated that the opening and closing
-// delimiters exist, so the closing line is guaranteed to be found here; this is a separate,
-// minimal scan rather than a splitFrontmatter return value because splitFrontmatter's contract is
-// header-only and prose is a distinct, kind-agnostic need.
+// frontmatterProse returns the text after a file's closing "---" delimiter line, CRLF-normalized and trimmed.
+// It returns "" when nothing follows that line, or when the file has no closing delimiter line.
 func frontmatterProse(content []byte) string {
 	lines := strings.Split(string(content), "\n")
 	closingIdx := -1

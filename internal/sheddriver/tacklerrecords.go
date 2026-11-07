@@ -1,5 +1,5 @@
-// tackler.go declares the records of a run's tackler and their readers and writers:
-// the role name, the verdict words, the worktree snapshot an attempt is judged against, one attempt's directory contents (attempt.json, prompt.md, verdict.yaml, case-brief.md, envelope.json and the applied mark) and the ephemeral in-flight marker.
+// tacklerrecords.go declares the records a run's tackler leaves on disk.
+// The records are the role name, the verdict words, the worktree snapshot, the attempt's files and the in-flight marker.
 // Every function takes the directory or path it works on; internal/shedrun declares where those live.
 
 package sheddriver
@@ -51,7 +51,8 @@ func (s WorktreeSnapshot) Equal(other WorktreeSnapshot) bool {
 	return s.Head == other.Head && s.Branch == other.Branch && maps.Equal(s.Dirty, other.Dirty)
 }
 
-// TacklerAttempt is attempt.json: the record the Go driver writes before it spawns a tackler, so the attempt counts against the spawn budget whatever happens next.
+// TacklerAttempt is attempt.json: the record the Go driver writes before it spawns a tackler,
+// so the attempt counts against the spawn budget whatever happens next.
 type TacklerAttempt struct {
 	Number       int              `json:"number"`
 	StopKey      StopKey          `json:"stop_key"`
@@ -89,7 +90,8 @@ func ReadTacklerAttempt(dir string) (TacklerAttempt, error) {
 
 // ListTacklerAttempts reads every subdirectory of tacklerDir as an attempt, sorted by Number.
 // An absent tacklerDir lists none.
-// A subdirectory with no readable attempt.json is an error naming it, since the driver writes that file before anything else and the count of attempts is the spawn budget.
+// A subdirectory with no readable attempt.json is an error naming it:
+// the driver writes that file before anything else, and the count of attempts is the spawn budget.
 func ListTacklerAttempts(tacklerDir string) ([]TacklerAttempt, error) {
 	entries, err := os.ReadDir(tacklerDir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -113,7 +115,8 @@ func ListTacklerAttempts(tacklerDir string) ([]TacklerAttempt, error) {
 	return attempts, nil
 }
 
-// NewestTacklerAttempt returns the newest attempt directory recorded for key under tacklerDir, empty when there is none, and whether that attempt carries the applied mark.
+// NewestTacklerAttempt returns the newest attempt directory recorded for key under tacklerDir.
+// The directory is empty when there is none; applied reports whether that attempt carries the applied mark.
 func NewestTacklerAttempt(tacklerDir string, key StopKey) (dir string, applied bool, err error) {
 	attempts, err := ListTacklerAttempts(tacklerDir)
 	if err != nil {
@@ -211,7 +214,7 @@ func ReadTacklerEnvelope(path string) (TacklerEnvelope, bool, error) {
 	return e, true, nil
 }
 
-// MarkTacklerApplied writes the applied mark in the attempt directory dir, recording that the re-launch consumed the attempt.
+// MarkTacklerApplied writes the applied mark in attempt directory dir, recording that the re-launch consumed it.
 func MarkTacklerApplied(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("sheddriver:create tackler attempt directory: %w", err)

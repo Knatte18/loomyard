@@ -97,7 +97,8 @@ func TestRemoveDeadSocket(t *testing.T) {
 	}
 }
 
-// TestCheckSockets pins which sockets under a package's directory the end-of-package check names, and that afterRun reads them before its sweep removes them.
+// TestCheckSockets pins which sockets under a package's directory the end-of-package check names.
+// It also pins that afterRun reads them before its sweep removes them.
 func TestCheckSockets(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,7 +1,8 @@
-<!-- This is the job body of the cold fixer for a Webster card gate's red `lym gate test --gate card` call, joined behind the shared cold frame gatefix-frame-cold by internal/gatefixer's RenderPrompt and filled via internal/stencil.
-     Its three markers are required top-level {{.X}} substitutions ({{.worktree_root}}, {{.card_ids}}, {{.gate_call}});
-     stencil.FillOptional requires all of them non-empty.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the job body of the cold fixer for a Webster card gate's red `lym gate test --gate card` call.
+     internal/gatefixer's RenderPrompt joins it behind the shared cold frame gatefix-frame-cold and fills it via internal/stencil.
+     Its markers are required top-level {{.X}} substitutions ({{.worktree_root}}, {{.card_ids}}, {{.gate_call}}),
+     and stencil.FillOptional requires each to be non-empty.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 ## The failure
 

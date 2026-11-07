@@ -1,9 +1,6 @@
-// cleanup.go implements "lym batten cleanup", the dry-run-by-default removal of finished runs' records and scratch from the hub's prime worktree.
-// It also holds ClearMotifRun, the removal of one slug's done motif run that "lym beam create" makes before the project's own run and a raddle entry's start makes before the raddle run.
-//
-// Cleanup is the one function the verb and "lym cleanup" both call; every refusal and skip lives in cleanup, so neither caller can remove more than cleanup decides.
-// It deletes only a done slug's records run directory and the scratch contents beside its lock files, or an aged orphan's scratch contents.
-// It never touches a pair, a branch, a lock file or another slug, and it spawns the push of the records side only.
+// cleanup.go implements `lym batten cleanup`, which removes finished runs' records and scratch from the prime worktree.
+// Cleanup decides every slug's removal, so no caller removes more than Cleanup decides.
+// The file also holds ClearMotifRun, which removes one slug's done motif run so the next run under that slug can start.
 
 package battencli
 
@@ -33,7 +30,7 @@ import (
 // orphanScratchAge is how long an orphan scratch directory must go unmodified before cleanup empties it.
 const orphanScratchAge = 24 * time.Hour
 
-// lockFileSuffix ends the name of every lock file a scratch directory holds; emptyScratch keeps them all.
+// lockFileSuffix ends the name of every lock file in a scratch directory; emptying the directory keeps those files.
 const lockFileSuffix = ".lock"
 
 // CleanupSkip names a slug cleanup left alone and why.
@@ -44,9 +41,9 @@ type CleanupSkip struct {
 
 // CleanupReport is what one cleanup pass did, or with Applied false what --apply would do.
 type CleanupReport struct {
-	// Applied reports whether the pass ran with apply true, a dry run being false.
+	// Applied reports whether the pass ran with apply true; false marks a dry run.
 	Applied bool
-	// Removed lists the slugs whose records run directory was removed and committed.
+	// Removed lists the slugs whose records run directory was removed.
 	Removed []string
 	// Emptied lists the slugs whose scratch contents were emptied, beside their lock files.
 	Emptied []string
@@ -60,7 +57,8 @@ type CleanupReport struct {
 	PushError string
 }
 
-// cleanupDeps carries the fabric calls and the clock cleanup drives, as function values, so a Tier 1 test drives every branch with stubs.
+// cleanupDeps carries the fabric calls and the clock that cleanup drives, as function values.
+// Tests can replace each with a stub.
 type cleanupDeps struct {
 	// Committed reads an anchor-relative file at the records HEAD; found is false when it is absent there.
 	Committed func(relPath string) (data []byte, found bool, err error)
@@ -90,8 +88,10 @@ func fabricCleanupDeps(location *lymcwd.Location) cleanupDeps {
 	}
 }
 
-// Cleanup removes, from the hub's prime worktree, the records run directory and scratch contents of every done run, and the scratch contents of every aged orphan.
-// With apply false it changes nothing and reports exactly what apply true removes.
+// Cleanup removes, from the hub's prime worktree, the records run directory and scratch contents of every done run.
+// It also empties the scratch contents of every aged orphan.
+// It never touches a pair, a branch, a lock file or another slug, and it spawns the push of the records side only.
+// With apply false it changes nothing and reports what apply true would remove.
 // It runs from the prime worktree and from a beam, acting on the prime's location in both, and refuses elsewhere.
 // A records commit error stops the pass with that error; a push spawn error is reported on the result.
 func Cleanup(location *lymcwd.Location, apply bool) (CleanupReport, error) {
@@ -102,11 +102,15 @@ func Cleanup(location *lymcwd.Location, apply bool) (CleanupReport, error) {
 	return cleanup(prime, apply, fabricCleanupDeps(prime))
 }
 
-// ClearMotifRun removes the records run directory and scratch contents of slug's batten run when that run is done and its task worktree ran the motif recipe, and reports whether it removed them.
-// A motif run is the planned first step of a project split or a raddle run, so its done record must not block the next run under the same slug.
+// ClearMotifRun removes the records run directory and scratch contents of slug's run when it is a done motif run.
+// It reports whether it removed them.
+// A motif run is the planned first step of a project split or a raddle run;
+// its done record must not block the next run under the same slug.
 // It runs from the prime worktree and from a beam, acting on the prime's location, and refuses elsewhere.
-// A run whose run lock is held, that is not done, or whose child-recipe record names another recipe or none, is left alone with cleared false.
-// A removal that fails before its records commit lands is returned after the run's status and child-recipe records are written back, so a re-run finds the run again.
+// A run is left alone with cleared false when its run lock is held or it is not done.
+// A run whose child-recipe record names another recipe or none is left alone too.
+// When a removal fails before its records commit lands, the status and child-recipe records are written back,
+// and the error is returned, so a re-run finds the run again.
 // A failed push spawn or scratch emptying only warns, since the done record is gone either way.
 func ClearMotifRun(location *lymcwd.Location, slug string) (cleared bool, err error) {
 	prime, err := ResolveBattenPrime(location)
@@ -116,7 +120,8 @@ func ClearMotifRun(location *lymcwd.Location, slug string) (cleared bool, err er
 	return clearMotifRun(prime, slug, fabricCleanupDeps(prime))
 }
 
-// clearMotifRun is ClearMotifRun over injected deps.
+// clearMotifRun removes slug's done motif run and reports whether it removed it.
+// Its records calls and push spawn come from deps, so tests can stub them.
 // It judges and removes while holding the slug's run lock and status lock, so a run started meanwhile is never removed.
 func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cleared bool, err error) {
 	scratchDir := shedrun.ScratchDir(location, slug)
@@ -171,7 +176,8 @@ func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cl
 	return true, nil
 }
 
-// restoreMotifRunRecords writes back the status and child-recipe records of slug's run after a removal that failed before its records commit,
+// restoreMotifRunRecords writes back the status and child-recipe records of slug's run.
+// It runs when a removal fails before its records commit,
 // so the run reads as a done motif run again and a re-run of the removal finishes it.
 // The caller holds the slug's status lock.
 func restoreMotifRunRecords(location *lymcwd.Location, slug string, status []byte, recipe string) error {
@@ -188,8 +194,10 @@ func restoreMotifRunRecords(location *lymcwd.Location, slug string, status []byt
 	return nil
 }
 
-// cleanup is Cleanup over injected deps.
-// Each slug is judged under its run lock and status lock, so a run started meanwhile blocks or is skipped rather than racing the removal.
+// cleanup runs one pass over every slug and reports what it did, or with apply false what it would do.
+// Its records calls, push spawn and clock come from deps, so tests can stub them.
+// Each slug is judged under its run lock and status lock.
+// A run started meanwhile blocks or is skipped rather than racing the removal.
 func cleanup(location *lymcwd.Location, apply bool, deps cleanupDeps) (CleanupReport, error) {
 	report := CleanupReport{Applied: apply, Removed: []string{}, Emptied: []string{}, Skipped: []CleanupSkip{}}
 
@@ -262,7 +270,8 @@ func cleanupSlug(location *lymcwd.Location, slug string, apply bool, deps cleanu
 		return false, nil
 	}
 
-	// Read before any lock file is created: taking a lock in an empty scratch directory would otherwise make an orphan look fresh.
+	// Read before any lock file is created:
+	// taking a lock in an empty scratch directory would otherwise make an orphan look fresh.
 	scratchDir := shedrun.ScratchDir(location, slug)
 	scratchNewest, scratchErr := fsx.NewestModTime(scratchDir)
 
@@ -344,7 +353,8 @@ func cleanupSlug(location *lymcwd.Location, slug string, apply bool, deps cleanu
 	return false, nil
 }
 
-// runRecordsTracked reports whether the records HEAD holds the status or the seed of slug's run, each read through committed.
+// runRecordsTracked reports whether the records HEAD holds the status or the seed of slug's run.
+// It reads both through committed.
 func runRecordsTracked(location *lymcwd.Location, slug string, committed func(relPath string) ([]byte, bool, error)) (bool, error) {
 	for _, rel := range []string{shedrun.StatusRel(location, slug), shedrun.SeedRel(location, slug)} {
 		_, tracked, err := committed(rel)
@@ -355,24 +365,28 @@ func runRecordsTracked(location *lymcwd.Location, slug string, committed func(re
 	return false, nil
 }
 
-// removalCommitError marks the records commit failure of removeRunRecords, which stops a cleanup pass.
+// removalCommitError marks a failure to commit a run's removal to the records side, which stops a cleanup pass.
 type removalCommitError struct{ error }
 
 // Unwrap returns the commit failure.
 func (e removalCommitError) Unwrap() error { return e.error }
 
-// scratchEmptyError marks the scratch emptying failure of removeRunRecords, which comes after its records commit.
+// scratchEmptyError marks a failure to empty a run's scratch contents, after the run's records are removed.
 type scratchEmptyError struct{ error }
 
 // Unwrap returns the emptying failure.
 func (e scratchEmptyError) Unwrap() error { return e.error }
 
-// removeRunRecords removes the records run directory of slug when it is on disk, commits that directory's removal on the records side with msg while the records HEAD tracks the run, and empties the slug's scratch contents beside its lock files.
+// removeRunRecords removes slug's records run directory when it is on disk.
+// When the records HEAD tracks the run, it commits that removal on the records side with msg.
+// It then empties the slug's scratch contents, keeping its lock files.
 // It takes no lock and judges nothing; the caller holds the slug's locks and has decided the removal.
-// An already absent run directory the records HEAD still tracks commits, so a removal whose commit failed earlier finishes on a re-run;
-// one the records HEAD no longer tracks commits nothing and succeeds, so a removal that already finished succeeds again.
+// An absent run directory that the records HEAD still tracks commits,
+// so a removal whose commit failed earlier finishes on a re-run.
+// A run the records HEAD no longer tracks commits nothing and succeeds,
+// so a removal that already finished succeeds again.
 // committed reports whether a records commit was made.
-// A commit failure is a removalCommitError and an emptying failure, which follows the commit, a scratchEmptyError.
+// A failed commit is a removalCommitError; a failed emptying is a scratchEmptyError.
 func removeRunRecords(location *lymcwd.Location, slug, msg string, deps cleanupDeps) (committed bool, err error) {
 	if err := os.RemoveAll(shedrun.RunDir(location, slug)); err != nil {
 		return false, fmt.Errorf("remove run directory: %w", err)
@@ -393,10 +407,11 @@ func removeRunRecords(location *lymcwd.Location, slug, msg string, deps cleanupD
 	return committed, nil
 }
 
-// judgeRunDirectory decides what the records run directory of slug makes the slug.
-// candidate is true for a done run; tracked is true when its directory is already gone from disk and only the records commit is outstanding.
+// judgeRunDirectory classifies slug by its records run directory, or by the records HEAD when the directory is gone.
+// candidate is true for a done run.
+// tracked is true when the run directory is already gone from disk, so only the records commit is outstanding.
 // A non-empty reason skips the slug.
-// With candidate and reason both clear, the slug is an orphan.
+// A slug with no candidate and no reason is an orphan.
 func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps) (candidate, tracked bool, reason string) {
 	_, statErr := os.Stat(shedrun.RunDir(location, slug))
 	switch {
@@ -427,8 +442,9 @@ func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps)
 	return false, false, ""
 }
 
-// judgeStatus decodes a status file and answers whether the run is done.
-// A done run is a candidate; every other state and an undecodable status is a skip reason, worded with the given prefix before "status".
+// judgeStatus decodes a status file and reports whether the run is done.
+// A done run is a candidate;
+// every other state and an undecodable status is a skip reason, worded with the given prefix.
 // A run that is not done is skipped with the cancel of slug as its way forward.
 // tracked is set when the prefix is non-empty, which marks a status read from the records HEAD rather than the disk.
 func judgeStatus(data []byte, prefix, slug string) (candidate, tracked bool, reason string) {
@@ -458,14 +474,15 @@ func takeLock(path string, apply bool, acquire func(path string) (*lock.FileLock
 	return held, acquired, nil
 }
 
-// releaseLock releases a lock takeLock returned, which may be nil.
+// releaseLock releases held, and does nothing when held is nil because no lock was taken.
 func releaseLock(held *lock.FileLock) {
 	if held != nil {
 		_ = held.Release()
 	}
 }
 
-// emptyScratch removes every file under dir whose name does not end in ".lock", then every directory left empty below it.
+// emptyScratch removes every file under dir whose name does not end in ".lock".
+// It then removes every directory left empty below dir.
 // Lock files, their directories and dir itself stay, so no lock is deleted while held or recreated beside a held one.
 // With apply false, or when dir is absent, it removes nothing.
 func emptyScratch(dir string, apply bool) error {
@@ -508,7 +525,8 @@ func emptyScratch(dir string, apply bool) error {
 	return nil
 }
 
-// cleanupCmd builds "lym batten cleanup [--apply]", the dry-run-by-default removal of finished runs' records and scratch, run from the prime or a beam.
+// cleanupCmd builds "lym batten cleanup [--apply]", which removes finished runs' records and scratch.
+// It is a dry run unless --apply is given, and it runs from the prime or a beam.
 func (c *battenCLI) cleanupCmd() *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{

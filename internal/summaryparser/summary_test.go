@@ -1,6 +1,5 @@
-// summary_test.go exercises Parse's and ParseData's accept/reject table, Path's join, and CommitMessage's
-// subject/body composition -- the read-side coverage this package owns as summaryparser-leaf's
-// external interface.
+// summary_test.go exercises the package's external interface.
+// It covers Parse's and ParseData's accept/reject table, Path's join, and CommitMessage's subject/body composition.
 
 package summaryparser_test
 
@@ -14,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeSummaryFile writes raw content to path, creating its parent
-// directory first, failing the test on any error.
+// writeSummaryFile writes raw content to path, creating its parent directory first and failing the test on any error.
 func writeSummaryFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -26,7 +24,9 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParse asserts a well-formed summary.md, read from its file or given as bytes, parses into its Title and Body, with the heading line excluded from Body and Body's leading newline preserved, and that every malformed or missing file is rejected loud -- wrapping its own sentinel where the failure has one.
+// TestParse asserts a well-formed summary.md, read from its file or given as bytes, parses into its Title and Body.
+// The heading line is excluded from Body, and Body's leading newline is preserved.
+// Every malformed or missing file is rejected loud, wrapping its own sentinel where the failure has one.
 func TestParse(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -48,7 +48,7 @@ func TestParse(t *testing.T) {
 			wantBody:  "\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n",
 		},
 		{
-			// The first NON-BLANK line must be the heading, not necessarily the file's first line.
+			// The first non-blank line must be the heading, not necessarily the file's first line.
 			name:      "leading blank lines skipped",
 			content:   "\n\n# Title after blank lines\nBody text.\n",
 			wantTitle: "Title after blank lines",
@@ -58,8 +58,8 @@ func TestParse(t *testing.T) {
 		{name: "zero bytes", content: "", wantErr: summaryparser.ErrEmptyFileForTest},
 		{name: "blank lines only", content: "\n\n   \n", wantErr: summaryparser.ErrEmptyFileForTest},
 		{name: "no heading", content: "Just some narrative with no heading at all.\n", wantErr: summaryparser.ErrNoHeadingForTest},
-		// A blank title trims to a bare "#", so Parse reports it as a missing heading; the
-		// empty-title sentinel guards the branch Parse's own trimming makes unreachable today.
+		// A blank title trims to a bare "#", so Parse reports it as a missing heading;
+		// the empty-title sentinel guards a branch that Parse's own trimming makes unreachable today.
 		{name: "bare hash", content: "# \n", wantErr: summaryparser.ErrNoHeadingForTest},
 		{name: "blank title", content: "#    \nBody text.\n", wantErr: summaryparser.ErrNoHeadingForTest},
 	}
@@ -118,7 +118,7 @@ func TestPath(t *testing.T) {
 	}
 }
 
-// TestCommitMessage covers the commitmessage-body-trim Shared Decision's named cases.
+// TestCommitMessage covers the cases of the commit message body trim.
 //
 //testtiming:keep pins the CommitMessage trim cases that LandingMessage's test does not
 func TestCommitMessage(t *testing.T) {

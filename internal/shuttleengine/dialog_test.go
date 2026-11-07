@@ -1,5 +1,5 @@
-// dialog_test.go covers the notice Wait sends a parent for a permission or input dialog an autonomous run's pane shows past a bound:
-// when it is sent, how often, and the offset it persists.
+// dialog_test.go covers the notice Wait sends a parent for a dialog a run's pane shows past a bound.
+// It pins when the notice is sent, how often, and the DialogNotifiedOffset it persists.
 
 package shuttleengine
 
@@ -17,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// dialogReed is a fakeReed whose pane capture is whatever the test's script last set, or an error while failCapture is set.
+// dialogReed is a fakeReed whose CapturePane returns the pane the test's script last set.
+// It returns an error while failCapture is set.
 type dialogReed struct {
 	*fakeReed
 
@@ -43,7 +44,7 @@ type dialogEnv struct {
 }
 
 const (
-	// dialogPaneNoBox is a pane with no caret, so the readinessEngine reads no input box.
+	// dialogPaneNoBox is a pane with no caret, so the engine reads no input box.
 	dialogPaneNoBox = "Do you want to proceed?\n1. Yes\n2. No"
 	// dialogPaneBox is a pane showing an empty caret input box.
 	dialogPaneBox = "❯ "
@@ -51,12 +52,14 @@ const (
 	dialogTick = 5 * time.Second
 )
 
-// TestWait_DialogNotice captures the process-global logger in every row, so neither it nor its rows run in parallel.
+// TestWait_DialogNotice captures the process-global logger in every row.
+// Neither it nor its rows may run in parallel.
 func TestWait_DialogNotice(t *testing.T) {
 	tiergate.Require(t, 0)
 	const strandName = "lym:slug:driver"
 	shell := []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalTranscript}}
-	// steps[k] runs after the (k+1)th sleep, so at (k+1)*dialogTick on the run clock, just before that tick's wait-loop pass.
+	// steps[k] runs after the (k+1)th sleep, at (k+1)*dialogTick on the run clock.
+	// It runs just before that tick's wait-loop pass.
 	tests := []struct {
 		name   string
 		events string
@@ -68,7 +71,7 @@ func TestWait_DialogNotice(t *testing.T) {
 		quiet      bool
 		noNotifier bool
 		strand     string
-		// covered tells the runner a pause record whose live hub entry covers the run until a step calls env.resume.
+		// covered tells the runner that a live hub entry covers the run's pause record until a step calls env.resume.
 		covered bool
 		// dialogOffset is the persisted DialogNotifiedOffset the run starts with.
 		dialogOffset int64
@@ -76,7 +79,7 @@ func TestWait_DialogNotice(t *testing.T) {
 		steps        map[int]func(env *dialogEnv)
 		// deferral builds the run's Spec.HoldDeferral from the time elapsed since Wait began.
 		deferral func(elapsed func() time.Duration) func() bool
-		// wantAt is the elapsed time of each dialog notice, and wantPersisted the DialogNotifiedOffset persisted at each notifier call.
+		// wantAt holds each dialog notice's elapsed time; wantPersisted holds the DialogNotifiedOffset at each notifier call.
 		wantAt        []time.Duration
 		wantPersisted []int64
 		// wantFinal is the DialogNotifiedOffset the record holds when Wait returns.

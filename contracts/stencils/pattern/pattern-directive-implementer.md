@@ -1,11 +1,10 @@
 <!-- This is the RoleImplementer directive: the variant internal/pattern.Directive renders for any
-     agent that edits code. internal/loomengine/plan.go and internal/websterengine/render.go are its
-     consuming call sites, each passing pattern.RoleImplementer.
-     internal/pattern.Directive reads this file through stencilstore.Read, strips this banner with
-     stencil.StripLeadingComment and fills the file's required pattern_overview marker with
-     the content of PATTERN.md at the repository's worktree root, and its optional pattern_changes marker with the task's declared PATTERN changes.
-     The result is injected as a producer template's optional pattern_directive marker value, so it
-     is never itself passed through stencil.Fill again.
+     agent that edits code.
+     internal/pattern.Directive reads this file through stencilstore.Read and strips this banner with stencil.StripLeadingComment.
+     It fills the required pattern_overview marker with the content of PATTERN.md at the repository's worktree root.
+     It fills the optional pattern_changes marker with the task's declared PATTERN changes.
+     The rendered text is injected as a producer template's optional pattern_directive marker value,
+     so it is never itself passed through stencil.Fill again.
      This file declares two markers, the required pattern_overview and the optional pattern_changes, and no other. -->
 
 ## Constraints — do this before you write any code

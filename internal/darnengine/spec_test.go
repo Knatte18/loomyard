@@ -19,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newSpecInputs returns inputs over a seeded stencils directory, with every required field set and every optional one empty.
+// newSpecInputs returns inputs over a seeded stencils directory.
+// Every required field is set and every optional one is empty.
 func newSpecInputs(t *testing.T) DarnInputs {
 	t.Helper()
 	return DarnInputs{
@@ -47,7 +48,8 @@ func newTestRegistry(t *testing.T) modelspec.Registry {
 	return reg
 }
 
-// leadPrompt returns the prompt of table's lead composed under a geometry over in's stencils directory naming parentName.
+// leadPrompt returns the prompt of table's lead.
+// It composes the prompt under a geometry over in's stencils directory, naming parentName.
 func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine.Table) string {
 	t.Helper()
 	prompts, err := seatengine.Prompts(seatengine.Geometry{
@@ -64,14 +66,18 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 	return prompts[""]
 }
 
-// Lines of the prompt's Step 4 that tell the gate rule apart: the writer's and its subagents' gate runs with the verify gate's fixer off, and the no-gate step with it on.
+// The Step 4 lines that tell the gate rule apart.
+// The writer's and its subagents' gate runs have the verify gate's fixer off,
+// and the no-gate step has it on.
 const (
 	ungatedTestStep     = "3. Test with `lym gate test` after the last edit of each commit"
 	ungatedSubagentGate = "the gate rule from your system prompt with its Bash tool timeout, for the subagent to run on its own package"
 	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
 )
 
-// TestDarnSpec covers the table's lead and settings, and the rendered tokens for a first spawn, where the optional prior-work token renders (none), and for a spawn that carries prior work, a parent and a friction directory.
+// TestDarnSpec covers the table's lead and settings.
+// It checks the rendered tokens for a first spawn, where the optional prior-work token renders to none.
+// It also checks a spawn that carries prior work, a parent and a friction directory.
 func TestDarnSpec(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -202,8 +208,8 @@ func TestDarnSpec(t *testing.T) {
 	}
 }
 
-// TestDarnSpec_Refusals covers the refusal of each empty required field by name, an unusable writer spec, and a stencil missing from the stencils directory.
-// DarnTable reads the Step 4 fragment its gate rule picks, while the seat engine's Validate reads every seat's stencil.
+// TestDarnSpec_Refusals covers the refusal of each empty required field by name.
+// It also covers an unusable writer spec and a stencil missing from the stencils directory.
 func TestDarnSpec_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

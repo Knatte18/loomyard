@@ -1,6 +1,6 @@
-// run_test.go drives the run verb's four dispositions against a hand-populated receiver and a
-// hand-written status file under t.TempDir(), bypassing wire entirely: every Env seam here is a
-// fake that performs no real I/O, no git spawn, and no process spawn.
+// run_test.go drives the run verb's four dispositions against a hand-populated receiver.
+// The status file is hand-written under t.TempDir(), and wire is bypassed.
+// Every Env seam here is a fake that performs no real I/O, no git spawn, and no process spawn.
 
 package battencli
 
@@ -34,7 +34,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// holdNothing is a battenshed.HoldPrimeLock for a test that calls the Worktree-Create closure directly, outside the row that owns the prime lock: it takes no lock.
+// holdNothing is a battenshed.HoldPrimeLock for a test that calls the Worktree-Create closure directly.
+// That test runs outside the row that owns the prime lock, so holdNothing takes no lock.
 func holdNothing() (func(), error) { return func() {}, nil }
 
 // countingHold is a battenshed.HoldPrimeLock for a test that asserts where the Worktree-Create closure takes the prime lock.
@@ -54,9 +55,9 @@ func (h *countingHold) hold() (func(), error) {
 	return func() { h.releases++ }, nil
 }
 
-// newFakeReceiver builds a *battenCLI whose Env is filled entirely with fakes that perform no
-// real I/O, over a fresh t.TempDir(). shutdown, when non-nil, replaces the default no-op
-// Teardown.Shutdown closure.
+// newFakeReceiver builds a *battenCLI whose Env is filled entirely with fakes that perform no real I/O.
+// It is rooted in a fresh t.TempDir().
+// shutdown, when non-nil, replaces the default no-op Teardown.Shutdown closure.
 func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, error)) *battenCLI {
 	t.Helper()
 	dir := t.TempDir()
@@ -114,9 +115,9 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			},
 			DriverAlive: func(context.Context) (bool, error) { return false, nil },
 		},
-		// SeedChild is filled with trivial no-op fakes -- never invoked by any case in this file,
-		// since every one of them resumes from a status file already past Worktree-Create -- so the
-		// recipe registry's own non-nil-field validation does not refuse before the verb body runs.
+		// SeedChild is filled with trivial no-op fakes that no case in this file invokes.
+		// Every case resumes from a status file already past Worktree-Create.
+		// The fakes keep the recipe registry's non-nil-field validation from refusing before the verb body runs.
 		SeedChild: battenshed.SeedChildDeps{
 			ReadBoardType:        func(ctx context.Context) (string, error) { return "", nil },
 			ChildDriver:          func(string) (string, error) { return "", nil },
@@ -128,7 +129,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			CommitSeed:           func(ctx context.Context) error { return nil },
 			PushSeed:             func(ctx context.Context) error { return nil },
 		},
-		// Land is filled with trivial fakes: a parent that is not the prime's branch skips the pull and deploy, so the row lands over the fakes with nothing to read.
+		// Land is filled with trivial fakes: a parent off the prime's branch skips the pull and deploy, so nothing is read.
 		Land: battenshed.LandDeps{
 			ChildLanded:  func() (bool, error) { return true, nil },
 			ParentBranch: func() (string, error) { return "feature", nil },
@@ -157,7 +158,8 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 	return c
 }
 
-// stopEnvelope renders the --until-stop envelope of a step that ended with the run in state at producer, after historyLength history entries.
+// stopEnvelope renders the --until-stop envelope of a step that ended with the run in state at producer;
+// it reports historyLength as the history length of the loop.
 func stopEnvelope(t *testing.T, fields map[string]any, state, producer string, historyLength int) []byte {
 	t.Helper()
 	fields["state"] = state
@@ -169,8 +171,11 @@ func stopEnvelope(t *testing.T, fields map[string]any, state, producer string, h
 	return raw
 }
 
-// inProcessUntilStop returns a step seam that runs c's shed in-process until it stops, in place of the detached --until-stop loop, and renders the envelope the driver parses.
-// A stop is ok with the run's state and the loop's position; a run held by another process is the kind-busy error envelope; any other failure is an error envelope with no kind, which the driver hands back without a tackler.
+// inProcessUntilStop returns a step seam that runs c's shed in-process until it stops.
+// It replaces the detached --until-stop loop and renders the envelope the driver parses.
+// A stop is ok with the run's state and the loop's position;
+// a run held by another process is the kind-busy error envelope;
+// any other failure is an error envelope with no kind, which the driver hands back without a tackler.
 func inProcessUntilStop(t *testing.T, c *battenCLI) func(ctx context.Context, attempt string) ([]byte, error) {
 	t.Helper()
 	return func(ctx context.Context, _ string) ([]byte, error) {
@@ -193,15 +198,16 @@ func inProcessUntilStop(t *testing.T, c *battenCLI) func(ctx context.Context, at
 	}
 }
 
-// runCommand returns the run verb as "lym batten run" mounts it: the shedverbs run command with its body replaced by driveRun.
+// runCommand returns the run verb as "lym batten run" mounts it:
+// the shedverbs run command with its body replaced by driveRun.
 func runCommand(c *battenCLI) *cobra.Command {
 	cmd := battenVerbCommand(c, "run")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return c.driveRun(cmd) }
 	return cmd
 }
 
-// writeStatus writes st as c's status file, unlocked -- the test owns the file outright before the
-// verb ever runs.
+// writeStatus writes st as c's status file without taking its lock.
+// The test owns the file before any verb runs, so no lock is needed.
 func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 	t.Helper()
 	if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, st); err != nil {
@@ -209,10 +215,24 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 	}
 }
 
-// TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
-// A run whose status carries a pause_after naming the first row stops paused, and the driver hands it back with no tackler; a run whose row fails again ends in an error envelope carrying the status error.
-// A resume runs the origin reconcile once: an active or unreachable verdict resumes, an ended verdict refuses naming the landing and "lym cleanup --apply", a stopped verdict refuses with the branch's way forward verbatim followed by the re-run, and a reconcile error refuses with the error and the re-run; an absent status file never runs it.
-// Over fake owner seams, an owned_elsewhere verdict refuses naming the owner and "lym adopt", a run-held entry with no owner resumes and the resume writes no owner, an unreachable origin reads the local board instead and writes nothing, a hub with no prime owner has this machine claim it, and a status still at Worktree-Create with no pair runs the start check and no reconcile.
+// TestRunCmd_ResumeDispositions covers resuming a run in each state.
+// A run in StateRunning, StateBlocked, StateFailed or StatePaused resumes silently from its persisted current producer.
+// An absent status file is a fresh start, not a refusal:
+// the fakes succeed, the run completes, and the envelope's history_length matches the persisted history.
+// A run whose pause_after names the first row stops paused, and the driver hands it back with no tackler;
+// a run whose row fails again ends in an error envelope carrying the status error.
+// A resume runs the origin reconcile once.
+// An active or unreachable verdict resumes.
+// An ended verdict refuses naming the landing and "lym cleanup --apply";
+// a stopped verdict refuses with the branch's way forward verbatim, followed by the re-run;
+// a reconcile error refuses with the error and the re-run.
+// An absent status file never runs the reconcile.
+// Over fake owner seams:
+// an owned_elsewhere verdict refuses naming the owner and "lym adopt";
+// a run-held entry with no owner resumes, and the resume writes no owner;
+// an unreachable origin reads the local board and writes nothing;
+// a hub with no prime owner has this machine claim it;
+// a status still at Worktree-Create with no pair runs the start check and no reconcile.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -247,7 +267,8 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		wantSets []string
 		// wantPulls counts the board pulls the start check made.
 		wantPulls int
-		// yieldReason, when set, makes the step yield with the Run-Shed row's stuck-reason file holding it; the run then stays running.
+		// yieldReason, when set, makes the step yield with the Run-Shed row's stuck-reason file holding it;
+		// the run then stays running.
 		yieldReason string
 		// markerBefore stands an origin-owed marker before the pass; wantMarker is whether one stands after it.
 		markerBefore bool
@@ -475,9 +496,9 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 	}
 }
 
-// TestRunCmd_StateDoneRefusesNamingTheRunDir asserts a StateDone slug refuses on the envelope
-// rather than silently re-running, naming the durable run directory to delete -- the one the
-// status file the refusal gates on lives in, never the ephemeral scratch directory.
+// TestRunCmd_StateDoneRefusesNamingTheRunDir asserts that a StateDone slug refuses instead of re-running.
+// The refusal names the durable run directory to delete, the one that holds the status file it gates on.
+// The ephemeral scratch directory is never named.
 func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := newFakeReceiver(t, nil)
@@ -499,22 +520,25 @@ func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	if strings.Contains(out.String(), BattenDir(c.location, c.slug)) {
 		t.Errorf("run() output = %q; names the ephemeral scratch directory, which is not the gate", out.String())
 	}
-	// The same whole-abandon-path remedy the step verb names: the run directory and the task branch
-	// the torn-down pair left, locally and on the remote.
+	// The abandon remedy names the run directory and the task branch the torn-down pair left:
+	// locally and on the remote.
 	if !strings.Contains(out.String(), "locally and on the remote") {
 		t.Errorf("run() output = %q; want the remedy to name the leftover task branch, locally and on the remote", out.String())
 	}
 }
 
-// TestRunCmd_HeldRunLockRefusesNamingTheLockPath takes a lock in the test itself, before invoking the verb, and asserts the verb refuses on the envelope without waiting.
-// A held run lock, whether the step meets it or the driver's recheck finds it, refuses naming the run lock path; a held driver lock refuses with the batten driver refusal.
+// TestRunCmd_HeldRunLockRefusesNamingTheLockPath takes a lock in the test itself before invoking the verb.
+// It asserts the verb refuses on the envelope without waiting.
+// A held run lock refuses naming the run lock path, whether the step meets it or the driver's recheck finds it;
+// a held driver lock refuses with the batten driver refusal.
 func TestRunCmd_HeldRunLockRefusesNamingTheLockPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// heldLock returns the lock path the test holds.
 		heldLock func(c *battenCLI) string
-		// stepReportsBlocked replaces the in-process step with one that ends blocked, so the driver's recheck is what finds the held run lock.
+		// stepReportsBlocked replaces the in-process step with one that ends blocked,
+		// so the driver's recheck is what finds the held run lock.
 		stepReportsBlocked bool
 		want               func(c *battenCLI) string
 	}{
@@ -571,8 +595,8 @@ func TestRunCmd_HeldRunLockRefusesNamingTheLockPath(t *testing.T) {
 	}
 }
 
-// TestRunCmd_AbandonedSessionKey asserts the abandonedSession key reaches the envelope on a Done
-// teardown when the recorded value is non-empty, and is absent when it is empty.
+// TestRunCmd_AbandonedSessionKey asserts the abandonedSession key reaches the envelope on a Done teardown:
+// present when the recorded value is non-empty, absent when it is empty.
 func TestRunCmd_AbandonedSessionKey(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -610,9 +634,8 @@ func TestRunCmd_AbandonedSessionKey(t *testing.T) {
 	}
 }
 
-// TestPauseCmd_AbsentFileRefuses asserts pause refuses over a slug whose per-slug directory
-// exists but holds no status.json -- the absent-file precondition batten-absent-file-needs-an-
-// existing-directory requires, since pause reaches state.UpdateJSON directly.
+// TestPauseCmd_AbsentFileRefuses asserts pause refuses a slug whose directory exists but holds no status.json.
+// The directory must exist because pause reaches state.UpdateJSON directly.
 func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := newFakeReceiver(t, nil)
@@ -630,10 +653,10 @@ func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 	}
 }
 
-// TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent pins the cold-machine shape: the durable
-// status file is present (it travelled with the pair) while the ephemeral lock directory is not (this
-// machine never stepped the slug). Both read-only verbs must answer from the file rather than fail to
-// open a lock in a directory nothing has created yet.
+// TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent pins the cold-machine shape.
+// The durable status file travelled with the pair.
+// The ephemeral lock directory is absent on a machine that never stepped the slug.
+// Both read-only verbs must answer from the file rather than open a lock in a directory nothing has created.
 func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, verb := range []string{"status", "pause"} {
@@ -658,7 +681,6 @@ func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
 				return
 			}
 
-			// pause reports an envelope carrying exactly ok and status_file, and sets PauseRequested.
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("decode envelope: %v; output: %s", err, out.String())
@@ -677,12 +699,9 @@ func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
 	}
 }
 
-// TestStatusCmd_WatchOverAbsentFileExitsImmediately asserts --watch over a slug whose per-slug
-// directory exists but holds no status.json exits immediately with the found: false envelope
-// rather than entering the tail -- the absent-file disposition short-circuits before --watch is
-// ever read, per the batten-absent-file-needs-an-existing-directory Shared Decision. The
-// directory must already exist for this disposition to be reachable at all: newFakeReceiver's own
-// t.TempDir() is that directory.
+// TestStatusCmd_WatchOverAbsentFileExitsImmediately asserts --watch over a slug with no status.json exits at once.
+// It returns the found: false envelope before --watch is read.
+// The slug's directory must exist for the disposition to be reachable; newFakeReceiver's t.TempDir() supplies it.
 func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := newFakeReceiver(t, nil)
@@ -713,8 +732,7 @@ func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	}
 }
 
-// TestRecentHistory asserts the status envelope's history is bounded to the most recent entries and
-// reports whether anything was dropped.
+// TestRecentHistory asserts the status envelope keeps only the newest history and reports whether it truncated.
 func TestRecentHistory(t *testing.T) {
 	tiergate.Require(t, 0)
 	entry := func(n int) shedengine.HistoryEntry {
@@ -763,8 +781,8 @@ func TestRecentHistory(t *testing.T) {
 	}
 }
 
-// TestReadStuckReason asserts the status verb recovers the producer-supplied reason battenshed
-// wrote, and stays silent rather than guessing when there is none.
+// TestReadStuckReason asserts the status verb recovers the producer-supplied reason battenshed wrote.
+// It reports nothing rather than guessing when no reason was written.
 func TestReadStuckReason(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -795,7 +813,8 @@ func TestReadStuckReason(t *testing.T) {
 	}
 }
 
-// TestHaltedOverDoneChild asserts the flag appears only for a failed, blocked or paused batten over a found, done child, and names the run that closes the pair.
+// TestHaltedOverDoneChild asserts the halted flag appears only over a found, done child.
+// It appears for a failed, blocked or paused batten, and names the run that closes the pair.
 func TestHaltedOverDoneChild(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

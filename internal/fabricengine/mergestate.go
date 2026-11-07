@@ -1,11 +1,8 @@
-// mergestate.go implements the on-disk per-pair merge-state record — the checkpoint every merge
-// verb writes before it mutates anything and MergeAbort/MergeContinue read back to recover a
-// crashed or resolving-in-progress merge — plus the foreign-state probes the sibling-verb guards
-// (card 13) and the four mutating merge verbs use to detect git-level merge state fabric did not
-// itself start, plus the hub-wide scan Remove uses to refuse tearing down a pair some other
-// pair's merge is currently consuming.
-// The record is never exported and never serialized into a public result type: warp/weft field
-// naming is legal here, since fabricengine is in the Fabric Vocabulary Invariant's owner set.
+// mergestate.go holds the on-disk per-pair merge-state record.
+// Merge verbs checkpoint it before they mutate anything.
+// It also holds the probes that detect git-level merge state fabric did not start.
+// It also holds the hub-wide scan that Remove consults before tearing down a pair.
+// The record is never exported or serialized into a result type, so warp and weft field names are allowed here.
 
 package fabricengine
 
@@ -20,30 +17,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// mergeStateFileName is the merge-state record's fixed filename inside the weft worktree's gitdir
-// (never inside the working tree — see mergeStatePath), mirroring corrIndexFileName's placement
-// precedent in index.go.
+// mergeStateFileName is the merge-state record's fixed filename inside the weft worktree's gitdir.
+// The record never lives in the working tree; see mergeStatePath.
+// The correspondence index uses the same gitdir placement.
 const mergeStateFileName = "fabric-merge.json"
 
-// mergeState is the on-disk record a merge verb writes before it mutates anything and
-// MergeAbort/MergeContinue/MergeInProgress read back — the checkpoint recovering a crashed or
+// mergeState is the on-disk record a merge verb writes before it mutates anything.
+// MergeAbort, MergeContinue and MergeInProgress read it back to recover a crashed or
 // resolving-in-progress merge.
 //
 // WarpSource/WeftSource are the resolved per-side SHAs the attempt merges, recorded alongside the
-// caller's branch name in Source because only the SHAs are usable as evidence later: a branch name
-// can be re-pointed between the crash and the resume, while the SHA fabric handed `git merge` is
-// exactly what git wrote into MERGE_HEAD and therefore exactly what a genuine conclude-commit
-// carries as its second parent. sideConcludeAlreadyLanded is what consumes them.
-// A record written by an older binary carries them empty; every consumer treats empty as "no
-// evidence available" and refuses to make a positive claim, never as "evidence satisfied".
+// caller's branch name in Source because only the SHAs are usable as evidence later.
+// A branch name can be re-pointed between the crash and the resume.
+// The SHA fabric handed to `git merge` is what git wrote into MERGE_HEAD,
+// so it is exactly what a genuine conclude-commit carries as its second parent.
+// sideConcludeAlreadyLanded consumes them.
+// A record without them, written by an older binary, reads them as empty.
+// Every consumer treats empty as "no evidence available" and refuses to make a positive claim;
+// none treats it as "evidence satisfied".
 //
-// WeftStart, WeftSource, WeftOutcome and WeftCommitted now record the weft as unmoved rather than as
-// a merge participant. WeftStart is the weft HEAD at record time; WeftSource is the best-effort
-// resolved weft counterpart SHA, legitimately empty when no counterpart resolves; WeftOutcome is
-// written as mergeOutcomeAlreadyUpToDate before any MergeStart call runs; WeftCommitted stays empty
-// on every path this binary produces. The fields are kept rather than dropped for two reasons:
-// mergeAttemptIncompleteReason refuses a resume on an empty WeftOutcome, and filling them leaves the
-// persisted JSON schema byte-compatible in both directions across the binary change.
+// The weft is not a merge participant; its four fields record it as unmoved.
+// WeftStart is the weft HEAD at record time.
+// WeftSource is the best-effort resolved weft counterpart SHA, legitimately empty when no counterpart resolves.
+// WeftOutcome is written as mergeOutcomeAlreadyUpToDate before any MergeStart call runs.
+// WeftCommitted stays empty on every path this binary produces.
+// The fields are kept for two reasons.
+// mergeAttemptIncompleteReason refuses a resume on an empty WeftOutcome.
+// Keeping them also leaves the persisted JSON schema byte-compatible in both directions across the binary change.
 type mergeState struct {
 	Verb          string    `json:"verb"`   // "merge-in" | "merge"
 	Source        string    `json:"source"` // caller-supplied branch
@@ -86,34 +86,30 @@ func mergeOutcomeString(outcome gitrepo.MergeOutcome) string {
 	}
 }
 
-// landedConcludeCommit reports whether the conclude phase has actually put a commit on either side
-// of this merge — read straight off the record's own conclude-SHA fields, which concludeMergeSides
-// writes as each side lands.
-// It is what MergeResult.Committed is derived from, so the flag answers "does the pair now carry
-// this merge's conclude-commit" rather than "did control reach the end of the happy path". A merge
-// that fast-forwarded both sides fabricates no commit and reports false; a resumed MergeContinue
-// whose sides both landed on an earlier call reports true, since the pair does carry them.
+// landedConcludeCommit reports whether the conclude phase has put a commit on either side of this merge.
+// It reads the record's own conclude-SHA fields, which concludeMergeSides writes as each side lands.
+// The flag answers whether the pair carries this merge's conclude-commit.
+// It does not answer whether control reached the end of the happy path.
+// A merge that fast-forwarded both sides fabricates no commit and reports false.
+// A resumed MergeContinue whose sides both landed on an earlier call reports true, since the pair does carry them.
 func (st *mergeState) landedConcludeCommit() bool {
 	return st.WarpCommitted != "" || st.WeftCommitted != ""
 }
 
-// bothSidesAlreadyUpToDate reports whether the attempt found both sides already carrying the
-// resolved source — the degenerate no-op, observed after the write lock was taken rather than by the
-// pre-lock probe.
-// The two answers differ exactly when another process landed the same merge in between, which is a
-// race the lock deliberately does not close (the pre-lock probe is unlocked by design); deriving
-// MergeResult.AlreadyUpToDate from here makes the loser of that race report what a strictly
-// sequential run of the same two calls reports.
-// The weft conjunct is now always satisfied, since WeftOutcome is written as
-// mergeOutcomeAlreadyUpToDate before any weft MergeStart call runs — so the derived
-// MergeResult.AlreadyUpToDate answers about the warp side alone.
+// bothSidesAlreadyUpToDate reports whether the attempt found both sides already carrying the resolved source.
+// This is the degenerate no-op, observed after the write lock is taken rather than by the pre-lock probe.
+// The two answers differ only when another process lands the same merge in between.
+// The lock does not close that race, since the pre-lock probe runs unlocked by design.
+// Deriving the result from here makes the loser of that race report what a sequential run would report.
+// The weft conjunct always holds.
+// WeftOutcome is written as mergeOutcomeAlreadyUpToDate before any weft MergeStart call runs.
+// So the result answers about the warp side alone.
 func (st *mergeState) bothSidesAlreadyUpToDate() bool {
 	return st.WarpOutcome == mergeOutcomeAlreadyUpToDate && st.WeftOutcome == mergeOutcomeAlreadyUpToDate
 }
 
 // mergeStatePath returns the merge-state record's on-disk path: the fixed mergeStateFileName
-// inside the weft worktree's gitdir, mirroring the correspondence index's own placement
-// (index.go's corrIndexPath).
+// inside the weft worktree's gitdir, the same placement the correspondence index uses.
 func (f *Fabric) mergeStatePath() (string, error) {
 	gitDir, err := f.weftGitDir()
 	if err != nil {
@@ -124,13 +120,14 @@ func (f *Fabric) mergeStatePath() (string, error) {
 
 // loadMergeState reads the merge-state record, returning (nil, nil) when no record exists and a
 // decoded record otherwise.
-// A corrupt file is a hard error, never silently adopted as "no merge in progress" — that would
-// mask a real recovery need behind a guard answer that looks clean.
-// Reads and writes go through internal/state's locked, atomic-replace helpers under <path>.lock,
-// exactly as corrindex.go does for the correspondence index in this same weft gitdir — never raw
-// json.Marshal/os.WriteFile, whose truncate-then-write leaves a window where a concurrent reader
-// (card 13's sibling-verb guards, which read this record from other processes with no shared lock)
-// can observe a torn or empty file and hit this corrupt-file clause spuriously.
+// A corrupt file is a hard error, never silently adopted as "no merge in progress".
+// Adopting it that way would mask a real recovery need behind a guard answer that looks clean.
+// Reads and writes go through internal/state's locked, atomic-replace helpers under <path>.lock.
+// The correspondence index does the same in this weft gitdir.
+// Never use raw json.Marshal or os.WriteFile.
+// Their truncate-then-write leaves a window where a concurrent reader observes a torn or empty file.
+// Such a reader is the sibling verbs' guards, which read this record from other processes without a shared lock.
+// It then hits the corrupt-file error spuriously.
 func (f *Fabric) loadMergeState() (*mergeState, error) {
 	path, err := f.mergeStatePath()
 	if err != nil {
@@ -161,8 +158,8 @@ func (f *Fabric) saveMergeState(st *mergeState) error {
 }
 
 // deleteMergeState removes the merge-state record, tolerating its absence.
-// internal/state has no delete primitive, so this one call stays raw os.Remove, matching index.go's
-// own precedent (refreshCorrIndexAfterSwitch).
+// internal/state has no delete primitive, so this call uses os.Remove directly.
+// The correspondence index's own removal does the same.
 func (f *Fabric) deleteMergeState() error {
 	path, err := f.mergeStatePath()
 	if err != nil {
@@ -184,9 +181,15 @@ func (f *Fabric) mergeRecordExists() (bool, error) {
 	return st != nil, nil
 }
 
-// mergeBlocksMutation reports whether a fabric merge-state record exists for the pair at warpPath and weftPath — the single check every sibling mutating verb (card 13) uses to decide whether its own write would corrupt or be corrupted by a live merge.
-// It constructs the pair's state probe from the explicit paths via newPaired internally, rather than requiring an already-open *Fabric, since Topology verbs (Checkout, Remove) act on a *lymcwd.Location and never open a Fabric handle of their own.
-// A pair newPaired cannot even open (missing warp or weft directory) or whose weft gitdir cannot be resolved (e.g. a half-torn-down pair) reports false rather than blocking: no recorded merge can exist without a readable weft gitdir, and refusing here would make an already half-broken pair impossible to finish tearing down, or would shadow a caller's own, more specific "this path does not exist" refusal behind an unrelated ErrMissingPath.
+// mergeBlocksMutation reports whether a fabric merge-state record exists for the pair at warpPath and weftPath.
+// Mutating topology verbs use it to decide whether a write would collide with a live merge.
+// It builds the pair's state probe from the explicit paths via newPaired, not from an open *Fabric.
+// Topology verbs act on a *lymcwd.Location and never open a Fabric handle.
+// A pair newPaired cannot open (missing warp or weft directory) reports false rather than blocking.
+// So does a pair whose weft gitdir cannot be resolved.
+// No recorded merge can exist without a readable weft gitdir.
+// Refusing here would make a half-broken pair impossible to finish tearing down.
+// It would also shadow a caller's own missing-path refusal behind an unrelated ErrMissingPath.
 func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 	f, err := newPaired(warpPath, weftPath)
 	if err != nil {
@@ -198,23 +201,17 @@ func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 	return f.mergeRecordExists()
 }
 
-// mergeSourceInFlight reports whether any pair in l's hub holds a merge record whose Source is
-// warpBranch — that is, whether some pair elsewhere in the hub is mid-merge ON this branch.
-// mergeBlocksMutation answers the other question, "is THIS pair mid-merge", and the two are
-// genuinely different subjects: tearing a pair down while a merge somewhere else is consuming its
-// branches deletes the weft branch that merge is resolving against, with no warning to the operator
-// that they just removed the subject of a merge in progress.
-// Records live at <weft gitdir>/fabric-merge.json, which is the weft repo's own .git for the prime
-// pair and .git/worktrees/<name>/ for every linked pair, so both shapes are globbed. The linked shape
-// is the common one — a merge normally runs in a task pair, and the prime worktree is the exception —
-// so both shapes carry their own test (TestMergeCrucible_RemoveRefuses…, prime and linked), each
-// asserting the record's on-disk location before asserting the refusal. Only the prime shape was
-// covered until round 7: disabling the linked glob left the whole suite green. Each candidate
-// is read through internal/state's locked reader, exactly as loadMergeState does — never a raw
-// os.ReadFile, which could observe a torn record another process is mid-write on.
-// A hub whose weft repo root cannot be resolved reports false rather than blocking, matching
-// mergeBlocksMutation's own already-half-broken-pair rule: refusing there would make a broken hub
-// impossible to finish tearing down.
+// mergeSourceInFlight reports whether a merge record anywhere in the hub names warpBranch as its source.
+// A merge elsewhere in the hub can consume a pair's branches.
+// Tearing that pair down then deletes the weft branch that merge resolves against.
+// Nothing warns the operator that a merge in progress has lost its subject.
+// Records live at <weft gitdir>/fabric-merge.json for the prime pair, which is the weft repo's own .git.
+// Linked pairs keep theirs under .git/worktrees/<name>/.
+// Both shapes are globbed, since a merge normally runs in a linked task pair rather than the prime one.
+// Each candidate is read through internal/state's locked reader.
+// A raw os.ReadFile could observe a record that another process is mid-write on.
+// A hub whose weft repo root cannot be resolved reports false rather than blocking:
+// refusing there would make a broken hub impossible to finish tearing down.
 func mergeSourceInFlight(l *lymcwd.Location, warpBranch string) (bool, error) {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -239,7 +236,8 @@ func mergeSourceInFlight(l *lymcwd.Location, warpBranch string) (bool, error) {
 	return false, nil
 }
 
-// foreignProbeReadings holds the four raw git-level readings foreignMergeStatePresent combines: whether MERGE_HEAD is live on each side, and each side's conflicted-path list.
+// foreignProbeReadings holds the four raw git-level readings:
+// whether MERGE_HEAD is live on each side, and each side's conflicted-path list.
 type foreignProbeReadings struct {
 	warpMergeHead  bool
 	warpConflicted []string
@@ -247,22 +245,22 @@ type foreignProbeReadings struct {
 	weftConflicted []string
 }
 
-// readForeignProbes runs the four git-level merge-state probes, MERGE_HEAD and conflicted files on each side, and is the one place those four calls exist;
-// foreignMergeStatePresent and MidMerge both read through it.
-// All four probes are evaluated unconditionally before any caller combines them, rather than short-circuiting on the first true result, so no evaluation-order timing difference ever leaks which side (if either) carries the state.
+// readForeignProbes runs the four git-level merge-state probes: MERGE_HEAD and conflicted files on each side.
+// It evaluates all four unconditionally rather than short-circuiting on the first true result,
+// so no evaluation-order timing difference leaks which side (if either) carries the state.
 //
-// The two probe KINDS are not redundant spellings of one condition, and neither can be dropped as implied by the other.
-// An ordinary conflicted `git merge` sets both at once, which is what makes that shape useless for proving either one;
-// the two states that separate them are real and reachable:
-//   - MERGE_HEAD live with an EMPTY unmerged set — a foreign merge resolved but not concluded, seen only by the MERGE_HEAD probe, and the most dangerous shape because nothing about the worktree looks wrong.
-//   - Unmerged entries with NO MERGE_HEAD — a conflicted `git merge --squash`, which writes none, and equally a conflicted cherry-pick or `checkout -m`.
-//     Seen only by the conflicted-index probe.
+// The two probe kinds are not redundant, and neither implies the other.
+// An ordinary conflicted `git merge` sets both at once, so that shape cannot prove either one.
+// Two states separate them, and both are reachable:
+//   - MERGE_HEAD live with an empty unmerged set: a foreign merge resolved but not concluded.
+//     Only the MERGE_HEAD probe sees it.
+//     It is the most dangerous shape, because nothing about the worktree looks wrong.
+//   - Unmerged entries with no MERGE_HEAD: a conflicted `git merge --squash`, which writes none.
+//     A conflicted cherry-pick or `checkout -m` also writes none.
+//     Only the conflicted-index probe sees these.
 //
-// Each of the four probes is pinned by its own row of TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides).
-// Before that matrix existed, deleting either weft probe, or either warp probe, left the whole suite green.
-//
-// Both weft probes are deliberately kept even though the weft is no longer a merge participant:
-// this is the one weft-reading guard the change leaves in place, and it still refuses a mutating merge verb on weft-side foreign merge state.
+// The weft probes stay even though the weft takes no part in a merge.
+// They are the one weft-side guard, and they refuse a mutating merge verb while weft carries foreign merge state.
 func (f *Fabric) readForeignProbes() (foreignProbeReadings, error) {
 	var r foreignProbeReadings
 	var err error
@@ -283,7 +281,6 @@ func (f *Fabric) readForeignProbes() (foreignProbeReadings, error) {
 
 // foreignMergeStatePresent reports whether git-level merge state exists on either side that fabric
 // did not itself start: a live MERGE_HEAD or unmerged index entries, checked on both warp and weft.
-// It combines the four readings of readForeignProbes, which documents why each probe exists.
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	r, err := f.readForeignProbes()
 	if err != nil {
@@ -292,8 +289,8 @@ func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	return r.warpMergeHead || len(r.warpConflicted) > 0 || r.weftMergeHead || len(r.weftConflicted) > 0, nil
 }
 
-// MergeBlocked reports whether a fabric merge record exists or git-level merge state fabric did not start sits on either side.
-// Those are the two conditions under which Commit refuses.
+// MergeBlocked reports whether a fabric merge record exists.
+// It also reports true when git-level merge state that fabric did not start sits on either side.
 func (f *Fabric) MergeBlocked() (bool, error) {
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {

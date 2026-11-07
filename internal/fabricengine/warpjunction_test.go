@@ -1,10 +1,7 @@
-// warpjunction_test.go covers the warp-side junction primitives relocated from internal/lymcwd in
-// this batch — CodeLymLink, WarpLymLinkHere, WarpJunctions and WarpJunctionsHere, plus the
-// WarpJunction record shape — over synthetic *lymcwd.Location literals rather than real fixtures,
-// the same table shapes lymcwd's own tests used.
-// Every _extra row asserts against the generic config-driven junction join
-// (filepath.Join(WorktreePath(l, slug), l.AnchorRel, "_extra")) rather than a
-// pattern-specific accessor, so this file survives card 35's deletion of those accessors unchanged.
+// warpjunction_test.go covers the warp-side junction primitives and the WarpJunction record shape.
+// It builds synthetic *lymcwd.Location literals rather than real fixtures.
+// Every _extra row asserts against the generic config-driven junction join.
+// That join is filepath.Join(WorktreePath(l, slug), l.AnchorRel, "_extra"), not a pattern-specific accessor.
 
 package fabricengine
 
@@ -17,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestCodeLymLinkMethods covers CodeLymLink(l, slug) and WarpLymLinkHere(l) with both AnchorRel "."
-// (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing against the
-// weft-sibling worktree.
+// TestCodeLymLinkMethods covers CodeLymLink(l, slug) and WarpLymLinkHere(l) with AnchorRel "." and subpath cases.
+// It verifies AnchorRel mirroring and junction pairing against the weft-sibling worktree.
 //
 //testtiming:keep CodeLymLink and WarpLymLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
 func TestCodeLymLinkMethods(t *testing.T) {
@@ -74,9 +70,8 @@ func TestCodeLymLinkMethods(t *testing.T) {
 				t.Errorf("WarpLymLinkHere(l) = %q; want %q", got, tt.wantWarpLymLinkHere)
 			}
 
-			// Verify junction pairing: CodeLymLink(l, slug) and the weft
-			// sibling's _lym directory are siblings differing only by the
-			// -weft suffix on the worktree dir.
+			// CodeLymLink(l, slug) and the weft sibling's _lym directory are siblings.
+			// They differ only by the -weft suffix on the worktree dir.
 			warpWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
 			weftWtName := filepath.Base(weftname.SiblingPath(loc.HubPath, tt.slug))
 
@@ -97,10 +92,11 @@ func TestCodeLymLinkMethods(t *testing.T) {
 	}
 }
 
-// TestWarpJunctions verifies that WarpJunctions(l, slug, names) returns one record per name in names, in names's own input order, with Link/Target correctly composed from l's WorktreePath/weft-sibling path and AnchorRel, at AnchorRel == "."
-// and at a nested AnchorRel, for an empty names slice, a 3-name slice, and a reversed 2-name slice — and that WarpJunctions never augments the caller-supplied names with an unsupplied hub-structural entry of its own.
-// WarpJunctions itself takes names as a plain slice and does no sourcing of its own, so the two-name set here is passed literally, exactly as callers pass it today;
-// the batch's actual change is upstream, in how junctionNames/WiredNames build that slice — `_lym` now arrives structurally (structuralCommittedDirs) rather than from a config `pathspec` entry, but WarpJunctions itself is unaware of that distinction.
+// TestWarpJunctions verifies that WarpJunctions(l, slug, names) returns one record per name, in the order given.
+// Link and Target are composed from the worktree, the weft sibling path and AnchorRel.
+// The cases cover AnchorRel "." and a nested AnchorRel; an empty names slice; a 3-name slice; a reversed 2-name slice.
+// They also check that WarpJunctions never adds a hub-structural entry of its own to the caller's names.
+// WarpJunctions takes names as a plain slice and does no sourcing, so the two-name set is passed literally.
 // The _extra row asserts against the generic join, not a pattern-specific accessor.
 //
 //testtiming:keep WarpJunctions returning one record per name in input order with the Link and Target composed from the worktree, weft sibling and anchor; coverage of its blocks by other tests does not show an assertion of this
@@ -188,14 +184,10 @@ func TestWarpJunctions(t *testing.T) {
 		})
 	}
 
-	// Sub-test: scope guard — WarpJunctions takes names as a plain slice and returns one
-	// record per entry in that slice's own order, doing no HubReservedNames/filterHubReserved
-	// filtering of its own; TestFilterHubReserved and TestIsReservedHubName in
-	// junctionnames_test.go own the reservation property. This asserts the narrower, still-true
-	// claim: WarpJunctions returns exactly the caller-supplied names and never augments them
-	// with a hub-structural entry of its own, using the Bolt directory name (still reserved via
-	// HubReservedNames() after this batch) as the name that must NOT appear unless the caller
-	// actually supplied it.
+	// Sub-test: scope guard.
+	// WarpJunctions returns exactly the caller-supplied names, one record per entry in the slice's order.
+	// It never adds a hub-structural entry of its own.
+	// The Bolt directory name must not appear unless the caller supplies it; HubReservedNames() still reserves it.
 	t.Run("no_unsupplied_hub_structural_names", func(t *testing.T) {
 		loc := &lymcwd.Location{
 			HubPath:      "/h",
@@ -212,11 +204,10 @@ func TestWarpJunctions(t *testing.T) {
 	})
 }
 
-// TestWarpJunctionsHere verifies the Here-anchored, slug-free junction-detection accessor: it must
-// return the expected Name/Link/Target for both RelPath == "."
-// and a nested RelPath,
-// and it must agree entry-for-entry with WarpJunctions(l, slug, names) when l's slug and current
-// worktree coincide — the precondition every health-check call site relies on.
+// TestWarpJunctionsHere verifies that WarpJunctionsHere returns the expected Name, Link and Target.
+// It covers a RelPath of "." and a nested RelPath.
+// It also checks agreement with WarpJunctions(l, slug, names), entry for entry.
+// That agreement holds when the slug is the current worktree's, and health-check call sites rely on it.
 //
 //testtiming:keep the slug-free junction accessor returning the expected Name, Link and Target at a root and nested anchor and agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpJunctionsHere(t *testing.T) {
@@ -288,9 +279,8 @@ func TestWarpJunctionsHere(t *testing.T) {
 	t.Run("agrees with WarpJunctions when slug matches current worktree", func(t *testing.T) {
 		loc := &lymcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}
 
-		// The current worktree's own base name is the slug that makes
-		// WarpJunctions(l, slug, names) resolve to the same warp worktree
-		// WarpJunctionsHere(l, names) is already anchored at.
+		// The slug is the current worktree's base name.
+		// With it, WarpJunctions(l, slug, names) resolves to the warp worktree that WarpJunctionsHere(l, names) is anchored at.
 		slug := filepath.Base(loc.WorktreePath())
 		names := []string{"_lym", "_extra"}
 

@@ -1,4 +1,5 @@
-// cancel.go holds the cancel phase of the teardown: it ends a pair's owned processes and strands first and waits for the run lock after, for a caller that ends the run instead of waiting for it.
+// cancel.go holds the cancel phase of the teardown, for a caller that ends the run for good.
+// The phase ends a pair's owned processes and strands first, and waits for the run lock after them.
 
 package pairteardown
 
@@ -26,7 +27,8 @@ type CancelRequest struct {
 	// Keep says the pair stays, so the loop lock is released with the teardown's mark withdrawn.
 	Keep bool
 	// AfterEnd runs once the pair's owned processes are ended, and takes the caller's own locks.
-	// A non-empty busy names a lock path still held; a hook that reports busy holds nothing, having released whatever it took.
+	// A non-empty busy names a lock path still held;
+	// a hook that reports busy holds nothing, having released whatever it took.
 	// The caller releases whatever the hook took on every return of the phase, a refusal included.
 	// A nil hook takes nothing.
 	AfterEnd func() (busy string, err error)
@@ -34,7 +36,7 @@ type CancelRequest struct {
 
 // CancelResult reports what the cancel phase ended.
 type CancelResult struct {
-	// Ended lists the registered processes of the pair, and the processes below them, that the owner-record end signalled and found gone.
+	// Ended lists the pair's registered processes and those below them that the owner-record end signalled and found gone.
 	Ended []runproc.Ended
 	// StrandsStopped names the live strands of the task worktree that were stopped.
 	StrandsStopped []string
@@ -45,12 +47,19 @@ type CancelResult struct {
 }
 
 // EndForCancel ends the pair's registered processes and strands, then its loop and session, for a caller that ends the run for good.
-// It skips the quiet wait, the removal refusal probe and the pre-end run-lock wait, and waits for the run lock after the processes are ended.
-// With the task worktree present the order is: the owned-process end under the prime's and the pair's records write locks, the driver-lock probe, req.AfterEnd, the drift capture job's termination, the strand stop, the loop end, the run-lock wait and the session end;
-// with it gone, only the owned-process end, req.AfterEnd, the drift capture job's termination and the session end by name run.
-// With the task worktree present the strand stop is followed by closing the run's open pull request, since the cancel ends the run for good.
-// A hook that reports busy gets the owned-process end and the probe once more, then the hook again; a lock still busy then is refused.
-// Every refusal wraps ErrDriverBusy where a busy holder caused it and names `lym batten cancel <slug>` as the way to run the phase again.
+// It skips the quiet wait, the removal refusal probe and the pre-end run-lock wait.
+// It waits for the run lock after the processes are ended.
+// With the task worktree present, the phase ends the owned processes under the write locks of the prime and the pair.
+// It probes the driver lock, then runs req.AfterEnd and terminates the drift capture job.
+// It stops the strands, ends the loop, waits for the run lock and ends the session.
+// Without the task worktree, only the owned-process end, req.AfterEnd and the drift capture job's termination run.
+// The session end runs by name.
+// With the task worktree present, the strand stop is followed by closing the run's open pull request.
+// The cancel ends the run for good, so a left-open pull request would look like pending work.
+// A hook that reports busy gets the owned-process end and the probe once more, then the hook again;
+// a lock still busy then is refused.
+// Every refusal wraps ErrDriverBusy where a busy holder caused it.
+// It names `lym batten cancel <slug>` as the way to run the phase again.
 func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelResult, error) {
 	var res CancelResult
 	gone, err := t.gone(req.Slug)
@@ -110,7 +119,8 @@ func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelR
 		if err != nil {
 			return res, fmt.Errorf("stop the pair's strands: %w; for this cancel, run %s again", err, retry)
 		}
-		// The cancel ends the run for good, so a pull request it left open would look like pending work; closing it never stops the cancel.
+		// The cancel ends the run for good, so a pull request it left open would look like pending work;
+		// closing it never stops the cancel.
 		t.closePR(req.Slug)
 		releaseLoopLock, err = t.seizeLoop(ctx, req.Slug, func() (bool, error) { return t.killLoop(req.Slug) })
 		if err != nil {
@@ -141,7 +151,7 @@ func cancelRetry(slug string) string {
 	return fmt.Sprintf("`lym batten cancel %s`", slug)
 }
 
-// cancelAgain wraps err, which names retrying the removal, with the cancel's own re-entry.
+// cancelAgain wraps err with the instruction to run the cancel again for slug once its holder ends.
 func cancelAgain(err error, slug string) error {
 	return fmt.Errorf("%w; for this cancel, run \"lym batten cancel %s\" again once the holder ends", err, slug)
 }
@@ -177,7 +187,8 @@ func cancelSurvivorsError(slug string, survivors []runproc.Ended, goos string) e
 	return fmt.Errorf("%w: processes of pair %q survived the end: %s; %s, then run %s again", ErrDriverBusy, slug, survivorNames(survivors), find, cancelRetry(slug))
 }
 
-// holdRecordsWriteLocks takes the prime's records write lock and, while the pair's records worktree stands, the pair's, each bounded by t.writeLockWait.
+// holdRecordsWriteLocks takes the prime's records write lock, and the pair's while its records worktree stands.
+// Each lock waits at most t.writeLockWait.
 // The returned release drops what was taken.
 // A lock still held at the bound releases what was taken and refuses with an ErrDriverBusy that names the lock's path.
 func (t *Teardown) holdRecordsWriteLocks(slug string) (release func() error, err error) {
@@ -207,8 +218,10 @@ func (t *Teardown) holdRecordsWriteLocks(slug string) (release func() error, err
 	return releaseAll, nil
 }
 
-// writeLockBusyError builds the ErrDriverBusy refusal for a records write lock still held at the bound, naming its directory and the way forward.
-// The prime's lock is shared by the hub, so its holder is often another run's or the orch's healthy commit; ending it is the last resort.
+// writeLockBusyError builds the ErrDriverBusy refusal for a records write lock still held at the bound.
+// It names the lock's directory and the way forward.
+// The prime's lock is shared by the hub, so its holder is often another run's or the orch's healthy commit;
+// ending it is the last resort.
 func writeLockBusyError(slug, lockDir string) error {
 	return fmt.Errorf("%w: the records write lock in %s is held; see the holder with `lym tender status` or `ps`, or in Task Manager on Windows, and run %s again once it lets go, ending the holder only when the same process keeps the lock across re-runs",
 		ErrDriverBusy, lockDir, cancelRetry(slug))
@@ -264,7 +277,7 @@ func (t *Teardown) stopPairStrands(slug string) ([]string, error) {
 	return stopped, nil
 }
 
-// liveStrandGUIDs returns the guid and the name of every live row, in row order, whatever the row's name.
+// liveStrandGUIDs returns the GUID and the name of every live row, in row order.
 func liveStrandGUIDs(rows []reedengine.DirectoryRow) (guids, names []string) {
 	for _, row := range rows {
 		if row.Live {

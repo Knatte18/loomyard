@@ -1,5 +1,7 @@
-// cli_test.go drives the `lym creel` verbs through RunCLIIn over a hubforge hub, with the daemon run in process on a fake delivery and fake clocks.
-// The rows set the strand name in the environment and replace the package's client seam, which is process-global state, so the test does not run in parallel.
+// cli_test.go drives the `lym creel` verbs through RunCLIIn over a hubforge hub.
+// The daemon runs in process on a fake delivery and fake clocks.
+// The rows set the strand name in the environment and replace the package's client seam.
+// That seam is process-global state, so the test does not run in parallel.
 
 package creelcli
 
@@ -47,7 +49,8 @@ import (
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
-// isProbeWait and isSweepWait tell the delivery workers' waits (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the daemon's clock.
+// isProbeWait and isSweepWait tell the delivery workers' waits from the sweep's, on the daemon's clock.
+// Workers wait 1 to 8 seconds; the sweep waits longer than the probe ceiling.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
 func isSweepWait(d time.Duration) bool { return d > 8*time.Second && d <= 50*time.Second }
@@ -94,7 +97,8 @@ func (b *lockedBuffer) String() string {
 	return b.data.String()
 }
 
-// runCreelSplit runs the creel command as runCreel does but writes stderr to the writer it is handed, and returns the stdout run.
+// runCreelSplit runs the creel command as runCreel does and returns the stdout run.
+// Stderr goes to the writer it is handed.
 func runCreelSplit(cwd string, stderr io.Writer, args ...string) cliRun {
 	var out bytes.Buffer
 	cmd := Command()
@@ -137,7 +141,8 @@ func runHookAsync(cwd, stdin string, stderr io.Writer, args ...string) <-chan cl
 	return results
 }
 
-// newHookRig starts a rig whose daemon knows one strand, a hook strand in this process's pane, makes the test that strand, and returns the rig and the strand's name.
+// newHookRig starts a rig whose daemon knows one hook strand, placed in this process's pane.
+// It sets that strand's name in the environment and returns the rig with the name.
 func newHookRig(t *testing.T) (*rig, string) {
 	t.Helper()
 	r := newRig(t)
@@ -211,7 +216,8 @@ func logHasEvent(run cliRun, event string) bool {
 	return false
 }
 
-// runCreelInto runs the creel command as runCreel does but prints to out and writes stderr to the writer it is handed, and returns the exit code.
+// runCreelInto runs the creel command in cwd, prints to out, and writes stderr to the writer it is handed.
+// It returns the exit code.
 func runCreelInto(cwd string, out, stderr io.Writer, args ...string) int {
 	cmd := Command()
 	cmd.SetOut(out)
@@ -251,8 +257,10 @@ func awaitRun(t *testing.T, results <-chan cliRun) cliRun {
 	}
 }
 
-// advanceUntilReturned steps clock by each newly recorded wait keep accepts until the async verb returns, and returns its run.
-// Stepping on every new wait, instead of once after a counted one, never mistakes a wait an earlier verb's worker recorded late for one the verb's own work caused.
+// advanceUntilReturned steps clock by each newly recorded wait that keep accepts.
+// It stops once the async verb returns and returns its run.
+// Each new wait is stepped on as it is recorded,
+// so a wait an earlier verb's worker recorded late is never taken for one this verb's own work caused.
 func advanceUntilReturned(t *testing.T, clock *creelfake.Clock, keep func(time.Duration) bool, results <-chan cliRun) cliRun {
 	t.Helper()
 	returned := make(chan struct{})
@@ -306,7 +314,8 @@ func newRig(t *testing.T) *rig {
 	return r
 }
 
-// addHub gives a row its second hub: a copy of the fixture hub whose shortname record it rewrites, since hubforge hubs share one shortname, with that hub's geometry, delivery and clock.
+// addHub gives a row its second hub: a copy of the fixture hub with that hub's geometry, delivery and clock.
+// The copy's shortname record is rewritten, since hubforge hubs share one shortname.
 // The new rig shares the rig's one seam and client clock, so it starts no daemon until the row starts one.
 func (r *rig) addHub(t *testing.T, shortname string) *rig {
 	t.Helper()
@@ -1442,8 +1451,8 @@ func TestCreelCLI(t *testing.T) {
 		r.clientClock.Advance(5 * time.Second)
 		select {
 		case code := <-codes:
-			// The daemon may still hold alpha's draft stall from the expired inject as a fresh reading when this wait registers,
-			// since no probe of alpha has read the cleared stall yet, so a stall note may precede the answer.
+			// The daemon may still hold alpha's draft stall from the expired inject as a fresh reading when this wait registers.
+			// No probe of alpha has read the cleared stall yet, so a stall note may precede the answer.
 			text := timeoutStderr.String()
 			lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 			for _, note := range lines[:len(lines)-1] {
@@ -1469,7 +1478,8 @@ func TestCreelCLI(t *testing.T) {
 		}()
 		r.awaitLogged(t, "anyone?")
 		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
-		// The probe advances above may have fired the sweep already, so a counted step could land while it runs and drop a sweep;
+		// The probe advances above may have fired the sweep already,
+		// so a counted step could land while it runs and drop a sweep;
 		// stepping on every new sweep wait until the post returns cannot.
 		r.clock.AdvanceByWaitsWhere(isSweepWait, postReturned)
 		select {
@@ -1715,7 +1725,8 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	// The Go client rows make the test process the pane of the hub's orch strand, the one pane that may also claim a program name.
+	// The Go client rows make the test process the pane of the hub's orch strand.
+	// Only that pane may also claim a program name.
 	orchRig := func(t *testing.T) (r *rig, orch string, location *lymcwd.Location) {
 		t.Helper()
 		r = newRig(t)
@@ -1808,7 +1819,8 @@ func TestCreelCLI(t *testing.T) {
 		if err := program.ReadAll(func([]creelengine.Message) error { return refused }); !errors.Is(err, refused) {
 			t.Fatalf("ReadAll() with a failing handler = %v; want %v", err, refused)
 		}
-		// The daemon releases the reservation once it sees the connection close, which no signal reaches the test, so it retries on a short tick under a real-time deadline.
+		// The daemon releases the reservation once it sees the connection close, and no signal reaches the test.
+		// The test therefore retries on a short tick under a real-time deadline.
 		var read []creelengine.Message
 		deadline := time.Now().Add(10 * time.Second)
 		for len(read) == 0 && time.Now().Before(deadline) {

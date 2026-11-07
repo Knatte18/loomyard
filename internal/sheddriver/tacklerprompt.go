@@ -1,5 +1,6 @@
 // tacklerprompt.go implements the tackler session's launch prompt and shuttle spec.
-// Both are pure composers: the shed tackler stencil filled over one stop's paths, and the spec the tackler launches from.
+// Both are pure composers:
+// the shed tackler stencil filled over one stop's paths, and the spec the tackler launches from.
 
 package sheddriver
 
@@ -41,11 +42,13 @@ type TacklerPromptInput struct {
 }
 
 // tacklerPrompt composes the tackler session's launch prompt.
-// The tackler stencil is read from stencilsDir through stencilstore.Read and filled with in, parentdirective.Directive(stencilsDir, "", false) and editdirective.Directive(stencilsDir).
+// It reads the tackler stencil from stencilsDir through stencilstore.Read.
+// It fills the stencil with the input and two directives:
+// parentdirective.Directive(stencilsDir, "", false) and editdirective.Directive(stencilsDir).
 // The no-parent directive is rendered because the verdict file is the tackler's only channel.
 // An empty report path is filled as the literal "none".
 // An empty Recipe or GotoRows is a wiring fault and is refused, naming the marker.
-// It returns the read or fill error wrapped with the stencil's name.
+// A read or fill error is returned wrapped with the stencil's name.
 func tacklerPrompt(stencilsDir string, in TacklerPromptInput) (string, error) {
 	for _, required := range []struct{ marker, value string }{{"recipe", in.Recipe}, {"goto_rows", in.GotoRows}} {
 		if required.value == "" {
@@ -95,18 +98,23 @@ func pathOrNone(path string) string {
 	return path
 }
 
-// tacklerSpec composes the shuttleengine.Spec the tackler session launches from, from an already-composed prompt, the verdict and case-brief paths and the resolved tackler settings.
+// tacklerSpec composes the shuttleengine.Spec the tackler session launches from.
+// It takes the composed prompt, the verdict and case-brief paths and the resolved tackler settings.
 //
-// Prompt is the argument verbatim. Skills is tacklerSkills, empty, so the prompt is the tackler's whole procedure.
-// OutputFiles is a single-entry slice holding verdictPath, so shuttle's completion check reads the verdict through allOutputFilesExist and reed drops a finished strand on resume.
-// The case brief is not an output file, since only an escalate writes it; caseBriefPath reaches the prompt input alone, which is why it is not read here.
-// ModelChoice is the settings' choice whole, which carries the RESOLVED engine, provider model id, effort and version.
-// Timeout is the settings' timeout, which bounds the tackler's run.
-// Role is TacklerRole, which reed forms into `<shortname>:<slug>:tackler`; NameOverride is left empty so a second attempt numbers its role.
+// The prompt is the tackler's whole procedure, so the spec loads no skills before it.
+// OutputFiles holds only verdictPath, so shuttle's completion check reads the verdict through allOutputFilesExist;
+// reed drops a finished strand on resume.
+// The case brief is not an output file, since only an escalate writes it;
+// caseBriefPath reaches the prompt input alone, which is why it is not read here.
+// ModelChoice is the settings' choice whole, which carries the resolved engine, provider model id, effort and version.
+// Timeout bounds the tackler's run.
+// Role is TacklerRole, which reed forms into `<shortname>:<slug>:tackler`;
+// NameOverride is left empty so a second attempt numbers its role.
 // Segment is the coordinator, the driver's, because the tackler acts for the driver.
 // Interactive is false, shuttle's autonomous posture, which adds the operator-prompt deny an unattended session needs.
 // ForkSubagents is false and Parent is empty: the tackler spawns nothing and has no session to message.
-// APIErrorRetries is SettlerAPIErrorRetries, so a turn the provider's API ended is re-sent and, past the re-sends, the run ends and the stop is handed back.
+// APIErrorRetries is SettlerAPIErrorRetries.
+// A turn the provider's API ended is re-sent; past the re-sends the run ends and the stop is handed back.
 func tacklerSpec(prompt, verdictPath, caseBriefPath string, settings TacklerSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:          prompt,

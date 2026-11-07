@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPayloadUse_MatchesDeclaredKeys asserts that every payload command's Use token spells exactly the keys its parser declares, markers and nested objects included.
+// TestPayloadUse_MatchesDeclaredKeys asserts that each payload command's Use token spells the keys its parser declares;
+// the check covers markers and nested objects too.
 func TestPayloadUse_MatchesDeclaredKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -94,7 +95,8 @@ func parsePayloadToken(use string) (payloadKeys, error) {
 }
 
 // parsePayloadObject parses one `{…}` object, whose elements split on commas outside braces and brackets.
-// `key?` is optional, `a|b` an exclusive group, `key: {…}` a nested object, and `<task>` or `[<task>]` the upsert declaration.
+// `key?` is optional, `a|b` an exclusive group, and `key: {…}` a nested object;
+// `<task>` or `[<task>]` marks the upsert declaration.
 func parsePayloadObject(object string) (payloadKeys, error) {
 	if !strings.HasPrefix(object, "{") || !strings.HasSuffix(object, "}") {
 		return payloadKeys{}, fmt.Errorf("%q is not one {…} object", object)

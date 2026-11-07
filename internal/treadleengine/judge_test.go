@@ -1,10 +1,10 @@
-// judge_test.go tables runCircling and runMilestone against a same-package
-// fakeJudgeShuttle: the happy path (spec construction — Role, Model/Effort passthrough, OutputFiles
-// — plus a valid scripted verdict file) and every fail-safe branch (Run error, non-done outcome,
-// missing verdict file, unparseable verdict file) for each of the two calls, asserting the safe
-// default and an empty rationale — never an error, since neither function returns one.
-// It also declares newTestStencilsDir, the package-local test helper every treadleengine test uses
-// to seed a hermetic stencils directory through `stencilkit`.
+// judge_test.go tests runCircling and runMilestone against fakeJudgeShuttle, a same-package Shuttle double.
+// The happy path checks the spawn spec (Role, Model/Effort passthrough, OutputFiles) and a valid verdict file.
+// Each fail-safe branch is checked for both calls, asserting the safe default and an empty rationale:
+// a Run error, a non-done outcome, a missing verdict file, and an unparseable verdict file.
+// Neither function returns an error, so the tests never expect one.
+// The file also declares newTestStencilsDir, a package-local helper.
+// It seeds a hermetic stencils directory through `stencilkit` for every treadleengine test.
 
 package treadleengine
 
@@ -231,21 +231,18 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		}
 	})
 
-	// The handoff is a REQUIRED second output file, so an agent that writes a
-	// perfectly good verdict and no handoff never reaches OutcomeDone —
-	// shuttle classifies done only when EVERY OutputFiles entry exists — and
-	// this call therefore discards a real, parseable verdict and returns the
-	// fail-safe default. That is a deliberate consequence of the
-	// handoff-on-disk decision (pre-handoff, the verdict was the sole output
-	// file and would have been honoured), pinned here so the coupling stays a
-	// recorded choice rather than an accident of the spec's OutputFiles list.
+	// The handoff is a required second output file.
+	// An agent that writes a valid verdict but no handoff never reaches OutcomeDone:
+	// shuttle classifies a run as done only when every OutputFiles entry exists.
+	// This call therefore discards a parseable verdict and returns the fail-safe default.
+	// The coupling is deliberate: this test pins the handoff as a recorded choice, not an accident of OutputFiles.
 	t.Run("valid verdict but missing handoff discards the verdict", func(t *testing.T) {
 		dir := t.TempDir()
 		verdictPath := filepath.Join(dir, "round-3-judge.md")
 		sh := &fakeJudgeShuttle{
 			verdictContent: verdictContent,
-			// The file contract is unsatisfied (no handoff written), which is
-			// exactly what real shuttle reports as a non-done outcome.
+			// The file contract is unsatisfied, since no handoff was written.
+			// Real shuttle reports that as a non-done outcome.
 			result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
 		}
 
@@ -267,8 +264,8 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 			t.Errorf("rationale = %q; want empty", rationale)
 		}
 
-		// Prove the discarded verdict really was usable: the loss comes from
-		// the missing handoff alone, not from a malformed verdict file.
+		// The discarded verdict is still usable.
+		// The loss comes from the missing handoff alone, not from a malformed verdict file.
 		content, err := os.ReadFile(verdictPath)
 		if err != nil {
 			t.Fatalf("read verdict file: %v", err)

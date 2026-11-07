@@ -1,5 +1,5 @@
-// module.go declares Module and PlanRules, the descriptor types that carry each caller's own
-// per-CLI variance, plus the message-producing pieces that read them.
+// module.go declares Module and PlanRules, the descriptor types that carry each CLI's own variance,
+// and the message builders that read them.
 
 package cliwire
 
@@ -8,78 +8,69 @@ import (
 	"os"
 )
 
-// Module carries one standalone-capable CLI's own variance: its name and the noun phrases that
-// distinguish its refusal messages from its sibling's. Each CLI declares its own Module value in
-// its own package; no production file in cliwire declares one for webster or for burler.
+// Module carries the variance of one standalone-capable CLI.
+// Its name and the noun phrases distinguish its refusal messages from those of the other CLIs.
+// Each CLI declares its own Module value in its own package, so this package declares none.
 type Module struct {
-	// Name is the CLI's own name, used as the "<name>: " prefix on every error this package
-	// returns. Its doc comment names no CLI and lists no example value, under the same rule the
-	// four fields below follow; each caller's own wireModule declaration is where the concrete
-	// name lives.
+	// Name is the CLI's own name, used as the "<name>: " prefix on every error this package returns.
 	Name string
 
-	// StateArtifacts is the nested-geometry refusal's noun phrase for what standalone keeps
-	// outside the target -- it occupies the clause naming what the state directory holds.
+	// StateArtifacts is the nested-geometry refusal's noun phrase for what standalone keeps outside the target.
+	// It fills the clause that names what the state directory holds.
 	StateArtifacts string
 
-	// TargetRole is the nested-geometry refusal's noun phrase for the target -- it occupies the
-	// clause naming what the target is to this CLI.
+	// TargetRole is the nested-geometry refusal's noun phrase for the target.
+	// It fills the clause that names what the target is to this CLI.
 	TargetRole string
 
-	// TargetRecourse is the reverse-nesting refusal's recourse clause opener -- it occupies the
-	// sentence that tells the operator how to move the target clear of the state directory.
+	// TargetRecourse opens the recourse clause of the reverse-nesting refusal.
+	// It fills the sentence that tells the operator how to move the target clear of the state directory.
 	TargetRecourse string
 
-	// HubTargetSubject is the hub --target-dir refusal's subject clause -- it occupies the
-	// sentence explaining what is already the target in hub mode.
+	// HubTargetSubject is the subject clause of the hub --target-dir refusal.
+	// It fills the sentence that explains what is already the target in hub mode.
 	HubTargetSubject string
 
-	// Plan carries this CLI's plan-directory rules, or nil when the CLI parses no plan (burler's
-	// case). A nil Plan is what makes ResolveStandalone skip plan-dir resolution entirely.
+	// Plan carries this CLI's plan-directory rules, or nil when the CLI parses no plan.
+	// A nil Plan makes ResolveStandalone skip plan-dir resolution entirely.
 	Plan *PlanRules
 }
 
-// PlanRules carries a CLI's plan-directory behaviour: how to compute the default plan directory for
-// a told base path, and how to produce the refusal text for a plan directory that does not exist or
-// holds no plan files.
+// PlanRules carries a CLI's plan-directory behaviour.
+// It gives the default plan directory for a told base path,
+// and the refusal text for a plan directory that does not exist or holds no plan files.
 type PlanRules struct {
-	// DefaultPlanDir returns the default plan directory for a told base path. Webster fills it with
-	// planparser.PlanDir, and ResolveStandalone is its only caller, invoking it with the stateDir
-	// the prologue itself derived.
+	// DefaultPlanDir returns the default plan directory for a told base path.
+	// It is a function because the default depends on the state directory ResolveStandalone derives,
+	// so a caller cannot hand over a finished string.
+	// The field is not an import of internal/planparser:
+	// that would put one CLI's plan layout inside a module that other CLIs share.
 	//
-	// This is a function field rather than a finished string because standalone's default depends
-	// on that derived stateDir, so the caller cannot hand over a finished string. It is a function
-	// field rather than an import of internal/planparser because that would put webster's plan
-	// layout inside a module burler shares.
-	//
-	// This field is not also called from wireHub. _mill/discussion.md's exported-surface decision
-	// anticipated a hub call site, but card 6 resolves hub mode's override against geom.PlanDir --
-	// the value hubgeom.WebsterGeometry actually built -- rather than re-deriving the same path
-	// through this field. The two are the same string today
-	// (hubgeom.WebsterGeometry(loc).PlanDir is planparser.PlanDir(loc.AnchorPath())), and comparing
-	// against the geometry's own field is what keeps the override check correct if internal/hubgeom
-	// ever changes how it computes PlanDir. A later reader must not "restore" the hub call.
+	// The hub wiring does not call this field.
+	// Hub mode checks its override against the geometry's own PlanDir, the value internal/hubgeom builds.
+	// The two are the same string today.
+	// Comparing against the geometry's field keeps the check correct if internal/hubgeom changes its computation.
+	// Do not route that check through this field.
 	DefaultPlanDir func(base string) string
 
-	// MissingPlanRefusal produces the whole refusal text for a plan directory that does not exist
-	// or holds no plan files.
+	// MissingPlanRefusal produces the whole refusal text for a plan directory that is missing or holds no plan files.
 	//
-	// This is a function rather than a bare string or a format string because webster's live
-	// message interpolates two distinct paths in a fixed order, and a function makes that argument
-	// order a compile-time fact rather than a comment.
+	// It is a function rather than a string because the refusal interpolates two distinct paths in a fixed order;
+	// a function makes that order a compile-time fact rather than a comment.
 	//
-	// The second parameter is named recourse, not defaultPlanDir, deliberately: it is the location
-	// the refusal tells the operator to place the plan at, which is the mode's own default only
-	// when --plan-dir actually moved the plan off it, and is the resolved plan directory itself
-	// otherwise. See ResolveStandalone's own plan step for the rule that computes it.
+	// The second parameter, recourse, is the location the refusal tells the operator to place the plan at.
+	// That is the mode's default only when --plan-dir moved the plan off it;
+	// otherwise it is the resolved plan directory itself.
+	//
+	// ResolveStandalone's plan step computes it.
 	MissingPlanRefusal func(planDir, recourse string) string
 }
 
-// RefuseTargetDirInHubMode returns nil when flag is empty, and otherwise the hub refusal built
-// from m.Name and m.HubTargetSubject.
+// RefuseTargetDirInHubMode returns nil when flag is empty.
+// Otherwise it returns the hub refusal built from m.Name and m.HubTargetSubject.
 //
-// The refusal fires on the flag alone, before any config is loaded: hub mode's target is fixed by
-// the worktree itself, so a told --target-dir is refused before wire reads a single file.
+// The refusal fires on the flag alone, before any config is loaded.
+// Hub mode's target is fixed by the worktree itself, so the flag cannot choose one.
 func (m Module) RefuseTargetDirInHubMode(flag string) error {
 	if flag == "" {
 		return nil
@@ -87,21 +78,18 @@ func (m Module) RefuseTargetDirInHubMode(flag string) error {
 	return fmt.Errorf("%s: --target-dir is not honoured in hub mode: %s, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec", m.Name, m.HubTargetSubject)
 }
 
-// RefuseUnreadableStencilsDir returns nil for an empty stencilsDir (no override told — each mode
-// derives or seeds its own default) and otherwise requires the already-resolved override to exist as
-// a directory, refusing with a message built from m.Name.
+// RefuseUnreadableStencilsDir returns nil for an empty stencilsDir, which means no override was told.
+// Each mode derives or seeds its own default in that case.
+// Otherwise it requires the already-resolved override to exist as a directory.
+// It refuses with a message built from m.Name.
 //
-// It exists because --stencils-dir was the one told-directory flag with no check at the wiring
-// boundary: --target-dir is stat'd (a typo silently retargeted the enclosing repository) and
-// --plan-dir is content-checked, but a typo'd --stencils-dir was honoured silently and failed only
-// at the first stencil read — for `run`, after the run lock was taken, the plan re-resolved, and (in
-// standalone mode) the private reed session's tmux server booted. A refusal is only free before any
-// substrate is booted, which is the same reason the nested-geometry guard runs where it does
-// (crucible round fable-high-r7, F2).
+// Without this check, a mistyped stencils directory surfaces only at the first stencil read:
+// after the run lock is taken and a substrate is booted.
+// A refusal is free only before a substrate is booted, so the check runs at the wiring boundary.
 //
-// Both hub wirings and ResolveStandalone call this same method, so the two modes can never drift
-// apart on what a told stencils directory must be. The derived standalone DEFAULT is exempt by the
-// empty-string contract: it is seeded right where it is derived.
+// Every mode's wiring and ResolveStandalone call this method,
+// so the modes cannot disagree on what a told stencils directory must be.
+// The derived standalone default is exempt by the empty-string contract: it is seeded where it is derived.
 func (m Module) RefuseUnreadableStencilsDir(stencilsDir string) error {
 	if stencilsDir == "" {
 		return nil
@@ -117,24 +105,15 @@ func (m Module) RefuseUnreadableStencilsDir(stencilsDir string) error {
 }
 
 // refuseNestedStandaloneGeometry refuses a standalone target and derived state directory that are
-// not disjoint, naming m.Name in every message so an operator reading a live error knows which CLI
-// refused.
+// not disjoint, naming m.Name in every message so an operator reading a live error knows which CLI refused.
 //
-// Standalone geometry's whole premise is a state directory OUTSIDE the repository being driven:
-// m.StateArtifacts all land under it, and none of them may appear inside the operator's own
-// checkout.
-// shuttleengine.NewDetachedRunner asserts the same disjointness -- but it asserts it LATE, on a
-// Runner already constructed after this CLI has booted a tmux server and taken the run lock, and its
-// message blames "a subpath-anchored hub geometry handed to the wrong constructor", which is not
-// what happened here and offers the operator no lever at all.
+// Standalone mode keeps its m.StateArtifacts in a state directory outside the repository being driven.
+// A state home nested under the target is an environment fact the operator can fix:
+// a dotfiles repository rooted at the home directory, or an XDG_STATE_HOME set inside the checkout.
+// The refusal fires before any substrate is booted, the only point where it costs nothing to recover from.
 //
-// What actually happened is a state home nested under the target: a dotfiles repository rooted at
-// the home directory, or an XDG_STATE_HOME deliberately pointed somewhere inside the checkout. That
-// is an environment fact, it is fixable, and the fix is named here -- before any substrate is
-// booted, which is the only point at which a refusal costs nothing to recover from.
-//
-// The reverse nesting (a target inside the state directory) is refused by the same guard for the
-// same reason, with its own message: the lever there is m.TargetRecourse, not the state home.
+// The reverse nesting, a target inside the state directory, is refused by the same guard,
+// and its lever is m.TargetRecourse rather than the state home.
 func (m Module) refuseNestedStandaloneGeometry(target, stateDir string) error {
 	target, stateDir = NormalizeForContainment(target), NormalizeForContainment(stateDir)
 	if pathContains(target, stateDir) {

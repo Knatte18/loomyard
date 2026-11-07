@@ -1,6 +1,6 @@
 // devbin_test.go covers the RepoRoot/Dir/BinPath derivation helpers.
-// All tests are Go-native and Tier-1 pure: they only inspect derived paths and the local filesystem
-// layout of this checkout, with no process spawns.
+// All tests are Go-native and Tier-1 pure.
+// They only inspect derived paths and the local filesystem layout of this checkout, with no process spawns.
 
 package devbin
 
@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDevBinPaths_DeriveFromRepoRoot verifies RepoRoot returns the root directory with this package's source beneath it, Dir returns RepoRoot + ".dev-bin", and BinPath returns the platform's binary name inside Dir.
+// TestDevBinPaths_DeriveFromRepoRoot verifies that RepoRoot returns the repository root above this package's source.
+// Dir returns RepoRoot + ".dev-bin", and BinPath returns the platform's binary name inside Dir.
 func TestDevBinPaths_DeriveFromRepoRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

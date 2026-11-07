@@ -1,42 +1,15 @@
-// spawnobservability_test.go enforces `PATTERN-child-processes`'s
-// mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real
-// exec.Command/exec.CommandContext call must either import internal/logger, or carry a written-reason
-// entry in spawnObservabilityAllowedSpawners.
-//
-// # AST, not substring, and why that diverges from the siblings
-//
-// Every other guard in this package is a raw-substring scan. This one must not be: three production
-// files hit the exec.Command substring with zero real calls — internal/githubclient/doc.go,
-// internal/reedengine/doc.go, and internal/reedengine/attach.go — all prose in doc comments. A
-// substring guard would demand permanent allowlist entries for files that spawn nothing at all, which
-// reads as "these spawn without logging, and we accepted it" — the opposite of the truth. This guard
-// parses each candidate file with go/parser and only counts a genuine *ast.CallExpr, following the
-// in-repo precedent at internal/githubclient/leaf_enforcement_test.go, which already walks the same
-// package with go/parser rather than a substring scan. cmd/lym/tierpurity_test.go, by contrast,
-// deliberately does NOT strip comments, because there a mention genuinely is the scan data it wants —
-// its raw-substring approach is correct for its own purpose and is not a precedent to "harmonise" this
-// guard toward. Collapsing this guard into a substring scan would silently reintroduce the three
-// phantom violations above.
-//
-// # The known blind spot
-//
-// Detection here is file-level import presence, which is coarse: a file that imports internal/logger
-// for an unrelated line and spawns a process unlogged still passes this guard. It catches the
-// regression shape that actually occurs — a brand-new spawn landing in a file with no logging at all —
-// and does not claim more than that, in the same spirit as cmd/lym/checkedcall_test.go's own
-// blind-spot section. A per-call-site check (does the specific exec.Command call have a logger.Info/
-// Debug immediately around it, not just anywhere in the file) would close this gap but is not what
-// this guard does.
-//
-// # Why the hard-error half of the audit gets no guard
-//
-// Every outcome-switch hard-error-return site reachable from a lym command was audited once by hand,
-// but that audit is history, with no guard here or anywhere else.
-// A new unlogged exec.Command is nearly always a real miss, so a file-level check on it has high
-// signal. A new outcome-switch branch, by contrast, may legitimately return normally for the caller to
-// branch on — internal/burlerengine/engine.go's Run does exactly that — so an equivalent file-level
-// check on outcome switches would fire on correct code and train the next author to reach for an
-// allowlist instead of writing correct code. That asymmetry is why only the spawn half is guarded.
+// spawnobservability_test.go enforces the mechanical half of `PATTERN-child-processes`.
+// A production .go file under internal/ or cmd/ that makes a real spawn must import internal/logger.
+// A spawn is an exec.Command or exec.CommandContext call.
+// Otherwise the file needs a written-reason entry in spawnObservabilityAllowedSpawners.
+// The guard parses each file with go/parser and counts only real *ast.CallExpr calls.
+// A raw-substring scan would count doc prose that mentions exec.Command as a spawn.
+// Detection is file-level import presence.
+// A file that imports the logger for an unrelated line and spawns unlogged still passes.
+// Only the spawn half is guarded.
+// A new unlogged exec.Command is nearly always a real miss.
+// A new outcome-switch branch may legitimately return normally for the caller to branch on,
+// so a file-level check on it would fire on correct code.
 
 package main
 
@@ -53,16 +26,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// spawnObservabilityLoggerImportPath is the full import path fileImportsLogger matches against.
+// spawnObservabilityLoggerImportPath is the full import path of internal/logger.
+// A spawning file must import it to count as logged.
 const spawnObservabilityLoggerImportPath = "github.com/Knatte18/loomyard/internal/logger"
 
 // spawnObservabilityScanRoots are the module-relative directories this guard walks.
 var spawnObservabilityScanRoots = []string{"internal", "cmd"}
 
-// spawnObservabilityAllowedSpawners is the Live-Substrate Spawn Observability allowlist: module-relative, slash-separated file paths that are permitted to contain a real, unlogged exec.Command/exec.CommandContext call, each with a one-line reason — mirroring cmd/lym/tierpurity_test.go's allowedSpawners and cmd/lym/sandbox_coverage_test.go's excludedModules style.
+// spawnObservabilityAllowedSpawners is the Live-Substrate Spawn Observability allowlist.
+// It holds the module-relative, slash-separated paths of files allowed to make a real, unlogged spawn:
+// exec.Command or exec.CommandContext calls. Each entry carries a written reason.
 //
-// The structurally barred entries are exemptions INSIDE the rule: each owes a written reason because it is a real spawn site the invariant would otherwise require logged, but is barred from doing so.
-// The "not governed" entries are OUTSIDE the rule: the walk reaches them because they live under internal/ or cmd/, but they were never governed by this invariant in the first place — a test-fixture builder and a test-timing harness, neither reachable from a lym command.
+// Structurally barred entries are exemptions inside the rule.
+// Each is a real spawn site that the invariant would otherwise require to be logged,
+// but it is structurally barred from logging.
+// Not-governed entries are outside the rule.
+// The walk reaches them because they live under internal/ or cmd/, but this invariant never governed them.
+// Each is test tooling, not a code path reachable from a lym command.
 // tools/ sites need no entry at all: the walk never visits tools/.
 var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	{
@@ -107,14 +87,13 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	},
 }
 
-// spawnObservabilityMinScannedFiles is the vacuous-scan floor for this guard's two-root walk of
-// internal/ and cmd/, mirroring checkedCallMinScannedFiles in cmd/lym/checkedcall_test.go, so a
-// misconfigured walk fails loudly rather than silently passing on a near-empty scan.
+// spawnObservabilityMinScannedFiles is the minimum number of files the walk over internal/ and cmd/ must scan.
+// A misconfigured walk fails loudly rather than silently passing on a near-empty scan.
 const spawnObservabilityMinScannedFiles = 200
 
-// TestSpawnObservability_ProductionSpawnsAreLogged walks every non-test .go file under internal/ and
-// cmd/ and fails if any of them, other than a spawnObservabilityAllowedSpawners entry, contains a real
-// exec.Command/exec.CommandContext call and does not import internal/logger.
+// TestSpawnObservability_ProductionSpawnsAreLogged walks every non-test .go file under internal/ and cmd/.
+// It fails on each file with a real exec.Command or exec.CommandContext call that does not import internal/logger.
+// A file listed in spawnObservabilityAllowedSpawners is exempt.
 //
 //lym:guard
 func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
@@ -146,10 +125,7 @@ func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 	}
 }
 
-// fileHasUnloggedSpawn reports whether astFile contains a real exec.Command/exec.CommandContext call
-// and does not import internal/logger. It is the detection helper both the tree-wide walk above and
-// TestSpawnObservability_DetectionHelper below exercise, so the walk's exact matching behaviour is
-// pinned against small in-memory sources rather than only against the live tree.
+// fileHasUnloggedSpawn reports whether file contains a real spawn call and does not import internal/logger.
 func fileHasUnloggedSpawn(file *ast.File) bool {
 	if fileImportsLogger(file) {
 		return false
@@ -167,17 +143,12 @@ func fileImportsLogger(file *ast.File) bool {
 	return false
 }
 
-// fileHasSpawnCall reports whether file contains a real *ast.CallExpr that is either
-// exec.Command/exec.CommandContext off the file's own os/exec import name (respecting an import
-// alias), or a DeltaGit call expression — quarry's own (*quarry.Repo).DeltaGit spawns git via its
-// internal/gitsrc exactly as exec.Command does, so a call site reaching it is a real spawn this
-// guard must see too. The DeltaGit half is matched on the selector's own method name alone, an AST
-// match rather than a substring one (matching this guard's own documented design, deliberately
-// different from the tier-purity half's raw-substring one), so a doc-comment mention is still not a
-// call; it deliberately does not check the receiver's static type, mirroring the exec.Command half's
-// own reliance on the selector name plus the file's own import rather than full type information. A
-// file with no os/exec import and no DeltaGit call has no spawn site by construction, and a
-// doc-comment mention of either is never a *ast.CallExpr in the first place.
+// fileHasSpawnCall reports whether file contains a real *ast.CallExpr to exec.Command or exec.CommandContext.
+// The exec package is matched under the file's own import name, so an import alias is respected.
+// It also counts a call to `(*quarry.Repo).DeltaGit`.
+// That method spawns git through internal/gitsrc, so a call to it is a real spawn.
+// The DeltaGit match uses the selector's method name alone, so a doc-comment mention is not a call.
+// It does not check the receiver's static type.
 func fileHasSpawnCall(file *ast.File) bool {
 	execName, hasExec := execImportName(file)
 
@@ -217,9 +188,9 @@ func fileHasSpawnCall(file *ast.File) bool {
 	return found
 }
 
-// execImportName returns the local identifier file's source uses to refer to the os/exec package —
-// the import's alias if it has one, "exec" otherwise — and reports whether file imports os/exec at
-// all.
+// execImportName returns the identifier file uses for the os/exec package:
+// the import's alias if it has one, "exec" otherwise.
+// It reports whether file imports os/exec at all.
 func execImportName(file *ast.File) (name string, ok bool) {
 	for _, imp := range file.Imports {
 		if strings.Trim(imp.Path.Value, `"`) != "os/exec" {
@@ -233,7 +204,10 @@ func execImportName(file *ast.File) (name string, ok bool) {
 	return "", false
 }
 
-// TestSpawnObservability_DetectionHelper exercises fileHasUnloggedSpawn directly against small in-memory Go sources, independent of the live tree, pinning the exact matching behaviour the header comment's "AST, not substring" section argues for — most importantly the doc-comment case, which is the phantom-violation shape a substring guard would get wrong.
+// TestSpawnObservability_DetectionHelper exercises fileHasUnloggedSpawn directly against small in-memory Go sources.
+// It runs independently of the live tree.
+// It pins the exact matching behaviour.
+// Most importantly, it pins the doc-comment case, which a substring match would flag as a spawn.
 //
 //testtiming:keep proves the TestSpawnObservability_ProductionSpawnsAreLogged guard's AST matching fires on unlogged spawns and ignores doc-comment mentions
 func TestSpawnObservability_DetectionHelper(t *testing.T) {

@@ -784,7 +784,8 @@ func TestRunCmd_APIErrorEnvelope(t *testing.T) {
 	}
 }
 
-// stateEngine is a shuttlefake.Engine that also reads session signals: a line STOP@<time> is a turn end stamped with that time.
+// stateEngine is a fake engine that also reads session signals:
+// a line STOP@<time> is a turn end stamped with that time.
 // Its process always reads alive, so the state read depends on the run's files alone.
 type stateEngine struct {
 	*shuttlefake.Engine
@@ -807,8 +808,10 @@ func (stateEngine) TurnStartInterrupt(shuttleengine.SessionSignal) (time.Time, b
 	return time.Time{}, false
 }
 
-// TestStateCmd_ListsRunningRunsAndNarrowsByStrand drives stateCmd over a run-directory root holding one running record with a stamped turn end and its output file,
-// and asserts the envelope's run, state, cause and history, then that --strand with a name matching no running run prints an empty list.
+// TestStateCmd_ListsRunningRunsAndNarrowsByStrand drives stateCmd over a run-directory root.
+// The root holds one running record with a stamped turn end and its output file.
+// It asserts the envelope's run, state, cause and history.
+// It also asserts that --strand with a name matching no running run prints an empty list.
 func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -881,7 +884,8 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	}
 }
 
-// openRecorderEngine is a shuttlefake.Engine with the SessionOpener capability: OpenLaunch appends the spec it is given to specs and answers a fixed launch beside err.
+// openRecorderEngine is a fake engine that also opens sessions.
+// Its OpenLaunch appends the spec it is given to specs and returns a fixed launch with the err field as its error.
 type openRecorderEngine struct {
 	shuttlefake.Engine
 
@@ -894,7 +898,9 @@ func (e *openRecorderEngine) OpenLaunch(dir string, spec shuttleengine.OpenSpec,
 	return shuttleengine.Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}, e.err
 }
 
-// TestOpenCmd_ModelAliasEngine pins the engine and permission mode `open` hands Runner.Open, the engine, model and effort its envelope reports, and that a refusal from Open reaches the error envelope.
+// TestOpenCmd_ModelAliasEngine pins the engine and permission mode `open` hands Runner.Open.
+// It also pins the engine, model and effort its envelope reports.
+// It also pins that a refusal from Open reaches the error envelope.
 func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -978,7 +984,8 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 	}
 }
 
-// TestOpenCmd_ListModels pins that --list-models, with no --role, prints the loaded registry sorted by alias with each alias's engine, model and default effort, and opens nothing.
+// TestOpenCmd_ListModels pins that --list-models, with no --role, prints the loaded registry.
+// Each alias is listed in sorted order with its engine, model and default effort, and nothing is opened.
 func TestOpenCmd_ListModels(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1033,7 +1040,8 @@ func TestOpenCmd_ListModels(t *testing.T) {
 	}
 }
 
-// TestOpenCmd_ListModelsRegistryLoadFailure pins that --list-models over an unparsable models config returns an error envelope naming the flag and opens nothing.
+// TestOpenCmd_ListModelsRegistryLoadFailure pins a load failure: an unparsable models config under --list-models.
+// The command returns an error envelope naming the flag and opens nothing.
 func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1069,7 +1077,9 @@ func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
 	}
 }
 
-// TestAwaitCap pins where a call's cap comes from: a given --cap wins and calls neither function, a found worktree answers the resolver's cap, and no worktree answers the default without asking the resolver.
+// TestAwaitCap pins where a call's cap comes from: a given --cap wins and calls neither function;
+// a found worktree answers the resolver's cap;
+// no worktree answers the default without asking the resolver.
 func TestAwaitCap(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

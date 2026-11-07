@@ -19,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// rowFragment is the literal tmux format of one drawn button, written out independently of buttonRangeFormat.
+// rowFragment returns the literal tmux format of one drawn button.
+// It is written out by hand rather than derived from the render format,
+// so the test checks the drawn output against an independent copy.
 func rowFragment(index int, label string) string {
 	return fmt.Sprintf("#[range=user|lymbtn%d bg=colour236 fg=white] %s #[norange list=on default] ", index, label)
 }

@@ -1,9 +1,6 @@
-// strand.go implements webster's own strand/spawn seam helpers: the Starter seam, the OrchestratorStarter/OrchestratorHandle spawn seam, and the StrandStopper seam, inlining direct shuttleengine calls.
-// Webster's waits read a strand's liveness and turn end through gatefixer's StrandLive and TurnEndedAfter.
-// These are deliberately module-local rather than shared, since the spawn seam is part of
-// webster's own contract shape.
-// The spawn-seam interfaces are exported so webstercli can assign a real *shuttleengine.Runner into
-// them (Go's structural typing means *shuttleengine.Runner satisfies Starter and StrandStopper with no adapter glue).
+// strand.go implements webster's strand spawn seam, which calls shuttleengine directly.
+// The seam interfaces are exported so webstercli can pass a real *shuttleengine.Runner into them.
+// It satisfies Starter and StrandStopper structurally, so no adapter is needed.
 
 package websterengine
 
@@ -15,27 +12,27 @@ import (
 )
 
 // Starter is the seam a batch's implementer or recovery strand spawns through.
-// Start blocks until the spawned provider is past its startup gates (shuttle's guarantee) and
-// returns an error when it never became ready; it never waits for the run to finish.
+// Start blocks until the spawned provider is past its startup gates, which shuttle guarantees.
+// It returns an error when the provider never becomes ready, and it never waits for the run to finish.
 type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }
 
-// OrchestratorHandle is the started-but-not-yet-finished orchestrator-role spawn a caller blocks
-// on.
-// StrandGUID identifies the reed strand, Wait blocks until terminal shuttle outcome.
+// OrchestratorHandle is the started-but-not-yet-finished orchestrator-role spawn a caller blocks on.
+// StrandGUID identifies the reed strand.
+// Wait blocks until the shuttle run reaches a terminal outcome.
 type OrchestratorHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
-// OrchestratorStarter is the seam a caller spawns an orchestrator-role strand through, deliberately
-// two-phase (start, then wait) so strand identity is learned and persisted before blocking.
+// OrchestratorStarter is the seam a caller spawns an orchestrator-role strand through.
+// It is two-phase, start then wait, so the strand identity is learned and persisted before the caller blocks.
 type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }
 
-// RecoveryStrandRemoveError is RemoveRecoveryStrands's failure: the strand it could not remove and why.
+// RecoveryStrandRemoveError is a recovery strand that could not be removed, with its guid and the cause.
 type RecoveryStrandRemoveError struct {
 	GUID string
 	Err  error
@@ -47,15 +44,17 @@ func (e *RecoveryStrandRemoveError) Error() string {
 
 func (e *RecoveryStrandRemoveError) Unwrap() error { return e.Err }
 
-// StrandStopper is the seam a leftover strand is stopped through by guid.
-// StopStrand records the stop on the strand's run, then ends the strand when it is live, logging that kill at Warn, and is a no-op for a strand that is not.
+// StrandStopper is the seam a leftover strand is stopped through, by guid.
+// StopStrand records the stop on the strand's run.
+// It ends a live strand, logging that kill at Warn, and does nothing for a strand that is not live.
 type StrandStopper interface {
 	StopStrand(guid string) error
 }
 
-// RemoveRecoveryStrands stops every live recovery strand the state records, in batch-number order, then every cold verify-gate fixer strand and every plan fixer strand, each in spawn order.
-// Only a batch of Kind "recovery" with a StrandGUID names a batch's one;
-// implementer forks and the Master have no recorded strand.
+// RemoveRecoveryStrands stops every recovery strand the state records.
+// It stops the recovery strands in batch-number order.
+// Then it stops the verify-gate fixer strands and the plan fixer strands, each in spawn order.
+// Only a recovery batch with a StrandGUID has one; implementer forks and the Master record no strand.
 // The first failure returns a *RecoveryStrandRemoveError naming the strand guid.
 // A nil state stops nothing.
 func RemoveRecoveryStrands(stopper StrandStopper, st *State) error {

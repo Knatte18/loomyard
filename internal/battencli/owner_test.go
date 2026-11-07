@@ -1,4 +1,6 @@
-// owner_test.go covers batten's owner checks over fake owner seams: the start check, the Worktree-Teardown owner pre-flight, the pass exit codes of the owner refusals, and the owner keys of the status envelope.
+// owner_test.go covers batten's owner checks over fake owner seams.
+// It tests the start check and the Worktree-Teardown owner pre-flight;
+// it also tests the pass exit codes of the owner refusals and the owner keys of the status envelope.
 
 package battencli
 
@@ -20,7 +22,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRefuseStartOwnedElsewhere covers the owner check of a start: an owner elsewhere refuses, so does an unspawned member of a beam whose beam another machine owns, an owner here, an absent entry and a receiver with no seams pass, a pull that fails refuses with its way forward, an unreadable hostname refuses, and a hub with no prime owner has this machine claim it first.
+// TestRefuseStartOwnedElsewhere covers the owner check of a start.
+// An owner elsewhere refuses, and so does an unspawned member of a beam whose beam another machine owns;
+// an owner here, an absent entry and a receiver with no seams pass;
+// a pull that fails refuses with its way forward, an unreadable hostname refuses,
+// and a hub with no prime owner has this machine claim it first.
 func TestRefuseStartOwnedElsewhere(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -169,8 +175,10 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 
 // TestOwnerPreflight_TeardownResume covers a resume at Worktree-Teardown whose task worktree is gone.
 // It runs no origin reconcile and writes no origin-owed marker.
-// It resumes when the local board shows the run owned here, and refuses naming the owner and the adopt, with no wait for origin, when it shows another.
-// A resume at another row with its pair gone, and a Worktree-Teardown resume with its pair present, still run the reconcile.
+// It resumes when the local board shows the run owned here;
+// when it shows another owner, it refuses naming the owner and the adopt, with no wait for origin.
+// A resume at another row with its pair gone still runs the reconcile;
+// so does a Worktree-Teardown resume with its pair present.
 func TestOwnerPreflight_TeardownResume(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -269,7 +277,9 @@ func TestOwnerPreflight_TeardownResume(t *testing.T) {
 	}
 }
 
-// TestPreflightRunOwner_RemoveFollowUp pins that a resume refusal whose way forward names `lym fabric remove` ends in the step that settles the run's batten record in place of the re-run, and that a refusal naming no removal is returned unchanged.
+// TestPreflightRunOwner_RemoveFollowUp pins that a resume refusal naming `lym fabric remove` ends in the follow-up.
+// The follow-up is the step that settles the run's batten record, in place of the re-run.
+// A refusal naming no removal is returned unchanged.
 func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -279,7 +289,7 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 	tests := []struct {
 		name       string
 		wayForward string
-		// wantFollowUp is whether the refusal must end in BattenFollowUp's text in place of the re-run.
+		// wantFollowUp reports whether the refusal must end in the text of `BattenFollowUp` in place of the re-run.
 		wantFollowUp bool
 	}{
 		{name: "BranchNamingTheRemovalEndsInTheFollowUp", wayForward: "run `lym fabric remove some-slug` to clear the gone branch", wantFollowUp: true},
@@ -321,8 +331,11 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 	}
 }
 
-// TestPassExitCode asserts a pass exits 77 for each refusal of a run another machine owns that the pre-run reaches, wrapped or not, 78 for a covered run, 79 for a continue pass of a run dobby may not continue, and 1 for any other error.
-// A claim the Worktree-Create row loses is not a row here, since no pre-run wraps it and its stop ends in the driver's own envelope.
+// TestPassExitCode asserts the exit code a pass returns for each refusal.
+// A refusal of a run another machine owns that the pre-run reaches exits 77, wrapped or not.
+// A covered run exits 78, a continue pass of a run dobby may not continue exits 79, and any other error exits 1.
+// A claim the Worktree-Create row loses is not a row here.
+// No pre-run wraps it, and its stop ends in the driver's own envelope.
 func TestPassExitCode(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -363,7 +376,9 @@ func TestPassExitCode(t *testing.T) {
 	}
 }
 
-// TestBattenStatus_CarriesTheOwner asserts the status envelope names the slug's effective owner as owner_machine and whether this machine holds it as owned_here, and adds neither for an unreadable board or a receiver with no owner seams.
+// TestBattenStatus_CarriesTheOwner asserts the status envelope carries owner_machine, the slug's effective owner.
+// It also carries owned_here, whether this machine holds the slug.
+// Neither field appears for an unreadable board or a receiver with no owner seams.
 func TestBattenStatus_CarriesTheOwner(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

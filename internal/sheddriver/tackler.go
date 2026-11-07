@@ -1,6 +1,8 @@
 // tackler.go implements the shed driver's call to a cold tackler agent.
-// At a stop no rule settles, it spawns the tackler through shuttle, waits for its verdict file and returns the validated envelope.
-// The call works over injected seams, so every branch is testable with a fake shuttle and clock; it moves no run itself.
+// At a stop no rule settles, the call spawns the tackler through shuttle.
+// It waits for the tackler's verdict file and returns the validated envelope.
+// The call works over injected seams, so every branch is testable with a fake shuttle and clock;
+// it moves no run itself.
 
 package sheddriver
 
@@ -16,13 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The causes beyond the shared ones that a tackler envelope carries when the call, not the agent, made the hand-back.
+// Causes beyond the shared ones that a tackler envelope carries when the call, not the agent, made the hand-back.
 const (
 	tacklerCauseQuestion  = "question"
 	tacklerCauseCaseBrief = "case-brief"
 )
 
-// TacklerSettings is the tackler role's resolved model choice, timeout and spawn budget, threaded onto the tackler session's launch spec.
+// TacklerSettings is the tackler role's resolved model choice, timeout and spawn budget.
+// The call threads it onto the tackler session's launch spec.
 type TacklerSettings struct {
 	shuttleengine.ModelChoice
 	// Timeout is how long one tackler spawn may run.
@@ -31,15 +34,18 @@ type TacklerSettings struct {
 	MaxSpawns int
 }
 
-// ErrTacklerUnavailable is returned when the tackler is switched off or its spawn budget is spent, so the driver hands back without a spawn.
+// ErrTacklerUnavailable is returned when the tackler is switched off or its spawn budget is spent.
+// The driver then hands back without a spawn.
 var ErrTacklerUnavailable = errors.New("tackler unavailable")
 
-// ErrTacklerResumeReturned is returned when an attempt's resume was applied and the run stopped at the same stop key again.
+// ErrTacklerResumeReturned is returned when an attempt's resume was applied,
+// and the run stopped at the same stop key again.
 var ErrTacklerResumeReturned = errors.New("tackler resume returned")
 
 // TacklerDeps is every seam and fixed value the call reads.
 type TacklerDeps struct {
-	// Closed reports whether the stop key's attempt spawned at spawned was already handed to the parent: a hand-back settle record for the key later than spawned.
+	// Closed reports whether the attempt for key, spawned at spawned, was already handed to the parent.
+	// A hand-back settle record for key later than spawned marks it so.
 	Closed func(key StopKey, spawned time.Time) (bool, error)
 	// ReadStatus reads the run's status; found is false when it has no status file.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
@@ -53,15 +59,17 @@ type TacklerDeps struct {
 	MarkerPath string
 	// Producers is the run's producer list, for goto checks.
 	Producers []shedengine.ProducerDef
-	// Snapshot reads the worktree state a tackler must leave as it found it; nil for a recipe that keeps no tamper comparison, which records an empty snapshot.
+	// Snapshot reads the worktree state a tackler must leave as it found it.
+	// It is nil for a recipe that keeps no tamper comparison; the call then records an empty snapshot.
 	Snapshot func() (WorktreeSnapshot, error)
-	// PausedWithin returns the time the hub's pause record covered the run's slug inside the window from to.
+	// PausedWithin reports how long the hub's pause record covered the run's slug inside the window from to.
 	PausedWithin func(from, to time.Time) (time.Duration, error)
 	// Recipe is the one-line description of the recipe the run belongs to, filled into the tackler's prompt.
 	Recipe string
 	// GotoRoutedFrom is whether a resume may name the row the halting history entry was routed from as well as the current row.
 	GotoRoutedFrom bool
-	// GotoGuard is the recipe's told check of a goto target, run on a verdict's goto after the producer checks; nil admits every target.
+	// GotoGuard is the recipe's told check of a goto target, run on a verdict's goto after the producer checks;
+	// nil admits every target.
 	GotoGuard shedengine.GotoGuard
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the tackler stencil is read from.
 	Prompt      TacklerPromptInput
@@ -111,8 +119,11 @@ func NewTacklerCall(deps TacklerDeps, in TacklerInput) (*TacklerCall, error) {
 	return &TacklerCall{deps: deps, in: in, status: status, key: StopKeyOf(status)}, nil
 }
 
-// Settle returns the validated envelope for the call's stop: an earlier attempt's when one judged this stop and was not yet handed to the parent, else a fresh attempt's.
-// It returns ErrTacklerUnavailable when no attempt exists and none may be spawned, and ErrTacklerResumeReturned when the stop's attempt resumed the run and the run stopped at the same place.
+// Settle returns the validated envelope for the call's stop.
+// It reuses the newest attempt that judged this stop and was not yet handed to the parent.
+// Otherwise it spawns a fresh attempt.
+// It returns ErrTacklerUnavailable when the tackler is off or its spawn budget is spent.
+// It returns ErrTacklerResumeReturned when the stop's attempt was applied and the run stopped at the same place.
 func (c *TacklerCall) Settle() (TacklerEnvelope, error) {
 	attempts, err := ListTacklerAttempts(c.deps.TacklerDir)
 	if err != nil {
@@ -269,7 +280,8 @@ func (c *TacklerCall) recordStartedTackler(attempt TacklerAttempt) error {
 
 // concludeWait concludes attempt after a wait ended with result and waitErr.
 // A verdict on disk wins whatever the wait reported.
-// A timeout that ended while the hub's pause record covered part of the run moves the deadline out by the paused time and attaches again for the remainder.
+// A timeout that ended while the hub's pause record covered part of the run extends the deadline by the paused time.
+// The call then attaches again for the remainder.
 // A run that ended on an API error is stopped and reads as a hand-back naming the error.
 // Any other run that did not finish is stopped through stop and reads as a hand-back.
 func (c *TacklerCall) concludeWait(attempt TacklerAttempt, result shuttleengine.Result, waitErr error, stop func() error, guid string) (TacklerEnvelope, error) {
@@ -308,7 +320,9 @@ func (c *TacklerCall) concludeWait(attempt TacklerAttempt, result shuttleengine.
 }
 
 // extendDeadlineByPausedTime moves attempt's deadline out so the tackler's awake time, not the wall time, bounds its run.
-// It reports false, and changes nothing, when the pause record covered no new time inside the window, when it cannot be read (one Warn), or when the awake budget is spent.
+// It reports false and changes nothing when the pause record covered no new time inside the window.
+// It also reports false, after one Warn, when the pause record cannot be read.
+// It reports false too when the extended deadline is not later than the current deadline or than now.
 // Otherwise it rewrites the attempt record and the in-flight marker with the new deadline.
 func (c *TacklerCall) extendDeadlineByPausedTime(attempt *TacklerAttempt, guid string) (bool, error) {
 	now := c.deps.Now()
@@ -379,7 +393,8 @@ func (c *TacklerCall) conclude(attempt TacklerAttempt) (TacklerEnvelope, error) 
 	return c.finish(envelope)
 }
 
-// gotoRows lists the rows a resume may name: the status's current row, and with GotoRoutedFrom the producer of the last history entry, the halting entry's routed-from row.
+// gotoRows lists the rows a resume may name: the status's current row.
+// When a resume may name the halting entry's routed-from row as well, it also lists the last history entry's producer.
 func (c *TacklerCall) gotoRows() []string {
 	rows := []string{c.status.CurrentProducer}
 	if !c.deps.GotoRoutedFrom {
@@ -394,7 +409,8 @@ func (c *TacklerCall) gotoRows() []string {
 }
 
 // resumePrecondition returns what stops a resume from being sound at the call's stop, or empty when nothing does.
-// A goto may name only the rows gotoRows lists, and the told GotoGuard may refuse one of them; its refusal or error text is the answer.
+// A goto may name only the rows the stop lists, and the recipe's told guard may refuse one of them;
+// the guard's refusal or error text is the answer.
 func (c *TacklerCall) resumePrecondition(verdict TacklerVerdict) string {
 	if verdict.Goto == "" {
 		if c.status.State == shedengine.StateBlocked {
@@ -432,7 +448,8 @@ func formatGotoRows(rows []string) string {
 	return strings.Join(quoted, " or ")
 }
 
-// handBack finishes the call with a hand-back the call made itself, naming cause, and for an API error the error itself, in the question.
+// handBack finishes the call with a hand-back the call made itself.
+// The question names cause, and for an API error also the error itself.
 func (c *TacklerCall) handBack(attempt TacklerAttempt, cause, detail string) (TacklerEnvelope, error) {
 	return c.finish(TacklerEnvelope{
 		Verdict:     TacklerVerdictHandBack,

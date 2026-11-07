@@ -42,7 +42,7 @@ func newRecordsFixture(t *testing.T) *recordsFixture {
 var registerHeddleReplayerOnce sync.Once
 
 // registerHeddleReplayer registers heddle's Bolt replayer once per process.
-// The registration is never restored, so parallel tests share the one registration of the same value, which claims only the heddle store file.
+// The registration is never restored, so parallel tests share it, and it claims only the heddle store file.
 func registerHeddleReplayer() {
 	registerHeddleReplayerOnce.Do(func() {
 		fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
@@ -78,7 +78,8 @@ func heddleTexts(t *testing.T, dir string) map[string]string {
 	return texts
 }
 
-// primeWeft publishes the prime weft branch with an upstream, as a machine that pushed it earlier holds it, and returns the worktree and its branch.
+// primeWeft publishes the prime weft branch with an upstream, as a machine that pushed it earlier holds it.
+// It returns the worktree and its branch.
 func (f *recordsFixture) primeWeft() (worktree, branch string) {
 	f.t.Helper()
 
@@ -88,7 +89,8 @@ func (f *recordsFixture) primeWeft() (worktree, branch string) {
 	return worktree, branch
 }
 
-// originCommit commits rel on branch from a second clone of the records bare repository, pushes it and returns the new origin tip.
+// originCommit commits rel on branch from a second clone of the records bare repository and pushes it.
+// It returns the new origin tip.
 func (f *recordsFixture) originCommit(branch, rel, content, message string) string {
 	f.t.Helper()
 
@@ -99,7 +101,6 @@ func (f *recordsFixture) originCommit(branch, rel, content, message string) stri
 	return sha
 }
 
-// requireClean fails the test when dir has an uncommitted change.
 // scribbleThenFailReplay is the real board replay for every board but one.
 // For that one it writes an uncommitted `board.json` and then fails, as an apply that dies halfway leaves it.
 type scribbleThenFailReplay struct {
@@ -125,6 +126,7 @@ func writeBoltFile(t *testing.T, dir, rel, content string) {
 	}
 }
 
+// requireClean fails the test when dir has an uncommitted change.
 func requireClean(t *testing.T, dir string) {
 	t.Helper()
 	if status := gitkit.GitStatusPorcelain(t, dir); strings.TrimSpace(status) != "" {
@@ -656,7 +658,8 @@ func TestRecordsReplay(t *testing.T) {
 			}
 		})
 
-		// pushHeddleBase commits a heddle.json of texts, and the board.json of entries when given, in one commit and pushes it, so both sides share it as the merge base.
+		// pushHeddleBase commits a heddle.json of texts and, when given, the board.json of entries in one commit;
+		// it pushes that commit, so both sides share it as the merge base.
 		pushHeddleBase := func(t *testing.T, board, branch string, texts map[string]string, entries ...boardengine.Task) {
 			t.Helper()
 			writeBoltFile(t, board, "heddle.json", heddleFileOf(t, texts))

@@ -1,4 +1,5 @@
-// blockrecipes_test.go pins the tapestry recipe's Motif block against tapestry's rows as they stood before the block, and the motif recipe run alone.
+// blockrecipes_test.go checks the tapestry recipe's Motif block against its pre-block rows in testdata;
+// and checks that the motif recipe builds and runs alone.
 
 package loomrecipe
 
@@ -17,14 +18,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// tapestryBeforeMotifFile is the testdata file holding the tapestry recipe as it stood before its Discussion rows moved into the Motif block.
+// tapestryBeforeMotifFile names the testdata file holding the tapestry recipe rows that precede the Motif block.
 const tapestryBeforeMotifFile = "tapestry-rows-before-motif.yaml"
 
 // motifRowNames are the motif recipe's rows, in file order.
 var motifRowNames = []string{loomshed.NameDiscussionWrite, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix}
 
-// TestTapestryMotifBlock asserts the expanded tapestry recipe is its recipe before the Motif block, config included:
-// the same rows with the Motif block row after Preflight and the Discussion rows inside the block, and the same top-level keys.
+// TestTapestryMotifBlock asserts the expanded tapestry recipe matches its pre-block recipe, config included:
+// the rows match, with the Motif block row after Preflight and the Discussion rows inside the block;
+// the top-level keys match too.
 func TestTapestryMotifBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -78,7 +80,8 @@ func TestTapestryMotifBlock(t *testing.T) {
 	})
 }
 
-// TestMotifRecipeRunsAlone asserts the motif recipe builds under the loom contract as a run of its own, holds the Discussion rows alone, and ends its run on Discussion-Bouncer's Done.
+// TestMotifRecipeRunsAlone asserts the motif recipe builds under the loom contract as a run of its own.
+// It holds only the Discussion rows, and its run ends on Discussion-Bouncer's Done.
 func TestMotifRecipeRunsAlone(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

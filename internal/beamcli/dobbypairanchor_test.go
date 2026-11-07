@@ -1,4 +1,5 @@
-// dobbypairanchor_test.go pins that dobby's two pair-reading callers place a task pair at the pair's own anchor, and what DobbyRuns reads of a run's place against its Land row, over a hubforge hub.
+// dobbypairanchor_test.go pins that dobby's two pair-reading callers place a task pair at the pair's own anchor.
+// It also pins what DobbyRuns reads of a run's place against its Land row, over a hubforge hub.
 
 package beamcli
 
@@ -23,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// commitAnchorMarker commits a .lym-anchor holding anchor, and an empty file under the anchor directory, in the pair's records worktree.
+// commitAnchorMarker commits a .lym-anchor holding anchor, in the pair's records worktree.
+// It also commits an empty file under the anchor directory unless anchor starts with `..`.
 func commitAnchorMarker(t *testing.T, h *hubforge.Hub, slug, anchor string) {
 	t.Helper()
 

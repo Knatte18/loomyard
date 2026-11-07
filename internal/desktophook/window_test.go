@@ -32,7 +32,7 @@ func TestAfterWindow(t *testing.T) {
 		timeout    time.Duration
 		wantMarker bool
 		wantErr    string
-		// wantSleeps is the waits the command was preceded by.
+		// wantSleeps lists the waits that precede the command.
 		wantSleeps []time.Duration
 	}{
 		{name: "UnsetCommandRunsNothing", machine: "window_wait_ms: 7\n"},

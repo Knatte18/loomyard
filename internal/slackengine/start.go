@@ -1,4 +1,6 @@
-// start.go starts and stops the relay: the double-fork spawn, the starts the hub's records call for with their restart cap, the stop, and the wait for a started relay's first read.
+// start.go starts and stops the relay.
+// It holds the double-fork spawn and the restart-capped starts the hub's records call for.
+// It also holds the wait for a started relay's first read.
 
 package slackengine
 
@@ -32,14 +34,15 @@ const (
 	OutcomeTerminal StartOutcome = "terminal"
 	// OutcomeWaiting means a start made while the operator is away came before the next restart is due.
 	OutcomeWaiting StartOutcome = "waiting"
-	// OutcomeGaveUp means the relay died young too many starts in a row, so a start made while the operator is away spawns no more.
+	// OutcomeGaveUp means the relay died young too many starts in a row, so starts made while away spawn no more.
 	OutcomeGaveUp StartOutcome = "gave-up"
 )
 
 const (
 	// relayHealthyLifetime is how long a spawned relay must have lived for its spawn to count as healthy.
 	relayHealthyLifetime = 10 * time.Minute
-	// maxStartFailures is how many starts in a row may end in a relay that lived under relayHealthyLifetime before starts made while the operator is away stop.
+	// maxStartFailures is how many starts in a row may end in a relay that lived under relayHealthyLifetime.
+	// Once that many have, starts made while the operator is away stop.
 	maxStartFailures = 5
 	// startBackoffBase is the wait before the next restart after a spawn, doubled for each counted failure.
 	startBackoffBase = time.Minute
@@ -54,7 +57,8 @@ var ErrSpawnUnderTest = errors.New("slackengine: no relay spawned under test")
 
 // starter starts the relay through its seams: how a process is spawned, the clock and the process's own id.
 type starter struct {
-	// spawn runs the lym binary with args from the hub's directory, detached in a new session; with wait set it waits for the process to exit.
+	// spawn runs the lym binary with args from the hub's directory, detached in a new session;
+	// with wait set it waits for the process to exit.
 	spawn func(geom Geometry, args []string, wait bool) error
 	clock Clock
 	pid   func() int
@@ -71,7 +75,8 @@ func relayArgs(geom Geometry, primeName string, extra ...string) []string {
 }
 
 // spawnDetached starts the lym binary with args in a new session, with its output appended to the relay log.
-// With wait set it waits for the process, the intermediate of a double fork, which exits at once; without it the process is released to run on as the relay.
+// With wait set it waits for the process, the intermediate of a double fork, which exits at once;
+// without it the process is released to run on as the relay.
 // It logs the spawn and returns ErrSpawnUnderTest, starting nothing, in a test binary.
 func spawnDetached(geom Geometry, args []string, wait bool) error {
 	if testing.Testing() {
@@ -109,8 +114,10 @@ func EnsureRelay(geom Geometry, primeName string) (StartOutcome, error) {
 	return productionStarter().ensure(geom, primeName, false)
 }
 
-// EnsureRelayWhileAway is EnsureRelay for the prime dobby's tick: it starts nothing unless the presence is slack, and it respects the restart cap.
-// A relay that is down before its next restart is due answers OutcomeWaiting, and one that died young five starts in a row answers OutcomeGaveUp and is not started again until EnsureRelay resets the cap.
+// EnsureRelayWhileAway starts the hub's relay on the prime dobby's tick, and only while the presence is slack.
+// A relay that is down before its next restart is due answers OutcomeWaiting.
+// A relay that died young too many starts in a row answers OutcomeGaveUp.
+// It stays down until a start without the away gate resets the restart cap.
 func EnsureRelayWhileAway(geom Geometry, primeName string) (StartOutcome, error) {
 	return productionStarter().ensure(geom, primeName, true)
 }
@@ -131,12 +138,14 @@ func RelayLive(geom Geometry) (bool, error) {
 	return false, held.Release()
 }
 
-// StopRelay ends the hub's relay and the processes below it through the run-process records, sparing callerPID and its ancestors.
+// StopRelay ends the hub's relay and the processes below it through the run-process records.
+// It spares callerPID and its ancestors.
 func StopRelay(geom Geometry, callerPID int) ([]runproc.Ended, error) {
 	return runproc.EndRole(geom.RunProcDir, runproc.HubOwner, runproc.RoleSlackRelay, callerPID)
 }
 
-// SpawnRelayFromIntermediate is the intermediate process's step of a double fork: it starts the relay detached in a new session and returns without waiting on it.
+// SpawnRelayFromIntermediate is the intermediate process's step of a double fork:
+// it starts the relay detached in a new session and returns without waiting on it.
 // The relay is then reparented out of the starter's tree, and out of any pane's, whoever started it.
 func SpawnRelayFromIntermediate(geom Geometry, primeName string) error {
 	return productionStarter().spawnRelay(geom, primeName)
@@ -149,10 +158,15 @@ func (s starter) spawnRelay(geom Geometry, primeName string) error {
 
 // ensure starts the relay when it is down.
 // A machine with no token or a hub with no setup file answers OutcomeNotConfigured, and a live relay OutcomeLive.
-// With whileAway, any presence but slack answers OutcomeTerminal and starts nothing; a relay down before its next restart is due answers OutcomeWaiting.
-// Each due start judges the relay its previous start spawned by how long it lived, the last successful Slack call minus the spawn time:
-// a relay under relayHealthyLifetime counts one failure and one at or over resets the count, and the fifth failure in a row answers OutcomeGaveUp and spawns nothing.
-// Before it spawns it records the spawn time and the next restart time, one minute after the spawn doubled for each counted failure, so a spawn that fails to start leaves them behind.
+// With whileAway, any presence but slack answers OutcomeTerminal and starts nothing;
+// a relay down before its next restart is due answers OutcomeWaiting.
+// Each due start judges the relay its previous start spawned by how long it lived:
+// the last successful Slack call minus the spawn time.
+// A relay under relayHealthyLifetime counts one failure, and one at or over it resets the count;
+// reaching maxStartFailures in a row answers OutcomeGaveUp and spawns nothing.
+// Before it spawns, it records the spawn time and the next restart time.
+// The restart comes one minute after the spawn, doubled for each counted failure.
+// A spawn that fails to start still leaves both behind.
 // A start without whileAway resets the count first.
 func (s starter) ensure(geom Geometry, primeName string, whileAway bool) (StartOutcome, error) {
 	_, tokenFound, err := ReadToken(geom.TokenPath)
@@ -230,7 +244,8 @@ func lifetime(relayState RelayState) time.Duration {
 	return relayState.LastSlackOK.Sub(relayState.LastSpawnAt)
 }
 
-// relayRunning reports whether the process the relay state names is running: its pid is alive and, when a start time is recorded, still has it.
+// relayRunning reports whether the process the relay state names is running:
+// its pid is alive and, when a start time is recorded, still has it.
 func relayRunning(relayState RelayState) bool {
 	if relayState.PID <= 0 || !proc.IsRunning(relayState.PID) {
 		return false
@@ -242,7 +257,8 @@ func relayRunning(relayState RelayState) bool {
 	return ok && startTime == relayState.StartTime
 }
 
-// AwaitFirstRead waits until the relay the state names is running and has made its first creel read, reading the state once a second, and refuses after bound.
+// AwaitFirstRead waits until the relay the state names is running and has made its first creel read.
+// It reads the state once a second and returns an error once bound has passed.
 // The refusal names the running relay's recorded first-read refusal, or the relay log when it recorded none.
 // A state whose relay is gone counts as not yet written, whatever refusal it records, since it belongs to an earlier relay.
 func AwaitFirstRead(geom Geometry, clock Clock, bound time.Duration) error {

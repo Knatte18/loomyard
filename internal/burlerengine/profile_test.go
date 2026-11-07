@@ -1,7 +1,7 @@
-// profile_test.go table-drives Profile.validateReview and Profile.validateFix over the happy path and every fail-loud rule
-// documented on them: field-emptiness, path existence, FixScope legality, ClusterFan's
-// fan-resolution gate, and in-place absolute-path resolution for both relative and already-absolute
-// entries.
+// profile_test.go tests Profile.validateReview and Profile.validateFix.
+// It covers the happy path and every fail-loud rule:
+// field emptiness, path existence, FixScope legality and the ClusterFan fan-resolution gate.
+// It also covers in-place absolute-path resolution for relative and already-absolute entries.
 
 package burlerengine
 
@@ -16,9 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// testClusterFanConfig returns a lenses.Config fixture exercising every lenses.ResolveFan outcome profile_test.go's table needs:
-// a resolvable "standard" fan, a fan naming an undefined lens ("badlens"), and a fan longer than lenses.MaxFanLenses ("huge").
-// It is deliberately distinct from any fixture config_test.go itself owns, so this file's cases never depend on that file's fixtures.
+// testClusterFanConfig returns a lenses.Config with one fan per lenses.ResolveFan outcome.
+// The "standard" fan resolves, "badlens" names an undefined lens, and "huge" is longer than lenses.MaxFanLenses.
+// It is separate from the fixtures in config_test.go, so these cases do not depend on that file.
 func testClusterFanConfig() lenses.Config {
 	huge := make([]string, lenses.MaxFanLenses+1)
 	for i := range huge {
@@ -37,8 +37,10 @@ func testClusterFanConfig() lenses.Config {
 	}
 }
 
-// newValidProfileFixture creates a temp worktree root with every file validateReview requires to exist (a target file, a target directory, a fasit file, and a pair of prior-round files).
-// It returns the root plus a Profile that passes validateReview unmodified — each test mutates a copy of this base to exercise one rule at a time.
+// newValidProfileFixture creates a temp worktree root holding every file validateReview requires.
+// Those are a target file, a target directory, a fasit file and a pair of prior-round files.
+// It returns the root and a Profile that passes validateReview unmodified.
+// Each test mutates a copy of this base to exercise one rule at a time.
 func newValidProfileFixture(t *testing.T) (root string, base Profile) {
 	t.Helper()
 	root = t.TempDir()
@@ -65,8 +67,7 @@ func newValidProfileFixture(t *testing.T) (root string, base Profile) {
 	return root, base
 }
 
-// writeFixtureFile writes content to name under root, failing the test on
-// any I/O error.
+// writeFixtureFile writes content to name under root, failing the test on any I/O error.
 func writeFixtureFile(t *testing.T, root, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -75,12 +76,15 @@ func writeFixtureFile(t *testing.T, root, name, content string) {
 }
 
 // TestProfile_Validate table-drives validateReview and validateFix over the happy paths and every fail-loud rule.
-// The two path-resolution rows also assert, through check, that every path field is rewritten in place to a cleaned absolute path: relative entries are joined onto worktreeRoot per entry, and an already-absolute entry outside worktreeRoot survives unchanged apart from filepath.Clean.
+// The two path-resolution rows also assert, through check, that every path field is rewritten in place.
+// Each relative entry is joined onto worktreeRoot,
+// and an already-absolute entry outside it survives unchanged apart from filepath.Clean.
 func TestProfile_Validate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// outsideTarget is an existing absolute path in a directory of its own, outside every subtest's worktree root; subtests only read it.
+	// outsideTarget is an existing absolute path in a directory of its own, outside every subtest's worktree root;
+	// subtests only read it.
 	elsewhere := t.TempDir()
 	writeFixtureFile(t, elsewhere, "outside.txt", "outside content")
 	outsideTarget := filepath.Join(elsewhere, "outside.txt")
@@ -320,10 +324,9 @@ func TestProfile_Validate(t *testing.T) {
 			errSubstr: "profile.FixScope must be",
 		},
 		{
-			// Empty ClusterFan (the default) must skip fan resolution
-			// entirely — clustering is never on unless a profile names a
-			// fan — so it must not error even against a cfg with zero fans
-			// configured at all.
+			// An empty ClusterFan, the default, skips fan resolution entirely:
+			// clustering stays off unless a profile names a fan.
+			// validate must not error even when the config defines no fans at all.
 			name: "clusterfan empty skips resolution",
 			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = ""
@@ -394,10 +397,8 @@ func TestProfile_Validate(t *testing.T) {
 			errSubstr: "profile.FixerReportPath must not be empty",
 		},
 		{
-			// B1: a same-path pair must be rejected — the shuttle file
-			// contract's two output-file entries would both be satisfied by
-			// one write, silently collapsing the two-artifact contract into
-			// one file (proven live).
+			// A same-path pair must be rejected.
+			// One write would satisfy both shuttle file output entries, collapsing the contract into one file.
 			name: "reviewpath and fixerreportpath identical (literal)",
 			mutate: func(t *testing.T, root string, p *Profile) {
 				p.FixerReportPath = p.ReviewPath
@@ -406,11 +407,8 @@ func TestProfile_Validate(t *testing.T) {
 			errSubstr: "must not be the same path",
 		},
 		{
-			// The distinctness check must run on the RESOLVED absolute
-			// paths, not the pre-resolution literal strings — an
-			// already-absolute FixerReportPath that happens to resolve to
-			// the same file as a relative ReviewPath is just as degenerate
-			// and must be caught the same way.
+			// The distinctness check compares the resolved absolute paths, not the literal strings:
+			// an absolute FixerReportPath that resolves to the same file as a relative ReviewPath is a collision too.
 			name: "reviewpath and fixerreportpath identical (post-resolution)",
 			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ReviewPath = "review.md"
@@ -454,8 +452,7 @@ func TestProfile_Validate(t *testing.T) {
 					t.Errorf("validate() error = %q; want it to contain %q", err.Error(), wayForward)
 				}
 				// Every validate error carries exactly one prefix.
-				// A wrapped lenses.ResolveFan error that also spelled a "burler: " would double it in the final message — this
-				// caught exactly that bug once (N1).
+				// A wrapped lenses.ResolveFan error that also spelled "burler: " would double the prefix in the final message.
 				if n := strings.Count(err.Error(), "burler: ") + strings.Count(err.Error(), "lenses: "); n != 1 {
 					t.Errorf("validate() error = %q; want exactly one burler: or lenses: prefix, found %d", err.Error(), n)
 				}
@@ -472,7 +469,8 @@ func TestProfile_Validate(t *testing.T) {
 	}
 }
 
-// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude through validate: the no-exclusion happy path, a single-name drop, an absent-name no-op, a duplicate-name no-op, an exclude-everything no-op, an exclude-everything falling back to the held set or to the full fan, the ClusterExclude and ClusterExcludeHeld without-ClusterFan errors, and an empty ClusterFan leaving the lenses nil -- clustering is never on unless a profile names a fan.
+// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude through validate.
+// The cases cover the drop, no-op, and fallback paths and the without-ClusterFan errors.
 //
 //testtiming:keep pins the exclusion semantics, the resolved lens order and text and the ClusterExclude-without-ClusterFan error, which the Validate table covering its blocks does not assert
 func TestProfileValidate_ClusterExclude(t *testing.T) {
@@ -600,8 +598,8 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 	}
 }
 
-// diffStrings reports whether got and want differ in length or content
-// (order-sensitive — resolvePaths preserves input order).
+// diffStrings reports whether got and want differ in length or in content.
+// The comparison is order-sensitive: a permutation counts as a difference.
 func diffStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return true

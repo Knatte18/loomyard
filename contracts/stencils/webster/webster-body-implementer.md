@@ -142,7 +142,7 @@ Once your parent has taken the step, the batch resumes from your commits.
 
 Your LAST action of this session — after every card above is committed (or you have given up per the bound above, or stopped on a step only your parent can take) — is writing the batch-report YAML file to `{{.report_path}}`.
 Nothing you do after this file exists is read by anyone: write it last, and write it exactly once, unless your parent hands the batch back (see "A batch handed back" below).
-The report is deliberately minimal — `record-batch` reads ONLY these fields:
+The report is minimal — `record-batch` reads ONLY these fields:
 
 ```yaml
 status: OK | FAILED | NEEDS_PARENT

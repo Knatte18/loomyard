@@ -6,8 +6,9 @@ package locationkit
 
 import "github.com/Knatte18/loomyard/internal/lymcwd"
 
-// Location returns a *lymcwd.Location holding the three told fields, mirroring the field derivation Resolve performs without spawning git.
+// Location returns a *lymcwd.Location with HubPath, WorktreeName and AnchorRel set from its arguments.
 // RepoName stays empty.
+// It spawns no git command and reads no disk.
 func Location(hubPath, worktreeName, anchorRel string) *lymcwd.Location {
 	return &lymcwd.Location{
 		HubPath:      hubPath,

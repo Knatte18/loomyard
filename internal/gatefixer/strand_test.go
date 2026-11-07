@@ -1,4 +1,5 @@
-// strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent) and TurnEndedAfter against a shuttlefake.Engine (newest stop event, no stop event, missing events file, a ParseEvents error, the load-turn offset).
+// strand_test.go covers StrandLive and TurnEndedAfter, each against its shuttlefake fake.
+// It pins StrandLive's live, not-live and absent results, and TurnEndedAfter's results over an events file.
 
 package gatefixer
 
@@ -72,14 +73,14 @@ func TestStrandLive(t *testing.T) {
 	})
 }
 
-// TestTurnEndedAfter pins TurnEndedAfter over an engine without the SessionSignalParser capability: the newest ParseEvents event decides, and the offset skips the load turns.
+// TestTurnEndedAfter pins TurnEndedAfter over an engine without the SessionSignalParser capability:
+// the newest ParseEvents event decides, and the offset skips the load turns.
 func TestTurnEndedAfter(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
 	eventsPath := filepath.Join(dir, "events.jsonl")
-	// turnEnded reads the events from the start of the file.
 	turnEnded := func(path string, engine shuttleengine.Engine) (bool, error) {
 		return TurnEndedAfter(path, 0, engine, TurnEndRead{})
 	}

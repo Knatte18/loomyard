@@ -12,7 +12,8 @@ import (
 // sampleRefuseRaw is the non-empty refuse list the deny tests render the shell guard rows with.
 var sampleRefuseRaw = []string{"go test", "dotnet test"}
 
-// shellRow returns the shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) row named name, failing the test when none has it.
+// shellRow returns the row named name from shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw).
+// It fails the test when no row has that name.
 func shellRow(t *testing.T, name string) shellguard.Row {
 	t.Helper()
 	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {

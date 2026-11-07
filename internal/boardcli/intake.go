@@ -31,7 +31,8 @@ var intakeImportPayload = payloadKeys{
 // intakeClosePayload is the payload of `intake close`.
 var intakeClosePayload = payloadKeys{required: []string{"issue", "reason"}, optional: []string{"completed"}}
 
-// intakeCommand builds the `intake` group over the board that board returns and the hub repository that hubRepo opens.
+// intakeCommand builds the `intake` command group. It writes to the board that board returns,
+// and it opens the hub's GitHub repository through hubRepo each time a verb runs.
 func intakeCommand(board func() *boardengine.Board, hubRepo func() (*hubissues.Repo, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "intake",

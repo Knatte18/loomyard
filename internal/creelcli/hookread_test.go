@@ -1,4 +1,5 @@
-// hookread_test.go pins the exit decisions of the hidden hook-read and hook-wait verbs and hook-wait's wake, which only a hook-driven CLI run reaches in pieces.
+// hookread_test.go pins the exit decisions of the hidden hook-read and hook-wait verbs.
+// It also pins hook-wait's wake, which only a hook-driven CLI run reaches in pieces.
 
 package creelcli
 
@@ -13,7 +14,8 @@ import (
 )
 
 // TestHookWaitExit pins the exit code of hook-wait for the decisions the CLI rows reach only in part:
-// a refused or lost confirmation after the lines were written still wakes the session, and an acknowledgement that was never sent does not.
+// a refused or lost confirmation after the lines were written still wakes the session,
+// and an acknowledgement that was never sent does not.
 func TestHookWaitExit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -55,7 +57,8 @@ func (rewakeRenderer) HookOutput(shuttleengine.HookEvent, string, string) ([]byt
 
 func (rewakeRenderer) RewakeOutput(text string) ([]byte, int) { return []byte(text + "\n"), 2 }
 
-// queueingRenderer is an engine whose idle waiter starts the woken turn itself; it records what it was asked to wake with and answers err.
+// queueingRenderer is an engine whose idle waiter starts the woken turn itself;
+// it records what it was asked to wake with and answers err.
 type queueingRenderer struct {
 	rewakeRenderer
 	err     error
@@ -104,7 +107,8 @@ func TestWakeSession(t *testing.T) {
 	}
 }
 
-// sendError wraps an error the way the client wraps a failed write of the acknowledgement, so the row reaches errors.Is through a chain.
+// sendError wraps a failed write of the acknowledgement.
+// Unwrap exposes the wrapped error, so errors.Is matches it through the chain.
 type sendError struct{ err error }
 
 func (e *sendError) Error() string { return "write failed: " + e.err.Error() }
@@ -112,7 +116,8 @@ func (e *sendError) Error() string { return "write failed: " + e.err.Error() }
 func (e *sendError) Unwrap() error { return e.err }
 
 // TestHookReadExit pins the exit code and whether the error is printed for the decisions no CLI row reaches:
-// an acknowledgement failing after the block was written, a daemon failure before the write and a failed tool-boundary claim.
+// an acknowledgement failing after the block was written, a daemon failure before the write;
+// and a failed tool-boundary claim.
 func TestHookReadExit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

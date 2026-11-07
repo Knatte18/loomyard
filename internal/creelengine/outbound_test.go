@@ -1,4 +1,6 @@
-// outbound_test.go pins the sending half's delivery of mail across hubs: the outbound worker's retries, its start cap, the hour's return, the quoting of the other hub's text and the notice a return sends.
+// outbound_test.go pins the sending half's delivery of mail across hubs.
+// It covers the outbound worker's retries, its start cap, and the hour's return.
+// It also covers the quoting of the other hub's text and the notice a return sends.
 
 package creelengine_test
 
@@ -23,7 +25,8 @@ const (
 	callTimeout = 30 * time.Second
 )
 
-// eventually polls cond until it holds; the real-time deadline only bounds a failing test, since no signal marks the journal write it waits for.
+// eventually polls cond until it holds;
+// the real-time deadline only bounds a failing test, since no signal marks the journal write it waits for.
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -40,7 +43,8 @@ func notCallTimeout(wait time.Duration) bool { return wait != callTimeout }
 
 func anyWait(time.Duration) bool { return true }
 
-// driveClock advances the rig's daemon clock by every wait keep accepts that the daemon arms, which runs a retrying worker through its hour; the returned function ends it.
+// driveClock advances the rig's daemon clock by every wait that keep accepts and that the daemon arms.
+// That runs a retrying worker through its hour; the returned function ends it.
 func driveClock(t *testing.T, r *rig, keep func(time.Duration) bool) (stop func()) {
 	t.Helper()
 	done, finished := make(chan struct{}), make(chan struct{})
@@ -137,7 +141,7 @@ func TestScheduler_Outbound(t *testing.T) {
 		// parked leaves the receiving hub's geometry unreadable.
 		parked bool
 		answer hubAnswer
-		// hangs makes the receiving hub's daemon hold every call without answering, and driveAll also advances the clock by the call timeout.
+		// hangs makes the receiving daemon hold every call unanswered; driveAll also advances the clock by the call timeout.
 		hangs      bool
 		driveAll   bool
 		wantReason string

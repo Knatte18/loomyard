@@ -1,4 +1,5 @@
-// session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed ContextTokens, SessionIdle, ClearSession and CompactSession, including the plain-engine refusals.
+// session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed methods.
+// It also covers the plain-engine refusals of ContextTokens, SessionIdle, ClearSession and CompactSession.
 
 package shuttleengine
 
@@ -50,11 +51,12 @@ func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
 	return []PaneInput{{Text: "/compact " + focus, Submit: true}}
 }
 
-// TestRunner_ReadEvents covers ReadEvents' offset rules: it advances past complete lines only, so a
-// partial trailing line is left for the next read; an absent events file keeps the caller's offset;
-// and an unknown strand guid is an error.
+// TestRunner_ReadEvents covers ReadEvents' offset rules.
+// It advances past complete lines only, so a partial trailing line is left for the next read.
+// An absent events file keeps the caller's offset, and an unknown strand guid is an error.
 // Over an engine that reads session signals it also covers the event times.
-// Each event takes its stamp's time, a stamp ahead of its payload stays unconsumed, and a read whose marked signals do not pair with its events gives every event the zero time.
+// Each event takes its stamp's time, and a stamp ahead of its payload stays unconsumed.
+// A read whose marked signals do not pair with its events gives every event the zero time.
 // An engine without a signal reading gives the zero time.
 func TestRunner_ReadEvents(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -228,7 +230,8 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 	}
 }
 
-// TestRunner_SessionIdle_RecordlessStrandReadsThroughProvider pins that a strand with no run record is probed through the engine its live provider names, never the set's default.
+// TestRunner_SessionIdle_RecordlessStrandReadsThroughProvider pins which engine probes a strand with no run record.
+// The probe goes through the engine its live provider names, never the set's default.
 func TestRunner_SessionIdle_RecordlessStrandReadsThroughProvider(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -250,10 +253,13 @@ func TestRunner_SessionIdle_RecordlessStrandReadsThroughProvider(t *testing.T) {
 	}
 }
 
-// TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine with the signal parser, the cycler and the box reader, or, for a guarded row, the box reader and the running-turn check.
-// Each row is a series of probes of one strand on one runner, each appending events and moving the clock before it reads one pane capture:
-// a ready, held or unknown readiness reading and its fallback to the pane, a prompt offset past the events a run already wrote, whose last turn end the reading then takes, a draft, a pane too short, a hook turn end beside a pane needle, a turn start held then released by a later turn end, an interrupt report and the idle override across polls.
-// An engine without the signal parser falls back to the pane probe, whose TooShort is reported only for a pane that is not idle.
+// TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine.
+// The engine has the signal parser, the cycler and the box reader.
+// A guarded row has the box reader and the running-turn check instead.
+// Each row is a series of probes of one strand on one runner.
+// Each probe appends events and moves the clock before it reads one pane capture.
+// An engine without the signal parser falls back to the pane probe.
+// That probe reports TooShort only for a pane that is not idle.
 //
 // It is not parallel: logcapture redirects the process-global logger.
 func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
@@ -281,7 +287,8 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 	)
 	shell := BackgroundTask{Kind: BackgroundShell, ID: "bsh1", Label: "sleep 600", Signal: SignalPayload}
 	endedAt := time.Date(2026, 10, 8, 7, 59, 0, 0, time.UTC)
-	// idleAtEnd is the ready answer of a session whose turn ended at endedAt; atEnd adds the no-turn reading of that turn end to a held answer.
+	// idleAtEnd is the ready answer of a session whose turn ended at endedAt;
+	// atEnd adds the no-turn reading of that turn end to a held answer.
 	idleAtEnd := IdleProbe{Idle: true, NoTurn: true, TurnEndedAt: endedAt}
 	atEnd := func(held IdleProbe) IdleProbe {
 		held.NoTurn, held.TurnEndedAt = true, endedAt
@@ -292,7 +299,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		// engine settings; the zero value is a live process.
 		dead, interrupted, tooShort bool
 		interactive, outputsExist   bool
-		// unreadable points the run record at an events file that cannot be read, so the session state reads unknown and the pane decides.
+		// unreadable points the run record at an unreadable events file, so the state is unknown and the pane decides.
 		unreadable bool
 		// seeded is written to the events file before the first probe, and its length is the run's prompt offset.
 		seeded string
@@ -519,7 +526,8 @@ func (e *slashPasteEngine) ParseSessionSignals(data []byte) ([]SessionSignal, in
 	return signals, end
 }
 
-// pasteLineReed is a fakeReed that appends line to the events file after every paste, as the provider's hook does when a pasted command restarts the session.
+// pasteLineReed is a fakeReed that appends line to the events file after every paste.
+// The provider's hook appends such a line when a pasted command restarts the session.
 // An empty line appends nothing.
 // A non-nil onPaste runs after every paste, before the line is appended.
 type pasteLineReed struct {
@@ -568,7 +576,8 @@ func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 	return []PaneInput{{Text: "/color " + string(color), Submit: true}}
 }
 
-// parserlessPasteEngine is a paste-path engine with no SessionSignalParser: it exposes only the Engine, TextPaster, InputBoxReader and SessionCycler capabilities of the engine it wraps.
+// parserlessPasteEngine is a paste-path engine with no SessionSignalParser:
+// it exposes only the Engine, TextPaster, InputBoxReader and SessionCycler capabilities of the engine it wraps.
 type parserlessPasteEngine struct {
 	Engine
 	TextPaster
@@ -576,14 +585,17 @@ type parserlessPasteEngine struct {
 	SessionCycler
 }
 
-// newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine whose input box reads box and whose pane shows an operator active or not, and the reed it drives.
+// newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine.
+// Its input box reads box, and its pane shows an operator when active is set.
+// The returned reed is the one the runner drives.
 func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed, string) {
 	t.Helper()
 	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", false, nil)
 	return runner, reed, runDir
 }
 
-// newSlashPasteRunnerAppending is newSlashPasteRunner with every paste appending pasteLine to the events file, and returns the runner's clock as well.
+// newSlashPasteRunnerAppending returns a runner over a live strand "strand-1" on a paste-path engine.
+// Every paste appends pasteLine to the events file, and the runner's clock is returned as well.
 // A non-nil afterPaste replaces the box's answers once the paste is made, so the reads that confirm the send see it.
 // parserless hides the engine's session-signal parsing behind parserlessPasteEngine.
 func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, parserless bool, afterPaste []inputBoxAnswer) (*Runner, *fakeReed, string, *fakeClock) {
@@ -614,13 +626,16 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 	return fx.Runner, reed, filepath.Dir(fx.EventsPath), clock
 }
 
-// checkLandingStartConfirmation drives call, a session command that restarts the session with the source landing, over a paste-path engine whose box reads empty after the paste unless a row scripts it.
+// checkLandingStartConfirmation drives call over a paste-path engine.
+// call is a session command that restarts the session with the source landing.
+// Unless a row scripts it, the box reads empty after the paste.
 // A session-start line of landing appended by the paste confirms the send at its first read.
 // A line of other, or none, leaves the send waiting out the whole submit window before the empty box confirms it.
 // A line of landing already in the events file before the send is older than the pre-send offset and is waited out too.
 // An engine that parses no session signals confirms on the empty box at once.
-// A box that read empty after the paste stays confirmed when it then holds other text, as an operator typing during a compaction leaves it, or holds sentText or cannot be read;
-// other text before any empty read fails the send with ErrForeignBoxText.
+// A box that reads empty after the paste stays confirmed when it then holds other text.
+// The same holds when an operator types during a compaction, when the box holds sentText, or when it cannot be read.
+// Other text before any empty read fails the send with ErrForeignBoxText.
 // No row sends a key after the paste.
 func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, sentText string, call func(*Runner) error) {
 	t.Helper()
@@ -676,9 +691,11 @@ func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSour
 	}
 }
 
-// checkPastedSessionCommand drives call, one of Runner's session commands or its color step, over a paste-path engine in three states of the pane the caller's own idle probe would have passed.
+// checkPastedSessionCommand drives call, one of Runner's session commands or its color step, over a paste-path engine.
+// Each row is a state of the pane that the caller's own idle probe would have passed.
 // An empty box gets the command as one paste-submit of wantText and no typed text.
-// A box holding a draft and an operator active in the pane each hold the command: it fails wrapping ErrSessionBusy and writes nothing.
+// A box holding a draft and an operator active in the pane each hold the command:
+// it fails wrapping ErrSessionBusy and writes nothing.
 // A pending record of the command with a turn started since is another turn, so the command is still pasted.
 func checkPastedSessionCommand(t *testing.T, wantText string, call func(*Runner) error) {
 	t.Helper()
@@ -783,9 +800,12 @@ func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
 	}
 }
 
-// TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut sends the engine's color command into a live shuttle strand through the guarded send path.
-// A pasted `/color <name>` is confirmed by the empty box, and a held color returns an error wrapping ErrSessionBusy so the caller may retry.
-// A color with no command returns nil with no paste, even beside an active operator, so no idle wait or activity query runs for it.
+// TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut sends the engine's color command into a live shuttle strand.
+// It goes through the guarded send path.
+// A pasted `/color <name>` is confirmed by the empty box,
+// and a held color returns an error wrapping ErrSessionBusy so the caller may retry.
+// A color with no command returns nil with no paste, even beside an active operator,
+// so no idle wait or activity query runs for it.
 // An unknown strand is refused before reed is touched.
 func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -916,7 +936,8 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) 
 	}
 }
 
-// TestRunner_SessionState covers the state read of one run by guid: the found run reads at the runner's clock, and an unknown guid is an error.
+// TestRunner_SessionState covers the state read of one run by guid:
+// the found run reads at the runner's clock, and an unknown guid is an error.
 func TestRunner_SessionState(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

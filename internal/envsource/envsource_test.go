@@ -1,5 +1,5 @@
-// envsource_test.go covers .env parsing, OS-environment overlay precedence, and the DotEnv path
-// constructor that pins envsource as the single declarer of the ".env" filename token.
+// envsource_test.go covers .env parsing, OS-environment overlay precedence, and the DotEnv constructor.
+// It pins envsource as the single declarer of the ".env" filename token.
 
 package envsource
 
@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename — moved here from hubgeometry's own unit test now that envsource is the single declarer of the ".env" token.
+// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename.
 //
 //testtiming:keep pins the ".env" filename token itself, which the covering Build rows only read back through DotEnv
 func TestDotEnv(t *testing.T) {
@@ -111,7 +111,9 @@ VAR2=  leading  space`,
 	}
 }
 
-// TestBuild pins the merged environment: .env entries and OS variables both appear, the OS value wins a shared key, and an absent or empty .env leaves just the OS variables.
+// TestBuild pins the merged environment.
+// .env entries and OS variables both appear; the OS value wins a shared key.
+// An absent or empty .env leaves only the OS variables.
 // It serializes its rows because they set process environment variables.
 func TestBuild(t *testing.T) {
 	tiergate.Require(t, 0)

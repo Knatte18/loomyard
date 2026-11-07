@@ -72,7 +72,8 @@ func TestPrimeSegments(t *testing.T) {
 		t.Fatalf("segment names = %v, want %v", names, want)
 	}
 
-	// The batten segment prints push_spawned beside push_error: true for a pass that spawned its push, false for one that committed nothing.
+	// The batten segment prints push_spawned beside push_error:
+	// true for a pass that spawned its push, false for one that committed nothing.
 	for _, tt := range []struct {
 		name   string
 		report battencli.CleanupReport

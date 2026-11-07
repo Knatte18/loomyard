@@ -1,5 +1,6 @@
-// registry_test.go pins the hand-maintained registry in stencils.go against the on-disk *.md tree: every family subfolder's stencil file must have a matching entries row, and every entries row must have a matching file, in both directions.
-// Without this test a hand-maintained registry could silently omit a file -- invisible to `lym stencil list`, never seeded, never validated.
+// registry_test.go pins the hand-maintained registry in stencils.go against the on-disk *.md tree, in both directions:
+// every family subfolder's stencil file needs a matching entries row, and every entries row needs a matching file.
+// Without this test, a file the registry silently omits is invisible to `lym stencil list`, never seeded or validated.
 
 package stencils
 
@@ -15,11 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fixedStencils holds the instruction texts lym renders from embedded bytes alone and never seeds to a board copy, keyed by name.
-// They live outside this package's tree, so the registry never lists them, and every scan over the shipped stencils reads them through shippedStencils.
+// fixedStencils maps each stencil name to the instruction text that lym renders from embedded bytes alone.
+// lym never seeds these texts to a board copy.
+// They live outside this package's tree, so the registry never lists them,
+// and every scan over the shipped stencils reads them through shippedStencils.
 var fixedStencils = fixedStencilTexts()
 
-// fixedStencilTexts returns the orch role's text and each of its on-demand files' texts, the latter named `orch-` and the file's name without its extension.
+// fixedStencilTexts returns the orch role's text and the text of each on-demand file, keyed by name.
+// An on-demand file's key is `orch-` followed by the file's name without its extension.
 func fixedStencilTexts() map[string][]byte {
 	texts := map[string][]byte{"orch-role": orchrole.Role}
 	for file, text := range orchrole.OnDemand {
@@ -47,9 +51,10 @@ func shippedStencils(t *testing.T) map[string][]byte {
 	return texts
 }
 
-// stencilNamesOnDisk walks this package's own directory and returns the stencil name derived from
-// each *.md file found in a family subfolder: the filename without its ".md" extension.
-// An engine block's file, under the engine blocks directory's per-engine subfolder, gives the name stencilstore.EngineBlockName forms.
+// stencilNamesOnDisk walks this package's own directory and returns the name of each *.md file in a family subfolder.
+// For a family file, the stencil name is the filename without its ".md" extension.
+// An engine block's file lies in the engine blocks directory's per-engine subfolder.
+// stencilstore.EngineBlockName forms its name from the engine and the filename.
 func stencilNamesOnDisk(t *testing.T) []string {
 	t.Helper()
 
@@ -87,7 +92,8 @@ func stencilNamesOnDisk(t *testing.T) []string {
 	return names
 }
 
-// engineBlockNamesOnDisk returns the stencil name of each *.md file in engineDir, the engine blocks directory's subfolder for engine.
+// engineBlockNamesOnDisk returns the stencil name of each *.md file in engineDir.
+// engineDir is the engine blocks directory's subfolder for engine.
 func engineBlockNamesOnDisk(t *testing.T, engineDir, engine string) []string {
 	t.Helper()
 
@@ -105,7 +111,8 @@ func engineBlockNamesOnDisk(t *testing.T, engineDir, engine string) []string {
 	return names
 }
 
-// TestRegistry_MatchesOnDiskTree verifies the registry and the on-disk *.md tree name exactly the same stencils in both directions: a .md present but unregistered fails, and a registered name with no .md fails.
+// TestRegistry_MatchesOnDiskTree verifies that the registry and the on-disk *.md tree name exactly the same stencils.
+// It fails when a .md file is unregistered, and when a registered name has no .md file.
 //
 //testtiming:keep pins that the registry and the on-disk stencil tree name the same stencils in both directions, which no other test compares
 func TestRegistry_MatchesOnDiskTree(t *testing.T) {
@@ -147,8 +154,12 @@ func TestRegistry_MatchesOnDiskTree(t *testing.T) {
 	}
 }
 
-// TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns non-empty bytes, and that stencilstore.RelPath(name) resolves to the file's actual relative path -- pinning the family-from-first-token derivation against the on-disk layout.
-// It also pins the generic Bouncer prompt templates by name, so a later accidental removal fails with a message naming the Bouncer rather than as a diff in the generic on-disk-tree comparison TestRegistry_MatchesOnDiskTree performs.
+// TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns non-empty bytes.
+// It also checks that stencilstore.RelPath(name) resolves each name to the file's actual relative path.
+// That pins the family-from-first-token derivation against the on-disk layout.
+// It also pins the generic Bouncer prompt templates by name.
+// A later accidental removal then fails with a message naming the Bouncer.
+// Without that pin, the removal would show only as a diff in the generic on-disk tree comparison.
 //
 //testtiming:keep pins that RelPath resolves each registered name to its real file and that the Bouncer templates stay registered, which the scans over stencil bodies do not
 func TestRegistry_DefaultsAndRelPathAreConsistent(t *testing.T) {

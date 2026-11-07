@@ -1,8 +1,12 @@
-// prompt.go holds the two marker-value helpers the table builders share: setOffParagraph, which sets a block off as its own paragraph, and modeRules, the {{.mode_rules}} block of the discussion prompt.
+// prompt.go holds the two marker-value helpers the table builders share.
+// setOffParagraph sets a block off as its own paragraph.
+// modeRules builds the {{.mode_rules}} block of the discussion prompt.
 
 package loomengine
 
-// setOffParagraph wraps a non-empty block in one newline on each side, so the line it replaces gains a blank line before and after it; an empty block stays empty.
+// setOffParagraph wraps a non-empty block in one newline on each side,
+// so the line the block replaces gains a blank line before and after it;
+// an empty block stays empty.
 func setOffParagraph(block string) string {
 	if block == "" {
 		return ""

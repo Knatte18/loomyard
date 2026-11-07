@@ -1,9 +1,12 @@
-<!-- This is the cold-start recovery prefix, composed with webster-body-implementer.md
-     by RenderRecoveryPrompt (render.go) via internal/stencil, then written to a prompt file under _lym/webster/prompts/ and handed to the SEPARATE, cold recovery-strand process recover-batch spawns when a fork reports stuck or writes no report — see the fork-context-hygiene Shared Decision.
-     Unlike a fork prefix, this strand inherits NOTHING from Master's session: no plan framing, no constraints, and no code, which no fork inherits either.
-     It must earn its own orientation before the shared implementer body runs.
-     Its markers are {{.pattern_directive}}, {{.friction_directive}}, {{.failure_digest}} and {{.uncommitted_paths}}, all optional (filled via stencil.FillOptional); the first two render as nothing when their own tier is inactive, failure_digest renders as `none` when the batch was not failed, and uncommitted_paths renders as `none` on a clean worktree.
-     parent_directive is a fourth optional marker, rendered by internal/parentdirective.
+<!-- This is the cold-start recovery prefix.
+     RenderRecoveryPrompt (render.go) composes it with webster-body-implementer.md via internal/stencil and writes the result to a prompt file under _lym/webster/prompts/.
+     recover-batch hands that file to the separate, cold recovery-strand process it spawns when a fork reports stuck or writes no report (see the fork-context-hygiene Shared Decision).
+     The strand inherits nothing from Master's session: no plan framing, no constraints, and no code.
+     It must orient itself before the shared implementer body runs.
+     Its optional markers (filled via stencil.FillOptional) are {{.pattern_directive}}, {{.friction_directive}}, {{.failure_digest}}, {{.uncommitted_paths}} and parent_directive.
+     The pattern and friction directives render as nothing when their own tier is inactive;
+     failure_digest renders as `none` when the batch was not failed, and uncommitted_paths renders as `none` on a clean worktree;
+     internal/parentdirective renders parent_directive.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
 # Webster cold recovery implementer — starting COLD, inheriting nothing

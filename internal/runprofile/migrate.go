@@ -1,4 +1,5 @@
-// migrate.go — the reconcile hooks of profiles.yaml: renaming a block held under a recipe's former name, and listing the former blocks left beside a differing current one.
+// migrate.go holds the reconcile hooks of profiles.yaml.
+// It renames blocks held under a recipe's former name, and it lists former blocks beside a differing current one.
 
 package runprofile
 
@@ -21,13 +22,13 @@ type recipeRename struct {
 }
 
 // recipeRenames lists every recipe lym renamed, oldest first.
-// No recipe carries a from name any more, so a block or defaults entry keyed by one is never read.
+// No recipe carries a from name, so a block or defaults entry keyed by one is never read.
 var recipeRenames = []recipeRename{{from: "loom", to: shedrun.RecipeTapestry}}
 
 // migrateWayForward is the way forward of a refusal that finds a recipe held only under its former name.
 const migrateWayForward = `run "lym config reconcile --layer default --apply" from the hub's prime worktree, which renames each block and defaults entry held under a recipe's former name`
 
-// heldFormerName returns the first former name of recipe that entries holds as a key, and whether it holds one.
+// heldFormerName returns the first former name of recipe that entries holds as a key, and reports whether one exists.
 func heldFormerName[V any](entries map[string]V, recipe string) (string, bool) {
 	for _, rename := range recipeRenames {
 		if rename.to != recipe {
@@ -40,12 +41,15 @@ func heldFormerName[V any](entries map[string]V, recipe string) (string, bool) {
 	return "", false
 }
 
-// MigrateConfig renames, in each profile and under defaults, every recipe block or entry keyed by a recipe's former name to the recipe's current name, keeping its value, so a hub seeded before a recipe rename runs that recipe on its profiles.
+// MigrateConfig renames every recipe block or entry keyed by a recipe's former name to the recipe's current name.
+// The rename applies in each profile and under defaults, keeping the value.
+// That lets a hub seeded before a recipe rename run that recipe on its profiles.
 // An entry already holding the current name keeps it, and drops the former block only when it equals the current one;
-// a differing former block stays untouched for the operator to settle, and UnsettledFormerBlocks reports it.
-// It returns one line per rewrite, "<entry>.<from>: renamed to <entry>.<to>" or "<entry>.<from>: removed, <entry>.<to> already set",
-// and the document unchanged with no lines when nothing is rewritten.
-// Every comment and other key is carried through yaml node editing.
+// a differing former block stays untouched for the operator to settle by hand.
+// It returns one line per rewrite.
+// A line reads "<entry>.<from>: renamed to <entry>.<to>" or "<entry>.<from>: removed, <entry>.<to> already set".
+// When nothing is rewritten, it returns the document unchanged and no lines.
+// Comments and other keys survive, because the document is edited as yaml nodes.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	var document yaml.Node
@@ -115,7 +119,8 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// UnsettledFormerBlocks lists, sorted, as "<entry>.<from>: differs from <entry>.<to>", each entry holding a recipe's former name beside its current name with a differing block, so the operator settles the pair by hand.
+// UnsettledFormerBlocks lists, sorted, each entry that holds a recipe's former name beside a differing current block.
+// Each line reads "<entry>.<from>: differs from <entry>.<to>", so the operator can settle the pair by hand.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
 func UnsettledFormerBlocks(existing []byte) ([]string, error) {
 	var hub map[string]any

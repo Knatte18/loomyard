@@ -23,7 +23,8 @@ func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedR
 	}
 }
 
-// TestVerdict covers no record, scope off with its source, a deferral, a full check's counts, uncovered entries, open ranges and amendments, a command-mode check, an old partial scope, an old record's compare and acceptance fields and its waiver, and a hand-edited scope record after a records commit.
+// TestVerdict covers the section for a missing record, an off scope, a deferral and a full check's counts.
+// It also covers a command-mode check, an old partial scope, and a hand-edited scope record after a records commit.
 func TestVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

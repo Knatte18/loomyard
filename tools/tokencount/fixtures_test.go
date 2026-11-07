@@ -1,4 +1,5 @@
-// fixtures_test.go holds the in-memory fakes and fixture builders the calibration, count and profile tests share with the git-backed ones.
+// fixtures_test.go holds the in-memory fakes and fixture builders that the calibration, count and profile tests share.
+// The git-backed tests share them too.
 // It carries no build tag, so the tests of both tiers compile it.
 
 package main
@@ -81,7 +82,7 @@ func planWith(targets map[int]string) map[string]string {
 	return files
 }
 
-// lines is content of n lines.
+// lines returns content of n lines, each the text x.
 func lines(n int) string { return strings.Repeat("x\n", n) }
 
 // The base files of a based run hold these many lines each.
@@ -91,14 +92,17 @@ const (
 	templateLines    = 5
 )
 
-// directiveStencil is the orchestrator directive stencil of a based run: a banner, a line before and after the PATTERN overview marker.
+// directiveStencil is the orchestrator directive stencil of a based run:
+// a banner, then a line before and after the PATTERN overview marker.
 const directiveStencil = "<!-- banner -->\n\nhead\n{{.pattern_overview}}\ntail\n"
 
-// renderedDirective is directiveStencil filled with the PATTERN.md of a based run: the wrapper's lines around the overview.
+// renderedDirective is directiveStencil filled with the PATTERN.md of a based run:
+// the wrapper's lines around the overview.
 func renderedDirective() string { return "head\n" + lines(patternLines) + "\ntail\n" }
 
-// withBaseFiles adds the files a run's Merriam base is computed from to the base tree at sha:
-// INSTRUCTIONS.md, the fake engine's first instruction file, PATTERN.md, the orchestrator directive stencil and the Master template.
+// withBaseFiles adds the files a run's Merriam base is computed from to the base tree at sha.
+// They are INSTRUCTIONS.md, PATTERN.md, the orchestrator directive stencil and the Master template.
+// INSTRUCTIONS.md is the fake engine's first instruction file.
 // LOCAL.md, the fake engine's second instruction file, is untracked and so never at a base commit.
 func withBaseFiles(files map[string]string, sha string) {
 	files[sha+":INSTRUCTIONS.md"] = lines(instructionLines)
@@ -107,14 +111,16 @@ func withBaseFiles(files map[string]string, sha string) {
 	files[sha+":"+masterTemplatePath] = lines(templateLines)
 }
 
-// knownBaseContext is the context the seeded profiles (a context_per_line of 1) price for a based run whose plan renders overview:
-// the lines of the overview, INSTRUCTIONS.md, the rendered directive and the Master template, plus the fixed system-prompt context.
+// knownBaseContext is the context the seeded profiles price for a based run whose plan renders overview.
+// It counts one context unit per line of the overview, INSTRUCTIONS.md, the rendered directive and the Master template.
+// The fixed system-prompt context is added on top.
 func knownBaseContext(overview string) float64 {
 	base := websterengine.MerriamBaseOf(overview, lines(instructionLines), renderedDirective(), lines(templateLines))
 	return float64(base.Lines) + base.Fixed
 }
 
-// basedRunFixture returns a plan history and base tree in which run slug has a plan commit before the forks of the tests, a base commit sha-of-slug holding the base files, and the base context those give.
+// basedRunFixture returns a plan history and a base tree for run slug, plus the base context they give.
+// The plan commit precedes the forks of the tests; the base commit, named "base" + slug, holds the base files.
 func basedRunFixture(slug string, planTargets map[int]string, forksStarted time.Time) (fakeHistory, fakeBase, float64) {
 	plan := planWith(planTargets)
 	history := fakeHistory{
@@ -129,8 +135,9 @@ func basedRunFixture(slug string, planTargets map[int]string, forksStarted time.
 	return history, base, knownBaseContext(plan["00-overview.md"])
 }
 
-// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as orientation + the lines of its file, with every other coefficient 0;
-// its "grow" profile is "fit" with a batch_growth of 5.
+// seedProfile writes a batcher.yaml with a "fit" profile and a "grow" profile.
+// In "fit", one card's peak is its orientation plus the lines of its file, and every other coefficient is 0.
+// "grow" is "fit" with a batch_growth of 5.
 func seedProfile(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
@@ -167,23 +174,25 @@ func seedProfile(t *testing.T, dir string) {
 	}
 }
 
-// fork returns a fork in the session "" that ran cards, whose first message held start tokens of context and whose largest held peak.
+// fork returns a fork in the session "" that ran cards.
+// Its first message held start tokens of context, and its largest held peak.
 func fork(started time.Time, start, peak int, cards ...string) ForkTally {
 	return forkIn("", started, start, peak, cards...)
 }
 
-// forkIn is fork under the webster session transcript named session.
+// forkIn returns a fork in the webster session transcript named session, with the given start and peak tokens.
 func forkIn(session string, started time.Time, start, peak int, cards ...string) ForkTally {
 	return ForkTally{Cards: cards, Started: started, Session: session, Usage: Usage{Input: peak}, StartContext: start, PeakContext: peak}
 }
 
-// fakeEngine is the name of the engine oneEngine and fakeReadSet register.
+// fakeEngine is the name the fake engine is registered under in a read set.
 const fakeEngine = "fake"
 
 // fakeRates are the fake engine's USD per million tokens of every kind, by model.
 var fakeRates = fakePricer{"model-a": 20, "model-b": 10}
 
-// fakeTranscripts is an in-memory transcript reader: located sessions keyed by worktree and session reads keyed by session Ref.
+// fakeTranscripts is an in-memory transcript reader.
+// It keys located sessions by worktree and session reads by session Ref.
 // A locateErr fails every locate, and a readErrs entry fails the read of its Ref.
 type fakeTranscripts struct {
 	located   map[string][]shuttleengine.LocatedSession
@@ -200,7 +209,8 @@ func newFakeTranscripts() fakeTranscripts {
 	}
 }
 
-// add locates read under worktree with the given modification time; its Ref is the worktree and the main read's ID.
+// add locates read under worktree with the given modification time.
+// Its Ref is the worktree joined with the main read's ID.
 func (f fakeTranscripts) add(worktree string, modified time.Time, read shuttleengine.SessionRead) {
 	located := shuttleengine.LocatedSession{
 		TranscriptRef: shuttleengine.TranscriptRef{ID: read.Main.ID, Ref: worktree + "/" + read.Main.ID},
@@ -250,7 +260,8 @@ func (f fakeInstructions) InstructionFiles() []string { return f }
 // fakeInstructionFiles are the instruction file names the fake engine lists, the second of which no base commit holds.
 var fakeInstructionFiles = fakeInstructions{"INSTRUCTIONS.md", "LOCAL.md"}
 
-// fakeReadSet is a read set of one engine named fakeEngine, reading through fake, pricing at fakeRates and listing fakeInstructionFiles.
+// fakeReadSet returns a read set of one engine named "fake", reading through the given transcripts.
+// The engine prices at the fake rates and lists the fake instruction files.
 func fakeReadSet(fake fakeTranscripts) ReadSet {
 	return ReadSet{fakeEngine: {Transcripts: fake, Pricer: fakeRates, Instructions: fakeInstructionFiles}}
 }
@@ -303,7 +314,8 @@ func toolResult(ts, text string) shuttleengine.TranscriptEntry {
 	return toolResultFor("t", ts, text)
 }
 
-// toolResultFor is toolResult answering the tool call with the given id.
+// toolResultFor returns a user entry at ts that answers the tool call with the given id.
+// The entry holds one tool result with the given text.
 func toolResultFor(useID, ts, text string) shuttleengine.TranscriptEntry {
 	return shuttleengine.TranscriptEntry{
 		At: stampOf(ts), Role: shuttleengine.EntryUser,
@@ -332,7 +344,8 @@ func userAt(ts, text string) shuttleengine.TranscriptEntry {
 	return shuttleengine.TranscriptEntry{At: stampOf(ts), Role: shuttleengine.EntryUser, StartsTurn: true, UserTexts: []string{text}}
 }
 
-// fakeRecords is an in-memory RunRecords: the plan history plus the files directly in a directory at a revision.
+// fakeRecords is an in-memory store of run records.
+// It holds the plan history and the files directly in a directory at a revision.
 type fakeRecords struct{ fakeHistory }
 
 func (f fakeRecords) FilesInDirAtRevision(rev, dir string) ([]string, error) {

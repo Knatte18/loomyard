@@ -1,4 +1,5 @@
-// sleepjournal.go parses the machine's suspends and hibernates out of `journalctl` output and maps one journalctl run to the sleeps, a reason clause and whether the journal was read.
+// sleepjournal.go parses the machine's suspends and hibernates out of `journalctl` output.
+// It maps one journalctl run to the sleeps, a reason clause and whether the journal was read.
 
 package sleepjournal
 
@@ -26,7 +27,8 @@ type Interval struct {
 	From, To time.Time
 }
 
-// Args returns the arguments, after the executable, that make journalctl print systemd-sleep's entries as JSON for Parse.
+// Args returns the arguments, after the executable, that make journalctl print systemd-sleep's entries as JSON.
+// The output is one object per line.
 func Args() []string {
 	return []string{"-t", "systemd-sleep", "-o", "json", "--output-fields=MESSAGE,_BOOT_ID", "--no-pager"}
 }
@@ -41,8 +43,9 @@ type journalEntry struct {
 }
 
 // Parse reads systemd-sleep's journal entries, one JSON object per line in time order, into sleep intervals.
-// A sleep runs from an entry that starts the sleep operation to the next entry that returns from the same operation in the same boot;
-// a start with no such return, a return with no start and every other message add nothing.
+// A sleep runs from an entry that starts a sleep operation to the next entry that returns from the same operation.
+// Both entries must be in the same boot.
+// A start with no such return, a return with no start and every other message add nothing.
 // A line that does not decode, or a timestamp that does not parse, is an error.
 func Parse(data []byte) ([]Interval, error) {
 	type sleepStart struct {
@@ -89,11 +92,16 @@ func sleepOperation(message, prefix string) string {
 	return operation
 }
 
-// Read maps the output, standard error and exit error of one journalctl run, started with Args, to the sleeps, a reason clause and whether the journal was read.
+// Read maps one journalctl run to the sleeps, a reason clause and whether the journal was read.
+// Its inputs are the output, standard error and exit error of a run started with Args.
 // With a sleep found the clause is empty.
-// Otherwise there are no sleeps and the clause says why nothing is left out: journalctl absent, journalctl failing, a journal the user may not read, output that does not parse, or a journal with no systemd-sleep operation.
-// A user without journal access gets exit status 0, empty output and a permission hint on standard error, which reads as unread.
-// The journal reads as read only in the last case and when a sleep is found, so a caller can tell a machine that did not sleep from one whose sleep is unknown.
+// Otherwise there are no sleeps, and the clause says why:
+// journalctl absent; journalctl failing; a journal the user may not read; output that does not parse;
+// or a journal with no systemd-sleep operation.
+// A user without journal access gets exit status 0, empty output and a permission hint on standard error.
+// Such a run reads as unread.
+// The journal reads as read only when a sleep is found or the journal has no systemd-sleep operation.
+// A caller can tell a machine that did not sleep from one whose sleep is unknown.
 func Read(out, stderr []byte, runErr error) ([]Interval, string, bool) {
 	if runErr != nil {
 		if errors.Is(runErr, exec.ErrNotFound) {

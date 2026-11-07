@@ -1,4 +1,7 @@
-// smoke_llm_test.go proves creel's delivery into real Claude sessions, which the fake provider of the tmux tier cannot reach: a strand added by hand with its typed lines, and sessions started by shuttle's own launch with creel's hook delivery.
+// smoke_llm_test.go proves creel's delivery into real Claude sessions.
+// The fake provider of the tmux tier cannot reach them.
+// It covers a strand added by hand with its typed lines;
+// it also covers sessions started by shuttle's own launch with creel's hook delivery.
 
 package creelcli
 
@@ -22,7 +25,8 @@ import (
 )
 
 // TestSmokeCreelClaudeStrand adds a strand running claude to a hub and drives creel into it.
-// The adapter reads the booted session idle, a posted message's carried line and an inject are typed at idle, and the agent's pane shows both.
+// The adapter reads the booted session as idle.
+// A posted message's carried line and an inject are typed at idle, and the agent's pane shows both.
 func TestSmokeCreelClaudeStrand(t *testing.T) {
 	tiergate.Require(t, 3)
 	claudePath := llmkit.Claude(t, "LYM_REED_CLAUDE")
@@ -46,7 +50,8 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 		t.Fatalf("Strands() = %+v; want the claude strand %s live", strands, guid)
 	}
 	// A fresh temp hub shows claude's folder-trust gate, which covers the input box.
-	// The pane has no event to wait on, so it is polled on a tick under a real-time deadline until the gate is accepted or the box shows.
+	// The pane has no event to wait on, so the test polls it on a tick under a real-time deadline.
+	// It stops once the gate is accepted or the box shows.
 	// Accepting the gate adds the temp hub's path to the operator's Claude trust list.
 	deadline := time.Now().Add(smokePaneWindow)
 	for {
@@ -70,7 +75,8 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	}
-	// The booted session has no event to wait on, so the idle check is polled on a tick under a real-time deadline.
+	// The booted session emits no event to wait on.
+	// So awaitIdle polls the adapter's idle answer on a tick under a real-time deadline.
 	awaitIdle := func() {
 		t.Helper()
 		deadline := time.Now().Add(smokePaneWindow)
@@ -93,7 +99,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	if code, out := smoke.creel("post", name, "creel smoke message"); code != 0 {
 		t.Fatalf("lym creel post = %d; output: %s", code, out)
 	}
-	// The test process posts as EXTERNAL, whose mail is carried in its own line rather than reminded.
+	// The test process posts as EXTERNAL, so its mail arrives as a line of its own rather than as a reminder.
 	if capture, ok := smoke.awaitPane(t, guid, "[creel] #1 from "); !ok {
 		t.Fatalf("the carried line was not typed into the agent's pane; pane:\n%s", capture)
 	}
@@ -105,7 +111,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 		t.Fatalf("the agent's pane does not show the injected line; pane:\n%s", capture)
 	}
 
-	// Each command either lands or is typed without a confirmed landing; neither busy nor any other error is a result the watcher can act on.
+	// Each command either lands or is typed without a confirmed landing, so any other error fails the test.
 	for _, command := range []creelengine.Command{
 		{Name: creelengine.CommandReloadPlugins},
 		{Name: creelengine.CommandColor, Argument: "blue"},
@@ -129,7 +135,9 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 // smokeTurnWindow bounds how long a Claude scenario waits for a turn, a delivery or a file before it fails.
 const smokeTurnWindow = 4 * time.Minute
 
-// startClaudeRun starts a Claude session through a shuttle runner over the hub's reed engine, with claudeengine told the hub's config directories, so its settings carry the creel hooks and its strand the CreelHooks mark exactly as production renders them.
+// startClaudeRun starts a Claude session through a shuttle runner over the hub's reed engine.
+// The `claudeengine` package is told the hub's config directories, so the settings carry the creel hooks.
+// The settings and the strand's CreelHooks mark are the ones production renders.
 // It stops the run when the test ends and returns the strand's name and guid and the run's events file.
 func (s *smokeHub) startClaudeRun(t *testing.T, spec shuttleengine.Spec) (name, guid, eventsPath string) {
 	t.Helper()
@@ -156,7 +164,7 @@ type claudeScenario struct {
 }
 
 // newClaudeScenario starts an interactive Claude session on prompt, in fork mode when fork is set.
-// The prompt names files under the scenario's directory, which s.file returns.
+// The prompt names files under the scenario's directory, given as {dir}; the file method returns their paths.
 func newClaudeScenario(t *testing.T, smoke *smokeHub, prompt string, fork bool) *claudeScenario {
 	t.Helper()
 	dir := t.TempDir()
@@ -173,7 +181,7 @@ func newClaudeScenario(t *testing.T, smoke *smokeHub, prompt string, fork bool) 
 // file returns the path of a file the scenario's agent is told to write.
 func (c *claudeScenario) file(name string) string { return filepath.Join(c.dir, name) }
 
-// fail logs the pane and the events file's path and content, which a failed scenario keeps, and ends the test.
+// fail reports the message with the pane and the events file's path and content, and ends the test.
 func (c *claudeScenario) fail(format string, args ...any) {
 	c.t.Helper()
 	events, _ := os.ReadFile(c.events)
@@ -210,7 +218,7 @@ func (c *claudeScenario) awaitShown(text string) {
 	}
 }
 
-// post posts body to the scenario's strand as EXTERNAL.
+// post runs `lym creel post` with args as EXTERNAL, and fails the scenario unless it exits zero.
 func (c *claudeScenario) post(args ...string) {
 	c.t.Helper()
 	if code, out := c.smoke.creel(append([]string{"post"}, args...)...); code != 0 {
@@ -245,7 +253,8 @@ func (c *claudeScenario) payloads(event string) int {
 	return count
 }
 
-// stamps counts the hook-side stamp lines of the named event: the two-key lines that name the event and carry no payload.
+// stamps counts the hook-side stamp lines of the named event:
+// the two-key lines that name the event and carry no payload.
 func (c *claudeScenario) stamps(event string) int {
 	count := 0
 	for _, record := range c.eventRecords() {
@@ -289,7 +298,8 @@ func (c *claudeScenario) awaitTurnEnds(n int) {
 	c.await(fmt.Sprintf("%d recorded turn ends", n), func() bool { return c.payloads("Stop") >= n })
 }
 
-// mainTranscript returns the path of the session's own transcript, the first transcript_path its events hold, or empty before any event carries one.
+// mainTranscript returns the path of the session's own transcript, the first transcript_path its events hold.
+// It returns empty before any event carries one.
 func (c *claudeScenario) mainTranscript() string {
 	for _, record := range c.eventRecords() {
 		if path, _ := record["transcript_path"].(string); path != "" {
@@ -312,7 +322,8 @@ func (c *claudeScenario) transcriptCount(text string) int {
 	return strings.Count(string(data), text)
 }
 
-// requireTranscriptLacks fails when the main transcript holds any of texts, which stand for the hook command text and the error label a block would leave there.
+// requireTranscriptLacks fails when the main transcript holds any of texts.
+// The texts stand for the hook command text and the error label a block would leave there.
 func (c *claudeScenario) requireTranscriptLacks(texts ...string) {
 	c.t.Helper()
 	for _, text := range texts {
@@ -322,9 +333,12 @@ func (c *claudeScenario) requireTranscriptLacks(texts ...string) {
 	}
 }
 
-// requireWakeShown checks the session's wake-th idle wake once the model has acted on its mail, taking the wakes before it as delivered.
-// The token is in the transcript with no turn end recorded since the earlier wake ended, which a turn that ran without the mail would have left.
-// After the woken turn ends, the pane shows one `creel mail` row per wake so far and the echo under creelengine.EchoHeading, with the token under it once.
+// requireWakeShown checks the session's wake-th idle wake once the model has acted on its mail.
+// The wakes before it count as delivered.
+// The token is in the transcript, and no turn end is recorded since the earlier wake ended.
+// A turn that ran without the mail would have left such a turn end.
+// After the woken turn ends, the pane shows one `creel mail` row per wake so far.
+// It also shows the echo under `creelengine.EchoHeading`, with the token under it once.
 func (c *claudeScenario) requireWakeShown(token string, wake int) {
 	c.t.Helper()
 	c.await("the transcript to hold "+token, func() bool { return c.transcriptCount(token) > 0 })
@@ -342,7 +356,8 @@ func (c *claudeScenario) requireWakeShown(token string, wake int) {
 	}
 }
 
-// paneEchoCount counts the echoes of token in pane: the lines of creelengine.EchoHeading whose next non-empty line holds token.
+// paneEchoCount counts the echoes of token in pane:
+// the lines of `creelengine.EchoHeading` whose next non-empty line holds token.
 func paneEchoCount(pane, token string) int {
 	lines := strings.Split(pane, "\n")
 	count := 0
@@ -363,7 +378,9 @@ func paneEchoCount(pane, token string) int {
 	return count
 }
 
-// requireHeadShownOnce checks the pane's stop-hook summary of a Stop claim of many lines: the first token appears once in the Stop hook feedback lines, there is no second `Stop hook feedback:` row, and no `Stop says:` line carries any token.
+// requireHeadShownOnce checks the pane's stop-hook summary of a Stop claim of many lines.
+// The first token appears once in the Stop hook feedback lines.
+// The pane shows exactly one `Stop hook feedback:` row, and no `Stop says:` line carries any token.
 // The model's own reply and tool calls may quote a token, so only those summary lines are read.
 func (c *claudeScenario) requireHeadShownOnce(first string, tokens []string) {
 	c.t.Helper()
@@ -395,9 +412,11 @@ func (c *claudeScenario) requireHeadShownOnce(first string, tokens []string) {
 	}
 }
 
-// TestSmokeCreelHookDelivery proves creel's hook delivery into real Claude sessions started by shuttle's own launch, so their settings and launch line are the ones production renders.
+// TestSmokeCreelHookDelivery proves creel's hook delivery into real Claude sessions started by shuttle's own launch.
+// Their settings and launch line are the ones production renders.
 // The test process posts as EXTERNAL.
-// It needs a `lym` built from this tree on PATH, since the sessions' hooks run `lym creel hook-read` and `lym creel hook-wait`.
+// It needs a `lym` built from this tree on PATH.
+// The sessions' hooks run `lym creel hook-read` and `lym creel hook-wait`.
 func TestSmokeCreelHookDelivery(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
@@ -535,7 +554,8 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 		if got := c.promptsContaining(creelengine.BellLine); got != 1 {
 			c.fail("%d prompts contain the bell line; want exactly one, the bell that started the turn", got)
 		}
-		// A second bell for the same set would arrive within a few probe ceilings, so the count is watched on a tick for a short while.
+		// A second bell for the same set would arrive within a few probe ceilings,
+		// so the count is watched on a tick for a short while.
 		watchUntil := time.Now().Add(20 * time.Second)
 		for time.Now().Before(watchUntil) {
 			if got := c.promptsContaining(creelengine.BellLine); got != 1 {
@@ -547,7 +567,9 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 	})
 }
 
-// forkTranscripts returns the transcripts of the session's forks: the files under the directory named for the session's own transcript, and when that directory does not exist the other transcripts of its project directory.
+// forkTranscripts returns the transcripts of the session's forks.
+// They are the files under the directory named for the session's own transcript.
+// When that directory does not exist, they are the other transcripts of its project directory.
 func forkTranscripts(c *claudeScenario) []string {
 	main := c.mainTranscript()
 	if main == "" {

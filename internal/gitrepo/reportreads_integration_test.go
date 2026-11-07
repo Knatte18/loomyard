@@ -1,4 +1,7 @@
-// reportreads_integration_test.go covers the reads a report over finished runs builds on — TagRefs, Log, SubdirsAtRevision, PreImageLines and BlameLines — against one real git repository whose commits carry fixed committer dates, reusing blobread_integration_test.go's commitAllAt and gitrepo_test.go's newRepo and writeFile fixture helpers.
+// reportreads_integration_test.go covers the reads that a report over finished runs builds on:
+// TagRefs, Log, SubdirsAtRevision, PreImageLines and BlameLines.
+// It runs them against one real git repository whose commits carry fixed committer dates.
+// It reuses blobread_integration_test.go's commitAllAt and gitrepo_test.go's newRepo and writeFile fixture helpers.
 
 package gitrepo_test
 
@@ -37,7 +40,8 @@ func mustParseDate(t *testing.T, date string) time.Time {
 	return parsed
 }
 
-// mergeNoFastForwardAt merges branch into the checked-out branch of dir with a merge commit whose author and committer date is committerDate.
+// mergeNoFastForwardAt merges branch into the checked-out branch of dir with a --no-ff merge commit.
+// Both the author and committer date are set to committerDate.
 func mergeNoFastForwardAt(t *testing.T, dir, branch, committerDate string) {
 	t.Helper()
 
@@ -59,8 +63,11 @@ func logSHAs(commits []gitrepo.LogCommit) []string {
 }
 
 // TestReportReads drives the report reads over one repository:
-// commit A adds runs/a/status.json holding four lines, B rewrites it to three lines and adds docs/x.md, a side branch adds side.txt in S, M merges S into the main line with --no-ff, and F rewrites the first line of the file;
-// an annotated tag archive/a/1 points at A, a lightweight archive/b/2 at M and other at B.
+// commit A adds runs/a/status.json holding four lines;
+// commit B rewrites it to three lines and adds docs/x.md;
+// a side branch commit S adds side.txt, and commit M merges S into the main line with --no-ff;
+// commit F rewrites the first line of the file.
+// An annotated tag archive/a/1 points at A, a lightweight archive/b/2 at M and other at B.
 // Every step only reads, so the steps run serially in one order over the shared repository.
 func TestReportReads(t *testing.T) {
 	tiergate.Require(t, 1)

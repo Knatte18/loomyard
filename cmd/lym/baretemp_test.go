@@ -1,6 +1,8 @@
-// baretemp_test.go enforces the Lym Temp Root Invariant: no Go file outside internal/lymtemp creates a temp file or directory directly in the bare system temp directory.
-// A creation goes through lymtemp.MkdirTemp or lymtemp.CreateTemp, so it lands in the process run directory and is removed with it.
-// Modelled on hermeticenv_test.go and tmuxisolation_test.go; see `PATTERN-lym-files`.
+// baretemp_test.go enforces the Lym Temp Root Invariant:
+// no Go file outside internal/lymtemp creates a temp file or directory directly in the bare system temp directory.
+// A creation goes through lymtemp.MkdirTemp or lymtemp.CreateTemp,
+// so it lands in the process run directory and is removed with it.
+// Failures cite `PATTERN-lym-files`.
 
 package main
 
@@ -19,9 +21,10 @@ import (
 )
 
 // allowedBareTemp is the Lym Temp Root Invariant allowlist, keyed `<file>:<call>`, for example `internal/x/y.go:os.MkdirTemp`.
-// An entry admits one creation call in one file, and its reason names the obstacle to creating it through lymtemp.
+// An entry admits one creation call in one file,
+// and its reason names the obstacle to creating it through lymtemp.
 // An admitted site still removes what it creates on normal exit.
-// What an entry lets through is that one site's directory left in the bare system temp directory after a kill.
+// An entry lets through only that site's directory left in the bare system temp directory after a kill.
 var allowedBareTemp = []scankit.Entry{}
 
 // lymtempDir is the temp package's own directory, whose files create the run directories and so call the bare forms.
@@ -60,7 +63,9 @@ func isBareTempDirArg(expr ast.Expr, osName string) bool {
 	return false
 }
 
-// bareTempFailures walks the Go files under opts and returns one failure line per osName.MkdirTemp or osName.CreateTemp call whose directory argument is the bare system temp directory, with the number of files scanned.
+// bareTempFailures walks the Go files under opts and returns the failure lines and the number of files scanned.
+// A failure is an osName.MkdirTemp or osName.CreateTemp call that the allowlist does not admit:
+// its directory argument is the bare system temp directory.
 func bareTempFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, scanned int) {
 	t.Helper()
 	opts.Filter = scankit.All
@@ -98,7 +103,8 @@ func bareTempFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowli
 	return failures, scanned
 }
 
-// TestBareTemp_NoCreationInTheBareSystemTempDirectory fails for every os.MkdirTemp or os.CreateTemp call outside internal/lymtemp whose directory is "" or os.TempDir(), unless allowlisted.
+// TestBareTemp_NoCreationInTheBareSystemTempDirectory fails on every temp creation outside internal/lymtemp.
+// A creation is bare when its directory is "" or os.TempDir(); the allowlist admits the exceptions.
 //
 //lym:guard
 func TestBareTemp_NoCreationInTheBareSystemTempDirectory(t *testing.T) {

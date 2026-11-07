@@ -1,10 +1,14 @@
-<!-- This is the sampler agent's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/sampler/`
-     and read from there at call time through internal/stencilstore, which samplerengine's SessionSpec fills and hands to shuttle as the interactive session's first prompt.
-     Every marker below is a top-level {{.X}} substitution and stencil.FillOptional requires every marker but pattern_directive non-empty:
-     slug, task_worktree, decision_record_path,
-     parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective).
-     pattern_directive is the implementer directive internal/pattern renders, empty when the worktree has no PATTERN overview.
+<!-- This is the sampler agent's entire instruction set.
+     It ships as an embedded default in contracts/stencils/stencils.go and is seeded to the hub's stencils directory.
+     It is read from there at call time through internal/stencilstore.
+     samplerengine's SessionSpec fills it and hands it to shuttle as the interactive session's first prompt.
+     Every marker below is a top-level {{.X}} substitution.
+     stencil.FillOptional requires every marker but pattern_directive to be non-empty:
+     slug, task_worktree and decision_record_path;
+     parent_directive, rendered by internal/parentdirective;
+     and edit_directive, rendered unconditionally by internal/editdirective.
+     pattern_directive is the implementer directive internal/pattern renders.
+     It is empty when the worktree has no PATTERN overview.
      The prompt carries paths only, never file content, bar the PATTERN overview inside pattern_directive.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 

@@ -45,7 +45,7 @@ func (r *Repo) RefSHA(ref string) (string, error) {
 	})
 }
 
-// HeadRef reads HEAD.
+// HeadRef reports the branch that HEAD names and whether HEAD is detached.
 // A symbolic HEAD answers its short branch name with detached false, whether or not the branch has a commit yet.
 // A HEAD holding a hash answers ("", true, nil).
 func (r *Repo) HeadRef() (branch string, detached bool, err error) {
@@ -82,7 +82,8 @@ func (r *Repo) RefTree(ref string) (string, error) {
 	})
 }
 
-// Upstream returns the hash of the remote-tracking ref branch is configured to track, from `branch.<name>.remote` and `branch.<name>.merge`.
+// Upstream returns the hash of the remote-tracking ref that branch is configured to track.
+// The ref is named by `branch.<name>.remote` and `branch.<name>.merge`.
 // ok is false when either key is unset or the remote-tracking ref does not exist.
 func (r *Repo) Upstream(branch string) (sha string, ok bool, err error) {
 	type upstreamRead struct {
@@ -113,8 +114,9 @@ func (r *Repo) Upstream(branch string) (sha string, ok bool, err error) {
 	return read.sha, read.ok, err
 }
 
-// BranchNames lists the short names of the branches held under refs/heads when remote is empty, and of the remote-tracking branches of remote otherwise, sorted.
-// A remote-tracking name omits the remote, and the symbolic HEAD ref a clone leaves under the remote is skipped.
+// BranchNames lists, sorted, the short names of the branches under refs/heads when remote is empty.
+// Otherwise it lists the remote-tracking branches of remote, without the remote in each name.
+// The symbolic HEAD ref a clone leaves under the remote is skipped.
 func (r *Repo) BranchNames(remote string) ([]string, error) {
 	prefix := "refs/heads/"
 	if remote != "" {

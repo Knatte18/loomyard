@@ -1,5 +1,6 @@
-// multillm.go implements MultiLLMProducer, the shedadapters adapter that wraps one table of seats, a chair and its advisors, behind the shedengine.ShedProducer seam.
-// The chair's result decides the step as one shuttle run's does, unless a writer seat ended the step first, which writerExit maps instead.
+// multillm.go implements MultiLLMProducer, the adapter over one seat table of a chair and its advisors.
+// The chair's result decides the step as one shuttle run's does, unless a writer seat ended the step first;
+// writerExit maps the writer seat's ending instead.
 
 package shedadapters
 
@@ -15,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// multiLLMEngineLabel is the short engine label MultiLLMProducer's log lines and error text carry.
+// multiLLMEngineLabel is the short engine label that the producer's log lines and error text carry.
 const multiLLMEngineLabel = "seats"
 
-// SeatRunner is the handle-shaped seam MultiLLMProducer drives one table of seats through:
-// Probe reports which seats of a previous session are still live, Resume completes a table whose chair is live, and Run starts the table fresh.
-// It is handle-shaped, not result-shaped, because the engine behind it holds several live runs at once and sends into the chair's while it waits.
+// SeatRunner is the seam through which a producer drives one table of seats.
+// Probe reports which seats of a previous session are still live.
+// Resume completes a table whose chair is live, and Run starts the table fresh.
+// It is handle-shaped, not result-shaped:
+// the engine behind it holds several live runs at once and sends into the chair's while it waits.
 type SeatRunner interface {
 	Probe(table seatengine.Table) (seatengine.LiveTable, error)
 	Resume(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error)
@@ -30,9 +33,12 @@ type SeatRunner interface {
 // Compile-time proof that *seatengine.Engine satisfies SeatRunner.
 var _ SeatRunner = (*seatengine.Engine)(nil)
 
-// MultiLLMProducer is the shedadapters adapter over one seatengine table:
-// it probes for a live chair, resumes it or archives every seat's stale outputs and runs the table fresh, and maps the chair's result onto the shedengine.ShedProducer contract.
-// An advisor's result is logged only, since an advisor's death weakens nothing the chair decided; a writer that ended the step decides it instead.
+// MultiLLMProducer is the shedadapters adapter over one seatengine table.
+// Each Call probes the table for a live chair.
+// It resumes a live chair, or else archives every seat's stale outputs and runs the table fresh,
+// and it maps the chair's result onto the shedengine.ShedProducer contract.
+// An advisor's result is logged only, since an advisor's death weakens nothing the chair decided;
+// a writer that ended the step decides it instead.
 type MultiLLMProducer struct {
 	name  string
 	table seatengine.Table
@@ -40,7 +46,8 @@ type MultiLLMProducer struct {
 	tables TableSource
 	seats  SeatRunner
 	now    func() time.Time
-	// prepareFreshSpawn, when non-nil, runs on the fresh path after the probe and before the archive, and returns the prompt amendment the lead's fresh prompt ends with.
+	// prepareFreshSpawn, when non-nil, runs on the fresh path after the probe and before the archive.
+	// It returns the prompt amendment the lead's fresh prompt ends with.
 	prepareFreshSpawn func() (string, error)
 	// gateFindingsPath, when non-empty, is the file an exhausted chair gate's findings are kept in.
 	gateFindingsPath string
@@ -48,7 +55,7 @@ type MultiLLMProducer struct {
 
 var _ shedengine.ShedProducer = (*MultiLLMProducer)(nil)
 
-// TableSource builds the seatengine.Table for one MultiLLMProducer call, evaluated once per Call.
+// TableSource builds the seatengine.Table for one producer call, evaluated once per call.
 // It is a function so the table's stencils and directives are read at call time, never captured at construction.
 type TableSource func() (seatengine.Table, error)
 
@@ -62,8 +69,11 @@ func NewMultiLLMProducer(name string, table seatengine.Table, seats SeatRunner, 
 	return &MultiLLMProducer{name: name, table: table, seats: seats, now: now}
 }
 
-// NewMultiLLMProducerSourced returns a MultiLLMProducer identified as name that builds its table from tables on every call and runs it through seats.
-// A non-nil prepareFreshSpawn runs on the fresh path only, after the probe found no live chair and before the stale outputs are archived; its error fails the call with nothing archived and no seat started.
+// NewMultiLLMProducerSourced returns a MultiLLMProducer identified as name.
+// It builds its table from tables on every call and runs it through seats.
+// A non-nil prepareFreshSpawn runs on the fresh path only.
+// It runs after the probe finds no live chair and before the stale outputs are archived.
+// Its error fails the call with nothing archived and no seat started.
 // The text it returns becomes the table's Amendment, which the seat engine appends to the lead's prompt.
 // A nil now defaults to time.Now.
 func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunner, now func() time.Time, prepareFreshSpawn func() (string, error)) *MultiLLMProducer {
@@ -73,7 +83,7 @@ func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunne
 	return &MultiLLMProducer{name: name, tables: tables, seats: seats, now: now, prepareFreshSpawn: prepareFreshSpawn}
 }
 
-// KeepGateFindings tells the producer the file path an exhausted chair gate's findings are written to and its Stuck reason names.
+// KeepGateFindings sets the file an exhausted chair gate's findings are kept in, which the Stuck reason names.
 // It returns the producer so a constructor call can chain it.
 // A call whose chair gate passed removes the file; an empty path keeps no findings file.
 func (p *MultiLLMProducer) KeepGateFindings(path string) *MultiLLMProducer {
@@ -81,10 +91,15 @@ func (p *MultiLLMProducer) KeepGateFindings(path string) *MultiLLMProducer {
 	return p
 }
 
-// Call runs one MultiLLMProducer iteration: entry-check the context, probe the table's seats, and either resume a live chair and map its result, or prepare a fresh spawn, archive every seat's stale outputs, run the table fresh and map the chair's result.
+// Call runs one MultiLLMProducer iteration.
+// It entry-checks the context and probes the table's seats.
+// If a chair is live, it resumes the chair and maps its result.
+// Otherwise it prepares a fresh spawn;
+// it archives every seat's stale outputs, runs the table fresh, and maps the chair's result.
 // The table is the source's answer, evaluated once before the probe, or the constructed table when there is no source.
 // The probe runs before anything is archived, because archiving renames files a live seat may be about to write.
-// A probe that finds the chair not live has already stopped every live advisor, so the preparation and the archive never run beside a live seat.
+// A probe that finds the chair not live has already stopped every live advisor;
+// the preparation and the archive therefore never run beside a live seat.
 func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, multiLLMEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -129,8 +144,10 @@ func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	return p.mapOutcome(ctx, result)
 }
 
-// errorExit returns the context error when ctx is cancelled, else err wrapped with the producer's name, the engine label and what failed.
-// An error wrapping seatengine.ErrSeatNotStopped keeps its way forward, since a seat that may still be live may be writing the step's files.
+// errorExit returns the context error when ctx is cancelled;
+// otherwise it returns err wrapped with the producer's name, the engine label and what failed.
+// An error wrapping seatengine.ErrSeatNotStopped is returned over a cancellation;
+// the seat may still be live and writing the step's files.
 func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, p.name, multiLLMEngineLabel); cerr != nil && !errors.Is(err, seatengine.ErrSeatNotStopped) {
 		return "", shedengine.OutputPointer{}, cerr
@@ -139,10 +156,12 @@ func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error
 }
 
 // mapOutcome maps a table's result onto shedengine's contract, shared by the resume path and the fresh path.
-// A writer seat that ended the step decides it, the first such seat in table order through writerExit, whatever the chair's outcome.
+// The first writer seat in table order that ended the step decides it through writerExit, whatever the chair's outcome.
 // Otherwise the chair's result decides:
-// done maps to Done with the chair's first output as the pointer, unless its gate failed, which maps to Stuck with the pointer and the gate's attempts and reason;
-// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started and carrying the chair's start error text when shuttle reported one;
+// done maps to Done with the chair's first output as the pointer;
+// when its gate failed, it maps to Stuck with the pointer and the gate's attempts and reason;
+// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started;
+// it carries the chair's start error text when shuttle reported one;
 // a chair that started and died wraps shuttleengine.ErrAgentDied.
 // A genuine success survives cancellation, the one exception cancelErr never applies to.
 func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -202,9 +221,13 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 // writerResumeWayForward is the way forward every writer exit ends with.
 const writerResumeWayForward = "way forward: re-run the row with lym loom resume, which starts every part over unless the chair is still live"
 
-// writerExit maps a writer seat that ended the step onto the producer contract, with the seat's name as both the seat and its part.
-// A start failure wraps shuttleengine.ErrNotStarted, and a died run or a wait error wraps shuttleengine.ErrAgentDied naming the writer.
-// A timeout, a failed gate, an Accept error and a writer lost at resume with its outputs missing are Stuck with the seat's first output as the pointer, so the part's files are committed, and a reason naming the seat and its part.
+// writerExit maps a writer seat that ended the step onto the producer contract.
+// The seat's name is also the name of its part.
+// A start failure wraps shuttleengine.ErrNotStarted.
+// A died run or a wait error wraps shuttleengine.ErrAgentDied and names the writer.
+// A timeout, a failed gate, an Accept error, and a writer lost at resume with its outputs missing are Stuck.
+// The pointer is the seat's first output, so the part's files are committed.
+// The reason names the seat and its part.
 // Any other end is an error naming the writer and its outcome.
 // A cancelled context returns the context error first: no writer end is a success.
 func (p *MultiLLMProducer) writerExit(ctx context.Context, seat seatengine.SeatResult) (shedengine.Outcome, shedengine.OutputPointer, error) {

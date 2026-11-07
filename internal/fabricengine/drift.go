@@ -1,7 +1,7 @@
-// drift.go implements Healthy, the stateless pair-in-sync check for fabric topology: branch
-// correspondence between a warp worktree and its weft sibling, plus every wired junction's health.
-// Healthy and Clean (warpclean.go) are wired into loom's preflight via internal/preflight,
-// consumed by internal/preflightshed.
+// drift.go implements Healthy, the stateless check that a warp worktree and its weft sibling are in sync.
+// It checks branch correspondence and the health of every wired junction.
+// Healthy and Clean (warpclean.go) are wired into loom's preflight via internal/preflight.
+// internal/preflightshed consumes them.
 
 package fabricengine
 
@@ -14,11 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// HealthCause names the specific condition a failed Healthy check found, letting a caller like
-// preflight.CheckResolved classify the failure without parsing a display string.
+// HealthCause names the condition that made a health check fail,
+// so a caller can classify the failure without parsing a display string.
 type HealthCause string
 
-// The closed set of causes Healthy can report, one per drift shape drift.go detects.
+// The closed set of causes a failed health check can report, one per drift shape.
 const (
 	// CauseBranchMismatch reports that the weft worktree is not on the paired weft branch.
 	CauseBranchMismatch HealthCause = "branch-mismatch"
@@ -32,30 +32,26 @@ const (
 	CauseJunctionPointsElsewhere HealthCause = "junction-points-elsewhere"
 )
 
-// HealthReason is the typed verdict Healthy returns for a failed check: Cause is the drift shape a
-// caller switches on, and Detail is an already-fabric-worded display string a caller may print
-// verbatim.
-// The zero HealthReason (Cause == "") is what Healthy returns alongside ok == true;
-// a caller that checks ok first never reads it.
+// HealthReason describes why a health check failed.
+// Cause is the drift shape a caller switches on.
+// Detail is a display string, worded for fabric, that a caller may print verbatim.
+// The zero value carries no reason, as it does for a passing check or an error.
 type HealthReason struct {
 	Cause  HealthCause
 	Detail string
 }
 
-// Healthy reports whether the warp worktree and its paired weft worktree are in sync: the weft
-// worktree is on the paired weft branch and every warp junction exists and points to its correct
-// weft directory.
-// The weft sibling is determined deterministically and no external state is consulted, so Healthy
-// is stateless.
-// Returns (true, HealthReason{}, nil) if in sync;
-// (false, reason, nil) if out of sync;
-// (false, HealthReason{}, err) if a system error occurs.
+// Healthy reports whether the warp worktree and its paired weft worktree are in sync.
+// The weft worktree must be on the paired weft branch,
+// and every warp junction must exist and point to its correct weft directory.
+// The check keeps no state between calls: each call reads the branches, the wired names, and the junctions afresh.
+// It returns (true, HealthReason{}, nil) when they are in sync.
+// It returns (false, reason, nil) when they are out of sync.
+// It returns (false, HealthReason{}, err) when a system error occurs.
 func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
-	// Both branch reads go through readBranch (reconcile.go) rather than a bare
-	// rev-parse --abbrev-ref HEAD, so an UNBORN branch — the weft primary's ordinary state
-	// immediately after a clone against an empty remote — is answered rather than reported as an
-	// aborted check. loom's preflight consumes this verdict, and a just-cloned hub must not make it
-	// hard-error.
+	// Both branch reads go through readBranch, not a bare `rev-parse --abbrev-ref HEAD`.
+	// readBranch answers an unborn branch, the state of the weft primary just after a clone of an empty remote.
+	// loom's preflight consumes this verdict, and a just-cloned hub must not make it hard-error.
 	warpBranch, err := readBranch(l.WorktreePath())
 	if err != nil {
 		return false, HealthReason{}, fmt.Errorf("get warp branch: %w", err)
@@ -67,8 +63,8 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 		return false, HealthReason{}, fmt.Errorf("get weft branch: %w", err)
 	}
 
-	// Check branch correspondence: the weft branch must be the suffixed sibling of the
-	// warp branch, not merely an equal name (fabric's uniform <warp>/<warp>-weft scheme).
+	// The weft branch must be the suffixed sibling of the warp branch, not merely an equal name.
+	// The uniform fabric scheme is `<warp>/<warp>-weft`.
 	expectedWeftBranch := RecordsBranchName(warpBranch)
 	if weftBranch != expectedWeftBranch {
 		return false, HealthReason{
@@ -77,12 +73,10 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 		}, nil
 	}
 
-	// Load the wired name-set from the repo-wide BoardDir base — durable and
-	// independent of the warp junction whose health this function checks, and
-	// the same repo-wide base checkJunctionHealth in reconcile.go uses. A load
-	// failure is reported as a determinable "unhealthy: bad config" verdict
-	// via CauseConfigLoadFailed, not a hard Go error — the caller keeps
-	// treating it as a check failure rather than an aborted preflight.
+	// The wired name-set loads from the repo-wide BoardDir base.
+	// That base is durable and independent of the warp junctions checked below.
+	// A load failure becomes a verdict with CauseConfigLoadFailed, not a Go error,
+	// so the caller treats it as a failed check rather than an aborted preflight.
 	names, err := RepoWiredNames(l)
 	if err != nil {
 		return false, HealthReason{
@@ -91,15 +85,12 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 		}, nil
 	}
 
-	// Verify every warp junction is valid and points to its correct weft
-	// target — WarpJunctionsHere(l, names), the same Here-anchored, slug-free
-	// accessor checkJunctionHealth loops in reconcile.go.
+	// Verify every warp junction is valid and points to its correct weft target.
+	// WarpJunctionsHere(l, names) lists them, through the Here-anchored, slug-free accessor.
 	for _, j := range WarpJunctionsHere(l, names) {
-		// Distinguish a missing junction entry from an existing one that is not
-		// a link: fslink.IsLink reports (false, nil) for both shapes, and the
-		// loom preflight consumes these typed reasons — a real directory
-		// sitting where the junction belongs must not masquerade as merely
-		// missing.
+		// Distinguish a missing junction entry from one that is not a link.
+		// fslink.IsLink reports (false, nil) for both shapes, and the loom preflight consumes these typed reasons,
+		// so a real directory where the junction belongs must not look merely missing.
 		if _, lstatErr := os.Lstat(j.Link); lstatErr != nil {
 			if os.IsNotExist(lstatErr) {
 				return false, HealthReason{
@@ -114,21 +105,18 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 			return false, HealthReason{}, fmt.Errorf("check warp junction: %w", err)
 		}
 		if !isLink {
-			// Same wording as checkJunctionHealth for this drift shape, so
-			// status/reconcile and Healthy describe it identically.
+			// The status and reconcile paths word this drift shape the same way, so they describe it identically.
 			return false, HealthReason{
 				Cause:  CauseNotAJunction,
 				Detail: fmt.Sprintf("%s is not a junction", j.Name),
 			}, nil
 		}
 
-		// Resolve the junction and verify it points to the correct target.
 		linkTarget, err := fslink.PointsTo(j.Link)
 		if err != nil {
 			return false, HealthReason{}, fmt.Errorf("resolve warp junction: %w", err)
 		}
 
-		// Resolve weft target for comparison.
 		weftTargetResolved, err := filepath.EvalSymlinks(j.Target)
 		if err != nil {
 			return false, HealthReason{}, fmt.Errorf("resolve weft target: %w", err)

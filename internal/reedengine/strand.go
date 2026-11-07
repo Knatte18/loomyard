@@ -1,10 +1,8 @@
-// strand.go implements the three strand-mutation engine ops — AddStrand/UpdateStrand/RemoveStrand —
-// plus the pure decision helpers each composes: parent existence/cycle validation, display-name
-// resolution, the hidden<->visible transition rules, and the recursive-removal cascade.
-// Each exported op acquires the op lock once, delegates to an unexported *Locked mutation helper,
-// then runs the shared reconcile-apply-persist tail (spawn.go's reconcileApplyPersistLocked) —
-// composing reconcile (card 17) and apply (card 18) exactly once per op, per the batch's
-// single-layer-lock decision.
+// strand.go implements the strand-mutation engine ops AddStrand, UpdateStrand and RemoveStrand.
+// It also holds the pure helpers they compose:
+// parent validation, display-name resolution, hidden/visible transitions, and the recursive-removal cascade.
+// Each exported op acquires the op lock once and calls an unexported *Locked mutation helper.
+// It then runs the shared tail, reconcileApplyPersistLocked in spawn.go, so reconcile and apply run once per op.
 
 package reedengine
 
@@ -18,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// ErrUnknownStrand is the sentinel an unknown-guid refusal wraps, so a caller can tell a strand that is already gone from a failure.
+// ErrUnknownStrand is the sentinel wrapped by a refusal for a guid that names no strand.
+// A caller uses errors.Is to tell a strand that is already gone from other failures.
 var ErrUnknownStrand = errors.New("unknown strand")
 
 // AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
@@ -31,16 +30,15 @@ type AddSpec struct {
 	NameOverride   string
 	Parent         string
 	Cmd, ResumeCmd string
-	// SessionID is opaque caller metadata reed never reads — mirroring
-	// Strand.SessionID in state.go, it is stamped verbatim into the
-	// appended Strand and never interpreted or branched on by reed.
+	// SessionID is opaque caller metadata that reed never reads.
+	// It is stamped verbatim onto the appended Strand, and reed never interprets or branches on it.
 	SessionID string
 	Display   render.Display
-	// IfAbsent is opt-in: false (the default) makes AddStrand behave byte-for-byte as it does
-	// today. When true, AddStrand matches NameOverride against this worktree's persisted strands
-	// (via classifyIfAbsent) before adding anything, requires NameOverride be non-empty (see
-	// validateIfAbsent), and either no-ops on a matched strand, relaunches a matched-but-dead one,
-	// or falls through to an ordinary add when nothing matches.
+	// IfAbsent is opt-in: false (the default) adds the strand unconditionally.
+	// When true, AddStrand first matches NameOverride against this worktree's persisted strands.
+	// A matched strand is a no-op, unless it is dead, in which case it is relaunched.
+	// When nothing matches, the strand is added as usual.
+	// NameOverride must be non-empty when IfAbsent is set.
 	IfAbsent bool
 	// DoneWhen is copied verbatim onto the new strand's DoneWhen.
 	DoneWhen []string
@@ -52,16 +50,14 @@ type AddSpec struct {
 	CreelHooks bool
 }
 
-// Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
-// subtree.
+// Removed reports every strand a removal deleted: the target plus its whole descendant subtree.
 type Removed struct {
 	Strands []struct{ GUID, Name string }
-	// ConfigWarning names the invalid window config key a removal skipped the shared-window layout for, empty normally.
+	// ConfigWarning names the invalid window config key that skipped the shared-window layout; empty when none.
 	ConfigWarning string
 }
 
-// validateDisplay rejects an invalid Display at the op boundary,
-// before any pane is launched or state persisted.
+// validateDisplay rejects an invalid Display at the op boundary, before any pane is launched or state persisted.
 // The anchor must be hidden, own-window or overview, and render must accept the whole display.
 // The retired below-parent and top anchors are refused with the way forward.
 // An overview display takes no window group, since it always gets the window of its own.
@@ -81,8 +77,10 @@ func validateDisplay(display render.Display) error {
 	}
 }
 
-// refuseWindowMove refuses an update that moves a strand into or out of the own-window or overview anchor, between those two, changes an overview strand's order, or changes an own-window strand's window group.
-// A strand's pane lives in a window of its own from launch on, so such a move would strand the pane where the new display does not expect it.
+// refuseWindowMove refuses an update that moves a strand into, out of, or between the own-window and overview anchors.
+// It also refuses an update that changes an overview strand's order or an own-window strand's window group.
+// A strand's pane lives in a window of its own from launch on.
+// Such a move would strand the pane where the new display does not expect it.
 // The error names the way forward: remove the strand and add it again.
 func refuseWindowMove(name string, current, next render.Display) error {
 	if isOwnWindow(current) != isOwnWindow(next) || isOverview(current) != isOverview(next) {
@@ -97,11 +95,11 @@ func refuseWindowMove(name string, current, next render.Display) error {
 	return nil
 }
 
-// validateIfAbsent rejects spec at the op boundary, before any state is loaded, when IfAbsent is set
-// without NameOverride.
+// validateIfAbsent rejects spec when IfAbsent is set without NameOverride.
+// It runs at the op boundary, before any state is loaded.
 //
-// --if-absent requires --name because an auto-numbered role never matches the strand it would duplicate:
-// the number moves past the existing strand, so --if-absent would stack a duplicate strand on every reopen instead of ever finding one to match.
+// The name is required because an auto-numbered role never matches the strand it would duplicate:
+// the number moves past the existing strand, so each reopen would add a duplicate instead of finding one to match.
 func validateIfAbsent(spec AddSpec) error {
 	if spec.IfAbsent && spec.NameOverride == "" {
 		return fmt.Errorf("--if-absent requires --name")
@@ -127,8 +125,7 @@ func strandByGUID(strands []Strand, guid string) (Strand, bool) {
 	return Strand{}, false
 }
 
-// wouldFormCycle reports whether linking guid as a child of parent would
-// create a cycle.
+// wouldFormCycle reports whether making guid a child of parent would create a cycle.
 func wouldFormCycle(strands []Strand, guid, parent string) bool {
 	byGUID := make(map[string]Strand, len(strands))
 	for _, s := range strands {
@@ -182,13 +179,15 @@ func descendantSubtree(strands []Strand, guid string) []string {
 	return out
 }
 
-// defaultRole is the role a spec naming neither Role nor NameOverride takes, so an operator's `lym reed add --cmd …` keeps working.
+// defaultRole is the role a spec takes when it names neither Role nor NameOverride.
+// It lets a bare `lym reed add --cmd …` run without naming a role.
 const defaultRole = "strand"
 
-// validateNaming refuses, before any tmux command, an add or replace whose name no geometry-told prefix can form,
-// and returns the full name NameOverride resolves to ("" when it is empty).
-// An empty shortname is a hub that has none;
-// a told shortname or slug failing its grammar is a wiring guard.
+// validateNaming refuses an add or replace whose name cannot be formed from the hub's shortname and slug.
+// It returns the full name NameOverride resolves to, or the empty string when NameOverride is empty.
+// It runs before any tmux command.
+// A hub with no recorded shortname refuses every name.
+// A shortname or slug that fails its grammar is a wiring guard.
 func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
 	if shortname == "" {
@@ -213,8 +212,9 @@ func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	return n.String(), nil
 }
 
-// strandNameLocked forms the full name of the strand spec describes against st's strands:
-// an explicit NameOverride as given, else Role (default defaultRole) numbered past every role segment in state, live or dormant.
+// strandNameLocked forms the full name of the strand spec describes against st's strands.
+// An explicit NameOverride is used as given;
+// otherwise Role, defaulting to defaultRole, is numbered past every role segment in state, live or dormant.
 // The geometry's shortname and slug were validated by validateNaming.
 func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
@@ -246,10 +246,14 @@ func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 	return agentname.Format(shortname, slug, agentname.NumberRole(role, held))
 }
 
-// reclaimDeadNameLocked removes the strand holding the exact name spec asks for when its engine is dead, so the add forms that name instead of a numbered one or a refusal.
-// The asked-for name is explicitName when spec sets NameOverride, else the un-numbered role name; a numbered form is never reclaimed.
-// The holder keeps the name, with nothing changed, when it is hidden, when the pair is paused, when it has children, or when its engine reads live, a launch grace included.
-// Otherwise it is removed as the ordinary removal does, its pane killed only when this session lists it, and the removal reaches the state file with the add's own save.
+// reclaimDeadNameLocked removes the strand holding the name spec asks for when its engine is dead.
+// This lets the add take that name instead of a numbered one or a refusal.
+// The asked-for name is explicitName when spec sets NameOverride, else the un-numbered role name;
+// a numbered form is never reclaimed.
+// The holder keeps the name, unchanged, when it is hidden, when the pair is paused, or when it has children.
+// It also keeps the name when its engine reads live, a launch grace included.
+// Otherwise it is removed as the ordinary removal does, its pane killed only when this session lists it,
+// and the removal reaches the state file with the add's own save.
 // A failed pane listing is returned, since the add lists panes again to launch and would fail the same way.
 func (e *Engine) reclaimDeadNameLocked(st *ReedState, spec AddSpec, explicitName string) error {
 	name := explicitName
@@ -288,44 +292,40 @@ func (e *Engine) reclaimDeadNameLocked(st *ReedState, spec AddSpec, explicitName
 	return nil
 }
 
-// ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a
-// given name against the persisted strand table.
+// ifAbsentDecision is the closed set of outcomes the --if-absent path takes for a name against the persisted strands.
 type ifAbsentDecision int
 
 const (
-	// ifAbsentAdd means no strand named name exists: AddStrand falls through to its ordinary add path.
+	// ifAbsentAdd means no strand carries the name: the caller falls through to its ordinary add path.
 	ifAbsentAdd ifAbsentDecision = iota
-	// ifAbsentNoOpAlive means a matched, visible candidate is alive: AddStrand returns it unchanged.
+	// ifAbsentNoOpAlive means a matched, visible candidate is alive: the caller returns it unchanged.
 	ifAbsentNoOpAlive
-	// ifAbsentRelaunch means a matched, visible candidate exists but none is alive: AddStrand relaunches
-	// the first one in persisted order.
+	// ifAbsentRelaunch means a matched, visible candidate exists but none is alive:
+	// the caller relaunches the first one in persisted order.
 	ifAbsentRelaunch
-	// ifAbsentNoOpHidden means every matched strand is hidden (anchor:hidden): AddStrand returns the
-	// first matched strand unchanged.
+	// ifAbsentNoOpHidden means every matched strand is hidden (anchor:hidden):
+	// the caller returns the first matched strand unchanged.
 	ifAbsentNoOpHidden
 )
 
-// classifyIfAbsent decides which of the four --if-absent branch rows AddStrand must take for name
-// against strands, given aliveIDs.
+// classifyIfAbsent decides which branch the --if-absent path takes for name against strands, given aliveIDs.
 //
-// aliveIDs must be the engine judgment engineAliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
-// when s.PaneID != "" && aliveIDs[s.PaneID] — both halves, copying planResumeLaunches in
-// lifecycle.go, whose own comment records why the empty-PaneID half carries its weight after a server
-// reboot clears every binding.
-// liveIDSet would instead read a dead-but-present pane, or a shell-only pane whose engine exited, as live,
-// so the case most worth recovering (a strand whose engine died) would be exactly the one --if-absent refused to fix.
+// aliveIDs maps pane IDs to engine liveness, not pane presence: a dead-but-present pane,
+// or a shell-only pane whose engine exited, must read as not alive.
+// A candidate is alive only when it has a pane ID and aliveIDs reports that ID alive;
+// the pane-ID check matters because a server reboot clears every binding and leaves strands with no pane ID.
 //
-// It returns the decision and the index into strands the decision names; the index is -1 only for
-// ifAbsentAdd, since that row names no existing strand at all.
+// It returns the decision and the index into strands that the decision names.
+// The index is -1 only for ifAbsentAdd, which names no existing strand.
 //
-// Two sets drive the four rows: matched is every strand whose Name equals name, hidden ones included;
-// candidates is matched minus every strand whose Display.Anchor equals render.AnchorHidden, in
-// persisted (slice) order. matched empty returns ifAbsentAdd with -1. candidates holding at least one
-// alive strand returns ifAbsentNoOpAlive with the index of the first alive candidate in persisted
-// order. candidates non-empty with none alive returns ifAbsentRelaunch with the index of the first
-// candidate in persisted order. matched non-empty with candidates empty returns ifAbsentNoOpHidden
-// with the index of the first matched strand in persisted order. The four rows are mutually exclusive
-// and exhaustive.
+// matched is every strand whose Name equals name, hidden ones included.
+// candidates is matched without the hidden strands, in persisted order.
+// No matched strand gives ifAbsentAdd.
+// Matched strands that are all hidden give ifAbsentNoOpHidden, with the first matched strand.
+// An alive candidate gives ifAbsentNoOpAlive, with the first alive candidate in persisted order.
+// Otherwise the result is ifAbsentRelaunch, with the first candidate.
+//
+// The four decisions are mutually exclusive and exhaustive.
 func classifyIfAbsent(strands []Strand, name string, aliveIDs map[string]bool) (ifAbsentDecision, int) {
 	var matched []int
 	for i, s := range strands {
@@ -366,20 +366,19 @@ func strandNamed(strands []Strand, name string) int {
 	return -1
 }
 
-// needsLaunchOnAdd reports whether AddStrand must realize display into a
-// live pane: every anchor except hidden.
+// needsLaunchOnAdd reports whether a strand added with display must be realized into a live pane:
+// every anchor except hidden.
 func needsLaunchOnAdd(display render.Display) bool {
 	return display.Anchor != render.AnchorHidden
 }
 
-// needsLaunchOnSurface reports whether an UpdateStrand call is a
-// hidden->visible surface that must realize a pane.
+// needsLaunchOnSurface reports whether a hidden strand that becomes visible under display must realize a pane.
 func needsLaunchOnSurface(wasHidden bool, display render.Display) bool {
 	return wasHidden && display.Anchor != render.AnchorHidden
 }
 
-// addStrandLocked builds and registers a new Strand from spec, validating
-// the parent chain and realizing non-hidden strands into a live pane.
+// addStrandLocked builds and registers a new Strand from spec.
+// It validates the parent chain and realizes each non-hidden strand into a live pane.
 func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 	if err := validateDisplay(spec.Display); err != nil {
 		return Strand{}, err
@@ -431,8 +430,8 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 	return *strand, nil
 }
 
-// updateStrandLocked mutates guid's Display, rejecting visible->hidden
-// transitions and realizing hidden->visible ones into a pane.
+// updateStrandLocked mutates guid's Display.
+// It rejects a visible-to-hidden transition and realizes a hidden-to-visible one into a pane.
 func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.Display) (Strand, error) {
 	if err := validateDisplay(display); err != nil {
 		return Strand{}, err
@@ -464,9 +463,9 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 	return *strand, nil
 }
 
-// removeStrandLocked removes guid, rejecting non-leaf strands without
-// recursive, and cascading descendants. It returns pane ids of every
-// removed strand that held a live binding.
+// removeStrandLocked removes guid, and with recursive set its descendants too.
+// Without recursive it rejects a strand that has children.
+// It returns the pane IDs of every removed strand that held a live binding.
 // It also deletes the launch script of every removed strand, so surviving strands keep theirs.
 func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
@@ -502,15 +501,9 @@ func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) 
 	return removed, paneIDs, nil
 }
 
-// removalEmptiedSession classifies whether a remove drained the session of
-// every strand that should still own a live pane, so a confirmed-gone
-// session is an expected terminal state rather than a failure. It returns
-// true iff sessionGone is true AND no strand in remaining is non-hidden —
-// mirroring anyPlacedStrand's "expected to own a live pane" filter
-// (apply.go: Anchor != render.AnchorHidden) so the two share one notion of
-// that concept rather than a second, driftable classification. An empty
-// remaining slice therefore returns true when sessionGone, since nothing is
-// left that should still own a pane.
+// removalEmptiedSession reports whether a removal left no visible strand in a session that is confirmed gone.
+// A visible strand is one whose anchor is not hidden, so it should own a live pane.
+// A confirmed-gone session with no visible strand left is an expected terminal state, not a failure.
 func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 	if !sessionGone {
 		return false
@@ -523,37 +516,40 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 	return true
 }
 
-// AddStrand registers a new strand from spec and, unless added anchor:hidden, realizes it into a
-// live pane and runs its cmd, then reconciles and re-applies the layout.
-// The engine, not the caller, stamps Worktree, generates GUID and forms the strand's full name (strandNameLocked, under the state lock, from the prefix the geometry tells it).
+// AddStrand registers a new strand from spec.
+// Unless the strand is added anchor:hidden, it realizes the strand into a live pane and runs its cmd.
+// It then reconciles and re-applies the layout.
+// The engine, not the caller, stamps Worktree and generates the GUID.
+// It forms the full name under the state lock, from the prefix the geometry gives it.
 //
-// AddStrand self-heals a cold worktree: rather than mirroring Status and failing with the friendly
-// no-session error, its pre-flight boots the session through ensureSessionLocked with up's own
-// semantics — a bare substrate, with no persisted strand relaunched — whenever there is nothing usable
-// to add into. The foreign-session refusal survives this change because ensureServerAndSessionLocked
-// consults refuseRecordedForeignSessionBeforeBootLocked ahead of anything that creates a session.
+// AddStrand self-heals a cold worktree.
+// When there is nothing usable to add into, its pre-flight boots a session with the semantics of `up`:
+// a bare substrate, with no persisted strand relaunched.
+// The boot path refuses a recorded foreign session before anything creates a session.
 //
-// One place up-semantics and --if-absent interact is worth recording: after a self-heal boot every
-// pane binding has just been cleared, so classifyIfAbsent reaches ifAbsentRelaunch rather than
-// ifAbsentNoOpAlive for a name that exists in the persisted table. That is the intended answer, not a
-// defect to fix.
+// After a self-heal boot every pane binding is cleared.
+// A --if-absent add of a persisted name therefore relaunches that strand rather than finding it alive.
+// That is the intended behavior.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	strand, _, err := e.AddStrandUnless(spec, "")
 	return strand, err
 }
 
-// AddStrandUnless is AddStrand that is skipped while a strand named unlessName exists in this worktree's state, live, dormant or hidden.
-// A non-empty unlessName resolves to a full name by the rule an explicit name follows, before the session pre-flight, so an unformable name refuses without booting a server.
-// On a match it returns that strand and true, having saved no state, reconciled nothing, launched nothing and moved no focus.
+// AddStrandUnless adds a strand unless this worktree's state holds a strand named unlessName.
+// The match counts live, dormant and hidden strands alike.
+// A non-empty unlessName resolves to a full name by the rule an explicit name follows, before the session pre-flight,
+// so an unformable name refuses without booting a server.
+// On a match it returns that strand and true.
+// It then saves no state, reconciles nothing, launches nothing and moves no focus.
 // A worktree whose state holds no such strand, a cold one included, gets the add and false.
-// An empty unlessName makes it exactly AddStrand.
+// An empty unlessName makes the call an unconditional add.
 func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool, error) {
 	var result Strand
 	var skipped bool
 	err := e.withRevivalFirst(e.withOpLock, func() error {
-		// The --if-absent name requirement is a pure config error, unrelated to session/state, so
-		// it must surface before the session pre-flight below — a rejected call must never deposit
-		// a spawned tmux server as residue over what is actually a missing --name.
+		// The --if-absent name requirement is a config error, unrelated to session or state,
+		// so it surfaces before the session pre-flight below.
+		// A rejected call must never leave a spawned tmux server behind as residue over what is actually a missing --name.
 		if err := validateIfAbsent(spec); err != nil {
 			return err
 		}
@@ -561,7 +557,7 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		if err := validateDisplay(spec.Display); err != nil {
 			return err
 		}
-		// Likewise a name no told prefix can form: refused before the pre-flight so it never boots a tmux server.
+		// Likewise a name the geometry's prefix cannot form is refused before the pre-flight, so it never boots a tmux server.
 		explicitName, err := e.validateNaming(spec)
 		if err != nil {
 			return err
@@ -582,8 +578,8 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			return err
 		}
 		if booted {
-			// Attributable in the log: a session appearing out of a bare `lym reed add` must name
-			// the verb that caused it, alongside this engine's socket and session name.
+			// The log entry must name the verb behind a session that appears out of a bare `lym reed add`.
+			// The entry also carries this engine's socket and session name.
 			logger.Info("reed: add self-healed a cold worktree's session", "socket", e.Socket(), "session", e.SessionName())
 		}
 
@@ -605,22 +601,19 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			if err != nil {
 				return fmt.Errorf("list panes: %w", err)
 			}
-			// engineAliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
+			// Only panes whose strand's engine still runs count as alive, so a pane left holding just a shell does not.
 			decision, idx := classifyIfAbsent(st.Strands, explicitName, e.engineAliveIDSet(presentPanes(st.Strands, live, windows)))
 			switch decision {
 			case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
-				// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and
-				// no rewrite of Cmd/ResumeCmd/Parent/Display from this invocation's flags — an
-				// add that silently rewrote a matched strand's recorded command would be an
-				// update verb wearing add's name (Shared Decision
-				// matched-branches-never-rewrite-persisted-spec).
+				// Neither no-op branch mutates anything: it saves no state, reconciles nothing,
+				// and it never rewrites Cmd, ResumeCmd, Parent or Display from this invocation's flags.
+				// An add that silently rewrote a matched strand's recorded command would be an update verb under the add name.
 				result = st.Strands[idx]
 				return nil
 			case ifAbsentRelaunch:
 				strand := &st.Strands[idx]
-				// The identical stored-ResumeCmd-else-Cmd fallback Resume applies in
-				// lifecycle.go, so a name-matched relaunch is identical to what "resume" would
-				// have done for the same strand.
+				// Launch with the stored ResumeCmd, falling back to Cmd: the same fallback a resume applies.
+				// A relaunch matched by name therefore does what resuming that strand does.
 				launchCmd := strand.ResumeCmd
 				if launchCmd == "" {
 					launchCmd = strand.Cmd
@@ -628,22 +621,15 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 				if err := e.launchStrandLocked(st, strand, launchCmd); err != nil {
 					return fmt.Errorf("launch strand: %w", err)
 				}
-				// Persist immediately after the launch succeeds and before the layout apply —
-				// the identical ordering this function's own ordinary add path and Resume both
-				// already use, for the identical reason: if apply then fails, the strand is
-				// already tracked with its new PaneID, so the next reconcile repairs the layout
-				// instead of treating the launched pane as an untracked orphan.
+				// Persist after the launch succeeds and before the layout apply.
+				// If apply then fails, the strand is already tracked with its new PaneID,
+				// so the next reconcile repairs the layout instead of treating the launched pane as an untracked orphan.
 				if err := SaveState(e.stateDir(), st); err != nil {
 					return fmt.Errorf("persist strand: %w", err)
 				}
-				// A deliberate, scoped exception, not an emerging inconsistency: the three
-				// sibling paths through launchStrandLocked (ordinary AddStrand below,
-				// UpdateStrand's hidden->visible surface, and each per-strand replay inside
-				// Resume) carry no equivalent per-strand Info log today, relying on the generic
-				// tmux Debug trace instead. The discussion for this task settled the question
-				// for this branch alone, per
-				// PATTERN-child-processes; widening or narrowing the sibling paths' logging is
-				// separate work and stays out of this plan.
+				// This branch alone logs at Info.
+				// The sibling paths through launchStrandLocked log no per-strand Info line.
+				// They rely on the generic tmux Debug trace instead.
 				logger.Info("reed: relaunched strand for --if-absent reopen",
 					"socket", e.Socket(), "session", e.SessionName(), "guid", strand.GUID, "name", strand.Name)
 				if _, err := e.reconcileApplyPersistLocked(st); err != nil {
@@ -664,11 +650,10 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			return err
 		}
 
-		// Persist immediately after the launch succeeds, before the layout
-		// apply. If apply then fails, the strand is already tracked (with its
-		// new PaneID), so the next reconcile repairs the layout — the launched
-		// pane never becomes an untracked orphan the next select-layout would
-		// silently reap.
+		// Persist after the launch succeeds and before the layout apply.
+		// If apply then fails, the strand is already tracked with its new PaneID,
+		// so the next reconcile repairs the layout.
+		// The launched pane thereby never becomes an untracked orphan that the next select-layout would silently reap.
 		if err := SaveState(e.stateDir(), st); err != nil {
 			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
 			return fmt.Errorf("persist strand: %w", err)
@@ -685,13 +670,12 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 }
 
 // UpdateStrand mutates guid's display settings, then reconciles and re-applies the layout.
-// It rejects a visible->hidden transition ("cannot hide a live strand in v1");
-// a hidden->visible transition surfaces the strand (creates its pane, runs its cmd).
-// Pre-flights the session's existence (like Status/RemoveStrand) so surfacing a hidden strand
-// before "up" fails with the friendly no-session error (see requireSessionLocked/noSessionMessage)
-// instead of a raw tmux error from inside launchStrandLocked. Unlike AddStrand, UpdateStrand keeps
-// requireSessionLocked and does not self-heal a cold worktree.
-// UpdateStrand is engine-API-only in v1 — there is no CLI verb for it.
+// It refuses a visible-to-hidden transition.
+// A hidden-to-visible transition surfaces the strand, which creates its pane and runs its cmd.
+// It checks the session first.
+// Surfacing a hidden strand before `up` fails with the no-session error, not a raw tmux error from the launch.
+// It does not self-heal a cold worktree.
+// UpdateStrand is reached through the engine API only; there is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -708,8 +692,8 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 			return err
 		}
 
-		// Persist immediately after a possible surface launch, before the
-		// layout apply, for the same orphan-avoidance reason as AddStrand.
+		// Persist after a possible surface launch and before the layout apply,
+		// so a launched pane is tracked even if the apply then fails.
 		if err := SaveState(e.stateDir(), st); err != nil {
 			return fmt.Errorf("persist strand: %w", err)
 		}
@@ -726,18 +710,18 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 
 // safeReapRoot reports whether p's #{pane_pid} may be used as a descendant-closure root by a
 // pane-destroying op.
-// Only a still-running pane qualifies: tmux keeps reporting a dead pane's recorded #{pane_pid} long
-// after that process exited (remain-on-exit is on for every reed session, so a corpse can sit in the
-// window for hours), and once the OS recycles that pid the closure walk would expand it into an
-// UNRELATED process's whole subtree — which the caller then waits on and finally SIGKILLs.
-// It is the single declaration of that rule so the two reap-root snapshots below cannot drift apart
-// again; they did, and Down was the one missing the filter (R2 review finding R2-F2).
+// Only a still-running pane qualifies.
+// tmux keeps reporting a dead pane's recorded #{pane_pid} long after that process exited:
+// remain-on-exit is on for every reed session, so a corpse can sit in its window for hours.
+// Once the OS recycles that pid, the closure walk expands it into an unrelated process's whole subtree.
+// The caller then waits on that subtree and finally SIGKILLs it.
+// It is the single declaration of that rule, so the snapshots that take reap roots share it.
 func safeReapRoot(p LivePane) bool {
 	return !p.Dead && p.PID > 0
 }
 
-// alivePanePIDs returns the safe reap roots (see safeReapRoot) among the panes named by paneIDs.
-// RemoveStrand uses this targeted form to snapshot only the doomed strands' panes.
+// alivePanePIDs returns the pids of the panes in paneIDs that are not dead and have a pid.
+// Panes of live that paneIDs does not name, and ids absent from live, contribute nothing.
 func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	wanted := make(map[string]bool, len(paneIDs))
 	for _, id := range paneIDs {
@@ -752,18 +736,12 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	return pids
 }
 
-// paneIDsInSession returns the subset of paneIDs that live actually contains — i.e. the ones that
-// are panes of the session live was enumerated from.
+// paneIDsInSession returns the ids in paneIDs that are panes of the session live was enumerated from.
 //
-// It exists because a persisted pane id is NOT self-validating as a tmux target. The -L socket is
-// per hub and shared by every worktree in it, and tmux pane ids are server-global, so a pane id a
-// stale or copied reed.json carries is routinely a valid, addressable id belonging to a SIBLING
-// worktree's live session. Reproduced live (R5 review finding R5-F4): with svc-beta's reed.json
-// copied into svc-alpha, a `lym reed remove` run in svc-alpha killed svc-beta's strand pane and its
-// running process and reported ok:true, while svc-beta was left showing only that its strand had
-// died.
-// Membership, not aliveness, is the filter: a dead-but-present corpse is still this session's pane
-// and killing it is exactly what remove should do.
+// A persisted pane id is not self-validating as a tmux target.
+// The -L socket is per hub and shared by every worktree in it, and tmux pane ids are server-global,
+// so a stale or copied reed.json can carry the pane id of a sibling worktree's live session.
+// Membership, not aliveness, is the filter: a dead pane that is still present is this session's pane.
 func paneIDsInSession(paneIDs []string, live []LivePane) []string {
 	present := liveIDSet(live)
 	inSession := make([]string, 0, len(paneIDs))
@@ -775,11 +753,9 @@ func paneIDsInSession(paneIDs []string, live []LivePane) []string {
 	return inSession
 }
 
-// sessionReapRoots returns the safe reap roots (see safeReapRoot) among EVERY pane in live.
-// Down uses this whole-session form, since it tears the session down entirely rather than a named
-// subset of its panes;
-// it shares safeReapRoot with alivePanePIDs so the two forms can never disagree about which pids are
-// safe to expand and kill.
+// sessionReapRoots returns the pids of every pane in live that is not dead and has a pid.
+// It is the whole-session form, for teardown that removes every pane rather than a named subset.
+// The targeted and whole-session forms share one root test, so they never disagree about which pids are safe to kill.
 func sessionReapRoots(live []LivePane) []int {
 	var pids []int
 	for _, p := range live {
@@ -790,44 +766,42 @@ func sessionReapRoots(live []LivePane) []int {
 	return pids
 }
 
-// killStrandPanes kills the removed strands' panes and returns the process ids the caller must reap
-// (reapPaneChildren) once the layout has been repaired.
+// killStrandPanes kills the removed strands' panes.
+// It returns the process ids the caller must reap once the layout has been repaired.
 //
-// Snapshot the doomed panes' process subtrees BEFORE kill-pane, while
-// the panes still exist to be listed and their pids are guaranteed
-// un-reused (the processes are still running).
-// The same enumeration narrows the kill list to panes that really belong to THIS
-// session, so a stale or copied reed.json can never make this remove destroy a sibling
-// worktree's pane on the shared per-hub server (paneIDsInSession, R5 review finding
-// R5-F4). It is free: this call site already had to list panes for the reap snapshot.
+// It snapshots the doomed panes' process subtrees before kill-pane.
+// The panes still exist to be listed, and the processes still run, so their pids are not yet reused.
+// The same enumeration narrows the kill list to panes that belong to this session.
+// A stale or copied reed.json cannot make remove kill a sibling worktree's pane on the shared server.
+// The enumeration is free: this call site already lists panes for the reap snapshot.
 // The listing spans every window of the session, so an own-window strand's pane is killed too,
 // and its window ends with its last pane.
-// A failed enumeration kills nothing rather than falling back to the unchecked list —
-// list-panes exits non-zero precisely when the session is gone, in which case the panes
-// are gone with it and there is nothing this remove still needs to destroy.
+// A failed enumeration kills nothing rather than falling back to the unchecked list.
+// list-panes exits non-zero exactly when the session is gone.
+// Its panes are gone with the session, so this remove has nothing left to destroy.
 //
-// Kill the removed strands' panes explicitly rather than relying on
-// select-layout to reap panes missing from the layout string: psmux
-// reaps the extra panes as a side effect, and tmux does NOT reject a
-// mismatched layout either — it accepts a cell/pane count mismatch
-// with exit 0 and assigns cells positionally (observed live,
-// tmux 3.6), so neither backend reaps deterministically enough to
-// lean on. Best-effort: a pane may already be dead or gone. What
-// killing a session's LAST pane does next is BINARY-DEPENDENT, not
-// universal: on psmux, remain-on-exit corpses it as pane_dead=1
-// (exit 0), keeping the session alive; on tmux, killing a session's
-// true last pane DESTROYS the session (and, if it was the server's
-// only session, the server exits) — the reconcile tail after it then
-// fails its listPanes call against the now-gone session. RemoveStrand
-// handles both outcomes by re-probing hasSession and swallowing
-// that failure as an expected success only when the session is
-// confirmed gone (the tmux case); on psmux the reconcile tail simply
-// re-enumerates and re-applies — a strand's pane is now always a
-// fresh split, so a corpse is never reused.
+// The removed strands' panes are killed explicitly, not left to select-layout.
+// Neither backend reaps deterministically enough to rely on select-layout for it.
+// psmux reaps the extra panes as a side effect.
+// tmux accepts a layout whose cell count differs from the pane count, assigning cells by position.
+// The kills are best-effort: a pane may already be dead or gone.
+// What killing a session's last pane does next depends on the backend.
+// On psmux, remain-on-exit leaves the pane as a dead corpse (pane_dead=1, exit 0) and the session stays alive.
+// On tmux, killing the true last pane destroys the session, and the server exits too if it was the only session.
+// The reconcile tail after the kill then fails its listPanes call against the gone session.
+// RemoveStrand handles both outcomes by re-probing hasSession.
+// It treats the reconcile failure as success only when the session is confirmed gone.
+// On psmux the reconcile tail simply re-enumerates and re-applies; a strand's pane is always a fresh split,
+// so a corpse is never reused.
 //
 // Before any kill, an own window whose every listed pane is being killed is about to end.
-// The session's current window is read once, and only when a window ends; endedCurrent reports that it was among the ending windows.
-// With selectOnEnd set, such a viewer is moved first to the relevant window among those left (the newest live agent, else the lowest-index overview, never the shell), and with none left to tmux; a viewer on any other window is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
+// The session's current window is read once, and only when a window ends;
+// the endedCurrent result reports whether it is among the ending windows.
+// With selectOnEnd set, a viewer on an ending window is first moved to a window that stays:
+// the newest live agent, else the lowest-index overview, never the shell.
+// When no such window is left, the viewer is left to tmux.
+// A viewer on any other window is never moved.
+// A strand leaving a shared window that stays open ends no window and switches nothing.
 // leftWindows names the own windows that lose a pane but keep at least one, for the caller to lay out again.
 func (e *Engine) killStrandPanes(st *ReedState, paneIDs []string, selectOnEnd bool) (reapPIDs []int, leftWindows []string, endedCurrent bool) {
 	var killPaneIDs []string
@@ -880,19 +854,16 @@ func (e *Engine) MarkRetiring(guid string, retiring bool) error {
 	})
 }
 
-// RemoveStrand removes guid and, when it has descendants, cascades the removal through its whole
-// subtree (recursive must be true for a non-leaf, or the call errors instead of silently deleting
-// descendants), then reconciles and re-applies the layout.
-// Returns every strand actually removed.
-// Pre-flights the session's existence (mirroring Status) so running remove before up fails with the
-// same friendly no-session error (see requireSessionLocked/noSessionMessage) instead of a raw tmux
-// error surfacing later from inside reconcileApplyPersistLocked's listPanes. Like UpdateStrand,
-// RemoveStrand keeps requireSessionLocked and does not self-heal a cold worktree.
-// Like Down, it waits for the destroyed panes' process subtrees to exit before returning: tmux
-// terminates a pane's children asynchronously, and on Windows the process actually holding the
-// worktree directory is a deep descendant of #{pane_pid} — a remove that returned without the reap
-// could leave a removed strand's grandchild alive and the worktree dir busy (the same "no stray
-// state" gap Down's reap closed).
+// RemoveStrand removes guid and, when it has descendants, cascades the removal through its whole subtree.
+// A non-leaf requires recursive to be true; otherwise the call errors instead of silently deleting descendants.
+// It then reconciles and re-applies the layout, and returns every strand actually removed.
+// It requires a live session, and a remove before up fails with the no-session error.
+// Without that check, a raw tmux error would surface later, from the reconcile.
+// It does not self-heal a cold worktree.
+// It waits for the destroyed panes' process subtrees to exit before returning.
+// tmux terminates a pane's children asynchronously.
+// On Windows the process holding the worktree directory is a deep descendant of #{pane_pid}.
+// Returning before that reap could leave a removed strand's grandchild alive and the worktree directory busy.
 func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 	var result Removed
 	err := e.withOpLock(func() error {
@@ -913,34 +884,24 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		reapPIDs, leftWindows, _ := e.killStrandPanes(st, paneIDs, true)
 		removed.ConfigWarning = e.relayoutSharedWindowsLocked(leftWindows)
 
-		// Reap after the layout repair, so the surviving panes re-tile
-		// immediately and only the return is gated on the async pane teardown
-		// finishing — but ALWAYS reap, even when the repair failed: the panes
-		// were already killed above, so their subtrees are dying
-		// asynchronously either way, and skipping the reap on a transient
-		// apply error would leave a removed strand's grandchild holding the
-		// worktree directory (the same never-skip-the-reap rule down
-		// follows). Uses the same saturation-tolerant deadline as down
-		// (reapExitTimeout): the reap confirms each pid is gone rather than
-		// trusting a fixed timer.
+		// Reap after the layout repair, so the surviving panes re-tile immediately;
+		// only the return waits for the async pane teardown.
+		// Always reap, even when the repair failed: the panes were already killed above,
+		// so their subtrees are dying either way.
+		// Skipping the reap on a transient apply error would leave a grandchild holding the worktree directory.
+		// The reap confirms each pid is gone within reapExitTimeout rather than trusting a fixed timer.
 		_, applyErr := e.reconcileApplyPersistLocked(st)
 		reapPaneChildren(reapPIDs, reapExitTimeout)
 		if applyErr != nil {
-			// applyErr alone cannot tell "the removal legitimately emptied
-			// the session" (an expected terminal state — see the tmux/psmux
-			// last-pane split above) apart from a genuine failure, so
-			// re-probe the session directly rather than string-match
-			// applyErr. hasSession maps a "no server running" exit (1) to
-			// (false, nil), the same classification requireSessionLocked
-			// already relies on.
+			// applyErr alone cannot tell a removal that legitimately emptied the session from a genuine failure.
+			// So the session is re-probed directly rather than string-matching applyErr.
+			// hasSession maps a "no server running" exit (1) to (false, nil).
+			// The session pre-flight relies on the same classification.
 			up, herr := e.tmux.hasSession(e.SessionName())
 			sessionGone := herr == nil && !up
 			if removalEmptiedSession(st.Strands, sessionGone) {
-				// removeStrandLocked already pruned st.Strands in memory, but
-				// reconcileApplyPersistLocked's own SaveState never ran (it
-				// failed before reaching it) — persist the pruned state here
-				// so a later "lym reed resume" does not resurrect the strand
-				// this call just removed.
+				// removeStrandLocked pruned st.Strands in memory only, and reconcileApplyPersistLocked failed before its own save.
+				// Persist the pruned state here, so a later "lym reed resume" does not resurrect the strand this call removed.
 				if err := SaveState(e.stateDir(), st); err != nil {
 					return fmt.Errorf("save state after emptying session: %w", err)
 				}

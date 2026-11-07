@@ -1,5 +1,5 @@
-// samplerwiring.go holds the wiring only a sampler run needs: the Sampler-Session row's seams, the row's entry stamp and the watch on its record.
-// A recipe with no SamplerSession row leaves all of it unwired.
+// samplerwiring.go wires the Sampler-Session row's seams, entry stamp and record watch, which only a sampler run needs.
+// A recipe without a Sampler-Session row leaves all of it unwired.
 
 package loomcli
 
@@ -27,8 +27,9 @@ import (
 // A value the hub tuned survives `lym config reconcile`, so the fix is an edit of the key rather than a reconcile.
 const samplerConfigWayForward = "way forward: fix the key with lym config sampler (the editor) or lym config sampler --set <key>=<value> from the prime, then run lym loom resume"
 
-// samplerStamp returns the reader of the run's current entry stamp of row, as recipe's rows route into it.
-// It reads the run's status file under its lock at each call, and answers 0 when the file is absent.
+// samplerStamp returns a reader of the entry stamp of row in the run runID.
+// The stamp is computed from the rows of recipe that route into row.
+// It reads the status file under its lock at each call and returns 0 when the file is absent.
 func samplerStamp(l *lymcwd.Location, runID, recipe, row string) func() (int, error) {
 	return func() (int, error) {
 		rows, err := loomrecipe.Rows(recipe)
@@ -43,7 +44,7 @@ func samplerStamp(l *lymcwd.Location, runID, recipe, row string) func() (int, er
 		}
 
 		status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
-		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
+		// A run directory that does not exist yet fails the lock open with not-exist; that counts as an absent status file too.
 		if errors.Is(err, fs.ErrNotExist) || (err == nil && !found) {
 			return 0, nil
 		}
@@ -54,10 +55,11 @@ func samplerStamp(l *lymcwd.Location, runID, recipe, row string) func() (int, er
 	}
 }
 
-// samplerDeps assembles the Sampler-Session row's seams for location and the run addressed by runID, whose recipe is recipe and whose session row is row.
-// spec builds the session's spec at each start.
-// Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
-// The seams that need reed's strand table are left to wireLanding.
+// samplerDeps assembles the Sampler-Session row's seams for location l and the run addressed by runID.
+// recipe is the run's recipe, row is the session row, and spec builds the session's spec at each start.
+// Every closure reads or writes on demand and opens nothing at build time.
+// This matters because the wiring also runs for status and pause.
+// The seams that need the strand table are left to the landing wiring.
 func samplerDeps(l *lymcwd.Location, runID, recipe, row string, spec func() (shuttleengine.Spec, error)) loomshed.SamplerDeps {
 	slug := seedSlug(l.WorktreeName)
 	return loomshed.SamplerDeps{
@@ -75,14 +77,15 @@ func samplerDeps(l *lymcwd.Location, runID, recipe, row string, spec func() (shu
 			_, err = client.Post(strandName, line)
 			return err
 		},
-		// PauseCovered reads the pause record as pauseCovered does, so an unreadable record covers nothing.
+		// PauseCovered reports whether the pause record covers the slug; an unreadable record covers nothing.
 		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
 		Now:          time.Now,
 		Sleep:        sleepContext,
 	}
 }
 
-// openRecordWatch returns a channel that delivers a value whenever the file at path may have changed, or nil when no watch can be opened, which leaves the Sampler-Session row on its timer.
+// openRecordWatch returns a channel that delivers a value whenever the file at path may have changed.
+// It returns nil when no watch can be opened, which leaves the Sampler-Session row on its timer.
 // The record's directory is created when absent, since the row may start before anything has written there.
 // The watcher lives until the process ends.
 func openRecordWatch(path string) <-chan struct{} {

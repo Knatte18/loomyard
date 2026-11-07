@@ -27,8 +27,10 @@ const (
 	registryDirectory = "internal/shuttleengines"
 )
 
-// providerSeamViolations returns the production files under base that import a concrete engine package from outside that engine's own directory tree and outside the registry, with the count of files scanned.
-// It reads actual import paths through the harness parse, which avoids false positives from string literals in doc comments.
+// providerSeamViolations returns the production files under base that import a concrete engine package.
+// Imports from outside that engine's own directory tree count as violations, except from the registry directory.
+// It also returns the count of files scanned.
+// It reads actual import paths through the harness parse, so string literals in doc comments do not count.
 func providerSeamViolations(t *testing.T, base string) ([]string, int) {
 	t.Helper()
 	var violations []string
@@ -51,7 +53,8 @@ func providerSeamViolations(t *testing.T, base string) ([]string, int) {
 	return violations, scanned
 }
 
-// startupGateCallers returns the production files under base outside internal/shuttleengine/ that contain a call of AcceptStartupGate, with the count of files scanned.
+// startupGateCallers returns the production files under base that call AcceptStartupGate.
+// Files under internal/shuttleengine/ are skipped, and the count of files scanned is returned too.
 // The method is the engine-neutral startup-gate acceptance, and a caller of it outside the package is a new decision.
 func startupGateCallers(t *testing.T, base string) ([]string, int) {
 	t.Helper()
@@ -68,8 +71,9 @@ func startupGateCallers(t *testing.T, base string) ([]string, int) {
 	return callers, scanned
 }
 
-// TestProviderSeamImportRule verifies that no production file in the module imports a concrete engine package except from that engine's own directory tree or from internal/shuttleengines,
-// and that no production file outside internal/shuttleengine/ calls AcceptStartupGate.
+// TestProviderSeamImportRule verifies the provider-seam import rule over the production files in the module:
+// no file imports a concrete engine package except from that engine's directory tree or from internal/shuttleengines,
+// and no file outside internal/shuttleengine/ calls AcceptStartupGate.
 // It also verifies that each scan finds a violation when one exists and lets a file inside the package through.
 //
 //testtiming:keep scans every production file's imports for a concrete engine package outside its own directory and the registry, and its calls for AcceptStartupGate outside this package, which no other test reads

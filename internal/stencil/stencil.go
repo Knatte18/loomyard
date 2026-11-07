@@ -15,22 +15,23 @@ import (
 )
 
 // Fill renders a markdown template by substituting {{.X}} markers from values.
-// Every top-level marker absent from values or empty is collected and reported in one error;
+// Every top-level marker absent from values or blank is collected and reported in one error;
 // the template is never executed with unfilled top-level markers.
 func Fill(template []byte, values map[string]string) ([]byte, error) {
 	return FillOptional(template, values, nil)
 }
 
-// FillOptional renders a template like Fill, except names in optional are exempt from the
-// unfilled-marker guarantee and render as nothing if absent or empty.
+// FillOptional renders a template in which the names in optional are exempt from the unfilled-marker guarantee.
+// Such a name renders as nothing when it is absent or blank.
 func FillOptional(template []byte, values map[string]string, optional []string) ([]byte, error) {
 	return FillWith(template, nil, values, optional)
 }
 
-// FillWith renders a template like FillOptional, together with the named included templates its bare {{template "name"}} actions pull in.
+// FillWith renders a template with the named included templates that its bare {{template "name"}} actions pull in.
 // Each include renders from the same values as the main template, even inside a {{with}} or {{range}} body.
-// An include action carrying a pipeline of its own, an action naming a block absent from includes, and an included block that itself declares an include are refused, each naming the block;
-// includes resolve one level deep.
+// An include action carrying a pipeline of its own is refused, as is an action naming a block absent from includes.
+// An included block that itself declares an include is refused too, since includes resolve one level deep.
+// Each error names the block.
 // The unfilled-marker guarantee covers the top-level markers of the main template and of every included block.
 func FillWith(template []byte, includes map[string][]byte, values map[string]string, optional []string) ([]byte, error) {
 	stripped := stripLeadingComment(string(template))
@@ -82,7 +83,8 @@ func FillWith(template []byte, includes map[string][]byte, values map[string]str
 	return buf.Bytes(), nil
 }
 
-// attachIncludes parses every include that t's include actions name into t's template set under its name, and points each bare include action at the root variable $ so the block renders from the values Execute is given.
+// attachIncludes parses each include that t's include actions name into t's template set under that name.
+// It points each bare include action at the root variable $, so the block renders from the values Execute is given.
 // It returns the attached include templates, in name order.
 func attachIncludes(t *tmpl.Template, includes map[string][]byte) ([]*tmpl.Template, error) {
 	if t.Tree == nil {
@@ -132,7 +134,8 @@ func rootVariablePipe() (*parse.PipeNode, error) {
 	return t.Tree.Root.Nodes[0].(*parse.ActionNode).Pipe, nil
 }
 
-// includeActions returns every {{template "name"}} action under root, walking {{if}}, {{with}} and {{range}} bodies and their else branches.
+// includeActions returns every {{template "name"}} action under root.
+// It walks {{if}}, {{with}} and {{range}} bodies and their else branches.
 func includeActions(root *parse.ListNode) []*parse.TemplateNode {
 	if root == nil {
 		return nil
@@ -172,8 +175,8 @@ func includeNames(root *parse.ListNode) []string {
 	return dedupSorted(names)
 }
 
-// IncludeNames parses template and returns the sorted, deduplicated names of the {{template "name"}} actions it declares,
-// so a caller knows which blocks to read for FillWith.
+// IncludeNames parses template and returns the sorted, deduplicated names of its {{template "name"}} actions.
+// A caller reads those blocks before rendering, so it knows which ones to supply.
 // A leading comment is stripped first, so a header spelling an include action reports none.
 func IncludeNames(template []byte) ([]string, error) {
 	stripped := stripLeadingComment(string(template))
@@ -188,9 +191,9 @@ func IncludeNames(template []byte) ([]string, error) {
 	return includeNames(t.Tree.Root), nil
 }
 
-// dedupSorted returns names deduplicated and sorted -- used to merge unfilledTopLevelMarkers' and
-// presentButEmptyBranchMarkers' offender lists into one stable report, since the same name can
-// appear in both (e.g. a top-level {{.X}} and a branch-internal {{.X}} referencing the same marker).
+// dedupSorted returns names sorted, with each name kept once.
+// A marker can be reported by more than one check, for example as a top-level marker and again inside a branch,
+// so a combined report lists it once.
 func dedupSorted(names []string) []string {
 	sort.Strings(names)
 	deduped := names[:0]
@@ -222,15 +225,14 @@ func stripLeadingComment(text string) string {
 
 // StripLeadingComment drops a leading `<!-- ... -->` block from text and returns text unchanged
 // when there is none.
-// It is the same stripper Fill and FillOptional apply to a template before parsing it.
 func StripLeadingComment(text string) string {
 	return stripLeadingComment(text)
 }
 
 // TopLevelMarkers parses template and returns the deduplicated, sorted names of every top-level
 // {{.X}} marker it declares.
-// It is the marker-set accessor `lym stencil validate` uses to compare two templates,
-// not a validity check: a marker is listed here regardless of whether any value would fill it.
+// It reports the marker set, not a validity check:
+// a marker is listed regardless of whether any value would fill it.
 func TopLevelMarkers(template []byte) ([]string, error) {
 	stripped := stripLeadingComment(string(template))
 
@@ -244,8 +246,8 @@ func TopLevelMarkers(template []byte) ([]string, error) {
 	return names, nil
 }
 
-// topLevelMarkerNames returns the deduplicated names of every top-level {{.X}} marker declared in
-// t's parsed tree, with no filtering by value or optionality.
+// topLevelMarkerNames returns the deduplicated names of every top-level {{.X}} marker in t's parsed tree.
+// It applies no filter by value or optionality.
 func topLevelMarkerNames(t *tmpl.Template) []string {
 	if t.Tree == nil || t.Tree.Root == nil {
 		return nil
@@ -268,10 +270,9 @@ func topLevelMarkerNames(t *tmpl.Template) []string {
 	return names
 }
 
-// actionFieldName reports the single field name a bare {{.X}} ActionNode substitutes, or false for
-// anything else (a pipeline with functions/args, more than one command).
-// Shared by topLevelMarkerNames and presentButEmptyBranchMarkers so the two walks agree on what
-// counts as a plain marker.
+// actionFieldName reports the single field name a bare {{.X}} ActionNode substitutes.
+// It returns false for anything else, such as a pipeline with functions or args, or more than one command.
+// Every marker walk uses it, so they agree on what counts as a plain marker.
 func actionFieldName(n *parse.ActionNode) (string, bool) {
 	if n.Pipe == nil || len(n.Pipe.Cmds) != 1 {
 		return "", false
@@ -287,8 +288,8 @@ func actionFieldName(n *parse.ActionNode) (string, bool) {
 	return fieldNode.Ident[0], true
 }
 
-// unfilledTopLevelMarkers returns the deduplicated names of every top-level
-// marker absent or empty in values, skipping names in optional.
+// unfilledTopLevelMarkers returns the deduplicated names of every top-level marker that is absent or blank in values.
+// It skips names in optional.
 func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optional map[string]bool) []string {
 	var offenders []string
 	for _, name := range topLevelMarkerNames(t) {
@@ -303,16 +304,11 @@ func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optiona
 	return offenders
 }
 
-// presentButEmptyBranchMarkers returns branch-internal marker names, deduplicated, that are present
-// in values as an empty or whitespace-only string within an {{if}} branch confidently evaluated
-// true, skipping names in optional.
-// This is the one class of unfilled marker neither existing guard catches: an absent branch-internal
-// marker still errors at execution via missingkey=error (left entirely alone by this function -- see
-// the confidentlyTrue doc comment), but a key present as "" renders silently, which is exactly what
-// every stencil asset's own header comment warns "{{if}}/{{range}} conditionals" risk ("a required
-// marker inside a conditional branch would render silently blank when present-but-empty").
-// Only {{if}}: neither {{range}} nor {{with}} nor {{template}} is walked, so a marker reachable only
-// through one of those remains outside this guarantee exactly as it was before this function existed.
+// presentButEmptyBranchMarkers returns the deduplicated names of branch-internal markers that are present
+// in values as an empty or blank string inside an {{if}} branch that is known to run, skipping names in optional.
+// An absent marker is left to the missingkey=error failure at execution time.
+// A key present as "" renders silently, so this check covers that case.
+// Only {{if}} branches are walked; a marker reached only through {{range}}, {{with}} or {{template}} is not checked.
 func presentButEmptyBranchMarkers(root *parse.ListNode, values map[string]string, optional map[string]bool) []string {
 	if root == nil {
 		return nil
@@ -338,8 +334,8 @@ func presentButEmptyBranchMarkers(root *parse.ListNode, values map[string]string
 				if confidentlyTrue(n.Pipe, values) {
 					walk(n.List.Nodes)
 				}
-				// A false or unresolvable condition is left entirely to the existing lazy missingkey=error path at execution time (see the forgotten_discriminator and branch_internal_absent rows of TestFill).
-				// This function only adds coverage for a branch confidently known to run.
+				// A false or unresolvable condition is left to the missingkey=error failure at execution time;
+				// only a branch known to run is walked here.
 			}
 		}
 	}
@@ -349,10 +345,8 @@ func presentButEmptyBranchMarkers(root *parse.ListNode, values map[string]string
 
 // confidentlyTrue reports whether a simple {{if .X}} or {{if eq .X "literal"}} condition evaluates
 // true given values.
-// An absent condition key, or any condition shape other than these two, is never reported true --
-// presentButEmptyBranchMarkers's only job is to add coverage for a branch confidently known to
-// execute; anything uncertain is left to the existing execution-time missingkey=error path exactly
-// as it behaved before this function existed, never newly flagged and never newly suppressed.
+// An absent condition key, or any condition shape other than these two, is never reported true.
+// Such a branch is not walked, so its markers fall to the execution-time missingkey=error failure.
 func confidentlyTrue(pipe *parse.PipeNode, values map[string]string) bool {
 	if pipe == nil || len(pipe.Cmds) != 1 {
 		return false
@@ -360,7 +354,6 @@ func confidentlyTrue(pipe *parse.PipeNode, values map[string]string) bool {
 	cmd := pipe.Cmds[0]
 	switch len(cmd.Args) {
 	case 1:
-		// {{if .X}}
 		field, ok := cmd.Args[0].(*parse.FieldNode)
 		if !ok || len(field.Ident) < 1 {
 			return false
@@ -368,7 +361,6 @@ func confidentlyTrue(pipe *parse.PipeNode, values map[string]string) bool {
 		value, present := values[field.Ident[0]]
 		return present && strings.TrimSpace(value) != ""
 	case 3:
-		// {{if eq .X "literal"}}
 		ident, ok := cmd.Args[0].(*parse.IdentifierNode)
 		if !ok || ident.Ident != "eq" {
 			return false

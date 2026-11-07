@@ -15,7 +15,9 @@ import (
 )
 
 // readableRoot builds a root wired as cmd/lym wires it, whose output reads as a terminal when terminal is set.
-// Its verbs print the envelope {"ok":true,"slug":"x"}: `operator` and `role` by their audience, `own` an operator verb with a json flag of its own, and `unterminated` an operator verb whose envelope has no line break.
+// Its verbs print the envelope {"ok":true,"slug":"x"}.
+// `operator` and `role` are verbs of their audience; `own` is an operator verb with a json flag of its own;
+// `unterminated` is an operator verb whose envelope has no line break.
 func readableRoot(terminal bool) *cobra.Command {
 	root := &cobra.Command{
 		Use: "lym",

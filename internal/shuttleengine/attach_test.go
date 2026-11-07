@@ -1,9 +1,10 @@
-// attach_test.go covers Runner.Attach's scan, disposition, combine, and reconstruction, driven over
-// a temp run-dir root with hand-written run.json fixtures and the existing fakeReed/fakeEngine/
-// fakeClock doubles. Reed's own state file is seeded through the exported reedengine.SaveState so
-// the absent/present/unreadable three-way answer is exercised through the real decoder, never by
-// hand-writing JSON for that file. Every test here is hermetic: no tmux, no claude, no real
-// sleeping.
+// attach_test.go covers Runner.Attach's scan, disposition, combine, and reconstruction.
+// Each test runs over a temp run-dir root with hand-written run.json fixtures.
+// The fakeReed, fakeEngine and fakeClock doubles replace the real collaborators.
+// Reed's state file is seeded through the exported `reedengine.SaveState`,
+// so the absent/present/unreadable three-way answer is exercised through the real decoder.
+// Only the unreadable answer is written by hand, as a corrupt file.
+// Every test here is hermetic: no tmux, no claude, no real sleeping.
 
 package shuttleengine
 
@@ -23,10 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedPresentReedState writes a minimal, valid ReedState via the real SaveState/decoder path,
-// answering LoadState's "does reed have a state table at all" gate with "present". The strand
-// table's actual content is irrelevant to that gate — tracked/live dispositioning is answered
-// separately, by fakeReed.StatusQueue.
+// seedPresentReedState writes a minimal, valid ReedState via the real SaveState/decoder path.
+// Loading reed's state then reports the state table as present.
+// The strand table's content does not matter here: tracked and live answers come from `fakeReed.StatusQueue`.
 func seedPresentReedState(t *testing.T, dotLymDir string) {
 	t.Helper()
 	if err := reedengine.SaveState(dotLymDir, &reedengine.ReedState{}); err != nil {
@@ -34,8 +34,8 @@ func seedPresentReedState(t *testing.T, dotLymDir string) {
 	}
 }
 
-// seedUnreadableReedState writes a corrupt reed.json directly, bypassing SaveState, so LoadState's
-// decode fails rather than reporting absent.
+// seedUnreadableReedState writes a corrupt reed.json directly, bypassing SaveState,
+// so the decode fails rather than reporting the state absent.
 func seedUnreadableReedState(t *testing.T, dotLymDir string) {
 	t.Helper()
 	if err := os.MkdirAll(dotLymDir, 0o755); err != nil {
@@ -46,30 +46,31 @@ func seedUnreadableReedState(t *testing.T, dotLymDir string) {
 	}
 }
 
-// seedAttachRunOpts describes one hand-written run.json fixture. includeOutcome false writes the
-// JSON object with the "outcome" key omitted entirely — a legacy pre-Outcome-field record — rather
-// than one that sets it to the empty string, so the decode path itself is exercised, not just the
-// comparison.
+// seedAttachRunOpts describes one hand-written run.json fixture.
+// includeOutcome false omits the "outcome" key from the JSON object entirely, as an older binary's record does.
+// Setting it to the empty string instead would not exercise the decode path, only the comparison.
 type seedAttachRunOpts struct {
 	strandGUID     string
 	sessionID      string
 	outputFiles    []string
 	outcome        string
 	includeOutcome bool
-	// started seeds RunState.Started. Omitted from every existing call site but the ones that
-	// specifically pin started-seed behavior, since Go's zero value (false) is what a run.json a
-	// pre-Started-field binary wrote also decodes to — the fixture default matches the production
-	// default.
+	// started seeds RunState.Started.
+	// Call sites leave it unset unless they pin started-seed behavior:
+	// the zero value (false) is also what a run.json from an older binary decodes to.
+	// The fixture default matches the production default.
 	started bool
-	// forkSubagents seeds RunState.ForkSubagents; the key is written only when true, so a seed without it is the older record's shape.
+	// forkSubagents seeds RunState.ForkSubagents.
+	// The key is written only when true, so a seed without it has the shape of an older record.
 	forkSubagents bool
 	// promptLine and promptOffset seed RunState.PromptLine and PromptOffset, written only when set.
 	promptLine   string
 	promptOffset int64
 }
 
-// seedAttachRun writes a run.json fixture at <root>/<id>/run.json built from a plain map rather than
-// RunState, so includeOutcome can omit the "outcome" key entirely. Returns the run directory.
+// seedAttachRun writes a run.json fixture at <root>/<id>/run.json from a plain map.
+// includeOutcome can then omit the "outcome" key entirely.
+// It returns the run directory.
 func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string {
 	t.Helper()
 	runDir := filepath.Join(root, id)
@@ -118,8 +119,8 @@ func touchOutputFile(t *testing.T, path string) {
 	}
 }
 
-// setDirAge sets runDir's mtime to at, so Attach's age rule sees a directory of a known age against
-// a fakeClock's Now().
+// setDirAge sets runDir's mtime to at,
+// so the age rule sees a directory of a known age against the test clock's Now().
 func setDirAge(t *testing.T, runDir string, at time.Time) {
 	t.Helper()
 	if err := os.Chtimes(runDir, at, at); err != nil {
@@ -132,14 +133,14 @@ func liveStatus(guid, paneID string) reedengine.StatusResult {
 	return reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: guid, PaneID: paneID, Live: true}}}
 }
 
-// deadStatus returns a StatusResult tracking exactly one strand, not live, with paneID (empty for a
-// cleared binding).
+// deadStatus returns a StatusResult tracking exactly one strand, not live, with paneID.
+// An empty paneID stands for a cleared binding.
 func deadStatus(guid, paneID string) reedengine.StatusResult {
 	return reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: guid, PaneID: paneID, Live: false}}}
 }
 
-// TestAttach_NoCandidates covers the ordinary first-call case: nothing to attach to, and the reed
-// gate is never consulted — proving the zero-candidates precedence.
+// TestAttach_NoCandidates covers the ordinary first-call case: nothing to attach to.
+// The reed gate is never consulted, which proves that zero candidates take precedence over the gate.
 func TestAttach_NoCandidates(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -159,8 +160,8 @@ func TestAttach_NoCandidates(t *testing.T) {
 					t.Fatalf("remove run root: %v", err)
 				}
 			}
-			// Reed's state file is deliberately left absent: the scan must short-circuit before ever
-			// reading it, so the ordinary first call on a fresh worktree is never blocked by the gate.
+			// Reed's state file is left absent: the scan must short-circuit before ever reading it,
+			// so the ordinary first call on a fresh worktree is never blocked by the gate.
 			result, found, err := runner.Attach(Spec{OutputFiles: []string{filepath.Join(runRoot, "out.md")}, Timeout: time.Minute})
 			if err != nil {
 				t.Fatalf("Attach() error = %v; want nil", err)
@@ -178,9 +179,9 @@ func TestAttach_NoCandidates(t *testing.T) {
 	}
 }
 
-// TestAttach_OutcomeDisposition is attach-only-a-run-that-never-terminated's coverage: exactly the
-// "running" sentinel attaches, and every other Outcome value — terminal, empty/omitted, or
-// unrecognized — is respawn-eligible, for a strand that is otherwise tracked and live.
+// TestAttach_OutcomeDisposition pins that only the "running" Outcome sentinel attaches.
+// Every other Outcome value is respawn-eligible for a strand that is otherwise tracked and live:
+// a terminal value, an empty or omitted one, and an unrecognized one.
 //
 //testtiming:keep pins which persisted Outcome values attach and which are respawn-eligible, with a row each for every terminal, omitted and unrecognized value
 func TestAttach_OutcomeDisposition(t *testing.T) {
@@ -212,9 +213,9 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 				strandGUID: "strand-1", sessionID: "session-1",
 				outputFiles: []string{outputFile}, outcome: tt.outcome, includeOutcome: tt.includeOutcome,
 			})
-			// Seeded for the one case (running_attaches) that reaches Wait, so it classifies OutcomeDone
-			// on its very first tick instead of looping to the config deadline; harmless for every
-			// other case, which never gets past dispositioning.
+			// Seeded for the one case (running_attaches) that reaches Wait.
+			// It classifies OutcomeDone on its first tick instead of looping to the config deadline.
+			// The seed is harmless for every other case, which never gets past dispositioning.
 			touchOutputFile(t, outputFile)
 			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
 				t.Fatalf("seed events: %v", err)
@@ -239,8 +240,8 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 }
 
 // TestAttach_RemovesSupersededStrands covers the removal on Attach's not-found answer:
-// only the live or dead own-window strand of a respawn-eligible candidate of the same output-file set is removed,
-// an attach or a failed removal never answers not found,
+// only the live or dead own-window strand of a respawn-eligible candidate of the same output-file set is removed;
+// an attach or a failed removal never answers not found;
 // and AttachIfLive and AttachIfLiveGated remove nothing.
 func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -303,7 +304,8 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 				t.Fatalf("seed events: %v", err)
 			}
 
-			// KeepPane so the attachable row's own harvest does not remove its strand, which would read as a superseded-strand removal.
+			// KeepPane so the attachable row's own harvest does not remove its strand;
+			// otherwise that removal would read as a superseded-strand removal.
 			spec := Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true}
 			attach := runner.Attach
 			if tt.ifLiveOnly {
@@ -348,10 +350,10 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	}
 }
 
-// TestAttach_Multiplicity covers candidate-evaluation-order and one-live-match-or-none: the
-// multiplicity rule applies only to the surviving ATTACHABLE set, an error verdict dominates
-// whatever the other candidates say, and two ordinary leftovers (both non-terminal-classified,
-// tracked-live-idle records) must respawn rather than error.
+// TestAttach_Multiplicity covers candidate evaluation order and one-live-match-or-none:
+// the multiplicity rule applies only to the surviving ATTACHABLE set;
+// an error verdict dominates whatever the other candidates say;
+// and two ordinary leftovers (both non-terminal-classified, tracked-live-idle records) must respawn rather than error.
 func TestAttach_Multiplicity(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("TwoTimeoutLeftovers_RespawnsNotError", func(t *testing.T) {
@@ -431,8 +433,7 @@ func TestAttach_Multiplicity(t *testing.T) {
 	})
 }
 
-// TestAttach_OutputFilesMismatch pins that a run dir whose OutputFiles do not match the spec's is
-// never a candidate at all.
+// TestAttach_OutputFilesMismatch pins that a run dir whose OutputFiles do not match the spec's is never a candidate.
 func TestAttach_OutputFilesMismatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	reed := &fakeReed{}
@@ -455,12 +456,12 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 	}
 }
 
-// TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge pins the new rule: a candidate
-// whose persisted Outcome already reads a terminal value (done/asking/died/timeout) is respawn-eligible
-// at any directory age, whatever reed says of its pane — parity with dispositionCandidate's own
-// tracked-and-live branch, which already treats a terminal Outcome as respawn-eligible regardless of
-// age. Covers both routes into leftoverThenAgeVerdict: an untracked strand, and a tracked strand with a
-// cleared pane binding.
+// TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge pins the following rule:
+// a candidate whose persisted Outcome is terminal (done/asking/died/timeout) is respawn-eligible at any age.
+// That holds whatever reed says of the candidate's pane.
+// A tracked, live strand with a terminal Outcome is respawn-eligible at any age too.
+// The test covers both routes into leftoverThenAgeVerdict:
+// an untracked strand, and a tracked strand with a cleared pane binding.
 //
 //testtiming:keep pins that a terminal persisted Outcome is respawn-eligible at any directory age for both an untracked strand and a cleared pane binding, which the age-rule rows never reach
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
@@ -516,9 +517,10 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 	})
 }
 
-// TestAttach_ReedStateGate_AbsentOrUnreadable pins that both an absent and an unreadable reed.json
-// are errors, never found == false, at any directory age, and that Attach does NOT consult Status()
-// for the absent question — the asymmetry LoadState vs ReedOps.Status() exists to preserve.
+// TestAttach_ReedStateGate_AbsentOrUnreadable pins that both an absent and an unreadable reed.json are errors:
+// never found == false, at any directory age.
+// For the absent case, Attach does not consult Status().
+// The asymmetry between LoadState and ReedOps.Status() is what the test preserves.
 func TestAttach_ReedStateGate_AbsentOrUnreadable(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -557,8 +559,8 @@ func TestAttach_ReedStateGate_AbsentOrUnreadable(t *testing.T) {
 	}
 }
 
-// TestAttach_StatusError pins that ReedOps.Status() itself failing is an error, never found ==
-// false, at any directory age, covering both a torn-down session and an unrelated tmux fault.
+// TestAttach_StatusError pins that an error from `ReedOps.Status()` is never reported as found == false.
+// It holds at any directory age, for a torn-down session and for an unrelated tmux fault.
 func TestAttach_StatusError(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -589,8 +591,7 @@ func TestAttach_StatusError(t *testing.T) {
 	}
 }
 
-// TestAttach_NegativeTimeout pins that a negative Timeout is rejected before scanning and before any
-// reed read.
+// TestAttach_NegativeTimeout pins that a negative `Timeout` is rejected before scanning and before any reed read.
 func TestAttach_NegativeTimeout(t *testing.T) {
 	tiergate.Require(t, 0)
 	reed := &fakeReed{}
@@ -613,32 +614,23 @@ func TestAttach_NegativeTimeout(t *testing.T) {
 	}
 }
 
-// TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn is the F1 regression guard
-// (crucible round fable5-xhigh-r6): a run.json whose persisted Outcome still reads runOutcomeRunning
-// AND whose every declared output file is already on disk is a run that FINISHED but whose driver
-// crashed before any Wait could classify it — so it is harvested as OutcomeDone rather than
-// archived-and-respawned, for every negative liveness answer (untracked, a dead pane, and a cleared
-// pane binding) and at any directory age.
+// TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn pins that such a run is harvested.
+// Its run.json still reads runOutcomeRunning, but every declared output file is already on disk.
+// The run finished, but its driver crashed before any Wait could classify it.
+// It is harvested as OutcomeDone, not archived and respawned.
+// The rows cover each negative liveness answer (untracked, a dead pane, a cleared pane binding).
+// They hold at any directory age.
 //
-// Before the fix, dispositionCandidate routed all three of these to verdictRespawnEligible (the dead
-// pane directly, the other two via leftoverThenAgeVerdict's own files-exist branch), so Attach
-// reported not-found and a writer row archived the finished files and re-ran the whole LLM step —
-// reproduced live in round fable5-xhigh-r6 against a staged Discussion-Write. Reverting the attach.go
-// change makes every subtest here fail with found=false, so the guard is load-bearing rather than
-// vacuous.
+// The run's own Wait checks the output files first for an untracked or not-live strand,
+// so every shape reaches OutcomeDone and the same run-directory cleanup.
 //
-// The strand shape governs only how the reconstructed run's own Wait harvests it: checkLivenessTick's
-// not-tracked and not-live branches both consult allOutputFilesExist first and classify OutcomeDone,
-// so all three shapes reach the same Done outcome and the same run-dir cleanup.
+// Attach's three reed-state gates consult the file contract before refusing:
+// an unreadable reed.json, an absent one, and a failing Status().
+// They run ahead of `dispositionCandidate`, so each gate needs the check itself.
+// Without it, a finished run would fail the whole Shed step.
 //
-// The same harvest applies when reed's own bookkeeping is unavailable (crucible round
-// opus5-high-r7's F1): each of Attach's three reed-state gates — an unreadable reed.json, an absent
-// one, and a Status() that errors — must consult the file contract before refusing. All three gates
-// sit AHEAD of dispositionCandidate, so the guard there could never reach them: a run whose agent
-// had written every declared output file before its driver died hard-failed the whole Shed step
-// instead of being harvested, and the run directory was left in place for every later resume to
-// re-refuse identically. Each row drives the reconstructed run all the way to its own Outcome,
-// because harvesting is only correct if Wait can classify OutcomeDone with reed still broken.
+// Each row drives the reconstructed run to its own Outcome.
+// Harvesting is only correct if Wait can classify OutcomeDone while reed stays broken.
 func TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -695,28 +687,29 @@ func TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn(t *testing
 	}
 }
 
-// TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors pins the other side of the F1 fix:
-// a running record whose output files are NOT all present is never harvested — a partially-written or
-// never-started run has no finished work to attribute, so the ordinary liveness dispositioning still
-// applies (respawn for a confirmed-dead pane; an age-gated error for the ambiguous untracked/
-// binding-cleared answers). This is what keeps the harvest gated on a genuinely satisfied contract
-// rather than on the run.json's mere presence.
+// TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors pins a running record with missing outputs.
+// Such a record is never harvested, and it respawns or errors instead.
+// A partly written or never-started run has no finished work to attribute,
+// so the ordinary liveness dispositioning applies.
+// The harvest is gated on the file contract, not on the presence of run.json.
 //
-// The rows are also the leftover-then-age rule: a tracked strand with a dead pane is unambiguous
-// evidence the agent is gone, so it respawns at any directory age; an untracked strand
-// (errStrandNotTracked) and a binding-cleared one (errStrandPaneBindingCleared: tracked, not live,
-// PaneID empty, spec Anchor not hidden) error while the directory is young enough to be a
-// concurrently-starting run and respawn once it clears the age guard (StartupTimeoutS 30 -> minAge
-// 60s). An empty (legacy) Outcome keeps the age rule exactly like the runOutcomeRunning case: it is
-// neither a terminal Outcome nor a satisfied file contract, so a young directory still cannot be
-// ruled dead.
+// The rows also pin the leftover-then-age rule (`leftoverThenAgeVerdict`).
+// A tracked strand with a dead pane is unambiguous evidence that the agent is gone,
+// so it respawns at any directory age.
+// An untracked strand (`errStrandNotTracked`) returns an error while the directory is young.
+// A young directory may hold a run that is still starting.
+// A binding-cleared strand (`errStrandPaneBindingCleared`) does too.
+// It is tracked and not live, with an empty PaneID and a spec Anchor that is not hidden.
+// Both respawn once the directory is at least `minAge` old, which is twice `StartupTimeoutS`.
+// An empty legacy Outcome gets the same age rule as `runOutcomeRunning`.
+// It is neither a terminal Outcome nor a satisfied file contract, so a young directory cannot be ruled dead.
 func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		status reedengine.StatusResult
 		age    time.Duration
-		// omitOutcome writes the run.json without an "outcome" key, a legacy pre-Outcome-field record.
+		// omitOutcome writes run.json without an "outcome" key, the shape of a legacy record.
 		omitOutcome bool
 		display     render.Display
 		wantError   bool
@@ -744,7 +737,7 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 			fc := newFakeClock(time.Now())
 			runner.clock = fc
 
-			// Output file deliberately NOT created: the file contract is unsatisfied.
+			// The output file is not created, so the file contract is unsatisfied.
 			outputFile := filepath.Join(runRoot, "out.md")
 			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: !tt.omitOutcome})
 			setDirAge(t, runDir, fc.Now().Add(-tt.age))
@@ -772,13 +765,12 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 	}
 }
 
-// TestAttach_KeepPane pins that KeepPane on the caller's spec is honoured by the attached run: set,
-// it suppresses the Done cleanup; absent, cleanup runs exactly as it does for a started run.
+// TestAttach_KeepPane pins that KeepPane on the caller's spec is honoured by the attached run.
+// When set, it suppresses the Done cleanup; when absent, cleanup runs exactly as it does for a started run.
 //
-// Both rows seed a tracked-and-live candidate whose output files are already present and whose
-// events file holds a Done, so they also pin that liveness is answered first (the candidate is
-// attached, never treated as a leftover) and that the reconstructed run's Wait reads the persisted
-// events path and classifies OutcomeDone.
+// Both rows seed a tracked-and-live candidate whose output files exist and whose events file holds a Done.
+// They also pin that liveness is answered first: the candidate is attached, never treated as a leftover.
+// They also pin that the reconstructed run's Wait reads the persisted events path and classifies OutcomeDone.
 //
 //testtiming:keep pins that Spec.KeepPane suppresses an attached run's done cleanup (run dir kept, no RemoveStrand) and that its absence performs both
 func TestAttach_KeepPane(t *testing.T) {
@@ -832,8 +824,8 @@ func TestAttach_KeepPane(t *testing.T) {
 	}
 }
 
-// TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan pins the scan's skip discipline: a corrupt
-// run.json alongside a valid, matching one must not abort the whole scan.
+// TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan pins that a corrupt run.json must not abort the scan.
+// The valid, matching run.json beside it must still be found.
 func TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan(t *testing.T) {
 	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
@@ -865,14 +857,14 @@ func TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan(t *testing.T) {
 	}
 }
 
-// TestAttach_DeadlineAtAttachTime pins the deadline of an attached run. It restarts at attach time
-// (now + spec.Timeout, never CreatedAt + Timeout), proven by attaching to a run directory aged far
-// past spec.Timeout and asserting it does not immediately time out; and a spec with a zero Timeout
-// attaches with cfg.RunTimeoutMin applied, normalized the way the spec it matches on is.
+// TestAttach_DeadlineAtAttachTime pins the deadline of an attached run.
+// The deadline restarts at attach time (now + spec.Timeout, never CreatedAt + Timeout).
+// The test attaches to a run directory aged far past spec.Timeout and asserts it does not immediately time out.
+// A spec with a zero Timeout attaches with cfg.RunTimeoutMin applied, normalized the way the spec it matches on is.
 //
-// If Attach got either wrong, tick 1 would classify OutcomeTimeout immediately, before ever calling
-// Sleep — so the terminating event is planted only from inside the first Sleep call, which only a
-// correct (fresh, non-zero) deadline ever reaches.
+// If Attach got either wrong, tick 1 would classify OutcomeTimeout immediately, before any call to Sleep.
+// So the terminating event is planted only inside the first Sleep call.
+// Only a correct (fresh, non-zero) deadline ever reaches that call.
 func TestAttach_DeadlineAtAttachTime(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -896,9 +888,8 @@ func TestAttach_DeadlineAtAttachTime(t *testing.T) {
 			eventsPath := filepath.Join(runDir, eventsFileName)
 
 			fc := newFakeClock(time.Now())
-			// CreatedAt in the fixture is "now" (seedAttachRun's own timestamp), well within
-			// spec.Timeout — so to prove the deadline is NOT CreatedAt-derived, the run DIRECTORY
-			// itself is aged far past it.
+			// CreatedAt in the fixture is "now" (seedAttachRun's own timestamp), well within spec.Timeout.
+			// To prove the deadline is not derived from CreatedAt, the run directory itself is aged far past it.
 			if tt.dirAge > 0 {
 				setDirAge(t, runDir, fc.Now().Add(-tt.dirAge))
 			}
@@ -926,9 +917,9 @@ func TestAttach_DeadlineAtAttachTime(t *testing.T) {
 	}
 }
 
-// TestProbeGated_ReturnsHandleWithoutWaiting pins that ProbeGated answers a live candidate with the
-// reconstructed handle before any wait has run, that the handle's own Wait then classifies the run,
-// and that a probe over nothing answers not found.
+// TestProbeGated_ReturnsHandleWithoutWaiting pins that ProbeGated answers a live candidate before any wait has run.
+// It answers with the reconstructed handle, and the handle's own Wait then classifies the run.
+// A probe over nothing answers not found.
 func TestProbeGated_ReturnsHandleWithoutWaiting(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("live_candidate", func(t *testing.T) {
@@ -977,9 +968,9 @@ func TestProbeGated_ReturnsHandleWithoutWaiting(t *testing.T) {
 	})
 }
 
-// TestAttach_OutputFileMatching_ResolvedAbsoluteSet pins that matching is on the resolved absolute
-// set: a spec with relative entries matches a run.json written with absolute ones, and a spec naming
-// the same files in a different order still matches.
+// TestAttach_OutputFileMatching_ResolvedAbsoluteSet pins that matching is on the resolved absolute set.
+// A spec with relative entries matches a run.json written with absolute ones.
+// A spec naming the same files in a different order still matches.
 func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
@@ -987,8 +978,8 @@ func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 	runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
 	seedPresentReedState(t, dotLymDir)
 
-	// NewRunner's worktreeRoot is the parent of anchorPath; resolve the same absolute files a caller
-	// with a relative OutputFiles entry, joined against worktreeRoot, would produce.
+	// NewRunner's worktreeRoot is the parent of anchorPath.
+	// Resolve the absolute files a caller gets by joining a relative OutputFiles entry against worktreeRoot.
 	worktreeRoot := runner.worktreeRoot
 	absA := filepath.Join(worktreeRoot, "out-a.md")
 	absB := filepath.Join(worktreeRoot, "out-b.md")
@@ -1009,9 +1000,10 @@ func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 	}
 }
 
-// TestAttach_OffsetStartsAtZero covers attach-reconstructs-the-run-explicitly's replay decision:
-// a pre-existing events.jsonl whose last event is a completion classifies OutcomeDone on the first tick after attach (the missed-terminal-Stop case),
-// and the same backlog with output files absent is a held turn end that keeps the run polling to its deadline.
+// TestAttach_OffsetStartsAtZero pins that attach replays a pre-existing events.jsonl from offset zero.
+// A backlog whose last event is a completion classifies OutcomeDone on the first tick after attach.
+// That is the missed-terminal-Stop case.
+// The same backlog with output files absent is a held turn end that keeps the run polling to its deadline.
 //
 //testtiming:keep pins that the whole pre-existing events backlog is replayed on attach and its last event wins, for a completion and for a held Stop
 func TestAttach_OffsetStartsAtZero(t *testing.T) {
@@ -1066,7 +1058,9 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 	})
 }
 
-// TestAttach_DeliversTheDeferredPrompt pins that a run Attach reconstructs types its deferred prompt line once at Wait entry when its output files are missing and no turn of the prompt started, and types nothing when every output file exists.
+// TestAttach_DeliversTheDeferredPrompt pins the deferred prompt line of a reconstructed run.
+// When its output files are missing and no turn of the prompt started, the line is typed once at Wait entry.
+// When every output file exists, nothing is typed.
 func TestAttach_DeliversTheDeferredPrompt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1077,7 +1071,8 @@ func TestAttach_DeliversTheDeferredPrompt(t *testing.T) {
 		events       string
 		promptOffset int64
 		outputExists bool
-		// covered runs Attach under a hub entry that a later clock sleep resumes, and sendFails makes every send into the pane fail.
+		// A covered row runs Attach under a hub entry that a later clock sleep resumes.
+		// sendFails makes every send into the pane fail.
 		covered   bool
 		sendFails bool
 		wantTyped []string
@@ -1134,15 +1129,14 @@ func TestAttach_DeliversTheDeferredPrompt(t *testing.T) {
 	}
 }
 
-// TestAttach_StartedSeededTrue pins the started seed: attaching to a strand whose run.json already
-// carries Started: true (a prior Wait already observed StartupReady for it) and whose CapturePane
-// now returns a mid-turn capture (no ready markers) must not classify OutcomeDied after
-// startup_timeout_s, and must not play the trust-dismiss key sequence even when the capture happens
-// to contain a trust-dialog phrase — because the startup probe must never run at all once the
-// persisted Started is true, whatever else is true of the run. Without the seeded started:true, this
-// run.json would decode with Started still at its zero value (false), and the mid-turn capture here
-// would instead correctly re-trigger the startup probe — proving the seed, not just the field's
-// existence, is what this test exercises.
+// TestAttach_StartedSeededTrue pins the started seed.
+// Once the persisted Started is true, the startup probe must never run, whatever else is true of the run.
+// Attaching to a strand whose run.json carries Started: true must not classify OutcomeDied after startup_timeout_s.
+// That holds when CapturePane returns a mid-turn capture with no ready markers.
+// The attach must also not play the trust-dismiss key sequence, even when the capture holds a trust-dialog phrase.
+// Without the seeded started: true, this run.json would decode with Started at its zero value (false),
+// and the mid-turn capture would correctly re-trigger the startup probe.
+// So the test proves the seed, not just the field's existence.
 //
 //testtiming:keep pins that a persisted Started: true skips the startup probe on attach, with no engine Startup call and no trust-dismiss Enter played into a live pane
 func TestAttach_StartedSeededTrue(t *testing.T) {
@@ -1151,8 +1145,8 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 		StatusQueue:  []reedengine.StatusResult{liveStatus("strand-1", "%1")},
 		CaptureQueue: []string{"please trust this folder — mid turn capture"},
 	}
-	// StartupScript deliberately left empty: fakeEngine.Startup would return StartupPending for
-	// every call, and any call at all is the regression this test exists to catch.
+	// StartupScript is left empty: fakeEngine.Startup would return StartupPending for every call,
+	// and any call at all is the regression this test exists to catch.
 	engine := &fakeEngine{}
 	fx := newFixture(t, reed, engine, withConfig(Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}), withSeparateRunDir())
 	runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
@@ -1163,10 +1157,10 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	eventsPath := filepath.Join(runDir, eventsFileName)
 
 	fc := newFakeClock(time.Now())
-	// Nothing ends this run on tick 1 (no events yet, and started=true skips the startup probe
-	// entirely, including its own output-files check) — the terminating event is planted from
-	// inside the first Sleep call purely to keep the test finite; the regression this test guards
-	// against (re-probing startup) would have shown up already, on tick 1, via StartupCalls/SendKeyCalls.
+	// Nothing ends this run on tick 1: there are no events yet, and started=true skips the startup probe entirely.
+	// That skip includes the probe's own output-files check.
+	// The terminating event is planted from inside the first Sleep call only to keep the test finite.
+	// A regression that re-probes startup would show on tick 1, through StartupCalls and SendKeyCalls.
 	mc := &multiStepClock{fakeClock: fc, steps: []func(){
 		func() {
 			touchOutputFile(t, outputFile)
@@ -1201,13 +1195,15 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	}
 }
 
-// TestAttach_StrandLaterLosesPaneBinding pins that an attached run keeps full liveness coverage:
-// Attach's own dispositioning read sees a live pane (so the candidate is attachable) and Wait's
-// first liveness tick sees the binding cleared. With output files present a hidden-anchor spec
-// still classifies OutcomeDone, proving the inherited checkLivenessTick branches are reached. With
-// the output file never created and an empty Anchor, Attach defaults it to AnchorOwnWindow on the
-// reconstructed Run, so Wait surfaces errStrandPaneBindingCleared rather than the empty Anchor
-// taking the hidden-strand carve-out and classifying OutcomeDied.
+// TestAttach_StrandLaterLosesPaneBinding pins that an attached run keeps full liveness coverage.
+// Attach's own dispositioning read sees a live pane, so the candidate is attachable.
+// Wait's first liveness tick then sees the binding cleared.
+// With output files present, a hidden-anchor spec still classifies OutcomeDone.
+// That shows the inherited checkLivenessTick branches are reached.
+// The output file is never created and the Anchor is empty.
+// Attach then defaults the Anchor to AnchorOwnWindow on the reconstructed Run.
+// Wait then surfaces errStrandPaneBindingCleared.
+// The empty Anchor must not take the hidden-strand carve-out and classify OutcomeDied.
 //
 //testtiming:keep pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted to own-window
 func TestAttach_StrandLaterLosesPaneBinding(t *testing.T) {
@@ -1257,15 +1253,15 @@ func TestAttach_StrandLaterLosesPaneBinding(t *testing.T) {
 	}
 }
 
-// TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun pins the other side of F1's fix:
-// the harvest is gated on a genuinely satisfied file contract plus a record still declaring itself
-// running, and every reed gate keeps its original refusal when either is missing.
+// TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun pins the refusal when reed state is unavailable.
+// The harvest is gated on a satisfied file contract and a record still declaring itself running.
+// Each reed gate still refuses when either condition is missing.
 //
-// The unsatisfied-contract row is what keeps the crash-versus-bounce trap shut, and the terminal-record
-// row is what keeps a record that already ended from being re-harvested. The two-running-records row
-// covers soleFinishedCandidate's exactly-one rule: reed is precisely the thing that cannot be
-// consulted to pick between them here, so falling through to the gate's own refusal is the honest
-// answer rather than choosing one silently.
+// The unsatisfied-contract row guards against the crash-versus-bounce trap.
+// The terminal-record row keeps a record that already ended from being re-harvested.
+// The two-running-records row covers soleFinishedCandidate's exactly-one rule.
+// Reed state is absent here, so it cannot pick between the two running records.
+// The attach falls through to the gate's refusal instead of silently choosing one.
 func TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1284,7 +1280,7 @@ func TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun(t *testing.
 			reed := &fakeReed{}
 			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
 			runner, runRoot := fx.Runner, fx.RunRoot
-			// reed.json deliberately not seeded: the absent-state-file gate.
+			// reed.json is not seeded: the absent-state-file gate.
 
 			outputFile := filepath.Join(runRoot, "out.md")
 			if tt.createOutput {

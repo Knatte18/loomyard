@@ -1,7 +1,10 @@
-// smoke_assist_test.go is burlerengine's opt-in live-integration smoke test for the assistant reviewer on Codex:
-// TestSmokeBurlerReviewCodexAssistant drives one solo review round with a REAL Codex assistant on luna beside a cheap Claude chair, both in REAL tmux panes.
-// It mirrors smoke_round_test.go's tier gating, fixture hub, stencil seeding and stack wiring, and reuses that file's helpers (seedHubStencils, deferHubRelease, registerReedServer) rather than redefining them.
-// The one difference in wiring is the engine set: shuttleengines.New builds every registered engine, so the chair resolves to claude and the assistant to codex.
+// smoke_assist_test.go is burlerengine's opt-in live-integration smoke test for the assistant reviewer on Codex.
+// TestSmokeBurlerReviewCodexAssistant drives one solo review round with a real Codex assistant on luna.
+// The chair is a cheap Claude session; both run in real tmux panes.
+// It mirrors smoke_round_test.go's tier gating, fixture hub, stencil seeding and stack wiring.
+// It reuses that file's helpers (seedHubStencils, deferHubRelease, registerReedServer) rather than redefining them.
+// The one difference in wiring is the engine set: shuttleengines.New builds every registered engine,
+// so the chair resolves to claude and the assistant to codex.
 // The assertions are mechanics only, never review quality.
 
 package burlerengine_test
@@ -29,8 +32,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSmokeBurlerReviewCodexAssistant drives one solo review round whose chair is a cheap Claude reviewer (the stub chair) and whose assistant is a Codex session on luna[low], over the toy chair/table fixture.
-// It asserts the mechanics of the assisted round alone: the review half returns a verdict, ReviewResult.Assists holds one entry for seat "assist" with a non-empty Ending, and a done assistant's report copy sits beside the review and parses with ParseCurrentReview.
+// TestSmokeBurlerReviewCodexAssistant drives one solo review round over the toy chair/table fixture.
+// The chair is a cheap Claude reviewer (the stub chair), and the assistant is a Codex session on luna[low].
+// It asserts the mechanics of the assisted round alone.
+// The review half returns a verdict.
+// ReviewResult.Assists holds one entry for seat "assist" with a non-empty Ending.
+// A done assistant's report copy sits beside the review and parses with ParseCurrentReview.
 // It skips unless the llm tier is selected, a claude binary resolves and a codex binary is on PATH.
 // The operator runs it, capped at one run; it uses the operator's real Codex login through codex.yaml's default homes.
 func TestSmokeBurlerReviewCodexAssistant(t *testing.T) {

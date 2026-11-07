@@ -1,5 +1,7 @@
-// bouncer_decision_test.go covers the Bouncer's escalation of a judged round whose review holds a decision-class finding to the run's parent:
-// the cause-decision record, the parent's recorded accept and continue, the refusal check they meet, and the carry-over a decision accept writes.
+// bouncer_decision_test.go covers the Bouncer escalating a judged round to the run's parent.
+// The escalation applies when the review holds a decision-class finding.
+// The tests cover the cause-decision record, the parent's recorded accept and continue, the refusal check they meet,
+// and the carry-over a decision accept writes.
 
 package shedadapters
 
@@ -42,7 +44,8 @@ func decisionReviewContent(findings ...reviewFixtureFinding) string {
 // judgeAnswer is the verdict file and ledger file one judge run writes.
 type judgeAnswer struct{ verdict, ledger string }
 
-// sequencedJudge returns a shuttle whose nth judge run for round writes the nth answer, the last answer repeating, and the next round's focus file.
+// sequencedJudge returns a shuttle whose nth judge run for round writes the nth answer, the last answer repeating.
+// Each run also writes the next round's focus file.
 func sequencedJudge(round int, answers ...judgeAnswer) *shedfake.Shuttle {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	runs := 0
@@ -60,9 +63,11 @@ func sequencedJudge(round int, answers ...judgeAnswer) *shedfake.Shuttle {
 	return shuttle
 }
 
-// decisionBouncer builds a Bouncer over a two-round run directory, round 1 CONTINUE over an empty ledger and round 2 laid out from review, verdict and ledger, with EscalateDecisions set.
+// decisionBouncer builds a Bouncer over a two-round run directory with EscalateDecisions set.
+// Round 1 is CONTINUE over an empty ledger; round 2 is laid out from review, verdict and ledger.
 // An empty verdict or ledger leaves round 2 unjudged.
-// The fixture tells the brief render its slug, worktree root and decision record path; the decision record itself is not written.
+// The fixture tells the brief render its slug, worktree root and decision record path;
+// the decision record itself is not written.
 func decisionBouncer(t *testing.T, verdict, review, ledger string, tweak func(*BouncerConfig)) (*Bouncer, *BouncerConfig, *shedfake.Shuttle) {
 	t.Helper()
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -80,7 +85,7 @@ func decisionBouncer(t *testing.T, verdict, review, ledger string, tweak func(*B
 		{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1)},
 		round2,
 	})
-	// RecordCirclingDecision resolves the latest round from the review file, not the fixture's report name.
+	// RecordCirclingDecision resolves the latest round from the review file, so the test writes one for each round.
 	for n := 1; n <= 2; n++ {
 		if err := os.WriteFile(roundReviewPath(cfg.RunDir, n), []byte("review\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(review round %d) = %v; want nil", n, err)
@@ -93,7 +98,8 @@ func decisionBouncer(t *testing.T, verdict, review, ledger string, tweak func(*B
 	return b, &cfg, cfg.Shuttle.(*shedfake.Shuttle)
 }
 
-// judgedDecisionBouncer is decisionBouncer over an unjudged round 2 that the Bouncer's own judge spawns judge, the nth answering with answers[n].
+// judgedDecisionBouncer builds a Bouncer whose round 2 is left unjudged, so the Bouncer's own judge spawns it.
+// The nth spawn answers with answers[n].
 // A CONVERGED verdict has to come from such a spawn: one already on disk at the first Call reads as an earlier settle.
 func judgedDecisionBouncer(t *testing.T, review string, tweak func(*BouncerConfig), answers ...judgeAnswer) (*Bouncer, *BouncerConfig, *shedfake.Shuttle) {
 	t.Helper()
@@ -107,7 +113,8 @@ func judgedDecisionBouncer(t *testing.T, review string, tweak func(*BouncerConfi
 	return b, cfg, shuttle
 }
 
-// decisionBouncerFor builds a decisionBouncer whose round 2 is judged verdict over ledger: laid out on disk, or judged by a spawn when verdict is CONVERGED.
+// decisionBouncerFor builds a Bouncer whose round 2 is judged verdict over ledger.
+// It lays the round out on disk, or has the Bouncer's judge spawn it when verdict is CONVERGED.
 func decisionBouncerFor(t *testing.T, verdict, review, ledger string, tweak func(*BouncerConfig)) (*Bouncer, *BouncerConfig, *shedfake.Shuttle) {
 	t.Helper()
 	if verdict == "CONVERGED" {
@@ -116,7 +123,8 @@ func decisionBouncerFor(t *testing.T, verdict, review, ledger string, tweak func
 	return decisionBouncer(t, verdict, review, ledger, tweak)
 }
 
-// requireDecisionEscalation fails the test unless round 2 carries an escalation record of cause decision, and returns its brief.
+// requireDecisionEscalation fails the test unless round 2 carries an escalation record of cause decision.
+// It returns the brief.
 func requireDecisionEscalation(t *testing.T, cfg *BouncerConfig) string {
 	t.Helper()
 	requireEscalation(t, cfg, EscalationDecision)
@@ -135,7 +143,8 @@ func recordDecision(t *testing.T, cfg *BouncerConfig, d CirclingDecision) {
 	}
 }
 
-// writeAddedDecisions writes the decision record at cfg.DecisionRecordPath holding one `Added after Discussion` entry per title.
+// writeAddedDecisions writes the decision record at cfg.DecisionRecordPath.
+// It holds one `Added after Discussion` entry per title.
 func writeAddedDecisions(t *testing.T, cfg *BouncerConfig, titles ...string) {
 	t.Helper()
 	var record strings.Builder
@@ -190,9 +199,12 @@ var (
 )
 
 // TestBouncer_DecisionEscalation covers a Bouncer told EscalateDecisions.
-// A judged round whose review holds a decision-class finding escalates to the run's parent with cause decision, whatever the judge ruled.
-// The parent's recorded accept passes the round over those findings and carries them into the carry-over, and a recorded continue runs another round.
-// It also covers the refusal check an accept or a continue meets, the budget and hard-cap routes of a held refusal, and every path that must behave as before.
+// A judged round whose review holds a decision-class finding escalates to the run's parent with cause decision.
+// This holds whatever the judge ruled.
+// The parent's recorded accept passes the round over those findings and carries them into the carry-over,
+// and a recorded continue runs another round.
+// It also covers the refusal check an accept or a continue meets and the budget and hard-cap routes of a held refusal.
+// Every path that must behave as before is covered too.
 //
 //testtiming:keep pins the decision cause's routing, snapshot, refusal and carry-over contract across the verdicts, the budget and the hard cap, which no other test reaches
 func TestBouncer_DecisionEscalation(t *testing.T) {

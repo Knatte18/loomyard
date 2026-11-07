@@ -1,72 +1,79 @@
-// verbs.go builds the tranche-1 verb table: the nine gate-reaching verbs, each with its own Arrange
-// fixture, its Run call, and its Expect function deriving a per-state Expectation; plus the seventeen
-// hostile-input cases and the omission table recording every verb/state pair deliberately excluded
-// from the cross product batch 7 drives.
+// verbs.go builds the verb table for the gate-reaching verbs.
+// Each verb has its own Arrange fixture, Run call, and Expect function, which derives a per-state Expectation.
+// The file also holds the hostile-input cases and the omission table of excluded verb/state pairs.
 //
 // # The verified dirtiness-scope table
 //
-// Every dirtiness cell's outcome is DERIVED from this table, never observed and then written down — a
-// cell written from observed behaviour asserts nothing, which is the exact failure mode that let a
-// green suite coexist with eight data-loss defects across the crucible rounds this harness exists to
-// replay.
-// The table covers the declarations reachable in tranche 1 with force=false and is NOT an exhaustive
-// index of every pathRequest in the package: Remove's weft-side gate rows (weftwiring.go:199
-// dirtyScopeAll, :219 dirtyCheckedOutBranch), Checkout's checkout.go:200 and Add's add.go:268/:292
-// are deliberately absent because none of them changes a tranche-1 cell's derived outcome, and a
-// later tranche that adds a force axis must extend this table rather than assume it already covers
-// them.
+// Every dirtiness cell's outcome is DERIVED from this table, never observed and written down.
+// A cell written from observed behaviour asserts nothing, so a green suite can hide data-loss defects.
+// The table covers the declarations reachable with force=false.
+// It is not an exhaustive index of every pathRequest in the package.
+// Remove's weft-side gate rows in weftwiring.go (dirtyScopeAll, dirtyCheckedOutBranch) are deliberately absent.
+// So are the Checkout call in checkout.go and the Add calls in add.go.
+// None of them changes a cell's derived outcome here.
+// A later change that adds a force axis must extend this table rather than assume it already covers them.
 //
-//   - Add own pre-flight (add.go:43) — scopeTracked, the prime warp worktree.
-//   - Checkout own pre-flight (checkout.go:42) — scopeTracked, the weft worktree; Checkout has NO
-//     warp-side dirtiness probe at all (checkout.go:38-85 goes straight to `git switch`).
-//   - Remove own pre-flight (remove.go:69) — scopeAll, the pair's warp worktree.
-//   - Remove's refuseDirtyWeftWorktree (remove.go:79/:144) — scopeAll, the pair's weft worktree.
-//   - Remove's gate call (remove.go:196/:230) — dirtyScopeAll, the pair's warp worktree.
-//   - Remove's gate call (launchers.go:172/:193) — dirtinessNA.
-//   - Prune own pre-flight (prune.go:214) — scopeTracked, the weft path.
-//   - Prune's gate call (prune.go:269/:292) — dirtyScopeTracked, stale pair paths.
-//   - Pull own pre-flight (pull.go:143) — scopeTracked, the prime warp worktree.
-//   - Pull's gate call via Fabric.ResetHard (destroy.go:762) — dirtyScopeTracked, the prime warp
-//     worktree.
-//   - Reconcile own pre-flight (reconcile.go:301) — scopeAll, the board.
+//   - Add own pre-flight (add.go) — scopeTracked, the prime warp worktree.
+//   - Checkout own pre-flight (checkout.go) — scopeTracked, the weft worktree.
+//     Checkout has no warp-side dirtiness probe at all; it goes straight to `git switch`.
+//   - Remove own pre-flight (remove.go) — scopeAll, the pair's warp worktree.
+//   - Remove's refuseDirtyWeftWorktree (remove.go) — scopeAll, the pair's weft worktree.
+//   - Remove's gate call (remove.go) — dirtyScopeAll, the pair's warp worktree.
+//   - Remove's gate call (launchers.go) — dirtinessNA.
+//   - Prune own pre-flight (prune.go) — scopeTracked, the weft path.
+//   - Prune's gate call (prune.go) — dirtyScopeTracked, stale pair paths.
+//   - Pull own pre-flight (pull.go) — scopeTracked, the prime warp worktree.
+//   - Pull's gate call via Fabric.ResetHard (destroy.go) — dirtyScopeTracked, the prime warp worktree.
+//   - Reconcile own pre-flight (reconcile.go) — scopeAll, the board.
 //   - Cleanup's gate call — branch-shaped, dirtyCheckedOutBranch.
 //   - UnwireJunctions' gate call — link-shaped, dirtinessNA.
-//   - CloneHub{Reset}'s gate call (clone.go:585) — dirtinessNA.
+//   - CloneHub{Reset}'s gate call (clone.go) — dirtinessNA.
 //
-// The derivation rule: a scopeTracked verb against an untracked-only state expects Proceeds; a
-// scopeAll verb against the same state expects a refusal; a verb with NO probe for the dirtied side
-// gets an explicit per-cell expectation, never a derived one.
-// dirtyWarpTracked x Checkout is the only such case in tranche 1, and it is git-decided: `git switch`
-// either carries the tracked modification across or refuses with "your local changes would be
-// overwritten", so the cell asserts what must hold either way — the tracked modification is still on
-// disk afterwards, and the pair is not half-switched (either both sides moved or neither did).
-// Guessing which branch git takes would be asserting git's behaviour rather than fabric's; the
-// disjunction still catches what matters, since a half-switched pair is exactly what Checkout's
-// documented all-or-nothing rollback exists to prevent.
+// The derivation rule: a scopeTracked verb against an untracked-only state expects Proceeds;
+// a scopeAll verb against the same state expects a refusal;
+// a verb with no probe for the dirtied side gets an explicit per-cell expectation, never a derived one.
+// dirtyWarpTracked x Checkout is the only such case, and git decides it.
+// `git switch` either carries the tracked modification across or refuses with "your local changes would be overwritten".
+// The cell therefore asserts what must hold either way: the tracked modification is still on disk afterwards,
+// and the pair is not half-switched, meaning both sides moved or neither did.
+// Guessing which branch git takes would assert git's behaviour rather than fabric's.
+// The disjunction still catches what matters.
+// Checkout's documented all-or-nothing rollback exists to prevent a half-switched pair.
 //
 // # CloneHub{Reset: true}
 //
-// This column is re-scoped to the ownership axis and is not run against the ten states.
-// resetHub declares dirtinessNA, so no dirtiness state can refuse it — total hub destruction on --reset is correct behaviour — which would make the permitted root the hub root itself and the manifest diff vacuous across all ten states.
-// The gate is structurally unreachable for Reset: CloneHub refuses a non-hub offline through checkResetTarget (!looksLikeHub) BEFORE resetHub builds its pathRequest, and the gate's pathOwnershipFabricHub predicate is that SAME looksLikeHub call, so a RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
-// This column therefore uses RefusedBefore("is not a fabric hub") and drives exactly two targets: a <derived>-LYMHUB-named directory that is not a hub (refused at the pre-flight, contents surviving — R4's `clone --reset` defect), and a real hub (torn down and rebuilt through fabriccli.CloneAndWire, the positive case proving the column is not trivially always-refusing).
+// This column is re-scoped to the ownership axis and is not run against the state matrix.
+// resetHub declares dirtinessNA, so no dirtiness state can refuse it.
+// Total hub destruction on --reset is correct behaviour.
+// If a dirtiness state could refuse it, the permitted root would be the hub root itself,
+// and the manifest diff would be vacuous across every state in the matrix.
+// The gate is structurally unreachable for Reset.
+// CloneHub refuses a non-hub offline in checkResetTarget, which calls looksLikeHub.
+// That refusal comes before resetHub builds its pathRequest.
+// The gate's pathOwnershipFabricHub predicate calls that same looksLikeHub,
+// so a RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
+// This column therefore uses RefusedBefore("is not a fabric hub") and drives exactly two targets.
+// The first is a <derived>-LYMHUB-named directory that is not a hub.
+// The pre-flight refuses it, and its contents survive.
+// The second is a real hub, torn down and rebuilt through fabriccli.CloneAndWire.
+// It is the positive case: the column is not trivially always-refusing.
 //
-// # The seventeen hostile-input cases
+// # The hostile-input cases
 //
 // All carry States: []string{"clean"} and both anchors.
-// Add and Remove each take the same seven slug-shaped inputs: "", ".", "..", "../x", a
-// weftname.Suffix-suffixed name, a reserved hub name, and a leading "-".
-// Checkout takes two branch-shaped inputs (a nonexistent branch and a flag-shaped name), because
-// checkout.go:38-85 validates no branch at all.
-// UnwireJunctions takes one: a junction name escaping its worktree ("../x"), in scope despite taking
-// neither a slug nor a branch, because its names []string is the only route to the link executor's
-// containment check.
-// Each input's expectation is derived from what validateWorktreeSlug (slug.go:30) actually rejects —
-// never asserting whatever the current behaviour happens to be, which would assert nothing.
-// A leading "-" is NOT rejected by validateWorktreeSlug — it is not on any of that function's five
-// rejection rules — so no gate check owns it and neither refusal kind applies; those cells (and the
-// two Checkout hostile cells) are written against the safe expectation that the argument never reaches
-// git as a flag and nothing outside the permitted roots is destroyed.
+// Add and Remove each take the same slug-shaped inputs:
+// "", ".", "..", "../x", a weftname.Suffix-suffixed name, a reserved hub name, and a leading "-".
+// Checkout takes two branch-shaped inputs: a nonexistent branch and a flag-shaped name.
+// The checkout code validates no branch at all.
+// UnwireJunctions takes one input: a junction name escaping its worktree ("../x").
+// It is in scope although it takes neither a slug nor a branch.
+// Its names []string is the only route to the link executor's containment check.
+// Each input's expectation is derived from what validateWorktreeSlug actually rejects.
+// It never asserts whatever the current behaviour happens to be, since that would assert nothing.
+// A leading "-" is NOT rejected by validateWorktreeSlug: it is on none of that function's rejection rules.
+// No gate check owns it, so neither refusal kind applies.
+// Those cells, and the Checkout hostile cells, are written against the safe expectation:
+// the argument never reaches git as a flag, and nothing outside the permitted roots is destroyed.
 
 package fabricengine_test
 
@@ -87,17 +94,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// VerbFixture carries whatever a VerbCase's Arrange produced: a pair slug, an advanced upstream SHA,
-// a broken remote, a checked-out branch — and the StateTarget the state builders need.
-// Not every field is populated by every verb's Arrange; each Arrange populates only the fields its own
-// Run and Expect closures consume.
+// VerbFixture carries what a VerbCase's Arrange produced: a pair slug, an advanced upstream SHA,
+// a broken remote, a checked-out branch, and the StateTarget the state builders need.
+// Each Arrange populates only the fields that its own Run and Expect closures consume.
 type VerbFixture struct {
 	// Slug is the pair slug this cell operates on, when the verb under test takes one.
 	Slug string
-	// Target is the StateTarget a hostile or dirty state plants against, resolved per verb per the
-	// verified dirtiness-scope table above.
+	// Target is the StateTarget that a hostile or dirty state plants against.
+	// Each verb resolves it from the verified dirtiness-scope table above.
 	Target StateTarget
-	// LauncherBlocker is the directory Add's Arrange plants at the pair's ide launcher script path, so Add's launcher step fails after the branch and both worktrees already exist.
+	// LauncherBlocker is a directory planted at the pair's launcher script path, failing Add's launcher step.
 	LauncherBlocker string
 	// AdvancedFromSHA is the prime warp worktree's HEAD before Pull's Arrange pushes a new commit to
 	// the hub's own warp bare.
@@ -118,27 +124,27 @@ type VerbFixture struct {
 	ResetHubPath string
 }
 
-// ExpectationKind enumerates the closed set of outcomes a cell can declare: a refusal from fabric's
-// destructive gate, a refusal from one of fabric's own pre-flight checks, the verb proceeding to its
-// intended effect, or -- for the one tranche-1 cell where the outcome is git's own to decide, not
-// fabric's -- either of the last two.
+// ExpectationKind is the closed set of outcomes a cell can declare.
+// A cell can expect a refusal from fabric's destructive gate, or from one of fabric's pre-flight checks.
+// It can also expect the verb to proceed to its intended effect.
+// A cell whose outcome git decides, not fabric, may accept either a proceed or a pre-flight refusal.
 type ExpectationKind int
 
 const (
 	// KindRefusedByGate means the error contains "<check> check failed" for the declared Check.
 	KindRefusedByGate ExpectationKind = iota
-	// KindRefusedBefore means the error contains the declared substring and does not contain "check
-	// failed".
+	// KindRefusedBefore means the error contains the declared substring,
+	// and it does not contain "check failed".
 	KindRefusedBefore
-	// KindProceeds means the verb succeeds, its intended effect lands, and the state's planted
-	// content survives.
+	// KindProceeds means the verb succeeds and its intended effect lands.
+	// The state's planted content survives the call.
 	KindProceeds
-	// KindEitherProceedsOrRefusedBefore means the outcome is git's own to decide rather than
-	// fabric's: either the verb succeeds (err == nil), or it fails with a RefusedBefore-shaped error
-	// carrying the declared Substring. checkoutCase's dirtyWarpTracked cell is the one tranche-1 case
-	// this exists for -- see this file's own doc comment, "dirtyWarpTracked x Checkout is the only
-	// such case in tranche 1" -- and it is deliberately NOT a per-verb conditional in the driver: it
-	// is one more closed, data-declared outcome a cell can name, exactly like the other three.
+	// KindEitherProceedsOrRefusedBefore means git, not fabric, decides the outcome.
+	// The verb may succeed, with err == nil.
+	// Or it may fail with a RefusedBefore-shaped error carrying the declared Substring.
+	// The driver has no per-verb branch for this kind.
+	// A cell names it as data, one more closed outcome beside the other kinds.
+	// Cells whose outcome fabric decides use the other kinds.
 	KindEitherProceedsOrRefusedBefore
 )
 
@@ -158,11 +164,10 @@ func (k ExpectationKind) String() string {
 	}
 }
 
-// Expectation is what one cell — a verb case run against one named state — is derived to produce.
-// PermittedRoots is present on all three kinds: a refusal is not assumed side-effect-free, which is
-// why the refusal kinds carry permit roots too.
-// Effect is populated for clean-state cells regardless of Kind, since card 17's wiring suite needs an
-// extra, verb-specific check beyond the generic error-shape and manifest-diff checks every cell gets.
+// Expectation is what a cell, one verb case run against one named state, is derived to produce.
+// PermittedRoots is set for every Kind, since a refusal is not assumed side-effect-free.
+// Effect is set for clean-state cells regardless of Kind.
+// It carries a verb-specific check beyond the generic error-shape and manifest-diff checks every cell gets.
 type Expectation struct {
 	Kind           ExpectationKind
 	Check          fabricengine.Check
@@ -171,22 +176,21 @@ type Expectation struct {
 	Effect         func(tb testing.TB, h *hubforge.Hub, f VerbFixture)
 }
 
-// VerbCase is one verb under test: its own fixture builder, its call into fabric, the states it runs
-// against, and the per-state Expectation it derives.
-// Arrange is a required field, not an optional convenience: most verbs need a fixture no state builds,
-// and folding that work into Run would be a correctness bug rather than a style choice — the
-// before-manifest is captured before Run, so an arrangement mutation folded into Run would show up in
-// the diff as an unpermitted change.
-// States is an optional restriction: empty means the case inherits every state in the package-level
-// States slice, which is the default and what every ordinary verb uses, so a newly appended verb still
-// gets the full matrix automatically.
-// Only the hostile-input cases and the CloneHub{Reset} column set it, always to a State whose Apply is
-// itself never invoked for a hostile case ("clean" — a no-op — or, for CloneHub{Reset}, a case-specific
-// pseudo-state name resolved entirely by Arrange).
-// Run returns the call's own fabricengine.Mutations record alongside its error: the twelve verbs under
-// test return twelve heterogeneous result types, so a cell needs one uniform accessor —
-// MutationRecord.Mutated() — to read whichever one it drove, and discarding the typed result the way
-// this field used to would leave nothing for a cell to cross-check against the manifest diff.
+// VerbCase is one verb under test.
+// It holds the fixture builder, the call into fabric, the states it runs against, and the Expectation it derives.
+// Arrange is a required field, not a convenience: most verbs need a fixture no state builds.
+// Folding that work into Run would be a correctness bug.
+// The before-manifest is captured before Run, so a mutation folded into Run would show up as an unpermitted change.
+// States is an optional restriction.
+// Empty means the case inherits every state in the package-level States slice, which ordinary verbs use.
+// So a newly appended verb gets the full matrix automatically.
+// Only hostile-input cases and the CloneHub{Reset} column set it.
+// Their state's Apply is never invoked.
+// It is the no-op "clean" state, or for CloneHub{Reset} a pseudo-state name that Arrange resolves.
+// Run returns the call's own fabricengine.Mutations record alongside its error.
+// The verbs under test return heterogeneous result types, so cells read the record through one uniform accessor.
+// That accessor is MutationRecord.Mutated().
+// Discarding the typed result would leave nothing for a cell to cross-check against the manifest diff.
 type VerbCase struct {
 	Name    string
 	Arrange func(tb testing.TB, h *hubforge.Hub) VerbFixture
@@ -195,10 +199,8 @@ type VerbCase struct {
 	Expect  func(state string) Expectation
 }
 
-// Omission names one verb/state pair deliberately excluded from the cross product, with the reason —
-// so a green matrix can be audited against what it did not run.
-// An arbitrarily-planted state is worse than an absent one: it produces a green cell that proves
-// nothing while reading like coverage.
+// Omission names one verb/state pair excluded from the cross product, with the reason.
+// Recording the pair keeps the gap visible, since an absent pair reads like coverage.
 type Omission struct {
 	Verb   string
 	State  string
@@ -206,12 +208,8 @@ type Omission struct {
 }
 
 // Omissions is the durable, exported record of every verb/state pair excluded from the cross product.
-// It starts with the structural-state omissions derived in the plan's overview and grows with every
-// dirtiness- or structural-state omission this package's own derivation work found while deriving each
-// cell against the verified dirtiness-scope table and the actual pathRequest call sites each verb
-// reaches -- batch 7's full-matrix run (card 19) is what surfaced the rows below the original fifteen,
-// each grounded in a verified read of the production call site it names, never in what a run happened
-// to produce.
+// Each row is derived from the verified dirtiness-scope table and the production call sites its verb reaches.
+// No row is derived from what a test run happened to produce.
 var Omissions = []Omission{
 	{Verb: "Cleanup", State: "trackedSymlinkAtWiredPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:283), branch-shaped; no structural state names a path it acts on"},
 	{Verb: "Cleanup", State: "foreignDirAtFabricOwnedPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:283), branch-shaped; no structural state names a path it acts on"},
@@ -229,50 +227,38 @@ var Omissions = []Omission{
 	{Verb: "Add", State: "staleWiredJunction", Reason: "Add's gate calls (add.go:263-295) act on the pair it is creating; that junction path does not exist before Run"},
 	{Verb: "UnwireJunctions", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "UnwireJunctions' only gate call is the removeLink inside unseedJunctionRecords (junction.go:474-483), reached via unseedLymJunction; it never visits a weft-named path"},
 
-	// Card 19's full-matrix run: Reconcile has no path-executor gate call at all -- reconcile.go
-	// contains no pathRequest -- so no structural state, of any shape, names a path Reconcile's own
-	// pre-flight (reconcile.go:301, scopeAll on the board) ever inspects.
+	// Reconcile has no path-executor gate call: reconcile.go contains no pathRequest.
+	// Its pre-flight is scopeAll on the board, so no structural state, of any shape, names a path it inspects.
 	{Verb: "Reconcile", State: "trackedSymlinkAtWiredPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
 	{Verb: "Reconcile", State: "staleWiredJunction", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
 	{Verb: "Reconcile", State: "foreignDirAtFabricOwnedPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
 	{Verb: "Reconcile", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
 
-	// Card 19's full-matrix run: Cleanup's own Arrange tears down the pair's weft worktree by hand
-	// (mirroring an orphan managed branch, cleanup's own precondition) before the state is applied, so
-	// no weft-targeted dirtiness state can plant into a checkout that no longer exists.
+	// Cleanup's Arrange removes the pair's weft worktree by hand before the state is applied.
+	// No weft-targeted dirtiness state can plant into a checkout that no longer exists.
 	{Verb: "Cleanup", State: "dirtyWeftTracked", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
 	{Verb: "Cleanup", State: "dirtyWeftUntracked", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
 	{Verb: "Cleanup", State: "bothDirty", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout bothDirty's weft half would plant into does not exist"},
 
-	// Card 19's full-matrix run: Remove's own path-executor gate calls (remove.go's
-	// removeWarpWorktreeDir, ownedRegisteredLinkedWorktree on the pair's own registered worktree; and
-	// removeWarpJunction's ownership-filtered link sweep) never reach an independent foreign directory
-	// or unrelated clone at another path -- only the pair's own worktree and its own wired junctions,
-	// which the retained link-shaped states (trackedSymlinkAtWiredPath, staleWiredJunction) already
-	// cover.
+	// Remove's own path-executor gate calls target only the pair's registered worktree and its own wired junctions.
+	// No ownership check reaches an independent foreign directory or unrelated clone at another path.
+	// The link-shaped states trackedSymlinkAtWiredPath and staleWiredJunction cover the wired junctions.
 	{Verb: "Remove", State: "foreignDirAtFabricOwnedPath", Reason: "Remove's own path-executor gate calls target the pair's registered worktree and its own wired junctions; no ownership check reaches an independent foreign directory at another path"},
 	{Verb: "Remove", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Remove's own path-executor gate calls target the pair's registered worktree and its own wired junctions; no ownership check reaches an independent unrelated clone at another weft-named path"},
 
-	// Card 19's full-matrix run: Prune's only path-executor gate call (prune.go:264,
-	// ownedRegisteredLinkedWorktree on the orphan's own weft directory) targets a directory, never a
-	// link -- prune.go has no removeLink/repointLink call at all, so no link-shaped structural state
-	// names a path it acts on.
+	// Prune's only path-executor gate call targets a directory, never a link.
+	// It has no removeLink or repointLink call, so no link-shaped structural state names a path it acts on.
 	{Verb: "Prune", State: "trackedSymlinkAtWiredPath", Reason: "Prune's only path-executor gate call targets a directory (prune.go:264, ownedRegisteredLinkedWorktree); it has no removeLink/repointLink call, so no link-shaped structural state names a path it acts on"},
 	{Verb: "Prune", State: "staleWiredJunction", Reason: "Prune's only path-executor gate call targets a directory (prune.go:264, ownedRegisteredLinkedWorktree); it has no removeLink/repointLink call, so no link-shaped structural state names a path it acts on"},
 
-	// Card 19's full-matrix run: UnwireJunctions' own StructuralPath, like Remove's, is the pair's own
-	// pre-existing wired junction link. foreignDirAtFabricOwnedPathState's Apply does not remove that
-	// link first (only trackedSymlinkAtWiredPath and staleWiredJunction do), so its os.MkdirAll would
-	// silently no-op through the still-intact link and write through it, rather than genuinely park a
-	// foreign directory at the path -- the same structural reason unrelatedGitCloneAtWeftNamedPath is
-	// already omitted for this verb.
+	// UnwireJunctions' StructuralPath is the pair's own pre-existing wired junction link.
+	// foreignDirAtFabricOwnedPathState's Apply does not remove that link first.
+	// Its os.MkdirAll would silently write through the intact link instead of parking a foreign directory at the path.
 	{Verb: "UnwireJunctions", State: "foreignDirAtFabricOwnedPath", Reason: "UnwireJunctions' StructuralPath is the pair's own pre-existing wired junction link; foreignDirAtFabricOwnedPathState's Apply does not remove it first, so os.MkdirAll would silently no-op through the intact link instead of parking a foreign directory"},
 }
 
-// hubRelative returns abs's path relative to h.Path, slash-normalised, for use as a manifest-relative
-// permitted root or StateTarget.StructuralPath derivation.
-// Every geometry path this file needs is obtained from an fabricengine accessor first and converted
-// here, never spelled as a raw literal, per the geometry-through-accessors Shared Decision.
+// hubRelative returns abs relative to h.Path, slash-normalised, as a manifest-relative path.
+// Geometry paths come from fabricengine accessors, never from raw literals.
 func hubRelative(tb testing.TB, h *hubforge.Hub, abs string) string {
 	tb.Helper()
 
@@ -283,7 +269,9 @@ func hubRelative(tb testing.TB, h *hubforge.Hub, abs string) string {
 	return filepath.ToSlash(rel)
 }
 
-// firstWiredJunctionLink returns the warp-side path of slug's first wired junction (e.g. "_lym"), resolved via fabricengine.WiredNames and fabricengine.WarpJunctions -- the same accessors unwireJunctionsCase's own Run uses -- for a cell whose structural states need a real, pre-existing link to remove and replant, per the geometry-through-accessors Shared Decision.
+// firstWiredJunctionLink returns the warp-side path of slug's first wired junction, such as "_lym".
+// It resolves the path through fabricengine.WiredNames and fabricengine.WarpJunctions.
+// The result is a real, pre-existing link that a cell can remove and replant.
 func firstWiredJunctionLink(tb testing.TB, h *hubforge.Hub, slug string) string {
 	tb.Helper()
 
@@ -310,14 +298,13 @@ func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 }
 
 // slugPermittedRoots returns the hub-relative roots a pair named slug may occupy, unioned across
-// both anchors ("." and "backend"), for use inside a VerbCase's Expect closure — which, unlike an
-// Effect closure, has no *hubforge.Hub in scope to resolve an accessor against, only the state name.
-// A permitted root that never matches anything in a given hub's own anchor is harmless: DiffManifest's
-// pathPermitted only ever narrows what a diff flags, never widens it, so carrying the unused anchor's
-// variant alongside the live one cannot hide a genuine unpermitted change.
-// The synthetic *lymcwd.Location built here (HubPath left empty) is legal because every accessor this
-// function calls composes paths via filepath.Join, which drops an empty leading HubPath cleanly,
-// leaving exactly the hub-relative suffix an accessor would otherwise require a real hub to produce.
+// both anchors ("." and "backend").
+// A VerbCase's Expect closure has no *hubforge.Hub to resolve an accessor against, only the state name.
+// A permitted root that matches nothing in a given hub's anchor is harmless: DiffManifest's
+// pathPermitted only narrows what a diff flags, so an unused anchor's root cannot hide an unpermitted change.
+// The *lymcwd.Location built below leaves HubPath empty.
+// That is valid because every accessor this function calls composes paths with filepath.Join.
+// filepath.Join drops an empty leading element, so each accessor yields exactly the hub-relative suffix.
 func slugPermittedRoots(slug string) []string {
 	// A Remove or Prune cell rewrites the hub workspace file, which is named after the warp repo.
 	roots := []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lymcwd.Location{RepoName: "warp-bare"}))}
@@ -340,9 +327,9 @@ func slugPermittedRoots(slug string) []string {
 	return roots
 }
 
-// escapeRelName returns a "../"-prefixed junction name carrying exactly enough ".." segments to walk
-// all the way out of the hub once joined onto WorktreePath(l,slug)/anchorRel — one to cancel the slug
-// segment itself, plus one more per anchorRel path segment (anchorRel "." contributes none).
+// escapeRelName returns a "../"-prefixed junction name.
+// Joined onto the worktree path and anchorRel, it walks out of the hub.
+// It carries one ".." for the slug segment, plus one per anchorRel path segment; an anchorRel of "." adds none.
 func escapeRelName(anchorRel, name string) string {
 	depth := 1
 	if anchorRel != "." {
@@ -351,26 +338,23 @@ func escapeRelName(anchorRel, name string) string {
 	return strings.Repeat("../", depth) + name
 }
 
-// primeWorktreeAdminPermittedRoot returns the hub-relative path of the prime warp worktree's own
-// git-admin bookkeeping entry for a linked worktree named slug: the ".git/worktrees/<slug>" directory
-// a successful `git worktree remove` clears as part of any pair teardown.
-// "warp-bare" is this package's own fixed prime-worktree name (buildBareTemplate, hub.go) — not a
-// fabric geometry token, so spelling it here does not touch the geometry-through-accessors ban.
+// primeWorktreeAdminPermittedRoot returns the hub-relative path of the git-admin entry for the linked worktree slug.
+// It is the ".git/worktrees/<slug>" directory that a successful `git worktree remove` clears in any pair teardown.
+// "warp-bare" is this package's fixed name for the prime warp worktree.
 func primeWorktreeAdminPermittedRoot(slug string) string {
 	return filepath.ToSlash(filepath.Join("warp-bare", ".git", "worktrees", slug))
 }
 
-// primeWeftAdminPermittedRoot is primeWorktreeAdminPermittedRoot's weft-side counterpart: the prime
-// weft sibling's own ".git/worktrees/<slug-weft>" bookkeeping entry, cleared the same way on a
-// successful weft-worktree teardown.
-// "warp-bare-weft" is this package's own fixed prime-weft-sibling name (weftname.SiblingPath applied
-// to the fixed "warp-bare" prime name), not a fabric geometry token.
+// primeWeftAdminPermittedRoot returns the hub-relative path of the git-admin entry for the weft sibling of slug.
+// It is the ".git/worktrees/<slug-weft>" entry of the prime weft sibling.
+// A successful weft-worktree teardown clears it.
+// "warp-bare-weft" is this package's fixed name for the prime weft sibling.
 func primeWeftAdminPermittedRoot(slug string) string {
 	return filepath.ToSlash(filepath.Join("warp-bare-weft", ".git", "worktrees", weftname.SiblingPath("", slug)))
 }
 
-// assertGone fails tb unless path does not exist (via os.Lstat, so a dangling link still counts as
-// present).
+// assertGone fails tb unless path does not exist.
+// It uses os.Lstat, so a dangling link still counts as present.
 func assertGone(tb testing.TB, path string) {
 	tb.Helper()
 
@@ -390,14 +374,16 @@ func assertExists(tb testing.TB, path string) {
 
 // addCase builds Topology.Add's VerbCase.
 //
-// Arrange plants a directory at the pair's ide launcher script path, so Add's launcher step fails after the branch and both worktrees already exist, triggering rollbackAdd.
-// Without it, Add never reaches the gate at all: rollbackAdd fires only at post-creation sites, and none of the ten states induces one on its own.
+// Arrange plants a directory at the pair's ide launcher script path.
+// Add's launcher step then fails after the branch and both worktrees already exist, which triggers rollbackAdd.
+// Without it, Add never reaches the gate.
+// rollbackAdd fires only at post-creation sites, and no state induces one on its own.
 //
-// Because the arrangement forces every non-preflight-refused path through rollbackAdd, and rollback's
-// own removal calls (dirtinessNA, correct ownership on a clean hub) succeed unconditionally, Add's
-// clean-state Run genuinely returns an error (the launcher failure) and the hub is left as it was
-// before Run but for the blocker — this is the verified behaviour of add.go's own documented rollback contract, not an
-// assumption, and it is why this cell's Expectation is RefusedBefore rather than Proceeds.
+// The arrangement sends every path that the pre-flight does not refuse through rollbackAdd.
+// On a clean hub, rollback's removal calls succeed unconditionally.
+// A clean-state Run therefore returns the launcher error.
+// It leaves the hub as it was before Run, apart from the blocker.
+// That is add.go's documented rollback contract, so this case expects RefusedBefore rather than Proceeds.
 func addCase() VerbCase {
 	return VerbCase{
 		Name: "Add",
@@ -413,11 +399,10 @@ func addCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PrimeRecords(),
-					// StructuralPath is the pair's own warp worktree path, which does not exist yet --
-					// exactly what add.go's own gate call (add.go:263-295) acts on during rollback, and
-					// the reason the two link-shaped structural states are omitted for Add (the junction
-					// paths do not exist before Run either) while the two directory-shaped ones, which
-					// plant fresh content via os.MkdirAll rather than replacing an existing link, remain.
+					// StructuralPath is the pair's warp worktree path, which does not exist yet.
+					// The link-shaped structural states are omitted for Add: junction paths do not exist before Run.
+					// The directory-shaped states remain.
+					// They plant fresh content with os.MkdirAll rather than replacing an existing link.
 					StructuralPath: h.PairCodeWorktree(slug),
 				},
 			}
@@ -430,8 +415,8 @@ func addCase() VerbCase {
 		Expect: func(state string) Expectation {
 			switch state {
 			case "dirtyWarpTracked", "bothDirty":
-				// Add's own pre-flight (scopeTracked on the prime warp worktree) refuses before
-				// anything is created — the broken remote is never even reached.
+				// Add's pre-flight refuses a dirty tracked prime warp worktree before anything is created.
+				// The broken remote is never reached.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "source worktree has uncommitted changes",
@@ -440,12 +425,10 @@ func addCase() VerbCase {
 					},
 				}
 			case "foreignDirAtFabricOwnedPath", "unrelatedGitCloneAtWeftNamedPath":
-				// The state plants directly at the pair's own warp worktree path -- the one path Add's
-				// own gate call (add.go:263-295) acts on -- before Run, so `git worktree add` itself
-				// refuses outright: its target directory already exists and is non-empty. This is a
-				// git-level pre-flight failure, reached before add.go creates the branch or the
-				// broken-remote arrangement is ever consulted, so neither the branch nor any wiring is
-				// ever created.
+				// The state plants content directly at the pair's warp worktree path before Run.
+				// git worktree add then refuses, because its target directory already exists and is non-empty.
+				// That is a git-level pre-flight failure, reached before the branch is created.
+				// The broken remote is never consulted, so neither the branch nor any wiring is created.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "already exists",
@@ -458,7 +441,8 @@ func addCase() VerbCase {
 				}
 			default:
 				// Every other state's own pre-flight (or absence of one) lets Add proceed through both worktrees;
-				// the launcher blocker then fails the launcher step unconditionally, its error naming the script path and so the slug, and rollbackAdd reverts every step it can.
+				// the launcher blocker then fails the launcher step unconditionally, its error naming the script path and so the slug.
+				// rollbackAdd reverts every step it can.
 				// The warp branch is reverted too, whatever the BranchPrefix.
 				// The rollback removes the planted blocker and its launcher directory, which the pair's roots permit.
 				return Expectation{
@@ -481,7 +465,7 @@ func addCase() VerbCase {
 }
 
 // removeCase builds Topology.Remove's VerbCase.
-// Its dirty-refusal cells declare no permitted roots: Remove runs both no-force dirtiness checks before its archive and every teardown, so a correctly-refusing cell changes nothing.
+// Its dirty-refusal cells declare no permitted roots, because a correctly-refusing cell changes nothing.
 func removeCase() VerbCase {
 	return VerbCase{
 		Name: "Remove",
@@ -495,11 +479,12 @@ func removeCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PairCodeWorktree(slug),
 					WeftCheckout: h.PairRecordsSibling(slug),
-					// StructuralPath is the pair's own wired junction link: remove.go's link sweep
-					// (scanOnDiskJunctionNames + removeWarpJunction) is ownership-filtered -- "only the
-					// links fabric itself created there" -- which the two link-shaped structural states
-					// exercise directly. The two directory-shaped states are omitted for Remove (see
-					// Omissions): its ownership gate never reaches an independent foreign directory.
+					// StructuralPath is the pair's own wired junction link.
+					// The link sweep in remove.go (scanOnDiskJunctionNames and removeWarpJunction) is ownership-filtered;
+					// it removes only the links fabric itself created there.
+					// The two link-shaped structural states exercise that filter.
+					// The two directory-shaped states are omitted for Remove (see Omissions):
+					// its ownership gate never reaches an independent foreign directory.
 					StructuralPath: firstWiredJunctionLink(tb, h, slug),
 				},
 			}
@@ -539,9 +524,8 @@ func removeCase() VerbCase {
 }
 
 // pruneCase builds Topology.Prune's VerbCase.
-// Arrange produces a STALE pair: the warp worktree directory is removed by hand (bypassing fabric),
-// leaving the weft sibling and warp's own worktree registration behind exactly as an operator's manual
-// `rm -rf` would.
+// Arrange produces a stale pair: the warp worktree directory is removed by hand, bypassing fabric,
+// so the weft sibling and warp's worktree registration stay behind, as an operator's manual `rm -rf` would.
 func pruneCase() VerbCase {
 	return VerbCase{
 		Name: "Prune",
@@ -558,13 +542,10 @@ func pruneCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PairRecordsSibling(slug),
-					// StructuralPath is a SEPARATE weft-named sibling path that was never Added at all
-					// -- an orphan directory shaped exactly like debris Prune's own orphan pass would
-					// enumerate, distinct from "verb-prune-owner"'s own (genuinely registered) stale
-					// pair. Prune's only ownership gate (prune.go:264, ownedRegisteredLinkedWorktree)
-					// is exactly what must refuse to touch it: it is never a registered linked worktree
-					// of this hub's weft repo, so it must survive Prune's own teardown of the real stale
-					// pair untouched.
+					// StructuralPath is a weft-named sibling path that Add never created.
+					// It is an orphan directory of the kind Prune's orphan pass enumerates.
+					// Prune's ownership gate (prune.go:264, ownedRegisteredLinkedWorktree) must refuse to touch it;
+					// it is not a registered linked worktree of this hub's weft repo, so the teardown leaves it in place.
 					StructuralPath: h.PairRecordsSibling("verb-prune-structural-orphan"),
 				},
 			}
@@ -577,11 +558,10 @@ func pruneCase() VerbCase {
 		Expect: func(state string) Expectation {
 			switch state {
 			case "dirtyWeftTracked", "bothDirty":
-				// applyStalePairProtection (prune.go:206-224) probes scopeTracked dirtiness on the
-				// stale pair's own weft worktree and marks the entry Protected rather than returning a
-				// Go error -- Prune reports per-entry outcomes in its own PruneResult, not as an error
-				// from the call itself, so this cell's Kind is Proceeds (err == nil) and the assertion
-				// that matters is that the protected entry survives untouched.
+				// applyStalePairProtection (prune.go:206-224) probes scopeTracked dirtiness on the stale pair's weft worktree.
+				// A dirty entry is marked Protected, not returned as a Go error.
+				// Prune reports per-entry outcomes in its PruneResult, so this cell's Kind is Proceeds (err == nil).
+				// What matters is that the protected entry survives untouched.
 				return Expectation{
 					Kind:           KindProceeds,
 					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
@@ -607,24 +587,21 @@ func pruneCase() VerbCase {
 }
 
 // cleanupCase builds Topology.Cleanup's VerbCase.
-// Arrange produces an orphan managed branch: a pair is created, then its warp side (worktree and
-// branch) is torn down by hand, leaving the weft branch with no live warp sibling.
-// Arrange also moves the prime pair off the hub's default branch, exactly as
-// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout (cleanup_primary_integration_test.go) does:
-// the hub's Bolt checkout stays on the original branch, which is what fabricengine.primaryWeftBranch
-// reads to determine the repo's primary weft line (cleanup.go:206), so it alone still records the primary after the move.
-// Without this, branch-space liveness alone would still protect the primary
-// weft branch (some warp worktree is checked out on it), leaving this cell unable to independently
-// exercise cleanup.go's own primaryWeft carve-out or the gate's primaryWeftBranch check -- both of
-// which only matter once liveness alone stops protecting the primary line.
+// Arrange produces an orphan managed branch.
+// It creates a pair and tears down its warp side (worktree and branch) by hand.
+// That leaves the weft branch with no live warp sibling.
+// Arrange also moves the prime pair off the hub's default branch.
+// The hub's Bolt checkout stays on the original branch.
+// fabricengine.primaryWeftBranch reads that to find the repo's primary weft line (cleanup.go:206).
+// It alone still records the primary after the move.
+// Without the move, branch-space liveness alone would still protect the primary weft branch:
+// some warp worktree is checked out on it.
+// cleanup.go's primaryWeft carve-out and the gate's primaryWeftBranch check would go unexercised;
+// both matter only once liveness alone stops protecting the primary line.
 //
-// Run calls Cleanup with force=true. Before raddleFoldedBack's removal this was required: the old
-// fold-back gate unconditionally protected an orphan branch unless force was set, so without it no
-// orphan branch could ever be deleted regardless of state. raddleFoldedBack is gone now, and
-// Cleanup's own force parameter is reserved and consulted by no gate (see cleanup.go) — apply alone
-// already deletes an orphan branch (TestCleanup_DryRunMatchesApplyVerdict). force=true is kept here
-// as the pre-existing argument choice; it is no longer load-bearing for this cell's clean-state
-// effect.
+// Run calls Cleanup with force=true.
+// Cleanup's force parameter is reserved and no gate consults it, so apply alone deletes an orphan branch.
+// The argument is kept as it was; this cell's clean-state effect does not depend on it.
 func cleanupCase() VerbCase {
 	return VerbCase{
 		Name: "Cleanup",
@@ -637,15 +614,14 @@ func cleanupCase() VerbCase {
 			hubforge.AddPair(tb, h, slug)
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 			mustGit(h.PrimeWorktree(), "branch", "-D", slug)
-			// The weft branch must not be checked out anywhere either: cleanup.go:162-166
-			// unconditionally protects a checked-out branch, and the pair's own weft worktree is
-			// still on it after only the warp side is torn down.
+			// The weft branch must not be checked out anywhere either: Cleanup never deletes a checked-out branch.
+			// The pair's own weft worktree stays on it after only the warp side is torn down, so it is removed too.
 			mustGit(h.PrimeRecords(), "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 
-			// Move the prime pair off the default branch. The Bolt checkout (never touched here)
-			// keeps recording "original" as the primary warp branch, so the primary weft branch is
-			// now neither the checked-out weft worktree's own branch nor named by any live pair --
-			// exactly the condition that makes Cleanup's primaryWeft carve-out load-bearing.
+			// Move the prime pair off the default branch.
+			// The Bolt checkout, never touched here, keeps recording "original" as the primary warp branch.
+			// So the primary weft branch is neither the checked-out weft worktree's own branch nor named by any live pair:
+			// the condition under which Cleanup's primaryWeft carve-out is load-bearing.
 			mustGit(h.PrimeWorktree(), "checkout", "-b", "verb-cleanup-alt")
 			mustGit(h.PrimeRecords(), "checkout", "-b", fabricengine.RecordsBranchName("verb-cleanup-alt"))
 
@@ -672,10 +648,9 @@ func cleanupCase() VerbCase {
 					if gitkit.BranchExists(tb, h.PrimeRecords(), orphan) {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
-					// Card 16's clean-state effect: "orphan managed branches gone, primary weft
-					// branch intact." Arrange moved the prime pair off f.OriginalBranch precisely so
-					// this assertion is independently provable here rather than only in
-					// fabricengine_test's hermetic TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout.
+					// The clean-state effect: orphan managed branches are gone, and the primary weft branch stays intact.
+					// Arrange moves the prime pair off f.OriginalBranch,
+					// so no live pair or checked-out weft worktree holds the primary weft branch.
 					primary := fabricengine.RecordsBranchName(f.OriginalBranch)
 					if !gitkit.BranchExists(tb, h.PrimeRecords(), primary) {
 						tb.Errorf("Cleanup deleted the primary weft branch %q", primary)
@@ -686,15 +661,16 @@ func cleanupCase() VerbCase {
 	}
 }
 
-// checkoutPermittedRoots returns the one root a proceeding Checkout cell may touch: the hub workspace file, whose first folder takes the prime's new branch name.
+// checkoutPermittedRoots returns the one root a proceeding Checkout cell may touch: the hub workspace file.
+// A switch renames that file's first folder to the prime's new branch name.
 func checkoutPermittedRoots() []string {
 	return []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lymcwd.Location{RepoName: "warp-bare"}))}
 }
 
 // checkoutCase builds Topology.Checkout's VerbCase.
-// Arrange adds a pair, and Run passes that pair's own warp branch — without this the cells are
-// vacuous: a factory-built hub carries only the clone's own branch, so Checkout handed that branch
-// no-ops.
+// Arrange adds a pair, and Run passes that pair's own warp branch.
+// Without the pair, the cells are vacuous.
+// A factory-built hub carries only the clone's own branch, and Checkout on that branch is a no-op.
 func checkoutCase() VerbCase {
 	return VerbCase{
 		Name: "Checkout",
@@ -703,11 +679,8 @@ func checkoutCase() VerbCase {
 
 			slug := "verb-checkout-owner"
 			hubforge.AddPair(tb, h, slug)
-			// Remove the pair's own worktrees (never its branches), so both branches are free for
-			// the prime pair to switch onto — mirroring the everyday "lym fabric checkout" reuse
-			// add.go's own error message points to ("switch a pair onto it"). Without this, `git
-			// switch` refuses because the branch is already checked out at the pair worktree this
-			// same Arrange just created.
+			// Remove the pair's own worktrees, never its branches, so both branches are free for the prime pair to switch onto.
+			// Without this, `git switch` refuses: the branch is still checked out at the pair worktree this Arrange created.
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 			mustGit(h.PrimeRecords(), "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 			original := gitkit.CurrentBranch(tb, h.PrimeWorktree())
@@ -730,8 +703,8 @@ func checkoutCase() VerbCase {
 		Expect: func(state string) Expectation {
 			switch state {
 			case "dirtyWeftTracked", "bothDirty":
-				// Checkout's own pre-flight (checkout.go:42) is scopeTracked on the weft worktree; a
-				// tracked modification there refuses before `git switch` ever runs.
+				// Checkout's pre-flight checks the weft worktree for tracked modifications (scopeTracked);
+				// a tracked modification there refuses before `git switch` runs.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "weft worktree has uncommitted changes",
@@ -746,11 +719,10 @@ func checkoutCase() VerbCase {
 					},
 				}
 			case "dirtyWarpTracked":
-				// Checkout has NO warp-side dirtiness probe at all (checkout.go:38-85 goes straight to
-				// `git switch`), so the outcome is git's own to decide: `git switch` either carries the
-				// tracked modification across, or refuses with "your local changes would be
-				// overwritten". Both are correct; what must hold either way is that the pair is never
-				// half-switched -- see this file's own doc comment for the fuller account.
+				// Checkout has no warp-side dirtiness probe: it goes straight to `git switch`.
+				// So git decides the outcome.
+				// `git switch` either carries the tracked modification across or refuses: "your local changes would be overwritten".
+				// Both are correct; what must hold either way is that the pair is never half-switched.
 				return Expectation{
 					Kind:      KindEitherProceedsOrRefusedBefore,
 					Substring: "warp switch",
@@ -768,10 +740,10 @@ func checkoutCase() VerbCase {
 						if !switched && warpBranch != f.OriginalBranch {
 							tb.Errorf("Checkout neither switched to %q nor left the original branch %q; warp branch = %q", f.CheckoutBranch, f.OriginalBranch, warpBranch)
 						}
-						// The tracked modification must be on disk either way -- see this file's own
-						// doc comment on why the git-status shape it reports (still tracked-modified,
-						// or carried into a branch that never tracked this path) is git's to decide,
-						// not the content surviving at all.
+						// The tracked modification must be on disk either way.
+						// Git decides the status shape it reports: still tracked-modified,
+						// or carried into a branch that never tracked this path.
+						// So the assertion checks the content, not the status.
 						assertTrackedContentSurvives(tb, h.PrimeWorktree(), sentinelFileName("dirtyWarpTracked"))
 					},
 				}
@@ -846,12 +818,12 @@ func unwireJunctionsCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PairCodeWorktree(slug),
 					WeftCheckout: h.PairRecordsSibling(slug),
-					// StructuralPath is the pair's own first wired junction link. unseedJunctionRecords
-					// (junction.go:420-489) walks every wired junction in order and bails out the moment
-					// one fails its own pre-flight (a foreign link's resolved target not matching the
-					// expected weft target, or a dangling link that cannot be resolved at all) — before
-					// the ownership gate ever runs for that link — so replanting just the first name is
-					// enough to make the whole call refuse.
+					// StructuralPath is the pair's own first wired junction link.
+					// unseedJunctionRecords walks every wired junction in order and stops at the first one that fails its pre-flight.
+					// A foreign link whose resolved target differs from the expected weft target fails it;
+					// a dangling link fails it too.
+					// That check runs before the ownership gate for that link.
+					// Replanting just the first name is therefore enough to make the whole call refuse.
 					StructuralPath: firstWiredJunctionLink(tb, h, slug),
 				},
 			}
@@ -866,7 +838,8 @@ func unwireJunctionsCase() VerbCase {
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
-			// The wired junction names are structural (lymdirs.LymDirName, lymdirs.DotLymDirName), never operator-editable per junctionnames.go, so both anchor variants of both names are permitted unconditionally — matching slugPermittedRoots' "harmless if unused" posture.
+			// The wired junction names are structural (lymdirs.LymDirName, lymdirs.DotLymDirName), never operator-editable,
+			// so both anchor variants of both names are permitted unconditionally, which is harmless when one goes unused.
 			var permitted []string
 			for _, anchor := range []string{".", "backend"} {
 				loc := &lymcwd.Location{WorktreeName: "verb-unwire-owner", AnchorRel: anchor}
@@ -877,17 +850,15 @@ func unwireJunctionsCase() VerbCase {
 
 			switch state {
 			case "trackedSymlinkAtWiredPath":
-				// unseedJunctionRecords resolves the link's actual target and compares it against the
-				// weft target fabric itself expects (junction.go:465-472); an operator-owned link
-				// resolves elsewhere, so the call refuses before the ownership gate ever runs, and
-				// nothing -- not even the untouched second junction -- is removed.
+				// unseedJunctionRecords resolves the link's actual target and compares it against the weft target fabric expects;
+				// an operator-owned link resolves elsewhere, so the call refuses before the ownership gate runs.
+				// Nothing is removed, not even the untouched second junction.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "points to unexpected target",
 				}
 			case "staleWiredJunction":
-				// The link's target no longer resolves at all, so fslink.PointsTo fails outright
-				// (junction.go:461-464) before the ownership gate ever runs.
+				// The link's target does not resolve at all, so fslink.PointsTo fails outright before the ownership gate runs.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "resolve link target",
@@ -915,8 +886,7 @@ func unwireJunctionsCase() VerbCase {
 
 // pullCase builds Fabric.Pull's VerbCase (reached via fabricengine.Open).
 // Arrange pushes a new commit to the scenario's own warp bare, or the entire column is vacuous:
-// pull.go:210-212 returns early on localHEAD == upstreamSHA, before the dirty check and before any
-// ResetHard.
+// Pull returns early when localHEAD equals upstreamSHA, before the dirty check and before any ResetHard.
 func pullCase() VerbCase {
 	return VerbCase{
 		Name: "Pull",
@@ -952,19 +922,18 @@ func pullCase() VerbCase {
 		Expect: func(state string) Expectation {
 			switch state {
 			case "dirtyWarpTracked", "bothDirty":
-				// Pull's own pre-flight (pull.go:143) is scopeTracked on the prime warp worktree; a
-				// tracked modification there refuses before ResetHard ever runs, and the warp bare's
-				// advance (this cell's own Arrange) never lands.
+				// Pull's own pre-flight is scopeTracked on the prime warp worktree;
+				// a tracked modification there refuses before ResetHard runs.
+				// The warp bare's advance from this cell's own Arrange never lands.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "warp worktree has uncommitted changes",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						// Not f.AdvancedFromSHA: dirtyWarpTracked's own plantTrackedDirt seeds a fresh
-						// commit before leaving its modification uncommitted, so the prime warp's HEAD
-						// has already moved past AdvancedFromSHA by the time Run executes. What a
-						// refused Pull must guarantee is that it never reached ResetHard at all, i.e.
-						// HEAD never advances all the way to the (unrelated, unreachable) upstream tip.
+						// Not f.AdvancedFromSHA: dirtyWarpTracked's plantTrackedDirt seeds a fresh commit, then leaves the change uncommitted.
+						// So the prime warp's HEAD has already moved past AdvancedFromSHA when Run executes.
+						// A refused Pull must guarantee that it never reached ResetHard:
+						// HEAD never advances to the unrelated, unreachable upstream tip.
 						if got := gitkit.RevParse(tb, h.PrimeWorktree(), "HEAD"); got == f.AdvancedToSHA {
 							tb.Errorf("prime warp HEAD after refused Pull = %s; want anything but the upstream tip %s", got, f.AdvancedToSHA)
 						}
@@ -988,8 +957,9 @@ func pullCase() VerbCase {
 	}
 }
 
-// cloneHubResetNonHubCase builds the CloneHub{Reset: true} column's non-hub target: an operator
-// directory whose name happens to match the derived <name>-LYMHUB path is refused at CloneHub's offline checkResetTarget pre-flight, contents fully surviving — R4's `clone --reset` defect.
+// cloneHubResetNonHubCase builds the CloneHub{Reset: true} column's non-hub target:
+// an operator directory whose name matches the derived <name>-LYMHUB path.
+// CloneHub refuses it at its offline checkResetTarget pre-flight, and its contents survive.
 func cloneHubResetNonHubCase() VerbCase {
 	return VerbCase{
 		Name:   "CloneHubReset/NonHubTarget",
@@ -1038,8 +1008,9 @@ func cloneHubResetNonHubCase() VerbCase {
 	}
 }
 
-// cloneHubResetRealHubCase builds the CloneHub{Reset: true} column's positive target: a real hub torn
-// down and rebuilt through fabriccli.CloneAndWire, proving the column is not trivially always-refusing.
+// cloneHubResetRealHubCase builds the CloneHub{Reset: true} column's positive target:
+// a real hub torn down and rebuilt through fabriccli.CloneAndWire.
+// It proves the column is not trivially always-refusing.
 func cloneHubResetRealHubCase() VerbCase {
 	return VerbCase{
 		Name:   "CloneHubReset/RealHub",
@@ -1055,7 +1026,8 @@ func cloneHubResetRealHubCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			// The hub's anchor marker is committed on the prime's weft branch and not pushed, so the re-clone names the anchor again.
+			// The hub's anchor marker is committed on the prime's weft branch and not pushed,
+			// so the re-clone names the anchor again.
 			res, err := fabriccli.CloneAndWire(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
 				WarpURL: f.ResetWarpURL,
@@ -1078,9 +1050,9 @@ func cloneHubResetRealHubCase() VerbCase {
 	}
 }
 
-// slugHostileInputs returns the seven slug-shaped hostile inputs Add and Remove each take, paired with
-// the expectation validateWorktreeSlug (slug.go:30) actually produces for each — except the trailing
-// leading-dash input, which validateWorktreeSlug does not reject at all.
+// slugHostileInputs returns the slug-shaped hostile inputs that Add and Remove each take.
+// Each input is paired with the expectation validateWorktreeSlug produces for it.
+// The leading-dash input is the exception: validateWorktreeSlug does not reject it.
 func slugHostileInputs() []struct {
 	name  string
 	input string
@@ -1101,7 +1073,7 @@ func slugHostileInputs() []struct {
 	}
 }
 
-// addHostileCases returns Add's seven hostile-input VerbCase entries.
+// addHostileCases returns Add's hostile-input VerbCase entries.
 func addHostileCases() []VerbCase {
 	var cases []VerbCase
 	for _, in := range slugHostileInputs() {
@@ -1128,10 +1100,9 @@ func addHostileCases() []VerbCase {
 						},
 					}
 				}
-				// LeadingDash: validateWorktreeSlug does not reject it. `git worktree add -b -flag
-				// <target>` genuinely fails (git's own arg parser treats "-flag" as an unknown
-				// option to the branch-creation step), so nothing is ever created — the safe
-				// outcome this cell exists to prove, verified live rather than assumed.
+				// LeadingDash: validateWorktreeSlug does not reject it.
+				// `git worktree add -b -flag <target>` fails, since git's own argument parser reads "-flag" as an unknown option.
+				// Nothing is created, which is the safe outcome this cell proves.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "worktree",
@@ -1146,10 +1117,10 @@ func addHostileCases() []VerbCase {
 	return cases
 }
 
-// removeHostileCases returns Remove's seven hostile-input VerbCase entries.
-// No pair is arranged for any of them: every one of the seven inputs is refused before Remove ever
-// looks at whether a pair by that name exists, and arranging one would risk the very whole-hub deletion
-// the ".." case exists to prove is refused.
+// removeHostileCases returns Remove's hostile-input VerbCase entries.
+// No pair is arranged for any of them.
+// Every input is refused before Remove looks at whether a pair by that name exists.
+// Arranging one would risk the whole-hub deletion that the ".." case exists to prove is refused.
 func removeHostileCases() []VerbCase {
 	var cases []VerbCase
 	for _, in := range slugHostileInputs() {
@@ -1168,8 +1139,8 @@ func removeHostileCases() []VerbCase {
 			Expect: func(state string) Expectation {
 				want := in.want
 				if want == "" {
-					// LeadingDash: validateWorktreeSlug does not reject it, so Remove reaches its
-					// target-exists stat, finds nothing named "-flag", and refuses safely.
+					// LeadingDash: validateWorktreeSlug does not reject it.
+					// Remove reaches its target-exists stat, finds nothing named "-flag", and refuses safely.
 					want = "not found"
 				}
 				return Expectation{
@@ -1186,10 +1157,10 @@ func removeHostileCases() []VerbCase {
 	return cases
 }
 
-// checkoutHostileCases returns Checkout's two branch-shaped hostile-input VerbCase entries.
-// checkout.go:38-85 validates no branch at all, so both inputs reach `git switch` directly; both fail
-// safely (git itself refuses a nonexistent branch and an option-shaped argument alike), and both cells
-// additionally assert no half-switched pair.
+// checkoutHostileCases returns Checkout's branch-shaped hostile-input VerbCase entries.
+// Checkout validates no branch at all, so the inputs reach `git switch` directly.
+// Each fails safely: git itself refuses a nonexistent branch and an option-shaped argument alike.
+// Each cell also asserts that the pair is not half-switched.
 func checkoutHostileCases() []VerbCase {
 	inputs := []struct {
 		name  string
@@ -1234,14 +1205,14 @@ func checkoutHostileCases() []VerbCase {
 	return cases
 }
 
-// unwireJunctionsHostileCase returns UnwireJunctions' one hostile-input VerbCase: a junction name
+// unwireJunctionsHostileCase returns UnwireJunctions' hostile-input VerbCase: a junction name
 // escaping its worktree ("../x"), the sole route to the link executor's containment check.
 //
-// The junction-name join is WorktreePath(l,slug)/AnchorRel/name (junction.go's WarpJunctions), so the
-// number of ".." segments needed to walk all the way out of the hub depends on AnchorRel's own depth:
-// one ".." cancels "slug" alone at anchor ".", but two are needed at anchor "backend" (one for
-// "backend", one for "slug") — escapeRelName computes exactly that depth so the escape genuinely
-// reaches outside the hub at both anchors, rather than only at ".".
+// The junction name is WorktreePath(l,slug)/AnchorRel/name.
+// The number of ".." segments needed to walk out of the hub depends on AnchorRel's depth.
+// One ".." cancels "slug" alone at anchor ".";
+// at anchor "backend", two are needed, one for "backend" and one for "slug".
+// escapeRelName computes that depth, so the link reaches outside the hub at both anchors.
 func unwireJunctionsHostileCase() VerbCase {
 	const escapeName = "verb-unwire-hostile-escape-link"
 
@@ -1277,9 +1248,8 @@ func unwireJunctionsHostileCase() VerbCase {
 	}
 }
 
-// Verbs is the exported tranche-1 verb table: the eight ordinary verbs, the two CloneHub{Reset: true}
-// targets, and the seventeen hostile-input cases.
-// This is the external interface batch 7's cross-product driver consumes.
+// Verbs is the verb table: the ordinary verbs, the CloneHub{Reset: true} targets, and the hostile-input cases.
+// The cross-product driver consumes it as the external interface.
 var Verbs = buildVerbs()
 
 func buildVerbs() []VerbCase {

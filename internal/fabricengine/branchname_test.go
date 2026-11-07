@@ -9,8 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRecordsBranchName covers the uniform <warp>/<warp>-weft scheme across the primary branch, a
-// prefixed task branch, and a plain (empty-prefix) slug.
+// TestRecordsBranchName covers the uniform <warp>/<warp>-weft scheme.
+// Its cases are the primary branch, a prefixed task branch, and a plain (empty-prefix) slug.
 //
 //testtiming:keep the <warp>/<warp>-weft scheme for the primary branch, a prefixed task branch and an empty-prefix slug; coverage of its blocks by other tests does not show an assertion of this
 func TestRecordsBranchName(t *testing.T) {
@@ -34,8 +34,8 @@ func TestRecordsBranchName(t *testing.T) {
 	}
 }
 
-// TestRecordsBranchName_RoundTripsWithWeftWarpSlug asserts that fabricengine.WeftWarpSlug, the
-// documented inverse, recovers the original warp branch from every RecordsBranchName output.
+// TestRecordsBranchName_RoundTripsWithWeftWarpSlug asserts a round trip:
+// fabricengine.WeftWarpSlug recovers the original warp branch from every RecordsBranchName output.
 //
 //testtiming:keep WeftWarpSlug recovering the warp branch from every RecordsBranchName output; coverage of its blocks by other tests does not show an assertion of this
 func TestRecordsBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {

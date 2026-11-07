@@ -1,4 +1,4 @@
-// hubissues.go holds Repo and its calls: listing open issues, fetching one, listing one's comments, and commenting on and closing one.
+// hubissues.go holds Repo, the client for one GitHub repository's issues: listing, fetching, commenting and closing.
 
 package hubissues
 
@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// callTimeout bounds each request to GitHub, including a 401-triggered credential re-resolution and replay inside githubclient's transport.
-// It matches the 30s budget githubclient's transport applies from the end of a pause hold, so no call hangs an autonomous run.
+// callTimeout bounds each request to GitHub, covering a 401-triggered credential re-resolution and replay.
+// It is 30 seconds, so that no call hangs an autonomous run.
 const callTimeout = 30 * time.Second
 
 // listPageSize is the page size the list calls request, GitHub's maximum.
@@ -118,7 +118,8 @@ func (r *Repo) GetIssue(number int) (Issue, error) {
 	return toIssue(raw), nil
 }
 
-// ListIssueComments returns every comment on the issue numbered number, oldest first, following pagination to the last page.
+// ListIssueComments returns every comment on the issue numbered number, oldest first.
+// It follows pagination to the last page.
 func (r *Repo) ListIssueComments(number int) ([]IssueComment, error) {
 	sort, direction := "created", "asc"
 	opts := &github.IssueListCommentsOptions{
@@ -144,8 +145,10 @@ func (r *Repo) ListIssueComments(number int) ([]IssueComment, error) {
 	}
 }
 
-// CommentAndClose posts comment on the issue, then closes it with state reason completed when completed is set and not_planned otherwise.
-// When the comment posts and the close fails, the error says the comment was posted, so a rerun is understood to post a second comment.
+// CommentAndClose posts comment on the issue, then closes it.
+// The close sets the state reason to completed when completed is set, and to not_planned otherwise.
+// When the comment posts and the close fails, the error says the comment was posted,
+// so a rerun posts a second comment.
 func (r *Repo) CommentAndClose(number int, comment string, completed bool) error {
 	commentCtx, cancelComment := context.WithTimeout(context.Background(), r.perRequest)
 	_, _, commentErr := r.client.Issues.CreateComment(commentCtx, r.owner, r.name, number, &github.IssueComment{Body: &comment})
@@ -193,7 +196,8 @@ func toIssue(raw *github.Issue) Issue {
 func (r *Repo) classifyCallError(action, apiFailure string, callErr error) error {
 	logger.Warn("hubissues: github call failed", "action", action, "owner", r.owner, "repo", r.name, "cause", callErr)
 
-	// An unresolvable token surfaces apart from a network problem, so the operator fixes credentials rather than connectivity.
+	// An unresolvable token surfaces apart from a network problem,
+	// so the operator fixes credentials rather than connectivity.
 	if errors.Is(callErr, githubclient.ErrTokenUnresolvable) {
 		return fmt.Errorf("github token not resolvable: %w", callErr)
 	}

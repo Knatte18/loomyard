@@ -1,11 +1,4 @@
-// main.go is the entry point for the lym CLI.
-//
-// It assembles a single cobra root command from every module's Command(), then mounts the shortcuts of internal/shortcutcli.
-// It wires the persistent --json flag and JSON help renderer, and routes output to the appropriate writer.
-// Cobra-level errors (unknown command, bad flag) are wrapped in the JSON envelope by
-// clihelp.RunRoot so the caller always receives a machine-parseable error.
-// The testable run() seam merges stdout and stderr so tests capture all output from one buffer;
-// main() keeps stdout and stderr split as callers of the production binary expect.
+// main.go holds the lym process entry point, the run seam tests drive, and the cobra root builder.
 
 // Package main is the cobra root for the lym CLI.
 // It assembles each module's Command() into a single root and mounts the shortcuts of internal/shortcutcli on it.
@@ -60,19 +53,20 @@ import (
 func main() {
 	gitexec.SetKillReporter(logGitKill)
 	root := newRoot()
-	// Production path: split stdout and stderr.
+	// Callers of the production binary expect stdout and stderr split.
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	code := clihelp.RunRoot(root, os.Stdout)
-	// The exit hook force-opens the durable sink on a non-zero exit for post-mortem inspection, then sweeps an armed sink's directory.
 	notifyExitAndSweep(code)
-	// The process run directory exists only if this process created one; a removal error is left to the next start's sweep.
+	// The process run directory exists only if this process created one;
+	// a removal error is left to the next start's sweep.
 	_ = lymtemp.Remove()
 	os.Exit(code)
 }
 
-// logGitKill logs the outcome of killing a timed-out remote git command, as the process owner's reporter.
-// A non-nil groupErr means git was killed alone, so a descendant such as git-remote-https may outlive it.
+// logGitKill logs the outcome of killing a timed-out remote git command.
+// A non-nil groupErr means git was killed alone,
+// so a descendant such as git-remote-https may outlive it.
 func logGitKill(args []string, pid int, groupErr error) {
 	if groupErr != nil {
 		logger.Warn("gitexec: killed only git after its deadline; a descendant may outlive it", "args", args, "pid", pid, "cause", groupErr)
@@ -81,20 +75,21 @@ func logGitKill(args []string, pid int, groupErr error) {
 	logger.Info("gitexec: killed git's process group after its deadline", "args", args, "pid", pid)
 }
 
-// run is the testable seam: it builds a fresh root, merges stdout/stderr, and returns the exit code.
+// run executes args against a fresh root and returns the exit code.
+// It sends stdout and stderr to out, so tests capture all output from one buffer.
 func run(args []string, out io.Writer) int {
 	root := newRoot()
 	root.SetOut(out)
 	root.SetErr(out)
 	root.SetArgs(args)
 	code := clihelp.RunRoot(root, out)
-	// The exit hook force-opens the durable sink on a non-zero exit, then sweeps an armed sink's directory.
 	notifyExitAndSweep(code)
 	return code
 }
 
 // pauseSlugOverride returns a pointer to the pause slug the executing command was told by its hidden flag, empty included.
-// It returns nil when the command has no such flag or the flag was not set, so the gate takes its slug from the working directory.
+// It returns nil when the command has no such flag or the flag was not set,
+// so the gate takes its slug from the working directory.
 func pauseSlugOverride(cmd *cobra.Command) *string {
 	flag := cmd.Flags().Lookup(fabricengine.PauseSlugFlag)
 	if flag == nil || !flag.Changed {
@@ -143,25 +138,25 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// With no -v the level LYM_LOG_LEVEL set at init stands, so a spawned daemon keeps its spawner's Debug trace.
+			// With no -v the level LYM_LOG_LEVEL set at init stands,
+			// so a spawned daemon keeps its spawner's Debug trace.
 			if verbosity > 0 {
 				logger.SetVerbosity(verbosity)
 			}
-			// Suppress trace minting/export and sink arming under testing.Testing().
 			if !testing.Testing() {
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
 				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
 				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd), detachedChild(cmd))
-				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
+				// A push that the origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
 				// A reconcile that rewrites or flags a reinterpreted hub config value reaches the prime orch as creel mail from RECONCILE.
 				orchcli.InstallReconcileNotifier(cmd.Context())
 				// lym beam start pauses a run another machine owns through tender, which imports orchcli.
 				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
-				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine's Bolt replayer.
+				// A records replay merges the board by entry through boardengine's Bolt replayer, in the detached push child and in a pull-first Bolt write.
 				fabricengine.RegisterBoltReplayer(boardengine.FabricReplay{})
-				// A worktree fabric makes or moves reaches heddle through the worktree seam, to render its files.
+				// A worktree that fabric makes or moves reaches heddle through the worktree seam, to render its files.
 				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
 				// A records replay merges heddle.json by entry through heddle's Bolt replayer.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
@@ -211,7 +206,9 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		heddlecli.Command(),
 	)
 
-	// SetHelpCommand replaces cobra's built-in help command; InitDefaultHelpCmd adds it now, because cobra would add it only at execution and the tree walks read root.Commands() before that.
+	// SetHelpCommand replaces cobra's built-in help command;
+	// InitDefaultHelpCmd adds it now, because cobra would add it only at execution;
+	// the tree walks read root.Commands() before that.
 	root.SetHelpCommand(helpcli.Command())
 	root.InitDefaultHelpCmd()
 

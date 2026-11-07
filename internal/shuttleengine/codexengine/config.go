@@ -1,4 +1,5 @@
-// config.go declares the codex engine's config module, codex.yaml: its template, its layered-load spec, LoadConfig and the resolution of its home paths.
+// config.go holds the codex engine's codex.yaml: its default template, its layered-load spec and LoadConfig.
+// It also resolves the home and writable-root paths the config names.
 
 package codexengine
 
@@ -19,12 +20,13 @@ import (
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns codex.yaml's default YAML template.
+// ConfigTemplate returns codex.yaml's default YAML template, the base layer that every layer file overrides.
 func ConfigTemplate() string {
 	return configTemplate
 }
 
-// Config is the resolved codex.yaml: the Codex binary, the shared lym Codex home and the operator's own, the efforts a launch may take, the skill roots and the extra writable roots.
+// Config is the resolved codex.yaml, the settings that decide how a Codex session launches.
+// Each field maps to one codex.yaml key.
 type Config struct {
 	// Binary is the path to the codex executable; empty falls back to "codex" on PATH.
 	Binary string `yaml:"binary"`
@@ -36,11 +38,13 @@ type Config struct {
 	Efforts []string `yaml:"efforts"`
 	// SkillRoots are the directories a skill is looked up under when a session loads skills.
 	SkillRoots []string `yaml:"skill_roots"`
-	// WritableRoots are folders outside the workspace every launch's sandbox lets the session write, such as a build cache; a leading "~/" names the user's home directory.
+	// WritableRoots are folders outside the workspace that a launch's sandbox lets the session write, such as a build cache;
+	// a leading "~/" names the user's home directory.
 	WritableRoots []string `yaml:"writable_roots"`
 }
 
-// ConfigSpec returns codex.yaml's layered-load spec: a per-worktree module whose binary and writable roots a local override may not set, since a writable root widens the sandbox.
+// ConfigSpec returns the layered-load spec of codex.yaml, a per-worktree module.
+// The local layer may not set the binary or the writable roots, since a writable root widens the sandbox.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "codex",
@@ -70,8 +74,8 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	return cfg, nil
 }
 
-// loadConfigOrRefuse loads codex.yaml from dirs.
-// A load error keeps configengine's text naming the file and key and its invalid mark, and gains the way forward.
+// loadConfigOrRefuse returns a load error with the way forward added.
+// The error still names the file and key and still carries its invalid mark.
 func loadConfigOrRefuse(dirs configengine.Dirs) (Config, error) {
 	codex, err := LoadConfig(dirs)
 	if err != nil {
@@ -80,7 +84,6 @@ func loadConfigOrRefuse(dirs configengine.Dirs) (Config, error) {
 	return codex, nil
 }
 
-// codexBinary returns codex.Binary if set, otherwise "codex".
 func codexBinary(codex Config) string {
 	if codex.Binary != "" {
 		return codex.Binary
@@ -96,7 +99,8 @@ type homeDirs struct {
 	operator string
 }
 
-// resolveHomes resolves codex.yaml's home and operator_home keys into absolute paths, refusing an empty or relative value by its key.
+// resolveHomes resolves codex.yaml's home and operator_home keys into absolute paths.
+// It refuses an empty or relative value by its key.
 func resolveHomes(codex Config) (homeDirs, error) {
 	lym, err := expandHomePath("home", codex.Home)
 	if err != nil {
@@ -109,8 +113,9 @@ func resolveHomes(codex Config) (homeDirs, error) {
 	return homeDirs{lym: lym, operator: operator}, nil
 }
 
-// expandHomePath returns value with a leading "~/" replaced by the user's home directory, refusing a value that is then empty or relative.
-// key names the codex.yaml entry the value came from, so the refusal points at what to fix.
+// expandHomePath returns value with a leading "~/" replaced by the user's home directory.
+// It refuses a value that is then empty or relative.
+// The key names the codex.yaml entry the value came from, so the refusal points at what to fix.
 func expandHomePath(key, value string) (string, error) {
 	if rest, ok := strings.CutPrefix(value, "~/"); ok {
 		userHome, err := os.UserHomeDir()
@@ -125,8 +130,10 @@ func expandHomePath(key, value string) (string, error) {
 	return filepath.Clean(value), nil
 }
 
-// configuredWritableRoots returns codex.yaml's writable_roots as absolute, symlink-resolved folders, refusing an empty or relative value by its key.
-// A folder that does not exist is left out, so a root the machine has not made, such as a cache of a toolchain it lacks, adds nothing to the launch.
+// configuredWritableRoots returns codex.yaml's writable_roots as absolute, symlink-resolved folders.
+// It refuses an empty or relative value by its key.
+// A folder that does not exist is left out,
+// so a root the machine has not made, such as a cache of a toolchain it lacks, adds nothing to the launch.
 func configuredWritableRoots(codex Config) ([]string, error) {
 	var roots []string
 	for _, root := range codex.WritableRoots {

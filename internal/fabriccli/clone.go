@@ -1,10 +1,5 @@
-// clone.go implements the fabriccli handler half for the fabric clone subcommand.
-// runCloneWithReset delegates into fabricengine.CloneHub after optionally tearing down an existing
-// hub when --reset is given, then calls CloneAndWire to drive the config materialization +
-// weft:main commit + junction wiring + reconcile + per-worktree config commit sequence that makes
-// "clone does everything" true at the command level — CloneHub itself stays git/geometry-focused so
-// fabricengine never imports configsync (see fabricengine/clone.go's CloneResult doc comment for
-// the import-cycle rationale).
+// clone.go implements the fabric clone subcommand and the wiring a new clone needs once its hub exists.
+// The wiring lives here because fabricengine must not import configsync, which would close an import cycle.
 
 package fabriccli
 
@@ -23,25 +18,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// CloneAndWire clones a hub via fabricengine.CloneHub and drives the wiring sequence that makes "clone does everything" true:
-// hub-wide config materialization, the weft:main config commit and push, warp junction wiring, per-worktree config reconciliation,
-// and a commit of the resulting per-worktree module configs on the weft primary branch, with no push.
-// The anchor marker is already committed on the prime's weft branch by CloneHub.
+// CloneAndWire clones a hub and wires it, so that a successful clone needs no reconcile.
+// It materializes the hub-wide config, then commits it on weft:main and pushes it.
+// It then wires the warp junctions and reconciles the per-worktree configs.
+// It commits the resulting per-worktree module configs on the weft primary branch, with no push.
+// The anchor marker is already committed on the prime's weft branch when the wiring starts.
 //
-// It is the single wiring sequence shared by the cobra clone handler and
-// internal/hubforge's hub factory; a second copy of this sequence anywhere is the
-// drift this extraction exists to prevent.
+// Keeping the sequence in one place stops a second copy from drifting away from it.
 //
-// On error, the clone is left intact; the operator completes wiring with reconcile.
-//
-// CloneAndWire owns a recorder for this CLI-layer sequence itself: CloneHub's own record is already
-// on res the moment it returns, so the recorder is seeded from res.Mutated() and every step below
-// appends its own entry in execution order. Named results plus a defer installed right after the
-// recorder exists is what carries the accumulated record through every subsequent
-// `return fabricengine.CloneResult{}, err` site without editing each one individually — see this
-// package's Decision doc for the idiom. The one return that precedes the recorder's existence (the
-// CloneHub failure itself) returns res, err directly instead: CloneHub's own record is already in res
-// at that point, and a zero return there would discard the hub the clone had just minted.
+// On error, the clone is left intact, and the operator completes the wiring with `lym fabric reconcile`.
+// The result's Mutations records every change the call made.
 func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.CloneResult, err error) {
 	res, err = fabricengine.CloneHub(cwd, opts)
 	if err != nil {
@@ -67,8 +53,10 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 			rec.Append(fabricengine.KindFileWritten, configengine.TemplateBaseFile(res.BoardDir, hubWideResult.Module), "")
 		}
 	}
-	// A board seeded from nothing holds only sparse files, so it is marked here and the board commit below carries the marker.
-	// A board that already held a base file is left unmarked: the walk at the end strips it once and commits the marker itself.
+	// A board seeded from nothing holds only sparse files, so it is marked here.
+	// The board commit below carries the marker.
+	// A board that already held a base file is left unmarked:
+	// the walk at the end strips it once and commits the marker itself.
 	markerPath := configengine.BaseSparseMarker(res.BoardDir)
 	if boardSeededFromNothing {
 		if err := configsync.WriteBaseSparseMarker(res.BoardDir); err != nil {
@@ -89,12 +77,11 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if committed {
 		rec.Append(fabricengine.KindCommitCreated, res.BoardDir, sha)
 	}
-	// The push records no branch_pushed entry, and that is deliberate: it reaches
-	// gitrepo.PushCoalesced, which returns nil both when a push landed and when nothing was
-	// unpushed to begin with, so a KindBranchPushed entry here would assert an outcome this call did
-	// not observe. The commit above is already recorded, and branch_pushed is a git-state kind exempt
-	// from the truthfulness oracle's commission direction, so omitting it costs the cross-check
-	// nothing. A seed-commit drop behind the push is recorded in rec as commits_dropped.
+	// The push records no branch_pushed entry, and that is deliberate.
+	// The push returns nil both when a push landed and when nothing was unpushed.
+	// Such an entry would claim a push this call did not observe.
+	// The commit above is already recorded.
+	// A seed-commit drop behind the push is recorded in rec as commits_dropped.
 	if err := b.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -107,21 +94,22 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	// WireJunctionsWith needs no entry of its own beyond what it records internally: it appends
-	// link_created directly into rec.
+	// WireJunctionsWith records its own link_created entries in rec, so none is added here.
 	if err := fabricengine.WireJunctionsWith(rec, l, filepath.Base(l.WorktreePath()), names); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	// The prime is wired, its exclude lines seeded and the Bolt checkout present; a seam failure is logged by the call and never fails the clone.
+	// The prime is wired, its exclude lines seeded and the Bolt checkout present;
+	// a seam failure is logged by the call and never fails the clone.
 	fabricengine.NotifyWorktreeMade(l)
 
-	// .lym is excluded through the warp's .git/info/exclude by WireJunctions above,
-	// not through a tracked .gitignore entry in the user's own repo: a committed
-	// entry would advertise that LYM is in use, and a warp→weft junction must never
-	// leave a tracked artifact behind in the user's repo.
+	// .lym is excluded through the warp's .git/info/exclude by WireJunctionsWith above, not a .gitignore entry.
+	// A committed .gitignore entry in the user's own repo would advertise that LYM is in use,
+	// and a warp→weft junction must never leave a tracked artifact behind in the user's repo.
 	//
-	// ReconcileAll returns the results of its declared key moves first, then one Result per registered module, each reporting whether that module's own file was written (or, for a retired hub-wide copy, deleted).
-	// Record one KindFileWritten per Result whose Applied is true, not one entry for the call as a whole, so every changed per-worktree config file is individually covered.
+	// ReconcileAll returns the results of its declared key moves first, then one Result per registered module.
+	// Each Result reports whether that module's own file was written, or, for a retired hub-wide copy, deleted.
+	// The loop below records one KindFileWritten per applied per-worktree Result,
+	// so every changed per-worktree config file is covered individually.
 	results, err := configsync.ReconcileAll(res.WeftBase, res.BoardDir, configsync.Options{Apply: true})
 	if err != nil {
 		return fabricengine.CloneResult{}, err
@@ -134,14 +122,18 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		}
 	}
 
-	// Commit the per-worktree module configs ReconcileAll just materialised or retired, on the weft primary branch, with no push.
-	// An adopt-path re-clone leaves relPaths empty, which CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no lock and recording nothing.
-	// CommitRecordsPaths appends its own KindCommitCreated entry at its success site, so no recording happens here.
+	// Commit the per-worktree module configs ReconcileAll just materialised or retired.
+	// The commit goes on the weft primary branch, with no push.
+	// An adopt-path re-clone leaves relPaths empty.
+	// The commit then is a legitimate no-op, taking no lock and recording nothing.
+	// The commit records its own KindCommitCreated entry at its success site, so nothing is recorded here.
 	if _, _, err := fabricengine.CommitAnchoredPaths(rec, l, relPaths, "fabric clone: record module configs", fabricengine.SyncOptions{}); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 
-	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default sparse, the header-only base from the template and the prime's non-template units from the prime, commits them on the board and pushes it.
+	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default sparse.
+	// The header-only base comes from the template, and the prime's non-template units come from the prime.
+	// The walk commits them on the board and pushes it.
 	// A walk failure leaves the clone intact, and the next start verb's walk seeds the defaults.
 	// The same walk migrates the prime, so it arrives with the sparse marker committed.
 	absentDefaults := absentRepoDefaults(res.BoardDir)
@@ -191,12 +183,16 @@ func absentRepoDefaults(boardDir string) []string {
 	return absent
 }
 
-// runCloneWithReset executes the clone subcommand. The hub teardown for an idempotent re-clone is no
-// longer performed here: it is driven through CloneOptions.Reset inside CloneHub itself, which can
-// derive the hub path in either the one- or two-argument form. It parses arguments, resolves the
-// seam cwd, derives the clone destination from into, and delegates the entire clone-and-wire
-// sequence to CloneAndWire.
-// The returned envelope carries "hub" and "anchor" from the resolved geometry, plus "warp" (the effective warp URL, supplied or derived), "warp_binding_recorded" (whether this clone wrote the .lym-warp record), "shortname" (the effective repo shortname), "shortname_recorded" (whether this clone wrote the .lym-shortname record) and "warning" (empty when none) — all always present so a consumer never has to distinguish absent from false.
+// runCloneWithReset executes the clone subcommand.
+// The hub teardown of an idempotent re-clone is driven through CloneOptions.Reset inside CloneHub.
+// CloneHub can derive the hub path in either the one- or two-argument form.
+// The envelope carries "hub" and "anchor" from the resolved geometry.
+// "warp" is the effective warp URL, supplied or derived.
+// "warp_binding_recorded" reports whether this clone wrote the .lym-warp record.
+// "shortname" is the effective repo shortname.
+// "shortname_recorded" reports whether this clone wrote the .lym-shortname record.
+// "warning" is empty when there is none.
+// Every field is always present, so a consumer never has to tell an absent field from a false one.
 func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -213,11 +209,11 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		warpURL = args[1]
 	}
 
-	// The new hub is created in this directory, never the process cwd: an empty --into
-	// yields the seam cwd unchanged, an absolute --into is cleaned as given, and a
-	// relative --into resolves against the seam cwd — resolving against the process
-	// cwd here would reintroduce the very dependency lymcwd exists to remove, in the
-	// one verb where cwd is a destination rather than a lookup anchor.
+	// The new hub is created in this directory, never the process cwd.
+	// An empty --into yields the seam cwd unchanged, an absolute --into is cleaned as given,
+	// and a relative --into resolves against the seam cwd.
+	// Resolving against the process cwd would reintroduce the dependency lymcwd exists to remove.
+	// Here cwd is a destination rather than a lookup anchor.
 	dest := cwd
 	switch {
 	case into == "":
@@ -237,8 +233,8 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		Shortname:      shortname,
 	})
 	if err != nil {
-		// CloneAndWire's defer has already populated res by the time it returns, so this failure
-		// path carries whatever the mutated-then-errored sequence accumulated.
+		// CloneAndWire's defer sets res.Mutations before it returns,
+		// so this failure path carries every mutation made before the error.
 		return errWithRecord(out, res.Mutated(), err)
 	}
 

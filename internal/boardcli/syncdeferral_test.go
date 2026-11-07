@@ -1,4 +1,5 @@
-// syncdeferral_test.go covers the board sync's deferrable flag under the process's network gate, against a board path that does not exist.
+// syncdeferral_test.go covers the board sync's deferrable flag under the process's network gate;
+// it runs against a board path that does not exist.
 
 package boardcli
 
@@ -13,8 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSync_DeferrableExitsUnderACoveringPause runs sync against a board path that does not exist, so a sync that reaches the board errors:
-// a deferrable sync under a Defer gate a hub entry covers succeeds without touching the board, a plain sync reports the board error,
+// TestSync_DeferrableExitsUnderACoveringPause runs sync against a board path that does not exist,
+// so a sync that reaches the board errors:
+// a deferrable sync under a Defer gate a hub entry covers succeeds without touching the board;
+// a plain sync reports the board error;
 // and a deferrable sync with nothing covering proceeds to the board and reports the same error.
 // Serial: it installs the process's network gate.
 func TestSync_DeferrableExitsUnderACoveringPause(t *testing.T) {

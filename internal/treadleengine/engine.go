@@ -1,7 +1,8 @@
-// engine.go defines the RoundRunner-agnostic seams every caller wires through: the gate-command execution seam (CommandRunner), Options, and the Engine type and its constructor.
-// Engine drives a caller-supplied RoundRunner for every round's attempt(s) and its own Shuttle seam (judge.go) for the ephemeral judge calls;
-// it never routes a round through Shuttle itself.
-// Engine is fabric-blind and geometry-blind: it never imports fabricengine, never imports lymcwd directly, and never constructs a _lym path itself — it operates on a caller-supplied absolute runDir, and GateDir (Profile) is what resolves the gate command's working directory.
+// engine.go defines the caller-facing seams: CommandRunner, Options, and the Engine type with its constructor.
+// Engine drives a caller-supplied RoundRunner for each round's attempts and a Shuttle for ephemeral judge calls.
+// It never routes a round through the Shuttle.
+// Engine is blind to fabric and geometry: it never imports fabricengine or lymcwd, and it never builds a _lym path.
+// It operates on a caller-supplied absolute runDir, and GateDir in Profile sets the gate command's directory.
 package treadleengine
 
 import (
@@ -9,13 +10,13 @@ import (
 	"time"
 )
 
-// CommandRunner is the gate-command execution seam: it runs argv inside dir, killing the command
-// after timeout, and reports the raw combined stdout+stderr output plus whether the command exited
-// zero.
-// A non-zero exit AND a timeout are both reported as (output, false, nil): ordinary gate failures
-// the loop branches on (a hung command is an artifact signal — most plausibly the round's own fix
-// deadlocked it — and its partial output feeds forward like any other failing gate).
-// err is reserved for could-not-start failures only (binary not found, permission denied), where
+// CommandRunner is the gate-command execution seam.
+// It runs argv inside dir and kills the command after timeout.
+// It reports the raw combined stdout and stderr output and whether the command exited zero.
+// A non-zero exit and a timeout are both reported as (output, false, nil): ordinary gate failures the loop branches on.
+// A hung command is an artifact signal, most plausibly a deadlock in the round's own fix,
+// and its partial output feeds forward like any other failing gate.
+// err is reserved for a command that could not start, such as a missing binary or a permission error:
 // the gate never observed the artifact at all.
 type CommandRunner func(argv []string, dir string, timeout time.Duration) (output []byte, exitZero bool, err error)
 
@@ -23,20 +24,20 @@ type CommandRunner func(argv []string, dir string, timeout time.Duration) (outpu
 type Options struct {
 	PauseRequested func() bool
 	RunCommand     CommandRunner
-	// ScratchDir is the directory this block's never-tracked artifacts — run.lock, state.json.lock, and the pause flag — are written to.
-	// An empty value defaults to runDir, for back-compat with a caller that has not yet split its scratch tree from its durable one.
-	// The engine never derives this path itself;
-	// the caller is told, never the engine (Cwd Resolution Invariant) — treadleengine stays off internal/lymcwd and internal/lymdirs so the caller, which knows its own .lym-anchored geometry, is the one deriving it.
+	// ScratchDir holds the block's never-tracked artifacts: run.lock, state.json.lock, and the pause flag.
+	// An empty value defaults to runDir, so a caller that keeps both trees in one directory needs no change.
+	// The engine never derives this path itself; the caller resolves it from its own geometry and passes it in.
+	// The engine imports neither internal/lymcwd nor internal/lymdirs: the caller alone knows the .lym-anchored layout.
 	ScratchDir string
-	// StencilsDir is the absolute stencils directory judge.go's and
-	// targeting.go's read sites pass to stencilstore.Read at call time. The
-	// engine never derives this path itself — same told-never-derives
-	// posture as ScratchDir and GateDir — the caller
-	// resolves it from its own geometry and hands it in.
+	// StencilsDir is the absolute stencils directory.
+	// The judge.go and targeting.go read sites pass it to stencilstore.Read at call time.
+	// The engine never derives this path itself.
+	// The caller resolves it from its own geometry;
+	// the engine receives it as given.
 	StencilsDir string
-	// ParentName is the told name of the session the spawned judge and
-	// targeting roles escalate to, rendered into their prompts by
-	// parentdirective.Directive. Empty renders the no-parent variant.
+	// ParentName is the name of the session that the spawned judge and targeting roles escalate to.
+	// `parentdirective.Directive` renders it into their prompts.
+	// An empty value renders the no-parent variant.
 	ParentName string
 }
 

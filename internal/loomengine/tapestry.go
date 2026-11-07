@@ -1,10 +1,6 @@
-// tapestry.go — the tapestry config module: tapestry.yaml's template, spec, loader and local-value check.
-//
-// tapestry.yaml holds the plan perch's keys, which only the tapestry recipe reads: the Plan-Write agent and its lens fan, the implementer engine, and the Plan-Review segment's models, fans, judge, seed and budget.
-// loom.yaml keeps what every loom recipe shares, and LoadTapestryConfig reads its run-wide review keys to resolve the plan perch's budget.
-// Config.WithTapestry copies the loaded values into a Config, for the callers that serve the Plan-Review segment.
-// plan_assist_reviewer_model names the model-spec, or lists one per round, of the Plan-Review assistant reviewer that runs beside the segment's reviewer and never gates the round; an empty entry, the default, runs no assistant that round, and every non-empty entry is parsed at load.
-// plan_assist_reviewer_fan names the assistant's fan per round as plan_reviewer_fan does for the reviewer.
+// tapestry.go holds the tapestry config module: the tapestry.yaml template, spec, loader and local-value check.
+// tapestry.yaml holds the plan perch's keys, which only the tapestry recipe reads.
+// loom.yaml keeps the keys every loom recipe shares.
 
 package loomengine
 
@@ -29,14 +25,15 @@ var tapestryTemplate string
 // tapestryModule is the config module whose YAML file holds the plan perch's keys.
 const tapestryModule = "tapestry"
 
-// TapestryConfig represents the resolved tapestry.yaml configuration: the plan perch's model-specs, timeout, lens fan and review settings.
+// TapestryConfig is the resolved plan-perch configuration from tapestry.yaml.
+// It holds the model-specs, timeout, lens fans and review settings.
 // The implementer key is read where the recipe builds the Webster row, never here.
 type TapestryConfig struct {
 	Plan           string `yaml:"plan"`
 	PlanTimeoutMin int    `yaml:"plan_timeout_min"`
 
-	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
-	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
+	// PlanLenses names the lenses.yaml fan the Plan-Write lead forks itself for once its plan is written and self-checked.
+	// An empty value turns the forks off.
 	PlanLenses string `yaml:"plan_lenses"`
 
 	// PlanGateFixer is the model-spec of the cold fixer of Plan-Write's plan gate; empty turns the fixer off.
@@ -49,7 +46,7 @@ type TapestryConfig struct {
 	PlanReviewerFan lenses.FanList `yaml:"plan_reviewer_fan"`
 	PlanFixerFan    lenses.FanList `yaml:"plan_fixer_fan"`
 
-	// PlanAssistReviewerModel and PlanAssistReviewerFan are the Plan-Review assistant reviewer's model list and fan list, one entry per round; an empty model entry runs no assistant that round.
+	// PlanAssistReviewerModel and PlanAssistReviewerFan are the assistant's per-round lists; an empty model entry skips it.
 	PlanAssistReviewerModel burlerengine.ModelSpecList `yaml:"plan_assist_reviewer_model"`
 	PlanAssistReviewerFan   lenses.FanList             `yaml:"plan_assist_reviewer_fan"`
 
@@ -116,8 +113,10 @@ func (c Config) PlanTimeout(runTimeout time.Duration) time.Duration {
 	return time.Duration(c.PlanTimeoutMin) * time.Minute
 }
 
-// PartsChairTimeout returns the Parts-Plan-Write chair's timeout: the set PartsChairTimeoutMin minutes, or twice PlanTimeout(runTimeout) when it is nil.
-// A set value not above PlanTimeout(runTimeout) is an error naming parts_chair_timeout_min, since the chair spans every part writer.
+// PartsChairTimeout returns the Parts-Plan-Write chair's timeout.
+// It is PartsChairTimeoutMin minutes when set, or twice PlanTimeout(runTimeout) when nil.
+// A set value not above PlanTimeout(runTimeout) is an error naming parts_chair_timeout_min.
+// The chair spans every part writer, which is why the set value must sit above the plan timeout.
 func (c Config) PartsChairTimeout(runTimeout time.Duration) (time.Duration, error) {
 	planTimeout := c.PlanTimeout(runTimeout)
 	if c.PartsChairTimeoutMin == nil {
@@ -135,14 +134,16 @@ func TapestryConfigTemplate() string {
 	return tapestryTemplate
 }
 
-// TapestryConfigOpenMaps returns the tapestry.yaml keys whose value is a per-round list, which configengine carries whole through reconcile and --set.
+// TapestryConfigOpenMaps returns the tapestry.yaml keys whose value is a per-round list.
+// configengine carries these keys whole through reconcile and --set.
 func TapestryConfigOpenMaps() []string {
 	return []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan", "plan_assist_reviewer_model", "plan_assist_reviewer_fan"}
 }
 
 // TapestryConfigSpec returns tapestry's layered-load spec.
 // The module is per-worktree.
-// plan_lenses, the two plan fan keys and plan_auto_accept can hollow a review or approval gate and are barred from the local layer; every other key may be overridden there.
+// plan_lenses, the two plan fan keys and plan_auto_accept can hollow a review or approval gate.
+// They are barred from the local layer; every other key may be overridden there.
 // The plan perch's budget keys come from reviewbudget, without the three run-wide keys, which loom.yaml owns.
 func TapestryConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
@@ -181,7 +182,8 @@ func TapestryConfigSpec() configengine.Spec {
 	return spec
 }
 
-// ValidateTapestryLocalValues checks the values of the plan perch's budget and hard-cap keys a local-layer document sets, through reviewbudget, and leaves every other key to LoadTapestryConfig.
+// ValidateTapestryLocalValues checks the plan perch's budget and hard-cap keys a local-layer document sets.
+// It goes through reviewbudget, and every other key is left to LoadTapestryConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateTapestryLocalValues(document []byte) error {
 	var budgets map[string]any
@@ -191,10 +193,13 @@ func ValidateTapestryLocalValues(document []byte) error {
 	return reviewbudget.CheckLocal(budgets, []string{string(PerchPlan)})
 }
 
-// LoadTapestryConfig loads and unmarshals configuration for the tapestry module strictly through the layer stack under dirs.
-// It validates model-spec grammar at load time, reads lenses.yaml through the same dirs, refuses a negative plan_timeout_min, and refuses a plan perch budget or hard cap below its bound.
-// It also refuses an unparseable parts model, a parts_depth other than light or medium, a parts_max below 1, and a parts_chair_timeout_min not above a non-zero plan_timeout_min.
-// The run-wide review_max_bounces, review_hard_max_bounces and review_amend_max_bounces come from loom.yaml, loaded strictly through the same dirs, so a plan_max_bounces of null and a plan_hard_max_bounces of 0 resolve against them.
+// LoadTapestryConfig loads the tapestry module's configuration strictly through the layer stack under dirs.
+// It validates model-spec grammar at load time and reads lenses.yaml through the same dirs.
+// It refuses a negative plan_timeout_min and a plan perch budget or hard cap below its bound.
+// It also refuses an unparseable parts model, a parts_depth other than light or medium, and a parts_max below 1.
+// It refuses a parts_chair_timeout_min not above a non-zero plan_timeout_min.
+// The run-wide review_max_bounces, review_hard_max_bounces and review_amend_max_bounces come from loom.yaml.
+// They load through the same dirs, so a plan_max_bounces of null and a plan_hard_max_bounces of 0 resolve against them.
 // Each refusal names the module that owns the key it reports.
 func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, error) {
 	spec := TapestryConfigSpec()
@@ -255,7 +260,8 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		return TapestryConfig{}, err
 	}
 
-	// The judge and seed overrides are validated only when non-empty: an empty value takes loom.yaml's key at run start and must load cleanly.
+	// The judge and seed overrides are validated only when non-empty:
+	// an empty value takes loom.yaml's key at run start and must load cleanly.
 	for _, override := range []struct {
 		key   string
 		value string

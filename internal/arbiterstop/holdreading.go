@@ -19,10 +19,13 @@ import (
 )
 
 // HoldReading reads the task worktree at location for the stop status describes.
-// Eligible is whether Check admits the stop with no envelope kind, so an error stop is never eligible here.
-// An awaiting stop that Check refuses stays eligible when its escalation reader reports nothing pending and an attempt at the stop's key has no applied mark:
-// the arbiter records a circling decision before a resume, which makes the escalation non-pending while the verb's attempt still stands.
-// A stop that is not eligible returns at once; any read error is returned.
+// The reading is eligible when the arbiter may settle the stop with no envelope kind.
+// So an error stop is never eligible here.
+// An awaiting stop that is not eligible becomes eligible when its escalation reader reports nothing pending.
+// The stop also needs the newest attempt at its key to carry no applied mark.
+// The arbiter records a circling decision before a resume.
+// That makes the escalation non-pending while the attempt still stands.
+// A stop that is not eligible returns the zero reading at once; any read error is returned.
 func HoldReading(location *lymcwd.Location, status shedengine.Status) (battenshed.ChildArbiterStop, error) {
 	readers := NewReaders(location)
 	key := sheddriver.StopKeyOf(status)

@@ -1,4 +1,6 @@
-// prreview_wait_test.go covers the wait of the PR-Review row: what each state of the pull request and the task worktree ends it with, how it gates and pushes the agent's commits, and how it spaces its wakes and its GitHub polls on an injected clock.
+// prreview_wait_test.go covers the wait of the PR-Review row.
+// Each state of the pull request and the task worktree ends the wait with a known outcome,
+// and the wait gates and pushes the agent's commits and spaces its wakes and GitHub polls on an injected clock.
 
 package landingshed
 
@@ -22,7 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// waitWorld is the world a PR-Review wait runs in: scripted heads and dirty paths, a clock that moves only when the wait sleeps, and a record of every push, mail, mark and sleep.
+// waitWorld is the world a PR-Review wait runs in.
+// It scripts the heads and dirty paths, and it runs a clock that moves only when the wait sleeps.
+// It also records every push, mail, mark and sleep.
 // onSleep runs after each sleep with its 1-based count, so a test changes the world between two wakes.
 type waitWorld struct {
 	deps   Deps
@@ -40,12 +44,13 @@ type waitWorld struct {
 	missing    []string
 	mailErr    error
 	pauseCalls int
-	// liveAtRead records whether the session was live at each read of the task worktree's uncommitted paths, for a test that installs a recording DirtyPaths.
+	// liveAtRead records, for each read of the task worktree's uncommitted paths, whether the session was live.
 	liveAtRead []bool
 	// coveredAt answers whether a pause covers the run at the n-th (1-based) read of the pause record; nil covers nothing.
 	coveredAt func(n int) bool
 	onSleep   func(w *waitWorld, n int)
-	// changes is the channel the record watch delivers on, nil for a wait left on its timer, and watchStops counts the ends of the watch.
+	// changes is the channel the record watch delivers on, or nil for a wait left on its timer.
+	// watchStops counts the ends of the watch.
 	changes    chan struct{}
 	watchStops int
 }
@@ -169,7 +174,9 @@ func TestPRReview_Wait(t *testing.T) {
 			t.Errorf("write the continue flag: %v", err)
 		}
 	}
-	// changeDuringFirstSleep returns a setup in which the first sleep lets elapsed pass on the clock, writes the continue flag, signals the record change and then ends only when the wait cancels it; the guard fails a wait that never does.
+	// changeDuringFirstSleep returns a setup for a wait whose first sleep advances the clock by elapsed.
+	// That sleep writes the continue flag and signals a record change, then ends only when the wait cancels it.
+	// A guard fails the test if the sleep never ends.
 	changeDuringFirstSleep := func(elapsed time.Duration) func(w *waitWorld) {
 		return func(w *waitWorld) {
 			w.changes = make(chan struct{}, 1)
@@ -193,7 +200,8 @@ func TestPRReview_Wait(t *testing.T) {
 			}
 		}
 	}
-	// rewriteDescriptionsThenCancel returns a setup that writes each content of writes to the change description at the sleep whose count is its key and cancels the wait at the n-th.
+	// rewriteDescriptionsThenCancel returns a setup that writes each content of writes to the change description.
+	// Each content is keyed by the sleep count it is written at, and the setup cancels the wait at the n-th sleep.
 	rewriteDescriptionsThenCancel := func(writes map[int]string, n int) func(w *waitWorld) {
 		return func(w *waitWorld) {
 			w.onSleep = func(w *waitWorld, count int) {
@@ -208,7 +216,8 @@ func TestPRReview_Wait(t *testing.T) {
 			}
 		}
 	}
-	// rewriteDescriptionThenCancel returns a setup that writes content to the change description at the first sleep and cancels the wait at the n-th.
+	// rewriteDescriptionThenCancel returns a setup that writes content to the change description at the first sleep,
+	// and the setup cancels the wait at the n-th sleep.
 	rewriteDescriptionThenCancel := func(content string, n int) func(w *waitWorld) {
 		return rewriteDescriptionsThenCancel(map[int]string{1: content}, n)
 	}

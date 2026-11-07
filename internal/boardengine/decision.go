@@ -1,4 +1,4 @@
-// decision.go — the decision record of a board entry: the record file's name, the store and read of it, and the payload rule for the discussed flag.
+// decision.go — a board entry's decision record: its file name, its store and read, and the discussed payload check.
 //
 // The record is the file decision-<slug>.md beside board.json, and the entry's Discussed flag says lym stored it.
 
@@ -16,10 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ErrRecordEntryDone is the error StoreDecisionRecord wraps when the entry is done.
+// ErrRecordEntryDone is the error a store of a decision record wraps when the entry is done.
 var ErrRecordEntryDone = errors.New("a landed entry keeps the decision record it last stored")
 
-// DecisionRecordError is the error a rename returns when the entry is saved under its new slug and only moving or clearing its decision record file failed.
+// DecisionRecordError reports a rename that saved the entry under its new slug:
+// moving or clearing its decision record file failed.
 type DecisionRecordError struct {
 	Err error
 }
@@ -68,7 +69,8 @@ func (b *Board) recordStored(slug string) bool {
 	return err == nil
 }
 
-// DecisionRecord returns the decision record of the entry selector names, a slug string, a numeric id or a Handle, reading without the lock.
+// DecisionRecord returns the decision record of the entry selector names, a slug string, a numeric id or a Handle.
+// It reads without the lock.
 // found is true only when the entry exists, carries the discussed flag and its record file exists;
 // an absent entry, an unflagged one and a flagged one with no file each answer false.
 // A read error other than a missing file is returned.
@@ -88,10 +90,14 @@ func (b *Board) DecisionRecord(selector any) ([]byte, bool, error) {
 }
 
 // followDecisionRecords makes the record files follow the entries a saved write changed.
-// loaded and after are the entries before and after the write, loaded with a rename already applied; renamedFrom is the renamed entry's old slug and empty for any other write.
-// A rename moves the old slug's record file to the new slug's name; when the old file is absent, it removes a file at the new slug's name, flagged entry or not, since a file at a fresh slug's name is always an orphan the renamed entry must not adopt.
+// loaded and after are the entries before and after the write, loaded with a rename already applied;
+// renamedFrom is the renamed entry's old slug and empty for any other write.
+// A rename moves the old slug's record file to the new slug's name.
+// When the old file is absent, it removes any file at the new slug's name, flagged entry or not:
+// a file at a fresh slug's name is always an orphan the renamed entry must not adopt.
 // Only a rename's failure is returned, as a *DecisionRecordError.
-// Each slug of loaded that after lacks loses its record file, and a failed removal is logged and returns no error, since an orphaned file is unread while its slug carries no flag.
+// Each slug of loaded that after lacks loses its record file;
+// a failed removal is logged and returns no error, since an orphaned file is unread while its slug carries no flag.
 func followDecisionRecords(boardPath string, loaded, after []Task, renamedFrom, renamedTo string) error {
 	var renameErr error
 	if renamedFrom != "" {
@@ -127,7 +133,8 @@ func followDecisionRecords(boardPath string, loaded, after []Task, renamedFrom, 
 	return nil
 }
 
-// checkDiscussedPayload judges the discussed key of an upsert payload against the entry fields["slug"] names, the entry being new when the store holds none.
+// checkDiscussedPayload judges the discussed key of an upsert payload against the stored entry fields["slug"] names.
+// The entry counts as unflagged when the store holds none.
 // A bool equal to the stored value, false for a new entry, is dropped from fields; any other value is refused.
 func checkDiscussedPayload(s *Store, fields map[string]any) error {
 	value, carried := fields["discussed"]

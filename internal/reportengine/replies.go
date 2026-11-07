@@ -1,4 +1,5 @@
-// replies.go counts, per receiver role, the replies creel was asked for, the replies it got, the chases it sent and the messages it settled unanswered.
+// replies.go counts the expected-reply traffic of each receiver role in creel log entries.
+// It tallies the replies asked for, the replies given, the chases sent and the messages settled unanswered.
 
 package reportengine
 
@@ -9,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 )
 
-// RoleReplies counts the expected-reply traffic of one receiver role over the entries ComputeReplies read.
+// RoleReplies counts the expected-reply traffic of one receiver role over creel log entries.
 type RoleReplies struct {
 	Role string `json:"role"`
 	// Expected counts the posts, and the messages from another hub, marked as expecting a reply that went to the role.
@@ -22,10 +23,14 @@ type RoleReplies struct {
 	Unanswered int `json:"unanswered"`
 }
 
-// ComputeReplies counts expected replies, replies, chases and unanswered messages per receiver role over creel log entries, in role-name order.
+// ComputeReplies counts the expected replies, replies, chases and unanswered messages per receiver role.
+// It reads creel log entries and returns the roles in role-name order.
 // A strand counts under its role and a program under its upper-case name; a name that is neither counts nowhere.
-// A reply counts only when its ReplyTo names a message the entries show as marked, so a reply to an unmarked message counts nowhere.
-// An `inbound` entry counts as a post to its receiver, and an `outbound` entry counts by its Answers: as a reply from its sender when that names a marked message, and as nothing otherwise.
+// A reply counts only when its ReplyTo names a message the entries show as marked;
+// a reply to an unmarked message counts nowhere.
+// An `inbound` entry counts as a post to its receiver.
+// An `outbound` entry counts as a reply from its sender when its Answers names a marked message.
+// Otherwise it counts nowhere.
 func ComputeReplies(entries []creelengine.LogEntry) []RoleReplies {
 	marked := map[int64]bool{}
 	for _, entry := range entries {

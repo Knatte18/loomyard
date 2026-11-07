@@ -1,8 +1,8 @@
 // recordbatch_test.go exercises RecordBatch end to end.
 // A temp directory backs WorktreeRoot over a fakeGit for the head, dirty and merge questions.
 // The incremental fork audit (shuttleengine.ForkAuditor.AuditForksIncremental) is a local, call-scripted fake.
-// SettleRetry's clock seam is a recording fake Sleeper that never actually blocks, mirroring audit_test.go's own SettleRetry fixture pattern.
-// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
+// SettleRetry's clock seam is a recording fake Sleeper that never blocks.
+// The fixtures are package-local: the internal and external test packages do not share a test-helper package.
 
 package websterengine_test
 
@@ -34,9 +34,10 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// TestRecordBatch_NoBeginRecord proves the bracket-discipline check: a record call with no matching
-// BatchState entry never consults the audit.
-// A report present is archived and the batch re-driven through begin-batch, so begin-batch's pre-existing-report refusal no longer fires;
+// TestRecordBatch_NoBeginRecord proves the bracket-discipline check:
+// a record call with no matching BatchState entry never consults the audit.
+// A report present is archived, and the batch is re-driven through begin-batch.
+// Begin-batch's pre-existing-report refusal therefore does not fire;
 // with no report the error still names begin-batch.
 func TestRecordBatch_NoBeginRecord(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -107,9 +108,9 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 	})
 }
 
-// TestRecordBatch_RecoveryBatchRefusedLoud proves the kind guard: a recovery batch's report is
-// recover-batch's to classify, never record-batch's — the refusal names the correct verb instead of
-// dying later in the fork audit with a misleading "never forked" error (round fable-r3 live).
+// TestRecordBatch_RecoveryBatchRefusedLoud proves the kind guard:
+// a recovery batch's report is recover-batch's to classify, never record-batch's.
+// The refusal names the correct verb instead of dying later in the fork audit with a misleading "never forked" error.
 func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, nil)
@@ -125,7 +126,9 @@ func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
 }
 
 // TestRecordBatch_ZeroNewTranscriptsArchivesReport proves the unfakeable-report rule:
-// zero new transcripts through the whole settle window never records the report, REGARDLESS of a batch-report file already sitting on disk — a report with no fork behind it means Master wrote it itself.
+// zero new transcripts through the whole settle window never records the report.
+// That holds regardless of a batch-report file already sitting on disk.
+// A report with no fork behind it means Master wrote it itself.
 // The report is archived, the batch record stays begun, and begin-batch re-drives it.
 func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -158,9 +161,9 @@ func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors proves more than one new transcript in a
-// single call is a warning only, never a hard error — legitimate retry behavior (a fork's Agent
-// call errored mid-flight followed by a direct re-fork, with no intervening record-batch call).
+// TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors proves a call with several new transcripts only warns.
+// Several new transcripts are legitimate retry behavior:
+// a fork's Agent call errored mid-flight, then a direct re-fork ran with no record-batch call between.
 func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -235,7 +238,7 @@ func archivedReports(t *testing.T, reportsDir string) []string {
 	return archived
 }
 
-// fabricPathMatcher is a RefMatcher that matches any command containing its fabric path.
+// fabricPathMatcher matches any command that contains the fabric path it holds.
 type fabricPathMatcher string
 
 func (m fabricPathMatcher) Matches(cmd string) bool { return strings.Contains(cmd, string(m)) }
@@ -245,11 +248,11 @@ func oneForkAudit() shuttleengine.ForkAudit {
 	return shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}}
 }
 
-// TestRecordBatch_AuditOutcomes asserts how RecordBatch classifies one audit-and-report pair: a
-// clean one records the batch done with the digest, attribution and warnings the audit implies, a
-// policy finding warns and still records, and a correctness finding fails the batch terminally —
-// naming recover-batch, archiving any report, and recording the Uncheckable entries recovery
-// cannot check.
+// TestRecordBatch_AuditOutcomes asserts how RecordBatch classifies one audit-and-report pair:
+// a clean one records the batch done with the digest, attribution and warnings the audit implies;
+// a policy finding warns and still records;
+// and a correctness finding fails the batch terminally;
+// it names recover-batch, archives any report, and records the Uncheckable entries recovery cannot check.
 func TestRecordBatch_AuditOutcomes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -295,7 +298,8 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 	}
 	trackedFile := func(fx *recordFixture) string { return filepath.Join(fx.Worktree, "internal", "foo", "impl.go") }
 	oneFork := func() []shuttleengine.ForkAudit { return []shuttleengine.ForkAudit{oneForkAudit()} }
-	// engineB makes fx's scripted audit the engine named "b" of a set whose default "a" fails the test when asked to audit.
+	// engineB makes fx's scripted audit the engine named "b" in the set.
+	// The default engine "a" fails the test if it is asked to audit.
 	engineB := func(t *testing.T, fx *recordFixture) {
 		unused := &shuttlefake.Engine{AuditForksIncrementalFn: func(string, string, map[string]bool) (shuttleengine.ForkAudit, error) {
 			t.Error("the default engine audited a session whose record names another engine")
@@ -357,8 +361,8 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// A resumed run's fresh Master must be able to consume a report whose fork transcript
-			// lives under the crashed session's own subagents directory.
+			// A resumed run's fresh Master must be able to consume a report.
+			// The report's fork transcript lives under the crashed session's own subagents directory.
 			name: "the audit is keyed on the bracket-opening session",
 			audits: func() []shuttleengine.ForkAudit {
 				return []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/crashed-session/subagents/f1.jsonl", ReportReturned: true}}}}
@@ -378,7 +382,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// SettleRetry's own "first miss is inconclusive" de-risk, applied through the whole call.
+			// SettleRetry treats a first miss as inconclusive, and that holds through the whole call.
 			name: "a transcript appearing on a later tick resolves clean",
 			audits: func() []shuttleengine.ForkAudit {
 				return []shuttleengine.ForkAudit{{}, {Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/late.jsonl", ReportReturned: true}}}}
@@ -439,8 +443,8 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// The report file is the fork's contract: a transcript that never ended on a final
-			// report but whose report file landed draws no "never returned" warning.
+			// The report file is the fork's contract.
+			// A transcript that never ended on a final report draws no "never returned" warning if its report file landed.
 			name: "a report file present drops the never-returned warning",
 			audits: func() []shuttleengine.ForkAudit {
 				return []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: false}}}}
@@ -507,9 +511,9 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// A fork that touched the fabric checkout through Bash is correctness whatever its
-			// command; the failed record names the command and is the state recover-batch
-			// proceeds from. A fabric reference has no path recovery could check.
+			// A fork that touched the fabric checkout through Bash is correctness whatever its command.
+			// The failed record names the command and is the state recover-batch proceeds from.
+			// A fabric reference has no path recovery could check.
 			name:   "a read-only fabric reference fails the batch",
 			audits: forkWithCommand("cat /fabric/sibling/webster/state.json"),
 			prepare: func(t *testing.T, fx *recordFixture) {
@@ -685,8 +689,8 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// The report is archived, the card file is named as a suspect path, and the failed
-			// record is one recover-batch proceeds from.
+			// The report is archived, and the card file is named as a suspect path.
+			// The failed record is the one recover-batch proceeds from.
 			name:   "a fork writing a card file under the plan directory fails the batch",
 			audits: oneFork,
 			prepare: func(t *testing.T, fx *recordFixture) {
@@ -713,8 +717,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// The 2026-09-30 incident: a fork's fabric reference on an otherwise clean batch no
-			// longer wedges every retry.
+			// A fork's fabric reference on an otherwise clean batch fails the batch once and does not wedge later retries.
 			name:   "a fabric reference on a clean batch fails once and no retry is wedged by an audit refusal",
 			audits: forkWithCommand("cat FABRICREF/webster/state.json"),
 			prepare: func(t *testing.T, fx *recordFixture) {
@@ -737,7 +740,8 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				failed := *fx.Deps.State.Batches[1]
 				rfx.Deps.State.Batches[1] = &failed
 				clk := &recoverFakeClock{now: time.Unix(0, 0)}
-				// A fabric reference has no path recovery could check, so recover-batch names the reset-to-start route instead of spawning.
+				// A fabric reference has no path recovery could check.
+				// So recover-batch names the reset-to-start route instead of spawning.
 				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "1) lym webster reset --to start; 2) lym webster run") {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming the reset-to-start route", spawned, err)
 				}
@@ -877,10 +881,11 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew proves the no_report ladder: a
-// fork transcript with no report yet returns NoReport true, leaves the batch non-terminal, and
-// STILL advances attribution — so a second record-batch call (after Master's re-fork) sees exactly
-// its own new transcript and resolves clean, never re-counting the first one.
+// TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew proves the no_report ladder:
+// a fork transcript with no report yet returns NoReport true and leaves the batch non-terminal;
+// it still advances attribution;
+// a second record-batch call, after Master's re-fork, sees exactly its own new transcript;
+// that second call resolves clean and never re-counts the first one.
 //
 //testtiming:keep pins attribution advancing across a no-report call and the second call classifying only its own new transcript; the audit-outcome table only covers single calls
 func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.T) {
@@ -909,11 +914,10 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 		t.Fatalf("State.SeenForkTranscripts after no_report call = %v; want attribution still advanced to [f1]", fx.Deps.State.SeenForkTranscripts)
 	}
 
-	// Second call: the re-fork's report has now landed. The fake engine's
-	// second script entry still includes f1, proving SettleRetry's own
-	// defensive re-filter (against the just-updated SeenForkTranscripts) is
-	// what keeps this call's classification down to exactly one new
-	// transcript (f2), not two.
+	// Second call: the re-fork's report has now landed.
+	// The fake engine's second script entry still includes f1.
+	// The defensive re-filter in SettleRetry runs against the just-updated SeenForkTranscripts;
+	// it keeps this call's classification to exactly one new transcript (f2), not two.
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	result, err = websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -931,10 +935,12 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 	}
 }
 
-// TestRecordBatch_ResumedForkAcrossNoReportCall proves a fork stopped and resumed across a no-report call is attributed on the next call:
-// the bracket's own transcript counts when it wrote the batch's report and is re-audited in full, its earlier findings are not reported again,
+// TestRecordBatch_ResumedForkAcrossNoReportCall proves a fork stopped and resumed across a no-report call:
+// the bracket's own transcript counts when it wrote the batch's report and is re-audited in full;
+// its earlier findings are not reported again;
 // and a bracket whose transcripts never wrote the report still meets ErrNoForkTranscripts.
-// Every attributed transcript is held once in the seen set, the batch's fork transcripts and its bracket transcripts, so no other claim path takes it.
+// Every attributed transcript is held once in the seen set: the batch's fork transcripts and its bracket transcripts;
+// no other claim path takes it.
 func TestRecordBatch_ResumedForkAcrossNoReportCall(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1132,8 +1138,8 @@ func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning proves the same flow with a failing verify fails the batch,
-// and the earlier recorded warning is among the reasons.
+// TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning proves a failing verify on the retry fails the batch,
+// and the warning recorded by the earlier call is among the reasons.
 func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
 	tiergate.Require(t, 0)
 	audit := shuttleengine.ForkAudit{
@@ -1167,8 +1173,9 @@ func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches proves a whole-session parent finding is dispositioned by the first record-batch that reports it:
-// the next batch in the same session records done with no refusal and no repeated warning.
+// TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches proves a whole-session parent finding is warned once.
+// The first batch that reports it records the warning,
+// and the next batch in the same session records done with no refusal and no repeated warning.
 //
 //testtiming:keep pins a session-wide finding dispositioned by the first batch and not re-warned on the second batch; the audit-outcome table only records single batches
 func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
@@ -1208,8 +1215,9 @@ func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ForgedTerminalRecordFails proves a fork that marks its own batch done by writing state.json is audited before the "already terminal" refusal:
-// the batch fails with its reasons naming fork-state-write, while a terminal batch with no new transcript still refuses untouched.
+// TestRecordBatch_ForgedTerminalRecordFails proves a fork's own state.json write is audited before the refusal:
+// the batch fails with its reasons naming fork-state-write.
+// A terminal batch with no new transcript still refuses untouched.
 func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
@@ -1259,8 +1267,9 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript proves a repeated record-batch on a done batch never attributes another fork's unseen transcript to it:
-// while a later fork batch of the same session is open, or once the verify-gate report exists, the call refuses as already terminal and consumes nothing.
+// TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript proves a done batch never takes another fork's transcript.
+// A repeated record-batch refuses as already terminal and consumes nothing.
+// It does so while a later fork batch of the same session is open, or once the verify-gate report exists.
 func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1301,9 +1310,9 @@ func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_HeadSHAMismatchErrors proves a batch-report whose own self-reported head_sha
-// disagrees with the worktree's actual current HEAD is a hard error, naming both — the fork's
-// report and the repo it left behind must never be trusted to agree silently.
+// TestRecordBatch_HeadSHAMismatchErrors proves a head_sha that disagrees with the worktree's HEAD is a hard error:
+// the error names both commits.
+// The fork's report and the repo it left behind must never be trusted to agree silently.
 //
 //testtiming:keep pins the head_sha mismatch refusal naming the worktree's actual HEAD and the same call recording once the report is corrected; the parent-moved-HEAD table only refuses moved heads that match the report
 func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
@@ -1337,8 +1346,10 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_UnresolvableHeadSHARefused proves an abbreviated head_sha naming no commit, or several, is refused with ErrHeadSHAUnresolved and the git rev-parse way forward, never a reset.
-// The batch stays non-terminal with the report in place, and the same call records once the report names the full HEAD.
+// TestRecordBatch_UnresolvableHeadSHARefused proves an abbreviated head_sha that resolves to no commit or several:
+// is refused with ErrHeadSHAUnresolved and the git rev-parse way forward, never a reset.
+// The batch stays non-terminal with the report in place,
+// and the same call records once the report names the full HEAD.
 func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1398,8 +1409,9 @@ func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_NeedsParentWaits proves a NEEDS_PARENT report records the batch waiting with its need, in flight, its report archived and its recovery count unchanged,
-// and that record-batch on the waiting batch then refuses naming the need and begin-batch.
+// TestRecordBatch_NeedsParentWaits proves a NEEDS_PARENT report records the batch waiting with its need:
+// the batch stays in flight with its report archived, and its recovery count unchanged.
+// A record-batch on the waiting batch then refuses, naming the need and begin-batch.
 func TestRecordBatch_NeedsParentWaits(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1438,8 +1450,8 @@ func TestRecordBatch_NeedsParentWaits(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MalformedReportYAMLErrors proves an unparseable batch-report (here, an
-// unrecognized status value) is a hard error, never a guessed digest.
+// TestRecordBatch_MalformedReportYAMLErrors proves an unparseable batch-report is a hard error:
+// here the status value is unrecognized, and the error never yields a guessed digest.
 func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1475,7 +1487,9 @@ func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MissingSessionTranscriptArchivesReport proves the TRUE cross-machine resume failure — the bracket-opening session's transcript file does not exist on this machine at all, so the audit read itself fails with fs.ErrNotExist — archives the report, keeps the batch begun, and explains the machine-local transcripts with the begin-batch way forward (found live in crucible round fable-r3).
+// TestRecordBatch_MissingSessionTranscriptArchivesReport proves a missing session transcript archives the report.
+// The bracket-opening session's transcript is absent on this machine, so the audit read fails with fs.ErrNotExist.
+// The batch stays begun, and the error explains the machine-local transcripts and the begin-batch way forward.
 // errors.Is must still see the underlying fs.ErrNotExist.
 func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1513,9 +1527,10 @@ func (i laterReferencesIndex) LaterDeleteReferences(*planparser.Plan, []planpars
 	return i.references, nil
 }
 
-// TestFailCardNotDone_WayForward pins the way forward a batch failed on done-check findings names.
-// It covers each Create-target arm: a signature mismatch, a plain missing target, a Rename pair that did not happen, a target after a recovery, an uncheckable record, an exhausted batch,
-// and an exhausted batch whose record holds an amendment no recovery has rendered yet.
+// TestFailCardNotDone_WayForward pins the way forward a failed batch names for its done-check findings.
+// It covers each Create-target arm: a signature mismatch, a plain missing target, and a Rename pair that did not happen.
+// It also covers a target after a recovery, an uncheckable record, and an exhausted batch.
+// It covers an exhausted batch whose record holds an amendment no recovery has rendered yet.
 // It also covers the precedence of the Delete reference, glyph-rejected and Create ways forward over one another.
 func TestFailCardNotDone_WayForward(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1596,9 +1611,10 @@ func TestFailCardNotDone_WayForward(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
-// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived, with recover-batch and the card amendment as its way forward,
-// and a target quarry rejects outright names the card amendment alone.
+// TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves that an unresolved Create target fails the batch.
+// The batch fails terminally with its findings as reasons and the report archived;
+// recover-batch and the card amendment are the way forward.
+// A target that quarry rejects outright names the card amendment alone.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1666,7 +1682,8 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 		}
 	})
 
-	// A target quarry rejects before resolution fails again on every recovery of the same plan, so the way forward amends the card first.
+	// A target that quarry rejects before resolution fails again on every recovery of the same plan,
+	// so the way forward amends the card first.
 	t.Run("GlyphRejectedNamesThePlanEdit", func(t *testing.T) {
 		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
@@ -1711,7 +1728,8 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	})
 }
 
-// The bodies of internal/foo/user.go that deleteReferencedBatches takes: the function Gone called on line 4, no call, and the method Thing.Gone called on line 4.
+// The bodies of internal/foo/user.go that deleteReferencedBatches takes:
+// the function Gone called on line 4, no call, and the method Thing.Gone called on line 4.
 const (
 	userCallsGone      = "package foo\n\nfunc user() {\n\tGone()\n}\n"
 	userCallsNothing   = "package foo\n\nfunc user() {}\n"
@@ -1724,7 +1742,10 @@ const (
 	deleteThingGone = "internal/foo#Thing.Gone"
 )
 
-// deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes target and the unbegun card 2 (later) that edits internal/foo/user.go, and writes both files into worktree: impl.go still declares the function Gone and the method Thing.Gone, and user.go holds the body user.
+// deleteReferencedBatches returns two batches: card 1 (json-flag) deletes target,
+// and the unbegun card 2 (later) edits internal/foo/user.go.
+// It writes both files into worktree:
+// impl.go still declares the function Gone and the method Thing.Gone, and user.go holds the body user.
 func deleteReferencedBatches(t *testing.T, worktree, target, user string) []batcher.Batch {
 	t.Helper()
 	writeWorktreeFile(t, worktree, "internal/foo/impl.go", "package foo\n\nfunc Gone() {}\n\ntype Thing struct{}\n\nfunc (Thing) Gone() {}\n")
@@ -1740,8 +1761,12 @@ func deleteReferencedBatches(t *testing.T, worktree, target, user string) []batc
 	return []batcher.Batch{{Cards: []planparser.Card{deleting}}, {Cards: []planparser.Card{later}}}
 }
 
-// TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure caused by an unbegun later card still referencing the target names that card and the reference and moves the way forward to the plan edit, or to the --fresh steps when the record also lists uncheckable entries;
-// a delete-not-done with no later reference keeps recover-batch, and so does one whose later card only calls a method of the same name, which is matched by name alone and so not a blocking reference.
+// TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure names its blocker:
+// an unbegun later card that still references the target.
+// Such a failure moves the way forward to the plan edit;
+// the --fresh steps apply when the record also lists uncheckable entries.
+// A delete-not-done with no later reference keeps recover-batch;
+// so does one whose later card only calls a method of the same name, which is not a blocking reference.
 func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1818,9 +1843,13 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_RefusesPlanEditedSinceBegin proves a card's Verify weakened on disk after begin-batch, which no Write/Edit audit sees, is refused with ErrFingerprintMismatch
-// before attribution advances: the batch stays open, the transcripts stay unseen, the plan hashes are not re-recorded over the edit and the begun card's recorded hashes stay unchanged,
-// including when a canonicalizing planglyph.ValidateDispatch ran after the edit with no restamp, as validate's path does when its edit check refuses.
+// TestRecordBatch_RefusesPlanEditedSinceBegin proves that a Verify weakened on disk after begin-batch is refused.
+// The refusal is ErrFingerprintMismatch, and no Write/Edit audit sees such an edit.
+// Attribution does not advance.
+// The batch stays open, the transcripts stay unseen, the plan hashes are not re-recorded over the edit,
+// and the begun card's recorded hashes stay unchanged.
+// The same holds when a canonicalizing planglyph.ValidateDispatch ran after the edit with no restamp:
+// validate's path does exactly that when its edit check refuses.
 func TestRecordBatch_RefusesPlanEditedSinceBegin(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, canonicalize := range []bool{false, true} {
@@ -1923,11 +1952,10 @@ func TestRecordBatch_RefusesPlanEditedSinceBegin(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable proves the guard's own degradation path: a
-// delta infrastructure error (an unresolvable start SHA) records the guard-could-not-run notice
-// and never panics — the batch still terminates, since neither the done-checks above (their own
-// Resolve, unaffected) nor BindHandles (this card's card carries no Create declaration) has
-// anything to block on.
+// TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable proves the scope guard's own degradation path:
+// a delta infrastructure error (an unresolvable start SHA) records the guard-could-not-run notice and never panics.
+// The batch still terminates: the done-checks use their own Resolve, which is unaffected;
+// BindHandles has nothing to block on, since this card declares no Create target.
 func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1959,7 +1987,7 @@ func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_NilStateIsRefusedNotPanicked is R6-21's regression test for the record-batch half.
+// TestRecordBatch_NilStateIsRefusedNotPanicked pins that RecordBatch refuses a nil State with an error, not a panic.
 func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, err := websterengine.RecordBatch(websterengine.RecordDeps{Plan: &planparser.Plan{}}, 1)
@@ -1971,7 +1999,7 @@ func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 }
 
-// recordParentBranch is the parent branch parentMergeFixture's run merges from.
+// recordParentBranch is the branch that a parent merge-in merges from.
 const recordParentBranch = "parent1"
 
 // parentMerge simulates a clean parent merge-in on top of the current head, returning the merge commit's SHA.
@@ -1980,8 +2008,9 @@ func parentMerge(fx *recordFixture) string {
 	return merge
 }
 
-// snapshotRecordState captures the fork-transcript bookkeeping RecordBatch mutates before it can refuse, and returns a restore func:
-// the CLI never persists a refused call's state, so a retry runs against the state as it stood before that call.
+// snapshotRecordState captures the fork-transcript bookkeeping RecordBatch mutates before it can refuse.
+// It returns a restore func that puts that bookkeeping back.
+// The CLI never persists a refused call's state, so a retry runs against the state as it stood before that call.
 func snapshotRecordState(fx *recordFixture) (restore func()) {
 	seen := append([]string(nil), fx.Deps.State.SeenForkTranscripts...)
 	forks := append([]string(nil), fx.Deps.State.Batches[1].ForkTranscripts...)
@@ -2011,9 +2040,13 @@ func assertBatchOpen(t *testing.T, fx *recordFixture) {
 	}
 }
 
-// TestRecordBatch_ParentMovedHead asserts what record-batch does when HEAD moved past the report's head_sha:
-// parent merge-ins landing after the fork's commit record the batch at the report's own head_sha with one warning naming each merge,
-// the delta is the fork's own StartSHA..head_sha range, and any other movement — a non-merge commit or a merge carrying an extra edit — is refused with the reset way forward, the batch left open, and the same call recording once HEAD is moved back.
+// TestRecordBatch_ParentMovedHead asserts what record-batch does when HEAD moved past the report's head_sha.
+// Parent merge-ins that land after the fork's commit record the batch at the report's own head_sha.
+// The record carries one warning naming each merge.
+// The delta is the fork's own StartSHA..head_sha range.
+// Any other movement is refused: a non-merge commit, or a merge carrying an extra edit.
+// That refusal gives the reset way forward and leaves the batch open.
+// The same call records once HEAD is moved back.
 //
 //testtiming:keep pins each moved-HEAD shape's record or refusal, the warning naming every merge, the fork's own delta range and the retry once HEAD is moved back; each covering test reaches one shape
 func TestRecordBatch_ParentMovedHead(t *testing.T) {
@@ -2253,9 +2286,9 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in progress refuses record-batch,
-// that concluding it by hand is still refused because a conflict resolution is not a clean parent merge,
-// and that the same call succeeds once HEAD is moved back to the report's head_sha as the refusal's remedy says.
+// TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in progress is refused.
+// Concluding it by hand is still refused, because a conflict resolution is not a clean parent merge.
+// The same call succeeds once HEAD is moved back to the report's head_sha, as the refusal's remedy says.
 func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := parentMergeFixture(t)
@@ -2298,7 +2331,8 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 }
 
 // TestRecordBatch_BindTrace asserts the exact set of `webster: handle bind` lines a terminal pass writes.
-// It writes one per plan: handle the batch's cards own, with the outcome and the glyph or reason, and none when the verb fails before binding.
+// It writes one line per plan that the batch's cards own, with the outcome and the glyph or reason.
+// It writes none when the verb fails before binding.
 // It lowers the process-global log threshold to Info, so it does not call t.Parallel.
 func TestRecordBatch_BindTrace(t *testing.T) {
 	tiergate.Require(t, 0)

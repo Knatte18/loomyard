@@ -1,7 +1,11 @@
-// records_integration_test.go is the end-to-end check that batten's hand-off keeps the run's records: a child that goes awaiting, is resumed by the operator, reaches done and is torn down leaves its friction notes and drive report reachable from the archive tag on the records origin.
+// records_integration_test.go checks that batten's hand-off archives a run's records on the records origin.
+// A child goes awaiting, the operator resumes it, it reaches done, and batten tears it down.
 //
-// It stays a white-box "package battencli" test for the same reason lifecycle_integration_test.go does: it stubs InnerRun's seams at the field level after a real wire() call.
-// The Spawn stub's own commit stands in for the child's transition commit and "lym loom commit-records"; battencli cannot reach loomcli's unexported commit seam, so the real records pathspec is proved by loomcli's own integration tests, and this test proves the rest of the chain, from a committed records tip to an archive tag on the records origin through batten's teardown.
+// It is a white-box "package battencli" test: it stubs InnerRun's seams at the field level after a real wire() call.
+// The Spawn stub's own commit stands in for the child's transition commit and "lym loom commit-records".
+// battencli cannot reach loomcli's unexported commit seam.
+// loomcli's own integration tests prove the real records pathspec.
+// This test proves the rest of the chain, from a committed records tip to an archive tag through batten's teardown.
 // No real provider or driver is spawned.
 
 package battencli
@@ -86,7 +90,8 @@ func stepAwaitingChildDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubfor
 		return nil
 	}
 
-	// A minute passes between two passes on the row's clock, so every pass is a probe check and a done child's driver is read.
+	// A minute passes between two passes on the row's clock.
+	// So every pass is a probe check, and a done child's driver is read.
 	clockStart := time.Now()
 	passes := 0
 	c.env.InnerRun.Now = func() time.Time { return clockStart.Add(time.Duration(passes) * time.Minute) }
@@ -115,7 +120,8 @@ func stepAwaitingChildDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubfor
 	}
 	childDone = true
 
-	// Done: the pass that sees it ends on the change of state; the next, with the driver gone, completes the row with no spawn.
+	// Done: the pass that sees it ends on the change of state;
+	// the next, with the driver gone, completes the row with no spawn.
 	passes++
 	step, err = shed.Step(ctx)
 	if err != nil {

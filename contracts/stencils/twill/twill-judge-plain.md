@@ -1,5 +1,7 @@
-<!-- This is the twill plain-judge part: the host-neutral steps that have the writer judge each lens finding and record whether it was fixed or rejected.
-     internal/twilldirective renders it into the twill directive for a host that asks for no critical fixer, and the spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
+<!-- This is the twill plain-judge part: the host-neutral steps that have the writer judge each lens finding.
+     The writer records whether each was fixed or rejected.
+     internal/twilldirective renders it into the twill directive for a host that asks for no critical fixer.
+     The spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
      It declares these required markers:
      {{.rejection_rule}} and {{.disposition_place}}. -->
 

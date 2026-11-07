@@ -1,10 +1,7 @@
-// selfreport_test.go is selfreportengine's own test suite, covering CreateIssue directly through
-// the NewGitHubClient seam.
-// The package had no tests of its own before this batch -- every case previously lived one layer up
-// in selfreportcli, driving the now-deleted RunGH seam.
-// Each case here injects a real go-github client pointed at an httptest server (or a dead address,
-// for the network-failure case) or a factory closure that itself fails, so no test ever reaches
-// real token resolution, a real git spawn, a real process, or a fixture tree.
+// selfreport_test.go holds selfreportengine's tests for CreateIssue, driving it through the NewGitHubClient seam.
+// Each case injects a real go-github client, or a factory closure that itself fails.
+// The clients point at an httptest server, or at a dead address for the network-failure case.
+// So no test reaches real token resolution, a real git spawn, a real process, or a fixture tree.
 // The CreateIssue tests do not run in parallel: each swaps the package-level NewGitHubClient seam.
 
 package selfreportengine
@@ -26,18 +23,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// requestCapture describes one HTTP request CreateIssue actually sent: the
-// method and path, plus the decoded JSON body, so a test can assert on
-// title/body/label encoding directly.
+// requestCapture records one HTTP request sent by CreateIssue: its method, its path, and its decoded JSON body.
+// Tests assert on the title, body and label encoding through it.
 type requestCapture struct {
 	method string
 	path   string
 	body   map[string]any
 }
 
-// newIssueServer returns an httptest server that responds to every request
-// with status and respBody, appending a requestCapture for each request it
-// receives to captured.
+// newIssueServer returns an httptest server that answers every request with status and respBody.
+// It appends a requestCapture for each request to captured.
 func newIssueServer(t *testing.T, status int, respBody string, captured *[]requestCapture) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,12 +49,10 @@ func newIssueServer(t *testing.T, status int, respBody string, captured *[]reque
 	return server
 }
 
-// installGitHubClient replaces the package-level NewGitHubClient seam with a
-// closure returning a real go-github client pointed at baseURL, authenticated
-// with a fixed placeholder token set directly on the client rather than
-// through githubclient's resolution chain. This is what keeps this suite from
-// ever reaching real token resolution, a real `gh auth token` shell-out, or
-// the operator's real credential cache.
+// installGitHubClient replaces the package-level NewGitHubClient seam with a closure.
+// The closure returns a go-github client pointed at baseURL.
+// It sets a fixed placeholder token directly on the client, not through githubclient's resolution chain.
+// That keeps the suite off real token resolution, the `gh auth token` shell-out, and the operator's credential cache.
 func installGitHubClient(t *testing.T, baseURL string) {
 	t.Helper()
 	client := github.NewClient(nil).WithAuthToken("test-token")
@@ -74,10 +67,9 @@ func installGitHubClient(t *testing.T, baseURL string) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// installGitHubClientPointedAtDeadAddress installs a client pointed at an
-// address nothing listens on, producing a deterministic connection-refused
-// network failure distinct from both an API rejection and a token-resolution
-// failure.
+// installGitHubClientPointedAtDeadAddress installs a client pointed at an address nothing listens on.
+// The request fails with a deterministic connection refusal.
+// That failure is distinct from an API rejection and from a token-resolution failure.
 func installGitHubClientPointedAtDeadAddress(t *testing.T) {
 	t.Helper()
 	// Start and immediately close a server: its address is guaranteed to have
@@ -88,10 +80,9 @@ func installGitHubClientPointedAtDeadAddress(t *testing.T) {
 	installGitHubClient(t, deadURL)
 }
 
-// installFailingGitHubClientFactory replaces NewGitHubClient with a closure
-// that itself returns err without ever handing back a client -- the new
-// token-not-resolvable path, which CreateIssue must surface as a typed error
-// rather than dereferencing a nil client.
+// installFailingGitHubClientFactory replaces NewGitHubClient with a closure that returns err and no client.
+// It exercises the token-not-resolvable path.
+// CreateIssue must surface a typed error there, not dereference a nil client.
 func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Helper()
 	orig := NewGitHubClient
@@ -99,7 +90,10 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// TestDefaultLabels verifies that DefaultLabels returns exactly the single-element "bug" default the automatic and manual filing paths share, and that each call returns its own slice, so mutating one call's result cannot corrupt the default seen by the next caller.
+// TestDefaultLabels checks that DefaultLabels returns exactly the single-element "bug" default.
+// The automatic and manual filing paths share that default.
+// It also checks that each call returns its own slice.
+// Mutating one result must not corrupt the default that the next caller sees.
 func TestDefaultLabels(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -118,7 +112,10 @@ func TestDefaultLabels(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_Success drives the successful path with and without a body: the returned url and number match the server's typed response, and the request sent carries the expected method, path, title, labels in order and, only when a body was given, the "body" field.
+// TestCreateIssue_Success covers the successful path with and without a body.
+// It checks that the returned url and number match the server's typed response.
+// It also checks that the request carries the expected method, path, title, and labels in order.
+// It checks the "body" field only when a body was given.
 func TestCreateIssue_Success(t *testing.T) {
 	tiergate.Require(t, 0)
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/42"
@@ -175,9 +172,8 @@ func TestCreateIssue_Success(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_TokenNotResolvable covers the new token-not-resolvable path: when the
-// NewGitHubClient factory itself fails, CreateIssue must surface a typed error rather than
-// proceeding with a nil client.
+// TestCreateIssue_TokenNotResolvable covers the path where the NewGitHubClient factory itself fails.
+// CreateIssue must surface a typed error there rather than proceed with a nil client.
 func TestCreateIssue_TokenNotResolvable(t *testing.T) {
 	tiergate.Require(t, 0)
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
@@ -204,9 +200,9 @@ func TestCreateIssue_TokenNotResolvable(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_NetworkFailure covers a transport/network failure (the server address refuses the
-// connection), asserting it is neither a token-resolution failure nor an API rejection -- a network
-// problem calls for different operator action than either.
+// TestCreateIssue_NetworkFailure covers a transport failure, where the server address refuses the connection.
+// It asserts the error is neither a token-resolution failure nor an API rejection;
+// a network problem calls for different operator action than either.
 func TestCreateIssue_NetworkFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	installGitHubClientPointedAtDeadAddress(t)
@@ -228,8 +224,8 @@ func TestCreateIssue_NetworkFailure(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_NonSuccessResponse covers a non-2xx GitHub response, asserting the returned error
-// surfaces the response's message and is distinct from both other error cases.
+// TestCreateIssue_NonSuccessResponse covers a non-2xx GitHub response.
+// It asserts the error surfaces the response's message and is distinct from both other error cases.
 func TestCreateIssue_NonSuccessResponse(t *testing.T) {
 	tiergate.Require(t, 0)
 	const errMessage = "Validation Failed"

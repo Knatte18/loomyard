@@ -9,14 +9,15 @@ import (
 	"strings"
 )
 
-// sessionPaneWindowFormat is the session-wide listing format the window seam parses: pane id, then window id.
+// sessionPaneWindowFormat is the session-wide listing format of pane and window ids: pane id, then window id.
 const sessionPaneWindowFormat = "#{pane_id} #{window_id}"
 
-// strandsMarkerFormat is the session-wide window listing format the marker fallback parses: window id, then 1 when the window carries @lym_strands and 0 otherwise.
+// strandsMarkerFormat is the session-wide window listing format that marks the strands' window.
+// It lists the window id, then 1 when the window carries @lym_strands and 0 otherwise.
 const strandsMarkerFormat = "#{window_id} #{?#{@lym_strands},1,0}"
 
 // strandWindowTarget returns the target of the window holding session's strands, as a window id ("@<n>").
-// It is the shell window when shellWindow resolves one, and otherwise the session's current window.
+// It is the window of the session's shell pane when one resolves, and otherwise the session's current window.
 // A failed listing is returned as an error.
 func (p TmuxCmd) strandWindowTarget(session string, st *ReedState) (string, error) {
 	window, ok, err := p.shellWindow(session, st)
@@ -31,8 +32,10 @@ func (p TmuxCmd) strandWindowTarget(session string, st *ReedState) (string, erro
 
 // shellWindow resolves the window holding session's shell pane, as a window id ("@<n>"), and reports whether it resolved one.
 // It resolves the window of the recorded Selvage pane (alive or a dead corpse) first.
-// A recorded pane id counts as present only when the session's own listing carries it, because pane ids are server-wide and a stale id may name another session's pane.
-// With no recorded Selvage pane listed it resolves the window carrying @lym_strands from the session's window listing, so a shell window whose Selvage pane is gone is still found.
+// A recorded pane id counts as present only when the session's own listing carries it;
+// pane ids are server-wide, so a stale id may name another session's pane.
+// With no recorded Selvage pane listed, it resolves the window carrying @lym_strands from the session's window listing,
+// so a shell window whose Selvage pane is gone is still found.
 // A nil st resolves nothing without a round trip, and a failed listing is returned as an error.
 func (p TmuxCmd) shellWindow(session string, st *ReedState) (string, bool, error) {
 	if st == nil {
@@ -58,7 +61,8 @@ func (p TmuxCmd) shellWindow(session string, st *ReedState) (string, bool, error
 	return window, ok, nil
 }
 
-// markedStrandsWindow returns the window id of the first line of a strandsMarkerFormat listing whose marker field is 1.
+// markedStrandsWindow returns the window id of the first line of a window listing whose second field is 1.
+// It reports whether such a line was found.
 func markedStrandsWindow(out string) (string, bool) {
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
@@ -69,7 +73,7 @@ func markedStrandsWindow(out string) (string, bool) {
 	return "", false
 }
 
-// parseSessionPaneWindows maps each pane id of a sessionPaneWindowFormat listing to its window id.
+// parseSessionPaneWindows maps each pane id in a listing of pane and window ids to its window id.
 func parseSessionPaneWindows(out string) map[string]string {
 	windowByPane := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {

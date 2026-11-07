@@ -1,4 +1,6 @@
-// entrygate_test.go covers the entry gate Build makes from a parsed recipe's entry_gate key, evaluated against a fake setting lookup and no worktree, and the gate of an expanded block row.
+// entrygate_test.go covers the entry gate Build makes from a parsed recipe's entry_gate key.
+// The gate is evaluated against a fake setting lookup and no worktree.
+// The tests also cover the gate of an expanded block row.
 
 package shedbuild
 
@@ -32,7 +34,7 @@ func TestBuild_EntryGate(t *testing.T) {
 		wantReason string
 		// wantErrSubs are substrings of the evaluation error, which makes the gate undecided.
 		wantErrSubs []string
-		// rereadAs, when non-nil, replaces the setting's value after the first evaluation, and wantHoldsAfter is the second evaluation's answer.
+		// rereadAs, when non-nil, replaces the setting before the second evaluation; wantHoldsAfter is its answer.
 		rereadAs       any
 		wantHoldsAfter bool
 	}{

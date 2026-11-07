@@ -11,17 +11,13 @@ import (
 
 // StencilsDir returns the standalone stencils directory for stateDir: <stateDir>/_lym/stencils.
 //
-// It is the sole construction site for the standalone stencils directory across every
-// standalone-capable CLI, deliberately mirroring fabricengine.StencilsDir(hub), with stateDir
-// playing the role hub plays in hub mode — which is why the result is _lym-resident rather than a
-// third top-level <state>/stencils.
+// It is the one place every standalone-capable CLI builds the stencils directory.
+// The directory lives under _lym, so it stays inside the standalone state tree.
 //
-// The returned value is carried by callers as a plain string, never as an engine geometry field:
-// burlerengine.Geometry has no StencilsDir field, and the engine
-// already accept the directory as a told parameter.
+// Callers carry the result as a plain string, not as an engine geometry field.
+// Engines accept it as a told parameter.
 //
-// Like every other builder in this package, StencilsDir takes only stateDir — it never calls
-// standalonestate.Derive, never reads the environment, and never touches disk.
+// StencilsDir takes only stateDir: it never reads the environment and never touches disk.
 func StencilsDir(stateDir string) string {
 	return filepath.Join(stateDir, lymdirs.LymDirName, "stencils")
 }

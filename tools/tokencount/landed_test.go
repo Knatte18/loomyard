@@ -1,4 +1,5 @@
-// landed_test.go checks how a finished run's landed commit is found from its archived change description, and the Recipes section that compares runs by recipe.
+// landed_test.go checks how a finished run's landed commit is found from its archived change description.
+// It also checks the Recipes section, which compares runs by recipe.
 
 package main
 
@@ -12,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeLandingRepo is an in-memory landingRepo: commits by subject, newest first, and changed lines by commit.
+// fakeLandingRepo is an in-memory git repository: commits by subject, newest first, and changed lines by commit.
 type fakeLandingRepo struct {
 	commits map[string][]gitrepo.SubjectCommit
 	lines   map[string]int

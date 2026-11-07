@@ -1,8 +1,11 @@
-// fixverify.go implements the `fix-verify` webster verb: the re-entrant, blocking call Master makes, backgrounded, when a verify-gate failure's way forward names the cold fixer.
+// fixverify.go implements the `fix-verify` webster verb: the re-entrant, blocking call Master makes in the background.
+// It runs when a verify-gate failure's way forward names the cold fixer.
 // It drives websterengine's cold-fixer phases with a real, wall-clock Clock.
-// FixVerifySpawnOrAttach runs under the state-mutation lease, and a spawn is saved and fabric-committed "fix-verify spawn".
+// FixVerifySpawnOrAttach runs under the state-mutation lease,
+// and a spawn is saved and fabric-committed "fix-verify spawn".
 // FixVerifyAwait runs with the lease released.
-// A terminal result is recorded by RecordVerifyFixerTerminal into a freshly reloaded state under a re-acquired lease, saved and committed "fix-verify <status>".
+// A terminal result is recorded by RecordVerifyFixerTerminal into a freshly reloaded state under a re-acquired lease,
+// and the state is saved and fabric-committed as "fix-verify <status>".
 package webstercli
 
 import (
@@ -43,7 +46,8 @@ func (c *websterCLI) fixVerifyDeps() (websterengine.FixVerifyDeps, error) {
 	}, nil
 }
 
-// pairSlug returns the worktree's pair slug when the run is in a hub and the worktree's fabric origin record exists, and "" in standalone, on the prime and for a worktree with no record.
+// pairSlug returns the worktree's pair slug when the run is in a hub and the worktree's fabric origin record exists.
+// It returns "" in standalone, on the prime, and for a worktree with no record.
 func (c *websterCLI) pairSlug() string {
 	if c.pairSlugRead == nil {
 		return ""
@@ -51,8 +55,10 @@ func (c *websterCLI) pairSlug() string {
 	return c.pairSlugRead()
 }
 
-// originPairSlug returns the slug the fabric origin record names for loc's worktree, and "" for the prime or a worktree with no record.
-// A record that cannot be read is logged and reads as none, so the fixer strand runs unregistered rather than the verb refusing.
+// originPairSlug returns the slug the fabric origin record names for loc's worktree.
+// It returns "" for the prime or a worktree with no record.
+// A record that cannot be read is logged and reads as none,
+// so the fixer strand runs unregistered rather than the verb refusing.
 func originPairSlug(loc *lymcwd.Location) string {
 	_, found, err := fabricengine.ReadOrigin(loc)
 	if err != nil {
@@ -65,7 +71,7 @@ func originPairSlug(loc *lymcwd.Location) string {
 	return loc.WorktreeName
 }
 
-// fixVerifyNotDoneMessage is the error of a fix-verify call whose fixer ended dead for reason.
+// fixVerifyNotDoneMessage returns the error of a fix-verify call whose fixer ended dead for reason.
 func fixVerifyNotDoneMessage(reason string) string {
 	return fmt.Sprintf("webster: the cold verify-gate fixer ended dead (%s); way forward: rewrite your two contract files and end your turn, so the gate verifies again", reason)
 }
@@ -143,7 +149,7 @@ Example:
 				waitBudget = websterengine.RecoveryWaitBudget(c.cfg)
 			}
 
-			// Standalone mode boots its own reed session here, as recover-batch does, since nothing else can reach standalone geometry.
+			// Standalone mode boots its own reed session here, since nothing else can reach standalone geometry.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster fix-verify`", err)))
@@ -217,7 +223,8 @@ Example:
 	return cmd
 }
 
-// persistFixVerifyTerminal records result as the terminal status of the fixer strandGUID names, in a state reloaded under a fresh state-mutation lease.
+// persistFixVerifyTerminal records result as the terminal status of the fixer strandGUID names.
+// It reloads the state under a fresh state-mutation lease before recording the result.
 // A state that no longer records the fixer, which a reset leaves, is left unsaved.
 func (c *websterCLI) persistFixVerifyTerminal(strandGUID string, result *websterengine.FixVerifyResult) error {
 	lease, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)

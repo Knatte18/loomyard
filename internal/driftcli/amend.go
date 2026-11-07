@@ -84,7 +84,8 @@ Example:
 	return cmd
 }
 
-// readEntriesFile reads the entries file of an amendment, refusing one it cannot read or one that holds nothing, naming its path.
+// readEntriesFile reads the entries file of an amendment.
+// It refuses a file it cannot read or one that holds nothing, and the error names the path.
 func readEntriesFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -96,7 +97,8 @@ func readEntriesFile(path string) (string, error) {
 	return string(data), nil
 }
 
-// callerBy runs the caller check of verb in this worktree's run and returns who the caller is for a record: the operator for an unnamed shell, the run's parent otherwise.
+// callerBy runs the caller check of verb in this worktree's run and returns who the caller is for a record.
+// It returns the operator for an unnamed shell and the run's parent otherwise.
 func (w *worktree) callerBy(verb string) (string, error) {
 	strand := os.Getenv(agentname.StrandNameEnv)
 	parent := func() (hubgeom.Parent, error) { return orchcli.NearestLiveParent(w.location) }
@@ -109,8 +111,10 @@ func (w *worktree) callerBy(verb string) (string, error) {
 	return driftengine.AmendedByParent, nil
 }
 
-// checkParentCaller is the caller check `drift amend` and `drift defer` run: the caller's strand name, empty for the operator's own unnamed shell, must be the run's parent.
-// An empty name passes without resolving the parent, a name equal to the parent's passes, and any other name is refused naming the parent and the operator's shell.
+// checkParentCaller is the caller check that `drift amend` and `drift defer` run.
+// The caller's strand name must equal the run's parent's name; an empty name, the operator's unnamed shell, passes.
+// An empty name passes without resolving the parent.
+// Any other name is refused, and the refusal names the parent and the operator's shell.
 // A parent that cannot be resolved refuses a named caller naming the error and the operator's shell.
 // Bound: the check rests on the strand name and on the shell guard that refuses setting lym's strand variables.
 func checkParentCaller(verb, strand string, parent func() (hubgeom.Parent, error)) error {

@@ -1,15 +1,15 @@
 package shedengine
 
-// Routing is the told projection of a recipe's producer graph that progress is derived from.
-// Only each ProducerDef's Name, OnDone, OnStuck, Segment, MaxBounces, SkipTo and Block are read, so Producer
-// may be nil and no engine needs building to project a recipe.
-// SkipTo and Block reach the goto admission and the goto and re-launch history entries when Producers is passed to a GotoRequest or RelaunchRequest.
+// Routing is the producer graph of a recipe, projected to the fields that a run's progress and bounce count read.
+// Only each ProducerDef's Name, OnDone, OnStuck, Segment, MaxBounces, SkipTo and Block are read.
+// Producer may therefore be nil, and no engine needs building to project a recipe.
+// SkipTo and Block matter to goto and re-launch only when the caller passes the producer table to them.
 type Routing struct {
 	// Entry is the name of the first row of the main line.
 	Entry string
 	// Producers is the recipe's producer table.
 	Producers []ProducerDef
-	// MaxBounces is the shed-level default bounce budget, inherited as in Shed.MaxBounces.
+	// MaxBounces is the bounce budget a row inherits when its own is zero, and zero here means the package default.
 	MaxBounces int
 }
 
@@ -31,8 +31,8 @@ type progressStep struct {
 	rows []string
 }
 
-// mainLine follows OnDone from Entry until an empty OnDone or a revisited or unknown name, and
-// collapses consecutive rows sharing a non-empty Segment into one step named after the segment.
+// mainLine follows OnDone from Entry until an empty OnDone or a revisited or unknown name.
+// It collapses consecutive rows sharing a non-empty Segment into one step named after the segment.
 func (r Routing) mainLine() []progressStep {
 	byName := make(map[string]ProducerDef, len(r.Producers))
 	for _, def := range r.Producers {
@@ -61,8 +61,9 @@ func (r Routing) mainLine() []progressStep {
 	return steps
 }
 
-// stepIndex returns the index into steps of the step current maps to, or -1. A main-line row maps
-// to its own step; a row off the main line maps to the step named after its segment.
+// stepIndex returns the index into steps of the step current maps to, or -1.
+// A main-line row maps to its own step.
+// A row off the main line maps to the step named after its segment.
 func (r Routing) stepIndex(steps []progressStep, current string) int {
 	for i, s := range steps {
 		for _, row := range s.rows {
@@ -84,7 +85,8 @@ func (r Routing) stepIndex(steps []progressStep, current string) int {
 	return -1
 }
 
-// ProgressAt reports where current sits on the main line, reading an empty current as the run's start, its first row.
+// ProgressAt reports where current sits on the main line.
+// An empty current reads as the run's start, its first row.
 func (r Routing) ProgressAt(current string) Progress {
 	current = RowAt(r.Producers, current)
 	steps := r.mainLine()
@@ -100,8 +102,8 @@ func (r Routing) ProgressAt(current string) Progress {
 }
 
 // Bounces reports the current segment's bounce count and budget.
-// The count is the episode stuck count of the segment's main-line row, whichever of the segment's rows is current:
-// a Burler-round row sits off the main line, so the count reported while it is current is its step's main-line row's.
+// The count is the episode stuck count of the segment's main-line row, whichever of the segment's rows is current.
+// A Burler-round row sits off the main line, so while it is current the count is its step's main-line row's.
 // inSegment is false, with zero count and budget, when current's row has no Segment.
 func (r Routing) Bounces(current string, history []HistoryEntry) (count int, budget int, inSegment bool) {
 	var cur *ProducerDef

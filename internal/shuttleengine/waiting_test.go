@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// waitingEngine is a fakeEngine whose ParseEvents also maps a "WAIT:<message>" line to an
-// EventWaiting, so the wait loop's handling of the new kind is exercised without a provider.
+// waitingEngine is a fakeEngine whose ParseEvents also maps a "WAIT:<message>" line to an EventWaiting,
+// so the wait loop's handling of that kind is exercised without a provider.
 type waitingEngine struct {
 	fakeEngine
 	// outstanding is attached to every EventWaiting the engine parses.
@@ -41,8 +41,9 @@ func (e *waitingEngine) ParseEvents(data []byte) ([]Event, error) {
 }
 
 // TestPollEventsTick_Waiting drives pollEventsTick over an events file holding one waiting turn end
-// ("WAIT:background work"): with no output files it is still running and the offset advances past
-// the parsed bytes, and a Stop after it is a held turn end carrying its message and the offset past its line.
+// ("WAIT:background work"):
+// with no output files the run is still running and the offset advances past the parsed bytes,
+// and a Stop after it is a held turn end carrying its message and the offset past its line.
 //
 //testtiming:keep pins that a waiting turn end is still running and advances the offset, and becomes a held turn end on a later Stop
 func TestPollEventsTick_Waiting(t *testing.T) {
@@ -179,8 +180,8 @@ func TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival(t *testing.T) 
 // isZeroResult reports whether r is the zero Result; Result holds a slice, so it cannot be compared with ==.
 func isZeroResult(r Result) bool { return reflect.DeepEqual(r, Result{}) }
 
-// shellWaitFixture returns a Run over a waiting turn end whose outstanding list is tasks,
-// with a fake clock and a one-hour run timeout; the first tick has not run yet.
+// shellWaitFixture returns a Run over a waiting turn end whose outstanding list is tasks;
+// the run has a fake clock and a one-hour run timeout, and the first tick has not run yet.
 func shellWaitFixture(t *testing.T, outputFile string, tasks []BackgroundTask, spec Spec) (*Run, *fakeClock) {
 	t.Helper()
 	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: tasks}, withConfig(gateConfig))
@@ -196,19 +197,25 @@ func shellWaitFixture(t *testing.T, outputFile string, tasks []BackgroundTask, s
 
 var oneShell = []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 
-// payloadShellTask and transcriptShellTask are one background shell as reported by the turn-end payload and by the transcript fallback.
+// payloadShellTask and transcriptShellTask are one background shell as reported by two sources:
+// the turn-end payload and the transcript fallback.
 var (
 	payloadShellTask    = BackgroundTask{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalPayload}
 	transcriptShellTask = BackgroundTask{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalTranscript}
 )
 
-// TestPollEventsTick_OutstandingBackgroundWork covers a waiting turn end whose outstanding list is background work, one rule for a shell of either signal:
-// with an output file missing a fork or an awaited shell keeps the turn waiting however long it runs, and is never held.
-// With an output file missing, a non-awaited shell alone expires an ungated wait into the held turn end once every shell has been outstanding for the bound.
+// TestPollEventsTick_OutstandingBackgroundWork covers a waiting turn end whose outstanding list is background work;
+// one rule holds for a shell of either signal:
+// with an output file missing, a fork or an awaited shell keeps the turn waiting however long it runs,
+// and it is never held.
+// With an output file missing, a non-awaited shell alone expires an ungated wait,
+// and it becomes the held turn end once every shell has been outstanding for the bound.
 // With an output file missing, a gated run holds the turn end at once.
-// With every output file present an ungated run finishes done at once whatever is outstanding.
-// With every output file present, a gated run waiting on non-awaited shells alone finishes done only once every shell has been outstanding for the bound.
-// With every output file present, a gated run waiting on a fork or an awaited shell waits until the next real turn end.
+// With every output file present, an ungated run finishes done at once whatever is outstanding.
+// With every output file present, a gated run waiting on non-awaited shells alone;
+// it finishes done only once every shell has been outstanding for the bound.
+// With every output file present, a gated run waiting on a fork or an awaited shell;
+// it waits until the next real turn end.
 //
 //testtiming:keep pins that a fork or an awaited shell never expires at a waiting turn end, that a non-awaited shell alone expires the ungated wait at the bound, and that a gated run is not done while a non-awaited shell is inside the bound
 func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
@@ -225,15 +232,15 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 		spec        Spec
 		gated       bool
 		touchOutput bool
-		// staggered first sees the first shell one bound before the run starts, so the second shell is the one still inside the bound.
+		// staggered sees the first shell one bound before the run starts, so the second is the one still inside the bound.
 		staggered bool
-		// wantDone expects the first tick to finish done, with the tasks counted for the run's record and the waiting list cleared.
+		// wantDone expects the first tick to finish done, the tasks counted for the record and the waiting list cleared.
 		wantDone bool
-		// wantHeldAtOnce expects the first tick to return the waiting turn end held, with the tasks counted and the waiting list cleared.
+		// wantHeldAtOnce expects the first tick to return the waiting turn end held, tasks counted, waiting list cleared.
 		wantHeldAtOnce bool
-		// wantHeldPastBound expects nothing until every shell has been outstanding for the bound, then the held turn end, then nothing on a further idle tick.
+		// wantHeldPastBound expects nothing until every shell passes the bound, then the held turn end, then nothing more.
 		wantHeldPastBound bool
-		// wantDonePastBound expects nothing until every shell has been outstanding for the bound, then done with the tasks counted and the waiting list cleared.
+		// wantDonePastBound expects nothing until every shell passes the bound, then done, tasks counted, waiting list cleared.
 		wantDonePastBound bool
 	}{
 		{name: "a transcript-reported shell expires into the held turn end at the bound while an output file is missing", tasks: []BackgroundTask{transcriptShellTask}, wantHeldPastBound: true},
@@ -319,7 +326,8 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 	}
 }
 
-// TestPollEventsTick_TurnStartEndsTheGatedShellWait pins that a gated run whose waiting turn end lists an unawaited shell does not count Done once the bound passes in a turn already under way:
+// TestPollEventsTick_TurnStartEndsTheGatedShellWait pins that a gated run's waiting turn end lists an unawaited shell;
+// the run does not count Done once the bound passes in a turn already under way:
 // a turn start read after the waiting turn end clears the wait, and the next turn end finishes done.
 //
 //testtiming:keep pins that a turn start past a gated shell wait clears it before the bound can count the run done
@@ -361,11 +369,15 @@ type jumpClock struct {
 
 func (c *jumpClock) Sleep(time.Duration) { c.fakeClock.Sleep(c.jump) }
 
-// TestWait_RecordsEndedShells pins that every end of a run with a shell outstanding records it in Result.EndedShells with its time outstanding:
-// an ungated at-once finish logs that the strand removal ended the shell,
-// and a run deadline and a liveness end log that the run ended with the shell outstanding and the strand left to its caller.
-// An ungated at-once finish records every outstanding shell with its own signal, a gated run ends done once its waiting turn end's only unawaited shell outlasts the bound and records it,
-// and an awaited shell the wait holds never lands there once the next turn ends, and lands there when the deadline ends the run.
+// TestWait_RecordsEndedShells pins that every end of a run with a shell outstanding records it in Result.EndedShells.
+// The record carries the time the shell was outstanding.
+// An ungated at-once finish logs that the strand removal ended the shell.
+// A run deadline and a liveness end log that the run ended with the shell outstanding,
+// and that the strand is left to its caller.
+// An ungated at-once finish records every outstanding shell with its own signal.
+// A gated run ends done once its waiting turn end's only unawaited shell outlasts the bound, and it records that shell.
+// An awaited shell the wait holds never lands there once the next turn ends,
+// and it lands there when the deadline ends the run.
 // It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the ended-shell record and its Info line on the ungated, deadline and liveness ends
@@ -385,7 +397,7 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 		started     bool
 		// tasks is what the waiting turn end reports outstanding, the transcript-reported shell when nil.
 		tasks []BackgroundTask
-		// gated runs the wait under a passing gate, wantGateCalls is how many times that gate is evaluated, and awaitedPrefixes are the spec's awaited shell prefixes.
+		// gated runs under a passing gate; wantGateCalls is its evaluation count; awaitedPrefixes are the awaited prefixes.
 		gated           bool
 		wantGateCalls   int
 		awaitedPrefixes []string
@@ -513,10 +525,15 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 	}
 }
 
-// TestWait_GatedShellNudge drives a gated run whose output files exist and whose turn ends over an unawaited shell before a plain turn end.
-// A waiting turn end types one line naming the shell into the pane, and a later waiting turn end over the same shell types nothing once that line was sent.
-// A turn start past the waiting turn end types nothing, and a line dropped under a pause or lost to a failed send is not retried in place but queued again by the next waiting turn end.
-// A waiting turn end over a shell already past the bound counts done and types no nudge, even after the failed gate's re-prompt.
+// TestWait_GatedShellNudge drives a gated run whose output files exist.
+// Its turns end over an unawaited shell before a plain turn end.
+// A waiting turn end types one line naming the shell into the pane,
+// and a later waiting turn end over the same shell types nothing once that line was sent.
+// A turn start past the waiting turn end types nothing.
+// A line dropped under a pause or lost to a failed send is not retried in place;
+// the next waiting turn end queues it again.
+// A waiting turn end over a shell already past the bound counts done and types no nudge.
+// This holds even after the failed gate's re-prompt.
 // Every other row finishes done through the gate at the plain turn end with no shell left over.
 // It stubs the package-level input sleep, so it does not run in parallel.
 func TestWait_GatedShellNudge(t *testing.T) {
@@ -658,8 +675,10 @@ type jumpStepClock struct {
 
 func (c *jumpStepClock) Sleep(time.Duration) { c.multiStepClock.Sleep(c.jump) }
 
-// TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd drives an autonomous run whose turn end lists a payload-reported shell across several ticks past the bound.
-// The run logs the shell once at Warn, holds the waiting turn end once when the shell outlasts the bound, and finishes at the agent's next turn end.
+// TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd drives an autonomous run.
+// Its turn end lists a payload-reported shell, and the run ticks several times past the bound.
+// The run logs the shell once at Warn and holds the waiting turn end once when the shell outlasts the bound.
+// It finishes at the agent's next turn end.
 // It captures the process-global logger, so it does not run in parallel.
 func TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -709,10 +728,13 @@ func TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd(t *test
 	}
 }
 
-// TestShellWaitMark pins the background-shell wait's mark and marker:
-// it shows only while non-awaited shells of either signal are outstanding at staggered first-seen times, one past the bound and another not.
-// A lone shell crossing the bound expires the ungated wait in that tick and clears the waiting list before the mark is read.
-// It turns off when a new event replaces the waiting turn end, and never shows with a fork or an awaited shell outstanding.
+// TestShellWaitMark pins the background-shell wait's mark and marker.
+// It shows only while non-awaited shells of either signal are outstanding, first seen at staggered times:
+// one past the bound and another not.
+// A lone shell crossing the bound expires the ungated wait in that tick,
+// and it clears the waiting list before the mark is read.
+// It turns off when a new event replaces the waiting turn end,
+// and it never shows with a fork or an awaited shell outstanding.
 func TestShellWaitMark(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -725,7 +747,8 @@ func TestShellWaitMark(t *testing.T) {
 		event  string
 		wantOn bool
 	}
-	// staggeredTranscript and staggeredPayload are two shells of one signal, the first seen one bound before the run starts and the second at its start.
+	// staggeredTranscript and staggeredPayload are two shells of one signal.
+	// The first is seen one bound before the run starts, and the second at its start.
 	staggeredTranscript := []BackgroundTask{transcriptShellTask, {Kind: BackgroundShell, ID: "sh-2", Label: "sleep 8888", Signal: SignalTranscript}}
 	staggeredPayload := []BackgroundTask{payloadShellTask, {Kind: BackgroundShell, ID: "sh-2", Label: "sleep 8888", Signal: SignalPayload}}
 	tests := []struct {
@@ -807,7 +830,8 @@ func TestShellWaitMark(t *testing.T) {
 	}
 }
 
-// TestWait_ClearsAStaleWaitMarkOnEntry pins that Wait clears the strand's pane mark and removes a marker file a crashed step left behind, before it polls.
+// TestWait_ClearsAStaleWaitMarkOnEntry pins that Wait, before it polls, clears the strand's pane mark.
+// It also removes a marker file that a crashed step left behind.
 func TestWait_ClearsAStaleWaitMarkOnEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

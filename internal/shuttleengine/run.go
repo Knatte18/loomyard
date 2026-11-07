@@ -1,8 +1,8 @@
-// run.go implements the run loop's provider-invariant core: Runner, the per-run Run handle, and
-// Start — the sequence that prepares a run's artifacts, registers its strand with reed, persists
-// run.json, and blocks through wait.go's awaitStartup before returning, so the CLI's interrupt/send
-// verbs and a later diagnosis pass find a run.json that is already past its startup gates.
-// Wait (wait.go) and Interrupt/Send round out the Run handle's public surface.
+// run.go implements the run loop's provider-invariant core: Runner, the per-run Run handle, and Start.
+// Start prepares a run's artifacts, registers its strand with reed, and persists run.json.
+// It then blocks through awaitStartup in wait.go before returning,
+// so the CLI's interrupt and send verbs and a later diagnosis pass find a run.json already past its startup gates.
+// Wait (wait.go), Interrupt, and Send round out the Run handle's public surface.
 
 package shuttleengine
 
@@ -26,34 +26,35 @@ import (
 )
 
 // Runner is the provider-invariant run loop: it drives the Engine implementations of its set over the file
-// contract through the ReedOps seam, so a caller (review, loom) constructs exactly one Runner per
-// (reed, engines, anchorPath, worktreeRoot, paneCwd, cfg) combination and calls Start/Run for every
-// agent spawn.
-// Runner is told its anchor path, worktree root, and pane cwd as plain strings and derives none of
-// them;
+// contract through the ReedOps seam.
+// A caller constructs one Runner per (reed, engines, anchorPath, worktreeRoot, paneCwd, cfg) combination.
+// It calls Start/Run for every agent spawn.
+// Runner is told its anchor path, worktree root, and pane cwd as plain strings and derives none of them;
 // populating all three with usable absolute paths is the caller's obligation.
 type Runner struct {
 	reed ReedOps
-	// engines is the set of engines the runner can drive, resolved per run by Start and Open and by each run's record afterwards.
+	// engines is the set of engines the runner can drive, resolved per run and again from each run's record.
 	engines      EngineSet
 	anchorPath   string
 	worktreeRoot string
-	// paneCwd is the pane's own process cwd that the fork audit derives the provider's transcript
-	// directory from. NewRunner sets it to a copy of anchorPath, since hub geometry's pane always
-	// runs at the anchor; NewDetachedRunner is told it explicitly, since standalone geometry's pane
-	// runs at the worktree root while the anchor sits outside it.
+	// paneCwd is the pane's own process cwd.
+	// The fork audit derives the provider's transcript directory from it.
+	// A hub runner's pane runs at the anchor, so its paneCwd is a copy of anchorPath.
+	// A standalone runner's pane runs at the worktree root while the anchor sits outside it,
+	// so its paneCwd is told explicitly.
 	paneCwd string
 	cfg     Config
-	// toldErr is validateToldPaths' verdict on the pair this Runner was constructed with, computed
-	// once and returned by every public entry point. It is held rather than returned from
-	// NewRunner because a constructor that cannot fail is what every caller already writes.
+	// toldErr is the verdict on the told paths and the default engine, computed once at construction.
+	// Every public entry point returns it.
+	// It is held rather than returned from the constructors, which every caller already writes as calls that cannot fail.
 	toldErr error
-	// clock is the time seam Start and Attach both read to build a Run's clock field, in place of
-	// each constructing its own realClock{} inline — the only way a test can control an ATTACHED
-	// run's reconstructed deadline, since Attach returns a Result rather than a *Run for a test to
-	// patch run.clock on afterwards.
+	// clock is the time source of the runs this Runner starts or attaches.
+	// A test controls an attached run's reconstructed deadline only through this field.
+	// The attach call returns a Result, not a *Run a test could patch.
 	clock Clock
-	// notifier receives the notice line of each held turn end of an autonomous run and the notice of a start held at its skill-load turn; nil, the default, holds silently.
+	// notifier receives the notice line of each held turn end of an autonomous run,
+	// and the notice of a start held at its skill-load turn.
+	// Nil, the default, holds silently.
 	notifier func(line string) error
 	// sessionEnd receives the report of each ended session; nil, the default, calls nothing.
 	sessionEnd func(SessionEnd)
@@ -63,15 +64,15 @@ type Runner struct {
 	step *StepTie
 	// holdsMu guards holds.
 	holdsMu sync.Mutex
-	// holds keeps one turn-start hold per strand guid, so a caller probing the same strand tick after tick keeps one hold across them.
+	// holds keeps one turn-start hold per strand guid, so repeated probes of a strand share one hold.
 	holds map[string]*turnStartHold
-	// activityFailures keeps one operator-activity failure episode per strand guid, shared by every send and idle probe of the runner.
+	// activityFailures keeps one operator-activity failure episode per strand guid, shared by every send and probe.
 	activityFailures logger.EpisodeSet
 	// pauseWarnMu guards coverageReadWarned and statusReadWarned.
 	pauseWarnMu sync.Mutex
-	// coverageReadWarned is the text of the pause record error a send's coverage reading last warned about, so a persistent error warns once.
+	// coverageReadWarned is the last pause record error warned about by a send; a persistent error warns once.
 	coverageReadWarned string
-	// statusReadWarned is the text of the reed status error a send's target-slug reading last warned about, so a persistent error warns once.
+	// statusReadWarned is the last reed status error warned about by a send; a persistent error warns once.
 	statusReadWarned string
 }
 
@@ -90,15 +91,18 @@ func (r *Runner) holdFor(guid string) *turnStartHold {
 	return hold
 }
 
-// SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run, and a start calls once when its skill-load turn is held on a lasting API error.
+// SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run,
+// and a start calls once when its skill-load turn is held on a lasting API error.
 // A nil notify, the default, holds silently.
 // A notify error is logged and never ends the run.
 func (r *Runner) SetNotifier(notify func(line string) error) {
 	r.notifier = notify
 }
 
-// SetPause tells the runner the pause geometry it reads, so a run start waits while a pause covers the geometry's slug and a run's Wait skips its deadline and notices while covered.
-// The geometry is also what every send judges its target's coverage by: a send into a covered session is refused with ErrPaused.
+// SetPause tells the runner the pause geometry it reads, so a run start waits while a pause covers the geometry's slug,
+// and a run's Wait skips its deadline and notices while covered.
+// The geometry is also what every send judges its target's coverage by:
+// a send into a covered session is refused with ErrPaused.
 // A runner never told one reads no record.
 func (r *Runner) SetPause(geom pauserecord.Geometry) {
 	r.pause = geom
@@ -127,7 +131,8 @@ func (r *Runner) waitWhileCovered(slug string) error {
 	})
 }
 
-// SetClock sets the time source of the runs this Runner starts or attaches, the time seam for a caller that replays a run.
+// SetClock sets the time source of the runs this Runner starts or attaches.
+// It is the time seam for a caller that replays a run.
 // The clock's Now sets every deadline and its Sleep paces every poll, so a replaying clock skips real sleeping.
 // A run takes the clock when Start or Attach builds it, so a later call never changes a run in flight;
 // the constructors default to the real clock.
@@ -136,16 +141,16 @@ func (r *Runner) SetClock(c Clock) {
 }
 
 // NewRunner returns a Runner that starts runs against reed and the engines of the set.
-// It is scoped to anchorPath and worktreeRoot and cfg's tuning knobs.
+// It is scoped to anchorPath, worktreeRoot, and the tuning knobs of cfg.
 // A set whose default engine does not resolve is held on the same verdict as an unusable told path.
 // NewRunner is told anchorPath and worktreeRoot as plain strings and derives neither;
 // populating both with usable absolute paths is the caller's obligation.
-// paneCwd is derived here rather than told: it is set to a copy of anchorPath, which is hub
-// geometry's shape (the pane always runs at the anchor).
-// NewDetachedRunner is the constructor for the standalone shape, where the pane's cwd is the
-// worktree root rather than the anchor.
-// The pair is validated here (see validateToldPaths) and an unusable one is reported by every
-// public method rather than by this constructor, which stays total.
+// paneCwd is derived here rather than told.
+// It is set to a copy of anchorPath, which is the hub geometry's shape: the pane always runs at the anchor.
+// The standalone shape has its pane at the worktree root and its anchor outside it.
+// That shape needs paneCwd told explicitly, so this constructor does not serve it.
+// The pair is validated when the Runner is built.
+// An unusable one is reported by every public method rather than by this constructor, which stays total.
 func NewRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot string, cfg Config) *Runner {
 	_, engineErr := engines.Lookup("")
 	return &Runner{
@@ -160,23 +165,16 @@ func NewRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot string,
 	}
 }
 
-// NewDetachedRunner returns a Runner for the legitimately-detached anchor/worktree pair that
-// standalone geometry produces: its anchor is deliberately OUTSIDE its worktree root, which is
-// standalone mode's real geometry rather than a swap that validateToldPaths would otherwise refuse.
-// Its only sanctioned callers are a standalone CLI's own wiring — anything else constructing a
-// Runner over a genuinely detached pair should be treated as a plan violation, not a pattern to
-// copy.
-// Like NewRunner it builds the same Runner literal, except paneCwd is the told parameter rather
-// than a copy of anchorPath, and the told-path verdict comes from validateDetachedToldPaths instead
-// of validateToldPaths.
-// disjointness catches hub geometry handed here by mistake in both of hub geometry's shapes: a
-// root-anchored hub gives anchorPath == worktreeRoot, and a subpath-anchored hub gives an anchor
-// strictly inside the worktree — both refused by validateDetachedToldPaths. What disjointness
-// cannot catch, stated plainly rather than implied away, is a pure swap of two already-disjoint
-// directories: a residual bounded only by there being exactly two call sites, both pinned by wiring
-// tests.
-// Like NewRunner it stays total — the verdict is held on toldErr and surfaced by every public entry
-// point, never returned from the constructor.
+// NewDetachedRunner returns a Runner for the standalone geometry.
+// Its anchor sits deliberately outside its worktree root, the geometry's real shape.
+// Its only sanctioned callers are a standalone CLI's own wiring.
+// Any other caller building a Runner over a genuinely detached pair violates the plan; do not copy it.
+// paneCwd is told explicitly, since the pane runs at the worktree root rather than at the anchor.
+// The anchor and the worktree root must be disjoint.
+// A hub geometry handed here by mistake is refused, whether its anchor equals the worktree root or lies inside it.
+// What disjointness cannot catch is a pure swap of two disjoint directories;
+// the two call sites are pinned by wiring tests instead.
+// The verdict is held on toldErr and surfaced by every public method, never returned from the constructor.
 func NewDetachedRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot, paneCwd string, cfg Config) *Runner {
 	_, engineErr := engines.Lookup("")
 	return &Runner{
@@ -191,22 +189,16 @@ func NewDetachedRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot
 	}
 }
 
-// validateDetachedToldPaths reports an error unless the told triple is one NewDetachedRunner can
-// spend.
+// validateDetachedToldPaths reports an error unless the told triple can be used by a detached runner.
 //
-// It keeps the non-empty and absolute-path checks validateToldPaths uses, extended to cover paneCwd
-// as a third path, but replaces the containment clause with strict disjointness: the call is
-// refused when anchorPath == worktreeRoot, when anchorPath is worktreeRoot or a subdirectory of it,
-// or when worktreeRoot is anchorPath or a subdirectory of it — computed the same way
-// validateToldPaths does, with filepath.Rel plus a ".." / ".."+separator prefix test, run in both
-// directions.
-// Every error string names NewDetachedRunner rather than NewRunner, so an operator reading a live
-// error can tell which constructor refused.
+// Every path must be non-empty and absolute.
+// The anchor and the worktree root must be disjoint, in both directions.
+// The pair is refused when one equals the other or lies beneath it, checked with filepath.Rel.
+// paneCwd has no relational check against the other two paths.
+// It equals the anchor under hub geometry and the worktree root under standalone geometry,
+// so any relation worth asserting would fail in one of the two modes.
 //
-// paneCwd gets no relational assertion at all against the other two paths — it is non-empty and
-// absolute and nothing more — because it equals anchorPath under hub geometry and worktreeRoot under
-// standalone geometry, so any relation strong enough to be worth asserting would be false in one of
-// the two modes.
+// Every error names the detached constructor, so an operator reading a live error can tell which constructor refused.
 func validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd string) error {
 	if anchorPath == "" || worktreeRoot == "" || paneCwd == "" {
 		return fmt.Errorf("shuttle: NewDetachedRunner was told an empty path (anchorPath %q, worktreeRoot %q, paneCwd %q); all three are required and none is derived", anchorPath, worktreeRoot, paneCwd)
@@ -228,21 +220,17 @@ func validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd string) error {
 
 // validateToldPaths reports an error unless the told pair is one this package can spend.
 //
-// It exists because the two fields are ADJACENT PARAMETERS OF THE SAME TYPE with no structural
-// distinction between them, while their consumers are semantically distinct: anchorPath sites the
-// run-dir root (.lym is the anchor-side sibling of _lym) and is where reed keeps the reed.json the
-// orphan sweep reads; worktreeRoot is what a relative OutputFiles entry resolves against, as the run
-// verb's own help promises. (paneCwd, the fork audit's workdir, is a third told path — see Runner's
-// own doc comment — but NewRunner derives it from anchorPath rather than taking it as a parameter
-// here, so it plays no part in this validation.) A caller that swaps anchorPath and worktreeRoot
-// compiles cleanly and, in a subpath-anchored worktree, silently puts both somewhere real but wrong.
-// reed hardened the same seam from the other side (validateToldAnchorPath, server.go), on the same
-// reasoning: an empty or relative value does not fail, it succeeds against the WRONG tree.
+// The two parameters share a type with no structural distinction, while their consumers are distinct.
+// anchorPath sites the run-dir root (.lym is the anchor-side sibling of _lym) and the reed.json the orphan sweep reads.
+// worktreeRoot is what a relative OutputFiles entry resolves against, as the run verb's own help promises.
+// A caller that swaps the two compiles cleanly.
+// In a subpath-anchored worktree it silently puts both somewhere real but wrong.
+// An empty or relative value does not fail either; it succeeds against the wrong tree.
 //
-// The containment clause is the swap detector rather than a geometric preference: hub geometry
-// always satisfies AnchorPath == WorktreeRoot/AnchorRel (hubgeom.ReedGeometry reads both off one
-// resolved Location), so a swap is exactly the case that violates it. Equality is allowed, since a
-// worktree anchored at its own root has AnchorRel ".".
+// The containment clause is the swap detector rather than a geometric preference.
+// Hub geometry always satisfies AnchorPath == WorktreeRoot/AnchorRel.
+// hubgeom.ReedGeometry reads both off one resolved Location, so a swap is exactly the case that violates it.
+// Equality is allowed, since a worktree anchored at its own root has AnchorRel ".".
 func validateToldPaths(anchorPath, worktreeRoot string) error {
 	if anchorPath == "" || worktreeRoot == "" {
 		return fmt.Errorf("shuttle: NewRunner was told an empty path (anchorPath %q, worktreeRoot %q); both are required and neither is derived", anchorPath, worktreeRoot)
@@ -257,44 +245,46 @@ func validateToldPaths(anchorPath, worktreeRoot string) error {
 	return nil
 }
 
-// Result is a completed run's terminal report: how it was classified, the identities a caller needs to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the agent's last message, and the run directory (already removed for a cleaned-up OutcomeDone, still present otherwise).
-// The last message is empty, since Wait holds a turn end without output instead of ending on it.
+// Result is a completed run's terminal report: its outcome, the agent's last message, and the run directory.
+// A caller acts on it through SessionID, for a resume, or StrandGUID, for interrupt, send and diagnosis.
+// The run directory is removed for a cleaned-up OutcomeDone and present otherwise.
+// LastAssistantMessage is empty, since Wait holds a turn end without output instead of ending on it.
 type Result struct {
 	Outcome              Outcome
 	SessionID            string
 	StrandGUID           string
 	LastAssistantMessage string
 	RunDir               string
-	// Engine is the resolved name of the engine the run was driven through: the record's engine, or the engine set's default name for a record naming none.
+	// Engine is the resolved name of the engine that drove the run: the record's, or the engine set's default.
 	// It is empty only on the zero Result of a Start refused before a run exists.
 	Engine string
-	// ForkAudit is populated only when the run's record carries fork authorization, the run classified OutcomeDone, and the audit itself succeeded; nil otherwise.
-	// The Spec that started this Call does not decide it.
-	// A nil ForkAudit therefore always reads as "not audited" and never as "audited, found nothing".
-	// That includes the one path where Outcome is OutcomeDone and the returned error is non-nil, a done run whose audit could not be read (see finalize).
+	// ForkAudit is set only when the record carries fork authorization, the run is OutcomeDone, and the audit succeeded;
+	// otherwise it is nil; the Spec that started this Call does not decide it.
+	// A nil ForkAudit therefore reads as "not audited", never as "audited, found nothing".
+	// It stays nil on a done run whose audit could not be read, the one path where the returned error is also non-nil.
 	ForkAudit *ForkAudit
-	// Gate is a 1:1 report of this run's gate, populated only for a run started via RunGated/AttachGated
-	// whose gate closure actually ran. Nil means "this run had no gate" — never "the gate passed": a
-	// gated run whose closure could not run at all (an infrastructure error) also leaves this nil, with
-	// the error itself returned alongside Result instead.
+	// Gate reports this run's gate, and is set only for a run started via RunGated or AttachGated whose gate closure ran.
+	// Nil means the run had no gate, never that the gate passed.
+	// A gated run whose closure could not run at all, from an infrastructure error, also leaves it nil.
+	// The error is then returned alongside Result instead.
 	Gate *GateOutcome
-	// NotStarted is true only on RunGated's not-ready branch, where the provider never came up and errors.Is(err, ErrNotStarted) held;
+	// NotStarted is true only when the provider never became ready and the error matches ErrNotStarted;
 	// it is false on every other return, including a died or timeout outcome reached in Wait.
-	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
+	// RunGated folds that branch into (result, nil), so this field tells a never-ready start from a run that died.
 	NotStarted bool
-	// StartError is the text of the error start returned on RunGated's not-started branch, which names the cause and ends with the pane's last lines;
-	// it is empty on every other return.
+	// StartError is the text of the error that start returned on the not-started branch.
+	// It names the cause and ends with the pane's last lines; it is empty on every other return.
 	StartError string
-	// APIError is the provider's error text of the turn end that ended an OutcomeAPIError run; empty on every other outcome.
+	// APIError is the provider's error text from the turn end that ended an OutcomeAPIError run; empty otherwise.
 	APIError string
-	// EndedShells holds each background shell outstanding when the run ended, whatever ended it, in the order its turn end listed them.
+	// EndedShells holds each background shell outstanding at the run's end, whatever ended it, in turn-end order.
 	EndedShells []EndedShell
 	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
 	StartedAt time.Time
 	// EndedAt is the run clock's time when the run was classified.
 	EndedAt time.Time
 	// Usage is the session's token reading, forks included.
-	// It is read at every terminal outcome, and is known only on an engine implementing UsageReader that could read the session.
+	// It is read at every terminal outcome, and is known only when the engine implements UsageReader and reads the session.
 	Usage SessionUsage
 	// SessionStates is the states the wait's session fold recorded for the run, in order, one per change of state or cause.
 	// It is nil when the wait read none, as an engine that cannot parse session signals gives.
@@ -314,11 +304,11 @@ type EndedShell struct {
 	Outstanding time.Duration
 }
 
-// Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider
-// has already passed the startup probe.
-// Wait blocks until the run reaches a terminal outcome;
-// Interrupt and Send drive the live pane while Wait is blocked (or from another process, via the
-// CLI verbs that resolve a Run from run.json).
+// Run is the handle to one in-progress or completed shuttle run.
+// A Run is returned once the provider has passed the startup probe.
+// Wait blocks until the run reaches a terminal outcome.
+// Interrupt and Send drive the live pane while Wait is blocked.
+// Another process can drive it too, through the CLI verbs that resolve a Run from run.json.
 type Run struct {
 	runner *Runner
 	spec   Spec
@@ -327,37 +317,37 @@ type Run struct {
 	// engine is the engine the run is driven through, and engineName its resolved name.
 	engine     Engine
 	engineName string
-	// recordMu guards stopMarked, state.Outcome and every save of state, so a stop from another goroutine never interleaves with Wait's record writes.
+	// recordMu guards stopMarked, state.Outcome and every state save, so Stop and Wait never interleave their record writes.
 	recordMu sync.Mutex
-	// stopMarked reports that Stop recorded a stop on this handle, which makes finalize store the stop outcome instead of the classified one.
+	// stopMarked reports a recorded stop on this handle, so finalize stores the stop outcome over the classified one.
 	stopMarked bool
-	// sendMu orders the in-process sends on this run: Send and sendWithin each hold it for the whole idle wait, typing and delivery check.
+	// sendMu orders in-process sends on this run; Send and sendWithin hold it through the idle wait and the delivery check.
 	sendMu sync.Mutex
-	// promptDelivered reports that DeliverPendingPrompt typed the deferred prompt line through this handle, so no later call types it again; sendMu guards it.
+	// promptDelivered reports the deferred prompt typed through this handle, so no later call retypes it; sendMu guards it.
 	promptDelivered bool
-	// attachPromptTried reports that Wait judged the attach-time prompt delivery through this handle, so no later tick judges it again; only Wait's goroutine touches it.
+	// attachPromptTried reports Wait judged the attach prompt, so no later tick does; only Wait's goroutine touches it.
 	attachPromptTried bool
-	// attached reports that Attach reconstructed this handle over a persisted record, so Wait first delivers a deferred prompt the crashed driver never sent.
+	// attached reports that Attach rebuilt this handle over a persisted record, so Wait first sends an unsent prompt.
 	attached bool
 
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
 	// deadline is the wall-clock time after which a run is classified OutcomeTimeout.
-	// Wait moves it later by the sleeps and pauses seen since createdAt, and endLoadHold by the time a skill-load turn was held on an API error.
+	// Wait moves it later by the sleeps and pauses since createdAt, and endLoadHold by a skill-load hold on an API error.
 	deadline time.Time
 	// createdAt is the run clock's time when the run was built, the start of the span whose sleeps and pauses move deadline.
 	createdAt time.Time
-	// deadlineExcluded is the excluded time deadline already includes.
+	// deadlineExcluded is the excluded time that deadline already includes.
 	deadlineExcluded time.Duration
 	// sleeps is the machine sleeps Wait has seen, fed from an AwakeClock.
 	sleeps pauserecord.SleepWatch
 	// covered reports that the latest Wait tick read a pause covering the run's own session.
 	covered bool
-	// sessionSlug is the slug of the run's strand name as reed's status first reported it, when the record held no name; sessionSlugKnown reports that it is set.
-	// A strand's name is fixed for its life, so one successful lookup serves every tick.
+	// sessionSlug is the slug of the run's strand name as reed's status first reported it, when the record held no name.
+	// sessionSlugKnown reports that it is set; a strand's name is fixed for life, so one lookup serves every tick.
 	sessionSlug      string
 	sessionSlugKnown bool
-	// boundaryHeld marks a gated Done arrival that reached the boundary while covered, whose evaluation waits for the first uncovered tick.
+	// boundaryHeld marks a gated Done arrival while covered; its evaluation waits for the first uncovered tick.
 	boundaryHeld bool
 	// turnSince is the run clock's time when Wait last read a turn start, or began.
 	turnSince time.Time
@@ -365,10 +355,10 @@ type Run struct {
 	pauseReadError string
 	// clock is the time seam for tests.
 	clock Clock
-	// lastStartupCapture is the last successful pane capture the startup step (checkLivenessTick,
-	// called from awaitStartup or Wait) took, empty until the first successful CapturePane. On a
-	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
-	// directory as the diagnosis artifact a later operator or attach reads.
+	// lastStartupCapture is the last successful pane capture the startup step took, empty until the first one.
+	// checkLivenessTick, called from awaitStartup or Wait, takes the capture.
+	// On a not-ready teardown (abandonStartup) it is saved to startupCaptureFileName in the run directory.
+	// It is the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
 	// startupStrandRemoved is true once abandonStartup has removed the strand, which is what lets start launch the run again.
 	startupStrandRemoved bool
@@ -376,21 +366,21 @@ type Run struct {
 	sessionLiveness sessionLivenessState
 	// startupHookReason is why the latest startup probe held a ready pane back for want of a session-start line, empty when it held nothing back.
 	startupHookReason string
-	// dismissed reports that this run played a startup-gate dismissal that sent a key, and dismissedAt is when, on the run's clock.
+	// dismissed reports that this run sent a key to dismiss the startup gate; dismissedAt is when, on the run's clock.
 	dismissed   bool
 	dismissedAt time.Time
 
-	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and when expiredTurnEnd counts the turn end at once.
+	// waitingTasks is the latest EventWaiting's outstanding list, cleared by a later non-waiting event or expiredTurnEnd.
 	waitingTasks []BackgroundTask
-	// waitingTurnEnd is the message and offset of the latest EventWaiting, the held turn end an ungated wait expires into when its shells outlast the bound.
+	// waitingTurnEnd is the held turn end of the latest EventWaiting, which an ungated wait expires at the bound.
 	waitingTurnEnd *heldTurnEnd
-	// countedTasks is the outstanding list of the turn end expiredTurnEnd counted at once, kept for finalize's record until a newer turn end is read.
+	// countedTasks is the outstanding list of the turn end expiredTurnEnd counted, kept until a newer turn end is read.
 	countedTasks []BackgroundTask
 	// shellFirstSeen records when each shell id was first seen outstanding.
 	shellFirstSeen map[string]time.Time
-	// payloadShellLogged holds the shell ids, of either signal, already logged as outstanding past background_shell_wait_min, so each is logged once.
+	// payloadShellLogged holds shell ids, from either signal, logged past background_shell_wait_min, once each.
 	payloadShellLogged map[string]bool
-	// shellNudge is the queued line telling the agent to wait for and read the shells its waiting turn end left running, empty when none is queued.
+	// shellNudge is the queued line that tells the agent to read the shells left running, empty when none is queued.
 	shellNudge string
 	// shellNudgeIDs holds the shell ids the queued shell nudge names, empty when none is queued.
 	shellNudgeIDs []string
@@ -400,15 +390,15 @@ type Run struct {
 	wait waitState
 	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.
 	eventsRead bool
-	// turnStartRead is true when the latest pollEventsTick read a turn start positioned past the latest turn end the loop holds, which ends a held wait too.
-	// That turn end is the held one the tick returns, else the one on show.
+	// turnStartRead is true when the latest pollEventsTick read a turn start past the latest turn end the loop holds.
+	// It also ends a held wait; that turn end is the held one the tick returns, else the one on show.
 	turnStartRead bool
-	// pendingHold is the held turn end whose parent notice a Spec.HoldDeferral run has not yet sent, nil when none is pending.
+	// pendingHold is the held turn end whose parent notice a Spec.HoldDeferral run has not sent yet; nil when none.
 	// pendingHoldAt is the run clock's time when it was read.
 	// Both live in memory for one Wait.
 	pendingHold   *heldTurnEnd
 	pendingHoldAt time.Time
-	// holdGuard is true while a turn end read is not yet a task turn end: the load turns' own turn starts were seen and the prompt's has not been read.
+	// holdGuard is true while a turn end read is a load turn's, with the prompt's turn start not yet read.
 	// promptTurnStarted is true once a turn start at or past the prompt offset has been read.
 	// Both live in memory for one Wait.
 	holdGuard         bool
@@ -420,19 +410,19 @@ type Run struct {
 	// dialog is the pending-dialog latch of one Wait, in memory.
 	dialog dialogLatch
 
-	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
+	// gate is the GateSpec this run was told; the zero value makes the run ungated.
 	gate GateSpec
-	// gateVerdict is the current arrival's gate memo: nil when the current arrival has not been evaluated yet, non-nil once evaluateGate has run it.
-	// The memo is PER ARRIVAL, not per run — Wait clears it to nil immediately before each re-prompt, so the next arrival re-validates rather than reading the first arrival's stale verdict.
+	// gateVerdict is the current arrival's gate memo: nil until evaluateGate has run on it, non-nil after.
+	// The memo is per arrival, not per run; Wait clears it to nil before each re-prompt, so the next arrival re-validates.
 	gateVerdict *GateOutcome
-	// gateFailedAt is the index into gate of the entry that failed at the memoised arrival, or -1 when none did (every entry passed, was off, or was let through).
+	// gateFailedAt is the index into gate of the entry that failed at the memoised arrival, or -1 when none did.
 	// Meaningful only while gateVerdict is non-nil.
 	gateFailedAt int
-	// gateTerminal reports that the failing entry's result was GateResult.Terminal, so handleGatedBoundary finalizes on it whatever the entry's failure count.
+	// gateTerminal reports that the failing entry returned GateResult.Terminal, so the run finalizes at once.
 	// Meaningful only while gateVerdict is non-nil.
 	gateTerminal bool
 	// gateFindingsPath is the findings file the memoised arrival's failing entry wrote, empty when gateFailedAt is -1.
-	// It is kept apart from GateOutcome.FindingsPath, which is empty whenever the outcome passed — a failing PassOnCap entry still needs a re-prompt that names its file.
+	// It is kept apart from GateOutcome.FindingsPath, which is empty on a pass; a failing PassOnCap entry still needs it.
 	gateFindingsPath string
 	// gateFails and gateSent are index-aligned with gate and sized from len(gate) on first use:
 	// the consecutive failures of each entry, and the re-prompts successfully delivered (Send returned no error) for it.
@@ -449,7 +439,7 @@ type Run struct {
 	gateHeldSince   time.Time
 	// gatePending reports that the last real evaluation stopped at a pending entry, whose index is gatePendingAt;
 	// gatePendingSend and gatePendingWayForward carry that result's Send and SendFailedWayForward.
-	// Every real evaluation resets all four, and the pending memo itself is cleared by Wait's helper, so a poll-tick re-evaluation reads fresh closure state.
+	// Every real evaluation resets all four; Wait's helper clears the memo, so poll ticks re-evaluate on fresh state.
 	gatePending           bool
 	gatePendingAt         int
 	gatePendingSend       string
@@ -458,15 +448,15 @@ type Run struct {
 	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
 	// every gate send and every pending re-evaluation happens only while it is true.
 	gateAtBoundary bool
-	// startCleared reports that a turn start after the boundary cleared gateAtBoundary, and startHold times the release of that turn start against the pane's idle reading.
+	// startCleared reports a turn start after the boundary, which cleared gateAtBoundary; startHold times its release.
 	startCleared bool
 	startHold    turnStartHold
-	// unsentReprompt marks that a re-prompt send at this boundary failed busy or unlanded; while it is set the loop re-sends the re-prompt on a later tick with no new writer event.
+	// unsentReprompt marks a re-prompt send that failed busy or unlanded; the loop re-sends it on a later tick.
 	// It is cleared by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
 	unsentReprompt bool
-	// noBoxReprompts counts the consecutive re-prompt sends held by a pane showing no input box; it is cleared wherever unsentReprompt is, and by a held send of any other kind.
+	// noBoxReprompts counts consecutive re-prompts held by a pane with no input box; any other held send clears it.
 	noBoxReprompts int
-	// lastGateEvalAt is the run clock's time of the last gate evaluation at a boundary, zero before the first; the loop re-reads a pending entry no sooner than gateRecheckEvery after it.
+	// lastGateEvalAt is the run clock's time of the last boundary gate evaluation, zero before the first.
 	lastGateEvalAt time.Time
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
@@ -476,10 +466,10 @@ type Run struct {
 	failures logger.EpisodeSet
 }
 
-// The run directory's fixed artifact file names. Every Engine.Prepare
-// implementation writes to these same names (claudeengine does), and Start
-// independently derives the same paths to populate RunState — the run-dir
-// layout convention the CLI's interrupt/send verbs and diagnosis rely on.
+// The run directory's fixed artifact file names.
+// Every Engine.Prepare implementation writes to these same names,
+// and the start path derives the same paths independently to populate RunState.
+// The CLI's interrupt and send verbs and diagnosis rely on this run-directory layout.
 const (
 	promptFileName   = "prompt.md"
 	settingsFileName = "settings.json"
@@ -487,14 +477,15 @@ const (
 	// sentTextsFileName is where every verified send appends the text it types, one JSON string per line,
 	// so the run's turn starts can be told apart from instructions an operator typed.
 	sentTextsFileName = "sent-texts.jsonl"
-	// startupCaptureFileName is where abandonStartup saves the last successful pane capture on a
-	// not-ready teardown, so an operator (or a re-run of the recipe in
-	// docs/reference/claude-trust-dialog-repro.md) can see what the provider's pane last showed.
+	// startupCaptureFileName is where abandonStartup saves the last successful pane capture on a not-ready teardown.
+	// It shows an operator what the provider's pane last showed.
+	// A re-run of the recipe in docs/reference/claude-trust-dialog-repro.md shows it too.
 	startupCaptureFileName = "startup-capture.txt"
 )
 
 // ActivityStampFileName is the file in a run directory whose modification time is the run's activity stamp.
-// An engine's hooks touch it whenever the session works, so a session reads active whatever its waiter or its events file say.
+// An engine's hooks touch it whenever the session works.
+// So the session reads as active even when its waiter or its events file does not show it.
 const ActivityStampFileName = "activity-stamp"
 
 // Start prepares one run described by spec, registers it with reed, and returns a handle only once
@@ -502,22 +493,23 @@ const ActivityStampFileName = "activity-stamp"
 // On AddStrand failure the run directory is removed.
 // On a run.json persistence failure after AddStrand, both the directory and strand are cleaned up
 // to avoid leaking an untracked agent pane.
-// A provider that never becomes ready is torn down (strand removed, run dir and its last pane
-// capture kept) and reported as an error wrapping ErrNotStarted — see awaitStartup/abandonStartup
-// (wait.go) for the startup step itself.
-// A start whose role's newest earlier run ended unfinished appends that run's operator instructions to the prompt, records them in the new run's record and tells the notifier.
+// A provider that never becomes ready is torn down: its strand is removed, and its run directory and last pane
+// capture are kept.
+// The error wraps ErrNotStarted.
+// A start whose role's newest earlier run ended unfinished appends that run's operator instructions to the prompt;
+// it also records them in the new run's record and tells the notifier.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	return r.StartGated(spec, GateSpec{})
 }
 
-// StartGated is Start, gated: the returned handle carries gate, so the Wait the caller performs later validates the run through the gate's entries (if any) at its single verdict site in finalize, exactly as RunGated's own blocking form does.
-// It is the seam a caller that must act BETWEEN the start and the block uses — websterengine's Run
-// persists Master's strand guid to state.json before blocking, which now includes the startup
-// window, and state.json is the record the next run's entry-time reclaim reads, so it cannot spend
-// RunGated.
-// Like RunGated and AttachGated it is a deliberate added form beside Start rather than a widening
-// of it, because Start's seam is shared by callers that have no gate and never will (see the
-// "added forms" decision).
+// StartGated is Start with a gate: the returned handle carries gate,
+// so the Wait the caller performs later validates the run through the gate's entries, if any, in finalize.
+// Finalize holds the gate's single verdict site.
+// StartGated is the seam for a caller that must act between the start and the block.
+// Such a caller persists the strand guid to state.json before blocking,
+// and the next run's entry-time reclaim reads that record, so it cannot use the blocking form of the gate.
+// It is a separate form beside Start, not a gate parameter on it:
+// Start's seam is shared by callers that take no gate.
 func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 	run, _, err := r.start(spec, gate)
 	if err != nil {
@@ -526,12 +518,15 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 	return run, nil
 }
 
-// StartSession starts one unawaited session carrying spec.Prompt and returns once its provider is past startup, without ever calling Wait.
-// The session gets a run directory, a run record reading running, settings and shell guards, its skills and its startup gates, exactly as an ungated Start run does.
+// StartSession starts one unawaited session carrying spec.Prompt and returns once its provider is past startup.
+// It never calls Wait.
+// The session gets a run directory and a run record reading running.
+// It also gets settings, shell guards, its skills, and its startup gates.
 // The caller owns stopping it, through StopStrand, which records the stop.
 // A spec with ResumeSessionID set resumes that session through the engine's resume capability.
 // A spec without Unawaited is refused before anything is created.
-// Bound: one session per call in the caller's worktree, with no timeout classification, since nothing waits on it.
+// Each call starts one session in the caller's worktree.
+// There is no timeout classification, since nothing waits on the session.
 func (r *Runner) StartSession(spec Spec) (OpenResult, error) {
 	if !spec.Unawaited {
 		return OpenResult{}, errors.New("shuttle: StartSession needs Spec.Unawaited; use Start for a session whose output files are its result")
@@ -543,17 +538,16 @@ func (r *Runner) StartSession(spec Spec) (OpenResult, error) {
 	return OpenResult{StrandGUID: run.state.StrandGUID, StrandName: run.state.StrandName, SessionID: run.state.SessionID, Engine: run.engineName}, nil
 }
 
-// start is StartGated's whole body: it prepares one run, registers it with reed, persists run.json,
-// then blocks on the new *Run's awaitStartup before ever returning it.
-// Every pre-strand failure (told-path validation, spec validation, run-dir creation,
-// engine.Prepare, the engine ledger write, AddStrand, saveRunState) returns (nil, Result{}, err) exactly as StartGated's body
-// always has. Past that point it calls run.awaitStartup() and returns (nil, result, err) when that
-// did not resolve ready — result and err carry whatever awaitStartup returned, including a
-// not-ready Result.Outcome and an err for which errors.Is(err, ErrNotStarted) holds on a genuine
-// not-ready teardown — or (run, Result{}, nil) once the provider is confirmed past its startup
-// gates.
-// An attempt whose provider died before it took its first input and whose strand the teardown removed is launched again after startRetryDelay, in a fresh run directory, up to Config.StartRetries extra times;
-// every other failure, and the last attempt's, returns as above, and each failed attempt keeps its own run directory and capture.
+// start prepares one run, registers it with reed, and persists run.json.
+// It then blocks on the new *Run's awaitStartup before returning it.
+// A failure before a run exists returns (nil, Result{}, err).
+// When awaitStartup does not resolve ready, start returns (nil, result, err) with what awaitStartup returned.
+// errors.Is(err, ErrNotStarted) holds for a genuine not-ready teardown.
+// Otherwise it returns (run, Result{}, nil) once the provider is confirmed past its startup gates.
+// An attempt is launched again after startRetryDelay, in a fresh run directory, up to Config.StartRetries extra times.
+// It applies only to an attempt whose provider died before its first input and whose strand the teardown removed.
+// Every other failure, and the last attempt's, returns as above.
+// Each failed attempt keeps its own run directory and capture.
 func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if r.toldErr != nil {
 		return nil, Result{}, r.toldErr
@@ -608,20 +602,26 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	}
 }
 
-// startRetryDelay is the wait between a start attempt start gave up on and the next launch, so a transient host condition has a moment to clear.
+// startRetryDelay is the wait before a start attempt that gave up is launched again.
+// It gives a transient host condition a moment to clear.
 const startRetryDelay = 5 * time.Second
 
 // startRetryable reports whether a start attempt that ended with result may be launched again:
-// its provider died before it took its first input and the teardown removed its strand, so a fresh launch never leaves two agents for one start.
+// its provider died before it took its first input and the teardown removed its strand.
+// A fresh launch then never leaves two agents for one start.
 func (run *Run) startRetryable(result Result) bool {
 	return result.Outcome == OutcomeDied && run.startupStrandRemoved
 }
 
-// launch is one attempt of start past its checks: it creates a run directory, prepares the engine's launch, registers the strand with reed, persists run.json, and blocks on the new *Run's awaitStartup and, for a deferred prompt, its skill loading and prompt delivery.
-// carried is the operator instructions spec's prompt carries over from a predecessor, which run.json records.
+// launch makes one attempt to start a run.
+// It creates a run directory, prepares the engine's launch, and registers the strand with reed.
+// It then persists run.json.
+// It then blocks on the new *Run's awaitStartup and, for a deferred prompt, its skill loading and prompt delivery.
+// carried holds the operator instructions that spec's prompt carries over from a predecessor; run.json records them.
 // It returns (run, Result{}, nil) once the provider is past its startup gates.
 // A failure before the strand registered returns (nil, Result{}, err).
-// A failure after it returns the torn-down run beside the result and error abandonStartup gave, so start can judge whether to launch again.
+// A failure after it returns the torn-down run beside the result and the error abandonStartup gave.
+// So start can judge whether to launch again.
 func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, resumeWarning string, carried []string) (*Run, Result, error) {
 	root := runDirRoot(r.cfg, r.anchorPath)
 	runID, runDir, err := createRunDir(root)
@@ -669,31 +669,21 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		return nil, Result{}, fmt.Errorf("shuttle: add strand: %w", err)
 	}
 
-	// Residual, stated rather than papered over (crucible round sonnet5-xhigh-r3, F2): AddStrand
-	// just above is the point of no return — reed has already created the pane and started the
-	// launch command running inside it — but nothing below has persisted run.json yet. A process
-	// killed in exactly this window (between AddStrand returning and saveRunState completing, not
-	// merely "before the first liveness tick" — this is narrower and earlier than that) leaves a
-	// genuinely live, running pane in reed's own strand table with no run.json anywhere naming its
-	// StrandGUID. collectAttachCandidates scans run.json files, never reed's strand table directly,
-	// so Attach can never discover it; sweepOrphans only removes run DIRECTORIES whose strand is no
-	// longer live, with no reverse check for a live strand with no owning directory at all. The next
-	// Start for the same step therefore spawns a genuinely new pane alongside the orphaned one — the
-	// duplicate-agent hazard this package otherwise goes to considerable lengths to prevent
-	// (errStrandNotTracked, errStrandPaneBindingCleared, verdictError, the whole Attach mechanism).
-	// This is NOT the same window as the other documented "Accepted residual"
-	// (a run that already reached a terminal outcome, racing its own finalize persist); this one is
-	// the registration step of a run that has not yet even started waiting. It is not closable by
-	// reordering these two writes: any ordering just relocates the same kind of window between two
-	// independent stores (reed's own persisted state and this package's own run.json) — a
-	// two-phase-commit problem, not a bug in either store on its own. See
-	// wait.go's own Completion Signal Invariant section for the second Accepted-residual entry
-	// this comment is paired with.
+	// AddStrand just above is the point of no return.
+	// reed has already created the pane and started the launch command in it, but run.json is not yet persisted.
+	// A process killed between AddStrand returning and saveRunState completing leaves a live pane in reed's strand table.
+	// No run.json names its StrandGUID.
+	// collectAttachCandidates scans run.json files, not reed's strand table, so Attach cannot find that pane.
+	// The orphan sweep removes run directories whose strand is no longer live.
+	// It never looks for a live strand with no owning directory.
+	// The next start for the same step therefore launches a second pane beside the orphan.
+	// That is the duplicate-agent hazard the package otherwise guards against.
+	// Reordering the two writes does not close the window;
+	// it only moves the window between reed's persisted state and run.json.
+	// It is a two-phase-commit problem, not a bug in either store on its own.
 	//
-	// The general form of the residual above, stated once here rather than at every caller: a caller
-	// that persists the strand guid only after Start returns now has a crash window as wide as the
-	// startup probe, not merely the window between AddStrand and saveRunState — websterengine's Run
-	// is exactly such a caller (see StartGated's own doc comment).
+	// A caller that persists the strand guid only after Start returns has a crash window as wide as the startup probe.
+	// That is wider than the window between AddStrand and saveRunState.
 	state := RunState{
 		RunID:        runID,
 		StrandGUID:   strand.GUID,
@@ -719,13 +709,10 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		CarriedInstructions:  carried,
 	}
 	if err := saveRunState(runDir, state); err != nil {
-		// The strand registered and its pane is already launching, but
-		// without a persisted run.json nothing can find, wait on, or clean up
-		// this run: findRunByStrand can't resolve its guid, no process ever
-		// enters Wait, and sweepOrphans would only reach it much later. Tear
-		// the strand and directory back down so the failure is honest rather
-		// than leaking a live, untracked agent pane — the same cleanup the
-		// AddStrand-failure path above performs.
+		// The strand is registered and its pane is already launching.
+		// Without a persisted run.json, nothing can find, wait on, or clean up this run:
+		// findRunByStrand cannot resolve its guid, no process enters Wait, and sweepOrphans reaches it only much later.
+		// Tear the strand and directory down so the failure is reported rather than leaking a live, untracked agent pane.
 		logger.Warn("shuttle: save run state failed", "runDir", runDir, "strandGUID", strand.GUID, "error", err)
 		if _, rerr := r.reed.RemoveStrand(strand.GUID, false); rerr != nil {
 			logger.Warn("shuttle: start run: remove strand after save-state failure (non-fatal)", "strandGUID", strand.GUID, "error", rerr)
@@ -775,7 +762,7 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 }
 
 // typeStartupColor types color into the run's pane, doing nothing for an empty color.
-// The color is display only, like the pane title, so a failed play is logged and never fails the launch.
+// The color is display only: a failed typing is logged and never fails the launch.
 func (run *Run) typeStartupColor(color segmentcolor.Color) {
 	if color == "" {
 		return
@@ -785,22 +772,28 @@ func (run *Run) typeStartupColor(color segmentcolor.Color) {
 	}
 }
 
-// loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt.
-// The launch line carries the first load turn of spec.Skills, so it awaits that turn and types nothing for it.
-// It then types color when non-empty, retries the skills the model did not load once with a typed load message, and delivers promptLine through the verified send path.
+// loadSkillsThenPrompt runs the skill-loading step of a launch that deferred its prompt, once the provider is ready.
+// The launch line carries the first load turn of spec.Skills: this step awaits that turn and types nothing for it.
+// It types the color when non-empty and retries the skills the model did not load once, with a typed load message.
+// Then it delivers promptLine through the verified send path.
 // A spec with no skills types the color and then the prompt.
-// A skill the provider does not know, one still missing after the retry, one whose turn no turn start was read for in time and one whose open turn was interrupted are skipped with a logged warning,
-// and an unreadable turn is confirmed unverified.
+// A skill the provider does not know is skipped with a logged warning.
+// So is one still missing after the retry, one with no turn start read in time, or one whose open turn was interrupted.
+// An unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
 // A turn still open when the run's deadline passes fails the start as OutcomeTimeout with no prompt typed.
-// A load turn the provider's API fails skips nothing: loadSkillTurn holds it, and the prompt waits, until a load turn ends.
-// The run's events offset and the persisted prompt offset are the events file's size at the moment before the prompt is sent.
-// That lies past every load turn end, the retry's included, and past any line appended after them.
+// A load turn whose provider API fails skips nothing:
+// loadSkillTurn holds it, and the prompt waits until a load turn ends.
+// The prompt offset is the events file's size just before the prompt is sent.
+// That offset lies past every load turn end, the retry's included, and past any line appended after them.
 // So Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
-// Every other failure tears the run down through abandonStartup too: a skill-load send, a prompt-offset persist or a prompt delivery that fails returns an error wrapping ErrNotStarted beside the cause.
-// A prompt delivery that fails with ErrSubmissionNotLanded but is followed by a turn start in the events file past the pre-send offset is taken as landed late, and Start returns the run.
-// That turn start may be one the operator typed, so Wait checks the prompt's own turn at each held turn end and types the line again when it never started.
+// Every other failure tears the run down through abandonStartup.
+// A failed skill-load send, prompt-offset persist, or prompt delivery returns ErrNotStarted wrapped beside the cause.
+// A prompt delivery reporting ErrSubmissionNotLanded counts as landed late if a turn start follows the pre-send offset.
+// The run is then returned.
+// That turn start may be the operator's, so Wait checks the prompt's own turn at each held turn end.
+// It types the line again when that turn never started.
 // Residual: a prompt consumed between that signal read and the strand removal is killed with its agent;
 // if it wrote an output file, the re-step's Spec.validate refuses on that file.
 func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color) (Result, error) {
@@ -831,8 +824,8 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 	}
 	sentAt := eventsSize(run.state.EventsPath)
 	if sentAt > 0 {
-		// Persisted before the prompt is sent, so a reader of the events file that never Waits on this Run
-		// (an Attach, webster's recovery classification) starts past the load turns too.
+		// Persisted before the prompt is sent, so a reader of the events file starts past the load turns too.
+		// This holds for a reader that never Waits on this Run.
 		run.offset = sentAt
 		run.recordMu.Lock()
 		run.state.PromptOffset = sentAt
@@ -851,8 +844,10 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 	return Result{}, nil
 }
 
-// sendThroughPause sends text over sc through the verified send path and, when a pause refuses it with ErrPaused, waits out the pause and sends again.
-// The wait judges the slug the refusal judged, and each resend builds a fresh context, so a second pause landing before the resend holds it again.
+// sendThroughPause sends text over sc through the verified send path.
+// When a pause refuses the send with ErrPaused, it waits out the pause and sends again.
+// The wait judges the slug the refusal judged, and each resend builds a fresh context,
+// so a second pause landing before the resend holds it again.
 // Any other result returns as the send gave it, and a failed wait returns wrapped.
 func (run *Run) sendThroughPause(sc sendContext, text string) error {
 	for {
@@ -868,11 +863,15 @@ func (run *Run) sendThroughPause(sc sendContext, text string) error {
 	}
 }
 
-// DeliverPendingPrompt types the run's deferred prompt line when the prompt's turn never started, and reports whether it did.
-// It reads the persisted record: a record with no prompt line, or whose events file holds past the prompt offset a turn start whose instruction is that line, reports false and sends nothing.
-// A turn start with any other instruction, such as one the operator typed or the skill-load turn before a zero prompt offset, leaves the prompt pending.
-// Otherwise it persists the events file's current size as the prompt offset when none was recorded, sends the line through the guarded paste-submit, and reports true.
-// A pending-send record left by an earlier failed send is cleared first, so the send types the line instead of reading an operator's turn start as the line having gone out.
+// DeliverPendingPrompt types the deferred prompt line when the prompt's turn never started, and reports whether it did.
+// It reads the persisted record: when the record has no prompt line, it reports false and sends nothing.
+// It also reports false and sends nothing when a turn start past the prompt offset has that line as its instruction.
+// A turn start with any other instruction, such as an operator's typed line, leaves the prompt pending.
+// So does the skill-load turn before a zero prompt offset.
+// Otherwise it persists the events file's current size as the prompt offset when none was recorded.
+// It then sends the line through the guarded paste-submit and reports true.
+// A pending-send record left by an earlier failed send is cleared first.
+// Otherwise the send would read an operator's turn start as the line having gone out.
 // A handle types the line at most once: every call after a delivery through it reports false.
 // A failure is returned and nothing else changes.
 func (run *Run) DeliverPendingPrompt() (bool, error) {
@@ -912,11 +911,11 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 }
 
 // settleLoadTurn runs one load turn for skills and logs a skipped warning for every skill it leaves unloaded.
-// It returns the skills a first turn found missing,
-// which the caller retries once.
-// The first turn is the one the launch line carried, so it is only awaited; the retry (final) is the only typed turn.
+// It returns the skills a first turn found missing, which the caller retries once.
+// The first turn is the one the launch line carried, so it is only awaited;
+// the retry (final) is the only typed turn.
 // After the retry, still-missing skills are skipped with cause "not loaded" and none is returned.
-// died is true when the strand's pane is no longer live.
+// died reports whether the strand's pane is no longer live.
 func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time.Duration, final bool) (missing []string, died bool, err error) {
 	guid := run.state.StrandGUID
 	turnEnd, ended, died, err := run.loadSkillTurn(loader, skills, timeout, final)
@@ -967,55 +966,55 @@ func (r *Runner) checkResume(spec Spec, engine Engine) (string, error) {
 	return warning, nil
 }
 
-// ResumeWarning returns the warning the engine's resume check reported when it could not confirm the resumed session was resumable, empty when it confirmed it or the run resumes nothing.
+// ResumeWarning returns the warning the engine's resume check reported for a resumed session it could not confirm.
+// It is empty when the check confirmed the session, or when the run resumes nothing.
 func (run *Run) ResumeWarning() string {
 	return run.resumeWarning
 }
 
-// RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events
-// file).
-// It is exported because a caller that starts a run and never Waits on it has no other way to name
-// the one directory an operator would look in — loom's llm-driver bootstrap refuses with exactly
-// this path when Start's own not-ready error reports the provider never came up.
+// RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events file).
+// A caller that starts a run and never Waits on it has no other way to name that directory.
+// A caller that reports a not-ready start names this directory so an operator can look in it.
 func (run *Run) RunDir() string {
 	return run.runDir
 }
 
 // StrandGUID returns the reed strand guid bound to this run.
-// It is available as soon as Start returns — before Wait completes — so an in-process caller
-// holding the handle can capture the run's pane, log its identity, or resolve it for diagnosis
-// while the run is still in flight (the same guid Result carries once Wait finishes).
+// It is available as soon as Start returns, before Wait completes.
+// An in-process caller holding the handle can use it to capture the run's pane or log its identity.
+// It can also be resolved for diagnosis while the run is in flight.
+// It is the same guid the Result carries once Wait finishes.
 func (run *Run) StrandGUID() string {
 	return run.state.StrandGUID
 }
 
-// SessionID returns the provider session id the run's launch named: minted for a fresh launch, the resumed id for a resume.
-// It is available as soon as Start returns, as StrandGUID is.
+// SessionID returns the provider session id the run's launch named.
+// It is the minted id for a fresh launch and the resumed id for a resume.
+// It is available as soon as Start returns.
 func (run *Run) SessionID() string {
 	return run.state.SessionID
 }
 
-// Run starts spec and blocks until it reaches a terminal outcome — the Start+Wait convenience for a
-// caller with no need to Interrupt/Send between the two.
-// A not-ready start (the provider never passed its startup gates) is preserved as a terminal
-// Result whose Outcome is OutcomeDied or OutcomeTimeout with a nil error, exactly as a died/timed-out
-// Wait already reports it — see RunGated for the reasoning this shares.
+// Run starts spec and blocks until the run reaches a terminal outcome.
+// It is the start-and-wait form for a caller that never acts on the run in between.
+// A not-ready start (the provider never passed its startup gates) is a terminal Result with a nil error, not a failure.
+// Its Outcome is OutcomeDied or OutcomeTimeout, as a died or timed-out Wait reports.
 func (r *Runner) Run(spec Spec) (Result, error) {
 	return r.RunGated(spec, GateSpec{})
 }
 
-// RunGated is Run, gated: spec's run is additionally validated by gate's entries (if any) at its single verdict site in finalize, re-prompting the agent up to a failing entry's own Attempts times on a failed verdict before giving up.
-// RunGated is a deliberate added form beside Run rather than a widening of it, because Run's shared
-// seam is held by callers that have no gate and never will (see the "added forms" decision).
+// RunGated starts spec and blocks until it reaches a terminal outcome, validating the run against gate's entries.
+// The entries are checked at the run's single verdict site in finalize.
+// A failed verdict re-prompts the agent, up to the failing entry's own Attempts times, before the run gives up.
+// Callers with no gate use Run, which takes no GateSpec.
 //
-// A not-ready start is deliberately NOT surfaced as an error here: errors.Is(err, ErrNotStarted)
-// reports (result, nil), where result carries the died/timeout Outcome abandonStartup's teardown
-// already classified, its identity fields, and a zero Gate — preserving RunGated's own OutcomeDied
-// contract that the Burler row producers' one-retry ladder depends on, so a caller that already branches on
-// Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
-// The folded result carries the start error's text in StartError, so the cause is not lost with the error.
-// Any other non-nil err (a pre-strand failure from start itself) is
-// returned unchanged, alongside whatever identity result carries.
+// A not-ready start is returned as a result, not an error: errors.Is(err, ErrNotStarted) yields (result, nil).
+// The result carries the died or timed-out Outcome that the startup teardown classified.
+// It also carries the run's identity fields and a zero Gate.
+// StartError holds the start error's text, so the cause is not lost.
+// A caller that branches on Result.Outcome sees the same shape whether the run died at startup or later in Wait.
+// Any other non-nil err is a pre-strand failure from start itself.
+// It is returned unchanged, with the identity fields the result carries.
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, result, err := r.start(spec, gate)
 	if errors.Is(err, ErrNotStarted) {
@@ -1029,30 +1028,25 @@ func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	return run.Wait()
 }
 
-// sweepOrphansOpportunistic removes run directories whose strand is no longer
-// tracked in reed state. Failures never block Start.
+// sweepOrphansOpportunistic removes run directories whose strand is no longer tracked in reed state.
+// Failures never block Start.
 //
-// It sweeps only against a reed state file it actually READ. Both of the other two answers
-// LoadState can give — unreadable, and absent — skip the sweep entirely, because neither is evidence
-// that any run is an orphan and treating them as one deletes live work:
+// It sweeps only when LoadState returns a state file it read.
+// An unreadable file, such as a truncated or partial reed.json, skips the sweep.
+// A read failure is no evidence that any run is an orphan.
+// Sweeping over it would delete kept diagnosis directories for an unrelated I/O problem.
 //
-//   - Unreadable (a truncated or partial reed.json): skipping avoids sweeping kept diagnosis dirs
-//     over an unrelated I/O problem.
-//   - ABSENT: an empty live-guid set makes EVERY run directory past the age guard look orphaned. That
-//     is precisely the state reed's own corrupt-state error tells an operator to create ("delete
-//     <path> by hand to keep the session (its panes and their processes keep running, untracked)"),
-//     and the state a `git clean -xdf` leaves — a sanctioned operator action under the
-//     Durable-vs-Ephemeral State Invariant. What the sweep then destroys is not inert: events.jsonl is
-//     the file the provider's Stop hook is still appending to, and run.json is the ONLY map from a
-//     strand guid back to a run, so afterwards `lym creel post` and `lym creel interrupt` answer "is not a
-//     shuttle strand" for an agent still working in its pane — the exact outcome findRunByStrand's
-//     own message was hardened to avoid.
+// An absent file also skips the sweep.
+// An empty live-guid set would make every run directory past the age guard look orphaned.
+// A `git clean -xdf`, a sanctioned operator action, leaves the file absent.
+// Sweeping then would destroy events.jsonl, which the provider's Stop hook still appends to.
+// It would also destroy run.json, the only map from a strand guid back to its run.
+// Without it, `lym creel post` and `lym creel interrupt` report that a live agent is not a shuttle strand.
 //
-// Skipping the absent case costs no cleanup. This sweep runs BEFORE AddStrand, which cannot succeed
-// without a live reed session — and a live session means `lym reed up` has already written a
-// reed.json. So the sweeps forgone here belong either to a Start that is about to fail anyway, or to
-// the dangerous case; after the next `up` the file is present again (with zero strands after a
-// `down`) and ordinary sweeping resumes unchanged.
+// Skipping the absent case costs no cleanup.
+// Start runs this sweep before AddStrand, which needs a live reed session.
+// A live session has already written reed.json.
+// After the next `lym reed up` the file is present again, and ordinary sweeping resumes.
 func (r *Runner) sweepOrphansOpportunistic() {
 	st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lymdirs.DotLymDirName))
 	if err != nil {
@@ -1072,9 +1066,7 @@ func (r *Runner) sweepOrphansOpportunistic() {
 	startupTimeout := time.Duration(r.cfg.StartupTimeoutS) * time.Second
 	minAge := 2 * startupTimeout
 	root := runDirRoot(r.cfg, r.anchorPath)
-	// r.clock, not time.Now: the clock seam exists so every age-based decision is drivable from a
-	// test, and this sweep's minAge comparison was the one that bypassed it (crucible round
-	// opus-medium-r6, R6-24).
+	// r.clock, not time.Now: the clock seam makes every age-based decision drivable from a test.
 	if _, err := sweepOrphans(root, guids, minAge, r.clock.Now()); err != nil {
 		logger.Warn("shuttle: orphan sweep failed (non-fatal, new run proceeds)", "runDirRoot", root, "error", err)
 	}
@@ -1083,10 +1075,9 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // Interrupt stops run's in-progress turn without killing its pane or session.
 // The interrupt goes only into a pane showing a running turn: a pane with none gets no key and ErrNoRunningTurn.
 // An open rewind picker is closed with one key and the call fails with ErrRewindPickerOpen.
-// Safe to call concurrently with a blocked Wait.
-// Note: Wait may classify and return from the interrupted turn's Stop event before a subsequent
-// Send is issued;
-// the redirect is delivered but the same Wait call won't observe it.
+// It is safe to call while another goroutine is blocked waiting on the run.
+// Text sent right after the interrupt is still delivered,
+// but a wait already in progress may return from the interrupted turn's Stop event first and not observe it.
 func (run *Run) Interrupt() error {
 	return guardedInterrupt(run.runner.reed, run.engine, run.clock, run.state.StrandGUID)
 }
@@ -1095,7 +1086,7 @@ func (run *Run) Interrupt() error {
 // Text must be a single, non-empty line.
 // Verifies delivery by observing the text in the pane capture, replaying once if it never appears.
 // Waits for an idle session first and fails with ErrSessionBusy if it stays busy.
-// Safe to call concurrently with a blocked Wait and with other Sends on the run, which type one after the other.
+// It is safe to call concurrently with a wait on the run and with other calls to it, which type one after the other.
 func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
@@ -1110,8 +1101,7 @@ func (run *Run) StrandName() string {
 	return run.state.StrandName
 }
 
-// validateSendText rejects multiline text, empty text, or whitespace-only text
-// that cannot be delivered as a single agent turn.
+// validateSendText rejects multiline, empty, or whitespace-only text, which cannot be delivered as a single agent turn.
 func validateSendText(text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
@@ -1122,9 +1112,8 @@ func validateSendText(text string) error {
 	return nil
 }
 
-// Interrupt stops the in-progress turn of the run identified by guid, without needing an in-process
-// Run handle.
-// This is how the CLI's interrupt verb reaches a run started by a separate process.
+// Interrupt stops the in-progress turn of the run identified by guid.
+// It needs no handle on the run from this process, so the CLI's interrupt verb can reach a run another process started.
 // The interrupt goes only into a pane showing a running turn: a pane with none gets no key and ErrNoRunningTurn.
 // An open rewind picker is closed with one key and the call fails with ErrRewindPickerOpen.
 func (r *Runner) Interrupt(guid string) error {
@@ -1135,11 +1124,16 @@ func (r *Runner) Interrupt(guid string) error {
 	return guardedInterrupt(r.reed, engine, r.clock, guid)
 }
 
-// InterruptRestoring is Interrupt for a caller that must leave the box empty: it also clears the prompt the provider restores into the box after the interrupt key.
+// InterruptRestoring interrupts the run identified by guid and leaves its input box empty.
+// The provider restores a prompt into the box after the interrupt key, and this call clears it.
 // The key goes only through the guarded interrupt, whose errors return unchanged with no clear.
-// The clear runs only when the box read empty before the key, for an engine with RestoredPromptClearer and InputBoxReader, at most once per call and never without a passing guard reading;
-// a box that held a draft before the key, or a restored prompt the guard reading finds unsafe to clear, gets the key alone and nil.
-// Its keys are the provider's restored-prompt clear, never an Escape, C-c or Enter, at most two per line the read showed.
+// The clear runs only when the box read empty before the key.
+// It runs at most once per call, and only for an engine that can clear a restored prompt and read the box.
+// It never runs without a passing guard reading.
+// A box that held a draft before the key gets the key alone and nil.
+// So does a restored prompt that the guard reading finds unsafe to clear.
+// Its keys are the provider's restored-prompt clear, never an Escape, C-c or Enter.
+// It sends at most two per line the read showed.
 // The cleared text is the stopped turn's own prompt, already in the transcript.
 // A failure after the key wraps ErrInterruptClearFailed, and a caller then treats the interrupt as sent.
 func (r *Runner) InterruptRestoring(guid string) error {
@@ -1161,7 +1155,8 @@ func (r *Runner) InterruptRestoring(guid string) error {
 	return clearRestoredPrompt(r.reed, engine, r.clock, guid)
 }
 
-// interruptEngine resolves the engine of the strand guid names: its run record's engine, or for a strand with no run record the live strand's provider.
+// interruptEngine resolves the engine of the strand guid names:
+// its run record's engine, or for a strand with no run record, the live strand's provider.
 // A guid that is neither a shuttle strand nor a live reed strand is refused.
 func (r *Runner) interruptEngine(guid string) (Engine, error) {
 	if r.toldErr != nil {
@@ -1181,7 +1176,8 @@ func (r *Runner) interruptEngine(guid string) (Engine, error) {
 	return engine, err
 }
 
-// InterruptSettle returns how long after an interrupt key the pane of the run identified by guid needs before it is read again, or 0 for an engine that does not say.
+// InterruptSettle returns how long the pane of the run identified by guid needs after an interrupt key.
+// It returns 0 for an engine that does not say.
 // A caller that retries an interrupt waits at least this long after its first key.
 // It fails when guid is not a shuttle strand or its record names an engine the set does not hold.
 func (r *Runner) InterruptSettle(guid string) (time.Duration, error) {
@@ -1230,9 +1226,8 @@ func (r *Runner) PaneRunningTurn(guid string) (bool, error) {
 	return guard.RunningTurn(capture), nil
 }
 
-// Send types text as the next turn of the run identified by guid, without needing an in-process Run
-// handle.
-// This is how the CLI's send verb reaches a run started by a separate process.
+// Send types text as the next turn of the run identified by guid.
+// It needs no handle on the run from this process, so the CLI's send verb can reach a run another process started.
 func (r *Runner) Send(guid, text string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -1267,12 +1262,12 @@ func notShuttleOrLiveStrandError(guid string, liveErr error) error {
 	return fmt.Errorf("shuttle: %q is not a shuttle strand and not a live reed strand: %w", guid, liveErr)
 }
 
-// Inject plays inputs into the live pane of the run identified by guid, without needing an
-// in-process Run handle.
-// Unlike Send/Interrupt, Inject deliberately skips the requireReadyAgentPane guard to deliver keys
-// while the provider is busy.
-// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lym creel interrupt", the guarded way to send the interrupt key.
-// Empty inputs is rejected.
+// Inject plays inputs into the live pane of the run identified by guid.
+// It delivers keys whatever state the provider is in, including while it is busy.
+// It skips the ready-pane check that guards sends and interrupts.
+// It refuses any input list that holds the engine's interrupt key or a control character in a text.
+// The guarded way to send the interrupt key is "lym creel interrupt", which the refusal names.
+// An empty inputs list is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -1297,8 +1292,10 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	return playInputs(r.reed, guid, inputs)
 }
 
-// AcceptStartupGate accepts the startup gate the pane of the live strand identified by guid shows, through the strand's engine.
-// It captures the pane once and plays the engine's gate-accept sequence only when the engine reads that capture as a gate; a ready or pending pane, and a gate whose accepting option the engine cannot locate, send nothing.
+// AcceptStartupGate accepts the startup gate shown in the pane of the live strand guid identifies, through its engine.
+// It captures the pane once.
+// It plays the engine's gate-accept sequence only when the engine reads that capture as a gate.
+// A ready or pending pane sends nothing, and neither does a gate whose accepting option the engine cannot locate.
 // It reports whether it sent any input, and fails when the strand is not live, its run record cannot be read, the capture fails or a send fails.
 // The engine is the one the run's record names, or for a strand with no run record the live strand's provider.
 // Accepting a gate is the engine's own choreography, so the call grants no permission the strand did not already ask for.
@@ -1345,15 +1342,15 @@ const (
 	agentPaneProbeInterval = 250 * time.Millisecond
 )
 
-// ErrPaneNotReady marks requireReadyAgentPane's not-ready refusal: the strand's pane was captured but shows no input-ready provider.
+// ErrPaneNotReady marks the refusal for a strand whose captured pane shows no input-ready provider.
 // A caller waiting for a booting provider matches it with errors.Is instead of matching message text;
-// the capture-failure refusal and every other Send error do not wrap it.
+// a failed capture and every other send error do not wrap it.
 var ErrPaneNotReady = errors.New("shuttle: the strand's pane shows no input-ready provider")
 
-// requireReadyAgentPane fails unless guid's strand has a live pane and the
-// current capture classifies as StartupReady. Distinguishes between a provider
-// that failed at launch and one still booting, with known residual limitations
-// where a shell prompt styled with the provider's ready marker may false-pass.
+// requireReadyAgentPane fails unless guid's strand has a live pane.
+// It also fails unless a capture of that pane classifies as StartupReady.
+// It tells a provider that failed at launch apart from one still booting.
+// A shell prompt styled with the provider's ready marker may false-pass; this is a known residual limitation.
 func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 	if err := requireLiveStrand(reed, guid); err != nil {
 		return err
@@ -1366,9 +1363,8 @@ func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 		}
 		capture, err := reed.CapturePane(guid)
 		if err != nil {
-			// A capture error may be transient noise (like sendVerified's
-			// polls treat it); only after every attempt fails does it become
-			// the reported reason.
+			// A capture error may be transient noise;
+			// only after every attempt fails does it become the reported reason.
 			lastCaptureErr = err
 			continue
 		}
@@ -1383,7 +1379,8 @@ func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 	return paneNotReadyError{msg: fmt.Sprintf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)}
 }
 
-// paneNotReadyError carries the not-ready refusal's full wording while satisfying errors.Is(err, ErrPaneNotReady), so the message stays exactly as operators and tests know it.
+// paneNotReadyError carries the full not-ready message while it satisfies errors.Is(err, ErrPaneNotReady).
+// The message is kept exactly as operators and tests know it.
 type paneNotReadyError struct{ msg string }
 
 func (e paneNotReadyError) Error() string { return e.msg }
@@ -1396,7 +1393,8 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 	return err
 }
 
-// liveStrand returns guid's strand as reed reports it, failing as requireLiveStrand does unless it is tracked and bound to a live pane.
+// liveStrand returns guid's strand as reed reports it.
+// It fails unless the strand is tracked and bound to a live pane.
 func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 	status, err := reed.Status()
 	if err != nil {
@@ -1407,11 +1405,10 @@ func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 			continue
 		}
 		if !s.Live {
-			// Reed reports not-live both for a pane that died and for a strand it holds no pane id
-			// for at all, and only the first of those is a run that ended. Naming a terminal outcome
-			// or a dead pane for the second was wrong on both counts (proven live in round 4: the
-			// agent was working in a pane tmux reported alive), and it sends an operator looking for
-			// a corpse instead of for the binding reed dropped.
+			// Reed reports a strand as not live both when its pane died and when it holds no pane id for it.
+			// Only the first is a run that ended.
+			// For the second, naming a terminal outcome or a dead pane is wrong:
+			// the agent may still be working in a pane tmux reports alive, so the error names the dropped binding.
 			if s.PaneID == "" {
 				return reedengine.StrandStatus{}, fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lym, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lym reed status\"", guid)
 			}
@@ -1419,19 +1416,21 @@ func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 		}
 		return s, nil
 	}
-	// Naming only the completed-and-cleaned-up cause would be wrong more often than right: a `lym reed remove`, a `down`/`up` cycle, and a server rebirth all reach this same branch with the run still very much unfinished (proven live).
-	// State what was observed, then the causes.
+	// The same branch is reached by a completed run, and also by several causes with the run still unfinished:
+	// a `lym reed remove`, a `down`/`up` cycle, or a server rebirth.
+	// So the message states what was observed, then lists the causes.
 	return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lym reed status\"", guid)
 }
 
-// playInputs plays inputs into guid's pane through reed in order, with
-// SettleMS honored after each step to allow pauses between steps.
+// playInputs sends inputs to guid's pane through reed in order.
+// It waits each input's SettleMS after sending it; a zero SettleMS adds no pause.
 func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	_, err := playInputsSent(reed, guid, inputs)
 	return err
 }
 
-// playInputsSent is playInputs, returning as well how many inputs were delivered before it returned, so a play whose first input failed reports 0.
+// playInputsSent sends inputs to guid's pane through reed in order, waiting each input's SettleMS after it.
+// It also reports how many inputs were delivered before it returned, so a failure on the first input reports 0.
 func playInputsSent(reed ReedOps, guid string, inputs []PaneInput) (int, error) {
 	sent := 0
 	for _, in := range inputs {
@@ -1457,38 +1456,36 @@ func typeColor(sc sendContext, color segmentcolor.Color) error {
 	return sendSequence(sc, sc.engine.ColorSequence(color))
 }
 
-// sendVerifyPositionMarginLines is how much closer to the bottom of the capture an occurrence must
-// sit than every occurrence the baseline counted before it is read as newly delivered rather than as
-// one of them.
-// It exists only to absorb jitter in the height of a provider TUI's bottom box;
-// the deliveries measured live moved the last occurrence 37 or more lines closer to the bottom, so a
-// margin this small costs nothing real while keeping a one-line redraw wobble from ever deciding the
-// question.
+// sendVerifyPositionMarginLines is the margin, in lines, that decides whether an occurrence is newly delivered.
+// An occurrence counts as delivered only when it sits this much closer to the bottom than each baseline occurrence.
+// It exists to absorb jitter in the height of a provider TUI's bottom box;
+// a margin this small costs nothing real and keeps a one-line redraw from deciding the question.
 const sendVerifyPositionMarginLines = 2
 
-// paneNeedleScan is one capture's answer about a needle: how many times it occurs, and how far the
-// LAST occurrence sits from the bottom of the capture's content.
-// The zero value is not a valid scan — an absent needle is (count 0, linesBelow -1), which
-// scanPaneForNeedle returns and which deliveredBelowBaseline treats as "no position to compare".
+// paneNeedleScan is one capture's answer about a needle:
+// how many times it occurs, and how far the last occurrence sits from the bottom of the capture's content.
+// The zero value is not a valid scan.
+// An absent needle is count 0 with linesBelow -1, meaning there is no position to compare.
 type paneNeedleScan struct {
 	// count is the number of occurrences, identical to the count a plain
 	// strings.Count over the normalized capture produces.
 	count int
-	// linesBelow is how many content lines follow the line the last occurrence ENDS on, counting
-	// from the last non-blank line of the capture; -1 when count is 0.
-	// It is measured from the BOTTOM rather than the top so a pane resized between two captures does
-	// not shift the metric: tmux keeps a pane's content anchored at its bottom.
+	// linesBelow is how many content lines follow the line the last occurrence ends on.
+	// It counts from the last non-blank line of the capture, and it is -1 when count is 0.
+	// It is measured from the bottom rather than the top,
+	// so a pane resized between two captures does not shift the metric:
+	// tmux keeps a pane's content anchored at its bottom.
 	linesBelow int
 }
 
 // scanPaneForNeedle counts needle in capture and locates its last occurrence.
 //
-// The count is computed over exactly the string strings.Count would see — the whole capture,
-// lowercased with whitespace stripped — so a needle straddling a line-wrap boundary still matches and
-// nothing about what COUNTS as a match changes here.
+// The count is computed over exactly the string strings.Count would see:
+// the whole capture, lowercased with whitespace stripped.
+// A needle straddling a line-wrap boundary therefore still matches.
 // The position is recovered by carrying a line index alongside every byte of that normalized string,
-// which is why this cannot simply be strings.Count plus a per-line search: a per-line search would
-// silently stop matching wrapped text.
+// which is why this cannot simply be strings.Count plus a per-line search:
+// a per-line search would silently stop matching wrapped text.
 func scanPaneForNeedle(capture, needle string) paneNeedleScan {
 	lines := strings.Split(capture, "\n")
 
@@ -1666,8 +1663,8 @@ func typeVerified(sc sendContext, text string) error {
 					}
 					return settleAndConfirm(sc, reader, normalized, sentAt, closeAt)
 				case current.count < baseline.count:
-					// The viewport scrolled past an occurrence the baseline counted. Track the
-					// pane's reality rather than holding a threshold it can no longer reach.
+					// The viewport scrolled past an occurrence the baseline counted.
+					// Track the pane's reality rather than holding a threshold it can no longer reach.
 					baseline = current
 				}
 			}
@@ -1689,7 +1686,8 @@ func typeVerified(sc sendContext, text string) error {
 }
 
 // inputBoxHoldsSentText reports whether the pane's input box holds exactly the sent text.
-// A box showing a longer draft that merely contains the sent text or its leading part, a collapsed paste placeholder, nothing, no readable box or a failed capture all count as not holding it.
+// A box showing a longer draft that contains the sent text counts as not holding it.
+// So do a collapsed paste placeholder, an empty box, no readable box and a failed capture.
 func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized string) bool {
 	capture, err := reed.CapturePane(guid)
 	if err != nil {
@@ -1698,13 +1696,13 @@ func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized
 	return boxHoldsSentText(reader, capture, normalized)
 }
 
-// boxHoldsSentText is inputBoxHoldsSentText over a capture already taken.
+// boxHoldsSentText reports whether the input box in capture holds exactly the normalized sent text.
 func boxHoldsSentText(reader InputBoxReader, capture, normalized string) bool {
 	boxText, ok := reader.InputBoxText(capture)
 	return ok && normalizePaneText(boxText) == normalized
 }
 
-// sendNeedle returns the leading sendNeedleRunes characters of normalized, the slice that identifies a sent text in a pane.
+// sendNeedle returns the leading runes of normalized, at most a fixed count, which identify a sent text in a pane.
 func sendNeedle(normalized string) string {
 	if runes := []rune(normalized); len(runes) > sendNeedleRunes {
 		return string(runes[:sendNeedleRunes])

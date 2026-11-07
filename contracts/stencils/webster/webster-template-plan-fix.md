@@ -1,4 +1,6 @@
-<!-- This is the cold plan fixer's prompt, filled by RenderPlanFixPrompt (render.go) via internal/stencil and handed to the separate strand `lym webster fix-plan` spawns at the master role after begin-batch refuses with plan_conflict of the cause plan_defect or tree_moved.
+<!-- This is the cold plan fixer's prompt, filled by RenderPlanFixPrompt (internal/websterengine/render.go) via internal/stencil.
+     It goes to the separate strand `lym webster fix-plan` spawns at the master role,
+     after begin-batch refuses with plan_conflict of the cause plan_defect or tree_moved.
      {{.record_path}}, {{.reply_path}}, {{.worktree_root}}, {{.plan_dir}} and {{.specs_dir}} are required markers.
      {{.friction_directive}} and parent_directive are optional (filled via stencil.FillOptional) and render as nothing when inactive.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.

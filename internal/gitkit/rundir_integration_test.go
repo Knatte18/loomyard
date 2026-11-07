@@ -1,4 +1,5 @@
-// rundir_integration_test.go pins that a test binary running under tmuxkit.Main keeps all its temp files in a run directory of the lym temp root and leaves nothing behind, after a passing and after a failing run.
+// rundir_integration_test.go pins that a test binary under tmuxkit.Main keeps its temp files in a run directory.
+// The run directory lies under the lym temp root, and nothing is left behind after a passing or a failing run.
 // The test re-executes the gitkit test binary as its own helper.
 
 package gitkit
@@ -85,7 +86,8 @@ func TestRunDirectory_HoldsEveryTempFileAndIsGoneAfterTheRun(t *testing.T) {
 	}
 }
 
-// runDirectoryOf returns the run directory directly under root that holds path, failing the test when path lies elsewhere.
+// runDirectoryOf returns the run directory directly under root that holds path,
+// and it fails the test when path lies outside root.
 func runDirectoryOf(t *testing.T, root, path string) string {
 	t.Helper()
 	rel, err := filepath.Rel(root, path)

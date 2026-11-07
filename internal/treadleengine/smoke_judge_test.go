@@ -1,30 +1,6 @@
-// smoke_judge_test.go is treadleengine's opt-in live-integration smoke
-// test: TestSmokeJudgeCirclingToyFixture drives one real per-round
-// circling-check progress judge call — runCircling — against a REAL claude
-// in a REAL tmux pane, over two tiny fixture review files the test writes
-// itself. This is the caller wiring the real substrate (reedengine +
-// claudeengine + shuttleengine.Runner) directly, mirroring the Shuttle
-// Provider-Seam Invariant burlerengine's own smoke_round_test.go exercises:
-// treadleengine itself never imports claudeengine, but the test that
-// exercises it as a caller may. The assertion is deliberately narrow (the
-// verdict file parses) — this proves the judge spawn machinery, the file
-// contract, and the verdict parse against a real engine, never judge
-// quality.
-//
-// This file is a package treadleengine_test file, not an in-package test,
-// because internal/treadleengine sits inside internal/fabriccli's dependency
-// set: an in-package test importing internal/hubforge (which imports
-// fabriccli) would close a compile cycle. runCircling and judgeInputs are
-// unexported — the same package-local Shuttle-seam surface a future
-// round-runner adapter drives — so this file drives
-// them through treadleengine/export_test.go's RunCirclingForTest and
-// JudgeInputsForTest shims instead. Follows the
-// internal/burlerengine/smoke_round_test.go conventions otherwise: opt-in
-// via -tags llm, skipped when no claude binary resolves, poll-with-deadline
-// waits only (via shuttleengine.Runner.Run itself), and the orphaned-conhost
-// teardown guard against the fixture hub. The helpers here are reproduced
-// (not imported) from burlerengine's smoke file, per the
-// smoke-files-are-self-contained convention.
+// smoke_judge_test.go is treadleengine's opt-in live smoke test for the circling-check judge.
+// It runs one real judge call through a real claude in a real tmux pane, and checks the verdict and handoff files.
+// It is an external test package, since an in-package test importing internal/hubforge would close a compile cycle.
 
 package treadleengine_test
 
@@ -60,12 +36,11 @@ import (
 // smokePwshPath is the PowerShell 7 binary for the orphaned-conhost teardown probe.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
-// through the same stencilstore.Reconcile pass cmd/lym's root pre-run runs, and returns that
-// directory for the caller to pass as judgeInputs.StencilsDir. hubforge.NewHub builds a fabric, not
-// a seeded board, and treadle reads its judge templates from disk at call time via
-// stencilstore.Read — so an unseeded fixture hub degrades the judge to its fail-safe default, which
-// is exactly what this test exists to catch.
+// seedHubStencils fills the stencils directory of hub with every shipped stencil and returns that directory.
+// It runs the same stencilstore.Reconcile pass as the lym root pre-run.
+// Seeding is needed because hubforge.NewHub builds a fabric, not a seeded board.
+// Treadle reads judge templates from disk at call time,
+// so an unseeded hub makes the judge fall back to its fail-safe default.
 func seedHubStencils(t *testing.T, hub string) string {
 	t.Helper()
 	baseDir := fabricengine.StencilsDir(hub)
@@ -81,12 +56,10 @@ type hubHolder struct {
 	name string
 }
 
-// hubHolders returns every process whose current working directory is
-// inside dir, read from each process's PEB (RTL_USER_PROCESS_PARAMETERS.
-// CurrentDirectory via NtQueryInformationProcess) — the only way to find the
-// conhost.exe holders, since Win32_Process exposes no cwd column. Returns
-// nil when nothing holds dir or the probe fails (callers degrade to
-// waiting).
+// hubHolders returns every process whose current working directory is inside dir.
+// It reads each process's cwd from RTL_USER_PROCESS_PARAMETERS.CurrentDirectory in its PEB.
+// Win32_Process exposes no cwd column, so the probe reads the PEB instead.
+// It returns nil when nothing holds dir or the probe fails, and callers then keep waiting.
 func hubHolders(t *testing.T, pwshPath, dir string) []hubHolder {
 	t.Helper()
 	script := fmt.Sprintf(`
@@ -146,14 +119,13 @@ Get-Process | ForEach-Object {
 	return holders
 }
 
-// deferHubRelease registers a cleanup that makes the fixture hub directory
-// releasable before RemoveAll. Kills any orphaned conhost holding the hub cwd.
+// deferHubRelease registers a cleanup that makes the fixture hub directory releasable before RemoveAll.
+// The cleanup kills orphaned conhost processes that hold the hub as their cwd.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
-		// A process cannot rename its own cwd; make sure ours is not in hub
-		// while probing, then restore it so a later test's cwd-relative work
-		// is not corrupted.
+		// A process cannot rename its own cwd, so step out of hub while probing.
+		// The original cwd is restored at the end of this cleanup.
 		prev, _ := os.Getwd()
 		_ = os.Chdir(os.TempDir())
 
@@ -178,13 +150,11 @@ func deferHubRelease(t *testing.T, hub string) {
 			}
 		}
 
-		// Grace phase: the healthy path, where the ConPTY host exits on its
-		// own moments after its pane died.
+		// Grace phase: the healthy path, in which the ConPTY host exits on its own shortly after its pane dies.
 		if !waitReleased(10 * time.Second) {
-			// Escalation phase: identify the actual holders. Orphaned
-			// conhosts are killed (re-scanned each round — one can appear
-			// late while the OS teardown is starved); anything else holding
-			// the hub is a real leak the kill must not paper over.
+			// Escalation phase: find the holders and kill the orphaned conhosts.
+			// Holders are rescanned each round, since one can appear late while the OS teardown is starved.
+			// Any other holder is a real leak, which the kill must not paper over.
 			deadline := time.Now().Add(90 * time.Second)
 			for {
 				for _, h := range hubHolders(t, smokePwshPath, hub) {
@@ -205,25 +175,23 @@ func deferHubRelease(t *testing.T, hub string) {
 			}
 		}
 
-		// Restore the original cwd only when it is outside hub (the normal
-		// case, since t.Chdir's own restore has already run by now); never
-		// chdir back into a hub that is about to be removed.
+		// Restore the original cwd only when it is outside hub, which is the normal case.
+		// t.Chdir's own restore runs before this cleanup.
+		// Never chdir back into a hub that is about to be removed.
 		if prev != "" && !strings.HasPrefix(strings.ToLower(prev), strings.ToLower(hub)) {
 			_ = os.Chdir(prev)
 		}
 	})
 }
 
-// TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check progress judge call
-// against a real claude, proving the machinery works.
+// TestSmokeJudgeCirclingToyFixture runs one real per-round circling-check judge call against a real claude.
+// It checks that the judge machinery works against a real engine.
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
-	// shuttleengine.ConfigTemplate() and reedengine.ConfigTemplate() are each module's own plain
-	// registered config: fabriccli.CloneAndWire already reconciled default config for every
-	// registered module when NewHub built h, so seeding them again here would be a no-op duplicate
-	// (outcome 1 of the SeedConfig triage).
+	// fabriccli.CloneAndWire reconciles the default config of every registered module when the hub is built.
+	// Seeding shuttleengine's and reedengine's ConfigTemplate again would be a no-op.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	stencilsDir := seedHubStencils(t, h.Location.HubPath)
@@ -239,18 +207,16 @@ func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
-	// up: boots the substrate. A strand must exist in an up'd session before
-	// shuttle's AddStrand can bind it to a pane — runCircling drives exactly
-	// one shuttle run under the hood.
+	// Run reed up, which boots the substrate.
+	// A strand must exist in an up session before shuttle's AddStrand can bind it to a pane.
+	// runCircling drives exactly one shuttle run under the hood.
 	var reedOut bytes.Buffer
 	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	// Write two tiny fixture review files: the same BLOCKING finding
-	// (unambiguously worded so a real judge reads it as recurring, not the
-	// test's own convergence quality) recurs unchanged from round 1 to
-	// round 2.
+	// The two fixture review files carry the same BLOCKING finding, unchanged from round 1 to round 2.
+	// It is worded so a real judge reads it as recurring, not as a verdict on the test's convergence.
 	round1Path := filepath.Join(h.PrimeWorktree(), "round-1-review.md")
 	round2Path := filepath.Join(h.PrimeWorktree(), "round-2-review.md")
 	recurring := `---
@@ -274,8 +240,8 @@ The chair is red and the table is blue; they must match.
 	verdictPath := filepath.Join(h.PrimeWorktree(), "round-2-judge.md")
 	handoffPath := filepath.Join(h.PrimeWorktree(), "round-2-handoff.md")
 
-	// Wire the real stack directly: treadleengine never imports claudeengine
-	// itself, but this test is the caller and may.
+	// Wire the real stack directly.
+	// treadleengine does not import claudeengine, but a caller may, and this test is one.
 	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
@@ -287,12 +253,9 @@ The chair is red and the table is blue; they must match.
 	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(h.Location))), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
-	// HandoffPath is REQUIRED input: the same judge call must write its
-	// maintained handoff alongside the verdict (the handoff-on-disk shared
-	// decision), and the template's handoff_path marker is a mandatory
-	// top-level stencil marker — leaving it empty fails the fill before any
-	// spawn, which is exactly the silent fail-safe degrade this test exists
-	// to catch.
+	// HandoffPath is required: the judge call writes its maintained handoff next to the verdict.
+	// The template's handoff_path marker is mandatory, so an empty HandoffPath fails the fill before any spawn.
+	// The judge then falls back to its fail-safe default silently, which is the failure this test exists to catch.
 	verdict, rationale, ok := treadleengine.RunCirclingForTest(runner, "gate", treadleengine.JudgeInputsForTest{
 		Round:        2,
 		PriorReviews: []string{round1Path, round2Path},
@@ -302,13 +265,10 @@ The chair is red and the table is blue; they must match.
 		StencilsDir:  stencilsDir,
 	})
 
-	// runCircling never errors — a spawn/parse failure would silently
-	// degrade to (JudgeProgressing, "", false). Assert ok is true (a real
-	// verdict was parsed, not the fail-safe fallback) and that the verdict
-	// file was actually written and parses, so this test catches a silent
-	// fail-safe degrade (which would otherwise look identical to a judge
-	// that genuinely read the case as progressing) rather than asserting a
-	// specific verdict, which a real LLM call cannot guarantee.
+	// runCircling never errors; a spawn or parse failure silently degrades to (JudgeProgressing, "", false).
+	// The test therefore asserts that ok is true, which shows a real verdict was parsed, not the fail-safe fallback.
+	// It also checks that the verdict file was written and parses.
+	// It asserts no specific verdict, since a real LLM call cannot guarantee one.
 	if !ok {
 		t.Fatalf("runCircling() ok = false; want true — a real judge call should not fall back to the fail-safe default (verdict=%q rationale=%q)", verdict, rationale)
 	}
@@ -323,10 +283,10 @@ The chair is red and the table is blue; they must match.
 		t.Error("runCircling() rationale is empty; want the real judge's non-empty rationale")
 	}
 
-	// The same call must also have produced a well-formed handoff file —
-	// this is the live half of the handoff file contract (a fake-shuttle
-	// test can only prove the loop's handling, never that a real agent
-	// actually writes a parseable handoff from the template's instructions).
+	// The same call must also write a well-formed handoff file.
+	// This is the live half of the handoff contract.
+	// A fake-shuttle test can only prove the loop's handling.
+	// Only a real agent shows that it writes a parseable handoff from the template's instructions.
 	handoffContent, err := os.ReadFile(handoffPath)
 	if err != nil {
 		t.Fatalf("read judge handoff file: %v (the judge call must write the handoff alongside the verdict)", err)

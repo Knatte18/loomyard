@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoadConfig covers the template defaults, a machine override setting both keys, a refused negative wait and a local override refused for a machine key.
+// TestLoadConfig covers the template defaults and a machine override that sets both keys.
+// It also covers a refused negative wait and a local override refused for a machine key.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -25,9 +26,9 @@ func TestLoadConfig(t *testing.T) {
 		local   string
 		want    desktophook.Config
 		wantErr string
-		// wantTaskRuns holds the run text of each entry the resolved buttons node holds in its task group.
+		// wantTaskRuns holds the run text of each entry in the resolved buttons node's task group.
 		wantTaskRuns []string
-		// wantErrDetail is a second substring the error must hold, the reason beside the key wantErr names.
+		// wantErrDetail is a second substring the error must hold: the reason beside the key `wantErr` names.
 		wantErrDetail string
 	}{
 		{name: "TemplateDefaults", machine: "", want: desktophook.Config{WindowWaitMs: 1500}},

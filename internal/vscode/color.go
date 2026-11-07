@@ -1,5 +1,5 @@
-// color.go defines the window colour palette, the pickers for a beam's colour and a worktree's activity-bar colour,
-// and the text colour a background takes by its luminance.
+// color.go defines the window colour palette and the pickers for a beam's colour and a worktree's activity-bar colour.
+// It also holds the text colour a background takes by its luminance.
 // Green is reserved for the prime.
 
 package vscode
@@ -20,7 +20,8 @@ import (
 // ErrUnsupported is returned when vscode launch is attempted on an unsupported platform.
 var ErrUnsupported = errors.New("vscode launch unsupported on this platform")
 
-// PrimeColor is the green the prime takes on its title bar and activity bar, and every task under the prime on its title bar.
+// PrimeColor is the green the prime takes on its title bar and activity bar.
+// Every task under the prime takes it on its title bar.
 const PrimeColor = "#1b5e20"
 
 // WorkspaceColor is the blue-grey a workspace window takes on its activity bar.
@@ -39,7 +40,8 @@ var palette = []string{
 	"#7d462d",
 }
 
-// PickBeamColor returns the first palette colour other than green that no colour in held names, compared case-insensitively.
+// PickBeamColor returns the first palette colour other than green that no colour in held names.
+// Colours compare case-insensitively.
 // It is the colour a new beam records, held being the colours the other open beams hold.
 // When every non-green colour is held it returns the first non-green one.
 func PickBeamColor(held []string) string {
@@ -47,13 +49,17 @@ func PickBeamColor(held []string) string {
 }
 
 // PickWorktreeColor returns a worktree's activity-bar colour under a parent whose project colour is projectColor:
-// current when it is a palette colour other than projectColor that no colour in siblings names, else the first such palette colour, else, with every one taken, the first palette colour other than projectColor.
+// current when it is a palette colour other than projectColor that no colour in siblings names;
+// else the first such palette colour;
+// else, with every one taken, the first palette colour other than projectColor.
 // Colours compare case-insensitively.
 func PickWorktreeColor(projectColor, current string, siblings []string) string {
 	return firstFree(projectColor, current, siblings)
 }
 
-// firstFree returns preferred when it is a palette colour other than excluded and absent from taken, else the first palette colour that is neither, else the first palette colour other than excluded.
+// firstFree returns preferred when it is a palette colour other than excluded and absent from taken.
+// Otherwise it returns the first palette colour that is neither;
+// failing that, the first palette colour other than excluded.
 func firstFree(excluded, preferred string, taken []string) string {
 	free := func(color string) bool {
 		return !strings.EqualFold(color, excluded) && !slices.ContainsFunc(taken, func(t string) bool { return strings.EqualFold(t, color) })
@@ -76,9 +82,11 @@ func firstFree(excluded, preferred string, taken []string) string {
 	return fallback
 }
 
-// SiblingWorktreeColors returns the activity-bar colours of the hub's worktrees, other than the one named self, whose title bar holds projectColor, read from each worktree's .vscode/settings.json at l's anchor.
+// SiblingWorktreeColors returns the activity-bar colours of the hub's worktrees whose title bar holds projectColor.
+// It skips the worktree named self and reads each worktree's .vscode/settings.json at l's anchor.
 // They are the colours a new worktree under the same parent avoids.
-// A worktree with no readable or decodable settings, or no activity-bar colour, adds nothing, and an unreadable hub yields nil.
+// A worktree with no readable or decodable settings, or no activity-bar colour, adds nothing.
+// An unreadable hub yields nil.
 func SiblingWorktreeColors(l *lymcwd.Location, projectColor, self string) []string {
 	entries, err := os.ReadDir(l.HubPath)
 	if err != nil {
@@ -100,7 +108,9 @@ func SiblingWorktreeColors(l *lymcwd.Location, projectColor, self string) []stri
 // luminanceThreshold is the relative luminance at which black and white text give a background equal contrast.
 const luminanceThreshold = 0.179
 
-// Foreground returns the text colour for background, a #rrggbb colour: black when its WCAG relative luminance is above the point where black and white give equal contrast, white otherwise.
+// Foreground returns the text colour for background, a #rrggbb colour.
+// It is black when background's WCAG relative luminance is above the point where black and white give equal contrast.
+// Otherwise it is white.
 // A value that is not #rrggbb reads as dark and takes white.
 func Foreground(background string) string {
 	if relativeLuminance(background) > luminanceThreshold {
@@ -129,13 +139,15 @@ func relativeLuminance(color string) float64 {
 	return 0.2126*linear(value>>16&0xff) + 0.7152*linear(value>>8&0xff) + 0.0722*linear(value&0xff)
 }
 
-// ActivityBarColor returns the activity-bar colour <dir>/.vscode/settings.json holds, lower-cased, empty when it holds none or cannot be read or decoded.
+// ActivityBarColor returns the activity-bar colour that <dir>/.vscode/settings.json holds, lower-cased.
+// It is empty when the file holds none or cannot be read or decoded.
 func ActivityBarColor(dir string) string {
 	_, activity := barColors(dir)
 	return strings.ToLower(activity)
 }
 
-// barColors returns the title-bar and activity-bar background colours <dir>/.vscode/settings.json holds, each empty when it holds none or cannot be read or decoded.
+// barColors returns the title-bar and activity-bar background colours that <dir>/.vscode/settings.json holds.
+// Each is empty when the file holds none or cannot be read or decoded.
 func barColors(dir string) (title, activity string) {
 	content, err := os.ReadFile(filepath.Join(dir, ".vscode", "settings.json"))
 	if err != nil {

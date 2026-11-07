@@ -1,6 +1,6 @@
 //go:build !linux
 
-// rusage_other.go stands in for the largest resident set where the platform's rusage does not report it in a known unit.
+// rusage_other.go makes maxRSSBytes return zero on every platform but Linux.
 
 package main
 

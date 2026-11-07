@@ -1,10 +1,5 @@
-// commitstatus_test.go covers Deps.CommitStatus, the injected loop-owner seam Finalize commits the product's own orchestration status file through before it merges.
-// Parent-Align's cases live in parentalign_test.go.
-//
-// The ordering assertion is the point of every case here. Committing after the merge would be
-// indistinguishable from not committing at all, because fabricengine's merge guard has already
-// refused by then -- so each case records the call order rather than merely that both calls
-// happened.
+// commitstatus_test.go covers Deps.CommitStatus, the loop-owner seam that commits the orchestration status file.
+// Finalize runs it before the merge-in, and each case records the order of the calls.
 
 package landingshed
 
@@ -21,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// orderRecordingResolver is a resolver fake that appends "merge" to a shared event slice, so a test
-// can assert the commit seam ran before the merge rather than merely that both ran.
+// orderRecordingResolver is a resolver fake that appends "merge" to a shared event slice.
+// A test uses it to assert that the commit seam ran before the merge.
 type orderRecordingResolver struct {
 	events    *[]string
 	result    mergeresolve.Result
@@ -38,8 +33,8 @@ func (r *orderRecordingResolver) Resolve(_ context.Context, source, tip string) 
 	return r.result, r.err
 }
 
-// commitStatusRecorder returns a CommitStatus closure appending "commit" to events and returning
-// err, so a test scripts both the ordering and the failure disposition from one helper.
+// commitStatusRecorder returns a closure that appends "commit" to events and returns err.
+// A test scripts both the ordering and the failure disposition from this one helper.
 func commitStatusRecorder(events *[]string, err error) func() error {
 	return func() error {
 		*events = append(*events, "commit")
@@ -47,7 +42,8 @@ func commitStatusRecorder(events *[]string, err error) func() error {
 	}
 }
 
-// TestFinalize_CommitStatus pins the seam's ordering and disposition in Finalize: it runs before the merge-in, a failure is an error that never merges, and an unwired seam is not an error.
+// TestFinalize_CommitStatus pins the seam's ordering and disposition in Finalize:
+// it runs before the merge-in, a failure is an error that never merges, and an unwired seam is not an error.
 func TestFinalize_CommitStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	sentinel := errors.New("git index locked")
@@ -88,7 +84,7 @@ func TestFinalize_CommitStatus(t *testing.T) {
 			} else if err != nil || outcome != shedengine.Done {
 				t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 			}
-			// A commit after the merge is the same as no commit at all: the merge guard would already have refused.
+			// A commit after the merge is indistinguishable from no commit, since fabricengine's merge guard has already refused.
 			if !slices.Equal(events, tc.wantEvents) {
 				t.Errorf("call order = %v; want %v", events, tc.wantEvents)
 			}

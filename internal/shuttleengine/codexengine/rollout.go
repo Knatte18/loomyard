@@ -1,5 +1,6 @@
-// rollout.go reads the rollout file a Codex session records its turns in, which every hook payload names in transcript_path.
-// It answers whether a turn was interrupted, which ends a turn with no Stop hook, and how many tokens the session's context holds.
+// rollout.go reads the rollout that records a Codex session's turns, which every hook payload names in transcript_path.
+// It answers whether a turn was interrupted, which ends a turn with no Stop hook.
+// It answers how many tokens the session's context holds.
 
 package codexengine
 
@@ -87,7 +88,7 @@ func readRolloutEvents(path string) ([]rolloutEvent, error) {
 	return events, nil
 }
 
-// payloadField returns the string field key of the hook payload raw, or "" when raw does not parse or holds none.
+// payloadField returns the string at key in the hook payload raw, or "" when raw does not parse or key is not a string.
 func payloadField(raw []byte, key string) string {
 	var fields map[string]any
 	if json.Unmarshal(raw, &fields) != nil {
@@ -97,14 +98,17 @@ func payloadField(raw []byte, key string) string {
 	return value
 }
 
-// ProcessLiveness reads every session unproven: Codex keeps no registry of its live sessions, so a Codex exit is caught by the exit record and the dead pane the launch line leaves.
+// ProcessLiveness reads every session unproven: Codex keeps no registry of its live sessions,
+// so a Codex exit is caught by the exit record and the dead pane the launch line leaves.
 func (c *Codex) ProcessLiveness(string) shuttleengine.Liveness {
 	return shuttleengine.LivenessUnproven
 }
 
 // TurnStartInterrupt reports whether the turn that turnStart began was interrupted, with the interrupt's own time.
-// It reads the rollout turnStart's payload names: the turn is interrupted when the newest of its turn-ending events is turn_aborted.
-// An event belongs to the turn when both carry a turn id and the ids are equal, or, when either has none, when the event is not older than turnStart.
+// It reads the rollout that turnStart's payload names:
+// the turn is interrupted when the newest of its turn-ending events is turn_aborted.
+// An event belongs to the turn when both carry a turn id and the ids are equal.
+// When either lacks a turn id, an event belongs to the turn when it is not older than turnStart.
 // Any failure to read reads as not interrupted.
 func (c *Codex) TurnStartInterrupt(turnStart shuttleengine.SessionSignal) (time.Time, bool) {
 	events, err := readRolloutEvents(payloadField(turnStart.Raw, payloadTranscriptPath))
@@ -133,7 +137,8 @@ func (c *Codex) TurnStartInterrupt(turnStart shuttleengine.SessionSignal) (time.
 	return last.at, true
 }
 
-// ContextTokens returns the context size the newest token_count event of the rollout turnEnd's payload names records: the latest model call's total tokens.
+// ContextTokens returns the context size the newest token_count event of the rollout turnEnd's payload names records:
+// the latest model call's total tokens.
 // A rollout that cannot be read or holds no such event reads unknown.
 func (c *Codex) ContextTokens(turnEnd shuttleengine.Event) shuttleengine.ContextReading {
 	events, err := readRolloutEvents(payloadField(turnEnd.Raw, payloadTranscriptPath))
@@ -148,7 +153,7 @@ func (c *Codex) ContextTokens(turnEnd shuttleengine.Event) shuttleengine.Context
 	return shuttleengine.ContextReading{}
 }
 
-// CompactedSince finds no compaction boundary: no Codex compaction has been read from a rollout yet.
+// CompactedSince finds no compaction boundary: this package reads no Codex compaction from a rollout.
 func (c *Codex) CompactedSince(shuttleengine.Event, time.Time) (shuttleengine.CompactionBoundary, bool) {
 	return shuttleengine.CompactionBoundary{}, false
 }

@@ -17,8 +17,9 @@ type State struct {
 	// PID and StartTime identify the dobby process that last recorded itself.
 	PID       int    `json:"pid"`
 	StartTime string `json:"start_time"`
-	// StartTicks is the process start time `proc.StartTime` reads for PID, which an exec keeps and a fresh process with a reused pid does not.
-	// A record written before it existed decodes as empty.
+	// StartTicks is the process start time that `proc.StartTime` reads for PID.
+	// An exec keeps it; a fresh process with a reused pid does not.
+	// A record without the key decodes as empty.
 	StartTicks string `json:"start_ticks,omitempty"`
 	// Sleeps are the sleep intervals dobby saw, for the idle clocks of the runs it drives.
 	Sleeps []pauserecord.Interval `json:"sleeps,omitempty"`
@@ -33,13 +34,15 @@ type State struct {
 	// LandedSinceTidy holds the slugs landed since the last board tidy.
 	LandedSinceTidy []string `json:"landed_since_tidy,omitempty"`
 	// LandingsMachineOnly reports whether LandedSinceTidy holds only this machine's landings.
-	// A record written before the landing count read machines decodes as false, and the count empties its list once.
+	// A record without the key decodes as false, and the next landing count empties its list once.
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
 	// LandNotices is the memory of the landing notices of the runs seen ahead of their Land row, keyed by slug.
 	LandNotices map[string]LandNoticeState `json:"land_notices,omitempty"`
-	// Land is the landing step taken in the episode now standing, a land request asked for or a notice posted, nil when none was taken or the beam can no longer land, and open to a retry when it holds only a posted refusal of Land.
+	// Land is the landing step taken in the current episode: a land request asked for or a notice posted.
+	// It is nil when none was taken or the beam can no longer land.
+	// It stays open to a retry when it holds only a posted refusal of Land.
 	Land *LandState `json:"land,omitempty"`
 	// ReadyHold is the episode in which the beam is flagged ready and the dobby starts no task, nil when the beam is not flagged ready.
 	ReadyHold *ReadyHoldState `json:"ready_hold,omitempty"`
@@ -52,7 +55,8 @@ type ReadyHoldState struct {
 }
 
 // LandState is the landing step a beam's dobby took, which a restarted dobby reads so it takes no second one.
-// Refused reports that Land refused and the refusal was posted, so the step stays open: the next tick asks again, as a refusal may only wait on the run, and posts nothing more.
+// Refused reports that Land refused and the refusal was posted.
+// The step stays open: the next tick asks again, as a refusal may only wait on the run, and posts nothing more.
 type LandState struct {
 	At      time.Time `json:"at"`
 	Refused bool      `json:"refused,omitempty"`
@@ -113,7 +117,8 @@ func ReadState(path string) (State, bool, error) {
 	return current, found, err
 }
 
-// UpdateState applies mutate to the record at path under the record's lock and writes the result, keeping the keys the State type does not declare.
+// UpdateState applies mutate to the record at path under the record's lock and writes the result.
+// It keeps the keys the State type does not declare.
 // A record that does not decode logs one Warn and is replaced by mutate's result over a fresh State.
 func UpdateState(path string, mutate func(*State) error) error {
 	err := state.UpdateJSON(path, lockPath(path), func(current State, _ bool) (State, error) {

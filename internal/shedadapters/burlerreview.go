@@ -1,6 +1,8 @@
-// burlerreview.go implements BurlerReviewProducer, the shedadapters adapter over the review half of a burlerengine round:
-// it resolves the round to review from disk, hydrates prior rounds into the profile, and runs one reviewer session with a bounded retry on died/timeout.
-// It records the accepted review in the round's acceptance record and hands off to the segment's fix row as a routine Stuck -- never Done.
+// burlerreview.go implements BurlerReviewProducer, the shedadapters adapter over a round's review half.
+// It resolves the round to review from disk and hydrates prior rounds into the profile.
+// It runs one reviewer session with a bounded retry on died or timeout.
+// It records the accepted review in the round's acceptance record.
+// It hands off to the segment's fix row as a routine Stuck, never Done.
 // It also declares BurlerHalfRunner and BurlerHalfDeps, the seam and collaborators both halves' producers share.
 
 package shedadapters
@@ -27,8 +29,10 @@ const (
 	burlerFixEngineLabel    = "burler-fix"
 )
 
-// BurlerHalfRunner is the narrow seam the review and fix producers drive one half of a burler round through:
-// Review and Fix spawn a half, ProbeReview and ProbeFix report what became of a previous session's half, and ResumeReview and ResumeFix complete a half that is still live.
+// BurlerHalfRunner is the narrow seam the review and fix producers drive one half of a burler round through.
+// Review and Fix spawn a half.
+// ProbeReview and ProbeFix report what became of a previous session's half.
+// ResumeReview and ResumeFix complete a half that is still live.
 type BurlerHalfRunner interface {
 	Review(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.ReviewResult, error)
 	ProbeReview(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveHalf, error)
@@ -41,7 +45,7 @@ type BurlerHalfRunner interface {
 // Compile-time proof that *burlerengine.Engine satisfies BurlerHalfRunner.
 var _ BurlerHalfRunner = (*burlerengine.Engine)(nil)
 
-// BurlerHalfDeps are the told collaborators and settings of a review or fix producer.
+// BurlerHalfDeps holds the collaborators and settings of a review or fix producer.
 type BurlerHalfDeps struct {
 	// Runner drives one half.
 	Runner BurlerHalfRunner
@@ -50,15 +54,17 @@ type BurlerHalfDeps struct {
 	// Fans holds the segment's per-round reviewer and fixer fan lists, read by the review producer.
 	// Nil is a row that records no names and runs its profile's own ClusterFan.
 	Fans *RoundFans
-	// RequiresFans makes the fix producer read the fan names the review producer recorded, and refuse a round that holds none.
+	// RequiresFans makes the fix producer read the review producer's recorded fan names and refuse a round with none.
 	RequiresFans bool
-	// GateFindingsPath is the file an exhausted gate's findings are kept in and the Stuck reason names; the producer removes it on a call whose gate passed.
+	// GateFindingsPath is the file an exhausted gate's findings are kept in and the Stuck reason names;
+	// the producer removes it on a call whose gate passed.
 	// Empty keeps no findings file.
 	GateFindingsPath string
-	// NotifyParent posts one line to the run's parent, read by the fix producer, which sends a round's decision-class findings through it and keeps them out of the fixer's work.
+	// NotifyParent posts one line to the run's parent.
+	// The fix producer sends a round's decision-class findings through it, keeping them out of the fixer's work.
 	// Nil sends nothing and keeps every finding as fixer work.
 	NotifyParent func(line string) error
-	// DecisionsEscalated marks a fix row whose segment's Bouncer escalates the round's decision-class findings to the run's parent itself, read by the fix producer.
+	// DecisionsEscalated marks a fix row whose segment's Bouncer escalates decision-class findings to the parent itself.
 	// Such a row keeps the findings out of the fixer's work and posts no notice of its own.
 	DecisionsEscalated bool
 	// Assist is the segment's assistant reviewer settings, read by the review producer; the zero value runs no assistant.
@@ -76,12 +82,14 @@ type AssistSettings struct {
 	FanKey   string
 	// Timeout bounds the assistant's run, already capped to end before the chair's own timeout.
 	Timeout time.Duration
-	// SkipReason, when set, is why the cap left the assistant no time: an assistant the round names then does not start, and its end marker carries the reason.
+	// SkipReason, when set, is why the cap left the assistant no time;
+	// an assistant the round names then does not start, and its end marker carries the reason.
 	SkipReason string
 }
 
 // pick returns round's assistant model choice and fan, counting rounds from 1.
-// A round past a list takes its last entry, and an empty list gives the zero choice or an empty fan; a round with no assistant gets no fan either.
+// A round past a list takes its last entry, and an empty list gives the zero choice or an empty fan;
+// a round with no assistant gets no fan either.
 func (a AssistSettings) pick(round int) (shuttleengine.ModelChoice, string) {
 	var choice shuttleengine.ModelChoice
 	if len(a.Models) > 0 {
@@ -111,11 +119,14 @@ func checkHalfProducerArgs(name, label string, haveRunner bool, runDir string) e
 
 // BurlerReviewProducer is the shedadapters adapter over the review half of a burlerengine round.
 //
-// Call returns shedengine.Stuck on every successful review and never shedengine.Done -- that Stuck is a routine hand-off to the segment's fix row via OnStuck, never a real stuck condition.
+// Call returns shedengine.Stuck on every successful review and never shedengine.Done.
+// That Stuck is a routine hand-off to the segment's fix row via the row's OnStuck, never a real stuck condition.
 // A review that was not accepted after the bounded retry is a hard error rather than Stuck.
-// The Bouncer tells its seed call from its judge call by the round artifacts on disk, so a failed review returning Stuck with no review written would be misread as a seed call.
+// The Bouncer tells its seed call from its judge call by the round artifacts on disk,
+// so a failed review returning Stuck with no review written would be misread as a seed call.
 //
-// Every hand-back is BudgetExempt: the segment's budget on judged rounds is the Bouncer row's own check, and this row has no counted exit.
+// Every hand-back is BudgetExempt:
+// the segment's budget on judged rounds is the Bouncer row's own check, and this row has no counted exit.
 type BurlerReviewProducer struct {
 	name   string
 	runner BurlerHalfRunner
@@ -134,11 +145,12 @@ type BurlerReviewProducer struct {
 var _ shedengine.ShedProducer = (*BurlerReviewProducer)(nil)
 
 // NewBurlerReviewProducer returns a BurlerReviewProducer identified as name, driving profile through deps.Runner under opts, with round artifacts under runDir.
-// profile is a template whose ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports and ClusterExclude fields are overwritten per round;
+// profile is a template; each round overwrites its per-round fields, such as ReviewPath and FocusDirective.
 // opts is a template whose Round, Review and Fix fields are overwritten per attempt, the last two from deps.Models.
-// A nil now defaults to time.Now, and the injected clock resolves only the archive filename's same-second collision suffix.
+// A nil now defaults to time.Now.
+// The injected clock resolves only the archive filename's same-second collision suffix.
 // It returns a distinct error for each of: a nil runner, an empty name, an empty runDir and a runDir that is not absolute.
-// It never stats, creates or otherwise touches runDir -- creating it is Call's job.
+// It never stats, creates or otherwise touches runDir; creating it is Call's job.
 func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerReviewProducer, error) {
 	if err := checkHalfProducerArgs(name, burlerReviewEngineLabel, deps.Runner != nil, runDir); err != nil {
 		return nil, err
@@ -149,7 +161,8 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
-// attemptOpts returns the run options one review attempt of round runs under: the stored template with attempt's token, the round's models and attempt's assistant.
+// attemptOpts returns the run options one review attempt of round runs under:
+// the stored template with attempt's token, the round's models and attempt's assistant.
 func (p *BurlerReviewProducer) attemptOpts(round int, attempt roundAttempt) burlerengine.RunOpts {
 	opts := p.opts
 	opts.Round = attempt.token
@@ -159,9 +172,10 @@ func (p *BurlerReviewProducer) attemptOpts(round int, attempt roundAttempt) burl
 	return opts
 }
 
-// roundProfile returns a fresh per-round copy of the stored template profile for round running under fan:
-// the fan itself, the round's own review and fixer-report paths, focus directive, hydration of earlier complete rounds and, from round 2 on, the cluster exclusions.
-// The stored template itself is never mutated -- every slice field set is a freshly allocated slice.
+// roundProfile returns a fresh per-round copy of the stored template profile for round running under fan.
+// It fills in the fan, the round's own review and fixer-report paths, and the focus directive.
+// It also hydrates earlier complete rounds and, from round 2 on, sets the cluster exclusions.
+// The stored template itself is never mutated; every slice field set is a freshly allocated slice.
 func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.Profile {
 	focus := readRoundFocus(p.name, p.runDir, round)
 	priorReviews, priorFixerReports, _ := hydrationPaths(p.runDir, round)
@@ -191,19 +205,30 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.
 	return profile
 }
 
-// Call runs one review: resolve the round to review from disk and hand control on without spawning when the round is already reviewed or still unjudged.
-// Otherwise it builds the round's profile, runs at most two attempts (a second only on a died/timeout first attempt, or one whose chair spawned the wrong fork count), and maps the outcome onto shedengine's contract.
+// Call runs one review.
+// It resolves the round to review from disk.
+// When that round is already reviewed or still unjudged, it hands control on without spawning.
+// Otherwise it builds the round's profile and runs at most two attempts.
+// A second attempt runs only after a died or timeout first attempt, or one whose chair spawned the wrong fork count.
+// The outcome is mapped onto shedengine's contract.
 //
-// The round to review is the highest complete round's successor only when that round carries a parsing Bouncer verdict and ledger.
-// Otherwise this call hands the review of the round still owed a verdict straight on, BudgetExempt, spawning nothing, so the fix row passes it to the Bouncer.
-// A round whose review already carries an acceptance record is handed on the same way, so a restart with the fixer pending resumes at the fix row without re-running the reviewer.
+// The round to review is the highest complete round's successor;
+// it is taken only when that round carries a parsing Bouncer verdict and ledger.
+// Otherwise this call hands the review of the round still owed a verdict straight on, spawning nothing.
+// The hand-back is BudgetExempt, so the fix row passes it to the Bouncer.
+// A round whose review already carries an acceptance record is handed on the same way,
+// so a restart with the fixer pending resumes at the fix row without re-running the reviewer.
 //
-// A live reviewer is probed before anything is archived, because archiving renames the very file a live reviewer is about to write.
-// On a row with fan lists the round's reviewer and fixer fan names are recorded in its usage record just before the first spawn; a failed write is a failure exit with nothing spawned.
-// Every return in which the review was not accepted archives the round's review, fixer report and acceptance record first.
-// Two exits archive nothing: a reviewer that could not be stopped, whose files a live session may still be writing, and a cancellation observed after the review was accepted and recorded.
+// A live reviewer is probed before anything is archived, since archiving renames the file it is about to write.
+// On a row with fan lists, the round's reviewer and fixer fan names go into its usage record before the first spawn;
+// a failed write is a failure exit with nothing spawned.
+// Every return without an accepted review archives the round's review, fixer report and acceptance record first.
+// Two exits archive nothing.
+// The first is a reviewer that could not be stopped, since a live session may still be writing its files.
+// The second is a cancellation observed after the review was accepted and recorded.
 //
-// No mid-run cancellation bridge is installed, because burlerengine exposes no pause seam: a cancel is observed only once the review reaches a terminal outcome or its own timeout elapses.
+// No mid-run cancellation bridge is installed, because burlerengine exposes no pause seam:
+// a cancel is observed only once the review reaches a terminal outcome or its own timeout elapses.
 func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, burlerReviewEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -266,7 +291,8 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return outcome, ptr, exitErr
 	}
 
-	// The names are fixed before the spawn, so the fix half and a resumed reviewer read the fans this round was spawned under.
+	// The names are fixed before the spawn,
+	// so the fix half and a resumed reviewer read the fans this round was spawned under.
 	if p.fans != nil {
 		if err := recordRoundFans(p.runDir, round, p.now, fan, fixFan); err != nil {
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: record the round's fan names: %w", p.name, burlerReviewEngineLabel, round, err))
@@ -285,7 +311,8 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 			}
 		}
 
-		// A leftover file at the round's own paths is renamed to a stamped sibling rather than being passed to a run whose spec validation rejects a pre-existing output file.
+		// A leftover file at the round's own paths is renamed to a stamped sibling;
+		// passing it to a run would fail that run's spec validation, which rejects a pre-existing output file.
 		if err := archiveStaleOutputs(paths, p.now); err != nil {
 			if cerr := cancelErr(ctx, p.name, burlerReviewEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
@@ -298,7 +325,8 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 			attemptToken += "b"
 		}
 		spawned := roundAttempt{token: attemptToken, assist: assist, assistFan: assistFan}
-		// The token and assistant are recorded before each attempt spawns, so a probe after lym dies mid-attempt builds this attempt's table.
+		// The token and assistant are recorded before each attempt spawns,
+		// so a probe after lym dies mid-attempt builds this attempt's table.
 		if err := recordRoundAttempt(p.runDir, round, p.now, spawned); err != nil {
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: record attempt %s: %w", p.name, burlerReviewEngineLabel, round, attemptToken, err))
 		}
@@ -351,8 +379,10 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerReviewEngineLabel, round)
 }
 
-// forkMismatchError builds the failure of a round whose second attempt failed after a first that failed on the fork count, or whose second attempt failed on the fork count after a died or timed-out first.
-// It names each attempt by its error, or by its outcome when it has none, with the chair's strand and the session states the chair passed through, so the halt note says how the chair ended.
+// forkMismatchError builds the failure of a round whose two attempts both failed, one of them on the chair's fork count.
+// It names each attempt by its error, or by its outcome when it has none.
+// The message carries the chair's strand and the session states the chair passed through,
+// so the halt note says how the chair ended.
 // The result wraps secondErr when it is set.
 func forkMismatchError(name string, round int, first, second burlerengine.ReviewResult, firstErr, secondErr error) error {
 	describeAttempt := func(attempt int, result burlerengine.ReviewResult, err error) string {
@@ -399,11 +429,15 @@ func (p *BurlerReviewProducer) unstoppedExit(ctx context.Context, err error) (sh
 	return "", shedengine.OutputPointer{}, err
 }
 
-// acceptedExit maps a review that reached OutcomeDone onto Call's contract, for a spawned and a resumed review alike.
-// It records the accepted review's digest in the round's acceptance record and merges the lenses and review half's usage into the round's usage record, leaving the fan names the spawn recorded as they are.
+// acceptedExit maps a review that reached `OutcomeDone` to the round's result, whether it was spawned or resumed.
+// It records the accepted review's digest in the round's acceptance record.
+// It merges the lenses and the review half's usage into the round's usage record;
+// it leaves the fan names the spawn recorded as they are.
 // It returns Stuck with the review as Path, BudgetExempt.
-// A failed acceptance write is a hard error with the round's paths archived, since a review with no record would be reviewed again on resume.
-// A cancellation observed after the record was written still yields an error, but the accepted review and its record survive.
+// A failed acceptance write is a hard error with the round's paths archived.
+// A review with no record would be reviewed again on resume.
+// A cancellation observed after the record was written still yields an error,
+// but the accepted review and its record survive.
 func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, result burlerengine.ReviewResult, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := writeAcceptance(p.runDir, round, result.Digest); err != nil {
 		archiveRound()
@@ -435,7 +469,8 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), BudgetExempt: true}, nil
 }
 
-// reviewHalfUsage builds the review half's usage record from the model it ran on and the half's identity, with the reviewer's fork reading when it is known.
+// reviewHalfUsage builds the review half's usage record from the model it ran on and the half's identity.
+// It adds the reviewer's fork reading when the half's usage is known.
 func reviewHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) halfUsage {
 	record := newHalfUsage(model, half)
 	if usage := half.Usage; usage.Known {
@@ -451,17 +486,21 @@ func reviewHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) ha
 	return record
 }
 
-// probeLiveReview asks the runner what became of a previous session's reviewer for this round and resumes it when it is still live.
-// It probes the table the round's record says the last attempt spawned, its attempt token and assistant, never one built from config edited since;
-// a round with no recorded attempt is probed as the bare round with no assistant.
+// probeLiveReview asks the runner what became of a previous session's reviewer for this round.
+// It resumes that reviewer when it is still live.
+//
+// It probes the table the round's record says the last attempt spawned, with its attempt token and assistant.
+// It never builds that table from config edited since that attempt.
+// A round with no recorded attempt is probed as the bare round with no assistant.
 //
 // It reports handled=false whenever the caller should proceed to its ordinary archive-then-spawn path:
-// the reviewer is not live, or the resumed reviewer had already died or timed out or failed on the fork count, which falls through to a fresh attempt 1.
-// Every other case reports handled=true along with the three values Call must return.
-// A live reviewer is resumed through ResumeReview and mapped like a spawned one.
+// the reviewer is not live, or the resumed reviewer had already died, timed out, or failed on the fork count.
+// The resumed-reviewer cases fall through to a fresh attempt 1.
+// Every other case reports handled=true along with the outcome, output pointer and error to return.
+// A live reviewer is resumed and mapped the same way as a spawned one.
 //
-// A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned bare rather than through the archiving failure exit:
-// a reviewer that may still be live may be mid-write on the round's files, so archiving them is most dangerous there.
+// A probe error and a resume error wrapping `burlerengine.ErrHalfNotStopped` are returned without archiving the round.
+// A reviewer that may still be live may be mid-write on the round's files, so archiving them is most dangerous there.
 func (p *BurlerReviewProducer) probeLiveReview(ctx context.Context, round int, profile burlerengine.Profile, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	opts := p.attemptOpts(round, readRoundAttempt(p.runDir, round))
 

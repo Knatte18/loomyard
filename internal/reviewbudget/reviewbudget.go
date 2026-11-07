@@ -45,7 +45,8 @@ func Categories(perches []string) map[string]configengine.Category {
 }
 
 // Caps is a perch's resolved soft and hard cap and the key each resolves from.
-// Soft is the bounce budget, 0 meaning no review round; Hard is the round number at or past which the perch never continues a round.
+// Soft is the bounce budget, 0 meaning no review round;
+// Hard is the round number at or past which the perch never continues a round.
 type Caps struct {
 	SoftKey string
 	Soft    int
@@ -68,9 +69,11 @@ func Resolve(perch string, runSoft, runHard int, ownSoft *int, ownHard int) Caps
 }
 
 // Values holds the budget keys of one loaded config.
-// PerchSoft and PerchHard are keyed by perch name; a nil PerchSoft entry takes RunSoft and a PerchHard entry of 0 takes RunHard.
+// PerchSoft and PerchHard are keyed by perch name;
+// a nil PerchSoft entry takes RunSoft and a PerchHard entry of 0 takes RunHard.
 // RunAmend is the amendment allowance, 0 meaning no review round for an amendment.
-// RunWideSpec is the spec of the module that holds RunSoftKey, RunHardKey and RunAmendKey; its zero value means the spec CheckResolved is given holds them.
+// RunWideSpec is the spec of the module that holds RunSoftKey, RunHardKey and RunAmendKey;
+// its zero value means the spec the check runs against holds them.
 // A refusal names the module that owns the key it reports and routes the way forward through that module.
 type Values struct {
 	RunSoft     int
@@ -95,7 +98,8 @@ func (v Values) ownerSpec(spec configengine.Spec, key string) configengine.Spec 
 }
 
 // Route returns the way forward that changes key, by the layer the resolved value comes from.
-// A local value is changed there and in the task's run_settings, a worktree value in the task worktree, and any other value in the default file from the prime worktree.
+// A local value is changed there and in the task's run_settings.
+// A worktree value is changed in the task worktree, and any other value in the default file from the prime worktree.
 func Route(dirs configengine.Dirs, spec configengine.Spec, key string) (string, error) {
 	stack, err := configengine.StackLayers(dirs, spec)
 	if err != nil {
@@ -114,8 +118,9 @@ func Route(dirs configengine.Dirs, spec configengine.Spec, key string) (string, 
 	}
 }
 
-// CheckResolved refuses the first value of the family below its bound, and a resolved hard cap below its resolved soft cap.
-// Each refusal names the key and the Route of the layer its value comes from, both through the module that owns the key.
+// CheckResolved refuses the first value of the family below its bound.
+// It also refuses a resolved hard cap below its resolved soft cap.
+// Each refusal names the key and the way forward for its value's layer, through the module that owns the key.
 // The three run-wide keys belong to values.RunWideSpec when it is set, and every other key to spec.
 func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values) error {
 	refuse := func(key, detail string) error {

@@ -1,11 +1,10 @@
 // engine_test.go drives Engine.Run against a scripted fakeRunner (RoundRunner) and a scripted
 // queuedShuttle (judge/targeting), adapted to the attempt-level RoundRunner seam.
-// Deliberately scoped to the seam contract itself: that the generalized loop works against a
-// non-burler runner, AttemptInput population and hydration, retry semantics at the seam,
-// name-parameterized diagnostics for an arbitrary caller name, ladder + gate parity, profile
-// validation, and the profile-gated pre-round targeting capability.
-// Tier0 file: no spawning — the fake CommandRunner is an in-process func (Test Tier Purity
-// Invariant).
+// It pins the seam contract: the generalized loop against a non-burler runner;
+// AttemptInput population and hydration; retry semantics at the seam;
+// name-parameterized diagnostics for an arbitrary caller name; ladder and gate parity;
+// profile validation; and the profile-gated pre-round targeting capability.
+// Tier0 file: no spawning; the fake CommandRunner is an in-process func (Test Tier Purity Invariant).
 
 package treadleengine
 
@@ -147,10 +146,9 @@ func verdictFileContent(verdict, rationale string) string {
 }
 
 // stringSlicesEqual2 reports whether a and b contain the same strings in
-// the same order. Named with a numeric suffix to avoid colliding with a
-// same-named helper elsewhere in the tree — there is no cross-package
-// sharing; each copy is a few lines, per the differential-test-bar's
-// mechanical-package-split helper-fallout clause.
+// the same order.
+// The numeric suffix avoids a clash with a same-named helper elsewhere in the tree.
+// Each package keeps its own copy, since no test helper is shared across packages.
 func stringSlicesEqual2(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -163,11 +161,11 @@ func stringSlicesEqual2(a, b []string) bool {
 	return true
 }
 
-// TestEngine_AttemptInputPopulation proves AttemptInput is populated correctly per attempt:
-// round/attempt numbers and the RoundToken letter suffix on a retry, tuning passthrough
-// (Model/Effort/Timeout), and hydration accumulating across rounds — including a failed gate file
-// fed forward — with both attempts of the same round seeing IDENTICAL hydration (a retry produces
-// no new completed round).
+// TestEngine_AttemptInputPopulation proves AttemptInput is populated correctly per attempt.
+// It checks the round and attempt numbers, and the RoundToken letter suffix on a retry.
+// It checks tuning passthrough (Model, Effort, Timeout), and hydration accumulating across rounds.
+// A failed gate file is fed forward.
+// Both attempts of the same round see identical hydration, since a retry produces no new completed round.
 func TestEngine_AttemptInputPopulation(t *testing.T) {
 	tiergate.Require(t, 0)
 	runDir := filepath.Join(t.TempDir(), "run")
@@ -219,10 +217,8 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 		t.Errorf("round2 attempt2 = %+v; want Round=2 Attempt=2 RoundToken=\"2b\" (the retry letter suffix)", round2Attempt2)
 	}
 
-	// Hydration: round 2 must see round 1's review path AND round 1's
-	// failed gate file (GatePassed false feeds the gate path forward as
-	// hydration); a passing gate is never fed forward (an original pin,
-	// unchanged by the extraction).
+	// Hydration: round 2 must see round 1's review path and round 1's failed gate file.
+	// GatePassed false feeds the gate path forward as hydration; a passing gate is never fed forward.
 	if len(round2Attempt1.PriorReviews) != 2 {
 		t.Fatalf("round2 attempt1 PriorReviews = %v; want 2 entries (review + failed gate)", round2Attempt1.PriorReviews)
 	}
@@ -316,9 +312,8 @@ func TestEngine_NameParameterization(t *testing.T) {
 	tiergate.Require(t, 0)
 	runDir := filepath.Join(t.TempDir(), "run")
 
-	// blockingRunner's single RunAttempt call blocks until release is
-	// closed, standing in for a real round-runner still in flight when a
-	// second Run call arrives against the same run dir.
+	// blockingRunner's single RunAttempt call blocks until release is closed.
+	// It stands in for a real round-runner still in flight when a second Run call arrives against the same run dir.
 	release := make(chan struct{})
 	fr1 := &blockingRunner{entered: make(chan struct{}), release: release}
 
@@ -360,11 +355,10 @@ func TestEngine_NameParameterization(t *testing.T) {
 	<-done
 }
 
-// blockingRunner is a same-package RoundRunner double whose single
-// RunAttempt call signals entered, then blocks until release is closed —
-// standing in for a real round-runner attempt still in flight, so a
-// concurrency test can deterministically observe "the first Run call holds
-// the lock" without a timing-based sleep.
+// blockingRunner is a same-package RoundRunner double.
+// Its single RunAttempt call signals entered, then blocks until release is closed.
+// It stands in for a round-runner attempt still in flight,
+// so a concurrency test can observe that the first Run call holds the lock without a timing-based sleep.
 type blockingRunner struct {
 	entered chan struct{}
 	release chan struct{}
@@ -377,10 +371,9 @@ func (b *blockingRunner) RunAttempt(AttemptInput) (AttemptResult, error) {
 	return AttemptResult{}, errors.New("blockingRunner: released without a scripted result")
 }
 
-// TestEngine_LadderAndGateParity smoke-tests the milestone ladder and pluggable gate carried
-// forward unchanged by the extraction: an unconditional hard-cap STUCK, a milestone rung's STOP
-// verdict, and GateCommand convergence via a fake CommandRunner that observes Profile.GateDir as
-// its cwd argument.
+// TestEngine_LadderAndGateParity smoke-tests the milestone ladder and pluggable gate.
+// It covers an unconditional hard-cap STUCK, a milestone rung's STOP verdict, and GateCommand convergence.
+// The gate convergence runs through a fake CommandRunner that observes Profile.GateDir as its cwd argument.
 func TestEngine_LadderAndGateParity(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("hard cap stops unconditionally with no judge call", func(t *testing.T) {
@@ -513,11 +506,8 @@ func TestEngine_ProfileValidation(t *testing.T) {
 	}
 }
 
-// readRunState reads runDir's persisted state.json, failing the test loudly
-// if it is missing or unreadable. Same-package access to the unexported
-// runState/roundRecord types means this is a direct read of the real
-// persisted shape — no test-local mirror struct needed, unlike a reader
-// that would have to mirror the shape across a package boundary.
+// readRunState reads runDir's persisted state.json, failing the test if it is missing or unreadable.
+// It decodes into the unexported runState type, so the test reads the real persisted shape without a mirror struct.
 func readRunState(t *testing.T, runDir string) runState {
 	t.Helper()
 	path := filepath.Join(runDir, stateFileName)
@@ -532,11 +522,10 @@ func readRunState(t *testing.T, runDir string) runState {
 	return got
 }
 
-// TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced proves (a): a judge round's HandoffPath is
-// set only when the shuttle fake actually wrote a valid handoff file alongside its verdict.
-// A judge call whose verdict succeeds but never produces a handoff file still records the round's
-// JudgeVerdict — the two are independent — and leaves HandoffPath empty, never an error and never
-// STUCK from the missing handoff alone.
+// TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced checks one rule:
+// a judge round's HandoffPath is set only when the shuttle fake wrote a valid handoff file.
+// A judge call whose verdict succeeds but never produces a handoff file still records the round's JudgeVerdict.
+// Its HandoffPath stays empty, and the missing handoff never causes an error or STUCK on its own.
 func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 	tiergate.Require(t, 0)
 	newProfile := func() Profile {
@@ -593,9 +582,8 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 		}
 		qs := &queuedShuttle{}
 		qs.queue = []queuedShuttleEntry{
-			// A real verdict, but the fake never writes the handoff file —
-			// exactly what a genuine agent turn-limit or write failure looks
-			// like from the loop's perspective.
+			// A real verdict, but the fake never writes the handoff file.
+			// The loop sees the same thing as after a genuine agent turn-limit or write failure.
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
 		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
@@ -619,7 +607,9 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 			t.Errorf("Rounds[1].HandoffPath = %q; want empty (no handoff file was ever written)", st.Rounds[1].HandoffPath)
 		}
 
-		// With no handoff ever produced, the judge call's read-set is exactly the all-reviews list: the degrade path a block with handoff maintenance disabled, or simply never yet exercised, must still behave identically to the pre-handoff loop.
+		// With no handoff ever produced, the judge call's read-set is the all-reviews list.
+		// That is the degrade path, which a block with handoff maintenance disabled also takes.
+		// Its behavior must match a loop without handoffs.
 		if len(qs.specs) != 1 {
 			t.Fatalf("queuedShuttle called %d times; want exactly 1", len(qs.specs))
 		}
@@ -633,26 +623,20 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 	})
 }
 
-// TestEngine_HandoffLifecycle_ReadSetCoverage proves (b), (c), and the
-// first-call half of (e) together, in one flowing GateCommand scenario
-// chosen so a round can fail to converge on a passing VERDICT alone (an
-// APPROVED-but-gate-failing round never runs a judge at all, and neither
-// does the BLOCKING round immediately after it — both are judge-skipped
-// rounds that must still be fed forward):
+// TestEngine_HandoffLifecycle_ReadSetCoverage runs one GateCommand block where the gate decides convergence.
+// An APPROVED round whose gate fails never runs a judge, and neither does the BLOCKING round right after it.
+// Both judge-skipped rounds must still be fed forward to later judge calls.
 //
 //   - round 1: APPROVED, gate fails — no judge (Verdict != Blocking).
 //   - round 2: BLOCKING, gate fails — no judge (prevRoundApproved exemption).
-//   - round 3: BLOCKING, gate fails — FIRST judge call. No previous handoff
-//     exists yet, so (e): the read-set degrades to exactly all completed
-//     rounds' reviews — proving rounds 1 and 2's judge-skipped reviews are
-//     fed forward to this first call. Its scripted handoff covers rounds
-//     1-3.
-//   - round 4: BLOCKING, gate fails — SECOND judge call. (b): its
-//     previous_handoff marker carries round 3's recorded handoff path, and
-//     its read-set excludes rounds 1-3 (all covered) and carries only round
-//     4's own fresh review. (c): covers_rounds absorbing the judge-skipped
-//     rounds 1 and 2 (transitively, via round 3's handoff) is what keeps
-//     them out of round 4's read-set too, never resurfacing.
+//   - round 3: BLOCKING, gate fails — first judge call.
+//     No previous handoff exists yet, so the read-set degrades to all completed rounds' reviews.
+//     That feeds rounds 1 and 2's judge-skipped reviews forward to this first call.
+//     Its scripted handoff covers rounds 1-3.
+//   - round 4: BLOCKING, gate fails — second judge call.
+//     Its previous_handoff marker carries round 3's recorded handoff path.
+//     Its read-set excludes rounds 1-3, which that handoff covers, and holds only round 4's fresh review.
+//     Rounds 1 and 2 stay out too: round 3's covers_rounds absorbs them transitively.
 //   - round 5: BLOCKING, gate passes — converges; no third judge call.
 func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -705,9 +689,8 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 		t.Fatalf("queuedShuttle called %d times; want exactly 2 (rounds 3 and 4's circling checks)", len(qs.specs))
 	}
 
-	// (e): the first judge call (round 3) had no previous handoff, so its
-	// read-set is exactly today's all-reviews behavior — which is what
-	// feeds rounds 1 and 2's judge-skipped reviews forward at all.
+	// The first judge call (round 3) had no previous handoff, so its read-set is the all-reviews list.
+	// That list is what feeds rounds 1 and 2's judge-skipped reviews forward at all.
 	firstCall := qs.specs[0]
 	if !strings.Contains(firstCall.Prompt, "(none)") {
 		t.Errorf("round 3 judge prompt = %q; want the previous_handoff marker to read \"(none)\"", firstCall.Prompt)
@@ -719,11 +702,9 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 	}
 	recordedHandoffPath := firstCall.OutputFiles[1]
 
-	// (b) + (c): the second judge call (round 4) reads {round 3's handoff +
-	// uncovered reviews} — rounds 1-3 are all covered (1 and 2
-	// transitively, via round 3's own all-reviews read-set), so only round
-	// 4's fresh review remains, and previous_handoff carries the handoff's
-	// own path.
+	// The second judge call (round 4) reads round 3's handoff plus the uncovered reviews.
+	// Rounds 1-3 are all covered: rounds 1 and 2 transitively via round 3's all-reviews read-set.
+	// So only round 4's fresh review remains, and previous_handoff carries the handoff's own path.
 	secondCall := qs.specs[1]
 	if !strings.Contains(secondCall.Prompt, recordedHandoffPath) {
 		t.Errorf("round 4 judge prompt = %q; want the previous_handoff marker to carry %q", secondCall.Prompt, recordedHandoffPath)
@@ -749,19 +730,15 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 	}
 }
 
-// TestEngine_HandoffLifecycle_InvalidHandoffFallback proves (d): a recorded handoff whose file
-// content is corrupted (fails ParseHandoff) is a fail-safe skip, never a hard stop.
-// The loop simply behaves as if that round's handoff had never been produced — the next judge
-// call's read-set falls back to the older-or-all-reviews list,
-// and the block continues (never STUCK, never an error) purely from the handoff machinery.
+// TestEngine_HandoffLifecycle_InvalidHandoffFallback proves that an invalid recorded handoff is a fail-safe skip.
+// A handoff that fails ParseHandoff is never a hard stop: the loop behaves as if that round recorded no handoff.
+// The next judge call's read-set falls back to the older-or-all-reviews list,
+// and the block continues, never STUCK and never an error.
 func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	tiergate.Require(t, 0)
-	// These fail-safe Warns reach an operator's stderr on an ordinary run
-	// (logger's default threshold IS Warn), so the engine is named "tenter"
-	// here rather than this file's usual "gate": that proves the
-	// corrupt-handoff Warns carry the CALLING engine's name like every other
-	// Warn this package emits, instead of a hardcoded package label the
-	// operator would never recognize.
+	// These fail-safe Warns reach an operator's stderr on an ordinary run, since the logger's default threshold is Warn.
+	// The engine is named "tenter" rather than the file's usual "gate".
+	// The test checks that the corrupt-handoff Warns carry the calling engine's name, not a hardcoded package label.
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
 	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
@@ -819,13 +796,12 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	}
 }
 
-// TestEngine_JudgeSkippedRoundReadsNoHandoffFiles proves the judge read-set is assembled lazily,
-// only inside the two judge branches: a judge-skipped BLOCKING round — here, the round immediately
-// after an APPROVED round under a command gate — must neither walk recorded handoff files on disk
-// nor emit their corrupt-handoff Warns, since no judge call happens.
-// The recorded handoff is corrupted mid-block, at the exact judge-skipped round's attempt
-// (fakeRunner.onCall), so any handoff read on that round would surface as a "recorded handoff file
-// unparseable" Warn in the captured log — the pre-fix behavior.
+// TestEngine_JudgeSkippedRoundReadsNoHandoffFiles proves that the judge read-set is built lazily.
+// It is built only inside the two judge branches.
+// A judge-skipped BLOCKING round is the round right after an APPROVED round under a command gate:
+// it must neither walk recorded handoff files on disk nor emit their corrupt-handoff Warns, since no judge call happens.
+// The recorded handoff is corrupted during that round's attempt, through fakeRunner.onCall.
+// Any handoff read on that round would log a "recorded handoff file unparseable" Warn.
 func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	var logBuf bytes.Buffer
@@ -843,16 +819,14 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
 		// r3 APPROVED, gate fails — no judge (verdict approved), block loops.
 		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}},
-		// r4 BLOCKING, gate fails — judge-SKIPPED (prevRoundApproved); the
-		// onCall hook below corrupts the recorded handoff just before this
-		// round runs, so any handoff read here would Warn.
+		// r4 BLOCKING, gate fails — judge-skipped (prevRoundApproved).
+		// The onCall hook below corrupts the recorded handoff before this round runs, so any handoff read here would Warn.
 		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s4"}},
 		// r5 APPROVED, gate passes — converges.
 		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s5"}},
 	}
-	// Corrupt round 2's recorded handoff at the moment round 4's attempt
-	// starts: recorded (and valid) at judge time, unreadable garbage by the
-	// time the judge-skipped round could wrongly walk it.
+	// Round 2's recorded handoff is corrupted when round 4's attempt starts.
+	// It is recorded and valid at judge time, and unreadable by the time the judge-skipped round could wrongly walk it.
 	fr.onCall = func(in AttemptInput) {
 		if in.Round == 4 {
 			handoffPath := artifactPaths(runDir, 2, 1).Handoff
@@ -899,25 +873,22 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 	if len(qs.specs) != 1 {
 		t.Fatalf("queuedShuttle called %d times; want exactly 1 (only round 2 judges)", len(qs.specs))
 	}
-	// The load-bearing assertion: the judge-skipped round 4 must not have
-	// walked the (by then corrupt) recorded handoff — no handoff Warn may
-	// appear in the log. Pre-fix, judgeReadSet ran before the judge-branch
-	// switch and this corrupt read logged "recorded handoff file
-	// unparseable" for a judge call that never happened.
+	// The load-bearing assertion: the judge-skipped round 4 must not walk the recorded handoff.
+	// The handoff is corrupt by then, so no handoff Warn may appear in the log.
 	if logged := logBuf.String(); strings.Contains(logged, "recorded handoff") {
 		t.Errorf("judge-skipped round walked recorded handoff files; log:\n%s", logged)
 	}
 }
 
-// TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName covers the one fail-safe path
-// that only fires when a handoff was VALID at record time and became unreadable afterwards:
-// latestValidHandoff's newest-to-oldest walk.
-// Round 2 records a well-formed handoff;
-// the fakeRunner hook corrupts that file just before round 3's attempt, so round 3's circling judge
-// finds a recorded-but-broken handoff, skips it, and degrades its read-set.
-// These Warns reach an operator's stderr at logger's default threshold during an ordinary run, so
-// they must carry the CALLING engine's name — the engine is named "tenter" here precisely so a
-// hardcoded package label would fail.
+// TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName covers the fail-safe path.
+// It applies to a handoff that was valid at record time and became unreadable afterwards.
+// latestValidHandoff walks the handoffs newest to oldest and skips the unreadable one.
+// Round 2 records a well-formed handoff.
+// The fakeRunner hook corrupts that file just before round 3's attempt.
+// Round 3's circling judge therefore finds a recorded handoff it cannot read, skips it, and degrades its read-set.
+// These Warns reach an operator's stderr at the logger's default threshold during an ordinary run,
+// so they must carry the calling engine's name.
+// The engine is named "tenter" here, so a hardcoded package label fails the test.
 func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.T) {
 	tiergate.Require(t, 0)
 	var logBuf bytes.Buffer
@@ -944,14 +915,14 @@ func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.
 
 	qs := &queuedShuttle{}
 	qs.queue = []queuedShuttleEntry{
-		// Round 2's circling judge: a real verdict and a VALID handoff, so
-		// round 2's record carries a HandoffPath for round 3 to walk.
+		// Round 2's circling judge returns a real verdict and writes a valid handoff.
+		// Round 2's record therefore carries a HandoffPath for round 3 to walk.
 		{
 			verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
 			handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
 		},
 		// Round 3's circling judge: reached only after the walk above skipped
-		// the now-corrupt round-2 handoff.
+		// the corrupt round-2 handoff.
 		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 	}
 
@@ -982,20 +953,16 @@ func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.
 	}
 }
 
-// TestEngine_PreRoundTargeting drives Profile.PreRoundTargeting through Engine.Run, covering
-// (a)-(c) and (e) of the pre-round-targeting card's requirements;
-// (d)'s "targeting shuttle error" case is covered here too, with the "non-done outcome"/"missing
-// seed file" fail-safe paths covered directly against runTargeting in TestRunTargeting_FailSafe
-// below (the scripted queuedShuttle fake used here has no way to produce a non-done Outcome or a
-// claimed-done-but-unwritten output file).
+// TestEngine_PreRoundTargeting drives Profile.PreRoundTargeting through Engine.Run.
+// It covers the targeting shuttle error path too.
+// TestRunTargeting_FailSafe covers the non-done outcome and missing seed file fail-safe paths.
+// The scripted queuedShuttle cannot produce a non-done Outcome or a claimed-done output file that was never written.
 func TestEngine_PreRoundTargeting(t *testing.T) {
 	tiergate.Require(t, 0)
-	// roundsThroughHandoff scripts a fakeRunner/queuedShuttle pair that
-	// carries a block through round 1 (BLOCKING, no judge — nothing to
-	// compare it against yet) and round 2 (BLOCKING, triggers the circling
-	// judge, which writes a valid handoff), leaving round 3 as the next
-	// round every subtest below actually exercises pre-round targeting
-	// against.
+	// roundsThroughHandoff scripts a fakeRunner/queuedShuttle pair that carries a block through round 1 and round 2.
+	// Round 1 is BLOCKING with no judge, since there is nothing to compare it against yet.
+	// Round 2 is BLOCKING and triggers the circling judge, which writes a valid handoff.
+	// Round 3 is the next round, and every subtest below exercises pre-round targeting against it.
 	roundsThroughHandoff := func() (*fakeRunner, *queuedShuttle) {
 		fr := &fakeRunner{}
 		fr.queue = []queuedAttemptResult{
@@ -1015,10 +982,8 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 	t.Run("(a) flag off never issues a targeting spec and every SeedPath stays empty", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
 		fr, qs := roundsThroughHandoff()
-		// Round 3 converges once a valid handoff exists from round 2, so
-		// this subtest can observe whether targeting fires at the very
-		// round where — with the flag on — it would have something to
-		// target from.
+		// Round 3 converges once round 2 has written a valid handoff.
+		// That is the round where targeting would have a seed source, so this subtest checks that targeting stays off.
 		fr.queue = append(fr.queue, queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
@@ -1046,9 +1011,8 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 	t.Run("(b) flag on with a valid handoff threads the seed through both attempts and records it", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
 		fr, qs := roundsThroughHandoff()
-		// Round 3's first attempt dies, forcing a same-round retry — both
-		// attempts must see the identical SeedPath (round-scoped, not
-		// recomputed per attempt).
+		// Round 3's first attempt dies, forcing a same-round retry.
+		// Both attempts must see the identical SeedPath, which is scoped to the round and not recomputed per attempt.
 		fr.queue = append(fr.queue,
 			queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDied, SessionID: "died-3a", RunDir: "/kept/died-3a"}},
 			queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3b"}},
@@ -1186,9 +1150,8 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		// A leftover seed file from an interrupted prior attempt at round
-		// 3 — exactly what a crash between targeting's write and round 3's
-		// own attempt completing would leave behind.
+		// A leftover seed file from an interrupted attempt at round 3.
+		// A crash between targeting's write and round 3's attempt completing leaves one behind.
 		leftoverSeedPath := artifactPaths(runDir, 3, 1).Seed
 		writeFile(t, leftoverSeedPath, "stale seed from an interrupted run")
 
@@ -1230,12 +1193,10 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 	})
 }
 
-// fixedShuttle is a same-package Shuttle double that always returns a fixed
-// (Result, error) pair without touching the filesystem, regardless of the
-// Spec it receives — used to drive runTargeting's fail-safe paths directly,
-// including outcomes queuedShuttle cannot script (a claimed-non-done
-// Outcome, or a claimed-done Outcome that never actually wrote its output
-// file).
+// fixedShuttle is a Shuttle double that returns a fixed (Result, error) pair regardless of the Spec it receives.
+// It touches no filesystem, and it drives runTargeting's fail-safe paths directly.
+// It covers outcomes a scripted shuttle cannot produce:
+// a non-done Outcome, or a done Outcome whose output file was never written.
 type fixedShuttle struct {
 	result shuttleengine.Result
 	err    error
@@ -1246,10 +1207,9 @@ func (f *fixedShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
 	return f.result, f.err
 }
 
-// TestRunTargeting_FailSafe proves runTargeting's fail-safe posture directly against every failure
-// path (d) names: a shuttle Run error, a non-done Outcome, and a claimed-done Outcome whose seed
-// file was never actually written (or was written empty) — every path returns ("", false) rather
-// than an error, mirroring runCircling/runMilestone.
+// TestRunTargeting_FailSafe proves runTargeting fails safe on every failure path:
+// a shuttle Run error, a non-done Outcome, and a claimed-done Outcome whose seed file is missing or empty.
+// Each path returns ("", false) rather than an error.
 func TestRunTargeting_FailSafe(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1300,17 +1260,14 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 	}
 }
 
-// TestEngine_ScratchDirSeam covers the scratch-directory seam (Options.ScratchDir) and its
-// back-compat default: (a) unset ScratchDir keeps every transient (run.lock, state.json.lock, the
-// pause flag) in runDir exactly as before this seam existed; (b) a set ScratchDir routes all three
-// away from runDir while state.json and round artifacts stay put, and runDir is asserted to hold
-// NO .lock file and NO pause entry at all — the load-bearing check, since "the lock is in scratch"
-// alone would also pass an implementation that writes it to both; (c) ErrBlockBusy still fires for
-// a second concurrent Run against the same run/scratch pair; (d) PauseFlagPath(scratchDir) and a
-// subsequent Run agree on where the flag lives, and a resuming Run clears the leftover flag at
-// entry. Every subtest uses its own fakeRunner.onCall hook to write the pause flag mid-round (an
-// external caller's pause verb would race the same way against a real block), since the entry-time
-// clearPauseFlag would otherwise erase a flag pre-seeded before Run is ever called.
+// TestEngine_ScratchDirSeam covers the scratch-directory seam (Options.ScratchDir) and its back-compat default.
+// With ScratchDir unset, every transient (run.lock, state.json.lock, the pause flag) stays in runDir.
+// With it set, those transients move out of runDir, while state.json and round artifacts stay put.
+// ErrBlockBusy still fires for a second concurrent Run against the same run and scratch pair.
+// PauseFlagPath(scratchDir) and a subsequent Run agree on where the flag lives,
+// and a resuming Run clears a leftover flag at entry.
+// Each subtest writes the pause flag from its own fakeRunner.onCall hook mid-round:
+// the entry-time clearPauseFlag would otherwise erase a flag seeded before Run is called.
 func TestEngine_ScratchDirSeam(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("(a) unset ScratchDir keeps run.lock, state.json.lock, and the pause flag in runDir", func(t *testing.T) {
@@ -1389,9 +1346,8 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			t.Fatalf("fakeRunner calls = %+v; want round 1's review artifact path rooted at runDir %q", fr.calls, runDir)
 		}
 
-		// The load-bearing assertion: runDir must hold NO .lock file and NO
-		// pause entry at all — "the lock is in scratch" alone would also pass
-		// an implementation that writes it to both.
+		// runDir must hold no .lock file and no pause entry.
+		// Checking only that the lock is in scratch would also pass an implementation that writes it to both.
 		entries, err := os.ReadDir(runDir)
 		if err != nil {
 			t.Fatalf("ReadDir(%q) = %v; want nil", runDir, err)
@@ -1474,9 +1430,8 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			t.Fatalf("pause flag %q does not exist right after a paused Run; want it left in place for the caller to observe", flagPath)
 		}
 
-		// A subsequent Run resuming the same block clears the leftover flag
-		// at entry (the resumed-block-must-never-instantly-re-pause rule),
-		// then proceeds to completion untouched by it.
+		// A subsequent Run resuming the same block clears the leftover flag at entry,
+		// so the resumed block does not pause again at once and runs to completion.
 		fr2 := &fakeRunner{}
 		fr2.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s2"}}}
 		e2 := New("gate", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})

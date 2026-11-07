@@ -1,4 +1,7 @@
-// main_test.go checks tokencount's flag set: the retired history and projects flags, a foreign hub without a records repository and a -since that is no date and a -last below 1 without -since are refused, a -since date parses to the start of its local day, and the hub flag resolves against the current directory.
+// main_test.go checks tokencount's flag set.
+// It refuses the retired history and projects flags; a foreign hub without a records repository;
+// a non-date -since, and a -last below 1 without -since.
+// A -since date parses to the start of its local day, and the hub flag resolves against the current directory.
 
 package main
 

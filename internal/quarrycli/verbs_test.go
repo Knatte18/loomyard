@@ -1,5 +1,6 @@
-// verbs_test.go covers the four verbs' own answer-path behaviour against a fixture repository built under t.TempDir(): RunCLIIn's exit code and parseable-JSON contract on success, resolve's per-glyph answers (one document per glyph, exit 1 on any negative answer), and golden assertions that glyphs' JSON and --text output are each byte-identical to the facade's own rendering of the same answer.
-// All four reach quarry.TOC, Glyphs, Resolve and Expand -- file readers, none of which spawns a process --
+// verbs_test.go covers the four verbs' answer paths against a fixture repository under t.TempDir().
+// Its golden tests check glyphs' JSON and --text output byte for byte against the facade's own rendering.
+// All four reach quarry.TOC, Glyphs, Resolve and Expand, which read files and spawn no process,
 // so this file stays in tier 0.
 
 package quarrycli
@@ -17,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeFixtureRepo writes files (keyed by repository-relative path) under a fresh t.TempDir() and
-// returns that directory's absolute path, ready to hand to RunCLIIn as cwd.
+// writeFixtureRepo writes files, keyed by repository-relative path, under a fresh t.TempDir().
+// It returns that directory's absolute path, ready to hand to RunCLIIn as cwd.
 func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -34,7 +35,9 @@ func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// TestRunCLIIn_EachVerb_Answers drives each of the four verbs against a fixture repository and asserts exit 0 and a parseable JSON payload for a positive answer, and a non-zero exit for expand on a directory, which is not a type and answers not_found.
+// TestRunCLIIn_EachVerb_Answers drives each of the four verbs against a fixture repository.
+// A positive answer must exit 0 with a parseable JSON payload.
+// Expand on a directory exits non-zero, because a directory is not a type and answers not_found.
 func TestRunCLIIn_EachVerb_Answers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -93,7 +96,8 @@ func decodeDocuments(t *testing.T, out string) []map[string]any {
 	return docs
 }
 
-// TestRunCLIIn_Resolve_PerGlyphAnswers asserts resolve prints one answer per glyph in argument order, and exits 1 on any negative answer but 0 when every glyph is found.
+// TestRunCLIIn_Resolve_PerGlyphAnswers asserts resolve prints one answer per glyph in argument order.
+// It exits 1 on any negative answer and 0 when every glyph is found.
 func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
@@ -184,7 +188,10 @@ func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	})
 }
 
-// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes, as JSON and as --text, are byte-identical to the facade's own RenderGlyphsJSON and RenderGlyphsText rendering of the same answer, computed directly against quarry.Open/Glyphs -- the copied-verbatim guarantee this verb exists to provide.
+// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes are byte-identical to the facade's.
+// Both the JSON and the --text output are checked, against the facade's RenderGlyphsJSON and RenderGlyphsText.
+// The expected answer comes straight from quarry.Open and Glyphs.
+// That copied-verbatim guarantee is what this verb exists to provide.
 func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -236,7 +243,8 @@ func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_GlyphsText_EmptyAnswer asserts a directory with no symbols and no incomplete files makes glyphs --text write nothing and exit 0.
+// TestRunCLIIn_GlyphsText_EmptyAnswer asserts that glyphs --text writes nothing and exits 0.
+// The directory holds no symbols and no incomplete files.
 func TestRunCLIIn_GlyphsText_EmptyAnswer(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"docs/notes.txt": "just prose\n"})
@@ -251,7 +259,8 @@ func TestRunCLIIn_GlyphsText_EmptyAnswer(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_GlyphsText_TestFileFilter asserts a line filter on _test.go drops exactly the test-file symbol lines, because each symbol is one line carrying its own file path.
+// TestRunCLIIn_GlyphsText_TestFileFilter asserts a line filter on _test.go drops exactly the test-file symbol lines.
+// Each symbol is one line carrying its own file path.
 func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{
@@ -294,7 +303,9 @@ func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_TextFlagRefusals asserts the --text paths that fail exit non-zero: a failing glyphs query under --text still emits the JSON error envelope, and --text is glyphs-only so the other verbs reject it.
+// TestRunCLIIn_TextFlagRefusals asserts the --text paths that fail exit non-zero.
+// A failing glyphs query under --text still emits the JSON error envelope.
+// --text is glyphs-only, so the other verbs reject it.
 func TestRunCLIIn_TextFlagRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

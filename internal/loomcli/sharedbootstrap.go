@@ -1,11 +1,9 @@
-// sharedbootstrap.go holds the blocks `start` and `step` share.
-// Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock, because the lock's position differs between the two calling verbs.
-// `start` acquires it later than its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the run-lock handshake,
-// while `step` spawns no driver and runs no handshake,
-// so it wraps reed Up alone and releases before calling the producer.
-// ensureStatusStrand is `start`'s alone: `step` touches no strand.
-// Each verb wraps its own lock window around these calls;
-// no helper here may assume either window.
+// sharedbootstrap.go holds the bootstrap steps that `start` and `step` share.
+// Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock.
+// Each verb wraps its own lock window around these calls, so no helper may assume either window.
+// `start` holds the lock across the strand work, the driver spawn, and the run-lock handshake.
+// `step` holds it around reed Up alone and releases it before it calls the producer.
+// ensureStatusStrand is `start`'s alone, because `step` touches no strand.
 
 package loomcli
 
@@ -32,44 +30,46 @@ import (
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
 
-// bootstrapStage names the sub-step of seedAndCommitBootstrap a failure occurred at, so a caller can
-// classify the failure without re-running the sub-steps: `start` deliberately ignores it and keeps
-// writing its envelope exactly as before this extraction, while `step` maps it onto its own refusal-
-// kind vocabulary.
+// bootstrapStage names the sub-step of seedAndCommitBootstrap where a failure occurred.
+// A caller classifies the failure from it without re-running the sub-steps.
+// `start` ignores the stage, and `step` maps it onto its own refusal-kind vocabulary.
 type bootstrapStage int
 
 const (
-	// bootstrapStageNone is the zero value: no failure occurred, or the caller has not yet inspected
-	// the returned stage.
+	// bootstrapStageNone is the zero value, meaning no failure occurred.
+	// A caller that has not yet inspected the returned stage also sees this value.
 	bootstrapStageNone bootstrapStage = iota
-	// bootstrapStageOrigin means the failure occurred while reading or writing the origin record, or
-	// while resolving the parent branch from it.
+	// bootstrapStageOrigin means the failure occurred on the origin record:
+	// reading or writing it, or resolving the parent branch from it.
 	bootstrapStageOrigin
-	// bootstrapStageSeed means the failure occurred while writing loom's own shedrun.Seed, or while
-	// seeding the status file, for a reason other than either already existing with an agreeing
-	// value.
+	// bootstrapStageSeed means the failure occurred while writing loom's shedrun.Seed or while seeding the status file.
+	// An existing seed or status file that already agrees with this run is not a failure.
+	// A seed that disagrees with an existing one fails here, as does any other write error.
 	bootstrapStageSeed
-	// bootstrapStageOwnership means the failure occurred while verifying the seeded status file
-	// belongs to this task's own slug.
+	// bootstrapStageOwnership means the failure occurred while verifying the seeded status file's owner.
+	// The status file must belong to this task's own slug.
 	bootstrapStageOwnership
-	// bootstrapStageCommit means the failure occurred while committing the seed and the origin
-	// record into the fabric.
+	// bootstrapStageCommit means the failure occurred while committing into the fabric.
+	// It covers the seed, the status file, the origin record, and the friction directory.
 	bootstrapStageCommit
 )
 
 // seedAndCommitBootstrap resolves the parent branch and writes loom's own shedrun.Seed.
-// It seeds the status file when absent and verifies seed ownership.
-// It then commits the seed, the status file, the origin record, and the friction directory when it holds tracked or untracked content into the fabric.
-// It holds today's steps 1 through 3 from start.go's RunE verbatim and in today's order, so `step` can call the exact same sequence.
+// It seeds the status file when absent and verifies that its seed belongs to this task.
+// It then commits the seed, the status file, the origin record, and the friction directory into the fabric.
+// The friction directory is committed only when it holds tracked or untracked content.
+// Both `start` and `step` call it, so they run the same sequence of steps.
 //
 // On success it returns the resolved parent branch, the run's effective driver, bootstrapStageNone,
-// and a nil error. On failure it returns two empty strings, the stage that failed, and the error
-// unwrapped.
+// and a nil error.
+// On failure it returns two empty strings, the stage that failed, and the error unwrapped.
 //
-// The effective driver is read from any already-recorded seed, never taken from a flag, since this command declares no driver flag of its own.
-// It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet;
-// an operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe tapestry --driver go".
-// Without this read-through, a run already seeded for the llm driver would be refused here, because WriteSeed rejects a disagreeing existing seed.
+// The effective driver is read from any already-recorded seed.
+// It is never taken from a flag, since the verbs declare no driver flag of their own.
+// It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet.
+// An operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe tapestry --driver go".
+// Without this read-through, a run already seeded for the llm driver would be refused here.
+// WriteSeed rejects a disagreeing existing seed.
 func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, string, bootstrapStage, error) {
 	// Step 1: resolve the recorded parent branch, writing the provenance record only for a legacy
 	// worktree created before it existed.
@@ -82,24 +82,22 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		return "", "", bootstrapStageOrigin, err
 	}
 	if writeOrigin {
-		// loom's envelope deliberately gains no mutation keys here: the Mutation Record Invariant
-		// binds fabric verb outcomes, and loom's own result is not one, so the recorder is thrown
-		// away rather than surfaced.
+		// The Mutation Record Invariant covers fabric verb outcomes, not loom's own result.
+		// The recorder is therefore discarded rather than surfaced in the envelope.
 		originRec := fabricengine.NewMutations("")
 		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabricengine.Origin{ParentBranch: parent}); err != nil {
 			return "", "", bootstrapStageOrigin, err
 		}
 	}
 
-	// Step 1b: write loom's own seed, the run's identity, before the status file it seeds next --
-	// the status file must never exist without a seed beside it, which is the inconsistency card
-	// 14's refusal exists to catch. The existing seed, if any, is read first so its recorded driver
-	// survives this write unchanged -- see resolveSeedDriver. WriteSeed is already idempotent
-	// against a byte-identical seed, so a re-run needs no sentinel handling of its own; a disagreeing
-	// seed's refusal propagates as a returned error here, at bootstrapStageSeed. params.parent is the
-	// run's recorded startup choice, not the durable truth -- fabricengine.Origin.ParentBranch
-	// (written just above) stays the durable record, and resolveParentBranch's own disagreement
-	// refusal already guards it.
+	// Step 1b: write loom's own seed, the run's identity, before the status file it seeds next.
+	// The status file must never exist without a seed beside it.
+	// The existing seed, if any, is read first so that its recorded driver survives this write unchanged.
+	// WriteSeed is already idempotent against a byte-identical seed, so a re-run needs no sentinel handling of its own.
+	// A disagreeing seed's refusal propagates as a returned error here, at bootstrapStageSeed.
+	// The parent in this seed is the run's recorded startup choice, not the durable record.
+	// fabricengine.Origin.ParentBranch, written above, stays the durable record.
+	// resolveParentBranch refuses a disagreeing value.
 	existingSeed, seedFound, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID)
 	if err != nil {
 		return "", "", bootstrapStageSeed, err
@@ -119,52 +117,48 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	}
 
 	// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a re-run works.
-	// A stat-then-seed probe here would reintroduce the exact race the seeder's single lock exists to
-	// close, so ErrSeedExists is the only accepted outcome.
-	// seedErr is kept rather than discarded because step 2b below needs to tell a genuine first seed
-	// from an ErrSeedExists re-entry, and this is the only place that distinction is observable.
+	// A stat-then-seed probe would reintroduce the race that the seeder's single lock closes.
+	// ErrSeedExists is therefore the only accepted outcome.
+	// seedErr is kept because step 2b needs to tell a first seed from an ErrSeedExists re-entry.
+	// Only here is that distinction visible.
 	seedErr := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent)
 	if seedErr != nil && !errors.Is(seedErr, loomshed.ErrSeedExists) {
 		return "", "", bootstrapStageSeed, seedErr
 	}
-	// An already-present status file must be THIS task's own: `lym fabric add` run from a task
-	// worktree forks the whole pair, `_lym` task state included, and the driver would otherwise
-	// silently resume the inherited task's run under the wrong slug (crucible round fable5-high-r3,
-	// F-B7).
+	// An already-present status file must belong to this task.
+	// `lym fabric add` run from a task worktree forks the whole pair, `_lym` task state included,
+	// and the driver would otherwise silently resume the inherited task's run under the wrong slug.
 	if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
 		return "", "", bootstrapStageOwnership, err
 	}
 
-	// Step 2b: Tier 2's once-per-task friction directory handling, positioned after the ownership
-	// check on purpose -- the first-seed branch DELETES the directory, and a status file belonging to
-	// another task must never have its friction notes cleared by this worktree.
-	// Both calling verbs reach this, which is the point: `start` spawns `run`, which ensures the
-	// directory itself, but `step` spawns no driver at all and would otherwise leave every
-	// step-driven run composing note paths into a directory nothing had created.
+	// Step 2b handles the once-per-task friction directory.
+	// It runs after the ownership check, because the first-seed branch deletes the directory,
+	// and a status file that belongs to another task must never have its friction notes cleared by this worktree.
+	// Both `start` and `step` reach this step.
+	// `start` spawns `run`, which ensures the directory itself.
+	// `step` spawns no driver, so without this step it would leave the directory uncreated for its runs.
 	ensureFrictionDirAfterSeed(c.frictionDir, seedErr)
 
-	// Step 2c: the run's identity record for its cost report is written on the first seed only, so a re-entry keeps the one already there.
+	// Step 2c writes the run's identity record for its cost report on the first seed only.
+	// A re-entry keeps the record already there.
 	wroteRunUsage := seedErr == nil && c.writeRunUsage(seedRecipe, slug)
 
-	// Step 3: commit the seed and the provenance record into the fabric, unconditionally on every
-	// invocation -- not gated on this invocation's own writeOrigin. The origin record's path is
-	// included every time for the same reason the status file's path always is: if a prior
-	// invocation wrote the record to disk (step 1) but crashed before this step committed it,
-	// resolveParentBranch's next read finds the record present with a matching value and reports
-	// write == false, even though the record is still untracked in the fabric. Including the path
-	// unconditionally makes that state self-heal on the very next call, exactly as the status file
-	// already does -- and costs nothing on the ordinary path, since committing an already-clean,
-	// already-tracked path is a no-op (StageAndCommit reports committed == false).
-	// This must precede any producer call: the phase machine's very first precondition row scans the
-	// fabric including untracked files, and none of the three is on the never-tracked exclude list,
-	// so an uncommitted seed, status file, or record would fail that check immediately. The
-	// shedrun.SeedRel entry is included unconditionally for the same self-healing reason the origin
-	// record's own comment already gives: WriteSeed above is idempotent, so a prior invocation that
-	// wrote the seed to disk but crashed before this step committed it self-heals on the very next
-	// call.
-	// The friction directory is committed too whenever it holds tracked or untracked content.
-	// A task worktree branches from a fabric that may carry committed notes, such as a beam pawl run's own halt note.
-	// Step 2b's first-seed clear deletes them, and that deletion left uncommitted would fail the same precondition row.
+	// Step 3: commit the seed and the provenance record into the fabric on every invocation.
+	// The commit does not depend on whether this invocation wrote the origin record.
+	// The origin record's path is always included.
+	// A prior invocation may have written it to disk and crashed before committing it.
+	// On the next call, resolveParentBranch finds the record present and reports write == false while it is untracked.
+	// The status file and the seed are included on every call for the same reason, since WriteSeed is idempotent.
+	// Committing a clean path is a no-op (StageAndCommit reports committed == false), so the ordinary path pays nothing.
+	// The commit must precede any producer call.
+	// The phase machine's first precondition row scans the fabric, including untracked files.
+	// An uncommitted path fails that check.
+	// None of these three paths is on the scan's never-tracked exclude list.
+	// The friction directory is committed whenever it holds tracked or untracked content.
+	// A task worktree can branch from a fabric that carries committed notes, such as a beam pawl run's halt note.
+	// The first-seed clear in ensureFrictionDirAfterSeed deletes those notes;
+	// left uncommitted, that deletion would fail the precondition scan.
 	// Probing on every invocation self-heals a clear whose commit crashed.
 	// A resume's notes stay on disk and are committed here too.
 	// The probe is skipped under SkipGit, where the commit is a no-op and the fabric's git may be unusable.
@@ -178,7 +172,8 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	}
 	commitPaths := bootstrapCommitPaths(c.location, withFriction)
 	if wroteRunUsage {
-		// The record is committed with the seed so the run's first precondition scan finds no untracked file; the status commits carry the usage directory after it.
+		// The record is committed with the seed so the run's first precondition scan finds no untracked file;
+		// the status commits carry the usage directory after it.
 		commitPaths = append(commitPaths, shedrun.UsageDirRel())
 	}
 	commitRec := fabricengine.NewMutations("")
@@ -191,7 +186,9 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 }
 
 // writeRunUsage writes the run's identity record into its usage directory and reports whether it wrote one.
-// A failed read of the board entry or of the run profiles is logged at Warn and the record is written with what was read; a failed write is logged at Warn and reports false.
+// A failed read of the board entry or the run profiles is logged at Warn,
+// and the record is written with what was read;
+// a failed write is logged at Warn and reports false.
 func (c *loomCLI) writeRunUsage(recipe, slug string) bool {
 	var entry boardengine.Task
 	found := false
@@ -220,7 +217,8 @@ func (c *loomCLI) writeRunUsage(recipe, slug string) bool {
 }
 
 // runUsageRecord builds the run's identity record for its cost report.
-// The profile is the entry's own, else defaultProfile, the one the recipe takes when an entry names none; stored_record is true when the entry is flagged discussed, so the run starts from a stored record.
+// The profile is the entry's own, else defaultProfile, the one the recipe takes when an entry names none.
+// stored_record is true when the entry is flagged discussed, so the run starts from a stored record.
 // An absent entry records an empty profile and no stored record.
 func runUsageRecord(recipe string, entry boardengine.Task, found bool, defaultProfile string) shedrun.RunUsageRecord {
 	record := shedrun.RunUsageRecord{Recipe: recipe}
@@ -235,16 +233,20 @@ func runUsageRecord(recipe string, entry boardengine.Task, found bool, defaultPr
 	return record
 }
 
-// disagreeingSeedRefusal renders the refusal for an existing seed at seedPath whose recipe, driver or params differ from the seed the bootstrap writes for the recorded parent.
-// It wraps shedrun.ErrDisagreeingSeed and ends in a way forward that clears the one file and re-seeds with the existing recipe and driver and the recorded parent, so following it cannot loop on the same refusal.
+// disagreeingSeedRefusal renders the refusal for an existing seed at seedPath.
+// The seed's recipe, driver or params differ from what the bootstrap writes for the recorded parent.
+// It wraps shedrun.ErrDisagreeingSeed.
+// Its way forward clears the one file and re-seeds with the existing recipe, driver and recorded parent.
+// Following it therefore cannot loop on the same refusal.
 func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent string) error {
 	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lym shed seed self --recipe %s --driver %s --param parent=%s",
 		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, parent)
 }
 
-// resolveSeedDriver reads the effective driver seedAndCommitBootstrap's step 1b must write.
-// It is the already-recorded seed's own Driver when one exists, and kind -- the driver_kind the loaded config resolves to, llm by default -- only when no seed has been written yet.
-// It is a pure function, factored out so a Tier 1 test can pin its cases with no real fabric behind it.
+// resolveSeedDriver returns the driver a run records when it is seeded.
+// It is the already-recorded seed's own Driver when one exists.
+// It is kind, the driver_kind the loaded config resolves to (llm by default), only when no seed has been written yet.
+// It is a pure function, so a Tier 1 test can pin its cases with no real fabric behind it.
 //
 // A recorded driver always wins over kind: editing the config after seeding has no effect on that run.
 func resolveSeedDriver(existing shedrun.Seed, found bool, kind string) string {
@@ -254,9 +256,9 @@ func resolveSeedDriver(existing shedrun.Seed, found bool, kind string) string {
 	return existing.Driver
 }
 
-// resolveSeedRecipe reads the recipe seedAndCommitBootstrap's step 1b must write: the already-recorded seed's own Recipe when one exists, shedrun.RecipeTapestry otherwise.
-// It is the read, not a choice, so `lym loom start` never writes a recipe over an existing seed;
-// the recipe of a run is set only by the seeding that created the seed.
+// resolveSeedRecipe returns the recipe a run records when it is seeded.
+// It is the already-recorded seed's own Recipe when one exists, and shedrun.RecipeTapestry otherwise.
+// It only reads the recipe, so an existing seed keeps the recipe it recorded when it was created.
 func resolveSeedRecipe(existing shedrun.Seed, found bool) string {
 	if !found {
 		return shedrun.RecipeTapestry
@@ -264,13 +266,10 @@ func resolveSeedRecipe(existing shedrun.Seed, found bool) string {
 	return existing.Recipe
 }
 
-// loomSeedFor builds the shedrun.Seed seedAndCommitBootstrap's step 1b writes.
-// The recipe and the driver to record are told by the caller and never chosen here, see resolveSeedRecipe and resolveSeedDriver.
-// The run's recorded startup choice of parent branch is the seed's sole param.
-// It is a pure function, factored out of seedAndCommitBootstrap so its shape is directly testable
-// without driving the whole bootstrap sequence -- WriteSeed itself needs no real fabric, but
-// seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) does, which would otherwise put
-// this value's shape out of a Tier 1 test's reach.
+// loomSeedFor builds the shedrun.Seed that records a run's recipe, driver and parent branch.
+// The caller passes the recipe and the driver to record; this function never chooses them.
+// The parent branch is the seed's sole param.
+// It is a pure function, so a Tier 1 test can pin the seed's shape without a real fabric behind it.
 //
 // parent is the parent branch; the seed records no parent agent, which is resolved from fabric's origin record at use.
 func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
@@ -281,11 +280,13 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 	}
 }
 
-// bootstrapCommitPaths returns the anchor-relative paths seedAndCommitBootstrap's step 3 commits:
+// bootstrapCommitPaths returns the anchor-relative paths the bootstrap commits:
 // the status file, the seed and the origin record always,
-// and the friction directory when withFriction is set, so a first seed's clear of notes the fabric already tracked is committed with the seed.
-// Git refuses a commit pathspec that matches nothing, so withFriction must be set only when the directory matches tracked or untracked content.
-// It is a pure function, factored out for the same reason loomSeedFor is -- so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
+// and the friction directory when withFriction is set,
+// so a first seed's clear of notes the fabric already tracked is committed with the seed.
+// Git refuses a commit pathspec that matches nothing;
+// so withFriction must be set only when the directory matches tracked or untracked content.
+// It is a pure function, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
 func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string {
 	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 	if withFriction {
@@ -294,23 +295,15 @@ func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string
 	return paths
 }
 
-// ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after
-// loomshed.Seed: on a genuine first seed (seedErr is nil), the friction directory is cleared before
-// being recreated, since a fresh task has no notes worth preserving; on an ErrSeedExists re-entry
-// (any other seedErr value), the directory is left untouched and only ensured to exist, since a
-// resume's notes are exactly the ones most worth reading.
-// They stay on disk, and the bootstrap's commit step still commits whatever the directory holds.
-// Both operations are skipped entirely when
-// frictionDir is empty, which is how Tier 2's off state travels. A failed os.RemoveAll logs at Warn
-// and never fails this call; a failed friction.EnsureDir is handled entirely inside that function,
-// which never returns an error either.
-//
-// It lives here, beside its one caller, rather than in start.go where it was first written: it was
-// never called from there at all. The clear-on-first-seed behaviour this function documents did not
-// ship, and its four unit tests were green over an orphan -- so a worktree whose friction directory
-// still held notes from an earlier task, or from an earlier run that never reached a reflection
-// trigger, fed every one of them to the NEXT task's reflection agent as that task's own friction.
-// Reproduced live in crucible round 1 against a real hub.
+// ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split right after loomshed.Seed.
+// On a genuine first seed (seedErr is nil), the friction directory is cleared and then recreated.
+// A fresh task has no notes worth preserving.
+// On a loomshed.ErrSeedExists re-entry (any other seedErr value), the directory is only ensured to exist.
+// A resume's notes are the ones most worth reading, and they stay on disk.
+// The bootstrap's commit step still commits whatever the directory holds.
+// Both operations are skipped when frictionDir is empty.
+// A failed os.RemoveAll logs at Warn and never fails this call;
+// a failed friction.EnsureDir is handled entirely inside that function, which never returns an error either.
 func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	if frictionDir == "" {
 		return
@@ -324,14 +317,12 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 }
 
 // ensureStatusStrand is `start`'s status-strand work: it keeps, replaces or adds the worktree's status strand.
-// The caller has already brought reed up,
-// and only `start` calls it.
+// Only `start` calls it, after it has brought reed up.
 // It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
 //
-// It returns the first error encountered, unwrapped, and nil on success. It must not acquire or
-// release the bootstrap lock and must not call bootstrapLock.Release() -- the caller owns that
-// entirely, since the lock's position differs between the two calling verbs (see this file's own
-// header comment).
+// It returns the first error encountered, unwrapped, and nil on success.
+// The caller owns the bootstrap lock: this function must neither acquire nor release it.
+// The lock's position differs between the verbs that run the bootstrap.
 func (c *loomCLI) ensureStatusStrand() error {
 	statusResult, err := c.reed.Status()
 	if err != nil {
@@ -354,9 +345,9 @@ func (c *loomCLI) ensureStatusStrand() error {
 	addSpec := c.statusStrandSpec(exe)
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
-		// A replace goes through ReplaceStrand so the status strand keeps its top slot. A failure is
-		// not fatal to the bootstrap: it costs the operator the status pane for this run, not the
-		// run itself.
+		// A replace goes through ReplaceStrand so the status strand keeps its top slot.
+		// A failure is not fatal to the bootstrap;
+		// it costs the operator the status pane for this run, not the run itself.
 		strand, err = c.reed.ReplaceStrand(staleGUID, addSpec)
 		if err != nil {
 			logger.Warn("loom: could not replace the status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
@@ -376,18 +367,22 @@ func (c *loomCLI) ensureStatusStrand() error {
 	return nil
 }
 
-// statusStrandSpec builds the spec the status strand is added or replaced with: the checklist pane command of the lym binary at exe, in a window titled for this run's recipe and board handle.
+// statusStrandSpec builds the spec for adding or replacing the status strand.
+// The spec runs the checklist pane command of the lym binary at exe.
+// Its window is titled for this run's recipe and board handle.
 func (c *loomCLI) statusStrandSpec(exe string) reedengine.AddSpec {
 	return statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe), statusWindowTitle(c.location, c.recipe))
 }
 
-// statusWindowTitle returns the name of the status strand's window for a run of recipe in the worktree at location, read from the board at the call:
-// the recipe opened with the run's board handle, such as `T4: tapestry`, or the recipe alone when the board names no handle for the worktree's slug or cannot be read.
+// statusWindowTitle returns the name of the status strand's window for a run of recipe in the worktree at location.
+// It reads the board at the call and gives the recipe with the run's board handle, such as `T4: tapestry`.
+// It gives the recipe alone when the board names no handle for the worktree's slug or cannot be read.
 func statusWindowTitle(location *lymcwd.Location, recipe string) string {
 	return boardengine.TitleWithHandle(fabricengine.BoardDir(location.HubPath), location.WorktreeName, recipe)
 }
 
-// wireLanding assembles Env.Landing: it opens the fabric, reads the landing branches and tells landingDeps the hub's language skills.
+// wireLanding assembles Env.Landing.
+// It opens the fabric, reads the landing branches, and passes the hub's language skills on.
 // It then sets the fixer's seat runner to the seat engine wire built.
 func (c *loomCLI) wireLanding() error {
 	handle, err := fabricengine.Open(c.location)
@@ -415,15 +410,16 @@ func (c *loomCLI) wireLanding() error {
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
-	// The PR-Review session's liveness and process registration read reed's strand table, as the wait-mark and conflict-stopper seams do.
+	// The PR-Review session's liveness and process registration read reed's strand table.
 	slug := seedSlug(c.location.WorktreeName)
 	registerPane := func(pid int) error {
 		return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
 	}
 	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
 	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
-	// A sampler run's session is kept like PR-Review's, and the row wakes on its record's file event.
-	// Both building paths pass through here and status and pause never do, so the watch opens only for a run that drives the row.
+	// The sampler run's session is checked for liveness and registered, and its row wakes on its record's file event.
+	// The building paths pass through here; status and pause never do.
+	// So the watch opens only for a run that drives the row.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
 		c.env.Sampler.Sessions = c.runner
 		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
@@ -447,19 +443,20 @@ func (c *loomCLI) wireLanding() error {
 	return nil
 }
 
-// buildLoomShed builds the *shedengine.Shed run.go's RunE runs.
-// It assembles Env.Landing through wireLanding, then constructs the shed via loomrecipe.New.
+// buildLoomShed builds the *shedengine.Shed that the run command runs.
+// It assembles Env.Landing, then constructs the shed with loomrecipe.New.
 //
-// It returns the constructed shed and a nil error, or a nil shed and the first error encountered,
-// unwrapped.
+// It returns the constructed shed and a nil error, or a nil shed and the first error encountered, unwrapped.
 func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 	if err := c.wireLanding(); err != nil {
 		return nil, err
 	}
 
-	// A loop's step child adopts its trace id from LYM_TRACE_ID, so this tie names the step the loop runs and the watchdog can stop that step's runs.
+	// A loop's step child adopts its trace id from LYM_TRACE_ID.
+	// This tie names the step the loop runs, so the watchdog can stop that step's runs.
 	c.runner.SetStepTie(shuttleengine.StepTie{StepsDir: shedrun.StepsDir(c.location, c.runID), TraceID: logger.TraceID()})
-	// Beam-Await wakes on a land request's file event, which only a running shed needs a watch for; wire also runs for status and pause.
+	// Beam-Await wakes on a land request's file event, which only a running shed needs a watch for.
+	// The wiring also runs for status and pause, so the watch is opened here instead.
 	if c.recipe == shedrun.RecipePawl {
 		c.env.Pawl.Watch = openLandRequestWatch(c.env.Pawl.Paths)
 	}

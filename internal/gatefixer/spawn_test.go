@@ -1,4 +1,6 @@
-// spawn_test.go covers SpawnOrAttach: attach to a live record, the spawn's spec and record, and each failure that must leave no unrecorded strand.
+// spawn_test.go covers SpawnOrAttach.
+// It pins the attach to a live record and the spawn's spec and record.
+// It also pins each failure that must leave no unrecorded strand.
 
 package gatefixer
 

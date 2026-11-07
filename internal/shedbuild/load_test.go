@@ -1,5 +1,6 @@
-// load_test.go covers Load's path handling only -- a well-formed round trip, an absent file, a
-// relative path, and a directory path -- deliberately not a second copy of the Parse table.
+// load_test.go covers Load's path handling only:
+// a well-formed round trip, an absent file, a relative path, and a directory path.
+// It does not repeat the Parse table.
 
 package shedbuild
 
@@ -49,7 +50,7 @@ producers:
 	}
 }
 
-// TestLoad_UnreadableAbsolutePathErrors asserts an absolute path naming no file, and one naming a directory, each error.
+// TestLoad_UnreadableAbsolutePathErrors asserts Load errors on an absolute path that names no file or names a directory.
 func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -72,9 +73,9 @@ func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
 	}
 }
 
-// TestLoad_RelativePathErrorsBeforeAnyRead asserts a relative path errors with the must-be-absolute
-// message, using a relative path that does resolve to a real file from the test's working
-// directory -- the only way to make the reject-before-read assertion meaningful.
+// TestLoad_RelativePathErrorsBeforeAnyRead asserts Load rejects a relative path with the must-be-absolute message.
+// The path must resolve to a real file from the test's working directory.
+// Only then does the assertion prove the rejection happens before any read.
 // The file is one of the package's own sources, so the test writes nothing into the source tree.
 // Other packages' tests read its directory listings, and Go's test cache keys on them.
 func TestLoad_RelativePathErrorsBeforeAnyRead(t *testing.T) {

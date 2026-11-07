@@ -1,5 +1,6 @@
-// targetdirs.go holds CardTargetDirs, CardPackages, RefFile, RefScope, RefCovers, RefMember, CardCovers and TargetHolds, the read-only mappings from a card's refs to the worktree directories, files and code locations they name.
-// It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
+// targetdirs.go maps a card's refs, read-only, to the worktree directories, files and code locations they name.
+// It lives here so every ref-shape and glyph-to-path decision stays inside this package.
+// This placement follows the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
 
@@ -23,7 +24,7 @@ type TargetDir struct {
 	NamesGo bool
 }
 
-// CardTargetDirs returns one entry per directory card's targets live in, in first-seen order.
+// CardTargetDirs returns one entry per directory that the card's targets live in, in first-seen order.
 // A path target maps to its own directory, or to itself when it names a directory.
 // A glyph or `plan:` handle maps through Glyph.UnitPath, to the unit's directory when the unit is a file.
 // An external test package's unit maps to its package directory.
@@ -74,7 +75,7 @@ func CardTargetDirs(plan *Plan, card Card) []TargetDir {
 	return dirs
 }
 
-// ModulePackages is the Go package arguments one module holds among a set of cards' targets.
+// ModulePackages is one module's Go package arguments among a set of cards' targets.
 type ModulePackages struct {
 	// Dir is the module directory relative to the worktree, "." for the root module.
 	Dir string
@@ -83,9 +84,12 @@ type ModulePackages struct {
 	Packages []string
 }
 
-// CardPackages returns the Go package arguments cards' targets live in, grouped per module, the root module first when it has any and each nested module in first-seen order.
-// A directory drops out when every target in it is a Delete, or when it neither names Go source nor directly holds a .go file in worktree, so a stencil or doc folder never reaches `go test`.
-// A directory belongs to a nested module as the plan stands once the last of cards has run.
+// CardPackages returns the Go package arguments that the cards' targets live in, grouped per module.
+// The root module comes first when it has any, then each nested module in first-seen order.
+// A directory drops out when every target in it is a Delete.
+// It also drops out when it neither names Go source nor directly holds a .go file in worktree,
+// so a stencil or doc folder never reaches `go test`.
+// A directory belongs to a nested module as the plan stands once the last card in cards has run.
 func CardPackages(plan *Plan, cards []Card, worktree string) []ModulePackages {
 	if len(cards) == 0 {
 		return nil
@@ -163,8 +167,10 @@ func RefFile(plan *Plan, ref string) (string, bool) {
 }
 
 // RefScope returns the worktree scope a card ref covers, and false when the ref names no unit.
-// A unit or path with a file extension is that cleaned file and isFile is true, so a changed file is covered only by equality.
-// Any other unit is its package directory with isFile false, a glyph's or `plan:` handle's unit taken through goPackageDir under a Go plan only, so an external test package's pseudo-unit names its package directory.
+// A unit or path with a file extension is that cleaned file, and isFile is true.
+// Any other unit is its directory, with isFile false.
+// Under a Go plan, a unit taken from a glyph or `plan:` handle first goes through goPackageDir,
+// so an external test package's pseudo-unit names its package directory.
 // A nil plan reads as the default language.
 func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
 	if plan == nil {
@@ -183,10 +189,14 @@ func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
 	return path.Clean(unit), false, true
 }
 
-// RefCovers reports whether cover, a Rename pair's old side or a Delete target, covers target, a ref an earlier card writes.
+// RefCovers reports whether cover covers target.
+// cover is a ref a card removes or replaces: a Rename pair's old side or a Delete ref.
+// target is a ref an earlier card writes.
 // A cover naming a member, a glyph or `plan:` handle that is not a self glyph, covers a target naming the same member.
-// A cover naming a file covers a target in that same file, and a glyph or handle target whose package directory is the file's directory.
-// A cover naming a directory, a plain directory path or a package self glyph, covers a target whose directory lies at or under it.
+// A cover naming a file covers a target in that same file.
+// It also covers a glyph or handle target whose package directory is the file's directory.
+// A cover naming a directory covers a target whose directory lies at or under it.
+// That holds for a plain directory path and for a package self glyph.
 // A ref that maps to no unit neither covers nor is covered.
 // A nil plan reads as the default language.
 func RefCovers(plan *Plan, cover, target string) bool {
@@ -225,8 +235,7 @@ func RefCovers(plan *Plan, cover, target string) bool {
 	return targetDir == coverScope || strings.HasPrefix(targetDir, coverScope+"/")
 }
 
-// CardCovers returns the refs card removes or replaces: the Old side of each Rename pair and its Delete refs.
-// These are the covers RefCovers takes.
+// CardCovers returns the refs a card removes or replaces: the Old side of each Rename pair and its Delete refs.
 func CardCovers(card Card) []string {
 	var covers []string
 	for _, group := range card.TargetGroups {
@@ -242,7 +251,8 @@ func CardCovers(card Card) []string {
 	return covers
 }
 
-// RefMember returns the canonical glyph string of a ref naming a member, a glyph or a `plan:` handle whose body parses to a glyph that is not a self glyph.
+// RefMember returns the canonical glyph string of a ref that names a member.
+// A glyph or `plan:` handle names a member when its body parses to a glyph that is not a self glyph.
 // ok is false for any other ref.
 // A nil plan reads as the default language.
 func RefMember(plan *Plan, ref string) (string, bool) {
@@ -264,8 +274,11 @@ func RefMember(plan *Plan, ref string) (string, bool) {
 }
 
 // TargetHolds reports whether a card target holds a code location.
-// member is the glyph quarry found at the location, empty for a location inside no member, and file is the location's repository-relative path.
-// It holds when the target is member itself or a type member belongs to, when it is the self glyph of member's unit (an external test unit read as its directory), or when it is file as a path or as its file self glyph.
+// member is the glyph quarry found at the location, empty for a location inside no member.
+// file is the location's repository-relative path.
+// It holds when the target is member itself or a type member belongs to.
+// It also holds when the target is the self glyph of member's unit (an external test unit read as its directory).
+// It also holds when the target is file, written as a path or as its file self glyph.
 // The member check runs one way: `pkg#T` holds `pkg#T.M`, and `pkg#T.M` does not hold `pkg#T`.
 // A `plan:` handle compares as its body, and a nil plan reads as the default language.
 func TargetHolds(plan *Plan, target, member, file string) bool {
@@ -301,7 +314,8 @@ func TargetHolds(plan *Plan, target, member, file string) bool {
 	return len(targetChain) <= len(memberChain) && slices.Equal(targetChain, memberChain[:len(targetChain)])
 }
 
-// holdsFile reports whether body, a target with any plan: handle stripped, names file as a self glyph through its path or as a plain path.
+// holdsFile reports whether body, a target with any plan: handle stripped, names file.
+// A self glyph names file through its path; any other body names it only as a plain path.
 func holdsFile(body, file string) bool {
 	if entryPath, ok := PathEntryPath(body); ok {
 		return entryPath == file
@@ -322,9 +336,10 @@ func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
 	return unitDir(unit, fromGlyph)
 }
 
-// goPackageDir maps a Go unit string, a glyph's UnitPath result or a handle's package half, to the directory its package lives in.
-// It is one of the two sanctioned adjustments of a Go unit string under the package doc's Glyph Conversion Chokepoint Invariant:
-// quarry names an external test package's unit `<dir>_test`, a pseudo-unit with no directory of its own, so a last path segment ending in `_test` with no file extension comes back without that suffix.
+// goPackageDir maps a Go unit string to the directory its package lives in.
+// The string may come from a glyph's `UnitPath` result or from a handle's package half.
+// quarry names an external test package's unit `<dir>_test`, which has no directory of its own,
+// so a last path segment ending in `_test` with no file extension loses that suffix.
 // Any other unit is returned unchanged.
 // It reads no disk, so a real package directory whose own name ends in `_test` maps to its sibling.
 func goPackageDir(unit string) string {
@@ -334,9 +349,10 @@ func goPackageDir(unit string) string {
 	return strings.TrimSuffix(unit, "_test")
 }
 
-// GoPackageCounterpart returns ref's member glyph in the other Go package of the same directory: `<dir>_test` for a member of `<dir>`, and `<dir>` for a member of `<dir>_test`.
-// It is the other sanctioned adjustment of a Go unit string under the package doc's Glyph Conversion Chokepoint Invariant, so a caller can find a member written into the package its plan did not name.
-// It reports false under a plan that is not go, and for a ref that is no member glyph or whose unit is a file.
+// GoPackageCounterpart returns ref's member glyph in the other Go package of the same directory:
+// `<dir>_test` for a member of `<dir>`, and `<dir>` for a member of `<dir>_test`.
+// It lets a caller find a member written into the package its plan did not name.
+// It reports false under a plan that is not go, and for a ref that is not a member glyph or whose unit is a file.
 // It reads no disk, so a real package directory whose own name ends in `_test` maps to its sibling.
 func GoPackageCounterpart(plan *Plan, ref string) (string, bool) {
 	if !plan.GoToolchain() {
@@ -380,7 +396,8 @@ func refUnit(plan *Plan, raw string) (unit string, fromGlyph, ok bool) {
 }
 
 // unitDir maps a unit or path spelling to its directory.
-// A spelling with a file extension is a file, so its directory is the parent, and it names Go source when the extension is .go.
+// A spelling with a file extension is a file, so its directory is the parent,
+// and it names Go source when the extension is .go.
 // A spelling without one is a directory itself, and a glyph's unit there is a package that names Go source.
 func unitDir(unit string, fromGlyph bool) (dir string, namesGo, ok bool) {
 	if unit == "" {

@@ -1,7 +1,8 @@
-// resume_test.go covers checkResumable over a temp project directory, a fixture session registry and a fake liveness probe:
-// a malformed id, a missing or unstattable transcript and a live holder refuse,
-// where a live holder whose start time cannot be compared refuses as unproven,
-// while a dead, non-matching or pid-reused holder proceeds, and an absent registry or an undecodable entry proceeds with a warning.
+// resume_test.go covers checkResumable: a temp project directory, a fixture session registry and a fake liveness probe.
+// A malformed id, a missing or unstattable transcript and a live holder refuse.
+// A live holder whose start time cannot be compared refuses as unproven.
+// A dead, non-matching or pid-reused holder proceeds;
+// an absent registry or an undecodable entry proceeds with a warning.
 
 package claudeengine
 

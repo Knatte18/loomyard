@@ -1,8 +1,7 @@
-// findings_test.go asserts that the general Preflight producer surfaces the determined failures it
-// used to discard.
-// This row carries no OnStuck in any producer list that names it -- nothing in a list produces the
-// git/filesystem state it gates -- so its Stuck halts the whole run for a human, and the driver log
-// is the only place that human can read why.
+// findings_test.go checks that the general Preflight producer surfaces every determined failure.
+// This row carries no OnStuck in any producer list that names it.
+// Nothing in a list produces the git/filesystem state it gates.
+// So its Stuck halts the whole run for a human, and the driver log is the only place that human can read why.
 
 package preflightshed
 
@@ -13,8 +12,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFormatFailures covers the rendering the Stuck log line carries: every determined failure, each as "check: reason", so no violation is silently dropped from the one account a human gets.
-// A Failure whose Check is a CheckID this package does not itself declare is carried through verbatim rather than mapped, so a check added elsewhere still reaches the operator.
+// TestFormatFailures covers the Stuck log line's rendering: each determined failure, as "check: reason",
+// so no violation is silently dropped from the one account a human gets.
+// A Failure whose Check is a CheckID this package does not declare is carried through verbatim, not mapped,
+// so a check added elsewhere still reaches the operator.
 //
 //testtiming:keep pins the exact "check: reason" rendering and its separators, which the broken-precondition test covering its blocks only reaches through one failure
 func TestFormatFailures(t *testing.T) {

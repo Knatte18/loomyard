@@ -20,7 +20,8 @@ import (
 // loomReviewSegments lists the tapestry recipe's review segments, the keys of the per-segment budget map.
 var loomReviewSegments = []string{"Discussion-Review", "Plan-Review", "Code-Review"}
 
-// setBudgets sets every env.Segments entry's MaxBounces to runWide, then each segment of own to its own value.
+// setBudgets sets MaxBounces on every env.Segments entry to runWide.
+// It then sets each segment named in own to that segment's value.
 func setBudgets(env *shedrecipe.Env, runWide int, own map[string]int) {
 	for segment, settings := range env.Segments {
 		settings.MaxBounces = runWide
@@ -31,7 +32,7 @@ func setBudgets(env *shedrecipe.Env, runWide int, own map[string]int) {
 	}
 }
 
-// budgetsOf returns env.Segments' MaxBounces keyed by segment, the map Routing takes.
+// budgetsOf returns the MaxBounces of every env.Segments entry, keyed by segment.
 func budgetsOf(env shedrecipe.Env) map[string]int {
 	budgets := map[string]int{}
 	for segment, settings := range env.Segments {
@@ -100,7 +101,7 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 }
 
 // TestZeroBudget_BouncerSettlesAtOnce asserts a Bouncer whose segment budget is 0 settles Done with no shuttle start.
-// That proves loomrecipe stamped zero_rounds on its row; the settle's seam order is TestBouncerEntry_SkipSeam's to pin.
+// That proves loomrecipe stamped zero_rounds on its row.
 // It also asserts New and Routing keep each perch's route: the writers and Drift-Verify still hand to their Bouncer.
 func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -188,7 +189,9 @@ func builtProducer(t *testing.T, shed *shedengine.Shed, name string) shedengine.
 	return nil
 }
 
-// TestReviewBudget_NegativeRefused asserts New and Routing refuse a negative segment budget and a review segment with no budget, each naming the segment and its way forward, and accept a budget of 0.
+// TestReviewBudget_NegativeRefused asserts New and Routing refuse a negative segment budget.
+// They also refuse a review segment with no budget, naming the segment and its way forward.
+// A budget of 0 is accepted.
 func TestReviewBudget_NegativeRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	zeroes := map[string]int{"Discussion-Review": 0, "Plan-Review": 0, "Code-Review": 0}

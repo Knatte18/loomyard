@@ -1,5 +1,4 @@
-// seed.go implements hubforge's two seeding entry points, SeedConfig and SeedFabricConfig, which
-// override a real hub's already-materialized config after NewHub has produced it.
+// seed.go holds SeedConfig and SeedFabricConfig, which override a hub's config after NewHub builds it.
 
 package hubforge
 
@@ -12,25 +11,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// SeedConfig writes a sparse worktree layer over the board's repo defaults for one or more modules into h's weft side and commits it.
-// It writes to h.WeftBase — the anchor-joined weft directory, never h.PrimeRecords() — because at a
-// non-"." anchor h.WeftBase is a subdirectory of the weft worktree root, and every module loader
-// reads from the anchored path.
-// The commit itself runs at the weft worktree root h.PrimeRecords(), not at h.WeftBase, because
-// h.WeftBase can be a subdirectory of the worktree that "git add ." must be run above to stage.
+// SeedConfig writes a sparse worktree layer over the board's repo defaults for one or more modules.
+// It writes the layer into h's weft side and commits it.
+// It writes to h.WeftBase, the anchor-joined weft directory, never h.PrimeRecords().
+// At a non-"." anchor, h.WeftBase is a subdirectory of the weft worktree root.
+// Every module loader reads from the anchored path, so the layer belongs there.
+// The commit runs at h.PrimeRecords(), the weft worktree root, not at h.WeftBase.
+// h.WeftBase can be a subdirectory, and `git add .` must run above it to stage.
 //
-// A single seeding entry point that infers its base from h is deliberate: it is exactly what makes
-// the three ad-hoc call sites this migration replaces silently wrong, each guessing a base from the
-// path shape in front of it.
+// The base is inferred from h, not passed in.
+// A caller that guesses it from the path shape gets it silently wrong.
 //
-// Seeding the warp side is impossible and this function does not offer it: <worktree>/_lym is a weft
-// junction excluded from the warp's index via .git/info/exclude, so `git add .` there stages nothing
-// and the commit errors.
+// Seeding the warp side is impossible, so this function does not offer it.
+// <worktree>/_lym is a weft junction excluded from the warp's index via .git/info/exclude.
+// There, `git add .` stages nothing and the commit errors.
 //
-// The commit is run with --allow-empty because the base clone leaves the weft prime clean, so a seeded layer that is
-// byte-identical to a file the prime already holds stages nothing and a bare `git commit` exits
-// 1 — which gitkit.MustRun turns into a tb.Fatalf in a test that did nothing wrong. The cost is an
-// occasional empty fixture commit that nothing observes.
+// The commit uses --allow-empty because the base clone leaves the weft prime clean.
+// A seeded layer byte-identical to a file the prime already holds stages nothing, and a bare `git commit` exits 1.
+// That would fail the test.
+// The cost is an occasional empty fixture commit that nothing observes.
 func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 	tb.Helper()
 
@@ -50,14 +49,14 @@ func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 	gitkit.MustRun(tb, h.PrimeRecords(), "git", "commit", "--allow-empty", "-m", "hubforge: seed config")
 }
 
-// SeedFabricConfig writes an override for the repo-wide fabric.yaml into h's Bolt checkout and commits it through fabricengine.NewBolt.
-// That matches what fabriccli.CloneAndWire itself does after ReconcileHubWideAt, so the fixture leaves the Bolt checkout in the same state a real clone does.
+// SeedFabricConfig writes an override for the repo-wide fabric.yaml into h's Bolt checkout and commits it.
+// The commit leaves the Bolt checkout in the state a real clone leaves it in.
 //
-// It writes to configengine.ConfigFile of the Bolt checkout, for "fabric", the repo-wide fabric config base, matching configsync.ReconcileHubWideAt's own boardDir argument.
+// It writes to configengine.ConfigFile of the Bolt checkout, for "fabric", the repo-wide fabric config base.
 //
-// Leaving it uncommitted would be unsafe rather than merely untidy:
-// the Bolt checkout is the weft:main checkout the destruction gate's dirtiness check observes,
-// so an uncommitted seed would silently change verb outcomes in fabric's own live-state cells.
+// Leaving the seed uncommitted would be unsafe.
+// The Bolt checkout is the weft:main checkout that the destruction gate's dirtiness check observes.
+// An uncommitted seed would therefore silently change verb outcomes in fabric's live-state cells.
 func SeedFabricConfig(tb testing.TB, h *Hub, yaml string) {
 	tb.Helper()
 

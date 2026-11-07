@@ -1,6 +1,7 @@
 //go:build windows
 
-// identity_windows.go gives the Windows build no file identity and no exec, so a Watcher there never replaces the process.
+// identity_windows.go gives the Windows build no file identity and no exec,
+// so a Watcher there never replaces the process.
 
 package selfexec
 

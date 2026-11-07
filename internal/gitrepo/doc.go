@@ -1,348 +1,300 @@
-// Package gitrepo provides a typed Repo over a single local git checkout,
-// split across two backends: go-git for local object and ref reads, and
-// internal/gitexec's raw command runner for anything that authenticates to a
-// remote or mutates the working tree. It exposes the small set of semantic
-// operations (current SHA, stage+commit, changed-files-since, SHA existence,
-// push, pull, hard reset) that every consumer of a git-backed repo (fabric,
-// raddle, webster) would otherwise reimplement by parsing raw git
-// stdout itself.
+// Package gitrepo provides a typed Repo over a single local git checkout.
+// It splits across two backends: go-git for local object and ref reads;
+// internal/gitexec's command runner serves anything that authenticates to a remote or mutates the working tree.
+// It exposes the semantic operations a consumer of a git-backed repo needs,
+// so no consumer parses raw git stdout itself.
 //
 // # Relationship to internal/gitexec — the two-backend boundary
 //
-// internal/gitexec exposes a two-function pair: RunGit(args []string, cwd
-// string) (stdout, stderr string, exitCode int, err error), the raw form
-// that shells out to git and returns its exit code for the caller to
-// classify, and Run(args []string, cwd string) (string, error), the checked
-// form that treats a non-zero exit as failure and returns it as *GitError.
-// gitrepo used to route every CLI-bound method through a single unexported
-// run helper over RunGit; it now has a matching pair, run and runChecked.
-// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, BranchExists, RefSHA, HeadRef, RefTree, Upstream, TagRefs, BranchRefs, Log, SubdirsAtRevision, and PreImageLines — resolves state entirely through go-git's own object and ref access (see gogit.go), bypassing both of them completely.
-// Of the CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero exit is a failure at both sites too,
-// but the package's test-enforced no-`fatal:`-leak surface forbids folding git's stderr into their messages, which is what run's raw form lets them keep working around.
-// The geometry reads — GitDir and CommonDir — are the one local read beside go-git:
+// internal/gitexec exposes RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error).
+// RunGit is the raw form: it shells out to git and returns its exit code for the caller to classify.
+// Run(args []string, cwd string) (string, error) is the checked form.
+// It returns a non-zero exit as *GitError.
+// gitrepo wraps them as the unexported run and runChecked.
+// The read methods resolve state through go-git's own object and ref access (see gogit.go) and use neither.
+// Pull and Fetch sit on the raw run, because a non-zero exit is a failure there too.
+// The raw form lets them keep git's `fatal:` text out of their messages, a rule a test enforces.
+// GitDir and CommonDir are the one other local read:
 // they resolve the checkout's `.git` entry through internal/dotgit once per handle, spawning nothing.
-// The worktree root is not among them: that query belongs to internal/lymcwd alone.
-// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, FetchWithArgs, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, BlameLines (go-git's blame walks the whole history of the file per call and has no first-parent mode), UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
-// See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
-// gitexec itself stays a low-level package gitrepo builds on, importing no gitrepo or feature package, regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lymcwd, and websterengine,
-// and gitrepo remains one of its many consumers, not merged into it.
+// The worktree root is not among them; that query belongs to internal/lymcwd alone.
+// Every other CLI-bound method sits on runChecked.
+// BlameLines stays CLI-bound:
+// go-git's blame walks the whole history of the file per call and has no first-parent mode.
+// HasUnpushed stays CLI-bound.
+// PATTERN-gitrepo-client-boundary states the enforced, exhaustive version of this split.
+// It also states the review obligation that a new CLI call inside this package carries.
+// gitexec stays a low-level package that imports no gitrepo or feature package.
+// gitrepo is one of its consumers, not merged into it.
 //
-// Some outcome classification still matches git's own untranslated
-// (C/English locale) message text — but less of it than before this
-// package's read surface migrated. CurrentSHA's unborn-HEAD detection is now
-// typed (plumbing.ErrReferenceNotFound, surfaced as ErrNoCommits) and no
-// longer depends on git's locale at all. The recoverable push-rejection
-// triggers behind Push's rebase-retry, and the benign "no rebase in
-// progress" abort check, stay CLI-bound and therefore still match git's
-// untranslated stderr text: a git with
-// translation catalogs installed, running under a non-English locale,
-// defeats those matches, and every affected path then degrades loudly — a
-// hard push error instead of a recovery — never a silent wrong success.
-// Pinning the subprocess locale would be a gitexec-level, repo-wide
-// decision, deliberately not taken here.
+// Some outcome classification matches git's untranslated (C/English locale) message text.
+// CurrentSHA detects an unborn HEAD by type: plumbing.ErrReferenceNotFound surfaces as ErrNoCommits.
+// That detection does not depend on the locale.
+// Push's rebase-retry triggers and the "no rebase in progress" abort check match git's untranslated stderr.
+// Under a non-English locale with translation catalogs installed, those matches fail.
+// Every affected path then degrades loudly: a hard push error instead of a recovery, never a silent wrong success.
+// Pinning the subprocess locale is a repo-wide gitexec decision, not this package's.
 //
 // # The Repo API
 //
-// New(path) wraps an existing checkout with no validation and no I/O — it
-// cannot fail, and it does not create, clone, or otherwise manage repo
-// topology; that is fabric's job, built directly on gitexec. From there:
+// New(path) wraps an existing checkout with no validation and no I/O, so it cannot fail.
+// It does not create, clone, or otherwise manage repo topology; fabric does that, directly on gitexec.
+// From there:
 //
-//   - CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
-//     ChangedFilesSince, and SHAExists are the core read/write primitives.
+//   - CurrentSHA, StageAndCommit, CommitEmpty, ChangedFilesSince and SHAExists are the core primitives.
 //   - Push and PushCoalesced are the push surface (see below).
-//   - Pull is the fast-forward-only pull surface (see below); Fetch is its
-//     fetch-without-merge sibling, refreshing remote-tracking refs without
-//     ever moving the local branch.
-//   - HoldRemoteRefs takes the repository's remote-refs lock, a file in the common git dir every worktree shares.
-//     Fetch, FetchWithArgs, Pull and DropRemoteTracking, which deletes a branch's remote-tracking ref and upstream setting, run git under it, waiting while it is held,
-//     since a fetch and a push both write the shared remote-tracking refs and two concurrent writers of one ref make the loser fail.
-//     Every push method sends to the remote's push URL outside the lock, so git writes no tracking ref during the transfer, a slow or retried transfer included;
-//     once the transfer succeeded it takes the lock to move or delete the branch's tracking ref and, for a first push of the checked-out branch, to set its upstream.
-//     A caller that reads origin and then judges the tracking refs holds it across both, so no tracking-ref write lands between the read and the verdict.
-//     It passes the process's pause gate before it takes the lock and stays admitted until the release, so a pause never holds a lock holder that other processes wait on.
-//   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
-//     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
-//     tri-state exit code directly rather than folding any non-zero exit
-//     into failure.
-//     CommitsNotIn is its listing sibling:
-//     the commits reachable from a tip and not from a base, newest first, via `git rev-list`.
+//   - Pull is the fast-forward-only pull surface (see below).
+//     Fetch refreshes remote-tracking refs without merging, so it never moves the local branch.
+//   - HoldRemoteRefs takes the repository's remote-refs lock, a file in the common git dir that every worktree shares.
+//     Fetch, FetchWithArgs, Pull and DropRemoteTracking run git under it and wait while it is held.
+//     DropRemoteTracking deletes a branch's remote-tracking ref and upstream setting.
+//     A fetch and a push both write the shared remote-tracking refs;
+//     two concurrent writers of one ref make the loser fail.
+//     Every push method sends to the remote's push URL outside the lock.
+//     Git therefore writes no tracking ref during the transfer.
+//     After a successful transfer it takes the lock to move or delete the branch's tracking ref.
+//     For a first push of the checked-out branch it also sets the upstream under the lock.
+//     A caller that reads origin and then judges the tracking refs holds the lock across both.
+//     No tracking-ref write then lands between the read and the verdict.
+//     HoldRemoteRefs passes the process's pause gate before it takes the lock and stays admitted until the release,
+//     so a pause never holds a lock holder that other processes wait on.
+//   - IsAncestor reports whether a SHA is an ancestor of a ref via `git merge-base --is-ancestor`.
+//     It maps git's tri-state exit code directly instead of folding every non-zero exit into failure.
+//     CommitsNotIn lists the commits reachable from a tip and not from a base, newest first, via `git rev-list`.
 //     MergeBase returns two commits' best common ancestor, read through go-git.
-//   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included, only while the remote branch still sits at the SHA the caller read;
-//     DeleteRemoteBranchLeased deletes it under the same lease;
-//     a moved branch is ErrLeaseRejected in both, distinct from any other push failure.
+//   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included.
+//     It does so only while the remote branch still sits at the SHA the caller read.
+//     DeleteRemoteBranchLeased deletes it under the same lease.
+//     A moved branch is ErrLeaseRejected in both, distinct from any other push failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
-//   - ResetKeep moves HEAD and the index to a SHA and carries uncommitted changes across, refusing with nothing changed when one sits in a path the move would rewrite.
-//   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
-//   - UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA, as last fetched, and returns ErrNoUpstream when there is none.
-//   - CommitDetail returns one commit's full message and the paths its tree changes against its first parent, read through go-git.
+//   - ResetKeep moves HEAD and the index to a SHA and carries uncommitted changes across.
+//     It refuses, changing nothing, when an uncommitted change sits in a path the move would rewrite.
+//   - CurrentBranch reads the branch HEAD points to, and it errors on a detached HEAD.
+//   - UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA as last fetched.
+//     It returns ErrNoUpstream when there is none.
+//   - CommitDetail returns one commit's full message and the paths its tree changes against its first parent.
+//     It reads through go-git.
 //   - TagRefs lists the tags under a name prefix, each peeled to its commit and sorted by the commit's date.
-//     BranchRefs lists every local branch resolved to its tip commit, sorted by name, and errors naming a branch whose tip is no commit.
-//     Log walks the commits reachable from an arbitrary tip, first-parent or over every parent, bounded by a date, a path prefix and a limit.
+//     BranchRefs lists every local branch resolved to its tip commit, sorted by name.
+//     It errors naming a branch whose tip is no commit.
+//     Log walks the commits reachable from an arbitrary tip, first-parent or over every parent.
+//     A date, a path prefix and a limit bound the walk.
 //     SubdirsAtRevision lists the directories directly in one directory as of a revision.
-//     All three are go-git local reads.
-//     PreImageLines lists the lines of a commit's first parent that the commit removes or replaces, per path, also read through go-git.
+//     TagRefs, BranchRefs, Log and SubdirsAtRevision are go-git local reads.
+//     PreImageLines lists, per path, the lines of a commit's first parent that the commit removes or replaces.
+//     It also reads through go-git.
 //     BlameLines names the first-parent commit that brought each requested line of a file, via `git blame`.
-//   - TrackedRootEntries returns the sorted, deduplicated first path segment of every entry of the index, so a root entry staged and never committed counts as tracked; it is the go-git index read of the root entries.
-//   - CherryPick replays one commit onto HEAD via a plain `git cherry-pick`, skipping a commit whose change the branch already carries and refusing a commit that is empty from the start; CherryPickAbort abandons one in progress, and succeeds when none is.
-//   - A push whose recovery rebase failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed), which tells a replayable conflict from every other push failure.
+//   - TrackedRootEntries returns the sorted, deduplicated first path segment of every index entry.
+//     A root entry staged and never committed therefore counts as tracked.
+//     It reads the index through go-git.
+//   - CherryPick replays one commit onto HEAD via a plain `git cherry-pick`.
+//     It skips a commit whose change the branch already carries and refuses a commit that is empty from the start.
+//     CherryPickAbort abandons one in progress, and it succeeds when none is.
+//   - A push whose recovery rebase failed and was aborted satisfies errors.Is(err, ErrPullRebaseFailed).
+//     That tells a replayable conflict from every other push failure.
 //
-// Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard, ResetKeep) are
-// validated as plain hex object names before ever reaching git, so an
-// option-shaped string (a value with a leading '-', e.g. "--hard") can never
-// be parsed as a git flag; invalid SHAs surface as ErrInvalidSHA, or as false
-// from SHAExists per its bool-swallowing posture.
+// Caller-supplied SHA arguments are validated as plain hex object names before they reach git.
+// An option-shaped string, such as a value with a leading '-' like "--hard", is never parsed as a git flag.
+// An invalid SHA surfaces as ErrInvalidSHA, or as false from SHAExists, which swallows errors into its bool.
 //
 // # CommitEmpty — the empty-commit primitive
 //
-// CommitEmpty(msg) records a commit whose only content is msg itself — a
-// commit whose tree is identical to its parent's, carrying no file changes at
-// all. Neither existing primitive can be coaxed into that shape: StageAndCommit
-// returns its documented no-op signal, by design, on an empty file list, and
-// its `diff --cached --quiet` gate returns that same no-op the moment the
-// listed files' staged content matches HEAD — both are "commit this content,
-// or signal that there was none" primitives, and an empty commit has no
-// content to key either check on. CommitEmpty exists for the caller that
-// wants a commit to land regardless, with meaning carried entirely in msg.
+// CommitEmpty(msg) records a commit whose only content is msg.
+// Its tree is identical to its parent's, so it carries no file changes.
+// StageAndCommit cannot produce that shape.
+// It returns its no-op signal on an empty file list,
+// and its `diff --cached --quiet` gate returns the same no-op when the listed files' staged content matches HEAD.
+// An empty commit has no content to key either check on.
+// CommitEmpty serves a caller that wants a commit to land regardless, with the meaning carried in msg.
 //
-// Because it has no content to check, CommitEmpty instead runs a pre-check on
-// the index itself, branching on whether HEAD is born or unborn. On a born
-// HEAD, an unscoped `git diff --cached --quiet` reports via exit code exactly
-// like StageAndCommit's own pathspec-scoped check does. On an unborn HEAD
-// there is no HEAD tree for `diff --cached` to compare against, so the
-// pre-check runs `git ls-files --cached` instead and treats any listed path
-// as "something is staged" — this avoids needing an empty-tree object
-// constant, which is hash-algorithm-dependent and would be a latent
-// SHA-256 bug the moment a repo's hash algorithm changes.
+// CommitEmpty instead pre-checks the index itself, branching on whether HEAD is born or unborn.
+// On a born HEAD, an unscoped `git diff --cached --quiet` reports through its exit code.
+// On an unborn HEAD there is no HEAD tree to compare against, so the pre-check runs `git ls-files --cached`.
+// It treats any listed path as something staged.
+// This avoids an empty-tree object constant, which depends on the hash algorithm.
 //
-// This package's never-sweep norm — an automated commit must never absorb
-// content nobody asked it to commit — is what StageAndCommit enforces
-// structurally, through pathspec scoping: its `commit ... -- <files>` cannot
-// commit an unlisted path no matter what races it. CommitEmpty has no
-// pathspec to scope an empty commit with, so it can only approximate that
-// norm by refusing: finding the index dirty at the pre-check returns
-// ErrIndexNotEmpty (checkable via errors.Is) without committing. That leaves
-// an honest, narrower guarantee than StageAndCommit's — CommitEmpty is
-// check-then-commit across two separate git spawns, so an index write landing
-// in the milliseconds between the pre-check and the commit is still swept
-// into it, a window StageAndCommit's pathspec scoping closes structurally and
-// CommitEmpty cannot. This package makes no claim that CommitEmpty's callers
-// serialize their writes against that window; that discipline lives with the
-// caller.
+// The package's never-sweep norm is that an automated commit must never absorb content nobody asked it to commit.
+// StageAndCommit enforces it structurally through pathspec scoping:
+// its `commit ... -- <files>` cannot commit an unlisted path, whatever races it.
+// CommitEmpty has no pathspec to scope with, so it approximates the norm by refusing:
+// an index found dirty at the pre-check returns ErrIndexNotEmpty (checkable with errors.Is) without committing.
+// The guarantee is narrower, because the pre-check and the commit are two separate git spawns.
+// An index write landing between them is still swept into the commit.
+// The package does not serialize callers' writes against that window; that is the caller's discipline.
 //
 // # SHAExists — history-rewrite safety
 //
-// gitrepo is not a general-purpose git wrapper (see Scope boundaries below)
-// — a human always has plain git available in the working tree. That means
-// rebase/amend/force-push can invalidate a stored SHA reference out from
-// under any consumer. Rather than making gitrepo "rebase-aware"
-// (open-ended: reflog tracking, remapping every stored reference), SHAExists
-// is a cheap existence check. Any code reading a stored SHA should call it
-// first and treat a missing SHA as any other staleness signal — force a
-// rebuild/re-sync rather than trusting a reference that may no longer be
-// valid. This extends the "advance state only on confirmed success"
-// principle to also cover "the ground truth moved out from under us," not
-// just "we lost track ourselves."
+// gitrepo is not a general-purpose git wrapper (see Scope boundaries below).
+// A human always has plain git in the working tree.
+// A rebase, amend or force-push can therefore invalidate a stored SHA under any consumer.
+// Making gitrepo rebase-aware is open-ended: it needs reflog tracking and remapping of every stored reference.
+// SHAExists is instead a cheap existence check.
+// Code that reads a stored SHA calls it first and treats a missing SHA as any other staleness signal:
+// it forces a rebuild or re-sync instead of trusting a reference that may no longer be valid.
+// This applies the "advance state only on confirmed success" principle to a ground truth that moved under the consumer.
 //
-// # Scope boundaries — deliberately not a general-purpose git wrapper
+// # Scope boundaries — not a general-purpose git wrapper
 //
-// gitrepo covers only the operations its consumers actually need
-// programmatically: stage+commit (explicit file list, never wildcard-stage),
-// diff-since-SHA, current-SHA, push, fast-forward pull, SHA-validated hard
-// reset, and CurrentBranch. StageAllAndCommit is a separate wildcard-stage variant provided as board's
-// opt-in exception, not a relaxation of the explicit-list default — fabric and
-// raddle keep using explicit-list StageAndCommit (called via fabricengine's own
-// board-facing commit wrapper on board's behalf, not boardengine calling
-// gitrepo directly). Merge start/conclude and conflicted-path enumeration
-// (MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached,
-// MergeFFOnly, ResolveSHA) are admitted, used by fabric's two-sided merge
-// coordination. The two behaviours these depend on are pinned on the command
-// line rather than inherited from the caller's git config: MergeStart passes
-// --ff so merge.ff=only/false cannot change the outcome it classifies, and
-// MergeConclude passes --no-edit so core.editor can never hang a
-// non-interactive caller. MergeStart's four-way classification reads a live
-// MERGE_HEAD as MergeStaged before it reads HEAD movement, because a real
-// merge whose result tree equals HEAD's own tree stages nothing and moves no
-// HEAD while still leaving a merge for someone to conclude; reading only the
-// index diff and HEAD would report that as MergeAlreadyUpToDate and strand it.
-// Rebase, interactive staging, cherry-pick, conflict *resolution*, and
-// general-purpose branch/checkout management stay explicitly not supported —
-// gitrepo reports conflicts, but resolving them is the caller's job. A human
-// can always use plain git directly in
-// the working tree, since it's an ordinary git repo underneath. fabric
-// layers a further, separate set of topology operations — clone, worktree
-// add/remove, general checkout, branch naming — on top of gitrepo; those
-// remain fabric-specific, not part of gitrepo itself.
+// gitrepo covers only the operations its consumers need programmatically.
+// StageAndCommit takes an explicit file list and never wildcard-stages.
+// StageAllAndCommit is the separate wildcard-stage variant, an opt-in exception for board.
+// It does not relax the explicit-list default, which fabric and raddle keep using.
+// Merge start and conclude and conflicted-path enumeration are admitted for fabric's two-sided merge coordination.
+// They are MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached, MergeFFOnly and ResolveSHA.
+// Two behaviours they depend on are pinned on the command line instead of inherited from the caller's git config:
+// MergeStart passes --ff so merge.ff=only/false cannot change the outcome it classifies.
+// MergeConclude passes --no-edit so core.editor can never hang a non-interactive caller.
+// MergeStart's four-way classification reads a live MERGE_HEAD as MergeStaged before it reads HEAD movement.
+// A real merge whose result tree equals HEAD's tree stages nothing and moves no HEAD, yet leaves a merge to conclude;
+// reading only the index diff and HEAD would report it as MergeAlreadyUpToDate and strand it.
+// Rebase as a caller operation, interactive staging and conflict *resolution* are not supported.
+// General branch and checkout management is not supported either.
+// gitrepo reports conflicts; resolving them is the caller's job.
+// fabric layers its own topology operations on top of gitrepo.
+// They are clone, worktree add and remove, general checkout and branch naming.
 //
 // # Push surface
 //
-// Push and PushCoalesced are both push-only — committing is always the
-// caller's separate, prior step, whether via StageAndCommit's explicit list
-// or board's StageAllAndCommit wildcard escape hatch; push itself never
-// stages anything.
-// Every push names its branch explicitly: the checked-out branch goes to the same-named branch of its push remote, its upstream remote or origin.
-// A branch with no upstream takes that remote branch as its upstream once the push succeeded, as git's push.autoSetupRemote would set it.
-// A checkout's very first push therefore establishes tracking instead of failing outright.
-// A checkout with no upstream configured is always treated as having something to push, so the first push is attempted rather than skipped.
-// Push runs a single git push and transparently recovers from exactly one
-// non-fast-forward-style rejection (stderr containing "non-fast-forward",
-// "rejected", or "fetch first") via one `pull --rebase` before retrying; the
-// rebase-retry path requires a worktree clean of tracked-file changes,
-// which the caller's prior commit call is responsible for. A push that
-// recovered via the rebase rewrote the local commits it replayed: any SHA
-// captured before the push (StageAndCommit's return value in particular)
-// may afterwards name an off-history commit that SHAExists still reports
-// true for via the reflog — callers re-read CurrentSHA after a successful
-// push before recording that SHA anywhere.
+// Push and PushCoalesced are push-only: committing is the caller's separate, prior step, and push never stages anything.
+// Every push names its branch explicitly.
+// The checked-out branch goes to the same-named branch of its push remote, which is its upstream remote or origin.
+// A branch with no upstream takes that remote branch as its upstream once the push succeeds.
+// This matches git's push.autoSetupRemote.
+// A checkout's first push therefore establishes tracking instead of failing.
+// A checkout with no upstream configured always counts as having something to push, so the first push is attempted.
+// Push runs one git push.
+// It recovers from exactly one non-fast-forward-style rejection.
+// Such a rejection has a stderr containing "non-fast-forward", "rejected" or "fetch first".
+// Push recovers with one `pull --rebase` and then retries.
+// The rebase-retry requires a worktree clean of tracked-file changes, which the caller's prior commit call ensures.
+// A push that recovered through the rebase rewrote the local commits it replayed.
+// A SHA captured before the push may afterwards name an off-history commit.
+// StageAndCommit's return value is such a SHA.
+// SHAExists still reports true for it through the reflog.
+// Callers re-read CurrentSHA after a successful push before recording a SHA anywhere.
 // Push, PushCoalesced and PushRebaseFree also retry a push the remote refuses on the pushed branch.
-// The two retryable forms are `! [remote rejected] <ref> -> <ref> (failed)` and a remote reason containing `cannot lock ref`.
+// One retryable form is `! [remote rejected] <ref> -> <ref> (failed)`.
+// A remote reason containing `cannot lock ref` is retryable too.
 // A ref given in full `refs/heads/` or `refs/tags/` form also matches the short form git prints it in.
-// A push is tried up to four times in total with a doubling backoff from one second, inside whatever lock the caller holds and without rebasing or forcing.
+// A push is tried up to four times in total, with a doubling backoff from one second.
+// The retries run inside whatever lock the caller holds and neither rebase nor force.
 // A retryable refusal never triggers the rebase-retry.
-// A push that exhausts the attempts returns an error wrapping ErrPushRetriesExhausted and the last push error, never ErrPushRejected.
+// A push that exhausts the attempts returns an error wrapping ErrPushRetriesExhausted and the last push error.
+// It never returns ErrPushRejected.
 // PushWithRetry exposes the same loop for a caller that runs its own push, on the backoff delays the caller passes;
 // PushWithRetryReasons adds reasons the caller names as retryable beside those two forms.
-// PushCoalesced adds cross-process coalescing on top: it acquires a single-pusher lock file in the checkout's own git dir (Repo.PushLockPath), out of the tracked tree, before checking whether anything is actually unpushed,
-// so a burst of concurrent callers collapses into as few pushes as possible — a caller that finds nothing unpushed once it acquires the lock returns immediately instead of pushing again.
+// PushCoalesced adds cross-process coalescing.
+// It first acquires a single-pusher lock file (Repo.PushLockPath).
+// The file lives in the checkout's own git dir, outside the tracked tree.
+// It then checks whether anything is unpushed.
+// A burst of concurrent callers therefore collapses into as few pushes as possible.
+// A caller that finds nothing unpushed once it holds the lock returns immediately.
 //
 // # Pull surface
 //
-// Pull runs `git pull --ff-only` and is fast-forward-only by contract: a
-// diverged local branch — one with commits its upstream lacks — is an error,
-// never a merge commit. Recovering from divergence (rebase, reset, manual
-// merge) stays a caller policy; gitrepo does not attempt it. Unlike the rest
-// of the package's error style, a non-zero exit from Pull names the repo
-// path and git's exit code without embedding git's raw stderr, so a
-// diverged-branch or no-remote failure never leaks git's own
-// "fatal:"-prefixed message text.
+// Pull runs `git pull --ff-only` and is fast-forward-only by contract.
+// A diverged local branch, one with commits its upstream lacks, is an error and never a merge commit.
+// Recovering from divergence (rebase, reset, manual merge) is caller policy; gitrepo does not attempt it.
+// A non-zero exit from Pull names the repo path and git's exit code without embedding git's raw stderr,
+// so a diverged-branch or no-remote failure never leaks git's own "fatal:"-prefixed message text.
 //
 // # ResetHard surface
 //
-// ResetHard is the primitive fabric's coordinated history-recovery flows
-// build on: it points HEAD, the index, and the working tree at a
-// caller-supplied SHA exactly, via `git reset --hard`, discarding any local
-// commits or uncommitted changes past that point. The SHA-shape validation
-// every caller-supplied SHA argument goes through (see above) guarantees an
-// option-shaped string can never reach `git reset` as a flag instead of a
-// target commit — ResetHard rejects it as ErrInvalidSHA before any git
-// spawn, exactly like ChangedFilesSince.
+// ResetHard is the primitive for coordinated history recovery.
+// It points HEAD, the index and the working tree at a caller-supplied SHA exactly, via `git reset --hard`.
+// It discards any local commits or uncommitted changes past that point.
+// The SHA-shape validation (see above) keeps an option-shaped string from reaching `git reset` as a flag:
+// ResetHard rejects it as ErrInvalidSHA before any git spawn.
 //
-// ResetKeep is its keep-form counterpart, via `git reset --keep`, for a caller whose checkout holds uncommitted work to preserve:
-// it validates the SHA the same way and moves HEAD and the index, leaves every uncommitted change in place,
-// and returns git's refusal (wrapped, as the checked *gitexec.GitError) with nothing changed when an uncommitted change sits in a path the move would rewrite.
-// Like ResetHard it mutates the working tree and so stays CLI-bound.
+// ResetKeep resets via `git reset --keep`, for a caller whose checkout holds uncommitted work to preserve.
+// It validates the SHA the same way, moves HEAD and the index, and leaves every uncommitted change in place.
+// When an uncommitted change sits in a path the move would rewrite, it changes nothing.
+// It then returns git's refusal, wrapped as the checked *gitexec.GitError.
+// ResetKeep mutates the working tree, so it stays CLI-bound.
 //
 // # Evidence for the two-backend boundary
 //
-// The boundary above was reached empirically, by two background probes run
-// against this go-git version (go-git/go-git/v5 v5.19.1) before any read
-// migrated. Both probe reports lived under .scratch/, which is gitignored
-// and disappears with the worktree that produced it — this section is their
-// only durable record, so it is exhaustive rather than illustrative. A
-// future reader who sees only "commits are CLI-bound" will try to migrate
-// them again; one who sees only "use go-git" will write PlainOpen and ship a
-// silently broken handle.
+// The boundary above rests on two probes run on Windows against go-git/go-git/v5 v5.19.1.
+// Their reports are not kept in the repository, so this section is their durable record.
+// It is exhaustive rather than illustrative.
+// A reader who sees only "commits are CLI-bound" will try to migrate them again;
+// one who sees only "use go-git" will write PlainOpen and ship a silently broken handle.
 //
-// From the first probe (measuring the commit methods and three hazards):
+// From the first probe, which measured the commit methods and their hazards:
 //
-//   - go-git performs no CRLF conversion at all. Against identical fixtures
-//     with core.autocrlf=true and a CRLF-line-ending source file, the CLI
-//     stored one blob and go-git stored a different one — different bytes,
-//     different object name. A file committed by go-git is thereafter
-//     permanently "modified" to CLI git, which converts working-tree CRLF to
-//     LF and compares against the stored CRLF blob. This is why
-//     StageAndCommit and StageAllAndCommit stay CLI-bound: autocrlf=true is
-//     the Git-for-Windows system default, and the overlay files these
-//     methods commit are routinely written by editors that default to CRLF
-//     on Windows.
-//   - go-git's hard reset deletes untracked and gitignored files. Against
-//     identical fixtures, the CLI leaves untracked and gitignored files in
-//     place; go-git's Worktree.Reset(HardReset) removes every one of them
-//     with no error. In a lym checkout that would silently destroy .lym/,
-//     .scratch/, and build output — a data-loss path inside ResetHard, which
-//     fabric's history-recovery flow builds on. ResetHard stays CLI-bound.
-//   - Checkout and Pull are non-atomic: go-git moves HEAD before the dirty
-//     check that can reject the operation. Observed: an unstaged-changes
-//     rejection with HEAD already moved to the target commit, the working
-//     tree still holding the old content, and git status reporting a mixed
-//     modified state — the CLI aborts having moved nothing. Pull additionally
-//     failed 25 of 40 trials with a spurious unstaged-changes rejection on a
-//     stock Windows checkout with core.autocrlf=true (0 of 40 with
-//     autocrlf=false), HEAD already moved in all 25 failures.
+//   - go-git performs no CRLF conversion.
+//     With core.autocrlf=true and a CRLF-line-ending source file, the CLI stored one blob.
+//     go-git stored a different one, which differs in bytes and in object name.
+//     A file committed by go-git is thereafter permanently "modified" to CLI git,
+//     which converts working-tree CRLF to LF and compares against the stored CRLF blob.
+//     This is why StageAndCommit and StageAllAndCommit stay CLI-bound:
+//     autocrlf=true is the Git-for-Windows system default,
+//     and editors that default to CRLF on Windows routinely write the overlay files these methods commit.
+//   - go-git's hard reset deletes untracked and gitignored files.
+//     Worktree.Reset(HardReset) removes every one of them with no error, where the CLI leaves them in place.
+//     In a lym checkout that would silently destroy .lym/, .scratch/ and build output.
+//     That is a data-loss path inside ResetHard, which fabric's history-recovery flow builds on.
+//     ResetHard stays CLI-bound.
+//   - Checkout and Pull are non-atomic: go-git moves HEAD before the dirty check that can reject the operation.
+//     A rejection leaves HEAD already moved to the target commit while the working tree still holds the old content.
+//     git status then reports a mixed modified state, where the CLI aborts having moved nothing.
+//     Pull also failed in repeated trials with a spurious unstaged-changes rejection on a stock Windows checkout.
+//     That happened with core.autocrlf=true and never with autocrlf=false, and HEAD had already moved in every failure.
 //     Pull stays CLI-bound.
-//   - go-git never invokes a git credential helper. Its only "credential"
-//     occurrences are doc comments on an Auth option field; it accepts an
-//     explicit transport.AuthMethod but has no mechanism to discover one from
-//     the environment. Against a real HTTPS remote resolved through Git
-//     Credential Manager (this repo's own remote), a go-git push would fail
-//     outright and a go-git fetch would fail on every call. Push,
-//     PushCoalesced, and Pull all stay CLI-bound for this reason. Push's
-//     rebase-retry is doubly CLI-bound regardless: go-git ships no rebase
-//     implementation at all.
+//   - go-git never invokes a git credential helper.
+//     It accepts an explicit transport.AuthMethod but has no mechanism to discover one from the environment.
+//     Against an HTTPS remote that Git Credential Manager serves, a go-git push would fail outright.
+//     A go-git fetch would fail on every call there.
+//     Push, PushCoalesced and Pull all stay CLI-bound for this reason.
+//     Push's rebase-retry is also CLI-bound because go-git ships no rebase implementation.
 //
-// From the second probe (measuring the linked-worktree topology every real
-// checkout in this codebase uses — this checkout's own .git is a file,
-// fabricengine creates the repo checkout and its fabric mirror as linked worktrees, and
-// internal/fslink reaches them through junctions):
+// Every real checkout uses a linked-worktree topology.
+// A linked worktree's .git is a file.
+// fabricengine creates the repo checkout and its fabric mirror as linked worktrees.
+// internal/fslink reaches them through junctions.
+// From the second probe, which measured that topology:
 //
 //   - git.PlainOpenWithOptions with EnableDotGitCommonDir: true is mandatory.
-//     Against a linked worktree, the obvious call — git.PlainOpen, which
-//     defaults EnableDotGitCommonDir to false — returns NO error and hands
-//     back a handle that cannot read HEAD, cannot read any object, and
-//     reports every ref stored in the shared common dir as absent, forever,
-//     with no error anywhere. This is why goGit (gogit.go) opens with the
-//     option explicitly set rather than the convenience call.
-//   - DetectDotGit is banned outright. Set true and pointed at a path that is
-//     not itself a repository, it walks up the directory tree and silently
-//     opens whatever ancestor repository it finds — proven, in the probe, to
-//     escape a fixture directory and open this very loomyard checkout
-//     instead. gitrepo's callers always pass a worktree root, so DetectDotGit
-//     buys nothing and risks operating on the wrong repository entirely.
-//   - KeepDescriptors must stay false (its default). Measured, not assumed:
-//     an open go-git handle does not block `git worktree remove` on Windows
-//     under the default (code 0 even with a warmed handle held open
-//     mid-iteration), but forcing KeepDescriptors true does lock common-dir
-//     packfiles against it. This is what lets goGit cache a handle for the
-//     Repo's whole lifetime with no explicit close needed before a fabric
-//     topology mutation.
-//   - Packfile-only objects need a reactive remedy, not a re-open. A cached
-//     *git.Repository does see the CLI's ref writes and loose-object writes
-//     made in the same process afterwards — the one measured exception is an
-//     object that exists only in a packfile written after the handle indexed,
-//     which reads as object-not-found even though the same handle's Head()
-//     returns that very SHA, because ObjectStorage's index is built once and
-//     never refreshed. storer.Reindex() fully repairs this, so the fix is not
-//     a re-open. The policy this package implements is reactive rather than
-//     proactive, and it retries the whole operation: every go-git read runs
-//     through readGoGit in gogit.go, which reruns the read once after a
-//     reindex when it fails with object-not-found and the pack-directory
-//     fingerprint differs from the snapshot taken before the read began.
-//     Wrapping the whole read, not each object lookup, is what covers a Log
-//     walk, a tree diff or Worktree.Status(), which reach objects no
-//     per-lookup wrapper sees. Comparing against that snapshot, not only the
-//     last stored fingerprint, lets a caller that lost a race to a
-//     concurrent reindex still rerun. The read holds the shared lock, and
-//     only the fingerprint check, the reindex and the index rebuild that
-//     follows it take the exclusive one, so readers do not serialize; the
-//     rebuild is forced there because go-git rebuilds its index
-//     unsynchronized on the next read. A genuinely absent object reindexes at most
-//     once while the pack set is unchanged. The policy is reactive because
-//     the trigger set for a proactive one cannot be enumerated reliably: the
-//     probe observed `gc --auto` firing after ordinary commits and fetches
-//     alike, so any hand-maintained list of "operations that might repack"
-//     goes stale the moment git's own auto-gc heuristics change.
-//   - extensions.worktreeConfig makes go-git refuse to open a repo outright,
-//     with its own typed error (checkable via errors.Is against go-git's
-//     sentinel, see goGit's doc). Not set on this repo today and no lym code
-//     path sets it, but a worktree created in a way that enables it later
-//     must surface as a clear typed error from gitrepo, never a confusing
-//     downstream nil — this is why goGit wraps rather than swallows it.
-//
-// Gate (c) of the original spike's rubric — "works on Windows 11" — carried
-// forward as a Win11-pending marker on every one of gitnativepoc's MIGRATE
-// verdicts (the retired git-native-library work is in git history). This task closes it for every migrated method: both probes
-// above ran on Windows, and the package's Tier-2 integration suite —
-// internal/gitrepo's own tests plus the parity harness comparing every
-// migrated method against the real git CLI — was run as part of this task's
-// whole-repo verification. That is a record, not a promise to check later;
-// no Win11-pending marker is carried forward from here.
+//     Against a linked worktree, git.PlainOpen defaults EnableDotGitCommonDir to false and returns no error.
+//     The handle it returns cannot read HEAD or any object.
+//     It reports every ref stored in the shared common dir as absent, with no error anywhere.
+//     This is why goGit (gogit.go) opens with the option explicitly set rather than the convenience call.
+//   - DetectDotGit is banned.
+//     Given a path that is not itself a repository, it walks up the directory tree.
+//     It silently opens an ancestor repository.
+//     In the probe it escaped a fixture directory and opened the loomyard checkout.
+//     gitrepo's callers always pass a worktree root, so DetectDotGit buys nothing.
+//     It risks opening the wrong repository.
+//   - KeepDescriptors must stay false, its default.
+//     Under the default, an open go-git handle does not block `git worktree remove` on Windows.
+//     That holds for a warmed handle held open mid-iteration too.
+//     Forcing KeepDescriptors true does lock common-dir packfiles against it.
+//     The default lets goGit cache a handle for the Repo's whole lifetime.
+//     No explicit close is needed before a fabric topology mutation.
+//   - Packfile-only objects need a reactive remedy, not a re-open.
+//     A cached *git.Repository sees the CLI's ref writes and loose-object writes made later in the same process.
+//     The one exception is an object that exists only in a packfile written after the handle indexed.
+//     It reads as object-not-found though Head() returns its SHA, because ObjectStorage builds its index only once.
+//     storer.Reindex() repairs this fully, so the fix is not a re-open.
+//     The package's policy is reactive, and it retries the whole operation.
+//     Every go-git read runs through readGoGit in gogit.go.
+//     readGoGit reruns the read once after a reindex when the read fails with object-not-found,
+//     and the pack-directory fingerprint differs from the snapshot taken before the read began.
+//     Wrapping the whole read, not each object lookup, covers a Log walk, a tree diff or Worktree.Status().
+//     Those reach objects that no per-lookup wrapper sees.
+//     The comparison is against that snapshot, not only the last stored fingerprint.
+//     A caller that lost a race to a concurrent reindex therefore still reruns.
+//     The read holds the shared lock.
+//     Only the fingerprint check, the reindex and the index rebuild that follows it take the exclusive lock,
+//     so readers do not serialize.
+//     The rebuild is forced there because go-git rebuilds its index unsynchronized on the next read.
+//     An absent object reindexes at most once while the pack set is unchanged.
+//     The policy is reactive because the trigger set for a proactive one cannot be enumerated reliably.
+//     `gc --auto` fires after ordinary commits and fetches alike.
+//     A hand-maintained list of operations that might repack goes stale when git's own auto-gc heuristics change.
+//   - extensions.worktreeConfig makes go-git refuse to open a repo.
+//     The refusal is a typed error that errors.Is matches against go-git's sentinel.
+//     No lym code path sets the extension.
+//     A worktree that enables it later must surface as a clear typed error from gitrepo.
+//     It must never surface as a confusing downstream nil.
+//     This is why goGit wraps the error with %w rather than swallowing it.
 package gitrepo

@@ -1,4 +1,5 @@
-// stop.go implements the orch's bring-down, `BeamDown`, and the `stop` orch verb over its first step: remove the orchestrator strand and let the watcher notice and exit on its own.
+// stop.go implements the orch bring-down, `BeamDown`, and the `stop` verb.
+// Its first step removes the orchestrator strand; the watcher then notices and exits on its own.
 
 package orchcli
 
@@ -15,21 +16,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// stopStartLockWait is how long `stop` waits for start.lock, which a bring-up holds across its origin reconcile and session launch.
+// stopStartLockWait bounds how long `stop` waits for start.lock.
+// A bring-up holds start.lock across its origin reconcile and session launch.
 const stopStartLockWait = time.Minute
 
-// BeamDownReport is what one BeamDown stopped.
+// BeamDownReport records what one BeamDown stopped.
 type BeamDownReport struct {
 	// Worktree is the name of the worktree brought down.
 	Worktree string `json:"worktree"`
-	// OrchRemoved is whether a tracked orch strand was removed, and Strand is the strand the orch state records.
+	// OrchRemoved reports whether a tracked orch strand was removed; Strand is the strand the orch state records.
 	OrchRemoved bool   `json:"orch_removed"`
 	Strand      string `json:"strand,omitempty"`
-	// DobbyEnded is whether a live dobby was ended.
+	// DobbyEnded reports whether a live dobby was ended.
 	DobbyEnded bool `json:"dobby_ended"`
 }
 
-// BeamDown takes the worktree at location down: it removes the orch strand, after which the watcher exits on its own, and ends the worktree's dobby when it is live.
+// BeamDown takes the worktree at location down.
+// It removes the orch strand, after which the watcher exits on its own,
+// and it ends the worktree's dobby when one is live.
 // Each part stops only when live, so a second call stops nothing.
 // It refuses a worktree that is neither the prime nor a beam.
 func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
@@ -40,7 +44,7 @@ func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
 	return c.beamDown()
 }
 
-// beamDown is BeamDown over a wired receiver.
+// beamDown runs the bring-down steps on a receiver that has already been wired.
 // The dobby is ended through the receiver's role-scoped end, so no other process of the beam is signalled.
 func (c *orchCLI) beamDown() (BeamDownReport, error) {
 	report := BeamDownReport{Worktree: c.location.WorktreeName}
@@ -66,7 +70,8 @@ func (c *orchCLI) beamDown() (BeamDownReport, error) {
 	return report, nil
 }
 
-// stopOrch removes the recorded orchestrator strand when reed tracks it, under start.lock so a status restart never binds a watcher to a strand it is removing.
+// stopOrch removes the recorded orchestrator strand when reed tracks it.
+// It holds start.lock for the removal, so a status restart never binds a watcher to a strand being removed.
 // An untracked or unrecorded strand reports removed false; strand is the one the orch state records.
 // It waits for a running bring-up up to startLockWait, then refuses naming the lock.
 func (c *orchCLI) stopOrch() (removed bool, strand string, err error) {
@@ -99,7 +104,6 @@ func (c *orchCLI) stopOrch() (removed bool, strand string, err error) {
 	return tracked, st.Strand, nil
 }
 
-// stopCmd builds the `stop` subcommand.
 func (c *orchCLI) stopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "stop",

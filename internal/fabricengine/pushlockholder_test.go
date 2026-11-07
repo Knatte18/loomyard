@@ -1,4 +1,6 @@
-// pushlockholder_test.go covers the push lock's holder record over a temp lock directory: what a busy report says of the holder, and that the coalescing holder loop writes the record while it holds the lock and removes it on release.
+// pushlockholder_test.go covers the push lock's holder record over a temp lock directory:
+// what a busy report says of the holder,
+// and that the coalescing holder loop writes the record while it holds the lock and removes it on release.
 
 package fabricengine
 

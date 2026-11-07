@@ -1,4 +1,4 @@
-// reconcile.go runs the hub's origin reconcile for the hibernate request's wake and maps its report onto the engine's own view of it.
+// reconcile.go runs the hub's origin reconcile for a hibernate wake and maps its report onto the engine's view.
 
 package hibernatecli
 
@@ -21,13 +21,14 @@ const (
 	wakeAttemptDeadline = 20 * time.Second
 )
 
-// The repository sides a branch outcome names whose stop is shared by every pair.
+// The repository sides whose branch stops are shared by every pair.
 const (
 	sideBolt    = "bolt"
 	sideRecords = "records"
 )
 
-// stopsEntries reports whether a shared branch in this state stops every entry; a busy one does not, since a lock holder ends on its own.
+// stopsEntries reports whether a shared branch in this state stops every entry;
+// a busy one does not, since a lock holder ends on its own.
 func stopsEntries(state fabricengine.BranchState) bool {
 	switch state {
 	case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchGone, fabricengine.BranchDirty, fabricengine.BranchLive, fabricengine.BranchAnchorStopped:
@@ -36,7 +37,8 @@ func stopsEntries(state fabricengine.BranchState) bool {
 	return false
 }
 
-// wakeReconcile runs the hub-scope origin reconcile from the prime, moving branches, and returns the engine's view of its report.
+// wakeReconcile runs the hub-scope origin reconcile from the prime, moving branches.
+// It returns the engine's view of the report.
 func wakeReconcile(location *lymcwd.Location) (hibernateengine.WakeReconcile, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
@@ -48,8 +50,11 @@ func wakeReconcile(location *lymcwd.Location) (hibernateengine.WakeReconcile, er
 }
 
 // wakeReconcileFromReport maps a reconcile report onto the engine's view.
-// The stop is the way forward of the first branch every pair shares, Bolt or the prime's records branch, that stops and is not merely busy.
-// A run is each stopped entry, each ended entry that has a local pair and each owned_elsewhere entry, which always has a local pair; its way forward is the report's, never composed here.
+// The stop is the way forward of the first branch that every pair shares and that stops.
+// Bolt and the prime's records branch are the shared branches; a busy branch does not stop.
+// A run is each stopped entry, each ended entry with a local pair, and each owned_elsewhere entry.
+// An owned_elsewhere entry always has a local pair.
+// Its way forward is the report's; it is never composed here.
 // Mutations are rendered as kind and target, with the detail in parentheses when there is one.
 func wakeReconcileFromReport(report fabricengine.OriginReport) hibernateengine.WakeReconcile {
 	wake := hibernateengine.WakeReconcile{Unreachable: report.Unreachable}

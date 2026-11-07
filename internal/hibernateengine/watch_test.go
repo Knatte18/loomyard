@@ -30,8 +30,8 @@ func sessionReading(strand, state string, kinds ...string) tenderengine.SessionS
 	return reading
 }
 
-// runCarrier takes up the request as the world's own process and carries it to its end in the calling goroutine, as Carrier.Tick does in a goroutine of its own.
-// No request, a terminal one and one another live daemon carries return the zero Request.
+// runCarrier takes up the request as the world's own process and carries it to its end in the calling goroutine.
+// It returns the zero Request when there is no request, when it is terminal, or when another live daemon carries it.
 func runCarrier(deps Deps) (Request, error) {
 	r, taken, err := takeUp(deps)
 	if err != nil || !taken {
@@ -47,7 +47,8 @@ func watchNow(t *testing.T, w *fakeWorld) (Request, error) {
 	return runCarrier(w.deps())
 }
 
-// watchKeeping seeds a now request the world's own process carries that keeps its pause after the wake, and runs it to its end.
+// watchKeeping seeds a now request that keeps its pause after the wake.
+// The world's own process carries the request to its end.
 func watchKeeping(t *testing.T, w *fakeWorld) (Request, error) {
 	t.Helper()
 	request := w.ownRequest(TriggerNow, "")
@@ -1090,7 +1091,9 @@ func TestSequence(t *testing.T) {
 			}
 		}},
 	}
-	// This subtest is serial and runs before the parallel table: it captures the process-global logger output and raises the process-global level, both restored by its cleanup.
+	// This subtest is serial and runs before the parallel table:
+	// it captures the process-global logger output and raises the process-global level.
+	// Its cleanup restores both.
 	t.Run("a reconcile's mutation lines are logged at Info and left out of the notice", func(t *testing.T) {
 		var captured bytes.Buffer
 		previous := logger.DefaultOutput()

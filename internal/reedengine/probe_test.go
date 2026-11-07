@@ -1,6 +1,7 @@
-// probe_test.go drives probeCapability's pure decidable core (probe.go) with a fake run closure,
-// covering the healthy path plus each of its two failure modes (version below the pinned floor, a
-// missing required subcommand) without ever shelling out to a real multiplexer binary.
+// probe_test.go drives probeCapability's pure decidable core (probe.go) with a fake run closure.
+// It covers the healthy path and each of its two failure modes:
+// a version below the pinned floor, and a missing required subcommand.
+// It never shells out to a real multiplexer binary.
 
 package reedengine
 
@@ -14,14 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeVersionOutput reports a version comfortably above both
-// minTmuxVersion and minTmuxVersion, in both binaries' own -V shapes, so
-// the version check passes regardless of which GOOS branch
-// minMultiplexerVersion selects on the host running this test.
+// fakeVersionOutput reports a version comfortably above both minTmuxVersionWindows and minTmuxVersion.
+// It holds in both binaries' own -V shapes.
+// So the version check passes regardless of the GOOS branch minMultiplexerVersion selects on this host.
 const fakeVersionOutput = "psmux 99.0.0 / tmux 99.0\n"
 
-// listedCommands renders every requiredSubcommands and optionalSubcommands entry except missing as one
-// list-commands line (name plus filler description text, mirroring real psmux/tmux output).
+// listedCommands renders every requiredSubcommands and optionalSubcommands entry except missing.
+// Each entry is one list-commands line: its name and filler description text, mirroring real psmux/tmux output.
 func listedCommands(missing string) string {
 	var b strings.Builder
 	for _, name := range append(slices.Clone(requiredSubcommands), optionalSubcommands...) {
@@ -34,7 +34,7 @@ func listedCommands(missing string) string {
 	return b.String()
 }
 
-// fakeFullCommandsOutput renders the complete command set, so parseCommandNames sees every required and optional verb.
+// fakeFullCommandsOutput renders the complete command set, so every required and optional verb is listed.
 func fakeFullCommandsOutput() string {
 	return listedCommands("")
 }
@@ -122,17 +122,15 @@ func TestProbeCapability(t *testing.T) {
 	}
 }
 
-// TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd is the regression guard for the R2
-// review's R2-F6: the probe used to shell out to the binary directly, bypassing TmuxCmd's -L prefix,
-// which made tmux answer `list-commands` from a server on the operator's GLOBAL DEFAULT socket — a
-// live-substrate spawn outside reed's per-hub server model, and a global that every concurrent reed
-// invocation on the box then raced (observed: `run list-commands: exit status 1` aborting `up` twice
-// in nine runs of a 3x concurrent smoke sweep).
+// TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd pins that the probe runs tmux through TmuxCmd.
+// TmuxCmd prefixes every call with the -L socket, so the probe stays on reed's per-hub server.
+// A probe that shelled out to the configured binary directly would query the operator's global default socket.
+// Every concurrent reed invocation then races on that global.
 //
 // TmuxCmd's execHook is the seam that makes this decidable hermetically: a hook is consulted only by
-// TmuxCmd.run/output, so it fires if and only if the probe goes through TmuxCmd. newTestEngine's
-// cfg.Tmux deliberately names a path that does not exist, so the bypassing implementation cannot
-// pass this test by accident — it would exec that missing binary and fail.
+// TmuxCmd.run/output, so it fires if and only if the probe goes through TmuxCmd.
+// newTestEngine's cfg.Tmux names a path that does not exist.
+// So a bypassing implementation cannot pass this test by accident: it would exec that missing binary and fail.
 //
 //testtiming:keep pins the probe going through the socket-scoped TmuxCmd as exactly -V then list-commands, never the configured binary directly; its covering tests run this code without asserting it
 func TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd(t *testing.T) {

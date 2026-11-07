@@ -1,4 +1,7 @@
-// land.go is the "lym beam land" and "lym beam ready" sequences: they judge the named beam; land applies the refusals that stop a landing of a beam not flagged ready or with work remaining under it and writes the land request the beam's pawl run consumes at Beam-Await, and ready writes the ready record.
+// land.go holds the `lym beam land` and `lym beam ready` sequences, which judge the named beam.
+// land applies the refusals that stop a landing of a beam not flagged ready or with work remaining under it,
+// and it writes the land request the beam's pawl run consumes at Beam-Await.
+// ready writes the ready record.
 
 package beamcli
 
@@ -17,26 +20,42 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// landDeps holds the seam of every land step, which hubLandDeps fills over the hub and TestLand fakes.
+// landDeps holds the seam of every land step: one field per read or write a step makes.
+// A test substitutes the fields it needs.
 // ParentOf names the slug of the pair a slug was forked from, "" for the prime.
 // ChildStatus reads the status of the beam pair's own pawl run, found false when it has none.
 // RunID returns the seed id of that pawl run, which a land request names.
-// Ready reads whether the beam's ready record flags it, and MarkReady writes that record unless it already flags the beam, commits it and returns its path.
+// Ready reads whether the beam's ready record flags it.
+// MarkReady writes that record unless it already flags the beam, commits it and returns its path.
 // Refusal is the landing's refusal of a beam with work remaining under it.
 // WriteRequest writes the land request into the beam worktree and returns its path.
-// Tasks reads the board's entries, FileTask creates the task its fields describe and releases it, and CodeReviewCaps reads the hub's Code-Review budget; `merge-parent` alone calls them.
-// Describe writes the beam's change description, stamps the landing record's DescribedAt with at, commits the landing directory and returns the description's path; `describe` alone calls it.
-// PullRequestSide reads the beam pair's origin facts, branch and parent branch, with the pull request API when the origin allows one.
-// PushBeam pushes the beam branch and returns the head it pushed, and BeamHasCommits reports whether the beam holds a commit its parent branch lacks.
-// Landing reads the beam's landing record, found false when it has none, and WriteLanding updates it and commits the landing directory, a commit over an unchanged directory being a no-op.
+// Tasks reads the board's entries.
+// FileTask creates the task its fields describe and releases it.
+// CodeReviewCaps reads the hub's Code-Review budget.
+// Only the `merge-parent` verb calls these three.
+// Describe writes the beam's change description and stamps the landing record's DescribedAt with at.
+// It commits the landing directory and returns the description's path.
+// Only the `describe` verb calls it.
+// PullRequestSide reads the beam pair's origin facts: its branch and its parent branch.
+// It uses the pull request API when the origin allows one.
+// PushBeam pushes the beam branch and returns the head it pushed.
+// BeamHasCommits reports whether the beam holds a commit its parent branch lacks.
+// Landing reads the beam's landing record, found false when it has none.
+// WriteLanding updates it and commits the landing directory.
+// A commit over an unchanged directory is a no-op.
 // Description reads the title and body of the written change description.
 // BeamHead reads the beam pair's HEAD.
-// PullRequestMode reads the pull_request mode of the parent's beam.yaml and whether GitHub's rules for the parent branch require a pull request, which a hub with no GitHub origin or no usable token reads as no rule.
-// Sleep waits d or until ctx ends, and Now is the clock a read of a pull request's merge state keeps its retry window by.
-// ParentUnmerged reports whether the parent branch's local tip, or its upstream tip fetched when the parent has an upstream and the hub's push skip is unset, is not an ancestor of the beam's head.
+// PullRequestMode reads the pull_request mode of the parent's beam.yaml.
+// It also reports whether GitHub's rules for the parent branch require a pull request.
+// A hub with no GitHub origin or no usable token reports that no rule requires one.
+// Sleep waits d or until ctx ends.
+// Now is the clock a read of a pull request's merge state keeps its retry window by.
+// ParentUnmerged reports whether the parent branch's tip is not an ancestor of the beam's head.
+// It is the local tip, or the upstream tip fetched when the parent has one and the hub's push skip is unset.
 // DescriptionFindings lists the findings of the written change description, none when it is valid.
-// MergedLacks lists the beam commits past mergedHead that a landing of the merged pull request would lack, each as a short object name and subject, the parent merges and records-only commits left out.
-// The pull request verbs and `ready` alone call them.
+// MergedLacks lists the beam commits past mergedHead that a landing of the merged pull request would lack.
+// Each is a short object name and subject; the parent merges and records-only commits are left out.
+// Only the pull request verbs and `ready` call them.
 type landDeps struct {
 	Machine        func() (string, error)
 	ReadOwners     func() (boardengine.Owners, error)
@@ -70,8 +89,10 @@ type landDeps struct {
 	MergedLacks         func(slug, mergedHead string) ([]string, error)
 }
 
-// land asks the pawl run of the beam slug to land the beam, and returns the request's path and the command that follows the landing.
-// The request is only a file: Beam-Await consumes it, and the beam's pair is removed at the run's teardown, so the verb runs from any worktree, the beam itself included.
+// land asks the pawl run of the beam slug to land the beam.
+// It returns the request's path and the command that follows the landing.
+// The request is only a file: Beam-Await consumes it, and the beam's pair is removed at the run's teardown.
+// So the verb runs from any worktree, the beam itself included.
 func land(deps landDeps, slug string) (map[string]any, error) {
 	here, err := deps.Machine()
 	if err != nil {
@@ -117,8 +138,10 @@ func land(deps landDeps, slug string) (map[string]any, error) {
 	}, nil
 }
 
-// markReady flags the beam slug ready to be merged into its parent, and returns the ready record's path and how the landing follows.
-// A beam already flagged is reported as such and its record is not rewritten, but a record left uncommitted by a failed commit is committed.
+// markReady flags the beam slug ready to be merged into its parent.
+// It returns the ready record's path and the command that follows the landing.
+// A beam already flagged is reported as such and its record is not rewritten,
+// but a record left uncommitted by a failed commit is committed.
 // A beam not yet flagged is judged by judgeReadyLanding first, since the flag is final.
 func markReady(deps landDeps, slug string) (map[string]any, error) {
 	owners, err := deps.ReadOwners()
@@ -133,7 +156,8 @@ func markReady(deps landDeps, slug string) (map[string]any, error) {
 		return nil, fmt.Errorf("lym beam ready: read the ready record of %s: %w; way forward: fix the cause it names, then run `lym beam ready %s` again", slug, err, slug)
 	}
 	if !ready {
-		// The one wait inside, a read of a merge state GitHub has not computed, is bounded by pullrequest.MergeRetryWindow.
+		// The one wait here is a read of a merge state GitHub has not computed yet.
+		// pullrequest.MergeRetryWindow bounds it.
 		if err := judgeReadyLanding(context.Background(), deps, slug); err != nil {
 			return nil, err
 		}
@@ -158,9 +182,12 @@ const (
 	mergeableBlocked = "blocked"
 )
 
-// judgeReadyLanding refuses a beam whose landing the orch can still fix, each refusal naming its way forward, in this order:
-// a run not at Beam-Await, open members and child pairs, a parent holding commits the beam lacks, a missing or invalid description, and the pull request conditions.
-// With no pull request recorded the landing decision for a required parent or GitHub's rules is a refusal naming `lym beam pr open`; with one recorded it must be able to merge now or already be merged.
+// judgeReadyLanding refuses a beam whose landing the orch can still fix, each refusal naming its way forward.
+// The checks run in this order:
+// a run not at Beam-Await; open members and child pairs; a parent holding commits the beam lacks;
+// a missing or invalid description; the pull request conditions.
+// With no pull request recorded, a required parent or GitHub's rules refuse the landing, naming `lym beam pr open`;
+// with one recorded, it must be able to merge now or already be merged.
 func judgeReadyLanding(ctx context.Context, deps landDeps, slug string) error {
 	const verb = "lym beam ready"
 	if err := judgeAwaitingRun(deps, verb, slug); err != nil {
@@ -182,7 +209,8 @@ func judgeReadyLanding(ctx context.Context, deps landDeps, slug string) error {
 	return judgeRecordedPullRequest(ctx, deps, verb, slug, *record.PullRequest)
 }
 
-// judgeParentMerged refuses a beam whose parent branch holds commits the beam lacks, naming the merge-in the orch runs or the one already filed.
+// judgeParentMerged refuses a beam whose parent branch holds commits the beam lacks.
+// The refusal names the merge-in the orch runs, or the one already filed.
 func judgeParentMerged(deps landDeps, verb, slug string) error {
 	unmerged, err := deps.ParentUnmerged(slug)
 	if err != nil {
@@ -201,7 +229,8 @@ func judgeParentMerged(deps landDeps, verb, slug string) error {
 	return fmt.Errorf("%s: the parent branch holds commits the beam %s lacks; way forward: run `lym beam merge-parent %s`, let its task land into the beam, then run `%s %s` again", verb, slug, slug, verb, slug)
 }
 
-// judgeDescribed refuses a beam whose landing record names no written description or whose description fails validation, and returns the landing record.
+// judgeDescribed refuses a beam whose change description is missing or fails validation.
+// It returns the landing record it read.
 func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord, error) {
 	record, found, err := deps.Landing(slug)
 	if err != nil {
@@ -220,8 +249,11 @@ func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord,
 	return record, nil
 }
 
-// judgeNoPullRequest refuses a beam with no pull request recorded when its landing needs one: a required parent or GitHub's rules demand one, or the origin lacks a fact the demand needs.
-// A merge parent passes, since Finalize opens its own, and so does a beam with no commits beyond its parent.
+// judgeNoPullRequest refuses a beam with no pull request recorded when its landing needs one.
+// A required parent or GitHub's rules demand a pull request;
+// an origin that lacks a fact the demand needs refuses the beam too.
+// A merge parent passes, since its landing opens its own pull request.
+// A beam with no commits beyond its parent passes too.
 func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	mode, rulesRequired, err := deps.PullRequestMode(slug)
 	if err != nil {
@@ -249,7 +281,9 @@ func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	return nil
 }
 
-// judgeRecordedPullRequest refuses a beam whose recorded pull request GitHub would not merge now: one closed, one open at a head other than the beam's or in a state that cannot merge, and a merged one that lacks beam commits.
+// judgeRecordedPullRequest refuses a beam whose recorded pull request GitHub would not merge now.
+// That is a closed pull request, or an open one at a head other than the beam's or in a state that cannot merge;
+// a merged pull request that lacks beam commits is refused too.
 func judgeRecordedPullRequest(ctx context.Context, deps landDeps, verb, slug string, recorded pawlengine.LandingPullRequest) error {
 	side, err := deps.PullRequestSide(slug)
 	if err != nil {
@@ -304,7 +338,9 @@ func judgeRecordedPullRequest(ctx context.Context, deps landDeps, verb, slug str
 	return fmt.Errorf("%s: pull request #%d cannot merge now: %s; way forward: %s, then run `%s %s` again; `lym beam pr status %s` reads the same state", verb, recorded.Number, strings.Join(merge.Causes, "; "), strings.Join(actions, "; "), verb, slug, slug)
 }
 
-// judgeLandEntry refuses the entry slug unless it is a beam project that is not done and whose pair is here, marked; verb opens each refusal.
+// judgeLandEntry refuses the entry slug unless it is a beam project that is not done.
+// Its pair must be on this machine and carry the beam mark.
+// verb prefixes each refusal message.
 func judgeLandEntry(deps landDeps, owners boardengine.Owners, verb, slug string) error {
 	entry, held := owners.Entries[slug]
 	switch {
@@ -332,7 +368,9 @@ func judgeLandEntry(deps landDeps, owners boardengine.Owners, verb, slug string)
 	return nil
 }
 
-// judgeLandRun refuses a beam whose pawl run is absent, as a beam made before the pawl recipe is, or is not running at Beam-Await, the one row that reads a land request.
+// judgeLandRun refuses a beam whose pawl run is absent.
+// It also refuses a beam whose run is not running at Beam-Await, the one row that reads a land request.
+// A beam made before the pawl recipe has no run.
 func judgeLandRun(deps landDeps, slug string) error {
 	status, found, err := deps.ChildStatus(slug)
 	if err != nil {
@@ -347,8 +385,11 @@ func judgeLandRun(deps landDeps, slug string) error {
 	return nil
 }
 
-// judgeAwaitingRun refuses a beam with no pawl run and one whose run is not at Beam-Await, the row the orch's landing verbs serve; verb opens each refusal.
-// A run at Beam-Await passes in every state, a halted one included, since Beam-Await halts by an error stop the status records as failed.
+// judgeAwaitingRun refuses a beam with no pawl run or whose run is not at Beam-Await.
+// That is the row the landing verbs serve.
+// verb prefixes each refusal message.
+// A run at Beam-Await passes in every state, a halted one included;
+// Beam-Await halts by an error stop the status records as failed.
 func judgeAwaitingRun(deps landDeps, verb, slug string) error {
 	status, found, err := deps.ChildStatus(slug)
 	if err != nil {
@@ -375,7 +416,8 @@ func judgeNotReady(deps landDeps, verb, slug string) error {
 	return nil
 }
 
-// judgeLandOwners refuses a beam another machine owns and a beam whose parent another machine owns, each naming the adopt that takes it; verb opens each refusal and names the run to repeat.
+// judgeLandOwners refuses a beam another machine owns and a beam whose parent another machine owns.
+// Each refusal opens with verb, names the run to repeat, and names the adopt that takes the beam over.
 // A beam with no owner recorded reads its parent's, so only the parent check judges it.
 func judgeLandOwners(deps landDeps, owners boardengine.Owners, here, verb, slug string) error {
 	if owner := owners.Entries[slug].Owner; boardengine.OwnedElsewhere(owner, here) {

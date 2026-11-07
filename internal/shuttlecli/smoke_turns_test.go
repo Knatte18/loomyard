@@ -1,10 +1,6 @@
-// smoke_turns_test.go provokes the hard turn-end cases against a REAL claude in a REAL tmux pane:
-// a long background shell, a background shell finishing mid-turn, a Monitor, a fork, a fork's permission dialog, a message sent mid-turn, a skill load and a compact.
-// One more scenario records every hook line of a session's whole life.
-// Each test drives shuttleengine.Runner directly and reads the run's events file through claudeengine's ParseEvents while Wait runs,
-// so a scenario whose agent has background work running checks that the Stop payload lists exactly what is running.
-// A failing scenario keeps its events file and transcript in a directory under the OS temp dir that it logs,
-// so promoting it to a claudeengine corpus case is a copy and a trim.
+// smoke_turns_test.go provokes the hard turn-end cases against a real claude in a real tmux pane:
+// background work, forks, mid-turn messages, skill loads and compaction.
+// Scenarios read the events file while Wait runs, so the Stop payload can be checked against the work still running.
 
 package shuttlecli
 
@@ -44,7 +40,8 @@ type turnHub struct {
 	prime  string
 }
 
-// newTurnHub forges a hub, chdirs into its prime worktree, brings reed up and builds a runner, tearing reed down at cleanup.
+// newTurnHub forges a hub, chdirs into its prime worktree, brings reed up and builds a runner.
+// It tears reed down at cleanup.
 func newTurnHub(t *testing.T) turnHub {
 	t.Helper()
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
@@ -64,7 +61,8 @@ func newTurnHub(t *testing.T) turnHub {
 	return turnHub{runner: runner, engine: engine, cfg: cfg, reed: reedEngine, prime: h.PrimeWorktree()}
 }
 
-// turnWatch is one live run under observation: its Wait outcome, the last snapshot of its events file and the notices its runner sent.
+// turnWatch is one live run under observation:
+// its Wait outcome, the last snapshot of its events file, and the notices its runner sent.
 type turnWatch struct {
 	t      *testing.T
 	run    *shuttleengine.Run
@@ -76,7 +74,8 @@ type turnWatch struct {
 	events  []byte
 }
 
-// startTurnScenario starts spec on hub's runner, runs Wait in a goroutine, and on a failing test keeps the events and transcript.
+// startTurnScenario starts spec on hub's runner and runs Wait in a goroutine.
+// On a failing test it keeps the events and transcript.
 func startTurnScenario(t *testing.T, hub turnHub, spec shuttleengine.Spec) *turnWatch {
 	t.Helper()
 	w := &turnWatch{t: t, parser: claudeengine.New(), waitCh: make(chan waitOutcome, 1)}
@@ -100,7 +99,8 @@ func startTurnScenario(t *testing.T, hub turnHub, spec shuttleengine.Spec) *turn
 	return w
 }
 
-// poll snapshots the run's events file; the run directory is removed when the run finishes done, so the last snapshot is the record.
+// poll snapshots the run's events file.
+// The run directory is removed when the run finishes done, so the last snapshot is the record.
 func (w *turnWatch) poll() {
 	data, err := os.ReadFile(filepath.Join(w.run.RunDir(), "events.jsonl"))
 	if err != nil {
@@ -129,7 +129,8 @@ func (w *turnWatch) turnEnds() []shuttleengine.Event {
 	return ends
 }
 
-// awaitTurnEnds polls until the events file holds at least n turn ends and returns them, failing if Wait returns or the scenario times out first.
+// awaitTurnEnds polls until the events file holds at least n turn ends and returns them.
+// It fails the scenario if Wait returns or the timeout passes first.
 func (w *turnWatch) awaitTurnEnds(n int) []shuttleengine.Event {
 	w.t.Helper()
 	deadline := time.Now().Add(turnScenarioTimeout)
@@ -220,14 +221,14 @@ func (w *turnWatch) finishDone() {
 	}
 }
 
-// noticeCount returns how many hold notices the runner sent.
 func (w *turnWatch) noticeCount() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.notices
 }
 
-// keepOnFailure copies the last events snapshot and the transcript its Stop lines name into a new directory under the OS temp dir, and logs it.
+// keepOnFailure copies the last events snapshot into a new directory under the OS temp dir.
+// The transcript that its Stop lines name is copied there too, and the directory is logged.
 // A passing scenario leaves nothing behind.
 func (w *turnWatch) keepOnFailure() {
 	if !w.t.Failed() {
@@ -266,8 +267,9 @@ func requireOutstanding(t *testing.T, turnEnd shuttleengine.Event, kind shuttlee
 	}
 }
 
-// TestSmokeTurnsLongBackgroundShell pins that a turn end with a backgrounded shell still running reads waiting on that shell, by the payload,
-// and that the run ends done once the shell finishes and the agent writes its output.
+// TestSmokeTurnsLongBackgroundShell pins that a turn end reads waiting on a background shell that still runs.
+// The payload lists that shell as outstanding,
+// and the run ends done once the shell finishes and the agent writes its output.
 func TestSmokeTurnsLongBackgroundShell(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -282,8 +284,8 @@ func TestSmokeTurnsLongBackgroundShell(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsShellFinishesMidTurn pins the issue 411 shape:
-// a background shell that finishes while the turn still runs leaves the turn end with nothing outstanding, so it reads done on the tick that reads it.
+// TestSmokeTurnsShellFinishesMidTurn pins that a background shell which finishes while the turn still runs:
+// the turn end has nothing outstanding, so the run reads done on the tick that reads it.
 func TestSmokeTurnsShellFinishesMidTurn(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -319,7 +321,8 @@ func TestSmokeTurnsMonitor(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsFork pins that a working fork is listed by the payload as an outstanding fork, so the turn end reads waiting until it returns.
+// TestSmokeTurnsFork pins that a working fork is listed by the payload as an outstanding fork,
+// so the turn end reads waiting until the fork returns.
 func TestSmokeTurnsFork(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -335,8 +338,10 @@ func TestSmokeTurnsFork(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsForkPermissionAsk pins that a fork whose Bash command Claude Code prompts on in bypass mode records an ask signal that is not an event, from a permission or input-dialog hook.
-// The command is a computed-path `rm` through the special parameter `$$`, and the dialog is never answered, so the run is torn down by the scenario's cleanup.
+// TestSmokeTurnsForkPermissionAsk pins that an ask signal from a permission or input-dialog hook is not an event.
+// The fork runs a Bash command that Claude Code prompts on in bypass mode.
+// The command is a computed-path `rm` through the special parameter `$$`,
+// and the dialog is never answered, so the run is torn down by the scenario's cleanup.
 func TestSmokeTurnsForkPermissionAsk(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -356,7 +361,8 @@ func TestSmokeTurnsForkPermissionAsk(t *testing.T) {
 	}
 }
 
-// TestSmokeTurnsMessageMidTurn pins that a message sent with Run.Send while the agent works does not end the run: it still ends done.
+// TestSmokeTurnsMessageMidTurn pins that a message sent with Run.Send while the agent works does not end the run:
+// it still ends done.
 func TestSmokeTurnsMessageMidTurn(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -373,7 +379,8 @@ func TestSmokeTurnsMessageMidTurn(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsSkillLoad pins that the skill-load turn end is not read as the run's own: the run never holds on it and ends done on the prompt's turn.
+// TestSmokeTurnsSkillLoad pins that the skill-load turn end is not read as the run's own:
+// the run never holds on it and ends done on the prompt's turn.
 func TestSmokeTurnsSkillLoad(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -390,7 +397,8 @@ func TestSmokeTurnsSkillLoad(t *testing.T) {
 	}
 }
 
-// TestSmokeTurnsCompact pins that compacting the live session while its turn end waits on a background shell does not end the run: it still ends done.
+// TestSmokeTurnsCompact pins that compacting a live session that waits on a background shell does not end the run:
+// it still ends done.
 func TestSmokeTurnsCompact(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -408,9 +416,11 @@ func TestSmokeTurnsCompact(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsSessionHooks pins ParseSessionSignals over the hook payloads Claude Code really writes for a prompt, a turn end, an idle notice and a session end:
-// an interactive run that replies without writing its output file holds, reads asking once the idle notice lands, and reads dead with the session end's reason after /exit.
-// The fold is read directly for the last step, because the run's record stops reading running once its pane is gone.
+// TestSmokeTurnsSessionHooks pins ParseSessionSignals over the hook payloads Claude Code writes.
+// They come from a prompt, a turn end, an idle notice and a session end.
+// An interactive run that replies without writing its output file holds;
+// it reads asking once the idle notice lands, and it reads dead with the session end's reason after /exit.
+// The last step reads the session fold directly, because the run's record stops reading running once its pane is gone.
 func TestSmokeTurnsSessionHooks(t *testing.T) {
 	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
@@ -505,7 +515,8 @@ func TestSmokeTurnsSessionHooks(t *testing.T) {
 	}
 }
 
-// hookLines returns the payload lines of events whose hook_event_name is hook, and whose source is source when source is not empty.
+// hookLines returns the payload lines of events whose hook_event_name is hook.
+// When source is not empty, it keeps only the lines whose source is source.
 func hookLines(events []byte, hook, source string) []map[string]any {
 	var lines []map[string]any
 	for _, line := range bytes.Split(events, []byte("\n")) {
@@ -522,7 +533,8 @@ func hookLines(events []byte, hook, source string) []map[string]any {
 }
 
 // awaitHook polls the run's events file until it holds at least n payload lines of hook (of source, when not empty).
-// It keeps polling after Wait returns, since a session that exited ends its run as died and the scenario goes on from there.
+// It keeps polling after the run has ended: a session that exited ends its run as died,
+// and the scenario goes on from there.
 func (w *turnWatch) awaitHook(hook, source string, n int) {
 	w.t.Helper()
 	deadline := time.Now().Add(turnScenarioTimeout)
@@ -561,7 +573,7 @@ func registryEntries(t *testing.T, sessionID string) string {
 	return fmt.Sprint(found)
 }
 
-// paneSampler records each change of the strand's pane reading, with the time it was seen, until stopped.
+// paneSampler records each change in the pane reading, with the time it was seen, until it is stopped.
 type paneSampler struct {
 	mu       sync.Mutex
 	readings []string
@@ -569,7 +581,8 @@ type paneSampler struct {
 	done     chan struct{}
 }
 
-// startPaneSampler samples the first live strand's pane every 200ms, classified by Claude's startup reading.
+// startPaneSampler polls the pane of every live strand on a fixed interval.
+// Each reading is the Claude parser's startup classification of a pane, noted when it changes.
 func startPaneSampler(reed *reedengine.Engine) *paneSampler {
 	s := &paneSampler{stop: make(chan struct{}), done: make(chan struct{})}
 	parser := claudeengine.New()
@@ -622,10 +635,13 @@ func (s *paneSampler) finish() []string {
 	return s.readings
 }
 
-// TestSmokeTurnsHookCapture records the real hook corpus of one run's session: startup, a typed turn, a permission request, /clear, /compact and /exit, then a resumed launch that is killed.
+// TestSmokeTurnsHookCapture records the real hook corpus of one run's session.
+// It drives the session through startup, a typed turn, a permission request, /clear, /compact and /exit;
+// then a resumed launch is killed.
 // Every hook line lands in the run's one events file.
-// The test keeps the events file, the transcript and its readings in a directory it logs;
-// the readings are the pane readings with their times and Claude's session registry entry after startup, /exit and the kill.
+// The test keeps the events file, the transcript and the readings in a directory it logs.
+// The readings are the pane readings with their times.
+// Claude's session registry entries are read after startup, after /exit and after the kill.
 // The claudeengine corpus case hook-capture is promoted from that directory by hand.
 func TestSmokeTurnsHookCapture(t *testing.T) {
 	tiergate.Require(t, 3)
@@ -633,7 +649,8 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	sampler := startPaneSampler(hub.reed)
 	output := filepath.Join(hub.prime, "turns-hook-capture-never-written.txt")
 	written := filepath.Join(hub.prime, "turns-hook-capture-permission.txt")
-	// An ask rule outranks the operator's own allow rules, so writing this one file raises a permission request whatever their settings say.
+	// An ask rule outranks the operator's own allow rules.
+	// Writing this one file therefore raises a permission request whatever their settings say.
 	askRule := `{"permissions":{"ask":["Edit(/` + written + `)"]}}`
 	if err := os.MkdirAll(filepath.Join(hub.prime, ".claude"), 0o755); err != nil {
 		t.Fatalf("create .claude: %v", err)
@@ -676,7 +693,8 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	}
 
 	w.awaitHook("Stop", "", 1)
-	// The operator's own settings may start the session in a mode that approves a write unasked; cycle with shift+tab until the status line shows none.
+	// The operator's own settings may start the session in a mode that approves a write unasked;
+	// cycle with shift+tab until the status line shows none.
 	for range 6 {
 		capture, err := hub.reed.CapturePane(guid)
 		if err != nil || !strings.Contains(capture, " on (shift+tab to cycle)") {
@@ -710,7 +728,8 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	evidence = append(evidence, "registry after /exit: "+registryEntries(t, sessionID))
 
-	// The pane is back at its shell after /exit, so reed's own resume sees it alive and relaunches nothing; type the strand's recorded resume command into it.
+	// The pane is back at its shell after /exit, so reed's own resume sees it alive and relaunches nothing;
+	// type the strand's recorded resume command into it.
 	cwd, err := lymcwd.Getwd()
 	if err != nil {
 		t.Fatalf("lymcwd.Getwd: %v", err)
@@ -767,10 +786,13 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	t.Logf("kept the hook capture's events, transcript and readings in %s", dir)
 }
 
-// keepDirEnv, when set, names the directory under which a scenario keeps its evidence instead of the OS temp dir, which a gate run removes with its package.
+// keepDirEnv names the environment variable that sets the directory a scenario keeps its evidence in.
+// Unset, the evidence goes to the OS temp dir, which a gate run removes with its package.
 const keepDirEnv = "LYM_TURN_KEEP_DIR"
 
-// makeKeepDir creates a fresh evidence directory named by prefix under keepDirEnv's directory, or the OS temp dir when it is unset.
+// makeKeepDir creates a fresh evidence directory named by prefix.
+// Its parent is the directory the keep-directory environment variable names;
+// when that variable is unset, the parent is the OS temp dir.
 func makeKeepDir(prefix string) (string, error) {
 	return os.MkdirTemp(os.Getenv(keepDirEnv), prefix)
 }

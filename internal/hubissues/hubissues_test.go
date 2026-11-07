@@ -1,4 +1,5 @@
-// hubissues_test.go covers Repo's calls against httptest servers, so no test reaches real token resolution or the network.
+// hubissues_test.go covers Repo's calls against httptest servers,
+// so no test reaches real token resolution or the network.
 
 package hubissues_test
 
@@ -32,7 +33,7 @@ const (
 	issuesPath = "/repos/owner/hub-repo/issues"
 )
 
-// Top-level constants so the untagged-test sleep guard can resolve them.
+// The constants are top-level so the untagged-test sleep guard can resolve them.
 const (
 	pageDelay = 250 * time.Millisecond
 	pauseHold = 150 * time.Millisecond
@@ -104,7 +105,8 @@ func TestOpen_RefusesNonGitHubURL(t *testing.T) {
 	}
 }
 
-// TestListOpenIssues_PaginatesAndExcludesPullRequests follows the Link header across two pages, drops the pull request, and asserts the repository's own path and the open filter.
+// TestListOpenIssues_PaginatesAndExcludesPullRequests follows the Link header across two pages.
+// It drops the pull request and asserts the repository's own path and the open filter.
 func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -152,7 +154,8 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 	}
 }
 
-// TestListOpenIssues_PausedPageGetsItsOwnDeadline holds the second page under a hub pause and checks the held page still completes inside its own deadline.
+// TestListOpenIssues_PausedPageGetsItsOwnDeadline holds the second page under a hub pause.
+// It checks that the held page still completes inside its own deadline.
 // It sets environment variables and installs the process-wide pause gate, so it does not run in parallel.
 func TestListOpenIssues_PausedPageGetsItsOwnDeadline(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -218,8 +221,9 @@ func TestListOpenIssues_PausedPageGetsItsOwnDeadline(t *testing.T) {
 	}
 }
 
-// TestListIssueComments_PaginatesOldestFirst follows the Link header across two pages, asserts the comments path with the created-ascending sort, and carries bodies and creation times over in order;
-// a rejected response surfaces its message.
+// TestListIssueComments_PaginatesOldestFirst follows the Link header across two pages.
+// It asserts the comments path with the created-ascending sort and carries bodies and creation times over in order.
+// A rejected response surfaces its message.
 func TestListIssueComments_PaginatesOldestFirst(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -286,7 +290,8 @@ func TestListIssueComments_PaginatesOldestFirst(t *testing.T) {
 	})
 }
 
-// TestGetIssue_ReportsPullRequestAndClosedState checks that GetIssue returns a pull request and a closed issue without excluding either.
+// TestGetIssue_ReportsPullRequestAndClosedState checks that GetIssue returns a pull request and a closed issue.
+// Neither is filtered out.
 func TestGetIssue_ReportsPullRequestAndClosedState(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -308,7 +313,8 @@ func TestGetIssue_ReportsPullRequestAndClosedState(t *testing.T) {
 	}
 }
 
-// TestCommentAndClose_SendsCommentThenClose drives both state reasons and checks the order and payloads of the two requests.
+// TestCommentAndClose_SendsCommentThenClose drives both state reasons.
+// It checks the order and payloads of the two requests.
 func TestCommentAndClose_SendsCommentThenClose(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// add_adoptlocal_integration_test.go covers Add with AddOptions.AdoptLocal over a hubforge hub: the adoption of an unmarked local branch, the refusals that precede any mutation and the root pair of the default branch.
+// add_adoptlocal_integration_test.go covers Add with AddOptions.AdoptLocal over a hubforge hub.
+// It checks adopting an unmarked local branch, refusals before any mutation, and the default branch's root pair.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 

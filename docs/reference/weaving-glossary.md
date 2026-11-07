@@ -5,15 +5,18 @@ It lists and marks; it recommends no name for any open question.
 
 ## How to read it
 
-Each row gives the English term, the Norwegian term, other languages where a term is well known, a one-line meaning in weaving, the kind of lym thing the term would fit, and whether lym already holds the name.
+Each row gives the English term, the Norwegian term, other languages where a term is well known, and a one-line meaning in weaving.
+It also gives the kind of lym thing the term would fit and whether lym already holds the name.
 
 - **Fits** is one of: recipe, agent role, module, artifact, state, or verb.
   It names the kind of thing the term's meaning resembles, not a decision to use it.
 - **In lym** is `–` when the search below found no hit.
-  `Taken:` says what holds the name today, in one or two sentences taken from the package doc, the command's help or the board's label descriptions.
+  `Taken:` says what holds the name today, in one or two sentences.
+  They come from the package doc, the command's help or the board's label descriptions.
   `Close:` names a taken term the entry could be confused with and says what that term is the same way.
 - **Norwegian** terms without a mark appear in the Norwegian sources listed under Sources.
-  A term marked `†` was not found in those sources; it is written from general Norwegian weaving usage and needs a check against a Norwegian weaving reference before use.
+  A term marked `†` was not found in those sources;
+  it comes from general Norwegian weaving usage and needs a check against a Norwegian weaving reference before use.
 - **Other languages** are Swedish (sv), Danish (da), French (fr) and German (de).
   A `–` means no well-known term was recorded.
   These columns were not checked entry by entry against a dictionary.
@@ -21,11 +24,17 @@ Each row gives the English term, the Norwegian term, other languages where a ter
 ## What "taken" was searched against
 
 - Package names under `internal/` and the module names `lym --help` lists.
-- The recipe names in `contracts/recipes` (tapestry, motif, raddle, darn, sampler, pawl, batten) and the row names in those recipes, such as Discussion, Plan, Webster, Describe, Finalize, Land and the Beam rows.
+- The recipe names in `contracts/recipes` and the row names in those recipes.
+  Row names include Discussion, Plan, Webster, Describe, Finalize, Land and the Beam rows.
 - The `lym` verbs of every module.
-- The role constants in Go code and the stencil families under the Bolt stencils directory, with their seats (chair, advisor, writer, implementer, reviewer, fixer).
-- The board's statuses and layers (draft, running, ready, project, done), its kinds (task, note, project), its handle letters and the labels from `lym board labels`.
-- Names that board entries and Go comments reserve: `cartoon`, kept for a later Plan block beside the `motif` recipe (the shed-sub-run-block task), `hardener` and `tenter` (the hardener note), `weaver` (the weaver note).
+- The role constants in Go code and the stencil families under the Bolt stencils directory.
+  Their seats are chair, advisor, writer, implementer, reviewer and fixer.
+- The board's statuses and layers (draft, running, ready, project, done) and its kinds (task, note, project).
+  Its handle letters and the labels from `lym board labels` count too.
+- Names that board entries and Go comments reserve:
+  - `cartoon`, kept for a later Plan block beside the `motif` recipe (the shed-sub-run-block task).
+  - `hardener` and `tenter` (the hardener note).
+  - `weaver` (the weaver note).
 
 ## Tools and loom parts
 
@@ -34,7 +43,7 @@ Each row gives the English term, the Norwegian term, other languages where a ter
 | loom | vevstol, vev | sv vävstol; da væv; fr métier à tisser; de Webstuhl | the frame that holds the warp and weaves it | module | Taken: `loom`, the module (`lym loom`) that drives one task's phase machine over a per-worktree status file, on the generic shed engine. It walks the producer rows from Discussion through Plan and Webster to Finalize. |
 | warp | renning, varp | sv varp; da kæde; fr chaîne; de Kette | the lengthwise threads held under tension | module, artifact | Taken: `warp`, the code-repository half of a fabric pair. Every warp worktree has a weft worktree beside it. |
 | weft | veft, innslag, islett † | sv inslag; da islæt; fr trame; de Schuss | the crosswise thread woven through the warp | module, artifact | Taken: `weft`, the records-repository half of a fabric pair, kept in the `-weft` sibling directory of each warp worktree. |
-| shed | skille, trådskille | sv fack; da fag; fr pas; de Fach | the opening between raised and lowered warp threads | module | Taken: `shed`, the phase-machine layer (`lym shed`) that drives an addressed run through the generic run, step, status, pause and goto verbs. Its recipes are tapestry, motif, raddle, darn, sampler, pawl and batten. |
+| shed | skille, trådskille | sv fack; da fag; fr pas; de Fach | the opening between raised and lowered warp threads | module | Taken: `shed`, the phase-machine layer (`lym shed`) that drives an addressed run through the generic run, step, status, pause and goto verbs. Its recipes live in `contracts/recipes`. |
 | shuttle | skyttel | sv skyttel; da skyttel; fr navette; de Schützen, Webschiffchen | carries the weft through the shed | module | Taken: `shuttle`, the module (`lym shuttle`) that drives one LLM agent through a single run: a prompt goes in, and the agent's output files and a classified outcome come out. The provider behind it is swappable. |
 | reed | vevskje | sv vävsked; da vevskje †; fr peigne, ros; de Webblatt, Riet | the comb that spaces the warp and beats the weft in | module | Taken: `reed`, the module (`lym reed`) that drives a per-hub tmux server with one strand per pane. It adds, removes, resumes and attaches strands and renders their layout. |
 | heddle | hovel | sv solv; da solv; fr lisse; de Litze | the eye on a shaft that lifts one warp thread | module | Taken: `heddle`, the module (`lym heddle`) that delivers the instruction text agents get from two layers: the entries lym ships in its binary and the repository's own `heddle.json` in the Bolt checkout. |
@@ -124,7 +133,7 @@ Agent nouns name the one who does the work.
 | pile | flor †, polvarp (pile warp) | sv lugg; fr velours; de Flor | raised loops or cut ends on the surface | state | – |
 | terry | frotté | fr éponge; de Frottee | pile of uncut loops | state | – |
 | tapestry | billedvev, gobelenger (pl.) | sv gobelängvävnad; fr tapisserie; de Gobelin | weft-faced pictorial weave | recipe, artifact | Taken: `tapestry`, the full task recipe: Discussion, Plan, Webster, Code review, Describe and Finalize, each review step followed by its own fix step. |
-| arras | – | fr arras | a tapestry hung as a wall covering | artifact | Free again: the arras recipe was removed when tapestry took its Motif block. |
+| arras | – | fr arras | a tapestry hung as a wall covering | artifact | Free: no recipe or module uses the name. |
 | overshot | – † | sv opphämta †; de Überschuss | pattern from long weft floats on a plain ground | state | – |
 | rep, ribbed weave | rips † | fr reps; de Rips | weave with fine crosswise ribs | state | – |
 | double cloth | dobbeltvev | fr double étoffe; de Doppelgewebe | two layers woven at once | state, recipe | – |
@@ -200,17 +209,22 @@ Agent nouns name the one who does the work.
 
 The Norwegian terms without a mark come from these pages, read for this document:
 
-- Store norske leksikon, article "veving" (snl.no/veving): loom parts, structures, processes, people and the organisation names Norges Husflidslag and Den Norske Husflidsforening.
+- Store norske leksikon, article "veving" (snl.no/veving):
+  loom parts, structures, processes, people and the organisation names Norges Husflidslag and Den Norske Husflidsforening.
 - Det Norske Akademis Ordbok, entry "flatvev" (naob.no/ordbok/flatvev): flatvev, oppstadvev and oppstadgogn.
 
-The Norwegian terms marked `†`, and the Swedish, Danish, French and German columns, are not from a page fetched for this document.
-They are written from general reference knowledge and need a check against the references below before a term is adopted:
+Neither the Norwegian terms marked `†` nor the Swedish, Danish, French and German columns come from a fetched page.
+They are written from general reference knowledge.
+They need a check against the references below before a term is adopted:
 
 - Bokmålsordboka and Nynorskordboka (ordbokene.no), for Norwegian spelling and sense.
 - Norsk Folkemuseum and DigitaltMuseum records on veving, for tool names such as rennebom.
 - Norges Husflidslag publications on veving, for threading, warping and tie-up terms.
-- Svenska Akademiens ordlista and Nationalencyklopedin (sv); Den Danske Ordbog (da); Trésor de la langue française and Larousse (fr); Duden (de).
+- Svenska Akademiens ordlista and Nationalencyklopedin (sv); Den Danske Ordbog (da);
+  Trésor de la langue française and Larousse (fr); Duden (de).
 
-The "taken" descriptions come from the package docs under `internal/`, each module's `lym <module> --help`, the board's `lym board --help` and `lym board labels`, the stencil headers in the Bolt checkout, and the board entries `shed-sub-run-block` and the weaver and hardener notes.
-Searches were run in this repository at the commit this document was written on.
+The "taken" descriptions come from the package docs under `internal/` and each module's `lym <module> --help`.
+They also come from the board's `lym board --help` and `lym board labels` and from the stencil headers in the Bolt checkout.
+The board entries `shed-sub-run-block` and the weaver and hardener notes are sources too.
+The searches ran against this repository at the commit the document was written on.
 Rerun them before relying on a mark.

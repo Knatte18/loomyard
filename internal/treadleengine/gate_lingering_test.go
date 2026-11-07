@@ -1,14 +1,9 @@
 //go:build windows
 
-// gate_lingering_test.go holds the one treadleengine test that spawns real
-// cmd/ping child processes and, by design, sits in the production
-// gateWaitDelay (10s) pipe-abandon grace window — real-time cost that
-// violates the offline Tier 1 loop's premise (see
-// PATTERN-test-speed), so it is tagged integration rather than
-// running on every plain `go test`. It previously evaded the tierpurity
-// guard because it spawns via the production execGateCommand wrapper rather
-// than a banned token (gitexec.RunGit, exec.Command, gitkit.Copy) the guard
-// greps for.
+// gate_lingering_test.go holds the one treadleengine test that spawns real cmd/ping child processes.
+// The test sits in the production gateWaitDelay (10s) pipe-abandon grace window, which costs real time.
+// It is tagged integration rather than run on every plain `go test`:
+// the offline Tier 1 loop cannot afford that cost (see PATTERN-test-speed).
 
 package treadleengine
 
@@ -21,20 +16,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay proves the gate call's lifetime is
-// bounded when a child holds the output pipe.
+// The gate call's lifetime is bounded when a child holds the output pipe.
 // Windows-only: the child-spawning idiom (cmd's start /b) has no portable equivalent.
 func TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay(t *testing.T) {
 	tiergate.Require(t, 1)
-	// Both subtests spend most of their time inside gateWaitDelay; run them
-	// in parallel so the suite pays for the grace window once, not twice.
+	// Both subtests spend most of their time inside gateWaitDelay.
+	// They run in parallel, so the suite pays for the grace window once, not twice.
 	t.Run("command exits zero, child still holds the pipe", func(t *testing.T) {
 		t.Parallel()
 		start := time.Now()
-		// The parent exits 0 immediately; the started ping (~19s) inherits
-		// and holds the output pipe. The command dir is the SYSTEM temp dir,
-		// not t.TempDir(): the lingering child keeps the dir as its cwd past
-		// the test's end, which would fail t.TempDir's RemoveAll cleanup.
+		// The parent exits 0 at once, but the started ping (about 19s) inherits and holds the output pipe.
+		// The command dir is the system temp dir, not t.TempDir():
+		// the lingering child keeps that dir as its cwd past the test's end, and t.TempDir's RemoveAll cleanup would fail.
 		_, exitZero, err := execGateCommand(
 			[]string{"cmd", "/c", "start /b ping -n 20 127.0.0.1"},
 			os.TempDir(), 30*time.Second)
@@ -53,10 +46,9 @@ func TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay(t *testing.T) {
 	t.Run("command killed at the deadline, child still holds the pipe", func(t *testing.T) {
 		t.Parallel()
 		start := time.Now()
-		// The parent runs a ~19s foreground ping (killed at the 2s
-		// deadline) after starting a background ping that keeps the pipe
-		// open past the kill. System temp dir for the same cwd-outliving
-		// reason as the pass-case subtest above.
+		// The parent runs a ~19s foreground ping, killed at the 2s deadline.
+		// It starts a background ping first, which keeps the pipe open past the kill.
+		// The system temp dir is used because the lingering child keeps it as its cwd past the test's end.
 		output, exitZero, err := execGateCommand(
 			[]string{"cmd", "/c", "start /b ping -n 20 127.0.0.1 & ping -n 20 127.0.0.1 > nul"},
 			os.TempDir(), 2*time.Second)

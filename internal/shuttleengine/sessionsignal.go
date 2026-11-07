@@ -1,5 +1,7 @@
-// sessionsignal.go declares the provider-neutral session signals: what a provider's hook lines say a session did, with the hook-side time of each.
-// It is a capability beside Engine, separate from the events ParseEvents yields, so the wait loop's classification does not depend on it.
+// sessionsignal.go declares the provider-neutral session signals:
+// what a provider's hook lines say a session did, with the hook-side time of each.
+// The signals are a capability kept apart from the provider's events:
+// the wait loop's classification does not depend on them.
 
 package shuttleengine
 
@@ -23,7 +25,8 @@ const (
 	// SessionSignalSessionEnd: the provider reported the session ended.
 	SessionSignalSessionEnd SessionSignalKind = "session_end"
 	// SessionSignalSessionStart: the provider started or resumed the session, or restarted its context after a compaction.
-	// A session fold reads a resume, a clear and a startup beside no running turn as an idle session with an empty context, and leaves its state alone on any other source.
+	// A session fold reads a resume, a clear and a startup beside no running turn as an idle session with an empty context.
+	// On any other source it leaves the state alone.
 	SessionSignalSessionStart SessionSignalKind = "session_start"
 )
 
@@ -55,37 +58,40 @@ type SessionSignal struct {
 	Outstanding []BackgroundTask
 	// ErrorText is an API-error turn end's text; empty on every other kind.
 	ErrorText string
-	// ModelRejected is true when an API-error turn end says the provider does not know the session's model, which no re-send clears;
-	// the provider decides which errors say so, and it is false on every other kind.
+	// ModelRejected is true when an API-error turn end says the provider does not know the session's model.
+	// A re-send does not clear that.
+	// The provider decides which errors say so, and it is false on every other kind.
 	ModelRejected bool
 	// Reason is a session end's reason; empty on every other kind.
 	Reason string
 	// EndsProcess is true when a session end's reason ends the provider's process; the provider decides which reasons do.
 	EndsProcess bool
-	// Source is a session start's SessionStartSource; empty on every other kind and on a start whose source the provider could not name.
+	// Source is why a session started; empty on every other kind and on a start whose source the provider could not name.
 	Source SessionStartSource
 	// Instruction is a turn start's prompt text when it is an instruction typed into the session;
 	// empty for a prompt the provider injects itself, for a command to the provider's own interface and on every other kind.
 	Instruction string
-	// Event is true when ParseEvents also yields an event from the same line.
+	// Event is true when the same line also yields an event.
 	Event bool
 	// Raw is the exact hook payload line the signal was read from.
 	Raw []byte
 }
 
-// SessionSignalParser is an optional capability beside Engine: the provider's reading of a run's hook lines as session signals.
-// An Engine without it yields no session state.
+// SessionSignalParser is an optional capability of an engine:
+// the provider's reading of a run's hook lines as session signals.
+// An engine without it yields no session state.
 type SessionSignalParser interface {
 	// ParseSessionSignals parses data, the bytes of an events file from some offset, into signals in file order.
-	// consumed is the byte count a following incremental read resumes from:
-	// it ends at the last complete line, except that it stops before the earliest line of the trailing run of time-stamp lines with no payload line after them,
-	// so the next read sees each such stamp together with its payload.
+	// consumed is the byte count a following incremental read resumes from.
+	// It ends at the last complete line, but trailing time-stamp lines with no payload line after them are left unread:
+	// the next read then sees each such stamp together with its payload.
 	// It is lenient: malformed or unrecognized lines are skipped.
 	ParseSessionSignals(data []byte) (signals []SessionSignal, consumed int)
 }
 
-// SessionProber is an optional capability beside Engine: the provider-specific facts a session state needs that no hook line carries.
-// An Engine without it leaves liveness unproven and reads no interrupt.
+// SessionProber is an optional capability of an engine:
+// the provider-specific facts a session state needs that no hook line carries.
+// An engine without it leaves liveness unproven and reads no interrupt.
 type SessionProber interface {
 	// ProcessLiveness reports whether the process driving sessionID is alive, dead or unproven.
 	// Dead needs positive evidence that the session's process is gone; every doubt reads unproven.
@@ -108,8 +114,8 @@ const (
 	TurnOver
 )
 
-// TurnProgressReader is an optional capability beside Engine: whether the turn a turn start began is still running.
-// An Engine without it leaves every turn start unknown, which keeps the idle-pane override as before.
+// TurnProgressReader is an optional capability of an engine: whether the turn a turn start began is still running.
+// An engine without it leaves every turn start unknown, so the idle-pane override applies to them.
 type TurnProgressReader interface {
 	// TurnStartProgress reports whether the turn that turnStart began is in flight, over, or unknown to the engine.
 	// Any failure to read reads unknown.

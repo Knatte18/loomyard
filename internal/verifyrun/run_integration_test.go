@@ -1,4 +1,4 @@
-// run_integration_test.go exercises Run against real shell processes, so it carries the integration tag.
+// run_integration_test.go exercises Run against real shell processes.
 
 package verifyrun
 
@@ -31,7 +31,10 @@ func runCapture(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// TestRun table-drives Run over a command that exits: one that passes captures both of its streams, a non-zero exit is reported as its code with no error, whether the output goes to a buffer or is discarded, and the command runs in the told working directory.
+// TestRun table-drives Run over commands that exit.
+// A passing command captures both of its streams.
+// A non-zero exit is reported as its code with no error, whether the output goes to a buffer or is discarded.
+// The command runs in the told working directory.
 func TestRun(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -60,7 +63,7 @@ func TestRun(t *testing.T) {
 		env        []string
 		wantCode   int
 		wantOutput []string
-		// wantOutputIsDir expects the whole trimmed output to be the working directory instead.
+		// wantOutputIsDir expects the whole trimmed output to be the working directory.
 		wantOutputIsDir bool
 	}{
 		{

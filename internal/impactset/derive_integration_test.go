@@ -32,7 +32,7 @@ func commitAll(t *testing.T, dir, message string) string {
 	return gitkit.Git(t, dir, "rev-parse", "HEAD")
 }
 
-// deriveTargets returns DeriveTargets of dir from base, failing the test on an error.
+// deriveTargets returns the targets of the repository at dir against base, failing the test on an error.
 func deriveTargets(t *testing.T, dir, base string) Targets {
 	t.Helper()
 	targets, err := DeriveTargets(context.Background(), dir, base)
@@ -51,8 +51,10 @@ func packagesOf(targets Targets) string {
 	return strings.Join(packages, " ")
 }
 
-// TestDerive_OverARepository walks one repository through each fallback, a one-package change and the working-tree forms.
-// The steps share the repository and run in order, each against the commit the step before left, so the test is parallel as a whole and no step is.
+// TestDerive_OverARepository walks one repository through each fallback.
+// It also covers a one-package change and the working-tree forms.
+// The steps share the repository and run in order, each against the commit the step before left,
+// so the test is parallel as a whole and no step is.
 func TestDerive_OverARepository(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,4 +1,6 @@
-// arm_seed_test.go covers arm's run-id resolution, its self-address refusal, and its gated auto-seed: resolveBattenRunID, refuseSelfAddress and armSeed each drive against a hand-built *lymcwd.Location, with no real git repository behind it (shedrun.ReadSeed, shedrun.WriteSeed and shedrun.List are all plain filesystem reads/writes under AnchorPath), so this file stays Tier 1.
+// arm_seed_test.go covers arm's run-id resolution, its self-address refusal, and its gated auto-seed.
+// The tests drive each one against a hand-built location, with no git repository behind it.
+// The seed I/O is plain filesystem access, so the file stays Tier-1.
 
 package battencli
 
@@ -16,7 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestArmSeed_RunAndStepSeedBeforeWire asserts a first "lym batten run <slug>" and a first "lym batten step <slug>" each write a fresh seed when none exists, whether or not LYM_STRAND_NAME is set -- the seeding arm performs ahead of wire building the Env, per the batch's own auto-seed-runs-inside-arm-ahead-of-wire decision.
+// TestArmSeed_RunAndStepSeedBeforeWire asserts a first "lym batten run <slug>" writes a fresh seed when none exists.
+// A first "lym batten step <slug>" does the same.
+// This holds whether or not LYM_STRAND_NAME is set.
+// The seeding arm runs ahead of building the Env.
 // The seed carries recipe: "batten", never the Board task's own type.
 func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -46,8 +51,8 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 				if _, present := seed.Params["slug"]; present {
 					t.Errorf("seed.Params carries %q; the run-id is the slug and nothing reads a copy", "slug")
 				}
-				// Unset flags: batten's own driver defaults to go, since batten has no bootstrap verb,
-				// while the loom child's driver is recorded only when typed.
+				// Unset flags: batten's own driver defaults to go, since batten has no bootstrap verb.
+				// The loom child's driver is recorded only when typed.
 				if seed.Driver != shedrun.DriverGo {
 					t.Errorf("seed.Driver = %q; want the default %q", seed.Driver, shedrun.DriverGo)
 				}
@@ -67,13 +72,10 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	}
 }
 
-// TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun asserts a typed --driver llm reads as the
-// impossibility it is on an already-seeded run too, not as a mere disagreement with a recorded
-// value.
-//
-// Before this, refuseAdoptedSeed ran first and answered "--driver \"llm\" cannot change a seeded
-// run's recorded driver" -- true, but it reads as "not now", inviting the operator to delete the
-// seed and re-seed with a value batten can never honour at all.
+// TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun asserts a typed --driver llm on a seeded run is refused.
+// The refusal names the impossibility, the missing bootstrap verb, not a disagreement with the seed.
+// A disagreement reads as "not now", inviting the operator to delete the seed.
+// Re-seeding with that value would not help, since batten can never honour it.
 func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
@@ -97,7 +99,6 @@ func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
 	}
 }
 
-// listRunRecords lists the live owner records of slug in loc's hub.
 func listRunRecords(t *testing.T, loc *lymcwd.Location, slug string) []runproc.Record {
 	t.Helper()
 	records, err := runproc.List(fabricengine.RunProcDir(loc.HubPath), slug)
@@ -107,7 +108,7 @@ func listRunRecords(t *testing.T, loc *lymcwd.Location, slug string) []runproc.R
 	return records
 }
 
-// TestBattenLoopSpec_OnStartRegistersTheLoop asserts the loop's start hook registers the calling process as the run's loop.
+// TestBattenLoopSpec_OnStartRegistersTheLoop asserts that OnStart registers the calling process as the run's loop.
 func TestBattenLoopSpec_OnStartRegistersTheLoop(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -121,9 +122,8 @@ func TestBattenLoopSpec_OnStartRegistersTheLoop(t *testing.T) {
 	}
 }
 
-// TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead asserts an unknown --child-driver value
-// is named for what it is on a seeded run, rather than being reported as disagreeing with the
-// recorded one.
+// TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead asserts an unknown --child-driver value on a seeded run.
+// It is refused as an unknown driver, not as a disagreement with the recorded value.
 func TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead(t *testing.T) {
 	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
@@ -141,7 +141,11 @@ func TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead(t *testing.T) {
 	}
 }
 
-// TestRefuseSelfAddress asserts an omitted positional argument refuses by name before the auto-seed gate ever runs rather than silently taking the self default, an explicitly typed slug of "self" refuses as a reservation collision -- a different refusal, though both resolve to the identical run-id value -- and an ordinary slug reaches neither.
+// TestRefuseSelfAddress asserts that an omitted positional argument refuses by name before the auto-seed gate runs.
+// It refuses rather than silently taking the self default.
+// An explicitly typed slug of "self" refuses as a reservation collision.
+// That is a different refusal, though both cases resolve to the identical run-id value.
+// An ordinary slug reaches neither.
 func TestRefuseSelfAddress(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -183,16 +187,17 @@ func TestRefuseSelfAddress(t *testing.T) {
 	}
 }
 
-// TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundFalse asserts the two
-// absences stay distinct: an addressed run-id with no seed at all gives armSeed's own listing
-// refusal, while a run-id that IS seeded but has no status.json yet is a different, later question
-// -- battenPreRun's own "found: false" disposition, which armSeed never touches.
+// TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundFalse asserts two absences stay distinct.
+// An addressed run-id with no seed at all gets armSeed's own listing refusal.
+// A seeded run-id with no status.json yet is a different, later question.
+// battenPreRun answers it with its own "found: false" disposition, which armSeed never touches.
 func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundFalse(t *testing.T) {
 	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	c := &battenCLI{}
 
-	// No seed at all: armSeed itself refuses with the listing and seeds nothing -- the read-only-verbs-create-no-state rule, easy to lose in a refactor of arm.
+	// With no seed at all, armSeed refuses with the listing and seeds nothing.
+	// Read-only verbs must create no state, a rule that is easy to lose in a refactor of arm.
 	for _, verb := range []string{"status", "pause"} {
 		err := c.armSeed(loc, "unseeded-slug", verb)
 		if err == nil {
@@ -209,9 +214,8 @@ func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundF
 		}
 	}
 
-	// Seed the run-id directly (bypassing armSeed, as a prior "lym batten run" would have), leaving
-	// no status.json beside it -- StatusFile lives under a different path than SeedFile, so writing
-	// one never creates the other.
+	// Seed the run-id directly, as a prior "lym batten run" would, leaving no status.json beside it.
+	// StatusFile lives under a different path than SeedFile, so writing one never creates the other.
 	if err := shedrun.WriteSeed(loc, "seeded-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
 	}
@@ -223,9 +227,9 @@ func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundF
 	}
 }
 
-// TestRefuseAdoptedSeed covers the two ways an already-existing seed can disagree with the
-// invocation that found it -- a foreign recipe, and a typed driver flag that cannot take effect --
-// and asserts an agreeing seed is left alone.
+// TestRefuseAdoptedSeed covers the two ways an existing seed can disagree with the invocation that found it.
+// They are a foreign recipe and a typed driver flag that cannot take effect.
+// An agreeing seed is left alone.
 func TestRefuseAdoptedSeed(t *testing.T) {
 	tiergate.Require(t, 0)
 	battenSeedGoChild := shedrun.Seed{

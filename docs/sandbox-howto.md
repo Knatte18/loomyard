@@ -5,11 +5,12 @@ This is the **ordered procedure**;
 for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lym repo root (`C:\Code\loomyard\wts\loomyard` on Windows, the repo root on POSIX) unless stated otherwise.
-The sandbox launchers (`sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/creel-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's Hub parent `C:\Code`.
-The deploy launchers hardcode nothing: `update-plugins.cmd` puts production `lym` into the machine's own `go env GOBIN` (else `GOPATH\bin`), and `deploy-dev.cmd` a dev build into a derived, per-worktree `.dev-bin` directory.
-Each sandbox launcher does exactly one thing (build / one suite / fetch).
+The sandbox launchers under `sandbox/win` hardcode this machine's Hub parent `C:\Code`.
+The deploy launchers hardcode nothing: `update-plugins.cmd` installs production `lym` into the machine's own `go env GOBIN` (else `GOPATH\bin`),
+and `deploy-dev.cmd` installs a dev build into a derived, per-worktree `.dev-bin` directory.
+Each sandbox launcher does one thing: build, run one suite, or fetch.
 
-> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `creel-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `update-plugins.sh`/`deploy-dev` are the POSIX twins of `update-plugins.cmd`/`deploy-dev.cmd`.
+> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin with the same subcommands and flags, and `$HOME/Code` stands in for `C:\Code`. `update-plugins.sh` and `deploy-dev` are the POSIX twins of `update-plugins.cmd` and `deploy-dev.cmd`.
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
 The agent session is an interactive `claude` process;
@@ -18,25 +19,35 @@ The launcher prints a warning when it detects non-console stdio.
 
 ## What the suite does
 
-`sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh` on POSIX) resolves the `lym` binary to test — the derived `.dev-bin/lym.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub code repo, and launches an interactive black-box agent there.
-When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so its bare `lym` invocations resolve to it — the agent still drives `lym` from PATH only (never the source tree), just scoped to its own session, not your shell.
-Panes the agent itself spawns inherit the same resolution from reed rather than from the launcher: reed prepends the spawning binary's directory to each strand pane's `PATH` and exports `LYM_BIN`, writing those statements to the strand pane's launch script, which the pane shell sources,
+`sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh` on POSIX) resolves the `lym` binary to test:
+the derived `.dev-bin/lym.exe` when it exists, else the binary on PATH as a prod fallback.
+It fingerprints the binary and drops a fresh `SANDBOX-CORE-SUITE.md` into the Hub code repo, stamped with the fingerprint and a `Source: dev` / `Source: prod` marker.
+It then launches an interactive black-box agent there.
+When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so its bare `lym` invocations resolve to it.
+The agent still drives `lym` from PATH only (never the source tree), scoped to its own session, not your shell.
+Panes the agent itself spawns inherit the same resolution from reed rather than from the launcher.
+Reed prepends the spawning binary's directory to each strand pane's `PATH` and exports `LYM_BIN`.
+It writes those statements to the strand pane's launch script, which the pane shell sources,
 so a nested `lym …` inside a spawned pane resolves to the binary under test too.
-The two mechanisms are complementary and neither replaces the other — the launcher composes a Go child process's environment, reed composes a pane shell statement.
+The two mechanisms are complementary: the launcher composes a Go child process's environment, and reed composes a pane shell statement.
 The agent writes WARN/FAIL findings to `sandbox-report.json` in the code repo.
 The suite only launches the agent;
-collecting the report is a separate step — after the session ends, run `sandbox/win/fetch.cmd` (`sandbox/posix/fetch.sh`) to fetch a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
+collecting the report is a separate step.
+After the session ends, run `sandbox/win/fetch.cmd` (`sandbox/posix/fetch.sh`).
+It fetches a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 
-Because the agent tests the resolved binary (dev-first, prod fallback), a stale `.dev-bin` binary means you are testing old code.
-Always deploy before a run (step 2) — `deploy-dev.cmd` is the fast path since it never touches the production binary.
+The agent tests the resolved binary, dev-first with a prod fallback.
+A stale `.dev-bin` binary therefore means you are testing old code.
+Always deploy before a run (step 2); `deploy-dev.cmd` is the fast path because it never touches the production binary.
 
 ## Prerequisites (one-time)
 
-1. **Sandbox wiki initialized** — the board repo is the records repo's GitHub wiki. The records repo must have Wikis enabled and at least one page, or the clone fails and the Hub is torn down.
+1. **Sandbox wiki initialized** — the board repo is the records repo's GitHub wiki.
+   The records repo must have Wikis enabled and at least one page, or the clone fails and the Hub is torn down.
    See [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
 2. **The Go bin dir is on PATH (production only)** — `update-plugins.cmd` installs the production `lym` into `go env GOBIN`, else `GOPATH\bin`.
    To install elsewhere, set it once per machine: `go env -w GOBIN=C:\Code\tools\bin`.
-   The dev binary in `.dev-bin` does NOT need to be on PATH;
+   The dev binary in `.dev-bin` does not need to be on PATH;
    the suite resolves it directly and threads it to the agent itself.
 
 ## Each run
@@ -59,16 +70,16 @@ This never touches the production `lym` in the Go bin dir — `deploy-dev.cmd` a
 deploy-dev.cmd
 ```
 
-Verify the deployed binary is the new one — e.g. confirm an expected surface change is present.
-The dev binary is deliberately not on PATH, so call it by its `.dev-bin` path directly:
+Verify the deployed binary is the new one, for example by confirming an expected surface change is present.
+The dev binary is not on PATH, so call it by its `.dev-bin` path directly:
 
 ```cmd
 .dev-bin\lym.exe config --help
 ```
 
-(After the cobra-cli-engine sweep, `lym update` is gone and `lym config reconcile` exists.
-If you still see `update` in the output, the deploy did not take.)
-Once the suite session starts, the fingerprint header's `Source: dev` line is the ongoing confirmation that the agent is exercising this build — no further manual check needed.
+`lym config reconcile` exists and `lym update` does not.
+If you see `update` in the output, the deploy did not take.
+Once the suite session starts, the fingerprint header's `Source: dev` line confirms that the agent exercises this build.
 
 ### 3. Build the Hub (first time, or when you want a clean slate)
 
@@ -92,7 +103,8 @@ sandbox/win/build.cmd -reset
 sandbox/posix/build.sh -reset
 ```
 
-Skip this step on repeat runs if the existing Hub is fine — `sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh` does not require a reset each time.
+Skip this step on repeat runs if the existing Hub is fine.
+`sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh` does not require a reset each time.
 Reset when the Hub topology may be stale (e.g. after a fabric change) or when a previous run left it dirty.
 
 ### 4. Run the suite
@@ -105,10 +117,11 @@ sandbox/win/core-suite.cmd
 sandbox/posix/core-suite.sh
 ```
 
-This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub code repo and launches the interactive agent there.
+This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub code repo.
+It then launches the interactive agent there.
 Let it run;
 it records findings to `sandbox-report.json` itself.
-Exit the agent session when it is done — the suite treats any exit code as normal and does not fetch the report itself.
+Exit the agent session when it is done; the suite treats any exit code as normal and does not fetch the report.
 
 Optional overrides:
 
@@ -132,12 +145,14 @@ sandbox/win/reed-suite.cmd
 sandbox/posix/reed-suite.sh
 ```
 
-This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub code repo and launches the interactive agent there, same as step 4 but for `lym reed`'s scenarios.
+This runs as step 4 does, but for `lym reed`'s scenarios.
+It copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub code repo and launches the interactive agent there.
 It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7.
 The attach scenario (M7) pauses for the operator to run `lym reed attach` in a second terminal and confirm visually.
-Findings go to the same `sandbox-report.json`, so steps 5 (fetch) and 6 (triage) apply unchanged — fetch between sessions, don't run both suites and fetch once.
+Findings go to the same `sandbox-report.json`, so steps 5 (fetch) and 6 (triage) apply unchanged.
+Fetch between sessions; do not run both suites and fetch once.
 
-Same `-claude`/`-prompt` overrides as `sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh`:
+The `-claude`/`-prompt` overrides are the same as for `sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh`:
 
 ```cmd
 sandbox/win/reed-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
@@ -157,11 +172,12 @@ sandbox/win/creel-suite.cmd
 sandbox/win/burler-suite.cmd
 ```
 
-Same operating model as 4b, for `lym shuttle`'s, `lym creel`'s and `lym burler`'s scenarios respectively;
-each needs a live tmux, PowerShell 7, a logged-in `claude`,
-and an `lym init`-ed code repo.
-Same `-claude`/`-prompt` overrides.
-After the session ends, the launcher runs `lym reed down` in the code repo (for the reed, shuttle, creel, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
+These run as 4b does, for the scenarios of `lym shuttle`, `lym creel` and `lym burler` respectively.
+Each needs a live tmux, PowerShell 7, a logged-in `claude`, and an `lym init`-ed code repo.
+The `-claude`/`-prompt` overrides are the same.
+After the session ends, the suite runs `lym reed down` in the code repo for every reed-backed suite except the reed watch suite (4d),
+so no tmux server outlives the run.
+An orphaned server holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
 
 ### 4d. Run the reed watch suite (optional, needs live tmux + logged-in claude)
 
@@ -174,11 +190,15 @@ sandbox/posix/reed-watch-suite.sh
 ```
 
 The non-destructive counterpart to 4b: no scenario here kills a server, kills a pane, renames a worktree, or tears the session down.
-The operator attaches once at the start (W0) and stays attached through every later scenario, watching strands appear, a parent collapse as a child appears, a real cheap Claude Code agent (Haiku) visibly work in its own pane, and a live terminal resize reflow everything — all in one continuous window.
-Reach for this instead of 4b when you want to *watch* reed work rather than follow a crash/kill/rename scenario log; reach for 4b when you actually need that destructive coverage.
-Same `-claude`/`-prompt` overrides as the other suites.
+The operator attaches once at the start (W0) and stays attached through every later scenario, in one continuous window.
+The operator watches strands appear and a parent collapse as a child appears.
+The operator also watches a cheap Claude Code agent (Haiku) work in its own pane, and a live terminal resize reflow everything.
+Use this instead of 4b to *watch* reed work rather than follow a crash/kill/rename scenario log.
+Use 4b when you need the destructive coverage.
+The `-claude`/`-prompt` overrides are the same as for the other suites.
 
-**Unlike every other reed-touching suite, this one does not run `lym reed down` after the session ends** — the whole point is that the session stays live and attached so you can keep exploring by hand. Tear it down yourself (`lym reed down` in the Hub code repo) when you're done.
+**This suite does not run `lym reed down` after the session ends**, so the session stays live and attached for exploring by hand.
+Tear it down yourself with `lym reed down` in the Hub code repo when you are done.
 
 ### 5. Fetch the report
 
@@ -190,14 +210,18 @@ sandbox/win/fetch.cmd
 sandbox/posix/fetch.sh
 ```
 
-Reads `sandbox-report.json` from the Hub code repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
+This reads `sandbox-report.json` from the Hub code repo and validates and stamps it.
+It writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 Run this after the suite session ends;
 if the agent wrote no report, this fails with a distinct "not found" error.
 
 ### 6. Triage findings
 
-The agent no longer files GitHub issues itself.
-Instead: the suite emits `sandbox-report.json` in the Hub code repo → `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
+The agent does not file GitHub issues itself.
+The flow has three steps:
+the suite emits `sandbox-report.json` in the Hub code repo;
+`sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json`;
+you run the report-to-tasks triage skill against that file:
 
 ```
 /mill-report-to-tasks "<path-to-fetched-json>"
@@ -215,7 +239,7 @@ Then groom/spawn as usual.
 | `lym` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) the Go bin dir (`go env GOBIN`, else `GOPATH\bin`) not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
 | the clone fails during build | sandbox wiki not initialized | enable Wikis + add a page on the records repo, then `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
-| `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher now runs `lym reed down` after reed-backed suites **except the reed watch suite, which never auto-tears-down (see 4d)**; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
+| `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher runs `lym reed down` after reed-backed suites **except the reed watch suite, which never auto-tears-down (see 4d)**; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
 | agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 

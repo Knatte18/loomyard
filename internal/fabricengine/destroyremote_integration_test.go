@@ -1,11 +1,6 @@
-// destroyremote_integration_test.go pins the remote-branch gate against a real hub, since each case needs a real git spawn: the unset-declaration and naming-predicate refusals are hermetic and covered in destroy_test.go instead, per the Test Tier Purity Invariant.
-//
-// The first two cases drive checkRemoteBranchRequest through CheckRemoteBranchRequestForTest (export_test.go) and pin refusals the real call sites cannot reach.
-// The rest are executor-level cases driven through DeleteArchivedWeftBranchForTest: a pair's weft branch, still checked out at its weft worktree, is deleted from origin under a lease, and every refusal or stale lease leaves origin untouched.
-//
-// Package fabricengine_test: building every case needs a real hub via hubforge.CopyHub, but an
-// internal fabricengine test file cannot import internal/hubforge without closing an import cycle
-// (hubforge -> fabriccli -> fabricengine). Shares the single TestMain in testmain_test.go.
+// destroyremote_integration_test.go pins the remote-branch gate and archived weft branch deletion against a real hub.
+// The refusals that need no git spawn are in destroy_test.go.
+// It is in package fabricengine_test because hubforge imports fabriccli, which imports fabricengine.
 
 package fabricengine_test
 
@@ -18,10 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused proves the repo's primary weft branch is
-// refused with CheckOwnership, reaching primaryWeftBranch — a real git spawn only an integration-tier
-// test can exercise. This is a refusal the real call sites cannot reach: neither real call site ever
-// names the primary weft branch, since Cleanup itself never enumerates it as an orphan.
+// TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused proves the primary weft branch is refused with `CheckOwnership`.
+// The check reaches `primaryWeftBranch`, which is a real git spawn that only an integration-tier test can exercise.
+// The real call sites cannot reach this refusal.
+// They never name the primary weft branch, since `Cleanup` never enumerates it as an orphan.
 //
 //testtiming:keep the remote-branch gate refusing the primary weft branch on ownership, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
@@ -41,16 +36,16 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 	}
 }
 
-// TestDeleteRemoteBranchGate_CheckedOutBranchRefused proves a weft branch still checked out at a
-// worktree is refused with CheckOwnership (not CheckDirtiness), reaching listWeftBranches from
-// inside resolveManagedBranch — a real git spawn only an integration-tier test can exercise.
-// resolveManagedBranch's own checked-out-at-a-worktree check runs before checkBranchDirtiness's
-// duplicate check is ever reached, so the latter is unreachable dead code on an
-// ownedManagedBranch-typed request.
+// TestDeleteRemoteBranchGate_CheckedOutBranchRefused proves a weft branch still checked out at a worktree is refused.
+// The refusal is `CheckOwnership`, not `CheckDirtiness`.
+// The check reaches `listWeftBranches` from inside `resolveManagedBranch`.
+// That is a real git spawn, so only an integration-tier test can exercise it.
+// `resolveManagedBranch` checks for a worktree checkout before `checkBranchDirtiness` runs its own duplicate check,
+// so that duplicate check is unreachable for an `ownedManagedBranch`-typed request.
 //
-// This is also a refusal the real call sites cannot reach: they run only after the same branch's
-// local `git branch -D` already succeeded, at which point the branch is already gone locally and so
-// is no longer checked out anywhere.
+// The real call sites cannot reach this refusal.
+// They run only after the branch's local `git branch -D` has succeeded.
+// By then the branch is gone locally and checked out nowhere.
 //
 //testtiming:keep the remote-branch gate refusing a checked-out weft branch on ownership rather than dirtiness, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
@@ -73,7 +68,8 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	}
 }
 
-// archivedDeleteFixture builds a hub with a pushed pair and returns the hub, its weft repo root, the pair's weft branch and the branch's tip on origin.
+// archivedDeleteFixture builds a hub with a pushed pair.
+// It returns the hub, the weft repo root, the pair's weft branch, and the branch's tip on origin.
 func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, string, string) {
 	t.Helper()
 
@@ -91,8 +87,10 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 	return h, weftRoot, branch, tip
 }
 
-// TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted proves the pair's own weft branch, checked out at its weft worktree, is deleted from origin under a valid tag and a lease at the tip,
-// and it records one entry.
+// TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted proves the pair's own weft branch is deleted from origin.
+// The branch is still checked out at its weft worktree,
+// and the deletion runs under a valid tag and a lease at the tip.
+// It records one entry.
 //
 //testtiming:keep the pair's own checked-out weft branch being deleted from origin under a valid tag and a tip lease with one recorded entry; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
@@ -168,7 +166,8 @@ func TestDeleteArchivedWeftBranch_EmptyLeaseRefused(t *testing.T) {
 	}
 }
 
-// TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip proves a lease behind an advanced origin fails without a gate refusal, records nothing, and leaves the advanced tip.
+// TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip proves a lease behind an advanced origin fails.
+// The call fails without a gate refusal, records nothing, and leaves the advanced tip.
 //
 //testtiming:keep a lease behind an advanced origin failing without a gate refusal, recording nothing and leaving the advanced tip; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip(t *testing.T) {

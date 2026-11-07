@@ -1,4 +1,5 @@
-// cancelcmd_test.go pins the cancel verb's pre-resolution refusals and the helpers that wire its seams: the pause readings, the claim clear, the tackler stop and batten's two locks.
+// cancelcmd_test.go pins the cancel verb's pre-resolution refusals and the helpers that wire its seams:
+// the pause readings, the claim clear, the tackler stop and batten's locks.
 
 package battencli
 
@@ -20,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestTakeBattenLocks pins that both locks are held until release, and that a busy lock names its own path with nothing held.
+// TestTakeBattenLocks pins that each of batten's locks is held until release.
+// It also pins that a busy lock names its own path with nothing held.
 func TestTakeBattenLocks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -225,8 +227,8 @@ func TestStopRecordedTackler(t *testing.T) {
 	}
 }
 
-// TestCancelCmd_RefusesBeforeAnything pins that an omitted or reserved slug refuses before any path is resolved, and a named slug outside a repository refuses with the location's resolve error.
-// The prime-or-beam refusal is ResolveBattenPrime's, pinned by TestResolveBattenPrime.
+// TestCancelCmd_RefusesBeforeAnything pins that an omitted or reserved slug refuses before any path is resolved.
+// A named slug outside a repository refuses with the location's resolve error.
 func TestCancelCmd_RefusesBeforeAnything(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -18,7 +18,8 @@ var moves = []move{
 	{"internal/loomshed/loompreflight_test.go", "internal/loomshed/tapestrypreflight_test.go"},
 }
 
-// identifierSubstitutions maps each identifier or file-name token that names the tapestry recipe onto its new spelling, case exact.
+// identifierSubstitutions maps each identifier or file-name token that names the tapestry recipe onto its new spelling.
+// The match is case exact.
 var identifierSubstitutions = map[string]string{
 	"RecipeLoom":      "RecipeTapestry",
 	"LoomRecipe":      "TapestryRecipe",
@@ -30,8 +31,8 @@ var identifierSubstitutions = map[string]string{
 	"loompreflight":   "tapestrypreflight",
 }
 
-// phraseSubstitutions maps each prose phrase that says loom for the tapestry recipe onto its new wording, written in lower case;
-// substitute also applies each with its first letter upper-cased.
+// phraseSubstitutions maps each prose phrase that says loom for the tapestry recipe onto its new wording.
+// The phrases are written in lower case, and each also applies with its first letter upper-cased.
 var phraseSubstitutions = map[string]string{
 	"loom run":      "tapestry run",
 	"loom runs":     "tapestry runs",
@@ -46,9 +47,14 @@ var phraseSubstitutions = map[string]string{
 	"darn or loom":  "darn or tapestry",
 }
 
-// valueSubstitutions maps each fragment that spells the tapestry recipe's name as the value `loom` onto its new spelling, case exact.
+// valueSubstitutions maps each fragment that gives the tapestry recipe the value `loom` onto its new spelling.
+// The match is case exact.
 // Each fragment carries the context that tells the recipe name from the `loom` config module, which keeps its name:
-// a seed's `recipe` key, a `--recipe` flag, a board task's recipe, a run profile's recipe block, or a test helper or table that takes a recipe.
+// a seed's `recipe` key;
+// a `--recipe` flag;
+// a board task's recipe;
+// a run profile's recipe block;
+// or a test helper or table that takes a recipe.
 var valueSubstitutions = map[string]string{
 	`--recipe loom`:                                      `--recipe tapestry`,
 	`"--recipe", "loom"`:                                 `"--recipe", "tapestry"`,
@@ -93,8 +99,8 @@ var valueSubstitutions = map[string]string{
 	`profiles.Default("loom")`:  `profiles.Default("tapestry")`,
 }
 
-// pathSubstitutions maps a slash-separated path, relative to the root, onto substitutions that apply in that file alone.
-// Each keeps a sorted list sorted once a name in it is renamed.
+// pathSubstitutions maps a slash-separated path relative to the root onto substitutions that apply only in that file.
+// Each substitution keeps its sorted list sorted once a name in it is renamed.
 var pathSubstitutions = map[string]map[string]string{
 	"internal/shedrecipe/registry_test.go": {
 		"\t\t\t\"LoomPreflight\",\n\t\t\t\"MultiLLM\",\n": "\t\t\t\"MultiLLM\",\n",
@@ -103,7 +109,10 @@ var pathSubstitutions = map[string]map[string]string{
 }
 
 // excludedPaths lists the slash-separated path prefixes substitute never reads.
-// They are version control and run records, the measurement reports that record past runs, this program and the earlier rename program, whose texts describe their own runs, and the archived README.
+// They cover version control and run records;
+// the measurement reports, which record past runs;
+// this program and the earlier rename program, whose texts describe their own runs;
+// and the archived README.
 var excludedPaths = []string{
 	".git/",
 	"_lym/",
@@ -114,9 +123,12 @@ var excludedPaths = []string{
 	"README.old.md",
 }
 
-// substitute replaces in text every whole-token occurrence of a key of keys with its value, longest key first at each position.
-// A token starts at the start of the text, after a byte that is no ASCII letter or digit, or anywhere for a key that starts with no lower-case letter: the camelCase start.
-// A token ends at the end of the text, before a byte that is no ASCII letter or digit, before an upper-case letter, or anywhere for a key that ends with no letter or digit.
+// substitute replaces in text every whole-token occurrence of a key of keys with its value.
+// At each position the longest key wins.
+// A key starting with a lower-case letter starts a token only after a non-alphanumeric byte or at the text's start.
+// Any other key starts a token anywhere, such as at a camelCase word start.
+// A token ends at the end of the text, before a non-alphanumeric byte, or before an upper-case letter.
+// A key ending with a non-alphanumeric byte ends a token anywhere.
 // No key starts right after `lym `, so a verb such as `lym loom run` keeps its name.
 // The output is never re-scanned, so a replacement is never matched again.
 func substitute(text string, keys map[string]string) string {

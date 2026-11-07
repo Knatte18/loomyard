@@ -1,4 +1,5 @@
-// dobbyreexec_integration_test.go runs a real `lym beam dobby` through a re-exec onto a replaced binary and its stop, over a hubforge hub: the acceptance test of the dobby's lock, log and output file.
+// dobbyreexec_integration_test.go runs a real `lym beam dobby` through a re-exec onto a replaced binary and its stop.
+// Over a hubforge hub, it is the acceptance test of the dobby's lock, log and output file.
 
 package beamcli_test
 
@@ -11,7 +12,9 @@ import (
 	"time"
 )
 
-// reexecDeadline bounds the wait for a re-exec: where the file watch does not open the loop ticks at most once a minute, and the re-exec needs two sightings of the replaced binary.
+// reexecDeadline bounds the wait for a re-exec.
+// Where the file watch does not open, the loop ticks at most once a minute,
+// and the re-exec needs two sightings of the replaced binary.
 const reexecDeadline = 3 * time.Minute
 
 // waitUntil polls cond every 50 ms until it holds or the deadline passes, and reports whether it held.
@@ -38,8 +41,10 @@ func copyExecutable(t *testing.T, src, dst string) {
 	}
 }
 
-// startRetryingBusy starts the command newCmd builds, and builds and starts a fresh one while the start fails with ETXTBSY, for up to ten seconds.
-// A process a parallel test forks can hold the just-written binary open for writing until it execs, which fails this exec with "text file busy".
+// startRetryingBusy starts the command newCmd builds.
+// While the start fails with ETXTBSY, it builds and starts a fresh command, for up to ten seconds.
+// A process a parallel test forks can hold the just-written binary open for writing until it execs.
+// Until then this exec fails with "text file busy".
 func startRetryingBusy(t *testing.T, newCmd func() *exec.Cmd) *exec.Cmd {
 	t.Helper()
 	var cmd *exec.Cmd

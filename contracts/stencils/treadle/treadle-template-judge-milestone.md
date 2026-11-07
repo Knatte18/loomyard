@@ -1,8 +1,12 @@
-<!-- This is the milestone continuation-gate judge prompt. It is filled via
-     internal/stencil.Fill (judge.go's runJudgeCall, reached from runMilestone) and handed to the shuttle as the agent's entire instruction set — the call runs as a single clean-room agent told only "read this file and do exactly what it says".
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires every marker non-empty, parent_directive included (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective), and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
-     This same call also maintains the judge-maintained handoff (previous_handoff in, handoff_path out) — see the handoff-on-disk shared decision: the handoff rides the SAME call as the verdict, never a separate spawn. -->
+<!-- This is the milestone continuation-gate judge prompt.
+     internal/stencil.Fill fills it in runJudgeCall, reached from runMilestone.
+     It is the shuttle agent's entire instruction set:
+     the call runs as a single clean-room agent told only "read this file and do exactly what it says".
+     Every marker below is a top-level {{.X}} substitution.
+     stencil.Fill requires every marker non-empty, including parent_directive (rendered by internal/parentdirective)
+     and edit_directive (rendered unconditionally by internal/editdirective).
+     The file has no {{if}}/{{range}} conditionals, because a required marker inside a conditional branch renders silently blank when present-but-empty.
+     The call that writes the verdict also maintains the handoff (previous_handoff in, handoff_path out), in the same spawn. -->
 
 # Treadle progress judge — milestone continuation gate
 

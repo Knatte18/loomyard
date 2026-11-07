@@ -1,5 +1,4 @@
-// specsdir.go implements SpecsDir, the told-mode helper that constructs the standalone
-// deployed-specs directory path from a session's derived state directory.
+// specsdir.go implements SpecsDir, the told-mode helper for the standalone deployed-specs path.
 
 package standalonegeom
 
@@ -11,15 +10,10 @@ import (
 
 // SpecsDir returns the standalone deployed-specs directory for stateDir: <stateDir>/_lym/specs.
 //
-// It is the sole construction site for the standalone deployed-specs directory across every
-// standalone-capable CLI, deliberately mirroring fabricengine.SpecsDir(hub), with stateDir playing
-// the role hub plays in hub mode.
+// It is the one place every standalone-capable CLI builds that directory.
 //
-// Like every other builder in this package, SpecsDir takes only stateDir — it never calls
-// standalonestate.Derive, never reads the environment, and never touches disk.
-//
-// Unlike StencilsDir, this directory has no CLI flag that can override it, so this function's
-// result is the only spelling standalone mode ever uses.
+// SpecsDir takes only stateDir: it never reads the environment and never touches disk.
+// No CLI flag overrides this directory, so this result is the only spelling standalone mode uses.
 func SpecsDir(stateDir string) string {
 	return filepath.Join(stateDir, lymdirs.LymDirName, "specs")
 }

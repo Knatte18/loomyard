@@ -1,5 +1,6 @@
 // paste_integration_test.go drives PasteSubmit against a real tmux pane running cat:
-// the text and the Enter arrive, a long line pastes whole, no lym-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.
+// the text and the Enter arrive, a long line pastes whole, no lym-inject buffer outlives the paste,
+// and the operator's own paste buffer stays on top of the default stack.
 
 package reedengine
 
@@ -69,7 +70,8 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	// A long line, dash-leading and semicolon-ending, goes whole through standard input.
 	// The pane's terminal is made non-canonical because a canonical tty line holds at most 4095 bytes.
 	sinkFile := filepath.Join(t.TempDir(), "long-paste.txt")
-	// The own-window launch returns before the pane's shell runs the command, so the sink signals once stty has taken effect.
+	// The own-window launch returns before the pane's shell runs the command,
+	// so the sink signals once stty has taken effect.
 	readyFile := filepath.Join(t.TempDir(), "sink-ready")
 	sink, err := e.AddStrand(AddSpec{Cmd: "stty -icanon -echo; touch " + readyFile + "; cat > " + sinkFile, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {

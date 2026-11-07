@@ -1,6 +1,8 @@
 // leaf_enforcement_test.go enforces the gitoracle independence rule:
-// production code in internal/gitrepo/internal/gitoracle imports only the standard library and internal/gitexec, never internal/gitrepo or internal/gitkit.
-// The oracle is a second implementation of gitrepo's reads, so an import of gitrepo would turn every parity test into a tautology.
+// production code in internal/gitrepo/internal/gitoracle imports only the standard library and internal/gitexec;
+// it never imports internal/gitrepo or internal/gitkit.
+// The oracle is a second implementation of gitrepo's reads,
+// so an import of gitrepo would turn every parity test into a tautology.
 
 package gitoracle
 

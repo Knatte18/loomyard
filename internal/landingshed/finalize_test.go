@@ -1,5 +1,6 @@
-// finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener closure returning a scripted merge outcome.
-// This tier lives in the package itself too, for the same reason as its sibling: the resolver seam and the parentMerger seam it substitutes are both unexported.
+// finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener:
+// the opener returns a scripted merge outcome.
+// It lives in the package itself, because the resolver seam and the parentMerger seam it substitutes are unexported.
 
 package landingshed
 
@@ -23,10 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// recordingParentMerger is the in-package fake standing in for the unexported parentMerger seam. It
-// records every call's source/opts, and returns the scripted result/err at position len(calls)
-// (clamped to the last entry), so a test can script a first-attempt failure followed by a
-// second-attempt success.
+// recordingParentMerger is the in-package fake standing in for the unexported parentMerger seam.
+// Each `Merge` call records its source and options.
+// It returns the scripted result and error at position `len(calls)`, clamped to the last entry,
+// so a test can script a first-attempt failure followed by a second-attempt success.
 type recordingParentMerger struct {
 	calls   []mergeCall
 	results []mergeCallResult
@@ -36,12 +37,12 @@ type recordingParentMerger struct {
 	// headSHA and headErr script HeadSHA's return.
 	headSHA string
 	headErr error
-	// preMergeHeadSHA, when non-nil, scripts HeadSHA's return before any parent-side merge has been attempted, the read Finalize makes of the parent head it merges into the task worktree.
+	// preMergeHeadSHA, when non-nil, is the parent head `HeadSHA` returns before any merge, which Finalize reads.
 	preMergeHeadSHA *string
-	// order, when non-nil, receives "merge" and "push" as those calls happen, so a test can
-	// assert their order against other seams that append to the same slice.
+	// order, when non-nil, receives "merge" and "push" as those calls happen,
+	// so a test can assert their order against other seams that append to the same slice.
 	order *[]string
-	// midMerge and midMergeErr script MidMerge's return once a parent-side merge has been attempted, where the merge guard's refusal reads it;
+	// midMerge and midMergeErr script MidMerge's return after a parent-side merge, where the guard's refusal reads it;
 	// probeMidMerge scripts the return before any merge, which Finalize's pre-merge probe reads.
 	midMerge      fabricengine.MidMergeState
 	midMergeErr   error
@@ -157,8 +158,15 @@ func TestNewFinalize_Refusals(t *testing.T) {
 
 // --- Call behaviour ---
 
-// TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done, honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
-// A failed push also carries the adopter-first repair note only when origin's parent holds the work and a parent commit is listed: a reset for the squash alone, a rebase dropping it when another commit is listed.
+// TestFinalize_MergeMarkPushOrderAndVerdict pins the landing order:
+// a landed merge is marked done on the board, then pushed to the parent's upstream, before Done.
+// With `Deps.PushSkipped` set, the push is skipped and the landing is Done.
+// A failed push is Stuck rather than Done.
+// Neither a failing push nor a failing board seam changes the other's outcome.
+// A failed push carries the adopter-first repair note only when origin's parent holds the work,
+// and a parent commit is listed.
+// With only the squash listed, the note is a reset;
+// with another commit listed too, it is a rebase that drops the squash.
 // No case makes a GitHub call.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -168,7 +176,8 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	rewound := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}}, errors.New("push held back"))
 	primeDiverged := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureNotFastForward}, gitrepo.ErrPushRejected)
 	authRefused := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureAuth}, gitrepo.ErrPushAuthRefused)
-	// repairSeams scripts the adopter-first repair note's reads: whether origin's parent holds the work and the parent commits origin lacks.
+	// repairSeams scripts the reads behind the adopter-first repair note:
+	// whether origin's parent holds the work and the parent commits origin lacks.
 	type repairSeams struct {
 		holds    bool
 		holdsErr error
@@ -274,7 +283,8 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 					t.Errorf("reason = %q; want the repair note to carry %q", reason, want)
 				}
 			}
-			// A case with an exact way forward carries no adopter-first repair note; its wantRepair strings belong to that way forward.
+			// A case with an exact way forward carries no adopter-first repair note;
+			// its wantRepair strings belong to that way forward.
 			wantNote := len(tt.wantRepair) > 0 && tt.wantWayForward == ""
 			if hasNote := strings.Contains(reason, "duplicates it"); hasNote != wantNote {
 				t.Errorf("reason = %q; repair note present = %v; want %v", reason, hasNote, wantNote)
@@ -286,7 +296,10 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	}
 }
 
-// TestFinalize_MergeOptionsCarriesComposedMessage asserts the merge-in runs first and a successful parent-side merge passes MergeOptions carrying the task branch as its source, both the composed final-summary message and the configured Squash value, for both merge shapes -- the message is set whether or not Squash is true.
+// TestFinalize_MergeOptionsCarriesComposedMessage asserts that the merge-in runs first.
+// A successful parent-side merge passes MergeOptions carrying the task branch as its source:
+// the composed final-summary message and the configured Squash value, for both merge shapes.
+// The message is set whether or not Squash is true.
 //
 //testtiming:keep pins the composed MergeOptions.Message, its engine credit line and the Squash value for both merge shapes, which its covering tests do not assert
 func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
@@ -359,7 +372,9 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	}
 }
 
-// TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit asserts a missing or malformed final-summary artifact, or an unreadable set of engines the task ran under, makes Call return an error with no merge attempted and no status commit performed -- proving the top-of-Call reads run before either.
+// TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit asserts Call returns an error on unusable input:
+// a missing or malformed final-summary artifact, or an unreadable set of engines the task ran under.
+// No merge is attempted and no status commit performed, which proves the top-of-Call reads run before either.
 func TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -409,7 +424,7 @@ func TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit(t *testing.T) {
 	}
 }
 
-// orderedResolver is a recordingResolver that also appends "merge-in" to order on each Resolve.
+// orderedResolver appends "merge-in" to order on each Resolve, then delegates to the embedded resolver.
 type orderedResolver struct {
 	recordingResolver
 	order *[]string
@@ -420,9 +435,12 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 	return r.recordingResolver.Resolve(ctx, source, tip)
 }
 
-// TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
-// It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike,
-// and that the parent pair's head is recorded as the landing commit after the board seam and before the push.
+// TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once.
+// The retry carries the same composed message.
+// The board seam runs once, after the retry that lands, never after a failed attempt.
+// The parent run records are committed after each merge-in and before the parent-side merge.
+// This holds on the first pass and on the retry alike.
+// The parent pair's head is recorded as the landing commit after the board seam and before the push.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -432,7 +450,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		wantOrder   string
 		wantCalls   int
 		wantReroute bool
-		// parentMoves makes the parent tip read p2 until the first parent-side merge call and p3 after it, as a code-side commit arriving between the passes does.
+		// parentMoves moves the parent tip from p2 to p3 at the first parent-side merge call, as a code-side commit would.
 		parentMoves bool
 	}{
 		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,record landed1,push", 2, false, false},
@@ -499,8 +517,9 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	}
 }
 
-// TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge landing at the first call records the parent pair's head after the board seam and before the push.
-// It then pins that Finalize records the landed size from the parent head read before the merge-in, which differs from the landing commit, to the landing commit.
+// TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge lands on the first call:
+// the parent pair's head is recorded after the board seam and before the push.
+// It then pins that the landed size is recorded from the parent head read before the merge-in to the landing commit.
 func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -519,7 +538,8 @@ func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	}
 }
 
-// TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read, landing record or landed-size record is only logged: the landing pushes and is Done.
+// TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read or record is only logged:
+// the landing still pushes and is Done.
 // The landed size is recorded whatever RecordLanding returned, and not at all when no merged parent head is held.
 func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -556,7 +576,8 @@ func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 	}
 }
 
-// TestFinalize_StuckReasons pins, for each way a landing stops Stuck, the reason it surfaces, that the board seam is never called, and that no stuck-reason file is written.
+// TestFinalize_StuckReasons pins, for each way a landing stops Stuck, the reason it surfaces.
+// In each case the board seam is never called, and no stuck-reason file is written.
 func TestFinalize_StuckReasons(t *testing.T) {
 	tiergate.Require(t, 0)
 	numberedPaths := func(n int) []string {
@@ -848,7 +869,9 @@ func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 	}
 }
 
-// TestFinalize_ConfigChangeNotice pins the one notice Finalize queues about the task's config changes: at Done only, one line carrying what the operator needs to re-apply them, a read error reported instead of stopping, and neither a failing nor an absent Notify changing the verdict.
+// TestFinalize_ConfigChangeNotice pins the one notice Finalize queues about the task's config changes.
+// The notice is queued at Done only, as one line carrying what the operator needs to re-apply them.
+// A read error is reported instead of stopping, and neither a failing nor an absent Notify changes the verdict.
 func TestFinalize_ConfigChangeNotice(t *testing.T) {
 	tiergate.Require(t, 0)
 	changed := fabricengine.ConfigChanges{
@@ -986,7 +1009,8 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	}
 }
 
-// TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
+// TestFinalize_TransportPushFailure_ReturnsClassifiedError pins a parent push that fails on transport.
+// The error is one the Shed classifier marks; a plain push error keeps its Stuck verdict.
 func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 	tiergate.Require(t, 0)
 	deps := newTestDeps(t)
@@ -1007,7 +1031,8 @@ func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 }
 
 // TestFinalize_LockFirstAndFastForward pins Finalize's entry.
-// The parent lock is held before the run-scope reconcile and every read of the parent, and a parent behind its upstream is fast-forwarded under the lock.
+// The parent lock is held before the run-scope reconcile and every read of the parent,
+// and a parent behind its upstream is fast-forwarded under the lock.
 // Each refusal of the parent pair is a Stuck with its way forward before any merge.
 func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 	tiergate.Require(t, 0)

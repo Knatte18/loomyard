@@ -15,7 +15,9 @@ import (
 var _ creelengine.HubDirectory = (*Hubs)(nil)
 
 // Hubs is a creelengine.HubDirectory whose hubs and answers are scripted.
-// With nothing set, Spawn answers an error and starts nothing, Geometry of an unknown path answers an error, and TrustedHubs answers an empty list.
+// With nothing set, Spawn answers an error and starts nothing.
+// Geometry of an unknown path answers an error.
+// TrustedHubs answers an empty list.
 type Hubs struct {
 	mu          sync.Mutex
 	paths       map[string][]string
@@ -38,7 +40,7 @@ func NewHubs() *Hubs {
 	}
 }
 
-// Add makes shortname name the hub of geom; adding a second hub under one shortname makes Lookup refuse it as shared.
+// Add makes shortname name the hub of geom; a second hub under one shortname makes the lookup refuse it as shared.
 func (h *Hubs) Add(shortname string, geom creelengine.Geometry) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -46,28 +48,29 @@ func (h *Hubs) Add(shortname string, geom creelengine.Geometry) {
 	h.geometries[geom.HubPath] = geom
 }
 
-// SetSpawn makes Spawn start the daemon of a hub through fn, called without the fake's lock held; nil restores the error answer.
+// SetSpawn sets fn as the function that starts a hub's daemon, called without the fake's lock held;
+// nil restores the error answer.
 func (h *Hubs) SetSpawn(fn func(hubPath string) (creelengine.Spawn, error)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.spawnFn = fn
 }
 
-// SetTrusted scripts the answer of TrustedHubs.
+// SetTrusted scripts the shortnames and the error answered for the trusted hubs.
 func (h *Hubs) SetTrusted(shortnames []string, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.trusted, h.trustedErr = shortnames, err
 }
 
-// SetRecordError makes Record fail with err until it is set to nil.
+// SetRecordError makes the record operation fail with err until it is set to nil.
 func (h *Hubs) SetRecordError(err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.recordErr = err
 }
 
-// SetLookupError makes Lookup of shortname fail with err; nil removes it.
+// SetLookupError makes the lookup of shortname fail with err; nil removes it.
 func (h *Hubs) SetLookupError(shortname string, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -78,7 +81,7 @@ func (h *Hubs) SetLookupError(shortname string, err error) {
 	h.lookupErrs[shortname] = err
 }
 
-// SetGeometryError makes Geometry of hubPath fail with err; nil removes it.
+// SetGeometryError makes the geometry query of hubPath fail with err; nil removes it.
 func (h *Hubs) SetGeometryError(hubPath string, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -89,14 +92,14 @@ func (h *Hubs) SetGeometryError(hubPath string, err error) {
 	h.geometryErr[hubPath] = err
 }
 
-// Records returns how many times Record was called.
+// Records returns how many times the record operation was called.
 func (h *Hubs) Records() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.records
 }
 
-// Spawns returns how many times Spawn was called for hubPath.
+// Spawns returns how many times the spawn operation was called for hubPath.
 func (h *Hubs) Spawns(hubPath string) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -146,7 +149,7 @@ func (h *Hubs) Geometry(hubPath string) (creelengine.Geometry, error) {
 }
 
 // Spawn implements creelengine.HubDirectory.
-// It counts the call, and answers an error without starting anything unless SetSpawn gave a function.
+// It counts the call, and answers an error without starting anything when no spawn function is set.
 func (h *Hubs) Spawn(hubPath, logPath string) (creelengine.Spawn, error) {
 	h.mu.Lock()
 	h.spawns[hubPath]++

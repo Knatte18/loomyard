@@ -1,7 +1,7 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
-// Covers: happy-path with template keys present, branch_prefix/pathspec parsing, environment
-// variable resolution, and not-initialized error path.
+// Covers: happy-path with template keys present, branch_prefix/pathspec parsing, and environment variable resolution;
+// and the not-initialized error path.
 
 package fabricengine_test
 
@@ -20,8 +20,7 @@ import (
 // a valid config with all template keys parses both fields and Dirs();
 // an empty branch_prefix stays the empty string;
 // an environment variable in branch_prefix is resolved;
-// and a missing _lym/ returns the fabric-specific not-initialized error, naming the reconcile verb
-// that fixes it.
+// and a missing `_lym/` returns the fabric-specific not-initialized error, naming the reconcile verb that fixes it.
 //
 //testtiming:keep LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
 func TestLoadConfig(t *testing.T) {

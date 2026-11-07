@@ -1,4 +1,5 @@
-// check_test.go pins the adopt check's run over a temp directory: its record, its notices and its lock, with the reconcile, the gate and the orch faked.
+// check_test.go pins the adopt check's run over a temp directory:
+// its record, its notices and its lock, with the reconcile, the gate and the orch faked.
 
 package adoptcli
 
@@ -27,7 +28,8 @@ type scriptedTier struct {
 	record gateslot.RunRecord
 }
 
-// checkFixture is a runCheck over a temp directory with a fake gate, recording the notices, the status bar marks and the gate calls.
+// checkFixture runs the adopt check over a temp directory with a fake gate.
+// It records the notices, the status bar marks and the gate calls.
 type checkFixture struct {
 	dir  string
 	deps checkDeps
@@ -41,7 +43,7 @@ type checkFixture struct {
 	clockReads int
 }
 
-// tick is the fixture's clock: its nth read, counting from zero, returns the time checkFixtureAfter(n), so every read differs.
+// tick returns the fixture clock's next reading, one second after the previous one, so every read differs.
 func (f *checkFixture) tick() time.Time {
 	now := checkFixtureAfter(f.clockReads)
 	f.clockReads++
@@ -86,7 +88,7 @@ func passedTier(tier, passed, skipped int) gateslot.RunRecord {
 	return gateslot.RunRecord{Tier: tier, Outcome: "passed", Passed: passed, Skipped: skipped, WallSec: 1.5}
 }
 
-// failedTier returns a failed tier record whose counter named failures; Failed counts them.
+// failedTier returns a failed tier record whose Failed field counts the failures it is given.
 func failedTier(tier int, failures ...gateslot.TestFailure) gateslot.RunRecord {
 	return gateslot.RunRecord{Tier: tier, Outcome: "failed", ExitCode: 1, Passed: 3, Failed: len(failures), WallSec: 2, Failures: failures}
 }
@@ -533,8 +535,10 @@ func TestRunCheck(t *testing.T) {
 	})
 }
 
-// TestRunCheckMarks pins the status bar marks of a check run, in order: its start, each tier in flight and ended, and its end.
-// The clock reads once for the check's start, then once as each tier starts, so tier n starts at read n+1 and a mark timed from the check's start instead fails.
+// TestRunCheckMarks pins the status bar marks of a check run, in order:
+// its start, each tier in flight and ended, and its end.
+// The clock reads once for the check's start and once as each tier starts.
+// So tier n starts at read n+1, and a mark timed from the check's start instead fails.
 func TestRunCheckMarks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -602,7 +606,8 @@ func TestRunCheckMarks(t *testing.T) {
 	}
 }
 
-// TestPrimeMark pins the prime's mark over a temp adopt directory: the check's own mark, joined with the running checks of the other subjects.
+// TestPrimeMark pins the prime's mark over a temp adopt directory:
+// the check's own mark, joined with the running checks of the other subjects.
 func TestPrimeMark(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

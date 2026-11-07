@@ -1,4 +1,5 @@
-// pushnotifier_helper_test.go holds fakePushNotifier and installFakePushNotifier, the failed-push notifier fake the tier0 and tier1 push tests share.
+// pushnotifier_helper_test.go holds the failed-push notifier fake that the tier0 and tier1 push tests share:
+// fakePushNotifier and installFakePushNotifier.
 // It carries no build tag, so it compiles into every tag set.
 
 package fabricengine_test
@@ -9,7 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// fakePushNotifier counts the calls carrying its own hub path, so a parallel test recording a failure in another hub never reaches its counts.
+// fakePushNotifier counts the calls carrying its own hub path.
+// A parallel test recording a failure in another hub never reaches those counts.
 type fakePushNotifier struct {
 	hub    string
 	posted bool

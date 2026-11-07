@@ -1,6 +1,6 @@
-// cli_test.go covers the loomcli cobra seam: the bare-group invocation's git-free guard, and the run/pause/status verbs' own
-// refusal paths driven directly against a hand-populated receiver -- bypassing wire entirely, since
-// none of the three refusals needs a wired hub.
+// cli_test.go covers the cobra seam: the bare-group git-free guard and the run, pause and status refusals.
+// Those refusals are driven directly against a hand-populated receiver.
+// They bypass wire, since none of them needs a wired hub.
 
 package loomcli
 
@@ -24,7 +24,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestResolvePersistentPreRun_SkipsSlugGroups asserts the loom parent's pre-run never arms the circling, decision or peers group or their verbs, and that loom has no review group.
+// TestResolvePersistentPreRun_SkipsSlugGroups asserts that the loom pre-run arms no slug group:
+// the circling, decision and peers groups and their verbs, and loom has no review group.
 // cmd/lym sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a group verb too;
 // over a non-git cwd an arm would write an error envelope and abort, so silence proves the skip.
 func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
@@ -80,9 +81,8 @@ func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym loom" invocation succeeds without
-// needing a git repository, proving the PersistentPreRunE guard for cmd.Name() == "loom" fires before
-// any cwd resolution.
+// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym loom" invocation succeeds outside a git repository.
+// It proves the PersistentPreRunE guard for cmd.Name() == "loom" fires before any cwd resolution.
 func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -96,7 +96,8 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	}
 }
 
-// TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since Command() does not expose the receiver it constructs and may not grow an accessor purely for a test.
+// TestNewLoomCLI_SetsInjectedSeams pins the fields newLoomCLI sets:
+// Command does not expose the receiver it builds, and its other tests do not assert these fields.
 //
 //testtiming:keep pins newLoomCLI setting spawnWatchdog, midMerge, recordedParentBranch and suppressWatchdogSpawn, fields the constructor's callers do not expose; its covering tests build the CLI without asserting them
 func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
@@ -117,14 +118,9 @@ func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 	}
 }
 
-// TestProductionFiles_LoomCLILiteralOnlyInFactory proves no production file in this package builds a
-// *loomCLI composite literal outside newLoomCLI, by scanning this package's own non-_test.go *.go
-// files for the "&loomCLI{" token and allowing it only in cli.go, newLoomCLI's own file -- the same
-// source-scan shape internal/burlercli/wiring_test.go already uses
-// (TestProductionFiles_NeverReferenceHubWatchdogMechanism) for a boundary property that has no other
-// static form.
-//
-// Together with TestNewLoomCLI_SetsInjectedSeams above, this is what would have caught the alias gotcha newLoomCLI now designs out: that test proves the fields are set, this one proves both constructors go through the place that sets them.
+// TestProductionFiles_LoomCLILiteralOnlyInFactory proves that only newLoomCLI builds a *loomCLI composite literal.
+// It scans the package's non-test production files for the "&loomCLI{" token, which may appear only in cli.go.
+// Every CLI must come from newLoomCLI, which sets the injected seams; no behavior test reaches that shape.
 //
 //testtiming:keep scans the package's production files for a loomCLI composite literal outside newLoomCLI's file, a source-shape guard no behavior test reaches
 func TestProductionFiles_LoomCLILiteralOnlyInFactory(t *testing.T) {
@@ -151,10 +147,8 @@ func TestProductionFiles_LoomCLILiteralOnlyInFactory(t *testing.T) {
 	}
 }
 
-// loomVerbCommand builds the single shedverbs command named verb ("run", "step", "status", or
-// "pause"), armed against c.specFor(verb) assigned onto c.spec -- the tier-1 seam arm.go's
-// specFor/arm split exists for, letting this untagged suite fill a Spec with no resolution and no
-// git spawn.
+// loomVerbCommand returns the shedverbs command named verb, armed against c.specFor(verb) assigned onto c.spec.
+// It fills the Spec with no resolution and no git spawn, so this untagged suite can run it.
 func loomVerbCommand(c *loomCLI, verb string) *cobra.Command {
 	spec := c.specFor(verb)
 	c.spec = &spec
@@ -166,8 +160,9 @@ func loomVerbCommand(c *loomCLI, verb string) *cobra.Command {
 	panic("loomVerbCommand: no shedverbs command named " + verb)
 }
 
-// TestLoomVerbHelp_NamesBothSeedingRoutes asserts the step and run help name "lym loom start" and the driverless seed, the seed before the first "lym loom step",
-// and that step's help does not claim it bootstraps exactly as start does.
+// TestLoomVerbHelp_NamesBothSeedingRoutes asserts that the step and run help name both seed routes:
+// "lym loom start" and the driverless seed, which is the seed before the first "lym loom step".
+// It also asserts that step's help does not claim it bootstraps exactly as start does.
 func TestLoomVerbHelp_NamesBothSeedingRoutes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -200,12 +195,12 @@ func TestLoomVerbHelp_NamesBothSeedingRoutes(t *testing.T) {
 	}
 }
 
-// TestVerbRefusals covers the run verb's seed-missing pre-flight, the pause verb's absent-file
-// refusal, and the status verb's !found refusal. All three are driven directly against the leaf
-// command shedverbs.Verbs returns for a hand-populated *loomCLI -- never through the full
-// PersistentPreRunE/wire path, which needs a real git repository this untagged suite must not spawn.
-// c.shedPaths.StatusPath/StatusLockPath point at a plain temporary directory that never receives a
-// status.json, so each verb's own refusal fires on exactly the precondition it owns.
+// TestVerbRefusals covers the run verb's seed-missing pre-flight, the pause verb's absent-file refusal,
+// and the status verb's !found refusal.
+// Each is driven directly against the leaf command shedverbs.Verbs returns for a hand-populated *loomCLI.
+// They never go through the full PersistentPreRunE/wire path, which would spawn git in this untagged suite.
+// c.shedPaths.StatusPath and StatusLockPath point at a temporary directory that never gets a status.json,
+// so each verb's refusal fires on exactly the precondition it owns.
 func TestVerbRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -214,7 +209,7 @@ func TestVerbRefusals(t *testing.T) {
 		wantRemedy string
 		// wantAlso, when set, is a second remedy the output must hold.
 		wantAlso string
-		// treeArgs, when set, runs these arguments through the whole loom command tree, mounted under a parent as in lym, instead of the one verb.
+		// treeArgs, when set, runs these arguments through the loom tree as lym mounts it, not the one verb.
 		treeArgs []string
 	}{
 		{
@@ -283,8 +278,8 @@ func TestVerbRefusals(t *testing.T) {
 	}
 }
 
-// TestSpecFor_ScratchAndFrictionDir asserts specFor tells the generic verbs the run's scratch
-// directory and the friction directory, and tolerates a receiver with no location.
+// TestSpecFor_ScratchAndFrictionDir asserts the scratch and friction directories specFor gives the generic verbs.
+// It must tolerate a receiver with no location.
 //
 //testtiming:keep pins specFor's scratch directory from the location and run-id, the friction directory passed through, and a nil location giving no scratch directory; its covering tests run specFor without asserting those fields
 func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
@@ -373,8 +368,11 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 	})
 }
 
-// TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward runs loom's pause verb on a hand-populated receiver over a running status at Plan-Write:
-// a flagless pause refuses naming `lym tender pause <slug>` and `lym loom pause --after Plan-Write`, and leaves the status file byte-identical.
+// TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward runs loom's pause verb on a hand-populated receiver.
+// The receiver holds a running status at Plan-Write.
+// A flagless pause refuses and names both ways forward:
+// `lym tender pause <slug>` and `lym loom pause --after Plan-Write`.
+// The status file stays byte-identical.
 func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -412,7 +410,8 @@ func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	}
 }
 
-// TestSpecFor_RestepHold asserts specFor tells a loom recipe, an empty recipe reading as tapestry, the escalate-halt check as RestepHold, and pawl none.
+// TestSpecFor_RestepHold asserts specFor's view of a loom recipe:
+// the escalate-halt check is RestepHold and pawl is none, and an empty recipe reads as tapestry.
 func TestSpecFor_RestepHold(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

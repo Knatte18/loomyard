@@ -1,7 +1,8 @@
 // verifygate_integration_test.go drives the verify gate's closure over a real scratch repository:
 // the clean-tree check at a done arrival, and the fixer commit check through the real fixCommitRejection.
 // It reuses the package's hermetic TestMain (testmain_test.go) and gitwrap_test.go's merge helpers.
-// The gate runs the built `lym` over a committed gate.yaml, so every test here puts that binary first on `PATH` and is not parallel.
+// The gate runs the built `lym` over a committed gate.yaml.
+// Every test here puts that binary first on `PATH`, so none of them is parallel.
 
 package websterengine
 
@@ -23,13 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// verifyGateRepo is a scratch repository whose gate.yaml `final` tier leaves a sentinel file outside the worktree when it runs.
+// verifyGateRepo is a scratch repository whose gate.yaml tier0 writes a sentinel file outside the worktree.
 type verifyGateRepo struct {
 	geom     Geometry
 	sentinel string
 }
 
-// verifyGateConfig returns the gate.yaml a scratch worktree holds: a `webster` key over tier0, which runs a shell stand-in that writes sentinel.
+// verifyGateConfig returns the gate.yaml a scratch worktree holds.
+// Its `webster` gate runs tier0, a shell stand-in that writes sentinel.
 func verifyGateConfig(sentinel string) string {
 	return `slots: 1
 scoper: none
@@ -51,8 +53,9 @@ gates:
 `
 }
 
-// newVerifyGateRepo builds the repo, a done outcome.yaml and a committed gate.yaml whose `final` tier writes the sentinel.
-// A `lym gate test` run records under the worktree's .lym directory, which the repo excludes so the tree the gate verifies stays clean.
+// newVerifyGateRepo builds the repo, a done outcome.yaml, and a committed gate.yaml whose tier0 writes the sentinel.
+// A `lym gate test` run records under the worktree's .lym directory.
+// The repo excludes that directory, so the tree the gate verifies stays clean.
 // It puts the `lym` built from the tree first on `PATH`, so the calling test is not parallel.
 func newVerifyGateRepo(t *testing.T) verifyGateRepo {
 	t.Helper()
@@ -136,7 +139,8 @@ func TestVerifyGate_CleanTreePassesAndRecordsTheTree(t *testing.T) {
 	}
 }
 
-// failFirstThenFixerMerge drives gate through a dirty first arrival, so a pre-fix head is recorded, then cleans the tree and lets move add the fixer's commits.
+// failFirstThenFixerMerge drives gate through a dirty first arrival, so a pre-fix head is recorded.
+// It then cleans the tree and lets move add the fixer's commits.
 func failFirstThenFixerMerge(t *testing.T, r verifyGateRepo, gate shuttleengine.Gate, move func()) shuttleengine.GateResult {
 	t.Helper()
 	loose := filepath.Join(r.geom.WorktreeRoot, "loose.txt")
@@ -194,7 +198,7 @@ func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun pins that the gate tells geom.VerifyHold to every verify it runs:
+// TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun pins the gate's calls to geom.VerifyHold:
 // a verify that fails on its first run and passes on the rerun waits out the pause once before each.
 func TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun(t *testing.T) {
 	tiergate.Require(t, 1)

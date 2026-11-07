@@ -1,4 +1,5 @@
-// recordsreads.go holds the read-only reads of the records repository that let a caller restore a pair's records after its pair is gone: the slug's archive and set-aside tags with the files they hold, one file of a records branch, and whether a records branch has an upstream.
+// recordsreads.go holds the read-only reads that restore a pair's records after the pair is gone:
+// the slug's archive and set-aside tags with their files, one file of a records branch, and a branch's upstream.
 // None of them writes a branch, a tag or a remote-tracking ref; a commit only origin holds is fetched by its SHA alone.
 
 package fabricengine
@@ -18,7 +19,8 @@ import (
 // configKeyNotSetExit is the exit code `git config --get` answers for a key that is not set.
 const configKeyNotSetExit = 1
 
-// RecordsTag is one tag of a slug's records history: an archive tag a teardown pushed, or a set-aside tag a local removal kept.
+// RecordsTag is one tag of a slug's records history:
+// an archive tag a teardown pushed, or a set-aside tag a local removal kept.
 type RecordsTag struct {
 	// Name is the tag's short name.
 	Name string
@@ -30,13 +32,16 @@ type RecordsTag struct {
 	OriginOnly bool
 	// CommitterTime is the committer time of Commit.
 	CommitterTime time.Time
-	// Files holds the content of each requested path found at Commit, keyed by the requested path; a path absent there is left out.
+	// Files holds the content of each requested path found at Commit, keyed by the requested path;
+	// a path absent there is left out.
 	Files map[string][]byte
 }
 
-// SlugRecordsTags lists the tags that keep slug's records: its archive tags on origin and the records repository's local archive and set-aside tags.
-// Each carries, for every path in anchoredRels that Commit holds, the content at that path resolved under the anchor Commit itself records.
-// A commit only origin holds is fetched by SHA into the records repository before it is read, writing no branch, tag or remote-tracking ref.
+// SlugRecordsTags lists the tags that keep slug's records:
+// its archive tags on origin, and the records repository's local archive and set-aside tags.
+// Each tag carries the content of every path in anchoredRels that its commit holds, under that commit's own anchor.
+// A commit only origin holds is fetched by SHA into the records repository before it is read;
+// it writes no branch, tag or remote-tracking ref.
 // A records repository with no origin lists local tags only; a failed ls-remote or fetch is returned.
 // The tags are ordered by committer time, then by name.
 func SlugRecordsTags(l *lymcwd.Location, slug string, anchoredRels []string) ([]RecordsTag, error) {
@@ -114,8 +119,10 @@ func SlugRecordsTags(l *lymcwd.Location, slug string, anchoredRels []string) ([]
 	return tags, nil
 }
 
-// RecordsBranchFile reads the file anchoredRel of the records branch, resolved under the anchor the branch itself records.
-// It reads the local branch when it exists, else origin's copy, fetched by SHA into the records repository with no branch, tag or remote-tracking ref written.
+// RecordsBranchFile reads the file anchoredRel of the records branch.
+// It resolves the path under the anchor the branch itself records.
+// It reads the local branch when it exists, else origin's copy;
+// that copy is fetched by SHA into the records repository, writing no branch, tag or remote-tracking ref.
 // found is false when the branch, or the file on it, is absent.
 func RecordsBranchFile(l *lymcwd.Location, branch, anchoredRel string) (content []byte, found bool, err error) {
 	recordsRoot, err := RecordsRepoRoot(l)
@@ -178,7 +185,8 @@ func RecordsBranchHasUpstream(l *lymcwd.Location, branch string) (bool, error) {
 	return false, nil
 }
 
-// recordsFilesAt reads each of rels under anchor at rev in the repository at repoDir, keyed by the rel it was asked for; a path absent at rev is left out.
+// recordsFilesAt reads each of rels under anchor at rev in the repository at repoDir.
+// It keys each file by the rel it was asked for and leaves out a path absent at rev.
 func recordsFilesAt(repoDir, rev, anchor string, rels []string) (map[string][]byte, error) {
 	files := make(map[string][]byte, len(rels))
 	for _, rel := range rels {

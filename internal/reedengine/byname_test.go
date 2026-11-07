@@ -1,5 +1,5 @@
-// byname_test.go pins guidByName's unknown, ambiguous and unique outcomes over a plain strand list,
-// touching no tmux.
+// byname_test.go pins guidByName's unknown, ambiguous and unique outcomes over a plain strand list.
+// It touches no tmux.
 
 package reedengine
 

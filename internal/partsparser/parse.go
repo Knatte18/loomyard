@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Parts is the parsed parts file: the task's title, the note on how it splits, the parts in file order and the shared spots.
+// Parts is a parsed parts file: its title, its split note, its parts in file order and its shared spots.
 type Parts struct {
 	Title     string
 	SplitNote string
@@ -17,7 +17,8 @@ type Parts struct {
 }
 
 // Part is one part of the split: the contract its writer works to.
-// Exports are the refs the part's cards create for other parts to use, and Area the packages and files the part's cards touch.
+// Exports are the refs the part's cards create for other parts to use.
+// Area is the packages and files the part's cards touch.
 type Part struct {
 	Name      string
 	Decisions []string
@@ -29,7 +30,8 @@ type Part struct {
 }
 
 // SharedSpot is a file several parts need a change in, which the chair's cards write rather than any part's.
-// Exports are the refs the spot's change provides to the parts that need it, and Uses the refs of parts it relies on.
+// Exports are the refs the spot's change provides to the parts that need it.
+// Uses are the refs of parts it relies on.
 type SharedSpot struct {
 	Path      string
 	Decisions []string
@@ -49,7 +51,9 @@ func (p *Parts) Part(name string) (Part, bool) {
 	return Part{}, false
 }
 
-// External returns the exports another part's cards may use from the part named name: every export of each part it depends on, then every export of each shared spot whose `Needed by` names it, deduplicated, in that order.
+// External returns the refs another part's cards may use from the part named name.
+// The refs come from each part the named part depends on, then from each shared spot whose `Needed by` lists it.
+// Each ref appears once.
 func (p *Parts) External(name string) []string {
 	var refs []string
 	add := func(exports []string) {
@@ -146,13 +150,14 @@ type rawField struct {
 	refs  []string
 }
 
-// lineError builds a Parse error naming the 1-based line and the way forward.
+// lineError builds the error for a wrong parts file line, naming the line, the problem and the way forward.
 func lineError(line int, problem, wayForward string) error {
 	return fmt.Errorf("parts file line %d: %s; way forward: %s; %s", line, problem, wayForward, specPointer)
 }
 
-// Parse reads the parts file's bytes into a Parts.
-// It returns an error naming the line and what is wrong, with the way forward, for a missing H1 or split note, an unknown section heading or field label, a required field missing or empty, a ref sub-bullet that is not one backticked ref, and a field repeated in one section.
+// Parse reads a parts file's markdown into a Parts, checking it against the parts format.
+// A file that breaks the format fails with an error that names the line, the fault and the way forward.
+// The fault may be a missing H1 or split note, an unknown label, or a required field left empty.
 func Parse(data []byte) (*Parts, error) {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 
@@ -258,7 +263,8 @@ func joinText(body []rawLine) string {
 	return strings.Join(texts, "\n")
 }
 
-// parseFields reads a section's body as fields under the told rules, and checks the required ones are present and non-empty.
+// parseFields reads a section's body as fields under the given rules;
+// it checks the required ones are present and non-empty.
 func parseFields(sec section, rules []fieldRule) (map[string]*rawField, error) {
 	labels := make([]string, len(rules))
 	for i, rule := range rules {

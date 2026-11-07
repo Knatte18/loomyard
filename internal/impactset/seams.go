@@ -1,4 +1,4 @@
-// seams.go finds the top-level tests marked `//lym:seam` by a static parse of the `_test.go` files of the module's package directories.
+// seams.go finds the top-level tests marked `//lym:seam` by a static parse of the `_test.go` files of each package.
 
 package impactset
 
@@ -32,9 +32,11 @@ type SeamTest struct {
 	Structs []string
 }
 
-// FindSeamTests returns, per package directory, the tests carrying at least one `//lym:seam <unit>#<Type>` line in their doc comment, sorted by name.
+// FindSeamTests returns, per package directory, the tests with a `//lym:seam <unit>#<Type>` line in their doc comment.
+// Each directory's tests are sorted by name.
 // The caller passes the package directories, worktree-relative and slash-separated.
-// A marker not in the comment block directly above a top-level `func Test…` line is a GuardMisplaced error, and a marker whose argument is not one `<unit>#<Type>` token is a SeamMalformed error, each naming the file and line.
+// A marker not in the comment block directly above a top-level `func Test…` line is a GuardMisplaced error,
+// and a marker whose argument is not one `<unit>#<Type>` token is a SeamMalformed error, each naming the file and line.
 // Whether a glyph names a struct is not checked.
 func FindSeamTests(worktree string, dirs []string) (map[string][]SeamTest, error) {
 	seams := map[string][]SeamTest{}
@@ -62,7 +64,8 @@ func FindSeamTests(worktree string, dirs []string) (map[string][]SeamTest, error
 	return seams, nil
 }
 
-// seamTestsInFile returns the tests marked in one file; dir is the file's package directory and rel names the file in an error.
+// seamTestsInFile returns the tests marked in one file;
+// dir is the file's package directory and rel names the file in an error.
 func seamTestsInFile(path, dir, rel string) ([]SeamTest, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
@@ -135,7 +138,8 @@ func seamGlyph(text string) (string, bool) {
 	return fields[0], unit != "" && member != ""
 }
 
-// onlyDirectiveLinesAfter reports whether every comment is a `//lym:` or `//testtiming:keep` line, the only lines allowed between a seam marker and its func line.
+// onlyDirectiveLinesAfter reports whether every comment is a `//lym:` or `//testtiming:keep` line.
+// Only these lines may sit between a seam marker and its func line.
 func onlyDirectiveLinesAfter(comments []*ast.Comment) bool {
 	for _, comment := range comments {
 		if !strings.HasPrefix(comment.Text, "//lym:") && !strings.HasPrefix(comment.Text, testtimingKeepTag) {

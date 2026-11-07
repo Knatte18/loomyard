@@ -1,8 +1,6 @@
-// awaitbatch_test.go covers AwaitBatch's bounded report-file watch: an already-present report
-// returns immediately, a report appearing mid-wait returns the moment a tick sees it (never
-// sleeping out the rest of the window), an absent report returns ReportPresent: false only once the
-// wait window elapses, and an unknown batch number is refused — all against a scriptable clock, so
-// no test ever blocks for real.
+// awaitbatch_test.go covers AwaitBatch's bounded report-file watch over a scriptable clock.
+// A present report returns at once; a report landing mid-wait returns on the tick that sees it.
+// An absent report returns ReportPresent: false only once the window elapses, and an unknown batch number is refused.
 
 package websterengine_test
 
@@ -75,8 +73,8 @@ func TestAwaitBatch(t *testing.T) {
 			wantBatchName: "01-json-flag",
 		},
 		{
-			// The report lands after the third tick — AwaitBatch must return on the very next
-			// existence check, long before the one-hour window elapses.
+			// The report lands after the third tick.
+			// AwaitBatch returns on the next existence check, long before the one-hour window elapses.
 			name:          "a report appearing mid-wait returns without sleeping out the window",
 			number:        1,
 			window:        time.Hour,

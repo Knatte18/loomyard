@@ -1,6 +1,6 @@
 // parse.go implements Parse, the byte-slice recipe decoder, and Load, its told-path wrapper.
-// Both perform every shape check a Recipe must pass before Build may consume it; neither validates
-// routing, which shedengine and internal/shedcheck already own.
+// Both perform every shape check a Recipe must pass before Build may consume it.
+// Neither validates routing, which shedengine and internal/shedcheck already own.
 
 package shedbuild
 
@@ -25,21 +25,18 @@ const supportedVersion = 1
 // legalVerifySources are the values Parse accepts for a recipe's verify_source.
 var legalVerifySources = []string{"plan", "tree_scope"}
 
-// Parse decodes data into a Recipe, then runs every shape check the decoded value must pass before
-// Build may consume it.
+// Parse decodes data into a Recipe, then runs every shape check it must pass before Build may consume it.
 //
-// A Decode error that wraps io.EOF -- what an empty, whitespace-only, or comments-only document
-// yields -- becomes the distinct error "shedbuild: recipe is empty"; every other Decode error is
-// wrapped as "shedbuild: %w", passing yaml's own text and its line-number position through
-// verbatim.
+// A document that is empty, whitespace-only or comments-only yields a Decode error wrapping io.EOF.
+// Parse reports that case as "shedbuild: recipe is empty";
+// every other Decode error is wrapped as "shedbuild: %w";
+// yaml's own text and line-number position pass through verbatim.
 //
-// A recipe file is exactly ONE YAML document: a second one is a refusal, never a silent truncation
-// of the producer graph.
+// A recipe file is exactly one YAML document;
+// a second one is refused, never a silent truncation of the producer graph.
 //
-// Parse validates nothing about routing: it never checks that OnDone or OnStuck names an existing
-// row, that segments agree, that the graph is acyclic, or that any row is reachable, because
-// shedengine's own validation and internal/shedcheck already own those and a third copy is what
-// drifts.
+// Parse validates nothing about routing: it never checks edges, segments, acyclicity or reachability.
+// Those checks are owned by shedengine's own validation and internal/shedcheck, because a third copy is what drifts.
 func Parse(data []byte) (Recipe, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -52,12 +49,9 @@ func Parse(data []byte) (Recipe, error) {
 		return Recipe{}, fmt.Errorf("shedbuild: %w", err)
 	}
 
-	// A recipe file holds exactly ONE YAML document. Decoding once and stopping silently truncated
-	// the producer graph at the first "---": an author resolving a merge conflict, or pasting a
-	// replacement graph below the old one, kept only the prefix — and if that prefix happened to be
-	// self-consistent, shedengine.validate saw no dangling target and the run proceeded on a
-	// truncated pipeline. KnownFields(true) offers no protection past document one (crucible round
-	// opus-medium-r6, R6-26).
+	// A recipe file holds exactly one YAML document.
+	// KnownFields offers no protection past the first document, and decoding stops there,
+	// so the check below refuses any later one rather than dropping it silently.
 	var trailing yaml.Node
 	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err != nil {
@@ -73,8 +67,7 @@ func Parse(data []byte) (Recipe, error) {
 	return recipe, nil
 }
 
-// checkRecipeShape runs Parse's own shape checks, in the fixed order Parse's godoc pins, returning
-// the first failure.
+// checkRecipeShape runs the recipe's shape checks in a fixed order and returns the first failure.
 func checkRecipeShape(recipe Recipe) error {
 	if recipe.Version != supportedVersion {
 		return fmt.Errorf("shedbuild: unsupported recipe version %d (supported: %d)", recipe.Version, supportedVersion)
@@ -106,7 +99,7 @@ func checkRecipeShape(recipe Recipe) error {
 	return checkRetiredShape(recipe.Retired, seen)
 }
 
-// checkRetiredShape runs Parse's checks of the retired map against rows, the recipe's own row names:
+// checkRetiredShape checks the retired map against rows, the recipe's own row names:
 // a retired key must not be a row, and its target must be one.
 // Keys are visited in sorted order so a recipe always names the same offender.
 func checkRetiredShape(retired map[string]string, rows map[string]int) error {
@@ -121,8 +114,7 @@ func checkRetiredShape(retired map[string]string, rows map[string]int) error {
 	return nil
 }
 
-// checkRowShape runs Parse's own per-row shape checks for the row at index i, consulting seen for
-// the duplicate-name check.
+// checkRowShape runs the shape checks of the row at index i, consulting seen for the duplicate-name check.
 func checkRowShape(i int, row Row, seen map[string]int) error {
 	if row.Name == "" {
 		return fmt.Errorf("shedbuild: producer %d: name must not be empty", i)
@@ -151,8 +143,9 @@ func checkRowShape(i int, row Row, seen map[string]int) error {
 	return nil
 }
 
-// checkBlockRowShape runs the shape checks of a block row at index i: it carries only name, block, block_gate and on_done, and needs both block and block_gate.
-// Whether its on_done is set, and whether the recipe block names exists, is judged by Expand.
+// checkBlockRowShape runs the shape checks of a block row at index i:
+// it carries only name, block, block_gate and on_done, and needs both block and block_gate.
+// Whether its on_done is set, and whether the recipe its block names exists, is judged by Expand.
 func checkBlockRowShape(i int, row Row) error {
 	var set []string
 	for _, key := range []struct {
@@ -190,8 +183,7 @@ func checkBlockRowShape(i int, row Row) error {
 }
 
 // Load reads the recipe file at path and delegates to Parse.
-// path must be absolute; Load rejects a relative path before any read, exactly as
-// internal/shedrecipe/paths.go rejects rather than resolves a relative Config value.
+// path must be absolute, and Load rejects a relative path before any read.
 // Load is the only function in this package whose own code touches the filesystem.
 func Load(path string) (Recipe, error) {
 	if !filepath.IsAbs(path) {

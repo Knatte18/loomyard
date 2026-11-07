@@ -19,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestApproveDiscussion_Real drives approveDiscussion over one real pair per row, each with its own board entry, and asserts what the seam stores and when it fails.
+// TestApproveDiscussion_Real drives approveDiscussion over one real pair per row, each with its own board entry.
+// It asserts what the seam stores and when it fails.
 // It is serial because it sets the board skip variable, which is process-global.
 func TestApproveDiscussion_Real(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -97,7 +98,8 @@ func TestApproveDiscussion_Real(t *testing.T) {
 	}
 }
 
-// TestSeedDiscussedRecord_Real drives seedDiscussedRecord over one real pair per row, each with its own board entry, and asserts what the seam seeds into the run and commits.
+// TestSeedDiscussedRecord_Real drives seedDiscussedRecord over one real pair per row, each with its own board entry.
+// It asserts what the seam seeds into the run and commits.
 // It is serial because it sets the board skip variable, which is process-global.
 func TestSeedDiscussedRecord_Real(t *testing.T) {
 	tiergate.Require(t, 1)

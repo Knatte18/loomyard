@@ -1,7 +1,7 @@
-// notepath_test.go covers NotePath against a real t.TempDir() with real files, never a stubbed stat,
-// since the guarantee is about the filesystem.
-// Every test here is in tier 0: it uses only os.WriteFile inside a t.TempDir() and t.TempDir
-// itself, and spawns nothing.
+// notepath_test.go covers NotePath against real files in t.TempDir(), not a stubbed stat.
+// The guarantee is about the filesystem, so the tests check it there.
+// Every test here is in tier 0.
+// It uses only os.WriteFile and t.TempDir, and spawns nothing.
 
 package friction
 
@@ -22,7 +22,7 @@ func touch(t *testing.T, path string) {
 }
 
 // TestNotePath_NonClobbering pins the base case and the non-clobbering guarantee.
-// A valid id against an empty directory yields the expected join, and calls with the same id against a directory where the earlier notes now exist yield "id.md", "id-2.md" and "id-3.md" in turn.
+// Repeated calls with the same id return "id.md", "id-2.md" and "id-3.md" in turn, skipping notes on disk.
 // A gap (id.md and id-3.md present, id-2.md absent) resolves to the first free name, id-2.md, not the highest plus one.
 func TestNotePath_NonClobbering(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -55,8 +55,9 @@ func TestNotePath_NonClobbering(t *testing.T) {
 }
 
 // TestNotePath_ReturnsEmpty pins every guard that returns "".
-// An empty frictionDir is the off-state guard, so Tier 2's off state composes through NotePath with no boolean anywhere.
-// An empty id, an id containing a path separator, an id containing "..", an id equal to "." or "..", and an id whose id+".md" equals ReportFileName are the id-sanitization rules.
+// An empty frictionDir is the off state, and NotePath returns "" for it, so no boolean is needed.
+// The id sanitization rejects an empty id and an id with a path separator.
+// It also rejects an id containing "..", an id equal to "." or "..", and an id whose id+".md" equals ReportFileName.
 func TestNotePath_ReturnsEmpty(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

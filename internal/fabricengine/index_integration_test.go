@@ -1,11 +1,9 @@
-// index_integration_test.go — integration tests for the fabric layer's git
-// wiring around the correspondence index: gitdir resolution, the
-// RecordCorrespondence/WeftSHAForWarpSHA round trip, and RebuildIndex's
-// trailer scan. Package fabricengine_test, driving weftGitDir through
-// export_test.go's WeftGitDirForTest shim. Uses hubforge.NewHub for the weft
-// side and a minimal, locally-built plain git repo for the warp side —
-// fabric's warp is just an ordinary warp repo, so these tests need none of
-// the real hub's junction/portal wiring on the warp side.
+// index_integration_test.go — integration tests for the fabric layer's git wiring around the correspondence index.
+// They cover gitdir resolution and the RecordCorrespondence/WeftSHAForWarpSHA round trip.
+// They also cover the RebuildIndex trailer scan.
+// The tests are in package fabricengine_test and reach weftGitDir through export_test.go's WeftGitDirForTest shim.
+// The hub weft comes from hubforge.NewHub; the warp side is a minimal plain git repo built locally.
+// So the warp side needs none of the real hub's junction and portal wiring.
 
 package fabricengine_test
 
@@ -21,9 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// commitWeftWithTrailer commits content into weftPath's tracked _lym config
-// file with a Warp-SHA trailer naming warpSHA — a hand-crafted stand-in for
-// what CommitWeft (a later batch) produces — returning the new weft HEAD SHA.
+// commitWeftWithTrailer commits content into weftPath's tracked _lym config file with a Warp-SHA trailer naming warpSHA.
+// It writes the commit directly through gitkit, not through the production commit path.
+// It returns the new weft HEAD SHA.
 func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) string {
 	t.Helper()
 
@@ -31,9 +29,9 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 	return gitkit.CommitFile(t, weftPath, filepath.Join("_lym", "config.yaml"), content, msg)
 }
 
-// TestCorrespondenceIndex runs the correspondence index's git wiring over one plain warp repo and one
-// hub weft: gitdir resolution, the miss path, the RecordCorrespondence/WeftSHAForWarpSHA round trip
-// and RebuildIndex's trailer scan.
+// TestCorrespondenceIndex runs the correspondence index's git wiring over one plain warp repo and one hub weft.
+// It covers gitdir resolution, the miss path and the RecordCorrespondence/WeftSHAForWarpSHA round trip.
+// It also covers the RebuildIndex trailer scan.
 // The steps share the fixture and run in order.
 // Each commits its own warp and weft commits, so none reads an earlier step's entries.
 // The rebuild step's lookups succeed only through the rebuild, never through an earlier step's RecordCorrespondence.
@@ -45,8 +43,8 @@ func TestCorrespondenceIndex(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// weftGitDir returns a path genuinely inside the weft worktree's own .git directory — the
-	// per-worktree gitdir the correspondence index is deliberately scoped to.
+	// weftGitDir resolves to a path inside the weft worktree's own .git directory:
+	// the per-worktree gitdir the correspondence index is scoped to.
 	t.Run("WeftGitDirResolvesInsideWeftGitdir", func(t *testing.T) {
 		gitDir, err := fabricengine.WeftGitDirForTest(f)
 		if err != nil {
@@ -67,8 +65,8 @@ func TestCorrespondenceIndex(t *testing.T) {
 		}
 	})
 
-	// A RecordCorrespondence call is visible to a subsequent WeftSHAForWarpSHA lookup, with WarpSeq
-	// computed from the warp repo's first-parent commit count.
+	// A RecordCorrespondence call is visible to a later WeftSHAForWarpSHA lookup.
+	// WarpSeq is computed from the warp repo's first-parent commit count.
 	t.Run("RecordAndLookupRoundTrip", func(t *testing.T) {
 		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
 		weftSHA := commitWeftWithTrailer(t, weftFixture.PrimeRecords(), "weft change 1", warpSHA)
@@ -86,9 +84,9 @@ func TestCorrespondenceIndex(t *testing.T) {
 		}
 	})
 
-	// RebuildIndex, run against a weft branch carrying several hand-crafted Warp-SHA trailer commits,
-	// reconstructs an index whose lookups match what recording each correspondence incrementally would
-	// have produced — never having called RecordCorrespondence for these commits itself.
+	// RebuildIndex, run against a weft branch with several hand-crafted Warp-SHA trailer commits, reconstructs an index.
+	// Its lookups match what recording each correspondence incrementally would have produced,
+	// and the test never calls RecordCorrespondence for these commits itself.
 	t.Run("RebuildIndexReproducesTrailerHistory", func(t *testing.T) {
 		warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
 		weftSHA1 := commitWeftWithTrailer(t, weftFixture.PrimeRecords(), "weft change 2", warpSHA1)

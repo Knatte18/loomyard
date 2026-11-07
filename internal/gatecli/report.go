@@ -61,7 +61,7 @@ It takes no slot and changes nothing.`,
 	return cmd
 }
 
-// runReportVerb reads the run records of the worktree that contains the seam cwd and reports them.
+// runReportVerb reads the tier run records of the location that holds the working directory from ctx and reports them.
 func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.Time) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -83,7 +83,8 @@ func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.T
 	return runReport(out, records, slug, since)
 }
 
-// runLogDirOf returns the directory the tier run records of location go in: the Bolt checkout's gate directory inside a hub, the worktree's own outside every hub.
+// runLogDirOf returns the directory that holds the tier run records of location.
+// Inside a hub it is the gate directory of the Bolt checkout; outside every hub it is the worktree's own.
 func runLogDirOf(location *lymcwd.Location, inHub bool) string {
 	if inHub {
 		return gateslot.RunLogDir(gateslot.Dir(fabricengine.BoltDir(location.HubPath)))
@@ -101,11 +102,11 @@ type reportGroup struct {
 	// buildRuns and buildSeconds total the build step's records apart from the tier runs.
 	buildRuns    int
 	buildSeconds float64
-	// abandonedRuns, abandonedWaitSeconds and abandonedWallSeconds total the records written after their call was cancelled apart from every other total.
+	// abandonedRuns, abandonedWaitSeconds and abandonedWallSeconds total the records written after a call was cancelled.
 	abandonedRuns        int
 	abandonedWaitSeconds float64
 	abandonedWallSeconds float64
-	// launchSeconds and packageSeconds sum the launch gaps and the elapsed times of the records' launch lists; hasLaunches is set once a record holds a list.
+	// launchSeconds and packageSeconds sum the launch gaps and elapsed times; hasLaunches is set once a record holds a list.
 	launchSeconds  float64
 	packageSeconds float64
 	hasLaunches    bool
@@ -125,7 +126,9 @@ func recordLabel(record gateslot.RunRecord) string {
 
 // runReport prints an ok envelope holding one row per slug and gate key of records, in slug then key order.
 // A non-empty slug keeps that slug's records only, and a record started before since is dropped when since is set.
-// A row carries the tier runs and the carried tiers, the summed slot wait and wall time in seconds, the build step's runs and seconds counted apart, the records of cancelled calls counted apart, and, when a record holds a launch list, the launch time and its share of the packages' summed time.
+// A row carries the tier runs, the carried tiers, the summed slot wait and wall time in seconds,
+// and the build step's runs and seconds and the records of cancelled calls, each counted apart;
+// when a record holds a launch list, the row adds the launch time and its share of the packages' summed time.
 func runReport(out io.Writer, records []gateslot.RunRecord, slug string, since time.Time) int {
 	var groups []*reportGroup
 	for _, record := range records {

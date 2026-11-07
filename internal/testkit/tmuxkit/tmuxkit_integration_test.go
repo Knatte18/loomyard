@@ -87,13 +87,16 @@ func TestSocket_LandsUnderMainDirectory(t *testing.T) {
 	if _, err := os.Stat(own); err != nil {
 		t.Errorf("socket not under Main's directory: %v", err)
 	}
-	// Main points TMPDIR at its own directory, so tmux's default socket directory is spelled out.
+	// Main points TMPDIR at its own directory, so this checks the literal default socket directory under /tmp.
 	if _, err := os.Stat(filepath.Join(socketDir("/tmp", os.Getuid()), key)); err == nil {
 		t.Errorf("socket %q also landed in the default directory", key)
 	}
 }
 
-// TestSocket_StartsHermeticNonLoginServer pins the pre-started server: it ignores the operator's ~/.tmux.conf, starts non-login panes, outlives its last session, carries the kit's marker and inherits none of the variables a pane may not.
+// TestSocket_StartsHermeticNonLoginServer pins the pre-started server.
+// It ignores the operator's ~/.tmux.conf and starts non-login panes.
+// The server outlives its last session and carries the kit's marker.
+// It inherits none of the variables a pane may not.
 // It sets HOME and the variables through t.Setenv, which are process-global state, so it does not call t.Parallel.
 func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
 	tiergate.Require(t, 2)

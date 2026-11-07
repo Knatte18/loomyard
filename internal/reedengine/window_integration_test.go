@@ -1,5 +1,8 @@
 // window_integration_test.go proves OpenWindow against a real tmux.
-// The window opens detached without moving the current window, carries @lym_hidden, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.
+// The window opens detached without moving the current window.
+// It carries @lym_hidden and reads remain-on-exit off while the strands' window still reads on.
+// It closes when its command exits, also when it exits at once.
+// A second call while it is live starts nothing.
 // One cold session serves every step.
 
 package reedengine

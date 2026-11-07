@@ -1,4 +1,5 @@
-// hub_integration_test.go drives the front task over a real hub's board: filing, the draft a failed filing leaves, removing and the owner read of settling.
+// hub_integration_test.go drives the front task over a real hub's board:
+// filing, the draft a failed filing leaves, removing, and the owner read of settling.
 
 package fronttask_test
 
@@ -90,7 +91,7 @@ func TestHubSettleDeps_OwnedHereReadsTheOwnerOnTheHubBoard(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// beam asks for the settle of the beam project b, whose own recorded owner decides; otherwise the prime's owner decides.
+		// beam picks the beam project's settle, decided by its recorded owner; otherwise the prime's owner decides.
 		beam  bool
 		owner string
 		want  bool

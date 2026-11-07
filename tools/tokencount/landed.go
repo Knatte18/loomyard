@@ -1,4 +1,6 @@
-// landed.go finds the commit a finished run landed on the code repository, by the title of the change description archived at its tag, and counts the lines that commit changed.
+// landed.go finds the commit a finished run landed on the code repository.
+// It matches the commit by the title of the change description archived at the run's tag.
+// It counts the lines that commit changed.
 
 package main
 
@@ -17,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// landingSlack widens a run's span each way when matching its landed commit, so a pull request merged on GitHub, whose server clock stamps the commit, still matches.
+// landingSlack widens a run's span each way when matching its landed commit,
+// so that a pull request merged on GitHub, whose server clock stamps the commit, still matches.
 const landingSlack = time.Minute
 
 // Reasons a finished run has no landed commit.
@@ -79,8 +82,10 @@ type Landing struct {
 	Missing string
 }
 
-// findLanding finds the commit the run whose shed record is rec landed on code:
-// the newest commit whose subject is the title of the change description archived at the record's tag, committed within span widened by landingSlack each way.
+// findLanding finds the commit the run whose shed record is rec landed on code.
+// It is found by the title of the change description archived at the record's tag:
+// the first commit `code.CommitsWithSubject` returns for that title.
+// The commit's time must fall within span widened by landingSlack each way.
 // A run with no description at its tag, a description that does not parse, or no such commit, gets a Landing naming why.
 // A read that fails is an error naming the slug.
 func findLanding(trees ArchiveTrees, code landingRepo, slug string, rec ShedRecord, span Interval) (Landing, error) {

@@ -1,6 +1,4 @@
-// enginefixture_helper_test.go holds the engine fixture and small helpers the tier0 and tier2 tests of this package share.
-// newTestEngine builds a Geometry struct literal directly rather than calling hubgeom.ReedGeometry.
-// hubgeom imports reedengine, so an in-package test importing it would close an import cycle.
+// enginefixture_helper_test.go holds the engine fixture and the helpers that the tier0 and tier2 tests share.
 // It carries no build tag, so it compiles into every tag set.
 
 package reedengine
@@ -14,13 +12,18 @@ import (
 // testScrub is Claude's declared scrub, spelled out because this package's tests cannot import the registry that owns it.
 var testScrub = EnvScrub{Names: []string{"CLAUDECODE"}, Prefixes: []string{"CLAUDE_CODE_"}}
 
-// newTestEngine builds an Engine rooted at a fresh t.TempDir(), suitable for any reedengine test that needs a *Engine but must never actually shell out to tmux.
-// cfg.Tmux and cfg.Shell point at paths that do not exist,
-// so a stray real invocation fails fast with "file not found" instead of hanging or silently succeeding against some unrelated running server.
-// The Geometry fields are distinct values derived from one t.TempDir(): a synthetic hub, a worktree root under it, and an anchor path under that.
+// newTestEngine builds an Engine rooted at a fresh t.TempDir().
+// It suits a test that needs an *Engine but must never shell out to tmux.
+// The Geometry is a struct literal because hubgeom imports reedengine,
+// so an in-package test importing it would close an import cycle.
+// cfg.Tmux and cfg.Shell point at paths that do not exist.
+// A stray real invocation therefore fails fast with "file not found".
+// It never hangs or silently succeeds against an unrelated running server.
+// The Geometry fields are distinct paths under one t.TempDir().
+// They are a synthetic hub, a worktree root under it, and an anchor path under that.
 // A field mix-up inside the engine therefore surfaces instead of passing silently.
 // Only the worktree root is created on disk.
-// AnchorPath and PaneCwd are deliberately left uncreated, which makes a field mix-up between them and WorktreeRoot surface.
+// AnchorPath and PaneCwd stay uncreated, so a field mix-up between them and WorktreeRoot surfaces.
 // It also makes this shared fixture stand in for the standalone shape.
 // There the anchor is a state directory the engine itself materializes on first use.
 func newTestEngine(t *testing.T) *Engine {
@@ -31,7 +34,7 @@ func newTestEngine(t *testing.T) *Engine {
 		t.Fatalf("MkdirAll worktree root: %v", err)
 	}
 	anchorPath := filepath.Join(worktreeRoot, "anchor")
-	// PaneCwd is deliberately set to a directory distinct from AnchorPath,
+	// PaneCwd is set to a directory distinct from AnchorPath,
 	// so a spawn site that regresses to reading AnchorPath instead of PaneCwd cannot pass by coincidence.
 	geom := Geometry{
 		SocketKey:     ServerName(hub),
@@ -49,10 +52,10 @@ func newTestEngine(t *testing.T) *Engine {
 		Shell:  filepath.Join(hub, "does-not-exist-shell.exe"),
 		Width:  100,
 		Height: 21,
-		// A valid value, so a caller reaching ensureServerAndSessionLocked does not fail on watchdogOption's boot-path validation.
+		// A valid value: a caller reaching ensureServerAndSessionLocked then passes watchdogOption's boot-path validation.
 		// A test that wants an invalid value overrides e.cfg.Watchdog itself.
 		Watchdog: "on",
-		// Two configured segments; any other segment key resolves to no color.
+		// Only the segment keys set here get a color; any other segment key resolves to no color.
 		SegmentColors: map[string]string{"review": "orange", "plan": "cyan"},
 	}
 	return New(cfg, geom, testScrub)

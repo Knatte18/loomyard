@@ -1,4 +1,5 @@
-// languageskills_test.go pins which shipped recipe rows carry the Burler profile key language-skills: the code rounds only.
+// languageskills_test.go checks which shipped recipe rows carry the Burler profile key language-skills.
+// Only the code rounds carry it.
 
 package loomrecipe
 
@@ -11,7 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestShippedRecipes_LanguageSkillsOnCodeRounds asserts each shipped recipe sets language-skills, as the boolean true, on exactly its code-round rows, so a code row losing the key or a Discussion or Plan row gaining it fails.
+// TestShippedRecipes_LanguageSkillsOnCodeRounds asserts that each shipped recipe sets language-skills.
+// It sets the key to the boolean true on exactly the recipe's code-round rows.
+// A code row that loses the key fails, and so does a Discussion or Plan row that gains it.
 func TestShippedRecipes_LanguageSkillsOnCodeRounds(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

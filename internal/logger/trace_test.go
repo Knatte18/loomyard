@@ -1,5 +1,8 @@
-// trace_test.go covers trace.go's mint/adopt/export precedence: LYM_TRACE_ID adoption, minted-value shape, empty/whitespace-only treated as unset, the lazy TraceID() path, and the env-propagation contract MintOrAdoptAndExport promises spawned children.
-// No test in this file calls t.Parallel: each resets package-level trace state and sets LYM_TRACE_ID in the process environment.
+// trace_test.go covers trace.go's mint, adopt and export precedence.
+// It covers LYM_TRACE_ID adoption, the minted value's shape, and empty or whitespace-only values, which count as unset.
+// It also covers the lazy TraceID() path and the environment that MintOrAdoptAndExport gives spawned children.
+// No test in this file calls t.Parallel:
+// each resets package-level trace state and sets LYM_TRACE_ID in the process environment.
 
 package logger
 
@@ -25,12 +28,18 @@ func resetTraceState(t *testing.T) {
 	})
 }
 
-// TestTraceID_AdoptsOnlyMintedAlphabetValuesElseMints is the regression guard for the R4 review's R4-09: LYM_TRACE_ID was adopted verbatim, and sink.go interpolates the adopted value into a trace filename that filepath.Join then CLEANS -- so a value carrying separators and ".." walked the trace write out of the logs directory (LYM_TRACE_ID='ci-run/../../pwned' landed a file one level above .lym/logs, and a longer chain escapes the state directory outright).
-// A non-hex value that stays inside the directory is no better: retention.go's traceFilePattern never matches it, so Sweep can neither rank nor remove the file and the logs directory grows without bound.
+// TestTraceID_AdoptsOnlyMintedAlphabetValuesElseMints pins the adoption rule:
+// LYM_TRACE_ID is kept only when it is 16 lowercase hex digits, and any other value is replaced by a mint.
+// An adopted value is interpolated into a trace filename that filepath.Join cleans.
+// Separators or ".." in it would write outside the logs directory.
+// A value that stays inside the directory but is not hex is never matched by `traceFilePattern` in retention.go.
+// Sweep can then neither rank nor remove its file, so the logs directory grows without bound.
 //
 // Both entry points are covered per row, because MintOrAdoptAndExport re-exports what it resolved:
-// validating only one of the two would leave the other laundering a malformed value into every spawned child.
-// A valid value is adopted verbatim; an unset, empty or whitespace-only variable mints, as does a rejected value, and TraceID's lazy path mints with no prior MintOrAdoptAndExport call.
+// validating only one would leave the other passing a malformed value on to every spawned child.
+// A valid value is adopted verbatim.
+// An unset, empty or whitespace-only variable mints, and so does a rejected value.
+// TraceID's lazy path mints without a prior MintOrAdoptAndExport call.
 func TestTraceID_AdoptsOnlyMintedAlphabetValuesElseMints(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -106,8 +115,8 @@ func TestTraceID_AdoptsOnlyMintedAlphabetValuesElseMints(t *testing.T) {
 	})
 }
 
-// assertTraceIDAdoption checks that got is exactly the adopted value when adoption was expected, and
-// a freshly minted 16-lowercase-hex identity that is NOT the rejected value otherwise.
+// assertTraceIDAdoption checks got against value: when adoption was expected, got must equal value verbatim;
+// otherwise got must be a freshly minted 16-lowercase-hex identity that is not value.
 func assertTraceIDAdoption(t *testing.T, entryPoint, value, got string, wantAdopt bool) {
 	t.Helper()
 	if wantAdopt {

@@ -1,4 +1,5 @@
-// state_test.go pins the state record's tolerance: the keys a newer binary wrote survive a rewrite, and a damaged file never wedges the beam.
+// state_test.go pins the state record's tolerance:
+// the keys a newer binary wrote survive a rewrite, and a damaged file never wedges the beam.
 
 package dobbyengine
 

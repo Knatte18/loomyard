@@ -1,4 +1,6 @@
-// lensreport.go declares the lens report file name rule, PathPattern for a prompt, Path for one lens and IsReportName for a directory check, and reads a report's outcome with Returned.
+// lensreport.go holds the file name rule of a lens report beside its record.
+// PathPattern gives the pattern for a prompt, Path gives one lens's path, and IsReportName checks a directory entry.
+// Returned reads whether a report says its lens returned.
 
 package lensreport
 
@@ -11,7 +13,7 @@ import (
 // SpecName is the registered name of the spec that defines a lens report's format.
 const SpecName = "twill-lens-report-spec"
 
-// lensPlaceholder is the text PathPattern puts where the lens name goes.
+// lensPlaceholder is the text that stands for the lens name in a report path pattern.
 const lensPlaceholder = "<lens>"
 
 // reportInfix joins a record's stem to the lens name in a report's file name.
@@ -29,13 +31,13 @@ const outcomeKey = "outcome:"
 // outcomeReported is the outcome value of a lens that returned a final message.
 const outcomeReported = "reported"
 
-// PathPattern returns the path a writer saves a lens fork's report at beside recordPath, with `<lens>` standing for the lens name.
+// PathPattern returns the path of a lens report beside recordPath, with `<lens>` standing for the lens name.
 // The record's extension is dropped, so `x/lens-review.md` gives `x/lens-review.lens-<lens>.md`.
 func PathPattern(recordPath string) string {
 	return Path(recordPath, lensPlaceholder)
 }
 
-// Path returns the path a writer saves the report of the lens named lens at beside recordPath.
+// Path returns the path of the report for the lens named lens, beside recordPath.
 func Path(recordPath, lens string) string {
 	return reportStem(recordPath) + reportInfix + lens + reportExt
 }
@@ -53,7 +55,8 @@ func IsReportName(recordName, name string) bool {
 
 // Returned reports whether the lens report at path says its lens returned a report.
 // It reads the outcome line of the file's opening fenced yaml block alone.
-// An unreadable file, an absent one included, a file with no well-formed opening block and a report whose outcome is `no report` did not.
+// It reports false for an unreadable file, an absent one included, and for a file with no well-formed opening block.
+// Any outcome other than `reported`, such as `no report`, also reports false.
 func Returned(path string) bool {
 	content, err := os.ReadFile(path)
 	if err != nil {

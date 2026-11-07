@@ -1,15 +1,9 @@
-// destructivegaps_integration_test.go proves the destructive gate closes the three gaps this
-// slice's discussion names as newly-closed by this refactor (not merely re-covering a
-// pre-existing regression), exercises the gate's git-touching ownership predicates directly, proves
-// both dirtiness scopes actually differ, and covers branch ownership at all four deletion sites.
+// destructivegaps_integration_test.go tests the destructive gate against real git.
+// It covers the gate's git-touching ownership predicates and branch ownership at every deletion site.
+// It also checks that its two dirtiness scopes differ.
+// The hermetic checks, which spawn no git, are in destroy_test.go.
 //
-// Every assertion here needs real git, which is why none of it lives in the untagged tier's gate
-// unit tests (destroy_test.go): those cover the pipeline's hermetic logic (check ordering,
-// containment, zero-value refusals, force's narrow reach) with no git spawn at all.
-//
-// Package fabricengine_test to reuse mustRecordsRepoRoot from
-// reconcile_stale_registration_test.go, and makeBareRemote from clone_adopt_test.go, matching
-// prune_unowned_integration_test.go's convention; shares the single TestMain in testmain_test.go.
+// The file reuses mustRecordsRepoRoot (add_rollback_adopt_test.go) and makeBareRemote (clone_adopt_test.go).
 
 package fabricengine_test
 
@@ -35,20 +29,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// escapeFabricConfigYAML returns a repo-wide fabric.yaml override whose pathspec names exactly
-// escapeName, for a caller-chosen pathspec entry rather than a fixed one.
+// escapeFabricConfigYAML returns a repo-wide fabric.yaml override with an empty branch_prefix and pathspec escapeName.
 func escapeFabricConfigYAML(escapeName string) string {
 	return "branch_prefix: \"\"\npathspec: " + escapeName + "\n"
 }
 
-// TestUnwireJunctions_RefusesLinkOutsideItsWorktree covers gap one's first reach point: the
-// junction-record removal executor had no containment check at all before this slice.
-// WarpJunctions computes a junction's Link by joining the caller-supplied name onto the worktree
-// root, so a name carrying "../" escapes the worktree entirely — one "../" cancels the slug segment
-// and lands back at the hub itself, since WorktreePath(l, slug) is a direct child of the hub.
-// This test builds exactly that escaped link by hand (WireJunctions has no containment check of its
-// own either, and is not the code path under test here) and asserts the gate refuses to remove it
-// and leaves it on disk.
+// TestUnwireJunctions_RefusesLinkOutsideItsWorktree asserts that the gate refuses a link outside its worktree,
+// and that the link stays on disk.
+// WarpJunctions joins the caller-supplied name onto the worktree root, so a name carrying "../" escapes the worktree.
+// WorktreePath(l, slug) is a direct child of the hub, so one "../" cancels the slug segment and lands at the hub.
+// The test creates that link by hand, because wiring it is not the code path under test.
 //
 //testtiming:keep the junction-removal executor refusing a link that escapes the worktree and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
@@ -78,17 +68,20 @@ func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
 	}
 }
 
-// TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree covers gap one's second reach point: Add's own rollback removes the junctions it wired through the same gate, and must refuse the same shape.
-// A pathspec entry of "../gap1-rollback-escape" makes seedLymJunction materialise its weft-side target AND its warp-side link at the identical hub-level path — the worktree and its weft sibling are both direct children of the hub, so one "../" cancels either segment to the same place — so wiring that junction fails with "already contains a real directory" before a symlink is ever created there.
-// That failure is what triggers Add's rollback, and the directory seedLymJunction's os.MkdirAll left behind along the way is what the rollback must refuse to remove.
+// TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree checks that Add's rollback refuses an escaping junction.
+// The pathspec entry "../gap1-rollback-escape" makes seedLymJunction put its weft target and warp link at one path:
+// the worktree and its weft sibling are both direct children of the hub, so one "../" cancels either segment.
+// Wiring that junction therefore fails with "already contains a real directory" before any symlink is created.
+// That failure triggers Add's rollback,
+// and the rollback must refuse to remove the directory that seedLymJunction's os.MkdirAll left behind.
 func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "gap1-rollback-owner"
-	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
-	// materializes a real Bolt checkout worktree the gate's ownedManagedBranch/primaryWeftBranch read
-	// succeeds against, so only the escape-specific pathspec override is seeded here.
+	// The copied hub's template comes from hubforge.NewHub, which checks the weft primary out on its suffixed branch.
+	// It also materializes a real Bolt checkout worktree that ownedManagedBranch and primaryWeftBranch read successfully.
+	// So only the escape-specific pathspec override is seeded here.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))
 
@@ -106,11 +99,9 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	}
 }
 
-// TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent covers gap two's first assertion:
-// teardownHub's own containment check.
-// CloneHub's normal derivation makes the hub path always a literal child of its own cwd argument, so
-// this refusal can never be triggered end to end through CloneHub itself; TeardownHubForTest drives
-// teardownHub directly to construct the mismatch.
+// TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent asserts the containment check of teardownHub.
+// CloneHub always derives the hub path as a literal child of its cwd argument,
+// so the refusal cannot be reached through CloneHub, and TeardownHubForTest drives teardownHub directly.
 func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -138,15 +129,14 @@ func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
 	}
 }
 
-// TestCloneHub_TeardownSucceedsOnAHalfBuiltHub covers gap two's counter-assertion, as important as
-// the first: teardownHub authorises removal via the createdToken this same invocation minted, not
-// via ownedFabricHub's board-or-weft-sibling predicate.
-// The earliest of teardownHub's call sites in CloneHub run before either exists — with the hub
-// predicate instead, teardown would refuse at nearly every early failure site and leave a residual
-// hub where it works today. A real CloneHub run against an unreachable warp URL fails at exactly
-// that early point (hub directory created and nothing else — no warp clone, no weft clone, no board
-// worktree, so no hub scratch tree yet either), so this drives the scenario end to end through the
-// exported entry point.
+// TestCloneHub_TeardownSucceedsOnAHalfBuiltHub checks that teardownHub removes a half-built hub.
+// It authorises that removal with the createdToken this CloneHub invocation minted.
+// The earliest teardownHub call sites in CloneHub run before the board and the weft sibling exist.
+// Teardown there cannot depend on either of them.
+// A check that needed them would refuse at nearly every early failure site and leave a residual hub.
+// The test drives a real CloneHub run against an unreachable warp URL, which fails at that early point:
+// only the hub directory exists, with no warp clone, weft clone, board worktree or hub scratch tree.
+// It calls the exported entry point, so the whole scenario runs end to end.
 //
 //testtiming:keep teardownHub removing a half-built hub on the token it minted though neither side exists yet; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
@@ -174,17 +164,15 @@ func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 	}
 }
 
-// TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles covers gap three:
-// the directory-removal fallback removeWarpWorktreeDir falls into when `git worktree remove` itself
-// refuses had no dirtiness check at all before this slice.
-// Topology.Remove's own top-level dirty check (scopeAll, run before removeWarpWorktreeDir is ever
-// reached) would already refuse an untracked file in the real verb, so this drives
-// removeWarpWorktreeDir directly to construct the state whose refusal actually routes into the
-// fallback: a registered linked worktree carrying an untracked file, removed without force so git's
-// own refusal — not Remove's earlier gate — is what triggers the fallback.
-// Asserting the error alone would pass against the pre-fix code too (an ungated fallback still
-// returns whatever os.RemoveAll or the surrounding plumbing reports), so the on-disk assertion is
-// what actually proves the gap closed.
+// TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles checks that the fallback refuses.
+// removeWarpWorktreeDir runs the fallback, a directory removal, when `git worktree remove` itself refuses.
+// The remove verb's top-level dirty check runs before removeWarpWorktreeDir,
+// and it would already refuse an untracked file, so the test calls removeWarpWorktreeDir directly.
+// The test builds a registered linked worktree with an untracked file, removed without force.
+// Git's own refusal, not the earlier gate, is what triggers the fallback.
+// Asserting the error alone would also pass for an ungated fallback.
+// Such a fallback returns whatever os.RemoveAll or the surrounding plumbing reports.
+// The test therefore asserts that the worktree stays on disk.
 //
 //testtiming:keep the directory-removal fallback refusing a registered worktree with untracked files and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles(t *testing.T) {
@@ -217,19 +205,17 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	}
 }
 
-// TestRemoveWarpWorktreeDir_FallbackHonoursForce is R2's regression for the operator's --force being
-// silently dropped by the fallback request.
+// TestRemoveWarpWorktreeDir_FallbackHonoursForce checks that --force reaches the fallback removal,
+// so an operator's --force is not silently dropped there.
 //
-// removeWarpWorktreeDir's fallback pathRequest was built without a force field at all, so it took
-// Go's zero value while the PRIMARY request one screen above declared force: force. An operator who
-// passed --force against a worktree git declined for a reason other than dirtiness therefore got a
-// refusal whose stated remedy was "use --force" — the one thing they had already done — and a
-// half-torn-down pair.
+// The fallback request must carry force.
+// Left at Go's zero value, the fallback refuses even though the operator passed --force,
+// and the pair is left half torn down.
 //
-// `git worktree lock` is what makes `git worktree remove --force` fail on a worktree that is still
-// registered, which is exactly the state that routes into the fallback with force already set. The
-// no-force half runs the identical setup and must still refuse, because propagating force must not
-// weaken the guard that keeps the fallback from deleting what git declined to discard.
+// `git worktree lock` makes `git worktree remove --force` fail on a worktree that is still registered.
+// That registered state is what routes into the fallback with force already set.
+// The no-force half runs the identical setup and must still refuse.
+// Propagating force must not weaken the guard against deleting what git declined to discard.
 func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -258,8 +244,8 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 				t.Fatalf("write untracked file: %v", err)
 			}
 
-			// Locking is what makes git refuse even under --force, so the fallback is reached with
-			// force already true rather than short-circuited by a successful git removal.
+			// Locking makes git refuse even under --force, so the fallback is reached with force already true.
+			// Without the lock, a successful git removal would skip the fallback.
 			if _, err := gitexec.Run([]string{"worktree", "lock", target}, l.WorktreePath()); err != nil {
 				t.Fatalf("git worktree lock %s: %v", target, err)
 			}
@@ -288,9 +274,13 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 	}
 }
 
-// TestRemoveWarpWorktreeDir_LeftoverRetry drives Topology.Remove over a pair whose task worktree `git worktree remove` deregisters and fails to delete, and asserts the late-writer retry of the directory it leaves.
-// Off Windows, git is made to fail by a read-only subdirectory holding a file committed on the pair's branch, so the pair stays clean (a directory's mode is not tracked) and passes Remove's dirty checks.
-// On Windows, a committed file held open by its writer makes git's delete fail, and the first contained removal fails with a sharing violation.
+// TestRemoveWarpWorktreeDir_LeftoverRetry drives Topology.Remove over a pair whose task worktree is left behind.
+// `git worktree remove` deregisters that worktree and fails to delete it.
+// The test asserts the late-writer retry of the directory it leaves.
+// Off Windows, git is made to fail by a read-only subdirectory that holds a file committed on the pair's branch,
+// so the pair stays clean (a directory's mode is not tracked) and passes the remove verb's dirty checks.
+// On Windows, a committed file held open by its writer makes git's delete fail,
+// and the first contained removal fails with a sharing violation.
 func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -303,7 +293,8 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 		removeCalls int
 		sleepCalls  int
 	}
-	// setup returns the seam's remove and sleep for one row, given the read-only directory's path; a nil remove or sleep keeps production.
+	// setup returns the seam's remove and sleep for one row, given the read-only directory's path;
+	// a nil remove or sleep keeps production.
 	tests := []struct {
 		name  string
 		slug  string
@@ -457,9 +448,8 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 	}
 }
 
-// TestOwnership_RegisteredLinkedWorktreeKind covers the git-touching predicate behind
-// ownedRegisteredLinkedWorktree — isRegisteredLinkedWorktreeIn — against every shape its own doc
-// comment names.
+// TestOwnership_RegisteredLinkedWorktreeKind covers isRegisteredLinkedWorktreeIn over each shape of path.
+// It is git-touching: it reports whether a path is a registered linked worktree of a given repository.
 func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -484,8 +474,7 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 	})
 
 	t.Run("RefusesUnrelatedGitCloneAtFabricShapedPath", func(t *testing.T) {
-		// A real, independently-initialised clone parked at a "*-weft"-shaped path inside the hub —
-		// one of the eight original defects this slice closes — not merely an empty directory.
+		// An independently initialised clone at a "*-weft"-shaped path inside the hub is not a linked worktree.
 		clone := filepath.Join(l.HubPath, "unrelated-weft")
 		if err := os.MkdirAll(clone, 0o755); err != nil {
 			t.Fatalf("mkdir clone: %v", err)
@@ -518,10 +507,8 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 	})
 }
 
-// TestOwnership_WarpCheckoutKind covers isWarpCheckout — deliberately the counterpart, not a
-// synonym, of isRegisteredLinkedWorktreeIn: it admits the hub's prime warp worktree, which the
-// registered-linked kind deliberately excludes, and that single divergence is why the two kinds
-// exist as separate closed-enum members rather than one.
+// TestOwnership_WarpCheckoutKind covers isAnyWorktreeOf, which accepts any worktree of the repo.
+// That includes the hub's prime warp worktree, and a path that is not a worktree of the repo is refused.
 func TestOwnership_WarpCheckoutKind(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -552,7 +539,7 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 		}
 	})
 
-	// The one assertion that stops a future edit collapsing the two kinds into one.
+	// Fails if isAnyWorktreeOf and isRegisteredLinkedWorktreeIn agree on the main worktree.
 	t.Run("DisagreesWithRegisteredLinkedKindOnMainWorktree", func(t *testing.T) {
 		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, repoDir) {
 			t.Fatalf("precondition failed: main worktree unexpectedly accepted by the registered-linked kind")
@@ -563,9 +550,8 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 	})
 }
 
-// TestOwnership_FabricHubKind covers looksLikeHub, the predicate behind ownedFabricHub, against
-// every shape resetHub's guard names: either structural mark is enough, and an unreadable directory
-// is refused rather than treated as absent.
+// TestOwnership_FabricHubKind covers looksLikeHub: either of its two structural marks is enough to recognise a hub,
+// and an unreadable directory is refused rather than treated as absent.
 func TestOwnership_FabricHubKind(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -600,9 +586,9 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 		}
 	})
 
-	// AcceptsLegacySuffixedHubDirectory pins that looksLikeHub is purely structural, so a container
-	// created before the suffix rename still resolves as a hub and is never refused on the strength
-	// of its name.
+	// AcceptsLegacySuffixedHubDirectory pins that looksLikeHub judges structure alone.
+	// A directory named loomyard-HUB that holds the board directory resolves as a hub,
+	// and its name is never grounds for refusal.
 	t.Run("AcceptsLegacySuffixedHubDirectory", func(t *testing.T) {
 		t.Parallel()
 		hub := filepath.Join(t.TempDir(), "loomyard-HUB")
@@ -647,10 +633,9 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 	}
 }
 
-// TestWorktreeDirty_BothScopesAcrossFourStates asserts scopeTracked and scopeAll separately against
-// four worktree states, so the one case that justifies dirtiness scope being a declared per-request
-// parameter rather than a constant — untracked-only — is proven to actually differ between them,
-// not merely assumed.
+// TestWorktreeDirty_BothScopesAcrossFourStates checks scopeTracked and scopeAll against each worktree state it builds.
+// The untracked-only state is the one where the two scopes differ.
+// That difference is why dirtiness scope is a per-request parameter rather than a constant.
 func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -686,7 +671,6 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 			t.Fatalf("write untracked: %v", err)
 		}
 		t.Cleanup(func() { _ = os.Remove(untracked) })
-		// The proof case: scopeTracked must not see it, scopeAll must.
 		assertScopes(t, false, true)
 	})
 
@@ -717,12 +701,10 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 	})
 }
 
-// assertBranchGateRefusesBothForceModes asserts DeleteBranchForTest refuses branch (a weft branch
-// in the repo at weftRoot, gated via ownedManagedBranch(l)) under both force=false and
-// force=true, with the same wantSubstring reason each time, and that branch survives both attempts.
-// The force=true half is what proves the property card 34 exists to pin: force reaches only
-// Cleanup's own folded-back-raddle gate, never the branch-ownership kind itself — a
-// force-satisfies-ownership reading is how the slice's original defect would return behind a flag.
+// assertBranchGateRefusesBothForceModes asserts that DeleteBranchForTest refuses branch under both force modes.
+// The branch is a weft branch in the repo at weftRoot, gated by ownedManagedBranch(l).
+// Each refusal must carry wantSubstring in its error, and the branch must survive both attempts.
+// The force=true attempt pins that force does not satisfy branch ownership.
 func assertBranchGateRefusesBothForceModes(t *testing.T, l *lymcwd.Location, weftRoot, branch, wantSubstring string) {
 	t.Helper()
 	for _, force := range []bool{false, true} {
@@ -739,10 +721,11 @@ func assertBranchGateRefusesBothForceModes(t *testing.T, l *lymcwd.Location, wef
 	}
 }
 
-// TestBranchOwnership_ManagedBranchKind covers ownedManagedBranch/resolveManagedBranch's four
-// refusal shapes — the primary weft branch, an unreadable primary, a branch checked out at some
-// worktree, and a name outside fabric's own scheme — each under both force=false and force=true,
-// plus the positive case that proves the kind is not trivially always-refusing.
+// TestBranchOwnership_ManagedBranchKind covers the refusal shapes of ownedManagedBranch and resolveManagedBranch.
+// The refused shapes are the primary weft branch, an unreadable primary, and a branch checked out at some worktree.
+// A name outside fabric's own scheme is refused as well.
+// Each shape is tested under both force=false and force=true.
+// A positive case shows the kind is not always refusing.
 func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -757,9 +740,9 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	})
 
 	t.Run("RefusesWhenPrimaryUnreadable", func(t *testing.T) {
-		// A hub whose board worktree is gone cannot answer "what is the repo's primary weft
-		// branch" at all — the inherited fail-closed direction that must never invert, since these
-		// deletions are irreversible.
+		// A hub whose board worktree is gone cannot answer which branch is the repo's primary weft branch.
+		// The gate fails closed in that case, and that direction must never invert.
+		// These deletions are irreversible.
 		unreadable := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		ul := unreadable.Location
 		uWeftRoot := mustRecordsRepoRoot(t, ul)
@@ -801,21 +784,16 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	})
 }
 
-// TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch is R2's regression for a misleading verdict under
-// a race reconcile cannot avoid: `git worktree list` is read once, before the per-pair loop, so a
-// concurrent `lym fabric remove`/`prune` can delete a pair's directory between the enumeration and
-// the iteration that reaches it.
+// TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch covers a pair whose directory is deleted mid-walk.
+// Reconcile reads `git worktree list` once, before the per-pair loop, so this race cannot be avoided.
+// A concurrent `lym fabric remove` or `prune` can delete a pair's directory before the loop reaches it.
 //
-// That used to surface as ReconcileActionUnmanagedReported — a verdict meaning "this pair is not
-// fabric's to manage" — carrying os/exec's raw `chdir <path>: no such file or directory` as its
-// reason, which is neither what happened nor something an operator can act on. Worse, it set
-// pr.Error, so once reconcile started reporting a failed pair as a failure (R2's finding M2), a
-// perfectly ordinary concurrent teardown would have turned every enclosing reconcile into a non-zero
-// exit.
+// Such a pair must be reported as vanished.
+// It must not surface as ReconcileActionUnmanagedReported, which means the pair is not fabric's to manage.
+// It must not set pr.Error, since a concurrent teardown would then make every enclosing reconcile exit non-zero.
 //
-// Deleting the directory directly, with the registration deliberately left in place, is exactly the
-// state the race produces and needs no actual concurrency to construct — which is what makes this
-// test deterministic rather than timing-dependent.
+// Deleting the directory directly, with the registration left in place, reproduces the state without concurrency.
+// That keeps the test deterministic rather than timing-dependent.
 func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

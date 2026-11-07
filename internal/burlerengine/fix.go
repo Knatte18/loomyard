@@ -1,5 +1,8 @@
-// fix.go implements the fix half of a round: Engine.Fix runs one fresh fixer session as the chair of a one-seat table over a review the review half accepted, and ProbeFix and ResumeFix attach to a fixer a previous session left live.
-// The half neither waits on, messages nor knows of the review half; it knows the review only by the digest it is told and the file it reads.
+// fix.go implements the fix half of a round.
+// Engine.Fix runs one fresh fixer session as the chair of a one-seat table over an accepted review.
+// ProbeFix and ResumeFix attach to a fixer a previous session left live.
+// The half neither waits on, messages nor knows of the review half;
+// it knows the review only by the digest it is told and the file it reads.
 // A review with no findings whose gates pass spawns no fixer at all.
 
 package burlerengine
@@ -21,7 +24,8 @@ import (
 // fixRolePrefix is the role prefix of the fix half's one seat; the seats engine forms its strand role from it.
 const fixRolePrefix = "burler-fix"
 
-// skippedFixerReport is the fixer report written when the fix half is skipped: a normal report saying nothing was fixed because the review held no findings and the round's gates passed.
+// skippedFixerReport is the fixer report written when the fix half is skipped.
+// It says nothing was fixed, because the review held no findings and the round's gates passed.
 var skippedFixerReport = "# Fixer report\n\n" +
 	"## Changes\n\n" +
 	"Nothing fixed: the review held no findings and the round's gates passed, so no fixer was spawned.\n\n" +
@@ -30,7 +34,8 @@ var skippedFixerReport = "# Fixer report\n\n" +
 	"## Deferred\n\n" +
 	"(none)\n"
 
-// skippedRoutedFixerReport is the fixer report written when the fix half is skipped because the review's only findings are decision-class ones its caller sent to the run's parent.
+// skippedRoutedFixerReport is the fixer report written when the fix half is skipped.
+// It applies when the review's only findings are decision-class ones its caller sent to the run's parent.
 var skippedRoutedFixerReport = "# Fixer report\n\n" +
 	"## Changes\n\n" +
 	"Nothing fixed: the review held only decision findings, which went to the run's parent, and the round's gates passed, so no fixer was spawned.\n\n" +
@@ -55,14 +60,16 @@ type FixResult struct {
 	Lenses []string
 	// Forks is the number of self-check forks the audit counted for a done twill fixer, 0 otherwise.
 	Forks int
-	// Warnings holds the audit's warnings for a done twill fixer: a fork count other than the lens count, and a fork that never returned a report.
+	// Warnings holds the audit's warnings for a done twill fixer.
+	// It names a fork count other than the lens count and a fork that never returned a report.
 	Warnings []string
 }
 
-// fixTable builds the fix half's one-seat table for p under opts: the fixer as the chair, gated by opts.Gate with every entry wrapped by repairReportBeforeGate.
+// fixTable builds the fix half's one-seat table for p under opts: the fixer as the chair.
+// It gates the table by opts.Gate, with every entry wrapped by repairReportBeforeGate.
 // The fixer reads the review file, writes the fixer-report and forks exactly when the profile names a fixer fan.
 // The seat's model key stays zero in every round; opts.FixKey is read only to name the key in an engine refusal.
-// values carries the marker values the seat's stencil is filled from, and skills the skills the seat loads.
+// values carries the marker values the seat's stencil is filled from; skills lists the skills the seat loads.
 func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	// A fresh copy, so the caller's slice is never mutated;
 	// off entries are wrapped too, since they never run and the wrap is harmless there.
@@ -92,13 +99,17 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 }
 
 // Fix runs the fix half for p, tuned by opts, over the review whose accepted bytes hash to digest.
-// It validates p, then reads the review through acceptedReview, which returns ErrReviewChanged when the file no longer hashes to digest.
+// It validates p, then reads the review and returns ErrReviewChanged when the file no longer hashes to digest.
 // A review with findings of any severity spawns the fixer.
-// With opts.DecisionsRouted, decision-class findings are no fixer work: the fixer's work line names them as not its own, and a review holding only those counts as one with none.
-// A review with none runs opts.Gate once: when every gate passes, Fix writes the fixer report itself and returns a skipped OutcomeDone with no session;
-// when a gate fails, the fixer is spawned with the failing gates' findings as its work; a gate whose closure errors is returned wrapped with nothing spawned.
+// With opts.DecisionsRouted, decision-class findings are no fixer work: the fixer's work line names them as not its own,
+// and a review holding only those counts as one with none.
+// A review with none runs opts.Gate once.
+// When every gate passes, Fix writes the fixer report itself and returns a skipped OutcomeDone with no session.
+// When a gate fails, the fixer is spawned with the failing gates' findings as its work.
+// A gate whose closure errors is returned wrapped, with nothing spawned.
 // A fixer that never starts because its provider never came up is OutcomeDied with NotStarted set and a nil error.
-// A fixer that died or timed out is its outcome with a nil error, and one whose gate failed returns its Gate with a nil error.
+// A fixer that died or timed out is its outcome with a nil error.
+// A fixer whose gate failed returns its Gate with a nil error.
 // A fixer that is done while the review file changed is ErrReviewChanged.
 // A fixer that could not be stopped is returned wrapped in ErrHalfNotStopped.
 func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) {
@@ -134,7 +145,8 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 	}
 
 	// A friction.Directive error is swallowed, never returned:
-	// it is optional bookkeeping, not a binding constraint, so a transient stencil read failure here must never kill the round.
+	// it is optional bookkeeping, not a binding constraint,
+	// so a transient stencil read failure here must never kill the round.
 	notePath := friction.NotePath(e.frictionDir, opts.NoteID)
 	frictionDirective, err := friction.Directive(notePath, e.stencilsDir, friction.RoleReviewFix)
 	if err != nil {
@@ -189,7 +201,8 @@ func (e *Engine) skipFix(p *Profile, report string) (FixResult, error) {
 	return FixResult{Outcome: shuttleengine.OutcomeDone, FixerReportPath: p.FixerReportPath, Skipped: true}, nil
 }
 
-// acceptedReview reads the review file at p.ReviewPath and returns its findings, refusing with ErrReviewChanged when the bytes no longer hash to digest.
+// acceptedReview reads the review file at p.ReviewPath and returns its findings.
+// It refuses with ErrReviewChanged when the bytes no longer hash to digest.
 // A review that no longer parses strictly is returned as that parse error.
 func acceptedReview(p *Profile, digest string) ([]Finding, error) {
 	content, err := os.ReadFile(p.ReviewPath)
@@ -206,7 +219,8 @@ func acceptedReview(p *Profile, digest string) ([]Finding, error) {
 	return findings, nil
 }
 
-// checkGates runs every entry of gate whose Attempts is above 0 once, in order, and returns the findings of the entries that did not pass, each under its entry name.
+// checkGates runs every entry of gate whose Attempts is above 0 once, in order.
+// It returns the findings of the entries that did not pass, each under its entry name.
 // It returns "" when every entry passes.
 // A closure error is returned wrapped with the entry's name.
 func checkGates(gate shuttleengine.GateSpec) (string, error) {
@@ -226,9 +240,11 @@ func checkGates(gate shuttleengine.GateSpec) (string, error) {
 	return strings.Join(failed, "\n"), nil
 }
 
-// ProbeFix reports the state of the fix half p describes under opts, without waiting on it:
-// live when the seats engine finds a live fixer run, done when it has no live run and the fixer-report is present, and gone otherwise.
-// A probe error, and an invalid p, are returned as is, a fixer that could not be stopped wrapped in ErrHalfNotStopped.
+// ProbeFix reports the state of the fix half p describes under opts, without waiting on it.
+// The state is live when the seats engine finds a live fixer run.
+// It is done when there is no live run and the fixer report is present; otherwise it is gone.
+// A probe error and an invalid p are returned as is.
+// A fixer that could not be stopped is wrapped in ErrHalfNotStopped.
 func (e *Engine) ProbeFix(p Profile, opts RunOpts) (LiveHalf, error) {
 	if err := p.validateFix(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return LiveHalf{}, err
@@ -243,9 +259,12 @@ type promptDeliverer interface {
 	DeliverPendingPrompt() (bool, error)
 }
 
-// ResumeFix completes the fix half whose fixer is live, attaching to it instead of starting one, and concludes it as a fresh fix is, against the same digest.
-// A LiveHalf that is not live is an error, and so is one with no probed table, which only a LiveHalf not taken from ProbeFix lacks; nothing is stopped or started.
-// A live handle that can deliver a pending task prompt is asked to before the seats resume, and a delivery error is returned as the resume's error with nothing resumed.
+// ResumeFix completes the fix half whose fixer is live, attaching to that fixer instead of starting one.
+// It then concludes the half against digest.
+// A LiveHalf that is not live is an error, and so is one without the table from its probe.
+// Nothing is stopped or started.
+// A live handle that can deliver a pending task prompt is asked to before the seats resume,
+// and a delivery error is returned as the resume's error with nothing resumed.
 func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf) (FixResult, error) {
 	if live.State != HalfLive {
 		return FixResult{}, fmt.Errorf("burler: resume needs the fix half live (state %d)", live.State)
@@ -274,12 +293,15 @@ func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf
 	return e.concludeFix(&p, opts, digest, seats, err)
 }
 
-// concludeFix turns the seats engine's answer, the fixer's result and the error it ran with, into the fix half's one result.
-// Stops, start errors and a died or timed-out fixer are mapped as concludeReview maps them.
-// A start error that refuses a twill fixer's missing fork support is returned as twillEngineRefusal words it.
-// A done fixer of a twill round is audited first, and a fork violation is that error whether or not its gate passed.
+// concludeFix turns the seats answer, the fixer's result and the run error into the fix half's one result.
+// A seat that could not be stopped returns ErrHalfNotStopped wrapped around the run error.
+// A fixer that never started is reported as died, with NotStarted set and no error.
+// A twill fixer whose engine lacks fork support returns a refusal that names the model key and the fan key.
+// A done fixer of a twill round is audited first.
+// A fork violation is returned as an error whether or not the gate passed.
 // A done fixer whose gate failed returns its Gate with a nil error.
-// A done fixer with a passing or absent gate is accepted only when the review file still hashes to digest, and is ErrReviewChanged otherwise.
+// A done fixer with a passing or absent gate is accepted only when the review file still hashes to digest;
+// otherwise it is ErrReviewChanged.
 func (e *Engine) concludeFix(p *Profile, opts RunOpts, digest string, seats seatengine.Result, runErr error) (FixResult, error) {
 	fixer := seats.Chair
 	base := FixResult{Outcome: fixer.Outcome, FixerReportPath: p.FixerReportPath, Fix: halfOf(fixer, "", "")}
@@ -332,16 +354,19 @@ func lensNames(resolved []lenses.Lens) []string {
 	return names
 }
 
-// engineRefusalError is a refusal that reads as its message and matches shuttleengine.ErrRequirementsUnmet.
+// engineRefusalError is a refusal whose text is its message.
+// It matches shuttleengine.ErrRequirementsUnmet under errors.Is.
 type engineRefusalError struct{ message string }
 
 func (e *engineRefusalError) Error() string { return e.message }
 
 func (e *engineRefusalError) Unwrap() error { return shuttleengine.ErrRequirementsUnmet }
 
-// twillEngineRefusal words the refusal of a twill fixer whose engine cannot run fork subagents, naming the model key and the fan key from opts.
-// err is the start error wrapping shuttleengine.ErrRequirementsUnmet;
-// its text is cut at its last way-forward clause, so the message carries exactly one, the one for the caller that told the keys.
+// twillEngineRefusal words the refusal of a twill fixer whose engine cannot run fork subagents.
+// It names the model key and the fan key from opts.
+// err is the start error wrapping shuttleengine.ErrRequirementsUnmet.
+// Its text is cut at the last way-forward clause, so the message carries only one.
+// That clause is the one for the caller that supplied the keys.
 // A fixer told a fixer model key (a shed row) is moved to an engine with forks and resumed;
 // one told none (lym burler run) takes the default engine of shuttle.yaml or drops the fan from its profile.
 func twillEngineRefusal(opts RunOpts, err error) error {

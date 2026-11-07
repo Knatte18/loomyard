@@ -15,7 +15,7 @@ import (
 // orchRole is the role of the hub orchestrator's sessions.
 const orchRole = "orch"
 
-// orchAttributionRule is the report's statement of how orch usage is charged to runs.
+// orchAttributionRule is the sentence the report prints under the orch section, stating how orch usage is charged.
 const orchAttributionRule = "Attribution is an estimate: an orch sub-agent whose first prompt names exactly one counted run goes wholly to that run; " +
 	"every other orch message is split equally among the counted runs whose active window, first to last message, holds its timestamp, " +
 	"and one outside every window is unattributed."
@@ -38,7 +38,8 @@ type OrchShare struct {
 	Cost   Cost
 }
 
-// OrchCharge is the orch usage charged to one run, or left unattributed, split into the orch sessions' own messages and their sub-agents'.
+// OrchCharge is the orch usage charged to one run, or left unattributed.
+// Session holds the orch sessions' own messages, and Forks their sub-agents'.
 type OrchCharge struct {
 	Session, Forks OrchShare
 }
@@ -51,7 +52,7 @@ func (c OrchCharge) Total() OrchShare {
 	return total
 }
 
-// side is the session or forks share of the charge.
+// side returns the session share of the charge, or the forks share when fork is set.
 func (c *OrchCharge) side(fork bool) *OrchShare {
 	if fork {
 		return &c.Forks
@@ -65,7 +66,8 @@ func (s *OrchShare) add(o OrchShare) {
 	s.Cost.add(o.Cost)
 }
 
-// OrchTally is the hub orchestrator's usage between the earliest start and the latest end of the counted runs' active windows, charged to those runs.
+// OrchTally is the hub orchestrator's usage over the counted runs' active windows.
+// It spans the earliest start to the latest end of those windows, and its messages are charged to those runs.
 type OrchTally struct {
 	// From and To bound the counted orch messages; both are zero when no counted run has a window, and then nothing is counted.
 	From, To time.Time
@@ -83,8 +85,11 @@ type orchMessage struct {
 	Cost  Cost
 }
 
-// CountOrch tallies the orch sessions the engines in reads recorded under the prime worktree, each session whose strand name has role orch, and their forks, charging every message to runs.
-// Usage is counted once per engine and message key, and only messages timestamped within the span of the runs' active windows count.
+// CountOrch tallies the orch sessions that the engines in reads recorded under the prime worktree found.
+// A session counts when its strand name has role orch, and so do its forks.
+// Each counted message is charged to runs.
+// Usage is counted once per engine and message key;
+// only messages timestamped within the span of the runs' active windows count.
 // It fails when an engine fails to locate or read a session.
 func CountOrch(reads ReadSet, prime string, runs []RunTally) (OrchTally, error) {
 	tally := OrchTally{Charges: map[string]*OrchCharge{}}
@@ -147,7 +152,9 @@ func CountOrch(reads ReadSet, prime string, runs []RunTally) (OrchTally, error) 
 	return tally, nil
 }
 
-// readTranscript returns the text of an orch transcript's first user entry that holds text, and its messages not already in seen and timestamped within the tally's span.
+// readTranscript returns the text of the transcript's first user entry that holds text, and the messages that count.
+// A message counts when its key is not yet in seen and its timestamp lies within the tally's span;
+// every message with usage is recorded in seen as it is read.
 // Each message is priced through the pricer of the engine that read it.
 func (tally *OrchTally) readTranscript(engine string, pricer shuttleengine.MessagePricer, read shuttleengine.TranscriptRead, seen map[string]bool) (string, []orchMessage) {
 	prompt := ""
@@ -172,7 +179,8 @@ func (tally *OrchTally) readTranscript(engine string, pricer shuttleengine.Messa
 	return prompt, messages
 }
 
-// chargeByTime splits a message equally among the runs whose active window holds its timestamp, or leaves it unattributed when none does;
+// chargeByTime splits a message equally among the runs whose active window holds its timestamp;
+// a message that no window holds is left unattributed.
 // fork says whether it charges the forks side or the session side.
 func (tally *OrchTally) chargeByTime(m orchMessage, runs []RunTally, fork bool) {
 	var holders []string
@@ -209,7 +217,9 @@ func (s *OrchShare) charge(m orchMessage, f float64) {
 	s.Cost.add(m.Cost.share(f))
 }
 
-// WriteMarkdown writes the "Orchestrator" section: the counted orch usage split into main sessions and sub-agents, then each run's charge beside the run's own cost, the unattributed rest and the attribution rule.
+// WriteMarkdown writes the "Orchestrator" section.
+// It lists the counted orch usage of the main sessions and their sub-agents.
+// Each run's charge follows beside the run's own cost, then the unattributed rest and the attribution rule.
 func (tally OrchTally) WriteMarkdown(w io.Writer, runs []RunTally) {
 	fmt.Fprintf(w, "## Orchestrator\n\n")
 	if tally.From.IsZero() {

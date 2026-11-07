@@ -1,6 +1,6 @@
-// originreconcile.go holds the origin reconcile's judging half.
-// It declares the types a call returns and the two network reads that bring this machine's view of origin up to date.
-// It judges each local branch against origin's head and classifies an entry from its branches' states.
+// originreconcile.go declares the types a reconcile call returns and judges the reconcile's branches and entries.
+// It runs the two network reads that bring this machine's view of origin up to date.
+// It judges each local branch against origin's head, and it classifies an entry from its branches' states.
 
 package fabricengine
 
@@ -30,10 +30,14 @@ const cleanupRerun = "then re-run lym cleanup --apply from the prime"
 
 // ReconcileScope names what one reconcile judges.
 // An empty Run is the hub scope: Bolt, the prime's code and records branches, and those of every local pair.
-// A slug is the run scope: Bolt, the run's parent branch on both sides, read from the pair's origin record, and the run's own pair.
+// A slug is the run scope: Bolt, the run's parent branch on both sides, read from the pair's origin record;
+// the run's own pair is judged too.
 // JudgeOnly judges and fetches objects but moves no ref, for a dry run.
-// PairMayBeAbsent, meaningful only with Run set, lets the run scope judge a run whose task worktree is not a registered worktree of the code repository, or is registered with its directory gone:
-// the run's entry is judged from origin's board with no branch of its own and no parent branch, instead of the reconcile refusing.
+// PairMayBeAbsent is meaningful only with Run set.
+// It lets the run scope judge a run whose task worktree is not a registered worktree of the code repository.
+// It also covers a task worktree that is registered with its directory gone.
+// Such a run's entry is judged from origin's board, with no branch of its own and no parent branch.
+// Otherwise the reconcile refuses the run.
 type ReconcileScope struct {
 	Run             string
 	JudgeOnly       bool
@@ -41,8 +45,9 @@ type ReconcileScope struct {
 }
 
 // ReconcileOptions bounds a reconcile's remote calls, every field injectable.
-// The zero value makes one attempt under a 20-second deadline.
-// RetryBound and RetryInterval together name how many times the pair of ls-remote calls is retried after a transport failure: one retry per whole interval in the bound.
+// The zero value makes one attempt under the default attempt deadline.
+// RetryBound and RetryInterval together bound how often the ls-remote pair is retried after a transport failure.
+// There is one retry per whole interval in the bound.
 // AttemptDeadline bounds each remote call, and Sleep waits out one interval; nil sleeps for real.
 type ReconcileOptions struct {
 	RetryBound      time.Duration
@@ -78,14 +83,15 @@ func (o ReconcileOptions) sleep() {
 
 // EndedTeardown asks the teardown seam to remove the local pair of an entry origin has ended.
 // Force marks the case where the pair's uncommitted work is snapshotted and removed instead of refusing the removal.
-// EarlierSnapshot is set when the weft repository already holds a snapshot tag of the slug, which an earlier force-case run left.
+// EarlierSnapshot is set when the weft repository already holds a snapshot tag of the slug.
+// An earlier force-case run leaves such a tag.
 type EndedTeardown struct {
 	Slug            string
 	Force           bool
 	EarlierSnapshot bool
 }
 
-// What a busy teardown was waiting on, as TeardownReport.BusyOn names it.
+// The values a busy teardown waits on.
 const (
 	// BusyOnDriver means the pair's driver is still running.
 	BusyOnDriver = "driver"
@@ -93,7 +99,9 @@ const (
 	BusyOnLock = "lock"
 )
 
-// TeardownReport is what the teardown seam reports about one removal: the tags it kept work under, the reasons it kept anything, whether it was busy and the error it stopped on.
+// TeardownReport is what the teardown seam reports about one removal.
+// It holds the tags the removal kept work under and the reasons it kept anything.
+// It also holds whether the removal was busy and the error it stopped on.
 // BusyOn names what a busy removal waits on, BusyOnDriver or BusyOnLock.
 // It embeds MutationRecord, filled from the removal's own record.
 type TeardownReport struct {
@@ -105,7 +113,8 @@ type TeardownReport struct {
 	Error  error
 }
 
-// OriginSeams carries what a reconcile reaches only by injection, since fabricengine knows neither a run's driver nor a parent lock nor pair teardown.
+// OriginSeams carries what a reconcile reaches only by injection.
+// fabricengine knows neither a run's driver, nor a parent lock, nor pair teardown.
 // LivePair reports whether slug's driver strand, run lock, loop lock or hub pause is live.
 // PrimeParentLockFree reads once whether the prime branch's parent lock record is free.
 // Teardown removes the local pair of an ended entry.
@@ -117,8 +126,11 @@ type OriginSeams struct {
 	OwnerOf             OwnerReader
 }
 
-// OwnerReader answers the owner question over the run ledger's file of the hub at hubPath: the effective owner of slug, the subject `lym adopt` takes to move it, and whether that owner is another machine.
-// An error, including this machine having no name, is returned to the reconcile asking it, so no owner is ever compared with an empty name.
+// OwnerReader answers the owner question over the run ledger's file of the hub at hubPath.
+// It returns the effective owner of slug and the subject `lym adopt` takes to move it.
+// It also reports whether that owner is another machine.
+// An error, including this machine having no name, is returned to the reconcile asking it,
+// so no owner is ever compared with an empty name.
 type OwnerReader func(hubPath string, ledger []byte, slug string) (owner, subject string, elsewhere bool, err error)
 
 // BranchState is the verdict on one local branch against origin's head for it.
@@ -148,7 +160,8 @@ const (
 	BranchBusy BranchState = "busy"
 	// BranchLive means the branch belongs to a pair that is live, which a reconcile never moves.
 	BranchLive BranchState = "live"
-	// BranchAnchorStopped means a weft branch was left unmoved because taking origin's tip in would cross a change of its anchor marker, or its own marker is empty.
+	// BranchAnchorStopped means a weft branch was left unmoved.
+	// Taking origin's tip in would cross a change of its anchor marker, or its own marker is empty.
 	BranchAnchorStopped BranchState = "anchor_stopped"
 )
 
@@ -163,13 +176,18 @@ func (s BranchState) Stops() bool {
 
 // BranchOutcome is the verdict on one judged branch, with what a reader of a stop needs.
 // Repo is the repository side: "code", "records" or "bolt".
-// Worktree is where the branch is checked out, and CodeWorktree is the pair's code worktree, where every fabric verb of a records branch runs.
+// Worktree is where the branch is checked out;
+// CodeWorktree is the pair's code worktree, where every fabric verb of a records branch runs.
 // Paths are the conflicting or dirty paths, and Commits those a rewind dropped or a replay stopped on.
-// BusyLock names the held lock of a busy branch, and PushLockHeld is set when it was the push lock, which a parked push holds.
+// BusyLock names the held lock of a busy branch;
+// PushLockHeld is set when it was the push lock, which a parked push holds.
 // WayForward is the one line every reader of a stop takes, the repair step alone, with no re-entry verb.
-// Anchor is the anchor the way forward of an anchor_stopped branch names, empty when the stop is the weft's own empty marker.
-// MoveWayForward is the way forward of an anchor_stopped branch whose weft carries a move record, and replaces the one the anchor would name.
-// Moved is set by a moving reconcile once it brought the branch up to origin's head, State then reading level, or ahead when replayed commits sit on it.
+// Anchor is the anchor an anchor_stopped branch's way forward names;
+// it is empty when the stop is the weft's own empty marker.
+// MoveWayForward is the way forward of an anchor_stopped branch whose weft carries a move record;
+// it replaces the one the anchor would name.
+// Moved is set by a moving reconcile once it brought the branch up to origin's head.
+// State then reads level, or ahead when replayed commits sit on it.
 // Warning is the text of a failed worktree event fired for a code branch the reconcile moved, empty otherwise.
 type BranchOutcome struct {
 	Branch         string
@@ -207,12 +225,18 @@ const (
 )
 
 // EntryOutcome is the verdict on one judged entry.
-// Busy marks an ended entry whose driver or branch is busy, so its pair is not yet removed, and WayForward then names what lets the next run remove it.
-// An ended entry also carries How origin ended it, "done" or "removed", and Local when this machine holds a part of its pair.
+// Busy marks an ended entry whose driver or branch is busy, so its pair is not yet removed;
+// WayForward then names what lets the next run remove it.
+// An ended entry also carries How origin ended it, "done" or "removed";
+// Local is set when this machine holds a part of its pair.
 // Removed is set once the teardown removed that pair, with the Tags it kept work under and the reasons it Kept anything.
-// Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lym cleanup --apply`.
-// Owner names the machine that owns an owned_elsewhere entry, and AdoptSubject the beam or `root` that `lym adopt` takes to move it; an empty AdoptSubject reads as the slug.
-// PairAbsent marks the run scope's own entry when its task worktree was not a registered worktree, so the entry was judged with no branch of its own.
+// Error is the message of a teardown that failed for any reason other than being busy.
+// The pair is left for a later `lym cleanup --apply`.
+// EntryOutcome is the verdict a reconcile reaches on one entry.
+// Owner names the machine that owns an owned_elsewhere entry.
+// AdoptSubject is the beam or `root` that `lym adopt` takes to move it; an empty AdoptSubject reads as the slug.
+// PairAbsent marks the run scope's own entry when its task worktree was not a registered worktree,
+// so the entry was judged with no branch of its own.
 type EntryOutcome struct {
 	Slug         string
 	State        EntryState
@@ -229,7 +253,7 @@ type EntryOutcome struct {
 	PairAbsent   bool `json:"pair_absent,omitempty"`
 }
 
-// adoptSubject returns what `lym adopt` takes to move the entry: its AdoptSubject, the slug when the owner reader left it empty.
+// adoptSubject returns what `lym adopt` takes to move the entry: AdoptSubject, or the slug when it is empty.
 func (e EntryOutcome) adoptSubject() string {
 	if e.AdoptSubject == "" {
 		return e.Slug
@@ -237,7 +261,7 @@ func (e EntryOutcome) adoptSubject() string {
 	return e.AdoptSubject
 }
 
-// OriginReport is what one reconcile did: the verdict on every judged branch and entry, and whether origin could be reached at all.
+// OriginReport is the outcome of one reconcile: its branch and entry verdicts, and whether origin was reachable.
 // Unreachable means a transport failure outlasted the retry bound, so nothing was judged against origin or moved.
 // It embeds MutationRecord, filled by the moves.
 type OriginReport struct {
@@ -247,7 +271,9 @@ type OriginReport struct {
 	Entries     []EntryOutcome
 }
 
-// Summary renders the report in a few lines for an operator: what moved, what stopped with its way forward, which entries another machine owns, which ended and whether origin was unreachable.
+// Summary renders the report in a few lines for an operator.
+// It names what moved, what stopped with its way forward, and which entries another machine owns.
+// It also names which entries ended and whether origin was unreachable.
 // A stop of a dirty, gone or busy-on-a-write-lock branch is followed by the re-entry that retries it.
 // An empty report renders as the empty string.
 func (r OriginReport) Summary() string {
@@ -365,7 +391,9 @@ func (b BranchOutcome) stopWayForward() string {
 // anchorStopWayForward names the step that settles an anchor_stopped weft.
 // An empty own marker names the marker file and its repair.
 // A pair's weft names the `--set` to run in its code worktree.
-// The prime's weft names first ending every reed session of the hub and waiting out every live batten run, since the `--set` refuses both, then the `--set`, then starting the orch again.
+// The prime's weft names the steps in order.
+// First, end every reed session of the hub and wait out every live batten run, since the `--set` refuses both.
+// Then run the `--set`, then start the orch again.
 func (b BranchOutcome) anchorStopWayForward() string {
 	if b.Anchor == "" {
 		if err := refuseEmptyOwnMarker(b.Worktree); err != nil {
@@ -380,8 +408,9 @@ func (b BranchOutcome) anchorStopWayForward() string {
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
-// A records path under the record pathspec is committed by `lym fabric commit` in the pair's code worktree, since every fabric verb is refused in the records sibling.
-// Any path, one outside that pathspec included, is committed or restored by git in the worktree the branch is checked out in.
+// A records path under the record pathspec is committed by `lym fabric commit` in the pair's code worktree.
+// The records sibling refuses every fabric verb, so that commit runs in the pair's code worktree.
+// Any path, including one outside that pathspec, is committed or restored by git in the branch's worktree.
 func (b BranchOutcome) dirtyWayForward() string {
 	paths := joinOrNone(b.Paths)
 	git := fmt.Sprintf("`git commit` or `git checkout -- <path>` in %s", b.Worktree)
@@ -404,8 +433,9 @@ type entryFacts struct {
 }
 
 // classifyEntry is the one switch that turns an entry's facts into its verdict.
-// An ended entry is ended whatever its branches say; otherwise an entry owned elsewhere is owned_elsewhere whatever its branches say;
-// otherwise a D3 stop, or a branch that stops, makes it stopped; every other entry is active.
+// An ended entry is ended whatever its branches say.
+// Otherwise an entry owned elsewhere is owned_elsewhere whatever its branches say.
+// Otherwise a D3 stop, or a branch that stops, makes it stopped; every other entry is active.
 func classifyEntry(f entryFacts) EntryState {
 	if f.Ended {
 		return EntryEnded
@@ -420,7 +450,7 @@ func classifyEntry(f entryFacts) EntryState {
 }
 
 // originCallHook sees the arguments of every remote call a reconcile makes, just before it runs.
-// It is nil in production; a test sets it through SetOriginCallHookForTest.
+// It is nil in production; a test sets it through `SetOriginCallHookForTest`.
 var originCallHook func(args []string)
 
 // callOriginHook hands the arguments of one remote call to the hook, if any.
@@ -431,7 +461,7 @@ func callOriginHook(args []string) {
 }
 
 // originVerdictHook runs just before each branch verdict a reconcile reaches.
-// It is nil in production; a test sets it through SetOriginVerdictHookForTest.
+// It is nil in production; a test sets it through `SetOriginVerdictHookForTest`.
 var originVerdictHook func()
 
 // callOriginVerdictHook runs the verdict hook, if any.
@@ -441,9 +471,11 @@ func callOriginVerdictHook() {
 	}
 }
 
-// lsRemotePair runs `git ls-remote origin` for the code repository and the records repository in parallel, each under the attempt deadline, and returns each one's branch heads by branch name.
-// While either call fails with a transport failure and attempts remain, the pair is retried together after one interval.
-// A failure that is not a transport failure is never retried; it is returned as soon as it is seen, naming the repository and git's error line.
+// lsRemotePair returns each repository's branch heads by branch name.
+// It runs `git ls-remote origin` for both repositories in parallel, each under the attempt deadline.
+// A transport failure in either call retries the pair together after one interval, while attempts remain.
+// A failure that is not a transport failure is never retried.
+// It is returned as soon as it is seen, naming the repository and git's error line.
 func lsRemotePair(warpDir, recordsDir string, opts ReconcileOptions) (warp, records map[string]string, err error) {
 	for attempt := 1; ; attempt++ {
 		warp, records, err = lsRemoteOnce(warpDir, recordsDir, opts.deadline())
@@ -455,7 +487,7 @@ func lsRemotePair(warpDir, recordsDir string, opts ReconcileOptions) (warp, reco
 }
 
 // lsRemoteOnce runs the two ls-remote calls once, in parallel.
-// A non-transport failure wins over a transport one, so a caller retrying on a transport failure never retries a refusal.
+// A non-transport failure wins over a transport one, so a retrying caller never retries a refusal.
 func lsRemoteOnce(warpDir, recordsDir string, deadline time.Duration) (warp, records map[string]string, err error) {
 	var warpErr, recordsErr error
 	var wait sync.WaitGroup
@@ -502,10 +534,12 @@ func lsRemoteHeads(side, dir string, deadline time.Duration) (map[string]string,
 	return heads, nil
 }
 
-// fetchMovedHeads fetches, in one fetch, the heads of heads, which map a branch name to origin's head for it, and which a caller limits to those whose head differs from the local tracking ref.
-// It updates each branch's tracking ref, forcing it since origin may have rewound or rewritten the branch.
+// fetchMovedHeads fetches the branches named in heads in one fetch, and updates each one's tracking ref.
+// heads maps a branch name to origin's head for it.
+// A caller passes only the branches whose head differs from the local tracking ref.
+// The tracking ref is forced, since origin may have rewound or rewritten the branch.
 // The caller holds the repository's remote-refs lock, which this fetch does not take.
-// With judgeOnly it fetches the objects by SHA into no ref and writes no FETCH_HEAD, so a dry run moves nothing.
+// With `judgeOnly` it fetches the objects by SHA into no ref and writes no FETCH_HEAD, so a dry run moves nothing.
 // No head makes no call.
 func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool) error {
 	if len(heads) == 0 {
@@ -541,10 +575,13 @@ func trackingRefOf(branch string) string {
 	return "refs/remotes/" + originRemote + "/" + branch
 }
 
-// judgeBranch judges the local branch of repoDir against originHead, the head origin holds for it, which is empty when origin has no such branch.
+// judgeBranch judges the local branch of repoDir against originHead.
+// originHead is the head origin holds for the branch, empty when origin has no such branch.
 // A code branch is read through the reflog of its tracking ref.
-// An origin that reset it past commits this machine holds reads rewound, taking precedence over ahead, and one that replaced its history with commits this machine never held reads rewritten.
-// A records branch neither side contains reads needs_replay, which a moving reconcile replaces with the result of its replay.
+// An origin that reset the branch past commits this machine holds reads rewound, taking precedence over ahead.
+// An origin that replaced its history with commits this machine never held reads rewritten.
+// A records branch neither side contains reads needs_replay.
+// A moving reconcile replaces it with the result of its replay.
 func judgeBranch(repoDir, branch, originHead string, records bool) (BranchOutcome, error) {
 	outcome := BranchOutcome{Branch: branch, OriginHead: originHead}
 	if originHead == "" {
@@ -617,9 +654,15 @@ type originTarget struct {
 	tracking     string
 }
 
-// originTargets lists the branches of the scope that have an origin tracking ref, since a branch never pushed has no origin head to judge against.
-// It also returns the slug of every pair the scope covers, for classifying their entries, and the repository directories the network calls run in.
-// A run scope whose task worktree is not registered refuses, unless scope.PairMayBeAbsent is set: then, and also for a registration whose directory is gone and not yet pruned, absent is true, the slug still joins pairs, and no warp or records branch of the run or of its parent is listed, while Bolt's target still is.
+// originTargets lists the branches of the scope that have an origin tracking ref.
+// A branch never pushed has no origin head to judge against.
+// It also returns the slug of every pair the scope covers, for classifying their entries.
+// The repository directories the network calls run in are returned as well.
+// A run scope whose task worktree is not registered refuses, unless `scope.PairMayBeAbsent` is set.
+// With it set, absent is true when the pair is not registered.
+// Absent is also true when the registration's directory is gone and not yet pruned.
+// In that case the slug still joins pairs, and no warp or records branch of the run or of its parent is listed.
+// Bolt's target is still listed.
 func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTarget, pairs []string, warpDir, recordsDir string, absent bool, err error) {
 	warpEntries, err := List(l.AnchorPath())
 	if err != nil {
@@ -639,7 +682,7 @@ func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTa
 		own := WorktreePath(l, scope.Run)
 		ownIndex := slices.IndexFunc(warpEntries, func(entry WorktreeEntry) bool { return samePath(entry.Path, own) })
 		registered := ownIndex >= 0
-		// A registration whose directory is gone reads as an absent pair only for a scope that may find its pair absent; every other scope keeps judging as before.
+		// A registration whose directory is gone reads as an absent pair only when the scope may find its pair absent.
 		absentPair := !registered || (warpEntries[ownIndex].Prunable && scope.PairMayBeAbsent)
 		switch {
 		case !registered && !scope.PairMayBeAbsent:
@@ -710,16 +753,28 @@ func samePath(porcelain, built string) bool {
 	return filepath.Clean(filepath.FromSlash(porcelain)) == filepath.Clean(built)
 }
 
-// ReconcileOrigin judges this machine's local branches against origin and returns the verdict on each, and on each entry whose pair has a batten run record.
-// It runs one ls-remote per repository and fetches only the heads origin moved, holding each repository's remote-refs lock from the ls-remote through the branch verdicts, so no push's tracking-ref write lands between them and a push in flight is never judged a rewind.
-// It reads the ended set, and tears down through the seam the local pair of each run origin has ended, before any branch moves; a judge-only scope reports those teardowns and runs none.
-// It also asks the owner seam, over origin's Bolt tip, which recorded entries another machine owns, and reports those owned_elsewhere.
+// ReconcileOrigin judges this machine's local branches against origin.
+// It runs one ls-remote per repository and fetches only the heads origin moved.
+// It holds each repository's remote-refs lock from the ls-remote through the branch verdicts,
+// so no push's tracking-ref write lands between them and a push in flight is never judged a rewind.
+// It returns the verdict on each branch, and on each entry whose pair has a batten run record.
+// It reads the ended set and tears down, through the seam, the local pair of each run origin has ended.
+// That happens before any branch moves.
+// A judge-only scope reports those teardowns and runs none.
+// It also asks the owner seam which recorded entries another machine owns, over origin's Bolt tip.
+// It reports those as owned_elsewhere.
 // A judge-only scope stops there.
-// Any other scope then moves each branch behind origin: a fast-forward of its checkout, or a replay of a records branch's local commits; an entry owned elsewhere has its fast-forwards moved and its records branch left unreplayed.
-// A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was, and no branch is ever reset, rebased or pushed.
-// A moving scope also clears the failed-push record of each branch that is no longer local.
-// A transport failure that outlasts the retry bound is the report's Unreachable, with nothing judged against origin and nothing moved, and a nil error.
-// Any other failure of ls-remote, or a failed fetch after both ls-remote calls answered, is returned as the error, with nothing judged or moved.
+// Any other scope then moves each branch behind origin.
+// A branch moves by a fast-forward of its checkout, or by a replay of a records branch's local commits.
+// An entry owned elsewhere has its fast-forwards moved and its records branch left unreplayed.
+// A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was.
+// No branch is ever reset, rebased or pushed.
+// A moving scope also clears the failed-push record of each branch that is absent locally.
+// A transport failure that outlasts the retry bound sets the report's Unreachable.
+// Nothing is judged against origin or moved in that case.
+// The error is nil in that case.
+// Any other failure of ls-remote, or a failed fetch after both ls-remote calls answered, is returned as the error.
+// Nothing is judged or moved in that case.
 // seams is what the moves and the teardowns reach by injection.
 func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams, opts ReconcileOptions) (res OriginReport, err error) {
 	rec := NewMutations(l.HubPath)
@@ -779,9 +834,11 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 	return res, nil
 }
 
-// judgeAgainstOrigin reads origin's heads of both repositories, fetches the heads origin moved past their tracking refs and returns the verdict on each target.
+// judgeAgainstOrigin reads the heads origin has in both repositories.
+// It fetches the heads origin moved past their tracking refs, and returns the verdict on each target.
 // It holds the remote-refs lock of the code repository and then of the records repository throughout,
-// so a fetch, or the tracking-ref write that follows a push's transfer, of either repository finishes before origin is read, or starts after every verdict, and never lands between the read and the verdict.
+// so a fetch of either repository finishes before origin is read or starts after every verdict.
+// The same holds for the tracking-ref write that follows a push's transfer.
 // The locks are held through the ls-remote retries and their sleeps, bounded by opts' RetryBound,
 // so an unreachable origin blocks every fetch and every push's tracking-ref write of both repositories for that bound.
 // A transport failure that outlasts the retry bound returns unreachable true with no verdict and a nil error.
@@ -843,7 +900,10 @@ func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judg
 // A stop on Bolt or on the prime's records branch stops every entry, a busy one excepted.
 // A busy records branch of the run scope's own pair stops nothing, since the run's own driver holds it.
 // A stopped entry carries the way forward of the branch that stopped it.
-// owners maps the slug of each entry another machine owns to that owner, and subjects maps it to what `lym adopt` takes to move it; such an entry reads owned_elsewhere and carries the way forward that takes it over, naming its subject, or its slug when the owner reader left none.
+// owners maps the slug of each entry another machine owns to that owner.
+// subjects maps the same slug to what `lym adopt` takes to move it.
+// Such an entry reads owned_elsewhere and carries the way forward that takes it over.
+// That way forward names its subject, or its slug when the owner reader left none.
 func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome, owners, subjects map[string]string) []EntryOutcome {
 	d3Stop := false
 	d3WayForward := ""
@@ -887,10 +947,13 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 	return entries
 }
 
-// readOriginOwners asks seams.OwnerOf, once per slug of slugs, whether another machine owns the entry, over the run ledger's file at origin's fetched Bolt tip.
-// It returns the owner and the adopt subject of each slug read as owned elsewhere, and nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
+// readOriginOwners asks seams.OwnerOf, once per slug, whether another machine owns the entry.
+// It reads the run ledger's file at origin's fetched Bolt tip.
+// It returns the owner and the adopt subject of each slug read as owned elsewhere.
+// It returns nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
 // It returns ErrReplayerMissing when it would read the ledger and none is registered.
-// The tip's objects are present even for a judge-only scope, which fetches them by SHA, so a dry run reads owners too and moves nothing.
+// The tip's objects are present even for a judge-only scope, which fetches them by SHA,
+// so a dry run reads owners too and moves nothing.
 // A seam error is returned, so no verdict is ever compared with an empty machine name.
 func readOriginOwners(l *lymcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (owners, subjects map[string]string, err error) {
 	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })

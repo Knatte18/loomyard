@@ -10,9 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPruneEmptyAncestors tests the pruneEmptyAncestors helper with various scenarios: empty
-// ancestors removed to stop, non-empty dirs halting walk, start == stop no-op, and idempotency on
-// already-pruned trees.
+// TestPruneEmptyAncestors tests the pruneEmptyAncestors helper with various scenarios:
+// empty ancestors removed to stop; non-empty dirs halt the walk; start == stop is a no-op;
+// and idempotency on already-pruned trees.
 func TestPruneEmptyAncestors(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -35,14 +35,12 @@ func TestPruneEmptyAncestors(t *testing.T) {
 				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
-				// Check that start and its ancestors are gone up to stop
 				if _, err := os.Stat(start); err == nil {
 					t.Error("start dir still exists")
 				} else if !os.IsNotExist(err) {
 					t.Fatalf("stat start: %v", err)
 				}
 
-				// Check intermediate dirs are gone
 				for _, subpath := range []string{"a", "a/b", "a/b/c"} {
 					dir := filepath.Join(stop, subpath)
 					if _, err := os.Stat(dir); err == nil {
@@ -52,7 +50,6 @@ func TestPruneEmptyAncestors(t *testing.T) {
 					}
 				}
 
-				// Check that stop itself remains
 				if _, err := os.Stat(stop); err != nil {
 					t.Errorf("stop dir was removed: %v", err)
 				}
@@ -80,7 +77,6 @@ func TestPruneEmptyAncestors(t *testing.T) {
 				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
-				// Check that start/c/slug are gone
 				if _, err := os.Stat(start); err == nil {
 					t.Error("start dir still exists")
 				} else if !os.IsNotExist(err) {
@@ -120,7 +116,6 @@ func TestPruneEmptyAncestors(t *testing.T) {
 				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
-				// Check that stop still exists (was not removed)
 				if _, err := os.Stat(stop); err != nil {
 					t.Errorf("stop dir was removed: %v", err)
 				}
@@ -136,21 +131,17 @@ func TestPruneEmptyAncestors(t *testing.T) {
 					t.Fatalf("mkdir: %v", err)
 				}
 
-				// First prune
 				pruneEmptyAncestors(start, stop)
 
 				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
-				// Run prune again on the already-pruned tree
 				pruneEmptyAncestors(start, stop)
 
-				// Verify stop still exists
 				if _, err := os.Stat(stop); err != nil {
 					t.Errorf("stop dir was removed on second prune: %v", err)
 				}
 
-				// Verify start is still gone
 				if _, err := os.Stat(start); err == nil {
 					t.Error("start dir still exists after second prune")
 				} else if !os.IsNotExist(err) {
@@ -170,8 +161,7 @@ func TestPruneEmptyAncestors(t *testing.T) {
 	}
 }
 
-// TestRefuseUncontainedPath pins the containment assertion the launcher teardown helpers
-// share, including the ".."-derived paths that made `lym fabric remove ..` delete an entire hub.
+// TestRefuseUncontainedPath asserts that a path escaping its container is refused, including paths derived from "..".
 //
 //testtiming:keep the containment assertion shared by the launcher teardown helpers refusing ".."-derived paths that once let `lym fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
 func TestRefuseUncontainedPath(t *testing.T) {
@@ -211,13 +201,11 @@ func TestRefuseUncontainedPath(t *testing.T) {
 // TestPruneEmptyAncestors_RefusesEscapingIntermediate proves the sweep's removal is rooted at stop
 // rather than acting on the nominal path.
 //
-// This is fabric's R8 finding L1. The walk related cur to stop with a purely lexical filepath.Rel and
-// then removed the nominal path, so with a multi-segment AnchorRel a symlink planted at an
-// intermediate component carried the removal out of the hub: both callers sweep the two hub-level
-// structural containers an attacker can plant at (<hub>/_launchers, <hub>/_portals). Only an EMPTY
-// out-of-container directory could be destroyed — a single-entry removal is refused by the OS on a
-// non-empty one — which is why the victim below is deliberately empty: a nominal removal WOULD
-// succeed on it, so this assertion is a real one rather than a vacuous OS refusal.
+// A symlink planted at an intermediate component must not carry the removal out of the hub.
+// The attacker-plantable containers are the hub-level <hub>/_launchers and <hub>/_portals.
+// The OS refuses to remove a non-empty directory, so only an empty out-of-container directory can be destroyed;
+// the victim below is empty, so a nominal removal would succeed on it.
+// This assertion is therefore real rather than a vacuous OS refusal.
 //
 //testtiming:keep the empty-ancestor sweep refusing a symlinked intermediate that escapes the hub, with an empty out-of-container victim that survives; coverage of its blocks by other tests does not show an assertion of this
 func TestPruneEmptyAncestors_RefusesEscapingIntermediate(t *testing.T) {

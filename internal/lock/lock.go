@@ -1,9 +1,6 @@
-// lock.go — file-based advisory locks (gofrs/flock).
-//
-// FileLock backs both an exclusive write lock and a shared read lock.
-// Being a real OS file lock it coordinates across processes — the way Loomyard is used, one
-// short-lived process per command.
-// Every acquire refuses a lock path inside a tracked lym directory or a tracked directory of the Bolt checkout, so no lock file can show up as a change a commit stages.
+// lock.go holds the advisory file locks, exclusive and shared, that lym processes take to coordinate with each other.
+// Every acquire refuses a lock path inside a tracked lym directory or a tracked directory of the Bolt checkout.
+// That keeps every lock file out of the changes a commit stages.
 
 package lock
 
@@ -19,10 +16,13 @@ import (
 // boundedWaitRetryDelay is the pause between acquisition attempts while a bounded wait polls a held lock.
 const boundedWaitRetryDelay = 10 * time.Millisecond
 
-// ProbeGrace is how long an acquirer that refuses a held lock waits first, so a read-only probe that briefly takes the lock to learn whether it is held never makes the acquirer refuse.
+// ProbeGrace is how long an acquirer waits on a held lock before it refuses.
+// A read-only probe takes the lock only briefly, to learn whether it is held.
+// The wait keeps the acquirer from refusing over that probe.
 const ProbeGrace = 250 * time.Millisecond
 
 // FileLock wraps a file-based advisory lock (gofrs/flock) for both exclusive and shared access.
+// Being an OS file lock, it coordinates across processes, since each lym command runs as one short-lived process.
 type FileLock struct {
 	fl *flock.Flock
 }
@@ -57,7 +57,8 @@ func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
 }
 
 // AcquireWriteLockWithin acquires an exclusive lock, waiting at most wait for it.
-// It reports (lock, true, nil) on success, and (nil, false, nil) when the lock is still held once wait runs out (not an error).
+// It reports (lock, true, nil) on success.
+// It reports (nil, false, nil) when the lock is still held once wait runs out, and that is not an error.
 func AcquireWriteLockWithin(lockPath string, wait time.Duration) (*FileLock, bool, error) {
 	if err := refuseTrackedTree(lockPath); err != nil {
 		return nil, false, err
@@ -105,7 +106,7 @@ func TryAcquireReadLock(lockPath string) (*FileLock, bool, error) {
 	return &FileLock{fl}, true, nil
 }
 
-// Release releases the lock.
+// Release gives up the lock, so that another holder can acquire it.
 func (l *FileLock) Release() error {
 	if err := l.fl.Unlock(); err != nil {
 		return fmt.Errorf("release lock: %w", err)

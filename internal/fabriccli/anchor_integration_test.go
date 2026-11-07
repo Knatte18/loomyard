@@ -1,6 +1,8 @@
-// anchor_integration_test.go drives `lym fabric anchor` through RunCLIIn over hubforge hubs:
-// the print and the move of a pair, a child forked before its parent's move, and the integration of a prime's move on a second clone.
-// A hub's prime warp tracks sub/ and is pushed before any second clone is made, so sub is a directory git tracks in every checkout.
+// anchor_integration_test.go drives `lym fabric anchor` through RunCLIIn over hubforge hubs.
+// It covers the print and the move of a pair, and a child forked before its parent's move.
+// It also covers the integration of a prime's move on a second clone.
+// A hub's prime warp tracks sub/ and is pushed before any second clone is made.
+// That makes sub a directory git tracks in every checkout.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -22,14 +24,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newAnchorCLIHub builds a "." hub whose prime warp tracks sub/, with the prime's warp and records branches pushed to the hub's remotes.
+// newAnchorCLIHub builds a "." hub whose prime warp tracks sub/.
+// It pushes the prime's warp and records branches to the hub's remotes.
 func newAnchorCLIHub(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
 	traceSinkMu.RLock()
 	t.Cleanup(traceSinkMu.RUnlock)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	// The verb points the process-wide trace sink into the hub it moves, so the sink is reset before the hub's directories are removed:
+	// The verb points the process-wide trace sink into the hub it moves,
+	// so the sink is reset before the hub's directories are removed:
 	// a parallel test's record would otherwise recreate a logs directory inside them while they go.
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 	gitkit.CommitFile(t, h.PrimeWorktree(), "sub/.keep", "", "track sub")

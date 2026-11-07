@@ -1,4 +1,5 @@
-// planfixture_helper_test.go holds the on-disk plan fixture and card readers, the drift repair assertion and the delete-order site reader that the test tiers of this package share.
+// planfixture_helper_test.go holds the helpers that this package's tests share:
+// writePlanFixture, readCardFile, requireExactTierRepair and deleteOrderSites.
 
 package planglyph
 
@@ -30,7 +31,8 @@ func writePlanFixture(t *testing.T, cards map[int]string) (string, *planparser.P
 	}
 	sort.Ints(numbers)
 
-	// plankit renders the overview and the Card Index; each card file is then replaced by its raw body, which is the part under test.
+	// plankit renders the overview and the Card Index;
+	// each card file is then replaced by its raw body, which is the part under test.
 	spec := plankit.Plan{Approved: true, Language: "go", Framing: "framing"}
 	for _, n := range numbers {
 		spec.Cards = append(spec.Cards, plankit.Card{Number: n, Slug: fmt.Sprintf("card%d", n), Summary: "summary"})
@@ -66,7 +68,9 @@ func readCardFile(t *testing.T, dir string, n int, slug string) string {
 
 const driftTestTimestamp = "2026-01-01T00:00:00Z"
 
-// requireExactTierRepair asserts an exact-tier rename sub#Old -> sub#New was auto-repaired in card 1 of the plan under dir: the card names the new glyph only, and the amendments file carries exactly one entry holding every string of wantAmendment.
+// requireExactTierRepair asserts that an exact-tier rename sub#Old -> sub#New was auto-repaired:
+// card 1 of the plan under dir names only the new glyph,
+// and the amendments file holds exactly one entry with every string of wantAmendment.
 func requireExactTierRepair(t *testing.T, dir string, wantAmendment []string) {
 	t.Helper()
 
@@ -99,8 +103,10 @@ var (
 	informationalDeleteOrderSite = regexp.MustCompile(`follows a dot in (.+), in the Edit code of card`)
 )
 
-// deleteOrderSites returns, sorted, "<severity> <location>" for each delete-before-reference finding of findings, the location read from its detail: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
-// A finding whose detail holds no location yields its whole detail, so a changed wording fails the comparison instead of passing unseen.
+// deleteOrderSites returns, sorted, "<severity> <location>" for each delete-before-reference finding.
+// The location is read from the detail: "<file>:<line>" when blocking, "<file> at line <n>" when informational.
+// A finding whose detail holds no location yields its whole detail,
+// so a changed wording fails the comparison instead of passing unseen.
 func deleteOrderSites(findings []Finding) []string {
 	var sites []string
 	for _, f := range findings {

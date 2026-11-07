@@ -1,7 +1,9 @@
 // parts.go implements PartsTable, the Parts-Write row's seat-table builder.
-// Like the Plan producer (plan.go), the Parts producer is a prompt fed to the seat engine, one lead seat producing one artifact.
-// Its inputs are the decision record and the relevant list; its output is the parts file, `_lym/parts/parts.md`, which splits the task into parts with a contract each.
-// PartsTable is a pure builder: it reads the stencils it composes from, and does not stat the decision record, create `_lym/parts/` or spawn anything.
+// The Parts producer is a prompt fed to the seat engine: one lead seat produces one artifact.
+// Its inputs are the decision record and the relevant list;
+// its output is the parts file, `_lym/parts/parts.md`, which splits the task into parts with a contract each.
+// PartsTable is a pure builder: it reads the stencils it composes from;
+// it does not stat the decision record, create `_lym/parts/`, or spawn anything.
 
 package loomengine
 
@@ -37,11 +39,14 @@ var partsDepthFragments = map[string]string{
 	"medium": "loom-fragment-parts-medium",
 }
 
-// PartsTable builds the seatengine.Table of one Parts-Write run: a lead that reads the decision record and the relevant list and writes the parts file.
-// The seat's opening stencil and the reading-depth fragment cfg.PartsDepth names are read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
+// PartsTable builds the seatengine.Table of one Parts-Write run.
+// The lead seat reads the decision record and the relevant list, and it writes the parts file.
+// The opening stencil and the depth fragment that cfg.PartsDepth names are read at call time from stencilsDir;
+// the seat engine renders the parent and edit directives from its geometry.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
 // The table carries no gate; the producer entry sets it.
-// A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
+// A PATTERN directive that cannot be rendered fails the table;
+// a friction directive that cannot be rendered is left empty, and the failure is logged.
 func PartsTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	choice, err := resolveModelChoice(cfg.Parts, reg)
 	if err != nil {

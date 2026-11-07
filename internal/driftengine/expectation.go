@@ -1,4 +1,5 @@
-// expectation.go — the sole parser of `_lym/drift/expected.yaml`, the expectation the expect agent writes, and the model that says which cells it covers.
+// expectation.go parses `_lym/drift/expected.yaml`, the expectation the expect agent writes.
+// It is the only parser of that file and models which cells the expectation covers.
 
 package driftengine
 
@@ -123,11 +124,14 @@ func (r lineRange) holds(position int) bool {
 	return position >= r.low && (r.open || position <= r.high)
 }
 
-// ParseExpectation parses expected.yaml's bytes under mode, DiffLines or DiffCommand, against the baseline's case listings.
+// ParseExpectation parses expected.yaml's bytes under mode, DiffLines or DiffCommand.
+// It checks them against the baseline's case listings.
 // The file is agent-written, so an unknown key is refused.
 // An empty file and an empty document parse as the empty expectation.
 //
-// Under DiffLines it refuses a case in neither baseline nor `added`, a `removed` case absent from baseline, a key entry the case's baseline listing lacks unless it carries `added: true`, a range that is not `N`, `N-M` or `N-`, and a case-level `why`.
+// Under DiffLines it refuses a case in neither baseline nor `added`, and a `removed` case absent from baseline.
+// Under DiffLines it also refuses a key entry the baseline's case listing lacks unless it carries `added: true`.
+// Under DiffLines it also refuses a range that is not `N`, `N-M` or `N-`, and a case-level `why`.
 // Under DiffCommand it refuses a `keys` or `lines` entry and checks no case name against baseline.
 // Under both it refuses a blank `why`, an `n` below 1 and an unknown key.
 // Each refusal names the entry and the rule.
@@ -177,8 +181,9 @@ func ParseExpectation(data []byte, mode string, baseline []CaseListing) (Expecta
 	return expectation, nil
 }
 
-// checkCaseEntries checks each entry of an `added` or `removed` list, naming the list, and returns the case names it holds.
-// With against set, every named case must be one of its listings.
+// checkCaseEntries checks each entry of an `added` or `removed` list and returns the case names it holds.
+// Its errors name the list.
+// When against is not nil, every named case must be one of its listings.
 func checkCaseEntries(list string, entries []CaseEntry, against map[string]CaseListing) (map[string]bool, error) {
 	names := make(map[string]bool, len(entries))
 	for _, entry := range entries {
@@ -244,7 +249,7 @@ func checkCase(name string, raw rawCase, mode string, listings map[string]CaseLi
 	return parsed, nil
 }
 
-// checkKeyEntry validates one key entry of the named case against the occurrences of each key in the case's baseline listing.
+// checkKeyEntry validates one key entry of caseName against the key counts of its baseline listing.
 func checkKeyEntry(caseName string, entry rawKeyEntry, occurrences map[string]int) (KeyEntry, error) {
 	label := fmt.Sprintf("case %q keys entry %q", caseName, entry.Key)
 	if entry.Key == "" {
@@ -269,7 +274,8 @@ func checkKeyEntry(caseName string, entry rawKeyEntry, occurrences map[string]in
 	return KeyEntry{Key: entry.Key, N: occurrence, Added: entry.Added, Why: entry.Why}, nil
 }
 
-// Merge returns the receiver's entries followed by more's, so containment reads the sealed file and every amendment as one expectation.
+// Merge returns the receiver's entries followed by more's.
+// It lets containment read the sealed file and every amendment as one expectation.
 // A case in both keeps the receiver's why when it has one.
 func (e Expectation) Merge(more Expectation) Expectation {
 	merged := Expectation{
@@ -298,7 +304,8 @@ func coversKey(caseName string, entry KeyEntry, cell Cell) bool {
 	return cell.Case == caseName && cell.Identity.Key == entry.Key && (entry.N == 0 || entry.N == cell.Identity.N)
 }
 
-// coversLine reports whether a line entry of caseName covers the unkeyed cell; an entry whose range does not parse covers nothing.
+// coversLine reports whether a line entry of caseName covers the unkeyed cell.
+// An entry whose range does not parse covers nothing.
 func coversLine(caseName string, entry LineEntry, cell Cell) (covers, open bool) {
 	if cell.Case != caseName || cell.Identity.Key != "" || cell.Identity.Line < 1 {
 		return false, false
@@ -311,7 +318,9 @@ func coversLine(caseName string, entry LineEntry, cell Cell) (covers, open bool)
 }
 
 // Cover returns the first entry that covers the cell, and false when none does.
-// An added case cell is covered by an `added` entry, a removed case cell by a `removed` entry, a keyed cell by a key entry of its case with its key and either no `n` or its occurrence, and an unkeyed cell by a line entry whose range holds its position.
+// An added case cell is covered by an `added` entry, a removed case cell by a `removed` entry.
+// A keyed cell is covered by a key entry of its case with its key and either no `n` or its occurrence.
+// An unkeyed cell is covered by a line entry whose range holds its position.
 // A line entry never covers a keyed cell.
 func (e Expectation) Cover(c Cell) (Coverage, bool) {
 	switch c.Kind {
@@ -347,7 +356,8 @@ func coverCase(entries []CaseEntry, caseName string) (Coverage, bool) {
 	return Coverage{}, false
 }
 
-// Uncovering names every entry that covers none of cells, as `added case "x"`, `removed case "x"`, `key "k" (n 2) of case "x"` or `lines 12-20 of case "x"`.
+// Uncovering names every entry that covers none of cells.
+// Each name reads as `added case "x"`, `removed case "x"`, `key "k" (n 2) of case "x"` or `lines 12-20 of case "x"`.
 // The names are in a fixed order: added, removed, then each case by name with its keys before its lines.
 func (e Expectation) Uncovering(cells []Cell) []string {
 	var uncovered []string

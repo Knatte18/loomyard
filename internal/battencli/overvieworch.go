@@ -1,4 +1,5 @@
-// overvieworch.go reads the orch sessions' state and thresholds for a beam's window and renders the orch lines drawn below its dobby.
+// overvieworch.go reads the orch sessions' state and thresholds for a beam's window.
+// It renders the orch lines drawn below the beam's dobby.
 
 package battencli
 
@@ -23,13 +24,14 @@ const (
 	overviewTokensSuffix = "k"
 )
 
-// orchStatePoll is one orchStateCache.Poll's answer.
+// orchStatePoll is the result of one poll of the orch state file.
 type orchStatePoll struct {
 	// State is the decoded orch state, the last good one while a first failure is being tolerated.
 	State orchengine.State
 	// Found reports that State holds a state; false for an absent file and for an unreadable one.
 	Found bool
-	// Unreadable reports that the file has failed to read or decode at two polls in a row, or at a later poll of the same failed modification time.
+	// Unreadable reports that the file has failed to read or decode at two polls in a row;
+	// it is also true at a later poll of the same failed modification time.
 	Unreadable bool
 }
 
@@ -39,15 +41,20 @@ type orchStateCache struct {
 	modTime   time.Time
 	state     orchengine.State
 	haveState bool
-	// failures counts the failed polls in a row; failedModTime is the modification time of the last failed read, when it got that far.
+	// failures counts the failed polls in a row;
+	// failedModTime is the modification time of the last failed read, when it got that far.
 	failures       int
 	failedModTime  time.Time
 	failedModKnown bool
 }
 
-// Poll reads the orch state at paths.StatePath, decoding it only when its modification time differs from the last good decode's.
+// Poll reads the orch state at paths.StatePath;
+// it decodes the file only when its modification time differs from the last good decode's.
 // An absent file is Found false and no failure.
-// A failed stat, read or decode is a failure: the first in a row returns the last good state, Found false when there was none, and a second in a row, or a later poll of the same failed modification time, returns Unreadable; the next good decode clears the count.
+// A failed stat, read or decode counts as a failure.
+// The first failure in a row returns the last good state, with Found false when there was none.
+// A second failure in a row, or a later poll of the same failed modification time, returns Unreadable.
+// The next good decode clears the count.
 func (c *orchStateCache) Poll(paths orchengine.Paths) orchStatePoll {
 	info, err := os.Stat(paths.StatePath)
 	var modTime time.Time
@@ -102,7 +109,8 @@ type overviewThresholds struct {
 }
 
 // loadOverviewThresholds loads the soft and hard thresholds from the orch config of location's stack.
-// A config that does not load logs a warning and returns the zero value, so a broken orch.yaml never refuses the overview.
+// A config that does not load logs a warning and returns the zero value,
+// so a broken orch.yaml never refuses the overview.
 func loadOverviewThresholds(location *lymcwd.Location) overviewThresholds {
 	cfg, err := orchengine.LoadConfig(fabricengine.ConfigDirs(location), overviewOrchModule)
 	if err != nil {
@@ -112,8 +120,12 @@ func loadOverviewThresholds(location *lymcwd.Location) overviewThresholds {
 	return overviewThresholds{Soft: cfg.SoftThreshold(), Hard: cfg.Threshold(), Known: true}
 }
 
-// overviewLabeledOrchLine renders the orch line for orch against thresholds of the orch that label names, the beam's slug, and the prime's orch line when label is empty; false when there is no orch state file to show.
-// The prime's line reads `orch  <tokens> / soft <soft> / hard <hard>  <phase>  cycles <n>`, with `  watcher down` appended once the watcher has exited, and a beam's reads `orch <label>  ...`.
+// overviewLabeledOrchLine renders the orch line for orch against thresholds of the orch that label names.
+// label is the beam's slug, or empty for the prime's line.
+// It reports false when there is no orch state file to show.
+// The prime's line reads `orch  <tokens> / soft <soft> / hard <hard>  <phase>  cycles <n>`.
+// A beam's line reads `orch <label>  ...`.
+// The line ends with `  watcher down` once the watcher has exited.
 func overviewLabeledOrchLine(label string, orch orchStatePoll, thresholds overviewThresholds) (string, bool) {
 	prefix := overviewOrchModule
 	if label != "" {

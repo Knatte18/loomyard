@@ -1,4 +1,5 @@
-// sessionread_test.go covers ReadSessionStates over run directories written by the test, with an engine double that parses session signals and answers the prober and the transcript reading.
+// sessionread_test.go covers ReadSessionStates over run directories the test writes.
+// Its engine double parses session signals and answers the prober and the transcript reading.
 // TestReadSessionStates captures the process-global logger, so it does not run in parallel.
 
 package shuttleengine
@@ -16,8 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// readEngine is a fakeEngine that parses session signals from lines of the form START@<time> or END@<time>, each optionally followed by |<session id>,
-// and answers liveness, the interrupt marker and the transcript API-error marker from its fields.
+// readEngine is a fakeEngine that parses session signals from lines of the form START@<time> or END@<time>.
+// Either form may be followed by |<session id>.
+// It answers liveness, the interrupt marker and the transcript API-error marker from its fields.
 type readEngine struct {
 	*fakeEngine
 	// livenessByID answers ProcessLiveness; an id it does not name reads alive.
@@ -294,7 +296,8 @@ func TestReadSessionStates(t *testing.T) {
 	})
 }
 
-// writeReadRun writes the run directory name under root: its run.json, its events file and, when the run declares one, an existing output file.
+// writeReadRun writes the run directory name under root:
+// its run.json, its events file and, when the run declares one, an existing output file.
 func writeReadRun(t *testing.T, root, name string, run readRun) {
 	t.Helper()
 	runDir := filepath.Join(root, name)

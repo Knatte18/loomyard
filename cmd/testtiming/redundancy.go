@@ -42,7 +42,8 @@ type testRun struct {
 	spawn   spawnVerdict
 }
 
-// eligible reports whether the run's blocks count as coverage the package keeps.
+// eligible reports whether the run passed and covered at least one block;
+// only an eligible run's blocks count toward coverage.
 func (r testRun) eligible() bool { return r.action == "pass" && len(r.blocks) > 0 }
 
 // verdict is the redundancy classification of one test.
@@ -65,7 +66,8 @@ type pkgReport struct {
 	verdicts []verdict
 }
 
-// redundancyTags resolves the build tags of the redundancy mode: every tier but tier3 unless named.
+// redundancyTags resolves the build tags of the redundancy mode from -full or -tags.
+// It falls back to defaultRedundancyTags when neither is set.
 func redundancyTags(full bool, tags string) (string, error) {
 	resolved, err := resolveTags(full, tags)
 	if err != nil {
@@ -77,7 +79,8 @@ func redundancyTags(full bool, tags string) (string, error) {
 	return resolved, nil
 }
 
-// parseProfile returns the covered blocks of a coverage profile: the lines with a non-zero count, keyed by file, position range and statement count.
+// parseProfile returns the covered blocks of a coverage profile.
+// A block is a profile line with a non-zero count, keyed by the line text without its count.
 func parseProfile(r io.Reader) (map[string]struct{}, error) {
 	blocks := map[string]struct{}{}
 	sc := bufio.NewScanner(r)
@@ -104,8 +107,10 @@ func parseProfile(r io.Reader) (map[string]struct{}, error) {
 
 // classify judges every run.
 // A candidate is covered block for block by the other tests.
-// The removable set is a greedy pass over the candidates, slowest first, that re-checks each against the tests still kept.
-// A test that is skipped, failed, runs module code out of process, cannot be classified or covers nothing is never a candidate.
+// The removable set is a greedy pass over the candidates, slowest first.
+// It re-checks each candidate against the tests still kept.
+// A test that is skipped, failed, runs module code out of process or cannot be classified is never a candidate.
+// Nor is a test that covers no block.
 func classify(runs []testRun) []verdict {
 	counts := map[string]int{}
 	for _, r := range runs {
@@ -178,7 +183,8 @@ func noCoverageReason(r testRun) string {
 	return ""
 }
 
-// coveringTests names the tests of the pool that together cover runs[self]'s blocks, taking the largest overlap first and skipping a test that adds nothing.
+// coveringTests names the tests of the pool that together cover runs[self]'s blocks.
+// It takes the largest overlap first and skips a test that adds no block still uncovered.
 func coveringTests(self int, runs []testRun, inPool func(int) bool) []string {
 	type overlap struct {
 		idx int
@@ -229,7 +235,8 @@ func coveringTests(self int, runs []testRun, inPool func(int) bool) []string {
 	return names
 }
 
-// renderPackage renders one package's section: header line, candidates table without the kept tests, "Kept" list, "no coverage" list.
+// renderPackage renders one package's section of the report.
+// The section holds a header, a table of the candidates without the kept tests, the Kept list and the no coverage list.
 func renderPackage(r pkgReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n\n", r.pkg)
@@ -312,10 +319,11 @@ type moduleLayout struct {
 	dirs map[string]string // import path -> directory, every package of the module
 }
 
-// runRedundancy writes the redundancy report for the packages matching pkgFlag, a comma-separated list of package patterns.
+// runRedundancy writes the redundancy report for the packages matching pkgFlag.
+// pkgFlag is a comma-separated list of package patterns.
 // A missing report, or a run over every package of the module, writes the whole report.
 // Any other run rewrites only its own packages' sections of the existing one.
-// It must run from the module root, the way the other modes do.
+// It must run from the module root.
 func runRedundancy(tags, pkgFlag, outPath string) error {
 	layout, err := loadLayout(tags)
 	if err != nil {
@@ -420,7 +428,7 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
 // A test named in keeps carries its keep reason on its verdict.
-// The keep changes the report only, never the classification.
+// The keep reason changes the report only, never the classification.
 // env is the environment each test runs under.
 func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string, keeps map[string]string, env []string) ([]verdict, error) {
 	dir := layout.dirs[importPath]
@@ -467,7 +475,8 @@ var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-
 
 // runAloneArgs returns the coverage binary's arguments for running one top-level test alone.
 // Every flag is one `-flag=value` argument, the form `go test` passes:
-// a test that runs a cobra command without `SetArgs` reads the process's arguments, and a separate flag value would show up there as a positional argument.
+// a test that runs a cobra command without `SetArgs` reads the process's arguments,
+// and a separate flag value would show up there as a positional argument.
 func runAloneArgs(name, profile string) []string {
 	return []string{
 		"-test.run=^" + regexp.QuoteMeta(name) + "$",
@@ -478,7 +487,6 @@ func runAloneArgs(name, profile string) []string {
 
 // runAlone runs one top-level test under the coverage binary and reads its elapsed time, outcome and covered blocks.
 // A failing run is returned as such, never as an error.
-// The test runs under env.
 func runAlone(bin, dir, tmp, name string, env []string) (testRun, error) {
 	prof := filepath.Join(tmp, "cover.out")
 	os.Remove(prof)
@@ -551,9 +559,9 @@ func coversModule(layout moduleLayout, targets []string) bool {
 	return true
 }
 
-// runPackageTimings runs the packages matching the patterns once under `go test -json` and folds the stream with the timing mode's own parser.
+// runPackageTimings runs the packages matching the patterns once under `go test -json`.
+// It folds the stream with `parseLine`.
 // A failing test is recorded on its package and does not fail this call.
-// The run takes env as its environment.
 func runPackageTimings(tags string, patterns []string, env []string) (map[string]*pkgResult, error) {
 	args := []string{"test"}
 	if tags != "" {

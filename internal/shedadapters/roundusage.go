@@ -1,4 +1,6 @@
-// roundusage.go records what a review round cost: round-<N>-usage.yaml, with the fan and lenses the round ran, each Burler half's model, run times and token reading, and the Bouncer's seed and judge passes.
+// roundusage.go holds the usage record of each review round, round-<N>-usage.yaml.
+// The record names the round's fan and lenses, each Burler half's model, run times and token reading.
+// It also holds the Bouncer's seed and judge passes.
 
 package shedadapters
 
@@ -37,9 +39,12 @@ func roundFan(fans []string, round int) string {
 }
 
 // roundUsage is the usage record of one review round.
-// Fan and FixFan are the reviewer's and fixer's fans the round was spawned under, empty for a solo or single round; FansRecorded says they were written at the spawn, so an empty name is told from an absent one.
-// Lenses is nil for a solo round, and FixLenses and FixForks are set only for a twill fixer, FixForks a pointer so a single round carries no count.
-// Review and Fix are nil until the round's Burler completes, so a record is a completed round's exactly when its review half is present.
+// Fan and FixFan are the reviewer's and fixer's fans the round was spawned under, empty for a solo or single round.
+// FansRecorded says they were written at the spawn, so an empty name is told from an absent one.
+// Lenses is nil for a solo round.
+// FixLenses and FixForks are set only for a twill fixer; FixForks is a pointer so a single round carries no count.
+// Review and Fix stay nil until the round's Burler completes;
+// a record has a review half exactly when its round is complete.
 // Seed and Judge list the Bouncer's passes for the round, one entry per pass.
 type roundUsage struct {
 	Round        int         `yaml:"round"`
@@ -53,14 +58,14 @@ type roundUsage struct {
 	Fix          *halfUsage  `yaml:"fix,omitempty"`
 	Seed         []halfUsage `yaml:"seed,omitempty"`
 	Judge        []halfUsage `yaml:"judge,omitempty"`
-	// Attempt is the attempt token the round's review table last spawned under, the round number or the round number and b on the retry;
-	// Assist and AssistFan are the assistant model choice and fan it spawned with, Assist nil for a round with no assistant.
-	// A record without Attempt, as a binary that predates it writes, reads as a round with no assistant whose chair runs under the bare round.
+	// Attempt is the token the round's review table last spawned under: the round number, plus b on a retry.
+	// Assist and AssistFan are the assistant's model choice and fan it spawned with; Assist is nil with no assistant.
+	// A record without Attempt, from a binary that predates the field, reads as no assistant and the bare round.
 	Attempt   string        `yaml:"attempt,omitempty"`
 	Assist    *assistRecord `yaml:"assist,omitempty"`
 	AssistFan string        `yaml:"assist_fan,omitempty"`
-	// AssistEnding is the assistant's end marker text once the round is accepted, and AssistLensesMissing names each lens of a done fanned assistant that returned no lens report.
-	// A round whose AssistEnding reads done and that names no lens ran its whole fan, so AssistFan alone never says the fan ran.
+	// AssistEnding is the assistant's end marker once the round is accepted; AssistLensesMissing lists unreported lenses.
+	// A round whose AssistEnding reads done and names no lens ran its whole fan; AssistFan alone does not show that.
 	AssistEnding        string   `yaml:"assist_ending,omitempty"`
 	AssistLensesMissing []string `yaml:"assist_lenses_missing,omitempty"`
 }
@@ -81,8 +86,9 @@ type roundAttempt struct {
 	assistFan string
 }
 
-// recordRoundAttempt writes the attempt a round's review table is about to spawn under, so a probe or resume after an interruption builds the same table whatever the config says by then.
-// It is the only writer of the three keys.
+// recordRoundAttempt writes the attempt a round's review table is about to spawn under.
+// A probe or resume after an interruption then builds the same table, whatever the config says by then.
+// It is the only writer of the Attempt, Assist and AssistFan fields.
 func recordRoundAttempt(runDir string, round int, now func() time.Time, attempt roundAttempt) error {
 	return mergeRoundUsage(runDir, round, now, func(u *roundUsage) {
 		u.Attempt, u.Assist, u.AssistFan = attempt.token, nil, ""
@@ -110,8 +116,9 @@ func readRoundAttempt(runDir string, round int) roundAttempt {
 }
 
 // halfUsage is one half's engine, model, run times and token reading.
-// Engine is the engine the half's run used, absent for a half with no run record.
-// A token field is nil when the reading is unknown, and WallSeconds is nil when either run time is zero, so an unknown value is never rendered as zero.
+// Engine is the engine the half's run used; it is absent for a half with no run record.
+// A token field is nil when the reading is unknown.
+// WallSeconds is nil when either run time is zero, so an unknown value is never rendered as zero.
 // The fork fields are set for the reviewer's half only, when its reading is known.
 type halfUsage struct {
 	Engine          string    `yaml:"engine,omitempty"`
@@ -157,8 +164,8 @@ func newHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) halfU
 	return record
 }
 
-// newPassUsage builds the entry of one Bouncer pass from the model it ran on and the shuttle result's run times and token reading.
-// The fork fields stay unset.
+// newPassUsage builds one Bouncer pass's entry from the shuttle result's run times and token reading.
+// The model is the choice the pass ran on; the fork fields stay unset.
 func newPassUsage(model shuttleengine.ModelChoice, result shuttleengine.Result) halfUsage {
 	return newHalfUsage(model, burlerengine.Half{StartedAt: result.StartedAt, EndedAt: result.EndedAt, Usage: result.Usage, Engine: result.Engine})
 }
@@ -178,7 +185,9 @@ func writeRoundUsage(runDir string, round int, u roundUsage) error {
 
 // mergeRoundUsage is the one write path of a round's usage record, shared by every writer of a part of it:
 // it reads the record if present, calls apply on it and writes the result.
-// A missing record starts from the zero value, and a record that does not decode is archived aside, logged and replaced by a fresh record holding only this writer's part.
+// A missing record starts from the zero value.
+// A record that does not decode is archived aside and logged,
+// and the write starts over with only this writer's part.
 func mergeRoundUsage(runDir string, round int, now func() time.Time, apply func(u *roundUsage)) error {
 	path := roundUsagePath(runDir, round)
 	var u roundUsage
@@ -200,8 +209,10 @@ func mergeRoundUsage(runDir string, round int, now func() time.Time, apply func(
 	return writeRoundUsage(runDir, round, u)
 }
 
-// recordRoundFans writes the fan names round's reviewer and fixer are spawned under, with the flag that says they are there.
-// It is the only writer of the three keys; the empty names of a solo or single round are recorded like any other.
+// recordRoundFans writes the fan names round's reviewer and fixer are spawned under.
+// It writes the FansRecorded flag with them, so the names are known to be there.
+// It is the only writer of Fan, FixFan and FansRecorded.
+// The empty names of a solo or single round are recorded like any other name.
 func recordRoundFans(runDir string, round int, now func() time.Time, fan, fixFan string) error {
 	return mergeRoundUsage(runDir, round, now, func(u *roundUsage) {
 		u.Fan, u.FixFan, u.FansRecorded = fan, fixFan, true
@@ -209,7 +220,8 @@ func recordRoundFans(runDir string, round int, now func() time.Time, fan, fixFan
 }
 
 // readRecordedFans returns the reviewer and fixer fan names recorded for round.
-// A missing record, one that does not decode and one without the flag are errors, since a record written by a binary that predates the names also decodes the reviewer's fan as "".
+// A missing record, an undecodable one and one without the flag are errors:
+// a record a binary wrote before the names existed decodes the reviewer's fan as the empty string.
 func readRecordedFans(runDir string, round int) (fan, fixFan string, err error) {
 	u, err := readRoundUsage(runDir, round)
 	if err != nil {
@@ -256,8 +268,8 @@ func roundReviewStart(runDir string, round int) time.Time {
 	return u.Review.Start
 }
 
-// readCompletedRoundUsage is readRoundUsage for a reader that needs the Burler's part of the record:
-// a record with no review half is an error naming the round, since only the Bouncer has written to it.
+// readCompletedRoundUsage decodes round's usage record under runDir and requires its Burler half.
+// A record with no review half is an error naming the round, since only the Bouncer has written to it.
 func readCompletedRoundUsage(runDir string, round int) (roundUsage, error) {
 	u, err := readRoundUsage(runDir, round)
 	if err != nil {

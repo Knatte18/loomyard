@@ -1,6 +1,7 @@
 // mergescenario_integration_test.go drives the "lym fabric merge", "merge-in", "merge-stage" and "status" verbs end-to-end against one real hubforge pair, through fabriccli.RunCLIIn, as an ordered scenario.
-// It is the CLI-boundary counterpart to internal/fabricengine's own merge integration tests, which cover the same matrix at the Go-API layer:
-// it asserts the JSON envelope shape at the CLI boundary — exit codes, the sorted "conflicts" array, "partial" staying false on a conflict envelope, the fixed error text a pinned typed error surfaces through — and the optional "warnings" key that reports a mid-run parent merge while webster state sits under the anchor.
+// It checks the JSON envelope at the CLI boundary: exit codes and the sorted "conflicts" array.
+// It checks that "partial" stays false on a conflict envelope, and that a pinned typed error shows its fixed text.
+// It checks the optional "warnings" key, reported on a mid-run parent merge with websterengine state under the anchor.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -20,9 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// commitOnBranchCLI checks out branch in dir — creating it off whatever is currently checked out when
-// it does not exist yet — writes filename with content, commits msg, then switches back to whatever
-// branch was checked out before.
+// commitOnBranchCLI checks out branch in dir, creating it off the current checkout when it does not exist yet.
+// It writes filename with content, commits msg, then switches back to the branch that was checked out before.
 func commitOnBranchCLI(t *testing.T, dir, branch, filename, content, msg string) {
 	t.Helper()
 
@@ -38,16 +38,16 @@ func commitOnBranchCLI(t *testing.T, dir, branch, filename, content, msg string)
 	gitkit.Git(t, dir, "checkout", "-q", current)
 }
 
-// branchAtCurrentHEADCLI creates branch in dir pointing at whatever is currently checked out, without
-// checking it out or adding any commit — the already-up-to-date fixture shape.
+// branchAtCurrentHEADCLI creates branch in dir at the current HEAD, without checking it out or adding a commit.
+// It sets up the already-up-to-date fixture shape.
 func branchAtCurrentHEADCLI(t *testing.T, dir, branch string) {
 	t.Helper()
 	gitkit.MustRun(t, dir, "git", "branch", branch)
 }
 
-// setupConflictingDivergenceCLI seeds filename on dir's current branch, branches off, diverges the
-// branch's copy, then diverges the current branch's own copy again — so merging branch into the
-// current branch conflicts on filename.
+// setupConflictingDivergenceCLI makes merging branch into dir's current branch conflict on filename.
+// It seeds filename on the current branch and branches off it.
+// It then diverges the branch's copy and the current branch's copy of filename.
 func setupConflictingDivergenceCLI(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
@@ -56,7 +56,8 @@ func setupConflictingDivergenceCLI(t *testing.T, dir, branch, filename string) {
 	gitkit.CommitFile(t, dir, filename, "current content\n", "diverge "+filename+" on current")
 }
 
-// divergeConflicting makes merging branch into the prime pair conflict on filename, and cuts the weft counterpart of branch at the weft's current HEAD.
+// divergeConflicting makes merging branch into the prime pair conflict on filename.
+// It also cuts the weft counterpart of branch at the weft's current HEAD.
 func divergeConflicting(t *testing.T, h *hubforge.Hub, branch, filename string) {
 	t.Helper()
 
@@ -64,7 +65,8 @@ func divergeConflicting(t *testing.T, h *hubforge.Hub, branch, filename string) 
 	branchAtCurrentHEADCLI(t, h.PrimeRecords(), branch+"-weft")
 }
 
-// divergeCleanly gives branch and the prime pair's current branch each a commit on a different file, and cuts the weft counterpart of branch at the weft's current HEAD.
+// divergeCleanly gives branch and the prime pair's current branch each a commit on a different file.
+// It also cuts the weft counterpart of branch at the weft's current HEAD.
 func divergeCleanly(t *testing.T, h *hubforge.Hub, branch string) {
 	t.Helper()
 
@@ -73,7 +75,8 @@ func divergeCleanly(t *testing.T, h *hubforge.Hub, branch string) {
 	branchAtCurrentHEADCLI(t, h.PrimeRecords(), branch+"-weft")
 }
 
-// mergeInExpectingConflict runs "merge-in branch" from the prime worktree, requires the conflict exit code and returns the decoded envelope.
+// mergeInExpectingConflict runs "merge-in branch" from the prime worktree.
+// It requires the conflict exit code and returns the decoded envelope.
 func mergeInExpectingConflict(t *testing.T, h *hubforge.Hub, branch string) envelope.Envelope {
 	t.Helper()
 
@@ -102,8 +105,8 @@ func resolveConflictFile(t *testing.T, h *hubforge.Hub, filename, content string
 	}
 }
 
-// stringSliceField reads fields[key] as a JSON array of strings, failing the test when it is absent
-// or not an array of strings.
+// stringSliceField reads fields[key] as a JSON array of strings.
+// It fails the test when the key is absent or is not an array of strings.
 func stringSliceField(t *testing.T, fields map[string]any, key string) []string {
 	t.Helper()
 
@@ -121,8 +124,8 @@ func stringSliceField(t *testing.T, fields map[string]any, key string) []string 
 	return values
 }
 
-// seedWebsterState writes state.json, plus outcome.yaml when outcome is non-empty, under the hub's webster directory and commits it on the prime weft,
-// so the pair is clean when the weft feature branch is cut.
+// seedWebsterState writes state.json, and outcome.yaml when outcome is non-empty, under the hub's webster directory.
+// It commits them on the prime weft, so the pair is clean when the weft feature branch is cut.
 func seedWebsterState(t *testing.T, h *hubforge.Hub, outcome string) {
 	t.Helper()
 
@@ -178,7 +181,8 @@ func assertNoWarnings(t *testing.T, env envelope.Envelope) {
 }
 
 // TestRunCLI_MergeScenario runs every merge-family check over one hub.
-// Each step cuts its own branches and conflict files, and a step that parks a merge aborts it before returning, so steps do not disturb each other.
+// Each step cuts its own branches and conflict files,
+// and a step that parks a merge aborts it before returning, so steps do not disturb each other.
 // The webster-warning steps come last and run in the order of the webster state they need:
 // none, then a state file alone, then a finished outcome, then a malformed outcome; the state only accumulates.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
@@ -193,7 +197,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"MergeInConflictThenContinueConcludes", func(t *testing.T) {
-			// merge-in into a warp-side conflict yields the failure envelope's sorted "conflicts" array and "partial": false; resolving in the worktree and "merge --continue" concludes it.
+			// merge-in into a warp-side conflict yields the failure envelope's sorted "conflicts" array and "partial": false;
+			// resolving in the worktree and "merge --continue" concludes it.
 			divergeConflicting(t, h, "continue-feature", "continue-conflict.txt")
 
 			mergeInEnv := mergeInExpectingConflict(t, h, "continue-feature")
@@ -286,7 +291,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 
 			resolveConflictFile(t, h, reportedPath, "resolved content\n")
 
-			// MergeContinue still refuses, because content edits do not clear an index entry.
+			// merge --continue still refuses, because content edits do not clear an index entry.
 			earlyCode, earlyOutput := runFabric(t, h.PrimeWorktree(), "merge", "--continue")
 			if earlyCode != 1 {
 				t.Fatalf("RunCLI(merge --continue) before staging = %d; want 1\noutput: %s", earlyCode, earlyOutput)
@@ -317,7 +322,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeStageRejectsAPathThatIsNotConflicted", func(t *testing.T) {
-			// A path conflicted on neither side is an error rather than a silent skip, and nothing is staged, so a typo cannot leave the merge half-resolved.
+			// A path conflicted on neither side is an error rather than a silent skip, and nothing is staged,
+			// so a typo cannot leave the merge half-resolved.
 			divergeConflicting(t, h, "reject-feature", "reject-conflict.txt")
 			mergeInExpectingConflict(t, h, "reject-feature")
 			defer abortParkedMerge(t, h)
@@ -331,7 +337,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 				t.Errorf("RunCLI(merge-stage) error output = %q; want it to name %q", output, bogusPath)
 			}
 
-			// The good path in the same call must NOT have been staged: the verb partitions every path before staging anything, so one bad path fails the whole call.
+			// The good path in the same call must not have been staged:
+			// the verb partitions every path before staging anything, so one bad path fails the whole call.
 			statusCmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
 			statusCmd.Dir = h.PrimeWorktree()
 			out, err := statusCmd.Output()
@@ -343,7 +350,9 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeContinuePartialStagingListsTheRemainingPaths", func(t *testing.T) {
-			// The operator staged SOME of the reported paths and not all of them: the unresolved-conflicts refusal reports the remaining paths under "unresolved" and carries no "conflicts" key at all, since "conflicts" is the documented discriminator between a conflict result and a hard failure.
+			// The operator staged some of the reported paths and not all of them.
+			// The unresolved-conflicts refusal reports the remaining paths under "unresolved" and carries no "conflicts" key.
+			// "conflicts" is the documented discriminator between a conflict result and a hard failure.
 			// Both conflicting paths are warp-side: the weft side is not a merge participant.
 			setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "partial-feature", "partial-a.txt")
 			setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "partial-feature", "partial-b.txt")
@@ -375,7 +384,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeStageEchoesEachPathOnce", func(t *testing.T) {
-			// A path passed twice in one call stages fine (the engine tolerates the duplicate) but appears ONCE in "staged": an envelope claiming two stagings for one path reports something that did not happen twice.
+			// A path passed twice in one call stages fine (the engine tolerates the duplicate) but appears once in "staged".
+			// An envelope must not claim two stagings for one path.
 			divergeConflicting(t, h, "echo-feature", "echo-conflict.txt")
 			mergeInExpectingConflict(t, h, "echo-feature")
 			defer abortParkedMerge(t, h)
@@ -395,7 +405,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"StatusReportsMergeInProgressWhileAMergeIsParked", func(t *testing.T) {
-			// status run from the pair holding a parked conflicted merge reports "merge_in_progress" present and true — the assertion that proves the field reads the real record rather than a hardcoded constant.
+			// status run from the pair holding a parked conflicted merge reports "merge_in_progress" present and true.
+			// The assertion proves the field reads the real record rather than a hardcoded constant.
 			divergeConflicting(t, h, "status-feature", "status-conflict.txt")
 			mergeInExpectingConflict(t, h, "status-feature")
 			defer abortParkedMerge(t, h)
@@ -430,7 +441,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeCleanSquashFromTargetPair", func(t *testing.T) {
-			// A clean "merge <branch> --squash" from a second, unrelated pair's worktree, the target-pair Merge verb's own shape: the source pair's branches are seeded on the prime pair, and Merge is invoked with cwd on the target pair instead.
+			// A clean "merge <branch> --squash" run from a second pair's worktree.
+			// The source pair's branches are seeded on the prime pair, and the merge runs with cwd on the target pair instead.
 			hubforge.AddPair(t, h, "squash-target")
 
 			commitOnBranchCLI(t, h.PrimeWorktree(), "squash-feature", "warp-feature.txt", "warp feature\n", "warp: add feature")
@@ -447,7 +459,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeConflictSelfAbortsWithErrMergeInRequired", func(t *testing.T) {
-			// A "merge <branch>" on a target pair that would conflict reports the fixed ErrMergeInRequired message and leaves the target pair unchanged.
+			// A "merge <branch>" on a target pair that would conflict reports the fixed ErrMergeInRequired message.
+			// It leaves the target pair unchanged.
 			hubforge.AddPair(t, h, "abort-target")
 
 			gitkit.CommitFile(t, h.PairCodeWorktree("abort-target"), "selfabort-conflict.txt", "target content\n", "target: seed selfabort-conflict.txt")

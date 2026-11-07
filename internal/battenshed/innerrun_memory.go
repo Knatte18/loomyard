@@ -1,4 +1,5 @@
-// innerrun_memory.go implements InnerRun's per-run memory record: what one pass of the Run-Shed row knows that the next pass, a new process, must find again.
+// innerrun_memory.go holds the per-run memory record of InnerRun.
+// The record keeps what one pass knows that the next pass, a new process, must find again.
 
 package battenshed
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// innerRunMemoryFileSuffix is the fixed suffix of the memory record and of its lock file, joined onto the producer's own name.
+// innerRunMemoryFileSuffix is the fixed suffix of the memory record and of its lock file.
+// The producer's name is joined onto it.
 // Both end in it, so one entry of runMarkerSuffixes clears the pair with the other run markers.
 const innerRunMemoryFileSuffix = "-memory.json"
 
@@ -28,8 +30,10 @@ func innerRunMemoryLockFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+"-lock"+innerRunMemoryFileSuffix)
 }
 
-// innerRunMemory is the record InnerRun keeps in its scratch directory so a pass, which is a new process, continues what the pass before it was doing.
-// It is a tolerant JSON record: a reader refuses no key it does not know, and a rewrite keeps the keys it does not know.
+// innerRunMemory is the record InnerRun keeps in its scratch directory.
+// A pass runs as a new process, so the record carries what the pass before it was doing.
+// It is a tolerant JSON record: a reader refuses no key it does not know,
+// and a rewrite keeps the keys it does not know.
 // A missing record reads as empty, and so does one that does not decode.
 type innerRunMemory struct {
 	// Episode is the child's current state episode and the delivery of its notices.
@@ -49,7 +53,8 @@ type innerRunMemory struct {
 	// WatchedAnswer is how the watched marker was last answered.
 	WatchedAnswer int `json:"watched_answer"`
 
-	// IdleWatching is whether the parent lock step holds an idle watch, IdleOwner the owner it counts for and IdleWaiting each waiting agent's first-seen awake reading.
+	// IdleWatching is whether the parent lock step holds an idle watch.
+	// IdleOwner is the owner it counts for, and IdleWaiting is each waiting agent's first-seen awake reading.
 	IdleWatching bool                     `json:"idle_watching"`
 	IdleOwner    parentlock.Owner         `json:"idle_owner"`
 	IdleWaiting  map[string]time.Duration `json:"idle_waiting"`
@@ -70,12 +75,13 @@ type innerRunMemory struct {
 	CoverageWarned string `json:"coverage_warned"`
 	// StartFallback is the revive's mark that the halted reason also names `lym loom start`.
 	StartFallback bool `json:"start_fallback"`
-	// Respawns is how many times the running child was respawned with no write to its status file between, and RespawnStatusTime the status file's modification time after the last respawn.
+	// Respawns counts the respawns of the running child with no status-file write in between.
+	// RespawnStatusTime is the status file's modification time after the last respawn.
 	Respawns          int       `json:"respawns"`
 	RespawnStatusTime time.Time `json:"respawn_status_time"`
 }
 
-// memoryEpisode is noticeEpisode as the record holds it.
+// memoryEpisode is the record's form of the child's current state episode and its notice deliveries.
 type memoryEpisode struct {
 	Known        bool                      `json:"known"`
 	State        shedengine.State          `json:"state"`
@@ -84,7 +90,7 @@ type memoryEpisode struct {
 	Deliveries   map[string]memoryDelivery `json:"deliveries"`
 }
 
-// memoryDelivery is noticeDelivery as the record holds it.
+// memoryDelivery is the record's form of one notice's delivery state.
 type memoryDelivery struct {
 	Attempts     int       `json:"attempts"`
 	LastTry      time.Time `json:"last_try"`
@@ -92,7 +98,7 @@ type memoryDelivery struct {
 	Dropped      bool      `json:"dropped"`
 }
 
-// memoryRestep is restepWatch as the record holds it.
+// memoryRestep is the record's form of the binary re-step's watch state.
 type memoryRestep struct {
 	Stop        string        `json:"stop"`
 	Build       string        `json:"build"`
@@ -192,12 +198,15 @@ func (p *innerRunProducer) saveMemory() {
 	}
 }
 
-// RespawnCap is how many times the row respawns a running child with no write to its status file between, before it leaves the child to the operator.
+// RespawnCap is how many times the row respawns a running child with no write to its status file in between.
+// Past it the row leaves the child to the operator.
 const RespawnCap = respawnCap
 
-// RespawnCapReached reports whether the memory record of the row producer under scratchDir shows its running child respawned the cap of times with no write to the child's status file between.
-// statusModified is the status file's modification time now: a write after the last respawn is progress and reads as not capped, as the row's own pass reads it.
-// It lets a reader outside the row, such as the dobby that sends the driver-dead notice, name the cap; a missing record reads as false.
+// RespawnCapReached reports whether the record under scratchDir shows producer's running child at the respawn limit.
+// The limit is reached when the child was respawned up to it with no write to its status file in between.
+// statusModified is the status file's current modification time: a write after the last respawn is progress,
+// and it reads as not capped.
+// It lets a reader outside the row name the limit; a missing record reads as false.
 func RespawnCapReached(scratchDir, producer string, statusModified time.Time) (bool, error) {
 	memory, found, err := state.ReadJSON[innerRunMemory](innerRunMemoryFile(scratchDir, producer), innerRunMemoryLockFile(scratchDir, producer))
 	if err != nil || !found {

@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 the fixture stamps every stencil file with, via stencilstore.ApplyStamp.
+// bouncerFixtureStampHash is a fake but well-formed sha256 hash of 64 lowercase hex digits.
+// The fixture stamps every stencil file with it through stencilstore.ApplyStamp.
 const bouncerFixtureStampHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 const (
@@ -24,7 +25,8 @@ const (
 	bouncerFixtureSpecsRubric = "# Rubric\n\nCite {{.specs_dir}}.\n\nBe thorough and cite evidence.\n"
 )
 
-// bouncerFixture is a BouncerConfig over a fresh run dir and a stencils directory, with Build constructing the *Bouncer on request.
+// bouncerFixture pairs a BouncerConfig over a fresh run dir and a stencils directory.
+// Build constructs the *Bouncer from that config on request.
 type bouncerFixture struct {
 	t           *testing.T
 	Config      BouncerConfig
@@ -91,12 +93,14 @@ func withNestedRunDir() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.nestedRun = true }
 }
 
-// withEscalationInputs sets the slug, worktree root and decision record path the escalation brief render needs, so an escalation renders its brief and notice.
+// withEscalationInputs sets the slug, worktree root and decision record path that the escalation brief render needs.
+// It makes an escalation render its brief and notice.
 func withEscalationInputs() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.escalation = true }
 }
 
-// withBareConfig leaves Models and Now unset, writes the bare rubric body, and defaults the shuttle to an empty shedfake.Shuttle.
+// withBareConfig leaves Models and Now unset and writes the bare rubric body.
+// It defaults the shuttle to an empty shedfake.Shuttle.
 func withBareConfig() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.bare = true }
 }
@@ -179,9 +183,10 @@ func (fx *bouncerFixture) Build() (*Bouncer, BouncerConfig) {
 	return b, fx.Config
 }
 
-// writeBouncerStencils writes each named stencil body on top of the seeded stencils in dir, at the path stencilstore.RelPath derives.
-// ApplyStamp merges into an existing leading comment rather than nesting a second one,
-// so a body already carrying its own leading comment still ends up with exactly one banner for stencil.Fill's leading-comment strip to remove.
+// writeBouncerStencils writes each named stencil body on top of the seeded stencils in dir.
+// Each body lands at the path stencilstore.RelPath returns.
+// ApplyStamp merges into an existing leading comment instead of nesting a second one,
+// so a body with its own leading comment still ends with one banner, which stencil.Fill strips.
 func writeBouncerStencils(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 
@@ -197,7 +202,9 @@ func writeBouncerStencils(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// carryOverRecorder is a CarryOver seam fake: it records every entry it is called with, appends "carry-over" to log when one is set, calls onCall first, and fails with err when set.
+// carryOverRecorder is a fake of the CarryOver seam.
+// It records each entry it is called with and appends "carry-over" to log when one is set.
+// It calls onCall first and fails with err when set.
 type carryOverRecorder struct {
 	log     *seamLog
 	entries []discussionparser.CarryOver

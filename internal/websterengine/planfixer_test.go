@@ -1,4 +1,6 @@
-// planfixer_test.go exercises the plan fixer's bounded spawn-or-attach and its verdict-reading wait over the recover-batch fixture: a real *shuttleengine.Runner over the shuttlefake Reed and Engine, a fake git and a fake Clock.
+// planfixer_test.go exercises the plan fixer's bounded spawn-or-attach and its verdict-reading wait.
+// It runs over the recover-batch fixture, with a real *shuttleengine.Runner over the shuttlefake Reed and Engine.
+// Its git and Clock are fakes.
 
 package websterengine_test
 
@@ -20,7 +22,8 @@ import (
 // testConflictFindings are the findings the fixture's plan-conflict record names.
 var testConflictFindings = []string{"glyph-not-found/03: base.go#OldName", "glyph-not-found/04: base.go#OldTest"}
 
-// newFixPlanFixture returns the recover-batch fixture with a scratch dir and a parent, and the FixPlanDeps over its seams.
+// newFixPlanFixture returns the recover-batch fixture with a scratch dir and a parent.
+// It also returns the FixPlanDeps over the fixture's seams.
 // findings, when non-empty, are written as begin-batch 02's tree_moved conflict record.
 func newFixPlanFixture(t *testing.T, findings []string) (*recoverFixture, websterengine.FixPlanDeps) {
 	t.Helper()
@@ -47,7 +50,8 @@ func newFixPlanFixture(t *testing.T, findings []string) (*recoverFixture, webste
 	}
 }
 
-// TestFixPlanSpawnOrAttach pins the refusals and their bounds, the spawn's spec, prompt and record, and the attach to a running fixer.
+// TestFixPlanSpawnOrAttach pins the refusals and their bounds.
+// It also pins the spawn's spec, prompt and record, and the attach to a running fixer.
 func TestFixPlanSpawnOrAttach(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -199,7 +203,8 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 	})
 }
 
-// TestFixPlanAwait pins the verdict a terminal wait reads, the overrule of a fixed verdict that touched code, and the terminal record.
+// TestFixPlanAwait pins the verdict a terminal wait reads and the terminal record.
+// It also pins the overrule of a fixed verdict that touched code.
 func TestFixPlanAwait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

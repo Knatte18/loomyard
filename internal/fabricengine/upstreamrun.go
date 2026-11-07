@@ -1,5 +1,6 @@
-// upstreamrun.go reads a pair's own run status and its anchor at the tree of its weft's fetched upstream tip.
-// A weft that stopped taking its upstream in over a marker change keeps a checked-out status that goes stale, and this read is the one that does not.
+// upstreamrun.go reads a pair's run status and anchor from the tree of its weft's fetched upstream tip.
+// A checked-out status goes stale when the weft stops taking its upstream in over a marker change.
+// Reading the upstream tip does not.
 
 package fabricengine
 
@@ -15,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// UpstreamAnchor returns the anchor the tree of the pair's weft's fetched upstream tip records, and found false when the weft has no upstream.
-// A tip that records no marker answers the anchor its content implies, with pair's anchor standing in for a tree that holds no wired name in names.
+// UpstreamAnchor returns the anchor the tree of the pair's weft's fetched upstream tip records.
+// found is false when the weft has no upstream.
+// A tip that records no marker answers with the anchor its content implies.
+// When that tree holds none of names, the pair's own anchor stands in.
 func UpstreamAnchor(pair *lymcwd.Location, names []string) (anchor string, found bool, err error) {
 	weftPath := RecordsWorktreePath(pair, pair.WorktreeName)
 	upstream, hasUpstream, err := upstreamSHAAt(weftPath)
@@ -30,10 +33,11 @@ func UpstreamAnchor(pair *lymcwd.Location, names []string) (anchor string, found
 	return anchor, true, nil
 }
 
-// UpstreamRunUnfinished reports whether the pair's own run status, read at the tree of its weft's fetched upstream tip, names an unfinished run.
+// UpstreamRunUnfinished reports whether the pair's own run status names an unfinished run.
+// The status is read from the tree of the weft's fetched upstream tip.
 // A run is unfinished when its status holds a state other than done; a tree with no status reads as finished.
-// The status sits under the anchor the tip's own marker names, with pair's anchor standing in for a tip that records none.
-// It is read from the directory of the pair's slug or, when the tree lacks that directory, from the legacy `self` directory.
+// The status sits under the anchor the tip's own marker names; a tip that records none uses the pair's anchor.
+// It is read from the pair's slug directory, or from the legacy `self` directory when the tree lacks it.
 // A weft with no fetched upstream is read at HEAD.
 // names are the wired names the tip's anchor is derived from.
 func UpstreamRunUnfinished(pair *lymcwd.Location, names []string) (unfinished bool, err error) {

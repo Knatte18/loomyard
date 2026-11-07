@@ -1,28 +1,25 @@
-// prerunlogging_test.go guards a dependency the standalone-mode fix relies on but cannot pin
-// behaviourally: root's PersistentPreRunE (newRoot, main.go) must not log at Info or above before its
-// seedStencils(cmd) call. cobra.EnableTraverseRunHooks runs every module's own PersistentPreRunE
-// (including webstercli's and burlercli's wireStandalone, which each call
-// internal/cliwire.ResolveStandalone, and it is that shared prologue -- not either CLI's own
-// wireStandalone body -- which now redirects the durable trace sink to
-// standalonegeom.LogsDir(stateDir) the moment standalonestate.Derive returns) AFTER root's own
-// pre-run, so that redirect only binds if nothing in root's pre-run has already armed the sink by
-// emitting an Info-or-above record — the sink is armed lazily on the first such record anywhere in
-// the process.
+// prerunlogging_test.go guards root's PersistentPreRunE (newRoot, main.go).
+// It must log nothing at Info or above before its seedStencils(cmd) call.
+// cobra.EnableTraverseRunHooks runs every module's PersistentPreRunE after root's own pre-run.
+// The shared standalone prologue, internal/cliwire.ResolveStandalone, redirects the durable trace sink.
+// The target is standalonegeom.LogsDir(stateDir), set once standalonestate.Derive returns.
+// That redirect binds only if nothing earlier has armed the sink.
+// The sink arms lazily on the first Info-or-above record anywhere in the process.
 //
-// Only logger.Info and logger.Warn are guarded against: internal/logger exports Debug, Info, and
-// Warn and no Error at all, and Debug sits below the Info-or-above threshold that arms the sink, so a
-// Debug call ahead of seedStencils is harmless and must not fail this guard.
+// Only logger.Info and logger.Warn are guarded.
+// internal/logger exports Debug, Info and Warn and no Error, and Debug sits below the arming threshold.
+// A Debug call ahead of seedStencils is therefore harmless and does not fail the guard.
 //
-// This is a SOURCE-LEVEL guard, not a behavioural one, because no behavioural test can pin the same
-// property: seedStencils returns before resolving anything under testing.Testing() (see
-// stencilseed.go), so a test asserting "root pre-run emits no Info+ record in standalone" would pass
-// through the test guard rather than through the standalone gate, and would keep passing after the
-// dependency it claims to pin had already broken. This guard therefore parses main.go's source and
-// asserts the ordering directly, following cmd/lym/spawnobservability_test.go's own precedent of
-// walking go/parser's AST rather than scanning for substrings: a doc-comment mention of logger.Info
-// is not a call, and a substring guard would misfire on this file's own header comment above.
+// The guard is source-level because seedStencils returns under testing.Testing() before it resolves anything.
+// The early return is in stencilseed.go.
+// A behavioural test would exercise the test guard rather than the standalone gate,
+// and it would keep passing after the dependency broke.
+// The guard parses main.go's AST and asserts the ordering, as cmd/lym/spawnobservability_test.go does.
+// A substring scan would misfire on a doc-comment mention of logger.Info, which is not a call.
 //
-// The other half of this same dependency — stencilSeedTarget reporting ok == false for a non-hub location, which is what keeps seedStencils from reaching its own log calls in standalone in the first place — is already pinned by TestStencilSeedTarget_PlainRepoHasNoHub in cmd/lym/stencilseed_integration_test.go, and is deliberately not duplicated here.
+// The other half of the dependency is that stencilSeedTarget reports ok == false for a non-hub location.
+// That keeps seedStencils from logging in standalone.
+// TestStencilSeedTarget_PlainRepoHasNoHub in cmd/lym/stencilseed_integration_test.go pins that.
 
 package main
 
@@ -37,7 +34,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils parses cmd/lym/main.go, locates root's PersistentPreRunE function literal inside newRoot's composite literal, and fails if any statement preceding its seedStencils(cmd) call contains a logger.Info or logger.Warn call.
+// TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils parses cmd/lym/main.go.
+// It fails if a statement preceding seedStencils(cmd) in root's PersistentPreRunE calls logger.Info or logger.Warn.
 //
 //testtiming:keep pins that no Info or Warn log runs ahead of seedStencils in the root pre-run, a guard that fires on a source parse no other test reads
 func TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils(t *testing.T) {
@@ -75,8 +73,7 @@ func TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils(t *testing.T) 
 	}
 }
 
-// findPersistentPreRunELit walks file looking for a composite-literal key "PersistentPreRunE" whose
-// value is a function literal, returning that literal or nil if none is found.
+// findPersistentPreRunELit returns the function literal under a PersistentPreRunE key in file, or nil if there is none.
 func findPersistentPreRunELit(file *ast.File) *ast.FuncLit {
 	var found *ast.FuncLit
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -101,8 +98,8 @@ func findPersistentPreRunELit(file *ast.File) *ast.FuncLit {
 	return found
 }
 
-// stmtCallsFunction reports whether stmt contains a call to a function named name, called as a bare
-// identifier (not a selector) -- the shape a same-package call like seedStencils(cmd) takes.
+// stmtCallsFunction reports whether stmt contains a call to the function name, written as a bare identifier.
+// A selector call such as pkg.name does not match; a same-package call such as `seedStencils(cmd)` does.
 func stmtCallsFunction(stmt ast.Stmt, name string) bool {
 	found := false
 	ast.Inspect(stmt, func(n ast.Node) bool {
@@ -123,10 +120,9 @@ func stmtCallsFunction(stmt ast.Stmt, name string) bool {
 	return found
 }
 
-// stmtCallsLoggerInfoOrWarn reports whether stmt contains a call to logger.Info or logger.Warn,
-// matched as a selector expression off the bare identifier "logger" (this package's own import name
-// for internal/logger, per main.go's import block). It returns the matched method name ("Info" or
-// "Warn") alongside the bool for the caller's failure message.
+// stmtCallsLoggerInfoOrWarn reports whether stmt contains a call to logger.Info or logger.Warn.
+// It matches a selector whose receiver is the bare identifier logger, the name main.go imports internal/logger under.
+// It returns the matched method name ("Info" or "Warn") alongside the bool for the caller's failure message.
 func stmtCallsLoggerInfoOrWarn(stmt ast.Stmt) (string, bool) {
 	name := ""
 	found := false

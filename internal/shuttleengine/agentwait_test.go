@@ -1,6 +1,6 @@
-// agentwait_test.go covers ReadAgentWaits over run directories written by the test, with the liveness seam replaced and an engine double that parses session signals.
-// Replacing the seam is process-global state,
-// so these tests do not run in parallel.
+// agentwait_test.go covers ReadAgentWaits over run directories written by the test.
+// It replaces the liveness seam and runs an engine double that parses session signals.
+// The seam is process-global state, so these tests do not run in parallel.
 
 package shuttleengine
 
@@ -78,7 +78,7 @@ func TestReadAgentWaits(t *testing.T) {
 		}
 	})
 
-	// It captures the process-global logger at Debug, so it runs serially like the test.
+	// It captures the process-global logger at Debug, so it does not run in parallel.
 	t.Run("a run record and a wait marker that stay unreadable log once per episode", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
@@ -112,7 +112,7 @@ func TestReadAgentWaits(t *testing.T) {
 		requireFailureEpisode(t, buf.String(), "skipping an unreadable wait marker", 2, "wait marker readable again")
 	})
 
-	// It captures the process-global logger at Debug, so it runs serially like the test.
+	// It captures the process-global logger at Debug, so it does not run in parallel.
 	t.Run("each run is read through the engine its record names", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
@@ -149,7 +149,8 @@ func TestReadAgentWaits(t *testing.T) {
 	})
 }
 
-// writeWaitRun writes the run directory name under root: its run.json, its events file, an existing output file when the run declares one and its wait marker when it has one.
+// writeWaitRun writes the run directory `name` under root:
+// its run.json, its events file, an existing output file when the run declares one, and its wait marker when it has one.
 func writeWaitRun(t *testing.T, root, name string, run waitRun, livePID int) {
 	t.Helper()
 	runDir := filepath.Join(root, name)

@@ -1,5 +1,5 @@
-// check.go holds the pure PATTERN format checker: it reads a PATTERN root through an fs.FS,
-// writes nothing, and returns findings.
+// check.go holds the pure PATTERN format checker.
+// It reads a PATTERN root through an fs.FS, writes nothing, and returns findings.
 // Nothing in the prompt-render path calls it.
 
 package pattern
@@ -23,7 +23,9 @@ const (
 	// HeadroomBytes is the line a branch's own growth of the overview must not cross, 5% below the cap.
 	HeadroomBytes = MaxOverviewBytes * 95 / 100
 
-	// MaxEntryTextChars caps the length in characters of one entry line's rule text, the part EntryRuleText returns.
+	// MaxEntryTextChars caps the length in characters of one entry's rule text.
+	// The rule text follows the backticked name and its separator,
+	// and it drops any trailing background link and test marker.
 	// The room a writer has for the wording is then the same whatever the entry's name and tail.
 	MaxEntryTextChars = 280
 
@@ -48,7 +50,7 @@ const (
 	KindWrongLink        = "wrong-link"
 	KindOrphanBackground = "orphan-background"
 
-	// KindOverviewHeadroom is reported by Headroom, never by Check.
+	// KindOverviewHeadroom marks overview growth past the headroom line; the format check never reports it.
 	KindOverviewHeadroom = "overview-headroom"
 )
 
@@ -66,7 +68,8 @@ var (
 const entryTestMarker = " (test)"
 
 // Finding is one format violation.
-// Subject is the entry name or file it concerns; Line is the overview line number, or 0 where none applies.
+// Subject is the entry name or file it concerns;
+// Line is the overview line number, or 0 where none applies.
 type Finding struct {
 	Kind    string
 	Subject string
@@ -144,7 +147,8 @@ func Check(root fs.FS) []Finding {
 	return append(findings, orphans(root, named)...)
 }
 
-// EntryRuleText returns the rule text of the entry line line: what follows the backticked name and its " — " separator.
+// EntryRuleText returns the rule text of an entry line:
+// what follows the backticked name and its " — " separator.
 // A trailing " — [background](...)" link and then a trailing " (test)" marker are cut off.
 // A line that does not open with a backticked name keeps everything after its bullet.
 func EntryRuleText(line string) string {

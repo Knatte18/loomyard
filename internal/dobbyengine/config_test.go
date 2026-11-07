@@ -1,4 +1,5 @@
-// config_test.go pins beam.yaml's load: the template defaults, a worktree layer's override and the refusal of a negative value.
+// config_test.go pins how beam.yaml loads.
+// It covers the template defaults, a worktree layer's override, and the refusal of a negative value.
 
 package dobbyengine
 

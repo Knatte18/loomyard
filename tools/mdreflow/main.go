@@ -1,17 +1,13 @@
-// Command mdreflow is a one-shot (and repeatable) repo sweep tool for the
-// mill:markdown skill's semantic-line-break rule: reflow markdown prose and
-// list-item paragraphs to one-sentence-per-line, with extra breaks at
-// internal clause boundaries (semicolon, or comma+coordinating-
-// conjunction+explicit-subject). Line breaks only -- it never rewords,
-// reorders, or drops content, and it enforces that invariant on every file
-// before writing: the transformed text, with all whitespace collapsed to a
-// single space, must be byte-identical to the original collapsed the same
-// way. A file that fails this check is left untouched and reported.
+// Command mdreflow reflows markdown prose and list-item paragraphs to one sentence per line.
+// It adds breaks at internal clause boundaries:
+// a semicolon, or a comma before a conjunction that opens a clause with its own subject.
+// It changes line breaks only and never rewords, reorders, or drops content.
+// Before writing a file, it checks the transformed text against the original.
+// Both must match once all whitespace is collapsed to single spaces.
+// A file that fails the check is left untouched and reported.
 //
 //	go run ./tools/mdreflow [-dry-run] <path-or-glob> [...]
 //	go run ./tools/mdreflow $(find . -name '*.md' -not -path './.git/*')
-//
-// Last run: 2026-08-06, repo-wide sweep of markdown-semantic-linebreaks task.
 package main
 
 import (

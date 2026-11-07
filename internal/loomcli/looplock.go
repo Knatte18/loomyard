@@ -1,4 +1,6 @@
-// looplock.go builds the loop's parent lock hooks: the exit hook that releases the lock a loop owns, and the wake hook that releases it when the run's agents have all waited past the idle bound.
+// looplock.go builds the loop's parent lock hooks.
+// The exit hook releases the lock a loop owns;
+// the wake hook releases it once the run's agents have all waited past the idle bound.
 
 package loomcli
 
@@ -24,7 +26,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// runLockIdentity returns the run part of a parent lock owner for the run runID of the worktree loc: the slug, the pair path and the resolved run id.
+// runLockIdentity returns the run part of a parent lock owner for the run runID of the worktree loc:
+// the slug, the pair path and the resolved run id.
 // The process fields are left zero for the caller to fill.
 func runLockIdentity(loc *lymcwd.Location, runID string) parentlock.Owner {
 	return parentlock.Owner{
@@ -34,8 +37,8 @@ func runLockIdentity(loc *lymcwd.Location, runID string) parentlock.Owner {
 	}
 }
 
-// selfLockOwner returns the seam naming the calling process as owner of the run runID of the worktree loc, read at call time.
-// The loop's hooks run in the loop process, so the owner they name is the loop.
+// selfLockOwner returns the seam naming the calling process as owner of the run runID of the worktree loc.
+// The owner is read at call time: the loop's hooks run in the loop process, so the owner they name is the loop.
 func selfLockOwner(loc *lymcwd.Location, runID string) func() parentlock.Owner {
 	return func() parentlock.Owner {
 		owner := runLockIdentity(loc, runID)
@@ -66,7 +69,8 @@ func readAgentStates(loc *lymcwd.Location, cfg shuttleengine.Config) func() ([]p
 }
 
 // builtOnFirstCall returns a hook that calls build on its first call and runs what build returned from then on.
-// The wake hook reads landing's idle bound when it first wakes, so the verbs that never run a loop read no landing config.
+// The wake hook reads landing's idle bound on its first wake.
+// Verbs that never run a loop therefore read no landing config.
 func builtOnFirstCall(build func() func()) func() {
 	var once sync.Once
 	var hook func()
@@ -76,7 +80,7 @@ func builtOnFirstCall(build func() func()) func() {
 	}
 }
 
-// ownedLockBranches returns the branches whose lock record names the process self() names, by run and by process.
+// ownedLockBranches returns the branches whose lock record names the owner self, by run and by process.
 // A failed list returns its error and no branches, for the caller to log at its own cadence.
 func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) ([]string, error) {
 	entries, err := locks.List()
@@ -92,9 +96,11 @@ func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) ([]string
 	return branches, nil
 }
 
-// loopLockExit returns the loop's exit hook: it settles every parent lock record this loop owns, by run and by process, once the stop is final.
+// loopLockExit returns the loop's exit hook:
+// it settles every parent lock record this loop owns, by run and by process, once the stop is final.
 // Every stop releases the records.
-// The release is a compare-and-swap on the loop's own process, so a record batten or a newer loop owns is left alone, and a store error is logged and changes no stop.
+// The release is a compare-and-swap on the loop's own process,
+// so a record batten or a newer loop owns is left alone, and a store error is logged and changes no stop.
 func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner) func(stop shedverbs.LoopStop, st shedengine.Status) {
 	return func(stop shedverbs.LoopStop, st shedengine.Status) {
 		owner := self()
@@ -114,18 +120,23 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner) func(st
 	}
 }
 
-// loopIdleRelease returns the loop's wake hook: it releases every parent lock record the loop owns once no agent of the run is busy and one has waited for bound.
+// loopIdleRelease returns the loop's wake hook:
+// it releases every parent lock record the loop owns once no agent of the run is busy and one has waited for bound.
 // The release frees the lock only; the run keeps running, and its next lock-taking row reacquires.
 // The watch starts counting when the loop first owns a record, so a wait before the lock was taken does not count.
 // A failed agent read counts as not waiting and releases nothing.
-// A list or agent read failure that repeats on every wake logs a Warn at its first wake, Debug while it lasts and an Info at recovery.
-// While covered reports true, a pause holds the run: the record is kept and the watch restarts, so the bound is measured afresh after the resume.
-// While keep reports true, a landing in flight holds the run and the hook does the same.
+// A list or agent read failure that repeats on every wake logs a Warn at its first wake and a Debug while it lasts.
+// Recovery logs an Info.
+// While covered reports true, a pause holds the run:
+// the record is kept and the watch restarts, so the bound is measured afresh after the resume.
+// While keep reports true, a landing in flight holds the run the same way: the record is kept and the watch restarts.
 func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool, keep func() bool) func() {
 	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered, keep)
 }
 
-// idleReleaseOn is loopIdleRelease over an awake clock, which must not advance while the host is suspended.
+// idleReleaseOn returns the wake hook that releases the loop's parent lock records.
+// It releases them once no agent of the run is busy and one has waited past bound.
+// The bound is measured on awake, a clock that must not advance while the host is suspended.
 func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool, keep func() bool) func() {
 	watch := &parentlock.IdleWatch{Bound: bound}
 	var listFailures, agentFailures logger.Episode
@@ -168,8 +179,11 @@ func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents
 	}
 }
 
-// finalizeKeepsLock returns the reading that tells whether the run holds its parent lock for a landing in flight: its status names Finalize running, or a verify marker of the run is live.
-// A status directory that does not exist yet reads as no status; any other failed read of either file keeps the lock for as long as it fails, and logs a Warn at its first failure, Debug while it lasts and an Info at recovery.
+// finalizeKeepsLock returns the reading that tells whether the run holds its parent lock for a landing in flight:
+// its status names Finalize running, or a verify marker of the run is live.
+// A status directory that does not exist yet reads as no status.
+// Any other failed read of either file keeps the lock for as long as it fails;
+// the first failure logs a Warn, later ones a Debug, and recovery an Info.
 func finalizeKeepsLock(statusPath, statusLockPath, verifyDir string) func() bool {
 	markerPath := verifytree.NewPaths("", verifyDir).Marker
 	var failures logger.Episode

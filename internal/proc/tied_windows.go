@@ -1,4 +1,5 @@
-// tied_windows.go ties a child to its parent with a per-child kill-on-close job object, which the operating system closes when the holder dies.
+// tied_windows.go ties a child to its parent with a per-child kill-on-close job object.
+// The operating system closes that job when the holder dies.
 
 package proc
 
@@ -53,12 +54,14 @@ func (t *Tied) killPlatform() error {
 	return nil
 }
 
-// killTreePlatform kills nothing: the child's job sits inside its loop's named job and closed when the loop died.
+// killTreePlatform kills nothing: the child's job sits inside the named job its loop holds,
+// and that job closes when the loop dies.
 func killTreePlatform(rec TreeRecord) (bool, error) {
 	return false, nil
 }
 
-// isBreakawayRefusedPlatform reports ERROR_ACCESS_DENIED, which Windows returns for a CREATE_BREAKAWAY_FROM_JOB the enclosing job forbids.
+// isBreakawayRefusedPlatform reports whether err wraps ERROR_ACCESS_DENIED.
+// Windows returns that error for a CREATE_BREAKAWAY_FROM_JOB the enclosing job forbids.
 func isBreakawayRefusedPlatform(err error) bool {
 	var errno syscall.Errno
 	return errors.As(err, &errno) && errno == windows.ERROR_ACCESS_DENIED

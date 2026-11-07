@@ -1,10 +1,9 @@
-// remove_guard_integration_test.go pins the two guards that keep `lym fabric remove` from deleting a
-// directory git itself declined to remove.
-// Before them, `git worktree remove` refusing a main working tree (or any path that is not a linked
-// worktree of the repo) fell through to an unconditional os.RemoveAll, so removing the prime slug
-// deleted the whole warp clone — gitdir included — on a clean hub with no --force.
+// remove_guard_integration_test.go pins the two guards of `lym fabric remove`.
+// Each keeps the command from deleting a directory that git itself declined to remove.
+// Remove must not fall back to an unconditional os.RemoveAll when git refuses a path.
+// Such a path includes the main working tree and any path that is not a linked worktree of the repo.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// It shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -21,8 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemove_RefusesPrimeWorktreeAndLeavesItIntact asserts Remove refuses the hub's prime slug and
-// that the warp clone — worktree contents and gitdir alike — survives the refusal untouched.
+// TestRemove_RefusesPrimeWorktreeAndLeavesItIntact asserts Remove refuses the hub's prime slug.
+// The warp clone, worktree contents and gitdir alike, survives the refusal untouched.
 func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -49,9 +48,12 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 	}
 }
 
-// TestRemove_RefusesForeignWorktreeWithoutDeletingIt drives the other half of the same data-loss path: a hub directory that is a clean git worktree of the WEFT repo, not of warp.
-// `git worktree remove` run against the warp repo refuses it ("not a working tree"), which is the exact shape the hub's Bolt checkout has — and the old fallback deleted the directory anyway, taking .lym-anchor, .lym-warp and the repo-wide fabric.yaml with it while reporting success.
-// The slug is deliberately NOT a reserved name, so this test exercises removeWarpWorktreeDir's registered-linked-worktree rule rather than the slug guard in front of it.
+// TestRemove_RefusesForeignWorktreeWithoutDeletingIt asserts Remove refuses a foreign worktree.
+// The directory is a clean git worktree of the WEFT repo, not of warp.
+// The warp repo refuses it with "not a working tree", the exact shape of the hub's Bolt checkout.
+// Remove must not delete it, though it holds .lym-anchor, .lym-warp and the repo-wide fabric.yaml.
+// The slug is not reserved, so this test exercises removeWarpWorktreeDir's registered-linked-worktree rule.
+// It does not reach the slug guard in front of that rule.
 func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

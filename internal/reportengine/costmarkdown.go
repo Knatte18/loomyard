@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// HeadingCostCells is the heading of RenderCostMarkdown's one section.
+// HeadingCostCells is the level-two heading of the cost table in a rendered cost report.
 const HeadingCostCells = "## Cost per recipe, profile and stored record"
 
 // RenderCostMarkdown renders report as one document: the selection it was computed over, then one table row per cell.

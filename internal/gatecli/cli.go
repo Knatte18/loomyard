@@ -1,4 +1,5 @@
-// cli.go assembles the cobra command tree for the gate module, the flags of `lym gate test` and the refusal for a failed guard scan.
+// cli.go assembles the cobra command tree for the gate module.
+// It holds the flags of `lym gate test` and the refusal for a failed guard scan.
 
 package gatecli
 
@@ -17,8 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/impactset"
 )
 
-// SlotBusyExit is the exit code of a capped `lym gate test` call whose run goes on after the caller's keep-warm cap passed.
-// It is EX_TEMPFAIL and no failure: the caller runs the same command again, and can tell a run still going from a failing test run.
+// SlotBusyExit is the exit code of a capped `lym gate test` call whose run goes on past the caller's keep-warm cap.
+// It is EX_TEMPFAIL, not a failure.
+// The caller runs the same command again and can tell a run still going from a failing test run.
 const SlotBusyExit = 75
 
 // defaultGoBinary is the go command `lym gate test` builds `lym` with.
@@ -27,7 +29,9 @@ const defaultGoBinary = "go"
 // defaultPreTierCeiling bounds the work before a call's first tier.
 const defaultPreTierCeiling = 10 * time.Minute
 
-// defaultRerunDelay is how long a tier that failed on a resource shortage or crashed its test runner waits before its one rerun, long enough for a burst of short-lived processes elsewhere to end.
+// defaultRerunDelay is how long a tier waits before its one rerun.
+// The tier failed on a resource shortage or crashed its test runner.
+// The delay is long enough for a burst of short-lived processes elsewhere to end.
 const defaultRerunDelay = 10 * time.Second
 
 // Command builds the cobra command tree for the gate module.
@@ -35,12 +39,20 @@ func Command() *cobra.Command {
 	return newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultRerunDelay, defaultPipeWaitDelay, defaultDetachSeams())
 }
 
-// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, preTierCeiling, the bound on the work before the first tier, timeoutUnit, the length of one `timeout_min` minute, rerunDelay, how long a tier that failed on a resource shortage or crashed its test runner waits before its one rerun, pipeWaitDelay, how long a tier's or the build's output is still read after its shell exits, and seams, the bounds and launcher of a capped call's front.
+// newCommand builds the gate command tree from its parameters.
+// goBinary is the go command a prebuilding tier builds `lym` with;
+// samplePeriod is how often the CPU watchdog samples a tier's process tree;
+// preTierCeiling bounds the work before the first tier;
+// timeoutUnit is the length of one `timeout_min` minute;
+// rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner;
+// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits;
+// seams holds the bounds and launcher of a capped call's front.
 func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay time.Duration, seams detachSeams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run the hub's test tiers inside the hub's gate-slot pool",
-		// ArbitraryArgs lets a standalone RunCLI, where this group is the cobra root, reach GroupRunE instead of cobra's own unknown-command error.
+		// ArbitraryArgs lets this group, as the cobra root of a standalone RunCLI, reach GroupRunE.
+		// Without it, cobra answers with its own unknown-command error.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
 	}
@@ -124,13 +136,15 @@ Examples:
 	return cmd
 }
 
-// RunCLI is the public seam for the gate module, delegating to clihelp.Execute for in-process test capture.
+// RunCLI runs the gate command tree with args, writing to out, and returns its exit code.
+// It serves in-process test capture.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// RunCLIIn is RunCLI with cwd as the working directory the verb resolves against instead of the process's.
-// An empty cwd delegates to RunCLI, since lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the gate command tree with args, writing to out.
+// The verb resolves against cwd instead of the process's working directory, and it returns the exit code.
+// An empty cwd uses the process's working directory, since lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return RunCLI(out, args)
@@ -148,16 +162,16 @@ type testRequest struct {
 	preTierCeiling time.Duration
 	// timeoutUnit is the length of one `timeout_min` minute.
 	timeoutUnit time.Duration
-	// rerunDelay is how long a tier that failed on a resource shortage or crashed its test runner waits before its one rerun.
+	// rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner.
 	rerunDelay time.Duration
 	// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.
 	pipeWaitDelay time.Duration
-	// stderr receives the lines the verb prints beside its output: the CPU watchdog's quit, a tier's timeout and each tier's summary.
+	// stderr receives the verb's lines beside its output: the CPU watchdog's quit, a tier's timeout and each tier's summary.
 	stderr io.Writer
 	// dir is the -C value as typed; empty means the tier's own dir.
 	dir  string
 	tags string
-	// gate is the --gate key: its tiers are the listed tiers and its scope picks the scope form; empty for a call with manual flags.
+	// gate is the --gate key: its tiers run and its scope form applies; empty for a call with manual flags.
 	gate string
 	// tiers are the --tier values as typed; empty means tier0 unless uptoGiven.
 	tiers []int
@@ -189,12 +203,12 @@ type testRequest struct {
 	watching bool
 	// observer hears each tier start and end; its zero value observes nothing.
 	observer TierObserver
-	// phase, when set, hears where the call stands as each tier waits for its slots and runs; only a detached runner sets it.
+	// phase, when set, hears where the call stands as each tier waits for slots and runs; only a detached runner sets it.
 	phase func(runPhase)
 }
 
-// absoluteDir returns the directory a request runs in: dir made absolute against the seam cwd, or the seam cwd itself when dir is empty.
-// It fails when a named directory does not exist.
+// absoluteDir returns the directory a request runs in: dir made absolute against cwd, or cwd when dir is empty.
+// It fails when a named directory does not exist or is not a directory.
 func absoluteDir(cwd, dir string) (string, error) {
 	if dir == "" {
 		return cwd, nil
@@ -210,7 +224,8 @@ func absoluteDir(cwd, dir string) (string, error) {
 }
 
 // guardScanRefusal is the refusal text for a failed module guard scan of moduleDir.
-// A guard-scan error names its file, and its line when it has one, with the way forward its kind gives; any other error names the module directory.
+// A guard-scan error names its file, and its line when it has one, with the way forward its kind gives;
+// any other error names the module directory.
 func guardScanRefusal(moduleDir string, err error) string {
 	var scanErr *impactset.GuardScanError
 	if !errors.As(err, &scanErr) {

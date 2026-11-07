@@ -1,5 +1,5 @@
-// specsdir_test.go covers SpecsDir's derivation from BoardDir and lymdirs.LymDirName, and its
-// sibling relationship to StencilsDir.
+// specsdir_test.go covers SpecsDir's derivation from BoardDir and lymdirs.LymDirName.
+// It also checks that SpecsDir is a sibling of StencilsDir.
 
 package fabricengine
 

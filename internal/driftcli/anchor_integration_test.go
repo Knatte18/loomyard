@@ -1,6 +1,8 @@
 //go:build !windows
 
-// anchor_integration_test.go drives the built `lym drift` verbs in a hub whose anchor is a subdirectory, and checks that the detached capture child and every drift command run in the anchored directory, not the worktree root.
+// anchor_integration_test.go drives the built `lym drift` verbs in a hub whose anchor is a subdirectory.
+// It checks that the detached capture child and every drift command run in the anchored directory.
+// None of them runs in the worktree root.
 
 package driftcli_test
 
@@ -23,9 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDrift_RunsInTheAnchoredDirectory covers the main capture's child and the check's current capture of a hub anchored at a subdirectory:
-// each declared command records its working directory, and every one must be the anchored directory.
-// A capture child started anywhere but the anchored directory cannot resolve its worktree, never records its start, and marks its error as lasting.
+// TestDrift_RunsInTheAnchoredDirectory covers the main capture's child and the check's current capture.
+// Each declared command records its working directory, and every one must be the anchored directory.
+// A capture child started anywhere but the anchored directory cannot resolve its worktree,
+// so it never records its start and marks its error as lasting.
 func TestDrift_RunsInTheAnchoredDirectory(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

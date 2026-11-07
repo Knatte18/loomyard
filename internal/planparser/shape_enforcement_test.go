@@ -1,24 +1,9 @@
-// shape_enforcement_test.go is the requirement-4 capstone: the two AST-based boundary-enforcement
-// scans that prove PATTERN-sole-parsers holds over both packages'
-// production files, not just at the registry's own file boundary.
-// It follows the same idiom as internal/cliwire/bannedecl_enforcement_test.go and this package's own shape_test.go: stdlib go/parser only, production files walked through scankit from the module root --
-// every _test.go file in either package is skipped by design, because a test fixture legitimately spells a raw "plan:" ref or calls classifyRef directly.
-//
-// The refKind scan flags any ast.Ident naming classifyRef, the refKind type, or one of its declared
-// constants, outside classify.go and shape.go -- the two files the Ref-Shape Registry Invariant
-// names as the sole legal home for a refKind comparison or a classifyRef call. refKindName and
-// lookup are deliberately NOT in the banned set: calling into shape.go's own exported-within-package
-// API is always legal, because the ban is on comparing/switching over kinds and on classifying
-// directly, not on consuming the registry's answer.
-//
-// The plan:-op scan flags open-coded "plan:" string surgery -- a strings.HasPrefix/TrimPrefix call
-// or a string concatenation whose operand is HandlePrefix or a "plan:" literal -- outside
-// classify.go, shape.go, and internal/planparser/handle.go (the handle grammar's own declared
-// owner, per Decision: exported-surface-placement). No internal/planglyph file is exempt from this
-// scan, internal/planglyph/handle.go included: that shared basename is exactly where the invariant
-// bites, since a planglyph file re-deriving the "plan:" strip rather than calling into
-// planparser's exported handle vocabulary (IsHandleRef/HandleBody/HandleUnit/NewHandle/...) would
-// be a second copy of the grammar handle.go already owns.
+// shape_enforcement_test.go enforces the `PATTERN-sole-parsers` rule with AST scans.
+// The scans read the production files of internal/planparser and internal/planglyph.
+// The refKind scan flags names of classifyRef, refKind and its constants outside classify.go and shape.go;
+// it does not ban consuming the registry's answers.
+// The plan:-op scan flags open-coded "plan:" string surgery outside those two files and internal/planparser/handle.go.
+// Test files are skipped by design, since a test fixture legitimately spells a raw "plan:" ref or calls classifyRef.
 
 package planparser
 
@@ -33,11 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// bannedRefKindIdentifiers returns the refKind scan's banned identifier set: every constant
-// classify.go's refKind const block declares -- built dynamically via
-// refKindConstNamesInDeclarationOrder (shape_test.go), so a fifth refKind is banned automatically
-// the moment it is added -- plus the two fixed names "refKind" (the type itself) and "classifyRef"
-// (the sole classifier).
+// bannedRefKindIdentifiers returns the refKind scan's banned identifier set.
+// It holds the type name refKind, the sole classifier classifyRef, and every refKind constant.
+// The constants are read from classify.go through refKindConstNamesInDeclarationOrder (shape_helper_test.go),
+// so a constant added later is banned without a list edit.
 func bannedRefKindIdentifiers(t *testing.T) map[string]bool {
 	t.Helper()
 
@@ -51,18 +35,19 @@ func bannedRefKindIdentifiers(t *testing.T) map[string]bool {
 	return banned
 }
 
-// enforcementScanMinFiles is the plausible floor for how many production .go files the two packages hold together;
+// enforcementScanMinFiles is the plausible floor for the number of production .go files the scanned packages hold;
 // below it a scan has read the wrong directories.
 const enforcementScanMinFiles = 10
 
-// enforcementScanTarget is one production .go file under scan: its parsed AST plus its
-// repository-relative path, rendered POSIX-style, for exempt-set comparison and failure reporting.
+// enforcementScanTarget is one production .go file under scan: its parsed AST and its repository-relative path.
+// The path is rendered POSIX-style, for exempt-set comparison and failure reporting.
 type enforcementScanTarget struct {
 	astFile *ast.File
 	relPath string
 }
 
-// scanTargets returns both packages' own production-file targets, walked from the module root through scankit, together with the count of files scanned for the floor check.
+// scanTargets walks the production files of internal/planparser and internal/planglyph from the module root.
+// It also returns how many files the walk read, so a caller can check that it read the expected directories.
 func scanTargets(t *testing.T) ([]enforcementScanTarget, int) {
 	t.Helper()
 
@@ -73,31 +58,30 @@ func scanTargets(t *testing.T) ([]enforcementScanTarget, int) {
 	return targets, scanned
 }
 
-// refKindScanExempt is the refKind scan's exempt set: the two files the Ref-Shape Registry
-// Invariant names as the registry's own declared home. No internal/planglyph file is ever in this
-// set -- planglyph cannot legally reference an unexported planparser identifier at all, so its
-// production files are scanned purely as a name-shape check (a local identifier that happens to
-// collide with a banned name would still trip it).
+// refKindScanExempt lists the production files that may name the refKind identifiers:
+// classify.go and shape.go, the files that declare the ref-shape registry.
+// No internal/planglyph file is listed, because planglyph cannot reference an unexported planparser identifier.
+// Planglyph files are scanned as a name-shape check only:
+// a local identifier that collides with a banned name still trips the scan.
 var refKindScanExempt = []scankit.Entry{
 	{Key: "internal/planparser/classify.go", Why: "the registry's own declared home"},
 	{Key: "internal/planparser/shape.go", Why: "the registry's own declared home"},
 }
 
-// planOpScanExempt is the plan:-op scan's exempt set: classify.go and shape.go (the registry's own
-// home) plus internal/planparser/handle.go, the handle grammar's declared owner
-// (Decision: exported-surface-placement). internal/planglyph/handle.go is deliberately NOT in this
-// set, despite sharing a basename with the exempt planparser file -- that shared basename is
-// exactly where the invariant bites, so planglyph's own handle.go is scanned like any other
-// planglyph production file.
+// planOpScanExempt lists the production files that may open-code "plan:" string surgery.
+// classify.go and shape.go are the home of the ref-shape registry.
+// internal/planparser/handle.go owns the handle grammar.
+// internal/planglyph/handle.go is not listed, though it shares a basename with internal/planparser/handle.go.
+// The shared basename is where the check applies.
+// So planglyph's handle.go is scanned like any other planglyph production file.
 var planOpScanExempt = []scankit.Entry{
 	{Key: "internal/planparser/classify.go", Why: "the registry's own declared home"},
 	{Key: "internal/planparser/shape.go", Why: "the registry's own declared home"},
 	{Key: "internal/planparser/handle.go", Why: "the handle grammar's declared owner"},
 }
 
-// refKindScanFile returns, for one already-parsed production file, every ast.Ident whose name
-// appears in banned -- the refKind scan's matcher. The match is on the AST alone, so a doc comment
-// naming classifyRef or a refKind constant can never trip it.
+// refKindScanFile returns the name of every banned identifier that appears in an already-parsed production file.
+// The match is on the AST alone, so a comment naming a banned identifier never trips it.
 func refKindScanFile(astFile *ast.File, banned map[string]bool) []string {
 	var hits []string
 	ast.Inspect(astFile, func(n ast.Node) bool {
@@ -113,8 +97,7 @@ func refKindScanFile(astFile *ast.File, banned map[string]bool) []string {
 	return hits
 }
 
-// isHandlePrefixIdent reports whether e is a bare reference to the identifier HandlePrefix, either
-// unqualified (HandlePrefix) or package-qualified (planparser.HandlePrefix).
+// isHandlePrefixIdent reports whether e names HandlePrefix, bare or as a selector such as planparser.HandlePrefix.
 func isHandlePrefixIdent(e ast.Expr) bool {
 	switch x := e.(type) {
 	case *ast.Ident:
@@ -125,8 +108,8 @@ func isHandlePrefixIdent(e ast.Expr) bool {
 	return false
 }
 
-// isPlanColonLiteral reports whether e is the string literal "plan:", decoded via strconv.Unquote
-// so the comparison is against the literal's actual VALUE rather than its raw quoted source text.
+// isPlanColonLiteral reports whether e is the string literal "plan:", decoded via strconv.Unquote,
+// so the comparison is against the literal's value rather than its quoted source text.
 func isPlanColonLiteral(e ast.Expr) bool {
 	lit, ok := e.(*ast.BasicLit)
 	if !ok || lit.Kind != token.STRING {
@@ -136,15 +119,12 @@ func isPlanColonLiteral(e ast.Expr) bool {
 	return err == nil && v == "plan:"
 }
 
-// isHandlePrefixOrPlanLiteral reports whether e is either a HandlePrefix reference or a "plan:"
-// literal -- the two operand shapes the plan:-op scan bans in operand position of a shape
-// operation.
+// isHandlePrefixOrPlanLiteral reports whether e is a HandlePrefix reference or a "plan:" literal.
+// Either form must not be the second argument of strings.HasPrefix or strings.TrimPrefix, nor an operand of +.
 func isHandlePrefixOrPlanLiteral(e ast.Expr) bool {
 	return isHandlePrefixIdent(e) || isPlanColonLiteral(e)
 }
 
-// isStringsHasPrefixOrTrimPrefixCall reports whether call invokes strings.HasPrefix or
-// strings.TrimPrefix -- the two shape operations the plan:-op scan's call rule watches.
 func isStringsHasPrefixOrTrimPrefixCall(call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -157,12 +137,11 @@ func isStringsHasPrefixOrTrimPrefixCall(call *ast.CallExpr) bool {
 	return sel.Sel.Name == "HasPrefix" || sel.Sel.Name == "TrimPrefix"
 }
 
-// planOpScanFile returns, for one already-parsed production file, one description string per
-// plan:-op violation -- the plan:-op scan's matcher. It flags two shapes: a strings.HasPrefix or
-// strings.TrimPrefix call whose second argument is HandlePrefix or a "plan:" literal, and a "+"
-// string concatenation with HandlePrefix or a "plan:" literal as either operand. A "plan:" literal
-// outside operand position of one of these two shapes -- including every comment, since comments
-// are never AST nodes -- never trips this matcher.
+// planOpScanFile returns, for one already-parsed production file, one description per banned plan: string operation.
+// It flags a strings.HasPrefix or strings.TrimPrefix call whose second argument is HandlePrefix or a "plan:" literal.
+// It also flags a "+" concatenation with HandlePrefix or a "plan:" literal as either operand.
+// A "plan:" literal outside those operand positions never trips it.
+// Comments never trip it either, since they are not AST nodes.
 func planOpScanFile(astFile *ast.File) []string {
 	var hits []string
 	ast.Inspect(astFile, func(n ast.Node) bool {
@@ -181,10 +160,9 @@ func planOpScanFile(astFile *ast.File) []string {
 	return hits
 }
 
-// TestRefKindScan_CatchesSeededViolation is the refKind scan's own seeded self-test: a synthetic
-// source string carrying a deliberate classifyRef call plus a refKindPath comparison must trip the
-// matcher, proving it actually fires before the real-tree assertion below is trusted to mean
-// anything.
+// TestRefKindScan_CatchesSeededViolation checks that the matcher flags a synthetic source.
+// The source calls classifyRef and compares against refKindPath.
+// Without that check, a matcher that flags nothing would pass every real tree.
 func TestRefKindScan_CatchesSeededViolation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -214,8 +192,9 @@ func offside(raw string) bool {
 	}
 }
 
-// TestPlanOpScan_CatchesSeededViolation is the plan:-op scan's own seeded self-test: a synthetic
-// source string carrying a deliberate strings.HasPrefix(x, "plan:") call must trip the matcher.
+// TestPlanOpScan_CatchesSeededViolation checks that the matcher flags a synthetic source.
+// The source calls strings.HasPrefix(raw, "plan:").
+// Without that check, a matcher that flags nothing would pass every real tree.
 func TestPlanOpScan_CatchesSeededViolation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -240,9 +219,8 @@ func offside(raw string) bool {
 	}
 }
 
-// TestRefKindScan_RealTreeClean is the refKind scan's real-tree half: after the classify.go/shape.go
-// migration, no production file in internal/planparser or internal/planglyph outside those two
-// exempt files may name classifyRef, the refKind type, or one of its declared constants.
+// TestRefKindScan_RealTreeClean checks every production file in internal/planparser and internal/planglyph.
+// Only classify.go and shape.go may name classifyRef, the refKind type, or one of its declared constants.
 //
 //lym:guard
 func TestRefKindScan_RealTreeClean(t *testing.T) {
@@ -272,11 +250,9 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 	}
 }
 
-// TestPlanOpScan_RealTreeClean is the plan:-op scan's real-tree half: after the classify.go/shape.go
-// migration, no production file in internal/planparser or internal/planglyph outside classify.go,
-// shape.go, and internal/planparser/handle.go may open-code "plan:" string surgery.
-// internal/planglyph/handle.go is scanned like any other planglyph file -- it is NOT exempt, despite
-// sharing a basename with the exempt planparser file.
+// TestPlanOpScan_RealTreeClean checks every production file in internal/planparser and internal/planglyph.
+// Only classify.go, shape.go and internal/planparser/handle.go may open-code "plan:" string surgery.
+// internal/planglyph/handle.go is not exempt, though it shares a basename with internal/planparser/handle.go.
 //
 //lym:guard
 func TestPlanOpScan_RealTreeClean(t *testing.T) {

@@ -1,5 +1,8 @@
-// audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy CheckFork/CheckParent enforce, the fabricengine.RefScanner matcher (built from a fake lymcwd.Location, never a hardcoded geometry token), and SettleRetry with a recording fake Sleeper.
-// Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no git spawn, no real sleeping, no filesystem I/O.
+// audit_test.go table-drives webster's fork-audit policy over the full violation taxonomy.
+// The cases cover CheckFork, CheckParent, and the fabricengine.RefScanner matcher.
+// The matcher is built from a fake lymcwd.Location, never a hardcoded geometry token.
+// SettleRetry is covered with a recording fake Sleeper.
+// Every case is a pure fact-in/verdict-out table: no git spawn, no real sleeping, no filesystem I/O.
 
 package websterengine
 
@@ -21,9 +24,15 @@ func fakeLayout() *lymcwd.Location {
 	return &lymcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
-// TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape CheckFork/CheckParent must classify: `lym fabric` invocations (the live spelling the Fabric Git Invariant bans), a command referencing the fabric worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that must never match.
-// The `lym fabric` rows are the regression guard: the fabric cutover deleted the per-side verbs and renamed every fabric-touching verb under `lym fabric`, so a matcher that knows only the old spellings bans nothing an agent can actually run today.
-// The `lym.exe` rows are the same guard for the Windows spelling — lym's primary platform, where an agent writing the extension out would otherwise slip the whole audit — paired with a `lym.exe board` row proving the extension did not widen the match to every lym invocation.
+// TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape the audit must classify:
+// `lym fabric` invocations, which the Fabric Git Invariant bans;
+// commands referencing the fabric worktree path directly, such as `git -C <fabric-worktree> add`;
+// and fabric-free commands that must never match.
+// The `lym fabric` rows are the regression guard: every fabric-touching verb runs under `lym fabric`,
+// so a matcher that knows only an older spelling bans nothing an agent can run.
+// The `lym.exe` rows guard the Windows spelling, which is lym's primary platform.
+// An agent that writes the extension out would otherwise slip the whole audit.
+// The `lym.exe board` row pairs with them and proves the extension did not widen the match to every lym invocation.
 func TestRefScannerMatches(t *testing.T) {
 	tiergate.Require(t, 0)
 	layout := fakeLayout()
@@ -63,15 +72,15 @@ func TestRefScannerMatches(t *testing.T) {
 	}
 }
 
-// Compile-time assertions that both suppliers satisfy RefMatcher: a later signature drift on either
-// side fails at compile time rather than at the first standalone run.
+// Compile-time assertions that both suppliers satisfy RefMatcher:
+// a later signature drift on either side fails at compile time, not at the first standalone run.
 var (
 	_ RefMatcher = NeverMatches{}
 	_ RefMatcher = (*fabricengine.RefScanner)(nil)
 )
 
-// TestNeverMatches_AlwaysFalse pins NeverMatches's whole contract: it never matches, not even for a
-// command spelling a real *fabricengine.RefScanner would match.
+// TestNeverMatches_AlwaysFalse pins NeverMatches's whole contract:
+// it never matches, not even for a command spelling a real *fabricengine.RefScanner would match.
 func TestNeverMatches_AlwaysFalse(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -93,15 +102,14 @@ func TestNeverMatches_AlwaysFalse(t *testing.T) {
 	}
 }
 
-// cleanForkReport returns a ForkReport that violates none of CheckFork's
-// rules — tests mutate a copy to trigger exactly one violation at a time.
+// cleanForkReport returns a ForkReport that violates none of CheckFork's rules.
+// Tests mutate a copy to trigger exactly one violation at a time.
 func cleanForkReport(path string) shuttleengine.ForkReport {
 	return shuttleengine.ForkReport{TranscriptPath: path, ReportReturned: true}
 }
 
-// TestCheckFork covers every violation CheckFork enforces plus the two cases the requirements pin
-// as explicitly ALLOWED for a fork (Write/Edit and repo git), which is the opposite of
-// burlerengine's read-only cluster-reviewer policy.
+// TestCheckFork covers every violation CheckFork enforces, and the two cases a fork must be allowed:
+// Write/Edit calls and repo git commands.
 //
 //testtiming:keep pins the violation class and path for every write-path and command shape a fork can produce, including the allowed ones; the covering record-batch table reaches a few shapes through whole calls
 func TestCheckFork(t *testing.T) {
@@ -155,9 +163,8 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
-			// A fork writing Master's own contract files forges the run's
-			// terminal judgment (round fable-r3 live: a misidentifying fork
-			// overwrote outcome.yaml with a forged stuck mid-run).
+			// A fork writing Master's own contract files forges the run's terminal judgment:
+			// a misidentifying fork can overwrite outcome.yaml with a forged stuck outcome mid-run.
 			name: "fork write to outcome.yaml is a hard error",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "f", ReportReturned: true,
@@ -174,8 +181,8 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassForkContractWrite},
 		},
 		{
-			// The workdir is a subdirectory of the anchor root here, so the relative path names a file
-			// that is no contract file: a resolution against the anchor root instead would flag it.
+			// The workdir is a subdirectory of the anchor root, so the relative path names a file that is no contract file.
+			// A resolution against the anchor root instead would flag it.
 			name: "a relative write resolves against the audit workdir, not the anchor root",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "g2", ReportReturned: true,
@@ -310,8 +317,8 @@ func TestCheckFork(t *testing.T) {
 	}
 }
 
-// TestCheckParent covers every violation CheckParent enforces plus the two contract-file writes
-// pinned as explicitly ALLOWED for Master.
+// TestCheckParent covers every violation CheckParent enforces.
+// It also pins the two contract-file writes that are explicitly ALLOWED for Master.
 func TestCheckParent(t *testing.T) {
 	tiergate.Require(t, 0)
 	layout := fakeLayout()
@@ -359,8 +366,8 @@ func TestCheckParent(t *testing.T) {
 			wantClasses: nil,
 		},
 		{
-			// The workdir is a subdirectory of the anchor root here, so the relative contract-file
-			// spelling names another file: a resolution against the anchor root instead would allow it.
+			// The workdir is a subdirectory of the anchor root, so the relative contract-file spelling names another file.
+			// A resolution against the anchor root instead would allow it.
 			name: "a relative write resolves against the audit workdir, not the anchor root",
 			audit: shuttleengine.ForkAudit{
 				ParentWrites: []string{"_lym/webster/outcome.yaml"},
@@ -434,8 +441,8 @@ func TestCheckParent(t *testing.T) {
 	}
 }
 
-// recordingSleeper is a Sleeper that never blocks: it only records each requested duration, so
-// SettleRetry's retry loop runs its scripted attempts at no wall-clock cost.
+// recordingSleeper is a Sleeper that never blocks.
+// It only records each requested duration, so a retry loop runs its scripted attempts at no wall-clock cost.
 type recordingSleeper struct {
 	slept []time.Duration
 }
@@ -444,9 +451,10 @@ func (s *recordingSleeper) Sleep(d time.Duration) {
 	s.slept = append(s.slept, d)
 }
 
-// TestSettleRetry pins SettleRetry's contract: a transcript appearing after the first tick returns
-// at once without waiting out the window, a window with no new transcript ends after window/tick
-// sleeps with no error of its own, and a fetch error returns at once with no retry.
+// TestSettleRetry pins SettleRetry's contract.
+// A transcript that appears after the first tick returns at once, without waiting out the window.
+// A window with no new transcript ends after window/tick sleeps, with no error of its own.
+// A fetch error returns at once, with no retry.
 //
 //testtiming:keep pins the exact fetch and sleep counts for an early hit and an exhausted window, and no retry after a fetch error; the record-batch tests only observe that a tick happened
 func TestSettleRetry(t *testing.T) {

@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// DetachedChild describes the hidden flags a detached child process was spawned with, which decide how its network gate behaves.
+// DetachedChild describes the hidden flags a detached child process was spawned with.
+// They decide how the child's network gate behaves.
 // The zero value is an ordinary process.
 type DetachedChild struct {
 	// Deferrable marks a detached push or board-sync child whose gate defers under a pause instead of waiting.
@@ -29,17 +30,23 @@ type DetachedChild struct {
 	HubScope bool
 }
 
-// InstallNetworkGate installs the pause gate that holds this process's network git and GitHub calls while a pause covers it.
+// InstallNetworkGate installs the pause gate that holds the process's network git and GitHub calls during a pause.
 // The hub is the one the context's working directory resolves to; outside a hub nothing is installed.
-// A git worktree whose parent holds no board-level _lym, such as an agent worktree nested in a repository, is outside a hub,
-// so no in-flight marker is written under a hub path guessed from its parent.
-// The gate is told the process's strand name, pid and start time, so its in-flight markers tell a live process from a dead one, and reads whether a live parent lock record names the slug it is asked about.
+// A git worktree nested in a repository without a board-level _lym is outside a hub,
+// so no in-flight marker is written under a path guessed from its parent.
+// The gate is told the process's strand name, pid and start time.
+// Its in-flight markers tell a live process from a dead one,
+// and the gate reads whether a live parent lock record names the slug it is asked about.
 // A nil pauseSlug takes the slug from the working directory's worktree.
-// A non-nil pauseSlug is the slug the process is held under, empty for the prime's, and the working directory is resolved as a worktree root:
-// a detached push child starts in the hub's board worktree, which says nothing of the pair it serves and which the gated resolution refuses on a hub with a subpath anchor.
-// With child.HubScope set and a nil pauseSlug the process is held under the empty slug and resolved the same way, so only a hub entry holds it.
-// A child that is Deferrable and not ParentLocked defers under a pause instead of waiting;
-// a ParentLocked child lets its own slug's owner entry pass, since the parent lock it was spawned under makes it the process that must finish the run's push.
+// A non-nil pauseSlug is the slug the process is held under, empty for the prime's,
+// and the working directory is resolved as a worktree root.
+// A detached push child starts in the hub's board worktree, which says nothing of the pair it serves.
+// The gated resolution refuses that worktree on a hub with a subpath anchor.
+// With child.HubScope set and a nil pauseSlug, the process is held under the empty slug and resolved the same way.
+// Only a hub entry holds such a process.
+// A child that is Deferrable and not ParentLocked defers under a pause instead of waiting.
+// A ParentLocked child lets its own slug's owner entry pass.
+// The parent lock it was spawned under makes it the process that must finish the run's push.
 func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedChild) {
 	if pauseSlug == nil && child.HubScope {
 		hubSlug := ""

@@ -1,4 +1,5 @@
-// finalizeguard.go refuses a goto onto Finalize while the parent's code checkout holds tracked dirt, and composes that arm with the run's other goto guards.
+// finalizeguard.go holds the goto guard that refuses Finalize while the parent's code checkout has tracked dirt.
+// It also composes the run's goto guards into one.
 
 package loomcli
 
@@ -10,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// finalizeDirtGuard refuses a goto onto the Finalize row while the parent's code checkout holds tracked dirt, since Finalize's parent-side merge would refuse the same dirt.
+// finalizeDirtGuard refuses a goto onto the Finalize row while the parent's code checkout holds tracked dirt.
+// The merge into the parent at Finalize would refuse the same dirt, so the goto is refused first.
 // Every other target is admitted without a parent read.
-// An isFinalize error is returned, which Shed turns into a refusal.
-// A parentDirt error is logged and admitted, since Finalize's own steps then report the real problem;
-// a fabric merge record on the parent pair and an empty path list are admitted too, since Finalize's own guard words those.
+// An isFinalize error is returned as the guard's error, which refuses the move.
+// A parentDirt error is logged and the move admitted, since Finalize's own steps then report the real problem.
+// A merge record on the parent pair, or an empty path list, admits the move too.
+// Finalize's own guard words those cases.
 // The guard only decides; it moves no run and writes no file.
 func finalizeDirtGuard(isFinalize func(row string) (bool, error), parentDirt func() (checkout string, paths []string, mergeRecord bool, err error)) shedengine.GotoGuard {
 	return func(target string) (string, error) {
@@ -46,7 +49,8 @@ func composeGotoGuards(guards ...shedengine.GotoGuard) shedengine.GotoGuard {
 	}
 }
 
-// parentCodeDirtFromFabric reads the parent pair's code checkout, its tracked uncommitted paths, and whether fabric holds a merge record on that pair.
+// parentCodeDirtFromFabric reads the parent pair's code checkout and its tracked uncommitted paths.
+// It also reports whether fabric holds a merge record on that pair.
 // It reads the code checkout alone, never the records checkout, and returns every read error.
 func (c *loomCLI) parentCodeDirtFromFabric() (checkout string, paths []string, mergeRecord bool, err error) {
 	parentBranch, err := c.recordedParentBranch(c.location)
@@ -68,7 +72,7 @@ func (c *loomCLI) parentCodeDirtFromFabric() (checkout string, paths []string, m
 	return checkout, paths, mergeRecord, nil
 }
 
-// finalizeGuard is the Finalize arm of the run's goto guard over the parent read the receiver's seam answers.
+// finalizeGuard returns the goto guard that refuses Finalize while the parent's code checkout has tracked dirt.
 func (c *loomCLI) finalizeGuard() shedengine.GotoGuard {
 	return finalizeDirtGuard(loomrecipe.IsFinalizeRow, c.parentCodeDirt)
 }

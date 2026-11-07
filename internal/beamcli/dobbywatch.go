@@ -1,4 +1,6 @@
-// dobbywatch.go opens dobby's file watch: one fswatch watcher per directory of interest, merged into the one channel the loop reads, and re-synced as runs appear.
+// dobbywatch.go opens dobby's file watch.
+// It runs one fswatch watcher per directory of interest and merges their events into one channel the loop reads.
+// The watch re-syncs its watchers as runs appear.
 
 package beamcli
 
@@ -14,8 +16,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// dobbyWatchDirs returns the lister of the directories dobby watches, each with the file names it cares about, empty meaning every entry.
-// They are the prime's batten runs directory, where a new run appears, each run's directory for batten's own status file, each task pair's status directory for the child's, the board's `board.json`, the hub's pause record, and the hibernate request at hibernateRequestPath unless it is empty, as for a beam's dobby, which carries no request.
+// dobbyWatchDirs returns a function that lists the directories dobby watches.
+// Each directory maps to the file names to watch in it; an empty list means every entry.
+// The listed directories are the prime's batten runs directory, where a new run appears;
+// each run's directory, for batten's own status file;
+// each task pair's status directory, for the child's status file;
+// the board directory, for `board.json`;
+// the hub's pause record directory;
+// and the hibernate request's directory.
+// The request's directory is left out when hibernateRequestPath is empty.
+// A beam's dobby carries no request, so it is set up that way.
 func dobbyWatchDirs(prime *lymcwd.Location, pauseRecordPath, boardDir, hibernateRequestPath string) func() map[string][]string {
 	return func() map[string][]string {
 		dirs := map[string][]string{
@@ -46,7 +56,8 @@ func dobbyWatchDirs(prime *lymcwd.Location, pauseRecordPath, boardDir, hibernate
 	}
 }
 
-// watchSet merges the events of many fswatch watchers into one channel and opens a watcher for each directory list names as it appears.
+// watchSet merges the events of many fswatch watchers into one channel.
+// It opens a watcher for each directory that list returns, as it appears.
 type watchSet struct {
 	list    func() map[string][]string
 	out     chan struct{}
@@ -59,8 +70,10 @@ type watchSet struct {
 	closed   bool
 }
 
-// openDobbyWatch opens a watcher for every directory list names that exists, and returns the merged event channel with the function that releases them.
-// A directory that does not exist yet, or that cannot be watched, is tried again at the next event; when none opens, the error of the last attempt is returned and the loop's timer drives alone.
+// openDobbyWatch opens a watcher for every directory that list returns and that exists.
+// It returns the merged event channel and the function that releases the watchers.
+// A directory that does not exist yet, or that cannot be watched, is tried again at the next event.
+// When none opens, the error of the last attempt is returned, and the loop's timer drives alone.
 func openDobbyWatch(list func() map[string][]string) (<-chan struct{}, func(), error) {
 	set := &watchSet{
 		list:     list,

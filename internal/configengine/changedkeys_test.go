@@ -1,4 +1,5 @@
-// changedkeys_test.go pins ChangedKeys, the key-by-key comparison of a config file at a task's fork point, its tip and its parent's tip.
+// changedkeys_test.go tests ChangedKeys, the key-by-key comparison of a config file.
+// It compares the file at a task's fork point, its tip and its parent's tip.
 
 package configengine_test
 
@@ -10,7 +11,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// TestChangedKeys pins which keys the comparison reports: only a key whose tip value differs from the base and the parent, a comment-only edit and a value the parent already holds reporting none, and a document that does not parse an error.
+// TestChangedKeys pins which keys the comparison reports.
+// Only a key whose tip value differs from the base and the parent is reported.
+// A comment-only edit and a value the parent already holds report none.
+// A document that does not parse returns an error.
 func TestChangedKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

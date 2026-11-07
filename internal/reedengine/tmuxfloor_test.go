@@ -1,6 +1,8 @@
 //go:build !windows
 
-// tmuxfloor_test.go pins the tmux floor check: the runner's refusal, the per-path cache, the retry of a probe that could not run, the allow-set-title answer and the server spawn's refusal.
+// tmuxfloor_test.go pins the tmux floor check.
+// It covers the runner's refusal, the per-path cache and the retry of a probe that could not run.
+// It also covers the allow-set-title answer and the refusal to spawn a server.
 
 package reedengine
 

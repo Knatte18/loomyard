@@ -1,6 +1,7 @@
-// switch.go implements the `switch` reed verb: it moves one told client to the next or previous session of a told tmux server in session-id order.
-// The key bindings call it through run-shell; it prints nothing on success, so run-shell opens no output view.
-// It carries clihelp.SkipStencilSeedAnnotation, since a key press must never run the root pre-run's stencil-seed pass.
+// switch.go implements the `switch` reed verb.
+// It moves a tmux client to the next or previous session of a tmux server, in session-id order.
+// The key bindings call it through `run-shell`; it prints nothing on success, so `run-shell` opens no output view.
+// It carries `clihelp.SkipStencilSeedAnnotation`: a key press must never run the root pre-run's stencil-seed pass.
 
 package reedcli
 
@@ -13,7 +14,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// validateSwitchFlags refuses a switch call that does not name exactly one direction, or lacks the socket, client or tmux path it is told.
+// validateSwitchFlags returns an error unless exactly one of next and prev is set.
+// It also requires a non-empty socket, client and tmux path.
 func validateSwitchFlags(next, prev bool, socketPath, client, tmuxPath string) error {
 	if next == prev {
 		return errors.New("exactly one of --next and --prev is required")

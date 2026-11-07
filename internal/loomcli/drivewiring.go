@@ -1,4 +1,7 @@
-// drivewiring.go wires the Go driver's seams to the real run: the loop's step and goto, the status and lock reads, the records and reports, the batten and pause reads, the hand-back, the agents, the worktree reads and the hand-over, plus loom's hidden `drive` verb and the detached spawn of a driver.
+// drivewiring.go wires the Go driver's seams to the real run:
+// the loop's step and goto, the status and lock reads, the records, reports and pause reads;
+// the hand-back, the agents, the worktree reads and the hand-over.
+// It also holds loom's hidden `drive` verb and the detached spawn of a driver.
 
 package loomcli
 
@@ -90,7 +93,9 @@ once. It removes the park marker and the resume report on start.`,
 	}
 }
 
-// driveEnvelopePath composes the path of one saved stop envelope, sheddriver.EnvelopeFileName's drive-envelope-<compact-timestamp>-<4-hex>.json beside the run's drive reports.
+// driveEnvelopePath composes the path of one saved stop envelope.
+// The file name, drive-envelope-<compact-timestamp>-<4-hex>.json, comes from sheddriver.EnvelopeFileName.
+// It sits beside the run's drive reports.
 func driveEnvelopePath(l *lymcwd.Location, runID string, now func() time.Time, rand func() string) string {
 	return filepath.Join(shedrun.DriveReportsDir(l, runID), sheddriver.EnvelopeFileName(now(), rand()))
 }
@@ -104,7 +109,8 @@ const (
 	samplerTacklerRecipe = "sampler: an interactive task run (one agent session working with the operator, its optional review, description and landing)"
 )
 
-// tacklerFor resolves the tackler settings of a run of recipe from the shed.yaml config layers under dirs, and the one-line recipe description its prompt names.
+// tacklerFor resolves the tackler settings of a run of recipe from the shed.yaml config layers under dirs.
+// It also returns the one-line recipe description the tackler's prompt names.
 func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (sheddriver.TacklerSettings, string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
@@ -135,7 +141,11 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 }
 
 // loomArbiterSeam builds the arbiter seam loom hands the shed driver.
-// Merriam reports a batch it cannot carry on only as a stuck outcome, and a tapestry, darn or sampler landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
+// webster reports a batch it cannot carry on only as a stuck outcome.
+// A landing merge fixer reports an escalate as a halt of its own.
+// So the arbiter, not the tackler, judges these stops first:
+// a blocked stop at the webster row and a landing escalate, before either reaches the parent.
+// No other stop is marked.
 func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.ArbiterSeam {
 	seam := shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
 		return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)
@@ -313,7 +323,8 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		StartCheck: c.finalizeGuard(),
 		HandsBack:  arbiterstop.HandsBack,
 	}
-	// A beam run's Beam-Await stamps each wake it completes, which restarts the repair count of an interrupted stop at the row.
+	// A beam run's Beam-Await stamps each wake it completes;
+	// the stamp restarts the repair count of an interrupted stop at the row.
 	if c.recipe == shedrun.RecipePawl {
 		deps.CompletedWake = func(row string) (time.Time, bool, error) {
 			return shedrun.ReadWakeStamp(shedrun.WakeRecord(location, c.runID), row)
@@ -339,8 +350,9 @@ func (c *loomCLI) driverGoto(ctx context.Context, target string) error {
 	return err
 }
 
-// loomPark returns loom's Park seam: it commits the run's records and writes the park marker holding reportPath, through commitAndPark.
-// A failed commit is logged and the marker is still written; only a marker that does not hold reportPath afterwards is an error.
+// loomPark returns loom's Park seam: it commits the run's records and writes the park marker holding reportPath.
+// A failed commit is logged and the marker is still written;
+// only a marker that does not hold reportPath afterwards is an error.
 func loomPark(commit commitStatusDeps, markerPath string) func(reportPath string) error {
 	return func(reportPath string) error {
 		var envelope bytes.Buffer
@@ -354,8 +366,9 @@ func loomPark(commit commitStatusDeps, markerPath string) func(reportPath string
 	}
 }
 
-// writeDrivePausedNote writes the `go-driver-paused` friction note for a paused stop that carries no reason, naming the stop, its producer and its envelope.
-// It is a no-op when frictionDir is empty, which is Tier 2 off.
+// writeDrivePausedNote writes the `go-driver-paused` friction note for a paused stop with no reason:
+// it names the stop, its producer and its envelope.
+// It is a no-op when frictionDir is empty, which turns the friction notes off.
 func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error {
 	if frictionDir == "" {
 		return nil
@@ -377,7 +390,8 @@ func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error
 	return nil
 }
 
-// worktreeSnapshot reads the state of the task's code worktree a tackler must leave as it found it: HEAD, branch and the SHA-256 of each tracked dirty path.
+// worktreeSnapshot reads the state a tackler must leave unchanged in the task's code worktree:
+// HEAD, branch and the SHA-256 of each dirty path.
 // The records side is left out, since the run's own records change under every step.
 func worktreeSnapshot(location *lymcwd.Location) (sheddriver.WorktreeSnapshot, error) {
 	fab, err := fabricengine.Open(location)
@@ -434,7 +448,8 @@ func dirtyPathsOutsideRecords(location *lymcwd.Location, runID string) ([]string
 	return loomengine.PathsOutsideRunRecords(location, runID, paths), nil
 }
 
-// newestAttemptsFor names the newest tackler and arbiter attempt directories recorded for key, empty when there is none, and whether the tackler attempt carries the applied mark.
+// newestAttemptsFor names the newest tackler and arbiter attempt directories recorded for key.
+// Both are empty when there is none; tacklerApplied reports whether the tackler attempt has the applied mark.
 func newestAttemptsFor(tacklerDir, arbiterDir string, key sheddriver.StopKey) (tackler, arbiter string, tacklerApplied bool, err error) {
 	tackler, tacklerApplied, err = sheddriver.NewestTacklerAttempt(tacklerDir, key)
 	if err != nil {
@@ -453,7 +468,8 @@ func newestAttemptsFor(tacklerDir, arbiterDir string, key sheddriver.StopKey) (t
 	return tackler, arbiter, tacklerApplied, nil
 }
 
-// spawnDetachedDrive starts `lym loom drive` from the lym at exe for the task worktree l as a detached process, its output appended to the driver log, and returns its pid.
+// spawnDetachedDrive starts `lym loom drive` from the lym at exe for the task worktree l as a detached process;
+// its output is appended to the driver log, and it returns the pid.
 // The child is reaped in the background, so a driver that exits at once never reads alive as a zombie.
 func spawnDetachedDrive(l *lymcwd.Location, exe string) (int, error) {
 	logPath := loomengine.LoomDriverLog(l)

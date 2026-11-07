@@ -1,63 +1,51 @@
 # Reproducing the llm-driver trust-dialog hang
 
-Manual, operator-run verification for the fix in the startup step inside
-`internal/shuttleengine.Runner.StartGated`, and `internal/loomcli`'s llm arm, which starts the
-driver through `StartDriver` and no longer awaits readiness itself.
-Not automated: it launches a real, billed interactive Claude session and mutates the
-operator's own `~/.claude.json`, which puts it outside the Test Tier Purity boundaries any
-`go test` run must stay inside.
+Manual, operator-run verification for the startup step inside `internal/shuttleengine.Runner.StartGated`,
+and for `internal/loomcli`'s llm arm, which starts the driver through `StartDriver` and does not await readiness itself.
+It is not automated: it launches a real, billed interactive Claude session and mutates the operator's own `~/.claude.json`,
+which puts it outside the Test Tier Purity boundaries any `go test` run must stay inside.
 
-The task is not verified until this recipe has passed on a path this host has never trusted.
+The startup step is verified only by a pass of this recipe on a path this host has never trusted.
 
 ## Why the path matters
 
-The trust gate keys on the child worktree's **absolute path** in `~/.claude.json`'s `projects`
-map, not on worktree freshness.
-A repro that reuses an already-trusted path passes silently and proves nothing — that is
-exactly how an earlier reproduction attempt lost the finding.
+The trust gate keys on the child worktree's **absolute path** in `~/.claude.json`'s `projects` map, not on worktree freshness.
+A repro that reuses an already-trusted path passes silently and proves nothing.
 
 ## Steps
 
 1. Build `lym` from this branch: `go build ./cmd/lym` (cgo required).
 2. Choose a hub path containing a fresh UTC timestamp so it cannot have been trusted before,
    for example `$HOME/Code/r5sandbox/trust-repro-<YYYYMMDD-HHMMSS>-LYMHUB`.
-   Create a fixture hub there through lym's own clone flow (`lym clone`; pin the exact
-   invocation from `lym clone --help`).
+   Create a fixture hub there through lym's own clone flow (`lym clone`; pin the exact invocation from `lym clone --help`).
    The fixture must not be hand-assembled (hubforge Fabric-Fixture Invariant spirit).
 3. Before launching, prove that the child worktree's absolute path is untrusted:
    `jq --arg p "<abs worktree path>" '.projects | has($p)' ~/.claude.json` must print `false`.
-   If it prints `true`, pick a new timestamp — the run would pass silently and prove nothing.
+   If it prints `true`, pick a new timestamp, because the run would pass silently and prove nothing.
 4. In that worktree, run `lym shed seed self --recipe tapestry --driver llm --param parent=<recorded parent branch>`,
    then `lym loom start`.
-   `lym loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via
-   `seedAndCommitBootstrap` and `resolveRunID`).
+   `lym loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via `seedAndCommitBootstrap` and `resolveRunID`).
    `WriteSeed` refuses a seed whose params disagree with `loomSeedFor`'s `{"parent": <parent>}`,
    so the seed must be at `self`, and it must carry the same parent that `start` resolves.
-   An unseeded `start` records the llm driver on its own, so the explicit seed only pins the
-   driver against a changed default.
-   Confirm the llm arm ran: `lym reed status` must list a strand named
-   `driverStrandDisplayName`'s value (the loom driver).
-   There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or
-   empty for this run.
-5. Pre-fix expectation (baseline, optional, from a `main` build): `start` returns success, and
-   `tmux capture-pane -p -t <driver pane>` shows the trust dialog ("Yes, I trust this folder")
-   indefinitely.
-6. Post-fix expectation: `start` returns only after dismissal, the driver pane shows the
-   loom driver session working, and
-   `jq --arg p "<abs worktree path>" '.projects[$p].hasTrustDialogAccepted' ~/.claude.json`
-   prints `true`.
-   That checks the acceptance field itself, not the entry's presence — Claude Code creates an
-   entry for every launch directory whether or not the gate was accepted.
+   An unseeded `start` records the llm driver on its own.
+   The explicit seed only pins the driver against a changed default.
+   Confirm the llm arm ran: `lym reed status` must list a strand named `driverStrandDisplayName`'s value (the loom driver).
+   There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or empty for this run.
+5. Baseline without the startup step (optional):
+   `start` returns success, and `tmux capture-pane -p -t <driver pane>` shows the trust dialog ("Yes, I trust this folder") indefinitely.
+6. Expected result with the startup step: `start` returns only after dismissal, and the driver pane shows the loom driver session working.
+   `jq --arg p "<abs worktree path>" '.projects[$p].hasTrustDialogAccepted' ~/.claude.json` prints `true`.
+   That checks the acceptance field itself, not the entry's presence:
+   Claude Code creates an entry for every launch directory whether or not the gate was accepted.
    A `run.json` under the driver's run dir carries `started: true`.
-   Had the trust dialog instead never cleared, `start` would refuse with shuttle's `ErrNotStarted`
-   message instead of returning success, and `startup-capture.txt` would be left in the driver's
-   run dir as the diagnosis artifact (the last pane capture taken before the not-ready teardown).
-7. Tear the fixture down afterwards (`lym` teardown / removing the hub dir).
-   The `~/.claude.json` entry it leaves is harmless: Claude Code appends an entry for every
-   launch directory anyway.
+   If the trust dialog never cleared, `start` refuses with shuttle's `ErrNotStarted` message instead of returning success,
+   and `startup-capture.txt` is left in the driver's run dir as the diagnosis artifact
+   (the last pane capture taken before the not-ready teardown).
+7. Tear the fixture down afterwards (`lym` teardown or removing the hub dir).
+   The `~/.claude.json` entry it leaves is harmless: Claude Code appends an entry for every launch directory anyway.
 
 ## Recording the outcome
 
-Record, in the PR or task notes: the `jq` output before and after step 6, and a
-`tmux capture-pane` snippet showing the dialog appear (pre-fix baseline, optional) and the
-driver pane proceed past it (post-fix).
+Record, in the PR or task notes:
+the `jq` output before and after step 6,
+and a `tmux capture-pane` snippet showing the dialog appear (baseline, optional) and the driver pane proceed past it.

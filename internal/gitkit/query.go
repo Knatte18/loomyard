@@ -113,7 +113,8 @@ func CommitFile(tb testing.TB, dir, rel, content, msg string) string {
 	return RevParse(tb, dir, "HEAD")
 }
 
-// CommitFileOnBranch checks branch out in dir, then behaves as CommitFile.
+// CommitFileOnBranch checks out branch in dir, then writes rel with content, stages it alone, and commits it with msg.
+// It returns the new HEAD SHA.
 func CommitFileOnBranch(tb testing.TB, dir, branch, rel, content, msg string) string {
 	tb.Helper()
 

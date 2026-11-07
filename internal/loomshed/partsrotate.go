@@ -13,7 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/partsparser"
 )
 
-// NewPartsDirRotator returns Parts-Write's fresh-spawn preparation: the closure that archives every entry of the parts directory under anchorPath, so the new session starts from an empty directory.
+// NewPartsDirRotator returns the fresh-spawn preparation for Parts-Write:
+// the closure that archives every entry of the parts directory under anchorPath,
+// so the new session starts from an empty directory.
 // Entries move into a new archive-<stamp>[-N] directory under the parts directory, and earlier archives stay in place.
 // An absent parts directory, or one with nothing to move, is a no-op that creates nothing.
 // The closure returns an empty prompt amendment.
@@ -27,11 +29,16 @@ func NewPartsDirRotator(anchorPath string, now func() time.Time) func() (string,
 	}
 }
 
-// NewPartsPlanRotator returns Parts-Plan-Write's fresh-spawn preparation: the closure that archives every part directory and the join record under anchorPath, keeping the parts file, and then rotates the plan directory.
-// The parts archive goes first, so a retry never loses the prior-plan block:
-// a failed parts archive leaves the plan in place, and a failed plan rotation leaves it in place too, while the retry's parts archive finds nothing left to move and the retried plan rotation still announces the prior plan.
+// NewPartsPlanRotator returns the fresh-spawn preparation for Parts-Plan-Write:
+// the closure that archives every part directory and the join record under anchorPath.
+// It keeps the parts file and then rotates the plan directory.
+// The parts archive runs first, so a retry never loses the prior-plan block.
+// A failed step leaves the plan directory in place.
+// On a retry, the parts archive finds nothing left to move,
+// and the plan rotation still announces the prior plan.
 // The closure returns the plan rotation's prompt amendment, which the producer sets as the chair's prior-plan block.
-// stencilsDir and archiveWebster are the plan rotation's, told by the caller; a nil now defaults to time.Now.
+// stencilsDir and archiveWebster are passed on to the plan rotation.
+// A nil now defaults to time.Now.
 func NewPartsPlanRotator(anchorPath, stencilsDir string, archiveWebster func(dest string) error, now func() time.Time) func() (string, error) {
 	rotatePlan := NewPlanDirRotator(anchorPath, stencilsDir, archiveWebster, now)
 	partsFileName := filepath.Base(partsparser.File(anchorPath))
@@ -43,7 +50,8 @@ func NewPartsPlanRotator(anchorPath, stencilsDir string, archiveWebster func(des
 	}
 }
 
-// archivePartsEntries moves every top-level entry of the parts directory under anchorPath that does not begin with partsparser.ArchivePrefix and that keep does not keep, into a new archive-<stamp>[-N] directory under it.
+// archivePartsEntries moves the top-level entries of anchorPath's parts directory into a new archive directory.
+// It skips entries that begin with partsparser.ArchivePrefix and entries for which keep returns true.
 // Earlier archives stay in place, so archives never nest.
 // An absent parts directory, or one with nothing to move, is a no-op that creates nothing.
 // A nil now defaults to time.Now.
@@ -85,7 +93,8 @@ func archivePartsEntries(anchorPath string, keep func(name string) bool, now fun
 	return nil
 }
 
-// firstFreePartsArchivePath returns the first archive directory path under partsDir, named partsparser.ArchivePrefix, stamp and a suffix from the sequence "", "-1", "-2", ..., that does not already exist.
+// firstFreePartsArchivePath returns the first unused archive directory path under partsDir.
+// The name is partsparser.ArchivePrefix and stamp, followed by an empty suffix, then "-1", "-2", and so on.
 // Any os.Stat error other than not-exist is returned as-is.
 func firstFreePartsArchivePath(partsDir, stamp string) (string, error) {
 	for n := 0; ; n++ {

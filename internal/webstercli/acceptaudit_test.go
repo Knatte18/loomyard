@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// seedPendingFinding records a done batch at the fixture repo's HEAD and leaves one pending finding naming the tracked base.txt, relative to a pane run at the worktree root.
+// seedPendingFinding records a done batch at the fixture repo's HEAD.
+// It leaves one pending finding naming the tracked base.txt, relative to a pane run at the worktree root.
 func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 	t.Helper()
 	fx.CLI.geom.PaneCwd = fx.Worktree
@@ -28,7 +29,8 @@ func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent proves the verb lists a pending finding, clears it and records no disposition, and that a second call reports nothing.
+// TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent proves the verb lists a pending finding and clears it.
+// It records no disposition, and a second call reports nothing.
 func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
@@ -68,8 +70,9 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_BatchClearsFabricReference proves --batch clears a failed batch's pathless fabric-reference finding when the batch made no commit,
-// names recover-batch as next, and that a second call refuses because nothing is left to accept.
+// TestAcceptAuditCmd_BatchClearsFabricReference proves --batch clears a failed batch's pathless finding.
+// It does so when the batch made no commit, and the envelope names recover-batch as next.
+// A second call refuses because nothing is left to accept.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -152,8 +155,10 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_Refusals proves a suspect path that moved since the run recorded it refuses with its way forward and leaves state.json byte-identical:
-// an edited path refuses with the git way forward, and a commit on top of the recorded head refuses even when a second commit restores the file's content.
+// TestAcceptAuditCmd_Refusals proves a suspect path that moved since the run recorded it refuses.
+// It names the way forward and leaves state.json byte-identical.
+// An edited path refuses with the git way forward.
+// A commit on top of the recorded head refuses even when a second commit restores the file's content.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestAcceptAuditCmd_Refusals(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -225,7 +230,8 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_FabricSyncFailureNamesWayForward proves a fabric sync failure still leaves the acceptance saved and names the sentinel and `lym fabric commit`.
+// TestAcceptAuditCmd_FabricSyncFailureNamesWayForward proves a fabric sync failure still saves the acceptance.
+// The output names the sentinel and `lym fabric commit`.
 func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "")
@@ -252,7 +258,8 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_AbsentContractFilesCarryNext proves accepting a finding on absent contract files succeeds and the envelope's next field names the re-run that has Master write them again.
+// TestAcceptAuditCmd_AbsentContractFilesCarryNext proves accepting a finding on absent contract files succeeds.
+// The envelope's next field names the re-run that has Master write them again.
 func TestAcceptAuditCmd_AbsentContractFilesCarryNext(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")

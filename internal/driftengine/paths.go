@@ -21,15 +21,17 @@ const (
 )
 
 // Paths holds every path the drift module reads or writes, joined onto one anchor root.
-// The durable files lie under _lym/drift and are fabric-synced; the ephemeral files lie under .lym/drift and are never tracked.
+// The durable files lie under _lym/drift and are fabric-synced;
+// the ephemeral files lie under .lym/drift and are never tracked.
 type Paths struct {
 	// Scope is the durable scope record.
 	Scope string
-	// Judged is the durable record of the judge's stored rulings; it is guarded together with Scope.
+	// Judged is the durable record of the judge's stored rulings; the records guard covers it with the scope record.
 	Judged string
 	// Expected is the expectation the expect agent writes, which Drift-Expect seals.
 	Expected string
-	// Judgement is the file the judge writes its rulings to, outside the records guard; Drift-Verify removes it once the rulings are stored.
+	// Judgement is the file the judge writes its rulings to, outside the records guard;
+	// Drift-Verify removes it once the rulings are stored.
 	Judgement string
 	// LogsDir holds the log of every capture, compare and child run.
 	LogsDir string
@@ -49,7 +51,7 @@ type Paths struct {
 	CurrentDir string
 }
 
-// NewPaths returns the drift paths joined onto the told anchor root.
+// NewPaths returns the drift paths joined onto the anchor root it is given.
 func NewPaths(anchorRoot string) Paths {
 	durable := filepath.Join(anchorRoot, lymdirs.LymDirName, driftDirName)
 	ephemeral := filepath.Join(anchorRoot, lymdirs.DotLymDirName, driftDirName)
@@ -69,7 +71,8 @@ func NewPaths(anchorRoot string) Paths {
 	}
 }
 
-// DirRel returns the durable drift directory relative to the anchor root, `_lym/drift`, always forward-slashed, for a commit pathspec.
+// DirRel returns the durable drift directory relative to the anchor root, always forward-slashed.
+// It is `_lym/drift`, the form a commit pathspec takes.
 func DirRel() string {
 	return path.Join(lymdirs.LymDirName, driftDirName)
 }

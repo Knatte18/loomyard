@@ -1,9 +1,7 @@
-// refusal.go gives a cell a way to assert WHICH layer of fabric refused a destructive request,
-// rather than merely that some error came back.
-// fabric's destructive gate (internal/fabricengine/destroy.go) and a verb's own pre-flight checks
-// (e.g. Remove's dirty-worktree message before it ever reaches the gate) can both refuse a request,
-// and a cell that only checked "err != nil" could not tell one from the other — the two-kind scheme
-// here (RefusedByGate, RefusedBefore) is what lets a cell pin the refusal to a specific layer.
+// livestate_refusal_test.go gives a cell a way to assert which layer of fabric refused a destructive request.
+// The destructive gate (internal/fabricengine/destroy.go) and a verb's pre-flight checks can both refuse a request,
+// and a check of err != nil cannot tell them apart.
+// RefusedByGate and RefusedBefore pin each refusal to one layer.
 
 package fabricengine_test
 
@@ -15,13 +13,10 @@ import (
 
 // RefusedByGate reports whether err is a refusal from fabric's destructive gate for the given check.
 //
-// It is built on fabricengine.RefusalOf, the exported accessor onto the gate's own *destructiveRefusal:
-// RefusalOf unwraps err via errors.As and, when it finds one, returns a Refusal carrying the exact Check
-// that refused. RefusedByGate compares that Refusal.Check against the wanted check directly, rather than
-// matching a rendered "<check> check failed" substring — strictly more precise than substring matching,
-// and what RefusalOf exists for.
-// RefusedByGate reports false for a nil err, so a cell that expected a refusal and instead got a
-// success fails on the expectation rather than panicking on a nil dereference.
+// It compares the check the gate reports against check exactly.
+// An error from a pre-flight check does not match.
+// RefusedByGate reports false for a nil err.
+// A cell that expected a refusal and got success therefore fails on the expectation, not on a nil dereference.
 func RefusedByGate(err error, check fabricengine.Check) bool {
 	if err == nil {
 		return false
@@ -33,18 +28,12 @@ func RefusedByGate(err error, check fabricengine.Check) bool {
 	return refusal.Check == check
 }
 
-// RefusedBefore reports whether err is a refusal from one of fabric's own pre-flight checks — the
-// verb-level guards that run before a request ever reaches the destructive gate — carrying substring
-// in its message.
+// RefusedBefore reports whether err is a refusal from a verb's pre-flight check whose message contains substring.
 //
-// The exclusion of the literal "check failed" is mandatory, not defensive. The gate's dirtiness reason
-// at destroy.go:564 is byte-identical to Remove's own pre-flight message at remove.go:74 — both are
-// exactly "worktree has uncommitted changes; use --force" — so a gate dirtiness refusal renders as
-// "refusing to remove worktree: dirtiness check failed for <target>: worktree has uncommitted changes;
-// use --force", which CONTAINS the pre-flight string. Without the exclusion, RefusedBefore would
-// report a pre-flight refusal when the gate itself refused, and the layer-pinning property the whole
-// two-kind scheme rests on would be false in the pre-flight-to-gate direction.
-// RefusedBefore reports false for a nil err, matching RefusedByGate's posture.
+// Pre-flight checks run before a request reaches the destructive gate.
+// RefusedBefore reports false for a nil err.
+// It also reports false when the message contains "check failed":
+// a gate refusal embeds the same reason text, and without this exclusion it would match as a pre-flight refusal.
 func RefusedBefore(err error, substring string) bool {
 	if err == nil {
 		return false

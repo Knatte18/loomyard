@@ -1,8 +1,11 @@
 // main_test.go — tests for the module dispatcher (main.go).
 //
-// Drives run() directly: module routing from an uninitialized repo, that the root hook mints nothing under test, and that it keeps the init-time log level when no -v is given.
+// Drives run() directly.
+// It covers module routing from an uninitialized repo, and that the root hook mints nothing under test.
+// It also checks that a run without -v keeps the init-time log level.
 // Help paths and unknown modules live in exitcode_test.go.
-// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in main_integration_test.go per the Test Tier Purity Invariant.
+// The tests that seed a real git repo by spawning gitexec's RunGit(["init"], …) live in main_integration_test.go.
+// That placement follows the Test Tier Purity Invariant.
 
 package main
 
@@ -24,7 +27,8 @@ import (
 
 // These tests cover module routing, not board behaviour (that lives in internal/boardcli).
 
-// TestRunDispatchesToUninitializedRepoModules asserts modules that need a lym tree fail with exit 1 when dispatched from a temp cwd that has no _lym/ directory.
+// TestRunDispatchesToUninitializedRepoModules asserts modules that need a lym tree fail with exit 1.
+// The test dispatches them from a temp cwd that has no _lym/ directory.
 // Each row chdirs, which is process-global state, so neither the test nor its rows run in parallel.
 func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -89,7 +93,8 @@ func TestRootHookSuppressedUnderTest(t *testing.T) {
 	}
 }
 
-// TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit asserts a run with no -v leaves the level the logger held before the hook, so a Debug record still reaches stderr.
+// TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit asserts a run with no -v leaves the logger level unchanged.
+// A Debug record must still reach stderr.
 // SetVerbosity(2) stands in for LYM_LOG_LEVEL=debug, which the logger reads only at package init.
 // It mutates the process-global logger level and output, so it does not run in parallel.
 func TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit(t *testing.T) {
@@ -108,7 +113,8 @@ func TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit(t *testing.T) {
 	}
 }
 
-// TestPauseSlugOverride covers the pause slug the root hook hands the network gate: a set flag's value, empty included, and nil for an unset or undeclared flag.
+// TestPauseSlugOverride covers the pause slug the root hook hands the network gate:
+// a set flag's value, empty included, and nil for an unset or undeclared flag.
 func TestPauseSlugOverride(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -146,7 +152,10 @@ func TestPauseSlugOverride(t *testing.T) {
 	}
 }
 
-// TestDetachedChild covers the gate behaviour the root hook reads off the hidden flags: a set pause-slug or deferrable flag defers, a set deferrable flag also holds the hub scope, and a set parent-locked flag is read beside a pause slug.
+// TestDetachedChild covers the gate behaviour the root hook reads off the hidden flags:
+// a set pause-slug or deferrable flag defers;
+// a set deferrable flag also holds the hub scope;
+// a set parent-locked flag is read beside a pause slug.
 func TestDetachedChild(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

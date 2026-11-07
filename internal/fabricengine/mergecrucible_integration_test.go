@@ -1,10 +1,7 @@
-// mergecrucible_integration_test.go holds the regression scenarios the crucible review round
-// opus-medium-r1 found against real git repositories — the ones the hermetic and pre-existing
-// integration tiers both passed while the defect was live.
-// Each test names the finding it pins in its own doc comment.
-// Reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go and
-// openFreshFabric from mergein_recovery_integration_test.go, since all three files share
-// package fabricengine_test.
+// mergecrucible_integration_test.go holds the regression scenarios for merge defects, run against real git repositories.
+// Each test's doc comment states the defect it pins.
+// The file reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go.
+// It also reuses openFreshFabric from mergein_recovery_integration_test.go.
 
 package fabricengine_test
 
@@ -25,8 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// assertSoleGuardReason fails unless err is a *fabricengine.MergeGuardError carrying exactly the one
-// reason want.
+// assertSoleGuardReason fails unless err is a *fabricengine.MergeGuardError carrying exactly the reason want.
 func assertSoleGuardReason(t *testing.T, label string, err error, want string) {
 	t.Helper()
 
@@ -39,15 +35,10 @@ func assertSoleGuardReason(t *testing.T, label string, err error, want string) {
 	}
 }
 
-// TestMergeCrucible_DetachedHeadRefused pins finding F2 on the warp side: a merge verb must refuse
-// while the warp checkout has HEAD pointing straight at a commit rather than at a branch.
-// Without the guard, MergeIn reported full success on a detached warp HEAD, landed a warp merge
-// commit no ref reaches, landed the weft merge commit permanently, and deleted its own record — so
-// the warp half vanished at the next checkout with the weft half already final and no longer
-// abortable.
-// A detached WEFT HEAD no longer refuses: the weft is not a merge participant, so its head
-// attachment cannot affect a warp-only merge's correctness — TestMergeCrucible_WeftDetachedDoesNotRefuse
-// below covers that side instead, asserting the merge proceeds.
+// TestMergeCrucible_DetachedHeadRefused pins that a merge refuses while the warp checkout has a detached HEAD.
+// Without that refusal, MergeIn reported success and finalized the weft merge commit.
+// It also deleted its record.
+// The warp merge commit was reachable from no ref and was lost at the next checkout.
 func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -80,10 +71,8 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 	}
 }
 
-// TestMergeCrucible_WeftDetachedDoesNotRefuse used to be TestMergeCrucible_DetachedHeadRefused's
-// WeftDetached table case, pinning detachedHeadReason's now-removed weft arm. detachedHeadReason
-// evaluates the warp side alone now, so a detached weft HEAD no longer blocks MergeIn: the weft is
-// not a merge participant, and its own detachment cannot affect a warp-only merge's correctness.
+// TestMergeCrucible_WeftDetachedDoesNotRefuse pins that a detached weft HEAD does not block MergeIn.
+// The weft is not a merge participant, so MergeIn completes and leaves the weft HEAD where it was.
 func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -109,15 +98,14 @@ func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 	}
 }
 
-// TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides pins finding F1: a record whose
-// attempt never reached one side must refuse MergeContinue outright, before anything lands.
-// The reconstructed state is byte-for-byte what a kill between the two MergeStart calls leaves —
-// merge.go persists WarpOutcome only after the warp MergeStart returns, so WeftOutcome is still
-// empty at that instant. Without the guard, MergeContinue committed the warp side, then failed
-// concluding a weft side that was never started, returned "run \"lym fabric merge --continue\" again"
-// (an instruction
-// that could never succeed), and left the pair out of correspondence.
-// MergeAbort must still recover the same record — that is the whole point of refusing.
+// TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides pins that MergeContinue refuses.
+// A record whose attempt never reached one side is refused before anything lands.
+// The record is byte-for-byte what a kill between the two MergeStart calls leaves:
+// merge.go persists WarpOutcome only after the warp MergeStart returns, so WeftOutcome is still empty then.
+// Without the guard, MergeContinue committed the warp side, then failed on a weft side that was never started.
+// It returned an error telling the operator to run "lym fabric merge --continue" again, which could never succeed.
+// It also left the pair out of correspondence.
+// MergeAbort recovers the same record.
 func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -125,7 +113,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
 	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
 	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
-	// Diverge the target branches so the reconstructed attempt STAGES rather than fast-forwards:
+	// Diverge the target branches so the reconstructed attempt stages rather than fast-forwards:
 	// a fast-forward moves HEAD, and the crash window this test reconstructs is the staged one.
 	commitOnWarpCurrent("target.txt", "target\n", "target: warp")
 	commitOnWeftCurrent("target.txt", "target\n", "target: weft")
@@ -133,7 +121,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
-	// The warp side of the attempt really ran; the weft side never did.
+	// The warp side of the attempt ran; the weft side never did.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "feature")
 	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{
 		Verb:        "merge-in",
@@ -158,7 +146,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 		t.Errorf("weft HEAD = %q after the refused MergeContinue; want unchanged %q", got, weftStart)
 	}
 
-	// The record survives the refusal, and MergeAbort is still the working recovery.
+	// The record survives the refusal, and MergeAbort is the working recovery.
 	if _, err := openFreshFabric(t, h.PrimeWorktree()).MergeAbort(); err != nil {
 		t.Fatalf("MergeAbort after a refused MergeContinue: %v", err)
 	}
@@ -177,16 +165,12 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	}
 }
 
-// TestMergeCrucible_ResultFlagsDescribeWhatHappened pins finding F3: MergeResult.Committed and
-// MergeResult.AlreadyUpToDate must describe what the call did to the pair, not which return
-// statement it reached.
-// Both verbs used to hardcode Committed true on the both-sides-clean path, so a merge that
-// fast-forwarded both sides reported committed with no merge_committed entry anywhere in the record,
-// and the loser of two concurrent MergeIn calls reported
-// {already_up_to_date:false, committed:true, mutations:[]} for a call that did nothing — where a
-// strictly sequential run of the same two calls honestly reports {already_up_to_date:true,
-// committed:false}. The second subtest is that sequential control, which is what the interleaved
-// loser now also reports.
+// TestMergeCrucible_ResultFlagsDescribeWhatHappened checks that MergeResult.Committed and
+// MergeResult.AlreadyUpToDate describe what the call did to the pair, not which return statement it reached.
+// A merge that fast-forwards both sides reports no commit, since the record has no merge_committed entry.
+// The loser of two concurrent MergeIn calls must report what a strictly sequential second call reports:
+// {already_up_to_date:true, committed:false}, and not a committed call with no mutations.
+// The second subtest is that sequential control.
 func TestMergeCrucible_ResultFlagsDescribeWhatHappened(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -206,7 +190,7 @@ func TestMergeCrucible_ResultFlagsDescribeWhatHappened(t *testing.T) {
 		if res.AlreadyUpToDate {
 			t.Error("MergeIn(feature).AlreadyUpToDate = true; want false — both sides advanced")
 		}
-		// The pair really did advance, so the flags are reporting "no commit", not "no merge".
+		// The pair did advance, so the flags report "no commit", not "no merge".
 		if !fileExistsInWorktree(t, h.PrimeWorktree(), "feature.txt") {
 			t.Error("feature.txt missing from the warp worktree; want the fast-forward to have landed")
 		}
@@ -255,13 +239,13 @@ func fileExistsInWorktree(t *testing.T, dir, name string) bool {
 	return false
 }
 
-// TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming pins finding F5: Topology.Remove
-// must refuse a pair whose branches some OTHER pair's merge is currently resolving against.
-// The pre-existing guard asks only "is the pair being removed itself mid-merge", which is a
-// different subject: with the prime pair mid-merge on merge-in <slug>, removing <slug> succeeded and
-// deleted branch <slug>-weft out from under the live merge, leaving the source work reachable only
-// from the remote if the operator then aborted. Once the merge is aborted the same Remove must
-// succeed again, so the guard closes a window rather than blocking the pair forever.
+// TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming checks one refusal of Topology.Remove.
+// Remove must refuse a pair whose branches another pair's merge is resolving against.
+// Checking only whether the pair being removed is mid-merge misses this case; the other pair's merge counts too:
+// with the prime pair mid-merge on merge-in <slug>, removing <slug> must not delete branch <slug>-weft:
+// the source work would then be reachable only from the remote if the operator aborted.
+// Once the merge is aborted the same Remove must succeed,
+// so the guard closes a window rather than blocking the pair forever.
 func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -274,9 +258,9 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	sourceWeftDir := h.PairRecordsSibling(slug)
 	sourceBranch := gitkit.CurrentBranch(t, sourceWarpDir)
 
-	// Conflicting divergence on the warp side only — a weft-root conflict would be unmappable and
-	// self-abort the whole attempt — so MergeIn on the prime leaves a live record naming sourceBranch
-	// rather than concluding immediately.
+	// The divergence conflicts on the warp side only:
+	// a weft-root conflict would be unmappable and self-abort the whole attempt.
+	// So MergeIn on the prime leaves a live record naming sourceBranch rather than concluding immediately.
 	gitkit.CommitFile(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
 	gitkit.CommitFile(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "conflict.txt", "prime side\n", "prime: warp conflict")
@@ -325,12 +309,9 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	}
 }
 
-// TestMergeCrucible_ConflictsIsEmptyNeverNil pins finding F7: MergeResult.Conflicts is documented as
-// empty-never-nil so a caller's JSON never sees "conflicts": null, and merge.go declares the
-// mergeNoConflicts sentinel for exactly that — but MergeContinue and MergeAbort both returned a bare
-// MergeResult, leaving the field nil on their success paths.
-// The check is on the marshalled JSON, since null-vs-[] is the property that actually matters to a
-// consumer.
+// TestMergeCrucible_ConflictsIsEmptyNeverNil checks that MergeResult.Conflicts is never nil on any verb's return.
+// A nil slice marshals as "conflicts": null, which a consumer does not read as an empty list.
+// The check is on the marshalled JSON, since null versus [] is the property a consumer depends on.
 func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -368,11 +349,11 @@ func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 		assertConflictsMarshalsAsArray(t, "MergeAbort", res)
 	})
 
-	// The error returns, which the two success subtests above do not reach. Every verb has roughly a
-	// dozen of them, they all returned a zero MergeResult, and a zero MergeResult marshals with
-	// "conflicts": null — so the property the type's godoc promises held on the paths a test happened
-	// to name and nowhere else. Each arm below picks a refusal that needs no mid-merge fixture, so
-	// what is under test is the return shape rather than the refusal.
+	// The error returns are not reached by the two success subtests above.
+	// Every verb's error returns are zero MergeResults.
+	// A zero MergeResult marshals with "conflicts": null.
+	// Each subtest below picks a refusal that needs no mid-merge fixture.
+	// What is under test is the return shape rather than the refusal.
 	t.Run("MergeInGuardRefusal", func(t *testing.T) {
 		_, f, _, _, _, _ := newMergePairFixture(t, ".")
 		res, err := f.MergeIn("no-such-branch")
@@ -411,8 +392,9 @@ func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 }
 
 // mergeCrucibleWarpConflictFixture builds a pair left mid-merge by a real MergeIn that conflicted on
-// the warp side only — the weft side diverges cleanly, since a weft-root conflict would be
-// unmappable and self-abort the whole attempt before any record survives.
+// the warp side only.
+// The weft side diverges cleanly.
+// A conflict on the weft root is unmappable and aborts the whole attempt before any record survives.
 func mergeCrucibleWarpConflictFixture(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
 	t.Helper()
 
@@ -432,8 +414,8 @@ func mergeCrucibleWarpConflictFixture(t *testing.T) (*hubforge.Hub, *fabricengin
 	return hub, fabric
 }
 
-// resolveWarpConflict writes a resolution for name in the warp worktree at dir and stages it, so
-// MergeContinue's unresolved-conflicts guard passes.
+// resolveWarpConflict writes a resolution for name in the warp worktree at dir and stages it.
+// Staging it lets MergeContinue's unresolved-conflicts guard pass.
 func resolveWarpConflict(t *testing.T, dir, name string) {
 	t.Helper()
 
@@ -443,9 +425,9 @@ func resolveWarpConflict(t *testing.T, dir, name string) {
 	gitkit.MustRun(t, dir, "git", "add", name)
 }
 
-// mergeHeadPresentInCheckout reports whether dir's checkout holds a live MERGE_HEAD, probed with
-// plain git rather than through the engine, so a test can assert what git believes independently of
-// what fabric's own record says.
+// mergeHeadPresentInCheckout reports whether dir's checkout holds a live MERGE_HEAD.
+// It probes with plain git rather than through the engine,
+// so a test can assert what git believes independently of what fabric's record says.
 func mergeHeadPresentInCheckout(t *testing.T, dir string) bool {
 	t.Helper()
 
@@ -454,27 +436,21 @@ func mergeHeadPresentInCheckout(t *testing.T, dir string) bool {
 	return cmd.Run() == nil
 }
 
-// TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned pins crucible round opus-medium-r2's
-// finding R1 at the pair level.
-// Fixture: on both sides the source branch and the current branch reach the same content
-// independently, so neither source is an ancestor of its side's HEAD, yet merging it stages nothing
-// and moves no HEAD. Before the fix, gitrepo.MergeStart classified that as MergeAlreadyUpToDate, so
-// MergeIn reported {ok, already_up_to_date: true, committed: false}, skipped the conclude on both
-// sides, recorded the pre-merge SHAs as the pair's post-merge correspondence, and deleted its own
-// merge-state record -- while git had a live MERGE_HEAD in both checkouts. The merge was silently
-// lost, MergeInProgress() disagreed with git, and every merge verb (including MergeAbort, the
-// recovery verb) then refused the pair with *ErrForeignMergeState, leaving only plain git as a way
-// out.
-// The assertion that catches the regression is the MERGE_HEAD pair: a verb that returns without
-// error must never leave git-level merge state behind on either side.
+// TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned pins that a merge which stages nothing is still concluded.
+// Fixture: on both sides the source branch and the current branch reach the same content independently.
+// Neither source is an ancestor of its side's HEAD, yet merging it stages nothing and moves no HEAD.
+// Abandoning such a merge would leave git's MERGE_HEAD live while fabric drops its own record,
+// and every merge verb would then refuse the pair with *ErrForeignMergeState.
+// The MERGE_HEAD check is the assertion that catches this:
+// a verb that returns without error must leave no git-level merge state on either side.
 func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
 
-	// The same content reaches the branch and the trunk independently, on the warp side — the only
-	// side MergeIn merges. The weft side is seeded identically only to prove it stays untouched.
+	// On the warp side, the only side MergeIn merges, the branch and the trunk reach the same content independently.
+	// The weft side is seeded identically only to prove it stays untouched.
 	commitOnWarpBranch("feature", "shared.txt", "same change\n", "feature: warp same change")
 	commitOnWarpCurrent("shared.txt", "same change\n", "target: warp same change, reached independently")
 	commitOnWeftBranch("feature-weft", "shared-weft.txt", "same change\n", "feature: weft same change")
@@ -517,30 +493,28 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 		t.Error("MergeInProgress() = true after a completed MergeIn; want false")
 	}
 
-	// The pair must still be usable: before the fix, the abandoned MERGE_HEAD made every subsequent
-	// merge verb refuse with *ErrForeignMergeState.
+	// The pair must still be usable.
+	// A MERGE_HEAD left live would make every later merge verb refuse with *ErrForeignMergeState.
 	if _, err := f.MergeAbort(); !errors.As(err, new(*fabricengine.ErrNoMergeInProgress)) {
 		t.Errorf("MergeAbort() after a completed MergeIn error = %v (%T); want *fabricengine.ErrNoMergeInProgress — a *ErrForeignMergeState here means fabric left state it will not clean up", err, err)
 	}
 }
 
-// TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded pins crucible round opus-medium-r2's
-// finding R2: MergeAbort restores the warp side from its recorded pre-merge SHA, so an abort issued
-// against a half-concluded attempt discarded a conclude-commit that had really landed -- in this
-// flow, one carrying the operator's own hand-written conflict resolutions, reset away under
-// force: true with an "ok" result and no warning.
+// TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded pins that MergeAbort refuses to reset
+// a landed conclude-commit.
+// MergeAbort restores the warp side from its recorded pre-merge SHA,
+// so an abort against a half-concluded attempt would discard a conclude-commit that has landed.
+// With force: true the reset succeeds and drops the landed commit with no warning.
+// That commit may carry the operator's hand-written conflict resolutions.
 // Two arms, because the record is not always honest about what landed:
-//   - Recorded: the warp conclude lands and IS written into the record (WarpCommitted set), then the
-//     call crashes before it can run RecordCorrespondence/deleteMergeState — the one window, now that
-//     the weft is not a merge participant and concludeMergeSides has nothing left to conclude on that
-//     side, where the record can know the conclude landed but the call as a whole never finished.
-//     SaveMergeStateForTest manufactures that exact post-record-save, pre-delete crash point directly,
-//     since a real MergeContinue call no longer has an independent second side to fail on and complete
-//     one-sided otherwise.
-//   - Invisible: the operator concludes the warp side by hand with plain git, so warp HEAD has moved
-//     past its recorded start while warp_committed is still empty. concludeMergeSides leaves exactly
-//     this shape whenever CurrentSHA or the record re-save fails after `git commit` succeeded, and a
-//     guard keyed only on the recorded SHA would sail straight through it.
+//   - Recorded: the warp conclude lands and WarpCommitted is set in the record.
+//     The call then crashes before RecordCorrespondence and deleteMergeState run.
+//     A real MergeContinue has no independent second side to fail on,
+//     so SaveMergeStateForTest creates this crash point directly.
+//   - Invisible: the operator concludes the warp side by hand with plain git.
+//     Warp HEAD moves past its recorded start while warp_committed stays empty.
+//     concludeMergeSides leaves this shape when CurrentSHA or the record re-save fails after `git commit` succeeds,
+//     and a guard keyed only on the recorded SHA would sail straight through it.
 //
 // Both must refuse, and the landed commit must survive; MergeContinue must then still finish.
 func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
@@ -549,8 +523,8 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// landWarpConclude drives the warp side's conclude-commit into place and reports the SHA it
-		// landed, leaving the pair mid-merge with the record still live.
+		// landWarpConclude drives the warp side's conclude-commit into place and reports the SHA it landed.
+		// It leaves the pair mid-merge with the record still live.
 		landWarpConclude func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string
 	}{
 		{
@@ -609,21 +583,21 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 	}
 }
 
-// TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone pins sideConcludeMayHaveLanded's FIRST
-// clause -- "the record already carries this side's conclude SHA" -- which no other test can fail on.
-// Deleting that clause left the whole integration suite green, because every existing fixture also
-// satisfies the second clause (outcome staged/conflicted AND HEAD moved off the recorded start), so
-// the HEAD read is always what actually refuses.
-// The shape that isolates the first clause puts HEAD back: after a half-concluded attempt whose warp
-// conclude landed and WAS recorded, the operator resets that side to the recorded pre-merge SHA.
-// HEAD no longer looks moved, so only the record's own memory of the conclude stands between
-// MergeAbort and a force reset. It must still refuse: the recorded SHA is evidence that a commit was
-// made, and after the reset that commit is reachable from no branch, so an abort that proceeded would
-// discard it for good along with any resolutions it carries.
-// The record is manufactured directly via SaveMergeStateForTest, the same "record learned about a
-// landed conclude, then the call never reached its own delete" shape
-// TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded's RecordedConcludeSHA arm builds — a real
-// MergeContinue call has no independent weft side left to fail on and finish one-sided.
+// TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone pins the first clause of sideConcludeMayHaveLanded:
+// the record already carries this side's conclude SHA.
+// No other test fails if that clause is removed, because every existing fixture also meets the second clause:
+// an outcome of staged or conflicted, with HEAD moved off the recorded start.
+// The test isolates the first clause by putting HEAD back.
+// Here a half-concluded attempt had its warp conclude landed and recorded.
+// The operator then resets that side to its recorded pre-merge SHA.
+// HEAD no longer looks moved.
+// Only the record's memory of the conclude stands between MergeAbort and a force reset.
+// The abort must still refuse.
+// The recorded SHA is evidence that a commit was made.
+// After the reset, that commit is reachable from no branch.
+// An abort that proceeded would discard it for good, along with any resolutions it carries.
+// The record is written directly with SaveMergeStateForTest.
+// A real MergeContinue call has no independent weft side left to fail on, and so it finishes one-sided.
 func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -644,9 +618,9 @@ func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 	// The operator puts the landed side back, so the HEAD-moved clause can no longer fire.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "reset", "--hard", st.WarpStart)
 
-	// Preconditions, asserted rather than assumed: HEAD is not off its recorded start any more, so the
-	// second clause is false and the recorded SHA is the only evidence left. The weft side never moved
-	// in the first place — it is not a merge participant.
+	// Preconditions, asserted rather than assumed: HEAD is no longer off its recorded start,
+	// so the second clause is false and the recorded SHA is the only evidence left.
+	// The weft side never moved; it is not a merge participant.
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != st.WarpStart {
 		t.Fatalf("warp HEAD = %q after the reset; want the recorded start %q, or the HEAD-moved clause refuses instead of the one under test", got, st.WarpStart)
 	}
@@ -668,8 +642,8 @@ func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 	}
 }
 
-// readMergeRecordWarpStart reads the pre-merge SHA the live merge-state record holds for the warp
-// side, straight off disk -- the value MergeAbort would reset that side to.
+// readMergeRecordWarpStart reads the pre-merge SHA that the live merge-state record holds for the warp side.
+// The value read is the one MergeAbort would reset the warp side to.
 func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()
 
@@ -690,19 +664,21 @@ func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
 	return record.WarpStart
 }
 
-// TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord closes crucible round opus-medium-r2's
-// residual 1: mergeState.bothSidesAlreadyUpToDate, which MergeResult.AlreadyUpToDate is derived
-// from, had no test coverage at all. Hardwiring it to false left the entire suite green.
-// The pre-existing subtest that looks like it covers the field does not: a plain second merge call is
-// caught by the pre-lock already-up-to-date probe, which returns a hardcoded AlreadyUpToDate: true
-// from a different return site, so the derived field is never read.
-// Reaching the derived field needs both post-lock MergeStart outcomes to come back up_to_date while
-// the pre-lock probe said otherwise. A real race between two processes gets there, but the route
-// this test uses is deterministic, single-process and needs no seam: a squash merge whose source is
-// NOT an ancestor of HEAD on either side -- so IsAncestor is false and the pre-lock probe cannot
-// early-return -- but whose squash result tree equals HEAD's own tree, so `git merge --squash`
-// stages nothing, moves no HEAD, writes no MERGE_HEAD, and classifies up_to_date on both sides.
-// Reporting AlreadyUpToDate there is the honest answer, and it can only have come from the record.
+// TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord pins the derivation of MergeResult.AlreadyUpToDate:
+// it is read from mergeState.bothSidesAlreadyUpToDate.
+// No other test fails if the field is hardwired to false.
+// A plain second merge call never reads the field:
+// the pre-lock already-up-to-date probe returns AlreadyUpToDate: true from its own return site,
+// so the derived field is never read.
+// Reaching the derived field needs both post-lock MergeStart outcomes to report up_to_date.
+// The pre-lock probe must still say otherwise.
+// A real race between two processes achieves that,
+// but this test uses a deterministic, single-process route that needs no seam:
+// a squash merge whose source is NOT an ancestor of HEAD on either side.
+// IsAncestor is then false, so the pre-lock probe cannot early-return.
+// The squash result tree equals HEAD's own tree.
+// Then the squash stages nothing, moves no HEAD, writes no MERGE_HEAD, and classifies up_to_date on both sides.
+// AlreadyUpToDate is then the correct report, and it can only come from the record.
 func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -716,8 +692,8 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	commitOnWeftBranch("feature-weft", "shared-weft.txt", "same change\n", "feature: weft same change")
 	commitOnWeftCurrent("shared-weft.txt", "same change\n", "target: weft same change, reached independently")
 
-	// This is the whole point of the fixture: an ancestor source would be caught by the pre-lock
-	// probe's hardcoded return and the derived field would never be read.
+	// The source must not be an ancestor of the target:
+	// an ancestor source returns early from the pre-lock probe, so the derived AlreadyUpToDate field would never be read.
 	if gitkit.IsAncestor(t, h.PrimeWorktree(), "feature", "HEAD") {
 		t.Fatal("fixture broken: feature is an ancestor of the warp HEAD, so the pre-lock probe would short-circuit before the derived field is read")
 	}
@@ -758,21 +734,17 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	}
 }
 
-// TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource is the linked-worktree twin of
-// TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming, and it covers the half of
-// mergeSourceInFlight that actually matters in practice.
+// TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource pins that Remove refuses a source pair:
+// a linked pair's merge of that source is in progress.
 //
-// Merge records live at <weft gitdir>/fabric-merge.json, and the weft gitdir has two shapes: the weft
-// repo's own .git for the PRIME pair, and .git/worktrees/<name>/ for every other pair.
-// mergeSourceInFlight globs both. Only the prime shape was covered, and that is the rarer one — a
-// merge normally runs in a task pair, not in the prime worktree. Measured rather than assumed:
-// pointing the linked glob at a filename that cannot exist left the whole suite green, while doing the
-// same to the prime path was caught immediately.
+// Merge records live at <weft gitdir>/fabric-merge.json.
+// The weft gitdir is either the weft repo's own .git (the prime pair) or .git/worktrees/<name>/ (every other pair).
+// The in-flight check scans both shapes; this test covers the linked one, where a merge normally runs.
 //
-// The fixture therefore runs the merge from a LINKED pair and drives Remove from the prime's own
-// location, so the refusal can only come from the hub-wide scan finding a record in a worktree gitdir.
+// The fixture runs the merge from a linked pair and drives Remove from the prime's own location,
+// so the refusal can only come from the hub-wide scan finding a record in a worktree gitdir.
 // Both record locations are asserted with t.Fatal before Remove is called: the linked one must exist
-// and the prime one must not, or the test would pass on the path it is not trying to cover.
+// and the prime one must not, or the test would pass on the path it does not cover.
 func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -790,8 +762,8 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 
 	sourceBranch := gitkit.CurrentBranch(t, sourceWarpDir)
 
-	// Warp-side-only conflicting divergence, matching the prime-pair test's own reasoning: a weft-root
-	// conflict would be unmappable and self-abort the attempt instead of leaving a live record.
+	// Warp-side-only conflict:
+	// a weft-root conflict would be unmappable and self-abort the attempt instead of leaving a live record.
 	gitkit.CommitFile(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
 	gitkit.CommitFile(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
 	gitkit.CommitFile(t, consumerWarpDir, "conflict.txt", "consumer side\n", "consumer: warp conflict")
@@ -806,8 +778,8 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 		t.Fatalf("MergeIn(%s).Conflicts is empty; the fixture must leave a live merge record", sourceBranch)
 	}
 
-	// Precondition: the record really is in the LINKED shape, and the prime shape is empty — otherwise
-	// this test would be re-covering the path the sibling test already covers.
+	// Precondition: the record is in the linked shape, and the prime shape is empty.
+	// Otherwise this test would cover the prime path instead of the linked one.
 	linkedRecord := filepath.Join(h.PrimeRecords(), ".git", "worktrees", filepath.Base(consumerWeftDir), "fabric-merge.json")
 	if _, err := os.Stat(linkedRecord); err != nil {
 		t.Fatalf("Stat(%s) = %v; want the merge record in the linked pair's own weft gitdir", linkedRecord, err)
@@ -834,12 +806,12 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.RecordsBranchName(sourceBranch))
 	}
 
-	// force answers dirtiness only, never a live merge record — the same rule as the prime-pair case.
+	// force answers dirtiness only, never a live merge record.
 	if _, err := h.Topology.Remove(primeLocation, sourceSlug, true, false); !errors.As(err, &refused) {
 		t.Fatalf("Remove(%s, force=true): error = %v (%T); want *ErrMergeInProgress even with force", sourceSlug, err, err)
 	}
 
-	// Aborting the linked pair's merge closes the window, so the same Remove must then succeed.
+	// Aborting the linked pair's merge closes the window, so Remove must then succeed.
 	if _, err := consumer.MergeAbort(); err != nil {
 		t.Fatalf("MergeAbort on the linked consumer pair: %v", err)
 	}

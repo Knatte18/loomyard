@@ -1,10 +1,9 @@
-// merge_target_integration_test.go covers Merge's target-pair scenario matrix against a real
-// hubforge pair: a second "target"/"target-weft" pair added alongside the fixture's own source pair,
-// with a *fabricengine.Fabric handle opened on the target's own worktree via lymcwd.ResolveWorktree +
-// fabricengine.Open — driven while cwd stays on the source pair, proving the path-anchored,
-// cwd-gate-free Go API the handle decision requires.
-// Reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go, since both
-// files share package fabricengine_test.
+// merge_target_integration_test.go covers Merge's target-pair scenario matrix against a real hubforge pair.
+// It adds a second "target"/"target-weft" pair alongside the fixture's source pair.
+// The target's *fabricengine.Fabric handle opens on its own worktree.
+// The working directory stays on the source pair throughout, so the scenarios run on the path-anchored API.
+// Reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go.
+// Both files share package fabricengine_test.
 
 package fabricengine_test
 
@@ -25,13 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newMergeTargetFixture builds a real hubforge pair (the source/task pair, at anchor) plus a second
-// pair "target"/"target-weft" (hubforge.AddPair) — Merge's target — and opens a *fabricengine.Fabric
-// handle on the target pair's own worktree via lymcwd.ResolveWorktree + fabricengine.Open, entirely
-// independent of the source pair's own handle newMergePairFixture already opened.
-// It returns h (for path lookups on both pairs), target (the Merge-under-test handle), and the two
-// closures newMergePairFixture already builds for diverging the source pair's branches directly on
-// the prime warp/weft worktrees.
+// newMergeTargetFixture builds a hubforge pair at anchor, the source pair.
+// It adds a second pair, "target"/"target-weft", and opens a *fabricengine.Fabric handle on its worktree.
+// It returns h for path lookups on both pairs and target as the handle Merge runs on.
+// It also returns the two closures that commit onto the source branches in the prime worktrees.
 func newMergeTargetFixture(t *testing.T, anchor string) (h *hubforge.Hub, target *fabricengine.Fabric, commitOnSourceWarp, commitOnSourceWeft func(branch, filename, content, msg string)) {
 	t.Helper()
 
@@ -76,10 +72,9 @@ func gitCommitSubject(t *testing.T, dir, rev string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// advanceRemoteBranch commits filename/content on branch and pushes it to bareRemote from a
-// throwaway clone, entirely independent of any of the fixture's own worktrees — advancing origin's
-// copy of branch without ever touching the local ref any worktree has checked out, the shape Merge's
-// pre-merge sync step (a fetch the guard stage never runs) needs to observe.
+// advanceRemoteBranch commits filename and content on branch in a throwaway clone and pushes it to bareRemote.
+// It moves origin's copy of branch without touching the local ref any worktree has checked out.
+// That is the state Merge's pre-merge sync fetch must observe.
 func advanceRemoteBranch(t *testing.T, bareRemote, branch, filename, content, msg string) {
 	t.Helper()
 
@@ -152,9 +147,9 @@ func TestMerge_CleanSquash(t *testing.T) {
 	}
 }
 
-// TestMerge_CleanNonSquash covers the clean non-squash merge scenario: a real merge commit with two
-// parents on the warp side, plain `git merge` semantics preserved, and the weft side left byte-for-byte
-// unmoved — Merge is no longer a weft-side merge participant.
+// TestMerge_CleanNonSquash covers the clean non-squash merge scenario.
+// Merge makes a real merge commit with two parents on the warp side, with plain `git merge` semantics,
+// and the weft side is left byte-for-byte unmoved.
 func TestMerge_CleanNonSquash(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -162,9 +157,8 @@ func TestMerge_CleanNonSquash(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 
 	targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
-	// A target-side commit on each checkout, so merging "feature" is a genuine (non-fast-forward)
-	// merge on the warp side rather than a plain pointer advance. The weft-side commit only proves the
-	// weft checkout stays put across the merge.
+	// A target-side commit on each checkout makes merging "feature" a genuine (non-fast-forward) merge on the warp side.
+	// The weft-side commit only proves the weft checkout stays put across the merge.
 	gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "target progress\n", "target: progress")
 	gitkit.CommitFile(t, targetWeftPath, "_lym/target-progress.txt", "target progress\n", "target: progress weft")
 	weftBefore := fabricengine.CurrentSHAForTest(t, targetWeftPath)
@@ -229,20 +223,21 @@ func TestMerge_MessagePrecedence(t *testing.T) {
 		if got := gitCommitSubject(t, h.PairCodeWorktree("target"), "HEAD"); got != msg {
 			t.Errorf("warp commit subject = %q; want verbatim %q", got, msg)
 		}
-		// The weft is not a merge participant, so the message option never reaches it — the weft HEAD
-		// stays exactly where it was.
+		// The weft is not a merge participant, so the message option never reaches it.
+		// Its HEAD stays where it was.
 		if got := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target")); got != weftBefore {
 			t.Errorf("target weft HEAD = %q; want unchanged %q", got, weftBefore)
 		}
 	})
 }
 
-// TestMerge_DirtyTargetHalts covers Merge's dirty-target guard: a dirty warp halts before mutating
-// anything (SHA unchanged, no record) with the fixed "worktree dirty" reason. A dirty weft no longer
-// halts anything — the weft is not a merge participant, so its dirtiness cannot affect a warp-only
-// merge's correctness — and Merge proceeds to land the warp-side merge exactly as it would against a
-// clean weft, leaving the dirty weft file exactly as the test left it (uncommitted, untouched, HEAD
-// unmoved).
+// TestMerge_DirtyTargetHalts covers Merge's dirty-target guard.
+// A dirty warp halts before mutating anything: the SHA is unchanged, no record is written,
+// and the reason is the fixed "worktree dirty".
+// A dirty weft does not halt the merge:
+// the weft is not a merge participant, so its dirtiness cannot affect a warp-only merge's correctness;
+// Merge lands the warp-side merge as it would against a clean weft,
+// and the dirty weft file stays as the test left it (uncommitted, untouched, HEAD unmoved).
 func TestMerge_DirtyTargetHalts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -279,9 +274,8 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 
 	h2, target2, commitOnSourceWarp2, commitOnSourceWeft2 := newMergeTargetFixture(t, ".")
 	targetWarpPath2 := h2.PairCodeWorktree("target")
-	// A target-side warp commit, so merging "feature" is a genuine (non-fast-forward) merge that
-	// fabricates a commit — the shape needed to assert Committed true below, mirroring
-	// TestMerge_CleanNonSquash's own reason for the same seed commit.
+	// A target-side warp commit makes merging "feature" a genuine (non-fast-forward) merge that fabricates a commit.
+	// That shape is needed to assert Committed true below.
 	gitkit.CommitFile(t, targetWarpPath2, "warp-progress.txt", "target progress\n", "target: progress")
 	seedSourceAndTarget(t, commitOnSourceWarp2, commitOnSourceWeft2)
 	targetWeftPath2 := h2.PairRecordsSibling("target")
@@ -309,10 +303,11 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	}
 }
 
-// TestMerge_StaleTargetSyncsBeforeMerging covers a target behind its own upstream: Merge's pre-merge
-// sync step fetches and fast-forwards the warp side (KindRepoAdvanced recorded) before merging,
-// landing both the remote advance and the merge's own content. The weft side is not synced — it is
-// not a merge participant — so a weft-side remote advance is left unfetched.
+// TestMerge_StaleTargetSyncsBeforeMerging covers a target behind its own upstream:
+// Merge's pre-merge sync step fetches and fast-forwards the warp side (KindRepoAdvanced recorded) before merging,
+// landing both the remote advance and the merge's own content.
+// The weft side is not synced, since it is not a merge participant;
+// a weft-side remote advance is left unfetched.
 func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -345,9 +340,9 @@ func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 	}
 }
 
-// TestMerge_DivergedTargetRefuses covers a genuinely diverged target — local commits past an already
-// fetched, moved-elsewhere upstream — refusing with *MergeGuardError carrying "branch not synced to
-// upstream" and mutating nothing.
+// TestMerge_DivergedTargetRefuses covers a diverged target:
+// local commits past an already fetched, moved-elsewhere upstream.
+// It expects Merge to refuse with *MergeGuardError carrying "branch not synced to upstream" and to mutate nothing.
 func TestMerge_DivergedTargetRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -430,12 +425,9 @@ func TestMerge_NoUpstreamSidePassesVacuously(t *testing.T) {
 }
 
 // TestMerge_ConflictSelfAborts covers a warp-side merge that would conflict: it self-aborts,
-// restoring the target pair's warp SHA and worktree exactly, returning *ErrMergeInRequired with
-// Source set and leaving no record.
-// This test used to also cover a weft-side conflict, asserting the returned error was byte-identical
-// regardless of which side conflicted. That sub-scenario has no warp-side analogue and is deleted
-// here: Merge no longer merges the weft side at all, so a weft-side conflict is not a shape Merge can
-// produce any more — see the merge-drops-weft task.
+// restoring the target pair's warp SHA and worktree exactly.
+// It returns *ErrMergeInRequired with Source set and leaves no record.
+// Merge merges only the warp side, so a weft-side conflict cannot occur.
 func TestMerge_ConflictSelfAborts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -622,13 +614,12 @@ func TestMerge_CrashRecovery(t *testing.T) {
 
 // TestMerge_PreMergeSyncRunsInsideTheWriteLock pins the one mutation Merge performs before its merge
 // record exists: the pre-merge sync step.
-// The sync fast-forwards the warp checkout, and it runs at a point where no merge record has been
-// written yet — so mergeBlocksMutation reports false and the sibling weft-mutating verbs
-// (Commit/Pull/Checkout/Remove) do not refuse. The weft write lock is therefore the only thing that
-// can serialize it against a concurrent Commit writing the same weft index.
-// The assertion is behavioural rather than structural: with the lock externally held, Merge must not
-// have advanced the warp side by the time a sibling would have finished its own write, and must
-// complete once the lock is released.
+// The sync fast-forwards the warp checkout and runs before any merge record is written.
+// So mergeBlocksMutation reports false, and the sibling weft-mutating verbs (Commit/Pull/Checkout/Remove) do not refuse.
+// The weft write lock is therefore the only thing serializing it against a concurrent Commit on the same weft index.
+// The assertion is behavioural:
+// with the lock externally held, Merge must not advance the warp side before a sibling would have finished its write,
+// and it must complete once the lock is released.
 func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -660,7 +651,6 @@ func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 		_ = externalLock.Release()
 		t.Fatal("Merge() completed while the weft write lock was externally held; want it to block before its pre-merge sync step")
 	case <-time.After(150 * time.Millisecond):
-		// Still blocked, as expected.
 	}
 	if _, err := os.Stat(syncedWarpFile); !os.IsNotExist(err) {
 		_ = externalLock.Release()
@@ -686,13 +676,11 @@ func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 }
 
 // divergeSideWithoutFetching creates the unfetched-divergence shape on one side of the target pair:
-// someone else advances the side's own upstream branch on the bare remote, and the side then makes a
-// local commit WITHOUT fetching, so its remote-tracking ref still names a commit that is an ancestor
-// of its own HEAD.
-// It asserts that shape with t.Fatal rather than assuming it, because the whole point of the tests
-// below is that the pre-lock guard cannot see this divergence: a fixture that accidentally fetched
-// would classify as a plain divergence, take the pre-lock guard's own path, and prove nothing about
-// the post-fetch arm.
+// someone else advances the side's own upstream branch on the bare remote;
+// the side then makes a local commit without fetching,
+// so its remote-tracking ref still names a commit that is an ancestor of its own HEAD.
+// It asserts that shape with t.Fatal rather than assuming it.
+// A fixture that fetched by accident would see a plain divergence and prove nothing about the post-fetch check.
 func divergeSideWithoutFetching(t *testing.T, worktree, bareRemote, branch, remoteFile, localFile string) {
 	t.Helper()
 
@@ -738,16 +726,10 @@ func assertMergeRefusedAsNotSynced(t *testing.T, h *hubforge.Hub, res fabricengi
 	}
 }
 
-// TestMerge_UnfetchedDivergedTargetRefuses covers the divergence Merge's own pre-lock guard stage is
-// structurally too early to see, on the warp side.
-// syncedToUpstreamReason resolves @{u} before anything in the call has fetched, so a divergence
-// created by someone else's push that this checkout has not fetched yet reads as "merely ahead" and
-// the guard passes. Merge then fetches twice (resolveMergeSources, then the pre-merge sync step) and
-// used to merge straight over the now-visible divergence, returning ok with committed:true against a
-// target that `rev-list --left-right --count HEAD...@{u}` reports as genuinely diverged.
-// The post-fetch arm in syncSideBeforeMerge is what closes it, and this test is the only thing that
-// reaches that arm: TestMerge_DivergedTargetRefuses hand-fetches first and therefore exercises the
-// pre-lock guard instead.
+// TestMerge_UnfetchedDivergedTargetRefuses covers a warp target whose upstream diverged on the remote.
+// This checkout has not fetched the divergence.
+// The pre-lock guard resolves the upstream before anything has fetched, so the divergence reads as merely ahead.
+// Merge then fetches, and the post-fetch check must refuse; without it, Merge commits over the divergence.
 func TestMerge_UnfetchedDivergedTargetRefuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -764,33 +746,17 @@ func TestMerge_UnfetchedDivergedTargetRefuses(t *testing.T) {
 	assertMergeRefusedAsNotSynced(t, h, res, err, warpBefore, weftBefore)
 }
 
-// TestMerge_UnfetchedDivergedWeftDoesNotRefuse used to be TestMerge_UnfetchedDivergedTargetRefuses'
-// weft-side twin, pinning syncSideBeforeMerge's post-fetch divergence check on the weft side. Batch
-// merge-drops-weft deleted Merge's weft-side sync call entirely (Merge no longer synchronizes or
-// merges the weft side at all), so that post-fetch weft arm no longer existed to pin, and this test
-// was deleted rather than weakened, leaving only the still-present syncedToUpstreamReason guard's
-// weft half (TestMerge_FetchedDivergedWeftRefuses) as coverage of the weft's remaining power to
-// block a merge.
-// This batch (weft-guards-drop) removes that remaining power too: syncedToUpstreamReason now
-// evaluates the warp side alone. There is no longer a weft-side divergence check anywhere in Merge's
-// guard stage, fetched or unfetched, so this name is not resurrected as a separate test — the single
-// TestMerge_FetchedDivergedWeftDoesNotRefuse test below covers the (now unified) non-refusing
-// behavior for both the fetched and unfetched shapes, since neither reaches a weft-aware guard arm
-// anymore.
+// Merge does not check the weft's divergence from its upstream, and it never synchronizes the weft.
+// A diverged weft therefore never refuses a merge, fetched or unfetched.
 
-// TestMerge_FetchedDivergedWeftDoesNotRefuse used to be TestMerge_FetchedDivergedWeftRefuses,
-// pinning syncedToUpstreamReason's WEFT half: with the divergence already fetched before the call,
-// the pre-lock guard used to be what refused.
-// This batch drops that weft half. A weft diverged from its own upstream can no longer refuse a
-// merge the warp alone completes, in either the pre-lock guard or the post-fetch sync layer (the
-// latter no longer even touches the weft) — per-transition status pushes warn and continue on a
-// rejected push, which makes a locally-diverged weft a routine, expected state.
+// TestMerge_FetchedDivergedWeftDoesNotRefuse covers a weft diverged from its upstream, fetched before the call.
+// A weft diverged from its upstream never refuses a merge that the warp side completes.
+// Per-transition status pushes warn and continue on a rejected push, so a locally diverged weft is expected.
 //
-// The fixture still pairs that diverged weft with a warp side deliberately left BEHIND its own
-// upstream: that pairing is what gives the test its teeth rather than being scene-setting. Merge's
-// own pre-merge sync step is expected to fast-forward the behind warp side and land the merge, so
-// the assertions below pin exactly that: no error, Committed true, and the warp HEAD moved off its
-// pre-merge SHA while the weft HEAD — never touched by Merge — stays exactly where it started.
+// The fixture leaves the warp side behind its own upstream on purpose.
+// Merge's pre-merge sync must fast-forward it for the merge to land, so the assertions pin that:
+// no error, Committed true, and the warp HEAD moved off its pre-merge SHA.
+// The weft HEAD, which Merge never touches, stays where it started.
 func TestMerge_FetchedDivergedWeftDoesNotRefuse(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -805,12 +771,12 @@ func TestMerge_FetchedDivergedWeftDoesNotRefuse(t *testing.T) {
 	gitkit.MustRun(t, targetWeftPath, "git", "fetch", "-q", "origin")
 	gitkit.CommitFile(t, targetWeftPath, "local-weft.txt", "local content\n", "target-weft: local progress")
 
-	// The warp side is left strictly behind its upstream: legal on its own (the sync step exists to
-	// fast-forward exactly this).
+	// The warp side is left strictly behind its upstream.
+	// That is legal on its own: the sync step exists to fast-forward exactly this.
 	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 
-	// Precondition: the weft side is genuinely diverged with the divergence already visible to the
-	// pre-lock guard — the shape that used to make only the weft half of that guard refuse.
+	// Precondition: the weft side is diverged, and the divergence is already visible to the
+	// pre-lock guard.
 	head := gitkit.RevParse(t, targetWeftPath, "HEAD")
 	tracking := gitkit.RevParse(t, targetWeftPath, "origin/target-weft")
 	if gitkit.IsAncestor(t, targetWeftPath, head, tracking) || gitkit.IsAncestor(t, targetWeftPath, tracking, head) {
@@ -835,14 +801,9 @@ func TestMerge_FetchedDivergedWeftDoesNotRefuse(t *testing.T) {
 	}
 }
 
-// TestMerge_FetchedBehindTargetIsSyncedNotRefused pins the behind-passes clause of
-// sideNotSyncedToUpstream, which nothing reached before: TestMerge_StaleTargetSyncsBeforeMerging's
-// target has NOT fetched, so at guard time its @{u} still equals its own HEAD and the predicate
-// returns on the equality arm long before the behind arm.
-// Here the advance is fetched first, so the guard genuinely sees HEAD strictly behind upstream and
-// must classify it as synced — Merge's own pre-merge sync step is what advances it. Turning that
-// clause into a refusal makes a merely-stale target unmergeable, which is the whole scenario the sync
-// step exists for.
+// TestMerge_FetchedBehindTargetIsSyncedNotRefused pins the behind arm of `sideNotSyncedToUpstream`:
+// a target whose upstream advance is fetched, so HEAD is strictly behind it, must count as synced.
+// Merge's own pre-merge sync step advances it, and refusing it would make every stale target unmergeable.
 func TestMerge_FetchedBehindTargetIsSyncedNotRefused(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

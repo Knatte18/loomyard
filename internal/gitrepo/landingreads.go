@@ -1,4 +1,6 @@
-// landingreads.go adds the two reads that attribute a landed fix to the code it repaired: PreImageLines lists the lines of a commit's first parent that the commit removes or replaces, and BlameLines names the first-parent commit that brought each of a file's lines.
+// landingreads.go holds the reads that attribute a landed fix to the code it repaired.
+// PreImageLines finds the lines of a first parent that a commit removes or replaces.
+// BlameLines names the first-parent commit that brought each line of a file.
 
 package gitrepo
 
@@ -14,7 +16,10 @@ import (
 	"github.com/go-git/go-git/v5/utils/merkletrie"
 )
 
-// PreImageLines diffs sha's tree against its first parent through go-git and returns, per slash-separated path the commit modifies or deletes, the ascending 1-based line numbers of the first parent's version that the commit removes or replaces.
+// PreImageLines returns the ascending 1-based line numbers that the commit at sha removes or replaces.
+// They are numbered in the first parent's version.
+// It returns them per slash-separated path the commit modifies or deletes,
+// and it diffs the tree against the first parent through go-git.
 // A path the commit only adds has no entry, a binary file has no entry, and a root commit returns an empty map.
 // An invalid sha is ErrInvalidSHA.
 func (r *Repo) PreImageLines(sha string) (map[string][]int, error) {
@@ -102,12 +107,16 @@ func lineCount(content string) int {
 	return count
 }
 
-// blameHeaderPattern matches the header line git blame --porcelain prints before each blamed line: the commit, the line in that commit and the line in the blamed file.
+// blameHeaderPattern matches the header line that git blame --porcelain prints before each blamed line.
+// Its groups are the commit SHA and the line number in the blamed file.
 var blameHeaderPattern = regexp.MustCompile(`^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$`)
 
-// BlameLines runs git blame --porcelain --first-parent over relPath at rev and returns the attributing commit SHA of each requested 1-based line, with one -L range per run of consecutive lines.
-// It is CLI-bound: go-git's blame walks the whole history of the file per call and has no first-parent mode, which attributing a merged branch's lines to the merge that landed them needs.
-// rev must be a valid hex object name and relPath must not start with '-', else ErrInvalidSHA; no lines returns an empty map without running git.
+// BlameLines returns the SHA of the first-parent commit that attributes each requested 1-based line of relPath at rev.
+// It runs git blame --porcelain --first-parent, with one -L range per run of consecutive lines.
+// go-git's blame has no first-parent mode.
+// Attributing a merged branch's lines to the merge that landed them needs first-parent mode.
+// rev must be a valid hex object name and relPath must not start with '-', else ErrInvalidSHA.
+// With no lines, it returns an empty map without running git.
 func (r *Repo) BlameLines(rev, relPath string, lines []int) (map[int]string, error) {
 	if !validSHA(rev) || strings.HasPrefix(relPath, "-") {
 		return nil, ErrInvalidSHA

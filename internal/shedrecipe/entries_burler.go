@@ -1,5 +1,5 @@
-// entries_burler.go implements burlerReviewEntry and burlerFixEntry, the Constructors for the "BurlerReview" and "BurlerFix" registry rows:
-// the review row and the fix row opposite a segment's Bouncer row, sharing that row's run_subdir value so all three write into one joined run directory.
+// entries_burler.go implements the Constructors of the "BurlerReview" and "BurlerFix" registry rows.
+// A segment's review and fix rows share its Bouncer row's run_subdir value, so the three write into one run directory.
 
 package shedrecipe
 
@@ -35,8 +35,7 @@ func effectiveFanList(wiring []string, profileFan string) []string {
 }
 
 // burlerRowTimeout returns the round deadline of a row whose timeout_s Config key read timeoutS: the row's own value, else env.ReviewTimeout.
-// configInt with required false returns 0 for an absent key, so 0 is the absent sentinel here.
-// The reasoning is configString's: an empty string is the absent sentinel because there is no meaningful explicit zero.
+// Zero marks an absent key, because a zero timeout has no meaning.
 func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 	if timeoutS == 0 {
 		return env.ReviewTimeout
@@ -44,12 +43,14 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 	return time.Duration(timeoutS) * time.Second
 }
 
-// burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models, Assist: the segment's Assist, GateFindingsPath: the row's gate findings file}, profile, opts, runDir, env.Now).
-//
-// The row takes no "gates" key: its only gate is the engine's review-parse entry.
-// The row's models and review key come from its segment's SegmentSettings.
-// The row's per-round reviewer and fixer fan lists come from the settings its reviewer_fan_setting and fixer_fan_setting keys name, else from the recipe profile's cluster-fan and fix-fan, and a setting's list naming a fan beside the recipe's own is a construction error.
-// A row naming either setting, or setting either profile fan, records its round's fans; a row with neither runs solo and records nothing.
+// burlerReviewEntry is the Constructor for the "BurlerReview" registry row.
+// It takes no "gates" key: its only gate is the engine's review-parse entry.
+// Its models and review key come from its segment's settings.
+// The fan lists come from the settings named by reviewer_fan_setting and fixer_fan_setting.
+// Without such a setting, they come from the recipe profile's cluster-fan and fix-fan.
+// A setting's list that names a fan beside the profile's own fan is a construction error.
+// A row that names a setting or sets a profile fan records its round's fans;
+// a row with neither runs solo and records nothing.
 func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -133,14 +134,18 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	return producer, nil
 }
 
-// burlerFixEntry is the Constructor for the "BurlerFix" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile through burlerFixProfile, resolves the row's "gates" Config key through resolveRowGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer and review rows, and returns shedadapters.NewBurlerFixProducer(name, review_row, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models, GateFindingsPath: the row's gate findings file, NotifyParent: env.NotifyParent}, profile, opts, runDir, env.Now).
-//
-// All four fix rows share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
-// the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
-// The optional "gate_key" string names the key of the hub's gate.yaml the "verify" gate runs, else the row name in lower case.
-// The row's models and fix key come from its segment's SegmentSettings.
-// The optional boolean "decisions_escalated" key (default false) marks a segment whose Bouncer escalates the round's decision findings itself: the fixer is given none and the row posts no notice of its own.
-// The row names no fan list of its own: a fixer fan reaches it through the review row's recorded round, and only when its fixer_fan_setting key names a setting, which requires the recorded round and is cited as the fan's source.
+// burlerFixEntry is the Constructor for the "BurlerFix" registry row.
+// The "gates" key selects its validator, since every fix row shares this constructor.
+// The Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify;
+// the review segments name their own validators.
+// The optional "gate_key" string names the hub's gate.yaml key that the "verify" gate runs.
+// Without it, the key is the row name in lower case.
+// Its models and fix key come from its segment's settings.
+// Setting "decisions_escalated" to true marks a segment whose Bouncer escalates the round's decision findings itself.
+// The fixer is then given none, and the row posts no notice of its own.
+// The row has no fan list of its own.
+// A fixer fan reaches it through the review row's recorded round;
+// its fixer_fan_setting key, when it names a setting, is cited as the fan's source and requires that recorded round.
 func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -208,9 +213,10 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	return producer, nil
 }
 
-// burlerRunDir checks the Env fields a burler half row reads, then joins and creates the run directory runSubdir names under env.RunRoot.
-// The same run_subdir value in a segment's Bouncer, review and fix rows is what makes all three write into one directory.
-// That is what lets shedadapters' roundComplete find the review where the Bouncer looks for it.
+// burlerRunDir checks the Env fields a burler half row reads.
+// It then joins and creates the run directory runSubdir names under env.RunRoot.
+// A segment's Bouncer, review and fix rows share one run_subdir value, which puts all three in one directory.
+// That directory is where the Bouncer looks for the review, and where shedadapters' roundComplete finds it.
 func burlerRunDir(entry, runSubdir string, env Env) (string, error) {
 	if err := requireAbsRoot(entry, "RunRoot", env.RunRoot); err != nil {
 		return "", err
@@ -228,15 +234,12 @@ func burlerRunDir(entry, runSubdir string, env Env) (string, error) {
 	return runDir, nil
 }
 
-// burlerRoundFileSet maps profile's target or fasit sub-map onto a burlerengine.FileSet, recognising
-// exactly paths and instructions and rejecting any other key.
+// burlerRoundFileSet maps the target or fasit sub-map of a profile onto a burlerengine.FileSet.
+// It recognises exactly paths and instructions and rejects any other key.
 //
-// entry and field qualify every error it returns. Without them the two call sites are
-// indistinguishable: the accessors below render only the leaf key, so a bad profile.target.paths and
-// a bad profile.fasit.paths both read `config key "paths" must be a string list, got ...`, and a
-// stray key under either reads `unrecognized config key "X"` with no path at all. A recipe author
-// with a typo in one of two sibling maps was told which key and never which map. This is the same
-// entry/field qualification resolveUnderRoot already applies one file over.
+// entry and field qualify every error it returns.
+// Without them the target and fasit maps report identical errors,
+// and a stray key never says which map it is in.
 func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, error) {
 	qualify := func(err error) error {
 		return fmt.Errorf("shedrecipe: %s: config key %q: %w", entry, field, err)
@@ -256,32 +259,27 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 	return burlerengine.FileSet{Paths: paths, Instructions: instructions}, nil
 }
 
-// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly nine keys:
-// target, fasit, rubric, rubric_stencil, fix-scope, tool-use, cluster-fan, fix-fan and language-skills.
-// All are optional at this level individually, subject to the rubric/rubric_stencil mutual-exclusivity rule below.
+// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile.
+// It recognises target, fasit, rubric, rubric_stencil, fix-scope, tool-use, cluster-fan, fix-fan and language-skills.
+// Each is optional here.
+// Exactly one of rubric and rubric_stencil must be non-empty:
+// both set, or both empty, is a construction error that names both keys.
 //
-// Eight of these nine key names are a hand-maintained duplicate of internal/burlercli's profileYAML
-// kebab-case shape, kept identical deliberately so a human who has written a burler profile file
-// reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
-// prior-fixer-reports, and cluster-exclude are deliberately absent.
-// shedadapters.NewBurlerReviewProducer's own doc states that those burlerengine.Profile fields and burlerengine.RunOpts.Round are overwritten per round.
-// A recipe author setting one would therefore set a value the producer silently discards.
+// Every key except rubric_stencil duplicates the kebab-case shape of internal/burlercli's profileYAML on purpose,
+// so a human who has written a burler profile file reads a recipe row without a second vocabulary.
+// review-path, fixer-report-path, prior-reviews, prior-fixer-reports and cluster-exclude are left out on purpose:
+// shedadapters.NewBurlerReviewProducer overwrites those profile fields on every round,
+// so a recipe author who set one would set a value the producer discards.
 //
-// rubric_stencil is the one key with no profileYAML counterpart: it names a stencilstore rubric
-// stencil, read and filled via shedadapters.ReadRubric, to set Profile.Rubric in place of a literal
-// rubric string. Exactly one of rubric and rubric_stencil must be non-empty -- both set, or both
-// empty, is a construction error naming both keys, because neither of Profile.validate's own checks
-// can say which of the two the author meant.
+// rubric_stencil names a stencilstore rubric stencil, read and filled by shedadapters.ReadRubric.
+// Its filled text sets Profile.Rubric in place of a literal rubric string.
+// The stencil route fills specs_dir and the optional notes at read time;
+// the literal route passes rubric through unfilled.
+// That asymmetry is deliberate: a literal rubric is author-written prose.
+// Filling it would turn any bare {{ into a parse-template error, and impose specs-directory semantics on it.
 //
-// The stencil route fills specs_dir and the optional notes at read time; the literal route passes rubric through
-// unfilled, exactly as before. The asymmetry is deliberate: a literal rubric is author-written
-// prose reaching this entry through the rubric config key rather than through the stencil store,
-// and running it through Fill would turn any bare {{ in it into a parse-template error and impose
-// specs-directory semantics on text that never had them.
-//
-// This entry does not check profile's inner required-ness beyond the mutual-exclusivity rule:
-// burlerengine.Profile.validate already rejects an empty Rubric and a Target/Fasit with neither
-// Paths nor Instructions, and duplicating that here would drift from it.
+// Beyond that exclusivity rule, burlerengine.Profile.validate checks the profile's inner required fields.
+// Repeating those checks here would drift from it.
 func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadapters.RubricNotes) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
 	if err != nil {
@@ -323,9 +321,8 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 		return burlerengine.Profile{}, err
 	}
 
-	// Exactly one of rubric and rubric_stencil must be non-empty. This is checked here, ahead of
-	// burlerengine.Profile.validate's own empty-Rubric rejection, because that error names neither
-	// key and cannot say which of the two the author meant.
+	// Check the exclusivity here: burlerengine.Profile.validate rejects an empty Rubric,
+	// but its error names neither key.
 	switch {
 	case rubric != "" && rubricStencil != "":
 		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerReview: config keys \"rubric\" and \"rubric_stencil\" are mutually exclusive")
@@ -337,8 +334,7 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 		if err := requireAbsRoot("BurlerReview", "StencilsDir", stencilsDir); err != nil {
 			return burlerengine.Profile{}, err
 		}
-		// Guarded inside this branch, not at function entry, so a row using a literal rubric: key
-		// still constructs with no specs directory wired, exactly as it does today.
+		// Guarded here, not at function entry: a row with a literal rubric builds with no specs directory wired.
 		if err := requireAbsRoot("BurlerReview", "SpecsDir", specsDir); err != nil {
 			return burlerengine.Profile{}, err
 		}
@@ -358,13 +354,11 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 		return burlerengine.Profile{}, err
 	}
 
-	// profile.target.paths and profile.fasit.paths are the single documented exception to the
-	// general relative-Config-path rule: they are passed through relative and unjoined, with no
-	// resolveUnderRoot call and no absolute-rejection check. burlerengine.Profile.validate already
-	// resolves them against its own told worktree root and stats every resolved entry for
-	// existence, so joining here would either double-resolve or hand validate an absolute path it
-	// did not resolve itself, and an author who writes an absolute path there gets validate's
-	// behaviour rather than this package's.
+	// profile.target.paths and profile.fasit.paths are the one exception to the relative-Config-path rule:
+	// they pass through relative and unjoined, with no resolveUnderRoot call and no absolute-path check.
+	// burlerengine.Profile.validate resolves them against the told worktree root and stats each entry.
+	// Joining here would resolve them twice, or hand validate an absolute path it did not resolve itself.
+	// An absolute path there therefore gets validate's behaviour, not this package's.
 
 	return burlerengine.Profile{
 		Target:         target,
@@ -378,8 +372,11 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 	}, nil
 }
 
-// burlerFixProfile maps cfg's profile map onto the burlerengine.Profile of a fix row, recognising exactly three keys -- target, fix-scope and language-skills -- all optional at this level.
-// The fixer holds no fasit, rubric, cluster fan or fix fan, so those keys are rejected as unrecognised; profile.target.paths follows burlerRoundProfile's relative-path exception.
+// burlerFixProfile maps cfg's profile map onto the burlerengine.Profile of a fix row.
+// It recognises target, fix-scope and language-skills, each optional here.
+// The fixer holds no fasit, rubric, cluster fan or fix fan, so those keys are rejected as unrecognised.
+// Its target.paths stay relative and unjoined:
+// burlerengine.Profile.validate resolves them against the told worktree root.
 func burlerFixProfile(cfg Config) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
 	if err != nil {

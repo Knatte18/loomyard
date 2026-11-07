@@ -1,5 +1,6 @@
-// anchorchange.go changes one worktree's anchor: it moves the worktree's weft content to the new directory, or integrates the change the weft's upstream made, and recovers a change a kill left half done.
-// A change is three calls the CLI interleaves with its session, run and dobby steps: BeginAnchorChange refuses and holds the move lock, Apply does the work, Finish ends the record.
+// anchorchange.go changes one worktree's anchor: it moves the weft to a new directory or integrates an upstream change.
+// It also recovers a change a kill left half done.
+// A change is three calls that interleave with its session, run and dobby steps: BeginAnchorChange, Apply, then Finish.
 
 package fabricengine
 
@@ -19,9 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// AnchorChange is one change of a worktree's anchor from one directory of its warp checkout to another, begun by BeginAnchorChange.
-// It holds the weft's move lock from BeginAnchorChange until Close, and the move record names the change on disk for as long as it stands.
-// A change that has nothing to do, because the worktree already sits at the requested anchor, takes no lock and writes no record.
+// AnchorChange is one change of a worktree's anchor from one directory of its warp checkout to another.
+// It holds the weft's move lock from the moment the change is begun until it is closed,
+// and the move record names the change on disk for as long as it stands.
+// A change with nothing to do takes no lock and writes no record.
+// It has nothing to do when the worktree already sits at the requested anchor.
 type AnchorChange struct {
 	pair     lymcwd.Location
 	weftPath string
@@ -34,16 +37,17 @@ type AnchorChange struct {
 	upstream string
 	// landed reports that the weft already carries the change, so a re-run goes straight to the wiring.
 	landed bool
-	// freshRecord reports that BeginAnchorChange wrote the record with none standing before.
+	// freshRecord reports that the change wrote the record, with no record standing before it.
 	freshRecord bool
 	applied     bool
 	closed      bool
 	moveLock    *lock.FileLock
-	// recovered holds what the recovery of a killed change did while the change was begun, handed to the recorder Apply is given.
+	// recovered holds what the recovery of a killed change did while the change was begun;
+	// the recorder Apply is given receives it.
 	recovered *Mutations
 }
 
-// NoOp reports whether the worktree already sits at the requested anchor, so Apply and Finish do nothing.
+// NoOp reports whether the worktree already sits at the requested anchor, so applying or finishing it does nothing.
 func (c *AnchorChange) NoOp() bool { return c.kind == "" }
 
 // From returns the anchor the change moves the worktree from.
@@ -69,15 +73,22 @@ func (c *AnchorChange) movesLymDir() bool {
 	return filepath.Clean(c.from) != filepath.Clean(c.to)
 }
 
-// BeginAnchorChange validates the change of the worktree pair to the directory target, refuses what cannot be settled, and holds the move lock for it.
-// Nothing is moved before every refusal has been judged: an empty own marker; a target the warp checkout cannot hold; a held move lock;
-// with a standing record from a killed run, a target other than the record's; and with no record, a weft with no committed marker or with uncommitted changes under its anchor.
+// BeginAnchorChange validates the change of the worktree pair to the directory target.
+// It refuses what cannot be settled, and it holds the move lock for it.
+//
+// Nothing is moved before every refusal has been judged:
+// an empty own marker; a target the warp checkout cannot hold; a held move lock;
+// with a standing record from a killed run, a target other than the record's;
+// and with no record, a weft with no committed marker or with uncommitted changes under its anchor.
 // Each refusal names its next step.
 //
-// The kind of change is integrate when the weft's fetched upstream has commits its tip lacks and the two tips carry different anchors, else move when target differs from the pair's anchor, else none.
+// The kind is integrate when the fetched upstream has commits the tip lacks and the two tips carry different anchors.
+// Otherwise the kind is move when target differs from the pair's anchor, and none when it does not.
 // A change of kind none takes no lock.
-// Any other writes the move record with this process's pid and start time, keeping a standing record's other fields.
-// A standing record whose change did not land is recovered here, before the clean tree is judged: the weft's paths go back to HEAD and `.lym` back to the old anchor.
+// A change of any other kind writes the move record with this process's pid and start time.
+// It keeps the standing record's other fields.
+// A standing record whose change did not land is recovered here, before the clean tree is judged:
+// the weft's paths go back to HEAD and `.lym` back to the old anchor.
 // The caller ends the change with Close.
 func (t *Topology) BeginAnchorChange(pair *lymcwd.Location, target string) (*AnchorChange, error) {
 	slug := pair.WorktreeName
@@ -140,7 +151,8 @@ func (t *Topology) BeginAnchorChange(pair *lymcwd.Location, target string) (*Anc
 }
 
 // heldMoveRefusal returns the refusal for a move lock another process holds.
-// A holder whose record names a live process is a change in progress, and any other holder is a change still starting, before its record exists or beside the record of a killed run.
+// A holder whose record names a live process is a change in progress;
+// any other holder is a change still starting, before its record exists or beside the record of a killed run.
 func heldMoveRefusal(slug, weftPath, target string) error {
 	if record, found, err := ReadMoveRecord(weftPath); err == nil && found && recordNamesLiveHolder(record) {
 		if wayForward, standing, err := MoveInProgress(slug, weftPath); err == nil && standing {
@@ -185,7 +197,8 @@ func (c *AnchorChange) start() error {
 	return nil
 }
 
-// upstreamCarriesAnotherAnchor reports whether the weft's fetched upstream has commits its tip lacks and a tip anchored elsewhere, and returns that upstream tip.
+// upstreamCarriesAnotherAnchor reports whether the fetched upstream has commits the tip lacks and a different anchor.
+// It returns that upstream tip.
 func (c *AnchorChange) upstreamCarriesAnotherAnchor() (bool, string, error) {
 	upstream, hasUpstream, err := upstreamSHAAt(c.weftPath)
 	if err != nil || !hasUpstream {
@@ -235,7 +248,8 @@ func (c *AnchorChange) resume(record MoveRecord) error {
 	return refuseUnsettledMoveSource(c.weftPath, slug, c.from, c.names)
 }
 
-// changeLanded reports whether the weft's HEAD already carries the change: its committed marker is the new anchor, and an integration also holds the upstream tip it was rebuilt on.
+// changeLanded reports whether the weft's HEAD already carries the change:
+// its committed marker is the new anchor, and an integration also holds the upstream tip it was rebuilt on.
 func (c *AnchorChange) changeLanded() (bool, error) {
 	marker, found, err := committedMarker(c.weftPath, "HEAD")
 	if err != nil || !found || filepath.Clean(marker) != filepath.Clean(c.to) {
@@ -250,8 +264,10 @@ func (c *AnchorChange) changeLanded() (bool, error) {
 	return gitrepo.New(c.weftPath).IsAncestor(c.upstream, "HEAD")
 }
 
-// recoverUnlanded undoes what a killed change left before its commit: the weft's paths go back to HEAD and `.lym` back under the old anchor.
-// Both `.lym` directories standing is refused before anything is touched, since only the operator can merge them.
+// recoverUnlanded undoes what a killed change left before its commit:
+// the weft's paths go back to HEAD and `.lym` back under the old anchor.
+// It refuses a weft holding a `.lym` directory under both anchors before touching anything;
+// only the operator can merge them.
 func (c *AnchorChange) recoverUnlanded() error {
 	if !c.movesLymDir() {
 		return restoreMovePathsToHead(c.recovered, c.weftPath, c.movePathspecs())
@@ -295,7 +311,8 @@ func lymDirPresent(weftPath, anchor string) (bool, error) {
 	return true, nil
 }
 
-// moveLymDir renames the weft's `.lym` directory from under the anchor src to under the anchor dst, through an os.Root at the weft.
+// moveLymDir renames the weft's `.lym` directory from under the anchor src to under the anchor dst.
+// It goes through an os.Root at the weft.
 // The destination anchor's directory is created first, since it may have left the tree with its last tracked file.
 func (c *AnchorChange) moveLymDir(rec *Mutations, src, dst string) error {
 	root, err := os.OpenRoot(c.weftPath)
@@ -322,7 +339,9 @@ func renamedFrom(weftPath, rel string) string {
 }
 
 // writeRecord writes the move record for this change with this process's pid and start time.
-// A standing record's anchors, kind and upstream tip are kept; a new record takes the change's own anchors and kind and no upstream tip, which Apply writes when it integrates.
+// A standing record's anchors, kind and upstream tip are kept;
+// a new record takes the change's own anchors and kind, with no upstream tip;
+// the upstream tip is written when the weft integrates.
 func (c *AnchorChange) writeRecord(standing MoveRecord, hadRecord bool) error {
 	record := MoveRecord{A: c.from, B: c.to, Kind: c.kind}
 	if hadRecord {
@@ -347,12 +366,16 @@ func writeMoveRecordFile(weftPath string, record MoveRecord) error {
 	return nil
 }
 
-// Apply carries the change out: it unwires the pair at the old anchor, moves or integrates the weft, then wires it, writes its launchers and regenerates the workspace files at the new anchor.
+// Apply carries the change out.
+// It unwires the pair at the old anchor, moves or integrates the weft, then wires it at the new anchor.
+// The wiring writes the launchers and regenerates the workspace files at the new anchor.
 // landed reports whether the weft's commit or branch move happened, which decides what a re-run does.
 //
-// A failure before the weft is committed or its branch moved restores the working tree, the index and `.lym`, rewires the old anchor and removes the record, and returns landed false;
+// A failure before the weft is committed or its branch moved returns landed false.
+// It restores the working tree, the index and `.lym`, rewires the old anchor and removes the record;
 // when that restore itself fails the record stays, landed is false, and the error names the re-run.
-// A failure after it leaves the record and returns landed true, the error naming the re-run that skips the move and finishes the wiring.
+// A failure after it leaves the record and returns landed true;
+// the error names the re-run that skips the move and finishes the wiring.
 // Apply does nothing for a change with nothing to do.
 func (c *AnchorChange) Apply(rec *Mutations) (landed bool, err error) {
 	if c.NoOp() {
@@ -404,7 +427,7 @@ func (c *AnchorChange) settleLymDirAfterLanding(rec *Mutations) error {
 	return nil
 }
 
-// moveWeft holds the weft write lock and does the unwiring of the old anchor and the move or the integration of the weft.
+// moveWeft holds the weft write lock, unwires the old anchor, and moves or integrates the weft.
 // committed reports that the weft's commit or branch move happened, and then err is a failure after it.
 // A failure before it is rolled back and returned with committed false.
 func (c *AnchorChange) moveWeft(rec *Mutations) (committed bool, err error) {
@@ -432,7 +455,8 @@ func (c *AnchorChange) moveWeft(rec *Mutations) (committed bool, err error) {
 }
 
 // integrate rebuilds the weft on its upstream tip anchored at the new anchor, then moves `.lym` after it.
-// The upstream tip is written into the record before the branch moves, so a killed run's re-run can tell whether the integration landed.
+// The upstream tip is written into the record before the branch moves,
+// so a killed run's re-run can tell whether the integration landed.
 func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 	if c.upstream == "" {
 		upstream, hasUpstream, err := upstreamSHAAt(c.weftPath)
@@ -475,9 +499,11 @@ func (c *AnchorChange) unwireAtSource(rec *Mutations) error {
 	return unseedScratchExclude(rec, source, slug, source.AnchorRel)
 }
 
-// rollback undoes a failure before the weft was committed: it puts the weft's paths and `.lym` back, rewires the old anchor and removes the record.
+// rollback undoes a failure before the weft was committed:
+// it puts the weft's paths and `.lym` back, rewires the old anchor and removes the record.
 // It returns cause.
-// Should an undoing step fail, it stops there, keeps the record and returns cause with the failure and the re-run that recovers the record.
+// Should an undoing step fail, it stops there and keeps the record;
+// it returns cause with the failure and the re-run that recovers the record.
 func (c *AnchorChange) rollback(rec *Mutations, cause error) error {
 	steps := []func() error{
 		func() error { return restoreMovePathsToHead(rec, c.weftPath, c.movePathspecs()) },
@@ -501,9 +527,10 @@ func (c *AnchorChange) rollback(rec *Mutations, cause error) error {
 	return cause
 }
 
-// wireAtTarget wires the pair at the new anchor: its junctions and scratch link, its launchers, and the hub and beam workspace files.
-// A pair with a launcher directory at the old anchor has it written at the new one and removed from the old;
-// the prime has none, and loses the menu launcher of the old anchor instead.
+// wireAtTarget wires the pair at the new anchor:
+// its junctions and scratch link, its launchers, and the hub and beam workspace files.
+// A pair with a launcher directory at the old anchor has it written at the new one and removed from the old.
+// The prime has none, and loses the menu launcher of the old anchor instead.
 func (c *AnchorChange) wireAtTarget(rec *Mutations) error {
 	slug := c.pair.WorktreeName
 	source, target := c.locationAt(c.from), c.locationAt(c.to)
@@ -578,7 +605,8 @@ func (c *AnchorChange) Finish(rec *Mutations) error {
 }
 
 // Close releases the move lock.
-// A change whose Apply never ran removes the record BeginAnchorChange wrote with none standing before, so a verb that fails between the two leaves nothing; a record it found standing is kept.
+// When Apply never ran, Close removes the move record the change created,
+// so a failure before Apply leaves nothing behind; a record that was already standing is kept.
 // Close may be called more than once.
 func (c *AnchorChange) Close() {
 	if c == nil || c.closed {

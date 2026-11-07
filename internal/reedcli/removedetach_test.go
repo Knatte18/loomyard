@@ -23,7 +23,7 @@ type fakeStrandOps struct {
 	markErrs  map[bool]error
 	down      reedengine.DownResult
 	downErr   error
-	// downCalls counts the calls to Down.
+	// downCalls counts the calls to Down the down verb makes.
 	downCalls int
 }
 

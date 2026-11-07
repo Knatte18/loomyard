@@ -1,4 +1,5 @@
-// namerepair_test.go pins the name-repair pass on a fake tmux and a fake SessionNamer: which titles are rewritten, when a session name is renamed, and what is logged.
+// namerepair_test.go pins the name-repair pass on a fake tmux and a fake SessionNamer.
+// It covers which titles are rewritten, when a session name is renamed, and what is logged.
 
 package reedengine
 
@@ -43,7 +44,7 @@ func (f *fakeNamer) RenameText(want string) string {
 	return f.text + want
 }
 
-// encodeTitledPanes renders live in list-panes' wire format, title included.
+// encodeTitledPanes renders the live panes in list-panes' wire format, title included.
 func encodeTitledPanes(live []LivePane) string {
 	out := ""
 	for _, p := range live {
@@ -96,8 +97,8 @@ func TestPlanTitleRepairs(t *testing.T) {
 	}
 }
 
-// TestRepairNames_PaneTitle pins that a drifted pane title is rewritten with one select-pane -T and logged,
-// while a matching title is left alone.
+// TestRepairNames_PaneTitle pins that a drifted pane title is rewritten with one select-pane -T and logged.
+// A matching title is left alone.
 //
 //testtiming:keep pins a drifted pane title being rewritten with exactly one select-pane -T and logged while a matching title is left alone; its covering tests run this code without asserting it
 func TestRepairNames_PaneTitle(t *testing.T) {
@@ -146,11 +147,13 @@ func TestRepairNames_PaneTitle(t *testing.T) {
 	}
 }
 
-// TestRepairNames_SessionName pins that a drifted session name is renamed by one paste-submit of the namer's rename text.
-// The rename goes into an idle pane with no active operator, logged, after exactly one drift query for the strand's session.
-// A busy pane, an active operator or an absent drift types nothing, and an unreadable client list does not hold the rename.
+// TestRepairNames_SessionName pins that a drifted session name gets one paste-submit of the namer's rename text.
+// The rename goes into an idle pane with no active operator and is logged.
+// It is preceded by exactly one drift query for the strand's session.
+// A busy pane, an active operator or an absent drift types nothing.
+// An unreadable client list does not hold the rename.
 // A row with failedRuns runs the repair that many times on one engine before heal, then once after it.
-// It pins that the failure logs one Warn and one Debug per further run, and the heal one Info.
+// A failure logs one Warn, and one Debug per further run; the heal logs one Info.
 // It captures the process-global logger at Debug, so it stays serial.
 func TestRepairNames_SessionName(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -428,7 +431,8 @@ func TestRepairNames_UnanswerableSessionCheckRepairsNothing(t *testing.T) {
 	}
 }
 
-// TestWatchNames_RepairedAnswerChoosesTheNextWait pins that the waits climb to the ceiling while no pass repairs anything, and return to the base after a pass that repaired a title.
+// TestWatchNames_RepairedAnswerChoosesTheNextWait pins that waits climb to the ceiling while no pass repairs anything.
+// After a pass that repairs a title, they return to the base wait.
 func TestWatchNames_RepairedAnswerChoosesTheNextWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	e, fake := newRepairTestEngine(t,

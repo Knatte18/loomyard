@@ -1,4 +1,5 @@
-// narrow.go declares the pure core of the derivation: from scanned sources, project files and a seed, the test projects and filter terms a narrowed run takes.
+// narrow.go declares the pure core of the derivation.
+// From scanned sources, project files and a seed, it derives the test projects and filter terms a narrowed run takes.
 
 package dotnetimpact
 
@@ -105,7 +106,8 @@ func wholeScope(reason string) Scope {
 	return Scope{Whole: true, Fallback: reason}
 }
 
-// typeClosure returns the seeded type names, the types declared in the seed files, and every type declared in a file whose identifiers name a type already in the set, until nothing changes.
+// typeClosure returns the seeded type names and the types declared in the seed files.
+// It adds every type declared in a file whose identifiers name a type already in the set, until nothing changes.
 func typeClosure(sources []sourceFile, s seed) map[string]bool {
 	closure := map[string]bool{}
 	for name := range s.Types {
@@ -145,7 +147,9 @@ func namesAny(source sourceFile, names map[string]bool) bool {
 	return false
 }
 
-// selectClasses returns the test classes the seed selects: a test class whose file is a seed file or names a type of the closure, and every class deriving, transitively, from a selected abstract one.
+// selectClasses marks the test classes the seed selects.
+// A test class is selected when its file is a seed file or names a type of the closure.
+// Every class deriving, transitively, from a selected abstract class is selected too.
 func selectClasses(sources []sourceFile, classes []classRef, byName map[string][]classRef, closure map[string]bool, s seed) []bool {
 	selected := make([]bool, len(classes))
 	for _, ref := range classes {
@@ -172,7 +176,9 @@ func selectClasses(sources []sourceFile, classes []classRef, byName map[string][
 	return selected
 }
 
-// isTestClass reports whether decl is a class carrying a test attribute, or a non-abstract class whose base, followed through the scanned sources by name, reaches one.
+// isTestClass reports whether decl is a class that carries a test attribute or has a test method.
+// A non-abstract class is also a test class when its base chain reaches one.
+// The base chain is followed through the scanned sources by name.
 // visited guards a cyclic base chain.
 func isTestClass(decl typeDecl, byName map[string][]classRef, visited map[string]bool) bool {
 	if decl.Kind != "class" {
@@ -198,7 +204,9 @@ func baseReachesTest(name string, byName map[string][]classRef, visited map[stri
 	return false
 }
 
-// filterTerm returns the `dotnet test` filter term selecting the class: `FullyQualifiedName~` and the fully qualified name, a nested class joined to its outer class by `+`.
+// filterTerm returns the `dotnet test` filter term selecting the class.
+// The term is `FullyQualifiedName~` followed by the fully qualified name.
+// A nested class is joined to its outer class by `+`.
 // An abstract class has no term.
 func filterTerm(t typeDecl) string {
 	if t.Abstract {
@@ -225,7 +233,8 @@ func newProjectIndex(projects []string) projectIndex {
 	return index
 }
 
-// nearestDir returns the nearest ancestor directory of file, up to the tier's `dir`, that holds a `.csproj`, or "" when none does.
+// nearestDir returns the nearest ancestor directory of file, up to the tier's `dir`, that holds a `.csproj`.
+// It returns the empty string when none does.
 func (index projectIndex) nearestDir(file string) string {
 	for dir := path.Dir(file); ; dir = path.Dir(dir) {
 		if len(index.byDir[dir]) > 0 {
@@ -237,7 +246,7 @@ func (index projectIndex) nearestDir(file string) string {
 	}
 }
 
-// nearest returns the `.csproj` paths of the directory nearestDir finds.
+// nearest returns the `.csproj` paths of the nearest ancestor directory of file that holds one.
 func (index projectIndex) nearest(file string) []string {
 	dir := index.nearestDir(file)
 	if dir == "" {

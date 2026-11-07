@@ -1,6 +1,6 @@
 // labels.go — label validation against the board's configured Vocabulary.
 //
-// validateLabels is the one check that an entry's labels are configured, unique and carry the type labels its kind needs.
+// validateLabels checks that an entry's labels are configured, unique, and carry the type labels its kind needs.
 // Every refusal names the entry's slug and board.yaml's lists as the way forward.
 
 package boardengine
@@ -15,7 +15,8 @@ import (
 
 // validateLabels refuses an entry whose labels the vocabulary does not accept; label order is preserved as given.
 // It also refuses the sketch type label on a task whose recipe is not raddle and on a project.
-// prior is the snapshot's entry of the same slug, nil for a new entry; that rule judges only a write that adds the label, changes the kind or changes the recipe,
+// prior is the snapshot's entry of the same slug, nil for a new entry.
+// The sketch rule judges only a write that adds the label, changes the kind, or changes the recipe,
 // so a legacy task that already carries the label keeps taking writes that leave all three alone.
 func validateLabels(t Task, prior *Task, v Vocabulary) error {
 	seen := make(map[string]bool, len(t.Labels))
@@ -48,8 +49,10 @@ func validateLabels(t Task, prior *Task, v Vocabulary) error {
 	return checkSketchLabel(t, prior)
 }
 
-// checkSketchLabel refuses a project, and a task whose recipe is not raddle, that carries the sketch type label, when the write adds the label, changes the entry's kind or changes its recipe.
-// A promotion of a discussed note names the plain promote, which gives it recipe raddle, as the way forward, and any other write names the upsert.
+// checkSketchLabel refuses a project, and a task whose recipe is not raddle, that carries the sketch type label.
+// It refuses only a write that adds the label, changes the entry's kind, or changes its recipe.
+// A promotion of a discussed note names the plain promote as the way forward, which gives it recipe raddle,
+// and any other write names the upsert.
 func checkSketchLabel(t Task, prior *Task) error {
 	if (t.Kind != KindTask && t.Kind != KindProject) || !slices.Contains(t.Labels, SketchType) {
 		return nil

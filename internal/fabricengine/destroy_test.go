@@ -1,12 +1,10 @@
-// destroy_test.go covers the gate's hermetic logic: everything destroy.go's pipeline and ownership
-// resolvers do that needs no git, per the discussion's Hermetic tier split. isRegisteredLinkedWorktreeIn,
-// isAnyWorktreeOf, primaryWeftBranch, and every dirtiness probe all spawn git and belong to batch 7's
-// integration tier instead.
+// destroy_test.go covers the gate's hermetic logic: the steps of destroy.go's pipeline and resolvers needing no git.
+// Dirtiness probes spawn git, and so do `isRegisteredLinkedWorktreeIn`, `isAnyWorktreeOf` and `primaryWeftBranch`.
+// They belong in the integration tier.
 //
-// Shape separation is asserted by construction, not by a test: a branchDirtiness value cannot be
-// assigned to a pathRequest.dirtiness field (and vice versa) because pathRequest.dirtiness is typed
-// pathDirtiness and branchRequest.dirtiness is typed branchDirtiness — the assignment simply does not
-// compile, so there is no runnable test for it to fail.
+// Shape separation holds by construction, not by a test.
+// `pathRequest.dirtiness` is typed `pathDirtiness`, and `branchRequest.dirtiness` is typed `branchDirtiness`.
+// Such an assignment does not compile.
 
 package fabricengine
 
@@ -23,17 +21,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGate_CheckOrdering proves the pipeline stops at the first failing check, by submitting a
-// request that would fail two checks and asserting the reported Check is the earlier one.
+// TestGate_CheckOrdering proves the pipeline stops at the first failing check.
+// It submits a request that would fail two checks and asserts the reported check is the earlier one.
 //
 //testtiming:keep the gate stopping at the first failing check, containment before ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_CheckOrdering(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("ContainmentBeforeOwnership", func(t *testing.T) {
 		container := t.TempDir()
-		// target is outside container (fails containment) AND declares an ownership kind that would
-		// also fail (ownedFabricHub against a plain directory) — the reported Check must still be
-		// containment.
+		// The target lies outside container, so it fails containment.
+		// It also declares an ownership kind that would fail: `ownedFabricHub` against a plain directory.
+		// The reported check must be `CheckContainment`.
 		outside := t.TempDir()
 		req := pathRequest{
 			what:      "test",
@@ -52,8 +50,8 @@ func TestGate_CheckOrdering(t *testing.T) {
 		if err := os.Mkdir(target, 0o755); err != nil {
 			t.Fatalf("mkdir target: %v", err)
 		}
-		// target passes containment, fails ownership (not a hub); dirtiness declares a scope that
-		// would also need probing (never reached, since ownership fails first — no git spawn here).
+		// The target passes containment and fails ownership (not a hub).
+		// The dirtiness declaration would need a git probe, but ownership fails first, so it is never reached.
 		req := pathRequest{
 			what:      "test",
 			container: container,
@@ -66,7 +64,7 @@ func TestGate_CheckOrdering(t *testing.T) {
 	})
 }
 
-// TestGate_Containment exercises refuseUncontainedPath's semantics through the gate.
+// TestGate_Containment checks that the gate refuses a target that is the container itself or resolves outside it.
 //
 //testtiming:keep containment refusing "..", a sibling via "..", the container itself, "." and an outside absolute path through the gate; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_Containment(t *testing.T) {
@@ -98,10 +96,7 @@ func TestGate_Containment(t *testing.T) {
 			},
 		},
 		{
-			// Card 12 names "." explicitly, distinct from EqualToContainer: this exercises
-			// filepath.Join's Clean folding a literal "." component down to the container itself,
-			// which happens to produce the same resolved path as EqualToContainer but through the
-			// Clean path rather than an already-bare container string.
+			// This case covers filepath.Join's Clean folding a literal "." component down to the container itself.
 			name: "DotOnly",
 			buildTarget: func(container string) string {
 				return filepath.Join(container, ".")
@@ -150,18 +145,17 @@ func TestGate_Containment(t *testing.T) {
 		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
-	// Card 12 names "both platform separators": refuseUncontainedPath resolves through
-	// filepath.Rel, which is separator-native, so the forward slash and the backslash do not carry
-	// the same escaping meaning on every OS. Each subtest below asserts the behaviour that is
-	// actually correct for the separator it names, on whichever OS the test runs.
+	// refuseUncontainedPath resolves through filepath.Rel, which is separator-native.
+	// A backslash therefore escapes the container only on Windows, where it is a path separator.
+	// Each subtest asserts the result that is correct for the separator it names, on the OS the test runs.
 	t.Run("EscapeWithForwardSlash", func(t *testing.T) {
 		container := t.TempDir()
 		sibling := filepath.Join(filepath.Dir(container), "sibling-fwd")
 		if err := os.Mkdir(sibling, 0o755); err != nil && !os.IsExist(err) {
 			t.Fatalf("mkdir sibling: %v", err)
 		}
-		// "/" is a path separator on every OS Go supports (including Windows), so this must
-		// escape the container everywhere.
+		// "/" is a path separator on every OS Go supports, Windows included.
+		// This target therefore escapes the container everywhere.
 		target := container + "/../" + filepath.Base(sibling)
 		req := pathRequest{
 			what:      "test",
@@ -176,21 +170,21 @@ func TestGate_Containment(t *testing.T) {
 
 	t.Run("EscapeWithBackslash", func(t *testing.T) {
 		container := t.TempDir()
-		// filepath.Join places one real "/" between container and the backslash sequence, so on a
-		// platform where "\" is not a separator, this names a single, literally-backslashed child
-		// of container rather than escaping it.
+		// filepath.Join places one real "/" between container and the backslash sequence.
+		// Where "\" is not a separator, the target names one child of container with a literal backslash in its name.
+		// There it does not escape the container.
 		target := filepath.Join(container, `..\sibling-back`)
 		if runtime.GOOS == "windows" {
-			// "\" is a path separator on Windows: create the real sibling directory the resolved
-			// path points at, so the gate's absent-target no-op does not mask the containment check.
+			// "\" is a path separator on Windows, so create the real sibling directory the resolved path points at.
+			// Otherwise the gate's absent-target no-op would mask the containment check.
 			sibling := filepath.Join(filepath.Dir(container), "sibling-back")
 			if err := os.Mkdir(sibling, 0o755); err != nil && !os.IsExist(err) {
 				t.Fatalf("mkdir sibling: %v", err)
 			}
 		} else {
-			// On every other OS "\" is an ordinary filename character, not a separator, so the
-			// literal string names a single oddly-named child directory of container.
-			// Create that literal entry so the gate's absent-target no-op does not mask the check.
+			// On every other OS "\" is an ordinary filename character, not a separator.
+			// The literal string therefore names one oddly-named child directory of container.
+			// Create that entry, so the gate's absent-target no-op does not mask the check.
 			if err := os.Mkdir(target, 0o755); err != nil && !os.IsExist(err) {
 				t.Fatalf("mkdir literal target: %v", err)
 			}
@@ -207,15 +201,15 @@ func TestGate_Containment(t *testing.T) {
 			// "\" is a path separator on Windows, so this escapes the container just like "/".
 			assertRefusalCheck(t, err, CheckContainment)
 		} else {
-			// The literal entry does not actually leave the container — containment must pass,
-			// and ownership fails next (not a hub), same as WithinContainerPassesContainment above.
+			// The literal entry does not leave the container, so containment must pass.
+			// Ownership fails next (not a hub).
 			assertRefusalCheck(t, err, CheckOwnership)
 		}
 	})
 }
 
-// TestGate_SlugValidation proves a derived-slug request is refused before anything is touched, and
-// reported as a containment refusal.
+// TestGate_SlugValidation proves a derived-slug request is refused before anything is touched.
+// The refusal is reported as a containment refusal.
 func TestGate_SlugValidation(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -250,9 +244,9 @@ func TestGate_SlugValidation(t *testing.T) {
 	}
 }
 
-// TestGate_Force proves force satisfies dirtiness and satisfies nothing else — not containment, not
-// ownership. The containment case matters as much as the ownership case: "remove .." is a containment
-// failure, so a force-satisfies-containment reading would bring it back behind a flag.
+// TestGate_Force proves force satisfies dirtiness and nothing else, neither containment nor ownership.
+// Containment matters as much as ownership: "remove .." is a containment failure.
+// Force must not let that refusal through behind a flag.
 //
 //testtiming:keep force satisfying dirtiness and nothing else, neither containment nor ownership; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_Force(t *testing.T) {
@@ -271,7 +265,7 @@ func TestGate_Force(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 			force:     true,
 		}
-		// force:true means checkPathDirtiness returns without probing — no git spawn, still hermetic.
+		// With force:true, checkPathDirtiness returns without probing, so no git spawn happens and the test stays hermetic.
 		if err := checkPathRequest(req); err != nil {
 			t.Errorf("checkPathRequest() with force=true = %v; want nil", err)
 		}
@@ -332,14 +326,11 @@ func TestGate_DirtinessNAEmptyReason(t *testing.T) {
 	assertRefusalCheck(t, err, CheckDirtiness)
 }
 
-// TestGate_ZeroValueDeclarationsAreRefusals proves an omitted ownership or dirtiness declaration is a
-// loud failure, for both request shapes.
+// TestGate_ZeroValueDeclarationsAreRefusals proves an omitted ownership or dirtiness declaration is refused.
+// It holds for both request shapes, and also when the target is absent.
 //
-// The AbsentTarget subtests are R2's addition and the reason the shape check now runs ahead of the
-// absent-target short-circuit: with the short-circuit first, a request declaring nothing at all
-// passed the gate vacuously whenever its target happened not to exist — so "an omitted check is a
-// loud failure" held only for targets that were there, which is exactly the case a new call site's
-// first test is least likely to cover.
+// The shape check runs ahead of the absent-target no-op.
+// Checked first, the no-op would let a request that declares nothing pass whenever its target is missing.
 func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("PathZeroOwnershipWithAbsentTarget", func(t *testing.T) {
@@ -377,8 +368,8 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("WellFormedRequestOnAnAbsentTargetIsStillANoOpSuccess", func(t *testing.T) {
-		// The counter-assertion, as load-bearing as the three above:
-		// moving the shape check ahead of the absent-target rule must not turn the idempotent teardown sites (removeLaunchers, Remove's already-absent weft worktree) into hard failures.
+		// A well-formed request on an absent target must still succeed as a no-op.
+		// The idempotent teardown sites rely on this: removeLaunchers and Remove's already-absent weft worktree.
 		container := t.TempDir()
 		req := pathRequest{
 			what:      "test",
@@ -436,8 +427,8 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("BranchZeroDirtiness", func(t *testing.T) {
-		// A hand-built Location is fine here — the zero-value dirtiness declaration refuses before
-		// resolveManagedBranch ever runs, so primaryWeftBranch (which spawns git) is never reached.
+		// A hand-built Location is fine here: the zero-value dirtiness declaration refuses first.
+		// So resolveManagedBranch never runs, and primaryWeftBranch, which spawns git, is never reached.
 		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := branchRequest{
 			what:      "test",
@@ -449,8 +440,8 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 
-	// The next four subtests cover the pair-warp ownership kind and the unlanded-work dirtiness kind;
-	// each refuses before any git spawn.
+	// The subtests below cover the pair-warp ownership kind and the unlanded-work dirtiness kind.
+	// Each refuses before any git spawn.
 
 	t.Run("PairWarpBranchZeroDirtiness", func(t *testing.T) {
 		req := branchRequest{
@@ -494,8 +485,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, checkBranchRequest(req), CheckOwnership)
 	})
 
-	// The three subtests below cover remoteBranchRequest/checkRemoteBranchRequest, mirroring the
-	// branchRequest cases above exactly.
+	// The subtests below cover remoteBranchRequest and checkRemoteBranchRequest.
 
 	t.Run("RemoteBranchZeroOwnership", func(t *testing.T) {
 		req := remoteBranchRequest{
@@ -510,9 +500,9 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("RemoteBranchZeroDirtiness", func(t *testing.T) {
-		// A hand-built Location is fine here, for the same reason BranchZeroDirtiness's is: the
-		// zero-value dirtiness declaration refuses before resolveManagedBranch ever runs, so
-		// primaryWeftBranch (which spawns git) is never reached.
+		// A hand-built Location is fine here.
+		// The zero-value dirtiness declaration refuses before resolveManagedBranch runs.
+		// So primaryWeftBranch, which spawns git, is never reached.
 		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := remoteBranchRequest{
 			what:      "test",
@@ -526,9 +516,9 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("RemoteBranchNamingPredicateRefused", func(t *testing.T) {
-		// A branch name fabric's own scheme does not construct (no "-weft" suffix) is refused by resolveManagedBranch's naming predicate before it spawns git at all —
-		// safe with a hand-built Location for the same reason the naming-predicate case is safe
-		// elsewhere in this file: the predicate short-circuits ahead of the first spawn.
+		// resolveManagedBranch's naming predicate refuses a branch name fabric's scheme does not construct.
+		// Such a name, one without the "-weft" suffix, is refused before the first git spawn,
+		// so a hand-built Location is safe here.
 		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := remoteBranchRequest{
 			what:      "test",
@@ -542,7 +532,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
-	// The four subtests below cover the pair-weft ownership kind and the archived-on-remote dirtiness kind.
+	// The subtests below cover the pair-weft ownership kind and the archived-on-remote dirtiness kind.
 	// A hand-built Location is safe: every case refuses before primaryWeftBranch runs.
 
 	t.Run("RemoteBranchArchivedDirtinessZeroOwnership", func(t *testing.T) {
@@ -594,7 +584,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, checkBranchRequest(req), CheckDirtiness)
 	})
 
-	// The four subtests below cover the created-branch ownership kind and the pushed-by-this-call dirtiness kind.
+	// The subtests below cover the created-branch ownership kind and the pushed-by-this-call dirtiness kind.
 	// A hand-built Location is safe: every case refuses before any git spawn.
 
 	t.Run("CreatedBranchOtherNameRefused", func(t *testing.T) {
@@ -623,8 +613,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 
 }
 
-// TestGate_AbsentTargetIsNoOp proves an absent target is a no-op success, for every ownership kind,
-// before any check runs.
+// TestGate_AbsentTargetIsNoOp proves an absent target is a no-op success for each ownership kind, before any check runs.
 //
 //testtiming:keep an absent target being a no-op success for every ownership kind before any check runs; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_AbsentTargetIsNoOp(t *testing.T) {
@@ -659,7 +648,7 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 		})
 	}
 
-	// removePath itself is a no-op too: it destroys nothing, and reports no error.
+	// removePath is a no-op on an absent target: it destroys nothing, and it reports no error.
 	req := pathRequest{
 		what:      "test",
 		container: container,
@@ -679,8 +668,8 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 	}
 }
 
-// TestGate_TokenRoundTrip proves createExclusiveDir refuses an already-existing path, and that the
-// token it returns authorises removal of exactly that path and no other.
+// TestGate_TokenRoundTrip proves createExclusiveDir refuses an already-existing path,
+// and that the token it returns authorises removal of exactly that path and no other.
 func TestGate_TokenRoundTrip(t *testing.T) {
 	tiergate.Require(t, 0)
 	container := t.TempDir()
@@ -708,8 +697,7 @@ func TestGate_TokenRoundTrip(t *testing.T) {
 		t.Errorf("ownedFreshlyCreatedPath(tok) for %s = true; want false (the token authorises only %s)", other, target)
 	}
 
-	// A directory token is rejected by ownedFreshlyCreatedWorktree — the worktree flag distinguishes
-	// them.
+	// A directory token is rejected by ownedFreshlyCreatedWorktree: the worktree flag distinguishes them.
 	if ok, _ := resolvePathOwnership(ownedFreshlyCreatedWorktree(tok), target); ok {
 		t.Errorf("ownedFreshlyCreatedWorktree(dirToken) for %s = true; want false", target)
 	}
@@ -748,7 +736,7 @@ func TestGate_LinkKinds(t *testing.T) {
 	})
 
 	t.Run("WiredJunctionRefusesLinkResolvingElsewhere", func(t *testing.T) {
-		// R1's case: an operator's own symlink sits where fabric did not wire one.
+		// An operator's own symlink sits where fabric did not wire one.
 		realTarget := filepath.Join(dir, "real-target")
 		if err := os.Mkdir(realTarget, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
@@ -820,8 +808,8 @@ func TestGate_LinkKinds(t *testing.T) {
 	})
 }
 
-// TestGate_BestEffortPolicy proves surfaceRefusal's split: an operational failure is not matched, a
-// *destructiveRefusal always is.
+// TestGate_BestEffortPolicy proves surfaceRefusal's split:
+// an operational failure is not matched, but a *destructiveRefusal always is.
 //
 //testtiming:keep surfaceRefusal matching a *destructiveRefusal always and an operational failure never; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_BestEffortPolicy(t *testing.T) {
@@ -850,13 +838,12 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 	})
 }
 
-// TestGate_RecordOnlyOnObservedEffect covers the record-only-on-observed-effect rule using only
-// filesystem primitives already reachable from an untagged test in this package: removePath,
-// removeLink, and createExclusiveDir. The git-spawning executors (removeGitWorktree, deleteBranch)
-// are deliberately NOT covered here — an untagged test in this package may not spawn git per the
-// Test Tier Purity Invariant — and their nonzero-exit-with-nil-error rule is asserted through
-// this package's own live-state harness (the livestate_-prefixed package fabricengine_test files)
-// tagged matrix in batch 7 instead.
+// TestGate_RecordOnlyOnObservedEffect covers the mutation record gaining an entry only when an effect is observed.
+// It uses only the filesystem primitives an untagged test in this package can reach:
+// removePath, removeLink and createExclusiveDir.
+// The git-spawning executors, removeGitWorktree and deleteBranch, are not covered here:
+// an untagged test may not spawn git under the Test Tier Purity Invariant.
+// Their nonzero-exit-with-nil-error rule is asserted through the live-state harness in the livestate_ test files.
 //
 //testtiming:keep the mutation record gaining an entry only when an effect was observed, over removePath, removeLink and createExclusiveDir; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
@@ -1038,8 +1025,7 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 		}
 	})
 
-	// A nil recorder must never panic: every not-yet-threaded call site degrades to recording
-	// nothing rather than crashing.
+	// A nil recorder must never panic: the call degrades to recording nothing rather than crashing.
 	t.Run("NilRecorderDoesNotPanic", func(t *testing.T) {
 		container := t.TempDir()
 
@@ -1084,8 +1070,8 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 	})
 }
 
-// TestGate_PairWarpRequestShape proves the pair-warp ownership kind is declared, not unset, and that
-// a non-linked target refuses on ownership before dirtiness, so the new kind is a real declaration.
+// TestGate_PairWarpRequestShape proves the pair-warp ownership kind is declared, not unset,
+// and that a non-linked target refuses on ownership before dirtiness, so the kind is a real declaration.
 //
 //testtiming:keep the pair-warp ownership kind being declared rather than unset and refusing a non-linked target on ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_PairWarpRequestShape(t *testing.T) {
@@ -1112,8 +1098,8 @@ func TestGate_PairWarpRequestShape(t *testing.T) {
 	assertRefusalCheck(t, checkPathRequest(req), CheckOwnership)
 }
 
-// TestDirtyPathsOutside proves the porcelain reader returns only paths outside the own set,
-// including a first line whose leading status space was trimmed, a rename and a quoted path.
+// TestDirtyPathsOutside proves the porcelain reader returns only paths outside the own set.
+// The cases include a first line whose leading status space was trimmed, a rename and a quoted path.
 func TestDirtyPathsOutside(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

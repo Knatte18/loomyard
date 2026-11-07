@@ -1,4 +1,5 @@
-// cost.go is the `report cost` verb: it validates its flags, reads the report module's minimum run count, resolves the prime and hands both to the report engine.
+// cost.go is the `report cost` verb: it validates its flags and reads the minimum run count from the report config.
+// It resolves the prime and hands the options to the report engine.
 
 package reportcli
 
@@ -92,7 +93,8 @@ Example:
 }
 
 // parseCostOptions validates the flags before anything is read.
-// Each refusal names the flag, the value given and the form accepted, and the default window is the timing report's.
+// Each refusal names the flag, the value given and the form accepted.
+// An absent --since opens the window seven days before today, UTC.
 func parseCostOptions(since, format string, now time.Time) (reportengine.CostOptions, error) {
 	var options reportengine.CostOptions
 	if since == "" {

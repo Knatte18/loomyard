@@ -1,4 +1,4 @@
-// portals_test.go covers the retired-artifact sweep where it needs no git: a hub whose prime cannot be resolved.
+// portals_test.go covers the retired-artifact sweep for a hub whose prime cannot be resolved, a case that needs no git.
 
 package fabricengine
 
@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSweepRetiredHubArtifacts_UnresolvablePrime proves the sweep removes a fabric-shaped portal link and keeps the retired workspace file when the prime cannot be resolved.
+// TestSweepRetiredHubArtifacts_UnresolvablePrime proves the sweep removes a fabric-shaped portal link.
+// The prime cannot be resolved in this case, and the sweep keeps the retired workspace file.
 func TestSweepRetiredHubArtifacts_UnresolvablePrime(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

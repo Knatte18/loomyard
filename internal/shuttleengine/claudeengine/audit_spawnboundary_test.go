@@ -1,9 +1,8 @@
-// audit_spawnboundary_test.go covers the fork-transcript spawn-boundary exclusion: on Claude Code
-// 2.1.205 a fork transcript's first assistant line replays the PARENT's own spawning Agent tool_use
-// (observed live in webster's hardening round fable-r1),
-// and counting it flagged every legitimate fork as a nested-Agent violation.
-// The audit excludes that entry by the tool_use id recorded in the sibling <transcript>.meta.json;
-// these tests pin both the exclusion and the documented no-meta fallback (skip nothing).
+// audit_spawnboundary_test.go covers the spawn-boundary exclusion for fork transcripts.
+// On Claude Code 2.1.205, a fork transcript's first assistant line replays the parent's own spawning Agent tool_use.
+// Counting that entry would flag every legitimate fork as a nested-Agent violation,
+// so the audit excludes it by the tool_use id that the sibling <transcript>.meta.json records.
+// These tests pin both that exclusion and the fallback for a transcript with no meta file, which skips nothing.
 
 package claudeengine
 
@@ -15,9 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeSpawnBoundaryFixture copies the spawn-boundary fork transcript into dir
-// and returns its path, optionally writing the sibling .meta.json carrying the
-// spawning call's toolUseId.
+// writeSpawnBoundaryFixture copies the spawn-boundary fork transcript into a new temporary directory.
+// It returns the transcript path.
+// When withMeta is true, it also writes the sibling .meta.json carrying the spawning call's toolUseId.
 func writeSpawnBoundaryFixture(t *testing.T, withMeta bool) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -41,8 +40,8 @@ func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}
 
-	// The only Agent tool_use in the transcript is the parent's own spawning
-	// call — the fork itself never called Agent, so the audit must report zero.
+	// The only Agent tool_use in the transcript is the parent's own spawning call.
+	// The fork never called Agent itself, so the audit must report zero.
 	if report.AgentCalls != 0 {
 		t.Errorf("AgentCalls = %d; want 0 (the spawn-boundary Agent call is the parent's, not the fork's)", report.AgentCalls)
 	}
@@ -50,7 +49,7 @@ func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
 		t.Errorf(`ToolCalls["Agent"] = %d; want 0`, got)
 	}
 
-	// The fork's own genuine activity must still be fully counted.
+	// The fork's own activity must still be counted.
 	if got := report.ToolCalls["Read"]; got != 1 {
 		t.Errorf(`ToolCalls["Read"] = %d; want 1`, got)
 	}
@@ -71,9 +70,8 @@ func TestAuditForkTranscript_MissingMetaFallsBackToCountingEverything(t *testing
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}
 
-	// Without the sibling meta.json there is no spawn id to exclude by, so the
-	// documented fallback is the pre-meta behavior: count everything. This
-	// pins that the exclusion is meta-keyed, never a blind first-line skip.
+	// Without the sibling meta.json there is no spawn id to exclude by, so every Agent call counts.
+	// This pins that the exclusion is keyed by the spawn id in the meta file, not a blind skip of the first line.
 	if report.AgentCalls != 1 {
 		t.Errorf("AgentCalls = %d; want 1 (no meta.json means nothing is excluded)", report.AgentCalls)
 	}

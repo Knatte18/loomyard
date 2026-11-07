@@ -16,10 +16,11 @@ func guidsOf(strands []Strand) []string {
 	return out
 }
 
-// TestMoveStrandTo pins the pure table-position step ReplaceStrand uses to give the new strand the
-// replaced strand's slot: the strand added last (the bottom) moves to the first, a middle and the
-// last slot, every other strand keeps its relative order,
-// and an unknown guid or an out-of-range index leaves the table alone.
+// TestMoveStrandTo pins the pure table-position step ReplaceStrand uses.
+// It gives the new strand the replaced strand's slot.
+// The strand added last (the bottom) moves to the first, a middle and the last slot;
+// every other strand keeps its relative order.
+// An unknown guid or an out-of-range index leaves the table alone.
 func TestMoveStrandTo(t *testing.T) {
 	tiergate.Require(t, 0)
 	base := []Strand{{GUID: "a"}, {GUID: "b"}, {GUID: "c"}, {GUID: "new"}}

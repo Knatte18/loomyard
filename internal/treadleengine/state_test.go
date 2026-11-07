@@ -1,8 +1,6 @@
-// state_test.go table-drives loadOrInitState's fresh/resume/hash-mismatch/ terminal classification,
-// exercises moveStaleArtifacts' renaming (including the double-.stale collision case), and
-// round-trips a runState through saveState/loadOrInitState to check the persisted shape survives.
-// ProfileHash/DeriveRunID/ValidRunID are a caller's own functions, not this package's, so their
-// tests belong with that caller.
+// state_test.go tests the run-state file: loadOrInitState's classification and moveStaleArtifacts' renaming.
+// It also round-trips runState through saveState and loadOrInitState.
+// ProfileHash, DeriveRunID and ValidRunID belong to the caller, so this file does not test them.
 
 package treadleengine
 
@@ -38,14 +36,15 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Errorf("got.RoundCaps = %v; want %v", got.RoundCaps, []int{5, 8, 10})
 		}
 
-		// Verify the initial state is actually persisted.
 		path := filepath.Join(runDir, stateFileName)
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("state.json not written: %v", err)
 		}
 	})
 
-	// The resumed state is read back through state.ReadJSON, so every field of the seeded rounds must survive the saveState/read cycle: the first round sets every roundRecord field, including the *bool GatePassed.
+	// The resumed state is read back through state.ReadJSON,
+	// so every field of the seeded rounds must survive the saveState/read cycle.
+	// The first round sets every roundRecord field, including the *bool GatePassed.
 	t.Run("unfinished state with matching hash resumes at the next round", func(t *testing.T) {
 		runDir := t.TempDir()
 		gatePassed := true
@@ -145,14 +144,11 @@ func TestLoadOrInitState(t *testing.T) {
 		}
 	})
 
-	// A block written by a binary that predates handoffPath/seedPath (the
-	// additive state-json-compatibility fields — see roundRecord's doc) must
-	// resume with zero migration: its rounds simply lack handoff coverage
-	// and never carry a seed, which judgeReadSet's fallback and the
-	// PreRoundTargeting off-path already handle respectively. This writes
-	// the raw state.json bytes directly (bypassing saveState/roundRecord) so
-	// the JSON genuinely has no "handoffPath"/"seedPath" keys at all, rather
-	// than merely empty ones.
+	// A block written before the handoffPath and seedPath fields existed must resume without migration.
+	// Its rounds lack handoff coverage and carry no seed.
+	// judgeReadSet's fallback and the PreRoundTargeting off-path handle those cases.
+	// This writes the raw state.json bytes, bypassing saveState,
+	// so the JSON has no "handoffPath" or "seedPath" keys at all.
 	t.Run("legacy record without handoffPath or seedPath resumes cleanly", func(t *testing.T) {
 		runDir := t.TempDir()
 		legacyJSON := `{
@@ -194,10 +190,10 @@ func TestLoadOrInitState(t *testing.T) {
 	})
 }
 
-// TestTerminalOutcome covers the three states a caller's own pause verb (e.g.
-// a pause verb) must distinguish before writing a pause flag: no state file at all (a run dir that
-// never started a block), an in-flight block (empty Outcome), and a finished block, whose recorded
-// Outcome is reported with ok true.
+// TestTerminalOutcome covers the three states a caller must tell apart before it writes a pause flag.
+// A run dir with no state file is not terminal.
+// A block with an empty Outcome is still in flight.
+// A finished block reports its recorded Outcome with ok true.
 func TestTerminalOutcome(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("no state file reports not terminal", func(t *testing.T) {
@@ -325,12 +321,9 @@ func TestPauseFlag(t *testing.T) {
 		t.Errorf("pause flag %q still exists after clearPauseFlag", flagPath)
 	}
 
-	// A removal that fails for any reason other than "already absent" must
-	// still carry the calling engine's name: Run returns this error verbatim,
-	// so an unprefixed message would surface in a caller's CLI envelope as the
-	// only diagnostic with no module label. A non-empty directory at the flag
-	// path is the portable way to make os.Remove fail without touching
-	// permissions.
+	// A removal failure, other than the flag already being absent, must carry the calling engine's name.
+	// Run returns this error verbatim, so an unprefixed message would reach the CLI envelope with no module label.
+	// A non-empty directory at the flag path is the portable way to make os.Remove fail without changing permissions.
 	writeFile(t, filepath.Join(flagPath, "occupant.txt"), "x")
 	err := clearPauseFlag("tenter", runDir)
 	if err == nil {
@@ -341,8 +334,7 @@ func TestPauseFlag(t *testing.T) {
 	}
 }
 
-// writeFile writes content to path, creating parent directories as needed
-// and failing the test on any I/O error.
+// writeFile writes content to path, creating parent directories as needed and failing the test on any I/O error.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -353,10 +345,8 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// intSlicesEqual reports whether a and b contain the same ints in the same
-// order. A few-line local copy rather than a shared helper, per the
-// mechanical-package-split helper-fallout clause: a
-// handful of lines, duplicated verbatim rather than shared across packages.
+// intSlicesEqual reports whether a and b contain the same ints in the same order.
+// The helper is duplicated rather than shared across packages.
 func intSlicesEqual(a, b []int) bool {
 	if len(a) != len(b) {
 		return false

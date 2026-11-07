@@ -1,4 +1,5 @@
-// open_test.go covers OpenLaunch: the launch of a session opened with no prompt, the lym home it readies, and the refusals that write nothing.
+// open_test.go covers OpenLaunch for a session opened with no prompt.
+// It covers the lym home the launch readies and the refusals that write nothing.
 
 package codexengine
 
@@ -16,9 +17,12 @@ import (
 )
 
 // TestOpenLaunch pins the launch an opened session gets and what it refuses.
-// A valid spec gets the Codex command with the told records and the worktree's git dirs as its writable roots, the model and the effort, no hooks, no first turn, an empty resume line, no creel hooks and no session id,
-// and the lym home trusts the checkout's roots while the session directory stays unmade.
-// A permission mode other than bypass, an effort codex.yaml does not list and Codex rules in the worktree are refused before the lym home is made.
+// A valid spec gets the Codex command with the told records and the worktree's git dirs as its writable roots.
+// The command carries the model and the effort.
+// It has no hooks, no first turn, an empty resume line, no creel hooks and no session id.
+// The lym home trusts the checkout's roots while the session directory stays unmade.
+// The launch refuses a permission mode other than bypass and an effort codex.yaml does not list.
+// It also refuses Codex rules in the worktree, and each refusal comes before the lym home is made.
 func TestOpenLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

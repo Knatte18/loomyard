@@ -1,13 +1,6 @@
-// spawn.go — the engine-level detached push spawn and its synchronous warp-push counterparts.
-// A PushSpawn is one detached push request: the side paths to push, the two slug flags the child is told, and the directory it starts in.
-// PauseSlugFlag names the pause entry the child's network calls are held under;
-// TeardownSlugFlag names the pair whose teardown the child must not outlive.
-// SpawnStatusPush is the one entry point for a status push: from a location alone it applies the prime rule and the slug roles.
-// SpawnDetachedPush starts the child a request describes, which re-enters the fabric CLI's bypass mode and pushes whichever side(s) the request carries.
-// PushWarpAt is the synchronous, no-Fabric-instance push of the warp side through gitrepo.PushCoalesced.
-// It has no production caller: the detached child's bypass handler (internal/fabriccli's
-// `push` RunE) drives CoalescePushRequest instead, which pushes both sides under one absorbing lock.
-// PushWarpRebaseFreeAt is the warp-side push a production caller reaches, classifying and recording a failure.
+// spawn.go — the detached push spawn, which starts a child to push a PushSpawn request.
+// SpawnStatusPush builds that request from a location alone.
+// PushWarpAt and PushWarpRebaseFreeAt are the synchronous warp-side pushes, with no Fabric instance.
 
 package fabricengine
 
@@ -27,22 +20,23 @@ import (
 )
 
 const (
-	// PauseSlugFlag is the hidden fabric flag that tells a detached push child the slug its network calls are held under, empty for the hub's prime.
+	// PauseSlugFlag is the hidden flag naming the slug a push child's network calls are held under; empty for the prime.
 	PauseSlugFlag = "pause-slug"
 	// TeardownSlugFlag is the hidden fabric flag that tells a detached push child the pair whose teardown it yields to.
 	TeardownSlugFlag = "teardown-slug"
-	// ParentLockedFlag is the hidden fabric flag that tells a detached push child its pair's parent lock was held when it was spawned, so its gate never exits for coverage.
+	// ParentLockedFlag is the hidden flag marking a child spawned under a held parent lock; it never exits for coverage.
 	ParentLockedFlag = "parent-locked"
 )
 
-// ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the running binary would re-run the test suite.
+// ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the binary would re-run the suite.
 var ErrSpawnUnderTest = errors.New("fabricengine: detached push not spawned under test")
 
 // PushSpawn is one detached push request.
 // WarpPath and WeftPath name the worktrees to push, either empty to leave that side out.
 // PauseSlug is the slug the child's network calls are held under, empty for the hub's prime.
 // TeardownSlug is the pair whose teardown the child yields to, empty when no teardown can remove what the child pushes.
-// ParentLocked reports that the pair's parent lock was held when the child was spawned, so the child never exits for a pause covering it.
+// ParentLocked reports that the pair's parent lock was held when the child was spawned;
+// the child never exits for a pause covering it.
 // WorkDir is the directory the child starts in.
 type PushSpawn struct {
 	WarpPath     string
@@ -61,7 +55,8 @@ type SpawnResult struct {
 }
 
 // SpawnDetachedPush launches a detached, windowless child that pushes the sides req carries.
-// Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set or when both paths are empty — there is nothing to push.
+// Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set.
+// It also returns nil when both paths are empty, since there is nothing to push.
 // Returns ErrSpawnUnderTest, forking no child, in a test binary.
 // The child is reaped in the background through proc.Reap rather than waited for,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
@@ -107,8 +102,10 @@ func startDetachedPush(exe string, req PushSpawn) error {
 }
 
 // pushSpawnCommand returns the arguments, working directory and owner of the child req describes.
-// The path flags, the teardown flag and the parent-locked flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
-// The owner is the teardown slug when set, so a pair's teardown ends its own pushes, and the hub owner otherwise, so it never ends a prime records push.
+// The path flags, the teardown flag and the parent-locked flag are present only when set.
+// The pause flag is always present, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
+// The owner is the teardown slug when set, so a pair's teardown ends its own pushes;
+// otherwise it is the hub owner, so a teardown never ends a prime's records push.
 func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 	args = []string{"fabric"}
 	if req.WarpPath != "" {
@@ -131,7 +128,7 @@ func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 	return args, req.WorkDir, owner
 }
 
-// absoluteOrAsGiven returns path made absolute, or path itself when the working directory it would be joined to cannot be read.
+// absoluteOrAsGiven returns path made absolute, or path itself when the working directory cannot be read.
 func absoluteOrAsGiven(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -145,7 +142,8 @@ func absoluteOrAsGiven(path string) string {
 // In the hub's prime only the records side is pushed, held under gateSlug and with no teardown slug;
 // in a task pair both sides are pushed, held and teardown-guarded under the pair's own slug.
 // The child starts in the hub's board worktree, outside both of the pair's worktrees.
-// A failed or never-run push leaves the commits local; the next detached push carries them, and creates a never-pushed branch's upstream.
+// A failed or never-run push leaves the commits local; the next detached push carries them.
+// That push also creates the upstream of a never-pushed branch.
 func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (SpawnResult, error) {
 	req, err := statusPushRequest(l, gateSlug)
 	if err != nil {
@@ -170,7 +168,8 @@ func statusPushRequest(l *lymcwd.Location, gateSlug string) (PushSpawn, error) {
 	return req, nil
 }
 
-// parentLockHeldBy reports whether a live parent lock record names l's pair slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
+// parentLockHeldBy reports whether a live parent lock record names l's pair slug.
+// It is set only for the pushes a Finalize spawns past its parent-side merge.
 // A failed read is logged and reads as not held.
 func parentLockHeldBy(l *lymcwd.Location) bool {
 	store := parentlock.Store{Dir: parentlock.Dir(BoltDir(l.HubPath))}
@@ -183,23 +182,19 @@ func parentLockHeldBy(l *lymcwd.Location) bool {
 }
 
 // SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree.
-// A failed or never-run push leaves the pair's commits local; the pair's next detached push carries them, and creates a never-pushed branch's upstream.
+// A failed or never-run push leaves the pair's commits local; the pair's next detached push carries them.
+// That push also creates the upstream of a never-pushed branch.
 func SpawnPairPush(l *lymcwd.Location) error {
 	_, err := SpawnStatusPush(l, "")
 	return err
 }
 
-// PushWarpAt pushes unpushed commits at warpPath directly through gitrepo.PushCoalesced, with no Fabric instance and no weft path involved.
-// It honors SkipGit and SkipPush.
+// PushWarpAt pushes unpushed commits at warpPath directly through gitrepo.PushCoalesced.
+// It needs no Fabric instance and no weft path, and it honors SkipGit and SkipPush.
 //
-// It has NO production caller.
-// The detached push child's bypass handler drives CoalescePushRequest instead.
-// Nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp worktree.
-// That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its
-// single-pusher lock file at the repo root, and while the weft repo excludes that artifact through
-// seedWeftArtifactExcludes, the warp repo has no such entry — so wiring this function into a live
-// path would start leaving untracked residue in the user's own repo, which fabric's whole junction
-// design exists to avoid. Any future caller must seed the warp-side exclude first.
+// PushCoalesced writes its single-pusher lock file at the repo root.
+// The weft repo excludes that file through seedWeftArtifactExcludes, and the warp repo has no such entry,
+// so a caller must first seed the warp-side exclude, or the call leaves untracked residue in the user's repo.
 func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	rec := NewMutations(filepath.Dir(warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -218,18 +213,17 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	return PushResult{}, nil
 }
 
-// PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly, rebase-free, with
-// no Fabric instance and no weft path involved.
+// PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly, rebase-free.
+// It takes no Fabric instance and no weft path.
 //
-// The push never runs `git pull --rebase`, so it never rewrites this side's SHAs while the
-// paired side is not rebased and never invalidates the correspondence index;
-// and it takes no push lock.
+// The push never runs `git pull --rebase`, so it never rewrites this side's SHAs while the paired side is not rebased.
+// It also never invalidates the correspondence index, and it takes no push lock.
 //
-// A failed push is classified, recorded as a failed push and returned as a *PushFailedError.
+// A failed push is classified and recorded as a failed push, and it is returned as a *PushFailedError.
 // The error wraps gitrepo.ErrPushRejected for a rejection and gitrepo.ErrPushAuthRefused for a refused credential.
-// A rejection is retried over the push backoff only while origin holds no commit the branch lacks,
-// and the rejection that remains is a human-decidable condition.
-// A task branch origin no longer has, or rewound past commits this machine holds, is not pushed.
+// A rejection is retried over the push backoff only while origin holds no commit the branch lacks.
+// A rejection that remains is a condition a human must decide.
+// A task branch that origin does not have, or that origin rewound past commits this machine holds, is not pushed.
 func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	rec := NewMutations(filepath.Dir(warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()

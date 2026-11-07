@@ -1,4 +1,6 @@
-// retention_test.go exercises Sweep's trace grouping, activity ranking, age bound, count bound, grammar-scoping, and delete-failure tolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier Purity Invariant.
+// retention_test.go tests Sweep's retention rules in a t.TempDir().
+// It covers trace grouping, activity ranking, age and count bounds, grammar scoping, and delete-failure tolerance.
+// The tests are pure filesystem logic with no git or exec spawns.
 
 package logger
 
@@ -91,7 +93,8 @@ func TestSweep_AgeBound(t *testing.T) {
 	assertExists(t, recentFile)
 }
 
-// TestSweepDir_DryRunListsWhatApplyRemoves verifies a dry run lists the aged group's files and removes nothing, and an apply lists the same paths and removes exactly them.
+// TestSweepDir_DryRunListsWhatApplyRemoves verifies a dry run lists the aged group's files.
+// A dry run removes nothing; an apply lists the same paths and removes exactly them.
 func TestSweepDir_DryRunListsWhatApplyRemoves(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -161,7 +164,8 @@ func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
 	}
 }
 
-// TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget verifies a group holding a live-pid file keeps all its files past the age bound and does not consume count budget.
+// TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget verifies a live-pid group keeps all its files past the age bound.
+// The group does not consume count budget.
 func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -188,7 +192,8 @@ func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
 	}
 }
 
-// TestSweep_LongRunningStepSurvivesByMtime verifies a group whose filename timestamp is the oldest but whose mtime is the newest survives a count-bound sweep that deletes groups with later filename timestamps and older mtimes.
+// TestSweep_LongRunningStepSurvivesByMtime verifies a count-bound sweep ranks groups by mtime, not filename timestamp.
+// The group's filename timestamp is the oldest, but its mtime is the newest, so it survives.
 func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -219,8 +224,8 @@ func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
 	}
 }
 
-// TestSweep_AgeBoundOverridesCountBudgetButNotLiveness verifies a non-live group past MaxAge is deleted though Count would keep it,
-// and a live group past MaxAge is kept.
+// TestSweep_AgeBoundOverridesCountBudgetButNotLiveness verifies a non-live group past MaxAge is deleted.
+// Count would keep it, but the age bound deletes it; a live group past MaxAge is kept.
 func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

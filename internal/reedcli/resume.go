@@ -1,6 +1,6 @@
-// resume.go implements the `resume` reed verb: the only replayer,
-// recreating not-live, non-hidden strands after a server restart or a single pane's death,
-// dropping a not-live strand whose done-when paths all exist, and leaving already-live strands untouched.
+// resume.go implements the `resume` reed verb, the only replayer of stored commands.
+// It recreates each persisted, non-hidden strand that is not live, after a server restart or a single pane's death.
+// It drops a not-live strand whose done-when paths all exist, and it leaves already-live strands untouched.
 
 package reedcli
 
@@ -39,8 +39,8 @@ Example:
 				return nil
 			}
 
-			// Attempted after Resume returns without error, before the envelope write: same
-			// reasoning as up's own spawn attempt.
+			// The spawn is attempted after Resume returns without error, before the envelope write.
+			// The daemon needs a live session to discover, and resume recreates the panes that provide one.
 			c.ensureWatchdogSpawned()
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{

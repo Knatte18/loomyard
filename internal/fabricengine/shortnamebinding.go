@@ -1,4 +1,5 @@
-// shortnamebinding.go owns the .lym-shortname record: a plain single-line file at the board root holding the repo's shortname, recorded once on weft:main beside .lym-warp.
+// shortnamebinding.go owns the .lym-shortname record, a plain single-line file at the board root.
+// It holds the repo's shortname, recorded once on weft:main beside .lym-warp.
 // Like the warp binding, it is written to disk here but committed onto weft:main by the CLI layer through Bolt;
 // this file spawns no git and never calls Bolt itself.
 
@@ -18,10 +19,12 @@ import (
 // It holds only the shortname, plus a trailing newline.
 const ShortnameFileName = ".lym-shortname"
 
-// ReadShortname reads the recorded repo shortname from <boardDir>/.lym-shortname and reports whether a usable one was found.
-// Any read error and an empty-after-trim value report not found, like readWarpBinding;
-// a value failing agentname.ValidateShortname also reports not found and logs a named warning,
-// so a damaged record reads as a hub with no shortname that `lym fabric shortname <shortname>` or `clone --shortname` records over.
+// ReadShortname reads the recorded repo shortname from <boardDir>/.lym-shortname.
+// It reports whether a usable one was found.
+// A read error, or a value that is empty after trimming, reports not found.
+// A value that fails the shortname grammar also reports not found and logs a named warning,
+// so a damaged record reads as a hub with no shortname.
+// `lym fabric shortname <shortname>` or `clone --shortname` records a new one over it.
 func ReadShortname(boardDir string) (shortname string, found bool) {
 	data, err := os.ReadFile(filepath.Join(boardDir, ShortnameFileName))
 	if err != nil {
@@ -30,8 +33,9 @@ func ReadShortname(boardDir string) (shortname string, found bool) {
 	return usableShortname(string(data), boardDir)
 }
 
-// usableShortname applies the blank-and-grammar rule shared by ReadShortname and the weft probe.
-// where names the record's location in the warning.
+// usableShortname returns the trimmed raw value when it is a non-blank, valid shortname.
+// A blank value reports not found; an invalid one reports not found and logs a warning.
+// where names the record's location in that warning.
 func usableShortname(raw, where string) (string, bool) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -54,10 +58,11 @@ func WriteShortname(boardDir, shortname string) error {
 	return nil
 }
 
-// resolveEffectiveShortname encodes the whole shortname-record rule, pure and git-free.
-// recorded and found are the record at the probed weft, supplied is the --shortname value,
-// and freshBind is true when the weft carries neither the warp binding nor the anchor marker.
-// It returns the effective shortname, whether the caller must write a new record, a warning for a bound weft that has no shortname, or a refusal.
+// resolveEffectiveShortname decides the effective repo shortname from the record and the supplied value, without git.
+// recorded and found are the record at the probed weft, and supplied is the --shortname value.
+// freshBind is true when the weft carries neither the warp binding nor the anchor marker.
+// It returns the effective shortname and whether the caller must write a new record.
+// It also returns a warning for a bound weft that has no shortname, and an error when the request is refused.
 func resolveEffectiveShortname(recorded string, found bool, supplied string, freshBind bool) (effective string, writeRecord bool, warning string, err error) {
 	if supplied != "" {
 		if err := agentname.ValidateShortname(supplied); err != nil {

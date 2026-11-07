@@ -1,4 +1,6 @@
-// detachfront.go implements the front of a capped `lym gate test` call: the choice of a capped call, the start or join of a detached runner, the registration of the runner, and the answer once the run ended or the caller's cap passed.
+// detachfront.go implements the front of a capped `lym gate test` call.
+// It decides whether a call is capped, starts or joins its detached runner, and registers the runner.
+// It answers once the run ended or the caller's cap passed.
 
 package gatecli
 
@@ -49,10 +51,11 @@ const (
 	defaultGrace = 120 * time.Second
 )
 
-// detachRunMaxAge is how long a finished run directory is kept; it matches the age at which run records are pruned.
+// detachRunMaxAge is how long a finished run directory is kept before it is pruned.
 const detachRunMaxAge = 14 * 24 * time.Hour
 
-// frontPollPeriod is how often a front tries the key directory's lock and looks for the runner's claim; it is the one-second floor of the wake rule.
+// frontPollPeriod is how often a front tries the key directory's lock and looks for the runner's claim.
+// It is never shorter than one second.
 const frontPollPeriod = time.Second
 
 // The files a front keeps beside a run's other files.
@@ -61,7 +64,7 @@ const (
 	keyLockFile = "lock"
 	// currentFile names the key's current run id.
 	currentFile = "current.json"
-	// treeFile holds the treeRecord the run was started over.
+	// treeFile holds the tree identity the run was started over.
 	treeFile = "tree.json"
 	// deliveredFile exists once a front printed the run's result.
 	deliveredFile = "delivered"
@@ -69,17 +72,19 @@ const (
 	runnerLogFile = "runner.log"
 )
 
-// gateVerbName returns the command a request of verb names in a message: `gate test` or `gate card-verify`.
+// gateVerbName returns the full command name of verb, such as `gate test` for `test`.
 func gateVerbName(verb string) string {
 	return "gate " + verb
 }
 
-// replayedBusyLine returns the line written to stderr when the exit recorded by a run of verb is the code that otherwise means a run still going.
+// replayedBusyLine returns the line written to stderr when a run of verb recorded exit code 75.
+// Code 75 otherwise means a run still going, but here it is a test's own exit, not a busy hub.
 func replayedBusyLine(verb string) string {
 	return gateVerbName(verb) + ": the run exited 75, a test's own code here and no busy hub, so this call exits 1"
 }
 
-// detachSeams are the bounds and the launcher of a capped call's front, which a test replaces so it never waits out a production duration or re-executes its own binary.
+// detachSeams are the bounds and the launcher of a capped call's front.
+// A test replaces them so it never waits out a production duration or re-executes its own binary.
 type detachSeams struct {
 	// keepWarm resolves the keep-warm cap of the strand named by its second argument.
 	keepWarm func(configengine.Dirs, string) shuttleengines.KeepWarmAnswer
@@ -95,7 +100,7 @@ type detachSeams struct {
 	cardFixer func(detachRequest) (cardFixerKit, bool, error)
 	// fixerStopper builds the stop of a fixer strand over the request's worktree, whether or not the request hands off.
 	fixerStopper func(detachRequest) (func(guid string) error, error)
-	// treeIdentity reads the identity of the tree at a worktree root, which the runner rewrites once a fixer left the tree.
+	// treeIdentity reads the tree identity at a worktree root; the runner rewrites it once a fixer has left the tree.
 	treeIdentity func(dir string) treeRecord
 }
 
@@ -119,7 +124,8 @@ type runnerSpawn struct {
 	runDir string
 }
 
-// launchRunner starts `<this binary> gate run-detached <run dir>` detached in the run directory, its output in the run's runner log and the strand name dropped from its environment, and returns its pid.
+// launchRunner starts `<this binary> gate run-detached <run dir>` detached in the run directory and returns its pid.
+// Its output goes to the run's runner log, and the strand name is dropped from its environment.
 // It refuses under a test binary, since a test never re-executes its own binary.
 func launchRunner(spawn runnerSpawn) (int, error) {
 	if testing.Testing() {
@@ -161,7 +167,7 @@ type frontCall struct {
 	cwd string
 	// dir is the directory the call runs in: cwd, or the -C directory.
 	dir string
-	// location is the worktree dir belongs to.
+	// location is the worktree that dir belongs to.
 	location *lymcwd.Location
 	// inHub is whether location is in a hub.
 	inHub bool
@@ -210,7 +216,7 @@ type joinState struct {
 	// process is the runner's claim, read only when hasProcess.
 	process    processRecord
 	hasProcess bool
-	// fixing is whether the run's phase is a cold fixer's, during which the tree changes under the run and no tree comparison holds.
+	// fixing is whether the run's phase is a cold fixer's; the tree changes under it, so no tree comparison holds.
 	fixing bool
 }
 
@@ -220,7 +226,8 @@ func (p runPhase) String() string {
 	return strings.Join(words, " ")
 }
 
-// cappedCall decides whether request is a capped call and, when it is, returns the call with its verb, words and directory filled.
+// cappedCall decides whether request is a capped call.
+// When it is, the call comes back with its verb, words and directory filled.
 // A call whose flags are malformed is never capped, so the in-process run refuses it.
 func cappedCall(ctx context.Context, request testRequest, wait bool, seams detachSeams) (frontCall, bool) {
 	if flagShapeRefusal(request) != "" {
@@ -242,8 +249,12 @@ func cappedCall(ctx context.Context, request testRequest, wait bool, seams detac
 	return call, true
 }
 
-// frontDecision decides whether a call running in dir is capped: it runs in a detached runner it starts or joins, and answers when the caller's keep-warm cap passes.
-// A call is not capped when it gives wait, when no strand name is set, when dir is in no worktree, when it runs inside a slot an enclosing gate run holds, and when the resolver's cap is zero.
+// frontDecision decides whether a call running in dir is capped.
+// A capped call runs in a detached runner it starts or joins,
+// and it answers when the caller's keep-warm cap passes.
+// A call is not capped when it gives wait, when no strand name is set, or when dir is in no worktree.
+// It is also not capped when it runs inside a slot an enclosing gate run holds, or when the resolver's cap is zero.
+// frontDecision decides whether a gate test call waits on a run through a front.
 // A resolver fallback is logged and still caps.
 func frontDecision(dir string, wait bool, seams detachSeams) (call frontCall, capped bool) {
 	strand := os.Getenv(agentname.StrandNameEnv)
@@ -281,7 +292,8 @@ func frontDecision(dir string, wait bool, seams detachSeams) (call frontCall, ca
 }
 
 // strandRole returns the role part of a strand name, and "" for a name that does not parse.
-// The detached runner's environment carries no strand name, so the front reads the role here and writes it into the request.
+// The detached runner's environment carries no strand name,
+// so the front reads the role here and writes it into the request.
 func strandRole(strand string) string {
 	name, err := agentname.Parse(strand)
 	if err != nil {
@@ -291,7 +303,8 @@ func strandRole(strand string) string {
 }
 
 // callKeyDir returns the key directory of a call.
-// A call from a fixer strand, whose role gatefixer.IsFixerRole matches, adds its strand name to the hashed words, so its own gate call never joins the run that waits on it and two fixer strands never share one.
+// A call from a fixer strand, whose role gatefixer.IsFixerRole matches, adds its strand name to the hashed words,
+// so its own gate call never joins the run that waits on it and two fixer strands never share one.
 func callKeyDir(call frontCall) string {
 	words := call.words
 	if gatefixer.IsFixerRole(call.role) {
@@ -300,7 +313,8 @@ func callKeyDir(call frontCall) string {
 	return detachKeyDir(call.location.AnchorPath(), call.verb, call.dir, words)
 }
 
-// words returns the call's words after the verb in a fixed order that the runner parses to the same call: flags as `--name=value`, the targets, and `--` with the arguments after it.
+// words returns the call's words after the verb in a fixed order that the runner parses to the same call:
+// flags as `--name=value`, the targets, and `--` with the arguments after it.
 func (r testRequest) words() []string {
 	var words []string
 	add := func(flag, value string) { words = append(words, "--"+flag+"="+value) }
@@ -336,7 +350,8 @@ func (r testRequest) words() []string {
 	return words
 }
 
-// detachKeyDir returns the key directory of a call: a hash of the verb, the run directory and the words, under the detach directory of anchor's gate directory.
+// detachKeyDir returns the key directory of a call:
+// a hash of the verb, the run directory and the words, under the detach directory of anchor's gate directory.
 // Calls with the same key share one current run.
 func detachKeyDir(anchor, verb, runDir string, words []string) string {
 	hash := sha256.New()
@@ -348,9 +363,13 @@ func detachKeyDir(anchor, verb, runDir string, words []string) string {
 }
 
 // joinable reports whether a front joins the run state describes.
-// It joins only a run whose lease holds at now, whose result no front printed, and that started over the tree identity the front sees now;
-// the run must have ended without being abandoned, or its runner's pid must be live with the start reading the runner recorded, so a reused pid is no runner.
-// A run in the fixing phase that has not ended skips the tree comparison, since a cold fixer is changing the tree the run joins.
+// It joins only a run whose lease holds at now and whose result no front printed.
+// A run that is not fixing or has ended must have started over the tree identity the front sees now.
+// A run in the fixing phase that has not ended skips that comparison:
+// a cold fixer is changing the tree the run joins.
+// A run that has ended joins only if it was not abandoned.
+// Otherwise its runner's pid must be live, with the start reading the runner recorded,
+// so a reused pid is no runner.
 func joinable(run joinState, now time.Time, live func(int) bool, reading func(int) (string, bool)) bool {
 	fixing := run.fixing && !run.hasExit
 	switch {
@@ -364,7 +383,8 @@ func joinable(run joinState, now time.Time, live func(int) bool, reading func(in
 	return runnerLive(run.process, run.hasProcess, live, reading)
 }
 
-// runnerLive reports whether the runner a claimed process file names is live with the start reading it recorded, so a reused pid is no runner.
+// runnerLive reports whether the runner a claimed process file names is live with the recorded start.
+// A reused pid is no runner: its start reading does not match the recorded one.
 func runnerLive(process processRecord, claimed bool, live func(int) bool, reading func(int) (string, bool)) bool {
 	if !claimed || !live(process.PID) {
 		return false
@@ -391,7 +411,8 @@ type front struct {
 }
 
 // runFront starts or joins the run of a capped call and answers.
-// It prints the run's result once the run ended before the call's cap, and answers ok with done false and SlotBusyExit when the cap passed first.
+// It prints the run's result once the run ended before the call's cap.
+// When the cap passed first, it answers ok with done false and SlotBusyExit.
 // A terminating signal ends the front alone, with 128 plus the signal number, and the runner goes on.
 func runFront(ctx context.Context, out, stderr io.Writer, call frontCall, seams detachSeams) int {
 	runCtx, caught, stop := catchTerminatingSignals(ctx)
@@ -408,8 +429,11 @@ func runFront(ctx context.Context, out, stderr io.Writer, call frontCall, seams 
 }
 
 // chooseCap returns how long the call waits for its run.
-// It is the call's long cap when the call names a gate key, the resolver gave a break-even and this machine's earlier runs of the key outlast that break-even, and its cap otherwise;
-// a read error keeps the cap, and so do no key and no break-even, without a read.
+// It is the call's long cap when the call names a gate key and the resolver gave a break-even,
+// and this machine's earlier runs of the key outlast that break-even.
+// Otherwise it is the call's cap.
+// A call with no gate key or no break-even gets its cap without a read.
+// A read error keeps the cap.
 // Bound: an estimate from a few earlier calls can mis-pick, which costs cache money only, never a verdict.
 func chooseCap(call frontCall, readRecords func(dir string) ([]gateslot.RunRecord, error)) time.Duration {
 	if call.gateKey == "" || call.maxReruns <= 0 {
@@ -432,12 +456,18 @@ const longWaitCalls = 5
 // longWaitMinCalls is how many full calls longWait needs to answer true.
 const longWaitMinCalls = 3
 
-// longWait reports whether the runs of the gate key outlast the break-even of capWait waited maxReruns times, so one long wait costs less than as many short ones.
-// It weighs the records of the key by call, leaving out records without a call id, and a call only when it ran every tier it listed to an outcome:
-// each listed tier has a non-build record, and no record of the call is carried, abandoned or of an empty scope, a non-build, non-carried record with neither a command nor a blocking build.
+// longWait reports whether the runs of the gate key outlast the break-even of capWait times maxReruns.
+// The break-even means one long wait costs less than as many short ones.
+// It weighs the records of the key by call and leaves out records without a call id.
+// It weighs a call only when it ran every tier it listed to an outcome:
+// each listed tier has a non-build record, and no record of the call is carried or abandoned.
+// No record may be of an empty scope: a non-build, non-carried record with neither a command nor a blocking build.
 // A tier a failed build blocked carries the build as its blocker, so a call whose build failed counts.
-// A call's wall time runs from its earliest start, a record's wait start or its start where there is no wait start, to its latest end.
-// It takes the latest five full calls by that start and answers true when there are at least three and their median wall time exceeds capWait times maxReruns.
+// A call's wall time runs from its earliest start to its latest end.
+// A record's start is its wait start, or its start where there is no wait start.
+// It takes the latest longWaitCalls full calls by start.
+// It answers true when there are at least longWaitMinCalls of them,
+// and their median wall time exceeds capWait times maxReruns.
 func longWait(records []gateslot.RunRecord, key string, capWait time.Duration, maxReruns int) bool {
 	byCall := map[string][]gateslot.RunRecord{}
 	for _, record := range records {
@@ -474,7 +504,8 @@ func longWait(records []gateslot.RunRecord, key string, capWait time.Duration, m
 	return median > capWait*time.Duration(maxReruns)
 }
 
-// ranEveryListedTier reports whether the records of one call show every tier its tier list names ran to an outcome, as longWait counts a full call.
+// ranEveryListedTier reports whether the records of one call show every tier its tier list names ran to an outcome.
+// longWait counts a full call only when this holds.
 func ranEveryListedTier(call []gateslot.RunRecord) bool {
 	ran := map[int]bool{}
 	for _, record := range call {
@@ -507,7 +538,7 @@ func callSpan(call []gateslot.RunRecord) (start, end time.Time) {
 	return start, end
 }
 
-// run takes the key's lock, starts or joins its run and waits for the run's result.
+// run starts or joins the key's run and waits for the run's result.
 func (f *front) run(ctx context.Context) int {
 	if err := os.MkdirAll(f.keyDir, 0o755); err != nil {
 		return output.Err(f.out, fmt.Sprintf("%s: cannot create the run directory %s: %v; way forward: run the same command again, or run it with --wait, which runs the tiers in this process", gateVerbName(f.call.verb), f.keyDir, err))
@@ -549,7 +580,8 @@ func (f *front) answerGoing(run detachRun) int {
 
 // replay prints the result of the ended run, marks it delivered and returns the call's exit code.
 // A run whose output could not be copied in full is not marked delivered, so the next call joins it again.
-// A recorded SlotBusyExit is a test's own code and exits 1, since the caller reads SlotBusyExit as a run still going.
+// A recorded SlotBusyExit is a test's own code, and replay exits 1 for it.
+// The caller reads SlotBusyExit as a run still going, so replay does not return that code.
 func (f *front) replay(run detachRun, exit detachExit) int {
 	copyErr := errors.Join(replayStdout(f.out, f.stderr, f.call.verb, run.path(stdoutFile)), copyRunFile(f.stderr, run.path(stderrFile)))
 	if copyErr != nil {
@@ -564,10 +596,13 @@ func (f *front) replay(run detachRun, exit detachExit) int {
 	return exit.Code
 }
 
-// replayStdoutBytes is the most of a run's stdout a front prints, so its answer reads as one tool result; a longer stdout stays in the run's file, and the run's stderr carries the summary lines and the failure report.
+// replayStdoutBytes is the largest stdout a front prints in full, so its answer reads as one tool result;
+// a longer stdout stays in the run's file, and the run's stderr carries the summary lines and the failure report.
 const replayStdoutBytes = 4096
 
-// replayStdout prints the run's stdout file at path to out when it holds at most replayStdoutBytes, and otherwise writes a line to stderr naming the file and its size, the run of verb, and prints the file's last line to out when that line is a JSON envelope, such as a refusal.
+// replayStdout prints the run's stdout file at path to out when it holds at most replayStdoutBytes.
+// Otherwise it writes a line to stderr naming the file, its size and the verb's run.
+// When the file's last line is a JSON envelope, such as a refusal, replayStdout prints that line to out too.
 // A file that does not exist prints nothing and is no error.
 func replayStdout(out, stderr io.Writer, verb, path string) error {
 	info, err := os.Stat(path)
@@ -592,7 +627,8 @@ func replayStdout(out, stderr io.Writer, verb, path string) error {
 	return nil
 }
 
-// copyRunFile copies the run file at path to w and returns the error of a failed open or copy; a file that does not exist is no error.
+// copyRunFile copies the run file at path to w and returns the error of a failed open or copy;
+// a file that does not exist is no error.
 func copyRunFile(w io.Writer, path string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -606,7 +642,8 @@ func copyRunFile(w io.Writer, path string) error {
 	return err
 }
 
-// startOrJoin returns the run the front waits on, under the key directory's lock: the key's current run when it is joinable, else a fresh one.
+// startOrJoin returns the run the front waits on, under the key directory's lock:
+// the key's current run when it is joinable, else a fresh one.
 // done is set when the front ends here, with code.
 func (f *front) startOrJoin(ctx context.Context) (run detachRun, code int, done bool) {
 	held, code, done := f.lockKey(ctx)
@@ -637,8 +674,10 @@ func (f *front) startOrJoin(ctx context.Context) (run detachRun, code int, done 
 	return f.startRun(ctx, identity)
 }
 
-// endStrayLine kills the process group a superseded card-verify run recorded in its line file when the run's runner is gone.
-// A dead runner's line shell dies with it through the parent-death signal, but the shell's descendants, a `--wait` gate child among them, do not.
+// endStrayLine kills the process group a superseded card-verify run recorded in its line file.
+// It acts only once the run's runner is gone.
+// A dead runner's line shell dies with it through the parent-death signal,
+// but the shell's descendants, a `--wait` gate child among them, do not.
 func endStrayLine(run detachRun) {
 	request, err := run.readRequest()
 	if err != nil || request.Verb != verbCardVerify {
@@ -663,7 +702,8 @@ func endStrayLine(run detachRun) {
 }
 
 // lockKey takes the key directory's lock, trying once a second while at least the lock margin of the call's cap remains.
-// done is set when the front ends instead, with code: it answered that the run goes on in the phase `starting`, or the lock could not be taken.
+// done is set when the front ends instead, with code:
+// it answered that the run goes on in the phase `starting`, or the lock could not be taken.
 func (f *front) lockKey(ctx context.Context) (file *lock.FileLock, code int, done bool) {
 	lockPath := filepath.Join(f.keyDir, keyLockFile)
 	for {
@@ -722,7 +762,7 @@ func (f *front) currentRun() (detachRun, bool) {
 	return detachRun{dir: filepath.Join(f.keyDir, record.RunID)}, true
 }
 
-// readJoinState reads the files of run that joinable judges.
+// readJoinState reads the files of run into the state that decides whether the run can be joined.
 func (f *front) readJoinState(run detachRun, identity treeRecord) joinState {
 	leasePath := run.path(leaseFile)
 	lease, _, err := state.ReadJSON[leaseRecord](leasePath, leasePath+".lock")
@@ -788,8 +828,8 @@ func (f *front) startRun(ctx context.Context, identity treeRecord) (run detachRu
 	return run, 0, false
 }
 
-// pruneOldRuns removes the key directory's run directories other than keep that are older than detachRunMaxAge and whose runner is not live.
-// A run that cannot be removed is logged and left.
+// pruneOldRuns removes the key directory's run directories older than detachRunMaxAge whose runner is not live.
+// It never removes keep; a run that cannot be removed is logged and left.
 func (f *front) pruneOldRuns(keep detachRun) {
 	entries, err := os.ReadDir(f.keyDir)
 	if err != nil {
@@ -821,7 +861,8 @@ func claimByFront(run detachRun) error {
 	return run.claim(os.Getpid(), start)
 }
 
-// writeNewRun creates a run directory under the key directory, writes its request, tree identity and lease, and points the key directory at it.
+// writeNewRun creates a run directory under the key directory and writes its request, tree identity and lease there.
+// It then points the key directory at the run.
 func (f *front) writeNewRun(identity treeRecord) (detachRun, error) {
 	run := detachRun{dir: filepath.Join(f.keyDir, fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid()))}
 	if err := os.Mkdir(run.dir, 0o755); err != nil {
@@ -864,8 +905,9 @@ func (f *front) registerRunner(pid int, run detachRun) {
 	}
 }
 
-// awaitClaim waits, checking once a second for at most the claim bound, until the runner claimed run, and reports whether it did.
-// A runner that ended unclaimed, or none that claimed by the bound, is a failed start: the front claims the run itself so no runner can, and reports false.
+// awaitClaim polls every frontPollPeriod until the runner claimed run, and reports whether it did within the claim bound.
+// A runner that ended unclaimed, or none that claimed by the bound, is a failed start:
+// the front claims the run itself so no runner can, and reports false.
 // A cancelled ctx reports true, since the front is ending and the run stands as it is.
 func (f *front) awaitClaim(ctx context.Context, run detachRun, pid int) bool {
 	limit := time.Now().Add(f.seams.claimBound)
@@ -885,7 +927,8 @@ func (f *front) awaitClaim(ctx context.Context, run detachRun, pid int) bool {
 	return errors.Is(claimByFront(run), os.ErrExist)
 }
 
-// failStart ends the front for a runner that never started, whose run the front claimed: it expires the lease so no call joins the run, prints detail to stderr and answers an error.
+// failStart ends the front for a runner that never started, whose run the front claimed.
+// It expires the lease so no call joins the run, prints detail to stderr and answers an error.
 func (f *front) failStart(run detachRun, detail string) int {
 	if err := run.expireLease(time.Now()); err != nil {
 		logger.Warn("gate test: could not expire the lease of the run that never started", "dir", run.dir, "cause", err)
@@ -904,7 +947,8 @@ func runnerLogText(run detachRun) string {
 }
 
 // answerRunGoing answers ok with done false and the phase the run is in, and returns SlotBusyExit.
-// A run waiting for its slots also answers slot_free false and names each holder's worktree, site and tier, read from pool.
+// A run waiting for its slots also answers slot_free false.
+// It names each holder's worktree, site and tier, read from pool.
 // The message tells the caller to run the same command again.
 func answerRunGoing(out io.Writer, verb string, pool *gateslot.Pool, phase runPhase, waited time.Duration) int {
 	fields := map[string]any{"done": false, "phase": phase.String()}

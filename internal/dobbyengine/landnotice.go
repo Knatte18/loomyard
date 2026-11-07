@@ -1,4 +1,7 @@
-// landnotice.go implements the landing notice: one creel line to the nearest live orch once a run the dobby saw ahead of its Land row lands or ends without landing, or once a board entry of this worktree that asks for it is done, as beam.yaml's land_notice and the entry decide.
+// landnotice.go implements the landing notice: one creel line to the nearest live orch.
+// It goes out once a run seen ahead of its Land row lands or ends without landing.
+// It also goes out once a board entry of this worktree that asks for it is done.
+// beam.yaml's land_notice and the entry decide whether it does.
 
 package dobbyengine
 
@@ -16,9 +19,10 @@ import (
 // landingCommitWidth is how many leading characters of the landing commit the notice names.
 const landingCommitWidth = 12
 
-// LandNoticeState is dobby's memory of one run for its landing notice, kept from the first sight of the run ahead of its Land row, or of its done board entry asking for a notice, until the notice is settled.
+// LandNoticeState is dobby's memory of one run for its landing notice, kept until the notice is settled.
+// Dobby first sees the run ahead of its Land row, or sees its done board entry asking for a notice.
 type LandNoticeState struct {
-	// Requested reports whether the run's board entry carried notify_on_land at the last tick that found the run ahead of its Land row and the entry on the board.
+	// Requested reports whether the run's board entry asked for notify_on_land at the last tick that saw it ahead of Land.
 	Requested bool `json:"requested,omitempty"`
 	// Line is the notice decided and not yet posted, posted again at each tick until a post succeeds.
 	Line string `json:"line,omitempty"`
@@ -31,10 +35,14 @@ func (s LandNoticeState) owed() bool {
 	return s.Line != "" || s.ClearOwed
 }
 
-// landNotices remembers every listed run ahead of its Land row, with whether its board entry asks for a notice, and decides the notice of each remembered run now past it.
-// While Deps.ClearNotifyOnLand is set, it also takes up each done board entry of this worktree that this machine owns, that carries notify_on_land and holds no memory: a request set after its run passed Land, or a landing the dobby never saw ahead of Land.
+// landNotices remembers each listed run ahead of its Land row, with whether its board entry asks for a notice.
+// It decides the notice of each remembered run now past its Land row.
+// While Deps.ClearNotifyOnLand is set, it also takes up each done board entry of this worktree that this machine owns.
+// Such an entry carries notify_on_land and has no memory of its run.
+// That happens when its request was set after the run passed Land, or when the run was never seen ahead of Land.
 // It then posts every owed line and clears every owed request, keeping what fails for the next tick.
-// A failed read of the board keeps each remembered request as it was and takes up no done entry, and a failed read of beam.yaml decides nothing this tick; both are logged once per episode.
+// A failed read of the board keeps each remembered request as it was and takes up no done entry.
+// A failed read of beam.yaml decides nothing this tick; both are logged once per episode.
 func (d *daemon) landNotices(ctx context.Context, now time.Time, runs []RunView) {
 	tasks, tasksRead := d.landNoticeTasks()
 	mode, modeRead := d.landNoticeMode()
@@ -61,9 +69,12 @@ func (d *daemon) landNotices(ctx context.Context, now time.Time, runs []RunView)
 
 // rememberRuns refreshes memory from the runs listed this tick.
 // A run ahead of its Land row is remembered with its entry's request, refreshed while the entry is on the board.
-// A remembered run past its Land row with no notice decided gets one when mode sends for it, the request read now counting beside the remembered one, and is forgotten otherwise;
-// a requested run owes the clear of its entry's field either way, so a landed entry is not kept on the board for a notice that never comes.
-// A run first seen past its Land row is never remembered, and the memory of a run no longer listed is dropped unless it owes something.
+// A remembered run past its Land row with no notice decided gets one when mode sends for it.
+// The request read now counts beside the remembered one; a run that owes nothing after this is forgotten.
+// A requested run owes the clear of its entry's field either way,
+// so a landed entry is not kept on the board for a notice that never comes.
+// A run first seen past its Land row is never remembered.
+// The memory of a run not listed this tick is dropped unless it owes something.
 func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests map[string]bool, tasksRead bool, mode string, modeRead bool) {
 	listed := make(map[string]bool, len(runs))
 	for _, run := range runs {
@@ -97,9 +108,12 @@ func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests ma
 	}
 }
 
-// takeDoneEntries adds to memory each done entry of tasks whose parent is this dobby's worktree, that another machine does not own, carries notify_on_land and has no memory of its own.
-// It owes the line mode sends, landed with the commit of its run when the run is listed and none recorded otherwise, and the clear of the request under every mode.
-// A done entry is read as landed whatever set its status, so the line can name a landing that an entry marked done by hand never made.
+// takeDoneEntries adds to memory each done entry of tasks whose parent is this dobby's worktree.
+// It takes only entries that carry notify_on_land, that no other machine owns, and that have no memory yet.
+// The line mode sends reports the run's landing commit when the run is listed past Land.
+// The clear of the request is owed under every mode.
+// A done entry is read as landed whatever set its status,
+// so the line can name a landing that an entry marked done by hand never made.
 func (d *daemon) takeDoneEntries(memory map[string]LandNoticeState, runs []RunView, tasks []TaskView, mode string) {
 	for _, task := range tasks {
 		if !task.NotifyOnLand || !boardengine.IsDoneStatus(task.Status) || task.Parent != d.geom.WorktreeName || task.OwnedElsewhere {
@@ -147,8 +161,10 @@ func (d *daemon) landNoticeMode() (string, bool) {
 	return cfg.LandNotice, true
 }
 
-// settleLandNotices posts each owed line through Deps.Notice and then clears each owed request through Deps.ClearNotifyOnLand, dropping a memory once it owes nothing.
-// A failed post keeps the line for the next tick, with no cap on the tries, and is logged once per episode; a failed clear keeps the clear for the next tick and is logged.
+// settleLandNotices posts each owed line through Deps.Notice.
+// It then clears each owed request through Deps.ClearNotifyOnLand, and drops a memory once it owes nothing.
+// A failed post keeps the line for the next tick, with no cap on the tries, and is logged once per episode.
+// A failed clear keeps the clear for the next tick and is logged.
 func (d *daemon) settleLandNotices(ctx context.Context, now time.Time) {
 	record, _, err := ReadState(d.geom.StatePath)
 	if err != nil {
@@ -199,7 +215,8 @@ func (d *daemon) updateLandNotice(slug string, mutate func(*LandNoticeState)) {
 	}
 }
 
-// landNoticeLine is the line a run's landing notice posts: the slug, the outcome and, for a landing, the head of its landing commit.
+// landNoticeLine is the line a run's landing notice posts.
+// It names the slug and the outcome, and for a landing the head of its landing commit.
 func landNoticeLine(run RunView) string {
 	if !run.Landed {
 		return fmt.Sprintf("%s %s: %s; lym batten status %s shows the run", runNoticePrefix, run.Slug, landNoticeOutcome(run), run.Slug)

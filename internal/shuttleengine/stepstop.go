@@ -1,4 +1,5 @@
-// stepstop.go ties each shuttle run to the shed step that started it and stops one step's live runs through the stop verb.
+// stepstop.go ties each shuttle run to the shed step that started it.
+// It stops one step's live runs through the stop verb.
 
 package shuttleengine
 
@@ -24,7 +25,8 @@ type StepStopFailure struct {
 	Error string
 }
 
-// StepStopReport is what StopStepRuns did, each run named by its strand name, the strand guid when the record has no name.
+// StepStopReport reports the outcome of a step stop.
+// It names each run by its strand name, or by its strand guid when the record has no name.
 type StepStopReport struct {
 	// Stopped holds the runs of the step that were stopped.
 	Stopped []string
@@ -40,10 +42,15 @@ func (r *Runner) SetStepTie(tie StepTie) {
 	r.step = &tie
 }
 
-// StopStepRuns stops every run under the runner's run-directory root that is still running, has a removable strand and records tie as its step.
-// A strand is removable when it is live or an own-window strand whose pane is present but not live, a dead pane or one showing only its shell, so a step stop ends the window of a run whose own-window agent died.
+// StopStepRuns stops every run under the runner's run-directory root that is still running and has a removable strand.
+// It stops only runs whose record names tie as its step.
+// A strand is removable when it is live, or an own-window strand whose pane is present but not live.
+// That covers a dead pane or one showing only its shell.
+// So a step stop ends the window of a run whose own-window agent died.
 // Each is stopped through the stop verb, which records the stop before removing the strand.
-// A removable running run with no step is listed under Untied without being touched, a run of another step and a run with a terminal record or a dead window 0 strand are left alone, and a record that does not decode is skipped.
+// A removable running run with no step is listed under Untied without being touched.
+// A run of another step and a run with a terminal record or a dead window 0 strand are left alone.
+// A record that does not decode is skipped.
 // A stop that fails is listed under Failed and the stop goes on with the next run.
 func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
 	var report StepStopReport

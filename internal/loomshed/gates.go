@@ -1,7 +1,8 @@
-// gates.go implements this package's gate closures: NewDiscussionGate, NewPlanGate and NewLensReviewPlanGate, and the ValidateReworkPlan check `lym loom validate-plan --rework` runs.
-// Each gate is the gate half of the Gate Self-Check Parity Invariant:
-// each calls the identical package function its CLI self-check verb does (ValidateDiscussion, ValidatePlan and ValidatePlanLensReview, respectively),
-// so the operator's own self-check verb and the automated gate can never disagree about what "valid" means.
+// gates.go holds the gate closures of loomshed: NewDiscussionGate, NewPlanGate and NewLensReviewPlanGate.
+// It also holds ValidateReworkPlan, the check that `lym loom validate-plan --rework` runs.
+// Each gate calls the same check as its self-check verb.
+// The verb and the automated gate can therefore never disagree about what is valid.
+// This is the gate half of the Gate Self-Check Parity Invariant.
 
 package loomshed
 
@@ -22,9 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// formatDiscussionFindings renders findings as a single semicolon-separated list, using each
-// Finding's own Error() rendering so the log line and the standalone verb's envelope describe a
-// violation identically.
+// formatDiscussionFindings renders findings as one semicolon-separated list.
+// Each finding renders through its own Error method.
+// The log line and the verb's output therefore describe a violation identically.
 func formatDiscussionFindings(findings []discussionparser.Finding) string {
 	parts := make([]string, len(findings))
 	for i, f := range findings {
@@ -33,14 +34,10 @@ func formatDiscussionFindings(findings []discussionparser.Finding) string {
 	return strings.Join(parts, "; ")
 }
 
-// formatPlanFindings renders findings as a single semicolon-separated list, each entry carrying
-// its own Check[/Card]: Detail rendering plus its Severity, so the log line and "lym loom
-// validate-plan"'s envelope describe a violation identically and an informational
-// create-new-unit is distinguishable from a blocking glyph-not-found in the one place this record
-// exists.
-// It calls each Finding's own Error() rather than re-deriving its layout, which is what makes the
-// "describe a violation identically" promise above hold by construction rather than by two copies of
-// one format string agreeing today; formatDiscussionFindings above does the same.
+// formatPlanFindings renders findings as one semicolon-separated list.
+// Each finding renders through its own Error method, which carries its check, card, detail and severity.
+// The log line and the validate-plan output therefore describe a violation identically.
+// Calling Error keeps the two renderings identical by construction rather than by two copies of one format agreeing.
 func formatPlanFindings(findings []planindex.Finding) string {
 	parts := make([]string, len(findings))
 	for i, f := range findings {
@@ -49,7 +46,8 @@ func formatPlanFindings(findings []planindex.Finding) string {
 	return strings.Join(parts, "; ")
 }
 
-// writeInformationalFindings writes findings, one per line, to <gateName>-informational-findings.txt under dir, creating dir when it is missing, and returns the file's path.
+// writeInformationalFindings writes findings, one per line, to <gateName>-informational-findings.txt under dir.
+// It creates dir when it is missing and returns the path of the file it wrote.
 func writeInformationalFindings(dir, gateName string, findings []planindex.Finding) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
@@ -65,18 +63,13 @@ func writeInformationalFindings(dir, gateName string, findings []planindex.Findi
 	return path, nil
 }
 
-// hasBlockingFinding reports whether findings carries at least one entry that is not explicitly
-// informational.
+// hasBlockingFinding reports whether findings holds at least one entry that is not informational.
 //
-// It tests NOT-informational rather than equals-blocking, and that asymmetry is the point.
-// planindex.Severity is an open string type, so an unrecognized value — or the zero value, which a
-// hand-built Finding or a future producer that forgets to stamp one carries — took the informational
-// branch, logged a Warn, and returned Done with the plan directory as its pointer: the run advanced
-// past a finding that was meant to block it. That is the same "a validator's complaint reported as a
-// clean plan" failure this file's own error-path comment records as deliberately rejected, still
-// present on the severity path (crucible round opus-medium-r6, R6-27).
-// Failing closed costs at most a spurious bounce on a severity nobody has defined yet; failing open
-// costs a dispatched batch over a defect the gate saw.
+// It tests not-informational rather than blocking, because planindex.Severity is an open string type.
+// A value the code does not recognize, and the zero value a hand-built Finding carries, must count as blocking:
+// treated as informational, such a finding logs a warning and lets the run advance past a defect the gate saw.
+// Failing closed costs at most a spurious bounce on a severity nobody has defined yet;
+// failing open costs a dispatched batch over a defect the gate saw.
 func hasBlockingFinding(findings []planindex.Finding) bool {
 	for _, f := range findings {
 		if f.Severity != planindex.SeverityInformational {
@@ -86,7 +79,7 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 	return false
 }
 
-// DiscussionCheck carries the told values of the discussion check every loom record row's gate, `lym loom validate-discussion` and Darn-Write's post-session guard run.
+// DiscussionCheck carries the values the discussion check reads for one loom record.
 // Every path is absolute.
 type DiscussionCheck struct {
 	// RecordPath is the decision record.
@@ -105,17 +98,18 @@ type DiscussionCheck struct {
 	Citations bool
 }
 
-// NewDiscussionGate returns the discussion gate closure of a loom record row: a shuttleengine.Gate that calls ValidateDiscussion(check) once and maps the result onto the gate contract.
+// NewDiscussionGate returns the gate closure of a loom record:
+// a shuttleengine.Gate that calls ValidateDiscussion(check) once and maps the result onto the gate contract.
 // It commits nothing.
 //
-// A non-nil error from ValidateDiscussion is returned verbatim alongside the zero shuttleengine.GateResult: a
-// gate that could not read the artifact has found no defect to re-prompt over, it is an
-// infrastructure fault, and it must never burn an attempt or reach the LLM. A non-empty findings
-// slice produces GateResult{Passed: false, Findings: formatDiscussionFindings(findings)} and a nil
-// error, preceded by a logger.Warn carrying the gate name, the decision record path, and the same
-// formatted findings -- that warn line is the only durable record of why an artifact was refused,
-// because the findings file itself lives in the ephemeral run directory finalize deletes on the Done
-// cleanup. An empty slice produces GateResult{Passed: true} and a nil error.
+// A non-nil error from ValidateDiscussion is returned with the zero shuttleengine.GateResult.
+// The gate could not read the artifact, so it found no defect to re-prompt over: the error is an infrastructure fault,
+// and it must never burn an attempt or reach the LLM.
+// A non-empty findings slice produces GateResult{Passed: false, Findings: ...} and a nil error.
+// It logs a logger.Warn with the gate name, the decision record path and the same formatted findings.
+// That warn line is the only durable record of why the artifact was refused.
+// The findings file lives in the ephemeral run directory that finalize deletes on the Done cleanup.
+// An empty slice produces GateResult{Passed: true} and a nil error.
 func NewDiscussionGate(check DiscussionCheck) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		findings, err := ValidateDiscussion(check)
@@ -132,11 +126,19 @@ func NewDiscussionGate(check DiscussionCheck) shuttleengine.Gate {
 	}
 }
 
-// ValidateDiscussion is the one discussion check of every loom record: discussionparser.Validate's section check over the record and support log, then discussionparser.CheckDecisionIDs' decision id and acceptance check, then the history check, then, with check.Citations set, the citation check and discussionparser.CheckRelevant's relevant list check.
-// The history check runs only when the section check is clean, since a missing or section-less record has no history worth comparing yet; it refuses a record that dropped an `Added after Discussion` entry or an appended PATTERN bullet its committed versions held.
+// ValidateDiscussion is the discussion check every loom record runs.
+// It runs discussionparser.Validate's section check over the record and support log.
+// It then runs discussionparser.CheckDecisionIDs' decision id and acceptance check and the history check.
+// With check.Citations set, it also runs the citation check and discussionparser.CheckRelevant's relevant list check.
+// The history check runs only when the section check is clean.
+// A missing or section-less record has no history worth comparing yet.
+// The history check refuses a record that dropped an `Added after Discussion` entry.
+// It also refuses one that dropped an appended PATTERN bullet its committed versions held.
 // The citation check tests the record's cited paths against the worktree and its cited symbols through the index.
-// Every other check runs even when an earlier one finds defects, so one re-prompt names every defect, and the findings come in that order, each stamped with its path.
-// A missing decision record adds no decision id or citation finding, and a missing relevant list adds no relevant finding.
+// Every other check runs even when an earlier one finds defects, so one re-prompt names every defect.
+// The findings come in the order the checks run, each stamped with its path.
+// A missing decision record adds no decision id or citation finding.
+// A missing relevant list adds no relevant finding.
 // A read error, a history error and a quarry outage are returned as is, with nil findings.
 func ValidateDiscussion(check DiscussionCheck) ([]discussionparser.Finding, error) {
 	findings, err := discussionparser.Validate(check.RecordPath, check.SupportLogPath)
@@ -194,60 +196,60 @@ func stampFindings(findings []discussionparser.Finding, path string) []discussio
 	return findings
 }
 
-// NewPlanGate returns the Plan-Write row's gate closure, a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs ValidatePlan(plan, anchorPath, worktreeRoot, index, pc), mapping the result onto the gate contract.
+// NewPlanGate returns the gate closure of the Plan-Write row.
+// It is a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)).
+// It then runs ValidatePlan(plan, anchorPath, worktreeRoot, index, pc) and maps the result onto the gate contract.
 //
-// The two path parameters are separate because planparser.PlanDir and webster's run record take the anchor path while index.ValidateFormat takes the worktree root, and they are not the same value.
+// The two path parameters are separate because planparser.PlanDir and the webster run record take the anchor path.
+// index.ValidateFormat takes the worktree root.
 //
-// ValidateFormat is called, never the require_approved-aware validation.
-// Both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every single fix round.
+// It calls ValidateFormat and not the validation that demands `require_approved`.
+// Both plan gate sites run before the Plan-Review approve seam writes the approval flag.
+// Demanding that flag would fail every fix round.
 //
-// The ParsePlan error set is split by shape rather than treated whole. An error satisfying
-// errors.As(err, new(*fs.PathError)) is a returned error: ParsePlan has exactly two %w-wrapped
-// os.ReadFile faults, the overview read and the per-card read reached through parseCardFile, and
-// this predicate matches both and only those, because every other error it returns is a plain
-// fmt.Errorf value. Every other ParsePlan error produces GateResult{Passed: false, Findings:
-// err.Error()} and a nil error: the not-exist branch and every structural or format error are plain
-// fmt.Errorf values by construction, and they describe the bytes the agent wrote, which is the
-// single most LLM-fixable defect class there is.
+// The ParsePlan error set is split by shape rather than treated whole.
+// An error satisfying errors.As(err, new(*fs.PathError)) is a returned error.
+// ParsePlan wraps its file read faults with %w, and every other error it returns is a plain fmt.Errorf value.
+// Every other ParsePlan error produces GateResult{Passed: false, Findings: err.Error()} and a nil error.
 //
-// This is a reasoned reversal of the disposition the now-removed Plan-Validate row's producer took:
-// that producer's rationale -- a plan that will not parse is not a plan the bounce target can be
-// asked to improve -- was about a cold respawn that knows nothing of the complaint, whereas the
-// gate's bounce target is the live session that just wrote the file, holding its full context, so the
-// premise no longer holds. This also makes both gates behave identically on a missing-or-malformed
-// artifact, since discussionparser.Validate already reports a missing file as a finding and only a
-// non-not-exist read failure as an error.
+// Those errors describe the bytes the agent wrote, the most LLM-fixable defect class there is:
+// the live session that wrote the file still holds its full context, so it can be asked to fix the plan.
+// discussionparser.Validate reports a missing file as a finding.
+// It returns only other read failures as errors, and the plan gate matches it.
 //
-// Every index error stays a returned error in full and is explicitly NOT part of the carve-out:
-// a resolve or quarry failure means the gate could not read the code, not that it found a defect,
-// and three absurd re-prompts over a missing quarry binary would hide the real fault.
+// An index error is always returned as an error, never as a finding.
+// A resolve or quarry failure means the gate could not read the code, not that it found a defect,
+// and re-prompting over a missing quarry binary would hide the real fault.
 //
-// A findings slice carrying no entry that fails hasBlockingFinding is a pass: it is logged as a
-// logger.Warn naming it informational and returns GateResult{Passed: true}, because a
-// create-new-unit finding on a brand-new package is not something the writer can fix and
-// re-prompting on it would burn the whole budget on a condition that was never wrong. A slice with
-// at least one blocking entry produces GateResult{Passed: false, Findings:
-// formatPlanFindings(findings)} after a logger.Warn carrying the same formatted text.
+// A findings slice with no blocking entry passes.
+// The pass is logged as a logger.Warn that names the findings informational.
+// A create-new-unit finding on a brand-new package is something the writer cannot fix.
+// Re-prompting on it would burn the whole budget on a condition that was never wrong.
+// A slice with at least one blocking entry fails the gate, with Findings set to formatPlanFindings(findings).
+// The gate logs the same formatted text in a logger.Warn.
 //
-// hasBlockingFinding is called, never re-derived.
-// It encodes a crucible-round finding that planindex.Severity is an open string type, so testing not-informational rather than equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
+// A finding with an unrecognized or zero-valued severity counts as blocking.
 //
-// scratchDir is the run's told ephemeral scratch directory, where an informational pass records its findings; empty keeps them inline in the log line.
+// scratchDir is the ephemeral scratch directory of the run, where an informational pass records its findings.
+// An empty scratchDir keeps them inline in the log line.
 func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
 	return planGate("Plan-Gate", planparser.PlanDir(anchorPath), scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return ValidatePlan(plan, anchorPath, worktreeRoot, index, pc)
 	})
 }
 
-// ValidatePlan is the plan gate's check set: index.ValidateFormat over plan, told the cards webster's run record under anchorPath holds done.
-// A run moved back to the plan review after Webster executed batches keeps its run record, and a done card's work is already in the tree, so the index skips its tree-dependent checks.
-// With no run record every card is checked.
+// ValidatePlan checks plan with index.ValidateFormat, told the done cards from Webster's run record under anchorPath.
+// A run moved back to plan review after Webster executed batches keeps its run record,
+// and a done card's work is already in the tree, so the index skips its tree-dependent checks for those cards.
+// With no run record, every card is checked.
 // A run record that cannot be read is a returned error, never a finding.
 //
-// A done card whose file no longer hashes to what its batch recorded at begin adds one blocking done-card-edited finding, since a done card is frozen.
+// A done card whose file no longer hashes to what its batch recorded at begin is one blocking done-card-edited finding.
+// A done card is frozen, so any change to its file is reported.
 // It reads the record and the card bytes alone; an unreadable card file is a returned error.
 //
-// The findings of planContextFindings over pc follow, scoped to the cards not recorded done, since a done card's rename already ran.
+// The findings of the plan context checks over pc follow.
+// They cover only the cards not recorded done, since a done card's rename already ran.
 func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 	if err != nil {
@@ -290,21 +292,26 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 // doneCardEditedCheck names the finding ValidatePlan appends for an edited done card.
 const doneCardEditedCheck = "done-card-edited"
 
-// NewLensReviewPlanGate returns the plan gate closure a twill-spawned Plan-Write run evaluates in place of NewPlanGate's, chosen by shuttle from the run's recorded fork authorization.
+// NewLensReviewPlanGate returns the plan gate closure for a twill-spawned Plan-Write run.
+// Shuttle chooses it from the run's recorded fork authorization.
 // It parses the plan under anchorPath and checks it with ValidatePlanLensReview over index.
 //
-// Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
-// It only adds a refusal over NewPlanGate's set: a writer that never records the lens review spends the gate's existing re-prompt budget.
+// A parse failure fails the gate with its error text, except a read failure, which is returned as an error.
+// An informational pass is logged, and only a blocking finding fails the gate.
+// It adds one refusal to the plan checks: a writer that never records the lens review spends the re-prompt budget.
 func NewLensReviewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
 	return planGate("Plan-Gate", planparser.PlanDir(anchorPath), scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return ValidatePlanLensReview(plan, anchorPath, worktreeRoot, index, pc)
 	})
 }
 
-// ValidatePlanLensReview is the check set of a twill Plan-Write run's gate: ValidatePlan's set, plus one blocking lens-review-missing finding when the plan directory's lens review file is absent or holds only whitespace.
-// An error from ValidatePlan is returned unchanged.
-// The file is checked for presence only and never parsed; its content and timing are not checked.
-// Any read error but not-exist is a returned error, never a finding.
+// ValidatePlanLensReview checks plan for a twill Plan-Write run.
+// It runs the plan checks and adds one blocking lens-review-missing finding.
+// That finding is added when the plan directory's lens review file is absent or holds only whitespace.
+// An error from the plan checks is returned unchanged.
+// The file is checked for presence and for non-whitespace content only;
+// it is never parsed, and its timing is not checked.
+// A read error other than not-exist is returned, never a finding.
 func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	findings, err := ValidatePlan(plan, anchorPath, worktreeRoot, index, pc)
 	if err != nil {
@@ -325,13 +332,15 @@ func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot stri
 	return findings, nil
 }
 
-// lensReviewMissingCheck names the finding ValidatePlanLensReview appends for an absent or empty lens review.
+// lensReviewMissingCheck names the check of a finding that reports an absent or empty lens review.
 const lensReviewMissingCheck = "lens-review-missing"
 
-// planFindingHead matches the start of one finding in a plan gate's findings text: its check, an optional card and its severity.
+// planFindingHead matches the start of one finding in a plan gate's findings text:
+// its check, an optional card and its severity.
 var planFindingHead = regexp.MustCompile(`(?:^|; )([a-z][a-z0-9-]*)(?:/[^\[;\s]+)?\[([a-z]*)\]: `)
 
-// LensReviewOnly reports whether the findings text of a failed plan gate holds a blocking finding and every blocking finding is the missing lens review.
+// LensReviewOnly reports whether the findings text of a failed plan gate holds a blocking finding,
+// and every blocking finding is the missing lens review.
 // The text is the gate's findings joined by "; ", each rendered as check[/card][severity]: detail.
 // Such a failure is the writer's own to clear, since only the writer records the lens review.
 // A finding that is informational is not counted, and a text with no blocking finding is false.
@@ -349,10 +358,11 @@ func LensReviewOnly(findings string) bool {
 	return blocking
 }
 
-// ValidateReworkPlan checks the whole new plan with index.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number one past the highest card of the plan committed at HEAD.
+// ValidateReworkPlan checks the whole new plan with index.ValidateRework:
+// the format checks, and the check that first_card equals one past the highest card of the plan committed at HEAD.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 // A plan that cannot be read as committed at HEAD is a returned error.
-// The findings of planContextFindings over pc and every card of the fresh generation follow.
+// The findings of the plan context checks over pc, run over every card of the fresh generation, follow.
 func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error), pc PlanContext) ([]planindex.Finding, error) {
 	told, err := NextReworkCardNumber(plan.Dir, readCommitted)
 	if err != nil {
@@ -369,7 +379,8 @@ func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planin
 	return append(findings, contextFindings...), nil
 }
 
-// planGate builds a plan gate closure named gateName in its log lines: it parses the plan in planDir, runs validate over it, and maps the result onto the gate contract.
+// planGate builds a plan gate closure named gateName in its log lines.
+// It parses the plan in planDir, runs validate over it, and maps the result onto a shuttleengine.GateResult.
 // On an informational pass it records the findings in a file under scratchDir and logs their count and the file's path;
 // with no scratchDir, or when the file cannot be written, the log line carries the findings inline.
 func planGate(gateName, planDir, scratchDir string, validate func(*planparser.Plan) ([]planindex.Finding, error)) shuttleengine.Gate {

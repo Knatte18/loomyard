@@ -1,8 +1,7 @@
 // rawworktree_test.go pins isRawWarpWorktree's anchor-awareness: the _lym management-marker probe
-// must look at the worktree's ANCHORED directory, the only place fabric ever wires the junction —
-// a root-joined probe misclassified every subpath-anchored managed worktree as raw.
-// Tier0 deliberately: the probe is pure filesystem inspection.
-// This regression guard stays in the default tier0 run.
+// must look at the worktree's anchored directory, the only place fabric wires the junction.
+// A root-joined probe misclassifies every subpath-anchored managed worktree as raw.
+// The test runs in tier0 because the probe is pure filesystem inspection.
 
 package fabricengine
 

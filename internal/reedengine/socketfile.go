@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-// socketDirFromEnv is the per-user directory tmux puts its `-L` sockets in, resolved as tmux does:
-// `$TMUX_TMPDIR`, else `/tmp`, then `tmux-<uid>`.
+// socketDirFromEnv returns the per-user directory that tmux puts its `-L` sockets in.
+// It resolves the directory as tmux does: `$TMUX_TMPDIR`, else `/tmp`, then `tmux-<uid>`.
 func socketDirFromEnv() string {
 	return socketDirUnder(socketBaseFromEnv())
 }
 
-// socketBaseFromEnv is the directory tmux puts its per-user socket directory in: `$TMUX_TMPDIR`, else `/tmp`.
+// socketBaseFromEnv returns the directory that holds tmux's per-user socket directory: `$TMUX_TMPDIR`, else `/tmp`.
 func socketBaseFromEnv() string {
 	if base := os.Getenv("TMUX_TMPDIR"); base != "" {
 		return base
@@ -29,7 +29,8 @@ func socketDirUnder(base string) string {
 	return filepath.Join(base, "tmux-"+strconv.Itoa(os.Getuid()))
 }
 
-// resolvedSocketDir is the per-user socket directory under the socket base with its symlinks resolved, so the path is measured at the length tmux sees.
+// resolvedSocketDir returns the per-user socket directory under the socket base, with its symlinks resolved.
+// It resolves symlinks so that the path is measured at the length tmux sees.
 // A base that cannot be resolved is used as it is.
 func resolvedSocketDir() string {
 	base := socketBaseFromEnv()
@@ -39,7 +40,8 @@ func resolvedSocketDir() string {
 	return socketDirUnder(base)
 }
 
-// unixSocketPathLimit is the longest socket path in bytes the OS accepts for goos: one under `sun_path`, which is 108 bytes on linux and 104 elsewhere.
+// unixSocketPathLimit returns the longest socket path in bytes that the OS accepts for goos.
+// The limit is the `sun_path` size less the terminating NUL: 108 bytes on linux, 104 elsewhere.
 func unixSocketPathLimit(goos string) int {
 	if goos == "linux" {
 		return 107
@@ -47,8 +49,8 @@ func unixSocketPathLimit(goos string) int {
 	return 103
 }
 
-// checkSocketPathLength admits the socket path of the `-L` key key under dir when it is at most limit bytes, and refuses a longer one.
-// The refusal names the path, its length, the limit and the way forward: a shorter `TMUX_TMPDIR`.
+// checkSocketPathLength returns an error when the socket path for the `-L` key under dir is longer than limit bytes.
+// The error names the path, its length and the limit, and it suggests a shorter `TMUX_TMPDIR`.
 func checkSocketPathLength(dir, key string, limit int) error {
 	path := filepath.Join(dir, key)
 	if len(path) <= limit {
@@ -57,11 +59,12 @@ func checkSocketPathLength(dir, key string, limit int) error {
 	return fmt.Errorf("tmux socket path %s is %d bytes, over the %d-byte limit of a unix socket path; set TMUX_TMPDIR to a shorter directory", path, len(path), limit)
 }
 
-// socketGoneWait bounds how long removeSocketFileOnceGone waits for a server that was sent `kill-server` to stop answering.
+// socketGoneWait bounds how long to wait for a server sent `kill-server` to stop answering on its socket.
 const socketGoneWait = 2 * time.Second
 
-// removeSocketFileOnceGone removes the socket file of the `-L` key key under dir after a `kill-server` that was not confirmed by a process scan.
-// `kill-server` is asynchronous, so it retries removeStaleSocket until the file is gone or wait has passed.
+// removeSocketFileOnceGone removes the socket file of the `-L` key under dir once its server is gone.
+// It runs after a `kill-server` that a process scan did not confirm.
+// `kill-server` is asynchronous, so it retries the removal until the file is gone or wait has passed.
 // A file still there after wait stays, with no error.
 func removeSocketFileOnceGone(dir, key string, wait time.Duration) error {
 	path := filepath.Join(dir, key)
@@ -75,8 +78,9 @@ func removeSocketFileOnceGone(dir, key string, wait time.Duration) error {
 	}
 }
 
-// removeStaleSocket removes the socket file of the `-L` key key under dir, once the server that owned it is gone.
-// It removes the file only when the path is a socket, nothing answers a connection on it, and a second `os.Lstat` reports the same file as the first.
+// removeStaleSocket removes the socket file of the `-L` key under dir, once the server that owned it is gone.
+// It removes the file only when the path is a socket that nothing answers a connection on,
+// and a second `os.Lstat` reports the same file as the first.
 // A live listener, a non-socket path or a changed file identity leaves the path alone, and a missing path is no error.
 // It is a no-op on Windows, where psmux keeps no socket file.
 // It removes the one path for key and never globs the directory.

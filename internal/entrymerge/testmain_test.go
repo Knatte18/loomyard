@@ -1,4 +1,5 @@
-// testmain_test.go runs the package's tests under tmuxkit.Main, so their temp files live in the process run directory and go with it.
+// testmain_test.go runs the package's tests under tmuxkit.Main,
+// so their temp files live in the process run directory and go with it.
 // The package spawns no git, so it calls no hermetic git environment.
 
 package entrymerge_test

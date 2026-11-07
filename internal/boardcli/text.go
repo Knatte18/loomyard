@@ -1,4 +1,5 @@
-// text.go renders the compact one-line-per-entry listing that "list --text" and "find --text" print instead of JSON, and the prime-owner line that opens list's.
+// text.go renders the compact listing that "list --text" and "find --text" print instead of JSON.
+// It also renders the prime-owner line that opens the "list --text" listing.
 
 package boardcli
 
@@ -16,10 +17,14 @@ const columnGap = "  "
 // sketchesHeading is the line the listing puts over its Sketches.
 const sketchesHeading = "sketches:"
 
-// RenderCompact returns one line per entry, in the order given: handle, kind, priority, age, time since last revision, slug, title and the labels joined by commas, each padded to the widest value in its column, then "[<status>]" when the entry's status is set.
+// RenderCompact renders the entries as a compact listing, one line per entry, in the order given.
+// Each line holds the handle, kind, priority, age, time since last revision, slug and title;
+// the labels follow, joined by commas.
+// Each column is padded to its widest value, and a line ends with "[<status>]" when the entry's status is set.
 // The Sketches follow every other entry, in the order given, under a sketches: line.
 // The handle column is left out when no entry has a handle.
-// The priority column holds high or low and is blank for a normal entry, and it is left out when every entry is normal.
+// The priority column holds high or low and is blank for a normal entry,
+// and it is left out when every entry is normal.
 // The ages are as of now, blank for an unknown date, and each age column is left out when no entry has that date.
 // Empty input renders as the empty string.
 func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
@@ -71,7 +76,8 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 	return sb.String()
 }
 
-// primeOwnerLine is the line that opens the `list --text` listing: the machine that owns the hub's prime, or none when the board records none.
+// primeOwnerLine returns the line that opens the `list --text` listing, naming the machine that owns the hub's prime.
+// The line says none when the board records no owner.
 func primeOwnerLine(primeOwner string) string {
 	if primeOwner == "" {
 		primeOwner = "none"

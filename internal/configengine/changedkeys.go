@@ -1,4 +1,5 @@
-// changedkeys.go implements ChangedKeys, the key-by-key comparison of one config file at a task's fork point, its tip and its parent's tip.
+// changedkeys.go implements ChangedKeys, the key-by-key comparison of one config file.
+// It compares the file at a task's fork point, its tip and its parent's tip.
 
 package configengine
 
@@ -9,11 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// AbsentValue is the value ChangedKeys reports for a key, or a whole file, a revision does not hold.
+// AbsentValue is the value that stands for a key, or a whole file, a revision does not hold.
 const AbsentValue = "absent"
 
 // KeyChange is one config key whose value the task changed away from both its fork point and its parent.
-// Base, Tip and Parent hold the key's value at each revision rendered as text, or AbsentValue.
+// Base, Tip and Parent hold the key's value at each revision as text, or absent when the revision does not hold it.
 type KeyChange struct {
 	Key    string
 	Base   string
@@ -21,8 +22,11 @@ type KeyChange struct {
 	Parent string
 }
 
-// ChangedKeys parses base, tip and parent as YAML documents, flattens each to dotted key paths with their values, and returns, sorted by key, every key whose tip value differs from its base value and from its parent value.
-// A nil or empty document, or one holding only comments, holds no key, so a file absent at a revision reads every key as AbsentValue.
+// ChangedKeys returns every config key whose tip value differs from both its base value and its parent value.
+// The base, tip and parent arguments are YAML documents at the task's fork point, its tip and its parent's tip.
+// The result is sorted by key.
+// A nil or empty document, or one holding only comments, holds no key,
+// so a file absent at a revision reads every key as absent.
 // A list or a scalar is one value; a key the tip drops differs from a base that held it.
 // A document that does not parse is an error naming which of the three it is.
 func ChangedKeys(base, tip, parent []byte) ([]KeyChange, error) {
@@ -73,7 +77,7 @@ func ChangedKeys(base, tip, parent []byte) ([]KeyChange, error) {
 }
 
 // flattenDocument parses data as a YAML mapping and returns each leaf's dotted key path and its value rendered as text.
-// which names the document in a parse failure.
+// The which argument names the document in a parse failure.
 func flattenDocument(which string, data []byte) (map[string]string, error) {
 	var root map[string]any
 	if err := yaml.Unmarshal(data, &root); err != nil {

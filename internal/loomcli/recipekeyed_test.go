@@ -1,5 +1,6 @@
 // recipekeyed_test.go pins the loomcli wiring branches that read the run's recipe rows and keys, per recipe name:
-// the verify source, the merge fixer's plan directory, the arbiter's recipe description, the landing failure tracer and whether a finished run makes its entry a Sketch.
+// the verify source; the merge fixer's plan directory; the arbiter's recipe description;
+// the landing failure tracer; and whether a finished run makes its entry a Sketch.
 
 package loomcli
 
@@ -19,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestRecipeKeyedWiring asserts each recipe-keyed branch picks the same answer for tapestry, motif, darn, pawl, sampler and raddle as the recipe's rows and keys give.
+// TestRecipeKeyedWiring asserts that each recipe-keyed branch picks the answer the recipe's rows and keys give.
+// It runs for tapestry, motif, darn, pawl, sampler and raddle.
 func TestRecipeKeyedWiring(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -28,7 +30,8 @@ func TestRecipeKeyedWiring(t *testing.T) {
 	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(board dir) = %v; want nil", err)
 	}
-	// The hub holds a gate.yaml and no darn.yaml: the plan source reads the gate call alone, and the tree-scope source refuses for the darn.yaml it cannot load.
+	// The hub holds a gate.yaml and no darn.yaml: the plan source reads the gate call alone,
+	// and the tree-scope source refuses for the darn.yaml it cannot load.
 	writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 
 	tests := []struct {

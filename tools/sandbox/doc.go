@@ -4,11 +4,13 @@
 //
 // # Suite coverage
 //
-// Every registered lym module is either exercised by a scenario in one of the *SUITE.md suite files, declared with a **Covers:** tag, or named on cmd/lym/sandbox_coverage_test.go's exclusion allowlist with a reason.
+// Every registered lym module has a scenario in a *SUITE.md suite file, declared with a **Covers:** tag.
+// A module without one is named on the exclusion allowlist in cmd/lym/sandbox_coverage_test.go with a reason.
 // Coverage is module-level, so an exclusion covers the whole module.
 //
 // # Dev and prod binaries
 //
-// Sandbox tooling resolves `lym` only through resolveLym in resolve.go, which picks the .dev-bin binary when present and falls back to PATH;
-// no other file performs a bare-PATH `lym` lookup or spawn, which pathresolve_guard_test.go enforces.
+// Sandbox tooling resolves `lym` only through `resolveLym` in resolve.go.
+// It picks the .dev-bin binary when present and falls back to PATH.
+// No other file performs a bare-PATH `lym` lookup or spawn, which pathresolve_guard_test.go enforces.
 package main

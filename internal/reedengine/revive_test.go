@@ -40,9 +40,10 @@ func toldSpawnOrder() func() ([]ReviveEntry, error) {
 	return func() ([]ReviveEntry, error) { return nil, nil }
 }
 
-// TestEnsureServerAndSession_RevivalTrigger pins when the boot returns the revival sentinel instead of creating the session:
+// TestEnsureServerAndSession_RevivalTrigger pins when the boot returns the revival sentinel, not creating the session:
 // only for a recorded session that is not live, with a spawn order told and the skip unset.
-// A first boot, a nil spawn order and the skip each go on to create the session, which the nonexistent multiplexer binary refuses as "start tmux".
+// A first boot, a nil spawn order and the skip each go on to create the session.
+// The nonexistent multiplexer binary refuses that creation as "start tmux".
 func TestEnsureServerAndSession_RevivalTrigger(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -93,7 +94,8 @@ func TestEnsureServerAndSession_RevivalTrigger(t *testing.T) {
 	}
 }
 
-// TestRevive_CreatesNothingWithoutThePredicate pins that Revive reports false and spawns nothing for a worktree that records no session or whose recorded session is live.
+// TestRevive_CreatesNothingWithoutThePredicate pins that Revive reports false and spawns nothing.
+// It covers a worktree that records no session and one whose recorded session is live.
 func TestRevive_CreatesNothingWithoutThePredicate(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

@@ -1,4 +1,5 @@
-// sleep.go reads the machine's suspends and hibernates from the systemd journal, the sleeps every time figure of the report leaves out.
+// sleep.go reads the machine's suspend and hibernate intervals from the systemd journal,
+// so the report can leave them out of its time figures.
 
 package main
 
@@ -13,7 +14,8 @@ import (
 const sleepLeftOutPrefix = "No machine sleep is left out of the time figures: "
 
 // journalSleeps returns the machine's sleeps from the systemd journal and a report line saying where they came from.
-// With journalctl absent or failing, a journal the user may not read, or no sleep in its journal, it returns no sleeps and a line saying why nothing is left out.
+// It returns no sleeps when journalctl is absent or fails, or when the user may not read the journal.
+// A journal with no sleep in it gives no sleeps too, and the report line says why nothing is left out.
 func journalSleeps() ([]Interval, string) {
 	var stderr bytes.Buffer
 	cmd := exec.Command("journalctl", sleepjournal.Args()...)
@@ -22,7 +24,7 @@ func journalSleeps() ([]Interval, string) {
 	return sleepsFromJournal(out, stderr.Bytes(), err)
 }
 
-// sleepsFromJournal maps the output, standard error and exit error of the journalctl run to the sleeps and the report line journalSleeps returns.
+// sleepsFromJournal maps the output, standard error and exit error of a journalctl run to sleeps and a report line.
 func sleepsFromJournal(out, stderr []byte, runErr error) ([]Interval, string) {
 	read, clause, _ := sleepjournal.Read(out, stderr, runErr)
 	if clause != "" {

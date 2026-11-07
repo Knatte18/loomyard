@@ -1,5 +1,5 @@
-// styledcapture.go turns a styled pane capture (the screen with its SGR attributes) into the plain capture the box readings take.
-// A box that holds only Claude's placeholder or prompt suggestion, which Claude draws faint, comes back blank, so it reads as empty.
+// styledcapture.go turns a styled pane capture into the plain capture the box readings take.
+// A box holding only Claude's placeholder or prompt suggestion, drawn faint, comes back blank.
 
 package claudeengine
 
@@ -38,12 +38,15 @@ type styledCell struct {
 	faint bool
 }
 
-// PlainBoxCapture answers the plain capture of a styled one, with a placeholder-only input box blanked.
-// Every SGR, OSC and other escape sequence is removed and each line's trailing ASCII spaces are trimmed as `capture-pane -p` trims them, so for a capture with no placeholder the answer is what `capture-pane -p` returns.
-// The box is blanked, its faint cells replaced by spaces, only when everything in it but a lone unstyled `%` is faint and the faint text is not the collapsed-paste placeholder.
+// PlainBoxCapture returns the plain capture of a styled one, with a placeholder-only input box blanked.
+// It removes every SGR, OSC and other escape sequence and trims trailing ASCII spaces as `capture-pane -p` does.
+// So for a capture with no placeholder, the result is what `capture-pane -p` returns.
+// The box is blanked only when everything in it is faint, except a lone unstyled `%`,
+// and the faint text is not the collapsed-paste placeholder.
+// A blanked box has its faint cells replaced by spaces.
 // Unstyled text, a box mixing unstyled and faint text, and a faint collapsed-paste placeholder come back unblanked,
 // so a release that restyles the placeholder reads as a draft.
-// A caller reads the box, the running turn and every other classification from the one plain capture it answers.
+// A caller reads the box, the running turn and every other classification from the one plain capture it returns.
 func (c *Claude) PlainBoxCapture(styled string) string {
 	rawLines := strings.Split(styled, "\n")
 	cells := make([][]styledCell, len(rawLines))
@@ -133,8 +136,10 @@ func parseStyledLine(line string) []styledRun {
 	return runs
 }
 
-// applySGR returns the faint attribute after the SGR parameters params, given the attribute before them.
-// The parameters after 38, 48 and 58 are a colour and set nothing: `2;r;g;b` or `5;n` follow in the semicolon form, and the colon form carries them in its own parameter.
+// applySGR returns the faint attribute after the SGR parameters in params, given the faint attribute before them.
+// The parameters after 38, 48 and 58 are a color and set nothing.
+// In the semicolon form they are followed by `2;r;g;b` or `5;n`,
+// and the colon form carries them in its own parameter.
 func applySGR(params string, faint bool) bool {
 	fields := strings.Split(params, ";")
 	for i := 0; i < len(fields); i++ {
@@ -189,7 +194,7 @@ func plainLine(cells []styledCell) string {
 	return strings.TrimRight(text.String(), " ")
 }
 
-// lastCaretLine returns the index of the last line carrying gateCaretMarker, or -1 when none does.
+// lastCaretLine returns the index of the last line carrying the selection caret, or -1 when none does.
 func lastCaretLine(lines []string) int {
 	caret := -1
 	for i, line := range lines {
@@ -200,7 +205,7 @@ func lastCaretLine(lines []string) int {
 	return caret
 }
 
-// isBoxSeparator reports whether r separates tokens in a box interior line: whitespace, the caret or a side bar.
+// isBoxSeparator reports whether r separates tokens in a box interior line: whitespace, the caret, `│` or `>`.
 func isBoxSeparator(r rune) bool {
 	return unicode.IsSpace(r) || strings.ContainsRune(boxInteriorChars, r)
 }
@@ -228,7 +233,8 @@ func withoutEOLMarks(cells []styledCell) []styledCell {
 	return kept
 }
 
-// placeholderOnly reports whether the box interior, a lone unstyled shellEOLMark set aside, holds text that is all faint and is not the collapsed-paste placeholder.
+// placeholderOnly reports whether the box interior holds only faint text, ignoring a lone unstyled shellEOLMark.
+// The text must also not be the collapsed-paste placeholder, and an interior with no text reports false.
 func placeholderOnly(interior [][]styledCell) bool {
 	var texts []string
 	for _, lineCells := range interior {

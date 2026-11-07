@@ -1,6 +1,6 @@
-// healthreason_integration_test.go is card 5's regression guard for HealthReason: one case per
-// HealthCause, asserting Healthy returns the typed cause and its fabric-worded Detail — the
-// equivalence loomengine/preflight.go now switches on instead of substring-matching a reason string.
+// healthreason_integration_test.go is the regression guard for HealthReason: one case per HealthCause.
+// Each case asserts that Healthy returns the typed cause and its fabric-worded Detail.
+// Callers branch on the typed Cause, so the test pins Cause and Detail together.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHealthy_ReasonCauses exercises all five HealthCause values against a real paired fixture, one
-// subtest per cause, and asserts both Cause and Detail — never one "junction-ish" catch-all case.
+// TestHealthy_ReasonCauses exercises every HealthCause value against a real paired fixture.
+// It runs one subtest per cause and asserts both Cause and Detail, not one catch-all case.
 func TestHealthy_ReasonCauses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("BranchMismatch", func(t *testing.T) {
@@ -174,11 +174,10 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	})
 }
 
-// TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort covers the state a hub is in immediately after
-// cloning against an empty remote: the weft primary sits on a branch with zero commits.
-// `git rev-parse --abbrev-ref HEAD` exits 128 there, which used to make Healthy return a hard Go
-// error — an ABORTED preflight rather than a classified verdict — even though the pair is correctly
-// wired and correctly paired.
+// TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort covers a hub freshly cloned from an empty remote.
+// Its weft primary sits on a branch with no commits; there `git rev-parse --abbrev-ref HEAD` exits 128.
+// Healthy must classify that state as a verdict, not return a Go error that aborts the preflight.
+// The pair is still correctly wired and paired.
 func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -190,15 +189,15 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	warpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	weftBranch := fabricengine.RecordsBranchName(warpBranch)
 
-	// Re-create the pair's weft branch as an orphan so it carries no commits at all — exactly the
-	// shape suffixWeftPrimaryBranch leaves behind on a clone against an empty remote.
+	// Re-create the pair's weft branch as an orphan so it carries no commits.
+	// A clone against an empty remote leaves the weft branch in this shape.
 	gitkit.MustRun(t, weftWorktree, "git", "checkout", "--orphan", "unborn-scratch")
 	gitkit.MustRun(t, weftWorktree, "git", "branch", "-D", weftBranch)
 	gitkit.MustRun(t, weftWorktree, "git", "checkout", "--orphan", weftBranch)
 
-	// The orphan checkouts emptied the weft working tree, taking the junction targets with them;
-	// re-wiring restores exactly the wiring a real post-clone hub has, leaving the unborn branch as
-	// the only difference from a healthy pair.
+	// The orphan checkouts emptied the weft working tree and took the junction targets with them;
+	// re-wiring restores the wiring of a real post-clone hub,
+	// so the unborn branch is the only difference from a healthy pair.
 	names, err := fabricengine.RepoWiredNames(l)
 	if err != nil {
 		t.Fatalf("RepoWiredNames: %v", err)

@@ -1,6 +1,7 @@
-// driverprompt.go implements the driver session's launch prompt: the shed driver stencil filled over the
-// run-id, the drive report path, the park and teardown commands and the parent directive. It lives beside bootstrap.go per the
-// pure-decisions-live-in-bootstrap-go Shared Decision.
+// driverprompt.go implements the driver session's launch prompt.
+// The shed driver stencil is filled with the run-id and the drive report path.
+// The park and teardown commands and the parent directive fill its remaining markers.
+// It lives beside bootstrap.go, where the package's pure decisions live.
 
 package loomcli
 
@@ -25,7 +26,9 @@ const driverGuideStencilName = "shed-template-driver-guide"
 // driverGuideMarker is the driver stencil's marker for the deployed path of the repair guide.
 const driverGuideMarker = "guide_path"
 
-// driverNotifyStencilName and driverNotifyWatchedStencilName are the registered names of the two parent-notification rules driverPrompt fills into the driver stencil's parent_notify marker.
+// driverNotifyStencilName and driverNotifyWatchedStencilName are the registered names of the parent-notification rules.
+// driverPrompt fills the driver stencil's parent_notify marker with the watched rule when a batten watches the run.
+// Otherwise it fills the plain rule.
 const (
 	driverNotifyStencilName        = "shed-template-driver-notify"
 	driverNotifyWatchedStencilName = "shed-template-driver-notify-watched"
@@ -34,19 +37,23 @@ const (
 // driverNotifyMarker is the driver stencil's marker for the parent-notification rule.
 const driverNotifyMarker = "parent_notify"
 
-// driverPrompt composes the driver session's launch prompt: the shed driver stencil, read from stencilsDir through stencilstore.Read and filled with the run-id, the report path the session writes at every stop,
-// driverParkCommand(reportPath), driverArbiterCommand(runID), driverTeardownCommand, parentdirective.Directive(stencilsDir, parentName, false) and editdirective.Directive(stencilsDir).
-// The marker for the parent-notification rule is filled with the watched stencil when watched is true and with the plain one otherwise.
-// The guide marker is filled with the deployed path of the repair guide stencil, the copy the fork the driver spawns at a failure stop reads.
+// driverPrompt composes the driver session's launch prompt from the shed driver stencil, read from stencilsDir.
+// The stencil takes the run-id and the report path the session writes at every stop.
+// It also takes the park, arbiter and teardown commands and the parent and edit directives.
+// The parent-notification marker takes the watched rule when watched is true, and the plain rule otherwise.
+// The guide marker takes the deployed path of the repair guide stencil.
+// The fork a driver spawns at a failure stop reads that copy.
 // The prompt is the driver's whole procedure, so the session depends on no installed skill.
-// At a done run or a busy refusal, as its last act after writing its stop report, the session runs driverTeardownCommand to end its own strand;
-// at every other stop it parks, leaving the session open for `lym loom start` to resume by typing one line.
-// The park and the command ride this loom-launched prompt alone, as markers the recipe-blind stencil body never names.
-// The teardown at done is what keeps batten's half of the end-to-end criterion:
-// batten's Inner-Run row, on a done child, waits for the driver strand to end before it returns Done and teardown runs (callDone),
-// and that command is what ends the strand.
+// At a done run or a busy refusal, the session's last act is the teardown command, after its stop report.
+// That command ends the session's own strand.
+// At every other stop it parks, leaving the session open for `lym loom start` to resume by typing one line.
+// The park and teardown commands reach the driver through this prompt alone.
+// They are markers that the recipe-blind stencil body never names.
+// On a done child, the batten waits for the driver strand to end before it returns Done.
+// The teardown command is what ends that strand.
 // It returns the read or fill error when the stencil or the directive cannot be rendered.
-// This file composes prompt text alone and names no Claude flag and no command line: the Shuttle Provider-Seam Invariant keeps provider specifics under the claude engine package.
+// This file composes prompt text only and names no provider flag.
+// The Shuttle Provider-Seam Invariant keeps provider specifics in the claudeengine package.
 func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched bool) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
 	if err != nil {
@@ -86,7 +93,8 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched boo
 	return string(filled), nil
 }
 
-// driverWatched reports whether a live batten watches the run: markerPath names a file whose first line holds a pid in decimal, and isAlive confirms that pid.
+// driverWatched reports whether a live batten watches the run.
+// markerPath names a file whose first line holds a pid in decimal, and isAlive confirms that pid.
 // An absent or unreadable marker, one that does not parse as a pid and one whose pid is dead are all unwatched,
 // so the marker a batten left behind when it died never silences a fresh driver.
 func driverWatched(markerPath string, isAlive func(pid int) bool) bool {
@@ -94,7 +102,8 @@ func driverWatched(markerPath string, isAlive func(pid int) bool) bool {
 	return watched
 }
 
-// liveBattenPID returns the pid the batten-watched marker at markerPath names and true when isAlive confirms it, and false in every case driverWatched reads as unwatched.
+// liveBattenPID returns the pid that the marker at markerPath names, and true when isAlive confirms it.
+// It returns false when the marker is absent, unreadable, unparseable, or its pid is dead.
 func liveBattenPID(markerPath string, isAlive func(pid int) bool) (int, bool) {
 	watch, alive := readBattenWatch(markerPath, isAlive)
 	if !alive {
@@ -110,8 +119,10 @@ type battenWatch struct {
 	Producer   string
 }
 
-// readBattenWatch parses the marker at markerPath and returns what it holds whenever it parses, with the bool true only when isAlive confirms its pid.
-// An unwatched driver thus still learns the prime a dead batten named; an absent, unreadable or unparseable marker returns the zero battenWatch.
+// readBattenWatch parses the marker at markerPath and returns what it holds whenever it parses.
+// The bool is true only when isAlive confirms the pid.
+// An unwatched driver still learns the prime a dead batten named.
+// An absent, unreadable or unparseable marker returns the zero battenWatch.
 func readBattenWatch(markerPath string, isAlive func(pid int) bool) (battenWatch, bool) {
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
@@ -124,7 +135,7 @@ func readBattenWatch(markerPath string, isAlive func(pid int) bool) (battenWatch
 	return battenWatch{PID: pid, ScratchDir: scratchDir, Producer: producer}, isAlive(pid)
 }
 
-// driverRecordsCommand commits the run records; driverTeardownCommand runs it first, and driverParkCommand extends it.
+// driverRecordsCommand is the command that commits the run records; the park and teardown commands both start with it.
 const driverRecordsCommand = "lym loom commit-records"
 
 // driverParkCommand is the command a parking driver runs after its stop report: it commits the run records and writes the park marker holding reportPath.
@@ -135,7 +146,7 @@ func driverParkCommand(reportPath string) string {
 }
 
 // driverArbiterCommand is the command a driver runs at a stop it cannot settle: it spawns the run's arbiter, or returns the verdict of one that already judged the stop.
-// The envelope and report paths are angle-bracket placeholders the driver fills from the stop in hand, as the stencil's `--before <producer>` is.
+// The envelope and report paths are angle-bracket placeholders that the driver fills from the stop it holds.
 func driverArbiterCommand(runID string) string {
 	return fmt.Sprintf("lym loom arbiter %s --envelope <envelope_path> --report <report_path>", runID)
 }
@@ -144,5 +155,5 @@ func driverArbiterCommand(runID string) string {
 // It commits the run records first, then removes the driver's own strand.
 // The two are joined with `;` rather than `&&` so the strand removal runs even when the commit fails:
 // a driver that stayed open on a failed commit would leave its strand alive for a run that has finished.
-// It is built from driverStrandDisplayName so the name cannot drift from the strand's own.
+// It is built from `driverStrandDisplayName`, so the name cannot drift from the strand's own.
 const driverTeardownCommand = driverRecordsCommand + "; lym reed remove --name " + driverStrandDisplayName + " --detach"

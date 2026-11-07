@@ -1,4 +1,5 @@
-// stencilstore_test.go covers BodyHash (and so NormalizeLF), ParseStamp, ApplyStamp, and Classify against hermetic in-memory content -- no t.TempDir() is needed for these, since none of them touch disk.
+// stencilstore_test.go covers BodyHash (and so NormalizeLF), ParseStamp, ApplyStamp, and Classify, all in memory.
+// It needs no t.TempDir(), since none of these touch disk.
 
 package stencilstore
 
@@ -184,10 +185,8 @@ func TestClassify(t *testing.T) {
 }
 
 // TestRelPath pins the family-from-first-token derivation over both stencil and specs names.
-// The two loom-plan-* rows are the point: they pin that the registered names contracts/specs
-// registers both land under one loom/ family directory, from the side of the package that actually
-// performs the derivation, so a future change to the family rule fails here and not only in the
-// specs package.
+// The two loom-plan-* rows pin that names registered by contracts/specs both land under one loom/ family directory.
+// They sit here, where the derivation runs, so a rule change fails here as well as in the specs package.
 func TestRelPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -213,7 +212,8 @@ func TestRelPath(t *testing.T) {
 	}
 }
 
-// TestApplyWriter_RoundTripsThroughParseWriter covers setting, rewriting and removing the writer keys in a stamp line, on a one-line and a multi-line banner, and the body never changing.
+// TestApplyWriter_RoundTripsThroughParseWriter covers setting, rewriting and removing the writer keys in a stamp line.
+// It runs on a one-line and a multi-line banner, and the body never changes.
 func TestApplyWriter_RoundTripsThroughParseWriter(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -265,8 +265,8 @@ func TestApplyWriter_RoundTripsThroughParseWriter(t *testing.T) {
 	}
 }
 
-// fakeHash returns a syntactically valid 64-lowercase-hex-character stamp value built from a single
-// repeated byte, so tests need not compute a real sha256 sum to exercise ApplyStamp/ParseStamp.
+// fakeHash returns a syntactically valid stamp value: 64 lowercase hex characters built from one repeated byte.
+// Tests need not compute a real sha256 sum to exercise ApplyStamp and ParseStamp.
 func fakeHash(b byte) string {
 	hash := make([]byte, 64)
 	for i := range hash {

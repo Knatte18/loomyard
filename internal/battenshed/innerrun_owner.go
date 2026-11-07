@@ -1,5 +1,6 @@
-// innerrun_owner.go implements InnerRun's owner check: after a pause hold, or while an owner stands, it asks whether another machine owns the run now,
-// and a run found owned elsewhere is paused, its parent lock released and the orch noticed, unless a Finalize past its parent-side merge still holds the lock.
+// innerrun_owner.go implements InnerRun's owner check, which asks whether another machine owns the run.
+// It runs after a pause hold and while an owner stands; a run found owned elsewhere is paused and the orch noticed.
+// Its parent lock is released unless a Finalize past its parent-side merge still holds it.
 
 package battenshed
 
@@ -14,18 +15,19 @@ import (
 // finalizeRow is the child recipe row that lands the task's work on its parent.
 const finalizeRow = "Finalize"
 
-// The failure messages of the owner seams, each the key of its episode.
+// The failure messages of the owner seams; each one keys the episode of its seam.
 const (
 	failOwnerCheck        = "battenshed: owner check failed; retrying at the next check"
 	failOwnerPause        = "battenshed: could not pause the run owned elsewhere; retrying at the next probe"
 	failOwnerFinalizeRead = "battenshed: could not tell whether the parent holds the task's work; keeping the parent lock"
 )
 
-// OwnerVerdict is what an owner check reads: the machine that owns the run when it is not this one, or that origin could not be reached to tell.
+// OwnerVerdict is the result of an owner check.
+// It reports either the machine that owns the run, when it is not this one, or that origin could not be reached.
 type OwnerVerdict struct {
 	// Owner names the machine that owns the run; set when Elsewhere is true.
 	Owner string
-	// AdoptSubject is the beam or `root` that `lym adopt` takes to move the run; set when Elsewhere is true, and empty when the verdict brought none.
+	// AdoptSubject is the beam or `root` that `lym adopt` takes to move the run; empty when the verdict brought none.
 	AdoptSubject string
 	// Elsewhere is true when another machine owns the run.
 	Elsewhere bool
@@ -33,8 +35,8 @@ type OwnerVerdict struct {
 	Unreachable bool
 }
 
-// ChildOwnedElsewhereError is the error an InnerRunDeps.Spawn closure returns when the child's bootstrap refused because another machine owns the run.
-// InnerRun reads it as an owned-elsewhere verdict and never as a failed spawn.
+// ChildOwnedElsewhereError is returned when a child's bootstrap refuses to start because another machine owns the run.
+// A caller reads it as an owned-elsewhere verdict, not as a failed spawn.
 type ChildOwnedElsewhereError struct {
 	// Owner names the machine the refusal named.
 	Owner string
@@ -59,7 +61,8 @@ func (p *innerRunProducer) ownerHoldReason() string {
 	return fmt.Sprintf("held: the run is owned by machine %s; take it over with \"lym adopt %s\"", p.ownedBy, p.adoptSubject())
 }
 
-// adoptSubject returns what `lym adopt` takes to move the run: the subject the owner verdict brought, the slug when it brought none.
+// adoptSubject returns what `lym adopt` takes to move the run.
+// It is the subject the owner verdict brought, or the slug when the verdict brought none.
 func (p *innerRunProducer) adoptSubject() string {
 	if p.ownedSubject == "" {
 		return p.slug
@@ -71,7 +74,7 @@ func (p *innerRunProducer) adoptSubject() string {
 // The check becomes due in two cases.
 // The previous check was covered and this one is not.
 // Or this is a probe check while an owner stands that no pause covers.
-// A machine wake reaches the owner verdict through the full pass the scheduling dobby owes, not through a trigger here.
+// A machine wake reaches the owner verdict through the full pass owed by scheduling, not through a trigger here.
 func (p *innerRunProducer) foldOwnerTrigger(w *childWait) {
 	released := p.ownerCovered && !w.pause.Covered
 	retry := p.ownedBy != "" && !w.pause.Covered && w.probeDue
@@ -107,8 +110,10 @@ func (p *innerRunProducer) ownerStep(ctx context.Context, w *childWait) {
 	}
 }
 
-// ownedElsewhere records owner as the run's owner and subject as what `lym adopt` takes to move it, and releases the parent lock record of the child's run, unless a Finalize past its parent-side merge keeps it.
-// It then pauses the slug under the owner caller and sends one notice per episode naming the owner and the adopt command, which names the slug when subject is empty.
+// ownedElsewhere records owner as the run's owner and subject as what `lym adopt` takes to move it.
+// It releases the parent lock record of the child's run, unless a Finalize past its parent-side merge keeps it.
+// It then pauses the slug under the owner caller.
+// It sends one notice per episode naming the owner and the adopt command, which names the slug when subject is empty.
 // A failed pause warns once per episode and is retried at the next probe while the owner stands.
 func (p *innerRunProducer) ownedElsewhere(ctx context.Context, w *childWait, owner, subject string) {
 	p.ownedBy, p.ownedSubject = owner, subject
@@ -158,8 +163,11 @@ func (p *innerRunProducer) releaseChildLock(w *childWait, why string) {
 	}
 }
 
-// keepsLockForFinalize reports whether status is a Finalize already past its parent-side merge, which keeps its parent lock and finishes its landing.
-// That is a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while the parent holds the task's work.
+// keepsLockForFinalize reports whether status is a Finalize already past its parent-side merge.
+// Such a Finalize keeps its parent lock and finishes its landing.
+// A Finalize is past its merge when it is running, or when it failed on a transient cause.
+// A transient failure counts only with no re-step recorded for that stop.
+// Either way, the parent must hold the task's work.
 // A failed read of either seam holds the lock until the next check, and any other state at Finalize does not hold it.
 func (p *innerRunProducer) keepsLockForFinalize(status shedengine.Status) bool {
 	holds, err := FinalizePastMerge(status, p.deps.Restepped, p.deps.ParentHoldsTaskWork)
@@ -173,9 +181,14 @@ func (p *innerRunProducer) keepsLockForFinalize(status shedengine.Status) bool {
 	return holds
 }
 
-// FinalizePastMerge reports whether status is a Finalize already past its parent-side merge, which finishes its landing.
-// That is a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while the parent holds the task's work.
-// restepped reads the re-step record of the stop status names and parentHolds reads whether the parent holds the task's work; the error of either is returned.
+// FinalizePastMerge reports whether status is a Finalize already past its parent-side merge.
+// Such a Finalize finishes its landing.
+// A Finalize is past its merge when it is running, or when it failed on a transient cause.
+// A transient failure counts only with no re-step recorded for that stop.
+// Either way, the parent must hold the task's work.
+// restepped reads the re-step record of the stop that status names.
+// parentHolds reads whether the parent holds the task's work.
+// The error of either read is returned.
 func FinalizePastMerge(status shedengine.Status, restepped func(shedengine.Status) (bool, error), parentHolds func() (bool, error)) (bool, error) {
 	if status.CurrentProducer != finalizeRow {
 		return false, nil

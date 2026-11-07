@@ -1,5 +1,5 @@
-// entries_bouncer.go implements bouncerEntry, the Constructor for the "Bouncer" registry row:
-// the segment's entry point, which joins and creates the run directory its partner BurlerReview and BurlerFix rows write into and read from.
+// entries_bouncer.go implements bouncerEntry, the Constructor for the "Bouncer" registry row.
+// It is the segment's entry point: it joins and creates the run directory the segment's review and fix rows use.
 
 package shedrecipe
 
@@ -14,8 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// rolePrefixKey reads the optional role_prefix key of cfg as the prefix that leads the role of a Bouncer or Burler row's sessions; an absent key gives "".
-// A present value agentname.ValidateRole rejects is refused, naming the entry, the key, the value and the way forward.
+// rolePrefixKey reads the optional role_prefix key of cfg as the role prefix of a Bouncer or Burler row's sessions.
+// An absent key gives "".
+// A present value that agentname.ValidateRole rejects is refused.
+// The error names the entry, the key, the value and the way forward.
 func rolePrefixKey(entry string, cfg Config) (string, error) {
 	prefix, err := configString(cfg, "role_prefix", false)
 	if err != nil || prefix == "" {
@@ -27,7 +29,10 @@ func rolePrefixKey(entry string, cfg Config) (string, error) {
 	return prefix, nil
 }
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from its segment's Bouncer pair and its hard cap from the segment's HardMaxBounces, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to one of env.ApprovePlan or env.ApproveDiscussion, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false), the optional boolean escalate_decisions key (default false; true makes a judged round whose review holds a decision-class finding escalate with cause decision, which the arbiter settles where it can and the run's parent settles otherwise) and the optional color_segment and role_prefix keys, reads the optional carry_over key, the segment name that selects env.CarryOver, resolves the optional subject key ("document" or "code") to the Env subject seams it names and tells the Bouncer the segment's amendment allowance, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, reads the optional reviewer_fan_setting key, a module.key setting reference whose list is the per-round fan list when it names a fan, reads the optional auto_accept_setting key, a module.key setting reference whose bool is the auto-accept flag (false for an absent key or a null), and returns shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row.
+// It validates cfg and env, and it creates the run directory the segment's rows share.
+// It resolves each seam key to the Env closure it names, and an absent key leaves that closure unset.
+// It returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -81,10 +86,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
-	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
-	// than silently ignored.
-	// The same holds for "model", "effort" and "version": a Bouncer pass's model comes from the segment's Bouncer pair alone.
+	// A recipe cannot set "report_name": BouncerConfig.ReportName is pinned in the literal below.
+	// A "report_name" entry in cfg is therefore rejected as unrecognised, not silently ignored.
+	// Likewise "model", "effort" and "version" are rejected:
+	// a Bouncer pass's model comes from the segment's Bouncer pair alone.
 	rolePrefix, err := rolePrefixKey("Bouncer", cfg)
 	if err != nil {
 		return nil, err
@@ -96,7 +101,8 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	// A setting naming a fan makes the judge decide per round from the usage record; a row without one keeps its cluster_excludes key.
+	// A setting naming a fan makes the judge decide per round from the usage record;
+	// a row without one keeps its cluster_excludes key.
 	fans, _, _, err := fanSetting("Bouncer", row, cfg, "reviewer_fan_setting", env)
 	if err != nil {
 		return nil, err
@@ -110,14 +116,12 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
-	// commit_seam and approve_seam are two independent optional config keys: commit_seam names
-	// which of Env's two commit closures fills BouncerConfig.Commit, and approve_seam (below)
-	// resolves to one of env.ApprovePlan or env.ApproveDiscussion, filling BouncerConfig.Approve. Absent
-	// leaves the resolved closure nil -- "no seam configured" is a legitimate configuration and
-	// never an error, which is what keeps every existing Bouncer row valid unchanged. A present
-	// key is guarded by requireSeam on the named Env field rather than assigned directly: without
-	// that guard a nil Env closure would silently assign a nil Commit, reproducing the exact
-	// no-seam condition this key exists to eliminate, with no error anywhere.
+	// commit_seam and approve_seam are independent optional keys.
+	// commit_seam picks which of Env's two commit closures fills BouncerConfig.Commit.
+	// approve_seam picks env.ApprovePlan or env.ApproveDiscussion for BouncerConfig.Approve.
+	// An absent key leaves the closure nil: having no seam is legitimate, not an error.
+	// A present key is guarded by requireSeam rather than assigned directly.
+	// Without that guard, a nil Env closure would silently leave the closure nil with no error.
 	var commit func() error
 	switch commitSeam {
 	case "":
@@ -136,10 +140,8 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "commit_seam", "plan", "discussion", commitSeam)
 	}
 
-	// approve_seam names env.ApprovePlan or env.ApproveDiscussion -- there is no webster-side approval, so a third accepted value would be a hypothetical.
-	// It mirrors commit_seam's switch one-for-one: absent leaves the resolved closure nil, which keeps every existing Bouncer row valid unchanged.
-	// A present key is guarded by requireSeam for the same reason commit_seam's guard exists:
-	// without it a nil Env closure would silently assign a nil Approve, reproducing the exact no-seam condition this key exists to eliminate.
+	// approve_seam accepts only the two approval closures on Env, env.ApprovePlan and env.ApproveDiscussion.
+	// A present key is guarded by requireSeam, as commit_seam's is.
 	var approve func() error
 	switch approveSeam {
 	case "":
@@ -158,8 +160,9 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "approve_seam", "plan", "discussion", approveSeam)
 	}
 
-	// skip_seam names env.SkipPlanReview (rework-exempt) and mirrors approve_seam: absent leaves BouncerConfig.Skip nil,
-	// and a present key is guarded by requireSeam so a nil Env closure never silently disables the skip.
+	// skip_seam accepts "rework-exempt", which names env.SkipPlanReview.
+	// An absent key leaves BouncerConfig.Skip nil.
+	// A present key is guarded by requireSeam, so a nil Env closure never silently disables the skip.
 	var skip func() (bool, error)
 	switch skipSeam {
 	case "":
@@ -172,13 +175,15 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	default:
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q, got %q", "skip_seam", "rework-exempt", skipSeam)
 	}
-	// A zero-round Bouncer skips over any named skip seam, so it settles approved through its approve and commit seams with no review.
+	// A zero-round Bouncer skips over any named skip seam,
+	// so it settles approved through its approve and commit seams with no review.
 	if zeroRounds {
 		skip = func() (bool, error) { return true, nil }
 	}
 
-	// carry_over carries the segment name the Bouncer files its carry-over entry under and selects env.CarryOver, mirroring skip_seam:
-	// absent leaves BouncerConfig.CarryOver nil, and a present key is guarded by requireSeam so a nil Env closure never silently drops the entry.
+	// carry_over names the segment the Bouncer files its carry-over entry under.
+	// A present key selects env.CarryOver, guarded by requireSeam so a nil Env closure never silently drops the entry.
+	// An absent key leaves BouncerConfig.CarryOver nil.
 	var carryOver func(discussionparser.CarryOver) error
 	if carryOverSegment != "" {
 		if err := requireSeam("Bouncer", "CarryOver", env.CarryOver); err != nil {
@@ -210,9 +215,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	// The entry creates the joined run directory, not the caller or the round producer:
-	// Bouncer.Call reaches shedadapters.ResolveRound first, which os.Stats RunDir and hard-errors when it is absent,
-	// and the Bouncer is its segment's entry point, so it runs before the review and fix producers' own idempotent os.MkdirAll would have created it.
+	// The entry creates the joined run directory, not the caller or the round producer.
+	// Bouncer.Call reaches shedadapters.ResolveRound first, which stats RunDir and fails when it is absent.
+	// The Bouncer is the segment's entry point, so it runs before the review and fix producers.
+	// Their idempotent os.MkdirAll would otherwise be what creates the directory.
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, fmt.Errorf("shedrecipe: Bouncer: create run dir %q: %w", runDir, err)
 	}
@@ -226,8 +232,9 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		resolvedArtifactPaths[i] = resolved
 	}
 
-	// subject names which of Env's subject seams tells the Bouncer what its segment judges, mirroring skip_seam:
-	// absent tells no subject and keeps the Bouncer on its clear-and-reseed path, and a present key is guarded by requireSeam on every Env seam it selects.
+	// subject names the Env subject seams that tell the Bouncer what its segment judges.
+	// An absent key tells the Bouncer no subject, which keeps it on the clear-and-reseed path.
+	// A present key is guarded by requireSeam on every Env seam it selects.
 	var (
 		subject     func() (shedadapters.Subject, bool, error)
 		mergeInOnly func(since string) (bool, error)
@@ -262,8 +269,9 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		reviewInput = env.ReviewInput
 	}
 
-	// Slug and SegmentBounces are both optional:
-	// a caller filling neither keeps a working Bouncer whose escalation Reason omits the slug, whose brief render degrades, and which never escalates on budget.
+	// Slug and SegmentBounces are both optional.
+	// A caller that fills neither still gets a working Bouncer.
+	// Its escalation Reason omits the slug, its brief render degrades, and it never escalates on budget.
 	var bounces func() (count, budget int, ok bool, err error)
 	if env.SegmentBounces != nil {
 		bounces = func() (int, int, bool, error) { return env.SegmentBounces(row.Name) }
@@ -273,11 +281,11 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		Name:          row.Name,
 		RunDir:        runDir,
 		ArtifactPaths: resolvedArtifactPaths,
-		// ReportName is pinned rather than configurable: shedadapters.BurlerReviewProducer writes its
-		// report to a hardcoded round-<n>-review.md under RunDir, and shedadapters.ResolveRound
-		// finds the current round by statting that same name, so any other value resolves the
-		// round to 0 forever and the Bouncer re-seeds every call until its bounce budget is spent,
-		// with no error anywhere.
+		// ReportName is pinned, not configurable.
+		// shedadapters.BurlerReviewProducer writes its report to round-<n>-review.md under RunDir.
+		// shedadapters.ResolveRound finds the current round by statting that name.
+		// Any other name resolves every round to 0:
+		// the Bouncer re-seeds on each call until its bounce budget is spent, with no error.
 		ReportName:        func(round int) string { return fmt.Sprintf("round-%d-review.md", round) },
 		StencilsDir:       env.StencilsDir,
 		WorktreeRoot:      env.WorktreeRoot,
@@ -319,8 +327,8 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		CirclingCheckpoint: env.ReviewCirclingCheckpoint,
 	}
 
-	// NewBouncer's own eager rubric-stencil probe is what makes a mistyped rubric_stencil fail here,
-	// at construction, rather than at first Call.
+	// NewBouncer probes the rubric stencil eagerly, at construction.
+	// A mistyped rubric_stencil therefore fails here, not at the first Call.
 	producer, err := shedadapters.NewBouncer(bouncerCfg)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: Bouncer: %w", err)

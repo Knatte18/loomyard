@@ -1,10 +1,11 @@
-<!-- This is the project record directive: internal/loomengine.ProjectRecordDirective renders it for a run whose pair works under a beam,
-     and the result fills the optional project_directive marker of the Discussion-Write lead's and the darn writer's prompts.
-     ProjectRecordDirective reads this file through stencilstore.Read, strips this banner with stencil.StripLeadingComment,
-     and substitutes the literal "{{.project_records}}" token below with one bullet per project record path before returning the result,
+<!-- This is the project record directive.
+     internal/loomengine.ProjectRecordDirective renders it for a run whose pair works under a beam,
+     and the result fills the optional project_directive marker of the prompts that declare it.
+     ProjectRecordDirective reads this file through stencilstore.Read and strips this banner with stencil.StripLeadingComment.
+     It then substitutes the literal "{{.project_records}}" token below with one bullet per project record path,
      so the result is never itself passed through stencil.Fill.
      This file declares no marker of its own beyond "{{.project_records}}" and must stay otherwise marker-free,
-     because stencilstore.Validate parses it regardless of whether anything ever fills it. -->
+     because stencilstore.Validate parses it whether or not anything fills it. -->
 
 ## Project record — the beam this task belongs to
 

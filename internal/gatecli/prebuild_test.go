@@ -1,4 +1,6 @@
-// prebuild_test.go covers the prebuilt lym store over plain files: the content-derived name, reuse of a stored binary, refreshing a missing entry, pruning by last use, a destination another run published first and a store that cannot be created.
+// prebuild_test.go covers the prebuilt lym store over plain files.
+// It tests the content-derived name, reuse of a stored binary, refreshing a missing entry and pruning by last use.
+// It also tests a destination another run published first and a store that cannot be created.
 
 package gatecli
 
@@ -27,7 +29,8 @@ func TestStorePrebuilt(t *testing.T) {
 		}
 	}
 
-	// builtContent is the build's content, and contentName the store entry name its SHA-256 gives: `lym-` and the first 16 hex digits.
+	// builtContent is the build's content.
+	// contentName is the store entry name its SHA-256 gives: `lym-` and the first 16 hex digits.
 	const builtContent, contentName = "built lym", "lym-e6717f894100bad1"
 
 	tests := []struct {
@@ -119,7 +122,8 @@ func TestStorePrebuilt(t *testing.T) {
 		})
 	}
 
-	// A destination that cannot be replaced stands for one another run published first: rename fails and the destination exists.
+	// A destination that cannot be replaced stands for one another run published first:
+	// rename fails and the destination exists.
 	t.Run("CopyIntoPlaceKeepsADestinationPublishedFirst", func(t *testing.T) {
 		t.Parallel()
 

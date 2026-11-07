@@ -1,12 +1,11 @@
-// hook_test.go covers InstallPostCheckoutHook: idempotent install, non-clobbering
-// chain of an existing user hook, and correct weft-sibling branch resolution for
-// prime and child worktrees under fabric's suffixed branch-naming scheme.
+// hook_test.go covers InstallPostCheckoutHook.
+// It checks that a re-install is idempotent, that an existing user hook is chained without being clobbered,
+// and that the weft-sibling branch resolves for prime and child worktrees under fabric's suffixed naming scheme.
 //
-// fabric's weft branch is always the warp branch plus RecordsBranchName's "-weft"
-// suffix, never a literal warp/weft branch-name match, so each case additionally
-// asserts the in-sync (correctly suffixed) state produces no warning before
-// diverging it. The child-pair setup uses raw `git worktree add` rather than
-// fabricengine's own Add verb, for test-fixture simplicity.
+// The weft branch is the warp branch plus RecordsBranchName's "-weft" suffix; it is never matched literally.
+// Each case first asserts that the in-sync state, with the weft branch correctly suffixed, produces no warning.
+// It then diverges the state and asserts the warning.
+// The child-pair setup runs raw `git worktree add` rather than fabricengine's own Add verb, for fixture simplicity.
 
 package fabricengine_test
 
@@ -23,10 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// resolveCommonHooksDir returns the common git hooks directory for the repo
-// rooted at repoDir, mirroring the logic in InstallPostCheckoutHook.
-// When git emits a relative path (e.g. ".git" for a standard clone) it is
-// resolved relative to repoDir so the result is always an absolute path.
+// resolveCommonHooksDir returns the common git hooks directory of the repo at repoDir, as an absolute path.
+// git reports a relative path, such as ".git" for a standard clone, so the result is resolved against repoDir.
 func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 	t.Helper()
 
@@ -43,8 +40,8 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 	return filepath.Join(commonDir, "hooks")
 }
 
-// TestInstallPostCheckoutHook_Idempotent verifies that calling InstallPostCheckoutHook twice does
-// not duplicate the script or alter the file content after the first install.
+// TestInstallPostCheckoutHook_Idempotent checks that a second install leaves the hook file unchanged.
+// It must not duplicate the script.
 //
 //testtiming:keep a second InstallPostCheckoutHook call leaving the script content unchanged and unduplicated; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
@@ -88,9 +85,9 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_ChainIdempotent verifies that when a user hook exists,
-// InstallPostCheckoutHook backs it up to post-checkout.user, writes a chained wrapper that
-// references the backup, and that a second install is a no-op (sentinel already present).
+// TestInstallPostCheckoutHook_ChainIdempotent verifies the chaining of an existing user hook.
+// InstallPostCheckoutHook backs the user hook up to post-checkout.user.
+// It then writes a wrapper that references the backup, and a second install leaves the wrapper unchanged.
 //
 //testtiming:keep an existing user hook being backed up to post-checkout.user, chained and left alone by a second install; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
@@ -153,10 +150,9 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook script correctly resolves
-// the <PrimeName>-weft sibling for a prime (main) worktree under fabric's suffixed branch scheme:
-// the weft prime must sit on RecordsBranchName(warpBranch) to be considered in sync, not on a literal
-// warp-branch-name match.
+// TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook resolves the prime worktree's weft sibling.
+// Under the suffixed branch scheme, the weft prime is in sync when it sits on RecordsBranchName(warpBranch).
+// A literal warp-branch-name match does not count.
 // A real git checkout is performed for both the in-sync and diverged cases.
 //
 //testtiming:keep the installed hook resolving the <PrimeName>-weft sibling for a prime worktree under the suffixed branch scheme, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
@@ -174,16 +170,13 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
-	// A real hub's weft prime is already wired onto RecordsBranchName("main") by CloneAndWire — the
-	// in-sync state — unlike the old paired-fixture template, which left weft prime on a literal
-	// "main" branch and required an explicit checkout to reach parity. Confirm the invariant rather
-	// than reconstructing it by hand.
+	// A real hub's weft prime is wired onto RecordsBranchName("main") by CloneAndWire, so it starts in sync.
+	// Confirm that invariant instead of reconstructing it by hand.
 	if branch := gitkit.CurrentBranch(t, weftPrime); branch != fabricengine.RecordsBranchName("main") {
 		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabricengine.RecordsBranchName("main"))
 	}
 
-	// Create a scratch branch in the warp prime so we have something to switch
-	// away from and back to "main".
+	// Create a scratch branch in the warp prime to switch away from and back to "main".
 	gitkit.MustRun(t, hub, "git", "checkout", "-b", "hook-prime-scratch")
 
 	// Warp back to main while weft sits on "main-weft": in sync, no warning.
@@ -209,16 +202,13 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_WeftResolution_Child verifies that the hook script correctly resolves
-// the <slug>-weft sibling for a child (non-prime) worktree under fabric's suffixed branch scheme.
-// The child worktree pair is created directly via `git worktree add` (fabricengine's own Add verb
-// lands in a later batch);
-// the weft child's branch is RecordsBranchName(slug).
+// TestInstallPostCheckoutHook_WeftResolution_Child verifies that the hook resolves the child's weft sibling.
+// The test creates the child worktree pair with `git worktree add`.
+// The weft child's branch is RecordsBranchName(slug).
 //
-// Note: git worktrees cannot check out a branch that is already checked out in another worktree.
-// To trigger the hook without hitting that constraint, we create an extra branch in the child warp
-// and switch between it and slug while the weft child stays on a third, non-overlapping branch for
-// the diverged case.
+// Git worktrees cannot check out a branch that another worktree already has checked out.
+// The test works around that by switching the child warp between slug and an extra branch.
+// The weft child stays on its own branch, and the diverged case moves it to another branch.
 //
 //testtiming:keep the installed hook resolving the <slug>-weft sibling for a child worktree, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
@@ -232,9 +222,8 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	hub := h.PrimeWorktree()
 	weftPrime := h.PrimeRecords()
 
-	// Create a child worktree pair directly via git worktree add — fabricengine's
-	// own Add verb lands in a later batch; this test only needs a warp/weft
-	// worktree pair on disk to exercise the hook script itself.
+	// Create the child worktree pair with git worktree add.
+	// The hook script only needs the pair on disk to run.
 	childWarp := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, hub, "git", "worktree", "add", childWarp, "-b", slug)
 
@@ -242,15 +231,14 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	childWeft := h.PairRecordsSibling(slug)
 	gitkit.MustRun(t, weftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
-	// Install the hook (affects the shared common .git/hooks for the warp repo,
-	// which covers the warp prime and every warp child worktree).
+	// Install the hook in the common .git/hooks of the warp repo.
+	// That covers the warp prime and every warp child worktree.
 	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
-	// Create a second branch in the child warp so we have two branches to switch
-	// between (avoids the git constraint that a branch can only be checked out in
-	// one worktree at a time).
+	// Create a second branch in the child warp to switch between.
+	// A branch can be checked out in only one worktree at a time, so the switch needs two branches.
 	gitkit.MustRun(t, childWarp, "git", "checkout", "-b", "hook-warp-alt")
 
 	// Child warp back to slug while weft sits on its correctly-suffixed branch:
@@ -262,8 +250,8 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 		t.Errorf("unexpected fabric drift warning for in-sync suffixed child state: %s", out)
 	}
 
-	// Move the weft child to a different branch — this creates the divergence the
-	// hook should detect. The weft branch is independent of the warp's branches.
+	// Move the weft child to a different branch, which creates the divergence the hook should detect.
+	// The weft branch is independent of the warp's branches.
 	gitkit.MustRun(t, childWeft, "git", "checkout", "-b", "hook-weft-diverge")
 
 	// Switch warp away and back to fire the hook again with weft diverged.
@@ -278,11 +266,10 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_ChainedWrapperIsExecutable pins the executable bit on the chained
-// wrapper.
-// os.WriteFile applies its perm argument only when it CREATES the file, so chaining around an
-// existing non-executable user hook used to leave the wrapper non-executable, and git then ignored
-// the hook entirely — silently retiring both the operator's hook and fabric's drift warning.
+// TestInstallPostCheckoutHook_ChainedWrapperIsExecutable pins the executable bit on the chained wrapper.
+// os.WriteFile applies its perm argument only when it creates the file.
+// Chaining around an existing non-executable user hook must still leave the wrapper executable:
+// otherwise git ignores the hook, and both the user's hook and fabric's drift warning stop running.
 //
 //testtiming:keep the chained wrapper carrying the executable bit so git runs both hooks; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
@@ -298,7 +285,7 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 	}
 	hookPath := filepath.Join(hooksDir, "post-checkout")
 
-	// A user hook the operator had DISABLED with chmod -x.
+	// A user hook the operator disabled with chmod -x.
 	const disabledUserHook = "#!/bin/sh\necho user hook\n"
 	if err := os.WriteFile(hookPath, []byte(disabledUserHook), 0o644); err != nil {
 		t.Fatalf("seed non-executable user hook: %v", err)
@@ -340,10 +327,9 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_HonoursCoreHooksPath pins that the hook lands where git will actually
-// look for it.
-// Composing <git-common-dir>/hooks ignores core.hooksPath, so on a repo that sets it fabric wrote
-// the hook into a directory git no longer consults and reported success.
+// TestInstallPostCheckoutHook_HonoursCoreHooksPath checks that the hook lands where git looks for it.
+// Composing <git-common-dir>/hooks ignores core.hooksPath.
+// On a repo that sets it, the hook lands in a directory git does not consult, and fabric reports success.
 //
 //testtiming:keep the hook landing where core.hooksPath points; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {

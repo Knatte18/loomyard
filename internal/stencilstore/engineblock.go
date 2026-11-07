@@ -1,4 +1,5 @@
-// engineblock.go resolves engine blocks, the include blocks whose text differs by the engine a stencil is rendered for, and implements ReadSet, which reads a stencil with every block it includes.
+// engineblock.go resolves engine blocks, the include blocks whose text differs by the engine a stencil is rendered for.
+// It implements ReadSet, which reads a stencil with every block it includes.
 
 package stencilstore
 
@@ -12,13 +13,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// EngineBlockPrefix opens the include name of an engine block: a stencil pulls in block <block> of the engine it is rendered for with the bare {{template "engine-<block>"}}.
+// EngineBlockPrefix opens the include name of an engine block.
+// A stencil pulls in block <block> of the engine it is rendered for with the bare {{template "engine-<block>"}} action.
 const EngineBlockPrefix = "engine-"
 
 // EngineBlocksDir is the directory under a stencils baseDir that holds one directory of engine blocks per engine.
 const EngineBlocksDir = "engine"
 
-// EngineBlockName returns the stencil name of engine's copy of block, `engine/<engine>/<block>`, which RelPath maps to `engine/<engine>/<block>.md`.
+// EngineBlockName returns the stencil name of engine's copy of block, `engine/<engine>/<block>`.
+// That copy is the file `engine/<engine>/<block>.md` under the stencils base directory.
 func EngineBlockName(engine, block string) string {
 	return path.Join(EngineBlocksDir, engine, block)
 }
@@ -37,7 +40,8 @@ func (e *MissingEngineBlockError) Error() string {
 }
 
 // ReadSet reads the stencil name from baseDir with every block it includes, keyed by include name.
-// An engine block, an include whose name opens with EngineBlockPrefix, is read from engine's copy of the block; any other include is read as the stencil of its name.
+// An engine block, an include whose name opens with EngineBlockPrefix, is read from engine's copy of the block;
+// any other include is read as the stencil of its name.
 // An engine block engine has no copy of is a *MissingEngineBlockError.
 // An engine block with an empty engine is refused, since no engine names the copy to read.
 // A stencil that includes no engine block reads the same whatever engine is given.
@@ -61,7 +65,8 @@ func ReadSet(baseDir, engine, name string) ([]byte, map[string][]byte, error) {
 	return body, blocks, nil
 }
 
-// readInclude reads the block include names for the stencil called stencilName: engine's copy of an engine block, or the stencil of the include's name.
+// readInclude reads the block that include names, for the stencil called stencilName.
+// An engine block is read from engine's copy; any other include is read as the stencil of its name.
 func readInclude(baseDir, engine, stencilName, include string) ([]byte, error) {
 	block, isEngineBlock := strings.CutPrefix(include, EngineBlockPrefix)
 	if !isEngineBlock {

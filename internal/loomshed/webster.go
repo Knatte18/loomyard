@@ -1,6 +1,5 @@
-// webster.go implements the lazy Webster wrapper around shedadapters.WebsterProducer: it resolves
-// the active batchifier itself, inside Call, rather than at construction, and commits webster's
-// durable run record once the run reports Done.
+// webster.go holds the lazy Webster producer, which resolves the active batchifier inside Call.
+// It commits webster's durable run record once the run reports Done.
 
 package loomshed
 
@@ -16,18 +15,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// batchifierReasonPrefix leads the Stuck reason of every row that loads batcher.yaml with batcher.Active, so each words the fault identically; the error text follows.
+// batchifierReasonPrefix opens the Stuck reason of every row that resolves the active batchifier,
+// so each row words the fault the same way; the error text follows.
 const batchifierReasonPrefix = "active batchifier did not resolve: "
 
-// batchifierWayForward closes that reason;
-// the fault sits in batcher.yaml, so the operator fixes it there.
+// batchifierWayForward closes the Stuck reason with the next step for the operator.
+// The fault sits in batcher.yaml, so that is where the operator fixes it.
 const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
-// websterProducer is the Webster producer: a lazy wrapper delegating to
-// shedadapters.WebsterProducer once the active batchifier is resolved.
+// websterProducer is the lazy Webster producer.
+// It resolves the active batchifier on every Call and then delegates to shedadapters.WebsterProducer.
 //
-// Batching is the implementer's own concern, so the producer resolves the batchifier itself at the start of every Call rather than taking one at construction:
-// a resumed run re-resolves it in the new process, and a config changed since Preflight loaded it is the config Webster partitions the plan with.
+// The batchifier is resolved at the start of every Call rather than at construction:
+// a resumed run re-resolves it in the new process,
+// and a config edited after an earlier load is the config Webster partitions the plan with.
 type websterProducer struct {
 	name   string
 	dirs   configengine.Dirs
@@ -38,12 +39,13 @@ type websterProducer struct {
 
 var _ shedengine.ShedProducer = (*websterProducer)(nil)
 
-// NewWebsterProducer returns a websterProducer identified as name, resolving the active batchifier
-// from the told dirs on every Call and driving run with a copy of deps carrying the resolved value.
-// deps.Batcher is left nil by the caller; it is overwritten on every Call regardless. commit
-// commits webster's durable run directory and is invoked once the run reports Done. The return
-// type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can
-// call this constructor from outside this package while websterProducer itself stays unexported.
+// NewWebsterProducer returns a producer identified as name.
+// On every Call it resolves the active batchifier from dirs.
+// It then drives run with a copy of deps that carries the resolved value; the caller leaves deps.Batcher nil,
+// and every Call overwrites it.
+// The commit function commits webster's durable run directory and is invoked once the run reports Done.
+// The result is typed as shedengine.ShedProducer, the seam interface,
+// so a registry in another package can call this constructor while the concrete type stays unexported.
 func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.WebsterRunner, deps websterengine.RunDeps, commit func() error) shedengine.ShedProducer {
 	return &websterProducer{name: name, dirs: dirs, run: run, deps: deps, commit: commit}
 }
@@ -52,10 +54,10 @@ func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.We
 // the resolved value into a copy of w.deps, constructs a shedadapters.WebsterProducer over the
 // result, and delegates to that producer's own Call.
 //
-// A batcher.Active error here maps to shedengine.Stuck, never to a returned error -- identically to Preflight's batcher.yaml check.
-// The two outcomes differ materially in shedengine.Run:
-// Stuck under OnStuck: "" persists blocked and returns RunBlocked, which a human resumes after fixing the config, whereas returning the error persists failed and aborts the run.
-// The same fault must not end the run one way before Webster and another way at Webster.
+// A batcher.Active error maps to shedengine.Stuck, never to a returned error, so the run blocks for a human.
+// Stuck with an empty OnStuck persists the run as blocked and returns RunBlocked;
+// a human resumes the run after fixing the config.
+// Returning the error would instead persist the run as failed and abort it.
 func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, w.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -66,12 +68,11 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		if cerr := cancelErr(ctx, w.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		// Surfaced rather than discarded, exactly as Preflight surfaces the identical
-		// failure. This row carries no OnStuck, so its Stuck halts the run for a human, and
-		// the resolved-batchifier fault is the sort that reaches this row only when the config
-		// changed after Preflight already passed -- which is precisely the case an operator will not
-		// guess without being told. The cause is returned as the row's reason, which reaches the
-		// persisted error and activity.wait, and also logged.
+		// The fault is surfaced rather than discarded.
+		// This row carries no OnStuck, so its Stuck halts the run for a human.
+		// The fault reaches this row only when the config changed after an earlier check passed,
+		// and an operator would not guess that without being told.
+		// The cause is returned as the row's reason, which reaches the persisted error and activity.wait, and also logged.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.dirs.Anchor, "cause", err)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error() + batchifierWayForward}, nil
 	}
@@ -84,12 +85,12 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return outcome, pointer, err
 	}
 
-	// Master writes its contract files (outcome.yaml, summary.md), and the verify gate its report,
-	// into the durable webster directory, and nothing on webster's own side commits them: per the Fabric
-	// Git Invariant an agent writes into _lym and Go commits. Left uncommitted they ride through
-	// Publish and Finalize as untracked dirt, which refuses the task worktree's later removal.
-	// A commit failure is a returned error, not Stuck, for the reason the Discussion-Write commit
-	// decorator gives: re-running Webster cannot fix a git fault.
+	// Master writes its contract files (outcome.yaml, summary.md) into the durable webster directory.
+	// The verify gate writes its report there too, and nothing on webster's side commits them.
+	// Per the Fabric Git Invariant, an agent writes into _lym and Go commits.
+	// Left uncommitted, they ride through Publish and Finalize as untracked dirt.
+	// Untracked dirt refuses the task worktree's later removal.
+	// A commit failure is returned as an error, not Stuck, because re-running Webster cannot fix a git fault.
 	if w.commit == nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: no commit seam wired; webster's run record would never be committed", w.name)
 	}

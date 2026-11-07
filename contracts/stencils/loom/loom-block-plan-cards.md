@@ -1,7 +1,9 @@
-<!-- This is the loom-block-plan-cards plan-format block: the per-card file format, the rename mechanic and the minimal skeleton.
-     loom-template-plan, loom-template-part-writer and loom-template-parts-chair pull it in with the bare {{template "loom-block-plan-cards"}}, with no pipeline.
-     The fill hands it the including seat's value map, so it declares two required markers: {{.specs_dir}} and {{.gate_tiers}}.
-     It names no step of the stencil around it; each including stencil states its own rule for the lines this block leaves out. -->
+<!-- This is the loom-block-plan-cards plan-format block: the per-card file format, the rename mechanic and the skeleton.
+     The loom stencils that write plans pull it in with the bare {{template "loom-block-plan-cards"}}, with no pipeline.
+     The fill hands it the including seat's value map,
+     so it declares two required markers: {{.specs_dir}} and {{.gate_tiers}}.
+     It names no step of the stencil around it;
+     each including stencil states its own rule for the lines this block leaves out. -->
 
 A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan gate refuses one when the list is empty.
 

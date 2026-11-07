@@ -1,7 +1,9 @@
-// creel.go — the seam between the watcher and creel, the hub's message and inject daemon, and the plain values it exchanges.
+// creel.go defines the seam between the watcher and creel, the hub's message and inject daemon.
+// It also defines the plain values that cross the seam.
 //
-// The watcher addresses creel by receiver name and reads nothing of creel's own types, so this package imports no creel package (Told-Geometry Invariant).
-// The production implementation lives in orchcli and the tests use a recording fake.
+// The watcher addresses creel by receiver name and reads none of creel's own types,
+// so this package imports no creel package (Told-Geometry Invariant).
+// The production implementation lives in orchcli, and the tests use a recording fake.
 
 package orchengine
 
@@ -14,10 +16,12 @@ type Creel interface {
 	Post(receiver, body string) (int64, error)
 	// MailReadAt returns when the receiver holding mail id read it, zero while it is unread.
 	MailReadAt(id int64) (time.Time, error)
-	// ReadMailbox hands every unread message of the watcher's mailbox to handle without waiting; they are marked read only once handle returns nil.
+	// ReadMailbox hands every unread message of the watcher's mailbox to handle without waiting;
+	// they are marked read only once handle returns nil.
 	// With nothing unread handle is not called.
 	ReadMailbox(handle func([]CreelMessage) error) error
-	// Inject queues step to be typed into receiver at its next idle and returns the inject's id; a zero ttl takes creel's default.
+	// Inject queues step to be typed into receiver at its next idle and returns the inject's id;
+	// a zero ttl takes creel's default.
 	Inject(receiver string, step CreelStep, ttl time.Duration) (int64, error)
 	// InjectOutcome returns where the inject id stands.
 	InjectOutcome(id int64) (CreelOutcome, error)
@@ -27,7 +31,8 @@ type Creel interface {
 	Hold(receiver string, duration time.Duration) error
 	// Release ends the watcher's hold on receiver; a hold already gone is not an error.
 	Release(receiver string) error
-	// Withdraw removes the watcher's own queued injects to receiver and its own unread mail held by receiver, and answers the mail it removed.
+	// Withdraw removes the watcher's own queued injects to receiver and its own unread mail held by receiver.
+	// It answers the mail it removed.
 	// It acts on receiver by name whether or not creel still lists that strand.
 	Withdraw(receiver string) ([]CreelWithdrawn, error)
 }

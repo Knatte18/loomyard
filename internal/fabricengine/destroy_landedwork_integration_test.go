@@ -1,7 +1,7 @@
-// destroy_landedwork_integration_test.go drives the pair-warp ownership kind and the unlanded-work
-// dirtiness kind against real throwaway git repositories (hermetic git via testmain_test.go, empty
-// branch_prefix so the warp branch is the bare slug). No hub is involved: the gate reads only the
-// repository named by repoDir.
+// destroy_landedwork_integration_test.go drives the pair-warp ownership kind and the unlanded-work dirtiness kind.
+// It runs them against real throwaway git repositories, with hermetic git from testmain_test.go.
+// It uses an empty branch_prefix, so the warp branch is the bare slug.
+// No hub is involved: the gate reads only the repository named by repoDir.
 
 package fabricengine
 
@@ -13,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// landedWorkRepo returns a repository whose main branch holds one commit, plus a bare remote it
-// is wired to.
+// landedWorkRepo returns a repository whose main branch holds one commit, plus a bare remote it is wired to.
 func landedWorkRepo(t *testing.T) (repo, remote string) {
 	t.Helper()
 	remote = t.TempDir()

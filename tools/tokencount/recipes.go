@@ -1,4 +1,5 @@
-// recipes.go writes the Recipes section, which compares the counted runs by the recipe they ran: cost and span per run, and the cost per changed line of the commits they landed.
+// recipes.go writes the Recipes section, which compares the counted runs by recipe.
+// It gives the cost and span per run, and the cost per changed line of the commits they landed.
 
 package main
 
@@ -19,7 +20,7 @@ type recipeRow struct {
 	runs int
 	cost Cost
 	span time.Duration
-	// landed counts the runs with a landed commit, lines the lines those commits changed and landedCost those runs' cost.
+	// landed counts the runs with a landed commit; lines counts changed lines of those commits; landedCost sums their cost.
 	landed     int
 	lines      int
 	landedCost Cost

@@ -1,7 +1,6 @@
-// mouse.go implements the mouse config value validator: mapping the mouse config key's raw string
-// to the canonical "on"/"off" tmux option value the boot-time set-option call needs.
-// It is a pure planning helper (no filesystem or process I/O);
-// the caller (lifecycle.go) performs the actual tmux set-option round trip.
+// mouse.go validates the mouse config value and normalizes it to the canonical "on" or "off" tmux option value.
+// It is a pure planning helper with no filesystem or process I/O.
+// The caller performs the tmux set-option round trip at boot.
 
 package reedengine
 
@@ -11,7 +10,8 @@ import (
 )
 
 // mouseOption validates and normalizes a mouse config value to "on" or "off".
-// Trimmed and lowercased; empty string errors (template handles the default).
+// It trims surrounding space and lowercases the value.
+// An empty value is an error; the config template supplies the default.
 func mouseOption(raw string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "on":

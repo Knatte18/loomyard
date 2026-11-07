@@ -1,23 +1,6 @@
-// shape_test.go is the Ref-Shape Registry's own self-enforcement suite. The registry's fail-closed
-// promise rests on TWO independent syncs, and this file proves both, in both directions:
-//
-//   - classify.go's refKind enum <-> allRefKinds (TestRefKindEnumMatchesAllRefKinds), so a fifth
-//     kind cannot be added without every gate's policy being re-acknowledged; and
-//   - shape.go's own refGate const block <-> ledger's key set (TestRefGateConstantsMatchLedger), so
-//     a fourteenth gate cannot be declared -- nor a ledger key typo'd -- without a ledger entry.
-//
-// It further proves every ledger policy covers the whole kind domain (TestLedgerCompleteness) and
-// that the lookup path fails closed on an undeclared disposition rather than silently skipping the
-// ref (TestLookupFailsClosedOnUndeclaredKind).
-//
-// Both sync tests parse a const block out of the AST rather than ranging a Go value, and for the
-// same reason: Go cannot reflect over a package's constants, so a const block absent from its
-// companion collection is invisible to any test that ranges only the collection. That asymmetry is
-// exactly the gap TestRefGateConstantsMatchLedger closes -- TestLedgerCompleteness ranges ledger,
-// so a refGate constant with NO ledger entry contributed no iteration and passed, leaving lookup to
-// panic at runtime inside a live CLI verb (crucible round opus5-high-r1, F1).
-//
-// The AST-parsing tests read production files through scankit, found from the module root (this file itself is a _test.go file and is never parsed as a scan target).
+// shape_test.go holds the Ref-Shape Registry's self-enforcement tests.
+// They keep the `refKind` enum in step with `allRefKinds`, and the `refGate` constants in step with the `ledger`,
+// so a new kind or gate cannot ship without its ledger policy, and lookup fails closed on an undeclared kind.
 
 package planparser
 
@@ -30,12 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRefKindEnumMatchesAllRefKinds is the enum<->slice sync meta-test: it asserts set equality,
-// not mere cardinality, between the rendered names of classify.go's refKind const block (bridged
-// to refKind values by iota position) and the rendered names of allRefKinds' own members. Building
-// map[string]int counts on both sides -- rather than sorting and comparing -- additionally catches
-// a duplicate-plus-omission hand edit of allRefKinds that would otherwise still pass at matching
-// length, and a fifth enum constant with no allRefKinds counterpart fails immediately.
+// TestRefKindEnumMatchesAllRefKinds asserts that the `refKind` enum and `allRefKinds` hold the same set of names.
+// The enum side is read from classify.go's const block, paired with its values by iota position.
+// Per-name counts also catch a list that repeats one kind and drops another, even at the same length.
+// A constant with no `allRefKinds` counterpart fails the test.
 func TestRefKindEnumMatchesAllRefKinds(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -75,18 +56,14 @@ func TestRefKindEnumMatchesAllRefKinds(t *testing.T) {
 	}
 }
 
-// refGateValuesDeclared parses internal/planparser/shape.go and returns the VALUE of every constant
-// declared in its refGate-typed const block -- "bare-symbol-target", "directory-target", and so on.
+// refGateValuesDeclared returns the value of every constant in shape.go's `refGate` const block.
 //
-// It reads values rather than identifier names because ledger is keyed by the refGate value, so a
-// value is what the two sides actually have in common: a constant whose identifier is spelled
-// correctly but whose string value is typo'd is precisely one of the two defects this enables
-// TestRefGateConstantsMatchLedger to catch, and a name-based comparison would miss it.
+// It reads values rather than identifier names, because the `ledger` is keyed by `refGate` value.
+// Comparing values catches a mistyped constant value, which a comparison of identifier names would miss.
 //
-// Only the const block whose first ValueSpec carries the explicit refGate type is read, mirroring
-// refKindConstNamesInDeclarationOrder's own block selection; a spec whose value is not a plain
-// string literal is skipped, since the registry declares none and a computed gate value would have
-// no stable identity to compare against anyway.
+// Only the block whose first `ValueSpec` carries the explicit `refGate` type is read.
+// A spec whose value is not a plain string literal is skipped;
+// the registry declares none, and a computed gate value has no stable identity.
 func refGateValuesDeclared(t *testing.T) []refGate {
 	t.Helper()
 
@@ -128,19 +105,17 @@ func refGateValuesDeclared(t *testing.T) []refGate {
 	return gates
 }
 
-// TestRefGateConstantsMatchLedger asserts set equality, in both directions, between the refGate
-// constants shape.go declares and the gates ledger registers a policy for.
+// TestRefGateConstantsMatchLedger checks set equality between shape.go's `refGate` constants and the `ledger` keys.
+// Each constant needs a `ledger` entry, each `ledger` key needs a constant, and no two constants share a value.
 //
-// The forward direction is the one with teeth: a gate declared and dispatched through lookup but
-// never given a ledger entry yields a nil policy map, so lookupIn reads the disposition zero value
-// and PANICS -- out of `lym loom validate-plan` or `lym webster begin-batch`, on the first plan
-// whose refs reach that gate, as a raw Go panic rather than a finding or an error envelope.
-// TestLedgerCompleteness cannot see that case at all, because it iterates ledger's own keys and an
-// absent key contributes no iteration.
+// The forward direction catches the panicking case.
+// A gate declared and dispatched through lookup but never given a ledger entry yields a nil policy map.
+// So lookupIn reads the disposition zero value and panics on the first ref that reaches the gate.
+// It is a raw Go panic, not a finding or an error envelope.
+// A check that ranges over ledger's own keys cannot see that case, since an absent key contributes no iteration.
 //
-// The reverse direction catches the same defect approached from the other side: a ledger key that
-// matches no declared constant is a typo'd or stale entry, which leaves the real gate's policy
-// undeclared and produces the identical runtime panic.
+// The reverse direction catches a ledger key that matches no declared constant.
+// Such a key is a typo or stale entry, which leaves the real gate's policy undeclared and causes the same panic.
 func TestRefGateConstantsMatchLedger(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -170,12 +145,12 @@ func TestRefGateConstantsMatchLedger(t *testing.T) {
 	}
 }
 
-// TestLedgerCompleteness asserts, for every refGate registered in ledger, that the policy's key
-// set equals allRefKinds' members exactly -- no missing kind, no extra key -- so adding a fifth
-// kind fails every gate's policy until each is re-acknowledged.
+// TestLedgerCompleteness asserts that each policy in ledger is keyed by exactly the members of allRefKinds.
+// A missing kind or an extra key fails that gate's policy.
+// Adding a kind therefore fails every gate until each is re-acknowledged.
 //
-// It says nothing about a gate MISSING from ledger entirely: a map range cannot visit an absent
-// key. TestRefGateConstantsMatchLedger above owns that half.
+// It does not cover a gate missing from ledger entirely, since a map range cannot visit an absent key.
+// `TestRefGateConstantsMatchLedger` covers that half.
 func TestLedgerCompleteness(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -204,9 +179,9 @@ func TestLedgerCompleteness(t *testing.T) {
 	}
 }
 
-// TestLookupFailsClosedOnUndeclaredKind proves lookupIn/lookup panic rather than silently
-// skipping a ref whose classified kind carries no declared disposition, and separately proves the
-// happy path returns the classified kind and its declared disposition unchanged.
+// TestLookupFailsClosedOnUndeclaredKind proves that lookupIn and lookup panic on an undeclared kind.
+// They panic rather than silently skip the ref.
+// The happy path returns the classified kind and its declared disposition unchanged.
 func TestLookupFailsClosedOnUndeclaredKind(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -214,9 +189,8 @@ func TestLookupFailsClosedOnUndeclaredKind(t *testing.T) {
 	t.Run("PanicsOnMissingKindInPolicy", func(t *testing.T) {
 		t.Parallel()
 
-		// A deliberately incomplete policy: every kind except refKindPath is declared, so a
-		// path-shaped ref classifies to a kind with no entry in the map, i.e. the disposition
-		// zero value.
+		// An incomplete policy declares every kind except refKindPath.
+		// A path-shaped ref therefore classifies to a kind with no map entry and gets the disposition zero value.
 		incomplete := map[refKind]disposition{
 			refKindSymbol: dispSkip,
 			refKindGlyph:  dispSkip,

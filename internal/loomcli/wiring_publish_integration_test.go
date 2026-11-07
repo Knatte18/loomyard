@@ -1,4 +1,5 @@
-// wiring_publish_integration_test.go drives wireLanding over a real hub and pair, so the landing deps carry what wire loaded from the hub.
+// wiring_publish_integration_test.go drives wireLanding over a real hub and pair.
+// The landing deps carry what wire loaded from the hub.
 
 package loomcli
 
@@ -23,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestWireLanding_TellsLanguageSkills asserts wireLanding hands the hub's language skills, as wire loaded them, to the landing deps over a real hub and pair.
+// TestWireLanding_TellsLanguageSkills asserts wireLanding hands the landing deps the language skills that wire loaded.
+// The test runs over a real hub and pair.
 func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -54,7 +56,8 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 	}
 }
 
-// TestWireLanding_FillsSamplerSessionSeams asserts wireLanding fills the Sampler-Session row's session, liveness, registration and record watch for a sampler seed, and leaves them nil for a darn seed, over a real hub and pair.
+// TestWireLanding_FillsSamplerSessionSeams asserts wireLanding fills the Sampler-Session row's seams for a sampler seed.
+// The seams are the session, liveness, registration and record watch ones, and a darn seed leaves them nil.
 func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 	tiergate.Require(t, 1)
 	tests := []struct {
@@ -102,7 +105,8 @@ func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 	}
 }
 
-// TestWire_DescribeTableCarriesTheDriftVerdict asserts the Describe table wire builds holds the regression check rendered from the run's scope record as its drift_verdict value, over a real hub and pair.
+// TestWire_DescribeTableCarriesTheDriftVerdict asserts the Describe table holds the drift_verdict value.
+// The value is the regression check that wire renders from the run's scope record.
 func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
 	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -135,7 +139,8 @@ func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_DriftVerdict_RendersTheScopeRecord asserts the DriftVerdict seam answers no section while the run has recorded no scope, and renders the records of the newest records commit once one exists, read at call time over a real hub and pair.
+// The test asserts the DriftVerdict seam answers no section while the run has recorded no scope.
+// Once a records commit exists, the seam renders the records of the newest one at call time.
 func TestLandingDeps_DriftVerdict_RendersTheScopeRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,6 +1,6 @@
-// follow.go implements the `follow` reed verb: it turns follow on for a told session of a told tmux server and selects the session's relevant window.
+// follow.go implements the `follow` reed verb: it turns follow on for a told session and selects its relevant window.
 // The follow button calls it through run-shell; it prints nothing on success, so run-shell opens no output view.
-// It carries clihelp.SkipStencilSeedAnnotation, since a button click must never run the root pre-run's stencil-seed pass.
+// It carries clihelp.SkipStencilSeedAnnotation so that a button click never runs the root pre-run's stencil-seed pass.
 
 package reedcli
 
@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// validateFollowFlags refuses a follow call that lacks the socket, session or tmux path it is told, naming the missing flag.
+// validateFollowFlags refuses a follow call whose socket, session or tmux value is empty, naming the flag.
 func validateFollowFlags(socketPath, session, tmuxPath string) error {
 	if socketPath == "" {
 		return errors.New("--socket must be a non-empty tmux socket path")
@@ -27,7 +27,6 @@ func validateFollowFlags(socketPath, session, tmuxPath string) error {
 	return nil
 }
 
-// followCmd builds the `follow` subcommand.
 func (c *reedCLI) followCmd() *cobra.Command {
 	var socketPath, session, tmuxPath string
 

@@ -1,4 +1,5 @@
-// report.go declares the seams the pause, resume, revive and status sequences read through and the reports they return, with the holds report shared by pause and status.
+// report.go declares the seams the pause, resume, revive and status sequences read and write through.
+// The file also declares the reports they return, including the holds report that pause and status share.
 
 package tenderengine
 
@@ -33,7 +34,8 @@ type Pair interface {
 	State(guid string) (shuttleengine.SessionState, error)
 	// Busy reports whether the session is in a running turn: busy with any cause but background work.
 	Busy(guid string) (bool, error)
-	// Background reports whether the session's turn ended with background work still running, with the outstanding tasks' labels.
+	// Background reports whether the session's turn ended with background work still running.
+	// It also returns the labels of the outstanding tasks.
 	Background(guid string) (labels []string, background bool, err error)
 	// PaneRunningTurn reports whether the session's pane shows a running turn, from one fresh capture.
 	PaneRunningTurn(guid string) (bool, error)
@@ -43,12 +45,15 @@ type Pair interface {
 	// Live reports whether the strand exists with a live pane.
 	Live(guid string) (bool, error)
 	// Interrupt sends the provider's interrupt key through shuttle's guarded interrupt.
-	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows no running turn, and with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
+	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows no running turn.
+	// It fails with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
 	Interrupt(guid string) error
 	// Send types text into the session through the guarded paste-submit.
 	Send(guid, text string) error
-	// SendConditioned types text into the session only while one ready reading shows it in the state want names, and reports whether a turn start followed.
-	// It fails with shuttleengine.ErrSendConditionUnmet when the session reads another state and with shuttleengine.ErrSubmissionNotLanded when the text did not land.
+	// SendConditioned types text into the session only while one ready reading shows it in the state want names.
+	// It reports whether a turn start followed.
+	// It fails with shuttleengine.ErrSendConditionUnmet when the session reads another state.
+	// It fails with shuttleengine.ErrSubmissionNotLanded when the text did not land.
 	SendConditioned(guid, text string, want shuttleengine.SendCondition) (turnStarted bool, err error)
 	// Running reports the pair's current producer and whether its run reads running.
 	Running() (producer string, running bool, err error)
@@ -70,7 +75,7 @@ type Orch struct {
 	InjectRevive func(line string) (int64, error)
 }
 
-// Deps is everything the sequences read and write, all of it told.
+// Deps holds every dependency the sequences read and write; the caller supplies each one.
 type Deps struct {
 	// RecordPath is the pause record file.
 	RecordPath string
@@ -114,7 +119,7 @@ type Deps struct {
 	Sleep func(time.Duration)
 }
 
-// SessionNote names a session with the reason the sequence did what it did to it.
+// SessionNote records a session and the reason a sequence acted on it.
 type SessionNote struct {
 	Strand string `json:"strand"`
 	Slug   string `json:"slug"`
@@ -150,7 +155,8 @@ type holdReport struct {
 	Waiting []WaitingRun `json:"waiting"`
 }
 
-// GoProducer is a covered run that reads running with no live session: it advances through local Go work until it reaches a held path.
+// GoProducer is a covered run that reads running with no live session:
+// it advances through local Go work until it reaches a held path.
 type GoProducer struct {
 	Slug     string `json:"slug"`
 	Producer string `json:"producer"`
@@ -169,7 +175,7 @@ const (
 )
 
 // readHolds reports the parent branches the covered runs hold and the covered runs waiting in a queue.
-// A run is covered when a live entry of rec covers its slug now.
+// A run is covered when a live entry of rec covers its slug.
 func readHolds(deps Deps, rec pauserecord.Record) (holdReport, error) {
 	report := holdReport{Held: []HeldBranch{}, Waiting: []WaitingRun{}}
 	if deps.Locks == nil {

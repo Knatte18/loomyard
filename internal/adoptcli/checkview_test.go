@@ -1,4 +1,5 @@
-// checkview_test.go pins the adopt check's view in `lym beam status`: what each state shows and which paths its lines name, and which subjects' views the hub's scratch directory yields.
+// checkview_test.go pins the adopt check's view in `lym beam status`:
+// what each state shows, which paths its lines name, and which subjects' views the hub's scratch directory yields.
 
 package adoptcli
 

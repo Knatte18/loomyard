@@ -1,4 +1,5 @@
-// reinterpret_integration_test.go covers the reinterpretations a stale-build walk applies to the board's hub base files: the drift dir rewrite on an anchored hub, its marker, and the one mail to the orch.
+// reinterpret_integration_test.go covers the reinterpretations a stale-build walk applies to the board's hub base files:
+// the drift dir rewrite on an anchored hub, its marker, and the one mail to the orch.
 
 package hubreconcile_test
 
@@ -25,14 +26,15 @@ type notice struct {
 	line     string
 }
 
-// recordNotices replaces the process's notifier with a recorder of the mails it is asked to send, and restores the previous one when the test ends.
+// recordNotices replaces the process's notifier with a recorder of the mails it is asked to send.
+// It restores the previous notifier when the test ends.
 func recordNotices(t *testing.T) *[]notice {
 	t.Helper()
 
 	return recordNoticesAnswering(t, true, nil)
 }
 
-// recordNoticesAnswering is recordNotices with a notifier that answers each mail with posted and err.
+// recordNoticesAnswering replaces the process's notifier with a recorder that answers each mail with posted and err.
 func recordNoticesAnswering(t *testing.T, posted bool, err error) *[]notice {
 	t.Helper()
 
@@ -52,7 +54,8 @@ func driftMarkerRel() string {
 	return filepath.ToSlash(configengine.ReinterpretedMarkerRel(driftengine.DirBaseReinterpretation))
 }
 
-// driftYAMLWithDir returns a drift.yaml declaring capture and compare, each with dir when dir is not empty, and diff: command so the diff-mode reinterpretation flags nothing.
+// driftYAMLWithDir returns a drift.yaml declaring capture and compare, each with dir when dir is not empty.
+// It also declares diff: command, so the diff-mode reinterpretation flags nothing.
 func driftYAMLWithDir(dir string) string {
 	dirLine := ""
 	if dir != "" {
@@ -73,7 +76,8 @@ func driftDirs(t *testing.T, boardDir string) (capture, compare string) {
 	return cfg.Capture.Dir, cfg.Compare.Dir
 }
 
-// It does not call t.Parallel: it installs the process-global notifier and swaps the package-global detached board sync.
+// TestEnsure_DriftDirsOnAnAnchoredHubAreRewrittenOnceAndMailed does not call t.Parallel:
+// it installs the process-global notifier and swaps the package-global detached board sync.
 func TestEnsure_DriftDirsOnAnAnchoredHubAreRewrittenOnceAndMailed(t *testing.T) {
 	tiergate.Require(t, 1)
 
@@ -116,7 +120,7 @@ func TestEnsure_DriftDirsOnAnAnchoredHubAreRewrittenOnceAndMailed(t *testing.T) 
 		}
 	}
 
-	// The marker is present now: a drift.yaml written against the old base afterwards is left alone, and nothing is mailed.
+	// With the marker present, a drift.yaml written against the old base afterwards is left alone, and nothing is mailed.
 	gitkit.CommitFile(t, board, configengine.ConfigFileRel("drift"), driftYAMLWithDir("."), "fixture: drift dirs set to . after the marker")
 	if err := os.Remove(geom.StampPath()); err != nil {
 		t.Fatalf("remove the stamp: %v", err)
@@ -132,7 +136,8 @@ func TestEnsure_DriftDirsOnAnAnchoredHubAreRewrittenOnceAndMailed(t *testing.T) 
 	}
 }
 
-// It does not call t.Parallel: it installs the process-global notifier and swaps the package-global detached board sync.
+// TestEnsure_SkipFileArgumentLeavesTheHubBase does not call t.Parallel:
+// it installs the process-global notifier and swaps the package-global detached board sync.
 func TestEnsure_SkipFileArgumentLeavesTheHubBase(t *testing.T) {
 	tiergate.Require(t, 1)
 
@@ -158,7 +163,8 @@ func TestEnsure_SkipFileArgumentLeavesTheHubBase(t *testing.T) {
 	assertClean(t, board)
 }
 
-// It does not call t.Parallel: it installs the process-global notifier and swaps the package-global detached board sync.
+// TestEnsure_ReinterpretationMarkerIsCommittedAndMailsOnlyAFlaggedValue does not call t.Parallel:
+// it installs the process-global notifier and swaps the package-global detached board sync.
 func TestEnsure_ReinterpretationMarkerIsCommittedAndMailsOnlyAFlaggedValue(t *testing.T) {
 	tiergate.Require(t, 1)
 

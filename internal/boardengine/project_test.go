@@ -1,4 +1,5 @@
-// project_test.go — the project kind's write rules (project.go): what a write may set on a project and its members, through a Board built from a board.yaml.
+// project_test.go covers the project kind's write rules in project.go:
+// what a write may set on a project and its members, through a Board built from a board.yaml.
 
 package boardengine_test
 
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newProjectBoard returns a board whose config LoadConfig reads from a board.yaml with the bug and enhancement type labels and the Home.md output, under t.TempDir().
+// newProjectBoard returns a board whose config LoadConfig reads from a board.yaml under t.TempDir().
+// That board.yaml names the bug and enhancement types and the Home.md output.
 // configure, when non-nil, edits the loaded config before the board is built, so a test sets the seams it needs.
 func newProjectBoard(t *testing.T, configure func(cfg *boardengine.Config)) *boardengine.Board {
 	t.Helper()
@@ -33,7 +35,7 @@ func newProjectBoard(t *testing.T, configure func(cfg *boardengine.Config)) *boa
 	return boardengine.New(cfg)
 }
 
-// seedBoardJSON writes a board.json holding entries into the board directory of b's config, which only a stored state can hold when no upsert key reaches it.
+// seedBoardJSON writes a board.json holding entries into boardPath, for a state no upsert key can reach.
 func seedBoardJSON(t *testing.T, boardPath string, entries ...string) {
 	t.Helper()
 	content := `{"version":1,"entries":[` + strings.Join(entries, ",") + `]}`
@@ -42,7 +44,8 @@ func seedBoardJSON(t *testing.T, boardPath string, entries ...string) {
 	}
 }
 
-// newDependencyBoard returns a board holding proj, an open project with the member task member, and outsider, a task under no project.
+// newDependencyBoard returns a board holding proj, an open project with the member task member.
+// It also holds outsider, a task under no project.
 func newDependencyBoard(t *testing.T) *boardengine.Board {
 	t.Helper()
 	var boardPath string
@@ -113,7 +116,8 @@ func TestProjectDependencies(t *testing.T) {
 }
 
 // newMembershipBoard returns a board holding p1, an open project with the member m and a project member p2.
-// It also holds the done project pd, the run-held project ph, the tasks a and b with no project, and paired, a member of p1 whose pair exists.
+// It also holds the done project pd and the run-held project ph.
+// The tasks a and b have no project, and paired is a member of p1 whose pair exists.
 func newMembershipBoard(t *testing.T) *boardengine.Board {
 	t.Helper()
 	var boardPath string
@@ -136,8 +140,10 @@ func newMembershipBoard(t *testing.T) *boardengine.Board {
 	return b
 }
 
-// TestProjectRules_Membership pins each refusal of a write that sets or changes project or order, each naming the entry, the field and the slug at fault,
-// and the writes that pass: a valid membership, a valid order and a done-mark of a project its members still name.
+// TestProjectRules_Membership pins each refusal of a write that sets or changes project or order.
+// Each refusal names the entry, the field and the slug at fault.
+// It also pins the writes that pass:
+// a valid membership, a valid order and a done-mark of a project its members still name.
 func TestProjectRules_Membership(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

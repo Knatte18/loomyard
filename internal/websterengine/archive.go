@@ -1,11 +1,7 @@
-// archive.go implements webster's own archive-never-refuse primitives: FirstFreeArchivePath and
-// ArchiveStateFile, plus a webster-owned ArchiveReportsDir.
-// These are deliberately module-local rather than shared, since archive layout is part of
-// webster's own contract shape.
-// firstFreeArchivePath is the shared same-second collision rule every archive helper in this
-// package reuses (including outcome.go's archiveStaleOutcome);
-// archiveStateFile and archiveReportsDir are the --fresh crash/resume escape's two halves, wired
-// into state and runlevel in batch 7.
+// archive.go holds the archive helpers that move a webster run record out of the way, so the next run starts fresh.
+// It renames state.json and the reports dir under a UTC stamp,
+// and it judges pending audit findings before a reset archives the record.
+// firstFreeArchivePath is the same-second collision rule that every archive helper in this package shares.
 
 package websterengine
 
@@ -92,13 +88,14 @@ func archiveReportsDir(reportsDir string, now func() time.Time) error {
 	return nil
 }
 
-// ArchiveRunRecord moves every entry of geom.WebsterDir into dest, so the next run finds no state and starts fresh over the live plan only.
-// dest is told and never derived;
-// this function knows nothing of what it is archiving for.
+// ArchiveRunRecord moves every entry of geom.WebsterDir into dest.
+// The next run then finds no state and starts fresh over the live plan only.
+// The caller passes dest, and ArchiveRunRecord does not derive it.
 // It refuses with ErrRunBusy while a run holds the run lock, then holds the state-mutation lease across the moves.
 // It is idempotent for crash resume: an absent WebsterDir, or an entry already moved, is skipped.
-// An entry present at both source and destination is an error and nothing is moved, since either copy may be the stale one.
-// The rendered fork prompts are cleared as the --fresh escape does, since they are re-renderable and name the retired run's batches.
+// An entry present at both source and destination is an error and nothing is moved.
+// Either copy may be the stale one, so neither is moved.
+// The rendered fork prompts are cleared, since they can be rendered again and name the batches of the archived run.
 func ArchiveRunRecord(geom Geometry, dest string) error {
 	if err := os.MkdirAll(geom.ScratchDir, 0o755); err != nil {
 		return fmt.Errorf("websterengine: create webster scratch dir %s: %w", geom.ScratchDir, err)
@@ -149,7 +146,8 @@ func ArchiveRunRecord(geom Geometry, dest string) error {
 }
 
 // archiveRunInPlace archives the run record inside the webster dir, so the next run finds no state and starts a new one.
-// state.json and the reports dir are renamed with a UTC stamp, the reports dir is recreated empty, and the rendered fork prompts are cleared.
+// state.json and the reports dir are renamed with a UTC stamp, the reports dir is recreated empty,
+// and the rendered fork prompts are cleared.
 func archiveRunInPlace(geom Geometry, now func() time.Time) error {
 	if _, err := archiveStateFile(geom.WebsterDir, now); err != nil {
 		return err
@@ -160,11 +158,14 @@ func archiveRunInPlace(geom Geometry, now func() time.Time) error {
 	return clearRenderedPrompts(geom.PromptsDir)
 }
 
-// ArchiveRunAfterReset archives the run record in place once a reset to the run's start has moved the branch, or has no branch move to make.
-// It first judges every pending audit finding against the worktree's HEAD, which is the tree the next run starts from:
-// it refuses with ErrPendingAuditFindings, archiving nothing, only where the caller can clear the state, each refusal naming the clearing step and then `lym webster reset --to start`.
-// Those are an uncleared contract file a fork, recovery or verify-fixer session wrote last, a plan path that differs from the recorded plan, and a suspect path that differs from HEAD.
-// Every other pending finding, and every batch record's uncheckable entries, is dropped with the archived record, and the returned warnings name each drop.
+// ArchiveRunAfterReset archives the run record in place once a reset to the run's start is done.
+// It first judges every pending audit finding against the worktree's HEAD, the tree the next run starts from.
+// It refuses with ErrPendingAuditFindings, archiving nothing, only where the caller can clear the state;
+// each refusal names the clearing step and then `lym webster reset --to start`.
+// The refusing findings are three: an uncleared contract file a fork, recovery or verify-fixer session wrote last;
+// a plan path that differs from the recorded plan; and a suspect path that differs from HEAD.
+// Every other pending finding, and every batch record's uncheckable entries, is dropped with the archived record,
+// and the returned warnings name each drop.
 // A nil state has nothing to judge, and archives whatever record is on disk.
 func ArchiveRunAfterReset(engines AuditEngines, geom Geometry, st *State) ([]string, error) {
 	var warnings []string
@@ -183,7 +184,8 @@ func ArchiveRunAfterReset(engines AuditEngines, geom Geometry, st *State) ([]str
 	return warnings, nil
 }
 
-// uncheckableBatchNumbers returns, sorted, the numbers of st's batches whose record lists uncheckable entries, each of which counts as a pending finding.
+// uncheckableBatchNumbers returns the sorted numbers of st's batches whose record lists uncheckable entries.
+// Each such batch counts as a pending finding.
 func uncheckableBatchNumbers(st *State) []int {
 	var numbers []int
 	for number, bs := range st.Batches {
@@ -213,7 +215,8 @@ type pendingGuard struct {
 }
 
 // freshPendingGuard is the wording of `run --fresh`, where a differing suspect path is reset away with the branch.
-// The reset route ends in a plain run, since the reset archives the run record, while the steps that follow no reset rerun `--fresh`.
+// The reset route ends in a plain run, since the reset archives the run record;
+// without a reset, the steps rerun `--fresh`.
 func freshPendingGuard() pendingGuard {
 	return pendingGuard{
 		verb:              "--fresh",
@@ -235,10 +238,18 @@ func resetPendingGuard() pendingGuard {
 	}
 }
 
-// checkPendingFindings judges st's pending audit findings, and the suspect paths of batches with uncheckable entries, against base, and returns one drop warning per finding.
-// It refuses with ErrPendingAuditFindings where the caller can clear the state:
-// a contract file a fork, recovery or verify-fixer session wrote last, a suspect path that differs from base, and a plan path that differs from the recorded plan while restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
-// An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped, since no verb could restore the last; its warning says so.
+// checkPendingFindings judges st's pending audit findings against base.
+// It also judges the suspect paths of batches with uncheckable entries against base.
+// It refuses with ErrPendingAuditFindings only where the caller can clear the state:
+// a contract file a fork, recovery or verify-fixer session wrote last;
+// a plan path that differs from the recorded plan while restore-plan can undo that.
+// checkPendingFindings returns a warning for each pending audit finding and uncheckable batch the verb drops.
+// It refuses with an error when a contract path would be cleared.
+// It also refuses while a suspect path differs from base.
+// It refuses too when a plan file differs from the recorded plan and can be restored.
+// Unverifiable paths and pathless findings are dropped anyway.
+// So are differing plan files whose recorded copy is missing from the baseline store:
+// no verb could restore them, and the warning says so.
 func checkPendingFindings(engines AuditEngines, geom Geometry, st *State, base string, guard pendingGuard) ([]string, error) {
 	uncheckableBatches := uncheckableBatchNumbers(st)
 	var allPaths []string

@@ -1,4 +1,6 @@
-// fixerrun.go implements the merge fixer loop Parent-Align and Finalize share: one cold session per row entry, held to a turn budget kept in the attempt record, and judged by what the session's report and the landing gate say after each turn.
+// fixerrun.go implements the merge fixer loop that Parent-Align and Finalize share for one landing row.
+// It starts one cold session per row entry and holds it to a turn budget kept in the attempt record;
+// it judges each turn by what the session's report and the landing gate say after it.
 
 package landingshed
 
@@ -19,16 +21,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// LandingStopPrefix opens the reason of every halt a landing row hands back to the orch, so the hand-back predicate finds it.
+// LandingStopPrefix opens the reason of every halt a landing row hands back to the orch,
+// so the hand-back check finds it.
 const LandingStopPrefix = "landing stop: "
 
-// EscalateStopPrefix opens the reason of a tapestry, darn or sampler merge fixer's escalate halt, which goes to the arbiter first and is no hand-back.
+// EscalateStopPrefix opens the reason of a merge fixer's escalate halt when the arbiter judges the escalate first.
+// Such a halt is no hand-back.
 const EscalateStopPrefix = "landing escalate: "
 
 // fixerGateName labels the fixer session's one gate entry.
 const fixerGateName = "landing"
 
-// fixerSeats is the seat runner the fixer session runs on, which *seatengine.Engine satisfies.
+// fixerSeats is the seat runner the fixer session runs on; the seat engine satisfies it.
 type fixerSeats interface {
 	// Run starts table's seats fresh and returns once the chair has ended.
 	Run(table seatengine.Table) (seatengine.Result, error)
@@ -60,7 +64,6 @@ const (
 
 // fixerOutcome is how a fixer run ended and what the halt that follows names.
 type fixerOutcome struct {
-	// end is how the run ended.
 	end fixerEnd
 	// reportPath is the report the session writes.
 	reportPath string
@@ -91,11 +94,13 @@ func newFixerRun(deps Deps, row string, gate verifyGate) fixerRun {
 	return fixerRun{deps: deps, row: row, gate: gate, seats: deps.FixerSeats}
 }
 
-// run spends the turns rec has left on one fixer session in mode and returns how it ended with the attempt record as it stands then.
+// run spends the turns rec has left on one fixer session in mode.
+// It returns how the run ended and the attempt record as it stands then.
 // cap is the row's turn cap, and tips are the tip the parent's changes are read from and the merged tip.
 // It is never called with no turn left, since a row takes its exhausted-entry path first.
 // A turn is charged into the record when it starts, so a turn that never returns to the gate is still spent.
-// The first turn's charge is taken back when the session fails to start, an error marked transient, and an escalate report takes its own turn back.
+// The first turn's charge is taken back when the session fails to start with an error marked transient.
+// An escalate report takes its own turn back.
 func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, cap int, tips [2]string) (fixerOutcome, FixerAttempts, error) {
 	reportPath := filepath.Join(f.deps.ScratchDir, f.row+"-fixer-report.md")
 	attemptsPath := FixerAttemptsPath(f.deps.ScratchDir, f.row)
@@ -180,7 +185,8 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	return outcome, session.rec, nil
 }
 
-// failureRecordPath returns the landing failure record's path when a failed gate left one, and "" before any gate has failed.
+// failureRecordPath returns the landing failure record's path when a failed gate left one.
+// It returns "" before any gate has failed.
 func (f fixerRun) failureRecordPath() string {
 	if _, err := os.Stat(f.gate.paths.LandingFailure); err != nil {
 		return ""
@@ -188,8 +194,9 @@ func (f fixerRun) failureRecordPath() string {
 	return f.gate.paths.LandingFailure
 }
 
-// archiveStaleReport renames a report an earlier session of row left at reportPath, stamped with now, so a new session never starts beside a finished report.
-// what names the session in the error.
+// archiveStaleReport renames a report an earlier session of row left at reportPath, stamped with now.
+// The rename keeps a new session from starting beside a finished report.
+// The what argument names the session in the error.
 func archiveStaleReport(reportPath string, now time.Time, row, what string) error {
 	stamp := now.UTC().Format("20060102T150405Z")
 	archived := strings.TrimSuffix(reportPath, ".md") + "-" + stamp + ".md"
@@ -212,7 +219,8 @@ type fixerSession struct {
 
 	// end is the halting end the closure decided, "" while the run is fixed or undecided.
 	end fixerEnd
-	// decided holds the closure's last terminal answer, so a second evaluation of a finished run answers the same without charging again.
+	// decided holds the closure's last terminal answer.
+	// A second evaluation of a finished run answers the same without charging again.
 	// A passed answer is what makes the run fixed; nil means no turn has ended the run yet.
 	decided *shuttleengine.GateResult
 	// err is an infrastructure error the closure met, which the run returns after the seat run ends.
@@ -234,11 +242,13 @@ func (s *fixerSession) halt(end fixerEnd, findings string) (shuttleengine.GateRe
 	return result, nil
 }
 
-// check is the gate closure run after every turn.
-// It judges the turn's duration, then the tree, then the report, and on a fixed verdict the landing gate.
-// A dirty tree with a turn left charges it and re-prompts naming the paths, so the fixer commits or deletes what it left; one with none left is the dirty end.
-// A failing gate with a turn left charges it and re-prompts; one with none left is the spent end.
-// A gate whose every failed run crashed its test runner is the crash end, whatever turns are left, since no turn mends it.
+// check is the gate run after every fixer turn.
+// It judges the turn's duration, then the tree, then the report, and when the report says fixed, the landing gate.
+// A dirty tree with a turn left charges that turn and re-prompts naming the paths,
+// so the fixer commits or deletes what it left; with none left, the run ends dirty.
+// A failing gate with a turn left charges that turn and re-prompts; with none left, the run ends spent.
+// A gate whose every failed run crashed its test runner ends the run as a crash, whatever turns are left;
+// no turn mends such a gate.
 func (s *fixerSession) check() (shuttleengine.GateResult, error) {
 	result, err := s.judge()
 	if err != nil {
@@ -317,11 +327,16 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 	return shuttleengine.GateResult{Findings: findings}, nil
 }
 
-// haltReason words the halt a run that did not end fixed ends the row with.
-// Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward, and is one line.
-// An escalate end with escalateJudgedFirst true opens with EscalateStopPrefix instead and names the decision verb as its way forward;
-// with it false the way forward is the conflict settled on the task branch, since a pawl run refuses the decision verb.
-// A crash end's reason is the landing gate's own, which already opens with LandingStopPrefix and names its way forward.
+// haltReason returns the reason the row halts with when its fixer run did not end fixed.
+// It returns the empty string for a fixed end.
+// Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward;
+// each is one line.
+// With escalateJudgedFirst true, an escalate end opens with EscalateStopPrefix instead;
+// it names `lym loom decision add` as its way forward.
+// With escalateJudgedFirst false, a pawl run's arbiter has no decision verb to settle it with;
+// so the way forward is to settle the conflict on the task branch.
+// A crash end's reason is the landing gate's own;
+// it already opens with LandingStopPrefix and names its way forward.
 func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 	prefix := LandingStopPrefix
 	var cause, wayForward string
@@ -354,7 +369,8 @@ func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 	return prefix + cause + "; way forward: " + wayForward
 }
 
-// singleLine collapses every run of whitespace in text, line breaks included, to one space.
+// singleLine returns text with every run of whitespace, line breaks included, replaced by one space;
+// it also drops leading and trailing whitespace.
 func singleLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }

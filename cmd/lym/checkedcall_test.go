@@ -1,55 +1,6 @@
-// checkedcall_test.go enforces the gitexec Checked-Call Invariant: gitexec.Run/runChecked is the
-// default, and every remaining raw gitexec.RunGit or r.run( call site in non-test source carries an
-// adjacent //gitexec:raw marker justifying why the raw form is correct there.
-// Test files are exempt from the marker requirement entirely — this guard never scans a _test.go
-// file's content for either token, the same exemption every sibling guard in this package grants.
+// checkedcall_test.go enforces the gitexec Checked-Call Invariant for non-test source under internal/ and cmd/.
+// A raw gitexec.RunGit or r.run( call there must carry an adjacent //gitexec:raw marker; test files are exempt.
 // See `PATTERN-gitrepo-client-boundary`.
-//
-// # The two-token spelling contrast
-//
-// This guard's two raw tokens are spelled the OPPOSITE way from cmd/lym/tierpurity_test.go's, cmd/lym/hermeticenv_test.go's, and cmd/lym/rawgitmutation_test.go's own gitexec tokens, and that contrast is deliberate, not an inconsistency to "fix":
-//
-//   - Those three guards ban ANY git spawn outright, so they key on the shorter prefix
-//     "gitexec.Run" — its extra matches (catching gitexec.Run alongside gitexec.RunGit) are exactly
-//     what a spawn-ban wants: neither entry point may appear in the files those guards police.
-//   - This guard instead distinguishes the raw form from the checked one, so the same short prefix
-//     would be wrong here: it would match every migrated gitexec.Run call site too and wrongly
-//     demand a //gitexec:raw marker at each one. This guard therefore keys on the full,
-//     unabbreviated "gitexec.RunGit" — without the trailing paren, so both the call form and a
-//     doc-comment mention are still visible to a human reading a match, but is still specific enough
-//     to exclude gitexec.Run.
-//   - The same logic applies to internal/gitrepo's own pair: "r.run(" (WITH the trailing paren) is
-//     this guard's second token, because the checked method's name, runChecked, contains "r.run" as
-//     a substring. An unparenthesised "r.run" token would match every one of gitrepo's nineteen
-//     migrated r.runChecked( call sites and demand a marker at each of them. "r.run(" — call syntax,
-//     not just the bare method-name substring — matches only the raw method itself.
-//
-// A later reader comparing all four guard files side by side will be tempted to "harmonise" the
-// spelling to match the other three. Doing so silently inverts this guard: it would stop flagging
-// the raw sites this invariant exists to police and start flagging every migrated checked call
-// instead.
-//
-// # Why the walk covers cmd/ too, even though zero production sites live there today
-//
-// Every pinned raw site lives under internal/, in internal/gitrepo and its oracle; cmd/ carries none.
-// The walk still covers cmd/ because that absence is
-// exactly the fact the pinned-zero design is meant to keep true: a new command package reaching
-// straight for gitexec.RunGit or a bespoke r.run( helper, bypassing gitrepo's own checked pair
-// entirely, is precisely the drift this invariant exists to catch — and it can only catch it in a
-// directory this guard actually visits.
-//
-// # The known blind spot
-//
-// This guard, like cmd/lym/destructiveguard_test.go's and cmd/lym/gitrepoboundary_test.go's own
-// guards, is a raw-substring scan, not an AST walk: it cannot see a raw call written in a spelling
-// its two literal tokens do not match (a reformatted call split across lines so "r.run(" or
-// "gitexec.RunGit" never appears intact on one line, for instance), and it cannot tell a genuinely
-// new raw call sitting a few lines inside an already-//gitexec:raw-marked region from the one call
-// the marker was actually written to justify — the adjacency check only proves SOME raw-marked call
-// is nearby, not that the flagged line is the one the marker's justification is actually about.
-// Reviewing a diff that touches an already-marked region by hand remains necessary; this guard
-// catches every other regression shape (a brand-new raw call with no marker at all, or one appearing
-// in a package with no pinned allowance).
 
 package main
 
@@ -64,22 +15,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// checkedCallRawTokens are the two raw substrings a non-test .go file under internal/ or cmd/ may
-// contain only with an adjacent //gitexec:raw marker: gitexec.RunGit (the raw entry point, no
-// trailing paren so a doc-comment mention still counts as a site needing acknowledgement) and
-// r.run( (the raw half of internal/gitrepo's own checked/raw pair, WITH the trailing paren — see
-// this file's header comment for why the parenthesised form is the only one that does not also
-// match r.runChecked().
+// checkedCallRawTokens are the raw substrings a non-test .go file under internal/ or cmd/ may contain.
+// Each line with one needs an adjacent //gitexec:raw marker.
+// gitexec.RunGit has no trailing paren, so a doc-comment mention also counts as a site needing acknowledgement.
+// r.run( keeps its paren because the checked method, runChecked, contains r.run as a substring.
+// The longer spellings match only the raw calls; a shorter gitexec.Run or r.run would also match the checked calls.
+// The scan is a raw-substring match, not an AST walk, so it misses a call whose token is split across lines.
+// It also cannot tell a new raw call a few lines inside an already marked region from the call the marker justifies,
+// so a diff touching such a region needs a manual review.
 var checkedCallRawTokens = []string{
 	"gitexec.RunGit",
 	"r.run(",
 }
 
-// checkedCallPinnedRawSites is the literal, pinned per-package count of raw sites this invariant
-// permits, keyed by module-relative, slash-separated package directory. A zero is listed explicitly
-// rather than omitted — see this map's own package list for the ones the migration verified carry
-// none. A package with no entry here at all is treated as pinned zero by this guard, not skipped:
-// see checkedCallCountDiff.
+// checkedCallPinnedRawSites pins the number of raw sites this invariant permits in each package.
+// It is keyed by module-relative, slash-separated package directory.
+// A zero is listed explicitly rather than omitted.
+// A package with no entry counts as pinned zero, not skipped.
 var checkedCallPinnedRawSites = map[string]int{
 	"internal/gitrepo":       3, // run's own body, Pull, Fetch
 	"internal/fabricengine":  0,
@@ -90,21 +42,23 @@ var checkedCallPinnedRawSites = map[string]int{
 	"internal/gitrepo/internal/gitoracle": 6, // CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, HeadRef, verifyQuiet
 }
 
-// checkedCallScanRoots are the module-relative directories this guard walks. cmd/ carries zero
-// pinned raw sites today (see this file's header comment for why it is still walked).
+// checkedCallScanRoots are the module-relative directories this guard walks.
+// cmd/ is walked too, though it is meant to carry no pinned raw sites.
+// A command package that calls gitexec.RunGit or a bespoke r.run( helper bypasses the checked entry point,
+// and this guard catches that only in a directory it visits.
 var checkedCallScanRoots = []string{"internal", "cmd"}
 
-// checkedCallMinScannedFiles is the vacuous-scan floor for this guard's two-root walk of internal/
-// and cmd/: comfortably below the module's current non-test .go file count under those two roots
-// (327 at authoring time) and comfortably above zero, so a misconfigured walk fails loudly rather
-// than silently passing on a near-empty scan.
+// checkedCallMinScannedFiles is the minimum file count this guard's walk of internal/ and cmd/ must reach.
+// It sits far below the non-test .go file count under those roots and above zero,
+// so a misconfigured walk fails loudly rather than passing on a near-empty scan.
 const checkedCallMinScannedFiles = 200
 
-// TestCheckedCallInvariant_RawSitesMarkedAndPinned walks every non-test .go file under internal/ and
-// cmd/ and asserts two things: (1) every line containing a checkedCallRawTokens substring carries an
-// adjacent //gitexec:raw marker, on the same line or the line immediately above, and (2) the
-// resulting per-package raw-site count matches checkedCallPinnedRawSites exactly, treating an unlisted
-// package as pinned zero.
+// TestCheckedCallInvariant_RawSitesMarkedAndPinned walks every non-test .go file under internal/ and cmd/.
+// It asserts two things.
+// Every line containing a checkedCallRawTokens substring carries an adjacent //gitexec:raw marker:
+// on the same line or the line immediately above.
+// The per-package raw-site count matches checkedCallPinnedRawSites exactly,
+// and a package not listed there counts as pinned zero.
 //
 //lym:guard
 func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
@@ -117,8 +71,8 @@ func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 		lines := strings.Split(string(f.Data), "\n")
 
 		for i, line := range lines {
-			// A pure-comment line (a doc comment mentioning either token in prose, such as a package or file header) is not a call site and carries no marker requirement of its own;
-			// only a line containing real source is a raw site.
+			// A comment-only line that names a token in prose is not a call site and needs no marker.
+			// Only a line containing source code is a raw site.
 			if strings.HasPrefix(strings.TrimSpace(line), "//") {
 				continue
 			}
@@ -160,11 +114,11 @@ func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 	}
 }
 
-// checkedCallCountDiff compares got's per-package raw-site counts against want, treating any package
-// present in got but absent from want as pinned zero. It returns a description of every mismatch, or
-// "" if got matches want exactly, naming each drifted package, its actual raw-site count, and the
-// two-line remedy: add the //gitexec:raw marker at the new site, then add or update the package's
-// entry in checkedCallPinnedRawSites.
+// checkedCallCountDiff returns a description of every mismatch between got's per-package raw-site counts and want.
+// It returns "" when they match exactly.
+// A package present in got but absent from want counts as pinned zero.
+// Each mismatch names the drifted package, its actual raw-site count, and the two-step remedy:
+// add the //gitexec:raw marker at the new site, then add or update the package's entry in checkedCallPinnedRawSites.
 func checkedCallCountDiff(want, got map[string]int) string {
 	packages := map[string]bool{}
 	for pkg := range want {
@@ -198,8 +152,9 @@ func checkedCallCountDiff(want, got map[string]int) string {
 	return strings.Join(lines, "\n")
 }
 
-// TestCheckedCallInvariant_TokenSpellingsDoNotCollide pins the exact spelling contrast this guard's header comment documents: "r.run(" must not match a runChecked( call, and "gitexec.RunGit" must not match a gitexec.Run( call.
-// This is the one place a plausible-looking edit — dropping the trailing paren from "r.run(", or shortening "gitexec.RunGit" to "gitexec.Run" to "harmonise" with the three token guards this file's header comment contrasts against — would silently invert this guard, so the contrast is asserted directly rather than left to be inferred from the header prose alone.
+// TestCheckedCallInvariant_TokenSpellingsDoNotCollide pins that "r.run(" does not match a runChecked( call,
+// and that "gitexec.RunGit" does not match a gitexec.Run( call.
+// A match in either case would make the raw-site guard demand a //gitexec:raw marker at every migrated call site.
 //
 //testtiming:keep proves the TestCheckedCallInvariant_RawSitesMarkedAndPinned guard's token spellings stay distinct from the three token guards it is contrasted with
 func TestCheckedCallInvariant_TokenSpellingsDoNotCollide(t *testing.T) {

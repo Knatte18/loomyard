@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// sessionLoopTwoFormats returns the offset of the first top-level comma in the body of the #{S:} loop starting at loopStart, or -1 when the body holds one format.
+// sessionLoopTwoFormats returns the offset of the first top-level comma in the body of the #{S:} loop at loopStart.
+// It returns -1 when the body holds one format.
 // A comma inside a nested #{…} or #[…] group does not count.
 func sessionLoopTwoFormats(format string, loopStart int) int {
 	closers := []byte{'}'}
@@ -37,9 +38,11 @@ func sessionLoopTwoFormats(format string, loopStart int) int {
 	return -1
 }
 
-// TestStatusFormats_SessionLoopsTakeOneFormat fails on a #{S:} loop with a second, current-item format, which tmux 3.4 does not take.
+// TestStatusFormats_SessionLoopsTakeOneFormat fails on a #{S:} loop with a second, current-item format.
+// tmux 3.4 does not accept such a loop.
 // Rendering on a newer tmux cannot catch one, so this untagged check scans the bar's format strings.
-// It also scans every Go string literal of the package outside bar.go, so a session loop declared elsewhere cannot escape it.
+// It also scans every Go string literal of the package outside bar.go,
+// so a session loop declared elsewhere cannot escape it.
 func TestStatusFormats_SessionLoopsTakeOneFormat(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

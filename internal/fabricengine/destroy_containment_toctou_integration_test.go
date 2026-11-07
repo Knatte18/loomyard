@@ -1,15 +1,7 @@
-// destroy_containment_toctou_integration_test.go drives the real `remove` verb end-to-end against a
-// symlink planted at an intermediate segment of a gate target (the per-slug launcher directory,
-// <hub>/_launchers/<anchor>/<slug>) and pointing OUTSIDE the hub — the shape R3's crucible round
-// reproduced as a gated removal escaping the hub.
-//
-// It is the full-stack companion to destroy_toctou_test.go's hermetic unit guard: the unit test pins
-// removeContainedPath's act-time escape refusal directly, while this test proves the whole Remove
-// call — slug validation, launcher teardown, the gate pipeline, the rooted removal — never
-// deletes a file outside the hub through the planted symlink, and preserves the outside content.
-//
-// Package fabricengine_test to reuse the shared TestMain, matching the
-// convention of the other integration tests in this package.
+// destroy_containment_toctou_integration_test.go runs the real `remove` verb end to end.
+// It replaces the per-slug launcher directory with a symlink that points outside the hub.
+// It checks that the removal never deletes a file outside the hub through that symlink.
+// It is in package fabricengine_test to reuse the shared TestMain.
 
 package fabricengine_test
 
@@ -23,10 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink builds a real pair, replaces its launcher
-// directory with a symlink escaping the hub, runs `remove --force`, and asserts the outside files the
-// symlink points at are preserved — the gated removal must never follow the escaping segment out of
-// the hub.
+// TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink builds a real pair.
+// It replaces the launcher directory with a symlink that escapes the hub, then runs `remove --force`.
+// It asserts that the outside files the symlink points at are preserved.
+// The gated removal must never follow the escaping segment out of the hub.
 func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -38,8 +30,8 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	// Build an out-of-hub directory carrying the exact file names removeLaunchers targets, so any
-	// follow-through the removal does would delete them.
+	// Build an out-of-hub directory that holds the file names removeLaunchers targets,
+	// so any follow-through by the removal would delete them.
 	outside := t.TempDir()
 	canaries := []string{"ide.sh", "fabric-checkout.sh", "run.sh"}
 	for _, name := range canaries {
@@ -48,8 +40,9 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 		}
 	}
 
-	// Replace the real per-slug launcher directory — an intermediate segment of every launcher-script
-	// gate target — with a symlink that escapes the hub, live at removal time.
+	// Replace the real per-slug launcher directory with a symlink that escapes the hub.
+	// The directory is an intermediate segment of every launcher-script gate target,
+	// so the symlink is live at removal time.
 	launcherDir := fabricengine.LauncherDir(l, slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
 		t.Fatalf("remove real launcher dir: %v", err)
@@ -58,7 +51,6 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 		t.Fatalf("plant escaping launcher symlink: %v", err)
 	}
 
-	// Remove --force must not carry the removal outside the hub through the escaping symlink.
 	_, _ = topology.Remove(l, slug, true, false)
 
 	for _, name := range canaries {

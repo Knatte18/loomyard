@@ -1,4 +1,5 @@
-// finalize_pr_test.go covers Finalize's landing through the run's pull request over a fake GitHub: the decision under the lock, each way it lands or halts, and the merge on GitHub before the parent-side merge.
+// finalize_pr_test.go covers Finalize's landing through the run's pull request over a fake GitHub:
+// the decision under the lock, each way it lands or halts, and the merge on GitHub before the parent-side merge.
 
 package landingshed
 
@@ -43,7 +44,6 @@ func TestFinalize_PullRequest(t *testing.T) {
 	mergedAt := func(head string) scriptedCall {
 		return scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: head}}
 	}
-	// recordedBeam is the pull request a beam's landing record holds.
 	recordedBeam := &BeamPullRequest{Number: 7, URL: recordedURL}
 	recorded := func(mutate ...func(*pullrequest.Record)) *pullrequest.Record {
 		rec := &pullrequest.Record{Number: 7, URL: recordedURL}
@@ -84,7 +84,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 		parentPushErr error
 		// wantSquashedMerges asserts every parent-side merge was asked to squash.
 		wantSquashedMerges bool
-		// entryField is what Deps.PullRequest.EntryField answers.
+		// entryField is the value the entry's field read returns for a run that is not a beam's.
 		entryField string
 		// wantTrueMerges asserts no parent-side merge was asked to squash.
 		wantTrueMerges bool
@@ -92,15 +92,15 @@ func TestFinalize_PullRequest(t *testing.T) {
 		parentOwnedElsewhere bool
 		// wantRecord is the pull request record the landing must leave behind.
 		wantRecord *pullrequest.Record
-		// wantOwnerHalt makes the halt reason open with OwnerHaltPrefix instead of LandingStopPrefix.
+		// wantOwnerHalt makes the halt reason open with `OwnerHaltPrefix`.
 		wantOwnerHalt bool
-		// beam makes the run a beam's: its landing record is read, the entry's field never is, and a spent record is dropped after the landing.
+		// beam makes the run a beam's: its landing record is read, a spent one is dropped, and the entry's field is not read.
 		beam bool
 		// beamPR is the pull request the beam's landing record holds; nil leaves none.
 		beamPR *BeamPullRequest
 		// beamReadErr makes the read of the beam's landing record fail.
 		beamReadErr error
-		// commitsMissing is what CommitsMissing lists as the task commits the merged pull request lacks.
+		// commitsMissing lists the task commits the merged pull request lacks.
 		commitsMissing []string
 
 		wantOutcome shedengine.Outcome
@@ -593,7 +593,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 	}
 }
 
-// TestWithSection asserts a section follows the trimmed body after a blank line, stands alone after a body of whitespace, and leaves the body as it is when empty.
+// TestWithSection asserts that a section follows the trimmed body after a blank line.
+// A whitespace-only body yields the section alone,
+// and an empty section leaves the body as it is.
 func TestWithSection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

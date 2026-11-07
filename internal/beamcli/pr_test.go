@@ -1,4 +1,7 @@
-// pr_test.go drives the pr open and pr update sequences over fake deps and a fake GitHub: the pull request opened, found or recorded, the one a record names settled by where GitHub reports it, the update, and each refusal with its way forward.
+// pr_test.go drives the pr open and pr update sequences over fake deps and a fake GitHub.
+// It covers a pull request opened, found or recorded.
+// A pull request a landing record names is settled by where GitHub reports it.
+// It also covers the update and each refusal with its way forward.
 
 package beamcli
 

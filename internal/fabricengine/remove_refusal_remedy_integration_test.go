@@ -1,7 +1,11 @@
-// remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal — a dirty worktree or a failed status probe — leaves the pair and the weft origin untouched: no portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
+// remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal changes nothing:
+// the pair and the weft origin stay untouched.
+// A refusal here is a dirty worktree or a failed status probe.
+// No portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
 //
-// Remove runs every refusal before its archive and the archive before every removal (remove.go's header states the order),
-// so an operator told to commit or pass --force has lost nothing and the refusal needs no repair pointer.
+// Remove runs every refusal before its archive and the archive before every removal;
+// remove.go's header states the order.
+// An operator told to commit or pass --force has lost nothing, so the refusal needs no repair pointer.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -20,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
+// TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts:
+// the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
 func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -33,8 +38,8 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	// An uncommitted TRACKED change is what makes the no-force gate refuse. It must be tracked:
-	// Remove probes scopeAll, but a tracked change is the unambiguous case.
+	// The no-force gate refuses on an uncommitted change; this test makes a tracked one.
+	// Remove probes scopeAll, which counts untracked files too, and a tracked change is the unambiguous case.
 	warpPath := fabricengine.WorktreePath(l, slug)
 	tracked := filepath.Join(warpPath, "tracked.md")
 	gitkit.CommitFile(t, warpPath, "tracked.md", "committed\n", "seed tracked file")
@@ -61,7 +66,8 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	assertNoArchiveTag(t, h.RecordsBare, weftRoot)
 }
 
-// TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails, and asserts the refusal pushes no archive tag and tears nothing down.
+// TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails:
+// the refusal pushes no archive tag and tears nothing down.
 func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -119,7 +125,7 @@ func assertPairIntact(t *testing.T, l *lymcwd.Location, slug string) {
 	}
 }
 
-// assertNoArchiveTag fails when any archive/ tag exists in either repo.
+// assertNoArchiveTag fails when any archive/ tag exists in any of the given repositories.
 func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 	t.Helper()
 
@@ -130,11 +136,11 @@ func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 	}
 }
 
-// TestRemove_StatusFailureNamesPathAndCommandOnce drives Remove against a hub-contained directory at the sibling worktree's location that is not a git checkout, and asserts the composed error names the probed path once and the git command once.
-// The task side no longer reaches its status probe for such a directory: a plain directory at the task worktree's location is a stray path, reported and left alone.
+// TestRemove_StatusFailureNamesPathAndCommandOnce drives Remove into a plain sibling directory:
+// the composed error names the probed path once and the git command once.
+// A plain directory at the task worktree's location is a stray path, reported and left alone.
 //
-// Both wrappers in this chain — refuseDirtyWeftWorktree's "check weft worktree status in <dir>" and the *gitexec.GitError it wraps — used to repeat the path and the git command ahead of git's own stderr, which is the only part of the message an operator can act on.
-// Each layer now contributes exactly one new fact: what fabric was doing, where it probed, and what git said.
+// Each layer contributes exactly one new fact: what fabric was doing, where it probed, and what git said.
 func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -143,7 +149,8 @@ func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	// A plain directory inside the hub: the pair has something left, so Remove proceeds to its dirtiness probe, which fails because the directory is not a git repository at all.
+	// A plain directory inside the hub leaves something on the pair, so Remove runs its dirtiness probe:
+	// the probe fails because the directory is not a git repository.
 	const slug = "not-a-checkout"
 	notACheckout := fabricengine.RecordsWorktreePath(l, slug)
 	if err := os.MkdirAll(notACheckout, 0o755); err != nil {

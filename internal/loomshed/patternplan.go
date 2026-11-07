@@ -1,5 +1,6 @@
-// patternplan.go holds the plan gate's PATTERN checks: pattern-removes-prescribed, pattern-headroom, pattern-card-headroom and pattern-line-unprescribed.
-// They compare the plan's fenced entry lines and its declared PATTERN changes with the overview in the worktree and at the base, so they live beside the other context checks rather than in planparser.
+// patternplan.go holds the plan gate's PATTERN checks.
+// They compare the plan's fenced entry lines and declared PATTERN changes with PATTERN.md.
+// The overview is read from the worktree and from the base.
 
 package loomshed
 
@@ -16,27 +17,30 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// patternHeadroomCheck names the finding patternPlanFindings appends when the overview the plan's fenced entry lines project grows past the headroom line.
+// patternHeadroomCheck names the finding reported when the overview grows past the headroom line.
+// The overview is projected from the plan's fenced entry lines.
 const patternHeadroomCheck = "pattern-headroom"
 
-// patternCardHeadroomCheck names the finding patternPlanFindings appends for a card whose own step grows the projected overview past the headroom line.
+// patternCardHeadroomCheck names the finding for a card whose step alone grows the overview past the headroom line.
 const patternCardHeadroomCheck = "pattern-card-headroom"
 
 // patternHeadroomWayForward is the fix both headroom findings name.
 const patternHeadroomWayForward = "shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lym loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well"
 
-// patternRemovesPrescribedCheck names the finding patternPlanFindings appends when a card fences a line for an entry the plan removes.
+// patternRemovesPrescribedCheck names the finding reported when a card fences a line for an entry the plan removes.
 const patternRemovesPrescribedCheck = "pattern-removes-prescribed"
 
-// patternLineUnprescribedCheck names the finding patternPlanFindings appends for a declared added or changed entry that no card fences a line for.
+// patternLineUnprescribedCheck names the finding for an added or changed entry that no card fences a line for.
 const patternLineUnprescribedCheck = "pattern-line-unprescribed"
 
 // patternPlanFindings returns the PATTERN checks' findings, in this order.
 // First one pattern-removes-prescribed per removed entry that a card in cards fences a line for.
 // Then a pattern-headroom when the overview projected from every card of plan grows past the headroom line.
-// Then one pattern-card-headroom per card in cards whose own step, projected from the worktree overview in card order, grows past the line.
-// Last, only with pc.DecisionRecordPath set, one pattern-line-unprescribed per added or changed entry that no card fences a line for and whose bullet the worktree overview still holds as the base does.
-// It reads nothing and returns nil when pc.PatternBase is nil or worktreeRoot holds no PATTERN.md; a read error of either overview is returned.
+// Then one pattern-card-headroom per card in cards whose own step grows the projected overview past the line.
+// Last, only with pc.DecisionRecordPath set, one pattern-line-unprescribed per added or changed entry.
+// No card may fence a line for the entry, and its bullet must be the same at the base and in the worktree overview.
+// It reads nothing and returns nil when pc.PatternBase is nil or worktreeRoot holds no PATTERN.md;
+// a read error of either overview is returned.
 func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, pc PlanContext) ([]planindex.Finding, error) {
 	if pc.PatternBase == nil {
 		return nil, nil
@@ -118,10 +122,12 @@ func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 	return findings, nil
 }
 
-// cardHeadroomFindings returns one pattern-card-headroom finding per card of cards whose own step grows the projected overview past the headroom line, the bound each card's gate applies in its pattern lint against the commit before it.
+// cardHeadroomFindings returns a finding for each card whose own step grows the overview past the headroom line.
+// The bound is the one each card's gate applies in its pattern lint against the commit before it.
 // The projection starts at overview and takes cards in order.
-// A card's step applies its fenced entry lines, then drops each entry of removed whose ID the card is the first of cards to name;
-// a removed entry no card names is dropped before the first card, so the check never flags a step its card gate would pass.
+// A card's step applies its fenced entry lines, then drops the removed entries it is the first card to name.
+// A removed entry no card names is dropped before the first card,
+// so the check never flags a step its card gate would pass.
 func cardHeadroomFindings(overview []byte, cards []planparser.Card, removed []string) []planindex.Finding {
 	removedByCard := make(map[int][]string)
 	var removedUpfront []string
@@ -156,7 +162,8 @@ func cardHeadroomFindings(overview []byte, cards []planparser.Card, removed []st
 }
 
 // PatternBaseReader returns the PlanContext.PatternBase reader for worktreeRoot's repository.
-// On each call it reads PATTERN.md at the revision mergeBase answers, or at HEAD when mergeBase is nil, the standalone run with no parent recorded.
+// On each call it reads PATTERN.md at the revision mergeBase answers, or at HEAD when mergeBase is nil;
+// a nil mergeBase is the standalone run with no parent recorded.
 // A mergeBase error is returned wrapped, and an empty answer is the error of reading no revision.
 // Nothing is read until the reader is called.
 func PatternBaseReader(worktreeRoot string, mergeBase func() (string, error)) func() ([]byte, error) {

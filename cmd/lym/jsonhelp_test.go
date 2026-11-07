@@ -1,5 +1,6 @@
 // jsonhelp_test.go asserts the --json help schema at multiple levels of the lym command tree.
-// Each row drives the run() seam with --json and validates that the captured output is valid JSON matching the {name, short, commands, flags} schema.
+// Each row drives the run() seam with --json.
+// It checks that the captured output is valid JSON matching the {name, short, commands, flags} schema.
 // It also confirms that hidden and meta flags are absent from the flags array.
 
 package main
@@ -17,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// helpJSON mirrors the cmdJSON schema produced by clihelp.renderCmdJSON.
+// helpJSON is one command's --json help output, decoded.
+// It holds the command's name, short and long help, subcommands, and flags.
 type helpJSON struct {
 	Name     string         `json:"name"`
 	Short    string         `json:"short"`
@@ -40,7 +42,7 @@ type helpJSONFlag struct {
 	Type      string `json:"type"`
 }
 
-// decodeHelpJSON parses run() output as helpJSON, fataling on parse errors.
+// decodeHelpJSON decodes the --json help output in buf and fails the test when it is not valid JSON.
 func decodeHelpJSON(t *testing.T, buf *bytes.Buffer) helpJSON {
 	t.Helper()
 	var h helpJSON
@@ -50,7 +52,6 @@ func decodeHelpJSON(t *testing.T, buf *bytes.Buffer) helpJSON {
 	return h
 }
 
-// flagNames returns the set of flag names present in a helpJSON flags array.
 func flagNames(flags []helpJSONFlag) map[string]bool {
 	names := make(map[string]bool, len(flags))
 	for _, f := range flags {
@@ -59,7 +60,6 @@ func flagNames(flags []helpJSONFlag) map[string]bool {
 	return names
 }
 
-// commandNames returns the set of command names in a helpJSON commands array.
 func commandNames(cmds []helpJSONCmd) map[string]bool {
 	names := make(map[string]bool, len(cmds))
 	for _, c := range cmds {
@@ -68,7 +68,8 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 	return names
 }
 
-// TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected schema fields at the root, a verb module, a module with one verb and a leaf verb, with or without --help.
+// TestJSONHelp_Schema asserts that "--json" help exits 0 and prints valid JSON with the expected schema fields.
+// The cases cover the root, a verb module, a module with one verb and a leaf verb, with or without --help.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestJSONHelp_Schema(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -114,7 +115,7 @@ func TestJSONHelp_Schema(t *testing.T) {
 			absentFlags:    []string{"--json", "--help"},
 		},
 		{
-			// Run, selfreport create would refuse its missing title and exit non-zero.
+			// selfreport create would refuse its missing title and exit non-zero if it ran.
 			name:           "leaf verb under --json alone prints its help and never runs",
 			args:           []string{"selfreport", "create", "--json"},
 			wantNoCommands: true,
@@ -167,9 +168,10 @@ func TestJSONHelp_Schema(t *testing.T) {
 	}
 }
 
-// TestOwnJSONFlags pins the commands below the root that declare a `--json` of their own, local or persistent on a group.
+// TestOwnJSONFlags pins the commands below the root that declare their own `--json`, local or persistent on a group.
 // Such a command shadows the global `--json`, which elsewhere raises help before the command runs.
-// The read-only classifier's rule that a trailing `--json` is a help form does not hold for it, so a new entry is a reviewed change against that rule.
+// A trailing `--json` is read as a help form of a `lym` segment; that does not hold for these commands,
+// so a new entry is a reviewed change against that rule.
 // The pinned verbs are the generic shed `status` verb under each recipe mount, which only reads.
 func TestOwnJSONFlags(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,5 +1,5 @@
 // gofmt_test.go enforces that every Go file in the module is gofmt-formatted, whatever its build tags.
-// It compares each source with go/format.Source of itself, so no gofmt binary is needed.
+// It compares each source with go/format.Source's output for that source, so no gofmt binary is needed.
 
 package main
 
@@ -17,9 +17,8 @@ import (
 // gofmtScanFloor is the fewest Go files the walk may see; fewer means the walk is broken, not that the module shrank.
 const gofmtScanFloor = 500
 
-// gofmtFinding reports how src, the content of the module-relative file, differs from its gofmt form.
-// It answers false for a formatted source.
-// The finding names the first differing line, so the fix is an Edit.
+// gofmtFinding describes how src, the content of the module-relative file, differs from its gofmt form.
+// It returns false for a formatted source; otherwise the finding names the first differing line.
 func gofmtFinding(file string, src []byte) (string, bool) {
 	formatted, err := format.Source(src)
 	if err != nil {

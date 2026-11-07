@@ -58,7 +58,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// TestParse_PatternClusters pins the JSON form of a part's pattern_clusters, which the other tests build as Go literals.
+// TestParse_PatternClusters pins the JSON form of a part's pattern_clusters, which the Go-literal fixtures leave unset.
 func TestParse_PatternClusters(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

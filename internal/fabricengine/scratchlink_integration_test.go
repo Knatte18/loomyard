@@ -1,6 +1,8 @@
 // scratchlink_integration_test.go covers the scratch step of fabric wiring against real hubs.
-// It pins the anchor's `.scratch` becoming a link into the weft-side `.lym`, the adoption of a real directory, and the shapes the step leaves as found.
-// It also pins the retirement of a root `.scratch` link at a subpath anchor, and a root entry that is not fabric's left as found there.
+// It pins the anchor's `.scratch` becoming a link into the weft-side `.lym`.
+// It pins the adoption of a real directory, and the shapes the step leaves as found.
+// It also pins the retirement of a root `.scratch` link at a subpath anchor.
+// It also pins that a root entry not owned by fabric is left as found there.
 // It also pins the step's reports when a seam refuses it after its classification.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -90,7 +92,8 @@ func describeEntry(t *testing.T, path string) string {
 	return "file"
 }
 
-// replaceLinkWithRealDirectory removes the `.scratch` link at root, the anchor's path in a row at a subpath anchor, and leaves a real directory holding scratchNoteName.
+// replaceLinkWithRealDirectory removes the `.scratch` link at root, or at the anchor's path for a subpath anchor.
+// It leaves a real directory in its place, holding scratchNoteName.
 func replaceLinkWithRealDirectory(t *testing.T, root string) {
 	t.Helper()
 	if err := fslink.Remove(root); err != nil {
@@ -104,7 +107,8 @@ func replaceLinkWithRealDirectory(t *testing.T, root string) {
 	}
 }
 
-// removeRootLink removes the `.scratch` link at root, the anchor's path in a row at a subpath anchor, leaving that path absent.
+// removeRootLink removes the `.scratch` link at root, or at the anchor's path for a subpath anchor.
+// That path is left absent.
 func removeRootLink(t *testing.T, root string) {
 	t.Helper()
 	if err := fslink.Remove(root); err != nil {
@@ -120,7 +124,8 @@ func removeTarget(t *testing.T, target string) {
 	}
 }
 
-// removeWeftWorktreeDuringTrackedCheck makes the scratch step's tracked-path check delete slug's weft worktree and answer false,
+// removeWeftWorktreeDuringTrackedCheck makes the scratch step's tracked-path check delete slug's weft worktree.
+// The check then answers false,
 // so the worktree is gone between the step's first check and its classification of the root.
 func removeWeftWorktreeDuringTrackedCheck(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
@@ -149,19 +154,22 @@ func trackScratchFile(t *testing.T, dir, root string) {
 	gitkit.Git(t, dir, "commit", "-m", "track scratch")
 }
 
-// scratchExcludeLine returns the exclude line of the `.scratch` link at l's anchor: `/.scratch` at anchor ".", `/<anchor>/.scratch` otherwise.
+// scratchExcludeLine returns the exclude line of the `.scratch` link at l's anchor.
+// It is `/.scratch` at anchor "." and `/<anchor>/.scratch` otherwise.
 func scratchExcludeLine(l *lymcwd.Location) string {
 	return "/" + filepath.ToSlash(filepath.Join(l.AnchorRel, ".scratch"))
 }
 
-// writeLegacyScratchExclude replaces the exclude file's anchor `.scratch` line with the legacy form that has a trailing slash.
+// writeLegacyScratchExclude replaces the exclude file's anchor `.scratch` line with its legacy form.
+// The legacy form has a trailing slash.
 func writeLegacyScratchExclude(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
 	line := scratchExcludeLine(l)
 	replaceExcludeLine(t, l, slug, line, line+"/")
 }
 
-// replaceExcludeLine drops every drop and add line from the exclude file of slug's warp repository and appends add.
+// replaceExcludeLine rewrites the exclude file of slug's warp repository.
+// It removes every line equal to drop or add, then appends add.
 func replaceExcludeLine(t *testing.T, l *lymcwd.Location, slug, drop, add string) {
 	t.Helper()
 	path := excludeFilePath(t, l, slug)
@@ -181,7 +189,7 @@ func replaceExcludeLine(t *testing.T, l *lymcwd.Location, slug, drop, add string
 	}
 }
 
-// wireLegacyRootScratchLink replaces the anchor `.scratch` link of slug's warp worktree with the root `.scratch` link an earlier binary wired.
+// wireLegacyRootScratchLink replaces the anchor `.scratch` link of slug's warp worktree with the legacy root link.
 // It also replaces the exclude line with `/.scratch`, and returns the root link.
 func wireLegacyRootScratchLink(t *testing.T, l *lymcwd.Location, slug string) string {
 	t.Helper()
@@ -221,7 +229,7 @@ type scratchShapeCase struct {
 	leaves bool
 	// phrase is the part of the left report that names this shape.
 	phrase string
-	// readOnlyDir marks a shape that needs a read-only directory to stop a write, which it does not on Windows, so Windows generates no subtest for it.
+	// readOnlyDir marks a shape that needs a read-only directory to stop a write, which Windows does not stop.
 	readOnlyDir bool
 }
 
@@ -507,7 +515,8 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_ScratchLinkRefusedAfterClassify pins the step's reports when the link, the rename or a check is refused after the root was classified.
+// TestWireJunctions_ScratchLinkRefusedAfterClassify pins the step's reports.
+// They cover a refusal of the link, the rename or a check after the root was classified.
 // Wiring still returns nil and the warn names the way forward.
 // It is serial: it sets package seams and captures the logger.
 func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
@@ -721,7 +730,8 @@ func mutationIndexes(record fabricengine.Mutations, kind fabricengine.Kind, targ
 	return indexes
 }
 
-// TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval pins Remove unlinking the `.scratch` link at the anchor, and at a subpath anchor a legacy root link, through the gate ahead of the warp worktree removal.
+// TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval pins Remove unlinking the `.scratch` link at the anchor.
+// At a subpath anchor it also unlinks a legacy root link, through the gate ahead of the warp worktree removal.
 // It claims only a link into the pair's weft worktree and leaves every other entry to the worktree removal.
 func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -855,7 +865,9 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 
 // TestScratchLink_SubpathAnchor pins the scratch link at a subpath anchor.
 // Unwire keeps it with its exclude line, and nothing is wired or excluded at the repository root.
-// Wiring retires a root `.scratch` link an earlier binary wired, keeping the root exclude line until no worktree still has an entry at the root, and leaves a root entry that is not fabric's as found.
+// Wiring retires a root `.scratch` link.
+// The root exclude line stays until no worktree has an entry at the root.
+// A root entry that is not fabric's stays as found.
 // Reconcile moves the prime over.
 func TestScratchLink_SubpathAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -1075,7 +1087,9 @@ func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, realLymDir b
 	return path
 }
 
-// TestReconcile_ScratchLink pins the scratch step under Reconcile: it converges every managed pair, reports in the pair's Detail without changing Action or Error, and creates nothing for a pair that never reaches the repair.
+// TestReconcile_ScratchLink pins the scratch step under Reconcile: it converges every managed pair.
+// It reports in the pair's Detail without changing Action or Error.
+// It creates nothing for a pair that never reaches the repair.
 func TestReconcile_ScratchLink(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

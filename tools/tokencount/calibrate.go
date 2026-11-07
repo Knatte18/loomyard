@@ -1,7 +1,6 @@
-// calibrate.go sets the batcher's estimates beside what past Webster forks measured: each fork's start context against the start the profile estimates for its position and the fit of the two start coefficients, and each fork's peak context against the estimate of the cards it ran.
-// The plan comes from the history repository, the tree the estimate reads is the run's base commit in the code repository, and the profile's weights come from batcher.yaml.
-// Each run's Merriam base is reconstructed from those trees with websterengine.MerriamBaseOf, so the start fit and the peak estimates price what the live batchifier prices.
-// Read-only: it calls batcher.PeakContext, the same estimate the live batchifier bounds its batches by.
+// calibrate.go checks the batcher's estimates against what past Webster forks measured.
+// It sets each fork's start context beside the profile's start estimate for its position,
+// and each fork's peak context beside the estimate of its cards; it only reads the history and code repositories.
 
 package main
 
@@ -43,10 +42,11 @@ type BaseTrees interface {
 	FilesInDirAtRevision(rev, dir string) ([]string, error)
 }
 
-// masterTemplatePath is the repository's copy of the Master template, which Merriam loads at start.
+// masterTemplatePath is the repository's copy of the Master template, which the Master session loads at start.
 const masterTemplatePath = "contracts/stencils/webster/webster-template-master.md"
 
-// directiveStencilPath is the repository's copy of the orchestrator PATTERN directive stencil, which the Master template inlines with PATTERN.md.
+// directiveStencilPath is the repository's copy of the orchestrator PATTERN directive stencil.
+// The Master template inlines it with PATTERN.md.
 const directiveStencilPath = "contracts/stencils/pattern/pattern-directive-orchestrator.md"
 
 // StartRow is one card-naming fork's measured start context beside the start the profile estimates for its position.
@@ -58,7 +58,7 @@ type StartRow struct {
 	Position int
 	// Measured is the fork's StartContext.
 	Measured float64
-	// Base is the context of the run's computed Merriam base under the profile's context_per_line, meaningful when HasBase.
+	// Base is the context of the run's computed Master base under the profile's context_per_line, meaningful when HasBase.
 	Base    float64
 	HasBase bool
 	// NoBase is why the run has no computed base, empty when HasBase.
@@ -96,7 +96,7 @@ type CalibrationRow struct {
 	Measured float64
 	// Ratio is Measured over Estimate.
 	Ratio float64
-	// MeasuredGrowth is Measured minus the fork's measured start, and EstimatedGrowth is Estimate minus the profile's start estimate for Position.
+	// MeasuredGrowth is Measured minus the fork's start; EstimatedGrowth is Estimate minus the profile's start for Position.
 	MeasuredGrowth, EstimatedGrowth float64
 	// GrowthRatio is MeasuredGrowth over EstimatedGrowth, and HasGrowthRatio is false when EstimatedGrowth is not positive.
 	GrowthRatio    float64
@@ -108,10 +108,10 @@ type CalibrationSkip struct {
 	Run, Card, Reason string
 }
 
-// FixedRow is one run's measured Merriam start beside the lines of the texts MerriamBase counts.
+// FixedRow is one run's measured Master start beside the lines of the texts MerriamBaseOf counts.
 type FixedRow struct {
 	Run string
-	// Session is the file name of the Merriam session measured.
+	// Session is the file name of the Master session measured.
 	Session string
 	// Measured is the session's StartContext.
 	Measured float64
@@ -121,13 +121,14 @@ type FixedRow struct {
 	Fixed float64
 }
 
-// FixedContext is the Merriam fixed-context section: what the system prompt, tools and launch-time skills weigh, derived per run from its measured start.
+// FixedContext is the Master fixed-context section.
+// It gives what the system prompt, tools and launch-time skills weigh, derived per run from its measured start.
 type FixedContext struct {
 	Rows  []FixedRow
 	Skips []CalibrationSkip
 	// Fit summarizes the rows' Fixed: its median and the 25th and 75th percentiles.
 	Fit Fit
-	// Current is the fixed context the live Merriam base uses.
+	// Current is the fixed context the live Master base uses.
 	Current float64
 }
 
@@ -142,11 +143,11 @@ type Calibration struct {
 	Skips    []CalibrationSkip
 	Fixed    FixedContext
 
-	// bases is each run's computed Merriam base by run slug.
+	// bases is each run's computed Master base by run slug.
 	bases map[string]runStartBase
 }
 
-// runStartBase is the Merriam base reconstructed for one run.
+// runStartBase is the Master base reconstructed for one run.
 type runStartBase struct {
 	base batcher.StartBase
 	// reason is why no base could be reconstructed, empty when one was.
@@ -163,7 +164,8 @@ type Fit struct {
 	P25, P75 float64
 }
 
-// Spread is the 75th percentile of the ratios over the 25th, and false when the 25th is 0.
+// Spread returns the 75th percentile of the ratios over the 25th.
+// The bool is false when the 25th is 0.
 func (f Fit) Spread() (float64, bool) {
 	if f.P25 == 0 {
 		return 0, false
@@ -215,10 +217,11 @@ func percentile(sorted []float64, p float64) float64 {
 	return sorted[lower] + (rank-float64(lower))*(sorted[upper]-sorted[lower])
 }
 
-// Calibrate runs the estimator over every run's forks, with the weights of the profile named in batcher.yaml under configDir.
+// Calibrate runs the estimator over every run's forks, with the profile's weights from batcher.yaml under configDir.
 // A run or fork that cannot be reconstructed is a skip, never an error;
 // an error is a failed read of the history or the base tree, or an unusable profile.
-// Each run's Merriam texts take the instruction files of the engine that located its Webster session, found through reads.
+// Each run's merriamTexts take the instruction files of the engine that located its Webster session.
+// Those files are found through reads.
 func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, base BaseTrees, reads ReadSet) (Calibration, error) {
 	weights, err := batcher.ProfileWeights(configengine.Dirs{Anchor: configDir}, profile)
 	if err != nil {
@@ -249,12 +252,14 @@ func baseContext(w batcher.Weights, base batcher.StartBase) float64 {
 	return float64(base.Lines)*w.ContextPerLine + base.Fixed
 }
 
-// startEstimate is the start context the weights estimate for a fork at the 1-based position: the start base, the orientation and the growth of the batches before it.
+// startEstimate is the start context the weights estimate for a fork at the 1-based position:
+// the start base, the orientation and the growth of the batches before it.
 func startEstimate(w batcher.Weights, base batcher.StartBase, position int) float64 {
 	return baseContext(w, base) + w.Orientation + float64(position-1)*w.BatchGrowth
 }
 
-// forkPositions returns each fork's 1-based position in its Merriam session: one plus the card-naming forks before it in that session, by start time.
+// forkPositions returns each fork's 1-based position in its Master session:
+// one plus the card-naming forks before it in that session, by start time.
 // A fork that names no cards has position 0.
 // A resumed session is a session of its own, so its positions restart at 1.
 func forkPositions(forks []ForkTally) []int {
@@ -313,8 +318,9 @@ func fileAtBase(trees BaseTrees, run RunTally, name string) (data []byte, found 
 	return data, true, nil
 }
 
-// websterInstructionFiles returns the instruction file names of the engine that located run's Webster session, from that engine's Instructions in reads.
-// A run with no Webster engine, an engine absent from reads, and an engine without Instructions give none.
+// websterInstructionFiles returns the instruction file names of the engine that located run's Webster session.
+// It reads them from that engine's Instructions in reads;
+// a run with no Webster engine, an engine absent from reads, and an engine without Instructions give none.
 func websterInstructionFiles(reads ReadSet, run RunTally) []string {
 	instructions := reads[run.WebsterEngine].Instructions
 	if instructions == nil {
@@ -323,13 +329,16 @@ func websterInstructionFiles(reads ReadSet, run RunTally) []string {
 	return instructions.InstructionFiles()
 }
 
-// merriamTexts reconstructs, at run's base commit, the texts websterengine.MerriamBase counts but the plan's 00-overview.md:
-// the Webster session engine's instruction files in the engine's order, the Master template and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md.
+// merriamTexts reconstructs, at run's base commit, the texts websterengine.MerriamBase counts.
+// It does not include the plan's 00-overview.md.
+// They are: the Webster session engine's instruction files in the engine's order;
+// the Master template; and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md.
 // An instruction file or PATTERN.md absent at the base commit adds nothing, as it does for a live run.
-// An instruction file the engine loads but git does not track is untracked and cannot be reconstructed, so it is absent at every base commit;
+// An instruction file the engine loads but git does not track is absent at every base commit;
 // the derivation assumes the run's worktree had none, as a lym-created worktree has none.
-// A run without a base, whose base commit is not in the repository, or whose Master template or directive stencil is absent there has a reason instead of texts;
-// a failed read or render is an error.
+// A run without a base, or whose base commit is not in the repository, has a reason instead of texts.
+// So does a run whose Master template or directive stencil is absent at its base commit.
+// A failed read or render is an error.
 func merriamTexts(run RunTally, trees BaseTrees, instructionFiles []string) ([]string, string, error) {
 	switch {
 	case run.BaseSHA == "":
@@ -378,7 +387,7 @@ func merriamTexts(run RunTally, trees BaseTrees, instructionFiles []string) ([]s
 	return texts, "", nil
 }
 
-// readRunStartBase reconstructs the Merriam base of run: websterengine.MerriamBaseOf over merriamTexts and the plan's 00-overview.md.
+// readRunStartBase reconstructs the Merriam base of run from merriamTexts and the plan's 00-overview.md.
 // A run whose plan, base commit, Master template or directive stencil cannot be found has a reason instead of a base.
 func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees, instructionFiles []string) (runStartBase, error) {
 	plan, reason, err := readRunPlan(run, history)
@@ -398,9 +407,11 @@ func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees, instru
 	return runStartBase{base: websterengine.MerriamBaseOf(append(texts, plan.OverviewText)...)}, nil
 }
 
-// addFixed adds the Merriam fixed-context row of run's first Merriam session, by start time, and a skip for each session it cannot measure.
-// A session with no measured start, and any session of a run whose merriamTexts gives a reason, is a skip with that reason;
-// every later session of the run starts with prior conversation or a compaction summary in context, and is a skip for that.
+// addFixed adds the Merriam fixed-context row of run's first Merriam session by start time.
+// It adds a skip for each session it cannot measure.
+// A session without a measured start, or in a run whose merriamTexts gives a reason, is a skip with that reason.
+// Every later session of the run is a skip:
+// it starts with prior conversation or a compaction summary in context.
 func (c *Calibration) addFixed(run RunTally, trees BaseTrees, instructionFiles []string) error {
 	texts, reason, err := merriamTexts(run, trees, instructionFiles)
 	if err != nil {
@@ -439,7 +450,8 @@ func (f *FixedContext) summarize() {
 	f.Current = websterengine.MerriamBaseOf().Fixed
 }
 
-// fitStart fits Orientation and BatchGrowth by least squares of the measured start minus the run's base over position - 1, over the rows that carry a base.
+// fitStart fits Orientation and BatchGrowth by least squares.
+// It regresses each row's measured start minus its base on position - 1, over the rows that carry a base.
 func fitStart(rows []StartRow) StartFit {
 	var fitted []StartRow
 	for _, row := range rows {
@@ -477,7 +489,8 @@ func fitStart(rows []StartRow) StartFit {
 	return fit
 }
 
-// readRunPlan reads the plan a run executed: the newest plan commit made before the run's first fork, parsed over history.
+// readRunPlan reads the plan a run executed:
+// the newest plan commit made before the run's first fork, parsed over history.
 // A run whose plan cannot be reconstructed returns a nil plan and the reason;
 // an error is a failed read of the history.
 func readRunPlan(run RunTally, history PlanHistory) (*planparser.Plan, string, error) {
@@ -514,7 +527,8 @@ func readRunPlan(run RunTally, history PlanHistory) (*planparser.Plan, string, e
 	return plan, "", nil
 }
 
-// addRun adds a row per card-naming fork of run whose cards are all cards of its plan, and the skips of what cannot be reconstructed.
+// addRun adds a row per card-naming fork of run whose cards are all cards of its plan.
+// It also records a skip for each part that cannot be reconstructed.
 func (c *Calibration) addRun(run RunTally, history PlanHistory, base BaseTrees) error {
 	skip := func(card, reason string) {
 		c.Skips = append(c.Skips, CalibrationSkip{Run: run.Slug, Card: card, Reason: reason})
@@ -645,7 +659,9 @@ func (t treeSizes) TestFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-// WriteMarkdown writes the calibration section: the start-context table and its fit, the peak table with one row per fork, the skipped runs, forks and cards each with its reason, and the peak and growth fits per run and overall.
+// WriteMarkdown writes the calibration section.
+// It lists the start-context table with its fit and the peak table with one row per fork;
+// it also lists the skipped runs, forks and cards with reasons, and the peak and growth fits per run and overall.
 func (c Calibration) WriteMarkdown(w io.Writer) {
 	fmt.Fprintf(w, "## Calibration (%s)\n\n", c.Profile)
 	fmt.Fprintln(w, "Start context:")
@@ -707,7 +723,8 @@ func (c Calibration) WriteMarkdown(w io.Writer) {
 	c.Fixed.write(w)
 }
 
-// write prints the Merriam fixed-context table, its median and spread beside the current constant, and the sessions left out with their reasons.
+// write prints the Merriam fixed-context table and its median and spread beside the current constant;
+// it also prints the sessions left out, with their reasons.
 func (f FixedContext) write(w io.Writer) {
 	fmt.Fprintln(w, "Merriam fixed context:")
 	fmt.Fprintln(w)

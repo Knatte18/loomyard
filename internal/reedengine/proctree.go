@@ -1,10 +1,11 @@
-// proctree.go holds the pure, build-tag-free process-tree logic the Linux and Windows probe seams
-// (proctree_linux.go, proctree_windows.go) delegate to: /proc/<pid>/stat PPID and session parsing,
-// descendant-closure computation over a pid->ppid map, and socket-cmdline matching.
-// None of these functions touch the OS — they transform strings/maps/structs the platform files
-// read off disk or a process-table query — which is what makes them unit-testable on the Windows
-// host even though the Linux seam that calls them is only compile-checked here (see
-// proctree_test.go).
+// proctree.go holds the build-tag-free process-tree logic that the Linux and Windows probe seams delegate to.
+// It parses the PPID and session fields of /proc/<pid>/stat.
+// It computes descendant closures over a pid-to-ppid map.
+// It matches socket cmdlines.
+// None of these functions touch the OS: they transform the strings, maps and structs that the platform files
+// read off disk or a process-table query.
+// That makes them unit-testable on the Windows host.
+// The Linux seam that calls them is only compile-checked on that host; see proctree_test.go.
 
 package reedengine
 
@@ -23,7 +24,7 @@ type ProcCmdline struct {
 }
 
 // parseStat extracts the parent pid (field 4) and the session id (field 6) from /proc/<pid>/stat.
-// Anchors on the last ')' to handle comm with embedded parens/spaces.
+// It anchors on the last ')' so that a comm with embedded parens or spaces parses.
 func parseStat(stat string) (ppid, session int, err error) {
 	idx := strings.LastIndex(stat, ")")
 	if idx == -1 {
@@ -47,7 +48,7 @@ func parseStat(stat string) (ppid, session int, err error) {
 // processAge returns how long a process has run, from the system uptime and the process's /proc/<pid>/stat line.
 // uptime is the content of /proc/uptime, whose first field is the seconds since boot;
 // the process start time is field 22 of stat, in clock ticks since boot, and ticksPerSecond converts it.
-// Anchors on the last ')' to handle comm with embedded parens/spaces.
+// It anchors on the last ')' so that a comm with embedded parens or spaces parses.
 // It errors on input it cannot read, a non-positive ticksPerSecond and a start later than the uptime.
 func processAge(uptime, stat string, ticksPerSecond int64) (time.Duration, error) {
 	if ticksPerSecond <= 0 {
@@ -87,9 +88,10 @@ const auxvClockTicksKey = 17
 // defaultClockTicksPerSecond is the rate a C library reports when the auxiliary vector holds no AT_CLKTCK entry.
 const defaultClockTicksPerSecond = 100
 
-// clockTicksFromAuxv returns the clock tick rate the auxiliary vector auxv declares, the unit of a /proc/<pid>/stat start time.
-// It reads the rate without cgo, so the package builds no cgo file whose cached output names the checkout it was built in,
-// and it returns defaultClockTicksPerSecond when auxv holds no positive AT_CLKTCK entry, as sysconf(_SC_CLK_TCK) does.
+// clockTicksFromAuxv returns the clock tick rate that the auxiliary vector auxv declares.
+// The rate is the unit of a /proc/<pid>/stat start time.
+// It reads the rate without cgo: a cgo file would bake the checkout path into the cached build output.
+// It returns defaultClockTicksPerSecond when auxv holds no positive AT_CLKTCK entry, as sysconf(_SC_CLK_TCK) does.
 func clockTicksFromAuxv(auxv [][2]uintptr) int64 {
 	for _, entry := range auxv {
 		if entry[0] == auxvClockTicksKey && entry[1] > 0 {
@@ -100,7 +102,7 @@ func clockTicksFromAuxv(auxv [][2]uintptr) int64 {
 }
 
 // descendantClosure returns roots plus every transitive descendant.
-// Repeatedly absorbs pids whose parent is already accepted (fixed-point walk).
+// It repeats passes that absorb each pid whose parent is already accepted, until a pass changes nothing.
 func descendantClosure(pidToPPID map[int]int, roots []int) []int {
 	accepted := make(map[int]bool, len(roots))
 	for _, r := range roots {
@@ -129,8 +131,7 @@ func descendantClosure(pidToPPID map[int]int, roots []int) []int {
 	return out
 }
 
-// matchSocketCmdlines returns pids whose argv names both the binary
-// (by base name) and an adjacent "-L" <socket> pair.
+// matchSocketCmdlines returns the pids whose argv names the binary (by base name) and an adjacent "-L" socket pair.
 func matchSocketCmdlines(procs []ProcCmdline, binary, socket string) []int {
 	var out []int
 	for _, p := range procs {
@@ -141,15 +142,11 @@ func matchSocketCmdlines(procs []ProcCmdline, binary, socket string) []int {
 	return out
 }
 
-// tmuxProcessName returns the Windows process-table Name for the configured
-// binary (base name with ".exe" if not present).
+// tmuxProcessName returns the Windows process-table Name for binary: its base name, with ".exe" added if absent.
 func tmuxProcessName(binary string) string {
-	// binary names a Windows path (this function derives a Windows
-	// process-table Name), so the base-name split must recognize '\' even
-	// when this code runs on a non-Windows test host: path/filepath.Base is
-	// GOOS-native and would leave a "C:\...\tmux.exe"-shaped input untouched
-	// on Linux, which is exactly what proctree.go's own package doc promises
-	// never happens ("None of these functions touch the OS").
+	// binary names a Windows path, and this function derives a Windows process-table Name from it.
+	// The base-name split must recognize '\' even on a non-Windows test host:
+	// path/filepath.Base follows GOOS and would leave a "C:\...\tmux.exe" input unchanged on Linux.
 	name := binary
 	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
 		name = name[i+1:]
@@ -160,8 +157,7 @@ func tmuxProcessName(binary string) string {
 	return name
 }
 
-// argvNamesBinaryAndSocket reports whether argv contains binary (by base name)
-// and an adjacent "-L" socket pair.
+// argvNamesBinaryAndSocket reports whether argv contains binary (by base name) and an adjacent "-L" socket pair.
 func argvNamesBinaryAndSocket(argv []string, binary, socket string) bool {
 	wantBase := filepath.Base(binary)
 	hasBinary := false

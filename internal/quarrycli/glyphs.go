@@ -1,5 +1,4 @@
-// glyphs.go declares the "glyphs" subcommand: the flat glyph index the planner reads its
-// spellings out of.
+// glyphs.go declares the "glyphs" subcommand: the flat glyph index the planner reads its spellings out of.
 
 package quarrycli
 
@@ -13,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 )
 
-// newGlyphsCmd returns the "glyphs" subcommand, reading the resolved repository root through root
-// at call time.
+// newGlyphsCmd returns the "glyphs" subcommand, reading the resolved repository root through root at call time.
 func newGlyphsCmd(root func() string) *cobra.Command {
 	var text bool
 	cmd := &cobra.Command{

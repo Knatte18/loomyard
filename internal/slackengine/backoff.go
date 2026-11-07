@@ -1,4 +1,5 @@
-// backoff.go holds the waits the relay's two loops take between passes: a floor, doubled while a loop finds nothing, and raised for both loops by a rate limit.
+// backoff.go holds the waits the relay's two loops take between passes:
+// a floor, doubled while a loop finds nothing, and raised for both loops by a rate limit.
 
 package slackengine
 
@@ -24,7 +25,6 @@ func newSharedFloor() *sharedFloor {
 	return &sharedFloor{value: waitFloor}
 }
 
-// get returns the floor.
 func (f *sharedFloor) get() time.Duration {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -1,4 +1,5 @@
-// window_test.go covers OpenWindow against the scripted multiplexer fake: each outcome of the op and the command line it composes.
+// window_test.go covers OpenWindow against the scripted multiplexer fake.
+// Each outcome of the op and the command line it composes is checked.
 
 package reedengine
 

@@ -1,5 +1,6 @@
 // parentof_integration_test.go drives ParentOf over one real hub from hubforge:
-// pairs forked from the prime and from another pair, a record naming a parent pair that is gone, a record the prime's own branch or worktree name reads through, and the board's beam chain for a slug with no pair.
+// pairs forked from the prime and from another pair; a record naming a parent pair that is gone;
+// a record the prime's own branch or worktree name reads through; and the board's beam chain for a slug with no pair.
 
 package hubgeom_test
 
@@ -15,10 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestParentOf pins that the origin record decides the parent whenever a pair has one and the local board decides only for a slug with no pair.
-// A pair forked from the prime reads the prime, and one forked from pair b reads b, also when b's pair is gone from this machine.
-// A record with no parent worktree reads the prime though its board entry is a beam's member, and so does a record naming the prime's branch under another worktree name.
-// A slug with no pair reads the beam its board entry's project chain reaches, and a pair forked from the prime reads the prime though its board entry is a member of a beam.
+// TestParentOf pins that the origin record decides the parent whenever a pair has one,
+// and the local board decides only for a slug with no pair.
+// A pair forked from the prime reads the prime.
+// A pair forked from pair b reads b, also when b's pair is gone from this machine.
+// A record with no parent worktree reads the prime though its board entry is a beam's member.
+// A record naming the prime's branch under another worktree name does the same.
+// A slug with no pair reads the beam its board entry's project chain reaches,
+// and a pair forked from the prime reads the prime though its board entry is a member of a beam.
 func TestParentOf(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -26,7 +26,7 @@ func partsTableConfig(depth string, max int, parts string) Config {
 	return Config{Parts: parts, PartsDepth: depth, PartsMax: max, PlanTimeoutMin: 120}
 }
 
-// fragmentText returns the text of the named depth fragment under stencilsDir as PartsTable fills it into the prompt.
+// fragmentText returns the named depth fragment under stencilsDir, stripped of its leading comment and padding.
 func fragmentText(t *testing.T, stencilsDir, name string) string {
 	t.Helper()
 	body, err := stencilstore.Read(stencilsDir, name)
@@ -36,8 +36,10 @@ func fragmentText(t *testing.T, stencilsDir, name string) string {
 	return strings.TrimSpace(stencil.StripLeadingComment(string(body)))
 }
 
-// TestPartsTable verifies PartsTable builds the lead the Parts-Write row needs: its role, segment, timeout, inputs, output and model key.
-// It also verifies the parts_depth fragment and parts_max reach the composed prompt, and the outcomes of a missing fragment and a missing friction stencil.
+// TestPartsTable verifies PartsTable builds the lead the Parts-Write row needs:
+// its role, segment, timeout, inputs, output and model key.
+// It also verifies that the parts_depth fragment and parts_max reach the composed prompt.
+// It verifies the outcomes of a missing fragment and of a missing friction stencil.
 //
 //testtiming:keep pins the lead's fields and the depth fragment choice, which no producer-level test asserts
 func TestPartsTable(t *testing.T) {

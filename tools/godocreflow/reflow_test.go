@@ -12,7 +12,7 @@ import (
 // wideEnough is a max width at which the width fallback never fires.
 const wideEnough = 1000
 
-// pkgHeader is the file header and package clause shared by most sources below.
+// pkgHeader is the file header and package clause that the test sources start with.
 const pkgHeader = `// pkg.go implements the pkg package.
 
 package pkg
@@ -34,8 +34,7 @@ func mustReflowWidth(t *testing.T, src string, maxWidth int) string {
 	return out
 }
 
-// TestReflowSource_ReflowsDocComments covers every doc-comment kind that is reflowed.
-// Those are an exported func, a package doc, a file header with a package doc, a grouped const spec, and a hard-wrapped comment that is rejoined before it is split again.
+// TestReflowSource_ReflowsDocComments covers every doc-comment kind that the tool reflows.
 func TestReflowSource_ReflowsDocComments(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -134,7 +133,8 @@ package pkg
 }
 
 // TestReflowSource_LeavesUntouched covers every source the tool must return byte-for-byte.
-// Those are out-of-scope declarations and comment shapes, generated files, an already-reflowed comment, and the width fallback when it is disabled or every line already fits.
+// Those are out-of-scope declarations, generated files, and already-reflowed comments.
+// The width fallback leaves a source untouched when it is disabled or every line already fits.
 func TestReflowSource_LeavesUntouched(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -160,8 +160,8 @@ func Foo() {}
 			maxWidth: wideEnough,
 		},
 		{
-			// A comment that already occupies exactly one physical source line is left alone regardless of length.
-			// There is no existing hard-wrap to reflow, matching pydocreflow.py's own single-line-docstring/single-line-comment-block skip.
+			// A comment that already occupies one physical source line is left alone, whatever its length.
+			// There is no existing hard-wrap to reflow.
 			name: "single physical line group",
 			src: `// Package pkg provides utilities for testing this reflow tool, and it exists solely for that purpose.
 package pkg
@@ -274,8 +274,8 @@ func TestWidthFallbackAppliesToOverwideAtomicLine(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// One long compound-predicate sentence with no semicolon/conjunction boundary to split at: the
-	// ordinary semantic splitter produces a single atomic line, which the width fallback must then wrap.
+	// One long compound-predicate sentence has no semicolon or conjunction boundary to split at:
+	// the ordinary semantic splitter produces a single atomic line, which the width fallback must then wrap.
 	src := pkgHeader + `// Foo validates the request thoroughly and writes a well-formed structured response back to the caller immediately.
 func Foo() {}
 `

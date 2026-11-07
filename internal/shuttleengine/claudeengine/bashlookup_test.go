@@ -8,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestIsReadOnlyLookup pins the commands, chains and shell constructs that make a read-only lookup, and those that do not.
+// TestIsReadOnlyLookup pins which commands, chains and shell constructs make a read-only lookup and which do not.
 func TestIsReadOnlyLookup(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

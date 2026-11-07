@@ -16,7 +16,8 @@ func Name() (string, error) {
 	return FromHostname(host)
 }
 
-// FromHostname cuts host at its first dot, lowercases it and trims space, so Neve.local reads neve.
+// FromHostname reduces host to its short name: the part before the first dot, lowercased and trimmed of space.
+// For example, Neve.local reads neve.
 // It returns an error when nothing is left, since no owner can be written or compared without a name.
 func FromHostname(host string) (string, error) {
 	short, _, _ := strings.Cut(host, ".")

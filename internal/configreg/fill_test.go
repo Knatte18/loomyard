@@ -62,7 +62,8 @@ func firstKey(t *testing.T, template string) string {
 	return doc.Content[0].Content[0].Value
 }
 
-// loadFilled seeds module's config file with content and loads it through configengine.Load, returning the loaded value, the captured log and the file's bytes afterwards.
+// loadFilled seeds module's config file with content and loads it through configengine.Load.
+// It returns the loaded value, the captured log and the file's bytes afterwards.
 func loadFilled(t *testing.T, module, template string, content []byte) (loaded map[string]interface{}, log string, after []byte) {
 	t.Helper()
 	baseDir := t.TempDir()
@@ -103,7 +104,8 @@ func wantDefault(t *testing.T, module, template string) map[string]interface{} {
 	return got
 }
 
-// assertFilled loads module's template with keyPath dropped and checks the fill reproduces the template default, leaves the file untouched and logs one fill line naming module and keyPath.
+// assertFilled loads module's template with keyPath dropped and checks the fill reproduces the template default.
+// It also checks the file is left untouched and that one fill line names module and keyPath.
 func assertFilled(t *testing.T, module, template, keyPath string) {
 	t.Helper()
 	content := dropKey(t, template, keyPath)
@@ -133,7 +135,10 @@ func moduleTemplate(t *testing.T, module string) string {
 	return fn()
 }
 
-// TestFill loads each module's real template with part of it missing and checks the load fills the gap at the template default, leaves the file untouched and logs one fill line naming the module and key-path; an empty but present file loads as the template.
+// TestFill loads each module's real template with part of it missing.
+// It checks the load fills the gap at the template default.
+// It also checks the file is left untouched and that one fill line names the module and key-path.
+// An empty but present file loads as the template.
 // It serializes its rows because they swap the process-global logger output.
 func TestFill(t *testing.T) {
 	tiergate.Require(t, 0)

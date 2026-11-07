@@ -1,5 +1,7 @@
 // govalues_test.go pins the Go-declared values the stencils name and the host-neutral ban on the twill stencils.
-// Both tests carry the repository-scan marker, so a card that renames a value outside this package still fails its own card gate.
+// It also pins the ban on Go verify-tier commands in the planning and implementer stencils.
+// The tests carry the `//lym:guard` marker,
+// so a card that renames a value outside this package still fails its own card gate.
 
 package stencils
 
@@ -28,7 +30,8 @@ func yamlKey(t *testing.T, field string) string {
 	return name + ":"
 }
 
-// TestStencils_NameGoValues asserts each stencil names the value Go declares for it, so renaming either side without the other fails.
+// TestStencils_NameGoValues asserts each stencil names the value Go declares for it.
+// Renaming either side without the other fails the test.
 //
 //lym:guard
 func TestStencils_NameGoValues(t *testing.T) {
@@ -65,7 +68,8 @@ func TestStencils_NameGoValues(t *testing.T) {
 	}
 }
 
-// TestTwillStencils_HostNeutral asserts no twill stencil names a host-specific value, so another host can render it with its own values.
+// TestTwillStencils_HostNeutral asserts no twill stencil names a host-specific value,
+// so another host can render it with its own values.
 //
 //lym:guard
 func TestTwillStencils_HostNeutral(t *testing.T) {
@@ -93,7 +97,7 @@ func TestTwillStencils_HostNeutral(t *testing.T) {
 	}
 }
 
-// TestHubGenericStencils_NameNoGoTiers asserts the plan, Plan-Review and implementer prompts spell no Go verify-tier command,
+// TestHubGenericStencils_NameNoGoTiers asserts the planning and implementer stencils name no Go verify-tier command,
 // so a hub declaring no tier gets none; a hub with tiers gets them through the gate_tiers marker.
 //
 //lym:guard

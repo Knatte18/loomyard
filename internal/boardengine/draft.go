@@ -1,23 +1,26 @@
-// draft.go — the draft status every new task takes bar the tasks a write releases, and the rule that gives it at the write critical section.
+// draft.go — the draft status, and the rule that gives it to new tasks inside the write critical section.
 
 package boardengine
 
 import "slices"
 
-// StatusDraft is the status of a task that is not released: every new task takes it, bar a task a write releases (the raddle promotion and a raddle filing's released parts), and a draft entry holds no run lock.
+// StatusDraft is the status of a task that is not released.
+// Every new task takes it, bar a task a write releases.
+// A draft entry holds no run lock.
 const StatusDraft = "draft"
 
-// IsEmptyStatus reports whether status is nil or the empty string, the one meaning of an empty status in the start condition, the migration and the release paths.
+// IsEmptyStatus reports whether status is nil or the empty string, the two forms of an empty status.
 func IsEmptyStatus(status *string) bool {
 	return status == nil || *status == ""
 }
 
-// isDraft reports whether t carries the draft status, so it is not released.
+// isDraft reports whether t carries the draft status.
 func isDraft(t Task) bool {
 	return t.Status != nil && *t.Status == StatusDraft
 }
 
-// migrateDraftStatus marks every open task of the store whose status is empty draft, once per board: only while the store's draft_status key is absent.
+// migrateDraftStatus marks each open task of kind task whose status is empty as draft, once per board:
+// only while the store's draft_status key is absent.
 // It sets the key and reports whether it marked any task; the write it rides on saves both together.
 func migrateDraftStatus(store *Store) bool {
 	if store.draftStatus {
@@ -37,9 +40,11 @@ func migrateDraftStatus(store *Store) bool {
 }
 
 // applyDraftRule sets StatusDraft on each entry of kind task in after whose status is empty.
-// An entry that was a task in loaded keeps an empty status when the write left it untouched, the same empty value as loaded, or set it to nil, which is the release.
-// So a new task, a note or project made a task, and a task whose status the write emptied from a non-empty one all read draft.
-// released lists the slugs of the tasks the write leaves with an empty status, which the rule skips: a released task is startable in the write that makes it.
+// An entry that was a task in loaded keeps an empty status if the write leaves it unchanged.
+// So a new task, a note or project made a task, and a task the write emptied from a non-empty status all read draft.
+// A nil status is the release, which the rule never drafts.
+// released lists the slugs of the tasks the write leaves with an empty status, which the rule skips:
+// a released task is startable in the write that makes it.
 func applyDraftRule(loaded, after []Task, released []string) {
 	loadedBySlug := make(map[string]Task, len(loaded))
 	for _, task := range loaded {

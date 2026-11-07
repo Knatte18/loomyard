@@ -23,7 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHubLandDeps_ReadyReads drives the seams `ready` judges a beam by over a real hub pair: the parent's pull request mode, whether the beam holds the parent's commits, which beam commits a merged pull request lacks and the change description's findings.
+// TestHubLandDeps_ReadyReads drives the seams that `ready` judges a beam by over a real hub pair.
+// It reads the parent's pull request mode and whether the beam holds the parent's commits.
+// It also reads which beam commits a merged pull request lacks and the change description's findings.
 func TestHubLandDeps_ReadyReads(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -69,7 +71,8 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 		t.Errorf("ParentUnmerged(b) = %t, %v after a parent commit; want true", unmerged, err)
 	}
 
-	// With no upstream the parent is judged by its local tip alone; a parent that tracks nothing already makes the unset fail, which leaves it as wanted.
+	// With no upstream the parent is judged by its local tip alone.
+	// The unset fails for a parent that tracks nothing, which leaves it as wanted.
 	_ = exec.Command("git", "-C", h.PrimeWorktree(), "branch", "--unset-upstream").Run()
 	if unmerged, err := deps.ParentUnmerged("b"); !unmerged || err != nil {
 		t.Errorf("ParentUnmerged(b) = %t, %v for a parent with no upstream and a commit the beam lacks; want true", unmerged, err)
@@ -107,7 +110,10 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	}
 }
 
-// TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip drives ParentUnmerged over a hub whose parent branch has an upstream and whose push skip is unset: a commit another clone pushed to the origin, a local bare repository, is fetched and judged, so a beam holding the local tip is unmerged until it merges the upstream tip in.
+// TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip drives ParentUnmerged over a hub whose parent has an upstream.
+// The push skip is unset, and the origin is a local bare repository.
+// A commit another clone pushed to the origin is fetched and judged.
+// A beam holding the local tip is therefore unmerged until it merges the upstream tip in.
 func TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Not parallel: it clears the push skip in the process environment, which ParentUnmerged reads.
@@ -142,7 +148,9 @@ func TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip(t *testing.T) {
 	}
 }
 
-// TestHubLandDeps_DescribeStampsAndCommits asserts the Describe seam lists a member's landing and not a records-only commit, stamps the landing record with the beam's slug and the time, and commits both files in one commit.
+// TestHubLandDeps_DescribeStampsAndCommits asserts the Describe seam lists a member's landing.
+// It also asserts that the seam skips a records-only commit.
+// The landing record is stamped with the beam's slug and the time, and both files go in one commit.
 func TestHubLandDeps_DescribeStampsAndCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

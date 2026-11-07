@@ -23,7 +23,8 @@ func indexFixtureCommand(use, short, audience string, run bool) *cobra.Command {
 	return cmd
 }
 
-// TestRenderIndex_FormsAndFiltering pins the group and leaf forms, the flag run, the runnable-group forms, the pruning of groups outside the audience and the skips, per audience.
+// TestRenderIndex_FormsAndFiltering pins the line forms RenderIndex prints for each audience.
+// It covers groups, leaves, flags, runnable groups, the pruning of entries outside the audience, and skipped entries.
 func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -67,7 +68,8 @@ func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 	completion := indexFixtureCommand("completion", "shell completion", AudienceOperator, false)
 	completion.AddCommand(indexFixtureCommand("bash", "bash completion", AudienceOperator, true))
 
-	// Two noted groups with a leaf in every audience, so each prints under all three: a note without an audience never prints, and a note naming role prints under role only.
+	// Two noted groups each hold a leaf in every audience, so each prints under all three.
+	// A note without an audience never prints, and a note naming role prints under role only.
 	unaudienced := indexFixtureCommand("unaudienced", "note without audience", "", false)
 	unaudienced.Annotations = map[string]string{IndexNoteAnnotation: "(never printed)"}
 	roleNoted := indexFixtureCommand("role-noted", "note for role", "", false)

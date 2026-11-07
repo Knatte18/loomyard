@@ -25,9 +25,9 @@ func runLockVerb(args ...string) (int, string) {
 }
 
 // TestLockVerbs asserts the lock verbs against a temporary store.
-// List reports each record's owner, liveness, age and waiters and an unreadable record with its error.
+// List reports each record's owner, liveness, age and waiters, and an unreadable record with its error.
 // Release frees one branch or, with --all, every branch and names them, and the refusals name their way forward.
-// It replaces openLockStore, which is process-global, so it runs serially.
+// It overrides the process-global openLockStore, so it does not run in parallel.
 func TestLockVerbs(t *testing.T) {
 	tiergate.Require(t, 0)
 	store := &parentlock.Store{Dir: t.TempDir()}

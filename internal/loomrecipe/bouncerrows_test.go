@@ -12,7 +12,7 @@ import (
 )
 
 // rolePrefixViolations returns one message per role-prefix violation in recipe:
-// a row of a review segment, a segment holding a Bouncer row, whose engine is Bouncer, BurlerReview or BurlerFix and that sets no role_prefix;
+// a Bouncer, BurlerReview or BurlerFix row with no role_prefix, in a review segment holding a Bouncer row;
 // a segment whose rows set different values; and two segments that set the same value.
 func rolePrefixViolations(recipe shedbuild.Recipe) []string {
 	reviewSegments := map[string]bool{}
@@ -62,8 +62,10 @@ func rolePrefixViolations(recipe shedbuild.Recipe) []string {
 }
 
 // TestBouncerRowsCarryOverTheirOwnSegment pins both per-segment keys of the shipped recipes' review rows.
-// Every Bouncer row sets carry_over to the segment the row itself belongs to, since a Bouncer learns the segment it files its carry-over entry under from that key alone.
-// Every review segment's rows share one role_prefix that no other segment uses, which the role-prefix subtests check on the shipped recipes and on recipes mutated to break each rule.
+// Every Bouncer row sets carry_over to the segment the row belongs to;
+// a Bouncer files its carry-over entry under the segment that key alone names.
+// Every review segment's rows share one role_prefix that no other segment uses;
+// the role-prefix subtests check this on the shipped recipes and on mutated recipes that break each rule.
 func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("RolePrefixes", func(t *testing.T) {
@@ -139,7 +141,8 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 	}
 }
 
-// TestReviewSegmentRolePrefixesNameTheirPerch pins that every Bouncer, BurlerReview and BurlerFix row of a loom review segment sets role_prefix to the name of the segment's perch.
+// TestReviewSegmentRolePrefixesNameTheirPerch pins that each review segment row sets role_prefix:
+// the value is the name of the segment's perch, for every Bouncer, BurlerReview and BurlerFix row.
 // The assistant's bound is resolved for the chair role formed from that name.
 func TestReviewSegmentRolePrefixesNameTheirPerch(t *testing.T) {
 	tiergate.Require(t, 0)

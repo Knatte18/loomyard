@@ -1,5 +1,6 @@
 // autorebaseline.go implements the Webster row's rebaseline on run entry.
-// Behind RunOptions.AutoRebaseline, Run rebaselines a changed plan itself through the same Rebaseline the operator's verb calls with every changed card named, and reports it as a warning.
+// Behind RunOptions.AutoRebaseline, Run rebaselines a changed plan itself:
+// it calls Rebaseline with every changed card named, as the operator's verb does, and reports it as a warning.
 
 package websterengine
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// ErrAutoRebaseline is the sentinel every error of an auto-rebaseline wraps, and every plan refusal Run raises after an accepted one:
+// ErrAutoRebaseline is the sentinel every error of an auto-rebaseline wraps.
+// It also marks each plan refusal Run raises after an accepted one:
 // the plan the row was stepped over cannot continue until it is fixed and the row is stepped again.
 var ErrAutoRebaseline = errors.New("webster: the auto-rebaseline of the changed plan blocks this run")
 
@@ -26,10 +28,13 @@ func blockedByAutoRebaseline(err error, step string) error {
 	return fmt.Errorf("%w: %w", ErrAutoRebaseline, err)
 }
 
-// autoRebaseline rebaselines the plan on disk as the run's plan, naming every changed card file's number as Rebaseline's cards, and saves the restamped state.
+// autoRebaseline rebaselines the plan on disk as the run's plan.
+// It names every changed card by number and saves the restamped state.
 // It returns the warning that names the rebaseline and its accepted cards.
-// Its refusals keep Rebaseline's own step-keyed text, and a failed read, base or save adds that the failure is transient and to take the run's re-entry step;
-// every error wraps ErrAutoRebaseline, and a failed save returns before the caller starts anything on the unsaved restamp.
+// Its refusals keep Rebaseline's own step-keyed text.
+// A failed read, base or save is marked transient, with the run's re-entry step as the way forward.
+// Every error wraps ErrAutoRebaseline.
+// A failed save returns before the caller starts anything on the unsaved restamp.
 func autoRebaseline(deps RunDeps, plan *planparser.Plan, st *State, sizes batcher.SizeSource) (string, error) {
 	step := deps.reentryStep()
 	transient := func(err error) error {
@@ -68,7 +73,8 @@ func autoRebaseline(deps RunDeps, plan *planparser.Plan, st *State, sizes batche
 	return warning, nil
 }
 
-// autoRebaselineWarning words the warning for an accepted auto-rebaseline: the begun batches kept, the card files accepted and the in-flight cards amended.
+// autoRebaselineWarning words the warning for an accepted auto-rebaseline:
+// the begun batches kept, the card files accepted, and the in-flight cards amended.
 func autoRebaselineWarning(res *RebaselineResult) string {
 	accepted := "no card file"
 	if len(res.CardsAccepted) > 0 {

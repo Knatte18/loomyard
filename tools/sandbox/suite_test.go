@@ -1,6 +1,9 @@
-// suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
-// All tests use seam stubs and temp directories -- no real lym, claude, or network calls are made.
-// The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent, reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in parallel, which Go starts only after every serial test has restored its seams.
+// suite_test.go tests the suite launcher functions.
+// It covers binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
+// All tests use seam stubs and temp directories, so no real lym, claude, or network call is made.
+// Tests that rewrite a package-level seam or os.Stderr do not call t.Parallel.
+// The seams are devBinPath, lookPath, launchAgent, reedDown, and interactiveStdio.
+// Go runs the parallel tests only after every serial test has restored its seams.
 
 package main
 
@@ -18,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBinaryFingerprint verifies that binaryFingerprint returns the correct size, SHA256 prefix, and path for a real temp file, and returns an error when the target file does not exist.
+// TestBinaryFingerprint verifies that binaryFingerprint returns the size, SHA256 prefix, and path of a real temp file.
+// It returns an error when the target file does not exist.
 func TestBinaryFingerprint(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -62,7 +66,8 @@ func TestBinaryFingerprint(t *testing.T) {
 	}
 }
 
-// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header and suite body, and that header() renders a "- Source: %s" line for both sourceDev and sourceProd.
+// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header and suite body.
+// It also checks that header() renders a "- Source: %s" line for both sourceDev and sourceProd.
 //
 //testtiming:keep pins the exact fingerprint fields and suite body renderScheme writes, which the runSuite tests only reach through a fixed header marker
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
@@ -106,7 +111,9 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 	}
 }
 
-// TestEnsureGitExclude covers the four behaviour scenarios for idempotent exclude-file management.
+// TestEnsureGitExclude covers idempotent exclude-file management.
+// It creates a missing exclude file and its info directory.
+// It keeps existing content and adds no duplicate entry on a second call.
 func TestEnsureGitExclude(t *testing.T) {
 	tiergate.Require(t, 0)
 	const entry = "SANDBOX-CORE-SUITE.md"
@@ -192,8 +199,8 @@ func TestEnsureGitExclude(t *testing.T) {
 	})
 }
 
-// stubSuiteSeams replaces devBinPath, lookPath, launchAgent, and reedDown
-// with test stubs and returns a restore function.
+// stubSuiteSeams replaces devBinPath, lookPath, launchAgent, and reedDown with test stubs.
+// It returns a restore function.
 func stubSuiteSeams(t *testing.T, fakeLym, fakeClaude string, launchFn func(dir, claude, instruction, binDir string) int) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
@@ -231,8 +238,7 @@ func stubReedDownNoop(t *testing.T) {
 	t.Cleanup(func() { reedDown = old })
 }
 
-// captureStderr redirects os.Stderr for the duration of fn and returns
-// everything written to it.
+// captureStderr redirects os.Stderr for the duration of fn and returns everything written to it.
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
 	old := os.Stderr
@@ -253,8 +259,8 @@ func captureStderr(t *testing.T, fn func()) string {
 	return string(data)
 }
 
-// makeHubRepo creates the full Hub/repo directory structure under a
-// temp dir and returns both the temp dir and the repo path.
+// makeHubRepo creates the Hub/repo directory structure under a temp dir.
+// It returns the temp dir and the repo path.
 func makeHubRepo(t *testing.T) (parentDir, repoDir string) {
 	t.Helper()
 	parentDir = t.TempDir()
@@ -275,8 +281,7 @@ func makeFakeLym(t *testing.T, tmpDir string) string {
 	return fakeLym
 }
 
-// TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub repo subdirectory
-// does not exist.
+// TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub repo subdirectory does not exist.
 func TestRunSuite_HubAbsent(t *testing.T) {
 	tiergate.Require(t, 0)
 	parentDir := t.TempDir()
@@ -296,7 +301,13 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerSuiteSpec verifies, for each suite runSuite is parameterized over, that a default run removes a stale sandbox-report.json before the agent launches, calls launchAgent with the repo directory, the resolved claude, the suite's default instruction and an empty binDir (a prod resolution), writes only its own scheme file with the fingerprint header and embedded doc body, and registers that file and the report in .git/info/exclude; and that a -prompt override reaches launchAgent verbatim.
+// TestRunSuite_PerSuiteSpec verifies, for each suite in its table, the default run and the prompt override.
+// A default run removes a stale report before the agent launches.
+// It calls launchAgent with the repo directory, the resolved claude, and the suite's default instruction.
+// The binDir argument is empty, which marks a prod resolution.
+// It writes only its own scheme file, with the fingerprint header and the embedded doc body.
+// It registers that file and the report in .git/info/exclude.
+// A -prompt override reaches launchAgent verbatim.
 func TestRunSuite_PerSuiteSpec(t *testing.T) {
 	tiergate.Require(t, 0)
 	suites := []suiteSpec{mainSuite, reedSuite, shuttleSuite, creelSuite}
@@ -415,8 +426,8 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 	}
 }
 
-// TestRunSuite_DevBinaryPrependsBinDir verifies that runSuite passes the dev binary's directory as
-// launchAgent's binDir when a dev binary exists.
+// TestRunSuite_DevBinaryPrependsBinDir verifies that runSuite passes a dev binary's directory as binDir.
+// This applies when a dev binary exists.
 func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
@@ -505,8 +516,8 @@ func TestRunSuite_Overrides(t *testing.T) {
 	}
 }
 
-// TestRunSuite_NonZeroLaunchTolerated verifies that a non-zero exit code from launchAgent is
-// tolerated (interactive sessions are expected to exit manually).
+// TestRunSuite_NonZeroLaunchTolerated verifies that a non-zero exit code from launchAgent is tolerated.
+// Interactive sessions are expected to exit manually.
 func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
@@ -526,8 +537,7 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ClaudeNotFound verifies that runSuite returns an error when claude cannot be
-// resolved from PATH.
+// TestRunSuite_ClaudeNotFound verifies that runSuite returns an error when claude cannot be resolved from PATH.
 func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
@@ -575,7 +585,11 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the agent session ends and whatever the agent's exit code, with the repo directory and the resolved lym; that the core suite never calls it; and that a reedDown error does not turn a completed session into a launcher failure.
+// TestRunSuite_ReedTeardown verifies the reedDown calls made by runSuite.
+// A live-reed suite calls it exactly once, after the agent session ends, whatever the agent's exit code.
+// It receives the repo directory and the resolved lym.
+// The core suite never calls it.
+// A reedDown error does not turn a completed session into a launcher failure.
 func TestRunSuite_ReedTeardown(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -647,8 +661,8 @@ func TestIsCharDevice_RegularFile(t *testing.T) {
 	}
 }
 
-// TestLaunchAgent_NonInteractiveWarning verifies that launchAgent prints nonInteractiveWarning when
-// stdio is not attached to a console.
+// TestLaunchAgent_NonInteractiveWarning verifies that launchAgent prints nonInteractiveWarning.
+// It does so when stdio is not attached to a console.
 func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 	tiergate.Require(t, 0)
 	missingClaude := filepath.Join(t.TempDir(), "claude.exe")

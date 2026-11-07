@@ -16,7 +16,8 @@ import (
 // commMaxBytes is the kernel's bound on a command name read from /proc/<pid>/comm.
 const commMaxBytes = 15
 
-// TestProcProbes_OwnProcess checks the parent pid, state and comm probes against the running test process, and that each answers false for a pid above the kernel's range.
+// TestProcProbes_OwnProcess checks the parent pid, state and comm probes against the running test process.
+// It also checks that each answers false for a pid above the kernel's range.
 func TestProcProbes_OwnProcess(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,6 @@
-// run.go runs one `lym gate test`: it refuses a malformed call, resolves hub membership and the gate config, plans the tiers, takes each tier's gate slots in turn, runs the tier inside them and turns a terminating signal into a clean exit.
+// run.go runs one `lym gate test` call.
+// It refuses a malformed call, resolves hub membership and the gate config, and plans the tiers.
+// It takes each tier's gate slots in turn, runs the tier inside them, and turns a terminating signal into a clean exit.
 
 package gatecli
 
@@ -30,10 +32,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// siteLabelPrefix starts every holder and wait record this verb writes, so `lym loom status` names the command that holds or waits for a slot.
+// siteLabelPrefix starts every holder and wait record this verb writes.
+// It lets `lym loom status` name the command that holds or waits for a slot.
 const siteLabelPrefix = "lym gate test"
 
-// runTest runs request in this process and returns the verb's exit code: the first failing run's own, 128 plus the signal number after a terminating signal, and 1 for a refusal or a timed-out tier.
+// runTest runs request in this process and returns the verb's exit code.
+// The code is the first failing run's own, or 1 for a refusal or a timed-out tier.
+// After a terminating signal it is 128 plus the signal number.
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
@@ -128,12 +133,14 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	exe.green = green
 
 	// The tiers run without the strand name, so a test driving `lym fabric` never meets a role guard that reads it.
-	// They also run without this process's trace id, which is new at every run and would change the test cache key of every package that reads it.
+	// They also run without this process's trace id.
+	// That id is new at every run, and it would change the test cache key of every package that reads it.
 	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
 	})
 	env = gateslot.StripPrebuilt(env)
-	// The env module's variables replace inherited ones of the same name, and a tier's or the build's own env, appended later, replaces them.
+	// The env module's variables replace inherited ones of the same name.
+	// A tier's or the build's own env, appended later, replaces them.
 	env = append(env, hubEnv.Entries()...)
 	// The build-server switches come after the module's entries, so a variable of the module never undoes them.
 	env = withBuildServerOff(env)
@@ -143,11 +150,14 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
-	// A failed run does not stop the call, so a failure the change under test did not cause leaves every later tier and guard run checked.
+	// A failed run does not stop the call, so every later tier and guard run stays checked.
+	// That holds even when the change under test did not cause the failure.
 	var failures []string
 	code, firstFailed := 0, ""
 	buildNamed := false
-	// crashed names the failed runs that crashed their test runner twice, and judged is set once any other run failed, so the call closes with the runner crash line only when no failure judged the code.
+	// crashed names the failed runs that crashed their test runner twice.
+	// judged is set once any other run failed.
+	// The call closes with the runner crash line only when no failure judged the code.
 	var crashed []string
 	judged := false
 	for _, run := range plan {
@@ -210,8 +220,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	return exitAfterSignal(caught, code)
 }
 
-// haltExitCode returns the exit code of a call the run end halted, given the code of the first earlier or halting failed run, 0 when none failed.
-// A run that ran and halted the call exits with that first failure's code, or 1 when none failed, since a halt is never green.
+// haltExitCode returns the exit code of a call that the run end halted.
+// firstFailureCode is the code of the first failed run, the halting run included, or 0 when none failed.
+// A run that ran and halted the call exits with firstFailureCode, or 1 when that is 0, since a halt is never green.
 // Any other halt keeps its own code.
 func haltExitCode(end runEnd, firstFailureCode int) int {
 	switch {
@@ -239,7 +250,9 @@ func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, ha
 // notRunSuffix closes the line a passing card-scope call prints naming the declared tiers it did not run.
 const notRunSuffix = " did not run, so this pass is not green for them"
 
-// printNotRunTiers writes the line naming the tiers numbers to stderr, so a card-scope pass is not read as green for tiers it never ran, and nothing when numbers is empty.
+// printNotRunTiers writes to stderr the line naming the tiers in numbers.
+// The line keeps a card-scope pass from reading as green for tiers it never ran.
+// It writes nothing when numbers is empty.
 func printNotRunTiers(stderr io.Writer, numbers []int) {
 	if len(numbers) == 0 {
 		return
@@ -247,9 +260,10 @@ func printNotRunTiers(stderr io.Writer, numbers []int) {
 	printLine(stderr, "gate test: "+tierNames(numbers)+notRunSuffix)
 }
 
-// failedRunLabel names run, which ran and failed as end says, in the closing line of failed runs: its label and exit code;
-// for a run that failed on a resource shortage twice, the marker and the way forward of re-running once the load drops;
-// and for a run that crashed its test runner twice, the signal and that no test failed.
+// failedRunLabel names a run that ran and failed, for the closing line of failed runs.
+// The label carries the run's exit code.
+// A run that hit a resource shortage twice carries the marker and the way forward of re-running once the load drops.
+// A run that crashed its test runner twice carries the signal and says that no test failed.
 func failedRunLabel(run tierRun, end runEnd) string {
 	switch {
 	case end.shortage != "":
@@ -260,22 +274,24 @@ func failedRunLabel(run tierRun, end runEnd) string {
 	return fmt.Sprintf("%s (exit %d)", runLabel(run), end.code)
 }
 
-// runEnd is how one run of the plan ended: its exit code, and whether the call stops there instead of going on to the next run.
-// A run halts the call on a refusal, a slot wait that did not end with the slots held and a cancelled context; a run whose command failed does not.
+// runEnd is how one run of the plan ended: its exit code, and whether the call stops there.
+// A run halts the call on a refusal, a slot wait that did not end with the slots held and a cancelled context;
+// a run whose command failed does not.
 type runEnd struct {
 	code int
 	halt bool
-	// ran is whether the run's command ran to an outcome, as opposed to a refusal or a slot wait that ended the call before it.
+	// ran is whether the run's command reached an outcome, not a refusal or a slot wait that ended the call.
 	ran bool
-	// blocked is set for a tier that ran no command since the build step it opts into failed; code is then the build's exit code.
+	// blocked is set when a build step the tier opts into failed, so no command ran; code is then the build's exit code.
 	blocked bool
-	// shortage is the resource-shortage marker of a run that failed on one twice, its run and its one rerun; empty otherwise.
+	// shortage is the resource-shortage marker when the run and its rerun both failed on one; empty otherwise.
 	shortage string
-	// crash is the signal name of a run that crashed its test runner twice, its run and its one rerun, with no failing test; empty otherwise.
+	// crash is the signal name of a test runner that crashed in the run and its rerun with no failing test; empty otherwise.
 	crash string
 }
 
-// runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run and `vet` for a vet run.
+// runLabel names a run in the closing line of failed runs: its tier.
+// A guard run's label starts with `guard`, and a vet run's with `vet`.
 func runLabel(run tierRun) string {
 	switch {
 	case run.guardStep:
@@ -286,7 +302,8 @@ func runLabel(run tierRun) string {
 	return tierName(run.number)
 }
 
-// flagShapeRefusal returns the refusal for a malformed combination of flags, which needs no config and runs before hub resolution, or "" when the call is well-formed.
+// flagShapeRefusal returns the refusal for a malformed combination of flags, or "" when the call is well-formed.
+// It needs no config and runs before hub resolution.
 func flagShapeRefusal(request testRequest) string {
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
@@ -319,8 +336,9 @@ func flagShapeRefusal(request testRequest) string {
 	return ""
 }
 
-// gateKeyRefusal returns the refusal for a --gate key the config cannot run, or "" when request names no key or a runnable one.
-// An unknown key, an empty tier list and an undeclared tier carry the config's own way forward, and a key of scope card with no --card and no explicit targets is refused naming the key.
+// gateKeyRefusal returns the refusal for a --gate key the config cannot run, or "" for a runnable key or none.
+// An unknown key, an empty tier list and an undeclared tier carry the config's own way forward.
+// A key of scope card with no --card and no explicit targets is refused, and the refusal names the key.
 func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	if request.gate == "" {
 		return ""
@@ -335,7 +353,8 @@ func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	return ""
 }
 
-// configDirs returns the directories a hub-wide module loads under for location: the hub's, with this machine's override, inside a hub, and the worktree's own outside every hub.
+// configDirs returns the directories a hub-wide module loads its config from for location.
+// Inside a hub these are the hub's, with this machine's override; outside every hub they are the worktree's own.
 func configDirs(location *lymcwd.Location, inHub bool) configengine.Dirs {
 	if inHub {
 		return fabricengine.ConfigDirs(location)
@@ -343,8 +362,8 @@ func configDirs(location *lymcwd.Location, inHub bool) configengine.Dirs {
 	return configengine.Dirs{Anchor: location.AnchorPath()}
 }
 
-// loadGate resolves the worktree that contains dir and loads its gate config:
-// the hub's, with this machine's override, inside a hub, and the worktree's own outside every hub.
+// loadGate resolves the worktree that contains dir and loads its gate config.
+// Inside a hub the config is the hub's, with this machine's override; outside every hub it is the worktree's own.
 // A refusal is returned as its message, with the other results unset.
 func loadGate(dir string) (location *lymcwd.Location, inHub bool, cfg gateslot.Config, refusal string) {
 	location, inHub, err := resolveHub(dir)
@@ -375,7 +394,8 @@ func loadGate(dir string) (location *lymcwd.Location, inHub bool, cfg gateslot.C
 	return location, true, cfg, ""
 }
 
-// preTierExpiry returns the refusal for the work before the first tier outliving request.preTierCeiling at step, or "" when the ceiling has not passed.
+// preTierExpiry returns the refusal for the work before the first tier outliving request.preTierCeiling at step.
+// It returns "" when the ceiling has not passed.
 // A call a terminating signal ended is no expiry.
 func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step string) string {
 	if runCtx.Err() != nil || !errors.Is(preCtx.Err(), context.DeadlineExceeded) {
@@ -395,7 +415,8 @@ func tierNumbers(plan []tierRun) []int {
 	return numbers
 }
 
-// originSlug returns the task slug the pair's fabric origin record names for location, and "" for the prime or a pair with no record.
+// originSlug returns the task slug that the pair's fabric origin record names for location.
+// It returns "" for the prime and for a pair with no record.
 func originSlug(location *lymcwd.Location) string {
 	_, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
@@ -408,7 +429,8 @@ func originSlug(location *lymcwd.Location) string {
 	return location.WorktreeName
 }
 
-// execution is the state of one call's tier runs after planning: where slots come from, the environment the tiers get and where their records go.
+// execution holds the state of one call's tier runs after planning.
+// It records where slots come from, the environment the tiers get, and where their records go.
 type execution struct {
 	ctx      context.Context
 	out      io.Writer
@@ -423,15 +445,15 @@ type execution struct {
 	runLogDir string
 	slug      string
 	tierList  []int
-	// guards holds the guard tests per tier, tier to directory to guard names, the guard runs of the plan are built over.
+	// guards maps tier to directory to guard names, which the plan's guard runs are built over.
 	guards map[int]map[string][]string
-	// green is the call's use of the green record; nil when the worktree is dirty or the record cannot apply, so every tier runs.
+	// green is the green record the call uses; nil when the worktree is dirty or it cannot apply, so every tier runs.
 	green *greenRun
 	// lastStamp is the time of the latest run record, kept so two records of one process never share a stamped name.
 	lastStamp time.Time
-	// buildDone is set once the call's build step has started, so the first opted-in tier whose run acquires slots runs it and no later tier does.
+	// buildDone is set once the build step starts, so only the first opted-in tier that acquires slots runs it.
 	buildDone bool
-	// buildFailure is the log path of the build step once it failed or timed out; every opted-in tier after it runs no command.
+	// buildFailure is the build step's log path once it failed or timed out; later opted-in tiers run no command.
 	buildFailure string
 	// buildExit is the exit code of the failed build.
 	buildExit int
@@ -441,7 +463,8 @@ type execution struct {
 	failed []failedRun
 }
 
-// printReport writes the failure report of the call's failed runs to stderr, with the files the change touches, and nothing when no run failed.
+// printReport writes the failure report of the call's failed runs to stderr, and nothing when no run failed.
+// The report names the files the change touches.
 func (e *execution) printReport(inHub bool) {
 	if len(e.failed) == 0 {
 		return
@@ -450,9 +473,11 @@ func (e *execution) printReport(inHub bool) {
 }
 
 // runListed runs one listed tier with its slots held, and returns how it ended.
-// A tier with no invocation takes no slot, and neither does a tier the green record holds green for the current tree: it is reported as carried.
+// A tier with no invocation takes no slot.
+// A tier the green record holds green for the current tree takes no slot either, and is reported as carried.
 // A tier the record holds green in part runs only the rest, and a pass is recorded.
-// A tier with only a build to run takes its slots for the build, and a tier that opts into a build that failed is reported blocked.
+// A tier with only a build to run takes its slots for the build,
+// and a tier that opts into a build that failed is reported blocked.
 func (e *execution) runListed(run tierRun) runEnd {
 	if run.tier.SharedBuild && e.buildFailure != "" {
 		return e.reportBlocked(run)
@@ -469,7 +494,8 @@ func (e *execution) runListed(run tierRun) runEnd {
 	return e.runGreenAware(run)
 }
 
-// runGuard runs one guard group with its tier's slots held, unless the green record holds the group green, and returns how it ended.
+// runGuard runs one guard group with its tier's slots held, unless the green record holds the group green.
+// It returns how the run ended.
 func (e *execution) runGuard(planned tierRun) runEnd {
 	moduleDir := resolveRunDir(e.request.root, planned.invocations[0].dir)
 	run, err := guardStepRun(e.cfg, moduleDir, planned.number, e.guards[planned.number], e.request)
@@ -479,9 +505,11 @@ func (e *execution) runGuard(planned tierRun) runEnd {
 	return e.runGreenAware(run)
 }
 
-// runGreenAware subtracts what the green record holds green from run, then reports run carried when nothing is left, else runs the rest inside the tier's slots and records a pass.
+// runGreenAware subtracts what the green record holds green from run.
+// It reports run as carried when nothing is left.
+// Otherwise it runs the rest inside the tier's slots and records a pass.
 // A module carried over an inert-only diff gets its whole entry for the current tree before the run goes on.
-// The first tier that opts into the build and whose run takes slots runs the call's build step inside them, before its own command.
+// The first slotted tier that opts into the build runs the call's build step inside its slots, before its own command.
 func (e *execution) runGreenAware(run tierRun) runEnd {
 	var plan greenPlan
 	if e.green != nil && !run.buildOnly {
@@ -511,14 +539,17 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 	return end
 }
 
-// reportCarried writes the run record and summary line of a tier the green record held green, which took no slot and ran no command, and returns its pass.
+// reportCarried writes the run record and summary line of a tier the green record held green.
+// The tier took no slot and ran no command, and reportCarried returns its pass.
 func (e *execution) reportCarried(run tierRun) runEnd {
 	now := time.Now()
 	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: now, End: now, Outcome: "passed", Carried: true}
 	return e.report(run, tierResult{record: record}, now)
 }
 
-// runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty, runs body inside them with the environment the slots give and the time the wait for them started, releases the slots and reports the tier's outcome.
+// runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty.
+// It runs body inside them with the environment the slots give and the time the wait for them started.
+// It releases the slots and reports the tier's outcome.
 // A wait that does not end with the slots held halts the call.
 func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string, waitStart time.Time) tierResult) runEnd {
 	waitStart := time.Now()
@@ -540,8 +571,10 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 	return e.report(run, body(env, waitStart), waitStart)
 }
 
-// report writes the tier's run record and log, prints its `-trimpath` line, when it has one, and its summary line to stderr and returns the tier's exit code.
-// A refusal is answered instead, so its stdout stays one JSON envelope, and halts the call, as does a run a terminating signal cancelled.
+// report writes the tier's run record and log, and prints its summary line to stderr.
+// It also prints the tier's `-trimpath` line when it has one, and it returns the tier's exit code.
+// A refusal is answered instead, so its stdout stays one JSON envelope, and it halts the call.
+// A run that a terminating signal cancelled halts the call as well.
 // A record that cannot be written is logged and decides nothing.
 func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) runEnd {
 	if result.refusal != "" {
@@ -570,7 +603,10 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash}
 }
 
-// writeRecord adds the call's worktree, slug, tier list, gate key and call id to record, marks it abandoned when the call's context is cancelled, writes it with log under a stamp later than the previous record's, and returns the log's path, "(not written)" when the write failed.
+// writeRecord adds the call's worktree, slug, tier list, gate key and call id to record.
+// It marks the record abandoned when the call's context is cancelled.
+// It writes the record with log under a stamp later than the previous record's.
+// It returns the log's path, or "(not written)" when the write failed.
 // run names the record in a failure.
 func (e *execution) writeRecord(record gateslot.RunRecord, log []byte, run string) string {
 	record.Worktree = e.request.root
@@ -609,7 +645,8 @@ func resolveHub(dir string) (*lymcwd.Location, bool, error) {
 	return location, true, nil
 }
 
-// acquireSlot takes count slots of pool for tier, keeping a wait record in the worktree's wait directory until the acquire returns.
+// acquireSlot takes count slots of pool for tier.
+// It keeps a wait record in the worktree's wait directory until the acquire returns.
 // The wait has no cap of its own: it ends when the slots free or ctx is cancelled.
 // It returns the held lease, or a nil lease and the exit code to return, 1 for any failure, a cancelled ctx included.
 func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lymcwd.Location, request testRequest, tier string, count int) (*gateslot.Lease, int) {
@@ -641,7 +678,8 @@ func releaseSlot(lease *gateslot.Lease, dir string) {
 	}
 }
 
-// catchTerminatingSignals returns a context cancelled by the first terminating signal, the signal's number once one was caught (zero before), and the function that stops the catching.
+// catchTerminatingSignals returns a context that the first terminating signal cancels.
+// It also returns the signal's number once one was caught (zero before), and the function that stops the catching.
 func catchTerminatingSignals(ctx context.Context) (context.Context, *atomic.Int32, func()) {
 	runCtx, cancel := context.WithCancel(ctx)
 	signals := make(chan os.Signal, 1)
@@ -663,7 +701,8 @@ func catchTerminatingSignals(ctx context.Context) (context.Context, *atomic.Int3
 	}
 }
 
-// exitAfterSignal returns 128 plus the caught signal's number when a terminating signal ended the run, and code otherwise.
+// exitAfterSignal returns 128 plus the caught signal's number when a terminating signal ended the run.
+// Otherwise it returns code.
 func exitAfterSignal(caught *atomic.Int32, code int) int {
 	if number := caught.Load(); number != 0 {
 		return 128 + int(number)
@@ -671,7 +710,8 @@ func exitAfterSignal(caught *atomic.Int32, code int) int {
 	return code
 }
 
-// exitCodeOf returns the exit code of a finished child: its own, 1 for a child that did not exit normally, and 0 for none.
+// exitCodeOf returns the exit code of a finished child.
+// It is the child's own code, 1 for a child that did not exit normally, and 0 when runErr is nil.
 func exitCodeOf(runErr error) int {
 	if runErr == nil {
 		return 0
@@ -686,7 +726,10 @@ func exitCodeOf(runErr error) int {
 	return 1
 }
 
-// tierExitCodeOf returns the exit code of a finished tier command: 128 plus the signal's number for a child a crash signal ended, as a shell reports one, which is how a tier whose test runner died of a signal reads as a runner crash, and otherwise what exitCodeOf returns.
+// tierExitCodeOf returns the exit code of a finished tier command.
+// A child that a crash signal ended reads as 128 plus the signal's number, as a shell reports it.
+// So a tier whose test runner died of a signal reads as a runner crash.
+// Any other run reads as its own exit code, 1 when it did not exit normally, and 0 when runErr is nil.
 func tierExitCodeOf(runErr error) int {
 	var exitErr *exec.ExitError
 	if errors.As(runErr, &exitErr) && exitErr.ExitCode() < 0 {
@@ -699,7 +742,9 @@ func tierExitCodeOf(runErr error) int {
 	return exitCodeOf(runErr)
 }
 
-// withBuildServerOff returns env with every proc.BuildServerOffEnv variable set to its value, replacing an inherited one, so no .NET build a run starts leaves MSBuild servers behind.
+// withBuildServerOff returns env with every proc.BuildServerOffEnv variable set to its value.
+// It replaces any inherited value of the same name.
+// This keeps any .NET build a run starts from leaving MSBuild servers behind.
 func withBuildServerOff(env []string) []string {
 	env = slices.DeleteFunc(env, func(entry string) bool {
 		return slices.ContainsFunc(proc.BuildServerOffEnv, func(v proc.EnvVar) bool { return strings.HasPrefix(entry, v.Name+"=") })

@@ -1,7 +1,7 @@
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
-// Covers: ConfigTemplate returns valid YAML with its three expected keys and resolves to the correct
-// defaults when the environment is empty.
+// Covers: ConfigTemplate returns valid YAML with its three expected keys.
+// It also resolves to the correct defaults when the environment is empty.
 
 package fabricengine
 
@@ -18,16 +18,12 @@ import (
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
 // it is valid YAML carrying the branch_prefix, pathspec and warp_exclude keys;
 // branch_prefix resolves to an empty string;
-// pathspec resolves to an empty set, regardless of environment: _lym and .lym are structural and
-// injected in code by internal/fabricengine, and are never read from the pathspec key at all, so an
-// empty default leaves pathspec free to name only genuinely optional per-repo directories the
-// operator adds explicitly — the resolved value is whitespace-split (mirroring Config.Dirs, the
-// consumer that actually splits it) rather than compared as one whole string, since a splitting bug
-// there would otherwise be silent;
+// pathspec resolves to an empty set, whatever the environment.
+// _lym and .lym are structural and injected in code, so the key never supplies them;
+// an empty default leaves pathspec free to name only the optional per-repo directories the operator adds.
+// The resolved value is whitespace-split and compared name by name, so a splitting bug cannot pass silently;
 // warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md and .heddle;
-// and an empty pathspec yields an empty Config.Dirs() and pathspecNames (the routing set) and the
-// dedupUnion formula junctionNames applies over cfg.Dirs() (the wired-name set) both degrade to
-// their structural sets alone over it, with no config-supplied name in either union.
+// and an empty pathspec leaves the routing set and the wired-name set at their structural sets alone.
 //
 //testtiming:keep the config template being valid YAML with its three keys, resolving to an empty branch prefix, an empty pathspec and the three default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
@@ -95,9 +91,9 @@ func TestConfigTemplate(t *testing.T) {
 		t.Errorf("pathspecNames(cfg) = %v; want %v (structuralCommittedDirs alone)", gotPathspecNames, wantPathspecNames)
 	}
 
-	// junctionNames itself reads its config from disk, but its wired-name-set formula is
+	// junctionNames reads its config from disk, so the test applies its wired-name-set formula directly:
 	// dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())):
-	// applying that same formula here proves it degrades to the two structural sets alone.
+	// over an empty pathspec it degrades to the two structural sets alone.
 	gotJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
 	wantJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs)
 	if !reflect.DeepEqual(gotJunctionNames, wantJunctionNames) {

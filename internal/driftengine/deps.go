@@ -26,7 +26,7 @@ type Deps struct {
 	Config func() (Config, error)
 	// Status reads the run's status.
 	Status func() (shedengine.Status, error)
-	// Rows is the run's recipe row order, which PastRow reads against the status row.
+	// Rows is the run's recipe row order, which the past-row check reads against the status row.
 	Rows []string
 	// Head, BranchPoint and DirtyPaths read the code checkout's HEAD, its branch point and its tracked dirty paths.
 	Head        func() (string, error)
@@ -34,7 +34,8 @@ type Deps struct {
 	DirtyPaths  func() ([]string, error)
 	// Commit commits the told anchor-relative paths under the durable drift directory with the run's records.
 	Commit func(relPaths []string) error
-	// CommitWithTrailers commits the told anchor-relative paths as one records commit that ends in the told trailers, after the commit's own code-head trailer.
+	// CommitWithTrailers commits the told anchor-relative paths as one records commit.
+	// The told trailers follow the commit's own code-head trailer.
 	CommitWithTrailers func(relPaths []string, trailers []fabricengine.Trailer) error
 	// TrailerCommit finds the newest records commit carrying the trailer key when newest is true, and the oldest otherwise; found is false when none carries it.
 	TrailerCommit func(key string, newest bool) (fabricengine.TrailerCommit, bool, error)
@@ -57,13 +58,15 @@ type Deps struct {
 	EndRoles func(roles []string) error
 	// JudgeSnapshotDir is the directory the snapshot of both checkouts taken before the judge runs is kept in.
 	JudgeSnapshotDir string
-	// LoomRecordsDirs are the records paths loom itself writes during a row, relative to the records checkout's root: each a directory or, ending in `-`, a path prefix.
+	// LoomRecordsDirs are the records paths loom itself writes during a row, relative to the records checkout's root:
+	// each a directory or, ending in `-`, a path prefix.
 	LoomRecordsDirs []string
 	// StartCapture starts the detached capture and returns once its record exists.
 	StartCapture func() error
 	// RunCapture runs the capture in the calling process and returns its final record.
 	RunCapture func(ctx context.Context) (CaptureRecord, error)
-	// CaptureCurrent runs the capture command into a fresh scratch directory of the current code, waiting for the capture lock, and returns how it ended.
+	// CaptureCurrent runs the capture command into a fresh scratch directory of the current code.
+	// It waits for the capture lock and returns how the capture ended.
 	CaptureCurrent func(ctx context.Context) (CurrentCapture, error)
 	// Sleep waits d or until ctx ends; it is the clock of the capture wait.
 	Sleep func(ctx context.Context, d time.Duration) error
@@ -88,7 +91,8 @@ type Row struct {
 }
 
 // commitOnExit commits relPaths through commit after a producer pass and returns the pass's result.
-// A failed commit is returned beside the pass's own error and replaces the outcome, since the drift records must reach git.
+// A failed commit is returned beside the pass's own error.
+// It replaces the outcome, since the drift records must reach git.
 func commitOnExit(name string, commit func([]string) error, relPaths []string, outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if commitErr := commit(relPaths); commitErr != nil {
 		return "", shedengine.OutputPointer{}, errors.Join(err, fmt.Errorf("drift: %s: commit the drift records: %w", name, commitErr))
@@ -97,7 +101,8 @@ func commitOnExit(name string, commit func([]string) error, relPaths []string, o
 }
 
 // passWhenSwitchedOff returns a Done naming the switch, and stop true, when the hub's drift config has enabled off.
-// The entry gate reads drift.enabled only when the run first enters a row, so this check lets a resume pass a row the run already entered once the switch went off, in any layer.
+// The entry gate reads drift.enabled only when the run first enters a row,
+// so this check lets a resume pass a row the run already entered once the switch went off, in any layer.
 // A config that fails to load is a Stuck naming its error and lym loom resume.
 func passWhenSwitchedOff(config func() (Config, error)) (outcome shedengine.Outcome, pointer shedengine.OutputPointer, stop bool) {
 	cfg, err := config()

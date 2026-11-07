@@ -1,8 +1,8 @@
-// interruptpolicy_meta_test.go pins loomshed.InterruptPolicies against the production authority --
-// the rows New actually assembles -- rather than against a standalone literal that could drift
-// silently.
-// It lives here rather than beside the table in internal/loomshed because wantProducerTable, the package's one row table in shape_test.go, is the only thing that can also see the engine identity behind each row,
-// and a test in internal/loomshed cannot see it at all.
+// interruptpolicy_meta_test.go checks loomshed.InterruptPolicies against the rows New assembles.
+// It compares the table with the assembled rows, not with a standalone literal that could drift silently.
+// It lives here rather than beside the table in internal/loomshed.
+// wantProducerTable (in shape_test.go) is the only thing that sees the engine identity behind each row.
+// A test in internal/loomshed cannot see it at all.
 
 package loomrecipe
 
@@ -15,9 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn, sampler, motif, raddle and pawl recipes.
-// Every row either's real, current output has must carry an entry in the table (the direction that catches a row added to a recipe with no policy assigned),
-// and every key in the table must name a row one of them actually has (the direction that keeps the table from accumulating dead entries for a renamed or removed row).
+// TestInterruptPolicies_MatchAssembledRows checks loomshed.InterruptPolicies in both directions.
+// The table must cover exactly the rows New assembles for the tapestry, darn, sampler, motif, raddle and pawl recipes.
+// Every row that one of those recipes' current output has must carry an entry in the table.
+// That catches a row added to a recipe with no policy assigned.
+// Every key in the table must name a row one of them actually has.
+// That keeps the table from accumulating dead entries for a renamed or removed row.
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -46,11 +49,15 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	}
 }
 
-// TestInterruptPolicies_MatchEngineIdentity cross-checks loomshed.InterruptPolicies against the row-to-engine mapping read off wantProducerTable:
-// every row whose engine is "Implementer" must carry shedverbs.InterruptPolicyHandback, and every row whose engine is anything else must carry shedverbs.InterruptPolicyReinvoke.
-// This is the assertion that keeps a row which changes adapter from silently keeping the wrong policy, and the engine-name side is what makes the implementer exception derivable rather than hand-maintained.
-// The handback is webster's, the only implementer the engine builds.
-// Every row of the pawl recipe, whose rows are no table row, spawns no agent of its own and carries the reinvoke policy as well.
+// TestInterruptPolicies_MatchEngineIdentity cross-checks loomshed.InterruptPolicies against the row-to-engine mapping.
+// The mapping is read off wantProducerTable:
+// every row whose engine is "Implementer" must carry shedverbs.InterruptPolicyHandback,
+// and every row whose engine is anything else must carry shedverbs.InterruptPolicyReinvoke.
+// The check keeps a row that changes adapter from silently keeping the wrong policy.
+// Deriving the implementer exception from the engine name keeps it from being hand-maintained.
+// The handback policy applies to Webster, the only implementer the engine builds.
+// The pawl recipe's rows are absent from wantProducerTable and spawn no agent of their own,
+// and they carry the reinvoke policy as well.
 //
 //testtiming:keep pins the Webster-handback and reinvoke-otherwise policy per row engine, which TestApproveSeam_FailsToBuild never asserts
 func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {

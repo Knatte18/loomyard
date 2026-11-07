@@ -1,5 +1,6 @@
 // seamchild.go implements NewSeedChild, the producer that seeds the task worktree's own inner shed run.
-// The recipe derives from the Board task's own type, and the driver is the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's.
+// The recipe comes from the Board task's type.
+// The driver comes from the prime seed's typed child_driver, else from the recipe's driver_kind, else from shed.yaml.
 
 package battenshed
 
@@ -13,8 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// seedChildProducer writes, commits and pushes the child worktree's own seed file, deriving its
-// recipe from the Board task's own type and its driver from the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's.
+// seedChildProducer writes, commits and pushes the child worktree's own seed file.
+// It derives the recipe from the Board task's type.
+// The driver comes from the prime seed's typed child_driver, else from the recipe's driver_kind, else from shed.yaml.
 type seedChildProducer struct {
 	name       string
 	slug       string
@@ -24,11 +26,11 @@ type seedChildProducer struct {
 
 var _ shedengine.ShedProducer = (*seedChildProducer)(nil)
 
-// NewSeedChild returns a shedengine.ShedProducer that reads the Board task's own type and the child's driver, which is the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's, then writes, commits and pushes the child worktree's own seed.
+// NewSeedChild returns a shedengine.ShedProducer that seeds the child worktree's own inner shed run.
+// Its Call reads the Board task's type, writes the run settings, then writes, commits and pushes the seed.
 //
-// name is told rather than hardcoded because a second producer list may name this row
-// independently. slug is used only as a log field and in stuck-reason text -- never compared,
-// parsed, or used for control flow.
+// name is passed in rather than hardcoded because a second producer list may name this row independently.
+// slug is used only as a log field and in stuck-reason text; it is never compared, parsed, or used for control flow.
 func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shedengine.ShedProducer {
 	if deps.MarkWatched == nil {
 		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
@@ -43,20 +45,25 @@ func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shed
 
 // Call implements shedengine.ShedProducer.
 //
-// It reads the Board task's own type fresh at Call time -- never a value captured at wiring time,
+// It reads the Board task's type fresh at each Call, never a value captured at wiring time,
 // so a type corrected after prime was seeded is still honoured.
-// It then writes the task worktree's local config overrides from the Board task's run settings, reads the driver after them so a driver_kind in those settings is seen, then writes, commits and pushes the seed, in that order.
+// It then writes the task worktree's local config overrides from the Board task's run settings.
+// It reads the driver after them, so a driver_kind in those settings is seen.
+// Then it writes, commits and pushes the seed, in that order.
 //
-// Verdicts: Done on a successful write-and-commit; Stuck on an unreadable Board, run settings that do not validate, a refused recipe
-// (a deps.WriteSeed error wrapping ErrUnknownRecipe, ErrUnsupportedChildRecipe, or
-// ErrDisagreeingChildSeed), or a failed commit, each naming which of the four failed in its stuck
-// reason; a hard error on a deps.ChildDriver failure or a deps.WriteSeed failure that wraps none of
-// the three sentinels (a path-resolution or write failure), matching innerRunProducer's
-// error-vs-verdict split; and a failed push warns via internal/logger and still returns Done,
-// because an offline machine must not halt a run and the next push on that pair catches the branch
-// up.
-// It then asks deps.MarkWatched to write or remove the batten-watched marker, so the child's first driver launch already renders the watched rule;
-// a failure there only warns.
+// Verdicts: Done on a successful write-and-commit.
+// Stuck on an unreadable Board, run settings that do not validate, a refused recipe, or a failed commit.
+// A refused recipe is a deps.WriteSeed error wrapping one of the three sentinels:
+// ErrUnknownRecipe, ErrUnsupportedChildRecipe, or ErrDisagreeingChildSeed.
+// Each stuck reason names the step that failed.
+// A hard error comes from a deps.ChildDriver failure.
+// A deps.WriteSeed failure that wraps none of the three sentinels is also a hard error.
+// It covers a path-resolution or write failure.
+// A failed push logs a warning and still returns Done:
+// an offline machine must not halt a run, and the next push on that pair catches the branch up.
+// It then asks deps.MarkWatched to write or remove the batten-watched marker.
+// That lets the child's first driver launch already render the watched rule.
+// A failure there only logs a warning.
 func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -127,11 +134,15 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// writeRunSettings makes the task worktree's local config layer equal the Board task's run settings laid over its run profile's block for recipe:
-// it writes the local file of each module the settings name, then removes every other module's, logging one Warn per removed file.
-// A non-empty reason means the row stands Stuck: the board is unreadable, the profile is unknown or holds no block for recipe, or a key no longer validates.
+// writeRunSettings makes the task worktree's local config layer equal the Board task's run settings.
+// The settings are laid over the run profile's block for recipe.
+// It writes the local file of each module the settings name.
+// It then removes every other module's local file, logging one warning per removed file.
+// A non-empty reason means the row stands Stuck:
+// the board is unreadable, the profile is unknown or holds no block for recipe, or a key no longer validates.
 // Any other failure is returned as an error.
-// The whole write is redone on every Call, so a Call interrupted between its writes and its removals leaves nothing the next one does not settle.
+// Every Call redoes the whole write.
+// A Call interrupted between its writes and its removals leaves nothing the next Call does not settle.
 func (p *seedChildProducer) writeRunSettings(ctx context.Context, recipe string) (reason string, err error) {
 	settings, err := p.deps.ReadRunSettings(ctx)
 	if err != nil {
@@ -165,10 +176,12 @@ func (p *seedChildProducer) writeRunSettings(ctx context.Context, recipe string)
 	return "", nil
 }
 
-// childRecipeRefusal reports whether err is one of the three refusals a WriteSeed seam may raise,
-// returning the stuck reason to record for it: an unknown recipe name, a known recipe the task
-// worktree cannot run as its own, or a pre-existing child seed that disagrees with the one being
-// written. Any other error is mechanism failure and is not a refusal.
+// childRecipeRefusal reports whether err is one of the three refusals a WriteSeed seam may raise.
+// It also returns the stuck reason to record for the refusal.
+// The refusals are: an unknown recipe name;
+// a known recipe the task worktree cannot run as its own;
+// or a pre-existing child seed that disagrees with the one being written.
+// Any other error is a mechanism failure, not a refusal.
 func childRecipeRefusal(recipe string, err error) (reason string, refused bool) {
 	switch {
 	case errors.Is(err, ErrUnknownRecipe):

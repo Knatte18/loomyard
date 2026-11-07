@@ -1,10 +1,13 @@
 // smoke_proctree_test.go provides the process-tree probes the smoke harness uses on Linux.
-// They are the analogue of the Windows helpers' Get-CimInstance Win32_Process scripts (paneProcessTree, panePaneSubtree, tmuxSocketPids, pidClosure, hubHolders, serverProcCountForSession in smoke_test.go).
-// Every read of the kernel's process table goes through the tmuxkit probes for the pid list, parent pid, argv, cwd and comm, so this file opens nothing under /proc itself and shells out to nothing.
-// It is a small, self-contained test-harness copy rather than an import from reedengine, since that package's equivalents (parseStat, descendantClosure, matchSocketCmdlines) are unexported and only meaningful bound to an *Engine value.
-// It is deliberately a _test.go file, not a _linux.go one:
-// its caller functions in smoke_test.go compile on every GOOS (gated only by the `tmux || llm` tag) and runtime.GOOS-branch into this file's functions, so this file must compile everywhere too, and it references hubHolder, which is itself declared in smoke_test.go and so only exists inside the test binary.
-// The tmuxkit probes are portable Go and simply report nothing on a non-Linux GOOS.
+// The probes read the process table only through tmuxkit,
+// so this file opens nothing under /proc itself and shells out to nothing.
+// It copies the process-tree logic rather than importing it from reedengine.
+// Its equivalents there are unexported and bound to an *Engine value.
+// It is a _test.go file, not a _linux.go one:
+// its caller functions in smoke_test.go compile on every GOOS, gated only by the `tmux || llm` tag.
+// They branch on runtime.GOOS into this file, so this file must compile everywhere too.
+// It references hubHolder, which smoke_test.go declares, so both exist only inside the test binary.
+// The tmuxkit probes are portable Go and report nothing on a non-Linux GOOS.
 
 package reedcli
 
@@ -15,13 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// linuxDescendantClosure expands roots to roots-plus-their-transitive-
-// descendants by building a pid->ppid map from every /proc/<pid>/stat entry,
-// then repeatedly absorbing any pid whose parent is already accepted — the
-// /proc-native counterpart to the Windows helpers' Win32_Process closure
-// loop (paneProcessTree, panePaneSubtree, pidClosure). Degrades to the bare
-// roots if /proc cannot be read at all, so a caller reaping a pane's process
-// subtree can still fall back to killing the roots it already knows about.
+// linuxDescendantClosure expands roots to roots-plus-their-transitive-descendants.
+// It builds a pid-to-ppid map from the process table the tmuxkit probes report.
+// It then repeatedly absorbs any pid whose parent is already accepted.
+// It degrades to the bare roots if the process table cannot be read,
+// so a caller reaping a pane's process subtree can still kill the roots it knows about.
 func linuxDescendantClosure(roots []int) []int {
 	if len(roots) == 0 {
 		return nil
@@ -62,9 +63,7 @@ func linuxDescendantClosure(roots []int) []int {
 	return out
 }
 
-// linuxArgvHasBinary reports whether argv contains binary's base name as one
-// of its elements — the /proc-native counterpart of the Windows probes'
-// CommandLine binary-name match.
+// linuxArgvHasBinary reports whether argv contains binary's base name as one of its elements.
 func linuxArgvHasBinary(argv []string, binary string) bool {
 	want := filepath.Base(binary)
 	for _, a := range argv {
@@ -86,10 +85,7 @@ func linuxArgvHasFlagValue(argv []string, flag, value string) bool {
 	return false
 }
 
-// linuxTmuxSocketPids returns the pids of every process whose argv names
-// both binary and an adjacent "-L socket" pair — the /proc-native analogue
-// of tmuxSocketPids' Windows Win32_Process filter, structurally identical to
-// reedengine's serverProcessesOnSocket.
+// linuxTmuxSocketPids returns the pids of every process whose argv names binary and a "-L socket" pair.
 func linuxTmuxSocketPids(binary, socket string) []int {
 	var out []int
 	for _, pid := range tmuxkit.Pids() {
@@ -104,11 +100,8 @@ func linuxTmuxSocketPids(binary, socket string) []int {
 	return out
 }
 
-// linuxHubHolders returns every process whose current working directory is
-// inside dir, read straight off /proc/<pid>/cwd — the /proc-native
-// counterpart of hubHolders' Windows PEB-read script. Linux exposes cwd
-// directly as a symlink, so unlike Windows there is no ConPTY-host artifact
-// class to exempt: any Linux holder this finds is a genuine leak.
+// linuxHubHolders returns every process whose current working directory is inside dir.
+// Linux reports each cwd directly, so every holder it finds is a real leak.
 func linuxHubHolders(dir string) []hubHolder {
 	var holders []hubHolder
 	for _, pid := range tmuxkit.Pids() {

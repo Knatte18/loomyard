@@ -1,4 +1,5 @@
-// status.go implements the `status` orch verb: one envelope describing the recorded strand, the watcher and the persisted cycle state.
+// status.go implements the `status` orch verb:
+// one envelope describing the recorded strand, the watcher and the persisted cycle state.
 
 package orchcli
 
@@ -18,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// trackedStrand returns the strand reed tracks under guid, and whether one does.
+// trackedStrand returns the strand that reed tracks under guid, and reports whether one is tracked.
 func trackedStrand(strands []reedengine.StrandStatus, guid string) (reedengine.StrandStatus, bool) {
 	if guid == "" {
 		return reedengine.StrandStatus{}, false
@@ -31,7 +32,8 @@ func trackedStrand(strands []reedengine.StrandStatus, guid string) (reedengine.S
 	return reedengine.StrandStatus{}, false
 }
 
-// statusFields builds the status envelope's fields; context_tokens is nil while unknown, and strand_elsewhere is empty for an untracked strand.
+// statusFields builds the status envelope's fields;
+// context_tokens is nil while unknown, and strand_elsewhere is empty for an untracked strand.
 func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.StrandStatus, tracked, watcherLive, watcherRestarted bool) map[string]any {
 	elsewhere := ""
 	if tracked {
@@ -66,15 +68,18 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 	}
 }
 
-// errStartLockHeld reports that restartWatcher found start.lock held, so a `start` or a `stop` runs and the restart was left to it.
+// errStartLockHeld reports that start.lock is held by a running start or stop, which leaves the restart to it.
 var errStartLockHeld = errors.New("orch: start.lock is held")
 
-// startLockHeldHint is the envelope hint for a live strand with no watcher whose restart was skipped for a held start.lock.
+// startLockHeldHint is the status envelope's hint for a live strand with no watcher.
+// It is set when the restart was skipped because start.lock is held.
 const startLockHeldHint = "a `lym beam start` or `lym orch stop` is running; rerun `lym orch status` once it ends, or run `lym beam start`"
 
-// restartWatcher spawns a watcher for the recorded orch strand under start.lock and answers whether it did.
-// It restarts nothing and answers errStartLockHeld when another process holds the lock.
-// Holding the lock it reads the state, the strands and the watch lock again, since a `stop` or `start` may have run since the caller's reads, and spawns only for a strand still tracked and live with no watcher holding the watch lock.
+// restartWatcher spawns a watcher for the recorded orch strand under start.lock and reports whether it did.
+// It restarts nothing and returns errStartLockHeld when another process holds start.lock.
+// Holding the lock, it reads the state, the strands and the watch lock again:
+// a `stop` or `start` may have run since the caller's reads.
+// It spawns only for a strand still tracked and live, with no watcher holding the watch lock.
 // st is the state the caller read; the re-read replaces it.
 func (c *orchCLI) restartWatcher(st orchengine.State) (bool, error) {
 	if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
@@ -111,8 +116,9 @@ func (c *orchCLI) restartWatcher(st orchengine.State) (bool, error) {
 	return true, nil
 }
 
-// hubPauseHolds reports whether the pause record holds a live hub entry, the entry that holds the watcher's cycle machine.
-// A record that cannot be read answers false, as the watcher reads it uncovered.
+// hubPauseHolds reports whether the pause record holds a live hub entry.
+// That entry holds the watcher's cycle machine.
+// A record that cannot be read reports false, since the watcher reads it as uncovered.
 func (c *orchCLI) hubPauseHolds() bool {
 	record, err := pauserecord.Read(c.pauseRecordPath)
 	if err != nil {
@@ -122,7 +128,8 @@ func (c *orchCLI) hubPauseHolds() bool {
 	return live
 }
 
-// cycleRequestField builds the status envelope's cycle_request value: nil when no request is pending, else the request's mode, its time and whether a hub pause holds it.
+// cycleRequestField builds the status envelope's cycle_request value:
+// nil when no request is pending, else the request's mode, its time and whether a hub pause holds it.
 // A marker that does not parse reports an empty mode and a null time.
 func cycleRequestField(req orchengine.CycleRequest, pending, held bool) any {
 	if !pending {

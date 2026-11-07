@@ -25,7 +25,7 @@ type Geometry struct {
 	SocketPath string
 	// DaemonLogPath is the file the detached daemon's stderr is appended to, in StateDir.
 	DaemonLogPath string
-	// FlagDir holds one empty flag file per strand holding unread mail, named by the strand's agent-name file name, in StateDir; empty keeps no flags.
+	// FlagDir holds one empty flag file per strand with unread mail, named by agent-name file name; empty keeps no flags.
 	FlagDir string
 }
 

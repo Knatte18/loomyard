@@ -7,7 +7,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// killLoopProcessPlatform terminates the loop's named job, which ends the loop, its step child and their descendants at once.
+// killLoopProcessPlatform terminates the loop's named job;
+// the job ends the loop, its step child, and their descendants at once.
 func killLoopProcessPlatform(_ shedverbs.LoopPIDRecord, _, jobName string) (bool, error) {
 	return proc.TerminateNamedJob(jobName)
 }

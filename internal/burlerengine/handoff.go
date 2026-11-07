@@ -1,4 +1,5 @@
-// handoff.go holds what the two halves of a round share: ErrHalfNotStopped, acceptReview with the digest it hands the fix half, and halfOf, which names a half by its terminal result.
+// handoff.go holds what the two halves of a burler round share.
+// It covers the stop error of a half, the acceptance of a finished review, and the identity of a half.
 
 package burlerengine
 
@@ -12,12 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrHalfNotStopped reports that a seat of the round could not be stopped, so it may still be writing the round's files.
-// It wraps the seats engine's seatengine.ErrSeatNotStopped, whose message ends with the way forward.
+// ErrHalfNotStopped reports that a seat of the round could not be stopped.
+// The seat may still be writing the round's files.
+// It wraps the seat engine's stop error, whose message names the way forward.
 // The round never archives over or retries past it.
 var ErrHalfNotStopped = errors.New("burler: a half of the round could not be stopped")
 
-// reviewHandoff is what acceptReview took from a finished review: the bytes it parsed, the parse, and the cluster audit's warnings.
+// reviewHandoff holds a finished review as the round accepted it.
+// It carries the bytes that were parsed, the verdict and findings, and the cluster audit's warnings.
 type reviewHandoff struct {
 	content  []byte
 	verdict  Verdict
@@ -32,8 +35,9 @@ func reviewDigest(content []byte) string {
 }
 
 // acceptReview accepts the review a done reviewer left at p.ReviewPath.
-// For a cluster round it audits the reviewer's forks, then it parses the review file strictly with ParseCurrentReview.
-// It touches nothing on disk.
+// For a cluster round it first audits the reviewer's forks.
+// It then parses the review file strictly.
+// It writes nothing to disk.
 func acceptReview(p *Profile, reviewer shuttleengine.Result) (reviewHandoff, error) {
 	var handoff reviewHandoff
 	if p.ClusterFan != "" {

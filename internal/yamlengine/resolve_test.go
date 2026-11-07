@@ -1,5 +1,4 @@
-// resolve_test.go contains table-driven tests for the Resolve function and its supporting expansion
-// logic.
+// resolve_test.go contains table-driven tests for Resolve and its supporting expansion logic.
 
 package yamlengine
 
@@ -29,11 +28,9 @@ func TestResolve_EmptyInput(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Resolve() unexpected error: %v", err)
 			}
-			// For nil input, result should be nil
 			if tt.src == nil && result != nil {
 				t.Errorf("Resolve() = %v; want nil", result)
 			}
-			// For non-nil input, we just check that it returns something
 			if tt.src != nil && result == nil {
 				t.Errorf("Resolve() = nil; want non-nil")
 			}

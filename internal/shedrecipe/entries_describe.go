@@ -1,6 +1,7 @@
-// entries_describe.go implements describeEntry, the Constructor for the "Describe" registry row:
-// it runs the told one-seat table of the Describe lead on a shedadapters.MultiLLMProducer behind loomshed.NewDiscussionWrite's commit decorator, so
-// the change description is committed by the loop owner once the gate passes.
+// entries_describe.go implements describeEntry, the Constructor for the "Describe" registry row.
+// The row runs the told one-seat table of the Describe lead on a shedadapters.MultiLLMProducer.
+// The producer sits behind loomshed.NewDiscussionWrite's commit decorator.
+// The loop owner commits the change description once the gate passes.
 
 package shedrecipe
 
@@ -11,15 +12,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// describeEntry is the Constructor for the "Describe" registry row: it resolves the row's "gates" Config key through resolveGateSpec, validates Env.DescribeTable, Env.CommitDescription, and Env.Seats, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil).KeepGateFindings(path), env.CommitDescription), path being the row's gate findings file -- a seat-table producer behind a commit decorator.
+// describeEntry is the Constructor for the "Describe" registry row.
+// It resolves the row's "gates" key and validates Env.DescribeTable, Env.CommitDescription and Env.Seats.
+// It returns the seat-table producer wrapped in loomshed.NewDiscussionWrite's commit decorator.
 // Env.Shuttle is never read: the lead runs through Env.Seats.
 //
-// The DiscussionWrite decorator is reused rather than copied: its commit-on-non-empty-pointer rule
-// is the loop owner's commit of the description, and on gate exhaustion it commits the refused
-// file so a halted run leaves a clean, diagnosable tree. The seat producer already
-// archives a stale description before a fresh spawn.
+// The commit decorator commits the description when the pointer it is given is non-empty.
+// On gate exhaustion it commits the refused file, so a halted run leaves a clean, diagnosable tree.
+// The seat producer archives a stale description before a fresh spawn.
 //
-// The table arrives as an injected shedadapters.TableSource closure because building it needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving.
+// The table arrives as an injected shedadapters.TableSource closure.
+// Building it needs the fabric's landing geometry.
+// The Shed Recipe Registry Invariant bars this package from deriving that geometry.
 // The resolved gate is stamped onto each table the source returns, so the row's "gates" key guards the lead.
 func describeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Describe", cfg, env)

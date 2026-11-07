@@ -1,4 +1,5 @@
-// timingmarkdown.go renders a TimingReport as markdown: the selection and sleep note, then a table of runs, of phase medians, of time per bucket and of stops per settler.
+// timingmarkdown.go renders a TimingReport as markdown:
+// the selection and sleep note, then a table of runs, of phase medians, of time per bucket and of stops per settler.
 
 package reportengine
 
@@ -11,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/durfmt"
 )
 
-// The headings of RenderTimingMarkdown's four sections.
+// The headings that separate the sections of the timing markdown document.
 const (
 	HeadingTimingRuns     = "## Runs"
 	HeadingTimingPhases   = "## Phase medians"
@@ -22,7 +23,8 @@ const (
 // timingStopKinds lists every stop kind in report order.
 var timingStopKinds = []string{StopKindStop, StopKindBounce, StopKindBattenHalt}
 
-// RenderTimingMarkdown renders r as one document: the selection and sleep note, then the run, phase-median, bucket and stops-by-settler tables.
+// RenderTimingMarkdown renders r as one document:
+// the selection and sleep note, then the run, phase-median, bucket and stops-by-settler tables.
 // Every duration is spelled through durfmt.FormatSeconds, and a figure the report holds as nil renders as no data.
 func RenderTimingMarkdown(r TimingReport) string {
 	var b strings.Builder

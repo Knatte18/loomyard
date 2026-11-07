@@ -1,4 +1,5 @@
-// rowgate.go implements the wrap that hands a row gate's failure to a cold fixer at the writer's idle boundary and re-runs the gate over the fixer's finished tree.
+// rowgate.go wraps a row gate so that its failure goes to a cold fixer at the writer's idle boundary,
+// and the gate re-runs over the fixer's finished tree.
 
 package gatefixer
 
@@ -16,7 +17,7 @@ import (
 // awaitSlice is how long one call to the fixer's wait blocks before the wrap asks again.
 const awaitSlice = time.Minute
 
-// RowFixer is what a row's gate wrap needs to hand a failure to a cold fixer.
+// RowFixer holds what a row gate's wrap needs to hand a failure to a cold fixer.
 type RowFixer struct {
 	// Fixer spawns, waits on and stops the fixer strands.
 	Fixer Fixer
@@ -26,9 +27,9 @@ type RowFixer struct {
 	Spec func(reportPath, replyPath string) (Spec, error)
 	// Timeout bounds each fixer's run.
 	Timeout time.Duration
-	// Forked tells whether the row's run evaluates the entries' Forked closures, which the row decides when it is built.
+	// Forked reports whether the row's run evaluates the entries' Forked closures; the row decides this when it is built.
 	Forked bool
-	// SkipForked, when non-nil, reports whether a failing Forked evaluation's findings are for the writer alone, so no fixer is spawned; nil skips nothing.
+	// SkipForked, when non-nil, reports whether a forked failure's findings are for the writer alone, so no fixer runs.
 	SkipForked func(findings string) bool
 }
 
@@ -57,16 +58,21 @@ type rowWrap struct {
 	spawned map[string]bool
 }
 
-// WrapRowGate returns a copy of spec whose entry named entry hands a failure to a cold fixer, and whose other entries wait for a running fixer before they judge.
+// WrapRowGate returns a copy of spec whose entry named entry hands a failure to a cold fixer.
+// Its other entries wait for a running fixer before they judge.
 // Every entry keeps its name, attempts, pass-on-cap flag and re-prompt line.
 //
 // The named entry's gate, and its forked gate when set, run the inner closure once;
-// a failure spawns one fixer with the findings as its report, waits for it, runs the closure again and returns that verdict, with the fixer's reply appended to a failure.
-// No fixer is spawned for a passing, pending, terminal or erroring result, for a forked failure SkipForked reports, or once the entry's set holds attempts plus one records.
+// a failure spawns one fixer with the findings as its report, and waits for it;
+// the closure then runs again, and its verdict is returned with the fixer's reply appended to a failure.
+// No fixer is spawned for a passing, pending, terminal or erroring result.
+// It is not spawned for a forked failure SkipForked reports, or once the entry's set holds attempts plus one records.
 // A fixer that cannot be started leaves the inner failure standing with a line saying no fixer ran.
 // A live record in the set is waited on instead of spawning, so a restarted driver finds the fixer it left running.
-// The record turns terminal when the entry that spawns fixers returns a result judged over the fixer's finished tree, or when any other entry fails over it;
-// an entry that passes over a live record leaves it live, so a later entry still folds the fixer's reply into its findings.
+// The record turns terminal when the spawning entry returns a result judged over the fixer's finished tree.
+// It also turns terminal when any other entry fails over it;
+// an entry that passes over a live record leaves it live;
+// a later entry still folds the fixer's reply into its findings.
 // The entry's final closure never spawns; it only waits for a live record, then judges once.
 // An entry naming no entry of spec is refused.
 func WrapRowGate(spec shuttleengine.GateSpec, entry string, rf RowFixer) (shuttleengine.GateSpec, error) {
@@ -133,7 +139,8 @@ func (w *rowWrap) waitOnly(inner shuttleengine.Gate, markOnPass bool) shuttleeng
 	}
 }
 
-// spawning returns inner behind the fixer hand-off: it waits on a live record, and on a failure of its own spawns a fixer and judges again.
+// spawning returns inner behind the fixer hand-off.
+// It waits on a live record, and on a failure of its own it spawns a fixer and judges again.
 func (w *rowWrap) spawning(inner shuttleengine.Gate, forked bool) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		store, live, err := w.liveRecord()
@@ -170,7 +177,8 @@ func (w *rowWrap) liveRecord() (rowStore, *Record, error) {
 	return store, live, nil
 }
 
-// spawnAndJudgeAgain writes failed's findings as the report of the fixer that takes place n, spawns it and returns inner's verdict once the fixer has ended.
+// spawnAndJudgeAgain writes failed's findings as the report of the fixer numbered n;
+// it spawns that fixer and returns inner's verdict once the fixer has ended.
 func (w *rowWrap) spawnAndJudgeAgain(store rowStore, n int, inner shuttleengine.Gate, failed shuttleengine.GateResult) (shuttleengine.GateResult, error) {
 	reportPath, replyPath := store.reportPath(n), store.replyPath(n)
 	if err := os.MkdirAll(store.dir, 0o755); err != nil {
@@ -197,8 +205,10 @@ func (w *rowWrap) spawnAndJudgeAgain(store rowStore, n int, inner shuttleengine.
 }
 
 // waitThenRun waits for rec's fixer and runs inner once.
-// The record is marked terminal only after inner has returned a result, so a driver restarted during the run, or after an inner error, still finds the fixer live;
-// a passing or pending result, which judges nothing over the finished tree, leaves it live when markOnPass is false.
+// The record is marked terminal only after inner has returned a result,
+// so a driver restarted during the run, or after an inner error, still finds the fixer live.
+// A passing or pending result judges nothing over the finished tree;
+// when markOnPass is false, it leaves the record live.
 // A failing verdict carries the fixer's reply or dead note.
 func (w *rowWrap) waitThenRun(store rowStore, rec *Record, inner shuttleengine.Gate, markOnPass bool) (shuttleengine.GateResult, error) {
 	outcome, err := w.wait(store, rec)
@@ -223,7 +233,8 @@ func (w *rowWrap) waitThenRun(store rowStore, rec *Record, inner shuttleengine.G
 }
 
 // wait asks the fixer to wait until its answer is terminal.
-// A wait that fails stops the strand and marks the record dead, so a fixer whose engine or events can no longer be read never blocks the visit;
+// A wait that fails stops the strand and marks the record dead,
+// so a fixer whose engine or events can no longer be read never blocks the visit;
 // when that stop fails too, the record stays live and the joined error is returned.
 func (w *rowWrap) wait(store rowStore, rec *Record) (fixerOutcome, error) {
 	for {
@@ -243,7 +254,8 @@ func (w *rowWrap) wait(store rowStore, rec *Record) (fixerOutcome, error) {
 	}
 }
 
-// expired reports whether the set holds a live record whose strand this wrap did not spawn, which only a driver restarted onto the visit sees.
+// expired reports whether the set holds a live record whose strand this wrap did not spawn;
+// only a driver restarted onto the visit sees such a record.
 func (w *rowWrap) expired() (bool, error) {
 	_, live, err := w.liveRecord()
 	if err != nil || live == nil {

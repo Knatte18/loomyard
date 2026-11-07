@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLand_RunsFromATaskPair asserts a land of the beam b run from inside a task pair reaches the verb's own refusal of a beam with no pawl run, never the refusal of a worktree that is neither the prime nor a beam.
+// TestLand_RunsFromATaskPair asserts that a land run from a task pair reaches the refusal of a beam with no pawl run.
+// It must never reach the refusal of a worktree that is neither the prime nor a beam.
 func TestLand_RunsFromATaskPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

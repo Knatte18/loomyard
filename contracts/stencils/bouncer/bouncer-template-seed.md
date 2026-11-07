@@ -1,12 +1,11 @@
-<!-- This is the Bouncer's seed prompt: the focus-setting pass that runs before any round has been
-     reviewed. It is filled via internal/stencil.Fill (bouncer.go's seedCall, which calls
-     runSeedSpawn, reached from Call) and handed to the shuttle as the agent's entire instruction
-     set -- the call runs as a single clean-room agent told only "read this file and do exactly
-     what it says".
+<!-- This is the Bouncer's seed prompt: the focus-setting pass that runs before any round has been reviewed.
+     It is filled via internal/stencil.Fill and handed to the shuttle as the agent's entire instruction set.
+     The call runs as a single clean-room agent told only "read this file and do exactly what it says".
      Every marker below is a top-level {{.X}} substitution;
      {{.edit_directive}} is a required marker, rendered unconditionally by internal/editdirective;
      stencil.Fill requires every marker this file names non-empty,
-     and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty -- see internal/stencil/stencil.go).
+     and there are no {{if}}/{{range}} conditionals anywhere in this file:
+     a required marker inside a conditional branch would render silently blank when present-but-empty (see internal/stencil/stencil.go).
      The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}) have two variants, rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
      Go holds the variant so this stencil stays conditional-free. -->
 

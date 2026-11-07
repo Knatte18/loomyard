@@ -1,6 +1,8 @@
-// halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and the hooks that write it, loomAfterStep under step and loomPostRun under run.
+// halt.go holds loom's halt friction, the Go-authored note a `blocked` or `failed` halt leaves.
+// The hooks that write it are loomAfterStep, under step, and loomPostRun, under run.
 //
-// A halt writes its note and spawns no reflection: the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
+// A halt writes its note and spawns no reflection:
+// the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
 
 package loomcli
 
@@ -31,7 +33,8 @@ type haltNote struct {
 	Interrupted bool
 }
 
-// writeHistoryRows appends the history section of a friction note: one `- <producer> / <outcome> / <at>` row per entry, or a single line saying there are none.
+// writeHistoryRows appends the history section of a friction note:
+// one `- <producer> / <outcome> / <at>` row per entry, or a single line saying there are none.
 func writeHistoryRows(b *strings.Builder, history []shedengine.HistoryEntry) {
 	b.WriteString("\nhistory:\n")
 	if len(history) == 0 {
@@ -43,7 +46,8 @@ func writeHistoryRows(b *strings.Builder, history []shedengine.HistoryEntry) {
 	}
 }
 
-// writeHaltNote records n as a friction note named `loom-halt`, carrying the anomaly kind the halt classifies as and the history behind it.
+// writeHaltNote records n as a friction note named `loom-halt`.
+// The note carries the anomaly kind the halt classifies as and the history behind it.
 // It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
 func writeHaltNote(frictionDir string, n haltNote) error {
 	if frictionDir == "" {
@@ -90,8 +94,9 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 }
 
 // failedHalt reports the halt behind err when it is a `failed` one.
-// It is never one for shedengine.ErrShedBusy,
-// and otherwise only when the status file reads `failed` with a persisted error equal to err.Error(), which is how shedengine persists the producer-error and unrecognised-outcome arms.
+// It is never one for shedengine.ErrShedBusy.
+// Otherwise it is one only when the status file reads `failed` with a persisted error equal to err.Error().
+// That is how shedengine persists the producer-error and unrecognised-outcome arms.
 // A stale `failed` status left by an earlier invocation therefore never writes a second note.
 func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	if err == nil || errors.Is(err, shedengine.ErrShedBusy) {
@@ -114,10 +119,13 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 }
 
 // loomAfterStep is loom's AfterStep hook and returns the envelope's "friction" key.
-// A `failed` halt behind stepErr and a `blocked` result each write a halt note and report skipped, leaving the reflection to the Friction-Reflect row.
+// A `failed` halt behind stepErr and a `blocked` result each write a halt note and report skipped.
+// Both leave the reflection to the Friction-Reflect row.
 // `done` reports what the Friction-Reflect row recorded, or skipped when the row did not run in this process.
 // Every other state, awaiting and paused included, writes nothing and reports skipped.
-// Every step that returns, with or without an error, vouches for what it left on disk: a step error records the handoff voucher from the status file before the halt check, except a busy refusal, whose driver vouches on its own exit.
+// Every step that returns, with or without an error, vouches for what it left on disk:
+// a step error records the handoff voucher from the status file before the halt check.
+// A busy refusal is the exception: its driver vouches on its own exit.
 func (c *loomCLI) loomAfterStep(ctx context.Context, res shedengine.StepResult, stepErr error) string {
 	if stepErr != nil {
 		if !errors.Is(stepErr, shedengine.ErrShedBusy) {

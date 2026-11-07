@@ -1,5 +1,7 @@
 // pairbranch_integration_test.go covers a branch prefix set while pairs made under the empty prefix are live:
-// a pair is read from its own worktrees, local branches and origin, and remove, discard and the pair's name lookups reach it by the branches it was made under, while a new pair gets the prefixed branch.
+// a pair is read from its own worktrees, local branches and origin.
+// Remove, discard and the pair's name lookups reach it by the branches it was made under.
+// A new pair gets the prefixed branch.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -19,10 +21,11 @@ import (
 // laterBranchPrefix is the branch_prefix the tests set after their pairs were made under the empty prefix.
 const laterBranchPrefix = "hanf/"
 
-// earlierBranchPrefix is a branch_prefix a pair was made under before the prefix changed to laterBranchPrefix, neither empty nor the later one.
+// earlierBranchPrefix is a non-empty branch_prefix a pair was made under before the prefix changed to another value.
 const earlierBranchPrefix = "earlier/"
 
-// topologyWithPrefix returns a Topology over l's hub config with branch_prefix set to prefix, as if it had been changed after the hub's pairs were made.
+// topologyWithPrefix returns a Topology over l's hub config with branch_prefix set to prefix.
+// It models a prefix changed after the hub's pairs were made.
 func topologyWithPrefix(t *testing.T, l *lymcwd.Location, prefix string) *fabricengine.Topology {
 	t.Helper()
 
@@ -34,7 +37,9 @@ func topologyWithPrefix(t *testing.T, l *lymcwd.Location, prefix string) *fabric
 	return fabricengine.NewTopology(cfg)
 }
 
-// pairOnOriginOnly makes slug's pair under the empty prefix, removes it locally while both its branches stay on origin, and returns the hub with a Topology whose branch_prefix is laterBranchPrefix.
+// pairOnOriginOnly makes slug's pair under the empty prefix and removes it locally.
+// Both its branches stay on origin.
+// It returns the hub with a Topology whose branch_prefix is laterBranchPrefix.
 func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.Topology) {
 	t.Helper()
 
@@ -111,7 +116,8 @@ func TestBranchPrefixChange_KeepsLivePairsManaged(t *testing.T) {
 	}
 }
 
-// TestBranchPrefixChange_PairWithNothingLeftLocally pins that a pair made under the empty prefix, of which only the branches on origin remain, is still found and torn down by its bare-slug names once branch_prefix is set.
+// TestBranchPrefixChange_PairWithNothingLeftLocally pins that a pair left with only origin branches:
+// made under the empty prefix is still found and torn down by its bare-slug names once branch_prefix is set.
 func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -216,7 +222,8 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 	})
 }
 
-// TestPairTaskBranch_ReadsThePairItself pins PairTaskBranch's read order over a pair made under the empty prefix or an earlier one, with branch_prefix set afterwards.
+// TestPairTaskBranch_ReadsThePairItself pins PairTaskBranch's read order over one pair:
+// made under the empty prefix or an earlier one, with branch_prefix set afterwards.
 func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -282,8 +289,10 @@ func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 		})
 	}
 
-	// A half-torn pair whose records repository cannot be resolved stays readable: the records step is skipped and a local branch names the pair.
-	// The anchor directory is deleted from the prime worktree, so the worktree list RecordsRepoRoot resolves through cannot run.
+	// A half-torn pair whose records repository cannot be resolved stays readable:
+	// the records step is skipped and a local branch names the pair.
+	// The anchor directory is deleted from the prime worktree,
+	// so the worktree list RecordsRepoRoot resolves through cannot run.
 	t.Run("UnresolvableRecordsRepositoryLeavesTheLocalBranchStep", func(t *testing.T) {
 		t.Parallel()
 
@@ -307,7 +316,8 @@ func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 	})
 }
 
-// renamePairBranches renames slug's task branch to branch and its records branch to branch's records name, as a pair made under an earlier prefix carries them, while both worktrees stand.
+// renamePairBranches renames slug's task branch to branch and its records branch to branch's records name.
+// It renames them as a pair made under an earlier prefix carries its branches, while both worktrees stand.
 func renamePairBranches(t *testing.T, h *hubforge.Hub, slug, branch string) {
 	t.Helper()
 

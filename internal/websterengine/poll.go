@@ -1,18 +1,16 @@
-// poll.go implements webster's own long-poll loop over webster's Digest, plus the
-// unexported clock seam (clock, realClock, pollTick) it relies on so a test can inject a
-// fake clock and replay a whole poll sequence instantly.
-// The long-poll IS the notification: the loop
-// blocks inside Go on a fixed tick, costing the caller nothing per tick, and returns the instant a
-// batch reaches a terminal classification.
+// poll.go implements the long-poll loop over Digest, and the clock seam the loop runs on.
+// The long-poll itself is the notification.
+// The loop blocks inside Go on a fixed tick, so the caller pays nothing per tick.
+// It returns as soon as a batch reaches a terminal classification.
+// The clock seam lets a test replay a whole poll sequence instantly.
 
 package websterengine
 
 import "time"
 
-// clock abstracts time.Now/time.Sleep so PollUntilTerminal's wait loop runs
-// instantly under test: a fake clock's Sleep advances a virtual "now"
-// rather than blocking, letting a test replay a whole poll sequence
-// instantly.
+// clock abstracts time.Now and time.Sleep.
+// A fake clock's Sleep advances a virtual now instead of blocking,
+// so a test can replay a whole poll sequence instantly.
 type clock interface {
 	Now() time.Time
 	Sleep(d time.Duration)
@@ -24,13 +22,12 @@ type realClock struct{}
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// pollTick is PollUntilTerminal's fixed re-run interval.
+// pollTick is the fixed interval the poll loop waits between gather calls.
 const pollTick = 1 * time.Second
 
-// PollUntilTerminal repeatedly calls gather until it reports terminal or wait elapses, returning
-// immediately on terminal.
-// A deadline returns the last running digest;
-// a gather error propagates.
+// PollUntilTerminal calls gather repeatedly until it reports terminal or wait elapses.
+// It returns the terminal digest at once, or the last running digest when wait elapses.
+// A gather error is returned with an empty Digest.
 func PollUntilTerminal(gather func() (Digest, bool, error), wait time.Duration, clk clock) (Digest, error) {
 	deadline := clk.Now().Add(wait)
 

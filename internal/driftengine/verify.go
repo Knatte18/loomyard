@@ -1,4 +1,5 @@
-// verify.go — the Drift-Verify producer: containment of the current code's captured changes by the sealed expectation, and one judge on the expected changes no stored ruling covers.
+// verify.go implements the Drift-Verify producer, which checks the captured code changes against the sealed expectation.
+// One judge rules on the expected changes that no stored ruling covers.
 
 package driftengine
 
@@ -21,20 +22,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The recipe rows that edit code, which a Stuck's way forward goes back to.
+// The recipe rows that edit code; a Stuck's way forward routes the parent back to one of them.
 const (
 	darnWriteRow = "Darn-Write"
 	websterRow   = "Webster"
 )
 
-// The reasons of the Stuck passes that name no changed value.
+// Reasons of Stuck passes that name no changed value; each states the parent's way forward.
 const (
 	recordsMismatchReason = "the drift records on disk differ from their newest committed copy; way forward: the parent runs lym drift amend <slug> --restore, then lym loom resume"
 	neverCountedReason    = "the baseline capture never counted, so there is no baseline to check against; way forward: the parent runs lym drift defer, then lym loom resume"
 	snapshotGoneReason    = "the snapshot of both checkouts the judge was spawned under went while its session was live, so what that session changed cannot be told; way forward: the parent or the operator checks both checkouts for the judge's edits, then runs lym loom resume, which takes a new snapshot and resumes the judge"
 )
 
-// DriftVerify is the Drift-Verify ShedProducer; the Drift-Recheck row runs the same engine.
+// DriftVerify is the Drift-Verify ShedProducer, which checks the captured code changes against the sealed expectation.
+// The Drift-Recheck row runs the same engine.
 type DriftVerify struct {
 	name      string
 	row       Row
@@ -52,18 +54,21 @@ func NewDriftVerify(name string, row Row, judgement shuttleengine.GateEntry, dep
 
 // Call runs one Drift-Verify pass.
 // With drift switched off it is Done at once.
-// Otherwise it first ends the live chairs of the removed drift-baseline and drift-verify agents, and then runs these steps in order, each ending the pass when it answers:
+// Otherwise it first ends the live chairs of the removed drift-baseline and drift-verify agents.
+// It then runs these steps in order, each ending the pass when it answers:
 // no scope record, scope off, a deferred capture, a waiver and a head already checked with no amendment since are Done;
-// a records mismatch, a capture that never counted and a baseline that is missing or edited are a Stuck for the run's parent;
+// a records mismatch, a capture that never counted and a baseline that is missing or edited are a Stuck for the parent;
 // an open judge session whose checkouts changed since, or whose snapshot is gone under a live chair, is a Stuck;
 // one whose snapshot is gone with no live chair takes a new snapshot and is resumed, and so is one that is intact;
 // a failed current capture, a seal fault and any change the expectation does not cover are a Stuck;
-// a change whose exact old and new value has a stored ruling reuses it, and a stored ruling of does not match is a Stuck.
+// a change whose exact old and new value has a stored ruling reuses it;
+// a stored ruling that does not match is a Stuck.
 // With no change left to judge the check passes; otherwise one judge rules on the rest, and its rulings are stored.
 // Under a recorded diff of command the declared compare replaces the capture and the diff.
 // An exit 0 is Done, and a failing compare is ruled on case by case by one judge.
 // A stored ruling of the same code head stands until an amendment follows it.
-// Every Stuck for the parent opens with shedadapters.DecisionHaltPrefix, and one that names `lym drift defer` carries DeferHaltPrefix right after it.
+// Every Stuck for the parent opens with shedadapters.DecisionHaltPrefix.
+// A Stuck that names `lym drift defer` carries DeferHaltPrefix right after it.
 // An exhausted `judgement` entry is the shed's Stuck, and its resume respawns the judge under the same spawn id.
 func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
@@ -109,7 +114,7 @@ func scopeOffReason(scope ScopeRecord) string {
 	return "the scope is off"
 }
 
-// pass is Call after the switch check and the end of the removed agents' chairs.
+// pass reads the records, decides the pass from them, and then checks the captured changes.
 func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	rec, err := ReadRecords(d)
@@ -184,7 +189,9 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	return p.checkAndJudge(ctx, rec, head)
 }
 
-// recordDiffMode records the config's diff mode, key patterns and volatile lists in a scope record that holds no mode, which keeps them for the run, and returns the records as written.
+// recordDiffMode writes the config's diff mode, key patterns and volatile lists into a scope record with no mode,
+// so the run keeps them.
+// It returns the records as written.
 func (p *DriftVerify) recordDiffMode() (Records, error) {
 	d := p.deps
 	cfg, err := d.Config()
@@ -201,8 +208,10 @@ func (p *DriftVerify) recordDiffMode() (Records, error) {
 	return ReadRecords(d)
 }
 
-// recordUnsealed records Unsealed once for a run that has neither a seal commit nor an expected.yaml, so containment reads the empty expectation.
-// A run with an expected.yaml and no seal commit is left unmarked, so the seal check faults on it, and so is a run whose row is not past Drift-Expect, which the check refuses.
+// recordUnsealed marks the scope `Unsealed` once, for a run with neither a seal commit nor an expected.yaml.
+// The mark makes containment read the empty expectation.
+// A run with an expected.yaml and no seal commit stays unmarked, so the seal check faults on it.
+// A run whose row is not past Drift-Expect also stays unmarked, and the check refuses such a run.
 func (p *DriftVerify) recordUnsealed(rec Records) error {
 	d := p.deps
 	if rec.Scope.Unsealed {
@@ -231,7 +240,9 @@ func (p *DriftVerify) recordUnsealed(rec Records) error {
 	})
 }
 
-// checkAndJudge runs the drift check and maps its report: a fault or an unexpected change is a Stuck, stored rulings are reused, and the changes left over go to the judge.
+// checkAndJudge runs the drift check and maps its report.
+// A fault or an unexpected change is a Stuck.
+// Stored rulings are reused, and the changes left over go to the judge.
 func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	report, err := Check(ctx, p.deps)
 	if err != nil {
@@ -284,8 +295,8 @@ func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head strin
 	return p.judge(ctx, rec, report, toJudge, reused, head)
 }
 
-// faultReason returns the reason of the Stuck a fault of the report is, and empty when it holds none.
-// A failed current capture names its reason, its log and three ways forward.
+// faultReason returns the Stuck reason for a fault in the report, or empty when the report holds none.
+// A failed current capture names its reason, its log and the ways forward.
 func (p *DriftVerify) faultReason(report CheckReport) string {
 	switch {
 	case report.BaselineFault != "":
@@ -300,12 +311,14 @@ func (p *DriftVerify) faultReason(report CheckReport) string {
 	return ""
 }
 
-// noMatchReason words a Stuck over changes ruled not to match, naming each with its reason, the parent's amendment and the route that fixes code.
+// noMatchReason words a Stuck over changes ruled not to match.
+// It names each change with its reason, the parent's amendment and the route that fixes code.
 func (p *DriftVerify) noMatchReason(lead string, ruled []string) string {
 	return fmt.Sprintf("%s: %s; way forward: the parent runs lym drift amend <slug> --entries <file> with entries that explain the change, then lym loom resume; or fix the code with %s", lead, strings.Join(ruled, "; "), p.fixRoute())
 }
 
-// fixRoute returns the parent's route to the row that edits code: Darn-Write when the run's rows hold it, else Webster, whose Merriam meets the cells in its run-level drift entry.
+// fixRoute returns the parent's route to the row that edits code: Darn-Write when the run's rows hold it;
+// otherwise Webster, whose Master meets the cells in its run-level drift entry.
 func (p *DriftVerify) fixRoute() string {
 	row := websterRow
 	if slices.Contains(p.deps.Rows, darnWriteRow) {
@@ -324,7 +337,8 @@ func storedRuling(judged JudgedRecord, cell Cell) (JudgedTuple, bool) {
 	return JudgedTuple{}, false
 }
 
-// checkResult builds the record of a check over report at head, counting the cells the judge ruled matching and the cells a stored ruling decided.
+// checkResult builds the record of a check over report at head.
+// It counts the cells the judge ruled matching and the cells a stored ruling decided.
 func (p *DriftVerify) checkResult(report CheckReport, head string, passed bool, matched, reused int) CheckResult {
 	result := CheckResult{
 		Head:             head,
@@ -347,7 +361,7 @@ func (p *DriftVerify) checkResult(report CheckReport, head string, passed bool, 
 	return result
 }
 
-// recordCheck writes result as the last check through the records guard, with change applied first when it is not nil.
+// recordCheck writes result as the last check through WriteRecords, applying change first when it is not nil.
 // A passing result also records its head and the amendment count as the last pass.
 func (p *DriftVerify) recordCheck(result CheckResult, change func(scope *ScopeRecord, judged *JudgedRecord)) error {
 	return WriteRecords(p.deps, func(scope *ScopeRecord, judged *JudgedRecord) error {
@@ -362,7 +376,8 @@ func (p *DriftVerify) recordCheck(result CheckResult, change func(scope *ScopeRe
 	})
 }
 
-// closeJudgeSession closes the judge-session mark and clears the snapshot-lost mark, since a closed session needs no snapshot.
+// closeJudgeSession closes the judge-session mark and clears the snapshot-lost mark.
+// A closed session needs no snapshot.
 func closeJudgeSession(scope *ScopeRecord, _ *JudgedRecord) {
 	scope.JudgeSession = SessionMark{}
 	scope.SnapshotLost = false
@@ -377,8 +392,10 @@ func (p *DriftVerify) now() time.Time {
 }
 
 // judge spawns the judge on cells, which no stored ruling covers, and stores its rulings.
-// A fresh session removes a stale judgement.yaml, writes the request under a new spawn id, takes the snapshot of both checkouts and opens the session mark.
-// A session an earlier entry left open keeps its spawn id and its snapshot, and takes a new snapshot only when the records say the old one was lost.
+// A fresh session removes a stale judgement.yaml and writes the request under a new spawn id.
+// It then takes the snapshot of both checkouts and opens the session mark.
+// A session an earlier entry left open keeps its spawn id and snapshot.
+// It takes a new snapshot only when the records say the old one was lost.
 func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport, cells []ClassifiedCell, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	mark := rec.Scope.JudgeSession
 	spawnID := mark.SpawnID
@@ -423,8 +440,10 @@ func judgeCellID(index int) string {
 	return fmt.Sprintf("c%d", index+1)
 }
 
-// judgeRequest builds the request of one spawn over cells: each cell with its exact old and new value and covering why, the open ranges that cover a cell, and the sealed expectation and the amendments as text.
-// An added case names its file in the current capture and a removed case its file in the baseline.
+// judgeRequest builds the request of one spawn over cells.
+// Each cell carries its exact old and new value and the covering entry's why.
+// The request also lists the open ranges that cover a cell, and the sealed expectation and the amendments as text.
+// An added case names its file in the current capture, and a removed case names its file in the baseline.
 func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckReport, cells []ClassifiedCell) (JudgeRequest, error) {
 	d := p.deps
 	baseHead, err := baselineHead(d)
@@ -470,7 +489,8 @@ func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckRepo
 	return request, nil
 }
 
-// coveringLine returns the first line entry of the expectation that covers the unkeyed cell, the entry Cover reports.
+// coveringLine returns the first line entry of the expectation that covers the unkeyed cell.
+// It returns a zero LineEntry when none does.
 func coveringLine(expectation Expectation, cell Cell) LineEntry {
 	for _, entry := range expectation.Cases[cell.Case].Lines {
 		if covers, _ := coversLine(cell.Case, entry, cell); covers {
@@ -480,7 +500,9 @@ func coveringLine(expectation Expectation, cell Cell) LineEntry {
 	return LineEntry{}
 }
 
-// amendmentsText renders the parent's amendments in order, each as a comment line naming its kind, caller and time and then its entries; it is empty when there is none.
+// amendmentsText renders the parent's amendments in order.
+// Each amendment is a comment line naming its kind, caller and time, followed by its entries if any.
+// It is empty when there are no amendments.
 func amendmentsText(amendments []Amendment) string {
 	var text strings.Builder
 	for _, amendment := range amendments {
@@ -496,8 +518,11 @@ func amendmentsText(amendments []Amendment) string {
 	return text.String()
 }
 
-// openJudgeSession starts a judge session: it removes a stale judgement.yaml, writes the request, takes the snapshot of both checkouts and of scratchDir and opens the session mark.
-// The snapshot comes first, so an open mark always has one and a pass that dies between the two leaves no session to recover.
+// openJudgeSession starts a judge session.
+// It removes a stale judgement.yaml and writes the request.
+// It takes the snapshot of both checkouts and of scratchDir, and it opens the session mark.
+// The snapshot comes first,
+// so an open mark always has one and a pass that dies between the two leaves no session to recover.
 func (p *DriftVerify) openJudgeSession(request JudgeRequest, scratchDir string) error {
 	d := p.deps
 	if err := p.removeJudgement(); err != nil {
@@ -515,7 +540,9 @@ func (p *DriftVerify) openJudgeSession(request JudgeRequest, scratchDir string) 
 	})
 }
 
-// resumeJudgeSession rewrites the request of a session an earlier entry left open and, when the records say its snapshot was lost, clears that mark and then takes a new one, so the snapshot holds the write that cleared it.
+// resumeJudgeSession rewrites the request of a session an earlier entry left open.
+// When the records say its snapshot was lost, it clears the snapshot-lost flag and then takes a new snapshot,
+// so the snapshot holds the write that cleared it.
 func (p *DriftVerify) resumeJudgeSession(rec Records, request JudgeRequest, scratchDir string) error {
 	d := p.deps
 	if err := WriteJudgeRequest(d.Paths, request); err != nil {
@@ -535,7 +562,8 @@ func (p *DriftVerify) resumeJudgeSession(rec Records, request JudgeRequest, scra
 	return err
 }
 
-// removeJudgement removes judgement.yaml, which is no record, and is content with it already gone.
+// removeJudgement removes judgement.yaml, which is not a record.
+// A file that is already gone is not an error.
 func (p *DriftVerify) removeJudgement() error {
 	if err := os.Remove(p.deps.Paths.Judgement); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("drift: %s: remove the judgement file: %w", p.name, err)
@@ -544,8 +572,9 @@ func (p *DriftVerify) removeJudgement() error {
 }
 
 // settleOpenSession returns why a session an earlier entry left open may not go on, and empty when it may.
-// A snapshot that is gone guards nothing once no chair is live, so it is recorded as lost and the pass goes on to take a new one;
-// under a live chair what that session changes cannot be told, which is the Stuck snapshotGoneReason words.
+// A snapshot that is gone guards nothing once no chair is live,
+// so it is recorded as lost and the pass goes on to take a new one;
+// under a live chair the reason is snapshotGoneReason, since what that session changed cannot be told.
 func (p *DriftVerify) settleOpenSession() (string, error) {
 	d := p.deps
 	snapshot, found, err := ReadJudgeSnapshot(d)
@@ -572,7 +601,8 @@ func (p *DriftVerify) settleOpenSession() (string, error) {
 	return "", nil
 }
 
-// judgeSessionChanged returns why the checkouts no longer match the snapshot the judge that just ended was spawned under, and empty when they match.
+// judgeSessionChanged returns why the checkouts no longer match the snapshot the judge was spawned under;
+// it returns empty when they match.
 // A snapshot that went while that judge ran is recorded as lost, so the parent's resume takes a new one.
 func (p *DriftVerify) judgeSessionChanged() (string, error) {
 	snapshot, found, err := ReadJudgeSnapshot(p.deps)
@@ -594,7 +624,8 @@ func (p *DriftVerify) recordSnapshotLost() error {
 }
 
 // changedSince returns why the checkouts no longer match snapshot, and empty when they match.
-// The reason names each change, the directory the snapshot's copies are in and the way to restore, which keeps that directory, since the resume compares against it.
+// The reason names each change, the directory that holds the snapshot's copies, and the way to restore;
+// it tells the parent or the operator to keep that directory, since the resume compares against it.
 func (p *DriftVerify) changedSince(snapshot JudgeSnapshot) (string, error) {
 	d := p.deps
 	changes, err := snapshot.Changes(d)
@@ -652,8 +683,10 @@ func (r *strandRecorder) Run(table seatengine.Table) (seatengine.Result, error) 
 }
 
 // runAgent runs the judge, resuming its live chair, and reads its rulings.
-// It returns the session only when the judge ended Done, both checkouts still match the snapshot and the baseline still matches its digest;
-// otherwise it returns the outcome to end the pass with, which leaves the session mark open, so the next entry resumes the judge.
+// It returns the session only when the judge ended Done;
+// both checkouts still match the snapshot, and the baseline still matches its digest.
+// Otherwise it returns the outcome to end the pass with, which leaves the session mark open,
+// so the next entry resumes the judge.
 func (p *DriftVerify) runAgent(ctx context.Context, request JudgeRequest) (shedengine.Outcome, shedengine.OutputPointer, *judgeSession, error) {
 	d := p.deps
 	seats := &strandRecorder{inner: d.Seats}
@@ -693,8 +726,11 @@ func (p *DriftVerify) runAgent(ctx context.Context, request JudgeRequest) (shede
 	return shedengine.Done, pointer, &judgeSession{Judgement: judgement, Strand: seats.strand}, nil
 }
 
-// storeRulings stores the judge's rulings in judged.json as exact tuples, each listed open range with its covering why and the judge's sentence, closes the session mark and records the check, all in one write, and then removes judgement.yaml.
-// Any ruling of does not match is a Stuck naming the cells and their reasons; all matches records the pass and is Done.
+// storeRulings stores the judge's rulings in judged.json as exact tuples:
+// each listed open range that the request covers is stored with the request's why and the judge's sentence.
+// It closes the session mark and records the check in one write; then it removes judgement.yaml.
+// Any ruling other than matches is a Stuck naming the cells and their reasons;
+// all matches records the pass and is Done.
 func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, request JudgeRequest, session *judgeSession, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	at := stamp(p.now())
 	byID := make(map[string]ClassifiedCell, len(cells))
@@ -766,8 +802,9 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 
 // passCommand maps the report of a check under diff command, whose declared compare already ran, to an outcome:
 // an exit 0 records the pass and is Done with no judge;
-// a failing compare at a code head whose stored case rulings include a does not match or an unexpected, with no amendment recorded since, is a Stuck naming them, with no new judge;
-// otherwise one judge, spawned under the same snapshot guard as under diff lines, rules on the cases, and its rulings are stored.
+// a failing compare at a code head with a stored non-matching case ruling and no amendment since is a Stuck naming them,
+// and no judge runs;
+// otherwise one judge, spawned under a snapshot guard, rules on the cases, and its rulings are stored.
 func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report CheckReport) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	head, err := d.Head()
@@ -831,8 +868,10 @@ func describeCaseRuling(caseName string, ruling Ruling, reason string) string {
 	return fmt.Sprintf("case %q ruled %q: %s", caseName, ruling, reason)
 }
 
-// storedCaseRulings returns, worded by describeCaseRuling, each stored ruling of does not match or unexpected at head that no amendment was recorded after.
-// Rulings and amendments both carry UTC stamps, so their strings order by time; an amendment stamped in the same second as a ruling counts as after it.
+// storedCaseRulings returns each stored non-matching ruling at head that no amendment was recorded after.
+// Each string names the case, its ruling and its reason.
+// Rulings and amendments both carry UTC stamps, so their strings order by time;
+// an amendment stamped in the same second as a ruling counts as after it.
 func storedCaseRulings(rec Records, head string) []string {
 	var ruled []string
 	for _, stored := range rec.Judged.Cases {
@@ -847,9 +886,12 @@ func storedCaseRulings(rec Records, head string) []string {
 	return ruled
 }
 
-// storeCaseRulings stores the judge's rulings on the cases of the failing compare, closes the session mark and records the check in one write, and then removes judgement.yaml.
-// A ruling of matches is not stored, and drops an earlier stored ruling of the same case at head; each other ruling is stored as a JudgedCase keyed by head and case.
-// Any ruling other than matches is a Stuck naming the cases and their reasons; all matches records the pass and is Done.
+// storeCaseRulings stores the judge's rulings on the cases of the failing compare.
+// It closes the session mark and records the check in one write; then it removes judgement.yaml.
+// A ruling of matches is not stored, and drops an earlier stored ruling of the same case at head;
+// each other ruling is stored as a JudgedCase keyed by head and case.
+// Any ruling other than matches is a Stuck naming the cases and their reasons;
+// all matches records the pass and is Done.
 func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	at := stamp(p.now())
 	var ruled []JudgedCase

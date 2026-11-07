@@ -1,5 +1,7 @@
-// tied_linux_test.go covers the Linux tree kill: Tied.Kill reaching a grandchild, KillTree's start-time gate and SelfRecord.
-// It spawns real children, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
+// tied_linux_test.go covers the Linux tree kill.
+// It tests that Tied.Kill reaches a grandchild, the start-time gate of KillTree, and SelfRecord.
+// It spawns real children, which the package's Test Tier Purity allowlist entry admits.
+// Process control is the package's subject.
 
 package proc
 
@@ -86,7 +88,7 @@ func TestKillTree(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// shiftStart moves the recorded start time, so the record no longer matches a live member.
+		// shiftStart moves the recorded start time, so the record does not match a live member.
 		shiftStart func(string) string
 		wantKilled bool
 	}{

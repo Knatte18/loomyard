@@ -1,7 +1,9 @@
-<!-- This is the writer's seat directive: the block a writer seat's stencil pulls in with the bare {{template "seat-directive-writer"}}, with no pipeline.
+<!-- This is the writer's seat directive:
+     the block a writer seat's stencil pulls in with the bare {{template "seat-directive-writer"}}, with no pipeline.
      The fill hands it the seat's value map, so it declares three required markers:
      {{.chair_name}}, {{.seat_name}} and {{.output_files}}.
-     internal/seatengine fills them for each writer seat, and the writer-to-chair channel wording lives in this block and in seat-directive-writer-chair. -->
+     internal/seatengine fills them for each writer seat.
+     The writer-to-chair channel wording lives in this block and in seat-directive-writer-chair. -->
 
 ## You are a writer in this step
 

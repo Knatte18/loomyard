@@ -1,7 +1,9 @@
 // verifiedtree_test.go enforces `PATTERN-gate-slot`:
-// every plan-verify site goes through verifytree.Verify, so none verifies a dirty tree and none skips without the record.
-// It is a tripwire over production source, like constraintchokepoint_test.go: a same-line substring scan that skips comment-only lines.
-// It catches a site that bypasses verifytree.Verify or brings back the retired verify-pending marker, not every way a verify could be spelled.
+// every plan-verify site goes through verifytree.Verify.
+// That keeps any site from verifying a dirty tree or skipping without the record.
+// It is a tripwire over production source: it scans each line for a substring and skips comment-only lines.
+// It catches a site that bypasses verifytree.Verify or brings back the retired verify-pending marker.
+// It does not catch every way a verify could be spelled.
 
 package main
 
@@ -52,7 +54,8 @@ func callsAny(data []byte, token string) bool {
 }
 
 // TestVerifiedTree_PlanVerifySitesCallVerify fails when a plan-verify site does not call or hold verifytree.Verify.
-// It also fails a site whose code lines contain neither `Hold:` nor `.Hold =`, so a site that drops its pause hold trips it.
+// It also fails a site whose code lines contain neither `Hold:` nor `.Hold =`,
+// so a site that drops its pause hold trips it.
 //
 //lym:guard
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
@@ -62,7 +65,7 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 		for _, site := range planVerifySites {
 			if f.Rel == site {
 				seen[site] = true
-				// Without the paren: the landing gate holds the function as a seam value, not a direct call.
+				// The token has no paren, so a site holding verifytree.Verify as a seam value also passes.
 				if !callsAny(f.Data, "verifytree.Verify") {
 					t.Errorf("`PATTERN-gate-slot` violated: %s is a plan-verify site and does not call verifytree.Verify", site)
 				}
@@ -116,7 +119,8 @@ func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 20, "verified-tree retired-marker scan")
 }
 
-// TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant proves the scan helpers fire on an offending source and stay quiet on a compliant or commented one.
+// TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant proves the scan helpers fire on an offending source,
+// and they stay quiet on a compliant or commented one.
 //
 //testtiming:keep proves the scan helpers of the TestVerifiedTree_* guards fire on an offending source and stay quiet on a compliant or commented one
 func TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant(t *testing.T) {

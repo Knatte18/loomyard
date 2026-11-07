@@ -1,5 +1,7 @@
 // review_test.go tables the review half (Engine.Review, ProbeReview, ResumeReview) against the same-package fakeShuttle.
-// It covers the one-seat table's shape, an accepted review's digest, verdict and findings, the strict-parse and cluster-audit refusals, every non-done outcome, the start and stop failures, and probe and resume.
+// It covers the one-seat table's shape, an accepted review's digest, verdict and findings.
+// It also covers the strict-parse and cluster-audit refusals.
+// It also covers every non-done outcome, the start and stop failures, and probe and resume.
 
 package burlerengine
 
@@ -26,7 +28,9 @@ func doneReview(review string) *fakeShuttle {
 	return &fakeShuttle{review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: review}}
 }
 
-// writeDeclaredPatternRecord writes an active PATTERN.md and a decision record whose `## PATTERN changes` section holds body under root, and returns the record's path.
+// writeDeclaredPatternRecord writes an active PATTERN.md and a decision record under root.
+// It returns the record's path.
+// The record's `## PATTERN changes` section holds body.
 func writeDeclaredPatternRecord(t *testing.T, root, body string) string {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, "PATTERN.md"), []byte("# PATTERN\n\n- `PATTERN-existing-entry` — a rule.\n"), 0o644); err != nil {
@@ -39,8 +43,10 @@ func writeDeclaredPatternRecord(t *testing.T, root, body string) string {
 	return record
 }
 
-// TestEngine_Review_TableShape proves Review starts exactly one seat and builds its spec and gate as the review half pins them:
-// the review role, segment and skills, the review file as the only output, the opts' review model choice, timeout and round, the review-parse gate that passes on its cap, and ForkSubagents exactly when the profile names a cluster fan.
+// TestEngine_Review_TableShape proves Review starts exactly one seat and builds the spec and gate the review half pins.
+// It checks the review role, segment and skills, and the review file as the only output.
+// It checks the opts' review model choice, timeout and round, and the review-parse gate, which passes on its cap.
+// It checks that ForkSubagents is set exactly when the profile names a cluster fan.
 func TestEngine_Review_TableShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -64,7 +70,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		wantRole       string
 		wantForkFlag   bool
 		wantSkills     []string
-		// declaredBullet, when set, is written as the one bullet of a decision record the geometry is told, and the reviewer's instruction files must carry it.
+		// declaredBullet, when set, is written to the decision record and must appear in the reviewer's instruction files.
 		declaredBullet string
 	}{
 		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantSkills: burlerSkills},
@@ -171,8 +177,11 @@ func TestEngine_Review_TableShape(t *testing.T) {
 	}
 }
 
-// TestEngine_Review_Outcomes table-drives Review over an accepted review, the strict-parse and cluster-audit refusals, every non-done outcome and the start and stop failures.
-// A non-done outcome carries through with no verdict and a nil error; every refusal and failure is an error; the reviewer's identity passes through to the result.
+// TestEngine_Review_Outcomes table-drives Review over an accepted review.
+// It covers the strict-parse and cluster-audit refusals.
+// It also covers every non-done outcome and the start and stop failures.
+// A non-done outcome carries through with no verdict and a nil error;
+// every refusal and failure is an error; the reviewer's identity passes through to the result.
 func TestEngine_Review_Outcomes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -200,7 +209,7 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		wantNotStart bool
 		wantAudit    *shuttleengine.ForkAudit
 		wantWarnings int
-		// wantGateReason is the Reason of the reviewer's Gate the result must carry, and wantNilGate marks a reviewer that never ran gated.
+		// wantGateReason is the reviewer's Gate Reason the result carries; wantNilGate marks a reviewer that never ran gated.
 		wantGateReason string
 		wantNilGate    bool
 		// wantEngine is the engine the reviewer's half must carry from the scripted result.
@@ -288,7 +297,8 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 	}
 }
 
-// TestEngine_Review_DigestIsTheAcceptedBytes proves an accepted review's Digest is the hex SHA-256 of the bytes on disk, and that its finding carries the fix key.
+// TestEngine_Review_DigestIsTheAcceptedBytes proves an accepted review's Digest is the hex SHA-256 of the bytes on disk,
+// and that its finding carries the fix key.
 func TestEngine_Review_DigestIsTheAcceptedBytes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -312,8 +322,11 @@ func TestEngine_Review_DigestIsTheAcceptedBytes(t *testing.T) {
 	}
 }
 
-// TestEngine_ProbeReview_And_ResumeReview proves ProbeReview classifies the reviewer as live, done or gone from the fake's runs and the review file, names the review file as the probed output and starts nothing,
-// and that ResumeReview attaches to a live reviewer and concludes it as a fresh review is, while a half that is not live, or was not taken from a probe, is refused with nothing started.
+// TestEngine_ProbeReview_And_ResumeReview proves ProbeReview classifies the reviewer as live, done or gone.
+// It classifies from the fake's runs and the review file;
+// it names the review file as the probed output and starts nothing.
+// ResumeReview attaches to a live reviewer and concludes it as a fresh review is.
+// A half that is not live, or was not taken from a probe, is refused with nothing started.
 func TestEngine_ProbeReview_And_ResumeReview(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

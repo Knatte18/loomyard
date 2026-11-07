@@ -1,4 +1,6 @@
-// join_test.go covers JoinParts: the joined plan's numbering, rewrites and overview, the export forms ExportMet admits, and each refusal leaving the plan directory unchanged.
+// join_test.go covers JoinParts.
+// It checks the joined plan's numbering, rewrites and overview, and the export forms ExportMet admits.
+// It also checks that each refusal leaves the plan directory unchanged.
 
 package planparser_test
 

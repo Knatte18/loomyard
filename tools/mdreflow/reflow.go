@@ -1,23 +1,11 @@
-// reflow.go implements the semantic-line-break reflow rule from the
-// scribe:prose skill:
-// one sentence per line, plus a break at an internal independent-clause
-// boundary (semicolon, or comma+coordinating-conjunction+explicit-subject).
+// Package main reflows markdown prose to the semantic-line-break style of the scribe:prose skill.
+// It breaks each sentence onto its own line, and it breaks again at an internal clause boundary:
+// a semicolon, or a comma before a coordinating conjunction that opens a clause with its own subject.
+// It changes line breaks only and never rewords, reorders, or drops content.
 //
-// This is a Go port of millhouse's plugins/mill/scripts/tools/mdreflow/mdreflow.py
-// (same algorithm, same edge cases). Line breaks only -- never rewords,
-// reorders, or drops content. Never touches fenced code blocks (nested fences
-// tracked by backtick/tilde-run-length matching, not a naive toggle), inline
-// code spans, links/autolinks, YAML frontmatter, headings, tables,
-// blockquotes, thematic breaks, or link-reference definitions.
-//
-// The one real porting wrinkle: Go's regexp (RE2) has no lookaround or
-// backreferences, which mdreflow.py's code-span mask relied on
-// ("(`+)(.+?)(?<!`)\1(?!`)"). maskCodeSpans below replaces that with a
-// two-step scan: find a maximal backtick run (an "opener"), then scan
-// forward for the next maximal run of the same length (the "closer"),
-// backtracking the opener's length on failure -- equivalent to CommonMark's
-// backtick-string code-span rule, and to what the Python regex actually
-// matched in practice.
+// Fenced blocks close only on a fence of the same character and at least the same run length.
+// Go's regexp (RE2) has no lookaround or backreferences.
+// So maskCodeSpans scans backtick runs by hand instead of matching one pattern.
 package main
 
 import (
@@ -27,9 +15,8 @@ import (
 	"unicode/utf8"
 )
 
-// maskDelim is a Private Use Area rune, chosen (matching the Python original)
-// because it cannot occur in real markdown prose, so masked-span placeholders
-// can never collide with surrounding text.
+// maskDelim is a Private Use Area rune.
+// Markdown prose does not contain it, so a placeholder built from it never collides with the surrounding text.
 const maskDelim = ''
 
 var (
@@ -55,9 +42,8 @@ var (
 
 	maskRefRE = regexp.MustCompile(string(maskDelim) + `(\d+)` + string(maskDelim))
 
-	// boundaryRE finds sentence/clause-boundary candidates: sentence-ending
-	// punctuation, a semicolon, or a comma immediately followed by a
-	// coordinating conjunction and an explicit subject.
+	// boundaryRE finds sentence and clause boundary candidates:
+	// sentence-ending punctuation, a semicolon, or a comma followed by a coordinating conjunction and an explicit subject.
 	boundaryRE = regexp.MustCompile(
 		`(?P<term>[.!?])(?P<closers>["'\)\]\*_` + "`" + `]*)(?P<sp1>\s+)` +
 			`|(?P<semi>;)(?P<sp2>\s+)` +
@@ -113,13 +99,10 @@ func isAlpha(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-// maskCodeSpans replaces every CommonMark-style code span (a backtick run,
-// content, then the first later backtick run of equal length) with a
-// placeholder token, appending the original span text to *spans. It mirrors
-// mdreflow.py's `(`+)(.+?)(?<!`)\1(?!`)` regex by scanning maximal backtick
-// runs directly instead of relying on lookaround: the opener's length is
-// tried from its full run down to 1 (mirroring backtracking a greedy `+`
-// quantifier) before the scan advances past a non-matching backtick.
+// maskCodeSpans replaces every CommonMark code span with a placeholder token and appends the span text to *spans.
+// A span is a backtick run, its content, and the first later backtick run of the same length.
+// Without lookaround, the opener's length is tried from the full run down to 1,
+// and a backtick that opens no span is copied through unchanged.
 func maskCodeSpans(text string, spans *[]string) string {
 	var b strings.Builder
 	n := len(text)
@@ -188,12 +171,9 @@ func maskText(text string) (string, []string) {
 }
 
 // unmaskText resolves placeholder tokens back to their original spans.
-// Masking is layered -- code-span masking runs before the link/URL masks,
-// so a link whose text contains a code span (e.g. `[`hardener`](url)`)
-// captures a span that itself still contains a placeholder token. Each
-// substitution pass can only replace placeholders present in its input, not
-// ones freshly introduced by that same pass's replacements, so resolving
-// fully requires looping until no placeholder remains.
+// Masking is layered: code spans are masked before links and URLs.
+// A link whose text holds a code span therefore captures a span that still contains a placeholder token.
+// Each pass replaces only the placeholders in its input, so the loop repeats until none remain.
 func unmaskText(text string, spans []string) string {
 	for maskRefRE.MatchString(text) {
 		text = maskRefRE.ReplaceAllStringFunc(text, func(m string) string {
@@ -226,11 +206,8 @@ func nextSentenceStartOK(s string, pos int) bool {
 	return c >= 'A' && c <= 'Z'
 }
 
-// runeWindow returns the substring of s starting at byte offset pos, up to
-// runeCount runes long (never fewer bytes than that many runes need, but
-// also never splitting a multi-byte rune at the window edge -- unlike a
-// fixed byte-length slice, which can truncate a multi-byte character such
-// as an em dash mid-sequence).
+// runeWindow returns the substring of s that starts at byte offset pos and spans up to runeCount runes.
+// It never splits a multi-byte rune at the window edge; a fixed byte-length slice can cut an em dash in half.
 func runeWindow(s string, pos int, runeCount int) string {
 	if pos >= len(s) {
 		return ""
@@ -273,9 +250,8 @@ func namedGroups(re *regexp.Regexp, m []string) map[string]string {
 	return result
 }
 
-// findCuts locates sentence/clause-boundary cut points in s (already
-// code-span/link masked), each as a [leftEnd, rightStart) byte-offset pair:
-// text[leftEnd:rightStart] is the boundary whitespace/punctuation to drop.
+// findCuts returns the sentence and clause boundaries in s, which must already be masked.
+// Each cut is a [leftEnd, rightStart) byte-offset pair: s[leftEnd:rightStart] is the whitespace or punctuation to drop.
 func findCuts(s string) [][2]int {
 	var cuts [][2]int
 	matches := boundaryRE.FindAllStringSubmatchIndex(s, -1)
@@ -480,10 +456,9 @@ func fenceCloseMatch(line string, char byte, count int) bool {
 	return len(m[1]) >= count
 }
 
-// reflowText applies the semantic-line-break rule to a whole markdown file's
-// contents, leaving fenced code, inline code spans, links, YAML frontmatter,
-// headings, tables, blockquotes, thematic breaks, and link-reference
-// definitions untouched.
+// reflowText applies the semantic-line-break rule to the contents of a whole markdown file.
+// Fenced code, inline code spans, and links stay as written.
+// So do YAML frontmatter, headings, tables, blockquotes, thematic breaks, and link-reference definitions.
 func reflowText(text string) string {
 	lines := strings.Split(text, "\n")
 	trailingNewline := strings.HasSuffix(text, "\n")
@@ -555,10 +530,9 @@ func reflowText(text string) string {
 	return result
 }
 
-// collapsed collapses all whitespace runs to a single space, for the
-// safety-invariant check: the reflowed text and the original must be
-// byte-identical once collapsed this way, or the reflow altered content
-// rather than just line breaks.
+// collapsed replaces every whitespace run with a single space and trims both ends.
+// The safety check compares the reflowed text with the original in this form:
+// a mismatch means the reflow changed content, not only line breaks.
 func collapsed(text string) string {
 	return strings.TrimSpace(whitespaceRunRE.ReplaceAllString(text, " "))
 }

@@ -68,7 +68,9 @@ const splitPartsText = "# Parts: Add widget\n\n## Split note\n\nThe task splits 
 	"## Part: core\n\n- Decisions: D1\n- Takes in: the widget request\n- Delivers: the widget type\n- Exports:\n  - `plan:internal/x#NewThing`\n- Area:\n  - `internal/x`\n\n" +
 	"## Part: wiring\n\n- Decisions: D2, D3\n- Takes in: the widget type\n- Delivers: the wiring\n- Depends on: core\n- Area:\n  - `internal/y`\n"
 
-// partsFixture writes the parts file, a decision record and the two config files tapestry.yaml's load reads under anchorPath, with partsMax in tapestry.yaml, and returns a *loomCLI wired for both verbs.
+// partsFixture writes the parts file and a decision record.
+// It also writes the two config files tapestry.yaml's load reads under anchorPath, with partsMax in tapestry.yaml.
+// It returns a *loomCLI wired for both verbs.
 func partsFixture(t *testing.T, anchorPath, partsText, partsMax string) *loomCLI {
 	t.Helper()
 

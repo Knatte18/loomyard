@@ -1,4 +1,4 @@
-// usage.go reads a finished Codex session's token usage from its rollout file for shuttle's session-usage capability.
+// usage.go reads a finished Codex session's token usage from its rollout file for the UsageReader capability.
 
 package codexengine
 
@@ -10,7 +10,8 @@ import (
 
 var _ shuttleengine.UsageReader = (*Codex)(nil)
 
-// SessionUsage reads the tokens of session sessionID from its rollout, the rollout-*-<session id>.jsonl file under the sessions directory of the lym Codex home.
+// SessionUsage reads the tokens of session sessionID from its rollout file.
+// The rollout is the rollout-*-<session id>.jsonl file under the sessions directory of the lym Codex home.
 // A missing home config, missing rollout, unreadable rollout or rollout with no total reads unknown, never an error.
 // workdir is unused: Codex keys its rollouts by date and session id, not by the pane cwd.
 func (c *Codex) SessionUsage(sessionID, _ string) shuttleengine.SessionUsage {
@@ -33,8 +34,10 @@ func (c *Codex) SessionUsage(sessionID, _ string) shuttleengine.SessionUsage {
 	return usage
 }
 
-// rolloutTotalUsage reads the last token_count total of the rollout at path as a session usage, and reports whether it found one.
-// Input is the total's input tokens less its cached ones; Output already holds the reasoning tokens, so they are never added again.
+// rolloutTotalUsage reads the last token_count total of the rollout at path as a session usage.
+// It reports whether such a total was found.
+// Input is the total's input tokens less its cached ones;
+// Output already holds the reasoning tokens, so they are never added again.
 // A total without cache-write tokens reads cache-write zero, not unknown.
 // An unreadable rollout or one with no total returns the unknown reading.
 func rolloutTotalUsage(path string) (shuttleengine.SessionUsage, bool) {

@@ -1,6 +1,7 @@
-// hubreservedroutes_test.go covers the filterHubReserved wiring guard's live surface: a hub-reserved
-// name (the Bolt checkout, _portals, _launchers) must never appear in the routes that drive junction wiring or
-// the weft commit pathspec, over the config a hub is seeded with (the fabric config template).
+// hubreservedroutes_test.go covers the wiring guard's live surface.
+// Hub-reserved names (the Bolt checkout, _portals, _launchers) must stay out of two routes.
+// The first drives junction wiring, and the second builds the weft commit pathspec.
+// The check runs over the config a hub is seeded with, the fabric config template.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 package fabricengine_test
@@ -16,12 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestHubReserved_BoardExcludedFromPathspecRoutes guards the wiring guard's live surface against a
-// later "simplification": the Bolt checkout must appear in neither WiredNames' output (the exported wrapper
-// over filterHubReserved) nor ScopedPathspec's output over the loaded config's raw Dirs() — the
-// two routes that respectively drive junction wiring and the weft commit pathspec.
-// junctionnames_test.go's TestFilterHubReserved covers filterHubReserved itself at unit level; this
-// case is the half that exercises it through a loaded config.
+// TestHubReserved_BoardExcludedFromPathspecRoutes asserts that the Bolt checkout appears in neither:
+// WiredNames' output nor ScopedPathspec's output over the loaded config's raw Dirs().
+// Those routes drive junction wiring and the weft commit pathspec.
 //
 //testtiming:keep the Bolt checkout appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
 func TestHubReserved_BoardExcludedFromPathspecRoutes(t *testing.T) {

@@ -1,6 +1,7 @@
 //go:build !windows
 
-// forkaudit_integration_test.go runs forkaudit.sh against temporary directories and checks its exit codes, refusals and report.
+// forkaudit_integration_test.go runs forkaudit.sh against temporary directories.
+// It checks the script's exit codes, refusals and report.
 
 package forkaudit
 
@@ -33,7 +34,8 @@ const workMarker = ".forkaudit-work"
 const noForksSentence = "No Webster implementer forks matched."
 
 // runForkaudit runs forkaudit.sh with the given extra environment and arguments from a fresh working directory.
-// Unless the arguments carry --records, it points the script at a records directory that does not exist, so no run reads the live records repository.
+// It points the script at a records directory that does not exist, unless the arguments carry --records.
+// No run therefore reads the live records repository.
 // It returns what the script printed and its exit code.
 func runForkaudit(t *testing.T, env []string, args ...string) (stdout, stderr string, exit int) {
 	t.Helper()
@@ -64,7 +66,8 @@ func runForkaudit(t *testing.T, env []string, args ...string) (stdout, stderr st
 	return outBuf.String(), errBuf.String(), exit
 }
 
-// tempDir returns a fresh temporary directory with its symlinks resolved, so it equals what the script canonicalizes it to.
+// tempDir returns a fresh temporary directory with its symlinks resolved,
+// so it equals the path the script canonicalizes it to.
 func tempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -163,7 +166,8 @@ func snapshot(t *testing.T, root string) map[string]string {
 	return files
 }
 
-// makeReadOnly sets dir to mode 0555 and registers the cleanup that restores 0755 before the temporary tree is removed.
+// makeReadOnly sets dir to mode 0555.
+// Its cleanup restores 0755 before the temporary tree is removed.
 func makeReadOnly(t *testing.T, dir string) {
 	t.Helper()
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
@@ -270,7 +274,9 @@ func placeForks(t *testing.T, projects, hub string, forks []forkFixture) {
 	}
 }
 
-// mainForks is the placement most report rows share: run alpha holds three forks and three non-forks, run alpha-two five forks, one of every arm.
+// mainForks is the placement most report rows share.
+// Run alpha holds forks and non-forks, and run alpha-two holds only forks.
+// Together they hold one fixture of every arm.
 func mainForks() []forkFixture {
 	return []forkFixture{
 		{fixture: "fork-file", run: "alpha", session: "s-alpha", agent: "ffile"},
@@ -340,7 +346,8 @@ func cell(t *testing.T, report, heading, metric, arm string) string {
 	return rowWhere(t, tableRows(t, report, heading), "metric", metric)[arm]
 }
 
-// withoutGenerated drops the generation-time line, the only line two runs over the same input differ in.
+// withoutGenerated drops the generation-time line.
+// Two runs over the same input differ only on that line.
 func withoutGenerated(report string) string {
 	var kept []string
 	for _, line := range strings.Split(report, "\n") {
@@ -768,7 +775,8 @@ func TestForkauditReport(t *testing.T) {
 
 var recordsSuffixLine = regexp.MustCompile(`(?m)^RECORDS_SUFFIX="([^"]*)"`)
 
-// recordsSuffix returns the suffix of a run's records branch, read from the script's variable block so the test spells no second copy.
+// recordsSuffix returns the suffix of a run's records branch.
+// It reads the value from the script's variable block, so the test keeps no second copy.
 func recordsSuffix(t *testing.T) string {
 	t.Helper()
 	script, err := os.ReadFile("forkaudit.sh")
@@ -887,7 +895,7 @@ func traceLine(start time.Time, spec traceSpec) string {
 		logged.Format(traceTimeLayout), spec.batch, spec.layout)
 }
 
-// cardPackLine renders a `webster: card pack` trace line logged after past start, in traceLine's time format.
+// cardPackLine renders a `webster: card pack` trace line logged after start, with a local UTC offset.
 func cardPackLine(start time.Time, after time.Duration) string {
 	logged := start.Add(after).In(time.FixedZone("local", 2*3600))
 	return fmt.Sprintf(`time=%s level=INFO msg="webster: card pack" trace=abc card=1 resolved=1 unresolved=1`, logged.Format(traceTimeLayout))

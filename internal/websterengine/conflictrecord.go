@@ -1,4 +1,5 @@
-// conflictrecord.go declares the never-tracked plan-conflict record begin-batch leaves in webster's scratch directory, and its writers, readers and removers.
+// conflictrecord.go holds the never-tracked plan-conflict record begin-batch leaves in webster's scratch directory.
+// It also holds the writers, readers and removers of that record.
 package websterengine
 
 import (
@@ -20,17 +21,17 @@ const (
 	routedConflictName = "plan-conflict-routed.md"
 )
 
-// ConflictRecordRel returns the conflict record's forward-slashed path relative to the anchor, as recipe text names it.
+// ConflictRecordRel returns the conflict record's path relative to the anchor, forward-slashed for recipe text.
 func ConflictRecordRel() string {
 	return path.Join(lymdirs.DotLymDirName, websterDirName, conflictRecordName)
 }
 
-// ConflictRecordPath returns the conflict record's path under the told scratchDir.
+// ConflictRecordPath returns the conflict record's path under scratchDir.
 func ConflictRecordPath(scratchDir string) string {
 	return filepath.Join(scratchDir, conflictRecordName)
 }
 
-// RoutedConflictPath returns the last-routed conflict's path under the told scratchDir.
+// RoutedConflictPath returns the path of the last-routed conflict file under scratchDir.
 func RoutedConflictPath(scratchDir string) string {
 	return filepath.Join(scratchDir, routedConflictName)
 }
@@ -94,9 +95,10 @@ func removeIfPresent(filePath string) error {
 	return nil
 }
 
-// ConflictRoute is what ClaimConflictRoute decided about the conflict record.
+// ConflictRoute is the outcome of claiming the conflict record for a reroute to plan review.
 // Found is whether a record naming at least one finding exists.
-// New is whether its findings differ from the last-routed ones, so a reroute to plan review has not yet been asked for them.
+// New is whether its findings differ from the last-routed ones,
+// so a reroute to plan review has not yet been asked for them.
 // Findings is the record's finding lines, set when Found.
 type ConflictRoute struct {
 	Found    bool
@@ -106,7 +108,8 @@ type ConflictRoute struct {
 
 // ClaimConflictRoute decides whether the conflict record asks for a new reroute to plan review.
 // An absent record, or one naming no finding (a torn write), claims nothing.
-// A record whose findings, compared as a set, differ from the routed file's is new: its findings replace the routed file's before the claim returns.
+// A record whose findings, compared as a set, differ from the routed file's is new:
+// its findings replace the routed file's before the claim returns.
 // A record whose findings equal the routed ones is a recurrence and writes nothing.
 // A read or write error is returned.
 func ClaimConflictRoute(scratchDir string) (ConflictRoute, error) {
@@ -136,7 +139,8 @@ func ClaimConflictRoute(scratchDir string) (ConflictRoute, error) {
 	return route, nil
 }
 
-// readFindingLines returns the text after "- " of every finding line in the file at filePath, and nil when the file is absent.
+// readFindingLines returns the text after "- " of every finding line in the file at filePath.
+// It returns nil when the file is absent.
 func readFindingLines(filePath string) ([]string, error) {
 	data, err := os.ReadFile(filePath)
 	if os.IsNotExist(err) {

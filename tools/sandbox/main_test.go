@@ -1,5 +1,6 @@
 // main_test.go covers run's subcommand dispatch and decideClone's clone/reset decisions.
-// Every test here rewrites the package-level seams (devBinPath, lookPath, cloneRun, removeAll, launchAgent, reedDown), so none calls t.Parallel.
+// Every test here rewrites the package-level seams (devBinPath, lookPath, cloneRun, removeAll, launchAgent, reedDown).
+// Because they rewrite package-level state, none of these tests calls t.Parallel.
 
 package main
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// stubResolveLymProd stubs resolveLym to return the sourceProd branch.
+// stubResolveLymProd makes resolveLym resolve to the sourceProd branch.
+// It returns a function that restores the stubbed seams.
 func stubResolveLymProd(t *testing.T, fakeLymPath string) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
@@ -32,7 +34,11 @@ func stubResolveLymProd(t *testing.T, fakeLymPath string) func() {
 	}
 }
 
-// TestDecideClone verifies decideClone's four outcomes: an absent Hub is cloned with the parent directory and the resolved prod lym; an existing Hub is left alone without reset; an existing Hub is removed and then cloned with reset; and a cloneRun error is propagated unwrapped.
+// TestDecideClone verifies decideClone's four outcomes:
+// an absent Hub is cloned with the parent directory and the resolved prod lym;
+// an existing Hub is left alone without reset;
+// an existing Hub is removed and then cloned with reset;
+// and a cloneRun error is propagated unwrapped.
 func TestDecideClone(t *testing.T) {
 	tiergate.Require(t, 0)
 	const fakeLymPath = "/fake/prod/lym"
@@ -118,7 +124,9 @@ func TestDecideClone(t *testing.T) {
 	}
 }
 
-// TestRun_BuildRouting verifies that a bare run and an explicit "build" token both route to the clone path, that -reset passed after the build token removes an existing Hub before the clone, and that a bare build over an existing Hub removes nothing and clones nothing -- reset must be explicit.
+// TestRun_BuildRouting verifies that a bare run and an explicit "build" token both route to the clone path;
+// that -reset passed after the build token removes an existing Hub before the clone;
+// and that a bare build over an existing Hub removes nothing and clones nothing, so reset must be explicit.
 func TestRun_BuildRouting(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -177,7 +185,14 @@ func TestRun_BuildRouting(t *testing.T) {
 	}
 }
 
-// TestRun_SuiteSubcommands verifies, for every suite positional, that run routes it to the suite path and invokes launchAgent with the repo directory and the suite's default instruction; that -claude/-prompt flags following the positional are parsed and forwarded to launchAgent without a PATH lookup for claude; and that an absent Hub repo is propagated as a non-zero exit code naming sandbox/build.cmd without launching the agent (subtest "absent Hub exits non-zero"), and an unknown flag exits non-zero without launching it (subtest "unknown flag exits non-zero").
+// TestRun_SuiteSubcommands verifies, for every suite positional:
+// that run routes it to the suite path;
+// that it invokes launchAgent with the repo directory and the suite's default instruction;
+// that -claude and -prompt flags following the positional are parsed and forwarded to launchAgent;
+// that claude is never looked up on PATH;
+// that an absent Hub repo exits non-zero, naming sandbox/build.cmd, without launching the agent;
+// and that an unknown flag exits non-zero without launching it.
+// The subtests "absent Hub exits non-zero" and "unknown flag exits non-zero" cover the last two.
 func TestRun_SuiteSubcommands(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -296,15 +311,14 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 	}
 }
 
-// TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional routes to runFetch: with a
-// built Hub, an on-PATH lym, and a report, the dispatch reaches fetchReport and run returns 0.
+// TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional routes to runFetch:
+// with a built Hub, an on-PATH lym, and a report, the dispatch reaches fetchReport and run returns 0.
 func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 
-	// Create the Hub repo directory that runFetch requires, and drop a valid
-	// report there for the fetch to pick up.
+	// Create the Hub repo directory that runFetch requires, and drop a valid report there for the fetch to pick up.
 	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
@@ -319,8 +333,7 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	if err := os.WriteFile(fakeLym, []byte("fake lym binary"), 0o755); err != nil {
 		t.Fatalf("write fake lym: %v", err)
 	}
-	// No dev binary in play: resolveLym must fall through to the lookPath
-	// stub below and resolve sourceProd.
+	// No dev binary is in play, so resolveLym falls through to the lookPath stub below and resolves sourceProd.
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
 	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
@@ -340,7 +353,8 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	}
 }
 
-// TestRun_RejectsBadInvocation verifies run returns a non-zero code when -parent is missing, when the fetch subcommand lacks its required -loomyard flag, and for an unrecognised positional argument.
+// TestRun_RejectsBadInvocation verifies that run returns a non-zero code for three bad invocations:
+// a missing -parent, a fetch subcommand without its required -loomyard flag, and an unrecognised positional argument.
 func TestRun_RejectsBadInvocation(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

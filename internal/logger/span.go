@@ -1,14 +1,11 @@
-// span.go implements explicit-parent diagnostic spans layered on top of the process-wide trace
-// identity (trace.go): a Span is a plain value carrying a dotted path built up via StartSpan/Child,
-// with span-scoped Debug/Info/Warn methods that stamp span=<path> alongside the trace= field every
-// package-level Debug/Info/Warn call already stamps.
-// Per discussion.md's explicit-span-parenting decision, there is no ambient "current span" global
-// -- a caller always holds and threads its own *Span explicitly.
+// span.go implements explicit-parent diagnostic spans: a Span carries a dotted path.
+// StartSpan opens a root span, and Child opens a child whose path extends its parent's by one name.
+// The Debug, Info and Warn methods stamp the span path and the process trace ID from trace.go on each record.
+// There is no ambient current span: callers hold their own *Span and pass it explicitly.
 
 package logger
 
-// Span represents one node in an explicit-parent span tree: a dotted path built by StartSpan and
-// extended by Child.
+// Span is one node of a span tree, identified by a dotted path that StartSpan begins and Child extends.
 type Span struct {
 	path string
 	err  error
@@ -28,7 +25,8 @@ func (s *Span) Child(name string, args ...any) *Span {
 	return child
 }
 
-// End closes s, recording err. End(nil) emits at Debug; End with non-nil err emits at Warn.
+// End records err on s and logs that the span ended.
+// It logs at Debug when err is nil and at Warn otherwise.
 func (s *Span) End(err error) {
 	s.err = err
 	if err != nil {

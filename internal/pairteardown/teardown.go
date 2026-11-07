@@ -27,14 +27,15 @@ import (
 )
 
 // RemoveQuietWait is the quiet-wait bound `lym fabric remove` passes.
-// It is a constant rather than config: the wait never kills a working driver on the operator path, and an unbounded wait would hang the hub's land step.
+// It is a constant rather than config: the wait never kills a working driver on the operator path,
+// and an unbounded wait would hang the hub's land step.
 const RemoveQuietWait = 2 * time.Minute
 
 // quietPollInterval is the pause between two quiet probes.
-// The probe count is capped from Request.QuietWait and this interval, never read off a clock.
+// The probe count is capped from the quiet wait and this interval, never read off a clock.
 const quietPollInterval = 2 * time.Second
 
-// ErrDriverBusy is the sentinel EndSession's error wraps when the bound is spent with Request.RefuseWhenBusy and the pair's driver is still busy.
+// ErrDriverBusy is the sentinel error for a teardown that refused a still-busy driver when its quiet wait ran out.
 var ErrDriverBusy = errors.New("pair driver is busy")
 
 // Request names the pair to end and the caller's policy on a busy driver.
@@ -46,21 +47,21 @@ type Request struct {
 	Remote bool
 	// QuietWait bounds the wait for the driver to go quiet; zero probes once.
 	QuietWait time.Duration
-	// RefuseWhenBusy makes a spent bound an ErrDriverBusy refusal instead of ending the driver.
+	// RefuseWhenBusy makes a spent quiet wait refuse the teardown with a busy error instead of ending the driver.
 	RefuseWhenBusy bool
 	// Landed says the caller knows the pair's work landed, so its board entry is marked done after the removal.
 	Landed bool
 	// Local removes the pair with no origin step and no board write.
 	// A busy teardown or records write lock surfaces as fabricengine.ErrPairBusy.
 	Local bool
-	// Snapshot keeps the pair's task and records worktrees' uncommitted paths under a local snapshot tag before the removal, in local and origin mode alike.
+	// Snapshot keeps the uncommitted paths of the task and records under a local tag before the removal, in both modes.
 	Snapshot bool
-	// LeaveClaim, in origin mode, leaves the pair's board claim to the caller: the removal reads no landed answer and settles no claim.
+	// LeaveClaim, in origin mode, leaves the pair's board claim to the caller; the removal reads no landed answer.
 	LeaveClaim bool
-	// ClearStray deletes a directory that is no worktree at the task worktree's path once the removal left the pair gone, such as one a build or language server refilled with ignored output.
-	// A caller sets it only where it created the slug's pair at that path or the operator asked to remove the slug's pair; a delete that fails returns an error wrapping fabricengine.ErrStrayPathKept.
+	// ClearStray deletes a non-worktree directory at the task worktree's path, such as build output, once the pair is gone.
+	// Set it only for the caller's own pair or on operator request; a failed delete wraps fabricengine.ErrStrayPathKept.
 	ClearStray bool
-	// AfterSnapshot runs once the snapshot step succeeded and before the removal; its error stops the removal with the snapshot tag kept.
+	// AfterSnapshot runs after the snapshot and before the removal; an error stops the removal and keeps the snapshot tag.
 	AfterSnapshot func() error
 	// Verdict is the caller's origin reconcile verdict for the slug, empty when it ran none.
 	// An ended or owned_elsewhere verdict skips the driver checks.
@@ -69,13 +70,13 @@ type Request struct {
 
 // SessionResult reports EndSession's outcome.
 type SessionResult struct {
-	// Ended is true when the session end ran: Engine.Down on a present task worktree, which reports true whether or not a session existed, or a session found and reaped by name on a gone one.
+	// Ended is true when the session end ran: Engine.Down on a present task worktree, or a reap by name on a gone one.
 	Ended bool
 	// AbandonedSession names a foreign session reed's Down reported and did not kill; empty in every ordinary teardown.
 	AbandonedSession string
 	// DriverWasLive is true when the bound was spent with the driver still busy and the caller's policy ended it anyway.
 	DriverWasLive bool
-	// EndedProcesses lists the registered processes of the pair, and the processes below them, that the owner-record end signalled and found gone.
+	// EndedProcesses lists the pair's registered processes and their descendants that the end signalled and found gone.
 	EndedProcesses []runproc.Ended
 	// Survivors lists the processes still alive after that end, reported only when the caller does not refuse a busy driver.
 	Survivors []runproc.Ended
@@ -85,7 +86,7 @@ type SessionResult struct {
 type Result struct {
 	Session SessionResult
 	Removal fabricengine.RemoveResult
-	// Warning names the step that settles the pair's batten run record, which the removal left standing; empty when no step is owed or the caller settles the record itself.
+	// Warning names the step owed to settle the batten run record the removal left, unless the caller settles it.
 	Warning string
 }
 
@@ -111,11 +112,11 @@ type Teardown struct {
 	gone    func(slug string) (bool, error)
 	quiet   func(slug string) (quietState, error)
 	refusal func(slug string, force bool) error
-	// endOwned ends the pair's registered processes, sparing the calling process and its ancestors, every process of a role in spare, and always a teardown child.
+	// endOwned ends the pair's processes, sparing the caller, its ancestors, roles named in spare and teardown children.
 	endOwned func(slug string, spare ...string) ([]runproc.Ended, error)
 	// driverLockHeld reports whether the present task worktree's Go-driver lock is held.
 	driverLockHeld func(slug string) (bool, error)
-	// battenAlive reports whether the slug's run has a live lifecycle owner: a registered batten process, or a dobby driving the run between its passes.
+	// battenAlive reports whether the slug's run has a live owner: a registered batten process or a dobby between passes.
 	battenAlive func(slug string) (bool, error)
 	// parentOf names the slug of the pair's parent, or "" for the prime.
 	parentOf func(slug string) (string, error)
@@ -125,8 +126,8 @@ type Teardown struct {
 	driverPID func(slug string) (pid int, found bool)
 	// paused reports whether a live pause entry covers the slug, and whether a hub entry is among those covering it.
 	paused func(slug string) (covered, hubEntry bool, err error)
-	// awaitOrPass waits for the pair's run lock before the owned processes are ended, and lets a holder the end reaches pass at the bound.
-	// retry names the step the operator runs again, which a refusal names.
+	// awaitOrPass waits for the pair's run lock before the owned processes are ended.
+	// A holder the end reaches passes at the bound; retry names the step the operator runs again, which a refusal names.
 	awaitOrPass func(ctx context.Context, slug string, paused, hubEntry bool, retry string) error
 	// ownedProcesses lists the slug's live registered processes.
 	ownedProcesses func(slug string) ([]runproc.Record, error)
@@ -134,11 +135,11 @@ type Teardown struct {
 	remove         func(req Request) (fabricengine.RemoveResult, error)
 	// removeStray deletes a path at the slug's task worktree location that is no worktree and reports whether it deleted anything.
 	removeStray func(slug string) (bool, error)
-	// snapshot keeps the pair's uncommitted paths under a local snapshot tag, recording into rec; the tag is empty when nothing was uncommitted.
+	// snapshot keeps the uncommitted paths under a local snapshot tag, recorded into rec; the tag is empty if none.
 	snapshot func(rec *fabricengine.Mutations, slug string) (tag string, paths []string, err error)
 	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
 	archive func(slug string)
-	// closePR closes the run's open pull request, which a pair torn down unlanded would otherwise leave looking like pending work; it never fails the teardown.
+	// closePR closes the run's open pull request, since an unlanded teardown would leave it pending; it never fails.
 	closePR func(slug string)
 	sleep   func(ctx context.Context, d time.Duration) error
 
@@ -172,7 +173,7 @@ type Teardown struct {
 	holdWriteLocks func(slug string) (release func() error, err error)
 	// stopStrands stops the present task worktree's live strands through shuttle and returns their names.
 	stopStrands func(slug string) ([]string, error)
-	// writeLockWait bounds each records write lock hold of the cancel phase.
+	// writeLockWait bounds the wait for each records write lock in the cancel phase.
 	writeLockWait time.Duration
 }
 
@@ -244,13 +245,22 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	return t, nil
 }
 
-// EndSession waits for the pair's driver to go quiet, probes for removal refusals, ends the pair's registered processes, ends the pair's loop and step tree, waits for the run lock and ends the pair's session.
-// A pair with nothing left to do, one paused, ended, owned by another machine, or done locally with batten no longer running, skips the quiet wait;
-// with the task worktree present it waits for the run lock first instead, and a holder a pause or a network-gate wait leaves is passed on to the owned-process end.
-// A refusal or a busy driver leaves the session and its strands untouched, and a refusal ends no registered process.
-// The registered processes are ended for a present or a gone task worktree, and so is the pair's drift capture job, which only Windows holds.
-// Processes that survive the end, and a driver lock still held afterwards, refuse the teardown with ErrDriverBusy under Request.RefuseWhenBusy; otherwise survivors land in the result and a held lock sets DriverWasLive.
-// The loop lock is held from the kill until the session has ended, and the teardown's mark stays in the loop's pid file after it, so no step starts once the session end begins.
+// EndSession ends a pair's work and session ahead of its removal.
+// It runs in order: it waits for the driver to go quiet, probes for removal refusals, and ends the registered processes;
+// then it ends the loop and step tree, waits for the run lock, and ends the session.
+// A pair with nothing left to do skips the quiet wait.
+// So does a pair that is paused, ended, owned by another machine, or done locally while batten is not running.
+// With the task worktree present, it waits for the run lock first instead,
+// and a holder that a pause or a network-gate wait leaves is passed on to the owned-process end.
+// A refusal or a busy driver leaves the session and its strands untouched,
+// and a refusal ends no registered process.
+// The registered processes are ended for a present or a gone task worktree.
+// The pair's drift capture job, which only Windows holds, is ended too.
+// With Request.RefuseWhenBusy, surviving processes and a driver lock still held refuse the teardown with ErrDriverBusy;
+// otherwise survivors land in the result and a held lock sets DriverWasLive.
+// The loop lock is held from the kill until the session has ended,
+// and the teardown's mark stays in the loop's pid file after it,
+// so no step starts once the session end begins.
 // A failure before the session end puts the pid file back.
 func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, error) {
 	var res SessionResult
@@ -387,25 +397,37 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 	return fmt.Errorf("%w: the driver lock %s of pair %q is held by a process the owner record does not reach; %s", ErrDriverBusy, lockPath, slug, wayForward)
 }
 
-// RemovePair closes the run's open pull request, archives the pair's logs, removes the pair, then settles the pair's board claim.
-// It runs only after EndSession succeeded for the same request: Run and batten's one-row producer are its only sequencers.
-// The pull request is closed first, after the snapshot and before the archive and the removal, so the record under the run's scratch directory is still there, and a failure to close it never stops the teardown.
+// RemovePair closes the run's open pull request, archives the pair's logs, and removes the pair.
+// It then settles the pair's board claim.
+// It runs only after the session end succeeded for the same request:
+// Run and batten's one-row producer are its only sequencers.
+// The pull request is closed first, after the snapshot and before the archive and the removal,
+// so the record under the run's scratch directory is still there,
+// and a failure to close it never stops the teardown.
 // The archive copies and never fails the teardown, so the removal follows it whatever it did.
 //
-// Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file, since the file goes with the worktree;
-// a task worktree already gone is not landed, and its claim falls to the batten-state rule.
+// Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file;
+// the file goes with the worktree, so a task worktree already gone is not landed,
+// and its claim falls to the batten-state rule.
 // A failed read of that answer leaves the board alone.
-// A failed removal returns its result and error with the board untouched, and the settle only warns on a failure.
+// A failed removal returns its result and error with the board untouched,
+// and the settle only warns on a failure.
 //
 // With req.Local the removal has no origin step and the board is never read or written.
-// With req.Snapshot, local or not, the pair's uncommitted paths are first kept under a local snapshot tag, then req.AfterSnapshot runs, then the pair is removed.
-// A refused snapshot or a failed AfterSnapshot returns its error with nothing removed, and a refused snapshot never runs AfterSnapshot.
+// With req.Snapshot, local or not, the pair's uncommitted paths are first kept under a local snapshot tag.
+// Then req.AfterSnapshot runs, and the pair is removed.
+// A refused snapshot or a failed AfterSnapshot returns its error with nothing removed,
+// and a refused snapshot never runs AfterSnapshot.
 // The returned result carries the snapshot's tag, paths and mutation record on every return after the snapshot step.
 //
-// With req.LeaveClaim and no req.Local the landed answer is not read and the board claim is not settled, which the caller does itself.
+// With req.LeaveClaim and no req.Local, the landed answer is not read and the board claim is not settled.
+// The caller does that itself.
 //
-// With req.ClearStray, a removal that left the pair gone, one that succeeded, found nothing of the pair, or kept a refilled directory, is followed by the delete of a directory that is no worktree at the task worktree's path, before the claim is settled.
-// A failed delete returns its error, and a delete that clears a kept directory turns the removal's error into success.
+// With req.ClearStray, a non-worktree directory at the task worktree's path is deleted before the claim is settled.
+// It follows a removal that left the pair gone, succeeded, found nothing of the pair, or kept a refilled directory.
+// RemovePair removes the task's pair.
+// When req.Snapshot is set, it keeps the uncommitted paths under a snapshot tag first.
+// A failed delete returns its error; a delete that clears a kept directory reports the removal as succeeded.
 func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	var snap snapshotOutcome
 	if req.Snapshot {
@@ -450,9 +472,9 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	return res, nil
 }
 
-// clearStray deletes a directory that is no worktree at the task worktree's path after a removal that left the pair gone, given the removal's result and error.
+// clearStray deletes a directory at the task worktree's path that is no worktree, after a removal left the pair gone.
 // Any other removal error is returned as it is, since the pair may still stand.
-// A kept refilled directory the delete clears reads as a removal that succeeded.
+// When the removal kept the stray path, the call reports success instead of the kept-path error.
 func (t *Teardown) clearStray(slug string, res fabricengine.RemoveResult, err error) (fabricengine.RemoveResult, error) {
 	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) && !errors.Is(err, fabricengine.ErrStrayPathKept) {
 		return res, err
@@ -512,8 +534,9 @@ func (t *Teardown) takeSnapshot(req Request) (snapshotOutcome, error) {
 	return out, nil
 }
 
-// Run is EndSession then RemovePair; a failed EndSession never reaches RemovePair.
-// After a successful removal of a request without LeaveClaim it sets Result.Warning from the batten run record the removal left standing.
+// Run ends the session, then removes the pair; a failed session end skips the removal.
+// After a successful removal without LeaveClaim, it sets Result.Warning.
+// The warning comes from the batten run record that the removal left standing.
 func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 	session, err := t.EndSession(ctx, req)
 	if err != nil {
@@ -529,7 +552,8 @@ func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 	return result, err
 }
 
-// waitQuiet probes until the driver is quiet or the bound is spent, and reports whether a busy driver was left to the caller's policy.
+// waitQuiet probes until the driver is quiet or the bound is spent.
+// It reports whether a busy driver was left to the caller's policy.
 func (t *Teardown) waitQuiet(ctx context.Context, req Request) (driverWasLive bool, err error) {
 	attempts := int(req.QuietWait / t.interval)
 	for i := 0; ; i++ {
@@ -576,7 +600,8 @@ func (t *Teardown) busyError(slug string, st quietState) error {
 	return fmt.Errorf("%w: %s in pair %q%s; attach with %s; %s", ErrDriverBusy, blocker, slug, t.ownedProcessesText(slug), attach, wayForward)
 }
 
-// ownedProcessesText renders the slug's live owned processes as a clause for a refusal, or the read error in their place; it is empty when there are none.
+// ownedProcessesText renders the slug's live owned processes as a clause for a refusal.
+// When the read fails, it renders the error in their place; when there are none, it is empty.
 func (t *Teardown) ownedProcessesText(slug string) string {
 	records, err := t.ownedProcesses(slug)
 	if err != nil {
@@ -592,7 +617,7 @@ func (t *Teardown) ownedProcessesText(slug string) string {
 	return fmt.Sprintf(" (live owned processes: %s)", strings.Join(names, ", "))
 }
 
-// taskAnchor returns the task worktree's anchor path, at the task's own anchor.
+// taskAnchor returns the path of the task's anchor directory inside its worktree.
 func (t *Teardown) taskAnchor(slug string) (string, error) {
 	pair, err := lymcwd.NamedWorktree(t.prime.HubPath, slug)
 	if err != nil {
@@ -614,7 +639,7 @@ func (t *Teardown) topology() (*fabricengine.Topology, error) {
 
 // otherPairSessions returns the live reed sessions of the hub's pairs other than slug's.
 // A hub socket with no tmux server behind it has no sessions.
-// The prime's own sessions, the orch among them, are never in the pair set and never count.
+// The prime's own sessions, the orch among them, are never counted.
 func (t *Teardown) otherPairSessions(slug string) ([]string, error) {
 	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(t.prime), "reed")
 	if err != nil {
@@ -656,13 +681,16 @@ func sessionsOfOtherPairs(live, pairSessions []string) []string {
 }
 
 // endOwnedProcesses ends the pair's registered processes through the hub's owner record.
-// The calling process and its ancestors are spared, so batten's own teardown, run inside a registered batten, never ends itself, and so is every process of a role in spare.
-// A teardown child, which holds the slug's teardown lock to run the remote steps of an earlier teardown, is always spared: only an operator's deliberate end of it stops those steps.
+// The calling process and its ancestors are spared.
+// So batten's own teardown, run inside a registered batten, never ends itself.
+// Processes of the roles in spare are spared too.
+// A teardown child holds the slug's teardown lock to run the remote steps of an earlier teardown.
+// It is always spared; only an operator's deliberate end of it stops those steps.
 func (t *Teardown) endOwnedProcesses(slug string, spare ...string) ([]runproc.Ended, error) {
 	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), append(spare, runproc.RoleTeardown)...)
 }
 
-// driverLockHeldIn reports whether the present task worktree's Go-driver lock is held.
+// driverLockHeldIn reports whether the Go-driver lock of the slug's task worktree is held.
 func (t *Teardown) driverLockHeldIn(slug string) (bool, error) {
 	task, err := t.taskLocation(slug)
 	if err != nil {
@@ -672,8 +700,11 @@ func (t *Teardown) driverLockHeldIn(slug string) (bool, error) {
 	return !free, err
 }
 
-// registeredBattenAlive reports whether the slug's run has a live lifecycle owner:
-// a live record of the slug carries the batten role, or batten's status reads running with no cancel marker and a live dobby record stands under the run's parent, the gap between two passes dobby drives.
+// registeredBattenAlive reports whether the slug's run has a live lifecycle owner.
+// The owner is a live record of the slug carrying the batten role;
+// otherwise, batten's status reads running with no cancel marker,
+// and a live dobby record stands under the run's parent.
+// That second case covers the gap between two passes dobby drives.
 func (t *Teardown) registeredBattenAlive(slug string) (bool, error) {
 	records, err := t.ownedProcesses(slug)
 	if err != nil {
@@ -739,7 +770,8 @@ func (t *Teardown) taskWorktreeGone(slug string) (bool, error) {
 	return true, nil
 }
 
-// TaskWorktreeGone reports whether the slug's task worktree path is not a registered linked worktree of the prime's repo, so a caller can tell a pair already removed by hand from a present one.
+// TaskWorktreeGone reports whether the slug's task worktree path is not a registered linked worktree of the prime's repo.
+// It lets a caller tell a pair already removed by hand from a present one.
 func (t *Teardown) TaskWorktreeGone(slug string) (bool, error) {
 	return t.gone(slug)
 }
@@ -762,7 +794,9 @@ func (t *Teardown) reedEngine(task *lymcwd.Location) (*reedengine.Engine, error)
 	return reedengine.New(cfg, geom, shuttleengines.EnvScrub()), nil
 }
 
-// probeQuiet answers whether the present task worktree's driver is quiet: the run lock, the loop lock and the Go-driver lock are free, and the driver strand is absent, dead, retiring or parked.
+// probeQuiet answers whether the present task worktree's driver is quiet:
+// the run lock, the loop lock and the Go-driver lock are free,
+// and the driver strand is absent, dead, retiring or parked.
 func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 	task, err := t.taskLocation(slug)
 	if err != nil {
@@ -804,7 +838,8 @@ func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 }
 
 // killPairCapture terminates the pair's drift capture job and reports whether one existed.
-// The job name is computed from the pair's worktree path, so it needs no present worktree; on Linux it reports false and ends nothing.
+// The job name is computed from the pair's worktree path, so it needs no present worktree.
+// On Linux it reports false and ends nothing.
 func (t *Teardown) killPairCapture(slug string) (bool, error) {
 	name := driftengine.CaptureJobName(fabricengine.WorktreePath(t.prime, slug))
 	ended, err := proc.TerminateNamedJob(name)
@@ -826,7 +861,8 @@ func (t *Teardown) killPairLoop(slug string) (bool, error) {
 	return killLoop(shedrun.LoopPIDFile(task, shedrun.SelfRunID), shedrun.LoopLock(task, shedrun.SelfRunID), shedrun.LoopJobName(task, shedrun.SelfRunID))
 }
 
-// holdPairLoopLock takes the present task worktree's loop lock after kill and leaves the teardown's mark in its loop pid file.
+// holdPairLoopLock takes the present task worktree's loop lock after kill,
+// and it leaves the teardown's mark in its loop pid file.
 // The steps directory is created first, since the lock file lives in it.
 func (t *Teardown) holdPairLoopLock(ctx context.Context, slug string, kill func() (bool, error)) (func(sessionEnded bool) error, error) {
 	task, err := t.taskLocation(slug)
@@ -849,7 +885,8 @@ func (t *Teardown) awaitPairRunLock(ctx context.Context, slug string) error {
 	return awaitRunLockNamingHolder(ctx, shedrun.RunLock(task, shedrun.SelfRunID), shedrun.StepsDir(task, shedrun.SelfRunID), slug, int(runLockWait/quietPollInterval), t.sleep)
 }
 
-// endReedSession ends the pair's session: Engine.Down while the task worktree is present, EndSessionByName once it is gone.
+// endReedSession ends the pair's session:
+// Engine.Down while the task worktree is present, EndSessionByName once it is gone.
 func (t *Teardown) endReedSession(slug string, gone bool) (bool, string, error) {
 	if !gone {
 		task, err := t.taskLocation(slug)

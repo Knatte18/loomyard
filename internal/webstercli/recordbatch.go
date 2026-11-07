@@ -1,13 +1,10 @@
-// recordbatch.go implements the `record-batch` webster verb: Master's own bracket call immediately
-// after a batch's fork returns.
-// It runs websterengine.RecordBatch under the state-mutation lease (load, mutate, save, release)
-// with a real, time.Sleep-backed Sleeper for the incremental fork audit's bounded settle retry,
-// then performs the second of webster's four fabric-commit points (see the discussion's
-// fabric-ownership decision): state.json and the batch report, once RecordBatch either lands a
-// terminal digest or advances transcript attribution on a no_report retry -- both mutate
-// deps.State, so both are durable before Master's next tool call.
-// Two refusals persist as well: a *BatchFailedError saves the whole mutated state and commits it ("record-batch NN failed"),
-// and a *ReportArchivedError commits the archive move ("record-batch NN report-archived"), each before the error envelope is emitted.
+// recordbatch.go implements the `record-batch` webster verb, which Master calls right after a batch's fork returns.
+// It runs websterengine.RecordBatch under the state-mutation lease.
+// The Sleeper is backed by time.Sleep and paces the fork audit's settle retry.
+// RecordBatch either lands a terminal digest or advances transcript attribution on a no_report retry.
+// Either way, state.json and the batch report are committed to fabric before Master's next tool call.
+// A *BatchFailedError saves the whole mutated state and commits it.
+// A *ReportArchivedError commits the archive move, and both commit before the error envelope is emitted.
 package webstercli
 
 import (
@@ -33,7 +30,7 @@ func (realSleeper) Sleep(d time.Duration) { time.Sleep(d) }
 
 var _ websterengine.Sleeper = realSleeper{}
 
-// digestFields converts a websterengine.Digest into the map output.Ok expects via json marshaling.
+// digestFields converts a websterengine.Digest into a map of its JSON fields, for an output envelope.
 func digestFields(d websterengine.Digest) map[string]any {
 	data, _ := json.Marshal(d)
 	var fields map[string]any
@@ -41,8 +38,9 @@ func digestFields(d websterengine.Digest) map[string]any {
 	return fields
 }
 
-// batchFailedFields is the envelope of a batch taken terminal failed, naming the batch and its warnings.
-// card_amended is set only when err carries a card_amended failure, which recover-batch re-runs even from a failed recovery.
+// batchFailedFields builds the envelope of a batch that went terminal failed, naming the batch and its warnings.
+// It sets card_amended only when err carries a card_amended failure.
+// recover-batch re-runs such a batch even from a failed recovery.
 func (c *websterCLI) batchFailedFields(batchName string, warnings []string, err error) map[string]any {
 	fields := map[string]any{
 		"batch_failed": true,
@@ -157,8 +155,8 @@ Example:
 
 			result, err := websterengine.RecordBatch(deps, batchNumber)
 			if errors.Is(err, websterengine.ErrBatchFailed) {
-				// The batch went terminal failed and its report was archived: every mutation on st is the point,
-				// so the whole state is saved, not just the fingerprint re-baseline.
+				// The batch went terminal failed and its report was archived.
+				// Every mutation on st matters, so the whole state is saved, not only the fingerprint re-baseline.
 				batchName := fmt.Sprintf("%02d-%s", batchNumber, st.Batches[batchNumber].Slug)
 				saveErr := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st)
 				_ = mutateLock.Release()
@@ -199,8 +197,8 @@ Example:
 				return nil
 			}
 			if errors.Is(err, websterengine.ErrReportArchived) {
-				// Nothing in state changed;
-				// the archive move is what the fabric sync commits.
+				// Nothing in state changed.
+				// The archive move is what the fabric sync commits.
 				// The begin record may be absent, so the name comes from the error, not from st.
 				batchName := fmt.Sprintf("%02d", batchNumber)
 				var archivedErr *websterengine.ReportArchivedError
@@ -220,9 +218,8 @@ Example:
 				return nil
 			}
 			if err != nil {
-				// RecordBatch re-baselines st's plan fingerprint the moment BindHandles or
-				// DetectDrift's exact-tier repair rewrites the plan on disk, which can happen on a
-				// call that then blocks. Persist that re-baseline before releasing the lease.
+				// RecordBatch re-baselines st's plan fingerprint once BindHandles or DetectDrift rewrites the plan on disk.
+				// That can happen on a call that then blocks, so the re-baseline is persisted before the lease is released.
 				saveErr := persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
 				_ = mutateLock.Release()
 				mutateHeld = false

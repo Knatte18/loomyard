@@ -1,4 +1,5 @@
-// windoworder_test.go pins the window order's fallback placements and the shell window check, driven through OpenWindow and AttachArgv against the scripted multiplexer fake.
+// windoworder_test.go pins the window order's fallback placements and the shell window check.
+// It drives OpenWindow and AttachArgv against the scripted multiplexer fake.
 // The placements a real tmux decides are pinned by windoworder_integration_test.go.
 
 package reedengine
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWindowOrder pins the fallback placements of an own window and the overview placement by order key, over listings that parseSessionWindows reads.
+// TestWindowOrder pins the fallback placements of an own window and the overview placement by order key.
+// It runs over window listings in the format the session parser reads.
 // The relaunch and shell placements are pinned by TestWindowOrder_RealTmux alone.
 func TestWindowOrder(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -26,7 +28,7 @@ func TestWindowOrder(t *testing.T) {
 		listing  string
 		shell    string
 		previous string
-		// overview selects overviewWindowInsertArgs, which reads the listing, the overview windows' keys and the new window's order.
+		// overview selects the overview placement, which reads the listing, the overview windows' keys and the new order.
 		overview bool
 		keys     map[string]int
 		order    int
@@ -211,7 +213,7 @@ func TestEnsureShellWindow(t *testing.T) {
 					if _, err := e.OpenWindow("batten:one", []string{"300"}); err != nil {
 						t.Fatalf("OpenWindow: %v", err)
 					}
-					// OpenWindow's own chained rename-window rides inside its one new-window call, so the verb count below is the check's alone.
+					// OpenWindow's chained rename-window rides inside its one new-window call, so the verb count below is the check's alone.
 				} else {
 					cols, rows := tt.cols, tt.rows
 					if cols == 0 && rows == 0 && !tt.attachOnly {

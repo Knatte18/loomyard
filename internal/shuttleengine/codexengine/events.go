@@ -1,6 +1,6 @@
 // events.go reads a run's events file, where the launch's hooks append a stamp line and a payload line per hook event.
-// ParseEvents yields the turn ends the run loop classifies outcomes from, and ParseSessionSignals the session signals a session state folds.
-// All Codex payload-shape knowledge the events file needs lives in this file, per PATTERN-shuttle-provider-seam.
+// Its parsers yield the turn ends that outcomes are classified from and the session signals that session state folds.
+// All Codex payload-shape knowledge the events file needs lives in this file.
 
 package codexengine
 
@@ -15,7 +15,8 @@ import (
 
 var _ shuttleengine.SessionSignalParser = (*Codex)(nil)
 
-// ParseEvents parses the events file into Events: each Stop payload becomes an EventStop carrying its last_assistant_message.
+// ParseEvents parses the events file into events:
+// each Stop payload becomes a stop event carrying its last_assistant_message.
 // Codex fires no Stop for an interrupted turn, so an interrupt yields no event.
 // It is lenient: stamp lines, malformed lines and other hooks yield nothing, since the file may still be growing.
 func (c *Codex) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
@@ -48,10 +49,12 @@ type pendingStamp struct {
 }
 
 // ParseSessionSignals parses events file bytes into session signals, in file order.
-// SessionStart reads as a session start, UserPromptSubmit as a turn start, Stop as a turn end and PermissionRequest as an ask,
-// and the launch line's exit record as a session end that ends the process.
-// A payload line takes its time from the nearest preceding untaken stamp naming its hook, and reads a zero time when there is none or the stamp's time is empty or malformed.
-// consumed ends at the last newline-terminated line, except that it stops before the earliest line of the trailing run of stamp lines, which have no payload line after them yet.
+// SessionStart reads as a session start, UserPromptSubmit as a turn start, and Stop as a turn end.
+// PermissionRequest reads as an ask, and the launch line's exit record reads as a session end that ends the process.
+// A payload line takes its time from the nearest preceding untaken stamp naming its hook.
+// A payload line with no such stamp, or whose stamp time is empty or malformed, reads a zero time.
+// The returned count is the number of bytes consumed, up to the last newline-terminated line.
+// The count stops before the trailing run of stamp lines, which have no payload line after them yet.
 // It is lenient: malformed lines, stamp lines and unknown hooks yield no signal.
 func (c *Codex) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
 	var signals []shuttleengine.SessionSignal
@@ -141,8 +144,10 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 	return shuttleengine.SessionSignal{}, false
 }
 
-// typedInstruction returns a UserPromptSubmit prompt as a typed instruction, or "" for a slash command, which is a command to Codex's own interface.
-// A prompt is a slash command when its first word starts with "/" and holds no further "/", so one that opens with a multi-segment path is an instruction.
+// typedInstruction returns a UserPromptSubmit prompt as a typed instruction, or "" for a slash command.
+// A slash command is a command to Codex's own interface.
+// A prompt is a slash command when its first word starts with "/" and holds no further "/".
+// So a prompt that opens with a multi-segment path is an instruction.
 func typedInstruction(prompt string) string {
 	trimmed := strings.TrimSpace(prompt)
 	if words := strings.Fields(trimmed); len(words) > 0 && strings.HasPrefix(words[0], "/") && !strings.Contains(words[0][1:], "/") {
@@ -151,7 +156,8 @@ func typedInstruction(prompt string) string {
 	return trimmed
 }
 
-// sessionStartSource maps a SessionStart payload's source to the provider-neutral source: startup and resume map to their own, and any other source, a fork's included, to the empty source.
+// sessionStartSource maps a SessionStart payload's source to the provider-neutral source.
+// startup and resume map to their own sources, and any other source, a fork's included, maps to the empty source.
 func sessionStartSource(source string) shuttleengine.SessionStartSource {
 	switch source {
 	case "startup":

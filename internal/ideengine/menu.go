@@ -1,5 +1,5 @@
-// menu.go implements the interactive `ide menu` picker over active worktrees, resolving each
-// worktree's title via the board facade and hard-erroring when the board fails its health check.
+// menu.go implements the interactive `ide menu` picker over active worktrees.
+// It shows each worktree's task title from the board and returns an error when the board fails its health check.
 
 package ideengine
 
@@ -20,12 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
-// Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
-// It discovers active worktrees from fabricengine.List, excluding the main worktree and those
-// without _lym.
-// Titles are resolved through the board facade.
-// Returns an error on board config load or health check failure,
-// or nil on success.
+// Menu lists the active worktrees and reads the user's choice from in.
+// A worktree is active when it is not the main worktree and its anchor holds a `_lym` directory.
+// Each entry shows its task title from the board when the board has one.
+// Menu returns an error when the board config cannot be loaded or the board fails its health check.
+// An input of q returns nil without starting a worktree; otherwise Menu starts the chosen one.
 func Menu(l *lymcwd.Location, in io.Reader, out io.Writer) error {
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfg, err := boardengine.LoadConfig(fabricengine.ConfigDirs(l), "board")

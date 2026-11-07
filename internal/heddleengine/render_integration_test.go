@@ -1,4 +1,5 @@
-// render_integration_test.go proves a render writes the file targets at a hub prime's anchor, with an anchor and without one, and leaves no untracked file.
+// render_integration_test.go proves a render writes the file targets at a hub prime's anchor.
+// It covers a prime with an anchor and one without, and checks that the render leaves no untracked file.
 
 package heddleengine_test
 
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile renders both file targets into a hub's prime from the event fabric builds.
+// TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile renders both file targets into a hub's prime.
+// Its event is the one fabricengine builds.
 // It expects both files at the prime's anchor, none at its root when the two differ, and git to see nothing untracked.
 func TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile(t *testing.T) {
 	tiergate.Require(t, 1)

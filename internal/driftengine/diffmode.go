@@ -1,4 +1,5 @@
-// diffmode.go — the drift.yaml rewrites that carry a hub across the diff rework: the rename of the model keys, the removal of the arguments that passed the retired skip file, and the flags for the values whose meaning changed.
+// diffmode.go holds the drift.yaml rewrites and flags of the diff mode.
+// It renames the model keys, drops the skip file arguments and flags the values whose meaning changed.
 
 package driftengine
 
@@ -13,31 +14,41 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// DiffModeReinterpretation names the change of what a hub's compare, capture and scope values mean once a run diffs the capture itself.
+// DiffModeReinterpretation names the change of what a hub's compare, capture and scope values mean.
+// The values mean something else once a run diffs the capture itself.
 const DiffModeReinterpretation = "drift-diff-mode"
 
-// renamedKeys maps each drift.yaml key the diff rework renamed onto its new name.
+// renamedKeys maps each retired drift.yaml key onto the key that replaces it.
 var renamedKeys = []yamlengine.KeyRename{
 	{From: "baseline_model", To: "expect_model"},
 	{From: "verify_model", To: "judge_model"},
 	{From: "verify_interactive", To: "judge_interactive"},
 }
 
-// retiredPartialScope is the scope value the rework retired, which FlagDiffMode names in a hub's file.
+// retiredPartialScope is the scope value that no longer has a meaning, so the base runs as full.
 const retiredPartialScope = "partial"
 
-// skipFileArgument matches one argument that hands the retired placeholder to a variable, `-e NAME={skip_file}`, `--env NAME={skip_file}` or `--env=NAME={skip_file}` with the assignment quoted or not, and the whitespace before it.
-// A quote around the assignment is part of the match only when both quotes are there, so the quote that closes an enclosing `sh -c '...'` string is never taken and an argument that ends such a string stays.
+// skipFileArgument matches one argument that hands the placeholder to a variable.
+// It matches the forms `-e NAME={skip_file}`, `--env NAME={skip_file}` and `--env=NAME={skip_file}`.
+// The assignment may be quoted or not, and the match includes the whitespace before the argument.
+// A quote around the assignment is part of the match only when both quotes are there.
+// The quote closing an enclosing `sh -c '...'` string is therefore never taken,
+// and an argument that ends such a string stays.
 // Its first group holds the whitespace before the argument and its second what ends the argument.
 var skipFileArgument = regexp.MustCompile(`(^|\s+)(?:-e|--env)(?:\s+|=)(?:"` + skipFileAssignment + `"|'` + skipFileAssignment + `'|` + skipFileAssignment + `)(\s|$)`)
 
-// skipFileAssignment is the pattern of one variable assignment handing over the retired placeholder.
+// skipFileAssignment is the pattern of one variable assignment handing over the placeholder.
 var skipFileAssignment = `\w+=` + regexp.QuoteMeta(skipFilePlaceholder)
 
-// MigrateConfig carries a drift.yaml document across what the rework retired.
-// It renames the retired model keys, keeping each value: baseline_model to expect_model, verify_model to judge_model and verify_interactive to judge_interactive.
+// MigrateConfig carries a drift.yaml document across the diff mode's renames and removals.
+// It renames the model keys, keeping each value:
+// baseline_model to expect_model, verify_model to judge_model and verify_interactive to judge_interactive.
 // A document already holding the new key keeps it and drops the old one.
-// It removes each whole argument of a capture or compare command that hands {skip_file} to a variable, which nothing fills any more; any other use of the placeholder stays for the operator, since lym cannot tell what the command means by it, and so does an argument that ends a quoted shell string, as in `sh -c 'docker run -e A={skip_file}'`, since the quote that closes the string follows it.
+// It removes each whole argument of a capture or compare command that hands {skip_file} to a variable.
+// Nothing fills that placeholder any more.
+// Any other use of the placeholder stays for the operator, since lym cannot tell what the command means by it.
+// An argument that ends a quoted shell string stays too.
+// In `sh -c 'docker run -e A={skip_file}'` the quote that closes the string follows the argument.
 // A document with none of these is returned unchanged.
 // It returns one line per rename and per command it rewrote.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
@@ -53,7 +64,8 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return migrated, append(lines, dropped...), nil
 }
 
-// dropSkipFileArguments removes the skip file arguments from the capture and compare commands of a drift.yaml document, and returns it, rewritten only when a command changed, with one line per command changed.
+// dropSkipFileArguments removes the skip file arguments from the capture and compare commands of a drift.yaml document.
+// It returns the document, rewritten only when a command changed, with one line per command changed.
 func dropSkipFileArguments(existing []byte) ([]byte, []string, error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(existing, &document); err != nil {
@@ -98,8 +110,9 @@ func withoutSkipFileArguments(command string) string {
 }
 
 // argumentRemainder returns what stays of one matched skip file argument.
-// An argument on its own line of a backslash-continued command keeps the line break that led to it and drops what followed, so the continuation before it stays whole;
-// any other argument keeps what ended it, which is the single space between its neighbours.
+// An argument on its own line of a backslash-continued command keeps the line break before it and drops what follows,
+// so the continuation before it stays whole.
+// Any other argument keeps what ended it, which is the single space between its neighbours.
 func argumentRemainder(match string) string {
 	parts := skipFileArgument.FindStringSubmatch(match)
 	lead, end := parts[1], parts[2]
@@ -113,9 +126,9 @@ func argumentRemainder(match string) string {
 }
 
 // FlagDiffMode flags the values of a hub drift.yaml whose meaning changed, one line each, and rewrites nothing.
-// It flags a compare declared with no diff set, since the compare now runs only under diff: command;
-// a capture or compare command holding {skip_file}, which is no longer filled;
-// and scope: partial, which is gone, so the base runs as full.
+// It flags a compare declared with no diff set, since a compare runs only under diff: command.
+// It flags a capture or compare command holding {skip_file}, which nothing fills.
+// It flags scope: partial, which no longer has a meaning, so the base runs as full.
 // It returns the document unchanged, no rewritten line and the flags, each naming its way forward.
 // worktreeRoot and anchorDir are unused, since no flag depends on a path.
 // A document that does not parse returns an error marked configengine.ErrInvalid.

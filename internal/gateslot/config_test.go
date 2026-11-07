@@ -1,4 +1,5 @@
-// config_test.go covers loading the hub-wide gate config over a bare temp directory seeded with just a gate.yaml, with no hub and no git.
+// config_test.go covers loading the hub-wide gate config over a bare temp directory.
+// The directory holds a gate.yaml and nothing else: no hub and no git.
 
 package gateslot
 
@@ -23,8 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestConfigSpec_SetNestedKeys pins that a hub --set reaches one key inside a declared tier or the build step, a number decoding as a number and an env value as a string, so the hub file still loads;
-// and that a key no tier holds is refused naming it, leaving the hub file byte for byte.
+// TestConfigSpec_SetNestedKeys pins that a hub --set reaches one key inside a declared tier or the build step.
+// A number decodes as a number and an env value as a string, so the hub file still loads.
+// A key no tier holds is refused naming it, leaving the hub file byte for byte.
 func TestConfigSpec_SetNestedKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -82,7 +84,8 @@ var templateDefaults = Config{
 	Scoper: "none",
 }
 
-// equateEmpty makes a nil and an empty map or slice equal, since a Config holds either for an empty gate.yaml collection.
+// equateEmpty makes a nil and an empty map or slice equal:
+// a Config holds either for an empty gate.yaml collection.
 var equateEmpty = cmpopts.EquateEmpty()
 
 // hubWith returns the template defaults with mutate applied to a copy.
@@ -94,7 +97,7 @@ func hubWith(mutate func(*Config)) Config {
 	return cfg
 }
 
-// unparsableFixerRefusal is the refusal of a card key whose fixer is the model-spec text spec, which modelspec.Parse rejects.
+// unparsableFixerRefusal is the refusal of a card key whose fixer value is text modelspec.Parse rejects.
 func unparsableFixerRefusal(spec string) string {
 	_, err := modelspec.Parse(spec)
 	return fmt.Sprintf(`gate config key "gates.card.fixer": %q is no model-spec: %v; set a model-spec such as sonnet[medium], or "" to turn the fixer off, with "lym config gate" from the prime%s`, spec, err, roleClause)
@@ -115,7 +118,7 @@ const machineBadParallel = "tier_parallel:\n  tier0: 0\n"
 // badParallelKey is the key a refusal of machineBadParallel names.
 const badParallelKey = `gate config key "tier_parallel.tier0": "0"`
 
-// tier0Flow is a tier written whole in flow form with parallel and slots absent.
+// tier0Flow is a tiers block whose tier0 is written whole in flow form, with parallel and slots absent.
 const tier0Flow = `tiers:
   tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}
 `
@@ -135,7 +138,8 @@ func seedGateConfig(t *testing.T, contents string) string {
 	return baseDir
 }
 
-// TestResolveCommandDir pins the one base every hub command's dir resolves against: the anchor for no dir, the worktree root for a relative dir and an absolute dir as written.
+// TestResolveCommandDir pins the one base every hub command's dir resolves against:
+// the anchor for no dir, the worktree root for a relative dir, and an absolute dir as written.
 func TestResolveCommandDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -162,7 +166,8 @@ func TestResolveCommandDir(t *testing.T) {
 	}
 }
 
-// TestCheckDirs pins that a tier or build dir resolving to no existing directory is refused naming its key and the resolved path, and that existing and unset dirs pass.
+// TestCheckDirs pins that a tier or build dir resolving to no existing directory is refused.
+// The refusal names its key and the resolved path; existing and unset dirs pass.
 func TestCheckDirs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -407,7 +412,7 @@ inert_paths: ["*.md", "docs/*"]
 		wantAbsent  bool
 		// local is the anchor's local override file contents; "" leaves it absent.
 		local string
-		// anchorWithoutLym tells an anchor with no _lym/, so the load never stacks the local file.
+		// anchorWithoutLym marks an anchor with no _lym/, so the load never stacks the local file.
 		anchorWithoutLym bool
 		// wantLocalClause requires the failure to name the local file for removal, ahead of the role clause.
 		wantLocalClause bool
@@ -604,7 +609,7 @@ func TestTemplateConfigAndLimits(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite pins the way forward of a standalone load with no worktree gate.yaml.
+// TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite pins the way forward of a standalone load with no gate.yaml.
 func TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// seam_enforcement_test.go enforces `PATTERN-reed-panes`'s import half: production code in this package never imports reed or shuttle, so every keystroke goes through the Delivery seam.
+// seam_enforcement_test.go enforces `PATTERN-reed-panes`'s import half:
+// production code in this package never imports reed or shuttle, so every keystroke goes through the Delivery seam.
 
 package creelengine
 
@@ -19,7 +20,8 @@ const (
 	shuttleImportPath = "github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// deliverySeamImportFindings parses data's imports and returns one message per import of reedengine, of shuttleengine or of any path under it.
+// deliverySeamImportFindings parses data's imports.
+// It returns one message per import of reedengine, of shuttleengine, or of any path under it.
 func deliverySeamImportFindings(filename string, data []byte) ([]string, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, data, parser.ImportsOnly)

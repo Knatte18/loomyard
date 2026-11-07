@@ -1,4 +1,5 @@
-// render.go renders heddle's file targets into a worktree's anchor directory and reads the prompt passages of a prompt target.
+// render.go renders heddle's file targets into a worktree's anchor directory.
+// It also collects the prompt passages of a prompt target.
 
 package heddleengine
 
@@ -23,7 +24,7 @@ const Marker = "<!-- rendered by lym heddle: change it with lym heddle set, neve
 const DefaultBoltLockWait = 30 * time.Second
 
 const (
-	// tempDirName is the directory at a worktree's anchor a render writes its files into before renaming them onto their targets.
+	// tempDirName is the anchor's directory where a render stages its files before renaming them onto their targets.
 	tempDirName = ".heddle"
 	// tempSuffix ends the name of a file inside tempDirName.
 	tempSuffix = ".tmp"
@@ -34,8 +35,12 @@ const (
 )
 
 // RenderRequest is one worktree to render.
-// Anchor is the worktree's anchor directory, where the file targets render and the repository's own CLAUDE and AGENTS files are read; it is the worktree's root in a worktree with no anchor.
-// ScratchDir is the pair's never-tracked directory, BoltDir the Bolt checkout holding the store, and Excluded the anchor-relative paths fabric's exclude list names.
+// Anchor is the worktree's anchor directory, where the file targets render.
+// The repository's own CLAUDE and AGENTS files are read there too.
+// It is the worktree's root when the worktree has no anchor.
+// ScratchDir is the pair's never-tracked directory.
+// BoltDir is the Bolt checkout holding the store.
+// Excluded lists the anchor-relative paths that fabric's exclude list names.
 // Only names the file targets to render, all of them when empty.
 type RenderRequest struct {
 	Anchor     string
@@ -59,9 +64,12 @@ type Renderer struct {
 }
 
 // Render writes the file targets of req into its anchor from the entries of the shipped layer and the store.
-// It holds the worktree's render lock for the whole read and write, so two renders of one worktree serialize and the last one's text stands whole.
-// A target with no entry loses its marked file; a target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
-// A render whose Only names claude-file renders codex-file too, so a worktree that already exists takes a changed repository entry at its next render.
+// It holds the worktree's render lock for the whole read and write.
+// Two renders of one worktree therefore serialize, and the last one's text stands whole.
+// A target with no entry loses its marked file.
+// A target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
+// A render whose Only names claude-file renders codex-file too,
+// so a worktree that already exists takes a changed repository entry at its next render.
 // The lock wait running out fails the render before it writes anything.
 func (r Renderer) Render(req RenderRequest) (Report, error) {
 	var report Report
@@ -140,7 +148,8 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 	return report, nil
 }
 
-// withCodexFile returns only with codexFileTarget added when it names claudeFileTarget and not codexFileTarget, and only itself otherwise.
+// withCodexFile returns only with codexFileTarget appended when it names claudeFileTarget and not codexFileTarget.
+// Otherwise it returns only itself.
 func withCodexFile(only []string) []string {
 	if slices.Contains(only, claudeFileTarget) && !slices.Contains(only, codexFileTarget) {
 		return append(slices.Clone(only), codexFileTarget)
@@ -155,7 +164,8 @@ func (r *Report) warn(text string) {
 	}
 }
 
-// read loads the layers from boltDir while holding the Bolt write lock, so it sees the old store or the new, never an absent file in mid-move.
+// read loads the layers from boltDir while holding the Bolt write lock,
+// so it sees the old store or the new, never an absent file in mid-move.
 // The lock wait running out is an error naming the render verb as the way to run it again.
 func (r Renderer) read(boltDir string) (Layers, error) {
 	wait := r.BoltLockWait
@@ -236,12 +246,16 @@ func removeTempDir(dir string) error {
 	return nil
 }
 
-// fileText builds the text a file target renders to at anchor from the layered entries that name it, and reports false when none does.
+// fileText builds the text a file target renders to at anchor from the layered entries that name it.
+// It reports false when none does.
 // It opens with Marker.
-// The shipped layer's texts follow under their own heading, then the repository's, under a heading of their own only when shipped texts precede them.
+// The shipped layer's texts follow under their own heading.
+// The repository's texts follow them, under a heading of their own only when shipped texts precede them.
 // The claude-file target imports the AGENTS.md files the anchor holds when the anchor holds no CLAUDE.md.
-// The codex-file target opens with the anchor's AGENTS.md, or with its CLAUDE.md when the anchor holds no AGENTS.md, or with neither when it holds neither.
-// An entry reaches the codex-file target when it names it, or when it is a repository entry that names claude-file, so a Codex session gets the repository instructions a Claude session gets.
+// The codex-file target opens with the anchor's AGENTS.md, or with its CLAUDE.md when the anchor holds no AGENTS.md.
+// It opens with neither file when the anchor holds neither.
+// An entry reaches the codex-file target when it names it, or when it is a repository entry that names claude-file,
+// so a Codex session gets the repository instructions a Claude session gets.
 // A shipped entry reaches the codex-file target only by naming it.
 func fileText(target Target, anchor string, entries []LayeredEntry) (string, bool, error) {
 	var shipped, repository []string
@@ -304,7 +318,8 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// Show returns the text the named target renders to now for the worktree anchor, from the shipped layer and the store, and writes nothing.
+// Show returns the text the named target renders to for the worktree anchor, from the shipped layer and the store.
+// It writes nothing.
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
 func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	named, ok := LookupTarget(target)
@@ -322,8 +337,9 @@ func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	return text, err
 }
 
-// Passages returns the texts of the entries aimed at a prompt target that reaches a session of engine whose strand role is role, the shipped layer's first, each layer in order.
-// An entry aimed at several such targets gives its text once, and a session no prompt target reaches gets none.
+// Passages returns the texts of the entries aimed at prompt targets that reach a session of engine in strand role role.
+// The texts come in render order, and an entry aimed at several of those targets gives its text once.
+// A session no prompt target reaches gets none.
 func (r Renderer) Passages(boltDir, engine, role string) ([]string, error) {
 	targets := promptTargetsFor(engine, role)
 	if len(targets) == 0 {

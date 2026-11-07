@@ -1,4 +1,5 @@
-// startguard_test.go pins the pre-run guard's refusals over fake seams, and the seed write's re-read of the cancel marker.
+// startguard_test.go pins the pre-run guard's refusals over fake seams.
+// It also pins the seed write's re-read of the cancel marker.
 
 package battencli
 
@@ -22,7 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestStartGuard_Refuse drives startGuard.refuse over fake seams: which verbs the cancel marker refuses, when a dirty source refuses, which left pair parts refuse a start, and that a failing probe refuses naming the re-run.
+// TestStartGuard_Refuse drives startGuard.refuse over fake seams.
+// It covers which verbs the cancel marker refuses, when a dirty source refuses, and which pair parts refuse a start.
+// It also covers a failing probe, which refuses naming the re-run.
 func TestStartGuard_Refuse(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -53,10 +56,10 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// reached is what the ReachedParent seam reads: the run's work reached its parent.
 		reached    bool
 		reachedErr error
-		// project and beam are what the Project seam reads; marked and unreadable describe the PairMark seam.
+		// project and beam feed the Project seam; marked and unreadable feed the PairMark seam.
 		project, beam, marked, unreadable bool
 		projectErr                        error
-		// unreleased is what the Unreleased seam reads: the board status of a task no run starts, empty for a released entry.
+		// unreleased is the board status of a task no run starts; it is empty for a released entry.
 		unreleased    string
 		unreleasedErr error
 		// raddle is the Raddle seam; nil leaves it unset.
@@ -438,7 +441,8 @@ func TestStartGuard_Refuse(t *testing.T) {
 	}
 }
 
-// writeBoardHub writes the board of the hub at location: board.json holding boardJSON and the Bolt checkout's board config, which names defaultRecipe as the default recipe when it is not empty.
+// writeBoardHub writes the board of the hub at location: board.json holding boardJSON.
+// It also writes the Bolt checkout's board config, which names defaultRecipe when that is not empty.
 func writeBoardHub(t *testing.T, location *lymcwd.Location, defaultRecipe, boardJSON string) {
 	t.Helper()
 	boltDir := fabricengine.BoltDir(location.HubPath)
@@ -457,8 +461,9 @@ func writeBoardHub(t *testing.T, location *lymcwd.Location, defaultRecipe, board
 	}
 }
 
-// TestRefuseAtStart_JudgesADoneMotifRunAsTheFreshStartItsClearMakes drives refuseAtStart over a status file and fake seams:
-// only a run or step over a done status asks whether the start clears the run, a start that does is judged as a fresh start with the removal left pending, nothing is removed whatever the guard answers, and a failed read refuses naming the re-run.
+// Over a status file and fake seams, only a run or step over a done status asks whether the start clears the run.
+// A start that does is judged as a fresh start, with the removal left pending.
+// Nothing is removed whatever the guard answers, and a failed read refuses naming the re-run.
 func TestRefuseAtStart_JudgesADoneMotifRunAsTheFreshStartItsClearMakes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -542,8 +547,8 @@ func TestRefuseAtStart_JudgesADoneMotifRunAsTheFreshStartItsClearMakes(t *testin
 	}
 }
 
-// TestClaimStart_RemovesTheDoneMotifRunOnlyOnceTheOwnerCheckPasses drives claimStart over a status file and the fake owners:
-// A start replacing a done motif run is judged by the owner check first and removes the run only when it passes.
+// Over a status file and the fake owners, a start replacing a done motif run is judged by the owner check first.
+// The run is removed only when that check passes.
 // A refused owner check leaves the run and its pending removal in place.
 // An entry the owner check's pull turned away from raddle leaves the run in place.
 // A failed removal refuses naming the re-run.
@@ -561,7 +566,7 @@ func TestClaimStart_RemovesTheDoneMotifRunOnlyOnceTheOwnerCheckPasses(t *testing
 		wantPulls   int
 		wantRemoved int
 		wantPending bool
-		// turnedAway makes the guard read the entry as no longer replacing the run once the owner check has pulled the board.
+		// turnedAway makes the guard read the entry as not replacing the run after the owner check pulls the board.
 		turnedAway bool
 	}{
 		{name: "AnOwnerCheckThatPassesRemovesTheRunOnce", verb: "run", pending: true, owner: "this", wantPulls: 1, wantRemoved: 1},
@@ -617,8 +622,11 @@ func TestClaimStart_RemovesTheDoneMotifRunOnlyOnceTheOwnerCheckPasses(t *testing
 	}
 }
 
-// TestClearsMotifRunOfRaddleEntry drives the guard's read of whether a start clears the done run under its slug over a fixture board and run directory:
-// a slug the board lacks and an entry of another recipe clear nothing, a raddle entry clears a done run whose child ran motif and not one whose child ran raddle, an entry with no recipe takes the board's default, a board that does not read is an error, and the read removes nothing.
+// Over a fixture board and run directory, the guard reads whether a start clears the done run under its slug.
+// A slug the board lacks and an entry of another recipe clear nothing.
+// A raddle entry clears a done run whose child ran motif, not one whose child ran raddle.
+// An entry with no recipe takes the board's default.
+// A board that does not read is an error, and the read removes nothing.
 func TestClearsMotifRunOfRaddleEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -679,7 +687,9 @@ func TestClearsMotifRunOfRaddleEntry(t *testing.T) {
 	}
 }
 
-// TestRaddleStartRefusal drives raddleStartRefusal over fixture entries and stores: an entry with no stored record, a slug the store holds as another Sketch's, as its own Sketch under another created stamp or as a filed slug, and the passes.
+// Over fixture entries and stores, raddleStartRefusal refuses an entry with no stored record.
+// It refuses a slug held as another Sketch's, or as its own Sketch under another created stamp.
+// A filed slug is refused too; an entry that matches none of these passes.
 func TestRaddleStartRefusal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -774,7 +784,8 @@ func TestRaddleStartRefusal(t *testing.T) {
 	}
 }
 
-// TestArmSeed_CancelMarkerRefusesTheWrite asserts a cancel marker read at the seed write refuses it with the cancel refusal, writes no seed and registers no process, and that an absent marker seeds as before.
+// A cancel marker read at the seed write refuses the write with the cancel refusal.
+// The seed is not written and no process is registered; an absent marker seeds as before.
 func TestArmSeed_CancelMarkerRefusesTheWrite(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

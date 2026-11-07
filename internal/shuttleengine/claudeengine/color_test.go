@@ -1,4 +1,5 @@
-// color_test.go pins ColorSequence's exact choreography: `/color <name>` typed and submitted for each palette color, and no inputs for a color outside it.
+// color_test.go pins the exact choreography of `ColorSequence`.
+// It types and submits `/color <name>` for each palette color, and sends no input for a color outside the palette.
 
 package claudeengine
 

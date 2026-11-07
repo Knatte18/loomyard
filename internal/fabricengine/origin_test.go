@@ -1,6 +1,5 @@
-// origin_test.go — unit tests for the Origin provenance record type and its three path accessors.
-// Every Location here comes from locationkit.Location, per the Test
-// Tier Purity Invariant: no git spawn, no resolution.
+// origin_test.go — unit tests for the Origin provenance record type and its path accessors.
+// Every Location here comes from locationkit.Location, per the Test Tier Purity Invariant: no git spawn, no resolution.
 
 package fabricengine
 
@@ -14,9 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestOrigin_JSONRoundTrip asserts that Origin marshals and unmarshals through the parent_branch
-// and parent_worktree wire keys, and that a record without the parent_worktree key decodes with it
-// empty.
+// TestOrigin_JSONRoundTrip asserts that Origin marshals and unmarshals its parent_branch and parent_worktree wire keys.
+// A record without the parent_worktree key still decodes, with that field empty.
 //
 //testtiming:keep Origin's parent_branch and parent_worktree wire keys round-tripping and a legacy record decoding with an empty ParentWorktree; coverage of its blocks by other tests does not show an assertion of this
 func TestOrigin_JSONRoundTrip(t *testing.T) {
@@ -70,11 +68,11 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestOriginRecordPaths asserts that OriginRecordPath joins the anchor path with OriginRecordRel and
-// OriginRecordPathFor joins RecordsWorktreePath with AnchorRel and OriginRecordRel, at both
-// AnchorRel == "." and a subpath anchor — proving the subpath case moves the record down by the
-// anchor, with the anchor segment present in OriginRecordPathFor — and that both end in
-// OriginRecordRel(), the anchor-relative form both accessors are built from.
+// TestOriginRecordPaths asserts that OriginRecordPath joins the anchor path with OriginRecordRel,
+// and that OriginRecordPathFor joins RecordsWorktreePath with AnchorRel and OriginRecordRel.
+// Both accessors are checked at AnchorRel == "." and at a subpath anchor.
+// At a subpath anchor the anchor segment moves the record down and appears in OriginRecordPathFor.
+// Both paths end in OriginRecordRel(), the anchor-relative form both accessors are built from.
 //
 //testtiming:keep OriginRecordPath and OriginRecordPathFor joining the anchor and OriginRecordRel at a root and a subpath anchor, both ending in the shared suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestOriginRecordPaths(t *testing.T) {

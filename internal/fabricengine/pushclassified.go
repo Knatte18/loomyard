@@ -1,5 +1,6 @@
-// pushclassified.go holds the one push every fabric push path runs per side.
-// It checks the branch against origin, pushes rebase-free, retries a records rejection by replay, and records and reports a failure with its class.
+// pushclassified.go holds the push that every fabric push path runs for each side.
+// It checks the branch against origin and pushes rebase-free.
+// It retries a rejection, then records and reports a failure with its class.
 
 package fabricengine
 
@@ -47,7 +48,7 @@ func (e *PushFailedError) Unwrap() error {
 }
 
 // HasUnclassifiedFailure reports whether some failure in err is not a *PushFailedError.
-// It reads each member of a joined error, so a caller that appends a way forward of its own to a push error appends it only when a failure carries none.
+// It reads each member of a joined error, so a caller adds its own way forward only when no failure carries one.
 // A nil error holds no failure.
 func HasUnclassifiedFailure(err error) bool {
 	if err == nil {
@@ -81,16 +82,22 @@ type pushJob struct {
 // side is "code", "records" or "bolt", which the failed-push record and its way forward read.
 //
 // A weft or a task branch with an upstream is first looked up on origin:
-// a branch gone from origin is not pushed, so a parked push never recreates a branch landed or deleted elsewhere, and an entry origin has ended writes no record.
+// a branch gone from origin is not pushed, so a parked push never recreates a branch landed or deleted elsewhere,
+// and an entry origin has ended writes no record.
 // A task branch origin rewound is not pushed either, since a plain push would restore the commits the rewind dropped.
 // A gone branch whose entry is not ended and an unreachable origin are retried by one backoff before they are recorded.
 //
-// A rejection is retried before it is recorded, over the push backoff, while each retry fails with a bare rejection or an unnamed error such as a failed fetch, so a push that lost a race with another push of the branch lands instead of reporting a divergence.
+// A rejection is retried before it is recorded, over the push backoff.
+// Retries continue while each fails with a bare rejection or an unnamed error such as a failed fetch,
+// so a push that lost a race with another push of the branch lands instead of reporting a divergence.
 // A records retry runs retryRecords, which replays the local commits onto origin's and pushes again;
-// a deferral it reports writes a deferred record and returns nil, leaving the commits to the next push of the branch.
-// A code-side retry fetches and pushes again only while origin's tip is contained in the local tip, and reports the rejection at once when origin holds commits the branch lacks.
-// A rejection the retry does not settle is recorded as not_fast_forward only when a fresh fetch shows origin holding commits the branch lacks, and as other otherwise.
-// Every other failure is recorded and returned as a *PushFailedError holding the push's own error, under the "other" class when it matches none.
+// a deferral it reports writes a deferred record and returns nil, leaving the commits to the next push.
+// A code-side retry fetches and pushes again only while origin's tip is contained in the local tip;
+// it reports the rejection at once when origin holds commits the branch lacks.
+// An unsettled rejection records as not_fast_forward when a fresh fetch shows origin holding commits the branch lacks;
+// otherwise it records as other.
+// Every other failure is recorded and returned as a *PushFailedError holding the push's own error;
+// under the "other" class when it matches none.
 // A push that lands removes the record of its side and branch.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
 	job := &pushJob{rec: rec, hubPath: hubPath, side: side, path: path, opts: opts, repo: gitrepo.New(path)}
@@ -146,10 +153,13 @@ func (j *pushJob) push() error {
 // errOriginAhead is returned by a code-side retry that found origin holding commits the local branch lacks, a divergence no retry settles.
 var errOriginAhead = errors.New("fabricengine: origin holds commits the local branch lacks")
 
-// settleRejection retries a rejected push before it is reported, by running retry until it lands, defers or fails for a reason no retry clears.
-// Two pushes of one branch can race, and the loser's rejection, or a fetch its retry made while the winner held the tracking ref, names a divergence the winner's landing already removed.
-// retry runs again, after one delay of the push backoff slept through the job's BackoffSleep, only while it fails with a bare rejection or an error no class names, such as a failed fetch;
-// it is bounded by the backoff's length.
+// settleRejection retries a rejected push before it is reported.
+// It runs retry until the push lands, defers, or fails for a reason no retry clears.
+// Two pushes of one branch can race, and the loser's rejection names a divergence the winner's landing already removed.
+// A fetch its retry made while the winner held the tracking ref can name one too.
+// A retry runs again only while it fails with a bare rejection or an error no class names, such as a failed fetch.
+// Each retry waits one delay of the push backoff, slept through the job's BackoffSleep,
+// and the retries are bounded by the backoff's length.
 // It returns the deferral or nil of a retry that deferred or landed, and otherwise the error to classify:
 // rejected when a code-side retry finds origin ahead, the retry's own error when a class names it,
 // and an unnamed error joined to rejected so the record still reads as a rejection and names the retry's error.
@@ -199,8 +209,11 @@ func rejectionRetryKind(err error) (named, retryable bool) {
 	}
 }
 
-// repushOverOriginContained is the code side's retry of a rejected push: it fetches and pushes again while origin's tip is contained in the local tip, which makes the rejection a race or a stale tracking ref rather than a divergence.
-// It returns errOriginAhead, without pushing, when origin holds commits the local branch lacks, and never rebases, merges or forces.
+// repushOverOriginContained is the code side's retry of a rejected push.
+// It fetches and pushes again while origin's tip is contained in the local tip;
+// that containment makes the rejection a race or a stale tracking ref rather than a divergence.
+// It returns errOriginAhead, without pushing, when origin holds commits the local branch lacks.
+// It never rebases, merges or forces.
 func (j *pushJob) repushOverOriginContained() (deferred bool, err error) {
 	if err := j.repo.Fetch(); err != nil {
 		return false, err
@@ -216,7 +229,7 @@ func (j *pushJob) repushOverOriginContained() (deferred bool, err error) {
 }
 
 // isPrimeWorktree reports whether the worktree at the job's path is the hub's prime.
-// A worktree whose prime cannot be resolved reads as the prime, since the task-branch checks only ever hold a push back.
+// A worktree whose prime cannot be resolved counts as the prime, since the task-branch checks only hold a push back.
 func (j *pushJob) isPrimeWorktree() bool {
 	l, err := lymcwd.ResolveWorktree(j.path)
 	if err != nil {
@@ -278,14 +291,16 @@ func (j *pushJob) fail(class PushFailureClass, cause error, paths, commits []str
 	return &PushFailedError{Record: j.record(class, cause, paths, commits, originHead), Err: cause}
 }
 
-// deferral records that the push was held back for a lock or an uncommitted change, which the branch's next push retries.
+// deferral records that the push was held back for a lock or an uncommitted change.
+// The branch's next push retries it.
 func (j *pushJob) deferral() error {
 	j.record(PushFailureDeferred, errors.New("the push was deferred to the branch's next push"), nil, nil, "")
 	return nil
 }
 
 // classifyFailure records the failure of a push that was run and returns it as a *PushFailedError.
-// An *AnchorStopError is recorded under its own class ahead of the rejection classes, with the way forward it names, so the record never points at a merge that would carry the other marker in by hand.
+// An *AnchorStopError is recorded under its own class ahead of the rejection classes, with the way forward it names.
+// That keeps the record from pointing at a merge that would carry the other marker in by hand.
 // An error that matches no named class is returned unchanged and unrecorded, with classified false.
 func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 	var conflict *replayConflict
@@ -312,10 +327,13 @@ func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 }
 
 // failRejection records a rejection the retry did not settle, classed by what a fresh fetch shows origin holding.
-// Only origin holding commits the branch lacks is a divergence, recorded as not_fast_forward with the local commits;
-// origin holding nothing the branch lacks, as after a push that overlapped another or under a declining hook, is recorded as other, so its notice names a retry and no merge.
+// Only origin holding commits the branch lacks is a divergence, recorded as not_fast_forward with the local commits.
+// Origin holding nothing the branch lacks is recorded as other.
+// That is the case after a push that overlapped another, or under a declining hook.
+// Its notice then names a retry and no merge.
 // Origin's tip is the branch's upstream, or origin's branch of the same name for a branch never given one.
-// A failed fetch, or a tip that cannot be read because origin has no such branch, leaves origin unknown, and is recorded as other with that error joined.
+// A failed fetch, or a tip that cannot be read because origin has no such branch, leaves origin unknown.
+// The failure is recorded as other with that error joined.
 func (j *pushJob) failRejection(rejected error) error {
 	if err := j.repo.Fetch(); err != nil {
 		return j.fail(PushFailureOther, errors.Join(rejected, err), nil, nil, "")
@@ -359,7 +377,8 @@ func (j *pushJob) unpushedCommits() []string {
 	return commits
 }
 
-// pairedCodeWorktree returns the code worktree paired with the records worktree at weftPath, or "" when weftPath is no weft sibling.
+// pairedCodeWorktree returns the code worktree paired with the records worktree at weftPath.
+// It returns "" when weftPath is no weft sibling.
 func pairedCodeWorktree(hubPath, weftPath string) string {
 	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {
@@ -369,7 +388,9 @@ func pairedCodeWorktree(hubPath, weftPath string) string {
 }
 
 // originView is what the check of a branch against origin found.
-// head is origin's commit of the branch for a code side, gone says origin lacks the branch, and ended says its board entry is ended on origin.
+// head is origin's commit of the branch for a code side.
+// gone says origin lacks the branch.
+// ended says its board entry is ended on origin.
 // unchecked says the lookup failed for no reason of reaching origin, so nothing is known of the branch.
 type originView struct {
 	head      string
@@ -380,7 +401,8 @@ type originView struct {
 
 // checkOrigin judges the job's branch against origin before it is pushed, for a branch with an upstream.
 // proceed is false when the push is not to run.
-// err then holds the *PushFailedError of a push held back and recorded, the error of a judgment that failed, or nil for a branch whose entry origin has ended.
+// err then holds the *PushFailedError of a push held back and recorded, or the error of a judgment that failed.
+// It is nil for a branch whose entry origin has ended.
 // A branch without an upstream was never pushed and has nothing to compare with.
 func (j *pushJob) checkOrigin() (proceed bool, err error) {
 	if _, upstreamErr := j.repo.UpstreamSHA(); upstreamErr != nil {
@@ -410,10 +432,13 @@ func (j *pushJob) checkOrigin() (proceed bool, err error) {
 	return true, nil
 }
 
-// awaitOrigin looks the branch up on origin, and retries a gone branch whose entry is not ended and an unreachable origin by one backoff.
+// awaitOrigin looks the branch up on origin.
+// It retries a gone branch whose entry is not ended, and an unreachable origin, once per backoff delay.
 // Each retry re-runs the lookup, the fetch of origin's Bolt branch and the judgment.
-// The error is a transport failure still standing after the backoff, or a failed judgment of a gone branch's entry.
-// A lookup that fails for no reason of reaching origin says nothing of the branch, so it returns an unchecked view and the push itself is left to judge.
+// The error is a transport failure still standing after the last backoff delay.
+// Otherwise it is a failed judgment of a gone branch's entry.
+// A lookup that fails for no reason of reaching origin says nothing of the branch,
+// so it returns an unchecked view and the push itself is left to judge.
 func (j *pushJob) awaitOrigin() (originView, error) {
 	delays := gitrepo.PushBackoffDelays()
 	sleep := j.opts.BackoffSleep
@@ -482,7 +507,8 @@ func (j *pushJob) holdBackRewound(originHead string) (proceed bool, err error) {
 	return false, j.fail(PushFailureRewound, cause, nil, dropped, originHead)
 }
 
-// originBranchHead returns the commit origin holds for branch, asked by one ls-remote run in path, and whether origin has the branch.
+// originBranchHead returns the commit origin holds for branch, and whether origin has the branch.
+// It asks with one ls-remote run in path.
 func originBranchHead(path, branch string) (head string, found bool, err error) {
 	ref := "refs/heads/" + branch
 	out, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName, ref}, path)
@@ -498,7 +524,7 @@ func originBranchHead(path, branch string) (head string, found bool, err error) 
 	return "", false, nil
 }
 
-// branchGoneOnOrigin reports whether origin no longer has the branch checked out at path, asked by one ls-remote of that branch.
+// branchGoneOnOrigin reports whether origin no longer has path's current branch, asked by one ls-remote of that branch.
 func branchGoneOnOrigin(path string) (gone bool, err error) {
 	branch, err := gitrepo.New(path).CurrentBranch()
 	if err != nil {
@@ -557,10 +583,14 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 }
 
 // retryWeftPush replays the weft worktree's local commits onto origin's and pushes again, after a rejected push.
-// It fetches the weft branch and origin's Bolt branch, then try-acquires the weft write lock while the caller holds the push lock.
+// It fetches the weft branch and origin's Bolt branch.
+// It then try-acquires the weft write lock, while the caller holds the push lock.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
-// A replay that stops returns ErrReplayConflict with the conflicting paths, and a second rejection returns gitrepo.ErrPushRejected.
-// A weft whose own anchor marker is empty, one whose upstream carries commits and another anchor marker, and one that carries a move record while its upstream has commits it lacks, return an *AnchorStopError before anything is replayed or changed.
+// A replay that stops returns ErrReplayConflict with the conflicting paths,
+// and a second rejection returns gitrepo.ErrPushRejected.
+// A weft whose own anchor marker is empty returns an *AnchorStopError before anything is replayed or changed.
+// So does a weft whose upstream carries commits and another anchor marker.
+// So does a weft that carries a move record while its upstream has commits it lacks.
 func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err error) {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return false, stop
@@ -599,7 +629,8 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err
 		if !ok {
 			return false, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 		}
-		// A replay rewrites the weft's commits, which a standing move record forbids; a push that needs no replay is no write to the weft.
+		// A replay rewrites the weft's commits, which a standing move record forbids;
+		// a push that needs no replay is no write to the weft.
 		behind, err := repo.CommitsNotIn(upstream, head)
 		if err != nil {
 			return false, err
@@ -644,7 +675,8 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err
 	return false, repo.PushRebaseFree()
 }
 
-// fetchBoltBranch fetches origin's Bolt branch into the hub's board checkout, and does nothing for a hub with no board or a board with no upstream.
+// fetchBoltBranch fetches origin's Bolt branch into the hub's board checkout.
+// It does nothing for a hub with no board or a board with no upstream.
 func fetchBoltBranch(hubPath string) error {
 	boardDir := BoltDir(hubPath)
 	if _, err := os.Stat(boardDir); err != nil {
@@ -661,7 +693,8 @@ func fetchBoltBranch(hubPath string) error {
 }
 
 // retryBoltPush replays the board's local commits onto origin's and pushes again, after a rejected push.
-// It try-acquires the board write lock, then takes the push lock, in pullFirst's order, and holds both across the replay and the push.
+// It try-acquires the board write lock, then takes the push lock, in the order the pull path uses.
+// It holds both locks across the replay and the push.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
 // A replay that stops returns ErrReplayConflict, and a second rejection returns gitrepo.ErrPushRejected.
 func retryBoltPush(rec *Mutations, boardDir string) (deferred bool, err error) {

@@ -28,8 +28,10 @@ func planSplitSetting(planSplit bool) func(module, key string) (any, error) {
 	}
 }
 
-// TestPlanSplitRows asserts, for tapestry.plan_split false and true, that both parts rows' entry gates hold exactly when the flag is true and Plan-Write's exactly when it is false.
-// It also asserts the edges Drift-Baseline to Parts-Write to Parts-Plan-Write to Plan-Write to Plan-Bouncer, and that neither parts row has an on_stuck.
+// TestPlanSplitRows asserts, for tapestry.plan_split false and true, the entry gates of both parts rows and Plan-Write.
+// The parts rows' gates hold exactly when the flag is true, and Plan-Write's exactly when it is false.
+// It also asserts the edges Drift-Baseline to Parts-Write to Parts-Plan-Write to Plan-Write to Plan-Bouncer.
+// It also asserts that neither parts row has an on_stuck.
 func TestPlanSplitRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -83,7 +85,8 @@ func TestPlanSplitRows(t *testing.T) {
 
 // TestSequence_PlanSplitRunsThePartsRows drives a flag-on run over buildSequenceFixture.
 // The history runs Parts-Write Done, Parts-Plan-Write Done and Plan-Write Skipped, then enters Plan-Bouncer.
-// A goto onto Plan-Write then lets its producer run and record Done although its entry gate does not hold, since a goto bypasses only its target's gate.
+// A goto onto Plan-Write lets its producer run and record Done, although its entry gate does not hold.
+// A goto bypasses only its target's gate.
 func TestSequence_PlanSplitRunsThePartsRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchorPath, env, paths := buildSequenceFixture(t)

@@ -1,4 +1,6 @@
-// fixreview.go implements the fix review: the one solo session Finalize spawns to judge a merge fixer's change that is over the caps, reading only the fixer's commits, and ParseFixReviewReport, the one reader of the report format contracts/specs/landing-fix-review-spec.md defines.
+// fixreview.go implements the fix review, the one solo session that judges a merge fixer's change over the caps.
+// The session reads only the fixer's commits.
+// ParseFixReviewReport is the one reader of the report format that contracts/specs/landing-fix-review-spec.md defines.
 
 package landingshed
 
@@ -25,7 +27,7 @@ const fixReviewStencilName = "landing-template-fix-review"
 // fixReviewRole is the agent-name role the fix review's spawn carries.
 const fixReviewRole = "fix-reviewer"
 
-// fixReviewGateName labels the fix review session's one gate entry, which re-prompts a session whose report does not parse.
+// fixReviewGateName labels the gate entry that re-prompts the fix review session when its report does not parse.
 const fixReviewGateName = "fix-review-report"
 
 // fixReviewReprompts is how many times the session is re-prompted over a missing or unparseable report.
@@ -38,9 +40,9 @@ const fixReviewSpecName = "landing-fix-review-spec.md"
 type FixReviewVerdict string
 
 const (
-	// FixReviewApproved is the verdict of a review that found the fixer's change fixes the failure and keeps every test's meaning.
+	// FixReviewApproved is the verdict of a review that finds the change fixes the failure and keeps every test's meaning.
 	FixReviewApproved FixReviewVerdict = "approved"
-	// FixReviewRejected is the verdict of a review that found the change weakens or dodges a test, or is wrong in itself.
+	// FixReviewRejected is the verdict of a review that finds the change weakens or dodges a test, or is wrong in itself.
 	FixReviewRejected FixReviewVerdict = "rejected"
 )
 
@@ -111,8 +113,9 @@ type fixReviewInputs struct {
 	LanguageSkills []string
 }
 
-// fixReviewTable builds the seatengine.Table of the fix review session: one lead that reads the fixer's commits and writes the report at in.ReportPath.
-// It runs on the merge fixer's model-spec and turn timeout.
+// fixReviewTable builds the seatengine.Table of the fix review session:
+// one lead that reads the fixer's commits and writes the report at in.ReportPath.
+// It runs on the merge fixer's model-spec and timeout.
 // An empty required input field is an error naming the field, and so is a stencil missing from in.StencilsDir.
 func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
@@ -182,7 +185,8 @@ const (
 	fixReviewEndChanged fixReviewEnd = "changed"
 )
 
-// fixReviewOutcome is how a fix review session ended and what the fixer turn or halt that follows names.
+// fixReviewOutcome is how a fix review session ended, with the report it wrote and the run directory holding its log.
+// It also carries a rejected report's findings, and the cause of a no-verdict or changed end.
 type fixReviewOutcome struct {
 	end fixReviewEnd
 	// reportPath is the report the session writes.
@@ -278,7 +282,7 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 	return outcome, nil
 }
 
-// verdictSummary words, on one line, why a rejected or verdict-less review did not approve the change.
+// verdictSummary returns, on one line, why a rejected or verdict-less review did not approve the change.
 func (o fixReviewOutcome) verdictSummary() string {
 	if o.end == fixReviewEndRejected {
 		return fmt.Sprintf("the fix review rejected it: %s; review: %s", singleLine(strings.Join(o.findings, "; ")), o.reportPath)
@@ -286,7 +290,9 @@ func (o fixReviewOutcome) verdictSummary() string {
 	return fmt.Sprintf("the fix review gave no verdict (%s); session log: %s", o.cause, o.sessionLog)
 }
 
-// openFindings returns what a rejected or verdict-less review left open: a rejection's findings, each on one line, or the one line naming why no verdict came.
+// openFindings returns what a rejected or verdict-less review left open.
+// For a rejection it returns the findings, each on one line.
+// Otherwise it returns a single line saying why no verdict came.
 func (o fixReviewOutcome) openFindings() []string {
 	if o.end != fixReviewEndRejected {
 		return []string{o.verdictSummary()}

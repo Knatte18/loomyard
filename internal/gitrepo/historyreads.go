@@ -1,5 +1,6 @@
-// historyreads.go adds the go-git-only history reads a report over finished runs builds on: TagRefs lists tags by name prefix, BranchRefs lists the local branches, Log walks commits from an arbitrary tip, and SubdirsAtRevision lists the directories directly in one directory as of a revision.
-// No method calls r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the package's Client Boundary Invariant.
+// historyreads.go holds the go-git history reads: TagRefs, BranchRefs, Log and SubdirsAtRevision.
+// They resolve state already on disk, which is go-git's side of the package's Client Boundary Invariant.
+// No method calls r.run or r.runChecked.
 
 package gitrepo
 
@@ -113,23 +114,25 @@ func (r *Repo) BranchRefs() ([]BranchRef, error) {
 	})
 }
 
-// LogQuery shapes a Log walk.
+// LogQuery shapes a walk of a commit history.
 type LogQuery struct {
 	// FirstParent follows only each commit's first parent; without it the walk covers every parent in committer-time order.
 	FirstParent bool
 
-	// Since, when non-zero, ends a first-parent walk at the first commit committed before it and drops such commits from a full walk.
+	// Since, when non-zero, excludes commits committed before it.
+	// A first-parent walk stops at the first such commit, and a full walk skips them.
 	Since time.Time
 
-	// PathPrefix, when non-empty, keeps only the commits whose tree changes a slash-separated path equal to or under it against their first parent, every path for a root commit.
-	// LogCommit.Paths then holds those changed paths.
+	// PathPrefix, when non-empty, keeps only the commits that change a slash-separated path equal to or under it.
+	// A commit is compared with its first parent, and every path of a root commit counts as changed.
+	// Each returned commit then lists those changed paths.
 	PathPrefix string
 
 	// Limit, when positive, caps the number of commits returned.
 	Limit int
 }
 
-// LogCommit is one commit a Log walk returned.
+// LogCommit is one commit from a walk of a commit history.
 type LogCommit struct {
 	SHA       string
 	Parents   []string
@@ -137,7 +140,8 @@ type LogCommit struct {
 	Committed time.Time
 	Message   string
 
-	// Paths holds the sorted changed paths under LogQuery.PathPrefix, a deleted path included, and is nil when the query names no prefix.
+	// Paths holds the sorted changed paths under the query's path prefix, a deleted path included.
+	// It is nil when the query names no prefix.
 	Paths []string
 }
 

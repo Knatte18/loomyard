@@ -1,4 +1,6 @@
-// add_hold_test.go proves Add's Hold option: the caller's lock is taken once before the worktree is made and released after it, by the time Add returns, and a hold that fails refuses the add before anything is made.
+// add_hold_test.go proves Add's Hold option.
+// The caller's lock is taken once before the worktree is made and released before Add returns,
+// and a hold that fails refuses the add before anything is made.
 //
 // Package fabricengine_test; shares the TestMain in testmain_test.go.
 
@@ -14,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestAdd_HoldsTheCallersLock asserts Add takes opts.Hold once, before it makes the worktree, and releases it before it returns, after the worktree is made,
-// and that a Hold error is returned as is with no worktree made and nothing to release.
+// TestAdd_HoldsTheCallersLock asserts Add takes opts.Hold once before the worktree and releases it after the worktree.
+// A Hold error is returned as is, with no worktree made and nothing to release.
 func TestAdd_HoldsTheCallersLock(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

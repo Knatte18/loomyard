@@ -1,5 +1,6 @@
-// spawn_scenario_integration_test.go drives Spawn as scenarios over one hubforge hub per anchor, so a hub is built once per anchor instead of once per check.
-// Serial by design: every step swaps the package-level CodeLauncher, and the driven steps swap the logger output.
+// spawn_scenario_integration_test.go runs Spawn as named scenarios over one hubforge hub per anchor.
+// A hub is built once per anchor, not once per check.
+// Steps run serially: each swaps the package-level CodeLauncher, and the driven steps swap the logger output.
 
 package ideengine
 
@@ -14,7 +15,8 @@ import (
 )
 
 // spawnStepRunner returns a runner of named steps over h.
-// Every step starts with the repo-wide info/exclude restored to its state in a fresh hub, because Spawn appends to it and an earlier step's lines would otherwise satisfy a later step's exclude assertions.
+// Each step starts with the repo-wide info/exclude restored to its state in a fresh hub.
+// Spawn appends to that file, so an earlier step's lines would otherwise satisfy a later step's exclude assertions.
 func spawnStepRunner(t *testing.T, h *hubforge.Hub) func(name string, step func(t *testing.T)) bool {
 	t.Helper()
 	excludePath := sharedExcludePath(t, fabricengine.WorktreePath(h.Location, primeOf(t, h)))
@@ -30,7 +32,8 @@ func spawnStepRunner(t *testing.T, h *hubforge.Hub) func(name string, step func(
 }
 
 // TestSpawnScenario drives every Spawn check that does not depend on the hub's anchor against one hub at the repo root.
-// Steps run in this order: the prime-touching steps follow the task-pair ones, and the tracked-tasks.json commit on the prime is last, because it leaves the prime's tasks.json tracked.
+// Steps run in this order: the prime-touching steps follow the task-pair ones,
+// and the tracked-tasks.json commit on the prime is last, because it leaves the prime's tasks.json tracked.
 func TestSpawnScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -111,7 +114,7 @@ func TestSpawnScenario(t *testing.T) {
 	})
 }
 
-// TestSpawnAnchoredScenario drives the checks whose result depends on the anchor against one hub anchored in a subdirectory.
+// TestSpawnAnchoredScenario drives the checks that depend on the anchor, against one hub anchored in a subdirectory.
 // The steps depend on no earlier step's state.
 func TestSpawnAnchoredScenario(t *testing.T) {
 	tiergate.Require(t, 1)

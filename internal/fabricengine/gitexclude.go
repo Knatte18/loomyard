@@ -1,11 +1,10 @@
-// gitexclude.go owns every read-modify-write of a git repository's `.git/info/exclude`, on both the
-// warp and the weft side.
-// It exists because that file is repo-wide rather than per-worktree — git resolves `info/exclude` to
-// the COMMON gitdir — so two `lym fabric` verbs running in two worktrees of one hub edit the same
-// bytes, and an unsynchronised read-modify-write between them loses whichever update lands first.
-// Worse than losing an update: `os.WriteFile` truncates before it writes, so a concurrent reader can
-// observe an EMPTY file and then write back that emptiness plus its own additions, destroying the
-// operator's own exclude patterns along with fabric's junction exclusions.
+// gitexclude.go owns every read-modify-write of a repository's `.git/info/exclude`, on the warp and the weft side.
+// That file is repo-wide, not per-worktree: git resolves `info/exclude` to the common gitdir.
+// Two `lym fabric` verbs running in two worktrees of one hub therefore edit the same bytes,
+// and an unsynchronised read-modify-write loses whichever update lands first.
+// `os.WriteFile` truncates before it writes.
+// A concurrent reader can therefore observe an empty file and write back that emptiness plus its own additions.
+// Doing so destroys the operator's own exclude patterns along with fabric's junction exclusions.
 
 package fabricengine
 
@@ -28,7 +27,8 @@ const gitExcludeLockFileName = "exclude.lym.lock"
 
 // resolveGitExcludePath returns the absolute path of the `.git/info/exclude` belonging to the
 // repository checked out at repoDir.
-// It joins onto the repository's COMMON gitdir, so a linked worktree resolves to its repo's exclude file instead of a private one.
+// It joins onto the repository's common gitdir,
+// so a linked worktree resolves to the repository's exclude file rather than a private one.
 func resolveGitExcludePath(repoDir string) (string, error) {
 	commonDir, err := gitrepo.New(repoDir).CommonDir()
 	if err != nil {
@@ -38,13 +38,10 @@ func resolveGitExcludePath(repoDir string) (string, error) {
 }
 
 // mutateGitExclude applies rewrite to the `.git/info/exclude` of the repository checked out at
-// repoDir, serialised against every other fabric process editing the same repo and replaced
-// atomically.
-// It returns the exclude file's own resolved path on every return, including the error ones where it
-// is known, and reports whether the file's content actually changed;
-// a rewrite that returns its input unchanged writes nothing.
-// The resolved path is what a caller needs to record a KindFileWritten mutation entry against the
-// file actually written, since resolveGitExcludePath's result never otherwise leaves this function.
+// repoDir, serialised against every other fabric process editing the same repo and replaced atomically.
+// It returns the exclude file's resolved path on every return where it is known, error returns included.
+// It reports whether the file's content changed: a rewrite that returns its input unchanged writes nothing.
+// The returned path lets a caller record a KindFileWritten mutation entry against the file written.
 //
 // rewrite is called with the file's current content ("" when the file does not exist yet) while the
 // lock is held, so any decision it makes about the repo's state — a sibling-worktree census, say —
@@ -85,15 +82,18 @@ func mutateGitExclude(repoDir string, rewrite func(content string) (string, erro
 	return excludePath, true, nil
 }
 
-// ExcludeAnchoredDir makes git ignore the directory dirName at the anchor subpath anchorRel of the repository checked out at worktreeDir,
-// and returns the exclude file's resolved path and whether it wrote anything.
-// It first asks `git check-ignore` whether the directory is already ignored — by a tracked `.gitignore`, the operator's global excludes or any other source — and writes nothing when it is.
-// Otherwise it appends `/<anchorRel>/<dirName>/` to the shared `info/exclude` through mutateGitExclude, so the write holds the same lock and atomic replace as every `lym fabric` verb.
+// ExcludeAnchoredDir makes git ignore the directory dirName at the anchor subpath anchorRel of the
+// repository checked out at worktreeDir.
+// It returns the exclude file's resolved path and whether it wrote anything.
+// It first asks `git check-ignore` whether the directory is already ignored, from any source.
+// Such sources include a tracked `.gitignore` and the global excludes; when one covers it, nothing is written.
+// Otherwise it appends `/<anchorRel>/<dirName>/` to the shared `info/exclude`.
+// The write holds the same lock and atomic replace as every `lym fabric` verb.
 // The leading slash anchors the entry to this anchor's own directory, where a bare name would match at any depth;
 // the trailing slash is kept because dirName is a real directory, not a junction.
 // git reports a directory holding tracked content as not ignored even when a rule covers it,
 // so the caller must not reach this function in that case.
-// It takes no *Mutations recorder: it is not a fabric CLI verb.
+// It takes no mutation recorder, since it is not a fabric CLI verb.
 func ExcludeAnchoredDir(worktreeDir, anchorRel, dirName string) (excludePath string, changed bool, err error) {
 	relDir := dirName
 	if slashed := filepath.ToSlash(anchorRel); slashed != "." && slashed != "" {
@@ -128,9 +128,9 @@ func ExcludeAnchoredDir(worktreeDir, anchorRel, dirName string) (excludePath str
 // It is agent scratch, not lym state, so it is declared here and not in `internal/lymdirs`.
 const scratchDirName = ".scratch"
 
-// writeFileAtomically replaces path with content via a same-directory temp file and a rename, so a
-// concurrent reader observes either the whole old file or the whole new one and never the empty
-// window os.WriteFile's truncate-then-write opens.
+// writeFileAtomically replaces path with content through a same-directory temp file and a rename.
+// A concurrent reader observes either the whole old file or the whole new one.
+// It never sees the empty window that os.WriteFile's truncate-then-write opens.
 func writeFileAtomically(path string, content []byte) error {
 	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".lym-*")
 	if err != nil {

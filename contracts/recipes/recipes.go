@@ -1,6 +1,6 @@
-// recipes.go is the single Go file at the top-level recipes/ package root: //go:embed reaches only
-// files at or below its own directory, so every recipe's shipped-default byte var and its
-// //go:embed directive must live here, one per recipe.
+// recipes.go is the single Go file at the top-level recipes/ package root.
+// The //go:embed directive reaches only files at or below its own directory,
+// so every recipe's shipped-default byte var and its //go:embed directive must live here, one per recipe.
 
 package recipes
 
@@ -23,24 +23,26 @@ var DarnRecipe []byte
 //go:embed pawl-recipe.yaml
 var PawlRecipe []byte
 
-// SamplerRecipe is the sampler recipe's producer graph, one interactive agent session between the decision record and the landing, in internal/shedbuild's recipe format.
+// SamplerRecipe is the sampler recipe's producer graph, in internal/shedbuild's recipe format.
+// It runs one interactive agent session between the decision record and the landing.
 //
 //go:embed sampler-recipe.yaml
 var SamplerRecipe []byte
 
-// MotifRecipe is the motif recipe's producer graph, the rows that make a sketch, the decision record, from a task, in internal/shedbuild's recipe format.
-// The tapestry recipe runs it inline as its Motif block, and a task may run it alone.
+// MotifRecipe is the motif recipe's producer graph, in internal/shedbuild's recipe format.
+// Its rows make the decision record from a task.
+// A recipe may run it inline as a block, and a task may run it alone.
 //
 //go:embed motif-recipe.yaml
 var MotifRecipe []byte
 
-// BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe
-// format.
+// BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe format.
 //
 //go:embed batten-recipe.yaml
 var BattenRecipe []byte
 
-// RaddleRecipe is the raddle recipe's producer graph, the rows that split a Sketch into the board entries the operator approves and file them, in internal/shedbuild's recipe format.
+// RaddleRecipe is the raddle recipe's producer graph, in internal/shedbuild's recipe format.
+// Its rows split a decision record into the board entries the operator approves, and file them.
 //
 //go:embed raddle-recipe.yaml
 var RaddleRecipe []byte

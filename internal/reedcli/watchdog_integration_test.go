@@ -1,10 +1,21 @@
-// watchdog_integration_test.go carries the watchdog daemon's live-behaviour assertions as one TestWatchdogDaemon scenario: discovery against a real hub with real tmux sessions, the single-instance lock's two outcomes, the stop a last down writes, departure teardown, and re-entry re-reading a flipped watchdog: config value.
+// watchdog_integration_test.go holds the watchdog daemon's live assertions, run as one TestWatchdogDaemon scenario.
 //
-// It is a separate file from watchdog_test.go, rather than tagged content inside it, because a Go build tag is per-file: tagging watchdog_test.go itself would hide its pure-seam tests from the untagged tier where they belong.
+// They cover discovery against a real hub with real tmux sessions and the single-instance lock's two outcomes.
+// The rest covers the last down's stop, departure teardown, and re-entry re-reading a changed watchdog config value.
+//
+// Build tags apply per file, so the live assertions sit in their own file rather than in watchdog_test.go.
+// Tagging watchdog_test.go would hide its pure-seam tests from the untagged tier, where they belong.
 // The hub fixture is built through internal/hubforge per the hubforge Fabric-Fixture Invariant, never hand-assembled.
 //
-// ensureWatchdogSpawned's own os.Executable() re-exec is deliberately NOT exercised live here: under `go test`, os.Executable() resolves to the test binary itself, and re-execing it with reed-watchdog-shaped args is exactly the recursive-whole-suite hazard suppressWatchdogSpawn exists to prevent (see cli.go's doc comment on that field).
-// This file instead drives watchdogCmd()'s RunE and runWatchdogLoop directly, in-process, which is the daemon's own live behaviour; the spawn call site's wiring is pinned by the engine's own spawn test, and the "attach/resume attempt the spawn" step below drives ensureWatchdogSpawned itself (not the os.Executable() re-exec) far enough to observe it was actually invoked rather than suppressed.
+// ensureWatchdogSpawned's os.Executable() re-exec is deliberately not exercised live here.
+// Under `go test`, os.Executable() resolves to the test binary itself.
+// Re-execing that binary with reed-watchdog-shaped args would recurse through the whole suite.
+// suppressWatchdogSpawn exists to prevent that.
+// This file drives watchdogCmd()'s RunE and runWatchdogLoop directly, in-process.
+// Driven that way, this is the daemon's own live behaviour.
+// The spawn call site's wiring is pinned by the engine's own spawn test.
+// The "attach/resume attempt the spawn" step below drives ensureWatchdogSpawned itself, short of the re-exec.
+// That is far enough to observe that the call was made rather than suppressed.
 package reedcli
 
 import (
@@ -35,8 +46,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// watchdogIntegrationTmux resolves the configured multiplexer binary, skipping the calling test when
-// it is absent so this file never hard-fails on a machine without tmux.
+// watchdogIntegrationTmux resolves the configured multiplexer binary.
+// It skips the calling test when the binary is absent, so this file never hard-fails on a machine without tmux.
 func watchdogIntegrationTmux(t *testing.T, cfg reedengine.Config) string {
 	t.Helper()
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
@@ -68,7 +79,8 @@ func bootWatchdogEngine(t *testing.T, worktreeRoot string) *reedengine.Engine {
 	return eng
 }
 
-// watchdogIntegrationEngine boots a real engine for worktreeRoot and returns it, with a cleanup on t that tears the session down.
+// watchdogIntegrationEngine boots a real engine for worktreeRoot and returns it.
+// It registers a cleanup on t that tears the session down.
 func watchdogIntegrationEngine(t *testing.T, worktreeRoot string) *reedengine.Engine {
 	t.Helper()
 	eng := bootWatchdogEngine(t, worktreeRoot)
@@ -78,8 +90,10 @@ func watchdogIntegrationEngine(t *testing.T, worktreeRoot string) *reedengine.En
 	return eng
 }
 
-// watchdogTestCycle is the discovery cycle the compressed timing runs at, and watchdogTestWait the bound a test gives a discovery-dependent condition:
-// many cycles, so a slow tmux round trip never flakes it, while a condition that holds returns at the first poll.
+// watchdogTestCycle is the discovery cycle the compressed timing runs at.
+// watchdogTestWait bounds a discovery-dependent condition in a test.
+// The wait spans many cycles, so a slow tmux round trip never flakes it.
+// A condition that holds returns at the first poll.
 // watchdogSignalTestBase is the base cadence of the loop that proves the discover signal wakes a backed-off loop.
 const (
 	watchdogTestCycle      = 200 * time.Millisecond
@@ -87,7 +101,9 @@ const (
 	watchdogSignalTestBase = 100 * time.Millisecond
 )
 
-// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second and never backs off, while IdleCycles and OrphanGoneCycles keep their production values, so a test still proves the consecutive-cycle rules and only waits less.
+// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second and never backs off.
+// IdleCycles and OrphanGoneCycles keep their production values.
+// A test using it still proves the consecutive-cycle rules and only waits less.
 func compressedWatchdogTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogTestCycle,
@@ -97,8 +113,9 @@ func compressedWatchdogTiming() watchdogTiming {
 	}
 }
 
-// runWatchdogCmdInBackground starts watchdogCmd() against hub/tmuxPath with the given timing on a cancellable context and
-// returns the cancel func plus a channel that receives RunE's error (or nil) once it returns.
+// runWatchdogCmdInBackground starts watchdogCmd() in the background with the given timing.
+// It targets hub and tmuxPath, and runs on a cancellable context.
+// It returns the cancel func and a channel that receives RunE's error, or nil, once RunE returns.
 func runWatchdogCmdInBackground(t *testing.T, hub, tmuxPath string, timing watchdogTiming) (cancel context.CancelFunc, done chan error, out *bytes.Buffer) {
 	t.Helper()
 	c := &reedCLI{watchdogTiming: &timing}
@@ -129,11 +146,14 @@ func sessionListed(tmuxPath, socket, session string) bool {
 	return false
 }
 
-// TestWatchdogDaemon runs the watchdog daemon's live claims against one hub with one extra pair worktree, the steps in a fixed order:
+// TestWatchdogDaemon runs the watchdog daemon's live claims against one hub with one extra pair worktree.
+// Its steps run in a fixed order:
 // the first two start the daemon through its command on a hub with no session, then with one;
-// the next three share one in-process discovery loop watching two sessions, whose engines and loop the first of them boots and the later ones rely on;
+// the next three share one in-process discovery loop watching two sessions;
+// the first of them boots the engines and the loop, which the later ones rely on;
 // the last flips the prime worktree's watchdog: key to off across a down and an up.
-// The scenario does not call t.Parallel, because the daemon command points the process-global logger's durable sink at the hub's logs directory.
+// The scenario does not call t.Parallel:
+// the daemon command points the process-global logger's durable sink at the hub's logs directory.
 func TestWatchdogDaemon(t *testing.T) {
 	tiergate.Require(t, 2)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -151,7 +171,14 @@ func TestWatchdogDaemon(t *testing.T) {
 	tmuxPath := watchdogIntegrationTmux(t, cfg)
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
-	// DaemonLockAndLogs drives the daemon command against a hub that has never run one: it points the durable log sink at fabricengine.HubLogsDir(hub) before taking the lock, and keeps the logger's stderr half — the only observable proof of watchdogCmd's documented ordering (sink, then lock, stderr kept) is a trace-*.log file appearing there and the captured stderr half carrying the daemon's "watchdog daemon starting" line — and holds the single-instance lock, so a second attempt against the SAME hub exits 0 (contention) without taking it, while an unusable lock path (a hub path whose HubScratchDir cannot be created because a FILE sits where an intermediate directory component must go) exits non-zero.
+	// DaemonLockAndLogs drives the daemon command against a hub that has never run one.
+	// It points the durable log sink at fabricengine.HubLogsDir(hub) before it takes the lock;
+	// it keeps the logger's stderr half.
+	// The sink shows as a trace-*.log file there; the stderr half shows the daemon's "watchdog daemon starting" line.
+	// The daemon holds the single-instance lock,
+	// so a second attempt against the same hub exits 0 (contention) without taking it.
+	// An unusable lock path exits non-zero:
+	// a hub path whose HubScratchDir cannot be created, because a file sits where an intermediate directory must go.
 	if !t.Run("DaemonLockAndLogs", func(t *testing.T) {
 		logsDir := fabricengine.HubLogsDir(h.Path)
 		if _, err := os.Stat(logsDir); err == nil {
@@ -162,7 +189,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		cancel1, done1, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath, compressedWatchdogTiming())
 		defer cancel1()
 
-		// Give the first daemon time to actually acquire the lock before the second attempt races it.
+		// Give the first daemon time to acquire the lock before the second attempt races it.
 		waitForCondition(t, 10*time.Second, func() bool {
 			_, err := os.Stat(lockPath)
 			return err == nil
@@ -189,7 +216,7 @@ func TestWatchdogDaemon(t *testing.T) {
 			return strings.Contains(logs.String(), "reed: watchdog daemon starting")
 		})
 
-		// A second attempt against the SAME hub while the first holds the lock must exit 0 (contention), never taking the lock.
+		// A second attempt against the same hub, while the first holds the lock, exits 0 (contention) without taking it.
 		c2 := &reedCLI{}
 		cmd2 := c2.watchdogCmd()
 		buf2 := &bytes.Buffer{}
@@ -219,9 +246,12 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// DownStopsTheDaemonAndReleasesLock boots the prime and the pair sessions and starts a daemon whose idle-cycle limit no step can reach, so only a stop can end it.
-	// A non-last down leaves the daemon running across five discovery cycles; the last down's stop ends it within the step's bound, and the lock is then free.
-	// The previous step left its lock file behind, so it is removed first: the daemon recreating it is what proves the daemon is running before the sessions go away.
+	// DownStopsTheDaemonAndReleasesLock boots the prime and the pair sessions.
+	// It starts a daemon whose idle-cycle limit no step can reach, so only a stop can end it.
+	// A non-last down leaves the daemon running across five discovery cycles.
+	// The last down's stop ends it within the step's bound, and the lock is then free.
+	// The previous step left its lock file behind, so it is removed first;
+	// the daemon recreating it proves the daemon is running before the sessions go away.
 	if !t.Run("DownStopsTheDaemonAndReleasesLock", func(t *testing.T) {
 		watchdogIntegrationEngine(t, prime)
 		pairEng := watchdogIntegrationEngine(t, pair)
@@ -248,7 +278,8 @@ func TestWatchdogDaemon(t *testing.T) {
 		case <-time.After(5 * watchdogTestCycle):
 		}
 
-		// The last down runs as the verb, so the stop and the bounded wait are proven together: the lock is free as soon as the verb returns.
+		// The last down runs as the verb, so the stop and the bounded wait are proven together:
+		// the lock is free as soon as the verb returns.
 		var downOut bytes.Buffer
 		if code := RunCLIIn(prime, &downOut, []string{"down"}); code != 0 {
 			t.Fatalf("lym reed down exited %d: %s", code, downOut.String())
@@ -271,8 +302,10 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// BootSignalWakesBackedOffDiscovery runs a discovery loop whose cadence has backed off over a live prime session, then boots the pair's session through reed and asserts the loop enters it before its next unsignalled cycle, which only the discover signal the boot touches can explain.
-	// The loop is in-process on its own context, so the shared loop of the steps below is untouched.
+	// BootSignalWakesBackedOffDiscovery runs a discovery loop whose cadence has backed off over a live prime session.
+	// It then boots the pair's session through reed and asserts the loop enters it before its next unsignalled cycle.
+	// Only the discover signal that the boot touches can explain that entry.
+	// The loop runs in-process on its own context, so the shared loop of the steps below is untouched.
 	if !t.Run("BootSignalWakesBackedOffDiscovery", func(t *testing.T) {
 		logs := logcapture.Capture(t)
 		logger.SetVerbosity(2)
@@ -315,7 +348,9 @@ func TestWatchdogDaemon(t *testing.T) {
 	}
 
 	// The next steps share one discovery loop over two sessions.
-	// The first of them boots the engines and starts the loop; the loop and the engines outlive the step that created them, so their teardown is registered on the scenario rather than on that step.
+	// The first of them boots the engines and starts the loop.
+	// The loop and the engines outlive the step that created them,
+	// so their teardown is registered on the scenario rather than on that step.
 	scenario := t
 	var eng1, eng2 *reedengine.Engine
 	loopCtx, cancelLoop := context.WithCancel(context.Background())
@@ -330,26 +365,29 @@ func TestWatchdogDaemon(t *testing.T) {
 		}
 	}
 
-	// DiscoversBothSessions boots both worktrees' engines, starts the loop and waits until the daemon has discovered both sessions.
+	// DiscoversBothSessions boots both worktrees' engines and starts the loop.
+	// It waits until the daemon has discovered both sessions.
 	if !t.Run("DiscoversBothSessions", func(t *testing.T) {
 		eng1 = bootWatchdogEngine(t, prime)
 		scenario.Cleanup(func() { _, _ = eng1.Down() })
 		eng2 = bootWatchdogEngine(t, pair)
 		scenario.Cleanup(func() { _, _ = eng2.Down() })
-		// The watch opens but never delivers, so this loop neither wakes on nor reads the signal file, sees no stop and keeps the idle-cycle rule that covers a down followed by an up.
+		// The watch opens but never delivers.
+		// So this loop neither wakes on nor reads the signal file, and sees no stop.
+		// It keeps the idle-cycle rule that covers a down followed by an up.
 		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
 			return make(chan fswatch.Event), func() error { return nil }, nil
 		}
-		// This loop's idle window is twice the tests' own wait budget, so it spans the Up call plus that wait:
-		// DownThenUpDoesNotKillDaemon's down-then-up gap can pass the production window under a loaded package run,
-		// and no subtest of this loop depends on its idle exit.
+		// This loop's idle window is twice the tests' own wait budget, so it spans the Up call plus that wait.
+		// The down-then-up gap of DownThenUpDoesNotKillDaemon can pass the production window under a loaded package run.
+		// No subtest of this loop depends on its idle exit.
 		timing := compressedWatchdogTiming()
 		timing.IdleCycles = int(2 * watchdogTestWait / watchdogTestCycle)
 		go func() {
 			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), timing, noWatch, reedengine.ListSessions, nil)
 		}()
 
-		// Both sessions must be discovered within a couple of discovery cycles.
+		// Both sessions must be discovered within the test wait budget.
 		waitForCondition(t, watchdogTestWait, func() bool {
 			return sessionListed(tmuxPath, socket, eng1.SessionName()) && sessionListed(tmuxPath, socket, eng2.SessionName())
 		})
@@ -357,8 +395,10 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// DiscoversAndDropsDepartedSessions tears eng1's session down; the daemon must stop touching it while eng2's session keeps being watched.
-	// This is observed indirectly: eng2 stays discoverable via ListSessions after eng1's session is gone, and the loop itself keeps running (it does not idle-exit, since eng2 is still live).
+	// DiscoversAndDropsDepartedSessions tears eng1's session down;
+	// the daemon must stop touching it while eng2's session keeps being watched.
+	// The check is indirect: eng2 stays discoverable via ListSessions after eng1's session is gone.
+	// The loop keeps running too, and it does not idle-exit, because eng2 is still live.
 	if !t.Run("DiscoversAndDropsDepartedSessions", func(t *testing.T) {
 		if _, err := eng1.Down(); err != nil {
 			t.Fatalf("eng1.Down(): %v", err)
@@ -373,7 +413,9 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// DownThenUpDoesNotKillDaemon drives a down immediately followed by an up against the daemon's one live worktree and asserts the daemon itself never exits and rediscovers the re-upped session — the loop's idle-cycle window exists precisely to cover this gap.
+	// DownThenUpDoesNotKillDaemon drives a down immediately followed by an up against the daemon's one live worktree.
+	// It asserts the daemon never exits and rediscovers the re-upped session.
+	// The loop's idle-cycle window covers this gap.
 	if !t.Run("DownThenUpDoesNotKillDaemon", func(t *testing.T) {
 		if _, err := eng2.Down(); err != nil {
 			t.Fatalf("eng2.Down(): %v", err)
@@ -391,18 +433,25 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// AttachAndResumeAttemptTheSpawn: ensureWatchdogSpawned's own os.Executable() re-exec is unsafe to drive live under `go test` (see the file-level doc comment), so this exercises the call site far enough to prove it is actually reached rather than suppressed: an unusable hubPath makes ensureWatchdogSpawned fail at its own MkdirAll step, before ever calling os.Executable(), which is safely observable.
+	// AttachAndResumeAttemptTheSpawn reaches the spawn call of ensureWatchdogSpawned without running its re-exec.
+	// The re-exec through os.Executable() is unsafe under `go test`.
+	// An unusable hubPath makes ensureWatchdogSpawned fail at its MkdirAll step, before os.Executable() runs,
+	// so the attempt proves the call is reached rather than suppressed.
 	if !t.Run("AttachAndResumeAttemptTheSpawn", func(t *testing.T) {
 		c := &reedCLI{eng: eng2, hubPath: unusableHubPath(t), suppressWatchdogSpawn: false}
-		// A spawn attempt against an unusable hub path must return without panicking — proving
-		// ensureWatchdogSpawned was reached (not suppressed) and degrades harmlessly, exactly as up,
-		// resume, and attach each rely on.
+		// The spawn attempt against an unusable hub path must return without panicking:
+		// up, resume and attach each rely on ensureWatchdogSpawned degrading harmlessly.
 		c.ensureWatchdogSpawned()
 	}) {
 		return
 	}
 
-	// ReEntryReReadsFlippedConfig brings the prime worktree's session back, downs it, flips its watchdog: key to off, ups it again, and asserts BOTH halves of re-entry re-reading the config: the one continuously running daemon (never restarted — loopDone is asserted still open throughout) rediscovers the re-upped session, and enterSession — the exact function the daemon's own discovery loop calls on every appeared name — now reads the flipped value straight off disk rather than the value it held before the down/up, so a watchdog:off worktree enters the known set but starts no watcher.
+	// ReEntryReReadsFlippedConfig brings the prime session back, downs it, sets its watchdog key to off, and ups it again.
+	// It asserts two things about re-entry.
+	// The one daemon that keeps running, never restarted and with loopDone still open, rediscovers the re-upped session.
+	// enterSession is the function the daemon's discovery loop calls for each appeared name.
+	// It must read the flipped value from disk, not the value it held before the down/up.
+	// So a watchdog:off worktree enters the known set but starts no watcher.
 	t.Run("ReEntryReReadsFlippedConfig", func(t *testing.T) {
 		if _, err := eng1.Up(); err != nil {
 			t.Fatalf("eng1.Up() (prime back before the flip): %v", err)
@@ -418,7 +467,9 @@ func TestWatchdogDaemon(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
-		// enterSession loads its own config straight off disk, so the flip must actually be seeded into the fixture's reed.yaml — the whole resolved config, every key present, since a partial override fails LoadConfig's strictness check.
+		// enterSession loads its config straight off disk, so the flip must be seeded into the fixture's reed.yaml.
+		// The seed must be the whole resolved config with every key present;
+		// a partial override fails LoadConfig's strictness check.
 		offCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: location.AnchorPath()}, "reed")
 		if err != nil {
 			t.Fatalf("LoadConfig: %v", err)
@@ -447,16 +498,15 @@ func TestWatchdogDaemon(t *testing.T) {
 		}
 		t.Cleanup(func() { _, _ = offEng.Down() })
 
-		// The one daemon started above is still running throughout this whole down/flip/up sequence —
-		// never restarted — and rediscovers the re-upped session under the SAME session name.
+		// The daemon started above keeps running through the whole down, flip and up sequence without a restart.
+		// It rediscovers the re-upped session under the same session name.
 		waitForCondition(t, watchdogTestWait, func() bool {
 			return sessionListed(tmuxPath, socket, offEng.SessionName())
 		})
 		requireLoopRunning(t, "during the down/flip/up sequence")
 
-		// enterSession is exactly the function the running daemon's own discovery loop calls for a newly
-		// appeared name — calling it here against the same hub/tmux/session identity proves what value the
-		// daemon itself would now read on its own next discovery cycle.
+		// enterSession is the function the running daemon's discovery loop calls for each newly appeared name.
+		// Called here with the same hub, tmux and session identity, it shows what the daemon reads on its next discovery cycle.
 		ws, err := enterSession(h.Path, tmuxPath, offEng.SessionName())
 		if err != nil {
 			t.Fatalf("enterSession (after down + flip-to-off + up): %v", err)
@@ -474,9 +524,8 @@ func TestWatchdogDaemon(t *testing.T) {
 	})
 }
 
-// unusableHubPath returns a hub path that makes fabricengine.HubScratchDir(hub)'s MkdirAll fail: a
-// regular file sits where an intermediate directory component of the hub path must go, so nothing
-// can ever be created beneath it.
+// unusableHubPath returns a hub path for which fabricengine.HubScratchDir(hub)'s MkdirAll fails.
+// A regular file sits where an intermediate directory of the hub path must go, so nothing can be created beneath it.
 func unusableHubPath(t *testing.T) string {
 	t.Helper()
 	blocker := filepath.Join(t.TempDir(), "blocker-file")
@@ -486,8 +535,7 @@ func unusableHubPath(t *testing.T) string {
 	return filepath.Join(blocker, "hub-under-a-file")
 }
 
-// waitForCondition polls cond every 100ms until it reports true or timeout elapses, failing the test
-// on timeout.
+// waitForCondition polls cond every 100ms until it reports true, and fails the test if timeout elapses first.
 func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

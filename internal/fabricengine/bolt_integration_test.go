@@ -1,15 +1,10 @@
-// bolt_integration_test.go — integration coverage for Bolt.Commit/Push/Sync,
-// the unpaired weft:main handle: a dirty repo commits and pushes, a clean
-// repo is a true no-op, SkipGit short-circuits before any git runs, and
-// Sync holds its single absorbing lock across a burst of steps. Package
-// fabricengine (internal), building its own plain-repo-plus-bare-remote
-// fixture locally (mirroring boardengine/sync_integration_test.go's
-// newBoardRepo/newBareRemote shape) rather than the package's own
-// newPlainWeftRepo, whose fixture carries its bare remote nested inside the
-// copied worktree — fine for that fixture's own explicit-pathspec callers, but not for Bolt's
-// wildcard-stage commit, which would otherwise stage that untracked
-// directory and defeat the clean-repo no-op assertion.
-// Relies on testmain_test.go's package-wide TestMain for HermeticGitEnv(); no new TestMain is added here.
+// bolt_integration_test.go — integration coverage for Bolt.Commit/Push/Sync, the unpaired weft:main handle.
+// A dirty repo commits and pushes; a clean repo is a no-op; SkipGit short-circuits before any git runs.
+// Sync holds its single absorbing lock across a burst of steps.
+// Each test builds a plain repo with a bare remote beside it, not nested in the worktree.
+// A bare remote nested in the worktree would be staged by Bolt's wildcard commit.
+// That would defeat the clean-repo no-op assertion.
+// The package-wide TestMain in testmain_test.go provides HermeticGitEnv(), so this file adds none.
 
 package fabricengine
 
@@ -28,8 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newBoltBareRemote creates a bare git repository at <dir>/bolt-remote.git
-// and returns its path, ready to be added as an "origin" remote.
+// newBoltBareRemote creates a bare git repository at <dir>/bolt-remote.git.
+// It returns the path, ready to be added as an "origin" remote.
 func newBoltBareRemote(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -41,10 +36,9 @@ func newBoltBareRemote(t *testing.T, dir string) string {
 	return bare
 }
 
-// newBoltRepo creates a fresh (non-cloned) git repository under dir/name on
-// branch main, with bareRemote configured as "origin" but no upstream
-// tracking branch yet — the state a real Bolt-backed checkout is in before
-// its very first sync.
+// newBoltRepo creates a fresh, non-cloned git repository under dir/name on branch main.
+// It configures bareRemote as "origin", with no upstream tracking branch yet.
+// That is the state of a Bolt-backed checkout before its first sync.
 func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 	t.Helper()
 
@@ -57,9 +51,9 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 	return path
 }
 
-// TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push lands a real commit and
-// advances the bare origin to that same SHA,
-// and that the commit leaves machine-local scratch under .lym untracked in a repo nothing seeded excludes for.
+// TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push lands a real commit,
+// and that the bare origin advances to that same SHA.
+// It also asserts that the commit leaves machine-local scratch under .lym untracked, as no seed excludes it.
 func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -102,10 +96,9 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	}
 }
 
-// TestBolt_CleanRepo_CommitAndPushAreNoOps asserts that Commit reports committed=false on a repo
-// with nothing new to stage,
-// and a subsequent Push is a true no-op (never touches the network, never errors) once nothing is
-// ahead of upstream.
+// TestBolt_CleanRepo_CommitAndPushAreNoOps asserts that Commit reports committed=false when nothing is new to stage.
+// It also asserts that a subsequent Push is a no-op once nothing is ahead of upstream:
+// it never touches the network and never errors.
 func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -116,8 +109,8 @@ func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 
 	b := NewBolt(repoPath)
 
-	// A first real commit establishes a HEAD to be clean against; the
-	// second, no-change call below is what this test actually asserts.
+	// A first real commit establishes a HEAD to be clean against;
+	// the no-change call below is what this test asserts.
 	if err := os.WriteFile(filepath.Join(repoPath, "seed.md"), []byte("seed"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -146,7 +139,7 @@ func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 }
 
 // TestBolt_SkipGit_ShortCircuits asserts that opts.SkipGit stops Commit before any git is spawned,
-// leaving a dirty untracked file untouched.
+// and that a dirty untracked file is left untouched.
 func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -176,9 +169,11 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 	}
 }
 
-// TestBolt_CommitWritten asserts that CommitWritten commits only the paths write returns, leaving
-// other dirty files for the next sync, and that a write error is returned as is with HEAD unchanged.
-// It also pins deletion staging, a path HEAD never held being left out, an unborn HEAD, the empty path list and the SkipGit gate.
+// TestBolt_CommitWritten asserts that CommitWritten commits only the paths write returns.
+// Other dirty files are left for the next sync.
+// It also asserts that a write error is returned as is, with HEAD unchanged.
+// It also pins deletion staging and the omission of paths HEAD never held.
+// It also pins an unborn HEAD, the empty path list and the SkipGit gate.
 func TestBolt_CommitWritten(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -316,8 +311,8 @@ func TestBolt_CommitWritten(t *testing.T) {
 }
 
 // TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst asserts that Sync acquires its absorbing lock
-// at the same board.push.lock path Bolt.Sync documents, held once for the whole loop: an
-// externally-held lock at that exact path blocks a concurrent Sync call until released.
+// at board.push.lock, held once for the whole loop.
+// An externally-held lock at that path blocks a concurrent Sync call until released.
 func TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,4 +1,6 @@
-// prreview_session_test.go covers the PR-Review row's interactive session over a fake session runner: what it starts it under, when it reuses, resumes, stops and restarts it, and the fake and helpers the other PR-Review tests share.
+// prreview_session_test.go covers the PR-Review row's interactive session over a fake session runner.
+// It pins what the session starts under, and when it reuses, resumes, stops and restarts it.
+// It also holds the fake and helpers the other PR-Review tests share.
 
 package landingshed
 
@@ -23,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakePRSessions is a prSessions that records every start and stop and tracks which strands are live.
+// fakePRSessions is a fake session runner that records every start and stop and tracks which strands are live.
 // A start marks the strand its result names live, and a stop clears it.
 type fakePRSessions struct {
 	mu sync.Mutex
@@ -90,7 +92,8 @@ func sessionsOf(deps Deps) *fakePRSessions {
 	return deps.PullRequest.Sessions.(*fakePRSessions)
 }
 
-// withSessionOf returns got with the session fields of want, so a test that pins the rest of a record leaves the session's identity to the session test.
+// withSessionOf returns got with the session fields of want.
+// It lets a test pin the rest of a record without pinning the session's identity.
 func withSessionOf(got, want pullrequest.Record) pullrequest.Record {
 	got.StrandGUID, got.StrandName, got.SessionID, got.Engine = want.StrandGUID, want.StrandName, want.SessionID, want.Engine
 	return got

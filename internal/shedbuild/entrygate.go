@@ -1,4 +1,5 @@
-// entrygate.go parses a recipe row's entry_gate checks and builds them into the shedengine.EntryGate the row's definition carries.
+// entrygate.go parses a recipe row's entry_gate checks.
+// It builds them into the shedengine.EntryGate that the row's definition carries.
 
 package shedbuild
 
@@ -44,7 +45,8 @@ func (c entryCheck) operand() string {
 }
 
 // parseEntryGate parses each of row's entry_gate checks.
-// A check is `<operand>`, `<operand> == <literal>` or `<operand> != <literal>` with a YAML scalar literal, an operand being `module.key` or `budget.<Segment>`.
+// A check is `<operand>`, `<operand> == <literal>` or `<operand> != <literal>`, with a YAML scalar literal.
+// An operand is `module.key` or `budget.<Segment>`.
 // Any other text is refused naming the row, the check and the way forward.
 func parseEntryGate(row Row) ([]entryCheck, error) {
 	checks := make([]entryCheck, 0, len(row.EntryGate))
@@ -110,7 +112,7 @@ func parseEntryLiteral(text string) (any, error) {
 	return value, nil
 }
 
-// RowEntryGate parses row's entry_gate checks and builds them into the row's EntryGate as Build does, nil for a row with none.
+// RowEntryGate parses row's entry_gate checks and builds them into the row's EntryGate, nil for a row with none.
 // It refuses a malformed check, and an operand env cannot answer, each naming the row and the way forward.
 // The returned gate reads its operands from env at each evaluation.
 func RowEntryGate(row Row, env shedrecipe.Env) (shedengine.EntryGate, error) {
@@ -121,9 +123,12 @@ func RowEntryGate(row Row, env shedrecipe.Env) (shedengine.EntryGate, error) {
 	return entryGateOf(row, checks, env)
 }
 
-// entryGateOf builds the EntryGate row's checks make, nil for a row with none.
-// It refuses, naming the row and the way forward, an operand the told Env cannot answer: a `module.key` that Env.SettingKnown rejects or that meets a nil Env.SettingKnown or Env.Setting, and a segment with no Env.Segments entry.
-// The returned gate reads every operand at each evaluation: a setting through Env.Setting and a segment budget as Env.Segments[<Segment>].MaxBounces.
+// entryGateOf builds the EntryGate for row's checks, nil when there are none.
+// It refuses, naming the row and the way forward, an operand that env cannot answer:
+// a `module.key` that Env.SettingKnown rejects, a `module.key` met with a nil Env.SettingKnown or Env.Setting,
+// or a segment with no Env.Segments entry.
+// The returned gate reads every operand at each evaluation:
+// a setting through Env.Setting and a segment budget as Env.Segments[<Segment>].MaxBounces.
 // It stops at the first check that does not hold and returns that check's reason.
 func entryGateOf(row Row, checks []entryCheck, env shedrecipe.Env) (shedengine.EntryGate, error) {
 	if len(checks) == 0 {

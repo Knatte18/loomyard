@@ -1,32 +1,28 @@
-// prune.go implements the Prune verb: it identifies and optionally removes orphaned or stale
-// warp↔weft pairs.
-// A pair is stale when the warp worktree directory no longer exists;
-// a pair is orphaned when a weft worktree has no corresponding warp worktree sibling.
-// Prune operates purely on directory names (<slug>-weft, a weftname-level invariant);
-// fabric's branch-naming scheme does not affect this file.
+// prune.go implements the Prune verb, which finds and optionally removes stale or orphaned warp↔weft pairs.
+// A pair is stale when its warp worktree directory is missing.
+// A pair is orphaned when a weft worktree has no warp sibling.
+// Prune works on directory names (`<slug>-weft`), so fabric's branch-naming scheme does not affect this file.
 //
-// The weft removal is a `git worktree remove --force`, so a weft worktree carrying uncommitted
-// TRACKED changes is protected unless the caller passes force — the same refuse-then-offer-force
-// posture Remove takes, rather than discarding the work silently.
+// Removal uses `git worktree remove --force`; uncommitted tracked changes protect a weft worktree unless force is set.
+// This is the refuse-then-offer-force posture of Remove: uncommitted work is never discarded silently.
 //
-// Ownership is checked BEFORE either mode acts, and force does not bypass it.
-// Prune's orphan pass enumerates by directory NAME alone — any hub child ending in the weft suffix —
-// so the set it reports is not the set it owns: an ordinary `<hub>/notes-weft/` directory, or a
-// wholly unrelated git clone parked at `<hub>/proj-weft/`, both land in it.
-// A path fabric may delete is one the hub's weft repo registers as a LINKED worktree, and nothing
-// else;
-// everything else is reported Unowned and left alone, in both modes.
-// This is the same rule removeWarpWorktreeDir applies on the warp side, and it exists for the same
-// reason: `git worktree remove` refusing a path is not licence to delete it.
+// Ownership is checked before either mode acts, and force does not bypass it.
+// The orphan pass chooses hub children by directory name alone,
+// so an ordinary `<hub>/notes-weft/` directory and an unrelated git clone at `<hub>/proj-weft/` both match.
+// Fabric deletes a path only when the hub's weft repo registers it as a linked worktree.
+// Everything else is reported Unowned and left alone, in both modes.
+// The same rule governs removeWarpWorktreeDir on the warp side:
+// a refusal by `git worktree remove` is not permission to delete the path.
 //
-// A third pass reports every hub directory whose name is a valid pair slug and that no worktree registration covers.
-// Such a directory is, for example, a task worktree path a late writer refilled after a removal.
-// It blocks a new pair of its slug and nothing proves it fabric's, so it is reported Unowned in both modes and never removed.
+// A third pass reports each hub directory named as a valid pair slug that no worktree registration covers.
+// Such a directory may be a task worktree path that a late writer refilled after a removal.
+// It blocks a new pair of its slug.
+// Nothing shows fabric created it, so it is reported Unowned in both modes and never removed.
 //
-// Prune removes weft worktrees only and deletes no weft branch — orphaned branches are left for Cleanup — so it needs no archiveWeftTip step; the archive belongs to the verbs that delete a branch.
+// Prune removes weft worktrees only and deletes no weft branch: orphaned branches are left to Cleanup.
+// So it has no archive step; archiveWeftTip belongs to the verbs that delete a branch.
 //
-// The verdict is computed identically in both modes, so a dry run's Protected and Unowned flags
-// match exactly what the same flags plus --apply would do.
+// The verdict is the same in both modes, so a dry run's Protected and Unowned flags match what --apply would do.
 
 package fabricengine
 
@@ -52,42 +48,39 @@ type PruneEntry struct {
 	// Removed reports whether the weft worktree was actually deleted.
 	// It is false on a dry run and true only when apply is true and removal succeeded.
 	Removed bool `json:"removed"`
-	// Protected reports whether this entry's weft worktree carries uncommitted tracked changes
+	// Protected reports whether this entry's weft worktree has uncommitted tracked changes
 	// that force was not given to discard.
-	// It is computed in both modes, so a dry run answers the question --apply would act on.
+	// It is computed in both modes, so a dry run reports what --apply would act on.
 	Protected bool `json:"protected,omitempty"`
-	// Unowned reports that the enumerated path is not a linked worktree of this hub's repositories.
-	// Fabric will not remove it in any mode, force included.
-	// The orphan pass enumerates on directory NAME alone, so an ordinary user directory or an
-	// unrelated git clone whose name happens to end in the weft suffix is reported here rather
-	// than deleted, and so is a directory at a pair's task worktree path that no registration covers.
+	// Unowned reports that the enumerated path is not a linked worktree of this hub's weft repo.
+	// Fabric never removes it, force included.
+	// The orphan pass matches on directory name alone.
+	// So an ordinary user directory or an unrelated git clone with a weft-suffixed name is reported here, not deleted.
+	// A directory at a pair's task worktree path that no registration covers is reported the same way.
 	// Like Protected, it is computed in both modes.
 	Unowned bool `json:"unowned,omitempty"`
-	// Error is non-empty when this entry was not removed and the operator needs to know why:
-	// a removal that failed, a protected entry force would have removed, or an unowned path
-	// fabric refuses to touch.
+	// Error is non-empty when an entry was not removed and the operator needs to know why.
+	// It covers a failed removal, a protected entry, and an unowned path fabric refuses to touch.
 	Error string `json:"error,omitempty"`
 }
 
-// PruneResult is the top-level result type returned by Prune.
-// It lists every stale or orphaned pair, whether or not they were removed, and embeds
-// MutationRecord, which carries the mutation record accumulated over the call.
+// PruneResult is the result of Prune.
+// It lists every stale or orphaned pair, whether or not it was removed.
+// The embedded MutationRecord holds the mutations recorded over the call.
 type PruneResult struct {
 	MutationRecord
-	// Entries lists the pairs that were identified (and optionally removed).
-	// It is always a non-nil slice, empty when nothing was stale, so the CLI envelope renders
-	// "entries":[] rather than "entries":null — the same never-null rule the envelope already holds
-	// for "mutations", and the reason a consumer never has to distinguish absent from empty for one
-	// verb only. See Prune's own return sites, which are the only producers.
+	// Entries lists the pairs that were identified, with Removed set on those actually deleted.
+	// It is never nil, so the CLI envelope renders `"entries":[]` rather than `"entries":null` when nothing was stale.
 	Entries []PruneEntry `json:"entries"`
 }
 
-// Prune identifies stale or orphaned warp↔weft pairs and removes their stale weft worktrees and
-// associated launcher directories when apply is true.
-// A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
-// removal is a forced one that would discard them without a trace.
+// Prune identifies stale or orphaned warp↔weft pairs.
+// When apply is true, it removes their stale weft worktrees and associated launcher directories.
+// A weft worktree with uncommitted tracked changes is protected unless force is true.
+// The forced removal would otherwise discard those changes without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
-// A hub directory named as a pair slug that is not a registered worktree is reported Unowned, with the way to clear it in PruneEntry.Error, and never removed.
+// A hub directory named as a pair slug that is not a registered worktree is reported Unowned and never removed.
+// Its PruneEntry.Error says how to clear it.
 func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -104,12 +97,10 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 
 	liveWarpSlugs := make(map[string]bool)
 
-	// Track slugs emitted by Pass 1 to avoid re-reporting the same orphaned weft in Pass 2.
+	// The warp-missing loop records its slugs here so the orphan pass does not report the same weft twice.
 	pass1Slugs := make(map[string]bool)
 
-	// Seeded non-nil rather than left to append: a nil Entries marshals to "entries":null, which made
-	// prune the one fabric verb whose array key a consumer had to special-case against null while
-	// cleanup and reconcile both emitted a real array in the same nothing-to-report state.
+	// Seeded non-nil, because a nil Entries marshals to `"entries":null` rather than an empty array.
 	result := PruneResult{Entries: []PruneEntry{}}
 	for _, entry := range entries {
 		warpPath := filepath.FromSlash(entry.Path)
@@ -204,18 +195,17 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 	return result, nil
 }
 
-// applyStalePairOwnership marks pe unowned unless weftPath is registered as a LINKED worktree of
-// this hub's weft repo.
+// applyStalePairOwnership marks pe unowned unless weftPath is registered as a linked worktree of the hub's weft repo.
 //
-// It runs in BOTH modes and force does NOT bypass it, because it does not answer "is there work
-// here worth keeping" — it answers "is this fabric's to delete at all", and no flag can make a
-// directory fabric never created become fabric's.
-// The orphan pass reaches this function with a path chosen by directory name alone
-// (WeftWarpSlug over every hub child), so `<hub>/notes-weft/` holding an operator's own notes, and
-// a separate git clone parked at `<hub>/proj-weft/`, both arrive here indistinguishable from a real
-// stale pair until this check tells them apart.
+// It runs in both modes, and force does not bypass it.
+// It does not answer whether there is work worth keeping; it answers whether fabric may delete the path at all.
+// No flag can make a directory fabric never created fabric's.
+// The orphan pass chooses paths by directory name alone (WeftWarpSlug over every hub child).
+// A `<hub>/notes-weft/` holding an operator's notes looks like a stale pair until this check separates it.
+// So does a separate git clone at `<hub>/proj-weft/`.
 //
-// An absent path is NOT unowned: there is nothing to delete, and removeStalePair still has launcher and worktree-registration debris to clear for a pair whose weft worktree is already gone.
+// An absent path is not unowned: there is nothing to delete.
+// removeStalePair still clears launcher and worktree-registration debris for a pair whose weft worktree is gone.
 func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *PruneEntry) {
 	if _, statErr := os.Stat(weftPath); os.IsNotExist(statErr) {
 		return
@@ -238,15 +228,14 @@ func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *PruneEntry
 		weftPath, weftRepoRoot)
 }
 
-// applyStalePairProtection marks pe protected when its weft worktree carries uncommitted TRACKED
-// changes and force was not given.
+// applyStalePairProtection marks pe protected when force is unset and the weft worktree is dirty.
 //
-// The probe is tracked-only on purpose. `git worktree remove --force` discards tracked
-// modifications with no trace, which is the data loss this gate exists to stop;
-// untracked files are the ordinary residue of an abandoned pair, and refusing on them would protect
-// nothing while making prune useless on exactly the debris it exists to clear.
-// A probe that cannot run at all leaves the entry unprotected: the weft worktree is then not a
-// readable git checkout, so there is no tracked work in it to lose.
+// The probe checks tracked files only.
+// `git worktree remove --force` discards tracked modifications silently; this gate stops that loss.
+// Untracked files are the ordinary residue of an abandoned pair.
+// Refusing on them would protect nothing and make prune useless on the debris it exists to clear.
+// A probe that cannot run leaves the entry unprotected.
+// Git cannot read such a worktree, so it has no tracked work to lose.
 func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 	if force {
 		return
@@ -267,19 +256,21 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 	pe.Error = "weft worktree has uncommitted changes; commit them or re-run with --force to discard them"
 }
 
-// removeStalePair removes the stale weft worktree at weftPath (when it exists),
-// tears down the dead slug's launcher directory, and prunes
-// administrative state on both repos. Errors are recorded in pe.Error; it returns
-// true only when a weft worktree existed and was removed without error.
+// removeStalePair removes the stale weft worktree at weftPath when it exists.
+// It tears down the slug's launcher directory and prunes administrative state in both repos.
+// Errors are recorded in pe.Error.
+// It returns true only when a weft worktree existed and was removed without error.
 //
-// It is reached only for an entry applyStalePairOwnership has already cleared, so weftPath is
-// either absent or a registered linked worktree of this hub's weft repo.
-// The directory-removal fallback below rests on exactly that: it fires only after git declined to
-// remove a path git itself still registers as a worktree, which is recoverable bookkeeping rather
-// than data loss — the identical rule, and the identical justification, as
-// removeWarpWorktreeDir's.
+// It is reached only for an entry that applyStalePairOwnership has already cleared.
+// So weftPath is either absent or a registered linked worktree of the hub's weft repo.
+// The directory-removal fallback below relies on that.
+// It runs only after git declines to remove a path that git still registers as a worktree.
+// That is recoverable bookkeeping, not data loss.
+// The same rule and justification apply to removeWarpWorktreeDir's fallback.
 //
-// Launcher teardown runs AFTER the ownership gate rather than before it, because the slug it is keyed on is derived from a directory name the orphan pass chose: tearing it down first meant a stray `<hub>/my-task-weft/` directory removed the LIVE `my-task` pair's launcher directory before anything had established the entry was fabric's at all.
+// Launcher teardown runs after the ownership gate, since its slug comes from a directory name.
+// Tearing it down first would let a stray `<hub>/my-task-weft/` directory remove a live pair's launcher directory.
+// Nothing has yet shown the entry is fabric's at that point.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
 func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
@@ -288,9 +279,8 @@ func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, 
 		return false
 	}
 
-	// The launcher teardown here is keyed on a slug the orphan pass derived from a
-	// directory name — precisely the input a refusal is most likely to be about — so a refusal must
-	// be recorded rather than swallowed alongside an ordinary operational failure.
+	// The launcher teardown is keyed on a slug the orphan pass derived from a directory name.
+	// A refusal here is most likely about that input, so it is recorded rather than swallowed as an ordinary failure.
 	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		pe.Error = err.Error()
 		return false
@@ -325,12 +315,10 @@ func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, 
 					weftPath, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr), weftRepoRoot)
 				return false
 			}
-			// force: true mirrors the primary request above, and the omission it replaces was a real
-			// defect: applyStalePairProtection is this site's own force-aware gate and has already
-			// run, so a tracked-dirty weft worktree reaching here is one the operator explicitly
-			// asked to discard — refusing it produced "use --force" as the remedy for an operator
-			// who had passed --force, and left a half-torn-down pair.
-			// See removeWarpWorktreeDir's fallback for the same reasoning stated in full.
+			// force: true mirrors the primary request above.
+			// applyStalePairProtection has already run and respects force.
+			// A tracked-dirty weft worktree that reaches here is one the operator asked to discard.
+			// Refusing it would demand --force from an operator who already passed it, and leave the pair half torn down.
 			fallbackReq := pathRequest{
 				what:      "remove weft worktree",
 				container: l.HubPath,
@@ -340,8 +328,7 @@ func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, 
 				force:     true,
 			}
 			if removeErr := removePath(rec, fallbackReq); removeErr != nil {
-				// The %d cites this worktree-remove call's exit code; the %v reports the removePath
-				// fallback's own failure — two failures in one string, not a duplicate of anything.
+				// The %d is this worktree-remove call's exit code; the %v is the removePath fallback's own failure.
 				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, gitErr.ExitCode, removeErr)
 				return false
 			}
@@ -349,13 +336,11 @@ func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, 
 		removed = true
 	}
 
-	// The warp repo's own ".git/worktrees/<slug>" registration can outlive the physical warp worktree
-	// directory it describes -- the pass-1 "warp worktree directory missing" case's own precondition
-	// -- and `git worktree prune` below clears it. That is an observable primitive effect per the
-	// record-only-after-observed-effect Shared Decision, so it is recorded like every other executor's
-	// effect in this call: probe the admin path immediately before the best-effort prune calls, and
-	// append KindWorktreeRemoved, at the pair's own warp worktree path, only when the probe found it
-	// present and it is gone afterward.
+	// The warp repo's `.git/worktrees/<slug>` registration can outlive the warp worktree directory it describes.
+	// That is the situation a stale pair starts from, and the `git worktree prune` below clears the registration.
+	// Mutations are recorded only after their effect is observed.
+	// So probe the admin path just before the best-effort prunes.
+	// Append KindWorktreeRemoved at the pair's warp worktree path only if the probe found it and it is then gone.
 	warpAdminPath := filepath.Join(l.WorktreePath(), ".git", "worktrees", slug)
 	_, warpAdminStatErr := os.Lstat(warpAdminPath)
 	warpAdminWasRegistered := warpAdminStatErr == nil

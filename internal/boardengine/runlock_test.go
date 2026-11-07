@@ -34,7 +34,8 @@ func TestRunLock(t *testing.T) {
 	done := map[string]any{"slug": "fin", "title": "Fin", "kind": "task", "labels": []string{"bug"}, "status": "done"}
 	grouping := map[string]any{"slug": "grp", "title": "Group", "kind": "project", "labels": []string{"bug"}}
 	const awaiting = "running · Beam-Await"
-	// A board write cannot make a beam, so a beam row splices the beam key in after seeding the project; heldBeam is the project's fields.
+	// A board write cannot make a beam, so a beam row splices the beam key in after seeding the project;
+	// heldBeam is the project's fields.
 	const beamKey = `"beam":true`
 	heldBeam := func(status string) map[string]any {
 		return map[string]any{"kind": "project", "recipe": boardengine.ProjectRecipe, "status": status}
@@ -46,7 +47,7 @@ func TestRunLock(t *testing.T) {
 		extra   []map[string]any
 		act     func(b *boardengine.Board) error
 		refused bool
-		// unknown is raw JSON members spliced into the locked entry after seeding; an accepted row requires the written file to still carry each.
+		// unknown is raw JSON members spliced into the locked entry after seeding; an accepted row must still carry each.
 		unknown string
 		// primeOwner is a prime_owner record spliced into board.json after seeding.
 		primeOwner string
@@ -54,7 +55,7 @@ func TestRunLock(t *testing.T) {
 		unchanged bool
 		// beamRefusal requires a refused row to be the *BeamRunLockedError of a beam project whose run holds nothing.
 		beamRefusal bool
-		// recordRefusal requires a refused row to be the *ProjectRecordLockedError of a beam project whose run holds its project record.
+		// recordRefusal requires a refused row to be the *ProjectRecordLockedError of a beam project whose run holds its record.
 		recordRefusal bool
 	}{
 		{name: "upsert body", refused: true, act: upsertLocked(map[string]any{"body": "new"})},
@@ -343,7 +344,8 @@ func TestRunLock(t *testing.T) {
 	})
 }
 
-// TestRunLock_BeamKindAndBeamChange pins the refusal of a kind or beam change on a beam project whose run holds nothing, which no board write reaches since the write's own check refuses it first.
+// TestRunLock_BeamKindAndBeamChange pins the refusal of a kind or beam change on a beam project.
+// Its run holds nothing, and no board write reaches the refusal: the write's own check refuses it first.
 func TestRunLock_BeamKindAndBeamChange(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -405,7 +407,8 @@ func TestRunHolds(t *testing.T) {
 	}
 }
 
-// addEntryKeys splices the raw JSON members into the entry slug of the board.json under boardPath, leaving every value byte-for-byte as decoded raw.
+// addEntryKeys splices the raw JSON members into the entry slug of the board.json under boardPath;
+// every value stays byte-for-byte as decoded raw.
 func addEntryKeys(t *testing.T, boardPath, slug, members string) {
 	t.Helper()
 	path := filepath.Join(boardPath, "board.json")

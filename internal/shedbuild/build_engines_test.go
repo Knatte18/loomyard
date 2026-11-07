@@ -1,9 +1,8 @@
-// build_engines_test.go holds one test asserting every name shedrecipe.Names() returns is
-// buildable from a recipe given a sufficiently filled environment. It is deliberately not
-// filesystem-free: the bouncer and burler-round engines create the run directory they resolve, and
-// the bouncer engine eagerly reads its configured stencil.
-// Restricting the assertion to the effect-free engines was rejected:
-// it would drop exactly the engines whose config shapes are the most complex, which is the coverage most worth having.
+// build_engines_test.go holds one test that asserts every name shedrecipe.Names() returns:
+// it is buildable from a recipe given a sufficiently filled environment.
+// The test is not filesystem-free: the bouncer and burler-round engines create the run directory they resolve,
+// and the bouncer engine eagerly reads its configured stencil.
+// It covers every engine, including those with the most complex config shapes.
 
 package shedbuild
 
@@ -16,20 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// engineMinimalConfig maps an engine name to its minimal Config, covering only the engines that need one.
-// They are Bouncer, BurlerReview, BurlerFix, Command, DriftBaseline, DriftExpect, DriftVerify, Implementer and MultiLLM, whose lead and advisor both take a stencil name and the "opus" alias FullEnv's Models carries.
-// Implementer names tapestry.implementer, which FullEnv's template lookup answers with webster.
-// Every other engine takes no config at all and are given none in this test,
-// since a non-empty config block on any of them is an error from the constructor. All three
-// lifecycle engines join them: WorktreeCreate and WorktreeTeardown take no Config keys at
-// all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
-// empty Config block is legal there too.
-//
-// DiscussionWrite and PlanWrite are two of them: each wraps a producer behind its own commit decorator.
-// Its Spec or table arrives as an injected Env closure (DiscussionTable or PlanTable) rather than as recipe Config.
-// It therefore has no config keys of its own, and its seams are filled by envkit.FullEnv instead.
-// leadStencilName names the MultiLLM lead's stencil, which includes seat-directive-chair.
-// advisorStencilName names the MultiLLM advisor's stencil.
+// engineMinimalConfig maps each engine name to the minimal Config its row needs to build.
+// An engine it omits needs no Config value, so none is given;
+// a non-empty block on an engine with no keys is an error from its constructor.
+// DiscussionWrite and PlanWrite take their Spec or table as an injected Env closure rather than recipe Config,
+// so they have no keys of their own.
+// The MultiLLM seats take the "opus" model alias, which envkit.FullEnv's Models carries.
+// advisorStencilName and leadStencilName name the MultiLLM advisor's and lead's stencils;
+// the lead's includes seat-directive-chair.
 func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"Bouncer": {
@@ -85,10 +78,9 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 	}
 }
 
-// TestBuild_EveryRegisteredEngineBuilds asserts every name shedrecipe.Names() returns builds from
-// a one-row Recipe against a sufficiently filled shedrecipe.Env, driving the assertion off
-// shedrecipe.Names() rather than a local list so a newly registered engine fails this test
-// until this fixture covers it.
+// TestBuild_EveryRegisteredEngineBuilds asserts every name shedrecipe.Names() returns builds from a one-row Recipe.
+// It drives the assertion off shedrecipe.Names() rather than a local list,
+// so a newly registered engine fails this test until the fixture covers it.
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	tiergate.Require(t, 0)
 	env := envkit.FullEnv(t)

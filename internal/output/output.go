@@ -1,7 +1,6 @@
-// output.go — JSON envelope helpers for CLI output.
+// output.go holds the JSON envelope helpers for CLI output.
 //
-// Provides Ok and Err functions for emitting structured JSON responses with consistent envelope
-// shape (ok flag and optional fields/error message).
+// Ok and Err write JSON responses in one envelope: an ok flag, plus the caller's fields or an error message.
 
 package output
 
@@ -12,8 +11,8 @@ import (
 	"strings"
 )
 
-// Ok writes a JSON response with ok=true plus the supplied fields,
-// and returns exit code 0. It mutates the supplied fields map in place by injecting "ok": true.
+// Ok writes the supplied fields as a JSON response, and returns exit code 0.
+// The fields map is modified in place: its "ok" key is set to true.
 func Ok(w io.Writer, fields map[string]any) int {
 	fields["ok"] = true
 	data, _ := json.Marshal(fields)
@@ -21,19 +20,16 @@ func Ok(w io.Writer, fields map[string]any) int {
 	return 0
 }
 
-// Err writes a JSON response with ok=false and the given error message,
-// and returns exit code 1. The message is trimmed of leading and trailing whitespace to prevent
-// embedded tool output from leaking formatting.
+// Err writes a JSON response with ok=false and the given error message, and returns exit code 1.
+// The message is trimmed of leading and trailing whitespace, so embedded tool output does not leak its formatting.
 func Err(w io.Writer, msg string) int {
 	return ErrFields(w, msg, nil)
 }
 
-// ErrFields writes a JSON response with ok=false, the given error message, and the caller's fields,
-// and returns exit code 1. It mirrors Ok's shape: the caller's fields are laid down first, then
-// "ok": false and "error": strings.TrimSpace(msg) are injected after, so those two reserved keys
-// always win over a caller-supplied key of the same name — matching Ok's existing in-place
-// fields["ok"] = true mutation rather than inventing a second collision policy.
-// A nil fields map is accepted and behaves exactly like Err(w, msg).
+// ErrFields writes a JSON response with ok=false, the caller's fields, and the given error message.
+// It returns exit code 1, and it accepts a nil fields map.
+// The reserved keys "ok" and "error" always win over a caller key of the same name.
+// The message is trimmed of leading and trailing whitespace.
 func ErrFields(w io.Writer, msg string, fields map[string]any) int {
 	if fields == nil {
 		fields = map[string]any{}

@@ -1,4 +1,5 @@
-// cost_test.go tests ComputeCost over a fake records repository: which tags enter a cell, how a run's dollars and hours are read from its usage files, and the cell means and fits.
+// cost_test.go tests ComputeCost over a fake records repository:
+// the tags that enter a cell, a run's dollars and hours from its usage files, and the cell means and fits.
 
 package reportengine
 
@@ -21,7 +22,9 @@ import (
 // costTolerance is how far a computed figure may sit from its expected value.
 const costTolerance = 1e-9
 
-// usageFiles returns the files of a run's usage directory, keyed by tree-relative path: one session file per entry of sessions, keyed by session id, and the run and landed-size records unless their text is empty.
+// usageFiles returns the files of a run's usage directory, keyed by tree-relative path.
+// It holds one session file per entry of sessions, keyed by session id.
+// The run and landed-size records are included unless their text is empty.
 func usageFiles(sessions map[string]string, run, landed string) map[string]string {
 	dir := filepath.ToSlash(shedrun.UsageDirRel())
 	files := map[string]string{}
@@ -37,7 +40,8 @@ func usageFiles(sessions map[string]string, run, landed string) map[string]strin
 	return files
 }
 
-// sessionText is the text of a session record costing cost, a JSON number or null, over the span started to ended; a zero time leaves its stamp out.
+// sessionText is the text of a session record costing cost, a JSON number or null, over the span started to ended;
+// a zero time leaves its stamp out.
 func sessionText(cost string, started, ended time.Time) string {
 	text := fmt.Sprintf(`{"session_id":"s","row":"r","role":"x","cost_usd":%s`, cost)
 	if !started.IsZero() {
@@ -59,7 +63,8 @@ func landedText(added, deleted int) string {
 	return fmt.Sprintf(`{"lines_added":%d,"lines_deleted":%d,"files_changed":1}`, added, deleted)
 }
 
-// tapestryRun adds a landed tapestry run of slug that the timing report times over hours from startHour, with one session costing usd and a landed diff of lines changed lines.
+// tapestryRun adds a landed tapestry run of slug, which the timing report times over hours from startHour.
+// It holds one session costing usd and a landed diff of lines changed lines.
 func tapestryRun(w *world, slug string, startHour int, hours, usd float64, lines int, profile string) {
 	start := at(startHour)
 	finalized := start.Add(time.Duration(hours * float64(time.Hour)))
@@ -77,7 +82,8 @@ func motifRun(w *world, slug string, hour int, extra map[string]string) {
 	w.tagWith(slug, "sha-"+slug, at(hour), seedText("motif"), status, extra)
 }
 
-// motifUsage is the usage files of a motif run with one session costing usd over the hours from hour 30 to hour 30 plus hours.
+// motifUsage is the usage files of a motif run, with one session costing usd.
+// The session spans from hour 30 to hour 30 plus hours.
 func motifUsage(usd string, hours int, storedRecord bool) map[string]string {
 	sessions := map[string]string{"a": sessionText(usd, at(30), at(30).Add(time.Duration(hours)*time.Hour))}
 	return usageFiles(sessions, runText("motif", "p", storedRecord), "")
@@ -105,7 +111,8 @@ func sameFit(got, want *CostFit) bool {
 		math.Abs(got.Correlation-want.Correlation) < costTolerance
 }
 
-// TestComputeCost covers the cell grouping, the landed test per recipe, the dollar and hour sources, the fits and the minimum.
+// TestComputeCost covers the cell grouping, the landed test per recipe and the dollar and hour sources.
+// It also covers the fits and the minimum.
 func TestComputeCost(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,19 +1,21 @@
-// keymove.go — the declared key moves between registered modules, and their application to a task's run settings.
+// keymove.go declares the key moves between registered modules and applies them to a task's run settings.
 
 package configreg
 
-// KeyMove names one key that moved from a source module's config file to a target module's, with its key unchanged in meaning.
+// KeyMove names one key that moved from a source module's config file to a target module's, keeping its meaning.
 type KeyMove struct {
 	// FromModule and FromKey name the key in its old module.
 	FromModule, FromKey string
 	// ToModule and ToKey name the key in its new module.
 	ToModule, ToKey string
-	// KeepTarget makes a target file that holds the key, and was not started from the template in the same pass, keep its value whatever it is, the template default included.
+	// KeepTarget makes a target file that already holds the key keep its value, the template default included;
+	// it does not apply to a file started from the template in the same pass.
 	KeepTarget bool
 }
 
 // KeyMoves returns every declared key move, in the order reconcile applies them.
-// A reconcile relocates a layer's source values into the target module's file of the same layer, and run settings are rewritten the same way.
+// A reconcile relocates a layer's source values into the target module's file of the same layer;
+// run settings are rewritten the same way.
 func KeyMoves() []KeyMove {
 	return []KeyMove{
 		{FromModule: "shuttle", FromKey: "claude", ToModule: "claude", ToKey: "binary"},
@@ -22,8 +24,8 @@ func KeyMoves() []KeyMove {
 		{FromModule: "shuttle", FromKey: "claude_prompt_cache_ttl_roles", ToModule: "claude", ToKey: "prompt_cache_ttl_roles"},
 		{FromModule: "burler", FromKey: "lenses", ToModule: "lenses", ToKey: "lenses", KeepTarget: true},
 		{FromModule: "burler", FromKey: "fans", ToModule: "lenses", ToKey: "fans", KeepTarget: true},
-		// The darn recipe's review perch is loom's Code-Review perch, so its darn.yaml keys moved to loom.yaml's Code-Review keys;
-		// review_fan and review_fix_fan are the fan keys' names before darn_reviewer_fan and darn_fixer_fan.
+		// The darn recipe's review perch is loom's Code-Review perch, so its darn.yaml keys map to loom.yaml's Code-Review keys;
+		// review_fan and review_fix_fan are the older names of darn_reviewer_fan and darn_fixer_fan.
 		{FromModule: "darn", FromKey: "darn_reviewer_model", ToModule: "loom", ToKey: "code_reviewer_model"},
 		{FromModule: "darn", FromKey: "darn_fixer_model", ToModule: "loom", ToKey: "code_fixer_model"},
 		{FromModule: "darn", FromKey: "darn_reviewer_fan", ToModule: "loom", ToKey: "code_reviewer_fan"},
@@ -33,7 +35,8 @@ func KeyMoves() []KeyMove {
 		{FromModule: "darn", FromKey: "review_max_bounces", ToModule: "loom", ToKey: "code_max_bounces"},
 		{FromModule: "darn", FromKey: "review_hard_max_bounces", ToModule: "loom", ToKey: "code_hard_max_bounces"},
 		{FromModule: "darn", FromKey: "review_amend_max_bounces", ToModule: "loom", ToKey: "review_amend_max_bounces"},
-		// The plan perch and the implementer are the tapestry recipe's alone, so loom.yaml's plan keys moved to tapestry.yaml under the same names.
+		// The plan perch and the implementer belong to the tapestry recipe alone;
+		// the plan keys of loom.yaml move to tapestry.yaml under the same names.
 		{FromModule: "loom", FromKey: "plan", ToModule: "tapestry", ToKey: "plan"},
 		{FromModule: "loom", FromKey: "plan_timeout_min", ToModule: "tapestry", ToKey: "plan_timeout_min"},
 		{FromModule: "loom", FromKey: "implementer", ToModule: "tapestry", ToKey: "implementer"},
@@ -50,7 +53,8 @@ func KeyMoves() []KeyMove {
 	}
 }
 
-// KeyCopy names one key copied, not moved, from a source module's config file to a target module's, under a key name of its own.
+// KeyCopy names one key copied, not moved, from a source module's config file to a target module's;
+// the copy goes under a key name of its own.
 // The copy reads and writes the hub's base layer only.
 type KeyCopy struct {
 	// FromModule and FromKey name the key in the source module, which keeps it.
@@ -60,13 +64,15 @@ type KeyCopy struct {
 }
 
 // KeyCopies returns every declared key copy, in the order reconcile applies them.
-// A reconcile places the value in the target module's hub file when the source file sets it and the target file does not.
+// A reconcile places the value in the target module's hub file when the source file sets it;
+// it does so only when the target file does not set the key.
 func KeyCopies() []KeyCopy {
 	return []KeyCopy{}
 }
 
 // moveRunSettings returns settings with every declared key move applied, leaving the argument untouched.
-// A moved key lands in the target module's object unless that object already holds it, in which case the target's value is kept and the source key dropped.
+// A moved key lands in the target module's object unless that object already holds it;
+// in that case the target's value is kept and the source key is dropped.
 // A module whose value is not an object is passed through for the module loop to refuse.
 func moveRunSettings(settings map[string]any) map[string]any {
 	moved := make(map[string]any, len(settings))

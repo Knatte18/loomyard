@@ -1,4 +1,4 @@
-// daemonlog.go declares the line format of the daemon log file the daemon writes and the client quotes, and the excerpt a client that gave up connecting appends to its error.
+// daemonlog.go declares the daemon log's line format and the excerpt a client appends after giving up on connecting.
 
 package creelengine
 
@@ -28,9 +28,12 @@ func DaemonLogPrefix(pid int) string {
 	return fmt.Sprintf("%s%d ", daemonLogPidPrefix, pid)
 }
 
-// daemonLogExcerpt describes what the daemon log at path holds from the start of the daemon with pid, for a client that gave up connecting.
-// It first opens the file for append without creating it, as the spawn did, and says the log could not be opened when that or the later read fails.
-// It quotes the lines that open with the daemon's pid prefix, and, while no other start header follows the daemon's own, the lines carrying no pid prefix after that header.
+// daemonLogExcerpt describes what the daemon log at path holds from the start of the daemon with pid.
+// It is the excerpt a client appends to its error after giving up on connecting.
+// It first opens the file for append without creating it, so a missing log is reported, not created.
+// It says the log could not be opened when the open, the close, or the read fails.
+// It quotes the lines that open with the daemon's pid prefix.
+// While no other start header follows the daemon's own, it also quotes the lines after its header with no pid prefix.
 // When another start header follows, it says the file also holds lines it cannot attribute.
 func daemonLogExcerpt(path string, pid int) string {
 	probe, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)

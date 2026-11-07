@@ -1,5 +1,5 @@
-// configcli_integration_test.go — e2e integration tests for configcli.
-// Tests real fabriccli.RunCLI over a hubforge.CopyHub fixture.
+// configcli_integration_test.go holds the end-to-end tests of configcli.
+// They drive the real fabriccli.RunCLI over a hubforge.CopyHub fixture.
 
 package configcli
 
@@ -30,14 +30,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in the Bolt checkout with no per-worktree copy written.
-// Its steps run in this order on one hub and pair, so the scenario builds the hub once.
-// It does not call t.Parallel: it sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
+// TestConfigOverRealHub drives configuration edits through a real hub with one pair.
+// A per-worktree module edit syncs into the pair's fabric worktree and leaves the code side unchanged.
+// A hub-wide module `--set` changes the hub file and commits it in the Bolt checkout;
+// no per-worktree copy is written.
+// Its steps run in order on one hub and pair, so the hub is built once.
+// It does not call t.Parallel: it changes FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH, and t.Setenv panics under t.Parallel.
 func TestConfigOverRealHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	const slug = "config-hub-test"
 
-	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.
+	// fabriccli.CloneAndWire has already materialized every registered module's config at BoardDir;
+	// the repo-wide fabric.yaml is there too,
+	// and the records-side primary sits on its RecordsBranchName-suffixed branch.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
@@ -49,7 +54,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	fabricWorktreePath := fabricengine.RecordsWorktreePath(h.Location, slug)
 	boardDir := fabricengine.BoardDir(h.Location.HubPath)
 
-	// Explicitly clear FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH so the commits are not silent no-ops.
+	// Clear FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH so the commits are real rather than silent no-ops.
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	t.Setenv("FABRIC_SKIP_PUSH", "")
 
@@ -138,7 +143,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		{module: "board", set: "labels.x=desc", want: "x: desc"},
 		{module: "fabric", set: "branch_prefix=x", want: "branch_prefix: x"},
 	}
-	// A hub-wide write is refused from a pair and from a slug-bearing session, so the writes below run from the prime with no strand name.
+	// A hub-wide write is refused from a pair and from a slug-bearing session;
+	// so the writes below run from the prime with no strand name.
 	t.Setenv(agentname.StrandNameEnv, "")
 	primeWorktreePath := h.PrimeWorktree()
 
@@ -236,7 +242,8 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("read hub board.yaml: %v", err)
 		}
 
-		// The real command meets the no-terminal refusal before any listing, so this drives menu with a terminal answer of true to reach its hub-write guard.
+		// The real command meets the no-terminal refusal before any listing,
+		// so this drives menu with a terminal answer of true to reach its hub-write guard.
 		codeLayout, err := lymcwd.Resolve(codeWorktreePath)
 		if err != nil {
 			t.Fatalf("lymcwd.Resolve(%q): %v", codeWorktreePath, err)
@@ -257,7 +264,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 	})
 
-	// A file that is no terminal and a reader that is no file are the two non-terminal inputs of stdinIsTerminal; its terminal branch needs a real terminal, which no test has.
+	// The two non-terminal inputs of stdinIsTerminal are a file that is no terminal and a reader that is no file;
+	// its terminal branch needs a real terminal, which no test has.
 	t.Run("the real command refuses its editor paths when its input is not a terminal", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		loomFile := configengine.ConfigFile(codeWorktreePath, "loom")
@@ -342,8 +350,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		// webster_fan holds a value under the old name alone, and plan_fan sits beside the new name it was renamed to.
-		// The hub base is sparse, so the new name is planted for plan_fan to sit beside.
+		// The planted old keys are webster_fan and plan_reviewer_fan, each under its old name alone.
+		// plan_fan is planted beside them, since the hub base is sparse.
 		var planted []string
 		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
 			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "plan_reviewer_fan:") {
@@ -370,9 +378,11 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("seed the machine file: %v", err)
 		}
 
-		// A profiles file beside a template base recording an older template follows the template change, which the dry run lists:
-		// a key the file still holds at the base's value under removed and updated, a value the operator set that the template holds otherwise under differs,
-		// and a recipe block held under its former name beside a differing current one under unsettled.
+		// A profiles file beside a template base that records an older template follows the template change,
+		// and the dry run lists it as follows:
+		// a key the file still holds at the base's value falls under removed and updated;
+		// a value the operator set, which the template holds otherwise, falls under differs;
+		// a recipe block held under its former name beside a differing current one falls under unsettled.
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesOriginal, err := os.ReadFile(profilesFile)
 		if err != nil {
@@ -494,7 +504,8 @@ func TestConfigOverRealHub(t *testing.T) {
 			})
 		}
 
-		// A committed template base holding an older template is rewritten by the apply, and the config commit carries it beside the files.
+		// A committed template base holding an older template is rewritten by the apply,
+		// and the config commit carries it beside the files.
 		if err := os.WriteFile(baseFile, []byte(olderTemplate), 0o644); err != nil {
 			t.Fatalf("plant an older template as the committed profiles template base: %v", err)
 		}
@@ -654,7 +665,8 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Errorf("board profiles.yaml = %q after the apply; want %q, byte for byte", profilesAfter, profilesBefore)
 		}
 
-		// The profile still holding the retired keys seeds a run: the Webster key reads as its Code successor and the Merge key is dropped.
+		// The profile still holding the retired keys seeds a run:
+		// the Webster key reads as its Code successor and the Merge key is dropped.
 		profiles, err := runprofile.Load(configengine.Dirs{Board: boardDir})
 		if err != nil {
 			t.Fatalf("runprofile.Load: %v", err)
@@ -723,8 +735,10 @@ func boardHead(t *testing.T, boardDir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// reconcileBaseEntry returns the envelope's entry for module that records the reconcile of the module's own file, the one carrying a seed, failing the test when it is absent.
-// A key move reports apart, under the source module's name, so the first entry of a module is not always the reconcile one.
+// reconcileBaseEntry returns the entry in the envelope for module that records the reconcile of the module's own file.
+// That entry carries the seed; the test fails when it is absent.
+// A key move reports apart, under the source module's name,
+// so the first entry of a module is not always the reconcile one.
 func reconcileBaseEntry(t *testing.T, result map[string]any, module string) map[string]any {
 	t.Helper()
 	modules, ok := result["modules"].([]any)

@@ -4,8 +4,8 @@ package render
 
 import "fmt"
 
-// ValidateDisplay refuses a display reed cannot place.
-// That is an own-window display with a negative WindowSize; every other display passes.
+// ValidateDisplay refuses a display reed cannot place: an own-window display with a negative WindowSize.
+// Every other display passes.
 // The error names the display's anchor.
 func ValidateDisplay(d Display) error {
 	if d.Anchor == AnchorOwnWindow && d.WindowSize < 0 {

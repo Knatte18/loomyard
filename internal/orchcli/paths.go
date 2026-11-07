@@ -1,5 +1,5 @@
-// paths.go declares the orch module's one scratch accessor: every file orch writes lives under the prime's `<anchor>/.lym/orch/`, joined once in internal/orchroute and handed to orchengine as told paths (Durable-vs-Ephemeral State, Lymdirs Single-Declarer and Told-Geometry Invariants).
-// PrimeRoot is the worktree root a relative note path resolves against.
+// paths.go derives the orch paths for a prime: every file orch writes lives under the prime's `<anchor>/.lym/orch/`.
+// internal/orchroute joins that path once, and orchengine receives the joined paths as told paths.
 
 package orchcli
 
@@ -18,7 +18,8 @@ func PrimePaths(location *lymcwd.Location) orchengine.Paths {
 	return orchPaths(location)
 }
 
-// orchPaths returns every path orch operates on, rooted at location's anchor, and the hub's presence record the rendered pointers read.
+// orchPaths returns every path orch operates on, rooted at location's anchor.
+// It also sets the hub's presence record, which the rendered pointers read.
 // A hub whose Slack geometry cannot be built leaves the presence path empty, which reads as no presence line.
 func orchPaths(location *lymcwd.Location) orchengine.Paths {
 	paths := orchroute.Paths(location)

@@ -1,4 +1,5 @@
-// beamland.go holds the refusal that stops a beam's landing while anything still works under the beam: an open member entry or a local pair forked from it.
+// beamland.go holds the refusal that stops a beam's landing while anything still works under the beam.
+// What still works under it is an open member entry or a local pair forked from the beam.
 
 package battencli
 
@@ -15,7 +16,9 @@ import (
 )
 
 // BeamLandMember is an open board entry whose parent is a beam.
-// Slug names it, HasPair says whether this machine holds its pair as a registered worktree, a directory left at its path reading as none, and Running says whether its board status is a run status, so a run is in flight on some machine.
+// Slug names the entry, and HasPair reports whether this machine holds its pair as a registered worktree.
+// A directory left at the pair's path reads as no pair.
+// Running reports whether the board status is a run status, so a run is in flight on some machine.
 type BeamLandMember struct {
 	Slug    string
 	HasPair bool
@@ -53,7 +56,8 @@ func hubLandingSeams(location *lymcwd.Location, slug string) landingSeams {
 	}
 }
 
-// entryIsProject reports whether the receiver's slug is a project entry, which only a beam project's run makes a pair for from its seed's anchor.
+// entryIsProject reports whether the receiver's slug is a project entry.
+// Only a beam project's run makes a pair for such an entry, from the anchor in its seed.
 func (c *battenCLI) entryIsProject() (bool, error) {
 	if c.beam.Project == nil {
 		return false, nil
@@ -61,7 +65,8 @@ func (c *battenCLI) entryIsProject() (bool, error) {
 	return c.beam.Project()
 }
 
-// ReadBeamLandBlockers reads what still works under the beam slug: its open member entries, through any depth of grouping projects, and the local pairs forked from it.
+// ReadBeamLandBlockers reads what still works under the beam slug:
+// its open member entries, through any depth of grouping projects, and the local pairs forked from it.
 // The beam's own orch is no blocker, since it runs until the beam comes down.
 func ReadBeamLandBlockers(prime *lymcwd.Location, slug string) (BeamLandBlockers, error) {
 	members, err := beamMembers(prime, slug)
@@ -103,7 +108,8 @@ func beamLandRefusal(slug string, blockers BeamLandBlockers) error {
 	return fmt.Errorf("battencli: the beam %s cannot land while work remains under it; way forward: %s", slug, strings.Join(ways, "; "))
 }
 
-// beamMembers lists, sorted, the open tasks and beam projects whose parent, through any depth of grouping projects, is the beam slug.
+// beamMembers lists, sorted by slug, the open tasks and beam projects whose parent is the beam slug.
+// Parentage counts through any depth of grouping projects.
 func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {

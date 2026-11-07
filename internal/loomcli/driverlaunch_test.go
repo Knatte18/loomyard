@@ -60,7 +60,8 @@ func TestReedDriverPaneProbe_Strands_ReturnsStatusStrands(t *testing.T) {
 	}
 }
 
-// TestReedDriverDirectory_DriverRow asserts DriverRow returns the first row of the directory that names a driver strand, reports none for a directory without one, and passes a directory error through.
+// TestReedDriverDirectory_DriverRow asserts DriverRow returns the first directory row naming a driver strand.
+// It reports none for a directory without one, and it passes a directory error through.
 func TestReedDriverDirectory_DriverRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

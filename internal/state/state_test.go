@@ -19,7 +19,10 @@ type sample struct {
 	N    int
 }
 
-// TestWriteJSON_RoundTripOverwriteAndLayout writes a value, reads it back, overwrites it with a different one, and verifies the second read returns the new value, the file is JSON indented by two spaces, and the directory holds only the data file and its lock file at exactly path + ".lock", with no .tmp- entries left behind.
+// TestWriteJSON_RoundTripOverwriteAndLayout pins that a written value reads back and that an overwrite replaces it.
+// It also pins that the file is JSON indented by two spaces.
+// The directory holds only the data file and its lock at exactly path + ".lock",
+// and no .tmp- entries are left behind.
 //
 //testtiming:keep pins the two-space indentation and the data-plus-lock-only directory layout, which no covering test asserts
 func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
@@ -83,7 +86,8 @@ func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
 	}
 }
 
-// TestCorruptFile writes invalid JSON and verifies ReadJSON returns a non-nil error, and that UpdateJSON aborts the same way without running mutate or touching the file.
+// TestCorruptFile pins that ReadJSON returns a non-nil error for invalid JSON,
+// and that UpdateJSON aborts the same way without running mutate or touching the file.
 //
 //testtiming:keep named by internal/loomcli's smoke test as the lenient read's decode-failure pin
 func TestCorruptFile(t *testing.T) {
@@ -94,7 +98,6 @@ func TestCorruptFile(t *testing.T) {
 	path := filepath.Join(tmpDir, "corrupt.json")
 	lockPath := path + ".lock"
 
-	// Write corrupt JSON.
 	corrupt := []byte("{not json")
 	if err := os.WriteFile(path, corrupt, 0o644); err != nil {
 		t.Fatalf("setup: WriteFile() error: %v", err)
@@ -109,8 +112,8 @@ func TestCorruptFile(t *testing.T) {
 		t.Errorf("ReadJSON() on corrupt file error = %v; want errors.Is(err, ErrDecode)", err)
 	}
 
-	// UpdateJSON shares the same lenient read, so it aborts before its mutate with the same wrapped
-	// error and never overwrites the corrupt file.
+	// UpdateJSON shares the same lenient read, so it aborts before mutate with the same wrapped error.
+	// It never overwrites the corrupt file.
 	mutateCalled := false
 	uerr := state.UpdateJSON(path, lockPath, func(cur sample, found bool) (sample, error) {
 		mutateCalled = true
@@ -176,8 +179,11 @@ type keepRecord struct {
 	Raw     json.RawMessage      `json:"raw,omitempty"`
 }
 
-// TestWriteJSON_KeepsUnknownKeys seeds a file, writes a keepRecord over it through UpdateJSON or WriteJSON, and compares the written file to its exact expected text.
-// A key the record's type does not declare survives with its exact digits after the known keys, wherever a declared struct holds it and the element it sits in is unchanged, and no key survives inside an opaque field or an element that was updated, removed or moved.
+// TestWriteJSON_KeepsUnknownKeys seeds a file and writes a keepRecord over it through UpdateJSON or WriteJSON.
+// It compares the written file to its exact expected text.
+// A key the record's type does not declare survives with its exact digits after the known keys.
+// It does so wherever a declared struct holds it and the element it sits in is unchanged.
+// No key survives inside an opaque field or inside an element that was updated, removed or moved.
 func TestWriteJSON_KeepsUnknownKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

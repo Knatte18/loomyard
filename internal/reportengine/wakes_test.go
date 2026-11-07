@@ -1,4 +1,5 @@
-// wakes_test.go tests the wake sources, automatic steps, alignment outcomes, stops and failure classes of a run over a fake records repository.
+// wakes_test.go tests the wake sources, automatic steps, alignment outcomes, stops and failure classes of a run.
+// It runs over a fake records repository.
 
 package reportengine
 

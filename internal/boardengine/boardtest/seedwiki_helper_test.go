@@ -1,4 +1,5 @@
-// seedwiki_helper_test.go holds seedWiki and benchSizes, the board-seeding helper and the board sizes the benchmarks and concurrency tests of every tier share.
+// seedwiki_helper_test.go holds seedWiki and benchSizes.
+// They are the board-seeding helper and the board sizes that benchmarks and concurrency tests of all tiers share.
 // It carries no tier tag so each tier's test binary compiles it.
 
 package boardtest
@@ -16,19 +17,19 @@ import (
 )
 
 // benchSizes is the set of board sizes (number of tasks already in board.json) each benchmark is run against.
-// Every write re-renders the whole board, so cost is expected to grow with size — these sizes make that scaling visible.
+// Every write re-renders the whole board, so cost grows with size; these sizes make that visible.
 var benchSizes = []int{10, 100, 1000}
 
-// seedWiki writes a board.json with n independent (dependency-free) tasks into a fresh temp dir, seeded with _lym/config/board.yaml for config, and returns the cwd path.
+// seedWiki writes a board.json with n independent (dependency-free) tasks into a fresh temp dir.
+// It seeds _lym/config/board.yaml for config and returns the cwd path.
 // Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O, not git push latency.
 // It takes a testing.TB so both benchmarks and concurrency tests can use it.
-// For direct facade tests (not CLI), construct Board from the config's Path which is resolved from board.yaml.
+// Facade tests that skip the CLI construct Board from the config's Path, which board.yaml resolves.
 func seedWiki(tb testing.TB, n int) string {
 	tb.Helper()
 
 	dir := tb.TempDir()
 
-	// Create _lym and _lym/config directories with board.yaml config
 	lymDir := filepath.Join(dir, lymdirs.LymDirName)
 	if err := os.MkdirAll(lymDir, 0o755); err != nil {
 		tb.Fatalf("mkdir _lym: %v", err)
@@ -42,7 +43,6 @@ func seedWiki(tb testing.TB, n int) string {
 		tb.Fatalf("write board.yaml: %v", err)
 	}
 
-	// Create board directory and board.json
 	boardDir := filepath.Join(dir, "board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		tb.Fatalf("mkdir board: %v", err)
@@ -68,6 +68,6 @@ func seedWiki(tb testing.TB, n int) string {
 	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), data, 0o644); err != nil {
 		tb.Fatalf("write seed: %v", err)
 	}
-	// Return the cwd (parent) for CLI benchmarks, which will call b.Chdir
+	// Return dir, the cwd that CLI benchmarks enter with b.Chdir.
 	return dir
 }

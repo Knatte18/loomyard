@@ -1,15 +1,18 @@
 <!-- This is the burler reviewer seat stencil: the only seat of the review half's one-seat table.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/burler/` and read
-     from there at call time, then filled by internal/seatengine from the seat's value map and handed to the
-     reviewer's shuttle run as the agent's entire visible instruction set — the two instruction
-     files it names below are read one at a time, only when the review reaches that step, never
-     previewed early.
+     It is an embedded default in contracts/stencils/stencils.go,
+     seeded to the Bolt checkout's `_lym/stencils/burler/`, read from there at call time,
+     filled by internal/seatengine from the seat's value map,
+     and handed to the reviewer's shuttle run as the agent's entire visible instruction set.
+     The two instruction files it names are read one at a time, only when the review reaches that step.
      Every marker below is a top-level {{.X}} substitution.
-     The reserved markers it uses, which the seats engine fills, are parent_directive and edit_directive;
-     the seat values it uses, which reviewSeatValues gives it, are instruction_1_path, instruction_2_path and review_path.
-     There are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
+     The seats engine fills the reserved markers it uses: parent_directive and edit_directive.
+     reviewSeatValues supplies instruction_1_path, instruction_2_path and review_path.
+     There are no {{if}}/{{range}} conditionals in this file:
+     a required marker inside a conditional branch would render silently blank when present-but-empty
+     (see internal/stencil/stencil.go).
      It names no fixer and no channel to one: the review half neither waits on nor messages the fix half.
-     This file deliberately never repeats the instruction files' bodies — the review-file YAML format and the cluster fork-spawn prose live in the files it names, not here. -->
+     It never repeats the instruction files' bodies:
+     the review-file YAML format and the cluster fork-spawn prose live in the files it names. -->
 
 # Burler — review
 

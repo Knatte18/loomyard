@@ -53,9 +53,9 @@ func trackedUnderRoot(t *testing.T, l *lymcwd.Location, dir, branch string) stri
 	return gitkit.Git(t, dir, "ls-tree", "-r", "--name-only", branch, "--", root)
 }
 
-// TestAdd_RunRecords builds one hub and runs Add against it through the run-record shapes, in this
-// order, since the parent weft branch gains run records at the second step and every later step
-// starts from that:
+// TestAdd_RunRecords builds one hub and runs Add against it through the run-record shapes.
+// The shapes run in order: the parent weft branch gains run records at the second step,
+// and every later step starts from that:
 // a parent tracking nothing under the root gives the same single origin-record commit as before the
 // drop existed;
 // two run directories seeded on the parent weft branch leave the pair's weft branch one commit ahead
@@ -201,7 +201,9 @@ func TestAdd_RunRecords(t *testing.T) {
 	})
 }
 
-// TestAdd_DropsParentRunRecords_SubpathAnchor repeats the drop in a hub anchored at a subpath, where the run-records root is joined under AnchorRel both for the fork's index drop and for the first weft commit, so the two joins must name the same tree.
+// TestAdd_DropsParentRunRecords_SubpathAnchor repeats the drop in a hub anchored at a subpath.
+// The run-records root is joined under AnchorRel for both the fork's index drop and the first weft commit,
+// so those two joins must name the same tree.
 //
 //testtiming:keep the run-records drop at a subpath anchor joining the root under AnchorRel for both the index drop and the first weft commit; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
@@ -229,7 +231,8 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 		t.Errorf("run-records root exists on the pair's weft disk (stat err = %v)", err)
 	}
 
-	// A parent pair re-anchored at another directory than the hub's holds its run records under its own anchor, and the child forked from it drops them there.
+	// A parent pair re-anchored at another directory than the hub's holds its run records under its own anchor,
+	// and the child forked from it drops them there.
 	t.Run("ParentPairAtAnotherAnchor", func(t *testing.T) {
 		const parentSlug, childSlug, parentAnchor = "anchored-parent", "anchored-child", "other"
 

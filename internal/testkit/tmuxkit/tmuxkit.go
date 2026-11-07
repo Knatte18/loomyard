@@ -1,32 +1,56 @@
 // Package tmuxkit gives each test package one isolated tmux socket directory.
 //
-// A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory, so no test reaches the caller's own tmux server or leaves a socket in the default directory.
+// A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory,
+// so no test reaches the caller's own tmux server or leaves a socket in the default directory.
 // Socket hands a single test a unique `-L` key and, when the test ends, kills its server and removes its socket file.
 // KillOnCleanup does the same for a key the test did not mint.
-// PackageServer hands one shared server, which Main's sweep kills, to every test of the package that names its own sessions, kills no server and asserts nothing about the whole session set.
-// Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
-// The config marks its servers with the user option `@lym_test_server`, which reed's stale-holder probe reads to leave such a server alone.
-// A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session, so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
-// Main also unsets `LYM_REED_TMUX_CONF`, so every reed.yaml a test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
-// Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
+// PackageServer hands one shared server to every test of the package that names its own sessions.
+// Main's sweep kills that server; PackageServer kills none and asserts nothing about the whole session set.
+// Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config,
+// so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
+// The config marks its servers with the user option `@lym_test_server`.
+// Reed's stale-holder probe reads that option to leave such a server alone.
+// A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session,
+// so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
+// Main also unsets `LYM_REED_TMUX_CONF`,
+// so every reed.yaml a test renders from the template resolves `tmux_conf` to empty,
+// and no operator tmux config reaches a server a test starts.
+// Reed starts a server itself in two cases:
+// after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
-// Main runs in the process run directory of `internal/lymtemp` and points `TMPDIR` at it, so every temp file a test creates lands there.
-// It also sets `GIT_CEILING_DIRECTORIES` to the directory, so no repository discovery from a temp fixture climbs above it.
-// After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
-// A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
-// Main also fails the package for a `.git` that appeared during its run directly in the lym temp root or the system temp directory above it, both shared by every test binary on the machine:
-// such an entry makes go's VCS stamping and git's repository discovery treat everything below it as one repository.
+// Main runs in the process run directory of `internal/lymtemp` and points `TMPDIR` at it,
+// so every temp file a test creates lands there.
+// It also sets `GIT_CEILING_DIRECTORIES` to the directory,
+// so no repository discovery from a temp fixture climbs above it.
+// After the run it sweeps the servers, killing every process their panes' sessions still hold.
+// On Linux it scans `/proc` for any process whose cwd, executable or argv references the directory;
+// it kills it and fails the package.
+// On every platform it then removes the directory, Windows included.
+// A removal that fails is reported without changing the exit code,
+// and a binary killed before it removes its directory leaves it for the next start's sweep.
+// Main also fails the package for a `.git` that appeared during its run directly in a shared temp directory:
+// the lym temp root or the system temp directory above it, both shared by every test binary on the machine.
+// Such an entry makes go's VCS stamping and git's repository discovery treat everything below it as one repository.
 // It removes the entry when it is an empty directory and names it for removal by hand otherwise.
-// Bound: a package running at the same time is failed for the same entry, since the check cannot tell which binary wrote it.
-// A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
+// Bound: a package running at the same time is failed for the same entry.
+// The check cannot tell which binary wrote it.
+// A test binary re-executed as a helper inherits that environment,
+// and its own run directory is made beside the inherited one, never inside it,
+// so its socket paths do not grow past the limit.
 // A socket on a reed capability-probe key is no finding in a run whose tier selection holds tier2 or tier3.
-// A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
-// Before the sweep it also fails the package for a socket it finds: any socket in a run whose tier selection holds neither tier2 nor tier3, and in one holding either only a socket whose key no test registered.
-// Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
-// BindStaleSocket leaves a socket file that refuses every stream connection, for tests of the code that removes dead sockets.
+// A reed watchdog daemon is killed without failing the package.
+// It idles out on its own schedule, after the test that spawned it.
+// Before the sweep it also fails the package for a socket it finds.
+// It fails on any socket in a run whose tier selection holds neither tier2 nor tier3;
+// in a run holding either, it fails only on a socket whose key no test registered.
+// The `/proc` probes behind that scan are exported for tests that look for processes themselves.
+// All are read-only: `Pids`, `ProcArgv`, `ProcCwd`, `ProcExe`, `ProcPPID`, `ProcState`, `ProcComm` and `IsWatchdog`.
+// BindStaleSocket leaves a socket file that refuses every stream connection.
+// It is for tests of the code that removes dead sockets.
 //
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lymbin.
-// The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, to starting servers under the kit's own config, and to the `/proc` scan and the kill of a leftover it finds.
+// The exemption is bounded to running `tmux` against sockets under the kit's own directory or its own fixture keys.
+// It also covers starting servers under the kit's own config, the `/proc` scan, and the kill of a leftover it finds.
 // A test binary killed by a panic or timeout skips Main's sweep and leaves its servers;
 // Socket's cleanup still covers ordinary test failures.
 package tmuxkit
@@ -105,10 +129,12 @@ func Main(m *testing.M) int {
 	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) }, lymtemp.Remove)
 }
 
-// gitEntryName is the repository marker that, left directly in a shared temp directory, turns everything below it into one repository.
+// gitEntryName is the repository marker.
+// Left directly in a shared temp directory, it turns everything below that directory into one repository.
 const gitEntryName = ".git"
 
-// sharedTempDirs returns the directories above the run directory dir that every test binary on the machine shares: the lym temp root holding dir, and the system temp directory holding that root.
+// sharedTempDirs returns the directories above the run directory dir that every test binary on the machine shares.
+// They are the lym temp root holding dir and the system temp directory holding that root.
 func sharedTempDirs(dir string) []string {
 	root := filepath.Dir(dir)
 	return []string{root, filepath.Dir(root)}
@@ -126,14 +152,17 @@ func presentGitEntries(dirs []string) map[string]bool {
 	return present
 }
 
-// runCheckingGitEntries snapshots the `.git` entries in dirs, calls run, and returns run's exit code, or 1 when the run left a new `.git` in dirs, naming it on w.
+// runCheckingGitEntries snapshots the `.git` entries in dirs and calls run.
+// It returns run's exit code, or 1 when the run left a new `.git` in dirs, naming it on w.
 func runCheckingGitEntries(w io.Writer, dirs []string, run func() int) int {
 	before := presentGitEntries(dirs)
 	return checkNewGitEntries(w, dirs, before, run())
 }
 
-// checkNewGitEntries fails the run for each `.git` directly in dirs that before does not hold, naming it on w, and returns code or 1.
-// It removes such an entry when it is an empty directory, so the stray breaks no later build, and asks for its removal by hand otherwise.
+// checkNewGitEntries fails the run for each `.git` directly in dirs that before does not hold.
+// It names each on w and returns 1 when it found one, otherwise code.
+// It removes such an entry when it is an empty directory,
+// so the stray breaks no later build, and asks for its removal by hand otherwise.
 // The entries are reported in the order of dirs.
 func checkNewGitEntries(w io.Writer, dirs []string, before map[string]bool, code int) int {
 	for _, dir := range dirs {
@@ -152,7 +181,8 @@ func checkNewGitEntries(w io.Writer, dirs []string, before map[string]bool, code
 	return code
 }
 
-// removeStrayGitEntry removes the `.git` entry at path, described by info, when it is an empty directory, and returns the line that says what became of it.
+// removeStrayGitEntry removes the `.git` entry at path, described by info, when it is an empty directory.
+// It returns the line that says what became of it.
 // A symlink or file is never removed or followed.
 func removeStrayGitEntry(path string, info fs.FileInfo) string {
 	if !info.IsDir() {
@@ -171,7 +201,9 @@ func removeStrayGitEntry(path string, info fs.FileInfo) string {
 	return fmt.Sprintf("tmuxkit: could not remove %s: %v; remove it by hand", path, err)
 }
 
-// afterRun finishes a package's run: it checks the sockets under dir, sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally calls remove to delete dir.
+// afterRun finishes a package's run: it checks the sockets under dir, then sweeps the servers.
+// On Linux it kills every process still referencing dir;
+// it fails the run for each one that is not a reed watchdog daemon, then calls remove to delete dir.
 // The socket check runs before the sweep, because the sweep removes the socket files the check reads.
 // A process that outlives its sweep gets up to grace to exit on its own first.
 // It returns code unless a socket finding or a leftover forces 1, and names each on w.
@@ -207,9 +239,10 @@ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func
 	return code
 }
 
-// checkSockets returns one finding per tmux server socket under dir's per-user socket directory that its package's tests may not leave.
+// checkSockets returns one finding per tmux server socket under dir's per-user socket directory that outlived the run.
 // With allowed false every socket is a finding; with it true only a socket whose key no test registered is.
-// A finding names the key and the way forward: make the test that starts the server a tier2 test, or register the key through Socket, KillOnCleanup or PackageServer.
+// A finding names the key and the way forward:
+// make the starting test a tier2 test, or register the key through Socket, KillOnCleanup or PackageServer.
 func checkSockets(dir string, allowed bool) []string {
 	registryMu.Lock()
 	defer registryMu.Unlock()
@@ -227,7 +260,8 @@ func checkSockets(dir string, allowed bool) []string {
 	return findings
 }
 
-// isReedProbeKey reports whether key has the form reed gives its capability probe's private socket: `lym-p` and seven hex digits.
+// isReedProbeKey reports whether key has the form reed gives its capability probe's private socket:
+// `lym-p` and seven hex digits.
 // A test that kills a reed process mid-probe leaves that server for the sweep, so such a key is no test's leak.
 func isReedProbeKey(key string) bool {
 	digits, ok := strings.CutPrefix(key, "lym-p")
@@ -294,8 +328,13 @@ func sweep(dir string, uid int) {
 	}
 }
 
-// killServer kills the tmux server that address, a `-L` or `-S` flag and its value, names, removes its socket file sock once it refuses connections, then kills every process still in a session one of its panes led.
-// Each pane leads its own session, and the hangup tmux sends it on exit misses a process that ignores SIGHUP or that the pane forked outside the terminal's foreground, so `kill-server` alone can leave such a process running.
+// killServer kills the tmux server that address names, a `-L` or `-S` flag and its value.
+// It then removes its socket file sock once it refuses connections,
+// and it kills every process still in a session one of its panes led.
+// Each pane leads its own session.
+// The hangup that tmux sends on exit misses some processes:
+// a process that ignores SIGHUP, or one the pane forked outside the terminal's foreground,
+// so `kill-server` alone can leave such a process running.
 func killServer(tmux, sock string, address ...string) {
 	panes := panePIDs(tmux, address...)
 	_ = exec.Command(tmux, append(address, "kill-server")...).Run()
@@ -334,7 +373,8 @@ func killSessionMembers(sessions []int) {
 	}
 }
 
-// Socket returns a unique `-L` key for one test, with a hermetic server already running on it, and registers its teardown in t.Cleanup through KillOnCleanup.
+// Socket returns a unique `-L` key for one test, with a hermetic server already running on it.
+// It registers the server's teardown in t.Cleanup through KillOnCleanup.
 // tmux is the binary to run.
 func Socket(t *testing.T, tmux string) string {
 	t.Helper()
@@ -349,7 +389,7 @@ func Socket(t *testing.T, tmux string) string {
 
 // PackageServer returns the `-L` key of one hermetic server shared by every test of the package that calls it, started on first use.
 // It is for a test that names its own sessions, kills no server and asserts nothing about the server's whole session set.
-// It registers no cleanup: Main's sweep kills every server under the kit's directory when the package ends.
+// It registers no cleanup: the sweep at the package's end kills every server under the kit's directory.
 // tmux is the binary to run.
 func PackageServer(t *testing.T, tmux string) string {
 	t.Helper()
@@ -371,10 +411,14 @@ func PackageServer(t *testing.T, tmux string) string {
 	return packageServerKey
 }
 
-// KillOnCleanup pre-starts a hermetic server on the `-L` key key, registers the key, and registers in t.Cleanup a `kill-server` on it, then the removal of that key's socket file and the kill of every process its panes' sessions still hold.
+// KillOnCleanup pre-starts a hermetic server on the `-L` key key and registers the key.
+// In t.Cleanup it runs a `kill-server` on the key and removes the key's socket file,
+// and it kills every process its panes' sessions still hold.
 // It is the helper for a key a test did not mint itself, such as a `reedengine.ServerName` key of a fixture hub.
-// The server reads the kit's own config instead of `~/.tmux.conf`, starts non-login panes, and survives having no session; a start failure fails the test.
-// The cleanup removes the one path for key under the current `TMUX_TMPDIR`'s per-user directory, never a glob, and only a socket that no longer accepts connections.
+// The server reads the kit's own config instead of `~/.tmux.conf` and starts non-login panes.
+// It survives having no session, and a start failure fails the test.
+// The cleanup removes the one path for key under the current `TMUX_TMPDIR`'s per-user directory, never a glob,
+// and it removes only a socket that no longer accepts connections.
 // tmux is the binary to run.
 func KillOnCleanup(t *testing.T, tmux, key string) {
 	t.Helper()
@@ -386,10 +430,10 @@ func KillOnCleanup(t *testing.T, tmux, key string) {
 }
 
 const (
-	// configFileName is the kit's tmux config, written once per test binary into the socket directory Main owns.
+	// configFileName is the kit's tmux config, written once per test binary into the directory `TMUX_TMPDIR` names.
 	configFileName = "lym-test-tmux.conf"
 
-	// testServerOption is the tmux user option the kit's config sets to "on", which reed's stale-holder probe reads to tell a pre-started test server from a stale one.
+	// testServerOption is the tmux option the kit sets to "on" so reed's stale-holder probe spares a test server.
 	testServerOption = "@lym_test_server"
 )
 
@@ -417,13 +461,15 @@ func registerKey(key string) {
 }
 
 // ConfigText is the kit's tmux config for shell.
-// `default-shell` and an equal `default-command` start a pane's shell without the login flag; `exit-empty off` keeps a server with no session alive;
+// `default-shell` and an equal `default-command` start a pane's shell without the login flag;
+// `exit-empty off` keeps a server with no session alive,
 // and the marker option tells reed's stale-holder probe to leave the server alone.
 func ConfigText(shell string) string {
 	return fmt.Sprintf("set -g default-shell %q\nset -g default-command %q\nset -g exit-empty off\nset -g %s on\n", shell, shell, testServerOption)
 }
 
-// serverConfig writes the kit's tmux config once per test binary, under the directory Main set `TMUX_TMPDIR` to, and returns its path.
+// serverConfig writes the kit's tmux config once per test binary, under the directory `TMUX_TMPDIR` names.
+// It returns the config's path.
 // The config is ConfigText for `$SHELL`, else `sh`.
 func serverConfig() (string, error) {
 	configOnce.Do(func() {
@@ -465,8 +511,11 @@ func startServer(tmux, key string) error {
 	return nil
 }
 
-// ServerEnviron returns environ without the variables no pane may inherit from the process that starts the server: the engines' own, and the trace id and agent names of the enclosing strand.
-// The engine filter is a copy of the engines' declared scrub, which this package cannot import because reedengine's own tests import the kit; a test outside the kit pins the two together.
+// ServerEnviron returns environ without the variables no pane may inherit from the process that starts the server.
+// Those are the engines' variables, the trace id, and the agent name variables of the enclosing strand.
+// The engine filter copies the scrub the engines declare.
+// This package cannot import the engines, because their tests import the kit.
+// A test outside the kit pins the two copies together.
 func ServerEnviron(environ []string) []string {
 	clean := make([]string, 0, len(environ))
 	for _, entry := range environ {
@@ -481,7 +530,8 @@ func ServerEnviron(environ []string) []string {
 	return clean
 }
 
-// socketPath is the socket file tmux creates for the `-L` key key, resolving the directory from `TMUX_TMPDIR` as tmux does.
+// socketPath returns the path of the socket file tmux creates for the `-L` server key.
+// The directory is `TMUX_TMPDIR` when it is set, and `/tmp` otherwise.
 func socketPath(key string) string {
 	base := os.Getenv("TMUX_TMPDIR")
 	if base == "" {
@@ -514,12 +564,14 @@ func removeDeadSocket(path string, wait time.Duration) {
 	}
 }
 
-// socketDir is the directory tmux puts its sockets in under a `TMUX_TMPDIR` of dir.
+// socketDir returns the per-user directory, `tmux-<uid>` under dir, where tmux keeps its sockets.
 func socketDir(dir string, uid int) string {
 	return filepath.Join(dir, "tmux-"+strconv.Itoa(uid))
 }
 
-// checkSocketPath reports an error naming `TMPDIR` as the remedy when dir plus the per-user directory plus the longest key would exceed the socket path limit.
+// checkSocketPath returns an error when a socket under dir would have a path over the socket path limit.
+// The path is sized for a key of maxKeyBytes bytes, the longest key.
+// The error asks the operator to set `TMPDIR` to a shorter path.
 func checkSocketPath(dir string, uid int) error {
 	longest := filepath.Join(socketDir(dir, uid), string(make([]byte, maxKeyBytes)))
 	if len(longest) > maxSocketPath {
@@ -529,8 +581,11 @@ func checkSocketPath(dir string, uid int) error {
 }
 
 // setTempEnv points every temporary file at dir: `TMPDIR`, and on Windows `TMP` and `TEMP`.
-// It also makes dir the `GIT_CEILING_DIRECTORIES` ceiling, so neither git nor a repository-root walk started from a temp fixture climbs above dir to a stray `.git` the test did not create.
-// `XDG_STATE_HOME`, and on Windows `LOCALAPPDATA`, point at dir too, so no process a test starts, a `lym creel daemon` included, writes the operator's per-user state; a test that sets the variable itself still wins.
+// It also makes dir the `GIT_CEILING_DIRECTORIES` ceiling.
+// Git and a repository-root walk then cannot climb above dir to a `.git` the test did not create.
+// `XDG_STATE_HOME`, and on Windows `LOCALAPPDATA`, point at dir too,
+// so no process a test starts, a `lym creel daemon` included, writes the operator's per-user state;
+// a test that sets the variable itself still wins.
 func setTempEnv(dir string) {
 	os.Setenv("TMPDIR", dir)
 	os.Setenv("GIT_CEILING_DIRECTORIES", dir)
@@ -542,7 +597,9 @@ func setTempEnv(dir string) {
 	}
 }
 
-// setEnv points tmux and every temporary file at dir, detaches the process from any enclosing tmux session, and clears the variable that names an operator tmux config for reed.
+// setEnv points tmux and every temporary file at dir.
+// It detaches the process from any enclosing tmux session.
+// It clears `LYM_REED_TMUX_CONF`, the variable that names an operator's tmux config for reed.
 func setEnv(dir string) {
 	os.Setenv("TMUX_TMPDIR", dir)
 	setTempEnv(dir)

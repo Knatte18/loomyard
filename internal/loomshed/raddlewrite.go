@@ -1,4 +1,7 @@
-// raddlewrite.go implements the Raddle-Write producer: a decorator that records the run's mode, numbers each session of the row, gives a return or a goto a fresh start, and commits the raddle directory once the session is done.
+// raddlewrite.go implements the Raddle-Write producer, a decorator around the table-driven session producer.
+// It records the run's mode and numbers each session.
+// It starts a fresh session after a return or a goto.
+// It commits the raddle directory once a session is done.
 
 package loomshed
 
@@ -12,22 +15,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// RaddleWriteDeps are the told paths and seams of the Raddle-Write producer.
+// RaddleWriteDeps holds the paths and seams the Raddle-Write producer reads and writes.
 type RaddleWriteDeps struct {
 	// StatePath and StateLockPath are the run's state record and its lock.
 	StatePath     string
 	StateLockPath string
-	// ProposalPath is the proposal file and ReturnedPath where a return in auto mode sets it aside.
+	// ProposalPath is the proposal file; ReturnedPath is where a return in auto mode sets it aside.
 	ProposalPath string
 	ReturnedPath string
 	// ColdPath is where the run's first passing proposal is stored once.
 	ColdPath string
 	// ApprovalPath is the approval record the approve verb writes.
 	ApprovalPath string
-	// AutoApprove answers the loom key raddle_auto_approve through the run's setting lookup, so a profile's raddle block may set it.
+	// AutoApprove reports the raddle_auto_approve loom key.
+	// The key is read through the run's setting lookup, so a profile's raddle block may set it.
 	AutoApprove func() (bool, error)
-	// FreshEntry reports whether the row's current attempt began with a Raddle-File return or an operator goto into the row, read from the run's status history, with the history position of that entry.
-	// Position is zero when fresh is false.
+	// FreshEntry reports whether the row's current attempt began with a Raddle-File return or an operator goto.
+	// It reads the status history and gives the history position of that entry, which is zero when fresh is false.
 	FreshEntry func() (fresh bool, position int, err error)
 	// StoreCold copies the proposal to ColdPath and sets cold_stored unless already stored.
 	// It is the raddle gate's onPass in auto mode and a no-op in interactive mode, where the propose verb stores the cold proposal.
@@ -45,16 +49,22 @@ type raddleWrite struct {
 
 var _ shedengine.ShedProducer = (*raddleWrite)(nil)
 
-// NewRaddleWrite returns the producer of the Raddle-Write row, identified as name, around inner, the table-driven session producer.
+// NewRaddleWrite returns the producer of the Raddle-Write row, named name.
+// It wraps inner, the table-driven session producer.
 func NewRaddleWrite(name string, inner shedengine.ShedProducer, deps RaddleWriteDeps) shedengine.ShedProducer {
 	return &raddleWrite{name: name, inner: inner, deps: deps}
 }
 
 // Call implements shedengine.ShedProducer.
-// Each state update below is one step, so a resume after a crash repeats none of them:
-// the first call records the run's mode from AutoApprove, which every later call and Raddle-File read from the state instead of the key, and every call raises the session count.
-// A fresh entry not yet taken up at its history position sets the last attempt's output aside, so the seat starts a new session: auto mode moves the proposal to ReturnedPath, and interactive mode removes the approval record and clears the state's approval.
-// The inner producer then runs, and on Done the return reason is cleared and the raddle directory committed.
+// Each state update is one step, so a resume after a crash repeats none of them.
+// The first call records the run's mode from AutoApprove.
+// Every later call and the Raddle-File read take the mode from the state instead.
+// Every call raises the session count.
+// A fresh entry not yet taken up at its history position sets the last attempt's output aside.
+// Auto mode moves the proposal to ReturnedPath.
+// Interactive mode removes the approval record and clears the state's approval.
+// Either way the seat starts a new session.
+// The inner producer then runs; on Done the return reason is cleared and the raddle directory committed.
 // An error or a Stuck verdict of the inner producer is returned as is, with no commit.
 func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -118,7 +128,8 @@ func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	return outcome, pointer, nil
 }
 
-// clearLastAttempt removes the output of the last attempt in mode, so the seat's output file does not exist when its new session starts.
+// clearLastAttempt removes the output of the last attempt in mode.
+// The seat's output file must not exist when its new session starts.
 // A file already gone is no error, since a crash may have cleared it before the state recorded the entry.
 func (p *raddleWrite) clearLastAttempt(mode RaddleMode) error {
 	var err error

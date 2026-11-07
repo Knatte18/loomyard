@@ -23,7 +23,8 @@ const (
 	formattedGo    = "package p\n\nfunc F() {}\n"
 )
 
-// TestFmtCmd drives fmtCmd over a temporary worktree the way the pre-run leaves the receiver: only env.WorktreeRoot and cwd set.
+// TestFmtCmd drives fmtCmd over a temporary worktree.
+// The receiver is set the way the pre-run leaves it: only env.WorktreeRoot and cwd set.
 func TestFmtCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -163,7 +164,8 @@ func TestFmtCmd(t *testing.T) {
 
 	refusals := []struct {
 		name string
-		// setup creates the refused files under dir and returns the arguments naming them and the refused entries wanted, in order.
+		// setup creates the refused files under dir.
+		// It returns the arguments naming them and the refused entries wanted, in order.
 		setup func(t *testing.T, dir string) (args []string, wantRefused []string)
 	}{
 		{

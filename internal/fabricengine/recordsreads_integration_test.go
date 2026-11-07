@@ -1,4 +1,6 @@
-// recordsreads_integration_test.go covers the read-only reads of the records repository: a slug's archive and set-aside tags with their files, one file of a records branch, and a records branch's upstream.
+// recordsreads_integration_test.go covers the read-only reads of the records repository.
+// It covers a slug's archive and set-aside tags with their files.
+// It also covers one file of a records branch and a records branch's upstream.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 

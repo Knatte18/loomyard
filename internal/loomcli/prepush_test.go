@@ -1,4 +1,6 @@
-// prepush_test.go pins the pre-push check's verdicts over stub seams: when a push goes, when it stops, which pause it takes and the notices it posts, the skip condition, and how a stop reaches the seams it guards.
+// prepush_test.go pins the pre-push check's verdicts over stub seams.
+// It covers when a push goes or stops and which pause it takes;
+// the notices it posts, the skip condition, and how a stop reaches the seams it guards.
 
 package loomcli
 
@@ -303,7 +305,8 @@ func TestPrePushCheckGuard(t *testing.T) {
 	}
 }
 
-// TestAnnouncedBefore asserts a key is announced once: the first call records it and reads as new, a repeat reads as announced, and a different key reads as new again.
+// TestAnnouncedBefore asserts a key is announced once: the first call records it and reads as new;
+// a repeat reads as announced, and a different key reads as new again.
 func TestAnnouncedBefore(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -325,7 +328,8 @@ func TestAnnouncedBefore(t *testing.T) {
 	}
 }
 
-// TestSkipsCheck asserts which runs keep the pre-push check off: pushes or git off, the prime, a run a pause covers and a run at Finalize, and which do not.
+// TestSkipsCheck asserts which runs keep the pre-push check off:
+// pushes or git off, the prime, a run a pause covers, and a run at Finalize; the other runs do not.
 func TestSkipsCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -390,8 +394,9 @@ func stoppingPrePushCheck() prePushCheck {
 	}
 }
 
-// TestPrePushCheckWiredIntoDeps asserts the status deps' Commit, Spawn and Push and the PR-Review row's PushTask each run behind the check they are built with:
-// a stopping check stops Commit, Push and PushTask with its error and leaves Spawn a nil no-op, and none of them reaches git.
+// TestPrePushCheckWiredIntoDeps asserts the status deps and the PR-Review row run behind their check:
+// a stopping check stops Commit, Push and PushTask with its error and leaves Spawn a nil no-op;
+// none of them reaches git.
 func TestPrePushCheckWiredIntoDeps(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -414,7 +419,8 @@ func TestPrePushCheckWiredIntoDeps(t *testing.T) {
 	}
 }
 
-// TestPrePushCheckGuardedSeams asserts a stop of the check reaches the commit, spawn and push seams it guards as each is documented, and a passing check runs the seam and returns its result.
+// TestPrePushCheckGuardedSeams asserts a stop reaches the commit, spawn and push seams it guards as documented;
+// a passing check runs each seam and returns its result.
 func TestPrePushCheckGuardedSeams(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

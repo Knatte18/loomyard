@@ -1,11 +1,13 @@
 // Package creelfake fakes the two seams creelengine is told: Delivery, the hub's strands and their panes, and Clock.
 //
-// Delivery answers from scripted strands, idle and pause flags, a per-strand turn script beside them, stall reasons and errors, and records every send, command, interrupt and idle probe.
+// Delivery answers from scripted strands, idle and pause flags, a per-strand turn script, stall reasons and errors;
+// it records every send, command, interrupt and idle probe.
 // Its send and interrupt answers can also come from a function, which may block.
 // Clock advances only when a test says so and records every duration passed to After, in order.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded values and asserts itself.
 //
-// creelengine's tests that use the kit are external (package creelengine_test), since an in-package test importing the kit is an import cycle.
+// Tests of creelengine that use this package live in package creelengine_test.
+// An in-package test that imports it would form an import cycle.
 package creelfake
 
 import (
@@ -17,15 +19,18 @@ import (
 )
 
 // DefaultPanePID is the pane pid a scripted strand carries when its pid is left zero.
-// No real process has it, so a live strand left at its default is neither an ancestor of the test process nor refused as unreadable.
+// No real process has it.
+// A live strand left at the default is neither an ancestor of the test process nor refused as unreadable.
 const DefaultPanePID = 999_999_999
 
-// LiveStrand returns a live pane-mail strand with the given full name and the default pane pid, so the scheduler types its notices and reminders into it.
+// LiveStrand returns a live pane-mail strand with the given full name and the default pane pid,
+// so the scheduler types its notices and reminders into it.
 func LiveStrand(name string) creelengine.Strand {
 	return creelengine.Strand{Name: name, GUID: "guid-" + name, Worktree: "/hub/worktree", Live: true, PanePID: DefaultPanePID}
 }
 
-// HookStrand returns a live strand with the given full name and the default pane pid whose session runs creel's hook delivery: CreelHooks set.
+// HookStrand returns a live strand with the given full name and the default pane pid, with CreelHooks set.
+// Its session then runs creel's hook delivery.
 func HookStrand(name string) creelengine.Strand {
 	strand := LiveStrand(name)
 	strand.CreelHooks = true
@@ -39,13 +44,13 @@ func DormantStrand(name string) creelengine.Strand {
 	return strand
 }
 
-// Send is one call to Delivery.Send.
+// Send records one message sent to a strand: the strand's name and the text.
 type Send struct {
 	Strand string
 	Text   string
 }
 
-// CommandCall is one call to Delivery.Command.
+// CommandCall records one command sent to a strand: the strand's name and the command.
 type CommandCall struct {
 	Strand  string
 	Command creelengine.Command
@@ -57,8 +62,8 @@ type turnScript struct {
 	endedAt time.Time
 }
 
-// Delivery is a creelengine.Delivery whose answers are scripted.
-// A strand is idle unless set otherwise and no pause covers it.
+// Delivery is a creelengine.Delivery whose answers the test scripts and whose calls it records.
+// Strands are idle and unpaused unless the test scripts otherwise.
 type Delivery struct {
 	mu      sync.Mutex
 	strands []creelengine.Strand
@@ -142,7 +147,8 @@ func (d *Delivery) SetSendError(err error) {
 	d.sendErr = err
 }
 
-// SetSendFunc makes Send answer with fn's result, called without the fake's lock held; nil restores the scripted error.
+// SetSendFunc makes Send answer with fn's result, called without the fake's lock held;
+// nil restores the scripted error.
 func (d *Delivery) SetSendFunc(fn func(strand, text string) error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -156,7 +162,8 @@ func (d *Delivery) SetInterruptError(err error) {
 	d.interruptErr = err
 }
 
-// SetInterruptFunc makes Interrupt answer with fn's result, called without the fake's lock held; nil restores the scripted error.
+// SetInterruptFunc makes Interrupt answer with fn's result, called without the fake's lock held;
+// nil restores the scripted error.
 func (d *Delivery) SetInterruptFunc(fn func(strand string) error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -194,7 +201,8 @@ func (d *Delivery) Strands() ([]creelengine.Strand, error) {
 	return append([]creelengine.Strand(nil), d.strands...), nil
 }
 
-// SetIdleHook makes Idle call fn with the strand's name, without the fake's lock held, just before it answers; nil removes it.
+// SetIdleHook makes Idle call fn with the strand's name, without the fake's lock held, before it answers;
+// nil removes it.
 func (d *Delivery) SetIdleHook(fn func(strand string)) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -269,7 +277,8 @@ func (d *Delivery) Paused(strand creelengine.Strand) (bool, error) {
 	return d.paused[strand.Name], nil
 }
 
-// SetClaimLive scripts the StillLive answer of the claim ClaimPause makes for the named strand; a strand with none reads live.
+// SetClaimLive scripts the StillLive answer of the claim ClaimPause makes for the named strand;
+// a strand with none reads live.
 func (d *Delivery) SetClaimLive(name string, live func() (bool, error)) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -284,7 +293,9 @@ func (d *Delivery) Claims() []string {
 }
 
 // ClaimPause implements creelengine.Delivery.
-// It answers covered for a strand set paused and records its name in Claims, answers uncovered and records nothing for any other, and fails with the paused error when one is set.
+// It answers covered for a paused strand and records its name.
+// It answers uncovered and records nothing for any other strand,
+// and it fails with the paused error when one is set.
 func (d *Delivery) ClaimPause(strand creelengine.Strand) (creelengine.PauseClaim, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -356,7 +367,7 @@ type timer struct {
 	ch  chan time.Time
 }
 
-// Clock is a creelengine.Clock that stands still until Advance moves it.
+// Clock is a creelengine.Clock that stands still until a test moves it forward.
 type Clock struct {
 	mu      sync.Mutex
 	now     time.Time
@@ -377,7 +388,8 @@ func (c *Clock) Now() time.Time {
 	return c.now
 }
 
-// After implements creelengine.Clock: it records d and returns a channel that receives once Advance has moved the clock d past now.
+// After implements creelengine.Clock.
+// It records d and returns a channel that receives once the clock has moved d past now.
 // A duration of zero or less receives at once.
 func (c *Clock) After(d time.Duration) <-chan time.Time {
 	c.mu.Lock()
@@ -411,9 +423,10 @@ func (c *Clock) Advance(d time.Duration) {
 	c.timers = pending
 }
 
-// AdvanceByWaitsWhere advances the clock by the last recorded wait keep accepts, then waits for the next such wait to be recorded before the next step, until done closes.
-// It never jumps to a pending timer, so a timer of a loop whose waits keep rejects is not fired between two steps.
-// Like AwaitWaitsWhere it gives up after a real ten seconds, so a failing test fails on its own assertion instead of hanging.
+// AdvanceByWaitsWhere advances the clock by the last recorded wait that keep accepts, once for each new such wait.
+// It waits for the next such wait before it steps again, and it runs until done closes.
+// It never jumps to a pending timer, so a timer of a loop whose waits keep rejects does not fire between two steps.
+// It gives up after ten real seconds, so a failing test fails on its own assertion instead of hanging.
 func (c *Clock) AdvanceByWaitsWhere(keep func(time.Duration) bool, done <-chan struct{}) {
 	deadline := time.After(10 * time.Second)
 	stepped := 0
@@ -487,12 +500,15 @@ func (c *Clock) Waits() []time.Duration {
 }
 
 // AwaitWaits blocks until at least n durations have been passed to After and returns all of them.
-// It gives up after a real ten seconds and returns what it has, so a test that never reaches n fails on its own assertion instead of hanging.
+// It gives up after a real ten seconds and returns what it has,
+// so a test that never reaches n fails on its own assertion instead of hanging.
 func (c *Clock) AwaitWaits(n int) []time.Duration {
 	return c.AwaitWaitsWhere(n, nil)
 }
 
-// AwaitWaitsWhere is AwaitWaits counting and returning only the durations keep accepts, in order; a nil keep accepts all.
+// AwaitWaitsWhere blocks until at least n durations that keep accepts have been passed to After,
+// and it returns those durations in order; a nil keep accepts all.
+// It gives up after ten real seconds and returns what it has.
 // It tells apart the waits of loops that share the clock.
 func (c *Clock) AwaitWaitsWhere(n int, keep func(time.Duration) bool) []time.Duration {
 	deadline := time.After(10 * time.Second)

@@ -1,4 +1,4 @@
-// sentinel.go holds the one error type behind this package's exported refusal sentinels.
+// sentinel.go defines sentinelError, the error type behind this package's exported refusal sentinels.
 
 package fabricengine
 

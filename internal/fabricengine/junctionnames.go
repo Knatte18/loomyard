@@ -1,10 +1,9 @@
-// junctionnames.go implements the fabric-config-to-junction-name-set bridge: loading the repo-wide
-// fabric.yaml pathspec and turning it into the wired name-set the junction primitives operate on,
-// with the hub-reserved-name wiring guard applied, plus the two structural directory sets
-// (structuralCommittedDirs, structuralNeverCommittedDirs) that never come from that config at all.
-// Every wiring caller sources names through junctionNames/WiredNames/RepoWiredNames — never applies
-// filterHubReserved itself — so the guard cannot be forgotten at a call site.
-// reconcile/status callers read the name-set from the repo-wide `weft:main` base, the board dir ConfigDirs tells, not each pair's own weft base.
+// junctionnames.go turns the repo-wide fabric.yaml pathspec into the wired name set the junction primitives use.
+// It applies the hub-reserved-name guard and holds the two structural directory sets, which never come from config.
+// Wiring callers take names only from junctionNames, WiredNames or RepoWiredNames,
+// so the guard cannot be skipped at a call site.
+// reconcile and status callers read the name set from the repo-wide `weft:main` base:
+// the board directory ConfigDirs reports, not each pair's own weft base.
 
 package fabricengine
 
@@ -20,25 +19,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// structuralCommittedDirs is the durable, git-tracked structural directory set: `_lym` alone today.
-// Geometry here is structural, never config/env-overridable (the Cwd Resolution Invariant) —
-// every lym module fails without `_lym` existing, so its membership cannot be left to an
-// operator-editable `fabric.yaml` `pathspec` value.
-// A `fabric.yaml` that dropped `_lym` from `pathspec` would, absent this set, tear away the durable
-// tree entirely; injecting it in code instead means no config value can do that.
+// structuralCommittedDirs is the durable, git-tracked structural directory set: `_lym` alone.
+// Its membership is structural, never config or env-overridable (the Cwd Resolution Invariant):
+// every lym module fails without `_lym`, so an operator-editable fabric.yaml `pathspec` must not decide it.
+// Injecting it in code means no config value can tear away the durable tree.
 var structuralCommittedDirs = []string{lymdirs.LymDirName}
 
-// structuralNeverCommittedDirs is the machine-local, never-git-tracked structural directory set:
-// `.lym` alone today.
-// Geometry here is structural, never config/env-overridable (the Cwd Resolution Invariant) —
-// every lym module fails without `.lym` existing, so its membership cannot be left to an
-// operator-editable `fabric.yaml` `pathspec` value.
-// A `fabric.yaml` that omitted `.lym` from `pathspec` would, absent this set, leave machine-local
-// scratch unwired; injecting it in code instead means no config value can do that.
+// structuralNeverCommittedDirs is the machine-local, never-git-tracked structural directory set: `.lym` alone.
+// Its membership is structural, never config or env-overridable (the Cwd Resolution Invariant):
+// every lym module fails without `.lym`, so an operator-editable fabric.yaml `pathspec` must not decide it.
+// Injecting it in code means no config value can leave machine-local scratch unwired.
 var structuralNeverCommittedDirs = []string{lymdirs.DotLymDirName}
 
-// dedupUnion concatenates every slice in groups, keeping only the first occurrence of each name and preserving first-occurrence order across the whole call.
-// This is load-bearing, not tidy: a deployed `pathspec: _lym _extra` fabric.yaml means `_lym` arrives from both structuralCommittedDirs and cfg.Dirs() in the same call, and without dedup the duplicate name would reach WarpJunctions, ScopedPathspec, and status output.
+// dedupUnion concatenates every slice in groups, keeping only the first occurrence of each name.
+// Names keep their first-occurrence order across the whole call.
+// The dedup is required, because a deployed `pathspec: _lym _extra` fabric.yaml delivers `_lym` twice in one call:
+// from structuralCommittedDirs and from cfg.Dirs().
+// Without dedup, the duplicate would reach WarpJunctions, ScopedPathspec and status output.
 func dedupUnion(groups ...[]string) []string {
 	seen := make(map[string]bool)
 	var out []string
@@ -54,27 +51,26 @@ func dedupUnion(groups ...[]string) []string {
 	return out
 }
 
-// pathspecNames returns the pathspec/commit-routing set for cfg: structuralCommittedDirs unioned
-// with cfg's hub-reserved-filtered directory names.
-// It never contains a structuralNeverCommittedDirs entry — this is the set fabric's own weft sync
-// and Commit's classification build from, and either one committing a never-committed path would be
-// a bug.
+// pathspecNames returns the pathspec/commit-routing set for cfg:
+// structuralCommittedDirs unioned with cfg's hub-reserved-filtered directory names.
+// It never contains a structuralNeverCommittedDirs entry:
+// fabric's own weft sync and Commit's classification build from this set.
+// Committing a never-committed path would be a bug.
 func pathspecNames(cfg Config) []string {
 	return dedupUnion(structuralCommittedDirs, filterHubReserved(cfg.Dirs()))
 }
 
-// slugReservedNames returns the full slug-reservation set for cfg: both structural directory sets
-// unioned with cfg.Dirs() taken raw (unfiltered by filterHubReserved) and HubReservedNames().
-// cfg.Dirs() is taken raw, not routing-filtered, because a worktree slug must be refused for every
-// one of these names regardless of whether that name would actually wire a junction.
+// slugReservedNames returns the full slug-reservation set for cfg:
+// both structural directory sets, cfg.Dirs() taken raw, and HubReservedNames().
+// cfg.Dirs() is not routing-filtered:
+// a worktree slug must be refused for every one of these names, whether or not the name would wire a junction.
 func slugReservedNames(cfg Config) []string {
 	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, cfg.Dirs(), HubReservedNames())
 }
 
-// PathspecNames loads the fabric config under dirs and returns its pathspec/commit-routing set (see
-// pathspecNames) for callers outside this package — internal/fabriccli's weft sync pre-run in
-// particular, which must never fall back to a raw, unfiltered cfg.Dirs() once `_lym` leaves
-// template.yaml's default.
+// PathspecNames loads the fabric config under dirs and returns its pathspec/commit-routing name set.
+// Callers outside this package use it for weft sync.
+// That sync must never fall back to the raw, unfiltered directory list, because the config may omit `_lym`.
 func PathspecNames(dirs configengine.Dirs) ([]string, error) {
 	cfg, err := LoadConfig(dirs)
 	if err != nil {
@@ -83,14 +79,12 @@ func PathspecNames(dirs configengine.Dirs) ([]string, error) {
 	return pathspecNames(cfg), nil
 }
 
-// BoardWriteLockFile is the single exported declarer of the board write-lock filename: the lock
-// serialising every write to the board directory, held by internal/boardengine's own critical
-// section and by this package's pathspec-scoped board commits and seed-commit drops.
-// internal/boardengine aliases its own writeLockFile constant to this value rather than declaring
-// the literal a second time.
+// BoardWriteLockFile is the name of the lock file that serialises every write to the board directory.
+// Every holder of that lock uses this value, so the name is declared once.
 const BoardWriteLockFile = "board.lock"
 
-// BoardPushLockFile is the name of the Bolt checkout's absorbing push lock, held across a board sync's whole commit-and-push loop.
+// BoardPushLockFile is the name of the Bolt checkout's absorbing push lock.
+// It is held across a board sync's whole commit-and-push loop.
 const BoardPushLockFile = "board.push.lock"
 
 // BoardWriteLockPath returns the absolute path to the Bolt write lock file of hub, creating its directory.
@@ -98,7 +92,8 @@ func BoardWriteLockPath(hub string) (string, error) {
 	return BoltLockPath(BoltDir(hub), BoardWriteLockFile)
 }
 
-// BoltLockPath returns the lock file named name of the Bolt checkout at boltDir, in the checkout's never-tracked lock directory, and creates that directory.
+// BoltLockPath returns the path of the lock file named name in the Bolt checkout at boltDir.
+// The file sits in the checkout's never-tracked lock directory, which BoltLockPath creates.
 // A lock there never shows as a change in the board repository, so a stage-all board commit never sweeps it in.
 func BoltLockPath(boltDir, name string) (string, error) {
 	path := lock.TrackedLockPath(boltDir, name)
@@ -108,18 +103,17 @@ func BoltLockPath(boltDir, name string) (string, error) {
 	return path, nil
 }
 
-// BoltDirName is the name of the Bolt checkout inside a hub, re-exported from lymcwd.
-// It is the name every package outside lymcwd and runproc uses;
-// use BoltDir(hub) to obtain the full path.
+// BoltDirName is the name of the Bolt checkout inside a hub.
+// Use BoltDir(hub) to obtain the full path.
 const BoltDirName = lymcwd.BoltDirName
 
 // BoardDirName is the name of the directory holding the board's own data inside the hub.
-// It is set from BoltDirName, since the board lives in the Bolt checkout.
+// The board lives in the Bolt checkout, so the name is the Bolt checkout's name.
 // Use BoardDir(hub) to obtain the full path.
 const BoardDirName = BoltDirName
 
-// HubSuffix is the suffix appended to a repo name to form the hub container directory (e.g.
-// "loomyard" → "loomyard-LYMHUB").
+// HubSuffix is the suffix appended to a repo name to form the hub container directory:
+// "loomyard" becomes "loomyard-LYMHUB".
 // Use HubPath(parent, name) to obtain the full path.
 // internal/lymcwd keeps its own private copy because Location.RepoName derives from it.
 const HubSuffix = "-LYMHUB"
@@ -129,16 +123,18 @@ func BoltDir(hub string) string {
 	return filepath.Join(hub, BoltDirName)
 }
 
-// BoardDir returns the absolute path to the board's own data (board.json, its overview and design files, and its decision records) inside hub.
+// BoardDir returns the absolute path to the board's own data inside hub:
+// board.json, its overview and design files, and its decision records.
 // Everything else the Bolt checkout holds lives under BoltDir.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
 }
 
-// ConfigDirs returns the told geometry of a layered config load for the location:
-// its anchor, the hub's Bolt checkout when that exists as a directory, and the paired weft checkout when that exists as a directory.
-// A git checkout that is not a hub has no Bolt checkout, so it gets Board empty and loads the standalone stack, and it has no weft checkout either.
-// A stat failure other than absence is treated as absence and logged for either checkout, since a loader then degrades or refuses on its own base-layer rule.
+// ConfigDirs returns the directories that a layered config load for the location draws from:
+// the anchor, plus the hub's Bolt checkout and the paired weft checkout when each exists as a directory.
+// A git checkout that is not a hub has no Bolt checkout and no weft checkout, so Board and Records stay empty.
+// A stat failure other than absence is treated as absence and logged for either checkout:
+// a loader then degrades or refuses under its own base-layer rule.
 func ConfigDirs(l *lymcwd.Location) configengine.Dirs {
 	return configengine.Dirs{
 		Anchor:  l.AnchorPath(),
@@ -148,7 +144,7 @@ func ConfigDirs(l *lymcwd.Location) configengine.Dirs {
 }
 
 // existingDirOrLog returns path when it exists as a directory and the empty string otherwise.
-// A stat failure other than absence is logged with warning, the path and the error.
+// A stat failure other than absence is logged as a warning, with the path and the error.
 func existingDirOrLog(path, warning string) string {
 	info, err := os.Stat(path)
 	switch {
@@ -161,99 +157,90 @@ func existingDirOrLog(path, warning string) string {
 }
 
 // stencilsDirName is the name of the stencils directory nested under the Bolt checkout's `_lym` component.
-// It is unexported because "stencils" is not a policed geometry token — it needs no
-// geometryTokenOwners row, unlike BoltDirName or lymdirs.LymDirName.
+// It stays unexported: "stencils" is not a policed geometry token, so the geometry policy does not track it.
 const stencilsDirName = "stencils"
 
-// StencilsDir returns the hub-wide stencils directory shared by every worktree in the hub, under the Bolt checkout's `_lym`.
-// internal/stencilstore receives this value as its baseDir and never joins the Bolt directory name or `_lym` itself — see the told-never-derives Shared Decision.
+// StencilsDir returns the hub-wide stencils directory, shared by every worktree, under the Bolt checkout's `_lym`.
+// internal/stencilstore receives this value as its baseDir and never joins the Bolt directory name or `_lym` itself.
 func StencilsDir(hub string) string {
 	return filepath.Join(BoltDir(hub), lymdirs.LymDirName, stencilsDirName)
 }
 
 // specsDirName is the name of the deployed-specs directory nested under the Bolt checkout's `_lym` component.
-// It is unexported because "specs" is not a policed geometry token — it needs no
-// geometryTokenOwners row, unlike BoltDirName or lymdirs.LymDirName.
+// It stays unexported: "specs" is not a policed geometry token, so the geometry policy does not track it.
 const specsDirName = "specs"
 
-// SpecsDir returns the hub-wide deployed-specs directory shared by every worktree in the hub, under the Bolt checkout's `_lym`.
+// SpecsDir returns the hub-wide deployed-specs directory, shared by every worktree, under the Bolt checkout's `_lym`.
 // internal/stencilstore receives this value as its baseDir and never joins the intermediate components itself.
-// It deliberately mirrors StencilsDir — the two are siblings under the same `_lym` tree, one holding producer prompts, the other the normative docs those prompts point at.
+// It holds the normative docs that producer prompts point at.
 func SpecsDir(hub string) string {
 	return filepath.Join(BoltDir(hub), lymdirs.LymDirName, specsDirName)
 }
 
 // HubScratchDir returns the hub-wide, machine-local scratch tree shared by every worktree in the hub:
 // the Bolt checkout's `.lym`.
-// It is the ephemeral sibling of StencilsDir's durable `_lym` tree in the Bolt checkout, is always a real
-// directory and never a junction, and is the sole constructor of this path — see StencilsDir's own
-// told-never-derives comment for the pattern this follows.
+// It is the ephemeral counterpart of the durable `_lym` tree in the Bolt checkout.
+// It is always a real directory, never a junction, and HubScratchDir is the sole constructor of this path.
 func HubScratchDir(hub string) string {
 	return filepath.Join(BoltDir(hub), lymdirs.DotLymDirName)
 }
 
-// AdoptScratchDir returns the directory that holds the adopt check's record, output and lock beside the log of the test suite an adopt starts:
-// the Bolt checkout's `.lym/adopt`.
+// AdoptScratchDir returns the directory that holds the adopt check's record, output and lock.
+// It sits beside the log of the test suite an adopt starts.
+// It is `.lym/adopt` in the Bolt checkout.
 func AdoptScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.AdoptDirName)
 }
 
-// FrontTaskScratchDir returns the directory that holds the front-task record, its lock and the output of the actions a front task runs:
-// the Bolt checkout's `.lym/fronttask`.
+// FrontTaskScratchDir returns the directory that holds the front-task record and its lock.
+// It also holds the output of the actions a front task runs.
+// It is `.lym/fronttask` in the Bolt checkout.
 func FrontTaskScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.FrontTaskDirName)
 }
 
-// HubLogsDir returns the hub-level directory where the shared per-hub reed server writes its
-// runtime log: `logs` in the Bolt checkout's `.lym`.
-// It is hub-anchored so one server per hub resolves to one deterministic place, and it lives
-// beside HubScratchDir so the derivation is named once here rather than re-joined at each caller.
+// HubLogsDir returns the hub-level directory where the shared per-hub reed server writes its runtime log.
+// It is `logs` in the Bolt checkout's `.lym`.
+// It is hub-anchored, so one server per hub resolves to one deterministic place.
+// The path is derived in this one function rather than re-joined at each caller.
 func HubLogsDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), "logs")
 }
 
-// LogArchiveDir returns the hub-level directory where a torn-down pair's logs are archived and pruned:
-// `log-archive` in the Bolt checkout's `.lym`.
+// LogArchiveDir returns the hub-level directory where a torn-down pair's logs are archived and pruned.
+// It is `log-archive` in the Bolt checkout's `.lym`.
 // The pair teardown's copy and its prune both resolve the root through it.
-// It is never tracked, so it lives beside HubLogsDir under HubScratchDir.
+// It is never tracked.
 func LogArchiveDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), "log-archive")
 }
 
-// RunProcDir returns the hub-level directory holding the owner record of the processes a run starts:
-// `runproc` in the Bolt checkout's `.lym`.
+// RunProcDir returns the hub-level directory holding the owner record of the processes a run starts.
+// It is `runproc` in the Bolt checkout's `.lym`.
 // It is handed to internal/runproc, which derives no path of its own, and is never tracked.
 func RunProcDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.RunProcDirName)
 }
 
-// HubPath returns the absolute path to the hub container directory for the given repo name inside
-// parent.
+// HubPath returns the absolute path to the hub container directory for the given repo name inside parent.
 func HubPath(parent, name string) string {
 	return filepath.Join(parent, name+HubSuffix)
 }
 
-// HubReservedNames returns the junction-wiring block set: the hub-structural names that must never
-// wire a per-worktree junction: the Bolt checkout, `_portals` and `_launchers`.
+// HubReservedNames returns the hub-structural names that must never wire a per-worktree junction:
+// the Bolt checkout, `_portals` and `_launchers`.
 // `_portals` is retired but stays reserved.
-// It is consumed by filterHubReserved and by scanOnDiskJunctionNames, and its exact current value
-// and role are unchanged by this batch's structural-directory work — neither call site's behaviour
-// changes.
-// `.lym` is deliberately NOT a member: adding it here would make filterHubReserved delete `.lym` from
-// the wired names so the per-worktree junction is never created, and would make
-// scanOnDiskJunctionNames skip it so Unwire's sweep and applyStaleRemoval could never see it — wired
-// forever, never torn down.
-// It deliberately excludes lymdirs.LymDirName, which is reserved via structuralCommittedDirs rather
-// than via this set.
-// The junctionNames parameter IsReservedHubName takes folds in whatever a repo's pathspec names —
-// which is nothing by default now that template.yaml's pathspec is empty.
+// `.lym` is not a member: listing it would keep it from being wired into each worktree.
+// It would also keep it from ever being torn down.
+// It is reserved through a separate structural set.
 func HubReservedNames() []string {
 	return []string{BoltDirName, portalsDirName, launchersDirName}
 }
 
-// IsReservedHubName reports whether name is one of the hub-level entry names a worktree slug must never claim: HubReservedNames() UNION structuralCommittedDirs UNION structuralNeverCommittedDirs UNION the caller-supplied junctionNames (the weft-backed junction name-set injected from fabric config).
-// `.lym` is refused via structuralNeverCommittedDirs, not via HubReservedNames() — see that function's own doc comment for why `.lym` is deliberately excluded from it.
-// Folding in both structural sets directly means Topology.Add's existing IsReservedHubName(slug, t.cfg.Dirs()) call site needs no change and still refuses `_lym` and `.lym` even for a config naming neither.
+// IsReservedHubName reports whether name is a hub-level entry name that a worktree slug must never claim.
+// It covers the hub-structural names and the structural directory names.
+// The caller's junctionNames, which come from fabric config, are reserved too.
+// It refuses `_lym` and `.lym` even when the config names neither.
 func IsReservedHubName(name string, junctionNames []string) bool {
 	for _, reserved := range HubReservedNames() {
 		if name == reserved {
@@ -278,8 +265,10 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 	return false
 }
 
-// filterHubReserved drops every name in names that is also present in HubReservedNames(), preserving the input order of the remaining names.
-// This is the wiring guard: a hub-structural name (the Bolt directory, _portals, _launchers) mis-added to fabric.yaml's pathspec must never wire a per-worktree junction that would collide with the hub-level path of the same name.
+// filterHubReserved drops every name in names that is a hub-reserved name, preserving the input order of the rest.
+// This is the wiring guard.
+// A hub-structural name in the fabric config's pathspec must never wire a per-worktree junction.
+// Such a junction would collide with the hub-level path of the same name.
 func filterHubReserved(names []string) []string {
 	reserved := make(map[string]bool)
 	for _, r := range HubReservedNames() {
@@ -296,15 +285,15 @@ func filterHubReserved(names []string) []string {
 	return kept
 }
 
-// junctionNames loads the fabric config under dirs and returns its wired name-set: structuralCommittedDirs unioned with structuralNeverCommittedDirs unioned with the pathspec directory names with the wiring guard applied (see filterHubReserved) — in that order, deduplicated by dedupUnion.
-// `filterHubReserved` is applied only to the config names: a structural name is never filtered, and `.lym` is deliberately absent from HubReservedNames() for exactly that reason (see that function's doc comment).
-// This set is what gets junctions and warp `.git/info/exclude` entries, and it is deliberately **wider** than the pathspec/commit-routing set pathspecNames returns — the difference is exactly structuralNeverCommittedDirs, and that difference is what makes `.lym` junctioned-and-excluded but never named in a git invocation.
-// It is the in-package name-sourcing helper for sites that already hold a *lymcwd.Location and can compute their own weft base: the read-only health checks (Healthy, checkJunctionHealth, junctionRepointedDetail) and checkout.go/reconcile.go's re-wire call sites.
+// junctionNames loads the fabric config under dirs and returns its wired name-set.
+// The set is the structural directories plus the pathspec directory names.
+// The wiring guard filters only the pathspec names:
+// a structural name is never filtered, which is why `.lym` must stay out of the reserved names.
+// The set is wider than the names used for pathspecs and commit routing.
+// The difference is the structural never-committed directories:
+// they are junctioned and excluded, but never named in a git invocation.
 //
-// Returns (nil, err) on a config-load failure — deliberately no fallback
-// default; see the callers of this function for how each one surfaces that
-// failure (a hard error for wiring callers, a determinable reason string
-// for the read-only health checks).
+// It returns a nil set and the error when the config fails to load, with no fallback default.
 func junctionNames(dirs configengine.Dirs) ([]string, error) {
 	cfg, err := LoadConfig(dirs)
 	if err != nil {
@@ -313,33 +302,17 @@ func junctionNames(dirs configengine.Dirs) ([]string, error) {
 	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())), nil
 }
 
-// WiredNames loads the fabric config under dirs and returns its wired name-set — structuralCommittedDirs
-// unioned with structuralNeverCommittedDirs unioned with the pathspec directory names, hub-reserved
-// names filtered out — for callers outside this package.
-// It is a thin wrapper over junctionNames so out-of-package callers (internal/fabriccli's clone and
-// add handlers) obtain the same filtered name-set the in-package sites use, without duplicating the
-// filterHubReserved guard themselves.
-// `_lym`, `.lym`, and the config's optional names are all present here now — see junctionNames' doc
-// comment for the full composition and its deliberate width relative to pathspecNames.
+// WiredNames returns the wired name-set of the fabric config under dirs, for callers outside this package.
+// It applies the wiring guard to the config's names, so out-of-package callers get the same filtered set.
 //
-// One more consumer of note: Healthy (internal/fabricengine/drift.go) iterates RepoWiredNames and
-// requires every wired junction to exist and point at its weft target, so widening this set makes
-// fabric health require the `.lym` junction from this commit range on — an already-wired worktree
-// reports CauseJunctionMissing ("`.lym` junction missing") until `lym fabric reconcile` runs and the
-// content-adoption branch converts its real `.lym` into the junction.
-// That is the intended upgrade signal, not a bug.
-//
-// The raw, unfiltered Config.Dirs() is used only by Topology.Add's reserved-name union (which must
-// include every pathspec name, filtered or not, in the set a new slug cannot claim) — never by
-// WiredNames.
+// Fabric health reports a worktree as unhealthy while its `.lym` junction is missing.
+// It stays unhealthy until `lym fabric reconcile` runs.
 func WiredNames(dirs configengine.Dirs) ([]string, error) {
 	return junctionNames(dirs)
 }
 
-// RepoWiredNames loads the repo-wide fabric config and returns its wired name-set.
-// It is a Location-taking convenience for callers that want the repo-wide junction name-set without
-// re-deriving the dirs.
-// Callers use this so every worktree converges to the one repo-wide pathspec.
+// RepoWiredNames returns the wired name-set of the repo-wide fabric config, read through the given location.
+// Every worktree therefore converges on the one repo-wide pathspec.
 func RepoWiredNames(l *lymcwd.Location) ([]string, error) {
 	return WiredNames(ConfigDirs(l))
 }

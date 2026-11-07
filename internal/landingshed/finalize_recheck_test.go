@@ -1,4 +1,4 @@
-// finalize_recheck_test.go drives Finalize's lock re-check before the landing over a real parentlock.Store, with the parent-records commit standing in for whatever releases the record between the acquire and the re-check.
+// finalize_recheck_test.go drives Finalize's lock re-check before the landing over a real parentlock.Store.
 
 package landingshed
 
@@ -14,13 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFinalize_LockRecheckAndLanding pins what Finalize does when the parent lock record no longer names the run just before the landing:
-// it lands nothing, halts with LandingStopPrefix and takes no lock, and its resume re-runs from step 1 under a lock taken afresh.
-// The parent-records commit runs release, so the release happens between the guard's acquire and the re-check within one Call.
+// TestFinalize_LockRecheckAndLanding pins Finalize's re-check of the parent lock record before the landing.
+// When the record does not name the run then, Finalize lands nothing, halts with `LandingStopPrefix` and takes no lock,
+// and its resume re-runs from step 1 under a lock taken afresh.
+// The parent-records commit runs the release,
+// so the release happens between the guard's acquire and the re-check within one `Call`.
 func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 	tiergate.Require(t, 0)
 
-	// newFixture builds a Finalize over a passing gate whose parent-records commit runs release at its call numbered at, counted from one, and at no other.
+	// newFixture builds a Finalize over a passing gate.
+	// Its parent-records commit runs `release` at call number `at`, counted from one, and at no other call.
 	newFixture := func(t *testing.T, at int, release func(fx *finalizeGateFixture)) *finalizeGateFixture {
 		t.Helper()
 		fx := newFinalizeGateFixture(t)

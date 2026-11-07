@@ -1,10 +1,10 @@
-// report.go declares the report's options and result types and Compute, which assembles a report from one snapshot of sources.
+// report.go holds the report's options and result types, and Compute, which builds a report from one source snapshot.
 
 package reportengine
 
 import "time"
 
-// Options shapes a report.
+// Options sets the run window and the freshness span of a report.
 type Options struct {
 	// Since is the UTC date before which a finished run is left out.
 	Since time.Time
@@ -13,7 +13,7 @@ type Options struct {
 	FreshDays int
 }
 
-// Selection records what a report was computed over.
+// Selection records which branches, tips and window a report was computed over.
 type Selection struct {
 	ParentBranch  string    `json:"parent_branch"`
 	RecordsBranch string    `json:"records_branch"`
@@ -32,7 +32,7 @@ type Finding struct {
 	Error string `json:"error"`
 }
 
-// Report is the result of Compute.
+// Report holds the runs, partial runs, landings and weeks of one report, with the selection they came from.
 // A figure for a source a run or week lacks is absent, never zero.
 type Report struct {
 	Selection Selection    `json:"selection"`
@@ -45,12 +45,13 @@ type Report struct {
 	Absent   map[string]int `json:"absent"`
 	Findings []Finding      `json:"findings"`
 
-	// inputs are what run selection hands the landing join.
+	// inputs holds the data that run selection hands the landing join.
 	inputs landingInputs
 }
 
 // Compute selects the finished runs of src and reads each run's sources.
-// An unreadable record is a Finding and never an error; an error is a failed read of the repositories themselves.
+// An unreadable record is recorded as a finding, never returned as an error.
+// An error means a failed read of the repositories themselves.
 func Compute(src Sources, opts Options) (Report, error) {
 	report := Report{
 		Selection: Selection{

@@ -1,4 +1,5 @@
-// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at the Bolt checkout's .lym, which needs real git repositories.
+// clone_hubscratch_integration_test.go covers CloneHub's hub-scratch materialisation at the Bolt checkout's .lym.
+// It needs real git repositories.
 
 package fabricengine
 
@@ -11,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// initTinyRepo initializes a minimal single-commit git repository at dir on branch "main", suitable
-// as a CloneHub source: cloneRepo works against any git repo, not only a bare one.
+// initTinyRepo initializes a minimal single-commit git repository at dir on branch "main".
+// The repository works as a CloneHub source because cloneRepo accepts any git repo, not only a bare one.
 func initTinyRepo(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -24,7 +25,9 @@ func initTinyRepo(t *testing.T, dir string) {
 	gitkit.CommitFile(t, dir, "README.md", "# "+filepath.Base(dir), "init")
 }
 
-// TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates HubScratchDir(res.HubPath) (the Bolt checkout's .lym): the hub-wide ephemeral sibling of the Bolt checkout's _lym, created only after the board worktree exists, a real directory rather than a junction.
+// TestCloneHub_CreatesHubScratchDir asserts that CloneHub creates the hub scratch directory:
+// HubScratchDir(res.HubPath), the Bolt checkout's .lym, a hub-wide ephemeral sibling of its _lym.
+// It is created only after the board worktree exists, as a real directory, not a junction.
 func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -36,9 +39,9 @@ func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 	initTinyRepo(t, weftSrc)
 
 	cloneParent := t.TempDir()
-	// ForceBootstrap: true — the weft fixture here is a non-bare working repo built by
-	// initTinyRepo, an ordinary seeded repo standing in for a weft, not a repo that has ever
-	// been one, so it carries no .lym-anchor and would otherwise trip the old-order guard.
+	// ForceBootstrap is set because the weft fixture is a non-bare working repo built by initTinyRepo.
+	// It stands in for a weft as an ordinary seeded repo, not one that has ever been a weft:
+	// it carries no .lym-anchor and would otherwise trip the old-order guard.
 	res, err := CloneHub(cloneParent, CloneOptions{
 		WeftURL:        filepath.ToSlash(weftSrc),
 		WarpURL:        filepath.ToSlash(warpSrc),

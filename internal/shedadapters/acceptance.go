@@ -1,6 +1,7 @@
-// acceptance.go implements the round's acceptance record, round-<n>-acceptance.md in a segment's run directory:
-// YAML frontmatter holding the round and the hex SHA-256 of the review the review row accepted.
-// Only the review row writes it, only after the review passed the strict parse, and both the review row and the fix row read it.
+// acceptance.go reads and writes the round's acceptance record, round-<n>-acceptance.md, in a segment's run directory.
+// The record is YAML frontmatter with the round and the hex SHA-256 digest of the accepted review.
+// Only the review row writes it, after the review passes the strict parse.
+// The review row and the fix row both read it.
 
 package shedadapters
 
@@ -12,7 +13,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// roundAcceptancePath returns round n's acceptance record path under runDir, joined as "round-<n>-acceptance.md" with n rendered as roundReviewPath renders it.
+// roundAcceptancePath returns the path of round n's acceptance record under runDir.
+// The file is named round-<n>-acceptance.md, with n in decimal.
 func roundAcceptancePath(runDir string, n int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-acceptance.md", n))
 }
@@ -37,8 +39,8 @@ func writeAcceptance(runDir string, n int, digest string) error {
 }
 
 // readAcceptance returns the accepted review's digest recorded for round n under runDir.
-// A record that is absent, does not parse, or names another round or no digest reads as absent, with a nil error;
-// any other read error is returned.
+// A record that is absent, does not parse, or names another round or no digest reads as absent, with a nil error.
+// Any other read error is returned.
 func readAcceptance(runDir string, n int) (string, bool, error) {
 	content, err := os.ReadFile(roundAcceptancePath(runDir, n))
 	if os.IsNotExist(err) {

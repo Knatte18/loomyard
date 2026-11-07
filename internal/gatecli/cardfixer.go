@@ -1,4 +1,6 @@
-// cardfixer.go builds what a red `lym gate test --gate card` agent call hands its failure to: the hand-off rule, the kit the detached runner drives a cold fixer through, and the store that keeps the fixer's record beside the run.
+// cardfixer.go builds the cold fixer that a red `lym gate test --gate card` agent call hands its failure to.
+// It holds the hand-off rule and the kit the detached runner drives the fixer through.
+// It also holds the store that keeps the fixer's record beside the run.
 
 package gatecli
 
@@ -24,7 +26,7 @@ import (
 )
 
 const (
-	// fixerRecordFile is the file in a key directory that holds the record of the key's cold fixer, so the record outlives the run that spawned it.
+	// fixerRecordFile is the file in a key directory holding the cold fixer's record, which outlives the spawning run.
 	fixerRecordFile = "fixer.json"
 	// fixerBodyStencil names the body stencil a card gate's fixer prompt joins behind the shared cold frame.
 	fixerBodyStencil = "gatefix-body-card"
@@ -51,7 +53,8 @@ type wallClock struct{}
 func (wallClock) Now() time.Time        { return time.Now() }
 func (wallClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// flagValues returns the values the call's words give flag, each spelled `--<flag>=<value>`, stopping at the `--` that starts the tiers' own arguments.
+// flagValues returns the values the call's words give flag, each spelled `--<flag>=<value>`.
+// It stops at the `--` that starts the tiers' own arguments.
 func flagValues(words []string, flag string) []string {
 	prefix := "--" + flag + "="
 	var values []string
@@ -66,8 +69,10 @@ func flagValues(words []string, flag string) []string {
 	return values
 }
 
-// handsOff returns the gate key of a request whose red verdict goes to a cold fixer, and true, or false for a request whose verdict stands.
-// A request hands off only when its verb is `test`, its strand's role is no fixer role, it names a gate key whose `fixer` is non-empty and slug is non-empty.
+// handsOff returns the gate key of a request whose red verdict goes to a cold fixer, and true.
+// It returns false for a request whose verdict stands.
+// A request hands off only when its verb is `test`, its strand's role is no fixer role, and the slug is non-empty.
+// It also names a gate key whose `fixer` is non-empty.
 // A request with no role, as an older front writes, hands off.
 func handsOff(request detachRequest, cfg gateslot.Config, slug string) (string, bool) {
 	if request.Verb != verbTest || slug == "" || gatefixer.IsFixerRole(request.Role) {
@@ -84,7 +89,8 @@ func handsOff(request detachRequest, cfg gateslot.Config, slug string) (string, 
 	return key, true
 }
 
-// strandRig is the shuttle runner and the reed engine a fixer strand is started, waited on and stopped through, built over one worktree's geometry.
+// strandRig holds the shuttle runner and reed engine a fixer strand is started, waited on and stopped through.
+// It is built over one worktree's geometry.
 type strandRig struct {
 	runner     *shuttleengine.Runner
 	reed       *reedengine.Engine
@@ -93,7 +99,7 @@ type strandRig struct {
 	anchorRoot string
 }
 
-// newStrandRig builds the rig of location's worktree the way a pair's cancel does.
+// newStrandRig builds the rig over the reed and pause geometry of location's worktree.
 func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	shuttleCfg, err := shuttleengine.LoadConfig(dirs, "shuttle")
@@ -123,10 +129,14 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	return strandRig{runner: runner, reed: reed, engines: engines, shuttleCfg: shuttleCfg, anchorRoot: reedGeom.AnchorPath}, nil
 }
 
-// newCardFixer builds the kit of a request that hands its red verdict to a cold fixer, and false for a call that ends as it does without one.
-// The request's worktree is resolved from its Cwd, the gate config loaded and the slug read from the fabric origin record;
-// the kit holds a strand fixer over the worktree's reed geometry, registered under the slug with the gate fixer role, the model choice the key's `fixer` names, the gate config's fixer timeout, the stencils directory and the hub's language skills.
-// A call outside a hub, with no slug, or for a key or role handsOff turns down gets false; a config or model that cannot be loaded or resolved is an error.
+// newCardFixer builds the kit of a request that hands its red verdict to a cold fixer.
+// It resolves the worktree from the request's Cwd and loads the gate config.
+// It reads the slug from the fabric origin record.
+// The kit's fixer is a strand over the worktree's reed geometry, registered under the slug with the gate fixer role.
+// Its model is the one the key's `fixer` names, and its timeout is the gate config's fixer timeout.
+// Its stencils and language skills come from the hub.
+// A call outside a hub, or one whose verdict stands, returns false.
+// A config or model that cannot be loaded or resolved is an error.
 func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 	location, inHub, err := resolveHub(request.Cwd)
 	if err != nil {
@@ -186,8 +196,9 @@ func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 	}, true, nil
 }
 
-// newFixerStopper builds the strand stop over request's worktree's reed geometry alone, whatever handsOff answers,
-// so a live fixer an earlier run left is stoppable even when the key's `fixer` was emptied since or the kit cannot be built.
+// newFixerStopper builds the strand stop over request's worktree's reed geometry alone.
+// It needs no fixer setting, so a live fixer an earlier run left stays stoppable.
+// That holds when the key's `fixer` was emptied since, or the kit cannot be built.
 func newFixerStopper(request detachRequest) (func(guid string) error, error) {
 	location, inHub, err := resolveHub(request.Cwd)
 	if err != nil {
@@ -203,7 +214,8 @@ func newFixerStopper(request detachRequest) (func(guid string) error, error) {
 	return rig.runner.StopStrand, nil
 }
 
-// keyFixerStore is a gatefixer.Store over fixer.json in a key directory, the parent of the run directory, so the record of a live fixer outlives the run that spawned it.
+// keyFixerStore is a gatefixer.Store over fixer.json in a key directory, the parent of the run directory.
+// The record of a live fixer outlives the run that spawned it.
 // It holds one record, replaced by the next spawn once the earlier one is terminal; writes go through internal/state.
 type keyFixerStore struct {
 	dir string

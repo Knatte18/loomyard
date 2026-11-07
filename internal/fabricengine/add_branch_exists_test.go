@@ -1,8 +1,7 @@
-// add_branch_exists_test.go proves Add's branch-already-exists rejection names
-// a way forward. Remove deliberately leaves the warp branch behind (it may
-// carry unmerged work), so the everyday remove-then-re-add cycle hits this
-// rejection — a bare "already exists" left the operator stuck without
-// out-of-band git knowledge.
+// add_branch_exists_test.go proves that Add's branch-already-exists rejection names a way forward.
+// Remove leaves the warp branch behind, since it may carry unmerged work;
+// so the everyday remove-then-re-add cycle hits this rejection.
+// A bare "already exists" would leave the operator stuck without out-of-band git knowledge.
 //
 // Package fabricengine_test; shares the TestMain in testmain_test.go.
 
@@ -43,10 +42,11 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	}
 }
 
-// TestAdd_LeftoverWorktreeDirErrorNamesRemedy plants a bare directory at the warp worktree path for a
-// slug whose branch does not exist, so Add reaches its dir-exists guard, and asserts the error names
-// the leftover-cleanup recovery (F4): a stranded directory is invisible to `lym fabric list`/`prune`,
-// so a bare "already exists" left an operator with no path forward.
+// TestAdd_LeftoverWorktreeDirErrorNamesRemedy plants a bare directory at the warp worktree path.
+// The slug's branch does not exist, so Add reaches its dir-exists guard.
+// It asserts that the error names the leftover-cleanup recovery.
+// A stranded directory is invisible to `lym fabric list` and `prune`,
+// so a bare "already exists" would leave an operator with no path forward.
 func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -56,8 +56,7 @@ func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
 	topology := h.Topology
 
 	const slug = "stranded-leftover"
-	// Plant only the directory — no branch — so the branch-exists guard passes and Add reaches the
-	// dir-exists guard.
+	// Plant only the directory, with no branch, so the branch-exists guard passes and Add reaches the dir-exists guard.
 	if err := os.MkdirAll(fabricengine.WorktreePath(l, slug), 0o755); err != nil {
 		t.Fatalf("plant leftover directory: %v", err)
 	}

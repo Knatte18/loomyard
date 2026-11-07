@@ -1,4 +1,5 @@
-// interactivespawn_test.go enforces `PATTERN-reed-panes`: no production Go file spawns claude headless, with `-p` or `--print`.
+// interactivespawn_test.go enforces `PATTERN-reed-panes`:
+// no production Go file spawns claude headless, with `-p` or `--print`.
 // It parses each file, so a comment naming the forbidden form never counts.
 
 package main
@@ -21,7 +22,8 @@ import (
 )
 
 // allowedHeadlessSpawn is the `PATTERN-reed-panes` allowlist, keyed by module-relative file path.
-// An entry admits every finding in its file, and its reason names why the print flag there launches no agent.
+// An entry admits every finding in its file,
+// and its reason names why the print flag there launches no agent.
 var allowedHeadlessSpawn = []scankit.Entry{}
 
 // claudeEngineDir is the engine directory that composes claude's pane-shell launch lines from flag fragments,
@@ -66,7 +68,8 @@ func exprNamesClaude(expr ast.Expr) bool {
 	return false
 }
 
-// callSpawnsHeadlessClaude reports whether call takes a print-flag string literal and another argument naming the claude executable.
+// callSpawnsHeadlessClaude reports whether call runs claude headless.
+// It takes a print-flag string literal and another argument naming the claude executable.
 func callSpawnsHeadlessClaude(call *ast.CallExpr) bool {
 	hasFlag, hasClaude := false, false
 	for _, arg := range call.Args {
@@ -105,7 +108,8 @@ func headlessClaudeLine(tokens []string) bool {
 	return false
 }
 
-// headlessSpawnFailures walks the production Go files under opts and returns one failure line per headless claude spawn shape, with the number of files scanned.
+// headlessSpawnFailures walks the production Go files under opts.
+// It returns one failure line per headless claude spawn shape and the number of files scanned.
 func headlessSpawnFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, scanned int) {
 	t.Helper()
 	scanned = scankit.Walk(t, opts, func(f *scankit.File) {
@@ -145,7 +149,8 @@ func headlessSpawnFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, scanned
 }
 
-// TestInteractiveSpawn_NoHeadlessClaude fails for every production call or string that runs claude with `-p` or `--print`, unless allowlisted.
+// TestInteractiveSpawn_NoHeadlessClaude fails on any production call or string that runs claude with `-p` or `--print`.
+// A file in allowedHeadlessSpawn is exempt.
 //
 //lym:guard
 func TestInteractiveSpawn_NoHeadlessClaude(t *testing.T) {

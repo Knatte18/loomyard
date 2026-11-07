@@ -1,4 +1,5 @@
-// tidy_test.go pins dobby's board-tidy step over a fake shuttle, a fake notice and a temp state record: the landing count, the spawn every few landings, the report and the timeout, and the agent's prompt and launch spec.
+// tidy_test.go pins dobby's board-tidy step over a fake shuttle, a fake notice and a temp state record:
+// the landing count, the spawn every few landings, the report and the timeout, and the agent's prompt and launch spec.
 
 package dobbyengine
 
@@ -115,7 +116,8 @@ func (h *tidyHarness) writeReport() {
 	}
 }
 
-// seedUnflagged writes a baselined record as an older binary left it: no machine flag, the given tidy in flight and landed since the last tidy.
+// seedUnflagged writes a baselined record as an older binary left it.
+// The record has no machine flag, the given tidy in flight, and the landed entries since the last tidy.
 func (h *tidyHarness) seedUnflagged(tidy *TidyState, landed []string) {
 	h.t.Helper()
 	err := UpdateState(h.d.geom.StatePath, func(s *State) error {

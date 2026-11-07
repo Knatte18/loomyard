@@ -1,4 +1,5 @@
-// fixloop_test.go pins the fix loop of a failed adopt check over fake seams and a temp subject directory: the cases of failedEnd, the fix task's slug and its body.
+// fixloop_test.go pins the fix loop of a failed adopt check over fake seams and a temp subject directory:
+// the cases of failedEnd, the fix task's slug and its body.
 
 package adoptcli
 
@@ -18,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fixFixture is a failedEnd over a temp subject directory, with every seam faked and recording its calls.
+// fixFixture holds the fake seams of the fix loop over a temp subject directory, each recording its calls.
 type fixFixture struct {
 	t    *testing.T
 	deps fixDeps
@@ -127,7 +128,7 @@ func (f *fixFixture) setTries(count int) {
 	}
 }
 
-// ownFix is the subject's fix task `adopt-fix-alpha-t1` with status.
+// ownFix returns the subject's fix task `adopt-fix-alpha-t1` with the status given.
 func ownFix(status *string) boardengine.Task { return fixTask("adopt-fix-alpha-t1", status) }
 
 func TestFailedEnd(t *testing.T) {

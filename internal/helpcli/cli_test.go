@@ -1,4 +1,5 @@
-// cli_test.go drives the help module through a small root with the help command mounted the way cmd/lym's newRoot mounts it.
+// cli_test.go drives the help module through a small root with the help command mounted.
+// It mounts the command the way cmd/lym's newRoot mounts it.
 
 package helpcli
 
@@ -13,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newFixtureRoot builds a root with one operator group, one role leaf and one internal leaf, and mounts the help command like newRoot does.
+// newFixtureRoot builds a root with one operator group, one role leaf and one internal leaf.
+// It mounts the help command on that root.
 func newFixtureRoot() *cobra.Command {
 	run := func(*cobra.Command, []string) error { return nil }
 	annotate := func(audience string) map[string]string {

@@ -1,10 +1,8 @@
-// testmain_test.go wires the package's test binary into the hermetic git test environment:
-// gitkit.HermeticGitEnv() runs once before any test, so gitexec's git-spawning fixtures never
-// inherit the operator's global gitconfig (see
-// PATTERN-test-isolation).
+// testmain_test.go wires the package's test binary into the hermetic git test environment.
+// gitkit.HermeticGitEnv() runs once before any test.
+// It keeps gitexec's git-spawning fixtures from inheriting the operator's global gitconfig.
 // The binary also runs under tmux isolation through tmuxkit.Main.
-// This file lives in the external package gitexec_test, matching the directory's existing
-// external-only test files.
+// This file is in the external package gitexec_test.
 
 package gitexec_test
 
@@ -16,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs gitkit.HermeticGitEnv() before any test in this package spawns git, then runs the tests under tmuxkit.Main.
+// TestMain runs gitkit.HermeticGitEnv() before any test spawns git, then runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
 	os.Exit(tmuxkit.Main(m))

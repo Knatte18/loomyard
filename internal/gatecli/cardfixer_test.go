@@ -1,4 +1,6 @@
-// cardfixer_test.go covers the card fixer of the detached runner: which requests hand a red verdict to a cold fixer, and the runner's fixer phase over a scripted gate tree and a scripted fixer.
+// cardfixer_test.go covers the card fixer of the detached runner.
+// It checks which requests hand a red verdict to a cold fixer.
+// It also checks the runner's fixer phase over a scripted gate tree and a scripted fixer.
 
 package gatecli
 
@@ -58,7 +60,9 @@ func TestHandsOff(t *testing.T) {
 	}
 }
 
-// fakeCardFixer is a scripted gatefixer.Fixer: it records the spec it is handed and the phase the run was in at its spawn and first wait, and answers each call as its fields say.
+// fakeCardFixer is a scripted gatefixer.Fixer.
+// It records the spec it is handed and the phase the run was in at its spawn and at its first wait,
+// and it answers each call as its fields say.
 type fakeCardFixer struct {
 	run detachRun
 
@@ -130,7 +134,8 @@ func (f *fakeCardFixer) Stop(rec *gatefixer.Record) error {
 	return f.stopErr
 }
 
-// fixerRig is one run directory under a key directory, with the scripted gate tree, fixer, stopper and tree-identity seam a run of the fixer phase reaches.
+// fixerRig is one run directory under a key directory.
+// It holds the scripted gate tree, fixer, stopper and tree-identity seam that a run of the fixer phase reaches.
 type fixerRig struct {
 	t       *testing.T
 	run     detachRun
@@ -148,7 +153,8 @@ type fixerRig struct {
 	// treeAtCall holds the tree record found on disk when each gate call ran.
 	treeMu     sync.Mutex
 	treeAtCall []treeRecord
-	// recordStatusAtCall holds the status of the key directory's fixer record when each gate call ran; empty means live or absent.
+	// recordStatusAtCall holds the status of the key directory's fixer record when each gate call ran;
+	// empty means live or absent.
 	recordStatusAtCall []string
 	// silent makes a gate call exit without writing a failure report, as a refusal does.
 	silent bool

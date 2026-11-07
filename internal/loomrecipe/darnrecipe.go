@@ -1,5 +1,6 @@
-// darnrecipe.go implements the darn recipe's verify-budget helpers: the rows that carry the budget, its check and its stamp.
-// The budget is not declared in the recipe: New stamps the verify budget `darn.yaml` supplies onto those rows at every build.
+// darnrecipe.go holds the verify-budget helpers of the darn recipe: the budget's rows, check and stamp.
+// The budget is not declared in the recipe:
+// New stamps the verify budget `darn.yaml` supplies onto those rows at every build.
 
 package loomrecipe
 
@@ -23,7 +24,8 @@ const treeScopeVerifySource = "tree_scope"
 // burlerFixEngine is the recipe engine name of a review segment's fix row.
 const burlerFixEngine = "BurlerFix"
 
-// verifyGatedRows returns the names of the rows whose verify gate carries the verify budget: the build row and the Code-Review segment's BurlerFix row, each only when it declares a verify gate entry.
+// verifyGatedRows returns the names of the rows whose verify gate carries the verify budget:
+// the build rows and the Code-Review segment's BurlerFix row, each only when it declares a verify gate entry.
 // A recipe whose verify_source is not tree_scope has none, and neither has one with no build row.
 func verifyGatedRows(recipe shedbuild.Recipe) []string {
 	if recipe.VerifySource != treeScopeVerifySource {

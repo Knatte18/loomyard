@@ -1,4 +1,5 @@
-// wakes.go reads what woke the orch in a run: batten's classified halts, parent-review rounds that reached the reviewer, and alignment approvals that superseded entries.
+// wakes.go reads what woke the orch in a run:
+// batten's classified halts, parent-review rounds reaching the reviewer, and superseding alignment approvals.
 
 package reportengine
 
@@ -18,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// The wake sources besides SourceBatten.
+// Names of the wake sources other than batten's.
 const (
 	SourceParentReview   = "parent-review"
 	SourceAlignment      = "alignment"
@@ -40,7 +41,8 @@ type WakeSource struct {
 	Total int            `json:"total"`
 }
 
-// AlignmentOutcome counts the alignment attempts of one point that ended in one verdict word, and how many of them Go applied.
+// AlignmentOutcome counts the alignment attempts of one point that ended in one verdict word.
+// It also counts how many of them Go applied.
 type AlignmentOutcome struct {
 	Point   string `json:"point"`
 	Verdict string `json:"verdict"`
@@ -76,7 +78,8 @@ func filesOfDir(records Reader, rev, dir string) (map[string][]byte, error) {
 }
 
 // readWakes fills the run's wake sources, automatic steps and paused count from the records at tag.
-// A source the run lacks stays nil under its name in Wakes; a record that does not decode is a finding and the run's other sources still count.
+// A source the run lacks stays nil under its name in Wakes;
+// a record that does not decode is a finding, and the run's other sources still count.
 func (row *RunRow) readWakes(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
 	row.Wakes = map[string]*WakeSource{SourceBatten: nil, SourceParentReview: nil, SourceAlignment: nil, SourceLandReadyTasks: nil}
 
@@ -139,7 +142,8 @@ func (row *RunRow) classifyBatten(records Reader, rev string) error {
 	return nil
 }
 
-// escalationsOf counts the escalation files of the review segment a Bouncer producer owns at rev, archived generations of that segment included.
+// escalationsOf counts the escalation files of the review segment a Bouncer producer owns at rev.
+// It includes the archived generations of that segment.
 // A producer that is no Bouncer owns none.
 func escalationsOf(records Reader, rev, producer string) (int, error) {
 	if producer == "" {
@@ -218,7 +222,8 @@ func (row *RunRow) readParentReviewWakes(records Reader, tag gitrepo.TagRef) ([]
 	return findings, nil
 }
 
-// readAlignmentWakes counts every alignment attempt per point and verdict, and the applied approvals that superseded board entries as wakes.
+// readAlignmentWakes counts every alignment attempt per point and verdict.
+// It also records the applied approvals that superseded board entries as wakes.
 // The source is absent when the tree has no alignment directory.
 func (row *RunRow) readAlignmentWakes(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
 	rels, err := shedrun.TreeRunRels(row.Slug)

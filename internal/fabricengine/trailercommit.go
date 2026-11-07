@@ -1,5 +1,5 @@
-// trailercommit.go implements the trailer seams of a weft commit: committing anchored paths with extra git trailers, finding the oldest or newest commit that carries a trailer key, and reading an anchored file as of a weft commit.
-// All three name no consumer's concept, so a caller keeps its own trailer keys and learns nothing of the weft beneath them.
+// trailercommit.go holds the weft commit seams that carry git trailers:
+// committing with them, finding a commit by trailer key, and reading an anchored file at a weft commit.
 
 package fabricengine
 
@@ -25,7 +25,8 @@ type Trailer struct {
 	Value string
 }
 
-// validateTrailer returns an error naming t when its key is outside the trailer key charset or its value is blank or spans lines.
+// validateTrailer returns an error naming t when its key is outside the trailer key charset.
+// It does the same when its value is blank or spans lines.
 func validateTrailer(t Trailer) error {
 	if !trailerKeyPattern.MatchString(t.Key) {
 		return fmt.Errorf("fabricengine: invalid trailer key %q: must match %s", t.Key, trailerKeyPattern.String())
@@ -65,11 +66,14 @@ func parseTrailerValue(message, key string) (value string, ok bool) {
 	return value, ok
 }
 
-// CommitAnchoredPathsWithTrailers commits the anchor-relative relPaths on the weft exactly as CommitAnchoredPaths does, with a message that ends in a trailer block.
+// CommitAnchoredPathsWithTrailers commits the anchor-relative relPaths on the weft.
+// The message is msg followed by a trailer block.
 // The block holds `Warp-SHA: <the warp checkout's HEAD>` and then one `Key: Value` line per trailer, in order.
 // A warp checkout with no commit yet writes no Warp-SHA line, since there is no commit to name.
 //
-// A trailer whose key is outside [A-Za-z][A-Za-z0-9-]* or whose value is empty or holds a line break is refused, naming it, before anything is staged.
+// A trailer with a key outside [A-Za-z][A-Za-z0-9-]* is refused, naming it.
+// So is one whose value is empty or holds a line break.
+// Both refusals come before anything is staged.
 // With nothing staged, committed is false.
 func CommitAnchoredPathsWithTrailers(rec *Mutations, l *lymcwd.Location, relPaths []string, msg string, trailers []Trailer, opts SyncOptions) (sha string, committed bool, err error) {
 	for _, trailer := range trailers {
@@ -109,7 +113,8 @@ type TrailerCommit struct {
 	CodeHead string
 }
 
-// FindTrailerCommit walks the weft branch's history from HEAD and returns the newest commit whose message carries key when newest is true, and the oldest otherwise.
+// FindTrailerCommit walks the weft branch's history from HEAD.
+// It returns the newest commit whose message carries key when newest is true, and the oldest otherwise.
 // found is false when no commit carries the key, and for a weft with no commit yet.
 // The walk follows first parents, so a merge's side branches are not read.
 func FindTrailerCommit(l *lymcwd.Location, key string, newest bool) (TrailerCommit, bool, error) {

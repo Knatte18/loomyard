@@ -1,4 +1,5 @@
-// runreport_test.go pins the states of the per-run report of an adopt over the fake world: one row for each state, the precedence between them, the sort and a read that fails.
+// runreport_test.go pins the states of the per-run report of an adopt over the fake world:
+// one row for each state, the precedence between them, the sort and a read that fails.
 
 package adoptcli
 
@@ -23,7 +24,7 @@ func TestRunReports(t *testing.T) {
 	draft := boardengine.StatusDraft
 	hold := pauserecord.Entry{Scope: "t1", Caller: pauserecord.HoldCaller}
 
-	// each row builds the world and the input of one run, `t1` under the beam `alpha` this machine owns, and names the report it wants.
+	// each row builds the world and the input for `t1`, lets its setup shape both, and names the report it wants.
 	tests := []struct {
 		name  string
 		setup func(w *world, in *reportInput)

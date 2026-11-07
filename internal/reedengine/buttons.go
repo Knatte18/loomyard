@@ -1,4 +1,5 @@
-// buttons.go decodes, validates and fills the status-bar button entries of reed.yaml's and desktop.yaml's buttons blocks, and names the placeholders a click fills.
+// buttons.go decodes, validates and fills the status-bar button entries of reed.yaml and desktop.yaml.
+// It also names the placeholders a click fills.
 // The render and the click verb call these pure functions; none reads a file or runs a command.
 
 package reedengine
@@ -24,7 +25,8 @@ const (
 	ButtonPlacePrime ButtonPlace = "prime"
 )
 
-// buttonWindowAgents is the window value that limits a button to a strand pane's window and lets its run, confirm and ask text name {strand}.
+// buttonWindowAgents is the window value that limits a button to a strand pane's window.
+// Such a button's run, confirm and ask text may name {strand}.
 const buttonWindowAgents = "agents"
 
 // Placeholder names a click fills rather than the render.
@@ -58,10 +60,12 @@ type buttonEntry struct {
 	Index int `yaml:"-"`
 }
 
-// placeButtons returns the valid entries of the group place selects in groups, the buttons node of one config file, in config order.
+// placeButtons returns the valid entries, in config order, of the group that place selects from groups.
+// groups is the buttons node of one config file.
 // The prime takes its own group when that is a non-empty list and the beam group otherwise.
-// A zero node or an absent group gives no entries and logs nothing;
-// a group that is not a list, an entry that does not decode and an entry buttonEntryProblem refuses are skipped with one Warn naming source, so a bad button costs only itself.
+// A zero node or an absent group gives no entries and logs nothing.
+// A group that is not a list is skipped with a Warn naming source.
+// So is an entry that does not decode or fails validation: a bad button costs only itself.
 func placeButtons(groups yaml.Node, place ButtonPlace, source string) []buttonEntry {
 	groupName := string(place)
 	if place == ButtonPlacePrime {
@@ -124,7 +128,8 @@ func (entry buttonEntry) names(name string) bool {
 }
 
 // buttonEntryProblem returns the empty string for a valid entry, else one sentence naming its first problem.
-// The label, the confirm text and the ask text are drawn inside a tmux format, so none may hold a status sequence start, a strftime field or a control character.
+// The label, the confirm text and the ask text are drawn inside a tmux format.
+// So none may hold a status sequence start, a strftime field or a control character.
 // The ask text may hold no comma either, since tmux splits a prompt at its commas.
 func buttonEntryProblem(entry buttonEntry) string {
 	if entry.Label == "" {
@@ -156,20 +161,22 @@ func buttonEntryProblem(entry buttonEntry) string {
 	return ""
 }
 
-// fillRunPlaceholders replaces each {name} whose name is a key of values with the value quoted as one word of sh's dialect.
+// fillRunPlaceholders replaces each {name} whose key is in values with the value quoted as one word of sh's dialect.
 // Brace text naming no key of values stays literal.
 func fillRunPlaceholders(sh shell.Shell, run string, values map[string]string) string {
 	return placeholderReplacer(values, sh.Quote).Replace(run)
 }
 
-// fillPromptPlaceholders replaces each {name} whose name is a key of values with the value, its '#' and '%' doubled so it cannot inject a status sequence or a strftime field into a confirm or ask prompt.
+// fillPromptPlaceholders replaces each {name} whose name is a key of values with the value, its '#' and '%' doubled,
+// so the value cannot inject a status sequence or a strftime field into a confirm or ask prompt.
 // Brace text naming no key of values stays literal.
 func fillPromptPlaceholders(prompt string, values map[string]string) string {
 	doubled := strings.NewReplacer("#", "##", "%", "%%")
 	return placeholderReplacer(values, doubled.Replace).Replace(prompt)
 }
 
-// placeholderReplacer builds one single-pass replacer from {name} to transform(value), so a substituted value is never scanned for placeholders again.
+// placeholderReplacer builds one single-pass replacer from {name} to transform(value),
+// so a substituted value is never scanned for placeholders again.
 func placeholderReplacer(values map[string]string, transform func(string) string) *strings.Replacer {
 	oldNew := make([]string, 0, 2*len(values))
 	for name, value := range values {

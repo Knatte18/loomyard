@@ -13,7 +13,7 @@ import (
 
 // ParentOf returns the slug of the pair that is the parent of the entry slug, "" meaning the prime.
 // A pair's origin record decides, read over the prime's location, and its recorded parent worktree is the answer.
-// It reads as the prime when the record names no parent worktree, names the prime's worktree or names the prime's checked-out branch.
+// The answer is the prime when the record names no parent worktree, the prime's worktree or its checked-out branch.
 // The parent is never derived by matching the recorded branch against the pairs present here,
 // so a member whose beam pair is absent on this machine still reads the beam as its parent.
 // Only when the slug has no origin record does the local board decide, through the nearest open beam above the entry.

@@ -1,4 +1,5 @@
-// merriambase.go computes the start base the batchifier prices Merriam's session from: the line count of the texts Merriam loads at start, plus a fixed figure for the system prompt and tools.
+// merriambase.go computes the start base the batchifier prices Merriam's session from:
+// the line count of the texts Merriam loads at start, plus a fixed figure for the system prompt and tools.
 // The base enters only where a partition is formed; a recorded partition keeps the estimates it was formed with.
 
 package websterengine
@@ -17,13 +18,20 @@ import (
 )
 
 // merriamFixedContext is the context, in tokens, of Merriam's system prompt, tools and the skills loaded at launch.
-// tools/tokencount's Merriam fixed-context calibration section re-measures it from real runs; the value changes only when the operator updates it from that report.
-// It is 20600, the measured Merriam session start, minus the computed size of the texts the base covers at the commit the constant was taken at:
-// 392 lines (a 59-line instruction file, the Master stencil 229 and its inlined PATTERN overview 104) at the template's context_per_line of 12, so the computed base reproduces the measured start over that tree.
-// The fixed figure excludes every text the base counts, so it holds as well for a tree without that instruction file, whose base is smaller by its lines.
+// tools/tokencount's Merriam fixed-context section re-measures it from real runs;
+// the value changes only when the operator updates it from that report.
+// It is the measured Merriam session start, 20600, minus the computed size of the texts the base covers.
+// Those texts are 392 lines over the tree it was measured on:
+// a 59-line instruction file, the Master stencil at 229 and its inlined PATTERN overview at 104.
+// Each line weighs the template's context_per_line of 12,
+// so the computed base reproduces the measured start over that tree.
+// The fixed figure excludes every text the base counts,
+// so it holds as well for a tree without that instruction file, whose base is smaller by its lines.
 const merriamFixedContext = 20600 - 392*12
 
-// MerriamBaseOf returns the start base for the given texts: their summed line count, counted as batcher.DiskSizes counts a file's, and the fixed system-prompt-and-tools context.
+// MerriamBaseOf returns the start base for the given texts:
+// their summed line count plus the fixed system-prompt-and-tools context.
+// A text whose last line has no trailing newline counts that line too.
 func MerriamBaseOf(texts ...string) batcher.StartBase {
 	lines := 0
 	for _, text := range texts {
@@ -35,8 +43,12 @@ func MerriamBaseOf(texts ...string) batcher.StartBase {
 	return batcher.StartBase{Lines: lines, Fixed: merriamFixedContext}
 }
 
-// MerriamBase returns the start base of the Merriam session geom describes: the named instruction files in the pane's cwd when present, the Master stencil with the orchestrator PATTERN directive and the declared changes of geom.DecisionRecordPath, and the plan's 00-overview.md.
-// An absent instruction file adds nothing; any other failure is refused naming the file and the cause, with no way forward.
+// MerriamBase returns the start base of the Merriam session described by geom.
+// It prices the named instruction files that exist in the pane's working directory and the Master stencil.
+// It prices the orchestrator PATTERN directive, with the changes the decision record declares.
+// It also prices the plan's 00-overview.md.
+// An absent instruction file adds nothing;
+// any other failure is refused, naming the file and the cause, with no way forward.
 func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, error) {
 	var texts []string
 	for _, name := range instructionFiles {

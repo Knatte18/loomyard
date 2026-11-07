@@ -1,9 +1,8 @@
-// validate_test.go covers validate-discussion and validate-plan's clean, findings, and I/O-fault
-// cases: exit code, exactly-one-JSON-line output, and the decoded envelope's ok value and findings
-// key presence. Both verbs are driven directly against the leaf command built by
-// validateDiscussionCmd/validatePlanCmd on a hand-populated *loomCLI, per the
-// cli-tests-never-go-through-runcliin Shared Decision -- never through RunCLIIn or wire. Every case
-// is tier 1: it spawns no subprocess, opens no real hub fixture, and sleeps on no real clock.
+// validate_test.go covers validate-discussion and validate-plan's clean, findings, and I/O-fault cases:
+// exit code, exactly-one-JSON-line output, and the decoded envelope's ok value and findings key presence.
+// Both verbs are driven directly, never through RunCLIIn or wire.
+// They run the leaf command built by validateDiscussionCmd/validatePlanCmd on a hand-populated *loomCLI.
+// Every case is tier 1: it spawns no subprocess, opens no real hub fixture, and sleeps on no real clock.
 
 package loomcli
 
@@ -26,12 +25,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed pins loomcli's half of the R6-27
-// parity pair the same way internal/loomshed/planvalidate_test.go's
-// TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins loomshed's: planglyph.Severity is an
-// open string type, so an unrecognized value — or the zero value a hand-built Finding carries —
-// must fail CLOSED here too. Until crucible round fable-high-r7 (D2) only the loomshed half had a
-// dedicated test, and the two halves were kept agreeing by reading alone.
+// TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed pins the fail-closed classification of severities.
+// planglyph.Severity is an open string type.
+// An unrecognized value, or the zero value a hand-built Finding carries, must fail closed.
 //
 //testtiming:keep pins loomcli's half of the fail-closed severity classification: the zero value and an unrecognized severity block, informational passes; the gate parity test compares verdicts over fixtures with recognized severities only
 func TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed(t *testing.T) {
@@ -58,9 +54,9 @@ func TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed(t *testing.T) 
 	}
 }
 
-// requiredDiscussionSectionsForTest mirrors internal/discussionparser's own unexported
-// requiredDiscussionSections list. It is duplicated here (rather than imported, since the source is
-// unexported) so this suite can build a decision record carrying every required heading.
+// requiredDiscussionSectionsForTest lists every heading a decision record must carry.
+// The discussion parser keeps its own list unexported, so this suite copies it.
+// The copy lets a fixture build a decision record with every required heading.
 var requiredDiscussionSectionsForTest = []string{
 	"## Goal",
 	"## Scope",
@@ -71,8 +67,8 @@ var requiredDiscussionSectionsForTest = []string{
 	"## Acceptance criteria",
 }
 
-// decisionRecordFixture writes decisionContent and supportContent under dir, and returns a *loomCLI
-// wired only with the three discussion path fields validateDiscussionCmd's RunE reads.
+// decisionRecordFixture writes decisionContent and supportContent under dir.
+// It returns a *loomCLI wired only with the three discussion path fields that validateDiscussionCmd's RunE reads.
 // RelevantPath is relevant.md under dir, left unwritten.
 func decisionRecordFixture(t *testing.T, dir, decisionContent, supportContent string, writeSupport bool) *loomCLI {
 	t.Helper()
@@ -97,7 +93,8 @@ func decisionRecordFixture(t *testing.T, dir, decisionContent, supportContent st
 	}}
 }
 
-// writeStrayRelevant writes a relevant list holding one paragraph line, which CheckRelevant refuses as a stray line, to path.
+// writeStrayRelevant writes a relevant list holding one paragraph line to path.
+// `CheckRelevant` refuses such a line as a stray line.
 func writeStrayRelevant(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte("a stray paragraph line\n"), 0o644); err != nil {
@@ -105,8 +102,8 @@ func writeStrayRelevant(t *testing.T, path string) {
 	}
 }
 
-// allDiscussionSectionsContent returns a decision record body carrying every heading in
-// requiredDiscussionSectionsForTest, in order, each with a one-line body.
+// allDiscussionSectionsContent returns a decision record body carrying every required heading, in order.
+// Each heading gets a one-line body.
 func allDiscussionSectionsContent() string {
 	var b strings.Builder
 	for _, h := range requiredDiscussionSectionsForTest {
@@ -119,7 +116,8 @@ func allDiscussionSectionsContent() string {
 // addedDecisionEntryForTest is one `Added after Discussion` entry, the kind `lym loom decision add` appends.
 const addedDecisionEntryForTest = "### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: keep it.\n\nRationale: it is hot.\n\n"
 
-// darnRecordFixture is decisionRecordFixture over a Record-Write record, with the history seam returning versions and a commit seam counting its calls into commits.
+// darnRecordFixture returns a *loomCLI over a Record-Write record, with the history seam returning versions.
+// Its commit seam counts calls into commits.
 func darnRecordFixture(t *testing.T, dir, record string, versions [][]byte, commits *int) *loomCLI {
 	t.Helper()
 
@@ -239,8 +237,8 @@ func TestValidateDiscussionCmd(t *testing.T) {
 			name: "IOFault_DecisionRecordIsDirectory",
 			build: func(dir string) *loomCLI {
 				c := decisionRecordFixture(t, dir, allDiscussionSectionsContent(), "support log body", true)
-				// Overwrite the decision record path with a directory so os.ReadFile fails with a
-				// non-not-exist error, per the short-circuit-order-is-load-bearing Shared Decision.
+				// Overwrite the decision record path with a directory, so os.ReadFile fails with a non-not-exist error.
+				// The validator must not treat that error as a missing file.
 				if err := os.Remove(c.env.DecisionRecordPath); err != nil {
 					t.Fatalf("remove decision record: %v", err)
 				}
@@ -289,8 +287,11 @@ func TestValidateDiscussionCmd(t *testing.T) {
 	}
 }
 
-// planFixture writes a minimal, genuinely valid format-4 plan under <anchorPath>/_lym/plan/, materializing every path the card names under worktreeRoot, then returns a *loomCLI wired only with the two plan path fields validatePlanCmd's RunE reads.
-// approved controls the overview frontmatter's approved: value, so callers can trip plan-unapproved without touching anything else.
+// planFixture writes a minimal valid format-4 plan under <anchorPath>/_lym/plan/.
+// It materializes every path the card names under worktreeRoot.
+// It returns a *loomCLI wired only with the two plan path fields that validatePlanCmd's RunE reads.
+// approved sets the overview frontmatter's approved: value.
+// A caller passes false to trip plan-unapproved without touching anything else.
 // The sole card is a format-4 Create card carrying a pinned Commit: value.
 func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *loomCLI {
 	t.Helper()
@@ -315,7 +316,9 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 	}}
 }
 
-// glyphPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/, whose sole card's Create group targets createTarget, and returns a *loomCLI wired with anchorPath and worktreeRoot -- duplicated from internal/loomshed/planvalidate_test.go's own seedGlyphPlanFixture.
+// glyphPlanFixture writes a syntactically complete one-card plan under <anchorPath>/_lym/plan/, with language go.
+// The sole card's Create group targets createTarget.
+// It returns a *loomCLI wired with anchorPath and worktreeRoot.
 func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget string) *loomCLI {
 	t.Helper()
 
@@ -339,10 +342,9 @@ func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget strin
 	}}
 }
 
-// TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess asserts that an informational-only
-// findings set (card 18's create-new-unit, on a Create target introducing a brand-new package)
-// still reports a success envelope, carrying the findings under their own key rather than dropping
-// them, per the severity-decides-the-verdict rule this CLI verb shares with Plan-Write's and Plan-Burler-Fix's own gate.
+// TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess asserts that a plan with only informational findings passes.
+// The envelope carries the findings under their own key rather than dropping them.
+// Severity alone decides the verdict, so an informational finding does not fail the command.
 func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchorPath := t.TempDir()
@@ -365,9 +367,9 @@ func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 	}
 }
 
-// TestValidatePlanCmd_QuarryUnavailableNamesQuarry asserts that a quarry-unavailable error maps to
-// output.Err with a message naming quarry rather than the plan, so an operator reading the envelope
-// is never told the plan is invalid when quarry simply could not answer.
+// TestValidatePlanCmd_QuarryUnavailableNamesQuarry asserts that a quarry-unavailable error maps to output.Err.
+// The message names quarry rather than the plan,
+// so an operator reading the envelope is never told the plan is invalid when quarry simply could not answer.
 //
 //testtiming:keep pins a quarry-unavailable failure surfacing as an error envelope naming quarry rather than the plan; no other case makes quarry unavailable
 func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
@@ -385,7 +387,8 @@ func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	envelope.RequireErr(t, out.String(), "quarry")
 }
 
-// TestValidatePlanCmd_ModeFlagsAreExclusive asserts the mode flags that cannot combine are refused with an error envelope rather than one silently winning.
+// TestValidatePlanCmd_ModeFlagsAreExclusive asserts that mode flags which cannot combine are refused.
+// The refusal is an error envelope, never a silent win for one flag.
 func TestValidatePlanCmd_ModeFlagsAreExclusive(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := planFixture(t, t.TempDir(), t.TempDir(), true)
@@ -416,7 +419,8 @@ func TestValidatePlanCmd_ModeFlagsAreExclusive(t *testing.T) {
 	}
 }
 
-// TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch asserts the --rework verb reports the rework-first-card finding when first_card differs from the number one past the plan committed at HEAD.
+// TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch asserts that --rework reports the finding.
+// The rework-first-card finding fires when first_card differs from the number one past the plan committed at HEAD.
 //
 //testtiming:keep pins the --rework verb printing the rework-first-card finding when first_card differs from the committed plan's next card number
 func TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch(t *testing.T) {
@@ -481,13 +485,12 @@ func TestValidatePlanCmd(t *testing.T) {
 			wantFindRequire: false,
 		},
 		{
-			// Unapproved is the load-bearing case: the default (flag-absent) mode now succeeds --
-			// planglyph.ValidateFormat never runs the plan-unapproved check -- while
-			// --require-approved still reports the plan-unapproved finding: the one check no gate
-			// runs, and this flag remains the sole way to reach it.
-			// The findings substring pins the rendered severity too ("[blocking]"), asserting the
-			// blocking-findings case's severity is present in the error envelope, not just the check
-			// name.
+			// Unapproved is the load-bearing case.
+			// The default mode, without the flag, succeeds because planglyph.ValidateFormat never runs the plan-unapproved check.
+			// --require-approved still reports the plan-unapproved finding, the one check no gate runs.
+			// This flag is the sole way to reach that finding.
+			// The findings substring also pins the rendered severity, "[blocking]".
+			// The severity must appear in the error envelope, not just the check name.
 			name: "Unapproved",
 			build: func(anchorPath, worktreeRoot string) *loomCLI {
 				return planFixture(t, anchorPath, worktreeRoot, false)
@@ -647,7 +650,8 @@ func TestValidatePlanCmd(t *testing.T) {
 		}
 	})
 
-	// The same plan reports test-tier-unstated in the default mode and not under --require-approved, which runs no context check.
+	// The same plan reports test-tier-unstated in the default mode.
+	// Under --require-approved it reports nothing, because that mode runs no context check.
 	for _, tt := range []struct {
 		name     string
 		args     []string
@@ -688,8 +692,8 @@ func TestValidatePlanCmd(t *testing.T) {
 	})
 }
 
-// envelopeContains reports whether v -- expected to be a []any of strings, as JSON decodes the
-// "findings" key's value -- contains a string carrying substr.
+// envelopeContains reports whether v contains a string carrying substr.
+// v is expected to be a []any of strings, as JSON decodes the "findings" key's value.
 func envelopeContains(v any, substr string) bool {
 	items, ok := v.([]any)
 	if !ok {
@@ -704,8 +708,8 @@ func envelopeContains(v any, substr string) bool {
 	return false
 }
 
-// descriptionFixture writes content as summary.md under dir and returns a *loomCLI wired only with
-// the DescriptionPath validateDescriptionCmd's RunE reads.
+// descriptionFixture writes content as summary.md under dir.
+// It returns a *loomCLI wired only with the DescriptionPath that validateDescriptionCmd's RunE reads.
 func descriptionFixture(t *testing.T, dir, content string) *loomCLI {
 	t.Helper()
 

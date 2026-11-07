@@ -12,7 +12,8 @@ import (
 )
 
 // RefusalNote describes one refused `lym webster` invocation.
-// Fields holds every envelope key but `ok` and `error`, which is where a refusal carries its class, such as `plan_drifted` or `batch_failed`.
+// Fields holds every envelope key but `ok` and `error`,
+// and a refusal carries its class there, such as `plan_drifted` or `batch_failed`.
 type RefusalNote struct {
 	Verb    string
 	Args    string
@@ -21,7 +22,7 @@ type RefusalNote struct {
 }
 
 // WriteRefusalNote records a refusal as a friction note named `webster-refusal-<verb>`.
-// It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
+// It is a no-op when frictionDir is empty (Tier 2 off) or when the friction package rejects the note id.
 // A write failure is returned wrapped with the path; callers only log it.
 func WriteRefusalNote(frictionDir string, n RefusalNote) error {
 	if frictionDir == "" {

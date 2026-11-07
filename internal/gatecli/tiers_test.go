@@ -33,7 +33,10 @@ func withManualTier3(cfg *gateslot.Config) {
 	cfg.Tiers["tier3"] = gateslot.Tier{Command: "llm {args}", Dir: ".", TimeoutMin: 1, Counter: "go-json", Parallel: 1, Slots: 1, Manual: true}
 }
 
-// describe renders a run as `tier<N> <scope> dir=<dir> <targets>`, one `dir=… …` per invocation joined by ` | ` and `none` for no invocation, with ` terms=<terms>` and ` partial` after an invocation that carries them, ` ignores` for a command that ignores the scope and ` guard` for the guard step.
+// describe renders a run as `tier<N> <scope> dir=<dir> <targets>`.
+// It joins one `dir=… …` part per invocation with ` | `, and renders no invocations as `none`.
+// An invocation that carries terms adds ` terms=<terms>`, and a partial one adds ` partial`.
+// A command that ignores the scope adds ` ignores`, and the guard step adds ` guard`.
 func describe(run tierRun) string {
 	parts := make([]string, len(run.invocations))
 	for i, invocation := range run.invocations {
@@ -61,7 +64,8 @@ func describe(run tierRun) string {
 	return line
 }
 
-// requestScope returns the scope of a request that names explicit targets or none, the two forms no computation changes.
+// requestScope returns the scope of a request that names explicit targets, or of one that names none.
+// For both forms the scope is fixed, so no computation changes it.
 func requestScope(request testRequest) scope {
 	if len(request.targets) > 0 {
 		return scope{form: scopeTargets}

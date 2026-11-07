@@ -1,4 +1,5 @@
-// entries_prreview.go implements the PRReview registry entry: it refuses every config key and builds the PR-Review row over a copy of the run's landing deps.
+// entries_prreview.go holds the Constructor of the PRReview registry row.
+// It refuses every config key and builds the row over a copy of the run's landing deps.
 
 package shedrecipe
 
@@ -13,7 +14,9 @@ import (
 const prReviewKeyWayForward = "way forward: remove the key; a PRReview row takes no config"
 
 // prReviewEntry is the Constructor for the "PRReview" registry row.
-// The row takes no config key: whether it opens a pull request is decided in its own call, from the receiving branch's beam.yaml, the landing entry's field and the origin.
+// The row takes no config key.
+// Each call decides whether to open a pull request from three inputs:
+// the receiving branch's beam.yaml, the landing entry's field, and the origin.
 // It builds the row over a copy of env.Landing whose GateKey is the row name in lower case.
 func prReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {

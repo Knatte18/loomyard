@@ -1,6 +1,7 @@
 //go:build !windows
 
-// placewindow_integration_test.go runs placeTerminalWindow, which the window verb's tests replace by a seam, against a real hub and a directory outside any worktree; the window command is POSIX shell, so Windows is left out.
+// placewindow_integration_test.go runs placeTerminalWindow against a real hub and a directory outside any worktree.
+// The window command is POSIX shell, so Windows is left out.
 
 package reedcli
 
@@ -16,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPlaceTerminalWindow covers a directory in no worktree running no command and a worktree directory running the hub's configured command there.
+// TestPlaceTerminalWindow covers a directory in no worktree, which runs no command.
+// It also covers a worktree directory, which runs the hub's configured command there.
 func TestPlaceTerminalWindow(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

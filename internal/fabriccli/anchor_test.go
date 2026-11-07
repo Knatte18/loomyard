@@ -1,4 +1,6 @@
-// anchor_test.go covers the sequence of `lym fabric anchor` over a fake anchorDeps: the print path, every refusal, the order of the move's steps and the restart or the re-run each failure calls for.
+// anchor_test.go covers `lym fabric anchor` over a fake anchorDeps.
+// It tests the print path, every refusal, and the order of the move's steps.
+// It also tests the restart or re-run each failure calls for.
 
 package fabriccli
 
@@ -19,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// anchorFake is an in-memory hub for changeAnchor: it answers every seam from its fields, logs the actions in order and models the engine's move record.
+// anchorFake is an in-memory hub for changeAnchor:
+// it answers every seam from its fields, logs the actions in order and models the engine's move record.
 type anchorFake struct {
 	calls []string
 
@@ -780,7 +783,8 @@ func TestChangeAnchor(t *testing.T) {
 			mutate func(f *anchorFake)
 			// wantErr is a text the returned error carries, empty when the move succeeds.
 			wantErr string
-			// wantRelay says the relay is started again, wantAfterDobbies that it follows the dobby start, and wantNoDobbies that no dobby start follows.
+			// wantRelay says the relay is started again.
+			// wantAfterDobbies says it follows the dobby start, and wantNoDobbies says no dobby start follows.
 			wantRelay, wantAfterDobbies, wantNoDobbies bool
 		}{
 			{name: "TheMoveLands", slug: "prime", wantRelay: true, wantAfterDobbies: true},
@@ -866,7 +870,9 @@ func TestChangeAnchor(t *testing.T) {
 	})
 }
 
-// TestStartDobbiesThroughBeamStart pins that the prime is started under the argument `root` and any other worktree under its name, that a failed start does not stop the others, and that the joined error names each failed argument with the verb's output.
+// TestStartDobbiesThroughBeamStart pins the argument each worktree's dobby start passes to beam start.
+// The prime is started under `root` and any other worktree under its name.
+// A failed start does not stop the others, and the joined error names each failed argument with the verb's output.
 func TestStartDobbiesThroughBeamStart(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

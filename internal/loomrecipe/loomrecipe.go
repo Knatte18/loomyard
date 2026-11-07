@@ -1,6 +1,5 @@
-// loomrecipe.go implements New and Routing, the recipe-keyed builder and routing projection of the embedded loom recipes.
-// New is the coherence guard across env and paths, then the parse of the embedded recipe the name selects, and the delegation to shedbuild.NewShedFrom.
-// NewShedFrom builds the recipe against a caller-supplied shedrecipe.Env and returns the assembled *shedengine.Shed.
+// loomrecipe.go holds New and Routing, the recipe-keyed builder and routing projection of the embedded loom recipes.
+// New builds the recipe a name selects against a caller-supplied shedrecipe.Env, and Routing projects its routing.
 
 package loomrecipe
 
@@ -12,43 +11,46 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// New parses the embedded recipe the name selects, expands its blocks, builds it against env, and returns a *shedengine.Shed carrying
-// the built []shedengine.ProducerDef plus paths' five fields.
+// New parses the embedded recipe the name selects, expands its blocks, and builds it against env.
+// It returns a *shedengine.Shed carrying the built []shedengine.ProducerDef and the path fields of paths.
 // An empty name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
-// New delegates its build work to shedbuild.NewShedFrom, wrapping a non-nil returned error
-// with a "loomrecipe: " prefix and nothing more: shedbuild.NewShedFrom already names the offending
-// row's zero-based index and name in every error it raises after decode, and the decoder keeps
-// yaml line numbers, so no further position work is needed.
+// New delegates its build work to shedbuild.NewShedFrom and wraps a non-nil error from it with a "loomrecipe: " prefix.
+// Errors NewShedFrom raises after decode name the offending row by index and name,
+// and the decoder keeps YAML line numbers, so New adds no position detail.
 //
-// New never calls shedbuild.Check -- internal/shedcheck/doc.go and internal/shedbuild/check.go
-// both state that Check is authoring-time only, because a resumed run legitimately starts
-// mid-graph and reachability-from-entry is the wrong production question.
+// New never calls shedbuild.Check, which is authoring-time only:
+// a resumed run legitimately starts mid-graph, so reachability from the entry is the wrong question at run time.
 //
-// New performs no nil-guard or absolute-path check of its own on any Env field: each registry
-// entry validates exactly the fields it reads, and preflightEntry's
-// requireAbsRoot("Preflight", "Cwd", …) is what now covers the guard loomshed.New's nil-Preflight
-// check used to.
+// New performs no nil or absolute-path check of its own on any Env field:
+// each registry entry validates exactly the fields it reads;
+// the preflight entry requires absolute roots for Preflight and Cwd.
 //
-// New sets MaxBounces on every row of a review segment (a segment holding a
-// Bouncer row) after the build, to the segment's env.Segments[segment].MaxBounces.
-// A segment whose budget is 0 has zero_rounds stamped on its Bouncer row before the build, so the Bouncer settles approved at once.
-// It refuses a review segment with no env.Segments entry, naming the segment and the loom wiring's segment-to-perch table, and a negative budget, naming the segment, its MaxBouncesKey and ConfigFile.
+// A review segment is a segment holding a Bouncer row.
+// New sets MaxBounces on every row of a review segment after the build, to its env.Segments[segment].MaxBounces.
+// A segment whose budget is 0 has zero_rounds stamped on its Bouncer row before the build,
+// so the Bouncer settles approved at once.
+// It refuses a review segment with no env.Segments entry.
+// The error names the segment and the loom wiring's segment-to-perch table.
+// It also refuses a negative budget, naming the segment, its MaxBouncesKey and ConfigFile.
 // The recipe declares no max_bounces on those rows; the budget comes from loom.yaml.
 //
 // New refuses a recipe that does not declare `contract: loom`, naming `lym shed` as the way forward.
 //
 // A recipe whose verify_source is tree_scope also takes env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`:
-// New refuses a value below 1 and stamps it onto the verify gate of its build row and of the Code-Review segment's BurlerFix row at every build.
+// New refuses a value below 1.
+// It stamps the value onto the verify gate of its build row and of the Code-Review segment's BurlerFix row.
 //
-// New makes one further check of its own, a coherence check across its two arguments rather than a validation of either:
-// it returns an error when env.StatusPath != paths.StatusPath, and another when env.StatusLockPath != paths.StatusLockPath.
-// Both run as New's first act, ahead of the delegation to shedbuild.NewShed.
+// New checks that env and paths agree on the status paths before anything else.
+// It returns an error when env.StatusPath != paths.StatusPath.
+// It returns another when env.StatusLockPath != paths.StatusLockPath.
 // Each error names both sides' values so the divergence is readable without a debugger.
 //
-// StatusPath and StatusLockPath are deliberately told twice, once in env and once in paths (for Shed), because the two argument types New takes split them.
-// The check keeps env's copy equal to Shed's paths: a divergent fill would let Shed persist its status to one file while a row reads another, which surfaces as a broken resume rather than as any error.
-// New is the only place in the tree where both copies are visible at once, so no other layer can make this check.
+// StatusPath and StatusLockPath each appear twice, once in env and once in paths, which Shed reads.
+// The check keeps env's copy equal to paths' copy:
+// a divergent fill would let Shed persist its status to one file while a row reads another;
+// the mismatch surfaces as a broken resume rather than as any error.
+// New is the only place where both copies are visible at once, so only New can make this check.
 func New(recipe string, env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
 	if err := checkStatusPaths(env, paths); err != nil {
 		return nil, err
@@ -105,15 +107,18 @@ func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 	return nil
 }
 
-// Routing projects the routing of the embedded recipe the name selects, its blocks expanded, without building any engine, so a caller
-// that never builds a Shed (the status verb) can compute progress. A parse or expansion error is returned
-// prefixed with "loomrecipe: ". Routing.MaxBounces is left 0.
+// Routing projects the routing of the embedded recipe the name selects, with its blocks expanded.
+// It builds no engine, so a caller that never builds a Shed can still compute progress.
+// A parse or expansion error is returned prefixed with "loomrecipe: ".
+// Routing.MaxBounces is left 0.
 // An empty name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
-// Every row of a review segment carries budgets' entry for its segment as its MaxBounces, the same value New
-// applies, so the projection never reports the engine default for a review row.
-// The exception is a zero-round segment: its rows carry MaxBounces 0, which the progress projection reads as shedengine's inherited budget.
-// A review segment budgets lacks is refused naming the segment and the loom wiring's segment-to-perch table, and a negative entry is refused naming the segment.
+// Every row of a review segment carries the budget for its segment as its MaxBounces,
+// so the projection never reports the engine default for a review row.
+// The exception is a zero-round segment, whose rows carry MaxBounces 0.
+// The progress projection reads that 0 as shedengine's inherited budget.
+// A review segment that budgets lacks is refused, naming the segment and the loom wiring's segment-to-perch table.
+// A negative entry is refused, naming the segment.
 func Routing(recipe string, budgets map[string]int) (shedengine.Routing, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -130,8 +135,9 @@ func Routing(recipe string, budgets map[string]int) (shedengine.Routing, error) 
 	return routing, nil
 }
 
-// segmentBudgets maps each review segment of segments to env.Segments' MaxBounces for it.
-// A segment with no env.Segments entry is refused naming the segment and wayForward, and a negative budget is refused naming the segment, its MaxBouncesKey and ConfigFile.
+// segmentBudgets maps each review segment of segments to its MaxBounces in env.Segments.
+// A segment with no env.Segments entry is refused, naming the segment and wayForward.
+// A negative budget is refused, naming the segment, its MaxBouncesKey and ConfigFile.
 func segmentBudgets(segments map[string]string, env shedrecipe.Env, wayForward string) (map[string]int, error) {
 	budgets := make(map[string]int, len(segments))
 	for segment := range segments {
@@ -148,7 +154,8 @@ func segmentBudgets(segments map[string]string, env shedrecipe.Env, wayForward s
 	return budgets, nil
 }
 
-// checkSegmentBudgets refuses a review segment of segments that budgets lacks, naming the segment and wayForward, and a negative entry, naming the segment.
+// checkSegmentBudgets refuses a review segment of segments that budgets lacks, naming the segment and wayForward.
+// It also refuses a negative entry, naming the segment.
 func checkSegmentBudgets(segments map[string]string, budgets map[string]int, wayForward string) error {
 	for segment := range segments {
 		budget, ok := budgets[segment]
@@ -182,7 +189,7 @@ func reviewSegments(recipe shedbuild.Recipe) map[string]string {
 	return segments
 }
 
-// applyReviewBudget sets MaxBounces on every producer whose segment is a review segment, to budgets' entry for the segment.
+// applyReviewBudget sets MaxBounces on every producer of a review segment, to that segment's budget.
 // It reads the map alone: every key of segments has already been checked.
 func applyReviewBudget(producers []shedengine.ProducerDef, segments map[string]string, budgets map[string]int) {
 	for i := range producers {
@@ -194,7 +201,7 @@ func applyReviewBudget(producers []shedengine.ProducerDef, segments map[string]s
 }
 
 // stampZeroRounds sets zero_rounds on the Bouncer row of every review segment whose budget is 0.
-// A stamped Bouncer settles approved at once exactly where its rows carry MaxBounces 0 under applyReviewBudget.
+// A stamped Bouncer settles approved at once, the same budget of 0 that applyReviewBudget sets on its rows.
 func stampZeroRounds(recipe *shedbuild.Recipe, segments map[string]string, budgets map[string]int) {
 	for segment, bouncer := range segments {
 		if budgets[segment] != 0 {

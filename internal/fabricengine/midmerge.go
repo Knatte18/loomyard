@@ -1,4 +1,5 @@
-// midmerge.go holds MidMerge, the read-only, vocabulary-neutral probe `lym loom start` consults to learn whether a pair carries an unfinished merge before putting a driver to work on it.
+// midmerge.go holds MidMerge, a read-only probe for an unfinished merge on a pair.
+// It reports the merge state and the conflicted paths that remain.
 
 package fabricengine
 
@@ -14,9 +15,9 @@ type MidMergeKind int
 const (
 	// MidMergeNone means no merge state exists anywhere on the pair.
 	MidMergeNone MidMergeKind = iota
-	// MidMergeParked means the fabric merge-state record exists: a fabric merge verb stopped part-way and left it for a resolver.
+	// MidMergeParked means the fabric merge-state record exists: a merge verb stopped part-way and left it for a resolver.
 	MidMergeParked
-	// MidMergeForeign means no fabric record exists, but a live MERGE_HEAD or unmerged index entries sit on either side of the pair: git-level merge state fabric did not start.
+	// MidMergeForeign means no fabric record exists, but foreign git-level merge state sits on either side of the pair.
 	MidMergeForeign
 )
 
@@ -29,12 +30,13 @@ const (
 )
 
 // MidMergeState is MidMerge's answer.
-// Conflicts lists the still-conflicted paths in the pair's one-repo form, the same form a fabric merge verb's conflicts use, so every listed path is accepted by `lym fabric merge-stage`;
-// it is empty-never-nil.
+// Conflicts lists the still-conflicted paths in the pair's one-repo form, which is the form fabric merge verbs use,
+// so every listed path is accepted by `lym fabric merge-stage`.
+// It is an empty slice, never nil.
 // Verb, Source, SourceSHA and StartSHA are filled only when Kind is MidMergeParked, and are empty otherwise:
 // the parked record's verb (`merge-in` or `merge`), its caller-supplied source branch,
 // and the code side's resolved source SHA and pre-merge HEAD SHA.
-// It carries no MutationRecord: a read-only probe must not (Mutation Record Invariant).
+// The probe is read-only and carries no mutation record.
 type MidMergeState struct {
 	Kind      MidMergeKind
 	Conflicts []string
@@ -46,14 +48,11 @@ type MidMergeState struct {
 
 // MidMerge reports whether l's pair carries an unfinished merge, and which conflicted paths remain.
 //
-// Neither existing probe serves this question: MergeStateActive is weft-only and Fabric.MergeInProgress is record-only,
-// and each misses the incident shape — a conflicted warp-side merge-in, or foreign warp-side state.
+// A probe failure is returned as an error, never as MidMergeNone.
+// Each failure leaves the answer undetermined, and an undetermined answer is not evidence that the tree is clean.
 //
-// Every probe failure is returned as an error, never as MidMergeNone: a pair Open cannot open, a record location that cannot be resolved, a conflict-path geometry error and an unmappable conflicted path are all undetermined answers,
-// and an undetermined answer is not evidence the tree is clean.
-// This is deliberately unlike mergeBlocksMutation, which swallows an unopenable pair to false.
-//
-// A fabric record wins over foreign-looking git state, since a parked fabric merge leaves MERGE_HEAD and unmerged entries of its own.
+// A fabric record wins over foreign-looking git state:
+// a parked fabric merge leaves MERGE_HEAD and unmerged entries of its own.
 func MidMerge(l *lymcwd.Location) (MidMergeState, error) {
 	f, err := Open(l)
 	if err != nil {
@@ -95,8 +94,9 @@ func MidMerge(l *lymcwd.Location) (MidMergeState, error) {
 	return state, nil
 }
 
-// MidMerge reports the parked or foreign merge state of f's own pair, as the package function of the same name does for a location.
-// It resolves the location from f's code checkout, so the answer is about this pair and never about the worktree the caller runs in.
+// MidMerge reports the parked or foreign merge state of f's own pair.
+// It resolves the location from f's code checkout,
+// so the answer is about this pair and never about the worktree the caller runs in.
 func (f *Fabric) MidMerge() (MidMergeState, error) {
 	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {

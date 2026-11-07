@@ -1,4 +1,6 @@
-// pathrules_test.go is the machine half of two invariants over every module's exported path constructor: "every never-tracked file lives under .lym, at the mirrored subpath of the _lym content it relates to" and the anchoring rule that puts every worktree-level path under AnchorPath() rather than WorktreePath().
+// pathrules_test.go is the machine half of two invariants over every module's exported path constructor:
+// every never-tracked file lives under .lym, at the mirrored subpath of the _lym content it relates to;
+// and the anchoring rule puts every worktree-level path under AnchorPath() rather than WorktreePath().
 // Each row of pathRules names a constructor, a closure calling it on a *lymcwd.Location, and its class;
 // the expectations come from the class rule, never from a path literal on the row.
 // It lives in cmd/lym because this is the only package that may import every owning module at once.
@@ -40,7 +42,8 @@ const (
 )
 
 // pathRule is one constructor under test.
-// mirrors, when set, names the durable row whose path this transient row must equal once the _lym segment is rewritten to .lym.
+// mirrors, when set, names the durable row this transient row mirrors.
+// Its path must equal that row's path once the _lym segment is rewritten to .lym.
 type pathRule struct {
 	name    string
 	class   pathClass
@@ -50,9 +53,13 @@ type pathRule struct {
 
 // pathRules is the union of every constructor the path guards exercise.
 //
-// The planparser rows pass l.AnchorPath() in and are checked against an anchor-derived rule, so they are tautological with respect to anchoring and cannot catch a production call site that passes the wrong root.
-// That proof lives in the subpath-anchored PlanTable case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go.
-// pattern.File has no row: the overview sits at the worktree root, not in `_lym` content, and the "PATTERN.md is read from the worktree root" subtest of `TestPlanTable` in internal/loomengine/plan_test.go proves its call site's root.
+// The planparser rows pass l.AnchorPath() in and are checked against an anchor-derived rule.
+// They are tautological with respect to anchoring,
+// so they cannot catch a production call site that passes the wrong root.
+// That proof lives in the subpath-anchored PlanTable case in internal/loomengine/plan_test.go.
+// The other half is the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go.
+// pattern.File has no row: the overview sits at the worktree root, not in `_lym` content.
+// The worktree-root subtest of `TestPlanTable` in internal/loomengine/plan_test.go proves its call site's root.
 var pathRules = []pathRule{
 	{name: "planparser.PlanDir", class: classDurable, path: func(l *lymcwd.Location) string { return planparser.PlanDir(l.AnchorPath()) }},
 	{name: "planparser.PlanOverview", class: classDurable, path: func(l *lymcwd.Location) string { return planparser.PlanOverview(l.AnchorPath()) }},
@@ -71,7 +78,7 @@ var pathRules = []pathRule{
 	{name: "websterengine.ReportsDir/blk", class: classDurable, path: func(l *lymcwd.Location) string {
 		return filepath.Join(websterengine.ReportsDir(l.AnchorPath()), "blk")
 	}},
-	// battencli.StatusFile is durable, fabric-synced state living at shedrun's _lym-rooted run directory, unlike battencli.RunLock, StatusLock and PrimeRunLock below, which stay ephemeral.
+	// battencli.StatusFile is durable, fabric-synced state living at shedrun's _lym-rooted run directory.
 	{name: "battencli.StatusFile", class: classDurable, path: func(l *lymcwd.Location) string { return battencli.StatusFile(l, "slug") }},
 
 	{name: "websterengine.ScratchDir", class: classTransient, mirrors: "websterengine.Dir", path: func(l *lymcwd.Location) string { return websterengine.ScratchDir(l.AnchorPath()) }},
@@ -97,7 +104,7 @@ var pathRules = []pathRule{
 
 	// HubLogsDir is hub-anchored through the board, so one reed server per hub resolves to one place.
 	{name: "fabricengine.HubLogsDir", class: classHub, path: func(l *lymcwd.Location) string { return fabricengine.HubLogsDir(l.HubPath) }},
-	// gateslot.Dir is hub-wide like HubLogsDir, over the location's board dir.
+	// gateslot.Dir is hub-wide, over the board dir of the hub.
 	{name: "gateslot.Dir", class: classHub, path: func(l *lymcwd.Location) string { return gateslot.Dir(fabricengine.BoardDir(l.HubPath)) }},
 }
 
@@ -162,7 +169,7 @@ func TestPathRules(t *testing.T) {
 					if under(got, lymRoot) {
 						t.Errorf("%s = %q; want it NOT under the durable root %q", r.name, got, lymRoot)
 					}
-					// A subpath-anchored repo has exactly one .lym root: a path left on the WorktreePath-based root is the two-roots bug.
+					// A subpath-anchored repo has exactly one .lym root, so a path under the WorktreePath-based .lym root is wrong.
 					if wrong := filepath.Join(worktree, lymdirs.DotLymDirName); wrong != dotLymRoot && under(got, wrong) {
 						t.Errorf("%s = %q; want it NOT under the WorktreePath-based root %q", r.name, got, wrong)
 					}

@@ -1,8 +1,7 @@
-// roundfiles.go names and locates a round's artifact files inside a block's run dir.
-// Every block artifact lives flat in the run dir (the "round artifact naming and attempt suffixes"
-// decision) — this file is the single place that turns a (round, attempt) pair into concrete paths.
-// Mapping those paths (plus a Profile's content) onto a specific RoundRunner's own input type is
-// that runner adapter's job.
+// roundfiles.go names and locates a round's artifact files inside a block's run directory.
+// Every block artifact lives flat in the run directory.
+// This file is the one place that turns a round and attempt into concrete paths.
+// Mapping those paths and a Profile's content onto a RoundRunner's input type is the runner adapter's job.
 
 package treadleengine
 
@@ -11,22 +10,21 @@ import (
 	"path/filepath"
 )
 
-// roundToken returns the artifact-file token for a round/attempt pair: the
-// bare round number for the first attempt, and the round number with a
-// letter suffix for each retry ("3b", "3c", etc.).
+// roundToken returns the artifact-file token for a round and attempt.
+// The first attempt gets the bare round number, and each retry gets a letter suffix ("3b", "3c").
 func roundToken(round, attempt int) string {
 	if attempt <= 1 {
 		return fmt.Sprintf("%d", round)
 	}
-	// attempt 2 -> 'b', attempt 3 -> 'c', ... (attempt 1 has no letter, so
-	// the first letter used is 'b', not 'a').
+	// Attempt 2 maps to 'b' and attempt 3 to 'c'.
+	// Attempt 1 takes no letter, so the suffixes start at 'b', not 'a'.
 	letter := rune('a' + attempt - 1)
 	return fmt.Sprintf("%d%c", round, letter)
 }
 
-// roundArtifactPaths is the set of file paths a single round/attempt may
-// produce. Not every field is written every round: Judge only when the judge
-// runs, Gate only when a command gate fails.
+// roundArtifactPaths holds the file paths one round and attempt may produce.
+// Not every field is written every round.
+// Judge is written only when the judge runs, and Gate only when a command gate fails.
 type roundArtifactPaths struct {
 	Review      string
 	FixerReport string
@@ -36,7 +34,7 @@ type roundArtifactPaths struct {
 	Seed        string
 }
 
-// artifactPaths returns the roundArtifactPaths for round/attempt inside runDir.
+// artifactPaths returns the artifact file paths for a round and attempt inside runDir.
 func artifactPaths(runDir string, round, attempt int) roundArtifactPaths {
 	token := roundToken(round, attempt)
 	return roundArtifactPaths{

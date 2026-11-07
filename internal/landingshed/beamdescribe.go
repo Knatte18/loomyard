@@ -1,4 +1,5 @@
-// beamdescribe.go implements WriteBeamDescription, which writes a beam's change description from its board entry, its project record and the commits it adds.
+// beamdescribe.go implements WriteBeamDescription, which writes a beam's change description.
+// The description is built from the beam's board entry, its project record and the commits it adds.
 
 package landingshed
 
@@ -14,7 +15,8 @@ import (
 )
 
 const (
-	// beamDescriptionTitleMax is the longest title the description carries, in characters, which is the limit summaryparser.ValidateDescription enforces.
+	// beamDescriptionTitleMax is the longest title the description carries, in characters.
+	// It is the limit that the description's validation enforces.
 	beamDescriptionTitleMax = 72
 	// beamChangesHeading heads the list of the commits the beam adds.
 	beamChangesHeading = "## Changes"
@@ -26,7 +28,8 @@ const (
 	beamCommitTimeLayout = "2006-01-02 15:04 UTC"
 )
 
-// pullRequestSubject matches the subject of a commit a pull request landed, `<title> (#<number>)`, capturing the title and the number.
+// pullRequestSubject matches the subject of a commit a pull request landed, `<title> (#<number>)`.
+// It captures the title and the number.
 var pullRequestSubject = regexp.MustCompile(`^(.*\S) \(#(\d+)\)$`)
 
 // BeamCommit is one commit on the beam branch's own line of history.
@@ -39,18 +42,20 @@ type BeamCommit struct {
 	Committed time.Time
 }
 
-// BeamDescribeDeps carries the told values WriteBeamDescription needs, which `lym beam describe` calls it with.
+// BeamDescribeDeps carries the values a beam's change description is written from, supplied by `lym beam describe`.
 // Every field is required.
 type BeamDescribeDeps struct {
 	// Slug is the beam's slug, which names the verb to run again in a refusal's way forward.
 	Slug string
 	// DescriptionPath is the absolute path of the change description the producer writes.
 	DescriptionPath string
-	// ProjectDecisions reads the entries added to the beam's project record after it was written, each heading and body verbatim, in record order: the project's recorded scope changes.
+	// ProjectDecisions reads the entries added to the beam's project record after it was written.
+	// Each entry's heading and body come back verbatim, in record order: the project's recorded scope changes.
 	ProjectDecisions func() ([]string, error)
 	// Entry reads the title and brief of the board entry of the run's slug, on every call.
 	Entry func() (title, brief string, err error)
-	// Commits lists the commits on the beam branch's first-parent line that its parent branch lacks, oldest first: each landing into the beam, each merge from the parent and each commit made on the beam directly.
+	// Commits lists the commits on the beam branch's first-parent line that its parent branch lacks, oldest first:
+	// each landing into the beam, each merge from the parent and each commit made on the beam directly.
 	Commits func() ([]BeamCommit, error)
 	// Commit commits the description's directory; a repeat commit over unchanged content is a no-op.
 	Commit func() error
@@ -78,14 +83,19 @@ func requireBeamDescribeDeps(caller string, deps BeamDescribeDeps) error {
 }
 
 // WriteBeamDescription writes a beam's change description at deps.DescriptionPath, whole, and commits it.
-// The description is the entry's title cut to 72 characters as a heading, its brief, a `## Changes` list of the beam's commits oldest first and the project record's added entries verbatim under a `## Project decisions` heading.
-// A commit whose subject ends in ` (#<number>)`, as a pull request's merge writes it, is listed by its pull request's number, title and merge time; any other commit, a merge from the parent included, by its object name, subject and commit time.
+// The description is the entry's title cut to the title length limit as a heading, then its brief.
+// The beam's commits follow oldest first under `## Changes`.
+// The project record's added entries follow verbatim under `## Project decisions`.
+// A pull request's merge writes its subject ending in ` (#<number>)`.
+// Such a commit is listed by that pull request's number, title and merge time.
+// Any other commit, a merge from the parent included, is listed by its object name, subject and commit time.
 // Either entry carries the first sentence of the commit's body as its summary, when the body has one.
 // GitHub links the number and the object name in a pull request's body.
-// It reads the board entry's title and brief, the project record's added entries and the beam's first-parent commits, and validates the file as the Describe row's gate does.
-// It refuses a deps with an unset field, naming it.
+// It validates the written file.
+// It refuses deps with an unset field, naming that field.
 // A read, write, validation or commit failure is an error naming the step.
-// A finding is an error naming it, with the way forward of fixing the title or brief with `lym board upsert` and running `lym beam describe <slug>` again.
+// A finding is an error naming it.
+// Its way forward is to fix the title or brief with `lym board upsert` and run `lym beam describe <slug>` again.
 // A re-run over unchanged inputs rewrites the same bytes.
 func WriteBeamDescription(deps BeamDescribeDeps) error {
 	if err := requireBeamDescribeDeps("WriteBeamDescription", deps); err != nil {
@@ -130,7 +140,8 @@ func WriteBeamDescription(deps BeamDescribeDeps) error {
 	return nil
 }
 
-// beamDescription renders the description file: the title cut to beamDescriptionTitleMax characters as a heading, then the brief, the list of commits and the project decisions, each part set off by a blank line.
+// beamDescription renders the description file: the title cut to beamDescriptionTitleMax characters as a heading.
+// Then come the brief, the list of commits and the project decisions, each set off by a blank line.
 func beamDescription(title, brief string, decisions []string, commits []BeamCommit) string {
 	title = strings.TrimSpace(title)
 	if runes := []rune(title); len(runes) > beamDescriptionTitleMax {
@@ -157,7 +168,10 @@ func beamDescription(title, brief string, decisions []string, commits []BeamComm
 	return description + "\n"
 }
 
-// beamCommitEntry renders one commit as a list item: `#<number> <title>, merged <time>` for a pull request's merge, `<object name> <subject>, committed <time>` otherwise, and the body's summary indented on the next line when there is one.
+// beamCommitEntry renders one commit as a list item.
+// A pull request's merge renders as `#<number> <title>, merged <time>`.
+// Any other commit renders as `<object name> <subject>, committed <time>`.
+// The body's summary follows on the next line, indented, when there is one.
 func beamCommitEntry(commit BeamCommit) string {
 	subject, body, _ := strings.Cut(strings.TrimSpace(commit.Message), "\n")
 	subject = strings.TrimSpace(subject)
@@ -174,7 +188,9 @@ func beamCommitEntry(commit BeamCommit) string {
 	return entry
 }
 
-// commitSummary returns the first sentence of the first paragraph of body that is not a heading, on one line, cut to beamCommitSummaryMax characters with an ellipsis; "" when body has no such paragraph.
+// commitSummary returns the first sentence of the body's first paragraph that is not a heading, on one line.
+// It cuts the sentence to beamCommitSummaryMax characters with an ellipsis.
+// It returns "" when body has no such paragraph.
 func commitSummary(body string) string {
 	for _, paragraph := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n\n") {
 		text := strings.Join(strings.Fields(paragraph), " ")

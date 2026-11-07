@@ -32,8 +32,8 @@ type goRewrite struct {
 
 // planGoFormat checks and formats every path before the caller writes any.
 // A relative path resolves against cwd.
-// A path passes when its symlink-resolved form lies strictly inside the symlink-resolved root, ends in `.go`, reads and parses;
-// it yields a goRewrite.
+// A path passes when its symlink-resolved form lies strictly inside the symlink-resolved root,
+// and it ends in `.go`, reads, and parses; a passing path yields a goRewrite.
 // Every other path yields one refused entry, `<path as named>: <reason>`.
 func planGoFormat(root, cwd string, paths []string) (rewrites []goRewrite, refused []string) {
 	resolvedRoot, rootErr := filepath.EvalSymlinks(root)
@@ -93,7 +93,8 @@ func strictlyInside(root, path string) bool {
 }
 
 // fmtCmd builds the `fmt` subcommand.
-// It rewrites only `.go` files the caller names inside its own worktree, and only to their go/format form; it runs no binary.
+// It rewrites only `.go` files the caller names inside its own worktree, and only to their go/format form.
+// It runs no binary.
 func (c *loomCLI) fmtCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "fmt <file>...",

@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain installs the hermetic git environment and runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
 	os.Exit(tmuxkit.Main(m))

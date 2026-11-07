@@ -1,4 +1,5 @@
-// markdown.go renders a Report as markdown: the selection, then one section per board question, each a table over the report's weeks.
+// markdown.go renders a Report as markdown: the selection, then one section per board question.
+// Each section is a table over the report's weeks.
 
 package reportengine
 
@@ -11,7 +12,7 @@ import (
 // noData is what a figure no run or fix carries renders as.
 const noData = "no data"
 
-// The headings of RenderMarkdown's four sections, one per board question.
+// The section headings of the markdown report, one per board question.
 const (
 	HeadingWakes      = "## Do orch wakes per run fall?"
 	HeadingStops      = "## Do the same stop and failure classes recur?"

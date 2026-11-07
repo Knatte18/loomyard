@@ -1,4 +1,5 @@
-// cardverify.go implements `lym gate card-verify <card id>`, which runs one plan card's `**Verify:**` line through the shared card-verify runner, in this process or in the detached runner an agent's capped call starts or joins.
+// cardverify.go implements `lym gate card-verify <card id>`, which runs one plan card's `**Verify:**` line.
+// The line runs in this process, or in the detached runner an agent's capped call starts or joins.
 
 package gatecli
 
@@ -73,7 +74,7 @@ type cardTarget struct {
 	card planparser.Card
 }
 
-// findCard reads the plan of the worktree ctx's directory belongs to and returns the card id names.
+// findCard reads the plan of the worktree ctx's directory belongs to and returns the card that id names.
 // A call that cannot name one returns the refusal's text with its way forward, and a zero target.
 func findCard(ctx context.Context, id string) (target cardTarget, refusal string) {
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -131,13 +132,15 @@ func (t cardTarget) runner() cardverify.Runner {
 	return runner
 }
 
-// runNoLine answers that the card has no line to run, as the in-process verb and the runner both do.
+// runNoLine answers that the card has no line to run.
 func (t cardTarget) runNoLine(out io.Writer) int {
 	return output.Ok(out, map[string]any{"message": fmt.Sprintf("card %s has no **Verify:** line; nothing to run", t.card.ID())})
 }
 
-// runCardVerify runs the card named id and returns the verb's exit code: the line's own, 1 for a refusal or a line that did not exit, and 0 for a pass.
-// A call that frontDecision caps, which the verb gives no wait, starts or joins a detached runner of the line and answers as runFront does.
+// runCardVerify runs the card named id and returns the verb's exit code:
+// the line's own, 1 for a refusal or a line that did not exit, and 0 for a pass.
+// A capped call, which gives the verb no wait, starts or joins a detached runner of the line.
+// It then answers as a front does.
 func runCardVerify(ctx context.Context, out, stderr io.Writer, id string, seams detachSeams) int {
 	target, refusal := findCard(ctx, id)
 	if refusal != "" {
@@ -154,7 +157,9 @@ func runCardVerify(ctx context.Context, out, stderr io.Writer, id string, seams 
 	return runCardLine(out, target.card, target.runner().RunLine(ctx, line, out))
 }
 
-// runCardLine closes a card-verify run whose line ended as how says, empty for a pass: it prints `gate card-verify: card <id> verify <line> <how>` for a failure and returns the line's own exit code, 1 for a failure without one, and 0 for a pass.
+// runCardLine closes a card-verify run whose line ended as how says, empty for a pass.
+// It prints `gate card-verify: card <id> verify <line> <how>` for a failure.
+// It returns the line's own exit code, 1 for a failure without one, and 0 for a pass.
 func runCardLine(out io.Writer, card planparser.Card, how string) int {
 	if how == "" {
 		return 0
@@ -168,9 +173,12 @@ func runCardLine(out io.Writer, card planparser.Card, how string) int {
 	return 1
 }
 
-// runCard runs the card-verify request in the run directory d and returns the verb's exit code, its answers in stdout and stderr as the in-process verb gives them.
-// It reads the plan again in the request's directory, so a plan edited since the front's read is refused with the in-process refusal in stderr.
-// The line runs under ctx, which the run's lease and a terminating signal cancel; its phase goes to the run's phase file and its process tree to lineFile.
+// runCard runs the card-verify request in the run directory d and returns the verb's exit code.
+// Its answers go to stdout and stderr as the in-process verb gives them.
+// It reads the plan again in the request's directory.
+// A plan edited since the front's read is refused, with the refusal in stderr.
+// The line runs under ctx, which the run's lease and a terminating signal cancel;
+// its phase goes to the run's phase file and its process tree to lineFile.
 func (d detachRun) runCard(ctx context.Context, request detachRequest, stdout, stderr io.Writer) int {
 	target, refusal := findCard(ctx, request.Args[0])
 	if refusal != "" {
@@ -206,7 +214,8 @@ func (d detachRun) runCard(ctx context.Context, request detachRequest, stdout, s
 	return runCardLine(stdout, target.card, runner.RunLine(ctx, line, stdout))
 }
 
-// writeLine records the process tree of the run's line, logging a failure since the record only serves a later front's cleanup.
+// writeLine records the process tree of the run's line.
+// It logs a failure, since the record only serves a later front's cleanup.
 func (d detachRun) writeLine(tree proc.TreeRecord) {
 	data, err := json.Marshal(tree)
 	if err == nil {

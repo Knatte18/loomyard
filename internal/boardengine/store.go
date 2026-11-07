@@ -1,10 +1,12 @@
 // store.go — the in-memory entry store over a board directory's board.json.
 //
-// Load/Save plus all CRUD and validation: dangling-dependency, isolated, kind and label rules, and cycle detection, with batch and merge applied atomically.
-// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent and folds a pre-upgrade binary's done marks;
-// Save writes board.json only.
-// Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written
-// file.
+// Load reads board.json, and Save writes board.json only.
+// The store applies the CRUD and validation rules:
+// dangling-dependency, isolated, kind and label rules, and cycle detection.
+// Batch and merge apply atomically.
+// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent,
+// and it folds the done marks of a pre-upgrade binary.
+// Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written file.
 
 package boardengine
 
@@ -24,17 +26,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// swapLockSuffix ends the name of the fine-grained lock that fences readers during writer
-// swap, separate from the board write lock to minimize read latency.
+// swapLockSuffix names the fine-grained lock that fences readers during a writer swap.
+// It is separate from the board write lock to keep read latency low.
 const swapLockSuffix = ".swaplock"
 
-// swapLockPath returns the swap lock guarding the board file at path, in the board checkout's never-tracked lock directory.
+// swapLockPath returns the swap lock guarding the board file at path.
+// The lock lives in the board checkout's never-tracked lock directory.
 func swapLockPath(path string) string {
 	return lock.TrackedLockPath(filepath.Dir(path), filepath.Base(path)+swapLockSuffix)
 }
 
-// BriefTask is the enriched read-only view returned by list, with Layer and HasProposal computed at
-// read time.
+// BriefTask is an entry's enriched read-only view, with Layer and HasProposal computed at read time.
 type BriefTask struct {
 	ID          int       `json:"id"`
 	Handle      string    `json:"handle,omitempty"`
@@ -51,9 +53,9 @@ type BriefTask struct {
 	Revised     time.Time `json:"revised,omitzero"`
 	Layer       string    `json:"layer"`
 	HasProposal bool      `json:"has_proposal"`
-	// OwnerMachine is the entry's effective owner: the recorded one, else the owner it reads as through its parent; empty for a note and where the owner cannot be resolved.
+	// OwnerMachine is the effective owner, recorded or read through the parent; empty for a note or when unresolved.
 	OwnerMachine string `json:"owner_machine,omitempty"`
-	// ParentBeam is the slug of the beam the entry belongs to, as the parent resolver answers it; empty for the prime and where the beam cannot be resolved.
+	// ParentBeam is the slug of the beam the entry belongs to; empty for the prime or when the beam cannot be resolved.
 	ParentBeam string `json:"parent_beam,omitempty"`
 }
 
@@ -100,8 +102,10 @@ type loadedStoreFile struct {
 	Unknown     map[string]json.RawMessage `json:"-"`
 }
 
-// UnmarshalJSON decodes the known fields in one json pass, then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
-// The entries decode through decodedEntry, not storedEntry, so no json call is nested per entry and the load stays as cheap as one decode.
+// UnmarshalJSON decodes the known fields in one json pass.
+// It then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
+// The entries decode through decodedEntry, not storedEntry.
+// No json call is nested per entry, so the load stays as cheap as one decode.
 func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	var decoded struct {
 		Version     int            `json:"version"`
@@ -143,19 +147,19 @@ type Store struct {
 	legacyDone []string
 	// primeOwner is the board.json prime_owner record, the machine that owns the hub's prime; empty when none is recorded.
 	primeOwner string
-	// draftStatus is the board.json draft_status record: true once migrateDraftStatus marked the open tasks with no status draft.
+	// draftStatus is the board.json draft_status record: true once the open tasks with no status were marked draft.
 	draftStatus bool
 	// unknown is the top-level keys of board.json this binary does not know, kept raw and written back by Save.
 	unknown  map[string]json.RawMessage
 	boardDir string
-	// vocab is the label vocabulary validateWrite checks labels against.
-	// Board sets it on every store it builds; only a store built directly by NewStore, in store-level tests, has none, and nil skips the label check alone.
+	// vocab is the label vocabulary that writes check labels against.
+	// The board sets it on every store it builds; a bare NewStore store has none, and nil skips the label check.
 	vocab *Vocabulary
-	// parentOf names the slug of an entry's parent pair for the effective owner, "" for the prime; nil reads every parent as the prime.
-	// Board sets it on every store it builds from Config.ParentOf.
+	// parentOf gives the slug of an entry's parent pair, "" for the prime; nil reads every parent as the prime.
+	// The board sets it on every store it builds.
 	parentOf func(slug string) (string, error)
 	// pairExists reports whether an entry's pair exists on this machine; nil reads every pair as absent.
-	// Board sets it on every store it builds from Config.PairExists.
+	// The board sets it on every store it builds.
 	pairExists func(slug string) bool
 }
 
@@ -256,8 +260,9 @@ func BoardFileRel() string {
 	return boardFile
 }
 
-// ParseBoardTasks decodes board.json bytes read from a board commit, as Load decodes the stored file.
-// It takes no lock and reads no legacy file; an old tier-and-type entry still yields its labels, and an unknown key is ignored.
+// ParseBoardTasks decodes board.json bytes read from a board commit.
+// It takes no lock and reads no legacy file.
+// An entry in the old tier-and-type form still yields its labels, and an unknown key is ignored.
 // A version other than the one this binary reads is an error.
 func ParseBoardTasks(data []byte) ([]Task, error) {
 	var file loadedStoreFile
@@ -305,6 +310,7 @@ func (s *Store) Save() error {
 	})
 }
 
+// Tasks returns a copy of the entry slice, so the caller can reorder it without touching the store.
 func (s *Store) Tasks() []Task {
 	result := make([]Task, len(s.tasks))
 	copy(result, s.tasks)
@@ -323,8 +329,8 @@ func (s *Store) nextID() int {
 	return nextIDIn(s.tasks)
 }
 
-// nextIDIn returns the ID for a task appended to tasks, used so projection-based
-// operations assign the same IDs as sequential upserts would.
+// nextIDIn returns the ID for a task appended to tasks.
+// Projection-based operations use it so they assign the same IDs as sequential upserts would.
 func nextIDIn(tasks []Task) int {
 	if len(tasks) == 0 {
 		return 0
@@ -338,7 +344,8 @@ func nextIDIn(tasks []Task) int {
 	return maxID + 1
 }
 
-// validateWrite checks incoming against snapshot for dangling deps, isolated constraints, cycles, the kind rules and, when the store has a vocabulary, the labels.
+// validateWrite checks incoming against snapshot for dangling dependencies and isolated constraints,
+// and it checks cycles, the kind rules and, when the store has a vocabulary, the labels.
 // snapshot is the projected state after any pending removals.
 func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	snapshotIndex := make(map[string]*Task)
@@ -407,7 +414,8 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	// A cycle made of project membership alone is left to checkProjectRules, whose refusal names the project field to correct.
+	// A cycle made of project membership alone is left to checkProjectRules.
+	// Its refusal names the project field to correct.
 	if hit, cyclic := findCycle(adjacency, incoming.Slug); cyclic {
 		if _, membershipOnly := findCycle(membership, incoming.Slug); !membershipOnly {
 			return fmt.Errorf("cycle detected: %q -> %q", incoming.Slug, hit)
@@ -470,19 +478,22 @@ func isDone(t Task) bool {
 }
 
 // MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
-// Selector is a Go string when the task is identified by slug, float64 when identified by numeric id (JSON numbers decode as float64), or a Handle when identified by handle.
+// Selector identifies the task: a Go string for a slug, a float64 for a numeric id, or a Handle for a handle.
+// JSON numbers decode as float64, so a numeric id arrives in that type.
 // Status is nil to clear the status field.
 type MergeStatusUpdate struct {
 	Selector any
 	Status   *string
 }
 
-// UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
+// UpsertPayloadKeys returns the keys a task payload carries on every upsert path:
+// the required keys and the optional ones.
 // "id" and "handle" are assigned by the board and never accepted; "phase" and "group" are retired.
 // "owner_machine" is accepted only as the entry's effective owner, a no-op, and "beam" only as the entry's stored flag.
 // "front" and "on_land" are accepted only as the entry's stored values, as "beam" is.
 // "discussed" is accepted only as the entry's stored value too.
-// "beam_color" is output only: a beam carries it in what is read back, the owner setter records it, and an upsert naming it is refused as an unknown field.
+// "beam_color" is output only: a beam carries it in what is read back, the owner setter records it,
+// and an upsert naming it is refused as an unknown field.
 func UpsertPayloadKeys() (required, optional []string) {
 	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "pull_request", "notify_on_land", "owner_machine", "project", "order", "beam", "front", "on_land", "discussed"}
 }
@@ -497,7 +508,8 @@ var upsertAllowedKeys = func() map[string]bool {
 	return allowed
 }()
 
-// validateUpsertFields reports an error for any field not in upsertAllowedKeys, with a hint for "phase" typos.
+// validateUpsertFields reports an error for any field not in upsertAllowedKeys.
+// For a few retired or board-assigned field names, the error adds a hint.
 func validateUpsertFields(fields map[string]any) error {
 	for k := range fields {
 		if !upsertAllowedKeys[k] {
@@ -523,7 +535,7 @@ func validateUpsertFields(fields map[string]any) error {
 }
 
 // UpsertTask creates or updates the task identified by fields["slug"].
-// Rejects unknown fields via validateUpsertFields before any other processing.
+// Unknown fields are rejected before any other processing.
 // An owner_machine key equal to the entry's effective owner is dropped from fields, and any other value is refused.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 	if err := validateUpsertFields(fields); err != nil {
@@ -570,7 +582,7 @@ func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 		return Task{}, err
 	}
 
-	// Update or append
+	// Replace an existing entry in place, which keeps its position in the store; otherwise append.
 	if _, exists := index[slugStr]; exists {
 		for i := range s.tasks {
 			if s.tasks[i].Slug == slugStr {
@@ -585,7 +597,9 @@ func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 	return incoming, nil
 }
 
-// selects reports whether selector names t: an int or float64 matches its id, a string its slug and a Handle its handle, a letter matching case-insensitively.
+// selects reports whether selector identifies t.
+// An int or float64 matches the id, a string matches the slug, and a Handle matches the handle.
+// A Handle's letter matches case-insensitively.
 func selects(t Task, selector any) bool {
 	switch v := selector.(type) {
 	case int:
@@ -602,7 +616,8 @@ func selects(t Task, selector any) bool {
 	return false
 }
 
-// index returns the position of the entry selector names, a slug string, a numeric id or a Handle, and false when no entry matches.
+// index returns the position of the entry that selector identifies, and false when no entry matches.
+// The selector is a slug string, a numeric id or a Handle.
 func (s *Store) index(selector any) (int, bool) {
 	for i := range s.tasks {
 		if selects(s.tasks[i], selector) {
@@ -612,7 +627,8 @@ func (s *Store) index(selector any) (int, bool) {
 	return -1, false
 }
 
-// GetTask looks up the entry selector names, a slug string, a numeric id or a Handle. Returns (Task, true) if found.
+// GetTask returns the entry that selector identifies: a slug string, a numeric id or a Handle.
+// The boolean reports whether an entry matched.
 func (s *Store) GetTask(selector any) (Task, bool) {
 	i, found := s.index(selector)
 	if !found {
@@ -621,7 +637,8 @@ func (s *Store) GetTask(selector any) (Task, bool) {
 	return s.tasks[i], true
 }
 
-// RemoveTask deletes the entry selector names, a slug string, a numeric id or a Handle. Returns an error if not found.
+// RemoveTask deletes the entry that selector identifies: a slug string, a numeric id or a Handle.
+// It returns an error when no entry matches.
 func (s *Store) RemoveTask(selector any) error {
 	i, found := s.index(selector)
 	if !found {
@@ -631,8 +648,9 @@ func (s *Store) RemoveTask(selector any) error {
 	return nil
 }
 
-// SetStatus sets or clears the status field of the entry selector names, a slug string, a numeric id or a Handle.
-// Returns fmt.Errorf("task not found: %v", selector) when no entry matches.
+// SetStatus sets or clears the status field of the entry that selector identifies.
+// The selector is a slug string, a numeric id or a Handle.
+// It returns an error when no entry matches.
 func (s *Store) SetStatus(selector any, status *string) error {
 	i, found := s.index(selector)
 	if !found {
@@ -648,8 +666,9 @@ func (s *Store) SetStatus(selector any, status *string) error {
 	return nil
 }
 
-// SetDeps replaces the depends_on list of the entry selector names, a slug string, a numeric id or a Handle, running full validation.
-// Returns fmt.Errorf("task not found: %v", selector) when no entry matches.
+// SetDeps replaces the depends_on list of the entry that selector identifies.
+// The selector is a slug string, a numeric id or a Handle.
+// It runs full validation before the write, and it returns an error when no entry matches.
 func (s *Store) SetDeps(selector any, dependsOn []string) error {
 	i, found := s.index(selector)
 	if !found {
@@ -687,8 +706,10 @@ func (s *Store) anyEntryCarries(label string) bool {
 	return false
 }
 
-// ListTasksBrief returns the tasks carrying every label in labels (all tasks when empty), enriched with computed Layer and HasProposal fields.
-// A task and a project carry their effective owner, a beam's or the root's for a task, and a note carries none.
+// ListTasksBrief returns the tasks carrying every label in labels, or all tasks when labels is empty.
+// Each brief is enriched with the computed Layer and HasProposal fields.
+// A task and a project carry their effective owner, which for a task comes from its beam or the root;
+// a note carries none.
 func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 	layerMap, err := ComputeLayers(s.tasks)
 	if err != nil {
@@ -699,7 +720,8 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 		}
 	}
 
-	// README order, so list, find and --text agree with the rendered board; store order when the layers fail.
+	// Use README order so list, find and --text agree with the rendered board;
+	// fall back to store order when RenderOrder fails.
 	ordered := s.tasks
 	if ro, err := RenderOrder(s.tasks); err == nil {
 		ordered = make([]Task, len(ro))
@@ -756,14 +778,17 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 // Promote makes the entry identified by idOrSlug a task and clears its priority, which only a note carries.
 // A task is returned unchanged with changed false, so the caller knows nothing was written.
 // A project is refused, since only a task is claimable bar a beam's landing.
-// The promoted entry passes validateWrite, so a missing type label refuses it.
+// The promoted entry must pass the store's validation, so an entry without a type label is refused.
 func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	return s.promoteTo(idOrSlug, "", nil)
 }
 
-// promoteTo is Promote with the recipe set in the same write when recipe is not empty.
-// A discussed note whose decision record recordStored reports stored, or that carries the sketch label, takes recipe raddle when recipe is empty, since raddle is the one recipe such a note may take.
-// With recipe raddle, a note whose record is stored keeps its record and flag and gets the sketch label back when a note write dropped it.
+// promoteTo makes the entry identified by idOrSlug a task and clears its priority.
+// When recipe is not empty, it is set in the same write.
+// A discussed note takes recipe raddle when recipe is empty and its record is stored, or it carries the sketch label.
+// Raddle is the one recipe such a note may take.
+// With recipe raddle, a note whose record is stored keeps its record and flag,
+// and it gets the sketch label back when a note write dropped it.
 // A nil recordStored reports no record stored, so only the label then gives recipe raddle.
 func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug string) bool) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
@@ -803,9 +828,11 @@ func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug st
 	return incoming, true, nil
 }
 
-// Prune removes every done entry bar the survivors named below, strips the removed slugs from the survivors' depends_on and order, and returns the removed slugs in store order.
-// An abandoned entry survives, and so does a done project while an entry the same prune does not remove names it in project.
-// A done entry carrying notify_on_land survives too, so its request outlives the landing until the dobby has sent its line and cleared it.
+// Prune removes every done entry except the survivors described here, and returns the removed slugs in store order.
+// It strips the removed slugs from the depends_on and order of the surviving entries.
+// An abandoned entry survives, and so does a done project that a surviving entry names as its project.
+// A done entry carrying notify_on_land survives too,
+// so its request outlives the landing until the dobby has sent its line and cleared it.
 func (s *Store) Prune() []string {
 	gone := make(map[string]bool)
 	for _, t := range s.tasks {
@@ -813,7 +840,8 @@ func (s *Store) Prune() []string {
 			gone[t.Slug] = true
 		}
 	}
-	// A done project stays while a surviving entry names it, which can in turn keep the done project that entry is a member of.
+	// A done project stays while a surviving entry names it,
+	// and a kept project can in turn keep the done project it is a member of.
 	for changed := true; changed; {
 		changed = false
 		for _, t := range s.tasks {
@@ -851,8 +879,8 @@ func (s *Store) Prune() []string {
 	return removed
 }
 
-// Find returns the entries whose slug, title, brief or body contains text, case-insensitively, done entries included, in ListTasksBrief's shape and order.
-// Only entries carrying every label in labels are kept.
+// Find returns the BriefTask entries whose slug, title, brief or body contains text, case-insensitively.
+// Done entries are included; only entries carrying every label in labels are kept, in store order.
 func (s *Store) Find(text string, labels []string) []BriefTask {
 	needle := strings.ToLower(text)
 	matches := make(map[string]bool)
@@ -881,9 +909,8 @@ func (s *Store) ListTasksFull() []Task {
 	return result
 }
 
-// UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or
-// none.
-// Each task's field map is validated by the upsert allowlist before projection.
+// UpsertTasksBatch applies multiple upserts atomically: it validates all of them first, then applies all or none.
+// Each task's field map is checked against the upsert field allowlist before projection.
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	for _, fields := range tasks {
 		if err := validateUpsertFields(fields); err != nil {
@@ -990,7 +1017,8 @@ func (s *Store) oldestCreated(own time.Time, removeSlugs []string) time.Time {
 	return oldest
 }
 
-// firstRemovedProject returns the project of the first entry in removeSlugs the store holds, "" when that entry names none or the store holds none.
+// firstRemovedProject returns the project of the first entry in removeSlugs that the store holds.
+// It returns "" when that entry names no project, or when the store holds none of them.
 func (s *Store) firstRemovedProject(removeSlugs []string) string {
 	for _, slug := range removeSlugs {
 		if removed, held := s.GetTask(slug); held {
@@ -1000,8 +1028,9 @@ func (s *Store) firstRemovedProject(removeSlugs []string) string {
 	return ""
 }
 
-// checkRemovedProjectsUnnamed refuses a merge that removes a project an entry that survives it still names in project, naming those entries as the ones to move first.
-// projected is the entries without the removed ones, and incoming is the upserted entry, which survives under its own slug.
+// checkRemovedProjectsUnnamed refuses a merge that removes a project while a surviving entry still names it in project.
+// The upserted entry counts as surviving under its own slug,
+// and the error lists the entries that still name the project.
 func (s *Store) checkRemovedProjectsUnnamed(projected []Task, incoming Task, removeSlugs []string) error {
 	for _, slug := range removeSlugs {
 		removed, held := s.GetTask(slug)
@@ -1024,8 +1053,8 @@ func (s *Store) checkRemovedProjectsUnnamed(projected []Task, incoming Task, rem
 	return nil
 }
 
-// mergeOrders rewrites every order that names a removed slug to name into once, in the place of the first removed slug it names.
-// The upserted slug is never a removed one, so an order naming it keeps it.
+// mergeOrders rewrites each order naming a removed slug to name into once, in place of the first removed slug.
+// An upserted slug that also appears in removeSlugs is not removed, so an order naming it keeps it.
 func (s *Store) mergeOrders(removeSlugs []string, into string) {
 	removed := slices.DeleteFunc(slices.Clone(removeSlugs), func(slug string) bool { return slug == into })
 	for i := range s.tasks {
@@ -1047,15 +1076,15 @@ func (s *Store) mergeOrders(removeSlugs []string, into string) {
 	}
 }
 
-// MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
-// The upserted entry's issues are its own followed by those of each removed entry,
-// so a merge never loses a recorded issue,
-// and its creation time is the oldest known among them.
-// An upserted entry with no project of its own takes the first removed entry's, every order naming a removed slug names the upserted slug once in its place,
-// and a merge that removes a project another surviving entry names in project is refused.
-// setStatus is the resolved status-update step,
-// or nil to skip it.
-// When setStatus targets a missing task, SetStatus returns an error and boardCriticalSection discards the in-memory mutation without saving, leaving the on-disk state unchanged.
+// MergeTasks removes the removeSlugs entries, upserts one entry, and optionally sets a status.
+// The upserted entry's issues are its own, then those of each removed entry; a merge never loses a recorded issue.
+// Its creation time is the oldest known among the upserted and removed entries.
+// An upserted entry with no project of its own takes the project of the first removed entry the store holds.
+// Every order that names a removed slug names the upserted slug once, in its place.
+// A merge that removes a project another surviving entry names in project is refused.
+// A nil setStatus skips the status update.
+// If setStatus targets a missing task, MergeTasks returns an error after it has changed the store in memory,
+// so the caller must not save the store.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {

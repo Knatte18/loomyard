@@ -1,5 +1,6 @@
-// gitscratch_test.go builds the real scratch git repository the integration-tier tests use
-// where the behavior under test is git itself: head capture across commits, merge commits, dirtiness, ignore rules and blobs.
+// gitscratch_test.go builds the real scratch git repository for the integration-tier tests.
+// They use it where the behavior under test is git itself:
+// head capture across commits, merge commits, dirtiness, ignore rules and blobs.
 // Every other webster test runs over a fakeGit (gitfake_test.go) and spawns no process.
 
 package websterengine_test

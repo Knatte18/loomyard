@@ -1,5 +1,7 @@
-<!-- This is the darn writer's Step 4 list for a run whose verify gate has a cold fixer: the writer and its subagents run no gate, and the writer acts only on what the fixer leaves.
-     internal/darnengine's DarnTable fills its one marker, {{.subagent_model}}, from loom.yaml's subagent_model, then fills the result whole into darn-template-write's make_change marker. -->
+<!-- This is the darn writer's Step 4 list for a run whose verify gate has a cold fixer:
+     the writer and its subagents run no gate, and the writer acts only on what the fixer leaves.
+     internal/darnengine's DarnTable fills its one marker, {{.subagent_model}}, from loom.yaml's subagent_model,
+     then fills the result whole into darn-template-write's make_change marker. -->
 
 1. Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.

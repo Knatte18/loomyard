@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNewPreflight_CarriesToldName asserts NewPreflight hardcodes nothing: the returned shedengine.ShedProducer's concrete type is *preflightProducer, and its name and cwd fields hold the told constructor arguments verbatim.
+// TestNewPreflight_CarriesToldName asserts NewPreflight hardcodes nothing.
+// The returned producer is a *preflightProducer whose name and cwd fields hold the arguments verbatim.
 //
 //testtiming:keep pins the told name and cwd landing on the producer's fields, which the cancelled-call test covering its blocks never reads
 func TestNewPreflight_CarriesToldName(t *testing.T) {
@@ -35,12 +36,10 @@ func TestNewPreflight_CarriesToldName(t *testing.T) {
 	}
 }
 
-// TestCall_CancelledAtEntryReturnsErrorNotStuck calls Call on an already-cancelled context and
-// asserts a non-nil error with an outcome that is neither Done nor Stuck -- the same assertion
-// shape internal/loomshed/cancellation_test.go's TestCancellation_RealProducersReturnErrorNotStuck uses.
-// This case is Tier-1-legal precisely because entryErr returns before preflight.Check is ever
-// reached, so nothing spawns; cwd is t.TempDir() so the test would not accidentally resolve a real
-// repository even if that guarantee ever broke.
+// TestCall_CancelledAtEntryReturnsErrorNotStuck calls Call on an already-cancelled context.
+// It asserts a non-nil error and an outcome that is neither Done nor Stuck.
+// The case is legal at Tier 1 because entryErr returns before preflight.Check runs, so nothing spawns.
+// The working directory is t.TempDir(), so the test would not resolve a real repository even if that early return broke.
 func TestCall_CancelledAtEntryReturnsErrorNotStuck(t *testing.T) {
 	tiergate.Require(t, 0)
 	p := NewPreflight("Preflight", t.TempDir())
@@ -57,8 +56,10 @@ func TestCall_CancelledAtEntryReturnsErrorNotStuck(t *testing.T) {
 	}
 }
 
-// TestPreflight_BatcherCheck covers the optional batcher check of NewPreflightWithChecks over a temporary non-repository cwd.
-// A failing check is Stuck with the batchifier reason and its way forward, and is logged with the row's name and the error.
+// TestPreflight_BatcherCheck covers the optional batcher check of NewPreflightWithChecks.
+// It runs over a temporary cwd that is not a repository.
+// A failing check is Stuck with the batchifier reason and its way forward.
+// The failure is logged with the row's name and the error.
 // A retired-key error closes with the reconcile hand-off instead.
 // A check that cancels the context before failing yields the cancellation error and no verdict.
 // A nil or passing check never yields the batchifier reason.
@@ -70,7 +71,7 @@ func TestPreflight_BatcherCheck(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// check builds the seam under test; cancel lets a seam cancel the call's context.
+		// check builds the seam under test. Its cancel argument cancels the call's context.
 		check func(cancel context.CancelFunc) func() error
 		// failure is the error a failing seam returns, logged by the row.
 		failure    error
@@ -150,12 +151,14 @@ func TestPreflight_BatcherCheck(t *testing.T) {
 	}
 }
 
-// TestPreflight_StencilsCheck covers the optional stencils and drift checks of NewPreflightWithChecks over a temporary non-repository cwd.
-// A failing check is Stuck with its reason followed by the error's own text, and is logged with the row's name and the error.
+// TestPreflight_StencilsCheck covers the optional stencils and drift checks of NewPreflightWithChecks.
+// It runs over a temporary cwd that is not a repository.
+// A failing check is Stuck with its reason followed by the error's own text.
+// It is logged with the row's name and the error.
 // A failing batcher check runs first and wins over a failing stencils check, which wins over a failing drift check.
 // A check that cancels the context before failing yields the cancellation error and no verdict.
 // A passing check never yields the stencils reason.
-// It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
+// The test does not call t.Parallel: logcapture.Capture redirects the process-global logger output.
 func TestPreflight_StencilsCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	stencilsErr := errors.New("stencil darn-template-write has marker(s) subagent_model that no value fills")
@@ -165,7 +168,7 @@ func TestPreflight_StencilsCheck(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// checks builds the checks under test; cancel lets a check cancel the call's context.
+		// checks builds the checks under test; a check that calls cancel cancels the call's context.
 		checks     func(cancel context.CancelFunc) Checks
 		failure    error
 		wantReason string

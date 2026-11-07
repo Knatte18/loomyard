@@ -1,6 +1,5 @@
-// rubric_test.go covers ReadRubric directly: the fill, the strip, the markerless pass-through, and
-// the required-marker error, exercised against a realistically stamped fixture file rather than a
-// bare body.
+// rubric_test.go covers ReadRubric: the fill, the strip, the markerless pass-through, and the errors.
+// Its fixtures are realistically stamped files, not bare bodies.
 
 package shedadapters
 
@@ -14,9 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeStampedRubric writes body into dir at name's stencilstore path, stamped with body's own real
-// BodyHash via ApplyStamp -- a realistically stamped fixture, not a bare body, since several
-// assertions in this file are about the stamp banner surviving (or not surviving) the read.
+// writeStampedRubric writes body into dir at name's stencilstore path, stamped with its own BodyHash.
+// The stamp matters because several assertions in this file check whether the banner survives the read.
 func writeStampedRubric(t *testing.T, dir, name, body string) {
 	t.Helper()
 	path := stencilstore.Path(dir, name)

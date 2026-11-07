@@ -1,8 +1,6 @@
-// entries_batten.go implements the batten registry entries, the ones that build a producer of the task-worktree lifecycle.
-// They are grouped into their own file
-// rather than folded into entries_simple.go because they share the
-// Env.Slug/Env.ScratchDir/Env.PrimeLock validation shape that entries_simple.go's entries do
-// not have.
+// entries_batten.go implements the batten registry entries, which build the producers of the task-worktree lifecycle.
+// They live in their own file.
+// They share the Env.Slug, Env.ScratchDir and Env.PrimeLock validation shape that entries_simple.go does not have.
 
 package shedrecipe
 
@@ -14,25 +12,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// defaultInnerRunPollIntervalS is innerRunEntry's own default for the poll_interval_s Config key,
-// used when the extracted value is zero -- configInt reports an absent key and an explicit zero
-// identically, so both resolve to this default. It agrees with the batten recipe's own explicit
-// poll_interval_s so an omitted key and the recipe's own value never diverge.
+// defaultInnerRunPollIntervalS is the poll_interval_s default, used when the configured value is zero.
+// An absent key and an explicit zero both read as zero, so both resolve to this default.
+// It matches the value the batten recipe sets explicitly, so an omitted key and the recipe's value never diverge.
 // It is the interval at which the producer's in-call wait checks its child.
 const defaultInnerRunPollIntervalS = 2
 
-// defaultInnerRunNoticeProbeS is innerRunEntry's own default for the notice_probe_s Config key, used when the extracted value is zero, exactly as defaultInnerRunPollIntervalS is.
-// It agrees with the batten recipe's own explicit notice_probe_s: the longest the in-call wait goes between the reads that cost a process or a multiplexer round trip.
+// defaultInnerRunNoticeProbeS is the notice_probe_s default, used when the configured value is zero.
+// It matches the value the batten recipe sets explicitly.
+// It is the longest the in-call wait goes between the reads that cost a process or a multiplexer round trip.
 const defaultInnerRunNoticeProbeS = 30
 
-// defaultInnerRunDriverExitGraceS is innerRunEntry's own default for the driver_exit_grace_s Config key, used when the extracted value is zero, exactly as defaultInnerRunPollIntervalS is.
-// It agrees with the batten recipe's own explicit driver_exit_grace_s: 900 seconds, the longest a done child's live driver strand is waited for before teardown ends it.
+// defaultInnerRunDriverExitGraceS is the driver_exit_grace_s default, used when the configured value is zero.
+// It matches the value the batten recipe sets explicitly.
+// It is the longest a done child's live driver strand is waited for before teardown ends it.
 const defaultInnerRunDriverExitGraceS = 900
 
-// worktreeCreateEntry is the Constructor for the "WorktreeCreate" registry row: it validates
-// Env.Slug, Env.ScratchDir, Env.CreateWorktree, Env.PrimeLock.Acquire, and Env.PrimeLock.Path, and
-// returns battenshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock,
-// env.ScratchDir).
+// worktreeCreateEntry is the constructor for the "WorktreeCreate" registry row.
+// It rejects any Config key, and any Env value the producer needs that is unset.
 func worktreeCreateEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -55,10 +52,8 @@ func worktreeCreateEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedP
 	return battenshed.NewWorktreeCreate(row.Name, env.Slug, env.CreateWorktree, env.PrimeLock, env.ScratchDir), nil
 }
 
-// worktreeTeardownEntry is the Constructor for the "WorktreeTeardown" registry row: worktreeCreateEntry's
-// twin, validating the same Slug/ScratchDir/PrimeLock fields under the "WorktreeTeardown" entry name,
-// plus Env.Teardown.Shutdown and Env.Teardown.Remove, and returns
-// battenshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir).
+// worktreeTeardownEntry is the constructor for the "WorktreeTeardown" registry row.
+// It rejects any Config key, and any Env value the producer needs that is unset.
 func worktreeTeardownEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -84,14 +79,15 @@ func worktreeTeardownEntry(row RowIdentity, cfg Config, env Env) (shedengine.She
 	return battenshed.NewWorktreeTeardown(row.Name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir), nil
 }
 
-// innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int Config key poll_interval_s through configInt, defaulting to defaultInnerRunPollIntervalS when the extracted value is zero -- configInt reports an absent key and an explicit zero identically, so both resolve to the same default -- and rejects a negative value with an error naming the key.
-// It reads driver_exit_grace_s the same way, defaulting to defaultInnerRunDriverExitGraceS.
-// It validates notice_quiet_min as a non-negative int and passes it to no producer: the key is the quiet window of the run notices, which the hub wiring reads from this row for dobby, where a zero or an absent key keeps the default window.
-// It reads notice_probe_s the same way, defaulting to defaultInnerRunNoticeProbeS and set on the deps as InnerRunDeps.NoticeProbe.
-// poll_attempts is retired: the wait lives in the producer's own call, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
-// It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Now, whose nil value is legitimate and selects the production clock.
-// poll_interval_s stays a validated key whose one effect is NewInnerRun's sub-second floor Warn.
-// It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second).
+// innerRunEntry is the constructor for the "InnerRun" registry row.
+// It reads the optional int Config keys poll_interval_s, driver_exit_grace_s and notice_probe_s.
+// For those three, a zero value takes the default and a negative value is an error naming the key.
+// notice_quiet_min is validated as a non-negative int and passed to no producer:
+// it is the quiet window of the run notices, which the hub wiring reads from this row.
+// A poll_attempts key is rejected as unrecognized, since the wait lives in the producer's own call.
+// It validates Env.Slug, Env.ScratchDir and the Env.InnerRun seams, except Env.InnerRun.Now.
+// A nil Now is legitimate and selects the production clock.
+// Apart from the interval, poll_interval_s's one effect is the sub-second floor warning of battenshed.NewInnerRun.
 func innerRunEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
 	if err != nil {
@@ -163,9 +159,8 @@ func innerRunEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 	return battenshed.NewInnerRun(row.Name, env.Slug, deps, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second), nil
 }
 
-// seedChildEntry is the Constructor for the "SeedChild" registry row: it validates Env.Slug,
-// Env.ScratchDir, and all five Env.SeedChild closures, and returns
-// battenshed.NewSeedChild(name, env.Slug, env.SeedChild, env.ScratchDir).
+// seedChildEntry is the constructor for the "SeedChild" registry row.
+// It rejects any Config key, and any Env value the producer needs that is unset.
 func seedChildEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -194,9 +189,8 @@ func seedChildEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	return battenshed.NewSeedChild(row.Name, env.Slug, env.SeedChild, env.ScratchDir), nil
 }
 
-// landEntry is the Constructor for the "Land" registry row: it rejects any Config key.
-// It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ChildLanded, ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, PruneBoard and PauseRequested.
-// It returns battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir).
+// landEntry is the constructor for the "Land" registry row.
+// It rejects any Config key, and any Env value the producer needs that is unset.
 // It does not validate Env.Land.Sleep, Env.Land.Now or Env.Land.Notices, whose nil values are legitimate defaults.
 func landEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {

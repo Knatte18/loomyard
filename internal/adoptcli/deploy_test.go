@@ -1,4 +1,5 @@
-// deploy_test.go pins how the deploy step judges the running lym's build against the prime's head and how it reports a deploy command that failed.
+// deploy_test.go pins the deploy step's behavior:
+// how it judges the running lym's build against the prime's head, and how it reports a failed deploy command.
 
 package adoptcli
 

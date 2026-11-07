@@ -1,7 +1,7 @@
-// gate_test.go covers the gate attempt loop end to end, driven over the package's existing
-// fakeReed/fakeEngine fakes, newFixture, and the fakeClock/multiStepClock
-// seams — hermetic, untagged: it spawns no external process, builds no real fixture hub, and never
-// sleeps for real, per the Test Tier Purity Invariant.
+// gate_test.go covers the gate attempt loop end to end, driven over the package's existing fakes and seams:
+// fakeReed, fakeEngine, newFixture, and the fakeClock and multiStepClock seams.
+// It is hermetic and untagged, per the Test Tier Purity Invariant.
+// It spawns no external process, builds no real fixture hub, and never sleeps for real.
 
 package shuttleengine
 
@@ -22,8 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// appendEventsLine appends line (with a trailing newline) to path, standing in for the agent's next
-// turn appending a fresh events.jsonl record.
+// appendEventsLine appends line, with a trailing newline, to path.
+// It stands in for the agent's next turn appending a fresh events.jsonl record.
 func appendEventsLine(t *testing.T, path, line string) {
 	t.Helper()
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
@@ -45,11 +45,12 @@ func spanKinds(spans []GateSpan) []GateSpanKind {
 	return kinds
 }
 
-// repromptCaptureSequence returns the n*3 fakeReed.CaptureQueue entries a test expects across n
-// Send() calls that each succeed on their first delivery poll: per call, a probe capture (answers
-// requireReadyAgentPane), a clean baseline capture (answers sendVerified's pre-send snapshot, holding
-// no copy of the re-prompt needle), and a delivery capture (the re-prompt text itself, so the
-// needle's count rises above the baseline's on the very first poll).
+// repromptCaptureSequence returns the fakeReed.CaptureQueue entries for n Send() calls, three per call.
+// Each Send() succeeds on its first delivery poll.
+// Per call, a probe capture answers requireReadyAgentPane.
+// A clean baseline capture answers sendVerified's pre-send snapshot, holding no copy of the re-prompt needle.
+// A delivery capture holds the re-prompt text itself,
+// so the needle's count rises above the baseline's on the very first poll.
 func repromptCaptureSequence(findingsPath string, n int) []string {
 	var out []string
 	for i := 0; i < n; i++ {
@@ -58,10 +59,10 @@ func repromptCaptureSequence(findingsPath string, n int) []string {
 	return out
 }
 
-// TestGate_FirstDoneSettlesWithoutReprompt pins the ungated-behaviour-preserving happy path: a gate
-// that passes the very first time finalize evaluates it never sends a re-prompt, reports zero
-// attempts, and leaves cleanup identical to an ungated run's; a zero-value GateSpec, which every
-// ungated run supplies, leaves Result.Gate nil and cleans up the same way.
+// TestGate_FirstDoneSettlesWithoutReprompt pins the happy path, which preserves ungated behaviour:
+// a gate that passes when finalize first evaluates it sends no re-prompt and reports zero attempts.
+// Its cleanup is identical to an ungated run's.
+// A zero-value GateSpec, which every ungated run supplies, leaves Result.Gate nil and cleans up the same way.
 //
 //testtiming:keep pins that a gate passing on the first Done sends nothing and charges no attempt, that it reports one gate span the closure's length without writing it through the memoised verdict, that a zero GateSpec leaves Result.Gate nil, and that both clean the run dir
 func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
@@ -142,8 +143,9 @@ func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
 	}
 }
 
-// TestGate_FailsOnceThenPassesOnNextTurn covers the core re-prompt loop: a failed first attempt sends
-// exactly one re-prompt naming the findings file, and the agent's next turn passing settles the run.
+// TestGate_FailsOnceThenPassesOnNextTurn covers the core re-prompt loop:
+// a failed first attempt sends exactly one re-prompt naming the findings file,
+// and the agent's next turn passing settles the run.
 // The re-prompt is the default line, or the line the failing entry's Reprompt renders.
 //
 //testtiming:keep pins that the re-prompt is a single line naming the findings file, that an entry's own renderer replaces the default line, and that the findings file holds the failed attempt's findings
@@ -237,9 +239,10 @@ func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
 	}
 }
 
-// TestGate_ClosureError covers the "a gate error is never not passed" decision: an infrastructure
-// fault from a gate closure, whether it is the only entry or a later one after an earlier entry
-// passed, fails the run as an ordinary error, sends no re-prompt, and charges no attempt or failure.
+// TestGate_ClosureError covers a gate closure that returns an infrastructure fault.
+// The fault fails the run as an ordinary error.
+// It does so whether the closure is the only entry or a later one after an earlier entry passed.
+// The run sends no re-prompt and charges no attempt or failure.
 func TestGate_ClosureError(t *testing.T) {
 	tiergate.Require(t, 0)
 	wantErr := errors.New("gate infrastructure fault")
@@ -301,12 +304,11 @@ func TestGate_ClosureError(t *testing.T) {
 	}
 }
 
-// TestGate_NoLiveSessionDonePaths covers the Done classifications a gated run can reach with no
-// live session at all: the three checkLivenessTick-driven ones (not-tracked, not-live (a dead
-// pane), an expired startup window), the run deadline's own classifyDeadlineExpiry, and the
-// events-unreadable finishedDespiteMechanismFailure exit. Each finalizes through Wait's liveness,
-// deadline or mechanism-failure branch rather than the events-tick Send loop, so each asserts a
-// failed verdict, zero sends, zero attempts charged, and the gate running exactly once.
+// TestGate_NoLiveSessionDonePaths covers the Done exits a gated run reaches with no live session:
+// the strand is not tracked, its pane is dead, its startup window expires, the run deadline expires,
+// or the events file is unreadable.
+// Each exit finalizes without the events-tick Send loop.
+// So each asserts a failed verdict, zero sends, zero attempts charged, and the gate running exactly once.
 //
 //testtiming:keep pins that every exit with no live session finalizes through its own branch with the gate run once, a failed verdict, and no re-prompt or attempt charged
 func TestGate_NoLiveSessionDonePaths(t *testing.T) {
@@ -330,11 +332,11 @@ func TestGate_NoLiveSessionDonePaths(t *testing.T) {
 			statusQueue:   []reedengine.StatusResult{liveStatus("strand-1", "%1")},
 			startupScript: []StartupState{StartupPending},
 		},
-		// The deadline is already expired: the very first deadline check trips it, and the gate
-		// still runs once through classifyDeadlineExpiry -> finalize with no session addressed.
+		// The deadline is already expired, so the very first deadline check trips it.
+		// The gate still runs once, through classifyDeadlineExpiry and finalize, with no session addressed.
 		{name: "run_deadline_expires", cfg: gateConfig, deadlineOffset: -time.Minute},
 		// The events-unreadable mechanism-failure exit still runs the gate once, through
-		// finishedDespiteMechanismFailure -> finalize.
+		// finishedDespiteMechanismFailure and finalize.
 		{
 			name: "events_unreadable_mechanism_failure", cfg: gateConfig, deadlineOffset: time.Hour,
 			eventsSeed: "STOP:x\n", parseEventsErr: errors.New("events file unparseable"),
@@ -421,9 +423,10 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 	}
 }
 
-// TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar covers a re-prompt Send that itself fails: the
-// loop ends there rather than retrying, and the failed send charges no attempt.
-// A pane that swallows the input fails the send after it was typed; a renderer returning two lines fails it before anything is typed.
+// TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar covers a re-prompt Send that itself fails.
+// The loop ends there rather than retrying, and the failed send charges no attempt.
+// A pane that swallows the input fails the send after it was typed.
+// A renderer returning two lines fails it before anything is typed.
 //
 //testtiming:keep pins that a failed re-prompt send ends the loop without a retry and charges no attempt or rework span, and that an invalid rendered line sends nothing
 func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
@@ -490,8 +493,11 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 	}
 }
 
-// TestGate_DeadlineExpiresBetweenAttempts covers a run ending mid-loop, after one successful re-prompt, by the run deadline or by a lost session.
-// The loop stops, the Done classification runs the gate once more, the reported Attempts stays honest about the one send that preceded it, and the rework span is closed at the run's end.
+// TestGate_DeadlineExpiresBetweenAttempts covers a run that ends mid-loop after one successful re-prompt.
+// The run ends by its deadline or by a lost session.
+// The loop stops, and the Done classification runs the gate once more.
+// The reported Attempts stays honest about the one send that preceded it,
+// and the rework span is closed at the run's end.
 //
 //testtiming:keep pins that a deadline expiring or a session lost after one re-prompt runs the gate once more through its own Done, with Attempts still honest at one and the rework span closed at the run's end
 func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
@@ -589,8 +595,9 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 	}
 }
 
-// TestAttach_GateThreading covers a resumed run's gate: AttachGated and AttachIfLiveGated gate it exactly as a fresh
-// RunGated run is gated, and the plain Attach entry point never carries a gate.
+// TestAttach_GateThreading covers a resumed run's gate.
+// AttachGated and AttachIfLiveGated gate it exactly as a fresh RunGated run is gated,
+// and the plain Attach entry point never carries a gate.
 //
 //testtiming:keep pins that AttachGated and AttachIfLiveGated gate a resumed run exactly as a fresh one is gated and starts its gate spans afresh, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
 func TestAttach_GateThreading(t *testing.T) {
@@ -690,8 +697,9 @@ func TestAttach_GateThreading(t *testing.T) {
 	}
 }
 
-// TestGate_WaitMarkAroundEntry pins that a gate entry is marked on screen and on disk while its closure runs and unmarked on every path out,
-// and that a failing SetWaitMark changes neither the verdict nor the error the closure produced.
+// TestGate_WaitMarkAroundEntry pins that a gate entry is marked on screen and on disk while its closure runs.
+// The mark is cleared on every path out.
+// A failing SetWaitMark changes neither the verdict nor the error the closure produced.
 func TestGate_WaitMarkAroundEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -754,7 +762,8 @@ func TestGate_WaitMarkAroundEntry(t *testing.T) {
 	}
 }
 
-// hookClock is a fakeClock that runs onSleep with the new time after every Sleep, so a test can move the writer between two ticks.
+// hookClock is a fakeClock that calls onSleep with the new time after every Sleep.
+// A test uses it to move the writer between two ticks.
 type hookClock struct {
 	*fakeClock
 	onSleep func(now time.Time)
@@ -810,7 +819,8 @@ func withStrandName(name string) gateRigOption {
 	return func(s *gateRigSettings) { s.strandName = name }
 }
 
-// newGateRig builds the rig with a 30 s run deadline, one-second ticks and a gate that always fails with three attempts.
+// newGateRig builds the rig with a 30 s run deadline and one-second ticks.
+// Its gate always fails and allows three attempts.
 // cfg supplies the send windows; the poll cadence and liveness are set here.
 func newGateRig(t *testing.T, cfg Config, events string, opts ...gateRigOption) *gateRig {
 	t.Helper()
@@ -868,8 +878,12 @@ func resumeOldestLive(t *testing.T, path string, at time.Time) {
 	}
 }
 
-// TestGate_HoldsItsBoundaryWhileCovered pins that a gated Wait evaluates no gate closure and types nothing while a pause covers the run's own session, by that session's slug, and does both after the resume.
-// The re-prompt of a failing gate spends one attempt, a closure's pending send is sent per arrival, and an expiry probe still finalizes a covered run whose writer is off the boundary.
+// TestGate_HoldsItsBoundaryWhileCovered pins the boundary of a gated Wait under a pause.
+// A pause that covers the run's own session, by that session's slug, stops the gate closure and the typing.
+// Both happen again after the resume.
+// A failing gate's re-prompt spends one attempt.
+// A closure's pending send goes out on each arrival.
+// An expiry probe still finalizes a covered run whose writer is off the boundary.
 func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -891,15 +905,17 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 		strandName, statusName, runnerSlug string
 		// initialScope is the scope of the entry live from the start, empty for none.
 		initialScope string
-		// addAt adds a hub entry once the clock passes it, zero for never; appendAt appends a turn end to the events file; resumeAt resumes the oldest live entry, zero for never.
+		// addAt adds a hub entry once the clock passes it, zero for never; appendAt appends a turn end to the events file;
+		// resumeAt resumes the oldest live entry, zero for never.
 		addAt, appendAt, resumeAt time.Duration
 		// activeFor keeps an operator active in the pane that long from the start.
 		activeFor time.Duration
 		// entry builds the rig's gate entry; evals counts its closure runs, and add adds a hub entry at the rig's clock.
 		entry func(evals *int, add func()) GateEntry
-		// wantEvalsAtResume and wantSendsAtResume are the closure runs and typed texts when the resume happens, -1 for unchecked.
+		// wantEvalsAtResume and wantSendsAtResume are the closure runs and typed texts at the resume; -1 is unchecked.
 		wantEvalsAtResume, wantSendsAtResume int
-		// wantEvalsSoonAfterResume is the closure runs two seconds after the resume, inside gateRecheckEvery, zero for unchecked.
+		// wantEvalsSoonAfterResume is the closure run count two seconds after the resume, within gateRecheckEvery.
+		// Zero is unchecked.
 		wantEvalsSoonAfterResume int
 		wantSends                []string
 		// wantAttempts is the attempts the result reports spent, -1 for unchecked.
@@ -1065,9 +1081,14 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 	}
 }
 
-// TestGate_WaitsForIdleWriter drives a gated Wait over a writer whose newest turn start no turn end has matched, as an AttachGated replay of a writer mid-turn would find it.
-// No gate send is typed until a turn end follows that turn start, the engine reports the turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read the turn in flight;
-// all but the turn end restore the boundary and evaluate the gate.
+// TestGate_WaitsForIdleWriter drives a gated Wait over a writer whose newest turn start has no matching turn end.
+// This is the state an AttachGated replay of a writer mid-turn finds.
+// No gate send is typed until one of these holds:
+// a turn end follows the turn start;
+// the engine reports the turn interrupted;
+// a session start follows it;
+// or the pane has read idle for turnStartIdleOverride while the engine does not read the turn in flight.
+// All but the turn end restore the boundary and evaluate the gate.
 func TestGate_WaitsForIdleWriter(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1075,7 +1096,7 @@ func TestGate_WaitsForIdleWriter(t *testing.T) {
 		interrupted bool
 		// progress is what the engine reads of any turn start.
 		progress TurnProgress
-		// events seeds the events file; empty is the bench incident shape, a turn end then an unmatched turn start.
+		// events seeds the events file; empty is a turn end then an unmatched turn start.
 		events string
 		// turnEndAt, when positive, is when the writer's turn end lands.
 		turnEndAt time.Duration
@@ -1126,7 +1147,11 @@ func TestGate_WaitsForIdleWriter(t *testing.T) {
 	}
 }
 
-// TestGate_UnsentRepromptRetries covers a re-prompt that cannot be delivered: busy or unlanded, it spends no attempt and is re-sent on a later tick, a writer turn that starts meanwhile cancels it, its idle wait and submit window end by the run deadline, and a re-prompt that stays undelivered is retried until the run deadline.
+// TestGate_UnsentRepromptRetries covers a re-prompt that cannot be delivered.
+// Busy or unlanded, it spends no attempt and is re-sent on a later tick.
+// A writer turn that starts meanwhile cancels it.
+// Its idle wait and submit window end by the run deadline,
+// and a re-prompt that stays undelivered is retried until the run deadline.
 func TestGate_UnsentRepromptRetries(t *testing.T) {
 	tiergate.Require(t, 0)
 	const never = 24 * time.Hour
@@ -1145,9 +1170,11 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		wantClears   bool
 		// wantEndBy bounds the clock at the end, from the start, under a 3 s run deadline; zero leaves it unchecked.
 		wantEndBy time.Duration
-		// wantEndAtLeast bounds the clock at the end from below, from the start, under the rig's own run deadline; zero leaves it unchecked.
+		// wantEndAtLeast bounds the clock at the end from below, from the start, under the rig's own run deadline;
+		// zero leaves it unchecked.
 		wantEndAtLeast time.Duration
-		// wantNoEvalAfterStart pins that the gate was not evaluated after the writer's new turn, bar the deadline's final evaluation.
+		// wantNoEvalAfterStart pins that the gate is not evaluated after the writer's new turn.
+		// The deadline's final evaluation is the one exception.
 		wantNoEvalAfterStart bool
 		// wantHeldInfo asserts the held re-prompt logged one INFO line and no WARN one.
 		wantHeldInfo bool
@@ -1165,7 +1192,8 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			activeFor: never, startAt: 4 * time.Second, wantSends: 0, wantAttempts: 0, wantNoEvalAfterStart: true,
 		},
 		{
-			// Each busy send waits out its 1 s idle window and a 1 s tick follows, so the retries run until the 30 s deadline ends the loop.
+			// Each busy send waits out its 1 s idle window and a 1 s tick follows,
+			// so the retries run until the 30 s deadline ends the loop.
 			name: "a re-prompt that stays undelivered is retried until the run deadline", cfg: Config{SendReadyTimeoutS: 1},
 			activeFor: never, wantSends: 0, wantAttempts: 0, wantEndAtLeast: 30 * time.Second, wantHeldInfo: true,
 		},
@@ -1254,10 +1282,13 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 	}
 }
 
-// TestGate_RepromptOverPicker pins a re-prompt whose pane shows a picker in place of the input box, for an engine with the readiness reading:
-// a picker the engine knows is dismissed with its key and the re-prompt delivered;
-// a pane with no input box that the dismissal does not clear ends the loop after maxNoInputBoxReprompts held sends with no attempt spent, one key per send for a known picker, whether or not the key can be sent, and none for an unknown one;
-// and an operator active over a known picker gets no key and holds the re-prompt until the run deadline.
+// TestGate_RepromptOverPicker pins a re-prompt whose pane shows a picker in place of the input box.
+// The engine under test has the readiness reading.
+// A known picker is dismissed with its key, and the re-prompt is delivered.
+// A pane with no input box that the dismissal does not clear ends the loop after maxNoInputBoxReprompts held sends.
+// Such a loop spends no attempt.
+// For a known picker it sends one key per send, whether or not the key can be sent; for an unknown one it sends none.
+// An operator active over a known picker gets no key, and the re-prompt is held until the run deadline.
 // It is not parallel: it captures the process-wide logger.
 func TestGate_RepromptOverPicker(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1347,7 +1378,9 @@ func TestGate_RepromptOverPicker(t *testing.T) {
 	}
 }
 
-// TestAwaitIdleSession_FailedDismissalKeyHoldsAsNoInputBox pins that a send held at its first poll by a dismissal key that could not be sent still reports a pane with no input box, so the gated loop counts it toward its bound.
+// TestAwaitIdleSession_FailedDismissalKeyHoldsAsNoInputBox pins a send held at its first poll:
+// its dismissal key could not be sent, and the send still reports a pane with no input box.
+// The gated loop counts it toward its bound.
 func TestAwaitIdleSession_FailedDismissalKeyHoldsAsNoInputBox(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

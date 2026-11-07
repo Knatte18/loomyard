@@ -1,4 +1,5 @@
-// clitree_test.go derives the CLI / Cobra Invariant's per-command obligations from one walk of newRoot(), so no hand-kept list of modules or verbs exists to drift.
+// clitree_test.go derives the CLI / Cobra Invariant's per-command obligations from one walk of newRoot(),
+// so no hand-kept list of modules or verbs exists to drift.
 
 package main
 
@@ -153,7 +154,7 @@ func TestCLITree_EveryCommand(t *testing.T) {
 		}
 	})
 
-	// Loom's bootstrap verb lives only under loom; a bare "run" or "start" child would mean a retired root alias is still registered.
+	// Loom's bootstrap verb lives only under loom; a bare "run" or "start" child on the root would be a stray alias of it.
 	t.Run("root carries no bare alias of loom's bootstrap verb", func(t *testing.T) {
 		for _, child := range root.Commands() {
 			if child.Name() == "run" || child.Name() == "start" {
@@ -163,7 +164,8 @@ func TestCLITree_EveryCommand(t *testing.T) {
 	})
 }
 
-// maxLongBytes caps a command's Long text; a longer page belongs in the package doc.
+// maxLongBytes caps a command's Long text;
+// a longer page belongs in the package doc.
 const maxLongBytes = 2000
 
 var (
@@ -201,7 +203,10 @@ func splitUse(use string) ([]string, bool) {
 	return tokens, depth == 0
 }
 
-// audienceProblems returns how cmd's audience annotation breaks the form: an invocable command carries one value of the closed set, a hidden one is internal, and a non-invocable group carries none.
+// audienceProblems returns how cmd's audience annotation breaks the form:
+// an invocable command carries one value of the closed set;
+// a hidden one is internal;
+// and a non-invocable group carries none.
 func audienceProblems(cmd *cobra.Command) []string {
 	value, has := cmd.Annotations[clihelp.AudienceAnnotation]
 	switch {
@@ -219,7 +224,8 @@ func audienceProblems(cmd *cobra.Command) []string {
 	return nil
 }
 
-// useProblems returns how cmd's Use breaks the form: its name, then argument tokens, required-flag pairs and brace-balanced payload spans.
+// useProblems returns how cmd's Use breaks the form:
+// its name, then argument tokens, required-flag pairs and brace-balanced payload spans.
 func useProblems(cmd *cobra.Command) []string {
 	tokens, balanced := splitUse(cmd.Use)
 	if !balanced {
@@ -277,7 +283,8 @@ func longProblems(cmd *cobra.Command) []string {
 	return nil
 }
 
-// indexNoteProblems returns how cmd's index note breaks the form: a command carrying one also carries a note audience that is a member of the closed set.
+// indexNoteProblems returns how cmd's index note breaks the form:
+// a command carrying one also carries a note audience that is a member of the closed set.
 func indexNoteProblems(cmd *cobra.Command) []string {
 	if _, has := cmd.Annotations[clihelp.IndexNoteAnnotation]; !has {
 		return nil
@@ -306,8 +313,10 @@ func formTestCommand(use, short string, annotations map[string]string) *cobra.Co
 	return &cobra.Command{Use: use, Short: short, Annotations: annotations, Run: func(*cobra.Command, []string) {}}
 }
 
-// TestCLIForm_EveryCommand pins the audience, Use, Short and Long form on every command of newRoot() with pure checks that run no invocation.
-// The checks are proven first against small synthetic trees, so a negative case fails for the reason named.
+// TestCLIForm_EveryCommand pins the audience, Use, Short and Long form on every command of newRoot().
+// Its checks are pure and run no invocation.
+// The checks are proven first against small synthetic trees,
+// so a negative case fails for the reason named.
 func TestCLIForm_EveryCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

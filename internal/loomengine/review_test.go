@@ -1,8 +1,8 @@
 // review_test.go — untagged Tier-1 unit tests for ResolveReview and LoomReviewsDir.
-// ResolveReview's tests mirror discussion_test.go's shape: pure Go over an in-memory Config and a
-// temp-dir modelspec registry, no live hub, reed, or network involved.
-// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a hand-built lymcwd.Location;
-// the accessor is durable, rooted under _lym.
+// ResolveReview's tests are pure Go over an in-memory Config and a temp-dir modelspec registry.
+// They involve no live hub, reed, or network.
+// LoomReviewsDir's test is pure path arithmetic over a hand-built lymcwd.Location.
+// The accessor is durable, rooted under _lym.
 
 package loomengine
 
@@ -23,14 +23,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestResolveReview verifies ResolveReview returns the expected model/effort/version triples, the keys each segment's models came from, and the timeout.
+// TestResolveReview verifies ResolveReview returns the expected model/effort/version triples.
+// It also checks the keys each segment's models came from, and the timeout.
 func TestResolveReview(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := Config{
 		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
 		FixerModel:       burlerengine.ModelSpecList{"opus[effort=low]"},
 		ReviewTimeoutMin: 240,
-		// Discussion sets its fixer list only, Plan its reviewer list only, and Code leaves both unset (one empty entry, as the template loads).
+		// Discussion sets only its fixer list, Plan only its reviewer list, and Code leaves both unset.
+		// Code's unset lists hold one empty entry, as the template loads.
 		DiscussionFixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"},
 		PlanReviewerModel:    burlerengine.ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
 		CodeReviewerModel:    burlerengine.ModelSpecList{""},
@@ -58,7 +60,8 @@ func TestResolveReview(t *testing.T) {
 	if settings.Models.Fix[0].Effort != "low" {
 		t.Errorf("ResolveReview(...).Models.Fix[0].Effort = %q; want %q", settings.Models.Fix[0].Effort, "low")
 	}
-	// A set segment key replaces the run-wide list, review and fix falling back independently; an unset one takes the run-wide list.
+	// A set segment key replaces the run-wide list, review and fix falling back independently;
+	// an unset one takes the run-wide list.
 	if got := settings.Discussion; !reflect.DeepEqual(got.Review, settings.Models.Review) || len(got.Fix) != 1 || got.Fix[0].Effort != "high" {
 		t.Errorf("ResolveReview(...).Discussion = %+v; want the run-wide review list and a fix list of one high-effort entry", got)
 	}
@@ -73,7 +76,9 @@ func TestResolveReview(t *testing.T) {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
 	}
 
-	// Each segment records the key its models came from: its own key when set, in tapestry.yaml for the plan segment and loom.yaml for the others, else loom.yaml's shared key.
+	// Each segment records the key its models came from.
+	// That is its own key when set, in tapestry.yaml for the plan segment and loom.yaml for the others;
+	// otherwise it is loom.yaml's shared key.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
 	for _, tt := range []struct {
@@ -89,7 +94,8 @@ func TestResolveReview(t *testing.T) {
 		}
 	}
 
-	// A set fan key changes no model: a fanned segment's reviewer list is still its own review list, else the run-wide one.
+	// A set fan key changes no model:
+	// a fanned segment's reviewer list is still its own review list, else the run-wide one.
 	cfg.DiscussionReviewerFan = lenses.FanList{"standard"}
 	cfg.PlanReviewerFan = lenses.FanList{"", "full"}
 	cfg.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
@@ -121,7 +127,9 @@ func TestResolveReview(t *testing.T) {
 	}
 }
 
-// TestResolveReview_Assist verifies the assistant lists resolve per round: an empty entry, the default, is the zero choice, a model-spec resolves through the registry, and each segment names the keys its lists came from, the plan segment's in tapestry.yaml.
+// TestResolveReview_Assist verifies the assistant lists resolve per round.
+// An empty entry, the default, is the zero choice; a model-spec resolves through the registry.
+// Each segment names the keys its lists came from, the plan segment's in tapestry.yaml.
 func TestResolveReview_Assist(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -210,8 +218,10 @@ func TestResolveReview_Assist(t *testing.T) {
 	})
 }
 
-// TestCapAssistTimeout verifies the assistant's bound is the configured one when it fits before the chair's timeout less the start allowance and one await cap, is capped to that room when it does not, and is zero with a reason naming both keys when no room is left.
+// TestCapAssistTimeout verifies the assistant's bound is kept when it fits, and capped when it does not.
 // The chair is review_timeout_min, or the run timeout when that is 0.
+// The room is the chair's timeout less the start allowance and one await cap;
+// with no room left the bound is zero, and the reason names both keys.
 func TestCapAssistTimeout(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -254,7 +264,8 @@ func TestCapAssistTimeout(t *testing.T) {
 	}
 }
 
-// TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order: a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
+// TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order:
+// a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
 func TestResolveJudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -364,7 +375,9 @@ func TestResolveJudge(t *testing.T) {
 	})
 }
 
-// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
+// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix or judge model-spec is rejected.
+// The rejection is an error naming its role, not a silent carry into a producer's spawn site.
+// A bad later review entry or a bad fix entry also names its entry index and the way forward.
 func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -511,14 +524,17 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	}
 }
 
-// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lym tree rather than the ephemeral one, and equals the anchor joined with its Rel form, whose exact value is pinned too.
+// TestLoomReviewsDir verifies that LoomReviewsDir's path is AnchorPath-anchored.
+// It also verifies the path sits under the durable _lym tree rather than the ephemeral one,
+// and that it equals the anchor joined with its Rel form.
+// That Rel form's exact value is pinned too.
 func TestLoomReviewsDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	l := &lymcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 		WorktreeName: "repo",
-		// AnchorRel deliberately differs from "." to prove the accessor follows the
-		// anchored subpath, not the bare worktree root.
+		// AnchorRel differs from "." so the accessor must follow the anchored subpath.
+		// Returning the bare worktree root would fail the test.
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 

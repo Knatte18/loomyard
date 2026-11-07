@@ -15,8 +15,10 @@ import (
 //   - a lowercase letter before the match, or a form matching no case shape, is no match at all;
 //   - a match starting uppercase swaps after a lowercase letter (the camelCase start);
 //   - host + lowercase at a token start is left byte-unchanged and reported in Ambiguous;
-//   - a -skip regexp matching an occurrence's line leaves it unchanged and reports it in Skipped, including one that claims an otherwise-AMBIGUOUS occurrence, which lets a run reach exit zero;
-//   - substitution is language-agnostic, and reverting the recorded spans always reproduces the input, including when the target word already occurs in it.
+//   - a -skip regexp matching an occurrence's line leaves it unchanged and reports it in Skipped;
+//     and it includes one that claims an otherwise-AMBIGUOUS occurrence, which lets a run reach exit zero;
+//   - substitution is language-agnostic;
+//   - reverting the recorded spans always reproduces the input, including when the target word already occurs in it.
 //
 // Every row also asserts the reversibility check did not report a mismatch.
 func TestSwapText(t *testing.T) {
@@ -100,8 +102,8 @@ func TestSwapText(t *testing.T) {
 	}
 }
 
-// TestProcessFile_DryRunWritesNothing verifies that processFile with dryRun=true reports the
-// change status without writing the file.
+// TestProcessFile_DryRunWritesNothing verifies that processFile with dryRun=true reports the change status.
+// The file is not written.
 func TestProcessFile_DryRunWritesNothing(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -133,15 +135,18 @@ func TestProcessFile_DryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// TestProcessFile_MismatchLeavesFileUntouched verifies that a Mismatch result from swapText leaves the on-disk file byte-for-byte unchanged and is reported as "mismatch".
-// The failure is injected through the package-level revertSpans hook rather than by contriving input, since no genuine input can fail the real reversibility check.
-// It does not call t.Parallel because it rewrites the package-level revertSpans hook; the parallel tests of this package resume only after it has restored the hook.
+// TestProcessFile_MismatchLeavesFileUntouched verifies that a Mismatch result from swapText leaves the file untouched.
+// The on-disk file stays byte-for-byte unchanged, and the result is reported as "mismatch".
+// The failure is injected through the package-level revertSpans hook, not by contriving input.
+// No genuine input can fail the real reversibility check.
+// It does not call t.Parallel because it rewrites the package-level revertSpans hook;
+// the parallel tests of this package resume only after it has restored the hook.
 func TestProcessFile_MismatchLeavesFileUntouched(t *testing.T) {
 	tiergate.Require(t, 0)
 	original := revertSpans
 	t.Cleanup(func() { revertSpans = original })
 	revertSpans = func(out string, spans []span) string {
-		// Deliberately broken: never reproduces the input, forcing Result.Mismatch = true.
+		// The reversal never reproduces the input, so Result.Mismatch is true.
 		return out + "!corrupted!"
 	}
 

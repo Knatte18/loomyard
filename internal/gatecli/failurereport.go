@@ -1,4 +1,6 @@
-// failurereport.go builds the failure report a failing `lym gate test` call prints before its closing line: every failure of its tier, vet, guard and build runs and of its gate key's lint steps, the files the change touches and each failed run's log.
+// failurereport.go builds the failure report a failing `lym gate test` call prints before its closing line:
+// every failure of its tier, vet, guard and build runs and of its gate key's lint steps.
+// It also names the files the change touches and each failed run's log.
 
 package gatecli
 
@@ -24,9 +26,9 @@ import (
 const (
 	// failureReportHeader opens the failure report.
 	failureReportHeader = "gate test: failure report, every failure of this call:"
-	// failureReportLines caps the report's lines below its header, so it reads as one tool result; the line that closes a cut report says where to read the rest.
+	// failureReportLines caps the lines below the header; the closing line of a cut report says where the rest is.
 	failureReportLines = 80
-	// failureReportLineBytes caps one line of the report, so a long panic value or a long diff line cannot crowd out the failures after it.
+	// failureReportLineBytes caps one report line so a long panic or diff line cannot crowd out later failures.
 	failureReportLineBytes = 300
 	// touchedFilesListed caps the files the report's touched-files line names.
 	touchedFilesListed = 20
@@ -40,10 +42,12 @@ var lintWayForward = map[string]string{
 	gateslot.LintPattern:  patternlint.WayForward,
 }
 
-// bareGoFile matches a line that opens with a Go file's bare name and a line number, as a test's own error lines print them, so the report can prefix the package's directory.
+// bareGoFile matches a line that opens with a Go file's bare name and a line number.
+// A test's own error lines print that form, so the report can prefix the package's directory.
 var bareGoFile = regexp.MustCompile(`^[A-Za-z0-9_.\-]+\.go:[0-9]+`)
 
-// runRelativeGoFile matches a line that opens with a Go file's path relative to the run directory, with a leading `./` or at least one directory, as the go command prints a compile error.
+// runRelativeGoFile matches a line that opens with a Go file's path relative to the run directory.
+// The path starts with `./` or has at least one directory, as the go command prints a compile error.
 // Either path separator is accepted, since the go command prints the platform's own.
 var runRelativeGoFile = regexp.MustCompile(`^(\.[/\\]|[A-Za-z0-9_.\-]+[/\\])([A-Za-z0-9_.\-]+[/\\])*[A-Za-z0-9_.\-]+\.go:[0-9]+`)
 
@@ -57,16 +61,17 @@ type failedRun struct {
 	wayForward string
 	// log is the run's log path, empty for a lint step.
 	log string
-	// modulePath is the module path of the run's directory and moduleDir that directory relative to the worktree root, slash-separated, so a bare file name a test printed reads as a worktree path; both are empty when unknown.
+	// modulePath and moduleDir are the run's module path and worktree-relative directory; both empty when unknown.
 	modulePath, moduleDir string
 	failures              []runFailure
-	// causes are the lines the gate itself states the run's failure with, such as a timeout, listed whether or not a failure was read.
+	// causes are the lines the gate states the run's failure with, such as a timeout, listed even without a read failure.
 	causes []string
 	// unparsed are the first lines of the run's output no test event carried, listed when no failure was read.
 	unparsed []string
 }
 
-// tierFailedRun returns the failed run the report lists for the tier, vet or guard run that ended as result, its log at logPath, with root the worktree root its run directory resolves against.
+// tierFailedRun returns the failed run the report lists for the tier, vet or guard run that ended as result.
+// logPath is its log, and root is the worktree root its run directory resolves against.
 func tierFailedRun(run tierRun, result tierResult, logPath, root string) failedRun {
 	outcome := fmt.Sprintf("exit %d", result.record.ExitCode)
 	if result.record.TimedOut {
@@ -81,7 +86,8 @@ func tierFailedRun(run tierRun, result tierResult, logPath, root string) failedR
 	return failed
 }
 
-// buildFailedRun returns the failed run the report lists for the build step that exited with code, or timed out, with its log at logPath and output its whole output, of which it keeps the last non-empty lines, where a build states its errors.
+// buildFailedRun returns the failed run the report lists for the build step that exited with code, or timed out.
+// logPath is its log. Of output, it keeps the last non-empty lines, where a build states its errors.
 func buildFailedRun(code int, timedOut bool, logPath string, output []byte) failedRun {
 	outcome := fmt.Sprintf("exit %d", code)
 	if timedOut {
@@ -99,7 +105,8 @@ func buildFailedRun(code int, timedOut bool, logPath string, output []byte) fail
 	return failedRun{label: "build", outcome: outcome, log: logPath, unparsed: lines}
 }
 
-// runLints runs the lint steps names over the worktree at root, each against HEAD, in order, and returns the steps that found something or could not run as failed runs.
+// runLints runs the lint steps in names over the worktree at root, each against HEAD, in order.
+// It returns the steps that found something or could not run, as failed runs.
 func runLints(root string, names []string) []failedRun {
 	var failed []failedRun
 	for _, name := range names {
@@ -126,7 +133,8 @@ func runLints(root string, names []string) []failedRun {
 	return failed
 }
 
-// lintFailedRun returns the failed run of the lint step name, which found findings or failed to run with err, and false when it found nothing and ran.
+// lintFailedRun returns the failed run of the lint step name when it found findings or failed to run with err.
+// It returns false when the step found nothing and ran.
 func lintFailedRun(name string, findings []string, err error) (failedRun, bool) {
 	label := lintLabelPrefix + name
 	if err != nil {
@@ -147,7 +155,9 @@ func lintFailedRun(name string, findings []string, err error) (failedRun, bool) 
 	return failedRun{label: label, outcome: outcome, wayForward: lintWayForward[name], failures: failures}, true
 }
 
-// touchedFiles returns the files the change under test touches, sorted and worktree-relative: those that differ between the working tree, untracked files included, and the merge base with the pair's parent branch inside a hub, or HEAD where no parent applies.
+// touchedFiles returns the files the change under test touches, sorted and worktree-relative.
+// They are the paths that differ between the working tree, untracked files included, and the base.
+// The base is the merge base with the pair's parent branch inside a hub, or HEAD where no parent applies.
 // A read that fails is logged and returns nil, since the list only orients the reader.
 func touchedFiles(ctx context.Context, location *lymcwd.Location, root string, inHub bool) []string {
 	base := "HEAD"
@@ -169,10 +179,16 @@ func touchedFiles(ctx context.Context, location *lymcwd.Location, root string, i
 	return slices.Compact(paths)
 }
 
-// renderFailureReport returns the failure report's lines for runs, with touched the files the change touches, or nil when no run failed.
-// Each run names its outcome and its log, then each failure its package and test, or its package alone for a failure outside any test, over the lines it printed, a path prefixed with the worktree-relative directory it is relative to, as qualify says.
-// A run lists its cause lines, such as a timeout, then, when no failure was read, the first lines of output no test event carried, or says its log holds the cause.
-// Past failureReportLines lines the report stops with a line saying how many lines each run lost and where to read them, and touched closes it, at most touchedFilesListed of them named.
+// renderFailureReport returns the failure report's lines for runs, given the files the change touches.
+// It returns nil when no run failed.
+// Each run names its outcome and its log.
+// Then each failure names its package and test, or its package alone for a failure outside any test.
+// A path a run printed relative to its directory is prefixed with the directory's worktree-relative path.
+// A run lists its cause lines, such as a timeout.
+// Then, when no failure was read, it lists the first lines of output no test event carried,
+// or it says that its log holds the cause.
+// Past failureReportLines lines the report stops with a line saying how many lines each run lost and where to read them.
+// The touched-files line closes it, naming at most touchedFilesListed files.
 func renderFailureReport(runs []failedRun, touched []string) []string {
 	if len(runs) == 0 {
 		return nil
@@ -213,7 +229,8 @@ type cutRun struct {
 	lines int
 }
 
-// reportLines returns the report's lines for the run: its header, its failures, then its causes and the output no test event carried.
+// reportLines returns the report's lines for the run: its header, its failures, then its causes.
+// The output no test event carried follows them.
 func (run failedRun) reportLines() []string {
 	header := fmt.Sprintf("%s (%s)", run.label, run.outcome)
 	if run.wayForward != "" {
@@ -253,7 +270,9 @@ func (run failedRun) reportLines() []string {
 	return body
 }
 
-// cutLine returns the line that closes a report which lost the lines of the runs in cut: the lines each lost, where a run with a log holds them and the lint to re-run for the findings of a lint step, which has no log.
+// cutLine returns the line that closes a report which lost the lines of the runs in cut.
+// The line counts the lost lines of each run: a run with a log points to the logs.
+// A lint step, which has no log, points to the lint command to re-run for its findings.
 func cutLine(cut []cutRun) string {
 	total := 0
 	var counts, hints []string
@@ -273,9 +292,11 @@ func cutLine(cut []cutRun) string {
 	return fmt.Sprintf("... %d more lines cut (%s); %s", total, strings.Join(counts, ", "), strings.Join(hints, "; "))
 }
 
-// qualify returns line with a Go file path it opens with prefixed by the worktree-relative directory it is relative to, or line unchanged when it opens with none.
-// A bare file name is relative to the directory of failure's package, which must lie inside the run's module.
-// A failure outside any test prints a compile error's path relative to the run directory, so a path with a leading `./` or a directory is relative to that directory.
+// qualify prefixes the Go file path line opens with by the worktree-relative module directory.
+// It returns line unchanged when line opens with no Go file path.
+// A bare file name is relative to the directory of the failure's package, which must lie inside the run's module.
+// A failure outside any test prints a compile error's path relative to the run directory,
+// so a path with a leading `./` or a directory is relative to that directory.
 func (run failedRun) qualify(failure runFailure, line string) string {
 	if run.modulePath == "" {
 		return line
@@ -316,7 +337,8 @@ func capLine(line string) string {
 	return line[:cut] + "..."
 }
 
-// printFailureReport writes the failure report of runs, with touched the files the change touches, to stderr, and nothing when no run failed.
+// printFailureReport writes the failure report of runs to stderr, with touched naming the files the change touches.
+// It writes nothing when no run failed.
 func printFailureReport(stderr io.Writer, runs []failedRun, touched []string) {
 	for _, line := range renderFailureReport(runs, touched) {
 		printLine(stderr, line)

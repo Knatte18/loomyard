@@ -1,4 +1,5 @@
-// auditledger_test.go covers the audit ledger's once-per-identity rule, the parent/fork identity split, ordering of RecordedAuditWarnings, and the pathless-finding refusal.
+// auditledger_test.go covers the audit ledger's once-per-identity rule and the parent/fork identity split.
+// It also covers the ordering of RecordedAuditWarnings and the refusal of pathless findings.
 // Plain t.TempDir() files only — Test Tier Purity Invariant.
 
 package websterengine

@@ -1,16 +1,11 @@
-// bench_cli_test.go — integration-tier benchmarks for the board CLI commands.
+// bench_cli_test.go holds the benchmarks for the board CLI commands.
 //
-// Upsert/Get/List drive boardcli.RunCLI, whose cwd-authoritative config
-// resolution calls lymcwd.Resolve (a `git rev-parse`), so the seeded temp
-// dir must be a real git repo. That makes these benchmarks spawn git, so they
-// belong behind `//go:build integration` (Tier 2), not in the default offline
-// loop — and the git-init helper below uses exec.Command, a token the
-// tier-purity guard bans from untagged test files. Run them with:
-//
-//	go test -tags integration -run '^$' -bench 'Upsert|Get|List' -benchmem ./internal/boardengine/boardtest
+// They drive boardcli.RunCLI, whose cwd-authoritative config resolution calls lymcwd.Resolve (a `git rev-parse`).
+// The seeded temp dir must therefore be a real git repo, so these benchmarks spawn git.
+// The git-init helper below uses exec.Command, a token the tier-purity guard bans from untagged test files.
 //
 // BenchmarkRender and BenchmarkUpsertFacade stay untagged in bench_test.go:
-// they never touch the CLI/git path and so still run in the offline tier.
+// they never touch the CLI or git path, so they run in the offline tier.
 
 package boardtest
 
@@ -27,11 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedWikiRepo seeds a board (via seedWiki) and initialises a git repo at its
-// root so lymcwd.Resolve can find the hub — the CLI entrypoint's config
-// resolution requires a repository, which a bare temp dir is not. Kept out of
-// the untagged seedWiki so the Tier-1 concurrency test that shares seedWiki
-// never spawns git.
+// seedWikiRepo seeds a board and initialises a git repo at its root, so lymcwd.Resolve can find the hub.
+// The CLI entrypoint's config resolution requires a repository, which a bare temp dir is not.
+// Only this helper spawns git, so a board seeded without it never does.
 func seedWikiRepo(tb testing.TB, n int) string {
 	tb.Helper()
 	dir := seedWiki(tb, n)
@@ -53,10 +46,10 @@ func seedWikiRepo(tb testing.TB, n int) string {
 	return dir
 }
 
-// BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint: JSON parse →
-// dispatch → lock → load → mutate → render all tasks → write files.
+// BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint.
+// The measured path is JSON parse, dispatch, lock, load, mutate, render all tasks, then write files.
 // It updates an existing task so the per-op work is stable across iterations.
-// CLI-bench numbers include the os.Getwd() + LoadConfig cost from cwd-based config.
+// CLI-bench numbers include the os.Getwd() and LoadConfig cost from cwd-based config.
 func BenchmarkUpsert(b *testing.B) {
 	tiergate.Require(b, 1)
 	b.Setenv("BOARD_SKIP_GIT", "1")
@@ -99,8 +92,8 @@ func BenchmarkGet(b *testing.B) {
 	}
 }
 
-// BenchmarkList measures a "list" command: load all tasks, compute layers and has_proposal, and
-// serialise the brief view.
+// BenchmarkList measures a "list" command.
+// It loads all tasks, computes layers and has_proposal, and serialises the brief view.
 func BenchmarkList(b *testing.B) {
 	tiergate.Require(b, 1)
 	b.Setenv("BOARD_SKIP_GIT", "1")

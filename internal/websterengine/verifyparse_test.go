@@ -165,7 +165,7 @@ func TestParseVerifyFailures(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := parseVerifyFailures(tc.output, tc.passed)
-			// Package is pinned by the "package attribution" subtest below.
+			// The "package attribution" subtest below pins Package, so this loop clears it first.
 			// The table pins the rest.
 			for i := range got {
 				got[i].Package = ""

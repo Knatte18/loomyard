@@ -1,48 +1,46 @@
-// destructiveguard_test.go closes slice 12's completeness proof by machine-checking that
-// internal/fabricengine's production source contains no destructive primitive call outside
-// destroy.go — the one file the Fabric Destruction Chokepoint Invariant names as permitted to
-// perform one.
-// See `PATTERN-fabric-boundary`.
+// destructiveguard_test.go guards internal/fabricengine against destructive primitive calls outside destroy.go.
+// destroy.go is the one file the Fabric Destruction Chokepoint Invariant permits to perform one.
+// It enforces `PATTERN-fabric-boundary`.
 //
-// This guard clones cmd/lym/rawgitmutation_test.go's machinery wholesale: the module-relative scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed by module-relative slash-separated path with a reason as its value, and the minimum-scanned-files floor;
+// The guard scans the module-relative packages it lists for raw-substring banned tokens.
+// Its per-file scankit allowlist is keyed by module-relative, slash-separated path, and the value is the reason.
+// It also enforces a minimum-scanned-files floor.
 // scankit supplies the module root and the production-file walk.
 //
-// Two of the banned tokens were corrected against a naive first guess in opposite directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
+// Two banned-token choices are easy to get wrong, so each states its reason.
 //
-// "RemoveAll(" rather than "os.RemoveAll(": the bare form is a deliberate superset. It catches the
-// qualified "os.RemoveAll(" (e.g. the allowlisted probe-clone teardown in internal/fabricengine) AND a
-// method-call spelling like destroy.go's own `root.RemoveAll(` — the os.Root-rooted removal the R3
-// containment fix routes through — neither of which the narrower "os.RemoveAll(" would match.
-// (An earlier binding also had a bare `var RemoveAll = os.RemoveAll` seam this token caught; that
-// seam was removed once the executors began removing through os.Root, but the bare token remains the
-// correct superset for the forms that survive.)
+// The bare "RemoveAll(" is banned rather than "os.RemoveAll(", because the bare form is a superset.
+// It catches the qualified call, as in the allowlisted probe-clone teardown in internal/fabricengine.
+// It also catches the method-call spelling `root.RemoveAll(` that destroy.go uses to remove through os.Root.
+// The narrower "os.RemoveAll(" would miss that spelling.
 //
-// the two raw per-side handle forms of ".ResetHard(" rather than ".ResetHard(" itself: the broad form
-// would flag the *correctly migrated* callers, since the gated reset is reached as a method call
-// on the pair handle (e.g. the code-side handle's ResetHard inside destroy.go itself, or a future
-// records-side caller). Banning the raw handles instead targets what is actually forbidden —
-// reaching past the gate to the underlying repo field — and needs no leading dot, so it matches
-// under any receiver name.
+// The two raw per-side handle forms of `.ResetHard(` are banned, not `.ResetHard(` itself.
+// The broad form would flag correctly migrated callers.
+// The gated reset is a method call on the pair handle, as in `f.ResetHard(rec, ...)` in pull.go.
+// Banning the raw handles targets reaching past the gate to the underlying repo field.
+// It needs no leading dot, so it matches under any receiver name.
 //
-// The allowlist is per-file, so a *new* raw removal added inside an allowlisted file is not
-// caught by this guard — the same limitation the file being cloned already has. The junction.go
-// and hook.go entries in particular are whole-file allowlists for exactly one already-audited
-// call each, not a blanket exemption for future removals in those files.
+// The allowlist is per-file, so a new raw removal added inside an allowlisted file goes uncaught.
+// The junction.go and hook.go entries are whole-file allowlists for their audited call sites.
+// They are not a blanket exemption for later removals in those files.
 //
-// This guard now carries two independent exemption mechanisms answering two different questions:
-// destructiveGuardAllowlist ("is this one file's one audited call site safe?") and
-// destructiveGuardExcludedDirs ("is this entire subdirectory a different package outside the
-// invariant's subject?"). The two are never interchangeable — a directory exclusion skips an
-// entire subtree at the walk level, where a growing set of per-file allowlist rows would not
-// restore the guard's package-scoped intent.
+// Two exemption mechanisms answer two different questions:
+// destructiveGuardAllowlist asks whether one file's one audited call site is safe.
+// destructiveGuardExcludedDirs asks whether a whole subdirectory is a different package outside the invariant's subject.
+// They are not interchangeable.
+// A directory exclusion skips a whole subtree at the walk level;
+// per-file allowlist rows cannot do that for a package scope.
 //
-// This file also carries TestMutationRecord_FabricengineProductionSource, the Mutation Record Invariant's guard (see the mutation record section of fabricengine's package doc).
-// It pins two shapes by raw source inspection alone, both against internal/fabricengine/destroy.go and the mutating result types' declarations: that every one of destroy.go's executors declares a leading `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord while the read-only verbs' result types do not.
-// Its blind spots are deliberate and significant: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call,
+// This file also carries TestMutationRecord_FabricengineProductionSource, the Mutation Record Invariant's guard.
+// It pins two shapes by raw source inspection alone.
+// Both check internal/fabricengine/destroy.go and the mutating result types' declarations:
+// every executor in destroy.go declares a leading `rec *Mutations` parameter,
+// and every mutating verb's result type embeds MutationRecord while the read-only verbs' result types do not.
+// Its blind spots: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call,
 // so it cannot tell a correctly recording executor from one whose parameter is a dead letter,
 // and it cannot tell a real recording call from one sitting inside a comment.
-// Whether each body's recording call is actually present and correct is a review obligation, not something this guard proves.
-// A new Kind added to mutation.go with no recording site anywhere is caught by nothing here either — see the Mutation Record Invariant's own text for that gap.
+// Whether each body's recording call is present and correct is a review obligation, not something this guard proves.
+// A new Kind added to mutation.go with no recording site anywhere is caught by nothing here either.
 
 package main
 
@@ -57,15 +55,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// destructiveGuardScanPackages are the module-relative package subtrees this guard walks: exactly
-// the one package the discussion's bypass-guard decision names, internal/fabricengine.
+// destructiveGuardScanPackages lists the module-relative package subtrees this guard walks.
+// The destructive primitives live in internal/fabricengine, the subtree it scans.
 var destructiveGuardScanPackages = []string{
 	"internal/fabricengine",
 }
 
-// destructiveGuardBannedTokens are the raw substrings a non-test .go file in
-// destructiveGuardScanPackages may not contain, unless the file is on destructiveGuardAllowlist.
-// This is the discussion's final seven tokens plus "createdToken{" and "createdBranchToken{" (added per the overview's decision that the token's unforgeability is guard-enforced rather than type-enforced) plus ".DeleteRemoteBranch(" (added alongside the remote-branch-deletion primitive, so a file other than destroy.go cannot reach it) plus ".UpdateRemoteBranchLeased(" (the same for the remote-branch-moving force push) plus ".CherryPick(" and ".ResetKeep(" (the board seed-commit drop's replay and reset).
+// destructiveGuardBannedTokens are the raw substrings a non-test .go file in the scanned packages may not contain.
+// A file on destructiveGuardAllowlist is exempt.
+// They name the destructive calls and the reset, replay and remote-branch primitives.
+// They also name the literals that construct the gate's tokens.
+// The token literals are banned because this guard, not the type system, keeps the tokens unforgeable.
 var destructiveGuardBannedTokens = []string{
 	"RemoveAll(",
 	"os.Remove(",
@@ -82,10 +82,8 @@ var destructiveGuardBannedTokens = []string{
 	".ResetKeep(",
 }
 
-// destructiveGuardAllowlist is this guard's per-file allowlist (path module-relative,
-// slash-separated → reason). Every entry carries the reason its one audited destructive call
-// site is safe, per the Fabric Destruction Chokepoint Invariant's requirement that every
-// allowlist entry name one.
+// destructiveGuardAllowlist exempts files from this guard, keyed by module-relative, slash-separated path.
+// Each entry gives the reason the file's audited destructive call sites are safe.
 var destructiveGuardAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/destroy.go", Why: "the gate's own file — the one file the invariant permits to perform a destructive primitive"},
 	{Key: "internal/fabricengine/gitexclude.go", Why: "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
@@ -116,23 +114,20 @@ var destructiveGuardAllowlist = []scankit.Entry{
 		"the banned tokens; its only non-comment line is the package clause, so it can never carry a real call"},
 }
 
-// destructiveGuardMinScannedFiles is the vacuous-scan floor for this guard's one-package walk:
-// comfortably below the package's current production file count (53 at authoring time) and
-// comfortably above zero. Its job is catching a misconfigured walk, not tracking the package's
-// size — it is not expected to track file-count churn as the package grows or shrinks.
+// destructiveGuardMinScannedFiles is the vacuous-scan floor for the walk over the scanned packages.
+// It sits below the packages' production file count and above zero,
+// so it catches a misconfigured walk without tracking the packages' size as files are added or removed.
 const destructiveGuardMinScannedFiles = 30
 
-// destructiveGuardExcludedDirs are module-relative, slash-separated directories the walk skips
-// entirely (filepath.SkipDir), keyed to the reason the directory falls outside package
-// fabricengine's scope even though it nests under internal/fabricengine on disk.
+// destructiveGuardExcludedDirs are module-relative, slash-separated directories the walk skips (filepath.SkipDir).
+// Each value gives the reason the directory lies outside the scanned package.
+// It nests under internal/fabricengine on disk, so the path alone does not show this.
 var destructiveGuardExcludedDirs = map[string]string{}
 
-// destructiveGuardRecordingExecutors is the table of every executor in
-// internal/fabricengine/destroy.go the Mutation Record Invariant requires to take a leading
-// `rec *Mutations` parameter, paired with the raw declaration-line prefix
-// TestMutationRecord_FabricengineProductionSource greps for. repointLink is deliberately absent:
-// it correctly records nothing of its own — there is no link_repointed kind — and passes rec
-// straight through to removeLink, so it needs no entry in this table at all, not an exemption.
+// destructiveGuardRecordingExecutors lists the destroy.go executors that must take a leading `rec *Mutations` parameter.
+// Each row pairs the executor with the raw declaration-line prefix the guard matches against the source.
+// repointLink has no row: it records nothing of its own, since there is no link_repointed kind,
+// and it passes rec straight through to removeLink, so it needs no row and is not an exemption.
 var destructiveGuardRecordingExecutors = []struct {
 	name       string
 	declPrefix string
@@ -152,12 +147,13 @@ var destructiveGuardRecordingExecutors = []struct {
 	{"DropLocal", "func DropLocal(rec *Mutations, "},
 }
 
-// destructiveGuardRecordingExecutorsMin is the vacuous-scan floor for destructiveGuardRecordingExecutors: this floors well below the table's row count so a table that silently stopped matching (e.g. a rename that broke every declPrefix at once) fails loudly rather than passing on zero found declarations.
+// destructiveGuardRecordingExecutorsMin is the vacuous-scan floor for the recording-executor table.
+// It sits below the table's row count, so a table that silently stopped matching fails loudly.
+// A rename that broke every declPrefix at once would otherwise pass on zero found declarations.
 const destructiveGuardRecordingExecutorsMin = 5
 
-// destructiveGuardMutatingResultTypes is the table of every mutating verb's result type the
-// Mutation Record Invariant requires to embed MutationRecord, paired with the module-relative file
-// each is declared in.
+// destructiveGuardMutatingResultTypes is the table of the mutating verbs' result types that must embed MutationRecord.
+// Each row pairs the type with the module-relative file it is declared in.
 var destructiveGuardMutatingResultTypes = []struct {
 	name string
 	file string
@@ -180,15 +176,11 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"DropLocalResult", "internal/fabricengine/destroy.go"},
 }
 
-// destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types
-// the invariant requires to NOT embed MutationRecord — the which-verbs-record scope decision is
-// machine-held here, not left to convention.
+// destructiveGuardReadOnlyResultTypes is the table of read-only verbs' result types that must not embed MutationRecord.
+// The table is machine-checked, so which verbs record is not left to convention.
 //
-// It has two rows by construction rather than by omission, and which verb each row serves is not the
-// natural guess: StatusResult (status.go) is the **pairs** verb and DiffResult is `diff`. The other
-// two read-only verbs have no result type to pin — the `status` verb's Fabric.Status returns a bare
-// []ChangeEntry and `list`'s List returns a bare []WorktreeEntry — so a reader must not read two rows
-// here as a table that has drifted.
+// A verb that returns a bare slice has no result type to pin, so it has no row by construction, not by omission.
+// StatusResult belongs to the pairs verb and DiffResult to diff, so the rows do not follow the verb names.
 var destructiveGuardReadOnlyResultTypes = []struct {
 	name string
 	file string
@@ -197,7 +189,9 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 	{"DiffResult", "internal/fabricengine/diff.go"},
 }
 
-// TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go files and fails if any of them (other than a destructiveGuardAllowlist entry) contains one of destructiveGuardBannedTokens — the construction/call tokens a destructive primitive reached outside the gate would carry.
+// TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go files.
+// It fails if any of them, other than an allowlisted file, contains one of destructiveGuardBannedTokens.
+// Each token marks a destructive call or token construction reached outside the gate.
 //
 //lym:guard
 func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
@@ -237,13 +231,15 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	}
 }
 
-// TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see the mutation record section of fabricengine's package doc).
-// It takes its module root from scankit and asserts two things by raw source inspection, never by inspecting an executor's body:
+// TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard.
+// It asserts two things by raw source inspection:
 //
-//  1. Every executor named in destructiveGuardRecordingExecutors declares a leading `rec *Mutations` parameter in internal/fabricengine/destroy.go.
-//  2. Every result type named in destructiveGuardMutatingResultTypes embeds MutationRecord, and every result type named in destructiveGuardReadOnlyResultTypes does not.
+//  1. Every executor in destructiveGuardRecordingExecutors declares a leading `rec *Mutations` parameter in destroy.go.
+//  2. Every result type named in destructiveGuardMutatingResultTypes embeds MutationRecord,
+//     and every result type named in destructiveGuardReadOnlyResultTypes does not.
 //
-// See this file's header comment for this guard's blind spots: it pins the parameter and the embed by declaration inspection only, never that an executor body actually appends, nor that what it appends is correct.
+// It inspects declarations only,
+// so it does not prove that an executor appends to rec or that what it appends is correct.
 //
 //testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
 //lym:guard
@@ -319,11 +315,9 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	}
 }
 
-// structFirstFieldLine returns the trimmed text of the first field line inside typeName's struct
-// body in content, and whether a `type <typeName> struct {` declaration was found at all.
-// It skips the opening-brace line itself (the remainder of the `type ... struct {` line, always
-// empty once the declaration prefix is stripped) and returns the line after it — the position an
-// embedded MutationRecord must occupy as the struct's first field.
+// structFirstFieldLine returns the trimmed text of the first field line inside typeName's struct body in content.
+// It reports whether a `type <typeName> struct {` declaration was found.
+// An embedded MutationRecord must occupy that first field position.
 func structFirstFieldLine(content, typeName string) (line string, found bool) {
 	declPrefix := "type " + typeName + " struct {"
 	idx := strings.Index(content, declPrefix)

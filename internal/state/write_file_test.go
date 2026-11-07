@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWriteFile pins that WriteFile lands the bytes verbatim, replaces an earlier write whole and creates the parent directory.
+// TestWriteFile pins that WriteFile lands the bytes verbatim and replaces an earlier write whole.
+// It also creates the parent directory.
 // On an unwritable path (the target is a directory) it returns an error and leaves no temp file beside it.
 func TestWriteFile(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,4 +1,5 @@
-// status.go implements `lym gate status`, the read-only view of which slots of the hub's gate-slot pool are held, by which run and tier, and since when.
+// status.go implements `lym gate status`, a read-only view of the hub's gate-slot pool.
+// It shows which slots are held, by which run and tier, and since when.
 
 package gatecli
 
@@ -36,7 +37,8 @@ Outside every hub it answers in_hub false, since the tiers run unslotted there.`
 	}
 }
 
-// runStatus writes the status of the gate-slot pool of the hub that contains the seam cwd and returns the verb's exit code.
+// runStatus writes the status of the gate-slot pool of the hub that contains the seam cwd.
+// It returns the verb's exit code.
 func runStatus(ctx context.Context, out io.Writer) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {

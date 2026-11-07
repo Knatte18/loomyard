@@ -1,4 +1,5 @@
-// hookread.go implements the hidden `hook-read` verb, which a strand's tool-boundary and Stop hooks run to take the strand's unread mail into its session.
+// hookread.go implements the hidden `hook-read` verb, which a strand's tool-boundary and Stop hooks run.
+// It takes the strand's unread mail into the session.
 
 package creelcli
 
@@ -19,12 +20,14 @@ import (
 // hookReadVerb is the hidden verb's name, which the hooks of a strand's engine spell.
 const hookReadVerb = "hook-read"
 
-// hookReadTimeout bounds the verb's call to the daemon, since the provider holds the session at the tool boundary until its hook ends.
+// hookReadTimeout bounds the verb's call to the daemon.
+// The provider holds the session at the tool boundary until its hook ends.
 const hookReadTimeout = 10 * time.Second
 
 // hookReadCmd builds the `hook-read` subcommand, hidden because only a strand's hooks run it.
 // Its standard output is the named engine's hook output for the event, or nothing when nothing was claimed;
-// a refusal goes to standard error and leaves standard output empty, since the provider parses the hook's standard output as its JSON.
+// a refusal goes to standard error and leaves standard output empty;
+// the provider parses standard output as the hook's JSON.
 // The exit code is 0 after a tool-boundary call that raised no error and, on a Stop, exactly when mail was written.
 func hookReadCmd() *cobra.Command {
 	return &cobra.Command{
@@ -72,10 +75,13 @@ error with exit 1.`,
 	}
 }
 
-// hookReadExit decides the exit code of hook-read and whether its error is printed, from the event the input carried, whether mail was written and the error the call ended with.
-// A Stop exits 0 exactly when mail was written, whatever followed the write, since exit 0 tells the merged turn-end command mail was handed to the session, which continues the turn, and no turn end is to be recorded;
-// an echo-only Stop exits 1, so the merged command records the turn end and keeps the printed echo as the hook's output;
-// any other call exits 1 on an error.
+// hookReadExit decides the exit code of hook-read and whether its error is printed.
+// It reads the event the input carried, whether mail was written, and the error the call ended with.
+// A Stop exits 0 exactly when mail was written, whatever followed the write.
+// Exit 0 tells the merged turn-end command that mail reached the session;
+// the session continues the turn, so no turn end is recorded.
+// An echo-only Stop exits 1, so the merged command records the turn end and keeps the printed echo as the hook's output.
+// Any other call exits 1 on an error.
 // An error is always printed, so a failed acknowledgement after the write still reaches standard error.
 func hookReadExit(event shuttleengine.HookEvent, wrote bool, err error) (exitCode int, printErr bool) {
 	printErr = err != nil
@@ -88,8 +94,11 @@ func hookReadExit(event shuttleengine.HookEvent, wrote bool, err error) (exitCod
 	return 0, false
 }
 
-// hookRead parses the hook input on the command's standard input and, for the main thread's tool-boundary or Stop event, claims the caller's mail through the daemon and writes it as the engine's hook output, before the client acknowledges it.
-// It returns the event the input carried and whether mail was written, beside the error the call ended with; an echo written alone leaves it false.
+// hookRead parses the hook input on the command's standard input.
+// For the main thread's tool-boundary or Stop event, it claims the caller's mail through the daemon.
+// It writes the mail as the engine's hook output before the client acknowledges it.
+// It returns the event the input carried and whether mail was written, beside the error the call ended with;
+// an echo written alone leaves it false.
 // A claim that hands out an echo prints it as the system message under creelengine.EchoHeading, ahead of any mail.
 func hookRead(cmd *cobra.Command, engine string) (event shuttleengine.HookEvent, wrote bool, err error) {
 	renderer, ok := shuttleengines.ToolBoundaryRenderer(engine)

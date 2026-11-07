@@ -1,6 +1,7 @@
-// legacy.go — pure conversion from the pre-upgrade tasks.json and notes.json records into store entries.
+// legacy.go converts the pre-upgrade tasks.json and notes.json records into store entries.
 //
-// Declares the legacy record shape and file names, the one-time migration, and the done-mark fold that carries a pre-upgrade binary's later done marks into the new store.
+// It declares the legacy record shape and file names, the one-time migration, and the done-mark fold.
+// The fold carries done marks that a pre-upgrade binary wrote after migration into the store.
 // Everything here works on decoded slices, so the I/O layer stays thin and every rule is testable without a disk.
 
 package boardengine
@@ -19,7 +20,8 @@ const (
 	// legacyDoneStatus is the status value a pre-upgrade binary wrote to mark a record done.
 	legacyDoneStatus = "done"
 
-	// legacyTaskTier and legacyNoteTier are the tiers a legacy record is given before conversion: a task is tier 1, a deferred task or note is tier 2.
+	// legacyTaskTier and legacyNoteTier are the tiers a legacy record receives before conversion:
+	// a task is tier 1, and a deferred task or a note is tier 2.
 	legacyTaskTier = 1
 	legacyNoteTier = 2
 )
@@ -103,12 +105,13 @@ func migrateLegacy(tasks, notes []legacyRecord, vocab *Vocabulary) ([]Task, []st
 	return migrateEntries(entries, vocab), legacyDone, nil
 }
 
-// duplicateLegacySlugError names a slug found in both legacy files.
+// duplicateLegacySlugError builds the error for a slug that appears more than once across the legacy files.
 func duplicateLegacySlugError(slug string) error {
 	return fmt.Errorf("slug %q appears more than once across the legacy tasks and notes files: remove the duplicate from one legacy file", slug)
 }
 
-// entryFromLegacy builds the decode shape of a legacy record with the given tier and type feature, moving the old type into recipe.
+// entryFromLegacy builds the stored entry for a legacy record at the given id and tier, typed as a feature.
+// It moves the old type into the Recipe field.
 func entryFromLegacy(r legacyRecord, id int, tier int) storedEntry {
 	legacyType := "feature"
 	t := Task{

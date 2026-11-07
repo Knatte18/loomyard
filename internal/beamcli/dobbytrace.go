@@ -1,4 +1,5 @@
-// dobbytrace.go leaves a trace of each exit `lym beam dobby` takes before dobbyengine.Run: a line in the dobby's log and, after a re-exec, a notice.
+// dobbytrace.go leaves a trace of each exit that `lym beam dobby` takes before dobbyengine.Run:
+// a line in the dobby's log and, after a re-exec, a notice.
 // It also holds the rotation of the dobby's raw output file.
 
 package beamcli
@@ -19,13 +20,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// selfexecs reports whether this process can re-exec onto a replaced binary, which it does off Windows and outside a test binary.
+// selfexecs reports whether this process can re-exec onto a replaced binary.
+// That holds off Windows and outside a test binary.
 func selfexecs() bool {
 	return runtime.GOOS != "windows" && !testing.Testing()
 }
 
 // appendDobbyLine appends one stamped line to the dobby log at path without rotating it, since the caller holds no dobby lock.
-// A failed append is logged at Debug: the directory of a worktree that was never a beam does not exist, and no append creates it.
+// A failed append is logged at Debug:
+// the directory of a worktree that was never a beam does not exist, and no append creates it.
 func appendDobbyLine(path, text string) {
 	if err := dobbyengine.AppendLog(path, time.Now().UTC().Format(time.RFC3339)+" "+text, false); err != nil {
 		logger.Debug("beamcli: a dobby log line was not written", "path", path, "error", err)
@@ -43,7 +46,8 @@ func readsAsReexec(statePath string) bool {
 	return reexec
 }
 
-// postDobbyNotice posts line to the nearest live orch of from, signed as the dobby scoped to slug; a failed or unrouted post is logged.
+// postDobbyNotice posts line to the nearest live orch of from, signed as the dobby scoped to slug;
+// a failed or unrouted post is logged.
 func postDobbyNotice(notify func(from *lymcwd.Location, slug, program, line string) (bool, error), from *lymcwd.Location, slug, line string) {
 	posted, err := notify(from, slug, dobbyProgram, line)
 	if err != nil {
@@ -55,8 +59,10 @@ func postDobbyNotice(notify func(from *lymcwd.Location, slug, program, line stri
 	}
 }
 
-// traceRefusedStart records that the dobby of location was refused, in that worktree's own `dobby.log` when it has a `.lym/beam` directory.
-// A refusal of a process that is a re-exec of the dobby there also posts a notice, since the refusal's own way forward would only repeat it.
+// traceRefusedStart records that the dobby of location was refused.
+// It writes the line to that worktree's own `dobby.log` when the worktree has a `.lym/beam` directory.
+// A refusal in a process that is a re-exec of that dobby also posts a notice;
+// the refusal's own way forward would only repeat it.
 func traceRefusedStart(location *lymcwd.Location, refusal error, notify func(from *lymcwd.Location, slug, program, line string) (bool, error)) {
 	beamDir := hubgeom.DobbyBeamDir(location)
 	appendDobbyLine(filepath.Join(beamDir, dobbyengine.LogFileName), "start refused: "+refusal.Error())
@@ -71,7 +77,8 @@ func traceRefusedStart(location *lymcwd.Location, refusal error, notify func(fro
 }
 
 // traceFailedWiring records that wiring the dobby of geom over the hub failed, in its `dobby.log`.
-// A failure in a process that is a re-exec of that dobby also posts a notice; when the worktree no longer resolves, the line is the only trace.
+// A failure in a process that is a re-exec of that dobby also posts a notice;
+// when the worktree no longer resolves, the line is the only trace.
 func traceFailedWiring(geom dobbyengine.Geometry, wiring error, notify func(from *lymcwd.Location, slug, program, line string) (bool, error)) {
 	appendDobbyLine(geom.LogPath, "start failed: wire the dobby over the hub: "+wiring.Error())
 	if !readsAsReexec(geom.StatePath) {
@@ -85,7 +92,8 @@ func traceFailedWiring(geom dobbyengine.Geometry, wiring error, notify func(from
 	postDobbyNotice(notify, worktree, geom.Slug, fmt.Sprintf("%s: the dobby's wiring failed after a re-exec: %v; way forward: fix the cause, then run lym beam start", geom.WorktreeName, wiring))
 }
 
-// rotateOutput renames the dobby's output file to its previous file when it is past its bound, and points this process's output at the fresh file.
+// rotateOutput renames the dobby's output file to its previous file when it is past its bound;
+// it points this process's output at the fresh file.
 // Only the holder of the dobby lock calls it, so a process that loses the lock renames nothing.
 func rotateOutput(path string) {
 	rotated, err := dobbyengine.RotatePastBound(path)

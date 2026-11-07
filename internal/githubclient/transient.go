@@ -1,4 +1,6 @@
-// transient.go classifies a failed GitHub API call: whether it is transient, failed for a reason a retry a moment later is likely to clear, and which HTTP status GitHub answered it with.
+// transient.go classifies a failed GitHub API call.
+// IsTransient reports whether a retry a moment later is likely to clear the failure.
+// StatusCode reports the HTTP status GitHub answered with.
 
 package githubclient
 
@@ -17,7 +19,8 @@ import (
 // a 5xx response, a transport-level *url.Error other than a cancellation, or context.DeadlineExceeded.
 // Rate-limit errors are not transient, since an immediate retry hits the same limit;
 // nor are context.Canceled, any 4xx response, or an error with none of these in its chain.
-// A *url.Error from parsing a request URL or from a TLS certificate failure is not transport-level, so it is not transient either.
+// A *url.Error from parsing a request URL or from a TLS certificate failure is not transport-level,
+// so it is not transient either.
 func IsTransient(err error) bool {
 	if err == nil {
 		return false

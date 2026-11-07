@@ -24,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared, and the `finalize` and `code-burler-fix` keys listing both.
+// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared.
+// Its `finalize` and `code-burler-fix` keys list both tiers.
 func gateConfigWithTwoTiers() string {
 	const tiers = `tiers:
   tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}
@@ -41,7 +42,8 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	// The hub's board directory exists from the start, as in a real hub, so the config dirs the sources read name it before the gate.yaml does.
+	// The hub's board directory exists from the start, as in a real hub,
+	// so the config dirs the sources read name it before the gate.yaml does.
 	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
 		t.Fatal(err)
 	}

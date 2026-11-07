@@ -1,13 +1,6 @@
-// gitwrap.go implements webster's own git-query helpers over internal/gitrepo: headSHA captures a
-// batch's start-SHA and the report cross-check's actual HEAD, and dirty is the half-done-work
-// signal.
-// refuseMidMerge and reconcileReportHead are the read-only probes record-batch and recover-batch share:
-// the first refuses while a git merge is in progress, the second accepts a HEAD that is only clean parent merges past the report's head_sha.
-// The suspect-path probes (ignoredPath, worktreePathDiffers, worktreeBlob, commitBlob, treePathsWithBlob) and otherWorktrees are the read-only evidence queries accept-audit, recovery and fresh runs share;
-// shaExists and isAncestor are the evidence-base probes runEvidenceBases picks its commits with.
-// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo except dirty and the read-only probes gitrepo has no method for (all the suspect-path probes and otherWorktrees).
-// gitrepo exposes no method for them, so they wrap the checked gitexec.Run directly, the carved-out exception the decision names;
-// they are kept in this one file so no other webster file runs git.
+// gitwrap.go holds webster's git queries: HEAD, merge-state, parent-merge and suspect-path checks.
+// Helpers here go through gitrepo.Repo, except dirty and the probes gitrepo has no method for.
+// Those wrap the checked gitexec.Run directly, and they stay in this file so no other webster file runs git.
 
 package websterengine
 
@@ -23,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// headSHA returns worktree's current HEAD commit SHA via gitrepo.Repo.
-// An unborn HEAD surfaces as gitrepo.ErrNoCommits.
+// headSHA returns the SHA of worktree's HEAD commit.
+// An unborn HEAD returns an error that wraps gitrepo.ErrNoCommits.
 func headSHA(worktree string) (string, error) {
 	sha, err := gitrepo.New(worktree).CurrentSHA()
 	if err != nil {
@@ -34,7 +27,8 @@ func headSHA(worktree string) (string, error) {
 }
 
 // refuseMidMerge returns an error when worktree has a git merge in progress, and nil otherwise.
-// It asks git whether MERGE_HEAD resolves rather than statting a file, because a linked worktree keeps MERGE_HEAD in its per-worktree git dir.
+// It asks git whether MERGE_HEAD resolves rather than statting a file.
+// A linked worktree keeps MERGE_HEAD in its per-worktree git dir, so a file stat would miss it.
 func refuseMidMerge(git Git, worktree string) error {
 	present, err := git.MergeInProgress(worktree)
 	if err != nil {
@@ -59,7 +53,7 @@ func commitParents(worktree, commit string) ([]string, error) {
 	return gitrepo.New(worktree).CommitParents(commit)
 }
 
-// mergeRejection returns why the merge commit, whose parents are given, does not qualify as a clean merge of the run's parent branch, or "" when it does.
+// mergeRejection returns why commit does not qualify as a clean merge of the run's parent branch, or "" when it does.
 // A parentBranch that cannot be resolved is itself a rejection, so no merge is accepted without one.
 func mergeRejection(worktree, commit string, parents []string, parentBranch ParentBranchFunc) string {
 	repo := gitrepo.New(worktree)
@@ -74,21 +68,28 @@ func mergeRejection(worktree, commit string, parents []string, parentBranch Pare
 // A nil ParentBranchFunc means the run has no parent branch, so no merge commit is ever accepted.
 type ParentBranchFunc func() (string, error)
 
-// reconcileReportHead cross-checks a report's head_sha against worktree's actual HEAD, tolerating clean parent merges only.
-// HEAD equal to reportHead is the unchanged fast path and returns an empty warning.
-// Otherwise it walks HEAD's first-parent chain, comparing each commit with reportHead BEFORE looking at its parents —
+// reconcileReportHead cross-checks a report's head_sha against worktree's HEAD.
+// It tolerates only clean parent merges between them.
+// HEAD equal to reportHead returns an empty warning.
+// Otherwise it walks HEAD's first-parent chain.
+// It compares each commit with reportHead before it looks at that commit's parents,
 // so a reportHead that is itself a merge commit is accepted, not stepped past.
-// A commit that is not reportHead must be a clean parent merge to be walked over:
-// exactly two parents, the second reachable from parentBranch's local or origin tip, and a tree equal to the conflict-free merge of the two.
-// A non-merge commit, the root, or a merge failing any check ends the walk in refusal, and so does any error while checking.
-// The rule keeps the audit sound: the batch is recorded at reportHead, so content a merge adds beyond a clean parent merge would bypass the audited delta.
+// A commit other than reportHead is walked over only when it is a clean parent merge.
+// It has exactly two parents.
+// Its second parent is reachable from parentBranch's local or origin tip.
+// Its tree equals the conflict-free merge of the two parents.
+// A non-merge commit, the root, or a merge failing any check ends the walk in refusal.
+// Any error while checking also ends it in refusal.
+// The rule keeps the audit sound.
+// The batch is recorded at reportHead.
+// Content a merge adds beyond a clean parent merge would bypass the audited delta.
 // On acceptance the warning names subject, both heads and every walked merge SHA in walk order.
-// A refusal's way forward is worded for record-batch and recover-batch of the given batch number (reportHeadRefusal).
+// A refusal's way forward is worded for record-batch and recover-batch of the given batch number.
 func reconcileReportHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc, batch int) (warning string, err error) {
 	return reconcileHead(git, worktree, reportHead, subject, parentBranch, reportHeadRefusal(batch))
 }
 
-// headRefusal words a reconcileHead refusal's way forward for one caller.
+// headRefusal holds the wording of a refusal's way forward for one verb.
 type headRefusal struct {
 	// resetStep is the reset that moves HEAD back onto the commit the check expects.
 	resetStep string
@@ -98,12 +99,14 @@ type headRefusal struct {
 	redoMerge string
 }
 
-// reportHeadRefusal is the wording for a verb that records batch at a report's head_sha: reset to the report's head with `reset --to report-head`.
+// reportHeadRefusal words the way forward for a verb that records a batch at a report's head_sha:
+// reset to the report's head with `reset --to report-head`.
 func reportHeadRefusal(batch int) headRefusal {
 	return headRefusal{resetStep: resetVerb(ResetToReportHead, batch), rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
 }
 
-// reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
+// reconcileHead cross-checks reportHead against worktree's HEAD, tolerating only clean parent merges between them.
+// refusal sets the wording of the way forward in each refusal it returns.
 func reconcileHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
 	head, err := git.HeadSHA(worktree)
 	if err != nil {
@@ -137,8 +140,8 @@ func reconcileHead(git Git, worktree, reportHead, subject string, parentBranch P
 	}
 }
 
-// resolveParentTips resolves the run's parent branch to every tip a parent merge-in may have merged from:
-// the local branch and its origin remote-tracking ref, whichever exist, mirroring fabric merge-in's own source resolution.
+// resolveParentTips returns every tip a parent merge-in may merge from:
+// the local branch and its origin remote-tracking ref, whichever exist.
 // A nil parentBranch, an empty branch name, or a branch with neither ref resolving is an error, so no merge is accepted.
 func resolveParentTips(repo *gitrepo.Repo, parentBranch ParentBranchFunc) ([]string, error) {
 	if parentBranch == nil {
@@ -166,7 +169,7 @@ func resolveParentTips(repo *gitrepo.Repo, parentBranch ParentBranchFunc) ([]str
 // parentMergeRejection returns why merge commit sha does not qualify as a clean parent merge, or "" when it does.
 // It qualifies only when it has exactly two parents, its second parent is reachable from one of parentTips,
 // and its tree equals the conflict-free merge of its two parents.
-// The first parent needs no check here: the caller's walk steps to parents[0] itself.
+// The first parent is not checked here; the walk that calls this continues from it.
 // Any git error is itself a rejection, so the check fails closed.
 func parentMergeRejection(repo *gitrepo.Repo, sha string, parents, parentTips []string) string {
 	if len(parents) != 2 {
@@ -203,7 +206,8 @@ func parentMergeRejection(repo *gitrepo.Repo, sha string, parents, parentTips []
 	return ""
 }
 
-// parentMergeRefusal builds the head_sha mismatch refusal for a walked merge commit that is not a clean parent merge, its way forward worded by refusal.
+// parentMergeRefusal builds the head_sha mismatch refusal for a walked merge commit that is not a clean parent merge.
+// Its way forward is worded by refusal.
 func parentMergeRefusal(subject, reportHead, head, merge, reason string, refusal headRefusal) error {
 	return fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 		"only merge commits that cleanly merge the run's parent branch may sit between a fork's reported head and HEAD, "+
@@ -215,7 +219,7 @@ func parentMergeRefusal(subject, reportHead, head, merge, reason string, refusal
 
 // ignoredPath reports whether git ignores path in worktree.
 // A path that does not exist and is not ignored reads as not ignored, the conservative answer.
-// It wraps gitexec.Run directly for the same reason dirty does.
+// It calls gitexec.Run directly, since gitrepo.Repo exposes no porcelain status method.
 func ignoredPath(worktree, path string) (bool, error) {
 	stdout, err := gitexec.Run([]string{"status", "--porcelain", "--ignored", "--", path}, worktree)
 	if err != nil {
@@ -261,7 +265,9 @@ func commitsSince(worktree, base string) ([]string, error) {
 	return newestFirst, nil
 }
 
-// fixCommitRejection walks the commits from base to HEAD and returns the first that is neither a non-merge commit nor a clean parent merge, with the reason it does not qualify.
+// fixCommitRejection walks the commits from base to HEAD and returns the first that does not qualify.
+// A commit qualifies when it is a non-merge commit or a clean parent merge.
+// The reason says why the returned commit fails.
 // It returns empty strings when every commit qualifies.
 // The parent tips are resolved once, on the first merge the walk meets.
 // A resolution error rejects that merge with the error as the reason, so a nil parentBranch accepts no merge.
@@ -373,7 +379,8 @@ func worktreeBlob(worktree, path string) (string, error) {
 }
 
 // commitBlob returns the git blob id of path at commit, or "" when the commit does not hold the path.
-// `git rev-parse --verify --quiet` exits 1 with no output for a name that does not resolve, so that exit is the "" answer;
+// `git rev-parse --verify --quiet` exits 1 with no output for a name that does not resolve,
+// so that exit is the empty answer;
 // any other nonzero exit is a failure.
 func commitBlob(worktree, commit, path string) (string, error) {
 	stdout, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", commit + ":" + path}, worktree)
@@ -432,7 +439,8 @@ func nonMergeCommitsBetween(worktree, base, head string) (bool, error) {
 const departureTrailerKey = "Pattern-Departure:"
 
 // commitLog returns, oldest first, the non-merge commits on head's first-parent line after base.
-// It walks head's first-parent line through gitrepo and stops at base; a walk that reaches the root without meeting base is an error.
+// It walks head's first-parent line through gitrepo and stops at base.
+// A walk that reaches the root without meeting base is an error.
 func commitLog(worktree, base, head string) ([]CommitLogEntry, error) {
 	walked, err := gitrepo.New(worktree).Log(head, gitrepo.LogQuery{FirstParent: true})
 	if err != nil {
@@ -462,7 +470,9 @@ func commitLog(worktree, base, head string) ([]CommitLogEntry, error) {
 	return entries, nil
 }
 
-// departureTrailers returns the values of the departure trailer lines in message's last paragraph, where git reads trailers, each trimmed and otherwise verbatim.
+// departureTrailers returns the values of the departure trailer lines in message's last paragraph.
+// Git reads trailers from that paragraph.
+// Each value is trimmed and otherwise verbatim.
 // A message of one paragraph has no trailers.
 func departureTrailers(message string) []string {
 	trimmed := strings.TrimSpace(strings.ReplaceAll(message, "\r\n", "\n"))
@@ -479,9 +489,10 @@ func departureTrailers(message string) []string {
 	return values
 }
 
-// dirtyTrackedPaths returns the slash-separated worktree-relative paths of tracked files whose content differs from HEAD, staged or not, sorted.
+// dirtyTrackedPaths returns the sorted worktree-relative paths of tracked files whose content differs from HEAD.
+// The paths use slashes, and a change counts whether staged or not.
 // Untracked files are not listed.
-// It wraps gitexec.Run directly for the same reason dirty does.
+// It calls gitexec.Run directly.
 func dirtyTrackedPaths(worktree string) ([]string, error) {
 	stdout, err := gitexec.Run([]string{"diff", "--name-only", "-z", "HEAD", "--"}, worktree)
 	if err != nil {
@@ -508,7 +519,8 @@ func octopusMergeBase(worktree string, shas []string) (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// gitExitCode returns the exit code of a git command gitexec.Run reports as rejected, and false for nil or an exec-level failure.
+// gitExitCode returns the exit code of a git command that gitexec.Run reports as rejected.
+// The bool is false for a nil error or an exec-level failure.
 func gitExitCode(err error) (int, bool) {
 	var gitErr *gitexec.GitError
 	if errors.As(err, &gitErr) {
@@ -517,13 +529,15 @@ func gitExitCode(err error) (int, bool) {
 	return 0, false
 }
 
-// ErrHeadSHAUnresolved is the sentinel resolveReportHead wraps when a report's abbreviated head_sha names no commit or more than one.
+// ErrHeadSHAUnresolved is the sentinel error for a report's abbreviated head_sha that names no commit or more than one.
 var ErrHeadSHAUnresolved = errors.New("webster: report head_sha unresolved")
 
-// commitsNamedBy returns, sorted, the full SHA of every commit in worktree's repository whose object name starts with prefix, and an empty slice when none does.
-// Only object names match, never ref names.
-// `git rev-parse --disambiguate` lists every object the prefix names and prints nothing, exiting 0, for a prefix that names none;
-// all listed objects are classified in one `git cat-file --batch-check` run, and only those it types commit are kept.
+// commitsNamedBy returns, sorted, the full SHA of each commit whose object name starts with prefix.
+// The search covers worktree's repository, and only object names match, never ref names.
+// It returns an empty slice when none does.
+// `git rev-parse --disambiguate` lists every object the prefix names,
+// and it prints nothing, exiting 0, for a prefix that names none.
+// The listed objects are classified in one `git cat-file --batch-check` run, and only the commits are kept.
 func commitsNamedBy(worktree, prefix string) ([]string, error) {
 	stdout, err := gitexec.Run([]string{"rev-parse", "--disambiguate=" + prefix}, worktree)
 	if err != nil {
@@ -545,8 +559,10 @@ func commitsNamedBy(worktree, prefix string) ([]string, error) {
 	return commits, nil
 }
 
-// commitsFromBatchCheck returns the object names typed commit in `git cat-file --batch-check` output, one `<name> <type> <size>` line per object.
-// A `<name> missing` line is an error naming the object, since the caller just listed it, and any other malformed line is an error too.
+// commitsFromBatchCheck returns the object names typed commit in `git cat-file --batch-check` output.
+// Each output line is `<name> <type> <size>`, one per object.
+// A `<name> missing` line is an error naming the object, since the caller just listed it,
+// and any other malformed line is an error too.
 func commitsFromBatchCheck(output string) ([]string, error) {
 	var commits []string
 	for _, line := range strings.Split(output, "\n") {
@@ -566,7 +582,7 @@ func commitsFromBatchCheck(output string) ([]string, error) {
 	return commits, nil
 }
 
-// minAbbreviatedSHA is git's minimum abbreviation length, the shortest head_sha resolveReportHead resolves.
+// minAbbreviatedSHA is git's minimum abbreviation length: a head_sha shorter than this is not resolved.
 const minAbbreviatedSHA = 4
 
 // fullSHALength is the length of a full SHA-1 commit id in hex digits.
@@ -574,7 +590,7 @@ const fullSHALength = 40
 
 // resolveReportHead resolves a report's head_sha to the one full commit SHA it names.
 // A value of exactly 40 hex digits returns unchanged with no git call.
-// A hex value of 4 to 39 digits, of either case, is lowercased and resolved through git.CommitsNamedBy;
+// A hex value of 4 to 39 digits, of either case, is lowercased and resolved against the repository's commits;
 // no commit or more than one is an error wrapping ErrHeadSHAUnresolved that names reportPath and the way forward.
 // Any other value returns unchanged, so it meets the refusal at its consume site.
 // A git failure is returned as an error that does not wrap ErrHeadSHAUnresolved.

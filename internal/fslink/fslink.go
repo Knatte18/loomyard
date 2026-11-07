@@ -1,32 +1,32 @@
-// Package fslink provides a unified cross-platform link primitive that abstracts the
-// differences between Windows junctions and POSIX symlinks. On Windows, links are
-// junctions (mount-point reparse points) created via direct reparse-point syscalls
-// (golang.org/x/sys/windows), requiring no special privileges. On non-Windows
-// platforms, links are symlinks created via os.Symlink.
+// Package fslink provides a unified cross-platform link primitive.
+// It abstracts the differences between Windows junctions and POSIX symlinks.
+// On Windows, links are junctions (mount-point reparse points) created with direct reparse-point syscalls.
+// Those syscalls come from golang.org/x/sys/windows, and creating a junction needs no special privileges.
+// On non-Windows platforms, links are symlinks created via os.Symlink.
 //
 // Public API:
-//   - CreateDirLink(link, target string) error: Create a directory link pointing to
-//     target (a junction on Windows, a symlink elsewhere). Refuses to clobber existing
-//     paths and creates missing parent directories.
-//   - CreateFileLink(link, target string) error: Create a symlink to the file target, with
-//     the same guards. On Windows it refuses before touching the filesystem, since a file
-//     symlink there needs elevated privileges and a junction links only a directory.
-//   - Remove(link string) error: Idempotent removal of a link; returns nil if the link
-//     does not exist, otherwise returns wrapped errors.
-//   - IsLink(path string) (bool, error): Reports whether path is a link. Returns
-//     (false, nil) if path does not exist, (false, err) on stat errors, and (true/false, nil)
-//     for successful checks.
-//   - PointsTo(link string) (string, error): Returns the resolved absolute target of a
-//     link via filepath.EvalSymlinks. No \??\ prefix in the result. Errors if link is
-//     not a link or if the target does not exist.
-//   - RemoveLinksIn(dir string) (int, error): Scans the immediate children of dir,
-//     removes each link found, and returns the count. Regular files and real directories
-//     are left untouched. Returns (0, err) if dir does not exist.
+//   - CreateDirLink(link, target string) error: Create a directory link pointing to target.
+//     On Windows it is a junction, elsewhere a symlink.
+//     It refuses to clobber existing paths and creates missing parent directories.
+//   - CreateFileLink(link, target string) error: Create a symlink to the file target.
+//     Off Windows it refuses to clobber existing paths and creates missing parent directories.
+//     On Windows it refuses before touching the filesystem: a file symlink there needs elevated privileges,
+//     and a junction links only a directory.
+//   - Remove(link string) error: Idempotent removal of a link.
+//     It returns nil if the link does not exist, and wrapped errors otherwise.
+//   - IsLink(path string) (bool, error): Reports whether path is a link.
+//     It returns (false, nil) if path does not exist, and (false, err) on stat errors.
+//     Otherwise it returns (true or false, nil).
+//   - PointsTo(link string) (string, error): Returns the resolved absolute target of a link.
+//     It resolves the chain with filepath.EvalSymlinks; the result has no \??\ prefix.
+//     It errors if link is not a link or if the target does not exist.
+//   - RemoveLinksIn(dir string) (int, error): Scans the immediate children of dir and removes each link found.
+//     It returns the count of links removed.
+//     Regular files and real directories are left untouched.
+//     It returns (0, err) if dir does not exist.
 //
-// Only the symlink path has been exercised: every test and hardening round ran on Linux, so the
-// Windows junction path is reasoned about rather than executed.
-// internal/fabricengine's package documentation lists the platform-dependent code this leaves
-// unverified and what closing the gap takes.
+// The tests run on Linux, so only the symlink path is executed.
+// The Windows junction path is reasoned about rather than run.
 package fslink
 
 import (
@@ -36,8 +36,7 @@ import (
 )
 
 // Remove idempotently deletes a link, returning nil if absent.
-// Wraps errors with context;
-// removes only the link entry, never the target.
+// It wraps errors with context and removes only the link entry, never the target.
 func Remove(link string) error {
 	err := os.Remove(link)
 	if err == nil {

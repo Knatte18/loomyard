@@ -1,5 +1,6 @@
-// runlevel_git_test.go exercises Run's plan-level verify gate over a real scratch git repository and real shell commands:
-// the gate asks git for the tree's dirty paths and for the commits since the first failure, and runs the `final` gate call through the built `lym` in a subprocess.
+// runlevel_git_test.go exercises Run's plan-level verify gate over a real scratch git repository.
+// The gate asks git for the tree's dirty paths and for the commits since the first failure.
+// It runs the `final` gate call through the built `lym` in a subprocess.
 // Every other Run behavior is tested over a fakeGit in runlevel_test.go.
 
 package websterengine_test
@@ -37,11 +38,16 @@ func newGateScenario(t *testing.T) *gateScenario {
 	return &gateScenario{repo: repo, base: base}
 }
 
-// restart puts the repository back on its base commit with a clean tree, and returns a one-card Run fixture over it whose `final` tier runs verify as a shell stand-in.
+// restart puts the repository back on its base commit with a clean tree, and returns a one-card Run fixture over it.
+// The fixture's `final` tier runs verify as a shell stand-in.
 // The fixture's Git is nil, so webster asks the repository itself.
-// It writes a gate.yaml declaring that tier into the fixture hub's board directory, which the built `lym` reads there, tells Geom.GateConfig a reader over it, excludes the `.lym` directory a standalone `lym gate test` records under, and puts the tree's `lym` first on `PATH`, so a caller is not parallel.
+// It writes a gate.yaml declaring that tier into the fixture hub's board directory, which the built `lym` reads there.
+// It points Geom.GateConfig at a reader over that file,
+// and it excludes the `.lym` directory a standalone `lym gate test` records under.
+// It also puts the tree's `lym` first on `PATH`, which is process-global, so callers must not run in parallel.
 // This overrides the gate config the fixture would otherwise carry.
-// It adds one card commit touching internal/batch1 under a go.mod module, and returns that commit too; the worktree is clean afterwards, so the gate's own verify is the only thing that can fail.
+// It adds one card commit touching internal/batch1 under a go.mod module, and returns that commit too;
+// the worktree is clean afterwards, so the gate's own verify is the only thing that can fail.
 func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string) {
 	t.Helper()
 	lymbin.PutFirstOnPath(t)
@@ -76,7 +82,7 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 	if err != nil {
 		t.Fatalf("marshal gate.yaml: %v", err)
 	}
-	// The fixture's parent directory holds a board directory, so the built `lym` reads the hub-wide gate.yaml there, outside the repository.
+	// The parent directory holds the board, so the built `lym` reads the hub-wide gate.yaml outside the repository.
 	dirs := configengine.Dirs{Anchor: s.repo, Board: fabricengine.BoardDir(filepath.Dir(s.repo))}
 	configFile := configengine.ConfigFile(dirs.Board, "gate")
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
@@ -116,7 +122,7 @@ func TestRun_VerifyGate(t *testing.T) {
 	tiergate.Require(t, 1)
 	s := newGateScenario(t)
 
-	// A fake Merriam whose first done arrival fails verify and whose second passes ends done with one re-prompt,
+	// A fake Master whose first done arrival fails verify and whose second passes ends done with one re-prompt,
 	// and the findings name the failing identity and the card whose commit touched its package.
 	t.Run("a failure then a pass ends done", func(t *testing.T) {
 		okFile := filepath.Join(t.TempDir(), "ok")
@@ -158,7 +164,7 @@ func TestRun_VerifyGate(t *testing.T) {
 				if strings.ContainsAny(line, "\n\r") || !strings.HasPrefix(line, "Gate findings recorded at "+findingsPath) || !strings.Contains(line, fixPromptPath) {
 					t.Errorf("re-prompt line = %q; want one line opening with the findings path and naming %s", line, fixPromptPath)
 				}
-				// Merriam's fixer makes its fix.
+				// The fake Master's fixer makes its fix.
 				if err := os.WriteFile(okFile, nil, 0o644); err != nil {
 					t.Fatalf("write ok file: %v", err)
 				}

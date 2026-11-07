@@ -1,4 +1,4 @@
-// reanchor.go builds hubforge's second-anchor fixture: ReanchorPair moves one worktree of a built hub to another anchor.
+// reanchor.go builds the second-anchor test fixture: ReanchorPair moves one worktree of a built hub to another anchor.
 
 package hubforge
 
@@ -13,10 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// ReanchorPair moves the worktree called slug, the prime included, from its current anchor to anchor, fataling on error.
-// In the worktree's records worktree it moves each wired name's tracked content with `git mv`, writes anchor into the root marker, and commits both in one commit.
-// In its code worktree it commits a tracked placeholder `<anchor>/.keep` when git does not already track anchor there, so anchor is a directory git tracks.
-// It then unwires the worktree's junctions at the old anchor and wires them at anchor, so the hub holds two anchors.
+// ReanchorPair moves the worktree called slug, the prime included, from its current anchor to anchor.
+// It fails the test through tb on error.
+// In the records worktree it moves each wired name's tracked content with `git mv`.
+// It writes anchor into the root marker and commits the moves and the marker in one commit.
+// In the code worktree it commits a tracked placeholder `<anchor>/.keep` when git does not already track anchor there.
+// That makes anchor a directory git tracks.
+// It then unwires the junctions at the old anchor and wires them at anchor, so the hub holds two anchors.
 // For the prime it also updates h.Location, h.Anchor and h.WeftBase to the new anchor.
 func ReanchorPair(tb testing.TB, h *Hub, slug, anchor string) {
 	tb.Helper()

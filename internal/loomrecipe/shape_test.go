@@ -1,5 +1,6 @@
-// shape_test.go carries the package's one row table and the shape-and-identity assertions over New's built list: the real Publish/Finalize swap, told-field threading, a missing-Landing-closure construction failure, and the routing-graph guard.
-// It does not assert the recipe's own structure or parsing -- recipe_test.go owns that.
+// shape_test.go holds the package's one row table and the tests of the list New builds.
+// They cover the real Publish/Finalize swap and told-field threading.
+// They also cover a missing-Landing-closure construction failure and the routing-graph guard.
 
 package loomrecipe
 
@@ -28,8 +29,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// wantProducerRow is one row of the package's one row table.
-// engine is the backing engine name, which shedengine.ProducerDef cannot derive;
+// wantProducerRow is one expected row of the producer table: its name, engine and concrete producer type.
+// The engine is recorded here because a producer definition cannot derive it.
 // producerType is the expected concrete Producer type, read via reflect.TypeOf.
 type wantProducerRow struct {
 	name         string
@@ -37,7 +38,7 @@ type wantProducerRow struct {
 	producerType reflect.Type
 }
 
-// rowEngines returns the row-to-engine mapping read off wantProducerTable.
+// rowEngines maps each expected row's name to its backing engine name.
 func rowEngines() map[string]string {
 	engines := make(map[string]string, len(wantProducerTable))
 	for _, row := range wantProducerTable {
@@ -57,7 +58,8 @@ var (
 	driftVerifyType   = reflect.TypeOf(&driftengine.DriftVerify{})
 )
 
-// blockProducerType returns the concrete type of the Block registry entry's producer, which shedrecipe does not export, for the shape table's Motif row.
+// blockProducerType returns the concrete type of the Block engine's producer for the Motif row.
+// shedrecipe does not export that type, so the test builds the producer and reads its type.
 func blockProducerType() reflect.Type {
 	construct, err := shedrecipe.Lookup(shedrecipe.EngineBlock)
 	if err != nil {
@@ -70,8 +72,7 @@ func blockProducerType() reflect.Type {
 	return reflect.TypeOf(p)
 }
 
-// frictionReflectProducerType returns the dynamic type of the producer loomshed.NewFrictionReflect
-// builds, for the shape table's Friction-Reflect row.
+// frictionReflectProducerType returns the dynamic type of the producer that loomshed.NewFrictionReflect builds.
 func frictionReflectProducerType() reflect.Type {
 	p, err := loomshed.NewFrictionReflect("", func() string { return "" })
 	if err != nil {
@@ -109,9 +110,13 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
 
-// testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair from envkit.FullEnv, whose path fields are absolute paths under one t.TempDir().
-// It seeds the bouncer stencils and swaps in the webster run fake, the non-writing loom shuttle and seat runner and the loom burler, so the discussion and plan paths this builder points at stay absent on disk.
-// ApprovePlan stays FullEnv's non-nil no-op: this file's subject is the constructed producer table and its routing graph, never a driven run, so nothing here reads the plan's approval flag.
+// testEnv builds the shedrecipe.Env and shedbuild.ShedPaths pair from envkit.FullEnv.
+// Its path fields are absolute paths under one t.TempDir().
+// It seeds the bouncer stencils and replaces the webster run, the shuttle, the seats and the burler with fakes,
+// so the discussion and plan paths it points at stay absent on disk.
+// ApprovePlan keeps FullEnv's non-nil no-op.
+// This file's subject is the constructed producer table and its routing graph.
+// No assertion here reads the plan's approval flag.
 func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	t.Helper()
 
@@ -156,9 +161,9 @@ func TestNew_ToldShedFields(t *testing.T) {
 	}
 }
 
-// TestNew_MergeInAndFinalizeAreRealProducers asserts the row named Parent-Align and the row named
-// Finalize are each backed by the real landingshed producer type, not the stub type, and both keep
-// their escalate-on-stuck setting.
+// TestNew_MergeInAndFinalizeAreRealProducers asserts that the Parent-Align and Finalize rows have real producers.
+// Each row's producer is the real landingshed type, not a stub.
+// It also asserts that both rows keep their escalate-on-stuck setting.
 func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -197,9 +202,9 @@ func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 	}
 }
 
-// TestNew_MissingLandingClosureReturnsError asserts that an Env whose landing passthrough is
-// missing a required closure makes New return an error rather than a list that panics at call
-// time: New surfaces landingshed.NewParentAlign's own construction failure instead of discarding it.
+// TestNew_MissingLandingClosureReturnsError asserts that New returns an error when a landing closure is missing.
+// Without that check, New would return a list that panics at call time.
+// New surfaces the construction failure of landingshed.NewParentAlign instead of discarding it.
 func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -230,15 +235,15 @@ func TestNew_PassesShedValidation(t *testing.T) {
 		t.Fatalf("Seed(): %v", err)
 	}
 
-	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation
-	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
-	// returning a non-nil error before it ever reads the status file.
-	// Row 3's fake seat runner deliberately writes nothing (env.Seats is a non-writing newLoomSeats), so
-	// Discussion-Write's own gate -- which reads exactly the two files the fake did not write --
-	// fails on its very first (and, per the "every test fake evaluates the gate once" decision,
-	// only) evaluation. Discussion-Write carries no on_stuck, so that single failed gate blocks the
-	// whole run immediately, with no bounce budget in play at all. That is an ordinary
-	// Stuck/blocked outcome, not a validation failure, and is what this test expects.
+	// Run exercises (*Shed).validate() indirectly, since validate is unexported.
+	// A validation error surfaces as a non-nil error from Run before the status file is read.
+	// Its causes include a typo'd OnStuck, a duplicate name, and two lock paths naming one file.
+	// The fake seat runner writes nothing, because env.Seats is a non-writing newLoomSeats.
+	// So the Discussion-Write gate fails on its first evaluation.
+	// It reads exactly the two files the fake did not write.
+	// Every test fake evaluates a gate once, so this is its only evaluation.
+	// Discussion-Write carries no on_stuck, so the failed gate blocks the run with no bounce budget in play.
+	// The run ends blocked, an ordinary outcome rather than a validation failure, which is what this test expects.
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil (no shedengine.validate() failure)", err)
@@ -248,16 +253,15 @@ func TestNew_PassesShedValidation(t *testing.T) {
 	}
 }
 
-// TestNew_RoutingGraphIsClean is the guard that fires when one of the upcoming "loom: real LLM
-// producers" tasks mis-wires a Bouncer/Burler ring.
+// TestNew_RoutingGraphIsClean guards the Bouncer/Burler ring of the constructed producer table.
 //
-// It catches a Burler row left with OnDone: "" (reported as unexpected-terminal), a Bouncer whose
-// OnDone never exits its segment (reported as unreachable downstream), and a Bouncer whose OnStuck
-// never routes back to it (reported as blind-gate).
+// It catches a Burler row left with OnDone: "" (reported as unexpected-terminal).
+// It catches a Bouncer whose OnDone never exits its segment (reported as unreachable downstream).
+// It catches a Bouncer whose OnStuck never routes back to it (reported as blind-gate).
 //
-// It does NOT catch a Burler row handing back via OnDone instead of OnStuck: both wirings produce the
-// identical routing graph, and the difference is a verdict returned inside Call, which
-// shedcheck.Check never inspects. A comment claiming unqualified perch coverage would be false.
+// It does not catch a Burler row that hands back via OnDone instead of OnStuck.
+// Both wirings produce the identical routing graph.
+// The difference is a verdict returned inside Call, which shedcheck.Check never inspects.
 func TestNew_RoutingGraphIsClean(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)

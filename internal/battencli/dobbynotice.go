@@ -1,4 +1,6 @@
-// dobbynotice.go fills dobbyengine's run notice seams over a real hub: a run's child status, driver and agent runs, its pause coverage, the API-error revive and the path of the run's notice marker.
+// dobbynotice.go implements dobbyengine's run notice seams over a real hub.
+// They read a run's child status, driver and agent activity, and pause coverage.
+// They also provide the API-error revive and the path of the run's notice marker.
 
 package battencli
 
@@ -21,8 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/tendercli"
 )
 
-// DobbyRunNotices returns the seams of the run notices a dobby of prime's hub sends for the runs it drives, reading the pause record at pauseRecordPath, with quiet as the quiet window.
-// Each run's task worktree is resolved once and kept, as batten's own wait keeps it.
+// DobbyRunNotices returns the seams of the run notices a dobby of prime's hub sends for the runs it drives.
+// The seams read the pause record at pauseRecordPath, and quiet is the quiet window.
+// Each run's task worktree is resolved once and kept.
 func DobbyRunNotices(prime *lymcwd.Location, pauseRecordPath string, quiet time.Duration) dobbyengine.RunNoticeDeps {
 	locators := map[string]func() (*lymcwd.Location, error){}
 	locate := func(slug string) func() (*lymcwd.Location, error) {
@@ -65,7 +68,8 @@ func DobbyRunNotices(prime *lymcwd.Location, pauseRecordPath string, quiet time.
 	}
 }
 
-// readNoticeChild reads the child of slug for the run notices: its status, the status file's modification time, the task worktree's directory and whether batten's Run-Shed row respawned it the cap of times.
+// readNoticeChild reads the child of slug for the run notices: its status and the status file's modification time.
+// It also reports the task worktree's directory and whether batten's Run-Shed row has reached its respawn cap.
 // An absent task worktree or child status reads as not found.
 func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) (dobbyengine.ChildReading, bool, error) {
 	present, err := taskWorktreePresent(prime, slug)
@@ -92,7 +96,8 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 	if err != nil || !found {
 		return dobbyengine.ChildReading{}, false, err
 	}
-	// An unreadable memory record reads as not capped: the cap only words a driver-dead notice, so it must not hide the run's conditions.
+	// An unreadable respawn memory reads as not capped.
+	// The cap only words a driver-dead notice, so it must not hide the run's conditions.
 	capped, err := battenshed.RespawnCapReached(shedrun.ScratchDir(prime, slug), battenrecipe.NameRunShed, info.ModTime())
 	if err != nil {
 		logger.Debug("battencli: the run's respawn memory is unreadable; the child reads as not capped", "slug", slug, "error", err)
@@ -117,7 +122,8 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 	return child, true, nil
 }
 
-// noticeDriverAlive reports whether the child of slug has a live driver: a live driver strand, or a held driver, run or bootstrap lock.
+// noticeDriverAlive reports whether the child of slug has a live driver:
+// a live driver strand, or a held driver, run or bootstrap lock.
 // A lock that cannot be read reads as held, since a lock read must not make a working driver look dead.
 func noticeDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) (bool, error) {
 	alive, err := childDriverAlive(prime, slug, locateTask)
@@ -131,8 +137,9 @@ func noticeDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*
 	return childDriverLockHeld(slug, taskLocation), nil
 }
 
-// childDriverLockHeld reports whether the driver lock, the run lock or the loom bootstrap lock of the child in taskLocation is held.
-// The bootstrap lock counts because a loom bootstrap holds it from before it spawns the driver until the driver holds its own lock.
+// childDriverLockHeld reports whether the driver, run or loom bootstrap lock of the child in taskLocation is held.
+// The bootstrap lock counts.
+// A loom bootstrap holds it from before it spawns the driver until the driver holds its own lock.
 // A lock that cannot be read reads as held, since a lock read must not make a working driver look dead.
 func childDriverLockHeld(slug string, taskLocation *lymcwd.Location) bool {
 	for _, lockPath := range []string{shedrun.DriverLock(taskLocation, shedrun.SelfRunID), shedrun.RunLock(taskLocation, shedrun.SelfRunID), loomengine.LoomBootstrapLock(taskLocation)} {

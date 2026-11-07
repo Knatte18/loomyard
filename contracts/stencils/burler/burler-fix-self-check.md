@@ -1,6 +1,14 @@
-<!-- This is burler's fix self-check part: the procedure by which a twill fixer has read-only forks check its own change set before it writes the fixer-report.
-     internal/burlerengine's selfCheckBlock (prompt.go) reads and fills it, and composeFixPrompt injects it as burler-step-fix's optional self_check marker value in a round whose profile names a fixer fan.
-     It declares four required markers, {{.rubric_path}}, {{.lens_list}}, {{.lens_report_path}} and {{.lens_report_spec_path}}: the deployed fix-check rubric's path, the fixer fan's lenses as one bullet per lens in fan order, the path each fork's report is saved at, and the deployed spec of that report's format. -->
+<!-- This is burler's fix self-check part.
+     It is the procedure by which a twill fixer has read-only forks check its own change set.
+     The check runs before the fixer writes the fixer-report.
+     `selfCheckBlock` (internal/burlerengine/prompt.go) fills it.
+     `composeFixPrompt` injects the result as burler-step-fix's optional self_check marker value.
+     It does so in a round whose profile names a fixer fan.
+     It declares four required markers.
+     {{.rubric_path}} is the deployed fix-check rubric's path;
+     {{.lens_list}} is the fixer fan's lenses as one bullet per lens in fan order;
+     {{.lens_report_path}} is the path each fork's report is saved at;
+     and {{.lens_report_spec_path}} is the deployed spec of that report's format. -->
 ## Self-check of your fix by forks (BLOCKING — after every fix, before the fixer-report)
 
 Once every finding has its disposition and every change is made, and before you write the fixer-report, run this procedure once.

@@ -1,5 +1,5 @@
-// agentshuttle.go declares the shuttle seam a spawned judge agent runs through, and the hand-back vocabulary every such judge shares.
-// The seam is the part of shuttle a judge call drives; RunnerShuttle adapts the real runner to it.
+// agentshuttle.go declares the shuttle seam that a spawned judge agent runs through.
+// It also declares the hand-back vocabulary that every judge shares, and RunnerShuttle, the seam's runner adapter.
 
 package sheddriver
 
@@ -17,13 +17,14 @@ const (
 	CauseAPIError     = "api-error"
 )
 
-// SettlerAPIErrorRetries is how many times a judge agent's turn the provider's API ended on an error is re-sent before the judge hands its stop on.
-// A judge holds its stop alone, so a session left idle by an API error would hold the stop silently until its deadline.
+// SettlerAPIErrorRetries is how many times a judge re-sends its turn after the API ends it on an error.
+// A judge holds its stop alone, so a session idle after an API error would hold the stop silently until its deadline.
 // Only judges opt in, since each hands its stop on to a parent that can act on the api-error cause.
-// Any other role's caller reads every outcome but done as one more failure, so a re-send there would only delay it.
+// Any other caller reads every outcome other than done as one more failure, so a re-send there would only delay it.
 const SettlerAPIErrorRetries = 3
 
-// HandBackQuestionCause returns the cause a judge call's own hand-back question names: cause itself, and for CauseAPIError the error detail after it.
+// HandBackQuestionCause returns the cause that a judge call's hand-back question names.
+// For CauseAPIError it appends the error detail after the cause, separated by a colon.
 func HandBackQuestionCause(cause, detail string) string {
 	if cause != CauseAPIError {
 		return cause
@@ -31,7 +32,8 @@ func HandBackQuestionCause(cause, detail string) string {
 	return cause + ": " + detail
 }
 
-// HandBackWayForward is the way-forward clause every refusal of a judge call ends with: the hand-back to the run's parent.
+// HandBackWayForward is the way-forward clause that ends every refusal of a judge call.
+// It tells the judge to report the stop to the run's parent in the stop report.
 const HandBackWayForward = "way forward: report the stop to the run's parent in the stop report"
 
 // AgentRun is the handle of a started judge agent.
@@ -54,7 +56,7 @@ type AgentShuttle interface {
 	StopStrand(guid string) error
 }
 
-// RunnerShuttle adapts the shuttle runner to AgentShuttle.
+// RunnerShuttle implements the shuttle seam by delegating each operation to a shuttle runner.
 type RunnerShuttle struct {
 	Runner *shuttleengine.Runner
 }

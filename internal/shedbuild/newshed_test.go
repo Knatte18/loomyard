@@ -1,6 +1,5 @@
-// newshed_test.go covers NewShed's field-complete assembly of a *shedengine.Shed from a ShedPaths
-// value, and the single-prefix rule card 1's own doc comment states: NewShed adds no prefix of its
-// own on top of whatever Parse or Build already returned.
+// newshed_test.go covers NewShed's field-complete assembly of a *shedengine.Shed from a ShedPaths value.
+// It also covers the single-prefix rule: NewShed adds no prefix of its own on top of what Parse or Build returned.
 
 package shedbuild
 
@@ -18,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath, MaxBounces, CommitStatus, RunID, MissingStatusWayForward, RerouteCapWayForward, BudgetWayForward, RetiredMove and RetiredWayForward fields are copied verbatim from the passed ShedPaths, whose Retired map is the recipe's own, and whose Transient classifier is wired.
+// TestNewShed_FieldCompleteAssembly asserts NewShed copies the passed ShedPaths values verbatim.
+// It asserts the Producers count matches the parsed recipe's row count.
+// It asserts the Retired map is the recipe's own, and the Transient classifier is wired.
 func TestNewShed_FieldCompleteAssembly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -151,12 +152,11 @@ retired:
 	}
 }
 
-// TestNewShed_EmptyProducersErrorsWithoutDoublePrefix asserts an empty-producer recipe still
-// errors, and that NewShed's returned error is identical to Parse's own error for the same bytes
-// -- the single-prefix rule card 1 states: NewShed must add no prefix of its own, so a later
-// prefix addition here would double-wrap the error and silently reword both recipe packages'
-// shipped envelopes (loomrecipe.New and battenrecipe.New each add exactly one prefix of their
-// own on top of NewShed's return value).
+// TestNewShed_EmptyProducersErrorsWithoutDoublePrefix asserts an empty-producer recipe still errors,
+// and that NewShed's returned error is identical to Parse's error for the same bytes.
+// NewShed adds no prefix of its own.
+// A prefix added here would double-wrap the error and reword the shipped envelopes.
+// Each recipe package adds exactly one prefix on top of the returned value.
 func TestNewShed_EmptyProducersErrorsWithoutDoublePrefix(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

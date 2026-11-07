@@ -1,6 +1,5 @@
 // corrindex_test.go — unit tests for the git-free correspondence-index component.
-// Every test here uses an explicit t.TempDir() file path and never spawns git, per the
-// correspondence index layering decision.
+// Every test here uses an explicit `t.TempDir()` file path and never spawns git.
 
 package fabricengine
 
@@ -14,9 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through one corrIndex handle
-// are visible after reloading the same path into a fresh handle, and that exact() misses a warp SHA
-// that was never recorded.
+// TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through one handle are visible after reload:
+// a fresh handle on the same path sees them, and `exact()` misses a warp SHA that was never recorded.
 //
 //testtiming:keep entries surviving a reload into a fresh handle and exact() missing a never-recorded warp SHA; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
@@ -52,8 +50,8 @@ func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_RecordUpsertOverwritesWeftSHA asserts that recording a second entry for an
-// already-present warp SHA overwrites its weft SHA rather than appending a duplicate.
+// TestCorrIndex_RecordUpsertOverwritesWeftSHA asserts that recording a known warp SHA again overwrites its weft SHA;
+// it appends no duplicate entry.
 //
 //testtiming:keep recording a known warp SHA again overwriting its weft SHA instead of appending; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
@@ -83,10 +81,10 @@ func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_NearestAtOrBefore covers loading a path with no file (an empty index, not an error),
-// the binary-search "nearest older" lookup: an empty index, a target below every recorded seq, an
-// exact-seq hit, a between-seqs hit and a target above every seq; and, when several entries share
-// the qualifying WarpSeq, the last one recorded winning per record's stable-sort ordering guarantee.
+// TestCorrIndex_NearestAtOrBefore covers a missing file, which loads as an empty index, not an error.
+// It checks `nearestAtOrBefore` on an empty index and a target below every recorded seq;
+// an exact-seq hit, a between-seqs hit, and a target above every seq.
+// When several entries share the qualifying `WarpSeq`, the last one recorded wins by `record`'s stable-sort ordering.
 //
 //testtiming:keep the binary-search nearest-older lookup over an empty, below-range, exact, between and above-range index, and the last-recorded entry winning a shared seq; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
@@ -151,10 +149,11 @@ func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite asserts that record() upserts against
-// the freshly-read on-disk base rather than the handle's own possibly-stale in-memory snapshot: an
-// external state.WriteJSON call (standing in for RebuildIndex's write) that lands after the handle
-// is loaded but before record() runs must not be lost when record() persists.
+// TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite asserts that record() upserts against the on-disk base.
+// It reads that base from disk instead of using the handle's possibly stale in-memory snapshot.
+// An external state.WriteJSON call stands in for RebuildIndex's write.
+// It lands after the handle is loaded and before record() runs,
+// and that write must not be lost when record() persists.
 //
 //testtiming:keep record() upserting against the freshly read on-disk base so a write landed after the handle loaded survives; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
@@ -188,8 +187,8 @@ func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_PersistenceIsAtomic asserts that after every record() call, the backing file is
-// fully written and parses as valid JSON — never half-written or transiently corrupt.
+// TestCorrIndex_PersistenceIsAtomic asserts that after every record() call, the backing file is fully written.
+// The file parses as valid JSON, never half-written or transiently corrupt.
 //
 //testtiming:keep the index file parsing as complete JSON after every record() call; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_PersistenceIsAtomic(t *testing.T) {

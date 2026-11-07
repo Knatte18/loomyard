@@ -1,16 +1,6 @@
-// io.go implements the pane-transport engine ops shuttle drives directly: SendText/SendKey/PasteSubmit write
-// into a strand's live pane,
-// and CapturePane reads its current screen contents back.
-// None of these three reconciles, re-renders, or persists — they are pure transport/query wrapped
-// around the same resolvePaneInThisSessionLocked lookup every one of them shares, matching the
-// dumb-carrier contract the rest of the package follows: reed moves bytes in and out of a pane, it
-// never interprets them.
-// That shared lookup does make one read-only tmux query, to confirm the persisted pane id names a
-// pane of THIS worktree's session — see resolvePaneInThisSessionLocked for why a pane id alone is
-// not a safe target on a socket every worktree in the hub shares.
-//
-// CapturePane in particular follows Status's read-only discipline: a query must never move input
-// focus or mutate persisted state as a side effect of being asked a question.
+// io.go holds the pane-transport ops that shuttle drives directly:
+// SendText, SendKey, PasteSubmit, OperatorActive, and CapturePane.
+// Each writes into or reads from a strand's live pane, and none reconciles, re-renders, or persists state.
 
 package reedengine
 
@@ -31,12 +21,11 @@ const (
 	waitStartOption = "@lym_wait_start"
 )
 
-// resolveLivePaneID looks up guid in st.Strands and returns its bound pane
-// id, or an error naming guid when the strand is unknown, still
-// anchor:hidden (never launched, so it has no pane), or otherwise carries an
-// empty PaneID (registered but not yet realized into a pane). Every
-// pane-transport op (SendText, SendKey, CapturePane) shares this single
-// resolution so their unknown/hidden/unbound error messages stay identical.
+// resolveLivePaneID returns guid's bound pane id.
+// It returns an error naming guid when the strand is unknown or its anchor is hidden.
+// A hidden strand was never launched, so it has no pane.
+// A strand with an empty PaneID is registered but not yet realized into a pane, and that is an error too.
+// The pane-transport ops share this resolution, so their error messages stay identical.
 func resolveLivePaneID(st *ReedState, guid string) (string, error) {
 	strand, ok := strandByGUID(st.Strands, guid)
 	if !ok {
@@ -51,22 +40,15 @@ func resolveLivePaneID(st *ReedState, guid string) (string, error) {
 	return strand.PaneID, nil
 }
 
-// resolvePaneInThisSessionLocked resolves guid's bound pane id and refuses one that is not present
-// in THIS worktree's session, which is the only pane set this engine may address.
-//
-// The refusal is not defensive tidiness. The tmux socket is per HUB, shared by every worktree in it,
-// and tmux pane ids are server-global — so a pane id a stale or copied reed.json carries is very
-// often a VALID, addressable id belonging to a sibling worktree's live session, and send-keys /
-// capture-pane against it succeed. R5 review finding R5-F4 reproduced the destructive twin of this
-// at the remove path (a `lym reed remove` in one worktree killed a sibling's strand pane and its
-// process, reporting ok:true); the transport ops are the same exposure with a quieter symptom —
-// one agent's input typed into another agent's pane.
-//
-// The pane-generation guard (generation.go) already discards such bindings at load, so in practice
-// this check is reached only when that guard failed open (a tmux probe hiccup, or a state file
-// written before the stamp existed). It costs one list-panes round trip per transport op, which is
-// the right price for a target this consequential to be wrong about, and it keeps these ops
-// read-only: it confirms membership, it does not reconcile, re-render, or persist.
+// resolvePaneInThisSessionLocked returns guid's bound pane id and refuses one outside this worktree's session.
+// The tmux socket is shared by every worktree on a hub, and tmux pane ids are server-global.
+// A stale or copied reed.json can carry a pane id that belongs to a sibling worktree's live session.
+// Send-keys or capture-pane against that pane then succeeds, so one agent's input lands in another agent's pane.
+// The pane-generation guard in generation.go discards such bindings at load.
+// This check is therefore reached only when that guard fails open:
+// a tmux probe hiccup, or a state file written before the stamp existed.
+// It costs one list-panes round trip per op.
+// The check only confirms membership: it does not reconcile, re-render, or persist.
 func (e *Engine) resolvePaneInThisSessionLocked(st *ReedState, guid string) (string, error) {
 	paneID, err := resolveLivePaneID(st, guid)
 	if err != nil {
@@ -86,7 +68,7 @@ func (e *Engine) resolvePaneInThisSessionLocked(st *ReedState, guid string) (str
 }
 
 // SendText types text into guid's live pane and optionally submits it with Enter.
-// It does not reconcile, re-render, or persist — pure transport.
+// It does not reconcile, re-render, or persist state.
 func (e *Engine) SendText(guid, text string, submit bool) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -115,10 +97,11 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 	})
 }
 
-// PasteSubmit pastes text into guid's live pane as one bracketed paste and, when submit is true, sends Enter right behind it.
+// PasteSubmit pastes text into guid's live pane as one bracketed paste.
+// When submit is true, it sends Enter right behind the paste.
 // The paste and the Enter reach the pane in one tmux invocation, so nothing the operator types lands between them.
 // The text, of any length, is loaded from standard input.
-// It does not reconcile, re-render, or persist — pure transport.
+// It does not reconcile, re-render, or persist state.
 func (e *Engine) PasteSubmit(guid, text string, submit bool) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -139,9 +122,11 @@ func (e *Engine) PasteSubmit(guid, text string, submit bool) error {
 	})
 }
 
-// pasteSubmitLocked pastes text into paneID through a fresh named tmux buffer, so the operator's automatic paste-buffer stack is untouched.
+// pasteSubmitLocked pastes text into paneID through a fresh named tmux buffer.
+// The named buffer leaves the operator's automatic paste-buffer stack untouched.
 // The caller holds the op lock and has resolved paneID.
-// A failed invocation stops before the paste's own delete, so the buffer is then deleted by a best-effort command of its own, whose error is dropped.
+// When the invocation fails, it can stop before the paste deletes the buffer,
+// so a best-effort delete-buffer runs next and its error is dropped.
 func (e *Engine) pasteSubmitLocked(paneID, text string, submit bool) error {
 	buffer, err := injectBufferName()
 	if err != nil {
@@ -154,9 +139,11 @@ func (e *Engine) pasteSubmitLocked(paneID, text string, submit bool) error {
 	return nil
 }
 
-// pasteSubmitArgv returns the tmux command list that fills buffer from standard input, pastes it into paneID and deletes the buffer, then sends Enter when submit is true.
-// The commands are joined by the literal one-character ";" element chainedAttachArgv documents.
-// The text arrives on standard input and so never adds, ends or alters a command in the list; -p makes tmux send a bracketed paste when the pane's application enabled it.
+// pasteSubmitArgv returns the tmux command list that loads buffer from standard input and pastes it into paneID.
+// The paste deletes the buffer, and an Enter follows when submit is true.
+// The commands are joined by a literal ";" element, which tmux reads as a command separator.
+// The text arrives on standard input, so it never adds, ends, or alters a command in the list.
+// The -p flag makes tmux send a bracketed paste when the pane's application enabled it.
 func pasteSubmitArgv(paneID, buffer string, submit bool) []string {
 	argv := []string{
 		"load-buffer", "-b", buffer, "-",
@@ -177,8 +164,9 @@ func injectBufferName() (string, error) {
 	return "lym-inject-" + hex.EncodeToString(raw[:]), nil
 }
 
-// OperatorActive reports whether an attached client has been active on guid's live pane within the configured quiet window, and that window.
-// It is read-only: no reconcile, re-render, or persist.
+// OperatorActive reports whether an attached client has been active on guid's live pane within the quiet window.
+// It also returns that quiet window.
+// It is read-only: it does not reconcile, re-render, or persist.
 // A failed client listing is returned as the error, and a caller decides whether to hold its write on it.
 func (e *Engine) OperatorActive(guid string) (active bool, quiet time.Duration, err error) {
 	err = e.withOpLock(func() error {
@@ -202,7 +190,8 @@ func (e *Engine) OperatorActive(guid string) (active bool, quiet time.Duration, 
 	return active, quiet, err
 }
 
-// operatorActiveLocked is OperatorActive over an already-resolved paneID, for a caller that holds the op lock.
+// operatorActiveLocked reports whether an attached client has been active on paneID within the quiet window.
+// The caller holds the op lock and has resolved paneID.
 func (e *Engine) operatorActiveLocked(paneID string) (active bool, quiet time.Duration, err error) {
 	quiet = operatorQuiet(e.cfg)
 	out, err := e.tmux.output("list-clients", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id} #{client_activity}")
@@ -212,7 +201,8 @@ func (e *Engine) operatorActiveLocked(paneID string) (active bool, quiet time.Du
 	return activeClientOnPane(out, paneID, time.Now(), quiet), quiet, nil
 }
 
-// activeClientOnPane reports whether any line of clients, one "<pane_id> <client_activity epoch seconds>" per client, names paneID with an activity later than now minus quiet.
+// activeClientOnPane reports whether a client on paneID has shown activity later than now minus quiet.
+// clients holds one "<pane_id> <client_activity epoch seconds>" line per client.
 // A malformed line is skipped.
 func activeClientOnPane(clients, paneID string, now time.Time, quiet time.Duration) bool {
 	threshold := now.Add(-quiet).Unix()
@@ -244,7 +234,7 @@ func operatorQuiet(cfg Config) time.Duration {
 }
 
 // SendKey sends a named key (e.g. "Enter") into guid's live pane.
-// Like SendText, it is pure transport with no reconcile, re-render, or persist.
+// It does not reconcile, re-render, or persist state.
 func (e *Engine) SendKey(guid, key string) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -269,10 +259,9 @@ func (e *Engine) SendKey(guid, key string) error {
 }
 
 // SetWaitMark sets guid's pane wait mark to label, started at start, or clears it when label is empty.
-// The mark is two pane user options, @lym_wait (the label) and @lym_wait_start (epoch seconds),
-// which the status bar renders on the strand's button and which die with the pane.
-// It is display only: nothing is persisted,
-// and a failure is returned for the caller to log.
+// The mark is two pane user options, `@lym_wait` (the label) and `@lym_wait_start` (epoch seconds).
+// The status bar renders them on the strand's button, and they die with the pane.
+// Nothing is persisted: a failed call returns an error for the caller to log.
 func (e *Engine) SetWaitMark(guid, label string, start time.Time) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -313,8 +302,8 @@ func (e *Engine) CapturePane(guid string) (string, error) {
 	return e.capturePane(guid, false)
 }
 
-// CapturePaneStyled returns guid's live pane's current screen contents with its SGR attributes, as tmux's `capture-pane -e` prints them.
-// The text is returned verbatim; reed interprets none of the escapes.
+// CapturePaneStyled returns guid's live pane's current screen contents with their SGR attributes.
+// The output is tmux's `capture-pane -e` form, returned verbatim; reed interprets none of the escapes.
 // It is read-only: no reconcile, re-apply, or persist.
 func (e *Engine) CapturePaneStyled(guid string) (string, error) {
 	return e.capturePane(guid, true)

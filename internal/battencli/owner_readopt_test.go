@@ -1,4 +1,5 @@
-// owner_readopt_test.go covers the owner pre-flight of a run whose task worktree is gone, over fake re-adoption seams that record the order of their calls.
+// owner_readopt_test.go covers the owner pre-flight of a run whose task worktree is gone.
+// It runs over fake re-adoption seams that record the order of their calls.
 
 package battencli
 
@@ -19,7 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeReadopt is a working stand-in for the re-adoption seams: it answers what it holds and records each call of the re-adoption steps in order, each notice and each failed-stop commit.
+// fakeReadopt is a working stand-in for the re-adoption seams.
+// It answers what it holds and records each re-adoption step call in order;
+// it also records each notice and each failed-stop commit.
 type fakeReadopt struct {
 	gone         bool
 	goneErr      error
@@ -89,9 +92,12 @@ func (f *fakeReadopt) seams() readoptSeams {
 }
 
 // TestOwnerPreflight_GoneTaskWorktree covers a resume whose task worktree is gone.
-// An active verdict runs the origin reconcile, the prune, the re-adoption, the pair's push and then the resume reconcile, in that order.
-// An ended, stopped, owned-elsewhere or unreachable verdict refuses before the pair is touched, and a transient failure of any step refuses the pass with the re-run and leaves the status running.
-// A permanent answer of the re-adoption fails a running run once, with a way forward by row, a status commit and one notice;
+// An active verdict runs the origin reconcile, the prune, the re-adoption and the pair's push;
+// the resume reconcile runs last.
+// An ended, stopped, owned-elsewhere or unreachable verdict refuses before the pair is touched,
+// and a transient failure of any step refuses the pass with the re-run and leaves the status running.
+// A permanent answer of the re-adoption fails a running run once:
+// it gets a way forward by row, a status commit and one notice;
 // a run not running keeps its state, and a held run lock or a failed tag read refuses the pass as transient.
 // A task worktree that is present, and a status at Worktree-Create or Worktree-Teardown, never reach the re-adoption.
 func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {

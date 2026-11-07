@@ -1,4 +1,4 @@
-// sessionstate.go declares the provider-neutral session state and the pure fold that reduces session signals and read facts to it.
+// sessionstate.go declares the provider-neutral session state and the pure fold that reduces signals and facts to it.
 // The fold reads no file and no clock; its caller reads the signals and the facts, and states the time of its reading.
 
 package shuttleengine
@@ -14,9 +14,9 @@ const (
 	SessionBusy SessionStateName = "busy"
 	// SessionIdleDone: the agent's turn ended and the run's output files exist.
 	SessionIdleDone SessionStateName = "idle-done"
-	// SessionIdleStalled: the agent stopped without finishing the run, through no question.
+	// SessionIdleStalled: the agent stopped without finishing the run, and no question caused it.
 	SessionIdleStalled SessionStateName = "idle-stalled"
-	// SessionIdleFresh: the session just started with an empty context and has had no turn since.
+	// SessionIdleFresh: the session started with an empty context and has had no turn since.
 	SessionIdleFresh SessionStateName = "idle-fresh"
 	// SessionAsking: the session waits on an answer.
 	SessionAsking SessionStateName = "asking"
@@ -26,7 +26,8 @@ const (
 	SessionUnknown SessionStateName = "unknown"
 )
 
-// Causes a state names besides a session end's own reason, which is the cause of a state a session end produced.
+// Causes a session state can name, apart from the reason a session end carries.
+// That reason becomes the cause of the state the session end produces.
 const (
 	SessionCauseTurn             = "turn"
 	SessionCauseBackground       = "background"
@@ -47,7 +48,7 @@ const (
 
 // SessionState is one reading of what a session is doing.
 type SessionState struct {
-	// Name is the state.
+	// Name is the state the session is in.
 	Name SessionStateName
 	// Cause says why the session is in the state.
 	Cause string
@@ -60,7 +61,8 @@ type SessionState struct {
 }
 
 // RunningTurn reports whether the session is in the middle of a turn.
-// A busy state whose cause is background is a turn that ended with background work still running, so it is not a running turn.
+// A busy state whose cause is background is a turn that ended with background work still running,
+// so it is not a running turn.
 func (s SessionState) RunningTurn() bool {
 	return s.Name == SessionBusy && s.Cause != SessionCauseBackground
 }
@@ -88,10 +90,10 @@ type SessionFacts struct {
 	Liveness Liveness
 	// EventsUnreadable is true when the events file could not be read.
 	EventsUnreadable bool
-	// APIError is true when the transcript marks the fold's newest turn end as an API error; APIErrorText is the error's text.
+	// APIError is true when the transcript marks the newest turn end as an API error; APIErrorText is the error's text.
 	APIError     bool
 	APIErrorText string
-	// Interrupted is true when the transcript marks the fold's newest turn start as interrupted; InterruptAt is the marking entry's time.
+	// Interrupted is true when the transcript marks the newest turn start as interrupted; InterruptAt is that mark's time.
 	Interrupted bool
 	InterruptAt time.Time
 	// ReadAt is the reading's time from the caller's clock.
@@ -99,7 +101,9 @@ type SessionFacts struct {
 }
 
 // SessionFold reduces session signals and facts to a session state, remembering what it needs to settle the next fold.
-// The zero value is an empty fold; a files-only reader folds every signal past the prompt offset once, and the wait loop keeps one fold and calls Fold at every poll, with an empty slice when nothing new arrived.
+// The zero value is an empty fold.
+// A files-only reader folds every signal past the prompt offset once;
+// a wait loop keeps one fold and calls Fold at every poll, with an empty slice when nothing new arrived.
 //
 // Signals are ordered by file order only: At is read for a state's Since and never compared.
 // The output files are consulted before the output-derived states, no-output and an interactive run's asking.
@@ -140,7 +144,8 @@ func (f *SessionFold) History() []SessionState {
 
 // Fold folds signals, in file order, into the state, then settles the current state against facts.
 // Every turn end of the call is judged with the call's OutputsExist;
-// a call with no new turn end re-judges only the newest turn end, and only when it reads no-output or an interactive run's asking, so output files that appeared since make it idle-done.
+// a call with no new turn end re-judges only the newest turn end when it reads no-output or an interactive run's asking.
+// Output files that appeared since then make it idle-done.
 func (f *SessionFold) Fold(signals []SessionSignal, facts SessionFacts) {
 	newTurnEnd := false
 	for _, signal := range signals {
@@ -199,7 +204,8 @@ func (f *SessionFold) applySignal(signal SessionSignal, facts SessionFacts) {
 }
 
 // sessionStartIdles reports whether a session start of source leaves the session idle-fresh.
-// A resume or clear always does; a startup does unless a turn is running; a compaction and an unrecognised source never do, so an automatic compaction inside a turn keeps it busy.
+// A resume or clear always does; a startup does unless a turn is running;
+// a compaction and an unrecognised source never do, so an automatic compaction inside a turn keeps it busy.
 func (f *SessionFold) sessionStartIdles(source SessionStartSource) bool {
 	switch source {
 	case SessionStartResume, SessionStartClear:
@@ -232,7 +238,8 @@ func judgeTurnEnd(signal SessionSignal, facts SessionFacts) SessionState {
 	return state
 }
 
-// rejudgeNewestTurnEnd turns a no-output or awaiting-input reading of the newest turn end into idle-done once the output files exist.
+// rejudgeNewestTurnEnd turns a no-output or awaiting-input reading of the newest turn end into idle-done.
+// It does so once the output files exist.
 func (f *SessionFold) rejudgeNewestTurnEnd(facts SessionFacts) {
 	if !f.hasDerived || !f.derivedFromTurnEnd || !facts.OutputsExist {
 		return
@@ -246,7 +253,8 @@ func (f *SessionFold) rejudgeNewestTurnEnd(facts SessionFacts) {
 	f.recordHistory(f.derived)
 }
 
-// applyTranscriptMarkers applies the transcript's API-error marker to the newest turn end and its interrupt marker to the newest turn start.
+// applyTranscriptMarkers applies the transcript's API-error marker to the newest turn end;
+// the interrupt marker goes to the newest turn start.
 // The interrupt marker turns a running turn, and an ask the marker is not older than, into an interrupt stall.
 func (f *SessionFold) applyTranscriptMarkers(facts SessionFacts) {
 	if !f.hasDerived {
@@ -267,8 +275,9 @@ func (f *SessionFold) derivedIsRunningTurn() bool {
 	return f.derived.Name == SessionBusy && f.derived.Cause == SessionCauseTurn
 }
 
-// derivedIsAskReleasedBy reports whether the signal-derived state is an ask an interrupt marker at interruptAt releases:
-// one with cause ask, whatever signal raised it, that the marker is not older than; either time being zero counts as not older.
+// derivedIsAskReleasedBy reports whether the signal-derived state is an ask released by an interrupt at interruptAt.
+// An ask is released when its cause is ask, whatever signal raised it, and the marker is not older than it.
+// A zero time on either side counts as not older.
 // An awaiting-input ask from a turn end is never released.
 func (f *SessionFold) derivedIsAskReleasedBy(interruptAt time.Time) bool {
 	if f.derived.Name != SessionAsking || f.derived.Cause != SessionCauseAsk {
@@ -277,8 +286,11 @@ func (f *SessionFold) derivedIsAskReleasedBy(interruptAt time.Time) bool {
 	return interruptAt.IsZero() || f.derived.Since.IsZero() || !interruptAt.Before(f.derived.Since)
 }
 
-// settle sets the current state: the first of a process-ending session end, a dead process, an unreadable events file and an empty signal history that applies, else the signal-derived state.
-// An unproven liveness settles nothing, so an engine that cannot prove its process alive still reads the turn state its signals give.
+// settle sets the current state from the first of these that applies:
+// a process-ending session end, a dead process, an unreadable events file, or an empty signal history;
+// otherwise the signal-derived state.
+// An unproven liveness settles nothing;
+// an engine that cannot prove its process alive still reads the turn state its signals give.
 // A state that keeps the current state's name and cause keeps its Since.
 func (f *SessionFold) settle(facts SessionFacts) {
 	var settled SessionState

@@ -1,6 +1,6 @@
-// rubric_test.go pins the marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for every rubric:
-// a rubric may carry the specs_dir, stencils_dir, webster_record, gate_tiers and amendment markers and nothing else, and only the Plan-Review rubric renders the webster run record and the gate tiers, while every rubric renders the amendment note -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
-// It additionally pins that the markers render successfully through the production render helper, that the rubrics carrying the specs_dir marker render its value, and that both review rubrics name their writer's deployed stencil path.
+// rubric_test.go pins which top-level markers a Bouncer or Burler rubric may carry.
+// It also pins that every rubric renders through the production render helper.
+// It also pins that both review rubrics name their writer's deployed stencil path.
 
 package stencils
 
@@ -16,17 +16,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry: only specs_dir, stencils_dir, webster_record, gate_tiers, amendment and review_base, which internal/shedadapters.ReadRubric fills as the rubric's own template at read time.
-// A marker outside this set would sit inside the marker VALUE the Bouncer and Burler prompts interpolate the rubric as, invisible to the fill's required-marker check at the template actually being executed, so it must fail here exactly as loudly as the old no-marker-at-all rule made it fail.
+// rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry:
+// only specs_dir, stencils_dir, webster_record, gate_tiers, amendment and review_base.
+// internal/shedadapters.ReadRubric fills these markers as the rubric's own template at read time.
+// A marker outside this set would sit inside the value the Bouncer and Burler prompts interpolate the rubric as.
+// The fill's required-marker check cannot see such a marker, so this test must fail on it.
 var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true, "webster_record": true, "gate_tiers": true, "amendment": true, "review_base": true}
 
 // TestLoomRubrics asserts, for each stencil-sourced rubric:
-//   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for every rubric -- an asymmetric rule across them is how the next author loses the invariant;
-//   - it renders successfully through internal/shedadapters.ReadRubric given a non-empty specs directory, the production render path every Bouncer and Burler rubric read travels.
-//     A marker-set check alone cannot see this failure mode: a bare "{{" an author writes in prose has no marker name to inspect and becomes a runtime parse-template error only once the rubric is actually filled;
+//   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for every rubric:
+//     an asymmetric rule across them is how the next author loses the invariant;
+//   - it renders successfully through internal/shedadapters.ReadRubric given a non-empty specs directory:
+//     the production render path every Bouncer and Burler rubric read travels;
+//     A marker-set check alone cannot see this failure mode:
+//     a bare "{{" an author writes in prose has no marker name to inspect,
+//     so it becomes a runtime parse-template error only once the rubric is filled;
 //   - the amendment marker is carried by every rubric, and the rendered text holds the note;
-//   - a review rubric's rendered text names its writer stencil's deployed path as the registry lays it out, so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
-//     The comparison is slash-normalised because the rubric text joins with "/" while the rendered prefix uses the OS separator.
+//   - a review rubric's rendered text names its writer stencil's deployed path as the registry lays it out,
+//     so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
+//     The comparison is slash-normalised: the rubric text joins with "/", but the rendered prefix uses the OS separator.
 func TestLoomRubrics(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

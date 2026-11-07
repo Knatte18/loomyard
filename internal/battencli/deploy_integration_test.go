@@ -16,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout asserts RunDeploy writes the command's output to the log, reports a non-zero exit code, and reports TimedOut for a command that outlives a short timeout.
+// TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout asserts RunDeploy writes the command's output to the log;
+// it reports a non-zero exit code, and reports TimedOut for a command that outlives a short timeout.
 func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -58,8 +59,9 @@ func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 	}
 }
 
-// TestCommandRunners_DropTheStrand asserts RunDeploy and runRowCommand run their command without the strand-name variable and with the rest of the environment.
-// It does not run in parallel: it sets the process environment.
+// TestCommandRunners_DropTheStrand asserts that RunDeploy and runRowCommand drop the strand-name variable;
+// they run their command without it and with the rest of the environment.
+// The test does not run in parallel: it sets the process environment.
 func TestCommandRunners_DropTheStrand(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "sh:slug:implementer")

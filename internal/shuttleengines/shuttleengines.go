@@ -17,7 +17,7 @@ import (
 // constructor builds one engine from the shuttle config and the Dirs of the location the engine serves.
 type constructor func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine
 
-// ConfigModule is one engine's config module as plain data, so the config registry can list it without importing the engine.
+// ConfigModule is one engine's config module as plain data: a config registry can list it without importing the engine.
 type ConfigModule struct {
 	// Name is the module identifier and its file's base name.
 	Name string
@@ -114,9 +114,11 @@ func ConfigModules() []ConfigModule {
 	return modules
 }
 
-// build constructs one engine per entry of constructors from cfg and dirs and returns them as a set whose default is cfg.Engine.
-// It refuses, before returning a set, a cfg.Engine that is not one of the entries,
-// and an engine that declares fork support through shuttleengine.RequirementSupporter without implementing shuttleengine.ForkAuditor.
+// build constructs one engine per entry of constructors from cfg and dirs.
+// It returns them as a set whose default is cfg.Engine.
+// It refuses, before returning a set, a cfg.Engine that is not one of the entries.
+// It also refuses an engine that declares fork support through shuttleengine.RequirementSupporter.
+// Such an engine must also implement shuttleengine.ForkAuditor.
 func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[string]constructor) (shuttleengine.EngineSet, error) {
 	engines := make(map[string]shuttleengine.Engine, len(constructors))
 	names := make([]string, 0, len(constructors))
@@ -153,7 +155,8 @@ func Names() []string {
 }
 
 // EnvScrub returns the environment keys every registered engine declares a spawned process must not inherit.
-// It is the one route from an engine's declaration to reed's server spawn, and it is never empty while an engine is registered.
+// It is the one route from an engine's declaration to reed's server spawn,
+// and it is never empty while an engine is registered.
 func EnvScrub() reedengine.EnvScrub {
 	return scrubOf(registry)
 }
@@ -183,10 +186,11 @@ func sortedKeys(set map[string]bool) []string {
 	return keys
 }
 
-// SessionNamers returns the session namers reed's watchdog repairs names through, keyed by the provider tag shuttle sets on a strand.
+// SessionNamers returns the session namers that reed's watchdog repairs names through.
+// The map is keyed by the provider tag shuttle sets on a strand.
 // It is the one place a provider is chosen for reed, which stays provider-blind.
-// The empty tag maps to the claude engine's namer, whatever the default engine is:
-// strands recorded before the tag existed, and strands added outside shuttle, have always been repaired as Claude's.
+// The empty tag maps to the claude engine's namer whatever the default engine is:
+// a strand with no tag, whether recorded before tags existed or added outside shuttle, is repaired as Claude's.
 func SessionNamers() map[string]reedengine.SessionNamer {
 	engines := make(map[string]shuttleengine.Engine, len(registry))
 	for name, registered := range registry {
@@ -210,9 +214,11 @@ func namersOf(engines map[string]shuttleengine.Engine) map[string]reedengine.Ses
 	return namers
 }
 
-// RecordReaders returns each registered engine's offline read capabilities, keyed by engine name, for a reader that works from finished session records.
-// The engines are built with a zero shuttle config and no config directories, as SessionNamers builds them, so no config file is needed to read a record.
-// Each capability is wrapped in an adapter that exposes reading alone, so a reader cannot recover an engine that starts, opens, sends to or stops a run.
+// RecordReaders returns each registered engine's offline read capabilities, keyed by engine name.
+// It serves a reader that works from finished session records.
+// The engines are built with a zero shuttle config and no config directories, so reading a record needs no config file.
+// Each capability is wrapped in an adapter that exposes reading alone.
+// A reader therefore cannot start, open, send to or stop a run through it.
 func RecordReaders() map[string]shuttleengine.RecordReads {
 	engines := make(map[string]shuttleengine.Engine, len(registry))
 	for name, registered := range registry {
@@ -251,7 +257,6 @@ func (a transcriptsAdapter) LocateSessions(worktree string) ([]shuttleengine.Loc
 	return a.transcripts.LocateSessions(worktree)
 }
 
-// ReadSession forwards to the wrapped engine.
 func (a transcriptsAdapter) ReadSession(s shuttleengine.LocatedSession) (shuttleengine.SessionRead, error) {
 	return a.transcripts.ReadSession(s)
 }
@@ -261,7 +266,6 @@ type pricerAdapter struct {
 	pricer shuttleengine.MessagePricer
 }
 
-// PriceMessage forwards to the wrapped engine.
 func (a pricerAdapter) PriceMessage(model string, u shuttleengine.MessageUsage) (float64, bool) {
 	return a.pricer.PriceMessage(model, u)
 }
@@ -271,14 +275,14 @@ type instructionsAdapter struct {
 	instructions shuttleengine.InstructionFileLister
 }
 
-// InstructionFiles forwards to the wrapped engine.
 func (a instructionsAdapter) InstructionFiles() []string {
 	return a.instructions.InstructionFiles()
 }
 
-// ToolBoundaryRenderer returns the creel hook-delivery capability of the registered engine named name, and false when no engine of that name is registered or the engine has none.
-// A false answer means the engine delivers creel mail by no hook.
-// The engine is built with a zero shuttle config and no config directories, as RecordReaders builds them, since rendering reads no config.
+// ToolBoundaryRenderer returns the creel hook-delivery capability of the registered engine named name.
+// It returns false when no engine of that name is registered or the engine has none,
+// and a false answer means the engine delivers creel mail by no hook.
+// The engine is built with a zero shuttle config and no config directories, since rendering reads no config.
 func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRenderer, bool) {
 	registered, ok := registry[name]
 	if !ok {
@@ -288,8 +292,10 @@ func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRendere
 	return renderer, ok
 }
 
-// BatchingNudger returns the batching-nudge capability of the registered engine named name, and false when no engine of that name is registered or the engine has none.
-// The engine is built with a zero shuttle config and no config directories, as ToolBoundaryRenderer builds it, since the nudge reads its settings from the run's state file.
+// BatchingNudger returns the batching-nudge capability of the registered engine named name.
+// It returns false when no engine of that name is registered or the engine has none.
+// The engine is built with a zero shuttle config and no config directories.
+// The nudge reads its settings from the run's state file.
 func BatchingNudger(name string) (shuttleengine.BatchingNudger, bool) {
 	registered, ok := registry[name]
 	if !ok {

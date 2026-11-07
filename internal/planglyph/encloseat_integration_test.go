@@ -1,4 +1,5 @@
-// encloseat_integration_test.go covers EncloseAt against a real git fixture repository, reading files committed at a revision through quarry's git layer.
+// encloseat_integration_test.go covers EncloseAt against a real git fixture repository.
+// It reads files committed at a revision through quarry's git layer.
 
 package planglyph
 
@@ -11,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestEncloseAt commits one Go file holding an import and a function, and asserts how each kind of location answers at that commit.
+// TestEncloseAt commits one Go file holding an import and a function.
+// It asserts how each kind of location answers at that commit.
 func TestEncloseAt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

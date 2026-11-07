@@ -14,7 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriftRows_EntryGate asserts every Drift row of both recipes is left out under the template's drift.enabled and entered when the setting answers true, and that a row the run already entered is called when the setting is false.
+// TestDriftRows_EntryGate asserts every Drift row of both recipes follows the template's drift.enabled setting:
+// left out when it is false, entered when it is true,
+// and a row the run already entered is called when it is false.
 func TestDriftRows_EntryGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

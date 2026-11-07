@@ -1,12 +1,7 @@
-// diff.go implements the unified Fabric.Diff and Fabric.Status: two read-only, side-labelled views
-// over what changed across a warp<->weft pair, distinct from status.go's Topology.Status (the
-// paired warp<->weft topology/branch-drift view).
-// Fabric.Diff answers "what changed since this warp SHA, on both sides" via the correspondence
-// index;
-// Fabric.Status answers "what is currently uncommitted, on both sides" via
-// gitrepo.Repo.WorktreeChangedFiles.
-// Neither classifies paths or calls WiredNames — both are pure merges over each repo's own
-// changed-file primitive.
+// diff.go implements Fabric.Diff and Fabric.Status, two read-only views that label each changed path with its side.
+// Diff lists what changed on both sides since a warp SHA, using the correspondence index for the weft side.
+// Status lists what is uncommitted now on both sides, using each repo's worktree changes.
+// Neither classifies paths; both merge each repo's own changed-file primitive.
 
 package fabricengine
 
@@ -15,10 +10,9 @@ import (
 	"fmt"
 )
 
-// weftAnchorForWarpSHA resolves warpSHA to the weft SHA for Fabric.Diff,
-// without reverting. A warpSHA predating any correspondence is reported as
-// found=false rather than an error, since a diff before fabric started
-// tracking this pair has no weft baseline.
+// weftAnchorForWarpSHA resolves warpSHA to the weft SHA it corresponds to, without reverting anything.
+// A warpSHA predating any correspondence is reported as found=false rather than an error;
+// a diff from before fabric tracked this pair has no weft baseline.
 func (f *Fabric) weftAnchorForWarpSHA(warpSHA string) (weftSHA string, found bool, err error) {
 	targetSeq, err := f.warpSeq(warpSHA)
 	if err != nil {
@@ -35,36 +29,33 @@ func (f *Fabric) weftAnchorForWarpSHA(warpSHA string) (weftSHA string, found boo
 	return res.Entry.WeftSHA, true, nil
 }
 
-// ChangeSide names which repo of a warp<->weft pair a ChangeEntry's path changed in.
+// ChangeSide names which repo of a warp<->weft pair a changed path belongs to.
 type ChangeSide string
 
-// The two sides a ChangeEntry can be labelled with.
+// The two sides of a warp<->weft pair that a changed path can be labelled with.
 const (
 	SideWarp ChangeSide = "warp"
 	SideWeft ChangeSide = "weft"
 )
 
-// ChangeEntry is one repo-relative path that changed on one side of a warp<->weft pair, labelled
-// with which side it changed on.
-// Named ChangeEntry (not reusing status.go's PairStatus/StatusResult, a different paired-topology
-// view) to keep this unified "what changed in my worktree" surface distinct from that
-// paired-topology view — two separate surfaces, not variations of one.
+// ChangeEntry is one repo-relative path that changed on one side of a warp<->weft pair.
+// Its Side field names that side.
 type ChangeEntry struct {
 	Path string
 	Side ChangeSide
 }
 
-// DiffResult is Fabric.Diff's result: the merged, side-labelled set of changed paths, plus
-// NoWeftCorrespondence reporting whether sinceWarpSHA predates any recorded weft correspondence (in
-// which case Entries carries only warp-side changes).
+// DiffResult is the merged, side-labelled set of paths that changed across a warp<->weft pair since a warp SHA.
+// NoWeftCorrespondence reports whether that warp SHA predates any recorded weft correspondence;
+// in that case Entries holds only warp-side changes.
 type DiffResult struct {
 	Entries              []ChangeEntry
 	NoWeftCorrespondence bool
 }
 
-// Diff reports what changed on both sides of the warp<->weft pair since sinceWarpSHA, resolved to
-// the nearest-at-or-before correspondence when no exact match exists.
-// When no weft correspondence exists for sinceWarpSHA, the weft side is empty and
+// Diff reports what changed on both sides of the warp<->weft pair since sinceWarpSHA.
+// It resolves sinceWarpSHA to the nearest correspondence at or before it when no exact match exists.
+// When no weft correspondence exists for sinceWarpSHA, the weft side is empty;
 // DiffResult.NoWeftCorrespondence is true rather than an error.
 func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 	warpFiles, err := f.code.ChangedFilesSince(sinceWarpSHA)
@@ -96,8 +87,10 @@ func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 	return DiffResult{Entries: entries}, nil
 }
 
-// DirtyPaths returns the tracked uncommitted paths of both checkouts of the pair, each as an absolute path under its own checkout, with no side label.
-// It reads the tracked scope the dirty-worktree merge guard reads, so an untracked file the guard never objected to is not listed.
+// DirtyPaths returns the tracked uncommitted paths of both checkouts of the pair, with no side label.
+// Each path is absolute, under its own checkout.
+// It reads the same tracked scope as the dirty-worktree merge guard;
+// untracked files, which the guard never objected to, are not listed.
 func (f *Fabric) DirtyPaths() ([]string, error) {
 	warpPaths, err := trackedDirtyPaths(f.warpPath)
 	if err != nil {
@@ -110,8 +103,9 @@ func (f *Fabric) DirtyPaths() ([]string, error) {
 	return append(warpPaths, weftPaths...), nil
 }
 
-// CodeDirtyPaths returns the code checkout's absolute path and its tracked uncommitted paths, relative to that checkout, slash-separated and sorted.
-// It is the read the dirty merge guard decides on, and it never lists the records checkout.
+// CodeDirtyPaths returns the code checkout's absolute path and its tracked uncommitted paths.
+// The paths are relative to that checkout, slash-separated and sorted.
+// It is the read the dirty merge guard decides on; it never lists the records checkout.
 // A read failure is returned wrapped.
 func (f *Fabric) CodeDirtyPaths() (checkout string, paths []string, err error) {
 	paths, err = codeDirtyPaths(f)
@@ -121,9 +115,8 @@ func (f *Fabric) CodeDirtyPaths() (checkout string, paths []string, err error) {
 	return f.warpPath, paths, nil
 }
 
-// Status reports every currently-uncommitted path across both sides of the warp<->weft pair, merged
-// into one side-labelled slice.
-// Unlike Diff, there is no correspondence anchor involved — this is a live worktree read.
+// Status reports every uncommitted path on both sides of the warp<->weft pair, merged into one side-labelled slice.
+// It reads each checkout's live worktree, so no correspondence is involved.
 func (f *Fabric) Status() ([]ChangeEntry, error) {
 	warpFiles, err := f.code.WorktreeChangedFiles()
 	if err != nil {

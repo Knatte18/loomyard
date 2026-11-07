@@ -1,4 +1,4 @@
-// pane_test.go classifies the pane captures the spike recorded and pins the key choreography sent into the pane.
+// pane_test.go classifies the Codex pane captures and pins the key choreography sent into the pane.
 
 package codexengine
 
@@ -107,7 +107,9 @@ func TestStartup(t *testing.T) {
 	}
 }
 
-// TestTrustDismissSequence pins the accept: Enter alone with the caret on the option, a move first when the caret sits on the other option, and nothing when the option is missing or far from the caret.
+// TestTrustDismissSequence pins the accept key sent for the trust prompt.
+// Enter alone is sent with the caret on the option; a move is sent first when the caret sits on the other option.
+// Nothing is sent when the option is missing or far from the caret.
 func TestTrustDismissSequence(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -172,7 +174,8 @@ func TestComposerReadings(t *testing.T) {
 	}
 }
 
-// TestPaneTooShort pins that only a capture with no composer and fewer rows than the composer and status line take reads too short.
+// TestPaneTooShort pins when a capture reads too short.
+// Only a capture with no composer and fewer rows than the composer and status line does.
 func TestPaneTooShort(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -192,7 +195,8 @@ func TestPaneTooShort(t *testing.T) {
 	}
 }
 
-// TestOwnPastePlaceholder pins that the placeholder is a paste's own only when its count is the text's characters and it is the whole reading.
+// TestOwnPastePlaceholder pins when a placeholder counts as the paste's own.
+// It does only when its count is the text's characters and the placeholder is the whole reading.
 func TestOwnPastePlaceholder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -217,7 +221,9 @@ func TestOwnPastePlaceholder(t *testing.T) {
 	}
 }
 
-// TestKeySequences pins the interrupt, the typed send with its Enter after the paste-burst settle, the typing alone, and the engine's empty color and session commands.
+// TestKeySequences pins the keys sent into the pane for an interrupt, a typed send, and typing alone.
+// The typed send presses Enter after the paste-burst settle.
+// The engine's color and session commands are empty.
 func TestKeySequences(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

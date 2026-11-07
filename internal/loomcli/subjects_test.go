@@ -40,7 +40,8 @@ func writeSubjectFile(t *testing.T, path, body string) {
 	}
 }
 
-// documentSubjectOf reads the document subject of paths and returns its hash, failing the test on an error or a not-found answer.
+// documentSubjectOf returns the hash of the document subject of paths.
+// It fails the test on an error or a not-found answer.
 func documentSubjectOf(t *testing.T, location *lymcwd.Location, paths ...string) string {
 	t.Helper()
 	subject, found, err := documentSubject(location, paths)
@@ -50,7 +51,9 @@ func documentSubjectOf(t *testing.T, location *lymcwd.Location, paths ...string)
 	return subject.Hash
 }
 
-// TestDocumentSubject covers what documentSubject adds over the identity text it hashes: the decision record's carry-over blocks and a plan directory's approval flag, archived generations and lens review never change the subject, and any other edit does.
+// TestDocumentSubject covers what documentSubject adds over the identity text it hashes.
+// The decision record's carry-over blocks and a plan directory's approval flag never change the subject.
+// Archived generations and lens review never change it either, and any other edit does.
 func TestDocumentSubject(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -127,7 +130,8 @@ func TestDocumentSubject(t *testing.T) {
 	})
 }
 
-// TestReviewInputSeams asserts each review input seam answers not found while its file is absent under the scratch directory, and the file's path with its modification time once it is there.
+// TestReviewInputSeams asserts each review input seam reports not found while its file is missing.
+// Once the file is in the scratch directory, the seam answers with its path and modification time.
 func TestReviewInputSeams(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

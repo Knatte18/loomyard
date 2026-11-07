@@ -1,7 +1,5 @@
-// friction.go implements Role and Directive, the role-keyed stencil read that turns a told note path
-// into directive text, plus the two helpers every composer calls alongside it: WarnIfMarkerAbsent and
-// EnsureDir.
-// See doc.go for the package-level rationale.
+// friction.go implements Role and Directive, which turns a note path into a role's friction directive text.
+// It also holds WarnIfMarkerAbsent and EnsureDir, the helpers that composers call alongside Directive.
 
 package friction
 
@@ -17,13 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// freeNameScanCeiling bounds NotePath's first-free-suffix scan: exhausting it is not an error path
-// this package reports, so NotePath returns the last candidate the scan reached rather than looping
-// forever.
+// freeNameScanCeiling bounds NotePath's first-free-suffix scan.
+// Exhausting it is not an error this package reports.
+// NotePath returns the last candidate the scan reached instead of looping forever.
 const freeNameScanCeiling = 1000
 
-// notePathToken is the literal template token Directive substitutes with the caller-supplied
-// notePath.
+// notePathToken is the literal template token that Directive substitutes with the notePath argument.
 const notePathToken = "{{.note_path}}"
 
 // Role identifies which agent-facing friction directive variant Directive should render.
@@ -31,22 +28,19 @@ type Role int
 
 // The four directive variants Directive knows how to render, one per agent shape.
 const (
-	// RoleImplementer selects the directive for any agent that edits code: the webster fork, the
-	// webster recovery strand, the webster verify-gate fixer fork, and loom's Plan-Write.
+	// RoleImplementer selects the directive for any agent that edits code.
 	RoleImplementer Role = iota + 1
 	// RoleReviewFix selects the directive for the Burler fix half's fixer, the round's only note writer.
 	RoleReviewFix
-	// RoleOrchestrator selects the directive for webster's Master session, which forks rather than
-	// edits.
+	// RoleOrchestrator selects the directive for webster's Master session, which forks rather than edits.
 	RoleOrchestrator
-	// RoleInterview selects the directive for the Discussion-Write interview agent, whose job is
-	// neither editing nor reviewing.
+	// RoleInterview selects the directive for the Discussion-Write interview agent.
+	// That agent neither edits code nor reviews it.
 	RoleInterview
 )
 
-// implementerDirectiveStencil, reviewFixDirectiveStencil, orchestratorDirectiveStencil, and
-// interviewDirectiveStencil name the stencil Directive reads for each Role, one constant per role so
-// each name is written exactly once.
+// The stencil names Directive reads for each Role.
+// Each is its own constant, so each name is written exactly once.
 const (
 	implementerDirectiveStencil  = "friction-directive-implementer"
 	reviewFixDirectiveStencil    = "friction-directive-review-fix"
@@ -54,24 +48,21 @@ const (
 	interviewDirectiveStencil    = "friction-directive-interview"
 )
 
-// MarkerName is the stencil marker name the seven composers pass to stencil.FillOptional's
-// optional-names slice.
+// MarkerName is the stencil marker name that composers pass to stencil.FillOptional's optional-names slice.
 const MarkerName = "friction_directive"
 
-// markerLiteral is the literal template token WarnIfMarkerAbsent searches for, derived from
-// MarkerName so the two names cannot drift apart.
+// markerLiteral is the literal template token that WarnIfMarkerAbsent searches for.
+// It is derived from MarkerName, so the two names cannot drift apart.
 const markerLiteral = "{{." + MarkerName + "}}"
 
-// ReportFileName is the reflection agent's own mandatory output file name, named once here so
-// internal/frictionengine's note scan and its shuttleengine.Spec.OutputFiles entry both read the
-// same constant.
+// ReportFileName is the reflection agent's mandatory output file name.
+// internal/frictionengine's note scan and its shuttleengine.Spec.OutputFiles entry both read this constant,
+// so the name is written once.
 const ReportFileName = "reflection-report.md"
 
-// Directive returns the role's friction directive text to inject into the agent's prompt, read from
-// stencilsDir and stripped of its leading banner, with the literal notePath substituted into it.
-// It returns ("", nil) with no stencil read attempted at all for an empty notePath and for an
-// unknown or zero Role, mirroring pattern.Directive's own empty-anchorPath early return and its
-// default case.
+// Directive returns the role's friction directive text for injection into an agent's prompt.
+// The text is read from stencilsDir, stripped of its leading banner, and has the literal notePath substituted into it.
+// It returns ("", nil) without attempting a stencil read for an empty notePath, or for an unknown or zero Role.
 // It returns ("", err) when notePath is non-empty, role is known, and the stencil read fails.
 func Directive(notePath, stencilsDir string, role Role) (string, error) {
 	if notePath == "" {
@@ -89,34 +80,33 @@ func Directive(notePath, stencilsDir string, role Role) (string, error) {
 	case RoleInterview:
 		name = interviewDirectiveStencil
 	default:
-		// An unknown or zero Role renders no directive and attempts no read; this default case is
-		// what makes that behaviour defined and documented rather than an unhandled fall-through.
+		// An unknown or zero Role renders no directive and attempts no read.
 		return "", nil
 	}
 
 	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
-		// stencilstore.Read's own error already names both the stencil and the base directory, so
-		// this wrap adds only the calling package's house prefix, not the stencil name a second time.
+		// stencilstore.Read's error already names the stencil and the base directory.
+		// This wrap adds only the package prefix, not the stencil name a second time.
 		return "", fmt.Errorf("friction: directive stencil: %w", err)
 	}
 
 	stripped := stencil.StripLeadingComment(string(content))
-	// The substitution is a plain strings.ReplaceAll here, not stencil.Fill, because the returned
-	// text is itself injected as another template's marker value and must never be passed through
-	// Fill a second time -- the same reason pattern.Directive strips its banner and returns raw text.
+	// The substitution uses strings.ReplaceAll, not stencil.Fill.
+	// The returned text is itself injected as another template's marker value,
+	// so it must never be passed through Fill a second time.
 	return strings.ReplaceAll(stripped, notePathToken, notePath), nil
 }
 
 // WarnIfMarkerAbsent warns when template does not carry the literal "{{.friction_directive}}"
 // marker but a non-empty directive was computed for it.
-// The third parameter is named directive, not notePath, because every composer passes the composed
-// directive text rather than the note path -- an empty directive is the "nothing would have been
-// rendered anyway" case, which covers both Tier 2 being off and a friction.Directive read error the
-// composer swallowed, and neither should warn about a missing marker.
-// It no-ops when directive is empty; otherwise, when template does not contain the marker literal,
-// it logs a Warn naming the stencil and the marker and pointing the operator at "lym stencil diff"
-// and "lym stencil sync".
+// The third parameter is the composed directive text, not a note path.
+// An empty directive means nothing would have been rendered anyway: the feature is off,
+// or the read failed and the composer dropped the error.
+// Neither case should warn about a missing marker.
+// It does nothing when directive is empty.
+// Otherwise, when template lacks the marker literal, it logs a warning naming the stencil and the marker,
+// and it points the operator at "lym stencil diff" and "lym stencil sync".
 func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 	if directive == "" {
 		return
@@ -128,31 +118,23 @@ func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 }
 
 // NotePath composes a non-clobbering path for a note named by the stem id inside frictionDir.
+// It returns "" when frictionDir is empty.
+// It also returns "" for an id that fails sanitization.
+// An id fails when it is empty, contains a path separator, is "." or "..", or has a ".." path element.
+// An id whose id+".md" is ReportFileName fails too, so a caller cannot name a note over the reflection agent's output.
 //
-// It returns "" when frictionDir is empty, so Tier 2's off state composes through NotePath and
-// Directive alike with no boolean anywhere. It also returns "" for an id that fails sanitization: an
-// empty id, an id containing either path separator ('/' or '\'), an id equal to "." or ".." or
-// containing a ".." path element, and an id whose id+".md" equals ReportFileName -- the last so a
-// caller can never name a note over the reflection agent's own output file.
+// id is a stem, not a final name.
+// When frictionDir/id.md is not taken, NotePath returns that path.
+// Otherwise it returns the first free path in the sequence id-2.md, id-3.md and so on.
+// It takes the first free number, not the highest plus one: with id.md and id-3.md present, it returns id-2.md.
+// The scan is bounded: past a fixed ceiling it returns the last candidate rather than looping forever.
+// Exhausting the ceiling is not reported as an error.
+// A stat error other than "not exist" counts as taken, so an unreadable entry is never overwritten.
 //
-// id is treated as a stem, not a final name: NotePath returns filepath.Join(frictionDir, id+".md")
-// when that path does not exist on disk, and otherwise the first free path in the sequence
-// "id-2.md", "id-3.md", ... -- first free, not highest plus one, so a directory holding "id.md" and
-// "id-3.md" but not "id-2.md" resolves to "id-2.md". The scan is bounded at freeNameScanCeiling and
-// returns the last candidate rather than looping forever; exhausting the ceiling is not an error
-// path this package reports. A stat error that is not "not exist" is treated as "the path is taken"
-// and the scan advances, so an unreadable entry never causes an overwrite.
-//
-// The free-name scan is best-effort under concurrency: two spawns racing inside the same directory
-// can both resolve to the same suffix and one note is lost. That is accepted -- concurrent same-site
-// spawns do not occur today, and a lost note is optional bookkeeping. The case this function closes
-// structurally is sequential re-invocation of the same site, which is guaranteed on any
-// crash-resumed run: Discussion-Write and Plan-Write are each respawned after a crash mid-step (see
-// the Completion Signal Invariant) -- a mechanical gate's own re-prompt never
-// triggers a second spawn of this kind, since it re-prompts the same live session rather than
-// re-entering the row -- and recoverSpawn is re-runnable for the same batch --
-// internal/websterengine/recoverbatch.go timestamp-archives a stale report on each call for exactly
-// that reason.
+// The scan is best-effort under concurrency.
+// Two spawns racing in one directory can resolve to the same suffix, and one note is lost.
+// That loss is accepted, since a note is optional bookkeeping.
+// Sequential calls for the same site do not overwrite an earlier note.
 func NotePath(frictionDir, id string) string {
 	if frictionDir == "" {
 		return ""
@@ -175,9 +157,9 @@ func NotePath(frictionDir, id string) string {
 	return candidate
 }
 
-// validNoteID reports whether id is safe to use as NotePath's stem: non-empty, free of either path
-// separator, not "." or ".." or a path containing a ".." element, and not a stem whose ".md" name
-// would collide with ReportFileName.
+// validNoteID reports whether id is safe to use as a note file stem.
+// It rejects an empty id, an id with a path separator, "." and "..", an id with a ".." path element,
+// and an id whose ".md" name would collide with ReportFileName.
 func validNoteID(id string) bool {
 	if id == "" {
 		return false
@@ -199,9 +181,9 @@ func validNoteID(id string) bool {
 	return true
 }
 
-// pathTaken reports whether path is unavailable for NotePath's first-free scan: it exists, or stat
-// fails with an error other than "not exist" -- an unreadable entry is treated as taken so it can
-// never be silently overwritten.
+// pathTaken reports whether path cannot be used as a new note name.
+// It is taken when it exists, or when stat fails with an error other than "not exist",
+// so an unreadable entry is never silently overwritten.
 func pathTaken(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -210,9 +192,8 @@ func pathTaken(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-// EnsureDir creates dir, including any missing parents, and never returns an error: a failed create
-// must never fail `lym loom start` or `lym loom run`, so a failure is reported via logger.Warn
-// instead.
+// EnsureDir creates dir, including any missing parents, and reports a failure only as a logger.Warn.
+// It must never fail `lym loom start` or `lym loom run`, so it returns no error.
 // It no-ops on an empty dir.
 func EnsureDir(dir string) {
 	if dir == "" {

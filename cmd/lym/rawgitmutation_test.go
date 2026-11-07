@@ -1,14 +1,11 @@
-// rawgitmutation_test.go closes the Fabric Git Invariant's tracked gap by machine-checking that
-// internal/websterengine's production source never constructs a raw
-// gitrepo handle or calls gitexec.Run directly, beyond the one grandfathered read-only exemption
-// this file names.
-// See `PATTERN-fabric-boundary` — the "Known gap, tracked" clause
-// internal/websterengine's migration onto internal/fabricengine's code-side methods closes.
+// rawgitmutation_test.go machine-checks the Fabric Git Invariant of `PATTERN-fabric-boundary`.
+// It covers internal/websterengine.
+// Its production source never constructs a raw gitrepo handle or calls gitexec.Run directly.
+// The one grandfathered read-only exemption is on this file's allowlist.
 //
-// The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.Run() — not per-verb
-// method names: a verb-name ban would both flag the correctly-migrated consumer code (which
-// legitimately calls a mutating verb such as .ResetHard( on an engine-declared interface)
-// and miss the raw gitexec.Run( bypass that carries no method token at all.
+// The guard bans the two tokens `gitrepo.New(` and `gitexec.Run(`, not per-verb method names.
+// A verb-name ban would flag legitimate calls to mutating verbs, such as `.ResetHard(` on an engine-declared interface.
+// It would also miss a raw `gitexec.Run(` bypass, which carries no method token.
 
 package main
 
@@ -21,40 +18,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// rawGitMutationScanPackages are the module-relative package subtrees this
-// guard walks: exactly the one package the discussion's regression-guard
-// decision names, internal/websterengine.
+// rawGitMutationScanPackages lists the module-relative package subtrees this guard walks.
 var rawGitMutationScanPackages = []string{
 	"internal/websterengine",
 }
 
-// rawGitMutationBannedTokens are the raw substrings a non-test .go file in
-// rawGitMutationScanPackages may not contain, unless the file is on
-// rawGitMutationAllowlist.
+// rawGitMutationBannedTokens lists the raw substrings that a non-test .go file in the scanned packages must not contain.
+// A file is exempt only when it is on the allowlist.
 var rawGitMutationBannedTokens = []string{
 	"gitrepo.New(",
 	"gitexec.Run(",
 }
 
-// rawGitMutationAllowlist is this guard's per-file allowlist (path module-
-// relative, slash-separated → reason): the one grandfathered read-only
-// exemption the Fabric Git Invariant's "Known gap, tracked" clause carved
-// out when the mutating paths in this package migrated onto
-// internal/fabricengine's code-side methods.
+// rawGitMutationAllowlist maps the module-relative, slash-separated path of each exempt file to its reason.
+// Its one entry is the read-only exemption to the Fabric Git Invariant in internal/websterengine.
 var rawGitMutationAllowlist = []scankit.Entry{
 	{Key: "internal/websterengine/gitwrap.go", Why: "grandfathered read-only exemptions — via gitrepo.New the read-only queries CurrentSHA, MergeHeadPresent, CommitParents (the reconcile walk and the fix-commit walk, `fixCommitRejection`), ResolveSHA, IsAncestor, MergeTree and CommitTree, SHAExists (shaExists) and IsAncestor (isAncestor), and via the checked gitexec.Run the read-only probes the Shared Decision git-verification-via-gitrepo's carved-out exception covers: `status --porcelain` (dirty), `status --porcelain --ignored` (ignoredPath), `worktree list --porcelain` (otherWorktrees), `diff --quiet` and `ls-files --others` (worktreePathDiffers), `hash-object` (worktreeBlob), `rev-parse --verify --quiet` (commitBlob) and `ls-tree -r` (treePathsWithBlob)"},
 }
 
-// rawGitMutationMinScannedFiles is the vacuous-scan floor for this guard's
-// one-package walk: fewer than 4 production .go files found in the package
-// means the walk is misconfigured rather than the package having genuinely
-// shrunk.
+// rawGitMutationMinScannedFiles is the floor below which a scan counts as vacuous.
+// A count under it means the walk is misconfigured, not that the package shrank.
 const rawGitMutationMinScannedFiles = 4
 
-// TestNoRawGitMutation_WebsterProductionSource walks internal/websterengine's non-test .go files
-// and fails if any of them (other than a rawGitMutationAllowlist entry) contains the raw substring
-// "gitrepo.New(" or "gitexec.Run(" — the two construction/call tokens a raw, fabric-bypassing
-// git mutation would carry.
+// TestNoRawGitMutation_WebsterProductionSource walks the non-test .go files of internal/websterengine.
+// It fails if one contains the raw substring "gitrepo.New(" or "gitexec.Run(" and is not allowlisted.
+// Those two tokens are the construction and call forms a raw, fabric-bypassing git mutation carries.
 //
 //lym:guard
 func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {

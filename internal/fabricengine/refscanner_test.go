@@ -1,9 +1,8 @@
-// refscanner_test.go covers RefScanner.Matches against the three cases websterengine's
-// audit_test.go exercises today for its own weftReferencePattern (a command containing the sibling
-// worktree path, a command containing a -weft sibling name, and a lym fabric/weft/warp invocation),
-// plus a clean command that must not match, and the command-position rule: an invocation after a
-// shell separator still matches, while the same words inside a quoted search pattern do not. The *lymcwd.Location is built synthetically, the way
-// websterengine/audit_test.go's fakeLayout helper does, so no git fixture is needed.
+// refscanner_test.go covers RefScanner.Matches on the cases the reference pattern must keep matching.
+// Commands that name the sibling worktree path, a -weft sibling name, or a lym fabric/weft/warp invocation match.
+// A clean command must not match.
+// An invocation after a shell separator still matches, while the same words inside a quoted search pattern do not.
+// The *lymcwd.Location is built synthetically, so no git fixture is needed.
 
 package fabricengine_test
 
@@ -16,15 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeLayout returns a lymcwd.Location that resolves fabricengine.RecordsWorktree() without spawning
-// git, the same shape websterengine/audit_test.go's own fakeLayout builds.
+// fakeLayout returns a lymcwd.Location that resolves fabricengine.RecordsWorktree() without spawning git.
 func fakeLayout() *lymcwd.Location {
 	return &lymcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
-// TestRefScanner_Matches covers the behavioural contract that must not regress when the regex moves
-// packages: the sibling worktree path, a -weft sibling name, a lym fabric/weft/warp invocation, and
-// a clean command that must not match.
+// TestRefScanner_Matches covers the behavioural contract of RefScanner.Matches.
 func TestRefScanner_Matches(t *testing.T) {
 	tiergate.Require(t, 0)
 	layout := fakeLayout()
@@ -86,8 +82,8 @@ func TestRefScanner_Matches(t *testing.T) {
 	}
 }
 
-// TestReferenceRule_Match covers what TestRefScanner_Matches cannot see.
-// That is the matched text each rule returns, taken from the copy its pattern ran on, and the two rules being callable apart.
+// TestReferenceRule_Match covers the matched text each rule returns, taken from the copy its pattern ran on.
+// It also covers the two rules being callable apart.
 func TestReferenceRule_Match(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -123,8 +119,11 @@ func TestReferenceRule_Match(t *testing.T) {
 	}
 }
 
-// TestIsReadOnlyCommand covers the allow-list of read forms (readers, lym help, lym fabric readers, git reads, sed prints) and the tokenised forms among them (quoted words, globs, tildes, the two stderr redirections),
-// and every way a command stops being read-only: a redirection, a substitution, backgrounding, an expanding word and any other command.
+// TestIsReadOnlyCommand covers the allow-list of read forms.
+// The forms are the readers, lym help, lym fabric readers, git reads and sed prints.
+// Among them are the tokenised forms: quoted words, globs, tildes and the two stderr redirections.
+// It also covers every way a command stops being read-only.
+// Those are a redirection, a substitution, backgrounding, an expanding word and any other command.
 func TestIsReadOnlyCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

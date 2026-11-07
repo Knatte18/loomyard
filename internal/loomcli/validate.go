@@ -1,7 +1,7 @@
-// validate.go implements the `validate-discussion`, `validate-plan`, `validate-parts` and `validate-description` loom verbs.
-// Each is a standalone caller of the identical package function the Discussion, Plan, Parts or Describe row's own gate calls, per the shared-implementation-is-the-whole-point Shared Decision.
-// No verb re-implements or re-derives any check.
-// Each maps its package's result onto the envelope-and-exit-contract Shared Decision.
+// validate.go implements the validate-discussion, validate-plan, validate-parts and validate-description loom verbs.
+// Each verb calls the same package function the matching recipe row's gate calls.
+// No verb re-implements or re-derives a check.
+// Each maps its package's result onto the envelope and exit contract.
 
 package loomcli
 
@@ -25,8 +25,8 @@ import (
 )
 
 // renderFindings turns a slice of values carrying an Error() string method into the []string
-// payload placed under an envelope's "findings" key, so validate-discussion and validate-plan
-// render their findings identically, per the findings-render-as-error-strings Shared Decision.
+// payload placed under an envelope's "findings" key.
+// validate-discussion and validate-plan share it so they render their findings identically.
 func renderFindings[T interface{ Error() string }](items []T) []string {
 	rendered := make([]string, 0, len(items))
 	for _, item := range items {
@@ -36,7 +36,7 @@ func renderFindings[T interface{ Error() string }](items []T) []string {
 }
 
 // validateDiscussionCmd builds the `validate-discussion` subcommand: the standalone form of the
-// checks Discussion-Write's and Discussion-Burler-Fix's own gate runs, callable by the writer agent
+// checks the Discussion-Write and Discussion-Burler-Fix gates run, callable by the writer agent
 // before handoff.
 // It checks every loom record with the one check the gates run, and commits nothing.
 func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
@@ -138,13 +138,11 @@ Example:
 	}
 }
 
-// planFindingsHaveBlocking reports whether findings carries at least one entry that is not
-// explicitly informational, mirroring internal/loomshed/gates.go's own hasBlockingFinding:
-// severity, not finding count, decides the verdict on both sides of this parity pair.
-// It tests NOT-informational rather than equals-blocking for the reason that function's own doc
-// gives -- planglyph.Severity is an open string type, and an unrecognized or zero value must not
-// silently pass a gate (crucible round opus-medium-r6, R6-27). The two halves of the pair must keep
-// agreeing about that, so neither is "the equals-blocking one".
+// planFindingsHaveBlocking reports whether findings carries at least one entry that is not informational.
+// Severity, not finding count, decides the verdict.
+// The test is not-informational rather than equals-blocking, because planglyph.Severity is an open string type,
+// and an unrecognized or zero value must not silently pass a gate.
+// Every gate that decides a plan's verdict must test the same way.
 func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 	for _, f := range findings {
 		if f.Severity != planglyph.SeverityInformational {
@@ -154,9 +152,10 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 	return false
 }
 
-// validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the checks
-// Plan-Write's, a twill Plan-Write run's and Plan-Burler-Fix's own gates run, plus the plan-unapproved approval
-// check no gate runs at all, callable by the writer agent before handoff.
+// validatePlanCmd builds the `validate-plan` subcommand.
+// It is the standalone form of the checks that the Plan-Write, twill Plan-Write and Plan-Burler-Fix gates run.
+// It also runs the plan-unapproved approval check, which no gate runs.
+// The writer agent calls it before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
 	var requireApproved, rework, overlay, lensReview bool
 	var part string
@@ -286,12 +285,11 @@ Example:
 				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex, pc)
 			}
 			if err != nil {
-				// Named for quarry, not the plan: an operator reading this envelope must never be
-				// told the plan is invalid when quarry simply could not answer -- this is the
-				// CLI-side half of loomshed's producer-side disposition, and the two must agree.
-				// Any OTHER validator error still fails the verb rather than being dropped, with
-				// its own wording: reporting "valid" over a validation that did not finish is the
-				// failure mode internal/planglyph/repo.go's rationale rejects outright.
+				// Quarry being unavailable is reported as such, never as an invalid plan:
+				// an operator reading this envelope must not be told the plan is invalid when quarry simply could not answer.
+				// The validator classifies this error the same way.
+				// Any other error still fails the verb, with its own wording:
+				// reporting the plan valid over a validation that did not finish is the failure mode this rules out.
 				if errors.Is(err, planglyph.ErrQuarryUnavailable) {
 					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: quarry could not answer validating plan at "+planDir+": "+err.Error()))
 					return nil
@@ -314,7 +312,9 @@ Example:
 	return cmd
 }
 
-// planContext builds the context the plan checks read beyond the plan itself: the language's rename tools, the gate's raw-command prefixes and tier tags, the seam-test reader and the pattern record.
+// planContext builds the context the plan checks read beyond the plan itself.
+// It holds the language's rename tools, the gate's raw-command prefixes and tier tags:
+// the seam-test reader and the pattern record.
 // An absent gate.yaml refuses no raw command, so the verbs stay usable in a repo without one.
 // Every error names validate-plan and the config to fix.
 func (c *loomCLI) planContext() (loomshed.PlanContext, error) {
@@ -342,8 +342,10 @@ func (c *loomCLI) planContext() (loomshed.PlanContext, error) {
 	}, nil
 }
 
-// reportPlanFindings sets cmd's exit from a plan check's findings: a blocking finding is an error envelope carrying all of them, and otherwise an ok envelope naming planDir.
-// Informational findings ride the ok envelope under their own key, so a plan that introduces a new package is never reported as if nothing had been said about it.
+// reportPlanFindings sets cmd's exit from a plan check's findings.
+// A blocking finding makes an error envelope carrying all of them; otherwise the envelope is ok and names planDir.
+// Informational findings ride the ok envelope under their own key,
+// so a plan that introduces a new package is never reported as if nothing had been said about it.
 func reportPlanFindings(cmd *cobra.Command, planDir string, findings []planglyph.Finding) {
 	out := cmd.OutOrStdout()
 	if planFindingsHaveBlocking(findings) {
@@ -362,8 +364,9 @@ func reportPlanFindings(cmd *cobra.Command, planDir string, findings []planglyph
 	clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 }
 
-// validatePart runs `validate-plan --part`: the part check a part writer's own gate runs, over the part named part.
-// It refuses on a recipe with no Parts-Plan-Write row, read from the recipe's rows, and reports every error ValidatePart returns in the error envelope with its text.
+// validatePart runs `validate-plan --part`: the part check a part writer's own gate runs, over the named part.
+// It refuses on a recipe with no Parts-Plan-Write row, reading the recipe's rows to decide.
+// A failure of the check is reported in the error envelope with its text; its findings go to the plan report.
 func (c *loomCLI) validatePart(cmd *cobra.Command, part string) error {
 	out := cmd.OutOrStdout()
 
@@ -392,7 +395,8 @@ func (c *loomCLI) validatePart(cmd *cobra.Command, part string) error {
 	return nil
 }
 
-// validatePartsCmd builds the `validate-parts` subcommand: the standalone form of the check the parts gate runs, callable by the Parts-Write agent before handoff.
+// validatePartsCmd builds the `validate-parts` subcommand: the standalone form of the check the parts gate runs.
+// The Parts-Write agent can call it before handoff.
 // It reads the parts file and the decision record and changes nothing.
 func (c *loomCLI) validatePartsCmd() *cobra.Command {
 	return &cobra.Command{

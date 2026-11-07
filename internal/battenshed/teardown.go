@@ -1,5 +1,5 @@
-// teardown.go implements NewWorktreeTeardown, the producer that shuts down the loom session and
-// removes the task worktree, strictly in that order, under the hub's prime lock.
+// teardown.go implements the producer that removes a task worktree.
+// It shuts the loom session down, then removes the worktree, strictly in that order, under the hub's prime lock.
 
 package battenshed
 
@@ -13,24 +13,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// abandonedSessionFileName is the fixed name the abandoned-session record carries inside a run's
-// told scratch directory.
+// abandonedSessionFileName is the fixed name of the abandoned-session record inside a run's scratch directory.
 const abandonedSessionFileName = "abandoned-session"
 
-// AbandonedSessionFile returns the path recordAbandonedSession writes the abandoned session's name
-// to, under scratchDir.
-// It is exported for the same reason StuckReasonFile is: the file's reader and writer share one
-// declarer of its name.
+// AbandonedSessionFile returns the path under scratchDir where the abandoned session's name is recorded.
+// It is exported so that the readers and the writers of the record share one declaration of its name.
 func AbandonedSessionFile(scratchDir string) string {
 	return filepath.Join(scratchDir, abandonedSessionFileName)
 }
 
-// recordAbandonedSession logs and records that session shutdown abandoned a session rather than
-// ending it cleanly, and clears any stale record when it did not.
-// The record outlives the process that observed it, which is what lets a step-driven lifecycle
-// report the value as well as a run-driven one.
-// A write or remove failure is logged rather than escalated: failing to record how a teardown ended
-// must not change whether it succeeded.
+// recordAbandonedSession logs and records that session shutdown abandoned a session rather than ending it cleanly.
+// When it did not, it clears any stale record.
+// The record outlives the process that observed the abandonment,
+// so a step-driven lifecycle can report it as well as a run-driven one.
+// A write or remove failure is logged rather than escalated:
+// failing to record how a teardown ended must not change whether it succeeded.
 func recordAbandonedSession(producer, slug, session, scratchDir string) {
 	path := AbandonedSessionFile(scratchDir)
 	if session == "" {
@@ -50,8 +47,8 @@ func recordAbandonedSession(producer, slug, session, scratchDir string) {
 	}
 }
 
-// worktreeTeardownProducer shuts down the task worktree's loom session and then removes the
-// worktree pair, holding the hub's prime lock for the duration of both calls.
+// worktreeTeardownProducer shuts down the task worktree's loom session and then removes the worktree pair.
+// It holds the hub's prime lock for the duration of both calls.
 type worktreeTeardownProducer struct {
 	name       string
 	slug       string
@@ -62,10 +59,9 @@ type worktreeTeardownProducer struct {
 
 var _ shedengine.ShedProducer = (*worktreeTeardownProducer)(nil)
 
-// NewWorktreeTeardown returns a shedengine.ShedProducer that acquires primeLock, calls
-// deps.Shutdown, and -- only on Shutdown's success -- calls deps.Remove, for the task worktree
-// identified by slug.
-// It posts no notice of a failure: the driver's hand-back tells the orch of a stop the stop chain did not settle.
+// NewWorktreeTeardown returns a shedengine.ShedProducer for the task worktree identified by slug.
+// The producer acquires primeLock, calls deps.Shutdown, and calls deps.Remove only when Shutdown succeeds.
+// A failed shutdown or removal is reported as a Stuck outcome, not as an error.
 func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	return &worktreeTeardownProducer{
 		name:       name,
@@ -77,17 +73,21 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 }
 
 // Call implements shedengine.ShedProducer.
-// It acquires the prime lock exactly as worktreeCreateProducer.Call does -- a contended lock is waited for (bounded and cancellable), an Acquire error is a returned hard error, a bound spent is Stuck naming primeLock.Path and the wait,
-// and the release closure is deferred so it runs on every exit path including every Stuck one, with a release error logged at Warn rather than replacing the verdict.
+// It acquires the prime lock; a contended lock is waited for, bounded and cancellable.
+// An Acquire error is returned as a hard error.
+// A spent bound yields Stuck, naming the lock path and the wait.
+// The release closure is deferred, so it runs on every exit path, including each Stuck one.
+// A release error is logged at Warn and does not replace the verdict.
 //
-// It then calls deps.Shutdown. A Shutdown error is Stuck naming session shutdown as the failed
-// half, and deps.Remove is not called at all on that path -- abandoning that ordering is the
-// single thing this one-row producer exists to prevent. A non-empty abandonedSession return is
-// logged and recorded under scratchDir (recordAbandonedSession), and does not change the verdict.
+// It then calls deps.Shutdown.
+// A Shutdown error yields Stuck, naming session shutdown as the failed half, and deps.Remove is not called on that path.
+// Removing the worktree before its session has shut down is the ordering this producer exists to prevent.
+// A non-empty abandoned-session return is logged and recorded under scratchDir, and does not change the verdict.
 //
-// It then calls deps.Remove. A Remove error is Stuck naming worktree removal as the failed half
-// and stating that session shutdown already succeeded, so the two halves are distinguishable in
-// the reason text. On success the row returns Done.
+// It then calls deps.Remove.
+// A Remove error yields Stuck, naming worktree removal as the failed half.
+// The reason also states that session shutdown already succeeded, so the two halves can be told apart.
+// On success Call returns Done.
 func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err

@@ -1,5 +1,6 @@
 // shed.go reads a finished run's archived shed seed and status from its newest archive tag.
-// It decides from them whether the run finished under a counted recipe, sets the run's span and splits that span by shed history entry into the Producers table.
+// It decides from them whether the run finished under a counted recipe;
+// it sets the run's span and splits that span by shed history entry into the Producers table.
 
 package main
 
@@ -62,9 +63,11 @@ func (row ProducerRow) Active() time.Duration {
 }
 
 // readShedRecord reads the seed and shed status of the slug's newest tag, tags being ordered newest first.
-// It returns nil and no error when there are no tags, when status.json is absent at the tag, or when its history is empty;
-// an absent seed.json leaves StartedAt zero.
-// A seed or status that does not decode, or a timestamp in either that does not parse, is an error naming the slug, the tag and the file.
+// It returns nil and no error when there are no tags.
+// It also returns nil when status.json is absent at the tag or its history is empty.
+// An absent seed.json leaves StartedAt zero.
+// A seed or status that does not decode is an error naming the slug, the tag and the file;
+// so is a timestamp in either that does not parse.
 func readShedRecord(trees ArchiveTrees, slug string, tags []ArchiveTag) (*ShedRecord, error) {
 	if len(tags) == 0 {
 		return nil, nil
@@ -128,7 +131,8 @@ func readShedRecord(trees ArchiveTrees, slug string, tags []ArchiveTag) (*ShedRe
 }
 
 // inFlight reports whether the slug's worktree under hub exists.
-// Teardown removes a finished run's worktree, so one that still exists is in flight and its archive tags belong to an older run of the slug.
+// Teardown removes a finished run's worktree.
+// A worktree that still exists is in flight, and its archive tags belong to an older run of the slug.
 func inFlight(hub, slug string) (bool, error) {
 	_, err := os.Stat(filepath.Join(hub, slug))
 	if err != nil && !os.IsNotExist(err) {
@@ -146,9 +150,11 @@ func recipeList(conjunction string) string {
 	return strings.Join(countedRecipes[:last], ", ") + " " + conjunction + " " + countedRecipes[last]
 }
 
-// finishedRun reports whether the slug's latest run went through its whole lifecycle under one of countedRecipes:
-// its worktree under hub is torn down, and the shed record at its newest archive tag, tags being ordered newest first, names that recipe and holds a Finalize entry.
-// A run stopped partway, such as a bench pair parked after Discussion-Write or an abandoned run, is not one, nor is a run of another recipe.
+// finishedRun reports whether the slug's latest run went through its whole lifecycle under one of countedRecipes.
+// It holds when its worktree under hub is torn down,
+// and the shed record at its newest archive tag names that recipe and holds a Finalize entry.
+// A run stopped partway, such as a bench pair parked after Discussion-Write or an abandoned run, is not one.
+// Nor is a run of another recipe.
 func finishedRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool, error) {
 	running, err := inFlight(hub, slug)
 	if err != nil || running {
@@ -164,7 +170,8 @@ func finishedRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool,
 // useShedRecord stores rec and sets the run's span from it.
 // The span ends at the latest entry end.
 // It starts at the seed's started_at, or at the run's first transcript line without one.
-// That start is raised to the older tag's date when that is later, then lowered to the first entry's end when that is earlier.
+// That start is raised to the older tag's date when that is later.
+// It is then lowered to the first entry's end when that is earlier.
 func (run *RunTally) useShedRecord(rec ShedRecord) {
 	run.Shed = &rec
 	from := rec.StartedAt
@@ -187,7 +194,8 @@ func (run *RunTally) useShedRecord(rec ShedRecord) {
 }
 
 // Producers splits the run's span by shed history entry, nil for a run with no shed record.
-// An entry owns the interval from the latest end among the entries before it, the span's start for the first, to its own end, empty when its end is not later.
+// An entry owns the interval from the latest end among the entries before it to its own end.
+// The first entry's interval starts at the span's start, and it is empty when its end is not later.
 // An interval's elapsed and idle time leave out the machine's sleeps.
 // Rows sum the entries per producer and are ordered by active time, longest first, then by name.
 func (run RunTally) Producers() []ProducerRow {

@@ -1,6 +1,7 @@
-// pushretry_integration_test.go pins, against a real bare remote that refuses every pushed ref with a remote "cannot lock ref", what the fake push in pushretry_test.go cannot reach:
-// the retry exhausts before the rebase-retry or the ErrPushRejected mapping is consulted,
-// and a tag pushed by its full ref is retried on the short name git prints for it.
+// pushretry_integration_test.go pins push-retry behavior against a real bare remote.
+// The remote refuses every pushed ref and reports "cannot lock ref" for each.
+// It checks that the retry exhausts before the rebase-retry or the ErrPushRejected mapping is consulted,
+// and that a tag pushed by its full ref is retried on the short name git prints for it.
 
 package gitrepo
 
@@ -18,10 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// hookLogPlaceholder stands for the hook log's path in procReceiveRefuseScript until a test substitutes it.
+// hookLogPlaceholder marks where a test writes the hook log's path into the refusing hook script.
 const hookLogPlaceholder = "@HOOK_LOG@"
 
-// procReceiveRefuseScript answers a proc-receive request by appending one line to the log at hookLogPlaceholder and refusing every command with a remote "cannot lock ref".
+// procReceiveRefuseScript is the script installed as git's proc-receive hook.
+// It appends one line to the hook log for each push, and it refuses every command with a remote "cannot lock ref".
 // It speaks the pkt-line protocol with dd, because git holds the hook's stdin open until the answer is written.
 const procReceiveRefuseScript = `#!/bin/sh
 echo run >> '` + hookLogPlaceholder + `'
@@ -51,8 +53,10 @@ done
 printf '0000'
 `
 
-// newRefusingRemoteClone returns a clone, with one commit pushed to its bare origin's main, whose origin from then on refuses every pushed ref under refusedRefs with a remote "cannot lock ref".
-// It also returns the path of the log the refusing hook appends one line to per push.
+// newRefusingRemoteClone returns a clone whose bare origin refuses every pushed ref under refusedRefs.
+// The origin's proc-receive hook refuses each command with a remote "cannot lock ref".
+// The origin's main already holds one commit, pushed before the refusals start.
+// It also returns the path of the hook log, which gains one line per push.
 func newRefusingRemoteClone(t *testing.T, refusedRefs string) (clonePath, hookLog string) {
 	t.Helper()
 

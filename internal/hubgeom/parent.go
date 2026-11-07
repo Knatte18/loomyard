@@ -30,7 +30,8 @@ type Parent struct {
 // the name is returned even when no orch strand is live.
 //
 // A hub with no recorded shortname yields no parent and a warning, since no name can be formed.
-// The name depends only on the recorded worktree name and the shortname, never on the parent worktree still existing.
+// The name depends only on the recorded parent worktree, the shortname and whether that parent is the prime.
+// It never depends on the parent still existing.
 // Origin read errors, and any other error telling the prime from a pair, are returned.
 func ResolveParent(l *lymcwd.Location) (Parent, error) {
 	origin, originFound, err := fabricengine.ReadOriginFor(l, l.WorktreeName)
@@ -52,8 +53,8 @@ func ResolveParent(l *lymcwd.Location) (Parent, error) {
 	return decideParent(shortname, origin, originFound, parentIsPrime)
 }
 
-// parentNameOrEmpty is ResolveParent's name for the geometry tellers: an unresolvable parent logs a warning naming consumer and yields no parent,
-// since the parent is an optional escalation channel.
+// parentNameOrEmpty returns the parent agent name of l for the geometry tellers, or "" when it cannot be resolved.
+// The unresolved case logs a warning that names consumer, since the parent is an optional escalation channel.
 func parentNameOrEmpty(l *lymcwd.Location, consumer string) string {
 	resolved, err := ResolveParent(l)
 	if err != nil {
@@ -73,7 +74,7 @@ func parentWorktreeIsPrime(root string) (bool, error) {
 	return isPrimeWorktree(root)
 }
 
-// decideParent is ResolveParent's decision over already-read values, so its table needs no filesystem.
+// decideParent decides the parent from values already read, so it touches no filesystem.
 // An empty shortname yields no parent.
 // parentIsPrime is read only when origin names a parent worktree.
 func decideParent(shortname string, origin fabricengine.Origin, originFound bool, parentIsPrime bool) (Parent, error) {

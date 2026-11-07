@@ -1,5 +1,7 @@
-// roleguard_test.go pins the sandboxed-role guard of the fabric command tree: which subcommands a task-session role may run, and which strand names the guard lets through.
-// It drives the built command tree against an empty directory, so a passing verb stops at its own worktree-resolution error and spawns nothing.
+// roleguard_test.go pins the sandboxed-role guard of the fabric command tree:
+// which subcommands a task-session role may run, and which strand names the guard lets through.
+// It drives the built command tree against an empty directory,
+// so a passing verb stops at its own worktree-resolution error and spawns nothing.
 
 package fabriccli_test
 
@@ -34,7 +36,7 @@ var guardVerbs = map[string]guardVerb{
 	"clone":     {args: []string{"clone", "https://example.invalid/w"}},
 	"add":       {args: []string{"add", "slug"}},
 	"remove":    {args: []string{"remove", "slug"}},
-	// The guard lets the hidden teardown child through by name, since it inherits the strand name of the removal that spawned it, so the walk counts it a reader.
+	// The hidden teardown child passes by name, since it inherits the removal's strand name; the walk counts it a reader.
 	"remote-teardown": {args: []string{"remote-teardown"}, reader: true},
 	"checkout":        {args: []string{"checkout"}},
 	"reconcile":       {args: []string{"reconcile"}},
@@ -62,7 +64,8 @@ func runUnderParent(t *testing.T, args ...string) (code int, out string) {
 	return code, buf.String()
 }
 
-// TestSandboxedRoleGuard sets the strand name with t.Setenv, so it names that process-global variable in place of t.Parallel.
+// TestSandboxedRoleGuard sets the strand-name environment variable with t.Setenv.
+// That variable is process-global, so the test cannot call t.Parallel.
 func TestSandboxedRoleGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	const (

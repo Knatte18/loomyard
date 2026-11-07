@@ -1,6 +1,7 @@
 //go:build !windows
 
-// exitcode_integration_test.go covers the exit codes exitCodeOf and tierExitCodeOf read from real child processes ended by a signal or by an exit.
+// exitcode_integration_test.go covers exitCodeOf and tierExitCodeOf on real child processes.
+// It checks the exit codes they read from children ended by a signal or by an exit.
 
 package gatecli
 
@@ -19,7 +20,8 @@ func TestExitCodeOf(t *testing.T) {
 	tests := []struct {
 		name   string
 		script string
-		// wantTier is the code of a tier command, which reads a crash signal as 128 plus its number; wantPlain is the code of any other child, which reads every signal as 1.
+		// wantTier is the code of a tier command, which reads a crash signal as 128 plus its number;
+		// wantPlain is the code of any other child, which reads every signal as 1.
 		wantTier  int
 		wantPlain int
 	}{

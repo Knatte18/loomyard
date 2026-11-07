@@ -1,4 +1,6 @@
-// ensure_integration_test.go covers Ensure against real hubforge hubs: the stale-build walk, the stamp gate, the mid-merge and incomplete-pair skips, the lock, concurrent callers, a pair registered mid-walk and the single-pair call.
+// ensure_integration_test.go covers Ensure against real hubforge hubs.
+// It tests the stale-build walk, the stamp gate, and the skips for mid-merge and incomplete pairs.
+// It also tests the lock, concurrent callers, a pair registered mid-walk, and the single-pair call.
 
 package hubreconcile_test
 
@@ -61,7 +63,9 @@ func stampKey(t *testing.T, geom hubreconcile.Geometry) (string, bool) {
 	return s.BuildKey, true
 }
 
-// writeCurrentStamp marks the hub as already reconciled by the test binary's build: it writes the stamp and, when the board lacks it, commits the board's base-sparse marker, since a stamp is stale on an unmarked board.
+// writeCurrentStamp marks the hub as reconciled by the test binary's build.
+// It writes the stamp and, when the board lacks the base-sparse marker, commits that marker first.
+// The walk treats a stamp on an unmarked board as stale.
 func writeCurrentStamp(t *testing.T, geom hubreconcile.Geometry) {
 	t.Helper()
 
@@ -81,11 +85,14 @@ func writeCurrentStamp(t *testing.T, geom hubreconcile.Geometry) {
 	}
 }
 
-// differingBatcherBudget is a batcher budget that differs from the repo default's, so a batcher.yaml holding it survives the strip.
+// differingBatcherBudget is a batcher budget that differs from the repo default's,
+// so a batcher.yaml holding it survives the strip.
 const differingBatcherBudget = "budget: 450001"
 
-// seedRetiredKey commits a batcher.yaml in the records worktree at recordsRoot: the template with the retired key in place of orientation, plus one key whose value differs from the repo default.
-// It survives the sparse strip non-empty, which keeps retiredKeyPresent's read working after the walk.
+// seedRetiredKey commits a batcher.yaml in the records worktree at recordsRoot.
+// The file is the template with the retired key in place of orientation.
+// It also sets one key to a value that differs from the repo default.
+// It survives the sparse strip non-empty, so the test can read the retired key after the walk.
 func seedRetiredKey(t *testing.T, recordsRoot string) {
 	t.Helper()
 
@@ -98,7 +105,8 @@ func seedRetiredKey(t *testing.T, recordsRoot string) {
 	gitkit.CommitFile(t, recordsRoot, configengine.ConfigFileRel("batcher"), content, "fixture: retired key")
 }
 
-// differingLoomBounces is a loom review budget that differs from the repo default's, so a loom.yaml holding it survives the strip.
+// differingLoomBounces is a loom review budget that differs from the repo default's,
+// so a loom.yaml holding it survives the strip.
 const differingLoomBounces = "review_max_bounces: 99"
 
 // replaceOnce returns content with the first old replaced by replacement, failing the test when content holds no old.
@@ -137,7 +145,7 @@ func formerUnits(t *testing.T, module, template string, former map[string]string
 	return strings.Join(lines, "\n")
 }
 
-// loomFormerUnits are loom's tuned units at their former template values: the lens fans, the models, the driver, the bounce budgets and the auto-accept, the plan perch's units aside.
+// loomFormerUnits returns loom's tuned units at their former template values, leaving the plan perch's units aside.
 func loomFormerUnits() map[string]string {
 	former := map[string]string{
 		"code_reviewer_model":    "sonnet[high]",
@@ -156,7 +164,7 @@ func loomFormerUnits() map[string]string {
 	return former
 }
 
-// tapestryFormerUnits are tapestry's tuned units at their former template values: the plan lens fan, the plan reviewer models and the plan fans.
+// tapestryFormerUnits returns tapestry's tuned units at their former template values.
 func tapestryFormerUnits() map[string]string {
 	former := map[string]string{}
 	for _, unit := range []string{"plan_lenses", "plan_reviewer_model", "plan_reviewer_fan", "plan_fixer_fan"} {
@@ -165,7 +173,8 @@ func tapestryFormerUnits() map[string]string {
 	return former
 }
 
-// preMigrationBase returns module's base file as a hub held it before the tuned defaults: its current template with every tuned unit at its former value.
+// preMigrationBase returns module's base file as a hub held it before the tuned defaults.
+// It is the module's current template with every tuned unit at its former value.
 func preMigrationBase(t *testing.T, module configreg.Module) string {
 	t.Helper()
 
@@ -205,7 +214,9 @@ func preMigrationBase(t *testing.T, module configreg.Module) string {
 	return template
 }
 
-// commitPreMigrationBase commits, on the board at boardDir, every non-seed-only module's base file as a hub held it before the tuned defaults, with darn's verify set to the hub's own command, and deletes the board marker, so the walk finds an unmigrated board with something to strip.
+// commitPreMigrationBase commits every non-seed-only module's base file on the board at boardDir.
+// Each file is the base a hub held before the tuned defaults.
+// It also deletes the board marker, so the walk finds an unmigrated board with something to strip.
 func commitPreMigrationBase(t *testing.T, boardDir string) {
 	t.Helper()
 
@@ -224,7 +235,8 @@ func commitPreMigrationBase(t *testing.T, boardDir string) {
 	gitkit.Git(t, boardDir, "commit", "-q", "-m", "fixture: pre-migration board base files")
 }
 
-// removeReinterpretationMarkers stages the deletion of every reinterpretation marker the board at boardDir tracks, so the board is one no registered reinterpretation has been applied to.
+// removeReinterpretationMarkers stages the deletion of every reinterpretation marker the board at boardDir tracks,
+// so the board is one no registered reinterpretation has been applied to.
 // The forged hub arrives with them, written by the walk that cloned it.
 func removeReinterpretationMarkers(t *testing.T, boardDir string) {
 	t.Helper()
@@ -236,7 +248,8 @@ func removeReinterpretationMarkers(t *testing.T, boardDir string) {
 	}
 }
 
-// commitRetiredKeys appends to the board's darn, gate and landing base files the key each module retired, and commits them.
+// commitRetiredKeys appends the key each module retired to the board's darn, gate and landing base files.
+// It commits them.
 func commitRetiredKeys(t *testing.T, boardDir string) {
 	t.Helper()
 
@@ -254,7 +267,11 @@ func commitRetiredKeys(t *testing.T, boardDir string) {
 	gitkit.Git(t, boardDir, "commit", "-q", "-m", "fixture: retired keys in the board base files")
 }
 
-// commitPreMigrationFiles commits, in the records worktree at recordsRoot, a full pre-migration per-worktree file set -- each per-worktree module's template, loom's with one key differing from the repo default and its former discussion_lenses, shed's with its former driver_kind -- and deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
+// commitPreMigrationFiles commits, in the records worktree at recordsRoot, a full pre-migration per-worktree file set.
+// Every file is its module's template, except loom's and shed's.
+// Loom's file differs from the repo default in one key and holds its former discussion_lenses.
+// Shed's file holds its former driver_kind.
+// It also deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
 func commitPreMigrationFiles(t *testing.T, recordsRoot string) {
 	t.Helper()
 
@@ -292,7 +309,7 @@ func markerTracked(t *testing.T, recordsRoot string) bool {
 	return slices.Contains(gitkit.LsFiles(t, recordsRoot), filepath.ToSlash(configengine.SparseMarkerRel()))
 }
 
-// configFilesOf returns every file under codeRoot's config dir, relative path to bytes.
+// configFilesOf returns the content of every file in codeRoot's config dir, keyed by file name.
 func configFilesOf(t *testing.T, codeRoot string) map[string]string {
 	t.Helper()
 
@@ -338,7 +355,7 @@ func assertClean(t *testing.T, dir string) {
 	}
 }
 
-// markMergeRecord writes a fabric merge record into the gitdir of the records worktree and returns the func that clears it.
+// markMergeRecord writes a fabric merge record into the records worktree's gitdir and returns the func that clears it.
 func markMergeRecord(t *testing.T, recordsDir string) (clear func()) {
 	t.Helper()
 
@@ -369,7 +386,8 @@ func markForeignMerge(t *testing.T, codeDir string) (clear func()) {
 	}
 }
 
-// newStaleHub builds a hub with a pair, both unmarked and carrying a full pre-migration file set with the retired key committed on their records side, and no stamp.
+// newStaleHub builds a hub with a pair whose records worktrees lack the sparse marker.
+// Each records worktree holds a full pre-migration file set with the retired key committed, and the hub has no stamp.
 func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 	t.Helper()
 
@@ -385,17 +403,20 @@ func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 // newerHubWideKey is a fabric key the running template lacks and no retired key covers, as a newer binary writes.
 const newerHubWideKey = "newer_fixture_key: 1"
 
-// newerWorktreeKey is a logger key the running template lacks and no retired key covers, planted in the pair's worktree file.
+// newerWorktreeKey is a logger key the running template lacks and no retired key covers.
+// The test plants it in the pair's worktree file.
 const newerWorktreeKey = "newer_worktree_key: 1"
 
-// seedRetiredHubWideKey commits on the board a landing.yaml holding only a key landing retired, so the hub-wide reconcile rewrites it.
+// seedRetiredHubWideKey commits on the board a landing.yaml holding only a key landing retired,
+// so the hub-wide reconcile rewrites it.
 func seedRetiredHubWideKey(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("landing"), "publish_verify: x\n", "fixture: retired landing key")
 }
 
-// pushBoardFromSecondClone pushes the board's current branch to its origin, then lands a commit on that origin from a second clone, and returns the board's branch name.
-// The board is left behind its upstream by exactly that commit.
+// pushBoardFromSecondClone pushes the board's current branch to its origin.
+// It then lands a commit on that origin from a second clone and returns the board's branch name.
+// The board is left one commit behind its upstream.
 func pushBoardFromSecondClone(t *testing.T, board string) string {
 	t.Helper()
 
@@ -409,7 +430,8 @@ func pushBoardFromSecondClone(t *testing.T, board string) string {
 	return branch
 }
 
-// It does not call t.Parallel: it swaps the package-global detached board sync.
+// TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree does not call t.Parallel:
+// it swaps the package-global detached board sync.
 func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	for _, tc := range []struct {
@@ -430,21 +452,24 @@ func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 	}
 }
 
-// staleRun selects the hub a stale-build walk starts from and what it checks beyond the common reconcile.
+// staleRun sets the hub state a stale-build walk starts from, and the checks it makes beyond the common reconcile.
 type staleRun struct {
 	// boardBehind leaves the board behind its upstream by one commit.
 	boardBehind bool
-	// loomDefaultGone deletes loom's committed repo default beside a current stamp.
+	// loomDefaultGone deletes loom's committed repo default, then writes a stamp that names the running build.
 	loomDefaultGone bool
 	// unmigratedBoard commits every board base file at its pre-migration values and deletes the board marker before the walk.
 	unmigratedBoard bool
-	// retiredKeys, with unmigratedBoard, sets in the board's darn, gate and landing base files a key the module retired, each beside template-equal units.
+	// retiredKeys sets, on an unmigrated board, a key the module retired in the board's darn, gate and landing base files.
+	// Each such key sits beside template-equal units.
 	retiredKeys bool
-	// markerRemoved removes the board marker by a board commit after the first walk, while the stamp names the running build, and walks again.
+	// markerRemoved removes the board marker by a board commit after the second walk.
+	// The stamp still names the running build, and the walk that follows runs again.
 	markerRemoved bool
 }
 
-// recordBoardSyncs replaces the detached board sync with a recorder of the board directories it was asked to sync, and restores it when the test ends.
+// recordBoardSyncs replaces the detached board sync with a recorder of the board directories it was asked to sync.
+// The original sync is restored when the test ends.
 func recordBoardSyncs(t *testing.T) *[]string {
 	t.Helper()
 
@@ -456,10 +481,11 @@ func recordBoardSyncs(t *testing.T) *[]string {
 	return &spawned
 }
 
-// tunedGenericMarker is the text of the tuned generic lens in todaysBurlerYAML.
+// tunedGenericMarker is the text of a hub's tuned generic lens.
 const tunedGenericMarker = "tuned generic prose"
 
-// todaysBurlerYAML is a board burler.yaml of today's hub shape: a tuned generic lens and the seven-lens twill-discussion fan.
+// todaysBurlerYAML is a board burler.yaml in the hub shape that follows the migration.
+// It holds a tuned generic lens and the seven-lens twill-discussion fan.
 const todaysBurlerYAML = `lenses:
   generic: |
     ` + tunedGenericMarker + `
@@ -467,9 +493,12 @@ fans:
   twill-discussion: [generic, correctness, error-handling, test-gaps, security, performance, api-design]
 `
 
-// runStaleBuildReconcile walks a stale hub and asserts every worktree and the board got one reconcile commit, with the board's pulled from upstream when boardBehind.
+// runStaleBuildReconcile walks a stale hub and asserts that every worktree and the board get one reconcile commit.
+// A board behind its upstream is pulled from upstream.
 // The walk keeps a key the template lacks in the board's fabric.yaml and in the pair's logger.yaml.
-// With loomDefaultGone the stamp names the running build but loom's committed repo default is deleted, and the walk reseeds and commits it on the board; batcher's default stays intact so retiredKeyPresent keeps reading it.
+// When loom's committed repo default is deleted and the stamp names the running build:
+// the walk reseeds and commits that default on the board.
+// batcher's default stays intact so the retired-key check keeps reading it.
 func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	t.Helper()
 	boardBehind, loomDefaultGone := run.boardBehind, run.loomDefaultGone
@@ -501,7 +530,8 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	gitkit.Git(t, h.BoardDir(), "rm", "-q", lensesDefault)
 	gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: delete lenses default")
 	gitkit.CommitFile(t, h.BoardDir(), burlerDefault, todaysBurlerYAML, "fixture: today's burler.yaml")
-	// A hub of today's shape has no lenses.yaml anywhere, so the board's moved values are not shadowed by a seeded prime copy.
+	// A hub in the post-migration shape has no lenses.yaml anywhere,
+	// so the board's moved values are not shadowed by a seeded prime copy.
 	for _, records := range []string{h.PrimeRecords(), h.PairRecordsSibling("pair-a")} {
 		gitkit.Git(t, records, "rm", "-q", lensesDefault)
 		gitkit.Git(t, records, "commit", "-q", "-m", "fixture: delete lenses file")
@@ -599,7 +629,8 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 		assertBoardStrippedOnce(t, h, modelsBefore)
 	}
 
-	// Each worktree is stripped and committed with its marker: loom.yaml keeps only its differing key, or is deleted when the reseeded default equals it.
+	// Each worktree is stripped and committed with its marker:
+	// loom.yaml keeps only its differing key, or is deleted when the reseeded default equals it.
 	// A former template value the file held, loom's discussion_lenses and shed's driver_kind, is dropped as well.
 	for name, records := range map[string]string{"prime": h.PrimeRecords(), "pair": h.PairRecordsSibling("pair-a")} {
 		if !markerTracked(t, records) {
@@ -621,7 +652,8 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	}
 
 	// A second walk strips nothing: it lands no new commit and leaves every per-worktree file and marker byte-identical.
-	// On an unmigrated board the marker is present by now, so a base unit equal to a former value is a pin the second walk keeps.
+	// On an unmigrated board the marker is present before the second walk,
+	// so a base unit equal to a former value is a pin that walk keeps.
 	const pinnedFormerDriver = "driver: sonnet[medium]\n"
 	if run.unmigratedBoard {
 		gitkit.CommitFile(t, h.BoardDir(), loomDefault, pinnedFormerDriver, "fixture: pin a former value")
@@ -656,7 +688,8 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	}
 
 	if run.markerRemoved {
-		// A board commit removes the marker beside a template-equal unit; the stamp still names the running build, yet the next walk strips the unit and marks the board again.
+		// A board commit removes the marker beside a template-equal unit;
+		// the stamp still names the running build, yet the next walk strips the unit and marks the board again.
 		gitkit.Git(t, h.BoardDir(), "rm", "-q", "--", filepath.ToSlash(configengine.BaseSparseMarkerRel()))
 		gitkit.CommitFile(t, h.BoardDir(), loomDefault, "review_max_bounces: 3\n", "fixture: a template-equal unit and no marker")
 		if key, found := stampKey(t, geom); !found || key != runningKey() {
@@ -674,8 +707,12 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	}
 }
 
-// assertBoardStrippedOnce checks the board a walk stripped once: every non-seed-only base file other than lenses holds only the sparse header, bar darn's, which keeps the hub's tuned verify_attempts, and fabric's, which keeps the newer binary's key;
-// the seed-only models.yaml is byte for byte as seeded, the marker is tracked in the walk's board commit, and the board's loom base resolves the template's lens fan and its one webster bounce.
+// assertBoardStrippedOnce checks the board a walk stripped once.
+// Every non-seed-only base file other than lenses holds only the sparse header, bar darn's and fabric's.
+// darn's keeps the hub's tuned verify_attempts, and fabric's keeps the running build's key.
+// The seed-only models.yaml is byte for byte as seeded.
+// The marker is tracked in the walk's board commit.
+// The board's loom base resolves the template's lens fan and its one webster bounce.
 // lenses.yaml is skipped because the declared key move from burler.yaml gives it the hub's tuned lens.
 func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte) {
 	t.Helper()
@@ -715,7 +752,8 @@ func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte)
 	if committed := gitkit.Git(t, h.BoardDir(), "log", "-1", "--name-only", "--format="); !strings.Contains(committed, marker) {
 		t.Errorf("the walk's board commit holds %q; want it to carry %s", committed, marker)
 	}
-	// The load stacks the board's base alone: the prime's own loom.yaml holds a review budget past the template's hard cap, which no load of the full stack accepts.
+	// The load stacks the board's base alone:
+	// the prime's own loom.yaml holds a review budget past the template's hard cap, which no load of the full stack accepts.
 	cfg, err := loomengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "loom")
 	if err != nil {
 		t.Fatalf("loomengine.LoadConfig over the board's base: %v", err)
@@ -875,27 +913,29 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// breakConfig breaks one config file of h and returns the worktree the walk fails in, the repo holding the file, and the file.
+		// breakConfig breaks one config file of the hub.
+		// It returns the worktree the walk fails in, the repo holding the file, and the file.
 		breakConfig func(t *testing.T, h *hubforge.Hub) (worktree, repo, file string)
 		// module is the module whose "lym config" the message names; empty when the failure names no module.
 		module string
 		repair func(t *testing.T, h *hubforge.Hub)
 		// afterRepair, when set, checks the pair after the repaired walk.
 		afterRepair func(t *testing.T, h *hubforge.Hub)
-		// unmigratedBoard pins that the failed walk leaves the board's config files at their prior bytes and its marker unwritten.
+		// unmigratedBoard pins that the failed walk leaves the board's config files at their prior bytes.
+		// The board's marker stays unwritten.
 		unmigratedBoard bool
 		// wantInMessage is text the error message must hold; empty skips the check.
 		wantInMessage string
 		// wantAbsentFromMessage is text the error message must not hold; empty skips the check.
 		wantAbsentFromMessage string
-		// ensure runs the walk; nil runs Ensure.
+		// ensure runs the walk; nil runs the default walk.
 		ensure func(geom hubreconcile.Geometry) error
 	}{
 		{
 			name: "a declared key move is undone with the failed walk and committed by the repaired one",
 			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
 				records := h.PairRecordsSibling("pair-a")
-				// The stale pair holds every module's template; without its claude.yaml the move has a file to create.
+				// The stale pair holds every module's template; removing its claude.yaml leaves the key move a file to create.
 				gitkit.Git(t, records, "rm", "-q", filepath.ToSlash(configengine.ConfigFileRel("claude")))
 				gitkit.Git(t, records, "commit", "-q", "-m", "fixture: pair without claude.yaml")
 				gitkit.CommitFile(t, records, configengine.ConfigFileRel("shuttle"), "claude: /x\n", "fixture: shuttle.yaml with a movable key")
@@ -976,7 +1016,8 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 			name: "a failure after the hub-wide files, the marker and a template base were written restores the files and removes the marker and the base",
 			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
 				commitPreMigrationBase(t, h.BoardDir())
-				// The profiles template base is dropped from the board, so the walk writes it before the failure and the restore must remove it again.
+				// The profiles template base is dropped from the board, so the walk writes it before the failure.
+				// The restore must remove it again.
 				gitkit.Git(t, h.BoardDir(), "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.TemplateBaseFileRel("profiles")))
 				gitkit.Git(t, h.BoardDir(), "commit", "-q", "--allow-empty", "-m", "fixture: no profiles template base")
 				return h.BoardDir(), h.BoardDir(), h.BoardDir()
@@ -1118,7 +1159,9 @@ func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// setup breaks the hub and returns the options of the call, the file or lock the Warn must name, and the repair that fixes the cause; nil repair skips the second call.
+		// setup breaks the hub.
+		// It returns the call's options, the file or lock the Warn must name, and a repair that fixes the cause.
+		// A nil repair skips the second call.
 		setup func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (opts hubreconcile.Options, wantNamed string, repair func())
 	}{
 		{
@@ -1392,7 +1435,7 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 		}
 	}
 
-	// The base now records the template, so a second walk has nothing to carry or report and mails nothing.
+	// The first walk records the template in the base, so a second walk has nothing to carry or report and mails nothing.
 	mailedByFirstWalk := len(mailed)
 	if err := os.Remove(geom.StampPath()); err != nil {
 		t.Fatalf("remove the stamp: %v", err)
@@ -1405,9 +1448,11 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 	}
 }
 
-// unpushedHubWide is a hub whose board holds a hub-wide config commit origin has not taken, since the detached board sync is recorded and never run.
-// origin is the records remote, hubWidePath the config file the commit changed and before the board's commit count ahead of that commit.
-// The build stamp is absent, so the next Ensure walks the hub again.
+// unpushedHubWide is a hub whose board holds a hub-wide config commit that origin has not taken.
+// The detached board sync is recorded and never run, so the commit stays unpushed.
+// origin is the records remote, and hubWidePath is the config file the commit changed.
+// before counts the board's commits before that commit.
+// The build stamp is absent, so the next walk of the hub walks it again.
 type unpushedHubWide struct {
 	hub         *hubforge.Hub
 	geom        hubreconcile.Geometry
@@ -1418,8 +1463,10 @@ type unpushedHubWide struct {
 	before      int
 }
 
-// arrangeUnpushedHubWide builds an unpushedHubWide, after two Ensure runs, each of which stamps the build and asks for the board's detached sync.
-// The rerun, with nothing new to commit, still asks for it, so an earlier unpushed commit is pushed too; the stamp is removed after each run.
+// arrangeUnpushedHubWide builds an unpushedHubWide by running the walk twice.
+// Each run stamps the build and asks for the board's detached sync.
+// The second run, with nothing new to commit, still asks for the sync, so an earlier unpushed commit is pushed too.
+// The stamp is removed after each run.
 func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
 	t.Helper()
 
@@ -1442,7 +1489,8 @@ func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
 	if key, found := stampKey(t, geom); !found || key != runningKey() {
 		t.Fatalf("stamp = %q (found %v); want the running key although the hub-wide commit was not pushed", key, found)
 	}
-	// The first walk of a hub also commits each reinterpretation marker and each seed-only module's template base, which are no config files.
+	// The first walk of a hub also commits each reinterpretation marker and each seed-only module's template base.
+	// These are no config files.
 	var changed []string
 	for _, path := range strings.Fields(gitkit.Git(t, board, "show", "--name-only", "--format=", "HEAD")) {
 		if !strings.Contains(path, "reinterpreted-") && !strings.HasSuffix(path, ".template-base") {

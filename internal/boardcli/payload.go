@@ -1,4 +1,5 @@
-// payload.go declares payloadKeys, the key declaration every board payload parser validates against, and payloadLegend, the one statement of the grammar a payload command's `{…}` Use token is written in.
+// payload.go declares payloadKeys, the key declaration every board payload parser validates against.
+// It also declares payloadLegend, the one statement of the grammar for a payload command's `{…}` Use token.
 
 package boardcli
 
@@ -35,7 +36,8 @@ func (k payloadKeys) accepts(key string) bool {
 	return false
 }
 
-// refuseUnknownKey returns the unknown-field refusal for a key of fields that k does not declare, and nil when k declares them all.
+// refuseUnknownKey returns the unknown-field refusal for a key of fields that k does not declare.
+// It returns nil when k declares them all.
 func refuseUnknownKey[V any](k payloadKeys, fields map[string]V) error {
 	for key := range fields {
 		if !k.accepts(key) {

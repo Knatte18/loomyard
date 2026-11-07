@@ -1,4 +1,6 @@
-// testmain_test.go gives the package's test binary an isolated tmux socket directory through tmuxkit.Main, since the package carries `integration` test files (see PATTERN-test-isolation), and the hermetic git test environment, since those files spawn processes (see PATTERN-test-isolation).
+// testmain_test.go gives the package's test binary an isolated tmux socket directory through tmuxkit.Main.
+// The package carries `integration` test files, and they spawn processes;
+// the binary therefore also runs in the hermetic git test environment.
 
 package claudeengine
 

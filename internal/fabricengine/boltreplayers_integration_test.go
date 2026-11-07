@@ -1,4 +1,6 @@
-// boltreplayers_integration_test.go proves the registry of Bolt replayers: what a replay, the ended-set read and the owner read do with no replayer or no run ledger registered, and how a replayer other than the board's is set aside.
+// boltreplayers_integration_test.go proves the registry of Bolt replayers.
+// It covers what a replay, the ended-set read and the owner read do with no replayer or run ledger registered.
+// It also covers how a replayer other than the board's is set aside.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -19,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeReplayer is a Bolt replayer named fake that claims `notes/fake.json`, writes the commit's bytes of it and reports one loss.
+// fakeReplayer is a Bolt replayer named fake.
+// It claims `notes/fake.json`, writes the commit's bytes of it, and reports one loss.
 type fakeReplayer struct{}
 
 func (fakeReplayer) Name() string { return "fake" }
@@ -52,7 +55,8 @@ func TestBoltReplayers(t *testing.T) {
 	// Not parallel: it empties and fills the process-wide registry of Bolt replayers.
 	boardkit.InstallReplay(t)
 
-	// divergedBolt commits rel on the Bolt checkout, moves origin past it and returns the fixture, the checkout and the local commit.
+	// divergedBolt commits rel on the Bolt checkout and moves origin past it.
+	// It returns the fixture, the checkout and the local commit.
 	divergedBolt := func(t *testing.T, rel, content string) (f *recordsFixture, board, local string) {
 		t.Helper()
 		f = newRecordsFixture(t)

@@ -1,4 +1,5 @@
-// markbeam_integration_test.go covers MarkBeam over a hubforge hub: the mark and its one commit, the idempotent re-run, and the two refusals for a pair with no origin record.
+// markbeam_integration_test.go covers MarkBeam over a hubforge hub:
+// the mark and its commit, the idempotent re-run, and the refusals for a pair with no origin record.
 
 package fabricengine_test
 

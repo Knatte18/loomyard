@@ -1,5 +1,4 @@
-// rubric.go implements ReadRubric, the shared read-strip-fill helper every stencil-sourced rubric
-// site routes through.
+// rubric.go holds ReadRubric, which reads a stencil-sourced rubric, strips its banner and fills its markers.
 
 package shedadapters
 
@@ -11,42 +10,37 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the optional webster_record, gate_tiers, amendment and review_base markers render as when their note is blank.
+// noNote is what the webster_record, gate_tiers, amendment and review_base markers render when their note is blank.
 const noNote = "none"
 
 // RubricNotes are the optional notes a rubric's markers are filled from.
 // A blank note fills its marker as `none`, and a rubric with no such marker ignores it.
 type RubricNotes struct {
-	// WebsterRecord fills the webster_record marker, the rendered webster run record only the Plan-Review rubric carries.
+	// WebsterRecord fills webster_record with the rendered webster run record; only the Plan-Review rubric carries it.
 	WebsterRecord string
-	// GateTiers fills the gate_tiers marker, the rendered tier and gate-list lines only the Plan-Review rubric carries.
+	// GateTiers fills gate_tiers with the rendered tier and gate-list lines; only the Plan-Review rubric carries it.
 	GateTiers string
-	// Amendment fills the amendment marker, the note that scopes an amendment generation's review to the change since its base.
+	// Amendment fills amendment with the note scoping an amendment generation's review to changes since its base.
 	Amendment string
-	// ReviewBase fills the review_base marker, the commit the Code-Review rubric's review range starts from.
+	// ReviewBase fills review_base with the commit the Code-Review rubric's review range starts from.
 	ReviewBase string
 }
 
-// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir and notes, and returns the filled result.
+// ReadRubric reads the rubric stencil name from stencilsDir and strips its stamp banner.
+// It fills the markers with specsDir, stencilsDir and notes, and returns the filled text.
 //
-// The strip is about value semantics, not about protecting Fill. stencil.Fill already strips a
-// leading banner from the template it parses, but never from a marker value -- and a rubric's
-// destination is a marker value, interpolated into the Bouncer templates' {{.rubric}}. Unstripped
-// bytes would inject the "<!-- lym-stencil: sha256=... -->" line into the middle of the judge
-// prompt.
+// The banner is stripped before the fill.
+// The filled text is interpolated into the Bouncer templates as a marker value,
+// and a banner inside a marker value is not stripped, so it would reach the judge prompt.
 //
-// The strip happens before the fill, not after: Fill strips its own template internally, so
-// stripping afterwards would be too late to keep the banner out of the returned value.
+// specs_dir and stencils_dir are required, so a rubric carrying either marker errors on an empty value.
+// A blank path would be a dead reference, so the fill errors instead.
+// The optional markers always get a value, since a blank note renders as none.
+// A rubric with no marker renders unchanged.
 //
-// specs_dir and stencils_dir are required markers here -- plain Fill, never FillOptional.
-// A rubric that carries {{.specs_dir}} or {{.stencils_dir}} and is handed an empty value must error rather than render a blank path, because a blank path is precisely the dead reference this task removes.
-// gate_tiers is filled from notes.GateTiers, so the strict fill never meets an empty value; only the Plan-Review rubric carries it.
-// A rubric that carries no marker at all renders unchanged, so this helper is safe to route every stencil-sourced rubric through from the moment it exists.
-//
-// This helper is for stencil-sourced rubrics only. A literal rubric string -- author-written prose
-// reaching a producer through a config key rather than through the stencil store -- never goes
-// through here, because running author prose through Fill turns any bare {{ in it into a
-// parse-template error and imposes specs-dir semantics on text that never had them.
+// Only stencil-sourced rubrics go through here.
+// A literal rubric string, author prose set through a config key, must not:
+// a bare {{ in it fails to parse, and its text would take on specs_dir semantics it never had.
 func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, error) {
 	raw, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {

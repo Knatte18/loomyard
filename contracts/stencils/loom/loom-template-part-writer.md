@@ -1,7 +1,12 @@
-<!-- This is a part writer's opening prompt: one writer seat per part of the parts file, in the Parts-Plan-Write row's table that internal/loomengine's PartsPlanTable builds, filled by internal/seatengine from the seat's value map.
-     part_name, plan_dir (the part's own directory) and overview_path (its 00-overview.md) are seat values; decision_record_path, relevant_path, parts_path and specs_dir are table values;
-     parent_directive and edit_directive are rendered by the seat engine, and pattern_directive and friction_directive are optional.
-     It includes seat-directive-writer and the plan-format blocks loom-block-plan-glyphs, loom-block-plan-format, loom-block-plan-overview and loom-block-plan-cards, each rendered from the same map; the blocks' gate_tiers and specs_dir come from the table. -->
+<!-- This is a part writer's opening prompt: one writer seat per part of the parts file.
+     The seats sit in the Parts-Plan-Write row's table that internal/loomengine's PartsPlanTable builds,
+     and internal/seatengine fills the prompt from the seat's value map.
+     part_name, plan_dir (the part's own directory) and overview_path (its 00-overview.md) are seat values;
+     decision_record_path, relevant_path, parts_path and specs_dir are table values.
+     parent_directive and edit_directive are rendered by the seat engine; pattern_directive and friction_directive are optional.
+     It includes seat-directive-writer and the plan-format blocks loom-block-plan-glyphs, loom-block-plan-format,
+     loom-block-plan-overview and loom-block-plan-cards, each rendered from the same map.
+     The blocks' gate_tiers and specs_dir come from the table. -->
 
 # Part writer — turn one part's contract into plan cards
 

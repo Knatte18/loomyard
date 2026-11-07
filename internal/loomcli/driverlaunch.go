@@ -1,8 +1,8 @@
-// driverlaunch.go implements the two driver seams on loomCLI -- driverStarter and driverPaneProbe --
-// and their production adapters, modelled on runnerMasterStarter (cli.go), which already adapts the
-// same *shuttleengine.Runner value for the same reason: the Test Tier Purity Invariant bars a real
-// spawn from an untagged file, and both underlying engine values (*shuttleengine.Runner,
-// *reedengine.Engine) are concrete types.
+// driverlaunch.go defines the seam interfaces loomCLI uses to start the loom driver session.
+// The seams also reach the session's strand in reed.
+// Its production adapters satisfy those seams over *shuttleengine.Runner and *reedengine.Engine.
+// The seams exist because the Test Tier Purity Invariant bars a real spawn from an untagged file,
+// and both engine values are concrete types.
 
 package loomcli
 
@@ -12,10 +12,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// driverHandle is the started driver run's own seam-facing surface: the two identities the bootstrap
-// needs after launch, without depending on *shuttleengine.Run's concrete type. It holds no startup
-// await: shuttle's own Start already blocks through the provider's startup gates before returning a
-// handle at all.
+// driverHandle is the surface of a started driver run that the bootstrap reads after launch.
+// It exposes the run's reed strand guid and its run directory.
+// Shuttle's Start blocks through the provider's startup gates before returning a handle,
+// so there is no startup await here.
 type driverHandle interface {
 	// StrandGUID returns the reed strand guid bound to this run.
 	StrandGUID() string
@@ -25,18 +25,20 @@ type driverHandle interface {
 
 // driverStarter starts the loom driver session's shuttle run.
 type driverStarter interface {
-	// StartDriver returns only once the run's provider is past its startup gates -- shuttle's own
-	// Start blocks through them before returning a handle at all. A provider that never became ready
-	// surfaces as the returned error, wrapping shuttleengine.ErrNotStarted.
+	// StartDriver returns only once the run's provider is past its startup gates;
+	// shuttle's Start blocks through them before it returns a handle.
+	// A provider that never became ready is returned as an error wrapping shuttleengine.ErrNotStarted.
 	StartDriver(spec shuttleengine.Spec) (driverHandle, error)
 }
 
 // driverSender types one line into a live driver strand's pane.
 type driverSender interface {
 	// SendDriver types text as the strand's next turn and verifies it arrived.
-	// A busy or not-ready pane waits inside the send, and one that stays busy fails with an error wrapping shuttleengine.ErrSessionBusy.
-	// An engine without the idle reading refuses a pane whose provider is not input-ready at once, with an error wrapping shuttleengine.ErrPaneNotReady;
-	// any other error may follow a delivery the pane hid, so a caller must not blindly re-send after it.
+	// A busy or not-ready pane waits inside the send;
+	// a pane that stays busy fails with an error wrapping shuttleengine.ErrSessionBusy.
+	// An engine without the idle reading refuses a pane whose provider is not input-ready at once;
+	// the error wraps shuttleengine.ErrPaneNotReady.
+	// Any other error may follow a delivery the pane hid, so a caller must not blindly re-send after it.
 	SendDriver(guid, text string) error
 }
 
@@ -51,7 +53,7 @@ type driverPaneProbe interface {
 // driverDirectoryProbe reads the driver strand's row from reed's sessionless directory.
 type driverDirectoryProbe interface {
 	// DriverRow returns the first row loomengine.IsDriverStrand accepts, and false when the directory holds none.
-	// A session that died with the machine still lists its strands, dormant,
+	// A session that died with the machine still lists its strands as dormant rows,
 	// so a dead driver is a row with Live false rather than an absent one.
 	DriverRow() (reedengine.DirectoryRow, bool, error)
 }
@@ -61,8 +63,8 @@ type runnerDriverStarter struct {
 	runner *shuttleengine.Runner
 }
 
-// StartDriver implements driverStarter by delegating to the runner's own Start, whose returned
-// *shuttleengine.Run already satisfies driverHandle via its StrandGUID and RunDir methods.
+// StartDriver implements driverStarter by delegating to the runner's Start.
+// The returned *shuttleengine.Run already satisfies driverHandle through its StrandGUID and RunDir methods.
 func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {
@@ -71,31 +73,30 @@ func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle,
 	return run, nil
 }
 
-// SendDriver implements driverSender through the runner's Send, which waits for an idle session, verifies delivery and fails with ErrSessionBusy when the session stays busy.
+// SendDriver implements driverSender through the runner's Send.
+// Send waits for an idle session, verifies delivery, and fails with ErrSessionBusy when the session stays busy.
 func (s runnerDriverStarter) SendDriver(guid, text string) error {
 	return s.runner.Send(guid, text)
 }
 
 // reedDriverPaneProbe adapts *reedengine.Engine to driverPaneProbe.
 //
-// It holds the two engine methods it wraps as plain function fields, filled from a real
-// *reedengine.Engine by newReedDriverPaneProbe, rather than holding the engine value directly: both
-// methods require a live tmux session to exercise for real, so a test proving the cascade argument
-// this adapter passes to remove needs a seam narrower than the whole engine to substitute.
+// It holds the two engine methods it wraps as plain function fields instead of the engine value.
+//
+// Both methods need a live tmux session to exercise for real,
+// so a test of the cascade argument this adapter passes to remove needs a seam narrower than the engine.
 type reedDriverPaneProbe struct {
 	status func() (reedengine.StatusResult, error)
 	remove func(guid string, recursive bool) (reedengine.Removed, error)
 }
 
-// newReedDriverPaneProbe builds a reedDriverPaneProbe wrapping reed's own Status and RemoveStrand
-// methods -- production code's only constructor, so no code outside this file may build one with
-// different function values.
+// newReedDriverPaneProbe builds a reedDriverPaneProbe wrapping the engine's Status and RemoveStrand methods.
+// It is production code's only constructor, so no code outside this file may build one with different function values.
 func newReedDriverPaneProbe(reed *reedengine.Engine) reedDriverPaneProbe {
 	return reedDriverPaneProbe{status: reed.Status, remove: reed.RemoveStrand}
 }
 
-// Strands implements driverPaneProbe by delegating to the engine's own Status and returning its
-// strand slice.
+// Strands implements driverPaneProbe by delegating to the engine's Status and returning its strand slice.
 func (p reedDriverPaneProbe) Strands() ([]reedengine.StrandStatus, error) {
 	result, err := p.status()
 	if err != nil {
@@ -104,21 +105,20 @@ func (p reedDriverPaneProbe) Strands() ([]reedengine.StrandStatus, error) {
 	return result.Strands, nil
 }
 
-// RemoveDriverStrand implements driverPaneProbe by delegating to the engine's own remove, with the
-// cascade argument false. The cascade is inert for a driver strand, which is parentless and
-// childless, so a reader does not wonder why the recursive form is not used here.
+// RemoveDriverStrand implements driverPaneProbe by delegating to the engine's remove with the cascade argument false.
+// A driver strand is parentless and childless, so the cascade is inert.
 func (p reedDriverPaneProbe) RemoveDriverStrand(guid string) error {
 	_, err := p.remove(guid, false)
 	return err
 }
 
 // reedDriverDirectory adapts *reedengine.Engine to driverDirectoryProbe.
-// It holds the engine's Directory as a plain function field for the reason reedDriverPaneProbe does.
+// It holds the engine's Directory method as a plain function field, so a test can substitute it.
 type reedDriverDirectory struct {
 	directory func() ([]reedengine.DirectoryRow, error)
 }
 
-// newReedDriverDirectory builds a reedDriverDirectory wrapping reed's own Directory method.
+// newReedDriverDirectory builds a reedDriverDirectory wrapping the engine's Directory method.
 func newReedDriverDirectory(reed *reedengine.Engine) reedDriverDirectory {
 	return reedDriverDirectory{directory: reed.Directory}
 }

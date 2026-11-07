@@ -1,4 +1,4 @@
-// profile_test.go drives the per-profile cost and quality report over an in-memory history of webster records and review files: the per-batch attribution, the marked runs, the findings rule and the printed tables.
+// profile_test.go tests the per-profile cost and quality report over in-memory webster records and reviews.
 // Tier-1 (no git, no spawn).
 
 package main

@@ -35,10 +35,10 @@ const (
 	// eventStalled marks a receiver whose delivery waits on a stall reason that changed.
 	eventStalled = "stalled"
 	eventHeld    = "held"
-	// eventRenewed marks the same owner extending its live hold; it carries the new expiry and is no event for the log.
+	// eventRenewed marks the same owner extending its live hold; it carries the new expiry and is not logged as an event.
 	eventRenewed  = "renewed"
 	eventReleased = "released"
-	// eventWithheld marks a stage 1 journal's held-back orch reminder; the fold reads it from old journals only and nothing writes it.
+	// eventWithheld marks an orch reminder held back; the fold reads it from old journals only, and nothing writes it.
 	eventWithheld = "withheld"
 	// eventCarried is written by retention: a snapshot of an entry whose original lines are about to be deleted.
 	eventCarried = "carried"
@@ -81,7 +81,7 @@ type record struct {
 	ID int64 `json:"id,omitempty"`
 	// From is the sender of a posted record.
 	From string `json:"from,omitempty"`
-	// Envelope is what creel saw of an EXTERNAL sender: parent process, terminal and working directory.
+	// Envelope is what creel saw of an external sender: parent process, terminal and working directory.
 	Envelope string `json:"envelope,omitempty"`
 	// To is the receiver or holder the record concerns.
 	To string `json:"to,omitempty"`
@@ -90,7 +90,7 @@ type record struct {
 	Kind string `json:"kind,omitempty"`
 	// Body is a message body or an inject's text.
 	Body string `json:"body,omitempty"`
-	// Command and Argument are a command inject's command; a record without them is a text inject.
+	// Command and Argument are a command inject's command and its argument; a record without them is a text inject.
 	Command  CommandName `json:"command,omitempty"`
 	Argument string      `json:"argument,omitempty"`
 	ReplyTo  int64       `json:"reply_to,omitempty"`
@@ -113,7 +113,7 @@ type record struct {
 	Head bool `json:"head,omitempty"`
 	// ExpiresAt is a hold's expiry.
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
-	// Notice names what a stage 1 withheld record waited for; it is read from old journals only.
+	// Notice names what a withheld record waited for; the fold reads it from old journals only.
 	Notice string `json:"notice,omitempty"`
 	// Reason is the stall a stalled record names.
 	Reason string `json:"reason,omitempty"`
@@ -145,7 +145,7 @@ type record struct {
 	Answers int64 `json:"answers,omitempty"`
 }
 
-// journalDay returns the UTC day a journal file name or time falls on, as YYYY-MM-DD.
+// journalDay returns the UTC day t falls on, as YYYY-MM-DD, the stem of a journal file name.
 func journalDay(t time.Time) string { return t.UTC().Format(dayLayout) }
 
 // listJournalFiles returns the day-file names in dir in ascending day order; a missing directory has none.
@@ -271,7 +271,6 @@ func (w *journalWriter) append(rec record) error {
 	return nil
 }
 
-// close closes the open day file.
 func (w *journalWriter) close() error {
 	if w.file == nil {
 		return nil
@@ -281,7 +280,6 @@ func (w *journalWriter) close() error {
 	return err
 }
 
-// writeLine writes rec as one line to the open day file and syncs it.
 func (w *journalWriter) writeLine(rec record) error {
 	if w.writeFault != nil {
 		if err := w.writeFault(); err != nil {
@@ -301,7 +299,9 @@ func (w *journalWriter) writeLine(rec record) error {
 	return nil
 }
 
-// rotate opens day's file, starts a new one with the high-water record, and carries live state out of files past retention.
+// rotate switches the writer to day's file, creating it if needed.
+// An empty file opens with a high-water record, which carries the largest ID seen so far.
+// Then it applies retention.
 func (w *journalWriter) rotate(now time.Time, day string) error {
 	if err := w.close(); err != nil {
 		return fmt.Errorf("creel journal: close the previous day file: %w", err)
@@ -325,8 +325,10 @@ func (w *journalWriter) rotate(now time.Time, day string) error {
 	return w.retain(now)
 }
 
-// retain appends a carried record for every unread message, queued inject and live hold recorded in a file older than the retention, then deletes those files.
-// The carried records are synced before any deletion, so a crash between the two leaves both and the fold collapses them by id.
+// retain carries the live state of every day file past retention into the open day file, then deletes those files.
+// Each unread message, queued inject and live hold is carried.
+// The carried records are synced before any deletion,
+// so a crash in between leaves both copies, and the fold collapses them by id.
 // Each carried record is also folded into the pool, so the log lists the carry at once.
 func (w *journalWriter) retain(now time.Time) error {
 	names, err := listJournalFiles(w.dir)

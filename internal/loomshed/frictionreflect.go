@@ -1,5 +1,5 @@
-// frictionreflect.go implements frictionReflect, loom's terminal producer: it runs the injected
-// friction-reflection closure once and always reports Done.
+// frictionreflect.go implements frictionReflect, loom's terminal producer:
+// it runs the injected friction-reflection closure once and always reports Done.
 
 package loomshed
 
@@ -11,14 +11,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// frictionReflect is loom's terminal row, placed after Finalize so the engine persists state: done
-// only once the reflection returns (batten's Run-Shed row watches the child's status file for done
-// and tears the worktree down right after). It returns Done on every closure result, because
-// failing or blocking a run whose landing already happened over an optional bookkeeping agent is
-// strictly worse than filing nothing. It derives no path and imports nothing friction-specific:
-// whether to reflect at all (Tier 2 off, armed for step) is the injected closure's decision, per
-// the Told-Geometry Invariant. There is deliberately no cancelErr check after the closure returns:
-// once the reflection has run the row's work is done, and done must persist.
+// frictionReflect is loom's terminal row, placed last so the engine persists state once the row reports done.
+// The row reports done only after the reflection returns:
+// the process that watches the run's status file for done tears the worktree down right after.
+// It returns Done on every closure result.
+// Failing or blocking a run that has already landed over an optional bookkeeping agent is worse than filing nothing.
+// It derives no path and imports nothing friction-specific.
+// Whether to reflect is the injected closure's decision, for example when Tier 2 is off or the run is armed for step.
+// The row does not check for cancellation after the closure returns:
+// once the reflection has run, the row's work is done, and done must persist.
 type frictionReflect struct {
 	name    string
 	reflect func() string
@@ -26,10 +27,10 @@ type frictionReflect struct {
 
 var _ shedengine.ShedProducer = (*frictionReflect)(nil)
 
-// NewFrictionReflect returns a frictionReflect identified as name that calls reflectFriction once
-// per Call. The return type is shedengine.ShedProducer, the seam interface, so the registry can
-// call this constructor from outside the package while frictionReflect stays unexported. The nil
-// check lives here so the registry entry need not duplicate it.
+// NewFrictionReflect returns a producer identified as name that calls reflectFriction once per Call.
+// The return type is an interface.
+// Callers outside the package can therefore use the constructor while the implementation stays unexported.
+// Nil reflectFriction is rejected here, so callers need not check for it.
 func NewFrictionReflect(name string, reflectFriction func() string) (shedengine.ShedProducer, error) {
 	if reflectFriction == nil {
 		return nil, fmt.Errorf("loomshed: %s: reflect closure must not be nil", name)
@@ -37,8 +38,8 @@ func NewFrictionReflect(name string, reflectFriction func() string) (shedengine.
 	return &frictionReflect{name: name, reflect: reflectFriction}, nil
 }
 
-// Call implements shedengine.ShedProducer: after consulting entryErr, it calls the reflection
-// closure exactly once, logs the status it returns, and reports Done.
+// Call runs the entry check and returns its error if it fails.
+// Otherwise it calls the reflection closure exactly once, logs the status it returns, and reports Done.
 func (p *frictionReflect) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err

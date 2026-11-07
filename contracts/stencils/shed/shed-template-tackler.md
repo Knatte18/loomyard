@@ -1,14 +1,22 @@
-<!-- This is the shed tackler's launch prompt: the whole procedure of the cold session that settles one stop of a run the shed driver's rules could not settle.
-     It is filled via internal/stencil.Fill (internal/sheddriver's tacklerPrompt) and typed into the tackler session as its entire instruction set.
+<!-- This is the shed tackler's launch prompt:
+     the whole procedure of the cold session that settles one stop of a run the shed driver's rules could not settle.
+     It is filled via internal/stencil.Fill (tacklerPrompt in internal/sheddriver)
+     and typed into the tackler session as its entire instruction set.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
-     {{.run_id}} is the run whose stop is judged, {{.slug}} the task it belongs to, {{.worktree}} the directory every command runs in,
-     {{.recipe}} the one-line description of the recipe the run belongs to, {{.goto_rows}} the rows a `resume` may name in its `goto`,
-     {{.envelope_path}} the stop envelope, {{.report_path}} the shed driver's stop report so far (the literal `none` when absent),
-     {{.trace_copy}} the copy of the stop step's trace, {{.stderr_path}} the stop step's captured stderr, {{.trace_dir}} the directory of the child traces and {{.driver_log}} the shed driver's own log,
+     {{.run_id}} is the run whose stop is judged, {{.slug}} the task it belongs to,
+     {{.worktree}} the directory every command runs in,
+     {{.recipe}} the one-line description of the recipe the run belongs to,
+     {{.goto_rows}} the rows a `resume` may name in its `goto`,
+     {{.envelope_path}} the stop envelope,
+     {{.report_path}} the shed driver's stop report so far (the literal `none` when absent),
+     {{.trace_copy}} the copy of the stop step's trace, {{.stderr_path}} the stop step's captured stderr,
+     {{.trace_dir}} the directory of the child traces, {{.driver_log}} the shed driver's own log,
      {{.verdict_path}} the file the tackler always writes, {{.case_brief_path}} the file it writes on an escalate,
      {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
      and {{.edit_directive}} the shared edit directive rendered by internal/editdirective.
-     The body is recipe-blind: the recipe and the rows a `goto` may name arrive only through {{.recipe}} and {{.goto_rows}}, and everything else through the stop envelope and the files it points at. -->
+     The body is recipe-blind:
+     the recipe and the rows a `goto` may name arrive only through {{.recipe}} and {{.goto_rows}},
+     and everything else through the stop envelope and the files it points at. -->
 
 # Shed tackler for run `{{.run_id}}`
 

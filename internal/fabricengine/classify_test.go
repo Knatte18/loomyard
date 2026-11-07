@@ -1,5 +1,5 @@
-// classify_test.go — Tier-1 (untagged, no git spawn) table test for classifyPaths, the pure
-// warp-vs-weft-vs-never-committed path classifier.
+// classify_test.go is a table test for classifyPaths, a pure function.
+// It sorts paths into the warp, the weft, and the never-committed bucket, and spawns no git process.
 
 package fabricengine
 
@@ -7,11 +7,9 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// TestClassifyPaths covers relPath "."
-// and "sub" scoping, the _lymfoo/.lymfoo segment-boundary cases, empty input, all-warp and all-weft
-// inputs, a routingNames set with more than two entries, and the never-committed bucket — including
-// the case that distinguishes the correct implementation from the dangerous one: a never-committed
-// path must land in neither weft nor warp, not merely "not weft".
+// TestClassifyPaths covers relPath "." and "sub" scoping and the _lymfoo/.lymfoo segment-boundary cases.
+// It also covers empty input, all-warp and all-weft inputs, and a routingNames set with more than two entries;
+// the never-committed bucket must place a path in neither weft nor warp.
 //
 //testtiming:keep classifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths(t *testing.T) {
@@ -169,9 +167,8 @@ func TestClassifyPaths(t *testing.T) {
 	}
 }
 
-// TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated asserts that for a mixed input,
-// every original path appears in exactly one of the three output slices, in input order, with no
-// path lost or duplicated.
+// TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated asserts each input path lands in one output slice.
+// Each path keeps its input order, and no path is lost or duplicated.
 //
 //testtiming:keep every input path landing in exactly one output slice in input order; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
@@ -191,9 +188,8 @@ func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) 
 
 	warp, weft, neverCommitted := classifyPaths(relPath, routingNames, neverCommittedNames, files)
 
-	// Reassemble warp/weft/neverCommitted back into input order and compare against files: this
-	// proves both that nothing was lost or duplicated and that each slice preserves the relative
-	// order of the paths it received.
+	// Reassemble warp, weft and neverCommitted into input order and compare against files.
+	// A match proves nothing was lost or duplicated, and that each slice keeps the relative order of its paths.
 	reconstructed := make([]string, 0, len(files))
 	wi, fi, ni := 0, 0, 0
 	for _, want := range files {
@@ -217,8 +213,8 @@ func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) 
 	}
 }
 
-// stringSlicesEqual reports whether a and b contain the same strings in the
-// same order. A nil slice and an empty slice compare equal.
+// stringSlicesEqual reports whether a and b contain the same strings in the same order.
+// A nil slice and an empty slice compare equal.
 func stringSlicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

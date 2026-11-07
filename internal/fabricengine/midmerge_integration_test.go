@@ -1,4 +1,6 @@
-// midmerge_integration_test.go covers MidMerge against a real hubforge pair, one row per state: clean, fabric-parked with and without remaining conflicts, each foreign shape on each side, and a pair that cannot be opened at all.
+// midmerge_integration_test.go covers MidMerge against a real hubforge pair, one case per state.
+// The states are: a clean pair; a fabric-parked pair, with and without remaining conflicts;
+// each foreign shape on each side; and a pair that cannot be opened at all.
 
 package fabricengine_test
 
@@ -162,7 +164,6 @@ func TestMidMerge_UnopenablePair_Errors(t *testing.T) {
 	}
 }
 
-// assertMergeBlocked checks that the pair at l reports MergeBlocked as want.
 func assertMergeBlocked(t *testing.T, l *lymcwd.Location, want bool) {
 	t.Helper()
 	f, err := fabricengine.Open(l)

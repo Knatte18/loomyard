@@ -1,5 +1,5 @@
-// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus and a fake clock whose Sleep never blocks.
-// A still-running child is provably one Yield per pass, never a poll loop inside a Call, in unmeasurable real time.
+// innerrun_test.go covers the re-entrant disposition table of NewInnerRun, over a fake ReadStatus and a fake clock.
+// The fake Sleep never blocks, so a still-running child yields once per pass, and no real time passes.
 
 package battenshed
 
@@ -19,14 +19,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeClock is the Sleep and Now seam of the passes a test drives: Sleep moves the clock by the interval and never blocks.
-// It also owns the on-disk status file of the fake child and the pause flag of the fake batten status, so a test makes the changes a pass ends on without real time passing.
+// fakeClock is the Sleep and Now seam of the passes a test drives:
+// Sleep moves the clock by the interval and never blocks.
+// It also owns the fake child's on-disk status file and the fake batten status's pause flag.
+// A test changes them at the end of a pass, so no real time has to pass.
 type fakeClock struct {
 	sleepCalls int
 	now        time.Time
 	// t fails a run of passes that never ends.
 	t *testing.T
-	// statusPath is the status file newInnerRunDeps keeps for the fake child, and statusBumps how often bumpStatus moved its modification time.
+	// statusPath is the fake child's status file, which newInnerRunDeps writes, and statusBumps counts the bumpStatus calls.
 	statusPath  string
 	statusBumps int
 	// pauseAtSleep is the number of Sleep calls from which the fake batten status carries pause_requested; zero means never.
@@ -34,7 +36,8 @@ type fakeClock struct {
 	pauseAtSleep int
 	// onSleep runs at every Sleep, between two passes, with the number of Sleep calls so far.
 	onSleep func(call int)
-	// reasonFile, when set, is the stuck-reason file whose content pauseRequested appends to reasons at the end of every pass, so a test reads the wait reason in force at each pass.
+	// reasonFile, when set, is the stuck-reason file that pauseRequested reads at the end of every pass.
+	// It appends the file's content to reasons, so a test reads the wait reason in force at each pass.
 	reasonFile string
 	reasons    []string
 }
@@ -77,7 +80,9 @@ func (f producerFunc) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	return f(ctx)
 }
 
-// freshPerCall returns a producer whose every Call is the one Call of a producer newProducer builds anew, so only the memory record in the scratch directory carries state from one Call to the next, as it does between two runs of `lym batten run`.
+// freshPerCall returns a producer whose every Call builds a new producer with newProducer and calls it once.
+// Only the memory record in the scratch directory carries state from one Call to the next.
+// The same holds between two runs of `lym batten run`.
 func freshPerCall(newProducer func() shedengine.ShedProducer) shedengine.ShedProducer {
 	return producerFunc(func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 		return newProducer().Call(ctx)
@@ -85,8 +90,9 @@ func freshPerCall(newProducer func() shedengine.ShedProducer) shedengine.ShedPro
 }
 
 // passDriver is a producer whose Call runs successive passes of the Run-Shed row, the way `lym batten run` does.
-// Each pass is one Call of a producer newProducer builds fresh over the same scratch directory, so only the memory record carries state from a pass to the next.
-// An interval passes on the clock between two passes.
+// Each pass is one Call of a producer that newProducer builds fresh over the same scratch directory.
+// Only the memory record carries state from a pass to the next.
+// Between two passes the clock advances by interval.
 // Its Call returns the first pass that ends with something other than Yield.
 type passDriver struct {
 	clock       *fakeClock
@@ -109,7 +115,8 @@ func (d *passDriver) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 	}
 }
 
-// watchReason has the clock record the producer's wait reason at the end of every check.
+// watchReason makes the clock record the wait reason at the end of every check.
+// It reads the stuck-reason file in scratchDir.
 func (c *fakeClock) watchReason(scratchDir string) {
 	c.reasonFile = StuckReasonFile(scratchDir, "innerrun")
 }
@@ -123,6 +130,7 @@ func (c *fakeClock) lastReason() string {
 }
 
 // pauseRequested is the fake batten status's pause_requested.
+// When reasonFile is set and readable, it also appends the file's content to reasons.
 func (c *fakeClock) pauseRequested() (bool, error) {
 	if raw, err := os.ReadFile(c.reasonFile); err == nil {
 		c.reasons = append(c.reasons, strings.TrimSuffix(string(raw), "\n"))
@@ -140,10 +148,11 @@ func (c *fakeClock) bumpStatus() {
 	}
 }
 
-// newInnerRunDeps builds an InnerRunDeps whose ReadStatus returns the next entry of statuses on
-// each call, holding on the last entry once exhausted, and whose Spawn returns spawnErr and
-// records how many times it was called.
-// The fake child keeps a real status file, since the wait stats it, and the deps' pause seam ends the wait at its first check unless the clock says otherwise.
+// newInnerRunDeps builds an InnerRunDeps whose ReadStatus returns the next entry of statuses on each call.
+// Once the entries run out, ReadStatus keeps returning the last one.
+// Its Spawn returns spawnErr and counts its calls.
+// The fake child keeps a real status file, since the wait stats it,
+// and the deps' pause seam ends the wait at its first check unless the clock says otherwise.
 func newInnerRunDeps(t *testing.T, spawnErr error, resolveErr error, statuses []statusResult, clock *fakeClock) (*int, *int, InnerRunDeps) {
 	t.Helper()
 	clock.t = t
@@ -167,7 +176,8 @@ func newInnerRunDeps(t *testing.T, spawnErr error, resolveErr error, statuses []
 			return clock.statusPath, "/status/lock/path", nil
 		},
 		PauseRequested: clock.pauseRequested,
-		// The wait does its probe work at entry only, unless a test lowers this; a status decode then happens only after bumpStatus.
+		// The wait does its probe work at entry only, unless a test lowers this;
+		// a status decode then happens only after bumpStatus.
 		NoticeProbe: time.Hour,
 		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 			idx := readCalls
@@ -198,7 +208,8 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	tests := []struct {
 		name     string
 		statuses []statusResult
-		// changeAtCheck is the check at which the test rewrites the child's status file, so the next entry of statuses is read; zero never does.
+		// changeAtCheck is the check at which the test rewrites the child's status file,
+		// so the next entry of statuses is read; zero means never.
 		changeAtCheck int
 		wantDone      bool
 		wantStuck     bool
@@ -208,8 +219,11 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 		wantPath string
 	}{
 		{
-			// A done child whose driver is gone must never itself be Stuck: ProducerDef.OnStuck is a static per-producer value, so it routes every Stuck from this row back to itself with no per-verdict distinction possible.
-			// Every Stuck this row returns is a timed wait; the halted arm's budget-exempt waits are covered in innerrun_halted_test.go.
+			// A done child whose driver is gone must never itself be Stuck.
+			// ProducerDef.OnStuck is one static value per producer,
+			// so it routes every Stuck from this row back to the row itself, with no per-verdict distinction possible.
+			// Every Stuck this row returns is a timed wait.
+			// The halted arm's budget-exempt waits are covered in innerrun_halted_test.go.
 			name:     "AlreadyDone",
 			statuses: []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}},
 			wantDone: true,
@@ -382,7 +396,9 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation asserts the three hard-error paths (the status-path resolve, the pre-spawn read and the post-spawn read) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+// TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation asserts the three hard-error paths.
+// They are the status-path resolve, the pre-spawn read and the post-spawn read.
+// Each reports the cancelled context rather than the raw error when ctx is cancelled by the time the seam call returns.
 func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -463,8 +479,7 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 	}
 }
 
-// NewInnerRun's nil-seam defaults are exercised implicitly by every production caller; this test
-// pins that a nil Now/Sleep resolve to the real stdlib functions rather than panicking.
+// This test pins that a nil Now and a nil Sleep seam resolve to the stdlib functions rather than panicking.
 func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
@@ -487,7 +502,8 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	shedfake.RequireOutcome(t, producer, shedengine.Done)
 }
 
-// TestNewInnerRun_FloorsPollInterval pins that a told poll interval below one second logs one Warn naming poll_interval_s, and that one second passes through unwarned.
+// TestNewInnerRun_FloorsPollInterval pins that a poll interval below one second logs one Warn naming poll_interval_s.
+// One second passes through unwarned.
 func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -513,9 +529,9 @@ func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
 	}
 }
 
-// TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext asserts the production sleep value does
-// not hold an operator's stop for the whole poll interval.
-// It is deadline-based rather than duration-based, so it stays deterministic under -count=5.
+// TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext asserts the production sleep returns at once,
+// so an operator's stop is not held for the whole poll interval.
+// The test bounds the wait with a deadline, so it stays deterministic under -count=5.
 func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
 	tiergate.Require(t, 0)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -534,8 +550,8 @@ func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
 	}
 }
 
-// TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled asserts the wait is a real wait, not a
-// no-op that would satisfy the cancellation test above vacuously.
+// TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled asserts the wait is a real wait,
+// so a no-op wait cannot pass the cancellation test vacuously.
 func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
 	tiergate.Require(t, 0)
 	start := time.Now()
@@ -548,11 +564,11 @@ func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
 // pidMarker renders a spawn-confirmation marker holding pid.
 func pidMarker(pid int) []byte { return []byte(strconv.Itoa(pid) + "\n") }
 
-// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been confirmed by this process,
-// and that a marker from another pid or in the old layout is no confirmation.
+// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn until this process confirms a spawn.
+// A marker from another pid or in the old layout is no confirmation.
 // A child bootstrap seeds a running status before it starts its driver,
-// so a running status alone is no proof the spawn completed: it is spawned (again),
-// and the confirmation is recorded only once Spawn succeeds.
+// so a running status alone does not prove the spawn completed.
+// Such a child is spawned again, and the confirmation is recorded only once Spawn succeeds.
 // A halted or done child is never spawned.
 func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -657,9 +673,9 @@ func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 	}
 }
 
-// TestInnerRun_FailedSpawnIsRetriedOnTheNextCall walks the live failure shape across two Calls: the
-// bootstrap seeds a running status and then fails, and the resumed Call spawns again rather than
-// watching a driverless child as running.
+// TestInnerRun_FailedSpawnIsRetriedOnTheNextCall walks the failure shape across two Calls:
+// the bootstrap seeds a running status and then fails,
+// and the resumed Call spawns again rather than watching a driverless child as running.
 func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
 	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()

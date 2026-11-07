@@ -1,4 +1,5 @@
-// tasklimit_test.go pins the task-limit reader over fixture cgroup files: the tightest level wins, and an unreadable or limitless ancestry reads as not found.
+// tasklimit_test.go pins the task-limit reader over fixture cgroup files.
+// The tightest level wins, and an unreadable or limitless ancestry reads as not found.
 
 package proc
 

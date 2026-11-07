@@ -1,4 +1,4 @@
-// cli.go builds the cobra command for the adopt module and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the cobra command for the adopt module and the RunCLI and RunCLIIn entry points that run it.
 
 package adoptcli
 
@@ -18,7 +18,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adopt [<subject>...]",
 		Short: "take over beam projects, or root, and the runs under them from another machine",
-		// ArbitraryArgs lets a standalone RunCLI, where this command is the cobra root, reach RunE with a subject instead of cobra's own unknown-command error beside the check subcommand.
+		// ArbitraryArgs lets RunCLI pass a subject to RunE, where cobra would reject it as an unknown command.
 		Args:        cobra.ArbitraryArgs,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Records this machine as the owner of each subject named, a beam or the word root, and
@@ -99,7 +99,9 @@ Example:
 }
 
 // adoptFields returns the fields of the adopt envelope for result.
-// The always-present fields are reconcile, mutations, partial, slugs, prime_recorded and runs, an empty array for none; every other field appears only when result holds its value.
+// The always-present fields are reconcile, mutations, partial, slugs, prime_recorded and runs;
+// runs is an empty array when there are none.
+// Every other field appears only when result holds its value.
 func adoptFields(result outcome) map[string]any {
 	runs := result.Runs
 	if runs == nil {
@@ -140,12 +142,15 @@ func adoptFields(result outcome) map[string]any {
 	return fields
 }
 
-// RunCLI is the public seam for the adopt module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the adopt command in-process with args and writes its output to out.
+// It runs from the process working directory and returns the exit code.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the adopt command in-process with args, writes its output to out, and returns the exit code.
+// An empty cwd reads the process working directory;
+// any other value is seeded into the execution context, because seeding an empty one panics.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

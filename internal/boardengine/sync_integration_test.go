@@ -1,6 +1,12 @@
-// sync_integration_test.go covers boardengine.Sync's parity after delegating its absorbing-lock coalescing loop to fabricengine.CoalescePush.
-// A dirty board still commits and pushes, .gitignore ignores the render manifest and loses the retired lock patterns, the absorbing push lock lives in the board checkout's lock directory, no lock file is left beside the board's files, and skipPush still commits locally without advancing the remote.
-// The board+bare-origin fixture is built inline via gitkit.MustRun, mirroring the fixture shape of internal/gitrepo/push_test.go's newBareRemote/newRepoWithRemote, reimplemented locally since those helpers live in a different test package (gitrepo_test) and are not importable across that boundary.
+// sync_integration_test.go covers Sync.
+// Sync pushes through Bolt.Push, whose absorbing-lock coalescing loop lives in fabricengine.
+// A dirty board still commits and pushes.
+// .gitignore ignores the render manifest and loses the retired lock patterns.
+// The absorbing push lock lives in the board checkout's lock directory.
+// No lock file is left beside the board's files.
+// skipPush still commits locally without advancing the remote.
+// The board and bare-origin fixture is built inline with gitkit.MustRun.
+// Test helpers in another package cannot be imported, so the fixture is local.
 
 package boardengine
 
@@ -30,7 +36,7 @@ func newBareRemote(t *testing.T, dir string) string {
 	return bare
 }
 
-// newBoardRepo creates a fresh git repository in state before its very first sync.
+// newBoardRepo creates a fresh board repository whose origin is bareRemote, before any sync has run.
 func newBoardRepo(t *testing.T, dir, name, bareRemote string) string {
 	t.Helper()
 
@@ -74,7 +80,9 @@ type syncFixture struct {
 
 // TestSync_Scenario runs Sync's contract against one board repository and bare remote, in the order below.
 // It calls t.Parallel and no step does: the steps share the one repository, so they run serially.
-// The skip-push step runs first because it asserts the remote is still empty, each later step relies on the repository the earlier steps left behind, and the retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
+// The skip-push step runs first because it asserts the remote is still empty.
+// Each later step relies on the repository the earlier steps left behind.
+// The retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
 func TestSync_Scenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -136,7 +144,7 @@ func stepSyncDirtyBoardCommitsAndPushes(t *testing.T, f *syncFixture) {
 	}
 }
 
-// stepSyncGitignoreIgnoresManifestAndDropsLockPatterns asserts Sync leaves .gitignore ignoring the render manifest alone, with the retired lock patterns removed.
+// stepSyncGitignoreIgnoresManifestAndDropsLockPatterns asserts Sync reduces .gitignore to the render manifest entry.
 func stepSyncGitignoreIgnoresManifestAndDropsLockPatterns(t *testing.T, f *syncFixture) {
 	gitignorePath := filepath.Join(f.boardPath, ".gitignore")
 	writeBoardFile(t, f.boardPath, ".gitignore", "*.lock\n*.swaplock\n"+renderManifestFile+"\n")
@@ -187,7 +195,9 @@ func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixtur
 	}
 }
 
-// stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree with no lock file beside the board's files.
+// stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions asserts Sync commits board.json and the legacy deletions.
+// The step runs RetireLegacy on a synced board that tracked the legacy files.
+// It then checks the tree is clean, with no lock file beside the board's files.
 func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syncFixture) {
 	writeBoardFile(t, f.boardPath, legacyTasksFile, `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[]}]`)
 	writeBoardFile(t, f.boardPath, legacyNotesFile, `[]`)

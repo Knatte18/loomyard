@@ -1,5 +1,6 @@
-// cost_test.go verifies the cost-model batchifier's hard limits, tie rule and optimality against a brute-force search over every contiguous split.
-// Tier-1 (pure logic, no git, no spawn).
+// cost_test.go verifies the cost-model batchifier's hard limits and tie rule.
+// It checks optimality against a brute-force search over every contiguous split.
+// The tests are pure logic, with no git and no spawn.
 
 package batcher_test
 
@@ -15,10 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// costWeights make a one-card edit of a 20-line file at position 1 peak at 10 orientation + 1 fork message + 1 card message + 20 lines = 32.
+// costWeights gives a one-card edit of a 20-line file at position 1 a peak of 32:
+// 10 orientation + 1 fork message + 1 card message + 20 lines.
 var costWeights = batcher.Weights{Orientation: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
 
-// costGrowthWeights are costWeights with a 10-token start growth per batch position.
+// costGrowthWeights sets a 10-token start growth per batch position, Orientation at 10, and every other weight at 1.
 var costGrowthWeights = batcher.Weights{Orientation: 10, BatchGrowth: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
 
 var costSizes = fakeSizes{lines: map[string]int{
@@ -52,7 +54,8 @@ func renameGroup(oldRef, newRef string) planparser.TargetGroup {
 	}
 }
 
-// TestCostBatchifier_Limits asserts the grouping and per-batch peak the cost batchifier returns for each hard limit and the tie rule.
+// TestCostBatchifier_Limits asserts the grouping and per-batch peak the cost batchifier returns.
+// It covers each hard limit and the tie rule.
 func TestCostBatchifier_Limits(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -65,7 +68,8 @@ func TestCostBatchifier_Limits(t *testing.T) {
 		}
 		return cards
 	}
-	// resignCard is a card whose Edit group re-signs target, and named is a later card that lists target as a Target or a Use.
+	// resignCard is a card whose Edit group re-signs target.
+	// namingCard is a card that lists target as a Target when asTarget is set, and as a Use otherwise.
 	resignCard := func(number int, target string) planparser.Card {
 		return groupCard(number, planparser.TargetGroup{
 			Type:    planparser.CardTypeEdit,
@@ -305,7 +309,11 @@ func TestCostBatchifier_Limits(t *testing.T) {
 	}
 }
 
-// TestCostBatchifier_OptimalAndFeasible checks, over a seeded input set, that the split keeps card order, respects every hard limit, reports each batch's PeakContext with a breakdown whose components sum to it, and has the fewest batches of any feasible contiguous split, ties going to the smallest largest peak.
+// TestCostBatchifier_OptimalAndFeasible checks the cost batchifier's split over a seeded input set.
+// It asserts that the split keeps card order and respects every hard limit.
+// It asserts that each batch reports a PeakContext whose breakdown components sum to it.
+// It asserts that the split has the fewest batches of any feasible contiguous split.
+// Ties go to the split with the smallest largest peak.
 func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -386,7 +394,7 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 	}
 }
 
-// peakOf returns the PeakContext of cards at the 1-based position over costSizes.
+// peakOf returns the PeakContext of cards at the 1-based position, with file sizes fixed for the test.
 func peakOf(t *testing.T, plan *planparser.Plan, cards []planparser.Card, w batcher.Weights, position int) float64 {
 	t.Helper()
 	peak, err := batcher.PeakContext(plan, cards, costSizes, w, batcher.StartBase{}, position)
@@ -396,13 +404,14 @@ func peakOf(t *testing.T, plan *planparser.Plan, cards []planparser.Card, w batc
 	return peak
 }
 
-// feasibleSegment applies the multi-card hard limits to cards at the 1-based position.
+// feasibleSegment reports whether cards at the 1-based position fit the multi-card hard limits.
 func feasibleSegment(t *testing.T, plan *planparser.Plan, cards []planparser.Card, params batcher.CostParams, position int) bool {
 	t.Helper()
 	return len(cards) <= params.MaxCards && peakOf(t, plan, cards, params.Weights, position) <= params.Budget
 }
 
-// bruteForceBest enumerates every contiguous split of cards, prices the k-th segment at position k, and returns the fewest batches over the feasible ones, with the smallest largest peak among the splits that reach it.
+// bruteForceBest enumerates every contiguous split of cards and prices the k-th segment at position k.
+// It returns the fewest batches over the feasible splits, and the smallest largest peak among those that reach it.
 func bruteForceBest(t *testing.T, plan *planparser.Plan, cards []planparser.Card, params batcher.CostParams) (int, float64) {
 	t.Helper()
 	bestBatches, bestLargest := math.MaxInt, math.Inf(1)

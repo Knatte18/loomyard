@@ -1,4 +1,5 @@
-// tiersleepforms_test.go pins the long-sleep detection tiersleep_test.go holds against crafted code snippets, one per argument form.
+// tiersleepforms_test.go pins the long-sleep detection of tiersleep_test.go against crafted code snippets.
+// It holds one snippet per argument form.
 
 package main
 

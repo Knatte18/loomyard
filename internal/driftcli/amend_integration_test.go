@@ -1,6 +1,7 @@
 //go:build !windows
 
-// amend_integration_test.go drives the built `lym drift amend` in a hubforge hub pair: what it refuses before it reads the run, from the operator's unnamed shell.
+// amend_integration_test.go drives the built `lym drift amend` in a hubforge hub pair.
+// It covers what the verb refuses before it reads the run, from the operator's unnamed shell.
 
 package driftcli_test
 
@@ -16,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestAmend_RefusesWhatItCannotRead covers a slug that names no worktree and an --entries file that cannot be read, each refused naming what it cannot read.
+// TestAmend_RefusesWhatItCannotRead covers a slug that names no worktree and an --entries file that cannot be read.
+// Each is refused, and the refusal names what it cannot read.
 func TestAmend_RefusesWhatItCannotRead(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -36,7 +38,7 @@ func TestAmend_RefusesWhatItCannotRead(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			// An empty strand name is the operator's own unnamed shell, whatever session runs this test.
+			// The empty strand name runs the call as the operator's unnamed shell, whatever session runs this test.
 			out, _, err := lymbin.RunWithEnv(bin, pair, []string{agentname.StrandNameEnv + "="}, verbWait, append([]string{"drift"}, tt.args...)...)
 			if err != nil {
 				t.Fatalf("lym drift %v: %v", tt.args, err)

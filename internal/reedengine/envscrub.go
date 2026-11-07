@@ -1,20 +1,22 @@
-// envscrub.go implements the module's env-hygiene chokepoint: EnvScrub strips the environment keys the registered engines declare before a tmux server spawns, so that no child inherits a stale session identity from its own launcher.
+// envscrub.go defines EnvScrub, the filter that removes environment keys before a tmux server spawns.
+// It strips the keys the registered engines declare, so no child inherits a stale session identity from its launcher.
 
 package reedengine
 
 import "strings"
 
 // EnvScrub is the set of environment keys a spawned process must not inherit.
-// The zero value strips nothing; reed refuses to build an Engine over it.
+// The zero value strips nothing, and reed refuses to build an engine over it.
 type EnvScrub struct {
-	// Names are exact keys.
+	// Names lists keys stripped only on an exact match.
 	Names []string
-	// Prefixes strip every key that starts with one of them.
+	// Prefixes lists key prefixes; every key starting with one of them is stripped.
 	Prefixes []string
 }
 
-// Apply returns environ without every entry whose key equals a name or starts with a prefix, the key being the part before "=".
-// It also returns the stripped keys in environ order.
+// Apply returns environ without the entries whose key matches a name or starts with a prefix.
+// An entry's key is the part before its first "=".
+// It also returns the stripped keys, in environ order.
 func (s EnvScrub) Apply(environ []string) (clean []string, stripped []string) {
 	clean = []string{}
 	stripped = []string{}

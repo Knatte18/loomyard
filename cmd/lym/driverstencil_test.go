@@ -1,6 +1,6 @@
-// driverstencil_test.go pins the shed driver stencil's recipe-blindness. It replaces the retired step-cap
-// pin: the design's claim is that which recipe runs is a property of the seed alone, so the stencil
-// must name no shipped recipe, no `.lym/` path and no recipe-owned command.
+// driverstencil_test.go pins the shed driver stencil's recipe-blindness.
+// The design holds that which recipe runs is a property of the seed alone,
+// so the stencil must name no shipped recipe, no `.lym/` path and no recipe-owned command.
 
 package main
 
@@ -15,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriverStencil_IsRecipeBlind scans the driver stencil and the two parent-notification stencils filled into it, and fails for every shipped recipe name appearing as a whole word
-// (case-insensitively, so "loomyard" does not match) and for every forbidden literal, naming the
-// offending token and its line number.
+// TestDriverStencil_IsRecipeBlind scans the driver stencil and the parent-notification stencils filled into it.
+// It fails for every shipped recipe name appearing as a whole word, ignoring case.
+// It also fails for every forbidden literal, naming the offending token and its line number.
 func TestDriverStencil_IsRecipeBlind(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -31,7 +31,8 @@ func TestDriverStencil_IsRecipeBlind(t *testing.T) {
 		pattern := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(name) + `\b`)
 		tokens = append(tokens, forbiddenToken{label: "recipe name " + name, matches: pattern.MatchString})
 	}
-	// The stencil carries no phase knowledge: no loom row name appears as a whole word, and a hyphenated neighbour does not match.
+	// The stencil carries no phase knowledge: no loom row name appears as a whole word,
+	// and a hyphenated neighbour does not match.
 	for row := range loomshed.InterruptPolicies {
 		pattern := regexp.MustCompile(`(^|[^A-Za-z-])` + regexp.QuoteMeta(row) + `($|[^A-Za-z-])`)
 		tokens = append(tokens, forbiddenToken{label: "loom row " + row, matches: pattern.MatchString})

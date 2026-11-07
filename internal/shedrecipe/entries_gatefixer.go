@@ -1,5 +1,7 @@
-// entries_gatefixer.go implements the optional "fixer" key of a gate element: splitGateFixer reads and strips it before resolveGateSpec runs, and applyGateFixer hands the row's finished spec to Env.GateFixer.
-// Only the Darn-Write, Plan-Write and Discussion-Write constructors call them.
+// entries_gatefixer.go implements the optional "fixer" key of a gate element.
+// splitGateFixer reads and strips the key before resolveGateSpec runs.
+// applyGateFixer hands the row's finished spec to Env.GateFixer.
+// Only the constructors of rows that accept the key call these two functions.
 
 package shedrecipe
 
@@ -30,11 +32,15 @@ type GateFixerRequest struct {
 	SkipForked func(findings string) bool
 }
 
-// splitGateFixer reads the optional "fixer" key of each element of cfg's "gates" list and returns cfg with that key removed from every element, so resolveGateSpec's unknown-key check still refuses it on a row that does not call splitGateFixer.
+// splitGateFixer reads the optional "fixer" key of each element of cfg's "gates" list.
+// It returns cfg without the key, so a row that does not read the key still refuses it as unknown.
 // The key names a `<module>.<key>` setting, read through env.Setting, that holds a model-spec;
 // an empty value turns the fixer off and yields a nil request, leaving the row as it is without the key.
-// A "gates" key that is absent or malformed is returned unchanged for resolveGateSpec to report.
-// It refuses, naming entry, the element and the way forward, a key that is not a `<module>.<key>` string, a setting env.Setting cannot find or that holds a non-string, a value modelspec.Parse rejects, and the key on two elements of one list.
+// An absent or malformed "gates" key is returned unchanged, for the gate resolution to report.
+// Every refusal names entry, the element and the way forward.
+// It refuses a key that is not a `<module>.<key>` string.
+// It refuses a setting that cannot be read or that holds a non-string.
+// It refuses a value that the model-spec parser rejects, and a key repeated on two elements of one list.
 // env.Setting is required only when an element carries the key.
 func splitGateFixer(entry string, cfg Config, env Env) (Config, *GateFixerRequest, error) {
 	elems, present, err := configMapList(cfg, "gates")

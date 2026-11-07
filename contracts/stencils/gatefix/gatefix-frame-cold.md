@@ -1,11 +1,14 @@
-<!-- This is the shared cold frame every gate fixer's prompt opens with, joined ahead of one caller body stencil by internal/gatefixer's RenderPrompt via internal/stencil.
+<!-- This is the shared cold frame every gate fixer's prompt opens with.
+     internal/gatefixer's RenderPrompt joins it ahead of one caller body stencil via internal/stencil.
      The strand it opens starts cold and inherits nothing, so the frame carries its whole orientation and its final action.
      {{.report_path}} is a required marker: the report the strand reads.
-     {{.reply_path}} is a required marker: the reply file the strand writes as its final action, which is its shuttle output file.
+     {{.reply_path}} is a required marker: the reply file the strand writes as its final action.
+     That file is the strand's shuttle output file.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
-     {{.pattern_directive}} and {{.friction_directive}} are optional (filled via stencil.FillOptional) and render as nothing when their own tier is inactive.
-     parent_directive is a third optional marker, rendered by internal/parentdirective.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     {{.pattern_directive}} and {{.friction_directive}} are optional (filled via stencil.FillOptional)
+     and render as nothing when their own tier is inactive.
+     parent_directive is also optional, rendered by internal/parentdirective.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Cold gate fixer — starting COLD, inheriting nothing
 

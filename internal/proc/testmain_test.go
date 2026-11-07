@@ -1,4 +1,5 @@
-// testmain_test.go runs the package's tests under tmuxkit.Main, so their temp files live in the process run directory and go with it.
+// testmain_test.go runs the package's tests under tmuxkit.Main.
+// Their temp files live in the process run directory and go with it.
 // It is an external test package because tmuxkit imports proc.
 
 package proc_test

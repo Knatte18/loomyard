@@ -1,4 +1,4 @@
-// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops and warnings, the per-entry stops and their two ways forward, the pair add, the holds before the owner write, the owner write, the pause lift, the beam steps and the adopt check start.
+// adopt_test.go drives the takeover sequence over fake deps, from the refusals to the adopt check start.
 
 package adoptcli
 
@@ -50,7 +50,8 @@ type world struct {
 	tries map[string]int
 	// moving is the target anchor of the move record standing in each worktree, "" keying the prime.
 	moving map[string]string
-	// order is the holds appended as holds:<subject>, the pause update as pause, the owner write as owners, the beam steps and the check starts in the order they came, the latter as suite:<subject>; suite is what the check start answers for any subject and suiteErr what it fails with, by subject.
+	// order records the steps in the order they ran: holds:<subject>, pause, owners, beam steps, and suite:<subject>.
+	// suite is the check start's answer for any subject, and suiteErr is the error it fails with, by subject.
 	order    []string
 	suite    suiteStart
 	suiteErr map[string]error
@@ -60,23 +61,29 @@ type world struct {
 	// held names the beams whose pawl run holds the landing hold, and heldErr the beams whose hold reads fail.
 	held    map[string]bool
 	heldErr map[string]error
-	// checkStates are the states the fake check read answers by subject, none for a subject not listed, and escalation the slugs whose escalation the arbiter admits.
+	// checkStates are the states the fake check read answers by subject, none for a subject not listed.
+	// escalation marks the slugs the arbiter admits to escalation.
 	checkStates map[string]string
 	escalation  map[string]bool
 	// runErrAfterOwners makes the batten run record read fail once the owner write ran.
 	runErrAfterOwners error
-	// afterReconcile, when set, runs on the owners right after the reconcile, as another machine's write that the reconcile brought does.
+	// afterReconcile, when set, runs on the owners right after the reconcile.
+	// It stands in for a write from another machine that the reconcile brought in.
 	afterReconcile func(*boardengine.Owners)
 	// race, when set, runs on the owners right after the owner write lands, as another machine's write does.
 	race func(*boardengine.Owners)
-	// deploy is what the deploy-state read answers and deployStateErr what it fails with; deployErr is what the deploy fails with, and deployed the commands it ran, each also appended to order as deploy.
+	// deploy is what the deploy-state read answers, and deployStateErr is what it fails with.
+	// deployErr is what the deploy fails with.
+	// deployed holds the commands it ran, each also appended to order as deploy.
 	deploy         deployState
 	deployStateErr error
 	deployErr      error
 	deployed       []string
 }
 
-// newWorld returns a hub this machine owns the prime of, with two beam projects owned by another machine, each with a pair and a running pawl run, an idle task, a done task and a note.
+// newWorld returns a hub this machine owns the prime of.
+// It holds two beam projects owned by another machine, each with a pair and a running pawl run.
+// It also holds an idle task, a done task and a note.
 func newWorld() *world {
 	running := shedengine.Status{State: shedengine.StateRunning}
 	return &world{
@@ -114,7 +121,8 @@ func (w *world) stopBranch(slug string, state fabricengine.BranchState) {
 	w.report.Branches = append(w.report.Branches, fabricengine.BranchOutcome{Branch: "code-" + slug, Repo: "code", Slug: slug, State: state})
 }
 
-// cloneOwners returns owners with its own entry map, so a hook that rewrites the board between two reads leaves the copy an earlier read returned as it was.
+// cloneOwners returns owners with its own entry map,
+// so a hook that rewrites the board between two reads leaves the copy an earlier read returned as it was.
 func cloneOwners(owners boardengine.Owners) boardengine.Owners {
 	return boardengine.Owners{Prime: owners.Prime, Entries: maps.Clone(owners.Entries)}
 }
@@ -286,7 +294,8 @@ func TestAdopt(t *testing.T) {
 
 	running := shedengine.Status{State: shedengine.StateRunning}
 
-	// withBeam adds a beam project owned by another machine and a task of it with a running batten run, both read as owned elsewhere by the reconcile.
+	// withBeam adds a beam project owned by another machine and a task of it with a running batten run.
+	// The reconcile reads both as owned elsewhere.
 	withBeam := func(w *world) {
 		w.owners.Entries["payments"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
 		w.owners.Entries["t1"] = boardengine.OwnerEntry{IsTask: true, RunHeld: true}

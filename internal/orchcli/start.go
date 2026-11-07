@@ -1,4 +1,5 @@
-// start.go implements the orch's bring-up, `BeamUp`: the idempotent bootstrap that starts the worktree's dobby, ensures the runs strand, leaves one live orchestrator strand and one watcher bound to it, then reports.
+// start.go implements the orch's bring-up, `BeamUp`, which is idempotent.
+// It starts the worktree's dobby and runs strand, and leaves a live orchestrator strand with one watcher bound to it.
 // It never attaches or switches a tmux client;
 // `lym reed attach` is the only way into the session.
 
@@ -48,8 +49,8 @@ const stoppingWatcherHint = `the watcher is stopping; run "lym beam start" again
 
 // BeamUpOptions tunes one BeamUp.
 type BeamUpOptions struct {
-	// Prepare runs the hub-scope origin reconcile, the failed-push read, the prime claim and the owner pauses before the beam steps.
-	// A caller that already judged origin leaves it false.
+	// Prepare runs, before the beam steps, the hub-scope origin reconcile, the failed-push read, and the prime claim.
+	// It also runs the owner pauses; a caller that already judged origin leaves it false.
 	Prepare bool
 	// Here names this machine for the owner refusal; empty reads machinename.Name.
 	Here string
@@ -59,7 +60,7 @@ type BeamUpOptions struct {
 type BeamUpReport struct {
 	// Worktree is the name of the worktree brought up.
 	Worktree string `json:"worktree"`
-	// Dobby is the outcome of the worktree's dobby start, empty when none was attempted, and DobbyDetail says why it was refused or failed.
+	// Dobby is the outcome of the dobby start, empty when none was attempted; DobbyDetail says why it was refused or failed.
 	Dobby       string `json:"dobby,omitempty"`
 	DobbyDetail string `json:"dobby_detail,omitempty"`
 	// Action is what the bring-up of `lym beam start` did to the strand: relaunched, spawned-watcher or already-running.
@@ -97,13 +98,16 @@ func BeamUp(location *lymcwd.Location, opts BeamUpOptions) (BeamUpReport, error)
 	return c.beamUp(opts)
 }
 
-// ErrBeamUpUnderTest is returned by BeamUpWorktree in a test binary, where bringing a worktree up would start a real dobby, tmux session and agent.
+// ErrBeamUpUnderTest reports that a test binary refused to bring a worktree up.
+// Bringing one up would start a real dobby, tmux session and agent.
 var ErrBeamUpUnderTest = errors.New("orch: no worktree brought up under test")
 
-// BeamUpWorktree brings up the worktree named worktree of the hub whose prime is prime, the prime's own name naming the prime, as `lym beam start` does without its reconcile:
-// its dobby, its runs strand and its orch with the watcher bound to it.
-// It is the one way a verb that needs a worktree's dobby live starts it, so a dobby never comes up without its orch.
-// BeamUp's refusal or failure is returned, and so is a dobby that was refused or failed to start, carrying its detail.
+// BeamUpWorktree brings up the worktree named worktree in the hub of prime.
+// When worktree is the prime's name, the prime itself is brought up.
+// It brings up the worktree's dobby, its runs strand and its orch with the watcher bound to it, without a reconcile.
+// It is the one way a verb that needs a live dobby starts it, so a dobby never comes up without its orch.
+// A refusal or failure of the bring-up is returned.
+// So is a dobby that was refused or failed to start, carrying its detail.
 // It returns ErrBeamUpUnderTest, starting nothing, in a test binary.
 func BeamUpWorktree(prime *lymcwd.Location, worktree string) error {
 	if testing.Testing() {
@@ -120,7 +124,9 @@ func BeamUpWorktree(prime *lymcwd.Location, worktree string) error {
 	return dobbyStartError(worktree, report)
 }
 
-// bringUpLocation returns the location to bring up for the worktree named worktree: prime itself when worktree is the prime's name, else the location resolve gives for the worktree's directory in the prime's hub.
+// bringUpLocation returns the location to bring up for the worktree named worktree.
+// It is prime when worktree is the prime's name;
+// otherwise it is the location resolve gives for the worktree's directory in the prime's hub.
 func bringUpLocation(prime *lymcwd.Location, worktree string, resolve func(worktreeRoot string) (*lymcwd.Location, error)) (*lymcwd.Location, error) {
 	if worktree == prime.WorktreeName {
 		return prime, nil
@@ -132,7 +138,8 @@ func bringUpLocation(prime *lymcwd.Location, worktree string, resolve func(workt
 	return resolved, nil
 }
 
-// dobbyStartError returns an error naming worktree and the detail of report's dobby outcome when the dobby was neither started nor found live, and nil otherwise.
+// dobbyStartError returns nil when the dobby was started or found live.
+// Otherwise it returns an error naming worktree and the detail of report's dobby outcome.
 // A start that never reported an outcome carries the report's warnings as its detail.
 func dobbyStartError(worktree string, report BeamUpReport) error {
 	switch report.Dobby {
@@ -150,7 +157,7 @@ func dobbyStartError(worktree string, report BeamUpReport) error {
 type startedSession struct {
 	// GUID is the run's strand guid.
 	GUID string
-	// SessionID is the provider session id the launch used: minted for a fresh launch, the resumed id for a resume; empty when the engine names none.
+	// SessionID is the session the launch used: minted when fresh, else the resumed one; empty when the engine names none.
 	SessionID string
 	// Warning is the resume check's warning, empty when there is none.
 	Warning string
@@ -175,8 +182,10 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSess
 	return startedSession{GUID: run.StrandGUID(), SessionID: run.SessionID(), Warning: run.ResumeWarning()}, nil
 }
 
-// orchSpec builds the orchestrator run's spec: interactive, awaiting the operator, focused, with a never-written sentinel as its one output file so the run never finishes on one.
-// It carries the configured permission mode verbatim and authorizes forks, so the hosted hub can spawn forks beside typed subagents.
+// orchSpec builds the orchestrator run's spec as an interactive, focused run that awaits the operator.
+// Its one output file is a sentinel that is never written, so the run never finishes on its own.
+// It carries the configured permission mode verbatim and authorizes forks,
+// so the hosted hub can spawn forks beside typed subagents.
 func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{
@@ -222,7 +231,8 @@ const withdrawWayForward = "way forward: repair what the error names, such as a 
 	"when creel refused the ORCHWATCH program claim from a non-orch strand's pane, run `lym beam start` from the orch's pane or from a terminal outside every strand pane; " +
 	"when the error names a strand whose pane process is unknown, restart or remove that strand; then run `lym beam start` again"
 
-// orchStrandFullName returns the full name creel addresses the orch strand by: the listed strand's name, else the fixed `<shortname>:orch`.
+// orchStrandFullName returns the full name creel addresses the orch strand by.
+// It is the listed strand's name, or else `<shortname>:orch` built from shortname.
 func orchStrandFullName(listed reedengine.StrandStatus, hasStrand bool, shortname string) string {
 	if hasStrand {
 		return listed.Name
@@ -231,7 +241,8 @@ func orchStrandFullName(listed reedengine.StrandStatus, hasStrand bool, shortnam
 }
 
 // orchReceiver returns the name of the orch strand creel is addressed by.
-// A listed strand needs no shortname record; an unlisted one fails when the hub records none, since creel cannot serve such a hub either.
+// A listed strand needs no shortname record.
+// An unlisted one fails when the hub records none, because creel cannot serve such a hub either.
 func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (string, error) {
 	if hasStrand {
 		return orchStrandFullName(listed, true, ""), nil
@@ -243,9 +254,10 @@ func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (
 	return orchStrandFullName(listed, false, shortname), nil
 }
 
-// withdrawFirst runs the round before a fresh launch: it withdraws the old cycle's queued steps on the orch strand's name and, when listed, releases the hold.
-// A failed withdraw is the error, which makes the start launch nothing.
-// A failed release is answered as text for State.FreshLaunchFailure and is no error.
+// withdrawFirst runs the round before a fresh launch.
+// It withdraws the old cycle's queued steps on the orch strand's name and, when listed, releases the hold.
+// A failed withdraw is returned as the error, so the start launches nothing.
+// A failed release is returned as text for State.FreshLaunchFailure, not as an error.
 // A withdrawn resume line clears the noticed mark of the orch session the state still records.
 func (c *orchCLI) withdrawFirst(creel orchengine.Creel, name string, listed bool) (string, error) {
 	withdrawn, err := creel.Withdraw(name)
@@ -262,8 +274,9 @@ func (c *orchCLI) withdrawFirst(creel orchengine.Creel, name string, listed bool
 	return "", nil
 }
 
-// withdrawSecond runs the round after a fresh launch's reset state is saved: a withdraw and a release on the orch strand's name, catching a step an old watcher queued in between.
-// It answers the text of each failure, empty when both succeeded.
+// withdrawSecond runs the round after a fresh launch's reset state is saved.
+// It withdraws and releases the orch strand's name, catching a step an old watcher queued in between.
+// It returns the failures as one text, empty when both steps succeeded.
 func (c *orchCLI) withdrawSecond(creel orchengine.Creel, name string) string {
 	var failures []string
 	withdrawn, err := creel.Withdraw(name)
@@ -278,8 +291,8 @@ func (c *orchCLI) withdrawSecond(creel orchengine.Creel, name string) string {
 	return strings.Join(failures, "; ")
 }
 
-// clearResumeNoticed hands a withdrawn resume line to orchengine.ClearResumeNoticed with the orch GUID the persisted state records.
-// A failure is logged and no error: the worst outcome is a resume line that is not posted again.
+// clearResumeNoticed clears the noticed mark of withdrawn resume lines, for the persisted state's strand.
+// A failure is logged, not returned: the worst outcome is a resume line that is not posted again.
 func (c *orchCLI) clearResumeNoticed(withdrawn []orchengine.CreelWithdrawn) {
 	if len(withdrawn) == 0 {
 		return
@@ -307,7 +320,8 @@ func joinFailures(texts ...string) string {
 	return strings.Join(kept, "; ")
 }
 
-// saveFreshLaunch saves next, the state reset onto a fresh launch, with the first round's failure, runs the second round and saves its failure on top.
+// saveFreshLaunch saves next, the state reset onto a fresh launch, with the first round's failure.
+// It then runs the second round and saves its failure on top.
 func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, creel orchengine.Creel, name string) error {
 	next.FreshLaunchFailure = firstFailure
 	if err := orchengine.SaveState(c.paths, next); err != nil {
@@ -321,7 +335,9 @@ func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, cr
 	return orchengine.SaveState(c.paths, next)
 }
 
-// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to, whichever bring-up of `lym beam start` runs it, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
+// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to.
+// Any bring-up of `lym beam start` runs it.
+// It passes the seams pairteardown builds for the hub, and zero ReconcileScope and ReconcileOptions.
 func reconcileHub(location *lymcwd.Location) (fabricengine.OriginReport, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
@@ -334,8 +350,11 @@ func reconcileHub(location *lymcwd.Location) (fabricengine.OriginReport, error) 
 	return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
-// ensureDobbies starts the dobby of the worktree at location, the prime's or a beam's, when it is not live already, and returns that worktree's outcome.
-// A dobby another machine owns, a standing anchor change and a held landing are refused by the engine and reported in the outcome.
+// ensureDobbies starts the dobby of the worktree at location when it is not live already.
+// location may be the prime's worktree or a beam's.
+// It returns that worktree's outcome.
+// The engine refuses a dobby another machine owns, a standing anchor change and a held landing.
+// It reports each refusal in the outcome.
 func ensureDobbies(location *lymcwd.Location) (dobbyengine.StartEntry, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
@@ -348,7 +367,8 @@ func ensureDobbies(location *lymcwd.Location) (dobbyengine.StartEntry, error) {
 	return report.Entries[len(report.Entries)-1], err
 }
 
-// claimPrimeNotes claims the hub's prime for this machine and returns the warning lines that report a claim, a claim another machine won or a failure.
+// claimPrimeNotes claims the hub's prime for this machine.
+// It returns the warning lines that report the outcome: a claim, a loss to another machine, or a failure.
 // It returns nothing when the board already records a prime owner or no claim is wired.
 func (c *orchCLI) claimPrimeNotes() []string {
 	if c.claimPrime == nil {
@@ -366,7 +386,8 @@ func (c *orchCLI) claimPrimeNotes() []string {
 	return nil
 }
 
-// pauseOwnedRuns pauses the pair of each owned_elsewhere entry of report and returns the paused slugs with their owners, and a warning line per entry that could not be paused.
+// pauseOwnedRuns pauses the pair of each owned_elsewhere entry of report.
+// It returns the paused slugs with their owners, and a warning line per entry that could not be paused.
 // An unwired pause names every such entry in a warning, since nothing holds it.
 func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string]string, []string) {
 	paused := []map[string]string{}
@@ -388,8 +409,9 @@ func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string
 	return paused, warnings
 }
 
-// reconcileNote renders the line a fresh launch's prompt gains: the report's summary and the outstanding failed pushes with their branches.
-// It is empty when the reconcile moved, stopped and ended nothing and no push is outstanding.
+// reconcileNote renders the note a fresh launch's prompt gains.
+// It holds the report's summary and the outstanding failed pushes with their branches.
+// It is empty when the reconcile moved, stopped and ended nothing, and no push is outstanding.
 func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]any) string {
 	var parts []string
 	if summary := report.Summary(); summary != "" {
@@ -405,7 +427,7 @@ func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]a
 	return strings.Join(parts, "\n")
 }
 
-// prepare runs the steps Prepare asks for and records them on report: the origin reconcile, the failed-push read, the prime claim and the owner pauses.
+// prepare records on report the origin reconcile, the failed-push read, the prime claim and the owner pauses.
 // The reconcile never refuses the start: the orch is the session that resolves what it reports.
 // It returns the note a fresh launch's prompt gains.
 func (c *orchCLI) prepare(report *BeamUpReport) string {
@@ -435,7 +457,7 @@ func (c *orchCLI) prepare(report *BeamUpReport) string {
 	return reconcileNote(reconciled, failedPushes)
 }
 
-// beamUp is BeamUp over a wired receiver.
+// beamUp brings the beam up over a wired receiver.
 // It holds start.lock throughout, so a stop or a status restart never races it.
 // A failure after the reconcile reports whatever the reconcile changed as partial.
 func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
@@ -519,7 +541,8 @@ func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
 }
 
 // startRelayStep starts the hub's Slack relay when it is down, and records on report only a failure.
-// A relay that was started, was live or has no Slack setup to start from adds nothing; one that did not start only warns, naming `lym slack start`, since the relay is no part of the orch.
+// A relay that was started, was live or has no Slack setup to start from adds nothing;
+// one that did not start only warns, naming `lym slack start`, since the relay is no part of the orch.
 func (c *orchCLI) startRelayStep(report *BeamUpReport) {
 	if c.startRelay == nil {
 		return
@@ -529,7 +552,9 @@ func (c *orchCLI) startRelayStep(report *BeamUpReport) {
 	}
 }
 
-// relayStarter returns the relay start of the worktree at location, which ensures the hub's relay with the worktree as its prime, and nil for a beam, whose bring-up never starts the hub's relay.
+// relayStarter returns the relay start of the worktree at location, or nil for a beam.
+// The start ensures the hub's relay with the worktree as its prime.
+// A beam's bring-up never starts the hub's relay, so it gets no start.
 func relayStarter(location *lymcwd.Location, beam bool) func() (slackengine.StartOutcome, error) {
 	if beam {
 		return nil
@@ -543,8 +568,10 @@ func relayStarter(location *lymcwd.Location, beam bool) func() (slackengine.Star
 	}
 }
 
-// startOrch leaves one live orchestrator strand and one watcher bound to it, and reports the orch's part of the bring-up.
-// A live strand with a live watcher is left alone, a live strand with a dead watcher gets a watcher, and a missing or dead strand is relaunched under a withdraw round on each side.
+// startOrch leaves one live orchestrator strand and one watcher bound to it.
+// It reports the orch's part of the bring-up.
+// A live strand with a live watcher is left alone, a live strand with a dead watcher gets a watcher,
+// and a missing or dead strand is relaunched under a withdraw round on each side.
 // note joins the prompt of a fresh launch.
 func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 	var report BeamUpReport
@@ -645,7 +672,8 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 }
 
 // launchOrch starts the orch session: the session st records, resumed with the reload pointer, else a fresh launch.
-// A resume that fails to start, its transcript gone or its process not coming up live, falls back to a fresh launch and names the session it gave up as abandoned.
+// A resume that fails to start, its transcript gone or its process not coming up live, falls back to a fresh launch.
+// The session it gave up is named as abandoned.
 // A fresh launch takes the last completed handoff, else the start stencil, and note joins its prompt.
 func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedSession, source, abandoned string, err error) {
 	if st.SessionID != "" {
@@ -674,7 +702,8 @@ func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedS
 	return started, source, abandoned, err
 }
 
-// adoptListedStrand binds the persisted state to the live listed orch strand, reaching creel only when the state names another run.
+// adoptListedStrand binds the persisted state to the live listed orch strand.
+// It reaches creel only when the state names another run.
 func (c *orchCLI) adoptListedStrand(st orchengine.State, strand reedengine.StrandStatus) error {
 	if st.Strand == strand.GUID {
 		return nil
@@ -686,8 +715,10 @@ func (c *orchCLI) adoptListedStrand(st orchengine.State, strand reedengine.Stran
 	return c.adoptStrand(st, strand.GUID, creel, strand.Name)
 }
 
-// adoptStrand resets the persisted state onto guid when it belongs to another run than the recorded one, with the two withdraw rounds around the reset on the orch strand's name.
-// The reset clears the recorded session id, since it named the other run's session; the watcher's first reading of guid's run fills it.
+// adoptStrand resets the persisted state onto guid when it belongs to another run than the recorded one.
+// The two withdraw rounds around the reset run on the orch strand's name.
+// The reset clears the recorded session id, since it named the other run's session;
+// the watcher's first reading of guid's run fills it.
 func (c *orchCLI) adoptStrand(st orchengine.State, guid string, creel orchengine.Creel, name string) error {
 	if st.Strand == guid {
 		return nil

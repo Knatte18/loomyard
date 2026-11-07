@@ -1,6 +1,6 @@
-// arbiter.go implements the body of `lym loom arbiter`.
-// At a stop the run's driver cannot settle, it hands the stop to the shed-layer arbiter call and prints the validated verdict.
-// The verb works over injected seams, so every branch is testable with a fake shuttle and clock; the wiring that adapts the real ones sits beside it.
+// arbiter.go implements the body of `lym loom arbiter`, which settles a stop the run's driver cannot.
+// It hands the stop to the shed-layer arbiter call and prints the validated verdict.
+// Its seams are injected, so every branch is testable with a fake shuttle and clock; arbiterDepsFor wires the real ones.
 
 package loomcli
 
@@ -24,8 +24,11 @@ import (
 )
 
 // arbiterVerb runs `lym loom arbiter` over deps and prints its envelope to out, returning the exit code.
-// It spawns at most Settings.MaxSpawns agents per run, counted from the attempt records on disk so no restart resets the count, and moves no run itself.
-// A re-run for the stop an attempt already arbitrated spawns nothing: it returns that attempt's verdict, or waits on its live arbiter.
+// It spawns at most `Settings.MaxSpawns` agents per run.
+// The count comes from the attempt records on disk, so no restart resets it.
+// It moves no run itself.
+// A re-run for the stop an attempt already arbitrated spawns nothing:
+// it returns that attempt's verdict, or waits on its live arbiter.
 func arbiterVerb(out io.Writer, deps shedarbiter.Deps, in shedarbiter.Input) int {
 	call, err := shedarbiter.NewCall(deps, in)
 	if err != nil {
@@ -61,7 +64,6 @@ func arbiterEnvelopeFields(e loomengine.ArbiterEnvelope) map[string]any {
 	return fields
 }
 
-// arbiterCmd builds the `arbiter` subcommand.
 func (c *loomCLI) arbiterCmd() *cobra.Command {
 	var envelopePath, reportPath string
 	cmd := &cobra.Command{
@@ -101,8 +103,8 @@ Example:
 	return cmd
 }
 
-// arbiterDepsFor assembles the verb's seams for the run the pre-run armed.
-// The arbiter's settings are shed.yaml's and its layers', for every recipe.
+// arbiterDepsFor assembles the verb's seams for the run that `resolvePersistentPreRun` armed.
+// The arbiter's settings come from shed.yaml and its layers, and they apply to every recipe.
 // Every closure reads on demand and opens nothing at build time.
 func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 	dirs := fabricengine.ConfigDirs(c.location)
@@ -162,8 +164,9 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 	}, nil
 }
 
-// arbiterAmendmentTarget returns recipeTarget when it is non-empty and approved answers true, and the literal "none" otherwise.
-// An approved error answers "none", since a target the arbiter cannot rely on is no target.
+// arbiterAmendmentTarget returns recipeTarget when it is non-empty and approved reports true.
+// Otherwise it returns the literal "none".
+// An error from approved also yields "none", since a target the arbiter cannot rely on is no target.
 func arbiterAmendmentTarget(recipeTarget string, approved func() (bool, error)) string {
 	if recipeTarget == "" {
 		return arbiterAbsentPath

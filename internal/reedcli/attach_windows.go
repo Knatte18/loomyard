@@ -1,6 +1,7 @@
 //go:build windows
 
-// attach_windows.go hands the operator's terminal to tmux as a child process, since Windows has no exec that replaces a process.
+// attach_windows.go hands the operator's terminal to tmux as a child process.
+// Windows has no exec that replaces a process, which is why tmux runs as a child.
 
 package reedcli
 

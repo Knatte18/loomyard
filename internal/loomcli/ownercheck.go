@@ -1,4 +1,5 @@
-// ownercheck.go judges who owns a run before `lym loom start` or `lym loom resume` drives it, and refuses a run another machine owns.
+// ownercheck.go judges who owns a run before `lym loom start` or `lym loom resume` drives it.
+// It refuses a run that another machine owns.
 
 package loomcli
 
@@ -40,7 +41,8 @@ func primeOfHub(l *lymcwd.Location) (*lymcwd.Location, error) {
 }
 
 // runOwnerVerdict judges whether another machine owns the run of slug.
-// It runs a judge-only run-scope origin reconcile from the hub's prime, with machine as this machine's name, and reads the run's owned_elsewhere entry.
+// It runs a judge-only origin reconcile of the run from the hub's prime, with machine as this machine's name.
+// It then reads the run's owned_elsewhere entry.
 // With origin unreachable it reads the local board's effective owner instead.
 // It writes no owner.
 // A reconcile or read error is returned.
@@ -91,9 +93,12 @@ func localOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, 
 	return ownerVerdict{Owner: owner, AdoptSubject: subject, Elsewhere: boardengine.OwnedElsewhere(owner, here)}, nil
 }
 
-// refuseOwnedElsewhere writes the refusal envelope and returns true when the run is owned by another machine or its owner cannot be judged, and returns false when the run may go on.
-// It judges only a run whose status file exists, since a spawn with no status file is the fresh bootstrap under a start batten already judged.
-// An owner elsewhere is the kind shedrun.StartOwnedElsewhereKind with the owner's name; a verdict error names its cause and retry, the re-run.
+// refuseOwnedElsewhere writes the refusal envelope when another machine owns the run or its owner cannot be judged.
+// It returns true when it wrote a refusal, and false when the run may go on.
+// It judges only a run whose status file exists.
+// A spawn with no status file is the fresh bootstrap that a start batten already judged.
+// An owner elsewhere is the kind shedrun.StartOwnedElsewhereKind with the owner's name.
+// A verdict error names its cause and the retry the caller passes.
 // A receiver with no ownerOf reads as owned here.
 func (c *loomCLI) refuseOwnedElsewhere(ctx context.Context, out io.Writer, retry string) bool {
 	if c.ownerOf == nil {

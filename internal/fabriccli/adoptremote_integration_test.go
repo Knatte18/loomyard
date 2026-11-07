@@ -1,4 +1,5 @@
-// adoptremote_integration_test.go drives the fabric CLI verbs that take a pair's weft branch from origin when it exists only there, and `add`'s adoption of a live pair's branches, against one real hub as an ordered scenario.
+// adoptremote_integration_test.go drives the fabric verbs that adopt an origin-only weft branch.
+// It also drives `add`'s adoption of a live pair's branches, as an ordered scenario over one real hub.
 // Origin-only branches are pushed into the hub's bare from a scratch clone,
 // and an unreachable origin is simulated by pointing the weft repo's origin URL at a missing path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
@@ -25,7 +26,8 @@ import (
 // so a test can tell the branch adopted from origin from one forked locally.
 const originMarkerFile = "origin-marker.txt"
 
-// pushOriginOnlyWeftBranch pushes weftBranch to the hub's weft bare from a scratch clone, carrying originMarkerFile, and returns its tip.
+// pushOriginOnlyWeftBranch pushes weftBranch to the hub's weft bare from a scratch clone and returns its tip.
+// The pushed commit carries originMarkerFile.
 // With archiveTag set, it also pushes an archive/<slug>/<tip> tag covering that tip.
 func pushOriginOnlyWeftBranch(t *testing.T, h *hubforge.Hub, slug, weftBranch string, archiveTag bool) string {
 	t.Helper()
@@ -43,7 +45,8 @@ func pushOriginOnlyWeftBranch(t *testing.T, h *hubforge.Hub, slug, weftBranch st
 	return tip
 }
 
-// addPairWithLocalWarpBranch adds a pair for slug and creates the local warp branch branch, whose weft counterpart the caller controls.
+// addPairWithLocalWarpBranch adds a pair for slug and creates the local warp branch branch.
+// The caller controls the weft counterpart.
 func addPairWithLocalWarpBranch(t *testing.T, h *hubforge.Hub, slug, branch string) {
 	t.Helper()
 
@@ -103,7 +106,8 @@ func reconcilePair(t *testing.T, h *hubforge.Hub, slug string) (int, map[string]
 	return code, nil
 }
 
-// requireAdoptedFromOrigin asserts slug's pair is wired to a weft worktree whose branch tracks origin and which carries its lock directory.
+// requireAdoptedFromOrigin asserts slug's pair is wired to a weft worktree whose branch tracks origin,
+// and that worktree carries its lock directory.
 func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
@@ -145,7 +149,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"CheckoutAdoptsOriginOnlyWeftBranch", func(t *testing.T) {
-			// A weft branch present only on origin is adopted as a local branch tracking it, with or without an archive tag covering its tip.
+			// A weft branch present only on origin is adopted as a local branch tracking it.
+			// This holds with or without an archive tag covering its tip.
 			for _, tc := range []struct {
 				slug, branch string
 				archiveTag   bool
@@ -177,7 +182,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"CheckoutRefusesUnreachableOrigin", func(t *testing.T) {
-			// With origin unreachable and no local weft branch, checkout stops naming origin instead of forking, leaving both sides where they were.
+			// With origin unreachable and no local weft branch, checkout stops naming origin instead of forking.
+			// Both sides stay where they were.
 			const slug, branch = "co-unreachable", "co-unreachable-b"
 			addPairWithLocalWarpBranch(t, h, slug, branch)
 
@@ -198,7 +204,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileAdoptsOriginWeftForRawWarp", func(t *testing.T) {
-			// A raw warp worktree whose weft branch exists only on origin ends wired as weft_recreated, with or without an archive tag covering the origin tip.
+			// A raw warp worktree whose weft branch exists only on origin ends wired as weft_recreated.
+			// This holds with or without an archive tag covering the origin tip.
 			for _, tc := range []struct {
 				slug       string
 				archiveTag bool
@@ -220,7 +227,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileAdoptsOriginWeftForManagedPair", func(t *testing.T) {
-			// A managed pair whose weft worktree and local weft branch are gone adopts the branch origin keeps and has its wiring repaired.
+			// A managed pair whose weft worktree and local weft branch are gone adopts the branch origin keeps.
+			// Its wiring is repaired.
 			const slug = "rc-managed"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 				t.Fatalf("add %s exit = %d; output: %s", slug, code, output)
@@ -252,7 +260,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileRefusesUnreachableOrigin", func(t *testing.T) {
-			// With origin unreachable and no local weft branch, reconcile reports the pair's error naming origin instead of forking a dormant weft.
+			// With origin unreachable and no local weft branch, reconcile reports the pair's error naming origin.
+			// It does not fork a dormant weft.
 			const slug = "rc-unreachable"
 			addRawWarpWorktree(t, h, slug, true)
 
@@ -351,7 +360,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"CheckoutForksWithoutOriginRemote", func(t *testing.T) {
-			// A weft repo with no origin remote skips the origin step and forks the branch as before.
+			// A weft repo with no origin remote skips the origin step and forks the branch.
 			const slug, branch = "co-noorigin", "co-noorigin-b"
 			addPairWithLocalWarpBranch(t, h, slug, branch)
 
@@ -380,7 +389,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			gitkit.MustRun(t, weftRepo, "git", "remote", "remove", "origin")
 			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.RecordsBare)
 
-			// The board shares the weft repo's remotes, so its pushes fail without an origin and the verb exits non-zero while still reporting the pair.
+			// The board shares the weft repo's remotes,
+			// so its pushes fail without an origin and the verb exits non-zero while still reporting the pair.
 			code, pair := reconcilePair(t, h, slug)
 			if code == 0 {
 				t.Errorf("reconcile without an origin remote exit = 0; want non-zero, since the board's push fails")

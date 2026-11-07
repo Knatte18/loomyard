@@ -1,4 +1,6 @@
-// adopt.go is the takeover sequence of "lym adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits and adds the missing pair, holds the runs and released tasks it takes over, deploys when root comes here under a lym older than the prime's head, records this machine as owner of the projects, runs the beam steps of each adopted beam and starts one adopt check per subject; a subject's green check lifts its holds and starts its runs.
+// adopt.go is the takeover sequence of `lym adopt`.
+// It reconciles the hub against origin, then takes over each adopted beam project and root.
+// Each subject's adopt check, started last, lifts its holds and starts its runs once it comes back green.
 
 package adoptcli
 
@@ -24,20 +26,23 @@ const callerLabel = "adopt"
 // reentry is what a refusal that adopt's own steps leave undone is followed by.
 const reentry = "then re-run lym adopt with the same arguments"
 
-// The repository sides a branch outcome names that a stop on is shared by every pair.
+// The repository sides a branch stop names;
+// every pair shares them.
 const (
 	sideBolt    = "bolt"
 	sideRecords = "records"
 )
 
-// The run outcomes of a moved run that adopt does not leave to its owner: owned by another machine after the owner write, held for its subject's adopt check, and driven by a live pair on this machine.
+// The run outcomes of a moved run that adopt does not leave to its owner.
+// A run is owned elsewhere after the owner write, held for its subject's adopt check, or running here on a live pair.
 const (
 	ownedElsewhereRun = "owned elsewhere"
 	heldRun           = "held"
 	runningHereRun    = "running here"
 )
 
-// request is what the verb asks for: the named beam project slugs, root, every adoptable project, and how local commits origin lacks are answered.
+// request is what the verb asks for:
+// the named beam project slugs, root, every adoptable project, and how local commits origin lacks are answered.
 // The word `root` among the slugs sets Root and is dropped from them.
 type request struct {
 	Slugs     []string
@@ -53,8 +58,10 @@ type branchStop struct {
 	State  string `json:"state"`
 }
 
-// slugOutcome is what happened to one entry, an adopted beam project, a run moved with a project or a released task held with it: a stop with its branches, the pair added, the owner recorded, the pause lifted or standing, the run held for its subject's check, none, running here or owned elsewhere by OwnedBy, the beam steps run, the error and a warning.
-// WayForward is the stop's, or for an adopted beam whose pawl run holds the landing hold, the way to follow the landing and to take its parent over.
+// slugOutcome is what adopt did to one entry:
+// an adopted beam project, a run moved with a project, or a released task held with it.
+// WayForward is the stop's way forward.
+// An adopted beam whose pawl run holds the landing hold gets the way to follow the landing and to take its parent over.
 type slugOutcome struct {
 	Slug          string            `json:"slug"`
 	Stopped       bool              `json:"stopped,omitempty"`
@@ -74,7 +81,7 @@ type slugOutcome struct {
 	Error         string            `json:"error,omitempty"`
 }
 
-// beamStepsOutcome is what the beam steps did for one adopted worktree: the dobby's outcome and detail, the orch's action, prompt source and abandoned session, and the warnings that did not stop them.
+// beamStepsOutcome is what the beam steps did for one adopted worktree, including the warnings that did not stop them.
 type beamStepsOutcome struct {
 	Dobby            string   `json:"dobby,omitempty"`
 	DobbyDetail      string   `json:"dobby_detail,omitempty"`
@@ -84,7 +91,7 @@ type beamStepsOutcome struct {
 	Warnings         []string `json:"warnings,omitempty"`
 }
 
-// beamStepsOf returns the outcome the report of a BeamUp reads as.
+// beamStepsOf returns the beam steps outcome of report, copying the fields adopt reports.
 func beamStepsOf(report orchcli.BeamUpReport) *beamStepsOutcome {
 	return &beamStepsOutcome{
 		Dobby: report.Dobby, DobbyDetail: report.DobbyDetail, Action: report.Action,
@@ -92,7 +99,7 @@ func beamStepsOf(report orchcli.BeamUpReport) *beamStepsOutcome {
 	}
 }
 
-// suiteStart names the detached adopt check an adopt started or found running for one subject: the subject, its pid, the log of its gate, the record of its progress, the tiers its gate key names and whether it was found running.
+// suiteStart records the detached adopt check that adopt started, or found running, for one subject.
 type suiteStart struct {
 	// Subject is the beam slug or `root` the check runs for.
 	Subject string `json:"subject"`
@@ -100,13 +107,16 @@ type suiteStart struct {
 	Log     string `json:"log"`
 	// Record is the path of the check's progress record.
 	Record string `json:"record"`
-	// Tiers are the tiers of the hub's adopt gate key as the adopt read them, empty when the gate config did not read or holds no adopt key.
+	// Tiers are the hub's adopt gate key tiers as adopt read them; empty when the config did not read or has no adopt key.
 	Tiers []int `json:"tiers,omitempty"`
 	// AlreadyRunning is set when the adopt found a check running and started none.
 	AlreadyRunning bool `json:"already_running,omitempty"`
 }
 
-// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the deploy run when root came here under an older lym, the prime's owner write, each entry's slugOutcome, the warnings on branches the reconcile left unmoved and on a deploy state that did not read, the beam steps of the prime and the warning of a prime start that failed, and the adopt checks started, root's first, with their plain message, the warning of each start that failed, and the report of each run under the named subjects.
+// outcome is the verb's envelope: the record of the whole takeover.
+// It covers the reconcile, the deploy, the prime, each entry, and the adopt checks, root's first.
+// Its runs are the ones under the named subjects.
+// Its warnings name the branches the reconcile left unmoved, a deploy state that did not read, and each failed start.
 type outcome struct {
 	Reconcile        fabricengine.OriginReport
 	Mutations        []fabricengine.Mutation
@@ -131,7 +141,7 @@ type holdStore struct {
 	Remove func(subject string, slugs []string) error
 }
 
-// adoptDeps holds the seam of every step, which hubDeps fills over the hub and the tests fake.
+// adoptDeps holds the seam of every step, which the hub fills and the tests fake.
 // LocalPair reports whether this machine holds the slug's pair worktree.
 // ParentOf names the slug of the pair a slug was forked from, or "" for the prime.
 // RunRecord reads the batten run record of a slug, reporting false when none exists.
@@ -139,16 +149,27 @@ type holdStore struct {
 // UpdatePause applies mutate to the pause record in one locked update, handing it the update's time.
 // Holds reads, appends to and removes from the holds file of a subject, a beam slug or `root`.
 // ResetTries writes the subject's fix-try count to 0.
-// MoveInProgress reports whether an anchor change stands in the worktree called worktree, "" naming the prime, and returns the way forward it names; nil reads as no record standing.
-// BeamUp runs the beam steps of the named worktree, its dobby and its orch, with no hub preparation, since the adopt's own first step reconciled origin; nil runs none.
+// MoveInProgress reports whether an anchor change stands in the given worktree, "" naming the prime.
+// It returns the way forward the change names; nil reads as no record standing.
+// BeamUp runs the beam steps of the named worktree, its dobby and its orch, with no hub preparation.
+// The adopt's first step already reconciled origin; nil runs none.
 // It runs after the owner write for each adopted beam whose owner write stood and, when root was adopted, for the prime.
-// LandingHeld reports whether the pawl run of the beam slug holds the beam's landing hold, which keeps its beam steps from running; nil reads as no hold.
+// LandingHeld reports whether the pawl run of the beam slug holds the beam's landing hold.
+// The hold keeps the beam's steps from running; nil reads as no hold.
 // PrimeName is the prime worktree's directory name.
-// StartSuite starts the adopt check of a subject, a beam slug or `root`, in the subject's worktree as a detached process, or finds the one already running, and returns at once, so a break this machine brings to the landed code shows at adopt time; it runs last, once for root when the prime's owner was recorded, once for each adopted beam whose owner write stood and once for each named subject that still holds a run.
-// CheckState reads the state of a subject's adopt check record: running, green, failed, ended without a verdict (a running record whose process is gone) or none.
-// EscalationEligible reports whether the run of a slug that is awaiting stands at a producer whose escalation the arbiter admits.
-// DeployState reads the landing deploy command for the prime's branch, the running lym's build and whether the prime's head is ahead of it; nil reads as nothing to deploy.
-// RunDeploy runs the deploy command in the prime and returns its log's path, an error for a deploy that did not end with exit code 0.
+// StartSuite starts the adopt check of a subject, a beam slug or `root`, as a detached process in its worktree.
+// When a check already runs there, it finds that one instead.
+// It returns at once, so a break this machine brings to the landed code shows at adopt time.
+// It runs last, once for root when the prime's owner was recorded;
+// once for each adopted beam whose owner write stood; and once for each named subject that still holds a run.
+// CheckState reads the state of a subject's adopt check record:
+// running, green, failed, ended without a verdict (a running record whose process is gone), or none.
+// EscalationEligible reports whether a slug's awaiting run stands at a producer whose escalation the arbiter admits.
+// DeployState reads the landing deploy command for the prime's branch.
+// It also reads the running lym's build and whether the prime's head is ahead of it;
+// nil reads as nothing to deploy.
+// RunDeploy runs the deploy command in the prime and returns its log's path.
+// It returns an error for a deploy that did not end with exit code 0.
 // HubPath roots the mutation record.
 type adoptDeps struct {
 	Machine            func() (string, error)
@@ -179,8 +200,10 @@ type adoptDeps struct {
 	HubPath            string
 }
 
-// adopt takes the requested beam projects, and root, over from another machine together with the runs under them, and returns what each step did.
-// A refusal before any entry is touched returns the error with the outcome gathered so far, so the envelope still carries the reconcile and its mutation record.
+// adopt takes the requested beam projects, and root, over from another machine together with the runs under them.
+// It returns what each step did.
+// A refusal before any entry is touched returns the error with the outcome gathered so far,
+// so the envelope still carries the reconcile and its mutation record.
 // A standing anchor change in a worktree it would act under refuses before the reconcile, with an empty outcome.
 func adopt(deps adoptDeps, req request) (outcome, error) {
 	if slices.Contains(req.Slugs, boardengine.RootSubject) {
@@ -210,7 +233,8 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		return outcome{}, err
 	}
 
-	// The runs on this machine's own records stand in for the ones the reconcile may still bring, so a worktree they act under is checked before it.
+	// The runs on this machine's own records stand in for the ones the reconcile may still bring,
+	// so a worktree they act under is checked before it.
 	localRuns, err := movedRuns(deps, owners, slugs, rootNamed)
 	if err != nil {
 		return outcome{}, fmt.Errorf("lym adopt: read the runs under the adopted projects, so nothing ran: %w; %s", err, reentry)
@@ -240,7 +264,8 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		return finish(), fmt.Errorf("lym adopt: the origin reconcile stopped, so nothing ran: %s", stops)
 	}
 
-	// The reconcile may have brought the run records of the other machine's runs, so the moved runs are read again.
+	// The reconcile may have brought the run records of the other machine's runs,
+	// so the moved runs are read again.
 	moved, err := movedRuns(deps, owners, slugs, rootNamed)
 	if err != nil {
 		return finish(), fmt.Errorf("lym adopt: read the runs under the adopted projects, so nothing ran: %w; %s", err, reentry)
@@ -250,7 +275,8 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	for _, slug := range slugs {
 		outcomes[slug] = &slugOutcome{Slug: slug}
 	}
-	// A beam that keeps its own owner on another machine is moved by an adopted root as a run only: it is reported, and neither taken over nor resumed.
+	// A beam that keeps its own owner on another machine is moved by an adopted root as a run only:
+	// it is reported, and neither taken over nor resumed.
 	var runs []string
 	for _, slug := range moved {
 		entry := owners.Entries[slug]
@@ -264,7 +290,8 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		runs = append(runs, slug)
 	}
 
-	// A project one of whose runs stops is held back whole, so no owner is written over a pair that still holds local state.
+	// A project one of whose runs stops is held back whole,
+	// so no owner is written over a pair that still holds local state.
 	acted := slices.Clone(slugs)
 	for _, slug := range runs {
 		if !slices.Contains(slugs, slug) {
@@ -328,7 +355,8 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		return finish(), fmt.Errorf("lym adopt: %w; %s", err, reentry)
 	}
 
-	// The deploy runs after the hold and before the owner write, so a failed one leaves the runs held and the beam steps and checks below start the new lym.
+	// The deploy runs after the hold and before the owner write,
+	// so the beam steps and checks below start the new lym; a failed one leaves the runs held and no owner recorded.
 	var deployWarning string
 	if rootGoing {
 		result.Deploy, deployWarning, err = deployStale(deps)
@@ -413,7 +441,9 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	return finish(), nil
 }
 
-// checkSubjects lists the subjects whose adopt check a call starts: root first when the prime's owner was recorded or root holds a run, then the adopted beams in write order, then the other named beams that still hold a run, sorted.
+// checkSubjects lists the subjects whose adopt check a call starts.
+// Root comes first when the prime's owner was recorded or root holds a run.
+// The adopted beams follow in write order, then the other named beams that still hold a run, sorted.
 func checkSubjects(primeRecorded bool, adopted []string, heldSubjects map[string][]string) []string {
 	var subjects []string
 	if primeRecorded || len(heldSubjects[boardengine.RootSubject]) > 0 {
@@ -430,9 +460,12 @@ func checkSubjects(primeRecorded bool, adopted []string, heldSubjects map[string
 	return append(subjects, extra...)
 }
 
-// holdRuns holds, until each subject's adopt check, the runs and released tasks holdTargets picks over the owners as the reconcile left them.
-// Every subject's holds file lists its slugs first, then one pause-record update gives each slug a hold entry, so a failure between the two leaves a listed slug with no entry, which reportHolds skips.
-// A slug whose scope another caller already pauses keeps that entry, gets no hold and is dropped from its holds file again, so the green end never lifts what adopt did not hold.
+// holdRuns holds the runs and released tasks picked from the owners as the reconcile left them.
+// Each subject's hold lasts until its adopt check.
+// Every subject's holds file lists its slugs first, then one pause-record update gives each slug a hold entry,
+// so a failure between the two leaves a listed slug with no entry, and such a slug is not reported as held.
+// A slug whose scope another caller already pauses keeps that entry and gets no hold;
+// it is dropped from its holds file again, so the green end never lifts what adopt did not hold.
 func holdRuns(deps adoptDeps, here string, runs, writing []string, rootGoing bool, outcomes map[string]*slugOutcome) error {
 	reconciled, err := deps.ReadOwners()
 	if err != nil {
@@ -487,8 +520,9 @@ func holdRuns(deps adoptDeps, here string, runs, writing []string, rootGoing boo
 	return nil
 }
 
-// reportHolds marks on its outcome each slug that the holds file of a named subject lists and a live hold entry of the slug's own scope covers, and returns, for each subject that holds at least one, the slugs it holds.
+// reportHolds marks each slug that a subject's holds file lists and a live hold of its own scope covers, on its outcome.
 // A slug with no outcome yet, such as a released task, gets one.
+// It returns, for each subject that holds at least one slug, the slugs it holds.
 func reportHolds(deps adoptDeps, subjects []string, outcomes map[string]*slugOutcome) (map[string][]string, error) {
 	record, err := deps.PauseRecord()
 	if err != nil {
@@ -521,9 +555,11 @@ func reportHolds(deps adoptDeps, subjects []string, outcomes map[string]*slugOut
 	return holding, nil
 }
 
-// reconcileWarnings returns, for each branch the reconcile report holds that belongs to the prime or to an adopted beam and was left unmoved in state rewritten or diverged, or ahead with Moved unset, the warning that names `lym fabric pull`.
+// reconcileWarnings returns, for each branch of the prime or an adopted beam, a warning naming `lym fabric pull`.
+// A branch qualifies when the reconcile left it unmoved: rewritten, diverged, or ahead with Moved unset.
 // A branch of a slug whose own stop is on its outcome, and a branch the shared-stop refusal already judged, get none.
-// A records branch names its code worktree, where its fabric verbs run, and a code branch its own worktree; the reconcile's way forward, when it set one, follows in parentheses.
+// A records branch names its code worktree, where its fabric verbs run, and a code branch its own worktree;
+// the reconcile's way forward, when it set one, follows in parentheses.
 func reconcileWarnings(report fabricengine.OriginReport, adopted []string, outcomes map[string]*slugOutcome, _ request) []string {
 	var warnings []string
 	for _, branch := range report.Branches {
@@ -558,7 +594,9 @@ func reconcileWarnings(report fabricengine.OriginReport, adopted []string, outco
 	return warnings
 }
 
-// suiteMessage is the plain text naming the adopt checks stands for, one line per check: its subject, started or already running, the tiers it runs when known, and that the prime's reed status bar shows it.
+// suiteMessage is the plain text that names the adopt checks, one line per check.
+// Each line gives the check's subject, whether it started or was already running, and the tiers it runs when known.
+// The prime's reed status bar shows each check's progress and result.
 func suiteMessage(checks []suiteStart) string {
 	lines := make([]string, len(checks))
 	for i, check := range checks {
@@ -581,7 +619,9 @@ func suiteMessage(checks []suiteStart) string {
 
 // namedEntries resolves the request to the beam project slugs it adopts and whether it adopts root.
 // --all names root and every beam project that is not done.
-// It refuses a slug the board does not hold, a note, a done entry, a task, naming the beam or `root` that moves its run, and a grouping project, naming the same adopt and `lym beam create`.
+// It refuses a slug the board does not hold, a note, or a done entry.
+// It refuses a task and names the beam or `root` that moves its run.
+// It refuses a grouping project and names the adopt that moves its tasks, and `lym beam create`, which makes it a beam.
 func namedEntries(deps adoptDeps, owners boardengine.Owners, req request) (slugs []string, root bool, err error) {
 	if req.All {
 		for slug, entry := range owners.Entries {
@@ -619,7 +659,8 @@ func namedEntries(deps adoptDeps, owners boardengine.Owners, req request) (slugs
 }
 
 // movedRuns lists, sorted, the runs an adopt of the beams adopted, and of root when rootAdopted, moves with them.
-// A run is moved when its entry is a task or a beam project that is not done, holds a batten run record that is not done, and is a child of an adopted beam, or of root when root is adopted;
+// A run moves when its entry is an open task or beam project and holds a batten run record that is not done:
+// its parent is an adopted beam, or root when root is adopted;
 // the pawl run of each adopted beam is moved with it.
 // A beam that is a member of an adopted beam, or of root, is listed too, though it keeps its own owner.
 func movedRuns(deps adoptDeps, owners boardengine.Owners, adopted []string, rootAdopted bool) ([]string, error) {
@@ -650,7 +691,8 @@ func movedRuns(deps adoptDeps, owners boardengine.Owners, adopted []string, root
 	return moved, nil
 }
 
-// projectOf returns the adopted project that moves slug: the slug itself when it is an adopted beam, else its parent beam, else RootSubject for a child of the prime.
+// projectOf returns the adopted project that moves slug:
+// slug itself when it is an adopted beam, else its parent beam, else `root` for a child of the prime.
 func projectOf(deps adoptDeps, adopted []string, slug string) (string, error) {
 	if slices.Contains(adopted, slug) {
 		return slug, nil
@@ -665,8 +707,9 @@ func projectOf(deps adoptDeps, adopted []string, slug string) (string, error) {
 	return parent, nil
 }
 
-// sharedStopText renders each stop on Bolt or the prime's records branch as its way forward, followed by the re-entry where one retries it.
-// It is empty when neither branch stopped.
+// sharedStopText renders each stop on Bolt or the prime's records branch as its way forward.
+// A stop that a retry re-enters also carries the re-entry text.
+// It is empty when no such branch stopped.
 func sharedStopText(report fabricengine.OriginReport) string {
 	var stops []string
 	for _, branch := range report.Branches {
@@ -718,8 +761,10 @@ func ownedElsewhere(report fabricengine.OriginReport, slug string) bool {
 	return false
 }
 
-// takeOverSlug runs steps 1's tail and 2 for one entry, an adopted beam or a run moved with project: it stops the entry on local commits or a live pair, drops them under --drop-local, and adds the missing pair.
-// project is the adopted beam or `root` whose adopt moves the entry, and the stop's way forward names it, since a task is never an adopt's argument.
+// takeOverSlug takes over one entry an adopt moves, an adopted beam or a run moved with project.
+// It stops the entry on local commits or a live pair, drops the local commits under --drop-local, and adds the missing pair.
+// project is the adopted beam or `root` whose adopt moves the entry,
+// and the stop's way forward names it, since a task is never an adopt's argument.
 // It reports whether the entry goes on; a stop or an error is recorded on its outcome.
 func takeOverSlug(deps adoptDeps, req request, rec *fabricengine.Mutations, report fabricengine.OriginReport, owners boardengine.Owners, project string, out *slugOutcome) bool {
 	slug := out.Slug
@@ -753,7 +798,7 @@ func takeOverSlug(deps adoptDeps, req request, rec *fabricengine.Mutations, repo
 	}
 
 	entry := owners.Entries[slug]
-	// A beam's pair is added the same way as a task's: Add adopts the live branches and their origin record, the beam mark included.
+	// A beam's pair is added through `AddPair`, which adopts the live branches and their origin record, the beam mark included.
 	ownedBeam := entry.IsProject && entry.Beam && entry.Owner != ""
 	if !hasPair && (ownedBeam || entry.RunHeld) {
 		added, err := deps.AddPair(slug)
@@ -767,8 +812,11 @@ func takeOverSlug(deps adoptDeps, req request, rec *fabricengine.Mutations, repo
 	return true
 }
 
-// addError words a refused pair add.
-// The leftover local branch's refusal is reworded, since the way forward fabric names would drop this machine's unpushed commits on that branch with no archive, and it ends with re-running the adopt of project, the beam or `root` that moves slug.
+// addError words a refused pair add of slug, which the adopt of project moves.
+// A refusal for a leftover local branch is reworded.
+// Its own way forward would drop this machine's unpushed commits on that branch with no archive.
+// The reworded text says to keep the tip under an archive tag first,
+// and it ends with the re-run of the adopt of project, the beam or `root` that moves slug.
 func addError(slug, project string, err error) string {
 	var exists *fabricengine.ErrBranchExists
 	if errors.As(err, &exists) {
@@ -785,9 +833,12 @@ func ownerWriteError(err error) error {
 	return fmt.Errorf("lym adopt: the owner write was refused, so the adopt check of the subject starts nothing until its owner is recorded: %w; %s", err, reentry)
 }
 
-// resumeSlug settles an adopted beam or a moved run after the owner write, over the owners read back, and starts nothing: the adopt check of its subject starts a held run at its green end.
-// An entry that reads owned by another machine is left as it stands and reported on its outcome as owned elsewhere, with its owner.
-// Otherwise a slug adopt did not hold has its owner pause lifted, and a beam with no run to carry reads none.
+// resumeSlug settles an adopted beam or a moved run after the owner write, over the owners read back.
+// It starts nothing: the adopt check of its subject starts a held run at its green end.
+// An entry that reads owned by another machine is left as it stands,
+// and its outcome reports it as owned elsewhere, with its owner.
+// Otherwise a slug the adopt did not hold has its owner pause lifted.
+// An entry with no run record, or whose run is done, reads none.
 // It warns when this machine does not own the parent.
 func resumeSlug(deps adoptDeps, here string, owners boardengine.Owners, out *slugOutcome) {
 	slug := out.Slug
@@ -840,9 +891,14 @@ func resumeSlug(deps adoptDeps, here string, owners boardengine.Owners, out *slu
 	}
 }
 
-// runBeamSteps runs the beam steps of the prime when root was adopted, then of each adopted beam, over the owners read back after the owner write.
-// A beam whose pawl run holds the landing hold gets none, and its outcome names the way to follow the landing and, when another machine owns its parent, the adopt of the parent, whose check resumes the landing here at its green end.
-// A step that fails is the worktree's warning naming `lym beam start`, and the other worktrees go on.
+// runBeamSteps runs the beam steps of the prime when root was adopted, then of each adopted beam.
+// It works over the owners read back after the owner write.
+// A beam whose pawl run holds the landing hold gets none.
+// Its outcome names the way to follow the landing.
+// When another machine owns its parent, the outcome also names the adopt of the parent.
+// That adopt's check resumes the landing here at its green end.
+// A failed step is reported as its worktree's warning, naming `lym beam start`,
+// and the other worktrees go on.
 func runBeamSteps(deps adoptDeps, here string, owners boardengine.Owners, adopted []string, result *outcome, outcomes map[string]*slugOutcome) {
 	if deps.BeamUp == nil {
 		return
@@ -875,7 +931,9 @@ func runBeamSteps(deps adoptDeps, here string, owners boardengine.Owners, adopte
 	}
 }
 
-// heldBeamWayForward words the outcome of an adopted beam whose pawl run holds the landing hold: the beam steps are left to the run, which `lym batten status` follows, and a parent another machine owns is taken over by its adopt, whose check resumes the landing here at its green end.
+// heldBeamWayForward words the outcome of an adopted beam whose pawl run holds the landing hold.
+// The beam steps are left to that run, which `lym batten status` follows.
+// A parent another machine owns is taken over by its adopt, whose check resumes the landing here at its green end.
 func heldBeamWayForward(deps adoptDeps, here string, owners boardengine.Owners, slug string) string {
 	text := fmt.Sprintf("its landing holds the beam, so its dobby and orch are not started: run `lym batten status %s` to follow the landing", slug)
 	owner, subject, err := foreignParent(deps, here, owners, slug)
@@ -896,7 +954,8 @@ func addWarning(out *slugOutcome, text string) {
 	out.Warning += text
 }
 
-// foreignParent returns the machine that owns slug's parent and what `lym adopt` takes to move the parent: the nearest beam project above it, `root` for the prime.
+// foreignParent returns the machine that owns slug's parent and what `lym adopt` takes to move the parent:
+// the nearest beam project above it, `root` for the prime.
 // The owner is empty when this machine owns the parent.
 func foreignParent(deps adoptDeps, here string, owners boardengine.Owners, slug string) (owner, subject string, err error) {
 	owner, parent, err := parentOwnerOf(deps, owners, slug)
@@ -928,7 +987,8 @@ func parentOwnerOf(deps adoptDeps, owners boardengine.Owners, slug string) (owne
 	return owner, parent, err
 }
 
-// parentWarning returns the warning for an entry whose parent another machine owns, since its run halts at Finalize here; it is empty otherwise.
+// parentWarning returns the warning for an entry whose parent another machine owns, since its run halts at Finalize here;
+// it is empty otherwise.
 // The warning names the adopt of the parent's project, `lym adopt root` when the parent is the prime.
 func parentWarning(deps adoptDeps, here string, owners boardengine.Owners, slug string) string {
 	owner, subject, err := foreignParent(deps, here, owners, slug)

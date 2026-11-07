@@ -1,5 +1,7 @@
 // windoworder_integration_test.go proves the window order against a real tmux.
-// The session's windows hold the overview first, the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lym is brought into that order.
+// The session's windows are ordered: the overview first, the agents in start order, then the window named shell.
+// The hidden windows come last.
+// A relaunch keeps its window's place, and a session booted by an older lym is brought into that order.
 // One cold session serves every step.
 
 package reedengine
@@ -17,7 +19,7 @@ import (
 )
 
 // TestWindowOrder_RealTmux runs its steps in order on one cold session.
-// It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds.
+// It overrides the executable path: the detached `lym` window's stub sleeps for its first argument's seconds.
 func TestWindowOrder_RealTmux(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -32,7 +34,8 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	// A booted session follows the run, which would move the viewer on every add, so the steps keep it off unless a step names the follow state.
+	// A booted session follows the run, which would move the viewer on every add,
+	// so the steps keep it off unless a step names the follow state.
 	setFollow := func(value string) {
 		t.Helper()
 		if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), followSessionOption, value); err != nil {
@@ -511,7 +514,8 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 	const primeTitle = "beam: prime"
 	primeDisplay := render.Display{Anchor: render.AnchorOverview, Title: primeTitle}
 	pawlDisplay := render.Display{Anchor: render.AnchorOverview, Title: "pawl", Order: 1}
-	// wantOverviewTitlesFirst asserts the overview windows named by titles come first in that order, then every other visible window but the shell in listing order, then the shell, then the hidden windows.
+	// wantOverviewTitlesFirst asserts the overview windows named by titles come first in that order.
+	// Every other visible window but the shell follows in listing order, then the shell, then the hidden windows.
 	wantOverviewTitlesFirst := func(titles ...string) {
 		t.Helper()
 		want := slices.Clone(titles)

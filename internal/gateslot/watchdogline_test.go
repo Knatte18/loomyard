@@ -1,4 +1,5 @@
-// watchdogline_test.go covers the CPU watchdog's quit line and the tier timeout line: their rendering and the search a verify gate runs over a log.
+// watchdogline_test.go covers the CPU watchdog's quit line and the tier timeout line:
+// their rendering and the search a verify gate runs over a log.
 
 package gateslot
 

@@ -1,4 +1,4 @@
-// treesitterlinkfindings_test.go pins the pure half of the tree-sitter link guard, which treesitterlink_test.go holds, over an in-memory import graph.
+// treesitterlinkfindings_test.go pins the pure logic of the tree-sitter link guard over an in-memory import graph.
 
 package main
 

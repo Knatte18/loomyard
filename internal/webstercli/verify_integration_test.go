@@ -1,6 +1,9 @@
-// verify_integration_test.go drives the `verify` verb against a real scratch repo and real shell processes, so it carries the integration tag.
-// The plan, the verify directory and the webster directories all lie outside the repo, so a verify run never dirties the tree it checks.
-// The verb runs the rendered `final` gate call through the `lym` built from the tree, which each fixture puts first on `PATH`, so every test here is not parallel.
+// verify_integration_test.go drives the `verify` verb against a real scratch repo and real shell processes,
+// so it carries the integration tag.
+// The plan, the verify directory and the webster directories all lie outside the repo,
+// so a verify run never dirties the tree it checks.
+// The verb runs the rendered `final` gate call through the `lym` built from the tree.
+// Each fixture puts that `lym` first on `PATH`, so every test here is not parallel.
 
 package webstercli
 
@@ -27,14 +30,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// verifyFixture is a one-commit repo holding a gate.yaml, with a plan under an anchor outside it, and the told geometry over both.
+// verifyFixture is a one-commit repo holding a gate.yaml.
+// A plan sits under an anchor outside the repo, and the told geometry spans both.
 type verifyFixture struct {
 	CLI      *websterCLI
 	Worktree string
 	Anchor   string
 }
 
-// verifyGateConfig returns the gate.yaml a fixture worktree commits: tier0 runs command as a shell stand-in, every key lists it, and the `webster` key lists finalTier instead.
+// verifyGateConfig returns the gate.yaml a fixture worktree commits.
+// Its tier0 runs command as a shell stand-in, every gate key lists tier0, and the `webster` key lists finalTier instead.
 func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 	t.Helper()
 	data, err := yaml.Marshal(map[string]any{
@@ -60,8 +65,10 @@ func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 	return data
 }
 
-// newVerifyFixture builds a fixture whose committed gate.yaml has tier0 run command as a shell stand-in, and whose told GateConfig reads that file.
-// The repo excludes its .lym directory, where a standalone `lym gate test` writes its run record, so the tree stays clean for the verify.
+// newVerifyFixture builds a fixture whose committed gate.yaml has tier0 run command as a shell stand-in.
+// The told GateConfig reads that file.
+// The repo excludes its .lym directory, where a standalone `lym gate test` writes its run record,
+// so the tree stays clean for the verify.
 // It puts the `lym` built from the tree first on `PATH`, so the calling test is not parallel.
 func newVerifyFixture(t *testing.T, command string) *verifyFixture {
 	t.Helper()
@@ -171,7 +178,8 @@ func TestVerifyVerb_FailureExitsOneWithFindings(t *testing.T) {
 	}
 }
 
-// TestVerifyVerb_RunnerCrashIsNoFailureToFix pins that a verify whose log holds the gate's runner crash line is refused naming the crashed run, with no failing identities to fix.
+// TestVerifyVerb_RunnerCrashIsNoFailureToFix pins that a verify refuses a log holding the runner crash line.
+// The refusal names the crashed run and has no failing identities to fix.
 // The tier prints the line itself and exits 1, which is no crash signal, so the gate does not wait out its rerun delay.
 func TestVerifyVerb_RunnerCrashIsNoFailureToFix(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -216,7 +224,9 @@ func TestVerifyVerb_DirtyTreeExitsOneNamingPaths(t *testing.T) {
 	}
 }
 
-// TestVerifyVerb_GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load, or a `final` list naming an undeclared tier, is the verb's error naming `lym config gate`, never a pass.
+// TestVerifyVerb_GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load is the verb's error.
+// A `final` list naming an undeclared tier is refused the same way.
+// The refusal names `lym config gate`, never a pass.
 func TestVerifyVerb_GateConfigRefusalIsTheError(t *testing.T) {
 	tiergate.Require(t, 1)
 	tests := []struct {

@@ -14,10 +14,13 @@ type KeyRename struct {
 	From, To string
 }
 
-// RenameKeys renames each From key of the document's top-level mapping to its To, in renames' order, and returns the rewritten document with one line per rename.
-// A renamed value keeps its node and takes the line comment template carries on To, so a reconcile shows the new key's comment.
+// RenameKeys renames each From key of the document's top-level mapping to its To, in renames' order.
+// It returns the rewritten document and one line per rename applied.
+// A renamed value keeps its node;
+// when the template holds To, the value also takes the line comment the template gives To,
+// so the merged file shows the new key's comment.
 // A document already holding To keeps To's value and drops From.
-// The lines read "<from>: renamed to <to>" and "<from>: removed, <to> already set".
+// Each line reads "<from>: renamed to <to>" or "<from>: removed, <to> already set".
 // The document comes back unchanged, with no lines, when it is empty or holds no From key.
 // A document or template that does not parse, or whose root is not a mapping, returns an error.
 func RenameKeys(template, existing []byte, renames []KeyRename) ([]byte, []string, error) {

@@ -1,4 +1,6 @@
-// prreview_test.go covers the PR-Review row against a fake pull-request API and a temp record: the mode decision, the push, finding or opening the pull request, the record it keeps and the failures it halts or returns on.
+// prreview_test.go covers the PR-Review row against a fake pull-request API and a temp record.
+// It pins the mode decision, the push, finding or opening the pull request, and the record it keeps.
+// It also pins the failures it halts or returns on.
 
 package landingshed
 
@@ -34,7 +36,8 @@ type scriptedCall struct {
 	err    error
 }
 
-// fakePullRequestAPI is a pullrequest.API that records every call with its arguments and answers each method from a list of scripted results, one per call, the last repeating.
+// fakePullRequestAPI is a pullrequest.API that records every call with its arguments.
+// It answers each method from a list of scripted results, one per call, and the last result repeats.
 // A method with no script answers the zero result.
 type fakePullRequestAPI struct {
 	mu      sync.Mutex
@@ -139,7 +142,7 @@ func TestPRReview_Call(t *testing.T) {
 		recordedGated   = "head-old"
 		recordedURLSeen = "https://github.com/acme/widgets/pull/7"
 	)
-	// mergedAtHead ends the wait of a row whose task head is the gated one: the pull request is merged at that head.
+	// mergedAtHead ends the wait of a row whose task head is taskHead: the pull request is merged at that head.
 	mergedAtHead := scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: taskHead}}
 
 	tests := []struct {
@@ -583,17 +586,23 @@ type prReviewFixture struct {
 // prReviewFixtureNow is the instant every fake clock of the PR-Review tests starts at.
 var prReviewFixtureNow = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
-// wantPRBody is the pull request body prReviewTestDeps yields: the description's trimmed body, a blank line and the credit block of the one engine that ran.
+// wantPRBody is the pull request body prReviewTestDeps yields.
+// It is the description's trimmed body, a blank line, and the credit block of the one engine that ran.
 const wantPRBody = "Change body\n\nCreated using\n - LoomYard\n - Claude <c@x>"
 
-// wantPRBodyWithVerdict is wantPRBody with testVerdict between the description's body and the credit block.
+// wantPRBodyWithVerdict is the pull request body prReviewTestDeps yields with testVerdict in it.
+// testVerdict sits between the description's body and the credit block.
 const wantPRBodyWithVerdict = "Change body\n\n" + testVerdict + "\n\nCreated using\n - LoomYard\n - Claude <c@x>"
 
 // testVerdict is a regression check section a test tells through Deps.DriftVerdict or DescribeInputs.DriftVerdict.
 const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at `abc`.\n- Accepted drift: none."
 
-// prReviewTestDeps builds a Deps over a temp record path and a change description titled "Change title" whose body, as summaryparser reads it, is "\nChange body\n", with the credit on and claude the one engine that ran.
-// Every PullRequest seam is filled: the origin is a GitHub one, the parent's mode is on, the task head is "head-new", the worktree is clean, no pause covers the run, and the clock moves only when the wait sleeps.
+// prReviewTestDeps builds a Deps over a temp record path.
+// Its change description is titled "Change title", and its body is "\nChange body\n".
+// The credit is on, and claude is the one engine that ran.
+// Every PullRequest seam is filled.
+// The origin is a GitHub one, the parent's mode is on, the task head is "head-new", and the worktree is clean.
+// No pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
 func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 	t.Helper()

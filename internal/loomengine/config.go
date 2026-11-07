@@ -1,35 +1,9 @@
-// config.go — configuration for the loom module.
-//
-// Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the three timeout knobs, and rejects a review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces or code_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
-// so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, review, judge, friction, or driver producer first spawns.
-// The plan perch's keys, plan, plan_timeout_min, implementer, plan_lenses and every plan_* model, fan, judge, seed and budget key, live in tapestry.yaml: LoadConfig never reads that file, and Config.WithTapestry copies the plan values in for the callers that serve the Plan-Review segment.
-// step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed; a value below 1 is raised to 1 with one Warn and never refused.
-// discussion_reviewer_fan and code_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review and Code-Review; an empty entry, the default, runs that round solo.
-// discussion_fixer_fan and code_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
-// discussion_assist_reviewer_model and code_assist_reviewer_model each name the model-spec, or list one per round, of an assistant reviewer that runs beside the segment's reviewer, whose report the reviewer consolidates and which never gates the round; an empty entry, the default, runs no assistant that round, and every non-empty entry is parsed at load.
-// discussion_assist_reviewer_fan and code_assist_reviewer_fan name the assistant's fan per round as the reviewer fan keys do, and assist_reviewer_timeout_min bounds the assistant's run and is refused below 0.
-// A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
-// fan_review is retired: MigrateConfig removes it.
-// The retired review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan keys are renamed by MigrateConfig.
-// discussion_max_bounces and code_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
-// review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces and code_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
-// review_amend_max_bounces is the review rounds an amendment generation gets after a settled segment's subject changed, clamped to the perch's own budget, refused below 0, where 0 settles every amendment approved with no review round;
-// a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
-// discussion_auto_accept and code_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
-// The Merge-Review perch's keys, merge_reviewer_model, merge_fixer_model, merge_reviewer_fan, merge_fixer_fan, merge_max_bounces, merge_hard_max_bounces and merge_auto_accept, are retired: MigrateConfig removes them, and skip_merge_review with them.
-// discussion_advisors lists the Discussion-Write advisors, each entry a {name, model} pair: name is the advisor's seat name and model its model-spec, resolved through the model registry at load, and an unset list loads as no advisors.
-// With no advisors the Discussion-Write lead decides each question itself.
-// discussion_lenses names the lenses.yaml fan whose lenses the Discussion-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
-// It is not the discussion_reviewer_fan of a review perch, and the key is closed to the local layer.
-// The retired discussion_producer and plan_producer keys are rewritten by MigrateConfig into discussion_lenses and plan_lenses.
-// subagent_model is the model name the Plan, Discussion-Write and darn writers pass to the Agent tool for the fresh subagents they hand lookups to; an empty value is refused.
-// seed, discussion_judge, code_judge, discussion_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
-// a per-segment judge takes judge, a per-segment seed takes seed, and seed takes that segment's resolved judge.
-// The retired driver_kind, tackler and arbiter keys are refused here, since shed.yaml holds them.
-// friction and driver are the two role keys validated only when non-empty: a present-but-empty
-// value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
-// driver, and both must load cleanly, unlike the other role keys, which are always required.
+// config.go loads loom's configuration: the Config type mirrors the keys of loom.yaml.
+// LoadConfig validates and resolves those keys.
+// A bad value fails at load time, not hours into a run when its producer first spawns.
+// The plan perch's keys live in tapestry.yaml, which LoadConfig never reads.
+// Config.WithTapestry copies them in for the callers that serve the Plan-Review segment.
+// MigrateConfig renames or removes the retired keys.
 
 package loomengine
 
@@ -56,19 +30,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// stepIdleTimeoutFloorMin is the smallest step_idle_timeout_min LoadConfig returns, in minutes.
+// stepIdleTimeoutFloorMin is the smallest step_idle_timeout_min value, in minutes.
+// A lower configured value is raised to it with one warning.
 const stepIdleTimeoutFloorMin = 1
 
-// discussionDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the discussion phase's output directory.
+// discussionDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName.
+// The joined path is the discussion phase's output directory.
 // loomengine is this segment's sole declarer.
 const discussionDirName = "discussion"
 
-// landingDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the
-// directory holding the landing change description.
+// landingDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName.
+// The joined path is the directory holding the landing change description.
 // loomengine is this segment's sole declarer.
 const landingDirName = "landing"
 
-// projectDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the directory of every beam's project record, one subdirectory per beam slug.
+// projectDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName.
+// The joined path is the directory of every beam's project record, with one subdirectory per beam slug.
 // loomengine is this segment's sole declarer.
 const projectDirName = "project"
 
@@ -76,103 +53,114 @@ const projectDirName = "project"
 // loomengine is this segment's sole declarer.
 const loomReworkCoverageFileName = "rework-coverage.md"
 
-// reworkDirName is the relative-path segment loomengine joins onto LoomDurableDir to form the directory holding one round-<N> directory per rejection round.
+// reworkDirName is the relative-path segment loomengine joins onto LoomDurableDir.
+// The joined path is the directory holding one round-<N> directory per rejection round.
 // loomengine is this segment's sole declarer.
 const reworkDirName = "rework"
 
-// loomDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName or lymdirs.DotLymDirName to scope every loom-owned path that is not part of the shed run directory under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also configure Shed.
-// loom's own status file and its two locks moved onto internal/shedrun's run directory;
-// this segment now backs only the seven accessors that have no shedrun equivalent.
+// loomDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName or lymdirs.DotLymDirName.
+// The joined path scopes every loom-owned path outside the shed run directory under its own subdirectory.
+// That subdirectory keeps loom's paths distinct from those of the other products that also configure Shed.
+// The loom status file and its two locks live in internal/shedrun's run directory, not under this segment.
 // loomengine is this segment's sole declarer.
 const loomDirName = "loom"
 
-// reviewsDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the review segments' durable run root.
+// reviewsDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName.
+// The joined path is the durable run root of the review segments.
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
 
-// amendmentRecordFileName is the file name loomengine joins onto LoomDurableDir to form the plan amendment record's path.
+// amendmentRecordFileName is the file name loomengine joins onto LoomDurableDir.
+// The joined path is the plan amendment record.
 // loomengine is this segment's sole declarer.
 const amendmentRecordFileName = "amendment.yaml"
 
-// frictionDirName is the relative-path segment loomengine joins onto LoomDurableDir to form the Tier 2 friction leaf's directory, and onto LoomScratchDir (with a .lock suffix) for its lock.
+// frictionDirName is the relative-path segment loomengine joins onto LoomDurableDir.
+// The joined path is the Tier 2 friction leaf's directory.
+// Joined onto LoomScratchDir with a .lock suffix, the same segment names the lock.
 // loomengine is this segment's sole declarer.
 const frictionDirName = "friction"
 
-// DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of lymdirs.LymDirName and discussionDirName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
+// DiscussionDirRel returns the discussion output directory relative to the worktree anchor.
+// It is the join of lymdirs.LymDirName and discussionDirName.
+// Callers building a fabric commit pathspec use it so they never name a directory segment loomengine owns.
 func DiscussionDirRel() string {
 	return filepath.Join(lymdirs.LymDirName, discussionDirName)
 }
 
-// DiscussionDir returns the path to the Discussion phase's output directory for this worktree (the
-// decision-record.md/support-log.md pair).
-// It is AnchorPath-anchored.
+// DiscussionDir returns the path to the Discussion phase's output directory for this worktree.
+// The directory holds the decision-record.md and support-log.md pair.
+// The path is anchored at the worktree anchor of l.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), DiscussionDirRel())
 }
 
-// LandingDirRel returns the worktree-anchor-relative form of LandingDir's path: the join of lymdirs.LymDirName and landingDirName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
+// LandingDirRel returns the landing directory relative to the worktree anchor.
+// It is the join of lymdirs.LymDirName and landingDirName.
+// Callers building a fabric commit pathspec use it so they never name a directory segment loomengine owns.
 func LandingDirRel() string {
 	return filepath.Join(lymdirs.LymDirName, landingDirName)
 }
 
-// LandingDir returns the path to the directory holding the landing change description for this
-// worktree; the description file itself is summaryparser.Path of this directory.
+// LandingDir returns the path to the directory holding the landing change description for this worktree.
+// The description file inside it is named by the summaryparser package.
 // It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LandingDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LandingDirRel())
 }
 
-// beamReadyFileName is the file name of a beam's ready record within LandingDir.
-// loomengine is this segment's sole declarer.
+// beamReadyFileName is the file name of a beam's ready record within the landing directory.
+// loomengine is the only package that declares it.
 const beamReadyFileName = "beam-ready.json"
 
-// BeamReadyPath returns the path of the ready record of the beam whose pair is at l, beside the landing change description.
+// BeamReadyPath returns the path of the ready record of the beam whose pair is at l.
+// The record sits beside the landing change description.
 // It is AnchorPath-anchored.
 func BeamReadyPath(l *lymcwd.Location) string {
 	return filepath.Join(LandingDir(l), beamReadyFileName)
 }
 
-// BeamReadyLockPath returns the lock path that guards BeamReadyPath's record, at the mirrored never-tracked landing path.
+// BeamReadyLockPath returns the lock path that guards the ready record of the beam at l.
+// It lies at the mirrored, never-tracked landing path under the dot-lym directory.
 func BeamReadyLockPath(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, landingDirName, beamReadyFileName+".lock")
 }
 
-// beamLandingFileName is the file name of a beam's landing record within LandingDir.
-// loomengine is this segment's sole declarer.
+// beamLandingFileName is the file name of a beam's landing record within the landing directory.
+// loomengine is the only package that declares it.
 const beamLandingFileName = "beam-landing.json"
 
-// BeamLandingPath returns the path of the landing record of the beam whose pair is at l, beside the ready record.
+// BeamLandingPath returns the path of the landing record of the beam whose pair is at l.
+// The record sits beside the ready record.
 // It is AnchorPath-anchored.
 func BeamLandingPath(l *lymcwd.Location) string {
 	return filepath.Join(LandingDir(l), beamLandingFileName)
 }
 
-// BeamLandingLockPath returns the lock path that guards BeamLandingPath's record, under the checkout's never-tracked lock directory.
+// BeamLandingLockPath returns the lock path that guards the landing record of the beam at l.
+// It lies under the checkout's never-tracked lock directory.
 func BeamLandingLockPath(l *lymcwd.Location) string {
 	return lock.TrackedFileLockPath(BeamLandingPath(l), ".lock")
 }
 
-// DiscussionDecisionRecordRel returns the worktree-anchor-relative form of DiscussionDecisionRecord's path.
-// It exists so a caller building a fabric commit pathspec for the record alone never has to name a segment loomengine owns.
+// DiscussionDecisionRecordRel returns the worktree-anchor-relative path of the decision record.
+// A caller building a fabric commit pathspec for the record alone never has to name a segment loomengine owns.
 func DiscussionDecisionRecordRel() string {
 	return filepath.Join(DiscussionDirRel(), "decision-record.md")
 }
 
-// DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
-// producer's design input from `_lym/discussion/`.
-// It shares DiscussionDir's AnchorPath anchoring.
+// DiscussionDecisionRecord returns the path to the distilled decision record.
+// It is the Plan producer's design input from `_lym/discussion/`.
+// It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDecisionRecord(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), DiscussionDecisionRecordRel())
 }
 
-// DiscussionSupportLog returns the path to the raw support log read by the Discussion-review gate
-// only.
-// It shares DiscussionDir's AnchorPath anchoring.
+// DiscussionSupportLog returns the path to the raw support log, which only the Discussion-review gate reads.
+// It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionSupportLog(l *lymcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")
@@ -180,14 +168,16 @@ func DiscussionSupportLog(l *lymcwd.Location) string {
 
 // DiscussionRelevant returns the path to the Discussion-Write lead's list of the code it read.
 // The list is the plan writer's head start.
-// It shares DiscussionDir's AnchorPath anchoring.
+// It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionRelevant(l *lymcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "relevant.md")
 }
 
-// ProjectDirRel returns the worktree-anchor-relative path of the directory holding the project record of the beam slug and its support log.
-// The slug keeps a beam's record apart from its members' own records and from an enclosing beam's, since a pair forked from a beam inherits every record the beam carries.
+// ProjectDirRel returns the worktree-anchor-relative path of the project directory for the beam slug.
+// It holds the project record and its support log.
+// The slug keeps a beam's record apart from its members' own records and from an enclosing beam's;
+// a pair forked from a beam inherits every record the beam carries.
 func ProjectDirRel(slug string) string {
 	return filepath.Join(lymdirs.LymDirName, projectDirName, slug)
 }
@@ -203,7 +193,8 @@ func ProjectDecisionRecordRel(slug string) string {
 	return filepath.Join(ProjectDirRel(slug), "decision-record.md")
 }
 
-// ProjectDecisionRecord returns the path of the project record of the beam slug, in the worktree at l: the decision record that binds every member of the beam.
+// ProjectDecisionRecord returns the path of the project record of the beam slug, in the worktree at l.
+// The decision record binds every member of the beam.
 // It is AnchorPath-anchored.
 func ProjectDecisionRecord(l *lymcwd.Location, slug string) string {
 	return filepath.Join(l.AnchorPath(), ProjectDecisionRecordRel(slug))
@@ -215,125 +206,134 @@ func ProjectSupportLog(l *lymcwd.Location, slug string) string {
 	return filepath.Join(ProjectDir(l, slug), "support-log.md")
 }
 
-// LoomDriverLog returns the path to the detached driver's captured stdout and stderr for this
-// worktree's session bootstrap.
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant.
+// LoomDriverLog returns the path to the file capturing the stdout and stderr of the detached driver.
+// It holds the output of the driver for this worktree's session bootstrap.
+// It is AnchorPath-anchored; it lives under the ephemeral tree at the mirrored subpath of the durable status file.
+// It follows the Durable-vs-Ephemeral State Invariant.
 // It exists as an accessor rather than an inline path because cmd/lym's transient guard walks
 // constructors, not call sites.
 func LoomDriverLog(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "driver.log")
 }
 
-// LoomBootstrapLock returns the path to the advisory lock file serialising the session bootstrap's
-// probe-and-spawn sequence.
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant.
-// It is a third lock distinct from both LoomStatusLock's per-persist status lock and LoomRunLock's
-// whole-run lock,
-// and it is released before the success envelope is printed.
+// LoomBootstrapLock returns the path to the advisory lock file serialising the bootstrap's probe-and-spawn sequence.
+// It is AnchorPath-anchored; it lives under the ephemeral tree at the mirrored subpath of the durable status file.
+// It follows the Durable-vs-Ephemeral State Invariant.
+// It is a third lock, distinct from the per-persist status lock and from the whole-run lock.
+// It is released before the success envelope is printed.
 func LoomBootstrapLock(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "bootstrap.lock")
 }
 
 // LoomHandoffVoucher returns the path to the machine-local handoff voucher.
-// `lym loom step` records it after every completed step, and `lym loom start` records it right before it spawns a driver:
-// the persisted history length and state as that step or spawn left them.
-// It suppresses at most one entry observation, the first, and only when its history length and state equal what was recorded.
-// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
-// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable status file per the Durable-vs-Ephemeral State Invariant, since the voucher is never tracked.
-// It exists because a completed step leaves the status file byte-identical to a mid-run driver death -- state running, run lock free, history non-empty --
-// so without this voucher the next run's entry observation reads as a crash-resume for a task in which nothing crashed.
+// `lym loom step` records it after every completed step.
+// `lym loom start` records it right before it spawns a driver.
+// It holds the persisted history length and state as that step or spawn left them.
+// It suppresses at most one entry observation, the first.
+// It does so only when the voucher's history length and state equal what was recorded.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it.
+// Until then, it suppresses at most one later matching observation.
+// A driver start that is spawned and then dies mid-run is not noted,
+// and its evidence stays in the driver log and trace.
+// It is AnchorPath-anchored; it lives under the ephemeral tree at the mirrored subpath of the durable status file.
+// It is ephemeral because the voucher is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// It exists because a completed step leaves the status file byte-identical to a driver that died mid-run:
+// state running, run lock free, history non-empty.
+// Without this voucher, the next run's entry observation reads as a crash-resume for a task in which nothing crashed.
 // A step killed mid-producer never writes it, so a genuine step-crash still reports.
-// Losing the voucher -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume note, which is why it is machine-local rather than durable.
+// Losing the voucher, as a fresh clone or a fabric re-wire does, costs at most one spurious crash-resume note.
+// That cost is why it is machine-local rather than durable.
 func LoomHandoffVoucher(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "handoff-voucher.json")
 }
 
-// LoomHandoffVoucherLock returns the path to the advisory lock file guarding concurrent access to
-// LoomHandoffVoucher(l).
-// It is AnchorPath-anchored under the ephemeral tree, exactly as the voucher it guards.
+// LoomHandoffVoucherLock returns the path to the advisory lock that guards the handoff voucher.
+// It is AnchorPath-anchored under the ephemeral tree, like the voucher it guards.
 func LoomHandoffVoucherLock(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "handoff-voucher.json.lock")
 }
 
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
-// It is AnchorPath-anchored, like LoomDriverLog and LoomBootstrapLock, and names the directory
-// those two already share: lymdirs.DotLymDirName joined with loomDirName.
-// Per the Durable-vs-Ephemeral State Invariant, this accessor is the mirrored-subpath counterpart of
-// the "loom" segment's durable side -- now the run directory shedrun owns, not a path this package
-// declares.
+// It is AnchorPath-anchored, under lymdirs.DotLymDirName joined with loomDirName.
+// It is the mirrored-subpath counterpart of the durable "loom" segment, per the Durable-vs-Ephemeral State Invariant.
+// The directory is the run directory that shedrun owns.
 func LoomScratchDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName)
 }
 
-// LoomReworkCoveragePath returns the path to the rework agent's completion file, which maps each finding to the new cards covering it.
-// It is built on LoomScratchDir rather than re-joining the .lym literal, and is ephemeral:
-// the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// LoomReworkCoveragePath returns the path to the rework agent's completion file.
+// The file maps each finding to the new cards that cover it.
+// It lies in the ephemeral loom scratch directory.
+// The file is never tracked, per the Durable-vs-Ephemeral State Invariant.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReworkCoveragePath(l *lymcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomReworkCoverageFileName)
 }
 
-// LoomReworkDirRel returns the worktree-anchor-relative form of LoomReworkDir's path: the join of LoomDurableDirRel and reworkDirName.
+// LoomReworkDirRel returns the worktree-anchor-relative path of the rework directory.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func LoomReworkDirRel() string {
 	return filepath.Join(LoomDurableDirRel(), reworkDirName)
 }
 
 // LoomReworkDir returns the root holding one round-<N> directory per rejection round for this worktree.
-// It is durable: each round's findings, record, coverage map and prior-generation archive are tracked run content, committed with the new plan generation by the round that wrote them.
-// It is built on LoomDurableDirRel rather than re-joining the durable literal a second time.
+// It is durable: each round's findings, record, coverage map and prior-generation archive are tracked run content.
+// The round that wrote them commits them with the new plan generation.
+// It sits under the durable loom directory.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReworkDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReworkDirRel())
 }
 
-// LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of lymdirs.LymDirName and reviewsDirName.
+// LoomReviewsDirRel returns the path of the reviews directory relative to the worktree anchor:
+// the join of lymdirs.LymDirName and reviewsDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func LoomReviewsDirRel() string {
 	return filepath.Join(lymdirs.LymDirName, reviewsDirName)
 }
 
-// LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves
-// against for this worktree -- the value shedrecipe.Env.RunRoot takes.
-// It is durable: everything the round producer and the Bouncer write here -- reports, verdicts, ledgers, focus files, and their timestamped archive siblings -- is tracked content committed by loom's per-transition status commit.
+// LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves against for this worktree.
+// It is the value that shedrecipe.Env.RunRoot takes.
+// It is durable: the files written under it are tracked content committed by loom's per-transition status commit.
+// Its timestamped archive siblings are committed the same way.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReviewsDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReviewsDirRel())
 }
 
-// LoomDurableDirRel returns the worktree-anchor-relative form of LoomDurableDir's path: the join of lymdirs.LymDirName and loomDirName.
+// LoomDurableDirRel returns the path of loom's durable run directory relative to the worktree anchor:
+// the join of lymdirs.LymDirName and loomDirName.
 // Everything under this directory is tracked run content committed by loom's per-transition status commit.
 func LoomDurableDirRel() string {
 	return filepath.Join(lymdirs.LymDirName, loomDirName)
 }
 
-// LoomDurableDir returns loom's durable run directory for this worktree: LoomDurableDirRel joined onto l.AnchorPath().
-// It is the durable counterpart of LoomScratchDir.
+// LoomDurableDir returns loom's durable run directory for this worktree, located under the worktree anchor.
 // Everything under this directory is tracked run content committed by loom's per-transition status commit.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomDurableDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomDurableDirRel())
 }
 
-// LoomAmendmentRecordRel returns the worktree-anchor-relative form of LoomAmendmentRecord's path: the join of LoomDurableDirRel and amendmentRecordFileName.
+// LoomAmendmentRecordRel returns the path of the plan amendment record relative to the worktree anchor:
+// the durable directory's relative path joined with amendmentRecordFileName.
 // It exists so a caller building a fabric commit pathspec never has to name a segment loomengine owns.
 func LoomAmendmentRecordRel() string {
 	return filepath.Join(LoomDurableDirRel(), amendmentRecordFileName)
 }
 
-// LoomAmendmentRecord returns the path of the plan amendment record for this worktree: LoomAmendmentRecordRel joined onto l.AnchorPath().
+// LoomAmendmentRecord returns the path of the plan amendment record for this worktree.
 // It is durable: the run's routing reads it, so it is tracked content that survives adoption on another machine.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomAmendmentRecord(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomAmendmentRecordRel())
 }
 
-// PathsOutsideRunRecords returns the absolute paths that lie outside the run's own records directories, in their input order.
-// The records directories are the run's directory, the loom durable directory and the reviews directory: the ones the status commit stages.
-// A path under one of them is run state a hand-over leaves to the next driver; a path that only shares a directory's name as a prefix is outside it.
+// PathsOutsideRunRecords returns the absolute paths outside the run's own records directories, in input order.
+// The records directories are the run's directory, the loom durable directory and the reviews directory:
+// the ones the status commit stages.
+// A path under one of them is run state a hand-over leaves to the next driver;
+// a path that only shares a directory's name as a prefix is outside it.
 func PathsOutsideRunRecords(l *lymcwd.Location, runID string, paths []string) []string {
 	records := []string{shedrun.RunDir(l, runID), LoomDurableDir(l), LoomReviewsDir(l)}
 	var outside []string
@@ -352,38 +352,41 @@ func PathsOutsideRunRecords(l *lymcwd.Location, runID string, paths []string) []
 	return outside
 }
 
-// LoomFrictionDir returns the path to the Tier 2 friction leaf's directory for this worktree: the per-agent friction notes an unsupervised run's producers append to.
+// LoomFrictionDir returns the path to the Tier 2 friction leaf's directory for this worktree:
+// the per-agent friction notes an unsupervised run's producers append to.
 // The notes are run records, so they live under the durable tree and are committed with the run.
-// It is built on LoomDurableDir rather than re-joining l.AnchorPath() and the durable literal a second time.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomFrictionDir(l *lymcwd.Location) string {
 	return filepath.Join(LoomDurableDir(l), frictionDirName)
 }
 
-// LoomFrictionArchivePrefix returns the absolute path prefix a timestamped archive sibling of
-// LoomFrictionDir is composed from: internal/frictionengine appends its own compact timestamp to
-// this prefix and moves the covered friction files into the directory that results.
-// It exists as a second accessor, rather than being derived by the caller from LoomFrictionDir,
-// so internal/frictionengine stays told rather than deriving, and the "friction" segment is still
-// named in exactly one place.
+// LoomFrictionArchivePrefix returns the absolute path prefix from which the friction archive names are built.
+// internal/frictionengine appends its own compact timestamp to this prefix;
+// it then moves the covered friction files into the directory that results.
+// The accessor exists so internal/frictionengine is told the prefix rather than deriving it;
+// the "friction" segment is still named in one place.
 func LoomFrictionArchivePrefix(l *lymcwd.Location) string {
 	return LoomFrictionDir(l) + "-"
 }
 
-// LoomFrictionDirRel returns the worktree-anchor-relative form of LoomFrictionDir's path: the join of LoomDurableDirRel and the friction segment.
+// LoomFrictionDirRel returns the path of the friction directory relative to the worktree anchor:
+// the join of the durable directory's relative path and the friction segment.
 // A reader of a git tree applies filepath.ToSlash to it.
 func LoomFrictionDirRel() string {
 	return filepath.Join(LoomDurableDirRel(), frictionDirName)
 }
 
-// LoomFrictionArchivesRelPattern returns a worktree-anchor-relative git pathspec glob matching every timestamped reflection-archive sibling of the friction directory and everything beneath it.
+// LoomFrictionArchivesRelPattern returns a git pathspec glob, relative to the worktree anchor:
+// it matches every timestamped reflection-archive sibling of the friction directory and everything beneath it.
 // It suits a pathspec only, never a file path, since git's glob lets its `*` match across `/`.
 func LoomFrictionArchivesRelPattern() string {
 	return LoomFrictionDirRel() + "-*"
 }
 
-// IsLoomFrictionArchive reports whether name, a directory name under LoomDurableDirRel, is a timestamped reflection-archive sibling of the friction directory.
-// That is the friction segment followed by "-" and at least one more character; the friction directory itself is not an archive.
+// IsLoomFrictionArchive reports whether name is a timestamped reflection-archive sibling of the friction directory.
+// The name is a directory name directly under the durable directory.
+// A name matches when it is the friction segment followed by "-" and at least one more character;
+// the friction directory itself is not an archive.
 func IsLoomFrictionArchive(name string) bool {
 	rest, ok := strings.CutPrefix(name, frictionDirName+"-")
 	return ok && rest != ""
@@ -397,7 +400,8 @@ func LandingCheckpointSubject(slug string) string {
 	return landingCheckpointSubjectPrefix + slug
 }
 
-// LandingCheckpointSlug is the inverse of LandingCheckpointSubject: the landing run slug when subject has the checkpoint prefix and a non-empty rest, else false.
+// LandingCheckpointSlug reports the landing run slug that a checkpoint commit subject encodes.
+// It returns false when subject lacks the checkpoint prefix or has an empty remainder.
 func LandingCheckpointSlug(subject string) (string, bool) {
 	slug, ok := strings.CutPrefix(subject, landingCheckpointSubjectPrefix)
 	if !ok || slug == "" {
@@ -406,21 +410,22 @@ func LandingCheckpointSlug(subject string) (string, bool) {
 	return slug, true
 }
 
-// LoomFrictionLock returns the path to the advisory lock guarding the Tier 2 reflection step against
-// a second concurrent reflection over the same friction directory.
+// LoomFrictionLock returns the path to the advisory lock against concurrent reflections over one friction directory.
 //
-// The reflection runs only inside the terminal Friction-Reflect row, so the lock orders the rows' reflections of two drivers over one friction directory.
+// The reflection runs only inside the terminal Friction-Reflect row,
+// so the lock orders the rows' reflections of two drivers over one friction directory.
 // An operator can resume a halted task and reach a new driver's row while an earlier driver's row still reflects,
 // and the second reflection would archive covered files out from under the first one's agent.
 // Both would also have declared the same reflection-report.md as an output.
 // The lock file is not inside the friction directory, which holds only reflection inputs and outputs.
-// It sits at the mirrored ephemeral subpath of the durable friction directory, under LoomScratchDir.
+// It sits at the ephemeral subpath that mirrors the durable friction directory, under the scratch directory.
 func LoomFrictionLock(l *lymcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), frictionDirName+".lock")
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
-// Its Plan-prefixed fields hold the plan perch's values, which tapestry.yaml owns: LoadConfig leaves them at their zero value, and WithTapestry fills them.
+// Its Plan-prefixed fields hold the plan perch's values, which tapestry.yaml owns;
+// they stay at their zero value until tapestry.yaml is applied to the config.
 type Config struct {
 	Discussion            string `yaml:"discussion"`
 	DiscussionTimeoutMin  int    `yaml:"discussion_timeout_min"`
@@ -433,7 +438,8 @@ type Config struct {
 	Raddle            string `yaml:"raddle"`
 	RaddleAutoApprove bool   `yaml:"raddle_auto_approve"`
 
-	// ReviewerModel and FixerModel are the shared reviewer and fixer model lists, the fallback of every review segment whose own key is empty.
+	// ReviewerModel and FixerModel are the shared reviewer and fixer model lists;
+	// every review segment falls back to them when its own key is empty.
 	// Each segment's own pair replaces them for that segment when set.
 	ReviewerModel           burlerengine.ModelSpecList `yaml:"reviewer_model"`
 	FixerModel              burlerengine.ModelSpecList `yaml:"fixer_model"`
@@ -452,7 +458,8 @@ type Config struct {
 	PlanFixerFan          lenses.FanList `yaml:"-"`
 	CodeFixerFan          lenses.FanList `yaml:"code_fixer_fan"`
 
-	// Each review segment's assistant reviewer model list and fan list, one entry per round; an empty model entry runs no assistant that round.
+	// Each review segment's assistant reviewer model list and fan list, one entry per round;
+	// an empty model entry runs no assistant that round.
 	DiscussionAssistReviewerModel burlerengine.ModelSpecList `yaml:"discussion_assist_reviewer_model"`
 	PlanAssistReviewerModel       burlerengine.ModelSpecList `yaml:"-"`
 	CodeAssistReviewerModel       burlerengine.ModelSpecList `yaml:"code_assist_reviewer_model"`
@@ -460,7 +467,8 @@ type Config struct {
 	PlanAssistReviewerFan         lenses.FanList             `yaml:"-"`
 	CodeAssistReviewerFan         lenses.FanList             `yaml:"code_assist_reviewer_fan"`
 
-	// AssistReviewerTimeoutMin is the minutes the assistant reviewer's run may take, before the cap that keeps it inside the reviewer's own timeout.
+	// AssistReviewerTimeoutMin is the cap, in minutes, on the assistant reviewer's run.
+	// It keeps the run inside the reviewer's own timeout.
 	AssistReviewerTimeoutMin int `yaml:"assist_reviewer_timeout_min"`
 
 	Judge              string `yaml:"judge"`
@@ -480,21 +488,23 @@ type Config struct {
 	// DiscussionAdvisors are the Discussion-Write advisors, one seat each; an empty list runs the lead alone.
 	DiscussionAdvisors DiscussionAdvisorList `yaml:"discussion_advisors"`
 
-	// DiscussionLenses names the lenses.yaml fan whose lenses the Discussion-Write lead forks itself for once its record is written and self-checked; empty turns the forks off.
-	// It names the writer's lens fan, not the Discussion-Review perch's DiscussionReviewerFan.
+	// DiscussionLenses names the lenses.yaml fan whose lenses the Discussion-Write lead forks itself for.
+	// The forks start once its record is written and self-checked; empty turns the forks off.
+	// It names the writer's lens fan and nothing on the review side.
 	DiscussionLenses string `yaml:"discussion_lenses"`
 
 	// DiscussionGateFixer is the model-spec of the cold fixer of Discussion-Write's discussion gate; empty turns the fixer off.
 	DiscussionGateFixer string `yaml:"discussion_gate_fixer"`
 
-	// SubagentModel is the model name the Plan, Discussion-Write and darn writers pass to the Agent tool for the fresh subagents they hand lookups to.
+	// SubagentModel is the model name the writers pass to the Agent tool for the fresh subagents they hand lookups to.
 	SubagentModel string `yaml:"subagent_model"`
 
-	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
-	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
+	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for.
+	// The forks start once its plan is written and self-checked; empty turns the forks off.
+	// It names the writer's lens fan and nothing on the review side.
 	PlanLenses string `yaml:"-"`
 
-	// PlanSplit, PartsDepth, PartsMax, Parts, PartWriter, PartsChair and PartsChairTimeoutMin are the plan-split keys tapestry.yaml owns; WithTapestry fills them.
+	// The plan-split keys below are the ones tapestry.yaml owns; WithTapestry fills them.
 	PlanSplit            bool   `yaml:"-"`
 	PartsDepth           string `yaml:"-"`
 	PartsMax             int    `yaml:"-"`
@@ -506,12 +516,14 @@ type Config struct {
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`
-	// ReviewAmendMaxBounces is the review rounds an amendment generation gets after a settled segment's subject changed, clamped to the perch's own budget; 0 settles every amendment approved with no review round.
+	// ReviewAmendMaxBounces is the review rounds an amendment generation gets after a settled segment's subject changed.
+	// It is clamped to the perch's own budget; 0 settles every amendment approved with no review round.
 	ReviewAmendMaxBounces int `yaml:"review_amend_max_bounces"`
 
 	// Each perch's bounce budget, hard cap and auto-accept flag.
-	// A nil budget takes ReviewMaxBounces and a budget of 0 runs no review round for the perch; a hard cap of 0 takes ReviewHardMaxBounces;
-	// a flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
+	// A nil budget takes ReviewMaxBounces, and a budget of 0 runs no review round for the perch.
+	// A hard cap of 0 takes ReviewHardMaxBounces.
+	// A flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 	DiscussionMaxBounces     *int `yaml:"discussion_max_bounces"`
 	PlanMaxBounces           *int `yaml:"-"`
 	CodeMaxBounces           *int `yaml:"code_max_bounces"`
@@ -538,7 +550,8 @@ const advisorWayForward = "set the key to a list of {name, model} entries, each 
 // advisorEntryWayForward is the way forward of an entry that is not a {name, model} mapping.
 const advisorEntryWayForward = "rewrite the entry as {name: <seat name>, model: <model-spec>}"
 
-// advisorShapeError reports a discussion_advisors value that is not a sequence of {name, model} mappings; its text names the entry or the line and the way forward.
+// advisorShapeError is the error for a discussion_advisors value that is not a sequence of {name, model} mappings.
+// Its text names the entry or the line and gives the way forward.
 type advisorShapeError struct {
 	text string
 }
@@ -564,7 +577,8 @@ func (l *DiscussionAdvisorList) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// ConfigOpenMaps returns the loom.yaml keys whose value is a scalar, a per-round list or a list of entries, which configengine carries whole through reconcile and --set.
+// ConfigOpenMaps returns the loom.yaml keys whose value is a scalar, a per-round list or a list of entries.
+// The configengine carries those values whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{
 		"reviewer_model", "fixer_model",
@@ -580,10 +594,17 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns loom's layered-load spec.
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
-// The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
-// discussion_advisors and discussion_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
-// code_reviewer_fan is the one reviewer fan key open to the local layer, since its value names only a fan the guarded lenses.yaml defines, or "" for a solo round, and the perch's round count, rubric and whole-diff read stay.
-// raddle_auto_approve is the one approval key open to the local layer: a run profile's raddle block sets it and batten writes that block into the pair's local config, and the key is the sanctioned way to file a raddle proposal with no operator approval, read once at Raddle-Write's first spawn in a run.
+// The budget, hard-cap and auto-accept keys come from reviewbudget.
+// A budget of 0 is the per-run off switch and no guard; the auto-accept keys are guards.
+// discussion_advisors and discussion_lenses are barred too.
+// No local override or task run_settings can start advisors, turn the lens forks off or change their fan.
+// code_reviewer_fan is the one reviewer fan key open to the local layer.
+// It is open because its value names only a fan the guarded lenses.yaml defines, or "" for a solo round.
+// The perch's round count, rubric and whole-diff read stay barred.
+// raddle_auto_approve is the one approval key open to the local layer.
+// A run profile's raddle block sets it, and batten writes that block into the pair's local config.
+// The key is the sanctioned way to file a raddle proposal with no operator approval.
+// It is read once, at Raddle-Write's first spawn in a run.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
@@ -647,7 +668,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // shedOnlyKeys are the driver, tackler and arbiter keys that live in shed.yaml alone.
-// loom.yaml no longer reads them, and a local file, profile block or run_settings object that sets one is refused.
+// loom.yaml does not read them, and a local file, profile block or run_settings object that sets one is refused.
 var shedOnlyKeys = []string{
 	"driver_kind",
 	"tackler", "tackler_timeout_min", "tackler_max_spawns",
@@ -680,14 +701,17 @@ const (
 	discussionAdvisorsKey = "discussion_advisors"
 	// discussionLensesKey is the loom.yaml key naming the fan the Discussion-Write lead forks its lenses from.
 	discussionLensesKey = "discussion_lenses"
-	// subagentModelKey is the loom.yaml key naming the model of the writers' lookup subagents, and the stencil marker its value fills.
+	// subagentModelKey is the loom.yaml key naming the writers' lookup subagent model; its value fills the stencil marker.
 	subagentModelKey = "subagent_model"
 	// planLensesKey is the tapestry.yaml key naming the fan the Plan-Write lead forks its lenses from.
-	// MigrateConfig still writes it into a loom.yaml document, which the reconcile then moves to tapestry.yaml.
+	// MigrateConfig writes it into a loom.yaml document, and the reconcile then moves it to tapestry.yaml.
 	planLensesKey = "plan_lenses"
 )
 
-// validateDiscussionAdvisors rejects a missing or blank name, a name an earlier entry already holds, a name seatengine.ValidateSeatName refuses, and a model that is no model-spec or that the registry does not define, naming the key and the 1-based entry.
+// validateDiscussionAdvisors rejects an advisor whose name is missing or blank, or repeats an earlier entry.
+// It rejects a name that seatengine.ValidateSeatName refuses.
+// It rejects a model that is no model-spec or that the registry does not define.
+// Each error names the key and the 1-based entry.
 func validateDiscussionAdvisors(advisors DiscussionAdvisorList, reg modelspec.Registry) error {
 	refuse := func(entry int, err error) error {
 		return fmt.Errorf("loom config key %q entry %d: %w; %s", discussionAdvisorsKey, entry, err, advisorWayForward)
@@ -728,26 +752,39 @@ func fanKeys(cfg Config) []lenses.FanKey {
 	}
 }
 
-// MigrateConfig rewrites a loom.yaml document for lym config reconcile and returns the rewritten bytes with one line per rewrite.
-// It raises a below-floor or null step_idle_timeout_min to its floor, replaces the retired producer keys, retires skip_merge_review and fan_review and renames the retired reviewer, fixer and fan keys.
-// The producer keys:
-// discussion_producer twill becomes discussion_lenses twill-discussion, and single, seats and any other value become an empty discussion_lenses;
-// plan_producer twill becomes plan_lenses twill-plan, and any other value an empty plan_lenses.
+// MigrateConfig rewrites a loom.yaml document for lym config reconcile.
+// It returns the rewritten bytes and one report line per rewrite.
+// It raises a below-floor or null step_idle_timeout_min to its floor and replaces the retired producer keys.
+// It retires skip_merge_review and fan_review, and renames the retired reviewer, fixer and fan keys.
+// A discussion_producer of twill becomes discussion_lenses twill-discussion;
+// any other value, including single and seats, leaves an empty discussion_lenses.
+// A plan_producer of twill becomes plan_lenses twill-plan, and any other value leaves an empty plan_lenses.
 // A document that set discussion_producer also gets discussion_advisors written to match.
-// Under seats each string entry n becomes {name: advisor-n, model: <entry>}, which the report line asks the operator to rename.
-// Under any other value the list is set to empty even when the document set none, so a lower layer's list stays off where this document turned it off.
-// A seats document with no list of its own is left as it is and the report line says where its advisors come from.
-// A document holding skip_merge_review was written under the old schema, where a per-perch budget of 0 meant "take review_max_bounces":
-// each per-perch budget that is the integer 0 becomes null, skip_merge_review true becomes merge_max_bounces: 0, and the key is removed.
+// Under seats, each string entry n becomes {name: advisor-n, model: <entry>};
+// the report line asks the operator to rename it.
+// Under any other value the list is set to empty, even when the document set none.
+// That keeps a lower layer's list off where this document turned it off.
+// A seats document with no list of its own is left as it is, and the report line says where its advisors come from.
+// A document holding skip_merge_review sets each per-perch budget of integer 0 to null;
+// it also sets skip_merge_review true to merge_max_bounces: 0, and removes the key.
+// Under the old schema a budget of 0 meant take review_max_bounces.
 // A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
-// Last, each key retiredLoomKeys lists is removed through yamlengine.DropKeys, the Merge-Review perch's keys and the alignment, alignment_timeout_min, skip_alignment and parent_review_wait_min keys included, so the merge_max_bounces the skip rewrite writes ends removed too.
-// Each dropped key reports the line `<key>: retired, removed`.
-// The retired reviewer, fixer and fan keys, review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan, are renamed to reviewer_model, fixer_model, <segment>_reviewer_model, <segment>_fixer_model, <segment>_reviewer_fan and <segment>_fixer_fan with their values, and a document already holding the new name keeps its value and drops the old key.
-// Before the rename, a document holding webster_review or webster_fix and not merge_reviewer_model or merge_fixer_model gets that Merge key set to the Webster key's value, or to the renamed webster_reviewer_model or webster_fixer_model value when the document holds that too, so Merge-Review keeps the models it ran on.
-// After those renames, each webster_* review-perch key, webster_reviewer_model to webster_auto_accept, is renamed to its code_* successor with its value, so a retired webster_review ends as code_reviewer_model, and a document already holding the code_* name keeps its value and drops the webster_* key.
+// Last, yamlengine.DropKeys removes each retired loom key, the Merge-Review perch's and alignment keys included;
+// each dropped key reports the line `<key>: retired, removed`.
+// review becomes reviewer_model, and fix becomes fixer_model.
+// Each <segment>_review becomes <segment>_reviewer_model, and each <segment>_fix becomes <segment>_fixer_model.
+// Each <segment>_fan becomes <segment>_reviewer_fan, and each <segment>_fix_fan becomes <segment>_fixer_fan.
+// Each rename keeps the value; a document already holding the new name keeps its own value and drops the old key.
+// Before the renames, a document holding webster_review or webster_fix gets the matching Merge key set from it.
+// A Merge key already there is kept, so Merge-Review keeps the models it ran on.
+// The value is the webster key's value;
+// the renamed webster_reviewer_model or webster_fixer_model value replaces it when the document holds that too.
+// After the renames, each webster_* review-perch key becomes its code_* successor with its value.
+// The range runs from webster_reviewer_model to webster_auto_accept, so webster_review ends as code_reviewer_model.
+// A document already holding the code_* name keeps its value and drops the webster_* key.
 // A document without a retired key or comment is returned unchanged, so a migrated file is unchanged on a second pass.
-// Everything else is carried through yaml node editing with its comments;
-// the loader never calls it.
+// Everything else is carried through yaml node editing with its comments.
+// The loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	raised, floorLine, err := yamlengine.RaiseIntFloor(existing, "step_idle_timeout_min", stepIdleTimeoutFloorMin)
@@ -796,7 +833,9 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return migrated, rewrites, nil
 }
 
-// migrateProducerKeys replaces the retired discussion_producer and plan_producer keys of document, as MigrateConfig describes, and returns document itself, with no lines, when it holds neither.
+// migrateProducerKeys replaces the retired discussion_producer and plan_producer keys of document.
+// It returns the rewritten document and the report lines of the rewrites.
+// It returns document unchanged, with no lines, when it holds neither key.
 func migrateProducerKeys(document []byte) ([]byte, []string, error) {
 	var tree yaml.Node
 	if err := yaml.Unmarshal(document, &tree); err != nil {
@@ -834,8 +873,10 @@ func migrateProducerKeys(document []byte) ([]byte, []string, error) {
 	return out.Bytes(), slices.DeleteFunc(lines, func(line string) bool { return line == "" }), nil
 }
 
-// replaceProducerKey renames the retired producer key of root to lensesKey in place, keeping its comments, and gives it fan when the producer was twill and an empty value otherwise.
-// value is the producer key's value node, and the returned line reports the rewrite.
+// replaceProducerKey renames the retired producer key of root to lensesKey in place, keeping its comments.
+// It sets the key's value to fan when the producer was twill, and to an empty value otherwise.
+// value is the producer key's value node.
+// The returned line reports the rewrite.
 func replaceProducerKey(root *yaml.Node, producerKey, lensesKey, fan string, value *yaml.Node) string {
 	old := value.Value
 	lenses := ""
@@ -855,7 +896,8 @@ func replaceProducerKey(root *yaml.Node, producerKey, lensesKey, fan string, val
 	return fmt.Sprintf("%s: %s replaced by %s: %q", producerKey, old, lensesKey, lenses)
 }
 
-// migrateAdvisors rewrites root's discussion_advisors to match the retired discussion_producer value producer, and returns the line reporting it, or "" when nothing changed.
+// migrateAdvisors rewrites root's discussion_advisors to match the retired discussion_producer value producer.
+// It returns the line reporting the rewrite, or "" when nothing changed.
 func migrateAdvisors(root *yaml.Node, producer string) string {
 	advisors := mappingValueNode(root, discussionAdvisorsKey)
 	if producer != "seats" {
@@ -899,7 +941,9 @@ func migrateAdvisors(root *yaml.Node, producer string) string {
 	return fmt.Sprintf("%s: %d string entries rewritten as {name: advisor-<n>, model: <entry>}; rename each advisor to its seat name", discussionAdvisorsKey, renamed)
 }
 
-// advisorEntryNodes returns the entries of a retired-form discussion_advisors value: the sequence's own entries, the lone scalar of a scalar value, and none for an empty or null value, a list of one empty string included.
+// advisorEntryNodes returns the entries of a retired-form discussion_advisors value.
+// A sequence yields its own entries, and a scalar yields itself alone.
+// An empty or null value yields none, and so does a list holding one empty string.
 func advisorEntryNodes(value *yaml.Node) []*yaml.Node {
 	entries := value.Content
 	if value.Kind == yaml.ScalarNode {
@@ -934,7 +978,8 @@ func mappingValueNode(mapping *yaml.Node, key string) *yaml.Node {
 	return nil
 }
 
-// retireSkipMergeReview rewrites a document holding the retired skip_merge_review key onto the zero-round budgets and returns the rewritten bytes with one line per rewrite.
+// retireSkipMergeReview rewrites a document holding the retired skip_merge_review key onto the zero-round budgets.
+// It returns the rewritten bytes and one line per rewrite.
 // A document without the key comes back unchanged.
 func retireSkipMergeReview(document []byte) ([]byte, []string, error) {
 	var parsed yaml.Node
@@ -994,7 +1039,8 @@ func retireSkipMergeReview(document []byte) ([]byte, []string, error) {
 	return out.Bytes(), lines, nil
 }
 
-// retireFanReview removes the retired fan_review key from document and returns the rewritten bytes with one line reporting it.
+// retireFanReview removes the retired fan_review key from document.
+// It returns the rewritten bytes and one line reporting the removal.
 // A document without the key comes back unchanged.
 func retireFanReview(document []byte) ([]byte, []string, error) {
 	var parsed yaml.Node
@@ -1044,7 +1090,8 @@ var retiredReviewKeyRenames = []yamlengine.KeyRename{
 }
 
 // retiredPerchKeyRenames maps each webster_* review-perch key of loom.yaml onto the code_* key of the Code-Review perch.
-// MigrateConfig applies it after retiredReviewKeyRenames, so a retired webster_review reaches code_reviewer_model through webster_reviewer_model.
+// Apply it after the review-key renames,
+// so a retired webster_review reaches code_reviewer_model through webster_reviewer_model.
 var retiredPerchKeyRenames = []yamlengine.KeyRename{
 	{From: "webster_reviewer_model", To: "code_reviewer_model"},
 	{From: "webster_fixer_model", To: "code_fixer_model"},
@@ -1057,7 +1104,8 @@ var retiredPerchKeyRenames = []yamlengine.KeyRename{
 	{From: "webster_auto_accept", To: "code_auto_accept"},
 }
 
-// retiredLoomKeys lists the loom.yaml keys no binary reads any more, each removed by MigrateConfig after the renames so a retired key's value can still reach a successor first.
+// retiredLoomKeys lists the loom.yaml keys no binary reads.
+// Each is removed after the key renames, so a retired key's value can still reach its successor first.
 var retiredLoomKeys = []string{
 	"merge_reviewer_model",
 	"merge_fixer_model",
@@ -1074,10 +1122,13 @@ var retiredLoomKeys = []string{
 	"parent_review_wait_min",
 }
 
-// copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document to the values of its retired webster_review and webster_fix, each only when the document holds the Webster key and not the Merge one.
-// When the document also holds the renamed webster_reviewer_model or webster_fixer_model, that value is copied instead, since it is the one the rename keeps.
-// Merge-Review ran on Webster-Review's models before it had keys of its own, so the copy keeps it on them.
-// It returns the rewritten bytes with one line per copied key, and document itself, with no lines, when nothing is copied.
+// copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document from their Webster keys.
+// webster_review feeds merge_reviewer_model and webster_fix feeds merge_fixer_model.
+// Each copy happens only when the document holds the Webster key and not the Merge key.
+// A renamed key, webster_reviewer_model or webster_fixer_model, wins over its retired key, since the rename keeps it.
+// The copy keeps Merge-Review on the models it ran on before it had keys of its own.
+// It returns the rewritten bytes, with one line per copied key.
+// It returns document itself, with no lines, when nothing is copied.
 func copyWebsterModelsOntoMerge(document []byte) ([]byte, []string, error) {
 	var parsed yaml.Node
 	if err := yaml.Unmarshal(document, &parsed); err != nil {
@@ -1138,7 +1189,8 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// ValidateLocalValues checks the values of every review budget and hard-cap key a local-layer document sets, through reviewbudget, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the review budget and hard-cap keys a local-layer document sets, through reviewbudget.
+// Other keys are left to the config load.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
 	var budgets map[string]any
@@ -1150,7 +1202,9 @@ func ValidateLocalValues(document []byte) error {
 
 // LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
 // It validates model-spec grammar at load time, and reads lenses.yaml and models.yaml through the same dirs.
-// review_max_bounces and the per-perch budgets are refused below 0, null taking review_max_bounces and 0 giving zero rounds, and each refusal names the command for the layer its value comes from.
+// review_max_bounces and the per-perch budgets are refused below 0:
+// null taking review_max_bounces and 0 giving zero rounds,
+// and each refusal names the command for the layer its value comes from.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -1261,30 +1315,27 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	// friction is validated only when non-empty: a present-but-empty value means Tier 2 is off and
-	// must load cleanly, unlike the four role keys above, which are always required.
+	// friction is validated only when non-empty: a present-but-empty value means Tier 2 is off.
+	// It must load cleanly, unlike the four role keys above, which are always required.
 	if cfg.Friction != "" {
 		if _, err := modelspec.Parse(cfg.Friction); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", "friction", err)
 		}
 	}
 
-	// driver is validated only when non-empty, exactly like friction above: an empty value means
-	// "defer to the engine default" -- the same meaning shuttleengine.Spec.Model's empty value
-	// already carries -- and must load cleanly rather than being forced to name a literal alias.
+	// driver is validated only when non-empty, like friction above: an empty value means
+	// "defer to the engine default", the meaning an empty shuttleengine.Spec.Model already carries.
+	// It must load cleanly, not be forced to name a literal alias.
 	if cfg.Driver != "" {
 		if _, err := modelspec.Parse(cfg.Driver); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", "driver", err)
 		}
 	}
 
-	// The four timeouts are checked here for the same reason the four model-specs above are: a
-	// value that can only be a mistake should fail at load time rather than hours into a run when
-	// the producer it governs first spawns. A negative minute count flows into
-	// time.Duration(n) * time.Minute on a shuttleengine.Spec, where it is caught only at spawn or
-	// resume time -- exactly the deferred failure this function's own header says it exists to
-	// prevent, for the keys sitting immediately beside the ones it already guards.
-	// Zero is deliberately accepted rather than rejected, and means something per key.
+	// The four timeouts are checked here, so a value that can only be a mistake fails at load time.
+	// A negative minute count flows into time.Duration(n) * time.Minute on a shuttleengine.Spec:
+	// it is caught only when the producer it governs first spawns or resumes.
+	// Zero is accepted and means something per key.
 	// For three of them Spec.Timeout treats 0 as "defer to shuttle's own run_timeout_min".
 	// For assist_reviewer_timeout_min, 0 takes the whole room left before review_timeout_min.
 	const deferToShuttle = "defer to shuttle's run_timeout_min"

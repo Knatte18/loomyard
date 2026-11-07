@@ -1,7 +1,7 @@
 // landingdeps.go declares landingDeps, the assembly seam that builds a landingshed.Deps struct from
-// every value already resolved by run.go. landingDeps performs no I/O of any kind -- it exists so
-// the drift-guard test in landingdeps_test.go stays Tier 1 with no hubforge fixture, mirroring
-// wiring.go's own header-comment convention for why wire is extracted.
+// every value already resolved by run.go.
+// landingDeps performs no I/O, so its drift-guard test in landingdeps_test.go stays at Tier 1.
+// The test needs no hubforge fixture.
 
 package loomcli
 
@@ -53,13 +53,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// landingDeps assembles a landingshed.Deps from values already resolved by the caller (run.go),
-// per the assembly-seam-takes-plain-values decision: every argument arrives already resolved, and
-// this function does no I/O and returns no error.
+// landingDeps assembles a landingshed.Deps from values already resolved by the caller (run.go).
+// Every argument arrives already resolved, so this function does no I/O and returns no error.
 //
-// runner assigns directly into the Shuttle mergeresolve.Shuttle field: *shuttleengine.Runner already
-// satisfies that interface, per the existing compile-time assertion at
-// internal/mergeresolve/deps.go:46.
+// runner assigns directly into the mergeresolve.Shuttle field.
+// *shuttleengine.Runner satisfies that interface, and internal/mergeresolve asserts it at compile time.
 func landingDeps(
 	l *lymcwd.Location,
 	recipe string,
@@ -81,12 +79,14 @@ func landingDeps(
 	if recipeHasEngine(recipe, planWriteEngine) {
 		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
 	}
-	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check with a land check over the members and pairs still working under it.
+	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check.
+	// The land check covers the members and pairs still working under the beam.
 	var landBlockers func() ([]landingshed.LandBlocker, error)
 	pullRequest := pullRequestDeps(l, parentBranch, pushSkipped, runner)
 	if recipe == shedrun.RecipePawl {
 		pullRequest.BeamRecord, pullRequest.DropBeamRecord = beamLandingRecordSeams(l, seedSlug(l.WorktreeName))
-		// A beam's merged pull request lacks the commits `lym beam ready` counts as lacking, never a merge of the parent or a records-only commit.
+		// A beam's merged pull request lacks the commits that `lym beam ready` counts as lacking.
+		// The commits it lacks never include a merge of the parent or a records-only commit.
 		pullRequest.CommitsMissing = func(merged, _ string) ([]string, error) {
 			return fabricengine.BeamCommitsPast(l, parentBranch, merged)
 		}
@@ -115,27 +115,23 @@ func landingDeps(
 		OpenParentFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.OpenParent(l, parentBranch)
 		},
-		// CommitStatus commits loom's own phase-machine status file, which Shed rewrites on every
-		// producer transition. The per-transition Shed.CommitStatus seam (wiring.go) already keeps
-		// the status file current on the ordinary path, so both landing producers calling this
-		// immediately before they merge is retained only as the sole protection if a product wires
-		// Shed.CommitStatus as nil -- not because the merge guard still inspects the local-only side
-		// of the pair, which this task removed from the merge participants entirely, so the guard no
-		// longer looks at it.
+		// CommitStatus commits loom's own phase-machine status file, which Shed rewrites on every producer transition.
+		// The Shed.CommitStatus seam already keeps that file current on the ordinary path.
+		// Both landing producers call this before they merge.
+		// That protects the file only when a product wires Shed.CommitStatus as nil.
 		//
-		// It mirrors wiring.go's CommitDiscussion/CommitPlan closures in every respect: the same
-		// CommitAnchoredPaths call, the same throwaway mutation recorder, the same EnvSyncOptions,
-		// and the same discard of the (sha, committed) pair in favour of the error alone, which is
-		// what makes a second call over an already-committed, already-clean path a no-op rather
-		// than a failure. The pathspec is shedrun.StatusRel(l, shedrun.SelfRunID), never a hand-built
-		// join naming the _lym literal, which the Lymdirs Single-Declarer Invariant forbids.
+		// The commit discards the (sha, committed) pair and returns the error alone.
+		// A second call over an already-committed, clean path is therefore a no-op, not a failure.
+		// The pathspec is shedrun.StatusRel(l, shedrun.SelfRunID).
+		// It is never a hand-built join naming the _lym literal, which the Lymdirs Single-Declarer Invariant forbids.
 		CommitStatus: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
 		Reconcile:           runReconciler(l, seedSlug(l.WorktreeName)),
-		// RemoveFollowUp names the step that settles the run's batten record when a stopped reason sends the operator to remove the pair, read over the prime at call time.
+		// RemoveFollowUp names the step that settles the run's batten record.
+		// A stopped reason uses it when it sends the operator to remove the pair, and it reads the prime at call time.
 		RemoveFollowUp: func() string {
 			prime, err := primeOfHub(l)
 			if err != nil {
@@ -159,7 +155,8 @@ func landingDeps(
 			return fabricengine.ParentHoldsTaskWork(prime, l, seedSlug(l.WorktreeName))
 		},
 		ParentOwner: parentOwner(l, seedSlug(l.WorktreeName)),
-		// The origin parent's work and the parent commits origin lacks are read over the parent's own pair, which Finalize's push failure describes.
+		// The origin parent's work and the parent commits origin lacks are read over the parent's own pair.
+		// Finalize's push failure describes that pair.
 		OriginParentHoldsWork: func() (bool, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -181,7 +178,8 @@ func landingDeps(
 			}
 			return parent.LocalOnlyCommits(parentBranch)
 		},
-		// The pre-merge step probes the pair's merge state, aborts the row's own parked merge-in and stops the run's conflict sessions first.
+		// The pre-merge step probes the pair's merge state.
+		// It aborts the row's own parked merge-in and stops the run's conflict sessions first.
 		MergeState: func() (fabricengine.MidMergeState, error) {
 			return fabricengine.MidMerge(l)
 		},
@@ -202,7 +200,7 @@ func landingDeps(
 			return f.HeadSHA()
 		},
 		// MarkTaskDone marks this worktree's board task done once its work has landed.
-		// landingshed itself names no board path.
+		// The landing package names no board path; this closure opens the hub's board.
 		MarkTaskDone: func() error {
 			board, err := boardengine.OpenHub(l.HubPath)
 			if err != nil {
@@ -211,7 +209,8 @@ func landingDeps(
 			done := "done"
 			return board.SetStatus(seedSlug(l.WorktreeName), &done)
 		},
-		// RecordLanding records the landing commit in the prime's scratch of the batten run of this worktree's slug, where that run's dobby reads it.
+		// RecordLanding records the landing commit in the prime's scratch for the batten run of this worktree's slug.
+		// The run's dobby reads it there.
 		RecordLanding: func(commit string) error {
 			prime, err := primeOfHub(l)
 			if err != nil {
@@ -219,7 +218,8 @@ func landingDeps(
 			}
 			return shedrun.WriteLandedCommit(prime, seedSlug(l.WorktreeName), commit)
 		},
-		// RecordLandedSize writes the size of the landed diff into the worktree's usage directory, so the landed record rides the run's last status commit.
+		// RecordLandedSize writes the size of the landed diff into the worktree's usage directory.
+		// The landed record rides the run's last status commit.
 		RecordLandedSize: func(from, to string) error {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -252,12 +252,12 @@ func landingDeps(
 		VerifyHold:     verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),
 		Shuttle:        runner,
 		EnginesRun:     runner.EnginesRun,
-		// DriftVerdict reads the committed drift records at call time, so it renders the check a Drift-Verify after bootstrap recorded.
+		// DriftVerdict reads the committed drift records at call time, so it renders the check recorded after bootstrap.
 		DriftVerdict: func() (string, error) { return driftengine.Verdict(driftRecordsDeps(l)) },
 		Registry:     registry,
 		Config:       cfg,
 		Lock:         lock,
-		// The parent reads run over the task pair, opened at call time like the other fabric seams.
+		// The parent reads run over the task pair, opened at call time.
 		ReadParentTips: parentTipsReader(l, parentBranch),
 		HoldsWork: func(base, source string) (bool, error) {
 			f, err := fabricengine.Open(l)
@@ -312,7 +312,7 @@ func landingDeps(
 	}
 }
 
-// beamLandingRecordSeams returns the seams Finalize reads and drops the pull request of the landing record of the beam slug at l through.
+// beamLandingRecordSeams returns the seams that read and drop the pull request in the landing record of slug at l.
 // The drop commits the landing directory in the beam's worktree, so the record leaves the tracked tree the beam branch carries.
 func beamLandingRecordSeams(l *lymcwd.Location, slug string) (read func() (landingshed.BeamPullRequest, bool, error), drop func() error) {
 	path, lockPath := loomengine.BeamLandingPath(l), loomengine.BeamLandingLockPath(l)
@@ -336,12 +336,12 @@ func beamLandingRecordSeams(l *lymcwd.Location, slug string) (read func() (landi
 
 // pullRequestDeps assembles the PR-Review row's seams for the run of the worktree l.
 // Each seam reads at call time, so a beam.yaml, board entry or origin changed after bootstrap is read as it stands.
-// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
+// SessionLive and RegisterSession read reed's strand table, which only the run's wiring holds, so the wiring fills them.
 func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
 	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped, runner)
 }
 
-// pullRequestDepsGuardedBy is pullRequestDeps with the pre-push check injected as check.
+// pullRequestDepsGuardedBy builds the PR-Review row's seams for l, with check as the pre-push check.
 func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
 	slug := seedSlug(l.WorktreeName)
 	return landingshed.PullRequestDeps{
@@ -391,7 +391,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			}, landingPushRetryPauses, time.Sleep)
 		}),
 		// CommitsMissing reads over the task pair, whose repository holds the merged head once the pair has fetched it.
-		// A pawl run's landing replaces it with the beam's own reading, set where the beam's landing record seams are.
+		// A pawl run replaces it with the beam's own reading, which the beam's landing wiring sets.
 		CommitsMissing: func(merged, task string) ([]string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -416,7 +416,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			_, err = client.Post(strandName, line)
 			return err
 		},
-		// PauseCovered reads the pause record as pauseCovered does, so an unreadable record covers nothing.
+		// PauseCovered reports whether the pause record covers the slug; an unreadable record covers nothing.
 		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
 		Now:          time.Now,
 		Sleep:        sleepContext,
@@ -427,10 +427,12 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 }
 
 // landingPushRetryPauses are the growing pauses between the attempts of a landing push whose push lock stays held.
-// Another session's push holds the lock only while git runs, so the attempts ride out such contention for minutes before the row halts.
+// Another session's push holds the lock only while git runs,
+// so the attempts ride out such contention for minutes before the row halts.
 var landingPushRetryPauses = []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute}
 
-// pushRidingOutBusyLock runs push, and while its error wraps fabricengine.ErrPushLockBusy, logs it, sleeps the next of pauses and runs push again.
+// pushRidingOutBusyLock runs push, and while its error wraps fabricengine.ErrPushLockBusy, retries it.
+// Each retry logs the error and sleeps the next of pauses first.
 // It returns nil once a push lands, the first error that is no busy lock, and the last busy error once pauses run out.
 func pushRidingOutBusyLock(push func() error, pauses []time.Duration, sleep func(time.Duration)) error {
 	err := push()
@@ -473,7 +475,8 @@ func watchFileChanges(path, waiter string) (<-chan struct{}, func()) {
 }
 
 // parentPullRequestMode returns the seam that reads the pull_request mode of the branch the run lands on.
-// The parent pair is the one the run's origin record names, and the prime when it names none, so the receiving branch's own beam.yaml decides and the task worktree's is never read.
+// The parent pair is the one the run's origin record names, and the prime when it names none,
+// so the receiving branch's own beam.yaml decides and the task worktree's is never read.
 // The worktree name is returned with any error, so a halt can say where to fix the file.
 func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, err error) {
 	return func() (string, string, error) {
@@ -496,7 +499,8 @@ func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, er
 }
 
 // codeBudgetZero returns the seam that reports whether the Code-Perch is off for recipe, read at call time.
-// The perch is off when loom.yaml's effective review budget is 0, and when the recipe's Code-Review rows carry an entry gate that does not hold.
+// The perch is off when loom.yaml's effective review budget is 0.
+// It is also off when the recipe's Code-Review rows carry an entry gate that does not hold.
 func codeBudgetZero(l *lymcwd.Location, recipe string) func() (bool, error) {
 	return func() (bool, error) {
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
@@ -519,7 +523,8 @@ func codeBudgetZero(l *lymcwd.Location, recipe string) func() (bool, error) {
 	}
 }
 
-// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a recipe with a Plan-Write row, and "" on one with none.
+// fixerPlanDir returns the plan directory the merge fixer reads.
+// It is the run's plan directory on a recipe with a Plan-Write row, and "" on one with none.
 func fixerPlanDir(l *lymcwd.Location, recipe string) string {
 	if !recipeHasEngine(recipe, planWriteEngine) {
 		return ""
@@ -529,7 +534,9 @@ func fixerPlanDir(l *lymcwd.Location, recipe string) string {
 
 // fixerTestFileMatcher returns the test-file predicate the fixer's kind cap judges a path by.
 // A recipe with no Plan-Write row has no plan and so no language, and matches a test file of any language.
-// A recipe with one parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
+// A recipe with one parses the live plan at call time.
+// An absent `language:` reads as go, and a plan that does not parse reads as none.
+// The none matcher counts every file a test file, so it over-covers.
 func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
 	if !recipeHasEngine(recipe, planWriteEngine) {
 		return planparser.IsAnyLanguageTestFile
@@ -543,8 +550,10 @@ func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
 	}
 }
 
-// rowEntry returns the history index just after the last entry a producer other than row made, or 0 when row made every entry.
-// Every entry the row adds while it is resumed keeps that index, and an entry of the row reached again from another row gets a new one.
+// rowEntry returns the history index just after the last entry made by a producer other than row.
+// It returns 0 when row made every entry.
+// Every entry the row adds while it is resumed keeps that index.
+// An entry of the row reached again from another row gets a new one.
 func rowEntry(history []shedengine.HistoryEntry, row string) int {
 	for index := len(history) - 1; index >= 0; index-- {
 		if history[index].Producer != row {
@@ -555,7 +564,8 @@ func rowEntry(history []shedengine.HistoryEntry, row string) int {
 }
 
 // parentTipsReader returns the parent-tip reader the landing and the darn rows share:
-// it opens the task pair's fabric at call time and reads parentBranch's tips, fetching the remotes first when fetch is true.
+// it opens the task pair's fabric at call time and reads parentBranch's tips.
+// When fetch is true, it fetches the remotes first.
 func parentTipsReader(l *lymcwd.Location, parentBranch string) func(fetch bool) (fabricengine.ParentTips, error) {
 	return func(fetch bool) (fabricengine.ParentTips, error) {
 		f, err := fabricengine.Open(l)
@@ -566,7 +576,8 @@ func parentTipsReader(l *lymcwd.Location, parentBranch string) func(fetch bool) 
 	}
 }
 
-// mergeableTips returns the parent tips a Parent-Align would merge: the local tip alone when pushes are skipped, and the local tip and the upstream tip otherwise, empty tips dropped.
+// mergeableTips returns the parent tips a Parent-Align would merge, with empty tips dropped.
+// It is the local tip alone when pushes are skipped, and the local tip and the upstream tip otherwise.
 func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
 	candidates := []string{tips.Local}
 	if !pushSkipped {
@@ -581,7 +592,7 @@ func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
 	return merged
 }
 
-// pauseCovered returns the parent lock store's Covered seam: whether the hub's pause record covers a slug now.
+// pauseCovered returns the parent lock store's Covered seam: whether the hub's pause record covers a slug at call time.
 // A geometry or record that cannot be read covers nothing, so a corrupt file never freezes the lock queue.
 func pauseCovered(l *lymcwd.Location) func(slug string) bool {
 	return func(slug string) bool {
@@ -601,8 +612,11 @@ func pauseCovered(l *lymcwd.Location) func(slug string) bool {
 
 // parentLockDeps builds the parent lock seams for the run runID of the worktree l.
 // The store sits in the hub-level ephemeral tree, reached by path and never junctioned into a pair;
-// the wait record lives in the run's scratch directory, and the wait ends when the run status file's pause_after, read under its status lock, names the run's current producer: the lock-taking row waiting in the queue.
-// The store reads the pause record to tell which slug a pause covers; an unreadable record covers nothing and logs one Warn.
+// The wait record lives in the run's scratch directory.
+// The wait ends when the run status file's pause_after, read under its status lock, names the run's current producer:
+// the lock-taking row waiting in the queue.
+// The store reads the pause record to tell which slug a pause covers;
+// an unreadable record covers nothing and logs one Warn.
 func parentLockDeps(l *lymcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
 	return landingshed.ParentLockDeps{
 		Store: &parentlock.Store{
@@ -621,7 +635,8 @@ func parentLockDeps(l *lymcwd.Location, runID, statusPath, statusLockPath string
 	}
 }
 
-// holdsParentLock returns the function that reports whether a live parent lock of store is owned by slug, which a verify hold reads on every poll.
+// holdsParentLock returns the function that reports whether a live parent lock of store is owned by slug.
+// A verify hold reads it on every poll.
 // A nil store reads not held, and an error of the store reads not held, logged once per distinct error.
 func holdsParentLock(store *parentlock.Store, slug string) func() bool {
 	var (
@@ -648,7 +663,8 @@ func holdsParentLock(store *parentlock.Store, slug string) func() bool {
 }
 
 // loopLockOwner returns the seam that names the parent lock's owner for the run runID of the worktree l.
-// The process is the run's detached loop when its pid record names a live loop, so the lock follows the loop across its step children;
+// The process is the run's detached loop when its pid record names a live loop,
+// so the lock follows the loop across its step children;
 // otherwise it is the calling step process, so a step run outside a loop holds the lock only while it lives.
 // The teardown's mark in the pid file names no loop.
 func loopLockOwner(l *lymcwd.Location, runID string) func() (parentlock.Owner, error) {
@@ -679,7 +695,8 @@ type verifySource struct {
 	gateTiers func(gate string) ([]int, error)
 }
 
-// planVerifySource returns loom's verify source: the call of any gate key a landing row names, and the fix rows' `code-burler-fix` call as the base command.
+// planVerifySource returns loom's verify source.
+// It holds the call of any gate key a landing row names, and the fix rows' `code-burler-fix` call as the base command.
 // Each reader loads the hub's gate config over the pair's config dirs each time it is called, never at construction:
 // landingDeps runs at bootstrap, so a gate.yaml edit between two steps must take effect.
 // A config or gate-key refusal is returned with its own way forward, not mapped to an empty command.
@@ -693,9 +710,10 @@ func planVerifySource(l *lymcwd.Location) verifySource {
 	}
 }
 
-// parentRecordsCommitter returns the seam Finalize commits the parent pair's own run records through before its parent-side merge.
+// parentRecordsCommitter returns the seam that commits the parent pair's own run records before the parent-side merge.
 // The parent pair is resolved at call time, so a parent that came or went after bootstrap is read as it stands.
-// A pair with no parent, and a parent whose run-records directory holds no file, commit nothing: git refuses a pathspec that matches nothing.
+// A pair with no parent, and a parent whose run-records directory holds no file, commit nothing:
+// git refuses a pathspec that matches nothing.
 // slug names the landing run in the commit message.
 func parentRecordsCommitter(l *lymcwd.Location, slug string) func() error {
 	return func() error {
@@ -719,7 +737,7 @@ func parentRecordsCommitter(l *lymcwd.Location, slug string) func() error {
 	}
 }
 
-// runReconciler returns the seam the landing rows judge the run against origin through, the run-scope origin reconcile of slug.
+// runReconciler returns the seam that judges the run slug against origin, by a run-scope origin reconcile of it.
 // The prime is resolved at call time, and the seams come from pairteardown over it with the hub's options.
 func runReconciler(l *lymcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
 	return func() (fabricengine.OriginReport, error) {
@@ -736,8 +754,9 @@ func runReconciler(l *lymcwd.Location, slug string) func() (fabricengine.OriginR
 	}
 }
 
-// parentOwner returns the seam Finalize reads the owner of the parent of the run slug through.
-// The parent's slug is resolved from the pair's origin record, and its owner is read from the local board the run's reconcile left:
+// parentOwner returns the seam that reads the owner of the parent of the run slug.
+// The parent's slug is resolved from the pair's origin record,
+// and its owner is read from the local board the run's reconcile left:
 // the prime owner for the prime, and the parent pair's effective owner otherwise.
 // A parent no other machine owns reads as owned here.
 func parentOwner(l *lymcwd.Location, slug string) func() (landingshed.ParentOwnership, error) {
@@ -771,8 +790,8 @@ func parentOwner(l *lymcwd.Location, slug string) func() (landingshed.ParentOwne
 	}
 }
 
-// reportOfRun returns report with its entries narrowed to the one of slug.
-// A run-scope report also classifies the run's parent pair, whose stop or end is not the run's own.
+// reportOfRun returns report with its entries narrowed to the entry of slug.
+// A run-scope report also classifies the parent pair, whose stop or end is not the run's own.
 func reportOfRun(report fabricengine.OriginReport, slug string) fabricengine.OriginReport {
 	own := report.Entries[:0:0]
 	for _, entry := range report.Entries {
@@ -800,7 +819,8 @@ func failingTestsOf(log string) []verifytree.FailedTest {
 	return tests
 }
 
-// driverWaitMark returns the callback landingshed marks the verify wait through, built over two seams so a test needs no tmux:
+// driverWaitMark returns the callback landingshed marks the verify wait through.
+// It is built over two seams, so a test needs no tmux:
 // status reads reed's strand table and setMark sets or clears a strand's pane wait mark.
 // The table is read at call time,
 // and the mark goes on the driver strand only while that strand is live and not retiring;
@@ -824,7 +844,8 @@ func driverWaitMark(
 	}
 }
 
-// sessionLiveness returns the seam landingshed reads whether the PR-Review session's strand is live through, built over reed's strand table so a test needs no tmux.
+// sessionLiveness returns the seam landingshed reads to learn whether the PR-Review session's strand is live.
+// It is built over reed's strand table, so a test needs no tmux.
 // The table is read at call time, and a strand is live when it is present, live and not retiring.
 func sessionLiveness(status func() (reedengine.StatusResult, error)) func(guid string) (bool, error) {
 	return func(guid string) (bool, error) {
@@ -841,8 +862,9 @@ func sessionLiveness(status func() (reedengine.StatusResult, error)) func(guid s
 	}
 }
 
-// sessionRegistrar returns the seam landingshed registers the PR-Review session's pane process through, built over reed's strand table and a register seam so a test needs no tmux.
-// A strand with no live pane process has nothing to register and is an error, which the row logs.
+// sessionRegistrar returns the seam landingshed uses to register the PR-Review session's pane process.
+// It is built over reed's strand table and a register seam, so a test needs no tmux.
+// A strand with no live pane process has nothing to register and is an error, which the caller logs.
 func sessionRegistrar(status func() (reedengine.StatusResult, error), register func(pid int) error) func(guid string) error {
 	return func(guid string) error {
 		result, err := status()
@@ -862,11 +884,15 @@ func sessionRegistrar(status func() (reedengine.StatusResult, error), register f
 	}
 }
 
-// conflictSessionStopper returns the seam landingshed stops the run's conflict sessions through, built over two seams so a test needs no tmux:
+// conflictSessionStopper returns the seam landingshed stops the run's conflict sessions through.
+// It is built over two seams, so a test needs no tmux:
 // status reads reed's strand table and stop ends one strand by guid.
-// The table is read at call time, and every non-retiring strand whose role is the conflict role or a numbered form of it is stopped when it is live or an own-window strand whose pane is present, such as one whose engine exited to its shell.
+// The table is read at call time.
+// A strand is stopped when it is not retiring and its role is the conflict role or a numbered form of it,
+// and it is either live or an own-window strand whose pane is present, such as one whose engine exited to its shell.
 // The first stop that fails ends the pass and is returned with that strand's guid;
-// a failed table read is returned with an empty guid, and a pass that stops every match, or finds none, returns an empty guid and nil.
+// a failed table read is returned with an empty guid,
+// and a pass that stops every match, or finds none, returns an empty guid and nil.
 func conflictSessionStopper(
 	status func() (reedengine.StatusResult, error),
 	stop func(guid string) error,

@@ -1,4 +1,5 @@
-// client_test.go covers Client's calls against one scripted httptest server, so no test reaches real token resolution or the network.
+// client_test.go covers Client's calls against one scripted httptest server.
+// No test reaches real token resolution or the network.
 
 package pullrequest_test
 
@@ -34,7 +35,8 @@ type capturedRequest struct {
 	body   map[string]any
 }
 
-// scriptedServer answers the pull request calls of one repository and records each request, safe for the server's goroutines.
+// scriptedServer answers the pull request calls of one repository and records each request.
+// It is safe for concurrent use by the server's goroutines.
 type scriptedServer struct {
 	*httptest.Server
 	mu       sync.Mutex

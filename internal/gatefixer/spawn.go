@@ -1,4 +1,5 @@
-// spawn.go declares the seams a fixer's spawn and wait go through, and SpawnOrAttach, which gives a caller its one fixer strand per failed evaluation.
+// spawn.go declares the seams a fixer's spawn and wait go through.
+// It also holds SpawnOrAttach, which gives a caller its one fixer strand per failed evaluation.
 
 package gatefixer
 
@@ -20,7 +21,8 @@ type Starter interface {
 }
 
 // Stopper is the seam a fixer strand is stopped through by guid.
-// StopStrand records the stop on the strand's run, then ends the strand when it is live, and is a no-op for one that is not.
+// StopStrand records the stop on the strand's run, then ends the strand when it is live.
+// It is a no-op for a strand that is not live.
 type Stopper interface {
 	StopStrand(guid string) error
 }
@@ -72,9 +74,11 @@ type Spec struct {
 
 // SpawnOrAttach returns the fixer strand a caller waits on, and whether this call spawned it.
 // A live record in store is attached to as it stands, and nothing is spawned.
-// Otherwise a stale reply file is removed, a strand is started with the reply file as its only output file, registered through deps.Register when set, and its record is saved in store before it is returned.
+// Otherwise a stale reply file is removed, and a strand is started with the reply file as its only output file.
+// The strand is registered through deps.Register when set, and its record is saved in store before it is returned.
 // A start failure is returned wrapped as transient.
-// A run that cannot be resolved, a registration that fails or a record that cannot be saved stops the strand and returns the joined error, wrapped as transient, so no unrecorded or unregistered strand outlives the call.
+// A run that cannot be resolved, a registration that fails or a record that cannot be saved stops the strand.
+// The call then returns the joined error, wrapped as transient, so no unrecorded or unregistered strand outlives it.
 // It refuses a spec.Role outside Roles, a wiring error.
 func SpawnOrAttach(deps Deps, store Store, spec Spec) (*Record, bool, error) {
 	if !IsFixerRole(spec.Role) {
@@ -131,7 +135,8 @@ func SpawnOrAttach(deps Deps, store Store, spec Spec) (*Record, bool, error) {
 	return rec, true, nil
 }
 
-// abandon stops the strand a failed spawn left live and returns cause joined with the stop's own error, wrapped as transient.
+// abandon stops the strand a failed spawn left live.
+// It returns cause joined with the stop's own error, wrapped as transient.
 func abandon(deps Deps, guid string, cause error) error {
 	return markTransient(errors.Join(cause, deps.Stopper.StopStrand(guid)))
 }

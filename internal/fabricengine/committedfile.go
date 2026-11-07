@@ -1,5 +1,6 @@
-// committedfile.go implements CommittedAnchoredFile and CommittedAnchoredFileHistory, the read-only twins of CommitAnchoredPaths:
-// they read one anchored file as committed at HEAD, or at every commit that touched it, without the caller naming the side of the pair that holds it.
+// committedfile.go reads one anchored file as committed, at HEAD or at every commit that touched it.
+// A caller never names the side of the pair that holds the file.
+// Uncommitted edits to the working-tree copy never show.
 
 package fabricengine
 
@@ -12,10 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// CommittedAnchoredFile returns relPath's contents as committed at HEAD, unaffected by any uncommitted edit to the working-tree copy.
+// CommittedAnchoredFile returns relPath's contents as committed at HEAD.
+// It is unaffected by any uncommitted edit to the working-tree copy.
 //
-// relPath is anchor-relative, the shape LoomReworkDirRel and planparser.PlanDirRel return, so a caller never joins AnchorRel itself or names the side of the pair that holds the file.
-// The commit target resolves from l exactly as CommitAnchoredPaths resolves it.
+// relPath is anchor-relative, so a caller never joins the anchor path itself.
+// The commit target is the records worktree that l resolves to.
 //
 // found is false with a nil error when the path is absent at HEAD or HEAD is unborn;
 // every other failure is an error.
@@ -41,9 +43,10 @@ func CommittedAnchoredFile(l *lymcwd.Location, relPath string) (data []byte, fou
 	return data, true, nil
 }
 
-// CommittedAnchoredFileHistory returns relPath's contents at every commit that touched it, newest first, unaffected by any uncommitted edit to the working-tree copy.
+// CommittedAnchoredFileHistory returns relPath's contents at every commit that touched it, newest first.
+// It is unaffected by any uncommitted edit to the working-tree copy.
 //
-// relPath is anchor-relative and the commit target resolves from l, both exactly as CommittedAnchoredFile resolves them.
+// relPath is anchor-relative, and the commit target is the records worktree that l resolves to.
 // A commit that deleted the path holds no contents and is skipped.
 //
 // A path with no history, or an unborn HEAD, returns an empty slice and a nil error;

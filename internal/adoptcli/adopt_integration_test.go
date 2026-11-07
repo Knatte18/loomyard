@@ -1,4 +1,5 @@
-// adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts root and so holds the run of a task only the first holds, and the first adopts it back over local commits and a live pair.
+// adopt_integration_test.go drives the takeover over two hubforge clones of one remote:
+// a task's run moves from the first clone to the second and back.
 
 package adoptcli_test
 
@@ -72,7 +73,9 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 		t.Fatalf("record the first machine as the prime's owner: %v", err)
 	}
 
-	// The reconcile judges only pairs with a batten run record, and an adopt moves only a run whose record is not done, so the first clone records a running one before the second clone exists.
+	// The reconcile judges only pairs with a batten run record,
+	// and an adopt moves only a run whose record is not done,
+	// so the first clone records a running one before the second clone exists.
 	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Worktree-Create", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}})
 	if err != nil {
 		t.Fatalf("marshal the run status: %v", err)
@@ -94,14 +97,16 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	}
 
 	second := hubforge.CloneSecond(t, first)
-	// The first clone pushes a commit to the prime's code branch and to the task's pair branch after the second clone exists, so only the second clone's reconcile can bring them.
+	// The first clone pushes a commit to the prime's code branch and the task's pair branch after the second clone exists.
+	// Only the second clone's reconcile can bring them.
 	for _, dir := range []string{first.PrimeWorktree(), first.PairCodeWorktree(taskSlug)} {
 		gitkit.CommitFile(t, dir, "pushed.txt", "pushed", "pushed work")
 		gitkit.MustRun(t, dir, "git", "push", "origin", gitkit.CurrentBranch(t, dir))
 	}
 	holdOwnerPause(t, second.Location)
 
-	// The task is moved with root, which the first machine owns, so the second clone adopts root and records no owner of the task's own.
+	// The task is moved with root, which the first machine owns,
+	// so the second clone adopts root and records no owner of the task's own.
 	got, err := adoptcli.AdoptAs(second.Location, secondMachine, []string{boardengine.RootSubject}, false, false)
 	if err != nil {
 		t.Fatalf("the second clone's adopt: %v", err)

@@ -1,5 +1,6 @@
-// reset_integration_test.go drives PlanReset over a scratch git repository under t.TempDir():
-// each refusal after the lock and state checks, the octopus merge-base of diverging starts, and the own-path set.
+// reset_integration_test.go drives PlanReset over a scratch git repository under t.TempDir().
+// It covers each refusal after the lock and state checks.
+// It also covers the octopus merge-base of diverging starts and the own-path set.
 // It reuses the package's hermetic TestMain (testmain_test.go) and gitwrap_test.go's scratch-repo initialiser.
 
 package websterengine
@@ -35,8 +36,10 @@ func newResetFixture(t *testing.T) *resetFixture {
 	return &resetFixture{root: root, first: first, head: head}
 }
 
-// step runs one case of the scenario against a fresh set of deps: one recorded batch started at the first commit, on branch "task" whose parent branch is "main".
-// A step that changes the working tree or the index restores them before it ends, so the steps share the repository and none relies on another's state.
+// step runs one case of the scenario against a fresh set of deps.
+// The deps record one batch started at the first commit, on branch "task" whose parent branch is "main".
+// A step that changes the working tree or the index restores them before it ends,
+// so the steps share the repository and none relies on another's state.
 func (fx *resetFixture) step(t *testing.T, name string, run func(t *testing.T)) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
@@ -56,7 +59,7 @@ func (fx *resetFixture) wantRefusal(t *testing.T, to ResetTarget, parts ...strin
 	fx.wantBatchRefusal(t, to, 0, parts...)
 }
 
-// wantBatchRefusal is wantRefusal for a target that takes --batch.
+// wantBatchRefusal asserts that PlanReset refuses the target to at batch, with an error containing each of parts.
 func (fx *resetFixture) wantBatchRefusal(t *testing.T, to ResetTarget, batch int, parts ...string) {
 	t.Helper()
 	_, err := PlanReset(fx.deps, to, batch)
@@ -70,7 +73,7 @@ func (fx *resetFixture) wantBatchRefusal(t *testing.T, to ResetTarget, batch int
 	}
 }
 
-// wantPlanSHA asserts PlanReset resolves to to, with batch, to the commit want.
+// wantPlanSHA asserts that PlanReset plans the target to at batch, landing on the commit want.
 func (fx *resetFixture) wantPlanSHA(t *testing.T, to ResetTarget, batch int, want string) {
 	t.Helper()
 	plan, err := PlanReset(fx.deps, to, batch)

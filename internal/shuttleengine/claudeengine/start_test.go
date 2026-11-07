@@ -41,7 +41,7 @@ func TestStart_LoneEOLMarkBoxTakesStartupSends(t *testing.T) {
 	worktree := t.TempDir()
 	reed := &shuttlefake.Reed{
 		CapturePaneFn: func(string) (string, error) { return string(capture), nil },
-		// A capture with no escape sequences is its own styled capture.
+		// The capture has no escape sequences, so the styled capture is the same text.
 		CapturePaneStyledFn: func(string) (string, error) { return string(capture), nil },
 	}
 	reed.AddStrandFn = func(spec reedengine.AddSpec) (reedengine.Strand, error) {

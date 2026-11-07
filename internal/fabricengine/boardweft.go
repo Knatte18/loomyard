@@ -1,10 +1,7 @@
-// boardweft.go materializes the Bolt checkout as a second worktree of the weft repo on the warp
-// prime's unsuffixed branch, never the RecordsBranchName-suffixed pairing every other weft worktree
-// uses.
-// It never derives a branch name itself (warpBranch always arrives pre-computed by CloneHub, which
-// read it from the warp prime's freshly-cloned checkout), mirroring weftwiring.go's own stated rule for
-// pre-suffixed branch names — the Bolt checkout's deliberately-unsuffixed branch is exactly the case that rule
-// exists to keep out of that file.
+// boardweft.go materializes the Bolt checkout as a second worktree of the weft repo.
+// The Bolt checkout uses the unsuffixed warp branch; other weft worktrees use the suffixed one.
+// The warp branch arrives already computed from the warp prime's freshly-cloned checkout.
+// This file never derives a branch name itself.
 
 package fabricengine
 
@@ -15,20 +12,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// ensureBoardWorktree materializes boardPath as a second worktree of the weft repo,
-// checked out on warpBranch. When warpBranch exists locally (ordinary case), the
-// worktree adopts it. Otherwise (genuinely empty weft remote), the worktree is created
-// as an orphan. Returns any git error.
+// ensureBoardWorktree materializes boardPath as a second worktree of the weft repo, checked out on warpBranch.
+// When warpBranch exists locally, the worktree adopts it, which is the ordinary case.
+// Otherwise the weft remote is genuinely empty, and the worktree is created as an orphan.
+// It returns any git error.
 func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
-	// A missing branch is an answer, the orphan-create path this function exists to support; a failed read is an error.
+	// A missing branch is not an error; it selects the orphan path below. A failed read is one.
 	branchExistsLocally, err := gitrepo.New(weftRepoRoot).BranchExists(warpBranch)
 	if err != nil {
 		return fmt.Errorf("check for local weft branch %q: %w", warpBranch, err)
 	}
 
-	// Both worktree-add forms route through containedWorktreeAdd so a symlink standing at boardPath
-	// cannot carry the Bolt checkout worktree outside the hub — the same create-side containment binding
-	// R5's review added for the slug worktrees. boardPath is the Bolt checkout, a direct child of the hub.
+	// Both worktree-add forms route through containedWorktreeAdd.
+	// That keeps a symlink standing at boardPath from carrying the Bolt checkout outside the hub.
+	// boardPath is the Bolt checkout, a direct child of the hub.
 	boardContainer := filepath.Dir(boardPath)
 	if branchExistsLocally {
 		if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {

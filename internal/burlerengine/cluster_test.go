@@ -1,7 +1,8 @@
-// cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count
-// mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the
-// warning-only ReportReturned==false case, and separately matrixes firstMutatingGitCommand against a set
-// of mutating and non-mutating Bash command strings and against fork command sequences that create their own repositories.
+// cluster_test.go tests auditClusterRound against each violation kind:
+// fork-count mismatch, Agent call in a fork, write in a fork, git mutation in a fork, and named spawns.
+// It also covers the warning-only case where ReportReturned is false.
+// It matrixes firstMutatingGitCommand against mutating and non-mutating Bash command strings.
+// It also runs it on fork command sequences that create their own repositories.
 
 package burlerengine
 
@@ -14,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// cleanFork returns a ForkReport that violates none of auditClusterRound's rules —
-// tests mutate a copy of this base to trigger exactly one violation at a time.
+// cleanFork returns a ForkReport that breaks no cluster-audit rule.
+// Tests mutate a copy of this base to trigger exactly one violation at a time.
 func cleanFork(path string) shuttleengine.ForkReport {
 	return shuttleengine.ForkReport{
 		TranscriptPath: path,
@@ -33,7 +34,7 @@ func TestAuditClusterRound(t *testing.T) {
 		errSubstr    string
 		wantErrIs    error
 		wantWarnings []string
-		// fix drives auditFixRound instead of auditClusterRound, and wantForks is the fork count it must report.
+		// fix runs the case through the fix-round audit, and wantForks is the fork count that audit must report.
 		fix       bool
 		wantForks int
 	}{
@@ -246,9 +247,10 @@ func TestAuditClusterRound(t *testing.T) {
 	}
 }
 
-// TestFirstMutatingGitCommand matrixes firstMutatingGitCommand over a single command against every Bash command shape the audit must classify correctly.
-// Every listed mutating subcommand matches, tolerant of a leading path, a chain prefix, a later line and global options.
-// Read-only subcommands whose arguments name a mutating verb, help requests and the list forms of git tag and git branch never match.
+// TestFirstMutatingGitCommand checks firstMutatingGitCommand against one Bash command per case.
+// Every mutating subcommand matches, whether it has a leading path, a chain prefix, a later line or global options.
+// Read-only subcommands never match, even when their arguments name a mutating verb.
+// Help requests, and the list forms of git tag and git branch, never match either.
 func TestFirstMutatingGitCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -407,7 +409,8 @@ func TestFirstMutatingGitCommand(t *testing.T) {
 	}
 }
 
-// TestFirstMutatingGitCommandScopesToForkRepositories pins that a mutating git call inside a repository the fork created earlier passes, whether reached by -C, by cd or through a worktree added from it.
+// TestFirstMutatingGitCommandScopesToForkRepositories pins that a mutating git call in a fork-made repository passes.
+// This holds whether the call reaches that repository by -C, by cd or through a worktree added from it.
 // A call that may reach any other repository is returned.
 func TestFirstMutatingGitCommandScopesToForkRepositories(t *testing.T) {
 	tiergate.Require(t, 0)

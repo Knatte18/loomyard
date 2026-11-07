@@ -1,12 +1,13 @@
 # Raddle proposal-spec — how a Sketch splits into filed entries
 
-> **Status: Contract — pinned.** This doc pins **proposal-format**: the proposal the raddle agent writes at `_lym/raddle/proposal.yaml`, which the `raddle` gate, `lym loom raddle-propose`, `lym loom raddle-approve` and Raddle-File check and `internal/raddleparser` parses. It is `internal/raddleparser`'s own contract, kept as a durable Go-to-Go reference doc under `contracts/specs/`. The LLM-facing rules for the agent's work are pinned in the raddle stencil, which points here for the format and restates none of it.
+> **Status: Contract — pinned.** This doc pins **proposal-format**: the proposal the raddle agent writes at `_lym/raddle/proposal.yaml`, which `internal/raddleparser` parses and the `raddle` gate, `lym loom raddle-propose`, `lym loom raddle-approve` and Raddle-File check.
+> It is `internal/raddleparser`'s own contract, kept as a durable Go-to-Go reference doc under `contracts/specs/`. The LLM-facing rules for the agent's work are pinned in the raddle stencil, which points here for the format and restates none of it.
 
 ## Producer and contract
 
 The raddle agent of Raddle-Write writes the proposal.
 It is checked by the gate of the `raddle` recipe, by `lym loom raddle-propose` and `lym loom raddle-approve`, and again by Raddle-File before it files; each check runs over `internal/raddleparser`, the proposal's sole parser.
-The parser imports the standard library and `internal/discussionparser` only, and reads the Sketch's decision record through `internal/discussionparser`.
+The parser reads the Sketch's decision record through `internal/discussionparser`.
 
 ## File form
 
@@ -74,7 +75,7 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `carried-decision-unbuilt` — a carried criterion or risk that names a decision id neither the part nor a part on its `depends_on` path builds.
 - `board-unchecked` — an open task or project, other than the run's own entry, that carries a module label the Sketch carries and is absent from `board_checked`.
 - `depends-cycle` — a cycle in `depends_on`.
-- `depends-unknown` — a `depends_on` that names no part, no board entry and no `board_checked` entry; a `board_checked` entry since gone from the board passes as landed.
+- `depends-unknown` — a `depends_on` that names no part, no board entry and no `board_checked` entry; a `board_checked` entry that is gone from the board passes as landed.
 - `packages-shared` — two parts with no `depends_on` path between them that list a common package.
 - `recipe-invalid` — a recipe that is neither `tapestry` nor `darn`.
 - `profile-unknown` — a profile that `profiles.yaml` does not hold, or holds without a block for the part's recipe.
@@ -92,7 +93,7 @@ It passes only when it names none of these failures:
 - `board-unchecked` — as above, whenever the entry was created or promoted.
 - `slug-taken` — as above.
 
-A `board_checked` entry now done or gone from the board counts as landed: the re-check names it and does not fail on it, and Raddle-File drops a `depends_on` on one gone from the board.
+A `board_checked` entry that is done or gone from the board counts as landed: the re-check names it and does not fail on it, and Raddle-File drops a `depends_on` on one gone from the board.
 
 A Raddle-File retry whose board write landed but whose raddle store write did not finds every filed entry on the board and the stage holding the proposal's hash.
 It skips the checks, the approval match and the re-check's failures, which would count the run's own filed slugs as taken, reads only the entries the re-check names as landed, and writes the store.

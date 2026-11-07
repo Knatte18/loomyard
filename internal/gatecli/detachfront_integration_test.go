@@ -1,5 +1,7 @@
-// detachfront_integration_test.go drives the capped front of `lym gate test` over hubforge hubs, a stand-in tier command and the runners the front starts, each call in a process of its own:
-// the cap and the phase it answers, the join of a live run, the runs a changed tree supersedes, a run that never started, the lock, the lease and its grace, the signals, and the registration of a pair's runner.
+// detachfront_integration_test.go drives the capped front of `lym gate test` over hubforge hubs.
+// Each call runs in a process of its own, against a stand-in tier command and the runners the front starts.
+// It covers the cap and the phase it answers; the join of a live run; the runs a changed tree supersedes;
+// a run that never started; the lock, the lease and its grace; the signals; and the registration of a pair's runner.
 
 package gatecli
 
@@ -47,7 +49,8 @@ type goingAnswer struct {
 	Message  string              `json:"message"`
 }
 
-// startCappedGate starts a capped call from cwd: the gate helper with a strand, the stand-in record at record and the keep-warm cap capWait, then env.
+// startCappedGate starts a capped call from cwd, with the gate helper given a strand.
+// The stand-in record is at record, the keep-warm cap is capWait, and env follows them in the environment.
 func startCappedGate(t *testing.T, cwd, record, capWait string, env []string, args ...string) *runningGate {
 	t.Helper()
 
@@ -55,7 +58,8 @@ func startCappedGate(t *testing.T, cwd, record, capWait string, env []string, ar
 	return startGate(t, gateRun{cwd: cwd, args: append([]string{"test"}, args...), env: all})
 }
 
-// requireGoing waits for g and fails unless it answered that its run goes on: SlotBusyExit, ok, done false and the re-run message.
+// requireGoing waits for g and fails unless it answered that its run goes on.
+// The answer is SlotBusyExit, ok true, done false and the re-run message.
 // A non-empty phase must be the phase the answer names.
 func requireGoing(t *testing.T, g *runningGate, phase string) goingAnswer {
 	t.Helper()
@@ -95,7 +99,7 @@ func currentRunIn(t *testing.T, keyDir string) detachRun {
 	return detachRun{dir: filepath.Join(filepath.Dir(path), current.RunID)}
 }
 
-// runnerPIDOf returns the pid process.json of run names, once run holds one.
+// runnerPIDOf returns the pid in the process file of run, once run holds one.
 func runnerPIDOf(t *testing.T, run detachRun) int {
 	t.Helper()
 
@@ -139,7 +143,8 @@ func signalPID(t *testing.T, pid int, sig syscall.Signal) {
 	}
 }
 
-// settleRunners ends every runner whose run directory lies under anchor's gate directory, then the stand-ins observed recorded, and waits for them.
+// settleRunners ends every runner whose run directory lies under anchor's gate directory.
+// It then settles the stand-ins that observed recorded, and waits for them.
 // A runner ends at its next lease read once the lease is expired, killing its tier's tree as a passed lease does.
 func settleRunners(t *testing.T, anchor string, observed *runningGate) {
 	t.Helper()
@@ -175,7 +180,7 @@ func settleRunners(t *testing.T, anchor string, observed *runningGate) {
 	}
 }
 
-// detachRig is one hubforge hub holding the gate.yaml the capped-front rows share, and the stand-in record all its calls append to.
+// detachRig is one hubforge hub holding the gate.yaml every call shares, and the stand-in record each call appends to.
 type detachRig struct {
 	t        *testing.T
 	h        *hubforge.Hub
@@ -185,7 +190,8 @@ type detachRig struct {
 	observed *runningGate
 }
 
-// newDetachRig builds a hub whose gate.yaml declares the scenario tiers and a `finalize` key over tier0, and settles every runner its calls started when the test ends.
+// newDetachRig builds a hub whose gate.yaml declares the scenario tiers and a `finalize` key over tier0.
+// It settles every runner its calls started when the test ends.
 func newDetachRig(t *testing.T) *detachRig {
 	t.Helper()
 
@@ -286,7 +292,7 @@ func (r *detachRig) cardKeyDir(id string) string {
 	return detachKeyDir(r.anchor, verbCardVerify, location.WorktreePath(), []string{id})
 }
 
-// cardRun returns the run the key of a `card-verify` call from the prime that names the card id has as current, once there is one.
+// cardRun returns the current run of the key of a `card-verify` call that names the card id, once there is one.
 func (r *detachRig) cardRun(id string) detachRun {
 	r.t.Helper()
 
@@ -829,7 +835,8 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		eventually(t, "the pair's runner to end", func() bool { return processGone(runner) })
 	})
 
-	// The card lines below are shell scripts and the runner ties them to itself with the parent-death signal, which Windows has no counterpart for.
+	// The card lines below are shell scripts, and the runner ties them to itself with the parent-death signal.
+	// Windows has no counterpart to that signal.
 	if runtime.GOOS != "windows" {
 		t.Run("a card line that outlasts the cap answers done false in the phase running, and the next call after it ended prints its output and exits with its code", func(t *testing.T) {
 			t.Parallel()

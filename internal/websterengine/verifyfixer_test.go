@@ -1,4 +1,6 @@
-// verifyfixer_test.go exercises the cold verify-gate fixer's spawn-or-attach and bounded wait over the recover-batch fixture: a real *shuttleengine.Runner over the shuttlefake Reed and Engine, and a fake Clock.
+// verifyfixer_test.go exercises the cold verify-gate fixer's spawn-or-attach and bounded wait.
+// It runs over the recover-batch fixture, with a real *shuttleengine.Runner and a fake Clock.
+// The Runner drives the shuttlefake Reed and Engine.
 
 package websterengine_test
 
@@ -18,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// noAuditEngines is a websterengine.AuditEngines whose one engine has no fork audit, since embedding the interface hides every capability beyond it.
+// noAuditEngines is a websterengine.AuditEngines whose one engine has no fork audit.
+// Its engine sits in a struct that embeds only shuttleengine.Engine, which hides every capability beyond it.
 type noAuditEngines struct {
 	engine shuttleengine.Engine
 }
@@ -30,7 +33,7 @@ func (n noAuditEngines) Lookup(string) (shuttleengine.Engine, error) {
 func (noAuditEngines) DefaultName() string { return shuttlefake.EngineName }
 
 // newFixVerifyFixture returns the recover-batch fixture with a scratch dir, and the FixVerifyDeps over its seams.
-// withReport writes a verify-gate report routed to the cold fixer.
+// When withReport is set, it also writes a verify-gate report routed to the cold fixer.
 func newFixVerifyFixture(t *testing.T, withReport bool) (*recoverFixture, websterengine.FixVerifyDeps) {
 	t.Helper()
 	fx := newRecoverFixture(t)
@@ -54,7 +57,8 @@ func newFixVerifyFixture(t *testing.T, withReport bool) (*recoverFixture, webste
 	}
 }
 
-// TestFixVerifySpawnOrAttach pins the refusal without a report, the spawn's spec and record, the attach to a running fixer and the fresh spawn after a terminal one.
+// TestFixVerifySpawnOrAttach pins the refusal without a report and the spawn's spec and record.
+// It also pins the attach to a running fixer and the fresh spawn after a terminal one.
 func TestFixVerifySpawnOrAttach(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

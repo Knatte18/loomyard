@@ -1,6 +1,8 @@
-// notice.go renders the run notices the Run-Shed row hands to InnerRunDeps.Notify, decides when a pending notice may go, and keeps the episode bookkeeping that holds each condition to one notice.
+// notice.go renders the run notices that the Run-Shed row hands to InnerRunDeps.Notify.
+// It decides when a pending notice may go and keeps the episode bookkeeping that holds each condition to one notice.
 // The row notices a halted or awaiting child; the notices of a running child are its dobby's.
-// A notice is informational: it never changes the row's outcome, and the orch acts on it only through "lym batten status <slug>".
+// A notice is informational: it never changes the row's outcome,
+// and the orch acts on it only through "lym batten status <slug>".
 
 package battenshed
 
@@ -29,13 +31,16 @@ const noticeErrorMax = 200
 // noticePathMax is the longest stop-report path, in characters, a notice carries.
 const noticePathMax = 400
 
-// noticeEpisodeFileSuffix is the fixed suffix of the marker recording the notices already sent, joined onto the producer's own name.
+// noticeEpisodeFileSuffix is the fixed suffix of the marker recording the notices already sent.
+// The marker's name is the producer's name followed by this suffix.
 const noticeEpisodeFileSuffix = "-notice-episode"
 
-// noticeReportWait is how long after the child's state changed a notice for a parked stop waits for the driver's stop report before it goes without one.
+// noticeReportWait is how long a notice for a parked stop waits for the driver's stop report.
+// The wait counts from the child's state change; after it, the notice goes without a report.
 const noticeReportWait = 3 * time.Minute
 
-// noticeRelayWait is how long after the stop report an awaiting child whose driver handed the run's parent a notice is left to that relay, with no decision record, before the notice goes anyway.
+// noticeRelayWait is how long an awaiting child's notice waits for its driver's relay to the run's parent.
+// The wait counts from the stop report; once it passes with no decision record, the notice goes anyway.
 const noticeRelayWait = 10 * time.Minute
 
 // noticeMaxAttempts is how many times a notice that was not posted is tried before it is dropped.
@@ -92,7 +97,8 @@ func reportClause(path string, found bool) string {
 	return "report " + oneLine(path, noticePathMax)
 }
 
-// renderNotice renders one notice line: the prefix, the slug, the condition, the child's reason labelled by its state if any, when the state began, the child's history length and the report clause if any.
+// renderNotice renders one notice line for the slug and condition, with the child's reason when it has one.
+// The line also carries when the state began, the history length, and the report clause when there is one.
 // Every path under the pair directory is rendered relative to it, since the slug already names the pair.
 func renderNotice(n noticeLine) string {
 	var b strings.Builder
@@ -108,13 +114,16 @@ func renderNotice(n noticeLine) string {
 }
 
 // pairRelative strips the pair directory prefix from every path in text that lies under it.
-// The prefix is stripped only where it starts a path, so a longer path that merely contains the pair directory is left whole.
+// The prefix is stripped only where it starts a path;
+// a longer path that merely contains the pair directory is left whole.
 func pairRelative(text, pairDir string) string {
 	pathUnderPair := regexp.MustCompile(`(^|[^\w./\\~-])` + regexp.QuoteMeta(pairDir+string(filepath.Separator)))
 	return pathUnderPair.ReplaceAllString(text, "${1}")
 }
 
-// reasonLabel returns the label a notice puts on the child's reason: "error" for a failed or blocked child, which needs a fix, and "waiting" for any other state, whose reason names what it waits on.
+// reasonLabel returns the label a notice puts on the child's reason.
+// A failed or blocked child gets "error", since it needs a fix.
+// Any other state gets "waiting", and its reason names what it waits on.
 func reasonLabel(state shedengine.State) string {
 	if state == shedengine.StateFailed || state == shedengine.StateBlocked {
 		return "error"
@@ -122,7 +131,8 @@ func reasonLabel(state shedengine.State) string {
 	return "waiting"
 }
 
-// haltText renders what the child's state says happened: the state and, when known, the row it stopped at, for example "awaiting at Plan-Bouncer".
+// haltText renders what the child's state says happened: the state and, when known, the row it stopped at.
+// For example: "awaiting at Plan-Bouncer".
 func haltText(status shedengine.Status) string {
 	if status.CurrentProducer == "" {
 		return string(status.State)
@@ -130,8 +140,8 @@ func haltText(status shedengine.Status) string {
 	return string(status.State) + " at " + status.CurrentProducer
 }
 
-// noticeKey renders the episode key of one condition: the condition, the child's state and the stamp that tells its episodes apart.
-// The stamp is the state episode's since.
+// noticeKey renders the episode key of one condition from the condition, the child's state and the stamp.
+// The stamp is the state episode's since, so a new episode of the same state gets a new key.
 func noticeKey(condition string, state shedengine.State, stampNanos int64) string {
 	return condition + "|" + string(state) + "|" + strconv.FormatInt(stampNanos, 10)
 }
@@ -165,7 +175,8 @@ func keepEpisode(keys []string, state shedengine.State, sinceNanos int64) []stri
 	return kept
 }
 
-// noticeFinding is the condition the child is in, the stamp of its episode key, and the words that replace the condition's fixed text when it carries any.
+// noticeFinding is the condition the child is in and the stamp of its episode key.
+// The text holds the words replacing the condition's fixed text, when it carries any.
 // A zero condition means the child is in none.
 type noticeFinding struct {
 	condition string
@@ -191,13 +202,14 @@ type noticeEpisode struct {
 	// since is the status file's modification time at the first sight of the child in this state.
 	// A rewrite of the file in the same state does not move it; only a batten start reads it from the file.
 	since time.Time
-	// arbiterOffAt is the first time a pass saw the arbiter off while the stop was eligible in this episode; zero until then.
+	// arbiterOffAt is when a pass first saw the arbiter off while the stop was eligible in this episode; zero until then.
 	arbiterOffAt time.Time
 	deliveries   map[string]*noticeDelivery
 }
 
 // observeState records a sight of the child in state, with the status file's modification time at that sight.
-// A state the producer has not seen yet starts a new episode whose since is that time; a sight of the same state moves nothing.
+// A state the producer has not seen yet starts a new episode whose since is that time;
+// a sight of the same state moves nothing.
 func (p *innerRunProducer) observeState(state shedengine.State, at time.Time) {
 	if p.episode.known && p.episode.state == state {
 		return
@@ -257,10 +269,14 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	p.saveEpisode(kept, old)
 }
 
-// noticeDriverBusy posts one orch notice as creel mail per stall on a busy driver pane, and does nothing once one is posted or when no Notify was wired.
-// The notice carries the fixed condition and the child's own status, then cause, the spawn error that refused the resume, as one line cut at noticeErrorMax, so the box text it quotes reaches the orch.
+// noticeDriverBusy posts one orch notice as creel mail per stall on a busy driver pane.
+// It does nothing once one is posted, or when no Notify was wired.
+// The notice carries the fixed condition, the child's own status, then cause: the spawn error that refused the resume.
+// It is one line cut at noticeErrorMax, so the box text it quotes reaches the orch.
 // The notice key stays the condition, so one stall sends one notice.
-// Every failure is a Warn, and the flag is set only once deliver reports the notice posted, so a refused attempt is tried again on the next refusal.
+// Every failure is a Warn,
+// and the flag is set only once deliver reports the notice posted,
+// so a refused attempt is tried again on the next refusal.
 func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, cause error) {
 	if !p.notices || p.driverBusyNoticed {
 		return
@@ -280,8 +296,11 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, c
 }
 
 // noticeCondition returns the condition the child is in, with the stamp of its episode key.
-// A done or running child is in no condition here: a done child sends no notice, and a running child's notices are its dobby's.
-// A halted or awaiting child reports its state change first; once that notice is among sent, the keys of the episode, it reports the driver-dead condition when a revive of its driver strand failed in the episode.
+// A done or running child is in no condition here:
+// a done child sends no notice, and a running child's notices are its dobby's.
+// A halted or awaiting child reports its state change first.
+// Once that notice is among sent, it reports the driver-dead condition.
+// It does so when a revive of its driver strand failed in the episode.
 func (p *innerRunProducer) noticeCondition(w *childWait, sent []string) noticeFinding {
 	if w.status.State == shedengine.StateDone || w.status.State == shedengine.StateRunning {
 		return noticeFinding{}
@@ -293,10 +312,12 @@ func (p *innerRunProducer) noticeCondition(w *childWait, sent []string) noticeFi
 	return noticeFinding{condition: noticeStateChanged, stamp: stamp}
 }
 
-// loomStartRemedy is the step the operator takes to bring a driver back, which `lym loom resume` does not: it never spawns an LLM driver.
+// loomStartRemedy is the step the operator takes to bring a driver back.
+// `lym loom resume` does not: it never spawns an LLM driver.
 const loomStartRemedy = `run "lym loom start" in the task worktree to bring a driver back`
 
-// driverNotRevivedText is the driver-dead condition text of a halted or awaiting child whose driver strand a revive failed to bring back.
+// driverNotRevivedText is the driver-dead condition text of a halted or awaiting child.
+// It applies when a revive of the child's driver strand failed to bring it back.
 const driverNotRevivedText = "driver strand could not be revived; " + loomStartRemedy
 
 // reviveFailed reports whether the revive marker says the revive of the episode's driver strand failed.
@@ -310,13 +331,19 @@ func (p *innerRunProducer) reviveFailed() bool {
 }
 
 // stateChangeReady decides whether the state-changed notice may go now, and returns its report clause.
-// A parked stop's goes once a stop report written at or after the episode's since exists, or the driver strand has ended, or noticeReportWait has passed since;
-// a report older than since never qualifies, and a notice that goes without one says `report none yet`.
-// An awaiting child that carries a parent notice, while this batten holds the watched marker, is left to its driver's own relay:
-// its notice goes when the driver strand has ended, or noticeReportWait passed with no report, or noticeRelayWait passed since the report with no decision record.
-// A live arbiter or tackler in flight holds the notice of a halted or awaiting child until its deadline plus noticeReportWait has passed.
-// After that, the eligible-stop hold holds the notice of an arbiter-eligible blocked or awaiting child until the arbiter has handed on or the hold's backstop passes.
-// Once neither holds, noticeReportWait is measured from the later of the episode's since and the eligible-stop hold's end, so a long hold does not leave the wait already spent.
+// The notice of a parked stop goes once a stop report written at or after the episode's since exists,
+// or the driver strand has ended, or noticeReportWait has passed since the episode's since.
+// A report older than since never qualifies, and a notice that goes without one says `report none yet`.
+// While this batten holds the watched marker, an awaiting child with a parent notice is left to its driver's own relay.
+// Its notice goes when the driver strand has ended.
+// It also goes when noticeReportWait has passed with no report.
+// It also goes when noticeRelayWait has passed since the report with no decision record.
+// A live arbiter or tackler in flight holds the notice of a halted or awaiting child.
+// It holds until its deadline plus noticeReportWait has passed.
+// After that, the eligible-stop hold holds the notice of an arbiter-eligible blocked or awaiting child.
+// It holds until the arbiter has handed on or the hold's backstop passes.
+// Once neither holds, noticeReportWait counts from the later of the episode's since and the eligible-stop hold's end,
+// so a long hold does not leave the wait already spent.
 func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (ready bool, clause string) {
 	status := w.status
 	now := p.deps.Now()
@@ -396,7 +423,8 @@ func (p *innerRunProducer) undecided() bool {
 	return !found
 }
 
-// deliver makes one attempt to send line, honouring the retry spacing, the missing orch strand and the attempt cap, and reports whether the notice was posted as creel mail.
+// deliver makes one attempt to send line, honouring the retry spacing, the missing orch strand and the attempt cap.
+// It reports whether the notice was posted as creel mail.
 // The attempts are spaced by noticeProbe; a notice not posted after noticeMaxAttempts is dropped with a Warn.
 func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line string) bool {
 	d := p.episode.deliveries[key]
@@ -441,7 +469,8 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 }
 
 // conditionText renders the condition as the words a notice carries.
-// A state change reads as what the child's state says happened; every other condition leads with that state, then `; `, then its own text.
+// A state change reads as what the child's state says happened;
+// every other condition leads with that state, then `; `, then its own text.
 func conditionText(finding noticeFinding, status shedengine.Status) string {
 	if finding.text == "" {
 		return haltText(status)

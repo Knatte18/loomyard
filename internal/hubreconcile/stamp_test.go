@@ -36,7 +36,8 @@ func TestBuildKey_DiffersOnEveryInput(t *testing.T) {
 	}
 }
 
-// TestStamp_ReadWrite verifies an absent stamp is not found without error and a written stamp round-trips all three fields.
+// TestStamp_ReadWrite verifies that an absent stamp is not found without error,
+// and that a written stamp round-trips all three fields.
 func TestStamp_ReadWrite(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

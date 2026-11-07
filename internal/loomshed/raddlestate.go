@@ -10,7 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// RaddleMode is how a raddle run gets its approval: RaddleModeAuto files without an operator, RaddleModeInteractive waits for the operator's approval.
+// RaddleMode is how a raddle run gets its approval.
+// An auto run files without an operator; an interactive run waits for the operator's approval.
 type RaddleMode string
 
 // The two modes of a raddle run.
@@ -19,8 +20,9 @@ const (
 	RaddleModeInteractive RaddleMode = "interactive"
 )
 
-// RaddleApprovalRecord is the approval of one proposal: the hash of the proposal file approved and the Raddle-Write session it was approved in.
-// It is the content of the run's approval file and of RaddleState's approval.
+// RaddleApprovalRecord is the approval of one proposal:
+// the hash of the proposal file approved and the Raddle-Write session it was approved in.
+// It is the content of the run's approval file and of the approval the state records.
 type RaddleApprovalRecord struct {
 	Hash    string `json:"hash"`
 	Session int    `json:"session"`
@@ -30,9 +32,11 @@ type RaddleApprovalRecord struct {
 // It is read and written through internal/state, so a key it does not declare is accepted and survives a rewrite.
 // Mode is empty until Raddle-Write's first spawn records it.
 // Session numbers the current Raddle-Write session, raised at every call of the row.
-// ProposedSession is the session of the last passing propose, and NoticeSession the session whose waiting notice went out.
+// ProposedSession is the session of the last passing propose.
+// NoticeSession is the session whose waiting notice went out.
 // Approval is nil while no proposal is approved.
-// Returns counts Raddle-File's returns, and ReturnReason holds the reason of a return no new session has taken up yet.
+// Returns counts Raddle-File's returns.
+// ReturnReason holds the reason of a return no new session has taken up yet.
 // EntryPosition is the history position of the row entry the last fresh-entry reset took up.
 // NoticeSent marks Raddle-File's notice of what it filed.
 type RaddleState struct {

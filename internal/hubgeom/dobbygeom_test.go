@@ -1,4 +1,4 @@
-// dobbygeom_test.go pins the paths DobbyGeometry tells dobby for the prime and for a beam, over a temp layout with no git.
+// dobbygeom_test.go pins the paths DobbyGeometry tells dobby for the prime and a beam, over a temp layout with no git.
 
 package hubgeom
 
@@ -17,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// dobbyHub lays out a hub of the prime "some-repo" and the beams "a-beam" and "other-beam" in a temp directory, with no git.
+// dobbyHub lays out a hub of the prime "some-repo" and the beams "a-beam" and "other-beam" in a temp directory.
+// The layout is plain directories with no git repository.
 // The hub holds no board marker, so a beam's own anchor comes only from the marker in its records sibling.
 func dobbyHub(t *testing.T) (hub string, prime *lymcwd.Location) {
 	t.Helper()
@@ -57,9 +58,15 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 	return record
 }
 
-// TestDobbyGeometry asserts the lock, state, log and output paths and the tidy directory lie under the named worktree's `.lym/beam/` directory at its own anchor, the slug is empty for the prime, the batten runs directory lies under the prime, and a worktree with no directory is an error naming it.
-// It also asserts PawlPaths puts the pawl run's files in that same `.lym/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
-// It also asserts the move records that stop a dobby: the prime's alone for the prime and the beam's own and then the prime's for a beam, and that DobbyStart reads a standing record the same way.
+// TestDobbyGeometry pins the paths each worktree's dobby uses and the move records that stop a dobby.
+// The lock, state, log, output and tidy paths lie under the named worktree's `.lym/beam/` directory at its own anchor.
+// The slug is empty for the prime, and the batten runs directory lies under the prime.
+// A worktree with no directory is an error naming it.
+// PawlPaths puts the pawl run's files in that same `.lym/beam/` directory at the beam's own anchor.
+// This includes a beam anchored under a sub-directory.
+// The move records that stop a dobby are the prime's alone for the prime.
+// For a beam they are the beam's own record, then the prime's.
+// DobbyStart reads a standing record the same way.
 func TestDobbyGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

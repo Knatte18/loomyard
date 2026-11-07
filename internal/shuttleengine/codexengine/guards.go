@@ -1,5 +1,6 @@
-// guards.go renders the shell guard table as the PreToolUse hooks a Codex launch carries and as the deny notice its prompt file opens with.
-// Each installed row is one Bash entry whose command greps the payload for the row's patterns and prints Codex's deny decision when all of them match.
+// guards.go renders the shell guard table as the PreToolUse hooks a Codex launch carries.
+// The same rows also render as the deny notice that opens the Codex prompt file.
+// Each installed row is one Bash entry that prints Codex's deny decision when the payload matches all its patterns.
 
 package codexengine
 
@@ -11,17 +12,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/shellguard"
 )
 
-// foregroundPhrase is Codex's phrase for running a long command in the foreground, which the gate rule of the raw go and refuse-raw rows carries.
+// foregroundPhrase is Codex's phrase for running a long command in the foreground.
 const foregroundPhrase = "with the shell command timeout set to 3600000 milliseconds"
 
-// toolMatcherBash is the tool name Codex's PreToolUse payload carries for a shell command, which every guard entry matches.
+// toolMatcherBash is the tool name that Codex's PreToolUse payload carries for a shell command.
+// Every guard entry matches on this name.
 const toolMatcherBash = "Bash"
 
 // guardInputs are the launch inputs that decide which shell guard rows a launch installs.
 type guardInputs struct {
-	// denyPython follows the shuttle config's python switch.
+	// denyPython follows the `DenyPython` field of the shuttle config.
 	denyPython bool
-	// denyPublish follows the launch spec's publish guard.
+	// denyPublish follows the `DenyPublish` field of the launch spec.
 	denyPublish bool
 }
 
@@ -48,8 +50,9 @@ func installedGuards(refuseRaw []string, in guardInputs) []shellguard.Row {
 	return rows
 }
 
-// denyDecision returns the PreToolUse output that blocks a command with steer as the reason, the shape the spike saw Codex honour.
-// steer holds no quote or backslash, which shellguard checks at init.
+// denyDecision returns the PreToolUse output that blocks a command with steer as the reason.
+// The output has the shape Codex honours.
+// steer must hold no quote or backslash, which shellguard checks at init.
 func denyDecision(steer string) string {
 	return `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"` + steer + `"}}`
 }

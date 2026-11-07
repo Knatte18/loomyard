@@ -1,4 +1,4 @@
-// assistant.go writes and clears an assistant seat's end marker, words the endings it names, and renders the chair's list of its assistants.
+// assistant.go writes and clears an assistant's end marker, names its endings, and renders the chair's assistant list.
 
 package seatengine
 
@@ -16,23 +16,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The endings an assistant's end marker names, each the marker's first word or words.
+// The endings an assistant's end marker can name; each is the marker's first word or words.
 const (
-	// EndingDone is a run that ended done with its seat gate passed: its outputs are the assistant's report.
+	// EndingDone marks a run that ended done with its seat gate passed; its outputs are the assistant's report.
 	EndingDone = "done"
-	// EndingGateFailed is a run that ended done with its seat gate failed.
+	// EndingGateFailed marks a run that ended done with its seat gate failed.
 	EndingGateFailed = "gate failed"
-	// EndingStopped is a run the engine stopped when the chair ended.
+	// EndingStopped marks a run the engine stopped when the chair ended.
 	EndingStopped = "stopped"
-	// EndingNotStarted is an assistant that did not start; the marker carries the reason after a colon.
+	// EndingNotStarted marks an assistant that did not start; the marker carries the reason after a colon.
 	EndingNotStarted = "not started"
-	// EndingNotFound is an assistant a resume found neither live nor ended.
+	// EndingNotFound marks an assistant that a resume found neither live nor ended.
 	EndingNotFound = "not found"
 	// endingWaitError leads the marker of a run whose wait errored; the error follows after a colon.
 	endingWaitError = "wait error"
 )
 
-// ReadEnding returns the ending an end marker at path names, its text without the trailing newline, and false when the marker does not exist.
+// ReadEnding returns the ending the end marker at path names, without its trailing newline.
+// It reports whether the marker exists; a missing marker is not an error.
 func ReadEnding(path string) (string, bool, error) {
 	content, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -44,8 +45,10 @@ func ReadEnding(path string) (string, bool, error) {
 	return strings.TrimRight(string(content), "\n"), true, nil
 }
 
-// endingOf returns the ending an assistant's run came to: done only with its seat gate passed, gate failed for a done run whose gate failed, the outcome's own name otherwise, and the wait error when the wait failed.
-// stopped marks a run the engine stopped, which reads stopped unless it had already ended done.
+// endingOf returns the ending an assistant's run came to.
+// A failed wait reads as a wait error, unless the engine stopped the run, which reads stopped.
+// A run that ended done reads done, or gate failed when its seat gate did not pass;
+// other runs read their outcome, or stopped when the engine stopped them.
 func endingOf(result shuttleengine.Result, waitErr error, stopped bool) string {
 	switch {
 	case waitErr != nil && stopped:
@@ -67,7 +70,8 @@ func notStartedEnding(reason string) string {
 	return EndingNotStarted + ": " + reason
 }
 
-// writeEnding writes ending to the end marker at path, creating its directory, in one atomic write so a reader never sees a part of it.
+// writeEnding writes ending to the end marker at path, creating its directory.
+// The write is atomic, so a reader never sees a part of the ending.
 // A failed write is logged, since the chair then waits until its own timeout or a stop, and is returned.
 func writeEnding(path, ending string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -82,7 +86,8 @@ func writeEnding(path, ending string) error {
 	return nil
 }
 
-// clearAssistantFiles removes each assistant's end marker, outputs and subagent reports a previous run left, so neither the chair nor a caller of a fresh run ever reads a stale one.
+// clearAssistantFiles removes each assistant's end marker, outputs and subagent reports a previous run left.
+// Neither the chair nor a caller of a fresh run reads a stale one.
 // A file already absent is no error.
 func (e *Engine) clearAssistantFiles(table Table) error {
 	for _, seat := range table.Seats {
@@ -98,7 +103,9 @@ func (e *Engine) clearAssistantFiles(table Table) error {
 	return nil
 }
 
-// assistantList renders the chair's list of its assistants: one line per assistant naming its strand, its outputs and its end marker, relative paths joined onto geom's worktree root, or noneValue for a table without one.
+// assistantList renders the chair's list of its assistants, one line per assistant.
+// Each line names the assistant's strand, its outputs and its end marker.
+// Relative paths are joined onto the worktree root of geom, and a table without assistants renders noneValue.
 func assistantList(geom Geometry, table Table, names map[string]string) string {
 	var lines []string
 	for _, seat := range table.Seats {

@@ -1,4 +1,4 @@
-// parentbeam.go — the board's half of the one parent resolver: the beam an entry belongs to, read from the project links of the entries.
+// parentbeam.go resolves the beam an entry belongs to, read from the project links of the board's entries.
 
 package boardengine
 
@@ -7,8 +7,8 @@ import "os"
 // ParentBeam returns the slug of the beam the entry slug belongs to, the empty slug meaning the prime.
 // It walks the entry's project links upward and returns the nearest open project whose beam flag is set.
 // Done projects and projects that are not beams are skipped.
-// It returns the empty slug for a slug tasks does not hold, an entry with no project, a chain with no open beam,
-// and a chain that loops back on itself, which a write cannot store but a hand edit can.
+// It returns the empty slug for a slug tasks does not hold, an entry with no project, or a chain with no open beam.
+// A chain that loops back on itself also yields the empty slug, which a write cannot store but a hand edit can.
 func ParentBeam(tasks []Task, slug string) string {
 	bySlug := make(map[string]Task, len(tasks))
 	for _, task := range tasks {
@@ -37,8 +37,8 @@ func ParentBeam(tasks []Task, slug string) string {
 	return nearest
 }
 
-// ReadTasks returns the entries the local board.json under boardDir holds, for a reader outside a Board.
-// It reads under the swap lock and writes nothing; the load folds no more of a legacy file than Board's own reads do.
+// ReadTasks returns the entries the local board.json under boardDir holds, for callers that hold no open board.
+// It reads under the swap lock, folds a legacy file no further than a board read does, and writes nothing.
 // An absent board file is an empty list.
 func ReadTasks(boardDir string) ([]Task, error) {
 	store := NewStore(boardDir)
@@ -49,7 +49,8 @@ func ReadTasks(boardDir string) ([]Task, error) {
 }
 
 // ParentBeamOf returns the beam the entry slug belongs to, "" meaning the prime, persisting nothing.
-// It answers what Config.ParentOf answers when that seam is set, and ParentBeam over the board's own entries otherwise.
+// When a parent function is configured, it gives the answer;
+// otherwise the answer comes from the entries the board holds.
 func (b *Board) ParentBeamOf(slug string) (string, error) {
 	if b.parentOf != nil {
 		return b.parentOf(slug)
@@ -65,9 +66,10 @@ func (b *Board) ParentBeamOf(slug string) (string, error) {
 }
 
 // BeamUnder returns the beam an entry whose project link is project belongs to, "" meaning the prime, persisting nothing.
-// It is project itself when project is an open beam project, and otherwise the beam ParentBeamOf answers for project.
+// It is project itself when project is an open beam project, and otherwise the beam that project belongs to.
 // An empty project, and one the board does not hold, read as the prime.
-// It answers for an entry the board does not yet hold as written, such as a new entry or one whose project link a write is about to change.
+// It reads project as the board stores it,
+// so it answers for a new entry or one whose project link a write is about to change.
 func (b *Board) BeamUnder(project string) (string, error) {
 	if project == "" {
 		return "", nil

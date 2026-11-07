@@ -1,8 +1,6 @@
-// up.go implements the `up` and `down` reed verbs: up boots the substrate (server + session) this
-// worktree's strands render into,
-// and down tears this worktree's session and persisted state back down (the shared per-hub server
-// dies only when this was its last session).
-// Neither verb touches a strand's command — up never launches one.
+// up.go implements the `up` and `down` reed verbs: up boots this worktree's substrate, and down tears it down.
+// down also clears the persisted strand state; the shared per-hub server stops only when this was its last session.
+// Neither verb touches a strand's command: up never launches one.
 
 package reedcli
 
@@ -21,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// upCmd builds the `up` subcommand.
 func (c *reedCLI) upCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "up",
@@ -58,8 +55,8 @@ Example:
 				return nil
 			}
 
-			// Attempted after Up returns without error, before the envelope write: the daemon
-			// needs a live session to discover, and up is exactly the op that ensures one exists.
+			// ensureWatchdogSpawned runs after Up returns without error and before the envelope is written:
+			// the daemon needs a live session to discover, and up is the op that ensures one exists.
 			c.ensureWatchdogSpawned()
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
@@ -72,8 +69,10 @@ Example:
 	}
 }
 
-// endPairProcesses ends the registered processes of the pair the invoking worktree is, before `down` kills its session, and returns what it ended.
-// The prime is no pair, so it ends nothing and returns an empty list; an unresolvable worktree is returned as an error.
+// endPairProcesses ends the registered processes of the invoking worktree's pair.
+// It runs before `down` kills the session, and it returns what it ended.
+// The prime is not a pair, so it ends nothing and returns an empty list.
+// It returns an error when the worktree or the prime cannot be resolved, or the prime's teardown cannot be built.
 // It reads local state only and makes no network call.
 func (c *reedCLI) endPairProcesses(ctx context.Context) ([]runproc.Ended, error) {
 	location, err := lymcwd.Resolve(c.anchorPath)
@@ -107,7 +106,6 @@ func endedProcessesField(ended []runproc.Ended) []map[string]any {
 	return list
 }
 
-// downCmd builds the `down` subcommand.
 func (c *reedCLI) downCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "down",
@@ -162,7 +160,8 @@ Example:
 				return nil
 			}
 			if result.EndedServer {
-				// The wait asks nothing of the watchdog: Down already wrote the stop, and this only holds the verb until the daemon has left its loop.
+				// The wait sends nothing to the watchdog: Down already wrote the stop.
+				// It only holds the verb until the daemon has left its loop.
 				wait, poll, probe, sleep := c.downLockWait, c.downLockPoll, c.downLockProbe, c.downLockSleep
 				if wait == 0 {
 					wait = watchdogDownWait
@@ -180,8 +179,8 @@ Example:
 			}
 
 			payload := map[string]any{"session": result.Session, "ended_processes": endedProcessesField(ended)}
-			// Emitted only when there IS an abandoned session, so the ordinary teardown envelope is
-			// unchanged and the key's mere presence is the signal.
+			// The key appears only when there is an abandoned session, so the ordinary teardown envelope stays unchanged.
+			// Its presence alone tells the caller that a session was abandoned.
 			if result.AbandonedSession != "" {
 				payload["abandonedSession"] = result.AbandonedSession
 			}

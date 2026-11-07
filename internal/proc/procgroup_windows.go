@@ -1,4 +1,4 @@
-// procgroup_windows.go kills only the started process on cancel or expiry, since Windows has no process group to signal here.
+// procgroup_windows.go kills only the started process on cancel or expiry, as Windows has no process group to signal.
 
 package proc
 
@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// configurePlatformGroupKill makes a cancel kill cmd's process alone and report ErrNoProcessGroup, since it cannot tell whether a descendant exists.
+// configurePlatformGroupKill makes a cancel kill cmd's process alone and report ErrNoProcessGroup.
+// Windows cannot tell whether a descendant exists.
 func configurePlatformGroupKill(cmd *exec.Cmd, report func(pid int, groupErr error)) {
 	cmd.Cancel = func() error {
 		pid := cmd.Process.Pid
@@ -17,7 +18,8 @@ func configurePlatformGroupKill(cmd *exec.Cmd, report func(pid int, groupErr err
 	}
 }
 
-// configurePlatformGroupTerminate makes a cancel kill cmd's process alone and report ErrNoProcessGroup, since there is no group to signal; killAfter is unused and awaitGone returns at once.
+// configurePlatformGroupTerminate makes a cancel kill cmd's process alone and report ErrNoProcessGroup.
+// There is no group to signal; killAfter is unused and awaitGone returns at once.
 func configurePlatformGroupTerminate(cmd *exec.Cmd, _ time.Duration, report func(pid int, sig os.Signal, groupErr error)) (awaitGone func()) {
 	cmd.Cancel = func() error {
 		pid := cmd.Process.Pid

@@ -126,7 +126,7 @@ tmux zoom-pane
 ## Pane Titles
 
 Programs running inside a pane can set the title via OSC escape sequences.
-PowerShell 7 does this automatically with the current working directory. (Companion documentation `pane-titles.md` not available in this repository.)
+PowerShell 7 does this automatically with the current working directory.
 
 ```powershell
 # Set a title on the active pane
@@ -253,7 +253,7 @@ tmux show-environment -g
 
 ## Format Variables
 
-The `display-message` command supports 140+ variables.
+The `display-message` command supports many format variables.
 Common ones include:
 
 | Variable | Description |
@@ -352,7 +352,6 @@ tmux wait-for mychannel                # Wait until channel is signaled
 ## Hooks (Event Callbacks)
 
 Hooks let you run commands automatically when events occur.
-They are one of the most powerful scripting features in tmux.
 
 ### Setting Hooks
 
@@ -450,7 +449,7 @@ tmux customize-mode
 
 ## Target Syntax (`-t`)
 
-tmux supports tmux-style targets:
+The `-t` flag selects the session, window, or pane a command acts on:
 
 ```powershell
 # Window by index in session
@@ -589,7 +588,8 @@ tmux new-window -n "build" -- cargo watch
 tmux new-window -t 5
 ```
 
-When you set a window name with `-n`, automatic renaming is disabled for that window so the foreground process name does not overwrite your chosen name.
+Setting a window name with `-n` disables automatic renaming for that window.
+The foreground process name then does not overwrite the chosen name.
 
 ### split-window
 
@@ -677,4 +677,4 @@ tmux -L work list-sessions
 # Default namespace is used when -L is not specified
 ```
 
-This is useful for running completely separate tmux environments, for example one for development and one for monitoring.
+Namespaces keep tmux environments separate, for example one for development and one for monitoring.

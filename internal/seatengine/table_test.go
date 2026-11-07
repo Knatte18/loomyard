@@ -1,4 +1,5 @@
-// table_test.go covers Table.Validate and Table.CheckMarkers against a seeded stencils directory, and the table's name, accessor and reserved-marker helpers.
+// table_test.go tests Table.Validate and Table.CheckMarkers against a seeded stencils directory.
+// It also covers the table's name, accessor and reserved-marker helpers.
 
 package seatengine
 
@@ -60,7 +61,8 @@ func seatedStencils(t *testing.T) string {
 	return dir
 }
 
-// asWriters makes every seat of table after the lead a writer, and gives the lead and the writers the stencils that include the writer directives.
+// asWriters makes every seat of table after the lead a writer.
+// It gives the lead and the writers the stencils that include the writer directives.
 func asWriters(table *Table) {
 	table.Seats[0].Stencil = "seat-test-writer-chair"
 	for i := 1; i < len(table.Seats); i++ {
@@ -69,7 +71,8 @@ func asWriters(table *Table) {
 	}
 }
 
-// asAssistants makes every seat of table after the lead an assistant on Codex with an end marker of its own, and gives the lead and the assistants the stencils that include the assistant directives.
+// asAssistants makes every seat of table after the lead an assistant on Codex, with an end marker of its own.
+// It gives the lead and the assistants the stencils that include the assistant directives.
 func asAssistants(table *Table) {
 	table.Seats[0].Stencil = "seat-test-assistant-chair"
 	for i := 1; i < len(table.Seats); i++ {

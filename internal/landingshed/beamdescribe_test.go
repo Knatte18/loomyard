@@ -13,7 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBeamDescribe asserts WriteBeamDescription writes a description carrying the entry's title, brief, one entry per commit and the project record's added entries, cuts an over-long title, refuses an empty body naming the verb to run again and no longer the landing's cancel, refuses an unset seam, returns a failed seam, and and rewrites the same bytes on a re-run.
+// TestBeamDescribe asserts WriteBeamDescription writes a description carrying the entry's title and brief.
+// The description also carries one entry per commit and the project record's added entries.
+// It cuts an over-long title and refuses an empty body naming the verb to run again.
+// It refuses an unset seam, returns a failed seam, and rewrites the same bytes on a re-run.
 func TestBeamDescribe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -39,7 +42,7 @@ func TestBeamDescribe(t *testing.T) {
 		decErr     error
 		entryErr   error
 		commitsErr error
-		// dropCommit leaves the Commit seam unset.
+		// dropCommit, when set, leaves the Commit seam unset.
 		dropCommit bool
 		// wantFile is the exact description written; empty wants the call to fail.
 		wantFile string

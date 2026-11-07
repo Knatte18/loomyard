@@ -1,11 +1,9 @@
-// report.go implements webster's own fork-return report contract: the minimal YAML shape a fork
-// writes as its final action to the per-batch report file under websterengine.ReportsDir(...),
-// and the strict parser that reads it back.
-// webster's flat card format carries no per-batch Scope, so there is nothing to
-// justify an out-of-scope entry against;
-// a fork simply reports whether it succeeded, or that it waits on a step only its parent can take, the head SHA it left, and the glyphs it renamed.
-// An older fork's deviations key is still accepted and never read;
-// ParseReport fails only on Status/HeadSHA/Need/Renames shape violations.
+// report.go defines webster's fork-return report contract: the minimal YAML a fork writes as its final action.
+// The file is the per-batch report under websterengine.ReportsDir(...).
+// This file also holds the strict parser that reads a report back.
+// A report holds the fork's status, its head SHA, its glyph renames, and any step it needs its parent to take.
+// ParseReport fails only on shape violations of Status, HeadSHA, Need and Renames;
+// an older fork's deviations key is accepted and never read.
 
 package websterengine
 
@@ -19,21 +17,22 @@ import (
 )
 
 // The three legal Report.Status values.
-// NEEDS_PARENT is a batch stopped on a step only the run's parent can take, which no recovery strand could take either.
+// NEEDS_PARENT marks a batch stopped on a step only the run's parent can take.
+// No recovery strand could take such a step either.
 const (
 	ReportStatusOK          = "OK"
 	ReportStatusFailed      = "FAILED"
 	ReportStatusNeedsParent = "NEEDS_PARENT"
 )
 
-// Report is a fork's return contract: the in-memory form of the per-batch report YAML file a fork
-// writes as its final action.
+// Report is a fork's return contract.
+// It is the in-memory form of the per-batch report YAML file the fork writes as its final action.
 type Report struct {
 	// Status is one of ReportStatusOK, ReportStatusFailed or ReportStatusNeedsParent.
 	Status string `yaml:"status"`
 	// HeadSHA is the commit SHA the fork left the worktree at.
 	HeadSHA string `yaml:"head_sha"`
-	// Need is the one-line step only the parent can take, required with ReportStatusNeedsParent and refused with any other status.
+	// Need names the one step only the parent can take; it is required with ReportStatusNeedsParent and refused otherwise.
 	Need string `yaml:"need,omitempty"`
 	// Renames lists every glyph the batch renamed, so a later card still naming the old glyph is rewritten to the new one.
 	Renames []ReportRename `yaml:"renames,omitempty"`
@@ -42,7 +41,8 @@ type Report struct {
 	Deviations []string `yaml:"deviations,omitempty"`
 }
 
-// ReportRename is one glyph rename a fork reports: the glyph before the batch, the glyph that replaced it, and why the fork could not keep the plan's name.
+// ReportRename is one glyph rename a fork reports.
+// It names the glyph before the batch, the glyph that replaced it, and why the fork could not keep the plan's name.
 type ReportRename struct {
 	Old    string `yaml:"old" json:"old"`
 	New    string `yaml:"new" json:"new"`
@@ -54,9 +54,10 @@ func ReportFileName(number int, slug string) string {
 	return fmt.Sprintf("%02d-%s.yaml", number, slug)
 }
 
-// ParseReport reads and strictly decodes the fork-return report YAML file at path, then enforces strict validation.
-// Status must be one of the three legal values, head_sha must be non-empty, need must be non-empty exactly when status is ReportStatusNeedsParent,
-// and each renames entry must name two different, non-empty glyphs.
+// ParseReport reads and strictly decodes the fork-return report YAML file at path, then validates its fields.
+// Status must be one of the three legal values; head_sha must be non-empty.
+// need must be non-empty exactly when status is ReportStatusNeedsParent.
+// Each renames entry must name two different, non-empty glyphs.
 // Each violation is returned as its own distinct wrapped error.
 func ParseReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)
@@ -78,7 +79,7 @@ func ParseReport(path string) (*Report, error) {
 	return &r, nil
 }
 
-// validateReportFields enforces ParseReport's status, head_sha and need shape.
+// validateReportFields checks the status, head_sha, need and renames fields of a decoded report.
 func validateReportFields(path string, r Report) error {
 	switch r.Status {
 	case ReportStatusOK, ReportStatusFailed, ReportStatusNeedsParent:
@@ -110,9 +111,8 @@ func validateReportFields(path string, r Report) error {
 	return nil
 }
 
-// WriteReport serializes r's fields to path, the per-batch report file the fork writes under
-// websterengine.ReportsDir(...).
-// The caller supplies path;
+// WriteReport serializes r to path, the per-batch report file the fork writes under websterengine.ReportsDir(...).
+// The caller supplies path.
 // WriteReport never constructs `_lym` tokens itself, per the Cwd Resolution Invariant.
 func WriteReport(path string, r *Report) error {
 	data, err := yaml.Marshal(r)

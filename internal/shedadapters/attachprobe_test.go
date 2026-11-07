@@ -1,9 +1,9 @@
-// attachprobe_test.go covers the live-agent probe the Bouncer runs before it archives or spawns -- the seam that stops a resumed run from starting a second agent over one that is still alive.
-// The Bouncer probes through its Shuttle; the Burler rows' probes are covered beside their producers in burlerreview_test.go and burlerfix_test.go.
+// attachprobe_test.go covers the live-agent probe that the Bouncer runs before it archives or spawns.
+// The probe stops a resumed run from starting a second agent over one that is still alive.
 //
-// Two properties are asserted in every case, not one. That the probe RAN is not enough: archiving
-// renames the very files a live agent is about to write, so a probe that ran after the archive would
-// pass a "did we attach" assertion while still having destroyed the attached run's file contract.
+// Each case asserts two properties.
+// Running the probe is not enough: archiving renames the files a live agent is about to write.
+// A probe run after the archive would pass a "did we attach" check with the file contract already broken.
 // Each case therefore also asserts that the pre-existing artifacts survived untouched.
 
 package shedadapters
@@ -24,8 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// stampedSiblingCount reports how many entries in dir share base's stem but not its exact name --
-// the archive helper's stamped-sibling shape. Zero proves nothing was archived.
+// stampedSiblingCount reports how many entries in dir share base's stem but not its exact name.
+// A count of zero shows that nothing was archived.
 func stampedSiblingCount(t *testing.T, dir, base string) int {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -42,14 +42,16 @@ func stampedSiblingCount(t *testing.T, dir, base string) int {
 	return count
 }
 
-// stopLog records the strand guid of every Stop call on the handles built over it, failing each call with err when set.
+// stopLog records the strand guid of every Stop call on the handles built over it.
+// Each Stop call returns err when err is set.
 type stopLog struct {
 	mu      sync.Mutex
 	err     error
 	stopped []string
 }
 
-// probedHandle is a burlerengine.Handle for a half a probe reports live; a producer reads its strand guid and stops it.
+// probedHandle is a burlerengine.Handle for an agent that a probe reports live.
+// A producer reads its strand guid and stops it.
 // A nil log makes Stop a no-op.
 type probedHandle struct {
 	guid string
@@ -82,17 +84,18 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
 	}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	// Only round 1's report exists at Call entry -- a verdict already on disk would settle (or, if CONVERGED, clear) before judgeCall is ever reached,
+	// Only round 1's report exists at Call entry.
+	// A verdict already on disk would settle the round, or clear it when CONVERGED, before judgeCall is ever reached,
 	// so the judge branch would go unexercised.
-	// The attached judge writes its verdict and ledger while Call waits on it, which duringAttach
-	// stands in for.
+	// The attached judge writes its verdict and ledger while Call waits on it; duringAttach stands in for that.
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 	attach.DuringAttach = func() {
 		_ = os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("CONVERGED")), 0o644)
 		_ = os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(bouncerLedgerContent(1)), 0o644)
 	}
-	// The round's report is the file the archive step would NOT touch; the focus file for round 2
-	// is one it would. Pre-writing it proves the archive did not run on the attach branch.
+	// The round's report is a file the archive step would not touch.
+	// The focus file for round 2 is one it would.
+	// Pre-writing that focus file proves the archive did not run on the attach branch.
 	staleNextFocus := focusPath(cfg.RunDir, 2)
 	if err := os.WriteFile(staleNextFocus, []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(stale next focus) = %v; want nil", err)
@@ -130,12 +133,13 @@ func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
 
 // --- Bouncer, entry-time pass over a verdict already on disk ---
 //
-// These four cases cover the window the judge spec's own shape opens: a recorded verdict needs the
-// verdict and ledger files, while the judge spawn declares those two plus the next round's focus
-// file. A crash in between leaves a live judge behind an apparently-final verdict, and Call's clear
-// and replay branches both act on that verdict without spawning anything -- so without a probe of
-// their own, one archives the run directory out from under the live judge and the other writes a
-// synthetic file at a path it declared as an output.
+// These four cases cover the window the judge spec's shape opens.
+// A recorded verdict needs the verdict and ledger files.
+// The judge spawn declares those two plus the next round's focus file.
+// A crash in between leaves a live judge behind an apparently-final verdict.
+// Call's clear and replay branches both act on that verdict without spawning anything.
+// Without a probe of their own, one archives the run directory out from under the live judge,
+// and the other writes a synthetic file at a path the judge declared as an output.
 
 //testtiming:keep pins that a live judge behind an already-written verdict is attached to before the clear or replay branch acts, and its own output is neither archived nor overwritten
 func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *testing.T) {
@@ -164,9 +168,9 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *
 					round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
 				}})
 			}
-			// The live judge's real targeting for round 2, its third declared output, written while
-			// Call waits on it. A clear would archive the run dir out from under it and a replay would
-			// have synthesized two empty lists over this path before it ever landed.
+			// The live judge's real targeting for round 2, its third declared output, is written while Call waits on it.
+			// A clear would archive the run directory out from under it,
+			// and a replay would have synthesized two empty lists over this path before it ever landed.
 			realFocus := "---\nround: 2\nexclude_lenses: []\nfocus: [\"the finding the judge actually targeted\"]\n---\n"
 			attach.DuringAttach = func() {
 				_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
@@ -224,7 +228,9 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 }
 
 // TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles pins what the probe matches on, and the role it carries.
-// shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else, so a probe naming any other set -- the seed pass's single focus file, or a Burler row's review or fixer-report file -- silently matches nothing and is indistinguishable from no agent being alive at all.
+// shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else.
+// A probe naming any other set silently matches nothing and is indistinguishable from no agent being alive at all.
+// The seed pass's focus file and a Burler row's review or fixer-report file are such sets.
 // The probe's role is the judge's own, led by the configured role prefix.
 //
 //testtiming:keep pins the OutputFiles set the judge's entry probe names, which no other test reads off the recorded attach spec
@@ -282,8 +288,7 @@ func TestBouncer_SeedCall_ProbesForALiveSeed(t *testing.T) {
 			}
 			b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 			// A parseable round-1 focus file would make Call take its re-bounce branch instead of seeding,
-			// so the in-progress file is deliberately unparseable here -- which is exactly what
-			// a half-written focus file looks like.
+			// so the in-progress file here is unparseable, the way a half-written focus file is.
 			focus := focusPath(cfg.RunDir, 1)
 			if err := os.WriteFile(focus, []byte("---\nround: 1\n"), 0o644); err != nil {
 				t.Fatalf("WriteFile(partial focus) = %v; want nil", err)

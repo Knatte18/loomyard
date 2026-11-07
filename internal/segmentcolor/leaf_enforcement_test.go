@@ -1,5 +1,5 @@
 // leaf_enforcement_test.go enforces the Segmentcolor Leaf Invariant.
-// Production code in internal/segmentcolor imports only the standard library, no other package at all.
+// Production code in internal/segmentcolor imports only the standard library.
 
 package segmentcolor
 

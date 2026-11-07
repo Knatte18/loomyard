@@ -70,8 +70,9 @@ type Ticket struct {
 	Front    bool      `json:"front,omitempty"`
 }
 
-// Entry is one lock record as List reports it.
-// Err holds the failure text of a record that could not be read, in which case only Record.Branch is set.
+// Entry is one lock record with its live waiters.
+// Err holds the failure text of a record that could not be read;
+// only Record.Branch is set then.
 type Entry struct {
 	Record  Record   `json:"record"`
 	Alive   bool     `json:"alive"`
@@ -79,14 +80,16 @@ type Entry struct {
 	Err     string   `json:"err,omitempty"`
 }
 
-// Attempt is the result of one TryAcquire.
-// Holder is the record the attempt found when it was not granted, and the zero Record when the lock was free but the queue was not the acquirer's turn.
+// Attempt is the result of one attempt to take a branch's lock.
+// Holder is the record the attempt found when it was not granted;
+// it is the zero Record when the lock was free but the queue was not the acquirer's turn.
 type Attempt struct {
 	Granted bool
 	Holder  Record
 }
 
-// ProcessAlive reports whether pid is alive and carries startTime, so a recycled pid is not taken for its dead predecessor.
+// ProcessAlive reports whether pid is alive and carries startTime;
+// a recycled pid is not taken for its dead predecessor.
 func ProcessAlive(pid int, startTime string) bool {
 	if !proc.IsAlive(pid) {
 		return false
@@ -97,14 +100,15 @@ func ProcessAlive(pid int, startTime string) bool {
 
 // Store reads and writes the lock records under Dir.
 type Store struct {
-	// Dir is the directory holding every record, as Dir returns it.
+	// Dir is the directory holding every record.
 	Dir string
 	// Alive reports whether an owner process lives; nil selects ProcessAlive.
 	Alive func(pid int, startTime string) bool
 	// Now stamps AcquiredAt and ticket times; nil selects time.Now.
 	Now func() time.Time
 	// Covered reports whether a pause covers the run of slug; nil covers nothing.
-	// A covered run keeps its ticket and place but is never granted, and the queue head is the first live ticket of an uncovered run.
+	// A covered run keeps its ticket and place but is never granted,
+	// and the queue head is the first live ticket of an uncovered run.
 	Covered func(slug string) bool
 }
 
@@ -208,7 +212,8 @@ func (s *Store) Read(branch string) (Record, bool, error) {
 }
 
 // liveTickets returns branch's tickets in queue order: those at the front first, and oldest first within each part.
-// A ticket whose owner is not alive, or that cannot be decoded, is dropped from the result and removed from disk when prune is set.
+// A ticket whose owner is not alive, or that cannot be decoded, is dropped from the result;
+// it is also removed from disk when prune is set.
 func (s *Store) liveTickets(branch string, prune bool) ([]Ticket, error) {
 	dir := s.ticketsDir(branch)
 	entries, err := os.ReadDir(dir)
@@ -247,14 +252,18 @@ func (s *Store) liveTickets(branch string, prune bool) ([]Ticket, error) {
 }
 
 // TryAcquire makes one attempt to take branch's lock for owner.
-// A free record, a record whose owner process is not alive and a record naming owner's run are each taken; a free or stale record goes to the head of the queue, so an acquirer that is not the head keeps its ticket and is not granted.
-// An acquirer whose run is covered keeps its ticket and is not granted, unless the record already names its own run; the queue head is then the first live ticket of an uncovered run, so a covered waiter is passed over and keeps its place.
+// A record naming owner's run is taken at once;
+// a free record, or a record whose owner process is not alive, is taken only when owner is the head of the queue.
+// Otherwise owner keeps its ticket and is not granted.
+// An acquirer whose run is covered keeps its ticket and is not granted, unless the record already names its own run;
+// the queue head is then the first live ticket of an uncovered run,
+// so a covered waiter is passed over and keeps its place.
 // A record that cannot be read returns an error wrapping ErrUnreadable and changes nothing.
 func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
 	return s.tryAcquire(branch, owner, false)
 }
 
-// tryAcquire is TryAcquire for an acquirer that queues at the front when front is set:
+// tryAcquire makes one attempt for owner, queuing at the front when front is set:
 // it passes every ticket not at the front, and waits only behind an older front ticket of an uncovered run.
 func (s *Store) tryAcquire(branch string, owner Owner, front bool) (Attempt, error) {
 	var attempt Attempt
@@ -301,7 +310,8 @@ func (s *Store) tryAcquire(branch string, owner Owner, front bool) (Attempt, err
 	return attempt, err
 }
 
-// keepTicket writes owner's ticket, at the front when front is set, unless it already holds one, so a waiter keeps its place in the queue.
+// keepTicket writes owner's ticket, at the front when front is set, unless it already holds one;
+// so a waiter keeps its place in the queue.
 func (s *Store) keepTicket(branch string, owner Owner, front bool) error {
 	path := s.ticketPath(branch, owner)
 	if _, err := os.Stat(path); err == nil {
@@ -317,7 +327,7 @@ func (s *Store) keepTicket(branch string, owner Owner, front bool) error {
 }
 
 // Release removes branch's record when its owner is the same process as owner, and reports whether it did.
-// A record owned by another process, of the same run or not, is left alone.
+// A record owned by another process is left alone, whether or not it belongs to the same run.
 func (s *Store) Release(branch string, owner Owner) (bool, error) {
 	released := false
 	err := s.withLock(branch, func() error {
@@ -334,7 +344,8 @@ func (s *Store) Release(branch string, owner Owner) (bool, error) {
 	return released, err
 }
 
-// HandOff rewrites branch's record to name to when its owner is the same process as from, and reports whether it did.
+// HandOff rewrites branch's record with to as its owner, when the record's owner is the same process as from.
+// It reports whether it did.
 func (s *Store) HandOff(branch string, from, to Owner) (bool, error) {
 	handed := false
 	err := s.withLock(branch, func() error {
@@ -387,7 +398,7 @@ func (s *Store) List() ([]Entry, error) {
 }
 
 // HeldBy reports whether a live lock record that reads without error is owned by slug.
-// It returns the error of listing the records.
+// It returns the error from listing the records.
 func (s *Store) HeldBy(slug string) (bool, error) {
 	entries, err := s.List()
 	if err != nil {

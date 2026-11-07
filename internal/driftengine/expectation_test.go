@@ -105,7 +105,8 @@ func TestParseExpectation(t *testing.T) {
 	}
 }
 
-// TestExpectationCover covers which entry covers each kind of cell, the merge of an amendment and the entries that cover no cell.
+// TestExpectationCover covers which entry covers each kind of cell.
+// It also covers the merge of an amendment and the entries that cover no cell.
 func TestExpectationCover(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

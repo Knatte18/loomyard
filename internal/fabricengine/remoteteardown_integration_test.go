@@ -1,5 +1,6 @@
-// remoteteardown_integration_test.go covers RunTeardownChild running a removal's remote job against a real hub:
-// the weft branch's tip, then the archive tag, then the leased delete of the branch on origin, with the teardown lock held to the last step and released after it.
+// remoteteardown_integration_test.go covers RunTeardownChild running a removal's remote job against a real hub.
+// The job pushes the weft branch's tip, tags the archive, and then deletes the branch on origin with a lease.
+// The teardown lock is held through the last step and released after it.
 //
 // Every hub is built through hubforge.CopyHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -23,10 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock covers the detached half of a removal over a weft tip origin lacks.
-// The child pushes the tip, tags it and then deletes the branch on origin, holding the teardown lock at each step and releasing it on return.
-// A failed archive tag stops the later steps, leaves the pushed branch in place, mails one notice and still releases the lock.
-// The rows set package-level hooks and install the process's push notifier, so neither the test nor its rows are parallel.
+// TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock covers the detached half of a removal.
+// The detached half runs over a weft tip that origin does not have.
+// The child pushes the tip, tags it, and then deletes the branch on origin.
+// It holds the teardown lock at each step and releases it on return.
+// A failed archive tag stops the later steps and leaves the pushed branch in place;
+// it mails one notice and still releases the lock.
+// The rows set package-level hooks and install the process's push notifier.
+// So neither the test nor its rows are parallel.
 func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 	tiergate.Require(t, 1)
 
@@ -53,7 +58,8 @@ func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 			weftBranch := fabricengine.RecordsBranchName(cfg.BranchPrefix + slug)
 			tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
 			wantTag := wantArchiveTag(slug, tip)
-			// A removal hands the remote steps over after its local teardown, so the sibling worktree and the local branch are gone when the child runs.
+			// A removal hands the remote steps over after its local teardown.
+			// The sibling worktree and the local branch are therefore gone when the child runs.
 			weftRoot := mustRecordsRepoRoot(t, l)
 			gitkit.MustRun(t, weftRoot, "git", "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 			gitkit.MustRun(t, weftRoot, "git", "branch", "-D", weftBranch)

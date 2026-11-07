@@ -1,4 +1,5 @@
-// receive.go implements the receiving half of mail across hubs: the deliver and confirm verbs, the sender's confirmation with its own hub's daemon, the trust stamp and the drop of mail that is not confirmed.
+// receive.go implements the receiving half of mail across hubs: the deliver and confirm verbs.
+// It also asks the sending hub's daemon to confirm mail, stamps trust, and drops unconfirmed mail.
 
 package creelengine
 
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// The verbs the daemons of two hubs call on each other; neither resolves a sender, since the calling daemon runs in no pane and the confirmation alone settles who sent.
+// The verbs the daemons of two hubs call on each other.
+// Neither resolves a sender: the calling daemon runs in no pane, and the confirmation alone settles who sent.
 const (
 	// VerbDeliver offers a receiving daemon one message from a strand of another hub.
 	VerbDeliver = "deliver"
@@ -61,7 +63,8 @@ type HubMail struct {
 	BodyHash string `json:"body_hash,omitempty"`
 }
 
-// DeliverAnswer is a receiving daemon's answer to a deliver: accepted with the id it gave the message, or refused with the reason.
+// DeliverAnswer is a receiving daemon's answer to a deliver:
+// accepted with the id it gave the message, or refused with the reason.
 type DeliverAnswer struct {
 	Delivery string
 	Reason   string
@@ -106,7 +109,7 @@ func (d *daemon) serveHubCall(conn net.Conn, req Request) error {
 }
 
 // Confirm reports whether this hub's journal holds a pending outbound message that the whole tuple of mail names.
-// It answers yes or no and sends no text.
+// The body is compared by its hash, since a confirm carries no body.
 func (s *Store) Confirm(mail HubMail) bool {
 	confirmed := false
 	_ = s.do(func() error {
@@ -119,7 +122,8 @@ func (s *Store) Confirm(mail HubMail) bool {
 }
 
 // Deliver takes one message from a strand of another hub.
-// Nothing reaches an agent until the sending hub's own daemon confirms the whole tuple, and mail it does not confirm is journaled as a drop.
+// Nothing reaches an agent until the sending hub's own daemon confirms the whole tuple.
+// Mail it does not confirm is journaled as a drop.
 // A refusal is an answer; an error is transient, so the sending daemon retries.
 func (s *Store) Deliver(mail HubMail) (DeliverAnswer, error) {
 	mail.BodyHash = bodyHash(mail.Body)
@@ -196,7 +200,8 @@ func (s *Store) Deliver(mail HubMail) (DeliverAnswer, error) {
 	return *answer, nil
 }
 
-// refuseDeliveredNames checks the names and the line of a deliver and answers the sender's parsed name, or the reason for a refusal.
+// refuseDeliveredNames checks the names and the line of a deliver.
+// It answers the sender's parsed name, or the reason for a refusal.
 func (s *Store) refuseDeliveredNames(mail HubMail) (agentname.Name, string) {
 	senderName, err := agentname.Parse(mail.Sender)
 	if err != nil {
@@ -215,8 +220,9 @@ func (s *Store) refuseDeliveredNames(mail HubMail) (agentname.Name, string) {
 }
 
 // heldLocked finds the message this hub holds from the hub at sendingHub under mail's sending id.
-// All of sender, receiver, reply-to id, mark, post time to the nanosecond and body hash matching returns the held message.
-// Any differing returns the clash reason, which names the ids this hub holds from that hub.
+// It returns the held message when the other fields of mail match:
+// sender, receiver, reply-to id, expect-reply flag, post time to the nanosecond, and body hash.
+// Any difference returns the clash reason, which names the ids this hub holds from that hub.
 func (s *Store) heldLocked(sendingHub string, mail HubMail) (held *Message, clash string) {
 	var (
 		found    *Message
@@ -244,7 +250,8 @@ func (s *Store) heldLocked(sendingHub string, mail HubMail) (held *Message, clas
 	return nil, fmt.Sprintf("creel: id clash: this hub holds ids %d-%d from that hub; a post succeeds once its ids pass %d or those messages pass the seven-day retention", low, top, top)
 }
 
-// confirmWithSender asks the daemon of the sending hub whether its strand posted the message, without starting that daemon.
+// confirmWithSender asks the daemon of the sending hub whether its strand posted the message.
+// It does not start that daemon.
 // A confirm that fails, times out or answers neither yes nor no is an error, so the sender retries.
 func (s *Store) confirmWithSender(sendingHub string, mail HubMail) (bool, error) {
 	geometry, err := s.hubs.Geometry(sendingHub)
@@ -266,7 +273,8 @@ func (s *Store) confirmWithSender(sendingHub string, mail HubMail) (bool, error)
 	return false, fmt.Errorf("creel: the sending hub's daemon answered the confirm with %q, neither yes nor no", resp.Confirmed)
 }
 
-// trustedSender reports whether sender is the orch of a hub this hub's creel.yaml lists, on Linux, where the sending hub's identity rests on the kernel.
+// trustedSender reports whether sender is the orch of a hub that this hub's creel.yaml lists.
+// It answers only on Linux, where the sending hub's identity rests on the kernel.
 // A trusted-hubs read that fails logs one warning and counts as untrusted.
 func (s *Store) trustedSender(sender string) bool {
 	name, err := agentname.Parse(sender)
@@ -281,7 +289,8 @@ func (s *Store) trustedSender(sender string) bool {
 	return slices.Contains(listed, name.Shortname)
 }
 
-// storeInboundLocked journals mail as unread mail from the hub at sendingHub, stamped with its trust, and delivers it to its receiver.
+// storeInboundLocked journals mail from the hub at sendingHub as unread, stamped with its trust.
+// It then delivers the mail to its receiver.
 // A reply also ends a wait on the outbound message it answers, and still reaches the receiver as mail.
 func (s *Store) storeInboundLocked(sendingHub string, mail HubMail, trusted bool) (int64, error) {
 	kind := kindMail
@@ -301,7 +310,8 @@ func (s *Store) storeInboundLocked(sendingHub string, mail HubMail, trusted bool
 	return id, s.deliverMailLocked(id, mail.Receiver)
 }
 
-// dropLocked journals mail that was never delivered to any agent, and tells this hub's orch of it within the hub's notice window.
+// dropLocked journals mail that was never delivered to any agent.
+// It tells this hub's orch of the drop within the hub's notice window.
 // A journal write that fails returns its error and posts no notice, so the drop is journaled on the sender's retry.
 func (s *Store) dropLocked(shortname, sendingHub string, mail HubMail, reason string) error {
 	if err := s.writer.append(record{
@@ -314,7 +324,8 @@ func (s *Store) dropLocked(shortname, sendingHub string, mail HubMail, reason st
 	return nil
 }
 
-// noticeDropLocked posts the notice of a drop to this hub's orch while the hub's window holds notices; a notice that fails to store is logged and spends no notice slot, so the next notice counts its drops.
+// noticeDropLocked posts the notice of a drop to this hub's orch while the hub's window holds notices.
+// A notice that fails to store is logged and spends no notice slot, so the next notice counts its drops.
 // The window is kept in memory per sending hub path, so a flood of claimed strands from one hub still costs one entry.
 func (s *Store) noticeDropLocked(shortname, sendingHub string, mail HubMail, reason string) {
 	now := s.clock.Now()

@@ -10,7 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// raddleHandOff reads the raddle store of the hub of location and, when a stored proposal filed the beam's project, returns the line that hands the beam's orch the Sketch and the proposal.
+// raddleHandOff reads the raddle store of the hub of location and returns the hand-off line for a beam's orch.
+// The line hands the orch the Sketch and the proposal of the stored entry that filed project.
 // found is false when no stored proposal filed project.
 func raddleHandOff(location *lymcwd.Location, project string) (line string, found bool, err error) {
 	store, err := boardengine.ReadRaddleStore(fabricengine.BoardDir(location.HubPath))

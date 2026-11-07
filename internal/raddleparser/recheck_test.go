@@ -9,7 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRecheckBoard starts from a board the valid proposal passes and moves it one way per row.
+// TestRecheckBoard starts from the fixture board, under which the fixture proposal passes.
+// It moves that board one way per table row.
 func TestRecheckBoard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

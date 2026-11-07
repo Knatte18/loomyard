@@ -1,5 +1,8 @@
-// gitwrap_test.go exercises headSHA, dirty, otherWorktrees, reconcileReportHead and refuseMidMerge against real scratch git repositories built fresh under t.TempDir() for each test,
-// reusing the package's existing hermetic TestMain (testmain_test.go) so these git spawns never inherit the operator's global gitconfig.
+// gitwrap_test.go exercises the real-git probes and verbs:
+// headSHA, dirty, otherWorktrees, reconcileReportHead and refuseMidMerge.
+// Each test builds its own scratch repository under t.TempDir().
+// It reuses the package's hermetic TestMain (testmain_test.go),
+// so these git spawns never inherit the operator's global gitconfig.
 
 package websterengine
 
@@ -18,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// gitwrapNewScratchRepo is the in-package scratch-repo initialiser; the external test package keeps its own, since the two packages cannot share a helper.
+// gitwrapNewScratchRepo returns an initialised, empty git repository under t.TempDir() with a committer identity.
+// It exists as a copy because the external test package cannot share an unexported helper with this one.
 func gitwrapNewScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -30,8 +34,8 @@ func gitwrapNewScratchRepo(t *testing.T) string {
 	return dir
 }
 
-// TestRepositoryProbes walks one scratch repository through the real-git probes: headSHA returns the
-// commit just made, dirty is false on a clean tree and true once an untracked file appears, and
+// TestRepositoryProbes walks one scratch repository through the real-git probes:
+// headSHA returns the commit just made; dirty is false on a clean tree and true once an untracked file appears;
 // otherWorktrees names, from either side, the one other worktree of the repository.
 //
 //testtiming:keep pins the real-git head, dirty and worktree-list probes' own return values, an untracked file counting as dirty, and both sides of a worktree pair; the covering verb tests observe them only through verb outcomes
@@ -212,8 +216,9 @@ func TestRepositoryProbes(t *testing.T) {
 	})
 }
 
-// gitwrapObjectNamedLike hashes candidate objects of kind with body from bodyFor(0), bodyFor(1), … and returns the first body whose object id starts with prefix,
-// so a test can plant a blob and a tree sharing the commit's abbreviated name.
+// gitwrapObjectNamedLike returns the first candidate body whose object id starts with prefix.
+// It hashes objects of kind with bodies from bodyFor(0), bodyFor(1), … in turn.
+// A test uses it to plant a blob and a tree sharing the commit's abbreviated name.
 func gitwrapObjectNamedLike(t *testing.T, kind, prefix string, bodyFor func(attempt int) []byte) []byte {
 	t.Helper()
 	for attempt := 0; attempt < 5_000_000; attempt++ {
@@ -227,14 +232,15 @@ func gitwrapObjectNamedLike(t *testing.T, kind, prefix string, bodyFor func(atte
 	return nil
 }
 
-// gitwrapParentBranch is the parent branch every reconcileReportHead test's run merges from.
+// gitwrapParentBranch is the parent branch that the reconcile tests merge from.
 const gitwrapParentBranch = "parent"
 
-// gitwrapParent is the ParentBranchFunc naming gitwrapParentBranch.
+// gitwrapParent returns the parent branch of a reconcile run and never fails.
 func gitwrapParent() (string, error) { return gitwrapParentBranch, nil }
 
-// gitwrapMergeSide checks out side (branching it off the current branch when it does not exist yet), commits one new file there,
-// returns to the original branch and merges side with --no-ff, so a merge commit lands even without divergence.
+// gitwrapMergeSide checks out side, branching it off the current branch when it does not exist yet.
+// It commits one new file on side, returns to the original branch, and merges side in.
+// The merge uses --no-ff, so a merge commit lands even without divergence.
 // It returns the merge commit SHA and the side branch's own tip SHA.
 func gitwrapMergeSide(t *testing.T, dir, side string) (mergeSHA, sideTip string) {
 	t.Helper()
@@ -387,8 +393,8 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	})
 }
 
-// gitwrapParentCommit commits name=content on the parent branch (creating it off the current branch when absent) and returns to the current branch,
-// returning the current branch's name.
+// gitwrapParentCommit commits name=content on the parent branch, which it creates off the current branch when absent.
+// It checks the current branch back out and returns its name.
 func gitwrapParentCommit(t *testing.T, dir, name, content string) (base string) {
 	t.Helper()
 	base = strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
@@ -402,8 +408,8 @@ func gitwrapParentCommit(t *testing.T, dir, name, content string) (base string) 
 	return base
 }
 
-// TestReconcileReportHead_UncleanParentMergesRefused proves a merge commit is walked over only when it is a clean merge of the run's parent branch:
-// every other two-or-more-parent shape is refused with the parent-merge refusal and its way forward.
+// TestReconcileReportHead_UncleanParentMergesRefused proves only a clean parent-branch merge is walked over.
+// Every other merge with two or more parents is refused with the parent-merge refusal and its way forward.
 func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -518,7 +524,8 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 	}
 }
 
-// TestReconcileReportHead_ParentOnlyOnOrigin proves a merge of the parent branch's origin remote-tracking tip is accepted when no local parent branch exists.
+// TestReconcileReportHead_ParentOnlyOnOrigin proves a merge of the origin remote-tracking tip is accepted.
+// The parent branch exists only on origin in this case, with no local parent branch.
 func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -537,7 +544,8 @@ func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
 	}
 }
 
-// gitwrapConflictingMerge sets up a conflict on file c.txt between the current branch and a side branch, leaving the merge in progress in dir.
+// gitwrapConflictingMerge makes a conflict on c.txt between the current branch and a side branch.
+// It leaves the merge in progress in dir.
 func gitwrapConflictingMerge(t *testing.T, dir string) {
 	t.Helper()
 	base := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))

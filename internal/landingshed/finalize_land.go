@@ -1,4 +1,6 @@
-// finalize_land.go implements Finalize's land check, which halts the landing of a beam while an open member or a pair forked from it remains, and words the ways forward itself.
+// finalize_land.go implements the land check of Finalize.
+// The check halts the landing of a beam while an open member or a pair forked from it remains,
+// and it words the ways forward of that halt.
 
 package landingshed
 
@@ -10,11 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// LandHaltPrefix opens the reason of every halt Finalize's land check makes, so a reader of a halt note or a test tells a land halt from any other stop.
+// LandHaltPrefix opens the reason of every land halt,
+// so a reader of a halt note or a test tells a land halt from any other stop.
 const LandHaltPrefix = "land check: "
 
 // LandBlocker is one thing that still works under a beam: a local pair forked from it, or an open member entry.
-// Pair marks a forked pair; a member carries whether this machine holds its pair and whether a run is in flight on its board entry.
+// Pair reports whether the blocker is a forked pair.
+// For a member, HasPair reports whether this machine holds its pair.
+// Running reports whether a run is in flight on the member's board entry.
 type LandBlocker struct {
 	Slug    string
 	Pair    bool
@@ -22,9 +27,12 @@ type LandBlocker struct {
 	Running bool
 }
 
-// landCheck halts the landing of a beam while a blocker remains, which backstops an open member the run's earlier re-check missed, such as one a stale board on another machine added.
-// stop is false when the landing may go on: with no LandBlockers seam, with no blocker, and for a Finalize already past its parent-side merge, which finishes whatever remains under the beam.
-// Otherwise the other values are what Call returns at once: a halt behind LandHaltPrefix naming each blocker's way forward, or the read failure and the re-run.
+// landCheck halts the landing of a beam while a blocker remains.
+// It backstops an open member the run's earlier re-check missed, such as one a stale board on another machine added.
+// stop is false when the landing may go on: with no LandBlockers seam, or with no blocker.
+// It is also false for a Finalize already past its parent-side merge, which finishes whatever remains under the beam.
+// Otherwise the first three values are the halt.
+// Its reason names each blocker's way forward, or, when a read failed, the re-run.
 func (fz *Finalize) landCheck(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if fz.deps.LandBlockers == nil {
 		return "", shedengine.OutputPointer{}, nil, false
@@ -48,20 +56,26 @@ func (fz *Finalize) landCheck(ctx context.Context) (shedengine.Outcome, shedengi
 	return fz.landHalt(ctx, landHaltReason(fz.deps.Slug, fz.deps.ParentWorktree, blockers))
 }
 
-// landHalt returns the halting Stuck of the land check with reason behind LandHaltPrefix, which writes the loom halt note.
+// landHalt returns the Stuck that halts a landing, which writes the loom halt note.
+// The reason is marked as a land check halt.
 func (fz *Finalize) landHalt(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	outcome, out, err := stuckVerdict(ctx, finalizeName, LandHaltPrefix+reason, true)
 	return outcome, out, err, true
 }
 
-// landRerun is the way forward of a land check that could not be judged: the run's re-entry from the beam's worktree once the cause is gone.
+// landRerun is the way forward of a land check that could not be judged:
+// the run's re-entry from the beam's worktree once the cause is gone.
 func landRerun(beam string) string {
 	return fmt.Sprintf("run `lym loom resume` in the beam's worktree %s", beam)
 }
 
 // landHaltReason words the reason of a land halt for the beam, whose parent worktree is parentWorktree.
-// A forked pair and a member with a pair or a run in flight are cancelled, in the parent worktree or on the machine holding the pair of a run in flight with no pair here, and a member is then moved off the beam, since the cancel leaves it a draft member, which still blocks the landing.
-// A member with no run status is moved alone.
+// A forked pair is ended with `lym batten cancel --remove` in the parent worktree.
+// A member with a pair here is ended the same way, then moved off the beam:
+// a cancel leaves a `draft` member, which still blocks the landing.
+// A member with a run in flight and no pair here is ended on the machine holding its pair;
+// `lym batten status` shows that machine, and the member is then moved off the beam.
+// A member with no run status is moved off the beam alone.
 // It never names the landing of a member with `lym batten run`, which the landing hold refuses.
 func landHaltReason(beam, parentWorktree string, blockers []LandBlocker) string {
 	moveOff := "move its `project` off the beam with `lym board upsert`"

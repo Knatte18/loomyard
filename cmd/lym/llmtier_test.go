@@ -1,5 +1,8 @@
-// llmtier_test.go enforces the LLM-tier half of `PATTERN-test-speed`: only `tier3` tests reach an LLM, through internal/testkit/llmkit.
-// The guard sees the static shape only: a `tier2` test that drives `lym` into spawning an LLM without calling llmkit, or a lower-tier test calling an llmkit helper of a support file, is caught by review.
+// llmtier_test.go enforces the LLM-tier half of `PATTERN-test-speed`:
+// only `tier3` tests reach an LLM, through internal/testkit/llmkit.
+// The guard sees the static shape only.
+// A `tier2` test that drives `lym` into spawning an LLM without calling llmkit is caught by review;
+// so is a lower-tier test calling an llmkit helper of a support file.
 
 package main
 
@@ -24,14 +27,17 @@ const llmTier = 3
 
 const (
 	llmkitImportPath = "github.com/Knatte18/loomyard/internal/testkit/llmkit"
-	// llmkitDir is the kit's own directory, exempt from the import and LookPath rules and bound to `exec.LookPath` alone.
+	// llmkitDir is the kit's own directory; it is exempt from the import and LookPath rules;
+	// its `os/exec` use is bound to `exec.LookPath` alone.
 	llmkitDir = "internal/testkit/llmkit"
 )
 
 // llmBinaryNames are the LLM binary names a test file outside the kit may not look up on PATH.
 var llmBinaryNames = []string{"claude"}
 
-// allowedLLMTierScanData is the LLM-tier guard allowlist: module-relative file paths, or directory paths ending in "/", exempt from every rule, each with a reason.
+// allowedLLMTierScanData is the LLM-tier guard allowlist.
+// Its entries are module-relative file paths or directory paths ending in "/";
+// each is exempt from every rule and carries a reason.
 var allowedLLMTierScanData = []scankit.Entry{
 	{Key: "cmd/lym/llmtier_test.go", Why: "contains the llmkit import path and `exec.LookPath` call shapes as its own scan data"},
 }
@@ -73,7 +79,8 @@ func stringConsts(file *ast.File) map[string]string {
 	return consts
 }
 
-// lookPathLLMBinary returns the LLM binary name a `exec.LookPath` call in the file passes as a string literal or a same-file constant, or "" when there is none.
+// lookPathLLMBinary returns the LLM binary name that an `exec.LookPath` call in the file passes.
+// The name is a string literal or a same-file constant; it returns "" when there is none.
 func lookPathLLMBinary(file *ast.File) string {
 	execName, ok := execImportName(file)
 	if !ok {
@@ -110,7 +117,8 @@ func lookPathLLMBinary(file *ast.File) string {
 	return found
 }
 
-// nonLookPathExecUse returns the first identifier of the file's `os/exec` import other than LookPath that the file uses, or "" when there is none.
+// nonLookPathExecUse returns the first `os/exec` identifier the file uses besides LookPath.
+// It returns "" when the file uses none.
 func nonLookPathExecUse(file *ast.File) string {
 	execName, ok := execImportName(file)
 	if !ok {
@@ -130,7 +138,8 @@ func nonLookPathExecUse(file *ast.File) string {
 	return used
 }
 
-// llmTierFailures walks the Go files under opts and returns the violating files' failure lines and the number of files scanned.
+// llmTierFailures walks the Go files under opts.
+// It returns the failure lines of the violating files and the number of files scanned.
 func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, scanned int) {
 	t.Helper()
 	opts.Filter = scankit.All
@@ -161,7 +170,9 @@ func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlis
 	return failures, scanned
 }
 
-// TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit and holds a test below `tier3`, for a test file outside the kit that looks up an LLM binary, and for a kit file using `os/exec` beyond LookPath.
+// TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit and holds a test below `tier3`.
+// It also fails for a test file outside the kit that looks up an LLM binary.
+// A kit file that uses `os/exec` beyond LookPath also fails.
 //
 //lym:guard
 func TestLLMTier_OnlyLLMFilesReachAnLLM(t *testing.T) {

@@ -13,10 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// writeHubWorkspace writes content to the workspace file at path, directly in the hub dir, in place and reports whether it wrote.
+// writeHubWorkspace writes content to the workspace file at path, directly in the hub dir, in place.
+// It reports whether it wrote.
 // An unchanged file is not rewritten at all.
 // A read error other than not-exist is returned rather than overwriting bytes it could not compare.
-// Every read and write goes through an os.Root at the hub, so a symlink planted at the workspace path that escapes the hub is refused.
+// Every read and write goes through an os.Root at the hub,
+// so a symlink planted at the workspace path that escapes the hub is refused.
 // It creates no directory and records no Mutations: the caller records the write.
 func writeHubWorkspace(l *lymcwd.Location, path string, content []byte) (bool, error) {
 	root, err := os.OpenRoot(l.HubPath)
@@ -42,8 +44,10 @@ func writeHubWorkspace(l *lymcwd.Location, path string, content []byte) (bool, e
 	return true, nil
 }
 
-// removeStaleBeamWorkspaces removes each <hub>/<RepoName>-*.code-workspace file that carries beamWorkspaceMark and whose slug is not in live.
-// A file without the mark, one that does not parse as JSON, and a directory are left alone, so an operator's own file of such a name stays.
+// removeStaleBeamWorkspaces removes the stale Beam workspace files from the hub.
+// A stale file is a <hub>/<RepoName>-*.code-workspace file with beamWorkspaceMark whose slug is not in live.
+// Files without the mark, files that do not parse as JSON, and directories are left alone.
+// An operator's own file of such a name therefore stays.
 // Every read and removal goes through an os.Root at the hub; a removal is recorded in rec.
 func removeStaleBeamWorkspaces(rec *Mutations, l *lymcwd.Location, live map[string]bool) error {
 	root, err := os.OpenRoot(l.HubPath)
@@ -87,7 +91,7 @@ func removeStaleBeamWorkspaces(rec *Mutations, l *lymcwd.Location, live map[stri
 	return nil
 }
 
-// carriesBeamMark reports whether the workspace file bytes data open with beamWorkspaceMark set to true as their first key.
+// carriesBeamMark reports whether the workspace file data opens with beamWorkspaceMark set to true as its first key.
 // Only the file's head is parsed, since the settings spliced behind it may hold comments a JSON decoder refuses.
 func carriesBeamMark(data []byte) bool {
 	decoder := json.NewDecoder(bytes.NewReader(data))

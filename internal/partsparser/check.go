@@ -1,4 +1,6 @@
-// check.go declares Finding, Check, which judges a parsed parts file against the decision record's ids, and Validate, which runs Parse and Check over the files on disk.
+// check.go holds the Finding type and the parts check.
+// Check judges a parsed parts file against the record's decision ids;
+// Validate runs Parse and Check over the files on disk.
 
 package partsparser
 
@@ -17,7 +19,8 @@ import (
 )
 
 // Finding is one violation the parts check found.
-// Part names the part, or the shared spot's path, the finding is about; Detail ends in its way forward.
+// Part names the part, or the shared spot's path, the finding is about;
+// Detail ends in its way forward.
 type Finding struct {
 	Check  string
 	Part   string
@@ -48,8 +51,10 @@ type decisionHolder struct {
 	decisions []string
 }
 
-// Check judges parts against the record's decision ids and the most parts max allows, and returns one Finding per violation.
-// exists reports whether a repository-relative path names a file or directory in the worktree, so an export of an existing file is refused.
+// Check judges parts against the record's decision ids and the most parts max allows.
+// It returns one Finding per violation.
+// exists reports whether a repository-relative path names a file or directory in the worktree,
+// so an export of an existing file is refused.
 func Check(parts *Parts, decisionIDs []string, max int, exists func(path string) bool) []Finding {
 	var findings []Finding
 	add := func(check, part, detail string) {
@@ -184,7 +189,8 @@ func Check(parts *Parts, decisionIDs []string, max int, exists func(path string)
 	return findings
 }
 
-// checkExports returns the findings on the exports of one part or shared spot, owner naming it in a Detail and label in a Finding's Part.
+// checkExports returns the findings on the exports of one part or shared spot.
+// owner names it in a Finding's Detail, and label fills its Part.
 // An export is what the cards create, so one that is no `plan:` handle must be a file path that does not exist yet.
 // A `plan:` handle must pass the name checks its declaring card will face.
 func checkExports(owner, label string, exports []string, exists func(string) bool) []Finding {
@@ -208,9 +214,12 @@ func checkExports(owner, label string, exports []string, exists func(string) boo
 	return findings
 }
 
-// Validate is the one parts check the parts gate and `lym loom validate-parts` run: it reads the parts file under anchorPath, parses it, reads the decision record at recordPath and checks the parts against its decision ids, the most parts max allows and the files under worktreeRoot.
+// Validate is the one parts check that the parts gate and `lym loom validate-parts` run.
+// It parses the parts file under anchorPath and checks it against the decision record at recordPath.
+// It checks the parts against the record's decision ids, the most parts max allows, and the files under worktreeRoot.
 // An absent parts file is a parts-missing finding and a file Parse refuses is a parts-malformed finding.
-// Any read error, an absent record included, is returned: the record is Discussion-Write's committed output, which the Parts-Write agent cannot write.
+// Any read error, an absent record included, is returned:
+// the record is Discussion-Write's committed output, which the Parts-Write agent cannot write.
 func Validate(anchorPath, worktreeRoot, recordPath string, max int) ([]Finding, error) {
 	record, err := os.ReadFile(recordPath)
 	if err != nil {

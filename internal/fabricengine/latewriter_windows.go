@@ -10,8 +10,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// isLateWriterError reports whether err is a directory that gained an entry while it was being deleted, or a file under it that its writer still holds open.
-// Go opens Windows files without FILE_SHARE_DELETE, so a file a writer such as internal/lock holds open cannot be deleted until the writer closes it.
+// isLateWriterError reports whether err is a directory that gained an entry while it was being deleted.
+// It also reports a file that its writer still holds open.
+// Go opens Windows files without FILE_SHARE_DELETE,
+// so a file that a writer such as internal/lock holds open cannot be deleted until the writer closes it.
 func isLateWriterError(err error) bool {
 	return errors.Is(err, windows.ERROR_DIR_NOT_EMPTY) || errors.Is(err, windows.ERROR_SHARING_VIOLATION)
 }

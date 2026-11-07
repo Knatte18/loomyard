@@ -1,4 +1,5 @@
-// inbound_test.go covers the inbound poll and the presence notices, and declares the in-memory Slack, mailbox, hub and clock the outbound and relay tests use too.
+// inbound_test.go covers the inbound poll and the presence notices.
+// It also declares the in-memory Slack, mailbox, hub and clock that the outbound and relay tests use.
 
 package slackengine_test
 

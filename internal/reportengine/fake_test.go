@@ -1,5 +1,7 @@
-// fake_test.go holds fakeRepo, an in-memory Reader, and the builders that put tags, loom records and batten snapshots into it.
-// A fake holds one main line of commits, which Log walks, and any number of commits off it, which only a tag names, as an archive tag names a commit off the records branch.
+// fake_test.go holds fakeRepo, an in-memory Reader.
+// It also holds the builders that put tags, loom records and batten snapshots into it.
+// A fake holds one main line of commits, which Log walks.
+// Commits off that line are named only by a tag, as an archive tag names a commit off the records branch.
 
 package reportengine
 
@@ -63,7 +65,8 @@ func (f *fakeRepo) commitOnChain(sha string, at time.Time, set map[string]string
 	f.commitOnChainWith(sha, at, "", nil, set, remove...)
 }
 
-// commitOnChainWith is commitOnChain with a message and further parents, the first parent being the previous commit.
+// commitOnChainWith appends a commit to the main line with a message and further parents;
+// the first parent is the previous commit.
 func (f *fakeRepo) commitOnChainWith(sha string, at time.Time, message string, otherParents []string, set map[string]string, remove ...string) {
 	files := map[string]string{}
 	var parents []string
@@ -85,12 +88,13 @@ func (f *fakeRepo) commitOnChainWith(sha string, at time.Time, message string, o
 	f.chain = append(f.chain, sha)
 }
 
-// commitOffChain adds a commit outside the main line holding exactly files, optionally on top of parent.
+// commitOffChain adds a commit outside the main line holding exactly files, with no parent.
 func (f *fakeRepo) commitOffChain(sha string, at time.Time, files map[string]string) {
 	f.commitOffChainOn(sha, "", at, "", files)
 }
 
-// commitOffChainOn is commitOffChain with a parent and a message.
+// commitOffChainOn adds a commit outside the main line holding exactly files.
+// It sets message as the commit's message and parent as its only parent when parent is not empty.
 func (f *fakeRepo) commitOffChainOn(sha, parent string, at time.Time, message string, files map[string]string) {
 	var parents []string
 	if parent != "" {
@@ -165,7 +169,8 @@ func (f *fakeRepo) SubdirsAtRevision(rev, dir string) ([]string, error) {
 	return f.directChildren(rev, dir, true)
 }
 
-// changedPaths returns the sorted paths whose content differs between sha and its first parent, every path for a root commit.
+// changedPaths returns the sorted paths whose content differs between sha and its first parent;
+// every path counts for a root commit.
 func (f *fakeRepo) changedPaths(sha string) []string {
 	current := f.commits[sha].files
 	var previous map[string]string
@@ -302,7 +307,7 @@ func mergeFiles(sets ...map[string]string) map[string]string {
 	return merged
 }
 
-// reviewFiles returns empty review files named names in the review segment directory segment.
+// reviewFiles returns empty files named names in the review directory segment.
 func reviewFiles(segment string, names ...string) map[string]string {
 	files := map[string]string{}
 	for _, name := range names {
@@ -311,7 +316,10 @@ func reviewFiles(segment string, names ...string) map[string]string {
 	return files
 }
 
-// parentRoundFiles returns the files of parent-review round number: a delivery stamped when delivered, with pings keep-alives, an alignment record in state alignmentState unless that is empty, and a verdict of kind verdictKind unless that is empty.
+// parentRoundFiles returns the files of parent-review round number.
+// The delivery is stamped with the delivery time when delivered, and it records pings keep-alives.
+// An alignment record in state alignmentState is written unless that is empty.
+// A verdict of kind verdictKind is written unless that is empty.
 func parentRoundFiles(number int, delivered bool, pings int, alignmentState, verdictKind string) map[string]string {
 	dir := path.Join(filepath.ToSlash(parentReviewDirRel()), fmt.Sprintf("round-%d", number))
 	delivery := fmt.Sprintf(`{"pings":%d}`, pings)
@@ -331,7 +339,9 @@ func parentRoundFiles(number int, delivered bool, pings int, alignmentState, ver
 	return files
 }
 
-// arbiterAttemptFiles returns the files of attempt number of slug's arbiter: attempt.json holding attempt, a verdict file unless verdictYAML is empty, and the applied mark when applied.
+// arbiterAttemptFiles returns the files of attempt number of slug's arbiter.
+// The attempt.json file holds attempt, and a verdict.yaml file holds verdictYAML unless that is empty.
+// An applied mark is written when applied is true.
 func arbiterAttemptFiles(t *testing.T, slug string, number int, attempt loomengine.ArbiterAttempt, verdictYAML string, applied bool) map[string]string {
 	t.Helper()
 
@@ -376,7 +386,9 @@ func addedDecision(author, title string) string {
 	return fmt.Sprintf("### Added after Discussion (%s, 2026-01-05): %s", author, title)
 }
 
-// fullRun adds the archive tag of a full tapestry run of slug at hour holding extra files, with the batten snapshots committed before it and entries in the loom history before its Finalize.
+// fullRun adds the archive tag of a full tapestry run of slug at hour, holding extra files.
+// It commits the batten snapshots before that tag.
+// Its loom history is entries followed by a Finalize entry ten hours before hour.
 func (w *world) fullRun(slug, sha string, hour int, snapshots []shedengine.Status, entries []shedengine.HistoryEntry, extra map[string]string) {
 	for i, snapshot := range snapshots {
 		w.battenRecord(fmt.Sprintf("%s-b%d", slug, i), hour-len(snapshots)+i, slug, snapshot)
@@ -386,7 +398,8 @@ func (w *world) fullRun(slug, sha string, hour int, snapshots []shedengine.Statu
 	w.tagWith(slug, sha, at(hour), seedText("tapestry"), status, extra)
 }
 
-// alignmentAttemptFiles returns the files of attempt number of slug's alignment agent at point: attempt.json recording applied, and a verdict file unless verdict is empty.
+// alignmentAttemptFiles returns the files of attempt number of slug's alignment agent at point.
+// The attempt.json file records applied, and a verdict file is written unless verdict is empty.
 func alignmentAttemptFiles(t *testing.T, slug, point string, number int, applied, verdict string, superseded ...string) map[string]string {
 	t.Helper()
 
@@ -408,7 +421,8 @@ func alignmentAttemptFiles(t *testing.T, slug, point string, number int, applied
 	return files
 }
 
-// haltNoteFiles returns the halt note in the friction directory dir (the live one when dir is empty, else the archive sibling named dir) as file name.
+// haltNoteFiles returns the halt note as file name in the friction directory.
+// When dir is not empty, the note goes in the archive directory named dir instead of the live friction directory.
 func haltNoteFiles(dir, name string, note haltnote.Note) map[string]string {
 	folder := filepath.ToSlash(loomengine.LoomFrictionDirRel())
 	if dir != "" {
@@ -422,7 +436,7 @@ func seedText(recipe string) string {
 	return fmt.Sprintf(`{"recipe":%q,"driver":"go"}`, recipe)
 }
 
-// recordPaths returns the tree-relative seed and status paths of slug.
+// recordPaths returns the tree-relative run record paths of slug.
 func recordPaths(t *testing.T, slug string) shedrun.RunTreeRels {
 	t.Helper()
 
@@ -442,7 +456,7 @@ type world struct {
 	// branches are the pair records branches the world holds, beside the main line's own branch.
 	branches []gitrepo.BranchRef
 
-	// code is the parent branch's repository and board the board's, each a main line.
+	// code and board are the parent branch's and the board's main lines, each a fake repository.
 	code  *fakeRepo
 	board *fakeRepo
 }
@@ -529,8 +543,8 @@ func (w *world) battenRecord(sha string, hour int, slug string, status shedengin
 	w.repo.commitOnChain(sha, at(hour), map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)})
 }
 
-// battenSettles commits slug's batten status, exactly status, together with its settle-records file holding records, to the main line at hour.
-// No file is written when there are no records.
+// battenSettles commits slug's batten status, exactly status, to the main line at hour.
+// It commits the settle-records file holding records with it, and leaves that file out when there are no records.
 func (w *world) battenSettles(sha string, hour int, slug string, status shedengine.Status, records ...shedrun.SettleRecord) {
 	files := map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)}
 	if len(records) > 0 {
@@ -544,17 +558,20 @@ func (w *world) battenDeleted(sha string, hour int, slug string) {
 	w.repo.commitOnChain(sha, at(hour), nil, recordPaths(w.t, slug).Status)
 }
 
-// tag adds the archive tag of slug naming a commit off the main line at when, holding the given seed and status text; an empty text leaves that file out.
+// tag adds the archive tag of slug naming a commit off the main line at when, holding the given seed and status text.
+// An empty text leaves that file out.
 func (w *world) tag(slug, sha string, when time.Time, seed, status string) {
 	w.tagWith(slug, sha, when, seed, status, nil)
 }
 
-// tagWith is tag with extra files, keyed by tree-relative path, in the tagged commit's tree.
+// tagWith adds the archive tag of slug naming a commit off the main line at when.
+// It writes extra files, keyed by tree-relative path, into the tagged commit's tree.
 func (w *world) tagWith(slug, sha string, when time.Time, seed, status string, extra map[string]string) {
 	w.tagOver(slug, sha, "", when, seed, status, extra)
 }
 
-// tagOver is tagWith with the tagged commit on top of parent, a commit of the records main line, so the history below the tag is walkable.
+// tagOver adds the archive tag of slug for the commit sha, committed on top of parent.
+// The parent is a commit of the records main line, so the history below the tag is walkable.
 func (w *world) tagOver(slug, sha, parent string, when time.Time, seed, status string, extra map[string]string) {
 	rels := recordPaths(w.t, slug)
 	files := map[string]string{}
@@ -576,7 +593,8 @@ func (w *world) finishedRun(slug, sha string, hour int) {
 	w.tag(slug, sha, at(hour), seedText("tapestry"), statusText(w.t, "Plan-Write", "Finalize"))
 }
 
-// pairBranch adds the records branch of slug's pair: a commit off the main line at when holding the given seed, status and extra files, named sha.
+// pairBranch adds the records branch of slug's pair:
+// a commit off the main line at when, holding the given seed, status and extra files, named sha.
 // An empty seed or status text leaves that file out.
 func (w *world) pairBranch(slug, sha string, when time.Time, seed, status string, extra map[string]string) {
 	rels := recordPaths(w.t, slug)
@@ -591,7 +609,8 @@ func (w *world) pairBranch(slug, sha string, when time.Time, seed, status string
 	w.branches = append(w.branches, gitrepo.BranchRef{Name: fabricengine.RecordsBranchName(slug), Commit: sha, Committed: when})
 }
 
-// sources returns the Sources the world presents, its tags ordered as an archive tag listing orders them and its branches by name.
+// sources returns the Sources the world presents:
+// tags ordered as an archive tag listing orders them, and branches by name.
 func (w *world) sources() Sources {
 	tags := slices.Clone(w.tags)
 	sort.SliceStable(tags, func(i, j int) bool { return tags[i].Committed.Before(tags[j].Committed) })

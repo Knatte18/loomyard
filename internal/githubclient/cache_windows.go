@@ -1,11 +1,9 @@
 //go:build windows
 
-// cache_windows.go implements the Windows half of the token cache's file
-// hardening hook: stripping inherited ACLs and installing an explicit
-// owner-only DACL on the temp file before it is renamed into place. Go's
-// os.WriteFile / os.Chmod permission bits are effectively ignored by Windows,
-// so mode bits alone would prove nothing about who can read the cached
-// token — the DACL is what actually restricts access.
+// cache_windows.go implements the Windows half of the token cache's file hardening hook.
+// It strips inherited ACLs and installs an explicit owner-only DACL on the temp file before the rename.
+// Windows effectively ignores the permission bits that os.WriteFile and os.Chmod set;
+// the DACL, not the mode, is what restricts who can read the cached token.
 
 package githubclient
 

@@ -1,4 +1,5 @@
-// sessionusage.go writes a session's usage record under a run's usage directory when the session ends: its tokens split by kind and model, priced from its transcripts when the engine reads them.
+// sessionusage.go writes a session's usage record under a run's usage directory when the session ends:
+// its tokens split by kind and model, priced from its transcripts when the engine reads them.
 // It also builds the session-end hook that records each session of a run's worktree under the run's current row.
 
 package shedadapters
@@ -25,11 +26,16 @@ type modelTally struct {
 	unpriced bool
 }
 
-// RecordSessionUsage writes the usage record of the ended session end into dir, the run's usage directory, under row, the run row that spawned it.
-// With a TranscriptReader in reads it locates the session by end.SessionID, reads it with its forks, adds each message's four counts to its model's total and prices it at its own model through reads.Pricer;
-// a message whose model has no price, or no pricer at all, leaves the cost unknown.
-// The record's model is the one most of the main transcript's messages ran on, and its models list is set only when more than one model ran.
-// With no TranscriptReader, or when locating or reading any transcript fails, the counts come from end.Usage, each unknown when it is not split, and the cost is unknown; a locate or read failure is logged at Warn.
+// RecordSessionUsage writes the usage record of the session that end describes into dir, the run's usage directory.
+// row is the run row that spawned the session.
+// With a TranscriptReader in reads, it locates the session by end.SessionID and reads it with its forks.
+// It adds each message's four counts to its model's total and prices the message at its own model through reads.Pricer.
+// A message whose model has no price, or no pricer at all, leaves the cost unknown.
+// The record's model is the one most of the main transcript's messages ran on,
+// and its models list is set only when more than one model ran.
+// With no TranscriptReader, or when locating or reading any transcript fails, the counts come from end.Usage;
+// each unknown when it is not split, and the cost is unknown.
+// A locate or read failure is logged at Warn.
 // A failed write is logged at Warn.
 // It returns nothing and stops nothing.
 func RecordSessionUsage(dir, row string, end shuttleengine.SessionEnd, reads shuttleengine.RecordReads) {
@@ -51,15 +57,20 @@ func RecordSessionUsage(dir, row string, end shuttleengine.SessionEnd, reads shu
 }
 
 // UsageRecorder returns the session-end hook of the run in l's worktree.
-// Each ended session is recorded into the run's usage directory under the run's current row, read from the run's status file when the session ends and empty when the status is absent or unreadable.
-// A session's transcripts are read with the capabilities readers holds for its engine; an engine with no entry is recorded from the counts shuttle read, its cost unknown.
+// Each ended session is recorded into the run's usage directory under the run's current row.
+// The row is read from the run's status file when the session ends,
+// and it is empty when the status is absent or unreadable.
+// A session's transcripts are read with the capabilities readers holds for its engine;
+// an engine with no entry is recorded from the counts shuttle read, its cost unknown.
 func UsageRecorder(l *lymcwd.Location, readers map[string]shuttleengine.RecordReads) func(shuttleengine.SessionEnd) {
 	return func(end shuttleengine.SessionEnd) {
 		RecordSessionUsage(shedrun.UsageDir(l), currentRunRow(l), end, readers[end.Engine])
 	}
 }
 
-// currentRunRow returns the producer the run in l's worktree is at, and "" when its status file is absent or does not read; an unreadable status is logged at Warn.
+// currentRunRow returns the producer the run in l's worktree is at.
+// It returns "" when the status file is absent or does not read;
+// an unreadable status is logged at Warn.
 func currentRunRow(l *lymcwd.Location) string {
 	status, _, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(l, shedrun.SelfRunID), shedrun.StatusLock(l, shedrun.SelfRunID))
 	if err != nil {
@@ -77,7 +88,8 @@ func formatUsageTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// fillFromSessionUsage sets record's counts from usage, each nil unless the provider read them split, and leaves the cost unknown.
+// fillFromSessionUsage sets record's counts from usage, each nil unless the provider read them split;
+// the cost is left unknown.
 func fillFromSessionUsage(record *shedrun.SessionUsageRecord, usage shuttleengine.SessionUsage) {
 	if !usage.SplitKnown {
 		return
@@ -86,7 +98,8 @@ func fillFromSessionUsage(record *shedrun.SessionUsageRecord, usage shuttleengin
 }
 
 // fillFromTranscripts sets record's counts, cost, model and models list from the session's transcripts.
-// It reports false, leaving record untouched, when the engine reads no transcripts, the session cannot be located or read, or no message carries usage.
+// It reports false, leaving record untouched, when the engine reads no transcripts.
+// It also reports false when the session cannot be located or read, or when no message carries usage.
 func fillFromTranscripts(record *shedrun.SessionUsageRecord, end shuttleengine.SessionEnd, reads shuttleengine.RecordReads) bool {
 	if reads.Transcripts == nil {
 		return false
@@ -158,7 +171,8 @@ func fillFromTranscripts(record *shedrun.SessionUsageRecord, end shuttleengine.S
 	return true
 }
 
-// tallyTranscripts sums the usage of every message of read, forks included, by model, pricing each message at its own model.
+// tallyTranscripts sums the usage of every message of read, forks included, by model.
+// It prices each message at its own model.
 // A message with no tokens costs nothing whatever its model.
 // mainMessages counts the main transcript's messages carrying usage by model.
 func tallyTranscripts(read shuttleengine.SessionRead, pricer shuttleengine.MessagePricer) (tallies map[string]*modelTally, mainMessages map[string]int) {

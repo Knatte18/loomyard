@@ -1,5 +1,5 @@
 // shortnamecommit.go declares CommitShortname, the verb that records a repo shortname on a live hub's board.
-// Like CommitSeededStencils it takes the board write lock and commits only its own file through a positive pathspec,
+// It takes the board write lock and commits only its own file through a positive pathspec,
 // since the board is live and Bolt.Commit would sweep any pending or half-written board change into the commit.
 
 package fabricengine
@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// CommitShortname writes shortname to the hub's .lym-shortname record and commits that file alone onto weft:main, under the board write lock.
+// CommitShortname writes shortname to the hub's .lym-shortname record and commits that file alone onto weft:main.
+// It holds the board write lock for both steps.
 // It never pushes; the caller pushes through Bolt.Push.
 // rec accumulates the file write and, when a commit was made, the commit.
 func CommitShortname(hub, shortname, message string, rec *Mutations) (sha string, committed bool, err error) {

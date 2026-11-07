@@ -1,5 +1,5 @@
 // settledguard.go refuses a goto that would re-run a review segment whose verdict is settled.
-// It is the tapestry, darn and sampler recipes' goto guard, told to every goto, re-launch and verdict check of a run.
+// It is the goto guard of a run's recipes, applied to every goto, re-launch and verdict check.
 
 package loomcli
 
@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// settledGuard is the run's whole goto guard: the Finalize arm first, then the settled-segment arm over its settled review segments.
+// settledGuard returns the run's goto guard.
+// It checks the Finalize arm first, then the settled-segment arm over the run's review segments.
 // It needs a known location.
 func (c *loomCLI) settledGuard() shedengine.GotoGuard {
 	location := c.location
@@ -28,9 +29,13 @@ func (c *loomCLI) settledGuard() shedengine.GotoGuard {
 	}))
 }
 
-// settledSegmentGuard refuses a goto onto a review or fix row of a review segment whose Bouncer holds a live settle record, since such a goto would re-run a settled review.
-// One admission passes a live record: for Plan-Burler-Review alone, a plan amendment record written after the judged round started or over a settle with no known round start.
-// Every other target is admitted: the Bouncer, a row outside every review segment, and a segment whose record is not live.
+// settledSegmentGuard refuses a goto onto a review or fix row of a segment whose Bouncer holds a live settle record.
+// Such a goto would re-run a settled review.
+// One admission passes a live record.
+// For Plan-Burler-Review alone, a plan amendment record written after the judged round started passes.
+// So does one written over a settle with no known round start.
+// Every other target is admitted:
+// the Bouncer, a row outside every review segment, and a segment whose record is not live.
 // The refusal names the plan writer the run ran, read from history once per refusal.
 // A read error of the settle record, the amendment record or the history is returned, which Shed turns into a refusal.
 // The guard only decides; it moves no run and writes no file.
@@ -72,8 +77,8 @@ func settledSegmentGuard(producers []shedengine.ProducerDef, reviewsDir string, 
 	}
 }
 
-// amendmentAdmits reports whether a plan amendment record exists that the settle record in runDir has not judged:
-// its write time is not before the judged round's start, or the settle records no start.
+// amendmentAdmits reports whether a plan amendment record exists that the settle record in runDir has not judged.
+// A record counts as unjudged when written at or after the judged round's start, or when the settle records no start.
 func amendmentAdmits(runDir string, amendment func() (loomshed.AmendmentRecord, bool, error)) (bool, error) {
 	record, found, err := amendment()
 	if err != nil || !found {
@@ -104,7 +109,8 @@ func segmentBouncer(producers []shedengine.ProducerDef, segment string) (name, s
 }
 
 // segmentWriter returns the first row in list order outside segment whose OnDone names bouncer.
-// When that row's latest history entry is Skipped and a row outside the segment names it as its OnDone, it returns that row instead, and never steps further.
+// When the writer's latest history entry is Skipped, the row outside the segment that names it is returned instead.
+// It does not step further.
 func segmentWriter(producers []shedengine.ProducerDef, segment, bouncer string, history []shedengine.HistoryEntry) string {
 	writer := ""
 	for _, producer := range producers {

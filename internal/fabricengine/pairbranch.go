@@ -1,4 +1,6 @@
-// pairbranch.go reads the warp branch a pair stands on from the pair itself — its worktrees, then its local branches, then origin — so the branch prefix can change while pairs are live.
+// pairbranch.go reads the warp branch a pair stands on from the pair itself:
+// its worktrees, then its local branches, then origin.
+// This lets the branch prefix change while pairs are live.
 
 package fabricengine
 
@@ -12,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// pairBranchNames returns the warp branch names a pair of slug may stand on: the current prefix's, then the bare slug a pair made before the prefix was set carries.
+// pairBranchNames returns the warp branch names a pair of slug may stand on.
+// The names are the current prefix's name, then the bare slug, which a pair made before the prefix was set carries.
 // An empty prefix gives the one name.
 func pairBranchNames(cfg Config, slug string) []string {
 	if cfg.BranchPrefix == "" {
@@ -21,24 +24,34 @@ func pairBranchNames(cfg Config, slug string) []string {
 	return []string{cfg.BranchPrefix + slug, slug}
 }
 
-// slugOfBranch returns the slug a warp branch names: the branch without the current prefix when it carries it, else the bare branch of a pair made before the prefix was set.
+// slugOfBranch returns the slug a warp branch names, which is the branch with the current prefix trimmed.
+// A branch without the prefix, such as one a pair made before the prefix was set carries, is returned unchanged.
 func slugOfBranch(cfg Config, branch string) string {
 	return strings.TrimPrefix(branch, cfg.BranchPrefix)
 }
 
-// PairTaskBranch returns the task branch of slug's pair, read from the pair itself rather than from the current branch prefix alone.
-// It is the branch the task worktree has checked out, else the warp branch paired with the branch the records worktree has checked out, else the first of the pair's names (the current prefix's, then the bare slug) that a local task or records branch carries, else the current prefix's name.
-// A task worktree's branch is read when it is one of the pair's names or has a records branch, so a pair made under any earlier prefix stays recognised.
+// PairTaskBranch returns the task branch of slug's pair.
+// It reads the pair itself, not the current branch prefix alone.
+// It is the task worktree's branch when that is read.
+// Otherwise it is the warp branch paired with the records worktree's branch when that is read.
+// Otherwise it is the first of the pair's names that a local task or records branch carries;
+// when none does, it is the current prefix's name.
+// A task worktree's branch is read when it is one of the pair's names or has a records branch,
+// so a pair made under any earlier prefix stays recognised.
 // A records worktree's branch is read when its warp branch is one of the pair's names or exists locally.
-// A worktree on any other branch is not read, so a pair checked out onto an unrelated branch never hands that branch to a teardown.
+// A worktree on any other branch is not read,
+// so a pair checked out onto an unrelated branch never hands that branch to a teardown.
 // It reads locally and makes no network call; a worktree list or branch lookup that fails is returned.
 func (t *Topology) PairTaskBranch(l *lymcwd.Location, slug string) (string, error) {
 	branch, _, err := t.pairTaskBranchLocal(l, slug)
 	return branch, err
 }
 
-// PairTaskBranchOrOrigin returns the task branch of slug's pair as PairTaskBranch reads it, except that a pair of which nothing is left locally is named by the first of its names whose task branch, or else records branch, origin holds.
-// It asks origin only when no local worktree or branch names the pair, so a pair the local read names makes no network call.
+// PairTaskBranchOrOrigin returns the task branch of slug's pair, read locally first.
+// When nothing local names the pair, it returns the first of the pair's names whose task branch origin holds.
+// Failing that, it returns the first whose records branch the weft origin holds.
+// It returns the current prefix's name when origin holds neither.
+// It asks origin only when nothing local names the pair, so a pair the local read names makes no network call.
 // A repository with no origin remote is not asked, and a failed lookup on a configured origin is returned.
 func (t *Topology) PairTaskBranchOrOrigin(l *lymcwd.Location, slug string) (string, error) {
 	branch, found, err := t.pairTaskBranchLocal(l, slug)
@@ -55,7 +68,8 @@ func (t *Topology) PairTaskBranchOrOrigin(l *lymcwd.Location, slug string) (stri
 	return branch, nil
 }
 
-// pairTaskBranchLocal is PairTaskBranch's local read; found is false when nothing local names the pair and the result is the current prefix's name.
+// pairTaskBranchLocal returns the task branch of slug's pair from local worktrees and branches only.
+// found is false when nothing local names the pair, and branch is then the current prefix's name.
 func (t *Topology) pairTaskBranchLocal(l *lymcwd.Location, slug string) (branch string, found bool, err error) {
 	names := pairBranchNames(t.cfg, slug)
 	if target := WorktreePath(l, slug); pathPresent(target) {
@@ -97,7 +111,8 @@ func (t *Topology) pairTaskBranchLocal(l *lymcwd.Location, slug string) (branch 
 	return names[0], false, nil
 }
 
-// worktreeBranchAt returns the branch the linked worktree of repoDir at target has checked out, or "" when target is no linked worktree of it or sits on a detached HEAD.
+// worktreeBranchAt returns the branch checked out in the linked worktree of repoDir at target.
+// It returns "" when target is no linked worktree of repoDir or sits on a detached HEAD.
 func worktreeBranchAt(repoDir, target string) (string, error) {
 	entries, err := List(repoDir)
 	if err != nil {
@@ -116,13 +131,16 @@ func worktreeBranchAt(repoDir, target string) (string, error) {
 	return "", nil
 }
 
-// originTaskBranch returns the first of slug's pair names whose task branch the task repository's origin holds, or "" when it holds none.
-// A repository with no origin remote reads "", and a failed lookup on a configured origin is returned.
+// originTaskBranch returns the first of slug's pair names whose task branch origin holds.
+// It returns "" when origin holds none.
+// A repository with no origin remote gives "", and a failed lookup on a configured origin is returned.
 func (t *Topology) originTaskBranch(l *lymcwd.Location, slug string) (string, error) {
 	return firstOnOrigin(l.WorktreePath(), pairBranchNames(t.cfg, slug), func(name string) string { return name })
 }
 
-// originPairBranch returns the first of slug's pair names whose task branch, or else whose records branch, the respective origin holds, or "" when origin holds neither for any name.
+// originPairBranch returns the first of slug's pair names whose task branch origin holds.
+// Failing that, it returns the first name whose records branch the weft origin holds.
+// It returns "" when neither holds.
 // A repository with no origin remote is not asked, and a failed lookup on a configured origin is returned.
 func (t *Topology) originPairBranch(l *lymcwd.Location, slug string) (string, error) {
 	found, err := t.originTaskBranch(l, slug)
@@ -136,7 +154,9 @@ func (t *Topology) originPairBranch(l *lymcwd.Location, slug string) (string, er
 	return firstOnOrigin(weftRoot, pairBranchNames(t.cfg, slug), RecordsBranchName)
 }
 
-// firstOnOrigin returns the first of names whose branch, as branchOf names it, the origin of the repository at repoDir holds, or "" when it holds none or has no origin remote.
+// firstOnOrigin returns the first of names whose branch, as branchOf maps it, exists on origin.
+// The origin is that of the repository at repoDir.
+// It returns "" when none exists or the repository has no origin remote.
 func firstOnOrigin(repoDir string, names []string, branchOf func(string) string) (string, error) {
 	if _, err := gitrepo.New(repoDir).RemoteURL(originRemoteName); err != nil {
 		return "", nil

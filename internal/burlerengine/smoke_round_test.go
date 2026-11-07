@@ -1,18 +1,7 @@
-// smoke_round_test.go is burlerengine's opt-in live-integration smoke test:
-// TestSmokeBurlerRoundToyFixture drives one full burler round — A-review then
-// B-fix — against a REAL claude in a REAL tmux pane, over a toy chair/table
-// color-mismatch fixture. This is the caller wiring the real substrate
-// (reedengine + claudeengine + shuttleengine.Runner) directly, in an external
-// test package, per the Shuttle Provider-Seam Invariant: burlerengine itself
-// never imports claudeengine, but the test that exercises it as a caller may.
-// The assertions are deliberately trivial (the toy is unambiguous on
-// purpose) — this proves the A->B machinery, the file contract, and the
-// verdict parse against a real engine, never review quality. Follows the
-// internal/shuttlecli/smoke_*.go conventions: opt-in via -tags llm,
-// skipped when no claude binary resolves, poll-with-deadline waits only, and
-// the orphaned-conhost teardown guard against the fixture hub. The helpers
-// here are reproduced (not imported) from shuttlecli's smoke files, per the
-// smoke-files-are-self-contained convention.
+// smoke_round_test.go is burlerengine's opt-in live-integration smoke test for one full burler round.
+// TestSmokeBurlerRoundToyFixture runs an A-review then a B-fix against a real claude in a real tmux pane.
+// It uses a toy color-mismatch fixture and wires the real substrate from an external test package.
+// Its assertions check the round machinery, not review quality.
 
 package burlerengine_test
 
@@ -47,15 +36,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
-// for the orphaned-conhost teardown probe. Explicit absolute path, never a
-// bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
+// smokePwshPath is the PowerShell 7 binary that the smoke helpers run for the orphaned-conhost teardown probe.
+// It is an absolute path, never a bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
-// through the same stencilstore.Reconcile pass cmd/lym's root pre-run runs. hubforge.NewHub builds
-// a fabric, not a seeded board, and burler reads its prompts from disk at call time via
-// stencilstore.Read — so an unseeded fixture hub fails every round before it reaches a pane.
+// seedHubStencils populates the stencils directory of hub with every shipped stencil.
+// It runs the same stencilstore.Reconcile pass as cmd/lym's root pre-run.
+// hubforge.NewHub builds a fabric, not a seeded board.
+// Burler reads its prompts from disk at call time via stencilstore.Read,
+// so an unseeded fixture hub fails every round before it reaches a pane.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
 	baseDir := fabricengine.StencilsDir(hub)
@@ -64,19 +53,16 @@ func seedHubStencils(t *testing.T, hub string) {
 	}
 }
 
-// hubHolder is one process still holding the fixture hub as its current
-// working directory, as reported by hubHolders.
+// hubHolder is one process that holds the fixture hub as its current working directory.
 type hubHolder struct {
 	pid  int
 	name string
 }
 
-// hubHolders returns every process whose current working directory is
-// inside dir, read from each process's PEB (RTL_USER_PROCESS_PARAMETERS.
-// CurrentDirectory via NtQueryInformationProcess) — the only way to find the
-// conhost.exe holders, since Win32_Process exposes no cwd column. Returns
-// nil when nothing holds dir or the probe fails (callers degrade to
-// waiting).
+// hubHolders returns every process whose current working directory is inside dir.
+// It reads each process's PEB, RTL_USER_PROCESS_PARAMETERS.CurrentDirectory, via NtQueryInformationProcess.
+// This is the only way to find the conhost.exe holders, because Win32_Process exposes no cwd column.
+// It returns nil when nothing holds dir or the probe fails, and callers then degrade to waiting.
 func hubHolders(t *testing.T, pwshPath, dir string) []hubHolder {
 	t.Helper()
 	script := fmt.Sprintf(`
@@ -136,21 +122,19 @@ Get-Process | ForEach-Object {
 	return holders
 }
 
-// deferHubRelease registers a cleanup that makes the fixture hub directory
-// releasable before the framework's TempDir RemoveAll — which runs AFTER
-// this cleanup — so RemoveAll never fails with a worktree-dir-in-use error.
-// The holder in question is the conhost.exe the OS parents to psmux to host
-// each pane's pseudo-console: reed never spawns it, it is not a #{pane_pid}
-// descendant, and on a quiet machine it exits on its own a beat after its
-// pane dies — but under CPU saturation it can be ORPHANED and then holds the
-// hub cwd indefinitely, so no fixed wait can ever out-last it. The cleanup
-// therefore confirms rather than waits: a short grace for the self-exit
-// path, then it kills any conhost whose PEB cwd is inside the hub (safe —
-// its console app is already gone) and keeps confirming until the hub
-// actually renames. A NON-conhost holder is a genuine leak and fails the
-// test loudly instead of being masked. Registered before t.Chdir and the
-// down cleanup so it runs AFTER them (cwd already restored out of hub) but
-// BEFORE RemoveAll.
+// deferHubRelease registers a cleanup that makes the fixture hub directory releasable before RemoveAll.
+// The framework's TempDir RemoveAll runs after this cleanup, so it never fails with a worktree-dir-in-use error.
+// The holder is the conhost.exe that the OS parents to psmux to host each pane's pseudo-console.
+// reed never spawns it, and it is not a #{pane_pid} descendant.
+// On a quiet machine it exits a beat after its pane dies.
+// Under CPU saturation it can be orphaned and hold the hub cwd indefinitely.
+// No fixed wait can outlast it, so the cleanup confirms rather than waits.
+// It gives the self-exit path a short grace, then kills any conhost whose PEB cwd is inside the hub.
+// That is safe, because its console app is already gone.
+// It keeps confirming until the hub actually renames.
+// A non-conhost holder is a genuine leak, and the test fails loudly rather than masking it.
+// Registering it before t.Chdir and the down cleanup makes it run after them.
+// By then the cwd is already restored out of the hub, and this runs before RemoveAll.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -238,13 +222,12 @@ func distinctColorsMentioned(text string) []string {
 	return found
 }
 
-// TestSmokeBurlerRoundToyFixture drives one full burler round against a REAL claude in a REAL tmux
-// pane, over a toy fixture whose chair and table colors deliberately mismatch: the target is
-// unambiguous on purpose so this test proves the A->B machinery + file contract + verdict parse
+// TestSmokeBurlerRoundToyFixture drives one full burler round against a real claude in a real tmux
+// pane, over a toy fixture whose chair and table colors mismatch.
+// The target is unambiguous, so this test proves the A->B machinery, the file contract and the verdict parse
 // against a real engine, never review quality.
-// It constructs the real stack directly (reedengine + claudeengine + shuttleengine.Runner +
-// burlerengine.Engine) — this test IS the caller the Shuttle Provider-Seam Invariant reserves that
-// wiring for.
+// It constructs the real stack directly: reedengine, claudeengine, shuttleengine.Runner and burlerengine.Engine.
+// This test is the caller the Shuttle Provider-Seam Invariant reserves that wiring for.
 func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
@@ -285,8 +268,8 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 			Paths: []string{targetPath},
 		},
 		Fasit: burlerengine.FileSet{
-			// The rule IS the source of truth here — no separate fasit file
-			// is needed for a toy this small.
+			// The rule is the source of truth here;
+			// no separate fasit file is needed for a toy this small.
 			Instructions: "the chair's color must match the table's color",
 		},
 		Rubric: "BLOCKING: the chair's color and the table's color, as described in the " +
@@ -363,7 +346,8 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	}
 }
 
-// registerReedServer registers the hub's reed socket key with tmuxkit before the test's first reed boot, so the boot finds the kit's hermetic server.
+// registerReedServer registers the hub's reed socket key with tmuxkit before the test's first reed boot,
+// so the boot finds the kit's hermetic server.
 func registerReedServer(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")

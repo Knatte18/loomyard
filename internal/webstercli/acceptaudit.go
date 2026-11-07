@@ -1,6 +1,6 @@
-// acceptaudit.go implements the `accept-audit` webster verb: the operator's acknowledgement of the run-exit correctness findings that stay pending and block run entry.
-// It runs websterengine.AcceptPendingAudit under the state-mutation lease (load, accept, save, release), then fabric-syncs the updated state.json.
-// With --batch it runs websterengine.AcceptBatchFabricReference instead, the same way, for one failed batch's pathless fabric-reference findings.
+// acceptaudit.go implements the `accept-audit` webster verb:
+// the operator's acknowledgement of the run-exit correctness findings that stay pending and block run entry.
+// With --batch it accepts one failed batch's pathless fabric-reference findings.
 package webstercli
 
 import (

@@ -1,10 +1,12 @@
-// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/loomrecipe takes every absolute path it operates on from its caller and has no
-// direct production import of internal/lymcwd.
+// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership:
+// production code in internal/loomrecipe takes every absolute path it operates on from its caller,
+// and it has no direct production import of internal/lymcwd.
 //
-// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist, mirroring internal/shedrecipe's and internal/loomshed's own reasoning: it catches the excluded import and anything else that would drag geometry resolution in, with no list maintenance beyond a genuine new dependency.
+// The allowlist catches the excluded import and any other import that would drag geometry resolution in;
+// it needs no list upkeep beyond a genuine new dependency.
 //
-// github.com/Knatte18/loomyard/contracts/recipes sits outside internal/ and so must be allowlisted explicitly, since the stdlib test is "the first path segment contains no dot", which a full module path never satisfies.
+// github.com/Knatte18/loomyard/contracts/recipes sits outside internal/, so it must be allowlisted explicitly;
+// the stdlib test accepts only paths whose first segment contains no dot, which a full module path never satisfies.
 
 package loomrecipe
 
@@ -17,8 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// loomrecipeAllowedImports are the only non-stdlib import paths production code in this package may
-// use.
+// loomrecipeAllowedImports lists the only non-stdlib import paths that production code in this package may use.
 var loomrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/contracts/recipes",
 	"github.com/Knatte18/loomyard/internal/loomshed",
@@ -28,12 +29,13 @@ var loomrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedrun",
 }
 
-// loomrecipeDeniedLymcwdImport is the exact import path the Told-Geometry Invariant excludes from
-// this package's production files, named here so a violation of that specific rule is reported by
-// name rather than only implied by its absence from the allowlist above.
+// loomrecipeDeniedLymcwdImport is the exact import path that this package's production files must not use.
+// The Told-Geometry Invariant excludes it;
+// naming it reports a violation by name rather than only by its absence from the allowlist.
 const loomrecipeDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcwd"
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts that no production import path is loomrecipeDeniedLymcwdImport.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist,
+// and it separately asserts that no production import path is loomrecipeDeniedLymcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/loomrecipe", loomrecipeAllowedImports...)

@@ -1,4 +1,5 @@
-// cli.go builds the hibernate cobra command with its request, cancel and status verbs, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the `lym hibernate` cobra command with its request, cancel and status verbs.
+// The RunCLI and RunCLIIn seams run that command with its output written to an io.Writer.
 
 package hibernatecli
 
@@ -34,7 +35,8 @@ withdraws it and status shows it. Linux only.`,
 	return hibernate
 }
 
-// runVerb resolves the hub from the command's cwd, fills the engine's Deps for it and prints what run returns under key in the standard envelope, or a refusal through output.Err.
+// runVerb resolves the hub from the command's cwd and runs one verb against it.
+// It prints what run returns under key in the standard envelope, or the refusal through output.Err.
 func runVerb(cmd *cobra.Command, key string, run func(*lymcwd.Location, hibernateengine.Deps) (any, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -114,7 +116,8 @@ Example:
 	return cmd
 }
 
-// chooseResumeOnWake is a request's choice of whether its wake lifts the hub pause: the flag's value when the flag was given, else hibernate.yaml's resume_on_wake under dirs.
+// chooseResumeOnWake reports whether a request's wake lifts the hub pause.
+// It returns the flag's value when the flag was given, else hibernate.yaml's resume_on_wake read from dirs.
 func chooseResumeOnWake(flagGiven, flag bool, dirs configengine.Dirs) (bool, error) {
 	if flagGiven {
 		return flag, nil
@@ -171,12 +174,13 @@ Example:
 	}
 }
 
-// RunCLI is the public seam for the hibernate module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the `lym hibernate` command with args, writes its output to out, and returns its exit code.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the `lym hibernate` command with cwd as its working directory.
+// An empty cwd reads the process directory instead, since seeding an empty directory into the context panics.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

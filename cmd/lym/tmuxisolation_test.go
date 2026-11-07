@@ -1,6 +1,7 @@
-// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
-// "Starts tmux" has no static shape, and a package's `t.TempDir` trees belong in the process run directory, so the rule covers every test package at the cost of one run directory per test binary.
-// Modelled on hermeticenv_test.go; see `PATTERN-test-isolation`.
+// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant (`PATTERN-test-isolation`).
+// Every test package runs its tests through `tmuxkit.Main`, under every tag set and platform that builds its test files.
+// "Starts tmux" has no static shape, and a package's `t.TempDir` trees belong in the process run directory.
+// So the rule covers every test package, at the cost of one run directory per test binary.
 
 package main
 
@@ -21,16 +22,18 @@ import (
 )
 
 // allowedNoTmuxMain is the Tmux Test Isolation Invariant allowlist, keyed by package directory with a trailing "/".
-// An entry names one package and a reason naming why that package's TestMain cannot call tmuxkit.Main.
-// That TestMain removes the process run directory after m.Run through lymtemp.Remove.
-// What the entry lets through is the package's tmux isolation, and its `t.TempDir` trees left in the bare system temp directory after a kill.
+// An entry names one package and a reason naming why that package's TestMain cannot call `tmuxkit.Main`.
+// An exempt TestMain removes the process run directory after m.Run through `lymtemp.Remove`.
+// What the entry lets through is the package's tmux isolation and its `t.TempDir` trees;
+// after a kill, those trees stay in the bare system temp directory.
 // "Does not start tmux" is not a reason.
 var allowedNoTmuxMain = []scankit.Entry{}
 
 // isolationTags are the build tags that make a test file tagged.
 var isolationTags = []string{"tier0", "tier1", "tier2", "tier3"}
 
-// isolationTagSets are the tag sets a package's test files are compiled under: untagged, each `tierN` tag alone and the four combined.
+// isolationTagSets are the tag sets a package's test files are compiled under:
+// untagged, each `tierN` tag alone, and every `tierN` tag together.
 var isolationTagSets = [][]string{
 	nil, {"tier0"}, {"tier1"}, {"tier2"}, {"tier3"}, {"tier0", "tier1", "tier2", "tier3"},
 }
@@ -60,7 +63,8 @@ var (
 	}
 )
 
-// fileNamePlatform returns the GOOS and GOARCH a file name's `_GOOS`, `_GOARCH` or `_GOOS_GOARCH` suffix confines it to, following go/build's rule.
+// fileNamePlatform returns the GOOS and GOARCH a file name's suffix confines it to.
+// It follows go/build's rule for the `_GOOS`, `_GOARCH` and `_GOOS_GOARCH` suffixes.
 func fileNamePlatform(name string) (goos, goarch string) {
 	name, _, _ = strings.Cut(name, ".")
 	i := strings.Index(name, "_")
@@ -143,7 +147,7 @@ func mentionsIsolationTag(expr constraint.Expr) bool {
 
 const (
 	tmuxkitImportPath = "github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
-	// tmuxkitDir is the kit's own directory, whose tests cannot import the kit and so call the entry point unqualified.
+	// tmuxkitDir is the kit's own directory, whose tests call the entry point unqualified since they cannot import it.
 	tmuxkitDir = "internal/testkit/tmuxkit"
 )
 
@@ -161,7 +165,8 @@ func kitImportName(file *ast.File) string {
 	return ""
 }
 
-// declaresTestMain reports whether the file, in package directory dir, declares TestMain, and whether that function calls tmuxkit.Main.
+// declaresTestMain reports whether the file, in package directory dir, declares TestMain;
+// and whether that function calls tmuxkit.Main.
 func declaresTestMain(file *ast.File, dir string) (declared, callsKitMain bool) {
 	kitName := kitImportName(file)
 	for _, decl := range file.Decls {
@@ -191,7 +196,8 @@ func declaresTestMain(file *ast.File, dir string) (declared, callsKitMain bool) 
 	return declared, callsKitMain
 }
 
-// tmuxIsolationFailures walks the test files under opts and returns the violating packages' failure lines, the number of tagged packages found and the number of files scanned.
+// tmuxIsolationFailures walks the test files under opts and returns the failure lines of the violating packages.
+// It also returns the number of tagged packages found and the number of files scanned.
 // Every package with a test file is checked, tagged or not.
 func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, tagged, scanned int) {
 	t.Helper()
@@ -252,7 +258,9 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, tagged, scanned
 }
 
-// TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain fails for every package with a test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
+// TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain enforces that every test package runs through tmuxkit.Main.
+// A package fails unless a TestMain compiles under each tag set and platform its test files compile for,
+// and every TestMain in it calls tmuxkit.Main.
 //
 //lym:guard
 func TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain(t *testing.T) {

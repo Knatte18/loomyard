@@ -1,6 +1,6 @@
 // recordbatch_helper_test.go holds the RecordBatch fixture the tier0 and tier1 record-batch tests share:
 // a scripted fork audit, a recording Sleeper and the fully-wired RecordDeps over a temp worktree.
-// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
+// The fixtures are package-local: the internal and external test packages do not share a test-helper package.
 
 package websterengine_test
 
@@ -19,8 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// recordFakeSleeper is a Sleeper that never actually blocks.
-// It only records each requested duration, so SettleRetry's retry loop runs a scripted sequence of attempts at zero real wall-clock cost.
+// recordFakeSleeper is a Sleeper that never blocks.
+// It records each requested duration.
+// That lets SettleRetry's retry loop run a scripted sequence of attempts at no wall-clock cost.
 type recordFakeSleeper struct {
 	slept []time.Duration
 }
@@ -33,14 +34,16 @@ var _ websterengine.Sleeper = (*recordFakeSleeper)(nil)
 
 // recordAudit scripts a shuttlefake.Engine's AuditForksIncremental.
 // It returns scripted[callCount] on each call, clamped to the last entry once the script is exhausted.
-// A test can thus drive a settle-retry sequence, an empty miss followed by a hit or a stable audit across repeated calls, without any real transcript files.
+// A test can drive a settle-retry sequence, an empty miss followed by a hit or a stable audit across repeated calls.
+// No transcript files are needed.
 type recordAudit struct {
 	scripted  []shuttleengine.ForkAudit
 	callCount int
 	// sessions records the sessionID of every call, so a test can assert which session the audit was keyed on:
 	// the bracket-opening session, never blindly the current Master session.
 	sessions []string
-	// auditErr, when non-nil, is returned by every call instead of the script: the missing-transcript failure double for the cross-machine resume path.
+	// auditErr, when non-nil, is returned by every call instead of the script:
+	// it is the missing-transcript failure double for the cross-machine resume path.
 	auditErr error
 	// seen records the seen set handed to every call.
 	seen []map[string]bool
@@ -68,10 +71,14 @@ func (a *recordAudit) audit(sessionID, workdir string, seenTranscripts map[strin
 }
 
 // recordFixture is a fully-wired set of RecordBatch dependencies.
-// A temp directory holds the base and in-scope work files as WorktreeRoot over a fakeGit with one base commit plus one work commit.
-// A literal one-batch execution-batch list carries an already-open BatchState, the begin-batch record RecordBatch's bracket-discipline check requires.
+// A temp directory holds the base and in-scope work files as WorktreeRoot.
+// fakeGit provides one base commit plus one work commit.
+// A literal one-batch execution-batch list carries an already-open BatchState:
+// the begin-batch record that RecordBatch's bracket-discipline check requires.
 // A scripted fake engine and a recording Sleeper complete it.
-// HeadSHA is the fakeGit's current HEAD, the work commit: every valid report fixture must self-report exactly this SHA, since RecordBatch cross-checks report.HeadSHA against the worktree's HEAD.
+// HeadSHA is the fakeGit's current HEAD, the work commit.
+// Every valid report fixture must self-report this SHA:
+// RecordBatch cross-checks report.HeadSHA against the worktree's HEAD.
 type recordFixture struct {
 	Deps       websterengine.RecordDeps
 	Audit      *recordAudit
@@ -84,7 +91,7 @@ type recordFixture struct {
 	HeadSHA    string
 }
 
-// newRecordFixture builds a fresh recordFixture whose engine is scripted with scripted, the AuditForksIncremental sequence the caller's own test needs.
+// newRecordFixture builds a fresh recordFixture whose engine answers AuditForksIncremental from scripted.
 func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordFixture {
 	t.Helper()
 
@@ -100,8 +107,8 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	return fx
 }
 
-// newRecordFixtureOver builds the fixture over worktree, whose base commit is startSHA and work commit headSHA, answering git questions from git;
-// a nil git means the real repository at worktree.
+// newRecordFixtureOver builds the fixture over worktree, whose base commit is startSHA and work commit headSHA.
+// It answers git questions from git; a nil git means the real repository at worktree.
 func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, startSHA, headSHA string, scripted []shuttleengine.ForkAudit) *recordFixture {
 	t.Helper()
 
@@ -116,8 +123,9 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 
 	reportsDir := t.TempDir()
 	contractDir := t.TempDir()
-	// A real (empty) plan directory: RecordBatch re-baselines the plan fingerprint over it after its own BindHandles and DetectDrift rewrites.
-	// This is a genuine read rather than an invented path, and no card here declares a handle, so nothing is ever written into it.
+	// A real, empty plan directory: RecordBatch re-baselines the plan fingerprint over it.
+	// It does so after its own BindHandles and DetectDrift rewrites.
+	// It is a genuine read, not an invented path, and no card here declares a handle, so nothing is written into it.
 	planDir := t.TempDir()
 
 	audit := &recordAudit{scripted: scripted}
@@ -162,18 +170,21 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 	return &recordFixture{Deps: deps, Audit: audit, Sleeper: sleeper, Index: fakeIdx, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
 }
 
-// addPendingCard appends a second card to fx's plan, in its own second batch that has no BatchState and is therefore not terminal, referencing uses.
+// addPendingCard appends a card to fx's plan, in a second batch with no BatchState.
+// The card is not terminal, and it references uses.
 //
-// Drift is defined against the remaining plan, and the batch being recorded is not remaining: its work is exactly what the delta reports.
-// A drift fixture therefore needs a genuinely pending card to hold the reference.
-// Putting it on batch 1's own card tests a card drifting against itself, which is never drift.
+// Drift is measured against the remaining plan.
+// The batch being recorded is not remaining: its work is exactly what the delta reports.
+// A drift fixture therefore needs a pending card to hold the reference.
+// A reference on batch 1's own card would test a card drifting against itself, which is never drift.
 func addPendingCard(fx *recordFixture, uses []string) {
 	pending := planparser.Card{Number: 2, Slug: "pending", Title: "pending", Intent: "the not-yet-built card", Uses: uses}
 	fx.Deps.Plan.Cards = append(fx.Deps.Plan.Cards, pending)
 	fx.Deps.Batches = append(fx.Deps.Batches, batcher.Batch{Cards: []planparser.Card{pending}})
 }
 
-// writeReport seeds fx's reportsDir with a batch-report YAML file for batch 1 at its plan-format-pinned filename, using content verbatim.
+// writeReport writes content verbatim as the batch-report YAML file for batch 1 in reportsDir.
+// The filename comes from ReportFileName, the plan format's pinned name for it.
 func writeReport(t *testing.T, reportsDir, content string) {
 	t.Helper()
 	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "json-flag"))
@@ -182,8 +193,9 @@ func writeReport(t *testing.T, reportsDir, content string) {
 	}
 }
 
-// writeRecordPlanDir writes a minimal, valid on-disk plan directory holding one card whose body is cardBody, returning the directory and its freshly parsed *planparser.Plan.
-// It is the record-batch wiring test's own plan-fixture builder, since planglyph's own writePlanFixture is unexported to its package.
+// writeRecordPlanDir writes a minimal, valid on-disk plan directory holding one card with body cardBody.
+// It returns the directory and the plan parsed from it, as a *planparser.Plan.
+// This package builds its own plan fixture, since the fixture helpers of other packages are unexported.
 func writeRecordPlanDir(t *testing.T, cardBody string) (string, *planparser.Plan) {
 	t.Helper()
 	dir := t.TempDir()

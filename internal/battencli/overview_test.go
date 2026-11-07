@@ -1,4 +1,5 @@
-// overview_test.go pins a beam's window: the cells of a run over built polls, DobbyRunCells reading runs from disk, the orch lines and which orchs a window shows.
+// overview_test.go pins a beam's window: the cells of a run over built polls and the orch lines.
+// It also pins DobbyRunCells reading runs from disk, and which orchs a window shows.
 
 package battencli
 
@@ -380,7 +381,8 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	}
 	check("read after the child seed is removed", want)
 
-	// The child's file goes and run-b's status turns undecodable: run-a falls back to batten's producer, and run-b keeps its cells for one read.
+	// The child's file goes and run-b's status turns undecodable.
+	// run-a falls back to batten's producer, and run-b keeps its cells for one read.
 	if err := os.Remove(childStatusPath); err != nil {
 		t.Fatal(err)
 	}

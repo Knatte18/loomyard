@@ -1,45 +1,52 @@
 # Code comment conventions — Go only for now
 
 > **Status: implemented; a durable convention doc, not a module-design draft.**
-> It was once filed with the planned, not-yet-built designs, until the 2026-08-29 designs audit found it misfiled: the [documentation lifecycle](overview.md#documentation-lifecycle) would read an implemented doc there as a deletion candidate.
-> This doc is not that class — it is the standing rationale for a cross-cutting rule this repository's own code still follows, so it moved here rather than being deleted.
-> It is kept, not deleted, and no deletion decision is deferred to a later task.
-> The operative rule lives in the shared `scribe` plugin's `code-quality` skill (Comments section) and `golang-comments` skill ([`Knatte18/scribe`](https://github.com/Knatte18/scribe), `plugins/scribe/skills/`) — that skill is the single source an agent actually loads and follows.
-> This document is design rationale — the "why" behind the rule, not the rule text itself, which is restated once below only as context for a reader of this file.
-> No producer-stencil wiring yet: "Load these skills" lines in loom's own producer prompts are planned as a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
-> C#/Python versions deferred until Go is proven.
+> It is the standing rationale for a cross-cutting rule this repository's own code follows,
+> so the [documentation lifecycle](overview.md#documentation-lifecycle) does not treat it as a deletion candidate.
+> The operative rule lives in the shared `scribe` plugin's `code-quality` and `golang-comments` skills, which an agent loads and follows.
+> The plugin is [`Knatte18/scribe`](https://github.com/Knatte18/scribe), under `plugins/scribe/skills/`.
+> This document is the "why" behind the rule, not the rule text.
+> C#/Python versions are deferred until Go is proven.
 
 ## The rule
 
-See the `scribe:code-quality` skill's Comments section (in `Knatte18/scribe`) for the operative rule, its two exceptions, and the information-triage list — that skill is what an agent actually loads, so it is the canonical text.
-Restated here only for a reader of this document: a doc comment states only what the symbol it documents does and why it exists, as a standalone contract — never in terms of, in comparison to, or dependent on any other named symbol.
+The canonical text is the Comments section of the `scribe:code-quality` skill in `Knatte18/scribe`.
+It holds the two exceptions and the information-triage list.
+In short: a doc comment states only what its symbol does and why it exists, as a standalone contract;
+it never refers to, compares itself with, or depends on any other named symbol.
 
 ## Why this is stronger than a staleness rule
 
 The deeper problem is not that a cross-reference can go stale.
-It is that describing a symbol's behavior in terms of what it uses, or how it differs from something else, is implementation detail — and implementation detail does not belong in a doc comment at all, regardless of whether the reference stays accurate.
+The problem is that describing a symbol by what it uses, or by how it differs from another, is implementation detail.
+Implementation detail does not belong in a doc comment at all, whether or not the reference stays accurate.
 
-A doc comment needing to look outside itself to be readable is already a defect independent of staleness — the symbol underneath it is not adequately self-contained.
+A doc comment that needs outside context to be readable is a defect, whether or not it goes stale:
+the symbol underneath it is not self-contained.
 
-This is the rationale the skill itself doesn't carry — a skill states the rule, not why it's the right rule — kept here as this task's design record.
+The skill states the rule; this document carries the rationale the skill does not.
 
 ## What replaces the lost context: query, not prose
 
 The relationship this rule refuses to hardcode into text is answered on demand instead.
-`quarry impact <symbol>` (and `refs`) must return, for every caller, not just its file:line but the caller's full enclosing function/method **and that caller's own doc comment**.
-"Who depends on X, and why" is answered by running the query and reading the caller's own self-contained comment — never by X's comment naming the caller, and never by the caller's comment naming X.
+`quarry impact <symbol>` (and `refs`) must return a result for every caller.
+Each result carries the file:line, the caller's full enclosing function or method, **and its own doc comment**.
+"Who depends on X, and why" is answered by running the query and reading the caller's own self-contained comment;
+X's comment never names the caller, and the caller's comment never names X.
 
-Quarry doesn't exist yet — this section documents the intended replacement mechanism, not a shipped one.
+The `impact` and `refs` verbs are not implemented; this section documents the intended mechanism.
 
 ## Enforcement
 
-Two tiers, same shape as every other mechanical gate in this initiative:
+Enforcement has two tiers:
 
-1. **Now — review discipline**, carried by the `code-quality`/`golang-comments` skills above.
-   No mechanical check exists yet.
-2. **Once Quarry exists — a lint pass, advisory not a hard gate.**
-   Because the rule has no "except when load-bearing" carve-out, the check is a clean mechanical target: flag any identifier-shaped token in a doc comment that resolves to a real symbol outside the current type/package (excluding the two exceptions named in `code-quality`'s Comments section — self-reference and stdlib/language contracts).
-   No judgment about necessity is required — the rule is absolute, so a hit is always a violation.
+1. **Review discipline**, carried by the `code-quality`/`golang-comments` skills above.
+   No mechanical check of the cross-reference rule exists.
+2. **Once `quarry impact` and `refs` exist — a lint pass, advisory not a hard gate.**
+   Because the rule has no "except when load-bearing" carve-out, the check is a clean mechanical target:
+   flag any identifier-shaped token in a doc comment that resolves to a symbol outside the current type or package.
+   The check excludes the two exceptions in `code-quality`'s Comments section: self-reference and stdlib/language contracts.
+   No judgment about necessity is required; the rule is absolute, so a hit is always a violation.
 
-Wiring into producer prompts is planned, not yet done: once loom's own producers write code, their stencils are meant to compose in a "Load these skills: ..." section naming `code-quality`/`golang-comments` — the shape `loom-template-plan.md`'s own Step 0 already uses for the writing skills, not leave invocation to model discretion.
-That wiring is the separate, later roadmap item named above.
+Loading the skills does not depend on model discretion, and no stencil asks an agent to load a skill.
+The spawning module names the skills on the launch spec, and lym delivers them.

@@ -1,7 +1,6 @@
-// engine_test.go holds the same-package fakeShuttle, a seatengine.Shuttle whose handles block until the test releases them or stops them, a stop ending the handle's Wait as died, and the profile and engine builders review_test.go and fix_test.go drive the real seats engine over it with.
-// It also holds the engine-block seeding helper and the test that pins each half's choice of engine, which drives Review and Fix together.
-// Every Geometry built here points WorktreeRoot at a test temp dir, so materialization lands there
-// rather than in the real package source tree.
+// engine_test.go holds fakeShuttle, a seatengine.Shuttle double whose handles block until released or stopped.
+// It also holds the engine-block seeding helper and the test that pins each half's choice of engine.
+// Every Geometry built here points WorktreeRoot at a test temp dir, so materialization stays out of the source tree.
 
 package burlerengine
 
@@ -29,7 +28,8 @@ func newTestStencilsDir(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
-// seedEngineWords appends an include of the engine block test-words to each stencil of shipped, keyed by stencil name, under stencilsDir, and writes the block's claude and codex copies.
+// seedEngineWords adds an include of the test-words engine block to each stencil in shipped, under stencilsDir.
+// It also writes the claude and codex copies of that block.
 func seedEngineWords(t *testing.T, stencilsDir string, shipped map[string][]byte) {
 	t.Helper()
 	for name, body := range shipped {
@@ -101,7 +101,7 @@ func TestEngine_HalvesRenderEngineBlocksForTheirOwnEngine(t *testing.T) {
 	})
 }
 
-// firstGlob returns the one path pattern matches, failing the test when it matches none or several.
+// firstGlob returns the single path that pattern matches, and fails the test when it matches none or several.
 func firstGlob(t *testing.T, pattern string) string {
 	t.Helper()
 	matches, err := filepath.Glob(pattern)
@@ -129,7 +129,7 @@ type halfScript struct {
 	beforeReturn func()
 	// rewrites holds the review file content the reviewer writes at each gate re-prompt, in order.
 	rewrites []string
-	// pendingPrompt makes the seat's handle report that it delivered a pending task prompt, and deliverErr makes that delivery fail.
+	// pendingPrompt makes the handle report a delivered pending task prompt, and deliverErr makes that delivery fail.
 	pendingPrompt bool
 	deliverErr    error
 }
@@ -137,7 +137,8 @@ type halfScript struct {
 // fakeStrandPrefix is the shortname and slug every fake strand name is formed under.
 const fakeStrandPrefix = "tst:slug:"
 
-// fakeShuttle is a same-package seatengine.Shuttle double: it starts the seat its spec's role names, records the spec and gate it was given, and hands back a fakeHandle scripted from that seat's halfScript.
+// fakeShuttle is a test double for seatengine.Shuttle: it starts each seat under the role its spec names.
+// It records the spec and gate it was given, and hands back a fakeHandle scripted from that seat's halfScript.
 // review scripts the review half's chair and fix the fix half's chair.
 type fakeShuttle struct {
 	review, fix halfScript
@@ -247,7 +248,9 @@ func (h *fakeHandle) diedResult() shuttleengine.Result {
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, StrandGUID: h.guid, SessionID: h.role + "-session", RunDir: h.runDir}
 }
 
-// Wait blocks as its script says, then reports the scripted result, first writing the seat's output file for a done outcome and evaluating the seat's gate like the shuttle wait loop would.
+// Wait blocks as its script says, then reports the scripted result.
+// For a done outcome it first writes the seat's output file.
+// It then evaluates the seat's gate as the shuttle wait loop does.
 func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 	defer h.returned.Store(true)
 
@@ -287,7 +290,8 @@ func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 	if h.script.beforeReturn != nil {
 		h.script.beforeReturn()
 	}
-	// A scripted gate outcome stands in for the evaluation, as a row that needs a failed review gate cannot get one from the real entry, which passes on cap.
+	// A scripted gate outcome stands in for the evaluation.
+	// The real entry passes on cap, so a row that needs a failed review gate cannot get one from it.
 	if len(h.gate) > 0 && result.Gate == nil {
 		gate, err := h.evaluateGate()
 		if err != nil {
@@ -300,8 +304,9 @@ func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 
 // evaluateGate runs the handle's gate spec like the shuttle wait loop:
 // each entry's closure runs in list order, skipping off entries.
-// A failing entry is re-prompted up to its Attempts, each re-prompt first writing the next rewrites content to the output file as the seat would,
-// and a PassOnCap entry that spent its budget is let through.
+// A failing entry is re-prompted up to its Attempts.
+// Each re-prompt first writes the next rewrites content to the output file, as the seat would.
+// A PassOnCap entry that spent its budget is let through.
 // Any other entry that spent its budget fails the gate and stops the evaluation.
 // A closure's error is returned.
 func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
@@ -340,7 +345,10 @@ func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
 	return outcome, nil
 }
 
-// scriptFor is the halfScript of the seat spec's role names: the assist script for the review half's assistant, the review script for its chair under any role prefix, the fix script for every other seat.
+// scriptFor returns the halfScript of the seat spec's role.
+// The assist script serves the review half's assistant.
+// The review script serves its chair under any role prefix.
+// Every other seat gets the fix script.
 func (f *fakeShuttle) scriptFor(spec shuttleengine.Spec) halfScript {
 	if strings.HasSuffix(spec.Role, reviewHalfRole+"-"+AssistSeatName) {
 		return f.assist
@@ -378,7 +386,8 @@ func (f *fakeShuttle) registerLocked(spec shuttleengine.Spec, gate shuttleengine
 	return handle
 }
 
-// StartGated registers the seat its spec's role names and returns a handle scripted from that seat's halfScript, or its start error.
+// StartGated registers the seat its spec's role names.
+// It returns a handle scripted from that seat's halfScript, or the start error.
 func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (seatengine.Handle, error) {
 	script := f.scriptFor(spec)
 
@@ -402,7 +411,9 @@ func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.Gat
 	return handle, nil
 }
 
-// ProbeGated records spec and answers the seat its role names: its scripted probe error, a handle scripted like a started seat when the role is live, and otherwise not found.
+// ProbeGated records spec, then answers for the seat its role names.
+// It returns the scripted probe error if there is one.
+// A live role gets a handle scripted like a started seat; any other role is reported as not found.
 func (f *fakeShuttle) ProbeGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (seatengine.Handle, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -441,8 +452,8 @@ func (f *fakeShuttle) blocked() []string {
 	return roles
 }
 
-// newEngineTestProfile builds a minimal valid Profile (relative paths — the
-// engine resolves them against root when a half validates) rooted at a fresh temp dir.
+// newEngineTestProfile builds a minimal valid Profile rooted at a fresh temp dir.
+// Its paths are relative: the engine resolves them against root when a half validates.
 func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 	t.Helper()
 	root = t.TempDir()
@@ -471,7 +482,8 @@ func newEngineForTest(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
 	return newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, lenses.Config{}, shuttle)
 }
 
-// newEngineWith is newEngineForTest over a told geometry and config; a geometry without a shortname is given the fake strand prefix's.
+// newEngineWith wires an Engine to shuttle over geom and cfg.
+// A geometry without a shortname is given the fake strand prefix as its shortname.
 func newEngineWith(t *testing.T, geom Geometry, cfg lenses.Config, shuttle *fakeShuttle) *Engine {
 	t.Helper()
 	if geom.Shortname == "" {

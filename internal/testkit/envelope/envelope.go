@@ -32,7 +32,8 @@ func Decode(t testing.TB, out string) Envelope {
 	return env
 }
 
-// Parse is Decode returning its failure as an error instead of failing a test.
+// Parse parses out as exactly one JSON document;
+// it returns a malformed or multi-document input as an error instead of failing a test.
 func Parse(out string) (Envelope, error) {
 	dec := json.NewDecoder(bytes.NewReader([]byte(out)))
 	var all map[string]any

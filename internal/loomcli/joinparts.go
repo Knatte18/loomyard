@@ -1,5 +1,7 @@
-// joinparts.go implements the `join-parts` loom verb: the chair's one call that joins the parts' plans into the plan directory.
-// The cobra shell is thin over a verb function that takes its side effects as joinPartsDeps, so the refusal table is testable without a run or a worktree.
+// joinparts.go implements the `join-parts` loom verb:
+// the chair's one call that joins the parts' plans into the plan directory.
+// The cobra shell is thin over a verb function that takes its side effects as joinPartsDeps,
+// so the refusal table is testable without a run or a worktree.
 
 package loomcli
 
@@ -42,7 +44,8 @@ func joinPartsRefusal(cause, step string) string {
 	return "loom: join-parts: " + cause + "; way forward: " + step
 }
 
-// joinPartsVerb joins the parts' plans into the plan directory when the run is at its running Parts-Plan-Write row and the caller is the row's chair.
+// joinPartsVerb joins the parts' plans into the plan directory.
+// It runs only when the run is at its running Parts-Plan-Write row and the caller is the row's chair.
 // It returns the process exit code and emits exactly one envelope on out.
 func joinPartsVerb(out io.Writer, d joinPartsDeps) int {
 	status, found, err := d.readStatus()
@@ -83,7 +86,8 @@ func joinPartsVerb(out io.Writer, d joinPartsDeps) int {
 }
 
 // newJoinPartsDeps builds the real facts and side effects of the join-parts verb over the run the loom CLI wired.
-// The row, the chair's strand name and the plan context are resolved here and on the join's first call, so the verb's own refusals are decided before any config is read.
+// The row, the chair's strand name and the plan context are resolved here and on the join's first call,
+// so the verb's own refusals are decided before any config is read.
 func (c *loomCLI) newJoinPartsDeps() (joinPartsDeps, error) {
 	row, found, err := loomrecipe.EngineRow(c.recipe, partsPlanWriteEngine)
 	if err != nil {

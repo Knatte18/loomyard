@@ -1,4 +1,5 @@
-// server_test.go pins the daemon over a real socket: the protocol, identity from the peer, the single-instance lifecycle and the waiting verbs across a restart.
+// server_test.go pins the daemon over a real socket:
+// the protocol, identity from the peer, the single-instance lifecycle and the waiting verbs across a restart.
 
 package creelengine_test
 
@@ -51,7 +52,8 @@ type rig struct {
 }
 
 // newRig returns a rig over a socket in the process run directory.
-// With asStrand the test process is the pane process of alpha, so its calls resolve to that strand; otherwise no strand's pane holds it and its calls are EXTERNAL.
+// With asStrand the test process is the pane process of alpha, so its calls resolve to that strand;
+// otherwise no strand's pane holds it and its calls are EXTERNAL.
 func newRig(t *testing.T, asStrand bool) *rig {
 	t.Helper()
 	dir, err := lymtemp.MkdirTemp("c")
@@ -112,7 +114,7 @@ type running struct {
 	err    error
 }
 
-// stop ends the daemon and returns what Run returned.
+// stop ends the daemon and returns the error its run returned.
 func (d *running) stop() error {
 	d.once.Do(func() {
 		d.cancel()
@@ -141,7 +143,7 @@ func (r *rig) start() *running {
 	return daemon
 }
 
-// spawn starts a daemon in the background, as the CLI's detached spawn does, and returns once one daemon of the rig serves.
+// spawn starts a daemon in the background and returns once one daemon of the rig serves.
 func (r *rig) spawn() error {
 	r.spawns.Add(1)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -202,7 +204,8 @@ func result(t *testing.T, results <-chan callResult) callResult {
 	}
 }
 
-// nextProgress waits for the next progress response of a watching call; the real-time deadline only bounds a failing test.
+// nextProgress waits for the next progress response of a watching call;
+// the real-time deadline only bounds a failing test.
 func nextProgress(t *testing.T, progress <-chan creelengine.Response) creelengine.Response {
 	t.Helper()
 	select {
@@ -234,8 +237,10 @@ func mustCall(t *testing.T, c *creelengine.Client, req creelengine.Request) cree
 	return got.resp
 }
 
-// dialHookWait re-scripts alpha as a hook strand with the test process's pane, since the rig's default strand is a pane-mail strand that never rings.
-// It starts the daemon and sends alpha's raw hook-wait request with extraKeys, a JSON fragment of further keys, on a connection it returns with a reader of the daemon's responses.
+// dialHookWait re-scripts alpha as a hook strand with the test process's pane.
+// The rig's default strand is a pane-mail strand, which never rings.
+// It starts the daemon and sends alpha's raw hook-wait request with extraKeys, a JSON fragment of further keys.
+// It returns the connection with a reader of the daemon's responses.
 func dialHookWait(t *testing.T, r *rig, extraKeys string) (net.Conn, func() creelengine.Response) {
 	t.Helper()
 	hook := creelfake.HookStrand(alpha)
@@ -245,7 +250,8 @@ func dialHookWait(t *testing.T, r *rig, extraKeys string) (net.Conn, func() cree
 	return sendHookWait(t, r, extraKeys)
 }
 
-// sendHookWait sends alpha's raw hook-wait request with extraKeys on a new connection to the running daemon and returns the connection with a reader of its responses.
+// sendHookWait sends alpha's raw hook-wait request with extraKeys on a new connection to the running daemon;
+// it returns the connection with a reader of its responses.
 func sendHookWait(t *testing.T, r *rig, extraKeys string) (net.Conn, func() creelengine.Response) {
 	t.Helper()
 	conn, err := net.Dial("unix", r.geom.SocketPath)
@@ -449,7 +455,8 @@ func TestDaemon_Protocol(t *testing.T) {
 			}
 		}},
 		{"AMarkedHookWaitWhoseClientLeavesAfterTheRingWasQueuedLeavesTheMailUnread", true, func(t *testing.T, r *rig) {
-			// The daemon holds each wait until the ring stands in the waiter's channel and its close watch saw the client leave, so the select sees both ready and picks at random.
+			// The daemon holds each wait until the ring stands in the waiter's channel and its close watch saw the client leave;
+			// so the select sees both ready and picks at random.
 			// Rounds repeat so a missing release on either pick fails the row.
 			const rounds = 8
 			clientConn := make(chan net.Conn, 1)
@@ -760,7 +767,7 @@ func TestDaemon_Protocol(t *testing.T) {
 			}
 		}},
 		{"StrandClaimFromOutsideEveryPaneCarriesTheRefusalCode", false, linuxOnly(func(t *testing.T, r *rig) {
-			// The outside-pane refusal rests on D4's Linux-only ancestry check.
+			// The outside-pane refusal rests on the Linux-only ancestry check.
 			r.start()
 			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
 			_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
@@ -928,7 +935,7 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				mode   os.FileMode
 				// lostRace has the spawn fire a lost-race exit at once.
 				lostRace bool
-				// modeDenies marks a row resting on the file mode denying access, which it does neither on Windows, where the row is not generated, nor to root, where it skips.
+				// modeDenies marks a row that needs the file mode to deny access; Windows does not generate it, and root skips it.
 				modeDenies bool
 				want       []string
 				notWant    []string
@@ -1226,8 +1233,10 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			r.del.SetTurn(alpha, true, time.Time{})
 			first := r.start()
 			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "one"})
-			// Two waiters of one strand: whichever registers second supersedes the other, so the superseded answer proves the survivor is registered with the first daemon before it stops.
-			// The waiters spawn nothing, so a waiter that connected late would fail instead of starting a daemon that takes the hub from the restart.
+			// Two waiters of one strand: whichever registers second supersedes the other,
+			// so the superseded answer proves the survivor is registered with the first daemon before it stops.
+			// The waiters spawn nothing,
+			// so a waiter that connected late would fail instead of starting a daemon that takes the hub from the restart.
 			clientClock := creelfake.NewClock(epoch)
 			hookWait := func() <-chan callResult {
 				return callAsync(r.client(strandClaim(alpha), nil, clientClock), creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true}, 0)
@@ -1277,7 +1286,7 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			}
 		}},
 		{"WaiterReconnectsAcrossARestartAndReceivesAMessageReturnedUndelivered", func(t *testing.T, r *rig) {
-			// Busy, so the EXTERNAL mail is not carried into the pane and marked read before alpha goes.
+			// Alpha is busy, so the EXTERNAL mail is not carried into its pane and marked read before alpha goes.
 			r.del.SetIdle(alpha, false)
 			first := r.start()
 			clientClock := creelfake.NewClock(epoch)
@@ -1474,7 +1483,8 @@ func TestDaemon_Lifecycle(t *testing.T) {
 	}
 }
 
-// ringingFake is a stand-in daemon on the rig's socket that answers every request line with a pending line and a ring line of one message asking an acknowledgement.
+// ringingFake is a stand-in daemon on the rig's socket.
+// It answers every request line with a pending line and a ring line of one message asking an acknowledgement.
 type ringingFake struct {
 	t        *testing.T
 	r        *rig
@@ -1496,7 +1506,7 @@ func listenRingingFake(t *testing.T, r *rig) *ringingFake {
 	return &ringingFake{t: t, r: r, listener: listener}
 }
 
-// serve answers each accepted connection with the pending and ring lines, then hands it to after, which owns closing it.
+// serve answers each accepted connection with the pending and ring lines, then hands it to after, which closes it.
 func (f *ringingFake) serve(after func(conn net.Conn, reader *bufio.Reader)) {
 	go func() {
 		for {
@@ -1528,7 +1538,8 @@ func (f *ringingFake) serve(after func(conn net.Conn, reader *bufio.Reader)) {
 	}()
 }
 
-// linuxOnly returns run on Linux and nil elsewhere, so a table loop that passes over a nil run generates no subtest for the row off Linux.
+// linuxOnly returns run on Linux and nil elsewhere.
+// A table loop that passes over a nil run generates no subtest for the row off Linux.
 func linuxOnly(run func(*testing.T, *rig)) func(*testing.T, *rig) {
 	if runtime.GOOS != "linux" {
 		return nil

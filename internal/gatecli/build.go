@@ -1,4 +1,6 @@
-// build.go runs the hub's shared build step once per `lym gate test` call inside the slots of the first tier that opts into it, and reports the tiers a failed build blocks.
+// build.go runs the hub's shared build step for `lym gate test`, once per call.
+// The build runs inside the slots of the first tier that opts into it,
+// and it reports the tiers that a failed build blocks.
 
 package gatecli
 
@@ -22,10 +24,15 @@ import (
 // scopeBuild labels the run record of the build step.
 const scopeBuild = "build"
 
-// runBuild runs the hub's build command inside the slots run's tier holds, in the build's dir, as a tied child of the platform shell, with env, the build's own env and no word the call gave after `--`.
-// Its output passes to the call's stdout and into its log, and the build is bounded by its own timeout_min counted from now.
-// It writes the build's run record, scope form build, for the tier it precedes, prints its summary line and marks the build started, so no later tier runs it again.
-// ok is false when the tier must not run its command: the result then holds a refusal when the shell could not start, and marks the tier blocked when the build failed or timed out, recording its log path and exit code.
+// runBuild runs the hub's build command in the build's dir, as a tied child of the platform shell.
+// It runs inside the tier holds of run, with env followed by the build's own env, and no word the call gave after `--`.
+// Its output passes to the call's stdout and into its log,
+// and the build is bounded by its own timeout_min counted from now.
+// It writes the build's run record, scope form build, for the tier it precedes, and prints its summary line.
+// It marks the build started, so no later tier runs it again.
+// ok is false when the tier must not run its command.
+// The result then holds a refusal when the shell could not start.
+// It marks the tier blocked when the build failed or timed out, and records the log path and exit code.
 func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok bool) {
 	e.buildDone = true
 	step := e.cfg.Build
@@ -77,8 +84,10 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 	return tierResult{buildFailed: true}, false
 }
 
-// reportBlocked writes the run record of a tier that opts into the failed build and ran no command, outcome failed with the build's exit code and the build's log as blocked_by, and names the tier and the log on stderr.
-// It prints no tier summary line, and returns the build's exit code with the tier marked blocked.
+// reportBlocked writes the run record of a tier that opts into the failed build and ran no command.
+// The record's outcome is failed, with the build's exit code and the build's log as blocked_by.
+// It names the tier and the log on stderr, and prints no tier summary line.
+// It returns the build's exit code with the tier marked blocked.
 func (e *execution) reportBlocked(run tierRun) runEnd {
 	now := time.Now()
 	record := gateslot.RunRecord{

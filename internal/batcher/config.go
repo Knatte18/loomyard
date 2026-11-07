@@ -1,6 +1,6 @@
 // config.go — configuration for the batcher module.
 //
-// Defines the package-local config type mirroring batcher.yaml's keys, ConfigPerNameMaps, ConfigSpec, and Active, which uses internal/configengine.LoadOrTemplate with ConfigSpec() to resolve batcher's layered config, degrading to the embedded template on proven absence, then builds the batchifier the active profile names.
+// Loads batcher.yaml through the layer stack and builds the batchifier its active profile names.
 // Also defines MigrateConfig, the pure rewrite that removes a batcher.yaml's retired keys.
 
 package batcher
@@ -15,8 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// moduleName is batcher's own configreg module name, passed to configengine.LoadOrTemplate — never
-// a parameter, since Active always loads batcher's own config file.
+// moduleName is batcher's own configreg module name.
+// It is a constant rather than a parameter, since loading always reads batcher's own config file.
 const moduleName = "batcher"
 
 // config represents the resolved batcher.yaml configuration: the name of the active profile and the named profiles.
@@ -27,8 +27,10 @@ type config struct {
 
 // profile is one named entry under batcher.yaml's profiles: key.
 // The cost parameters are pointers so a missing key is told apart from a zero.
-// AloneAbove is the retired cost parameter, read only so a profile still carrying it is refused rather than silently ignored.
-// file and layer are the highest layer file holding the profile, kept so a retired-key refusal names the file that carries the key.
+// AloneAbove is a retired cost parameter;
+// it is read only so a profile still carrying it is refused, not silently ignored.
+// file and layer are the highest layer file holding the profile;
+// they let a retired-key refusal name the file that carries the key.
 type profile struct {
 	Batchifier string             `yaml:"batchifier"`
 	AloneAbove *float64           `yaml:"alone_above"`
@@ -40,13 +42,15 @@ type profile struct {
 	layer configengine.Layer
 }
 
-// ErrRetiredKey marks a batcher.yaml profile that still carries a key the cost model no longer has;
+// ErrRetiredKey marks a batcher.yaml profile that carries a retired key, one the cost model does not use;
 // such an error is also marked configengine.ErrInvalid.
 var ErrRetiredKey = errors.New("retired key")
 
-// retiredKeyError builds the refusal for a profile still carrying the retired key, naming the layer file that carries it.
+// retiredKeyError builds the refusal for a profile that carries a retired key, naming the layer file holding it.
 // It wraps ErrRetiredKey, is marked configengine.ErrInvalid, and ends in the way forward that layer calls for:
-// lym config reconcile --apply for a worktree or local file, and for the repo default, which only the hub-wide reconcile rewrites, lym fabric reconcile run by the orch.
+// lym config reconcile --apply for a worktree or local file.
+// For the repo default, which only the hub-wide reconcile rewrites, the way forward is lym fabric reconcile.
+// A session lym refuses that verb and reports status: FAILED, so the orch runs it.
 func retiredKeyError(file string, layer configengine.Layer, profileName, key string) error {
 	if file == "" {
 		file = moduleName + ".yaml"
@@ -59,13 +63,15 @@ func retiredKeyError(file string, layer configengine.Layer, profileName, key str
 }
 
 // ConfigPerNameMaps returns the batcher.yaml keys whose entries are named by the operator:
-// a layer's profiles add to or override the template's by name, each profile merging key by key, and a name the template lacks is kept through reconcile and --set.
+// a layer's profiles add to or override the template's by name, each profile merging key by key,
+// and a name the template lacks is kept through reconcile and --set.
 func ConfigPerNameMaps() []string {
 	return []string{"profiles"}
 }
 
 // ConfigSpec returns batcher's layered-load spec.
-// Both keys, the active profile name and the profiles per-name map, only shape batching and meet no category, so the local layer may hold either.
+// Both keys, the active profile name and the profiles per-name map, only shape batching and meet no category,
+// so the local layer may hold either.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:        moduleName,
@@ -79,13 +85,16 @@ func ConfigSpec() configengine.Spec {
 }
 
 // Active loads batcher.yaml through the layer stack under dirs and builds the batchifier its active: profile names.
-// An empty active: and active: identity resolve to the identity batchifier even when no profile of that name is configured;
+// An empty active: and active: identity both resolve to the identity batchifier, even with no profile of that name;
 // a configured profile named identity wins over that default.
-// An absent base layer resolves the embedded ConfigTemplate(), whose active: names the wide profile, instead of erroring;
-// a layer file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter, or a retired alone_above, master_base or startup_context in any layer, each marked configengine.ErrInvalid.
+// An absent base layer resolves the embedded ConfigTemplate() instead of erroring,
+// but a layer file that exists and is invalid still errors.
+// An active: naming no profile is an error, as is a profile of an unknown batchifier kind.
+// A cost profile with a missing or invalid parameter is an error too.
+// A retired alone_above, master_base or startup_context in any layer is an error as well.
+// Each such error is marked configengine.ErrInvalid.
 // A retired-key error names the layer file that carries the key and the way forward that file calls for.
-// dirs must already be told by the caller — Active never resolves cwd itself (see
-// PATTERN-cwd-resolution).
+// The caller must resolve dirs first; Active never resolves the working directory itself.
 func Active(dirs configengine.Dirs) (Batcher, error) {
 	cfg, err := loadConfig(dirs)
 	if err != nil {
@@ -110,7 +119,8 @@ func Active(dirs configengine.Dirs) (Batcher, error) {
 	return construct(name, prof)
 }
 
-// loadConfig loads and unmarshals batcher.yaml through the layer stack under dirs, degrading to the embedded template on proven absence.
+// loadConfig loads and unmarshals batcher.yaml through the layer stack under dirs.
+// It degrades to the embedded template on proven absence.
 // Each profile records the highest layer file holding it.
 func loadConfig(dirs configengine.Dirs) (config, error) {
 	spec := ConfigSpec()
@@ -170,9 +180,12 @@ func unmarshalConfig(data []byte) (config, error) {
 	return cfg, nil
 }
 
-// MigrateConfig rewrites a batcher.yaml document so no profile under profiles: carries a retired key, and returns it with one sorted human-readable line per change, such as "profiles.cautious.weights.master_base: removed".
-// It drops each profile's alone_above, weights.startup_context and weights.master_base;
-// where a profile carried either weights key and has no orientation of its own, it adds weights.orientation at the value of the template's cautious profile, and an existing orientation is kept.
+// MigrateConfig rewrites a batcher.yaml document so no profile under profiles: carries a retired key.
+// It returns the rewritten document and one sorted, human-readable line per change.
+// Each line reads like "profiles.<name>.alone_above: removed".
+// The rewrite drops each profile's alone_above, weights.startup_context and weights.master_base;
+// it also adds weights.orientation to a profile that carried either weights key and has no orientation of its own.
+// Its value is the orientation of the template's cautious profile, and an existing orientation is kept.
 // Everything else, inside and outside profiles:, is carried through yaml node editing with its comments.
 // A document with no retired key, or an empty one, comes back unchanged with no rewrites.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
@@ -258,7 +271,8 @@ func templateOrientation() (*yaml.Node, error) {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: orientation.Tag, Value: orientation.Value}, nil
 }
 
-// mappingValue returns the value node stored under key in mapping, or nil when mapping is nil, not a mapping or lacks the key.
+// mappingValue returns the value node stored under key in mapping.
+// It returns nil when mapping is nil, is not a mapping, or lacks the key.
 func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
 	if mapping == nil || mapping.Kind != yaml.MappingNode {
 		return nil

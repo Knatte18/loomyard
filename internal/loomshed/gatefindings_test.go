@@ -1,14 +1,14 @@
-// gatefindings_test.go asserts that this package's mechanical gates surface the determined findings
-// they used to discard.
-// The rule matters most exactly where it is cheapest to skip: NewDiscussionGate and NewPlanGate no longer bounce to a respawned writer on a failed attempt, and a gated writer row's exhausted gate halts the run for a human.
-// So the logger.Warn line this file pins is not merely the best record of a refusal, it is the ONLY one that outlives the ephemeral run directory the findings file is deleted with.
+// gatefindings_test.go asserts that a failed mechanical gate logs the specific determined findings behind its refusal.
+// The warn line is the only record of those findings that outlives the ephemeral run directory.
+// The findings file is deleted with that directory.
+// NewDiscussionGate and NewPlanGate do not bounce a failed attempt to a respawned writer,
+// and an exhausted gate on a gated writer row halts the run for a human,
+// so the warn line is where an operator learns why.
 //
-// This file and gates_test.go both drive the two gate closures and must not silently drift into
-// testing each other's subject: gates_test.go owns the closures' own pass/fail/error mapping,
-// including the ParsePlan error split, in full; this file owns only that a failed gate's specific
-// determined findings (not merely "some findings") reach the warn line, which is why each case below
-// pins a specific check name (discussion-section-missing, index-file-mismatch) that gates_test.go's
-// own findings-surfacing cases do not assert.
+// gates_test.go covers each gate's pass, fail and error mapping, including the ParsePlan error split, in full.
+// This file covers only that a failed gate's named findings reach the warn line, not merely "some findings".
+// Each case pins a specific check name (discussion-section-missing, index-file-mismatch).
+// gates_test.go's findings-surfacing cases do not assert that name.
 
 package loomshed
 
@@ -29,10 +29,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestDiscussionGate_FailureSurfacesItsFindings replaces the deleted Discussion-Validate producer's
-// own findings-surfacing case: the gate closure now carries the same obligation the producer used
-// to, over the same fixture shape (a decision record missing every required heading, with the
-// support log present, so Validate reports heading findings rather than a file-missing one).
+// TestDiscussionGate_FailureSurfacesItsFindings checks that a refused decision record logs its determined findings.
+// The fixture is a decision record missing every required heading, with the support log present,
+// so the findings are heading findings rather than a file-missing one.
 func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -76,13 +75,12 @@ func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 }
 
-// TestPlanGate_FailureSurfacesItsFindings replaces the deleted Plan-Validate producer's own
-// findings-surfacing case: the gate closure now carries the same obligation the producer used to,
-// over the same fixture shape (a plan that PARSES cleanly and fails validation on exactly one
-// determined check: an extra .md file on disk that no Card Index entry names, which planparser
-// reports as index-file-mismatch). This test's subject is that exactly one finding reaches the warn
-// line -- plumbing, not mode behaviour -- so the fixture carries no approval dimension at all: the
-// gate always runs planglyph.ValidateFormat, never the require_approved-aware planglyph.Validate.
+// TestPlanGate_FailureSurfacesItsFindings checks that a refused plan logs its determined findings.
+// The fixture is a plan that parses cleanly and fails validation on exactly one determined check:
+// an extra .md file on disk that no Card Index entry names, which planparser reports as index-file-mismatch.
+// The subject is that this one finding reaches the warn line, which is plumbing, not mode behaviour,
+// so the fixture carries no approval dimension:
+// the gate always runs planglyph.ValidateFormat, never the require_approved-aware planglyph.Validate.
 func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchorPath, planDir := setupPlanDir(t)
@@ -99,8 +97,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 			Commit:  "1: Add the helper",
 		}},
 	})
-	// The one file the Card Index does not name -- this is what makes index-file-mismatch the
-	// plan's single finding.
+	// The one file the Card Index does not name; it is what makes index-file-mismatch the plan's single finding.
 	if err := os.WriteFile(filepath.Join(planDir, "99-unindexed.md"), []byte("stray"), 0o644); err != nil {
 		t.Fatalf("WriteFile(99-unindexed.md): %v", err)
 	}
@@ -128,8 +125,10 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 }
 
-// TestBatcherRows_StuckSurfacesTheBatcherError pins that a batcher-backed row logs the batcher error it maps onto Stuck.
-// The row carries no OnStuck, so its Stuck halts the run for a human, and batcher.Active conflates unknown-name, malformed YAML, and I/O failure into one bare error with no sentinel -- so the error text is the only thing that can tell an operator which of the three happened.
+// TestBatcherRows_StuckSurfacesTheBatcherError checks that a batcher-backed row logs its batcher error.
+// The row carries no OnStuck, so its Stuck halts the run for a human.
+// batcher.Active reports unknown-name, malformed YAML and I/O failure as one bare error with no sentinel,
+// so the error text is the only thing that tells an operator which of the three happened.
 // It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
 //
 //testtiming:keep pins that each batcher-backed row logs its name and the batcher error text on a stuck verdict, which its covering tests never read

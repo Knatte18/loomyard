@@ -1,5 +1,4 @@
-// hubgeom.go implements the hub-mode tellers that convert a resolved *lymcwd.Location into each
-// engine's own geometry struct: ReedGeometry, BurlerGeometry and ReconcileGeometry are its members.
+// hubgeom.go implements the hub-mode tellers that turn a resolved *lymcwd.Location into each engine's geometry struct.
 
 package hubgeom
 
@@ -27,16 +26,20 @@ func ReconcileGeometry(l *lymcwd.Location) (hubreconcile.Geometry, bool) {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoltDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
 }
 
-// ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
-// It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lymcwd stays the sole owner of cwd resolution (the Cwd Resolution Invariant).
+// ReedGeometry builds a reedengine.Geometry for l, passing the resolved Location's paths through untouched.
+// It also fills the shortname and parent name that strand names are formed from.
+// It performs no os.Getwd, no git discovery and no path resolution of its own.
+// The Cwd Resolution Invariant keeps internal/lymcwd the sole owner of cwd resolution.
 //
-// NameShortname is the hub's recorded shortname; an absent record leaves it empty and is no error here,
-// since reed refuses the spawn that needs a shortname while `reed status`, `down` and the watchdog keep working.
-// The prime leaves NameSlug and ParentName empty;
-// a task worktree sets NameSlug to its raw worktree name and ParentName to what ResolveParent returns, the orch name of the worktree the pair was created from.
+// NameShortname is the hub's recorded shortname; an absent record leaves it empty and is no error here.
+// Reed refuses only the spawn that needs a shortname, while `reed status`, `down` and the watchdog keep working.
+// The prime leaves NameSlug and ParentName empty.
+// A task worktree sets NameSlug to its raw worktree name.
+// ParentName is the orch name of the worktree the pair was created from, as resolved.
 // An unresolvable parent logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
 // SpawnOrder is told as a lazy closure over l (spawnorder.go), so building the geometry reads and spawns nothing.
-// PaneEnv is likewise a lazy closure: it loads the hub's env config module, with this machine's override, at each strand launch.
+// PaneEnv is likewise a lazy closure:
+// it loads the hub's env config module, with this machine's override, at each strand launch.
 // Failing to tell the prime from a task worktree is the one error:
 // telling a task worktree a prime's geometry would give its strands the prime's names for life.
 func ReedGeometry(l *lymcwd.Location) (reedengine.Geometry, error) {
@@ -51,7 +54,7 @@ func ReedGeometry(l *lymcwd.Location) (reedengine.Geometry, error) {
 const gitEntryName = ".git"
 
 // isPrimeWorktree reports whether the worktree at worktreeRoot is the hub's prime, the repository's main worktree.
-// It reads the .git entry rather than spawning `git worktree list` as fabricengine.PrimeName does,
+// It reads the .git entry rather than spawning `git worktree list`,
 // so every hub wiring path stays spawn-free and the untagged wiring tests stay offline (the Test Tier Purity Invariant).
 // The main worktree's .git is a directory, or a gitdir file pointing straight at its git directory;
 // a linked worktree's .git is a gitdir file pointing into the common git directory's worktrees/ directory.
@@ -76,7 +79,8 @@ func isPrimeWorktree(worktreeRoot string) (bool, error) {
 	return filepath.Base(filepath.Dir(filepath.Clean(strings.TrimSpace(gitDir)))) != "worktrees", nil
 }
 
-// reedGeometry is ReedGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
+// reedGeometry builds the geometry of l once the caller has told whether l is the prime.
+// It is split out so the unit test can pass either answer without a .git entry.
 func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
 	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	var slug, parent string
@@ -104,7 +108,8 @@ func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
 	}
 }
 
-// paneEnv returns the closure that loads the variables of the hub's env config module, with this machine's override, for a strand pane in l's worktree.
+// paneEnv returns a closure that loads the variables of the hub's env config module for a strand pane in l's worktree.
+// The module is loaded with this machine's override on each call.
 func paneEnv(l *lymcwd.Location) func() (map[string]string, error) {
 	return func() (map[string]string, error) {
 		cfg, err := envconfig.LoadConfig(fabricengine.ConfigDirs(l))
@@ -112,16 +117,22 @@ func paneEnv(l *lymcwd.Location) func() (map[string]string, error) {
 	}
 }
 
-// BurlerGeometry builds a burlerengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched.
-// It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lymcwd stays the sole owner of cwd resolution (the Cwd Resolution Invariant), and BurlerGeometry only reads what l's caller already resolved.
-// WorktreeRoot is l.AnchorPath(), NOT l.WorktreePath(): a review segment's _lym content is anchor-anchored, matching the commit seam that commits it, so telling burler the anchor path as its profile root is what keeps the two aligned.
-// Converging or reverting the two would silently change behaviour in a subpath-anchored hub, where the anchor path and the worktree path diverge.
-// standalonegeom.BurlerGeometry is the mode where WorktreeRoot and AnchorPath still legitimately diverge: standalone fills WorktreeRoot with the reviewed target directory, not the anchor path.
-// RepoRoot is l.WorktreePath(), the directory holding PATTERN.md, which the anchor path is not in a subpath-anchored hub.
-// ParentName is what ResolveParent returns;
-// an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
-// Shortname and Slug are told exactly as ReedGeometry tells NameShortname and NameSlug, so the names formed from them match the names reed gives the strands.
-// Failing to tell the prime from a task worktree is the one error, as for ReedGeometry.
+// BurlerGeometry builds a burlerengine.Geometry for l, passing the resolved Location's paths through untouched.
+// It performs no os.Getwd, no git discovery and no path resolution of its own.
+// The Cwd Resolution Invariant keeps internal/lymcwd the sole owner of cwd resolution.
+// BurlerGeometry reads only what the caller already resolved.
+// WorktreeRoot is l.AnchorPath(), not l.WorktreePath().
+// A review segment's _lym content is anchor-anchored, matching the commit seam that commits it.
+// Passing the anchor path as the profile root keeps the two aligned.
+// Converging or reverting the two would silently change behaviour in a subpath-anchored hub.
+// There the anchor path and the worktree path diverge.
+// A standalone repository fills WorktreeRoot with the reviewed target directory, not the anchor path.
+// RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
+// The anchor path does not hold it in a subpath-anchored hub.
+// ParentName is the resolved parent's name; an unresolvable parent logs a warning and leaves it empty.
+// Shortname is the hub's recorded shortname, and Slug is the worktree name unless the worktree is the prime,
+// so the names formed from them match the names reed gives the strands.
+// Failing to tell the prime from a task worktree is the one error.
 func BurlerGeometry(l *lymcwd.Location) (burlerengine.Geometry, error) {
 	prime, err := isPrimeWorktree(l.WorktreePath())
 	if err != nil {
@@ -130,7 +141,8 @@ func BurlerGeometry(l *lymcwd.Location) (burlerengine.Geometry, error) {
 	return burlerGeometry(l, prime), nil
 }
 
-// burlerGeometry is BurlerGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
+// burlerGeometry builds the geometry of l once the caller has told whether l is the prime.
+// It is split out so the unit test can pass either answer without a .git entry.
 func burlerGeometry(l *lymcwd.Location, prime bool) burlerengine.Geometry {
 	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	var slug string

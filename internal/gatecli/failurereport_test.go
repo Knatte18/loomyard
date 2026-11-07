@@ -1,4 +1,5 @@
-// failurereport_test.go covers the failure report's rendering, the failed runs it is built from and the bound on a capped call's replayed stdout.
+// failurereport_test.go covers the failure report's rendering and the failed runs it is built from.
+// It also covers the bound on a capped call's replayed stdout.
 
 package gatecli
 
@@ -171,7 +172,7 @@ func TestRenderFailureReport(t *testing.T) {
 		if len(got) != failureReportLines+2 {
 			t.Fatalf("renderFailureReport() = %d lines; want %d", len(got), failureReportLines+2)
 		}
-		// The tier's header and 80 failures are 1+2*80 lines, 1+2*80-80 of them cut, the vet and guard runs' 4 lines each, the comments lint's 3 lines and the pattern lint's 2 all cut.
+		// The tier's failures past the cap, and the vet, guard, comments lint and pattern lint runs, are all cut.
 		want := fmt.Sprintf("... %d more lines cut (tier0: %d, vet tier1: 4, guard tier1: 4, lint comments: 3, lint pattern: 2); the logs named above hold the cut lines of a run with a log; lint comments has no log, so re-run `lym loom lint-comments` for its findings; lint pattern has no log, so re-run `lym loom lint-pattern` for its findings", failureReportLines+1+4+4+3+2, failureReportLines+1)
 		if cut := got[len(got)-1]; cut != want {
 			t.Errorf("cut line = %q; want %q", cut, want)

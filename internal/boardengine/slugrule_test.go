@@ -1,4 +1,5 @@
-// slugrule_test.go — the pair slug rule the board applies to the task and project slugs a write makes, through Config.ValidateSlug.
+// slugrule_test.go — the pair slug rule the board applies to the task and project slugs a write makes.
+// The rule runs through Config.ValidateSlug.
 
 package boardengine_test
 
@@ -21,7 +22,7 @@ func withRecordsSuffix(base string) string {
 	return fabricengine.RecordsBranchName(base)
 }
 
-// refusingSlugRule refuses a slug ending in the records suffix and the Bolt directory name, as the pair slug rule does.
+// refusingSlugRule refuses a slug ending in the records suffix, and the reserved Bolt directory name.
 func refusingSlugRule(slug string) error {
 	if _, suffixed := fabricengine.WeftWarpSlug(slug); suffixed {
 		return fmt.Errorf("slug %q ends in the records suffix", slug)
@@ -32,8 +33,9 @@ func refusingSlugRule(slug string) error {
 	return nil
 }
 
-// TestSlugRule pins that a write making a task or project slug is refused when the seam refuses it, naming the entry, the rule's reason and a slug the rule admits,
-// and that a write leaving an entry's slug and kind as they were is never judged.
+// TestSlugRule pins that a write making a task or project slug is refused when the seam refuses it.
+// The refusal names the entry, the rule's reason and a slug the rule admits.
+// A write that leaves an entry's slug and kind as they were is never judged.
 func TestSlugRule(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -133,14 +135,15 @@ func TestSlugRule(t *testing.T) {
 }
 
 // newSlugRuleBoard returns a board whose ValidateSlug seam is refusingSlugRule.
-// It holds the task old with the records suffix as a slug a stored board can hold, the task renamable, and the task taken, which a suggestion can collide with.
+// It holds three tasks: old, with the records suffix as its slug, which a stored board can hold;
+// renamable, a task a write may rename; and taken, which a suggestion can collide with.
 func newSlugRuleBoard(t *testing.T) *boardengine.Board {
 	t.Helper()
 	b, _ := newSlugRuleBoardWith(t, refusingSlugRule)
 	return b
 }
 
-// newSlugRuleBoardWith is newSlugRuleBoard with the seam validate, which may be nil, and also returns the board's directory.
+// newSlugRuleBoardWith returns a board whose ValidateSlug seam is validate, which may be nil, and the board's directory.
 func newSlugRuleBoardWith(t *testing.T, validate func(slug string) error) (*boardengine.Board, string) {
 	t.Helper()
 	var boardPath string
@@ -156,7 +159,8 @@ func newSlugRuleBoardWith(t *testing.T, validate func(slug string) error) (*boar
 	return b, boardPath
 }
 
-// writeRaddleStore writes the store.json of the store directory sketch into the test board directory boardDir, for the rows that need a store before a filing write exists.
+// writeRaddleStore writes store.json into the raddle store directory of sketch under boardDir.
+// It serves the rows that need a store before a filing write exists.
 func writeRaddleStore(t *testing.T, boardDir, sketch string, entry boardengine.RaddleStoreEntry) {
 	t.Helper()
 	data, err := json.Marshal(entry)
@@ -172,13 +176,16 @@ func writeRaddleStore(t *testing.T, boardDir, sketch string, entry boardengine.R
 	}
 }
 
-// TestSlugRule_RaddleStore pins that the board refuses a made slug the raddle store holds, as a Sketch slug or a filed slug, with or without the pair slug seam.
+// TestSlugRule_RaddleStore pins that the board refuses a made slug the raddle store holds.
+// The refusal covers a Sketch slug and a filed slug, with or without the pair slug seam.
 // It admits the live run's own Sketch, and refuses only a slug-making write while a store file is unreadable.
 func TestSlugRule_RaddleStore(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// The board's fixed clock stamps every entry created in a row with this time, so a store entry recording it belongs to such an entry's own Sketch, and one recording an earlier time to a Sketch filed before.
+	// The board's fixed clock stamps every entry created in a row with this time.
+	// A store entry recording that time belongs to such an entry's own Sketch.
+	// A store entry recording an earlier time belongs to a Sketch filed before.
 	boardClock := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
 	held := boardengine.RaddleStoreEntry{Created: boardClock.Add(-24 * time.Hour), Hash: "h", Filed: []string{"part-a", "part-b", "plan-proj"}, Project: "plan-proj"}
 	own := held

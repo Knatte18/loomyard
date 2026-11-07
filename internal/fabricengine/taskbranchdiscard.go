@@ -1,4 +1,5 @@
-// taskbranchdiscard.go implements DiscardTaskBranch, the archive-and-delete of a pair's task branch locally and, through the remote teardown, on origin, and deleteArchivedTaskBranch, the deletion half that only runs under an archive tag covering each tip.
+// taskbranchdiscard.go implements DiscardTaskBranch, which archives and deletes a task branch locally and on origin.
+// It also holds deleteArchivedTaskBranch, which deletes the branch only under an archive tag covering each tip.
 // Destruction itself stays in destroy.go's executors.
 
 package fabricengine
@@ -10,8 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// DiscardResult is what DiscardTaskBranch did.
-// It embeds MutationRecord, which carries the mutation record accumulated over the call.
+// DiscardResult reports what a discard of a task branch did.
+// It embeds MutationRecord, which holds the mutations accumulated over the call.
 // ArchiveTags lists the archive tags that now hold the discarded tips, none when no branch existed.
 type DiscardResult struct {
 	MutationRecord
@@ -20,20 +21,30 @@ type DiscardResult struct {
 	OriginDeleted bool     `json:"origin_deleted,omitempty"`
 }
 
-// DiscardTaskBranch archives and deletes slug's task branch locally and on the task repository's origin, whether or not its work is landed.
-// The task branch is the one the pair stands on, read from the pair itself; with no local branch of the pair's names, the first name origin holds, so a pair made under an earlier branch prefix is discarded by its own branch.
-// It tags the local tip archive/<slug>/<first 12 hex> and deletes the local branch under that tag, then hands the remote half to the holder of the slug's teardown lock and returns without waiting on the remote half.
-// The remote half reads origin's tip, pushes the tags covering the tips, archiving only the containing tip when one tip holds the other, and deletes the branch on origin leased on the tip it read;
-// a failure there is logged and mailed to the hub's orch with its way forward.
-// A failed local tag deletes nothing and wraps ErrArchiveFailed, and a refused gate is returned as an error naming the branch.
+// DiscardTaskBranch archives and deletes slug's task branch locally and on the task repository's origin.
+// It does so whether or not the pair's work is landed.
+// The task branch is the one the pair stands on, read from the pair itself.
+// With no local branch of the pair's names, the first name origin holds is taken,
+// so a pair made before the branch prefix changed is discarded by its own branch.
+// It tags the local tip archive/<slug>/<first 12 hex>, and deletes the local branch under that tag.
+// It then hands the remote half to the holder of the slug's teardown lock, and returns without waiting on it.
+// The remote half reads origin's tip and pushes the tags covering the tips.
+// When one tip holds the other, it archives only the containing tip.
+// It then deletes the branch on origin with a lease on the tip it read.
+// A failure there is logged and mailed to the hub's orch with its way forward.
+// A failed local tag deletes nothing and wraps ErrArchiveFailed,
+// and a refused gate is returned as an error naming the branch.
 // ArchiveTags names the local tip's tag, or, when the remote half ran in process, the tags it pushed.
-// Before its first tip read it takes the slug's teardown lock exclusive, waiting at most the topology's teardown wait, and the lock is held until the remote half ends;
-// when the wait runs out it returns an error wrapping ErrPairPushRunning that names re-running the command that discarded the task branch, with nothing archived or deleted.
+// Before its first tip read, it takes the slug's teardown lock exclusive, waiting at most the topology's teardown wait.
+// The lock is held until the remote half ends.
+// When the wait runs out, it returns an error wrapping ErrPairPushRunning.
+// The error names re-running the command that discarded the task branch, with nothing archived or deleted.
 func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res DiscardResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	// The lock file is hub scratch and outlives the call, not a change to the pair, so it goes to a record of its own and a slug with no branch keeps a zero result.
+	// The lock file is hub scratch and outlives the call, not a change to the pair,
+	// so it goes to a record of its own, and a slug with no branch keeps a zero result.
 	hold, err := t.holdTeardown(NewMutations(l.HubPath), rec, l, slug, false, "re-run the command that discarded the task branch", true)
 	if err != nil {
 		return DiscardResult{}, err
@@ -55,7 +66,8 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 		return DiscardResult{}, err
 	}
 	if localTip == "" {
-		// No local branch names the task branch, so origin names it, as it must for a pair made before the branch prefix changed.
+		// No local branch names the task branch, so origin names it.
+		// That is required for a pair made before the branch prefix changed.
 		onOrigin, err := t.originTaskBranch(l, slug)
 		if err != nil {
 			return DiscardResult{}, err
@@ -85,7 +97,9 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 	return res, nil
 }
 
-// archiveDiscardedTips archives the tips a discard must keep, returning the tag covering the local tip and the one covering the origin tip, each empty when that side has no branch.
+// archiveDiscardedTips archives the tips a discard must keep.
+// It returns the tag covering the local tip and the tag covering the origin tip.
+// Each is empty when that side has no branch.
 // A tip contained in the other is covered by the other's tag; sleep spaces an archive-tag push's attempts.
 func archiveDiscardedTips(rec *Mutations, repoDir, slug, localTip, originTip string, sleep func(time.Duration)) (localTag, originTag string, err error) {
 	switch {
@@ -120,9 +134,11 @@ func archiveDiscardedTips(rec *Mutations, repoDir, slug, localTip, originTip str
 	return localTag, originTag, err
 }
 
-// deleteArchivedTaskBranch deletes warpBranch from origin, leased to leaseTip, under originTag and then from the repo at repoDir under localTag.
+// deleteArchivedTaskBranch deletes warpBranch from origin under originTag, leased to leaseTip.
+// It then deletes it from the repo at repoDir under localTag.
 // An empty tag skips that side.
-// A refused gate or a lost lease is returned as an error naming the branch, and a side not yet deleted is left in place.
+// A refused gate or a lost lease is returned as an error naming the branch,
+// and a side not yet deleted is left in place.
 func deleteArchivedTaskBranch(rec *Mutations, repoDir, warpBranch, localTag, originTag, leaseTip string) (localDeleted, originDeleted bool, err error) {
 	if originTag != "" {
 		originDeleted, err = deleteRemoteBranch(rec, remoteBranchRequest{

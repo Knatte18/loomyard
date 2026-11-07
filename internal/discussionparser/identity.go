@@ -1,5 +1,6 @@
 // identity.go implements IdentityText, the decision record's identity under re-entry.
-// It strips what the record's two write paths add after the Discussion, so only the reviewed text decides whether the record changed.
+// It strips what the record's two write paths add after the Discussion.
+// Only the reviewed text decides whether the record changed.
 
 package discussionparser
 
@@ -10,7 +11,7 @@ import (
 // IdentityText returns record without what a settle and `lym loom decision add` write into it:
 // every `<!-- lym:carry-over … -->` block of the `## Open risks` section, marker lines included,
 // and every `### Added after Discussion (…)` entry of the `## Decisions` section.
-// Each removal takes the blank line that separated the block from the line above it, as WriteCarryOver's removal and AppendDecision's insertion do,
+// Each removal also takes the blank line above the block,
 // so a record with such blocks and the same record without them give equal text.
 // Every other byte stays, so an edit anywhere else changes the text.
 // A section that is missing, or a carry-over marker set that is malformed, removes nothing from that section.
@@ -65,7 +66,8 @@ type lineSpan struct {
 	first, last int
 }
 
-// addedDecisionSpans returns the line index of the `## Decisions` heading, -1 when the record has none, and the span of every added-decision entry of that section, in order.
+// addedDecisionSpans returns the line index of the `## Decisions` heading, or -1 when the record has none.
+// It also returns the span of every added-decision entry of that section, in order.
 // An entry runs from its heading to its last non-blank line before the next heading of any level.
 func addedDecisionSpans(lines []string, fenced []bool) (head int, spans []lineSpan) {
 	head, end := -1, len(lines)

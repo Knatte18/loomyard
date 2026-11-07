@@ -1,6 +1,5 @@
-// mergelifecycle.go implements the merge lifecycle quartet — MergeContinue, MergeAbort,
-// MergeInProgress — and the shared conclude phase concludeMergeSides that MergeIn (merge.go) and
-// MergeContinue both land through.
+// mergelifecycle.go implements the merge lifecycle verbs MergeContinue, MergeAbort and MergeInProgress.
+// It also holds concludeMergeSides, the conclude phase that MergeIn and MergeContinue both run.
 
 package fabricengine
 
@@ -14,34 +13,25 @@ import (
 )
 
 // concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
-// caller's already-held write lock: warp first, then weft, in that fixed order.
-// The weft arm is retained deliberately, for cross-binary record compatibility, not because a weft
-// conclude can still be produced: MergeIn and Merge now write WeftOutcome as mergeOutcomeAlreadyUpToDate
-// from their first checkpoint onward, so this arm's own st.WeftOutcome != mergeOutcomeAlreadyUpToDate
-// guard skips it on every record this binary produces, and it is reachable only for a fabric-merge.json
-// record a binary predating this change left behind, where WeftOutcome can legitimately be "staged".
-// A side whose recorded outcome is fast_forwarded or up_to_date is skipped — no commit is fabricated
-// on a no-op side — and a side whose committed SHA is already recorded is skipped too, for
-// idempotency across a resumed MergeContinue.
-// Idempotency also covers a conclude the record never learned about: a crash (or I/O failure)
-// between a side's `git commit` and the record re-save leaves that side's commit landed with its
-// recorded SHA still empty, and re-running `git commit` there fails forever on a clean tree.
-// sideConcludeAlreadyLanded detects that shape — by git parentage, not by HEAD movement alone — and
-// the landed commit is adopted into the record instead of re-committed, so MergeContinue finishes
-// the states MergeAbort's concludeLandedReason refuses to destroy.
-// The two are deliberately not exact mirrors: concludeLandedReason over-refuses on an ambiguous
-// read, while adoption refuses on one, so a squash record and a HEAD that moved for some other
-// reason stay honestly stuck rather than being claimed as a successful conclude.
-// Every caller must have established that both recorded outcomes are non-empty first: an empty
-// outcome means MergeStart never ran on that side, and concluding it would commit one side of a
-// merge whose other side does not exist. MergeIn and Merge satisfy that by construction;
-// MergeContinue enforces it explicitly via mergeAttemptIncompleteReason.
-// Message precedence is explicit msg, then st.Message, then empty — an empty effective message
-// concludes via MergeConclude("")'s git-prepared MERGE_MSG/SQUASH_MSG.
-// After each side lands, its new SHA is written into st's committed field and saved, and
-// KindMergeCommitted is recorded (Target = checkout path, Detail = new SHA).
-// If a conclude fails on either side (whichever landed first or second), nothing is rolled back:
-// the record is retained, the git failure is logged internally, and *ErrMergeIncomplete is returned.
+// caller's already-held write lock: warp first, then weft.
+// The weft arm covers records an older binary wrote, where WeftOutcome can be "staged".
+// Records this binary writes carry mergeOutcomeAlreadyUpToDate on the weft side, so the arm's guard skips it.
+// A side whose recorded outcome is fast_forwarded or up_to_date is skipped, so no commit is fabricated on it.
+// A side whose committed SHA is already recorded is skipped too, which keeps a resumed MergeContinue idempotent.
+// A crash or I/O failure between a side's `git commit` and the record re-save leaves the commit landed unrecorded.
+// A re-run `git commit` then fails on the clean tree.
+// The conclude check adopts such a commit into the record when git parentage shows it is this merge's conclude.
+// MergeContinue then finishes the states that MergeAbort must not destroy.
+// Every caller must have established that both recorded outcomes are non-empty first.
+// An empty outcome means the merge never started on that side.
+// Concluding it would commit one side of a merge whose other side does not exist.
+// MergeContinue enforces this before the call.
+// The effective message is the explicit msg, then the record's Message, then empty.
+// An empty message makes git use the message it prepared for the merge.
+// After each side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
+// Its target is the checkout path and its detail is the SHA.
+// If a conclude fails on either side, nothing is rolled back.
+// The record is kept, the git failure is logged, and *ErrMergeIncomplete is returned.
 func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) error {
 	effectiveMsg := msg
 	if effectiveMsg == "" {
@@ -97,58 +87,48 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	return nil
 }
 
-// sideConcludeAlreadyLanded reports whether one side already carries THIS merge's conclude-commit
+// sideConcludeAlreadyLanded reports whether one side already carries this merge's conclude-commit
 // under a record that never learned about it, returning the landed SHA for adoption when it does.
-// The shape it detects is the crash between a side's `git commit` and the record re-save: the
-// caller's arm has already established the side's outcome is staged/conflicted with no recorded
-// conclude SHA, so a commit really landed there and only the bookkeeping is missing.
+// The shape it detects is the crash between a side's `git commit` and the record re-save.
+// The caller has already established that the side's outcome is staged or conflicted with no recorded
+// conclude SHA, so a commit may have landed there with only the bookkeeping missing.
 //
-// Adoption demands positive, discriminating evidence — it is a CLAIM, not a refusal, and the two
-// resolve an ambiguity in opposite directions. concludeLandedReason's sideConcludeMayHaveLanded
-// reads "HEAD moved off the recorded pre-merge start" to REFUSE MergeAbort, which is safe when the
-// read is ambiguous because the cost of over-refusing is a stuck merge the operator can inspect.
-// Reading the same ambiguous signal to claim a successful adopt is not safe, and was a real defect:
-// the signal is satisfied by ANY commit landed on the checkout while the record was live, so an
-// operator's plain `git merge --abort` followed by one unrelated commit made MergeContinue adopt
-// that unrelated commit, report committed:true naming it, and delete the record — leaving the merge
-// source un-merged with nothing left to inspect. A silent false success.
+// Adoption claims success, so it must not act on an ambiguous signal.
+// Refusing on HEAD moving off the recorded pre-merge start is safe.
+// Over-refusing leaves a stuck merge the operator can inspect.
+// Claiming success on that signal is not safe.
+// Any commit landed on the checkout while the record was live satisfies it.
+// A claim on that signal could adopt an unrelated commit and report the merge as committed.
 //
-// The evidence is git's own parentage, and it is exact rather than heuristic. fabric starts a
-// non-squash merge with `git merge --ff --no-commit <sourceSHA>`, so git writes exactly that SHA
-// into MERGE_HEAD and the resulting conclude-commit has exactly two parents: the pre-merge start
-// first, the merge source second. All five of these must hold before a commit is adopted:
+// The evidence is git's own parentage, which is exact rather than heuristic.
+// fabric starts a non-squash merge with `git merge --ff --no-commit <sourceSHA>`, so MERGE_HEAD holds
+// exactly that SHA, and the conclude-commit has exactly two parents: the pre-merge start first, the
+// merge source second.
+// All five of these must hold before a commit is adopted:
 //   - HEAD moved off the recorded pre-merge start,
 //   - no live MERGE_HEAD (the merge is finished, not still concludable),
 //   - the record is not a squash (see below),
 //   - the record carries a resolved source SHA for this side,
-//   - HEAD is a merge commit with EXACTLY two parents: the recorded start first, the recorded
+//   - HEAD is a merge commit with exactly two parents: the recorded start first, the recorded
 //     source SHA second.
 //
-// The parent test is exact equality on both position and arity, deliberately not "at least two
-// parents, with the source somewhere among them". That looser reading admitted a commit fabric can
-// never produce: an operator who discards the staged merge and then merges the recorded source
-// TOGETHER with an unrelated branch — `git merge <source> <other>` — lands a genuine octopus whose
-// first parent is the recorded start and whose second is the recorded source, and the loose test
-// adopted it. fabric then reported committed:true naming that commit, recorded correspondence, and
-// deleted the record, while the checkout carried <other>'s content that no side of this merge ever
-// brought in and that no merge_staged entry accounts for.
-// Requiring exactly two parents rejects nothing fabric or its documented recovery route creates:
-// `git commit --no-edit` over a live MERGE_HEAD, and `reset --hard <start>` followed by
-// `git merge <source>`, both yield exactly two parents in exactly that order.
+// The parent test is exact on both position and count.
+// A commit with more parents, or with the source in another position, is not this merge's conclude.
+// That holds even when such a commit contains the source.
+// Fabric's own conclude (`git commit --no-edit` over a live MERGE_HEAD) produces exactly two parents in that order.
+// So does resetting to the start and merging the source, and the test rejects neither route.
 //
-// A squash conclude is deliberately never adopted. `git merge --squash` writes no MERGE_HEAD and
-// its conclude is an ORDINARY one-parent commit, so it carries no evidence distinguishing it from
-// any other commit an operator might have landed — the non-squash predicate cannot be silently
-// inherited there. Refusing keeps the honest, pre-fix behaviour: the re-run `git commit` fails on
-// the clean tree and *ErrMergeIncomplete comes back with the record retained.
-// An empty recorded source SHA — a record written by a binary older than this evidence — refuses
-// for the same reason: no evidence is not satisfied evidence.
+// A squash conclude is never adopted.
+// `git merge --squash` writes no MERGE_HEAD.
+// Its conclude is an ordinary one-parent commit, with no evidence separating it from other commits.
+// Refusing leaves the re-run `git commit` to fail on the clean tree.
+// It returns *ErrMergeIncomplete with the record retained.
+// An empty recorded source SHA, which a record without one carries, refuses too.
+// No evidence is not satisfied evidence.
 //
-// Adoption is recorded as KindMergeCommitted by the caller even though this call ran no `git
-// commit`: the commit is this merge's own conclude, and the resumed call is the first one whose
-// record can honestly account for it.
-// Probe failures propagate raw rather than as *ErrMergeIncomplete — nothing has been mutated yet,
-// matching MergeContinue's own pre-lock probes.
+// The caller records an adoption as KindMergeCommitted, although this call ran no `git commit`.
+// The commit is this merge's own conclude.
+// Probe failures return raw rather than as *ErrMergeIncomplete, because nothing has been mutated yet.
 func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squash bool) (sha string, landed bool, err error) {
 	head, err := repo.CurrentSHA()
 	if err != nil {
@@ -178,22 +158,18 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 	return head, true, nil
 }
 
-// unifiedRemainingConflicts maps the paths still unmerged on each side onto the same unified,
-// worktree-relative list MergeIn's own conflict result reports, so MergeContinue's unresolved-conflicts
-// refusal can name them instead of only asserting that some exist.
-// Without it the refusal was un-actionable in the one flow that most needs it: an operator who resolved
-// and staged some of the reported paths and not all of them gets "unresolved conflicts remain" naming
-// nothing, cannot re-run merge-in to reprint the list (a merge is already in progress), and — for a
-// weft-side conflict — cannot see the remaining path from the visible worktree at all, since plain
-// `git status` there does not reach through the junction. The only route back to the list was raw git
-// inside the weft checkout, the one place the Fabric illusion says an operator never has to look.
+// unifiedRemainingConflicts maps the paths still unmerged on each side onto one worktree-relative list,
+// so the unresolved-conflicts refusal can name them instead of only asserting that some exist.
+// Without the list, that refusal gives the operator nothing to act on.
+// A merge is already in progress, so merge-in cannot reprint the paths.
+// For a weft-side conflict, the remaining path sits behind the junction and plain `git status` does not reach it.
 //
-// It is best-effort by design and never turns a precondition failure into a different error: a geometry
-// read that fails is logged and yields no paths, because the caller is already returning the refusal
-// that matters and replacing it with an unrelated I/O error would hide the actual precondition.
-// An unmappable path yields NO list at all rather than a partial one. A list that silently omitted a
-// path the operator must still resolve would mislead them about what is left — the same judgment
-// unifyConflictPaths' own unmappable arm makes when it refuses to report a misleading path.
+// The lookup is best-effort and never turns a precondition failure into a different error.
+// A geometry read that fails is logged and yields no paths.
+// The caller is already returning the refusal that matters.
+// An I/O error from this read would hide the actual precondition.
+// An unmappable path yields no list at all.
+// A partial list would silently omit a path the operator must still resolve.
 func (f *Fabric) unifiedRemainingConflicts(warpConflicts, weftConflicts []string) []string {
 	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
@@ -214,9 +190,9 @@ func (f *Fabric) unifiedRemainingConflicts(warpConflicts, weftConflicts []string
 	return unified
 }
 
-// mergeStateOrForeignErr resolves the disposition shared by MergeContinue and MergeAbort when no
-// fabric merge record exists: *ErrForeignMergeState when git-level merge state exists that fabric
-// did not start, *ErrNoMergeInProgress otherwise.
+// mergeStateOrForeignErr picks the refusal for a lifecycle verb that finds no fabric merge record:
+// It returns *ErrForeignMergeState when git-level merge state exists that fabric did not start.
+// Otherwise it returns *ErrNoMergeInProgress.
 func (f *Fabric) mergeStateOrForeignErr() error {
 	foreign, err := f.foreignMergeStatePresent()
 	if err != nil {
@@ -229,14 +205,13 @@ func (f *Fabric) mergeStateOrForeignErr() error {
 }
 
 // mergeAttemptIncompleteReason reports mergeReasonAttemptIncomplete when st records an empty outcome
-// for either side — the shape a crash between the two MergeStart calls (or before the first one)
-// leaves behind, since merge.go persists each side's outcome only once that side's MergeStart has
-// returned.
-// An empty outcome means the attempt never reached that side, so there is nothing there to conclude
-// and no way to finish the merge by concluding: MergeContinue must refuse the whole call before it
-// lands anything, leaving MergeAbort — which restores both sides from the recorded pre-merge SHAs
-// regardless of how far the attempt got — as the one correct recovery.
-// Both sides are inspected unconditionally, and the single aggregated reason names neither.
+// for either side.
+// A crash before or between the two MergeStart calls leaves that shape.
+// The shape occurs because merge.go persists each side's outcome only after that side's MergeStart returns.
+// An empty outcome means the attempt never reached that side, so there is nothing there to conclude.
+// MergeContinue must refuse the whole call before it lands anything.
+// MergeAbort is then the one correct recovery: it resets the warp side to its recorded pre-merge SHA.
+// Both sides are checked unconditionally, and the one aggregated reason names neither.
 func mergeAttemptIncompleteReason(st *mergeState) []string {
 	if st.WarpOutcome == "" || st.WeftOutcome == "" {
 		return []string{mergeReasonAttemptIncomplete}
@@ -244,40 +219,36 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 	return nil
 }
 
-// MergeContinue concludes an in-progress merge once every conflict has been resolved in the
-// worktree: with no record and no foreign git merge state it returns *ErrNoMergeInProgress; with no
-// record but foreign state present it returns *ErrForeignMergeState, leaving that state untouched.
-// Unmerged entries remaining on either side refuse with a *MergeGuardError carrying
-// mergeReasonUnresolvedConflicts, a record whose attempt never reached both sides refuses with
-// mergeReasonAttemptIncomplete, and a side about to be concluded whose live git merge is no longer the
-// one the record describes refuses with mergeReasonRecordedMergeGone (recordedMergeGoneReason); all
-// three are aggregated into one error, so which precondition failed never discloses evaluation order.
-// The combined write lock is acquired BEFORE the record is read and the guards run — never after —
-// so no concurrent lifecycle verb can retire or advance the record between what this call checked
-// and what it acts on (see the in-body comment for the raced-MergeContinue shape that ordering
-// closes). It then runs concludeMergeSides with msg as the optional
-// message override, records correspondence, deletes the merge-state record, and returns a
-// MergeResult whose Committed and AlreadyUpToDate are BOTH read off the record's own fields, never
-// hardcoded per return site — Committed true when the pair carries this merge's conclude-commit and
-// false when both sides only fast-forwarded or never moved, AlreadyUpToDate true when the attempt
-// had recorded both sides already carrying the resolved source.
-// AlreadyUpToDate is reachable here and not merely defensive: MergeIn/Merge's own pre-lock
-// up-to-date probe is deliberately unlocked, so a call that loses that race records up_to_date on
-// both sides, and a crash before its conclude leaves exactly that record for MergeContinue to
-// resume. Hardcoding false there made the resumed call disagree with what a strictly sequential run
-// of the same calls reports.
+// MergeContinue concludes an in-progress merge once every conflict has been resolved in the worktree.
+// With no record and no foreign git merge state it returns *ErrNoMergeInProgress.
+// With no record but foreign state present it returns *ErrForeignMergeState, leaving that state untouched.
+// Unmerged entries remaining on either side refuse with a *MergeGuardError carrying mergeReasonUnresolvedConflicts.
+// A record whose attempt never reached both sides refuses with mergeReasonAttemptIncomplete.
+// A side whose live git merge differs from the one the record describes refuses with mergeReasonRecordedMergeGone.
+// All three are aggregated into one error, so which precondition failed never discloses evaluation order.
+// The combined write lock is acquired before the record is read and the guards run,
+// so no concurrent lifecycle verb can retire or advance the record between the checks and the action.
+// It runs concludeMergeSides with msg as the message override.
+// It then records correspondence and deletes the merge-state record.
+// It returns a MergeResult whose Committed and AlreadyUpToDate come from the record's own fields.
+// Committed is true when the pair carries this merge's conclude-commit.
+// It is false when both sides only fast-forwarded or never moved.
+// AlreadyUpToDate is true when the attempt had recorded both sides already carrying the resolved source.
+// AlreadyUpToDate is reachable here, not only defensively.
+// The up-to-date probe that merge verbs run before the lock is unlocked.
+// A call that loses that race records up_to_date on both sides.
+// A crash before its conclude leaves exactly that record for this call to resume.
+// So the field comes from the record, not a constant.
 func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
-	// The lock comes FIRST, before the record is read and before any guard is evaluated. Evaluating
-	// them ahead of the lock read a state another lock holder could change before this call could
-	// act on it: a concurrent MergeContinue that concluded and deleted the record between this
-	// call's guard reads and its lock acquisition left it concluding from a stale record — adopting
-	// (and thereby resurrecting) a record the winner had already retired, and answering
-	// committed:true where a strictly sequential run of the same two calls answers
-	// *ErrNoMergeInProgress. Everything below the acquisition sees a state no other fabric writer
-	// can be mutating.
+	// The lock is taken before the record is read and before any guard runs.
+	// Guards evaluated ahead of the lock could read a state another lock holder changes before this call acts.
+	// A concurrent MergeContinue could conclude and delete the record in between.
+	// This call would then conclude from a stale record.
+	// It would answer committed:true, where a sequential run answers *ErrNoMergeInProgress.
+	// Everything below the acquisition sees a state no other fabric writer can be mutating.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
 		return MergeResult{}, err
@@ -346,34 +317,30 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	}, nil
 }
 
-// MergeAbort discards an in-progress merge, restoring the warp side alone to its pre-merge SHA — not
-// the weft, which is no longer a merge participant; see resetMergeSides for why it takes and resets
-// a warp SHA argument only. With no record and no foreign git merge state it returns
-// *ErrNoMergeInProgress; with no record but foreign state present it returns *ErrForeignMergeState,
-// the same rule as MergeContinue.
+// MergeAbort discards an in-progress merge, restoring the warp side alone to its pre-merge SHA.
+// The weft is not a merge participant, so this call leaves it alone.
+// With no record and no foreign git merge state it returns *ErrNoMergeInProgress.
+// With no record but foreign state present it returns *ErrForeignMergeState.
 // An attempt whose conclude may already have landed on the warp side refuses with a *MergeGuardError
-// carrying mergeReasonConcludeLanded (concludeLandedReason), before anything is reset: restoring
-// from the recorded pre-merge SHA would discard a commit that really landed, and in the
-// MergeIn-with-conflicts flow that commit carries the operator's own resolutions. MergeContinue is
-// the recovery for that shape, and it is idempotent across the resumed run.
-// The combined write lock is acquired BEFORE the record is read and that guard runs — never after —
-// so a conclude landing while this call waits for the lock is seen by the guard instead of being
-// destroyed by the reset (see the in-body comment for the raced shape that ordering closes).
-// It then resets the warp side via resetMergeSides — including a
-// fast-forwarded side and a side that never moved — then deletes the merge-state record and returns
-// MergeResult{} (Committed false).
+// carrying mergeReasonConcludeLanded (concludeLandedReason), before anything is reset.
+// Restoring from the recorded pre-merge SHA would discard a commit that landed.
+// In the merge-in-with-conflicts flow that commit carries the operator's own resolutions.
+// MergeContinue recovers that shape, and it is idempotent across a resumed run.
+// The combined write lock is acquired before the record is read and that guard runs,
+// so the guard sees a conclude that lands while this call waits, rather than the reset destroying it.
+// It then resets the warp side via resetMergeSides.
+// That reset covers a side that fast-forwarded or never moved.
+// It deletes the merge-state record and returns MergeResult{} with Committed false.
 func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
-	// The lock comes FIRST, before the record is read and before the conclude-landed guard is
-	// evaluated. This ordering is what makes the guard able to see a conclude that lands while this
-	// call waits: with the guard ahead of the lock, a concurrent MergeContinue that concluded and
-	// deleted the record between guard-eval and lock-acquire left this call to resetMergeSides
-	// (force: true) the freshly landed conclude commits — precisely the destruction
-	// concludeLandedReason exists to prevent — with deleteMergeState tolerating the record's absence
-	// so nothing ever noticed. Everything below the acquisition sees a state no other fabric writer
-	// can be mutating.
+	// The lock is taken before the record is read and before the conclude-landed guard runs.
+	// Taking the lock first lets the guard see a conclude that lands while this call waits.
+	// With the guard ahead of the lock, a concurrent MergeContinue could conclude and delete the record in between.
+	// This call would then force-reset the freshly landed conclude commits, the destruction the guard exists to prevent.
+	// deleteMergeState tolerates the record's absence, so nothing reports the loss.
+	// Everything below the acquisition sees a state no other fabric writer can be mutating.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
 		return MergeResult{}, err
@@ -410,10 +377,10 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	return MergeResult{Conflicts: mergeNoConflicts}, nil
 }
 
-// MergeInProgress reports whether fabric has a merge in progress on this pair: mergeRecordExists()'s
-// bare boolean, no MutationRecord (a read-only probe stays off the embed table by design).
-// It never consults foreignMergeStatePresent and never errors on foreign state: it answers "does
-// fabric have a merge in progress", which foreign plain-git state does not make true.
+// MergeInProgress reports whether fabric has a merge in progress on this pair.
+// It is a read-only probe: it returns no MutationRecord,
+// and it answers from fabric's own merge record alone.
+// It does not probe foreign plain-git merge state, which does not make a fabric merge in progress.
 func (f *Fabric) MergeInProgress() (bool, error) {
 	return f.mergeRecordExists()
 }

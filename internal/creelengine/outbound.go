@@ -1,4 +1,6 @@
-// outbound.go implements the sending half's delivery of mail across hubs: one worker per receiving hub that delivers the pending outbound messages with retries and returns them after an hour, and the settling of an outbound message.
+// outbound.go implements the sending half's delivery of mail across hubs.
+// It runs one worker per receiving hub that delivers the pending outbound messages with retries;
+// it returns a message still undelivered an hour after it was posted, and it settles each outbound message.
 
 package creelengine
 
@@ -15,7 +17,7 @@ import (
 )
 
 const (
-	// outboundRetryBase is the wait before the second attempt to deliver a message, and outboundRetryCeiling the longest wait between two attempts.
+	// outboundRetryBase is the wait before the second delivery attempt; outboundRetryCeiling caps the waits.
 	outboundRetryBase    = time.Second
 	outboundRetryCeiling = time.Minute
 	// outboundDeadline is how long an outbound message is tried, counted from its journaled post time.
@@ -28,7 +30,7 @@ const (
 	returnReasonMaxBytes = 200
 )
 
-// The reasons creel writes itself for a message that came back, as opposed to text the other hub's daemon wrote.
+// Codes creel writes itself as the reason a message came back undelivered.
 const (
 	codeConnectFailed = "connect-failed"
 	codeTimeout       = "timeout"
@@ -37,7 +39,7 @@ const (
 	codeBadAnswer     = "bad-answer"
 )
 
-// deliverOutcome is what one attempt to deliver a message made of the receiving hub's answer.
+// deliverOutcome is the result of one delivery attempt, built from the receiving hub's answer.
 type deliverOutcome struct {
 	// delivery is deliveryAccepted or deliveryRefused, and empty for an answer the worker retries.
 	delivery string
@@ -48,7 +50,9 @@ type deliverOutcome struct {
 }
 
 // quoteAnswer renders text another hub's daemon wrote so it reaches a notice only as quoted data.
-// Control characters, line breaks included, become spaces, the text is cut on a rune boundary to returnReasonMaxBytes, and it is wrapped in double quotes with its quote marks and backslashes escaped.
+// Control characters, line breaks included, become spaces;
+// the text is cut on a rune boundary to at most returnReasonMaxBytes bytes,
+// and it is wrapped in double quotes with its quote marks and backslashes escaped.
 func quoteAnswer(text string) string {
 	text = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
@@ -127,8 +131,10 @@ func (s *Store) settleDelivered(id, remoteID int64) error {
 	})
 }
 
-// settleReturned journals that the outbound message id came back undelivered for reason, answers a wait on its reply and tells its sender in a notice.
-// The strand listing is read before the lock, and a sender no longer listed gets no notice; a notice that fails to store is logged and undoes nothing.
+// settleReturned journals that the outbound message id came back undelivered for reason.
+// It answers a wait on its reply and tells its sender in a notice.
+// The strand listing is read before the lock, and a sender no longer listed gets no notice;
+// a notice that fails to store is logged and undoes nothing.
 // A message that is no longer pending is left alone.
 func (s *Store) settleReturned(id int64, reason string) error {
 	listing := s.listStrands()
@@ -186,7 +192,8 @@ func (s *Scheduler) wakeOutbound(hubPath string) {
 	go started.run()
 }
 
-// countHubStart counts one successful start of the daemon of the hub at hubPath; a start that failed to launch is not counted, since it started nothing.
+// countHubStart counts one successful start of the daemon of the hub at hubPath.
+// A start that failed to launch is not counted, since it started nothing.
 func (s *Scheduler) countHubStart(hubPath string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -208,7 +215,7 @@ func (s *Scheduler) hubAnswered(hubPath string) {
 	delete(s.hubCapWarned, hubPath)
 }
 
-// firstCapWarning reports whether this is the first time in the current episode that a connect to the hub at hubPath was refused for want of a start.
+// firstCapWarning reports whether this is the first cap warning for the hub at hubPath in the current episode.
 func (s *Scheduler) firstCapWarning(hubPath string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -229,7 +236,8 @@ type outboundWorker struct {
 
 // run attempts the oldest pending message of its hub and acts on the answer, until nothing is pending.
 // An accepted message is journaled delivered and a refused one returned at once.
-// Any other answer is retried after a wait that starts at outboundRetryBase and doubles to outboundRetryCeiling, capped at what is left of the message's hour, and a wake during the wait changes nothing.
+// Any other answer is retried after a wait that starts at outboundRetryBase and doubles to outboundRetryCeiling.
+// The wait is capped at what is left of the message's hour, and a wake during the wait changes nothing.
 // A transient answer at or past the hour returns the message with that answer as its reason.
 func (w *outboundWorker) run() {
 	defer w.scheduler.wg.Done()
@@ -269,7 +277,8 @@ func (w *outboundWorker) run() {
 	}
 }
 
-// retire removes the worker once nothing is pending; it reports false when something arrived meanwhile and the worker carries on.
+// retire removes the worker once nothing is pending;
+// it reports false when something arrived meanwhile and the worker carries on.
 func (w *outboundWorker) retire() bool {
 	s := w.scheduler
 	s.mu.Lock()
@@ -282,7 +291,8 @@ func (w *outboundWorker) retire() bool {
 }
 
 // conclude journals what answer decides for entry and reports whether the entry is settled.
-// A journal write that fails leaves the entry pending, logs one Warn per episode and counts as not settled, so the worker waits and tries again.
+// A journal write that fails leaves the entry pending and logs one Warn per episode;
+// it counts as not settled, so the worker waits and tries again.
 func (w *outboundWorker) conclude(entry outboundEntry, answer deliverOutcome) bool {
 	store := w.scheduler.store
 	var err error
@@ -305,7 +315,8 @@ func (w *outboundWorker) conclude(entry outboundEntry, answer deliverOutcome) bo
 	return true
 }
 
-// attempt makes one deliver call for entry to the daemon of its receiving hub, with no store lock held, and reads the answer.
+// attempt makes one deliver call for entry to the daemon of its receiving hub, with no store lock held;
+// it reads the answer.
 // The call starts that daemon when none answers, at most maxHubStarts times until a daemon answers a call.
 func (w *outboundWorker) attempt(entry outboundEntry) (answer deliverOutcome) {
 	scheduler := w.scheduler

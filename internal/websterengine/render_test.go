@@ -1,5 +1,4 @@
-// render_test.go covers the plan-directory display split the standalone Master fix introduced
-// (crucible round fable5-high-r3, F-A4).
+// render_test.go covers the plan-directory display for hub and standalone geometry.
 
 package websterengine
 
@@ -11,16 +10,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPlanDirDisplay proves hub geometry keeps the plan directory's byte-exact relative "_lym/plan" spelling, standalone geometry gets the absolute plan directory no relative spelling reaches from the pane's cwd, and the card pointers re-root onto whichever display applies.
+// TestPlanDirDisplay proves hub geometry keeps the plan directory's byte-exact relative "_lym/plan" spelling.
+// It proves standalone geometry gets the absolute plan directory.
+// No relative spelling reaches that directory from the pane's cwd.
+// It also proves the card pointers re-root onto whichever display applies.
 //
 //testtiming:keep pins both geometries' plan-directory display and the card pointers re-rooted onto it byte for byte; the covering begin-batch and render tests each reach one geometry
 func TestPlanDirDisplay(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	// The base is always the PANE's cwd: hub geometry's pane runs at the anchor the plan junction
-	// hangs off, standalone geometry's pane runs at the target repo while the plan lives in the
-	// derived state directory — outside the pane cwd by construction.
+	// The base is always the PANE's cwd.
+	// Hub geometry's pane runs at the anchor the plan junction hangs off.
+	// Standalone geometry's pane runs at the target repo, while the plan lives in the derived state directory.
+	// That directory lies outside the pane cwd by construction.
 	paneCwd := filepath.Join(string(filepath.Separator), "hub", "worktree")
 	standalone := filepath.Join(string(filepath.Separator), "state", "lym", "abcd1234", "_lym", "plan")
 	cards := []planparser.Card{{SourcePath: "_lym/plan/01-alpha.md"}, {SourcePath: "_lym/plan/02-beta.md"}}

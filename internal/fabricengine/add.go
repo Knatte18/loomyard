@@ -1,8 +1,6 @@
-// add.go implements the transactional Add: it creates the warp and weft worktrees, wires junctions, writes launchers, and records and commits the pair's parent-branch and parent-worktree provenance, pushing nothing.
-// It performs a best-effort full rollback on any post-creation failure, so a partial worktree PAIR is never left behind.
-// The rollback also deletes the warp branch this Add created, under any branch_prefix, and never touches origin — see rollbackAdd.
-// Whether the pair is live, which branches origin lends it and whether a leftover remote branch from a removed pair is replaceable are all decided at pre-flight, before the first mutation (see remoteleftover.go).
-// The weft side always uses the suffixed branch produced by RecordsBranchName.
+// add.go implements Add, which creates a paired warp and weft worktree, wires its junctions and writes its launchers.
+// A failure after the first worktree is made rolls the whole pair back, best-effort, and never touches origin.
+// The pre-flight decides, before the first mutation, whether the pair is live and what origin lends it.
 
 package fabricengine
 
@@ -22,24 +20,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// addBeforeWeftReplaceHook, when non-nil, runs at step 11 just before an archived leftover weft branch is replaced.
-// It is nil in production; only a non-parallel test sets it, through SetAddBeforeWeftReplaceHookForTest.
+// addBeforeWeftReplaceHook, when non-nil, runs just before an archived leftover weft branch is replaced.
+// It is nil in production; only a non-parallel test sets it, through `SetAddBeforeWeftReplaceHookForTest`.
 var addBeforeWeftReplaceHook func()
 
-// addFailAfterWarpHook, when non-nil, runs right after the warp worktree exists; a non-nil error from it fails the add there, so a test reaches the rollback of a created and of an adopted warp branch.
-// It is nil in production; only a non-parallel test sets it, through SetAddFailAfterWarpHookForTest.
+// addFailAfterWarpHook, when non-nil, runs right after the warp worktree exists.
+// A non-nil error from it fails the add there, so a test reaches rollback of both a created and an adopted warp branch.
+// It is nil in production; only a non-parallel test sets it, through `SetAddFailAfterWarpHookForTest`.
 var addFailAfterWarpHook func() error
 
-// AddOptions controls optional behaviour for Add.
-// SkipGit or SkipPush skips the origin probes and the archived-leftover replacement, leaving a pair live only by a local weft branch.
-// Tests pass these directly instead of relying on environment variables, which makes t.Parallel()
-// safe.
+// AddOptions holds the optional settings that change how a worktree pair is created.
+// Setting SkipGit or SkipPush skips the origin probes and the archived-leftover replacement.
+// A pair is then live only by a local weft branch.
+// Tests set these fields directly, not through environment variables, which keeps them safe under t.Parallel().
 type AddOptions struct {
 	// SkipGit skips all git operations of the records helpers if true.
 	SkipGit bool
 	// SkipPush skips push operations if true.
 	SkipPush bool
-	// BackoffSleep sleeps one delay of the backoff a push waits out before it records a branch gone from origin or an unreachable origin; nil sleeps for the delay.
+	// BackoffSleep sleeps for one delay of the backoff that a push waits out.
+	// A push waits it out before it records a branch gone from origin or an unreachable origin.
+	// Nil sleeps for the delay.
 	BackoffSleep func(time.Duration)
 	// Parent is the slug of the hub pair the new pair forks from, its last commit and its records branch.
 	// Empty forks from the acting worktree's HEAD and refuses its tracked dirt.
@@ -48,23 +49,24 @@ type AddOptions struct {
 	Beam bool
 	// AdoptLocal makes the pair over a local warp branch that already exists, instead of refusing with ErrBranchExists.
 	// The adopted branch is checked out into the new worktree and is never deleted by a rollback.
-	// The flag sets it, and otherwise only batten's resume does, together with AdoptOnly, to re-make a live pair; an unattended run never adopts a stale branch left under a reused slug.
+	// The `--adopt-local` flag sets it, and so does a resume of a pair, together with AdoptOnly, to re-make a live pair.
+	// An unattended run never adopts a stale branch left under a reused slug.
 	AdoptLocal bool
 	// AdoptOnly makes Add re-make a live pair and never fork one.
 	// It is set only together with AdoptLocal.
-	// A weft branch that is absent locally and on origin, or whose origin tip an archive tag covers, and a task branch that is neither local nor on origin, are refused with *ErrNotLive before any mutation.
-	// It skips every check that guards only a fork: the source dirt, the acting worktree's HEAD, the fork point's marker and the parent; an adopted weft with no origin record is written none.
-	// A records worktree that stands registered on the weft branch is reused rather than refused.
 	AdoptOnly bool
 	// Anchor is the directory of the warp checkout the new pair takes as its anchor, relative to the warp root.
 	// Empty, or equal to the fork point's anchor, keeps the fork point's own.
 	// It is set only by a command naming the flag, and a pair over an existing weft branch refuses it.
 	Anchor string
 	// Hold, when set, takes a lock the caller serializes the hub's worktree writes under and returns its release.
-	// Add takes it once its origin probes have started and before it reads the fork point, and releases it when it returns, so the hold covers only the probe time left when Add waits for the probes under it.
+	// Add takes it once its origin probes have started and before it reads the fork point,
+	// and it releases it when Add returns.
+	// The hold therefore covers only the probe time left when Add waits for the probes under it.
 	// An error from Hold is returned as is, before any mutation.
-	// Add calls Hold while it holds the pair's teardown lock, so a Hold that waits on a lock whose holder is waiting for this pair's teardown lock stalls both until the teardown wait runs out;
-	// it is safe only because a pair is never created and removed at once.
+	// Add calls Hold while it holds the pair's teardown lock.
+	// If Hold waits on a lock whose holder waits for this pair's teardown lock, both stall until the wait runs out.
+	// Calling Hold under that lock is safe only because a pair is never created and removed at once.
 	Hold func() (release func(), err error)
 }
 
@@ -73,8 +75,8 @@ func (o AddOptions) syncOptions() SyncOptions {
 	return SyncOptions{SkipGit: o.SkipGit, SkipPush: o.SkipPush, BackoffSleep: o.BackoffSleep}
 }
 
-// AddResult contains the result of successfully adding a new worktree pair.
-// It embeds MutationRecord, which carries the mutation record accumulated over the call.
+// AddResult describes a newly created worktree pair by its slug, branch and path.
+// It embeds MutationRecord, which records the mutations accumulated over the call.
 type AddResult struct {
 	MutationRecord
 	Slug   string `json:"slug"`
@@ -82,19 +84,18 @@ type AddResult struct {
 	Path   string `json:"path"`
 }
 
-// ErrBranchExists is Add's refusal when the warp branch a slug would create already exists.
-// It is a typed error so a caller standing somewhere the remedy below is wrong for -- the hub's
-// prime, where "lym fabric checkout" switches prime itself -- can recognise the refusal and word
-// its own.
-// Remove deliberately leaves the warp branch behind (it may carry unmerged work), so
-// remove-then-re-add of the same slug lands here, and the message names the way forward rather
-// than a bare "already exists".
+// ErrBranchExists reports that the warp branch a slug would create already exists.
+// It is a typed error so a caller can recognise the refusal and word its own remedy.
+// The message's remedy is wrong for a caller on the hub's prime, where `lym fabric checkout` switches prime itself.
+// Removing a pair leaves its warp branch behind, since the branch may carry unmerged work.
+// So re-adding a removed slug reaches this refusal.
+// The message names the way forward rather than a bare "already exists".
 type ErrBranchExists struct {
 	// Branch is the existing warp branch, prefix included.
 	Branch string
 }
 
-// Error implements the error interface, naming the three ways out for a caller inside a pair.
+// Error implements the error interface, naming the ways out for a caller inside a pair.
 func (e *ErrBranchExists) Error() string {
 	return fmt.Sprintf(
 		"branch %q already exists; switch a pair onto it with \"lym fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair; or make a pair over it with \"lym fabric add <slug> --adopt-local\"",
@@ -102,8 +103,8 @@ func (e *ErrBranchExists) Error() string {
 	)
 }
 
-// ErrSourceDirty is Add's refusal when the source worktree has tracked uncommitted changes.
-// It is a typed error so a caller that checks the same condition before an add can read the paths the add would refuse on.
+// ErrSourceDirty reports that the source worktree has tracked uncommitted changes.
+// It is a typed error so a caller that checks the same condition before an add can read the paths it would refuse on.
 type ErrSourceDirty struct {
 	// Paths are the tracked uncommitted paths of the source worktree, relative to it.
 	Paths []string
@@ -115,7 +116,7 @@ func (e *ErrSourceDirty) Error() string {
 }
 
 // SourceDirtyPaths returns the tracked uncommitted paths of the source worktree l names, relative to it.
-// Untracked files never count, so an empty result is the condition under which Add accepts the source.
+// Untracked files never count, so an empty result means the source has no tracked changes.
 func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 	absolute, err := trackedDirtyPaths(l.WorktreePath())
 	if err != nil {
@@ -132,55 +133,80 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 	return relative, nil
 }
 
-// Add creates a new paired warp and weft git worktree with the given slug.
-// It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
-// parent-branch and parent-worktree provenance (the acting worktree's name), rolling back all changes on any failure.
-// It pushes neither branch: both are left committed locally for the caller to push, as SpawnPairPush does.
-// Right after the slug is validated and before any origin probe or mutation, Add takes the slug's teardown lock exclusive and holds it to its return, rollback included, waiting at most the topology's teardown wait;
-// when the wait runs out it returns, before any mutation, an error wrapping ErrPairPushRunning that names re-running the command that made the pair.
-// The caller's push of the new pair runs after Add has released the lock and takes it shared.
-// The origin probes then start in the background, and opts.Hold, when set, is taken before the fork point is read and held to Add's return;
-// every return waits for the probes, a refusal before them included.
-// A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the run-records root never reaches the new worktree's disk,
-// and the pair's first weft commit (the origin record's) also records the root's deletion.
+// Add creates a paired warp and weft git worktree for the given slug.
+// It validates the slug, creates both worktrees and wires junctions.
+// It records and commits the pair's parent-branch and parent-worktree provenance (the acting worktree's name).
+// It rolls back all changes on any failure.
+// It pushes neither branch; both stay committed locally for the caller to push.
+// Once the slug is validated, Add takes the slug's teardown lock exclusively, before any origin probe or mutation.
+// It holds the lock until it returns, rollback included, and it waits at most the topology's teardown wait.
+// When the wait runs out, it returns an error wrapping ErrPairPushRunning, before any mutation.
+// That error names re-running the command that made the pair.
+// The caller's push of the new pair runs after Add has released the lock, and it takes the lock shared.
+// The origin probes start in the background, and every return waits for them, a refusal before them included.
+// A newly forked weft branch does not inherit the parent's shed run records.
+// The fork is no-checkout, so the run-records root never reaches the new worktree's disk,
+// and the pair's first weft commit, the origin record's, also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
-// A pair is live when its weft branch exists locally, or on origin with no archive/<slug>/* tag covering its tip (tags are consulted only when there is no local branch).
+// A pair is live when its weft branch exists locally, or on origin with no `archive/<slug>/*` tag covering its tip.
+// Tags are consulted only when there is no local branch.
 // A live pair is adopted rather than forked.
-// The weft branch comes from the local copy, with a behind local copy fast-forwarded to origin's tip, or else from origin as a local tracking branch;
-// the warp branch comes from origin when it is there, whatever its relation to HEAD.
+// The weft branch comes from the local copy, which is fast-forwarded to origin's tip when it is behind.
+// Without a local copy, it comes from origin as a local tracking branch.
+// The warp branch comes from origin when it is there, whatever its relation to HEAD.
 // A weft worktree that already carries the origin record keeps it,
 // so a task moved between machines keeps its recorded parent.
-// Under SkipGit or SkipPush no origin is consulted: the pair is live only by a local weft branch,
-// and the warp branch forks from HEAD.
-// Once its pre-flight refusals have passed and before its first mutation, Add sets gc.auto=0 and maintenance.auto=false in both hub stores;
-// a failure there is logged and never fails the Add.
-// Then Add drops the remote-tracking ref and the upstream setting of each branch the probes read absent on origin, a removed pair's weft or warp branch deleted there,
-// so a reconcile before the new pair's first push does not read the branch as gone; a drop that fails fails the Add before any worktree is made, naming the branch.
-// The dropped ref names a branch origin does not hold, so no origin head is lost, and a rollback restores neither the ref nor the setting.
+// Under SkipGit or SkipPush no origin is consulted:
+// the pair is live only by a local weft branch, and the warp branch forks from HEAD.
+// Add sets gc.auto=0 and maintenance.auto=false in both hub stores.
+// It does so once its pre-flight refusals have passed and before its first mutation.
+// A failure there is logged and never fails the Add.
+// Add then drops the remote-tracking ref and the upstream setting of each branch the probes read as absent on origin.
+// Such a branch is a removed pair's weft or warp branch deleted there.
+// The drop keeps a reconcile before the new pair's first push from reading the branch as gone.
+// A drop that fails fails the Add before any worktree is made, and the error names the branch.
+// The dropped ref names a branch origin does not hold, so no origin head is lost.
+// A rollback restores neither the ref nor the setting.
 // An existing local warp branch is refused with ErrBranchExists, unless opts.AdoptLocal adopts it.
-// An AdoptLocal add refuses, before any mutation, a warp branch checked out in another worktree and a records branch checked out in another records worktree with an *ErrAdoptLocalCheckedOut, naming the worktree and the way forward.
-// A records worktree directory that stands without being a registered worktree refuses with *ErrRecordsWorktreeNotPair, and a task worktree path that exists with *ErrTaskPathTaken.
-// With opts.AdoptOnly, Add re-makes a live pair and forks nothing: a weft branch that is not live is refused with *ErrNotLive (Records true), and so is a task branch that is neither local nor on origin, each matching ErrPairNotLive, before any mutation.
-// It checks no source dirt, reads no HEAD, resolves no parent and checks no fork point, and an adopted weft with no origin record is written none.
-// The adopted local task branch is never fetched or replaced from origin, and a records branch checked out in another records worktree is refused even when the task branch comes from origin.
-// A records worktree that stands registered, not prunable, on the weft branch is reused: Add makes only the task worktree, wires the pair to it and, for a behind weft branch, fast-forwards the branch inside that worktree;
-// a rollback leaves the reused worktree and its branch in place.
-// When the adopted branch is the warp's default branch the origin record names no parent branch and no parent worktree, a root pair.
-// With opts.Parent naming a pair of the hub, the warp branch forks from that pair's last commit and the weft branch from its records branch, the origin record names the parent's branch and slug,
-// and no tracked dirt is checked in either worktree; a parent that cannot be forked from is refused before any mutation.
-// A forked pair takes the anchor of its fork point, the named parent or else the acting worktree, through the marker its weft branch inherits:
-// its launchers, junctions, scratch link and origin record sit at that anchor.
+// With opts.AdoptLocal, Add refuses before any mutation a warp branch checked out in another worktree.
+// It also refuses a records branch checked out in another records worktree.
+// Both refusals are *ErrAdoptLocalCheckedOut, which names the worktree and the way forward.
+// A records worktree directory that is not a registered worktree is refused with *ErrRecordsWorktreeNotPair.
+// A task worktree path that already exists is refused with *ErrTaskPathTaken.
+// With opts.AdoptOnly, Add re-makes a live pair and forks nothing.
+// A weft branch that is not live is refused with *ErrNotLive (Records true).
+// A task branch that is neither local nor on origin is refused with *ErrNotLive too.
+// Both match ErrPairNotLive, and both are refused before any mutation.
+// It checks no source dirt, reads no HEAD, resolves no parent and checks no fork point.
+// An adopted weft with no origin record is written none.
+// The adopted local task branch is never fetched or replaced from origin.
+// A records branch checked out in another records worktree is refused even when the task branch comes from origin.
+// A records worktree that is registered, not prunable, and on the weft branch is reused.
+// Add then makes only the task worktree and wires the pair to it.
+// For a behind weft branch, Add fast-forwards the branch inside the reused worktree.
+// A rollback leaves the reused worktree and its branch in place.
+// When the adopted branch is the warp's default branch, the pair is a root pair.
+// Its origin record names neither a parent branch nor a parent worktree.
+// With opts.Parent naming a pair of the hub, the warp branch forks from that pair's last commit.
+// The weft branch forks from that pair's records branch, and the origin record names the parent's branch and slug.
+// Add does not check the tracked dirt of either worktree,
+// and a parent that cannot be forked from is refused before any mutation.
+// A forked pair takes the anchor of its fork point through the marker its weft branch inherits.
+// The fork point is the named parent, or else the acting worktree.
+// The pair's launchers, junctions, scratch link and origin record sit at that anchor.
 // A fork point whose own marker is present but empty is refused before any mutation.
-// With opts.Anchor naming another directory, the pair takes that anchor instead:
-// the anchor is validated against the fork point's warp checkout before any mutation, the forked weft's content and marker are moved there in one commit under a move record,
-// and the record is removed once the pair is wired at the anchor.
+// With opts.Anchor naming another directory, the pair takes that anchor instead.
+// Add validates the anchor against the fork point's warp checkout before any mutation.
+// It then moves the forked weft's content and marker there in one commit under a move record,
+// and it removes that record once the pair is wired at the anchor.
 // A failure anywhere rolls the whole pair back, the record with it.
-// An adopted weft branch that already has an origin record keeps its parent fields; with opts.Beam the record gains the beam mark in an origin commit.
+// An adopted weft branch that already has an origin record keeps its parent fields.
+// With opts.Beam, the record gains the beam mark in an origin commit.
 func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	// (0) Slug validation, shared with Remove via slug.go's single validator.
+	// Validate the slug before any mutation.
 	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
 		return AddResult{}, err
 	}
@@ -194,7 +220,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := RecordsBranchName(warpBranch)
 
-	// A missing branch is an answer; a failed read is an error.
+	// A missing branch is not an error; a failed read is.
 	warpBranchExists, existsErr := gitrepo.New(l.WorktreePath()).BranchExists(warpBranch)
 	if existsErr != nil {
 		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, existsErr)
@@ -202,12 +228,16 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	warpAdopted := warpBranchExists
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
-	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at the caller's later push.
-	// Both probes run beside each other and beside the hold's wait and the pre-flight reads below, so the add waits on one round of network, and the hold covers only what is left of it when the probes are waited for.
-	// The answers are read only once the pre-flight refusals have passed, so a refusal keeps its precedence over a probe's error.
+	// Probe both origins before the first mutation to decide whether the pair is live.
+	// A leftover that cannot be replaced is refused here, rather than at the caller's later push.
+	// Both probes run beside each other and beside the hold's wait and the pre-flight reads below,
+	// so the add waits on one round of network, and the hold covers only what is left of it when the probes are waited for.
+	// The answers are read only once the pre-flight refusals have passed,
+	// so a refusal keeps its precedence over a probe's error.
 	probeOrigins := !opts.SkipPush && !opts.SkipGit
 	// A local warp branch being adopted is the pair's own, so origin's copy of it is not consulted.
-	// AdoptOnly is the exception: its probe only learns whether origin holds the branch, and the adopted branch is never fetched or replaced from origin.
+	// AdoptOnly is the exception: its probe only learns whether origin holds the branch,
+	// and the adopted branch is never fetched or replaced from origin.
 	probeWarp := probeOrigins && (!warpAdopted || opts.AdoptOnly)
 	var (
 		probes       sync.WaitGroup
@@ -241,7 +271,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		defer releaseHold()
 	}
 
-	// A named parent replaces the acting worktree as the fork point, and the fork takes its last commit only, so neither worktree's tracked dirt is checked.
+	// A named parent replaces the acting worktree as the fork point, and the fork takes its last commit only.
+	// The acting worktree's tracked dirt is then not checked, and a dirty parent is logged, not refused.
 	// An adopt-only add forks nothing, so it checks no source dirt, resolves no parent and checks no fork point.
 	var parent addParent
 	if !opts.AdoptOnly && opts.Parent != "" {
@@ -286,13 +317,15 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
 		}
 	}
-	// A requested anchor other than the fork point's is judged against the fork point's warp checkout, so a refusal leaves nothing created.
+	// A requested anchor other than the fork point's is judged against the fork point's warp checkout,
+	// so a refusal leaves nothing created.
 	anchorTo, err := newPairAnchor(fork, opts.Anchor)
 	if err != nil {
 		return AddResult{}, err
 	}
 	// pairAt is the Location the new pair's launchers, junctions, scratch link and origin record are built at.
-	// An adopted weft branch carries its own anchor, and the adopt step below replaces pairAt with the adopted pair's Location.
+	// An adopted weft branch carries its own anchor,
+	// and the adopt step below replaces pairAt with the adopted pair's Location.
 	// A pair moved to a requested anchor takes it once the move has committed.
 	pairAt := fork
 
@@ -341,7 +374,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	// An adopt-only add also guards a records branch another records worktree holds when the task branch comes from origin, which would otherwise fail later as a plain worktree-add error.
+	// An adopt-only add also guards a records branch another records worktree holds when the task branch comes from origin.
+	// Otherwise the add would fail later with a plain worktree-add error.
 	if opts.AdoptLocal && (warpAdopted || (opts.AdoptOnly && weftBranchAlreadyExists)) {
 		reusedWeft := ""
 		if weftReused {
@@ -370,7 +404,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		parentWeftBranch, parentWorktree = RecordsBranchName(parentBranch), l.WorktreeName
 	}
 
-	// A pair over the warp's default branch is a root pair: its record names no parent, which batten's Land row refuses to land on.
+	// A pair over the warp's default branch is a root pair: its record names no parent, and landing a root pair is refused.
 	recordedParentBranch, recordedParentWorktree := parentBranch, parentWorktree
 	if opts.AdoptLocal && warpAdopted && !opts.AdoptOnly {
 		defaultBranch, err := warpDefaultBranch(l, opts)
@@ -432,7 +466,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "verb", "add", "slug", slug, "error", gcErr)
 	}
 
-	// A former pair's remote-tracking ref for a branch origin no longer holds would make the next reconcile read the new pair's unpushed branch as gone.
+	// A former pair's remote-tracking ref for a branch that origin does not hold is dropped here.
+	// Left in place, it would make the next reconcile read the new pair's unpushed branch as gone.
 	if err := dropStaleOriginTracking(l, weftBranch, weftOld.originAbsent, warpBranch, warpAbsentOnOrigin); err != nil {
 		return AddResult{}, err
 	}
@@ -464,8 +499,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		// The branch predates this call: rollbackAdd must leave it as it found it.
 		warpPush.adopted = true
 	} else {
-		// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
-		// not merely a worktree; a branch is a ref, so it records via AppendRef rather than Append.
+		// The `-b warpBranch` argument to the worktree add above means this same call created a branch, not merely a worktree.
+		// A branch is a ref, so it records via AppendRef rather than Append.
 		rec.AppendRef(KindBranchCreated, warpBranch, refDetail("code", l.WorktreePath(), warpRemote))
 		warpPush.tok = branchTok
 	}
@@ -478,8 +513,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	// Install the post-checkout hook now that the warp worktree exists.
-	// Hook installation is non-fatal: a failure is logged but does not abort
-	// Add or trigger the all-or-nothing rollback (the hook is belt-and-suspenders).
+	// Hook installation is non-fatal: a failure is logged,
+	// and it does not abort Add or trigger the all-or-nothing rollback (the hook is belt-and-suspenders).
 	if hookErr := InstallPostCheckoutHook(l); hookErr != nil {
 		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "add", "slug", slug, "error", hookErr)
 	}
@@ -494,7 +529,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	// A local weft branch behind origin advances to origin's tip.
 	// git refuses a fetch into a branch that is not a fast-forward,
 	// so a branch that moved since the pre-flight is never rewound or overwritten.
-	// A branch a reused records worktree has checked out cannot be fetched into, so its tip is fetched by SHA and merged inside that worktree.
+	// A branch a reused records worktree has checked out cannot be fetched into,
+	// so its tip is fetched by SHA and merged inside that worktree.
 	if weftOld.fastForwardTo != "" {
 		var advanceErr error
 		if weftReused {
@@ -526,8 +562,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	// runRecordsTracked is whether the fork point tracked run records that step 8 dropped from the new worktree.
 	var runRecordsTracked bool
 	if weftAdopted {
-		// Adopt: git worktree add <path> <branch> (no -b, branch exists), through
-		// containedWorktreeAdd so a symlink toggled at weftPath cannot carry the worktree outside the hub.
+		// Adopt: git worktree add <path> <branch> (no -b, branch exists), through containedWorktreeAdd,
+		// so a symlink toggled at weftPath cannot carry the worktree outside the hub.
 		// A reused records worktree already stands on the branch, so only the task worktree is made.
 		if !weftReused {
 			err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
@@ -542,7 +578,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: create weft lock dir in %q: %w", weftBranch, weftPath, err)
 		}
-		// An adopted branch keeps its own marker; one with none is given the anchor its tree implies, and every path built below uses the adopted pair's own anchor.
+		// An adopted branch keeps its own marker; one with none is given the anchor its tree implies,
+		// and every path built below uses the adopted pair's own anchor.
 		adoptNames, err := RepoWiredNames(l)
 		if err != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
@@ -558,8 +595,9 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		adoptedAt.AnchorRel = adoptedOwn.AnchorRel
 		pairAt = &adoptedAt
 	} else {
-		// Create: fork from the parent's weft branch without checking the run-records root out, so the pair never inherits another run's seed or status;
-		// step 10c commits the root's deletion.
+		// Create: fork from the parent's weft branch without checking the run-records root out,
+		// so the pair never inherits another run's seed or status.
+		// Step 10c commits the root's deletion.
 		// The adopt path above drops nothing: an existing branch's own records are its own.
 		var err error
 		runRecordsTracked, err = createWeftWorktreeDroppingRuns(rec, pairAt, slug, weftBranch, parentWeftBranch)
@@ -586,11 +624,11 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	// (10b) Wire the new worktree's warp junctions as soon as the weft worktree exists, ahead of the launchers,
-	// so a hub reader polling the half-built pair meets a warp worktree without its junction for as short a time as possible.
+	// so a hub reader polling the half-built pair meets a warp worktree without its junction for as little time as possible.
 	// The wired name-set comes from the repo-wide BoardDir base (not any per-pair weft base or acting-worktree config):
-	// every worktree must converge to the same repo-wide pathspec, matching Checkout's re-point call.
+	// every worktree must converge to the same repo-wide pathspec, as a later checkout's re-point does.
 	// The weft worktree already exists from step 8, so junction targets resolve.
-	// On failure, roll back the whole pair via the existing post-step-7 path.
+	// On failure, roll back the whole pair via the post-step-7 path.
 	names, err := RepoWiredNames(l)
 	if err != nil {
 		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
@@ -609,7 +647,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired;
 	// the caller's push of the weft branch carries this commit to the remote.
 	// An adopted weft worktree that already carries the record keeps its parent fields,
-	// so a task moved between machines keeps its recorded parent; only a beam request not yet marked on it adds the mark, in the same commit.
+	// so a task moved between machines keeps its recorded parent.
+	// Only a beam request not yet marked on it adds the mark, in the same commit.
 	// A forked weft always gets its own record, though it may carry the parent's.
 	origin := Origin{ParentBranch: recordedParentBranch, ParentWorktree: recordedParentWorktree, Beam: opts.Beam}
 	writeOrigin := true
@@ -631,9 +670,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("record parent branch: %w", err)
 		}
-		// The commit's sha and committed returns are not read here: CommitRecordsPaths records the
-		// KindCommitCreated entry itself, at its own success site, per the
-		// origin-record-records-both-its-write-and-its-commit decision.
+		// The commit's sha and committed returns are not read here:
+		// CommitRecordsPaths records the KindCommitCreated entry itself, at its own success site.
 		// The run-records root joins the commit's paths only when the fork tracked it:
 		// git add on an untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
 		commitPaths := []string{OriginRecordRel()}
@@ -654,7 +692,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	// (11) Replace an archived leftover of the weft branch on origin, so the caller's push of the weft branch is not rejected.
+	// (11) Replace an archived leftover of the weft branch on origin,
+	// so the caller's push of the weft branch is not rejected.
 	// The lease pins the deletion to the tip the pre-flight proved archived, so a branch that moved since is refused.
 	if weftOld.tip != "" {
 		if addBeforeWeftReplaceHook != nil {
@@ -676,7 +715,8 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	// The pair is complete, so the worktree seam hears of it last; a seam failure is logged by the call and never fails the add.
+	// The pair is complete, so the worktree seam hears of it last;
+	// a seam failure is logged by the call and never fails the add.
 	if pair, locateErr := lymcwd.ResolveWorktree(target); locateErr != nil {
 		logger.Warn("fabricengine: locating the new worktree for the worktree seam failed (non-fatal)", "verb", "add", "slug", slug, "error", locateErr)
 	} else {
@@ -690,42 +730,47 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	}, nil
 }
 
-// addWarpBranch is what Add knows about the warp branch it created or adopted, handed to rollbackAdd.
+// addWarpBranch records whether an add created or adopted its warp branch.
+// A rollback deletes that branch only when the add created it.
 type addWarpBranch struct {
-	// tok proves this Add created the branch; the zero value proves nothing.
+	// tok proves the add created the branch; the zero value proves nothing.
 	tok createdBranchToken
-	// adopted is whether the branch existed before this Add, in which case a rollback leaves it as it found it.
+	// adopted is whether the branch existed before the add, in which case a rollback leaves it as it found it.
 	adopted bool
 }
 
-// rollbackAdd performs best-effort paired cleanup on Add failure, unwiring junctions,
-// removing worktrees and branches, preserving pre-existing adopted weft branches.
-// weftBranchAdopted is whether the local weft branch existed before this Add:
-// a branch Add created, forked or taken from origin as a local tracking branch, is deleted, while a pre-existing one survives, a fast-forward Add made to it included (it is never rewound).
-// It never touches an origin branch: Add pushes nothing.
-// weftReused is whether this Add reused a records worktree that stood before it: that worktree and its branch are left in place, as an adopted branch is.
-// warpTok is the token createGitWorktree minted when this Add call created the warp worktree at
-// target; it is the ownership proof the gate's warp-side removal requires.
-// warp carries the proof that this Add created the warp branch, which lets the gate delete the local branch whether it was forked or adopted from origin;
-// a warp branch that predates this Add (warp.adopted) is never deleted.
-// A refused or failed branch deletion is logged, not swallowed (this function's return is discarded by every caller), so a branch left behind is visible in the trace.
-// Rollback never restores a remote weft branch Add's step 11 replaced:
+// rollbackAdd performs best-effort paired cleanup when an add fails.
+// It unwires junctions, removes worktrees and branches, and preserves pre-existing adopted weft branches.
+// weftBranchAdopted is whether the local weft branch existed before the add.
+// A branch the add created, forked or took from origin as a local tracking branch, is deleted.
+// A pre-existing one survives, a fast-forward the add made to it included; it is never rewound.
+// It never touches an origin branch: the add pushes nothing.
+// weftReused is whether the add reused a records worktree that stood before it:
+// that worktree and its branch are left in place, as an adopted branch is.
+// warpTok is the token minted when the add created the warp worktree at target;
+// it is the ownership proof the gate's warp-side removal requires.
+// warp carries the proof that the add created the warp branch;
+// that proof lets the gate delete the local branch, whether it was forked or adopted from origin.
+// A warp branch that predates the add (warp.adopted) is never deleted.
+// A refused or failed branch deletion is logged, not swallowed.
+// Every caller discards this function's return, so the log is what makes a branch left behind visible in the trace.
+// Rollback never restores a remote weft branch that the add's step 11 replaced:
 // its content stays reachable from the archive tag, and recreating it would re-block the next retry.
-// rec is Add's own recorder, threaded through to all five gate-bound calls this function reaches
-// (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction and removeLaunchers),
-// so a rollback's own destructions land in the same record as Add's creations, in execution order.
-// The origin record needs no removal step of its own: on the created-branch path the existing
-// weft-worktree and weft-branch removal (step 1) takes the record with it, and on the
-// adopted-weft-branch path the record's commit is deliberately left in place — reverting or
-// resetting an adopted branch to undo one commit is exactly the pre-existing-history destruction
-// the !weftBranchAdopted guard above exists to prevent.
+// rec is the add's own recorder, passed to every gate-bound removal this function makes,
+// so a rollback's destructions land in the same record as the add's creations, in execution order.
+// The origin record needs no removal step of its own.
+// On the created-branch path, the weft-worktree and weft-branch removal in step 1 takes the record with it.
+// On the adopted-weft-branch path, the record's commit is deliberately left in place:
+// reverting or resetting an adopted branch to undo one commit would destroy pre-existing history.
+// Step 1 prevents that by deleting a weft branch only when the add created it.
 func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBranch, weftBranch, target string, weftBranchAdopted, weftReused bool, warpTok createdToken, warp *addWarpBranch) error {
 	var firstErr error
 
-	// (1) Remove the weft worktree; delete the weft branch only when this Add
-	// created it, so a rollback never destroys pre-existing weft history.
-	// A reused records worktree predates this Add and stays.
-	// remote is hardcoded false here: Add pushes nothing, and an adopted branch's copy on origin is not this Add's to delete.
+	// (1) Remove the weft worktree; delete the weft branch only when the add created it,
+	// so a rollback never destroys pre-existing weft history.
+	// A reused records worktree predates the add and stays.
+	// remote is hardcoded false here:
+	// the add pushes nothing, and an adopted branch's copy on origin is not the add's to delete.
 	if !weftReused {
 		if _, err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, false, "", t.leftover); err != nil {
 			if firstErr == nil {
@@ -749,14 +794,12 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 		}
 	}
 
-	// (2) Remove warp launchers
 	if err := removeLaunchers(rec, l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// (3) Remove warp worktree
 	removeReq := pathRequest{
 		what:      "remove warp worktree",
 		container: l.HubPath,
@@ -774,7 +817,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 		firstErr = err
 	}
 
-	// (4) Delete the warp branch this Add created, locally; an adopted branch predates this Add and stays.
+	// The warp branch is deleted locally only when this Add created it: an adopted branch predates this Add and stays.
 	if !warp.adopted {
 		branchReq := branchRequest{
 			what:      "delete warp branch",
@@ -786,7 +829,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 		}
 		err = deleteBranch(rec, branchReq)
 		if refusalErr := surfaceRefusal(err); refusalErr != nil {
-			// Log the swallowed refusal: this function's return is discarded by every caller.
+			// The callers discard this function's return, so the refusal is logged here.
 			var refusal *destructiveRefusal
 			if errors.As(refusalErr, &refusal) {
 				logger.Warn("fabricengine: rollbackAdd's warp-branch deletion was refused by the destructive gate; delete the branch with `git branch -D` before retrying", "branch", warpBranch, "check", string(refusal.Check))
@@ -802,7 +845,6 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 		}
 	}
 
-	// (5) Prune warp worktrees
 	if _, err := gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath()); err != nil {
 		if firstErr == nil {
 			firstErr = err

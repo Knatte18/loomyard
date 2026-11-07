@@ -1,4 +1,5 @@
-// hold.go holds callers while a pause covers them: the shared wait at entry, and the process gate that holds network calls and marks the ones in flight.
+// hold.go holds callers while a pause covers them:
+// the shared wait at entry, and the process gate that holds network calls and marks the ones in flight.
 
 package pauserecord
 
@@ -25,7 +26,7 @@ const (
 	waitingDirName = "waiting"
 )
 
-// Waiter carries the seams of WaitUncovered; its zero value waits on real timers and writes to stderr.
+// Waiter holds the seams of a wait; its zero value waits on real timers and writes to stderr.
 type Waiter struct {
 	// Notify receives the one line a wait writes when it starts; nil writes the line to stderr.
 	Notify func(line string)
@@ -34,7 +35,8 @@ type Waiter struct {
 	// SlugEntryExempt, while it reports true, lets a slug entry pass so that only a hub entry holds the wait.
 	// It serves a caller whose run holds a parent lock.
 	SlugEntryExempt func() bool
-	// ExemptEntry, when it accepts a live entry, lets that entry pass whatever it covers; any entry it rejects holds the wait as usual.
+	// ExemptEntry, when it accepts a live entry, lets that entry pass whatever it covers;
+	// any entry it rejects holds the wait as usual.
 	// It serves a caller that owns one pause entry and must still reach origin while it stands.
 	ExemptEntry func(Entry) bool
 }
@@ -58,7 +60,9 @@ func (w Waiter) covering(record Record, slug string) (Entry, bool) {
 }
 
 // WaitUncovered returns once no live entry in the record at path covers slug, and at once when none does.
-// It writes one line through the waiter when it starts waiting, polls with a delay doubling from one second to five while the covering entry is unchanged, and has no deadline of its own: it returns the context's error when ctx ends.
+// It writes one line through the waiter when it starts waiting.
+// It polls with a delay doubling from one second to five while the covering entry is unchanged.
+// It has no deadline of its own; it returns the context's error when ctx ends.
 // An unreadable record holds nothing: the wait writes one line naming the path and the error, then returns nil.
 func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 	notify := w.Notify
@@ -122,7 +126,8 @@ func sleepOnTimer(ctx context.Context, d time.Duration) error {
 }
 
 // NetOp is the marker of one network operation in flight.
-// An operation named remote-refs marks a lock hold: it lasts from before the lock is taken until its release, and covers the git calls and retries made under it.
+// An operation named remote-refs marks a lock hold:
+// it lasts from before the lock is taken until its release, and covers the git calls and retries made under it.
 type NetOp struct {
 	PID       int    `json:"pid"`
 	StartTime string `json:"start_time"`
@@ -158,7 +163,9 @@ type WaitingMarker struct {
 	Slug      string `json:"slug"`
 }
 
-// WaitingDir returns the directory of waiting markers beside the record, a sibling of NetDir and never inside it, so the in-flight reading never lists a waiting marker.
+// WaitingDir returns the directory of waiting markers beside the record.
+// It sits beside the in-flight marker directory, never inside it.
+// Reading that directory therefore never lists a waiting marker.
 func WaitingDir(recordPath string) string {
 	return filepath.Join(filepath.Dir(recordPath), waitingDirName)
 }
@@ -174,7 +181,8 @@ func ListWaiting(recordPath string, alive func(pid int, startTime string) bool) 
 	return markers, nil
 }
 
-// listLiveMarkers decodes the marker files in dir into T, removing and skipping those whose process identity reports dead and skipping files that do not decode.
+// listLiveMarkers decodes the marker files in dir into T.
+// It removes and skips a marker whose process identity reports dead, and skips a file that does not decode.
 // A missing directory lists nothing.
 func listLiveMarkers[T any](dir string, alive func(pid int, startTime string) bool, identity func(T) (int, string)) ([]T, error) {
 	entries, err := os.ReadDir(dir)
@@ -243,7 +251,8 @@ var (
 )
 
 // SetGateDeferral stores the function a deferring gate calls when a live entry covers its process, and returns the function that restores the previous one.
-// The function is a process's exit and does not return; when none is stored, or it returns, the gate waits as it does without Defer.
+// The function is a process's exit and does not return;
+// when none is stored, or it returns, the gate waits as it does without Defer.
 func SetGateDeferral(onCovered func()) (restore func()) {
 	var stored *func()
 	if onCovered != nil {
@@ -253,7 +262,8 @@ func SetGateDeferral(onCovered func()) (restore func()) {
 	return func() { gateDeferral.Store(previous) }
 }
 
-// GateCovered reports whether a live entry covers the installed gate's process right now, under the exemptions the gate's waits apply.
+// GateCovered reports whether a live entry covers the installed gate's process right now.
+// It applies the same exemptions as the gate's waits.
 // It reports false with no gate installed or an unreadable record.
 func GateCovered() bool {
 	gate := installedGate.Load()
@@ -268,7 +278,8 @@ func GateCovered() bool {
 	return covered
 }
 
-// waiter returns the Waiter that applies this gate's exemptions; onSleep, when non-nil, runs before every sleep of a wait.
+// waiter returns the Waiter that applies this gate's exemptions;
+// onSleep, when non-nil, runs before every sleep of a wait.
 func (g *Gate) waiter(onSleep func()) Waiter {
 	slug := g.Geometry.Slug
 	sleep := g.Sleep
@@ -323,14 +334,17 @@ func SetGateSlug(slug string) {
 	}
 }
 
-// SetGateExempt replaces the installed gate's exempt entry with the one of scope paused at pausedAt, for a process that owns that entry and must still reach origin while it stands.
+// SetGateExempt replaces the installed gate's exempt entry with the one of scope paused at pausedAt.
+// It serves a process that owns that entry and must still reach origin while it stands.
 // It does nothing when no gate is installed, and returns the function that restores the previous exempt entry.
 func SetGateExempt(scope string, pausedAt time.Time) (restore func()) {
 	previous := replaceGateExempt(scope, pausedAt)
 	return func() { replaceGateExempt(previous.scope, previous.pausedAt) }
 }
 
-// SetGateExemptAll makes the installed gate let every live entry pass, for the one process an explicit operator verb runs in, and returns the function that restores the previous setting.
+// SetGateExemptAll makes the installed gate let every live entry pass.
+// It serves the one process an explicit operator verb runs in.
+// It returns the function that restores the previous setting.
 // It does nothing when no gate is installed.
 // The exemption stays in this process: a child installs its own gate.
 func SetGateExemptAll() (restore func()) {
@@ -345,7 +359,8 @@ func GateExemptsAll() bool {
 	return current != nil && current.ExemptAll
 }
 
-// replaceGateExemptAll sets ExemptAll on the current gate and returns the value it replaced; it replaces nothing when no gate is installed.
+// replaceGateExemptAll sets ExemptAll on the current gate and returns the value it replaced;
+// it replaces nothing when no gate is installed.
 func replaceGateExemptAll(exemptAll bool) bool {
 	for {
 		current := installedGate.Load()
@@ -366,7 +381,8 @@ type gateExempt struct {
 	pausedAt time.Time
 }
 
-// replaceGateExempt installs the exempt entry on the current gate and returns the one it replaced; it replaces nothing when no gate is installed.
+// replaceGateExempt installs the exempt entry on the current gate and returns the one it replaced;
+// it replaces nothing when no gate is installed.
 func replaceGateExempt(scope string, pausedAt time.Time) gateExempt {
 	for {
 		current := installedGate.Load()
@@ -382,11 +398,14 @@ func replaceGateExempt(scope string, pausedAt time.Time) gateExempt {
 	}
 }
 
-// Network waits while a pause covers the process, then marks an operation op in flight and returns the function that clears the mark.
-// While it waits it keeps a waiting marker under WaitingDir, removed as soon as the wait returns and before the in-flight marker is written.
+// Network waits while a pause covers the process.
+// It then marks an operation op in flight and returns the function that clears the mark.
+// While it waits it keeps a waiting marker under WaitingDir.
+// The marker is removed as soon as the wait returns, before the in-flight marker is written.
 // It returns held, the time from entry until the wait returned, which is zero unless the wait slept at least once.
 // With no gate installed it returns zero and a no-op at once.
-// While an admission of the process stands it marks the operation without waiting, whichever goroutine asks and whatever the call is, including a call unrelated to the admitted caller.
+// While an admission of the process stands, it marks the operation without waiting.
+// This holds for any goroutine and any call, including one unrelated to the admitted caller.
 // It only waits at entry: it fails no call, and a marker it cannot write is skipped.
 func Network(op string) (held time.Duration, done func()) {
 	gate := installedGate.Load()
@@ -425,11 +444,13 @@ func Network(op string) (held time.Duration, done func()) {
 	return held, markInFlight(gate, op)
 }
 
-// Admit passes the gate as Network does, marking op in flight, and admits the process until the returned release runs.
+// Admit waits at the gate and marks op in flight, then admits the process until the returned release runs.
 // While an admission stands, every network call of the process passes the gate at once, still marked in flight;
-// the pass-through is process-wide for the length of the admission, so a call on another goroutine or in another repository passes too.
+// the pass-through is process-wide for the length of the admission,
+// so a call on another goroutine or in another repository passes too.
 // It serves a caller that takes a lock other processes wait on and makes network calls under it:
-// admitted before it takes the lock, the holder is never held by a pause while it holds the lock, and a pause that starts meanwhile reads its calls in flight.
+// admitted before it takes the lock, the holder is never held by a pause while it holds the lock,
+// and a pause that starts meanwhile reads its calls in flight.
 // With no gate installed it waits for nothing and marks nothing.
 func Admit(op string) (release func()) {
 	_, done := Network(op)
@@ -440,7 +461,8 @@ func Admit(op string) (release func()) {
 	}
 }
 
-// markInFlight writes the in-flight marker of op for the gate's process and returns the function that removes it; a marker it cannot write is skipped.
+// markInFlight writes the in-flight marker of op for the gate's process and returns the function that removes it;
+// a marker it cannot write is skipped.
 func markInFlight(gate *Gate, op string) (done func()) {
 	slug := gate.Geometry.Slug
 	marker := NetOp{

@@ -1,4 +1,5 @@
-// archive.go copies a pair's trace and verify logs into the hub's log archive before the pair is removed, and prunes the archive to its retention.
+// archive.go copies a pair's trace and verify logs into the hub's log archive before the pair is removed.
+// It also prunes the archive to its retention.
 
 package pairteardown
 
@@ -29,7 +30,8 @@ type archiveSource struct {
 	files []string
 }
 
-// logArchive is the hub's log archive: one directory per slug under root, holding one timestamped entry per archived teardown.
+// logArchive is the hub's log archive: one directory per slug under root.
+// Each directory holds one timestamped entry per archived teardown.
 type logArchive struct {
 	root string
 	now  func() time.Time
@@ -37,8 +39,10 @@ type logArchive struct {
 	removeAll func(path string) error
 }
 
-// write copies each source's files into a new entry under root/slug, in a subdirectory named for the source, and returns the entry's path and the number of files copied.
-// With no files in any source it creates nothing and returns an empty entry.
+// write copies each source's files into a new entry under root/slug.
+// Each source gets a subdirectory named for it.
+// write returns the entry's path and the number of files copied.
+// With no files in any source it creates nothing and returns an empty entry path and zero files.
 // A copy failure removes the partial entry and returns the error.
 func (a logArchive) write(slug string, sources []archiveSource) (entry string, files int, err error) {
 	for _, source := range sources {
@@ -64,7 +68,8 @@ func (a logArchive) write(slug string, sources []archiveSource) (entry string, f
 	return entry, files, nil
 }
 
-// createEntry makes the entry directory stamp under slugDir exclusively, trying stamp-2, stamp-3 and on when the name is taken.
+// createEntry makes the entry directory stamp under slugDir exclusively.
+// When the name is taken, it tries stamp-2, stamp-3 and so on.
 func createEntry(slugDir, stamp string) (string, error) {
 	for attempt := 1; ; attempt++ {
 		name := stamp
@@ -113,7 +118,8 @@ func copyFile(source, target string) error {
 }
 
 // prune removes every entry older than logArchiveRetention, and each slug directory it leaves empty.
-// A name that is not an archive timestamp and a plain file are left alone; a path already gone counts as removed, and any other failure logs a Warn and pruning goes on.
+// A name that is not an archive timestamp and a plain file are left alone;
+// a path already gone counts as removed, and any other failure logs a Warn and pruning goes on.
 func (a logArchive) prune() {
 	slugs, err := os.ReadDir(a.root)
 	if err != nil {
@@ -150,7 +156,8 @@ func (a logArchive) pruneSlug(slugDir string) {
 	}
 }
 
-// expired reports whether the entry name, with or without a collision suffix, is an archive timestamp older than the retention.
+// expired reports whether the entry name is an archive timestamp older than the retention.
+// A collision suffix, as in stamp-2, is ignored.
 func (a logArchive) expired(name string) bool {
 	stamp, _, _ := strings.Cut(name, "-")
 	at, err := time.Parse(archiveStampLayout, stamp)
@@ -168,7 +175,8 @@ func (a logArchive) remove(path string) bool {
 }
 
 // archivePairLogs copies the pair's trace and verify logs into the hub's log archive, after pruning it.
-// It is best effort: a failure logs a Warn and changes nothing about the teardown, and the pair's own files are copied, never moved.
+// It is best effort: a failure logs a Warn and changes nothing about the teardown.
+// The pair's own files are copied, never moved.
 func (t *Teardown) archivePairLogs(slug string) {
 	anchor, err := t.taskAnchor(slug)
 	if err != nil {

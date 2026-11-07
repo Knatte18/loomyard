@@ -1,5 +1,6 @@
 // procgroup_linux_test.go covers the group-terminate branches that end without arming a SIGKILL timer.
-// It spawns real children, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
+// It spawns real children, which the package's Test Tier Purity allowlist entry admits.
+// Process control is the package's subject.
 
 package proc
 
@@ -23,7 +24,7 @@ func TestConfigurePlatformGroupTerminate_ArmsNoTimerWithoutALiveGroup(t *testing
 		name string
 		// run starts the command and drives its cancel, returning the cancel's error.
 		run func(t *testing.T, cmd *exec.Cmd) error
-		// wantReports is the signals the report callback sees.
+		// wantReports holds the signals the report callback receives.
 		wantReports []os.Signal
 		wantErr     error
 	}{

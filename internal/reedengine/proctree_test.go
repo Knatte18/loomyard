@@ -1,6 +1,9 @@
-// proctree_test.go table-tests the pure /proc process-tree helpers in proctree.go: parseStat's stat-line parsing (including the space-and-paren comm edge case), descendantClosure's fixed-point walk (including a missing-parent, a reparent-to-init, and a cycle), and matchSocketCmdlines' argv matcher (including both near-miss shapes).
-// These are the TDD surface for the batch: the OS-suffixed seams that call them (proctree_linux.go,
-// proctree_windows.go) are compile-checked only, never run on this host.
+// proctree_test.go table-tests the pure /proc process-tree helpers in proctree.go.
+// It covers parseStat's stat-line parsing, including the space-and-paren comm edge case.
+// It covers descendantClosure's fixed-point walk, including a missing parent, a reparent to init, and a cycle.
+// It covers matchSocketCmdlines' argv matcher, including both near-miss shapes.
+// The OS-suffixed seams that call them (proctree_linux.go, proctree_windows.go) are compile-checked only;
+// they never run on this host.
 
 package reedengine
 
@@ -178,11 +181,9 @@ func TestDescendantClosure(t *testing.T) {
 			name: "pid whose ppid is missing from the map",
 			pidToPPID: map[int]int{
 				2: 1,
-				// pid 4's parent (99) never appears as a key in the map at
-				// all — e.g. a process that exited between the two /proc
-				// reads that built pidToPPID and its roots snapshot. That
-				// must not be fatal: 4 is simply dropped from the walk since
-				// 99 is never absorbed.
+				// pid 4's parent (99) never appears as a key in the map.
+				// That can happen when the parent exited between the two /proc reads that built pidToPPID and its roots snapshot.
+				// The walk must not fail on it: 4 is dropped because 99 is never absorbed.
 				4: 99,
 			},
 			roots:      []int{1},
@@ -283,10 +284,8 @@ func TestMatchSocketCmdlines(t *testing.T) {
 	}
 }
 
-// TestTmuxProcessName proves the Windows process-table Name derivation follows the CONFIGURED tmux
-// binary — the hardcoded 'psmux.exe' filter it replaces matched nothing on machines whose reed
-// config resolves tmux to tmux.exe, so Down leaked every server (round fable-r1, fabric-cutover
-// campaign).
+// TestTmuxProcessName checks that the Windows process-table Name derivation follows the configured tmux binary.
+// A hardcoded filter matches nothing where reed resolves tmux to tmux.exe, so Down would leak every server.
 func TestTmuxProcessName(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

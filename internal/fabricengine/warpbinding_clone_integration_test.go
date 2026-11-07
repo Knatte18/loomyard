@@ -1,14 +1,15 @@
-// warpbinding_clone_integration_test.go proves CloneHub's warp-binding conflict rule and the pre-hub
-// probe's three-way failure taxonomy (absent, found, hard error) end to end against real local
-// bare-repo fixtures.
-// It also covers the old-order bootstrap guard, --reset in both argument forms, the refusals under --reset that must leave the existing hub in place,
-// and the ordering guarantee that a two-argument re-clone against an existing hub never runs the probe at all.
-// Every fixture helper it uses — makeBareRemote, makeEmptyBareRemote, commitFileOnBranch, gitOutput,
-// and assertBoardIsWeftWorktree — is reused directly from clone_adopt_test.go; this file adds only
-// seedWeftBinding, the one fixture shape none of those helpers already produce.
+// warpbinding_clone_integration_test.go proves CloneHub's warp-binding conflict rule end to end.
+// It runs against real local bare-repo fixtures.
+// It also proves the pre-hub probe's three-way failure taxonomy: absent, found, or hard error.
+// It covers the old-order bootstrap guard and --reset in both argument forms.
+// The refusals under --reset must leave the existing hub in place.
+// It also checks that a two-argument re-clone against an existing hub never runs the probe.
+// Its fixture helpers are reused from clone_adopt_test.go:
+// makeBareRemote, makeEmptyBareRemote, commitFileOnBranch, gitOutput, and assertBoardIsWeftWorktree.
+// This file adds only seedWeftBinding, the one fixture shape none of them produces.
 //
-// Package fabricengine_test to isolate real end-to-end git fixtures from the package's internal unit
-// tests; shares the TestMain in testmain_test.go.
+// It lives in package fabricengine_test, apart from the internal unit tests, to isolate its real git fixtures.
+// It shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -25,17 +26,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedWeftBinding commits a .lym-warp file containing warpURL plus a trailing newline onto
-// bareRemote's main branch, mirroring what a prior clone would have left there.
-// It wraps commitFileOnBranch so every test in this file states the binding it is seeding in terms
-// of the URL alone, not the record's on-disk shape.
+// seedWeftBinding commits a .lym-warp file containing warpURL and a trailing newline onto bareRemote's main branch.
+// It stands in for the record a prior clone would have left there.
+// Callers supply only the URL, not the record's on-disk shape.
 func seedWeftBinding(t *testing.T, dir, bareRemote, warpURL string) {
 	t.Helper()
 	commitFileOnBranch(t, dir, bareRemote, "main", fabricengine.WarpBindingFileName, warpURL+"\n")
 }
 
-// noProbeResidueInParent asserts that clonParent contains neither a directory named after derivedName-LYMHUB nor any directory whose name begins with the probe's throwaway-clone prefix — the filesystem property the pre-hub probe exists to guarantee on every failure path.
-// It reads the prefix through fabricengine.WarpProbeDirPrefixForTest so this file has a single source of truth for the literal, shared with TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm below.
+// noProbeResidueInParent asserts that cloneParent holds no hub for the derived names and no probe leftovers.
+// The pre-hub probe exists to guarantee this on every failure path.
 func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...string) {
 	t.Helper()
 
@@ -57,9 +57,8 @@ func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...st
 	}
 }
 
-// TestCloneHub_BootstrapWritesBinding asserts that a two-argument clone against a weft fixture with
-// no recorded binding, run with ForceBootstrap, writes the record at the board root with the supplied
-// URL and tracks it on the board worktree.
+// TestCloneHub_BootstrapWritesBinding asserts that a forced clone of an unbound weft writes the record;
+// the record sits at the board root with the supplied URL and is tracked on the board worktree.
 func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -89,19 +88,18 @@ func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
 		t.Errorf("res.WarpURL = %q; want %q", res.WarpURL, warpURL)
 	}
 
-	// CloneHub itself never commits the record (the engine returns typed values, the CLI layer
-	// commits through Bolt), so "tracked" here means visible to git as a real, un-ignored file in
-	// the board worktree — --others --exclude-standard is `git ls-files`'s form for that, as opposed
-	// to a plain `git ls-files`, which would only ever report a path already staged or committed.
+	// CloneHub returns typed values and never commits the record; the CLI layer commits it through Bolt.
+	// Here "tracked" means git sees it in the board worktree as a real, un-ignored file.
+	// --others --exclude-standard is the `git ls-files` form for that;
+	// a plain `git ls-files` reports only paths already staged or committed.
 	seen := gitOutput(t, res.BoardDir, "ls-files", "--others", "--exclude-standard", fabricengine.WarpBindingFileName)
 	if seen != fabricengine.WarpBindingFileName {
 		t.Errorf("git ls-files --others %s in board dir = %q; want it visible in the worktree", fabricengine.WarpBindingFileName, seen)
 	}
 }
 
-// TestCloneHub_DerivesWarpFromBinding asserts that a one-argument clone against a weft whose main
-// carries a record produces the same geometry as the two-argument form, deriving the hub name and
-// warp from the recorded binding alone.
+// TestCloneHub_DerivesWarpFromBinding asserts that a one-argument clone yields the two-argument geometry;
+// the weft's main carries the record, and the hub name and warp come from it alone.
 func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -147,9 +145,8 @@ func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
 	}
 }
 
-// TestCloneHub_MatchingBindingIsNoOp asserts that a two-argument clone whose supplied URL is
-// byte-identical to the recorded binding succeeds and leaves the record's bytes unchanged, both on
-// disk and as committed.
+// TestCloneHub_MatchingBindingIsNoOp asserts that a two-argument clone with the exact recorded URL succeeds;
+// the record's bytes stay unchanged on disk and as committed.
 func TestCloneHub_MatchingBindingIsNoOp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -191,8 +188,8 @@ func TestCloneHub_MatchingBindingIsNoOp(t *testing.T) {
 	}
 }
 
-// TestCloneHub_NormalizedBindingMatch asserts that a supplied URL differing from the record only by a
-// trailing .git is still treated as matching: the clone succeeds and the record is unchanged.
+// TestCloneHub_NormalizedBindingMatch asserts that a URL differing only by a trailing .git still matches;
+// the clone succeeds and the record is unchanged.
 func TestCloneHub_NormalizedBindingMatch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -231,10 +228,9 @@ func TestCloneHub_NormalizedBindingMatch(t *testing.T) {
 	}
 }
 
-// TestCloneHub_ConflictLeavesNoHub asserts that a two-argument clone whose supplied URL names a
-// different warp than the record fails, names both URLs plus "refusing to re-point" in the error, and
-// — the property the pre-hub probe buys — leaves no hub directory or probe residue behind for either
-// URL's derived name.
+// TestCloneHub_ConflictLeavesNoHub asserts that a two-argument clone naming a different warp than the record fails;
+// the error names both URLs and "refusing to re-point".
+// No hub directory or probe residue is left for either URL's derived name, which the pre-hub probe guarantees.
 func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -268,9 +264,8 @@ func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
 		fabricengine.DeriveWarpName(suppliedURL))
 }
 
-// TestCloneHub_UnboundWeftNamesTwoArgForm asserts that a one-argument clone against a weft with no
-// recorded binding fails naming both the unbound condition and the two-argument remedy, and creates
-// no hub.
+// TestCloneHub_UnboundWeftNamesTwoArgForm asserts that a one-argument clone of an unbound weft fails;
+// the error names both the unbound condition and the two-argument remedy, and no hub is created.
 //
 //testtiming:keep a one-argument clone against an unbound weft failing with the unbound condition and the two-argument remedy named and no hub created; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
@@ -304,10 +299,9 @@ func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 	}
 }
 
-// TestCloneHub_EmptyWeftRemoteTaxonomy covers both argument forms against a genuinely empty
-// (unborn-HEAD) weft remote: the one-argument form reports unbound rather than a git error, and the
-// two-argument form bootstraps successfully and writes the record, preserving today's orphan-create
-// path through ensureBoardWorktree.
+// TestCloneHub_EmptyWeftRemoteTaxonomy covers both argument forms against an empty (unborn-HEAD) weft remote;
+// the one-argument form reports unbound rather than a git error.
+// The two-argument form bootstraps and writes the record, on the orphan-create path through ensureBoardWorktree.
 func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -354,9 +348,8 @@ func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
 	})
 }
 
-// TestCloneHub_UnreachableWeftIsHardError asserts that a clone against a weft path that does not
-// exist fails in both argument forms with an error carrying the "probe weft " prefix, never reports
-// "unbound", and never bootstraps.
+// TestCloneHub_UnreachableWeftIsHardError asserts that a clone against a missing weft path fails;
+// in both argument forms the error carries the "probe weft " prefix, never reports unbound, and never bootstraps.
 func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -413,10 +406,10 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 	})
 }
 
-// TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken asserts that a weft whose HEAD
-// exists but lacks the record is classified absent (the one-argument form reports unbound, not a git
-// error), while a weft whose HEAD object is unreadable is a hard error — the property that justifies
-// the ls-tree discriminator existing at all.
+// TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken asserts the absent-versus-broken split:
+// a weft whose HEAD lacks the record is absent, so the one-argument form reports unbound;
+// a weft whose HEAD object is unreadable is a hard error.
+// That split is why the ls-tree discriminator exists.
 func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -441,8 +434,8 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 		fixtures := t.TempDir()
 		sourceBare := makeBareRemote(t, fixtures, "broken-source-weft")
 
-		// Clone the valid bare weft fixture into a scratch bare repo, then corrupt the object HEAD
-		// resolves to, so `git ls-tree HEAD` itself fails.
+		// Clone the valid bare weft fixture into a scratch bare repo.
+		// Then remove the object HEAD resolves to, so `git ls-tree HEAD` itself fails.
 		brokenBare := filepath.Join(fixtures, "broken-weft.git")
 		gitkit.MustRun(t, fixtures, "git", "clone", "--bare", filepath.ToSlash(sourceBare), filepath.Base(brokenBare))
 
@@ -474,7 +467,9 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 	})
 }
 
-// TestCloneHub_BackfillsBindingOnPreBindingHub asserts that a weft carrying .lym-anchor but no .lym-warp — a hub cloned before this change — writes the record and reports WarpBindingRecorded == true given an explicit warp URL, with no ForceBootstrap: the anchor alone satisfies the old-order guard.
+// TestCloneHub_BackfillsBindingOnPreBindingHub asserts that an anchor-only weft gets its record backfilled;
+// given an explicit warp URL, it writes the record and reports WarpBindingRecorded == true without ForceBootstrap.
+// The anchor alone satisfies the old-order guard.
 func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -504,10 +499,9 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 	}
 }
 
-// TestCloneHub_OldOrderInvocationIsRefused is the regression test that matters most: passing an
-// ordinary source repo (no lym markers) as the weft candidate and a real repo as the warp — the
-// pre-change argument order — with ForceBootstrap left false must be refused, must create no hub, and
-// must leave the rejected repo completely untouched.
+// TestCloneHub_OldOrderInvocationIsRefused asserts that the old argument order is refused:
+// the test passes an ordinary source repo (no lym markers) as the weft and a real repo as the warp;
+// with ForceBootstrap false, the call creates no hub and leaves the rejected repo untouched.
 //
 //testtiming:keep the pre-change argument order being refused with no hub created and the rejected repo untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
@@ -553,18 +547,16 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorBearingWeftPassesGuard asserts, specifically for the guard rather than the
-// backfill outcome, that a weft whose HEAD carries .lym-anchor but no .lym-warp passes the old-order
-// guard and bootstraps with ForceBootstrap false.
-// This setup overlaps TestCloneHub_BackfillsBindingOnPreBindingHub, but is kept as its own test so a
-// guard regression names itself rather than hiding behind the backfill assertion.
+// TestCloneHub_AnchorBearingWeftPassesGuard asserts that an anchor-only weft passes the old-order guard;
+// it bootstraps with ForceBootstrap false, so the guard is checked on its own, not through the backfill.
+// It stays a separate test so a guard regression fails under its own name.
 func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// branch is the weft bare's branch the marker is committed on.
+		// branch names the weft branch that carries the marker.
 		branch string
 	}{
 		{"MarkerAtHead", "main"},
@@ -596,9 +588,8 @@ func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
 	}
 }
 
-// TestCloneHub_ForceBootstrapOverridesGuard asserts that the same ordinary-source-repo weft candidate
-// TestCloneHub_OldOrderInvocationIsRefused rejects succeeds when ForceBootstrap is set, and writes the
-// record — together the two tests establish that the flag is the only way through the guard.
+// TestCloneHub_ForceBootstrapOverridesGuard asserts that ForceBootstrap passes an ordinary source repo;
+// the clone succeeds and writes the record, so the flag is the only way through the guard.
 func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -629,11 +620,11 @@ func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
 	}
 }
 
-// TestCloneHub_ResetInBothArgumentForms covers --reset in both invocation shapes. The two-argument
-// subtest re-clones the same pair with Reset true and asserts the second call succeeds. The
-// one-argument subtest is the point of the whole reset-folding change: once a weft is bound, re-clone
-// with only the weft URL and Reset true must tear the hub down, re-create it, and still derive the
-// warp from the recorded binding.
+// TestCloneHub_ResetInBothArgumentForms covers --reset in both invocation shapes.
+// The two-argument subtest re-clones the same pair with Reset true and expects the second call to succeed.
+// The one-argument subtest covers the normal invocation once a weft is bound:
+// re-clone with only the weft URL and Reset true tears the hub down and re-creates it;
+// the warp is still derived from the recorded binding.
 func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -676,9 +667,9 @@ func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 		weftBare := makeBareRemote(t, fixtures, "reset-one-weft")
 		warpURL := filepath.ToSlash(warpBare)
 
-		// CloneHub never commits the record itself (the CLI layer does, through Bolt), so a "bound
-		// hub" precondition is seeded directly onto weft:main here, exactly as a real prior clone
-		// followed by the CLI's commit would have left it.
+		// CloneHub never commits the record; the CLI layer does, through Bolt.
+		// The "bound hub" precondition is therefore seeded directly onto weft:main.
+		// That matches what a prior clone and the CLI's commit leave behind.
 		seedWeftBinding(t, fixtures, weftBare, warpURL)
 
 		cloneParent := t.TempDir()
@@ -691,9 +682,7 @@ func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 		originalHubPath := firstRes.HubPath
 		t.Cleanup(func() { _ = os.RemoveAll(originalHubPath) })
 
-		// Once bound, the one-argument form is the normal invocation: re-clone with only the weft
-		// URL and Reset true. The hub name is derived from the now-recorded binding, so it resolves
-		// to the same hub path as the first clone.
+		// The hub name derives from the recorded binding, so the re-clone resolves to the first clone's hub path.
 		res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 			WeftURL: filepath.ToSlash(weftBare),
 			Reset:   true,
@@ -713,7 +702,8 @@ func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 	})
 }
 
-// TestCloneHub_ResetWithSubpathPresentInWarp asserts that a --reset clone with an explicit --subpath naming a directory of the warp passes the subpath check and re-creates the hub anchored there.
+// TestCloneHub_ResetWithSubpathPresentInWarp asserts that a --reset clone passes the subpath check:
+// the --subpath names a warp directory, and the hub is re-created anchored there.
 func TestCloneHub_ResetWithSubpathPresentInWarp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -746,8 +736,9 @@ func TestCloneHub_ResetWithSubpathPresentInWarp(t *testing.T) {
 	}
 }
 
-// TestCloneHub_ResetRefusalKeepsExistingHub asserts that a --reset refused before any removal leaves the existing hub in place.
-// The refusals are a warp URL that disagrees with the recorded binding, the old-order bootstrap guard, a --subpath that disagrees with the recorded anchor, and a --subpath absent from the warp.
+// TestCloneHub_ResetRefusalKeepsExistingHub asserts that a --reset refused before removal leaves the hub in place.
+// The refusals are: a warp URL that disagrees with the recorded binding; the old-order bootstrap guard;
+// a --subpath that disagrees with the recorded anchor; or a --subpath absent from the warp.
 // A sentinel file written into the hub proves it survives, since a removed hub takes the file with it.
 func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -767,7 +758,8 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 
 		recordedFixtures := t.TempDir()
 		suppliedFixtures := t.TempDir()
-		// Both warps share a basename, so the supplied URL derives the same hub path as the recorded one while naming a different repository.
+		// Both warps share a basename, so the supplied URL derives the same hub path as the recorded one,
+		// and it names a different repository.
 		recordedWarpBare := makeBareRemote(t, recordedFixtures, "reset-refusal-warp")
 		suppliedWarpBare := makeBareRemote(t, suppliedFixtures, "reset-refusal-warp")
 		weftBare := makeBareRemote(t, recordedFixtures, "reset-refusal-weft")
@@ -897,9 +889,12 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 	})
 }
 
-// TestCloneHub_ResetSubpathCheckReadsRecordedAnchor asserts that the --subpath check a --reset clone runs before removing the hub reads the recorded anchor from the same weft branches the clone adopts it from.
-// A marker only on main-weft, or on the default branch when main-weft carries none, refuses a disagreeing --subpath and leaves the hub in place.
-// A marker on a default branch that is not the warp branch is not adopted, so a --subpath present in the warp is accepted.
+// TestCloneHub_ResetSubpathCheckReadsRecordedAnchor asserts the --subpath check of a --reset clone:
+// it reads the recorded anchor from the weft branches the clone adopts it from.
+// A marker only on main-weft, or on the default branch when main-weft carries none, is adopted,
+// and it refuses a disagreeing --subpath and leaves the hub in place.
+// A marker on a default branch that is not the warp branch is not adopted,
+// so a --subpath present in the warp is accepted.
 func TestCloneHub_ResetSubpathCheckReadsRecordedAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -975,15 +970,15 @@ func TestCloneHub_ResetSubpathCheckReadsRecordedAnchor(t *testing.T) {
 	}
 }
 
-// TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm asserts that a second two-argument clone of an
-// already-cloned pair, with Reset false, fails with today's "hub already exists" and — the observable
-// difference this test exists to lock in — never runs the probe: no directory whose name begins with
-// the probe prefix is ever created in the clone parent, proving the hub-exists check short-circuits
-// before the probe touches the network.
+// TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm asserts that the hub-exists check runs first:
+// a second two-argument clone of an already-cloned pair, with Reset false, fails with "hub already exists",
+// and it never runs the probe.
+// No directory whose name begins with the probe prefix is created in the clone parent.
+// That absence shows the check short-circuits before the probe touches the network.
 //
-// The one-argument form is not asserted symmetrically here: in that form the probe necessarily
-// precedes the hub-exists check (the hub name is unknowable until the binding is read), and that
-// asymmetry is deliberate — a future reader should not "fix" it into matching the two-argument order.
+// The one-argument form is not asserted here.
+// There the probe must precede the hub-exists check, because the hub name is unknowable until the binding is read.
+// That order is deliberate; a reader should not change it to match the two-argument order.
 func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// hubdirectory_test.go covers the production HubDirectory over temporary hubs that hold only a shortname record and a board creel.yaml, so nothing is spawned.
+// hubdirectory_test.go covers the production HubDirectory over temporary hubs.
+// Each hub holds only a shortname record and a board creel.yaml, so nothing is spawned.
 // The rows replace the package's client seam, which is process-global state, so the test does not run in parallel.
 
 package creelcli

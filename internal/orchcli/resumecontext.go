@@ -1,4 +1,6 @@
-// resumecontext.go implements the hidden `resume-context` orch verb, which the provider's session-start hook runs after every compaction to deliver the resume pointer, and builds the hook command the orch run's spec carries.
+// resumecontext.go implements the hidden `resume-context` orch verb.
+// The session-start hook runs the verb after every compaction to deliver the resume pointer.
+// The file also builds the hook command the orch run's spec carries.
 
 package orchcli
 
@@ -17,8 +19,10 @@ import (
 // resumeContextVerb is the hidden verb's name, which the hook command spells.
 const resumeContextVerb = "resume-context"
 
-// resumeContextCommand returns the hook command that delivers the resume pointer: a change of directory to the acting orch's own anchor, the beam's in a beam, chained with the bare verb, so the verb runs in that worktree whatever directory the session has moved to.
-// It is built through the POSIX dialect whatever the host, because the provider runs its hooks under a POSIX shell on every OS.
+// resumeContextCommand returns the hook command that delivers the resume pointer.
+// The command changes directory to the acting orch's own anchor, the beam's in a beam, and chains the bare verb,
+// so the verb runs in that worktree whatever directory the session has moved to.
+// It is built through the POSIX dialect whatever the host, because the provider runs its hooks under a POSIX shell.
 // `lym` is named bare and resolves to the binary that spawned the session, through the pane's PATH prelude.
 func resumeContextCommand(orchAnchor string) string {
 	sh := shell.Posix()
@@ -44,7 +48,8 @@ does not type the same pointer again.`,
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			// The engine is resolved before the pointer is rendered, because rendering records the delivery mark and a verb that cannot deliver must leave none.
+			// The engine is resolved before the pointer is rendered, because rendering records the delivery mark,
+			// and a verb that cannot deliver must leave none.
 			engine, err := c.engines.Lookup("")
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

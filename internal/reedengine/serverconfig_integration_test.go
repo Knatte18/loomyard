@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// newHubEngine builds the engine of the worktree directory named worktree under hubDir: its seeded reed.yaml loaded and passed to configure, and the geometry of a hub-mode worktree.
+// newHubEngine builds the engine for the worktree directory named worktree under hubDir.
+// It loads the worktree's seeded reed.yaml, passes it to configure, and uses the geometry of a hub-mode worktree.
 // It registers no key with the kit, and skips the test when the configured multiplexer binary is absent.
 func newHubEngine(t *testing.T, hubDir, worktree string, configure func(cfg *Config)) *Engine {
 	t.Helper()
@@ -65,8 +66,8 @@ func bootOwnServer(t *testing.T, e *Engine) error {
 // The key is registered with the kit only after the boot, so reed starts the server itself; a probe or spawn that read the config would leave the marker set or the config's session alive.
 // It reads no operator config, pins the resolved shell on the session, and a pane split into the session starts that shell, which a login-shell pane would not report.
 //
-// The second step pins that the option names the kit's config sets to the shell are the names reed pins per session.
-// It sets HOME, process-global state, so it does not run in parallel.
+// The second step checks that the kit's shell option names match the names reed pins per session.
+// It sets HOME, which is process-global state, so it does not run in parallel.
 func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Run("ReadsNoOperatorConfigAndStartsNonLoginPanes", func(t *testing.T) {
@@ -144,7 +145,9 @@ func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 }
 
 // TestProbeCapability_LeavesTheHubSocketAndNoProbeSocketBehind probes a hub with no server running.
-// The transient server `list-commands` starts must never stand on the hub's socket, where a sibling worktree's concurrent boot could reach it while it exits, and the probe's own socket file must be gone afterwards.
+// The transient server `list-commands` starts must never stand on the hub's socket;
+// a sibling worktree's concurrent boot could reach it while it exits,
+// and the probe's own socket file must be gone afterwards.
 //
 // Not parallel: it scans the socket directory every test in the binary shares, which a parallel probe would litter mid-scan.
 func TestProbeCapability_LeavesTheHubSocketAndNoProbeSocketBehind(t *testing.T) {

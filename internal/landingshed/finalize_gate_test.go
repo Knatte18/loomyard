@@ -1,4 +1,5 @@
-// finalize_gate_test.go drives Finalize's landing gate and its finalize-mode merge fixer over the gate fixture, a fake seat runner, a fake parent merger and fake line-change reads.
+// finalize_gate_test.go drives Finalize's landing gate and its finalize-mode merge fixer.
+// It runs over the gate fixture, a fake seat runner, a fake parent merger and fake line-change reads.
 
 package landingshed
 
@@ -23,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// finalizeGateFixture is a Finalize over the gate fixture, a fake seat runner and fake line-change reads.
+// finalizeGateFixture holds a Finalize wired to the gate fixture, a fake seat runner and fake line-change reads.
 type finalizeGateFixture struct {
 	fz     *Finalize
 	deps   Deps
@@ -91,12 +92,13 @@ func (fx *finalizeGateFixture) call(t *testing.T) (shedengine.Outcome, shedengin
 	return outcome, ptr
 }
 
-// reportPath is the report the fixer session writes for Finalize.
+// reportPath returns the path of the report the fixer session writes for Finalize.
 func (fx *finalizeGateFixture) reportPath() string {
 	return filepath.Join(fx.deps.ScratchDir, finalizeName+"-fixer-report.md")
 }
 
-// turn scripts a fixer turn that writes content as its report and moves the task head to head, as a turn that commits does.
+// turn scripts a fixer turn that writes content as its report.
+// The turn also moves the task head to head, as a turn that commits does.
 func (fx *finalizeGateFixture) turn(t *testing.T, content, head string) func() {
 	t.Helper()
 	return func() {
@@ -107,7 +109,7 @@ func (fx *finalizeGateFixture) turn(t *testing.T, content, head string) func() {
 	}
 }
 
-// reviewPath is the report the fix review session writes for Finalize.
+// reviewPath returns the path of the report the fix review session writes for Finalize.
 func (fx *finalizeGateFixture) reviewPath() string {
 	return filepath.Join(fx.deps.ScratchDir, finalizeName+"-fix-review.md")
 }
@@ -157,7 +159,8 @@ func (fx *finalizeGateFixture) attempts(t *testing.T) (FixerAttempts, bool) {
 	return rec, true
 }
 
-// requireHaltNoLanding asserts the call halted for the orch with no parent-side merge and a reason holding every fragment, and that it never rerouted.
+// requireHaltNoLanding asserts that the call halted for the orch with a reason holding every fragment.
+// It also asserts that the call never rerouted and that no parent-side merge ran.
 func (fx *finalizeGateFixture) requireHaltNoLanding(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer, fragments ...string) {
 	t.Helper()
 	requireHalt(t, outcome, ptr, fragments...)
@@ -169,7 +172,8 @@ func (fx *finalizeGateFixture) requireHaltNoLanding(t *testing.T, outcome sheden
 	}
 }
 
-// reviewsInTurn scripts successive fix review sessions: the n-th session's first turn writes contents[n], and every later one the last content.
+// reviewsInTurn scripts successive fix review sessions.
+// The n-th session's first turn writes contents[n], and every later session writes the last content.
 func (fx *finalizeGateFixture) reviewsInTurn(t *testing.T, contents ...string) func() {
 	t.Helper()
 	sessions := 0
@@ -188,7 +192,8 @@ func (fx *finalizeGateFixture) sessionRoles() string {
 	return strings.Join(roles, ",")
 }
 
-// requireLanded asserts the call ended Done with one parent-side merge, and that the entry's attempt record and the landing failure record are gone.
+// requireLanded asserts that the call ended Done after one parent-side merge.
+// It also asserts that the entry's attempt record and the landing failure record are gone.
 func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer) {
 	t.Helper()
 	if outcome != shedengine.Done || len(fx.merger.calls) != 1 {
@@ -205,7 +210,7 @@ func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Ou
 // countingResolver counts the merges of the parent and answers each as merged.
 type countingResolver struct {
 	calls int
-	// onMerge, when set, runs on every merge with its 1-based number and answers whether the merge found the task already holding the parent's tip.
+	// onMerge, when set, runs per merge with its 1-based number and reports whether the task already held the parent's tip.
 	onMerge func(call int) (alreadyUpToDate bool)
 }
 
@@ -214,8 +219,9 @@ func (r *countingResolver) Resolve(context.Context, string, string) (mergeresolv
 	return resolved(r.onMerge != nil && r.onMerge(r.calls)), nil
 }
 
-// TestFinalize_GateAndFixer pins Finalize's landing gate and its finalize-mode fixer:
-// when the fixer spawns, how its attempts and its Baseline are kept across resumes, and where a spent cap, an over-cap change and an escalate report lead.
+// TestFinalize_GateAndFixer pins Finalize's landing gate and its finalize-mode fixer.
+// It covers when the fixer spawns and how its attempts and its Baseline are kept across resumes.
+// It also covers where a spent cap, an over-cap change and an escalate report lead.
 func TestFinalize_GateAndFixer(t *testing.T) {
 	tiergate.Require(t, 0)
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
@@ -302,7 +308,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			name string
 			// fixerHead is the task head the fixer's turn leaves.
 			fixerHead string
-			// secondMergeHead is the task head the second merge of the parent leaves, as a merge that brings parent commits does.
+			// secondMergeHead is the task head after the second merge, which is a merge commit when it brings parent commits in.
 			secondMergeHead string
 			// secondMergeUpToDate makes the second merge find the task already holding the parent's tip.
 			secondMergeUpToDate bool

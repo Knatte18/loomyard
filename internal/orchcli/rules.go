@@ -1,4 +1,5 @@
-// rules.go implements the `rules` orch verb: store a draft as the repository's orch rules, one heddle entry aimed at the orch-prompt target.
+// rules.go implements the `rules` orch verb:
+// it stores a draft as the repository's orch rules, one heddle entry aimed at the orch-prompt target.
 
 package orchcli
 
@@ -20,7 +21,8 @@ import (
 // orchRulesSlug is the slug of the heddle entry that holds the repository's orch rules.
 const orchRulesSlug = "orch-rules"
 
-// orchRulesOrder is the render order a new orch rules entry takes: late, so the rules follow the passages every session of the engine shares.
+// orchRulesOrder is the render order a new orch rules entry takes:
+// late, so the rules follow the passages every session of the engine shares.
 const orchRulesOrder = 1000
 
 // rulesCmd builds the `rules` subcommand.
@@ -94,7 +96,8 @@ func writeOrchRules(out io.Writer, cwd, from string, changeStore func(cwd string
 	return output.Ok(out, fields)
 }
 
-// applyOrchRules makes text the orch rules entry's text, aimed at the orch-prompt target alone, or removes the entry when text is blank.
+// applyOrchRules makes text the orch rules entry's text, aimed at the orch-prompt target alone.
+// A blank text removes the entry instead.
 // A new entry takes orchRulesOrder and an existing one keeps its order.
 func applyOrchRules(store *heddleengine.Store, text string) error {
 	_, exists := store.Get(orchRulesSlug)

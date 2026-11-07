@@ -26,9 +26,10 @@ func fakeChangedPaths(byCommit map[string][]string) func(string) ([]string, erro
 	}
 }
 
-// TestCardHint proves the hint names, in card order, every card whose commit touched a failing
-// package's own directory (a file in a subdirectory or another package is no touch), yields no hint
-// and spawns nothing for opaque or foreign-module failures, and propagates a changed-paths error.
+// TestCardHint proves the hint names, in card order, every card whose commit touched a failing package's own directory.
+// A file in a subdirectory or another package is no touch.
+// It yields no hint and spawns nothing for opaque or foreign-module failures,
+// and it propagates a changed-paths error.
 //
 //testtiming:keep pins which commits count as touching a failing package, the card order of the hint and the no-hint cases; the covering run-level verify-gate test checks one hint
 func TestCardHint(t *testing.T) {

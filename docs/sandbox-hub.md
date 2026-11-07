@@ -4,10 +4,12 @@
 
 > **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md) (deploy → clone Hub → run suite). This document is the reference for topology and design.
 
-> **Windows vs. POSIX.** Everything below is written for the Windows launchers (`sandbox/win/*.cmd`) and this machine's Windows paths (`C:\Code\...`). POSIX (Linux/macOS) equivalents ship alongside them under `sandbox/posix/*.sh`, invoked the same way (e.g. `sandbox/posix/build.sh`, `sandbox/posix/core-suite.sh -reset`) with `$HOME/Code` standing in for `C:\Code` as the Hub's parent directory — same subcommands, same flags, same `tools/sandbox` Go tool underneath.
+> **Windows vs. POSIX.** Everything below is written for the Windows launchers (`sandbox/win/*.cmd`) and this machine's Windows paths (`C:\Code\...`). POSIX (Linux/macOS) equivalents live under `sandbox/posix/*.sh` and are invoked the same way (e.g. `sandbox/posix/build.sh`, `sandbox/posix/build.sh -reset`), with `$HOME/Code` standing in for `C:\Code` as the Hub's parent directory. They take the same subcommands and flags and use the same `tools/sandbox` Go tool underneath.
 
 The **sandbox Hub** is a dedicated bench for manual testing of lym's core workflows.
-It exercises the resolved `lym` binary under test — the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — against the real command surface, JSON output, and topology wiring users encounter.
+It exercises the resolved `lym` binary under test against the real command surface, JSON output, and topology wiring users encounter.
+That binary is the dev binary in the derived `.dev-bin` directory, deployed by `deploy-dev`, when present.
+Otherwise it is the production binary on PATH, installed by `update-plugins.cmd`.
 Its purpose is **dogfooding**: running lym against itself to catch regressions early.
 
 The Hub consists of two dedicated GitHub repositories and a local working directory on disk:
@@ -18,7 +20,8 @@ The Hub consists of two dedicated GitHub repositories and a local working direct
 
 ## Hub Location and Structure
 
-The Hub is cloned to `C:\Code\lym-test-LYMHUB` on Windows, or `$HOME/Code/lym-test-LYMHUB` on POSIX (the code repo's basename `lym-test` + `-LYMHUB` suffix, derived in `internal/fabricengine/clone.go`).
+The Hub is cloned to `C:\Code\lym-test-LYMHUB` on Windows, or `$HOME/Code/lym-test-LYMHUB` on POSIX.
+The name is the code repo's basename `lym-test` plus the `-LYMHUB` suffix, derived in `internal/fabricengine/clone.go`.
 
 **Important:** The Hub lives **outside `C:\Code\loomyard\`**, so it is never mistaken for part of Loomyard itself and stays separate from the orchestrator codebase.
 
@@ -38,13 +41,21 @@ Discovery is structural, so it resolves normally;
 the only degradation is the display name derived from its basename.
 
 It is never renamed in place.
-The launcher scripts inside it were materialised against its absolute path, and the tmux socket key is derived from that same absolute path, so moving the directory breaks a working container rather than migrating it.
+The launcher scripts inside it were materialised against its absolute path,
+and the tmux socket key is derived from that same absolute path,
+so moving the directory breaks a working container rather than migrating it.
 
 The `-reset` flag does not reach it.
-Both the collision guard and the reset teardown key on the container path the code derives, which now carries the new suffix, so a re-clone neither refuses nor removes the old directory — it silently creates a second, parallel container for the same code repo, with its own board, its own links, and its own tmux socket, while the old one keeps running.
+Both the collision guard and the reset teardown key on the container path the code derives, which carries the new suffix,
+so a re-clone neither refuses nor removes the old directory.
+It silently creates a second, parallel container for the same code repo, with its own board, its own links, and its own tmux socket, while the old one keeps running.
 
-The procedure is therefore, in order: push or abandon any outstanding work inside the old container, stop its reed server with `lym reed down`, remove the old directory by hand, then run `lym fabric clone` to create the new one.
-The `-reset` flag is not the tool for this.
+The procedure is, in order:
+
+1. Push or abandon any outstanding work inside the old container.
+2. Stop its reed server with `lym reed down`.
+3. Remove the old directory by hand.
+4. Run `lym fabric clone` to create the new one.
 
 ## Prerequisites
 
@@ -56,13 +67,14 @@ The board repo is the records repo's GitHub wiki.
 1. The records repo must have **Wikis enabled** in its GitHub settings.
 2. The wiki must have **at least one page** created (a dedicated page can be the only content initially).
 
-If the wiki does not exist or is not initialized, `lym fabric clone` will fail when trying to clone the board,
-and the Hub will be torn down.
+If the wiki does not exist or is not initialized, `lym fabric clone` fails when it clones the board,
+and the Hub is torn down.
 
 ### Current lym Binary
 
-The sandbox tool invokes `lym fabric clone` as a subprocess and resolves which `lym` to run: the derived `.dev-bin/lym` binary when it exists (deployed via `deploy-dev`), else `lym` on PATH as a fallback (deployed via `deploy.cmd`).
-Deploy one of the two before the Hub can be built — if neither resolves, the sandbox tool fails with a clear error.
+The sandbox tool invokes `lym fabric clone` as a subprocess and resolves which `lym` to run:
+the derived `.dev-bin/lym` binary when it exists (deployed via `deploy-dev`), else `lym` on PATH as a fallback (installed via `update-plugins.cmd`).
+Deploy one of the two before the Hub can be built; if neither resolves, the sandbox tool fails with a clear error.
 
 ## Building and Rebuilding the Hub
 
@@ -110,7 +122,7 @@ Once the Hub is built, the `suite` subcommand runs an automated black-box test s
 ### Prerequisites
 
 - Hub already built (`sandbox/win/build.cmd` / `sandbox/posix/build.sh`).
-- `lym` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a fallback, on PATH (deployed via `deploy.cmd`).
+- `lym` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a fallback, on PATH (installed via `update-plugins.cmd`).
 
 ### Usage
 
@@ -125,16 +137,21 @@ sandbox/posix/core-suite.sh
 This command, run from the lym repo directory:
 
 1. Locates the Hub code repo at `C:\Code\lym-test-LYMHUB\lym-test`.
-2. Resolves the `lym` binary under test (derived `.dev-bin/lym` first, else PATH as a fallback) and fingerprints it (absolute path, size, modtime, SHA256 prefix,
-   and a `Source: dev`/`Source: prod` marker recording which one was picked).
-3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub code repo, prepending the fingerprint block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`).
+2. Resolves the `lym` binary under test (derived `.dev-bin/lym` first, else PATH as a fallback) and fingerprints it:
+   absolute path, size, modtime, SHA256 prefix, and a `Source: dev`/`Source: prod` marker recording which one was picked.
+3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub code repo.
+   It prepends the fingerprint block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`).
    Any previous copy is overwritten so every session starts from a clean slate.
-4. Adds `SANDBOX-CORE-SUITE.md` to `lym-test-LYMHUB/lym-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the code repo.
-5. Launches an interactive `claude --dangerously-skip-permissions` session with the code repo as the working directory and a single instruction: `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
+4. Adds `SANDBOX-CORE-SUITE.md` to `lym-test-LYMHUB/lym-test/.git/info/exclude`,
+   so the copied file does not show up as an untracked change inside the code repo.
+5. Launches an interactive `claude --dangerously-skip-permissions` session with the code repo as the working directory and a single instruction:
+   `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
 
 The agent works entirely as a black box: it sees only `lym` on PATH and the copied scheme, and must not access the lym source tree.
 Findings (WARN or FAIL verdicts) are written to `sandbox-report.json` in the code repo.
-The suite subcommand only launches the agent — it does **not** fetch the report: an interactive `claude` session never self-terminates and its manual exit gives a non-zero code, so gating a fetch on a clean exit would never fire.
+The suite subcommand only launches the agent; it does **not** fetch the report.
+An interactive `claude` session never self-terminates and its manual exit gives a non-zero code,
+so gating a fetch on a clean exit would never fire.
 Collecting the report is a separate operator step (`fetch`, below).
 
 ### Optional flags
@@ -151,7 +168,8 @@ sandbox/posix/core-suite.sh -prompt <text>   # override the instruction string (
 
 ### Exit-code note
 
-The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh`.
+The suite treats any exit code from the interactive `claude` session as normal, because a manual exit is expected.
+`runSuite` therefore always returns success and prints a reminder to run `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh`.
 
 ## Fetching the report
 
@@ -168,31 +186,40 @@ sandbox/posix/fetch.sh
 This command:
 
 1. Locates the Hub code repo at `C:\Code\lym-test-LYMHUB\lym-test`.
-2. Re-fingerprints the `lym.exe` currently on PATH (for the normal run-then-fetch flow this is the same binary the suite fingerprinted).
-3. Reads `sandbox-report.json` from the code repo, validates it against the shared sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
+2. Re-resolves the `lym` binary (derived `.dev-bin/lym` first, else PATH) and re-fingerprints it.
+   For the normal run-then-fetch flow this is the same binary the suite fingerprinted.
+3. Reads `sandbox-report.json` from the code repo and validates it against the shared sandbox-report-json contract (millhouse#586).
+   It stamps `meta.fingerprint` and writes a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
 
-On success it prints the fetched path and, when there are findings, the exact `/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to the wiki until you approve);
-a clean run says so and points at nothing.
+On success it prints the fetched path.
+When there are findings, it also prints the exact `/mill-report-to-tasks "<path>"` triage command to run next;
+nothing is written to the wiki until you approve.
+A clean run says so and points at nothing.
 
 If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage".
-Only `fetch` passes `-loomyard` (`sandbox/win/fetch.cmd` as `"%~dp0..\..\."`, `sandbox/posix/fetch.sh` via its resolved `$REPO_ROOT`), and only this subcommand needs it.
+Only `fetch` needs `-loomyard`, and only its launchers pass it:
+`sandbox/win/fetch.cmd` passes `"%~dp0..\..\."` and `sandbox/posix/fetch.sh` passes its resolved `$REPO_ROOT`.
 
 ### Future: tmux launch
 
-The direct `claude` launch used today will be replaced by a tmux interactive session once the `reed` module is available.
-The file contract (`SANDBOX-CORE-SUITE.md` driving the agent) is unchanged;
-only the launch mechanism will differ.
+The suite launches `claude` directly as a child process, not in a tmux session.
+The file contract (`SANDBOX-CORE-SUITE.md` driving the agent) does not depend on the launch mechanism.
 
 ## Running the reed suite
 
 Alongside the main suite, `sandbox/win/reed-suite.cmd`/`sandbox/posix/reed-suite.sh` runs a dedicated black-box suite against `lym reed`.
-It mirrors the main-suite flow: copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub code repo, git-excludes it the same way, clears any stale `sandbox-report.json`, and launches the interactive agent there.
-Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH on Windows, `tmux` on PATH on POSIX) beyond what the main suite requires.
-Findings land in the same `sandbox-report.json`, so `fetch` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
+It mirrors the main-suite flow.
+It copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub code repo and git-excludes it the same way.
+It clears any stale `sandbox-report.json` and launches the interactive agent there.
+It exercises live tmux panes (crash simulation, layout verification, attach),
+so it needs a live tmux beyond what the main suite requires: `tmux.exe` on PATH on Windows, `tmux` on PATH on POSIX.
+Findings land in the same `sandbox-report.json`, so `fetch` collects a reed-suite report like a main-suite one.
+The two suites share one report pipeline, one run at a time.
 
 ## Launchers and subcommands
 
-The single Go tool (`tools/sandbox`) still dispatches four subcommands internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd` each do one thing:
+The single Go tool (`tools/sandbox`) dispatches `build` (default), one subcommand per suite, and `fetch`.
+Each is fronted by its own single-purpose launcher, mirroring how `deploy-dev.cmd` and `update-plugins.cmd` each do one thing:
 
 ```cmd
 sandbox/win/build.cmd            # go run ./tools/sandbox -parent C:\Code build
@@ -210,7 +237,8 @@ sandbox/posix/reed-suite.sh       # ... reed-suite  (run the reed-specific inter
 sandbox/posix/fetch.sh            # ... -loomyard "$REPO_ROOT" fetch  (collect the report)
 ```
 
-`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so `build -reset` forwards its remaining args straight through to `... build -reset` regardless of which launcher (`sandbox/win/build.cmd`'s `%*` or `sandbox/posix/build.sh`'s `"$@"`) invoked it.
+`-reset` is a flag of the `build` subcommand, parsed after the `build` token.
+Either launcher forwards its remaining args straight through to `... build -reset`: `sandbox/win/build.cmd` with `%*` and `sandbox/posix/build.sh` with `"$@"`.
 
 ## Purpose: dogfooding lym
 

@@ -1,10 +1,8 @@
-// fabric.go is the cobra Command() entry point and the RunCLI seam for the fabric module.
-// It builds the "fabric" parent command and its hub-scoped topology verbs (add, list, remove,
-// checkout, pairs, reconcile, prune, cleanup), each driving fabricengine.Topology for the warp↔weft
-// worktree pairing.
-// The weft-git content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
-// weft_verbs.go, which also extends this file's Command() build with the --weft-path bypass flag
-// and its PersistentPreRunE.
+// fabric.go holds the cobra Command() entry point and the RunCLI seam for the fabric module.
+// Command builds the "fabric" parent command and its hub-scoped topology verbs.
+// Each topology verb drives fabricengine.Topology for the warp↔weft worktree pairing.
+// The weft-git content-sync verbs are wired in by weft_verbs.go.
+// That file extends the Command() build with the hidden --weft-path and --warp-path flags and a PersistentPreRunE.
 // That pre-run opens with the sandboxed-role guard of roleguard.go.
 // The guard refuses every mutating verb from a task session's strand name before the verb runs.
 
@@ -34,9 +32,7 @@ import (
 )
 
 // Command builds the cobra command tree for the fabric module.
-// The parent command carries no persistent flags for topology verbs;
-// each resolves its own layout and config.
-// weft_verbs.go extends the command with weft-git verbs and their scoped PersistentPreRunE.
+// The parent command carries no persistent flags for topology verbs; each verb resolves its own layout and config.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fabric",
@@ -56,7 +52,6 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
 		Use:         "clone <weft-url> [<warp-url>]",
@@ -95,17 +90,14 @@ Example:
 	}
 	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.ShortnameFileName)
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
-	// The default is the EMPTY string, not "." — CloneHub normalises empty to the "." root anchor
-	// anyway, and only an empty default lets it tell "the operator typed nothing" apart from "the
-	// operator typed --subpath .". With "." as the cobra default the two were identical, so an
-	// explicit --subpath . against a hub recorded at a real subpath was silently adopted instead of
-	// refused like every other disagreeing value.
+	// The default is empty, not ".": only an empty default lets CloneHub tell an omitted --subpath from an explicit one.
+	// CloneHub normalises empty to the "." root anchor.
+	// An explicit "." against a hub recorded at a real subpath is refused like any other disagreeing value.
 	cloneCmd.Flags().String("subpath", "", `anchor lym at this subdirectory of the warp repo (default ".", the repo root)`)
 	cloneCmd.Flags().String("into", "", "directory the new hub is created in; a relative value resolves against the current working directory (default: the current working directory)")
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
-	// add <slug>
 	var addCmd *cobra.Command
 	addCmd = &cobra.Command{
 		Use:         "add <slug>",
@@ -155,7 +147,6 @@ Example:
 	cmd.AddCommand(addCmd)
 	cmd.AddCommand(teardownChildCmd())
 
-	// list
 	cmd.AddCommand(&cobra.Command{
 		Use:         "list",
 		Args:        cobra.NoArgs,
@@ -169,7 +160,6 @@ use "lym fabric pairs".`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runList(ctx, out, args) }),
 	})
 
-	// remove <slug>
 	var removeCmd *cobra.Command
 	removeCmd = &cobra.Command{
 		Use:         "remove <slug>",
@@ -211,8 +201,7 @@ Example:
   lym fabric remove --force my-task
   lym fabric remove --remote my-task`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
-			// The --force and --remote flags are read from the cobra flag set via closure over
-			// removeCmd.
+			// The --force and --remote flags are read from removeCmd's flag set, which this closure captures.
 			force, _ := removeCmd.Flags().GetBool("force")
 			remote, _ := removeCmd.Flags().GetBool("remote")
 			return runRemoveWithFlag(ctx, out, args, force, remote)
@@ -249,7 +238,6 @@ Example:
 		RunE: clihelp.WrapRunCtx(runCheckout),
 	})
 
-	// pairs
 	cmd.AddCommand(&cobra.Command{
 		Use:         "pairs",
 		Args:        cobra.NoArgs,
@@ -267,7 +255,6 @@ remedy.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runPairs(ctx, out, args) }),
 	})
 
-	// reconcile
 	cmd.AddCommand(&cobra.Command{
 		Use:         "reconcile",
 		Args:        cobra.NoArgs,
@@ -306,7 +293,6 @@ warnings.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
-	// prune
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
 		Use:         "prune",
@@ -447,25 +433,22 @@ Example:
 
 	cmd.AddCommand(anchorCommand())
 
-	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
-	// own --weft-path bypass flag, and their scoped PersistentPreRunE.
+	// The weft-git content-sync verbs get their own --weft-path bypass flag and a scoped PersistentPreRunE.
 	addWeftVerbs(cmd)
 
 	return cmd
 }
 
-// RunCLI is the public seam for the fabric module.
-// It delegates to clihelp.Execute, allowing in-process tests to capture output.
+// RunCLI runs the fabric command tree with args, writing output to out.
+// It lets in-process tests capture that output.
 // Returns the exit code (0 on success, 1 on error).
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the fabric command tree with cwd as the working directory, writing output to out.
+// An empty cwd means the process working directory.
+// The empty-cwd branch exists because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)
@@ -473,11 +456,12 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
-// resolveWarpLocation resolves the seam cwd — the cwd RunCLIIn injected into ctx, or the process
-// cwd otherwise — into the acting Location, refusing any cwd that resolves onto something other
-// than a warp worktree.
+// resolveWarpLocation resolves the cwd carried on ctx, or the process cwd if none is carried, into the acting Location.
+// It refuses any cwd that resolves to something other than a warp worktree.
 //
-// Every topology verb goes through it rather than calling lymcwd.Resolve directly, because lymcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a weft sibling, or inside the hub's own Bolt checkout, otherwise resolves cleanly and drives the verb against geometry that does not exist.
+// Every topology verb resolves through it rather than calling lymcwd.Resolve directly.
+// lymcwd cannot tell a warp worktree from a weft sibling or the hub's own Bolt checkout,
+// so a cwd in either would resolve cleanly and drive the verb against geometry that does not exist.
 // It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
 func resolveWarpLocation(ctx context.Context) (cwd string, l *lymcwd.Location, err error) {
 	cwd, err = lymcwd.CwdFrom(ctx)
@@ -487,9 +471,9 @@ func resolveWarpLocation(ctx context.Context) (cwd string, l *lymcwd.Location, e
 
 	l, err = lymcwd.Resolve(cwd)
 	if err != nil {
-		// On a gate failure the generic error can actively misdirect: from a weft sibling's
-		// NON-anchored directory it names the weft's own anchored directory as the place to stand,
-		// where RequireWarpWorktree then refuses anyway.
+		// On a gate failure the generic error can misdirect the operator.
+		// From a weft sibling's non-anchored directory, it names the weft's anchored directory as the place to stand.
+		// RequireWarpWorktree then refuses there anyway.
 		// Classify the worktree ungated and prefer the specific weft/board refusal when it applies.
 		if worktreeLocation, worktreeErr := lymcwd.ResolveWorktree(cwd); worktreeErr == nil {
 			if refusal := fabricengine.RequireWarpWorktree(worktreeLocation); refusal != nil {
@@ -506,7 +490,8 @@ func resolveWarpLocation(ctx context.Context) (cwd string, l *lymcwd.Location, e
 	return cwd, l, nil
 }
 
-// runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
+// runAdd executes the fabric add subcommand.
+// Under cobra, args[0] is the slug.
 func runAdd(ctx context.Context, out io.Writer, args []string, opts fabricengine.AddOptions) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
@@ -536,8 +521,10 @@ func runAdd(ctx context.Context, out io.Writer, args []string, opts fabricengine
 		}
 		return errWithRecord(out, r.Mutated(), err)
 	}
-	// Add pushes nothing: the new pair's branches go out through a detached push, as sync's do, so the verb returns without waiting on the remote.
-	// A failed spawn leaves the pair whole with its branches local, and the pair's next detached push carries them, so it is reported but never fails the verb.
+	// Add pushes nothing:
+	// the new pair's branches go out through a detached push, so the verb returns without waiting on the remote.
+	// A failed spawn leaves the pair whole with its branches local,
+	// and the pair's next detached push carries them, so it is reported but never fails the verb.
 	rec := fabricengine.NewMutations(l.HubPath)
 	rec.Extend(r.Mutated())
 	codeWorktree, recordsWorktree := fabricengine.WorktreePath(l, slug), fabricengine.RecordsWorktreePath(l, slug)
@@ -559,7 +546,7 @@ func runAdd(ctx context.Context, out io.Writer, args []string, opts fabricengine
 	return okWithRecord(out, rec.Snapshot(), fields)
 }
 
-// runList parses and executes the fabric list subcommand.
+// runList executes the fabric list subcommand and reports its worktree entries.
 func runList(ctx context.Context, out io.Writer, _ []string) int {
 	cwd, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -582,9 +569,9 @@ func runList(ctx context.Context, out io.Writer, _ []string) int {
 	})
 }
 
-// runCheckout executes the fabric checkout subcommand. When no branch is
-// supplied, it resolves the current warp branch and performs an in-place
-// re-checkout, re-pointing junctions and re-syncing weft.
+// runCheckout executes the fabric checkout subcommand.
+// When no branch is supplied, it resolves the current warp branch and performs an in-place re-checkout:
+// it re-points junctions and re-syncs weft.
 func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
@@ -601,9 +588,8 @@ func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 			l.WorktreePath(),
 		)
 		if runErr != nil {
-			// A *GitError means git ran and rejected the command: recover it as
-			// "no current branch to infer", a distinct answer from an exec-level
-			// failure, which keeps its own diagnostic below.
+			// A *GitError means git ran and rejected the command, so it is recovered as "no current branch to infer".
+			// An exec-level failure is a distinct case and keeps its own diagnostic below.
 			var gitErr *gitexec.GitError
 			if errors.As(runErr, &gitErr) {
 				return output.Err(out, "usage: lym fabric checkout <branch>")
@@ -634,8 +620,7 @@ func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 	})
 }
 
-// runPairs executes the fabric pairs subcommand, enumerating all warp↔weft
-// pairs with drift and pollution data.
+// runPairs executes the fabric pairs subcommand, enumerating every warp↔weft pair with its drift and pollution data.
 func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -659,13 +644,14 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 }
 
 // runReconcile executes the fabric reconcile subcommand, walking and repairing all warp↔weft pairs.
-// Beyond the per-pair repair Topology.Reconcile performs itself, this handler owns the commit-and-push
-// half of the once-per-hub warp-URL binding backfill: on a fresh "recorded" outcome it commits the
-// written record through Bolt, and on both "recorded" and "present" it attempts a push, so a
-// previously committed-but-unpushed record is retried on every subsequent reconcile. Either step
-// failing downgrades the reported outcome to WarpBindingOutcomeRecordFailed — a CLI-only value
-// Topology.Reconcile itself never returns — and fails the verb with the envelope kept, as does a commit or push failure of the hub-wide config.
-// A heal skipped because the Bolt checkout could not be brought up to date is reported under hub_config_detail and is no failure.
+// The engine runs the once-per-hub warp-URL binding backfill and writes the record;
+// on "recorded" this handler commits the record through Bolt, and on "recorded" or "present" it attempts a push.
+// A record committed but not yet pushed is retried on every later reconcile.
+// A failure in either step downgrades the outcome to WarpBindingOutcomeRecordFailed.
+// That value is CLI-only: the engine never returns it, and the verb fails with the envelope kept.
+// A commit or push failure of the hub-wide config fails the verb the same way.
+// A heal skipped because the Bolt checkout could not be brought up to date is reported under hub_config_detail;
+// it is no failure.
 // The verdict on the hub-wide anchor marker, when the Bolt checkout holds one, is reported under bolt_anchor.
 // A pair failure takes precedence over these as the error the verb returns.
 func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
@@ -675,18 +661,18 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	// The recorder is built here, as soon as l resolves, and not after top.Reconcile(l) returns:
-	// configsync.ReconcileHubWideAt below runs before top.Reconcile in this handler and may already
-	// have written a file, so seeding from r.Mutated() first would misstate the array's order — array
-	// order is the only thing carrying ordering in this vocabulary. This is the one handler where
-	// "pre-flight" and "pre-mutation" come apart: none of the three output.Err sites below qualifies
-	// for the ordinary pre-flight carve-out, since ReconcileHubWideAt may already have mutated state by
-	// the time any of them is reached.
+	// Build the recorder here, as soon as l resolves, not after top.Reconcile(l) returns.
+	// ReconcileHubWideAt runs before top.Reconcile and may already have written a file by then.
+	// Seeding the recorder from r.Mutated() afterwards would misstate the array's order.
+	// Array order is the only thing that carries ordering in the mutation record.
+	// A failure from ReconcileHubWideAt onward must carry the record, since it may already have mutated state.
+	// The output.Err at the prime-anchor read runs before ReconcileHubWideAt, so it needs no record.
 	rec := fabricengine.NewMutations(l.HubPath)
 
-	// Reconcile is the repair verb, so a missing hub-wide config is healed here rather than reported:
-	// without this, the "run \"lym fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
-	// ReconcileHubWideAt seeds absent hub files sparse, prunes retired keys while keeping any other key the template lacks, and never rewrites a recorded pathspec; it strips no present base file.
+	// Reconcile is the repair verb, so it heals a missing hub-wide config here rather than reporting it.
+	// The strict config loader names reconcile as the remedy, so reconcile reporting the gap would be circular.
+	// ReconcileHubWideAt seeds absent hub files sparse and prunes retired keys, keeping any other key the template lacks.
+	// It never rewrites a recorded pathspec and strips no present base file.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
 	boltDir := fabricengine.BoltDir(l.HubPath)
 	primeBaseDir := ""
@@ -722,8 +708,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		},
 	}}, rec)
 	if reconcileErr != nil {
-		// ReconcileHubWideAt can fail after a partial write, so this emits whatever rec holds rather
-		// than a bare error.
+		// ReconcileHubWideAt can fail after a partial write, so this emits whatever rec holds rather than a bare error.
 		return errWithRecord(out, rec.Snapshot(), reconcileErr)
 	}
 	hubConfigDetail := ""
@@ -756,7 +741,8 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		}
 	}
 
-	// A failure past the heal still reports why the heal did not run, since a strict config load fails on exactly the file a skipped heal left absent.
+	// A failure past the heal still reports why the heal did not run:
+	// a strict config load fails on the file a skipped heal left absent.
 	var healFields map[string]any
 	if hubConfigDetail != "" {
 		healFields = map[string]any{"hub_config_detail": hubConfigDetail}
@@ -794,24 +780,24 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 			}
 		}
 
-		// Push on both "recorded" and "present": the "present" case is what retries a backfill that
-		// committed locally but failed to push on a prior reconcile — without it, the next reconcile
-		// would see the record already on disk, report "present" again, and a commit-only-on-
-		// "recorded" handler would skip the push forever.
+		// Push on both "recorded" and "present".
+		// The "present" case retries a backfill that committed locally but failed to push on a prior reconcile.
+		// Without that push, the next reconcile would see the record already on disk and report "present" again,
+		// so a handler that pushed only on "recorded" would skip the push forever.
 		//
-		// Bolt's push checks HasUnpushed (a purely local
-		// rev-list) and returns nil without contacting the remote when HEAD is already in sync, so
-		// this costs nothing when there is nothing to push. Caveat: HasUnpushed treats *no configured
-		// upstream* as unpushed, so a Bolt checkout with no upstream attempts a network push on
-		// every reconcile. That is the adopt path's non-case — a Bolt checkout on an already-existing default
-		// branch carries its upstream from the initial clone — but it IS the steady state for a hub
-		// bootstrapped against a genuinely empty weft remote, whose Bolt checkout branch is orphan-created
-		// with no upstream at all. The attempt is harmless: it either succeeds or yields
-		// record_failed with the error in the detail.
+		// Bolt's push returns nil without contacting the remote when HEAD is already in sync.
+		// It checks HasUnpushed, a purely local rev-list, so this costs nothing when there is nothing to push.
+		// HasUnpushed treats a checkout with no configured upstream as unpushed.
+		// So such a checkout attempts a network push on every reconcile.
+		// A checkout on an existing default branch carries its upstream from the initial clone and does not hit this.
+		// A hub bootstrapped against an empty weft remote hits it on every reconcile:
+		// its Bolt checkout branch is orphan-created with no upstream at all.
+		// The attempt is harmless: it either succeeds or yields record_failed with the error in the detail.
 		//
-		// This push records no branch_pushed entry, and that is deliberate:
-		// a nil error from Bolt.PushRecorded means either a push landed or nothing was unpushed to begin with, an unobservable-outcome distinction that makes a KindBranchPushed entry here a lie of commission.
-		// The commit above is already recorded, and branch_pushed is exempt from the truthfulness oracle's commission direction, so omitting it costs the cross-check nothing.
+		// This push records no branch_pushed entry.
+		// A nil error from Bolt.PushRecorded means either a push landed or nothing was unpushed.
+		// The two cannot be told apart, so a branch_pushed entry would claim a push that may not have happened.
+		// The commit above is already recorded, and omitting the entry costs the cross-check nothing.
 		// A seed-commit drop behind the push is recorded in rec as commits_dropped.
 		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
 			if pushErr := b.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
@@ -850,15 +836,15 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		envelope["bolt_anchor"] = r.BoltAnchor
 	}
 
-	// A pair carrying an Error is a repair this verb was asked to perform and did not, so it must
-	// not be reported through the success path. Every one of Topology.Reconcile's own pr.Error sites
-	// is a genuine failure — a junction it could not re-point, a weft worktree it could not
-	// recreate, a branch it could not read — never an advisory outcome, which is exactly why prune
-	// and cleanup deliberately do NOT get this treatment: their per-entry Error doubles as the
-	// explanation for a designed refusal ("commit them or re-run with --force"), and turning that
-	// into a non-zero exit would report a documented outcome as a failure.
-	// The envelope is carried through unchanged so a caller still learns WHICH pair failed; without
-	// it, a caller would gain an exit code and lose the report it needs to act on.
+	// A pair carrying an Error is a repair this verb was asked to perform and did not,
+	// so it must not be reported through the success path.
+	// Every pair Error that Topology.Reconcile sets is a genuine failure:
+	// a junction it could not re-point, a weft worktree it could not recreate, or a branch it could not read.
+	// Prune is not held to this rule.
+	// Its per-entry Error can explain a designed refusal, such as "commit them or re-run with --force".
+	// A non-zero exit would report that documented outcome as a failure.
+	// The envelope is carried through unchanged, so a caller still learns which pair failed.
+	// Without it, a caller would gain an exit code and lose the report it needs to act on.
 	if pairErr := failedReconcilePairs(r.Pairs); pairErr != nil {
 		return errWithRecordFields(out, rec.Snapshot(), pairErr, envelope)
 	}
@@ -876,7 +862,7 @@ func reconcileFailureWayForward(boardDir string) string {
 }
 
 // reconcileFailureLine returns the way-forward clause that follows a failure's detail, led by its separator.
-// It is empty when the cause is a push failure whose text already ends in its class's line.
+// It is empty when every failure in cause is a classified push failure, which already carries its own way forward.
 func reconcileFailureLine(cause error, boardDir string) string {
 	if !fabricengine.HasUnclassifiedFailure(cause) {
 		return ""
@@ -894,13 +880,12 @@ func warpBindingFailure(detail string, cause error, boardDir string) error {
 	return fmt.Errorf("fabric reconcile: warp binding record failed: %s%s", detail, reconcileFailureLine(cause, boardDir))
 }
 
-// failedReconcilePairs returns an error summarising every pair whose reconcile step failed, or nil
-// when every pair reconciled cleanly.
+// failedReconcilePairs returns an error that summarises every pair whose reconcile step failed.
+// It returns nil when every pair reconciled cleanly.
 //
-// The summary names the count and the first failing pair's worktree and reason rather than
-// concatenating all of them: the full per-pair detail already travels in the envelope's "pairs"
-// array, so repeating it in the error string would duplicate the report an operator is about to
-// read anyway.
+// The summary names the count and the first failing pair's worktree and reason, not every pair.
+// The per-pair detail already travels in the envelope's "pairs" array.
+// Repeating it in the error string would duplicate the report an operator is about to read.
 func failedReconcilePairs(pairs []fabricengine.ReconcilePairResult) error {
 	var failed []fabricengine.ReconcilePairResult
 	for _, pair := range pairs {
@@ -941,8 +926,7 @@ func runPruneWithFlags(ctx context.Context, out io.Writer, apply, force bool) in
 	})
 }
 
-// runCleanupWithFlags executes the cleanup logic with the resolved apply,
-// force, and remote flags.
+// runCleanupWithFlags executes the cleanup logic with the resolved apply, force, and remote flags.
 func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remote bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
@@ -962,15 +946,15 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		return errWithRecord(out, r.Mutated(), err)
 	}
 
-	// fields, not CleanupResult, is what actually marshals — remote_skipped_reason reaches the
-	// envelope because the map names it, regardless of the struct's own omitempty tag.
+	// fields, not CleanupResult, is what marshals: the map names remote_skipped_reason,
+	// so it reaches the envelope whatever the struct's omitempty tag says.
 	fields := map[string]any{
 		"entries":               r.Entries,
 		"remote_skipped_reason": r.RemoteSkippedReason,
 	}
 
 	// The origin task-branch sweep runs after the weft sweep and folds its record into the one envelope record.
-	// Cleanup's signature is untouched and fabricengine imports no GitHub client, so the open-PR set is fetched here.
+	// The open-PR set is fetched here, since fabricengine imports no GitHub client.
 	rec := r.Mutations
 	var warpFailedBranches []string
 	var warpAttempted int
@@ -992,8 +976,9 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		}
 	}
 
-	// Error is always a genuine failure here, never a designed refusal — Cleanup sets no Error on a
-	// protected or unmanaged entry — unlike prune's Error, which stays in doc.go's carve-out.
+	// Error is always a genuine failure here, never a designed refusal:
+	// cleanup sets no Error on a protected or unmanaged entry.
+	// A prune Error, by contrast, can explain a designed refusal.
 	var localFailedBranches, remoteFailedBranches []string
 	var attemptedLocal, attempted int
 	for _, entry := range r.Entries {
@@ -1049,8 +1034,8 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 }
 
 // sweepRemoteTaskBranches runs the origin task-branch sweep with the open pull request set fetched from GitHub.
-// When the set cannot be established it skips the sweep entirely and names the cause in SkippedReason, failing toward keeping every task branch;
-// the returned entries are then an empty array, never nil.
+// When the set cannot be established, it skips the sweep and names the cause in SkippedReason.
+// Such a skip fails toward keeping every task branch, and the returned entries are an empty array, never nil.
 func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lymcwd.Location, apply bool) (fabricengine.RemoteWarpCleanupResult, error) {
 	skipped := func(reason string) fabricengine.RemoteWarpCleanupResult {
 		return fabricengine.RemoteWarpCleanupResult{
@@ -1106,14 +1091,13 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 	fields := removeFields(r, res.Session, res.Warning)
 
-	// Keyed on RemoteBranchError alone — never on RemoteSkippedReason — so that a missing origin
-	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
-	// never yields two different verdicts across the two verbs.
+	// The verdict keys on `RemoteBranchError` alone, never on `RemoteSkippedReason`.
+	// A missing origin then exits 0 here, as it does under `cleanup`,
+	// so the same configuration never gets two verdicts across the two verbs.
 	if r.RemoteBranchError != "" {
 		weftBranch := r.SiblingBranch
-		// "origin" is hardcoded here rather than referencing fabricengine's own unexported
-		// originRemoteName, which stays unexported: exporting it just to spell this one error string
-		// would widen the engine's API for no caller that needs it.
+		// "origin" is hardcoded here rather than referencing the unexported `originRemoteName` of `fabricengine`.
+		// Exporting that name only to spell this one error string would widen the engine's API for no caller that needs it.
 		synthesised := fmt.Errorf(
 			"weft branch %q was deleted locally, but its copy on %q was not: %s",
 			weftBranch, "origin", r.RemoteBranchError)
@@ -1123,9 +1107,10 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 }
 
 // removeFields builds the envelope fields for a remove result.
-// New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
-// code_branch_kept_reason, remote_branch_kept_reason, remote_code_branch_kept_reason, stray_path, origin_archive_tag, remote_handed_off, abandoned_session and warning appear only when set.
-// ended_processes, the {pid, role} of each registered process the session end ended, is always present and empty when none.
+// The map is hand-built, not reflected, so a field added to `RemoveResult` must be listed here explicitly.
+// A key set inside an if block appears only when that condition holds.
+// ended_processes lists the {pid, role} of each registered process that the session end ended;
+// it is always present, empty when none.
 func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult, warning string) map[string]any {
 	steps := r.Steps
 	if steps == nil {
@@ -1179,7 +1164,8 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	return fields
 }
 
-// addOptionsFromEnv returns the AddOptions for a CLI-driven `lym fabric add`: the named parent and the adopt-local choice, with the origin probes always on.
+// addOptionsFromEnv returns the AddOptions for a CLI-driven `lym fabric add`:
+// the named parent and the adopt-local choice, with the origin probes always on.
 // The new pair's detached push is gated by FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH alone, as every detached push is.
 func addOptionsFromEnv(parent string, adoptLocal bool) fabricengine.AddOptions {
 	return fabricengine.AddOptions{Parent: parent, AdoptLocal: adoptLocal}

@@ -1,7 +1,6 @@
-// openparent_integration_test.go covers OpenParent end to end against real hubforge fixtures: the
-// happy path (including the folded-in OriginURL delegation assertion), no live pair for the given
-// branch, the parent's own weft sibling missing, a prunable parent directory removed without pruning,
-// and a resolve-time failure that must still name both the branch and the resolved path.
+// openparent_integration_test.go covers OpenParent end to end against real hubforge fixtures.
+// Its cases are: the happy path; a branch with no live pair; a missing parent weft sibling;
+// a prunable parent directory removed without pruning; and a resolve-time failure.
 
 package fabricengine_test
 
@@ -21,9 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestOpenParent_HappyPath asserts OpenParent, called from a task pair, resolves and opens the
-// parent's (prime) fabric pair rather than the task's own — and that f.OriginURL() delegates to the
-// warp side's configured origin remote.
+// TestOpenParent_HappyPath asserts OpenParent, called from a task pair, opens the parent's prime pair, not the task's.
+// It also asserts that f.OriginURL() delegates to the warp side's configured origin remote.
 func TestOpenParent_HappyPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -61,8 +59,8 @@ func TestOpenParent_HappyPath(t *testing.T) {
 	}
 }
 
-// TestOpenParent_NoLivePairForBranch asserts OpenParent errors, naming the branch, when the branch
-// has no live worktree at all.
+// TestOpenParent_NoLivePairForBranch asserts that OpenParent errors when the branch has no live worktree.
+// The error must name the branch.
 //
 //testtiming:keep OpenParent naming the branch when it has no live worktree at all; coverage of its blocks by other tests does not show an assertion of this
 func TestOpenParent_NoLivePairForBranch(t *testing.T) {
@@ -81,9 +79,8 @@ func TestOpenParent_NoLivePairForBranch(t *testing.T) {
 	}
 }
 
-// TestOpenParent_ParentSiblingMissing asserts OpenParent errors with an *fabricengine.ErrMissingPath
-// naming the hub's own weft sibling when that sibling is deleted, leaving the task pair itself
-// untouched.
+// TestOpenParent_ParentSiblingMissing asserts OpenParent errors when the hub's own weft sibling is deleted.
+// The error must be a *fabricengine.ErrMissingPath naming that sibling, and the task pair must stay untouched.
 func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -112,9 +109,9 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 	}
 }
 
-// TestOpenParent_PrunableParentDirRemoved asserts that deleting a pair's directory without pruning
-// makes OpenParent report "no live pair" naming the branch — never an *fabricengine.ErrMissingPath —
-// since the prunable entry is skipped by matchParentBranch before it is ever opened.
+// TestOpenParent_PrunableParentDirRemoved asserts a pair deleted without pruning:
+// OpenParent reports "no live pair" naming the branch, never a *fabricengine.ErrMissingPath.
+// matchParentBranch skips the prunable entry before it is opened, so no ErrMissingPath can arise.
 //
 //testtiming:keep a deleted but unpruned pair reporting "no live pair" naming the branch and never an *ErrMissingPath; coverage of its blocks by other tests does not show an assertion of this
 func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
@@ -141,11 +138,13 @@ func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 	}
 }
 
-// TestOpenParent_ResolveFailureNamesBranchAndPath asserts that a step-3 lymcwd.ResolveWorktree failure — the matched path existed at List time but is gone by ResolveWorktree time — surfaces through OpenParent's wrap naming both the branch and the resolved path, never git's own bare "not a git repository" text unqualified.
+// TestOpenParent_ResolveFailureNamesBranchAndPath asserts OpenParent's wrap names the branch and the resolved path.
+// The failure is a lymcwd.ResolveWorktree error: the path existed at List time and is gone by ResolveWorktree time.
+// The error must never be git's bare "not a git repository" text.
 //
-// The path is locked before its directory is removed: `git worktree lock` suppresses git's own
-// "prunable" porcelain line even once the directory is gone, which is the deterministic way to
-// construct "matched at List time, gone by ResolveWorktree time" without depending on a real race.
+// The path is locked before its directory is removed:
+// `git worktree lock` suppresses git's own "prunable" porcelain line even after the directory is gone.
+// That makes the case deterministic, without depending on a real race between List and ResolveWorktree.
 func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -170,10 +169,11 @@ func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 	}
 }
 
-// TestCodeWorktrees_ListOpenAndPairComplete pins the path-based reads a told-geometry caller walks a hub with, on a root-anchored and a subpath-anchored hub:
-// the listing from either pair names the prime first and both pairs with their anchors, a pair whose directory is deleted by hand drops out and reads as missing,
-// and a pair whose warp `_lym` junction is removed is listed but not complete.
-// It also pins that pair completeness, `Healthy` and `Status` stay blind to the root `.scratch` entry, whether a real directory or absent.
+// TestCodeWorktrees_ListOpenAndPairComplete pins path-based reads on a root-anchored and a subpath-anchored hub.
+// The listing from either pair names the prime first and both pairs with their anchors.
+// A pair whose directory is deleted by hand drops out and reads as missing.
+// A pair whose warp `_lym` junction is removed is listed but not complete.
+// Pair completeness, `Healthy` and `Status` ignore the root `.scratch` entry, whether it is a directory or absent.
 func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

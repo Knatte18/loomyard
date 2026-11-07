@@ -1,7 +1,8 @@
 // strandops_integration_test.go proves ReplaceStrand and AddStrand with an empty Cmd against a real tmux.
-// Replacing the first of three strands leaves the replacement in its slot of the strand table, with the other strands' panes untouched;
-// an empty Cmd still leaves a live pane running the pane's own shell, now with the pane-binary prelude applied to it.
-// A third step proves Resume drops a non-live strand whose done-when paths all exist and relaunches one whose list is partly missing.
+// Replacing the first of three strands leaves the replacement in its slot of the strand table.
+// The other strands' panes stay untouched.
+// An empty Cmd still leaves a live pane running the pane's own shell, with the pane-binary prelude applied to it.
+// Resume drops a non-live strand whose done-when paths all exist, and relaunches one whose list is partly missing.
 // One cold session serves every step.
 
 package reedengine
@@ -16,7 +17,7 @@ import (
 )
 
 // TestStrandOps_RealTmux runs its steps in order on one cold session.
-// EmptyCmdLeavesALivePane relies on the three strands ReplaceKeepsTheTopSlot leaves behind and asserts only on its own strand.
+// The empty-Cmd step relies on the three strands the replace step leaves behind, and asserts only on its own strand.
 func TestStrandOps_RealTmux(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()

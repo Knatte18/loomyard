@@ -1,4 +1,4 @@
-// export_test.go re-exports the run owner verdict for the package loomcli_test files that drive it directly over a forged hub.
+// export_test.go re-exports the run owner verdict for the loomcli_test files that drive it over a forged hub.
 
 package loomcli
 
@@ -21,7 +21,7 @@ var CaptureSpawnRequest = captureSpawnRequest
 // StrandRoleStopper re-exports the seam that ends the chairs of told roles.
 var StrandRoleStopper = strandRoleStopper
 
-// OwnerVerdict is the verdict RunOwnerVerdict returns.
+// OwnerVerdict is the verdict type that judges whether another machine owns a run.
 type OwnerVerdict = ownerVerdict
 
 // RunOwnerVerdict judges whether another machine owns the run of a slug.

@@ -1,7 +1,7 @@
-// resolve_test.go contains unit tests for resolveLym (dev/prod binary resolution) and prependPath
-// (child-process PATH construction).
-// All tests are Tier-1 pure: the devBinPath and lookPath seams are stubbed,
-// and only os.Stat/os.WriteFile on t.TempDir() paths touch the filesystem.
+// resolve_test.go tests resolveLym (dev/prod binary resolution) and prependPath (child-process PATH construction).
+// All tests are Tier-1 pure.
+// The devBinPath and lookPath seams are stubbed.
+// Only os.Stat and os.WriteFile on t.TempDir() paths touch the filesystem.
 
 package main
 
@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestResolveLym_DevBinaryExists verifies that resolveLym returns the dev-binary path and sourceDev
-// when devBinPath resolves to an existing file.
+// TestResolveLym_DevBinaryExists verifies that resolveLym returns the dev binary path and sourceDev.
+// The dev binary is used when devBinPath resolves to an existing file.
 func TestResolveLym_DevBinaryExists(t *testing.T) {
 	tiergate.Require(t, 0)
 	devPath := filepath.Join(t.TempDir(), "lym")
@@ -40,8 +40,8 @@ func TestResolveLym_DevBinaryExists(t *testing.T) {
 	}
 }
 
-// TestResolveLym_DevBinaryMissingFallsBackToProd verifies that resolveLym falls back to lookPath
-// and returns sourceProd when the dev binary is absent.
+// TestResolveLym_DevBinaryMissingFallsBackToProd verifies that resolveLym falls back to lookPath.
+// It returns sourceProd when the dev binary is absent.
 func TestResolveLym_DevBinaryMissingFallsBackToProd(t *testing.T) {
 	tiergate.Require(t, 0)
 	missingDevPath := filepath.Join(t.TempDir(), "lym")
@@ -67,8 +67,8 @@ func TestResolveLym_DevBinaryMissingFallsBackToProd(t *testing.T) {
 	}
 }
 
-// TestResolveLym_DevBinaryMissingAndLookPathFails verifies that resolveLym propagates a lookPath
-// error when both the dev binary is absent and PATH lookup fails.
+// TestResolveLym_DevBinaryMissingAndLookPathFails verifies that resolveLym propagates the lookPath error.
+// It does so when both the dev binary is absent and PATH lookup fails.
 func TestResolveLym_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	tiergate.Require(t, 0)
 	missingDevPath := filepath.Join(t.TempDir(), "lym")
@@ -91,8 +91,9 @@ func TestResolveLym_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	}
 }
 
-// TestPrependPath verifies that prependPath makes dir the first PATH segment, leaves non-PATH env vars untouched, returns environ unchanged when dir is empty, and edits a Windows-form "Path=..."
-// entry in place without appending a duplicate "PATH=" entry.
+// TestPrependPath verifies that prependPath makes dir the first PATH segment and leaves other env vars untouched.
+// It returns environ unchanged when dir is empty.
+// A Windows-form "Path=..." entry is edited in place, without appending a duplicate "PATH=" entry.
 func TestPrependPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -20,6 +20,7 @@ const taskNotification = `{"type":"user","message":{"content":"<task-notificatio
 `
 
 // stopLine builds one events.jsonl Stop line.
+// It sets transcript_path only when transcript is non-empty, and background_tasks only when tasks is non-nil.
 func stopLine(t *testing.T, transcript string, tasks any) []byte {
 	t.Helper()
 	fields := map[string]any{
@@ -82,8 +83,8 @@ func TestParseEvents_StopWithCompletedTasksAndCleanTranscriptIsStop(t *testing.T
 	}
 }
 
-// queueOperationNotification and queuedCommandNotification are the trimmed shapes Claude Code writes
-// when a task notification is absorbed mid-turn instead of arriving as a user message.
+// queueOperationNotification and queuedCommandNotification are the trimmed shapes Claude Code writes.
+// They hold a task notification absorbed mid-turn, instead of one arriving as a user message.
 const queueOperationNotification = `{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>mon12345</task-id>\n<status>completed</status>\n</task-notification>"}
 `
 
@@ -178,13 +179,14 @@ func TestTranscriptHasUnmatchedLaunch_BashAndAgentLaunches(t *testing.T) {
 	}
 }
 
-// forkLaunchTranscript launches one fork, as Claude Code records it: an Agent call with subagent_type fork and no run_in_background flag.
+// forkLaunchTranscript launches one fork, as Claude Code records it:
+// an Agent call with subagent_type fork and no run_in_background flag.
 const forkLaunchTranscript = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_f","name":"Agent","input":{"description":"lens a","subagent_type":"fork"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_f","content":"Async agent launched"}]},"toolUseResult":{"agentId":"a5e3629456cc7489a"}}
 `
 
-// TestOutstandingForks pins which forks the session's transcript reports still running, read from the project directory of the workdir under HOME.
-// It is not parallel: it sets HOME.
+// TestOutstandingForks pins which forks the session transcript reports as still running.
+// It reads the transcript from the project directory under HOME, which the test sets, so it is not parallel.
 func TestOutstandingForks(t *testing.T) {
 	tiergate.Require(t, 0)
 	forkNotification := `{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>a5e3629456cc7489a</task-id>\n</task-notification>"}` + "\n"
@@ -192,7 +194,7 @@ func TestOutstandingForks(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// transcript is the session transcript's content; absent writes none.
+		// transcript is the session transcript's content; when absent is true, no transcript file is written.
 		transcript string
 		absent     bool
 		want       []shuttleengine.BackgroundTask
@@ -236,7 +238,8 @@ func TestOutstandingForks(t *testing.T) {
 	}
 }
 
-// TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting pins that a Stop payload with no background_tasks list reads a fork launched without run_in_background as outstanding work.
+// TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting pins one case:
+// a Stop payload with no background_tasks list reads a fork launched without run_in_background as outstanding work.
 func TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting(t *testing.T) {
 	tiergate.Require(t, 0)
 	ev := parseOneKind(t, stopLine(t, writeBgTranscript(t, forkLaunchTranscript), nil))

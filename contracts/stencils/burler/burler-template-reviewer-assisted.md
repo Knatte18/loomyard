@@ -1,12 +1,13 @@
-<!-- This is the burler reviewer seat stencil of an assisted round: the chair of the review half's table when the round runs an assistant reviewer beside it.
-     It is burler-template-reviewer with the seat-directive-assistant-chair include, which names the assistant's report and end marker and the one way to wait for it;
-     a round with no assistant keeps burler-template-reviewer and its bytes.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/burler/` and read
-     from there at call time, then filled by internal/seatengine from the seat's value map.
+<!-- This is the burler reviewer seat stencil of an assisted round:
+     the chair of the review half's table when the round runs an assistant reviewer beside it.
+     It includes seat-directive-assistant-chair, which names the assistant's report and end marker and the one way to wait for it.
+     It is an embedded default in contracts/stencils/stencils.go,
+     seeded to the Bolt checkout's `_lym/stencils/burler/`, read from there at call time,
+     and filled by internal/seatengine from the seat's value map.
      Every marker below is a top-level {{.X}} substitution.
-     The reserved markers it uses, which the seats engine fills, are parent_directive and edit_directive, and its include uses assistants;
-     the seat values it uses, which reviewSeatValues gives it, are instruction_1_path, instruction_2_path and review_path.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     The seats engine fills the reserved markers it uses: parent_directive and edit_directive, and its include uses assistants.
+     reviewSeatValues supplies instruction_1_path, instruction_2_path and review_path.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Burler — review
 

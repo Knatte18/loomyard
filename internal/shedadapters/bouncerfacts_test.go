@@ -18,7 +18,8 @@ type factsFinding struct {
 	class    string
 }
 
-// writeFactsReview writes round's review file with the given findings, choosing the verdict the parser's consistency rule demands.
+// writeFactsReview writes round's review file with the given findings.
+// It picks the verdict the parser's consistency rule demands.
 func writeFactsReview(t *testing.T, dir string, round int, findings ...factsFinding) {
 	t.Helper()
 	verdict := "APPROVED"
@@ -160,7 +161,8 @@ func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 	}
 }
 
-// TestComputeRoundFacts_MissingReviewIsAParseErrorRow also covers a missing and an unparseable earlier ledger, each of which becomes a parse-error line in the earlier-open section.
+// TestComputeRoundFacts_MissingReviewIsAParseErrorRow also covers a missing and an unparseable earlier ledger.
+// Each becomes a parse-error line in the earlier-open section.
 func TestComputeRoundFacts_MissingReviewIsAParseErrorRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -221,7 +223,7 @@ func TestComputeRoundFacts_GatingRule(t *testing.T) {
 	}
 }
 
-// TestWriteRoundFacts_IsDeterministic also pins the line a render without a recurring ledger key carries.
+// TestWriteRoundFacts_IsDeterministic pins that two writes of the facts file are byte-identical.
 //
 //testtiming:keep pins that two writes of the facts file are byte-identical and the no-recurring-key line, which the judge-call tests do not assert
 func TestWriteRoundFacts_IsDeterministic(t *testing.T) {

@@ -1,9 +1,7 @@
-// run.go implements Engine.Run, the deterministic round loop that drives one treadle block from a
-// fresh or resumed run dir to a terminal Result: it validates the profile, resolves the block's
-// resume point, then loops one round at a time through a RoundRunner attempt (with its bounded
-// retry), the pluggable convergence gate, and the milestone-laddered stuck ladder, persisting state
-// after every round so a crash or an operator pause can resume from exactly where the block left
-// off.
+// run.go implements Engine.Run, the round loop that drives one treadle block to a terminal Result.
+// The block starts from a fresh or resumed run dir.
+// Each round makes a RoundRunner attempt with bounded retry, then the convergence gate, then the stuck ladder.
+// State is persisted after every round, so a crash or an operator pause resumes from where the block left off.
 
 package treadleengine
 
@@ -17,31 +15,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrBlockBusy marks Run's fail-fast refusal when another invocation already holds the run dir's
-// run.lock.
-// It is a sentinel (matched via errors.Is) because the caller must treat this refusal differently
-// from every other hard error: the losing invocation touched NOTHING on disk — the winner is
-// mid-round and owns the block's state — so a loop owner must not run its block-exit bookkeeping
-// (e.g. its own fabric sync) for it.
-// The sentinel's own message is deliberately un-prefixed — the calling engine's name is applied at
-// wrap time below, by errf, so the composed text still reads "<name>: block is already running:
-// ..."
-// exactly like the original loop's own literal message did before the extraction (see the
-// name-parameterized-diagnostics shared decision).
+// ErrBlockBusy marks Run's fail-fast refusal when another invocation already holds the run dir's run.lock.
+// It is a sentinel, matched with errors.Is.
+// The caller must treat this refusal differently from every other hard error.
+// The refused invocation wrote nothing to disk; the lock holder owns the block's state.
+// The caller must therefore skip its block-exit bookkeeping, such as a fabric sync, for it.
+// The sentinel's own message has no engine prefix; errf adds the engine name when Run wraps it.
 var ErrBlockBusy = errors.New("block is already running")
 
-// runLockName is the exclusive-lease file name inside a block's scratch dir,
-// held for the ENTIRE duration of one Engine.Run call — distinct from
-// state.json.lock, which internal/state only holds for the instant of one
-// read or write. Without this, two concurrent invocations against the same
-// run/scratch dir pair would each classify resume/fresh from state.json and
-// then both drive rounds into the same dir: colliding artifact paths,
-// clobbered state.json appends, and two round-runner agents editing the
-// worktree at once.
+// runLockName is the exclusive-lease file name inside a block's scratch dir.
+// Run holds this lease for its entire duration.
+// state.json.lock, by contrast, is held by internal/state only for one read or write.
+// Without it, two concurrent invocations on one dir pair would both classify resume or fresh from state.json.
+// Both would then drive rounds into the same dir:
+// colliding artifact paths, clobbered state.json appends, and two round-runner agents editing the worktree at once.
 const runLockName = "run.lock"
 
-// roundOutcome captures what a round's retry loop produced when the runner
-// reached a done outcome.
+// roundOutcome holds what a round's retry loop produced once the runner reached a done outcome.
 type roundOutcome struct {
 	Attempts        int
 	Verdict         Verdict
@@ -52,35 +42,27 @@ type roundOutcome struct {
 	Paths           roundArtifactPaths
 }
 
-// Run drives one treadle block's round loop for Profile p, reading and persisting state at runDir.
-// It validates p (structural checks only) via p.validate(e.name), ensures runDir and the block's
-// scratch dir exist, resolves the block's resume point (loadOrInitState against p.ProfileHash,
-// which the caller already computed), then loops one round at a time: a pause check at the round
-// boundary only, a round-runner attempt with its bounded non-done retry, the pluggable convergence
-// gate, and — on a non-converged round — the milestone-laddered stuck ladder.
-// Every returned error is prefixed via e.errf;
-// the returned Result mirrors the persisted state's rounds as RoundSummary values.
+// Run drives one treadle block's round loop for profile p, reading and persisting state under runDir.
+// It validates p with structural checks only, and ensures runDir and the block's scratch dir exist.
+// It resolves the resume point from the state file against p.ProfileHash, which the caller computed.
+// Each round checks for a pause at its boundary only.
+// It then makes a round-runner attempt with bounded non-done retry.
+// It runs the convergence gate, and on a non-converged round it applies the stuck ladder.
+// Every returned error is prefixed via e.errf.
+// The returned Result mirrors the persisted state's rounds as RoundSummary values.
 func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
-	// Resolved first, before anything below reads it: the deferred
-	// terminal-clear closure, the runDir MkdirAll, the run-lock acquisition,
-	// and the entry-time clearPauseFlag call all need this value, and all
-	// four precede the "Seam defaulting happens here, once" block further
-	// down that defaults pause/runCommand. An empty e.scratchDir defaults to
-	// runDir, the back-compat case where the two MkdirAll calls below name
-	// the same directory (a harmless no-op on the second).
+	// scratchDir is resolved first.
+	// The deferred terminal-clear closure, the run lock, and the entry-time clearPauseFlag call all need it.
+	// An empty e.scratchDir falls back to runDir, so both MkdirAll calls name one directory.
 	scratchDir := e.scratchDir
 	if scratchDir == "" {
 		scratchDir = runDir
 	}
 
-	// A pause requested while the final round was still in flight can
-	// observe a terminal, non-PAUSED outcome once that round settles on its
-	// own (the pause flag is checked only at the NEXT round boundary, which
-	// never arrives). The stale flag must not linger in the scratch dir (and
-	// get fabric-committed alongside a finished block, in the back-compat
-	// case where scratch and run coincide) once the block is done judging —
-	// clearing it centrally here, once, covers every terminal return site
-	// without duplicating the call at each one.
+	// A pause requested during the final round can see a terminal, non-PAUSED outcome as the round settles.
+	// The flag is checked only at the next round boundary, which never comes.
+	// A stale flag must not linger in the scratch dir, where a finished block would carry it into the fabric commit.
+	// Clearing it here covers every terminal return site at once.
 	defer func() {
 		if err == nil && result.Outcome != OutcomePaused {
 			_ = clearPauseFlag(e.name, scratchDir)
@@ -90,43 +72,36 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	if err := p.validate(e.name); err != nil {
 		return Result{}, err
 	}
-	// Identity is p.ProfileHash exactly as the caller supplied it — treadle
-	// never computes this itself (see the treadle-owns-no-config shared
-	// decision); a caller's own default-resolution change must never
-	// silently change, or invalidate the resume of, a block whose profile
-	// content the operator never touched.
+	// Identity is p.ProfileHash exactly as the caller supplied it; treadle never computes it.
+	// A caller's default-resolution change must not alter the identity of a block the operator never touched.
+	// Such a change would invalidate that block's resume.
 	hash := p.ProfileHash
 
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return Result{}, e.errf("create run dir %q: %w", runDir, err)
 	}
-	// state.json and every round artifact still live in runDir; only the
-	// run lock, state.json.lock, and the pause flag move to scratchDir — see
-	// the told-never-derived-scratch-dir shared decision. The run lock below
-	// is acquired inside scratchDir, so it must exist first.
+	// state.json and every round artifact stay in runDir;
+	// only the run lock, state.json.lock, and the pause flag live in scratchDir.
+	// The run lock is acquired inside scratchDir, so it must exist first.
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		return Result{}, e.errf("create scratch dir %q: %w", scratchDir, err)
 	}
 
-	// Held for this entire call: a second concurrent invocation (or a
-	// re-entrant caller) against the SAME run/scratch dir pair must fail
-	// fast rather than silently interleave rounds with this one. Released
-	// by the OS on process exit/crash even if this call never reaches
-	// Release, so a killed process never bricks the run dir for a later
-	// resume.
+	// The lock is held for the whole call.
+	// A second concurrent invocation on the same dir pair fails fast rather than interleaving rounds with this one.
+	// The OS releases the lock on process exit or crash, even when Release never runs,
+	// so a killed process cannot block a later resume.
 	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, runLockName))
 	if err != nil {
 		return Result{}, e.errf("acquire run lock for %q: %w", scratchDir, err)
 	}
 	if !locked {
-		// Wrapped with %w so the caller can errors.Is-match ErrBlockBusy and
-		// skip its block-exit bookkeeping — see the sentinel's doc.
+		// Wrapped with %w so the caller can match ErrBlockBusy with errors.Is and skip its block-exit bookkeeping.
 		return Result{}, e.errf("%w: %q (run.lock held); wait for it to finish or use a different --run-id", ErrBlockBusy, scratchDir)
 	}
 	defer runLock.Release()
 
-	// A resumed block must never instantly re-pause on a flag left over
-	// from the run that requested the pause it is now resuming from.
+	// A resumed block must not re-pause at once on a flag left by the run that requested the pause it resumes from.
 	if err := clearPauseFlag(e.name, scratchDir); err != nil {
 		return Result{}, err
 	}
@@ -136,9 +111,8 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		return Result{}, err
 	}
 
-	// Seam defaulting happens here, once, at Run's entry: New (engine.go)
-	// stores Options' fields verbatim (nils included) precisely so this
-	// file — and only this file — owns the fallback behavior.
+	// Nil seams default here, once, at Run's entry.
+	// The constructor stores Options' fields verbatim, nils included, so this file alone owns the fallback.
 	pause := e.pauseRequested
 	if pause == nil {
 		pause = func() bool { return false }
@@ -148,11 +122,10 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		runCommand = execGateCommand
 	}
 
-	// The ladder that governs this block is the one STAMPED into state.json
-	// at block creation (a fresh block stamps p's just-resolved RoundCaps, so
-	// the two agree there) — a resumed block re-applies the ladder it
-	// actually started with even if the caller's own default changed in
-	// between, which the identity hash above deliberately does not cover.
+	// The ladder is the one stamped into state.json at block creation.
+	// A fresh block stamps p's just-resolved RoundCaps, so the two agree there.
+	// A resumed block reapplies the ladder it started with, even if the caller's default has since changed.
+	// The identity hash deliberately does not cover the ladder.
 	caps := st.RoundCaps
 	if len(caps) == 0 {
 		return Result{}, e.errf("state.json in %q records no round-caps ladder; the state file is corrupt", runDir)
@@ -160,16 +133,14 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	hardCap := caps[len(caps)-1]
 
 	for round := resume.NextRound; ; round++ {
-		// A resume can land one PAST the hard cap: the hard-cap round already
-		// ran and its record is persisted, but a hard error (a could-not-start
-		// gate command — see the persist-then-error path below) interrupted its
-		// stuck classification before the block was marked terminal. Finalize it
-		// as STUCK/hard-cap from the already-persisted state rather than spawning
-		// rounds beyond the ladder: the last recorded round IS the hard-cap round
-		// and it did not converge, so hard-cap is the correct terminal reason,
-		// and stopping here preserves the ladder's guaranteed-termination
-		// invariant across a resume (without this, round == hardCap never matches
-		// again and the loop runs unbounded rounds past the ladder).
+		// A resume can land one round PAST the hard cap: the hard-cap round already ran and its record is persisted,
+		// but a hard error interrupted its stuck classification before the block was marked terminal.
+		// The interrupting error is a gate command that could not start.
+		// Finalize it from the persisted state as STUCK with the hard-cap reason.
+		// The last recorded round is the hard-cap round and did not converge.
+		// Hard-cap is therefore the correct terminal reason.
+		// Stopping here keeps the ladder's termination guarantee across a resume:
+		// without it, round == hardCap never matches again, and the loop runs unbounded rounds past the ladder.
 		if round > hardCap {
 			st.Outcome = string(OutcomeStuck)
 			st.StuckReason = string(StuckHardCap)
@@ -179,9 +150,8 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			return resultFromState(st, OutcomeStuck, StuckHardCap), nil
 		}
 
-		// Pause is checked ONLY here, at the round boundary — never
-		// mid-round — so a paused block always resumes at a clean round
-		// start rather than an in-progress one.
+		// Pause is checked only here, at the round boundary, never mid-round,
+		// so a paused block always resumes at a clean round start.
 		if pause() {
 			if err := saveState(runDir, scratchDir, st); err != nil {
 				return Result{}, err
@@ -189,16 +159,12 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			return resultFromState(st, OutcomePaused, ""), nil
 		}
 
-		// Cleared here, once per round, at attempt 1's token — BEFORE
-		// pre-round targeting runs below, so a leftover seed file from an
-		// interrupted prior attempt at this same round is moved aside before
-		// targeting tries to write a fresh one at the same path (spec.validate
-		// rejects a pre-existing output file). A later retry attempt's own
-		// stale artifacts are still handled inside runRound, per attempt.
+		// Stale artifacts are moved aside once per round, for attempt 1, before pre-round targeting runs.
+		// An interrupted prior attempt can leave a seed file at the path that targeting writes.
+		// spec.validate rejects a pre-existing output file.
+		// A later retry attempt's stale artifacts are handled inside runRound, per attempt.
 		if err := moveStaleArtifacts(e.name, runDir, round, 1); err != nil {
-			// moveStaleIfExists already wraps with name/path context only (no
-			// round/attempt) — a reader of the bare wrapped error knows which
-			// file failed to move but not which round was in progress.
+			// The wrapped error carries only the file's name and path, so the log line adds the round and attempt.
 			logger.Warn(e.name+": moving stale artifacts aside before round failed", "name", e.name, "round", round, "attempt", 1, "err", err)
 			return Result{}, err
 		}
@@ -223,36 +189,29 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			SessionID:       outcome.SessionID,
 		}
 
-		// The gate command runs after this round's fix phase, in the command
-		// and both gate modes only (llm-verdict never runs a command; both
-		// still requires the runner verdict too, so it does not "ignore" it);
-		// its cwd is always p.GateDir (the caller-supplied absolute path —
-		// see Profile.GateDir), never the run dir, since the command
-		// exercises the repo's own build/test surface.
+		// The gate command runs after this round's fix phase, in command and both gate modes only.
+		// llm-verdict never runs a command.
+		// Both gate mode still requires the runner verdict too, so it does not ignore it.
+		// Its cwd is always p.GateDir, the caller-supplied absolute path.
+		// It is never the run dir, because the command exercises the repo's own build and test surface.
 		if p.Gate.Mode == GateCommand || p.Gate.Mode == GateBoth {
 			output, exitZero, err := runCommand(p.Gate.Command, p.GateDir, p.Gate.Timeout)
 			if err != nil {
-				// A could-not-start gate failure is a hard error, but the
-				// round it follows COMPLETED — persist its record first so a
-				// resume continues at the next round instead of re-buying
-				// this one. The record carries no gate result (nil
-				// GatePassed), which the loop reads as non-converged: the
-				// safe direction.
+				// A gate command that cannot start is a hard error, but the round it follows completed.
+				// Its record is persisted first, so a resume continues at the next round instead of re-buying it.
+				// The record carries no gate result, so GatePassed is nil.
+				// The loop reads nil as not converged, the safe direction.
 				st.Rounds = append(st.Rounds, record)
 				if saveErr := saveState(runDir, scratchDir, st); saveErr != nil {
-					// saveErr is the value actually returned below, but err — the
-					// real reason this round failed — is what gets lost: execution
-					// never reaches the e.errf return two lines down, so without
-					// this line the gate-command failure that triggered this whole
-					// branch would never surface anywhere, masked entirely by the
-					// unrelated persistence failure.
+					// Returning saveErr hides err, the real reason this round failed.
+					// Execution never reaches the e.errf return below, so the Warn is the only place err surfaces.
 					logger.Warn(e.name+": state persist failed after gate command error, original failure lost to caller", "runDir", runDir, "round", round, "err", err, "saveErr", saveErr)
 					return Result{}, saveErr
 				}
 				return Result{}, e.errf("round %d gate command: %w", round, err)
 			}
-			// Written on pass AND fail — the record is cheap — even though
-			// only a failing gate file is ever fed forward as hydration.
+			// The output is written on pass and on fail, since the record is cheap.
+			// Only a failing gate file is fed forward as hydration.
 			if err := writeGateOutput(e.name, outcome.Paths.Gate, p.Gate.Command, output, exitZero); err != nil {
 				return Result{}, err
 			}
@@ -269,11 +228,10 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			return resultFromState(st, OutcomeApproved, ""), nil
 		}
 
-		// The stuck ladder is reached only on a non-converged round. Every
-		// trigger below is runner-verdict-based: a round with
-		// VerdictApproved but a failing command (command/both gate modes)
-		// skips every rung and simply loops, bounded by the hard cap below
-		// and fed forward via the gate file.
+		// The stuck ladder runs only on a non-converged round.
+		// Every trigger below is based on the runner verdict.
+		// A round with VerdictApproved and a failing command (command or both gate mode) skips every rung.
+		// It loops, bounded by the hard cap below and fed forward through the gate file.
 		if round == hardCap {
 			st.Rounds = append(st.Rounds, record)
 			st.Outcome = string(OutcomeStuck)
@@ -285,37 +243,28 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		}
 
 		if outcome.Verdict == VerdictBlocking {
-			// The circling check never runs on the round immediately after an
-			// APPROVED round (reachable in command/both gate modes, where an
-			// APPROVED round with a failing command does not converge): the
-			// immediately-prior review has zero blocking findings, so fresh
-			// findings here are new work surfacing, not evidence of circling —
-			// and a false CIRCLING verdict is a permanent, wrong STUCK. The
-			// milestone gate is deliberately NOT exempted: a rung asks about
-			// the whole trajectory, not recurrence against the prior round.
+			// The circling check never runs on the round right after an APPROVED round.
+			// Command and both gate modes can reach that case, since an APPROVED round with a failing command does not converge.
+			// The immediately prior review has zero blocking findings, so fresh findings here are new work.
+			// They are not evidence of circling: a false CIRCLING verdict would be a permanent, wrong STUCK.
+			// The milestone gate is not exempted: a rung asks about the whole trajectory, not recurrence against the prior round.
 			prevRoundApproved := len(st.Rounds) > 0 &&
 				st.Rounds[len(st.Rounds)-1].Verdict == string(VerdictApproved)
 
-			// The read-set is computed INSIDE each judge branch, not before
-			// the switch: judgeReadSet walks recorded handoff files on disk
-			// (latestValidHandoff reads and parses them), and a judge-skipped
-			// blocking round — round 1, or the round right after an APPROVED
-			// round — must not pay that I/O or emit its corrupt-handoff Warns
-			// for a judge call that never happens. The judge reasons over the
-			// REVIEW history including this round's own fresh review — and
-			// only reviews: unlike the round-attempt hydration in
-			// priorReviews, failed gate-command output files are deliberately
-			// excluded, since the judge's material is blocking findings
-			// recurring across review files (doc.go's verdict-judge
-			// contract), and a gate transcript has no findings to compare.
-			// judgeReadSet bounds this list to {latest valid handoff +
-			// reviews it has not absorbed} instead of every prior review —
-			// see handoff.go.
+			// The read-set is computed inside each judge branch, not before the switch.
+			// judgeReadSet reads and parses recorded handoff files on disk,
+			// so a round that runs no judge must not pay that I/O or emit its corrupt-handoff Warns.
+			// That covers round 1 and the round right after an APPROVED round.
+			// The judge reasons over the review history, including this round's fresh review.
+			// It reads reviews only: failed gate-command output files are excluded.
+			// The judge compares blocking findings that recur across review files (the verdict-judge contract in doc.go),
+			// and a gate transcript has no findings to compare.
+			// judgeReadSet bounds the list to the latest valid handoff and the reviews it has not absorbed.
 			switch {
 			case isMilestoneRung(caps, round):
 				judgeReviews, prevHandoffPath := judgeReadSet(e.name, st.Rounds, outcome.ReviewPath)
-				// The milestone gate REPLACES the circling check for this
-				// round — a rung round issues exactly one judge call.
+				// The milestone gate replaces the circling check for this round.
+				// A rung round issues exactly one judge call.
 				jv, _, judgeOK := runMilestone(e.shuttle, e.name, judgeInputs{
 					Round:               round,
 					HardCap:             hardCap,
@@ -327,14 +276,11 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					StencilsDir:         e.stencilsDir,
 					ParentName:          e.parentName,
 				})
-				// Only a REAL verdict is recorded — a fail-safe fallback
-				// (judgeOK false) leaves the record's judge fields empty, so
-				// an operator reading state.json can tell a genuine CONTINUE
-				// apart from a judge infrastructure failure that never
-				// actually answered (the Warn logged inside the call above
-				// is the only trace of the failure). A judge call whose
-				// verdict failed records no handoff either — recordHandoff
-				// is only ever consulted inside this same judgeOK guard.
+				// Only a real verdict is recorded.
+				// A fail-safe fallback (judgeOK false) leaves the judge fields empty,
+				// so an operator reading state.json can tell a genuine CONTINUE from a judge failure that never answered.
+				// The Warn logged inside the call is the only trace of that failure.
+				// A failed judge call records no handoff either.
 				if judgeOK {
 					record.JudgePath = outcome.Paths.Judge
 					record.JudgeVerdict = string(jv)
@@ -362,9 +308,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					StencilsDir:         e.stencilsDir,
 					ParentName:          e.parentName,
 				})
-				// See the milestone-rung branch above: only a REAL verdict
-				// is recorded, never the fail-safe fallback, and a failed
-				// verdict records no handoff either.
+				// The fail-safe fallback is never recorded, and a failed judge call records no handoff.
 				if judgeOK {
 					record.JudgePath = outcome.Paths.Judge
 					record.JudgeVerdict = string(jv)
@@ -380,13 +324,10 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					return resultFromState(st, OutcomeStuck, StuckCircling), nil
 				}
 			}
-			// round 1 with a blocking verdict runs no judge (there is no
-			// prior round to compare it against yet), and neither does a
-			// blocking round immediately after an APPROVED round (see
-			// prevRoundApproved above).
+			// Round 1 with a blocking verdict runs no judge, since there is no prior round to compare against.
+			// Neither does a blocking round right after an APPROVED round.
 		}
-		// A VerdictApproved non-converged round (command mode only) runs no
-		// judge at all and simply continues to the next round.
+		// A VerdictApproved round that does not converge runs no judge and continues to the next round.
 
 		st.Rounds = append(st.Rounds, record)
 		if err := saveState(runDir, scratchDir, st); err != nil {
@@ -395,28 +336,25 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	}
 }
 
-// runPreRoundTargeting resolves and, when p.PreRoundTargeting is set, runs
-// this round's pre-round targeting call, returning the seed path to thread
-// into every attempt's AttemptInput.SeedPath for round, or "" when
-// targeting is off, no valid handoff exists yet to target from (round 1, or
-// every recorded handoff failed to read/parse — see latestValidHandoff),
-// or the targeting call itself fails. The seed path is resolved ONCE here,
-// at round's attempt-1 token via artifactPaths, and is never recomputed per
-// attempt — a same-round retry reuses the identical path, exactly like the
-// round-scoped priorReviews/priorFixerReports hydration. Callers must clear
-// any leftover seed file at that path (moveStaleArtifacts) before calling
-// this, so a re-run's targeting call never trips the pre-existing-output-
-// file rejection.
+// runPreRoundTargeting runs this round's pre-round targeting call when p.PreRoundTargeting is set.
+// It returns the seed path that every attempt of round threads into its AttemptInput.SeedPath.
+// It returns "" when targeting is off or when the targeting call fails.
+// It also returns "" when no valid handoff exists yet to target from:
+// round 1, or a round where every recorded handoff failed to read or parse.
+// The seed path is resolved once per round, at attempt 1's token via artifactPaths.
+// It is never recomputed per attempt, so a same-round retry reuses the identical path.
+// This matches the round-scoped priorReviews and priorFixerReports hydration.
+// Callers must clear any leftover seed file at that path (moveStaleArtifacts) before calling this,
+// so a re-run's targeting call never trips the pre-existing-output-file rejection.
 func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, rounds []roundRecord) string {
 	if !p.PreRoundTargeting {
 		return ""
 	}
 	handoffPath, _, ok := latestValidHandoff(e.name, rounds)
 	if !ok {
-		// Nothing to target from yet (round 1, or no handoff has ever
-		// survived a valid parse) — this is not a failure, so it logs
-		// nothing, mirroring the round-1-runs-no-judge posture in the main
-		// loop below.
+		// Nothing to target from yet: round 1, or no handoff has ever survived a valid parse.
+		// This is not a failure, so nothing is logged.
+		// It mirrors the round-1-runs-no-judge posture in the main loop below.
 		return ""
 	}
 	seedPath := artifactPaths(runDir, round, 1).Seed
@@ -426,27 +364,21 @@ func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, round
 	return seedPath
 }
 
-// runRound drives round's RoundRunner attempts (up to two: a fresh attempt,
-// then one deterministic retry after a died/timeout outcome), returning the round's outcome once the
-// runner reaches done. priorReviews and priorFixerReports are the hydration
-// accumulated from every already-completed round; seedPath is this round's
-// pre-round-targeting seed (already resolved once by runPreRoundTargeting,
-// or "" when targeting produced none) — both attempts of the same round
-// number reuse the SAME hydration and the SAME seed path, since a retry
-// produces no new completed round. A second consecutive non-done attempt is
-// an infrastructure error, deliberately NOT modeled as OutcomeStuck — it
-// means the machinery failed twice, not that the artifact will not converge.
+// runRound drives one round through up to two attempts:
+// a fresh attempt, then one deterministic retry after a died or timeout outcome.
+// priorReviews and priorFixerReports are the hydration accumulated from every completed round.
+// Both attempts of a round reuse the same hydration and seedPath, since a retry completes no new round.
+// seedPath is the pre-round-targeting seed, or "" when targeting produced none.
+// A second consecutive non-done attempt is an infrastructure error, not `OutcomeStuck`:
+// the machinery failed twice, which says nothing about whether the artifact will converge.
 func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string, seedPath string) (roundOutcome, error) {
 	for attempt := 1; attempt <= 2; attempt++ {
-		// Attempt 1's stale artifacts (including any leftover seed file)
-		// were already cleared by the caller, before pre-round targeting
-		// ran — clearing them again here would move aside the seed file
-		// targeting just wrote. A retry attempt's own stale artifacts from
-		// an earlier interrupted resume still need clearing here.
+		// The caller clears attempt 1's stale artifacts, seed file included, before pre-round targeting runs.
+		// Clearing them again here would move aside the seed file that targeting just wrote.
+		// A retry's stale artifacts from an earlier interrupted resume still need clearing here.
 		if attempt > 1 {
 			if err := moveStaleArtifacts(e.name, runDir, round, attempt); err != nil {
-				// Same rationale as the pre-round clear above: the wrapped error
-				// names the file but not the round/attempt in progress.
+				// The wrapped error names the file but not the round or attempt; the log line below carries them.
 				logger.Warn(e.name+": moving stale artifacts aside before retry attempt failed", "name", e.name, "round", round, "attempt", attempt, "err", err)
 				return roundOutcome{}, err
 			}
@@ -482,29 +414,23 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 			}, nil
 		}
 
-		// died / timeout: a cheap deterministic retry — these are nearly
-		// always environmental.
+		// A died or timed-out attempt gets one cheap deterministic retry, since these are nearly always environmental.
 		if attempt == 2 {
 			return roundOutcome{}, e.errf("round %d failed twice (%s); session %s, kept run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
 		}
-		// attempt 1 died/timed out: the retry itself is otherwise invisible
-		// until it either succeeds silently or fails twice (already errored
-		// with full context just above) — log it here so an operator can see
-		// the retry happening, not only its eventual outcome.
+		// Log the retry so an operator sees it happening, not only its eventual outcome.
+		// A second failure returns an error with full context instead.
 		logger.Warn(e.name+": round attempt died or timed out, retrying", "round", round, "outcome", result.Outcome, "sessionID", result.SessionID)
 	}
-	// Unreachable: every path through the loop above returns by the end of
-	// attempt 2.
+	// Unreachable: attempt 2 always returns from inside the loop.
 	return roundOutcome{}, e.errf("round %d exhausted its bounded retries without a terminal outcome", round)
 }
 
-// collectPriorHydration builds the priorReviews and priorFixerReports lists
-// a fresh round's attempt is seeded with, from every already completed
-// round in rounds: each round's ReviewPath and FixerReportPath are always
-// included, and a round's GatePath is included in priorReviews ONLY when
-// that round's GatePassed is false — passing-gate output is never fed
-// forward, since a clean command run has nothing for the next round to
-// learn from.
+// collectPriorHydration builds the priorReviews and priorFixerReports lists a fresh round's attempt is seeded with.
+// It draws them from every completed round in rounds.
+// Each round's ReviewPath and FixerReportPath are always included.
+// A round's GatePath joins priorReviews only when that round's GatePassed is false:
+// passing-gate output is never fed forward, since a clean command run has nothing for the next round to learn from.
 func collectPriorHydration(rounds []roundRecord) (priorReviews, priorFixerReports []string) {
 	for _, r := range rounds {
 		priorReviews = append(priorReviews, r.ReviewPath)
@@ -517,11 +443,9 @@ func collectPriorHydration(rounds []roundRecord) (priorReviews, priorFixerReport
 }
 
 // collectJudgeReviews builds the review-file list a progress-judge call reads:
-// every completed round's ReviewPath in order, plus the current round's fresh
-// review. Gate-command output files are deliberately NOT included here even
-// though collectPriorHydration feeds them to the next round's attempt — the
-// judge compares blocking findings across reviews, and a gate transcript is
-// not a review (see the verdict-judge contract in doc.go).
+// every completed round's ReviewPath in order, plus the current round's fresh review.
+// Gate-command output is left out:
+// the judge compares blocking findings across reviews, and a gate transcript is not a review.
 func collectJudgeReviews(rounds []roundRecord, currentReviewPath string) []string {
 	reviews := make([]string, 0, len(rounds)+1)
 	for _, r := range rounds {
@@ -530,16 +454,9 @@ func collectJudgeReviews(rounds []roundRecord, currentReviewPath string) []strin
 	return append(reviews, currentReviewPath)
 }
 
-// recordHandoffIfValid reads and ParseHandoff-validates the handoff file a
-// successful judge call (judgeOK true) just produced at path, returning
-// path back unchanged when it is well-formed. A missing or unparseable
-// handoff logs a name-prefixed logger.Warn naming label (matching
-// runJudgeCall's own label argument, e.g. "milestone judge", so the two
-// Warns read consistently in an operator's log), round, and cause, and
-// returns "" — never an error, never STUCK, and the verdict this handoff
-// rode alongside is completely unaffected either way; the loop only ever
-// calls this from inside the judgeOK guard, so a failed verdict never
-// reaches here at all.
+// recordHandoffIfValid returns path when the handoff file at path is readable and parses, and "" otherwise.
+// On failure it logs a warning, prefixed with name, that names label (such as "milestone judge") and round.
+// It never fails the run: the verdict the handoff came with stands either way.
 func recordHandoffIfValid(name string, path string, round int, label string) string {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -553,9 +470,8 @@ func recordHandoffIfValid(name string, path string, round int, label string) str
 	return path
 }
 
-// isMilestoneRung reports whether round is one of caps' milestone rungs —
-// every entry except the last, which is the hard cap rather than a
-// judge-gated rung.
+// isMilestoneRung reports whether round is one of caps' milestone rungs.
+// Every entry but the last is a milestone rung; the last is the hard cap and is not judge-gated.
 func isMilestoneRung(caps []int, round int) bool {
 	for _, c := range caps[:len(caps)-1] {
 		if c == round {
@@ -565,8 +481,7 @@ func isMilestoneRung(caps []int, round int) bool {
 	return false
 }
 
-// resultFromState builds the block-level Result Engine.Run returns from st,
-// mirroring every persisted roundRecord into a RoundSummary.
+// resultFromState builds the Result a run returns from st, with each persisted round as a RoundSummary.
 func resultFromState(st runState, outcome Outcome, stuckReason StuckReason) Result {
 	rounds := make([]RoundSummary, 0, len(st.Rounds))
 	for _, r := range st.Rounds {

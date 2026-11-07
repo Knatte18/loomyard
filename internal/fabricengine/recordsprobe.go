@@ -1,13 +1,12 @@
-// recordsprobe.go implements the pre-hub weft probe: a shallow, throwaway clone of the weft candidate
-// used to read the recorded warp binding and discriminate a real weft from an accidental warp before
-// any hub directory is created.
+// recordsprobe.go implements the pre-hub weft probe.
+// The probe is a shallow, throwaway clone of the weft candidate;
+// it reads the recorded warp binding and tells a real weft from an accidental warp before any hub directory exists.
 //
-// The hub is named after the warp repo, so in the one-argument clone form there is no hub path yet —
-// and therefore no board worktree — until the warp URL is known, and git offers no porcelain that
-// reads a single file from a remote without first materializing a local repo directory.
-// This file is that materialization: a temporary clone, read, then removed, entirely before CloneHub
-// commits to a hub layout.
-// It also holds the weft-branch fetch helper the --reset subpath check shares with the probe.
+// The hub is named after the warp repo.
+// In the one-argument clone form there is therefore no hub path, and no board worktree, until the warp URL is known.
+// Git offers no porcelain that reads a single file from a remote without first materializing a local repo directory.
+// This file does that: it makes a temporary clone, reads it, and removes it before CloneHub commits to a hub layout.
+// It also holds the weft-branch fetch helper that the --reset subpath check shares with the probe.
 
 package fabricengine
 
@@ -23,23 +22,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// warpProbeDirPrefix is the os.MkdirTemp prefix for the throwaway clone directories of the pre-hub probe and of the --reset subpath check.
-// This is a MkdirTemp prefix, not a _lym/.lym path token, so it does not fall under the Lymdirs Single-Declarer Invariant, and TestEnforcement_GeometryLiterals (exact-equality matching) does not trip on it.
+// warpProbeDirPrefix prefixes the throwaway clone directories of the pre-hub probe and of the --reset subpath check.
+// It is not a path token, so the geometry-literal checks do not match it.
 const warpProbeDirPrefix = ".lym-clone-probe-"
 
-// warpProbeResult carries what probeWeftBinding learned from the throwaway clone of the weft
-// candidate, before any hub directory exists.
+// warpProbeResult reports what a throwaway clone of the weft candidate shows, before any hub directory exists.
 type warpProbeResult struct {
-	// RecordedWarpURL is the warp URL read from the weft candidate's committed binding, valid only
-	// when Found is true.
+	// RecordedWarpURL is the warp URL read from the weft candidate's committed binding.
+	// It is valid only when Found is true.
 	RecordedWarpURL string
 	// Found is true only when WarpBindingFileName is present in the probe's HEAD commit.
 	Found bool
-	// WeftLooksLikeWeft is true when the candidate has an unborn HEAD (a genuinely empty weft remote).
-	// It is also true when its HEAD commit or main-weft branch carries lymcwd.AnchorFileName at the root, or its HEAD commit carries the stale pre-rename marker there.
+	// WeftLooksLikeWeft is true when the candidate has an unborn HEAD, a genuinely empty weft remote.
+	// It is also true when its HEAD commit or main-weft branch carries lymcwd.AnchorFileName at the root,
+	// or its HEAD commit carries the superseded marker staleFabricAnchorName at the root.
 	WeftLooksLikeWeft bool
-	// RecordedShortname is the repo shortname read from the probe's HEAD commit, valid only when ShortnameFound is true;
-	// a blank or grammar-failing value reports ShortnameFound false, like ReadShortname.
+	// RecordedShortname is the repo shortname read from the probe's HEAD commit.
+	// It is valid only when ShortnameFound is true; a blank or grammar-failing value reports ShortnameFound false.
 	RecordedShortname string
 	// ShortnameFound is true only when ShortnameFileName is present at the probe's HEAD with a usable value.
 	ShortnameFound bool
@@ -51,15 +50,13 @@ type warpProbeResult struct {
 // neither the warp binding nor the anchor marker is present, which an unborn or empty weft is.
 func (p warpProbeResult) freshBind() bool { return !p.Found && !p.AnchorFound }
 
-// probeWeftBinding shallow-clones weftURL into a throwaway directory under cwd, reads whatever
-// warp-binding and anchor evidence its HEAD commit carries, then removes the clone before returning.
-// It performs, in order: an unborn-HEAD check (a genuinely empty weft remote), a presence check for
-// the recorded warp binding, and — only when the binding is absent — a presence check for the anchor
-// marker (at HEAD and on main-weft, and the stale pre-rename name at HEAD) used by CloneHub's old-order bootstrap
-// guard.
+// probeWeftBinding shallow-clones weftURL into a throwaway directory under cwd.
+// It reads the warp-binding and anchor evidence in the clone's HEAD commit, then removes the clone before returning.
+// It checks, in order, for an unborn HEAD (a genuinely empty weft remote) and for the recorded warp binding.
+// Only when the binding is absent does it check for the anchor marker and the superseded marker.
 //
-// The probe lives in cwd, never os.TempDir(): cwd is provably writable (the hub is about to be
-// created there) and this avoids system-temp variance across platforms.
+// The probe lives in cwd, never os.TempDir(): cwd is writable because the hub is about to be created there,
+// and this avoids system-temp variance across platforms.
 func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	probeDir, err := os.MkdirTemp(cwd, warpProbeDirPrefix)
 	if err != nil {
@@ -67,10 +64,10 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	}
 	defer func() { _ = os.RemoveAll(probeDir) }()
 
-	// --depth 1 --filter=tree:0 --no-checkout --single-branch: minimal by intent, but against a
-	// local bare repo path (every fixture in this repo's test suite) git ignores --filter and
-	// --depth and performs an ordinary hardlinked clone, emitting warnings on stderr. Those
-	// warnings are not a failure; only a nonzero exit or a failure to run git at all is.
+	// --depth 1 --filter=tree:0 --no-checkout --single-branch asks for a minimal clone.
+	// Against a local bare repo path, git ignores --filter and --depth;
+	// it performs an ordinary hardlinked clone and emits warnings on stderr.
+	// Those warnings are not a failure; only a nonzero exit or a failure to run git at all is.
 	_, err = gitexec.Run([]string{
 		"clone", "--depth", "1", "--filter=tree:0", "--no-checkout", "--single-branch",
 		filepath.ToSlash(weftURL), filepath.ToSlash(filepath.Base(probeDir)),
@@ -79,7 +76,7 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		return warpProbeResult{}, wrapProbeError(weftURL, "clone", err)
 	}
 
-	// Unborn-HEAD check: ErrNoCommits answers "the weft candidate has no commits at all", the genuinely empty weft remote that ensureBoardWorktree's orphan-create path already supports.
+	// Unborn-HEAD check: ErrNoCommits means the weft candidate has no commits at all, a genuinely empty weft remote.
 	// Any other error is a real failure that must be wrapped and propagated.
 	_, err = gitrepo.New(probeDir).CurrentSHA()
 	if errors.Is(err, gitrepo.ErrNoCommits) {
@@ -131,32 +128,28 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 				RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: anchorPresent,
 			}, nil
 		}
-		// An empty-after-trim value is treated as absent, matching readWarpBinding's own
-		// empty-is-absent rule.
+		// A value that is empty after trimming counts as absent, so the probe falls through to the anchor checks.
 	}
 
 	if anchorPresent {
 		return warpProbeResult{WeftLooksLikeWeft: true, RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: true}, nil
 	}
 
-	// A legacy hub predating the anchor rename carries only the old marker, and it is unambiguously
-	// a weft; recognising it here is what keeps clone.go's existing stale-marker hard error — the
-	// one that names re-cloning as the migration remedy — reachable. Without this second probe the
-	// new guard would fire first and replace that specific, actionable message with a generic
-	// argument-order complaint, which would be a real regression for exactly the operator the
-	// migration error exists for.
+	// A weft carrying only the superseded anchor marker is unambiguously a weft.
+	// Recognising it here keeps the stale-marker error in clone.go reachable.
+	// That error names re-cloning as the migration remedy.
+	// Without this probe, a generic refusal would fire first and replace that specific, actionable message.
 	stalePresent, err := probeTreeHasPath(weftURL, probeDir, staleFabricAnchorName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
-	// The stale marker also counts as a bound weft, so its migration error is reached rather than a fresh-bind --shortname refusal.
+	// The superseded marker also counts as a bound weft, so its migration error is reached, not a fresh-bind refusal.
 	return warpProbeResult{WeftLooksLikeWeft: stalePresent, RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: stalePresent}, nil
 }
 
-// probeTreeHasPath reports whether path is present in probeDir's HEAD commit, using
-// `git ls-tree HEAD --name-only -- <path>` per the plan's absence-is-proved-by-ls-tree decision: exit
-// 0 with empty stdout means absent, exit 0 with the path echoed means present, and a nonzero exit or a
-// failure to run git at all is a hard error.
+// probeTreeHasPath reports whether path is present in the HEAD commit of the clone at probeDir.
+// It runs `git ls-tree HEAD --name-only -- <path>`: empty output means absent, and a path echoed back means present.
+// A nonzero exit or a failure to run git is an error.
 func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 	stdout, err := gitexec.Run([]string{"ls-tree", "HEAD", "--name-only", "--", path}, probeDir)
 	if err != nil {
@@ -165,8 +158,8 @@ func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// probeMainWeftHasPath reports whether path is present at the root of the weft candidate's main-weft branch (RecordsBranchName of "main").
-// A hub's prime weft carries its anchor marker on that branch while the candidate's HEAD may name another.
+// probeMainWeftHasPath reports whether path is present at the root of the candidate's main-weft branch.
+// A hub's prime weft carries its anchor marker on that branch, while the candidate's HEAD may name another.
 // It fetches the branch into the probe clone.
 // A candidate without the branch answers false, and any other git failure is an error.
 func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
@@ -181,7 +174,8 @@ func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// fetchWeftBranchTip fetches the tip of branch from origin into FETCH_HEAD of the clone at dir, one commit deep, and reports whether the remote carries the branch.
+// fetchWeftBranchTip reports whether origin carries branch.
+// When it does, it fetches the tip of branch into FETCH_HEAD of the clone at dir, one commit deep.
 // A remote without the branch answers false with nothing fetched, and any git failure is an error.
 func fetchWeftBranchTip(weftURL, dir, branch string) (bool, error) {
 	branchRef := "refs/heads/" + branch
@@ -198,12 +192,11 @@ func fetchWeftBranchTip(weftURL, dir, branch string) (bool, error) {
 	return true, nil
 }
 
-// wrapProbeError formats a probe-phase failure as "probe weft <url>: <detail>", using cause's own
-// message as the detail when cause is non-nil. Every one of this package's call paths into
-// wrapProbeError invokes it from inside an err != nil branch, so the nil-cause arm below is
-// unreachable by construction today; it is kept deliberately, as defense for a future caller that
-// reaches this helper without an error, and it is what keeps op meaningful rather than a parameter
-// with no reader.
+// wrapProbeError formats a probe-phase failure as "probe weft <url>: <detail>".
+// The detail is cause's message when cause is non-nil.
+// Callers pass a non-nil cause, so the nil arm is unreachable today.
+// It is kept for a future caller that reaches this helper without an error.
+// Without the arm, op would be a parameter with no reader.
 func wrapProbeError(weftURL, op string, cause error) error {
 	if cause != nil {
 		return fmt.Errorf("probe weft %s: %w", weftURL, cause)

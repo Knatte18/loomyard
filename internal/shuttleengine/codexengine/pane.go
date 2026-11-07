@@ -1,6 +1,6 @@
 // pane.go reads Codex's TUI from a plain pane capture and holds the key choreography sent into it.
-// The readings come from the pane table of docs/research/codex/codex-spike-2026-10-24/report.md: the `›` composer, the `Working (… esc to interrupt)` busy line, the folder-trust prompt and the collapsed-paste placeholder.
-// Every reading is pure over a capture string, and all Codex TUI shape knowledge stays in this package, per PATTERN-shuttle-provider-seam.
+// The readings come from the pane classifiers in docs/research/codex/codex-spike-2026-10-24/report.md.
+// Each is pure over a capture string.
 
 package codexengine
 
@@ -29,7 +29,7 @@ const composerMarker = "›"
 // composerPlaceholder is the text an empty composer shows.
 const composerPlaceholder = "Ask Codex to do anything"
 
-// Needles in normalizeCapture form.
+// Needles are lowercase with no whitespace, so they match a capture lowercased and stripped of whitespace.
 const (
 	// busyNeedle and busyLineNeedle together mark the line a running turn shows.
 	busyNeedle     = "esctointerrupt"
@@ -44,7 +44,9 @@ const (
 	hookReviewNeedle = "hooksneedreview"
 )
 
-// trustOptionAdjacencyLines bounds how far the accepting option may sit from the last composer-marker line and still count as the prompt's own option: the prompt's caret sits on one of its two adjacent option lines.
+// trustOptionAdjacencyLines bounds how far the accepting option may sit from the last composer-marker line.
+// Within that bound the accepting option still counts as the prompt's own:
+// the prompt's caret sits on one of its two adjacent option lines.
 const trustOptionAdjacencyLines = 1
 
 // optionDecoration is what Codex draws before an option's label: the caret, the numbering and the space between.
@@ -53,10 +55,12 @@ const optionDecoration = " \t›0123456789."
 // interruptSettle is how long after Escape the pane is left alone before it is read again.
 const interruptSettle = 2 * time.Second
 
-// composeSubmitSettleMS is the pause between typed text and its Enter: Codex reads a fast burst of characters as a paste and drops an Enter inside it.
+// composeSubmitSettleMS is the pause between typed text and its Enter:
+// Codex reads a fast burst of characters as a paste and drops an Enter inside it.
 const composeSubmitSettleMS = 1000
 
-// optionMoveSettleMS is the pause after each caret-moving key, so a burst of arrow keys is not read as one escape sequence and dropped.
+// optionMoveSettleMS is the pause after each caret-moving key,
+// so a burst of arrow keys is not read as one escape sequence and dropped.
 const optionMoveSettleMS = 150
 
 // paneMinRows is the fewest rows that draw the composer with the status line under it.
@@ -80,12 +84,14 @@ func isComposerLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), composerMarker)
 }
 
-// isTrustAcceptLine reports whether line is the trust prompt's accepting option: its label, once the caret and numbering are stripped, begins with the option's words.
+// isTrustAcceptLine reports whether line is the trust prompt's accepting option:
+// its label, once the caret and numbering are stripped, begins with the option's words.
 func isTrustAcceptLine(line string) bool {
 	return strings.HasPrefix(normalizeCapture(strings.TrimLeft(line, optionDecoration)), trustAcceptNeedle)
 }
 
-// locateTrustLines returns the indices of the last composer-marker line and the last accepting-option line in capture, each -1 when absent.
+// locateTrustLines returns the indices of the last composer-marker line and the last accepting-option line in capture.
+// An index is -1 when its line is absent.
 func locateTrustLines(capture string) (caretLine, acceptLine int) {
 	caretLine, acceptLine = -1, -1
 	for i, line := range strings.Split(capture, "\n") {
@@ -99,7 +105,7 @@ func locateTrustLines(capture string) (caretLine, acceptLine int) {
 	return caretLine, acceptLine
 }
 
-// trustOptionAdjacent reports whether the accepting option sits on or next to the caret line, as a rendered prompt draws it.
+// trustOptionAdjacent reports whether the accepting option sits on or next to the caret line, as a prompt draws it.
 func trustOptionAdjacent(caretLine, acceptLine int) bool {
 	if caretLine == -1 || acceptLine == -1 {
 		return false
@@ -111,7 +117,8 @@ func trustOptionAdjacent(caretLine, acceptLine int) bool {
 	return distance <= trustOptionAdjacencyLines
 }
 
-// trustPromptShown reports whether capture shows the folder-trust prompt: its question, and either its accepting option next to the caret or its footer.
+// trustPromptShown reports whether capture shows the folder-trust prompt:
+// its question, and either its accepting option next to the caret or its footer.
 // A transcript that only quotes the question carries neither, so it is not the prompt.
 func trustPromptShown(capture string) bool {
 	normalized := normalizeCapture(capture)
@@ -123,7 +130,8 @@ func trustPromptShown(capture string) bool {
 
 // Startup classifies a pane capture during launch.
 // It reports the folder-trust prompt first, since its caret draws the composer marker.
-// It then reports the hook-review prompt as still booting, since its options draw the marker too and the launch never answers it.
+// It then reports the hook-review prompt as still booting, since its options draw the marker too,
+// and the launch never answers it.
 // It reports ready on any composer-marker line, and still booting otherwise.
 func (c *Codex) Startup(capture string) shuttleengine.StartupState {
 	if trustPromptShown(capture) {
@@ -140,8 +148,10 @@ func (c *Codex) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupPending
 }
 
-// TrustDismissSequence returns the keys that accept the folder-trust prompt capture shows: Up or Down until the caret sits on "Trust and continue", then Enter.
-// It returns no keys when capture shows no caret, no accepting option, or an option that is not next to the caret, so nothing is ever pressed blind.
+// TrustDismissSequence returns the keys that accept the folder-trust prompt capture shows:
+// Up or Down until the caret sits on "Trust and continue", then Enter.
+// It returns no keys when capture shows no caret, no accepting option, or an option that is not next to the caret.
+// That way nothing is ever pressed blind.
 func (c *Codex) TrustDismissSequence(capture string) []shuttleengine.PaneInput {
 	caretLine, acceptLine := locateTrustLines(capture)
 	if !trustOptionAdjacent(caretLine, acceptLine) {
@@ -195,9 +205,11 @@ func (c *Codex) InterruptSettle() time.Duration {
 	return interruptSettle
 }
 
-// InputBoxText returns the text the composer holds in capture: the last composer-marker line's text with the marker stripped, joined by single spaces to the non-blank lines under it.
+// InputBoxText returns the text the composer holds in capture:
+// the last composer-marker line's text, marker stripped, joined by single spaces to the non-blank lines under it.
 // The placeholder reads as empty text; ok is false when capture shows no composer.
-// Bound: a plain capture carries no styling, so a placeholder Codex rewords reads as a draft, which holds a send instead of merging with it.
+// Bound: a plain capture carries no styling,
+// so a placeholder Codex rewords reads as a draft, which holds a send instead of merging with it.
 func (c *Codex) InputBoxText(capture string) (string, bool) {
 	lines := strings.Split(capture, "\n")
 	composer := -1
@@ -241,7 +253,8 @@ func (c *Codex) IdleSession(capture string) bool {
 	return ok && text == ""
 }
 
-// PaneTooShort reports whether capture shows a pane too short to draw the composer: no composer-marker line, and fewer rows than the composer and its status line take.
+// PaneTooShort reports whether capture shows a pane too short to draw the composer:
+// no composer-marker line, and fewer rows than the composer and its status line take.
 func (c *Codex) PaneTooShort(capture string) bool {
 	if _, ok := c.InputBoxText(capture); ok {
 		return false
@@ -249,19 +262,21 @@ func (c *Codex) PaneTooShort(capture string) bool {
 	return len(strings.Split(strings.TrimSuffix(capture, "\n"), "\n")) < paneMinRows
 }
 
-// ClearSessionSequence returns no keys: no clear command of Codex's has been tried.
+// ClearSessionSequence returns no keys: no clear command of Codex's is known.
 func (c *Codex) ClearSessionSequence() []shuttleengine.PaneInput { return nil }
 
-// CompactSessionSequence returns no keys: no compact command of Codex's has been tried.
+// CompactSessionSequence returns no keys: no compact command of Codex's is known.
 func (c *Codex) CompactSessionSequence(string) []shuttleengine.PaneInput { return nil }
 
 // ReloadPluginsSequence returns no keys: Codex has no command that reloads skills.
 func (c *Codex) ReloadPluginsSequence() []shuttleengine.PaneInput { return nil }
 
-// PasteSubmits reports false: shuttle pastes without the Enter and sends its own guarded Enter once the composer settles, which Codex submits.
+// PasteSubmits reports false:
+// shuttle pastes without the Enter and sends its own guarded Enter once the composer settles, which Codex submits.
 func (c *Codex) PasteSubmits() bool { return false }
 
-// OwnPastePlaceholder reports whether boxText, trimmed, is the whole collapsed-paste placeholder a paste of text produces: `[Pasted Content N chars]` with N the characters of text.
+// OwnPastePlaceholder reports whether boxText, trimmed, is the whole collapsed-paste placeholder that a paste produces:
+// `[Pasted Content N chars]` with N the characters of text.
 func (c *Codex) OwnPastePlaceholder(boxText, text string) bool {
 	match := pastePlaceholderShape.FindStringSubmatch(strings.TrimSpace(boxText))
 	if match == nil {

@@ -1,4 +1,5 @@
-// agentmessaging_test.go pins PATTERN-agent-addressing: no stencil, prompt fixture or Go message text names Claude Code's SendMessage tool,
+// agentmessaging_test.go pins PATTERN-agent-addressing:
+// no stencil, prompt fixture or Go message text names Claude Code's SendMessage tool,
 // so a role that has a parent can run on an engine without that tool.
 
 package main
@@ -21,14 +22,15 @@ import (
 // engineTool is the name of the engine-specific messaging tool no prompt may name.
 const engineTool = "SendMessage"
 
-// engineToolAllowed maps a repository-relative stencil path to the one line text admitted there.
+// engineToolAllowed maps a repository-relative stencil path to the one line of text admitted there.
 // A row is made only for a stencil whose role's spec sets ForkSubagents, since such a role addresses a fork in-session;
 // the scan cannot read the spec from a stencil, so review holds that half.
 var engineToolAllowed = map[string]string{
 	"contracts/stencils/webster/webster-template-master.md": "to that batch's fork by `SendMessage`, addressed by the agent id its completion notification carried",
 }
 
-// engineToolHits returns one "line N: SendMessage" entry per line of content naming the tool, skipping a line the allowlist admits for rel.
+// engineToolHits returns one "line N: SendMessage" entry per line of content that names the tool.
+// It skips a line the allowlist admits for rel.
 func engineToolHits(rel, content string) []string {
 	admitted, hasAdmitted := engineToolAllowed[rel]
 	var hits []string
@@ -65,7 +67,8 @@ func goLiteralHits(t *testing.T, rel string, src []byte) []string {
 }
 
 // testdataPromptRoots lists, relative to root and slash-separated, every testdata directory under root's internal directory.
-// scankit skips a testdata directory below a walk root, so each one is handed to a walk as a root of its own.
+// scankit skips a testdata directory below a walk root,
+// so each one is handed to a walk as a root of its own.
 func testdataPromptRoots(t *testing.T, root string) []string {
 	t.Helper()
 	var roots []string
@@ -158,7 +161,8 @@ func TestAgentMessaging_NoEngineTool(t *testing.T) {
 		root := scankit.Root(t)
 		var failures []string
 
-		// Exts holding the empty suffix selects every file; the callback leaves the Go files of contracts/stencils to the Go surface.
+		// The empty suffix in Exts selects every file;
+		// the callback leaves the Go files of contracts/stencils to the Go surface.
 		scannedStencils := scankit.Walk(t, scankit.Options{
 			Roots:  []string{"contracts/stencils"},
 			Filter: scankit.All,

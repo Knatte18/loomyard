@@ -1,5 +1,5 @@
-// committed_test.go table-drives CommitResult.Committed() over its four WarpCommitted/WeftCommitted
-// combinations. No fixture: CommitResult is a plain value type.
+// committed_test.go table-drives CommitResult.Committed() over every WarpCommitted/WeftCommitted combination.
+// No fixture: CommitResult is a plain value type.
 
 package fabricengine_test
 
@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommitResult_Committed covers all four WarpCommitted/WeftCommitted combinations.
+// TestCommitResult_Committed covers every WarpCommitted/WeftCommitted combination.
 //
 //testtiming:keep all four WarpCommitted and WeftCommitted combinations of Committed; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitResult_Committed(t *testing.T) {

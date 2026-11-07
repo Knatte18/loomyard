@@ -1,5 +1,5 @@
 // raddlecontext_integration_test.go builds the raddle board context over a hub forged by hubforge.
-// This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
+// The package's testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
 package loomcli
@@ -24,7 +24,8 @@ func TestRaddleBoardContext(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, hub, "the-sketch")
 
-	// A board write cannot file an entry with a label the config lacks, so the entries are written to the board file directly.
+	// A board write cannot file an entry with a label the config lacks,
+	// so the entries are written to the board file directly.
 	board := `{"version":1,"entries":[` +
 		`{"id":1,"slug":"the-sketch","title":"Sketch","kind":"task","recipe":"raddle","labels":["sketch","mod-a"],"revised":"2026-11-01T09:00:00Z"},` +
 		`{"id":2,"slug":"open-other","title":"Open","kind":"task","labels":["bug"],"revised":"2026-11-01T10:00:00Z"},` +

@@ -1,6 +1,7 @@
-// reconcile_test.go covers Read, Reconcile, and ForceRefresh against a bare t.TempDir(), with no git and no hub fixture -- see fakeRegistry below for the Registry stand-in every test here uses.
+// reconcile_test.go covers Read, Reconcile, and ForceRefresh against a bare t.TempDir(), with no git and no hub fixture.
 //
-// The tests that capture the logger's output swap process-global state, so they stay serial and run before the parallel ones resume.
+// The tests that capture the logger's output swap process-global state, so they stay serial.
+// They run before the parallel ones resume.
 
 package stencilstore
 
@@ -17,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeRegistry implements Registry over a plain map, so no test in this package depends on the real
-// stencils package.
+// fakeRegistry implements Registry over a plain map.
+// It keeps every test in this package independent of the real stencils package.
 type fakeRegistry struct {
 	names    []string
 	defaults map[string][]byte
@@ -80,8 +81,8 @@ func writeBoardCopy(t *testing.T, baseDir, name string, content []byte) {
 	}
 }
 
-// seedGitattributesForTest pre-creates baseDir/.gitattributes so a test's own Reconcile call can
-// assert on written without that call also seeding .gitattributes for the first time.
+// seedGitattributesForTest pre-creates baseDir/.gitattributes.
+// A test's own Reconcile call can then assert on written without also seeding .gitattributes for the first time.
 func seedGitattributesForTest(t *testing.T, baseDir string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(baseDir, gitattributesName), []byte(gitattributesContent), 0o644); err != nil {
@@ -89,7 +90,9 @@ func seedGitattributesForTest(t *testing.T, baseDir string) {
 	}
 }
 
-// TestReconcile_SeedsAbsentFileAndGitattributesOnce covers the seeding run: an absent board copy is written stamped with its own hash and reported in written, and .gitattributes is seeded then too, but never rewritten once it exists and never listed by the registry.
+// TestReconcile_SeedsAbsentFileAndGitattributesOnce covers the seeding run.
+// An absent board copy is written, stamped with its own hash, and reported in written.
+// .gitattributes is seeded then too, but never rewritten once it exists and never listed by the registry.
 func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -146,7 +149,9 @@ func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
 	}
 }
 
-// TestReconcile_UntouchedBoardCopy covers a board copy still matching its own stamp across a second reconcile: an unchanged default leaves every file alone, and a changed default refreshes it in production mode but never in dev mode.
+// TestReconcile_UntouchedBoardCopy covers a board copy still matching its own stamp across a second reconcile:
+// an unchanged default leaves every file alone,
+// and a changed default refreshes it in production mode but never in dev mode.
 func TestReconcile_UntouchedBoardCopy(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -221,7 +226,9 @@ func TestReconcile_UntouchedBoardCopy(t *testing.T) {
 	}
 }
 
-// TestReconcile_RestampsRowWhoseBodyMatchesDefault covers a board copy whose body equals the shipped default but whose stamp names an older hash (an edit later reverted): both modes restamp it, and it classifies as untouched afterwards.
+// TestReconcile_RestampsRowWhoseBodyMatchesDefault covers a board copy whose body equals the shipped default.
+// Its stamp names an older hash, left from an edit later reverted.
+// Both modes restamp it, and it classifies as untouched afterwards.
 func TestReconcile_RestampsRowWhoseBodyMatchesDefault(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -263,7 +270,8 @@ func TestReconcile_RestampsRowWhoseBodyMatchesDefault(t *testing.T) {
 	}
 }
 
-// TestForceRefresh_PerformsRefreshRowFromDevSkippedFile covers a forced refresh of a file a dev pass skipped, under each mode, and the running binary being recorded as its writer only under ModeProduction.
+// TestForceRefresh_PerformsRefreshRowFromDevSkippedFile covers a forced refresh of a file a dev pass skipped.
+// Under each mode, the running binary is recorded as its writer only under ModeProduction.
 func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -314,7 +322,9 @@ func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 	}
 }
 
-// TestWritesDue covers the dry-run classification: nothing due on a settled board, and a write due for an absent file, a missing .gitattributes, or an untouched copy the mode would refresh, but not for one it would leave or for an edited copy.
+// TestWritesDue covers the dry-run classification: nothing is due on a settled board.
+// A write is due for an absent file, a missing .gitattributes, or an untouched copy the mode would refresh;
+// it is not due for a copy the mode would leave, or for an edited copy.
 // The pass logs nothing, even over a copy a mode leaves behind.
 // It captures the logger's output, which is process-global state, so it stays serial.
 func TestWritesDue(t *testing.T) {
@@ -380,7 +390,8 @@ func TestWritesDue(t *testing.T) {
 	}
 }
 
-// TestReconcile_EditedBoardCopyIsNeverModified covers a board copy reconcile must leave alone even under a newer default: a hand-edited body under its old stamp, and a body with no stamp at all.
+// TestReconcile_EditedBoardCopyIsNeverModified covers an edited board copy under a newer default:
+// a hand-edited body under its old stamp, and a body with no stamp.
 // Read returns the content as it is on disk.
 func TestReconcile_EditedBoardCopyIsNeverModified(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -425,7 +436,8 @@ func TestReconcile_EditedBoardCopyIsNeverModified(t *testing.T) {
 	}
 }
 
-// TestReconcile_SourceDirNeverFailsReconcile covers the port-back drift comparison never failing a reconcile: an empty sourceDir skips it, and a worktree source that differs from the board copy only warns.
+// TestReconcile_SourceDirNeverFailsReconcile covers the port-back drift comparison never failing a reconcile:
+// an empty sourceDir skips it, and a worktree source that differs from the board copy only warns.
 func TestReconcile_SourceDirNeverFailsReconcile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -467,11 +479,11 @@ func TestReconcile_SourceDirNeverFailsReconcile(t *testing.T) {
 	}
 }
 
-// TestReconcile_ModeDevRefusalNamesItsRemedy pins the dev-mode refusal's message, not just its
-// behaviour. The refusal is one-way -- an older installed binary running in production mode DOES
-// refresh, so it can downgrade a board's stencils, after which a newer dev build can only warn,
-// on every invocation, forever. A warning that does not name "lym stencil sync" reads as benign
-// housekeeping while it is reporting that every producer will run on the older on-disk prompt.
+// TestReconcile_ModeDevRefusalNamesItsRemedy pins the dev-mode refusal's message, not just its behaviour.
+// The refusal is one-way: an older installed binary running in production mode does refresh,
+// so it can downgrade a board's stencils, after which a newer dev build can only warn on every invocation, forever.
+// A warning that does not name "lym stencil sync" reads as benign housekeeping;
+// it reports that every producer will run on the older on-disk prompt.
 func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 	tiergate.Require(t, 0)
 	recorded := Writer{Revision: "recorded-rev"}

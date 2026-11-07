@@ -1,4 +1,7 @@
-// pullrequestmode_test.go covers ResolvePullRequest: the mode and field combinations, the warning for an off field under a required or merge parent, a parent branch GitHub's rules guard, each origin fact that blocks a pull request, and an empty task branch.
+// pullrequestmode_test.go covers ResolvePullRequest: the mode and field combinations;
+// the warning for an off field under a required or merge parent;
+// a parent branch GitHub's rules guard;
+// each origin fact that blocks a pull request; and an empty task branch.
 
 package landingshed
 
@@ -73,7 +76,7 @@ func TestResolvePullRequest(t *testing.T) {
 			origin         Origin
 			taskHasCommits bool
 			wantOpen       bool
-			// wantIn is a substring the halt holds when it is not empty, and otherwise the reason.
+			// wantIn is a substring the halt holds when one is wanted, and the reason otherwise.
 			wantIn   string
 			wantHalt bool
 			wantWarn bool

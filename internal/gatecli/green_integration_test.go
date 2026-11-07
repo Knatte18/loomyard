@@ -1,4 +1,5 @@
-// green_integration_test.go covers the one green-record rule that needs a real git repository: a pass is recorded only while the tree it ran on is still HEAD's.
+// green_integration_test.go covers the one green-record rule that needs a real git repository:
+// a pass is recorded only while the tree it ran on is still HEAD's.
 
 package gatecli
 

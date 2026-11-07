@@ -1,12 +1,13 @@
-// state_test.go covers LoadState/SaveState's documented cases: round-tripping a populated State
-// through disk (including a persisted digest and per-card SHA trail), an absent state.json
-// returning (nil, nil), a corrupt state.json returning a
-// wrapped error rather than a guessed value, and the state-mutation lease's cross-holder exclusion.
-// It also covers webster's own durable-vs-scratch dir split: SaveState writes state.json into the
-// durable dir and state.json.lock into a DISTINCT scratch dir, the durable dir ends up with no
-// .lock file at all, LoadState round-trips across the two dirs, and AcquireStateMutation's lease
-// file lands in the scratch dir.
-// All plain t.TempDir() files — no git, no subprocess spawns — Test Tier Purity Invariant.
+// state_test.go covers the documented cases of LoadState and SaveState.
+// It round-trips a populated State through disk, including a persisted digest and per-card SHA trail.
+// An absent state.json returns (nil, nil).
+// A corrupt state.json returns a wrapped error rather than a guessed value.
+// The state-mutation lease's cross-holder exclusion is covered too.
+// It also covers webster's durable-versus-scratch dir split.
+// SaveState writes state.json into the durable dir and state.json.lock into a distinct scratch dir.
+// The durable dir ends up with no .lock file at all.
+// LoadState round-trips across the two dirs, and AcquireStateMutation's lease file lands in the scratch dir.
+// Every test uses plain t.TempDir() files, with no git and no subprocess spawns (the Test Tier Purity Invariant).
 
 package websterengine_test
 
@@ -22,19 +23,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// scratchSibling builds a durable dir and a DISTINCT scratch dir under one
-// shared temp base, mirroring the .lym/_lym mirrored-subpath split in
-// production, rather than reusing one temp dir for both — the split this
-// test file exists to pin would otherwise go untested.
+// scratchSibling returns a durable dir and a distinct scratch dir under one shared temp base.
+// The pair mirrors the .lym/_lym mirrored-subpath split of production.
+// Reusing one temp dir for both would leave that split untested.
 func scratchSibling(t *testing.T) (websterDir, scratchDir string) {
 	t.Helper()
 	base := t.TempDir()
 	return filepath.Join(base, "_lym", "webster"), filepath.Join(base, ".lym", "webster")
 }
 
-// TestState_RoundTrip pins that a populated State survives a save/load across the durable and
-// scratch dirs: the verify gate's pre-fix head, the per-card SHA trail, the persisted digest
-// (begin-batch(N+1) reads it back rather than re-distilling a report) and the audit ledger included.
+// TestState_RoundTrip pins that a populated State survives a save and load across the durable and scratch dirs.
+// It covers the verify gate's pre-fix head, the per-card SHA trail, the persisted digest, and the audit ledger.
+// begin-batch(N+1) reads the digest back rather than re-distilling a report.
 //
 //testtiming:keep pins every State and BatchState field surviving save and load, and the lock landing in the scratch dir only; the run-level test round-trips only the fields its run sets
 func TestState_RoundTrip(t *testing.T) {
@@ -119,7 +119,12 @@ func TestState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt (a wrapped error, never a guessed value) or written before the integration stage was retired (the retired integrationFix and assertedModel fields are ignored on load, every other field loads intact and a save keeps both retired keys as unknown keys, the reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil).
+// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil).
+// It also pins one that is corrupt (a wrapped error, never a guessed value).
+// It also pins a state.json written before the integration stage was retired:
+// the retired integrationFix and assertedModel fields are ignored on load, and every other field loads intact.
+// A save keeps both retired keys as unknown keys.
+// The reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil.
 func TestLoadState_UnusualFiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -235,10 +240,9 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 	}
 }
 
-// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation lease is a real
-// cross-holder exclusive lock: while held, a second non-blocking acquire of the same lease file
-// fails, and after Release it succeeds — the property every verb's load-mutate-save section relies
-// on.
+// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation lease is a real cross-holder exclusive lock.
+// While it is held, a second non-blocking acquire of the same lease file fails, and after Release it succeeds.
+// Every verb's load-mutate-save section relies on this property.
 //
 //testtiming:keep pins the lease's cross-holder exclusion and release directly; the covering run-level test only observes ErrRunBusy
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
@@ -268,10 +272,9 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	_ = second.Release()
 }
 
-// TestRunActive_ReflectsRunLockHeld proves the ownerless-run probe: an unheld run.lock reads as no
-// live run (and the probe releases what it briefly acquired, so a real run right after is never
-// blocked), while a held run.lock reads as a live run owning the state — the signal the bracket
-// verbs' zombie-Master warning keys off (round fable-r1's F17).
+// TestRunActive_ReflectsRunLockHeld proves the ownerless-run probe: an unheld run.lock reads as no live run.
+// The probe releases what it briefly acquired, so a real run right after is never blocked.
+// A held run.lock reads as a live run owning the state; the signal the bracket verbs' zombie-Master warning keys off.
 //
 //testtiming:keep pins RunActive's not-active result releasing the probed lock and its active result while the lock is held; the plan-reset tests only observe the busy refusal
 func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
@@ -286,8 +289,7 @@ func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
 		t.Error("RunActive() = true with no run.lock held; want false")
 	}
 
-	// The probe must have released the lock it briefly took, so it is
-	// acquirable now.
+	// The probe must have released the lock it briefly took, so it is acquirable now.
 	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "run.lock"))
 	if err != nil || !locked {
 		t.Fatalf("run.lock acquire after probe = locked=%v err=%v; want the probe to have released it", locked, err)

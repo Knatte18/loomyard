@@ -1,8 +1,6 @@
-// pathresolve_guard_test.go enforces the Dev/Prod Binary Separation Invariant: no non-test *.go file in the tools/sandbox package, other than resolve.go, may perform a bare-PATH "lym" lookup or spawn -- lookPath("lym"), or an exec.Command/ exec.CommandContext call whose line also names "lym".
-// The exec forms are matched line-based rather than as a whole-file substring, because exec.CommandContext takes its context.Context argument first, so the literal exec.CommandContext("lym" never appears in compilable Go -- a substring scan for it can never match.
-// resolve.go's resolveLym is the single allowlisted resolution site;
-// every other call site must route through it instead, so the dev/prod distinction can never silently regress to a bare PATH fallback.
-// The rule is stated in the command doc, doc.go.
+// pathresolve_guard_test.go enforces the dev/prod binary separation in tools/sandbox.
+// No non-test *.go file there may look up "lym" on PATH or spawn it by exec, except resolve.go.
+// Code that needs lym routes the lookup through resolveLym, so a dev run never silently falls back to PATH.
 
 package main
 
@@ -20,18 +18,17 @@ var pathResolveAllowlist = []scankit.Entry{
 	{Key: "tools/sandbox/resolve.go", Why: "the sole resolution site"},
 }
 
-// pathResolveMinFiles is the vacuous-scan floor for this guard's single-directory walk.
+// pathResolveMinFiles is the minimum number of files the walk must scan, so an empty walk cannot pass vacuously.
 const pathResolveMinFiles = 3
 
 // bareLymLookupLiteral is the one banned token matched as a whole-file substring.
 const bareLymLookupLiteral = `lookPath("lym")`
 
-// execSpawnTokens are the substrings identifying exec.Command or
-// exec.CommandContext calls, matched line-based with the "lym" argument.
+// execSpawnTokens are the substrings that mark an exec.Command or exec.CommandContext call.
+// The guard matches them line by line, together with the "lym" argument.
 var execSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 
-// TestPathResolveGuard_NoBarePathLymOutsideResolve fails if any non-test *.go file contains a
-// banned bare-PATH lym literal.
+// TestPathResolveGuard_NoBarePathLymOutsideResolve fails when a non-test *.go file holds a banned bare-PATH lym literal.
 func TestPathResolveGuard_NoBarePathLymOutsideResolve(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(pathResolveAllowlist)
@@ -57,8 +54,7 @@ func TestPathResolveGuard_NoBarePathLymOutsideResolve(t *testing.T) {
 	}
 }
 
-// firstBannedLymToken reports the first banned bare-PATH lym token found in
-// content, scanning line by line.
+// firstBannedLymToken reports the first banned bare-PATH lym token in content, scanning line by line.
 func firstBannedLymToken(content string) (token string, bad bool) {
 	for _, line := range strings.Split(content, "\n") {
 		if strings.Contains(line, bareLymLookupLiteral) {
@@ -71,8 +67,7 @@ func firstBannedLymToken(content string) (token string, bad bool) {
 	return "", false
 }
 
-// lineHasBannedLymSpawn reports whether line contains both exec.Command/
-// exec.CommandContext and the "lym" argument.
+// lineHasBannedLymSpawn reports whether line calls exec.Command or exec.CommandContext with the "lym" argument.
 func lineHasBannedLymSpawn(line string) (token string, bad bool) {
 	if !strings.Contains(line, `"lym"`) {
 		return "", false

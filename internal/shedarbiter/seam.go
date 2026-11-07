@@ -7,9 +7,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
-// Seam builds the arbiter seam of a recipe's driver deps over deps, for the run runID.
-// EscalationPending answers escalationEligible, the recipe's own reading of whether the arbiter admits an awaiting stop at a producer.
-// Judge runs NewCall and Settle for the stop envelope it is given and maps the envelope onto the outcome the driver reads, with role loomengine.ArbiterRole.
+// Seam builds the arbiter seam a recipe's driver takes, over deps, for the run runID.
+// EscalationPending reports whether escalationEligible, the recipe's own reading, admits an awaiting stop at a producer.
+// Judge runs the arbiter call on the stop envelope it is given;
+// it maps the settled envelope onto the outcome the driver reads, with role loomengine.ArbiterRole.
 // AttemptEnvelope reads the stop envelope path an attempt directory recorded.
 func Seam(deps Deps, runID string, escalationEligible func(producer string) bool) *sheddriver.ArbiterSeam {
 	return &sheddriver.ArbiterSeam{

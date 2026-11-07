@@ -115,9 +115,11 @@ func passedResult() verifytree.Result {
 	return verifytree.Result{Status: verifytree.StatusPassed}
 }
 
-// TestVerifyGate_PassesWithoutVerifying proves the gate passes without running the verify when the
-// outcome is stuck (even over a dirty tree) and when outcome.yaml is unreadable, leaving that file to the run's own mapping,
-// and that a gate-config refusal on a done outcome is returned as the gate's error, never a pass, with no verify run.
+// TestVerifyGate_PassesWithoutVerifying proves the gate passes without running the verify.
+// The gate passes when the outcome is stuck, even over a dirty tree, and when outcome.yaml is unreadable;
+// the unreadable file is left to the run's own mapping.
+// It also proves a gate-config refusal on a done outcome is returned as the gate's error.
+// Such a refusal is never a pass, and no verify runs.
 func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -192,7 +194,10 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun pins that a verify that outlived its timeout or hung fails the gate at once, on the first run or on the rerun, with a report naming the timeout or the hang, the log path and the log tail, and that a failure that is no hang is still rerun.
+// TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun pins the gate's failure on a verify that timed out or hung.
+// The gate fails at once, on the first run or on the rerun,
+// and the report names the timeout or the hang, the log path and the log tail.
+// A failure that is no hang is still rerun.
 func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -287,7 +292,9 @@ func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_RunnerCrashFailsTerminalWithoutFixer pins that a verify whose test runner crashed fails the gate terminally at once, on the first run or the rerun, naming the crashed runs, with no pre-fix head, no failure report and a stuck reason that ends in reentry alone.
+// TestVerifyGate_RunnerCrashFailsTerminalWithoutFixer pins the gate's terminal failure on a crashed test runner.
+// The gate fails at once, on the first run or the rerun, and names the crashed runs.
+// It leaves no pre-fix head and no failure report, and its stuck reason ends in reentry alone.
 func TestVerifyGate_RunnerCrashFailsTerminalWithoutFixer(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -390,8 +397,10 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_RoutesFailuresToFixer pins which fixer each failure goes to, as the report, the findings and the re-prompt line name it:
-// the failure that reaches the cap and one after a fixer that added no commit go cold, and every failure after a cold one stays cold.
+// TestVerifyGate_RoutesFailuresToFixer pins which fixer each failure goes to.
+// The report, the findings and the re-prompt line name that fixer.
+// The failure that reaches the cap and the one after a fixer that added no commit go cold,
+// and every failure after a cold one stays cold.
 func TestVerifyGate_RoutesFailuresToFixer(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -449,7 +458,8 @@ func TestVerifyGate_RoutesFailuresToFixer(t *testing.T) {
 }
 
 // TestVerifyGate_NotesFixCommitsOnce pins that the gate reads the commit log only once a pre-fix head is recorded.
-// The notes keep each commit once across evaluations and list the `fix:` commit with its departure but not a plain commit.
+// The notes keep each commit once across evaluations.
+// They list the `fix:` commit with its departure, but not a plain commit.
 // A failing commit log read is the gate's error.
 func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -503,10 +513,10 @@ func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_DirtyTreeRecordsPreFixHead walks one fake through dirty-tree failures: a dirty tree
-// fails without verifying or checking fix commits and reports the dirty paths, the pre-fix head is
-// recorded once per closure and overwritten by a new closure, and the first clean pass checks fix
-// commits from the recorded head and clears the record.
+// TestVerifyGate_DirtyTreeRecordsPreFixHead walks one fake through dirty-tree failures:
+// a dirty tree fails without verifying or checking fix commits, and reports the dirty paths.
+// The pre-fix head is recorded once per closure and overwritten by a new closure.
+// The first clean pass checks fix commits from the recorded head and clears the record.
 //
 //testtiming:keep pins the pre-fix head recorded once per closure, overwritten by a new closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
 func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {

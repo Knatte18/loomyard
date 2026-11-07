@@ -1,4 +1,5 @@
-// removestrand_test.go enforces `PATTERN-shuttle-provider-seam`: a strand is removed from Go only inside the packages that own the removal.
+// removestrand_test.go enforces `PATTERN-shuttle-provider-seam`:
+// a strand is removed from Go only inside the packages that own the removal.
 // The scan matches the selector, so a method value handed to a wrapper is caught as well as a call.
 
 package main
@@ -17,7 +18,8 @@ import (
 )
 
 // removeStrandAllowlist names the package directories permitted to select RemoveStrand, each with its reason.
-// `internal/reedengine` and `internal/testkit/shuttlefake` declare RemoveStrand and select it nowhere, so they carry no entry: a stale entry fails the scan.
+// `internal/reedengine` and `internal/testkit/shuttlefake` declare RemoveStrand and select it nowhere.
+// So they carry no entry: a stale entry fails the scan.
 var removeStrandAllowlist = []scankit.Entry{
 	{Key: "internal/reedcli/", Why: "reed's own remove verb"},
 	{Key: "internal/shuttleengine/", Why: "the stop verb settles the run's record before it removes the strand"},
@@ -25,7 +27,8 @@ var removeStrandAllowlist = []scankit.Entry{
 	{Key: "internal/orchcli/", Why: "removes the orch strand, which no attach probe or Wait reads"},
 }
 
-// removeStrandSelectors returns "file:line" for every selector expression selecting RemoveStrand in a non-test Go file under base's internal and cmd, skipping the files allow admits.
+// removeStrandSelectors returns "file:line" for every selector that selects RemoveStrand:
+// non-test Go files under base's internal and cmd, minus the files the allowlist permits.
 func removeStrandSelectors(t *testing.T, base string, allow *scankit.Allowlist) []string {
 	t.Helper()
 	var found []string

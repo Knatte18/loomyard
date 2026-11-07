@@ -1,4 +1,5 @@
-// inbound.go is the relay's read of the hub's channel: the seams the relay is told, the presence commands and one poll that hands the operator's messages to the orchs.
+// inbound.go reads the operator's messages from the hub's Slack channel and forwards them to the orchs.
+// It also answers the presence commands: away, back and status.
 
 package slackengine
 
@@ -29,11 +30,13 @@ const (
 	relayNoticePrefix = "[slack relay]"
 	// creelBodyLimit is the largest body creel posts, in bytes.
 	creelBodyLimit = 4096
-	// retryWindow is how long a message that cannot be handled is retried before the relay answers in Slack and moves past it.
+	// retryWindow is how long a message that cannot be handled is retried;
+	// after it, the relay answers in Slack and moves past the message.
 	retryWindow = 5 * time.Minute
 )
 
-// Clock is the relay's time, told so no test waits out a production duration.
+// Clock is the relay's source of time.
+// Tests supply their own so that no test waits out a production duration.
 type Clock interface {
 	// Now returns the current time.
 	Now() time.Time
@@ -41,7 +44,7 @@ type Clock interface {
 	After(d time.Duration) <-chan time.Time
 }
 
-// SystemClock is the Clock of the wall clock.
+// SystemClock is a Clock that reads the wall clock.
 type SystemClock struct{}
 
 // Now returns the wall-clock time.
@@ -50,7 +53,7 @@ func (SystemClock) Now() time.Time { return time.Now() }
 // After returns a channel that delivers once d of wall-clock time has passed.
 func (SystemClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
-// Mailbox is the relay's creel mailbox, the calls of a program client signing as `<shortname>:SLACK`.
+// Mailbox is the creel mailbox the relay posts to and reads, signing as `<shortname>:SLACK`.
 type Mailbox interface {
 	// Post leaves body as a message for receiver and returns its id.
 	Post(receiver, body string) (int64, error)
@@ -60,7 +63,7 @@ type Mailbox interface {
 	ReadWait(timeout time.Duration, handle func([]creelengine.Message) error) error
 }
 
-// SlackClient is the Slack calls the relay makes, which API implements.
+// SlackClient is the set of Slack API calls the relay makes.
 type SlackClient interface {
 	// History reads the channel's messages after oldest, oldest first.
 	History(ctx context.Context, channel, oldest string) ([]Message, error)
@@ -70,7 +73,7 @@ type SlackClient interface {
 	PostMessage(ctx context.Context, channel, text string) error
 }
 
-// Hub is what the relay reads of the hub besides its own files.
+// Hub is the hub state the relay reads that is not in its own files.
 type Hub struct {
 	// Beams lists the slugs of the hub's beams.
 	Beams func() ([]string, error)
@@ -84,7 +87,7 @@ type cursorRecord struct {
 	TS      string `json:"ts"`
 }
 
-// inbound is one poll of the hub's channel, holding what must carry from one poll to the next.
+// inbound polls the hub's Slack channel and holds the state that carries from one poll to the next.
 type inbound struct {
 	geom    Geometry
 	mailbox Mailbox
@@ -113,7 +116,8 @@ var (
 )
 
 // inboundText turns a message's text, as Slack delivers it, into the text the orch reads.
-// A link whose value starts with http://, https:// or mailto: becomes the bare value, and `&amp;`, `&lt;` and `&gt;` are unescaped.
+// A link whose value starts with http://, https:// or mailto: becomes the bare value;
+// the escapes `&amp;`, `&lt;` and `&gt;` are unescaped.
 // A channel, a `<!here>` and a user mention stay as Slack delivers them.
 func inboundText(text string) string {
 	return slackUnescape.Replace(slackLink.ReplaceAllString(text, "$1"))
@@ -138,7 +142,8 @@ func mentionedSlug(text string) (string, bool) {
 }
 
 // route picks the orch a text is for and the body to send it.
-// A text opening `@<slug> ` goes to that beam's orch without the prefix when slug is one of beams, and ok is false when it is not;
+// A text opening `@<slug> ` goes to that beam's orch without the prefix when slug is one of beams;
+// otherwise ok is false;
 // any other text goes to the hub's own orch unchanged.
 func route(shortname, text string, beams []string) (string, string, bool) {
 	slug, mentioned := mentionedSlug(text)
@@ -157,9 +162,12 @@ func route(shortname, text string, beams []string) (string, string, bool) {
 	return receiver, strings.TrimSpace(after), true
 }
 
-// SetPresence writes presence and, only when it changed, mails a `[slack presence]` notice to the hub's orch and to the orch of every beam beams lists.
+// SetPresence writes presence and, only when it changed, mails a `[slack presence]` notice to the hub's orch;
+// the notice goes to the orch of every beam `beams` lists.
 // The notice asks for no reply.
-// It returns changed false with an error when the presence was not written, and changed true with an error when the write stood and the beams read or a notice failed, every failed notice joined into the error.
+// It returns changed false with an error when the presence was not written;
+// it returns changed true with an error when the write stood and the beams read or a notice failed;
+// the error joins every failed notice.
 func SetPresence(geom Geometry, mailbox Mailbox, beams func() ([]string, error), presence Presence, now time.Time) (bool, error) {
 	changed, err := WritePresence(geom.PresencePath, presence, now)
 	if err != nil || !changed {
@@ -207,8 +215,10 @@ func slackTimestamp(t time.Time) string {
 }
 
 // poll reads the operator's top-level messages after the cursor and handles each once, oldest first.
-// It returns whether anything was forwarded, answered or the presence changed, and an error that leaves the cursor before the message it concerns, so the relay retries it.
-// A first poll, and the first after the setup names another channel, moves the cursor to the channel's newest message and forwards nothing from before.
+// It returns whether anything was forwarded, answered or the presence changed;
+// the returned error leaves the cursor before the message it concerns, so the relay retries it.
+// A first poll, and the first after the setup names another channel, moves the cursor to the channel's newest message;
+// it forwards nothing from before.
 func (in *inbound) poll(ctx context.Context) (bool, error) {
 	setup, found, err := ReadSetup(in.geom.SetupPath)
 	if err != nil {
@@ -252,7 +262,8 @@ func (in *inbound) presenceChanged() bool {
 	return changed
 }
 
-// cursorFor returns the cursor of the configured channel, writing it first at the channel's newest message when none is written or it is for another channel.
+// cursorFor returns the cursor of the configured channel;
+// when none is written or it is for another channel, it first writes the cursor at the channel's newest message.
 func (in *inbound) cursorFor(ctx context.Context, setup Setup) (cursorRecord, error) {
 	cursor, found, err := readCursor(in.geom)
 	if err != nil {
@@ -312,7 +323,8 @@ func (in *inbound) handle(ctx context.Context, setup Setup, message Message) (bo
 }
 
 // setPresence sets the presence for an `away` or `back` command and answers with the resulting state.
-// A presence that was not written is retried; a write that stood with a notice or beams failure is logged once per episode and counts as handled.
+// A presence that was not written is retried;
+// a write that stood with a notice or beams failure is logged once per episode and counts as handled.
 func (in *inbound) setPresence(ctx context.Context, setup Setup, message Message, presence Presence) (bool, error) {
 	changed, err := SetPresence(in.geom, in.mailbox, in.hub.Beams, presence, in.clock.Now())
 	switch {
@@ -382,8 +394,10 @@ func (in *inbound) forward(ctx context.Context, setup Setup, message Message, te
 	return true, nil
 }
 
-// retryOrGiveUp answers a message that could not be handled: it returns err, leaving the cursor before the message, until the message's first failure is retryWindow old.
-// Then it answers in Slack with reason and err and reports the message handled, so it holds the later ones no longer than that.
+// retryOrGiveUp handles a message that could not be handled:
+// it returns err, leaving the cursor before the message, until the message's first failure is retryWindow old;
+// then it answers in Slack with reason and err and reports the message handled,
+// so it holds the later ones no longer than that.
 func (in *inbound) retryOrGiveUp(ctx context.Context, setup Setup, message Message, reason string, err error) (bool, error) {
 	now := in.clock.Now()
 	if in.failingTS != message.TS {

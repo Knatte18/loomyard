@@ -1,5 +1,7 @@
-// worktreeseam_integration_test.go proves where fabric fires its worktree seam and that a seam failure never fails a verb.
-// It installs the process-wide seam, so it runs without t.Parallel; the recording fake reports only the events under the hub a subtest asks about.
+// worktreeseam_integration_test.go checks where fabric fires its worktree seam.
+// It also checks that a seam failure is a warning and never fails a verb.
+// It installs the process-wide seam, so it runs without t.Parallel;
+// the recording fake reports only the events under the hub a subtest asks about.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -99,7 +101,8 @@ func within(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
-// excludeLinesPresent reports whether every path the event excludes has its anchored line in the exclude file of the repository checked out at the event's root.
+// excludeLinesPresent reports whether every path the event excludes has its anchored line in the exclude file.
+// The exclude file is the one of the repository checked out at the event's root.
 func excludeLinesPresent(t *testing.T, event fabricengine.WorktreeEvent) bool {
 	t.Helper()
 	commonDir := strings.TrimSpace(gitkit.Git(t, event.Root, "rev-parse", "--git-common-dir"))
@@ -137,7 +140,8 @@ func requireWarning(t *testing.T, label, warning, worktree string) {
 	}
 }
 
-// TestWorktreeSeam_Events covers when fabric fires its worktree seam, what the events hold and that a failing seam is a warning and never a failed verb.
+// TestWorktreeSeam_Events covers when fabric fires its worktree seam and what the events hold.
+// It also covers that a failing seam is a warning and never a failed verb.
 // It runs without t.Parallel because it installs the process-wide seam and captures the logger.
 func TestWorktreeSeam_Events(t *testing.T) {
 	tiergate.Require(t, 1)

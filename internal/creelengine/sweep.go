@@ -1,4 +1,5 @@
-// sweep.go runs the removed-holder sweep: mail held by a strand that no reed state holds any more goes back along its path, and injects queued for it expire.
+// sweep.go runs the removed-holder sweep: mail held by a strand that no reed state holds goes back along its path.
+// Injects queued for that strand expire.
 
 package creelengine
 
@@ -33,16 +34,21 @@ type sweeper struct {
 	lastError  string
 }
 
-// sweepLoop sweeps while a strand holds unread mail (bar program mail waiting for a hub orch's strand), a read message that expects a reply and has none, or a queued inject exists.
-// The wait starts at 30 seconds and doubles to a 50-second ceiling while the strand-name set holds, and it returns to the base on a change of that set or a failed sweep.
-// A sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait.
-// A new post or inject shortens a wait to the base when more is left, and never lengthens one; a pending confirm keeps its deadline.
+// sweepLoop sweeps while a strand holds unread mail, a read message still awaiting a reply, or a queued inject.
+// Unread program mail waiting for a hub orch's strand does not count.
+// The wait starts at sweepBackoffBase and doubles up to sweepBackoffCeiling while the strand-name set holds;
+// it returns to the base on a change of that set or a failed sweep.
+// A sweep that misses a holder for the first time is followed by a confirming sweep after sweepConfirmInterval.
+// That confirming sweep is due whatever else would set the wait.
+// A new post or inject shortens a wait to the base when more is left, and never lengthens one;
+// a pending confirm keeps its deadline.
 func (s *Scheduler) sweepLoop() {
 	defer s.wg.Done()
 	state := &sweeper{absent: map[string]int{}}
 	wait := sweepBackoffBase
 	var seq uint64
-	// idle is set while nothing needs sweeping, so the mail that makes sweeping needed starts a period at its own sequence number.
+	// idle is set while nothing needs sweeping.
+	// The mail that makes sweeping needed starts a period at its own sequence number.
 	idle := true
 	for {
 		if !s.store.sweepNeeded() {
@@ -108,7 +114,8 @@ func (s *Scheduler) sweepLoop() {
 }
 
 // sweepOnce lists the strands and moves what the gone holders hold.
-// It reports whether the listing succeeded, whether the strand-name set differs from the previous successful sweep's, and whether some holder was missed for the first time in a row.
+// It reports whether the listing succeeded and whether the strand-name set changed since the last successful sweep.
+// It also reports whether some holder was missed for the first time.
 // A failed listing moves nothing and counts toward no streak.
 func (s *Scheduler) sweepOnce(state *sweeper) (ok, changed, firstMiss bool) {
 	strands, err := s.delivery.Strands()
@@ -170,7 +177,7 @@ func isStrandName(full string) bool {
 	return err == nil
 }
 
-// sweepNeeded reports whether a strand holds unread mail (bar program mail waiting for a hub orch's strand), a read message that expects a reply and has none, or has an inject queued.
+// sweepNeeded reports whether a strand holds unread mail, a read message still awaiting a reply, or a queued inject.
 func (s *Store) sweepNeeded() bool {
 	return len(s.sweepSubjects()) > 0
 }
@@ -206,9 +213,11 @@ func (s *Store) sweepSubjects() []string {
 }
 
 // releaseGoneHolder moves what a removed strand held.
-// Each unread message goes one step back along its path, the last forwarder or else the sender, marked with the receiver that ended unread.
-// When that step is no strand, or the sender of a message from another hub, which no strand of this hub holds, the message is journaled undelivered and a wait on it is answered that it returned undelivered.
-// Unread mail from a program to an orch of this hub that no strand forwarded is not returned: it stays for the orch's strand.
+// Each unread message goes one step back along its path, to the last forwarder or else the sender.
+// It is marked with the receiver that ended unread.
+// A message whose step is not a strand, or that another hub sent and no strand here forwarded, is journaled undelivered.
+// A reply wait on it is answered as returned.
+// Unread program mail to a hub orch that no strand forwarded is not returned; it stays for the orch's strand.
 // Each message the strand read and left unanswered while it expected a reply is settled unanswered, with no chase sent.
 // Each inject queued for the strand expires.
 func (s *Store) releaseGoneHolder(holder string) error {

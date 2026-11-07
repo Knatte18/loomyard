@@ -1,5 +1,8 @@
-// hub_test.go proves the bare-pair template builder and the CloneAndWire-backed hub factory each do what their doc comments claim: the template carries the symbolic-ref gotcha's fix and a genuinely empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
-// It also proves the helpers a built hub offers — the config seeders, AddPair, AddPairWith and OpenFabric — and that hub teardown is safe.
+// hub_test.go tests the hub fixture: the bare-pair template builder, NewHub, and the helpers of a built hub.
+// The template carries the symbolic-ref fix and an empty weft bare.
+// NewHub calls CloneAndWire rather than CloneHub alone,
+// so the hub it returns is a real, fully wired fabric hub, not a hand-assembled stand-in.
+// It also checks the config seeders, AddPair, AddPairWith and OpenFabric, and that hub teardown is safe.
 
 package hubforge
 
@@ -69,8 +72,10 @@ func TestBuildBareTemplate(t *testing.T) {
 }
 
 // TestNewHub runs the factory and helper checks over one hub per anchor, "." and "backend".
-// Running at "backend" is the point of the anchored hub: a "."-only test passes even when a seeding or resolution base is wrong, because there the anchored and un-anchored weft paths coincide.
-// Steps run serially in this order: the config steps come before the steps that add pairs, and the fabric-config seed comes last because it changes the branch prefix later pairs would inherit.
+// The "backend" anchor exposes a wrong base: at "." the anchored and un-anchored weft paths coincide,
+// so a "."-only test passes even when a seeding or resolution base is wrong.
+// Steps run serially in this order: the config steps come before the steps that add pairs,
+// and the fabric-config seed comes last because it changes the branch prefix later pairs would inherit.
 // Each anchor's scenario calls t.Parallel; no step does, because they share the one hub.
 func TestNewHub(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -110,8 +115,9 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"ConfigMaterializedWithoutSeeding", func(t *testing.T) {
-					// A freshly built hub already carries a committed base file on its board for every non-seed-only module without any seeding call, and a fresh hub's base holds no tuned unit.
-					// This is what licenses deleting a SeedConfig call rather than retargeting it, so it is not optional colour.
+					// A freshly built hub already carries a committed base file on its board for every non-seed-only module.
+					// It needs no seeding call, and a fresh hub's base holds no tuned unit.
+					// This check is what licenses deleting a SeedConfig call rather than retargeting it.
 					for _, m := range configreg.Modules() {
 						if m.SeedOnly {
 							continue
@@ -140,7 +146,9 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {
-					// SeedConfig returns normally when handed a seed byte-identical to what the clone already committed -- a seed that stages nothing, exactly the shape its --allow-empty commit exists to tolerate -- and a genuinely different seed still lands on disk, proving --allow-empty did not turn the helper into a no-op.
+					// SeedConfig returns normally when handed a seed byte-identical to what the clone already committed.
+					// Such a seed stages nothing, which is the case the --allow-empty commit exists to tolerate.
+					// A different seed still lands on disk, which shows that --allow-empty did not turn the helper into a no-op.
 					// The clone leaves no loom file in the prime, so loom is seeded once before it is read back.
 					loomConfigPath := configengine.ConfigFile(h.WeftBase, "loom")
 					SeedConfig(t, h, map[string]string{"loom": "review_max_bounces: 2\n"})
@@ -234,7 +242,9 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"SeedFabricConfig_CommitsAndLeavesBoardClean", func(t *testing.T) {
-					// SeedFabricConfig's write is visible at h.BoardDir() and leaves the board clean — the commit through fabricengine.NewBolt is what makes an uncommitted seed unsafe rather than merely untidy, since h.BoardDir() is the checkout the destruction gate's dirtiness check observes.
+					// SeedFabricConfig's write is visible at h.BoardDir() and leaves the board clean.
+					// The commit through fabricengine.NewBolt is what makes an uncommitted seed unsafe rather than untidy.
+					// h.BoardDir() is the checkout that the destruction gate's dirtiness check observes.
 					const override = "pathspec: []\nbranch_prefix: fabric-seeded\n"
 					SeedFabricConfig(t, h, override)
 
@@ -261,7 +271,9 @@ func TestNewHub(t *testing.T) {
 	}
 }
 
-// assertRealHub runs the real-hub assertions against h: every path is sourced through fabricengine's own name accessors — BoardDir, WiredNames — and lymdirs/lymcwd's own exported names, never a hardcoded string, because a hardcoded string is precisely the invented shape this whole task removes.
+// assertRealHub runs the real-hub assertions against h.
+// Each path comes from a name that fabricengine, lymdirs or lymcwd exports, never from a hardcoded string.
+// A hardcoded string can drift from the layout the code builds.
 func assertRealHub(t *testing.T, h *Hub) {
 	t.Helper()
 
@@ -278,9 +290,9 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("%s marker missing at %s: %v", lymcwd.AnchorFileName, anchorMarker, err)
 	}
 
-	// The hub's scratch directory lives under the Bolt checkout, not at hub level, and its path is sourced from
-	// fabricengine.HubScratchDir — the same constructor CloneHub materialises it through — so this
-	// assertion cannot drift from the geometry it is checking.
+	// The hub's scratch directory lives under the Bolt checkout, not at hub level.
+	// Its path comes from fabricengine.HubScratchDir, the same constructor CloneHub materialises it through,
+	// so this assertion cannot drift from the geometry it checks.
 	hubScratch := fabricengine.HubScratchDir(h.Path)
 	if _, err := os.Stat(hubScratch); err != nil {
 		t.Errorf("hub scratch %s missing at %s: %v", lymdirs.DotLymDirName, hubScratch, err)
@@ -319,11 +331,12 @@ func assertRealHub(t *testing.T, h *Hub) {
 	}
 }
 
-// TestNewHub_Concurrent launches N concurrent NewHub calls from one test, asserting every returned hub
-// is independently a real hub and that no two share a Path, Container, CodeBare, or RecordsBare — the
-// structural parallel safety a sync.Once template read followed by per-call tb.TempDir() is supposed
-// to guarantee.
-// It also pins the fixture-build counter: gitkit.FixtureGitEnv is unset in the process environment once the last build has returned.
+// TestNewHub_Concurrent launches N concurrent NewHub calls from one test.
+// It asserts that every returned hub is independently a real hub.
+// No two returned hubs share a Path, Container, CodeBare, or RecordsBare.
+// The test checks the structural parallel safety that a sync.Once template read and a per-call tb.TempDir() provide.
+// It also checks the fixture-build counter:
+// gitkit.FixtureGitEnv is unset in the process environment once the last build has returned.
 // It does not call t.Parallel, because the marker is process-global state and parallel tests build hubs too.
 func TestNewHub_Concurrent(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -362,14 +375,14 @@ func TestNewHub_Concurrent(t *testing.T) {
 	}
 }
 
-// TestNewHub_TeardownRemovesJunctionsKeepsTargets builds a hub in a nested t.Run subtest, capturing
-// each junction path and its fslink.PointsTo target before the subtest returns, then asserts — after
-// the subtest returns and its teardown has run — that every junction path is gone and, the
-// load-bearing half, every captured target directory still exists with its content intact.
+// TestNewHub_TeardownRemovesJunctionsKeepsTargets builds a hub in a nested t.Run subtest.
+// It captures each junction path and the directory it points to before the subtest returns.
+// After the subtest returns and its teardown has run, it asserts that every junction path is gone.
+// It also asserts that every captured target directory still exists with its content intact.
 //
-// The hub's own container lives outside any t.TempDir() the subtest owns, cleaned up only at this
-// test's own end, so the subtest's teardown (registerTeardown, registered exactly as NewHub registers
-// it) is what is under test here, isolated from Go's own recursive directory removal.
+// The hub's container lives outside any t.TempDir() the subtest owns and is removed only at this test's end.
+// That isolates the teardown the hub registers at construction from Go's own recursive directory removal,
+// so the teardown is what this test exercises.
 func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -460,10 +473,10 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 	}
 }
 
-// TestNewHub_TeardownSurvivesCorruptHub covers the two hostile shapes the live-state matrix plants: a
-// junction repointed at an unrelated directory, and a warp worktree directory removed by hand.
-// Teardown must complete without failing the test in either case — registerTeardown reports every
-// error via tb.Logf and never tb.Fatalf/tb.Errorf, so a test that already passed must stay passed.
+// TestNewHub_TeardownSurvivesCorruptHub covers two hostile shapes the subtests below plant:
+// a junction repointed at an unrelated directory, and a warp worktree directory removed by hand.
+// Teardown must complete without failing the test in either case.
+// It reports every error via tb.Logf and never tb.Fatalf or tb.Errorf, so a test that already passed must stay passed.
 func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -488,8 +501,8 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 		if err := fslink.CreateDirLink(link, unrelated); err != nil {
 			t.Fatalf("fslink.CreateDirLink(%s, %s): %v", link, unrelated, err)
 		}
-		// Teardown runs automatically when this subtest returns; a hostile repointed link must not
-		// fail the test that already passed above.
+		// Teardown runs automatically when this subtest returns;
+		// a hostile repointed link must not fail the test that already passed above.
 	})
 
 	t.Run("RemovedWarpWorktree", func(t *testing.T) {
@@ -500,13 +513,14 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 		if err := os.RemoveAll(h.PrimeWorktree()); err != nil {
 			t.Fatalf("remove %s: %v", h.PrimeWorktree(), err)
 		}
-		// Teardown runs automatically when this subtest returns; a hand-removed warp worktree must
-		// not fail the test that already passed above.
+		// Teardown runs automatically when this subtest returns;
+		// a hand-removed warp worktree must not fail the test that already passed above.
 	})
 }
 
 // TestCopyHub copies the "." shape with its one pair and asserts the copy is a working hub of its own:
-// fabric status is clean on its prime, every worktree git lists resolves, the pair's launcher directory resolves, no `_portals` directory exists, and no file or link names the template root.
+// fabric status is clean on its prime, every worktree git lists resolves, and the pair's launcher directory resolves.
+// No `_portals` directory exists, and no file or link names the template root.
 func TestCopyHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -573,7 +587,9 @@ func TestCopyHub(t *testing.T) {
 	}
 }
 
-// recordingTB stands in for a test: Fatalf and Errorf record instead of failing, Fatalf ends the calling goroutine as the real one does, and cleanups wait for runCleanups.
+// recordingTB stands in for a test: Fatalf and Errorf record instead of failing.
+// Fatalf ends the calling goroutine, as testing.T's Fatalf does.
+// Cleanup holds each function until the test runs them.
 type recordingTB struct {
 	testing.TB
 	mu       sync.Mutex
@@ -631,7 +647,9 @@ func (r *recordingTB) failedNaming(fixture string) bool {
 	return false
 }
 
-// TestSharedHub writes into the shared hub of a shape no other test uses and asserts the test's cleanup fails naming the fixture, after which a later SharedHub and CopyHub of the same shape fail naming it too.
+// TestSharedHub writes into the shared hub of a shape no other test uses.
+// It asserts that the test's cleanup fails naming the fixture.
+// It then asserts that a later SharedHub and CopyHub of the same shape fail naming it too.
 // A read-only sharer first passes cleanly.
 func TestSharedHub(t *testing.T) {
 	tiergate.Require(t, 1)

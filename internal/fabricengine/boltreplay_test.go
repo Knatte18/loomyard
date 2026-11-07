@@ -1,4 +1,5 @@
-// boltreplay_test.go pins that the Bolt replay, ended-set and owner-read code names no board file and no board-named declaration.
+// boltreplay_test.go pins that the Bolt replay, ended-set and owner-read code names no board file.
+// It also pins that no declaration in that code is board-named.
 //
 // Package fabricengine; shares the single TestMain in testmain_test.go.
 
@@ -19,8 +20,10 @@ import (
 )
 
 // boardNameFindings parses src, named filename, and returns one finding per board file name among its string literals.
-// With only empty it scans the whole file and also reports each top-level declaration whose name holds "board" in any case.
-// With only set it scans just the bodies of the functions only names, written `Type.method` or `function`, and reports each one the file does not hold.
+// With `only` empty, it scans the whole file.
+// It also reports each top-level declaration whose name holds "board" in any case.
+// With `only` set, it scans just the bodies of the named functions, written `Type.method` or `function`.
+// It reports each named function that the file does not hold.
 func boardNameFindings(filename string, src any, only []string) []string {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, src, 0)

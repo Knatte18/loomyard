@@ -1,4 +1,6 @@
-// cli.go builds the tender cobra command with its pause, resume and status verbs, the caller rules and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the tender cobra command with its pause, resume, revive, status and reap verbs.
+// It also holds the caller rules.
+// The RunCLI and RunCLIIn seams wire the verbs into the standard io.Writer-based call contract.
 
 package tendercli
 
@@ -37,7 +39,9 @@ type caller struct {
 	slug string
 }
 
-// callerOf reads the caller from the strand name: empty is external, the orch role in the prime is the orch, and any other name is an agent of the slug it carries.
+// callerOf reads the caller from the strand name.
+// An empty name is external, and the orch role in the prime is the orch.
+// Any other name is an agent of the slug it carries.
 func callerOf(strand string) caller {
 	if strand == "" {
 		return caller{}
@@ -52,7 +56,7 @@ func callerOf(strand string) caller {
 	return caller{agent: true, slug: name.Slug}
 }
 
-// refuseCaller refuses an agent's hub-wide pause, resume or revive, and any of them naming a slug other than its own pair's.
+// refuseCaller refuses an agent's pause, resume or revive unless it names its own pair.
 // The orch and an external caller are never refused.
 func refuseCaller(c caller, slug string) error {
 	if !c.agent || (slug != "" && slug == c.slug) {
@@ -69,7 +73,7 @@ func refuseReapCaller(c caller) error {
 	return errors.New(`reap: an agent may not end orphaned processes; way forward: ask your parent session, which runs "lym tender reap" for you`)
 }
 
-// Command returns the cobra command for `lym tender`: the bare group and its pause, resume, revive, status and reap verbs.
+// Command returns the cobra command for `lym tender`, with its pause, resume, revive, status and reap verbs.
 func Command() *cobra.Command {
 	tender := &cobra.Command{
 		Use:   "tender",
@@ -406,12 +410,14 @@ Example:
 	}
 }
 
-// RunCLI is the public seam for the tender module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the tender module CLI on args, writes its output to out, and returns the exit code.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the tender module CLI in cwd, writes its output to out, and returns the exit code.
+// An empty cwd reads the process working directory;
+// any other value seeds cwd into the execution context, because the cwd setup panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

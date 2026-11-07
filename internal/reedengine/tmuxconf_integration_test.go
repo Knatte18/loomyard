@@ -1,6 +1,6 @@
 //go:build linux
 
-// tmuxconf_integration_test.go proves against a real tmux server what an operator tmux config named by `tmux_conf` can and cannot change on a server reed starts.
+// tmuxconf_integration_test.go checks what a `tmux_conf` operator config can and cannot change on reed's server.
 // It is linux-only because the status bar's session row is expanded for a client attached through the pty harness.
 
 package reedengine

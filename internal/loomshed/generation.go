@@ -44,9 +44,10 @@ type committedRound struct {
 	record roundRecord
 }
 
-// committedRounds returns the rounds committed at HEAD, in the order roundNumbers lists them.
-// A round counts as committed only when its record carries a class: a classless record is the archive's completion marker and can reach HEAD outside the round commit,
-// and counting it would skip the session.
+// committedRounds returns the rounds committed at HEAD, in directory-listing order.
+// A round counts as committed only when its record carries a class.
+// A classless record is the archive's completion marker and can reach HEAD outside the round commit;
+// counting it would skip the session.
 func committedRounds(deps PRReworkDeps) ([]committedRound, error) {
 	nums, err := roundNumbers(deps.ReworkDir)
 	if err != nil {
@@ -75,17 +76,23 @@ func committedRounds(deps PRReworkDeps) ([]committedRound, error) {
 }
 
 // PlanReviewSkippable reports whether the live plan generation is exempt from Plan-Review, decided from committed state.
-// The live generation's round is the highest committed round whose record carries a class and whose first_card equals the live overview's first_card (absent means 1);
-// with none, the live plan is generation 0 and never skips.
-// It reports true only when that round's record is classed exempt and ReviewExempt agrees over both the live committed cards and the working-tree cards.
-// The working tree counts because a Plan-Burler-Fix round commits nothing: its edits land only through the approve-and-commit a skip would run, unreviewed.
-// An error means the committed plan, a committed record or the working-tree plan could not be read or decoded; the Bouncer then reviews for real.
+// The live generation's round is the highest committed round whose record carries a class.
+// That round's first_card must equal the live overview's first_card, which counts as 1 when absent.
+// With no such round, the live plan is generation 0 and never skips.
+// It reports true only when that round's record is classed exempt.
+// ReviewExempt must also agree over both the live committed cards and the working-tree cards.
+// The working tree counts because a Plan-Burler-Fix round commits nothing:
+// its edits land only through the approve-and-commit a skip would run, unreviewed.
+// An error means the committed plan, a committed record or the working-tree plan could not be read or decoded;
+// the Bouncer then reviews for real.
 //
-// The inputs are not Go-only: the rework session writes the overview's first_card, and status commits sweep the rework directory,
-// so an agent-written record.json can reach HEAD.
-// Re-classifying the live cards bounds that: a stale or forged record can at most skip review of a generation whose live cards are themselves exempt.
+// The inputs are not Go-only: the rework session writes the overview's first_card.
+// Status commits sweep the rework directory, so an agent-written record.json can reach HEAD.
+// Re-classifying the live cards bounds that:
+// a stale or forged record can at most skip review of a generation whose live cards are themselves exempt.
 // A plan rewritten by an operator goto Plan-Write has a first_card that matches no round, and never skips.
-// While the plan amendment record exists it never skips, so the amended plan is judged and its settle records a round start.
+// While the plan amendment record exists it never skips,
+// so the amended plan is judged and its settle records a round start.
 func PlanReviewSkippable(deps PRReworkDeps) (bool, error) {
 	switch _, err := os.Stat(deps.AmendmentPath); {
 	case err == nil:

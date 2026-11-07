@@ -1,4 +1,5 @@
-// beamline_integration_test.go drives BeamLineCommits and BeamCommitsPast against a real fabric pair and real git, since the commits they list are the beam branch's own first-parent line.
+// beamline_integration_test.go drives BeamLineCommits and BeamCommitsPast against a real fabric pair and real git.
+// The commits they list are the beam branch's own first-parent line.
 
 package fabricengine_test
 
@@ -16,7 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBeamLineCommits pins what a beam's line lists: each commit on the beam's first-parent line that the parent lacks, oldest first, a merge from the parent included and the commits a merge brought in left out, each with its full message and commit time, and a commit that changes only lym's records marked RecordsOnly.
+// TestBeamLineCommits pins what a beam's line lists:
+// each commit on the beam's first-parent line that the parent lacks, oldest first.
+// A merge from the parent is included; the commits a merge brought in are left out.
+// Each commit carries its full message and commit time,
+// and a commit that changes only lym's records is marked RecordsOnly.
 func TestBeamLineCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -71,7 +76,8 @@ func TestBeamLineCommits(t *testing.T) {
 	}
 }
 
-// TestBeamCommitsPast pins what a merged pull request lacks: the beam's commits past the merged head, bar a merge that only brought the parent in and a commit that only records lym's own state.
+// TestBeamCommitsPast pins what a merged pull request lacks: the beam's commits past the merged head.
+// A merge that only brought the parent in, and a commit that only records lym's own state, are left out.
 func TestBeamCommitsPast(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -105,7 +111,8 @@ func TestBeamCommitsPast(t *testing.T) {
 	}
 }
 
-// commitIndexedRecord commits content at rel through the index alone, because the worktree holds rel beyond a directory link that git refuses to stage through.
+// commitIndexedRecord commits content at rel through the index alone.
+// The worktree holds rel beyond a directory link that git refuses to stage through.
 func commitIndexedRecord(t *testing.T, dir, rel, content, msg string) {
 	t.Helper()
 

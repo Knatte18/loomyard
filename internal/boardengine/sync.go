@@ -1,9 +1,8 @@
-// sync.go — the background pusher that backs up the board to the remote.
-//
-// Writes only touch the filesystem;
-// Sync is what gets those changes to GitHub.
-// The absorbing-lock loop-until-clean coalescing is owned by fabricengine.Bolt.Sync, composed here with board's own step closure: ensureBoardIgnores + commitDirty (which holds the board write lock) and, unless skipPush is set, a push through the same Bolt value.
-// A single top-level push lock still serializes pushers across processes;
+// sync.go is the background pusher that backs the board up to the remote.
+// Writes only touch the filesystem; Sync carries those changes to GitHub.
+// Concurrent syncs coalesce in the absorbing-lock loop of the fabricengine package;
+// this file supplies the commit and push step.
+// A top-level push lock serializes pushers across processes;
 // concurrent sync processes block, then exit quickly once there is nothing to do.
 // The write path launches `lym board sync` detached (see spawn.go) so it never waits.
 package boardengine
@@ -19,20 +18,17 @@ import (
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
-// writeLockFile aliases fabricengine.BoardWriteLockFile, which is the single declarer of this
-// literal — internal/fabricengine owns the name because a stencil-seeding commit verb outside
-// boardengine must take the same lock.
+// writeLockFile aliases fabricengine.BoardWriteLockFile, which declares the literal.
+// The name lives in fabricengine because a stencil-seeding commit verb outside boardengine must take the same lock.
 const writeLockFile = fabricengine.BoardWriteLockFile
 
-// retiredIgnorePatterns are the lock patterns the board's .gitignore once held.
-// ensureBoardIgnores removes them, so a lock file that strays into the board shows in `git status` instead of hiding.
+// retiredIgnorePatterns are lock patterns that must not stay in the board's .gitignore.
+// ensureBoardIgnores removes them, so a stray lock file shows in `git status` instead of being hidden.
 var retiredIgnorePatterns = []string{"*.lock", "*.swaplock"}
 
-// Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes
-// are gone.
+// Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes are gone.
 // skipGit disables it entirely;
 // skipPush commits locally but skips the push.
-// The absorbing-lock coalescing loop is delegated to fabricengine.NewBolt.
 func Sync(boardPath string, skipGit, skipPush bool) error {
 	if skipGit {
 		return nil
@@ -60,8 +56,8 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 	return bolt.Sync(step)
 }
 
-// commitDirty stages and commits the working tree if it has changes, under board's write lock.
-// Returns whether a commit was made.
+// commitDirty stages and commits the working tree when it has changes, holding the board's write lock.
+// It reports whether a commit was made.
 func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	lockPath, err := fabricengine.BoltLockPath(boardPath, writeLockFile)
 	if err != nil {
@@ -80,7 +76,7 @@ func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	return committed, nil
 }
 
-// ensureBoardIgnores keeps the render manifest ignored in the board's .gitignore and removes the retired lock patterns from it.
+// ensureBoardIgnores keeps the render manifest ignored in the board's .gitignore and removes the retired lock patterns.
 // It writes the file only when its content changes.
 func ensureBoardIgnores(boardPath string) error {
 	gitignorePath := filepath.Join(boardPath, ".gitignore")

@@ -25,7 +25,9 @@ func seededStencils(t *testing.T) string {
 	return dir
 }
 
-// TestPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the recipe description, the literal none for an absent report, brief, case brief, amendment target, decision record, support log and recipe, no unfilled marker and a verdict example the verdict reader accepts.
+// TestPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives.
+// The recipe description renders too, and absent inputs render as the literal none.
+// No marker stays unfilled, and the verdict example is one the verdict reader accepts.
 func TestPrompt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,6 @@
-// main_integration_test.go holds the module-dispatcher tests that spawn gitkit.Git(t, cwd, "init") to seed a real git repo so lymcwd.Resolve succeeds, so this file is integration-tagged per the Test Tier Purity Invariant.
+// main_integration_test.go holds the module-dispatcher tests.
+// They seed a real git repo with gitkit.Git(t, cwd, "init") so lymcwd.Resolve succeeds;
+// the file is integration-tagged per the Test Tier Purity Invariant.
 
 package main
 
@@ -23,12 +25,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunDispatchesToBoard dispatches a succeeding and a failing board command against one seeded repo and checks the exit code and envelope each propagates.
+// TestRunDispatchesToBoard dispatches a succeeding and a failing board command against one seeded repo.
+// It checks the exit code and envelope each command propagates.
 // It chdirs, which is process-global state, so neither it nor its steps run in parallel.
 func TestRunDispatchesToBoard(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Create temp cwd with _lym/config/board.yaml
 	cwd := t.TempDir()
 
 	// Initialize a git repo so lymcwd.Resolve succeeds.
@@ -41,8 +43,8 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("failed to create hub board config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "board")
-	// Write a template-complete board config. path: is no longer a template key
-	// (the board data dir is paths-owned), so only readme/design_prefix remain.
+	// Write a template-complete board config.
+	// The board data dir is paths-owned, so the template keys are readme and design_prefix.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write hub board.yaml: %v", err)
@@ -84,7 +86,9 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 	cwd := t.TempDir()
 	gitkit.Git(t, cwd, "init")
 
-	// Mark cwd as a worktree lym owns (presence of the durable _lym tree) so the durable sink's cwd-anchored fallback is allowed to arm per isLymWorktree (internal/logger/sink.go) -- a plain git checkout without _lym is exactly the case R6-6 made that fallback refuse, on purpose.
+	// Mark cwd as a worktree lym owns by creating the _lym tree.
+	// The durable sink's cwd-anchored fallback may arm for it, per isLymWorktree (internal/logger/sink.go),
+	// but the fallback refuses a plain git checkout without _lym.
 	lymDir := filepath.Join(cwd, lymdirs.LymDirName)
 	if err := os.MkdirAll(lymDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lym: %v", err)
@@ -141,8 +145,8 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 
 func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	tiergate.Require(t, 1)
-	// Create temp cwd with git repo and _lym/config to allow config reconcile to work.
-	// configcli.RunCLI should recognize the subcommand and produce JSON output.
+	// Create a temp cwd with a git repo and a _lym/config, so config reconcile can run.
+	// configcli.RunCLI recognizes the subcommand and produces JSON output.
 	cwd := t.TempDir()
 
 	// Initialize git repo so lymcwd.Resolve succeeds.
@@ -167,14 +171,16 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	envelope.RequireOK(t, out.String())
 }
 
-// exitSweepFixture is a git repo carrying _lym/ (so the cwd-anchored sink may arm) and a .lym/logs directory pre-seeded with dead-pid traces.
+// exitSweepFixture is a git repo that carries _lym/, so the cwd-anchored sink may arm.
+// It also holds a .lym/logs directory pre-seeded with dead-pid traces.
 type exitSweepFixture struct {
 	cwd    string
 	logs   string
 	seeded []string // file names, newest mtime first
 }
 
-// newExitSweepFixture seeds four dead-pid traces whose mtimes are 1..4 days old, and writes logger.yaml when loggerYAML is non-empty.
+// newExitSweepFixture seeds dead-pid traces with mtimes staggered by whole days.
+// It also writes logger.yaml when loggerYAML is non-empty.
 func newExitSweepFixture(t *testing.T, loggerYAML string) exitSweepFixture {
 	t.Helper()
 	cwd := t.TempDir()

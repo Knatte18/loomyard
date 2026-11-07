@@ -217,7 +217,8 @@ const (
 	envkitImportPath  = moduleGlyphPrefix + "internal/testkit/envkit"
 )
 
-// envSeamStructs returns, sorted, the glyph of shedrecipe.Env and of each struct type it nests by value, recursively, walking the fields NilSeams walks.
+// envSeamStructs returns, sorted, the glyph of shedrecipe.Env and of each struct type it nests by value, recursively.
+// It walks the fields NilSeams walks.
 // A struct from outside the module is walked into but not listed, since it has no worktree glyph.
 func envSeamStructs() []string {
 	seen := map[string]bool{}
@@ -253,11 +254,14 @@ type testFuncInfo struct {
 	calls    []string
 }
 
-// seamViolations checks the _test.go files of each package directory under root, root-relative and slash-separated, and returns one line per violation:
-// a top-level test that reflects over a struct's fields, directly or through a test-file function of its directory, without a `//lym:seam` marker;
-// a test reaching NilSeams whose markers miss a glyph of envStructs;
-// and a marker whose glyph names no struct declared in its unit's directory.
-// A marker whose unit's first path segment names no directory under root is taken as a struct outside the module and is not checked against a declaration.
+// seamViolations checks the _test.go files of each package directory under root, root-relative and slash-separated.
+// It returns one line per violation.
+// A violation is a top-level test that reflects over a struct's fields without a `//lym:seam` marker.
+// The reflection may be direct or reached through a test-file function of the test's directory.
+// Another violation is a test reaching NilSeams whose markers miss a glyph of envStructs.
+// A third is a marker whose glyph names no struct declared in its unit's directory.
+// A marker whose unit's first path segment names no directory under root names a struct outside the module.
+// Such a marker is not checked against a declaration.
 func seamViolations(root string, dirs []string, envStructs []string) ([]string, error) {
 	markers, err := impactset.FindSeamTests(root, dirs)
 	if err != nil {
@@ -305,7 +309,8 @@ func seamViolations(root string, dirs []string, envStructs []string) ([]string, 
 	return violations, nil
 }
 
-// parseTestFuncs returns the top-level functions of dir's _test.go files by name, and the names of those that are tests in source order.
+// parseTestFuncs returns the top-level functions of dir's _test.go files, keyed by name.
+// It also returns the names of those that are tests, in source order.
 func parseTestFuncs(root, dir string) (map[string]*testFuncInfo, []string, error) {
 	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
 	if err != nil {
@@ -419,7 +424,8 @@ func markerNamesStruct(root, glyph string, declared map[string]map[string]bool) 
 	return declared[dir][name], nil
 }
 
-// structNamesIn returns the names of the struct types declared in the .go files of dir, test files included; a missing dir declares none.
+// structNamesIn returns the names of the struct types declared in dir's .go files, test files included.
+// A missing dir declares none.
 func structNamesIn(dir string) (map[string]bool, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -454,7 +460,8 @@ func structNamesIn(dir string) (map[string]bool, error) {
 	return names, nil
 }
 
-// TestSeamMarkers_ReflectiveTestsAreMarked proves every test that reflects over a struct's fields in the module carries a `//lym:seam` marker naming a struct.
+// TestSeamMarkers_ReflectiveTestsAreMarked proves every test in the module that reflects over struct fields is marked.
+// The marker is a `//lym:seam` line naming the struct the test reflects over.
 //
 //lym:seam internal/shedrecipe#Env
 //lym:seam internal/shedrecipe#RaddleWriteEnv

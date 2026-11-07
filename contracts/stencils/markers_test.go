@@ -1,5 +1,5 @@
-// markers_test.go pins the exact top-level marker set of each stencil whose markers no render test reads in its real file,
-// and the position of each Go-filled marker a row anchors on a heading or the whole text.
+// markers_test.go pins the exact top-level marker set of each stencil that no render test reads in its real file.
+// It also pins the position of each Go-filled marker a row anchors on a heading or the whole text.
 // The rubrics' marker allowlist is pinned in rubric_test.go.
 
 package stencils
@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestStencils_TopLevelMarkers asserts each stencil declares exactly its required top-level markers.
+// TestStencils_TopLevelMarkers asserts each stencil declares exactly its required top-level markers,
+// so an extra or missing marker fails here even when no other test checks it.
 //
 //testtiming:keep pins the exact marker set of each stencil, which the rubric test's subset check and the render tests do not
 func TestStencils_TopLevelMarkers(t *testing.T) {
@@ -98,7 +99,8 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 	}
 }
 
-// headingSection returns the text from the line equal to heading, or starting with heading and a space, up to the next "## " heading, and whether the heading exists.
+// headingSection returns the section from the line equal to heading, or starting with heading and a space.
+// The section runs up to the next "## " heading, and headingSection reports whether the heading exists.
 // A heading may carry a trailing clause after the part a caller names.
 func headingSection(text, heading string) (string, bool) {
 	lines := strings.SplitAfter(text, "\n")
@@ -123,8 +125,9 @@ func headingSection(text, heading string) (string, bool) {
 	return strings.Join(lines[start:end], ""), true
 }
 
-// TestStencils_MarkerPositions asserts each Go-filled marker sits where the prompt needs it, anchored on headings only.
-// A row with a heading holds its marker inside that heading's section; a row without one holds it anywhere in the whole text.
+// TestStencils_MarkerPositions asserts each Go-filled marker sits where the prompt needs it.
+// A row with a heading holds its marker inside that heading's section;
+// a row without one holds it anywhere in the whole text.
 func TestStencils_MarkerPositions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

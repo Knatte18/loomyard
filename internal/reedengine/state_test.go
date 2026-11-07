@@ -13,7 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSaveState_ThenLoadState_RoundTrips pins that LoadState answers (nil, nil) for an absent file and returns what SaveState wrote.
+// TestSaveState_ThenLoadState_RoundTrips pins that LoadState answers (nil, nil) for an absent file.
+// It also pins that LoadState returns what SaveState wrote.
 //
 //testtiming:keep pins LoadState answering (nil, nil) for an absent file and returning every field SaveState wrote, strand records included; its covering tests run this code without asserting it
 func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
@@ -86,14 +87,12 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 	}
 }
 
-// TestLoadState_UnreadableFileIsActionable is the regression guard for the R5 review's R5-F1.
+// TestLoadState_UnreadableFileIsActionable pins the refusal of an unreadable reed.json.
 //
-// Before the fix a corrupt reed.json made every verb that loads state refuse with
-// `load state: unmarshal state: unexpected end of JSON input` — naming neither the file nor a
-// remedy — while the tmux session and every strand process it describes stayed alive, and the only
-// verb that still worked was the one that destroys them. The `null` row is the worse half: it
-// decoded to a valid EMPTY state, so `status` answered ok:true with zero strands and the whole
-// persisted table vanished silently.
+// A corrupt file must not make every state-loading verb fail with a bare JSON error.
+// The tmux session and its strand processes stay alive, and the only verb that still works would destroy them.
+// A `null` file decodes to a valid empty state: status answers ok:true with zero strands.
+// The persisted table vanishes silently.
 func TestLoadState_UnreadableFileIsActionable(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

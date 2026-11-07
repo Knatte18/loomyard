@@ -1,6 +1,4 @@
-// moverecord_helper_test.go holds the helpers tests use to stand a move record on a weft by hand and to hold its move lock.
-//
-// Package fabricengine_test.
+// moverecord_helper_test.go holds helpers that stand a move record on a weft by hand and hold its move lock.
 
 package fabricengine_test
 

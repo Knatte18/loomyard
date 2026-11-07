@@ -1,4 +1,5 @@
-// sleepjournal_test.go pins how journal entries become sleep intervals and which clause Read gives for each way a run can leave no sleep.
+// sleepjournal_test.go pins how journal entries become sleep intervals.
+// It also pins which clause Read gives for each way a run can leave no sleep.
 
 package sleepjournal
 

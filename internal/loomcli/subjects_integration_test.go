@@ -1,4 +1,5 @@
-// subjects_integration_test.go drives codeSubject and taskMergeBase against a real fabric pair and real git, since their identity is the task's diff against the merge base the pair's history leaves.
+// subjects_integration_test.go drives codeSubject and taskMergeBase against a real fabric pair and real git.
+// Their identity is the task's diff against the merge base that the pair's history leaves.
 
 package loomcli
 
@@ -20,7 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCodeSubject_Real pins what a code subject follows: commits of the run records,the run's scratch directory and the harness's own file leave it unchanged, an untracked task file changes it, and a location with no recorded parent branch answers not found.
+// TestCodeSubject_Real pins what a code subject follows.
+// Commits of the run records, the run's scratch directory and the harness's own file leave it unchanged.
+// An untracked task file changes it, and a location with no recorded parent branch answers not found.
 func TestCodeSubject_Real(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -71,7 +74,8 @@ func TestCodeSubject_Real(t *testing.T) {
 		t.Errorf("subject after an untracked task file = %+v; want a changed full hash", after)
 	}
 
-	// A parent tip the task merged but the local parent branch has not reached leaves the task's diff only once the merge record names it.
+	// A parent tip the task merged stays in the task's diff while the local parent branch has not reached it.
+	// The merge record, once it names that tip, takes the tip out of the diff.
 	forkPoint, mergedTip, parentFile := mergeUnreachedParentTip(t, hub, slug)
 	if after := read(t); after.MergeBase != forkPoint || !bytes.Contains(after.Patch, []byte(parentFile)) {
 		t.Errorf("subject without a merge record: merge base %q, patch holds the parent file = %v; want the local parent branch's merge base %q and the parent file in the patch", after.MergeBase, bytes.Contains(after.Patch, []byte(parentFile)), forkPoint)
@@ -91,8 +95,10 @@ func TestCodeSubject_Real(t *testing.T) {
 	}
 }
 
-// mergeUnreachedParentTip commits a file on the hub's parent branch, merges that commit into the slug pair's task branch, adds a task commit, and then rewinds the parent branch to the task's fork point.
-// It returns the fork point, the merged tip and the file the parent brought, so the local parent branch lags the tip the task merged.
+// mergeUnreachedParentTip commits a file on the hub's parent branch and merges it into the slug pair's task branch.
+// It then adds a task commit and rewinds the parent branch to the task's fork point.
+// It returns the fork point, the merged tip and the file the parent brought.
+// The local parent branch then lags the merged tip.
 func mergeUnreachedParentTip(t *testing.T, hub *hubforge.Hub, slug string) (forkPoint, mergedTip, parentFile string) {
 	t.Helper()
 	worktree := hub.PairCodeWorktree(slug)
@@ -106,7 +112,8 @@ func mergeUnreachedParentTip(t *testing.T, hub *hubforge.Hub, slug string) (fork
 	return forkPoint, mergedTip, parentFile
 }
 
-// writeMergeRecordNaming writes the merge record of the run at location with mergedTip as the parent tip the task merged.
+// writeMergeRecordNaming writes the merge record of the run at location.
+// The record names mergedTip as the parent tip the task merged.
 func writeMergeRecordNaming(t *testing.T, location *lymcwd.Location, mergedTip string) {
 	t.Helper()
 	recordPath := landingshed.MergeRecordPath(loomengine.LoomScratchDir(location))
@@ -115,7 +122,9 @@ func writeMergeRecordNaming(t *testing.T, location *lymcwd.Location, mergedTip s
 	}
 }
 
-// TestTaskMergeBase_FollowsTheMergedTip pins the base of the task's diff: the merge base with the parent tip the merge record names while the local parent branch lags it, and the merge base with the local parent branch when the record is absent or undecodable.
+// TestTaskMergeBase_FollowsTheMergedTip pins the base of the task's diff.
+// While the local parent branch lags the parent tip the merge record names, the base is the merge base with that tip.
+// When the record is absent or undecodable, the base is the merge base with the local parent branch.
 func TestTaskMergeBase_FollowsTheMergedTip(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

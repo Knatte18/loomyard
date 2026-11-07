@@ -1,4 +1,5 @@
-// owned_test.go pins the handling of a run a full pass found owned by another machine: the pause, the single notice, the full pass at the lift and the owner re-read.
+// owned_test.go pins the handling of a run that a full pass finds owned by another machine.
+// It checks the pause, the single notice, the full pass at the lift and the owner re-read.
 
 package dobbyengine
 

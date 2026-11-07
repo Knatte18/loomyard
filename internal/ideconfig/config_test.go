@@ -1,4 +1,4 @@
-// config_test.go covers ideconfig.LoadConfig over a bare board and anchor, with no hub and no spawn.
+// config_test.go covers `ideconfig.LoadConfig` over a bare board and anchor, with no hub and no spawn.
 
 package ideconfig_test
 
@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoadConfig covers the template defaults, a hub file and a local override setting the keys, and the refused open_files entries.
+// TestLoadConfig covers the template defaults, a hub file, and a local override that sets the keys.
+// It also covers the open_files entries that `LoadConfig` refuses.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

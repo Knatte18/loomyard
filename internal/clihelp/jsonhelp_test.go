@@ -1,5 +1,7 @@
 // jsonhelp_test.go tests InstallJSONHelp and the renderCmdJSON renderer.
-// It builds a synthetic cobra command tree with a child command, a local flag, and a hidden flag, then asserts the JSON output matches the expected schema, and that the global --json runs no command except one whose own local --json shadows it.
+// It builds a synthetic cobra command tree with a child command, a local flag, and a hidden flag.
+// It asserts the JSON help matches the expected schema.
+// It also asserts that the global --json runs no command, except one that declares its own local --json.
 
 package clihelp
 
@@ -17,7 +19,7 @@ import (
 )
 
 // buildJSONHelpRoot constructs a synthetic root command with:
-//   - the persistent --json and --help flags InstallJSONHelp declares
+//   - the persistent --json and --help flags
 //   - a child subcommand with Use="child"
 //   - a local string flag --verbose on the root
 //   - a hidden local flag --secret on the root
@@ -48,7 +50,10 @@ func buildJSONHelpRoot() *cobra.Command {
 	return root
 }
 
-// TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set and asserts the output is a valid JSON document whose fields carry the command's own text, its child and its domain flag, and omit hidden flags, meta flags and the completion subcommand.
+// TestInstallJSONHelp_RendersSchema renders the synthetic root's help with the json flag set.
+// It asserts the output is a valid JSON document.
+// Its fields carry the command's own text, its child and its domain flag,
+// and they omit hidden flags, meta flags and the completion subcommand.
 func TestInstallJSONHelp_RendersSchema(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -152,7 +157,6 @@ func TestInstallJSONHelp_FallsThroughToDefaultHelpWhenFlagFalse(t *testing.T) {
 	root.Help() //nolint:errcheck
 
 	output := buf.String()
-	// Cobra's default help contains the Usage: header.
 	if strings.Contains(output, `"name"`) {
 		t.Errorf("InstallJSONHelp with jsonFlag=false produced JSON output; want plain text help")
 	}
@@ -161,7 +165,10 @@ func TestInstallJSONHelp_FallsThroughToDefaultHelpWhenFlagFalse(t *testing.T) {
 	}
 }
 
-// TestInstallJSONHelp_JSONNeverRunsACommand drives a fresh tree through Execute per row: under the global --json, a leaf whose run, pre-run hook and argument check would each fail prints its JSON help and exits 0, as does a group; a leaf declaring its own local --json runs with that meaning instead.
+// TestInstallJSONHelp_JSONNeverRunsACommand drives a fresh tree through Execute for each row.
+// Under the global --json, a leaf whose run, pre-run hook or argument check fails prints its JSON help and exits 0;
+// a group does the same.
+// A leaf that declares its own local --json runs with that meaning instead.
 func TestInstallJSONHelp_JSONNeverRunsACommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

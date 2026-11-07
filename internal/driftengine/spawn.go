@@ -23,7 +23,9 @@ import (
 // ErrBreakawayRefused marks a capture start Windows refused for breakaway when the caller admits no detached fallback.
 var ErrBreakawayRefused = errors.New("drift: the capture start was refused breakaway")
 
-// LastingFaultKey is the key the capture child sets true in its JSON error envelope when its error is one a fresh start in the same directory cannot change, such as a cwd its worktree does not resolve from.
+// LastingFaultKey is the key the capture child sets true in its JSON error envelope.
+// It marks an error that a fresh start in the same directory cannot change.
+// One example is a cwd its worktree does not resolve from.
 const LastingFaultKey = "lasting_fault"
 
 // childErrorMaxRunes bounds the child's error text a start failure carries, so a halt stays one readable line.
@@ -45,23 +47,25 @@ type spawnedChild struct {
 	exited <-chan struct{}
 }
 
-// SpawnRequest is the told input of StartCapture.
+// SpawnRequest holds the told values one capture child start is made from.
 type SpawnRequest struct {
 	// Executable is the lym binary the child runs.
 	Executable string
-	// AnchorDir is the absolute anchored directory the child runs in, since every lym verb resolves its worktree from a cwd equal to it.
+	// AnchorDir is the absolute anchored directory the child runs in.
+	// The child runs there because every lym verb resolves its worktree from a cwd equal to it.
 	AnchorDir string
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
 	// RunProcDir and Owner locate the run's process records, where the child is registered.
 	RunProcDir string
 	Owner      string
-	// FallbackDetach retries a start Windows refused for breakaway as a plain detached start; the caller then lives as long as its shell's job.
+	// FallbackDetach retries a start Windows refused for breakaway as a plain detached start.
+	// The caller then lives only as long as its shell's job.
 	// Unset, a refused start returns ErrBreakawayRefused.
 	FallbackDetach bool
-	// RecordWait bounds how long StartCapture waits for the child's running record.
+	// RecordWait bounds how long a capture start waits for the child's running record.
 	RecordWait time.Duration
-	// Poll is the interval at which StartCapture reads the capture record.
+	// Poll is the interval at which a capture start reads the capture record.
 	Poll time.Duration
 
 	// spawn starts the child; nil starts the real command.
@@ -70,9 +74,13 @@ type SpawnRequest struct {
 	breakawayRefused func(error) bool
 }
 
-// StartCapture starts `<executable> drift capture-child` detached in the anchored directory and returns its pid once the capture record carries that pid, in any state.
-// The child writes that record after its precondition held under the capture lock, so the caller moves the run on only after the precondition held.
-// It refuses while the capture lock reads held, and returns an error naming the child's log and the error the log ends on when the child ends, or the bound runs out, before the record.
+// StartCapture starts `<executable> drift capture-child` detached in the anchored directory.
+// It returns the child's pid once the capture record carries that pid, in any state.
+// The child writes that record only after its precondition holds under the capture lock,
+// so the caller moves the run on only then.
+// It refuses while the capture lock reads held.
+// When the child ends, or the bound runs out, before the record, it returns an error.
+// The error names the child's log and the error the log ends on.
 func StartCapture(req SpawnRequest) (int, error) {
 	held, err := ProbeLock(req.Paths.CaptureLock)
 	if err != nil {
@@ -143,9 +151,10 @@ func awaitRunningRecord(req SpawnRequest, child spawnedChild, childLog string) e
 	}
 }
 
-// startFailure builds the error of a capture child that did not record its start, carrying the error the child's log ends on.
-// Under FallbackDetach, the CLI's form, it names the way forward, and for an error the child marked lasting it offers no fresh capture, which would end the same way;
-// otherwise the calling row words its own halt around it, so it names the child's log alone.
+// startFailure builds the error of a capture child that did not record its start, carrying the error its log ends on.
+// With FallbackDetach set, the error names the way forward.
+// For an error the child marked lasting, it offers no fresh capture, which would end the same way.
+// Without FallbackDetach, the error names the child's log alone, and the calling row words its own halt around it.
 func startFailure(req SpawnRequest, childLog, what string) error {
 	report := readChildReport(childLog)
 	event := "drift: the capture child " + what
@@ -170,7 +179,8 @@ type childReport struct {
 }
 
 // readChildReport reads the last JSON error envelope of the capture child's log.
-// A child that wrote none, such as one that crashed, and a log that cannot be read report nothing, so the error names the log alone.
+// A child that wrote none, such as one that crashed, reports nothing, and so does a log that cannot be read.
+// The start error then names the log alone.
 func readChildReport(childLog string) childReport {
 	data, err := os.ReadFile(childLog)
 	if err != nil {
@@ -190,7 +200,8 @@ func readChildReport(childLog string) childReport {
 }
 
 // childNoRecordError is a started capture child that did not record its start.
-// A calling row tells it from an environment fault that kept the child from starting, since only a child that ran and failed is a capture halt.
+// A calling row tells it from an environment fault that kept the child from starting.
+// Only a child that ran and failed is a capture halt.
 type childNoRecordError struct {
 	text string
 	// lasting is true when the child marked its error as one a fresh start cannot change.
@@ -233,7 +244,8 @@ func (r SpawnRequest) refusedBreakaway(err error) bool {
 	return proc.IsBreakawayRefused(err)
 }
 
-// CaptureJobName returns the Windows job-object name of a worktree's capture: "lym-drift-capture-" followed by a hex hash of the worktree root.
+// CaptureJobName returns the Windows job-object name of a worktree's capture.
+// The name is "lym-drift-capture-" followed by a hex hash of the worktree root.
 func CaptureJobName(worktreeRoot string) string {
 	sum := sha256.Sum256([]byte(worktreeRoot))
 	return "lym-drift-capture-" + hex.EncodeToString(sum[:8])

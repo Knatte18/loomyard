@@ -1,7 +1,8 @@
-// lifecycle_test.go drives the lifecycle ops' planning seams — the parts that decide what would run
-// without needing a live tmux server: planUpLaunches (Up never launches anything) and
-// planResumeLaunches across the three states the discussion calls out (server dead, server-up/
-// CLI-restarted, a single strand's pane died).
+// lifecycle_test.go tests the lifecycle ops' planning seams: the parts that decide what would run.
+// It needs no live tmux server.
+// planUpLaunches checks that Up never launches anything.
+// planResumeLaunches covers three states:
+// server dead, server up after a CLI restart, and a single strand's pane died.
 // Any real-tmux round trip (ensureServerAndSessionLocked, and Up/Resume/Down/Status themselves) is
 // out of hermetic reach and is not exercised here.
 
@@ -36,10 +37,16 @@ func guids(strands []Strand) []string {
 }
 
 // TestUp_BootValidation pins the eager boot validation of Up.
-// An over-long socket path, an unresolvable shell, a segment color outside the palette, an invalid watchdog value, an invalid window_split or a negative window_share_max each fail with an error naming it before any tmux round trip (validation ORDER, not just existence),
-// while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
-// so the assertion is only that the error is NOT the watchdog validation error).
-// Each refusal is asserted at three boot entries: Up and Resume, whose boot op lock refuses before any tmux round trip, and ensureServerAndSessionLocked, which every other boot path reaches without it.
+// An over-long socket path and an unresolvable shell each fail with an error naming it before any tmux round trip.
+// So do a segment color outside the palette and an invalid watchdog value.
+// So do an invalid window_split and a negative window_share_max.
+// The error comes before any tmux round trip, so the test pins validation order, not only existence.
+// "on" and "off" do not trip the watchdog check.
+// The fixture's tmux binary does not exist, so Up fails past that point;
+// the assertion is only that the error is not the watchdog validation error.
+// Each refusal is asserted at three boot entries: Up, Resume, and ensureServerAndSessionLocked.
+// Up and Resume refuse at their boot op lock, before any tmux round trip.
+// The other boot paths reach ensureServerAndSessionLocked without that lock.
 func TestUp_BootValidation(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -48,7 +55,8 @@ func TestUp_BootValidation(t *testing.T) {
 		wantErr   string // the validation error Up must fail with before any tmux contact; empty when the value must pass the check
 		notErr    string // an error text Up must not fail with
 		setup     func(t *testing.T)
-		// posixOnly and windowsOnly mark a row whose check exists on one platform alone, so the other generates no subtest for it.
+		// posixOnly and windowsOnly mark a row whose check runs on one platform only,
+		// so the other platform generates no subtest for it.
 		posixOnly   bool
 		windowsOnly bool
 	}{
@@ -152,7 +160,10 @@ func TestUp_BootValidation(t *testing.T) {
 	}
 }
 
-// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell, and off Windows the three chained session pins last.
+// TestServerSpawnArgv pins the argv of the server-starting invocation.
+// The debug flags come first, then `-f /dev/null` ahead of `-L` everywhere but Windows.
+// new-session with the configured shell follows.
+// Off Windows, the chained session pins come last.
 func TestServerSpawnArgv(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -189,7 +200,8 @@ func TestServerSpawnArgv(t *testing.T) {
 	}
 }
 
-// TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.
+// TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color.
+// A strand recorded without a segment gets none.
 func TestStatus_ReportsSegmentColor(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -221,9 +233,12 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 	}
 }
 
-// TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins that Status reads an own-window strand's pane from the session-wide listing: alive is live, dead is present but not live, and one in no listing is neither.
-// It also pins the pane pid: the listed pid for a live pane, 0 for a dead pane and for one in no listing.
-// A pane the session lacks is looked up once across the server: found in another session, its row names the placement; found nowhere or on a failed lookup, the row names none, and the failure logs one Warn however often it repeats.
+// TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins how Status reads an own-window strand's pane:
+// from the session-wide listing, alive is live, dead is present but not live, and one in no listing is neither.
+// It also pins the pane pid: the listed pid for a live pane, and 0 for a dead pane and for one in no listing.
+// A pane the session lacks is looked up once across the server.
+// Found in another session, its row names the placement.
+// Found nowhere, or on a failed lookup, the row names none, and the failure logs one Warn however often it repeats.
 func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	tiergate.Require(t, 0)
 	logs := logcapture.Capture(t)
@@ -308,8 +323,8 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	}
 }
 
-// TestServerBootEnv_ExcludesTraceID pins that LYM_TRACE_ID is stripped before the tmux server
-// inherits the boot env (long-lived singleton).
+// TestServerBootEnv_ExcludesTraceID pins that LYM_TRACE_ID is stripped before the tmux server inherits the boot env.
+// The tmux server is a long-lived singleton.
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Setenv(logger.TraceIDEnv, "somevalue")
@@ -324,7 +339,8 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	}
 	if !sawBeforeStrip {
 		// The scrub is not expected to strip this on its own.
-		// If it is already gone here, the fixture assumption (LYM_TRACE_ID surviving the scrub) is broken and the assertion below proves nothing.
+		// If it is missing here, the fixture assumption that LYM_TRACE_ID survives the scrub is broken,
+		// and the assertion below proves nothing.
 		t.Fatalf("testScrub.Apply(os.Environ()) does not contain LYM_TRACE_ID; test fixture assumption broken")
 	}
 
@@ -375,8 +391,8 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 		want          string
 	}{
 		{
-			// Zero strands persisted (or no reed.json at all): nothing for
-			// resume to rebuild, so today's bare "up" pointer is unchanged.
+			// No strands are persisted, or there is no reed.json at all: nothing is left for resume to rebuild,
+			// so the bare "up" pointer applies.
 			name:          "ZeroStrands_BareUpPointer",
 			strandCount:   0,
 			stateReadable: true,
@@ -395,9 +411,9 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 			want:          `no reed session (3 strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`,
 		},
 		{
-			// R5 review finding R5-F8: an unreadable reed.json yields a strand count of zero, and
-			// reporting that as "nothing is persisted" sends the operator to an `up` that then
-			// fails with the corrupt-file error. Say reed could not read it instead.
+			// An unreadable reed.json yields a strand count of zero.
+			// Reporting that as "nothing is persisted" sends the operator to an `up` that fails with the corrupt-file error;
+			// the pointer says reed could not read the state instead.
 			name:          "UnreadableState_SaysSoInsteadOfClaimingZeroStrands",
 			strandCount:   0,
 			stateReadable: false,
@@ -414,16 +430,14 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 	}
 }
 
-// TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently pins the fix for a real
-// defect found live-driving debug_log against native tmux: a debug-armed boot's -v/-vv global flag
-// makes tmux log BOTH the forked server (tmux-server-<pid>.log, documented and already pruned) AND
-// the client half of that same invocation (tmux-client-<pid>.log, observed live — never surfaced
-// before since the original debug-logging batch was developed/reviewed against psmux on Windows,
-// not native tmux).
-// Without pruning the client-prefixed files too, they accumulate unbounded across repeated
-// debug-armed boots/crashes while the server-prefixed files stay capped — this test seeds both
-// shapes plus an unrelated file the pruner must never touch, and asserts each prefix is pruned to
-// keep independently.
+// TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently pins the pruning of log prefixes:
+// the server-prefixed and client-prefixed files are each pruned on their own.
+// A debug-armed boot's -v/-vv flag makes tmux log the forked server to tmux-server-<pid>.log;
+// the client half of the same invocation also logs to tmux-client-<pid>.log.
+// Without pruning, the client-prefixed files grow without bound across repeated debug-armed boots and crashes;
+// the server-prefixed files stay capped.
+// The test seeds both shapes and an unrelated file the pruner must never touch;
+// it asserts that each prefix is pruned on its own.
 func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -441,17 +455,16 @@ func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *tes
 		}
 	}
 
-	// Three server logs (oldest to newest) and three client logs (oldest to
-	// newest), interleaved in age so a prefix-blind prune would not
-	// accidentally produce the same result as a correct per-prefix prune.
+	// Three server logs and three client logs, oldest to newest, are interleaved in age.
+	// That way a prefix-blind prune does not accidentally match the result of a correct per-prefix prune.
 	write("tmux-server-1.log", 6*time.Minute)
 	write("tmux-client-1.log", 5*time.Minute)
 	write("tmux-server-2.log", 4*time.Minute)
 	write("tmux-client-2.log", 3*time.Minute)
 	write("tmux-server-3.log", 2*time.Minute)
 	write("tmux-client-3.log", time.Minute)
-	// An unrelated file must survive untouched — the pruner only matches its
-	// given prefix, never a bare glob over every file in the dir.
+	// The unrelated file must survive untouched.
+	// The pruner matches only its given prefix, never a bare glob over every file in the directory.
 	write("unrelated.log", 10*time.Minute)
 
 	if err := pruneServerLogsLocked(dir, serverLogNamePrefix, 2); err != nil {
@@ -613,7 +626,8 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	}
 }
 
-// TestDown_ListsEveryWindowsPanesOverACorruptState pins that Down, the escape that works over a corrupt reed.json, still lists the session's panes in every window for its reap before killing the session, and deletes the state.
+// TestDown_ListsEveryWindowsPanesOverACorruptState pins that Down works over a corrupt reed.json.
+// It lists the session's panes in every window to reap them before it kills the session, and deletes the state.
 func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)
@@ -641,8 +655,10 @@ func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 	}
 }
 
-// TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer pins that Down asks the hub's watchdog to stop through the discover signal file exactly when it takes its server-teardown branch.
-// It also pins that a write failure or an unconfirmed server death never hides the stop or swallows the error, and that a cold boot's touch turns a stop back into an ordinary discover.
+// TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer pins that Down asks the hub's watchdog to stop.
+// The stop goes through the discover signal file, and only on Down's server-teardown branch.
+// It also pins that a write failure or an unconfirmed server death never hides the stop or swallows the error.
+// A cold boot's touch turns a stop back into an ordinary discover.
 // It is not parallel: logcapture redirects the process-global logger.
 func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -739,8 +755,10 @@ func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
 	}
 }
 
-// TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep pins the revival helper's sequence for a told list of fake revive functions:
-// the predecessors run in list order, the booter's own entry and later entries are never called, a failing predecessor is skipped, and the step runs again once with the skip set.
+// TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep pins the revival helper's sequence.
+// Given a list of fake revive functions, the predecessors run in list order.
+// The booter's own entry and later entries are never called, and a failing predecessor is skipped.
+// The step runs again once, with the skip set.
 func TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep(t *testing.T) {
 	tiergate.Require(t, 0)
 	e := newTestEngine(t)

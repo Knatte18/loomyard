@@ -1,9 +1,6 @@
-// coalesce.go holds the generic loop-until-clean coalescing primitive coalescePush and fabric's own
-// two-sided rebase-free push entry CoalescePushBothAt built on top of it.
-// The generic primitive stays caller-agnostic — it owns only the absorbing lock and the loop, never
-// any commit/stage/push policy — while fabric's push step (and the small helpers it needs) sit
-// alongside it in this same file, per the coalescing-loop-in-fabricengine-via-closures Shared
-// Decision.
+// coalesce.go holds coalescePush, the loop that runs a step under one absorbing lock until it stops progressing.
+// It also holds the two-sided rebase-free push built on that loop.
+// Its entries are CoalescePushBothAt and CoalescePushRequest.
 
 package fabricengine
 
@@ -18,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// coalescePush drives a caller-supplied step to completion under one absorbing lock,
-// looping while progressed=true, exiting and releasing the lock on false or error.
-// The step function supplies all commit/stage/push policy.
+// coalescePush runs step under one absorbing lock, looping while step reports progressed=true.
+// It returns on the first false or error from step and releases the lock.
+// step supplies all commit, stage and push policy.
 func coalescePush(lockPath string, step func() (progressed bool, err error)) error {
 	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
@@ -39,9 +36,8 @@ func coalescePush(lockPath string, step func() (progressed bool, err error)) err
 	}
 }
 
-// headOrEmpty returns the current HEAD SHA, mapping unborn HEAD (no commits) to ("", nil).
-// Empty path is a true no-op, never resolving "" to the process's cwd, preserving
-// the empty-warp no-op contract for weft-only sync paths.
+// headOrEmpty returns the HEAD SHA of the repository at path, or "" when HEAD is unborn.
+// An empty path returns "" with no error and never resolves to the process's working directory.
 func headOrEmpty(path string) (string, error) {
 	if path == "" {
 		return "", nil
@@ -56,9 +52,9 @@ func headOrEmpty(path string) (string, error) {
 	return "", err
 }
 
-// pushSideDetached pushes one side of the detached push through pushClassified.
-// A failure it recorded leaves the commits unpushed for a later push and returns nil, as the detached child always has;
-// any other error is returned.
+// pushSideDetached pushes one side of a detached push.
+// A push failure it records leaves the commits unpushed for a later push and returns nil.
+// Any other error is returned.
 func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) error {
 	err := pushClassified(rec, hubPath, side, path, opts, retryRecords)
 	var failed *PushFailedError
@@ -73,19 +69,15 @@ func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptio
 	}
 }
 
-// CoalescePushBothAt pushes both warp and weft under fabric's absorbing push lock, looping until
-// neither side advances — a rebase-free entry point honoring SkipGit/SkipPush.
-// weftPath must be non-empty: the absorbing push lock's only sanctioned home.
-// is under weftPath's .weft/ (a warp-root lock is forbidden by the lock-artifact-under-weft /
-// no-warp-root-gitrepo-push-lock Shared Decisions), so an empty weftPath returns an error rather
-// than falling back to warpPath (which would put a lock at the pristine warp root) or defaulting to
-// the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
-// to cwd).
-// It blocks until the lock is free and marks the sides it pushes pending, so it also respawns a side another pusher left flagged.
+// CoalescePushBothAt pushes warp and weft under fabric's absorbing push lock.
+// It loops until neither side's HEAD advances, and it honors SkipGit and SkipPush.
 // It is a foreground push, for callers that supply both paths and wait for the result.
-// warpPath may still be empty when weftPath is present — that pushes only the weft side;
-// a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
-// rejected by the same guard.
+// weftPath must be non-empty, since the lock lives under weftPath's .weft/ directory.
+// An empty weftPath returns an error rather than placing the lock at the warp root or in the working directory.
+// warpPath may be empty, in which case only the weft side is pushed.
+// A call with warpPath set and weftPath empty is rejected by the same guard.
+// It blocks until the lock is free,
+// and it marks the sides it pushes pending, so it also respawns a side another pusher left flagged.
 func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
 	return coalescePushSides(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
 		held, err := lock.AcquireWriteLock(lockPath)
@@ -96,17 +88,22 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 	})
 }
 
-// CoalescePushRequest is the detached push child's push: it pushes the sides req carries, warp as the code side and weft as the records side, under fabric.push.lock.
-// A child that finds the lock held returns nil at once with nothing pushed, leaving its commits to the holder through the pending flag it marked first;
-// the holder pushes them once it releases, and respawns a side it does not push itself with the flag's slugs.
-// req.WeftPath must be non-empty, since the lock lives under the records worktree; it honors SkipGit and SkipPush.
+// CoalescePushRequest pushes the sides req carries under fabric.push.lock.
+// Warp is the code side and weft the records side.
+// When the lock is held, it returns nil at once with nothing pushed.
+// It leaves its commits to the lock holder through the pending flags it marked first.
+// The holder pushes them once it releases the lock, and respawns a side it does not push itself.
+// req.WeftPath must be non-empty, since the lock lives under the records worktree.
+// It honors SkipGit and SkipPush.
 func CoalescePushRequest(req PushSpawn, opts SyncOptions) (res PushResult, err error) {
 	return coalescePushSides(req, opts, "CoalescePushRequest", lock.TryAcquireWriteLock)
 }
 
-// coalescePushSides runs the two-sided rebase-free push of req under fabric.push.lock, acquired through acquire and flagged by the sides req carries.
-// caller names the public entry for the error of a missing weft path.
-// For the call's life it installs the deferral a detached child's gate fires when a pause covers it: the unpushed sides' flags go back and the process exits.
+// coalescePushSides runs the two-sided rebase-free push of req under fabric.push.lock.
+// It takes the lock through acquire and flags the sides req carries as owed.
+// caller names the public entry point in the error for a missing weft path.
+// For the duration of the call it installs a gate deferral that a pause triggers:
+// the flags of the owed sides not yet pushed go back, and the process exits.
 func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
 	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
@@ -134,7 +131,8 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 	}
 
-	// pushed holds the sides the running step has pushed, so a deferral puts back the flag of every owed side the step has not reached.
+	// pushed records the sides the current step has pushed,
+	// so a deferral restores the flag of every owed side the step has not reached.
 	pushed := map[string]bool{}
 	defer pauserecord.SetGateDeferral(pushDeferral(lockDir, owed, pushed, exitDeferred))()
 
@@ -149,9 +147,8 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 			return false, err
 		}
 
-		// A side with an empty path or an unborn HEAD has nothing to push;
-		// skip it, but it still participates in the before/after HEAD
-		// comparison below (its empty-string HEAD is trivially stable).
+		// A side with an empty path or an unborn HEAD has nothing to push, so it is skipped;
+		// it still takes part in the before/after HEAD comparison below, where its empty HEAD is trivially stable.
 		if warpPath != "" && beforeWarp != "" {
 			if err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, opts, nil); err != nil {
 				return false, err

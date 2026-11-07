@@ -1,15 +1,13 @@
-// validate_test.go covers all seventeen of Validate's format-4 checks, each with at least one
-// triggering and one clean case, per contracts/specs/loom-plan-checks-spec.md's distinct
-// ValidationError.Check IDs — sixteen of which ValidateFormat also emits, everything but
-// plan-unapproved.
-// The golden happy-path test reuses the format-4 seven-card golden fixture (testdata/goodplan,
-// already parsed by parse_test.go's TestParsePlan_GoldenFixture) and materializes exactly the
-// seven distinct paths its checked entries name under a hermetic t.TempDir() worktree root,
-// deliberately leaving absent the Custom card's own path-shaped target
-// (internal/output/emit.go), the Rename pair's post-rename side
-// (internal/boardengine/rowsjson.go), and card 2's own Create-group target
-// (internal/boardcli/list_json_test.go) — proving all three exemptions positively rather than by
-// omission — so the whole seventeen-check Validate run returns zero findings.
+// validate_test.go covers every format-4 check of Validate, each with at least one triggering and one clean case.
+// The check IDs are the distinct ValidationError.Check values in contracts/specs/loom-plan-checks-spec.md.
+// ValidateFormat emits every one of them except plan-unapproved.
+// The golden happy-path test reuses the golden fixture under testdata/goodplan.
+// It materializes exactly the paths its checked entries name, under a hermetic t.TempDir() worktree root.
+// Three paths stay absent on purpose, which proves their exemptions positively rather than by omission.
+// The Custom card's path-shaped target is internal/output/emit.go.
+// The post-rename side of the Rename pair is internal/boardengine/rowsjson.go.
+// Card 2's Create-group target is internal/boardcli/list_json_test.go.
+// With those absent, the whole Validate run returns zero findings.
 
 package planparser_test
 
@@ -27,13 +25,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// validCard returns a fully well-formed format-4 Card at position number with slug — Type Edit,
-// exactly one recognized type label, a single path-shaped Targets entry, a single TargetGroups
-// entry mirroring that same Edit label and its own Refs, a present-but-empty Uses:, non-empty
-// Intent:, a non-empty one-line ImpactSummary:, no retired labels, no malformed Rename bullets,
-// and a correctly prefixed Commit:. Each subtest below starts from this baseline and mutates
-// exactly the one field its own check cares about, so a finding it observes can only come from
-// the check under test, never incidental noise from the other checks.
+// validCard returns a fully well-formed format-4 Card at position number with slug.
+// It has Type Edit, exactly one recognized type label, and a single path-shaped Targets entry.
+// Its single TargetGroups entry mirrors that Edit label and carries its own Refs.
+// It has a present-but-empty Uses:, a non-empty Intent:, and a non-empty one-line ImpactSummary:.
+// It has no retired labels and no malformed Rename bullets, and its Commit: has a correct prefix.
+// Each subtest starts from this baseline and mutates exactly the one field its check cares about,
+// so a finding it observes can only come from the check under test, never from the other checks.
 func validCard(number int, slug string) planparser.Card {
 	targets := []string{fmt.Sprintf("pkg/card%d.go", number)}
 	return planparser.Card{
@@ -55,11 +53,10 @@ func validCard(number int, slug string) planparser.Card {
 	}
 }
 
-// cardOfType returns a well-formed format-4 Card at position number with slug whose Type,
-// Targets, and single-entry TargetGroups all agree on typ and refs — the only construction path
-// this file's group-scoped subtests use for a fixture whose type differs from validCard's Edit
-// baseline, since reassigning Type or Targets on an already-returned Card never reaches its
-// separately-held TargetGroups entry.
+// cardOfType returns a well-formed format-4 Card at number with slug.
+// Its Type, Targets, and single-entry TargetGroups all agree on typ and refs.
+// Reassigning Type or Targets on an already-returned Card does not update its separately-held TargetGroups entry,
+// so this is how a fixture whose type differs from validCard's is built.
 func cardOfType(number int, slug string, typ planparser.CardType, refs []string) planparser.Card {
 	card := validCard(number, slug)
 	card.Type = typ
@@ -68,10 +65,8 @@ func cardOfType(number int, slug string, typ planparser.CardType, refs []string)
 	return card
 }
 
-// countFor returns how many of findings carry the given Check name — every
-// subtest below asserts on this count (and, for the golden fixture, the total)
-// rather than exact Detail text, per the "assert on Check names and
-// cardinality" instruction: Detail is for humans, Check is the stable contract.
+// countFor returns how many of findings carry the given Check name.
+// Tests assert on this count rather than on exact Detail text: Detail is for humans, Check is the stable contract.
 func countFor(findings []planparser.ValidationError, check string) int {
 	n := 0
 	for _, f := range findings {
@@ -82,9 +77,8 @@ func countFor(findings []planparser.ValidationError, check string) int {
 	return n
 }
 
-// materializeFiles writes an empty placeholder file at each of paths, joined
-// under root, creating parent directories as needed — the on-disk half of
-// path-missing's hermetic fixtures.
+// materializeFiles writes an empty placeholder file at each of paths under root.
+// It creates parent directories as needed, and it supplies the files a path-missing fixture must find on disk.
 func materializeFiles(t *testing.T, root string, paths ...string) {
 	t.Helper()
 	for _, p := range paths {
@@ -98,12 +92,12 @@ func materializeFiles(t *testing.T, root string, paths ...string) {
 	}
 }
 
-// TestValidate_GoldenFixture_ZeroFindings round-trips the format-4 golden fixture
-// (testdata/goodplan) through Validate with exactly the seven distinct paths its checked entries
-// name materialized under a t.TempDir() worktreeRoot, but deliberately NOT the Custom card's own
-// path-shaped target, the Rename pair's post-rename side, or card 2's own Create-group target —
-// proving all seventeen checks pass simultaneously on the format-4 happy path, including card 2's
-// multi-label Edit-plus-Create shape.
+// TestValidate_GoldenFixture_ZeroFindings round-trips the format-4 golden fixture through Validate.
+// The fixture lives in testdata/goodplan.
+// It materializes the paths the fixture's checked entries name under a t.TempDir() worktree root.
+// It leaves out the Custom card's path-shaped target and the Rename pair's post-rename side.
+// It also leaves out card 2's own Create-group target.
+// Zero findings means every check passes on the happy path, including card 2's multi-label Edit-plus-Create shape.
 func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -122,9 +116,10 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 		"cmd/lym/helppins.go",                // card 6's target
 		"internal/boardcli/doc.go",           // card 7's first target
 		"docs/boardcli-json.md",              // card 7's second target
-		// Deliberately absent: internal/output/emit.go (card 3's own Custom target — exempt),
-		// internal/boardengine/rowsjson.go (card 5's Rename New side — never checked), and
-		// internal/boardcli/list_json_test.go (card 2's own Create-group target — exempt).
+		// These three paths are left out on purpose.
+		// internal/output/emit.go is card 3's own Custom target, which is exempt.
+		// internal/boardengine/rowsjson.go is card 5's Rename New side, which is never checked.
+		// internal/boardcli/list_json_test.go is card 2's own Create-group target, which is exempt.
 	)
 
 	findings := planparser.Validate(plan, root)
@@ -133,7 +128,10 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since both stem from the same overview frontmatter; ValidateFormat reports the same format-unrecognized but never plan-unapproved, whether approved: is true, false, or (Go's zero value) absent.
+// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together.
+// Both come from the same overview frontmatter.
+// ValidateFormat reports format-unrecognized, and it never reports plan-unapproved.
+// That holds whether approved: is true, false, or absent (Go's zero value).
 func TestValidate_FormatAndApproval(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -179,7 +177,9 @@ func TestValidate_FormatAndApproval(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApprovalOrder asserts Validate's finding order still matches the fixed order validate.go's file comment lists when a plan trips both format-unrecognized and plan-unapproved at once: format-unrecognized first, plan-unapproved second, any remaining findings after them.
+// TestValidate_FormatAndApprovalOrder pins Validate's finding order.
+// When a plan trips both format-unrecognized and plan-unapproved, format-unrecognized comes first:
+// plan-unapproved second, and any remaining findings after them.
 //
 //testtiming:keep pins the fixed finding order of format-unrecognized then plan-unapproved, which TestValidate_FormatAndApproval counts but does not order
 func TestValidate_FormatAndApprovalOrder(t *testing.T) {
@@ -189,8 +189,7 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 	plan := &planparser.Plan{
 		Format:   3,
 		Approved: false,
-		// A card with no type label at all also trips card-type-missing, giving this test a third
-		// finding to confirm lands after the first two rather than reordering them.
+		// A card with no type label also trips card-type-missing, a third finding that must land after the first two.
 		Cards: []planparser.Card{{Number: 1, Slug: "only"}},
 	}
 	findings := planparser.Validate(plan, t.TempDir())
@@ -211,8 +210,10 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 	}
 }
 
-// TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck is R6-22's regression test:
-// bare-symbol-target and directory-target gated on the literal "none" while every sibling alphabet-gated check gated on planLanguage, so under an unrecognized language: those two kept classifying refs ParsePlan never canonicalized. plan-language-unrecognized already blocks such a plan, so the extra findings were noise.
+// TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck pins one behavior:
+// under an unrecognized language, every alphabet-gated check stays silent.
+// bare-symbol-target and directory-target would otherwise classify refs ParsePlan never canonicalized.
+// plan-language-unrecognized already blocks such a plan.
 //
 //testtiming:keep pins that an unrecognized language silences the alphabet-gated checks (R6-22), which its covering tests do not assert
 func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing.T) {
@@ -239,10 +240,11 @@ func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing
 	}
 }
 
-// TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half of
-// index-file-mismatch. An empty plan.Dir -- the in-memory plan shape most cases here build -- means
-// "no plan directory was told" and scans nothing; a Dir that IS told but cannot be listed is its own
-// finding (see TestValidate_IndexFileMismatch_UnlistablePlanDirIsAFinding).
+// TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half of index-file-mismatch.
+// An empty plan.Dir means no plan directory was given, so nothing is scanned.
+// Most cases here build their plan that way.
+// A Dir that is given but cannot be listed is its own finding.
+// The subtest "an unlistable plan directory is a finding, not silence" covers it.
 func TestValidate_IndexFileMismatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -272,9 +274,8 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 		}
 	})
 
-	// R6-10: a told plan directory that cannot be listed silently disabled the whole
-	// orphaned-card-file half of this check, with no finding and no error, so the check reported
-	// CLEAN against its own unconditional guarantee.
+	// A plan directory that is given but cannot be listed is a finding, not silence.
+	// Skipping it would disable the orphaned-card-file half of this check without a finding or an error.
 	t.Run("an unlistable plan directory is a finding, not silence", func(t *testing.T) {
 		t.Parallel()
 		plan := &planparser.Plan{
@@ -323,7 +324,8 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_CardTypeMissing covers card-type-missing: zero type labels produces one finding, while one label or more than one label both produce none — carrying multiple labels is legal.
+// TestValidate_CardTypeMissing covers card-type-missing.
+// Zero type labels produce one finding; one label or several produce none, since carrying several labels is legal.
 //
 //testtiming:keep pins the card-type-missing finding for zero type labels and its absence for several, which its covering tests do not assert
 func TestValidate_CardTypeMissing(t *testing.T) {
@@ -356,8 +358,8 @@ func TestValidate_CardTypeMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CustomNotAlone covers card-custom-not-alone: a Custom group coexisting with a
-// differently-typed group on the same card is a defect, but repeating Custom is not.
+// TestValidate_CustomNotAlone covers card-custom-not-alone.
+// A Custom group beside a differently-typed group on the same card is a defect, but repeating Custom is not.
 func TestValidate_CustomNotAlone(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -458,7 +460,9 @@ func TestValidate_CardRetiredLabel(t *testing.T) {
 	})
 }
 
-// TestValidate_CardPathMalformed covers card-path-malformed: the check applies to path-shaped entries only — a malformed symbol-shaped entry produces no finding, while a malformed path-shaped entry in the same list does.
+// TestValidate_CardPathMalformed covers card-path-malformed.
+// The check applies to path-shaped entries only: a malformed symbol-shaped entry produces no finding,
+// but a malformed path-shaped entry in the same list does.
 //
 //testtiming:keep pins the card-path-malformed finding on path-shaped and glyph-reached entries, which its covering tests do not assert
 func TestValidate_CardPathMalformed(t *testing.T) {
@@ -525,7 +529,9 @@ func TestValidate_RenameFormat(t *testing.T) {
 	})
 }
 
-// TestValidate_HandleConsistency covers handle-dangling and handle-collision, each firing exactly once on a minimal offending plan, and a well-formed plan with one declaration and one reference producing neither.
+// TestValidate_HandleConsistency covers handle-dangling and handle-collision.
+// Each fires exactly once on a minimal offending plan.
+// A well-formed plan with one declaration and one reference produces neither.
 func TestValidate_HandleConsistency(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -640,8 +646,9 @@ func TestValidate_HandleConsistency(t *testing.T) {
 	})
 }
 
-// TestValidate_HandleMalformed covers handle-malformed: one finding per CreateRaw entry, and one
-// finding for a handle whose text after HandlePrefix carries no "#".
+// TestValidate_HandleMalformed covers handle-malformed.
+// It expects one finding per CreateRaw entry.
+// It also expects one finding for a handle whose text after HandlePrefix carries no "#".
 func TestValidate_HandleMalformed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -671,8 +678,8 @@ func TestValidate_HandleMalformed(t *testing.T) {
 	})
 }
 
-// renameCard returns a well-formed Rename Card at position number with slug carrying exactly one
-// Pairs entry (old -> new), for checkRenamePairShape's subtests.
+// renameCard returns a well-formed Rename Card at position number.
+// Its slug carries exactly one Pairs entry (old -> new).
 func renameCard(number int, slug, oldSide, newSide string) planparser.Card {
 	pairs := []planparser.MovePair{{Old: oldSide, New: newSide}}
 	refs := []string{oldSide, newSide}
@@ -682,14 +689,13 @@ func renameCard(number int, slug, oldSide, newSide string) planparser.Card {
 	return card
 }
 
-// TestValidate_RenamePairShape covers rename-to-not-handle and rename-from-not-glyph: a symbol
-// rename's old side must classify as a glyph and its new side must classify as a plan: handle,
-// with a file-rename pair (both endpoints self glyphs) exempt from both, and neither check running
-// under plan.Language "none".
+// TestValidate_RenamePairShape covers rename-to-not-handle and rename-from-not-glyph.
+// A symbol rename's old side must classify as a glyph, and its new side must classify as a plan: handle.
+// A file-rename pair (both endpoints self glyphs) is exempt from both checks.
+// Neither check runs under plan.Language "none".
 //
-// Both checks are the negation of the one admitted shape, never an enumeration of the forbidden
-// ones — the sub-tests naming a path-shaped side are R9-2's regression, since the enumerated form
-// let refKindPath through both halves.
+// Both checks are the negation of the one admitted shape, not an enumeration of the forbidden ones:
+// an enumeration let path-shaped sides through both halves, so the sub-tests with a path-shaped side pin them.
 func TestValidate_RenamePairShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -758,9 +764,8 @@ func TestValidate_RenamePairShape(t *testing.T) {
 	})
 
 	t.Run("self-glyph old side paired with a handle new side produces rename-from-not-glyph", func(t *testing.T) {
-		// The one shape the two negation checks both let through (crucible round fable-high-r10,
-		// F5): the old side IS a glyph and the new side IS a handle, but the old side names a
-		// file/unit where a symbol rename must name the symbol being renamed.
+		// The one shape both negation checks let through: the old side is a glyph and the new side is a handle,
+		// but the old side names a file or unit where a symbol rename must name the symbol being renamed.
 		t.Parallel()
 		card := renameCard(1, "a", "internal/foo/old.go#", "plan:internal/foo#NewThing")
 		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
@@ -800,7 +805,9 @@ func TestValidate_RenamePairShape(t *testing.T) {
 	})
 }
 
-// TestValidate_RenameMechanicMissing covers rename-mechanic-missing: a Rename card with an empty Plan.RenameMechanic produces one plan-level finding, and a plan whose only cards are other types produces none even with an empty section.
+// TestValidate_RenameMechanicMissing covers rename-mechanic-missing.
+// A Rename card with an empty Plan.RenameMechanic produces one plan-level finding.
+// A plan whose only cards are other types produces none, even with an empty section.
 //
 //testtiming:keep pins the rename-mechanic-missing finding, which its covering tests do not assert
 func TestValidate_RenameMechanicMissing(t *testing.T) {
@@ -855,7 +862,10 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_RenameLeavesTest covers rename-leaves-test: under go, a symbol Rename pair whose same-named tests a card still lists under Edit, with no Rename pair of their own, is one finding per test ref, attributed to the renaming card.
+// TestValidate_RenameLeavesTest covers rename-leaves-test.
+// Under go, a symbol Rename pair leaves its same-named tests behind when a card still lists them under Edit.
+// A test with a Rename pair of its own is not left behind.
+// Each such test ref is one finding, attributed to the renaming card.
 func TestValidate_RenameLeavesTest(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -904,7 +914,9 @@ func TestValidate_RenameLeavesTest(t *testing.T) {
 	}
 }
 
-// TestValidate_CardMissingField covers card-missing-field: every card must carry Intent:, and a card of type Edit or Delete must also carry ImpactSummary: — a Create, Rename, Move, Prosa, or Custom card without ImpactSummary produces no finding.
+// TestValidate_CardMissingField covers card-missing-field.
+// Every card must carry Intent:, and an Edit or Delete card must also carry ImpactSummary:.
+// A Create, Rename, Move, Prosa, or Custom card without ImpactSummary produces no finding.
 //
 //testtiming:keep pins the card-missing-field finding per card type, which its covering tests do not assert
 func TestValidate_CardMissingField(t *testing.T) {
@@ -1002,8 +1014,9 @@ func TestValidate_CardMissingField(t *testing.T) {
 	})
 }
 
-// TestValidate_CardFieldEmpty covers card-field-empty: a present label with zero-length content
-// is distinct from an absent label, checked on each of the four applicable fields.
+// TestValidate_CardFieldEmpty covers card-field-empty.
+// A present label with zero-length content is distinct from an absent label.
+// It is checked on each of the four applicable fields.
 func TestValidate_CardFieldEmpty(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1080,7 +1093,8 @@ func TestValidate_CardFieldEmpty(t *testing.T) {
 	})
 }
 
-// TestValidate_CardFieldOverlap covers card-field-overlap: an entry present in both a card's own Targets and its own Uses.
+// TestValidate_CardFieldOverlap covers card-field-overlap:
+// an entry present in both a card's own Targets and its own Uses.
 //
 //testtiming:keep pins the card-field-overlap finding, which its covering tests do not assert
 func TestValidate_CardFieldOverlap(t *testing.T) {
@@ -1099,7 +1113,10 @@ func TestValidate_CardFieldOverlap(t *testing.T) {
 	})
 }
 
-// TestValidate_UsesLaterTarget covers uses-later-target: a card's Uses entry naming a target of a card with a higher number is one finding attributed to the consumer, matched like the sequencer's producer-before-consumer rule (exact string after trimming, empty entries ignored, any type label).
+// TestValidate_UsesLaterTarget covers uses-later-target.
+// A card's Uses entry that names a target of a card with a higher number is one finding, attributed to the consumer.
+// Matching is like the sequencer's producer-before-consumer rule:
+// an exact string after trimming, empty entries ignored, any type label.
 func TestValidate_UsesLaterTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1184,7 +1201,10 @@ func TestValidate_UsesLaterTarget(t *testing.T) {
 	}
 }
 
-// TestValidate_RedundantPackageTarget covers redundant-package-target: a package self glyph listed on one card beside a member, a file self glyph or a handle of that package is one finding per contained target, attributed to the card with Ref the contained target.
+// TestValidate_RedundantPackageTarget covers redundant-package-target.
+// A package self glyph listed on one card beside a member, a file self glyph, or a handle of that package.
+// Such a card yields one finding per contained target.
+// The finding is attributed to the card, with Ref set to the contained target.
 func TestValidate_RedundantPackageTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1276,7 +1296,10 @@ func TestValidate_RedundantPackageTarget(t *testing.T) {
 	}
 }
 
-// TestValidate_ResignNotMember covers resign-not-member: an Edit re-sign arrow is clean on a member glyph and a finding, with Ref the target, on a file path, a file or package self glyph, a bare symbol or a handle; a malformed glyph is left to glyph-malformed, and nothing is reported under language: none.
+// TestValidate_ResignNotMember covers resign-not-member.
+// An Edit re-sign arrow is clean on a member glyph.
+// It is a finding, with Ref the target, on a file path, a file or package self glyph, a bare symbol, or a handle.
+// A malformed glyph is left to glyph-malformed, and nothing is reported under language: none.
 func TestValidate_ResignNotMember(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1286,7 +1309,7 @@ func TestValidate_ResignNotMember(t *testing.T) {
 		language string
 		target   string
 		want     bool
-		// wantDetail is a substring the one finding's detail carries, when set.
+		// wantDetail, when set, is a substring the one finding's detail must carry.
 		wantDetail string
 	}{
 		{name: "csharp namespace self glyph", language: "csharp", target: "Glyphchain.Sharp#", want: true, wantDetail: "a namespace self glyph"},
@@ -1329,8 +1352,8 @@ func TestValidate_ResignNotMember(t *testing.T) {
 	}
 }
 
-// TestValidate_ImpactSummaryMultiline covers impact-summary-multiline: a non-empty
-// ImpactSummaryTrailing is a defect, since ImpactSummary is required to stay a single line.
+// TestValidate_ImpactSummaryMultiline covers impact-summary-multiline.
+// A non-empty ImpactSummaryTrailing is a defect, since ImpactSummary must stay a single line.
 func TestValidate_ImpactSummaryMultiline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1347,10 +1370,10 @@ func TestValidate_ImpactSummaryMultiline(t *testing.T) {
 	})
 }
 
-// TestValidate_ProsaSymbolTarget covers prosa-symbol-target: under the default glyph-enabled
-// plan.Language, a Prosa card's target list must hold only a self glyph (file or unit), never a
-// member glyph or anything that fails to parse as a glyph at all; under "none" it keeps its
-// pre-glyph path-vs-symbol behavior exactly.
+// TestValidate_ProsaSymbolTarget covers prosa-symbol-target.
+// Under the default glyph-enabled plan.Language, a Prosa card's target list must hold only a self glyph (file or unit).
+// A member glyph, or anything that fails to parse as a glyph, is a finding.
+// Under "none" it keeps its pre-glyph path-vs-symbol behavior.
 func TestValidate_ProsaSymbolTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1452,10 +1475,10 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 	})
 }
 
-// TestValidate_CardNumbering covers card-numbering: the card file's own heading number must match
-// the number the Card Index assigned it.
-// Unlike most other checks, this one re-reads the card file from plan.Dir, so both cases need a
-// real on-disk plan directory rather than a hand-built Plan struct.
+// TestValidate_CardNumbering covers card-numbering.
+// The card file's own heading number must match the number the Card Index assigned it.
+// Unlike most other checks, this one re-reads the card file from plan.Dir,
+// so both cases need a real on-disk plan directory rather than a hand-built Plan struct.
 func TestValidate_CardNumbering(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1465,8 +1488,7 @@ func TestValidate_CardNumbering(t *testing.T) {
 		dir := writePlanFiles(t, map[string]string{
 			"00-overview.md": minimalOverview,
 			// The Card Index assigns this file (01-only.md) card number 1,
-			// but its own heading declares "# Card 2" — the exact mismatch
-			// checkCardNumbering exists to catch.
+			// but its own heading declares "# Card 2": the mismatch checkCardNumbering must catch.
 			"01-only.md": "# Card 2 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n",
 		})
 		plan, err := planparser.ParsePlan(dir)
@@ -1480,7 +1502,8 @@ func TestValidate_CardNumbering(t *testing.T) {
 	})
 }
 
-// TestValidate_PathMissing exhaustively pins path-missing's type-conditional rework, using a hermetic t.TempDir() worktree root for every case.
+// TestValidate_PathMissing pins path-missing's type-conditional behavior.
+// Every case uses a hermetic t.TempDir() worktree root.
 //
 //testtiming:keep pins the path-missing finding per card type, group and glyph shape, which its covering tests do not assert
 func TestValidate_PathMissing(t *testing.T) {
@@ -1649,8 +1672,8 @@ func TestValidate_PathMissing(t *testing.T) {
 
 		create := cardOfType(1, "create", planparser.CardTypeCreate, []string{"new-file.go"})
 
-		// Custom so this card's own (irrelevant) Targets entry is exempt from path-missing,
-		// isolating the assertion to its Uses: satisfaction by the Create union.
+		// The Custom type exempts this card's own Targets entry from path-missing.
+		// That isolates the assertion to its Uses: satisfaction by the Create union.
 		usesCreateTarget := cardOfType(2, "uses-create-target", planparser.CardTypeCustom, []string{"pkg/card2.go"})
 		usesCreateTarget.Uses = []string{"new-file.go"}
 
@@ -1766,7 +1789,8 @@ func TestValidate_PathMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a present Commit: must start with the card's own "N: " prefix.
+// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch.
+// A present Commit: must start with the card's own "N: " prefix.
 //
 //testtiming:keep pins the commit-subject-mismatch finding, which its covering tests do not assert
 func TestValidate_CommitSubjectMismatch(t *testing.T) {
@@ -1785,7 +1809,9 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_VerifyNestedModule covers verify-nested-module: a go command in a card's Verify: value must not name a package of a nested module other than the one it runs in; the overview's verify chain is never read.
+// TestValidate_VerifyNestedModule covers verify-nested-module.
+// A go command in a card's Verify: value must not name a package of a nested module other than the one it runs in.
+// The overview's verify chain is never read.
 func TestValidate_VerifyNestedModule(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1863,7 +1889,10 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 	}
 }
 
-// TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lym gate test command in a card's Verify: value must name a directory on disk or one the plan creates by then; the overview's verify chain is never read.
+// TestValidate_VerifyPackageMissing covers verify-package-missing.
+// A relative package argument in a card's Verify: value must name a directory on disk, or one the plan creates by then.
+// It applies to go test, go build, go vet and lym gate test commands.
+// The overview's verify chain is never read.
 // The test sits in the external package for its card helpers, so it is named by its file rather than a handle.
 func TestValidate_VerifyPackageMissing(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1969,7 +1998,9 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 	}
 }
 
-// TestValidate_LanguageMismatch covers plan-language-mismatch's pure half over in-memory plans: the plan's language against the extensions of the files its cards' Targets name, and the refs that exempt a plan from the judgment.
+// TestValidate_LanguageMismatch covers plan-language-mismatch's pure half over in-memory plans.
+// It checks the plan's language against the extensions of the files its cards' Targets name.
+// It also covers the refs that exempt a plan from the judgment.
 func TestValidate_LanguageMismatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2018,7 +2049,9 @@ func TestValidate_LanguageMismatch(t *testing.T) {
 	}
 }
 
-// TestValidate_RenameNamespacePair covers rename-namespace-pair over a worktree holding Program.cs and docs/guide.md: under csharp a slash-free old side that names nothing on disk, and nothing an earlier card creates or renames into, is refused.
+// TestValidate_RenameNamespacePair covers rename-namespace-pair over a worktree holding Program.cs and docs/guide.md.
+// Under csharp, a slash-free old side is refused when it names nothing on disk,
+// and no earlier card creates or renames into it.
 func TestValidate_RenameNamespacePair(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2082,7 +2115,9 @@ func TestValidate_RenameNamespacePair(t *testing.T) {
 	}
 }
 
-// TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tier2 or tier3 tier; the overview's verify chain is never read.
+// TestValidate_VerifyModuleWide covers verify-module-wide.
+// A card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tier2 or tier3 tier.
+// The overview's verify chain is never read.
 func TestValidate_VerifyModuleWide(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2142,7 +2177,12 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 	}
 }
 
-// TestValidate_CustomCardBoundByGenericChecks proves a Custom card remains bound by the card-generic checks despite being validate.go's explicit escape hatch on the type-conditional checks (path-missing's own-target exemption, card-missing-field's ImpactSummary exemption): a malformed path-shaped target, a missing Intent:, an entry duplicated across Targets and Uses, and a badly prefixed Commit: each still fire, so a blanket-skip regression would fail this test.
+// TestValidate_CustomCardBoundByGenericChecks proves a Custom card remains bound by the card-generic checks.
+// Custom is validate.go's explicit escape hatch from the type-conditional checks:
+// path-missing's own-target exemption and card-missing-field's ImpactSummary exemption.
+// The card still fires each generic check: a malformed path-shaped target and a missing Intent:.
+// It also fires for an entry duplicated across Targets and Uses, and for a badly prefixed Commit:.
+// A blanket skip would fail this test.
 //
 //testtiming:keep pins that a Custom card stays bound by the generic checks, which its covering tests do not assert together
 func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
@@ -2166,7 +2206,9 @@ func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
 	}
 }
 
-// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go", "csharp" and "none" are accepted, as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent defaults to go" rule), and any other value is exactly one finding.
+// TestValidate_LanguageRecognized covers plan-language-unrecognized.
+// "go", "csharp" and "none" are accepted, and so is "", the zero value, which means absent and defaults to go.
+// Any other value is one finding.
 //
 //testtiming:keep pins the plan-language-unrecognized finding, which its covering tests do not assert
 func TestValidate_LanguageRecognized(t *testing.T) {
@@ -2196,7 +2238,9 @@ func TestValidate_LanguageRecognized(t *testing.T) {
 	}
 }
 
-// TestValidate_BareSymbolTarget covers bare-symbol-target: any Targets/Uses entry classifying as a bare package-qualified symbol is a hard finding under a glyph-enabled plan.Language, and is skipped entirely under "none".
+// TestValidate_BareSymbolTarget covers bare-symbol-target.
+// A Targets/Uses entry that is a bare package-qualified symbol is a hard finding under a glyph-enabled plan.Language.
+// Under "none" the entry is skipped entirely.
 //
 //testtiming:keep pins the bare-symbol-target finding, which its covering tests do not assert
 func TestValidate_BareSymbolTarget(t *testing.T) {
@@ -2246,8 +2290,10 @@ func TestValidate_BareSymbolTarget(t *testing.T) {
 	})
 }
 
-// TestValidate_DirectoryTarget covers directory-target: a path-shaped entry with a "/" and no file extension names a directory rather than a file, and is skipped entirely under "none".
-// A slash-free extensionless entry (e.g. "Makefile") is out of scope for this check by design.
+// TestValidate_DirectoryTarget covers directory-target.
+// A path-shaped entry with a "/" and no file extension names a directory rather than a file.
+// Under "none" the entry is skipped entirely.
+// A slash-free extensionless entry, such as "Makefile", is out of scope for this check.
 //
 //testtiming:keep pins the directory-target finding and its file-self-glyph remedy text, which its covering tests do not assert
 func TestValidate_DirectoryTarget(t *testing.T) {
@@ -2285,10 +2331,9 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 	})
 
 	t.Run("detail names the file self glyph remedy for the root:-scoped extensionless-file case", func(t *testing.T) {
-		// A bare extensionless filename under a non-"." root: joins to a slashed extensionless path
-		// no lexical rule can tell from a directory, so it lands here — the detail must offer the
-		// file-self-glyph spelling too, not only the package remedy (crucible round fable-high-r10,
-		// F7).
+		// A bare extensionless filename under a non-"." root joins to a slashed extensionless path.
+		// No lexical rule tells that path from a directory, so the entry lands here.
+		// The detail must offer the file self glyph spelling too, not only the package remedy.
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo/Makefile"})
 		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
@@ -2318,11 +2363,9 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 	})
 }
 
-// TestValidate_GlyphMalformed covers glyph-malformed (crucible round sonnet-xhigh-r8, PG-1): a
-// "#"-containing entry that fails glyph.Parse is a hard finding, card-generic over Targets/Uses,
-// and skipped entirely under "none" -- the exact shape bare-symbol-target and directory-target
-// already follow. Before this check existed, every one of the malformed cases below validated
-// completely clean.
+// TestValidate_GlyphMalformed covers glyph-malformed.
+// A "#"-containing entry that fails glyph.Parse is a hard finding, card-generic over Targets/Uses.
+// Under "none" the entry is skipped entirely.
 func TestValidate_GlyphMalformed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2345,8 +2388,7 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 		if got := countFor(findings, "glyph-malformed"); got != 1 {
 			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
 		}
-		// None of the checks a malformed-but-"#"-shaped entry used to sail past silently through
-		// fire either -- this is PG-1's whole point: before this check existed nothing flagged it.
+		// Those checks stay silent on a "#"-shaped entry because its shape is wrong for them, not because it is fine.
 		for _, check := range []string{"bare-symbol-target", "directory-target", "card-path-malformed", "path-missing"} {
 			if got := countFor(findings, check); got != 0 {
 				t.Errorf("countFor(findings, %s) = %d; want 0 (wrong shape for this check, not evidence the entry is fine)", check, got)
@@ -2368,10 +2410,8 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 
 	t.Run("malformed glyph in a Prosa group is card-generic, not group-scoped", func(t *testing.T) {
 		t.Parallel()
-		// This deliberately does NOT exempt Prosa: bare-symbol-target/directory-target don't either,
-		// and prosa-symbol-target already separately flags the same entry as "not a self glyph" --
-		// two checks naming the same defect from two angles, exactly as they already do for a
-		// Prosa group's bare-symbol target.
+		// Prosa groups are not exempt: prosa-symbol-target also flags this entry, as "not a self glyph".
+		// The two checks name the same defect from two angles.
 		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"internal/foo#Bar#extra"})
 		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
@@ -2419,9 +2459,10 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 	})
 }
 
-// TestValidate_RootFilenameCanonicalizesEndToEnd is R9-1's regression: a plan spelling a repository-root extensionless filename — classifyRef rule 4's own case, the rule that exists precisely so such a filename HAS a legal spelling — must reach the validator (and, past it, every glyph-backed layer in internal/planglyph) as a self glyph, not as a bare token quarry rejects before resolution.
+// TestValidate_RootFilenameCanonicalizesEndToEnd checks that a root filename reaches the validator as a self glyph,
+// and every glyph-backed layer in internal/planglyph gets it as one too.
 //
-// Left uncanonicalized, "LICENSE" validated 100% clean here while producing a false prosa-symbol-target on a Prosa group, and then made the batch that created it permanently unrecordable: DoneChecks handed quarry the bare token, quarry answered a pre-resolution rejection, and doneCheckVerdicts read the rejection as "did not resolve" — a blocking create-not-done against a card that had done its job.
+// A bare token would reach quarry, which rejects it before resolution.
 //
 //testtiming:keep pins the end-to-end canonicalization of repository-root filenames (R9-1), which its covering tests do not assert
 func TestValidate_RootFilenameCanonicalizesEndToEnd(t *testing.T) {
@@ -2477,10 +2518,8 @@ Framing paragraph.
 	}
 }
 
-// TestCardID asserts Card.ID renders the same "N-<slug>" identity Validate's own findings key
-// their Card field on. This file is package planparser_test, an external test package with no
-// access to validate.go's unexported cardID, so the equivalence is expressed against the same
-// "N-<slug>" format cardID itself produces, rather than by calling it directly.
+// TestCardID asserts that Card.ID renders the "N-<slug>" identity that validation findings key on.
+// This is an external test package, so the test spells the format out instead of calling the unexported helper.
 func TestCardID(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2491,8 +2530,8 @@ func TestCardID(t *testing.T) {
 	}
 }
 
-// TestValidate_IndexFileMismatch_FirstCard covers the first_card numbering base: the Card Index must run first_card..first_card+n-1,
-// and an invalid first_card is a finding of its own.
+// TestValidate_IndexFileMismatch_FirstCard covers the first_card numbering base.
+// The Card Index runs first_card..first_card+n-1, and an invalid first_card is a finding of its own.
 func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2533,7 +2572,10 @@ func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
 	}
 }
 
-// TestValidate_PatternEntryLineCap covers pattern-entry-line-cap: the rule text of a PATTERN.md entry line a card prescribes in a fenced code block must stay within the cap in runes, whatever the fence's info string, the entry's name or its tail, and prose or an unfenced line is never scanned.
+// TestValidate_PatternEntryLineCap covers pattern-entry-line-cap.
+// The rule text of a PATTERN.md entry line in a card's fenced code block must stay within the cap in runes.
+// The fence's info string, the entry's name and its tail do not change that.
+// Prose and unfenced lines are never scanned.
 func TestValidate_PatternEntryLineCap(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2640,7 +2682,9 @@ func TestSymbolRenamePairs(t *testing.T) {
 	}
 }
 
-// TestValidate_PartScope covers the part scope of a split plan's part directory: the exports of other parts count as declared for handle-dangling and path-missing, the shared spots are refused as targets, and a reparse keeps the scope.
+// TestValidate_PartScope covers the part scope of a split plan's part directory.
+// The exports of other parts count as declared for handle-dangling and path-missing.
+// The shared spots are refused as targets, and a reparse keeps the scope.
 func TestValidate_PartScope(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

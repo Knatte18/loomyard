@@ -1,9 +1,14 @@
-<!-- This is the landing merge fixer session's entire instruction set. It is shipped as an embedded
-     default in the top-level stencils package (stencils/stencils.go), seeded to
-     the Bolt checkout's `_lym/stencils/landing/`, and read from there at call time by internal/seatengine,
-     which fills it from the lead's value map that landingshed's FixerTable builds, then hands it to shuttle as the fixing agent's whole
-     prompt. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
-     marker non-empty except the table's Optional values (plan_dir, failure_record_path, fix_review_path and, in finalize mode, aligned_tip), parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
+<!-- This is the landing merge fixer session's entire instruction set.
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
+     seeded to the Bolt checkout's `_lym/stencils/landing/`.
+     internal/seatengine reads it from there at call time.
+     It fills the template from the lead's value map, which landingshed's FixerTable builds.
+     It then hands the result to shuttle as the fixing agent's whole prompt.
+     Every marker below is a top-level {{.X}} substitution.
+     stencil.FillWith requires each to be non-empty except the table's Optional values:
+     plan_dir, failure_record_path, fix_review_path and, in finalize mode, aligned_tip.
+     internal/parentdirective renders parent_directive, and internal/editdirective renders edit_directive unconditionally.
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Merge fixer — fix the merge or the failing tests on the task branch
 

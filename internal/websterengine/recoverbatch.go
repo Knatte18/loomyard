@@ -1,17 +1,9 @@
-// recoverbatch.go implements webster's re-entrant, blocking exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate process — escalating a batch a fork reported stuck, or never reported at all, to a cold implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt via RenderRecoveryPrompt — deliberately distinct from RenderForkPrompt's thin in-session fork prompt, since the recovery strand inherits no session context, per the fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over webster's Classify and PollUntilTerminal, reading a strand through gatefixer's TurnEndedAfter and StrandLive), and PersistRecoveryTerminal (the terminal digest merge into a freshly reloaded state).
-// First call spawns and records;
-// the call that spawns the recovery strand first waits for its provider to come up (normally
-// seconds, bounded by startup_timeout_s), and every call then blocks for RecoveryWaitBudget and
-// returns the terminal digest;
-// recovery_timeout_min bounds every call, since the strand classifies dead on it.
-// A running snapshot comes back only when an operator passes a shorter --wait.
-//
-// The three-phase split exists for the state-mutation lease: the caller holds it across
-// spawn-or-attach — now including the spawn's startup window — and across the terminal persist,
-// but NEVER across the bounded wait between them (see AcquireStateMutation's contract, held across
-// the spawn's startup window but never across a long block).
-// Nothing here touches fabric: the caller fabric-commits state.json after the spawn record and again at
-// terminal persistence, webster's own fabric-commit-boundary discipline.
+// recoverbatch.go implements webster's blocking recovery verb for a batch whose fork reported stuck or never reported.
+// It runs as three lease-scoped phases: RecoverSpawnOrAttach, RecoverAwait and PersistRecoveryTerminal.
+// RecoverSpawnOrAttach is the only place webster spawns a separate process:
+// a cold recovery strand, given the full cold-start prompt rather than the thin fork prompt.
+// The caller holds the state-mutation lease across the first and last phases, never across the wait between them.
+// This file never touches fabric; the caller commits state.json after the spawn and again at terminal persistence.
 
 package websterengine
 
@@ -37,13 +29,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrRecoveryNeedsFresh is the sentinel RecoverSpawnOrAttach's refusal of an uncheckable failed batch unwraps to.
+// ErrRecoveryNeedsFresh marks a refusal to recover a failed batch whose findings recovery cannot check.
 var ErrRecoveryNeedsFresh = errors.New("webster: recovery cannot check the batch's findings")
 
-// ErrRecoveryDeleteReferenced is the sentinel RecoverSpawnOrAttach's refusal of a batch whose Delete target an unbegun later card still references unwraps to.
+// ErrRecoveryDeleteReferenced marks a refusal to clear a delete that a later, unbegun card still references.
 var ErrRecoveryDeleteReferenced = errors.New("webster: recovery cannot clear a delete a later card still references")
 
-// ErrRecoveryExhausted is the sentinel a refusal unwraps to when the batch has used every counted recovery spawn.
+// ErrRecoveryExhausted marks a refusal to recover a batch that has used every counted recovery spawn.
 var ErrRecoveryExhausted = errors.New("webster: the batch's recoveries are exhausted")
 
 // maxRecoveries is how many counted recovery spawns one batch gets.
@@ -56,22 +48,18 @@ func (e *recoveryNeedsFreshError) Error() string { return e.msg }
 
 func (e *recoveryNeedsFreshError) Unwrap() error { return ErrRecoveryNeedsFresh }
 
-// Clock abstracts time.Now/time.Sleep so RecoverBatch's bounded wait runs instantly under test,
-// mirroring shuttleengine's wait.go seam and webster's own poll.go clock.
-// Clock is deliberately a plain, exported webster-local interface — it structurally satisfies
-// poll.go's unexported clock interface (identical Now/Sleep method set), which is what lets
-// RecoverBatch hand a Clock value straight to PollUntilTerminal without any adapter: Go interface
-// satisfaction is structural, not by declared type identity.
+// Clock abstracts time.Now and time.Sleep, so a bounded wait runs instantly under test.
+// Any type with these two methods satisfies it, so a Clock goes straight into the polling loop without an adapter.
 type Clock interface {
 	Now() time.Time
 	Sleep(time.Duration)
 }
 
-// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config, Engines, Reed, Stopper and ShuttleCfg.
+// RecoverDeps carries the seams and state a recovery reads.
 // Geom is the told Geometry every path is read from.
-// Reed answers awaitTerminal's liveness read, and Stopper is the seam the reclaims stop a leftover strand through.
-// Batches is the execution order, the batchifier's own order (ExecutionBatches);
-// predecessorDigestLine's lookup depends on Batches already being in that order.
+// Reed answers the liveness read in `awaitTerminal`, and Stopper stops a leftover strand.
+// Batches is the execution order from the batchifier.
+// The predecessor digest lookup in `predecessorDigestLine` depends on Batches being in that order.
 type RecoverDeps struct {
 	Starter    Starter
 	Plan       *planparser.Plan
@@ -84,23 +72,23 @@ type RecoverDeps struct {
 	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
-	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	// ReadOnly reports whether a fabric-referencing command is read-only, which makes its finding a policy warning.
+	// A nil ReadOnly accepts nothing.
 	ReadOnly func(cmd string) bool
 
-	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
-	// is off. It lives here rather than on Geometry because internal/hubgeom and
-	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
-	// this value needs no geometry derivation.
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2 is off.
+	// It sits here rather than on Geometry, since it needs no geometry derivation.
 	FrictionDir string
 
-	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule;
-	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
+	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule.
+	// A nil ParentBranch (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
 	ParentBranch ParentBranchFunc
 
 	// LanguageSkills are the hub's language skills the recovery strand loads after roleSkills; empty for none.
 	LanguageSkills []string
 
-	// GateTiers are the hub's rendered tier and gate-list lines the recovery prompt's gate_tiers marker takes; "none" when no tier is declared.
+	// GateTiers are the hub's rendered tier and gate-list lines that fill the recovery prompt's gate_tiers marker.
+	// It reads "none" when no tier is declared.
 	GateTiers string
 
 	// RenameTools are the hub's structure-aware rename tools the recovery prompt renders; empty for none.
@@ -109,11 +97,17 @@ type RecoverDeps struct {
 	// Gate is the hub's gate config, from which the recovery prompt renders its card and batch gate calls.
 	Gate gateslot.Config
 
-	// CardFixer says a failed card gate call goes through a cold fixer first, so the recovery prompt says so.
+	// CardFixer sends a failed card gate call through a cold fixer first.
+	// The recovery prompt states this.
 	CardFixer bool
 }
 
-// RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
+// RecoverResult is what one RecoverAwait call returns.
+// Digest is nil while Running.
+// Running reports whether the wait elapsed before a terminal digest.
+// ElapsedS counts seconds since the spawn.
+// Warnings holds non-fatal substrate-cleanup failures.
+// A moved-HEAD notice joins them when only merge commits sit between the report's head_sha and the worktree's HEAD.
 type RecoverResult struct {
 	Digest   *Digest
 	Running  bool
@@ -121,8 +115,8 @@ type RecoverResult struct {
 	Warnings []string
 }
 
-// archiveStaleReport renames a stale report to free the path, keeping it
-// auditable rather than deleting. Absent file returns ("", nil).
+// archiveStaleReport renames a stale report to free its path, keeping it auditable rather than deleting it.
+// It returns ("", nil) when the report is absent.
 func archiveStaleReport(reportsDir string, number int, slug string, now func() time.Time) (string, error) {
 	path := filepath.Join(reportsDir, ReportFileName(number, slug))
 	if _, err := os.Stat(path); err != nil {
@@ -148,12 +142,12 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
-// refuseRecoveringDoneReport refuses to recover a batch whose report already
-// has status: OK (record-batch is the consuming verb), except when prior is
-// terminal dead (a late orphan report), terminal failed (a still-running fork's late report,
-// or one left over after the failure), or missing/unparseable.
+// refuseRecoveringDoneReport refuses to recover a batch whose report already has status OK.
+// record-batch is the verb that consumes such a report, so recovery never archives finished work.
+// It lets recovery proceed when prior is terminal dead or terminal failed.
+// It also lets recovery proceed when the report is missing or unparseable.
 func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prior *BatchState) error {
-	// Dead-orphan and failed exceptions: archive a late report written after the terminal classification.
+	// A late report written after a dead or failed terminal classification gets archived, not refused.
 	if prior != nil && prior.Terminal && (prior.Status == DigestStatusDead || prior.Status == DigestStatusFailed) {
 		return nil
 	}
@@ -161,7 +155,7 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	reportPath := filepath.Join(reportsDir, ReportFileName(number, slug))
 	report, err := ParseReport(reportPath)
 	if err != nil {
-		// Absent or malformed report: recovery is the path for this.
+		// A missing or unparseable report leaves recovery as the path.
 		return nil
 	}
 	if report.Status == ReportStatusOK {
@@ -172,8 +166,9 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 
 // failureDigestBlock renders a prior record's failure for the recovery prompt.
 // It lists the reasons of a failed digest, which failBatch already ends with the suspect paths.
-// It then adds one instruction per card in the prior record's AmendedCards to re-read the card and bring the committed work in line with it.
-// The amended instructions come from AmendedCards, not from the reasons, so a stuck, dead or failed recovery does not erase them.
+// It then adds one instruction per card in AmendedCards: re-read the card and bring the committed work in line with it.
+// The amended instructions come from AmendedCards, not from the reasons;
+// so a stuck, dead or failed recovery does not erase them.
 // It returns "" when prior is neither a failed batch nor holds an amended card.
 func failureDigestBlock(prior *BatchState) string {
 	if prior == nil {
@@ -191,8 +186,9 @@ func failureDigestBlock(prior *BatchState) string {
 	return strings.Join(lines, "\n")
 }
 
-// uncommittedPathsBlock renders the worktree's uncommitted paths for the recovery prompt, grouped by whether some session of the run wrote them.
-// A path the run's write evidence cannot attribute counts as not written by this run, the side the strand leaves untouched;
+// uncommittedPathsBlock renders the uncommitted worktree paths for the recovery prompt.
+// It groups them by whether this run wrote them.
+// A path the run's write evidence cannot attribute counts as not written by this run;
 // a collapsed untracked directory counts as written when any written path lies under it.
 // A clean tree renders "none".
 func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
@@ -233,7 +229,8 @@ func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
 	return strings.Join(sections, "\n\n"), nil
 }
 
-// writtenUnder reports whether uncommitted, a path git status names, is one of written or a directory holding one.
+// writtenUnder reports whether the uncommitted path is one of written, or a directory holding one.
+// A path with a trailing slash names a collapsed untracked directory.
 func writtenUnder(written []string, uncommitted string) bool {
 	if dir, isDir := strings.CutSuffix(uncommitted, "/"); isDir {
 		return slices.ContainsFunc(written, func(w string) bool { return strings.HasPrefix(w, dir+"/") })
@@ -246,11 +243,13 @@ func rendersNewAmendment(prior *BatchState) bool {
 	return prior != nil && slices.ContainsFunc(prior.AmendedCards, func(a AmendedCard) bool { return !a.Rendered })
 }
 
-// recoverSpawn archives any stale report, stops a live prior strand, renders
-// the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
+// recoverSpawn archives any stale report and stops a live prior strand.
+// It then renders the recovery prompt, starts the recovery strand, and returns a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
-// The record appends the spawned run's session id to the prior record's RecoverySessions, and records that run's engine under it in RecoveryEngines.
-// The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered or prior waits on its parent, and carries HEAD at the spawn as RecoveryStartSHA.
+// The record appends the spawned run's session id to the prior record's RecoverySessions.
+// It records that run's engine under the same id in RecoveryEngines.
+// The record counts the spawn in Recoveries unless a new amendment is rendered or prior waits on its parent.
+// The record carries HEAD at the spawn as RecoveryStartSHA.
 // HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
@@ -288,7 +287,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	// Ensure reports dir exists so the recovery strand's report write succeeds.
+	// The recovery strand writes its report into this directory, so it must exist.
 	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
 	}
@@ -348,25 +347,28 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, errors.Join(fmt.Errorf("webster: resolve spawned recovery run: %w", err), stopErr)
 	}
 
-	// The recovery record inherits the ORIGINAL bracket's start SHA when there is one, rather than
-	// re-capturing the head at spawn time. A recovery exists because the batch's own fork got stuck,
-	// frequently after committing part of its work, so a start SHA captured here would exclude
-	// exactly that part — and the post-batch mechanical pass this record's own terminal path runs
-	// (see postBatchChecks) computes its single delta from it. A narrower delta reports a symbol the
-	// stuck fork already created as never created, which is a bind-count-mismatch against a card
-	// whose handle did land. The whole bracket is the honest base commit for this batch's work.
+	// The recovery record inherits the original bracket's start SHA when there is one.
+	// It does not re-capture HEAD at spawn.
+	// A recovery exists because the batch's own fork got stuck, frequently after committing part of its work,
+	// so a start SHA captured here would exclude that part.
+	// The post-batch checks this record's terminal path runs (`postBatchChecks`) take their delta from the start SHA.
+	// A narrower delta reports a symbol the stuck fork already created as never created.
+	// The whole bracket is the base commit for this batch's work.
 	start := head
 	if prior != nil && prior.StartSHA != "" {
 		start = prior.StartSHA
 	}
 
-	// Recorded audit warnings carry over as well: their identities stay dispositioned in
-	// State.AuditDispositions (the once-per-identity rule), so no later call would record them again.
-	// The batch's fork transcripts carry over too, so the run-exit audit still knows which report each of those forks owns.
+	// Recorded audit warnings carry over too.
+	// Their identities stay dispositioned in State.AuditDispositions (the once-per-identity rule),
+	// so no later call records them again.
+	// The batch's fork transcripts carry over too,
+	// so the run-exit audit still knows which report each of those forks owns.
 	var priorWarnings []AuditWarning
 	var priorSuspects []SuspectPath
 	var priorTranscripts []string
-	// The prompt above rendered every amended card, so the fresh record carries the entries as rendered: only an edit made after this spawn forces it failed.
+	// The prompt above rendered every amended card, so the fresh record marks each entry rendered.
+	// Only an edit made after this spawn leaves an entry unrendered.
 	var amended []AmendedCard
 	recoveries := 0
 	var recoverySessions []string
@@ -411,13 +413,16 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}, nil
 }
 
-// RecoveryRetry reports whether batch n's dead recovery earns one more recovery, and how many counted recoveries the batch has.
-// It is true for a terminal dead recovery record with no counted recovery, the state a batch-start reset leaves, since the batch's first counted recovery is still owed.
+// RecoveryRetry reports whether batch n's dead recovery earns one more recovery.
+// It also reports how many counted recoveries the batch has.
+// It is true for a terminal dead recovery record with no counted recovery, the state a `reset --to batch-start` leaves.
+// That record still owes the batch its first counted recovery.
 // Below the cap it is otherwise true only when the recovery committed work of its own:
-// HEAD descends from the record's non-empty RecoveryStartSHA and the first-parent range from it to HEAD holds a commit that is not a merge.
-// An empty start, a HEAD a reset moved off it and a range of merge-ins only give false.
-// A git read that fails, a start the store does not hold included, gives false and is logged at Warn.
-// Both recover-batch and begin-batch read it, so one rule decides the retry.
+// HEAD descends from the record's non-empty RecoveryStartSHA,
+// and the first-parent range from it to HEAD holds a commit that is not a merge.
+// An empty start, a HEAD that a reset moved off it, and a range holding only merge commits each give false.
+// A failed git read, including a start the store does not hold, gives false and is logged at Warn.
+// The callers share this rule, so one rule decides the retry.
 func RecoveryRetry(geom Geometry, st *State, n int) (retry bool, recoveries int) {
 	retry, recoveries, err := recoveryRetryRead(geom, st, n)
 	if err != nil {
@@ -427,7 +432,8 @@ func RecoveryRetry(geom Geometry, st *State, n int) (retry bool, recoveries int)
 	return retry, recoveries
 }
 
-// recoveryRetryRead is RecoveryRetry's rule with a failed git read returned as err, retry false, instead of folded into the verdict.
+// recoveryRetryRead reports whether batch n's dead recovery earns one more recovery.
+// A failed git read comes back as err with retry false, rather than folded into the verdict.
 func recoveryRetryRead(geom Geometry, st *State, n int) (retry bool, recoveries int, err error) {
 	var bs *BatchState
 	if st != nil {
@@ -453,7 +459,7 @@ func recoveryRetryRead(geom Geometry, st *State, n int) (retry bool, recoveries 
 	return committed, recoveries, nil
 }
 
-// committedSince reports whether HEAD descends from start through a first-parent range holding a commit that is not a merge.
+// committedSince reports whether HEAD descends from start, and whether that first-parent range holds a non-merge commit.
 func committedSince(geom Geometry, start string) (bool, error) {
 	git := geom.git()
 	head, err := git.HeadSHA(geom.WorktreeRoot)
@@ -467,26 +473,26 @@ func committedSince(geom Geometry, start string) (bool, error) {
 	return git.NonMergeCommitsBetween(geom.WorktreeRoot, start, head)
 }
 
-// RecoverSpawnOrAttach decides spawn-or-attach: if a recorded, non-terminal recovery BatchState
-// exists, ATTACH and return it;
-// otherwise SPAWN fresh.
-// Caller persists deps.State via SaveState when spawned is true.
+// RecoverSpawnOrAttach attaches to a recorded, non-terminal recovery BatchState when one exists.
+// Otherwise it spawns a fresh recovery.
+// The caller persists deps.State via SaveState when spawned is true.
 //
-// Accepted residuals, both from the spawn call now including the provider's startup window under
-// the state-mutation lease, and from state.json being persisted only after that call returns:
+// The spawn call includes the provider's startup window under the state-mutation lease.
+// Two residuals are accepted: one from that window, and one from state.json persisted after the call returns:
 //
-//  1. A process killed inside the startup window leaves a live recovery strand whose guid was
-//     never persisted, so the next call's prior.StrandGUID reclaim (StopStrand) cannot
-//     see it, and the next spawn runs beside it.
-//  2. A startup mechanism failure (shuttle could not get a liveness answer from reed
-//     maxStatusRetries times) returns an error with the strand left live and no guid persisted,
-//     with the same consequence — accepted because tearing it down could kill a working agent, and
-//     a reed in that state usually fails the next AddStrand too. The error names the strand guid so
-//     an operator can remove it by hand.
-//  3. A not-ready start no longer leaks (shuttle tears the strand down) unless that teardown's own
-//     strand removal fails, which the returned error then states.
+//  1. A process killed inside the startup window leaves a live recovery strand whose guid was never persisted.
+//     The next call's prior.StrandGUID reclaim (StopStrand) cannot see that strand, so the next spawn runs beside it.
+//  2. Shuttle could not get a liveness answer from reed maxStatusRetries times during startup.
+//     The spawn then returns an error with the strand left live and no guid persisted.
+//     That is accepted, because tearing the strand down could kill a working agent;
+//     a reed in that state usually fails the next `AddStrand` too.
+//     The error names the strand guid so an operator can remove it by hand.
+//  3. A not-ready start does not leak the strand: shuttle tears it down.
+//     The exception is a failed strand removal in that teardown, which the returned error states.
 //
-// Before spawning, it refuses with ErrRecoveryDeleteReferenced while an unbegun later card's Edit code still references a symbol the batch's own cards delete, since a recovery cannot change the plan and would fail the same done-check again.
+// Before spawning, it refuses with ErrRecoveryDeleteReferenced.
+// The refusal applies while an unbegun later card's Edit code references a symbol the batch's own cards delete.
+// A recovery cannot change the plan, so it would fail the same done-check again.
 // The bound: it refuses only while that check fires for the batch's own cards against the current plan and tree;
 // moving the delete and rebaselining clears it.
 // A record waiting on its parent is never attached to and never refused as exhausted: the spawn resumes it uncounted.
@@ -574,8 +580,10 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	return fresh, true, nil
 }
 
-// acceptAuditWayForward is the way forward of a refusal over a failed batch whose uncheckable entries are all pathless fabric references.
-// It runs the evidence check `lym webster accept-audit --batch` applies, mutating nothing, so it names that verb only on a route the check admits.
+// acceptAuditWayForward returns the way forward for a refusal over a failed batch.
+// It applies when every uncheckable entry of that batch is a pathless fabric reference.
+// It runs the evidence check `lym webster accept-audit --batch` applies, mutating nothing,
+// so it names that verb only on a route the check admits.
 // When the evidence holds, the way forward is accept-audit then recover-batch.
 // Otherwise it is the evidence refusal's reason and its own steps, which re-run both verbs.
 // Either way it also names the reset-to-start route.
@@ -597,14 +605,16 @@ func acceptAuditWayForward(deps RecoverDeps, batchNumber int) (string, error) {
 }
 
 // RecoveryWaitBudget is the wait one recover-batch call blocks for by default: recovery_timeout_min plus one poll tick.
-// The budget always outlasts the timeout measured from spawn, so a call returns at a terminal digest, or once Classify marks the strand dead on its timeout, and never as a running snapshot.
+// The budget always outlasts the timeout measured from spawn.
+// So a call returns at a terminal digest, or once the strand is marked dead on its timeout.
+// It never returns a running snapshot.
 func RecoveryWaitBudget(cfg Config) time.Duration {
 	return time.Duration(cfg.RecoveryTimeoutMin)*time.Minute + pollTick
 }
 
-// RecoverAwait drives the bounded wait for a recovery strand: the long-poll classification loop
-// (see awaitTerminal) plus substrate release on terminal.
-// Caller runs this with the state-mutation lease RELEASED.
+// RecoverAwait drives the bounded wait for a recovery strand.
+// It runs the long-poll classification loop, then releases the substrate on terminal.
+// The caller runs it with the state-mutation lease released.
 func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
@@ -613,31 +623,35 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 	return awaitTerminal(deps, batch, bs, wait, clk)
 }
 
-// PersistRecoveryTerminal runs the shared post-batch mechanical pass and then merges a terminal
-// digest into st (loaded fresh under the lease after the unleased wait).
-// Marks batch terminal and clears the in-flight cursor, and returns the pass's informational
-// warnings alongside any error so a caller never loses them.
+// PersistRecoveryTerminal runs the shared post-batch mechanical pass and merges a terminal digest into st.
+// The caller loads st fresh under the lease, after the unleased wait.
+// It marks the batch terminal and clears the in-flight cursor.
+// It returns the pass's informational warnings alongside any error, so a caller never loses them.
 //
-// The mechanical pass is not optional here. A batch that reaches done through recover-batch is
-// exactly as done as one that reaches it through record-batch, and Master's own failure ladder
-// treats a terminal recovery digest as "move on to the next batch" — but this path used to mark the
-// batch terminal on the recovery strand's self-reported status alone, running no done-checks, no
-// handle binding, no scope guard, no drift detection and no plan-staleness re-baseline. A card
-// recovered that way never bound its plan: handles, so every later card kept referencing an unbound
-// handle for the rest of the plan's life.
+// The mechanical pass is required here.
+// A batch that reaches done through recover-batch is exactly as done as one that reaches it through record-batch.
+// Master's own failure ladder treats a terminal recovery digest as "move on to the next batch".
+// Skipping the pass would mark the batch terminal on the recovery strand's self-reported status alone.
+// It would run no done-checks, handle binding, scope guard, drift detection or plan-staleness re-baseline.
+// Such a card leaves the plan's handles unbound.
+// Every later card then keeps referencing an unbound handle for the rest of the plan's life.
 //
 // Before that pass, every suspect path the failed batch recorded is checked at the report's head.
 // A plan file must match the plan as the run recorded it, a tracked path must not differ from the head,
 // and a tracked path must not still hold the flagged blob unless the start commit held it too.
-// A batch recording a finding the check cannot verify never reaches it: RecoverSpawnOrAttach refuses it with ErrRecoveryNeedsFresh.
-// A recovery that leaves any of them fails the batch again with the same suspect paths, so the next recover-batch checks them again.
+// A batch recording a finding the check cannot verify never reaches it:
+// the spawn refuses it with ErrRecoveryNeedsFresh.
+// A recovery that leaves any of them fails the batch again with the same suspect paths,
+// so the next recover-batch checks them again.
 // Accepted residual: a strand whose re-derivation is byte-identical to the flagged content is failed again;
 // the operator's way forward is to revert the path and edit its card.
 //
 // A blocking finding fails the batch through failBatch: the recovery strand said done,
 // but the tree says the card is not, and webster believes the tree.
-// The report is archived, the record is terminal failed, and the *BatchFailedError is returned with the pass's warnings,
-// so the next recover-batch spawns a fresh strand instead of re-attaching to the finished one and failing the same checks forever.
+// The report is archived and the record is terminal failed.
+// The *BatchFailedError is returned with the pass's warnings.
+// The next recover-batch spawns a fresh strand rather than re-attaching to the finished one.
+// Re-attaching would fail the same checks forever.
 //
 // A waiting digest, from a strand that reported NEEDS_PARENT, runs neither the suspect check nor the pass:
 // the batch is recorded waiting with its need and its report archived, and stays in flight.
@@ -659,14 +673,15 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	}
 	number, slug := batchIdentity(batch)
 
-	// A recovery waiting on its parent has not finished, so the suspect check and the pass wait for the strand that resumes it.
+	// A recovery waiting on its parent has not finished,
+	// so the suspect check and the pass wait for the strand that resumes it.
 	if digest.Status == DigestStatusWaiting {
 		return nil, recordWaiting(bs, digest, deps.Geom.ReportsDir, number, slug, time.Now)
 	}
 
 	// The recovery strand's own report carries the head it committed at, already parsed into the digest.
-	// Both verbs reconcile that head against the worktree's HEAD under the merge-only rule and record the batch at the report's head,
-	// so the pass below is fed the same pair of SHAs on either path.
+	// Both verbs reconcile that head against the worktree's HEAD under the merge-only rule.
+	// They record the batch at the report's head, so the pass below is fed the same pair of SHAs on either path.
 	head := digest.HeadSHA
 	if head == "" {
 		head, err = deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
@@ -704,7 +719,8 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return nil, bfe
 	}
 
-	// The pass below restamps the plan hashes, so a plan edited since the run recorded it or since this batch was begun is refused first.
+	// The pass below restamps the plan hashes,
+	// so a plan edited since the run recorded it, or since this batch was begun, is refused first.
 	if err := PlanEditError(st, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
@@ -747,7 +763,8 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
-	// An amendment accepted while this recovery ran fails it whatever its report says, so the next recover-batch re-runs the batch on the amended card.
+	// An amendment accepted while this recovery ran fails it whatever its report says,
+	// so the next recover-batch re-runs the batch on the amended card.
 	if len(amendedReasons(bs)) > 0 {
 		bfe, ferr := failBatch(failBatchInput{
 			State:        st,
@@ -789,8 +806,8 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	return warnings, nil
 }
 
-// awaitTerminal drives one bounded long-poll wait for bs's recovery strand,
-// assembling ClassifyInputs and releasing substrate on terminal.
+// awaitTerminal drives one bounded long-poll wait for bs's recovery strand.
+// Each poll classifies the batch report, the turn ends and the strand's liveness into a digest.
 // Every terminal digest removes the recovery strand if still live, even when the call then refuses;
 // only a done digest also removes the run dir.
 // Cleanup failures are warnings, not fatal errors.
@@ -806,7 +823,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
 
 	// The turn ends are read through the engine the live recovery session ran under;
-	// a record written before engines were recorded lists no session, and reads as an engine-less entry.
+	// a record that lists no session, or no engine for its session, reads as an engine-less entry.
 	var session string
 	if n := len(bs.RecoverySessions); n > 0 {
 		session = bs.RecoverySessions[n-1]
@@ -870,12 +887,13 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		warnings = append(warnings, fmt.Sprintf("recover-batch: stop strand %s: %v", bs.StrandGUID, err))
 	}
 
-	// A merge in progress leaves the batch non-terminal and retryable, like RecordBatch.
+	// A merge in progress leaves the batch non-terminal and retryable.
 	if err := refuseMidMerge(deps.Geom.git(), deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	}
 
-	// An abbreviated head_sha is resolved to the full SHA the run record holds, then cross-checked against worktree's actual HEAD under RecordBatch's merge-only rule.
+	// An abbreviated head_sha is resolved to the full SHA the run record holds.
+	// It is then cross-checked against the worktree's actual HEAD under the merge-only rule.
 	if digest.HeadSHA != "" {
 		if digest.HeadSHA, err = resolveReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, reportPath, digest.HeadSHA); err != nil {
 			return nil, err

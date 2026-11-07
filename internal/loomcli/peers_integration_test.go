@@ -1,4 +1,5 @@
-// peers_integration_test.go drives the real hubPeersDeps closures over a hub forged by hubforge, with pairs added through hubforge.AddPair.
+// peers_integration_test.go drives the real hubPeersDeps closures over a hub forged by hubforge.
+// It adds the pairs through hubforge.AddPair.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -26,8 +27,9 @@ import (
 )
 
 // TestHubPeersDeps_OverRealHub asserts the behaviors of the real closures.
-// A peer's rows are those of its own recipe: its worktree's seed when it is on this machine, else the recipe the board entry seeds.
-// A peer's line lists exactly the paths it committed against its merge base with its parent and flags its decision record.
+// A peer's rows are those of its own recipe:
+// its worktree's seed when it is on this machine, else the recipe the board entry seeds.
+// A peer's line lists the paths it committed against its merge base with its parent and flags its decision record.
 // The caller's parent commits are the parent's two new commits, newest first.
 // A board task with no pair directory lists the pair as unreadable.
 // A peer whose origin record is gone lists its branch as unreadable and is kept.
@@ -47,7 +49,8 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	boardConfig.Path = h.BoardDir()
 	board := boardengine.New(boardConfig)
 	for _, slug := range []string{"caller", "peer", "no-origin", "ghost"} {
-		// The recipe is named, since an entry with none runs the board's default_recipe, darn in the template, which has no Plan-Write row.
+		// The recipe is named, since an entry with none runs the board's default_recipe.
+		// In the template that recipe is darn, which has no Plan-Write row.
 		if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Title of " + slug, "kind": "task", "recipe": shedrun.RecipeTapestry, "labels": []string{"bug"}}); err != nil {
 			t.Fatalf("seed board task %q: %v", slug, err)
 		}
@@ -172,7 +175,8 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 			wantRecipe string
 		}{
 			{"a seed recording darn", boardengine.Task{Slug: "seeded-darn"}, shedrun.RecipeDarn},
-			// The seed wins over the board entry's recipe field, and an empty seed recipe reads as tapestry.
+			// The seed wins over the board entry's recipe field,
+			// and an empty seed recipe reads as tapestry.
 			{"a seed recording no recipe", boardengine.Task{Slug: "seeded-empty", Recipe: shedrun.RecipeDarn}, shedrun.RecipeTapestry},
 			{"no worktree on this machine, a project entry", boardengine.Task{Slug: "off-project", Kind: boardengine.KindProject}, shedrun.RecipePawl},
 			{"no worktree on this machine, a darn entry", boardengine.Task{Slug: "off-darn", Recipe: shedrun.RecipeDarn}, shedrun.RecipeDarn},

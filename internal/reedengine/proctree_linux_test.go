@@ -1,4 +1,5 @@
-// proctree_linux_test.go pins the Linux wiring of the clock tick rate: the host's real auxiliary vector holds an AT_CLKTCK entry that clockTicksFromAuxv picks up.
+// proctree_linux_test.go pins the Linux wiring of the clock tick rate:
+// the host's real auxiliary vector holds an AT_CLKTCK entry that clockTicksFromAuxv picks up.
 
 package reedengine
 

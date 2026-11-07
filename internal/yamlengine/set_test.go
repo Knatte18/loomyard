@@ -1,4 +1,6 @@
-// set_test.go contains table-driven tests for SetValues, covering unknown-key rejection, byte-for-byte round-tripping of tricky values, comment/order preservation, orphan-key preservation, list keys and open maps, and the partial-existing regression case that motivated Card 1's always-mutate-the-template-tree design.
+// set_test.go contains table-driven tests for SetValues.
+// They cover unknown-key rejection, byte-for-byte round-trips of tricky values, and comment and order preservation.
+// They also cover orphan-key preservation, list keys, open maps, and a file holding part of the template.
 
 package yamlengine
 
@@ -30,7 +32,7 @@ var (
 	perNameMappingMaps = []string{"profiles"}
 )
 
-// shapedTier is a decode type a shaped open map takes the shape of.
+// shapedTier is the decode type that a shaped open map takes its shape from.
 // It holds a text key, a number key, a list key, a map of names and a yaml.Node.
 // It also holds an untagged field, a field whose tag holds an option, a field tagged out and an unexported field.
 type shapedTier struct {
@@ -45,7 +47,7 @@ type shapedTier struct {
 	secret     string
 }
 
-// An unexported field is only declared to be left out of the shape, so one write keeps it used.
+// The unexported field is declared only to be left out of the shape, and this line keeps it used.
 var _ = shapedTier{secret: ""}
 
 // shapedOpenMaps shapes tiers as a mapping of names to shapedTier entries and build as one shapedTier.
@@ -74,7 +76,14 @@ func assertDecodesAsInts(t *testing.T, merged []byte, want map[string]*int) {
 	}
 }
 
-// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, a per-name map keeps only the names that differ from the template, and a second call on the merged output reproduces it.
+// TestSetValues pins what a successful SetValues merges:
+// the requested values land byte-for-byte;
+// every other key keeps its existing value or its template default;
+// template comments and key order survive;
+// an orphan top-level key is preserved whole and reported;
+// list keys and open maps are set whole;
+// a per-name map keeps only the names that differ from the template;
+// and a second call on the merged output reproduces it.
 func TestSetValues(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -127,7 +136,7 @@ func TestSetValues(t *testing.T) {
 			inOrder:    []string{"key1: ", "key2: "},
 		},
 		{
-			// The plan-review round-1 regression: a key in the template but absent from a non-empty, partial existing must still be applied rather than silently dropped.
+			// A key that the template has but a non-empty, partial existing lacks must still be applied, not silently dropped.
 			name:       "partial existing does not suppress the set",
 			template:   "key1: default1\nkey2: default2\nkey3: default3\n",
 			existing:   "key1: user_val1\n",
@@ -494,7 +503,10 @@ func TestSetValues(t *testing.T) {
 	}
 }
 
-// TestSetValues_UnknownKeys pins that an unknown key rejects the whole call: Unknown names it, Merged is nil so no partial mutation is observable, and Known lists what was settable.
+// TestSetValues_UnknownKeys pins that an unknown key rejects the whole call:
+// Unknown names it;
+// Merged is nil, so no partial mutation is observable;
+// and Known lists what was settable.
 func TestSetValues_UnknownKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -779,8 +791,10 @@ func TestSetValues_Refusals(t *testing.T) {
 	}
 }
 
-// TestSetValues_WholeOpenMapKeepsLineComment pins that replacing an open map whole keeps the line comment the template carries on it.
-// It stands apart from TestSetValues because a file that already holds the open map does not carry the template's comment, so the second call that table makes would not reproduce the first.
+// TestSetValues_WholeOpenMapKeepsLineComment pins that replacing an open map whole keeps the template's line comment.
+// It is kept out of the table-driven round trip:
+// a file that already holds the open map does not carry the template's comment,
+// so a second call would not reproduce the first.
 func TestSetValues_WholeOpenMapKeepsLineComment(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -793,7 +807,8 @@ func TestSetValues_WholeOpenMapKeepsLineComment(t *testing.T) {
 	}
 }
 
-// TestSetValues_ShapedRefusalRejectsWholeCall pins that a misspelled shaped key after a valid pair rejects the whole call: the error names the key and no merged bytes come back.
+// TestSetValues_ShapedRefusalRejectsWholeCall pins that a misspelled shaped key after a valid pair rejects the call:
+// the error names the key, and no merged bytes come back.
 func TestSetValues_ShapedRefusalRejectsWholeCall(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -807,8 +822,7 @@ func TestSetValues_ShapedRefusalRejectsWholeCall(t *testing.T) {
 	}
 }
 
-// assertMergedKeyValue is a test helper that unmarshals result.Merged into a
-// map and asserts the given top-level key holds want.
+// assertMergedKeyValue asserts that the given top-level key of result.Merged holds want.
 func assertMergedKeyValue(t *testing.T, result SetResult, key, want string) {
 	t.Helper()
 	got := extractYAMLValue(t, result.Merged, key)
@@ -817,7 +831,11 @@ func assertMergedKeyValue(t *testing.T, result SetResult, key, want string) {
 	}
 }
 
-// TestSetEntries pins whole-entry sets: a new entry is appended, an existing one replaced whole with its key's comment kept, the other entries and comments untouched, and a value that is not a JSON object or an empty name refused.
+// TestSetEntries pins whole-entry sets:
+// a new entry is appended;
+// an existing one is replaced whole with its key's comment kept;
+// the other entries and comments are untouched;
+// and a value that is not a JSON object or an empty name is refused.
 func TestSetEntries(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -889,10 +907,9 @@ func TestSetEntries(t *testing.T) {
 	}
 }
 
-// extractYAMLValue is a minimal top-level-key extractor for asserting a
-// single scalar value out of merged YAML bytes without pulling in a full
-// YAML-to-map round-trip (which would normalize quoting and defeat the
-// byte-for-byte assertions this test file makes).
+// extractYAMLValue is a minimal top-level-key extractor for asserting a single scalar value out of merged YAML bytes.
+// It avoids a full YAML-to-map round trip.
+// Such a round trip would normalize quoting and defeat the byte-for-byte assertions this test file makes.
 func extractYAMLValue(t *testing.T, data []byte, key string) string {
 	t.Helper()
 	prefix := key + ": "

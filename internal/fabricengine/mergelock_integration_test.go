@@ -1,11 +1,9 @@
-// mergelock_integration_test.go pins the lifecycle verbs' guard-under-lock ordering: every merge
-// verb must read the merge record and evaluate its preconditions AFTER acquiring the weft write
-// lock (MergeContinue/MergeAbort), or re-verify the record under it (MergeIn/Merge), so nothing a
-// concurrent lock holder does between a verb's guard reads and its lock acquisition can be acted
-// on stale.
-// Each test uses the external-lock-hold pattern TestMerge_PreMergeSyncRunsInsideTheWriteLock
-// established: hold the lock, launch the verb (it must block), mutate the state its pre-lock self
-// would have trusted, release, and assert the verb answers what a strictly sequential run answers.
+// mergelock_integration_test.go pins the guard-under-lock ordering of the lifecycle verbs.
+// MergeContinue and MergeAbort read the merge record only after they acquire the weft write lock.
+// MergeIn and Merge re-verify the record under that lock.
+// Each test holds the lock itself and launches the verb, which must block.
+// It then mutates the state the pre-lock guards would have trusted and releases the lock.
+// The verb must then answer what a strictly sequential run answers.
 
 package fabricengine_test
 
@@ -25,9 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// setupResolvedConflictedMergeIn builds a pair mid-merge on "feature" with the warp-side conflict
-// already resolved and staged — the state where MergeContinue would conclude and MergeAbort would
-// reset — and returns the hub and handle.
+// setupResolvedConflictedMergeIn builds a pair mid-merge on "feature" with the warp-side conflict resolved and staged.
+// The merge is then ready to be concluded or aborted.
+// It returns the hub and the fabric handle.
 func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
 	t.Helper()
 
@@ -48,9 +46,10 @@ func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.
 	return h, f
 }
 
-// launchBlockedOnLock acquires the pair's weft write lock, launches verb on a goroutine, and waits for the verb's own signal that it is about to wait for that lock.
-// It then asserts the verb has not finished, proving its guards ran ahead of the lock and it is parked on it.
-// It returns the held lock and the verb's result channel.
+// launchBlockedOnLock holds the pair's weft write lock while verb runs on a goroutine.
+// It waits until verb signals that it is about to wait for that lock.
+// It then asserts verb has not finished, which shows its guards ran before the lock and that it is parked on it.
+// It returns the held lock and the channel that carries verb's result.
 func launchBlockedOnLock(t *testing.T, f *fabricengine.Fabric, verb func() error) (*lock.FileLock, <-chan error) {
 	t.Helper()
 
@@ -83,7 +82,7 @@ func launchBlockedOnLock(t *testing.T, f *fabricengine.Fabric, verb func() error
 	return held, done
 }
 
-// awaitVerb releases held and waits for the verb launched by launchBlockedOnLock to return.
+// awaitVerb releases held, then waits for the verb's result on done and returns it.
 func awaitVerb(t *testing.T, held *lock.FileLock, done <-chan error) error {
 	t.Helper()
 
@@ -99,12 +98,11 @@ func awaitVerb(t *testing.T, held *lock.FileLock, done <-chan error) error {
 	}
 }
 
-// TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting pins the destructive
-// direction of the guard-under-lock ordering: a MergeAbort that passed its conclude-landed guard
-// and then waited for the lock must NOT act on that stale answer once a concurrent lock holder has
-// concluded the merge and retired the record — the pre-fix behaviour reset both sides (force: true)
-// through the freshly landed conclude commits, destroying the operator's resolutions with nothing
-// left to notice (deleteMergeState tolerates absence).
+// TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting covers a waiting MergeAbort.
+// Its conclude-landed guard ran before the wait, so once it holds the lock it must refuse rather than reset.
+// A concurrent lock holder may conclude the merge and retire the record while MergeAbort waits.
+// A reset would run through the freshly landed conclude commits and destroy the operator's resolutions.
+// Nothing else would catch it, because deleteMergeState tolerates an absent record.
 func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -117,8 +115,8 @@ func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting
 		return abortErr
 	})
 
-	// While MergeAbort waits: the concurrent winner concludes the warp side and retires the record —
-	// what a raced MergeContinue holding this same lock does.
+	// While MergeAbort waits, the lock holder concludes the warp side and retires the record:
+	// the conclude a MergeContinue holding this lock performs.
 	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 	warpConcluded := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
@@ -135,11 +133,10 @@ func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting
 	}
 }
 
-// TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress pins the mirror
-// direction: a MergeContinue that loses the lock race to the concluding winner must answer what a
-// strictly sequential second call answers — *ErrNoMergeInProgress — instead of concluding from its
-// stale record, which pre-fix adopted (and thereby resurrected) a record the winner had retired
-// and answered committed:true.
+// TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress pins the answer to a lost lock race.
+// A MergeContinue that loses the lock race to the concluding winner answers as a sequential second call would:
+// *ErrNoMergeInProgress.
+// Concluding from its stale record would resurrect a record the winner retired and answer committed:true.
 func TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -169,11 +166,11 @@ func TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress
 	}
 }
 
-// TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting pins MergeIn's
-// under-lock record re-check: a record written by another process while MergeIn waited for the
-// lock must refuse the call with the aggregated in-progress guard reason — pre-fix, saveMergeState
-// silently replaced the live record with this call's own source, so its conclude would have landed
-// the other merge's content under this record's name.
+// TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting pins MergeIn's record re-check.
+// A record another process wrote while MergeIn waited for the lock must refuse the call.
+// The refusal carries the aggregated in-progress guard reason.
+// Without this check, saveMergeState would overwrite the live record with this call's own source,
+// and its conclude would land the other merge's content under this record's name.
 func TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -207,9 +204,8 @@ func TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(
 	}
 }
 
-// TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting is the Merge-verb twin
-// of the MergeIn re-check test — Merge's window is wider still, because its pre-merge sync step
-// mutates both checkouts immediately after the acquisition.
+// TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting pins Merge's record re-check.
+// The window is wider here: the pre-merge sync step mutates both checkouts right after the acquisition.
 func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -239,14 +235,11 @@ func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t 
 	}
 }
 
-// TestMergeIn_StartsAreReReadUnderLock pins that the record's pre-merge SHAs are captured under
-// the lock, not before it: a commit landed by the lock's previous holder while MergeIn waited must
-// appear as the recorded start, or MergeAbort would reset straight through it.
-// BOTH sides are driven and BOTH recorded starts are asserted, independently. Asserting the warp
-// side alone left the weft re-read entirely unguarded — deleting it kept the whole integration
-// suite green — and the weft side is not the cheaper half of the pair: a stale WeftStart is what
-// makes MergeAbort hard-reset the weft checkout through a commit the previous lock holder (a
-// concurrent Fabric.Commit, the most plausible one) had already landed there.
+// TestMergeIn_StartsAreReReadUnderLock pins the record's pre-merge SHAs, read under the lock.
+// A commit the lock's previous holder landed while MergeIn waited must be the recorded start.
+// Otherwise MergeAbort would reset straight through it.
+// The test drives both sides and asserts both recorded starts independently.
+// A stale WeftStart makes MergeAbort hard-reset the weft checkout, undoing a concurrent Fabric.Commit.
 func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -266,16 +259,16 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 		return mergeErr
 	})
 
-	// The lock's holder lands a commit on each side's current branch — what a concurrent Commit does —
-	// before this MergeIn gets its turn.
+	// The lock's holder lands a commit on each side's current branch before this MergeIn gets its turn.
+	// That is what a concurrent Commit does.
 	gitkit.CommitFile(t, h.PrimeWorktree(), "landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent commit")
 	gitkit.CommitFile(t, h.PrimeRecords(), "_lym/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
 	landedWarpSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	landedWeftSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
-	// Precondition, asserted rather than assumed: each side really did move while MergeIn waited, or
-	// the "re-read under the lock" and "read before the lock" answers would be indistinguishable and
-	// the assertions below would pass without proving anything.
+	// Precondition, asserted rather than assumed: each side must move while MergeIn waits.
+	// Otherwise the re-read under the lock and the read before it give the same answer,
+	// and the assertions below pass without proving anything.
 	if landedWarpSHA == warpBeforeWait {
 		t.Fatalf("warp HEAD did not move during the wait (still %q); the race this test needs is not present", warpBeforeWait)
 	}
@@ -299,9 +292,8 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	}
 }
 
-// newCleanMergeablePair builds a pair with clean, mergeable "feature"/"feature-weft" branches —
-// the fixture whose MergeIn/Merge would succeed if nothing raced it — and returns the hub and
-// handle.
+// newCleanMergeablePair returns a hub and handle whose "feature" and "feature-weft" branches are clean and mergeable.
+// With nothing racing it, MergeIn and Merge over this pair succeed.
 func newCleanMergeablePair(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
 	t.Helper()
 
@@ -330,12 +322,11 @@ func assertForeignRefusalUnderLock(t *testing.T, f *fabricengine.Fabric, warpDir
 	}
 }
 
-// TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses pins the foreign-state half of
-// recheckMergePreconditionsUnderLock on MergeIn: a human's plain-git merge that conflicts in the
-// warp checkout while MergeIn waits for the lock must refuse as foreign, exactly as a strictly
-// sequential MergeIn over that state does. Pre-fix, only the record was re-checked, so the failing
-// MergeStart read the operator's conflicted entries as THIS merge's own conflicts — fabric wrote a
-// record over, and reported conflicts from, a merge it never started.
+// TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses pins the foreign-state refusal.
+// A plain-git merge by the operator that conflicts in the warp checkout while MergeIn waits must refuse as foreign.
+// A strictly sequential MergeIn over that state refuses it the same way.
+// Without that re-check, MergeStart would read the operator's conflicted entries as this merge's own conflicts.
+// Fabric would then write a record for a merge it never started.
 func TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -358,9 +349,9 @@ func TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) 
 	assertForeignRefusalUnderLock(t, f, h.PrimeWorktree(), statusBefore, held, done)
 }
 
-// TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses is the Merge-verb twin: Merge's
-// pre-merge sync step and MergeStart calls run immediately after the acquisition, so a stale
-// foreign answer there ends in Merge's conflict path force-resetting the operator's merge away.
+// TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses pins that Merge refuses foreign merge state.
+// Its pre-merge sync step and MergeStart run right after the acquisition.
+// A stale foreign answer there would reach Merge's conflict path, which force-resets the operator's merge away.
 func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -404,11 +395,12 @@ func assertGuardDirt(t *testing.T, guardErr *fabricengine.MergeGuardError, wantC
 }
 
 // TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt pins the dirty half of
-// recheckMergePreconditionsUnderLock on MergeIn, on the destructive shape: the mid-wait tracked
-// edit lands on a file the merge source also touches, so pre-fix the MergeStart refusal ("local
-// changes would be overwritten") classified as a genuine error and selfAbortMergeAttempt reset the
-// operator's edit away under force: true. The re-check refuses with the same aggregated reason a
-// strictly sequential MergeIn over a dirty pair reports, and the edit survives.
+// recheckMergePreconditionsUnderLock on MergeIn, on the overlapping shape: the mid-wait tracked
+// edit lands on a file the merge source also touches.
+// A MergeStart refusal on that overlap must not count as a genuine error.
+// Otherwise selfAbortMergeAttempt resets the operator's edit away under force: true.
+// The re-check refuses with the same aggregated reason as a strictly sequential MergeIn over a dirty pair.
+// The edit survives.
 func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -423,7 +415,7 @@ func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *te
 		return mergeErr
 	})
 
-	// While MergeIn waits: the operator edits the very file the merge source modifies, uncommitted.
+	// While MergeIn waits, the operator edits the file the merge source modifies, uncommitted.
 	const dirtyContent = "operator's uncommitted edit\n"
 	writeFileForTest(t, h.PrimeWorktree(), "overlap.txt", dirtyContent)
 
@@ -445,9 +437,9 @@ func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *te
 	}
 }
 
-// TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt is the Merge-verb twin of the
-// dirty re-check test, additionally asserting the refusal fired before the pre-merge sync step
-// recorded anything — the re-check sits between the acquisition and the sync.
+// TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt pins the dirty re-check on Merge.
+// It also asserts that the refusal fires before the pre-merge sync step records anything.
+// The re-check sits between the acquisition and the sync.
 func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

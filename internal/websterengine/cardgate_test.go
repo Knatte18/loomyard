@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// gateTestConfig declares tier0 and tier1 and lists them in the `card` and `batch` keys, tier0 alone in `webster-fix`.
 func gateTestConfig() gateslot.Config {
 	return gateslot.Config{
 		Tiers: map[string]gateslot.Tier{"tier0": {About: "unit"}, "tier1": {About: "integration"}},
@@ -108,7 +107,9 @@ func TestRenderBatchGate(t *testing.T) {
 }
 
 // TestRenameBoundary_BatchesCheckAndGateTheirOwnTree runs the shape a rename-after-create plan has end to end:
-// the cost batchifier splits before the rename, each batch's done-checks read a tree that still holds its own cards' targets, and each batch's gate call names only its own cards.
+// the cost batchifier splits before the rename;
+// each batch's done-checks read a tree still holding its own targets,
+// and each batch's gate call names only its own cards.
 func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

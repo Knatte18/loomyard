@@ -1,4 +1,5 @@
-// prebuild.go builds `lym` once for a tagged harness run, so every test binary the run starts shares the one binary through gateslot.PrebuiltLymEnv.
+// prebuild.go builds `lym` once for a tagged harness run,
+// so every test binary the run starts shares the one binary through gateslot.PrebuiltLymEnv.
 
 package main
 
@@ -14,10 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-// prebuildLym returns the environment every `go test` child of a run takes, base less an inherited gateslot.PrebuiltLymEnv, and the cleanup that removes what the build left.
-// A tagged run builds `<root>/cmd/lym` with goBinary under base and the `-p` cap parallel, and exports the binary through gateslot.PrebuiltLymEnv.
-// The build inherits the slot base names, if any, and acquires none of its own.
-// An untagged run, a `tier0` run, whose tests spawn no `lym`, or a tagged one whose root has no `cmd/lym`, builds nothing.
+// prebuildLym returns the environment for the `go test` children of a run:
+// base without an inherited gateslot.PrebuiltLymEnv.
+// It also returns the cleanup that removes what the build left.
+// A tagged run builds `<root>/cmd/lym` with goBinary under base, passing parallel as its `-p` cap.
+// It exports the binary through gateslot.PrebuiltLymEnv.
+// The build inherits the gate slot's environment and acquires no slot of its own.
+// An offline run, untagged or `tier0`, builds nothing, since its tests spawn no `lym`.
+// A tagged run whose root has no `cmd/lym` builds nothing either.
 // A build failure returns an error carrying the build's output.
 func prebuildLym(goBinary, tags, root string, base []string, parallel int) (env []string, cleanup func(), err error) {
 	env = gateslot.StripPrebuilt(base)

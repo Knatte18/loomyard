@@ -1,4 +1,4 @@
-// discussion.go names the Discussion-Write spawn's role and skills, which DiscussionTable (discussiontable.go) builds its seats from.
+// discussion.go holds the agent role and skill list of the Discussion-Write spawn.
 
 package loomengine
 

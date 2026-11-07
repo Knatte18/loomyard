@@ -1,6 +1,6 @@
-// hubworkspace_integration_test.go drives RegenerateHubWorkspace against hubforge hubs:
-// the folder list and its order, the skip exits, the mutation record, the lock, and the failures that write no file.
-// Shares the single TestMain in testmain_test.go.
+// hubworkspace_integration_test.go drives RegenerateHubWorkspace against hubforge hubs.
+// It covers the folder list and order, the skip exits, the mutation record, the lock, and failures that write no file.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -46,7 +46,7 @@ func readWorkspaceFolders(t *testing.T, path string) []workspaceFolder {
 	return ws.Folders
 }
 
-// regenerateHub runs RegenerateHubWorkspace against h and returns the file's path and the call's record.
+// regenerateHub regenerates the workspace file of h and returns the file's path and the call's mutation record.
 func regenerateHub(t *testing.T, h *hubforge.Hub) (string, *fabricengine.Mutations) {
 	t.Helper()
 	rec := fabricengine.NewMutations(h.Path)
@@ -125,7 +125,8 @@ func addRawWorktree(t *testing.T, h *hubforge.Hub, slug string) {
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "-b", "raw-"+slug, h.PairCodeWorktree(slug))
 }
 
-// removeWorkspaceFile removes the workspace file so a row that asserts a failure writes none can assert it stays absent.
+// removeWorkspaceFile removes the workspace file.
+// A case that asserts a failure writes no file can then assert the file stays absent.
 func removeWorkspaceFile(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	if err := os.Remove(fabricengine.HubWorkspacePath(h.Location)); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -155,9 +156,10 @@ func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 	return false
 }
 
-// TestRegenerateHubWorkspace covers RegenerateHubWorkspace's folder list, skip exits, mutation record, lock and failures.
-// The top level is not parallel: the lock-ordering and log-capture rows touch process-global state (a test hook and the logger output),
-// so they run before the parallel rows are released and no regeneration runs beside them.
+// TestRegenerateHubWorkspace covers the folder list, skip exits, mutation record, lock and failures.
+// The top level is not parallel:
+// the lock-ordering and log-capture cases touch process-global state (a test hook and the logger output),
+// so they run before the parallel cases are released and no regeneration runs beside them.
 func TestRegenerateHubWorkspace(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {

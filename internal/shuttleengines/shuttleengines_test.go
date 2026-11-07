@@ -1,4 +1,6 @@
-// shuttleengines_test.go verifies the registry builds a set from a shuttle config, refuses an unregistered engine from any layer, and stays equal to modelspec's closed engine names.
+// shuttleengines_test.go verifies the engine registry.
+// It builds the set from a shuttle config and refuses an unregistered engine from any layer.
+// It also keeps the set equal to modelspec's closed engine names.
 
 package shuttleengines
 
@@ -57,7 +59,8 @@ func loadWithLocalEngine(t *testing.T) shuttleengine.Config {
 }
 
 // invalidClaudeConfigFixture builds a temp anchor whose claude.local.yaml holds a key the local layer refuses.
-// The anchor's shuttle.local.yaml holds two prompt-cache roles, and the fixture returns the shuttle config loaded over it.
+// The anchor's shuttle.local.yaml holds two prompt-cache roles,
+// and the fixture returns the shuttle config loaded over it.
 func invalidClaudeConfigFixture(t *testing.T) (shuttleengine.Config, configengine.Dirs) {
 	t.Helper()
 	anchor := t.TempDir()
@@ -192,7 +195,8 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// TestNames_EqualModelspecEngineNames pins that the registry and modelspec's closed set name the same engines, and that modelspec hands out a copy.
+// TestNames_EqualModelspecEngineNames pins that the registry and modelspec's closed set name the same engines,
+// and that modelspec hands out a copy.
 func TestNames_EqualModelspecEngineNames(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -208,7 +212,8 @@ func TestNames_EqualModelspecEngineNames(t *testing.T) {
 	}
 }
 
-// TestEnvScrub_MatchesTmuxkitServerEnviron pins the registered engines' scrub against the kit's server-environment filter, and the union over several entries as sorted and deduplicated.
+// TestEnvScrub_MatchesTmuxkitServerEnviron pins every engine's scrub against the kit's server-environment filter.
+// It also pins the union over several entries as sorted and deduplicated.
 func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -250,7 +255,7 @@ func (namingEngine) SessionIdle(string) bool { return false }
 
 func (namingEngine) RenameText(want string) string { return want }
 
-// TestSessionNamers pins that the claude tag and the empty tag both map to the claude engine and no other tag is present,
+// TestSessionNamers pins that the claude and empty tags both map to the claude engine and no other tag is present,
 // and that namersOf maps only the engines that implement a session namer.
 func TestSessionNamers(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -337,7 +342,8 @@ func TestRecordReaders(t *testing.T) {
 	}
 }
 
-// TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does, that the codex entry renders one and wakes an idle session itself, and that an unknown name renders none.
+// TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does.
+// The codex entry renders one and wakes an idle session itself; an unknown name renders none.
 func TestToolBoundaryRenderer(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -360,7 +366,8 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	}
 }
 
-// TestBatchingNudger pins that the claude entry has the batching nudge, silent for a run with no state file, and that an unknown name has none.
+// TestBatchingNudger pins that the claude entry has the batching nudge, silent for a run with no state file,
+// and that an unknown name has none.
 func TestBatchingNudger(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -379,7 +386,8 @@ func TestBatchingNudger(t *testing.T) {
 	}
 }
 
-// TestConfigModules_ClaudeCheckLoad pins that the claude module's load check passes the template and refuses a keep-warm cap or a batching threshold a run start would refuse.
+// TestConfigModules_ClaudeCheckLoad pins that the claude module's load check passes the template.
+// It also pins that the check refuses a keep-warm cap or a batching threshold a run start would refuse.
 func TestConfigModules_ClaudeCheckLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

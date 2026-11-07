@@ -1,4 +1,5 @@
-// twill.go renders the twill lens review directive of the Discussion-Write and Plan-Write prompts, filled with the host's own values and the lenses of its fan.
+// twill.go renders the twill lens review directive of the Discussion-Write and Plan-Write prompts.
+// It fills the directive with the host's own values and the lenses of its fan.
 
 package loomengine
 
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	// planTwillSpawnOverride and planTwillSpawnForkLine open and close the Plan-Write host's spawn point, which the two spawn-point texts below share.
+	// planTwillSpawnOverride opens and planTwillSpawnForkLine closes both Plan-Write spawn-point texts below.
 	// The opening overrides the plan template's opening line, which says the producer has no review logic of its own.
 	planTwillSpawnOverride = "This lens review is the one review step you run on your own plan: it overrides this prompt's opening line, which says you have no review logic of your own.\n"
 	planTwillSpawnForkLine = "Add this line to every lens fork's prompt, after the fork boilerplate and before its lens text, as the one addition to it: \"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.\""
@@ -44,8 +45,9 @@ const (
 )
 
 // twillLenses returns the lenses of the named fan, resolved against lenses.yaml's layer stack under dirs.
-// key is the key in module's config file that names the fan, and the errors carry both:
-// an unreadable lenses.yaml, a fan that is undefined or holds no lenses, and a fan naming an undefined lens are each refused naming the key and the way forward.
+// key is the key in module's config file that names the fan, and each error names it with the way forward.
+// Three cases are refused: an unreadable lenses.yaml; a fan that is undefined or holds no lenses;
+// or a fan naming an undefined lens.
 func twillLenses(dirs configengine.Dirs, fan, module, key string) ([]twilldirective.Lens, error) {
 	lensesConfig, err := lenses.Load(dirs)
 	if err != nil {
@@ -62,10 +64,15 @@ func twillLenses(dirs configengine.Dirs, fan, module, key string) ([]twilldirect
 	return fanLenses, nil
 }
 
-// planLensDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the named fan, resolved through lenses.yaml's layer stack under dirs.
-// The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file and saves each fork's report beside it, in the format of the spec deployed under specsDir.
+// planLensDirective returns the twill directive for the Plan-Write lead's prompt.
+// It fills the directive with the plan host's values.
+// The lenses are the named fan's, resolved through lenses.yaml's layer stack under dirs.
+// The forks review the overview and every card file its Card Index names.
+// The writer records the lens review in the plan directory's lens review file.
+// It saves each fork's report beside it, in the format of the spec deployed under specsDir.
 // A fan that does not resolve is refused naming the plan_lenses key.
-// With fixerOn set a cold fixer clears the plan gate's findings, so the writer is told to run no validator: the spawn point drops the validator's pass and the directive carries no self-check command.
+// With fixerOn set, a cold fixer clears the plan gate's findings, so the writer is told to run no validator.
+// The spawn point drops the validator's pass, and the directive carries no self-check command.
 func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string, fixerOn bool) (string, error) {
 	fanLenses, err := twillLenses(dirs, fan, tapestryModule, planLensesKey)
 	if err != nil {
@@ -107,8 +114,10 @@ func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencils
 // discussionLensDirective returns the twill directive for the Discussion-Write prompt.
 // The lenses come from the named fan, resolved against lenses.yaml's layer stack under dirs.
 // The writer saves each fork's report beside the support log, in the format of the spec deployed under specsDir.
-// An unreadable lenses.yaml, or a fan that does not resolve, is refused naming the discussion_lenses key and the way forward.
-// With fixerOn set a cold fixer clears the discussion gate's findings, so the spawn point drops the validator's pass and the directive carries no final self-check.
+// An unreadable lenses.yaml, or a fan that does not resolve, is refused.
+// The error names the discussion_lenses key and the way forward.
+// With fixerOn set, a cold fixer clears the discussion gate's findings,
+// so the spawn point drops the validator's pass, and the directive carries no final self-check.
 func discussionLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string, fixerOn bool) (string, error) {
 	fanLenses, err := twillLenses(dirs, fan, loomModule, discussionLensesKey)
 	if err != nil {
@@ -137,7 +146,8 @@ func discussionLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, st
 	})
 }
 
-// selfCheckBlock returns the body of a writer prompt's self-check step, read at call time from stencilsDir: the gated fragment when a cold fixer clears the writer's gate, otherwise the ungated one.
+// selfCheckBlock returns the body of a writer prompt's self-check step, read at call time from stencilsDir.
+// It is the gated fragment when a cold fixer clears the writer's gate, and the ungated one otherwise.
 func selfCheckBlock(stencilsDir string, fixerOn bool, ungatedStencil, gatedStencil string) (string, error) {
 	name := ungatedStencil
 	if fixerOn {

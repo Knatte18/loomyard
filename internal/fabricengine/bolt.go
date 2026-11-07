@@ -1,5 +1,5 @@
-// bolt.go defines Bolt, the handle over the unpaired weft:main area (today consumed only by the Bolt checkout).
-// It names that area as a self-contained unit through Commit/CommitWritten/Push/Sync,
+// bolt.go defines Bolt, the handle over the unpaired weft:main area of a repo.
+// It exposes that area as a self-contained unit through Commit/CommitWritten/Push/Sync,
 // so a caller outside this package never has to spell "weft" to reach it.
 
 package fabricengine
@@ -19,8 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// Bolt is a handle over a single weft:main-backed repo path with no paired warp side — the
-// exception to fabric's one-repo illusion.
+// Bolt is a handle over a single weft:main-backed repo path with no paired warp side.
 // It never constructs any geometry token itself.
 type Bolt struct {
 	path string
@@ -31,16 +30,17 @@ func NewBolt(repoPath string) *Bolt {
 	return &Bolt{path: repoPath}
 }
 
-// Commit stages and commits every change in the Bolt's repo under message, with no warp trailer and
-// no correspondence recording.
-// It first seeds the repo's git excludes for the weft's never-tracked artifacts, so machine-local scratch under a .lym directory is never staged, whichever command seeded the repo before.
+// Commit stages and commits every change in the Bolt's repo under message.
+// It adds no warp trailer and records no correspondence.
+// Commit first seeds the repo's git excludes for the weft's never-tracked artifacts.
+// Machine-local scratch under a .lym directory is then never staged, whichever command seeded the repo before.
 func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed bool, err error) {
 	return commitWeftAt(b.path, message, opts)
 }
 
 // CommitWritten runs write under the board write lock and commits exactly the repo-relative paths write returns,
 // so unrelated dirty files in the repo stay for the next sync.
-// The lock is released only after the commit, so a concurrent whole-repo Commit never captures a half-written file.
+// The lock is released only after the commit, so no concurrent commit captures a half-written file.
 //
 // A write error is returned unwrapped and nothing is committed.
 // An empty path list commits nothing and returns committed == false.
@@ -82,8 +82,11 @@ func (b *Bolt) acquireWriteLock() (*lock.FileLock, error) {
 	return l, nil
 }
 
-// stageablePaths returns the paths, relative to the repo at root, that git can stage: each one on disk, and each missing one HEAD's tree holds, whose deletion it stages.
-// git add refuses a path that matches nothing, so a missing path HEAD does not hold, such as a name a stale local manifest kept after a pull removed the file, is left out.
+// stageablePaths returns the paths, relative to the repo at root, that git can stage.
+// A path on disk is stageable.
+// A missing path is stageable only when HEAD's tree holds it, and then its deletion is staged.
+// git add refuses a path that matches nothing, so a missing path that HEAD does not hold is left out.
+// That covers a name a stale local manifest kept after a pull removed the file.
 // An unborn HEAD holds no path.
 // Paths are file paths: a path HEAD holds as a directory is not recognised as held.
 func stageablePaths(repo *gitrepo.Repo, root string, paths []string) ([]string, error) {
@@ -112,8 +115,8 @@ func stageablePaths(repo *gitrepo.Repo, root string, paths []string) ([]string, 
 	return stageable, nil
 }
 
-// Push pushes any unpushed commits in the Bolt's repo, replaying them onto a moved origin as PushRecorded does.
-// A seed-commit drop of that replay is logged at Info, since a caller without a mutation record has nowhere else to show it.
+// Push pushes any unpushed commits in the Bolt's repo, replaying them onto origin when origin rejects the push.
+// Dropped seed commits are logged at Info, since a caller without a mutation record has nowhere else to see them.
 func (b *Bolt) Push(opts SyncOptions) error {
 	rec := NewMutations(filepath.Dir(b.path))
 	err := b.PushRecorded(opts, rec)
@@ -126,10 +129,13 @@ func (b *Bolt) Push(opts SyncOptions) error {
 }
 
 // PushRecorded pushes any unpushed commits in the Bolt's repo rebase-free and records what a replay of them does in rec.
-// A push origin rejects is retried after the board's local commits are replayed onto origin's, under the board write lock and then the push lock;
-// the replay retry runs again over the push backoff while it fails with a bare rejection or an error no class names, and a rejection that outlasts the backoff is recorded.
+// When origin rejects the push, the board's local commits are replayed onto origin's.
+// The replay runs under the board write lock and then the push lock.
+// The replay retry runs again over the push backoff while it fails with a bare rejection or an error no class names,
+// and a rejection that outlasts the backoff is recorded.
 // The replay drops the seed commits, and an entry only one side changed never conflicts.
-// A held board write lock or an uncommitted change on a path the replay touches defers the push to the next one and returns nil.
+// A held board write lock defers the push to the next one and returns nil.
+// An uncommitted change on a path the replay touches does the same.
 // A failed push is recorded as a failed push and returned as a *PushFailedError.
 // A push honoring SkipGit or SkipPush does nothing.
 func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
@@ -149,7 +155,8 @@ func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
 	return coalescePush(lockPath, step)
 }
 
-// HasUpstream reports whether the Bolt's current branch has an upstream configured, read from local config without contacting the remote.
+// HasUpstream reports whether the Bolt's current branch has an upstream configured.
+// It reads local config and does not contact the remote.
 func (b *Bolt) HasUpstream() (bool, error) {
 	_, err := gitrepo.New(b.path).UpstreamSHA()
 	if errors.Is(err, gitrepo.ErrNoUpstream) {
@@ -158,7 +165,8 @@ func (b *Bolt) HasUpstream() (bool, error) {
 	return err == nil, err
 }
 
-// HasUnpushed reports whether the Bolt's current branch is ahead of its upstream as last fetched, read from local state without contacting the remote.
+// HasUnpushed reports whether the Bolt's current branch is ahead of its upstream as last fetched.
+// It reads local state and does not contact the remote.
 // A branch with no upstream counts as ahead.
 func (b *Bolt) HasUnpushed() (bool, error) {
 	return gitrepo.New(b.path).HasUnpushed()
@@ -183,14 +191,16 @@ const (
 	BoltSkipDirty BoltSkip = "dirty"
 )
 
-// BoltWrite is one write PullThenCommitWritten runs: Write returns the board-relative paths it wrote or deleted, committed under Message.
+// BoltWrite is one write and the commit message for its paths.
+// Write returns the board-relative paths it wrote or deleted, and they are committed under Message.
 type BoltWrite struct {
 	Message string
 	Write   func() ([]string, error)
 }
 
-// BoltWriteResult reports what PullThenCommitWritten did.
-// SHAs lists the landed commits in order, Committed is true when any landed, and a non-empty Skipped means no write ran, with SkipDetail naming the way forward.
+// BoltWriteResult reports the outcome of a pull-first write sequence.
+// SHAs lists the landed commits in order, and Committed is true when any landed.
+// A non-empty Skipped means no write ran, and SkipDetail names the way forward.
 type BoltWriteResult struct {
 	MutationRecord
 	SHAs       []string
@@ -199,14 +209,17 @@ type BoltWriteResult struct {
 	SkipDetail string
 }
 
-// PullThenCommitWritten brings Bolt up to date with its upstream, then runs each write in order and commits each one's paths as its own commit.
-// It is CommitWritten's pull-first sibling for callers that must not write over a stale copy: when Bolt cannot be brought up to date, nothing is written and the result's Skipped says why.
-// Bolt without an upstream writes as CommitWritten does.
+// PullThenCommitWritten brings Bolt up to date with its upstream.
+// It then runs each write in order and commits each one's paths as its own commit.
+// Callers that must not write over a stale copy use it.
+// When Bolt cannot be brought up to date, nothing is written and the result's Skipped says why.
+// With no upstream there is nothing to pull, and the writes run.
 //
 // The board write lock is held across the pull and every write.
 // A write or commit error stops the sequence and is returned with the commits already landed kept in the result.
 // An empty path list commits nothing.
-// A path that no longer exists stages its deletion and is not recorded as a written file, and one HEAD does not hold either is left out of the commit.
+// A path that no longer exists stages its deletion and is not recorded as a written file.
+// A path HEAD does not hold either is left out of the commit.
 // It never pushes.
 func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
 	l, err := b.acquireWriteLock()
@@ -258,8 +271,10 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 	return res, nil
 }
 
-// Pull brings Bolt up to date with its upstream under the board write lock, recording in rec what moved, and writes nothing.
-// A Bolt that cannot be brought up to date, such as a dirty or diverged one, returns a non-empty skip with a detail naming the way forward.
+// Pull brings Bolt up to date with its upstream under the board write lock.
+// It records in rec what moved and writes nothing.
+// A dirty or diverged Bolt cannot be brought up to date:
+// it returns a non-empty skip with a detail naming the way forward.
 // A Bolt with no upstream, and a pull honoring SkipGit, does nothing.
 func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) {
 	if opts.SkipGit {
@@ -273,13 +288,16 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 	return b.pullFirst(rec)
 }
 
-// pullFirst brings Bolt up to date with its upstream and reports why it could not, as a skip with a detail naming the way forward.
+// pullFirst brings Bolt up to date with its upstream.
+// When it cannot, it returns a skip with a detail naming the way forward.
 // The caller holds the board write lock.
 // pullFirst also holds the board checkout's push lock for its whole run, taken after the board write lock.
-// A coalesced push rebases the board under that lock and never takes the write lock, so without it a push could rebase the board mid-drop.
+// A coalesced push rebases the board under that lock and never takes the write lock.
+// Without that lock, a push could rebase the board mid-drop.
 //
 // A Bolt with no upstream is left alone.
-// Commits ahead of a moved upstream are replayed onto it by entry, the commits of an entry origin has ended set aside and seed commits dropped;
+// Commits ahead of a moved upstream are replayed onto it by entry;
+// commits of an entry that origin has ended are set aside, and seed commits are dropped;
 // a Bolt only behind is fast-forwarded.
 // A replay that stops on a conflict skips as diverged, and one an uncommitted change blocks skips as dirty.
 // Each skip is logged at Warn here, once, so no caller repeats the text.
@@ -351,8 +369,10 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 	}
 }
 
-// endedByOrigin reads which of the runs the local commits ahead of upstream change origin has ended, and the hub location the replay reads this machine's landing state through.
-// It returns no location and an empty set when none is ended, and when the hub's location cannot be resolved, since a doubt never sets aside this machine's own commits.
+// endedByOrigin reads which of the runs the local commits ahead of upstream change origin has ended.
+// It also returns the hub location the replay reads this machine's landing state through.
+// It returns no location and an empty set when none is ended, and when the hub's location cannot be resolved:
+// a doubt never sets aside this machine's own commits.
 func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []string) (*lymcwd.Location, EndedSet, error) {
 	slugs, created, err := localLedgerRuns(repo, head, ahead)
 	if err != nil || len(slugs) == 0 {
@@ -408,7 +428,9 @@ func (b *Bolt) divergedDetail(repo *gitrepo.Repo, conflicts, localCommits []stri
 		b.path, recordsConflictWayForward(b.path, branch, conflicts, localCommits, pushStep(FailedPush{Repo: failedPushSideBolt})))
 }
 
-// seedCommitsAhead splits ahead, a list of commits, into the ones IsSeedCommit admits and the rest, each in ahead's order, and returns the sorted union of the paths every commit in ahead changes.
+// seedCommitsAhead splits ahead, a list of commits, into seed commits and the rest, each in ahead's order.
+// Each commit is judged by its message and changed paths.
+// It returns the sorted union of the paths every commit in ahead changes.
 func seedCommitsAhead(repo *gitrepo.Repo, ahead []string) (seed, other, touched []string, err error) {
 	for _, sha := range ahead {
 		detail, err := repo.CommitDetail(sha)

@@ -1,6 +1,6 @@
-// coalesce_test.go covers coalescePush's loop-exit contract with scripted step closures: no real
-// git is spawned, only a flock on a t.TempDir() path, so this file stays untagged per the Test Tier
-// Purity Invariant.
+// coalesce_test.go covers coalescePush's loop-exit contract with scripted step closures.
+// No real git is spawned, only a flock on a t.TempDir() path,
+// so this file stays untagged under the Test Tier Purity Invariant.
 
 package fabricengine
 
@@ -21,11 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestCoalescePush_LoopsWhileProgressed asserts the loop-exit contract: a step returning
-// progressed=true a fixed number of times before returning false runs exactly one more time than
-// the number of true returns (the final, no-progress call that ends the loop), and a step that
-// reports no-progress on its very first call runs exactly once — proving the loop does not spin
-// depending on any external "still unpushed" signal, only on step's own return value.
+// TestCoalescePush_LoopsWhileProgressed asserts the loop-exit contract.
+// A step returning progressed=true a fixed number of times, then false, runs one more time than it returned true;
+// the final no-progress call ends the loop.
+// A step that reports no progress on its first call runs exactly once.
+// The loop depends only on the step's own return value, never on an external "still unpushed" signal.
 //
 //testtiming:keep coalescePush's loop-exit contract driven only by the step's own progressed return; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
@@ -59,9 +59,8 @@ func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 	}
 }
 
-// TestCoalescePush_StepErrorAbortsImmediately asserts a step returning a non-nil error stops the
-// loop on that call — no further step calls — and coalescePush returns that exact error to the
-// caller.
+// TestCoalescePush_StepErrorAbortsImmediately asserts a step returning a non-nil error stops the loop on that call.
+// No further step call runs, and coalescePush returns that exact error to the caller.
 func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 	tiergate.Require(t, 0)
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
@@ -82,9 +81,8 @@ func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 	}
 }
 
-// TestCoalescePush_ReleasesLockOnReturn asserts coalescePush releases its absorbing lock before
-// returning: a second, independent AcquireWriteLock on the same path must succeed without blocking
-// once coalescePush has returned.
+// TestCoalescePush_ReleasesLockOnReturn asserts coalescePush releases its absorbing lock before returning:
+// a second, independent lock.AcquireWriteLock on the same path succeeds without blocking after the return.
 //
 //testtiming:keep coalescePush releasing its absorbing lock before it returns; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePush_ReleasesLockOnReturn(t *testing.T) {
@@ -105,7 +103,8 @@ func TestCoalescePush_ReleasesLockOnReturn(t *testing.T) {
 	}
 }
 
-// pendingFlagFixture is a hub holding one records worktree and its paired code worktree, with the records worktree's lock directory created.
+// pendingFlagFixture is a hub holding one records worktree and its paired code worktree.
+// The records worktree's lock directory exists.
 type pendingFlagFixture struct {
 	hub      string
 	records  string
@@ -143,7 +142,8 @@ func newPendingFlagFixture(t *testing.T) pendingFlagFixture {
 }
 
 // TestPushDeferral_PutsBackTheUnpushedFlags covers the deferral a detached push child installs:
-// every owed side not yet pushed gets its flag back with its path and slugs, a pushed side's flag stays off, and the exit runs once.
+// every owed side not yet pushed gets its flag back with its path and slugs;
+// a pushed side's flag stays off, and the exit runs once.
 func TestPushDeferral_PutsBackTheUnpushedFlags(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

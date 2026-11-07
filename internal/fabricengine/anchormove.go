@@ -1,5 +1,5 @@
 // anchormove.go moves a weft worktree's content from one anchor to another in one commit.
-// It is the one step a change of an existing worktree's anchor and the creation of a worktree at an anchor share.
+// It is the step that changing an existing worktree's anchor and creating a worktree at an anchor have in common.
 
 package fabricengine
 
@@ -17,7 +17,8 @@ import (
 )
 
 // anchorFailHook, nil in production, stands in for a failure of the move's commit or of the integration's branch move.
-// It is called with afterCommit false just before the commit or the branch move, and with afterCommit true just after; an error it returns is that failure.
+// It is called with afterCommit false before the commit or the branch move, and with afterCommit true after it.
+// An error it returns is that failure.
 // A test that sets it must not be parallel.
 var anchorFailHook func(afterCommit bool) error
 
@@ -35,11 +36,14 @@ func runAnchorFailHook(afterCommit bool) error {
 	return anchorFailHook(afterCommit)
 }
 
-// moveWeftContent moves the tracked content of each wired name in names from under the anchor from to under the anchor to in the weft worktree at weftPath.
-// It renames from/.lym to to/.lym when it exists, and then writes the marker to last through an os.Root at weftPath.
+// moveWeftContent moves the tracked content of each wired name in names from anchor `from` to anchor `to`.
+// It works in the weft worktree at weftPath.
+// It renames `from/.lym` to `to/.lym` when it exists.
+// Then it writes the anchor marker holding `to` through an os.Root at weftPath.
 // All of it is committed in one weft commit spanning from/<names>, to/<names> and the root marker.
 // The caller holds the weft write lock.
-// A name that is not tracked under from is left alone, and a path already standing where a name or `.lym` would land is refused before anything moves.
+// A name that is not tracked under from is left alone,
+// and a path already standing where a name or `.lym` would land is refused before anything moves.
 // A failure before the commit returns committed false and leaves the staged and moved paths for the caller to restore;
 // a failure after it, from reading the commit or from the hook, returns committed true beside the error.
 func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) (bool, error) {

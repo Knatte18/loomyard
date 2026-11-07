@@ -1,11 +1,9 @@
-// devbin.go derives the single, non-hardcoded location where dev/test builds of the lym binary are
-// installed and resolved from: a `.dev-bin` directory sitting at the repository root.
-// Every consumer (the deploy tool, the sandbox launcher) imports this package instead of deriving
-// the repo root or the `.dev-bin` convention itself, so they can never disagree on where the dev
-// binary lives.
+// devbin.go derives where dev and test builds of the lym binary are installed and resolved from.
+// The location is a `.dev-bin` directory at the repository root.
+// Consumers import this package instead of deriving the root or directory name, so they all resolve the same binary.
 
-// Package devbin locates the repository root and the derived `.dev-bin` directory used to install
-// and resolve dev/test builds of lym, keeping that derivation in exactly one place in the codebase.
+// Package devbin locates the repository root and the `.dev-bin` directory for dev and test builds of lym.
+// It holds the derivation in one place, so every caller computes the same path.
 package devbin
 
 import (
@@ -17,9 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// RepoRoot returns the repository root directory, derived from this source file's location via runtime.Caller.
-// A `-trimpath` build, which every gate run makes, records that location module-relative.
-// RepoRoot then answers the nearest directory holding go.mod at or above the working directory, since `go run` from the repository root and a test binary in its package directory both start inside the module.
+// RepoRoot returns the repository root directory.
+// It takes the root from this source file's absolute path when the build records one.
+// A `-trimpath` build, which every gate run makes, records a module-relative path instead.
+// RepoRoot then falls back to the nearest directory holding go.mod at or above the working directory.
+// Both `go run` from the repository root and a test binary in its package directory start inside the module.
 func RepoRoot() (string, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {

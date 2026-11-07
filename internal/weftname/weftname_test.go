@@ -1,7 +1,6 @@
-// weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base
-// combinations,
-// and locks in the relationship between them that gitkit's fixture builders rely on, so the two
-// on-disk shapes can never independently drift.
+// weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base combinations.
+// It locks in the relationship between them that gitkit's fixture builders rely on,
+// so the two on-disk shapes can never independently drift.
 
 package weftname_test
 
@@ -13,9 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestSiblingPaths covers SiblingPath's and BareSiblingPath's container/base joins over a range of path shapes, including a nested container and a multi-segment base.
-// Every row also asserts the relationship gitkit's fixture builders depend on: a weft sibling's bare-remote fixture name is SiblingPath's own result with "-bare" appended, never an independently-derived literal.
-// That is the drift BareSiblingPath exists to prevent between production geometry and the on-disk shape test fixtures must reproduce for the same input.
+// TestSiblingPaths covers the container/base joins of SiblingPath and BareSiblingPath over a range of path shapes.
+// The shapes include a nested container and a multi-segment base.
+// Every row also asserts that a weft sibling's bare-remote fixture name is SiblingPath's result with "-bare" appended.
+// Fixtures must not use an independently derived literal:
+// they must reproduce production's on-disk shape for the same input.
 func TestSiblingPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

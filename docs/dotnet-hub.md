@@ -1,18 +1,28 @@
 # Setting up a .NET hub
 
-This guide sets a hub's `gate.yaml` up so a card, batch or diff gate builds once and tests only the classes it touches, and only the landing gates run the whole solution.
-Its worked example is the Models repository, a .NET solution with fast tests, gated tests behind MSBuild properties and a numerical-baseline project.
+This guide sets a hub's `gate.yaml` up so a card, batch or diff gate builds once and tests only the classes it touches,
+and only the landing gates run the whole solution.
+Its worked example is the Models repository, a .NET solution.
+It has fast tests, gated tests behind MSBuild properties and a numerical-baseline project.
 Project names below are examples, so use the hub's own.
 
 ## The dotnet scoper
 
-`scoper: dotnet` makes a computed, `--base` or `--card` scope the test projects and test classes a change can reach, derived from C# source alone by `internal/dotnetimpact`.
-The derivation takes the changed `.cs` files and the types they declare, closes that set over every file whose identifiers name a type already in it, and selects each test class whose file is in the closure.
-A tier whose command holds `{targets}` then runs once per selected test project, with the project as `{targets}` and the selected classes in `{filter}`.
+`scoper: dotnet` makes a computed, `--base` or `--card` scope the test projects and test classes a change can reach.
+`internal/dotnetimpact` derives them from C# source alone.
+The derivation takes the changed `.cs` files and the types they declare.
+It closes that set over every file whose identifiers name a type already in it.
+It then selects each test class whose file is in the closure.
+A tier whose command holds `{targets}` then runs once per selected test project.
+The project is `{targets}` and the selected classes are `{filter}`.
 A change the derivation cannot reason about runs whole, naming the reason on stderr:
-a `.csproj`, `.props`, `.targets`, `.sln`, `global.json`, `nuget.config` or `.resx` change, a `.cs` file outside the tier's `dir`, a `.cs` file that declares no type, or a test class with no single `.csproj` above it.
 
-Bound: the closure misses a reference that never spells a type's name, such as a reflection lookup by a computed string.
+- a `.csproj`, `.props`, `.targets`, `.sln`, `global.json`, `nuget.config` or `.resx` change
+- a `.cs` file outside the tier's `dir`
+- a `.cs` file that declares no type
+- a test class with no single `.csproj` above it
+
+Bound: the closure misses a reference that never spells a type's name, such as a reflection lookup by a computed name.
 The whole gates catch those, which is why the gate keys below keep the whole solution at landing.
 
 The `dotnet` scoper plans no guard step and no vet step, and `--guards` is refused under it.
@@ -35,19 +45,28 @@ tiers:
 
 `{targets}` renders the selected test project, or the tier's `all_targets` for a whole run.
 `{filter}` renders as `--filter <expression>`, quoted for the platform shell.
-Under a narrowed scope the expression is the tier's `filter` ANDed with the selected classes, and for a whole run it is the tier's `filter` alone, so `{filter}` renders empty for a tier with none.
+Under a narrowed scope the expression is the tier's `filter` ANDed with the selected classes,
+and for a whole run it is the tier's `filter` alone,
+so `{filter}` renders empty for a tier with none.
 A `filter` is allowed only when the command holds `{filter}`.
-A landing tier uses its `filter` only to exclude categories, such as `Category!=Slow`, since it applies at whole scope too and a filter that matches no test passes the tier vacuously and writes a green entry later gates carry.
+A landing tier uses its `filter` only to exclude categories, such as `Category!=Slow`.
+The filter applies at whole scope too,
+and a filter that matches no test passes the tier vacuously and writes a green entry that later gates carry.
 
-`shared_build: true` makes the tier depend on the hub's `build` step, which lym runs once per call before it, so the tier's command carries `--no-build`.
+`shared_build: true` makes the tier depend on the hub's `build` step, which lym runs once per call before it,
+so the tier's command carries `--no-build`.
 A command without `--no-build` builds again inside its own run, since lym does not read the command.
 
-A selected class that the tier's `filter` excludes entirely, or a project the tier does not run as a test project, runs no test and passes.
-On Microsoft.Testing.Platform a session that ran zero tests exits 8, so put `--ignore-exit-code 8` in the command of every tier that holds `{filter}`, or `TESTINGPLATFORM_EXITCODE_IGNORE: "8"` in its `env`.
+A selected class that the tier's `filter` excludes entirely runs no test and passes.
+So does a project the tier does not run as a test project.
+On Microsoft.Testing.Platform a session that ran zero tests exits 8.
+So put `--ignore-exit-code 8` in the command of every tier that holds `{filter}`.
+Alternatively set `TESTINGPLATFORM_EXITCODE_IGNORE: "8"` in the tier's `env`.
 
 ## The build step
 
-`build` is the one build a call runs for every tier with `shared_build`, inside the slots of the first such tier whose run takes slots:
+`build` is the one build a call runs for every tier with `shared_build`.
+It runs inside the slots of the first such tier whose run takes slots:
 
 ```yaml
 build:
@@ -56,17 +75,23 @@ build:
   timeout_min: 30
 ```
 
-It builds the whole solution whatever the tiers' scopes, and relies on MSBuild's incremental up-to-date checks for the projects a change did not touch.
-It restores implicitly, so there is no separate restore step: NuGet's no-op restore does real work only when a project file or package reference changed.
-The properties on the command make the gated and baseline projects test projects, so the tiers' `--no-build` runs find them built.
+It builds the whole solution whatever the tiers' scopes.
+It relies on MSBuild's incremental up-to-date checks for the projects a change did not touch.
+It restores implicitly, so there is no separate restore step:
+NuGet's no-op restore does real work only when a project file or package reference changed.
+The properties on the command make the gated and baseline projects test projects,
+so the tiers' `--no-build` runs find them built.
 lym adds no switch to the command, and the words after `--` never reach it.
 Its output passes into the call's output and its own log.
 `build` has its own `timeout_min`, counted from the slot hold, and the tier's `timeout_min` starts after the build.
 
-A scope whose changes no test class names still runs the build inside the first `shared_build` tier's slots and runs no test command in that tier, so a compile break fails the gate.
+A scope whose changes no test class names still runs the build inside the first `shared_build` tier's slots.
+It runs no test command in that tier, so a compile break fails the gate.
 A tier that does not opt in runs whole.
 A call whose opted-in tiers are all carried, or whose scope is empty, runs no build.
-A failed or timed-out build fails every opted-in tier of the call without running its command, naming the build's log, and the call exits with the build's code, or 1 for a timeout.
+A failed or timed-out build fails every opted-in tier of the call without running its command.
+Each failure names the build's log.
+The call exits with the build's code, or 1 for a timeout.
 
 ## Inert paths
 
@@ -77,7 +102,8 @@ inert_paths: ["*.md", "docs/*"]
 ```
 
 A pattern without a slash matches a path's base name and one with a slash matches the worktree-relative path.
-A diff whose changed paths are all inert, untracked files included, runs no listed tier's command, and a whole gate carries a tier over history that changed only inert files.
+A diff whose changed paths are all inert, untracked files included, runs no listed tier's command,
+and a whole gate carries a tier over history that changed only inert files.
 Bound: a test that reads an inert file is skipped when only that file changes, so list only files no test reads.
 The list joins every tier's fingerprint, so changing it voids the green entries written under the old one.
 
@@ -102,11 +128,13 @@ gates:
 A landing key may list more tiers than the card keys, such as one that runs the slow category.
 
 Parent-Align is then the one planned whole-solution run per task, since it is the first gate over the merged parent.
-Finalize carries that run from the green record when no commit landed between, and runs whole again only after a fix or a moved parent changed the tree.
+Finalize carries that run from the green record when no commit landed between.
+It runs whole again only after a fix or a moved parent changed the tree.
 
 ## A timing tier
 
-A tier that must run on an unchanged tree, such as a BenchmarkDotNet run, takes the pool's exclusive lock and never carries:
+A tier that must run on an unchanged tree, such as a BenchmarkDotNet run, never carries.
+It takes the pool's exclusive lock:
 
 ```yaml
 tiers:
@@ -120,15 +148,20 @@ tiers:
     timeout_min: 120
 ```
 
-`slots: all` waits for every running holder to finish and blocks every new gate run of the hub until the tier ends, so other worktrees' gate runs wait while their agents keep working.
-`manual: true` keeps it out of `--upto`, and `carry: false` keeps the green record from carrying it or recording it, and runs it whole under every scope form but explicit targets.
+`slots: all` waits for every running holder to finish.
+It then blocks every new gate run of the hub until the tier ends,
+so other worktrees' gate runs wait while their agents keep working.
+`manual: true` keeps it out of `--upto`.
+`carry: false` keeps the green record from carrying it or recording it.
+It also runs the tier whole under every scope form but explicit targets.
 Run it only through a direct call, which passes `--wait` so it runs its drain in-process to its end:
 
 ```
 lym gate test --wait --tier 2 -- <benchmark arguments>
 ```
 
-Three paths still skip or narrow a `carry: false` tier: a verify site's verified-tree record, explicit targets, and a listed tier whose `covers` names it.
+Three paths still skip or narrow a `carry: false` tier:
+a verify site's verified-tree record, explicit targets, and a listed tier whose `covers` names it.
 So keep the tier out of darn's gate keys and out of every tier's `covers`, and never run it through a verify site.
 
 ## Refusing raw test runs
@@ -141,23 +174,28 @@ The shell guard then refuses an agent's raw `dotnet test` and steers it to `lym 
 
 ## Build processes
 
-lym sets `MSBUILDDISABLENODEREUSE=1` and `DOTNET_CLI_USE_MSBUILD_SERVER=0` in the environment of every gate run and every agent pane it starts, so no MSBuild worker node or MSBuild server outlives the build that started it.
+lym sets `MSBUILDDISABLENODEREUSE=1` and `DOTNET_CLI_USE_MSBUILD_SERVER=0` in every gate run and agent pane it starts.
+No MSBuild worker node or MSBuild server then outlives the build that started it.
 Idle reuse nodes from the builds of parallel agents otherwise pile up until the user's task limit refuses every fork.
 The saving left is the one build per call and the `--no-build` test runs, not warmth across calls.
 The shared compiler server is left at the SDK's default.
 A warm node holds none of the child's output pipe, so a call ends when the build or test process does.
-Set neither `MSBUILDENSURESTDOUTFORTASKPROCESSES` nor `MSBUILDNODEWINDOW` in a `build` or tier `env`: on a later SDK either leaves a Unix node's output unredirected, and the call then waits on idle nodes until `timeout_min`.
-A tier's own `env` is applied after these values, so a hub that wants warm nodes for a tier sets them there; a `build` `env` likewise.
+Set neither `MSBUILDENSURESTDOUTFORTASKPROCESSES` nor `MSBUILDNODEWINDOW` in a `build` or tier `env`:
+on a later SDK either leaves a Unix node's output unredirected,
+and the call then waits on idle nodes until `timeout_min`.
+A tier's own `env` is applied after these values, so a hub that wants warm nodes for a tier sets them there;
+a `build` `env` likewise.
 
 ## The repo-rules lens
 
-The Models review rules are lens prose in the hub's `lenses.yaml`, added to the `review-code` fan the code review reads:
+The Models review rules are lens prose in the hub's `lenses.yaml`.
+They are added to the `review-code` fan the code review reads:
 
 ```yaml
 lenses:
   models-rules: |
     Check the repository's own rules.
-    No test in the three test projects runs, mirrors or references a Program demonstration, so grep the test projects for Program0NN_.
+    No test in the test projects runs, mirrors or references a Program demonstration, so grep the test projects for Program0NN_.
     Comparisons against stored output live in NORCE.Models.NumericalBaseline alone, while an in-process test may byte-compare two arms it builds itself.
     Add no argument guards and no try/catch around the repo's own code.
     Report anything else you notice too — emphasis, never exclusion.
@@ -169,11 +207,13 @@ fans:
     - models-rules
 ```
 
-A fan entry replaces the template's whole list, so the entry above repeats the template's lenses and appends the new one.
+A fan entry replaces the template's whole list,
+so the entry above repeats the template's lenses and appends the new one.
 
 ## Before installing
 
-Take a `lym gate report` baseline on OSL-1046 before installing the binary that lands this feature, so the machine's tier run totals can be compared after:
+Take a `lym gate report` baseline on OSL-1046 before installing a new binary,
+so the machine's tier run totals can be compared after:
 
 ```
 lym gate report --slug <slug>

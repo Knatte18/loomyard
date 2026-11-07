@@ -1,10 +1,10 @@
-// fixture_test.go implements buildSequenceFixture, the one shared Tier-1 builder every sequence,
-// resume, and bounce-routing test in this package reuses rather than building its own fixture: a
-// whole temp anchor a real New-built producer list can run against offline, plus the
-// shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
-//
+// fixture_test.go implements buildSequenceFixture, the shared Tier-1 builder of this package's tests.
+// Sequence, resume, and bounce-routing tests reuse it rather than building their own fixture.
+// It builds a whole temp anchor that a real New-built producer list can run against offline.
+// The shedrecipe.Env/shedbuild.ShedPaths pair points at that anchor.
 // The seam structs come from envkit.FullEnv and the shuttle and burler fakes from shedfake.
-// What stays here serves this package alone: the discussion and plan fixtures, the batcher config writer, the role-dispatching shuttle and burler scripts, and the webster run fake.
+// This file holds what serves this package alone: the discussion and plan fixtures and the batcher config writer.
+// It also holds the role-dispatching shuttle and burler scripts, and the webster run fake.
 
 package loomrecipe
 
@@ -38,9 +38,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// fakeAlwaysDoneProducer is a minimal shedengine.ShedProducer fake that always reports Done -- used
-// to substitute the built row 1 (Preflight) without spawning git, per the
-// row1-substitution-is-a-seam-not-a-fixed-fake Shared Decision.
+// fakeAlwaysDoneProducer is a minimal shedengine.ShedProducer fake that always reports Done.
+// It substitutes the built row 1 (Preflight) without spawning git.
 type fakeAlwaysDoneProducer struct{}
 
 func (fakeAlwaysDoneProducer) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -48,8 +47,11 @@ func (fakeAlwaysDoneProducer) Call(context.Context) (shedengine.Outcome, shedeng
 }
 
 // newLoomBurler returns the shedfake.BurlerHalfRunner every review segment's Burler rows run through.
-// Each review writes the ReviewPath the handed burlerengine.Profile names and each fix writes its FixerReportPath, each with short non-empty placeholder content, and the scripted results report shuttleengine.OutcomeDone.
-// That file-on-disk plus OutcomeDone is what makes the review row hand on to the fix row and the fix row hand back to the Bouncer with a complete round, which is what the Bouncer's next call then judges.
+// Each review writes the ReviewPath of its profile,
+// and each fix writes its FixerReportPath with short non-empty placeholder content;
+// the scripted results report shuttleengine.OutcomeDone.
+// The file on disk and OutcomeDone together let a review hand on to its fix,
+// and the completed round is what the Bouncer's next call judges.
 // The runner's ReviewCalls and FixCalls fields count the rounds.
 func newLoomBurler(t *testing.T) *shedfake.BurlerHalfRunner {
 	t.Helper()
@@ -72,13 +74,13 @@ func newLoomBurler(t *testing.T) *shedfake.BurlerHalfRunner {
 	return burler
 }
 
-// parentReviewRoundRel is the anchor-relative path of the open parent-review request buildSequenceFixture lays out.
+// parentReviewRoundRel is the anchor-relative path of the open parent-review request that the sequence fixtures lay out.
 const parentReviewRoundRel = "_lym/reviews/parent-review/round-1/request.json"
 
 // openParentReviewRequest is the request an older binary left for an open round: state open and no verdict beside it.
 const openParentReviewRequest = `{"slug":"fixture-slug","round":1,"state":"open"}` + "\n"
 
-// validDecisionRecord carries all seven required sections, in order, plus the optional eighth.
+// validDecisionRecord carries every required section in order, plus the optional one.
 const validDecisionRecord = `# Decision record
 
 ## Goal
@@ -135,8 +137,10 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 	return decisionRecordPath, supportLogPath
 }
 
-// writePlanFixture writes the syntactically complete, one-card plan seedPlanFixture and the loom shuttle's "plan"-role branch both write, so the two writers never drift apart.
-// The sole card carries a Create group so path-missing never fires regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence checking.
+// writePlanFixture writes a syntactically complete, one-card plan.
+// Both the seeded plan and the shuttle's "plan"-role output come from it, so the two writers never drift apart.
+// The sole card carries a Create group, whose targets are exempt from on-disk existence checks,
+// so the path-missing check never fires whatever the worktree holds.
 func writePlanFixture(planDir string, approved bool) error {
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		return err
@@ -161,7 +165,7 @@ func writePlanFixture(planDir string, approved bool) error {
 	return nil
 }
 
-// seedPlanFixture writes a syntactically complete, one-card plan-format plan under <anchorPath>/_lym/plan/, approved or not per approved, via writePlanFixture.
+// seedPlanFixture writes a one-card plan under <anchorPath>/_lym/plan/, approved or not per approved.
 func seedPlanFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
 	if err := writePlanFixture(filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), approved); err != nil {
@@ -180,23 +184,34 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 	return websterengine.RunResult{Outcome: "done"}, nil
 }
 
-// newLoomShuttle returns the shedfake.Shuttle serving all three segments' Bouncer rows' spawn roles:
-// shedrecipe.Env carries one Shuttle field, not one per row, so this single fake serves all of them, and its RunFn branches on the Spec's own Role.
-// The Plan-Write and Describe rows run on the seat engine, whose fake newLoomSeats shares writeLoomOutputs with this one.
-// On spec.Role == "plan" it writes the whole plan-directory fixture -- writePlanFixture(planDir, false) -- rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory (including the card file seedPlanFixture pre-wrote) before the shuttle runs,
-// so writing only the overview would leave the Card Index naming a card file that no longer exists and Plan-Write's own gate would fail.
-// The overview it writes is unapproved, mirroring the plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an approved plan,
-// and a fake writer that did would hand the review gate a plan the production writer can never produce -- Plan-Bouncer's approve_seam is what flips the flag, not this row.
-// On spec.Role == "describe" it writes a valid change description.
-// On a spec.Role ending in "bouncer-judge", whatever segment prefix leads it, it writes the verdict, ledger, and focus files named by spec.OutputFiles, in that fixed order -- see writeBouncerJudge for the shape each carries.
-// There is no "bouncer-seed" branch: shedadapters.seedCall calls ensureFocus(1) regardless of what the spawn reported, synthesizing an empty-but-parsing focus file when none is on disk,
-// so the default no-write-by-role branch below is already correct for the seed pass.
-// Otherwise (row 3's branch) it keeps the discussion behaviour: when writeOutputs is true, it writes both discussion output files from the received Spec.OutputFiles, creating any missing parent directory.
+// newLoomShuttle returns the shedfake.Shuttle serving the spawn roles of every Bouncer row.
+// shedrecipe.Env carries one Shuttle field, not one per row,
+// so this single fake serves them all, and its RunFn branches on the Spec's Role.
+// The Plan-Write and Describe rows run on the seat engine, whose fake newLoomSeats shares writeLoomOutputs with it.
+// For the "plan" role it writes the whole plan-directory fixture, writePlanFixture(planDir, false).
+// The plan-write rotation archives every top-level .md file in the plan directory before the shuttle runs,
+// so writing only spec.OutputFiles would leave the Card Index naming a card file that no longer exists,
+// and the plan-write gate would fail.
+// The overview is unapproved, as the plan stencil requires: the production Plan-Write never emits an approved plan.
+// Plan-Bouncer's approve_seam is what flips the flag,
+// so a fake that approved the overview would hand the review gate a plan the production writer cannot produce.
+// For the "describe" role it writes a valid change description.
+// For a role ending in "bouncer-judge", whatever segment prefix leads it, it writes three files:
+// the verdict, the ledger, and the focus, in that order, all named by spec.OutputFiles;
+// writeBouncerJudge gives each one's shape.
+// There is no "bouncer-seed" branch: shedadapters.seedCall calls ensureFocus(1) whatever the spawn reported.
+// ensureFocus synthesizes an empty focus file that parses when none is on disk;
+// the default branch below therefore already serves the seed pass.
+// Otherwise the discussion behaviour applies:
+// when writeOutputs is true, it writes both discussion output files from spec.OutputFiles.
+// It creates any missing parent directory.
 // Every branch reports shuttleengine.OutcomeDone.
 //
 // The shuttle's Specs field holds every Spec in order, so a test counts the spawns of one role with countRole.
-// A test that needs the shuttle reaches it by type-asserting env.Shuttle.(*shedfake.Shuttle) -- buildSequenceFixture is the only thing that ever fills that field, so the assertion is total.
-// Its Attach reports not-found, the regression guard that every sequence and resume test still drives the unchanged archive-then-spawn path through Run.
+// A test reaches the shuttle by type-asserting env.Shuttle to *shedfake.Shuttle;
+// buildSequenceFixture is the only code that fills that field, so the assertion is total.
+// Its Attach reports not-found, a regression guard:
+// every sequence and resume test must still drive the archive-then-spawn path through Run.
 func newLoomShuttle(planDir string, writeOutputs bool) *shedfake.Shuttle {
 	return &shedfake.Shuttle{
 		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -205,8 +220,9 @@ func newLoomShuttle(planDir string, writeOutputs bool) *shedfake.Shuttle {
 	}
 }
 
-// newLoomSeats returns the shedfake.SeatRunner serving the Discussion-Write row, which runs on the seat engine.
-// Its RunFn writes the lead's outputs as writeLoomOutputs does for the table's role prefix and reports a done lead carrying no GateOutcome, so the fake evaluates the table's own gate once.
+// newLoomSeats returns a fake seat runner that serves the Discussion-Write row, which runs on the seat engine.
+// Its RunFn writes the lead's outputs as writeLoomOutputs does for the table's role prefix.
+// It reports a done lead with no GateOutcome, so the fake evaluates the table's own gate once.
 func newLoomSeats(planDir string, writeOutputs bool) *shedfake.SeatRunner {
 	return &shedfake.SeatRunner{
 		RunFn: func(table seatengine.Table) (seatengine.Result, error) {
@@ -222,7 +238,7 @@ func newLoomSeats(planDir string, writeOutputs bool) *shedfake.SeatRunner {
 	}
 }
 
-// countSeatRole reports how many of seats' Run calls carried a table with the role prefix prefix.
+// countSeatRole reports how many of seats' Run calls carried a table with the given role prefix.
 func countSeatRole(seats *shedfake.SeatRunner, prefix string) int {
 	count := 0
 	for _, table := range seats.GotTables {
@@ -233,7 +249,8 @@ func countSeatRole(seats *shedfake.SeatRunner, prefix string) int {
 	return count
 }
 
-// runLoomShuttle is newLoomShuttle's per-role dispatch.
+// runLoomShuttle answers one shuttle run with the fake outcome for its role.
+// A bouncer-judge role gets a CONVERGED verdict, and every other role gets the outputs its fake writer leaves behind.
 func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	if strings.HasSuffix(spec.Role, "bouncer-judge") {
 		return writeBouncerJudge(spec, "CONVERGED")
@@ -244,8 +261,13 @@ func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) 
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 }
 
-// writeLoomOutputs writes the files a fake writer of the given role leaves behind, so both the shuttle and the seat runner serve one set of row fixtures.
-// Role "plan" writes the whole plan directory under planDir, role "parts" a parts file of one part, role "parts-plan" that part's plan, the plan directory and the join record, role "describe" writes a valid change description to each output, and any other role writes the valid discussion content to outputs when writeOutputs is true.
+// writeLoomOutputs writes the files a fake writer of the given role leaves behind.
+// The fake shuttle and the fake seat runner both use it, so they serve one set of row fixtures.
+// Role "plan" writes the whole plan directory under planDir.
+// Role "parts" writes a parts file of one part.
+// Role "parts-plan" writes that part's plan, the plan directory and the join record.
+// Role "describe" writes a valid change description to each output.
+// Any other role writes the valid discussion content to outputs when writeOutputs is true.
 func writeLoomOutputs(planDir string, writeOutputs bool, role string, outputs []string) error {
 	switch role {
 	case "plan":
@@ -285,8 +307,8 @@ func writeLoomOutputs(planDir string, writeOutputs bool, role string, outputs []
 		return nil
 
 	case "describe":
-		// A valid change description: a "# title" heading and a non-empty body, no trailer line,
-		// so the description gate passes.
+		// A valid change description has a "# title" heading and a non-empty body, and no trailer line.
+		// The description gate accepts it.
 		for _, path := range outputs {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
@@ -317,11 +339,11 @@ func writeLoomOutputs(planDir string, writeOutputs bool, role string, outputs []
 	return nil
 }
 
-// writeBouncerJudge writes the three files spec.OutputFiles names, in shedadapters' own fixed
-// order -- the round's verdict path, its ledger path, and the next round's focus path -- each
-// satisfying its own package-private parser (parseVerdict, parseLedger, and parseFocus
-// respectively). The round number embedded in every file is spec.Round, which the Bouncer fills
-// with the round it is judging, never a hardcoded 1. The verdict written is verdict.
+// writeBouncerJudge writes the three files spec.OutputFiles names, in the fixed order shedadapters uses:
+// the round's verdict path, its ledger path, and the next round's focus path.
+// Each file satisfies the package-private parser of its kind: parseVerdict, parseLedger, and parseFocus.
+// The round number in every file is spec.Round, the round the Bouncer is judging, never a hardcoded 1.
+// The verdict written is verdict.
 func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.Result, error) {
 	if len(spec.OutputFiles) != 3 {
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: bouncer-judge spec.OutputFiles has %d entries; want 3 (verdict, ledger, focus)", len(spec.OutputFiles))
@@ -341,9 +363,9 @@ func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.R
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer ledger %s: %w", spec.OutputFiles[1], err)
 	}
 
-	// The focus file targets round+1, matching the path shedadapters.focusPath(runDir, round+1) names;
-	// Bouncer.settle on a CONVERGED verdict never reads it,
-	// so this write only matters when verdict scripts a CONTINUE round.
+	// The focus file targets round+1, the path shedadapters.focusPath(runDir, round+1) names.
+	// Bouncer.settle never reads it on a CONVERGED verdict,
+	// so this write matters only when the verdict scripts a CONTINUE round.
 	focusContent := fmt.Sprintf("---\nround: %d\nexclude_lenses: []\nfocus: []\n---\n", round+1)
 	if err := os.WriteFile(spec.OutputFiles[2], []byte(focusContent), 0o644); err != nil {
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer focus %s: %w", spec.OutputFiles[2], err)
@@ -352,8 +374,8 @@ func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.R
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 }
 
-// blockBouncerJudge makes every bouncer-judge round of env's loom shuttle write a CONTINUE verdict instead of CONVERGED,
-// so the Bouncer reports Stuck on each judge call.
+// blockBouncerJudge makes every bouncer-judge round of env's loom shuttle write a CONTINUE verdict.
+// The Bouncer then reports Stuck on each judge call.
 func blockBouncerJudge(env shedrecipe.Env) {
 	shuttle := env.Shuttle.(*shedfake.Shuttle)
 	dispatch := shuttle.RunFn
@@ -365,8 +387,9 @@ func blockBouncerJudge(env shedrecipe.Env) {
 	}
 }
 
-// designWrongBouncerJudge makes every bouncer-judge round of env's loom shuttle write a CONTINUE verdict over a ledger holding one open design-wrong entry,
-// so the soft-cap rule continues a spent budget and escalates at the hard cap.
+// designWrongBouncerJudge makes every bouncer-judge round of env's loom shuttle write a CONTINUE verdict.
+// The ledger it writes holds one open design-wrong entry.
+// The soft-cap rule then continues a spent budget and escalates at the hard cap.
 func designWrongBouncerJudge(env shedrecipe.Env) {
 	shuttle := env.Shuttle.(*shedfake.Shuttle)
 	dispatch := shuttle.RunFn
@@ -413,51 +436,69 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 	}
 }
 
-// buildSequenceFixture builds a temp anchor whose on-disk state makes Discussion-Write's own gate, Plan-Write's own gate, and Webster's batcher load -- the three real, non-injectable checks on the main line -- genuinely pass, and returns the anchor path alongside the shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
-// The Env starts from envkit.FullEnv and overrides the anchor, the paths, the loom shuttle, the burler, and the specs the sequence tests script.
-// The anchor also holds an open parent-review round at parentReviewRoundRel, as an older binary left it.
+// buildSequenceFixture builds a temp anchor whose on-disk state makes three real, non-injectable checks pass.
+// The checks are Discussion-Write's gate, Plan-Write's gate, and Webster's batcher load, all on the main line.
+// It returns the anchor path with the shedrecipe.Env and shedbuild.ShedPaths pair that points at it.
+// The Env starts from envkit.FullEnv.
+// It overrides the anchor, the paths, the loom shuttle, the burler, and the specs the sequence tests script.
+// The anchor also holds an open parent-review round at parentReviewRoundRel.
 //
-// Discussion-Write's gate: both discussion files are written, the decision record carrying all
-// seven required H2 sections (writeDiscussionFixture). Plan-Write's gate: a
-// syntactically complete, unapproved, one-card plan directory that satisfies every
-// planparser.ValidateFormat check, including the ones that stat paths against the worktree root
-// (seedPlanFixture) -- the same self-authored, single-card, zero-findings shape
-// internal/planparser/testdata/goodplan/00-overview.md and 01-json-flag.md model. Seeded unapproved
-// rather than approved: both gate sites run planglyph.ValidateFormat, which never demands the
-// approval flag, and an approved seed would misrepresent what the real Plan-Write producer is ever
-// allowed to write. Webster: no batcher.yaml is written at all, so batcher.Active resolves the
-// embedded template.
+// Discussion-Write's gate needs both discussion files written.
+// The decision record carries every required H2 section.
+// writeDiscussionFixture writes both files.
 //
-// The status file is seeded through the production loomshed.Seed, never by hand-writing JSON, so a
-// Seed regression would not pass unnoticed here. Row 1 is not injected here: New builds it from
-// env.Cwd via preflightEntry, and every caller of this fixture that drives Run substitutes
-// shed.Producers[0].Producer after New per the row1-substitution-is-a-seam-not-a-fixed-fake Shared
-// Decision.
-// WebsterRun is fakeWebsterRun's run method, reporting Webster's own done outcome,
-// and WebsterDeps keeps FullEnv's placeholder seams.
-// LockPath and StatusLockPath are given two distinct paths, since shedengine rejects them naming one file.
+// Plan-Write's gate needs a syntactically complete plan directory that passes every planparser.ValidateFormat check.
+// That includes the checks that stat paths against the worktree root.
+// seedPlanFixture writes such a plan: one self-authored card with zero findings.
+// Its shape matches the files under internal/planparser/testdata/goodplan.
+// It is seeded unapproved, because both gate sites run planglyph.ValidateFormat, which never demands the approval flag.
+// An approved seed would show a state the real Plan-Write producer never writes.
+// No batcher.yaml is written, so batcher.Active resolves the embedded template.
 //
-// Merge-In, Publish and Finalize are the real producers, and this fixture deliberately never drives any of them to a genuine merge.
-// The fixture's fake tip reads report the local parent ahead of its upstream, so Merge-In reports Stuck -- with OnStuck: "", which blocks the whole run right there -- before it merges anything and long before Publish's or Finalize's Call is ever invoked.
-// Driving their merge logic for real needs a genuine two-worktree pair, which this package's untagged tier stays out of;
-// the fixture's origin reconcile reports a stopped entry, which stops Merge-In before it reads a tip or touches the worktree.
-// The real thing is covered by an integration tier instead.
+// The status file is seeded through the production loomshed.Seed, never by hand-writing JSON.
+// A regression in Seed therefore shows up here.
+// Row 1 is not injected here: New builds it from env.Cwd via preflightEntry.
+// A caller that drives Run replaces shed.Producers[0].Producer after New.
+// WebsterRun is a fake run that reports Webster's own done outcome.
+// WebsterDeps keeps the placeholder seams of envkit.FullEnv.
+// LockPath and StatusLockPath get two distinct paths, because shedengine rejects a pair that names one file.
 //
-// The Discussion-Write, Plan-Write and Describe rows run a real shedadapters.MultiLLMProducer over env.Seats, each behind its own decorator.
-// env.Seats is a newLoomSeats writing its outputs, and each row's table closure returns a one-lead table whose role prefix picks the files the fake seat runner writes.
+// Merge-In, Publish and Finalize are the real producers, and this fixture never drives any of them to a genuine merge.
+// The fake tip reads report the local parent ahead of its upstream.
+// So Merge-In reports Stuck with OnStuck set to "", which blocks the whole run there, before it merges anything.
+// Publish's and Finalize's Call is never reached either.
+// Driving their merge logic for real needs a genuine two-worktree pair.
+// The untagged tier of this package does not build one.
+// The origin reconcile reports a stopped entry, which stops Merge-In before it reads a tip or touches the worktree.
+// The integration tier covers the real merge.
+//
+// The Discussion-Write, Plan-Write and Describe rows run a real shedadapters.MultiLLMProducer over env.Seats.
+// Each row sits behind its own decorator.
+// env.Seats is a fake seat runner.
+// Each row's table closure returns a one-lead table; its role prefix picks the files the fake seat runner writes.
 //
 // Row 3 (Discussion-Write) sits behind loomshed's commit decorator.
-// env.DiscussionTable returns a table whose outputs are the same [decisionRecordPath, supportLogPath] pair this fixture already computes above, and env.CommitDiscussion keeps FullEnv's no-op, which a test that counts commits wraps.
-// The fake seat runner writing both output files on every Run is what keeps Discussion-Write's own gate passing here:
-// shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away on every Call, so without the fake rewriting them the clean sequence run would find both files absent.
+// env.DiscussionTable returns a table whose outputs are the [decisionRecordPath, supportLogPath] pair.
+// This fixture computes that pair.
+// env.CommitDiscussion keeps the no-op of envkit.FullEnv, and a test that counts commits wraps it.
+// The fake seat runner writes both output files on every Run, which keeps Discussion-Write's gate passing.
+// The stale-output archive renames the fixture's pre-written files away on every Call.
+// Without the fake rewriting them, a clean sequence run would find both files absent.
 //
 // Row 6 (Plan-Write) sits behind loomshed's rotate-and-commit decorator.
-// Its planDir is the same _lym/plan expression seedPlanFixture already builds, and env.PlanTable returns a table with role prefix "plan" and the single overview path as its output.
-// The seat runner's "plan"-role branch rewrites the whole plan directory (see newLoomShuttle's own doc comment for why) rather than only the overview,
-// so Plan-Write's own gate still finds a complete, unapproved, zero-findings plan after the decorator's rotation archived the seeded one away -- the real Plan-Write producer can never write it approved, and neither does this fake.
+// Its planDir is the _lym/plan path that seedPlanFixture builds.
+// env.PlanTable returns a table with role prefix "plan" and the single overview path as its output.
+// The seat runner's "plan" branch rewrites the whole plan directory, not only the overview.
+// So Plan-Write's gate still finds a complete, unapproved, zero-findings plan.
+// The decorator's rotation archives the seeded one first.
+// The real Plan-Write producer never writes a plan approved, and neither does this fake.
 //
-// The Describe row sits behind the Discussion-Write commit decorator, and env.DescribeTable returns a table with role prefix "describe" and the description path as its output, which the fake seat runner fills with a valid change description.
-// env.ApprovePlan is a closure running the real planparser.SetApproved over the same plan directory, wired to Plan-Bouncer's approve_seam key -- the flag is only ever set once the review segment's approved settle fires.
+// The Describe row sits behind the Discussion-Write commit decorator.
+// env.DescribeTable returns a table with role prefix "describe" and the description path as its output.
+// The fake seat runner fills that path with a valid change description.
+// env.ApprovePlan is a closure that runs the real planparser.SetApproved over the same plan directory.
+// It is wired to Plan-Bouncer's approve_seam key.
+// The approval flag is set only once the review segment's approved settle fires.
 func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths shedbuild.ShedPaths) {
 	t.Helper()
 
@@ -469,8 +510,8 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 	decisionRecordPath, supportLogPath := writeDiscussionFixture(t, discussionDir, validDecisionRecord, "support log")
 
-	// An open parent-review round as an older binary left it: a request with no verdict.
-	// No gate reads it any more, so a run waiting in it passes Discussion-Write on its next gate evaluation.
+	// An open parent-review round, as an older binary leaves it: a request with no verdict.
+	// No gate reads it, so a run waiting in it passes Discussion-Write on its next gate evaluation.
 	parentReviewRound := filepath.Join(dir, parentReviewRoundRel)
 	if err := os.MkdirAll(filepath.Dir(parentReviewRound), 0o755); err != nil {
 		t.Fatalf("mkdir parent-review round dir: %v", err)
@@ -479,11 +520,11 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("write parent-review request: %v", err)
 	}
 
-	// Seeded unapproved, matching what the real Plan-Write producer must write: it is inert at the
-	// gate -- loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan
-	// directory before the shuttle runs, so the loom shuttle's "plan"-role branch rewrites the whole
-	// directory rather than only its declared output file -- but leaving it approved here would be
-	// dishonest about what the fixture models.
+	// Seeded unapproved, matching what the real Plan-Write producer must write.
+	// The gate treats it as inert:
+	// loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory before the shuttle runs.
+	// The loom shuttle's "plan"-role branch then rewrites the whole directory rather than only its output file.
+	// Approving it here would misstate what the fixture models.
 	seedPlanFixture(t, dir, false)
 
 	statusPath := filepath.Join(dir, "status.json")
@@ -569,9 +610,9 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			}},
 		}, nil
 	}
-	// ApprovePlan is a closure running the real planparser.SetApproved over this fixture's own
-	// plan directory, not a fake that merely records the call: the seam under test is the write
-	// itself, and a fake that only recorded invocation would let a broken writer pass.
+	// ApprovePlan calls the real planparser.SetApproved over this fixture's own plan directory.
+	// It is not a fake that only records the call.
+	// The seam under test is the write itself, and a fake that only recorded invocation would let a broken writer pass.
 	env.ApprovePlan = func() error {
 		return planparser.SetApproved(planDir)
 	}

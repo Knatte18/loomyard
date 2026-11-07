@@ -1,5 +1,5 @@
-// parseownerrepo.go implements ParseOwnerRepo, a pure standard-library parser splitting a GitHub
-// remote URL into its owner and repo segments.
+// parseownerrepo.go implements ParseOwnerRepo, a pure standard-library parser.
+// It splits a GitHub remote URL into its owner and repo segments.
 
 package githubclient
 
@@ -9,14 +9,13 @@ import (
 )
 
 // ParseOwnerRepo splits remoteURL into its owner and repo segments.
-// It accepts exactly four shapes, each with an optional ".git" suffix and an optional single trailing slash.
-// They are the SSH form (git@github.com:owner/repo.git) and the ssh:// form (ssh://git@github.com/owner/repo.git).
-// The other two are the HTTPS form (https://github.com/owner/repo.git) and the HTTPS form with user info (https://user@github.com/owner/repo.git).
-// This parser lives here, rather than in a generic URL-handling package, because this package owns
-// GitHub knowledge; it does no network call and no go-github call, staying inside this package's own
-// leaf allowlist (stdlib, go-github, golang.org/x/sys, internal/proc).
-// A non-GitHub host, a URL with no owner/repo segment pair, and unparseable garbage each produce a
-// distinct wrapped error so a caller can report which failure it hit.
+// It accepts four shapes, each with an optional ".git" suffix and an optional single trailing slash.
+// The SSH form is git@github.com:owner/repo.git; the ssh:// form is ssh://git@github.com/owner/repo.git.
+// The HTTPS form is https://github.com/owner/repo.git.
+// The HTTPS form with user info is https://user@github.com/owner/repo.git.
+// It makes no network call and no go-github call.
+// A non-GitHub host, a URL without an owner/repo pair, and an unrecognized shape each yield a distinct wrapped error.
+// A caller can report which failure it hit.
 func ParseOwnerRepo(remoteURL string) (owner, repo string, err error) {
 	path, parseErr := ownerRepoPath(remoteURL)
 	if parseErr != nil {
@@ -56,7 +55,8 @@ func ownerRepoPath(remoteURL string) (string, error) {
 	}
 }
 
-// userInfoHTTPSPath returns the owner/repo path of an "https://<user>@github.com/" URL and reports whether remoteURL has that shape.
+// userInfoHTTPSPath returns the owner/repo path of an "https://<user>@github.com/" URL.
+// It also reports whether remoteURL has that shape.
 // <user> is one non-empty run of characters other than "/", "@" and ":".
 func userInfoHTTPSPath(remoteURL string) (string, bool) {
 	rest, ok := strings.CutPrefix(remoteURL, "https://")

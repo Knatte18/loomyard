@@ -1,5 +1,7 @@
-// remoterefslock_test.go enforces `PATTERN-gitrepo-client-boundary` for internal/fabricengine: a fetch there that writes remote-tracking refs goes through gitrepo, which takes the repository's remote-refs lock.
-// The scan finds every git argument list holding "fetch" and fails on one that neither carries "--refmap=", which writes no tracking ref, nor sits in a function the allowlist names.
+// remoterefslock_test.go enforces `PATTERN-gitrepo-client-boundary` for internal/fabricengine.
+// A fetch there that writes remote-tracking refs goes through gitrepo, which takes the remote-refs lock.
+// The scan finds every git argument list holding "fetch".
+// It fails on one that lacks "--refmap=", which writes no tracking ref, and sits outside the allowlist.
 
 package main
 
@@ -13,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// remoteRefsLockFetchAllowlist names the files, or as "<file>:<function>" the functions, of internal/fabricengine whose unlocked fetch is deliberate.
+// remoteRefsLockFetchAllowlist lists the files whose unlocked fetch is deliberate.
+// An entry is an internal/fabricengine file, or "<file>:<function>" for one function.
 var remoteRefsLockFetchAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/recordsprobe.go", Why: "the file only fetches into a private probe clone, whose tracking refs no other lym call shares"},
 	{Key: "internal/fabricengine/originreconcile.go:fetchMovedHeads", Why: "runs inside judgeAgainstOrigin, whose caller holds the repository's remote-refs lock"},
@@ -22,7 +25,9 @@ var remoteRefsLockFetchAllowlist = []scankit.Entry{
 // remoteRefsLockMinScannedFiles is the vacuous-scan floor for the walk of internal/fabricengine.
 const remoteRefsLockMinScannedFiles = 20
 
-// TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo fails on an argument list in internal/fabricengine's non-test source that holds "fetch" without "--refmap=", outside the allowlist.
+// TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo fails on each violating fetch.
+// A violation is an argument list holding "fetch" without "--refmap=" and outside the allowlist.
+// The scan covers the non-test source of internal/fabricengine.
 //
 //lym:guard
 func TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo(t *testing.T) {

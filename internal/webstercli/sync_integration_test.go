@@ -1,11 +1,9 @@
-// sync_integration_test.go covers fabricSync's composed behavior against real
-// git repositories. Two
-// scenarios: Fabric.Commit's error-branch contract (a commit that lands but
-// fails its correspondence record must still be reported as committed=true
-// alongside the error, never swallowed into a false "no commit was made"),
-// and machine-local artifacts under ".lym" actually staying out of every
-// commit at every layout.AnchorRel depth simply by living outside the
-// committed "_lym" pathspec, which only real git can decide.
+// sync_integration_test.go covers fabricSync's composed behavior against real git repositories.
+// It checks two things.
+// First, Fabric.Commit's error branch: a commit that lands but fails its correspondence record stays committed=true.
+// The error comes back alongside that, never as a false "no commit was made".
+// Second, machine-local artifacts under ".lym" stay out of every commit at every layout.AnchorRel depth.
+// That holds because they live outside the committed "_lym" pathspec, which only real git can decide.
 
 package webstercli
 
@@ -23,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newPairFixture builds a hub with a code repo and its records sibling and returns the layout and the sibling's path.
+// newPairFixture builds a hub with a code repo and its records sibling.
+// It returns the layout and the sibling's records path.
 func newPairFixture(t *testing.T) (*lymcwd.Location, string) {
 	t.Helper()
 	return newPairFixtureAt(t, ".")
@@ -43,13 +42,10 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	}
 }
 
-// seedFabricAnchor records relPath as the .lym-anchor marker under hub's
-// board directory, so Fabric.Commit's own lymcwd.ResolveWorktree call on the code path
-// resolves l.AnchorRel to relPath instead of falling back to a
-// cwd-derived "." -- Commit re-resolves geometry from the fabric's own code path
-// rather than trusting the *lymcwd.Location fabricSync already holds, so
-// a nested-AnchorRel fixture must record the anchor for real git to classify
-// correctly.
+// seedFabricAnchor records relPath as the .lym-anchor marker under hub's board directory.
+// Fabric.Commit re-resolves its geometry from the code path, not from the *lymcwd.Location fabricSync holds.
+// Without the marker, that resolution falls back to a cwd-derived ".".
+// A nested AnchorRel therefore has to be recorded here for real git to classify it correctly.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
@@ -63,9 +59,14 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	}
 }
 
-// newPairFixtureAt is newPairFixture with an explicit layout.AnchorRel: the records-side _lym is seeded at <records>/<relPath>/_lym, mirroring the code side's own repo-subpath geometry, and the returned layout's AnchorPath() points at the matching code subdirectory.
-// Alongside state.json it seeds the three machine-local artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the mirrored subpath under ".lym", outside the committed "_lym" pathspec, so a caller can assert on what the commit did and did not pick up.
-// It also seeds a sibling module's tree in the same shared geometry -- every module sharing one "_lym"/".lym" pair -- carrying that module's own durable state.json under "_lym" plus its pause flag under ".lym", so a caller can assert that a webster commit keeps the sibling module's runtime state out while still carrying its durable state.
+// newPairFixtureAt is newPairFixture with an explicit layout.AnchorRel.
+// The records-side _lym is seeded at <records>/<relPath>/_lym, mirroring the code side's repo-subpath geometry.
+// The returned layout's AnchorPath() points at the matching code subdirectory.
+// Next to state.json it seeds three machine-local artifacts under ".lym" at the mirrored subpath.
+// They are an advisory *.lock file, the pause flag, and a rendered fork prompt.
+// They sit outside the committed "_lym" pathspec, so a caller can assert what a commit did and did not pick up.
+// It also seeds a sibling loom module in the same geometry: durable status.json under "_lym", run lock under ".lym".
+// A caller can then assert that a webster commit holds back the loom run lock while still carrying status.json.
 func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 	t.Helper()
 
@@ -92,8 +93,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 	gitkit.CommitFile(t, code, "base.txt", "base", "code base commit")
 	gitkit.CommitFile(t, records, "base.txt", "base", "records base commit")
 
-	// Uncommitted changes under the webster pathspec, so the records commit has
-	// something real to commit.
+	// Uncommitted changes under the webster pathspec give the records commit something to commit.
 	websterDir := filepath.Join(records, relPath, lymdirs.LymDirName, "webster")
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
 		t.Fatalf("mkdir records _lym: %v", err)
@@ -117,8 +117,8 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 		}
 	}
 
-	// The sibling loom module's own tree, in the same shared geometry: its
-	// durable state must still ride a webster commit, its run lock must not.
+	// The sibling loom module's tree sits in the same shared geometry.
+	// Its durable state must still ride a webster commit, but its run lock must not.
 	loomDir := filepath.Join(records, relPath, lymdirs.LymDirName, "loom")
 	if err := os.MkdirAll(loomDir, 0o755); err != nil {
 		t.Fatalf("mkdir records loom dir: %v", err)
@@ -141,19 +141,18 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 	return layout, records
 }
 
-// TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails proves the Fabric.Commit error
-// branch passes committed through instead of forcing it to false: with a directory squatting on the
-// correspondence index path, the records commit itself lands but RecordCorrespondence fails, and
-// fabricSync must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
-// caller gets to know that alongside the error.
+// TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails proves Fabric.Commit's error branch.
+// It passes committed through instead of forcing it to false.
+// A directory on the correspondence index path lets the records commit land, then RecordCorrespondence fails.
+// fabricSync must report (true, err): the commit is real.
+// Fabric.Commit's contract is that the caller learns that alongside the error.
 func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	t.Setenv("FABRIC_SKIP_PUSH", "")
 	layout, records := newPairFixture(t)
 
-	// A directory where RecordCorrespondence expects its index file makes
-	// the record step fail after the commit has already landed.
+	// A directory where RecordCorrespondence expects its index file makes the record step fail after the commit has landed.
 	if err := os.MkdirAll(filepath.Join(records, ".git", "fabric-corrindex.json"), 0o755); err != nil {
 		t.Fatalf("squat corrindex path: %v", err)
 	}
@@ -168,28 +167,22 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 		t.Error("fabricSync() committed = false; want true, the commit landed before the record step failed")
 	}
 
-	// The commit must genuinely exist with the webster message stem -- the
-	// committed=true report above is about this commit, not a phantom.
+	// The commit must genuinely exist with the webster message stem.
+	// The committed=true report above is about this commit, not a phantom.
 	subject := strings.TrimSpace(gitkit.Git(t, records, "log", "-1", "--format=%s"))
 	if subject != "webster: corr-fail probe" {
 		t.Errorf("records HEAD subject = %q; want %q", subject, "webster: corr-fail probe")
 	}
 }
 
-// TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, the
-// sibling loom module's run lock, webster's rendered fork prompts) stays uncommitted by REAL git
-// at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
-// Exclusion is now structural: every machine-local artifact lives under ".lym" at the mirrored
-// subpath, entirely outside the committed "_lym" pathspec fabricSync passes -- no exclude-pattern
-// machinery is involved.
-// It is also the cross-module regression guard: a webster commit must hold back the sibling loom
-// module's run lock too, since every module sharing one geometry shares one ".lym" scratch tree
-// the same way it shares one "_lym" durable tree.
-// Each excluded artifact is asserted both absent from the commit AND still untracked via `git
-// ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
-// happening to be omitted from this one commit.
-// FABRIC_SKIP_PUSH is set because the scratch records repo has no remote;
-// the commit half is what is under test.
+// TestFabricSync_CommitsAtEveryRelPathDepth proves the commit at every layout.AnchorRel depth:
+// no machine-local transient reaches the commit: locks, the loom run lock, or webster's fork prompts.
+// Exclusion comes from placement:
+// each artifact lives under ".lym" at the mirrored subpath, outside the committed "_lym" pathspec.
+// It also guards across modules: a webster commit must hold back the sibling loom module's run lock too.
+// Each excluded artifact is asserted both absent from the commit and still untracked via `git ls-files`.
+// Untracked status proves it never reached the pathspec, not merely that this one commit omitted it.
+// FABRIC_SKIP_PUSH is set because the scratch records repo has no remote; the commit half is what is under test.
 func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tiergate.Require(t, 1)
 	tests := []struct {
@@ -217,8 +210,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 				t.Fatalf("fabricSync() committed = false; want true -- the pathspec staged nothing at RelPath %q, so the fabric sync was a silent no-op", tt.relPath)
 			}
 
-			// git always reports commit contents with forward slashes,
-			// regardless of the OS-native separators the layout carries.
+			// git reports commit contents with forward slashes, regardless of the OS-native separators the layout carries.
 			base := lymdirs.LymDirName
 			scratchBase := lymdirs.DotLymDirName
 			if tt.relPath != "." {
@@ -228,9 +220,8 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 			committedFiles := strings.Fields(gitkit.Git(t, records, "show", "--name-only", "--format=", "HEAD"))
 
-			// Loom's durable status.json rides a webster commit (the two
-			// modules share one _lym); only the machine-local artifacts of
-			// EITHER module are held back.
+			// Loom's durable status.json rides a webster commit, since the two modules share one _lym.
+			// Only the machine-local artifacts of either module are held back.
 			wantPresent := []string{
 				base + "/webster/state.json",
 				base + "/loom/status.json",
@@ -252,8 +243,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 				}
 			}
 
-			// The excluded artifacts must also stay untracked, not merely be
-			// left out of this one commit.
+			// The excluded artifacts must also stay untracked, not merely be left out of this one commit.
 			for _, absent := range wantAbsent {
 				if tracked := strings.TrimSpace(gitkit.Git(t, records, "ls-files", "--", absent)); tracked != "" {
 					t.Errorf("records ls-files %q = %q; want it untracked", absent, tracked)

@@ -1,8 +1,7 @@
-// gate.go implements the command-gate execution seam and the convergence check the round loop
-// evaluates every round: execGateCommand is the production CommandRunner (the seam type defined in
-// engine.go), writeGateOutput records a command gate's raw output for the operator and the next
-// round's hydration, and converged evaluates GateMode against a round's runner verdict and (when
-// the mode runs a command) its pass/fail result.
+// gate.go holds the command-gate execution and the convergence check the round loop evaluates every round.
+// execGateCommand runs a gate command.
+// writeGateOutput records its raw output for the operator and the next round's hydration.
+// converged decides whether a round has converged under its GateMode.
 
 package treadleengine
 
@@ -20,8 +19,9 @@ import (
 // gateWaitDelay bounds Wait's read after the command exits.
 const gateWaitDelay = 10 * time.Second
 
-// execGateCommand is the production CommandRunner. No shell is invoked.
-// A timeout returns partial output with a timeout note.
+// execGateCommand runs argv inside dir and kills it after timeout.
+// No shell is invoked.
+// A timeout returns the partial output with a timeout note, and reports a failed gate rather than an error.
 func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -60,7 +60,8 @@ func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, 
 	return nil, false, fmt.Errorf("gate command %v failed to start: %w", argv, err)
 }
 
-// writeGateOutput writes path with a header and the combined output.
+// writeGateOutput writes the command's combined output to path.
+// The file starts with a header that names the command and its PASS or FAIL status.
 func writeGateOutput(name string, path string, argv []string, output []byte, exitZero bool) error {
 	status := "FAIL"
 	if exitZero {
@@ -76,7 +77,9 @@ func writeGateOutput(name string, path string, argv []string, output []byte, exi
 	return nil
 }
 
-// converged reports whether a round has reached the block's convergence check.
+// converged reports whether a round has converged under mode, given its runner verdict and gate result.
+// GateLLMVerdict needs an approved verdict, GateCommand needs a passing command, and GateBoth needs both.
+// A nil gatePassed counts as a failed command, and an unknown mode never converges.
 func converged(mode GateMode, verdict Verdict, gatePassed *bool) bool {
 	commandPassed := gatePassed != nil && *gatePassed
 	switch mode {

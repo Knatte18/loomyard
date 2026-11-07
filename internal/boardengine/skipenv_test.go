@@ -1,7 +1,6 @@
 // skipenv_test.go — unit tests for ApplySkipEnv.
 //
-// Tests the env→cfg resolution helper that folds BOARD_SKIP_* environment variables into the Config
-// struct at the CLI entry point.
+// Tests the resolution that folds BOARD_SKIP_* environment variables into a Config.
 
 package boardengine
 

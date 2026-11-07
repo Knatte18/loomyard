@@ -10,7 +10,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeFile creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -71,7 +70,7 @@ func TestCreate(t *testing.T) {
 				tmpdir := t.TempDir()
 				link = filepath.Join(tmpdir, "existing")
 				target = filepath.Join(tmpdir, "mytarget")
-				// Pre-create a regular file at the link path.
+				// A regular file already occupies the link path, so the link must be refused.
 				if err := os.WriteFile(link, []byte("existing"), 0644); err != nil {
 					t.Fatalf("create existing file: %v", err)
 				}
@@ -130,7 +129,7 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-// TestCreateFileLink pins the file link.
+// TestCreateFileLink pins how CreateFileLink behaves on each platform.
 // On Windows it refuses, names its way forward, and leaves the link's parent uncreated.
 // Elsewhere it makes a link whose in-place write reaches the target, and it refuses to clobber an existing path.
 func TestCreateFileLink(t *testing.T) {
@@ -166,8 +165,7 @@ func TestCreateFileLink(t *testing.T) {
 	}
 }
 
-// TestIsLink exercises link detection across created links, regular files, directories, and missing
-// paths.
+// TestIsLink exercises link detection across created links, regular files, directories, and missing paths.
 func TestIsLink(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -402,8 +400,7 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-// TestRemoveLinksIn exercises the link scanner across regular files, directories, link removal, and
-// error handling.
+// TestRemoveLinksIn exercises the link scanner across regular files, directories, link removal, and error handling.
 func TestRemoveLinksIn(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

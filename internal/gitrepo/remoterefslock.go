@@ -1,4 +1,5 @@
-// remoterefslock.go holds the remote-refs lock: one lock per repository, in its common git dir, that every lym git call writing the repository's remote-tracking refs holds while git runs.
+// remoterefslock.go holds the remote-refs lock: one lock per repository, in its common git dir.
+// Every lym git call that writes the repository's remote-tracking refs holds it while git runs.
 // A push's transfer writes none and runs outside it; only the push's tracking-ref write that follows takes it.
 
 package gitrepo
@@ -12,13 +13,15 @@ import (
 )
 
 // RemoteRefsLockFileName names the remote-refs lock file in a repository's common git dir.
-// A fetch and a push both write the remote-tracking refs every worktree of the repository shares, so two such calls racing on one ref make the loser fail with git's "incorrect old value provided" or "cannot lock ref".
+// A fetch and a push both write the remote-tracking refs that every worktree of the repository shares.
+// Two such calls racing on one ref make the loser fail with git's "incorrect old value provided" or "cannot lock ref".
 const RemoteRefsLockFileName = "lym-remote-refs.lock"
 
-// remoteRefsGateOp names the in-flight operation the pause gate marks while a process wants or holds the remote-refs lock.
+// remoteRefsGateOp names the pause-gate operation a process marks while it wants or holds the remote-refs lock.
 const remoteRefsGateOp = "remote-refs"
 
-// HoldRemoteRefs takes the remote-refs lock of the repository this checkout belongs to, waiting while another holder has it, and returns its release.
+// HoldRemoteRefs takes the remote-refs lock of the repository this checkout belongs to.
+// It blocks while another holder has the lock, and returns the function that releases it.
 // It passes the process's pause gate before it takes the lock and stays admitted until the release,
 // so a pause never holds a git call made under the lock while other processes wait on it.
 // A holder that reads origin and then judges the tracking refs sees no fetch and no push's tracking-ref write in between.
@@ -52,7 +55,8 @@ func (r *Repo) withRemoteRefs(call func() error) error {
 }
 
 // FetchWithArgs runs `git fetch` with args under the remote-refs lock and returns git's stdout.
-// It is the fetch for a caller naming its own remote and refspecs; a non-zero exit returns *gitexec.GitError.
+// It serves a caller that names its own remote and refspecs.
+// A non-zero exit returns *gitexec.GitError.
 func (r *Repo) FetchWithArgs(args ...string) (stdout string, err error) {
 	err = r.withRemoteRefs(func() error {
 		stdout, err = r.runChecked(append([]string{"fetch"}, args...)...)

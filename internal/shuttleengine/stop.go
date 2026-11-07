@@ -1,4 +1,5 @@
-// stop.go is shuttle's stop verb: it ends a run's strand after recording the stop in run.json, in both the handle form (Run.Stop) and the guid form (Runner.StopStrand).
+// stop.go is shuttle's stop verb: it ends a run's strand after recording the stop in run.json.
+// It has two forms, the handle form (Run.Stop) and the guid form (Runner.StopStrand).
 
 package shuttleengine
 
@@ -11,10 +12,11 @@ import (
 )
 
 // runOutcomeStopped is the RunState.Outcome of a run lym stopped before it finished.
-// It is a record-only terminal value, never a Result.Outcome.
+// It is a terminal value that exists only in the run record, not in a reported result.
 const runOutcomeStopped = "stopped"
 
-// stopOutcome returns the outcome a stop leaves in a run's record: outcome itself when it is done or every file in a non-empty outputFiles exists, runOutcomeStopped otherwise.
+// stopOutcome returns the outcome a stop leaves in a run's record:
+// outcome itself when it is done or every file in a non-empty outputFiles exists, runOutcomeStopped otherwise.
 // A finished run's files outrank the stop, so a stop never turns finished work into a stopped record.
 // An empty outputFiles is an unawaited run's, which has no files to finish, so only its outcome can keep it.
 func stopOutcome(outcome string, outputFiles []string) string {
@@ -31,9 +33,13 @@ func (run *Run) saveState() error {
 }
 
 // Stop removes the run's strand, when it is live or an own-window strand with a dead pane, and records the stop.
-// A record already terminal keeps its outcome, and a record still reading running whose output files all exist keeps running; any other record, an unawaited run's included, reads stopped.
-// The record is written before the strand is removed, so a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand.
-// A Wait on this handle that sees the strand go finalizes with the stop mark, so it records stopped unless the run's files show it done.
+// A record already terminal keeps its outcome.
+// A record still reading running keeps running when all its output files exist.
+// Any other record, an unawaited run's included, reads stopped.
+// The record is written before the strand is removed, so a failed write returns its error with the strand untouched,
+// and a failed removal leaves the terminal record over a live strand.
+// A Wait on this handle that sees the strand go finalizes with the stop mark,
+// so it records stopped unless the run's files show it done.
 func (run *Run) Stop() error {
 	run.recordMu.Lock()
 	if !isTerminalOutcome(run.state.Outcome) {
@@ -57,9 +63,12 @@ func (run *Run) markedStopped() bool {
 	return run.stopMarked
 }
 
-// StopStrand removes the strand guid names, when it is live or an own-window strand with a dead pane, and records the stop, without needing an in-process Run handle.
+// StopStrand records the stop and removes the strand guid names.
+// It removes the strand only when it is live or an own-window strand with a dead pane.
+// It needs only the guid, not a handle from the process that started the run.
 // A guid with no run record is stopped by removing its strand alone.
-// A Wait in another process may overwrite the stopped record with its own terminal outcome, and either answer is terminal.
+// A Wait in another process may overwrite the stopped record with its own terminal outcome.
+// Either answer is terminal.
 func (r *Runner) StopStrand(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -71,7 +80,8 @@ func (r *Runner) StopStrand(guid string) error {
 	return r.stopRecorded(runDir, guid)
 }
 
-// stopRecorded writes the stop into the record at runDir, then removes the strand guid names when it is live or an own-window strand with a dead pane.
+// stopRecorded writes the stop into the record at runDir, then removes the strand guid names.
+// It removes the strand only when it is live or an own-window strand with a dead pane.
 // A record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running.
 // A failed read or write returns its error with the strand untouched.
 func (r *Runner) stopRecorded(runDir, guid string) error {
@@ -91,8 +101,9 @@ func (r *Runner) stopRecorded(runDir, guid string) error {
 	return removeStrandIfPresent(r.reed, guid)
 }
 
-// reportStoppedSession reports the session of rs, a record the stop verb just moved to stopped, to the session-end hook.
-// The usage is what the record's engine reads for the session, the unknown reading when the set no longer holds the engine or the engine has no UsageReader.
+// reportStoppedSession reports the session of rs, a record the stop verb moved to stopped, to the session-end hook.
+// The usage is what the record's engine reads for the session.
+// It is the unknown reading when the set no longer holds the engine, or the engine has no UsageReader.
 func (r *Runner) reportStoppedSession(rs RunState) {
 	engine, engineName, err := r.engineFor(rs)
 	usage := SessionUsage{}
@@ -118,13 +129,15 @@ func (r *Runner) reportStoppedSession(rs RunState) {
 	})
 }
 
-// strandRemovable reports whether a stop removes strand: a live strand, or an own-window strand whose pane is present but not live, a dead pane or one showing only its shell.
+// strandRemovable reports whether a stop removes strand:
+// a live strand, or an own-window strand whose pane is present but not live, a dead pane or one showing only its shell.
 // A window 0 strand with a dead pane is not removable, since reconcile kills its pane at the next reed op.
 func strandRemovable(strand reedengine.StrandStatus) bool {
 	return strand.Live || (strand.OwnWindow && strand.Present)
 }
 
-// removeStrandIfPresent removes guid's strand when reed tracks it and it is removable, logging the removal because it may kill a real agent process.
+// removeStrandIfPresent removes guid's strand when reed tracks it and it is removable.
+// It logs the removal, because a removal may kill a real agent process.
 // A probe that could not answer has not shown the strand gone, so it returns an error rather than guessing.
 func removeStrandIfPresent(reed ReedOps, guid string) error {
 	status, err := reed.Status()

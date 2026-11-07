@@ -1,4 +1,5 @@
-// geometry.go declares the absolute paths and names the hub wiring tells dobby, and the pass exit codes dobby reads from a batten run.
+// geometry.go declares the absolute paths and names the hub wiring tells dobby.
+// It also declares the exit codes that a `lym batten run` pass returns to dobby.
 
 package dobbyengine
 
@@ -18,11 +19,11 @@ const (
 	StateFileName = "state.json"
 	// TidyDirName is the directory of the board-tidy reports in the worktree's `.lym/beam/` directory.
 	TidyDirName = "tidy"
-	// AnnounceFileName is the file in the worktree's `.lym/beam/` directory that holds the last beam head whose landings the dobby announced.
+	// AnnounceFileName is the file in the worktree's `.lym/beam/` directory that holds the last announced beam head.
 	AnnounceFileName = "announced-head"
 )
 
-// Geometry is every path and name dobby needs, absolute and told by the hub wiring.
+// Geometry holds every path and name dobby needs, each absolute and handed in by the hub wiring.
 // The package derives none of them.
 type Geometry struct {
 	// HubRoot is the hub directory.
@@ -43,19 +44,19 @@ type Geometry struct {
 	StatePath string
 	// LogPath is the daemon's log file under the worktree's `.lym/beam/` directory.
 	LogPath string
-	// OutPath is the file under the worktree's `.lym/beam/` directory that the detached dobby's raw standard output and error go to.
+	// OutPath is the file under the worktree's `.lym/beam/` directory that the detached dobby's stdout and stderr go to.
 	OutPath string
-	// AnnouncePath is the never-tracked file under the worktree's `.lym/beam/` directory holding the last beam head the dobby announced landings up to.
+	// AnnouncePath is the never-tracked file in the worktree's `.lym/beam/`, holding the last announced beam head.
 	AnnouncePath string
 	// PrimeLogPath is the prime's dobby log file, which a beam dobby's worktree-gone line is written to.
 	PrimeLogPath string
-	// TidyDir is the directory of the board-tidy reports under the worktree's `.lym/beam/` directory, each named by its UTC timestamp.
+	// TidyDir is the board-tidy reports directory under the worktree's `.lym/beam/`, each named by its UTC timestamp.
 	TidyDir string
 	// PrimeRunsDir is the prime's batten runs directory.
 	PrimeRunsDir string
 	// LymExecutable is the absolute path of the lym binary dobby re-executes and spawns passes with.
 	LymExecutable string
-	// MoveRecords are the paths of the anchor-move records whose standing keeps this dobby from scheduling: the record on its own worktree's records worktree and the one on the prime's.
-	// An empty list gates nothing.
+	// MoveRecords are the paths of the anchor-move records whose standing keeps this dobby from scheduling.
+	// The records sit on this worktree's records worktree and on the prime's; an empty list gates nothing.
 	MoveRecords []string
 }

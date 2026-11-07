@@ -1,5 +1,5 @@
-// hub_helper_test.go holds the hub, plan-directory and gate-config seeds the tier0 and tier1 tests of this package share.
-// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
+// hub_helper_test.go holds the hub, plan-directory and gate-config seeds the tier0 and tier1 tests share.
+// The fixtures are package-local: the internal and external test packages do not share a test-helper package.
 
 package websterengine_test
 
@@ -31,14 +31,15 @@ func testGateConfig() gateslot.Config {
 	}
 }
 
-// seedHubStencils seeds every registry stencil under hub's real fabricengine.StencilsDir(hub) location, the geometry the render functions derive internally before reading through stencilstore.Read.
+// seedHubStencils seeds every registry stencil under fabricengine.StencilsDir(hub).
+// The render functions derive that location internally before they read through stencilstore.Read.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
 	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 // seedPlanDir creates a t.TempDir() seeded with a two-card plan, so the fingerprint gate has something real to hash.
-// BeginBatch's fingerprint gate reads planDir directly, never deps.Batches, so no actual plan-format parsing is needed for these tests.
+// BeginBatch's fingerprint gate reads planDir directly, never deps.Batches, so these tests need no plan-format parsing.
 func seedPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -53,9 +54,10 @@ func seedPlanDir(t *testing.T) string {
 	return dir
 }
 
-// mustFingerprint replicates fingerprint.go's own algorithm exactly: SHA-256 over every "*.md" file's name and contents, sorted and NUL-separated.
+// mustFingerprint recomputes the plan fingerprint that fingerprint.go computes:
+// SHA-256 over every "*.md" file's name and contents, sorted and NUL-separated.
 // A test can then seed a State.PlanFingerprint that matches what BeginBatch will independently recompute.
-// The algorithm is package-private and these tests deliberately stay in the external websterengine_test package.
+// The algorithm is package-private, so these tests stay in the external websterengine_test package.
 func mustFingerprint(t *testing.T, planDir string) string {
 	t.Helper()
 	entries, err := os.ReadDir(planDir)

@@ -1,4 +1,5 @@
-// readopt_integration_test.go drives a batten resume's re-adoption of a gone task worktree over a real hub with a pushed pair.
+// readopt_integration_test.go drives a batten resume's re-adoption of a gone task worktree.
+// The test runs over a real hub with a pushed pair.
 
 package battencli
 
@@ -26,7 +27,8 @@ type failedStopRecorder struct {
 	commits int
 }
 
-// armFailedStop points c at the batten status of slug under h, writes status there, and swaps the notice and failed-stop commit seams for recorders.
+// armFailedStop points c at the batten status of slug under h and writes status there.
+// It swaps the notice and failed-stop commit seams for recorders and returns the recorder.
 func armFailedStop(t *testing.T, c *battenCLI, h *hubforge.Hub, slug string, status shedengine.Status) *failedStopRecorder {
 	t.Helper()
 
@@ -59,7 +61,8 @@ func requireStatusState(t *testing.T, c *battenCLI, want shedengine.State) {
 	}
 }
 
-// readoptReceiver builds a receiver over h whose re-adoption seams are the hub's, and returns it with the report its resume reconcile judged last.
+// readoptReceiver builds a receiver over h whose re-adoption seams are the hub's.
+// It returns the receiver with the report its resume reconcile judged last.
 func readoptReceiver(h *hubforge.Hub, slug string) (*battenCLI, *fabricengine.OriginReport) {
 	c := &battenCLI{location: h.Location, slug: slug}
 	c.readopt = hubReadoptSeams(h.Location)
@@ -82,7 +85,7 @@ func removePairDirectories(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
-// plantIgnoredOutput makes path a directory holding only build output, as a removal that kept git-ignored files leaves it.
+// plantIgnoredOutput makes path a directory of build output alone, as a removal that kept git-ignored files leaves it.
 func plantIgnoredOutput(path string) error {
 	output := filepath.Join(path, "bin", "app.dll")
 	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
@@ -94,8 +97,10 @@ func plantIgnoredOutput(path string) error {
 // TestBattenIntegration_GoneTaskWorktree drives ownerPreflight over a hub whose pair lost both worktree directories.
 // A pair whose branches are live is re-made, and the resume reconcile reads none of its branches stopped.
 // A local branch origin lacks has its stale tracking ref dropped, so the pair's push creates it on origin again.
-// taskWorktreePresent reads a plain file, an empty directory and a directory holding only ignored output at the task path as absent, and a resolving worktree as present.
-// A resume at Worktree-Teardown over such a stray directory judges the owner on the local board instead of failing on the path.
+// taskWorktreePresent reports the task path absent for a plain file, an empty directory, or ignored output alone.
+// It reports a resolving worktree as present.
+// A resume at Worktree-Teardown over such a stray directory judges the owner on the local board.
+// It does not fail on the path.
 func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,8 +1,6 @@
-// fsx.go implements filesystem-safety primitives for atomic writes and path validation.
-//
-// This package provides path guards to prevent escapes (empty, absolute, parent directory
-// references) and atomic file writes via temp-file + rename, ensuring that concurrent readers are
-// not caught mid-write.
+// fsx.go implements the path guard and the atomic file write of the fsx package.
+// PathGuard rejects empty, absolute, and parent-directory-reference paths.
+// AtomicWrite replaces a file via a temp file and rename, so concurrent readers never see a partial write.
 
 package fsx
 
@@ -16,13 +14,12 @@ import (
 // PathError represents an invalid or unsafe path.
 type PathError string
 
-// Error returns the error message.
+// Error returns the message as the error's text.
 func (e PathError) Error() string {
 	return string(e)
 }
 
-// PathGuard validates a relative path, rejecting empty, absolute, and parent-directory-reference
-// paths.
+// PathGuard validates a relative path, rejecting empty, absolute, and parent-directory-reference paths.
 func PathGuard(relPath string) error {
 	if relPath == "" {
 		return PathError("empty path")
@@ -48,8 +45,8 @@ func PathGuard(relPath string) error {
 	return nil
 }
 
-// AtomicWriteBytes writes data to an absolute file path atomically via a temp file and rename,
-// ensuring concurrent readers never see partial writes.
+// AtomicWriteBytes writes data to an absolute file path atomically via a temp file and rename.
+// Concurrent readers never see a partial write.
 func AtomicWriteBytes(absPath string, data []byte) error {
 	dir := filepath.Dir(absPath)
 
@@ -78,8 +75,7 @@ func AtomicWriteBytes(absPath string, data []byte) error {
 	return nil
 }
 
-// AtomicWrite writes content to dir/relPath atomically after validating the relative path via
-// PathGuard.
+// AtomicWrite writes content to dir/relPath atomically, after validating the relative path via PathGuard.
 func AtomicWrite(dir, relPath, content string) error {
 	if err := PathGuard(relPath); err != nil {
 		return err

@@ -1,10 +1,7 @@
-// tiersleep_test.go extends the Test Tier Purity Invariant guard (tierpurity_test.go) with an
-// AST-based check: an untagged test file containing a literal time.Sleep(...)
-// call whose duration is a compile-time constant of at least one second is flagged the same way a
-// banned spawn token is, unless the file is on the allowedLongSleepers allowlist.
-// A real-time-blocking sleep in a file that runs on every plain `go test` slows the offline Tier 1
-// loop exactly like the spawns tierpurity_test.go already guards against;
-// this file adds the detection logic, tierpurity_test.go wires it in.
+// tiersleep_test.go holds the AST check that finds long literal sleeps in untagged test files.
+// Such a sleep is a time.Sleep(...) call whose duration is a compile-time constant of at least one second.
+// A file holding one fails the Test Tier Purity check unless it is on the `allowedLongSleepers` allowlist.
+// Such a sleep blocks real time on every plain `go test` run, which slows the offline Tier 1 loop.
 // It carries no build tag, so the guards of every tier that read it compile it.
 
 package main
@@ -18,10 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// allowedLongSleepers is the real-time-wait guard's allowlist: module-relative,
-// slash-separated file paths permitted to contain a literal time.Sleep(...) of at
-// least one second in an untagged test file, each with a one-line reason — mirroring
-// tierpurity_test.go's allowedSpawners style.
+// allowedLongSleepers lists the files permitted to hold a literal time.Sleep(...) of at least one second.
+// Each entry is a module-relative, slash-separated file path with a one-line reason.
 var allowedLongSleepers = []scankit.Entry{}
 
 // findLongLiteralSleep parses data as Go and finds time.Sleep(...) calls with duration >= 1 second.
@@ -33,8 +28,8 @@ func findLongLiteralSleep(fset *token.FileSet, filename string, data []byte) (ev
 
 	ast.Inspect(file, func(n ast.Node) bool {
 		if found {
-			// Already found a match; stop descending further, but let ast.Inspect
-			// finish unwinding rather than trying to abort the walk early.
+			// Once a match is found, return false to skip the subtree.
+			// ast.Inspect has no early abort, so the walk still unwinds.
 			return false
 		}
 		call, ok := n.(*ast.CallExpr)
@@ -70,11 +65,11 @@ func findLongLiteralSleep(fset *token.FileSet, filename string, data []byte) (ev
 	return evidence, found
 }
 
-// sleepDurationAtLeastOneSecond reports whether arg is a duration of at least one second or unresolvable.
+// sleepDurationAtLeastOneSecond reports whether arg is a duration of at least one second, and whether it is unresolvable.
 func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, unresolvable bool) {
 	switch e := arg.(type) {
 	case *ast.SelectorExpr:
-		// Case (a): a bare time.<Scale> selector, e.g. time.Sleep(time.Hour).
+		// A bare time.<Scale> selector, e.g. time.Sleep(time.Hour).
 		pkgIdent, ok := e.X.(*ast.Ident)
 		if !ok || pkgIdent.Name != "time" {
 			return false, true
@@ -82,7 +77,7 @@ func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, u
 		return timeScaleAtLeastOneSecond(e.Sel.Name)
 
 	case *ast.BinaryExpr:
-		// Case (b): a multiplication of literal and time.* scale, e.g. 2 * time.Second.
+		// A numeric literal times a time.<Scale> selector, e.g. 2 * time.Second.
 		if e.Op != token.MUL {
 			return false, true
 		}
@@ -90,10 +85,9 @@ func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, u
 		if !ok {
 			return false, true
 		}
-		// Recurse into case (a)'s scale-selector check purely to confirm the
-		// non-literal operand resolves to a known time.* scale; its isLong
-		// answer describes the bare selector alone, not the multiplied result,
-		// so the actual comparison below recomputes from scaleInNanoseconds.
+		// The call on the scale operand only confirms that it resolves to a known time.* scale;
+		// its isLong answer describes the scale alone, not the product,
+		// so the comparison below recomputes from `scaleInNanoseconds`.
 		if _, scaleUnresolvable := sleepDurationAtLeastOneSecond(file, scaleExpr); scaleUnresolvable {
 			return false, true
 		}
@@ -105,7 +99,7 @@ func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, u
 		return litValue*scaleNanos >= 1e9, false
 
 	case *ast.Ident:
-		// Case (c): a bare identifier — look for a same-file top-level const/var declaration.
+		// A bare identifier, resolved to a same-file top-level const or var declaration.
 		valueExpr, ok := findTopLevelDeclValue(file, e.Name)
 		if !ok {
 			return false, true
@@ -129,10 +123,8 @@ func timeScaleAtLeastOneSecond(name string) (isLong bool, unresolvable bool) {
 	}
 }
 
-// scaleInNanoseconds returns the nanosecond value of a recognized time.<name> scale
-// selector. Callers must only pass a name already confirmed resolvable by
-// timeScaleAtLeastOneSecond (via sleepDurationAtLeastOneSecond's case (a) recursion);
-// an unrecognized name returns 0, matching the "not long" conservative default there.
+// scaleInNanoseconds returns the nanosecond value of a recognized time.<name> scale selector.
+// Callers must pass only a name already checked as a recognized scale; an unrecognized name returns 0.
 func scaleInNanoseconds(name string) float64 {
 	switch name {
 	case "Nanosecond":
@@ -152,7 +144,8 @@ func scaleInNanoseconds(name string) float64 {
 	}
 }
 
-// splitLiteralAndScale identifies numeric literal and time.<Scale> in a BinaryExpr, regardless of order.
+// splitLiteralAndScale finds the numeric literal among the two operands of a BinaryExpr, in either order.
+// It returns the other operand as the scale, and reports whether a literal was found.
 func splitLiteralAndScale(x, y ast.Expr) (lit *ast.BasicLit, scale ast.Expr, ok bool) {
 	if l, isLit := x.(*ast.BasicLit); isLit && (l.Kind == token.INT || l.Kind == token.FLOAT) {
 		return l, y, true

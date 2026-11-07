@@ -1,8 +1,8 @@
-<!-- This is the burler focus directive: the block that gives a round's focus file its own channel into
-     the explore step, outside the prior-rounds clean-room gate.
-     internal/burlerengine's prompt composition (composeReviewPrompt in prompt.go) is its consuming call site.
-     It declares one required marker, {{.focus_path}}, and is filled with stencil.Fill, then injected
-     as burler-step-1-explore's optional focus_directive marker value. -->
+<!-- This is the burler focus directive: the block that gives a round's focus file its own channel into the explore step.
+     That channel lies outside the prior-rounds clean-room gate.
+     `focusDirectiveBlock` (internal/burlerengine/prompt.go) fills it.
+     `composeReviewPrompt` injects the result as burler-step-1-explore's optional focus_directive marker value.
+     It declares one required marker, {{.focus_path}}. -->
 
 ## Focus directive for this round
 

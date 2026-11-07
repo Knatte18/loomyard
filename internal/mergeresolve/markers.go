@@ -1,6 +1,6 @@
-// markers.go implements scanUnresolved, the mechanical re-scan that decides whether a conflicted
-// path is genuinely resolved: never the session's own verdict, but a line-anchored, content-only
-// scan for the marker triad git leaves behind.
+// markers.go implements scanUnresolved, the mechanical re-scan that decides whether a conflicted path is resolved.
+// The scan trusts no session verdict.
+// It is a line-anchored, content-only match for the marker triad git leaves behind.
 
 package mergeresolve
 
@@ -13,8 +13,8 @@ import (
 	"strings"
 )
 
-// The three conflict-marker prefixes scanUnresolved treats a line as still-conflicted for. Each is
-// the seven-character rune run followed by a space, except the equals run, which stands alone —
+// The three conflict-marker prefixes that mark a line as still conflicted.
+// Each is the seven-character rune run followed by a space, except the equals run, which stands alone:
 // git's own separator line carries no trailing ref name to space-delimit.
 const (
 	conflictMarkerOurs   = "<<<<<<< "
@@ -22,29 +22,27 @@ const (
 	conflictMarkerTheirs = ">>>>>>> "
 )
 
-// scanUnresolved re-scans each of paths (joined onto worktreeRoot) for a still-present conflict
-// marker, returning the subset that is still unresolved.
+// scanUnresolved re-scans each of paths, joined onto worktreeRoot, for a still-present conflict marker.
+// It returns the subset of paths that remain unresolved.
 //
-// A path whose file no longer exists is resolved by deletion, not a failure: ConflictedFiles()
-// includes delete/modify conflicts whose correct resolution is that the file is gone, and the
-// caller still passes such a path to the staging verb, which stages the removal. Such a path is
-// skipped here and never added to unresolved.
+// A path whose file no longer exists counts as resolved by deletion, not as a failure.
+// `ConflictedFiles()` includes delete/modify conflicts whose correct resolution is that the file is gone,
+// and the caller still passes such a path to the staging step, which stages the removal.
+// Such a path is skipped and is never added to unresolved.
 //
-// A read error that is not a not-exist error is a genuine failure, returned wrapped and distinct
-// from the deletion case.
+// A read error that is not a not-exist error is a genuine failure:
+// it is returned wrapped and is distinct from the deletion case.
 //
-// Otherwise the file is scanned line by line, and it is still unresolved when any line STARTS WITH
-// one of the three markers above — a line-anchored, content-only match, never a substring match
-// anywhere in a line.
+// Otherwise the file is scanned line by line, and it is unresolved when any line starts with one of the three markers.
+// The match is line-anchored and content-only, never a substring match anywhere in a line.
 //
-// Consequence, stated rather than hidden: a resolved file whose own legitimate content happens to
-// carry a line-start conflict marker can never pass this scan, and its merge escalates to stuck.
-// That is the safe direction, because the conclude step is irreversible at the Fabric layer, and
-// such a file is out of scope for automated resolution.
+// A resolved file whose legitimate content carries a line-start conflict marker never passes this scan,
+// and its merge escalates to stuck.
+// That is the safe direction: the conclude step is irreversible at the Fabric layer.
+// Such a file is out of scope for automated resolution.
 //
-// Layering note: this scan is only a pre-check. The Fabric-level index guard remains the
-// authoritative gate — this scan can make this package refuse something Fabric would have
-// accepted, never the reverse.
+// This scan is only a pre-check: the Fabric-level index guard, in `MergeContinue`, remains the authoritative gate.
+// This scan can make this package refuse something Fabric would have accepted, never the reverse.
 func scanUnresolved(worktreeRoot string, paths []string) (unresolved []string, err error) {
 	for _, p := range paths {
 		full := filepath.Join(worktreeRoot, p)
@@ -73,12 +71,11 @@ func scanUnresolved(worktreeRoot string, paths []string) (unresolved []string, e
 	return unresolved, nil
 }
 
-// fileHasLineStartMarker reports whether any line read from f starts with one of the three
-// conflict-marker prefixes.
+// fileHasLineStartMarker reports whether any line read from f starts with a conflict-marker prefix.
 func fileHasLineStartMarker(f *os.File) (bool, error) {
 	scanner := bufio.NewScanner(f)
-	// A conflicted file's diff hunks can exceed bufio.Scanner's 64KiB default token size; widen the
-	// buffer well past any realistic single line rather than fail the scan on a long line.
+	// A conflicted file's diff hunks can exceed the 64KiB default token size of bufio.Scanner.
+	// Widen the buffer well past any realistic single line rather than fail the scan on a long line.
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()

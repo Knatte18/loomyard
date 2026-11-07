@@ -1,8 +1,8 @@
-// bouncerfacts.go computes and renders the per-round facts file the judge reads in place of the review and fixer artifacts:
-// counts per round, severity and class, and the finding keys that recur across the ledgers.
+// bouncerfacts.go computes and renders the per-round facts file for the judge.
+// The file holds counts per round by severity and class, and the finding keys that recur across the ledgers.
+// The judge reads it as an input in place of the review and fixer artifacts, and never declares it as an output.
 // The counts come from burlerengine.ParseReview, never a second parser,
 // and the file records no review's own top-level verdict, so the judge decides from the findings alone.
-// The file is an input to the judge and never one of its declared output files.
 
 package shedadapters
 
@@ -76,9 +76,11 @@ type lensFacts struct {
 
 // roundFacts is everything the facts file for Round records.
 // EarlierOpen lists every key open in at least one ledger before Round, with the ledger rounds it was open in,
-// and EarlierLedgerErrs names each earlier ledger that is missing or fails to parse, so a degraded read never empties the list silently.
+// and EarlierLedgerErrs names each earlier ledger that is missing or fails to parse.
+// A degraded read therefore never empties the list silently.
 // Lenses is set only for a fanned segment.
-// UsageNote is non-empty when the round's recorded fan names could not be read, so it counts as solo for lens exclusions.
+// UsageNote is non-empty when the round's recorded fan names could not be read.
+// Such a round counts as solo for lens exclusions.
 type roundFacts struct {
 	Round             int
 	Rows              []roundFactsRow
@@ -89,8 +91,9 @@ type roundFacts struct {
 	UsageNote         string
 }
 
-// computeLensFacts reads the fan and the lenses round ran from its usage record, counts round's review by origin through burlerengine.ParseReview,
-// and names the lenses already excluded for the round's next judgment.
+// computeLensFacts reads the fan and the lenses that round ran from its usage record.
+// It counts the round's review by origin through burlerengine.ParseReview,
+// and it names the lenses already excluded for the round's next judgment.
 // A missing usage record or an unparseable review is recorded on the result and never fails the function.
 // Every lens the round ran has an origin row, even with no findings.
 func computeLensFacts(name, runDir string, round int, reportName func(int) string) lensFacts {
@@ -143,7 +146,8 @@ func computeLensFacts(name, runDir string, round int, reportName func(int) strin
 
 // computeRoundFacts reads rounds 1..round's review files and rounds 1..round-1's ledgers inside runDir.
 // A review that is missing or fails to parse yields a row carrying the error text,
-// and a ledger that fails to parse is skipped from the key lists and named in EarlierLedgerErrs, so the function never fails.
+// and a ledger that fails to parse is skipped from the key lists and named in EarlierLedgerErrs.
+// The function never fails.
 func computeRoundFacts(runDir string, round int, reportName func(int) string) roundFacts {
 	facts := roundFacts{Round: round}
 	for n := 1; n <= round; n++ {
@@ -269,7 +273,7 @@ func isGatingEntry(e ledgerEntry) bool {
 	return e.Class == burlerengine.GatingClass && e.Severity == burlerengine.SeverityMedium
 }
 
-// circlingEvidence returns, sorted, the keys that are gating and open in ledger round and were open in an earlier ledger too.
+// circlingEvidence returns, sorted, the keys that are gating and open in round and were open in an earlier ledger too.
 // Only a key open in two rounds counts, so a rising finding count or new keys alone yield nothing.
 // An unreadable or unparseable ledger round yields no evidence.
 func circlingEvidence(runDir string, round int) []string {
@@ -295,8 +299,11 @@ func circlingEvidence(runDir string, round int) []string {
 	return out
 }
 
-// renderRoundFacts renders f as deterministic Markdown: a heading, one table with a row per round, the recurring-keys list, and the list of keys open in an earlier round with a parse-error line per unreadable earlier ledger.
-// Severities and classes appear in their constant order and keys sorted, so two renders of the same facts are byte-identical.
+// renderRoundFacts renders f as deterministic Markdown:
+// a heading, one table with a row per round, and the recurring-keys list.
+// The keys open in an earlier round come next, with a parse-error line per unreadable earlier ledger.
+// Severities and classes keep their constant order, and keys are sorted.
+// Two renders of the same facts are therefore byte-identical.
 func renderRoundFacts(f roundFacts) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Round %d facts\n\n", f.Round)
@@ -382,8 +389,9 @@ func renderRoundFacts(f roundFacts) []byte {
 	return []byte(b.String())
 }
 
-// renderLensFacts writes the "## Lenses" section: the fan, the lenses run, the lenses already excluded and a table of the latest review's findings per origin.
-// A missing usage record or an unparseable review renders as one line saying so in place of what it would have supplied.
+// renderLensFacts writes the "## Lenses" section.
+// It states the fan, the lenses run, the lenses already excluded, and a per-origin table of the latest findings.
+// A missing usage record or an unparseable review renders one line saying so instead.
 func renderLensFacts(b *strings.Builder, l lensFacts) {
 	b.WriteString("\n## Lenses (the latest round's findings per origin)\n\n")
 	if l.UsageErr != "" {
@@ -445,8 +453,9 @@ func escapeCell(s string) string {
 	return strings.ReplaceAll(s, "|", `\|`)
 }
 
-// writeRoundFacts computes and renders round's facts file and writes it at factsPath, overwriting any earlier render.
-// The lens section is computed, identifying itself as name in its warnings, only when clusterExcludes is true, so a solo segment's file carries none.
+// writeRoundFacts computes the round's facts, renders them, and writes them to factsPath, overwriting any earlier file.
+// The lens section is computed only when clusterExcludes is true, so a solo segment's file carries none.
+// Its warnings identify the section as name.
 // A non-empty usageNote is rendered as one line saying the round's recorded fan names could not be read.
 func writeRoundFacts(name, runDir string, round int, reportName func(int) string, clusterExcludes bool, usageNote string) error {
 	facts := computeRoundFacts(runDir, round, reportName)

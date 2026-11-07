@@ -1,4 +1,6 @@
-// record.go — the Sampler-Session row's record, its locked reads and writes, and the entry stamp a done flag is judged against.
+// record.go holds the Sampler-Session row's record and its locked reads and writes.
+//
+// It also holds EntryStamp, the entry stamp a done flag is judged against.
 
 package samplerengine
 
@@ -9,7 +11,8 @@ import (
 
 // Record is the state the Sampler-Session row keeps in one JSON file in the run's scratch directory.
 type Record struct {
-	// StrandGUID, StrandName, SessionID and Engine name the interactive session the row last recorded, so a later pass resumes it.
+	// StrandGUID, StrandName, SessionID and Engine name the interactive session the row last recorded,
+	// so a later pass resumes it.
 	StrandGUID string `json:"strand_guid,omitempty"`
 	StrandName string `json:"strand_name,omitempty"`
 	SessionID  string `json:"session_id,omitempty"`
@@ -35,11 +38,15 @@ func UpdateRecord(path, lockPath string, mutate func(*Record)) error {
 }
 
 // EntryStamp counts the times history shows the run entering row from another row.
-// An entry with outcome Done or skipped whose producer is in predecessors enters row, once per call it folds, and leaves the run at row.
-// A goto onto row enters it only when the run did not already stand there; a goto onto another row leaves the run elsewhere.
-// A Done entry of row, or a Stuck entry of row routed to another row, leaves the run elsewhere; any other entry of row is a halt and keeps it at row.
+// An entry with outcome Done or skipped whose producer is in predecessors enters row once per call it folds.
+// Such an entry also leaves the run at row.
+// A goto onto row enters it only when the run did not already stand there;
+// a goto onto another row leaves the run elsewhere.
+// A Done entry of row, or a Stuck entry of row routed to another row, leaves the run elsewhere;
+// any other entry of row is a halt and keeps it at row.
 // An entry of any other producer leaves the run elsewhere.
-// A halt, a failure that appended no entry and a resume therefore leave the stamp unchanged, while every return by a goto from another row raises it.
+// A halt, a failure that appended no entry and a resume therefore leave the stamp unchanged;
+// every return by a goto from another row raises it.
 func EntryStamp(history []shedengine.HistoryEntry, row string, predecessors []string) int {
 	stamp := 0
 	atRow := false

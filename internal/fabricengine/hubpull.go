@@ -1,4 +1,5 @@
-// hubpull.go — PullHub, the hub-wide pull: Bolt under the board write lock, then the prime pair and each local beam pair under its code branch's parent lock, each side reported on its own.
+// hubpull.go holds PullHub, the hub-wide pull of Bolt, the prime pair and each local beam pair.
+// Each side is reported on its own, and each pair is pulled under its code branch's parent lock.
 
 package fabricengine
 
@@ -9,10 +10,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// HubPullSideKind names which part of the hub a HubPullSide reports.
+// HubPullSideKind names which part of the hub a side of a hub pull covers.
 type HubPullSideKind string
 
-// The side kinds PullHub reports, in the order it pulls them.
+// The side kinds of a hub pull, in the order the pull visits them.
 const (
 	HubPullBoard HubPullSideKind = "board"
 	HubPullPrime HubPullSideKind = "prime"
@@ -60,10 +61,14 @@ func (r HubPullResult) Stopped() bool {
 // PairLock takes the parent lock of the code branch checked out in pair and returns its release.
 type PairLock func(pair *lymcwd.Location) (release func(), err error)
 
-// PullHub brings the hub of prime up to date from origin: Bolt first, then the prime pair, then every local beam pair in worktree list order.
-// It exists so one call refreshes everything this machine reads the hub through while the orch, the dobbies and runs keep writing.
-// Bolt is pulled under the board write lock, and each pair, both its code and records sides, while lockPair holds its code branch's parent lock, the lock a landing into that branch takes; the lock is held for that one pair only.
-// A local beam is a pair present here whose origin record carries the beam mark, whatever machine owns it, and one whose code branch has no upstream is up to date.
+// PullHub brings the hub of prime up to date from origin:
+// Bolt first, then the prime pair, then every local beam pair in worktree list order.
+// It lets one call refresh everything this machine reads the hub through, while the hub's writers keep writing.
+// Bolt is pulled under the board write lock.
+// Each pair, both its code and records sides, is pulled while lockPair holds the parent lock of its code branch.
+// A landing into that branch takes the same lock, and the lock is held for that one pair only.
+// A local beam is a pair present here whose origin record carries the beam mark, whatever machine owns it.
+// A beam whose code branch has no upstream is up to date.
 // A pull honoring SkipGit leaves every side up to date.
 // A side that stops, including a beam whose origin record cannot be read, never keeps the next side from running.
 // The error is only a failure to list the hub's worktrees, and the sides already pulled are kept in the result.
@@ -105,7 +110,8 @@ func pullBoardSide(boardDir string, opts SyncOptions, rec *Mutations) HubPullSid
 	return side
 }
 
-// pullPairSide pulls the pair at pair under its parent lock and reports it as one side of kind, extending rec with what moved.
+// pullPairSide pulls the pair under its parent lock and reports it as one side of kind.
+// It extends rec with what moved.
 // A beam whose code branch has no upstream is reported up to date without taking the lock.
 func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions, lockPair PairLock, rec *Mutations) HubPullSide {
 	side := HubPullSide{Kind: kind, Worktree: pair.WorktreeName}
@@ -162,7 +168,7 @@ func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions,
 	return withWarning(side)
 }
 
-// movedOrCurrent reports a side as moved when rec grew past before while the side was pulled, and as up to date otherwise.
+// movedOrCurrent reports a side as moved when rec grew past the length before the pull, and as up to date otherwise.
 func movedOrCurrent(rec *Mutations, before int) HubPullOutcome {
 	if rec.Len() > before {
 		return HubPullMoved
@@ -170,16 +176,18 @@ func movedOrCurrent(rec *Mutations, before int) HubPullOutcome {
 	return HubPullUpToDate
 }
 
-// beamCandidate is one local beam pair found by localBeamCandidates: its location, or the error that kept it from being resolved.
+// beamCandidate is one local beam pair: its location, or the error that kept it from being resolved.
 type beamCandidate struct {
 	slug     string
 	location *lymcwd.Location
 	err      error
 }
 
-// localBeamCandidates lists the pairs of prime's hub present on this machine whose origin record carries the beam mark, in worktree list order.
-// A pair whose origin record cannot be read or whose location cannot be resolved is listed with its error, so the others are still found;
-// as its beam mark is unknown when the record is unreadable, the pull reports it as a beam side.
+// localBeamCandidates lists the local pairs of prime's hub whose origin record carries the beam mark.
+// They come in worktree list order.
+// A pair whose origin record cannot be read or whose location cannot be resolved is listed with its error,
+// so the others are still found.
+// The pair's beam mark is unknown when the record is unreadable, so the pull reports it as a beam side.
 // The error is only a failure to list the worktrees.
 func localBeamCandidates(prime *lymcwd.Location) ([]beamCandidate, error) {
 	entries, err := List(prime.AnchorPath())

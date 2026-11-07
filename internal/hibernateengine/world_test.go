@@ -1,4 +1,5 @@
-// world_test.go declares fakeWorld, the in-memory hub the verb, carrier and sequence tests drive the engine over: paths under a temp directory, a wall and an awake clock, and a scripted fake of every seam.
+// world_test.go declares fakeWorld, the in-memory hub the engine's tests run against.
+// It supplies paths under a temp directory, a wall clock and an awake clock, and a scripted fake of every seam.
 
 package hibernateengine
 
@@ -15,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
-// statusReading is what one TenderStatus call answers besides the pause record's live entries.
+// statusReading is one scripted answer to a tender status read, apart from the pause record's live entries.
 type statusReading struct {
 	sessions []tenderengine.SessionStatus
 	netOps   []tenderengine.NetOpReport
@@ -38,7 +39,7 @@ type fakeWorld struct {
 	pendingSleep bool
 
 	caller string
-	// requester is the requester of the own request, requesterExternal when unset.
+	// requester is the requester that ownRequest records, requesterExternal when unset.
 	requester string
 	goos      string
 	systemctl bool
@@ -51,7 +52,8 @@ type fakeWorld struct {
 	selfStart string
 	alive     map[int]string
 
-	// runs holds each slug's readings, consumed per call with the last repeated; runsMissing reports a slug as having no status.
+	// runs holds each slug's readings, consumed per call with the last repeated;
+	// runsMissing reports a slug as having no status.
 	runs        map[string][]RunStatus
 	runsMissing map[string]bool
 	runSlugs    []string
@@ -59,7 +61,8 @@ type fakeWorld struct {
 	// landLock holds the land lock readings, consumed per call with the last repeated; no reading is not held.
 	landLock []bool
 
-	// stillBusy, refused, resumedDuringGrace and pauseErr are what the fake pause reports; pauseErr is returned after the entry is added and Added is called.
+	// stillBusy, refused, resumedDuringGrace and pauseErr are what the fake pause reports;
+	// pauseErr is returned after the entry is added and Added is called.
 	stillBusy          []string
 	refused            []tenderengine.SessionNote
 	resumedDuringGrace bool
@@ -73,12 +76,13 @@ type fakeWorld struct {
 	endedOwned  []string
 	endOwnedErr error
 
-	// reconcileResult and reconcileErr are what the fake reconcile answers; onReconcile runs inside it, where the exemption stands.
+	// reconcileResult and reconcileErr are what the fake reconcile answers;
+	// onReconcile runs inside it, where the exemption stands.
 	reconcileResult WakeReconcile
 	reconcileErr    error
 	onReconcile     func()
 	reconcileCalls  int
-	// exempted holds every entry exempted from the network gate, and exemptions the number of exemptions standing now.
+	// exempted holds every entry exempted from the network gate, and exemptions counts the exemptions standing now.
 	exempted   []tenderengine.EntryRef
 	exemptions int
 	restores   int
@@ -98,7 +102,8 @@ type fakeWorld struct {
 	hibernateErr   error
 	// noWake makes a successful hibernate leave the clocks alone, so no sleep is ever seen.
 	noWake bool
-	// notices holds every delivered notice; notifyErrs fail the first calls in turn, then notifyErr fails every call after them.
+	// notices holds every delivered notice;
+	// notifyErrs fail the first calls in turn, then notifyErr fails every call after them.
 	notices []string
 	// onNotify runs at the start of each notify call, before the call takes the world's lock, so it may block.
 	onNotify       func()
@@ -108,7 +113,8 @@ type fakeWorld struct {
 	start          time.Time
 }
 
-// newFakeWorld builds a Linux hub with systemctl on PATH, the prime's dobby running, an external caller, and the clocks at a fixed instant.
+// newFakeWorld builds a Linux hub with systemctl on PATH, the prime's dobby running, and an external caller.
+// Its clocks start at a fixed instant.
 func newFakeWorld(t *testing.T) *fakeWorld {
 	t.Helper()
 	root := t.TempDir()
@@ -207,7 +213,8 @@ func (w *fakeWorld) landLockHeld() (bool, error) {
 }
 
 // pause adds an entry with the PauseCaller label unless one of the scope is live, runs onPause, then calls Added.
-// The scope is the request's slug, or the hub when it names none; a pair pause fails with its own entry of pairPauseErr, adding nothing.
+// The scope is the request's slug, or the hub when it names none;
+// a pair pause fails with the pairPauseErr of its slug and adds no entry.
 func (w *fakeWorld) pause(req tenderengine.PauseRequest) (tenderengine.PauseReport, error) {
 	scope := pauserecord.ScopeHub
 	if req.Slug != "" {

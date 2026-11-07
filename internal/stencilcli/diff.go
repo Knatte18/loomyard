@@ -1,13 +1,14 @@
-// diff.go declares the diff subcommand, its --all and --exit-code flags, and the line-level unified
-// diff renderer both diff modes share.
+// diff.go declares the diff subcommand and its --all and --exit-code flags.
+// It also holds the line-level unified diff renderer that both diff modes share.
 //
-// The two modes compare different base texts and must never be conflated: `diff <name>` renders the
-// default this file was forked from (recovered by stamp hash from board history) against the
-// currently shipped default, showing upstream changes the operator has not yet taken; `diff --all`
-// renders the worktree's own contracts/stencils/ source body against the live board copy's body, catching an
-// edit made in the board copy that was never ported back. Comparing --all against the shipped
-// default instead would leave the port-back warning firing right through the fix, because promote
-// does not change the embedded default until the next deploy.
+// The two modes compare different base texts and must never be conflated.
+// `diff <name>` renders the default this file was forked from against the currently shipped default.
+// The base is recovered from board history by stamp hash.
+// It shows upstream changes the operator has not yet taken.
+// `diff --all` renders the worktree's own contracts/stencils/ source body against the live board copy's body.
+// It catches an edit made in the board copy that was never ported back.
+// Comparing --all against the shipped default would leave the port-back warning firing through the fix.
+// Promote does not change the embedded default until the next deploy.
 
 package stencilcli
 
@@ -30,9 +31,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// newDiffCmd builds the diff subcommand. loc resolves the *lymcwd.Location the parent's
-// PersistentPreRunE stored, the same closure-over-a-shared-variable pattern Command() uses for list,
-// validate, and sync.
+// newDiffCmd builds the diff subcommand.
+// loc returns the *lymcwd.Location that the parent command's PersistentPreRunE stores.
 func newDiffCmd(loc func() *lymcwd.Location) *cobra.Command {
 	var all bool
 	var exitCode bool
@@ -70,9 +70,9 @@ func newDiffCmd(loc func() *lymcwd.Location) *cobra.Command {
 }
 
 // runDiffOne implements `diff <name>`: base-versus-currently-shipped-default, where base is
-// recovered from board history by stamp hash. found=false is reported explicitly in the envelope
-// rather than as an empty diff, and the response falls back to shipped-default-versus-on-disk so the
-// operator still sees something actionable.
+// recovered from board history by stamp hash.
+// found=false is reported explicitly in the envelope rather than as an empty diff.
+// The response then falls back to shipped-default-versus-on-disk, so the operator still sees something actionable.
 func runDiffOne(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, name string, exitCode bool) {
 	registry := stencils.Registry()
 	shipped, known := registry.Default(name)
@@ -132,10 +132,10 @@ func runDiffOne(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, name stri
 	}
 }
 
-// runDiffAll implements `diff --all`: the port-back guard, comparing every registry stencil's
-// worktree contracts/stencils/ source body against its live board copy body, both normalised via
-// stencilstore.NormalizeLF and stencil.StripLeadingComment. A registry entry whose board copy or
-// source file cannot be read is skipped, mirroring stencilstore's own drift-warning behaviour.
+// runDiffAll implements `diff --all`: the port-back guard.
+// It compares every registry stencil's worktree contracts/stencils/ source body with its live board copy body.
+// Both bodies are normalised via stencilstore.NormalizeLF and stencil.StripLeadingComment.
+// A registry entry whose board copy or source file cannot be read is skipped.
 func runDiffAll(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, exitCode bool) {
 	sourceDir := resolveSourceDir(l)
 	if sourceDir == "" {
@@ -186,7 +186,7 @@ func runDiffAll(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, exitCode 
 // diffOpKind labels one line-level diff operation.
 type diffOpKind int
 
-// The three line-level diff operations diffLines can emit.
+// The three kinds of line-level diff operation.
 const (
 	diffEqual diffOpKind = iota
 	diffDelete
@@ -199,9 +199,9 @@ type diffOp struct {
 	line string
 }
 
-// diffLines computes a line-level diff between a and b via a straightforward longest-common-
-// subsequence dynamic program. This is quadratic in the line counts, which is fine for prompt-sized
-// files (at most a few hundred lines) and not a general-purpose diff engine.
+// diffLines computes a line-level diff between a and b with a longest-common-subsequence dynamic program.
+// The cost is quadratic in the line counts, which suits prompt-sized files.
+// It is not a general-purpose diff engine.
 func diffLines(a, b []string) []diffOp {
 	n, m := len(a), len(b)
 	lcs := make([][]int, n+1)
@@ -246,15 +246,15 @@ func diffLines(a, b []string) []diffOp {
 	return ops
 }
 
-// diffContext is the number of unchanged lines of context renderUnifiedDiff carries on each side of
-// the changed range it hunks.
+// diffContext is the number of unchanged lines kept on each side of a changed range in a unified diff.
 const diffContext = 3
 
-// renderUnifiedDiff renders a single-hunk unified diff between aBody and bBody, labelled fromLabel
-// and toLabel in the "--- "/"+++ " header lines, and reports whether the two bodies differ at all.
-// A caller must gate an "empty diff" reading on differs, never on text == "": this function returns
-// ("", false) precisely when the bodies are identical, and never returns an empty string when
-// differs is true.
+// renderUnifiedDiff renders a single-hunk unified diff between aBody and bBody.
+// The labels fromLabel and toLabel appear in the "--- " and "+++ " header lines.
+// It reports whether the two bodies differ at all.
+// A caller must gate an "empty diff" reading on differs, never on text == "".
+// It returns ("", false) only when the bodies are identical,
+// and it never returns an empty string when differs is true.
 func renderUnifiedDiff(aBody, bBody []byte, fromLabel, toLabel string) (text string, differs bool) {
 	aLines := strings.Split(string(aBody), "\n")
 	bLines := strings.Split(string(bBody), "\n")

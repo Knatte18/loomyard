@@ -1,7 +1,9 @@
 // migrate.go — in-memory conversion of old-shape board entries (tier and type) to kind and labels.
 //
-// Load decodes board.json, and the legacy tasks.json and notes.json path builds, through storedEntry, so one conversion serves both.
-// Conversion never fails and never checks labels against config: card 3's write validation refuses a later write of an entry carrying an unconfigured label.
+// Load decodes board.json and the legacy tasks.json and notes.json paths through storedEntry.
+// One conversion therefore serves both.
+// Conversion never fails and never checks labels against config;
+// the write validation refuses a later write of an entry that carries an unconfigured label.
 // Save writes Task, so tier and type drop on the first write after a load.
 
 package boardengine
@@ -23,8 +25,10 @@ type storedEntry struct {
 	Type *string `json:"type"`
 }
 
-// UnmarshalJSON decodes the known fields and the retired tier and type through decodedEntry and keeps every other key in Task.Unknown.
-// It shadows the promoted Task.UnmarshalJSON, which would fill the Task alone.
+// UnmarshalJSON decodes the known fields and the retired tier and type through decodedEntry.
+// Every other key goes into Task.Unknown.
+// It is defined here so the decoder promoted from the embedded Task does not run.
+// That decoder fills the Task alone.
 func (e *storedEntry) UnmarshalJSON(data []byte) error {
 	var decoded decodedEntry
 	if err := json.Unmarshal(data, &decoded); err != nil {
@@ -44,10 +48,12 @@ type decodedEntry struct {
 	Type *string `json:"type"`
 }
 
-// storedEntryKeys is the set of lower-cased JSON keys an entry declares, the retired tier and type among them, so neither is ever kept in Task.Unknown.
+// storedEntryKeys is the set of lower-cased JSON keys an entry declares, the retired tier and type among them.
+// Neither is ever kept in Task.Unknown.
 var storedEntryKeys = jsonKeySet(reflect.TypeFor[decodedEntry]())
 
-// storedEntryFrom builds the entry from its decoded fields and its raw JSON, taking every key outside storedEntryKeys into Task.Unknown.
+// storedEntryFrom builds the entry from its decoded fields and raw JSON.
+// Every key outside storedEntryKeys goes into Task.Unknown.
 func storedEntryFrom(decoded decodedEntry, raw []byte) storedEntry {
 	task := Task(decoded.taskFields)
 	task.Unknown = unknownMembers(raw, storedEntryKeys)
@@ -73,9 +79,10 @@ func legacyTypeLabels(typ *string) []string {
 }
 
 // migrateEntries converts every entry to the kind-and-labels shape.
-// An entry with kind keeps its fields, an entry with tier migrates, and an entry with neither loads as a note with no labels.
+// An entry with kind keeps its fields.
+// An entry with tier migrates, and an entry with neither loads as a note with no labels.
 // Every task loses its priority, since only a note carries one.
-// Every entry but a beam project loses its recorded owner.
+// Every entry but a beam project loses its recorded owner and beam color.
 // A migrated task's dependency on an entry that migrated to a note is dropped, since a task may depend only on a task.
 // vocab may be nil, as in store-level tests.
 func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
@@ -98,7 +105,9 @@ func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
 		}
 	}
 	for i := range out {
-		// Only a beam project records an owner, so the key a task or grouping project carried from an older machine is dropped here and leaves board.json at the next write.
+		// Only a beam project records an owner.
+		// A task or grouping project may carry an owner key from an older machine.
+		// It is dropped here and leaves board.json at the next write.
 		if out[i].Kind != KindProject || !out[i].Beam {
 			out[i].OwnerMachine = ""
 			out[i].BeamColor = ""
@@ -118,7 +127,7 @@ func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
 	return out
 }
 
-// migrateEntry converts one entry that has a tier and no kind; dependency rewriting across entries is migrateEntries' job.
+// migrateEntry converts one entry that has a tier and no kind, without rewriting dependencies across entries.
 func migrateEntry(e storedEntry, vocab *Vocabulary) Task {
 	t := e.Task
 	t.Kind = KindNote
@@ -144,7 +153,8 @@ func migrateEntry(e storedEntry, vocab *Vocabulary) Task {
 	return t
 }
 
-// splitBriefPrefixes returns the leading `[x]` tokens of brief in order and the brief without them and the whitespace after them.
+// splitBriefPrefixes returns the leading `[x]` tokens of brief in order.
+// The second result is brief without them and the whitespace after them.
 func splitBriefPrefixes(brief string) ([]string, string) {
 	var prefixes []string
 	rest := brief

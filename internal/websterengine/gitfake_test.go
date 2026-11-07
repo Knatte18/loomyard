@@ -155,8 +155,9 @@ func newFakeGit() *fakeGit {
 	return g
 }
 
-// mint returns a fresh 40-hex SHA no commit holds yet.
-// The SHA is the SHA-1 of the counter, so the leading digits differ between commits and a short prefix of one commit names it alone.
+// mint returns a fresh 40-hex SHA that no commit holds yet.
+// The SHA is the SHA-1 of the counter, so its leading digits differ between commits,
+// and a short prefix of one commit names it alone.
 func (g *fakeGit) mint() string {
 	g.registered++
 	sum := sha1.Sum([]byte(fmt.Sprint(g.registered)))
@@ -176,14 +177,16 @@ func (g *fakeGit) commit() string {
 	return sha
 }
 
-// commitWith is commit with the given subject and Pattern-Departure trailer values recorded for CommitLog.
+// commitWith registers a new commit on top of the current head, makes it the head, and returns its SHA.
+// It records the subject and the Pattern-Departure trailer values in the commit's log entry.
 func (g *fakeGit) commitWith(subject string, departures ...string) string {
 	sha := g.commit()
 	g.logs[sha] = websterengine.CommitLogEntry{SHA: sha, Subject: subject, Departures: departures}
 	return sha
 }
 
-// prependCommitWith registers a commit with the given subject and departures below the root of head's first-parent line, standing for history that predates every batch.
+// prependCommitWith registers a commit with the given subject and departures below the root of head's first-parent line.
+// It stands for history that predates every batch.
 func (g *fakeGit) prependCommitWith(subject string, departures ...string) string {
 	root := g.head
 	for len(g.parents[root]) > 0 {
@@ -217,8 +220,9 @@ func (g *fakeGit) ensureOnFirstParentLine(base, head string) {
 	g.parents[root] = []string{base}
 }
 
-// merge registers a merge of the current head and a new commit standing for the parent branch's tip, makes the merge the head, and returns its SHA and that tip.
-// rejection is the reason MergeRejection gives for the merge, "" for a clean parent merge.
+// merge registers a merge commit of the current head with a new parent-tip commit.
+// It makes the merge the head and returns the merge's SHA and the parent tip's SHA.
+// rejection is the reason the fake gives for refusing the merge, or "" for a clean parent merge.
 func (g *fakeGit) merge(rejection string) (mergeSHA, parentTip string) {
 	parentTip = g.mint()
 	g.parents[parentTip] = nil
@@ -294,7 +298,8 @@ func (g *fakeGit) IsAncestor(_, sha, ref string) (bool, error) {
 	return false, nil
 }
 
-// NonMergeCommitsBetween walks head's first-parent chain down to base, which must be a registered commit, and reports whether a commit with fewer than two parents lies on it.
+// NonMergeCommitsBetween walks head's first-parent chain down to base, which must be a registered commit.
+// It reports whether a commit with fewer than two parents lies on that chain.
 func (g *fakeGit) NonMergeCommitsBetween(_, base, head string) (bool, error) {
 	if !g.SHAExists("", base) || !g.SHAExists("", head) {
 		return false, errors.New("fakeGit: unknown commit")
@@ -309,7 +314,8 @@ func (g *fakeGit) NonMergeCommitsBetween(_, base, head string) (bool, error) {
 	return false, nil
 }
 
-// CommitLog walks head's first-parent line down to base, skipping commits with two parents, and returns the commits oldest first.
+// CommitLog walks head's first-parent line down to base, skipping commits with two parents.
+// It returns the commits it passes, oldest first.
 // A head or base the fake does not hold, or a base off the line, is an error.
 func (g *fakeGit) CommitLog(_, base, head string) ([]websterengine.CommitLogEntry, error) {
 	g.commitLogCalls++
@@ -337,7 +343,7 @@ func (g *fakeGit) OtherWorktrees(string) ([]string, error) { return g.others, ni
 
 func (g *fakeGit) PathDiffers(_, _, path string) (bool, error) { return g.differing[path], nil }
 
-// WorktreeBlob returns the SHA-1 of the file's bytes, which is all a test compares it with.
+// WorktreeBlob returns the SHA-1 of the file's bytes, or an empty string when the file does not exist.
 func (g *fakeGit) WorktreeBlob(_, path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {

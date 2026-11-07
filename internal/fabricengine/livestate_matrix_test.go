@@ -1,9 +1,8 @@
-// matrix_test.go is the cross-product driver: the one uniform loop over states, verbs and anchors that
-// runs every cell verbs.go and states.go describe, and the sole deliverable of batch 7.
-// It contains no per-verb or per-state special case — every restriction the loop honors is expressed as
-// data, either on a VerbCase's own States field or as a row in verbs.go's Omissions table — because a
-// conditional here would be the exact point at which the cross-product property quietly stops holding
-// for the next verb someone appends.
+// livestate_matrix_test.go is the cross-product driver: the one uniform loop over states, verbs and anchors.
+// It runs every cell that livestate_verbs_test.go and livestate_states_test.go describe.
+// It contains no per-verb or per-state special case.
+// Every restriction the loop honors is data, either on a VerbCase's States field or as a row in the Omissions table.
+// A conditional here would let the cross-product property quietly stop holding for the next verb someone appends.
 
 package fabricengine_test
 
@@ -17,22 +16,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// anchors is the two anchor values every ordinary and hostile-input cell in the cross product runs
-// against.
+// anchors is the two anchor values that every ordinary and hostile-input cell in the cross product runs against.
 var anchors = []string{".", "backend"}
 
-// isCloneHubResetCase reports whether vc is one of the two CloneHub{Reset: true} column entries in
-// Verbs, by its "CloneHubReset/" name prefix.
-// The column is re-scoped to the ownership axis rather than the ten-member States matrix (see verbs.go's
-// doc comment), so it is driven by TestCloneHubReset instead of TestCrossProduct's loop; folding it into
-// the loop would either reintroduce the vacuous dirtiness rows it is exempt from, or require a per-verb
-// conditional the plan rejects.
+// isCloneHubResetCase reports whether vc is a CloneHub{Reset: true} column entry, by its "CloneHubReset/" name prefix.
+// That column is scoped to the ownership axis rather than the States matrix, so a separate test drives it.
+// Folding it into the loop would reintroduce the vacuous dirtiness rows it is exempt from.
+// The alternative is a per-verb conditional, which the loop must not contain.
 func isCloneHubResetCase(vc VerbCase) bool {
 	return strings.HasPrefix(vc.Name, "CloneHubReset/")
 }
 
-// mainVerbs returns every VerbCase TestCrossProduct's loop drives: the ordinary verbs and the
-// hostile-input cases, excluding the CloneHub{Reset: true} column.
+// mainVerbs returns the VerbCase entries TestCrossProduct drives: the ordinary verbs and the hostile-input cases.
+// It excludes the CloneHub{Reset: true} column.
 func mainVerbs() []VerbCase {
 	var out []VerbCase
 	for _, vc := range Verbs {
@@ -43,7 +39,7 @@ func mainVerbs() []VerbCase {
 	return out
 }
 
-// cloneHubResetVerbs returns the CloneHub{Reset: true} column's own VerbCase entries.
+// cloneHubResetVerbs returns the VerbCase entries of the CloneHub{Reset: true} column.
 func cloneHubResetVerbs() []VerbCase {
 	var out []VerbCase
 	for _, vc := range Verbs {
@@ -54,20 +50,18 @@ func cloneHubResetVerbs() []VerbCase {
 	return out
 }
 
-// cloneHubResetCellCount is the CloneHub{Reset: true} column's own cell count: its VerbCase entries
-// times the anchor count, the same arithmetic TestCloneHubReset's own loop drives.
-// TestCrossProduct's tally folds this count into the plan's single cross-product total without
-// duplicating TestCloneHubReset's loop.
+// cloneHubResetCellCount returns the cell count of the CloneHub{Reset: true} column.
+// It is the column's VerbCase entries times the anchor count.
+// TestCrossProduct adds this count to its single total, so TestCloneHubReset's loop is not repeated there.
 func cloneHubResetCellCount() int {
 	return len(cloneHubResetVerbs()) * len(anchors)
 }
 
-// effectiveStates returns the states vc actually runs against: vc.States when it names one, which is
-// what restricts a hostile-input case or the CloneHub{Reset} column to "clean" alone, or the full
-// package-level States slice when vc.States is empty, which is every ordinary verb's default.
-// A state a case does not name is never turned into a subtest at all -- there is no verb-shaped reason
-// to generate five hundred mostly-omitted cells when the case's own States field already says which
-// ones apply.
+// effectiveStates returns the states vc runs against.
+// When vc.States names any, it returns those states from the package-level States slice.
+// Hostile-input cases and the CloneHub{Reset: true} column name only "clean".
+// When vc.States is empty, it returns the full States slice, which is every ordinary verb's default.
+// A state the case does not name never becomes a subtest, so the loop generates no cell for it.
 func effectiveStates(vc VerbCase) []State {
 	if len(vc.States) == 0 {
 		return States
@@ -84,7 +78,8 @@ func effectiveStates(vc VerbCase) []State {
 	return subset
 }
 
-// isOmitted reports whether the (verbName, stateName) pair appears in verbs.go's Omissions table, so the loop generates no cell for it.
+// isOmitted reports whether the (verbName, stateName) pair is in the Omissions table.
+// The loop generates no cell for such a pair.
 func isOmitted(verbName, stateName string) bool {
 	for _, o := range Omissions {
 		if o.Verb == verbName && o.State == stateName {
@@ -94,10 +89,12 @@ func isOmitted(verbName, stateName string) bool {
 	return false
 }
 
-// assertExpectation asserts err against exp's declared Kind: KindRefusedByGate asserts RefusedByGate for
-// exp.Check and that err does not also match either of the other two gate checks; KindRefusedBefore
-// asserts RefusedBefore for exp.Substring, which by construction also asserts err does not carry "check
-// failed"; KindProceeds asserts err == nil.
+// assertExpectation asserts err against exp's declared Kind.
+// KindRefusedByGate asserts RefusedByGate for exp.Check.
+// It also asserts that err matches neither of the other two gate checks.
+// KindRefusedBefore asserts RefusedBefore for exp.Substring.
+// That also asserts that err does not carry "check failed".
+// KindProceeds asserts err == nil.
 func assertExpectation(t *testing.T, err error, exp Expectation) {
 	t.Helper()
 
@@ -131,15 +128,13 @@ func assertExpectation(t *testing.T, err error, exp Expectation) {
 	}
 }
 
-// assertPlantedContentSurvives asserts that stateName's own planted content is still present, but only
-// at whichever of the checkouts or structural path it dirtied that fall OUTSIDE exp's permitted roots --
-// a path inside a permitted root may legitimately vanish as part of the verb's own intended effect (Prune
-// tearing down the very stale weft sibling a dirtiness state planted into, for one), so asserting survival
-// there would fail against correct behaviour.
-// Outside a permitted root this check can never fail without AssertNoUnpermittedChange also failing on
-// the same path, so it adds no new failure mode -- it exists to make survival an explicit, named
-// assertion at the cell level, per the five-phase-cell-order Shared Decision's KindProceeds requirement,
-// rather than an implication a reader has to derive from the manifest diff alone.
+// assertPlantedContentSurvives asserts that stateName's planted content survives outside the permitted roots.
+// A path inside a permitted root may legitimately vanish as part of the verb's own intended effect.
+// Prune, for one, tears down the stale weft sibling a dirtiness state planted into.
+// Asserting survival there would fail against correct behaviour.
+// Outside a permitted root, this check can fail only where AssertNoUnpermittedChange also fails on the same path.
+// So it adds no new failure mode.
+// It makes survival an explicit cell-level assertion, not an implication a reader derives from the manifest diff.
 func assertPlantedContentSurvives(t *testing.T, h *hubforge.Hub, stateName string, target StateTarget, permitted []string) {
 	t.Helper()
 
@@ -182,8 +177,8 @@ func assertPlantedContentSurvives(t *testing.T, h *hubforge.Hub, stateName strin
 	}
 }
 
-// assertSurvivesIfUnpermitted runs check unless abs is empty or falls at or below one of permitted's
-// roots, in which case abs may legitimately have changed as part of the verb's own intended effect.
+// assertSurvivesIfUnpermitted runs check unless abs is empty or falls at or below one of permitted's roots.
+// Such an abs may legitimately have changed as part of the verb's own intended effect.
 func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, permitted []string, check func()) {
 	t.Helper()
 
@@ -196,17 +191,17 @@ func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, perm
 	check()
 }
 
-// runCell drives one non-omitted cell's five phases in the fixed order the five-phase-cell-order Shared
-// Decision requires -- build, arrange, state, capture-before, run-then-capture-after -- then asserts
-// against the state-derived Expectation: the declared Kind, the cell's Effect if it names one (populated
-// for both refusal and Proceeds kinds throughout verbs.go, so it is always run when present rather than
-// gated on Kind), planted-content survival for a Proceeds kind, and finally that nothing outside the
-// cell's permitted roots changed.
+// runCell drives one non-omitted cell through five phases in a fixed order:
+// build, arrange, state, capture before, then run and capture after.
+// It then asserts against the state-derived Expectation: the declared Kind, and the cell's Effect when it names one.
+// exp.Effect runs whenever it is present, for refusal and Proceeds kinds alike, not only for one Kind.
+// For a Proceeds kind it also checks planted-content survival.
+// Finally it checks that nothing outside the cell's permitted roots changed.
 func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 	t.Helper()
 
-	// Build: the factory clones a fresh hub at the cell's anchor. Every cell owns its hub, so pushes
-	// across parallel cells never race.
+	// Build: the factory clones a fresh hub at the cell's anchor.
+	// Every cell owns its hub, so pushes across parallel cells never race.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 
 	// Arrange: the verb's own fixture.
@@ -230,19 +225,18 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 	if exp.Kind == KindProceeds {
 		assertPlantedContentSurvives(t, h, state.Name, fixture.Target, exp.PermittedRoots)
 	}
-	// Permitted removal roots suppress diff noise only, never the honesty assertion: exp.PermittedRoots
-	// narrows what AssertNoUnpermittedChange treats as an unpermitted survival failure, but the
-	// truthfulness oracle below always runs against the unfiltered (nil-permitted) diff, so a cell
-	// whose own intended effect destroys something inside a permitted root still has its record checked
-	// against that destruction rather than having it silently suppressed too.
+	// Permitted removal roots suppress diff noise only, never the honesty assertion.
+	// exp.PermittedRoots narrows what AssertNoUnpermittedChange treats as an unpermitted change.
+	// The truthfulness oracle below always runs against the unfiltered, nil-permitted diff.
+	// A cell that destroys content inside a permitted root still has its record checked against it.
 	AssertNoUnpermittedChange(t, before, after, exp.PermittedRoots)
 	unfiltered := DiffManifest(before, after, nil)
 	AssertRecordMatchesDiff(t, rec, unfiltered)
 }
 
-// TestCrossProduct drives the ordinary verbs and the hostile-input cases against every state each
-// declares, at both anchors, as independent parallel subtests, one per cell.
-// The CloneHub{Reset: true} column is deliberately absent from this loop; see TestCloneHubReset.
+// TestCrossProduct runs the ordinary and hostile-input verbs against each state they declare, at both anchors.
+// Each cell is an independent parallel subtest.
+// The CloneHub{Reset: true} column is absent from this loop and a separate test runs it.
 func TestCrossProduct(t *testing.T) {
 	tiergate.Require(t, 1)
 	verbs := mainVerbs()
@@ -264,9 +258,9 @@ func TestCrossProduct(t *testing.T) {
 
 				ran++
 				t.Run(name, func(t *testing.T) {
-					// Every cell owns its own hub (see runCell's Build phase), so pushes across
-					// parallel cells never race -- t.Parallel() is free here, and Go's own -parallel
-					// flag already bounds concurrency, so no hand-rolled worker cap is needed.
+					// Every cell owns its own hub, so pushes across parallel cells never race.
+					// t.Parallel() is safe here, and the -parallel flag already bounds concurrency,
+					// so no hand-rolled worker cap is needed.
 					t.Parallel()
 					runCell(t, anchor, state, verbCase)
 				})
@@ -277,9 +271,11 @@ func TestCrossProduct(t *testing.T) {
 	assertCellTally(t, ran, omitted)
 }
 
-// assertCellTally fails t unless ran and omitted match the enumeration the Verbs, States and Omissions tables in this package describe,
-// so a silently capped loop or an omission row naming no cell cannot hide behind a green run.
-// Every want* value below is derived from the tables' own lengths and contents, never a hardcoded literal, so appending a verb, a state, or an omission updates the expected count automatically instead of failing the next run for an unrelated reason.
+// assertCellTally fails t unless ran and omitted match the enumeration the Verbs, States and Omissions tables describe.
+// A silently capped loop or an omission row naming no cell cannot hide behind a green run.
+// The want* values are derived from the tables' lengths and contents, never hardcoded.
+// Appending a verb, a state or an omission updates the expected count,
+// so the run does not fail for an unrelated reason.
 func assertCellTally(t *testing.T, ran, omitted int) {
 	t.Helper()
 
@@ -309,15 +305,11 @@ func assertCellTally(t *testing.T, ran, omitted int) {
 	t.Logf("cross-product cell tally: %d ran, %d omitted (omission table), %d CloneHub{Reset} column cells, %d total", ran, omitted, cloneHubResetCellCount(), total)
 }
 
-// TestCloneHubReset drives the CloneHub{Reset: true} column: two targets (a non-hub directory refused at CloneHub's offline checkResetTarget pre-flight, and a real hub torn down and rebuilt) at both anchors.
-// It is a separate test function rather than a row in TestCrossProduct's loop because the column is
-// scoped to the ownership axis, not to the ten-member States matrix -- see verbs.go's doc comment on
-// cloneHubResetNonHubCase and cloneHubResetRealHubCase for why folding it into the loop would either
-// reintroduce vacuous dirtiness rows or require a per-verb conditional the plan rejects.
-// It manifests fixture.ResetHubPath rather than the built hub's own h.Path, because
-// cloneHubResetNonHubCase's target is a directory entirely independent of the hub NewHub built for this
-// cell -- h exists only to satisfy VerbCase.Arrange's signature for that case, and is the real reset
-// target only for cloneHubResetRealHubCase, where fixture.ResetHubPath equals h.Path.
+// TestCloneHubReset drives the CloneHub{Reset: true} column at both anchors, with two targets:
+// a non-hub directory, which CloneHub's offline pre-flight refuses, and a real hub that is torn down and rebuilt.
+// It varies ownership, not the States matrix; folding it into the loop would add vacuous dirty-state rows.
+// It reads fixture.ResetHubPath rather than h.Path.
+// The non-hub target is independent of the cell's hub, so h only satisfies VerbCase.Arrange's signature there.
 func TestCloneHubReset(t *testing.T) {
 	tiergate.Require(t, 1)
 	for _, anchor := range anchors {

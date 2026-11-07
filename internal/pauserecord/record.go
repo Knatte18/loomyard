@@ -1,4 +1,4 @@
-// record.go declares the pause record's types and constants, its locked read-modify-write, and the coverage and interval queries over it.
+// record.go declares the pause record's types and constants, its locked updates, and its coverage and interval queries.
 
 package pauserecord
 
@@ -26,13 +26,14 @@ const OwnerCaller = "owner"
 // Only the green adopt check of the entry's subject lifts it by itself.
 const HoldCaller = "adopt-hold"
 
-// Retention is how long a resumed entry stays in the record, so a reader that was away across a pause still sees its interval.
+// Retention is how long a resumed entry stays in the record.
+// It lets a reader that was away across a pause still see its interval.
 const Retention = 7 * 24 * time.Hour
 
 // ResumeLine is the one line a session interrupted by a pause is given when the pause ends.
 const ResumeLine = "[lym] A pause interrupted your last turn and is now over. Carry on where you stopped: rerun the tool call or fork the pause cut. If nothing was cut, end your turn."
 
-// Geometry is the told pair every reader of the record is handed.
+// Geometry is what every reader of the record is handed: the record's file and the reader's own pair slug.
 type Geometry struct {
 	// RecordPath is the record file.
 	RecordPath string
@@ -85,13 +86,16 @@ type Coverage struct {
 	Entry Entry
 	// Intervals holds every interval of every entry covering the slug, live and resumed.
 	Intervals []Interval
-	// OwnerHeld reports whether a live entry of the slug's own scope carries OwnerCaller, whichever entry is the oldest covering one.
+	// OwnerHeld reports whether a live entry of the slug's own scope carries OwnerCaller.
+	// It is set even when another entry is the covering one.
 	OwnerHeld bool
-	// Held reports whether a live entry of the slug's own scope carries HoldCaller, whichever entry is the oldest covering one.
+	// Held reports whether a live entry of the slug's own scope carries HoldCaller.
+	// It is set even when another entry is the covering one.
 	Held bool
 }
 
-// Read returns the record at path: the empty record when the file is missing, and an error naming the path when it cannot be read or decoded.
+// Read returns the record at path, or the empty record when the file does not exist.
+// A file that cannot be read or decoded returns an error naming the path.
 func Read(path string) (Record, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -107,7 +111,9 @@ func Read(path string) (Record, error) {
 	return record, nil
 }
 
-// Update applies mutate to the record at path under the write lock beside it, drops resumed entries older than Retention before now, and replaces the file atomically, keeping every key of the replaced file that the record types do not declare.
+// Update applies mutate to the record at path under the write lock beside it.
+// It drops resumed entries older than Retention before now,
+// and it replaces the file atomically, keeping every key of the replaced file that the record types do not declare.
 // A mutate error or an undecodable file writes nothing and is returned.
 func Update(path string, now time.Time, mutate func(*Record) error) (Record, error) {
 	var updated Record
@@ -159,7 +165,7 @@ func (r Record) Covering(slug string) (Entry, bool) {
 }
 
 // LatestResumed returns the resumed entry covering slug that resumed last.
-// It lets a reader that was away learn of a pause it never saw, within Retention.
+// It lets a reader that was away learn of a pause it never saw, for as long as the entry is retained.
 func (r Record) LatestResumed(slug string) (Entry, bool) {
 	var latest Entry
 	found := false
@@ -184,11 +190,12 @@ func (r Record) Owner(guid string) (Entry, bool) {
 	return Entry{}, false
 }
 
-// ClaimSession records session in the oldest live entry covering slug, under the record lock, so that entry's resume gives the session its resume line.
+// ClaimSession records session in the oldest live entry covering slug, under the record lock.
+// That entry's resume gives the session its resume line.
 // An uncovered slug records nothing and returns the zero entry and false.
 // A covered slug returns true and the entry that owns the session after the call;
 // a session a live entry already owns is recorded nowhere again, and that owning entry is returned.
-// An undecodable record is the returned error and records nothing.
+// An undecodable record returns an error and records nothing.
 func ClaimSession(path, slug string, session Session, now time.Time) (Entry, bool, error) {
 	var owner Entry
 	var covered bool
@@ -285,7 +292,8 @@ func Excluded(intervals []Interval, from, to time.Time) time.Duration {
 	return total
 }
 
-// CoveredError renders the refusal an entry point returns when entry covers its run, naming the resume that lifts the hold and the retry to make after it.
+// CoveredError renders the refusal an entry point returns when entry covers its run.
+// The refusal names the resume that lifts the hold and the retry to make after it.
 func CoveredError(e Entry, slug, retry string) error {
 	pause, resume := "a hub-wide pause", `"lym tender resume"`
 	if e.Scope != ScopeHub {

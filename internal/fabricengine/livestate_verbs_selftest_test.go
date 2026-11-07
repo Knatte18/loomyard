@@ -1,10 +1,7 @@
-// verbs_test.go drives each entry in Verbs exactly once in the "clean" state, before the cross product
-// batch 7 builds multiplies any wiring mistake by nine.
-// Each subtest runs the five phases in order (build, arrange, state, capture-before, run-then-capture-
-// after) exactly as the driver will, so a phase-ordering mistake surfaces here rather than as a
-// mysterious unpermitted-change failure across dozens of cells: without a passing clean-state cell, a
-// gate that refused every request would satisfy every refusal cell in the matrix, and slice 12 just
-// rewired roughly 29 call sites into that gate.
+// livestate_verbs_selftest_test.go drives each entry in Verbs exactly once in the "clean" state.
+// Each subtest runs the five phases in order, exactly as the driver does.
+// A phase-ordering mistake therefore surfaces here, not as an unpermitted-change failure in another cell.
+// Without a passing clean-state cell, a gate that refused every request would satisfy every refusal cell.
 
 package fabricengine_test
 
@@ -16,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// cleanStateEntry returns the "clean" State from the package-level States slice, failing tb if it is
-// somehow absent — every verb case's clean-state cell needs it to run the five-phase order faithfully.
+// cleanStateEntry returns the "clean" State from the package-level States slice.
+// It fails tb if that entry is absent, since every verb case's clean-state cell needs it.
 func cleanStateEntry(tb testing.TB) State {
 	tb.Helper()
 
@@ -30,10 +27,10 @@ func cleanStateEntry(tb testing.TB) State {
 	return State{}
 }
 
-// TestVerbCases_CleanState drives every entry in Verbs exactly once in the clean state, at both
-// anchors, asserting the three properties a clean-state cell must hold: Run's error shape matches
-// Expect("clean"), the clean-state Effect closure passes, and the manifest diff reports nothing
-// outside the cell's permitted roots.
+// TestVerbCases_CleanState drives every entry in Verbs exactly once in the clean state, at each anchor.
+// It asserts the three properties a clean-state cell must hold:
+// Run's error shape matches Expect("clean"), the clean-state Effect closure passes,
+// and the manifest diff reports nothing outside the cell's permitted roots.
 func TestVerbCases_CleanState(t *testing.T) {
 	tiergate.Require(t, 1)
 	for _, vc := range Verbs {
@@ -52,9 +49,9 @@ func TestVerbCases_CleanState(t *testing.T) {
 					// Phase 2: arrange.
 					fixture := vc.Arrange(t, h)
 
-					// Three targeted assertions the cross product cannot make for itself: each is a
-					// precondition whose silent failure would make a whole column vacuous while still
-					// passing.
+					// These targeted assertions check preconditions the cross product cannot check for itself.
+					// A silent failure of any one would make a whole column vacuous.
+					// The test would still pass.
 					switch vc.Name {
 					case "Add":
 						if info, err := os.Lstat(fixture.LauncherBlocker); err != nil || !info.IsDir() {
@@ -71,15 +68,14 @@ func TestVerbCases_CleanState(t *testing.T) {
 					}
 
 					// Phase 3: state — "clean" plants nothing, but it still asserts its own
-					// establishment, matching every other state's five-phase contract.
+					// establishment, as every state does.
 					cleanStateEntry(t).Apply(t, h, fixture.Target)
 
 					// Phase 4: capture (before) — after both arrange and state.
 					before := CaptureManifest(t, h.Path)
 
-					// Phase 5: run, then capture (after). This test asserts each case's own error shape,
-					// not its record -- the record's assertions belong to card 31's cells -- so the
-					// returned Mutations is discarded rather than a missed opportunity.
+					// This test asserts each case's error shape, not its record, so the returned Mutations is discarded.
+					// The matrix cells assert the record.
 					_, err := vc.Run(t, h, fixture)
 					exp := vc.Expect("clean")
 
@@ -118,10 +114,10 @@ func TestVerbCases_CleanState(t *testing.T) {
 	}
 }
 
-// TestVerbCases_StatesRestrictionIsWellFormed proves every hostile-input and CloneHub{Reset} case
-// restricts States to exactly ["clean"], and every ordinary verb leaves States empty (inheriting the
-// full ten-state matrix) — a case that got this backwards would either vanish from the cross product
-// entirely or explode it with cells that were never derived.
+// TestVerbCases_StatesRestrictionIsWellFormed proves that every hostile-input and CloneHub{Reset} case
+// restricts States to exactly ["clean"], and that every ordinary verb leaves States empty.
+// An empty States inherits the full state matrix.
+// A case that got this backwards would vanish from the cross product, or explode it with cells that were never derived.
 //
 //testtiming:keep hostile-input and CloneHub{Reset} cases restricting States to clean and ordinary verbs inheriting the full matrix; coverage of its blocks by other tests does not show an assertion of this
 func TestVerbCases_StatesRestrictionIsWellFormed(t *testing.T) {

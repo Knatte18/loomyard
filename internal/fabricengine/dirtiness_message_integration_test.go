@@ -1,18 +1,10 @@
-// dirtiness_message_integration_test.go pins the composed shape of worktreeDirty's error against
-// real git, rather than its wording.
+// dirtiness_message_integration_test.go pins the composed shape of worktreeDirty's error against real git.
 //
-// The gitexec split (the checked-call migration) changed what the underlying error renders: a
-// non-zero git exit now arrives as a *gitexec.GitError whose own Error already spells out
-// `git status --porcelain …: exit <code>: <stderr>`. Every wrapper written before that split
-// supplied the git command itself, because the error it wrapped was a bare exit code and would
-// otherwise have been undiagnosable. Left unchanged, those wrappers emit the command twice, which
-// pushes git's own actionable stderr — the only part an operator can act on — behind a duplicate of
-// what they have already been told.
+// A non-zero git exit already arrives as a *gitexec.GitError that names the git command,
+// so the wrapper must not name it again: the composed error names the command once and keeps git's stderr.
 //
-// This test drives the real failure (a git status against a directory that is not a repository at
-// all) and asserts the composed message names the git command exactly once while still carrying
-// git's stderr. It is deliberately shape-based, not a golden string: the wrapper's prose is free to
-// change, the duplication is not.
+// The test drives a real git status against a directory that is not a repository.
+// Its assertions check the shape of the message, not a golden string, so the wrapper's wording can change.
 
 package fabricengine
 
@@ -25,18 +17,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWorktreeDirty_ErrorNamesGitCommandOnce reproduces a real non-zero git exit and asserts the
-// error worktreeDirty composes from it does not repeat the git command the wrapped
-// *gitexec.GitError already renders.
+// TestWorktreeDirty_ErrorNamesGitCommandOnce reproduces a real non-zero git exit.
+// It asserts that worktreeDirty's composed error does not repeat the git command.
+// The *gitexec.GitError it wraps already renders that command.
 //
 //testtiming:keep worktreeDirty's error rendering git's command once rather than twice; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreeDirty_ErrorNamesGitCommandOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	// A fresh temp dir is not a git repository, so `git status --porcelain` exits non-zero with a
-	// real "not a git repository" stderr — the exact substrate failure the CLI hits when a verb is
-	// pointed at a path that is not a checkout.
+	// A fresh temp dir is not a git repository,
+	// so `git status --porcelain` exits non-zero with a real "not a git repository" stderr.
+	// That is the failure the CLI hits when a verb is pointed at a path that is not a checkout.
 	notARepo := t.TempDir()
 
 	dirty, _, err := worktreeDirty(scopeAll, notARepo)
@@ -51,20 +43,20 @@ func TestWorktreeDirty_ErrorNamesGitCommandOnce(t *testing.T) {
 
 	msg := err.Error()
 
-	// The wrapped GitError renders the command once. Any second occurrence is a wrapper that
-	// predates the gitexec split still supplying what it no longer needs to.
+	// The wrapped GitError renders the command once.
+	// A second occurrence means the wrapper repeats the command.
 	const gitCommand = "git status --porcelain"
 	if occurrences := strings.Count(msg, gitCommand); occurrences != 1 {
 		t.Errorf("worktreeDirty error names %q %d time(s); want exactly 1 — the wrapper must name what the probe was for, and leave the command to *gitexec.GitError:\n%s", gitCommand, occurrences, msg)
 	}
 
-	// Guard the other direction: stripping the duplication must not strip git's own diagnosis with
-	// it, which is the whole reason the checked entry point carries stderr at all.
+	// The test also guards the other direction: removing the duplicate must not remove git's stderr.
+	// The checked entry point carries that stderr for diagnosis.
 	if !strings.Contains(msg, "not a git repository") {
 		t.Errorf("worktreeDirty error dropped git's own stderr; want it carried through the wrap:\n%s", msg)
 	}
 
-	// The wrapper still owns the "where": *gitexec.GitError deliberately does not render Dir.
+	// The wrapper names the directory, because *gitexec.GitError does not render Dir.
 	if !strings.Contains(msg, notARepo) {
 		t.Errorf("worktreeDirty error does not name the probed directory %q; the wrapper owns the \"where\" because GitError does not render Dir:\n%s", notARepo, msg)
 	}

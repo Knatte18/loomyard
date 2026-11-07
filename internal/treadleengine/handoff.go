@@ -1,13 +1,9 @@
-// handoff.go defines the judge-maintained handoff contract — the file a progress-judge call writes
-// alongside its verdict so the NEXT judge call can bound its read-set to {latest valid handoff +
-// reviews it has not absorbed} instead of {every prior round's review}.
-// Like judgeverdict.go, this is a two-layer posture: ParseHandoff is fail-loud and never silently
-// defaults — a malformed handoff file is an agent defect that must be visible as an error to
-// whatever calls this function directly (including tests).
-// The fail-safe posture — swallowing that error into a logger.Warn and falling back to the
-// uncovered-reviews read-set, never propagating it as an engine error and never causing STUCK —
-// lives one layer up, in the round loop (run.go) that calls ParseHandoff after a judge call,
-// exactly mirroring how judge.go's spawners already treat ParseJudgeVerdict failures.
+// handoff.go defines the handoff file a judge call writes alongside its verdict.
+// The next judge call reads the latest valid handoff and only the reviews that handoff does not cover.
+// ParseHandoff fails loud on a malformed handoff file, so the error stays visible to its direct callers.
+// run.go holds the fail-safe layer.
+// It logs the parse failure and falls back to reading every review.
+// It never turns the failure into an engine error or a STUCK state.
 package treadleengine
 
 import (
@@ -19,8 +15,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Handoff is a judge call's maintained state carried into the next: which rounds' reviews it has
-// absorbed (CoversRounds), a finding-identity ledger (Ledger), and a prose narrative (Prose).
+// Handoff is the state a judge call carries into the next call.
+// CoversRounds lists the rounds whose reviews it has absorbed.
+// Ledger records finding identities, and Prose holds the narrative.
 type Handoff struct {
 	CoversRounds []int
 	Ledger       []LedgerEntry
@@ -35,17 +32,14 @@ type LedgerEntry struct {
 	Status string
 }
 
-// handoffHeader mirrors a handoff file's YAML frontmatter shape for
-// unmarshaling. Unknown extra keys are tolerated (no KnownFields), matching
-// judgeHeader's posture: agent-written metadata in the header is harmless
-// noise.
+// handoffHeader mirrors the YAML frontmatter of a handoff file for unmarshaling.
+// Unknown keys are tolerated (no KnownFields), since agent-written metadata in the header is harmless.
 type handoffHeader struct {
 	CoversRounds []int                `yaml:"covers_rounds"`
 	Ledger       []handoffLedgerEntry `yaml:"ledger"`
 }
 
-// handoffLedgerEntry mirrors one ledger entry's YAML shape before
-// validation promotes it into a LedgerEntry.
+// handoffLedgerEntry mirrors one ledger entry's YAML shape before validation promotes it into a LedgerEntry.
 type handoffLedgerEntry struct {
 	Key    string `yaml:"key"`
 	Rounds []int  `yaml:"rounds"`
@@ -53,11 +47,10 @@ type handoffLedgerEntry struct {
 }
 
 // ParseHandoff parses a judge handoff file into a Handoff.
-// The file must open and close with "---" delimiting YAML frontmatter; everything after is prose
-// narrative.
-// Fails loud on malformed files: frontmatter must be valid YAML, covers_rounds must be non-empty
-// positive integers, and each ledger entry must have a non-empty key, non-empty rounds list, and
-// status of "open" or "resolved".
+// The file must open and close with "---" delimiting YAML frontmatter; everything after is prose narrative.
+// It fails loud on a malformed file.
+// The frontmatter must be valid YAML, and covers_rounds must be a non-empty list of positive integers.
+// Each ledger entry must have a non-empty key, a non-empty rounds list, and a status of "open" or "resolved".
 func ParseHandoff(content []byte) (Handoff, error) {
 	header, err := splitFrontmatter(content, "handoff")
 	if err != nil {
@@ -90,10 +83,10 @@ func ParseHandoff(content []byte) (Handoff, error) {
 	}, nil
 }
 
-// validateLedgerEntries promotes the raw YAML ledger entries into
-// LedgerEntry values, enforcing the per-entry shape rules. An empty input
-// list is legal (a first handoff carries no prior findings) and returns an
-// empty, non-nil slice.
+// validateLedgerEntries promotes the raw YAML ledger entries into LedgerEntry values.
+// It enforces the per-entry shape rules.
+// An empty input list is legal, since a first handoff carries no prior findings,
+// and it returns an empty, non-nil slice.
 func validateLedgerEntries(raw []handoffLedgerEntry) ([]LedgerEntry, error) {
 	ledger := make([]LedgerEntry, 0, len(raw))
 	for _, entry := range raw {
@@ -119,13 +112,9 @@ func validateLedgerEntries(raw []handoffLedgerEntry) ([]LedgerEntry, error) {
 	return ledger, nil
 }
 
-// frontmatterProse returns everything after a handoff file's closing "---"
-// frontmatter delimiter line, CRLF-normalized and trimmed. It is called only
-// after splitFrontmatter has already validated that the opening and closing
-// delimiters exist, so the closing line is guaranteed to be found here; this
-// is a separate, minimal scan rather than a splitFrontmatter return value
-// because splitFrontmatter's contract (shared with judgeverdict.go) is
-// header-only and prose is a handoff-specific need.
+// frontmatterProse returns everything after a handoff file's closing "---" delimiter line.
+// The result is CRLF-normalized and trimmed.
+// It assumes the delimiters were already validated, so the closing line is always found.
 func frontmatterProse(content []byte) string {
 	lines := strings.Split(string(content), "\n")
 	closingIdx := -1
@@ -142,9 +131,9 @@ func frontmatterProse(content []byte) string {
 	return strings.TrimSpace(strings.ReplaceAll(prose, "\r", ""))
 }
 
-// latestValidHandoff finds the most recent round with a readable, parseable
-// handoff. Unreadable or unparseable handoffs are skipped with a Warn. ok is
-// false only when no valid handoff is found.
+// latestValidHandoff finds the most recent round with a readable, parseable handoff.
+// Unreadable or unparseable handoffs are skipped with a warning.
+// ok is false only when no valid handoff exists.
 func latestValidHandoff(name string, rounds []roundRecord) (path string, h Handoff, ok bool) {
 	for i := len(rounds) - 1; i >= 0; i-- {
 		round := rounds[i]
@@ -166,9 +155,10 @@ func latestValidHandoff(name string, rounds []roundRecord) (path string, h Hando
 	return "", Handoff{}, false
 }
 
-// judgeReadSet builds the review-file read-set for a judge call. With a valid
-// handoff, readSet contains reviews of rounds not yet covered, plus the
-// current review. With no valid handoff, readSet defaults to all reviews.
+// judgeReadSet builds the review-file read-set for a judge call.
+// With a valid handoff, readSet holds the reviews of rounds the handoff does not cover, plus the current review.
+// With no valid handoff, readSet defaults to all reviews.
+// It also returns the path of the handoff it read from, or an empty string when there is none.
 func judgeReadSet(name string, rounds []roundRecord, currentReviewPath string) (readSet []string, prevHandoffPath string) {
 	path, handoff, ok := latestValidHandoff(name, rounds)
 	if !ok {

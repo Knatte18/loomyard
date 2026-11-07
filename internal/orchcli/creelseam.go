@@ -1,4 +1,5 @@
-// creelseam.go declares creelSeam, the production adapter that satisfies orchengine.Creel over a creelcli Go client, and the folds of creel's journal entries into the watcher's plain values.
+// creelseam.go declares creelSeam, the production adapter that satisfies orchengine.Creel over a creelcli Go client.
+// It also holds the functions that fold creel's journal entries into the watcher's plain values.
 
 package orchcli
 
@@ -10,10 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
-// orchWatchProgram is the program name the orch watcher signs creel calls with, whatever strand name its environment holds.
+// orchWatchProgram is the program name the orch watcher signs creel calls with, whatever its environment's strand name.
 const orchWatchProgram = "ORCHWATCH"
 
-// The journal events the folds read.
+// The creel journal event names the folds in this file match on.
 const (
 	eventPosted      = "posted"
 	eventRead        = "read"
@@ -23,10 +24,10 @@ const (
 	eventExpired     = "expired"
 )
 
-// kindInject is the kind a journal entry carries for an inject, as against mail and a reply.
+// kindInject is the kind a journal entry carries for an inject, rather than for mail or a reply.
 const kindInject = "inject"
 
-// creelClient is the slice of the creelcli Go client the seam calls.
+// creelClient is the subset of the creelcli Go client that the adapter calls.
 type creelClient interface {
 	Shortname() string
 	Post(receiver, body string) (int64, error)
@@ -88,7 +89,8 @@ func (s creelSeam) InjectOutcome(id int64) (orchengine.CreelOutcome, error) {
 	return injectOutcomeOf(id, entries), nil
 }
 
-// Sent folds the journal entries of what the watcher posted to receiver since the given time into the posts and injects it sent.
+// Sent folds the journal entries the watcher posted to receiver since the given time.
+// It returns them as the posts and injects it sent.
 func (s creelSeam) Sent(receiver string, since time.Time) ([]orchengine.CreelSent, error) {
 	from, err := agentname.FormatProgram(s.client.Shortname(), orchWatchProgram)
 	if err != nil {
@@ -125,9 +127,11 @@ func (s creelSeam) Withdraw(receiver string) ([]orchengine.CreelWithdrawn, error
 	return withdrawn, nil
 }
 
-// injectOutcomeOf folds the journal entries entries holds for inject id, oldest first, into its outcome.
-// The newest sending, injected, unconfirmed or expired entry decides the state, an expired entry with the withdrawn reason reading as withdrawn, and an inject with none is queued.
-// SendingAt is the time of the newest sending entry, since every typing attempt journals one and a busy attempt requeues the inject.
+// injectOutcomeOf folds entries, oldest first, into the outcome of inject id.
+// The newest sending, injected, unconfirmed or expired entry decides the state;
+// an expired entry with the withdrawn reason reads as withdrawn, and an inject with none is queued.
+// SendingAt is the time of the newest sending entry, since every typing attempt journals one,
+// and a busy attempt requeues the inject.
 // Stall is the reason of an expired entry other than a withdrawal.
 func injectOutcomeOf(id int64, entries []creelengine.LogEntry) orchengine.CreelOutcome {
 	var outcome orchengine.CreelOutcome
@@ -155,8 +159,8 @@ func injectOutcomeOf(id int64, entries []creelengine.LogEntry) orchengine.CreelO
 	return outcome
 }
 
-// readAtOf returns the time of the first read entry entries holds for mail id, zero when it holds none.
-// A reminder that lists the id as unread carries the id in its unread list only, so its entry is no read.
+// readAtOf returns the time of the first read entry for mail id in entries, zero when there is none.
+// A reminder that lists the id as unread carries it only in its unread list, so it is not a read entry.
 func readAtOf(id int64, entries []creelengine.LogEntry) time.Time {
 	for _, entry := range entries {
 		if entry.ID == id && entry.Event == eventRead {
@@ -166,7 +170,7 @@ func readAtOf(id int64, entries []creelengine.LogEntry) time.Time {
 	return time.Time{}
 }
 
-// sentOf folds the journal entries entries holds into the posts and injects they record, oldest first.
+// sentOf folds entries, oldest first, into the posts and injects they record.
 func sentOf(entries []creelengine.LogEntry) []orchengine.CreelSent {
 	var sent []orchengine.CreelSent
 	for _, entry := range entries {

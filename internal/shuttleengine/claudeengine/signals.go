@@ -1,6 +1,5 @@
-// signals.go implements ParseSessionSignals, the lenient reader over a run's events.jsonl that turns Claude's hook lines into provider-neutral session signals.
-// Each recording hook writes a time-stamp line before its payload line; the parser pairs the two so a signal carries the hook-side time.
-// All Claude payload-shape knowledge the signals need (hook names, notification types, session-end reasons, the stamp format) lives only in this file and events.go, per PATTERN-shuttle-provider-seam.
+// signals.go implements ParseSessionSignals, which reads a run's events.jsonl into provider-neutral session signals.
+// Together with events.go, it holds all Claude payload-shape knowledge the signals need.
 
 package claudeengine
 
@@ -13,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Stamp line keys: a stamp line is {"lym_stamp":"<hook event name>","lym_at":"<RFC 3339 UTC>"}, written by a recording hook before its payload.
+// Keys of the stamp line that a recording hook writes before its payload line.
+// The stamp line is {"lym_stamp":"<hook event name>","lym_at":"<RFC 3339 UTC>"}.
 const (
 	stampHookKey = "lym_stamp"
 	stampAtKey   = "lym_at"
@@ -34,7 +34,8 @@ const (
 )
 
 // SessionStartupPayloadFixture is the payload line Claude's SessionStart hook records when a fresh session starts.
-// A stubbed provider standing in for claude appends it to the run's events file so the run reads the session start a real launch records.
+// A stubbed provider standing in for claude appends it to the run's events file,
+// so the run reads the session start a real launch records.
 const SessionStartupPayloadFixture = `{"hook_event_name":"` + hookEventSessionStart + `","source":"startup"}`
 
 // askUserQuestionToolName is the tool whose PreToolUse payload is an ask.
@@ -76,8 +77,10 @@ type pendingStamp struct {
 }
 
 // ParseSessionSignals parses events.jsonl bytes into session signals, in file order.
-// A payload line takes its time from the nearest preceding untaken stamp naming its hook, and reads a zero time when there is none or the stamp's time is empty or malformed.
-// consumed ends at the last newline-terminated line, except that it stops before the earliest line of the trailing run of stamp lines, which have no payload line after them yet.
+// A payload line takes its time from the nearest preceding untaken stamp naming its hook;
+// it reads a zero time when no such stamp precedes it, or when the stamp's time is empty or malformed.
+// The second result is the number of bytes consumed, up to the last newline-terminated line.
+// A trailing run of stamp lines stays unconsumed, since no payload line follows them yet.
 // It is lenient: malformed lines, stamp lines and unknown hooks yield no signal.
 func (c *Claude) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
 	var signals []shuttleengine.SessionSignal
@@ -198,8 +201,10 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 // taskNotificationPrefix opens the prompt Claude Code submits by itself when a background task or fork finishes.
 const taskNotificationPrefix = "<task-notification>"
 
-// typedInstruction returns a UserPromptSubmit prompt as a typed instruction, or "" for a task notification and a slash command, which are not instructions to the agent.
-// A prompt is a slash command when its first word starts with "/" and holds no further "/", so one that opens with a multi-segment path is an instruction.
+// typedInstruction returns the trimmed UserPromptSubmit prompt as a typed instruction.
+// A task notification and a slash command are not instructions to the agent, so it returns "" for them.
+// A prompt is a slash command when its first word starts with "/" and holds no further "/";
+// a prompt that opens with a multi-segment path is therefore an instruction.
 // A prompt opening with a one-segment path such as "/etc" reads as a command, since it is indistinguishable from one.
 func typedInstruction(prompt string) string {
 	trimmed := strings.TrimSpace(prompt)
@@ -212,7 +217,8 @@ func typedInstruction(prompt string) string {
 	return trimmed
 }
 
-// sessionStartSource maps a SessionStart payload's source string to the provider-neutral source, or the empty source for any other string.
+// sessionStartSource maps a SessionStart payload's source string to the provider-neutral source.
+// Any other string maps to the empty source.
 func sessionStartSource(source string) shuttleengine.SessionStartSource {
 	switch source {
 	case "startup":
@@ -237,7 +243,8 @@ func apiErrorText(fields map[string]any) string {
 	return ""
 }
 
-// sessionEndReasonEndsProcess reports whether a SessionEnd reason ends Claude's process; clear, resume and any unknown reason leave it running.
+// sessionEndReasonEndsProcess reports whether a SessionEnd reason ends Claude's process;
+// clear, resume and any unknown reason leave it running.
 func sessionEndReasonEndsProcess(reason string) bool {
 	switch reason {
 	case sessionEndReasonLogout, sessionEndReasonPromptInputEnd, sessionEndReasonOther:

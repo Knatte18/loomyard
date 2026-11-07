@@ -1,9 +1,8 @@
-// mergeweftlocal_integration_test.go pins the warp-only merge against a real hubforge pair: the weft
-// is never a merge participant in either verb or either direction, so a weft counterpart that
-// rewrites system-file content, diverges independently, or evolves the same _lym/ path from a shared
-// base can no longer produce a merge conflict, a self-abort, or a moved weft HEAD — only a genuine
-// warp-side conflict still reaches unifyConflictPaths.
-// Reuses newMergeTargetFixture, seedSourceAndTarget, newMergePairFixture, advanceRemoteBranch, openFreshFabric and fabricengine.CurrentSHAForTest from the package's existing test files rather than adding new fixture helpers.
+// mergeweftlocal_integration_test.go pins the warp-only merge against a real hubforge pair.
+// The weft is never a merge participant in either verb or either direction.
+// A weft counterpart can rewrite system-file content, diverge, or evolve the same _lym/ path from a shared base.
+// Such a merge produces no conflict, no self-abort, and no moved weft HEAD.
+// Only a genuine warp-side conflict still reaches `unifyConflictPaths`.
 
 package fabricengine_test
 
@@ -18,13 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged covers scenario 1: a
-// Merge of a source branch whose weft counterpart rewrote _lym/loom/status.json many times. The
-// target pair's warp HEAD advances, the target pair's weft HEAD is byte-identical before and after,
+// TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged checks one case:
+// a Merge of a source branch whose weft counterpart rewrote _lym/loom/status.json many times.
+// The target pair's warp HEAD advances, the target pair's weft HEAD is byte-identical before and after,
 // and MergeResult.Conflicts is empty.
-// It additionally asserts MergeResult.AlreadyUpToDate is false while the warp genuinely moved — the
-// alternative way (per the plan) of pinning that the merge record's WeftOutcome was written as
-// up_to_date, since the record itself is deleted by the time a successful call returns.
+// It also asserts MergeResult.AlreadyUpToDate is false while the warp moved.
+// The merge record, which would show WeftOutcome as up_to_date, is deleted when a successful call returns.
+// That leaves AlreadyUpToDate as the check.
 func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -35,7 +34,6 @@ func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchan
 	if err := os.MkdirAll(filepath.Join(h.PrimeRecords(), "_lym", "loom"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(_lym/loom): %v", err)
 	}
-	// The weft counterpart rewrites the same system file many times on the source branch.
 	for i := range 5 {
 		commitOnSourceWeft("feature-weft", "_lym/loom/status.json", fmt.Sprintf(`{"n":%d}`, i), fmt.Sprintf("weft: status rewrite %d", i))
 	}
@@ -63,10 +61,9 @@ func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchan
 	}
 }
 
-// TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged covers scenario 2: the same shape as
-// above, but the target pair carries its own diverged _lym/loom/status.json. The target's weft file
-// content is unchanged after the merge — proving the target's own divergence is never reconciled
-// against the source's, since there is no merge between them to reconcile it.
+// TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged checks a Merge of a source branch.
+// The target pair's own diverged _lym/loom/status.json keeps its content through that Merge.
+// No merge runs between the two weft sides, so the target's divergence is never reconciled against the source's.
 func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -107,11 +104,9 @@ func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) 
 	}
 }
 
-// TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes covers scenario 3: both the
-// target's own weft and the source's weft counterpart evolve the same _lym/ path independently from
-// a shared base — the shape that returned *ErrMergeInRequired before this task, since the weft side
-// would conflict. It must now complete and report Committed true, since the weft is not a merge
-// participant and there is nothing left on that side to conflict.
+// TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes checks a Merge.
+// The target's weft and the source's weft counterpart both evolve the same _lym/ path from a shared base.
+// It reports Committed true, since the weft is not a merge participant and nothing on that side conflicts.
 func TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -119,9 +114,8 @@ func TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes(t *testing
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	// A target-side warp commit, so merging "feature" is a genuine (non-fast-forward) merge that
-	// lands a real conclude-commit — otherwise a plain fast-forward reports Committed false on its
-	// own, for a reason unrelated to what this scenario is about.
+	// A target-side warp commit makes the merge of "feature" a non-fast-forward merge that lands a conclude-commit.
+	// Without it, a fast-forward reports Committed false, which has nothing to do with this test.
 	gitkit.CommitFile(t, h.PairCodeWorktree("target"), "target-progress.txt", "target progress\n", "target: progress")
 
 	targetWeftPath := h.PairRecordsSibling("target")
@@ -140,9 +134,9 @@ func TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes(t *testing
 	}
 }
 
-// TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft covers scenario 4: MergeIn in the
-// opposite direction — a parent branch's _lym/ content never reaches the child's weft worktree, and
-// the child's own live _lym/ content is unchanged.
+// TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft checks a MergeIn of a parent branch.
+// The parent's _lym/ content never reaches the child's weft worktree.
+// The child's own live _lym/ content is unchanged.
 func TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -184,9 +178,9 @@ func TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft(t *testing.T) {
 	}
 }
 
-// TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths covers scenario 5: a genuine
-// warp-side conflict still reaches unifyConflictPaths. MergeIn returns a non-empty Conflicts list
-// naming the warp path, leaving the pair mid-merge for MergeContinue.
+// TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths checks a genuine warp-side conflict.
+// It still reaches `unifyConflictPaths`.
+// MergeIn returns a non-empty Conflicts list naming the warp path and leaves the pair mid-merge for MergeContinue.
 func TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

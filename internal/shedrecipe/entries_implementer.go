@@ -1,4 +1,6 @@
-// entries_implementer.go implements the "Implementer" registry entry, which builds a recipe's implementer row with the engine a config setting names, and the closed table of implementer engines it chooses from.
+// entries_implementer.go implements the "Implementer" registry entry.
+// It builds a recipe's implementer row with the engine that a config setting names.
+// It also holds the closed table of implementer engines the setting chooses from.
 
 package shedrecipe
 
@@ -21,8 +23,11 @@ var implementers = map[string]Constructor{
 }
 
 // implementerEntry is the Constructor for the "Implementer" registry row.
-// It reads the setting the row's implementer_setting key names through Env.Setting and builds the row with that implementer's Constructor, which gets every other key of the row's Config.
-// It refuses a row whose implementer_setting is absent, empty or not a string, and a setting that holds anything but one implementer name, each naming the way forward.
+// It reads the setting that the row's implementer_setting key names, through Env.Setting.
+// It builds the row with that implementer's Constructor, which gets every other key of the row's Config.
+// It refuses a row whose implementer_setting is absent, empty or not a string.
+// It also refuses a setting that holds anything but one implementer name.
+// Each refusal names the way forward.
 func implementerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if raw, present := cfg[implementerSettingKey]; present {
 		text, isString := raw.(string)

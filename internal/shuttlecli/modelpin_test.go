@@ -1,14 +1,15 @@
-// modelpin_test.go is R2-F3's regression guard: every site in this package's smoke suite that
-// starts a REAL `claude` process must thread the shared smokeClaudeModel constant, so no future edit
-// can silently put a live spawn back on the account-default model.
+// modelpin_test.go guards the smoke suite's model pin.
+// Every site in that suite starting a real `claude` process must thread the shared smokeClaudeModel constant,
+// so no future edit can silently put a live spawn back on the account-default model.
 //
-// It is an UNTAGGED source scan on purpose.
-// The smoke files are behind `//go:build llm`, so an assertion written inside them only runs on the rare `-tags llm` invocation — which is exactly the run that would already have spent the money.
+// It is an untagged source scan on purpose.
+// The smoke files are behind `//go:build llm`, so an assertion in them runs only on the rare `-tags llm` invocation.
+// That is the run that would already have spent the money.
 // Reading them as text runs on every ordinary `go test`, before any spawn happens.
-// That also means the constant can only be referred to by name here, never used as a value, since it does not exist in an untagged build.
+// The constant can therefore only be named here, never used as a value, since it does not exist in an untagged build.
 //
-// No process is spawned and no scan root is resolved: the test's own working directory IS the
-// package directory, so the Test Tier Purity Invariant is satisfied with no allowlist entry.
+// No process is spawned and no scan root is resolved: the test's own working directory is the package directory,
+// so the Test Tier Purity Invariant is satisfied with no allowlist entry.
 
 package shuttlecli
 
@@ -23,22 +24,19 @@ import (
 )
 
 // modelPinConstantName is the shared constant every real-`claude` spawn site in the smoke suite must thread.
-// Named as a string rather than referenced as an identifier because it is declared in a `//go:build llm` file and does not exist in this untagged build.
+// Named as a string, not an identifier, because the constant is declared in a `//go:build llm` file.
 const modelPinConstantName = "smokeClaudeModel"
 
-// wantSpawnSiteCount is how many sites in the smoke suite start a real `claude`, pinned so the scan
-// fails loudly rather than passing vacuously if the recogniser stops matching. Raise it in the same
-// commit as a new smoke test, never ahead of one.
-// It is 14:
-// `lym shuttle run` through this package's own RunCLI in smoke_run_test.go and twice in smoke_guardrail_test.go,
-// the direct Runner.Start in smoke_interrupt_test.go and in smoke_paste_test.go, and one Spec per scenario in smoke_turns_test.go.
+// wantSpawnSiteCount is how many sites in the smoke suite start a real `claude`.
+// The scan fails loudly when its count differs, so a recogniser that stops matching cannot pass vacuously.
+// Raise it in the same commit as a new smoke test, never ahead of one.
 const wantSpawnSiteCount = 15
 
-// spawnSiteOpeners recognises the two shapes a real-`claude` spawn takes in this package's smoke
-// suite, each paired with the bracket that closes its argument list.
-// A bare `RunCLI(` is this package's own seam (`lym shuttle run`); a qualified one (`reedcli.RunCLI`)
-// is a reed verb that spawns no provider, which is why the pattern requires the call to be
-// unqualified AND to carry a "run" verb.
+// spawnSiteOpeners recognises the two shapes a real-`claude` spawn takes in this package's smoke suite.
+// Each shape is paired with the bracket that closes its argument list.
+// A bare `RunCLI(` is this package's own seam for `lym shuttle run`.
+// A qualified `reedcli.RunCLI(` is a reed verb that spawns no provider, so the pattern does not match it.
+// The scan keeps a RunCLI call only when its argument list carries the "run" verb.
 var spawnSiteOpeners = []struct {
 	name    string
 	pattern *regexp.Regexp
@@ -48,10 +46,11 @@ var spawnSiteOpeners = []struct {
 	{"shuttleengine.Spec literal", regexp.MustCompile(`shuttleengine\.Spec\{`), '}'},
 }
 
-// TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel is the guard itself.
+// TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel fails when a real-claude spawn site omits the model pin.
 //
-// Round 1 pinned all four smoke spawns to the cheap model via a shared constant but added nothing that fails when a site stops referencing it:
-// deleting `"--model", smokeClaudeModel,` from any one call left build, vet, and the whole hermetic suite green, and the only symptom was a larger bill on the next `-tags llm` run — a defect that is invisible precisely while it is costing money.
+// Nothing else in the suite fails when a site drops the pin:
+// build, vet and the hermetic tests stay green, and the only symptom is a larger bill on the next `-tags llm` run.
+// The defect is invisible while it costs money.
 //
 //testtiming:keep a guard that fires when a real-claude spawn site omits the model pin, which no covering test asserts
 func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
@@ -74,14 +73,12 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 
 		for _, opener := range spawnSiteOpeners {
 			for _, match := range opener.pattern.FindAllStringIndex(source, -1) {
-				// FindAllStringIndex's end is just past the opening bracket, which is where the
-				// argument list starts.
+				// The match's end is just past its opening bracket, which is where the argument list starts.
 				argumentList, ok := bracketedSpan(source, match[1]-1, opener.closer)
 				if !ok {
 					t.Fatalf("%s: unbalanced %s at byte %d; the scan cannot be trusted", file, opener.name, match[0])
 				}
-				// A RunCLI call that is not the `run` verb (there is none today, but `interrupt`
-				// and `send` are the obvious future additions) starts no provider process.
+				// A RunCLI call without the "run" verb starts no provider process, so the scan skips it.
 				if opener.closer == ')' && !strings.Contains(argumentList, `"run"`) {
 					continue
 				}
@@ -100,8 +97,8 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 	}
 }
 
-// TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty pins the other half: the constant every site threads must actually exist and carry a value.
-// Without this, deleting the declaration and the references together would leave the scan above finding nothing to complain about.
+// TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty fails when the model pin constant is missing or empty.
+// Without this check, deleting the declaration and every reference to it together would go unnoticed.
 //
 //testtiming:keep a guard that fires when the model-pin constant is missing or empty, which no covering test asserts
 func TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty(t *testing.T) {
@@ -111,9 +108,8 @@ func TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty(t *testing.T) {
 		t.Fatalf("glob smoke files: %v", err)
 	}
 
-	// The capture is `*`, not `+`, so an empty-string declaration still MATCHES and is reported as
-	// the empty pin it is, rather than falling through to the "no declaration at all" message below
-	// and misdescribing what changed.
+	// The capture is `*`, not `+`, so an empty-string declaration still matches.
+	// The match is reported as the empty pin it is, not as a missing declaration, which would misdescribe the change.
 	declaration := regexp.MustCompile(`const\s+` + modelPinConstantName + `\s*=\s*"([^"]*)"`)
 	for _, file := range smokeFiles {
 		data, readErr := os.ReadFile(file)
@@ -130,10 +126,10 @@ func TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty(t *testing.T) {
 	t.Errorf("no smoke file declares a non-empty %s constant; the model pin the whole suite depends on is gone", modelPinConstantName)
 }
 
-// bracketedSpan returns the substring of source from the opening bracket at openIndex through its
-// balancing closer, and reports whether that closer was found.
-// It skips over interpreted and raw string literals and over rune literals while balancing, so a
-// bracket inside a prompt string cannot throw the count off — smoke prompts routinely contain them.
+// bracketedSpan returns the substring of source from the opening bracket at openIndex through its balancing closer.
+// It reports whether that closer was found.
+// It skips interpreted and raw string literals and rune literals while balancing.
+// A bracket inside a prompt string cannot throw the count off, and smoke prompts routinely contain them.
 func bracketedSpan(source string, openIndex int, closer byte) (string, bool) {
 	opener := source[openIndex]
 	depth := 0
@@ -157,8 +153,8 @@ func bracketedSpan(source string, openIndex int, closer byte) (string, bool) {
 	return "", false
 }
 
-// literalEnd returns the index of the closing quote of the Go literal starting at startIndex, and
-// reports whether it was found.
+// literalEnd returns the index of the closing quote of the Go literal starting at startIndex.
+// It reports whether that quote was found.
 // A raw string (backtick) has no escapes; the other two honour backslash escapes.
 func literalEnd(source string, startIndex int) (int, bool) {
 	quote := source[startIndex]

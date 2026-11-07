@@ -1,4 +1,4 @@
-// apply_test.go table-tests engineAliveIDs, the predicate that reads a pane whose engine exited to its start shell as dead.
+// apply_test.go table-tests engineAliveIDs, which reads a pane as dead once its engine exits to the start shell.
 
 package reedengine
 

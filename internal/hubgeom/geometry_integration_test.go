@@ -1,5 +1,5 @@
-// geometry_integration_test.go drives ReedGeometry and WebsterGeometry against one real hub from hubforge:
-// the prime's reed geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or none when the origin names none, and a hub with no .lym-shortname yields an empty shortname and no error.
+// geometry_integration_test.go runs ReedGeometry and WebsterGeometry over one real hub built by hubforge.
+// It pins the shortname, slug and parent names the geometries derive, including a hub with no shortname record.
 
 package hubgeom_test
 
@@ -22,9 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGeometryOverRealHub builds one hub and runs each geometry case as a step over it, in the order below.
-// The steps run serially, and the last removes the hub's shortname record, so it must stay last.
-// The top-level test calls t.Parallel and no step does, because the steps share the one hub fixture.
+// TestGeometryOverRealHub runs each geometry case as a step over one hub it builds.
+// The steps run serially because they share that hub, so the top-level test calls t.Parallel and no step does.
 func TestGeometryOverRealHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -329,7 +328,8 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 	return fabricengine.ReconcilePairResult{}
 }
 
-// requireLockDirAndOrchParent asserts slug's sibling worktree has its lock directory and its parent resolves to the prime's orch.
+// requireLockDirAndOrchParent asserts slug's sibling worktree has its lock directory.
+// Its parent resolves to the prime's orch.
 func requireLockDirAndOrchParent(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 

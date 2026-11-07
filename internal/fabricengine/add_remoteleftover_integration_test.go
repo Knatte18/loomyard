@@ -1,7 +1,10 @@
-// add_remoteleftover_integration_test.go covers Add's pre-flight probes of both origins: a live pair's branches on origin are adopted,
-// and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation, or, when provably replaceable, does not block the add.
+// add_remoteleftover_integration_test.go covers Add's pre-flight probes of both origins:
+// a live pair's branches on origin are adopted,
+// and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation.
+// A provably replaceable leftover does not block the add.
 //
-// Every hub here is built through hubforge.CopyHub with an empty branch_prefix, so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
+// Every hub here is built through hubforge.CopyHub with an empty branch_prefix,
+// so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
 // pushCommitToOrigin plants the leftover's divergence from a throwaway clone of the fixture's bare.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -22,7 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// pushCommitToOrigin clones bare, adds one commit to branch, and pushes it back, so origin's branch diverges from any local copy.
+// pushCommitToOrigin clones bare, adds one commit to branch, and pushes it back;
+// so origin's branch diverges from any local copy.
 func pushCommitToOrigin(t *testing.T, bare, branch string) {
 	t.Helper()
 
@@ -85,8 +89,8 @@ func removedPair(t *testing.T, slug string) *hubforge.Hub {
 	return h
 }
 
-// TestAdd_OriginOnlyWeftAdopted covers a weft branch on origin that has moved past its archive tag, with no local weft branch: the pair is live,
-// so Add adopts it.
+// TestAdd_OriginOnlyWeftAdopted covers a weft branch on origin, past its archive tag, with no local weft branch:
+// the pair is live, so Add adopts it.
 func TestAdd_OriginOnlyWeftAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -189,7 +193,8 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 	}
 }
 
-// TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin covers a live pair, by a surviving local weft branch, whose origin warp branch holds work the prime's HEAD lacks, while an archive tag also covers origin's weft tip.
+// TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin covers a live pair held by a surviving local weft branch;
+// its origin warp branch holds work the prime's HEAD lacks, while an archive tag also covers origin's weft tip.
 func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -285,9 +290,9 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 	}
 }
 
-// TestAdd_SkipPushSkipsLeftoverProbes covers the origin-only-weft setup re-added under SkipPush: origin is not consulted,
-// so both branches fork.
-// Origin's warp branch stays unchanged because Add pushes nothing and AddPairWith skips its push under SkipPush.
+// TestAdd_SkipPushSkipsLeftoverProbes covers the origin-only-weft setup re-added under SkipPush:
+// origin is not consulted, so both branches fork.
+// Origin's warp branch stays unchanged, since Add pushes nothing and AddPairWith skips its push under SkipPush.
 func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -331,7 +336,8 @@ func requireArchiveCovers(t *testing.T, weftBare, slug, oldTip string) {
 	t.Errorf("no archive/%s/* tag covers old tip %s (tags: %q)", slug, oldTip, out)
 }
 
-// TestAdd_DivergedArchivedWeftLeftoverReplaced covers a pushed weft commit that the re-created weft branch does not descend from.
+// TestAdd_DivergedArchivedWeftLeftoverReplaced covers a pushed weft commit:
+// the re-created weft branch does not descend from it.
 func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -371,7 +377,8 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	requireArchiveCovers(t, h.RecordsBare, slug, oldTip)
 }
 
-// pushNewPair pushes the pair Add just created for slug in the foreground, standing in for the detached push a production caller spawns.
+// pushNewPair pushes the pair Add just created for slug in the foreground;
+// it stands in for the detached push a production caller spawns.
 func pushNewPair(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
@@ -380,7 +387,8 @@ func pushNewPair(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
-// TestAdd_ArchivedAncestorWeftLeftoverReplaced covers an archive tag on an unpushed commit that is a strict descendant of origin's weft tip.
+// TestAdd_ArchivedAncestorWeftLeftoverReplaced covers an archive tag on an unpushed commit:
+// a strict descendant of origin's weft tip.
 func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -441,14 +449,16 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	}
 }
 
-// plantStaleTracking leaves branch's remote-tracking ref at tip and its upstream setting in the repository at dir, as a removed pair's push left them.
+// plantStaleTracking plants what a removed pair's push leaves behind:
+// branch's remote-tracking ref at tip and its upstream setting in the repository at dir.
 func plantStaleTracking(dir, branch, tip string) {
 	mustGit(dir, "update-ref", "refs/remotes/origin/"+branch, tip)
 	mustGit(dir, "config", "branch."+branch+".remote", "origin")
 	mustGit(dir, "config", "branch."+branch+".merge", "refs/heads/"+branch)
 }
 
-// requireTrackingStanding asserts the repository at dir holds branch's remote-tracking ref and upstream merge setting, or neither.
+// requireTrackingStanding asserts that dir's repository holds both or neither of these for branch:
+// its remote-tracking ref and its upstream merge setting.
 func requireTrackingStanding(t *testing.T, dir, branch string, want bool) {
 	t.Helper()
 
@@ -468,7 +478,8 @@ func requireTrackingStanding(t *testing.T, dir, branch string, want bool) {
 	}
 }
 
-// staleTrackingHub returns the hub of a removed pair for slug whose origin branch on one side is deleted while that side's repository keeps the tracking ref and upstream setting.
+// staleTrackingHub returns the hub of a removed pair for slug, where origin's branch is deleted on one side;
+// that side's repository keeps the tracking ref and upstream setting.
 // The local warp branch a removal may leave is deleted, so the next Add forks.
 func staleTrackingHub(t *testing.T, slug string, records bool) *hubforge.Hub {
 	t.Helper()
@@ -490,7 +501,8 @@ func staleTrackingHub(t *testing.T, slug string, records bool) *hubforge.Hub {
 	return h
 }
 
-// TestAdd_DropsStaleTrackingRef covers a removed pair's remote-tracking ref and upstream setting for a branch origin no longer holds: Add drops them on the side whose branch origin lacks, before it makes anything.
+// TestAdd_DropsStaleTrackingRef covers a removed pair's stale remote-tracking ref and upstream setting:
+// Add drops them on the side whose origin branch is gone, before it makes anything.
 func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

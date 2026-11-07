@@ -17,8 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestConfigSpec_SetNestedKeys pins that a --set reaches one key inside capture or compare, a number decoding as a number and an env value as a string, so the file still loads;
-// and that a key a step lacks is refused naming it, leaving the file byte for byte.
+// TestConfigSpec_SetNestedKeys pins that a --set reaches one key inside capture or compare.
+// A number decodes as a number and an env value as a string, so the file still loads.
+// It also pins that a key a step lacks is refused naming it, leaving the file byte for byte.
 func TestConfigSpec_SetNestedKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -61,8 +62,9 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 	}
 }
 
-// TestConfigSpec_SetWholeSteps pins that a --set writes capture and compare whole from the flow mapping the template's own description prescribes, so the file loads with both steps declared;
-// and that a whole step holding a key a step lacks is refused naming it, leaving the file byte for byte.
+// TestConfigSpec_SetWholeSteps pins that a --set writes capture and compare whole.
+// The write uses the flow mapping the template's description prescribes, so the file loads with both steps declared.
+// It also pins that a whole step holding a key a step lacks is refused naming it, leaving the file byte for byte.
 func TestConfigSpec_SetWholeSteps(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -115,7 +117,7 @@ func seedDriftConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestCheckDirs pins that a declared step whose dir resolves to no existing directory under the worktree root is refused.
+// TestCheckDirs pins that a declared step is refused when its dir, resolved under the worktree root, does not exist.
 // The refusal names the step's key and the resolved path.
 // An existing dir, an unset dir and an undeclared step pass.
 func TestCheckDirs(t *testing.T) {
@@ -174,7 +176,8 @@ func TestCheckDirs(t *testing.T) {
 	}
 }
 
-// TestCheckRetiredPlaceholders pins that an enabled drift config refuses a step a run executes that holds {skip_file}, with a way forward a task or beam session can hand on, and passes every other config.
+// TestCheckRetiredPlaceholders pins that an enabled drift config refuses a run step holding {skip_file}.
+// The refusal carries a way forward that a task or beam session can hand on, and every other config passes.
 func TestCheckRetiredPlaceholders(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -262,7 +265,8 @@ func withKeys(t *testing.T, lines map[string]string) string {
 	return strings.Join(out, "\n")
 }
 
-// seedLocalDrift seeds a board holding the template and an anchor whose local drift layer holds local, and returns their Dirs.
+// seedLocalDrift seeds a board holding the template and an anchor whose local drift layer holds local.
+// It returns the Dirs of both.
 func seedLocalDrift(t *testing.T, local string) configengine.Dirs {
 	t.Helper()
 	board, anchor := t.TempDir(), t.TempDir()
@@ -286,7 +290,9 @@ func templateConfig(mutate func(*Config)) Config {
 	return cfg
 }
 
-// TestLoadConfig covers the template's defaults, a declared step and its defaults, every refusal, the local layer closing both executable keys, a base directory with no drift.yaml, Step, and the drift paths.
+// TestLoadConfig covers the template's defaults, a declared step and its defaults, and every refusal.
+// It also covers the local layer closing both executable keys and a base directory with no drift.yaml.
+// It also covers Step and the drift paths.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

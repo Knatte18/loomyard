@@ -1,4 +1,5 @@
-// wiring.go — resolves the worktree a drift verb runs in and builds the seams the driftengine functions are told: the run status, the git facts and the gate slots.
+// wiring.go — resolves the worktree a drift verb runs in and builds the seams the drift engine's functions take.
+// The seams cover the run status, the git facts and the gate slots.
 
 package driftcli
 
@@ -44,8 +45,10 @@ func openWorktree(cmd *cobra.Command) (*worktree, error) {
 	return &worktree{location: location, paths: driftengine.NewPaths(location.AnchorPath())}, nil
 }
 
-// openSlugWorktree resolves the worktree of the board slug in the hub the command's cwd is in, so a verb acts on a run from any of the hub's worktrees.
-// It is the sibling worktree fabricengine.WorktreePath names, at the cwd's own anchor; a slug that names no worktree is refused, naming `lym board list`.
+// openSlugWorktree resolves the worktree of the board slug in the hub the command's cwd is in,
+// so a verb acts on a run from any of the hub's worktrees.
+// It resolves the slug's sibling worktree at the cwd's own anchor.
+// A slug that names no worktree is refused, with a pointer to `lym board list`.
 func openSlugWorktree(cmd *cobra.Command, slug string) (*worktree, error) {
 	cwd, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
@@ -70,7 +73,7 @@ func openSlugWorktree(cmd *cobra.Command, slug string) (*worktree, error) {
 	return &worktree{location: location, paths: driftengine.NewPaths(location.AnchorPath())}, nil
 }
 
-// root returns the worktree root, which names the capture's job and a drift command's relative dir is joined onto.
+// root returns the worktree root, which names the capture's job; a drift command's relative dir is joined onto it.
 func (w *worktree) root() string {
 	return w.location.WorktreePath()
 }
@@ -137,7 +140,8 @@ func (w *worktree) slots() (*gateslot.Pool, string) {
 	return hubgeom.GateSlots(w.location), gateslot.WaitDir(w.location.AnchorPath())
 }
 
-// captureRequest describes a capture of step in this worktree, which the caller completes with its precondition and lock bound.
+// captureRequest describes a capture of step in this worktree.
+// The caller completes the request with its precondition and lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
 func (w *worktree) captureRequest(step driftengine.CommandStep) driftengine.CaptureRequest {
 	pool, waitDir := w.slots()
@@ -169,7 +173,9 @@ func (w *worktree) compareRequest(step driftengine.CommandStep) driftengine.Comp
 	}
 }
 
-// checkDeps builds the seams the drift check reads over this worktree: the records and seal reads, the run status, the row order of the recipe the run's seed names, the current capture and the compare.
+// checkDeps builds the seams the drift check reads over this worktree.
+// They cover the records and seal reads, the run status, and the row order of the recipe the run's seed names.
+// They also cover the current capture and the compare.
 // The current capture runs in the gate slot the process's own gate holds, when it runs inside one.
 func (w *worktree) checkDeps() (driftengine.Deps, error) {
 	seed, found, err := shedrun.ReadSeed(w.location, shedrun.SelfRunID)

@@ -15,11 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// NearestLiveOrch returns the orch to notify for a run acting from the worktree from names.
-// It tries that worktree, then walks upward through the origin records, each worktree's ParentWorktree.
-// It returns the nearest worktree whose orch strand live reports live, and the prime whatever its state when none is.
+// NearestLiveOrch returns the orch to notify for a run acting from the worktree of from.
+// It tries that worktree, then walks upward through the origin records' parent worktrees.
+// It returns the nearest worktree whose orch strand is live, or the prime when no worktree on the walk is.
 // The answer's Name is that worktree's orch agent name and its Worktree the worktree's name, empty for the prime.
-// A worktree with no origin record, an empty parent worktree or a parent worktree that is gone ends the walk at the prime.
+// A worktree with no origin record, an empty parent worktree, or a gone parent worktree ends the walk at the prime.
 // A cycle in the records ends it there too.
 // A hub with no recorded shortname yields no parent and a warning, since no name can be formed.
 // A read error, and an error from live, are returned.
@@ -56,7 +56,7 @@ func NearestLiveOrch(from *lymcwd.Location, live func(worktree *lymcwd.Location)
 	return Parent{Name: name, Worktree: worktree}, nil
 }
 
-// recordedParentWorktree reads the parent worktree of the worktree named worktree from its origin record, "" meaning the prime.
+// recordedParentWorktree reads the parent worktree of the named worktree from its origin record, "" meaning the prime.
 // It reports false when the worktree has no record, the record names no parent worktree or the parent worktree is gone.
 func recordedParentWorktree(from *lymcwd.Location, worktree string) (string, bool, error) {
 	origin, found, err := fabricengine.ReadOriginFor(from, worktree)
@@ -80,9 +80,10 @@ func recordedParentWorktree(from *lymcwd.Location, worktree string) (string, boo
 	return origin.ParentWorktree, true, nil
 }
 
-// nearestLive is NearestLiveOrch's walk over told reads, so its table needs no filesystem.
-// It returns start when live reports it live, else its parent's answer, and "" for the prime.
-// parentOf reports a worktree's parent worktree, "" for the prime, and false when the walk ends there; start "" is the prime.
+// nearestLive walks up from start through parentOf and returns the first worktree that live reports live.
+// It returns "" when no worktree on the walk is live, and it reads no filesystem itself.
+// parentOf reports a worktree's parent worktree, "" for the prime, and false when the walk ends there;
+// start "" is the prime.
 // The prime is never asked of live, and a worktree seen twice ends the walk at the prime.
 func nearestLive(start string, parentOf func(worktree string) (string, bool, error), live func(worktree string) (bool, error)) (string, error) {
 	visited := map[string]bool{}

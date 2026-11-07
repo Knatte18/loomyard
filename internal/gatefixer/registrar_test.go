@@ -1,4 +1,5 @@
-// registrar_test.go covers Registrar: the pane process a live strand registers under its owner and role, and the cases that register nothing.
+// registrar_test.go covers Registrar: the pane process a live strand registers under its owner and role.
+// It also covers the cases that register nothing.
 
 package gatefixer
 
@@ -15,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// registeredRecords decodes the record files under owner in dir, reading them directly since runproc's own read prunes a record whose process is gone.
+// registeredRecords decodes the record files under owner in dir.
+// It reads the files directly, since runproc's own read prunes a record whose process is gone.
 func registeredRecords(t *testing.T, dir, owner string) []runproc.Record {
 	t.Helper()
 	files, err := os.ReadDir(filepath.Join(dir, owner))

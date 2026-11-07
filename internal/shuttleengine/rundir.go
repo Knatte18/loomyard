@@ -1,9 +1,8 @@
-// rundir.go implements the per-run directory lifecycle: minting a run id, resolving the run-dir
-// root from Config and a told anchor path, persisting a run's RunState as run.json, looking a run up
-// by its owning strand guid, and sweeping orphaned run dirs left behind when a strand no longer
-// exists in reed state.
-// Everything here is pure I/O over a caller-supplied root and caller-injected guids/clock — no
-// tmux, no claude, so it is testable without either.
+// rundir.go implements the per-run directory lifecycle of a shuttle run.
+// It mints run ids, resolves the run-directory root, and persists each run's RunState as run.json.
+// It also finds a run by its strand guid and sweeps orphaned run directories whose strand is gone from reed state.
+// Its only I/O is over a caller-supplied root, with guids and the clock injected by the caller.
+// It touches no tmux and no claude, so it is testable without either.
 
 package shuttleengine
 
@@ -23,8 +22,10 @@ import (
 // runStateFileName is the run.json file name inside a per-run directory.
 const runStateFileName = "run.json"
 
-// runEndStampFileName is the file at the run-directory root whose modification time is when a run there was last finalized.
-// It outlives the run directory a done run's cleanup removes, so the end of a removed run stays readable.
+// runEndStampFileName names the file at the run-directory root.
+// Its modification time records when that run was last finalized.
+// The file outlives the run directory that a done run's cleanup removes,
+// so the end of a removed run stays readable.
 const runEndStampFileName = "run-ended"
 
 // stampRunEnd sets the modification time of the run-end stamp under root to at, creating the file when it is absent.
@@ -40,8 +41,10 @@ func stampRunEnd(root string, at time.Time) error {
 	return os.Chtimes(path, at, at)
 }
 
-// ErrNoRunRecord marks a strand guid that no run record names: the run directory root is absent, or every run.json was read and none names the guid.
-// A run directory that could not be read does not wrap it, since that guid may name a recorded run whose run.json is damaged.
+// ErrNoRunRecord marks a strand guid that no run record names.
+// It is returned when the run directory root is absent, or when every run.json was read and none names the guid.
+// A run directory that could not be read does not wrap it.
+// That guid may name a recorded run whose run.json is damaged.
 var ErrNoRunRecord = errors.New("shuttle: no run record names the strand")
 
 // noRunRecordError carries a not-found answer's full wording while satisfying errors.Is(err, ErrNoRunRecord).
@@ -50,10 +53,9 @@ type noRunRecordError struct{ msg string }
 func (e noRunRecordError) Error() string { return e.msg }
 func (e noRunRecordError) Unwrap() error { return ErrNoRunRecord }
 
-// newRunID returns a 128-bit random identifier, hex-encoded, generated from
-// crypto/rand — the same recipe as reedengine's newGUID. This is the
-// directory-naming identity for one shuttle run; it is distinct from the
-// strand guid reed mints for the pane that runs it.
+// newRunID returns a 128-bit random identifier, hex-encoded, drawn from crypto/rand.
+// It names one shuttle run's directory.
+// It is distinct from the strand guid reed mints for the pane running it.
 func newRunID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -62,17 +64,10 @@ func newRunID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// runDirRoot resolves the directory under which every run's subdirectory is
-// created. cfg.RunDir wins when non-empty — a relative value is resolved
-// against anchorPath, an already-absolute value is used verbatim.
-// When cfg.RunDir is empty, the default is
-// filepath.Join(anchorPath, lymdirs.DotLymDirName, "shuttle"): the
-// ephemeral, machine-local .lym tree, built from lymdirs.DotLymDirName, never
-// a literal ".lym" inline.
-// Both branches share anchorPath as their base deliberately: one
-// function must never resolve against two different bases when
-// the repo is subpath-anchored, or a subpath-anchored repo would end up with two
-// distinct run-dir roots depending on which branch a given cfg took.
+// runDirRoot resolves the directory under which every run's subdirectory is created.
+// A non-empty cfg.RunDir wins: a relative value resolves against anchorPath, and an absolute value is used as is.
+// When cfg.RunDir is empty, the root is the shuttle directory under the machine-local .lym tree in anchorPath.
+// Both branches resolve against anchorPath, so a subpath-anchored repo gets one run-dir root.
 func runDirRoot(cfg Config, anchorPath string) string {
 	if cfg.RunDir == "" {
 		return filepath.Join(anchorPath, lymdirs.DotLymDirName, "shuttle")
@@ -83,20 +78,18 @@ func runDirRoot(cfg Config, anchorPath string) string {
 	return filepath.Join(anchorPath, cfg.RunDir)
 }
 
-// runOutcomeRunning is the sentinel RunState.Outcome value Start writes before any classification is
-// reached. It is explicit rather than relying on "empty means running", because every run.json
-// written by a pre-this-change binary decodes with Outcome == "" — inverting the default this way
-// means an upgraded worktree never mistakes a legacy record for an attachable one (see
-// RunState.Outcome's own doc comment).
+// runOutcomeRunning is the sentinel RunState.Outcome value that Start writes before any classification.
+// It is explicit, not an empty string, because an older run.json decodes with an empty Outcome.
 const runOutcomeRunning = "running"
 
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.
-// It carries exactly what the CLI's interrupt/send verbs and post-hoc diagnosis need: the run and
-// strand identities, the session the engine resumed/produced, whether the run was launched
-// interactive, the output files the caller expects, the on-disk paths of the run's
-// prompt/settings/event files (so a resumed or re-attached session can find them without
-// recomputing), when the run was created (RFC3339, supplied by the caller so RunState itself does no
-// clock I/O), and whether the run has ever ended.
+// It holds what the CLI's interrupt and send verbs and post-hoc diagnosis need.
+// That covers the run and strand identities and the session the engine resumed or produced.
+// It also records whether the run was launched interactive and which output files the caller expects.
+// It holds the paths of the run's prompt, settings and event files.
+// A resumed or re-attached session reads those paths instead of recomputing them.
+// It records when the run was created, as an RFC3339 string the caller supplies, so RunState does no clock I/O.
+// It also records whether the run has ever ended.
 type RunState struct {
 	RunID        string   `json:"runId"`
 	StrandGUID   string   `json:"strandGuid"`
@@ -107,49 +100,48 @@ type RunState struct {
 	SettingsPath string   `json:"settingsPath"`
 	EventsPath   string   `json:"eventsPath"`
 	CreatedAt    string   `json:"createdAt"`
-	// Outcome has three writable states. Start writes the sentinel
-	// runOutcomeRunning ("running") when it first persists this record.
-	// Run.finalize overwrites it with the classification string (done/died/timeout/api-error) for EVERY terminal outcome, not only OutcomeDone.
-	// The legacy value "asking" is one only an older binary wrote.
-	// Any other value, INCLUDING THE EMPTY STRING, means the
-	// record was written by a binary that did not know about this field and
-	// is therefore never attachable — a plain "" decodes from every run.json
-	// a pre-change binary wrote, so treating empty as attachable would let an
-	// in-flight worktree upgraded mid-run attach to an idle pane and wait
-	// out a freshly restarted run_timeout_min.
+	// Outcome holds one of three kinds of value.
+	// Start writes the sentinel runOutcomeRunning ("running") when it first persists the record.
+	// Run.finalize overwrites it with the classification (done, died, timeout, api-error) for every terminal outcome.
+	// The value "asking" is one only a legacy binary wrote.
+	// Any other value, including the empty string, marks a record that is never attachable.
+	// An empty string is what a run.json written before this field decodes to.
+	// Treating it as attachable would let a worktree upgraded mid-run attach to an idle pane.
+	// Such a run would then wait out a freshly restarted run timeout.
+	// The sentinel keeps a running record explicit,
+	// so a legacy empty value never reads as running.
 	Outcome string `json:"outcome"`
-	// Started is false when Start first persists this record, and is flipped true and re-persisted
-	// the moment the startup probe in checkLivenessTick, run from inside Start (the startup step
-	// awaitStartup calls) or from a later Wait for an attached run never marked Started, observes the
-	// provider reach shuttleengine.StartupReady — never by Attach, and never merely from the strand
-	// being reed-live. It exists because "reed
-	// still reports this strand's pane alive" is not the same fact as "the provider inside that pane
-	// ever came up": a driver killed between Start and its own first liveness tick, or a launch whose
-	// binary does not exist, both leave a live pane sitting at its own shell prompt with Outcome still
-	// the runOutcomeRunning sentinel — indistinguishable from a genuinely booted, mid-turn run by
-	// outcome and liveness alone. Attach reads this field to decide whether the run it reconstructs
-	// may skip Wait's startup probe (see Wait's own started-seeding doc comment); false is the safe
-	// default a pre-this-change binary's run.json also decodes to, so an old record costs one extra
-	// probe rather than silently skipping one it never earned.
+	// Started is false when Start first persists the record.
+	// It becomes true when the startup probe sees the provider reach shuttleengine.StartupReady,
+	// and the record is persisted again.
+	// The startup probe runs from Start, or from a later Wait for an attached run never marked Started.
+	// Attach never sets it.
+	// A strand being live in reed does not set it either.
+	// A live reed pane does not show that the provider inside it ever came up.
+	// Without the field, a pane at its shell prompt looks like a booted run by Outcome and liveness alone.
+	// This happens when a driver dies before its first liveness tick, or when the launch's binary does not exist.
+	// Attach reads the field to decide whether the reconstructed run may skip Wait's startup probe.
+	// False is the safe default, and a record from an older binary decodes to it.
+	// It costs such a record one extra probe rather than silently skipping one it never earned.
 	Started bool `json:"started"`
-	// AskingOffset is the events-file byte offset an older binary's finalize had consumed when it classified an ask, nil for every record this binary writes.
-	// It is read for legacy records only and never written.
+	// AskingOffset is the events-file byte offset an older binary's finalize had consumed when it classified an ask.
+	// This binary leaves it nil and reads it only for legacy records.
 	// Attach replays such a record from this offset and counts the ask before it as already notified.
 	AskingOffset *int64 `json:"askingOffset,omitempty"`
 	// StrandName is the reed name of the run's strand, which a hold notice gives its parent to answer by.
 	// Empty for a record that predates the field, where the notice names the strand guid instead.
 	StrandName string `json:"strandName,omitempty"`
-	// NotifiedOffset is the events-file byte offset just past the last held turn end whose notice Wait sent, zero for none.
+	// NotifiedOffset is the events-file byte offset past the last notified held turn end; zero for none.
 	// Wait persists it before calling the notifier and never notifies a held turn end at or below it,
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	NotifiedOffset int64 `json:"notifiedOffset,omitempty"`
-	// DialogNotifiedOffset is the events-file byte offset just past the last ask folded into a dialog episode whose notice Wait sent, zero for none.
+	// DialogNotifiedOffset is the events-file byte offset past the last ask whose dialog notice Wait sent; zero for none.
 	// Wait persists it before calling the notifier and never rebuilds a dialog latch from an ask at or below it,
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
 	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
-	// PromptLine is the launch's deferred prompt line, typed once the provider is ready and the skills are loaded; empty for a launch whose prompt is on its command line.
-	// It is kept so a later attach can deliver a prompt a dead step never sent.
+	// PromptLine is the deferred prompt, typed once the provider is ready; empty for a prompt on the command line.
+	// It lets a later attach deliver a prompt that a dead step never sent.
 	PromptLine string `json:"promptLine,omitempty"`
 	// Step is the shed step that started the run, nil for a run whose runner was told none.
 	Step *StepTie `json:"step,omitempty"`
@@ -157,38 +149,37 @@ type RunState struct {
 	// Wait persists it before typing the line and clears it at the next held turn end that is not an API error.
 	// One turn thus gets at most one continue, and a reattached Wait never sends twice.
 	APIContinued bool `json:"apiContinued,omitempty"`
-	// PromptOffset is the events-file size at the moment before Start sends the prompt, past the skill-load turns it ran and any line appended after them.
+	// PromptOffset is the events-file size just before Start sends the prompt.
 	// It is zero when Start loaded no skills or for a record that predates the field.
-	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.
+	// Readers that replay the events file begin here, so a load turn's end is never read as the run's own.
 	PromptOffset int64 `json:"promptOffset,omitempty"`
-	// PID is the pid of the process that waits on the run: Start records the starting process, and an attach rewrites it to the attaching process.
+	// PID is the pid of the process that waits on the run; Start records its own, and an attach rewrites it.
 	// Zero for a record an older binary wrote, which therefore never counts as live.
 	PID int `json:"pid,omitempty"`
 	// RecordsSessionStarts is the launch's declaration that it writes a session-start line, copied from the launch.
-	// Startup then needs that line beside the ready pane; a record an older binary wrote decodes false and keeps pane-only startup.
+	// Startup needs that line beside the ready pane; an older binary's record decodes false and keeps pane-only startup.
 	RecordsSessionStarts bool `json:"recordsSessionStarts,omitempty"`
-	// ForkSubagents is the spawning Spec's ForkSubagents, copied at spawn.
+	// ForkSubagents records whether the spawning Spec authorized forking subagents, copied at spawn.
 	// A record an older binary wrote decodes false and reads as not authorized.
 	ForkSubagents bool `json:"forkSubagents,omitempty"`
 	// Engine is the name of the engine the run was started with.
-	// A record without it, which every record written before the field is, reads as the engine set's default engine.
+	// A record written before the field existed reads as the engine set's default engine.
 	Engine string `json:"engine,omitempty"`
 	// RoleKey is the spawning Spec's name override, else its role, which a later run start matches its predecessor by.
 	// A record without it is never a predecessor.
 	RoleKey string `json:"roleKey,omitempty"`
-	// CarriedInstructions are the operator instructions the run's prompt carried over from its predecessor, so a later re-spawn carries them again.
+	// CarriedInstructions are the operator instructions a predecessor run carried over, so a re-spawn carries them again.
 	CarriedInstructions []string `json:"carriedInstructions,omitempty"`
-	// Role is the spawning Spec's role segment, recorded so a path holding only the record, the stop path, can report the ended session.
+	// Role is the spawning Spec's role segment, kept so the stop path can report the ended session from the record alone.
 	// A record an older binary wrote leaves it empty.
 	Role string `json:"role,omitempty"`
-	// Model is the spawning Spec's model, recorded for the same reason as Role; a record an older binary wrote leaves it empty.
+	// Model is the spawning Spec's model, which the stop path reports; a record an older binary wrote leaves it empty.
 	Model string `json:"model,omitempty"`
 }
 
-// createRunDir mints a fresh run id, creates <root>/<runID>, and returns
-// both. The directory is created before the strand exists (reed.AddStrand
-// has not run yet) — this ordering is exactly what sweepOrphans' age guard
-// protects against: a dir this fresh must never be mistaken for an orphan.
+// createRunDir mints a fresh run id, creates <root>/<runID>, and returns both.
+// The directory is created before its strand exists,
+// so a sweep must treat a directory this fresh as a run still starting, never as an orphan.
 func createRunDir(root string) (runID, runDir string, err error) {
 	runID, err = newRunID()
 	if err != nil {
@@ -210,8 +201,8 @@ func saveRunState(runDir string, rs RunState) error {
 
 // loadRunState reads the RunState persisted at <runDir>/run.json.
 // Returns (zero, false, nil) if the file is absent.
-// Read by findRunByStrand's guid scan and by Attach's output-files scan (attach.go), both of which
-// skip an unreadable or absent record rather than aborting their scan for every other run.
+// Scans over many run directories skip an unreadable or absent record rather than abort on it,
+// so one damaged run does not hide the others.
 func loadRunState(runDir string) (RunState, bool, error) {
 	path := filepath.Join(runDir, runStateFileName)
 	lockPath := path + ".lock"
@@ -223,7 +214,8 @@ func loadRunState(runDir string) (RunState, bool, error) {
 const pendingSendFileName = "pending-send.json"
 
 // pendingSend records a send that may have left its text in the strand's input box.
-// EventsOffset is the events-file size just before the text was written, so a later turn start past it reads as the text going out.
+// EventsOffset is the events-file size just before the text was written,
+// so a later turn start past it reads as the text going out.
 type pendingSend struct {
 	Text         string `json:"text"`
 	EventsOffset int64  `json:"eventsOffset"`
@@ -252,22 +244,17 @@ func clearPendingSend(runDir string) error {
 }
 
 // findRunByStrand scans <root>/*/run.json for the run whose StrandGUID
-// matches guid, returning its RunState and owning run directory. This is
-// how the CLI's interrupt/send verbs turn an operator-supplied guid into
-// the run they need to act on, and how they confirm the guid actually names
-// a shuttle run. Returns an error if no run dir's run.json has a matching
-// StrandGUID; unreadable/corrupt run.json files along the way are skipped,
-// not fatal, since a partially-written or already-swept dir must not abort
-// the scan for every other run.
+// matches guid, returning its RunState and owning run directory.
+// It is how an operator-supplied guid becomes the run to act on.
+// It also lets a caller confirm the guid names a shuttle run at all.
+// It returns an error if no run.json has a matching StrandGUID.
+// Unreadable or corrupt run.json files along the way are skipped, not fatal.
+// A partially written or already swept directory must not abort the scan for every other run.
 //
-// How many dirs were skipped that way is reported in the not-found error,
-// because the two situations need opposite remedies and the bare "no run
-// found" text conflated them: a guid this package genuinely never ran is a
-// caller mistake, while a guid whose run.json was truncated by a crash or a
-// full disk names a run whose AGENT MAY STILL BE LIVE in its pane — and
-// telling that operator their guid "is not a shuttle strand" (the wrapper
-// Runner.Interrupt/Send add) sends them away from a running agent. Proven
-// live: truncating a live run's run.json produced exactly that message.
+// The not-found error reports how many directories were skipped, because the two cases need opposite remedies.
+// A guid this package never ran is a caller mistake.
+// A guid whose run.json was truncated by a crash or a full disk names a run whose agent may still be live in its pane.
+// Telling that operator the guid is not a shuttle strand sends them away from a running agent.
 func findRunByStrand(root, guid string) (RunState, string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -314,32 +301,26 @@ func pluralDirectorySuffix(count int) string {
 }
 
 // FindRun resolves guid to the RunState and run directory of the shuttle run whose strand it names,
-// deriving the run directory root from cfg/anchorPath the same way Start does.
-// This is how the CLI's interrupt/send verbs (and any other out-of-process caller) turn an
-// operator-supplied guid into the run they need to act on, confirming the guid actually names a
-// shuttle run before ever touching reed.
+// deriving the run directory root from cfg and anchorPath.
+// An out-of-process caller uses it to turn an operator-supplied guid into the run it acts on.
+// It also confirms the guid names a shuttle run.
 func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 	return findRunByStrand(runDirRoot(cfg, anchorPath), guid)
 }
 
-// sweepOrphans removes every run directory under root whose run.json names
-// a StrandGUID absent from strandGUIDs (the live set from reed state),
-// guarded by minAge: a directory whose mtime is younger than minAge is
-// never removed, live guid or not. The guard exists because a concurrently
-// starting run creates its directory and run.json before AddStrand
-// persists the strand — without it, an unguarded sweep could delete a
-// run that is still starting up. strandGUIDs comes from ONE worktree's
-// reed.json, which is why the configured run_dir must stay worktree-local
-// (template.yaml documents this): under a root shared across worktrees,
-// every other worktree's runs would look like orphans here and their kept
-// diagnosis dirs would be swept once past the age guard. A directory whose
-// run.json is missing or
-// unreadable is treated the same as an orphan (no strand can be confirmed
-// live for it) but is still subject to the same age guard. now is the
-// caller-supplied clock so tests can control aging deterministically.
-// Returns the list of removed directory paths, and a joined error naming every directory that could
-// not be removed -- the sweep always visits EVERY entry, so one undeletable directory costs that one
-// directory and never the rest of the sweep.
+// sweepOrphans removes every run directory under root whose run.json names a StrandGUID absent from strandGUIDs.
+// strandGUIDs is the live set from reed state.
+// A directory younger than minAge is never removed, live guid or not.
+// The age guard exists because a starting run creates its directory and run.json before its strand is persisted.
+// An unguarded sweep could delete a run that is still starting up.
+// strandGUIDs comes from one worktree's reed.json, so the configured run_dir must stay worktree-local:
+// under a root shared across worktrees, every other worktree's runs look like orphans,
+// and their kept diagnosis directories would be swept once past the age guard.
+// A directory whose run.json is missing or unreadable counts as an orphan: no strand can be confirmed live for it.
+// The same age guard applies to it.
+// now is the clock the caller supplies, so tests can control aging deterministically.
+// It returns the removed directory paths and a joined error naming every directory that could not be removed.
+// The sweep visits every entry, so one undeletable directory costs only that directory.
 func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration, now time.Time) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -372,12 +353,9 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 		rs, found, err := loadRunState(runDir)
 		if err != nil || !found || !strandGUIDs[rs.StrandGUID] {
 			if rerr := os.RemoveAll(runDir); rerr != nil {
-				// Accumulated, never returned early. Returning on the first failure abandoned every
-				// LATER entry, so one directory that cannot be removed — a file held open on
-				// Windows, a permission-denied subtree, an NFS .nfs* stub — made every subsequent
-				// Start sweep nothing at all and orphan run dirs accumulated without bound, against
-				// this function's own "every run directory" contract (crucible round opus-medium-r6,
-				// R6-14).
+				// Accumulate the failure and keep sweeping: returning on the first failure would leave every later orphan in place.
+				// A directory that cannot be removed costs that one directory and nothing more.
+				// Its causes include a file held open on Windows, a permission-denied subtree, and an NFS .nfs* stub.
 				removeErrs = append(removeErrs, fmt.Errorf("remove orphan run dir %s: %w", runDir, rerr))
 				continue
 			}

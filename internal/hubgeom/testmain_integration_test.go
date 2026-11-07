@@ -1,5 +1,5 @@
-// testmain_integration_test.go wires the package's tests into the hermetic git test environment,
-// so reedgeom_integration_test.go's hub fixtures never inherit the operator's global gitconfig (see PATTERN-test-isolation).
+// testmain_integration_test.go wires the package's tests into the hermetic git test environment.
+// It keeps the integration tests' hub fixtures from inheriting the operator's global gitconfig.
 // The binary also runs under tmux isolation through tmuxkit.Main.
 
 package hubgeom_test

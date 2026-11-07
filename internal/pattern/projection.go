@@ -1,12 +1,15 @@
-// projection.go holds the pure projection of the overview under a plan's prescribed entry lines and removals, and the read of one entry's bullet.
+// projection.go holds the pure projection of the overview under a plan's prescribed entry lines and removals.
+// It also reads one entry's bullet.
 
 package pattern
 
 import "strings"
 
-// ProjectOverview returns the overview as it stands once prescribed entry lines are applied and removed entries are dropped, and never changes overview.
+// ProjectOverview returns the overview with the prescribed entry lines applied and the removed entries dropped.
+// It never changes overview.
 // Each line of prescribed is applied in order by its entry ID:
-// it replaces the whole bullet of that ID, continuation lines included, or is appended at the end of the overview when the ID is absent.
+// it replaces the whole bullet of that ID, continuation lines included.
+// When the ID is absent, the line is appended at the end of the overview.
 // A later line for the same ID therefore wins, and a line whose head names no entry ID is skipped.
 // Every bullet of an ID in removes is then deleted, continuation lines included; an absent ID changes nothing.
 // CRLF in overview is read as LF, and an appended line is always terminated by a newline.
@@ -44,7 +47,8 @@ func ProjectOverview(overview []byte, prescribed []string, removes []string) []b
 	return []byte(projected)
 }
 
-// EntryBullet returns the bullet of the entry named id as the overview holds it, the entry line and its continuation lines joined by newlines.
+// EntryBullet returns the bullet of the entry named id as the overview holds it.
+// The bullet is the entry line and its continuation lines, joined by newlines.
 // It answers false when the overview holds no such entry.
 func EntryBullet(overview []byte, id string) (string, bool) {
 	lines, _ := splitOverviewLines(overview)
@@ -55,7 +59,9 @@ func EntryBullet(overview []byte, id string) (string, bool) {
 	return strings.Join(lines[start:end], "\n"), true
 }
 
-// splitOverviewLines reads overview as LF text and returns its lines without the final empty element a trailing newline would leave, and whether it ended in a newline.
+// splitOverviewLines reads overview as LF text and returns its lines.
+// It drops the final empty element a trailing newline would leave.
+// It also returns whether overview ended in a newline.
 func splitOverviewLines(overview []byte) ([]string, bool) {
 	text := strings.ReplaceAll(string(overview), "\r\n", "\n")
 	if text == "" {
@@ -65,7 +71,8 @@ func splitOverviewLines(overview []byte) ([]string, bool) {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n"), trailingNewline
 }
 
-// findBullet returns the half-open line range of the first bullet whose entry head names id, the entry line and the continuation lines below it.
+// findBullet returns the half-open line range of the first bullet whose entry head names id.
+// The range covers the entry line and the continuation lines below it.
 func findBullet(lines []string, id string) (start, end int, found bool) {
 	for i, line := range lines {
 		if !strings.HasPrefix(line, entryBulletPrefix) {

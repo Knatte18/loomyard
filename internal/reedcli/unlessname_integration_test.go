@@ -1,4 +1,7 @@
-// unlessname_integration_test.go drives `lym reed add --unless-name` on a real hub and tmux server, proving a matching strand, live or dormant, makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no matching strand leaves the add as today.
+// unlessname_integration_test.go drives `lym reed add --unless-name` on a real hub and tmux server.
+// It proves that a matching strand, live or dormant, makes the add a no-op:
+// neither the strand list nor the pane geometry is disturbed.
+// With no matching strand, the add runs as normal.
 
 package reedcli
 
@@ -27,7 +30,8 @@ func unlessRun(t *testing.T, worktree string, args ...string) (int, map[string]a
 	return code, env
 }
 
-// unlessStatus returns the guid of every strand `status` lists, plus the status envelope's session and the pane id of the strand named paneOf.
+// unlessStatus runs `lym reed status` in worktree and returns the guid of every strand it lists.
+// It also returns the envelope's session and the pane id of the strand named paneOf.
 func unlessStatus(t *testing.T, worktree, paneOf string) (guids []string, session, pane string) {
 	t.Helper()
 	code, env := unlessRun(t, worktree, "status")
@@ -47,7 +51,8 @@ func unlessStatus(t *testing.T, worktree, paneOf string) (guids []string, sessio
 	return guids, session, pane
 }
 
-// unlessPanes returns the multiplexer's own pane listing (id, height, active) for the whole session, read on the hub's socket.
+// unlessPanes returns the multiplexer's pane listing for the whole session, read on the hub's socket.
+// Each line carries the pane's id, height and active flag.
 func unlessPanes(t *testing.T, tmux, socket, session string) string {
 	t.Helper()
 	out, err := exec.Command(tmux, "-L", socket, "list-panes", "-s", "-t", "="+session, "-F", "#{pane_id} #{pane_height} #{pane_active}").Output()
@@ -57,10 +62,12 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 	return string(out)
 }
 
-// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today,
-// a live orch makes the add a no-op,
-// and so does a dormant orch whose pane is gone.
-// The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
+// TestUnlessName runs the --unless-name claims against one hub; its prime worktree accumulates strands across the steps.
+// Without an orch, the add proceeds.
+// A live orch makes the add a no-op, and so does a dormant orch whose pane is gone.
+// The steps run serially in a fixed order, and each later step relies on the earlier step's session.
+// The scenario calls t.Parallel, but no step does.
+// Every step shares the one hub, session and strand table, so none of them runs in parallel.
 func TestUnlessName(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -92,7 +99,8 @@ func TestUnlessName(t *testing.T) {
 		return
 	}
 
-	// The orch strand stays behind for the dormant-orch step, whose session the claude strand of the first step keeps alive once the orch pane is gone.
+	// The orch strand stays behind for the dormant-orch step.
+	// The claude strand of the first step keeps that step's session alive once the orch pane is gone.
 	var orchName, orchGUID string
 	if !t.Run("LiveOrchSkipsAndDisturbsNothing", func(t *testing.T) {
 		code, orch := unlessRun(t, worktree, "add", "--name", "orch", "--cmd", coldAddLaunchCmd())

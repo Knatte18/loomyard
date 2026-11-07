@@ -1,4 +1,5 @@
-// childrecipe.go declares the child-recipe record: the recipe a batten run seeded its task worktree's run with, kept in batten's own durable run directory so it outlives the task worktree.
+// childrecipe.go declares the child-recipe record: the recipe a batten run seeded its task worktree's run with.
+// The record sits in the run's durable directory, so it outlives the task worktree.
 
 package shedrun
 

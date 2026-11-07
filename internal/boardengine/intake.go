@@ -22,7 +22,7 @@ type InboxIssue struct {
 	Labels      []string
 	Open        bool
 	PullRequest bool
-	// Comments are the comments to carry onto the board, already filtered and ordered oldest first.
+	// Comments are the issue's comments to carry onto the board, already filtered and ordered oldest first.
 	Comments []IssueComment
 }
 
@@ -44,7 +44,8 @@ type ImportRequest struct {
 }
 
 // ImportResult reports what an import did.
-// Recorded is non-empty when the issue was already recorded and the import was a no-op, and then holds the recording entries' slugs.
+// Recorded is non-empty when the issue was already recorded and the import was a no-op;
+// then it holds the recording entries' slugs.
 // Dropped holds the issue labels that were not carried over.
 type ImportResult struct {
 	Entry    Task
@@ -102,7 +103,9 @@ func (b *Board) ImportIssue(req ImportRequest) (ImportResult, error) {
 	return result.(ImportResult), nil
 }
 
-// importIssue applies req to the store, checking the request in the order the refusals are documented.
+// importIssue applies req to the store and checks it in a fixed order.
+// A pull request is refused first; an already recorded issue is a no-op;
+// a closed issue is refused; the into and slug choice is checked last.
 func (s *Store) importIssue(req ImportRequest) (ImportResult, error) {
 	issue := req.Issue
 	if issue.PullRequest {
@@ -139,7 +142,8 @@ func (s *Store) vocabulary() Vocabulary {
 }
 
 // issueContent is the link-back line followed by the issue body, then one section per comment, in order.
-// Each comment section is a commentHeading-prefixed heading naming the comment's UTC creation date, then the comment body verbatim.
+// Each comment section is a commentHeading-prefixed heading naming the comment's UTC creation date;
+// the comment body follows verbatim.
 func issueContent(issue InboxIssue, commentHeading string) string {
 	content := fmt.Sprintf("Imported from [issue #%d](%s).", issue.Number, issue.URL)
 	if issue.Body != "" {
@@ -204,7 +208,8 @@ func (s *Store) importNote(req ImportRequest) (ImportResult, error) {
 	return ImportResult{Entry: entry, Dropped: dropped}, nil
 }
 
-// foldIssue appends the issue to the entry named into: a section in its body, the issue number and the issue labels it can carry.
+// foldIssue appends the issue to the entry named into:
+// a section in its body, the issue number, and the issue labels the entry can take.
 func (s *Store) foldIssue(issue InboxIssue, into string) (ImportResult, error) {
 	target, found := s.GetTask(into)
 	if !found {

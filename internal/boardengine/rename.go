@@ -1,6 +1,5 @@
-// rename.go — changing an entry's slug in one write: the entry keeps every other field, dependents follow, and prose mentions are reported.
-//
-// Every refusal happens before the save, so a refused rename writes nothing.
+// rename.go implements renaming an entry's slug in one write.
+// The entry keeps its other fields, dependents follow the new slug, and prose mentions of the old slug are reported.
 
 package boardengine
 
@@ -13,18 +12,27 @@ import (
 )
 
 // RenameResult is the outcome of a rename: Task is the renamed entry and From its old slug.
-// Mentions lists, in store order, the entries whose body or brief still name the old slug after the write, the renamed entry included, and is empty but not nil when none does.
+// Mentions lists, in store order, the entries whose body or brief still name the old slug after the write.
+// The renamed entry is included when it does.
+// Mentions is empty but not nil when none does.
 type RenameResult struct {
 	Task     Task
 	From     string
 	Mentions []string
 }
 
-// Rename changes the slug of the entry selector names, a slug string, a numeric id or a Handle, to to under the write lock, and replaces the old slug with to in every other entry's depends_on, project and order.
+// Rename changes the slug of the entry that selector names to the slug to, under the write lock.
+// selector is a slug string, a numeric id or a Handle.
+// It replaces the old slug with to in every other entry's depends_on, project and order.
 // The entry keeps its id, handle, position and every other field, and no entry's dates are revised by the rename.
-// It refuses an absent entry, an entry a run holds, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
+// It refuses an absent entry, an entry a run holds, a front task, a beam, or an entry whose pair exists.
+// It also refuses a target that is empty, longer than MaxSlugLength, or already an entry's slug.
 // Body and brief text is never rewritten; the result names the entries that still mention the old slug.
-// Every refusal still comes before the save, and the entry's decision record file follows it: a record that cannot be moved, or an orphan at the new slug's name that cannot be removed, is returned as a *DecisionRecordError after the entry is saved under the new slug, and the result accompanies that error.
+// Every refusal still comes before the save.
+// The entry's decision record file follows it.
+// A record that cannot be moved is returned as a *DecisionRecordError.
+// So is an orphan at the new slug's name that cannot be removed.
+// That error comes after the entry is saved under the new slug, and the result accompanies it.
 // Any other error returns an empty result.
 func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
@@ -37,8 +45,10 @@ func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 	return result.(RenameResult), err
 }
 
-// Rename changes the slug of the entry selector names to to and rewrites every other entry's depends_on, project and order to match.
-// It refuses an absent entry, an entry a run holds, a front task, a beam, an entry whose pair exists, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
+// Rename changes the slug of the entry that selector names to the slug to.
+// It rewrites every other entry's depends_on, project and order to match.
+// It refuses an absent entry, an entry a run holds, a front task, a beam, or an entry whose pair exists.
+// It also refuses a target that is empty, longer than MaxSlugLength, or already an entry's slug.
 // The run-held refusal is a *RunLockedError.
 func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	current, found := s.GetTask(selector)
@@ -81,7 +91,7 @@ func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	return RenameResult{Task: task, From: current.Slug, Mentions: mentions}, nil
 }
 
-// renameSlug replaces from with to in tasks, as an entry's slug, as an element of every depends_on and order, and as every project, in place.
+// renameSlug replaces from with to in place, in every entry's slug, project, depends_on and order.
 func renameSlug(tasks []Task, from, to string) {
 	for i := range tasks {
 		if tasks[i].Slug == from {
@@ -103,7 +113,8 @@ func renameSlug(tasks []Task, from, to string) {
 	}
 }
 
-// mentionsSlug reports whether text holds slug as a whole slug: an occurrence with no letter, digit, '-' or '_' directly on either side.
+// mentionsSlug reports whether text holds slug as a whole slug:
+// an occurrence with no letter, digit, '-' or '_' directly on either side.
 func mentionsSlug(text, slug string) bool {
 	for offset := 0; ; {
 		index := strings.Index(text[offset:], slug)

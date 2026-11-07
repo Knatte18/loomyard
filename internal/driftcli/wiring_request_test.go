@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWorktreeRequests_JoinOnTheWorktreeRootAndStartInTheAnchor covers the bases of a capture and a compare request for a worktree anchored at a subdirectory, where the worktree root and the anchored directory differ.
+// TestWorktreeRequests_JoinOnTheWorktreeRootAndStartInTheAnchor covers the bases of a capture and a compare request.
+// The worktree is anchored at a subdirectory, so the worktree root and the anchored directory differ.
 func TestWorktreeRequests_JoinOnTheWorktreeRootAndStartInTheAnchor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

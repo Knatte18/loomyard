@@ -1,6 +1,8 @@
-// burlerfix_test.go pins BurlerFixProducer over shedfake.BurlerHalfRunner:
-// It covers the refusal of a round with no accepted review, the hand-on of an unjudged round, the fix a finished round carries and records, and the decision findings it sends to the parent.
-// It also covers the gate-failed and changed-review exits and their archive sets, every other failure exit, cancellation, and probe and resume.
+// burlerfix_test.go tests BurlerFixProducer over shedfake.BurlerHalfRunner.
+// It covers the refusal of a round with no accepted review and the hand-on of an unjudged round.
+// It also covers the fix a finished round carries and records, and the decision findings it sends to the parent.
+// It also covers the gate-failed and changed-review exits with their archive sets.
+// It also covers every other failure exit, cancellation, and probe and resume.
 
 package shedadapters
 
@@ -21,7 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newFixProducer builds a BurlerFixProducer over runDir whose review row is named "burler-review", failing the test on constructor error.
+// newFixProducer builds a BurlerFixProducer over runDir, with its review row named "burler-review".
+// It fails the test on a constructor error.
 func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerFixProducer {
 	t.Helper()
 	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent}, spec.profile, spec.opts, runDir, spec.now)
@@ -31,13 +34,13 @@ func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunn
 	return p
 }
 
-// fixDone is a finished fix.
 var fixDone = burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}
 
 // wayForwardToReview is the way forward every refusal that needs the round reviewed again ends with.
 const wayForwardToReview = `way forward: run "lym loom goto --to burler-review", then "lym loom resume", in the task worktree`
 
-// TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview proves a round with no acceptance record, and one whose record has no review beside it, is a hard error.
+// TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview proves that the call is a hard error.
+// It covers a round with no acceptance record, and one whose record has no review beside it.
 // The error names the way forward back to the review row, with nothing spawned and nothing archived.
 func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -76,7 +79,8 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 		})
 	}
 
-	// On a row told to require fans, an accepted round whose record holds no usable names is refused once no live fixer is found.
+	// On a row told to require fans, an accepted round whose record holds no usable names is refused.
+	// The refusal comes only once no live fixer is found.
 	live := burlerengine.LiveHalf{State: burlerengine.HalfLive}
 	unrecorded := []struct {
 		name      string
@@ -132,7 +136,8 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 	}
 }
 
-// TestBurlerFixProducer_Call_HandsOnAnUnjudgedRound proves the highest complete round with no recorded verdict is handed on BudgetExempt with its review as Path.
+// TestBurlerFixProducer_Call_HandsOnAnUnjudgedRound proves the highest complete round with no verdict is handed on;
+// it is returned BudgetExempt with its review as Path.
 // It spawns, probes and archives nothing, so a fixer report already on disk is passed through to the Bouncer.
 func TestBurlerFixProducer_Call_HandsOnAnUnjudgedRound(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -154,8 +159,10 @@ func TestBurlerFixProducer_Call_HandsOnAnUnjudgedRound(t *testing.T) {
 	requireArchived(t, runDir, "round-1-fixer-report.md", 0)
 }
 
-// TestBurlerFixProducer_Call_FinishedFixIsRecorded proves a finished fix, a skipped empty review included, hands on as a BudgetExempt Stuck, never Done, with the review as Path and the gate attempts.
-// It also proves the fix runs under the recorded digest, the round token, the picked fix model, the friction note id and the template's gate, and merges the fix half's usage beside the review half's.
+// TestBurlerFixProducer_Call_FinishedFixIsRecorded proves a finished fix hands on as a BudgetExempt Stuck, never Done.
+// A skipped empty review is included; the review is the Path, with gate attempts when the fix was gated.
+// It also proves the fix runs under the recorded digest, round token, picked fix model and friction note id;
+// the template's gate applies, and the fix half's usage is merged beside the review half's.
 func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -249,8 +256,10 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 	}
 }
 
-// TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent proves a row told a notifier sends the accepted review's decision-class findings to the parent in one line and routes them out of the fixer's work.
-// It proves a review with none, or one that does not parse, sends nothing, a failed post leaves the round's outcome as it is, and a row told no notifier routes nothing.
+// TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent proves a notifier gets one line.
+// The line carries the decision findings and the review path; DecisionsRouted takes them out of the fixer's work.
+// A review with no decision finding, or one that does not parse, sends nothing.
+// A failed post leaves the round's outcome as it is, and a row told no notifier routes nothing.
 func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -328,8 +337,10 @@ func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 	}
 }
 
-// TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound proves a finished fixer whose gate failed is a counted Stuck with an empty Path, the gate's reason and attempts.
-// It proves a review that changed since it was accepted is a hard error ending with the way forward, and both exits archive the review, fixer report and acceptance record together.
+// TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound proves a finished fixer whose gate failed:
+// a counted Stuck with an empty Path, the gate's reason and attempts.
+// A changed review is a hard error ending with the way forward;
+// both exits archive the review, fixer report and acceptance record together.
 func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -429,7 +440,8 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 
 // TestBurlerFixProducer_Call_FailureExits table-drives every other way a fix ends without finishing:
 // a died/timeout attempt is retried under the token <n>b.
-// Two in a row, a runner error and an unrecognized outcome are hard errors that archive the fixer report alone and keep the accepted review and its record.
+// Two in a row, a runner error and an unrecognized outcome are hard errors;
+// each archives the fixer report alone and keeps the accepted review and its record.
 // A fixer that could not be stopped returns bare with nothing archived and no retry.
 func TestBurlerFixProducer_Call_FailureExits(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -494,8 +506,9 @@ func TestBurlerFixProducer_Call_FailureExits(t *testing.T) {
 	}
 }
 
-// TestBurlerFixProducer_Call_Cancellation proves a context cancelled before the call and one cancelled during a failing attempt return the cancellation error.
-// It proves one cancelled after the fix finished still returns it while the finished round's artifacts survive.
+// TestBurlerFixProducer_Call_Cancellation proves a cancelled context returns the cancellation error.
+// That holds before the call and during a failing attempt.
+// After a finished fix it still holds, and the finished round's artifacts survive.
 func TestBurlerFixProducer_Call_Cancellation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -545,8 +558,10 @@ func TestBurlerFixProducer_Call_Cancellation(t *testing.T) {
 	})
 }
 
-// TestBurlerFixProducer_Call_ProbeAndResume proves a live fixer is probed before anything is archived and resumed, against the recorded digest, instead of respawned.
-// A resumed finished fix is mapped like a spawned one, a resumed death falls through to a fresh attempt, and a half that is not live proceeds to the spawn.
+// TestBurlerFixProducer_Call_ProbeAndResume proves a live fixer is probed before anything is archived;
+// it is resumed under the recorded digest, not respawned.
+// A resumed finished fix is mapped like a spawned one;
+// a resumed death falls through to a fresh attempt, and a half that is not live proceeds to the spawn.
 // A probe error or an unstoppable fixer returns bare, and a resumed changed review archives the whole round.
 func TestBurlerFixProducer_Call_ProbeAndResume(t *testing.T) {
 	tiergate.Require(t, 0)

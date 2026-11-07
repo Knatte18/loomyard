@@ -1,5 +1,6 @@
-// hookbatching_test.go pins the hidden hook-batching verb: the one line of hook output it prints for a breach, the silence of every other call,
-// and the exit code 0 it keeps on every failure.
+// hookbatching_test.go pins the hidden hook-batching verb.
+// It pins the one line of hook output it prints for a breach and the silence of every other call;
+// it also pins the exit code 0 it keeps on every failure.
 
 package shuttlecli
 
@@ -15,7 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeHookTranscript writes a transcript into dir holding one main-chain assistant message per tool name in calls, call i having the id call-i, and returns its path.
+// writeHookTranscript writes a transcript into dir and returns its path.
+// The transcript holds one main-chain assistant message per tool name in calls;
+// the i-th message carries a tool use with the id call-i.
 func writeHookTranscript(t *testing.T, dir string, calls []string) string {
 	t.Helper()
 	var lines []string
@@ -41,8 +44,9 @@ func writeHookTranscript(t *testing.T, dir string, calls []string) string {
 	return transcript
 }
 
-// TestHookBatchingVerb_RunsOutsideAHub pins that the verb, run through the shuttle command tree outside a git repository, skips the hub resolution:
-// it exits 0 and prints the verb's own report, not the error envelope hub resolution would give.
+// TestHookBatchingVerb_RunsOutsideAHub pins that the verb skips hub resolution outside a git repository.
+// Run through the shuttle command tree, the verb exits 0 and prints its own report.
+// It does not print the error envelope that hub resolution would give.
 func TestHookBatchingVerb_RunsOutsideAHub(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -53,8 +57,9 @@ func TestHookBatchingVerb_RunsOutsideAHub(t *testing.T) {
 	}
 }
 
-// TestHookBatchingVerb pins the verb's output and exit code: a nudge prints the engine's hook output and a newline, any other outcome prints nothing,
-// and an unknown engine or a malformed input is reported on standard error while the verb still returns no error.
+// TestHookBatchingVerb pins the verb's output and exit code.
+// A nudge prints the engine's hook output and a newline; any other outcome prints nothing.
+// An unknown engine or a malformed input is reported on standard error, and the verb still returns no error.
 func TestHookBatchingVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

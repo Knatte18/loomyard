@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRecord covers an absent file reading not found, an update on an absent file, a second update keeping the fields it does not touch, and a file with an unknown key.
+// TestRecord covers an absent file reading not found; an update on an absent file;
+// a second update keeping the fields it does not touch; and a file with an unknown key.
 func TestRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

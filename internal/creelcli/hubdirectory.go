@@ -1,4 +1,5 @@
-// hubdirectory.go implements the engine's HubDirectory seam over the machine record of hubs, the hub geometry and the daemon spawn.
+// hubdirectory.go implements the creelengine HubDirectory seam.
+// It serves the machine record of hubs, the hub geometry, the daemon spawn and the trusted hubs.
 
 package creelcli
 
@@ -16,23 +17,26 @@ import (
 
 var _ creelengine.HubDirectory = (*hubDirectory)(nil)
 
-// hubDirectory is the production creelengine.HubDirectory of one hub's daemon.
+// hubDirectory serves one hub's daemon with the machine record, the hub geometry, daemon spawns and the trusted hubs.
 type hubDirectory struct {
 	hubPath   string
 	shortname string
 	tempRoot  string
-	// registryDir is the per-user state directory the machine record sits in; registryErr is why it could not be read, when it could not.
+	// registryDir is the per-user state directory of the machine record; registryErr is why it could not be read, or nil.
 	registryDir string
 	registryErr error
 }
 
-// newHubDirectory returns the directory of the hub at hubPath, which records itself under shortname in registryDir and builds other hubs' sockets under tempRoot.
-// A non-nil registryErr makes Record and Lookup refuse naming that cause, so a hub without a readable state directory still serves its own strands.
+// newHubDirectory returns the directory of the hub at hubPath.
+// It records that hub under shortname in registryDir and builds other hubs' sockets under tempRoot.
+// A non-nil registryErr makes the machine record operations refuse, naming that cause,
+// so a hub without a readable state directory still serves its own strands.
 func newHubDirectory(hubPath, shortname, tempRoot, registryDir string, registryErr error) *hubDirectory {
 	return &hubDirectory{hubPath: hubPath, shortname: shortname, tempRoot: tempRoot, registryDir: registryDir, registryErr: registryErr}
 }
 
-// daemonHubs returns the directory the daemon of the hub at hubPath is told, with the per-user state directory read through the client seam.
+// daemonHubs returns the directory for the daemon of the hub at hubPath.
+// It reads the per-user state directory through the client seam.
 func daemonHubs(hubPath, shortname, tempRoot string) *hubDirectory {
 	registryDir, err := seam.registryDir()
 	return newHubDirectory(hubPath, shortname, tempRoot, registryDir, err)
@@ -43,7 +47,8 @@ func (d *hubDirectory) unreadableRegistry() error {
 	return fmt.Errorf("creel: the per-user state directory cannot be read (%w); way forward: set XDG_STATE_HOME or HOME in the environment the hub's daemon starts from", d.registryErr)
 }
 
-// Record records this hub in the machine record.
+// Record adds this hub under its shortname to the machine record.
+// It refuses, naming the cause, when the state directory could not be read.
 func (d *hubDirectory) Record() error {
 	if d.registryErr != nil {
 		return d.unreadableRegistry()
@@ -52,7 +57,8 @@ func (d *hubDirectory) Record() error {
 }
 
 // Lookup answers the path of the one hub that recorded shortname.
-// The refusal of an unknown or shared shortname matches creelengine.ErrHubUnresolved and a record that cannot be read does not.
+// An unknown or shared shortname fails with an error matching `creelengine.ErrHubUnresolved`;
+// a record that cannot be read does not match it.
 func (d *hubDirectory) Lookup(shortname string) (string, error) {
 	if d.registryErr != nil {
 		return "", d.unreadableRegistry()
@@ -64,7 +70,7 @@ func (d *hubDirectory) Lookup(shortname string) (string, error) {
 	return path, err
 }
 
-// Geometry builds the geometry of the hub at hubPath.
+// Geometry returns the geometry of the hub at hubPath, using this directory's temp root.
 func (d *hubDirectory) Geometry(hubPath string) (creelengine.Geometry, error) {
 	return hubgeom.CreelGeometry(hubPath, d.tempRoot)
 }

@@ -1,6 +1,6 @@
-// seedinput.go resolves the two pure inputs the session bootstrap needs before it can seed the
-// status file: the parent branch to record the task against, drawn from the pair's recorded
-// provenance rather than inferred, and the seed slug, drawn from the worktree's own resolved name.
+// seedinput.go resolves the two pure inputs the session bootstrap needs before it seeds the status file.
+// The parent branch comes from the pair's recorded provenance, never inferred;
+// the seed slug comes from the worktree's own resolved name.
 
 package loomcli
 
@@ -11,27 +11,26 @@ import (
 )
 
 // resolveParentBranch decides the parent branch the session bootstrap seeds against, and whether
-// the recorded provenance record needs writing, from the recorded origin record (recorded, found)
-// and the --parent flag's value (parentFlag, empty when unset).
+// the recorded provenance needs writing.
+// It reads the origin record (recorded, found) and the --parent flag (parentFlag, empty when unset).
 //
-// The table below is exhaustive; each row states its own reason, because the plan's Shared
-// Decisions deliberately give this task no override flag once a value is recorded:
+// The cases are exhaustive:
 //
-//   - record present, non-empty recorded value, empty flag: returns the recorded value, no write --
-//     the ordinary re-run case, nothing to do.
-//   - record present, recorded value equals a non-empty flag: returns the recorded value, no write --
-//     re-passing the flag that already matches is a no-op, not an error.
-//   - record present, recorded value differs from a non-empty flag: returns an error naming both
-//     values -- changing a recorded parent would silently re-target the eventual merge-back, and
-//     there is deliberately no override flag for that.
-//   - no record, or a record whose recorded value is empty, plus a non-empty flag: returns the flag,
-//     write requested -- this is the legacy-worktree repair path, the one case that writes.
-//   - no record, or a record whose recorded value is empty, and an empty flag: returns an error
-//     naming the missing record and telling the operator to pass the flag once.
+//   - The record holds a value and the flag is empty: it returns the recorded value and writes nothing,
+//     the ordinary re-run case.
+//   - The record holds the non-empty flag's value: it returns that value and writes nothing.
+//     Re-passing the flag that already matches is a no-op, not an error.
+//   - The record holds a different non-empty value than the flag: it returns an error naming both values.
+//     Changing a recorded parent would silently re-target the eventual merge-back,
+//     so there is deliberately no override flag for it.
+//   - No parent is recorded and the flag is non-empty: it returns the flag and requests a write.
+//     This is the legacy-worktree repair path, the only case that writes.
+//   - No parent is recorded and the flag is empty: it returns an error naming the missing record
+//     and telling the operator to pass the flag once.
 //
-// A present-but-empty recorded value is treated exactly as an absent record throughout, because the
-// status contract makes the parent mandatory and counts an empty string as absent (see
-// contracts/specs/loom-status-spec.md's validation checklist).
+// A present-but-empty recorded value is treated exactly as an absent record throughout.
+// The status contract makes the parent mandatory and counts an empty string as absent;
+// see contracts/specs/loom-status-spec.md's validation checklist.
 func resolveParentBranch(recorded fabricengine.Origin, found bool, parentFlag string) (parent string, write bool, err error) {
 	haveRecord := found && recorded.ParentBranch != ""
 
@@ -53,20 +52,11 @@ func resolveParentBranch(recorded fabricengine.Origin, found bool, parentFlag st
 	)
 }
 
-// resolveLandingParent resolves the parent branch run.go seeds Env.Landing with, wrapping
-// resolveParentBranch with the two refusal clauses landing's own bootstrap needs.
+// resolveLandingParent returns the parent branch a landing run is seeded with.
+// Its inputs are the recorded origin record and the task's own branch.
 //
-// It calls resolveParentBranch(recorded, found, "") -- an empty flag, since run.go has no --parent
-// flag of its own, which lands resolveParentBranch's table on its final row for an absent-or-empty
-// record. A present-but-empty recorded value is treated exactly as absent, inherited unchanged from
-// resolveParentBranch.
-//
-// Two refusal clauses apply:
-//   - an unrecorded (or empty) parent: resolveParentBranch's own error is returned unchanged, per the
-//     run-refuses-an-unrecorded-parent decision, which deliberately reuses that message rather than
-//     writing a run-specific one.
-//   - a resolved parent equal to taskBranch: refused here, not inside fabricengine.OpenParent, per the
-//     self-parent-is-loom-policy-not-fabric-policy decision -- a task may not be its own parent.
+// It refuses an unrecorded or empty parent with the parent resolution's own error.
+// It also refuses a parent equal to taskBranch, because a task may not be its own parent.
 func resolveLandingParent(recorded fabricengine.Origin, found bool, taskBranch string) (parentBranch string, err error) {
 	parent, _, err := resolveParentBranch(recorded, found, "")
 	if err != nil {
@@ -81,10 +71,9 @@ func resolveLandingParent(recorded fabricengine.Origin, found bool, taskBranch s
 	return parent, nil
 }
 
-// seedSlug returns the seed's slug from worktreeName unchanged.
+// seedSlug returns worktreeName unchanged as the seed's slug.
 //
-// This is the single place the slug's source is stated -- the worktree's own resolved name -- so the
-// choice is named here rather than inlined at the call site.
+// The slug is the worktree's own resolved name, stated here once instead of at each call site.
 func seedSlug(worktreeName string) string {
 	return worktreeName
 }

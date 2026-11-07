@@ -1,4 +1,5 @@
-// diff.go — the pure diff of two capture directories: it lists each file as a case of identified lines and reports the cells that differ.
+// diff.go holds the pure diff of two capture directories:
+// it lists each file as a case of identified lines and reports the cells that differ.
 // It reads files only, takes the compiled key patterns from its caller and reads no config.
 
 package driftengine
@@ -79,7 +80,8 @@ type Cell struct {
 }
 
 // ListedLine is one line of a case.
-// Text is the whole line, and Value is the pattern's `value` group for a keyed line and the whole line for an unkeyed one.
+// Text is the whole line.
+// Value is the pattern's `value` group for a keyed line and the whole line for an unkeyed one.
 type ListedLine struct {
 	Identity Identity
 	Text     string
@@ -93,10 +95,12 @@ type CaseListing struct {
 	Lines []ListedLine
 }
 
-// Volatile names what a hub's capture writes that differs between captures whatever the code does, such as provenance, so it is no drift.
+// Volatile names what a hub's capture writes that differs between captures whatever the code does, such as provenance,
+// so it is no drift.
 // The zero Volatile names nothing.
 type Volatile struct {
-	// Files are the glob patterns of the cases left out whole: a pattern with no slash matches a case's file name at any depth, and one with a slash its whole path.
+	// Files are the glob patterns of the cases left out whole:
+	// a pattern with no slash matches a case's file name at any depth, and one with a slash its whole path.
 	Files []string `json:"files,omitempty"`
 	// Keys are the line keys left out of every case.
 	Keys []string `json:"keys,omitempty"`
@@ -137,9 +141,11 @@ func (v Volatile) withoutListed(listings []CaseListing) []CaseListing {
 	return kept
 }
 
-// ListCaptures reads every regular file under dir, at any depth, as a case named by its slash-separated path relative to dir, sorted by name.
+// ListCaptures reads every regular file under dir, at any depth, as a case.
+// A case is named by its slash-separated path relative to dir, and the cases are sorted by name.
 // It normalises CRLF to LF and drops the empty line a trailing newline leaves.
-// The first pattern that matches a line with a non-empty `key` group keys it by that group, with the `value` group as its value; a line no pattern keys that way is unkeyed.
+// The first pattern that matches a line with a non-empty `key` group keys the line by that group.
+// The line's value is the pattern's `value` group, and a line no pattern keys that way is unkeyed.
 func ListCaptures(dir string, patterns []*regexp.Regexp) ([]CaseListing, error) {
 	var names []string
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
@@ -210,7 +216,8 @@ func listLines(content string, patterns []*regexp.Regexp) []ListedLine {
 
 // DiffCaptures lists both capture directories and returns their cells in case order, then in file order.
 // A file only in currentDir is an added case, one only in baselineDir a removed case.
-// For a case on both sides, a changed or removed line follows the baseline's file order and an added line follows them in the current file's order.
+// For a case on both sides, a changed or removed line follows the baseline's file order,
+// and an added line follows them in the current file's order.
 // Unkeyed identities pair by position among the unkeyed lines, so a keyed line inserted moves no unkeyed identity.
 // A case named in leaveOut is skipped on both sides.
 func DiffCaptures(baselineDir, currentDir string, patterns []*regexp.Regexp, leaveOut []string) ([]Cell, error) {

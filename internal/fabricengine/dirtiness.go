@@ -1,21 +1,11 @@
-// dirtiness.go holds the package's `git status --porcelain` probes: the dirtiness check and the tracked dirty-path listing.
+// dirtiness.go holds the package's `git status --porcelain` probes: dirtiness checks and tracked dirty-path listings.
+// worktreeDirty is the one primitive for the dirtiness check,
+// so every call site shares its error wording and its spawn-failure path.
+// Each call site declares its scope (dirtyScope), so a reader sees which files that site would lose.
+// Worktree enumeration lives in worktreelist.go, not here.
 //
-// Every call site in this package used to hand-roll its own `git status --porcelain` invocation —
-// eight of them, four passing `--untracked-files=no` and four not — with each site free to reinvent
-// the scope, the error wording, and whether a spawn failure and a nonzero exit were distinguished.
-// worktreeDirty replaces all eight: scope is the caller's declared choice (dirtyScope), not a
-// property baked into the primitive, so a reader sees at each call site exactly which files that
-// site cares about losing.
-//
-// git worktree list --porcelain in worktreelist.go is a different git subcommand entirely — it
-// enumerates worktrees, not file status — and is outside this file's remit.
-//
-// This probe is deliberately NOT promoted into internal/gitrepo. The
-// dirtiness-probe-stays-fabric-local decision in _mill/discussion.md records why: six of the eight
-// call sites are Topology verbs, and Topology holds only a Config, no Repo handle at all — a
-// gitrepo method would force constructing a Repo per probe solely to answer one question, at six
-// sites that have none. Only pull.go's warpWorktreeDirty has a Repo handle. The probe stays here,
-// package-private, with every consumer in-package.
+// The probe stays package-private rather than moving to internal/gitrepo:
+// most call sites are topology verbs with no Repo handle, and a gitrepo method would force one per probe.
 package fabricengine
 
 import (
@@ -30,30 +20,25 @@ import (
 type dirtyScope int
 
 const (
-	// scopeTracked considers only tracked files (`git status --porcelain --untracked-files=no`).
-	// Untracked files are ignored, which is the right scope wherever the destructive action to be
-	// gated (a reset, a forced worktree removal) leaves untracked files alone.
+	// scopeTracked considers only tracked files, `git status --porcelain --untracked-files=no`.
+	// Untracked files are ignored.
+	// Use it where the destructive action to be gated leaves untracked files alone.
 	scopeTracked dirtyScope = iota
-	// scopeAll considers tracked and untracked files alike (`git status --porcelain`). This is the
-	// right scope wherever the destructive action would take untracked files down with it.
+	// scopeAll considers tracked and untracked files alike, `git status --porcelain`.
+	// Use it where the destructive action would take untracked files with it.
 	scopeAll
 )
 
-// worktreeDirty runs `git status --porcelain` in dir, scoped per the caller's declared choice, and
-// reports whether the worktree is dirty.
+// worktreeDirty runs `git status --porcelain` in dir, scoped by the caller's declared choice.
+// It reports whether the worktree is dirty.
 //
-// A spawn failure and a nonzero exit are both reported as a single consolidated error, carrying the
-// trimmed stderr and the exit code in the message; callers that used to distinguish the two forms
-// collapse onto the spawn-failure wording, with the exit-code detail arriving inside the wrapped
-// error rather than as a second branch.
-// The wrapper names what this probe was for and where, never the git command itself: since the
-// gitexec split, *gitexec.GitError already renders `git status --porcelain …: exit <code>: <stderr>`,
-// so repeating the command here would push git's own actionable stderr behind a duplicate of what
-// the reader has already been told.
+// A spawn failure and a nonzero exit both return one error.
+// The error names what the probe was for and where,
+// and it wraps the gitexec error, which already renders the command, the exit code, and stderr.
+// Repeating the command here would bury git's stderr behind a duplicate.
 //
-// detail is the trimmed stdout — the porcelain listing itself — returned even when err is nil, for
-// the one caller (warpclean.go's dirtyReason) that surfaces it to its own caller; every other site
-// ignores it.
+// detail is the trimmed porcelain listing, returned even when err is nil.
+// Callers that report the listing use it; the rest ignore it.
 //
 // pathspec, when given, limits the probe to the paths it matches, relative to dir.
 func worktreeDirty(scope dirtyScope, dir string, pathspec ...string) (dirty bool, detail string, err error) {
@@ -75,7 +60,8 @@ func worktreeDirty(scope dirtyScope, dir string, pathspec ...string) (dirty bool
 }
 
 // trackedDirtyPaths returns the tracked uncommitted paths of the checkout at dir, as absolute paths under dir.
-// It reads the same scope worktreeDirty(scopeTracked, dir) does, in the NUL-separated form that quotes nothing, so a path with a space or a non-ASCII character comes back verbatim.
+// It uses the tracked-only scope in the NUL-separated form, which does not quote paths,
+// so a path with a space or a non-ASCII character comes back verbatim.
 // A rename or copy entry names its destination and is followed by a record holding its source, which is skipped.
 func trackedDirtyPaths(dir string) ([]string, error) {
 	stdout, err := gitexec.Run([]string{"status", "--porcelain", "-z", "--untracked-files=no"}, dir)

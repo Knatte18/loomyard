@@ -1,4 +1,6 @@
-// baseline.go — the Drift-Baseline producer: it records the task's regression scope from the drift config, with no agent, then takes the baseline capture the scope calls for.
+// baseline.go implements the Drift-Baseline producer.
+// It records the task's regression scope from the drift config without an agent,
+// and it takes the baseline capture that scope calls for.
 
 package driftengine
 
@@ -12,14 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// driftScopeKey is the drift config key that sets a task's regression scope, which a scope record set from it names as its source.
+// driftScopeKey is the drift config key that sets a task's regression scope;
+// a scope record set from it names this key as its source.
 const driftScopeKey = "drift.scope"
 
 // deferrableCaptureHalt opens the reason of every Drift-Baseline Stuck whose way forward includes `lym drift defer`.
 // CaptureHaltPrefix stays first, so a capture halt is still told from any other halt of the row.
 const deferrableCaptureHalt = CaptureHaltPrefix + DeferHaltPrefix
 
-// DriftBaseline is the Drift-Baseline ShedProducer.
+// DriftBaseline is the Drift-Baseline producer.
+// It records a task's regression scope from the drift config and takes the baseline capture that scope calls for.
 type DriftBaseline struct {
 	name string
 	row  Row
@@ -28,21 +32,27 @@ type DriftBaseline struct {
 
 var _ shedengine.ShedProducer = (*DriftBaseline)(nil)
 
-// NewDriftBaseline returns the Drift-Baseline producer identified as name.
+// NewDriftBaseline returns the Drift-Baseline producer named name; the name prefixes its errors.
 func NewDriftBaseline(name string, row Row, deps Deps) *DriftBaseline {
 	return &DriftBaseline{name: name, row: row, deps: deps}
 }
 
 // Call runs one Drift-Baseline pass: with drift switched off it is Done at once, spawning, starting and committing nothing.
-// Otherwise it ends the live chairs of the removed drift-baseline and drift-verify agents and records the scope when none is recorded, spawning no agent.
+// Otherwise it ends the live chairs of the removed drift-baseline and drift-verify agents,
+// and it records the scope when none is recorded, spawning no agent.
 // Then, by the recorded scope, it takes the baseline capture:
 // scope off, a set awaited_at and a passed capture take none, and a capture that holds the lock is left running.
 // Otherwise the capture is a detached child and the pass returns once the child's record exists;
 // when a detached start is refused breakaway, the capture runs in this process.
-// A failed or refused capture, or a capture child that ended or stalled before it recorded its start, is a Stuck whose reason opens with CaptureHaltPrefix and DeferHaltPrefix and names its ways forward, `lym drift defer` among them.
-// A child's halt carries the error its log ends on, and for an error the child marked lasting it drops the resume that captures again, naming only `lym drift defer` and a fix of the cause.
-// A start that fails for another reason, such as an unresolvable binary, an unwritable child log or a held capture lock, is an error.
-// The scope write is committed with the records; the durable drift directory is committed on the way out only once a capture has ended in this process.
+// A failed or refused capture is a Stuck, and so is a capture child that ended or stalled before it recorded its start.
+// Its reason opens with CaptureHaltPrefix and DeferHaltPrefix and names its ways forward, `lym drift defer` among them.
+// A child's halt carries the error its log ends on.
+// For an error the child marked lasting, the reason drops the resume that captures again.
+// It names only `lym drift defer` and a fix of the cause.
+// A start that fails for another reason is an error:
+// an unresolvable binary, an unwritable child log or a held capture lock.
+// The scope write is committed with the records;
+// the durable drift directory is committed on the way out only once a capture has ended in this process.
 func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	err := requireSeams(p.name,
@@ -74,7 +84,7 @@ func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengin
 	return commitOnExit(p.name, d.Commit, []string{DirRel()}, outcome, pointer, err)
 }
 
-// drive is Call without the commit; it sets commitAll once a capture has ended in this process.
+// drive runs one pass without the commit; it sets commitAll once a capture has ended in this process.
 func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 
@@ -111,9 +121,10 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 	return p.captureAgain(ctx, commitAll)
 }
 
-// recordScope returns the scope record, writing it through WriteRecords first when none is recorded.
-// The written scope is off, from the config key drift.scope, when the config sets it so, and full otherwise, with the config's diff mode and key patterns.
-// A config scope read from a stored partial is recorded full with one Warn naming the key.
+// recordScope returns the scope record, writing it first when none is recorded.
+// The written scope is off when the config key drift.scope sets it so;
+// otherwise it is full, with the config's diff mode and key patterns.
+// A config that sets scope partial is recorded full, with one Warn naming the key.
 // A scope already recorded, off, full or an old partial, is kept whatever the config says now.
 func (p *DriftBaseline) recordScope(cfg Config) (ScopeRecord, error) {
 	d := p.deps

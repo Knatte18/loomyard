@@ -1,7 +1,7 @@
-// ownwindow.go holds the own-window placement.
-// That is the session-wide window listing, the presence of own-window panes, and the windows' creation, grouping and removal.
+// ownwindow.go holds the own-window placement: the session-wide window listing and the presence of own-window panes.
 // An own-window strand lives outside the shell window; its pane is read through the session listing instead.
-// It also holds the move that breaks a strand pane an older lym left in the shell window out into a window of its own.
+// It also holds the creation, grouping and removal of windows.
+// It also holds the move that breaks a strand pane sitting in the shell window out into a window of its own.
 
 package reedengine
 
@@ -16,7 +16,7 @@ import (
 )
 
 // ownWindowOption is the window option reed sets on every own window it opens.
-// Unlike the display-only options, Go decides on it: reconcile ends only a window carrying it.
+// Go, not the display, decides on it: only a window carrying it is ended.
 const ownWindowOption = "@lym_own"
 
 // groupWindowOption is the window option naming the group a shared window holds.
@@ -46,7 +46,9 @@ func (w windowPane) livePane() LivePane {
 	return LivePane{ID: w.PaneID, Dead: w.Dead, PID: w.PID, Title: w.Title, CurrentCommand: w.CurrentCommand, StartCommand: w.StartCommand}
 }
 
-// windowPaneFormat is the session-wide listing format of windowPane: window id, own flag, group (or "-"), pane id, dead flag, pid, then the tail joining the pane title, current command and start command with paneTailSeparator.
+// windowPaneFormat is the session-wide listing format of windowPane.
+// Its fields are the window id, own flag, group (or "-"), pane id, dead flag and pid;
+// the tail joins the pane title, current command and start command with paneTailSeparator.
 const windowPaneFormat = "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
 
 // parseWindowPanes parses a windowPaneFormat listing, skipping a line it cannot parse.
@@ -121,7 +123,8 @@ func (p TmuxCmd) panePlacements() (map[string]panePlacement, error) {
 	return placements, nil
 }
 
-// strandsElsewhereLocked maps the pane id of each own-window strand whose bound pane windows does not list to the session:window of that pane when it sits in another session of reed's server.
+// strandsElsewhereLocked maps the pane id of each own-window strand that the session does not list.
+// It maps each pane to its session:window and keeps only panes that sit in another session of reed's server.
 // It runs one server-wide lookup, and only when such a pane exists; with none it returns nil and runs no tmux command.
 // A failed lookup is logged as an episode and answers nil, so every such pane reads as found nowhere.
 func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) map[string]string {
@@ -195,10 +198,10 @@ const (
 
 // planOwnWindowPlacement decides where a strand with display d goes, and returns the group record to store.
 // An ungrouped strand is placed apart with no record.
-// A group's first strand records whether the group shares one window, which is its declared size being at most shareMax;
+// A group's first strand records whether the group shares one window, by comparing its declared size with shareMax;
 // a later strand follows the record, so a changed shareMax never splits a group across shared and separate windows.
 // A strand declaring another size than the record's is refused.
-// A shared group joins its window while liveCount, the strands already holding a pane of the group, is below the group's size;
+// A shared group joins its window while liveCount, the strands already holding a pane of the group, is below its size;
 // the strand past that is placed apart.
 // groupWindow is the id of the group's existing shared window, empty when it has none.
 func planOwnWindowPlacement(groups map[string]WindowGroup, d render.Display, shareMax, liveCount int, groupWindow string) (ownWindowPlacement, WindowGroup, error) {
@@ -223,8 +226,10 @@ func planOwnWindowPlacement(groups map[string]WindowGroup, d render.Display, sha
 	return placeNewShared, group, nil
 }
 
-// groupLiveCount counts the strands of group other than self whose binding names a listed pane, alive or dead, since a dead pane still occupies the shared window.
-// It also returns the id of the window carrying the group's @lym_group option and the own marker, empty when none is listed.
+// groupLiveCount counts the strands of group other than self whose binding names a listed pane.
+// A dead pane counts too, since it still occupies the shared window.
+// It also returns the id of the window carrying the group's @lym_group option and the own marker;
+// the id is empty when none is listed.
 func groupLiveCount(strands []Strand, group, self string, windows []windowPane) (count int, groupWindow string) {
 	listed := make(map[string]bool, len(windows))
 	for _, w := range windows {
@@ -243,7 +248,9 @@ func groupLiveCount(strands []Strand, group, self string, windows []windowPane) 
 
 // ownWindowsLosingPanes sorts the own windows that hold a pane of kill, in listing order and once each.
 // A window all of whose listed panes are in kill ends with them, and a window that keeps at least one pane is left.
-// A window without the own marker is in neither list.
+// ownWindowsLosingPanes sorts the own windows that have a pane in kill into two lists.
+// ending holds those that lose every own pane, and left holds those that keep at least one.
+// A window without the own marker, or with no pane in kill, is in neither list.
 func ownWindowsLosingPanes(windows []windowPane, kill []string) (ending, left []string) {
 	killing := make(map[string]bool, len(kill))
 	for _, id := range kill {
@@ -280,8 +287,10 @@ func ownWindowsLosingPanes(windows []windowPane, kill []string) (ending, left []
 	return ending, left
 }
 
-// relayoutSharedWindowsLocked lays out each of windows evenly in the window_split direction and returns "".
-// An invalid window config skips every layout and returns the config error's text, so a removal still completes and only the layout is skipped.
+// relayoutSharedWindowsLocked lays out each window in windows evenly in the window_split direction.
+// An invalid window config skips every layout and returns the config error's text,
+// so a removal still completes.
+// Otherwise it returns the empty string.
 // A layout that fails is logged and never fails the step.
 func (e *Engine) relayoutSharedWindowsLocked(windows []string) string {
 	if err := validateWindowConfig(e.cfg); err != nil {
@@ -296,7 +305,8 @@ func (e *Engine) relayoutSharedWindowsLocked(windows []string) string {
 	return ""
 }
 
-// pruneWindowGroups deletes every group record that no strand of st names any more, so a later instance under the same name records afresh.
+// pruneWindowGroups deletes every group record that no strand of st names,
+// so a later instance under the same name records afresh.
 func pruneWindowGroups(st *ReedState) {
 	named := make(map[string]bool, len(st.Strands))
 	for _, s := range st.Strands {
@@ -311,8 +321,11 @@ func pruneWindowGroups(st *ReedState) {
 	}
 }
 
-// presentPanes returns live plus the pane of every listed window pane that is bound to an own-window strand of strands and that live does not already hold.
-// It is the pane set every liveness read uses, so an own-window pane counts as present, alive or dead, and a pane the operator killed by hand reads absent.
+// presentPanes returns live plus each listed window pane bound to an own-window strand of strands.
+// It skips a pane that live already holds.
+// The result is the pane set every liveness read uses,
+// so an own-window pane counts as present, alive or dead,
+// and a pane the operator killed by hand reads absent.
 func presentPanes(strands []Strand, live []LivePane, windows []windowPane) []LivePane {
 	held := make(map[string]bool, len(live))
 	for _, p := range live {
@@ -347,8 +360,11 @@ func (e *Engine) listStrandAndWindowPanes(st *ReedState) ([]LivePane, []windowPa
 	return live, windows, nil
 }
 
-// listReconcilePanesLocked returns the panes of the shell window and the panes of the whole session, after breaking any strand pane left in the shell window out into a window of its own.
-// The shell window is the one the Selvage pane or the @lym_strands marker names; with neither, the current window is listed and nothing is moved, so a viewer on a shared agent window never has that window's panes broken out of it.
+// listReconcilePanesLocked returns the panes of the shell window and the panes of the whole session.
+// It first breaks any strand pane left in the shell window out into a window of its own.
+// The shell window is the one the Selvage pane or the @lym_strands marker names.
+// With neither, the current window is listed and nothing is moved,
+// so a viewer on a shared agent window never has that window's panes broken out of it.
 // When a pane moved, both listings are taken again, so reconcile judges a moved pane only as an own-window pane.
 // A failed listing, before or after a move, is returned as an error.
 func (e *Engine) listReconcilePanesLocked(st *ReedState) ([]LivePane, []windowPane, error) {
@@ -385,9 +401,13 @@ func (e *Engine) listReconcilePanesLocked(st *ReedState) ([]LivePane, []windowPa
 	return live, windows, nil
 }
 
-// moveShellWindowStrandsLocked breaks each of paneIDs, strand panes in shellWindow, out into a window of its own placed just before shellWindow, and reports whether any pane moved.
+// moveShellWindowStrandsLocked breaks each strand pane in paneIDs out of shellWindow.
+// Each one lands in a window of its own, placed just before shellWindow.
+// It reports whether any pane moved.
 // A moved strand's anchor becomes own-window with no window group, which the op's own save persists.
-// A failed break-out, or one that answers anything but a window id, is logged and leaves that pane and its anchor for the next op, and the remaining panes are still tried.
+// A failed break-out, or one that answers anything but a window id, is logged.
+// That pane and its anchor stay for the next op,
+// and the remaining panes are still tried.
 // A failed window marker is logged and the anchor is still rewritten, since the pane already sits in its own window.
 func (e *Engine) moveShellWindowStrandsLocked(st *ReedState, shellWindow string, paneIDs []string) bool {
 	moved := false
@@ -421,7 +441,10 @@ func (e *Engine) moveShellWindowStrandsLocked(st *ReedState, shellWindow string,
 	return moved
 }
 
-// agentWindowPanes sorts the listed panes bound to strands of st by window: live holds each window with a bound own-window pane that is not dead, bound each window with any such pane, and overview each window with a pane bound to an overview strand.
+// agentWindowPanes sorts the listed panes bound to strands of st by window into three sets of window ids.
+// live holds each window with a bound own-window pane that is not dead.
+// bound holds each window with any such pane.
+// overview holds each window with a pane bound to an overview strand.
 // Panes in a window of skip are left out.
 func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (live, bound, overview map[string]bool) {
 	displayByPane := make(map[string]render.Display, len(st.Strands))
@@ -450,8 +473,10 @@ func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (
 }
 
 // relevantWindow returns the window an automatic switch lands on, among the listed windows not in ending.
-// That is the highest-index agent window holding a pane that is not dead, else the lowest-index window holding an overview strand's pane, else the empty string.
-// An agent window is a window holding a pane bound to an own-window strand, so the overview, the shell and hidden windows are never one.
+// It is the highest-index agent window holding a pane that is not dead;
+// else the lowest-index window holding an overview strand's pane; else the empty string.
+// An agent window is a window holding a pane bound to an own-window strand.
+// The overview, the shell and hidden windows are never one.
 // By start order the highest index is the newest live agent.
 func relevantWindow(st *ReedState, windows []sessionWindow, panes []windowPane, ending map[string]bool) string {
 	live, _, overview := agentWindowPanes(st, panes, ending)
@@ -472,7 +497,8 @@ func relevantWindow(st *ReedState, windows []sessionWindow, panes []windowPane, 
 }
 
 // newAgentWindowSelected reports whether a new agent window takes the viewer, given the follow state.
-// A display setting Focus always does, one setting only KeepViewer never does, and any other does exactly when following.
+// A display with Focus set always selects the window, and one with KeepViewer set never does.
+// Any other selects it exactly when following.
 func newAgentWindowSelected(display render.Display, following bool) bool {
 	if display.Focus {
 		return true
@@ -512,8 +538,11 @@ func (e *Engine) currentWindowIsAmongLocked(windows []string) bool {
 	return slices.Contains(windows, current)
 }
 
-// selectRelevantWindowIfCurrentLocked selects relevantWindow among the windows left when the session's current window is one of ending, so a viewer on a window about to end lands on the newest live agent or the lowest-index overview, never the shell.
-// A viewer elsewhere is never moved, and with no window left to select it selects nothing and leaves the choice to tmux.
+// selectRelevantWindowIfCurrentLocked moves a viewer off a window about to end.
+// It acts only when the session's current window is one of ending.
+// It then selects the newest live agent window or else the lowest-index overview among the windows not in ending,
+// so the viewer never lands on the shell.
+// With no window left to select, it selects nothing and leaves the choice to tmux.
 // Every failure is logged and never fails the step.
 func (e *Engine) selectRelevantWindowIfCurrentLocked(st *ReedState, ending []string) {
 	if len(ending) == 0 || !e.currentWindowIsAmongLocked(ending) {
@@ -522,7 +551,9 @@ func (e *Engine) selectRelevantWindowIfCurrentLocked(st *ReedState, ending []str
 	e.selectRelevantWindowLocked(st, ending)
 }
 
-// selectRelevantWindowLocked selects relevantWindow among the session's windows not in ending, for a viewer on one of ending, or for any viewer when ending is empty.
+// selectRelevantWindowLocked selects the window a viewer should land on.
+// That is the newest live agent window, else the lowest-index overview, among the session's windows not in ending.
+// It serves a viewer on one of ending, or any viewer when ending is empty.
 // Every failure is logged and never fails the step.
 func (e *Engine) selectRelevantWindowLocked(st *ReedState, ending []string) {
 	windows, err := e.tmux.listSessionWindows(e.SessionName())
@@ -548,8 +579,9 @@ func (e *Engine) selectRelevantWindowLocked(st *ReedState, ending []string) {
 	}
 }
 
-// attachWindowSelectionLocked returns the argv tail that selects relevantWindow for an attaching client: ";", "select-window", "-t", the window.
-// It returns nothing when no window is relevant or a listing fails, which is logged.
+// attachWindowSelectionLocked returns the argv tail that selects the window for an attaching client.
+// The tail is ";", "select-window", "-t", and the window.
+// It returns nothing when no window qualifies or a listing fails, and the failure is logged.
 func (e *Engine) attachWindowSelectionLocked(st *ReedState) []string {
 	windows, err := e.tmux.listSessionWindows(e.SessionName())
 	if err != nil {

@@ -1,4 +1,4 @@
-// removedverbs_test.go pins that no production source, stencil or skill names a verb lym no longer has,
+// removedverbs_test.go pins that no production source, stencil or skill names a removed verb,
 // so every way forward names the verb that replaced it.
 
 package main
@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// removedVerbs are the commands that no longer exist; each is named by `lym beam start`, `lym adopt <beam>`, `lym adopt root`, `lym creel post` or `lym creel interrupt` now.
+// removedVerbs lists the commands lym no longer has.
+// Each has a replacement verb that the sources name in its place.
 var removedVerbs = []string{
 	"lym orch start",
 	"lym orch cleanup",

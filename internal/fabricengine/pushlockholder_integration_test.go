@@ -27,7 +27,8 @@ func holderRecordPID(t *testing.T, lockDir string) int {
 }
 
 // TestTryRecordsLocks_HolderRecord covers the record a records branch's try-acquire writes:
-// on a weft it names this process while the locks are held and is gone after the release, and on Bolt none is written.
+// on a weft it names this process while the locks are held and is gone after the release.
+// On Bolt none is written.
 func TestTryRecordsLocks_HolderRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

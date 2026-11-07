@@ -1,7 +1,10 @@
-// cancelmarker.go implements the cancel marker of "lym batten cancel": a record that a cancel of a slug is under way, whose writer's liveness is a lock it holds, never its pid.
+// cancelmarker.go implements the cancel marker of "lym batten cancel": a record that a cancel of a slug is under way;
+// its writer's liveness is a lock the writer holds, never its pid.
 //
-// A driving verb and a second cancel read the marker to refuse while a cancel runs, and to point at the cancel that finishes an interrupted one.
-// The lock is held exclusively from the marker's write to its release, so a marker whose lock is free belongs to a writer that died.
+// A driving verb and a second cancel read the marker to refuse while a cancel runs.
+// The same read also points at the cancel that finishes an interrupted one.
+// The lock is held exclusively from the marker's write to its release,
+// so a marker whose lock is free belongs to a writer that died.
 
 package battencli
 
@@ -19,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// cancelMarker is the JSON record at shedrun.CancelMarker.
+// cancelMarker is the JSON record that the cancel marker file holds, identifying the process that wrote it.
 type cancelMarker struct {
 	// PID is the writer's process id.
 	PID int `json:"pid"`
@@ -39,15 +42,20 @@ type cancelMarkerReading struct {
 	Marker cancelMarker
 }
 
-// cancelMarkerStateLock returns the lock that guards the marker file's own reads and writes, distinct from the writer's liveness lock.
+// cancelMarkerStateLock returns the lock that guards the marker file's reads and writes.
+// It is distinct from the writer's liveness lock.
 func cancelMarkerStateLock(markerPath string) string {
 	return markerPath + ".lock"
 }
 
 // judgeCancelMarker decides what the cancel marker's three readings make of it.
-// presentBefore is a stat of the marker, lockFree is whether the writer's lock was free to a shared try, and presentUnderLock is a second stat taken while holding that shared lock.
-// An absent marker is not present; a present marker whose lock is held elsewhere has a live writer;
-// a present marker whose lock was free has a dead writer, unless the writer removed it between the first stat and the lock, which reads not present.
+// presentBefore is a stat of the marker.
+// lockFree is whether the writer's lock was free to a shared try.
+// presentUnderLock is a second stat taken while holding that shared lock.
+// An absent marker is not present.
+// A present marker whose lock is held elsewhere has a live writer.
+// A present marker whose lock was free has a dead writer, unless the writer removed it before the second stat.
+// A marker removed that way reads not present.
 func judgeCancelMarker(presentBefore, lockFree, presentUnderLock bool) (present, writerAlive bool) {
 	if !presentBefore {
 		return false, false
@@ -115,7 +123,8 @@ type heldCancelMarker struct {
 	fresh bool
 }
 
-// takeCancelMarker takes the marker's lock exclusively, waiting at most wait, and writes the marker with this process's pid, start time and the time now.
+// takeCancelMarker takes the marker's lock exclusively, waiting at most wait.
+// It then writes the marker with this process's pid, start time and the time now.
 // A shared probe of a reader holds the lock briefly, which the wait outlasts.
 // A lock not taken within the wait refuses as a live cancel.
 func takeCancelMarker(location *lymcwd.Location, slug string, wait time.Duration) (heldCancelMarker, error) {
@@ -150,7 +159,8 @@ func takeCancelMarker(location *lymcwd.Location, slug string, wait time.Duration
 	return heldCancelMarker{markerPath: markerPath, held: held, fresh: !existed}, nil
 }
 
-// release removes the marker when remove is true, then releases the lock, so the marker never outlives its lock while being removed.
+// release removes the marker when remove is true, then releases the lock,
+// so the marker never outlives its lock while being removed.
 func (h heldCancelMarker) release(remove bool) error {
 	var removeErr error
 	if remove {

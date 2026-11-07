@@ -1,4 +1,5 @@
-// trailercommit_integration_test.go covers CommitAnchoredPathsWithTrailers, FindTrailerCommit and AnchoredFileAt against a wired hub fixture.
+// trailercommit_integration_test.go covers CommitAnchoredPathsWithTrailers, FindTrailerCommit and AnchoredFileAt.
+// It runs them against a wired hub fixture.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 

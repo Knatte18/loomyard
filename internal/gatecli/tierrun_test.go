@@ -1,4 +1,6 @@
-// tierrun_test.go covers the one rerun of a tier that failed on a resource shortage or crashed its test runner and how the closing line names such a run, over fake attempts that spawn nothing.
+// tierrun_test.go covers the single rerun of a tier that failed on a resource shortage or crashed its test runner.
+// It also covers how the closing line names such a run.
+// The attempts are fakes that spawn nothing.
 
 package gatecli
 
@@ -16,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// cancelOnWrite cancels a call at its first write, standing in for a cancellation that arrives while a tier waits to rerun.
+// cancelOnWrite cancels a call at its first write.
+// It stands in for a cancellation that arrives while a tier waits to rerun.
 type cancelOnWrite struct {
 	io.Writer
 	cancel context.CancelFunc

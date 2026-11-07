@@ -1,4 +1,5 @@
-// judge.go — the judge's seat table, the request Drift-Verify hands it and the `judgement` gate entry that checks what it writes.
+// judge.go holds the judge's seat table and the request Drift-Verify hands it;
+// the `judgement` gate entry checks what the judge writes.
 
 package driftengine
 
@@ -35,7 +36,7 @@ const (
 // judgeRequestLockName names the lock of the judge request file.
 const judgeRequestLockName = "judge-request.json"
 
-// JudgeIdentity names the line of a judged cell the way an Identity does, with the keys a reader of the request file expects.
+// JudgeIdentity names the line of a judged cell, with the keys a reader of the request file expects.
 type JudgeIdentity struct {
 	Key  string `json:"key,omitempty"`
 	N    int    `json:"n,omitempty"`
@@ -55,7 +56,7 @@ type JudgeCell struct {
 	Why string `json:"why"`
 	// OpenRange reports that the covering entry is an open range.
 	OpenRange bool `json:"open_range,omitempty"`
-	// File is the absolute path of the case's file: in the current capture's scratch directory for an added case, in the baseline directory for a removed case, and empty for any other cell.
+	// File is the absolute path of the case's file: scratch directory if added, baseline directory if removed, else empty.
 	File string `json:"file,omitempty"`
 }
 
@@ -124,7 +125,7 @@ func (r JudgeRequest) want() JudgementWant {
 	return want
 }
 
-// JudgeInputs are the told values one judge spawn is composed from.
+// JudgeInputs holds the values one judge spawn is composed from.
 type JudgeInputs struct {
 	// Subject is SubjectDecisionRecord or SubjectBoardEntry.
 	Subject string
@@ -138,10 +139,13 @@ type JudgeInputs struct {
 	JudgementPath string
 }
 
-// JudgeTable builds the seatengine.Table of one judge spawn: one lead on the review segment whose only output is judgement.yaml.
+// JudgeTable builds the seatengine.Table of one judge spawn: one lead on the review segment.
+// The lead's only output is judgement.yaml.
 // An empty required field of in is refused by name, and cfg.JudgeModel is resolved against reg.
-// With cfg.JudgeInteractive the lead is interactive, and its prompt has it present each cell or case to the operator and record the operator's ruling.
-// The judge changes nothing but its output, so the table carries no PATTERN directive, and it carries no gate; the producer sets it.
+// With cfg.JudgeInteractive the lead is interactive,
+// and its prompt has it present each cell or case to the operator and record the operator's ruling.
+// The judge changes nothing but its output, so the table carries no PATTERN directive,
+// and it carries no gate; the producer sets it.
 func JudgeTable(in JudgeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	err := requireTold("JudgeTable", []struct{ field, value string }{
 		{"DecisionRecordPath", in.DecisionRecordPath},

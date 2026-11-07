@@ -1,6 +1,6 @@
 //go:build !windows
 
-// lifecycle_unix_test.go holds the lifecycle tests of tmux behavior psmux on Windows does not have.
+// lifecycle_unix_test.go holds the lifecycle tests for tmux behavior that psmux on Windows lacks.
 
 package reedengine
 
@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook in both scopes and installs no entry, whatever the watchdog value.
+// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook.
+// It does so in both scopes and installs no entry, whatever the watchdog value.
 func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, watchdog := range []string{"on", "off"} {

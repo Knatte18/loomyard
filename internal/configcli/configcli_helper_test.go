@@ -1,4 +1,4 @@
-// configcli_helper_test.go holds the fakes and fixture helpers that the tier 0 and tier 1 test files of this package share.
+// configcli_helper_test.go holds the fakes and fixture helpers that this package's test files share.
 // The package's one test binary holds every tier, so this file serves them all.
 
 package configcli
@@ -15,13 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// fakeSyncTracker is a wrapper for a fake syncFunc that records whether it was called.
+// fakeSyncTracker records whether the sync function it supplies was called, and the exit code it returns.
 type fakeSyncTracker struct {
 	called   bool
 	exitCode int
 }
 
-// syncFunc returns a fake syncFunc that records the call and returns the tracked exit code.
+// syncFunc returns a sync function that marks the tracker as called and returns its exit code.
 func (t *fakeSyncTracker) syncFunc() syncFunc {
 	return func(w io.Writer) int {
 		t.called = true
@@ -29,8 +29,8 @@ func (t *fakeSyncTracker) syncFunc() syncFunc {
 	}
 }
 
-// makeNeverCalledEditor returns an EditorFunc that fails the test if called.
-// Passed to dispatch in --print tests to prove the print path never opens an editor.
+// makeNeverCalledEditor returns an editor that fails the test if it is called.
+// Tests of the --print path pass it to prove that path never opens an editor.
 func makeNeverCalledEditor(t *testing.T) configengine.EditorFunc {
 	t.Helper()
 	return func(path string) error {
@@ -40,7 +40,7 @@ func makeNeverCalledEditor(t *testing.T) configengine.EditorFunc {
 	}
 }
 
-// makeLayoutAt returns a minimal *lymcwd.Location with WorktreeRoot at baseDir and RelPath ".".
+// makeLayoutAt returns a minimal *lymcwd.Location for the worktree baseDir, anchored at its root.
 func makeLayoutAt(baseDir string) *lymcwd.Location {
 	return &lymcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 }
@@ -57,7 +57,8 @@ func seedModuleConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// assertJSONErrContains verifies that output is a well-formed JSON error envelope with ok:false and an error field containing wantSubstr.
+// assertJSONErrContains asserts that output is a JSON error envelope with ok:false.
+// When wantSubstr is not empty, the envelope's error field must contain it.
 func assertJSONErrContains(t *testing.T, output, wantSubstr string) {
 	t.Helper()
 	var env map[string]any

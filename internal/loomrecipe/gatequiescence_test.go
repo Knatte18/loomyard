@@ -15,19 +15,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// gateQuiescenceFailureMessage is the shared failure text every case below reports on: a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live.
-// A BurlerReview reviewer forks under its cluster fan, and a gated BurlerFix fixer forks only under its segment's fixer fan, which reaches it through the review row's recorded fix_fan and never as a cluster fan.
-// The backstop is the reviewer audit's exact count and the fixer audit's per-fork violation checks, the fixer's count being a warning.
-// A gated row that forks outside those two has no such wait to rest on, so the decision must be re-opened rather than this test updated to tolerate the new shape.
+// gateQuiescenceFailureMessage is the failure text every case below reports.
+// A turn end whose Stop payload reports an outstanding fork is a wait, so no gate may run while a fork is live.
+// A BurlerReview reviewer forks under its cluster fan.
+// A gated BurlerFix fixer forks only under its segment's fixer fan.
+// That fan reaches the fixer through the review row's recorded fix_fan, never as a cluster fan.
+// The backstop is the reviewer audit's exact count and the fixer audit's per-fork violation checks;
+// the fixer's count is a warning.
+// A gated row that forks outside those two has no such wait to rest on,
+// so the decision must be re-opened rather than this test updated to tolerate the new shape.
 const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live; a BurlerReview reviewer forks under its cluster fan, and a gated BurlerFix fixer forks only under its segment's fixer fan, which reaches it through the review row's recorded fix_fan, never a cluster fan; the backstop is the reviewer audit's exact count and the fixer audit's per-fork violation checks, the fixer's count being a warning -- the decision must be re-opened, not this test"
 
 // gatedRowFanViolations returns one message per gated row of r that breaks the fork rule.
 // A row is gated when its config carries a non-empty "gates" list.
-// A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan-list map of the values the rows' fan settings would answer, when any entry of its list is non-empty.
-// A gated row must be a writer engine (DiscussionWrite, PlanWrite, PartsWrite, PartsPlanWrite, DarnWrite, DriftExpect, DriftVerify, Describe, PRRework), the Implementer, or BurlerFix, and none of them may receive a cluster fan.
-// A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Review sets it from a non-empty fan alone, so a cluster fan on the ungated BurlerReview row is the one legal reviewer fork.
-// The Implementer row's gates run at Merriam's turn ends beside the verify gate, where a turn end with an outstanding card fork is a wait, so its gated entry rests on the same turn-end rule.
-// A gated BurlerFix fixer forks only under the fixer fan the review row recorded, so only a BurlerFix row may name "fixer_fan_setting".
+// A gated row receives a fan from its profile's "cluster-fan" or from the fans map.
+// The fans map goes from row name to the list of values the row's fan setting would answer.
+// A gated row receives a fan only when some entry of that list is non-empty.
+// A gated row must be the Implementer, BurlerFix, or one of the writer engines:
+// DiscussionWrite, PlanWrite, PartsWrite, PartsPlanWrite, DarnWrite, DriftExpect, DriftVerify, Describe, PRRework.
+// None of them may receive a cluster fan.
+// A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents.
+// burlerengine.Engine.Review sets it from a non-empty fan alone,
+// so a cluster fan on the ungated BurlerReview row is the one legal reviewer fork.
+// The Implementer row's gates run at the implementer's session turn ends beside the verify gate.
+// A turn end with an outstanding card fork is a wait, so its gated entry rests on the same turn-end rule.
+// A gated BurlerFix fixer forks only under the fixer fan the review row recorded.
+// Only a BurlerFix row may name "fixer_fan_setting".
 func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []string {
 	var violations []string
 	for _, row := range r.Producers {
@@ -63,9 +76,12 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 	return violations
 }
 
-// TestNoGatedRowAuthorizesForkSubagents asserts the fork rule over the shipped tapestry and darn recipes with a fan set for every row that names a fan setting, and over hand-authored recipes.
-// A gated writer or BurlerFix row receiving a fan, from its profile or from the map, fails; an ungated BurlerReview row with a fan passes.
-// It also pins that no shipped loom row carries a literal "cluster-fan" key, since a fan reaches a row only through the hub config.
+// TestNoGatedRowAuthorizesForkSubagents asserts the fork rule over the shipped tapestry and darn recipes.
+// Each shipped row that names a fan setting is given a fan, and the hand-authored recipes are checked too.
+// A gated writer or BurlerFix row receiving a fan, from its profile or from the map, fails;
+// an ungated BurlerReview row with a fan passes.
+// It also pins that no shipped loom row carries a literal "cluster-fan" key.
+// A fan reaches a row only through the hub config.
 //
 //testtiming:keep pins that no gated shipped row authorizes fork subagents outside an ungated BurlerReview reviewer, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
@@ -109,7 +125,8 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.DarnRecipe) error = %v; want nil", err)
 	}
-	// Every row that names a fan setting takes the fan its perch is assigned, except a BurlerFix row, whose fixer fan reaches it through the review row's record.
+	// Every row that names a fan setting takes the fan its perch is assigned.
+	// A BurlerFix row is the exception: its fixer fan reaches it through the review row's record.
 	perchFans := map[string]string{"Discussion-Review": "standard", "Plan-Review": "full"}
 	fanSettingFans := func(r shedbuild.Recipe) map[string][]string {
 		fans := map[string][]string{}
@@ -179,7 +196,8 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 	}
 }
 
-// TestWebsterRoundCarriesNoGateKey asserts the Webster round's only gate entry is `drift`, so TestNoGatedRowAuthorizesForkSubagents's rule over gated rows covers the Implementer row it admits and no other validator reaches Merriam's turn ends unseen.
+// TestWebsterRoundCarriesNoGateKey asserts the Webster round's only gate entry is `drift`.
+// Any other gate on this round fails the test.
 //
 //testtiming:keep pins that the shipped Webster round's gates list is exactly the drift entry, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestWebsterRoundCarriesNoGateKey(t *testing.T) {

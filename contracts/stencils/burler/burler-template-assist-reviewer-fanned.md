@@ -1,13 +1,17 @@
-<!-- This is the burler fanned assistant reviewer seat stencil: the assistant seat of an assisted review round whose assistant runs a lens fan, on the engine its model-spec names, beside the reviewer chair.
-     It is burler-template-assist-reviewer with the lens reports on the write surface and the seat-directive-assistant-fanned include; a solo assistant keeps burler-template-assist-reviewer and its bytes.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/burler/` and read
-     from there at call time, then filled by internal/seatengine from the seat's value map.
+<!-- This is the burler fanned assistant reviewer seat stencil:
+     the assistant seat of an assisted review round whose assistant runs a lens fan,
+     on the engine its model-spec names, beside the reviewer chair.
+     It adds the lens reports to the write surface and includes seat-directive-assistant-fanned.
+     It is an embedded default in contracts/stencils/stencils.go,
+     seeded to the Bolt checkout's `_lym/stencils/burler/`, read from there at call time,
+     and filled by internal/seatengine from the seat's value map.
      Every marker below is a top-level {{.X}} substitution.
-     The reserved markers it uses, which the seats engine fills, are parent_directive, in its no-parent variant, and edit_directive, in the assistant engine's own wording;
-     its includes use seat_name and output_files;
-     the seat values it uses, which the assistant's seat gives it, are instruction_1_path, instruction_2_path, review_path and lens_report_path.
+     The seats engine fills the reserved markers it uses:
+     parent_directive, in its no-parent variant, and edit_directive, in the assistant engine's own wording.
+     Its includes use seat_name and output_files.
+     The assistant's seat supplies instruction_1_path, instruction_2_path, review_path and lens_report_path.
      The reading directions come from the engine-assist-reading engine block of the assistant's engine.
-     There are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     There are no {{if}}/{{range}} conditionals in this file. -->
 
 # Burler — assistant review
 

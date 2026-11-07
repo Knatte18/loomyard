@@ -1,6 +1,7 @@
 // hubwide.go — the board-dir branch of the config verbs.
 //
-// A hub-wide module's file, and any module's repo default (--layer default), is read and written at the board dir and its edits are committed in the Bolt checkout through a commit seam, where a worktree-layer write syncs fabric.
+// A hub-wide module's file, and any module's repo default (--layer default), is read and written at the board dir.
+// Its edits are committed in the Bolt checkout through a commit seam, where a worktree-layer write syncs fabric.
 
 package configcli
 
@@ -43,9 +44,11 @@ type configDirs struct {
 }
 
 // hubWriteRefusal returns a refusal message when a hub-wide write from l must not go through, and "" when it may.
-// A write is refused from a worktree that is not the hub's prime, and from a session whose strandName parses as a name carrying a slug, wherever its worktree resolves;
-// the hub orch's slug-free name and an empty name pass.
-// The refusal guards a mistaken write, not a determined agent: it reads the strand name the caller passes and nothing else about the session.
+// A write is refused from a worktree that is not the hub's prime.
+// It is refused from a session whose strandName parses as a name carrying a slug, wherever its worktree resolves.
+// The hub orch's slug-free name and an empty name pass.
+// The refusal guards a mistaken write, not a determined agent:
+// it reads the strand name the caller passes and nothing else about the session.
 func hubWriteRefusal(l *lymcwd.Location, strandName string) (string, error) {
 	if agentname.TaskSlug(strandName) != "" {
 		return fmt.Sprintf("a hub-wide config write is refused from the task session %s; way forward: the operator or the hub orch runs the write from the prime worktree", strandName), nil
@@ -60,7 +63,8 @@ func hubWriteRefusal(l *lymcwd.Location, strandName string) (string, error) {
 	return "", nil
 }
 
-// refuseHubWrite runs the hub-wide write guard and, when it refuses or fails, writes the JSON error to out and reports true with the exit code to return.
+// refuseHubWrite runs the hub-wide write guard.
+// When the guard refuses or fails, it writes the JSON error to out and reports true with the exit code to return.
 // A nil guard allows the write.
 func (d configDirs) refuseHubWrite(out io.Writer) (exitCode int, refused bool) {
 	if d.hubWriteGuard == nil {
@@ -77,7 +81,7 @@ func (d configDirs) refuseHubWrite(out io.Writer) (exitCode int, refused bool) {
 }
 
 // dirsOf returns the config base dirs for the worktree l resolves to.
-// The board is empty when the hub's board dir does not exist, as for a worktree that is no hub's.
+// The board is empty when the hub's board dir does not exist, as for a worktree that belongs to no hub.
 func dirsOf(l *lymcwd.Location) configDirs {
 	return configDirs{worktree: baseDirOf(l), board: fabricengine.ConfigDirs(l).Board, root: l.WorktreePath()}
 }
@@ -90,13 +94,14 @@ func validLayer(layer string) bool {
 	return layer == "" || slices.Contains(layerNames, configengine.Layer(layer))
 }
 
-// engineDirs returns the told geometry configengine addresses a layer file by.
+// engineDirs returns the directories configengine addresses a layer file by.
 func (d configDirs) engineDirs() configengine.Dirs {
 	return configengine.Dirs{Anchor: d.worktree, Board: d.board}
 }
 
 // selectedLayer returns the layer a verb addresses for module.
-// An empty --layer selects the module's own default, and --layer worktree on a hub-wide module is refused with the ways forward.
+// An empty --layer selects the module's own default.
+// --layer worktree on a hub-wide module is refused with the ways forward.
 // A hub-wide module's default with no board is the worktree layer, the one file a standalone worktree has.
 // --layer machine is refused on a per-worktree module and on a hub-wide module that classifies no machine key.
 func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, error) {
@@ -159,16 +164,19 @@ func newHubCommit(boardDir string) hubCommitFunc {
 	}
 }
 
-// reconcileDefaultLayer reconciles every module's file under the hub's board dir against its template, seeded from the prime's anchor, and reports the reconcile envelope.
-// It seeds absent bases sparse and never fills a present base that is not seed-only;
+// reconcileDefaultLayer reconciles every module's file under the hub's board dir and reports the reconcile envelope.
+// It seeds absent bases sparse from the prime's anchor and never fills a present base that is not seed-only;
 // a present seed-only file follows its template against the template base kept beside it.
-// The one-time base strip of an unmigrated board is reported as pending and never performed, so the board marker is not written.
+// The one-time base strip of an unmigrated board is reported as pending and never performed,
+// so the board marker is not written.
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
-// Otherwise it holds the board write lock and runs a dry run first, so a file that fails to parse or migrate leaves every file unwritten.
+// Otherwise it holds the board write lock and runs a dry run first,
+// so a file that fails to parse or migrate leaves every file unwritten.
 // Then the reconcile writes, its files are committed in the Bolt checkout and the commit is pushed.
 // A write that fails part-way is undone, restoring every config file of the board dir.
-// A write that succeeded but was not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
+// A write that succeeded but was not committed, or was committed but not pushed, is reported as an error.
+// The error names the files left for the next board sync.
 func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
 	board := fabricengine.ConfigDirs(l).Board
 	if board == "" {
@@ -239,7 +247,9 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 	return output.Ok(out, reconcileEnvelope(true, results))
 }
 
-// snapshotBoardConfig reads every file in the board dir's config dir and every registry module's config file there, and each seed-only module's template base; an absent module file or base maps to a snapshot of absence.
+// snapshotBoardConfig reads every file in the board's config dir and each registry module's config file there.
+// It also reads each seed-only module's template base.
+// An absent module file or base maps to a snapshot of absence.
 func snapshotBoardConfig(board string) (map[string]fileSnapshot, error) {
 	prior := make(map[string]fileSnapshot)
 	configDir := configengine.ConfigDir(board)
@@ -320,7 +330,8 @@ func validateHubFile(boardDir string, module configreg.Module) error {
 	return err
 }
 
-// checkHubModule loads module's board file alone through its own loader and, for a module that declares commands, checks each command dir against the worktree of dirs.
+// checkHubModule loads module's board file alone through its own loader.
+// For a module that declares commands, it checks each command dir, resolving relative dirs against the worktree root.
 // A hub-wide write runs only from the prime, so a dir is checked against the prime.
 func checkHubModule(dirs configDirs, module configreg.Module) error {
 	boardDirs := configengine.Dirs{Board: dirs.board}
@@ -350,7 +361,8 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 }
 
 // setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in the Bolt checkout.
-// The file is validated strictly before the commit, then loaded alone through the module's own loader, its command dirs checked against the prime, and restored on any failure.
+// The file is validated strictly before the commit, then loaded alone through the module's own loader.
+// Its command dirs are checked against the prime, and the file is restored on any failure.
 // The check refuses the write only with a failure the file did not already have.
 func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs []yamlengine.KV, commit hubCommitFunc) int {
 	path := configengine.ConfigFile(dirs.board, module.Name)
@@ -429,9 +441,11 @@ func editHubWide(dirs configDirs, out io.Writer, module configreg.Module, edit c
 	return reportHubWrite(out, module.Name, path, commitErr, writeErr, nil)
 }
 
-// copyStagedToHub writes the staged bytes to the hub file when it still holds the bytes the staging copy was taken from,
-// validates it strictly and restores the previous file on failure.
-// It then loads the board file alone through the module's own loader, checks its command dirs against the prime, and restores the previous file when that check fails with an error other than the one the file already had, returning an error wrapping errHubFileLoad and the check's.
+// copyStagedToHub writes the staged bytes to the hub file when it still holds the bytes the staging copy came from.
+// It validates the written file strictly and restores the previous file on failure.
+// It then loads the board file alone through the module's own loader and checks its command dirs against the prime.
+// When that check fails with an error other than the one the file already had, it restores the previous file.
+// The returned error wraps errHubFileLoad and the check's error.
 func copyStagedToHub(path, staging string, base []byte, template string, dirs configDirs, module configreg.Module) error {
 	snap, err := snapshotFile(path)
 	if err != nil {

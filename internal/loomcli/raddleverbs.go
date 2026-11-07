@@ -1,5 +1,7 @@
-// raddleverbs.go implements the `raddle-propose` and `raddle-approve` loom verbs: the raddle agent's check of its proposal and the operator's approval of it.
-// Both are role verbs of the Raddle-Write row and write the run's state record; Raddle-File reads the approval it records.
+// raddleverbs.go implements the `raddle-propose` and `raddle-approve` loom verbs.
+// The first checks the raddle agent's proposal; the second records the operator's approval of it.
+// Both are role verbs of the Raddle-Write row and write the run's state record;
+// Raddle-File reads the approval it records.
 
 package loomcli
 
@@ -28,7 +30,7 @@ import (
 // raddleWriteEngine is the engine of the recipe row that writes the raddle proposal.
 const raddleWriteEngine = "RaddleWrite"
 
-// raddleVerbDeps carries the told seams and paths both raddle verbs read and write through.
+// raddleVerbDeps carries the seams and paths that both raddle verbs read and write through.
 type raddleVerbDeps struct {
 	// row answers the name of the recipe's RaddleWrite row, and false when the recipe has none.
 	row func() (string, bool, error)
@@ -39,7 +41,7 @@ type raddleVerbDeps struct {
 	// statePath and stateLockPath are the run's state record and its lock.
 	statePath     string
 	stateLockPath string
-	// coldPath is where the first passing proposal is stored once.
+	// coldPath is where the first passing proposal is stored; later passes leave it alone.
 	coldPath string
 	// approvalPath is the approval record the approve verb writes.
 	approvalPath string
@@ -49,7 +51,7 @@ type raddleVerbDeps struct {
 	notify func(line string) error
 }
 
-// raddleVerbFailure is the error envelope of a seam that could not be read or written, naming a re-run.
+// raddleVerbFailure reports a seam that could not be read or written as an error envelope that names a re-run.
 func raddleVerbFailure(out io.Writer, verb, what string, err error) int {
 	return output.Err(out, fmt.Sprintf("loom: %s: %s: %s; way forward: run lym loom %s again, and tell the operator when it keeps failing", verb, what, err, verb))
 }
@@ -63,8 +65,10 @@ func raddleFindingLines(findings []raddleparser.Finding) []string {
 	return lines
 }
 
-// refuseOutsideRaddleWrite refuses, with the way forward, a run whose recipe has no RaddleWrite row and a run whose current row is not that row.
-// It returns the exit code and true when it refused or could not read the rows, and false when the run stands at the row.
+// refuseOutsideRaddleWrite refuses, with the way forward, a run whose recipe has no RaddleWrite row;
+// it refuses a run whose current row is not that row too.
+// It returns the exit code and true when it refused or could not read the rows;
+// it returns false when the run stands at the row.
 func refuseOutsideRaddleWrite(out io.Writer, verb string, deps raddleVerbDeps) (int, bool) {
 	row, hasRow, err := deps.row()
 	if err != nil {
@@ -90,8 +94,11 @@ func refuseOutsideRaddleWrite(out io.Writer, verb string, deps raddleVerbDeps) (
 // raddleProposeVerb checks the proposal on disk and reports a JSON envelope naming the result, returning the exit code.
 // It refuses, each with its way forward, a recipe with no RaddleWrite row and a run whose current row is not that row.
 // Findings come back as an error envelope carrying them, and store nothing.
-// A passing call stores the proposal as the cold proposal when none is stored yet, records the session as proposed, and posts the parent orch that a proposal waits for the operator on the first pass of a Raddle-Write session.
-// A failed notice leaves the session without one, so the next passing call posts it again, and raddle-approve refuses until it is posted.
+// A passing call stores the proposal as the cold proposal when none is stored yet,
+// and it records the session as proposed.
+// On the first pass of a Raddle-Write session it also posts the parent orch that a proposal waits for the operator.
+// A failed notice leaves the session without one, so the next passing call posts it again;
+// raddle-approve refuses until it is posted.
 func raddleProposeVerb(out io.Writer, deps raddleVerbDeps) int {
 	const verb = "raddle-propose"
 	if code, refused := refuseOutsideRaddleWrite(out, verb, deps); refused {
@@ -136,10 +143,19 @@ func raddleProposeVerb(out io.Writer, deps raddleVerbDeps) int {
 	})
 }
 
-// raddleApproveVerb approves the proposal on disk and reports a JSON envelope naming the approval, returning the exit code.
-// It refuses, each with its way forward, a recipe with no RaddleWrite row, a run whose current row is not that row, a Raddle-Write session with no passing propose, a session whose waiting notice was not posted, a proposal that is not valid and a board that moved since the proposal was checked.
-// On success it records the hash of the proposal file with the session in the run's state, then writes the approval record, and names the board entries that landed meanwhile.
-// The verb cannot tell the operator from the agent, so an approval with no operator input is prevented only by the stencil.
+// raddleApproveVerb approves the proposal on disk and reports a JSON envelope naming the approval.
+// It returns the exit code.
+// It refuses, each with its way forward:
+// a recipe with no RaddleWrite row;
+// a run whose current row is not that row;
+// a Raddle-Write session with no passing propose;
+// a session whose waiting notice was not posted;
+// a proposal that is not valid;
+// or a board that moved since the proposal was checked.
+// On success it records the hash of the proposal file with the session in the run's state;
+// then it writes the approval record, and names the board entries that landed meanwhile.
+// The verb cannot tell the operator from the agent,
+// so an approval with no operator input is prevented only by the stencil.
 func raddleApproveVerb(out io.Writer, deps raddleVerbDeps) int {
 	const verb = "raddle-approve"
 	if code, refused := refuseOutsideRaddleWrite(out, verb, deps); refused {
@@ -200,7 +216,7 @@ func raddleApproveVerb(out io.Writer, deps raddleVerbDeps) int {
 	})
 }
 
-// raddleVerbDeps assembles the seams of the raddle verbs for the run c armed.
+// raddleVerbDeps assembles the seams of the raddle verbs for the run that c has armed.
 // Every closure reads or writes on demand and opens nothing at build time.
 func (c *loomCLI) raddleVerbDeps() raddleVerbDeps {
 	return raddleVerbDeps{
@@ -226,7 +242,9 @@ func (c *loomCLI) raddleVerbDeps() raddleVerbDeps {
 	}
 }
 
-// raddleVerbCmd builds a raddle verb's subcommand over verb.
+// raddleVerbCmd builds the subcommand for a raddle verb.
+// Running it calls verb with the command's output and the deps of the armed run.
+// It then sets the exit code from verb's result.
 func (c *loomCLI) raddleVerbCmd(use, short, long string, verb func(io.Writer, raddleVerbDeps) int) *cobra.Command {
 	return &cobra.Command{
 		Use:         use,

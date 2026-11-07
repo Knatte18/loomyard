@@ -1,7 +1,6 @@
-// result.go defines the block-level contract Engine.Run reports to its caller: the three-way
-// Outcome, the StuckReason recorded only alongside OutcomeStuck, and the per-round RoundSummary
-// history that lets a caller (or an operator reading state.json) reconstruct exactly what happened
-// each round without re-parsing every artifact file.
+// result.go defines the block-level outcome that Engine.Run returns.
+// It holds the three-way Outcome, the StuckReason set only with OutcomeStuck, and the per-round history.
+// The history lets an operator reading state.json reconstruct each round without re-parsing the artifact files.
 
 package treadleengine
 
@@ -27,7 +26,8 @@ const (
 	StuckCircling      StuckReason = "circling"
 )
 
-// RoundSummary records one round's outcome for the result and state.json.
+// RoundSummary records one round's outcome.
+// It holds the attempts, verdict, blocking count, artifact paths, and judge and gate results.
 // Empty or nil fields mean the corresponding sub-step did not occur.
 type RoundSummary struct {
 	Round           int
@@ -42,10 +42,11 @@ type RoundSummary struct {
 	GatePassed      *bool
 }
 
-// Result is the block-level outcome Engine.Run returns: the terminal Outcome, the StuckReason (set
-// only alongside OutcomeStuck), how many rounds actually ran, and the full per-round history.
-// PAUSED is an operational exit — resumable, not judged — so a caller must branch on Outcome before
-// reading StuckReason.
+// Result is the outcome of one treadle block.
+// It holds the terminal Outcome and the StuckReason, which is set only with OutcomeStuck.
+// It also holds the number of rounds run and the per-round history.
+// PAUSED is an operational exit, resumable and not judged.
+// A caller must check Outcome before it reads StuckReason.
 type Result struct {
 	Outcome     Outcome
 	StuckReason StuckReason

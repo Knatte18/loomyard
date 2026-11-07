@@ -1,5 +1,6 @@
-// entryobservation.go implements loom's entry observation -- the told-input read of the run lock and status file that lets a crash-resume be recognised -- the friction note a recognised one leaves, and the handoff voucher that keeps an operator's step-to-driver handoff from reading as one.
-// Both are functions of told paths, kept here rather than inline in drive's cobra closure so every branch is reachable with no tmux, no git, and no real run.
+// entryobservation.go implements a drive's entry observation, a read of the run lock and status file.
+// It also writes the crash-resume friction note and holds the handoff voucher for step-to-driver handoffs;
+// its functions take paths as arguments, so every branch is reachable with no tmux, no git, and no real run.
 
 package loomcli
 
@@ -18,23 +19,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// handoffVoucher is the machine-local record `lym loom step` writes after every step that returns, with or without an error,
-// and `lym loom start` writes right before it spawns a driver:
-// the persisted history length and state exactly as that step or spawn left them.
-// It exists because a completed step's on-disk aftermath -- state running, run lock free, history non-empty -- is byte-identical to a mid-run driver death,
-// and without this voucher the next drive's entry observation would read as a crash-resume for every operator handing a supervised task to a driver (crucible round 2, R2-F1).
+// handoffVoucher is the machine-local record `lym loom step` writes after every step that returns;
+// `lym loom start` writes one too, before it spawns a driver, and a step writes one with or without an error.
+// It holds the persisted history length and state exactly as that step or spawn left them.
+// A completed step leaves the same on-disk state as a mid-run driver death:
+// running, run lock free, history non-empty.
+// So without it, the next drive would read each operator handoff to a driver as a crash-resume.
 type handoffVoucher struct {
 	HistoryLength int    `json:"history_length"`
 	State         string `json:"state"`
 }
 
-// recordHandoffVoucher writes the handoff voucher, replacing any earlier one, for a step that just
-// returned, with or without an error, or a driver spawn that is about to start, with historyLength persisted entries in persistedState.
+// recordHandoffVoucher writes the handoff voucher, replacing any earlier one.
+// It records historyLength persisted entries and persistedState for a step that returned, with or without an error;
+// a driver spawn about to start is recorded the same way.
 // A write failure is warned and nothing else:
 // the voucher only narrows a false positive, so losing one write costs at most one spurious crash-resume reading.
-// The voucher suppresses at most one entry observation, the first, and only when its history length and state equal what was recorded.
-// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
-// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
+// The voucher suppresses at most one entry observation, the first;
+// it does so only when its history length and state equal what was recorded.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it;
+// until then it may suppress one later matching observation.
+// A driver spawned that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
 func recordHandoffVoucher(path, lockPath string, historyLength int, persistedState shedengine.State) {
 	voucher := handoffVoucher{HistoryLength: historyLength, State: string(persistedState)}
 	if err := state.WriteJSON(path, lockPath, voucher); err != nil {
@@ -42,7 +47,8 @@ func recordHandoffVoucher(path, lockPath string, historyLength int, persistedSta
 	}
 }
 
-// recordHandoffVoucherFromStatus records the handoff voucher from what the status file holds, for a step that returned an error after persisting a transition:
+// recordHandoffVoucherFromStatus records the handoff voucher from the status file.
+// It serves a step that returned an error after persisting a transition:
 // a step process that returns at all did not crash,
 // so what it left on disk is vouched for like a clean step's.
 // It reads the status file strictly and warns, recording nothing, when the read fails or the file is absent.
@@ -59,13 +65,15 @@ func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath s
 	recordHandoffVoucher(path, lockPath, len(st.History), st.State)
 }
 
-// consumeHandoffVoucher reads the handoff voucher, DELETES it, and returns what it read together with whether it matches the observed history length and state.
+// consumeHandoffVoucher reads the handoff voucher and deletes it.
+// It returns what it read and whether it matches the observed history length and state.
 // The delete is the point, not tidying: the voucher is good for exactly one drive entry.
-// Consuming it there means a driver that resumes from a step handoff and then itself dies before appending any history -- an observation otherwise identical to the handoff -- is correctly reported as a crash by the drive after it,
-// instead of being suppressed forever by a voucher nothing invalidated.
+// Consuming it here lets the next drive see a crash that the handoff would otherwise hide.
+// A driver resuming from a step handoff that dies before appending any history looks identical to the handoff;
+// keeping the voucher would hide that crash forever, since nothing would invalidate it.
 // A missing or unreadable voucher reports found false and no match;
-// a delete failure is warned and does not change the result,
-// since a lingering voucher can at worst suppress one further matching observation and the warn names it.
+// a delete failure is warned and does not change the result;
+// a lingering voucher can at worst suppress one further matching observation, and the warning names it.
 func consumeHandoffVoucher(path, lockPath string, historyLength int, observedState shedengine.State) (voucher handoffVoucher, found, matches bool) {
 	voucher, found, err := state.ReadJSON[handoffVoucher](path, lockPath)
 	if err != nil {
@@ -81,16 +89,15 @@ func consumeHandoffVoucher(path, lockPath string, historyLength int, observedSta
 	return voucher, true, voucher.HistoryLength == historyLength && voucher.State == string(observedState)
 }
 
-// observeEntry probes the run lock non-blockingly and, on the reading path, reads the status file,
-// in that order -- an order that is load-bearing and must not be swapped. Probing first is what
-// makes the residual self-correcting: Shed persists its terminal state before Run returns and the
-// deferred release follows, so a driver that finishes between the two steps has already written
-// done, and the read that follows sees done rather than running.
-// After the read it consumes the handoff voucher (handoffVoucher) and reports the
-// match on the observation, so DetectCrashResume can exclude an operator's step-to-driver handoff.
-// When enabled is false it returns the zero observation immediately, performing no probe and no
-// read -- a disabled run must pay for neither, and the voucher is deliberately left unconsumed,
-// since nothing on a disabled run will act on it.
+// observeEntry probes the run lock non-blockingly and, on the reading path, reads the status file, in that order.
+// The order is load-bearing and must not be swapped.
+// Probing first makes the residual self-correcting:
+// Shed persists its terminal state before Run returns, and the deferred release follows,
+// so a driver that finishes between the two steps has already written done, and the read sees done rather than running.
+// After the read it consumes the handoff voucher and reports the match on the observation.
+// DetectCrashResume uses that match to exclude an operator's step-to-driver handoff.
+// When enabled is false it returns the zero observation immediately, performing no probe and no read.
+// A disabled run pays for neither and leaves the voucher unconsumed, because nothing on a disabled run acts on it.
 // Any probe or read failure degrades to a logger.Warn and a zero observation with Observed false;
 // nothing propagates.
 func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoffVoucherPath, handoffVoucherLockPath string) loomengine.EntryObservation {
@@ -143,7 +150,8 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 	}
 }
 
-// writeCrashResumeNote records a detected crash-resume as a friction note named `loom-crash-resume`, for the named verb (`run` or `step`) and the trace file of this invocation.
+// writeCrashResumeNote records a detected crash-resume as a friction note named `loom-crash-resume`.
+// The note names the verb (`run` or `step`) and the trace file of this invocation.
 // It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
 func writeCrashResumeNote(frictionDir string, entry loomengine.EntryObservation, verb, traceFile string) error {
 	if frictionDir == "" {

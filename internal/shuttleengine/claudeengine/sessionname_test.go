@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeSessionTranscript writes lines as session sid's transcript under a temp HOME and returns the workdir it belongs to.
+// writeSessionTranscript writes lines as session sid's transcript under a temp HOME.
+// It returns the workdir the transcript belongs to.
 func writeSessionTranscript(t *testing.T, sid string, lines ...string) string {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -70,7 +71,8 @@ func countNameReadLines(output, level string) int {
 	return count
 }
 
-// replaceTranscriptWithDirectory makes session sid's transcript read fail with something other than not-exist.
+// replaceTranscriptWithDirectory makes session sid's transcript a directory.
+// Reading it then fails with an error other than not-exist.
 func replaceTranscriptWithDirectory(t *testing.T, workdir, sid string) {
 	t.Helper()
 	dir, _ := claudeProjectDirFor(workdir)
@@ -83,7 +85,7 @@ func replaceTranscriptWithDirectory(t *testing.T, workdir, sid string) {
 	}
 }
 
-// The tests below capture the process-global logger at Debug, so neither is parallel.
+// Tests that capture the process-global logger at Debug cannot run in parallel.
 func TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Setenv("HOME", t.TempDir())

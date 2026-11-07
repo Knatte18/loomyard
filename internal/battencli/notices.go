@@ -1,4 +1,5 @@
-// notices.go resolves where batten's notices about one run go: batten acts from the prime's location, but a notice takes the walk up the beam chain from the run's own pair, never from where batten runs.
+// notices.go resolves where batten's notices about one run go: batten acts from the prime's location,
+// but a notice takes the walk up the beam chain from the run's own pair, never from where batten runs.
 
 package battencli
 
@@ -12,8 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 )
 
-// notifyRunParent sends line as creel mail to the nearest live orch above the run slug, signed as batten, and reports whether it was posted.
-// The walk starts at the run's pair when it is present here, else at the worktree the pair forks or forked from, else at the prime.
+// notifyRunParent sends line as creel mail to the nearest live orch above the run slug, signed as batten.
+// It reports whether the mail was posted.
+// The walk starts at the run's pair when it is present here.
+// Otherwise it starts at the worktree the pair forks or forked from, if that worktree is present here.
+// Failing that, it starts at the prime.
 func notifyRunParent(prime *lymcwd.Location, slug, line string) (bool, error) {
 	site, isPair, err := runNoticeSite(prime, slug)
 	if err != nil {
@@ -25,7 +29,8 @@ func notifyRunParent(prime *lymcwd.Location, slug, line string) (bool, error) {
 	return orchcli.NotifyFrom(site, battenProgram, line)
 }
 
-// runParentRecorded reports whether the destination notifyRunParent walks to for the run slug records an orch strand, which is what decides a run to be watched or silent.
+// runParentRecorded reports whether the live orch above the run slug records an orch strand.
+// The answer decides whether the run is watched or silent.
 func runParentRecorded(prime *lymcwd.Location, slug string) (bool, error) {
 	site, isPair, err := runNoticeSite(prime, slug)
 	if err != nil {
@@ -52,14 +57,18 @@ func runParentRecorded(prime *lymcwd.Location, slug string) (bool, error) {
 	return recorded, err
 }
 
-// runNoticeSite is noticeSite over the hub: the run's pair is looked up under the prime's hub, and its parent is hubgeom's.
+// runNoticeSite resolves the site a notice about the run slug starts from, under the prime's hub.
+// The run's pair is looked up under that hub, and its parent comes from `hubgeom`.
 func runNoticeSite(prime *lymcwd.Location, slug string) (site *lymcwd.Location, isPair bool, err error) {
 	return noticeSite(prime, slug,
 		func() (*lymcwd.Location, bool, error) { return presentWorktree(prime, slug) },
 		func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) })
 }
 
-// noticeSite picks the worktree a walk for the run slug starts at: the run's pair when pair finds it present here, else the worktree the pair forks or forked from, parentOf's answer, when that worktree is present here, else the prime.
+// noticeSite picks the worktree a walk for the run slug starts at.
+// It is the run's pair when pair finds it present here.
+// Otherwise it is the worktree parentOf names, when that worktree is present here.
+// If neither applies, it is the prime.
 // isPair reports that the site is the run's own pair, whose walk starts at its recorded parent.
 func noticeSite(prime *lymcwd.Location, slug string, pair func() (*lymcwd.Location, bool, error), parentOf func(slug string) (string, error)) (site *lymcwd.Location, isPair bool, err error) {
 	location, found, err := pair()

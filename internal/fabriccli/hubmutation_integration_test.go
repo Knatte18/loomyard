@@ -1,5 +1,9 @@
-// hubmutation_integration_test.go drives the fabric CLI's mutating verbs — the two-sided bypass push, "push" from a task pair and from the prime, "add", "remove" and "reconcile" — against one real hub as an ordered scenario, asserting each verb's envelope and exit-code contract:
-// a pre-flight failure is a bare error carrying neither "mutations" nor "partial", reconcile heals missing hub-wide config and skips the heal while the board remote is unreachable, a pair that vanished mid-walk is not a failure, and a pair reconcile could not repair is.
+// hubmutation_integration_test.go drives the fabric CLI's mutating verbs against one real hub as an ordered scenario.
+// It covers the two-sided bypass push, "push" from a task pair and from the prime, "add", "remove" and "reconcile".
+// It asserts each verb's envelope and exit-code contract.
+// A pre-flight failure is a bare error with neither "mutations" nor "partial".
+// Reconcile heals missing hub-wide config, and it skips that heal while the board remote is unreachable.
+// A pair that vanished mid-walk is not a failure; a pair reconcile could not repair is.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -24,8 +28,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub checks that a bypass push run from a hub's board worktree points the process-wide trace sink at that hub's logs directory.
-// It stays serial (no t.Parallel): the trace sink is process-global state, and a parallel test's verb would repoint it between the push and the read.
+// TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub runs a bypass push from a hub's board worktree.
+// It checks that the process-wide trace sink points at that hub's logs directory afterwards.
+// It stays serial, without t.Parallel.
+// The trace sink is process-global state, and a parallel test's verb would repoint it between the push and the read.
 func TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -48,8 +54,9 @@ func TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
 }
 
 // TestRunCLI_HubMutationScenario runs the mutating-verb checks over one hub.
-// Steps run serially in this order, each one leaving state the next tolerates:
-// the steps that break the board remote or plant an unrepairable pair come last, because every later reconcile would otherwise see that damage.
+// Steps run serially in this order, each one leaving state the next tolerates.
+// The steps that break the board remote or plant an unrepairable pair come last.
+// Every later reconcile would otherwise see that damage.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_HubMutationScenario(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -62,8 +69,10 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"BypassPushAdvancesBothUpstreams", func(t *testing.T) {
-			// With unpushed commits on both sides, --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches their local checkout's HEAD.
-			// Add one more commit on top of the weft side's already-pushed history, so the weft side has something genuinely unpushed to push.
+			// With unpushed commits on both sides, --warp-path/--weft-path bypass push exits 0,
+			// and both bare upstreams' HEAD matches their local checkout's HEAD.
+			// Add one more commit on top of the weft side's already-pushed history,
+			// so the weft side has something unpushed to push.
 			placeholderFile := filepath.Join(h.PrimeRecords(), lymdirs.LymDirName, "placeholder")
 			if err := os.WriteFile(placeholderFile, []byte("bypass push test"), 0o644); err != nil {
 				t.Fatalf("WriteFile: %v", err)
@@ -71,13 +80,17 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			gitkit.MustRun(t, h.PrimeRecords(), "git", "add", ".")
 			gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-q", "-m", "weft bypass push")
 
-			// The prime pair's weft branch, so the bare-side assertion below checks that branch specifically rather than the bare's own HEAD symref -- a real hub's weft bare also carries weft:main's own "main" branch (the board checkout), and the bare's default HEAD may not name the prime pair's branch.
+			// The prime pair's weft branch: the bare-side assertion below checks that branch, not the bare's own HEAD symref.
+			// A real hub's weft bare also carries weft:main's own "main" branch, the board checkout,
+			// and its default HEAD may not name the prime pair's branch.
 			weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "rev-parse", "--abbrev-ref", "HEAD"))
 			wantWeftSHA := gitkit.RevParse(t, h.PrimeRecords(), "HEAD")
 			wantWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
-			// A real forked push child cannot itself be observed from a test binary (it would re-exec the test binary), so the synchronous bypass handler it runs is the deterministic proof that a supplied path is pushed.
-			// It runs from the hub's board worktree, where the real child starts, because the bypass branch resolves its hub from cwd and points the process-wide trace sink there.
+			// A real forked push child cannot be observed from a test binary, since it would re-exec the test binary.
+			// The synchronous bypass handler that the child runs is the deterministic proof that a supplied path is pushed.
+			// It runs from the hub's board worktree, where the real child starts.
+			// The bypass branch resolves its hub from cwd and points the process-wide trace sink there.
 			traceSinkMu.RLock()
 			t.Cleanup(traceSinkMu.RUnlock)
 			t.Cleanup(func() { logger.SetDurableSinkDir("") })
@@ -101,7 +114,8 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"PushPushesBothSidesOfATaskPair", func(t *testing.T) {
-			// With unpushed commits on both sides of a task pair, "lym fabric push" from the pair's code worktree exits 0, both bare upstreams sit at their local checkout's HEAD, and nothing is reported as skipped.
+			// With unpushed commits on both sides of a task pair, "lym fabric push" run from the pair's code worktree exits 0.
+			// Both bare upstreams sit at their local checkout's HEAD, and nothing is reported as skipped.
 			// The pair is removed again so the later steps see the hub they expect.
 			const slug = "push-both-sides-pair"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
@@ -198,7 +212,9 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"Reconcile_HealsMissingRepoWideConfig", func(t *testing.T) {
-			// reconcile self-heals the hub-wide fabric.yaml and board.yaml: on a hub that has none, it used to fail with "not initialized here; run \"lym fabric reconcile\"" — prescribing the command that just failed — and must instead materialize the configs, commit them in the Bolt checkout and proceed. board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
+			// reconcile self-heals the hub-wide fabric.yaml and board.yaml on a hub that has neither.
+			// It materializes the configs, commits them in the Bolt checkout and proceeds.
+			// board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
 			// Rows run in this order on the one hub: each row deletes the configs again, which are committed by the previous row's heal.
 			const primeBoard = "types:\n  spike: A time-boxed investigation\n"
 
@@ -213,7 +229,9 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 			for _, tt := range tests {
 				if !t.Run(tt.name, func(t *testing.T) {
-					// hubforge.NewHub always materializes the hub-wide configs as part of building a real hub, so the "missing config" state this test exists to heal must be produced by hand here -- an operator deleting the files is exactly the scenario the healing logic guards against.
+					// hubforge.NewHub materializes the hub-wide configs when it builds a real hub.
+					// This test therefore produces the missing-config state by hand.
+					// An operator deleting the files is the scenario the healing logic guards against.
 					fabricPath := configengine.ConfigFile(h.BoardDir(), "fabric")
 					boardPath := configengine.ConfigFile(h.BoardDir(), "board")
 					for _, path := range []string{fabricPath, boardPath} {
@@ -324,10 +342,12 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileDoesNotFailOnAPairThatVanishedMidWalk", func(t *testing.T) {
-			// The counter-assertion to the unrepairable-pair step below; the two must be read together.
-			// Once a per-pair error drives reconcile's exit code, the verb becomes sensitive to a race it cannot avoid: `git worktree list` is read once, before the per-pair loop, so a concurrent `lym fabric remove`/`prune` can delete a pair between the enumeration and the iteration that reaches it.
-			// Without the vanished-mid-walk verdict, that ordinary teardown would fail every enclosing reconcile.
-			// Deleting the directory while leaving git's registration in place is exactly the state the race produces, and needs no actual concurrency to construct.
+			// A pair that vanishes mid-walk must not fail reconcile.
+			// reconcile reads `git worktree list` once, before the per-pair loop,
+			// so a concurrent `lym fabric remove` or `prune` can delete a pair before the loop reaches it.
+			// The vanished-mid-walk verdict keeps that ordinary teardown from failing the enclosing reconcile.
+			// Deleting the directory while leaving git's registration in place is the state the race produces.
+			// The test builds that state directly, so it needs no real concurrency.
 			const slug = "vanished-cli"
 			hubforge.AddPair(t, h, slug)
 
@@ -393,8 +413,11 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"Remove_RefusesDriftedLauncherDirLinkWithRefusalObject", func(t *testing.T) {
-			// A real gate refusal through "fabric remove --force", reached via fabricengine.RefusalOf's own contract rather than a hand-rolled stub: the pair's launcher directory is moved outside the hub and a link to it left in its place, so removeLaunchers' first script removal resolves the script's parent through that link to outside _launchers and the containment check refuses, and its error propagates through Remove's %w-wrapped chain to runRemove's errWithRecord call.
-			// The "refusal" object carries all four keys (check, what, target, reason), the flattened "error" string is still present alongside it, and this is the repo's only positive assertion that the "refusal" object reaches an envelope.
+			// A real gate refusal through "fabric remove --force", reached via fabricengine.RefusalOf's contract, not a stub.
+			// The pair's launcher directory is moved outside the hub and a link is left in its place,
+			// so the containment check refuses removeLaunchers' first script removal.
+			// The "refusal" object carries all four keys (check, what, target, reason),
+			// and the flattened "error" string is still present alongside it.
 			hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
 			const slug = "remove-refusal-launcher"
@@ -514,16 +537,19 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileReportsAFailedPairAsAFailure", func(t *testing.T) {
-			// The full envelope contract on the pair-failure path: exit 1, "ok":false, a non-empty "error", and — the half a bare non-zero exit would lose — the per-pair "pairs" report still present, so a caller learns WHICH pair failed.
-			// Before the fix, reconcile exited through okWithRecord, so a reconcile that failed to re-point a junction printed "ok":true and exited 0 while carrying the reason only in pairs[].error.
-			// The failing state is induced through adoption's ONE remaining hard refusal — a warp-side real .lym holding an entry that collides with a non-directory at the weft target — because that refusal is deterministic and needs no racing.
+			// The envelope on the pair-failure path:
+			// exit 1, "ok":false, a non-empty "error", and the per-pair "pairs" report, so a caller learns which pair failed.
+			// A reconcile that fails a pair must not print "ok":true, since the reason would then sit only in pairs[].error.
+			// The failing state comes from a hard refusal in adoption:
+			// a warp-side real .lym holding an entry that collides with a non-directory at the weft target.
+			// That refusal is deterministic, so the test needs no race.
 			l := h.Location
 			warpWorktree := l.WorktreePath()
 			warpDotLym := filepath.Join(warpWorktree, l.AnchorRel, lymdirs.DotLymDirName)
 			weftDotLym := filepath.Join(h.PrimeRecords(), l.AnchorRel, lymdirs.DotLymDirName)
 
-			// Tear the wired junction down to a real directory, then plant a collision adoption still
-			// refuses: the same name is a FILE on the warp side and a DIRECTORY on the weft side.
+			// Tear the wired junction down to a real directory, then plant a collision that adoption refuses:
+			// the same name is a FILE on the warp side and a DIRECTORY on the weft side.
 			if err := fslink.Remove(warpDotLym); err != nil {
 				t.Fatalf("remove wired .lym junction: %v", err)
 			}

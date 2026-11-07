@@ -1,4 +1,4 @@
-// reap.go ends the orphaned run processes one fresh reading of the processes part finds.
+// reap.go ends the orphaned run processes that a fresh reading of the processes part finds.
 
 package tenderengine
 
@@ -18,7 +18,7 @@ type ReapedProcess struct {
 	Role string `json:"role"`
 }
 
-// ReapReport is what a reap ended, what survived it and the processes reading it acted on.
+// ReapReport is what a reap ended, what survived it, and the processes reading it acted on.
 type ReapReport struct {
 	// Ended holds each process the reap ended.
 	Ended []ReapedProcess `json:"ended"`
@@ -29,9 +29,15 @@ type ReapReport struct {
 }
 
 // Reap takes one fresh reading of the processes part and ends exactly its orphans.
-// An owner whose every record reads orphan is ended as a whole; an orphan record of an owner that keeps a record working inside a worktree is ended by its pid and recorded start time, and so is each unregistered orphan by the start time of the same reading, so a pid reused since is left alone.
-// It never ends a hub-owner process, a process whose pair exists, one working inside a registered worktree or one of a slug whose batten reads running, because none of those reads as an orphan.
-// A survivor makes it return the report and an error naming each survivor and the way forward of running the verb again once it is gone;
+// An owner whose every record reads orphan is ended as a whole.
+// An orphan record of an owner that keeps a working record in a worktree is ended by its pid and recorded start time.
+// Each unregistered orphan is ended by its pid and the start time of the same reading.
+// A pid reused since is left alone.
+// It never ends a hub-owner process or a process whose pair exists.
+// It never ends a process working inside a registered worktree or one of a slug whose batten reads running.
+// None of these reads as an orphan.
+// A survivor makes it return the report and an error naming each survivor and the way forward:
+// run the verb again once it is gone;
 // any other end error is returned after the remaining orphans are tried.
 func Reap(deps Deps) (ReapReport, error) {
 	var (

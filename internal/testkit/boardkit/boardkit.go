@@ -1,4 +1,5 @@
-// Package boardkit builds board fixtures: a hub whose board directory holds only the board config, and a board file holding given entries.
+// Package boardkit builds board fixtures:
+// a hub whose board directory holds only the board config, and a board file holding given entries.
 //
 // It gives tests that open the hub's board through boardengine.OpenHub a hub with no git and no other fixture.
 // It gives tests that read the board's entries a board file without a Board.
@@ -20,7 +21,8 @@ import (
 var installReplayOnce sync.Once
 
 // InstallReplay registers boardengine.FabricReplay as a fabricengine Bolt replayer, once per process.
-// A test binary never runs the lym root pre-run that registers it, so a test that reaches a Bolt replay or the ended-set rule calls this first.
+// A test binary never runs the lym root pre-run that registers it,
+// so a test that reaches a Bolt replay or the ended-set rule calls this first.
 // The registration is never restored, so parallel tests share the one registration of the same value.
 func InstallReplay(tb testing.TB) {
 	tb.Helper()
@@ -29,7 +31,8 @@ func InstallReplay(tb testing.TB) {
 	})
 }
 
-// HubWithBoardConfig makes a temp hub whose Bolt checkout holds the default board config and nothing else, and returns the hub path.
+// HubWithBoardConfig makes a temp hub whose Bolt checkout holds the default board config and nothing else.
+// It returns the hub path.
 // It fails the test on a setup error.
 func HubWithBoardConfig(t *testing.T) string {
 	t.Helper()
@@ -44,7 +47,8 @@ func HubWithBoardConfig(t *testing.T) string {
 	return hub
 }
 
-// WriteBoard writes the board file under boardDir holding entries, each one entry's JSON object, creating boardDir when it is absent and replacing any board file there.
+// WriteBoard writes the board file under boardDir holding entries, each one entry's JSON object.
+// It creates boardDir when it is absent and replaces any board file there.
 // It fails the test on a setup error.
 func WriteBoard(t *testing.T, boardDir string, entries ...string) {
 	t.Helper()

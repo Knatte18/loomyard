@@ -1,21 +1,18 @@
-// pull.go implements the fast-forward-only pull surface: Pull runs `git pull --ff-only` against
-// this Repo's checkout, refusing to create a merge commit when the local branch has diverged from
-// its upstream.
-// Fetch sits alongside Pull as the fetch-without-merge primitive: it refreshes this checkout's
-// remote-tracking refs without ever touching the local branch, the split fabric.Fabric.Pull needs
-// to inspect what changed upstream before deciding how to reconcile.
+// pull.go implements the fast-forward-only pull and the fetch beside it.
+// Pull runs `git pull --ff-only` against this checkout.
+// It refuses to create a merge commit when the local branch has diverged from its upstream.
+// Fetch refreshes the remote-tracking refs and never touches the local branch.
+// A caller uses it to inspect what changed upstream before it reconciles.
 // Both run git under the repository's remote-refs lock, since both write remote-tracking refs.
 
 package gitrepo
 
 import "fmt"
 
-// Pull fast-forwards the current branch from upstream via `git pull --ff-only`, refusing a diverged
-// branch.
-// Errors name the repo path and git's exit code, and tell the operator the exact command that
-// reproduces git's own diagnosis — raw stderr is deliberately NOT folded into the error
-// (pull_test.go pins that contract), so the reproduction pointer is what keeps a nonzero exit
-// diagnosable instead of a bare number.
+// Pull fast-forwards the current branch from upstream via `git pull --ff-only` and refuses a diverged branch.
+// Errors name the repo path and git's exit code, and give the command that reproduces git's own diagnosis.
+// Raw stderr stays out of the error, and pull_test.go enforces that.
+// The reproduction command is what keeps a nonzero exit diagnosable instead of a bare number.
 func (r *Repo) Pull() error {
 	var code int
 	err := r.withRemoteRefs(func() (runErr error) {
@@ -32,9 +29,9 @@ func (r *Repo) Pull() error {
 	return nil
 }
 
-// Fetch refreshes remote-tracking refs via `git fetch` without moving the local branch, unlike
-// Pull.
-// Errors follow Pull's style: repo path, exit code, and the reproducing command, never raw stderr.
+// Fetch refreshes remote-tracking refs via `git fetch` and leaves the local branch where it is.
+// Errors name the repo path and git's exit code, and give the command that reproduces git's own diagnosis.
+// Raw stderr stays out of the error.
 func (r *Repo) Fetch() error {
 	var code int
 	err := r.withRemoteRefs(func() (runErr error) {

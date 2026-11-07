@@ -1,4 +1,5 @@
-// runs.go selects the finished runs of a report: one run per archive tag, full when its records show a finished run of a selected recipe, tapestry or darn, and partial otherwise.
+// runs.go selects the finished runs of a report, one per archive tag.
+// A tag names a full run when its records show a finished tapestry or darn run, and a partial run otherwise.
 
 package reportengine
 
@@ -20,10 +21,11 @@ import (
 // SourceBatten is the name of the source holding a run's batten status snapshots.
 const SourceBatten = "batten"
 
-// runRecipes are the recipes whose seeded runs a report selects: each writes the tapestry run directory, status and Finalize row the selection reads.
+// runRecipes are the recipes whose seeded runs a report selects:
+// each writes the tapestry run directory, status and Finalize row that the selection reads.
 var runRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn}
 
-// RunRow is one full run.
+// RunRow is one full run, the row a report makes for one archive tag.
 // Recipe is the recipe its seed names, one of the recipes a report selects.
 // Sources maps each source name to whether the run holds it; a source a run lacks is absent, never counted as zero.
 type RunRow struct {
@@ -38,11 +40,13 @@ type RunRow struct {
 	// Wakes maps each wake source to its wakes, nil for a source the run lacks.
 	Wakes map[string]*WakeSource `json:"wakes"`
 
-	// Automatic counts batten's automatic steps by kind, and Paused its paused changes; both are nil without the batten source.
+	// Automatic counts batten's automatic steps by kind, and Paused its paused changes;
+	// both are nil without the batten source.
 	Automatic map[string]int `json:"automatic"`
 	Paused    *int           `json:"paused"`
 
-	// ParentReviewPings sums the keep-alives of every parent-review round, beside the wakes and never as one; nil without the parent-review source.
+	// ParentReviewPings sums the keep-alives of every parent-review round, counted beside the wakes and never as a wake;
+	// nil without the parent-review source.
 	ParentReviewPings *int `json:"parent_review_pings"`
 
 	// Alignment counts the alignment attempts per point and verdict word; nil without the alignment source.
@@ -61,7 +65,8 @@ type RunRow struct {
 	// DriveReports is the number of driver attempts reported; nil without the drive-reports directory.
 	DriveReports *int `json:"drive_reports"`
 
-	// Segments maps each review segment, and the parent review, to its rounds; a segment the run lacks but another selected run holds is nil.
+	// Segments maps each review segment, and the parent review, to its rounds;
+	// a segment the run lacks but another selected run holds is nil.
 	Segments map[string]*SegmentRounds `json:"segments"`
 
 	// Decisions counts the entries added after the discussion per author; nil without the decision record.
@@ -73,7 +78,8 @@ type RunRow struct {
 	// battenCommit is the records commit holding the run's batten record, empty without one.
 	battenCommit string
 
-	// childSettles and battenSettles are the settle records read from the tapestry run's file and from batten's, in file order; only readSettles fills them.
+	// childSettles and battenSettles are the settle records read from the tapestry run's file and from batten's;
+	// both keep file order, and only readSettles fills them.
 	childSettles  []shedrun.SettleRecord
 	battenSettles []shedrun.SettleRecord
 
@@ -83,11 +89,13 @@ type RunRow struct {
 	// startedAt is the loom seed's started_at stamp, empty when the seed carries none.
 	startedAt string
 
-	// inFlight marks a run read from a live pair's records branch, and currentProducer is the loom status's current producer at that tip.
+	// inFlight marks a run read from a live pair's records branch.
+	// currentProducer is the loom status's current producer at that tip.
 	inFlight        bool
 	currentProducer string
 
-	// changes are the child state changes batten recorded, and accountedChild the indexes of childHistory entries an automatic step accounts for.
+	// changes are the child state changes batten recorded.
+	// accountedChild holds the indexes of childHistory entries that an automatic step accounts for.
 	changes        []battenshed.StateChange
 	automaticSteps []battenshed.AutomaticStep
 	accountedChild []int
@@ -118,7 +126,8 @@ func isoWeekLabel(at time.Time) string {
 	return fmt.Sprintf("%d-W%02d", year, week)
 }
 
-// selectRuns adds a run, a partial run or a finding to report for every archive tag of src committed on or after opts.Since.
+// selectRuns adds a run, a partial run or a finding to report for each archive tag of src.
+// A tag committed before opts.Since is skipped.
 func selectRuns(src Sources, opts Options, report *Report) error {
 	batten, err := newBattenIndex(src)
 	if err != nil {
@@ -216,7 +225,8 @@ func noFinalizeReason() string {
 }
 
 // selectedTag is an archive tag the selection read, kept for the landing join.
-// run indexes Report.Runs and is -1 for a partial tag; finalizeDone is meaningful for a full run, noFinalize for a partial one.
+// run is the index of the tag's run in the report's runs, or -1 for a partial tag;
+// finalizeDone is meaningful for a full run, noFinalize for a partial one.
 type selectedTag struct {
 	tag          gitrepo.TagRef
 	slug         string
@@ -226,15 +236,20 @@ type selectedTag struct {
 	noFinalize   bool
 }
 
-// landingInputs are what run selection hands the landing join: the tags it read, each slug's landing checkpoints oldest first, and each slug's newest archive tag time.
+// landingInputs are what run selection hands the landing join:
+// the tags it read, each slug's landing checkpoints oldest first, and each slug's newest archive tag time.
 type landingInputs struct {
 	selected    []selectedTag
 	checkpoints map[string][]time.Time
 	newestTag   map[string]time.Time
 }
 
-// readLoomRecords reads the tapestry run directory's seed and status at tag's commit through the shared record parsers, and returns both.
-// A non-empty reason means the tag is not a full run: its seed names a recipe a report does not select, a record is absent or does not decode, or the history holds no Finalize entry.
+// readLoomRecords reads the seed and status of the tapestry run directory at the tag's commit;
+// it goes through the shared record parsers and returns both.
+// A non-empty reason means the tag is not a full run:
+// its seed names a recipe a report does not select;
+// a record is absent or does not decode;
+// or the history holds no Finalize entry.
 // A record that exists but does not decode is also a finding.
 func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (seed shedrun.Seed, status shedengine.Status, reason string, findings []Finding, err error) {
 	rels, relErr := shedrun.TreeRunRels(slug)

@@ -1,4 +1,4 @@
-// tiers.go — the gate config's test tiers: their type, the load-time decoding and validation, and the use-time lookups a verify site renders its gate call from.
+// tiers.go holds the gate config's test tiers: their type, load-time decoding and validation, and use-time lookups.
 
 package gateslot
 
@@ -15,11 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// Tier is one test tier the hub declares in gate.yaml: the command a run executes, its bounds and how its output is counted.
+// Tier is one test tier the hub declares in gate.yaml: its command, bounds and how its output is counted.
 type Tier struct {
 	// About is one line saying what the tier tests.
 	About string
-	// Command is the shell command a run executes, with the placeholders {targets}, {parallel}, {args}, {filter} and {test_timeout}.
+	// Command is the shell command run, with placeholders {targets}, {parallel}, {args}, {filter} and {test_timeout}.
 	Command string
 	// Dir is the run directory relative to the worktree root, empty when gate.yaml sets none.
 	Dir string
@@ -31,7 +31,7 @@ type Tier struct {
 	Parallel int
 	// TimeoutMin is the minutes the tier may run once its slots are held.
 	TimeoutMin int
-	// TestTimeoutMin is the minutes the command's {test_timeout} placeholder renders, the test runner's own bound on one test binary; 0 when the command holds no such placeholder.
+	// TestTimeoutMin is the per-binary bound the {test_timeout} placeholder renders, in minutes; 0 when there is none.
 	TestTimeoutMin int
 	// Counter names how the command's output is counted: go-json or vstest.
 	Counter string
@@ -45,9 +45,9 @@ type Tier struct {
 	Manual bool
 	// Filter is the tier's own test-filter expression, which a run renders into the command's {filter} placeholder.
 	Filter string
-	// SharedBuild makes the tier run after the hub's build step, which the first such tier of a call runs once for all of them.
+	// SharedBuild makes the tier run after the hub's build step, which the first such tier of a call runs once for all.
 	SharedBuild bool
-	// NoCarry keeps a green run of the tier from being carried over an unchanged tree; it is the negative form of the carry key, so a zero Tier carries.
+	// NoCarry keeps a green run from being carried over an unchanged tree; the zero value carries.
 	NoCarry bool
 }
 
@@ -71,14 +71,15 @@ type tierFile struct {
 	Carry          *bool             `yaml:"carry"`
 }
 
-// TestTimeoutPlaceholder is the tier command placeholder a run fills with the tier's TestTimeoutMin followed by `m`, such as `20m`, the duration form `go test -timeout` reads.
+// TestTimeoutPlaceholder is the tier command placeholder a run fills with the tier's TestTimeoutMin followed by `m`.
+// It renders as a duration such as `20m`, the form `go test -timeout` reads.
 const TestTimeoutPlaceholder = "{test_timeout}"
 
 // DefaultTestTimeoutMin is the TestTimeoutMin of a tier whose command holds TestTimeoutPlaceholder and that sets no test_timeout_min.
 // It leaves room above the wall of the slowest package on a heavily loaded machine.
 const DefaultTestTimeoutMin = 20
 
-// GateKey is one gate.yaml key: the tier numbers a site runs, the scope form its call runs them over and the lint steps it runs after them.
+// GateKey is one gate.yaml key: the tiers a site runs, the scope its call runs them over, and its lints.
 type GateKey struct {
 	// Tiers are the tier numbers the key runs, in order.
 	Tiers []int `yaml:"tiers"`
@@ -86,7 +87,7 @@ type GateKey struct {
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
-	// Fixer is the model-spec of the cold fixer an agent's red call of this key hands its verdict to; empty turns the fixer off.
+	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
 	// Only the card key may hold one.
 	Fixer string `yaml:"fixer"`
 }
@@ -103,9 +104,9 @@ const (
 
 // Lint step names a gate key's lints may hold.
 const (
-	// LintComments is the comment line-break lint: the fixed-column-wrapped breaks the working tree adds to `//` comment blocks against HEAD.
+	// LintComments is the comment line-break lint: it flags fixed-column wraps added to `//` blocks versus HEAD.
 	LintComments = "comments"
-	// LintPattern is the PATTERN headroom lint: growth of the working tree's PATTERN.md past its headroom line against HEAD's.
+	// LintPattern is the PATTERN headroom lint: it flags PATTERN.md growth past its headroom line versus HEAD.
 	LintPattern = "pattern"
 )
 
@@ -287,8 +288,10 @@ func useRefusal(format string, args ...any) error {
 	return fmt.Errorf("gate config: %s; fix it with \"lym config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
 }
 
-// WithDefaultDir returns c with every tier and the build step that set no dir running in dir, a path relative to the worktree root.
-// A gate run fills it with the worktree's anchor, so a hub whose commands only work in a subdirectory anchor need not spell it per tier.
+// WithDefaultDir returns c with dir as the run directory of every tier and of the build step that set none.
+// dir is a path relative to the worktree root.
+// A gate run fills it with the worktree's anchor.
+// A hub whose commands only work in a subdirectory anchor need not set dir per tier.
 func (c Config) WithDefaultDir(dir string) Config {
 	tiers := make(map[string]Tier, len(c.Tiers))
 	for key, tier := range c.Tiers {
@@ -314,7 +317,7 @@ func (c Config) Tier(number int) (Tier, error) {
 }
 
 // Gate returns the named gate key's tiers and scope.
-// It refuses, naming lym config gate, a hub with no tier0, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare.
+// It refuses, naming lym config gate, a hub with no tier0, a missing key, an empty list, or an undeclared tier.
 func (c Config) Gate(key string) (GateKey, error) {
 	if _, declared := c.Tiers[tierKey(0)]; !declared {
 		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
@@ -343,15 +346,18 @@ func (c Config) TierList(gate string) ([]int, error) {
 	return key.Tiers, nil
 }
 
-// GateCall renders the one call a site runs for the named gate key: `lym gate test --wait --gate <key>` followed by one `--card <id>` per card id given.
+// GateCall renders the call a site runs for the named gate key.
+// It is `lym gate test --wait --gate <key>`, followed by one `--card <id>` per card id given.
 // Its `--wait` form is for a call Go runs, at a verify site or through `internal/cardverify` from a Go verb.
 // It refuses, with the refusals Gate gives, a key the config cannot run.
 func (c Config) GateCall(key string, cards ...string) (string, error) {
 	return c.renderGateCall(key, true, cards)
 }
 
-// AgentGateCall renders the one call an agent runs for the named gate key: `lym gate test --gate <key>` followed by one `--card <id>` per card id given.
-// It carries no `--wait`, so an agent strand's call takes the capped form and answers `done: false` with exit 75 when its keep-warm cap passes, instead of blocking one long call.
+// AgentGateCall renders the call an agent runs for the named gate key.
+// It is `lym gate test --gate <key>`, followed by one `--card <id>` per card id given.
+// It carries no `--wait`, so an agent strand's call takes the capped form.
+// It answers `done: false` with exit 75 when its keep-warm cap passes, instead of blocking one long call.
 // It refuses, with the refusals Gate gives, a key the config cannot run.
 func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
 	return c.renderGateCall(key, false, cards)
@@ -373,8 +379,9 @@ func (c Config) renderGateCall(key string, wait bool, cards []string) (string, e
 	return strings.Join(words, " "), nil
 }
 
-// TiersValue renders the value prompts take for the hub's tiers:
-// one line per declared tier in number order, `- tier<N>: <about>`, then one line per Go-read gate key the config lists, `- gate <key>: [<n>, ...] <scope>`.
+// TiersValue renders the value prompts take for the hub's tiers.
+// It holds one line per declared tier in number order: `- tier<N>: <about>`.
+// Then it holds one line per Go-read gate key the config lists: `- gate <key>: [<n>, ...] <scope>`.
 // It is `none` when no tier is declared.
 func (c Config) TiersValue() string {
 	if len(c.Tiers) == 0 {

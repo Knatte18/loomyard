@@ -1,4 +1,6 @@
-// check.go is the hidden `lym adopt check <subject>` verb: it runs the hub's adopt gate in-process in the subject's worktree, keeps its progress in the subject's check.json and reports each tier and the end to that worktree's nearest live orch.
+// check.go implements the hidden `lym adopt check <subject>` verb.
+// It runs the hub's adopt gate in-process in the subject's worktree.
+// It keeps the progress in the subject's check.json and reports each tier and the end to its nearest live orch.
 
 package adoptcli
 
@@ -36,9 +38,10 @@ import (
 )
 
 const (
-	// checkRecordName is the progress record of the adopt check, beside suiteLogName.
+	// checkRecordName is the name of the file that holds the adopt check's progress record.
 	checkRecordName = "check.json"
-	// checkOutName is the file the spawned check's stdout and stderr go to, so a losing check's envelope and a panic are on disk.
+	// checkOutName is the file the spawned check's stdout and stderr go to,
+	// so the envelope of a check that loses the lock and a panic stay on disk.
 	checkOutName = "check.out"
 	// checkLockName is the lock one running check holds.
 	checkLockName = "check.lock"
@@ -50,7 +53,7 @@ const (
 	maxListedFailures = 10
 )
 
-// The states a CheckRecord is in.
+// The states of an adopt check's progress record.
 const (
 	checkRunning = "running"
 	checkGreen   = "green"
@@ -58,11 +61,11 @@ const (
 )
 
 // CheckRecord is the progress of one subject's adopt check, kept in that subject's check.json.
-// An unknown key reads, so a newer writer's record never fails an older reader.
+// Unknown keys are ignored on read, so a record from a newer writer never fails an older reader.
 type CheckRecord struct {
 	// Subject is the beam slug or `root` the check runs for.
 	Subject string `json:"subject"`
-	// PID and StartTicks name the process that wrote the record; StartTicks is its proc.StartTime, empty where the platform cannot read it.
+	// PID and StartTicks name the writing process; StartTicks is its start time, empty where the platform cannot read it.
 	PID        int       `json:"pid"`
 	StartTicks string    `json:"start_ticks,omitempty"`
 	Start      time.Time `json:"start"`
@@ -94,7 +97,9 @@ type CheckTier struct {
 }
 
 // ReadCheck reads the check record at recordPath and reports whether one exists.
-// An absent record reads false without taking a lock or creating a directory, and a record that does not decode reads as absent with one Warn, so a damaged file never blocks the next check from writing a fresh one.
+// An absent record reads false without taking a lock or creating a directory;
+// a record that does not decode reads as absent with one Warn,
+// so a damaged file never blocks the next check from writing a fresh one.
 func ReadCheck(recordPath string) (CheckRecord, bool, error) {
 	if _, err := os.Stat(recordPath); errors.Is(err, os.ErrNotExist) {
 		return CheckRecord{}, false, nil
@@ -107,11 +112,14 @@ func ReadCheck(recordPath string) (CheckRecord, bool, error) {
 	return record, found, err
 }
 
-// checkDeps holds the seams of one check run: the subject it checks, the scratch directory its files sit in, the clock, the process identity it records, the hub reconcile, the owner read, the gate, the notice to the orch and the mark on the prime's status bar.
+// checkDeps holds the seams of one check run: the subject and its scratch directory, the clock and process identity;
+// the hub reconcile, owner read, gate, notice to the orch and mark on the prime's status bar.
 // RunGate runs the check's gate key with log as its output and returns its exit code.
 // OwnedElsewhere returns the machine that owns the subject when it is not this one, "" otherwise.
-// Green runs the green end once the gate exits 0 and the green record is written, and returns the lines to post after the green notice; nil does nothing.
-// Failed runs the fix loop once the gate exits non-zero with a failed tier recorded and the failed record is written, and returns the lines to post after the failed notice; nil does nothing.
+// Green runs the green end once the gate exits 0 and the green record is written.
+// It returns the lines to post after the green notice; nil does nothing.
+// Failed runs the fix loop once the gate exits non-zero with a failed tier recorded and the failed record is written.
+// It returns the lines to post after the failed notice; nil does nothing.
 type checkDeps struct {
 	Subject        string
 	Dir            string
@@ -133,10 +141,14 @@ func subjectDir(hubPath, subject string) string {
 }
 
 // runCheck runs the check under check.lock and returns the final record and whether this call ran it.
-// A subject owned by another machine ends the call with an error and a notice before the lock is taken, and writes no record.
-// A held lock returns at once with nothing written or posted.
-// A failing reconcile ends the check failed before any tier runs, so no check goes green on the template's tiers.
-// The record is rewritten, and the prime's status bar marked, as the check starts, as each tier starts and ends, and at its end; a post or mark that fails is logged and changes nothing.
+// A subject owned by another machine ends the call with an error and a notice before the lock is taken;
+// it writes no record.
+// A held lock returns at once with no record written and nothing posted.
+// A failing reconcile ends the check failed before any tier runs,
+// so no check goes green on the template's tiers.
+// The record is rewritten, and the prime's status bar marked, at each step of the check.
+// The steps are its start, each tier's start and end, and its end;
+// a post or mark that fails is logged and changes nothing.
 func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	opening := "adopt check of " + deps.Subject + ":"
 	owner, err := deps.OwnedElsewhere()
@@ -274,7 +286,8 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	default:
 		return final, ran, nil
 	}
-	// The lock is let go first, so a check a concurrent adopt started meanwhile runs instead of exiting on it.
+	// The lock is let go first,
+	// so a check that a concurrent adopt starts in the meantime runs instead of exiting on the lock.
 	releaseLock()
 	for _, line := range end() {
 		post(line)
@@ -282,7 +295,8 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	return final, ran, nil
 }
 
-// checkMark is what the check shows on the prime's status bar: its state, a one-line text and the start of its step in flight, zero for none.
+// checkMark is what the check shows on the prime's status bar:
+// its state, a one-line text and the start of its step in flight, zero for none.
 type checkMark struct {
 	State string
 	Text  string
@@ -291,7 +305,8 @@ type checkMark struct {
 
 // checkMarkOf renders record as its status bar mark, where tierStart is when the tier in flight started.
 // Every text names the record's subject, so two subjects' marks tell apart.
-// A running check shows its done tiers with their outcomes and wall times, then the tier in flight timed from tierStart, or `starting` timed from the check's start before any tier;
+// A running check shows its done tiers with their outcomes and wall times;
+// then the tier in flight timed from tierStart, or `starting` timed from the check's start before any tier;
 // an ended one shows its result and every tier it ran.
 func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
 	name := "adopt check of " + record.Subject
@@ -327,8 +342,9 @@ func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
 	}
 }
 
-// primeMark returns the mark the prime's status bar shows for the check of subject, whose own mark is own and whose scratch directories sit under adoptDir.
-// Its text is own's, followed by the mark of each other subject whose record reads running, sorted by subject and joined by ` | `;
+// primeMark returns the mark the prime's status bar shows for the check of subject.
+// own is that subject's mark, and adoptDir holds the scratch directories of every subject's check.
+// Its text is own's, then the marks of the other running checks, joined by ` | ` in subject order;
 // its state is running while any joined record runs, else own's state.
 // A record that does not read is skipped with one Warn.
 func primeMark(adoptDir, subject string, own checkMark) checkMark {
@@ -357,7 +373,10 @@ func primeMark(adoptDir, subject string, own checkMark) checkMark {
 	return checkMark{State: state, Text: strings.Join(texts, " | "), Start: own.Start}
 }
 
-// tierNotice renders the notice of one ended tier of the check of subject: its outcome and counts on the first line, and for a failed tier one line per failed test with the first line it printed, at most maxListedFailures, then the log at logPath.
+// tierNotice renders the notice of one ended tier of the check of subject.
+// Its first line gives the outcome and counts; a failed tier adds one line per failed test.
+// Each such line carries the first line the test printed, up to a fixed cap followed by a line counting the rest.
+// The notice of a failed tier ends with the log at logPath.
 func tierNotice(subject string, tier CheckTier, logPath string) string {
 	lines := []string{fmt.Sprintf("adopt check of %s: tier%d %s, passed %d failed %d skipped %d, %.1fs", subject, tier.Tier, tier.Outcome, tier.Passed, tier.Failed, tier.Skipped, tier.WallSeconds)}
 	if tier.Outcome != checkFailed {
@@ -383,7 +402,8 @@ func writeCheck(recordPath string, record CheckRecord) error {
 	return state.WriteJSON(recordPath, recordPath+".lock", record)
 }
 
-// resolveSubjectWorktree returns the location of the worktree the adopt check of subject runs in: the prime for `root`, else the beam's pair.
+// resolveSubjectWorktree returns the location of the worktree the adopt check of subject runs in:
+// the prime for `root`, else the beam's pair.
 // A worktree that does not resolve is an error naming `lym beam start` and the re-run of the adopt.
 func resolveSubjectWorktree(prime *lymcwd.Location, subject string) (*lymcwd.Location, error) {
 	if subject == boardengine.RootSubject {
@@ -396,7 +416,9 @@ func resolveSubjectWorktree(prime *lymcwd.Location, subject string) (*lymcwd.Loc
 	return worktree, nil
 }
 
-// subjectOwnedElsewhere returns a func that reads the board for the owner of subject, the prime owner for `root`, and returns it when another machine than this one owns it, "" otherwise.
+// subjectOwnedElsewhere returns a func that reads the board for the owner of subject:
+// the prime owner for `root`.
+// The func returns that owner when another machine than this one owns it, and "" otherwise.
 func subjectOwnedElsewhere(prime *lymcwd.Location, subject string) func() (string, error) {
 	return func() (string, error) {
 		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
@@ -421,7 +443,10 @@ func subjectOwnedElsewhere(prime *lymcwd.Location, subject string) func() (strin
 	}
 }
 
-// hubCheckDeps fills checkDeps for the check of subject over the prime and the subject's worktree: the reconcile is the hub's, which reads an absent board-level lym directory as an error since an adopt runs only in a hub, the gate is the hub's adopt key in the subject's anchor, the notice goes to the subject's nearest live orch, and the mark goes on the prime's reed session.
+// hubCheckDeps fills checkDeps for the check of subject over the prime and the subject's worktree.
+// The reconcile is the hub's: an absent board-level lym directory is an error, since an adopt runs only in a hub;
+// the gate runs the hub's adopt key in the subject's anchor.
+// The notice goes to the subject's nearest live orch, and the mark goes on the prime's reed session.
 // It returns an error when the subject's worktree does not resolve.
 // A reed config or geometry that does not read is each mark's error.
 func hubCheckDeps(prime *lymcwd.Location, subject string) (checkDeps, error) {
@@ -494,8 +519,9 @@ func primeReed(prime *lymcwd.Location) (*reedengine.Engine, error) {
 	return reedengine.New(cfg, geom, shuttleengines.EnvScrub()), nil
 }
 
-// checkCmd is the hidden `check <subject>` verb, which `lym adopt` spawns detached for each adopted subject.
-// It resolves the prime from the working directory, so it runs from anywhere in the hub, and prints the record's state, or already_running when another check of the subject holds the lock.
+// checkCmd is the hidden `check <subject>` verb that `lym adopt` spawns detached for each adopted subject.
+// It resolves the prime from the working directory, so it runs from anywhere in the hub.
+// It prints the record's state, or already_running when another check of the subject holds the lock.
 func checkCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "check <subject>",

@@ -1,4 +1,5 @@
-// loop_test.go pins dobby's daemon loop over a fake clock, a fake watch and a temp state record: the lock, the owner exit, the wakeups, the sleep record and the start-or-re-exec reading.
+// loop_test.go pins dobby's daemon loop over a fake clock, a fake watch and a temp state record.
+// It covers the lock, the owner exit, the wakeups, the sleep record and the start-or-re-exec reading.
 
 package dobbyengine
 
@@ -20,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// loopClock is a fake wall clock and awake clock: Sleep advances both, and suspend advances only the wall clock, as a machine sleep does.
+// loopClock is a fake wall clock and awake clock.
+// Sleep advances both; suspend advances only the wall clock, as a machine sleep does.
 type loopClock struct {
 	mu        sync.Mutex
 	wall      time.Time
@@ -723,7 +725,8 @@ func TestRun_Heartbeat(t *testing.T) {
 	t.Parallel()
 	listedRun := RunView{Slug: "a", State: runStateRunning, Producer: producerRunShed}
 
-	// ticksAcrossTen runs three ticks whose clock is nine minutes and ten seconds past the start at the second and just past ten minutes at the third.
+	// ticksAcrossTen runs three ticks.
+	// The clock reads nine minutes and ten seconds past the start at the second tick and past ten minutes at the third.
 	ticksAcrossTen := func(t *testing.T, h *loopHarness, atThird func()) (beforeThird, total int) {
 		t.Helper()
 		h.perTick = func(n int) error {
@@ -828,7 +831,7 @@ func TestRun_Heartbeat(t *testing.T) {
 			if !failing {
 				return nil, nil
 			}
-			// The failing tick never reaches the Tick seam that stops the loop, so the heartbeat's own read, the second, ends it.
+			// The failing tick never reaches the Tick seam that stops the loop, so the heartbeat's second read ends it.
 			if failedReads++; failedReads == 2 {
 				h.cancel()
 			}

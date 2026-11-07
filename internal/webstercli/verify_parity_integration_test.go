@@ -1,6 +1,8 @@
 // verify_parity_integration_test.go asserts the Gate Self-Check Parity Invariant for the verify gates:
-// `lym webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate must reach the same three-way verdict over one fixture.
-// It is integration-tagged because every side spawns git and a shell, and not parallel because each fixture puts the built `lym` first on `PATH`.
+// `lym webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate.
+// They must reach the same three-way verdict over one fixture.
+// It is integration-tagged because every side spawns git and a shell.
+// It is not parallel because each fixture puts the built `lym` first on `PATH`.
 // Every side runs the `final` gate call over the same seeded gate.yaml.
 // The shape follows loomcli's TestGateParity_*.
 
@@ -27,7 +29,8 @@ const (
 	verifyVerdictError verifyParityVerdict = "error"
 )
 
-// gateVerdict maps a gate closure's raw result onto a verdict: an error is error, a failed result is stuck, a passed one is done.
+// gateVerdict maps a gate closure's raw result onto a verdict.
+// An error is error, a failed result is stuck, and a passed one is done.
 func gateVerdict(result shuttleengine.GateResult, err error) verifyParityVerdict {
 	if err != nil {
 		return verifyVerdictError
@@ -38,7 +41,8 @@ func gateVerdict(result shuttleengine.GateResult, err error) verifyParityVerdict
 	return verifyVerdictDone
 }
 
-// verbVerdict maps a decoded verb envelope onto a verdict: ok is done, not ok with a findings key is stuck, not ok without one is error.
+// verbVerdict maps a decoded verb envelope onto a verdict.
+// An ok envelope is done, a not-ok one with a findings key is stuck, and a not-ok one without it is error.
 func verbVerdict(env envelope.Envelope) verifyParityVerdict {
 	if env.OK {
 		return verifyVerdictDone

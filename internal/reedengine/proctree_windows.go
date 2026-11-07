@@ -1,7 +1,6 @@
-// proctree_windows.go implements the Windows-only process-tree probes: descendantClosurePIDs and serverProcessesOnSocket via the configured shell's (pwsh on Windows) Get-CimInstance Win32_Process table — the only reliable tmux-server liveness and parent-walk signal on this platform, since every tmux CLI probe (list-sessions, kill-server, has-session) exits identically with and without a server on the socket — and an empty sessionMemberPIDs.
-// These bodies are moved here verbatim from lifecycle.go so the pure helpers in proctree.go stay
-// platform-agnostic while the OS I/O they used to embed lives in one thin, filename-suffixed seam;
-// see proctree_linux.go for the /proc-backed counterpart.
+// proctree_windows.go implements the process-tree probes for Windows through the configured shell's Win32_Process table.
+// That table is the only reliable tmux-server liveness and parent-walk signal here.
+// Every tmux CLI probe exits the same with or without a server, so the CLI cannot serve as that signal.
 
 package reedengine
 
@@ -15,8 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// descendantClosurePIDs expands roots to transitive descendants via Win32_Process.
-// Pane-destroying ops must reap the full subtree (shell nests below launcher).
+// descendantClosurePIDs expands roots to their transitive descendants via Win32_Process.
+// Pane teardown must reap the full subtree, because the shell nests below the launcher.
 // Falls back to bare roots on probe failure.
 func (e *Engine) descendantClosurePIDs(roots []int) []int {
 	if len(roots) == 0 {
@@ -26,8 +25,8 @@ func (e *Engine) descendantClosurePIDs(roots []int) []int {
 	for i, pid := range roots {
 		rootLiterals[i] = strconv.Itoa(pid)
 	}
-	// Seed a set with the root pids, then repeatedly absorb any process whose
-	// parent is already in the set — the transitive descendant closure.
+	// Seed a set with the root pids, then repeatedly absorb any process whose parent is already in the set:
+	// the transitive descendant closure.
 	script := fmt.Sprintf(`$roots=@(%s)
 $all=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
 $acc=New-Object System.Collections.Generic.HashSet[int]
@@ -52,23 +51,23 @@ $acc`, strings.Join(rootLiterals, ","))
 	return pids
 }
 
-// paneProcessAge answers 0 and false: the liveness rule that reads a pane's age is skipped on Windows, so nothing reads it.
+// paneProcessAge answers 0 and false on Windows, since the liveness rule that reads a pane's age is skipped there.
 func paneProcessAge(pid int) (time.Duration, bool) {
 	return 0, false
 }
 
-// sessionMemberPIDs returns nil: Windows has no POSIX sessions, so a pane's processes are reaped through the descendant snapshot alone.
+// sessionMemberPIDs returns nil: Windows has no POSIX sessions,
+// so a pane's processes are reaped through the descendant snapshot alone.
 func sessionMemberPIDs(sessions []int) []int {
 	return nil
 }
 
-// serverProcessesOnSocket returns OS pids on this engine's socket via
-// Get-CimInstance Win32_Process (the only reliable liveness signal on Windows).
+// serverProcessesOnSocket returns OS pids on this engine's socket, read through Get-CimInstance Win32_Process.
+// That query is the only reliable liveness signal on Windows.
 // Returns nil on query failure; callers degrade to best-effort behavior.
 func (e *Engine) serverProcessesOnSocket() []int {
-	// The Name filter must name the CONFIGURED binary: a hardcoded
-	// 'psmux.exe' matched nothing on a machine whose config resolves tmux
-	// to tmux.exe, so Down saw every socket as clear and leaked the server.
+	// The Name filter must match the configured binary: any other name finds no server,
+	// so the probe reports the socket as clear and the server leaks.
 	script := fmt.Sprintf(
 		`(Get-CimInstance Win32_Process -Filter "Name='%s'" | Where-Object { $_.CommandLine -match [regex]::Escape('-L %s') }).ProcessId`,
 		tmuxProcessName(e.cfg.Tmux),

@@ -1,5 +1,6 @@
-// glyphchain_test.go drives every member shape class real plans name through the glyph chain's plan gate against the committed fixture module in testdata/glyphchain: parse, the resolve status policy, the Create inversion, handle canonicalization and the on-disk rewrite.
-// The legs here read files and spawn no process; the legs that need a real commit's delta live in glyphchain_integration_test.go beside them.
+// glyphchain_test.go drives every member shape class real plans name through the glyph chain's plan gate.
+// It covers parse, the resolve status policy, the Create inversion, handle canonicalization and the on-disk rewrite.
+// Its legs read files and spawn no process; those needing a real commit's delta live in glyphchain_integration_test.go.
 
 package planglyph
 
@@ -20,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGlyphChain_PlanGate runs each shape row through its legs against its own fixture copy and plan directory, and asserts the exact finding set of every plan.
+// TestGlyphChain_PlanGate runs each shape row through its legs against its own fixture copy and plan directory.
+// It asserts the exact finding set of every plan.
 func TestGlyphChain_PlanGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -106,7 +108,9 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_CrossCard pins the cross-card verdicts: a member and its file, or either and its package self glyph, or one file, on different cards validate clean, and so does a Create handle no other card references.
+// TestGlyphChain_CrossCard pins the cross-card verdicts:
+// a member and its file, or either one and its package self glyph, or one file, on different cards, validate clean.
+// So does a Create handle no other card references.
 func TestGlyphChain_CrossCard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -145,8 +149,10 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_CSharp runs csharp plans over a fixture copy through both gates and asserts the exact finding set of each, so a C# glyph parses, resolves and names a handle through its own alphabet.
-// The Go rows of the other chain tests keep their findings with csharp/Renderer.cs in the fixture, since no Go unit of it spells the namespace Glyphchain.Sharp.
+// TestGlyphChain_CSharp runs csharp plans over a fixture copy through both gates and asserts the exact findings of each,
+// so a C# glyph parses, resolves and names a handle through its own alphabet.
+// The Go rows of the other chain tests keep their findings with csharp/Renderer.cs in the fixture.
+// No Go unit of that file spells the namespace Glyphchain.Sharp, so it adds no finding to them.
 func TestGlyphChain_CSharp(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -157,7 +163,7 @@ func TestGlyphChain_CSharp(t *testing.T) {
 		name string
 		// language is the plan's language, csharp when empty.
 		language string
-		// noLanguageKey writes the plan with no language: key at all.
+		// noLanguageKey writes the plan without a language key at all.
 		noLanguageKey bool
 		cards         []string
 		sections      []plankit.Section
@@ -167,7 +173,8 @@ func TestGlyphChain_CSharp(t *testing.T) {
 		dispatch     []findingKey
 		// completed is how many leading cards ValidateDispatch treats as already built.
 		completed int
-		// details are substrings the single plan-gate finding's detail, and the done-check finding's when doneCheck is set, must each hold.
+		// details are substrings the single plan-gate finding's detail must hold.
+		// When doneCheck is set, the done-check finding's detail must hold them too.
 		details []string
 		// doneCheck is the one finding DoneChecks over every card must report, when set.
 		doneCheck *findingKey
@@ -441,7 +448,9 @@ func assertSingleFindingDetails(t *testing.T, source string, findings []Finding,
 	}
 }
 
-// TestGlyphChain_RedundantFile pins redundant-file-target: a file beside a member that resolves into it is flagged by ValidateFormat and not by ValidateDispatch, and a file beside a member of another file is clean.
+// TestGlyphChain_RedundantFile pins redundant-file-target.
+// A file beside a member that resolves into it is flagged by ValidateFormat and not by ValidateDispatch,
+// and a file beside a member of another file is clean.
 func TestGlyphChain_RedundantFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -521,7 +530,10 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_ResignScenarios pins the arrow's verdicts: the mismatch verdicts, which every gate reports, resign-interface-method on an interface method declared once per build-constraint set, which only the plan gate reports, and that one member re-signed on two cards validates clean and leaves both card files untouched.
+// TestGlyphChain_ResignScenarios pins the arrow's verdicts.
+// Every gate reports the mismatch verdicts.
+// Only the plan gate reports resign-interface-method on an interface method declared once per build-constraint set.
+// One member re-signed on two cards validates clean and leaves both card files untouched.
 func TestGlyphChain_ResignScenarios(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -535,7 +547,7 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 	collision := func(card string) []findingKey {
 		return []findingKey{{"resign-overload-collision", card, SeverityBlocking}}
 	}
-	// pairFile declares the explicit-interface member the IPair row re-signs, which the fixture does not hold.
+	// pairFiles declares the C# explicit-interface member that a case re-signs, which the fixture does not hold.
 	pairFiles := map[string]string{"csharp/Pair.cs": "namespace Glyphchain.Sharp\n{\n    public class Renderer\n    {\n        int IPair<string, int>.First { get { return 0; } }\n    }\n}\n"}
 	tests := []struct {
 		name string
@@ -721,7 +733,9 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 	})
 }
 
-// TestGlyphChain_FuncNamedInterfaceMethod pins that an interface method whose name opens with "func" is still told apart from a declared method: its arrow reports resign-interface-method, and its Rename canonicalizes.
+// TestGlyphChain_FuncNamedInterfaceMethod covers an interface method whose name opens with "func".
+// The method is still told apart from a declared method: its arrow reports resign-interface-method,
+// and its Rename canonicalizes.
 func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -753,13 +767,15 @@ func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
 	})
 }
 
-// partitionedCaller declares callers#PartUse once per build-constraint set, and only its linux declaration calls callees.Target.
+// partitionedCaller declares callers#PartUse once per build-constraint set.
+// Only its linux declaration calls callees.Target.
 var partitionedCaller = map[string]string{
 	"callers/partuse_a.go": "//go:build linux\n\npackage callers\n\nimport \"example.com/glyphchain/callees\"\n\nfunc PartUse() int { return callees.Target() }\n",
 	"callers/partuse_b.go": "//go:build !linux\n\npackage callers\n\nfunc PartUse() int { return 0 }\n",
 }
 
-// nestedImporter is a nested package and a user of it, whose import of the first a card that deletes the first and a later card that edits the second makes a delete-before-reference.
+// nestedImporter holds a nested package, nested/inner, and its user, nested/user, which imports it.
+// A card that deletes nested/inner and a later card that edits nested/user make a delete-before-reference.
 var nestedImporter = map[string]string{
 	"nested/inner/inner.go": "package inner\n\nfunc Help() {}\n",
 	"nested/user/user.go":   "package user\n\nimport \"example.com/glyphchain/nested/inner\"\n\nfunc Use() { inner.Help() }\n",
@@ -768,9 +784,14 @@ var nestedImporter = map[string]string{
 // skippedCaller is a Go file that calls callees.Target, written under a directory the reference scan skips.
 const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use() { callees.Target() }\n"
 
-// TestGlyphChain_CallerCoverage pins caller-uncovered over the callees fixture: a deleted or re-signed member whose references no admissible card covers is reported per file, blocking for a package-level member and informational for a method, at the plan gate and never by ValidateDispatch.
-// The untagged tier's type loader always fails, so the rows pin that the gate then answers with the scan's findings and no error.
-// One row fails the load at a slotted index's acquire instead, over an unusable gate.yaml, and pins the same answer with no wait record left.
+// TestGlyphChain_CallerCoverage pins caller-uncovered over the callees fixture.
+// A deleted or re-signed member whose references no admissible card covers is reported per file.
+// It blocks for a package-level member and is informational for a method.
+// The plan gate reports it, and ValidateDispatch never does.
+// The untagged tier's type loader always fails,
+// so the rows pin that the gate then answers with the scan's findings and no error.
+// One row fails the load at a slotted index's acquire instead, over an unusable gate.yaml.
+// It pins the same answer, with no wait record left.
 func TestGlyphChain_CallerCoverage(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -797,7 +818,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		partScope bool
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
 		want []string
-		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding, sorted: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
+		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding, sorted.
+		// A blocking finding's location is "<file>:<line>"; an informational one's is "<file> at line <n>".
 		wantDeleteOrder []string
 	}{
 		{
@@ -1084,7 +1106,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 	}
 }
 
-// unusableGatePool returns a gate-slot pool whose limits come from a hub gate.yaml holding slots: 0, so every acquire fails without spawning.
+// unusableGatePool returns a gate-slot pool whose limits come from a hub gate.yaml holding slots: 0,
+// so every acquire fails without spawning.
 func unusableGatePool(t *testing.T) *gateslot.Pool {
 	t.Helper()
 	boardDir := t.TempDir()

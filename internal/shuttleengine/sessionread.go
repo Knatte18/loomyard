@@ -1,5 +1,5 @@
-// sessionread.go declares the files-only reading of a run's session state: it reads a run's signals and facts from disk and folds them once.
-// Like ReadAgentActivity it reads files only, so any process may call it, and it writes nothing.
+// sessionread.go reads a run's session state from disk: it folds the run's signals and facts into one state.
+// It reads files only, so any process may call it, and it writes nothing.
 
 package shuttleengine
 
@@ -24,15 +24,15 @@ type RunSessionState struct {
 	History []SessionState
 	// SessionStartAt is the time of the newest session-start signal read; zero when none.
 	SessionStartAt time.Time
-	// SessionID is the session id of the newest signal that names one, else the run record's; empty when neither names one.
+	// SessionID is the session id of the newest signal that names one, else the run record's; empty if neither does.
 	SessionID string
 }
 
-// ReadSessionStates returns the session state of every run under the run-directory root of anchorPath whose record reads running.
+// ReadSessionStates returns the session state of each running run under the run-directory root of anchorPath.
 // The process waiting on a run need not be alive, so a run whose Wait died still shows.
-// A directory that is not a run directory, a run with no record and an undecodable record are skipped, and an undecodable record is logged once per episode.
-// Each run is read through the engine its record names, the set's default for a record naming none;
-// a run whose record names an engine the set does not hold is skipped and logged once per episode.
+// A directory that is not a run directory and a run with no record are skipped.
+// Undecodable records, and runs naming an engine the set does not hold, are skipped, each logged once per episode.
+// Each run is read through the engine its record names, the set's default for a record naming none.
 // now is the reading's time.
 // An absent root returns no readings and no error.
 func ReadSessionStates(cfg Config, anchorPath string, engines EngineSet, now time.Time) ([]RunSessionState, error) {
@@ -69,7 +69,7 @@ func ReadSessionStates(cfg Config, anchorPath string, engines EngineSet, now tim
 }
 
 // readRunSessionState folds the signals past rs's prompt offset, with the facts read for them, into one state.
-// An engine without a SessionSignalParser reads unknown with cause unsupported.
+// An engine that cannot parse session signals reads unknown with cause unsupported.
 func readRunSessionState(rs RunState, engine Engine, now time.Time) RunSessionState {
 	reading := RunSessionState{StrandName: rs.StrandName, StrandGUID: rs.StrandGUID}
 	if reading.StrandName == "" {
@@ -113,9 +113,12 @@ func newestSessionID(rs RunState, signals []SessionSignal) string {
 }
 
 // readSessionFacts reads the facts of a fold over signals that the signals themselves do not carry, at the time now.
-// Interactive and the output files come from the record, the stat taken once per call, and a run that declares no output file has none that exist.
-// Liveness comes from the engine's SessionProber for the session id of the newest signal that names one, else the record's;
-// the API-error marker from the engine's ActivityReader over the newest turn end among signals, and the interrupt marker from the SessionProber over the newest turn start.
+// Interactive and the output files come from the record, and the stat is taken once per call.
+// A run that declares no output file has none that exist.
+// Liveness comes from the engine's SessionProber, keyed by the session id of the newest signal that names one;
+// with the record's session id when no signal names one.
+// The API-error marker comes from the engine's ActivityReader over the newest turn end among signals.
+// The interrupt marker comes from the SessionProber over the newest turn start.
 // A fact its capability cannot give stays at its zero value, which reads as unproven or absent.
 // EventsUnreadable is left for the caller, which knows how it read the events file.
 func readSessionFacts(rs RunState, engine Engine, signals []SessionSignal, now time.Time) SessionFacts {

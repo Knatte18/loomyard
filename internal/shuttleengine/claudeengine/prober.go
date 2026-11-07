@@ -1,6 +1,8 @@
-// prober.go implements shuttleengine.SessionProber for Claude: process liveness from Claude's session registry, and the interrupt marker in the transcript a turn start names.
+// prober.go implements shuttleengine.SessionProber for Claude:
+// process liveness from Claude's session registry, and the interrupt marker in the transcript a turn start names.
 // It also implements shuttleengine.TurnProgressReader, reading whether that turn is in flight from the same transcript.
-// Both layouts are Claude Code internals, so every failure degrades to the unproven, not-interrupted or unknown answer and never errors.
+// Both layouts are Claude Code internals,
+// so every failure degrades to the unproven, not-interrupted or unknown answer and never errors.
 
 package claudeengine
 
@@ -16,17 +18,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Compile-time assertion that Claude offers the optional session prober.
 var _ shuttleengine.SessionProber = (*Claude)(nil)
 
-// Compile-time assertion that Claude offers the optional turn progress reader.
 var _ shuttleengine.TurnProgressReader = (*Claude)(nil)
 
 // interruptMarkerPrefix starts the text of the user entry Claude Code writes when the user interrupts a turn.
 const interruptMarkerPrefix = "[Request interrupted by user"
 
-// ProcessLiveness implements shuttleengine.SessionProber.
-// It resolves the registry directory from the same home resolution CheckResume uses.
+// ProcessLiveness reports the liveness of the session's process.
+// It reads Claude's session registry under the home directory.
 func (c *Claude) ProcessLiveness(sessionID string) shuttleengine.Liveness {
 	home, err := claudeHomeDir()
 	if err != nil {
@@ -37,8 +37,9 @@ func (c *Claude) ProcessLiveness(sessionID string) shuttleengine.Liveness {
 
 // processLiveness answers from the registry entries that name sessionID.
 // A live pid whose start time equals the entry's procStart is alive, and any alive entry wins.
-// Dead needs an entry whose pid is gone and no entry or file that leaves the answer open;
-// no entry, an unreadable registry or entry, an unreadable start time, an entry without procStart and a live pid with a different start time (a reused pid) all read unproven.
+// Dead needs an entry whose pid is gone and no entry or file that leaves the answer open.
+// No entry, an unreadable registry or entry, and an unreadable start time all read unproven.
+// A live pid whose entry has no procStart, or whose start time differs (a reused pid), also reads unproven.
 func processLiveness(sessionID, registryDir string, alive func(pid int) bool, startTime func(pid int) (string, bool)) shuttleengine.Liveness {
 	records, err := readRegistry(registryDir)
 	if err != nil {
@@ -70,8 +71,8 @@ func processLiveness(sessionID, registryDir string, alive func(pid int) bool, st
 	return shuttleengine.LivenessUnproven
 }
 
-// TurnStartInterrupt implements shuttleengine.SessionProber.
-// It reads the transcript the turn start's UserPromptSubmit payload names through transcript_path, backward from its end.
+// TurnStartInterrupt reports whether the user interrupted the turn that turnStart began, and the interrupt's time.
+// It reads the transcript that turnStart's UserPromptSubmit payload names through transcript_path.
 func (c *Claude) TurnStartInterrupt(turnStart shuttleengine.SessionSignal) (time.Time, bool) {
 	var at time.Time
 	var interrupted bool
@@ -83,8 +84,9 @@ func (c *Claude) TurnStartInterrupt(turnStart shuttleengine.SessionSignal) (time
 	return at, interrupted
 }
 
-// TurnStartProgress implements shuttleengine.TurnProgressReader.
-// It reads the newest main-chain entry of the transcript the turn start names, and every failure to read it reads unknown.
+// TurnStartProgress reports the progress of the turn that turnStart began.
+// It reads the newest main-chain entry of the transcript that turnStart names,
+// and any failure to read it reads unknown.
 func (c *Claude) TurnStartProgress(turnStart shuttleengine.SessionSignal) shuttleengine.TurnProgress {
 	progress := shuttleengine.TurnProgressUnknown
 	scanTurnStartTranscript(turnStart, func(data []byte) bool {
@@ -95,7 +97,8 @@ func (c *Claude) TurnStartProgress(turnStart shuttleengine.SessionSignal) shuttl
 	return progress
 }
 
-// scanTurnStartTranscript opens the transcript the turn start's UserPromptSubmit payload names through transcript_path and hands scan its complete lines backward from the end, as readBackward does.
+// scanTurnStartTranscript opens the transcript that turnStart's UserPromptSubmit payload names through transcript_path.
+// It hands scan the transcript's complete lines from the end backward until scan returns true or the file start.
 // A missing path, an undecodable payload and an open or stat failure return without calling scan.
 func scanTurnStartTranscript(turnStart shuttleengine.SessionSignal, scan func(data []byte) bool) {
 	var payload struct {
@@ -116,9 +119,12 @@ func scanTurnStartTranscript(turnStart shuttleengine.SessionSignal, scan func(da
 	readBackward(f, info.Size(), initialReadChunk, scan)
 }
 
-// newestTurnProgress reads the turn's progress from the newest main-chain user or assistant entry among the complete lines of data, scanning from the last to the first.
-// Bytes after the last newline are a line still being written and are never read; blank and unparsable lines, sidechain entries and entries of any other type are skipped.
-// A user entry reads in flight (a prompt, a task notification or a tool result), except the interrupt marker, which reads unknown.
+// newestTurnProgress reads the turn's progress from the newest main-chain user or assistant entry in data.
+// It scans from the last line to the first.
+// Bytes after the last newline are a line still being written and are never read;
+// blank and unparsable lines, sidechain entries and entries of any other type are skipped.
+// A user entry reads in flight (a prompt, a task notification or a tool result).
+// The interrupt marker, also a user entry, reads unknown.
 // An assistant entry is read by its message's stop reason, never by its last content block:
 // tool_use reads in flight, end_turn and stop_sequence read over, and an absent, null or other reason reads unknown.
 // found is false when data holds no such entry.
@@ -155,7 +161,9 @@ func newestTurnProgress(data []byte) (progress shuttleengine.TurnProgress, found
 	return shuttleengine.TurnProgressUnknown, false
 }
 
-// newestEntryInterrupt scans the complete lines of data from the last to the first and reports whether the first main-chain user or assistant entry is the user's interrupt marker, with that entry's timestamp.
+// newestEntryInterrupt scans the complete lines of data from the last to the first.
+// It reports whether the first main-chain user or assistant entry is the user's interrupt marker,
+// and it returns that entry's timestamp.
 // found is false when data holds no such entry; an entry whose timestamp does not parse is found and not an interrupt.
 func newestEntryInterrupt(data []byte) (at time.Time, interrupted, found bool) {
 	for end := len(data); end > 0; {

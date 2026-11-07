@@ -1,4 +1,6 @@
-// dobbynotice_test.go pins what the run notices read of a child over a task worktree on disk: the mapping of its status file and respawn memory record into dobby's reading, the held-lock reading of a child's driver, and the end time of its newest ended shuttle run.
+// dobbynotice_test.go pins what the run notices read of a child over a task worktree on disk:
+// the mapping of its status file and respawn memory record into dobby's reading;
+// the held-lock reading of a child's driver; and the end time of its newest ended shuttle run.
 
 package battencli
 
@@ -22,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// noticeTaskWorktree creates a directory the repository walk accepts as the root of the task worktree slug under a new hub, and returns the hub's prime location.
+// noticeTaskWorktree creates a directory the repository walk accepts as the root of the task worktree slug.
+// The directory sits under a new hub, and it returns the hub's prime location.
 func noticeTaskWorktree(t *testing.T, slug string) *lymcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -38,8 +41,10 @@ func noticeTaskWorktree(t *testing.T, slug string) *lymcwd.Location {
 	return locationkit.Location(hub, "prime", ".")
 }
 
-// TestDobbyRunNotices_NewestAgentEndReadsOnlyTheTaskWorktreesEndedRuns asserts the end-time seam returns the latest end of the ended runs under the slug's task worktree.
-// It ignores a run still running there and an ended run of a sibling worktree, and returns the zero time when the task worktree has none.
+// TestDobbyRunNotices_NewestAgentEndReadsOnlyTheTaskWorktreesEndedRuns asserts the end-time seam:
+// it returns the latest end of the ended runs under the slug's task worktree;
+// it ignores a run still running there and an ended run of a sibling worktree;
+// and it returns the zero time when the task worktree has none.
 func TestDobbyRunNotices_NewestAgentEndReadsOnlyTheTaskWorktreesEndedRuns(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -90,7 +95,6 @@ func TestReadNoticeChild(t *testing.T) {
 	statusWritten := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	newestHistory := time.Date(2026, 1, 1, 11, 30, 0, 0, time.UTC)
 
-	// writeMemory writes the respawn memory record of the Run-Shed row with its status time at respawnStatusTime.
 	writeMemory := func(respawnStatusTime time.Time) func(t *testing.T, scratchDir string) {
 		return func(t *testing.T, scratchDir string) {
 			t.Helper()

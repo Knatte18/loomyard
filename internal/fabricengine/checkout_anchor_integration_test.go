@@ -1,8 +1,10 @@
-// checkout_anchor_integration_test.go proves Checkout refuses, before it switches anything, a target weft branch anchored elsewhere than the worktree.
-// It refuses a worktree whose own anchor marker is empty too, and forks a target with no weft branch yet instead of refusing it.
-// The target is made by re-anchoring a second pair with hubforge.ReanchorPair and then parking that pair, so its branches are free to check out.
+// checkout_anchor_integration_test.go covers the anchor checks Checkout makes before it switches anything.
+// It refuses a target anchored elsewhere, and a worktree whose own anchor marker is empty.
+// A target with no weft branch yet is forked, not refused.
+// The target is a second pair, re-anchored with hubforge.ReanchorPair and then parked.
+// Parking detaches both worktrees, so the pair's branches are free to check out elsewhere.
 //
-// Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// The package's single TestMain lives in testmain_test.go.
 
 package fabricengine_test
 
@@ -21,7 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newCheckoutHub builds a "." hub whose prime warp tracks sub/ before any pair is added, so sub is a tracked directory in every pair's warp.
+// newCheckoutHub builds a "." hub whose prime warp tracks sub/ before any pair is added.
+// That makes sub a tracked directory in every pair's warp.
 func newCheckoutHub(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
@@ -30,7 +33,8 @@ func newCheckoutHub(t *testing.T) *hubforge.Hub {
 	return h
 }
 
-// parkedPairAt adds the pair slug, moves it to anchor, and detaches both its worktrees so its branches are free to check out elsewhere.
+// parkedPairAt adds the pair slug and moves it to anchor.
+// It then detaches both its worktrees, so its branches are free to check out elsewhere.
 func parkedPairAt(t *testing.T, h *hubforge.Hub, slug, anchor string) {
 	t.Helper()
 
@@ -40,7 +44,8 @@ func parkedPairAt(t *testing.T, h *hubforge.Hub, slug, anchor string) {
 	gitkit.Git(t, h.PairRecordsSibling(slug), "switch", "--detach")
 }
 
-// requireCheckoutLeftAlone fails the test unless the prime still sits on its branches with its junctions wired at its anchor and the checkout recorded nothing.
+// requireCheckoutLeftAlone fails the test unless the prime still sits on its branches and its _lym junction exists,
+// and the checkout recorded no mutation.
 func requireCheckoutLeftAlone(t *testing.T, h *hubforge.Hub, res fabricengine.CheckoutResult, warpBranch, weftBranch string) {
 	t.Helper()
 
@@ -58,7 +63,7 @@ func requireCheckoutLeftAlone(t *testing.T, h *hubforge.Hub, res fabricengine.Ch
 	}
 }
 
-// TestCheckout_RefusesAnotherAnchor covers each way a checkout is refused for an anchor, and the fork that is not.
+// TestCheckout_RefusesAnotherAnchor covers each way Checkout refuses an anchor, and the one where it forks instead.
 func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

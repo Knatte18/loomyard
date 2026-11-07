@@ -1,4 +1,5 @@
-// pausehold_test.go pins that `lym loom start` refuses a covered run before it seeds anything, and holds the fixture that covers a receiver's run for the resume test too.
+// pausehold_test.go pins that `lym loom start` refuses a covered run before it seeds anything.
+// It also holds the fixture that covers a receiver's run, for the resume test.
 
 package loomcli
 
@@ -19,13 +20,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// coverRun makes c's worktree a task worktree of its hub and records a live hub-wide pause entry, returning the record's path.
+// coverRun makes c's worktree a task worktree of its hub and records a live hub-wide pause entry.
+// It returns the record's path.
 func coverRun(t *testing.T, c *loomCLI) string {
 	t.Helper()
 	return coverRunBy(t, c, pauserecord.ScopeHub, "EXTERNAL")
 }
 
-// coverRunBy is coverRun with the live entry's scope and caller named by the test; an empty scope is the run's own slug.
+// coverRunBy makes c's worktree a task worktree of its hub and records a live pause entry.
+// The test names the entry's scope and caller; an empty scope is the run's own slug.
 func coverRunBy(t *testing.T, c *loomCLI, scope, caller string) string {
 	t.Helper()
 	gitDir := filepath.Join(c.location.HubPath, "repo", ".git", "worktrees", c.location.WorktreeName)
@@ -51,7 +54,8 @@ func coverRunBy(t *testing.T, c *loomCLI, scope, caller string) string {
 }
 
 // TestStartCmd_RefusesWhileAPauseCoversTheRun drives startCmd over a receiver whose hub holds a live pause entry:
-// the refusal names `lym tender resume` and nothing is seeded, and once the entry is lifted the same call no longer refuses on the pause.
+// the refusal names `lym tender resume` and nothing is seeded.
+// Once the entry is lifted, the same call does not refuse on the pause.
 func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

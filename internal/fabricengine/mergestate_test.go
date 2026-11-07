@@ -1,11 +1,9 @@
-// mergestate_test.go is pure-logic (Tier 1) coverage for the merge record's two derived flags,
+// mergestate_test.go holds the pure-logic tests for the merge record's two derived flags,
 // landedConcludeCommit and bothSidesAlreadyUpToDate, which MergeResult.Committed and
 // MergeResult.AlreadyUpToDate are read off.
-// Both are two-sided predicates, and a two-sided predicate needs the mixed rows to be load-bearing:
-// dropping the weft conjunct from bothSidesAlreadyUpToDate left every other test in the repo green,
-// because nothing asserted a record with one side up_to_date and the other not.
-// Struct-literal only — no git, no spawn — so this file stays tier0 per the Test Tier Purity
-// Invariant.
+// Both are two-sided predicates, so the tests need rows where exactly one side differs.
+// The tests use struct literals only, with no git and no spawn,
+// so the file stays tier0 under the Test Tier Purity Invariant.
 
 package fabricengine
 
@@ -39,10 +37,10 @@ func TestMergeState_LandedConcludeCommit(t *testing.T) {
 	}
 }
 
-// TestMergeState_BothSidesAlreadyUpToDate pins BOTH conjuncts of the AlreadyUpToDate predicate.
-// The two mixed rows are the point: doc.go promises AlreadyUpToDate answers "whether the attempt
-// found BOTH sides already carrying the resolved source", so a merge that really moved one side must
-// report false. With one conjunct dropped it reported true, and no test noticed.
+// TestMergeState_BothSidesAlreadyUpToDate pins both conjuncts of the AlreadyUpToDate predicate.
+// The mixed rows check each conjunct on its own.
+// AlreadyUpToDate reports whether the attempt found both sides already carrying the resolved source.
+// A merge that moved only one side must report false.
 //
 //testtiming:keep both conjuncts of the AlreadyUpToDate predicate, with the mixed rows; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_BothSidesAlreadyUpToDate(t *testing.T) {

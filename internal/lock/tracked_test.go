@@ -1,4 +1,5 @@
-// tracked_test.go covers the lock paths of tracked files (tracked.go) and the refusal of a lock inside a tracked lym or Bolt directory.
+// tracked_test.go covers the lock paths of tracked files (tracked.go).
+// It also covers the refusal of a lock inside a tracked lym or Bolt directory.
 
 package lock_test
 

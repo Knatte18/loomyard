@@ -1,5 +1,5 @@
-// specfill_test.go pins the run-identity fields batten's arming fills onto its Spec: RunID, StepsDir
-// and Routing. It calls specFor and loadRouting on a hand-populated receiver, so it spawns nothing.
+// specfill_test.go pins the run-identity fields batten's arming sets on its Spec: RunID, StepsDir and Routing.
+// It calls specFor and loadRouting on a hand-populated receiver and spawns nothing.
 
 package battencli
 
@@ -16,7 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as RunID, a StepsDir and ScratchDir under its .lym tree, batten's own routing and its own missing-status way forward, an empty FrictionDir since batten carries no agent friction directory, and, for the step verb, a non-nil BuildShed.
+// TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as RunID.
+// It checks StepsDir and ScratchDir under the .lym tree, batten's own routing, and its missing-status way forward.
+// FrictionDir stays empty, since batten has no agent friction directory.
+// For the step verb, BuildShed is non-nil.
 func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

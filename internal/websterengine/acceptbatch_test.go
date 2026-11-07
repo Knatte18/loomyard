@@ -1,5 +1,6 @@
-// acceptbatch_test.go covers AcceptBatchFabricReference: it clears a failed batch's pathless fabric-reference findings only on the HEAD-at-start, clean-tree evidence,
-// records each as a batch audit warning, and refuses every other case without mutating the state.
+// acceptbatch_test.go covers AcceptBatchFabricReference.
+// It clears a failed batch's pathless fabric-reference findings only on HEAD-at-start, clean-tree evidence.
+// It records each as a batch audit warning, and it refuses every other case without mutating the state.
 // fakeGit only — Test Tier Purity Invariant.
 
 package websterengine_test
@@ -19,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// acceptAuditVerb is the verb the accept-audit command passes to AcceptBatchFabricReference.
+// acceptAuditVerb is the verb the accept-audit command passes when it accepts a batch's fabric-reference findings.
 const acceptAuditVerb = "accept-audit --batch"
 
 // fabricEntry is an Uncheckable entry as record-batch writes it for a pathless fabric reference.
@@ -30,7 +31,8 @@ type everyCommandMatches struct{}
 
 func (everyCommandMatches) Matches(string) bool { return true }
 
-// readOnlyEntry builds the Uncheckable entry record-batch writes for a pathless fabric reference whose recorded command is cmd, from the audit's own finding text.
+// readOnlyEntry builds the Uncheckable entry record-batch writes for a pathless fabric reference.
+// The entry's text comes from the audit's own finding for the command cmd.
 func readOnlyEntry(cmd string) string {
 	audit := shuttleengine.ForkAudit{ParentBashCommands: []string{cmd}}
 	violations := websterengine.CheckParent(audit, "/w/outcome.yaml", "/w/summary.md", "/w", everyCommandMatches{})
@@ -40,7 +42,8 @@ func readOnlyEntry(cmd string) string {
 	return string(violations[0].Class) + ": " + violations[0].Detail
 }
 
-// acceptBatchFixture returns a state whose batch 8 failed on fabricEntry with no commit, and a geometry over g, whose head is the batch's start.
+// acceptBatchFixture returns a state whose batch 8 failed on fabricEntry with no commit.
+// It also returns a geometry over g whose head is the batch's start.
 func acceptBatchFixture(t *testing.T) (*websterengine.State, websterengine.Geometry, *fakeGit) {
 	t.Helper()
 	g := newFakeGit()

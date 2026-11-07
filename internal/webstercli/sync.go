@@ -1,15 +1,13 @@
-// sync.go implements fabricSync, the package-local helper every webster verb that reaches a
-// batch-boundary commit point calls to stage, commit, and push the webster artifacts it just wrote
-// (state.json, a batch report, outcome.yaml) through the fabric repo via
-// fabricengine.Fabric.Commit.
-// Machine-local runtime artifacts (run.lock, mutate.lock, treadle's round-loop pause flag, webster's rendered fork prompts) are never staged in the first place:
-// they live under .lym and so never reach the pathspec this helper stages against.
-// This helper passes only a positive pathspec, with no ":(exclude)" magic of its own.
-// fabricSync takes its fabric handle through a lazy opener, never a *lymcwd.Location, and its
-// pathspec scope through a told anchor-relative path: fabricengine.Fabric exposes no anchor-relative
-// path of its own, so the scope must be told separately from the handle. A nil opener means standalone
-// mode, which has no fabric repo by construction -- fabricSync reports (false, nil) without touching
-// git in that case.
+// sync.go implements fabricSync, the package-local helper that each batch-boundary commit point calls.
+// It stages, commits and pushes the webster artifacts just written: state.json, a batch report and outcome.yaml.
+// It does so through the fabric repo, using fabricengine.Fabric.Commit.
+// Machine-local runtime artifacts never reach the pathspec this helper stages against.
+// They live under .lym: run.lock, mutate.lock, treadle's round-loop pause flag and webster's rendered fork prompts.
+// The pathspec is positive only, with no ":(exclude)" magic of its own.
+// fabricSync takes its fabric handle from a lazy opener, and its scope from a separate anchor-relative path.
+// The scope is passed separately because fabricengine.Fabric exposes no anchor-relative path of its own.
+// A nil opener means standalone mode, which has no fabric repo:
+// fabricSync then reports (false, nil) without touching git.
 package webstercli
 
 import (
@@ -19,9 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// fabricSync stages and commits changes under anchorRel's _lym pathspec through the fabric repo
-// obtained by calling open, or reports (false, nil) without touching git when open is nil (standalone
-// mode).
+// fabricSync stages and commits the _lym pathspec under anchorRel through the fabric repo that open returns.
+// A nil open means standalone mode: fabricSync then reports (false, nil) without touching git.
 func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string) (bool, error) {
 	opts := fabricengine.EnvSyncOptions()
 

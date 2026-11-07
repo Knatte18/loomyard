@@ -1,19 +1,24 @@
-// Command testtiming runs the repo's Go test suite and prints a wall-clock
-// timing table, so a slow package or test is visible on its own rather than
-// hidden in one combined number.
+// Package main runs the repo's Go test suite and prints a wall-clock timing table.
+// It reports each package's time separately, so a slow package or test is not hidden in one combined number.
 //
-// It is the runnable companion to docs/benchmarks/test-suite-timing.md and
-// produces the tiers documented there:
+// It produces the tiers documented in docs/benchmarks/test-suite-timing.md:
 //
 //	go run ./cmd/testtiming                  # tier0 — offline, fast (no git subprocesses); runs -tags tier0
-//	go run ./cmd/testtiming -full            # tier1 — slow (real git; ~a minute); runs -tags tier1
+//	go run ./cmd/testtiming -full            # tier1 — slow (real git); runs -tags tier1
 //	go run ./cmd/testtiming -tags tier1,tier2 # any tag set; -full means -tags tier1
 //
-// A test binary holds every tier's tests and runs those of the tiers LYM_TEST_TIER selects, so every mode sets it from the tags: tier1 alone runs none of tier0's tests, and a run that wants several tiers names every tag.
-// The tiers the tags name must form one range, such as tier0,tier1,tier2; passing both -full and -tags is refused.
+// A test binary holds every tier's tests and runs those of the tiers LYM_TEST_TIER selects.
+// Every mode therefore sets it from the tags: tier1 alone runs none of tier0's tests,
+// and a run that wants several tiers names every tag.
+// The tags must name one range of tiers, such as tier0,tier1,tier2;
+// passing both -full and -tags is refused.
 //
-// It shells out to `go test ./... -json -count=1 -tags <tags>` (tier0 when no tags are given), parses the JSON event stream, and prints per-package times, the measured wall-clock, and the slowest top-level tests.
-// Each package row carries its top-level test count (TESTS) and serial time (SERIAL), the sum of those tests' elapsed seconds; subtests count in neither.
+// It shells out to `go test ./... -json -count=1 -tags <tags>`, with tier0 when no tags are given.
+// It parses the JSON event stream.
+// It prints per-package times, the measured wall-clock, and the slowest top-level tests.
+// Each package row carries its top-level test count (TESTS) and its serial time (SERIAL).
+// SERIAL is the sum of those tests' elapsed seconds.
+// Subtests count in neither.
 // The header line shows the exact command run, tags included.
 // Exit code mirrors the underlying `go test`: 0 on success, 1 if any package failed to build or any test failed.
 //
@@ -21,19 +26,34 @@
 //
 //	go run ./cmd/testtiming -resources [-pkg ./internal/x,./internal/y] [-tags t | -full]
 //
-// It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside the one gate slot the run holds when the working directory is in a hub, and under the CPU count otherwise.
-// Every mode, the timing table and -redundancy included, holds one slot for its whole run in a hub, its `lym` prebuild inheriting it, and sets its go commands' GOFLAGS through gateslot.HolderEnv.
+// It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package.
+// In a hub, each child runs inside the one gate slot the run holds; elsewhere it runs under the CPU count.
+// Every mode, the timing table and -redundancy included, holds one slot for its whole run in a hub.
+// Its `lym` prebuild inherits that slot, and every mode sets its go commands' GOFLAGS through gateslot.HolderEnv.
 // It measures outside `lym gate test`, since its modes measure what a tier run hides.
-// -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode, tier0 when neither is given.
+// -pkg takes comma-separated package patterns and defaults to every package;
+// -tags and -full pick the tier as in the timing mode, tier0 when neither is given.
 // The columns are PACKAGE, WALL (child start to exit), CPU, PEAK_MEM, PROCS and LEFTOVER, plus a FAIL mark.
-// CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
-// PROCS is the delta of the `processes` line of /proc/stat across the child, so it is system-wide and blank where /proc/stat is unreadable.
-// LEFTOVER counts the processes still carrying the package's marker, an environment variable every descendant of the child inherits, after the child exited; a trailing list names each as `pid argv`.
-// GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYM_FIXTURE_GIT`: git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
-// The census reads git's trace2 event files, one per git process, from a trace directory the child's environment points at, and a second table after the first lists the processes by subcommand with total, fixture and code counts.
-// The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, so a before-to-after comparison reads the total.
-// The table ends with the one-minute load average at start and at end, so a report reads "quiet machine" as a precondition.
-// The measurements are Linux-first: elsewhere the cgroup and /proc readings are absent and the columns that need them stay blank.
+// CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works.
+// They are read from cpu.stat's usage_usec and memory.peak while the scope lives.
+// Otherwise they come from the child's rusage.
+// There PEAK_MEM is the largest single process's max RSS, and the row carries a rusage mark.
+// PROCS is the delta of the `processes` line of /proc/stat across the child,
+// so it is system-wide and blank where /proc/stat is unreadable.
+// LEFTOVER counts the processes still carrying the package's marker after the child exited;
+// the marker is an environment variable every descendant of the child inherits.
+// A trailing list names each as `pid argv`.
+// GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYM_FIXTURE_GIT`:
+// git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
+// The census reads git's trace2 event files, one per git process.
+// They sit in a trace directory the child's environment points at.
+// A second table after the first lists the processes by subcommand with total, fixture and code counts.
+// The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package,
+// so a before-to-after comparison reads the total.
+// The table ends with the one-minute load average at start and at end,
+// so a report reads "quiet machine" as a precondition.
+// The measurements are Linux-first.
+// Elsewhere the cgroup and /proc readings are absent, and the columns that need them stay blank.
 // -resources together with -redundancy is refused.
 //
 // The -redundancy mode replaces the timing table with a coverage report:
@@ -43,18 +63,34 @@
 // -pkg takes comma-separated package patterns, each passed to `go` as its own argument.
 // -tags defaults to tier0,tier1,tier2 in this mode, every tier but tier3.
 // A run over every package of the module, or with no report at -out yet, writes the whole report.
-// Any other run splices into the existing report: only the measured packages' sections change, a package with no section yet is inserted in import-path order, and a package that lists no tests loses its section.
-// The header and every unmeasured section stay byte-identical, and a run whose tags differ from the report's header refuses and writes nothing.
-// A package that fails to list or build keeps its old section, and the run exits 1 after writing the others.
-// For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or possibly running this module's code in another process).
-// The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lymbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
-// A test in a tier0 file is always judged, and a test above tier0 with a call the scan cannot resolve is excluded as an unclassifiable call.
+// Any other run splices into the existing report: only the measured packages' sections change.
+// A package with no section yet is inserted in import-path order, and a package that lists no tests loses its section.
+// The header and every unmeasured section stay byte-identical,
+// and a run whose tags differ from the report's header refuses and writes nothing.
+// A package that fails to list or build keeps its old section,
+// and the run exits 1 after writing the others.
+// For each package it runs every top-level test alone under one coverage binary.
+// Per package it writes the tests whose covered blocks other tests already cover.
+// It also writes the removable set among them, and the tests whose coverage cannot be judged.
+// Coverage cannot be judged for a test that is skipped or covers nothing.
+// Nor can it be judged for one that may run this module's code in another process.
+// The static scan in spawnscan.go decides the last of these.
+// It excludes a test as out of process when it references the lymbin kit or os.Executable.
+// It also excludes one that references os.Args[0] or exec.Command("go", ...).
+// Either reference counts directly or through a followed same-package or testkit call.
+// It also excludes a test that sits in a tmux-tier file.
+// A test in a tier0 file is always judged,
+// and a test above tier0 with a call the scan cannot resolve is excluded as an unclassifiable call.
 // The scan does not see a hook, alias or helper that a test installs so that git runs module code.
 // Reading each candidate before deleting it is the backstop.
 // A test the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.
-// A test that also carries `//lym:guard` stacks the two as contiguous directive lines above the `func Test…` line, in either order; the keep may sit above `//lym:` lines but never above another keep.
-// The report lists it under "Kept" with the reason and leaves it out of the candidates table, while it stays in the covering pool and the removable computation.
-// A directive with an empty reason, or not directly above a top-level test (past any `//lym:` lines), aborts the run before anything is measured or written.
+// A test that also carries `//lym:guard` stacks both directives above its `func Test…` line.
+// They are contiguous lines in either order.
+// The keep may sit above `//lym:` lines but never above another keep.
+// The report lists it under "Kept" with the reason and leaves it out of the candidates table.
+// It stays in the covering pool and the removable computation.
+// A directive with an empty reason, or one not directly above a top-level test, past any `//lym:` lines, aborts the run.
+// It does so before anything is measured or written.
 // It exits 1 after writing the report if any package reported an error.
 package main
 
@@ -156,7 +192,8 @@ func modeConflict(redundancy, resources bool) error {
 	return nil
 }
 
-// offlineTier is the tag of the tier that is offline and spawns nothing, the one a run with no tags of its own measures.
+// offlineTier is the tag of the offline tier, which runs no git subprocesses;
+// a run with no tags of its own measures that tier.
 const offlineTier = "tier0"
 
 // resolveTags turns the -full and -tags flags into the build-tag string, empty for a run with no tags of its own.
@@ -175,11 +212,12 @@ func isOfflineRun(tags string) bool {
 	return tags == "" || tags == offlineTier
 }
 
-// tierSelectorEnv names the environment variable a test binary reads its tier selection from; every go command of a run inherits it from this process.
+// tierSelectorEnv names the environment variable a test binary reads its tier selection from;
+// every go command of a run inherits it from this process.
 const tierSelectorEnv = "LYM_TEST_TIER"
 
 // tierSelection returns the LYM_TEST_TIER value that selects the tiers tags name: one tier number, or `<low>-<high>` for several.
-// A tag that names no tier is ignored, and tags naming no tier select tier0.
+// Tags that name no tier are ignored; when no tier is left, the selection is tier0.
 // It refuses tiers that do not form one range, such as tier0,tier2, since the selector takes one range.
 func tierSelection(tags string) (string, error) {
 	var tiers []int
@@ -211,8 +249,9 @@ func goTestTags(tags string) string {
 	return tags
 }
 
-// exportTierSelection sets LYM_TEST_TIER in this process to the selection tags name, so every go command the run starts inherits it.
-// It returns the error tierSelection gives for tags that do not form one range, and sets nothing then.
+// exportTierSelection sets LYM_TEST_TIER in this process to the selection that tags name,
+// so every go command the run starts inherits it.
+// It sets nothing and returns an error for tags that do not form one range.
 func exportTierSelection(tags string) error {
 	selection, err := tierSelection(goTestTags(tags))
 	if err != nil {
@@ -327,7 +366,7 @@ func parseLine(line []byte, pkgs map[string]*pkgResult, tests *[]testResult) {
 		return
 	}
 
-	// Only keep top-level tests (no "/" => not a subtest).
+	// Subtest names contain a slash, so a name without one is a top-level test.
 	if strings.Contains(ev.Test, "/") {
 		return
 	}

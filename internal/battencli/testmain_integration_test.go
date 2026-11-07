@@ -1,8 +1,5 @@
-// testmain_integration_test.go wires this package's test binary into the hermetic git
-// test environment: gitkit.HermeticGitEnv() runs once before any test, since
-// lifecycle_integration_test.go spawns git via hubforge fixtures (Test Tier Purity Invariant /
-// Hermetic Git Test Environment Invariant), in the shape internal/landingshed's own equivalent
-// already uses.
+// testmain_integration_test.go wires this package's test binary into the hermetic git test environment.
+// gitkit.HermeticGitEnv runs once before any test, since the lifecycle tests spawn git through hubforge fixtures.
 // The binary also runs under tmux isolation through tmuxkit.Main.
 
 package battencli
@@ -20,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// pairPushCounter counts the pair pushes spawned per worktree path, safe for the parallel tests that share the one TestMain seam.
+// pairPushCounter counts the pair pushes spawned per worktree path.
+// It is safe for concurrent use, since parallel tests share the one TestMain seam.
 type pairPushCounter struct {
 	mutex  sync.Mutex
 	counts map[string]int
@@ -45,9 +43,12 @@ var pairPushCounts pairPushCounter
 
 // TestMain runs HermeticGitEnv before any test spawns git.
 // It then runs the tests under tmuxkit.Main.
-// A pair push runs in the foreground: a detached one would fork this test binary, and the tests read the pushed branches on the remote.
-// Each push is also counted per worktree path, so a parallel test asserts how often its own pair was pushed without swapping the seam.
-// A run whose selection is tier0 alone installs a refusing seam instead, so a tier0 test that reaches a pair push in such a run fails rather than pushing for real.
+// A pair push runs in the foreground: a detached one would fork this test binary.
+// The tests read the pushed branches on the remote.
+// Each push is also counted per worktree path,
+// so a parallel test asserts how often its own pair was pushed without swapping the seam.
+// A run whose selection is tier0 alone installs a refusing seam instead,
+// so a tier0 test that reaches a pair push in such a run fails rather than pushing for real.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
 	selection, err := tiergate.Selected()

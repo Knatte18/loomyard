@@ -1,4 +1,5 @@
-// command_test.go covers CommandProducer's per-call order over fake lookups and a recording runner: the command read, the placeholder quoting, the outcome mapping and the refusals that stop the run.
+// command_test.go covers CommandProducer's per-call order over fake lookups and a recording runner.
+// Its rows check the command read, the placeholder quoting, the outcome mapping and the refusals that stop the run.
 
 package shedadapters
 

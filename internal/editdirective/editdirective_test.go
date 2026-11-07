@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDirective_RendersTheRuleWithoutBannerOrMarkers covers the seeded stencil: the rule's anchor phrase is present, with no marker and no leading comment.
+// TestDirective_RendersTheRuleWithoutBannerOrMarkers covers the seeded stencil:
+// the rule's anchor phrase is present, with no marker and no leading comment.
 func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -35,7 +36,8 @@ func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
 	}
 }
 
-// TestEngineDirective_ReadsTheEnginesCopyWithoutBanner covers each shipped engine copy: its own tool wording is present, with no marker, leading comment or trailing newline.
+// TestEngineDirective_ReadsTheEnginesCopyWithoutBanner covers each shipped engine copy:
+// its own tool wording is present, with no marker, leading comment or trailing newline.
 func TestEngineDirective_ReadsTheEnginesCopyWithoutBanner(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -71,7 +73,8 @@ func TestEngineDirective_ReadsTheEnginesCopyWithoutBanner(t *testing.T) {
 	}
 }
 
-// TestEngineDirective_EngineWithoutACopyNamesTheStencil covers an engine that ships no copy: the error names the engine's stencil.
+// TestEngineDirective_EngineWithoutACopyNamesTheStencil covers an engine that ships no copy:
+// the error names the engine's stencil.
 func TestEngineDirective_EngineWithoutACopyNamesTheStencil(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

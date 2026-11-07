@@ -1,7 +1,6 @@
-// registry.go implements the registry's public surface.
-// It holds the map[string]Constructor literal every recipe-row engine name is declared in.
+// registry.go declares the registry of recipe-row engine names and the Lookup and Names functions over it.
+// The registry is one map[string]Constructor literal, and it declares every engine name a recipe row can name.
 // Lookup and Names are the only two ways a caller reaches it.
-// The two closed tables outside it are the implementer table behind the "Implementer" entry and BlockGates, the table of block gate checks.
 
 package shedrecipe
 
@@ -13,14 +12,14 @@ import (
 // registry is the single place every recipe row's engine name is declared.
 // It maps each name to the Constructor that builds it.
 // The "Implementer" entry delegates to a closed table of implementer engines that no recipe row names.
-// BlockGates is the second closed table: the checks a block row's gate is chosen from, which no registry entry builds.
+// BlockGates is the second closed table: the checks a block row's gate is chosen from.
+// No registry entry builds them.
 //
-// Any new entry's coverage is checked in exactly one place: the cross-consumer coverage guard in this package's own external test package.
+// Any new entry's coverage is checked in exactly one place:
+// the coverage guard in this package's external test package.
 //
-// init() self-registration was rejected: the entries span five packages
-// (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed,
-// internal/battenshed), and registration would then depend on link-time blank imports of
-// packages this package already imports directly -- an indirection with no benefit here.
+// init() self-registration was rejected: the entries live in packages this one imports directly.
+// Registering them from init would depend on link-time blank imports, an indirection with no benefit here.
 var registry = map[string]Constructor{
 	"Preflight":        preflightEntry,
 	"ParentAlign":      parentAlignEntry,
@@ -59,10 +58,12 @@ var registry = map[string]Constructor{
 	"RaddleFile":       raddleFileEntry,
 }
 
-// LoomRecordEngines are the engines whose row is a loom recipe's record row, the row that writes the decision record before the build segment.
+// LoomRecordEngines are the engines whose row is a loom recipe's record row.
+// That row writes the decision record before the build segment.
 var LoomRecordEngines = []string{"DiscussionWrite", "RecordWrite"}
 
-// LoomBuildEngines are the engines whose row is a loom recipe's build row, the one row of the build segment that turns the record into the change.
+// LoomBuildEngines are the engines whose row is a loom recipe's build row.
+// That row is the one in the build segment that turns the record into the change.
 // A beam's BeamAwait row is one: the members' runs make the change while it holds the run.
 var LoomBuildEngines = []string{"Implementer", "DarnWrite", "BeamAwait", "SamplerSession"}
 
@@ -71,9 +72,8 @@ const LoomFinalizeEngine = "Finalize"
 
 // Lookup resolves name against the registry, returning its Constructor.
 //
-// An empty name is an error in its own right, not a default: unlike internal/batcher's Select,
-// which defaults an empty name to DefaultName, there is no sensible default engine here -- every
-// recipe row must name one explicitly.
+// An empty name is an error, not a default.
+// No default engine makes sense here: every recipe row must name one explicitly.
 func Lookup(name string) (Constructor, error) {
 	if name == "" {
 		return nil, fmt.Errorf("shedrecipe: engine name must not be empty")
@@ -85,11 +85,11 @@ func Lookup(name string) (Constructor, error) {
 	return c, nil
 }
 
-// Names returns every registered engine name, sorted, in a freshly allocated slice each call --
-// mutating the returned slice never affects a later call or the registry itself.
+// Names returns every registered engine name, sorted, in a freshly allocated slice each call.
+// Mutating the returned slice never affects a later call or the registry itself.
 //
-// It exists so the coverage guard and the future recipe loader both have a stable enumeration and
-// neither reaches into registry directly.
+// It gives the coverage guard and the future recipe loader a stable enumeration.
+// Neither reaches into registry directly.
 func Names() []string {
 	names := make([]string, 0, len(registry))
 	for name := range registry {

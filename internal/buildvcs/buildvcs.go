@@ -27,7 +27,8 @@ func (id Identity) Clean() bool {
 }
 
 // Label renders the identity for a commit message and a log line:
-// the first shortRevisionLength characters of the revision, `unknown` for an empty one, and a `-modified` suffix for a modified build.
+// the first shortRevisionLength characters of the revision, or `unknown` when it is empty;
+// a `-modified` suffix marks a modified build.
 func (id Identity) Label() string {
 	label := "unknown"
 	if id.Revision != "" {
@@ -61,7 +62,8 @@ func OfFile(path string) (Identity, error) {
 	return identityOf(info.Settings), nil
 }
 
-// identityOf maps the vcs.revision, vcs.modified and vcs.time build settings onto an Identity and ignores every other key.
+// identityOf maps the vcs.revision, vcs.modified and vcs.time build settings onto an Identity;
+// it ignores every other key.
 // A vcs.time that is not RFC 3339 leaves Time zero.
 func identityOf(settings []debug.BuildSetting) Identity {
 	var id Identity

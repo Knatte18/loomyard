@@ -1,4 +1,5 @@
-// driverresume.go implements the resume branch both `lym loom start` and `lym loom resume` take: typing the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
+// driverresume.go implements the resume branch that `lym loom start` and `lym loom resume` both take.
+// It types the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
 
 package loomcli
 
@@ -16,17 +17,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to be input-ready when the engine has no idle reading: about a minute in all.
-// Against Claude the send's own send_ready_timeout_s window bounds that wait instead.
-// The attempt count is the cap, not elapsed time, so a fake wait in a test cannot loop forever.
+// driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to be ready for input.
+// The bound applies when the engine has no idle reading.
+// Against Claude, the send's own send_ready_timeout_s window bounds that wait instead.
+// The attempt count is the cap rather than elapsed time, so a fake wait in a test cannot loop forever.
 const (
 	driverResumeSendAttempts = 20
 	driverResumeSendInterval = 3 * time.Second
 )
 
-// resumeReportPath returns the stop-report path the resume line for the run's current park asks the driver to write.
-// The path is picked once per park and kept in the resume-report file beside the park marker, keyed to the marker's content, the stop report the driver parked on;
-// every rerun against that park returns the same path, so the line it types is identical.
+// resumeReportPath returns the stop-report path that the current park's resume line asks the driver to write.
+// The path is picked once per park and kept in the resume-report file beside the park marker.
+// The file is keyed by the marker's content, which is the stop report the driver parked on.
+// Every rerun against the same park returns the same path, so the line it types is identical.
 // A park with different marker content picks a fresh path.
 func (c *loomCLI) resumeReportPath(runID string) (string, error) {
 	markerContent, err := os.ReadFile(shedrun.ParkMarker(c.location, runID))
@@ -55,21 +58,28 @@ func (c *loomCLI) resumeReportPath(runID string) (string, error) {
 }
 
 // driverBusyMessage is the refusal message for a resume line that a busy driver pane would not take.
-// err carries shuttle's reason, which quotes the draft; the message adds the way forward, with retry the calling verb.
+// err carries shuttle's reason, which quotes the draft.
+// The message adds the way forward, naming retry, the calling verb.
 func driverBusyMessage(err error, retry string) string {
 	return err.Error() + `; clear or send the draft in the driver's pane, then run "` + retry + `" again, or run "lym batten run <slug>" from the prime`
 }
 
-// resumeParkedDriver resumes the live, parked driver strand guid by typing driverResumeLine into its pane, then removes the park marker and the resume-report file.
+// resumeParkedDriver resumes the live, parked driver strand guid by typing driverResumeLine into its pane.
+// It then removes the park marker and the resume-report file.
 //
-// Only a not-ready pane (shuttleengine.ErrPaneNotReady), which an engine without the idle reading refuses at once, is waited on and retried.
-// Against Claude a busy or not-ready pane waits inside the send and fails with shuttleengine.ErrSessionBusy, which the loop does not retry;
-// that error is returned wrapped with its kind intact and without the "may have resumed" advice, since nothing was typed, and the caller refuses with shedrun.StartDriverBusyKind.
-// Any other Send error ends the loop at once: Send already replays its own keystrokes internally,
-// and a "never appeared" verification failure can follow a delivery the pane hid, so re-sending could type the line into the driver twice.
-// A send a pause covers (shuttleengine.ErrPaused) makes no further attempt and is refused with the pause's way forward, which names the resume that lifts it and then retry.
-// A failure leaves the marker in place,
-// and its message names retry, the calling verb, as the way to try again.
+// Only a not-ready pane (shuttleengine.ErrPaneNotReady) is waited on and retried.
+// An engine without the idle reading refuses such a pane at once.
+// Against Claude, a busy or not-ready pane waits inside the send.
+// The send then fails with shuttleengine.ErrSessionBusy, which the loop does not retry.
+// That error is returned wrapped with its kind intact and without the "may have resumed" advice.
+// Nothing was typed, so the caller refuses with shedrun.StartDriverBusyKind.
+// Any other Send error ends the loop at once.
+// Send already replays its own keystrokes internally.
+// A "never appeared" verification failure can follow a delivery the pane hid.
+// Re-sending could therefore type the line into the driver twice.
+// A send a pause covers (shuttleengine.ErrPaused) makes no further attempt.
+// It is refused with the pause's way forward, which names the resume that lifts it and then retry.
+// A failure leaves the marker in place, and its message names retry, the calling verb, as the way to try again.
 // It returns the path of the stop report the driver is asked to write.
 func (c *loomCLI) resumeParkedDriver(guid, retry string) (string, error) {
 	runID := shedrun.ResolveRunID(c.location, c.runID)

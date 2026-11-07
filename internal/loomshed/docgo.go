@@ -1,4 +1,5 @@
-// docgo.go holds the plan gate's doc-go-unlisted check: a card that changes a package's non-test Go code must cover the package's doc.go.
+// docgo.go holds the plan gate's doc-go-unlisted check:
+// a card that changes a package's non-test Go code must cover the package's doc.go.
 
 package loomshed
 
@@ -14,19 +15,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// docGoUnlistedCheck names the finding docGoFindings appends for a card that changes a package's non-test Go code without covering its doc.go.
+// docGoUnlistedCheck is the Check of each doc-go-unlisted finding.
+// The finding reports a card that changes a package's non-test Go code without covering its doc.go.
 const docGoUnlistedCheck = "doc-go-unlisted"
 
-// docGoWayForward is the way-forward clause every doc-go-unlisted finding carries.
+// docGoWayForward is the way-forward clause appended to every finding about an uncovered doc.go.
 const docGoWayForward = "way forward: list it under Edit when the card changes what it says, under Extends when it only adds to it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit"
 
 // testMemberPrefixes begin the name of a Go test, benchmark, fuzz target or example.
 var testMemberPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
-// docGoFindings returns one doc-go-unlisted finding per card of cards and package directory whose non-test Go code the card changes, when the directory holds a doc.go the card does not cover.
-// A card changes a package through the refs of its Create, Edit, Extends, Delete, Rename and Move groups; a non-Go file and test code are not Go code of the package.
-// A card covers the doc.go when any of its groups or its Uses names the file, when a ref is the package self glyph, or when a later card names the file under Edit or Extends.
-// Every member ref of cards is resolved in one index call, made only when there is one.
+// docGoFindings returns one doc-go-unlisted finding per card and package directory where it changes non-test Go code,
+// and the directory holds a doc.go that the card does not cover.
+// A card changes a package through the refs of its Create, Edit, Extends, Delete, Rename and Move groups;
+// a non-Go file and test code are not Go code of the package.
+// A card covers the doc.go when a ref in its groups or its Uses names the file or is the package self glyph;
+// or when a later card names the file under Edit or Extends.
+// Every member ref of cards is resolved in one index call, which is made only when there are members.
 func docGoFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, index planindex.Index) ([]planindex.Finding, error) {
 	var members []string
 	for _, card := range cards {
@@ -68,7 +73,8 @@ func docGoFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot 
 	return findings, nil
 }
 
-// docGoRefs returns the refs of card's Create, Edit, Extends, Delete, Rename and Move groups; a Rename group contributes both sides of each pair.
+// docGoRefs returns the refs of card's Create, Edit, Extends, Delete, Rename and Move groups;
+// a Rename group contributes both sides of each pair.
 func docGoRefs(card planparser.Card) []string {
 	var refs []string
 	for _, group := range card.TargetGroups {
@@ -103,7 +109,7 @@ func changedCodeDirs(plan *planparser.Plan, card planparser.Card, answers map[st
 			for _, pair := range group.Pairs {
 				oldIsTest := isTestCode(plan, pair.Old, answers)
 				add(pair.Old, oldIsTest)
-				// A new side that does not resolve yet is test code exactly when its old side is.
+				// A new side is test code when its old side is, or when it is itself test code.
 				add(pair.New, oldIsTest || isTestCode(plan, pair.New, answers))
 			}
 		}
@@ -111,7 +117,8 @@ func changedCodeDirs(plan *planparser.Plan, card planparser.Card, answers map[st
 	return dirs
 }
 
-// codeDir returns the package directory ref changes non-test Go code in, and false when ref is test code, a non-Go file or names no unit.
+// codeDir returns the package directory that ref changes non-test Go code in.
+// It returns false when ref is test code, a non-Go file or names no unit.
 func codeDir(plan *planparser.Plan, ref string, isTest bool) (string, bool) {
 	if isTest {
 		return "", false
@@ -129,7 +136,9 @@ func codeDir(plan *planparser.Plan, ref string, isTest bool) (string, bool) {
 	return scope, true
 }
 
-// isTestCode reports whether ref names test code: a file ending _test.go, a member of a _test pseudo-unit, a member declared only in _test.go files, or an unresolved member named like a test.
+// isTestCode reports whether ref names test code.
+// That is a file ending _test.go, a member of a _test pseudo-unit, or a member declared only in _test.go files;
+// an unresolved member named like a test is test code too.
 // An ambiguous answer, and any other ref, is non-test code.
 func isTestCode(plan *planparser.Plan, ref string, answers map[string]planindex.GlyphAnswer) bool {
 	if scope, isFile, ok := planparser.RefScope(plan, ref); ok && isFile {
@@ -155,7 +164,8 @@ func isTestCode(plan *planparser.Plan, ref string, answers map[string]planindex.
 	return slices.ContainsFunc(testMemberPrefixes, func(prefix string) bool { return strings.HasPrefix(parsed.Name, prefix) })
 }
 
-// isTestUnitMember reports whether ref is a member glyph whose unit is an external test package's `<dir>_test` pseudo-unit.
+// isTestUnitMember reports whether ref is a member glyph whose unit is a `<dir>_test` pseudo-unit.
+// That is the unit of an external test package.
 func isTestUnitMember(plan *planparser.Plan, ref string) bool {
 	if _, ok := planparser.RefMember(plan, ref); !ok {
 		return false
@@ -168,7 +178,9 @@ func isTestUnitMember(plan *planparser.Plan, ref string) bool {
 	return ok && strings.HasSuffix(unit, "_test") && path.Ext(unit) == ""
 }
 
-// coversDocGo reports whether card names docPath in any group or Uses, targets the package self glyph of dir, or has a later card of plan editing or extending docPath.
+// coversDocGo reports whether card covers docPath.
+// It does when a ref in its groups or its Uses names docPath or is the package self glyph of dir;
+// or when a later card of plan edits or extends docPath.
 func coversDocGo(plan *planparser.Plan, card planparser.Card, dir, docPath string) bool {
 	refs := slices.Clone(card.Uses)
 	for _, group := range card.TargetGroups {

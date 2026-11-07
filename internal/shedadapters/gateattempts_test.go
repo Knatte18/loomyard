@@ -10,8 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestGateFailedReason_NamesAttemptsAndFindingsPath pins that both the attempt count and the findings path are interpolated.
-// The producers' own gate-failed fixtures (zero attempts, often no findings path) cannot tell that apart from a fixed string.
+// TestGateFailedReason_NamesAttemptsAndFindingsPath pins the attempt count and findings path in the reason.
+// Producer gate-failed fixtures carry zero attempts and often no findings path.
+// They cannot tell an interpolated reason from a fixed string.
 // It also pins that a told findings path receives the findings.
 //
 //testtiming:keep pins that the attempt count and the findings path are both interpolated into the gate-failed reason

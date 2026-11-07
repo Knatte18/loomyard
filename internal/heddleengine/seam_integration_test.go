@@ -1,4 +1,5 @@
-// seam_integration_test.go proves the worktree seam, installed in fabric, renders what a pull takes in and ignores a Bolt pull.
+// seam_integration_test.go proves the worktree seam, installed in fabric, renders what a pull takes in;
+// it ignores a Bolt pull.
 // It installs the process-wide seam, so it runs without t.Parallel.
 
 package heddleengine_test
@@ -17,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// pushHeddleFile commits a heddle.json holding store to the branch of the hub's Bolt checkout on the records remote, through a clone of its own.
+// pushHeddleFile commits a heddle.json holding store to the branch of the hub's Bolt checkout on the records remote.
+// It commits through a clone of its own.
 func pushHeddleFile(t *testing.T, hub *hubforge.Hub, store heddleengine.Store) {
 	t.Helper()
 	branch := gitkit.CurrentBranch(t, hub.BoardDir())
@@ -39,7 +41,7 @@ func pullBolt(t *testing.T, hub *hubforge.Hub) {
 	}
 }
 
-// stripExcludeLines removes the lines a seeded exclude list left in the exclude file of the repository checked out at worktree.
+// stripExcludeLines removes the lines a seeded exclude list left in the exclude file of the repository at worktree.
 func stripExcludeLines(t *testing.T, worktree string, paths []string) {
 	t.Helper()
 	commonDir := gitkit.Git(t, worktree, "rev-parse", "--git-common-dir")
@@ -62,7 +64,8 @@ func stripExcludeLines(t *testing.T, worktree string, paths []string) {
 	}
 }
 
-// TestSeam_PullTakeIn pulls a commit that changes AGENTS.md into a hub whose Bolt checkout holds a codex-file entry, and expects the render to follow the take-in and a Bolt pull to render nothing.
+// TestSeam_PullTakeIn pulls a commit that changes AGENTS.md into a hub whose Bolt checkout holds a codex-file entry.
+// It expects the render to follow the take-in and a Bolt pull to render nothing.
 func TestSeam_PullTakeIn(t *testing.T) {
 	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

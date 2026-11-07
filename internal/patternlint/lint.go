@@ -17,12 +17,12 @@ import (
 // overviewPath is the overview's path at the worktree root.
 const overviewPath = "PATTERN.md"
 
-// WayForward is the fix a headroom finding calls for.
+// WayForward is the remedy a headroom finding carries, telling the author how to bring the overview back under the line.
 const WayForward = "cut the named bytes from PATTERN.md, moving detail into the entries' background files"
 
-// Lint compares the overview of worktree at the base with the head and reports growth past the headroom line.
+// Lint reports growth of the overview past the headroom line in worktree.
 // An empty base compares HEAD with the working tree; otherwise it compares base with HEAD.
-// It answers false for no finding; a git or read error is returned, never a finding.
+// The bool result is false when there is no finding; a git or read error is returned as an error, never as a finding.
 func Lint(worktree, base string) (pattern.Finding, bool, error) {
 	baseRevision, headRevision := "HEAD", ""
 	if base != "" {

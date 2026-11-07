@@ -1,56 +1,87 @@
-// Package hubgeom is the hub-mode adapter that tells engines their geometry: it converts a resolved *lymcwd.Location into the geometry struct each engine holds, so no engine derives its own coordinates from a Location itself.
-// The engines it serves never import it — reedengine.Geometry knows nothing of hubgeom, and neither will burlerengine's or websterengine's own geometry types — so the told direction stays one-way: hubgeom depends on the engines, never the reverse.
+// Package hubgeom is the hub-mode adapter that tells engines their geometry:
+// it converts a resolved *lymcwd.Location into the geometry struct each engine holds.
+// No engine therefore derives its own coordinates from a Location itself.
+// The engines it serves never import it, so the told direction stays one-way:
+// hubgeom depends on the engines, never the reverse.
 //
-// hubgeom's contract today is ReedGeometry, BurlerGeometry, and WebsterGeometry,
-// converting a Location into a reedengine.Geometry, a burlerengine.Geometry, and a
-// websterengine.Geometry respectively.
-// ReconcileGeometry converts a Location into the hubreconcile.Geometry the start verbs and the Preflight row hand to hubreconcile.EnsureOrWarn, and reports false for a repository with no hub-level board lym dir, which never reconciles.
-// GateSlots is the one constructor of a hub's gate-slot pool, over the Bolt checkout's slot directory, with its limits read from the Bolt checkout's gate.yaml and this machine's override at each acquire;
+// ReedGeometry converts a Location into a reedengine.Geometry.
+// BurlerGeometry converts it into a burlerengine.Geometry, and WebsterGeometry into a websterengine.Geometry.
+// ReconcileGeometry converts a Location into the hubreconcile.Geometry that start verbs hand to EnsureOrWarn.
+// The Preflight row hands it over too.
+// It reports false for a repository with no hub-level board lym dir, which never reconciles.
+// GateSlots is the one constructor of a hub's gate-slot pool, over the Bolt checkout's slot directory.
+// Its limits are read from the Bolt checkout's gate.yaml and this machine's override at each acquire;
 // WebsterGeometry hands that pool to webster.
-// Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
-// construction inline at each call site.
-// PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told: the record under the board-level `.lym` and the pair's slug, empty for the prime.
-// DobbyGeometry converts a worktree's name into the dobbyengine.Geometry its dobby is told: its lock, state, log, output and announced-head files and its tidy directory under the worktree's own `.lym/beam/`, the batten runs directory under the prime, and the anchor-move records that stop it.
+// New teller functions belong here, not in per-engine packages or inline at each call site.
+// PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told:
+// the record under the board-level `.lym` and the pair's slug, empty for the prime.
+// DobbyGeometry converts a worktree's name into the dobbyengine.Geometry its dobby is told.
+// That geometry holds its lock, state, log, output and announced-head files.
+// It holds its tidy directory under the worktree's own `.lym/beam/`.
+// It also holds the batten runs directory under the prime and the anchor-move records that stop it.
 //
-// SlackGeometry converts a hub path into the slackengine.Geometry the Slack engine is told: the hub's Slack directory and its files under the board-level `.lym`, the token file in the per-user credential directory, the process-owner directory and the running `lym` binary.
+// SlackGeometry converts a hub path into the slackengine.Geometry the Slack engine is told.
+// That geometry holds the hub's Slack directory and its files under the board-level `.lym`.
+// It holds the token file in the per-user credential directory.
+// It also holds the process-owner directory and the running `lym` binary.
 //
-// ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
+// ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir:
+// reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
 //
-// ReedGeometry also tells reed the hub's spawn order (spawnorder.go), as a lazy closure over the Location that does nothing until a revival is due:
-// it lists the hub's worktrees with fabricengine.List, skips prunable and unresolvable ones, and orders the prime first, then each pair by its run's start time, then pairs without one by name.
-// A pair's start time is the `started_at` stamp of its own run seed, which shedrun.WriteSeed writes once when the run is seeded; the file's modification time is never read, so a checkout, rebase or re-materialized worktree cannot move it.
+// ReedGeometry also tells reed the hub's spawn order (spawnorder.go).
+// The order is a lazy closure over the Location that does nothing until a revival is due.
+// The closure lists the hub's worktrees with fabricengine.List and skips prunable and unresolvable ones.
+// It orders the prime first, then each pair by its run's start time, then pairs without one by name.
+// A pair's start time is the `started_at` stamp of its own run seed, which shedrun.WriteSeed writes once.
+// The file's modification time is never read, so a checkout, rebase or re-materialized worktree cannot move it.
 // A pair whose seed is absent, has no stamp or has one that does not parse is undated.
-// Runs seeded before the stamp existed are undated once, and sort by name after the dated pairs.
 // Each entry's Revive builds that worktree's own reed engine from its reed.yaml and its own ReedGeometry.
 //
 // The tellers do I/O only for Board and run state that no Location carries, and spawn nothing.
-// ReedGeometry reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's parent through ResolveParent.
-// BurlerGeometry and WebsterGeometry read the parent through ResolveParent too, as the name their spawned roles' parent directive renders.
-// BurlerGeometry also tells the shortname and slug as ReedGeometry does, from the same prime test, so the agent names burler forms match the names reed gives the strands.
-// ResolveParent reads the pair's origin record alone; an origin that names no parent worktree, or no origin record, yields no parent.
-// An origin record whose sibling worktree lacks its lock directory is an error naming `lym fabric reconcile`, never a silent "no parent".
-// A missing or unreadable .git entry is the one error of ReedGeometry and of BurlerGeometry, and an unresolvable parent leaves ParentName empty with a warning in all three.
-// hubgeom is still the only reader — no engine resolves a parent, per the Told-Geometry Invariant.
+// ReedGeometry reads the worktree's .git entry to tell the prime from a task worktree.
+// It also tells the hub's recorded shortname, and a task worktree's parent through ResolveParent.
+// BurlerGeometry and WebsterGeometry read the parent through ResolveParent too.
+// They render it as the name their spawned roles' parent directive carries.
+// BurlerGeometry also tells the shortname and slug as ReedGeometry does, from the same prime test.
+// The agent names burler forms therefore match the names reed gives the strands.
+// ResolveParent reads the pair's origin record alone.
+// An origin that names no parent worktree, or no origin record, yields no parent.
+// An origin record whose sibling worktree lacks its lock directory is an error naming `lym fabric reconcile`.
+// It is never a silent "no parent".
+// A missing or unreadable .git entry is the one error of ReedGeometry and of BurlerGeometry.
+// An unresolvable parent leaves ParentName empty with a warning in all three.
+// hubgeom is the only reader of the parent: no engine resolves one, per the Told-Geometry Invariant.
 //
-// ParentOf is the one parent resolver every owner reader is handed: it returns the slug of the pair an entry was forked from, "" for the prime.
-// It reads the slug's origin record over the prime's location, and only when no record is found reads the nearest open beam above the entry on the local board.
+// ParentOf is the one parent resolver every owner reader is handed.
+// It returns the slug of the pair an entry was forked from, "" for the prime.
+// It reads the slug's origin record over the prime's location.
+// Only when no record is found does it read the nearest open beam above the entry on the local board.
 // A found record with no parent worktree reads as the prime and never falls through to the board.
-// A found record's parent is its ParentWorktree, read as the prime when the record names the prime's checked-out branch or the prime's worktree, and never derived by matching the recorded branch against the pairs present here.
-// So a member whose beam pair is absent on this machine still reads the beam as its parent, and the beam's owner as its own.
-// ResolveParent keeps answering the parent pair's orch name for a reader that needs the pair itself:
+// A found record's parent is its ParentWorktree.
+// It reads as the prime when the record names the prime's checked-out branch or the prime's worktree.
+// It is never derived by matching the recorded branch against the pairs present here.
+// So a member whose beam pair is absent on this machine still reads the beam as its parent.
+// The beam's owner reads as its own.
+// ResolveParent answers the parent pair's orch name for a reader that needs the pair itself:
 // the parent names the driver's prompts carry.
-// The `lym loom decision add --by parent` guard admits the destination of notices instead, so the orch that receives them can record the call.
+// The `lym loom decision add --by parent` guard admits the destination of notices instead,
+// so the orch that receives them can record the call.
 //
 // NearestLiveOrch is the destination of a notice to an orch.
 // It tries the worktree it is told, then walks upward through the origin records' parent worktrees.
-// It answers the nearest worktree whose orch a told predicate reports live, or the prime whatever its state when none is.
+// It answers the nearest worktree whose orch a told predicate reports live.
+// When none is live it answers the prime, whatever its state.
 // The predicate is told because the orch's state paths and reed belong to a package that imports hubgeom.
-// The answer's Name is that worktree's orch agent name, formed as ResolveParent forms it, and its Worktree names the worktree, empty for the prime.
-// A worktree with no origin record, an empty parent worktree or a parent worktree that is gone ends the walk at the prime, and so does a cycle; an error from the predicate is returned.
+// The answer's Name is that worktree's orch agent name, formed as ResolveParent forms it.
+// Its Worktree names the worktree, empty for the prime.
+// A worktree with no origin record ends the walk at the prime.
+// So does an empty parent worktree, a parent worktree that is gone, and a cycle.
+// An error from the predicate is returned.
 //
-// ReedGeometry also tells reed a lazy button-context closure (buttons.go) carrying the place, the placeholder values and desktop's machine buttons,
-// and a {beam} resolver that reads the parent through ParentOf over the prime's location only when called.
+// ReedGeometry also tells reed a lazy button-context closure (buttons.go).
+// It carries the place, the placeholder values and desktop's machine buttons.
+// It also carries a {beam} resolver that reads the parent through ParentOf over the prime's location only when called.
 //
-// Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
-// geometry from CLI flags and local paths instead.
+// Standalone CLIs do not call hubgeom:
+// they have no Location to convert, and resolve their own geometry from CLI flags and local paths instead.
 package hubgeom

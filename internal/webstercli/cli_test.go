@@ -1,7 +1,13 @@
-// cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
-// It also covers the spawn-free verbs (validate, status, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
-// Pathspec-shape coverage now lives in sync_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
-// Every fixture here builds a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, webster's own package-local injection point for these tests.
+// cli_test.go covers the webstercli cobra seam through RunCLI.
+// It covers the PersistentPreRunE group-command guard and the help-tree stale-language check.
+// It also covers the spawn-free verbs:
+// validate, status, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan.
+// It covers fabricSync's SkipGit-before-Open guard ordering directly.
+// None of these need a live tmux or claude substrate, or a git repository beyond a plain t.TempDir().
+// Pathspec-shape coverage lives in sync_integration_test.go.
+// That file proves the exclude-file transients stay uncommitted through a real git repo.
+// Every fixture here builds a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE.
+// That bypass is the package-local injection point for these tests.
 // Every other verb's own behavior (begin-batch, record-batch, recover-batch, run) is covered by verbs_test.go.
 package webstercli
 
@@ -63,7 +69,8 @@ func TestCommand_LongStringsHaveNoStaleBatchLanguage(t *testing.T) {
 	walk(Command())
 }
 
-// TestFabricSync_GuardOrdering verifies the FABRIC_SKIP_GIT bypass short-circuits before path validation, and that without it fabricSync validates the pair's paths before any git work.
+// TestFabricSync_GuardOrdering verifies that the FABRIC_SKIP_GIT bypass short-circuits before path validation.
+// Without the bypass, fabricSync validates the pair's paths before any git work.
 // It sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH, so it is not parallel.
 func TestFabricSync_GuardOrdering(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -102,14 +109,13 @@ func TestFabricSync_GuardOrdering(t *testing.T) {
 	}
 }
 
-// newTestCLI builds a minimal *websterCLI for validate/status testing without a live git repo.
+// newTestCLI builds a minimal *websterCLI for validate and status testing without a live git repo.
 //
-// The layout anchors at the non-"." subpath "backend" so AnchorPath() and WorktreePath() are
-// distinguishable strings, proving the plan paths behave correctly at a nested anchor. It does NOT
-// prove anchoring itself: this helper both computes planDir and is the same value the tests seed
-// into via seedValidPlanDir, so a WorktreePath() slip at the computation below would stay
-// self-consistent and pass at any AnchorRel. The subpath-anchored PersistentPreRunE case in
-// internal/webstercli/verbs_test.go is the place anchoring is actually proven for this module.
+// The layout anchors at the non-"." subpath "backend", so AnchorPath() and WorktreePath() are distinguishable.
+// That shows the plan paths behave correctly at a nested anchor.
+// It does not prove anchoring itself.
+// This helper computes planDir and seeds the same value through seedValidPlanDir,
+// so a WorktreePath() slip in the computation below would stay self-consistent and pass at any AnchorRel.
 func newTestCLI(t *testing.T) (*websterCLI, string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -121,7 +127,7 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 		refMatcher: fabricengine.NewRefScanner(layout),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 	}
-	// A verb run with no state computes Merriam's start base, which reads the Master stencil.
+	// A verb run with no state computes the start base through websterengine.MerriamBase, which reads the Master stencil.
 	stencilkit.SeedInto(t, c.geom.StencilsDir)
 	return c, hub
 }
@@ -131,8 +137,9 @@ func claudeInstructionFiles() ([]string, error) {
 	return []string{"CLAUDE.md", "CLAUDE.local.md"}, nil
 }
 
-// twoCardUsesPlan returns a two-card plan in which the "consumer" card Uses the file the "producer" card Creates;
-// consumerNumber and producerNumber place the two cards, so the plan is in executable order only when the producer's number is lower.
+// twoCardUsesPlan returns a two-card plan in which the "consumer" card Uses the file the "producer" card Creates.
+// consumerNumber and producerNumber place the two cards.
+// The plan is in executable order only when the producer's number is lower.
 func twoCardUsesPlan(consumerNumber, producerNumber int) plankit.Plan {
 	cards := []plankit.Card{
 		{
@@ -157,14 +164,16 @@ func twoCardUsesPlan(consumerNumber, producerNumber int) plankit.Plan {
 	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
 }
 
-// deleteOrderFiles is the source tree deleteOrderPlan resolves against: sub/b.go's Bar still calls the Foo that sub/a.go declares.
+// deleteOrderFiles is the source tree that deleteOrderPlan resolves against:
+// sub/b.go's Bar still calls the Foo that sub/a.go declares.
 var deleteOrderFiles = map[string]string{
 	"sub/a.go": "package sub\n\nfunc Foo() {}\n",
 	"sub/b.go": "package sub\n\nfunc Bar() { Foo() }\n",
 }
 
-// deleteOrderPlan returns a two-card plan in which the "deleter" card Deletes sub#Foo and the "editor" card Edits sub#Bar, whose code still calls Foo;
-// deleterNumber and editorNumber place the two cards, so the plan is in executable order only when the editor's number is lower.
+// deleteOrderPlan returns a two-card plan: the "deleter" card Deletes sub#Foo and the "editor" card Edits sub#Bar.
+// deleterNumber and editorNumber place the two cards.
+// Bar still calls Foo, so the plan is in executable order only when the editor's number is lower.
 func deleteOrderPlan(deleterNumber, editorNumber int) plankit.Plan {
 	cards := []plankit.Card{
 		{
@@ -192,8 +201,12 @@ func deleteOrderPlan(deleterNumber, editorNumber int) plankit.Plan {
 	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
 }
 
-// TestValidateCmd_Envelopes drives validate over one plan state per row and checks its exit code and envelope:
-// a clean plan, a missing plan, a finding keyed by card (never by batch), an informational-only finding that still reports success, a blocking finding that carries its own severity, and a worktree root quarry cannot open, which names quarry rather than the plan.
+// TestValidateCmd_Envelopes drives validate over one plan state per row and checks its exit code and envelope.
+// The rows cover a clean plan and a missing plan.
+// A finding is keyed by card, never by batch.
+// An informational-only finding still reports success.
+// A blocking finding carries its own severity.
+// A worktree root quarry cannot open is reported as quarry, not as the plan.
 func TestValidateCmd_Envelopes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -222,7 +235,7 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 			seed:     func(t *testing.T, c *websterCLI) { seedMissingIntentPlanDir(t, c.geom.PlanDir) },
 			wantExit: 1,
 			wantIn:   []string{`"ok":false`, `"check":"card-missing-field"`, `"card":"1-only"`},
-			// findingsEnvelope must key each finding by f.Card, not f.Batch, and emit only check/card/detail.
+			// findingsEnvelope keys each finding by f.Card and emits only check, card, and detail.
 			wantOut: []string{`"batch":`},
 		},
 		{
@@ -236,7 +249,7 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 		{
 			name: "blocking finding carries its severity",
 			seed: func(t *testing.T, c *websterCLI) {
-				// "sub#Missing" resolves not_found with unit: found -- statusFindings' blocking glyph-not-found.
+				// "sub#Missing" resolves not_found while its unit is found, so statusFindings reports a blocking glyph-not-found.
 				seedGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot, "sub#Foo")
 				card := "# Card 1 — only\n\n**Create:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Missing`\n\n**Intent:** placeholder card.\n"
 				if err := os.WriteFile(filepath.Join(c.geom.PlanDir, "01-only.md"), []byte(card), 0o644); err != nil {
@@ -280,8 +293,8 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 			name: "unopenable worktree root names quarry",
 			seed: func(t *testing.T, c *websterCLI) {
 				plankit.Write(t, c.geom.PlanDir, onlyCreatePlan("go", "sub#Foo"))
-				// c.geom is a plain struct value, so this write reaches only this row's *websterCLI;
-				// a path that does not exist, decoupled from the plan's own on-disk location, makes quarry.Open fail without disturbing the plan read.
+				// c.geom is a plain struct value, so this write reaches only this row's *websterCLI.
+				// A missing path, separate from the plan's on-disk location, makes quarry.Open fail and leaves the plan read intact.
 				c.geom.WorktreeRoot = filepath.Join(t.TempDir(), "does-not-exist")
 			},
 			wantExit: 1,
@@ -316,9 +329,9 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 	}
 }
 
-// TestValidateCmd_BatchesFlag asserts --batches adds the active batchifier's profile and its partition to the ok envelope,
-// each batch as its card numbers and estimate, and that without the flag the envelope carries neither key.
-// With no recorded state and an unreadable CLAUDE.md the flag refuses naming the file and the way forward.
+// TestValidateCmd_BatchesFlag asserts --batches adds the batchifier's profile and partition to the ok envelope.
+// Each batch appears with its card numbers and estimate, and without the flag the envelope carries neither key.
+// With no recorded state and an unreadable CLAUDE.md, the flag refuses, naming the file and the way forward.
 func TestValidateCmd_BatchesFlag(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -399,7 +412,8 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 			c.batcher = cost
 			plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
 
-			// With no recorded state the partition is priced from Merriam's start base, and this profile's context_per_line is zero, so the base adds its fixed context alone.
+			// With no recorded state the partition is priced from the start base (MerriamBase),
+			// and this profile's context_per_line is zero, so the base adds its fixed context alone.
 			if batches, ok := tc.want["batches"].([]any); ok {
 				base, err := websterengine.MerriamBase(c.geom, nil)
 				if err != nil {
@@ -428,10 +442,10 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 	}
 }
 
-// seedGlyphPlanDir writes a syntactically complete, one-card language: go plan into dir, whose sole
-// card's Create group targets createTarget. It also writes worktreeRoot/sub/a.go so a glyph target
-// naming the "sub" unit resolves, and returns nothing -- callers read back through c.geom.PlanDir /
-// c.geom.WorktreeRoot exactly as seedValidPlanDir's other callers do.
+// seedGlyphPlanDir writes a complete, one-card language: go plan into planDir.
+// Its sole card's Create group targets createTarget.
+// It also writes worktreeRoot/sub/a.go, so a glyph target naming the "sub" unit resolves.
+// Callers read the paths back through c.geom.PlanDir and c.geom.WorktreeRoot.
 func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) {
 	t.Helper()
 
@@ -446,12 +460,15 @@ func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) 
 	}
 }
 
-// seedTwoCardGlyphPlanDir writes a two-card, language: go plan into planDir whose FIRST card Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card Creates a brand-new unit.
-// The first card is therefore a blocking create-already-exists finding under the whole-plan check set and nothing at all once it counts as completed;
-// the second card is informational in both scopes.
-// A third card Deletes a member that is not on disk:
-// a blocking glyph-not-found under the whole-plan check set, the informational delete-target-gone once a batch is begun.
-// That asymmetry is what lets one plan tell validate's two scopes apart.
+// seedTwoCardGlyphPlanDir writes a two-card, language: go plan into planDir.
+// The first card creates Foo, which already exists in worktreeRoot/sub/a.go.
+// Under the whole-plan check set that is a blocking create-already-exists finding;
+// once the card counts as completed, there is no finding at all.
+// The second card creates a brand-new unit and is informational in both scopes.
+// A third card deletes a member that is not on disk.
+// Under the whole-plan check set that is a blocking glyph-not-found;
+// once a batch is begun, it is an informational delete-target-gone.
+// That asymmetry lets one plan tell validate's two scopes apart.
 func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	t.Helper()
 
@@ -491,13 +508,14 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	}
 }
 
-// TestValidateCmd_ScopeFollowsRunProgress is R4-07's direct regression test.
-// The verb advertises itself as the gate "lym webster run" applies, and Run scopes that gate by the run's begun cards;
-// validate ran the whole-plan check set unconditionally, so the instant one Create card landed the verb exited 1 over a plan Run resumes without complaint.
+// TestValidateCmd_ScopeFollowsRunProgress checks that validate scopes its gate by the run's begun cards.
+// That gate is the one "lym webster run" applies; validate must not refuse a plan the run resumes without complaint.
 //
 // One plan drives every row.
-// With no run recorded, card 1's already-existing Create target is a blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the verb exists for.
-// With state.json recording batch 1 begun, terminal or not, that same finding is the plan working as designed and must vanish, leaving only card 2's informational finding and exit 0.
+// With no run recorded, card 1's Create target already exists: a blocking create-already-exists finding.
+// validate must still refuse, since that pre-flight answer is what the verb is for.
+// With state.json recording batch 1 begun, terminal or not, that finding is the plan working as designed:
+// it must vanish, leaving only card 2's informational finding and exit 0.
 // Both whole-plan branches, no run and a run with no batch begun, answer through the wired index, whose type load a hub slots.
 func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -606,7 +624,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	}
 }
 
-// TestValidateCmd_RefusesBackwardPlanWithNoRun asserts validate with no run recorded refuses a plan whose first card uses a later card's target, as the first init would, naming the batch order and its way forward.
+// TestValidateCmd_RefusesBackwardPlanWithNoRun asserts that validate refuses a backward plan when no run is recorded.
+// A backward plan is one whose first card uses a later card's target.
+// The refusal names the batch order and the way forward, as the first init does.
 func TestValidateCmd_RefusesBackwardPlanWithNoRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	c, _ := newTestCLI(t)
@@ -645,9 +665,18 @@ func TestValidateCmd_RefusesBackwardPlanWithNoRun(t *testing.T) {
 	}
 }
 
-// TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round sonnet-xhigh-r8): validate's own resolve pass can rewrite the plan on disk (handle canonicalization) exactly as begin-batch's own ValidateDispatch call can, but before this fix it never restamped state.json's PlanFingerprint afterward the way every bracket verb already does — so a run's crash/resume guard silently desynced from a plan validate itself had just rewritten, and the next begin-batch/record-batch/run refused the (validate's own sanctioned) edit as a foreign one, forcing --fresh and discarding the run's progress.
+// TestValidateCmd_RebaselinesStalePlanFingerprint checks that validate restamps state.json's PlanFingerprint.
+// It sets the fingerprint to the plan's current one.
+// Validate's resolve pass can rewrite the plan on disk, as begin-batch's dispatch can,
+// so the recorded fingerprint has to follow it.
+// Without the restamp, the next verb that checks the plan refuses that edit as foreign,
+// and the run then needs --fresh, discarding its progress.
 //
-// This drives the observable end state directly rather than depending on quarry's own handle grammar to construct a genuine mid-call rewrite: state.json is seeded with a fingerprint that does NOT match the real on-disk plan (standing in for "the plan changed since state.json was last written, by validate's own rewrite or otherwise"), and the assertion is that validate corrects it to the plan's actual current fingerprint — the same unconditional re-baseline begin-batch performs after every ValidateDispatch call, regardless of whether that specific call happened to rewrite anything.
+// The test drives the end state directly.
+// It does not depend on quarry's handle grammar to build a genuine mid-call rewrite.
+// It seeds state.json with a fingerprint that does not match the plan on disk.
+// The assertion is that validate corrects it to the plan's current fingerprint.
+// begin-batch re-baselines unconditionally after each ValidateDispatch call, rewrite or not.
 //
 //testtiming:keep pins that validate restamps a stale plan fingerprint and leaves the run's other state fields untouched, which its covering tests do not assert
 func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
@@ -663,8 +692,8 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 		t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
 	}
 
-	// The recorded fingerprint matches the unedited plan: validate refuses a plan edited since the run
-	// recorded it (TestValidateCmd_RefusesOverviewEditWithoutRestamp), so a restamp is only ever earned over an unedited one.
+	// The recorded fingerprint matches the unedited plan: validate refuses a plan edited since the run recorded it,
+	// so the restamp only ever covers an unedited plan.
 	state := &websterengine.State{
 		RunGUID:         "run-guid",
 		PlanFingerprint: realFingerprint,
@@ -689,17 +718,22 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 	if reloaded.PlanFingerprint != realFingerprint {
 		t.Errorf("state.json's PlanFingerprint after validate = %q; want %q (the plan's real current fingerprint) — a stale fingerprint left in place is exactly the desync that forces every later begin-batch/record-batch/run to refuse a genuinely current plan as foreign", reloaded.PlanFingerprint, realFingerprint)
 	}
-	// The run's other fields survive the re-baseline untouched — persistPlanFingerprintRebaseline
-	// reloads state fresh and writes only the fingerprint field, never the caller's whole in-memory
-	// copy, for exactly the reason its own doc comment states (R6-4).
+	// The run's other fields survive the re-baseline untouched.
+	// persistPlanFingerprintRebaseline reloads state fresh and writes only the fingerprint field.
+	// It never writes the caller's whole in-memory copy, so a stale copy cannot overwrite the run's other fields.
 	if reloaded.RunGUID != "run-guid" {
 		t.Errorf("state.json's RunGUID after validate = %q; want %q (the fingerprint restamp must not clobber other fields)", reloaded.RunGUID, "run-guid")
 	}
 }
 
 // TestBringUpDisposition_RecoverAndRun proves the two verbs that spawn an agent boot the standalone reed session first.
-// recover-batch is R4-11's regression: it spawns a COLD recovery strand through reed.AddStrand, which needs a live reed session, but it never called the in-process bring-up seam wireStandalone arms, so in standalone mode (where the session is gone once a run ends) it failed inside AddStrand advising `lym reed up`, a hub-only verb that cannot reach standalone geometry.
-// Its batch 99 exists in no plan, so findBatch refuses it immediately: the bring-up message can only win over the batch-not-found message if the guard runs before the spawn machinery, which makes this an ordering proof.
+// recover-batch spawns a cold recovery strand through reed.AddStrand, which needs a live reed session.
+// In standalone mode the session is gone once a run ends,
+// so the verb must run the in-process bring-up that wireStandalone arms first.
+// Without it, AddStrand fails and advises `lym reed up`, a hub-only verb that cannot reach standalone geometry.
+// Its batch 99 exists in no plan, so findBatch refuses it at once.
+// The bring-up message can win over batch-not-found only if the guard runs before the spawn machinery.
+// That makes this test an ordering proof.
 // Each row's fake returns an error so the call ends right after the reedUp check, never reaching the spawn.
 func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -759,18 +793,19 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 	}
 }
 
-// singleFlagEnvelope matches the one-word machine-readable signal shape webster's verbs use to tell
-// Master WHY a call refused: a whole envelope whose only field is a boolean flag
-// (map[string]any{"plan_drifted": true}). Master keys a failure-ladder rung off each such flag, so
-// the flag is a contract term, not an implementation detail.
+// singleFlagEnvelope matches the signal shape webster's verbs use to tell Master why a call refused:
+// a whole envelope whose only field is a boolean flag, such as map[string]any{"plan_drifted": true}.
+// Master keys a failure-ladder rung off each such flag, so each flag name is a contract term.
 var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true\}`)
 
-// TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch emitted {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure ladder carried no rung for it, so Master fell through to generic error handling on a refusal with a specific meaning and a specific disposition.
-// record-batch's own flags ride in multi-field envelopes (with batch, and warnings on batch_failed) and so are outside this regexp's shape;
-// the master stencil's ladder names each all the same.
+// TestMasterStencilCoversEverySingleFlagRefusal checks the Master stencil for a rung per single-flag refusal.
+// record-batch's flags ride in multi-field envelopes, such as with batch, so the regexp does not match them.
+// The Master stencil's ladder names those too.
 //
-// The flag set is read out of this package's own source rather than pinned as a list, because a hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this gap arose.
-// What the regexp deliberately does NOT cover is a flag riding along inside a multi-field envelope (status's own report fields, for instance): those are state a caller reads, not refusals a ladder must answer.
+// The flag set is read from this package's source, not pinned as a list,
+// so a flag added later is found without anyone updating a list.
+// A flag riding along in a multi-field envelope, such as status's report fields, is state a caller reads.
+// It is not a refusal a ladder must answer, so the regexp leaves those out.
 //
 //testtiming:keep a guard that fires when a single-flag refusal envelope is missing from the master stencil's failure ladder, which its covering test does not assert
 func TestMasterStencilCoversEverySingleFlagRefusal(t *testing.T) {
@@ -887,7 +922,9 @@ func TestStatusCmd(t *testing.T) {
 
 var fakeDigest = websterengine.Digest{Batch: "01-first", Status: websterengine.DigestStatusDone}
 
-// newRunTestCLI returns newTestCLI's CLI with the identity batcher selected -- what PersistentPreRunE resolves for an empty active: -- and the one-card plan seeded.
+// newRunTestCLI returns a newTestCLI CLI with the identity batcher selected.
+// PersistentPreRunE selects that batcher for an empty active: value.
+// The one-card plan is seeded too.
 func newRunTestCLI(t *testing.T) *websterCLI {
 	t.Helper()
 	identity := batcher.Identity()
@@ -897,7 +934,8 @@ func newRunTestCLI(t *testing.T) *websterCLI {
 	return c
 }
 
-// seedTwoCardPlan rewrites the plan in planDir as two cards: card 1 "only" and card 2 "second" with the given intent text, so a later edit to card 2 changes the plan fingerprint without touching card 1.
+// seedTwoCardPlan writes two cards into planDir: card 1 "only" and card 2 "second" with secondIntent as its intent.
+// A later edit to card 2 then changes the plan fingerprint without touching card 1.
 func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
 	t.Helper()
 	plankit.Write(t, planDir, plankit.Plan{
@@ -922,7 +960,11 @@ func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
 	})
 }
 
-// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the moment the batch's report file exists, and {"report": false} once the bounded wait elapses with no report -- the first step passes --wait 1ns explicitly to keep the window near-instant, versus the production default (websterengine.DefaultAwaitWaitS) used whenever --wait is omitted -- with no state.json ever read or written, since the verb is deliberately stateless.
+// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes.
+// The first, {"report": true}, appears once the batch's report file exists.
+// The second, {"report": false}, appears once the bounded wait elapses with no report.
+// The first step passes --wait 1ns to keep that window near-instant.
+// Omitting --wait uses websterengine.DefaultAwaitWaitS instead.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one CLI.
 func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -966,14 +1008,12 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	}
 }
 
-// TestPersistPlanFingerprintRebaseline covers the round-4 review's R4-01 CLI half: both bracket
-// verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands on disk, and
-// either verb can then fail on a later step of the same call. Discarding that re-baseline with the
-// failed call left the plan on disk carrying webster's own edit while state.json recorded the
-// pre-rewrite fingerprint, which every later bracket verb then refused as a foreign edit.
+// TestPersistPlanFingerprintRebaseline proves both bracket verbs re-baseline State.PlanFingerprint.
+// The re-baseline is saved once a sanctioned plan rewrite lands on disk, even if the call fails later.
+// Dropping it with the failed call would leave the plan carrying webster's own edit.
+// state.json would still hold the old fingerprint, so every later bracket verb would refuse the plan as a foreign edit.
 //
-// The unchanged-fingerprint case must write nothing at all: that is what keeps a genuine foreign
-// edit failing ErrFingerprintMismatch exactly as it did.
+// An unchanged fingerprint must write nothing, which keeps a genuine foreign edit failing ErrFingerprintMismatch.
 func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1024,10 +1064,10 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 		}
 	})
 
-	// R6-4: the re-baseline persists the FINGERPRINT and nothing else. RecordBatch advances
-	// State.SeenForkTranscripts before the step that can fail, so saving the caller's whole in-memory
-	// State persisted the fork's transcript as consumed on a failed call — and the resumed
-	// record-batch then found no new transcripts and wedged.
+	// The re-baseline persists the fingerprint and nothing else.
+	// RecordBatch advances State.SeenForkTranscripts before the step that can fail.
+	// Saving the caller's whole in-memory State would persist the fork's transcript as consumed on a failed call,
+	// and the resumed record-batch would then find no new transcripts and wedge.
 	t.Run("only the fingerprint is persisted, never the caller's other mutations", func(t *testing.T) {
 		t.Parallel()
 		geom := newGeom(t)
@@ -1073,8 +1113,9 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 	})
 }
 
-// TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses a plan whose 00-overview.md changed since the run recorded it:
-// it exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json, and the next run entry's fingerprint check still refuses the edit.
+// TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses an unrestamped overview edit.
+// It exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json.
+// The next run entry's fingerprint check still refuses the edit.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1116,9 +1157,10 @@ func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	}
 }
 
-// TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending pins #329 at validate: batch 1 is begun but not terminal and nothing has landed,
-// and card 2 Uses card 1's Create target, which does not exist yet.
-// validate must scope to `pending` and exit 0 instead of reporting the Use as glyph-not-found.
+// TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending pins a forthcoming create target at validate.
+// Batch 1 is begun but not terminal, and nothing has landed.
+// Card 2 uses card 1's Create target, which does not exist yet.
+// validate must scope to `pending` and exit 0 rather than report the Use as glyph-not-found.
 func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1227,7 +1269,12 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	}
 }
 
-// TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical: an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), a removed card whose batch was begun (naming --fresh), and a named card of a done batch (naming that its work has landed, and --fresh).
+// TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero and leaves state.json byte-identical.
+// Each refusal names its way forward.
+// The cases are: an edited card the operator did not name, which names --card;
+// a --card value that is not a positive integer, a usage error naming the value;
+// a removed card whose batch was begun, which names --fresh;
+// and a named card of a done batch, which names that its work has landed and --fresh.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1363,7 +1410,8 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 	}
 }
 
-// TestRebaselineCmd_FabricSyncFailureWayForward reaches rebaseline's fabric-sync refusal and checks it names the same way forward as the bracket verbs' sync refusals.
+// TestRebaselineCmd_FabricSyncFailureWayForward proves rebaseline's fabric-sync refusal names a way forward.
+// It names the same way forward as the bracket verbs' sync refusals.
 // The restamped state is saved locally before the sync, which is what that way forward commits.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
@@ -1430,7 +1478,8 @@ func TestRestorePlanCmd_RestoresEditedCard(t *testing.T) {
 	}
 }
 
-// TestRunStateVerbs_NoRunRefusal proves each verb that reads the run's state.json refuses when there is none, naming the run verb.
+// TestRunStateVerbs_NoRunRefusal proves each verb that reads state.json refuses when there is no run.
+// The refusal names the run verb.
 func TestRunStateVerbs_NoRunRefusal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

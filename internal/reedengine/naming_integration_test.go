@@ -1,6 +1,7 @@
 //go:build !windows
 
-// naming_integration_test.go proves against a real tmux that a strand's full name reaches its state record, its pane title and its process environment.
+// naming_integration_test.go proves against a real tmux that a strand's full name reaches its state record.
+// It also checks that the name reaches the pane title and the process environment.
 // The pane title is a display mirror, so the test reads it back through list-panes and never resolves anything by it.
 
 package reedengine
@@ -17,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// addEnvProbeStrand adds a role strand whose command writes $LYM_STRAND_NAME and $LYM_PARENT to a file and returns the strand with the file's path.
+// addEnvProbeStrand adds a role strand whose command writes $LYM_STRAND_NAME and $LYM_PARENT to a file.
+// It returns the strand and the path of that file.
 func addEnvProbeStrand(t *testing.T, e *Engine, role string) (Strand, string) {
 	t.Helper()
 	e.executablePath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
@@ -47,8 +49,10 @@ func paneTitle(t *testing.T, e *Engine, paneID string) string {
 	return ""
 }
 
-// TestNaming runs the naming steps against one cold session; each step adds its own role's strand, and the geometry fields a step needs are set on the shared engine for that step alone.
-// Process-global state: the captured log, so the scenario is not parallel.
+// TestNaming runs the naming steps against one cold session.
+// Each step adds its own role's strand.
+// It sets the geometry fields the step needs on the shared engine, for that step alone.
+// The captured log is process-global state, so the scenario is not parallel.
 func TestNaming(t *testing.T) {
 	tiergate.Require(t, 2)
 	logs := logcapture.CaptureVerbose(t)

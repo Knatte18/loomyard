@@ -1,4 +1,6 @@
-// scope_test.go covers the session scope: the scope keys each kind of session gets in its settings document, the reading of Claude Code's installed plugins, and the scope reaching the settings Prepare and OpenLaunch write.
+// scope_test.go covers the session scope: the scope keys each kind of session gets in its settings document.
+// It also covers reading Claude Code's installed plugins.
+// It also covers the scope reaching the settings that Prepare and OpenLaunch write.
 
 package claudeengine
 
@@ -29,7 +31,8 @@ func scopeKeysOf(t *testing.T, data []byte) map[string]any {
 	return got
 }
 
-// writeInstalledPlugins writes a Claude Code config directory whose plugins file names each plugin of ids with one install, and returns the directory.
+// writeInstalledPlugins writes a Claude Code config directory whose plugins file names each id in ids with one install.
+// It returns the directory.
 func writeInstalledPlugins(t *testing.T, ids []string) string {
 	t.Helper()
 	configDir := t.TempDir()
@@ -51,7 +54,8 @@ func writeInstalledPlugins(t *testing.T, ids []string) string {
 	return configDir
 }
 
-// writeMalformedPlugins writes a Claude Code config directory whose plugins file is not valid JSON, and returns the directory.
+// writeMalformedPlugins writes a Claude Code config directory whose plugins file is not valid JSON.
+// It returns the directory.
 func writeMalformedPlugins(t *testing.T) string {
 	t.Helper()
 	configDir := t.TempDir()
@@ -65,7 +69,10 @@ func writeMalformedPlugins(t *testing.T) string {
 }
 
 // TestSessionScope_WrittenSettingsPerRole pins the scope keys of the settings document each kind of session gets:
-// the orch, which keeps its memory and the ListAgents tool, an opened session with no skills, the board session with the ly plugin and scribe skills, a darn writer with its language's skills, and a scope switched off.
+// the orch, which keeps its memory and the ListAgents tool;
+// an opened session with no skills;
+// the board session with the ly plugin and scribe skills;
+// a darn writer with its language's skills; and a scope switched off.
 func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -127,7 +134,8 @@ func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 	}
 }
 
-// TestReadInstalledPlugins pins the reading of Claude Code's plugins file: each plugin's id, sorted, none for an absent file, and an error for a malformed one.
+// TestReadInstalledPlugins pins the reading of Claude Code's plugins file: the id of each plugin, sorted.
+// An absent file reads as no plugins, and a malformed one is an error.
 func TestReadInstalledPlugins(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -160,7 +168,8 @@ func TestReadInstalledPlugins(t *testing.T) {
 	}
 }
 
-// TestClaudeConfigDir pins the config directory's resolution: the directory CLAUDE_CONFIG_DIR names, else .claude under the home directory.
+// TestClaudeConfigDir pins the config directory's resolution.
+// The directory CLAUDE_CONFIG_DIR names wins; otherwise it is .claude under the home directory.
 func TestClaudeConfigDir(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -189,9 +198,12 @@ func TestClaudeConfigDir(t *testing.T) {
 	}
 }
 
-// TestSessionScope_ReachesWrittenSettings pins that Prepare and OpenLaunch write the scope the shipped claude.yaml turns on:
-// a run's and an opened session's plugins follow their preloaded skills and their auto-memory is off, an opened orch session's auto-memory is left alone,
-// and a plugins file Prepare cannot read leaves connectors, bundled skills and the Workflow tool off with no plugin named.
+// TestSessionScope_ReachesWrittenSettings pins that Prepare and OpenLaunch write the scope.
+// That scope is the one the shipped claude.yaml turns on.
+// A run's and an opened session's plugins follow their preloaded skills, and their auto-memory is off.
+// An opened orch session's auto-memory is left alone.
+// If Prepare cannot read the plugins file, connectors, bundled skills and the Workflow tool are off,
+// and no plugin is named.
 func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

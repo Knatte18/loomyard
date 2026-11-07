@@ -1,4 +1,6 @@
-// recordsguard.go — the guard over the drift records, scope.json and judged.json: every write commits both files with a digest trailer, and a read tells a file edited by hand from the committed copy.
+// recordsguard.go — the guard over the drift records, scope.json and judged.json.
+// Every write commits both files with a digest trailer,
+// and a read tells a file edited by hand from the committed copy.
 
 package driftengine
 
@@ -26,9 +28,11 @@ type Records struct {
 	// Judged is the stored rulings, and JudgedFound reports that the file exists.
 	Judged      JudgedRecord
 	JudgedFound bool
-	// Committed is true when the copies come from the newest Drift-Records commit, and false when no such commit exists and the files are read as they are.
+	// Committed is true when the copies come from the newest Drift-Records commit;
+	// it is false when no such commit exists and the files are read as they are.
 	Committed bool
-	// Mismatch is true when the files on disk are not the newest Drift-Records commit's: a hand edit, or a write interrupted before its commit.
+	// Mismatch is true when the files on disk are not the newest Drift-Records commit's:
+	// a hand edit, or a write interrupted before its commit.
 	// The copies are then the committed ones.
 	Mismatch bool
 }
@@ -62,7 +66,8 @@ func readRecordFile(path string) (data []byte, found bool, err error) {
 	return data, true, nil
 }
 
-// decodeRecord decodes a record's bytes, leaving the zero value for an absent file; it accepts keys the type does not declare.
+// decodeRecord decodes a record's bytes, leaving the zero value for an absent file;
+// it accepts keys the type does not declare.
 func decodeRecord[T any](name string, data []byte, found bool) (T, error) {
 	var record T
 	if !found {
@@ -87,8 +92,10 @@ func currentDigest(p Paths) (string, error) {
 	return RecordsDigest(scope, judged, scopeFound, judgedFound), nil
 }
 
-// ReadRecords reads the two records from the newest records commit carrying Drift-Records, through the FileAt seam, and sets Mismatch when the files on disk differ from that commit's digest.
-// With no such commit it returns the files as they are, Committed and Mismatch false, so a run seeded before the guard existed reads its records unguarded until its first write.
+// ReadRecords reads the two records as the newest commit carrying the Drift-Records trailer holds them.
+// It sets Mismatch when the files on disk differ from that commit's digest.
+// With no such commit it returns the files as they are, with Committed and Mismatch false,
+// so its records are read unguarded until the first write.
 func ReadRecords(d Deps) (Records, error) {
 	if err := requireSeams("the records guard", seam{"TrailerCommit", d.TrailerCommit != nil}, seam{"FileAt", d.FileAt != nil}); err != nil {
 		return Records{}, err
@@ -133,9 +140,11 @@ func ReadRecords(d Deps) (Records, error) {
 	return records, nil
 }
 
-// WriteRecords applies change to the records ReadRecords returns, never to the files on disk, writes both files through internal/state and commits both at once through CommitWithTrailers.
+// WriteRecords applies change to a copy of the records that ReadRecords returns.
+// It then writes both files and commits them together.
 // The commit ends in `Drift-Records: <digest of the written files>` and then the extra trailers.
-// It refuses while the files on disk differ from the newest Drift-Records commit, since a write would hide the difference; only RestoreRecords clears it.
+// It refuses while the files on disk differ from the newest Drift-Records commit;
+// a write would hide the difference, so only restoring them from that commit clears it.
 // A write interrupted before its commit leaves such a difference.
 func WriteRecords(d Deps, change func(scope *ScopeRecord, judged *JudgedRecord) error, extra ...fabricengine.Trailer) error {
 	if err := requireSeams("the records guard", seam{"CommitWithTrailers", d.CommitWithTrailers != nil}); err != nil {
@@ -170,7 +179,8 @@ func WriteRecords(d Deps, change func(scope *ScopeRecord, judged *JudgedRecord) 
 	return nil
 }
 
-// writeRecord writes the record file called name through internal/state, which keeps the keys of the file it replaces that the value's type does not declare.
+// writeRecord writes the record file called name through internal/state.
+// It keeps the keys of the replaced file that the value's type does not declare.
 func writeRecord[T any](p Paths, name, path string, value T) error {
 	lock, err := recordLock(p, name)
 	if err != nil {

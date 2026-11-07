@@ -1,5 +1,7 @@
-// hubpull_integration_test.go drives PullHub against a hubforge hub whose origin a second clone moves:
-// every side moved and then up to date, a stopped side beside the sides that still move, a beam with no upstream, each pair pulled inside its lock, and Bolt waiting for the board write lock.
+// hubpull_integration_test.go drives PullHub against a hubforge hub whose origin a second clone moves.
+// Its cases cover every side moved and then up to date, and a stopped side beside the sides that still move.
+// Other cases cover a beam with no upstream, and each pair pulled inside its lock.
+// One case covers Bolt waiting for the board write lock.
 // Shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -29,7 +31,8 @@ const (
 )
 
 // recordingPairLock returns a lock seam that records the worktree of every pair it locks, and the list it records into.
-// For a worktree pulled names, the seam fails t unless the named file is absent when the lock is taken and present when it is released.
+// For a worktree that pulled names, the seam fails t unless the named file is absent when the lock is taken.
+// The seam also fails t unless the file is present when the lock is released.
 // This pins the pair's pull inside its lock.
 func recordingPairLock(t *testing.T, pulled map[string]string) (fabricengine.PairLock, *[]string) {
 	t.Helper()
@@ -190,7 +193,8 @@ func TestBoltPull_HoldsTheBoardWriteLockWhileItPulls(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	second := hubforge.CloneSecond(t, h)
 	moveOrigin(t, second.BoardDir(), "board-moved.txt")
-	// Holding the push lock, which Bolt.Pull takes after the board write lock, parks the pull with the board write lock already held.
+	// Holding the push lock parks the pull with the board write lock already held.
+	// Bolt.Pull takes the push lock after the board write lock.
 	// The test then observes the lock instead of waiting out a clock.
 	pushLockPath, err := gitrepo.New(h.BoardDir()).PushLockPath()
 	if err != nil {

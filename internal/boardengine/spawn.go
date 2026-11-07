@@ -1,8 +1,5 @@
-// spawn.go — detached board sync process launching.
-//
-// spawnSync launches `lym board sync` as a detached, windowless process.
-// It has its own process group (so the parent's Ctrl-C does not reach it) and survives the parent's
-// exit.
+// spawn.go launches `lym board sync` as a detached, windowless process.
+// It has its own process group, so the parent's Ctrl-C does not reach it, and it survives the parent's exit.
 
 package boardengine
 
@@ -18,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
-// DeferrableSyncFlag is the hidden flag that marks a detached board sync as one whose network gate defers under a pause instead of waiting, and holds it under the hub scope.
+// DeferrableSyncFlag is the hidden flag that marks a detached board sync as deferrable:
+// under a pause, its network gate exits instead of waiting, and the gate is held under the hub scope.
 const DeferrableSyncFlag = "deferrable"
 
 // SpawnSync starts the detached `lym board sync` of the board at boardPath, the same sync every board write spawns.
@@ -33,8 +31,10 @@ func SpawnSync(boardPath string) error {
 // syncExecutable names the binary spawnSync launches; a test points it at a harmless one.
 var syncExecutable = os.Executable
 
-// spawnSync launches `lym board sync --deferrable` as a detached, windowless process in the board directory and registers it under the hub owner.
-// The board directory as working directory holds the child's gate under the hub scope, and the flag makes it exit under a pause instead of waiting.
+// spawnSync launches `lym board sync --deferrable` as a detached, windowless process in the board directory:
+// it registers the process under the hub owner.
+// The board directory as working directory holds the child's gate under the hub scope,
+// and the flag makes it exit under a pause instead of waiting.
 // A registration failure is logged and never fails the spawn, since the sync is already running.
 func spawnSync(boardPath string) error {
 	exe, err := syncExecutable()

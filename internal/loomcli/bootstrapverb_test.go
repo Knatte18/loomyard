@@ -1,6 +1,6 @@
-// bootstrapverb_test.go covers BootstrapVerb: that it is exactly "start", and that it equals the
-// Use field of the cobra command startCmd builds -- the assertion that catches a rename of the verb
-// that leaves the constant behind.
+// bootstrapverb_test.go covers BootstrapVerb.
+// It asserts the constant is exactly "start" and equals the Use field of the cobra command startCmd builds.
+// That equality catches a rename of the verb that would leave the constant behind.
 
 package loomcli
 
@@ -8,8 +8,9 @@ import "testing"
 
 import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
-// TestBootstrapVerb asserts BootstrapVerb is exactly "start" and equals the Use field of the cobra
-// command startCmd builds, so a rename of the verb cannot leave the constant behind.
+// TestBootstrapVerb asserts BootstrapVerb is exactly "start".
+// It also asserts it equals the Use field of the cobra command startCmd builds.
+// That keeps a rename of the verb from leaving the constant behind.
 //
 //testtiming:keep pins BootstrapVerb being exactly start and equal to the Use of the command startCmd builds, so a rename cannot leave the constant behind; the covering test never reads the constant
 func TestBootstrapVerb(t *testing.T) {

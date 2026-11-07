@@ -1,15 +1,21 @@
-// Package parentlock owns the parent lock: one record per parent branch that lets a single run at a time move that parent, valid exactly while its owner process lives.
+// Package parentlock owns the parent lock.
+// It is one record per parent branch that lets a single run at a time move that parent.
+// A record is valid exactly while its owner process lives.
 //
-// The package is told every directory it works on and derives none beyond Dir, which spells the ephemeral directory name only through internal/lymdirs.
+// The package is told every directory it works on and derives none beyond Dir.
+// Dir spells the ephemeral directory name only through internal/lymdirs.
 //
-// Moving, merging into or landing on a local parent branch happens only in a run's Finalize, under this lock for that parent (PATTERN-landing).
+// Moving, merging into or landing on a local parent branch happens only in a run's Finalize.
+// It happens under this lock for that parent (PATTERN-landing).
 //
 // # Record
 //
 // A Record is Branch, Owner and AcquiredAt, stored as JSON at `<Dir>/<hex(branch)>.json`.
-// The branch is hex-encoded into the file name, so a name with a slash, `..` or a case clash on Windows can neither escape nor collide in the directory.
+// The branch is hex-encoded into the file name.
+// A name with a slash, `..` or a case clash on Windows can therefore neither escape nor collide in the directory.
 // The first write creates Dir.
-// An Owner names the run (slug, pair path, run id) and the process (pid, start time); SameRun compares the run, SameProcess the run and the process.
+// An Owner names the run (slug, pair path, run id) and the process (pid, start time);
+// SameRun compares the run, SameProcess the run and the process.
 //
 // # Liveness
 //
@@ -20,36 +26,55 @@
 // # Queue
 //
 // Every read-modify-write runs under a file lock on `<Dir>/<hex(branch)>.lock`, so two acquirers never both win.
-// TryAcquire takes a free record, a record whose owner is not alive and a record naming the acquirer's own run, which rewrites the owner process.
-// A free or stale record goes to the head of the queue, the live tickets kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`:
+// TryAcquire takes a free record, a record whose owner is not alive and a record naming the acquirer's own run.
+// Taking its own run's record rewrites the owner process.
+// A free or stale record goes to the head of the queue.
+// The queue is the live tickets kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`:
 // tickets at the front first, then the rest, each part oldest first.
-// An acquirer that is not the head keeps its ticket and is not granted; a dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
-// A run a pause covers, as Store.Covered tells, yields the queue: it keeps its ticket and place and is not granted, unless the record already names its own run, and the queue head is the first live ticket of an uncovered run.
+// An acquirer that is not the head keeps its ticket and is not granted.
+// A dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
+// A run a pause covers, as Store.Covered tells, yields the queue.
+// It keeps its ticket and place and is not granted, unless the record already names its own run.
+// The queue head is the first live ticket of an uncovered run.
 // A covered waiter still first in the queue at the resume is granted next.
 //
 // # Waiting
 //
-// Acquire loops attempts until granted, with no time limit, polling from one second and doubling to thirty seconds while the holder is unchanged.
-// It watches the branch's record file through internal/fswatch, so a release or any other change to the record ends the poll delay early, still a second after the last attempt began; a watch that cannot open leaves the poll alone.
-// A Waiter tells it optional seams: OnWait when the wait starts and the holder changes, Paused before every sleep, Sleep in place of the timer and Now in place of the clock.
-// Its Front queues the caller at the front, for a run taking back a lock it freed to work outside it, so runs that queued meanwhile wait behind it.
+// Acquire loops attempts until granted, with no time limit.
+// It polls from one second, doubling to thirty seconds while the holder is unchanged.
+// It watches the branch's record file through internal/fswatch.
+// A release or any other change to the record ends the poll delay early, still a second after the last attempt began;
+// a watch that cannot open leaves the poll alone.
+// A Waiter tells it optional seams:
+// OnWait when the wait starts and the holder changes;
+// Paused before every sleep;
+// Sleep in place of the timer;
+// Now in place of the clock.
+// Its Front queues the caller at the front, for a run taking back a lock it freed to work outside it.
+// Runs that queued meanwhile wait behind it.
 // A pause, a cancelled context and an attempt error each return with the caller's ticket removed.
 // The wait only waits and takes; it never frees another owner's live record.
-// A caller keeps its wait on disk as a Wait record at WaitRecordPath, which ReadWait ignores once its writing process is dead.
+// A caller keeps its wait on disk as a Wait record at WaitRecordPath.
+// ReadWait ignores such a record once its writing process is dead.
 //
 // # Idle
 //
-// An IdleWatch decides that a holder has stopped making progress: Observe reports true when no agent is busy and one has waited for the Bound on the caller's awake clock, so suspended time never counts.
+// An IdleWatch decides that a holder has stopped making progress.
+// Observe reports whether the holder has stopped:
+// no agent is busy and one has waited for the Bound on the caller's awake clock.
+// Suspended time never counts.
 // An unreadable agent state counts as nobody waiting.
 //
 // # Release and hand-off
 //
-// Release and HandOff compare on the owner process: a record owned by another process of the same run, such as batten's or a newer loop's, is left alone.
+// Release and HandOff compare on the owner process:
+// a record owned by another process of the same run, such as batten's or a newer loop's, is left alone.
 //
 // # Force releases
 //
 // ForceRelease removes one record whatever its owner and ReleaseAll removes every record.
 // Neither stops the owning run or touches tickets; the released run reacquires at its next lock-taking row.
 //
-// An unreadable record returns an error wrapping ErrUnreadable naming the record path and changes nothing; List reports it with its error text instead.
+// An unreadable record returns an error wrapping ErrUnreadable naming the record path and changes nothing;
+// List reports it with its error text instead.
 package parentlock

@@ -1,4 +1,5 @@
-// Package tiergate selects at run time which tiers' tests a test binary runs, so one test binary per package serves every tier.
+// Package tiergate selects at run time which tiers' tests a test binary runs.
+// One test binary per package serves every tier.
 //
 // The selection comes from the LYM_TEST_TIER environment variable, which the hub's gate config sets on each tier:
 // one tier number, such as `1`, or an inclusive range, such as `0-2`.
@@ -40,7 +41,8 @@ func (s Selection) String() string {
 }
 
 // Selected returns the selection LYM_TEST_TIER names, tier0 alone when it is unset or empty.
-// A value that is neither a tier number nor a range `<low>-<high>` with low at most high is an error naming the variable and its value.
+// A value that is neither a tier number nor a range `<low>-<high>` with low at most high is an error.
+// The error names the variable and its value.
 func Selected() (Selection, error) {
 	value := strings.TrimSpace(os.Getenv(EnvVar))
 	if value == "" {

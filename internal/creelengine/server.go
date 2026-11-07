@@ -1,4 +1,5 @@
-// server.go runs the per-hub daemon: it takes the hub's lock, binds the socket, serves one request per connection and delivers what the pool holds until its binary is replaced.
+// server.go runs the per-hub daemon: it takes the hub's lock, binds the socket, and serves one request per connection.
+// It delivers what the pool holds until its binary is replaced.
 
 package creelengine
 
@@ -27,16 +28,18 @@ const (
 	ackReadTimeout = 30 * time.Second
 )
 
-// Options is what Run is told.
+// Options configures Run with the hub's geometry, its delivery and its clock, and with optional hooks the daemon calls.
 type Options struct {
 	Geometry Geometry
 	Delivery Delivery
 	Clock    Clock
-	// ParentPID reads a process's parent for the peer's ancestry walk.
+	// ParentPID reports the parent of a process, which the peer's ancestry walk follows.
+	// When nil, the walk finds no parents.
 	ParentPID func(pid int) (parent int, ok bool)
 	// GOOS is the platform the daemon runs on; only "linux" resolves identity from process ancestry.
 	GOOS string
-	// PollClock, when set, times the daemon's once-a-second poll in place of Clock, so a test steps the poll apart from the delivery's waits.
+	// PollClock times the daemon's poll in place of Clock; nil means Clock times it.
+	// A test sets it to step the poll apart from the delivery's waits.
 	PollClock Clock
 	// Replaced reports whether the daemon's binary was replaced; nil never reports it.
 	Replaced func() bool
@@ -44,13 +47,16 @@ type Options struct {
 	Hubs HubDirectory
 	// Ready, when set, is called once the daemon listens on its socket.
 	Ready func()
-	// beforeOutcomeWait, when set, is called with each waiting verb's waiter and the channel its close watch closes, after the interim response and ahead of the wait's select; a test seam, nil in production.
+	// beforeOutcomeWait is a test seam, nil in production.
+	// It is called with each waiting verb's waiter and the channel its close watch closes.
+	// The call happens after the interim response and before the wait's select.
 	beforeOutcomeWait func(waiter *Waiter, clientClosed <-chan struct{})
 }
 
 // Run serves the hub until ctx ends or its binary is replaced, then returns nil.
 // It returns ErrDaemonRunning when another daemon holds the hub's lock.
-// On a replaced binary it starts no new send, waits for the sends in flight and journals their outcomes, closes its listener and releases the lock.
+// On a replaced binary it starts no new send.
+// It waits for the sends in flight and journals their outcomes, closes its listener and releases the lock.
 func Run(ctx context.Context, opts Options) error {
 	if opts.ParentPID == nil {
 		opts.ParentPID = func(int) (int, bool) { return 0, false }
@@ -114,7 +120,8 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 // removeUnansweredSocket removes a socket file no listener answers.
-// It dials, and only on a refusal re-stats and removes the same file, so a daemon that just bound is never unlinked.
+// It dials the path, and only on a refusal re-stats and removes the same file,
+// so a daemon that just bound is never unlinked.
 func removeUnansweredSocket(path string) error {
 	first, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -153,11 +160,13 @@ type daemon struct {
 	// done is closed when the daemon shuts down, which ends every waiting connection.
 	done chan struct{}
 	wg   sync.WaitGroup
-	// hubRecord is the daemon's record of having recorded its hub.
+	// hubRecord is what the daemon remembers of recording its hub.
+	// The daemon records its hub at startup and again on each request that resolves a sender.
 	hubRecord hubRecordState
 }
 
-// poll asks once a second whether the binary was replaced, which ends the daemon, and whether the UTC day changed, which runs retention.
+// poll asks every pollInterval whether the binary was replaced, which ends the daemon.
+// It also asks whether the UTC day changed, which runs retention.
 func (d *daemon) poll(ctx context.Context, stop context.CancelFunc, lastDay string, timer <-chan time.Time) {
 	defer d.wg.Done()
 	for {
@@ -400,8 +409,10 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	return d.write(conn, ok)
 }
 
-// awaitOutcome answers a waiting verb: an interim response with the id at once, a progress response for each stall note of a waiting inject, and the outcome when the waiter is answered.
-// The interim and final responses carry the resolved sender's name and whether the verb stopped the receiver's running turn.
+// awaitOutcome answers a waiting verb with an interim response that carries the id at once.
+// It then sends a progress response for each stall note of a waiting inject.
+// The outcome follows when the waiter is answered.
+// The interim and final responses carry the resolved sender's name and whether the verb stopped the receiver's turn.
 // A client that closes its connection, or a daemon that shuts down, ends the wait with no answer.
 func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender, interrupted bool) error {
 	defer waiter.Cancel()
@@ -478,7 +489,9 @@ func (d *daemon) read(conn *net.UnixConn, reader *bufio.Reader, sender Sender, r
 	return d.handOut(conn, reader, sender, reading)
 }
 
-// handOut answers the messages of reading, and journals them read only once the client acknowledges them on the same connection; any other answer, or none in time, releases them.
+// handOut answers the messages of reading.
+// It journals them read only once the client acknowledges them on the same connection.
+// Any other answer, or none in time, releases them.
 func (d *daemon) handOut(conn *net.UnixConn, reader *bufio.Reader, sender Sender, reading *Reading) error {
 	resp := Response{OK: true, Sender: sender.Name, Messages: reading.Messages, Echo: reading.Echo, AckRequired: len(reading.ids) > 0 || len(reading.echoIDs) > 0}
 	if err := d.write(conn, resp); err != nil {
@@ -491,7 +504,9 @@ func (d *daemon) handOut(conn *net.UnixConn, reader *bufio.Reader, sender Sender
 	return d.awaitAck(conn, reader, sender, reading)
 }
 
-// awaitAck reads the client's acknowledgement of reading under ackReadTimeout and journals the messages read, answering the confirmation or the refusal; any other answer, or none in time, releases them.
+// awaitAck reads the client's acknowledgement of reading under ackReadTimeout.
+// It journals the messages read and answers the confirmation or the refusal.
+// Any other answer, or none in time, releases them.
 func (d *daemon) awaitAck(conn net.Conn, reader *bufio.Reader, sender Sender, reading *Reading) error {
 	_ = conn.SetReadDeadline(time.Now().Add(ackReadTimeout))
 	line, err := readLine(reader, maxRequestBytes)
@@ -501,7 +516,7 @@ func (d *daemon) awaitAck(conn net.Conn, reader *bufio.Reader, sender Sender, re
 		return nil
 	}
 	if err := reading.Ack(); err != nil {
-		// A claim's and a ring's Ack logged its failure itself, so the one line a failed claim leaves is its ack-failed line.
+		// A claim's and a ring's Ack log their failure themselves, as ack-failed, so only a read logs it here.
 		if reading.read {
 			logger.Warn("creel daemon: could not journal an acknowledged read", "error", err)
 		}

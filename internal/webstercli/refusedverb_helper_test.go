@@ -1,4 +1,4 @@
-// refusedverb_helper_test.go holds the seeds, fakes and way-forward assertions the tests of every tier in this package share.
+// refusedverb_helper_test.go holds the seeds, fakes and way-forward assertions the tests of every tier share.
 
 package webstercli
 
@@ -41,8 +41,8 @@ func failingInstructionFiles() ([]string, error) {
 	return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", "gone", shuttleengine.ErrEngineNotRegistered)
 }
 
-// seedHubGateConfig writes the hub-wide gate.yaml into hubPath's board directory: the shipped template with tier0 declared, so every gate lists it.
-// hubgeom.WebsterGeometry's GateConfig reads it there.
+// seedHubGateConfig writes the hub-wide gate.yaml into hubPath's board directory.
+// It is the shipped gate template with tier0 declared, so every gate lists it.
 func seedHubGateConfig(t *testing.T, hubPath string) {
 	t.Helper()
 	configDir := filepath.Join(fabricengine.BoardDir(hubPath), "_lym", "config")
@@ -63,8 +63,10 @@ func hubGeometryWithIndex(layout *lymcwd.Location) websterengine.Geometry {
 	return geom
 }
 
-// testPlanFingerprint recomputes the plan-identity hash websterengine's own unexported fingerprint computes -- duplicated here since this test lives in webstercli, an external package, and that algorithm is deliberately not exported.
-// It must stay in lock-step with websterengine's own implementation: a SHA-256 digest over every "*.md" file's sorted name and contents in planDir.
+// testPlanFingerprint recomputes the plan-identity hash of planDir.
+// The algorithm is not exported by websterengine, so this external test package duplicates it.
+// It must stay in lock-step with the websterengine implementation.
+// The digest is SHA-256 over every "*.md" file's sorted name and contents in planDir.
 func testPlanFingerprint(t *testing.T, planDir string) string {
 	t.Helper()
 	entries, err := os.ReadDir(planDir)
@@ -94,7 +96,8 @@ func testPlanFingerprint(t *testing.T, planDir string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// seedRunState writes a minimal state.json, fingerprint-matched to c's on-disk plan, standing in for the state the run verb would have already created before Master ever calls a bracket verb.
+// seedRunState writes a minimal state.json whose fingerprint matches c's on-disk plan.
+// It stands in for the state the run verb creates before Master calls a bracket verb.
 func seedRunState(t *testing.T, c *websterCLI) *websterengine.State {
 	t.Helper()
 	st := &websterengine.State{
@@ -113,7 +116,8 @@ func seedRunState(t *testing.T, c *websterCLI) *websterengine.State {
 	return st
 }
 
-// writeBatchReport seeds reportsDir with a batch-report YAML file for batch 1 ("01-only") at its plan-format-pinned filename, status OK, using websterengine's own WriteReport so the on-disk shape always matches ParseReport's contract.
+// writeBatchReport seeds reportsDir with an OK batch-report file for batch 1 ("01-only") at the plan format's filename.
+// It writes through websterengine's WriteReport, so the file has the shape the engine parses.
 // headSHA must equal the worktree's actual current HEAD when the caller drives record-batch's terminal path;
 // any non-empty placeholder is fine for await-batch (presence-only) and recover-batch (no such cross-check).
 func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
@@ -128,7 +132,8 @@ func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
 	}
 }
 
-// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly where a failed fabric commit would.
+// failingFabricOpen is an open-fabric function that cannot reach the fabric repo,
+// so a sync fails where a failed fabric commit would.
 func failingFabricOpen() (*fabricengine.Fabric, error) {
 	return nil, fmt.Errorf("fabric commit failed (injected)")
 }
@@ -145,7 +150,7 @@ func wantWayForward(t *testing.T, got, substr string) {
 	}
 }
 
-// wantFabricSyncWayForward fails unless got carries a way forward that names the fabric commit and the refused-verb clause.
+// wantFabricSyncWayForward fails unless got carries a way forward naming the fabric commit and the refused-verb clause.
 func wantFabricSyncWayForward(t *testing.T, got string) {
 	t.Helper()
 	wantWayForward(t, got, "lym fabric commit")

@@ -1,9 +1,9 @@
-// run.go implements (*Shed).Run and (*Shed).Step, the two callers of one shared routing
-// implementation: stepLocked holds the six-step loop body -- read the status file, look up the
-// current producer, check pause/cancellation, call the producer, append-and-persist, and route on
-// the outcome -- and both Run (looping stepLocked to a terminal state) and Step (one call, one
-// StepResult) share it verbatim. Everything a producer does past its own Call return value is
-// invisible to this loop.
+// run.go implements (*Shed).Run and (*Shed).Step, which both drive one shared loop body.
+// stepLocked is that body.
+// It reads the status file and looks up the current producer.
+// It checks pause and cancellation, calls the producer, appends and persists the outcome, and routes on it.
+// Run loops stepLocked to a terminal state, and Step runs it once and returns one StepResult.
+// Everything a producer does past its own Call return value is invisible to this loop.
 
 package shedengine
 
@@ -31,17 +31,21 @@ const ReasonNoOnStuckTarget = "stuck with no OnStuck target"
 // so a reader matches it with strings.HasPrefix, never equality.
 const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 
-// ReasonPreconditionUnmet is the exact prefix of a blocked halt's reason that a producer sets when a precondition the run cannot settle on its own is unmet.
-// The reason continues with what is unmet and its way forward as a trailing clause, so a reader matches it with strings.HasPrefix, never equality.
+// ReasonPreconditionUnmet is the exact prefix of a blocked halt's reason for an unmet precondition.
+// A producer sets it when a precondition the run cannot settle on its own is unmet.
+// The reason continues with what is unmet and its way forward as a trailing clause,
+// so a reader matches it with strings.HasPrefix, never equality.
 // Shed never writes it itself.
 const ReasonPreconditionUnmet = "precondition unmet"
 
 // ReasonRerouteCapReached is the exact prefix of the reason the reroute-cap blocked halt persists.
-// The reason continues with the capped row, its reroute target, the producer's own reason and the told way forward, so a reader matches it with strings.HasPrefix, never equality.
+// The reason continues with the capped row, its reroute target, the producer's own reason and the way forward,
+// so a reader matches it with strings.HasPrefix, never equality.
 const ReasonRerouteCapReached = "reroute cap reached"
 
-// stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
-// characters collapsed to a single space; an empty result falls back to ReasonNoOnStuckTarget.
+// stuckReason normalizes a producer's Reason to one line.
+// It trims the text and collapses every run of line-break characters to a single space.
+// An empty result falls back to ReasonNoOnStuckTarget.
 func stuckReason(reason string) string {
 	reason = oneLine(reason)
 	if reason == "" {
@@ -50,8 +54,8 @@ func stuckReason(reason string) string {
 	return reason
 }
 
-// oneLine trims text and collapses every run of line-break characters to a single space; an empty result stays empty.
-// stuckReason and the parent notice share this rule.
+// oneLine trims text and collapses every run of line-break characters to a single space.
+// An empty result stays empty.
 func oneLine(text string) string {
 	text = strings.TrimSpace(text)
 	var b strings.Builder
@@ -70,9 +74,9 @@ func oneLine(text string) string {
 	return b.String()
 }
 
-// findProducer looks up name in producers, returning the matching definition and whether it was
-// found. It never guesses: a caller that gets found == false must hard-error rather than
-// fabricate a fallback, exactly as the loop's own lookup step does.
+// findProducer looks up name in producers, returning the matching definition and whether it was found.
+// It never guesses.
+// A caller that gets found == false must hard-error rather than fabricate a fallback.
 func findProducer(producers []ProducerDef, name string) (ProducerDef, bool) {
 	for _, p := range producers {
 		if p.Name == name {
@@ -92,29 +96,29 @@ func RowAt(producers []ProducerDef, current string) string {
 	return current
 }
 
-// StepResult is what stepLocked -- and therefore Step -- reports on one iteration of the loop.
-// Every field below is the same value Run's own loop would have carried into its next iteration
-// or returned in its Result: Step exists so a caller can observe and control that one iteration
-// from outside, without giving up any of Run's crash-safety or routing guarantees.
+// StepResult reports one iteration of the run loop.
+// It lets a caller observe and control one iteration from outside.
+// Doing so gives up none of the loop's crash-safety or routing guarantees.
+// Each field holds the value the loop carries into its next iteration or returns to its caller.
 type StepResult struct {
-	// Producer is the name of the producer this step actually called. It is empty when no
-	// producer was called this step -- the already-done short-circuit and the pause/cancel exit
-	// both leave it empty.
+	// Producer is the name of the producer this step called.
+	// It is empty when no producer was called this step.
+	// That covers the already-done short-circuit and the pause or cancel exit.
 	Producer string
-	// Outcome is the verdict the called producer returned. It is empty when no producer reached
-	// a verdict this step -- every case Producer is empty, plus the producer-error-with-a-
-	// cancelled-context case, where a producer was called but never returned one.
+	// Outcome is the verdict the called producer returned.
+	// It is empty when no producer returned a verdict this step:
+	// when Producer is empty, or when a called producer failed under a cancelled context.
 	Outcome Outcome
-	// Output is the called producer's OutputPointer.Path. It is empty whenever Producer is empty,
-	// and also for a producer whose own OutputPointer names no artifact (a gate or terminal row).
+	// Output is the called producer's OutputPointer.Path.
+	// It is empty whenever Producer is empty, and for a gate or terminal row that names no artifact.
 	Output string
-	// Next is current_producer as this step persisted it -- the producer the following step (or
-	// a resumed Run) will call.
+	// Next is current_producer as this step persisted it.
+	// It names the producer the following step, or a resumed run, will call.
 	Next string
 	// State is the State this step persisted alongside Next.
 	State State
-	// Reason is populated alongside StateBlocked and StateAwaiting, and alongside every StatePaused:
-	// the condition reason when a pause_before or pause_after condition fired, "pause requested" for a pause request, and "cancelled" for a cancelled context.
+	// Reason is populated alongside StateBlocked, StateAwaiting and every StatePaused.
+	// It is a fired pause condition's reason, "pause requested" for a pause, or "cancelled" for a cancelled context.
 	// A pause request or condition that carries a caller label has " by <label>" appended.
 	// On a paused step it is the same text the status file records as pause_reason.
 	Reason string
@@ -125,15 +129,11 @@ type StepResult struct {
 	History []HistoryEntry
 }
 
-// preflight holds the three statements Run performs today before acquiring the run lock, in
-// today's order: validate, then create both lock paths' parent directories.
+// preflight validates the Shed and creates both lock paths' parent directories before the run lock is acquired.
 //
-// internal/lock opens a lock file with O_CREATE but never creates its parent directory, which is
-// why both internal/loomengine/preflight.go and internal/treadleengine/run.go MkdirAll before
-// acquiring. This is not path derivation -- the paths are still told, Shed only ensures the told
-// path is usable. Step is exported for every shed in the repo, so it cannot assume some caller
-// already made the ephemeral directory; preflight runs on every Step call for that reason, not
-// only on Run's first iteration.
+// internal/lock opens a lock file with O_CREATE but never creates its parent directory.
+// The paths are still told; preflight only ensures they are usable.
+// Callers cannot be assumed to have made the directories, so preflight runs on every call, not only the first.
 func (s *Shed) preflight() error {
 	if err := s.validate(); err != nil {
 		return err
@@ -147,13 +147,15 @@ func (s *Shed) preflight() error {
 	return nil
 }
 
-// busyWayForward returns the trailing clause Run, Step and Goto put on an ErrShedBusy wrap, addressing the run by runID when one is told and naming pauseCommand as the command that halts the live driver.
+// busyWayForward returns the trailing clause of an ErrShedBusy refusal.
+// It addresses the run by runID when one is told and names pauseCommand as the command that halts the live driver.
 func busyWayForward(runID, pauseCommand string) string {
 	return fmt.Sprintf("way forward: %q halts the live driver at its next producer boundary; check the holder with %s, then retry", pauseCommand, runVerb("status", runID))
 }
 
-// pauseCommandFor returns the command a way forward names to stop the run at a producer boundary: the told command when one is set, and otherwise the shed default `lym shed pause <run-id> --after <producer>`.
-// The run-id is omitted when none is told, and an unknown producer reads `<current_producer>`.
+// pauseCommandFor returns the command a way forward names to stop the run at a producer boundary.
+// It is the told command when one is set, and otherwise the default `lym shed pause <run-id> --after <producer>`.
+// The run-id is omitted when none is told, and an empty producer reads `<current_producer>`.
 func pauseCommandFor(told, runID, producer string) string {
 	if told != "" {
 		return told
@@ -167,7 +169,7 @@ func pauseCommandFor(told, runID, producer string) string {
 	return "lym shed pause " + runID + " --after " + producer
 }
 
-// missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
+// missingStatusWayForward is the trailing clause of a refusal for a missing status file.
 const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lym shed seed\" for a recipe without one"
 
 // MissingStatusClause returns the told missing-status clause, or the generic one when none is told.
@@ -202,12 +204,10 @@ func (s *Shed) budgetWayForward() string {
 	return fmt.Sprintf("%s resumes the row and grants it one more budget", runVerb("run", s.RunID))
 }
 
-// stepLocked runs exactly one iteration of the six-step loop and reports it as a StepResult.
-// It assumes the run lock is already held by the caller and never acquires or releases it itself
-// -- Run holds it for the whole loop, and Step holds it for this one call alone.
+// stepLocked runs one iteration of the loop body and reports it as a StepResult.
+// The caller must already hold the run lock, and stepLocked never acquires or releases it.
 func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
-	// Step 1, the read gate. A found of false is a hard error: Shed never seeds a status
-	// file.
+	// The read gate: a missing status file is a hard error, since Shed never seeds one.
 	st, found, err := state.ReadJSON[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
@@ -219,25 +219,25 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", s.StatusPath, st.State)
 	}
 
-	// The already-done short-circuit, positioned after step 1's read and before step 2's
-	// lookup: a done file whose current_producer is no longer in the list returns cleanly
-	// and does not hard-error, because a finished task must not become un-queryable because
-	// someone later edited the producer list. Filling Next and History from the file, rather
-	// than returning a bare StateDone, makes a re-step's StepResult identical to the original
-	// completing step's.
+	// The already-done short-circuit sits after step 1's read and before step 2's lookup.
+	// A done file whose current_producer is no longer in the list returns cleanly and does not hard-error.
+	// A finished task must not become un-queryable because someone later edited the producer list.
+	// Next and History come from the file, so a re-step's StepResult matches the original completing step's.
 	if st.State == StateDone {
 		return StepResult{Next: st.CurrentProducer, State: StateDone, History: st.History}, nil
 	}
-	// StateBlocked, StateFailed and StateAwaiting deliberately do not short-circuit -- the loop
-	// proceeds and re-calls current_producer, which is how a human resumes after fixing whatever
-	// caused the halt or finishing the hand-off.
+	// StateBlocked, StateFailed and StateAwaiting do not short-circuit.
+	// The loop proceeds and re-calls current_producer.
+	// That is how a human resumes, after fixing the cause of the halt or finishing the hand-off.
 
 	// Step 2, the lookup.
-	// An empty current_producer is the run's start, the list's first row, so a seed never names a row the recipe lacks;
-	// every write this step makes then names the row itself.
-	// A named row not found is a hard error that changes nothing on disk, unless the recipe's Retired map names it:
-	// the run then moves once onto the row the map names and pauses, and the driver hands the pause back.
-	// Shed never guesses, neither restarting from the first producer nor advancing to the nearest match, because both fabricate a status nobody confirmed.
+	// An empty current_producer is the run's start, the list's first row, so a seed never names a row the recipe lacks.
+	// Every write this step makes then names the row itself.
+	// A named row that is not found is a hard error that changes nothing on disk.
+	// The exception is a row the recipe's Retired map names:
+	// the run moves once onto the row the map names and pauses, and the driver hands the pause back.
+	// Shed never guesses: it neither restarts from the first producer nor advances to the nearest match.
+	// Both fabricate a status nobody confirmed.
 	// started records whether the status on disk names a row yet, which step 3b reads.
 	started := st.CurrentProducer != ""
 	st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
@@ -267,12 +267,13 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written; way forward: %s moves the run onto a row that exists; valid producers: %s", st.CurrentProducer, s.StatusPath, gotoCommand(s.RunID, "<producer>"), strings.Join(names, ", "))
 	}
 
-	// Step 3, the pause and cancellation check. The two conditions are treated identically
-	// on purpose -- an operator's Ctrl-C or a parent deadline is an operational stop, not a
-	// failure, exactly as resumable as an explicit pause request.
+	// Step 3, the pause and cancellation check.
+	// An operator's Ctrl-C and a parent deadline are operational stops, not failures.
+	// Both resume exactly like an explicit pause request.
 	//
 	// A pause_before condition naming the row about to run fires first.
-	// It pauses here with its own reason and clears both conditions, consuming pause_requested only when it was set.
+	// It pauses here with its own reason and clears both conditions.
+	// It consumes pause_requested only when that flag was set.
 	if st.PauseBefore != "" && st.PauseBefore == st.CurrentProducer && ctx.Err() == nil {
 		reason := labelled(conditionReason("before", st.PauseBefore), st.PauseBeforeBy)
 		if pauseErr := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, st.PauseRequested, true, "", "", "", reason); pauseErr != nil {
@@ -281,9 +282,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, Reason: reason, History: st.History}, nil
 	}
 	if st.PauseRequested || ctx.Err() != nil {
-		// Clearing the flag in the same persist is what stops the next step re-pausing
-		// forever on the flag it is resuming from; the durable record of "this run is
-		// paused" is state, not the flag.
+		// Clearing the flag in the same persist stops the next step re-pausing forever on the flag it resumes from.
+		// The durable record that the run is paused is the state, not the flag.
 		// A recorded condition is carried through: a bare pause never drops one.
 		reason := labelled(reasonPauseRequested, st.PauseRequestedBy)
 		if ctx.Err() != nil {
@@ -295,7 +295,9 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, Reason: reason, History: st.History}, nil
 	}
 
-	// Step 3a, the entry evaluation. A gated row the run has not entered runs its gate here, and a row whose gate does not hold is skipped, possibly several in a chain.
+	// Step 3a, the entry evaluation.
+	// A gated row the run has not entered runs its gate here.
+	// A row whose gate does not hold is skipped, possibly several in a chain.
 	// After a skip the status holds the row to call, so it is read again.
 	gated := def.EntryGate != nil && st.EnteredRow != def.Name
 	def, ended, err := s.enter(st, def)
@@ -318,20 +320,21 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
 	}
 
-	// Step 3b, the resume write. A run resumed from paused, blocked, failed, or awaiting reaches
-	// this point about to call a producer, while the status file still says that halt state
-	// -- and for every LLM row that is minutes, during which the file, the status strand,
-	// and "lym loom status" all describe a run that is in fact already spawning. The stale
-	// error text goes with it: Activity.Wait is composed from it, so the pane would otherwise
-	// keep asserting a specific failure reason the loop is at that moment retrying past.
+	// Step 3b, the resume write.
+	// A run resumed from paused, blocked, failed, or awaiting reaches this point about to call a producer.
+	// The status file still says that halt state.
+	// For an LLM row the call takes minutes.
+	// Meanwhile the file, the status strand, and "lym loom status" all describe a run that is already spawning.
+	// The stale error text is cleared with it.
+	// Activity.Wait is composed from that text, so the pane would otherwise assert a failure the loop is retrying past.
 	//
-	// A run at its start, whose status still names no row, takes the same write, the start write.
+	// A run at its start, whose status still names no row, takes the same write: the start write.
 	// Without it the status names no row until the first row's verdict.
-	// A first row that runs for minutes, such as a writer, would then show as no row at all and stay unseen by CommitStatus's readers.
+	// A first row that runs for minutes, such as a writer, would show as no row to CommitStatus's readers.
 	//
-	// This is the only write in the loop that is not the record of a producer's verdict, and it
-	// is deliberately conditional: on the ordinary running-to-running path it never fires, so
-	// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
+	// This is the only write in the loop that does not record a producer's verdict.
+	// It is conditional: on the ordinary running-to-running path it never fires,
+	// so the loop's one-persist-per-iteration shape holds for every step after the first.
 	if st.State != StateRunning || !started {
 		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", "", "", false); err != nil {
 			return StepResult{}, err
@@ -341,36 +344,33 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// Step 4: call the looked-up definition's producer.
 	outcome, output, callErr := def.Producer.Call(ctx)
 
-	// Steps 5 and 6 are computed entirely in memory first, then committed with exactly one
-	// persist call for this iteration. Written as two writes, a crash between them leaves
-	// current_producer still naming the producer that just finished, so the next step
-	// re-calls it and appends a duplicate history entry -- defeating the exact
-	// crash-safety property step 5 exists to provide.
+	// Steps 5 and 6 are computed in memory, then committed with one persist call for this iteration.
+	// Written as two writes, a crash between them leaves current_producer naming the producer that just finished.
+	// The next step would re-call it and append a duplicate history entry.
+	// That defeats the crash-safety that step 5 provides.
 	//
-	// Appended or folded (see appendOrFold) on a copy of the history read at step 1, never mutating the read slice in place.
-	// An outcome the producer never reached is the one case that records nothing at all -- see the skip below.
-	// routedTo is the row a Stuck verdict's OnStuck edge bounced the run to, empty on every entry that routed nowhere.
+	// The history entry is appended or folded (see appendOrFold) onto a copy of the history read at step 1.
+	// The read slice is never mutated in place.
+	// An outcome the producer never reached records nothing at all; see the skip below.
+	// routedTo is the row a Stuck verdict's OnStuck edge bounced the run to.
+	// It is empty on every entry that routed nowhere.
 	appendHistory := func(routedTo string) []HistoryEntry {
 		if outcome == "" {
-			// A producer that returned an error and no outcome at all reached no verdict, so
-			// there is nothing to record -- the same reasoning the cancellation branch below
-			// already applies, and the reason this is a skip rather than a placeholder value:
-			// history[].outcome is a persisted enum whose whole vocabulary is done, stuck and
-			// awaiting, plus the history-only goto that no producer returns,
-			// and there is no further spelling for "the call did not get that far".
+			// A producer that returned an error and no outcome reached no verdict, so there is nothing to record.
+			// The entry is skipped rather than given a placeholder value.
+			// history[].outcome is a persisted enum: done, stuck and awaiting, plus the history-only goto that no producer returns.
+			// No other spelling means "the call did not get that far".
 			//
-			// Writing the empty string there was not free. It is out of vocabulary on disk, so
-			// internal/loomengine's own seed-coherence check rejects it -- an ordinary hard
-			// failure at either Preflight row left a status file that check refused on every
-			// later resume, turning one recoverable producer error into a permanently
-			// unresumable run. It also composed into activity.last as a dangling "Plan-Write →"
-			// with nothing after the arrow. Neither loses anything by being dropped: the
-			// failure's own text is written to error, and current_producer still names the
-			// producer that failed.
+			// Written there, the empty string is out of vocabulary on disk.
+			// The seed-coherence check in internal/loomengine rejects it.
+			// The status file would then refuse every later resume.
+			// That turns one recoverable producer error into a permanently unresumable run.
+			// It would also compose into activity.last as a dangling "Plan-Write →" with nothing after the arrow.
+			// Dropping it loses nothing: the failure's own text is written to error,
+			// and current_producer still names the producer that failed.
 			//
-			// A non-empty outcome outside the vocabulary is a different case and is still
-			// recorded verbatim, because there the value IS the diagnosis -- it is what the
-			// broken adapter actually returned.
+			// A non-empty outcome outside the vocabulary is still recorded verbatim.
+			// There the value is the diagnosis: it is what the broken adapter actually returned.
 			// Copied onto a non-nil slice so an empty history stays [] on disk rather than null.
 			return append(make([]HistoryEntry, 0, len(st.History)), st.History...)
 		}
@@ -381,7 +381,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			At:           nowRFC3339(),
 			GateAttempts: output.GateAttempts,
 			GateSpans:    output.GateSpans,
-			// A Stuck that blocks at a row with no OnStuck never reaches a budget, so it is exempt too, and a repeat of the same halt folds into its entry.
+			// A Stuck that blocks at a row with no OnStuck never reaches a budget, so it is exempt too.
 			BudgetExempt:    outcome == Stuck && (output.BudgetExempt || output.Halt || def.OnStuck == ""),
 			RoutedTo:        routedTo,
 			GenerationStart: outcome == Stuck && output.GenerationStart,
@@ -392,35 +392,30 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 
 	switch {
 	case callErr != nil && ctx.Err() != nil:
-		// Non-nil error with a cancelled context: the pause exit, exactly as step 3 takes
-		// it. The predicate is ctx.Err() != nil, not an errors.Is check against a
-		// cancellation sentinel -- the context's own state is ground truth about whether
-		// an operator stopped the run and stays correct even if a producer wraps or
-		// discards the sentinel, whereas a producer whose own internal derived context
-		// times out returns a deadline error while the parent context is perfectly
-		// healthy: a genuine producer failure, not an operator stop.
+		// Non-nil error with a cancelled context: the pause exit, exactly as step 3 takes it.
+		// The predicate is ctx.Err() != nil, not an errors.Is check against a cancellation sentinel.
+		// The context's own state is ground truth about whether an operator stopped the run.
+		// It stays correct even if a producer wraps or discards the sentinel.
+		// A producer whose own derived context times out returns a deadline error while the parent is healthy:
+		// that is a genuine producer failure, not an operator stop.
 		//
-		// No history entry is appended: the producer never reached a verdict, so there is
-		// nothing to record, and leaving current_producer put means the next step simply
-		// re-calls it, the same semantics as a crash before the persist. The accepted
-		// trade: a producer returning a genuine, unrelated error in the same instant an
-		// operator cancels is reported as a pause, which is harmless because the producer
-		// is re-called on resume and the real error surfaces again then.
+		// No history entry is appended, because the producer never reached a verdict.
+		// current_producer stays put, so the next step re-calls the producer, as it does after a crash before the persist.
+		// The accepted trade is that a genuine, unrelated producer error, arriving as an operator cancels, reads as a pause.
+		// That is harmless, because the producer is re-called on resume and the real error surfaces then.
 		if err := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", "", reasonCancelled); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Next: st.CurrentProducer, State: StatePaused, Reason: reasonCancelled, History: st.History}, nil
 
 	case callErr != nil:
-		// Non-nil error with a healthy context: an engine-level failure, never a producer
-		// verdict, so it is never routed anywhere -- a human resolves it. No further
-		// producer is called.
-		// A persist failure here is joined onto the producer failure rather than returned in
-		// its place: the producer error is why the step halted, and the persist error is a
-		// second, independent fault on the way out. Replacing one with the other left an
-		// operator's envelope naming a commit-seam or git fault while the failure that
-		// actually stopped the step -- the only one they can act on -- went unreported.
-		// A classified failure is re-wrapped with the transient mark, persisted with its class, and returned marked.
+		// Non-nil error with a healthy context: an engine-level failure, never a producer verdict.
+		// It is never routed anywhere, and a human resolves it.
+		// No further producer is called.
+		// A persist failure is joined onto the producer failure, not returned in its place.
+		// The producer error is why the step halted, and the persist error is a second, independent fault.
+		// Replacing one with the other would hide the failure that stopped the step, the only one an operator can act on.
+		// A classified failure is wrapped with the transient mark, persisted with its class, and returned marked.
 		if s.Transient != nil {
 			callErr = MarkTransient(s.Transient(callErr), callErr)
 		}
@@ -443,14 +438,13 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateBlocked, Reason: reason, History: nextHistory}, nil
-		// An exempt Stuck skips the budget comparison below: after N counted Stucks the count already reads N, so comparing would block the first exempt one.
-		// The count argument is st.History, the slice read at step 1, and never
-		// nextHistory: a post-append read shifts the boundary by one and would look
-		// like an off-by-one bug rather than the semantic change it would actually be.
+		// An exempt Stuck skips the budget comparison below.
+		// Comparing would block the first exempt one, since the count already reads N after N counted Stucks.
+		// The count argument is st.History, the slice read at step 1, never nextHistory.
+		// A post-append read would shift the boundary by one.
 		// A generation-start Stuck is counted but never halts: it opens a new episode whose count reads 1.
 		case !output.BudgetExempt && !output.GenerationStart && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
-			// The boundary is pinned exactly, restated per-producer: a budget of three
-			// performs three bounce-backs and blocks on the fourth Stuck.
+			// The boundary is exact: a budget of three performs three bounce-backs and blocks on the fourth Stuck.
 			// The halting entry is marked budget_capped, so a resume grants one more budget and a goto onto it grants none.
 			nextHistory := appendHistory("")
 			nextHistory[len(nextHistory)-1].BudgetCapped = true
@@ -472,9 +466,9 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		}
 
 	case outcome == Awaiting:
-		// The planned hand-off halt: never routed (neither OnStuck nor OnDone is read), never
-		// counted against the bounce budget, and current_producer stays put so the next step
-		// re-calls the same producer through step 3b's resume write.
+		// The planned hand-off halt is never routed: neither OnStuck nor OnDone is read.
+		// It is never counted against the bounce budget.
+		// current_producer stays put, so the next step re-calls the same producer through step 3b's resume write.
 		nextHistory := appendHistory("")
 		reason := stuckReason(output.Reason)
 		notice := oneLine(output.ParentNotice)
@@ -486,20 +480,19 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	case outcome == Done:
 		nextHistory := appendHistory("")
 		if def.OnDone == "" {
-			// current_producer keeps this producer's own name -- never the empty string --
-			// because activity.now is defined as current_producer's name and Next as the
-			// producer current_producer named when this step returned, so an empty value
-			// would leave both fields meaningless at the happy-path terminal a reader of a
-			// finished status file most wants to understand. The terminal is now chosen by
-			// an empty OnDone, not by list position.
+			// current_producer keeps this producer's own name, never the empty string.
+			// activity.now is current_producer's name, and Next is the name current_producer held when this step returned.
+			// An empty value would leave both meaningless at the terminal.
+			// A reader of a finished status file most needs them there.
+			// The terminal is chosen by an empty OnDone, not by list position.
 			if err := s.persist(def.Name, StateDone, "", nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.Name, State: StateDone, History: nextHistory}, nil
 		}
-		// A non-empty OnDone needs no lookup here: validate has already rejected an OnDone
-		// naming no producer in the list, so the name is persisted as-is and resolved by
-		// step 2's lookup on the next iteration.
+		// A non-empty OnDone needs no lookup here.
+		// validate has already rejected an OnDone that names no producer in the list,
+		// so the name is persisted as-is and step 2's lookup resolves it on the next iteration.
 		next, reason, err := s.routedState(def)
 		if err != nil {
 			return StepResult{}, err
@@ -510,19 +503,19 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnDone, State: next, Reason: reason, History: nextHistory}, nil
 
 	case outcome == Yield:
-		// A wait the producer's own next call re-checks: nothing is written, so the run stays at this row, running, exactly as it was.
+		// A yield is a wait the producer's own next call re-checks.
+		// Nothing is written, so the run stays at this row, running, exactly as it was.
 		// No history entry, no activity, no commit-status call, and no bounce budget, reroute or route is read.
 		return StepResult{Producer: def.Name, Outcome: outcome, Next: st.CurrentProducer, State: StateRunning, History: st.History}, nil
 
 	default:
-		// An Outcome that is none of Done, Stuck, Awaiting or Yield, returned with a nil error, is an
-		// engine-level failure: Outcome is a string type and therefore open, so the
-		// routing would otherwise have an undefined fourth case, and coercing an unknown
-		// value to Stuck would consume bounce budget for a broken adapter while coercing
-		// it to Done would advance past a producer that may not have done its work.
+		// An Outcome that is none of Done, Stuck, Awaiting or Yield, returned with a nil error, is an engine-level failure.
+		// Outcome is an open string type, so routing would otherwise have an undefined fourth case.
+		// Coercing an unknown value to Stuck would consume bounce budget for a broken adapter.
+		// Coercing it to Done would advance past a producer that may not have done its work.
 		nextHistory := appendHistory("")
 		failErr := fmt.Errorf("shedengine: producer %q returned an unrecognised outcome %q", def.Name, outcome)
-		// Joined rather than replaced, for the same reason the producer-error arm above joins.
+		// The persist error is joined onto the failure, not returned in its place.
 		if persistErr := s.persist(st.CurrentProducer, StateFailed, failErr.Error(), nextHistory, false, ""); persistErr != nil {
 			return StepResult{}, errors.Join(failErr, persistErr)
 		}
@@ -530,22 +523,22 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	}
 }
 
-// Run walks the whole six-step loop in one call, from wherever the status file's current_producer currently sits.
-// It stops on pause/cancellation, blocked, awaiting, done, a yield or an error.
-// A step that yields ends the loop with RunYielded and the run exactly as it was.
-// Result is meaningless unless the returned error is nil -- every hard-error path below returns an
-// unpopulated Result alongside its error, and a caller must check error before reading Outcome.
-// The producer list itself carries zero routing meaning once Done routes by OnDone: it is
-// storage, plus validate's iteration order, plus cosmetic display order, nothing else.
+// Run walks the loop in one call, from wherever the status file's current_producer sits.
+// It stops on pause or cancellation, blocked, awaiting, done, a yield, or an error.
+// A yield ends the loop with RunYielded, and the run is left exactly as it was.
+// Result is valid only when the returned error is nil.
+// Every hard-error path returns an unpopulated Result alongside its error, so check the error before reading Outcome.
+// The producer list carries no routing meaning once Done routes by OnDone.
+// It is storage, the order validate iterates in, and cosmetic display order.
 func (s *Shed) Run(ctx context.Context) (Result, error) {
 	if err := s.preflight(); err != nil {
 		return Result{}, err
 	}
 
-	// An OS advisory lock is reclaimed on process death, so a killed run never bricks a later
-	// resume. internal/state's own per-write lock does not substitute for this one: it is held
-	// only for the duration of one write, never across a whole Call, so two concurrent runs could
-	// otherwise both read the same current_producer and both spawn it.
+	// An OS advisory lock is reclaimed on process death, so a killed run never bricks a later resume.
+	// internal/state's per-write lock does not substitute for it.
+	// That lock is held only for one write, never across a whole Call.
+	// Two concurrent runs could therefore both read the same current_producer and both spawn it.
 	runLock, locked, err := lock.TryAcquireWriteLock(s.LockPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
@@ -570,13 +563,13 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		if res.State == StateRunning {
 			continue
 		}
-		// RunOutcome(res.State) is a conversion, not a lookup table, because shed.go pins
-		// RunOutcome's four string values as deliberately identical to State's four clean-exit
-		// values; StateRunning never reaches this line (it continues above) and StateFailed only
-		// ever arrives alongside a non-nil error, already returned above.
+		// RunOutcome(res.State) is a conversion, not a lookup table.
+		// shed.go pins RunOutcome's four string values to State's four clean-exit values.
+		// StateRunning never reaches this line, since the loop continues above it.
+		// StateFailed arrives only alongside a non-nil error, already returned above.
 		//
-		// HaltedProducer equals res.Next universally, because in every arm of stepLocked above,
-		// Next is the value persist wrote as current_producer.
+		// HaltedProducer equals res.Next in every arm of stepLocked.
+		// There Next is the value persist wrote as current_producer.
 		return Result{
 			Outcome:        RunOutcome(res.State),
 			HaltedProducer: res.Next,
@@ -586,16 +579,12 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 	}
 }
 
-// Step runs exactly one iteration of the loop stepLocked implements: it acquires the run lock for
-// the duration of this one call only, releasing it before returning, unlike Run which holds it for
-// the whole walk to a terminal state.
+// Step runs exactly one iteration of the loop.
+// It holds the run lock for this one call only, and releases it before returning.
 //
-// The per-call lock window is what makes stepping possible at all: between steps there is by
-// definition no driver running, so a caller can drive a shed one step at a time from outside --
-// an external supervisor pausing between steps, or a CLI verb invoked once per human action --
-// without holding the lock for the whole task's duration. Mutual exclusion with a live detached
-// Run driver is the practical payoff: Step refuses with ErrShedBusy exactly as a second concurrent
-// Run would, rather than racing it.
+// Between steps no driver runs, so a caller can drive a shed one step at a time from outside.
+// An external supervisor can pause between steps, and a CLI verb can run once per human action.
+// Step refuses with ErrShedBusy while another driver holds the lock, rather than racing it.
 func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 	if err := s.preflight(); err != nil {
 		return StepResult{}, err
@@ -617,8 +606,8 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 	return s.stepLocked(ctx)
 }
 
-// refuseUnderRunLock calls LockedCheck, which Run and Step hold the run lock for, and wraps a refusal in ErrLockedCheckRefused.
-// The sentinel's text leads, so the check's own trailing way forward stays trailing.
+// refuseUnderRunLock runs LockedCheck, which must be called with the run lock held.
+// A refusal is wrapped in ErrLockedCheckRefused, whose text leads so that the check's own way forward stays trailing.
 func (s *Shed) refuseUnderRunLock() error {
 	if s.LockedCheck == nil {
 		return nil
@@ -629,32 +618,36 @@ func (s *Shed) refuseUnderRunLock() error {
 	return nil
 }
 
-// nowRFC3339 returns the current UTC time formatted as RFC3339, the format every history[].at
-// value is written in. No injectable clock field exists on Shed -- adding one would add a field to
-// the struct shape the design pins, for a value tests assert structurally instead of by literal.
+// nowRFC3339 returns the current UTC time formatted as RFC3339, the format of every history[].at value.
+// It reads the clock directly.
+// Shed has no injectable clock field, since adding one would widen the struct shape the design pins.
+// Tests assert the value structurally rather than by literal.
 func nowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// episodeStuckCount walks history backward from the end and counts the Stuck entries authored by
-// def within its current episode: the run of entries since the most recent Done by def or by any
-// producer sharing def's non-empty Segment (segmentEnders). It returns immediately at the first such
-// Done, and otherwise counts the entries whose Producer equals def's name and whose Outcome is Stuck;
-// entries authored by any other producer are skipped and never terminate the scan.
-// A Burler-round row only ever returns Stuck, so its episode ends when its segment's Bouncer passes;
-// otherwise every later rework round would add to one ever-growing count.
-// A done entry written by the hard-failure arm also terminates the scan, and that is accepted
-// rather than special-cased: the engine records the verdict a producer actually returned, and
-// state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
-// A skipped entry ends the episode as a Done by its row does.
+// episodeStuckCount counts the Stuck entries authored by def within its current episode.
+// The episode runs from the most recent Done by def or by a producer sharing def's non-empty Segment.
+// The scan returns at the first such Done.
+// Otherwise it counts the entries whose Producer is def's name and whose Outcome is Stuck.
+// Entries authored by other producers are skipped and never end the scan.
+// A Burler-round row returns only Stuck, so its episode ends when its segment's Bouncer passes.
+// Otherwise every later rework round would add to one ever-growing count.
+// A done entry written by the hard-failure arm also ends the scan.
+// That is accepted rather than special-cased.
+// State "failed" halts the run, so every later continuation is a fresh human-initiated act.
+// A skipped entry ends the episode as a Done does.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
 // An OutcomeGoto entry is skipped like any other non-Done entry, so a goto keeps the spent budget.
-// An OutcomeReroute entry ends the episode when its RoutedTo target shares def.Segment, or is def itself when def.Segment is empty;
-// producers resolves a target's segment, and a target no longer in the list ends no episode.
+// An OutcomeReroute entry ends the episode when its RoutedTo target shares def.Segment.
+// When def.Segment is empty, the target must be def itself.
+// A target no longer in the list ends no episode.
 // A BudgetCapped Stuck entry of def is the one a budget-exhausted halt wrote.
-// It ends the scan without being counted, unless the entry right after it is an OutcomeGoto entry, in which case it is counted and the scan goes on.
-// A resume (which writes no entry) therefore grants one more budget, and a goto onto the halted run grants none.
-// A GenerationStart Stuck entry of def is counted and ends the scan, so the count reads 1 right after a generation starts.
+// It ends the scan uncounted, unless the entry right after it is an OutcomeGoto entry.
+// In that case it is counted and the scan goes on.
+// A resume writes no entry, so it grants one more budget; a goto onto the halted run grants none.
+// A GenerationStart Stuck entry of def is counted and ends the scan.
+// The count therefore reads 1 right after a generation starts.
 func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
 	name := def.Name
 	enders := segmentEnders(producers, def)
@@ -703,8 +696,9 @@ func gotoEndsEpisode(target string, def ProducerDef, producers []ProducerDef) bo
 	return false
 }
 
-// segmentEnders returns the names of every other producer sharing def's non-empty Segment, whose
-// Done ends def's episode; a standalone producer has none, so its episode ends at its own Done only.
+// segmentEnders returns the names of every other producer sharing def's non-empty Segment.
+// A Done by any of them ends def's episode.
+// A standalone producer has none, so its episode ends only at its own Done.
 func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
 	if def.Segment == "" {
 		return nil
@@ -718,9 +712,13 @@ func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
 	return names
 }
 
-// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, GateAttempts and RoutedTo, else appended unchanged.
-// A fold keeps the last element's At, increments its Repeats, sets its LastAt to entry.At and appends entry's GateSpans to the last element's own;
-// the last element's own Repeats/LastAt and spans never take part in the match.
+// appendOrFold returns a fresh copy of history with entry recorded.
+// An entry folds into the last element when both are budget-exempt Stucks;
+// they must match on Producer, Output, GateAttempts and RoutedTo.
+// Otherwise entry is appended unchanged.
+// A fold keeps the last element's At and increments its Repeats.
+// It sets LastAt to entry.At and appends entry's GateSpans to the last element's own.
+// The last element's Repeats, LastAt and spans never take part in the match.
 // It never writes through history's backing array or its entries' span arrays.
 func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
 	next := make([]HistoryEntry, len(history), len(history)+1)
@@ -738,7 +736,9 @@ func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
 	return append(next, entry)
 }
 
-// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, RoutedTo and GateAttempts value, and neither a reroute-cap halt.
+// foldsInto reports whether entry folds into last.
+// Both must be budget-exempt Stucks with equal Producer, Output, RoutedTo and GateAttempts values.
+// Neither may be a reroute-cap halt.
 func foldsInto(last, entry HistoryEntry) bool {
 	if entry.Outcome != Stuck || !entry.BudgetExempt || last.Outcome != Stuck || !last.BudgetExempt {
 		return false
@@ -755,9 +755,10 @@ func foldsInto(last, entry HistoryEntry) bool {
 	return last.GateAttempts == nil || *last.GateAttempts == *entry.GateAttempts
 }
 
-// effectiveMaxBounces resolves def's own bounce budget, inheriting at two levels: def.MaxBounces
-// when it is greater than zero, else shedMax when that is greater than zero, else
-// defaultMaxBounces. A zero value never means "no bounces allowed" at either level.
+// effectiveMaxBounces resolves def's bounce budget, inheriting at two levels.
+// It takes def.MaxBounces when that is greater than zero.
+// Otherwise it takes shedMax when that is greater than zero, else defaultMaxBounces.
+// A zero value never means "no bounces allowed" at either level.
 func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 	if def.MaxBounces > 0 {
 		return def.MaxBounces
@@ -768,72 +769,71 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 	return defaultMaxBounces
 }
 
-// persist is the single write path for the whole loop: one state.UpdateJSON call whose mutate
-// overwrites exactly the Shed-owned fields -- current_producer, state, error, history, and
-// activity (recomposed via composeActivity from the values being written) -- and, when
-// consumePause is true, also writes pause_requested false; otherwise pause_requested is left
-// exactly as re-read. persist never touches product.
+// persist is the single write path for the loop.
+// It runs one state.UpdateJSON call whose mutate overwrites the Shed-owned fields:
+// current_producer, state, error, history, and activity.
+// composeActivity recomputes activity from the values being written.
+// When consumePause is true, persist also writes pause_requested as false;
+// otherwise pause_requested is left as re-read.
+// persist never touches product.
 //
-// routedTo is the row a Stuck verdict was just routed to, and the empty string for every other write;
-// it selects the "<producer> → bounced to <routedTo>" wording of activity.last.
-// A persist that appends or folds a history entry recomposes activity.last,
-// and only one that records no verdict (the pause writes and the step-3b resume write) carries the file's existing activity.last forward, read inside the mutate,
-// so a pause right after a bounce keeps the bounce wording and a resume after a halt keeps "<producer> → stuck".
+// routedTo is the row a Stuck verdict was just routed to, and it is empty for every other write.
+// It selects the "<producer> → bounced to <routedTo>" wording of activity.last.
+// A persist that appends or folds a history entry recomposes activity.last.
+// A persist that records no verdict carries the file's existing activity.last forward, read inside the mutate.
+// Those are the pause writes and the step-3b resume write.
+// So a pause right after a bounce keeps the bounce wording, and a resume after a halt keeps "<producer> → stuck".
 //
 // The merge exists rather than a whole-file rewrite from an in-memory copy because Shed is not the
 // status file's only writer: a pause requested during a long producer call, and an external
-// product update, must both survive. That safety is conditional, not unconditional -- internal/
-// state's lock is advisory and keyed on the caller-supplied path, so the merge is safe against a
-// concurrent external writer that takes the same StatusLockPath, and against no other.
+// product update, must both survive.
+// The merge is safe against a concurrent external writer that takes the same StatusLockPath.
+// It is safe against no other writer, because internal/state's lock is advisory and keyed on the caller-supplied path.
 //
-// The found guard is not defensive noise: state.UpdateJSON treats a missing file as a non-error
-// and writes whatever the mutate returns, so without the guard a status file deleted mid-run would
-// be silently re-created from a zero value, contradicting the rule that Shed never seeds one.
+// The found guard is not defensive noise.
+// state.UpdateJSON treats a missing file as a non-error and writes whatever the mutate returns.
+// Without the guard, a status file deleted mid-run would be silently re-created from a zero value.
+// That would contradict the rule that Shed never seeds a status file.
 //
 // The persist keeps every key its type does not know, through internal/state.
 // A key an external actor wrote, or a newer binary added, survives each write.
 // Malformed JSON still fails loud on this path.
 //
-// After the write, and only after UpdateJSON has returned and released StatusLockPath, persist
-// calls s.CommitStatus with the transition's own nextCurrentProducer and string(nextState),
-// never from inside the mutate callback above: a synchronous network push made while
-// StatusLockPath is held would block every ReadJSON reader on that path for the
-// push's duration -- "lym loom status --watch" included, which is precisely the observability
-// this seam exists to deliver. A nil CommitStatus is a silent no-op. A non-nil error the closure
-// returns propagates out of persist and therefore halts Run, but by then the status-file write
-// has already happened and is durable -- that ordering is load-bearing. The accepted cost is a
-// millisecond-scale read-then-commit window in which a reader can see the new state on disk
-// before git carries it, which is strictly better than today, where that gap lasts the whole run
-// rather than milliseconds.
+// persist calls s.CommitStatus only after the write, once UpdateJSON has returned and released StatusLockPath.
+// It passes the transition's nextCurrentProducer and string(nextState).
+// It never calls CommitStatus from inside the mutate callback.
+// A synchronous network push made while StatusLockPath is held would block every ReadJSON reader on that path.
+// Such a push would stall "lym loom status --watch" for its duration, which is the observability the seam serves.
+// A nil CommitStatus is a no-op.
+// A non-nil error the closure returns propagates out of persist and so halts Run,
+// but the status-file write has already happened and is durable; that ordering is load-bearing.
+// The accepted cost is a millisecond-scale window in which a reader sees the new state on disk
+// before git carries it.
 //
-// This engine itself calls CommitStatus unconditionally on every persist invocation, never
-// skipping it because nextCurrentProducer stayed the same as the producer that just ran: state,
-// history, and error can all change without current_producer changing, and the pause and resume
-// writes happen outside any producer call. What is caller-side, and therefore outside this
-// package's own guarantee, is what a filled CommitStatus closure itself chooses to do with a
-// call it receives -- and a caller's own closure may skip its own commit work for some calls. The
-// batten seam (internal/battencli, wired one layer out from this package) does exactly that:
-// it skips its own commit, keyed on the (producer, state) pair alone, and is therefore
-// deliberately blind to a call whose history or error changed while producer and state did not.
-// That blindness is safe there because the only transition it ever skips is Run-Shed's own
-// still-running self-bounce (internal/battenrecipe.NameRunShed's on_stuck route back to itself):
-// error is empty by construction on that transition, since it is a Stuck verdict rather than a hard error,
-// and the history it leaves behind (appended or folded) is committed whole by the next transition that does change producer or state.
-//
-// persist writes an empty transient class and an empty parent notice and leaves pause_before and pause_after as they are;
-// the producer-error arm, the awaiting arm and the pause writes call persistTransient, and the routed writes and the skips call persistRouted.
+// The engine calls CommitStatus on every persist and never skips a call.
+// It does not skip one because nextCurrentProducer equals the producer that just ran.
+// State, history and error can all change while current_producer does not,
+// and the pause and resume writes happen outside any producer call.
+// Whether a closure skips some of its calls is the caller's decision, outside this package's guarantee.
+// The batten seam (`internal/battencli`) skips its commit when the (producer, state) pair is unchanged,
+// so it is blind to a call whose history or error changed while producer and state did not.
+// That blindness is safe there because the one transition it skips is the still-running self-bounce.
+// That is `battenrecipe.NameRunShed`, whose error is empty by construction:
+// it is a Stuck verdict rather than a hard error.
+// The history it leaves behind is committed by the next transition that changes producer or state.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
 	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, false, routedTo, "", "", "")
 }
 
-// The two reasons of a paused stop no pause condition fired: an operator's pause request, and a cancelled context.
+// The two reasons of a paused stop that no pause condition fired:
+// an operator's pause request, and a cancelled context.
 // They are never condition reasons, so a reader that classifies condition stops by prefix does not see them as one.
 const (
 	reasonPauseRequested = "pause requested"
 	reasonCancelled      = "cancelled"
 )
 
-// conditionReason returns the reason of a fired pause condition: "paused before <target>, as requested" or "paused after <target>, as requested".
+// conditionReason returns the reason of a fired pause condition: "paused <when> <target>, as requested".
 func conditionReason(when, target string) string {
 	return fmt.Sprintf("paused %s %s, as requested", when, target)
 }
@@ -847,8 +847,10 @@ func labelled(text, by string) string {
 }
 
 // routedState returns the state a routed running outcome of def persists.
-// It is StatePaused when the status file's pause_after names def, read fresh because an outside actor may have recorded it while def ran, and StateRunning otherwise.
-// The paused reason is the pause_after reason followed by the condition's own label when one is set; the running reason is empty.
+// It is StatePaused when the status file's pause_after names def, and StateRunning otherwise.
+// pause_after is read fresh, since an outside actor may have recorded it while def ran.
+// The paused reason is the pause_after reason, followed by the condition's own label when one is set;
+// the running reason is empty.
 func (s *Shed) routedState(def ProducerDef) (State, string, error) {
 	cur, found, err := state.ReadJSON[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
@@ -860,9 +862,8 @@ func (s *Shed) routedState(def ProducerDef) (State, string, error) {
 	return StateRunning, "", nil
 }
 
-// recordedVerdict reports whether a write carrying next recorded a verdict against the file's current history:
-// the history got longer,
-// or it kept its length while the last entry's Repeats changed, which is a fold.
+// recordedVerdict reports whether writing next records a verdict against cur, the current history.
+// A verdict is a longer history, or an equal-length one whose last entry's Repeats changed, which is a fold.
 func recordedVerdict(cur, next []HistoryEntry) bool {
 	if len(next) > len(cur) {
 		return true
@@ -873,28 +874,34 @@ func recordedVerdict(cur, next []HistoryEntry) bool {
 	return next[len(next)-1].Repeats != cur[len(cur)-1].Repeats
 }
 
-// persistTransient is persist with the transient class and the parent notice the write records, and with the choice to clear pause_before and pause_after.
+// persistTransient writes the status file, recording the transient class and the parent notice.
 // Every write sets Transient and ParentNotice, so a later step never carries a stale class or notice.
-// clearConditions is true only in the persist that records paused for a fired condition; every other write carries a recorded condition through unchanged.
-// A write that appends a history entry hands the pending caller label to the appended entry and clears it; a write that appends none carries the label through.
-// pauseReason is recorded as pause_reason when nextState is StatePaused; see persistMarked.
+// clearConditions is true only for the write that records paused for a fired condition;
+// every other write carries a recorded condition through unchanged.
+// A write that appends a history entry hands the pending caller label to the appended entry and clears it;
+// a write that appends none carries the label through.
+// pauseReason is recorded as pause_reason when nextState is StatePaused.
 // It keeps the entered row, so a resume or a halt re-calls the row without evaluating its entry gate.
 func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string) error {
 	return s.persistMarked(false, nextCurrentProducer, nextState, nextError, nextHistory, consumePause, clearConditions, routedTo, transient, parentNotice, pauseReason, false)
 }
 
-// persistRouted is the write of a routed running outcome and of a skip: persistTransient with an empty error, transient class and parent notice, and with the entered row cleared.
-// A row is thus entered only between its own entry evaluation and its verdict, and a route back into it evaluates its gate again.
-// It also records ResumedBy as persistMarked does for a resume, since a skip can be the first write of a resumed run.
+// persistRouted writes a routed running outcome or a skip, with an empty error, transient class and parent notice.
+// It clears the entered row, so a row is entered only between its entry evaluation and its verdict;
+// a route back into it evaluates its gate again.
+// It records ResumedBy as the pending caller label, since a skip can be the first write of a resumed run.
 func (s *Shed) persistRouted(nextCurrentProducer string, nextState State, nextHistory []HistoryEntry, clearConditions bool, routedTo, pauseReason string) error {
 	return s.persistMarked(true, nextCurrentProducer, nextState, "", nextHistory, false, clearConditions, routedTo, "", "", pauseReason, true)
 }
 
-// persistMarked is persistTransient that, when markResume is true, also records ResumedBy as the pending caller label.
-// It records it only over a blocked, failed or awaiting status with no label pending, so the first label of a resumed run stands and a resume from paused records nothing.
+// persistMarked writes the status file for one transition of the run.
+// When markResume is true, it records ResumedBy as the pending caller label.
+// It does so only over a blocked, failed or awaiting status with no label pending.
+// The first label of a resumed run therefore stands, and a resume from paused records nothing.
 // A write recording StatePaused sets pause_reason to pauseReason, and every other write clears it.
-// Consuming pause_requested also clears its pause_requested_by label, and clearing the conditions clears both condition labels.
-// A write that appends a skipped entry carries a pending label through to the next verdict's entry instead of handing it to the skipped one.
+// Consuming pause_requested also clears pause_requested_by.
+// Clearing the conditions clears both condition labels.
+// A write that appends a skipped entry keeps a pending label for the next verdict's entry instead of the skipped one.
 // clearEntered clears the entered row in the same write.
 func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string, clearEntered bool) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {

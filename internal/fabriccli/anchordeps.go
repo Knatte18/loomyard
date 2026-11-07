@@ -1,5 +1,6 @@
-// anchordeps.go fills the verb's anchorDeps over a hub: the board's owners, the reed, run, gate and hibernate readers, the parent lock, the dobby end, the dobby and orch start through `lym beam start`, and the engine's change.
-// Every dobby, reed and run reader goes through the same internal package the rest of lym reads that state with.
+// anchordeps.go fills the anchorDeps of the fabric anchor verb over a hub.
+// Each dependency reads the hub's state, takes a lock, or starts or ends a process.
+// The dobby, reed and run readers go through the same internal packages the rest of lym reads that state with.
 
 package fabriccli
 
@@ -38,15 +39,18 @@ import (
 )
 
 // hibernateRequestFileName is the hibernate request file in the hub's hibernate directory.
-// This package cannot import the hibernate packages: their import chain leads back to it through a test fixture.
+// This package cannot import the hibernate packages:
+// their import chain leads back to this package through a test fixture.
 const hibernateRequestFileName = "request.json"
 
-// hibernateEndedPhases are the phases of a hibernate request that has ended, which the prime's dobby, still running, carries no more.
+// hibernateEndedPhases are the phases of a hibernate request that has ended.
+// The prime's dobby may still be running for such a request, but it no longer carries the request.
 // A test pins the list to the hibernate engine's terminal phases, since this package cannot import them.
 var hibernateEndedPhases = []string{"done", "failed", "cancelled"}
 
-// hibernateDaemonLive reports whether the hub's hibernate request is pending and names a carrying daemon, the prime's dobby, that is still running.
-// A hub with no request file has none, and an ended request holds nothing.
+// hibernateDaemonLive reports whether the hub's hibernate request is carried by a daemon that is still running.
+// The daemon is the prime's dobby.
+// A hub with no request file, or with an ended request, reports false.
 func hibernateDaemonLive(hub string) (bool, error) {
 	path := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.HibernateDirName, hibernateRequestFileName)
 	data, err := os.ReadFile(path)
@@ -71,7 +75,8 @@ func hibernateDaemonLive(hub string) (bool, error) {
 }
 
 // hubAnchorDeps fills anchorDeps over the hub of acting.
-// The prime is resolved again at each call that needs it, since a move of the prime changes the anchor its geometry is told.
+// The prime is resolved again at each call that needs it.
+// A move of the prime changes the anchor its geometry is told, so a prime resolved earlier may be stale.
 func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 	primeName, err := fabricengine.PrimeName(acting)
 	if err != nil {
@@ -82,7 +87,7 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 	boltDir := fabricengine.BoltDir(hub)
 	runProcDir := fabricengine.RunProcDir(hub)
 	prime := func() (*lymcwd.Location, error) { return lymcwd.NamedWorktree(hub, primeName) }
-	// dobbyOwner is the owner a worktree's dobby registers its process under.
+	// dobbyOwner names the owner a worktree's dobby registers its process under, which is the hub owner for the prime.
 	dobbyOwner := func(worktree string) string {
 		if worktree == primeName {
 			return runproc.HubOwner
@@ -295,9 +300,12 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 	}, nil
 }
 
-// startDobbiesThroughBeamStart starts each of worktrees by running `lym beam start` through run, so each dobby comes up with its orch.
-// run takes the verb's argument, `root` for the prime named primeName and the worktree's name otherwise, and returns the verb's output with its failure.
-// A worktree whose start fails does not stop the others; the returned error joins every failure, each naming its argument and carrying the verb's output.
+// startDobbiesThroughBeamStart starts each of worktrees by running `lym beam start` through run,
+// so each dobby comes up with its orch.
+// run takes the verb's argument, `root` for the prime named primeName and the worktree's name otherwise.
+// It returns the verb's output with its failure.
+// A worktree whose start fails does not stop the others;
+// the returned error joins every failure, each naming its argument and carrying the verb's output.
 func startDobbiesThroughBeamStart(primeName string, worktrees []string, run func(label string) ([]byte, error)) error {
 	var failures []error
 	for _, worktree := range worktrees {
@@ -313,9 +321,11 @@ func startDobbiesThroughBeamStart(primeName string, worktrees []string, run func
 	return errors.Join(failures...)
 }
 
-// beamStartChild returns the run function that executes `lym beam start <label>` as a child process from the prime's anchor and waits for it.
-// The verb is run as a child process because this package cannot import the orch bring-up: a test fixture imports this package from the orch packages' own tests.
-// The returned function fails, starting nothing, in a test binary, where the executable is the test binary.
+// beamStartChild returns the run function that executes `lym beam start <label>` as a child process.
+// The process starts in the prime's anchor, and the function waits for it.
+// The verb runs as a child process because this package cannot import the orch bring-up:
+// a test fixture imports this package from the orch packages' own tests.
+// Under a test binary, the returned function fails without starting anything, since the executable is the test binary.
 func beamStartChild(prime *lymcwd.Location) func(label string) ([]byte, error) {
 	return func(label string) ([]byte, error) {
 		if testing.Testing() {
@@ -333,7 +343,8 @@ func beamStartChild(prime *lymcwd.Location) func(label string) ([]byte, error) {
 	}
 }
 
-// pairPresent reports whether the hub holds a pair called slug on this machine: a registered, unpruned worktree whose directory exists.
+// pairPresent reports whether the hub holds a pair called slug on this machine.
+// A pair counts as present when it is a registered, unpruned worktree whose directory exists.
 func pairPresent(acting *lymcwd.Location, slug string) (bool, error) {
 	worktrees, err := hubWorktrees(acting)
 	if err != nil {
@@ -342,7 +353,8 @@ func pairPresent(acting *lymcwd.Location, slug string) (bool, error) {
 	return slices.Contains(worktrees, slug), nil
 }
 
-// hubWorktrees lists the names of the hub's warp worktrees that are registered, unpruned and present on disk, the prime included.
+// hubWorktrees lists the names of the hub's warp worktrees, the prime included.
+// It lists only the worktrees that are registered, unpruned and present on disk.
 func hubWorktrees(acting *lymcwd.Location) ([]string, error) {
 	entries, err := fabricengine.List(acting.AnchorPath())
 	if err != nil {
@@ -362,7 +374,8 @@ func hubWorktrees(acting *lymcwd.Location) ([]string, error) {
 	return names, nil
 }
 
-// foreignOwner returns the machine other than this one that the board at boardDir names as the effective owner of slug, empty when none does.
+// foreignOwner returns the machine other than this one that the board at boardDir names as the effective owner of slug.
+// It returns empty when no such machine is the effective owner.
 // The prime reads as the board's prime owner.
 func foreignOwner(prime *lymcwd.Location, boardDir, slug string) (string, error) {
 	machine, err := machinename.Name()
@@ -387,7 +400,7 @@ func foreignOwner(prime *lymcwd.Location, boardDir, slug string) (string, error)
 }
 
 // reedHeld reports whether the reed state under location's anchored `.lym` holds a session or a strand, live or stored.
-// A worktree with no `.lym` directory holds none, and the read creates none.
+// A worktree with no `.lym` directory holds none, and the read creates no `.lym` directory.
 func reedHeld(location *lymcwd.Location) (bool, error) {
 	dotLym := filepath.Join(fabricengine.WorktreePath(location, location.WorktreeName), location.AnchorRel, lymdirs.DotLymDirName)
 	if _, err := os.Stat(dotLym); errors.Is(err, fs.ErrNotExist) {
@@ -421,7 +434,8 @@ func hasProcessRole(records []runproc.Record, role string) bool {
 	return slices.ContainsFunc(records, func(record runproc.Record) bool { return record.Role == role })
 }
 
-// runStatusUnfinished reports whether the run status file at path names a state other than done; an absent file names none.
+// runStatusUnfinished reports whether the run status file at path names a state other than done.
+// An absent file names no state.
 func runStatusUnfinished(path string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -437,8 +451,10 @@ func runStatusUnfinished(path string) (bool, error) {
 	return status.State != shedengine.StateDone, nil
 }
 
-// dobbyPassInFlight describes the pass of the dobby of worktree that is in flight, empty when none is.
-// A pass is in flight while a run the dobby drives holds its driver lock, or while the dobby has a live child process other than a registered push or board sync, which a spawned pass not yet holding its lock is.
+// dobbyPassInFlight describes the pass of the dobby of worktree that is in flight, or returns empty when none is.
+// A pass is in flight while a run the dobby drives holds its driver lock.
+// It is also in flight while the dobby has a live child process other than a registered push or board sync.
+// A pass that is spawned but does not yet hold its lock is such a process.
 func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, worktree string) (string, error) {
 	records, err := runproc.List(runProcDir, owner)
 	if err != nil {
@@ -511,8 +527,10 @@ func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, wo
 	return "", nil
 }
 
-// acquireBranchLock takes the parent lock of the branch checked out in location's code worktree as the calling process, queuing behind a holder, and returns the release.
-// The lock owner's run id is "fabric-" and verb, and the wait notice on stderr names `lym fabric <verb>` and the holder.
+// acquireBranchLock takes the parent lock of the branch checked out in location's code worktree as the calling process.
+// It queues behind a current holder and returns the release.
+// The lock owner's run id is "fabric-" followed by verb,
+// and the wait notice on stderr names `lym fabric <verb>` and the holder.
 func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boltDir, verb string) (func(), error) {
 	branch, err := gitrepo.New(fabricengine.WorktreePath(location, location.WorktreeName)).CurrentBranch()
 	if err != nil {

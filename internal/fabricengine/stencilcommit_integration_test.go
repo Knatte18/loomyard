@@ -1,7 +1,7 @@
-// stencilcommit_integration_test.go covers CommitSeededStencils against a real hubforge hub: the
-// no-op empty-input case, the scoped-pathspec commit (including the seeded .gitattributes), the
-// regression guard that an unrelated dirty board file is never swept into the commit, the mutation
-// record the commit produces, and that the verb never pushes.
+// stencilcommit_integration_test.go covers CommitSeededStencils against a real hubforge hub.
+// It checks the no-op empty-input case and the scoped-pathspec commit, including the seeded .gitattributes.
+// It also checks that an unrelated dirty board file stays out of the commit.
+// It checks the mutation record the commit produces and that the verb never pushes.
 
 package fabricengine_test
 
@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommitSeededStencils_EmptyInputIsNoOp asserts an empty writtenRelPaths list takes no lock,
-// commits nothing, and leaves the record empty.
+// TestCommitSeededStencils_EmptyInputIsNoOp asserts that an empty writtenRelPaths list is a no-op.
+// It takes no lock, commits nothing, and leaves the record empty.
 func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -39,10 +39,11 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 	}
 }
 
-// TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt asserts a non-empty writtenRelPaths
-// list lands exactly one commit whose changed-file set is confined to the stencils subtree
-// (including a seeded .gitattributes), leaves an unrelated dirty board file untouched, records
-// file_written and commit_created entries, and never pushes.
+// TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt asserts one scoped commit.
+// A non-empty writtenRelPaths list lands exactly one commit confined to the stencils subtree.
+// The commit covers the stencils subtree, including a seeded .gitattributes.
+// It leaves an unrelated dirty board file untouched and records file_written and commit_created entries.
+// It never pushes.
 //
 //testtiming:keep a scoped commit confined to the stencils subtree, leaving unrelated board dirt untouched, recording file_written and commit_created and never pushing; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
@@ -52,9 +53,8 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	board := gitrepo.New(hub.BoardDir())
 
-	// Push whatever hubforge already committed so HasUnpushed starts false, proving below that
-	// CommitSeededStencils' own commit -- not some pre-existing unpushed state -- is what makes it
-	// true again.
+	// Push whatever hubforge already committed so HasUnpushed starts false.
+	// The check below then shows that CommitSeededStencils' own commit, not pre-existing unpushed state, makes it true.
 	if err := board.PushCoalesced(); err != nil {
 		t.Fatalf("PushCoalesced() (pre-seed) error = %v", err)
 	}
@@ -112,8 +112,8 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 		}
 	}
 
-	// The unrelated dirty file must still be untracked on disk after the commit -- the regression
-	// guard against reverting to a stage-all commit.
+	// The unrelated dirty file must still be untracked on disk after the commit.
+	// This guards against a regression to a stage-all commit.
 	status := gitkit.GitStatusPorcelain(t, hub.BoardDir())
 	found := false
 	for _, line := range strings.Split(status, "\n") {
@@ -151,11 +151,9 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	}
 }
 
-// TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory asserts that driving
-// CommitSeededStencils with the specs subtree's own subtreeRel/subtreeDir pair lands a commit and
-// records the file-written entry under SpecsDir(hub), not StencilsDir(hub) -- the exact partial
-// regression that would result from generalising the pathspec half of the function while leaving the
-// mutation-record half pointed at the stencils directory.
+// TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory asserts a specs-subtree commit.
+// It lands the commit and records the file-written entry under SpecsDir(hub), not StencilsDir(hub).
+// It guards against generalising only the pathspec half, which leaves the mutation record on the stencils directory.
 func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -201,9 +199,9 @@ func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *t
 	}
 }
 
-// hubRelativeTargetForTest mirrors how the mutation recorder converts a target path: relative to
-// filepath.Dir(hubPath), the same hubRoot the tests in this file pass to NewMutations, so the
-// assertion above compares against exactly what the recorder itself would have produced.
+// hubRelativeTargetForTest converts a target path the way the mutation recorder does.
+// The recorder works relative to filepath.Dir(hubPath), the hubRoot the tests in this file pass to NewMutations.
+// A test compares against this value so its expectation matches what the recorder produces.
 func hubRelativeTargetForTest(t *testing.T, hubPath, target string) string {
 	t.Helper()
 	rel, err := filepath.Rel(filepath.Dir(hubPath), target)

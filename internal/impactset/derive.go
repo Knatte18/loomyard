@@ -1,4 +1,5 @@
-// derive.go declares the pure core that turns a package graph and the changed paths into an impacted set, and the git and `go list` reads that feed it.
+// derive.go declares the pure core that turns a package graph and the changed paths into an impacted set.
+// It also declares the git and `go list` reads that feed that core.
 
 package impactset
 
@@ -15,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// AncestorBase returns the commit hash base names, and whether it is an ancestor of HEAD.
-// Any git refusal, such as an unknown commit, reads as not an ancestor.
+// AncestorBase resolves base to its commit hash and reports whether that commit is an ancestor of HEAD.
+// When it is not, the hash is empty; a git refusal, such as an unknown commit, also counts as not an ancestor.
 func AncestorBase(worktree, base string) (string, bool) {
 	resolved, err := gitexec.Run([]string{"rev-parse", "--verify", base + "^{commit}"}, worktree)
 	if err != nil {
@@ -71,7 +72,8 @@ func listPackages(ctx context.Context, worktree string) ([]pkg, error) {
 	return parseGoList(string(output), absolute), nil
 }
 
-// impactedFor returns the impacted set of the changed paths over the graph, or the reason the diff cannot be narrowed to one.
+// impactedFor returns the impacted set of the changed paths over the graph.
+// When the diff cannot be narrowed to packages, it returns a nil set and the reason as fallback.
 func impactedFor(graph moduleGraph, changedPaths []string) (set map[string]bool, fallback string) {
 	changed := map[string]bool{}
 	for _, changedPath := range changedPaths {
@@ -91,7 +93,9 @@ func impactedFor(graph moduleGraph, changedPaths []string) (set map[string]bool,
 
 // packageOfPath maps one changed path to the import path of the package it belongs to.
 // A `.go` file belongs to its directory's package, and fails when that directory is not a package.
-// Any other file belongs to the nearest enclosing package directory; a Markdown file with none belongs to no package (mapped false), and any other file with none fails (ok false).
+// Any other file belongs to the nearest enclosing package directory.
+// A Markdown file with none belongs to no package (mapped false),
+// and any other file with none fails (ok false).
 func packageOfPath(graph moduleGraph, changedPath string) (importPath string, mapped, ok bool) {
 	dir := path.Dir(changedPath)
 	if strings.HasSuffix(changedPath, ".go") {

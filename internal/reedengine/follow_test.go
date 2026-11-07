@@ -1,4 +1,5 @@
-// follow_test.go pins the told-geometry follow jump: the window it selects from tmux facts and the exact commands it issues, through TmuxCmd's execHook seam.
+// follow_test.go pins the told-geometry follow jump.
+// It checks the window it selects from tmux facts and the exact commands it issues, through TmuxCmd's execHook seam.
 
 package reedengine
 
@@ -11,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFollowSessionVia pins the commands followSessionVia issues for each session shape, and the error each failed command returns.
+// TestFollowSessionVia pins the commands followSessionVia issues for each session shape.
+// It also pins the error each failed command returns.
 // The listing lines are followTargetFormat lines: window id, window index, own flag, overview flag, pane dead flag.
 func TestFollowSessionVia(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,6 +1,8 @@
-// norecoverydeny_test.go enforces `PATTERN-refusal-way-forward`: no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
+// norecoverydeny_test.go enforces `PATTERN-refusal-way-forward`:
+// no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
 // The scan reads files only, so it stays in the untagged tier.
-// The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under the webster, shed and loom modules.
+// The scanned surface is the text under `contracts/specs/`, `contracts/stencils/` and `plugins/ly/skills/`.
+// It also covers the string literals of the non-test Go files under the webster, shed and loom modules.
 // `pattern/` background files and test files are outside it.
 
 package main
@@ -23,7 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// operatorDeniedForms are the denied commands the operator's permission set owns and no lym table declares, each as its token sequence.
+// operatorDeniedForms are the denied commands the operator's permission set owns and no lym table declares.
+// Each form is a token sequence.
 var operatorDeniedForms = [][]string{
 	{"git", "reset", "--hard"},
 	{"git", "push", "--force"},
@@ -31,7 +34,8 @@ var operatorDeniedForms = [][]string{
 	{"rm", "-rf"},
 }
 
-// shellGuardForms returns the command forms of every shell guard row, in table order, with the refuse-raw row over loomyard's own refuse_raw value.
+// shellGuardForms returns the command forms of every shell guard row, in table order.
+// The refuse-raw row is built from loomyard's own refuse_raw value.
 func shellGuardForms() [][]string {
 	var forms [][]string
 	for _, row := range shellguard.Rows("", []string{"go test"}) {
@@ -40,12 +44,14 @@ func shellGuardForms() [][]string {
 	return forms
 }
 
-// deniedRecoveryForms is the closed list of commands the agents' settings deny today, each as its token sequence.
-// internal/shellguard owns lym's own denies, and the operator's permission set the rest; this list follows both.
+// deniedRecoveryForms is the closed list of commands the agents' settings deny, each as its token sequence.
+// Its forms are lym's own denies from internal/shellguard, plus the denies the operator's permission set owns.
 var deniedRecoveryForms = append(append([][]string{}, operatorDeniedForms...), shellGuardForms()...)
 
 // deniedRecoveryTokenPattern splits a line into command tokens.
-// Whitespace, backticks, quotes, brackets, commas and semicolons separate tokens, so a form matches only as a whole token sequence and `git push --force-with-lease` is not `git push --force`.
+// Whitespace, backticks, quotes, brackets, commas and semicolons separate tokens,
+// so a form matches only as a whole token sequence.
+// `git push --force-with-lease` is not `git push --force`.
 var deniedRecoveryTokenPattern = regexp.MustCompile("[^\\s`\"'(),;]+")
 
 // deniedRecoveryMarker is the one pinned prohibition marker: a denied form directly after it is forbidden, not offered.
@@ -54,7 +60,8 @@ const deniedRecoveryMarker = "never "
 // deniedRecoveryTextSurfaces are the module-root-relative directories whose files are scanned as plain text.
 var deniedRecoveryTextSurfaces = []string{"contracts/specs", "contracts/stencils", "plugins/ly/skills"}
 
-// deniedRecoveryGoModulePrefixes are the directory-name prefixes under internal/ whose non-test Go string literals are scanned: the modules PATTERN-refusal-way-forward binds.
+// deniedRecoveryGoModulePrefixes are the directory-name prefixes under internal/ whose modules are scanned.
+// Only non-test Go string literals are scanned; these are the modules PATTERN-refusal-way-forward binds.
 var deniedRecoveryGoModulePrefixes = []string{"webster", "shed", "loom"}
 
 // deniedRecoveryHit is one denied form found at a line of a scanned file.
@@ -64,7 +71,8 @@ type deniedRecoveryHit struct {
 	form string
 }
 
-// scanDeniedRecovery returns the denied forms in text that no "never " marker forbids, with 1-based line numbers offset by firstLine-1.
+// scanDeniedRecovery returns the denied forms in text that no "never " marker forbids.
+// Line numbers are 1-based and offset by firstLine-1.
 // A form is exempt only when "never " precedes it directly, with at most one backtick between;
 // a denied form later in the same sentence, or preceded by anything else, still counts.
 func scanDeniedRecovery(file, text string, firstLine int) []deniedRecoveryHit {

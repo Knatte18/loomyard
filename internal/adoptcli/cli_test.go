@@ -1,4 +1,5 @@
-// cli_test.go pins the fields of the adopt envelope that depend on the outcome of the adopt checks' start, on the reconcile's warnings and on the deploy.
+// cli_test.go pins the adopt envelope's fields that depend on the outcome of the adopt checks' start;
+// it also pins the fields that depend on the reconcile's warnings and on the deploy.
 
 package adoptcli
 

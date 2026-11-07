@@ -1,4 +1,4 @@
-// cli.go builds the cobra command for the cleanup module and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the cobra command for the cleanup module and the RunCLI and RunCLIIn seams that run it.
 
 package cleanupcli
 
@@ -123,12 +123,14 @@ Example:
 	return cmd
 }
 
-// RunCLI is the public seam for the cleanup module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI runs the cleanup CLI with args, writes its output to out, and returns the exit code.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the cleanup CLI with args in cwd, writes its output to out, and returns the exit code.
+// An empty cwd reads the process working directory; any other value is seeded into the execution context.
+// The seed cannot be empty, because `lymcwd.WithCwd` panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

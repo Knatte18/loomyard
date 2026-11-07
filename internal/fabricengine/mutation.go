@@ -1,9 +1,9 @@
-// mutation.go declares the shared mutation-record vocabulary every mutating verb in this package
-// accumulates into and every mutating result type embeds: the Kind enum, the flat Mutation entry,
-// the Mutations accumulator, and the MutationRecord carrier a result type embeds to expose it.
-// This is the single declarer of the Kind enum — a new member lands in the same commit as its
-// recording site and its cmd/lym/destructiveguard_test.go guard entry, and no other file in the
-// tree declares a kind string literal.
+// mutation.go declares the shared mutation-record vocabulary of this package.
+// Every mutating verb accumulates into this vocabulary; each mutating result type embeds it.
+// It holds the Kind enum, the flat Mutation entry, the Mutations accumulator, and the MutationRecord carrier.
+// It is the only file that declares the Kind enum.
+// A new member lands in the same commit as its recording site and its cmd/lym/destructiveguard_test.go guard entry,
+// and no other file in the tree declares a kind string literal.
 
 package fabricengine
 
@@ -16,7 +16,7 @@ import (
 )
 
 // Kind names the fixed, closed vocabulary of mutation kinds a Mutation entry can carry.
-// Its string values are part of fabric's public JSON contract, so an existing constant's spelling must never change, and a new member lands in the same commit as its recording site and its cmd/lym/destructiveguard_test.go guard entry — no other file declares a kind string literal.
+// Its string values are part of fabric's public JSON contract, so an existing constant's spelling must never change.
 type Kind string
 
 // The fixed set of mutation kinds fabric records.
@@ -30,19 +30,19 @@ const (
 	KindLinkRemoved Kind = "link_removed"
 	// KindBranchDeleted records deleteBranch's `git branch -D`.
 	KindBranchDeleted Kind = "branch_deleted"
-	// KindRemoteBranchDeleted records deleteRemoteBranch's `git push <remote> --delete` for a delete
-	// that observably removed a ref on the remote.
-	// It is a distinct kind from KindBranchDeleted, never a reuse of it, because only the local
-	// deletion is recoverable (the remote copy is gone for good once pushed away) — a consumer
-	// switching on kind must be able to tell the two apart.
+	// KindRemoteBranchDeleted records deleteRemoteBranch's `git push <remote> --delete`.
+	// It is recorded only for a delete that observably removed a ref on the remote.
+	// It has its own kind because only the local deletion is recoverable,
+	// and the remote copy is gone for good once pushed away.
+	// A consumer switching on kind must be able to tell the two deletions apart.
 	KindRemoteBranchDeleted Kind = "remote_branch_deleted"
-	// KindRemoteBranchUpdated records updateRemoteBranch's leased push that moved a task branch on the remote, recorded only after the push observably succeeded.
+	// KindRemoteBranchUpdated records updateRemoteBranch's leased push once it observably moved a task branch on the remote.
 	// Its Target is the remote ref (`<remote>/<branch>`) and its Detail is the commit the branch was moved to.
-	// It is distinct from KindRemoteBranchDeleted because the ref survives and only its tip moved.
+	// The remote ref survives and only its tip moves.
 	KindRemoteBranchUpdated Kind = "remote_branch_updated"
 	// KindWorktreeReset records resetHardTo's `reset --hard`.
 	KindWorktreeReset Kind = "worktree_reset"
-	// KindDirCreated records a directory-creation success site, createExclusiveDir's mint among them.
+	// KindDirCreated records a directory creation at a success site, including createExclusiveDir's mint.
 	// It is recorded only for a directory that was absent beforehand.
 	KindDirCreated Kind = "dir_created"
 	// KindPathRenamed records a rename that moved a directory tree into place.
@@ -58,43 +58,43 @@ const (
 	KindBranchPushed Kind = "branch_pushed"
 	// KindCommitCreated records a verb success site that landed a commit.
 	KindCommitCreated Kind = "commit_created"
-	// KindLinkCreated records a verb success site that created a link, including the create half
-	// of a repoint.
+	// KindLinkCreated records a verb success site that created a link.
+	// It includes the create half of a repoint.
 	KindLinkCreated Kind = "link_created"
 	// KindFileWritten records a verb success site that rewrote a file (.git/info/exclude, config).
 	KindFileWritten Kind = "file_written"
-	// KindPushSpawned records that a push was launched via a detached child process, not observed
-	// to completion by the current process.
+	// KindPushSpawned records that a push was launched in a detached child process.
+	// The current process does not observe that push run to completion.
 	KindPushSpawned Kind = "push_spawned"
 	// KindWorktreeSwitched records Checkout's `git switch` sites.
 	KindWorktreeSwitched Kind = "worktree_switched"
-	// KindRepoAdvanced records a repo advance: the weft fast-forward pull, the warp advance, or the fast-forward of a live pair's behind local weft branch to its origin tip at Add (Target the weft repo root, Detail the branch and its new tip).
+	// KindRepoAdvanced records a repo advance: a weft pull, a warp advance, or a weft branch brought up to its origin.
 	//
-	// "repo" is deliberately side-agnostic here and is not vocabulary drift: this kind is recorded
-	// for both the weft fast-forward pull and the warp advance, and the entry's Target — the
-	// advanced worktree root — is what tells the two sides apart.
-	// The Fabric Vocabulary Invariant polices host-compounded phrases, not the bare word "repo", so
-	// this neither breaks the build nor bends the rule; the comment exists so the reviewer of the
-	// next slice reads it as the decision it is rather than as a warp/weft naming lapse.
+	// Target is the advanced worktree root.
+	// For a behind weft branch, Detail is the branch and its new tip.
+	// The word repo is side-agnostic on purpose.
+	// The weft pull and the warp advance share this kind, and Target tells them apart.
+	// The Fabric Vocabulary Invariant polices host-compounded phrases, not the bare word "repo".
+	// The use is therefore neither a build break nor a naming lapse.
 	KindRepoAdvanced Kind = "repo_advanced"
-	// KindMergeStaged records a merge verb's MergeStart call that observably changed a checkout's
-	// state (staged, conflicted, or fast-forwarded) — never an already-up-to-date no-op.
+	// KindMergeStaged records a merge verb's MergeStart call that observably changed a checkout's state.
+	// It is recorded for a staged, conflicted or fast-forwarded checkout, never for an already-up-to-date no-op.
 	KindMergeStaged Kind = "merge_staged"
-	// KindMergeResolvedStaged records one side's staging of agent-resolved conflict paths; Target is
-	// that side's checkout path. It is recorded only after the staging call observably succeeded —
-	// never on the empty-paths no-op.
+	// KindMergeResolvedStaged records one side's staging of agent-resolved conflict paths.
+	// Its Target is that side's checkout path, and it is recorded only after the staging call observably succeeded.
+	// The empty-paths no-op is never recorded.
 	KindMergeResolvedStaged Kind = "merge_resolved_staged"
 	// KindMergeTrackedStaged records the warp side's staging of every tracked modification and deletion mid-merge;
 	// Target is the warp checkout path.
 	// It is recorded only after the staging call observably succeeded.
 	KindMergeTrackedStaged Kind = "merge_tracked_staged"
-	// KindMergeCommitted records a merge verb's conclude-commit landing on one side; Detail is the
-	// new SHA.
+	// KindMergeCommitted records a merge verb's conclude-commit landing on one side;
+	// its Detail is the new SHA.
 	KindMergeCommitted Kind = "merge_committed"
-	// KindTagPushed records archiveWeftTip's push of an archive tag to the weft origin, recorded only after the push observably succeeded.
+	// KindTagPushed records archiveWeftTip's push of an archive tag to the weft origin once it observably succeeded.
 	// Its Target is the weft repo root and its Detail is the tag name.
 	KindTagPushed Kind = "tag_pushed"
-	// KindCommitsDropped records dropSeedCommits' reset of the board checkout past its seed commits, recorded only after HEAD observably moved.
+	// KindCommitsDropped records dropSeedCommits' reset past the seed commits, once HEAD observably moved.
 	// Its Target is the board checkout and its Detail is the dropped commits' SHAs, space-separated.
 	KindCommitsDropped Kind = "commits_dropped"
 	// KindTagCreated records setAsideTag's write of a local set-aside tag, recorded only after the tag exists.
@@ -102,58 +102,48 @@ const (
 	KindTagCreated Kind = "tag_created"
 )
 
-// Mutation is one flat entry in a Mutations record, naming one primitive that observably changed
-// state on disk or in git. Ordering across entries is carried by array order alone — there is
-// deliberately no sequence field.
+// Mutation is one flat entry in a Mutations record: one primitive that observably changed state on disk or in git.
+// Ordering across entries is carried by array order alone; there is no sequence field.
 type Mutation struct {
 	// Kind names which primitive was performed.
 	Kind Kind `json:"kind"`
-	// Target names what was mutated: a hub-relative, filepath.ToSlash'd path for anything at or
-	// below the hub root, an absolute filepath.ToSlash'd path otherwise, or a bare git ref name for
-	// a ref-recording entry.
+	// Target names what was mutated: a hub-relative, filepath.ToSlash'd path for anything at or below the hub root;
+	// an absolute filepath.ToSlash'd path otherwise.
+	// Target is a bare git ref name for a ref-recording entry.
 	Target string `json:"target"`
 	// Detail is optional kind-specific free text (e.g. the SHA a worktree_reset reset to).
 	Detail string `json:"detail,omitempty"`
 }
 
-// Mutations accumulates the Mutation entries a single verb call performs, in the order they were
-// recorded. It is constructed once per verb call via NewMutations and threaded as a *Mutations
-// into everything that call performs.
+// Mutations accumulates the Mutation entries a single verb call performs, in the order they were recorded.
+// It is constructed once per verb call and threaded as a pointer into everything that call performs.
 //
-// Receiver rule, and why it is split: the mutating and snapshotting methods (Append, AppendRef,
-// Extend, Snapshot) take a pointer receiver and must be nil-safe, since CloneHub and Unwire both
-// install their populating defer before the recorder exists. The read-only methods (Entries, Len,
-// MarshalJSON) take a value receiver and carry no nil-safety obligation, because they are called on
-// the Mutations value a result type carries (via MutationRecord.Mutated), never on a recorder
-// pointer — Mutated returns a non-addressable Mutations value, so a pointer receiver would not
-// compile against res.Mutated().Entries()/.Len().
+// The mutating methods take a pointer receiver and must be nil-safe;
+// a verb may install its populating defer before the recorder exists.
+// The read-only methods take a value receiver, since a result type hands out its Mutations by value:
+// that value is not addressable, so a pointer receiver would not compile on it.
 //
-// Each appended entry is also written to the durable trace sink, so a killed process's trace keeps
-// every mutation up to the last completed one.
+// Each appended entry is also written to the durable trace sink,
+// so a killed process's trace keeps every mutation up to the last completed one.
 type Mutations struct {
-	// hubRoot is the absolute path Append converts a target against. It may be empty, in which
-	// case Append never converts and records the absolute slashed path.
+	// hubRoot is the absolute path Append converts a target against.
+	// When it is empty, Append never converts and records the absolute slashed path.
 	hubRoot string
 	// entries holds the accumulated record, in append order.
 	entries []Mutation
 }
 
 // NewMutations constructs the one recorder a verb call threads through everything it performs.
-// hubRoot may be empty, in which case Append never converts a target and records the absolute
-// slashed path instead.
+// hubRoot may be empty, in which case Append records the absolute slashed path without converting.
 func NewMutations(hubRoot string) *Mutations {
 	return &Mutations{hubRoot: hubRoot}
 }
 
-// Append records one entry, converting target from an absolute filesystem path to a hub-relative,
-// filepath.ToSlash'd Target.
-// The conversion falls back to the absolute slashed path when filepath.Rel errors, when the result
-// escapes the hub root (a ".." first segment), or when hubRoot is empty.
-// A target that resolves to the hub root itself is recorded as the literal ".", matching
-// filepath.Rel's own output — this is CloneHub's hub-minting case, deliberately kept rather than
-// special-cased away.
-// A nil receiver is safe: it returns without panicking, so a not-yet-threaded call site degrades to
-// recording nothing rather than crashing.
+// Append records one entry, converting an absolute target to a hub-relative, filepath.ToSlash'd Target.
+// It falls back to the absolute slashed path in three cases:
+// filepath.Rel errors, the relative path escapes the hub root, or hubRoot is empty.
+// A target that resolves to the hub root itself is recorded as the literal ".", matching filepath.Rel's output.
+// A nil receiver is safe: the call records nothing and does not panic.
 func (m *Mutations) Append(kind Kind, target, detail string) {
 	if m == nil {
 		return
@@ -163,8 +153,8 @@ func (m *Mutations) Append(kind Kind, target, detail string) {
 	logger.Info("fabric: mutation", "kind", string(kind), "target", recorded, "detail", detail)
 }
 
-// hubRelativeTarget converts target to a hub-relative, filepath.ToSlash'd path when it descends
-// from hubRoot, falling back to the absolute filepath.ToSlash'd path otherwise.
+// hubRelativeTarget returns target relative to hubRoot, with forward slashes, when target lies under hubRoot.
+// Otherwise it returns target with forward slashes.
 func hubRelativeTarget(hubRoot, target string) string {
 	if hubRoot == "" {
 		return filepath.ToSlash(target)
@@ -198,8 +188,8 @@ func refDetail(side, repo, remote string) string {
 
 // Extend appends every entry of other to m verbatim, performing no path conversion: other's entries
 // were already converted by whichever Mutations produced them.
-// This is the composition primitive for a verb that calls another recording entry point (Unwire
-// over UnwireJunctions), and for the CLI layer's concatenate-engine-record-then-CLI-entries rule.
+// A verb that calls another recording entry point folds that call's record in with Extend,
+// and the CLI layer appends its own entries after the engine's record the same way.
 // Extend logs nothing: its entries were already logged when first appended.
 // A nil receiver is safe, and an empty other is a no-op.
 func (m *Mutations) Extend(other Mutations) {
@@ -209,10 +199,9 @@ func (m *Mutations) Extend(other Mutations) {
 	m.entries = append(m.entries, other.entries...)
 }
 
-// AppendRef records one entry with Target set to ref verbatim, performing no path arithmetic at
-// all. This is the git-ref recording path (branch_created, branch_deleted, branch_pushed).
-// A nil receiver is safe: it returns without panicking, so a not-yet-threaded call site degrades to
-// recording nothing rather than crashing.
+// AppendRef records one entry with Target set to ref verbatim, performing no path arithmetic.
+// It is the recording path for git-ref kinds (branch_created, branch_deleted, branch_pushed).
+// A nil receiver is safe and records nothing.
 func (m *Mutations) AppendRef(kind Kind, ref, detail string) {
 	if m == nil {
 		return
@@ -230,8 +219,8 @@ func (m Mutations) Entries() []Mutation {
 	return out
 }
 
-// Snapshot returns a value copy of m whose entries is a freshly allocated copy of the current
-// entries, so later appends through the recorder cannot mutate an already-returned result.
+// Snapshot returns a value copy of m with its own freshly allocated entries.
+// Later appends through the recorder cannot change an already-returned result.
 // A nil receiver is safe and returns a zero-value Mutations.
 func (m *Mutations) Snapshot() Mutations {
 	if m == nil {
@@ -267,6 +256,5 @@ type MutationRecord struct {
 }
 
 // Mutated returns this result's accumulated mutation record.
-// It is the one accessor the package's own live-state harness (the livestate_-prefixed
-// package fabricengine_test files, built on internal/hubforge) reads a heterogeneous result through.
+// It is the one accessor the package's live-state tests read a heterogeneous result through.
 func (r MutationRecord) Mutated() Mutations { return r.Mutations }

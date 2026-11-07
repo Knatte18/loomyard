@@ -1,4 +1,4 @@
-// config_test.go covers config generation: the settings.json written fresh, lym's own keys set in an existing one, and the tasks.json overwritten.
+// config_test.go covers config generation for WriteConfig, across fresh and existing .vscode files.
 
 package vscode
 
@@ -35,7 +35,9 @@ func assertLook(t *testing.T, settings map[string]any) {
 	}
 }
 
-// TestWriteVSCodeConfigCreatesFilesWhenAbsent pins the full generated config: the settings.json keys and the single on-demand reed attach task with its command, args and presentation, and no folder-open trigger.
+// TestWriteVSCodeConfigCreatesFilesWhenAbsent pins the full generated config:
+// the settings.json keys, and the one on-demand reed attach task with its command, args and presentation.
+// The config has no folder-open trigger.
 //
 //testtiming:keep pins the whole settings.json and the attach task's shape, which no covering test asserts
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
@@ -138,7 +140,9 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	}
 }
 
-// TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks pins that a rerun sets lym's title and colour keys in an existing settings.json, keeping its other keys and colour customizations, and replaces an existing tasks.json.
+// TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks pins a rerun over existing files.
+// It sets lym's title and colour keys in settings.json, keeping its other keys and colour customizations;
+// it replaces tasks.json.
 //
 //testtiming:keep pins the kept settings keys and the overwritten tasks.json, which the gitignore test does not assert
 func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
@@ -191,7 +195,10 @@ func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
 	}
 }
 
-// TestWriteConfigOwnsMarkdownPreviewEntry pins the "*.md" editor association: set to the markdown preview when asked to render, removed while it names the preview when not, and every other association kept.
+// TestWriteConfigOwnsMarkdownPreviewEntry pins the "*.md" editor association.
+// It sets the association to the markdown preview when asked to render;
+// when not, it removes the association only while it names the preview.
+// Every other association is kept.
 func TestWriteConfigOwnsMarkdownPreviewEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -274,7 +281,8 @@ func TestWriteConfigOwnsMarkdownPreviewEntry(t *testing.T) {
 	}
 }
 
-// TestWriteConfigLeavesUndecodableSettingsAlone pins that a settings.json that is not a JSON object keeps its bytes while tasks.json is still written.
+// TestWriteConfigLeavesUndecodableSettingsAlone pins that a settings.json that is not a JSON object keeps its bytes;
+// tasks.json is still written.
 func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

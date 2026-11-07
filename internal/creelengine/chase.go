@@ -1,4 +1,5 @@
-// chase.go chases a message that expects a reply and whose holder read it without answering: the chase clock, the two chases it sends and the unanswered outcome.
+// chase.go runs the chase clock of a message that expects a reply and whose holder read it without answering.
+// It sends the two chases and settles the message unanswered when neither draws a reply.
 
 package creelengine
 
@@ -40,7 +41,8 @@ const (
 	UnansweredHolderGone = "holder-gone"
 )
 
-// isChaseable reports whether the chase clock runs on msg: it expects a reply, its strand holder read it and has not answered it, and no unanswered outcome is recorded.
+// isChaseable reports whether the chase clock runs on msg:
+// it expects a reply, its strand holder read it and has not answered it, and no unanswered outcome is recorded.
 // A chase carries no mark, so it is never chaseable itself, and a message a program holds is never chased.
 func isChaseable(msg *Message) bool {
 	return msg.ExpectReply && msg.Status == StatusRead && !msg.Replied && msg.Unanswered == "" && isStrandName(msg.Holder)
@@ -89,7 +91,8 @@ func (s *Store) chasePending(holder string) bool {
 }
 
 // seedChaseClock records what the journal already holds of the chase clocks, as the store opens.
-// A chaseable message whose next step was already due keeps the clock at this opening as the base of that step, so overdue steps go one interval of running time apart after the restart.
+// A chaseable message whose next step was already due keeps the clock at this opening as the base of that step.
+// So overdue steps go one interval of running time apart after the restart.
 func (s *Store) seedChaseClock() {
 	for id, msg := range s.state.messages {
 		if !isChaseable(msg) {
@@ -125,7 +128,8 @@ func (s *Store) repairChases() error {
 }
 
 // ageChases adds elapsed running time to the chase clock of each chaseable message holder holds.
-// A message that another sender's live hold stands on is left as it is; a hold by the message's own sender lets the clock run.
+// A message that another sender's live hold stands on is left as it is;
+// a hold by the message's own sender lets the clock run.
 func (s *Store) ageChases(holder string, elapsed time.Duration) error {
 	return s.do(func() error {
 		hold := s.liveHoldLocked(holder)
@@ -139,7 +143,8 @@ func (s *Store) ageChases(holder string, elapsed time.Duration) error {
 	})
 }
 
-// persistChaseAged journals the chase clock of each chaseable message holder holds whose whole seconds changed since its last chase-aged record.
+// persistChaseAged journals the chase clock of each chaseable message holder holds.
+// It writes a chase-aged record for each of those whose whole seconds changed since its last such record.
 func (s *Store) persistChaseAged(holder string) error {
 	return s.do(func() error {
 		for _, msg := range s.chaseableLocked(holder) {
@@ -156,7 +161,8 @@ func (s *Store) persistChaseAged(holder string) error {
 	})
 }
 
-// stepChases takes the chase steps that are due for holder's chaseable messages: a step is due when the message's clock reaches its base plus chaseInterval.
+// stepChases takes the chase steps that are due for holder's chaseable messages:
+// a step is due when the message's clock reaches its base plus chaseInterval.
 // Steps one and two send a chase; the step after the second settles the message unanswered.
 func (s *Store) stepChases(holder string) error {
 	listing := s.listStrands()
@@ -194,7 +200,8 @@ func (s *Store) chaserSender() (Sender, error) {
 }
 
 // postChaseLocked sends the next chase of msg to its holder and journals it.
-// The body names the message, its sender and the reply command, and carries no text the sender wrote, so a chase cannot pose as an instruction.
+// The body names the message, its sender and the reply command, and carries no text the sender wrote,
+// so a chase cannot pose as an instruction.
 func (s *Store) postChaseLocked(msg *Message) error {
 	sender, err := s.chaserSender()
 	if err != nil {
@@ -215,7 +222,8 @@ func (s *Store) postChaseLocked(msg *Message) error {
 	return s.deliverMailLocked(id, msg.Holder)
 }
 
-// strandListing is one reading of the hub's strands, taken before the store mutex so a slow listing never stalls a store verb.
+// strandListing is one reading of the hub's strands, taken before the store mutex is held.
+// A slow listing then never stalls a store verb.
 type strandListing struct {
 	strands []Strand
 	err     error
@@ -227,7 +235,8 @@ func (s *Store) listStrands() strandListing {
 	return strandListing{strands: strands, err: err}
 }
 
-// settleUnansweredLocked journals that message id ended without a reply, tells its sender when the sender will read the notice, and answers every wait on the message's reply.
+// settleUnansweredLocked journals that message id ended without a reply.
+// It tells the sender, when the sender will read the notice, and answers every wait on the message's reply.
 // The listing, read before the mutex was taken, decides whether a strand sender is still listed.
 // A notice that fails to store is logged and never undoes the record.
 func (s *Store) settleUnansweredLocked(id int64, reason string, listing strandListing) error {
@@ -243,7 +252,8 @@ func (s *Store) settleUnansweredLocked(id int64, reason string, listing strandLi
 }
 
 // noticeUnansweredLocked posts msg's sender a notice that the message got no reply.
-// Only a strand the delivery seam lists and a program that has read get one; EXTERNAL, a program that never read and a strand no longer listed get none.
+// Only a strand the delivery seam lists and a program that has read get one;
+// EXTERNAL, a program that never read, and a strand the seam does not list get none.
 func (s *Store) noticeUnansweredLocked(msg *Message, reason string, listing strandListing) error {
 	if isStrandName(msg.From) {
 		if listing.err != nil {
@@ -282,9 +292,12 @@ type chaser struct {
 }
 
 // run probes the holder once when it starts and counts that reading as the previous tick's.
-// While the clock runs it ticks every agedPersistInterval, and a tick whose probe and the previous one's both read the clock running charges one whole interval and takes the steps that fall due.
+// While the clock runs it ticks every agedPersistInterval.
+// A tick whose probe and the previous one both read the clock running charges one whole interval.
+// That tick also takes the steps that fall due.
 // While the clock is stopped each tick doubles the next wait up to chaseProbeCeiling, and charges nothing.
-// A running tick, or a wake of the holder during a backed-off wait, returns the wait to agedPersistInterval; a wake during a running wait keeps the tick's deadline.
+// A running tick, or a wake of the holder during a backed-off wait, returns the wait to agedPersistInterval;
+// a wake during a running wait keeps the tick's deadline.
 // The chaser ends when the holder holds nothing chaseable, and journals the clock it counted when the scheduler stops.
 func (c *chaser) run() {
 	defer c.scheduler.wg.Done()
@@ -326,7 +339,8 @@ func (c *chaser) run() {
 	}
 }
 
-// retire removes the chaser once its holder holds nothing chaseable; it reports false when something chaseable remains and the chaser carries on.
+// retire removes the chaser once its holder holds nothing chaseable.
+// It reports whether the chaser was removed; false means something chaseable remains and the chaser carries on.
 func (c *chaser) retire() bool {
 	scheduler := c.scheduler
 	scheduler.mu.Lock()

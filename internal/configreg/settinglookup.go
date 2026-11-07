@@ -12,8 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// CheckSettingKey refuses an unregistered module and a key the module's embedded template lacks, each with the way forward in its message.
-// It reads no config file, so it answers without a worktree.
+// CheckSettingKey refuses an unregistered module and a key the module's embedded template lacks.
+// Each refusal names the way forward in its message.
+// CheckSettingKey reads no config file, so it answers without a worktree.
 func CheckSettingKey(module, key string) error {
 	m, ok := Lookup(module)
 	if !ok {
@@ -29,9 +30,12 @@ func CheckSettingKey(module, key string) error {
 	return nil
 }
 
-// SettingLookup returns a read-only lookup of one top-level key of one registered config module, resolved over the layer stack under dirs.
-// A call refuses an unregistered module and a key the module's embedded template lacks, each with the way forward in its message.
-// The first call for a module loads its stack strictly and keeps the decoded snapshot, so every later key of that module answers from it;
+// SettingLookup returns a read-only lookup of one top-level key of one registered config module.
+// The lookup resolves that key over the layer stack under dirs.
+// A call refuses an unregistered module and a key the module's embedded template lacks.
+// Each refusal names the way forward in its message.
+// The first call for a module loads its stack strictly and keeps the decoded snapshot.
+// Every later key of that module answers from it;
 // a later change to a config file is seen only through a new lookup.
 // The value is returned as yaml.v3 decodes it, and checking its shape is the reader's job.
 // The closure is safe for concurrent use.

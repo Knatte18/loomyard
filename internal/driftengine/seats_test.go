@@ -1,4 +1,6 @@
-// seats_test.go — tier 0 tests for the expect and judge seat tables, over a seeded stencils directory, a model registry of the built-in aliases and the prompts the seat engine composes without starting anything.
+// seats_test.go — tier 0 tests for the expect and judge seat tables.
+// They run over a seeded stencils directory and a model registry of the built-in aliases,
+// and they check the prompts the seat engine composes without starting anything.
 
 package driftengine
 
@@ -43,7 +45,9 @@ func seatPrompt(t *testing.T, stencilsDir, worktreeRoot, slug string, table seat
 	return prompts[""]
 }
 
-// TestSeatTables covers the two builders: each missing required input refused by name, the lead's model, role, output, skills and timeout, the markers each prompt renders and an unparsable model.
+// TestSeatTables covers the two builders.
+// It checks each missing required input is refused by name, and the lead's model, role, output, skills and timeout.
+// It also checks the markers each prompt renders and the handling of an unparsable model.
 func TestSeatTables(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

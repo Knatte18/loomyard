@@ -15,7 +15,9 @@ const (
 )
 
 // Field is one comparable field of a record.
-// Name is its JSON name, Get a canonical getter that reads nil and empty alike, and Set copies the field from another record into dst.
+// Name is its JSON name.
+// Get is a canonical getter that reads nil and empty alike.
+// Set copies the field from another record into dst.
 type Field[T any] struct {
 	Name string
 	Get  func(T) any
@@ -30,7 +32,7 @@ type Table[T any] struct {
 }
 
 // Finding is one field of one entry the merge set aside.
-// Local is the commit's value of the field rendered as JSON, empty when the whole entry is concerned.
+// Local is the commit's value of the field, rendered as JSON.
 type Finding struct {
 	Entry  string
 	Field  string
@@ -38,7 +40,8 @@ type Finding struct {
 	Local  string
 }
 
-// Changed returns the fields whose values differ between a commit's parent, before, and the commit, in table order.
+// Changed returns the fields whose values differ between before and commit, in table order.
+// before is the record at the commit's parent.
 func (t Table[T]) Changed(before, commit T) []Field[T] {
 	var changed []Field[T]
 	for _, field := range t.Fields {
@@ -49,10 +52,13 @@ func (t Table[T]) Changed(before, commit T) []Field[T] {
 	return changed
 }
 
-// Change applies the fields the commit changed against before onto origin's entry, and returns the merged entry, the names of the fields applied and the changes set aside.
-// merged starts as origin; the caller passes a deep copy when the record holds reference fields it must not share with origin's own.
-// A changed field origin already holds is skipped.
-// One origin moved to a value that is neither the merge base's nor before's keeps origin's value and is reported lost, with the commit's value as Local.
+// Change applies the fields the commit changed against before onto origin's entry.
+// It returns the merged entry, the names of the fields applied, and the changes set aside.
+// merged starts as origin.
+// The caller passes a deep copy when the record holds reference fields it must not share with origin's own.
+// A changed field that origin already holds at the commit's value is skipped.
+// A changed field whose origin value is neither the merge base's nor before's is reported lost.
+// It keeps origin's value; the finding carries the commit's value as Local.
 // Every other changed field is set from the commit and named in applied.
 func (t Table[T]) Change(base, before, origin, commit T) (merged T, applied []string, lost []Finding) {
 	merged = origin

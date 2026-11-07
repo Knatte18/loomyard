@@ -1,5 +1,4 @@
-// registry.go maps each batchifier kind a batcher.yaml profile can name to the constructor that builds it from that profile;
-// Active (config.go) resolves the active profile through it.
+// registry.go maps each batchifier kind a batcher.yaml profile can name to the constructor that builds it.
 
 package batcher
 
@@ -9,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// DefaultName is the profile an empty active: key resolves to; the template's own active: names the wide profile instead.
+// DefaultName is the profile name that an empty active key resolves to.
 const DefaultName = "identity"
 
 // constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.
@@ -20,7 +19,9 @@ var constructors = map[string]func(name string, p profile) (Batcher, error){
 	"cost": newCostFromProfile,
 }
 
-// newCostFromProfile builds the cost batchifier a `batchifier: cost` profile describes, erroring naming batcher.yaml and the profile when a parameter is missing or out of range, or when it still carries the retired alone_above.
+// newCostFromProfile builds the cost batchifier that a `batchifier: cost` profile describes.
+// It returns an error naming batcher.yaml and the profile when a parameter is missing or out of range.
+// It also refuses a profile that still sets the retired alone_above key.
 func newCostFromProfile(name string, p profile) (Batcher, error) {
 	if p.AloneAbove != nil {
 		return nil, retiredKeyError(p.file, p.layer, name, "alone_above")

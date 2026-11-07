@@ -1,6 +1,12 @@
-<!-- This is burler's fanned cluster-rules part: the spawn mechanics, the fork rules, the handler's holistic review and the consolidation rules the review step carries when the round names a fan.
-     internal/burlerengine's clusterRulesBlock (prompt.go) reads and fills it, and the result becomes the review step's cluster_rules marker value.
-     It declares three required markers: {{.lens_list}}, the round's lenses as one bullet per lens in fan order, {{.lens_report_path}}, the path each fork's report is saved at, and {{.lens_report_spec_path}}, the deployed spec of that report's format. -->
+<!-- This is burler's fanned cluster-rules part.
+     It carries the spawn mechanics, the fork rules, the handler's holistic review and the consolidation rules.
+     The review step carries it when the round names a fan.
+     `clusterRulesBlock` (internal/burlerengine/prompt.go) fills it.
+     The result becomes the review step's cluster_rules marker value.
+     It declares three required markers.
+     {{.lens_list}} is the round's lenses as one bullet per lens in fan order;
+     {{.lens_report_path}} is the path each fork's report is saved at;
+     and {{.lens_report_spec_path}} is the deployed spec of that report's format. -->
 This is a cluster round: after exploring the target fully, spawn ALL of the fork reviewers below in a SINGLE message via the Agent tool with `subagent_type: "fork"`, one per lens listed here — never pass a `name` (named forks silently lose inherited context).
 
 Lenses for this round:

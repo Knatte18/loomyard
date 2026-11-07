@@ -58,7 +58,8 @@ func atoiOrFail(t *testing.T, s string) int {
 }
 
 // commitReworkRound leaves what an earlier rework round left at the records HEAD.
-// That is the plan generation writePlan writes, committed, and round n's record.json carrying first and class, committed under the rework directory.
+// It runs writePlan and commits the plan generation it writes.
+// It then writes round n's record.json, carrying first and class, and commits it under the rework directory.
 func commitReworkRound(t *testing.T, c *loomCLI, location *lymcwd.Location, n, first int, class string, writePlan func()) {
 	t.Helper()
 	writePlan()
@@ -72,7 +73,9 @@ func commitReworkRound(t *testing.T, c *loomCLI, location *lymcwd.Location, n, f
 	}
 }
 
-// TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair, answers true after a recorded round whose generation is all-Prosa on .md files and false after one whose generation carries a source card.
+// TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview over a real fabric pair.
+// It answers true after a recorded round whose generation is all-Prosa on .md files.
+// It answers false after a round whose generation carries a source card.
 func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
 	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

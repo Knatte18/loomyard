@@ -1,4 +1,5 @@
-// owned.go handles a run a full pass found owned by another machine: the owner pause, the parent lock release, the one notice, and the re-read of the owner that lifts the pause.
+// owned.go handles a run that a full pass found owned by another machine.
+// It covers the owner pause, the parent lock release, the one notice, and the re-read of the owner that lifts the pause.
 
 package dobbyengine
 
@@ -11,8 +12,12 @@ import (
 )
 
 // ownedElsewhere handles the owned-elsewhere exit of a pass of slug, which has a status file.
-// It keeps the run's full pass owed, records it owned elsewhere, pauses it under the owner, releases the parent lock record naming the run's child, and posts one notice naming `lym adopt` per owner episode.
-// A failed owner pause warns once per episode and is recorded as failed; it is never retried blind, since the marker gives the run a full pass on each probe tick while no pause covers it.
+// It keeps the run's full pass owed and records it owned elsewhere.
+// It pauses the run under the owner and releases the parent lock record naming the run's child.
+// It posts one notice naming `lym adopt` per owner episode.
+// A failed owner pause warns once per episode and is recorded as failed.
+// It is never retried blind.
+// The owned-elsewhere mark gives the run a full pass on each probe tick while no pause covers it.
 // It posts no failing-pass notice.
 func (d *daemon) ownedElsewhere(ctx context.Context, slug string, _ time.Time) {
 	var noticeSent bool
@@ -79,8 +84,9 @@ func (d *daemon) noticeOwnedElsewhere(ctx context.Context, slug string) bool {
 }
 
 // recheckOwnerPause reads the effective owner of slug from the local Bolt, with no pull, once its owner pause stands.
-// When it no longer reads another machine it lifts the dobby's own owner pause entry and owes the run a full pass at once.
-// An adopt landing in that window runs on this machine and writes the local Bolt first, so it strands no run on a manual step.
+// When that owner is no other machine, it lifts the dobby's own owner pause entry and owes the run a full pass at once.
+// An adopt landing in that window runs on this machine and writes the local Bolt first,
+// so it strands no run on a manual step.
 func (d *daemon) recheckOwnerPause(ctx context.Context, slug string) {
 	machine, err := d.deps.Machine()
 	if err != nil {
@@ -100,6 +106,6 @@ func (d *daemon) recheckOwnerPause(ctx context.Context, slug string) {
 		return
 	}
 	d.liftPending[slug] = true
-	// The lift is handled here, so the view that reads the pause gone next tick registers no second one.
+	// The lift is handled here, so the view that sees the pause gone on the next tick registers no second one.
 	d.wasCovered[slug] = false
 }

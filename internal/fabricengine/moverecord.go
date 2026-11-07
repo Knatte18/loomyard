@@ -22,7 +22,7 @@ const (
 const (
 	// MoveKindMove re-roots the weft's content at the new anchor.
 	MoveKindMove = "move"
-	// MoveKindIntegrate also carries the weft's local commits across an anchor change made on its upstream.
+	// MoveKindIntegrate re-roots the weft's content and carries its local commits across an upstream anchor change.
 	MoveKindIntegrate = "integrate"
 )
 
@@ -79,7 +79,8 @@ func RemoveMoveRecord(weftPath string) error {
 
 // MoveInProgress reports whether the weft worktree at weftPath, the weft of the worktree slug, carries a move record.
 // With none it reports not standing.
-// With one it returns the way forward: a held move lock names the change in progress and its process, to wait for before re-running,
+// With one it returns the way forward:
+// a held move lock names the change in progress and the process to wait for before re-running,
 // and a free lock names the interrupted change and the `lym fabric anchor` run that recovers it.
 // A held lock beside a record whose process is not the live holder is a new run still starting, and is named as that.
 func MoveInProgress(slug, weftPath string) (wayForward string, standing bool, err error) {
@@ -119,7 +120,8 @@ func startingMoveStop(slug string) string {
 }
 
 // moveRecordStop returns the stop for a weft worktree that carries a move record, and nil when it does not.
-// The slug is read from the weft's directory name; its way forward is MoveInProgress's.
+// The slug is read from the weft's directory name.
+// The way forward comes from probing the move lock beside the record.
 func moveRecordStop(weftPath string) (*AnchorStopError, error) {
 	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {

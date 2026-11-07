@@ -13,8 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoomFrictionPaths verifies the durable and ephemeral friction paths at a subpath anchor, whose AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root:
-// LoomDurableDir sits under the durable _lym tree and LoomDurableDirRel is its anchor-relative suffix, LoomFrictionDir sits beneath LoomDurableDir, LoomFrictionArchivePrefix is LoomFrictionDir's own return value with a trailing hyphen (asserted against it rather than a second hand-built literal, so the two cannot drift), and the reflection lock stays ephemeral: under .lym/loom, with its parent equal to LoomScratchDir.
+// TestLoomFrictionPaths verifies the friction paths at a subpath anchor, whose AnchorRel is not ".".
+// The accessors must follow the anchored subpath, not the bare worktree root.
+// LoomDurableDir sits under the durable _lym tree, and LoomDurableDirRel is its anchor-relative suffix.
+// LoomFrictionDir sits beneath LoomDurableDir.
+// LoomFrictionArchivePrefix is LoomFrictionDir's return value with a trailing hyphen,
+// and the test asserts against that value so the two cannot drift.
+// The reflection lock stays ephemeral, under .lym/loom, with its parent equal to LoomScratchDir.
 func TestLoomFrictionPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

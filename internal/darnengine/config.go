@@ -1,10 +1,5 @@
-// config.go — configuration for the darn recipe.
-//
-// It defines the Config type mirroring darn.yaml's keys and the ConfigTemplate accessor.
-// LoadConfig loads the file strictly.
-// TreeScopedTargets classifies a diff against the configured trees and returns the touched trees' targets.
-// MigrateConfig carries a hub file off the retired tree_scope_verify key.
-// The module is hub-wide, so every path here is told by the caller.
+// config.go defines the darn.yaml configuration: the Config type that mirrors its keys and its strict layered load.
+// It also holds the embedded default template and MigrateConfig, which carries a hub file off a retired key.
 
 package darnengine
 
@@ -41,17 +36,18 @@ type Config struct {
 	Writer string `yaml:"writer"`
 	// WriterTimeoutMin is the writer session's wall-clock budget in minutes.
 	WriterTimeoutMin int `yaml:"writer_timeout_min"`
-	// VerifyAttempts is how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session before it halts the run.
+	// VerifyAttempts caps the re-prompts of a verify gate, the writer's or a Code-Review fix round's, before the run halts.
 	VerifyAttempts int `yaml:"verify_attempts"`
 	// GateFixer is the model-spec of the cold fixer of Darn-Write's verify gate; empty turns the fixer off.
 	GateFixer string `yaml:"gate_fixer"`
-	// TreeScope maps each worktree-relative tree path, without a trailing slash, to the test target the tree contributes to a tree-scoped site's call.
+	// TreeScope maps each worktree-relative tree path, without a trailing slash, to its test target at a tree-scoped site.
 	// An empty target means the tree has no tests of its own.
 	// Tree scope is on exactly when it holds a tree.
 	TreeScope map[string]string `yaml:"tree_scope"`
 }
 
-// ConfigOpenMaps returns the darn.yaml keys whose value is the operator's own tree map, which configengine carries whole through reconcile and --set.
+// ConfigOpenMaps returns the darn.yaml keys whose value is the operator's own tree map.
+// configengine carries such a key whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{"tree_scope"}
 }
@@ -59,7 +55,8 @@ func ConfigOpenMaps() []string {
 // ConfigSpec returns darn's layered-load spec.
 // tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer; no task run_settings sets it.
 // verify and tree_scope_verify are retired, as is pr_review, so a hub file that still sets any of them loads and reconcile prunes it.
-// The driver, tackler and arbiter keys are retired too, now read from shed.yaml alone, and closed to the local layer so a local file that still sets one is refused with the shed way forward.
+// The driver, tackler and arbiter keys are retired too, and shed.yaml alone holds them.
+// They are closed to the local layer, so a local file that still sets one is refused with the shed way forward.
 func ConfigSpec() configengine.Spec {
 	categories := map[string]configengine.Category{
 		"writer":             configengine.CategoryNone,
@@ -96,7 +93,7 @@ var shedOnlyKeys = []string{
 	"arbiter", "arbiter_timeout_min", "arbiter_max_spawns",
 }
 
-// shedOnlyKeyWayForward is the way forward a refusal of a shedOnlyKeys key ends with.
+// shedOnlyKeyWayForward is the way forward a refusal of a shed-only key ends with.
 const shedOnlyKeyWayForward = "remove the key from the refused local file, profile block or run_settings object, and set it under the shed module instead: in a local file, in the pair's local shed.yaml; in a profile block or run_settings, in the shed object"
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
@@ -167,7 +164,8 @@ func normalizeTreeScope(cfg Config) (map[string]string, error) {
 // MigrateConfig carries a darn.yaml document off the retired tree_scope_verify key, for lym config reconcile.
 // It fires only while the document still holds the key.
 // A key held empty empties tree_scope and is pruned, so an off hub stays off; a key held set is pruned and tree_scope kept.
-// A document without the key is returned unchanged, so trees the operator adds later are never touched, and so a second pass changes nothing.
+// A document without the key is returned unchanged.
+// Trees the operator adds later are never touched, and a second pass changes nothing.
 // Each rewrite returns one line, and every comment and other key is carried through yaml node editing.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
@@ -218,7 +216,7 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return out.Bytes(), []string{line}, nil
 }
 
-// mappingKeyIndex returns the index of key among mapping's content, which is the key node's, or -1 when mapping holds no such key.
+// mappingKeyIndex returns the index of key's node in mapping.Content, or -1 when mapping holds no such key.
 func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		if mapping.Content[i].Value == key {
@@ -228,8 +226,10 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// WithEditorWayForward appends the editor way forward to an error wrapping ErrTreeScopeKey, since --set cannot remove a key the hub file holds, and returns every other error, nil included, unchanged.
-// A reader of the hub darn.yaml that refuses on a load error returns its error through it.
+// WithEditorWayForward appends the editor way forward to an error wrapping ErrTreeScopeKey.
+// It is needed because --set cannot remove a key the hub file holds.
+// Every other error, nil included, is returned unchanged.
+// A caller that refuses on a load error of the hub darn.yaml passes that error through it.
 func WithEditorWayForward(err error) error {
 	if !errors.Is(err, ErrTreeScopeKey) {
 		return err
@@ -237,13 +237,14 @@ func WithEditorWayForward(err error) error {
 	return fmt.Errorf("%w; fix the named tree_scope key in lym config darn's editor from the prime, then re-run the lym command that refused", err)
 }
 
-// TreeScopedTargets classifies a diff against cfg's trees and returns the touched trees' targets and whether the diff is tree-scoped.
-// cfg is one LoadConfig returned, so its tree keys carry no trailing slash.
-// Tree scope is off, and the answer (nil, false), when cfg holds no tree.
+// TreeScopedTargets reports whether a diff is tree-scoped and returns the targets of the trees it touches.
+// Tree scope is off when cfg holds no tree; the answer is then (nil, false).
 // A diff is tree-scoped when every path lies in some tree, an empty path list included.
+// A path lies in a tree when it equals the tree or sits below it.
 // A path touches every tree it lies in, nested trees included.
 // The targets are the touched trees' non-empty targets, deduplicated, in tree-path order, so no path text reaches them.
-// When no touched tree contributes a target, as for a docs-only or empty diff, the answer is scoped with no targets, which every darn site runs as nothing.
+// When no touched tree has a target, as for a docs-only or empty diff, the answer is (nil, true).
+// Every darn site runs that scoped answer as nothing.
 func TreeScopedTargets(cfg Config, paths []string) ([]string, bool) {
 	if len(cfg.TreeScope) == 0 {
 		return nil, false

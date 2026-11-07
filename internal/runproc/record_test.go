@@ -145,7 +145,8 @@ func TestRegisterAndList(t *testing.T) {
 		t.Errorf("list with the pid dead = %+v, %v; want the record pruned", listed, err)
 	}
 
-	// A zombie's stat still carries the registered start time: the record is left out of the listing yet kept on disk, until the zombie is gone.
+	// A zombie's stat still carries the registered start time:
+	// the record is left out of the listing yet kept on disk, until the zombie is gone.
 	if err := Register(dir, "zombie", self); err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-// hold.go declares PauseHold, the told pause hold a verify site gives Verify, and NewPauseHold, its one builder over the pause record.
+// hold.go declares PauseHold, the hold a verify site passes to Verify, and NewPauseHold, its builder.
 
 package verifytree
 
@@ -18,7 +18,7 @@ const holdPollInterval = time.Second
 type PauseHold struct {
 	// PastGrace reports whether a live entry covering the scope has passed its grace end.
 	PastGrace func() bool
-	// Wait returns once no live entry covers the scope, calls held once when it starts waiting, and returns ctx's error when ctx ends.
+	// Wait blocks until no live entry covers the scope, calls held when it first waits, and returns ctx's error if ctx ends.
 	Wait func(ctx context.Context, held func()) error
 	// Poll is the interval Verify polls PastGrace at while its command runs.
 	Poll time.Duration
@@ -27,7 +27,8 @@ type PauseHold struct {
 }
 
 // NewPauseHold builds the hold over the pause record geom names, judging geom's slug.
-// While slugEntryExempt reports true only a hub entry counts, which serves a run holding its parent lock; nil never exempts.
+// While slugEntryExempt reports true only a hub entry counts, which serves a run holding its parent lock.
+// A nil slugEntryExempt never exempts.
 // A geometry with no record reads uncovered, and an unreadable record never stops a verify.
 // A test shortens the returned hold's Poll and Sleep.
 func NewPauseHold(geom pauserecord.Geometry, slugEntryExempt func() bool) *PauseHold {

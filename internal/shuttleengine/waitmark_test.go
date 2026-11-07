@@ -1,4 +1,5 @@
-// waitmark_test.go covers ReadWaitMarker over hand-written run directories, with the liveness seam replaced so no process is spawned.
+// waitmark_test.go covers ReadWaitMarker over hand-written run directories.
+// It replaces the liveness seam, so no process is spawned.
 // Replacing the seam is process-global state,
 // so these tests do not run in parallel.
 

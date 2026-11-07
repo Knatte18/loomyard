@@ -1,4 +1,6 @@
-// send.go holds what a verified send does around its typing: the context it runs in, the wait for an idle session, the settle, submit confirmation and clear of an input-box send, and the gated wait loop's send and boundary-idle checks.
+// send.go holds what a verified send does around its typing:
+// the context it runs in; the wait for an idle session; the settle;
+// the submit confirmation and clear of an input-box send; and the gated wait loop's send and boundary-idle checks.
 // None of it ends, classifies or finalizes a run.
 
 package shuttleengine
@@ -13,15 +15,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ErrSessionBusy marks a verified send that found the session still held by its readiness reading when its idle wait ran out: a turn running, a question awaiting an answer, a draft in the input box, an unmatched turn start, an operator active in the pane within reed's quiet window, a pane showing no input box to an engine that reads one or, when the reading is unknown, a pane that is not idle.
+// ErrSessionBusy marks a verified send whose idle wait ran out while its readiness reading still held the session:
+// a turn running; a question awaiting an answer; a draft in the input box; an unmatched turn start;
+// an operator active in the pane within reed's quiet window; a pane showing no input box to an engine that reads one;
+// or, when the reading is unknown, a pane that is not idle.
 // Nothing was typed, so the caller may retry the send later.
 var ErrSessionBusy = errors.New("shuttle: the session is not idle")
 
 // SessionBusyError is the error of a verified send held by its idle wait.
 // Reason is the hold the wait's last reading named, without the pane's last lines.
 // Draft is true when that hold is text in the input box.
-// NoInputBox is true when that hold is a pane showing no input box to an engine that reads one, as when a picker covers the box.
-// Err is the full error, which wraps ErrSessionBusy, and is what Error returns, so the message is Err's.
+// NoInputBox is true when that hold is a pane showing no input box to an engine that reads one;
+// a picker covering the box is one such pane.
+// Err is the full error, which wraps ErrSessionBusy, and is what Error returns.
 type SessionBusyError struct {
 	Reason     string
 	Draft      bool
@@ -50,12 +56,15 @@ const (
 	paneTailLines = 15
 )
 
-// sendContext is what one verified send needs: the pane it types into, the run's record, directory and events file, the config and the clock its timed waits read.
+// sendContext is what one verified send needs: the pane it types into; the run's record, directory and events file;
+// the config; and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 // startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
-// landingStart is the session-start source whose line confirms a send that starts no turn; it is empty for every other send.
+// landingStart is the session-start source whose line confirms a send that starts no turn;
+// it is empty for every other send.
 // keepUnlanded marks a send that never clears a text that did not land, leaving it in the input box.
-// recordless marks a send into a strand no run record names: the run state, directory and events path are empty, so readiness reads the pane alone and no pending-send record is kept.
+// recordless marks a send into a strand no run record names: the run state, directory and events path are empty;
+// so readiness reads the pane alone, and no pending-send record is kept.
 type sendContext struct {
 	reed         ReedOps
 	engine       Engine
@@ -73,7 +82,7 @@ type sendContext struct {
 	recordless   bool
 	// paused reads whether a pause covers the target strand and returns the refusal when it does; nil reads uncovered.
 	paused func() error
-	// activityFailures is the runner's operator-activity failure episodes, shared by every send and probe of one runner.
+	// activityFailures holds the runner's operator-activity failure episodes, shared by every send and probe of one runner.
 	activityFailures *logger.EpisodeSet
 }
 
@@ -119,7 +128,8 @@ func (r *Runner) newSendContext(state RunState, runDir string) (sendContext, err
 // recordlessSendContext returns the context of a verified send into the pane of the live strand guid, which no run record names.
 // name is the strand's name as reed reports it, which its coverage reading judges by.
 // It keeps the runner's turn-start hold for the strand and never clears a text that did not land.
-// The send goes through the engine named by provider, the strand's provider tag, or the runner's default engine for an empty tag.
+// The send goes through the engine named by provider, the strand's provider tag;
+// an empty tag selects the runner's default engine.
 // It fails with the lookup's error when the set does not hold that engine.
 func (r *Runner) recordlessSendContext(guid, name, provider string) (sendContext, error) {
 	engine, _, err := r.engineFor(RunState{Engine: provider})
@@ -150,8 +160,10 @@ func sendReadyTimeout(cfg Config) time.Duration {
 	return time.Duration(cfg.SendReadyTimeoutS) * time.Second
 }
 
-// windowPollCap returns how many polls paced at least minInterval apart fit in window, plus slack for a first poll at once and a last sleep cut short.
-// Every poll of a send runs a real tmux process through reed, so this attempt-count bound sits beside the window and also ends the loop under a clock that never advances.
+// windowPollCap returns how many polls paced at least minInterval apart fit in window;
+// it adds slack for a first poll at once and a last sleep cut short.
+// Every poll of a send runs a real tmux process through reed, so this attempt-count bound sits beside the window;
+// it also ends the loop under a clock that never advances.
 // A non-positive minInterval is paced as idlePollInitial.
 func windowPollCap(window, minInterval time.Duration) int {
 	if minInterval <= 0 {
@@ -160,12 +172,17 @@ func windowPollCap(window, minInterval time.Duration) int {
 	return int(window/minInterval) + 2
 }
 
-// awaitIdleSession returns nil once the strand's session is idle in fact, and fails with an error wrapping ErrSessionBusy when it stays busy past the send-ready window, sc's deadline or the window's poll count.
+// awaitIdleSession returns nil once the strand's session is idle in fact.
+// It fails with an error wrapping ErrSessionBusy when the session stays busy past its limit:
+// the send-ready window, sc's deadline, or the window's poll count.
 // An engine without the SessionCycler idle reading keeps requireReadyAgentPane alone, with no wait.
 // Otherwise every poll takes the session's readiness reading, which is built on the hook-derived session state;
-// when that state is unknown the poll falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
-// An engine that reads the unmatched turn in flight keeps the send waiting past turnStartIdleOverride, until a turn end, a reported interrupt, a later session start or the send-ready window ends it.
-// A held reading over a picker the engine knows how to dismiss gets the picker's keys at most once per call; see dismissPicker.
+// when that state is unknown, the poll falls back to the pane, which must classify ready and idle;
+// for an engine that parses session signals, no turn start may be left unmatched by a later turn end;
+// unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
+// An engine that reads the unmatched turn in flight keeps the send waiting past turnStartIdleOverride;
+// the wait ends at a turn end, a reported interrupt, a later session start, or the send-ready window.
+// A held reading over a picker the engine knows how to dismiss gets the picker's keys at most once per call.
 func awaitIdleSession(sc sendContext) error {
 	cycler, ok := sc.engine.(SessionCycler)
 	if !ok {
@@ -213,23 +230,29 @@ func awaitIdleSession(sc sendContext) error {
 	}
 }
 
-// busyHold is one idle-wait reading's answer: reason is what keeps the session from being idle, empty when it is idle, and draft is true when that hold is text in the input box.
-// noInputBox is true when that hold is a pane showing no input box, which includes a dismissal whose key could not be sent.
+// busyHold is one idle-wait reading's answer.
+// reason is what keeps the session from being idle, and it is empty when the session is idle;
+// draft is true when that hold is text in the input box.
+// noInputBox is true when that hold is a pane showing no input box;
+// a dismissal whose key could not be sent counts as one.
 type busyHold struct {
 	reason     string
 	draft      bool
 	noInputBox bool
 }
 
-// busyReading polls the pane and the events file once and returns what keeps the session from being idle, an empty reason when it is idle.
+// busyReading polls the pane and the events file once and returns what keeps the session from being idle.
+// It returns an empty reason when the session is idle.
 // The readiness reading decides: a ready reading returns "" and a held one its reason.
 // An unknown reading falls back to the pane, logging its cause at Debug.
-// Operator activity is asked last, and only once the rest of the reading passed, so each poll is one fresh reading of readiness, box and activity.
+// Operator activity is asked last, only once the rest of the reading passed.
+// So each poll is one fresh reading of readiness, box and activity.
 //
-// A lone stray-character candidate in the box, on the hook reading held only for that draft or on the pane reading ready but not idle, is cleared once per stray, behind a full guard reading;
-// see clearStrayCharacter.
-// Once stray records a clear, every reading of the attempt is a post-clear reading, and a box still holding exactly the recorded character reads as empty.
-// A reading that is not ready over a picker the engine knows how to dismiss is handed to dismissPicker until picker records a try.
+// A lone stray-character candidate in the box is cleared once per stray, behind a full guard reading.
+// It is cleared when the session-state reading holds only for that draft, or when the pane reads ready but not idle.
+// Once stray records a clear, every reading of the attempt is a post-clear reading,
+// and a box still holding exactly the recorded character reads as empty.
+// A reading that is not ready over a picker the engine can dismiss gets one dismissal try per send attempt.
 // Every pane-reading hold whose box reads non-empty quotes the box.
 func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, picker *pickerDismissal) busyHold {
 	capture, err := boxCapture(sc.reed, sc.engine, sc.guid)
@@ -300,7 +323,8 @@ type strayClear struct {
 	character string
 }
 
-// strayCandidate returns the stray-character candidate the engine reads in capture; ok is false for an engine without StrayInputReader and for a capture with none.
+// strayCandidate returns the stray-character candidate the engine reads in capture;
+// ok is false for an engine without StrayInputReader and for a capture with none.
 func strayCandidate(engine Engine, capture string) (character string, ok bool) {
 	reader, canRead := engine.(StrayInputReader)
 	if !canRead {
@@ -310,11 +334,13 @@ func strayCandidate(engine Engine, capture string) (character string, ok bool) {
 }
 
 // clearStrayCharacter handles a stray-character candidate found before any clear of this attempt.
-// handled is false for an engine that cannot clear a box and read it afterwards, and the caller holds on the draft as for any other.
-// Otherwise an active operator holds the send, quoting the box;
-// else the clear plays right after this reading with no wait or other key between, stray records the character, the box settles for SubmitSettle, and a second full reading is taken.
-// That post-clear reading is the write's guard reading, and busy is what it returns.
-// The active-operator hold is a draft hold, a failed clear is not, and the post-clear reading carries its own kind.
+// handled is false for an engine that cannot clear the box and read it back;
+// the caller then holds on the reading it has.
+// An active operator holds the send, quoting the box.
+// Otherwise the clear plays right after this reading, with no wait or other key between:
+// stray records the character, the box settles for `SubmitSettle`, and a second full reading is taken.
+// That post-clear reading is the write's guard reading; busy is what it returns.
+// The active-operator hold is a draft hold; a failed clear is not; the post-clear reading carries its own kind.
 func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, picker *pickerDismissal, character string) (busy busyHold, handled bool) {
 	clearer, canClear := sc.engine.(InputBoxClearer)
 	reader, canRead := sc.engine.(InputBoxReader)
@@ -337,10 +363,16 @@ type pickerDismissal struct {
 	tried bool
 }
 
-// dismissPicker closes a picker the engine knows how to dismiss when capture shows one, so the send can go on to the input box behind it.
-// handled is false for an engine without DismissiblePickerReader, for a capture it reads no picker in, and for one its InterruptGuard reads a running turn in, since the picker's keys may interrupt a turn; the caller then holds as for any other reading.
-// Otherwise an active operator holds the send without a key, since the operator may be answering the picker, and a later poll tries again.
-// Else the picker's keys play once, picker records the try, the pane settles for the engine's interrupt settle where it has one, and a second full reading is taken, which busy returns.
+// dismissPicker closes a picker the engine knows how to dismiss when capture shows one,
+// so the send can go on to the input box behind it.
+// handled is false for an engine without DismissiblePickerReader and for a capture that shows no picker.
+// It is also false when an InterruptGuard reads a running turn, since the picker's keys may interrupt it.
+// The caller then holds on the reading it has.
+// Otherwise an active operator holds the send without a key: the operator may be answering the picker,
+// and a later poll tries again.
+// Otherwise the picker's keys play once and the try is recorded on picker.
+// The pane then settles for the engine's interrupt settle where it has one.
+// A second full reading is taken, and busy is what it returns.
 // A key that cannot be sent holds the send as a pane with no input box, since the picker still covers it.
 // The keys keep the provider's current setting, so the dismissal answers nothing on the session's behalf.
 func dismissPicker(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, picker *pickerDismissal, capture string) (busy busyHold, handled bool) {
@@ -370,7 +402,8 @@ func dismissPicker(sc sendContext, cycler SessionCycler, hold *turnStartHold, st
 	return busyReading(sc, cycler, hold, stray, picker), true
 }
 
-// withBoxQuote returns reason followed by the input box's text, as a draft hold, when the engine reads a non-empty box in capture, and the bare reason otherwise.
+// withBoxQuote returns reason followed by the input box's text when the engine reads a non-empty box in capture;
+// otherwise it returns the bare reason, and only the quoted hold is a draft hold.
 func withBoxQuote(reason string, engine Engine, capture string) busyHold {
 	box := readBox(engine, capture)
 	if text := strings.TrimSpace(box.text); box.read && text != "" {
@@ -379,9 +412,11 @@ func withBoxQuote(reason string, engine Engine, capture string) busyHold {
 	return busyHold{reason: reason}
 }
 
-// operatorActivityHold asks reed once whether an attached client was active in the strand's pane within the quiet window, and returns the reason a write is held for it, or "" when none.
-// A query error holds nothing, so a tmux that cannot list its clients stalls no run;
-// it is logged through failures, keyed by the strand, as one Warn per episode with an Info when the query reads again, and as a Warn each time when failures is nil.
+// operatorActivityHold asks reed once whether an attached client was active in the pane within the quiet window.
+// It returns the reason a write is held for it, or "" when none.
+// A query error holds nothing, so a tmux that cannot list its clients stalls no run.
+// Through failures, keyed by the strand, it logs one Warn per episode and an Info when the query reads again.
+// When failures is nil, each error logs a Warn.
 func operatorActivityHold(reed ReedOps, guid string, failures *logger.EpisodeSet) string {
 	active, quiet, err := reed.OperatorActive(guid)
 	if err != nil {
@@ -402,7 +437,8 @@ func operatorActivityHold(reed ReedOps, guid string, failures *logger.EpisodeSet
 }
 
 // unmatchedTurnStart returns the newest turn_start in the events file that no later turn_end or api_error_turn_end follows.
-// restarted is true when a session start of any source lies after that turn start: the session's context began anew, so the turn cannot still be running.
+// restarted is true when a session start of any source lies after that turn start:
+// the session's context began anew, so the turn cannot still be running.
 // An engine without SessionSignalParser and an unreadable file read as none.
 func unmatchedTurnStart(engine Engine, eventsPath string) (turnStart SessionSignal, restarted, found bool) {
 	parser, ok := engine.(SessionSignalParser)
@@ -429,7 +465,7 @@ func unmatchedTurnStart(engine Engine, eventsPath string) (turnStart SessionSign
 	return turnStart, restarted, found
 }
 
-// turnStartHold decides, poll by poll, whether an unmatched turn start still holds a send against a pane that reads idle.
+// turnStartHold decides, poll by poll, whether an unmatched turn start still holds a send while the pane reads idle.
 // The zero value holds nothing yet.
 type turnStartHold struct {
 	signal    SessionSignal
@@ -439,9 +475,10 @@ type turnStartHold struct {
 }
 
 // holds reports whether turnStart, the unmatched turn start, still holds the send at now.
-// It releases once the engine's SessionProber reports that turn interrupted,
-// or once paneIdle has been true on every poll since turnStartIdleOverride ago, logging one Warn naming the signal.
-// While the engine's TurnProgressReader reads the turn in flight the hold stays whatever paneIdle says, unless restarted is true.
+// It releases once the engine reports that the turn was interrupted.
+// It also releases once paneIdle has been true on every poll for at least turnStartIdleOverride;
+// that release logs one Warn naming the signal.
+// While the engine reads the turn in flight and no session start followed it, the hold stays regardless of paneIdle.
 // A session start after the turn start means the turn is gone.
 // A poll with a busy pane, or one that reads the turn in flight, resets the idle timer.
 // A turn start once released stays released for as long as it is the one asked about.
@@ -511,7 +548,9 @@ func nonBlankLines(capture string) []string {
 	return lines
 }
 
-// ErrSubmissionNotLanded marks a verified send whose text was never seen to be submitted: the submit window closed before typing began, the typed text did not appear, its input box did not settle, or the box still held it when the window closed.
+// ErrSubmissionNotLanded marks a verified send whose text was never seen to be submitted.
+// The submit window closed before typing began, the typed text did not appear, or the input box did not settle;
+// or the box still held the text when the window closed.
 // The send clears its own typed text from the box where the engine can, so the caller may retry.
 var ErrSubmissionNotLanded = errors.New("shuttle: Send: the send did not land")
 
@@ -537,12 +576,14 @@ func windowClosed(clock Clock, closeAt time.Time) bool {
 	return !closeAt.IsZero() && !clock.Now().Before(closeAt)
 }
 
-// ErrSentTextInDraft marks a pasted send whose text was found in the input box beside other text: the operator's draft and the send have merged.
+// ErrSentTextInDraft marks a pasted send whose text was found in the input box beside other text:
+// the operator's draft and the send have merged.
 // It wraps ErrSessionBusy, so a caller that retries a busy session retries this too.
 // Nothing was submitted, cleared or edited.
 var ErrSentTextInDraft = fmt.Errorf("%w: the sent text sits in the operator's draft", ErrSessionBusy)
 
-// ErrForeignBoxText marks a pasted send whose input box, read after the paste, holds text that is not the send's: the operator's draft stands in the box.
+// ErrForeignBoxText marks a pasted send whose input box, read after the paste, holds text that is not the send's:
+// the operator's draft stands in the box.
 // It wraps ErrSessionBusy, so a caller that retries a busy session retries this too.
 // Nothing was submitted, cleared or edited.
 var ErrForeignBoxText = fmt.Errorf("%w: the input box holds text that is not this send's", ErrSessionBusy)
@@ -558,7 +599,8 @@ func IsDraftHold(err error) bool {
 }
 
 // pasteVerified writes text into the pane as one paste through reed and confirms it was submitted.
-// The paste carries its trailing Enter when the provider's Enter submits a paste; otherwise the box is settled first, so the guarded Enter lands on a redrawn box.
+// The paste carries its trailing Enter when the provider's Enter submits a paste;
+// otherwise the box is settled first, so the guarded Enter lands on a redrawn box.
 // The send's window opens before the paste and is cut to the send's deadline.
 // A send into a strand with no run record keeps no pending-send record, since it has no run directory.
 func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, text string) error {
@@ -582,7 +624,9 @@ func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 	return err
 }
 
-// settleAndConfirmPasted runs what follows a paste: the box settles first when the paste carries no Enter, then confirmPasted reads the box until the send lands or the window closes.
+// settleAndConfirmPasted runs what follows a paste.
+// The box settles first when the paste carries no Enter;
+// then confirmPasted reads the box until the send lands or the window closes.
 func settleAndConfirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, text string, sentAt int64, closeAt time.Time) error {
 	if !paster.PasteSubmits() {
 		if err := awaitSettledBox(sc, reader, closeAt); err != nil {
@@ -602,8 +646,10 @@ func sequenceText(inputs []PaneInput) string {
 }
 
 // sendSequence sends a choreography into sc's pane as one guarded write.
-// An empty choreography, a provider's no-command answer, returns nil before the guard, with no idle wait, no activity query and no paste.
-// An engine that takes pastes sends the choreography's text as a verified send, so a slash command is pasted once and confirmed by the box reading empty.
+// An empty choreography, a provider's no-command answer, returns nil before the guard:
+// no idle wait, no activity query and no paste.
+// An engine that takes pastes sends the choreography's text as a verified send,
+// so a slash command is pasted once and confirmed by the box reading empty.
 // Any other engine waits for an idle session and then plays its own keys.
 // A held write returns an error wrapping ErrSessionBusy and writes nothing.
 func sendSequence(sc sendContext, inputs []PaneInput) error {
@@ -624,11 +670,14 @@ func sendSequence(sc sendContext, inputs []PaneInput) error {
 	return playInputs(sc.reed, sc.guid, inputs)
 }
 
-// retryLanded reports whether the pending-send record of an earlier failed send of this same text shows the text went out, so the retry types nothing.
+// retryLanded reports whether the pending-send record of an earlier failed send shows that its text went out,
+// so the retry types nothing.
 // The record is cleared whatever it says.
-// It reads as landed when the events file holds a turn start past the recorded offset, which is the text going out with the draft or with an Enter the operator pressed.
+// It reads as landed when the events file holds a turn start past the recorded offset;
+// that turn start is the text going out with the draft or with an Enter the operator pressed.
 // A text that starts no turn never reads as landed, since a turn start past the offset is some other turn.
-// A record for another text, an unreadable record and one that cannot be cleared read as not landed, the last two logged at Warn, so a broken file never wedges a strand.
+// A record for another text, an unreadable record and one that cannot be cleared read as not landed;
+// the last two are logged at Warn, so a broken file never wedges a strand.
 func retryLanded(sc sendContext, text string) bool {
 	pending, found, err := loadPendingSend(sc.runDir)
 	if err != nil {
@@ -648,15 +697,20 @@ func retryLanded(sc sendContext, text string) bool {
 	return pending.Text == text && !sc.startsNoTurn && turnStartedSince(sc.engine, sc.eventsPath, pending.EventsOffset)
 }
 
-// confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.
-// A turn start past sentAt, or an empty box, means the paste landed.
-// A send with a landingStart, to an engine that parses session signals, instead lands on a session start of that source past sentAt, and an empty box does not end its reads while the window and the read cap allow more;
-// when they run out with none, the box read decides as for any send.
-// Such a send that has read its box empty is submitted: from then on any box text, which can only be a new draft such as the operator's typed during a compaction, and no readable box are read again with no key sent, and the window or read cap running out returns nil.
-// A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
-// No readable box sends nothing and is read again.
-// The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrForeignBoxText quoting the box; neither sends a key.
-// A window that ends on an exact match or on no readable box fails with ErrSubmissionNotLanded.
+// confirmPasted returns nil once the paste is seen to land, and an error when it is not.
+// The input box is read first after reader.SubmitSettle(), then at a doubling interval capped at confirmBackoffCap.
+// The window closeAt cuts the last interval short.
+// A turn start past sentAt means the paste landed.
+// When landingStart is set and the engine parses session signals, a session start of that source past sentAt does too.
+// For such a send, an empty box does not end the reads: the Enter is taken as sent, and later reads send no key.
+// The reads go on until a landing shows, or the window or read cap runs out; then the send returns nil.
+// For a send without that session start, an empty box means the paste landed.
+// A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take:
+// an Enter is sent, unless an operator is active, and the box is read again.
+// A box with the sent text beside other text fails with ErrSentTextInDraft,
+// and any other text fails with ErrForeignBoxText quoting the box; neither sends a key.
+// An unreadable box sends nothing and is read again.
+// A window that closes before a landing or an empty box fails with ErrSubmissionNotLanded.
 func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, text string, sentAt int64, closeAt time.Time) error {
 	normalized := normalizePaneText(text)
 	settle := reader.SubmitSettle()
@@ -702,7 +756,8 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 	}
 }
 
-// guardedEnter sends Enter into the strand's pane unless an operator was active there within the quiet window, asked immediately before the key.
+// guardedEnter sends Enter into the strand's pane unless an operator was active there within the quiet window.
+// The activity check runs immediately before the key.
 // sent is false for a held Enter, which is no error; the caller reads the box again.
 func guardedEnter(sc sendContext) (sent bool, err error) {
 	if operatorActivityHold(sc.reed, sc.guid, sc.activityFailures) != "" {
@@ -714,8 +769,9 @@ func guardedEnter(sc sendContext) (sent bool, err error) {
 	return true, nil
 }
 
-// settleAndConfirm runs the box path of a delivered send: wait for the input box to settle, send the Enter and confirm the submission.
-// A send that did not land is handed to failUnlanded, which returns nil when the submission landed late.
+// settleAndConfirm runs the box path of a delivered send:
+// it waits for the input box to settle, sends the Enter, and confirms the submission.
+// A submission that did not land gets one look at the box: the send succeeds when that look finds the box empty.
 func settleAndConfirm(sc sendContext, reader InputBoxReader, normalized string, sentAt int64, closeAt time.Time) error {
 	err := awaitSettledBox(sc, reader, closeAt)
 	if err == nil {
@@ -729,7 +785,7 @@ func settleAndConfirm(sc sendContext, reader InputBoxReader, normalized string, 
 
 // failUnlanded turns an ErrSubmissionNotLanded reason into the send's result.
 // An empty box means the submission landed late and the send succeeds;
-// otherwise the error carries clearUnlandedText's note and ends with the pane's last lines.
+// otherwise the error carries the note from clearing the box and ends with the pane's last lines.
 func failUnlanded(sc sendContext, reader InputBoxReader, normalized string, reason error) error {
 	landed, note := clearUnlandedText(sc, reader, normalized)
 	if landed {
@@ -746,9 +802,11 @@ func withPaneTail(err error, note string, sc sendContext) error {
 	return fmt.Errorf("%w%s. The pane's last lines:\n%s", err, note, paneTail(sc.reed, sc.guid))
 }
 
-// awaitSettledBox reads the input box every Config.SubmitSettleMS until two consecutive reads agree, so no Enter lands inside a typing burst.
+// awaitSettledBox reads the input box every Config.SubmitSettleMS until two consecutive reads agree.
+// This keeps any Enter out of a typing burst.
 // A collapsed paste placeholder is content like any other, and two reads that both show no readable box agree.
-// A box that has not settled when closeAt arrives, or within the window's read count, fails with ErrSubmissionNotLanded, and so does one whose agreeing read comes at or after closeAt, so the first Enter never goes out after the window.
+// A box still unsettled when closeAt arrives, or past the window's read count, fails with ErrSubmissionNotLanded.
+// So does a box whose agreeing read comes at or after closeAt, so the first Enter never goes out after the window.
 func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) error {
 	interval := time.Duration(sc.cfg.SubmitSettleMS) * time.Millisecond
 	maxReads := windowPollCap(submitConfirmTimeout(sc.cfg), interval)
@@ -769,11 +827,15 @@ func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) e
 	}
 }
 
-// confirmSubmitted sends the first Enter and then reads the input box at an interval that starts at reader.SubmitSettle() and doubles up to confirmBackoffCap.
-// An interval that would end past closeAt is cut to end at it, but a read never comes sooner than SubmitSettle() after its Enter.
-// A read taken while the window is open that shows the box still holding the sent text sends one more Enter;
-// a read at or after closeAt, or after the window's Enter count, sends none and ends the loop, so every Enter is followed by exactly one read.
-// The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past offset sentAt.
+// confirmSubmitted sends an Enter and then reads the input box after it.
+// The first wait is reader.SubmitSettle(), and each later wait doubles up to confirmBackoffCap.
+// A wait is cut to end at closeAt, but a read never comes sooner than SubmitSettle() after its Enter.
+// A read that finds the box still holding the sent text sends another Enter while the window is open;
+// a read at or after closeAt, or after the window's Enter count, sends no Enter,
+// and the loop ends with ErrSubmissionNotLanded.
+// Every Enter is followed by exactly one read.
+// The submission is confirmed when the box no longer holds the sent text.
+// It is also confirmed when the engine's session signals show a turn start past sentAt.
 // normalized is the whole sent text normalized by normalizePaneText.
 func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized string, sentAt int64, closeAt time.Time) error {
 	settle := reader.SubmitSettle()
@@ -797,8 +859,9 @@ func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized string, 
 
 // clearUnlandedText looks at the input box once after a send that did not land.
 // An empty box means the submission landed late, so landed is true.
-// For an engine with both the idle reading and InputBoxClearer, a box that holds exactly this send's own text is cleared and read again;
-// a box holding anything else gets no key.
+// For an engine with both the idle reading and InputBoxClearer, a box holding exactly this send's own text is cleared,
+// and the box is read again.
+// A box holding anything else gets no key.
 // A send that keeps its unlanded text leaves the box as it is.
 // note says what was found or done, and names a box the clear did not empty.
 func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized string) (landed bool, note string) {
@@ -830,7 +893,8 @@ func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized string)
 	return false, "the unlanded text was cleared from the input box"
 }
 
-// readInputBox returns the engine's reading of the strand's input box; ok is false when the capture failed or shows no readable box.
+// readInputBox returns the engine's reading of the strand's input box.
+// ok is false when the capture failed or shows no readable box.
 func readInputBox(sc sendContext, reader InputBoxReader) (text string, ok bool) {
 	capture, err := boxCapture(sc.reed, sc.engine, sc.guid)
 	if err != nil {
@@ -849,20 +913,21 @@ func eventsSize(path string) int64 {
 }
 
 // turnStartedSince reports whether the events file holds a turn_start past byte offset.
-// An engine without SessionSignalParser and an unreadable file read as no.
+// An engine that cannot parse session signals, or an unreadable events file, reports false.
 func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
 	return turnStartMatchedSince(engine, eventsPath, offset, func(SessionSignal) bool { return true })
 }
 
-// promptTurnStartedSince reports whether the events file holds past byte offset a turn start whose typed instruction is promptLine, trimmed, so a turn the operator or another send started never counts as the prompt's.
-// An engine without SessionSignalParser and an unreadable file read as no.
+// promptTurnStartedSince reports whether the events file holds a turn start past byte offset.
+// Its instruction is promptLine, trimmed; a turn the operator or another send started never counts as the prompt's.
+// An engine that cannot parse session signals, or an unreadable events file, reports false.
 func promptTurnStartedSince(engine Engine, eventsPath string, offset int64, promptLine string) bool {
 	instruction := strings.TrimSpace(promptLine)
 	return turnStartMatchedSince(engine, eventsPath, offset, func(signal SessionSignal) bool { return signal.Instruction == instruction })
 }
 
-// turnStartMatchedSince reports whether the events file holds past byte offset a turn start that match accepts.
-// An engine without SessionSignalParser and an unreadable file read as no.
+// turnStartMatchedSince reports whether the events file holds a turn start past byte offset that match accepts.
+// An engine that cannot parse session signals, or an unreadable events file, reports false.
 func turnStartMatchedSince(engine Engine, eventsPath string, offset int64, match func(SessionSignal) bool) bool {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
@@ -882,7 +947,7 @@ func turnStartMatchedSince(engine Engine, eventsPath string, offset int64, match
 }
 
 // sessionStartedSince reports whether the events file holds a session-start signal of source past byte offset.
-// An engine without SessionSignalParser and an unreadable file read as no.
+// An engine that cannot parse session signals, or an unreadable events file, reports false.
 func sessionStartedSince(engine Engine, eventsPath string, offset int64, source SessionStartSource) bool {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
@@ -901,9 +966,10 @@ func sessionStartedSince(engine Engine, eventsPath string, offset int64, source 
 	return false
 }
 
-// sendWithin is the gated wait loop's send: Run.Send's validation and sendVerified with the send's deadline set to the run's,
-// so the idle wait and the submit window both end by the run deadline.
-// The idle wait shares the loop's turn-start hold, so a turn start the loop already released does not hold the send again.
+// sendWithin sends text for the gated wait loop, validating it and holding sendMu for the send.
+// The send's deadline is the run's, so the idle wait and the submit window both end by the run deadline.
+// The idle wait shares the loop's turn-start hold,
+// so a turn start the loop already released does not hold the send again.
 func (run *Run) sendWithin(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
@@ -917,9 +983,10 @@ func (run *Run) sendWithin(text string) error {
 }
 
 // boundaryIdle confirms that the writer's turn boundary is idle in fact before the gate is evaluated for a send.
-// An engine lacking the SessionCycler idle reading or the session signal parser answers true at once.
-// Otherwise a turn start left unmatched by a later turn end means the writer began a new turn after the boundary:
-// the boundary and the unsent re-prompt mark are cleared, the cleared state is recorded for startHoldReleased, and the answer is false.
+// An engine without an idle-session reading, or without session signal parsing, reports true at once.
+// Otherwise a turn start that no later turn end matches means the writer began a new turn after the boundary.
+// Then the boundary and the unsent re-prompt mark are cleared.
+// The cleared state is recorded for startHoldReleased, and the call reports false.
 func (run *Run) boundaryIdle() bool {
 	engine := run.engine
 	if _, ok := engine.(SessionCycler); !ok {
@@ -940,7 +1007,8 @@ func (run *Run) boundaryIdle() bool {
 }
 
 // startHoldReleased reports whether a boundary cleared by an unmatched turn start is restored on this tick.
-// It reads the pane for the idle reading that times the hold, and restores the boundary once turnStartHold releases the turn start.
+// It reads the pane for the idle reading that times the hold.
+// It restores the boundary once the hold releases the turn start.
 // A turn start that a later turn end has since matched ends the cleared state without restoring the boundary.
 // That turn end is either a gated Done arrival or a held turn end with nothing to evaluate.
 func (run *Run) startHoldReleased() bool {

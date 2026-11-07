@@ -1,5 +1,8 @@
-// smoke_debuglog_test.go exercises the composed live behavior of the debug_log opt-in: a real boot with LYM_REED_DEBUG=1 must write a genuine tmux verbose server log into the hub's Bolt checkout logs dir (.lym/logs/), and the boot-time prune must have already trimmed pre-existing logs there down to the newest 2, and repeated crash boots must keep every debug log shape bounded.
-// This is the one live-tmux composed scenario for this batch; debugLogArgs and planLogPrune's own unit tests already cover the pure planning logic in isolation (see internal/reedengine/serverlog_test.go).
+// smoke_debuglog_test.go runs the debug_log opt-in against a real tmux server.
+// A boot with LYM_REED_DEBUG set writes a verbose tmux server log into the hub's logs dir.
+// The boot-time prune trims older logs there to the newest 2.
+// Repeated crash boots keep every debug log shape bounded.
+// The unit tests of the pure log-planning logic are in internal/reedengine/serverlog_test.go.
 
 package reedcli
 
@@ -20,7 +23,8 @@ import (
 )
 
 // TestSmokeDebugLog arms debug_log through LYM_REED_DEBUG on one hub's prime worktree, one step per verbosity.
-// The steps run serially in a fixed order; the second starts from the logs the first left behind, which only tightens its bound.
+// The steps run serially in a fixed order.
+// The second step starts from the logs the first left behind, which only tightens its bound.
 // The scenario does not call t.Parallel, because each step sets LYM_REED_DEBUG, which every boot in the process reads.
 func TestSmokeDebugLog(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -35,7 +39,8 @@ func TestSmokeDebugLog(t *testing.T) {
 	})
 	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
 
-	// ArmedBootPrunesOldLogsAndWritesAFreshOne arms debug_log via LYM_REED_DEBUG=1 and checks log rotation: the boot-time prune trims pre-existing logs down to the newest 2, and the fresh boot's own verbose log appears.
+	// With LYM_REED_DEBUG=1 the boot prunes pre-existing logs down to the newest 2,
+	// and it writes a fresh verbose log of its own.
 	if !t.Run("ArmedBootPrunesOldLogsAndWritesAFreshOne", func(t *testing.T) {
 		t.Setenv("LYM_REED_DEBUG", "1")
 
@@ -52,7 +57,8 @@ func TestSmokeDebugLog(t *testing.T) {
 		writeFakeLog(t, fakeNewest, now.Add(-1*time.Hour))
 
 		mustRunReed(t, prime, "up")
-		// Registered after the boot on purpose: this test asserts the verbose log reed's own server spawn writes, which a pre-started server never does.
+		// Registered after the boot on purpose, because the test asserts the verbose log reed's own server spawn writes.
+		// A pre-started server never writes that log.
 		tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 
 		if _, err := os.Stat(fakeOldest); !os.IsNotExist(err) {
@@ -65,9 +71,9 @@ func TestSmokeDebugLog(t *testing.T) {
 			t.Errorf("fake-newest server log missing after boot prune: %v", err)
 		}
 
-		// The fresh boot's own verbose log must appear, newer than every fake.
-		// Deadline-based poll: the server writes its log asynchronously relative
-		// to `up` returning, so a fixed sleep would be either flaky or slow.
+		// The fresh boot's verbose log must appear, newer than every fake.
+		// The server writes that log asynchronously after `up` returns, so the test polls until a deadline;
+		// a fixed sleep would be either flaky or slow.
 		freshLog := waitForFreshServerLog(t, logsDir, now)
 		if freshLog == "" {
 			t.Fatalf("no tmux-server-*.log newer than the fakes appeared in %s within the deadline", logsDir)
@@ -78,9 +84,12 @@ func TestSmokeDebugLog(t *testing.T) {
 		return
 	}
 
-	// RepeatedCrashBootsBoundServerClientAndOutLogs pins a real defect found live-driving debug_log against native tmux (not reproducible against psmux, the Windows dev-box default the original debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL tmux flags on the spawn invocation, and that invocation is simultaneously a CLIENT (the local process issuing the command) and, once forked, the SERVER it starts — so a debug-armed boot leaves BOTH a tmux-server-<pid>.log (documented, already pruned) and a tmux-client-<pid>.log (previously unpruned — it accumulated unbounded across repeated debug-armed boots since pruneServerLogsLocked only ever matched the server-prefixed shape).
-	// At -vv (debug_log: 2) the server additionally writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only appears at the higher verbosity, so the earlier client-log fix (driven at -v) never surfaced it and it too accumulated unbounded across repeated -vv boots.
-	// This step runs at LYM_REED_DEBUG=2 (which emits all three shapes, a strict superset of -v) so five kill-server-then-up cycles must leave at most 3 of EACH prefix in the hub logs dir, never an unbounded pile of any of them.
+	// RepeatedCrashBootsBoundServerClientAndOutLogs pins that repeated debug-armed boots keep all debug log shapes bounded.
+	// At -v and above, the spawn invocation is both the client and the server it starts,
+	// so a boot leaves a tmux-client-<pid>.log as well as a tmux-server-<pid>.log.
+	// At -vv the server also writes a tmux-out-<pid>.log protocol-output log.
+	// This step runs at LYM_REED_DEBUG=2, which emits all three shapes.
+	// Five debug-armed boots must leave at most 3 of each prefix in the logs dir.
 	t.Run("RepeatedCrashBootsBoundServerClientAndOutLogs", func(t *testing.T) {
 		t.Setenv("LYM_REED_DEBUG", "2")
 
@@ -96,13 +105,12 @@ func TestSmokeDebugLog(t *testing.T) {
 			mustRunReed(t, prime, "up")
 		}
 
-		// Deadline-based poll: the fresh server's own log (and its paired client
-		// log) are written asynchronously relative to the last `up` returning.
+		// The fresh server's log and its paired client log are written asynchronously after the last `up` returns,
+		// so the test polls for them.
 		if waitForFreshServerLog(t, logsDir, time.Time{}) == "" {
 			t.Fatalf("no tmux-server-*.log ever appeared in %s", logsDir)
 		}
-		// Give the paired client and out logs the same asynchronous-write grace as
-		// the server log above before counting any prefix.
+		// The client and out logs are written asynchronously too; the test polls for them before counting any prefix.
 		deadline := time.Now().Add(10 * time.Second)
 		for (countLogsWithPrefix(t, logsDir, "tmux-client-") == 0 ||
 			countLogsWithPrefix(t, logsDir, "tmux-out-") == 0) && time.Now().Before(deadline) {
@@ -121,9 +129,7 @@ func TestSmokeDebugLog(t *testing.T) {
 	})
 }
 
-// writeFakeLog creates an empty file at path and backdates its mtime to
-// mtime via os.Chtimes, simulating a stale pre-existing server log for the
-// prune-planning test above.
+// writeFakeLog writes a stand-in server log at path and sets its modification time to mtime.
 func writeFakeLog(t *testing.T, path string, mtime time.Time) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte("fake"), 0o644); err != nil {
@@ -134,9 +140,8 @@ func writeFakeLog(t *testing.T, path string, mtime time.Time) {
 	}
 }
 
-// waitForFreshServerLog polls logsDir until a tmux-server-*.log file newer
-// than after appears, returning its name, or returns "" once a
-// saturation-sized deadline passes without one appearing.
+// waitForFreshServerLog polls logsDir until a file modified after the given time appears, and returns its name.
+// It returns "" if no such file appears before the deadline.
 func waitForFreshServerLog(t *testing.T, logsDir string, after time.Time) string {
 	t.Helper()
 	const timeout = 30 * time.Second

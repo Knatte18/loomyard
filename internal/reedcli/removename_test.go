@@ -1,5 +1,6 @@
-// removename_test.go pins `lym reed remove --name`'s Tier 1 surface: the argument rules, the parent-exit wait over a fake liveness check, and the help text of the three new flags.
-// It spawns nothing and drives no tmux; the live self-removal is smoke_removebyname_test.go.
+// removename_test.go pins `lym reed remove --name`'s Tier 1 surface:
+// the argument rules, the parent-exit wait over a fake liveness check, and the help text of its flags.
+// It spawns nothing and drives no tmux.
 // TestWaitParentExit swaps the package-level pidAlive, so it does not call t.Parallel.
 
 package reedcli
@@ -58,7 +59,7 @@ func TestWaitParentExit(t *testing.T) {
 		wantPolls int
 	}{
 		{name: "ZeroPIDIsNoWait", pid: 0, aliveFor: 0, wantPolls: 0},
-		// The production interval is 100ms; two waits stay well under any Tier 1 budget.
+		// Each poll waits one production interval, so the waits here stay within the Tier 1 budget.
 		{name: "ReturnsOnceGone", pid: 4242, aliveFor: 2, wantPolls: 3},
 	}
 	for _, tt := range tests {

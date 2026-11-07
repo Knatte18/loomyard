@@ -1,7 +1,7 @@
 // load.go implements ConfigSpec and LoadRegistry, the models.yaml loader.
-// It reads the optional registry layers via configengine.StackLayers, validates every entry
-// against the same closed vocabularies Parse and Resolve use, and merges the stack onto the built-in
-// fallback set by whole-entry replacement.
+// It reads the optional registry layers via configengine.StackLayers.
+// It validates every entry against the same closed vocabularies that Parse and Resolve use.
+// It merges the stack onto the built-in fallback set by whole-entry replacement.
 
 package modelspec
 
@@ -15,8 +15,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ConfigSpec returns models's layered-load spec.
-// Each top-level key is one alias, carried whole through the stack, and the template's aliases are classified as meeting no category, so the local layer may hold them and any alias of its own.
+// ConfigSpec returns the layered-load spec for models.
+// Each top-level key is one alias, carried whole through the stack.
+// The template's aliases meet no category, so the local layer may hold them and any alias of its own.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:         "models",
@@ -36,9 +37,9 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadRegistry loads the models.yaml registry through the layer stack under dirs.
-// No layer file returns builtins() unchanged;
-// each present layer is decoded with strict validation, naming that layer's file in an error,
-// and the stack's merged entries are laid over builtins() by whole-entry replacement (no field-level merge).
+// With no layer file, it returns builtins() unchanged.
+// Each present layer is decoded with strict validation, and an error names that layer's file.
+// The stack's merged entries are laid over builtins() by whole-entry replacement, with no field-level merge.
 func LoadRegistry(dirs configengine.Dirs) (Registry, error) {
 	stack, err := configengine.StackLayers(dirs, ConfigSpec())
 	if err != nil {
@@ -62,16 +63,16 @@ func LoadRegistry(dirs configengine.Dirs) (Registry, error) {
 	}
 	registry := builtins()
 	for alias, entry := range entries {
-		// Whole-entry replacement: the stack's entry for this alias replaces
-		// the built-in (or absent) entry outright — no field-level merge,
-		// so an override can never leak a stale built-in default.
+		// Whole-entry replacement: the stack's entry for this alias replaces the built-in (or absent) entry outright.
+		// There is no field-level merge, so an override can never leak a stale built-in default.
 		registry[alias] = entry
 	}
 
 	return registry, nil
 }
 
-// decodeEntries strictly decodes models.yaml content into its alias entries, with an empty or comments-only document yielding none.
+// decodeEntries strictly decodes models.yaml content into its alias entries.
+// An empty or comments-only document yields none.
 // source names the content in a parse error.
 func decodeEntries(data []byte, source string) (map[string]Entry, error) {
 	var entries map[string]Entry

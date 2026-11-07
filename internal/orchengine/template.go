@@ -1,6 +1,6 @@
-// template.go — orch.yaml template accessor.
+// template.go provides the default orch.yaml template.
 //
-// Provides the default YAML template for orch configuration, embedded directly from template.yaml at build time.
+// The template is embedded from template.yaml at build time.
 
 package orchengine
 

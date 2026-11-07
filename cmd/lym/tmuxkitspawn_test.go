@@ -13,10 +13,11 @@ import "regexp"
 // tmuxkitReference matches a tmuxkit-qualified exported identifier and captures the identifier.
 var tmuxkitReference = regexp.MustCompile(`tmuxkit\.([A-Z][A-Za-z0-9_]*)`)
 
-// nonSpawningTmuxkitExport is the one tmuxkit export that is no spawn.
+// nonSpawningTmuxkitExport names the one tmuxkit export that starts no tmux server, so its references are not spawns.
 const nonSpawningTmuxkitExport = "Main"
 
-// tmuxkitSpawnReference reports whether content references a tmuxkit export other than nonSpawningTmuxkitExport, and returns the first such reference as written.
+// tmuxkitSpawnReference reports whether content references a tmuxkit export that starts or kills tmux servers.
+// It returns the first such reference as written.
 func tmuxkitSpawnReference(content string) (string, bool) {
 	for _, m := range tmuxkitReference.FindAllStringSubmatch(content, -1) {
 		if m[1] != nonSpawningTmuxkitExport {

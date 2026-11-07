@@ -9,7 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNewModelChoice pins which Resolved fields and params reach ModelChoice and that an absent or unrelated param leaves nothing behind.
+// TestNewModelChoice pins which Resolved fields and params reach ModelChoice.
+// An absent or unrelated param leaves nothing behind.
 func TestNewModelChoice(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

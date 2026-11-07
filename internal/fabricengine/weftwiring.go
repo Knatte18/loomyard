@@ -1,21 +1,19 @@
-// weftwiring.go implements weft worktree spawn and teardown helpers for paired topology operations
-// (add/remove, a later batch).
+// weftwiring.go implements the weft worktree spawn and teardown helpers for paired topology operations.
 //
 // These unexported helpers handle the weft-side lifecycle: creating weft worktrees, pushing to the
 // weft remote, and tearing down both the weft worktree and branch.
-// Every git operation here runs with an explicit cwd (RecordsRepoRoot or RecordsWorktreePath), never an
-// inherited process cwd, and the ones that spawn git go through gitexec.Run, the checked entry point.
-// The bool-returning predicates weftRepoExists and weftBranchExists read through gitrepo, since their signatures have no error channel and every outcome must collapse to a bool.
-// Every branch argument here is ALWAYS a concrete, already-suffixed weft branch name produced by RecordsBranchName.
-// This file never derives a branch name itself, so the "-weft" literal never
-// appears in this file's Go source (see branchname.go for the single derivation point).
+// Every git operation here runs with an explicit cwd (RecordsRepoRoot or RecordsWorktreePath), never an inherited one.
+// Operations that spawn git go through gitexec.Run, the checked entry point.
+// The bool-returning predicates weftRepoExists and weftBranchExists read through gitrepo.
+// Their signatures have no error channel, so every outcome collapses to a bool.
+// Every branch argument here is a concrete, already-suffixed weft branch name produced by RecordsBranchName.
+// This file never derives a branch name itself; branchname.go holds the single derivation point.
 //
-// Weft branch model: each weft branch forks from its parent's weft branch (non-orphan, shared
-// merge-base), preserving history for future _lym/raddle/ squash-merge-back. _lym is isolated by
-// pathspec (never merges back), not by orphan topology.
-// A detached or unborn warp HEAD aborts the spawn before any creation, ensuring no partial state.
+// Weft branch model: each weft branch forks from its parent's weft branch, a non-orphan sharing a merge-base.
+// _lym is isolated by pathspec, not by orphan topology.
+// A detached or unborn warp HEAD aborts the spawn before any creation, so no partial state is left.
 //
-// Push honors SkipGit/SkipPush via fabricengine.SyncOptions, fabric's own options type.
+// Push honors the SkipGit and SkipPush options.
 
 package fabricengine
 
@@ -39,13 +37,13 @@ func RecordsWorktreePath(l *lymcwd.Location, slug string) string {
 }
 
 // WeftLymDirFor returns the path to the _lym directory within a named slug's weft worktree.
-// It is the junction target paired by spawn seeds and pairs with CodeLymLink(slug).
+// The _lym junction on the code side points at this path.
 func WeftLymDirFor(l *lymcwd.Location, slug string) string {
 	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, lymdirs.LymDirName)
 }
 
 // WeftWarpSlug parses a weft sibling directory name and returns the warp slug it corresponds to.
-// It reports whether name ends with weftname.Suffix AND the stripped prefix is non-empty.
+// It reports whether name ends with weftname.Suffix and the stripped prefix is non-empty.
 func WeftWarpSlug(name string) (slug string, ok bool) {
 	if !strings.HasSuffix(name, weftname.Suffix) {
 		return "", false
@@ -57,10 +55,8 @@ func WeftWarpSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
-// weftRepoExists reports whether a weft repo exists and is a valid git
-// repository. An unresolvable weft repo root (PrimeName failure) reports
-// false, same as an absent directory — either way, there is no weft repo to
-// find.
+// weftRepoExists reports whether a weft repo exists and is a valid git repository.
+// An unresolvable weft repo root reports false, the same as an absent directory.
 func weftRepoExists(l *lymcwd.Location) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -77,8 +73,7 @@ func weftRepoExists(l *lymcwd.Location) bool {
 }
 
 // weftBranchExists reports whether the weft branch exists in the weft repo.
-// An unresolvable weft repo root reports false, same as a branch that is
-// genuinely absent.
+// An unresolvable weft repo root reports false, the same as a branch that is absent.
 func weftBranchExists(l *lymcwd.Location, branch string) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -88,26 +83,20 @@ func weftBranchExists(l *lymcwd.Location, branch string) bool {
 	return err == nil && exists
 }
 
-// createWeftWorktree creates a new weft worktree on branch, forking from
-// startPoint to preserve the merge-base for future squash-merge-back.
-// On success it records KindWorktreeCreated at the created weft worktree path and, unconditionally,
-// KindBranchCreated for branch via AppendRef: the git invocation below always runs `worktree add -b
-// <branch>`, so reaching a zero exit means the branch was created, and the adopt-vs-create decision
-// (whether the branch already existed) lives in the caller, not here — this function has no way to
-// observe it.
-// This site does NOT route through the destruction gate: createGitWorktree in destroy.go is the
-// gate's minter for the warp side, and the Fabric Destruction Chokepoint Invariant governs
-// destruction, not creation, so this hand-written record is by design, not an oversight.
+// createWeftWorktree creates a new weft worktree on branch, forked from startPoint to share its merge-base.
+// On success it records KindWorktreeCreated at the weft worktree path and KindBranchCreated for branch.
+// The git call always passes `-b`, so a zero exit means this call created the branch.
+// Whether the branch already existed is the caller's adopt-or-create decision, which this function cannot observe.
+// Creation is not destruction, so this record is written by hand rather than through the destruction gate.
 func createWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch, startPoint string) error {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	// Route through containedWorktreeAdd, not a bare `git worktree add`: git resolves and follows a
-	// symlink standing at weftPath itself, so a target toggled during the caller's check-then-act window
-	// would carry the worktree outside the hub (R5's create-side escape). This is not the gate's
-	// createGitWorktree minter — creation is not destruction — but the containment property is identical.
+	// Git resolves and follows a symlink standing at weftPath itself.
+	// A target swapped in during the caller's check-then-act window would carry the worktree outside the hub.
+	// The add goes through containedWorktreeAdd, which checks that case; a bare `git worktree add` does not.
 	if err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
 		return []string{"worktree", "add", "-b", branch, worktreePath, startPoint}
 	}); err != nil {
@@ -121,21 +110,22 @@ func createWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch, startP
 	return nil
 }
 
-// removeWarpJunction removes every warp junction for slug via the gate's removeLink executor.
-// Returns nil if all are absent (idempotent).
-// rec is the calling verb's own recorder, threaded straight through to removeJunctionRecords.
+// removeWarpJunction removes every warp junction for slug.
+// It returns nil when all of them are already absent, so a repeat call is safe.
+// rec is the calling verb's own recorder, passed through unchanged.
 func removeWarpJunction(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	return removeJunctionRecords(rec, WorktreePath(l, slug), WarpJunctions(l, slug, names))
 }
 
-// removeJunctionRecords removes each junction via the gate's removeLink executor in a best-effort
-// loop, continuing past per-junction failures and accumulating errors. Returns nil if empty or all
-// absent (idempotent); non-nil error does not mean no junction was removed.
+// removeJunctionRecords removes each junction in a best-effort loop.
+// It continues past per-junction failures and accumulates their errors.
+// It returns nil if empty or all absent, so a repeat call is safe.
+// A non-nil error does not mean that no junction was removed.
 //
-// container is the containment boundary every junction in junctions must resolve strictly below —
-// a gated site cannot declare containment against a parent it never receives. Both of this
-// function's callers have l and slug in scope and pass WorktreePath(l, slug).
-// rec is the calling verb's own recorder, passed straight through to removeLink for each junction.
+// container is the containment boundary that every junction must resolve strictly below.
+// It is passed in because the gated site can only check containment against a parent it receives.
+// Callers pass WorktreePath(l, slug).
+// rec is the calling verb's own recorder, passed through to each removal.
 func removeJunctionRecords(rec *Mutations, container string, junctions []WarpJunction) error {
 	links := make([]string, len(junctions))
 	for i, j := range junctions {
@@ -160,32 +150,29 @@ func removeJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 	return errors.Join(errs...)
 }
 
-// weftTeardownResult carries the remote outcome of removeWeftWorktree's branch deletion, so it can
-// reach Remove without passing through the error return, whose meaning must not change.
+// weftTeardownResult carries the remote outcome of deleting the weft branch on origin.
+// It travels beside the error return, so a remote outcome never changes what that error means.
 type weftTeardownResult struct {
 	// remoteBranchDeleted reports whether the weft branch's copy on the remote was observably
 	// removed.
 	remoteBranchDeleted bool
 	// remoteBranchError is non-empty when the remote deletion was attempted and did not succeed.
 	remoteBranchError string
-	// remoteSkippedReason carries the once-per-call reason no remote deletion was attempted at all;
-	// RemoveResult.RemoteSkippedReason names its causes.
+	// remoteSkippedReason is non-empty when no remote deletion was attempted at all;
+	// it gives the cause.
 	remoteSkippedReason string
-	// remoteBranchKeptReason is non-empty when origin's branch moved after the archive read its tip, so the leased remote deletion kept it.
+	// remoteBranchKeptReason is non-empty when origin moved the branch after its tip was read; the lease kept it.
 	remoteBranchKeptReason string
 }
 
-// removeWeftWorktree tears down the weft worktree, optionally its branch, and
-// prunes stale worktree entries. Returns the accumulated remote outcome alongside the first error
-// encountered among worktree removal, local branch deletion, and prune, or nil if all three succeed
-// — the error return's meaning is unchanged, and a remote deletion failure is never accumulated into
-// it.
-// leaseSHA is the origin tip the remote deletion is leased on, the tip the caller's archive read.
+// removeWeftWorktree tears down the weft worktree, optionally its branch, and prunes stale worktree entries.
+// It returns the remote outcome with the first error among worktree removal, local branch deletion and prune.
+// The error is nil when all three succeed, and a remote deletion failure never enters it.
+// leaseSHA is the origin tip that the remote deletion is leased on, the tip the caller's archive read.
 // With an origin configured, an empty leaseSHA means origin held no copy of the branch, and nothing is deleted there.
-// A branch origin moved since is kept and reported in the result, never as a failure.
-// rec is the calling verb's own recorder.
-// It is threaded through to removeGitWorktree, deleteBranch, and the remote deletion below.
-// A worktree directory git deregistered but left on disk is finished through finishGitWorktreeRemoval, with leftover as its seam.
+// A branch that origin has moved since is kept and reported in the result, not as a failure.
+// rec is the calling verb's own recorder, passed on to every removal this function makes.
+// A worktree directory that git deregistered but left on disk is finished by the leftover seam.
 func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, leaseSHA string, leftover leftoverSeam) (weftTeardownResult, error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRoot, err := RecordsRepoRoot(l)

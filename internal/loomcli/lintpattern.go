@@ -1,5 +1,5 @@
-// lintpattern.go implements the `lint-pattern` loom verb, the standalone form of the PATTERN headroom lint that a gate key's `pattern` lint step also runs inside `lym gate test`.
-// It is a caller of the same patternlint.Lint the round gate calls.
+// lintpattern.go implements the `lint-pattern` loom verb, which checks the PATTERN overview against its headroom line.
+// It calls `patternlint.Lint`, the check a gate key's `pattern` lint step also runs inside `lym gate test`.
 
 package loomcli
 

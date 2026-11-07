@@ -1,6 +1,6 @@
-// batchingnudge_test.go pins the batching nudge.
-// It covers which breach a transcript tail fires and what holds it back, for the main session and for a subagent's own transcript, and the counts its state file keeps.
-// It also covers the transcript tail read, the bounds of claude.yaml's batching_nudge block, and the hook and state file Prepare installs from it.
+// batchingnudge_test.go pins the batching nudge: which breach a transcript tail fires, and what holds it back.
+// It covers the main session and subagents' transcripts, the state file's counts, and the transcript tail read.
+// It also covers the bounds of claude.yaml's batching_nudge block and the hook and state file Prepare installs from it.
 
 package claudeengine
 
@@ -25,7 +25,7 @@ import (
 // nudgeFixtureBase is the time the fixture transcripts and files are dated from.
 var nudgeFixtureBase = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
-// The entries of a fixture message that are not a call, and the one-entry messages that stand for a line the nudge must skip.
+// Fixture message markers: entries that are not calls, and one-entry messages that write a named kind of line.
 const (
 	// nudgeLineBreak starts a new transcript line of the same message, as Claude Code writes one line per content block.
 	nudgeLineBreak = "~"
@@ -35,11 +35,12 @@ const (
 	nudgeSidechain = "!sidechain"
 	// nudgeNoID is a message written as a line holding one Read and no message id.
 	nudgeNoID = "!noid"
-	// nudgeMainChain is a message written as a main-chain line holding one Read and a context reading of one token, even in a subagent's transcript.
+	// nudgeMainChain is a message written as a main-chain line holding one Read and a context reading of one token.
+	// It stays a main-chain line even in a subagent's transcript.
 	nudgeMainChain = "!mainchain"
 )
 
-// nudgeCallID names call j of fixture message i, the calls counted without the non-call entries.
+// nudgeCallID returns the ID of call j of fixture message i, counting only the calls and not the non-call entries.
 func nudgeCallID(message, call int) string {
 	return fmt.Sprintf("call-%d-%d", message, call)
 }
@@ -77,10 +78,13 @@ func nudgeCallInput(dir, entry string) (string, map[string]any) {
 	return name, input
 }
 
-// writeNudgeTranscript writes the transcript at path holding the assistant lines of each message, each message followed by a user line answering its first call.
-// A call is written as nudgeCallInput reads it, a file named relative to dir; message i is dated i+1 minutes after nudgeFixtureBase and reports tokens of context.
+// writeNudgeTranscript writes the transcript at path: the assistant lines of each message.
+// Each message is followed by a user line that answers its first call.
+// A call is written as a "Tool" or "Tool:arg" entry, with a file named relative to dir;
+// message i is dated i+1 minutes after nudgeFixtureBase and reports tokens of context.
 // Every assistant line is a sidechain line when sidechain is true, as in a subagent's transcript.
-// A message is one line unless it holds nudgeLineBreak entries, and the one-entry messages nudgeSidechain, nudgeMainChain and nudgeNoID are written as the lines their names say.
+// A message is one line unless it holds a `nudgeLineBreak` entry.
+// A message of one `nudgeSidechain`, `nudgeMainChain` or `nudgeNoID` entry is written as that kind of line.
 func writeNudgeTranscript(t *testing.T, dir, path string, tokens int, sidechain bool, messages [][]string) {
 	t.Helper()
 	var lines []string
@@ -155,8 +159,10 @@ func writeNudgeFile(t *testing.T, dir, name string, lines int, modified time.Tim
 	}
 }
 
-// TestBatchingNudge pins which breach a call fires, from the call's own input and its chain's transcript tail, and what holds a nudge back.
-// A fired nudge counts in the state file under its chain, the main session's or the subagent's, and records its message; a silent call leaves the state file as it was.
+// TestBatchingNudge pins which breach a call fires, from the call's own input and its chain's transcript tail.
+// It also pins what holds a nudge back.
+// A fired nudge counts in the state file under its chain, the main session's or the subagent's.
+// It records its message there; a silent call leaves the state file as it was.
 func TestBatchingNudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -175,9 +181,10 @@ func TestBatchingNudge(t *testing.T) {
 		messages [][]string
 		// offset and limit are the current call's Read arguments, the last message's first call; nil leaves one out.
 		offset, limit *int
-		// longModified is how long after nudgeFixtureBase long.go was last modified.
+		// longModified is how long after `nudgeFixtureBase` the file long.go was last modified.
 		longModified time.Duration
-		// agentID is the hook input's agent id; set, the messages are written as that agent's transcript, beside a session transcript holding no chain.
+		// agentID is the hook input's agent id.
+		// When it is set, the messages are written as that agent's transcript, beside a session transcript holding no chain.
 		agentID string
 		noState bool
 		// corruptState seeds a state file that is not JSON.
@@ -208,7 +215,8 @@ func TestBatchingNudge(t *testing.T) {
 		{name: "LineWithoutAMessageIDIsNotCountedInTheChain", tokens: 200000, messages: [][]string{{"Read:short.go"}, {nudgeNoID}, {"Grep"}}},
 		{name: "SubagentMainChainLineIsNotCountedInTheChain", tokens: 200000, messages: [][]string{{"Read:short.go"}, {nudgeMainChain}, {"Grep"}}, agentID: nudgeAgentID},
 		{
-			// The main-chain line is the transcript's last assistant line and reads below the threshold, so the agent's context reading is its earlier sidechain line.
+			// The main-chain line is the transcript's last assistant line and reads below the threshold,
+			// so the agent's context reading is its earlier sidechain line.
 			name: "SubagentMainChainLineIsNotItsContextReading", tokens: 200000, messages: [][]string{{"Read:short.go"}, {"Grep"}, {"Glob"}, {nudgeMainChain}}, agentID: nudgeAgentID,
 			input: func(_ string, in map[string]any) { in["tool_use_id"] = nudgeCallID(2, 0) }, nudgedMessage: "msg-2", want: lookupNudge,
 		},
@@ -386,7 +394,9 @@ func TestBatchingNudge(t *testing.T) {
 	}
 }
 
-// TestReadTranscriptTail pins the window of the transcript the nudge reads: a file under the budget whole, a larger one cut to its complete lines, and nothing when the window holds no line end.
+// TestReadTranscriptTail pins the window of the transcript the nudge reads.
+// A file under the budget is read whole, and a larger one is cut to its complete lines.
+// A window holding no line end yields nothing.
 func TestReadTranscriptTail(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -425,7 +435,8 @@ func TestReadTranscriptTail(t *testing.T) {
 	}
 }
 
-// TestValidateBatchingNudge pins the bounds of the batching_nudge block: context_tokens may be 0, the other numbers must be at least 1, and a block that is off is not checked.
+// TestValidateBatchingNudge pins the bounds of the batching_nudge block:
+// context_tokens may be 0, the other numbers must be at least 1, and a block that is off is not checked.
 func TestValidateBatchingNudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -465,7 +476,8 @@ func TestValidateBatchingNudge(t *testing.T) {
 	}
 }
 
-// TestPrepare_BatchingNudgeHook pins that the template's batching_nudge installs the hook naming the run's state file and seeds that file with the block.
+// TestPrepare_BatchingNudgeHook pins that the template's batching_nudge installs the hook.
+// The hook names the run's state file, and that file is seeded with the block.
 // An off switch installs neither, and a threshold below its least value refuses the run before any artifact.
 func TestPrepare_BatchingNudgeHook(t *testing.T) {
 	tiergate.Require(t, 0)

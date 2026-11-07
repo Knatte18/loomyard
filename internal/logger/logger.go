@@ -1,147 +1,124 @@
-// logger.go provides a thin log/slog wrapper for lym: a package-level level threshold, an
-// injectable io.Writer stderr sink (defaulting to DefaultOutput), and Debug/Info/Warn helpers that fan
-// every call out to that stderr sink and, independently, to the durable trace-file sink (sink.go)
-// via the composite dualHandler defined below.
-// Callers never see slog directly;
-// they call SetVerbosity to raise the stderr threshold and Debug/Info/Warn to emit.
+// logger.go holds the package's stderr threshold and stderr sink, and the Debug, Info, Warn and Error helpers.
+// Each helper sends its record to the stderr sink and, independently, to the durable trace-file sink (sink.go).
+// Callers never see slog directly; they set the stderr threshold with SetVerbosity.
 
-// Package logger is a minimal log/slog wrapper shared across lym's internal
-// packages, extended with a process-wide trace identity, explicit-parent
-// diagnostic spans, and a durable per-process trace-file sink. It keeps
-// stdout free of log noise (reed and other commands write their JSON
-// envelope to stdout via internal/output) by routing all log output to a
-// dedicated stderr sink, which defaults to DefaultOutput and is silent unless
-// the caller opts in via SetVerbosity.
-// Under `go test` DefaultOutput is io.Discard, so a package test run leaves no logger output on stderr.
-// The trade-off: a developer running a failing test with -v sees no logger lines unless that test redirects the logger with SetOutput or logcapture.
-// Every Debug/Info/Warn call also fans
-// out to the durable trace-file sink (sink.go), independently gated at Info
-// and above (Debug too at Debug verbosity) regardless of the stderr threshold.
-// See dualHandler's doc comment for the composite's exact semantics.
+// Package logger is a minimal log/slog wrapper shared across lym's internal packages.
+// It adds a process-wide trace identity, explicitly threaded diagnostic spans, and a durable trace-file sink.
+// Stdout stays free of log noise, because commands write their JSON envelope to stdout through internal/output.
+// All log output goes to a dedicated stderr sink instead.
+// The stderr sink defaults to DefaultOutput at the Warn threshold, which SetVerbosity changes.
+// Under `go test`, DefaultOutput is io.Discard, so a test run leaves no logger output on stderr.
+// So with -v, a failing test shows no logger lines unless it redirects the sink with SetOutput or logcapture.
+// Every Debug, Info and Warn call also goes to the durable sink (sink.go).
+// That sink admits Info and above, and Debug at Debug verbosity, whatever the stderr threshold.
 //
 // # Trace identity and spans
 //
-// Every process has exactly one trace identity: a 16-lowercase-hex-character
-// ID, minted or adopted once and stamped as trace=<id> on every emitted log
-// line regardless of level. TraceID() (trace.go) is the lazy accessor any
-// code path can call before cmd/lym's root hook has run; it resolves on
-// first use via a fixed precedence -- a value already set by
-// MintOrAdoptAndExport, then an inherited LYM_TRACE_ID (see below), then a
-// fresh mint. MintOrAdoptAndExport is the root hook's own explicit call: it
-// resolves the same value and additionally exports it into the process
-// environment as LYM_TRACE_ID so every spawned child inherits it at any
-// spawn site that does not override cmd.Env, giving a whole process tree the
-// same trace ID.
+// Every process has exactly one trace identity: a 16-character lowercase hex ID.
+// It is minted or adopted once, and every log line carries it as trace=<id>, at every level.
+// TraceID() (trace.go) resolves it lazily on first use,
+// so any code path can call it before cmd/lym's root hook has run.
+// Resolution order: a value already set by MintOrAdoptAndExport, then an inherited LYM_TRACE_ID, then a fresh mint.
+// MintOrAdoptAndExport is the root hook's explicit call.
+// It resolves the same value and exports it into the process environment as LYM_TRACE_ID,
+// so every spawned child inherits it at any spawn site that does not override cmd.Env.
+// A whole process tree therefore shares one trace ID.
 //
-// A Span (span.go) is a plain value carrying a dotted path built up via
-// StartSpan (root) and Child (append a segment), with its own
-// Debug/Info/Warn methods that additionally stamp span=<path> alongside
-// trace=. There is no ambient "current span" global -- a caller always
-// holds and threads its own *Span explicitly. A span's open (StartSpan/
-// Child) and successful close (End(nil)) log at Debug; a close with a
-// non-nil error logs at Warn, carrying the error as a field, so a failing
-// span's close is the one open/close record that reaches the durable sink
-// even on an otherwise-quiet run.
+// A Span (span.go) is a plain value holding a dotted path that StartSpan starts and Child extends.
+// Its Debug, Info and Warn methods also stamp span=<path> next to trace=.
+// No global holds a current span; a caller holds its own *Span and passes it explicitly.
+// A span's open (StartSpan, Child) and successful close, End(nil), log at Debug.
+// End with a non-nil error logs at Warn and carries the error as a field.
+// So a failing span's close is the one open or close record that reaches the durable sink on an otherwise quiet run.
 //
 // # The durable sink and its retention
 //
-// Alongside the stderr sink above, every Info+ record also lands in a second, durable sink (sink.go), and so does every Debug record when the process verbosity is Debug: one plain-text trace file per process, under the current worktree's own LogsDir(l) (sink.go) (<AnchorPath>/.lym/logs/), this package's own declaration of that path.
-// The file opens lazily on whichever of two triggers fires first: (a) the first log record the durable half admits, or (b) the process exiting with a non-zero code, via NotifyExit -- so a run that logs nothing the durable half admits but still fails leaves a reconstructable trace file behind.
+// Every Info-and-above record also lands in the durable sink (sink.go).
+// Every Debug record does too when the process verbosity is Debug.
+// Each process writes one plain-text trace file to the current worktree's logs directory.
+// LogsDir returns that directory: `<AnchorPath>/.lym/logs/`.
+// The file opens lazily, on whichever comes first:
+// the first record the durable sink admits, or the process exiting with a non-zero code through NotifyExit.
+// So a run that logs nothing the durable sink admits, but still fails, leaves a reconstructable trace file behind.
 // The file's first line is a header record naming the command, argv, trace ID, PID, and worktree root.
-// Each file is capped at 8 MiB;
-// once a write would cross the cap, a single truncation-marker line is written and further writes to that file become silent no-ops rather than growing it further.
+// Each file is capped at 8 MiB.
+// Once a write would cross the cap, one truncation-marker line is written.
+// Further writes to that file become silent no-ops.
 //
-// A background-free sweep (retention.go's Sweep) keeps the logs directory bounded.
-// A process sweeps its sink directory once at exit, only when its sink armed in the current generation,
-// through cmd/lym's exit hook; arming alone never deletes a file.
-// The bounds come from _lym/config/logger.yaml, with the compiled-in defaults below for a redirected sink or an unusable file.
-// Files are grouped by trace ID,
-// and a group's activity time is the newest mtime among its files, so a long-running step that keeps writing stays recent however long ago its file was named.
-// Groups with no activity for 14 days are deleted whole, then only the 200 most recently active of what remains are kept.
-// A group holding a file whose PID belongs to a currently-running process (including the sweeping process itself) is never deleted and never counts toward the 200-trace bound, regardless of age.
+// Sweep (retention.go) keeps the logs directory bounded, with no background task.
+// A process runs it once at exit, through cmd/lym's exit hook, and only when its sink armed in the current generation.
+// Arming alone never deletes a file.
+// The bounds come from `_lym/config/logger.yaml`.
+// The compiled-in defaults, from DefaultRetentionBounds, apply for a redirected sink or an unusable file.
+// Files are grouped by trace ID.
+// A group's activity time is the newest mtime among its files,
+// so a long-running step that keeps writing stays recent, however long ago its file was named.
+// Groups whose activity is older than `MaxAge` are deleted whole.
+// Of the groups that remain, only the `Count` most recently active are kept.
+// A group with a file whose PID belongs to a running process, the sweeping process included, is never deleted.
+// Such a group never counts toward `Count`, whatever its age.
 //
 // # Activation outside the lym CLI
 //
-// SetVerbosity is wired to the lym CLI's -v/-vv flag in cmd/lym/main.go, but
-// nothing reaches that flag parsing when this package is used from a `go
-// test` binary or any other entry point that never runs cmd/lym/main — which
-// is exactly the case for the smoke/cluster tests that drive real reed/
-// shuttle/burler substrate. For those callers, init reads two environment
-// variables so verbosity and the output sink can be set from OUTSIDE the
-// process, with no code change and no dependency on CLI flag plumbing:
+// SetVerbosity is wired to the lym CLI's -v/-vv flag in cmd/lym/main.go.
+// A `go test` binary, or any other entry point that never runs cmd/lym/main, never reaches that flag parsing.
+// For those callers, init reads two environment variables.
+// They set verbosity and the output sink from outside the process, with no code change or flag plumbing:
 //
-//   - LYM_LOG_LEVEL: "debug", "info", or "warn" (case-insensitive). Sets the
-//     initial threshold exactly like SetVerbosity(2)/(1)/(0) would. Unset or
-//     unrecognised leaves the default Warn threshold untouched.
-//   - LYM_LOG_FILE: a file path. If set, log output is appended to that file
-//     instead of DefaultOutput (created if absent). This exists because a live
-//     substrate test's own stdout/stderr redirection is often already
-//     spoken for by the test runner, and because a stderr-only sink is easy
-//     to lose track of across many concurrent test processes; a fixed file
-//     path any operator or orchestrator can point at removes that ambiguity.
-//     A failure to open the file leaves the stderr half at DefaultOutput with a one-line
-//     diagnostic (logger cannot log its own bootstrap failure through
-//     itself).
+//   - LYM_LOG_LEVEL: "debug", "info", or "warn", case-insensitive.
+//     It sets the initial threshold as SetVerbosity(2), (1), or (0) would.
+//     An unset or unrecognised value leaves the default Warn threshold in place.
+//   - LYM_LOG_FILE: a file path.
+//     If set, log output is appended to that file instead of DefaultOutput, and the file is created if absent.
+//     A failure to open it keeps the stderr sink at DefaultOutput.
+//     It prints a one-line diagnostic to os.Stderr, since the logger cannot log its own bootstrap failure.
+//     The variable exists because a test runner often already owns the process's stdout and stderr,
+//     and a stderr-only sink is easy to lose track of across many concurrent test processes.
+//     A fixed file path that an operator or orchestrator can point at removes that ambiguity.
 //
-// Both are read once at package init; a caller's own explicit SetVerbosity/
-// SetOutput call after that always wins (this is exactly how the existing
-// -v/-vv CLI flag continues to take precedence over any env var left set in
-// the shell).
+// Both are read once, at package init.
+// A caller's explicit SetVerbosity or SetOutput call after init always wins,
+// so the -v/-vv flag still takes precedence over an env var left set in the shell.
 //
-// Two further environment variables govern trace identity and the durable
-// sink specifically, independent of LYM_LOG_LEVEL/LYM_LOG_FILE above:
+// Two more environment variables govern trace identity and the durable sink:
 //
-//   - LYM_TRACE_ID: an inherited trace identity. When set to a
-//     non-whitespace-only value, both TraceID()'s lazy resolution and
-//     MintOrAdoptAndExport adopt it instead of minting a fresh one, so a
-//     child process continues its parent's trace rather than starting a new
-//     one. cmd/lym's root hook is what exports this variable for children in
-//     the first place (see "Trace identity and spans" above); nothing else
-//     in this package ever calls os.Setenv.
-//   - LYM_TRACE=1: the test-entry-activation gate for the durable sink only.
-//     Under `go test` (testing.Testing() true), the durable sink stays
-//     closed for the whole process unless LYM_TRACE=1 is explicitly set,
-//     regardless of how many records the durable half admits or how the process
-//     exits -- this is what keeps ordinary `go test` runs from littering a
-//     worktree's .lym/logs with test-process trace files. It has no effect
-//     on trace-ID resolution itself: TraceID() and the trace=/span= fields
-//     stamped on stderr output are computed the same way whether or not
-//     LYM_TRACE is set.
+//   - LYM_TRACE_ID: an inherited trace identity.
+//     TraceID's lazy resolution and MintOrAdoptAndExport adopt it, so a child process continues its parent's trace.
+//     Only a value of 16 lowercase hex characters, once trimmed, is adopted; any other value is ignored.
+//     Another value would name a trace file that Sweep can never rank or remove.
+//     Only MintOrAdoptAndExport sets the variable, through os.Setenv, and cmd/lym's root hook calls it.
+//   - LYM_TRACE=1: the gate that lets the durable sink run under `go test`.
+//     Under `go test`, the durable sink stays closed for the whole process unless LYM_TRACE is "1".
+//     It stays closed however many records it admits and however the process exits.
+//     This keeps ordinary test runs from filling the worktree's .lym/logs with test-process trace files.
+//     It does not change trace-ID resolution: TraceID() and the trace= and span= fields are the same with or without it.
 //
-// Note that a record reaching both LYM_LOG_FILE (if set) and the
-// durable trace file is correct behavior, not a bug to "fix" by suppressing
-// one or the other: the two are different artifacts with different
-// lifetimes and different audiences (an operator-chosen, unmanaged,
-// whole-verbosity file vs. a lym-managed, retention-swept one),
-// and neither should suppress the other.
+// A record may reach both LYM_LOG_FILE, when set, and the durable trace file.
+// That is correct: the two differ in lifetime and audience.
+// One is an operator-chosen, unmanaged file that takes every record at the stderr threshold.
+// The other is a lym-managed file that retention sweeps, and neither should suppress the other.
 //
 // # Level policy
 //
-// Every call site in this codebase that logs through this package follows
-// one policy for choosing a level:
+// Call sites that log through this package follow one policy for choosing a level:
 //
-//   - Warn: a notable-but-recoverable failure -- a retry, an unconfirmed
-//     teardown, an error swallowed on a fallback path.
-//   - Info: a real OS-process spawn/teardown lifecycle event,
-//     one recorded durable state mutation, or a shed step boundary.
-//     The durable sink records Info and above always, and Debug too when the process verbosity is Debug,
-//     so a mutation or step the trace does not record cannot be repaired from,
-//     and a -vv run leaves its full trace.
+//   - Warn: a notable but recoverable failure: a retry, an unconfirmed teardown, or a swallowed fallback error.
+//   - Info: an OS-process spawn or teardown, one recorded durable state mutation, or a shed step boundary.
+//     The durable sink records Info and above always, and Debug too at Debug verbosity.
+//     So a mutation or step the trace does not record cannot be repaired from, and a -vv run leaves its full trace.
 //   - Debug: everything else worth a line.
 //
-// Hard rule: nothing logs at Warn inside a loop body that can iterate more
-// than roughly 10 times without an intervening state change -- a Warn inside
-// such a loop turns one notable condition into a flood, both on stderr at
-// -v/-vv and, since Warn also reaches the durable sink, in the trace file.
+// Hard rule: nothing logs at Warn inside a loop body that can iterate more than roughly 10 times between state changes.
+// A Warn in such a loop turns one notable condition into a flood.
+// The flood reaches stderr at -v/-vv and, since Warn also reaches the durable sink, the trace file.
 //
-// Three further rules cover the states a loop or poll logs:
+// Three more rules cover the states that a loop or poll logs:
 //
-//   - An ordinary state -- a wait, a pause, a halt for the operator, an ordinary
-//     retry iteration -- is Info at its change and never Warn.
-//   - A failure that repeats each tick logs Warn once per episode, Debug while it
-//     persists, and Info at recovery; Episode and EpisodeSet implement this.
-//   - A log line's dedupe key holds no text that changes while the state stays
-//     the same.
+//   - An ordinary state is Info at its change and never Warn.
+//     Examples are a wait, a pause, a halt for the operator, and an ordinary retry iteration.
+//   - A failure that repeats each tick logs Warn once per episode, Debug while it persists, and Info at recovery;
+//     Episode and EpisodeSet implement this.
+//   - A log line's dedupe key holds no text that changes while the state stays the same.
 package logger
 
 import (
@@ -154,12 +131,12 @@ import (
 	"testing"
 )
 
-// levelVar is the package-level threshold controlling stderr verbosity.
+// levelVar is the threshold of the stderr sink.
 var levelVar slog.LevelVar
 
-// DefaultOutput returns the stderr half's default destination:
+// DefaultOutput returns the stderr sink's default destination:
 // io.Discard inside a `go test` binary, os.Stderr otherwise.
-// Tests that restore the stderr half after a redirect restore this value, never os.Stderr.
+// A test that restores the stderr sink after a redirect restores this value, never os.Stderr.
 func DefaultOutput() io.Writer {
 	if testing.Testing() {
 		return io.Discard
@@ -167,16 +144,14 @@ func DefaultOutput() io.Writer {
 	return os.Stderr
 }
 
-// out is the stderr output destination, defaulting to DefaultOutput().
 var out io.Writer = DefaultOutput()
 
-// currentStderr is the stderr-half inner handler, rebuilt by SetOutput to
-// respond to output redirections.
+// currentStderr is the stderr half's inner handler.
+// SetOutput rebuilds it to follow output redirections.
 var currentStderr slog.Handler = slog.NewTextHandler(out, &slog.HandlerOptions{Level: &levelVar})
 
-// stderrHandlerSnapshot returns the current stderr-half handler under a
-// narrow critical section; caller must not hold sinkMu across the following
-// Handle call to avoid deadlock.
+// stderrHandlerSnapshot returns the current stderr-half handler, read under sinkMu.
+// The caller must not hold sinkMu across the Handle call that follows, to avoid deadlock.
 func stderrHandlerSnapshot() slog.Handler {
 	sinkMu.Lock()
 	h := currentStderr
@@ -184,34 +159,20 @@ func stderrHandlerSnapshot() slog.Handler {
 	return h
 }
 
-// log is the slog.Logger built over the composite dualHandler (see
-// dual_handler in this file), which fans every record out to the stderr
-// half (gated by levelVar, exactly as before) and the durable-sink half
-// (batch 4's ensureDurableSink/writeDurable, gated at Info+ unconditionally
-// of levelVar, and at Debug too while levelVar holds Debug). log itself is never reassigned by SetOutput; only
-// currentStderr, which dualHandler reads dynamically, changes.
+// log is the package logger: a slog.Logger over the composite handler, which fans each record out to two halves.
+// The stderr half is gated by levelVar.
+// The durable-sink half admits Info and above whatever levelVar holds, and Debug too while levelVar holds Debug.
+// SetOutput never reassigns log; it changes only currentStderr, which the handler reads on each call.
 var log = slog.New(newDualHandler())
 
-// dualHandler is the composite slog.Handler discussion.md's
-// dual-handler-fan-out decision requires: Enabled is the OR of the stderr
-// and durable halves' own Enabled, so an Info record is accepted by the
-// composite even when the stderr half alone would reject it at the default
-// Warn threshold (this is what lets an Info record reach the durable sink
-// regardless of -v/-vv). Handle independently re-checks each half's own
-// Enabled before delegating to it -- it never forwards to one half just
-// because the composite's own Enabled, or the other half's Enabled, already
-// returned true. Getting that independent re-check wrong would leak an Info
-// record to stderr at the default Warn threshold, even though stderr's own
-// Enabled(Info) is false there.
+// dualHandler is the composite slog.Handler behind the package logger.
+// It fans every record out to two halves: the stderr half, gated by levelVar;
+// the durable-sink half admits Info and above whatever levelVar holds.
 type dualHandler struct {
-	// transform accumulates the WithAttrs/WithGroup chain applied to a
-	// logger derived via slog.Logger.With/WithGroup, applied in order to a
-	// freshly read stderr snapshot at Enabled/Handle time rather than baked
-	// into a stored handler value -- this is what lets a rebind via
-	// SetOutput remain visible even to a dualHandler value produced by an
-	// earlier .With() call, since Card 19 keeps the package-level log var,
-	// and therefore any handler value derived from it earlier in the same
-	// call chain, unchanged across the rebind.
+	// transform is the chain of WithAttrs and WithGroup calls that built this handler.
+	// It is applied, in order, to the stderr handler read at Enabled and Handle time.
+	// It is not baked into a stored stderr handler,
+	// so a SetOutput rebind stays visible to handlers derived before the rebind.
 	transform func(slog.Handler) slog.Handler
 	durable   durableHandler
 }
@@ -222,25 +183,26 @@ func newDualHandler() dualHandler {
 	return dualHandler{transform: func(h slog.Handler) slog.Handler { return h }, durable: newDurableHandler()}
 }
 
-// stderr resolves this dualHandler's stderr-half handler by reading the
-// current package-level inner handler and applying this handler's
-// accumulated WithAttrs/WithGroup transform on top of it.
+// stderr returns the stderr half with this handler's transform applied.
+// It reads the current stderr handler on each call, so a SetOutput rebind is picked up.
 func (d dualHandler) stderr() slog.Handler {
 	return d.transform(stderrHandlerSnapshot())
 }
 
-// Enabled implements slog.Handler as the OR of the stderr and durable halves' own Enabled -- see
-// the dualHandler doc comment for why this must be OR, not stderr's gate alone.
+// Enabled implements slog.Handler as the OR of the stderr and durable halves' own Enabled.
+// The OR lets an Info record reach the durable sink at the default Warn verbosity.
+// The stderr half alone would reject that record.
 func (d dualHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return d.stderr().Enabled(ctx, level) || d.durable.Enabled(ctx, level)
 }
 
-// Handle implements slog.Handler by independently re-checking each half's own Enabled and
-// delegating only to the halves that pass -- see the dualHandler doc comment for why this
-// independent re-check, rather than a single shared gate, is load-bearing.
-// record.Clone() is used for all but the last delegate because slog.Record documents that a Record
-// passed to more than one Handler must be cloned for each use beyond the first, since its internal
-// small-attrs storage may otherwise be shared.
+// Handle implements slog.Handler by re-checking each half's own Enabled before delegating.
+// It delegates only to the halves that pass.
+// A single shared gate would leak an Info record to stderr at the default Warn threshold.
+// The stderr half's own Enabled rejects an Info record at that threshold.
+// Each delegate gets its own record.Clone().
+// slog.Record documents that a Record passed to more than one Handler must be cloned for each use beyond the first;
+// its internal small-attrs storage may otherwise be shared.
 func (d dualHandler) Handle(ctx context.Context, record slog.Record) error {
 	stderr := d.stderr()
 	stderrEnabled := stderr.Enabled(ctx, record.Level)
@@ -260,9 +222,8 @@ func (d dualHandler) Handle(ctx context.Context, record slog.Record) error {
 	return firstErr
 }
 
-// WithAttrs implements slog.Handler by extending both halves' accumulated transform with the same
-// attrs, so a logger built via slog.Logger.With keeps fanning out to both halves rather than
-// collapsing to one.
+// WithAttrs implements slog.Handler by binding the same attrs into both halves.
+// A logger built via slog.Logger.With keeps fanning out to both halves rather than collapsing to one.
 func (d dualHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	prevTransform := d.transform
 	return dualHandler{
@@ -271,8 +232,7 @@ func (d dualHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 }
 
-// WithGroup implements slog.Handler by extending both halves' accumulated transform with the same
-// group, mirroring WithAttrs.
+// WithGroup implements slog.Handler by binding the same group name into both halves.
 func (d dualHandler) WithGroup(name string) slog.Handler {
 	prevTransform := d.transform
 	return dualHandler{
@@ -281,21 +241,18 @@ func (d dualHandler) WithGroup(name string) slog.Handler {
 	}
 }
 
-// durableWriter adapts the durable sink's ensureDurableSink/writeDurable
-// pair (sink.go) to an io.Writer so durableHandler can format records with
-// an ordinary slog.NewTextHandler -- "formats the record as
-// slog.NewTextHandler would" per the batch plan -- while the actual bytes
-// still flow through the sink's lazy-open and size-cap machinery.
+// durableWriter adapts the durable sink's ensureDurableSink and writeDurable (sink.go) to an io.Writer.
+// That lets durableHandler format records with an ordinary slog.NewTextHandler.
+// The bytes still flow through the sink's lazy open and size cap.
 type durableWriter struct{}
 
-// Write opens the durable sink on first use (a no-op on every call after the first, via sink.go's
-// sinkArmed flag) and writes p to it.
-// The two calls are strictly SEQUENTIAL, never nested: both take sinkMu, which is a plain
-// non-reentrant Mutex, so calling writeDurable from inside ensureDurableSink -- or either from a
-// caller already holding sinkMu -- would self-deadlock.
-// A closed/unarmed sink (sinkOK false) is not an error here -- per sink.go's lazy-sink-open rule, a
-// diagnostic sink that never opens must never surface as a write failure to the logging call site,
-// so Write reports success and discards p.
+// Write opens the durable sink on first use and writes p to it.
+// Opening is a no-op after the first call, via sink.go's sinkArmed flag.
+// ensureDurableSink and writeDurable run one after the other, never nested and never while the caller holds sinkMu.
+// Both take sinkMu, a plain non-reentrant Mutex, so either arrangement would self-deadlock.
+// A closed or unarmed sink (sinkOK false) is not an error here.
+// A diagnostic sink that never opens must not surface as a write failure, per sink.go's lazy-open rule.
+// Write therefore reports success and discards p.
 func (durableWriter) Write(p []byte) (int, error) {
 	if !ensureDurableSink() {
 		return len(p), nil
@@ -315,42 +272,34 @@ func (durableLevel) Level() slog.Level {
 	return slog.LevelInfo
 }
 
-// durableHandler is dualHandler's durable-sink half.
-// Its Enabled admits Info and above whatever levelVar holds.
-// An Info record therefore reaches the durable sink at the default Warn verbosity, though the stderr half alone would reject it there.
-// It admits Debug too while the process verbosity is Debug.
+// durableHandler is the durable-sink half of the composite handler.
+// It writes each record that the durable threshold admits to the durable sink.
 type durableHandler struct {
 	inner slog.Handler
 }
 
-// newDurableHandler builds the durable half over durableWriter, formatting
-// exactly as slog.NewTextHandler would.
+// newDurableHandler builds the durable half over durableWriter, formatting records as slog.NewTextHandler does.
 func newDurableHandler() durableHandler {
 	return durableHandler{inner: slog.NewTextHandler(durableWriter{}, &slog.HandlerOptions{Level: durableLevel{}})}
 }
 
-// Enabled reports whether level meets the durable threshold -- see the
-// durableHandler doc comment.
+// Enabled reports whether level meets the durable threshold.
 func (d durableHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= durableLevel{}.Level()
 }
 
-// Handle formats and writes record via the wrapped text handler, which in turn writes through
-// durableWriter into the durable sink.
+// Handle formats record with the wrapped text handler; durableWriter carries the output to the durable sink.
 func (d durableHandler) Handle(ctx context.Context, record slog.Record) error {
 	return d.inner.Handle(ctx, record)
 }
 
 // withAttrs returns a copy of d with attrs bound into the wrapped handler.
-// Kept unexported and typed (durableHandler, not slog.Handler) so
-// dualHandler.WithAttrs can store it back into its durable field without a
-// type assertion.
+// It returns durableHandler, not slog.Handler, so a caller can store the result without a type assertion.
 func (d durableHandler) withAttrs(attrs []slog.Attr) durableHandler {
 	return durableHandler{inner: d.inner.WithAttrs(attrs)}
 }
 
-// withGroup returns a copy of d with name bound into the wrapped handler,
-// mirroring withAttrs.
+// withGroup returns a copy of d with name bound into the wrapped handler.
 func (d durableHandler) withGroup(name string) durableHandler {
 	return durableHandler{inner: d.inner.WithGroup(name)}
 }
@@ -360,10 +309,8 @@ func init() {
 	configureFromEnv()
 }
 
-// configureFromEnv applies LYM_LOG_LEVEL and LYM_LOG_FILE, if set, on top of
-// the just-initialised Warn/stderr defaults. Split out from init as its own
-// function purely for test seams. See the package doc for the two
-// variables' exact semantics.
+// configureFromEnv applies LYM_LOG_LEVEL and LYM_LOG_FILE, if set, on top of the Warn and stderr defaults.
+// It is separate from init so that tests can call it.
 func configureFromEnv() {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("LYM_LOG_LEVEL"))) {
 	case "debug":
@@ -371,7 +318,7 @@ func configureFromEnv() {
 	case "info":
 		levelVar.Set(slog.LevelInfo)
 	case "warn", "":
-		// Warn is already the default set above; "" means unset.
+		// Warn is already the default set by init; "" means unset.
 	}
 
 	if path := strings.TrimSpace(os.Getenv("LYM_LOG_FILE")); path != "" {
@@ -384,40 +331,41 @@ func configureFromEnv() {
 	}
 }
 
-// Debug logs msg at debug level with the given key/value args, stamping a trace key with
-// TraceID()'s current value (batch 2) on every line as every level does.
-// Debug reaches the stderr half and the durable sink only at Debug verbosity, set by SetVerbosity(2) or higher or LYM_LOG_LEVEL=debug.
-// At lower verbosity it is a no-op.
-// Calling TraceID() here is also what triggers the trace-ID's own first resolution if nothing has
-// resolved it yet.
+// Debug logs msg at debug level with the given key/value args.
+// It stamps a trace key with TraceID()'s current value on every line.
+// It reaches the stderr half and the durable sink only at Debug verbosity.
+// SetVerbosity(2) or higher, or LYM_LOG_LEVEL=debug, sets that verbosity.
+// At lower verbosity it writes nothing.
+// Calling TraceID here also triggers its first resolution when nothing has resolved it yet.
 func Debug(msg string, args ...any) {
 	log.With("trace", TraceID()).Debug(msg, args...)
 }
 
-// Info logs msg at info level with the given key/value args, stamping trace= as Debug does.
+// Info logs msg at info level with the given key/value args.
+// It stamps a trace key with TraceID()'s current value on every line.
 // It reaches the durable sink at every verbosity.
 // It reaches the stderr half only once SetVerbosity(1) or higher has been called.
 func Info(msg string, args ...any) {
 	log.With("trace", TraceID()).Info(msg, args...)
 }
 
-// Warn logs msg at warn level with the given key/value args, stamping trace= as Debug does.
-// Warn is the default threshold, so a Warn call reaches both halves -- stderr and the durable sink
-// -- even without SetVerbosity.
+// Warn logs msg at warn level with the given key/value args and adds the current trace id as the trace= field.
+// Warn meets the default threshold, so it reaches both the stderr output and the durable sink at default verbosity.
 func Warn(msg string, args ...any) {
 	log.With("trace", TraceID()).Warn(msg, args...)
 }
 
-// Error logs msg at error level with the given key/value args, stamping trace= as Debug does.
-// Like Warn, it reaches both the durable sink and the stderr half unconditionally, since error
-// level sits above the default Warn threshold.
+// Error logs msg at error level with the given key/value args and adds the current trace id as the trace= field.
+// Error reaches both the durable sink and the stderr output at any verbosity.
+// Its level sits above the default warn threshold, so no verbosity setting filters it out.
 func Error(msg string, args ...any) {
 	log.With("trace", TraceID()).Error(msg, args...)
 }
 
-// SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the default Warn threshold
-// (silent normal run), count==1 lowers it to Info, and count>=2 lowers it to Debug.
-// cmd/lym/main.go calls this once at startup when the root -v/--verbose flag is given.
+// SetVerbosity maps a -v repeat count to a log level.
+// A count of zero or less keeps the default warn threshold, so a normal run writes nothing to stderr below warn.
+// A count of one lowers the threshold to info, and a count of two or more lowers it to debug.
+// The root -v/--verbose flag calls it when the flag is set, before the command runs.
 func SetVerbosity(count int) {
 	switch {
 	case count <= 0:
@@ -429,24 +377,18 @@ func SetVerbosity(count int) {
 	}
 }
 
-// SetOutput rebinds the stderr half of the log sink to w and rebuilds the composite handler's
-// stderr-half inner handler in place;
-// the durable half (sink.go's ensureDurableSink/writeDurable) is untouched, per discussion.md's
-// dual-handler-fan-out decision -- redirecting stderr must never silently detach the durable sink.
-// It is a seam both tests (withCapturedOutput in logger_test.go, so tests can assert on captured
-// output without writing to the real os.Stderr) and production code use: configureFromEnv already
-// calls SetOutput for LYM_LOG_FILE, independent of anything this package's trace/sink work adds.
-// LYM_LOG_FILE redirects only the stderr half to an operator-chosen, unmanaged, whole-verbosity
-// file;
-// the durable sink independently opens its own lym-managed, retention-swept trace file
-// under this package's own LogsDir(l).
-// A record both halves admit therefore lands in both files when LYM_LOG_FILE is set -- that duplication is
-// intended, not a bug to reconcile: the two are different artifacts with different lifetimes, and
-// neither should suppress the other.
+// SetOutput redirects the stderr output of the log sink to w.
+// It rebuilds the stderr handler and leaves the durable sink untouched.
+// Redirecting stderr therefore never detaches the durable sink.
+// Tests use it to capture log output without writing to the real os.Stderr.
+// Setting LYM_LOG_FILE sends the stderr output to an operator-chosen file that retention does not manage.
+// That file receives every record the current verbosity admits.
+// The durable sink writes its own trace file in the logs directory, which retention sweeps.
+// A record both outputs admit therefore lands in both files when LYM_LOG_FILE is set.
+// The duplication is intended: the two files have different lifetimes, and neither should suppress the other.
 //
-// The write to out and the rebuild of currentStderr happen under sinkMu (sink.go), the same mutex
-// guarding the durable sink's state, per discussion.md's concurrency-contract decision: SetOutput
-// can race with an in-flight Handle call reading currentStderr via stderrHandlerSnapshot.
+// SetOutput holds sinkMu around both steps.
+// An in-flight Handle call reads the stderr handler through stderrHandlerSnapshot, so the swap must not race with it.
 func SetOutput(w io.Writer) {
 	sinkMu.Lock()
 	out = w

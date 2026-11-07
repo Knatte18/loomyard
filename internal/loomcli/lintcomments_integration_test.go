@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLintCommentsCmd_OverARepository walks one repository through a wrapped new comment, a clean tree and a committed range, asserting lint-comments and lint-pattern over the same tree at each step.
+// TestLintCommentsCmd_OverARepository walks one repository through a wrapped comment, a clean tree and a commit range.
+// At each step it asserts lint-comments and lint-pattern agree on the same tree.
 // The steps share the repository and run in order, so the test is parallel as a whole and no step is.
 func TestLintCommentsCmd_OverARepository(t *testing.T) {
 	tiergate.Require(t, 1)

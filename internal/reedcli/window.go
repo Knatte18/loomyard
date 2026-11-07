@@ -1,5 +1,7 @@
-// window.go implements the `window` reed verb: it opens one desktop terminal window attached to a told worktree's reed session through internal/termwindow.
-// It then runs the machine's window command through internal/desktophook with the config of the worktree holding the told directory.
+// window.go implements the `window` reed verb.
+// It opens one desktop terminal window attached to a told worktree's reed session through internal/termwindow.
+// It then runs the machine's window command through internal/desktophook.
+// It runs that command with the config of the worktree holding the told directory.
 // It needs no acting location or engine, so the root pre-run skips it.
 
 package reedcli
@@ -19,7 +21,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// openTerminalWindow opens a terminal window titled title whose shell runs `lymPath reed attach` in dir, through the launcher this machine resolves.
+// openTerminalWindow opens a terminal window titled title in dir, through the launcher this machine resolves.
+// Its shell runs `lymPath reed attach`.
 func openTerminalWindow(dir, title, lymPath string) error {
 	launcher, err := termwindow.Resolve()
 	if err != nil {
@@ -28,7 +31,8 @@ func openTerminalWindow(dir, title, lymPath string) error {
 	return launcher.OpenAttach(dir, title, lymPath)
 }
 
-// placeTerminalWindow runs the machine's window command for a window just opened on dir, under the config stack of the worktree holding dir.
+// placeTerminalWindow runs the machine's window command for a just-opened window on dir.
+// The command runs under the config stack of the worktree holding dir.
 // A dir in no worktree has no hub config to name a command, so nothing runs.
 func placeTerminalWindow(dir string) error {
 	l, err := lymcwd.ResolveWorktree(dir)
@@ -40,7 +44,8 @@ func placeTerminalWindow(dir string) error {
 }
 
 // windowCmd builds the `window` subcommand.
-// It opens a window on any directory the caller names; the window runs only `lym reed attach` there, which attaches to that worktree's own reed session and nothing else.
+// It opens a window on any directory the caller names;
+// the window runs only `lym reed attach` there, which attaches to that worktree's own reed session and nothing else.
 func (c *reedCLI) windowCmd() *cobra.Command {
 	var title string
 

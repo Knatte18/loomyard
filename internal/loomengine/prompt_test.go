@@ -1,4 +1,5 @@
-// prompt_test.go — declares newTestStencilsDir and newMinimalStencilsDir, the package-local test helpers every loomengine test uses to seed a hermetic stencils directory from the shipped stencils package defaults.
+// prompt_test.go — declares the package-local test helpers newTestStencilsDir and newMinimalStencilsDir.
+// They seed a hermetic stencils directory from the shipped stencils package defaults.
 
 package loomengine
 
@@ -14,7 +15,8 @@ func newTestStencilsDir(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
-// newMinimalStencilsDir returns a seeded stencils directory with the pattern-directive and friction-directive stencils removed, for tests that must prove a composer needs none of them to render its Tier-2-off / PATTERN-inactive path.
+// newMinimalStencilsDir returns a seeded stencils directory without the pattern and friction directive stencils.
+// Tests use it to prove a composer renders its Tier-2-off and PATTERN-inactive path without them.
 func newMinimalStencilsDir(t *testing.T) string {
 	t.Helper()
 

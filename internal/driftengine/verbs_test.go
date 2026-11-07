@@ -66,7 +66,7 @@ func TestDefer(t *testing.T) {
 		tests := []struct {
 			name string
 			st   VerbStatus
-			// scope is the seeded scope record, scoped when nil, and baseline says whether the baseline directory exists.
+			// scope is the seeded scope record, or a scoped one when nil; baseline says whether the baseline directory exists.
 			scope    *ScopeRecord
 			baseline bool
 			wantErr  []string

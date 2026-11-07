@@ -6,9 +6,12 @@
 
 ## The row
 
-Tapestry's implementer row, the recipe's Webster row, is built by the `Implementer` engine with the implementer `tapestry.yaml`'s `implementer` key names, read through the row's `implementer_setting: tapestry.implementer`.
-The key is settable per task through `run_settings`, and a value outside the closed implementer table in `internal/shedrecipe` refuses when the recipe builds.
-Every implementer builds the same row with the same edges, so no row is skipped or entered conditionally on which one runs.
+Tapestry's implementer row, the recipe's Webster row, is built by the `Implementer` engine.
+The engine builds the implementer that `tapestry.yaml`'s `implementer` key names.
+The row reads that key through its `implementer_setting: tapestry.implementer`.
+The key is settable per task through `run_settings`,
+and a value outside the closed implementer table in `internal/shedrecipe` refuses when the recipe builds.
+Every implementer builds the same row with the same edges, so which implementer runs never skips or enters a row.
 
 | Value | Implementer |
 | --- | --- |
@@ -16,17 +19,20 @@ Every implementer builds the same row with the same edges, so no row is skipped 
 
 ## In
 
-- The approved plan: the flat card list under `_lym/plan/`, read through `internal/planparser`, the plan format's sole parser ([loom-plan-spec.md](loom-plan-spec.md)).
+- The approved plan: the flat card list under `_lym/plan/`, read through `internal/planparser`.
+  That package is the plan format's sole parser ([loom-plan-spec.md](loom-plan-spec.md)).
 - The task branch, checked out in the task's worktree, with the plan committed on it.
 
-How the cards are grouped into units of work is the implementer's own call, configured by the implementer's own config: webster batches through `batcher.yaml`.
+How the cards are grouped into units of work is the implementer's own call, configured by the implementer's own config:
+webster batches through `batcher.yaml`.
 The plan writer writes a flat plan and never groups its cards.
 
 ## Out
 
 - **Commits on the task branch** that build the plan, leaving a clean tree.
   The implementer never pushes: the landing rows push the branch.
-- **A durable run directory** of the implementer's own under `_lym/`, holding its state file and run record, which Go commits once the row reports Done.
+- **A durable run directory** of the implementer's own under `_lym/`, holding its state file and run record.
+  Go commits it once the row reports Done.
   Webster's is `_lym/webster/`, holding `state.json`, `outcome.yaml` and `summary.md`.
 - **An outcome**, returned as the row's shed outcome:
 
@@ -37,7 +43,8 @@ The plan writer writes a flat plan and never groups its cards.
 | Stuck | Any other fault, its reason naming the way forward. | The row has no `on_stuck`, so the run halts for a human. |
 
 A Stuck reason follows [refusal-spec.md](refusal-spec.md).
-A fault in the implementer's own config, such as a `batcher.yaml` that does not resolve, is a Stuck the operator fixes before re-stepping the row.
+A fault in the implementer's own config is a Stuck the operator fixes before re-stepping the row.
+A `batcher.yaml` that does not resolve is such a fault.
 
 ## See also
 

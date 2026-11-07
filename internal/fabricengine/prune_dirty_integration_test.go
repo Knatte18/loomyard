@@ -1,7 +1,6 @@
 // prune_dirty_integration_test.go pins Prune's dirty-weft gate.
-// `prune --apply` removes a stale pair's weft worktree with `git worktree remove --force`, which
-// discards uncommitted tracked changes with no trace; before the gate, it did so with no dirty
-// check and no --force flag of its own, while `remove` refused the identical state.
+// Prune removes a stale pair's weft worktree with `git worktree remove --force`.
+// That discards uncommitted tracked changes without a trace, so the gate refuses the worktree unless --force is given.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -19,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPrune_ProtectsDirtyWeftWorktreeUntilForced builds a stale pair whose weft worktree carries an
-// uncommitted tracked change, then asserts the dry run and the apply run agree that it is protected,
-// the content survives --apply, and --force removes it.
+// TestPrune_ProtectsDirtyWeftWorktreeUntilForced builds a stale pair.
+// Its weft worktree holds an uncommitted tracked change.
+// It asserts the dry run and the apply run both protect it, the content survives --apply, and --force removes it.
 func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

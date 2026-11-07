@@ -48,7 +48,7 @@ The task splits along its two modules.
   - ` + "`internal/b`" + `
 `
 
-// partsPlanConfig returns a config whose plan and parts keys are set for PartsPlanTable.
+// partsPlanConfig returns a config with the plan timeout, the part writer, the parts chair and its timeout set.
 func partsPlanConfig(planTimeoutMin int, chairTimeoutMin *int) Config {
 	return Config{
 		PlanTimeoutMin:       planTimeoutMin,
@@ -70,7 +70,8 @@ func writePartsFile(t *testing.T, layout *lymcwd.Location, content string) {
 	}
 }
 
-// partsPlanHooks are the told per-part closures of PartsPlanTable, recording the parts they were built for and the parts whose Accept ran.
+// partsPlanHooks are the per-part closures a test passes to the parts plan table builder.
+// They record the parts the closures were built for and the parts whose accept ran.
 type partsPlanHooks struct {
 	gated, accepts, accepted []string
 }
@@ -98,7 +99,9 @@ func buildPartsPlanTable(t *testing.T, layout *lymcwd.Location, stencilsDir stri
 	return PartsPlanTable(layout, stencilsDir, newTestSpecsDir(t), cfg, discussionTableRegistry(t), "none", runTimeout, hooks.gates, hooks.accept, hooks.findingsPath)
 }
 
-// TestPartsPlanTable verifies PartsPlanTable builds the chair and one writer seat per part of the parts file, their timeouts, models and composed prompts, and refuses an absent or malformed parts file with its way forward.
+// TestPartsPlanTable verifies PartsPlanTable builds the chair and one writer seat per part of the parts file.
+// It checks each seat's timeouts, models and composed prompts.
+// It also checks that an absent or malformed parts file is refused with its way forward.
 //
 //testtiming:keep pins every seat field and the timeout resolution, which no producer-level test asserts
 func TestPartsPlanTable(t *testing.T) {

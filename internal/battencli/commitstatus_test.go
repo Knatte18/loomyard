@@ -1,6 +1,5 @@
-// commitstatus_test.go pins batten's per-transition status seam: the on-disk no-op-transition skip added on top of the shared statuscommit core's dispositions, which statuscommit's own tests pin.
-// Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures and a real temp-file marker path, spawning no git and no process,
-// so the file stays Tier 1 with no hub fixture.
+// commitstatus_test.go pins batten's status commits: the per-transition seam, and the run's commit paths and records.
+// The seam tests use stubbed commitStatusDeps closures and a temp-file marker; every test here runs in tier0.
 package battencli
 
 import (
@@ -24,13 +23,15 @@ func runStatusRel(loc *lymcwd.Location, runID string) string {
 }
 
 // TestNewCommitStatusSeam covers the on-disk no-op-transition skip over a real temp-file marker:
-//   - a repeated (producer, state) pair commits and spawns the push exactly once, not twice, across two calls to the same seam instance;
-//   - the skip still holds when the seam is rebuilt from scratch between calls, the shape a fresh "lym batten step" process takes -- the one case that proves the on-disk marker rather than an in-closure variable;
+//   - a repeated (producer, state) pair commits and spawns the push once, not twice, across two calls to the same seam;
+//   - the skip still holds when the seam is rebuilt between calls, as a fresh "lym batten step" process does;
+//     it is the one case that proves the on-disk marker rather than an in-closure variable;
 //   - a changed pair commits and spawns again rather than being absorbed by the skip;
 //   - a spawn that fails to start still returns nil;
-//   - a missing or corrupt marker falls back to committing once rather than erroring, since the marker is a cache and losing it costs one redundant commit, never correctness.
+//   - a missing or corrupt marker falls back to committing once rather than erroring;
+//     the marker is a cache, so losing it costs one redundant commit, never correctness.
 //
-// The commit message pins batten's own prefix, which the shared core's tests cannot, since they render whatever prefix they are given.
+// The commit message pins batten's own prefix, since the shared core renders whatever prefix its caller gives.
 func TestNewCommitStatusSeam(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -42,7 +43,7 @@ func TestNewCommitStatusSeam(t *testing.T) {
 		// markerRel is the marker path under the test's temp dir.
 		markerRel     string
 		corruptMarker bool
-		// rebuildSeam builds a fresh seam instance, over the same marker, for every call.
+		// rebuildSeam makes every call after the first use a fresh seam instance over the same marker.
 		rebuildSeam bool
 		calls       []transition
 		spawnErr    error
@@ -103,7 +104,7 @@ func TestNewCommitStatusSeam(t *testing.T) {
 
 // TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed pins the seam's board write.
 // A transition at a row before Run-Shed writes "<state> · <row>" on the entry.
-// A transition at Run-Shed or a later row writes nothing, since the inner run writes the entry's status from its start on.
+// A transition at Run-Shed or a later row writes nothing: the inner run writes the entry's status from its start on.
 func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -136,8 +137,8 @@ func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit pins that a failing board write at a row before Run-Shed is only warned about:
-// the seam returns nil and still commits and spawns the push.
+// TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit pins that a failing board write is only warned about.
+// The write runs at a row before Run-Shed; the seam returns nil and still commits and spawns the push.
 func TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -160,8 +161,9 @@ func TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit(t *testing.T)
 	}
 }
 
-// TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry pins that the real SetBoardStatus writes the status onto the board entry whose slug is the run id.
-// It sets the board skip variables, which are process-global, so it does not call t.Parallel.
+// TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry pins that the real SetBoardStatus writes the status.
+// The status lands on the board entry whose slug is the run id.
+// The test sets the board skip variables, which are process-global, so it does not call t.Parallel.
 func TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Setenv("BOARD_SKIP_GIT", "1")
@@ -192,8 +194,11 @@ func TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry(t *testing.T) {
 	}
 }
 
-// TestStatusPushSpawns_TellTheirLocationAndGateSlug pins what batten's two push spawns ask fabric for: the status seam spawns for its location under the run's slug as gate slug, and cleanup spawns for its location with no gate slug.
-// It swaps the package's spawnStatusPush for a recorder, so it is serial: no parallel test may run while the variable is swapped.
+// TestStatusPushSpawns_TellTheirLocationAndGateSlug pins what batten's two push spawns ask fabric for:
+// the status seam spawns for its location under the run's slug as gate slug;
+// cleanup spawns for its location with no gate slug.
+// It swaps the package's spawnStatusPush for a recorder, so it is serial:
+// no parallel test may run while the variable is swapped.
 func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	type spawnRequest struct {
@@ -226,8 +231,12 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	}
 }
 
-// TestBattenRunCommitPaths asserts a commit of the run's records stages the run's seed, dobby's run notice marker, the settle records, the child-recipe record and each driver directory holding a file alongside its status once each exists, and commits the status alone while none does.
-// A run directory is durable, fabric-synced state: a status committed without its seed leaves a resumed machine able to read how far the run came but not what it is running.
+// TestBattenRunCommitPaths asserts a commit of the run's records stages each of these once it exists:
+// the run's seed; dobby's run notice marker; the settle records; the child-recipe record;
+// and each driver directory holding a file alongside its status.
+// The status alone is committed while none of them exists.
+// A run directory is durable, fabric-synced state:
+// a status committed without its seed leaves a resumed machine knowing how far the run came but not what it is running.
 //
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
 func TestBattenRunCommitPaths(t *testing.T) {
@@ -308,7 +317,9 @@ func TestBattenRunCommitPaths(t *testing.T) {
 }
 
 // TestCommitRunRecords asserts the hand-back and done commit of the run's records:
-// it commits and starts the push, starts no push when nothing was committed, commits nothing while the pair is mid-merge, returns a failed commit or merge-state read, and never returns a push that failed to start.
+// it commits and starts the push; starts no push when nothing was committed;
+// commits nothing while the pair is mid-merge; returns a failed commit or merge-state read;
+// and never returns a push that failed to start.
 func TestCommitRunRecords(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

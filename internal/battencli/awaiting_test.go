@@ -1,5 +1,5 @@
-// awaiting_test.go asserts a batten status file in StateAwaiting arms without refusal in both
-// battenPreRun and battenPreStep, rather than tripping the unrecognised-state default.
+// awaiting_test.go asserts that a batten status file in StateAwaiting arms without refusal.
+// It holds in both battenPreRun and battenPreStep, neither of which trips the unrecognised-state default.
 
 package battencli
 

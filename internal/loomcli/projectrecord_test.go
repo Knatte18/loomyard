@@ -1,4 +1,5 @@
-// projectrecord_test.go covers where a run's decision record lives by its recipe, and the project records a member's run reads from the beams above its pair.
+// projectrecord_test.go covers where a run's decision record lives by its recipe.
+// It also covers the project records a member's run reads from the beams above its pair.
 
 package loomcli
 
@@ -55,7 +56,8 @@ func TestRunRecordOf(t *testing.T) {
 	}
 }
 
-// TestProjectRecordPaths pins that a member reads the record of every beam above it, nearest first, from each beam's own worktree, and skips a beam whose record is absent.
+// TestProjectRecordPaths pins that a member reads the record of every beam above it, nearest first;
+// from each beam's own worktree, and skips a beam whose record is absent.
 func TestProjectRecordPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -114,7 +116,8 @@ func writeBeamBoard(t *testing.T, hub string) {
 	}
 }
 
-// writeBeamRecords writes a project record into the worktree of each beam slug under hub and returns the lookup of a beam's record path.
+// writeBeamRecords writes a project record into the worktree of each beam slug under hub.
+// It returns the lookup of a beam's record path.
 func writeBeamRecords(t *testing.T, hub string, slugs ...string) func(slug string) string {
 	t.Helper()
 	record := func(slug string) string {
@@ -137,7 +140,8 @@ func writeBeamRecords(t *testing.T, hub string, slugs ...string) func(slug strin
 	return record
 }
 
-// TestWithProjectDirective pins that a member under a beam with a record gets a project directive naming that record, and a pair under no beam keeps the marker empty with every other table value untouched.
+// TestWithProjectDirective pins that a member under a beam with a record gets a directive naming that record.
+// A pair under no beam keeps the marker empty and every other table value untouched.
 func TestWithProjectDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -149,7 +153,7 @@ func TestWithProjectDirective(t *testing.T) {
 	tests := []struct {
 		name     string
 		worktree string
-		// wantRecord is the record path the directive must name, empty for a directive that must be empty.
+		// wantRecord is the record path the directive names, empty when the directive must be empty.
 		wantRecord string
 	}{
 		{name: "AMemberUnderABeamWithARecordGetsADirectiveNamingIt", worktree: "member", wantRecord: record("inner")},

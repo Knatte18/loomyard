@@ -1,4 +1,6 @@
-// config.go declares the shed config module, shed.yaml: the driver, tackler and arbiter defaults every shed-driven recipe inherits, the override a module's own keys set over them, and the pure resolvers.
+// config.go declares the shed config module, shed.yaml.
+// It holds the driver, tackler and arbiter defaults that every shed-driven recipe inherits.
+// It also holds the Override a module's keys set over those defaults, and the pure resolvers.
 
 package sheddriver
 
@@ -42,23 +44,24 @@ const arbiterDefaultTimeout = 30 * time.Minute
 type Config struct {
 	// DriverKind is the driver a run is seeded with when nothing typed one: llm or go.
 	DriverKind string `yaml:"driver_kind"`
-	// Tackler is the model-spec of the tackler role; empty takes haiku.
+	// Tackler is the model-spec of the tackler role; empty takes the default model-spec.
 	Tackler string `yaml:"tackler"`
-	// TacklerTimeoutMin is how many minutes one tackler spawn may run; 0 takes 10.
+	// TacklerTimeoutMin is how many minutes one tackler spawn may run; 0 takes the default timeout.
 	TacklerTimeoutMin int `yaml:"tackler_timeout_min"`
 	// TacklerMaxSpawns is how many tackler spawns a run may use; 0 turns the tackler off.
 	TacklerMaxSpawns int `yaml:"tackler_max_spawns"`
-	// Arbiter is the model-spec of the arbiter role; empty takes opus[high].
+	// Arbiter is the model-spec of the arbiter role; empty takes the default model-spec.
 	Arbiter string `yaml:"arbiter"`
-	// ArbiterTimeoutMin is how many minutes one arbiter spawn may run; 0 takes 30.
+	// ArbiterTimeoutMin is how many minutes one arbiter spawn may run; 0 takes the default timeout.
 	ArbiterTimeoutMin int `yaml:"arbiter_timeout_min"`
 	// ArbiterMaxSpawns is how many arbiter spawns a run may use; 0 turns the arbiter off.
 	ArbiterMaxSpawns int `yaml:"arbiter_max_spawns"`
 }
 
 // Override is a module's override of the shed.yaml keys.
-// An empty DriverKind, Tackler or Arbiter, a zero TacklerTimeoutMin or ArbiterTimeoutMin and a nil TacklerMaxSpawns or ArbiterMaxSpawns inherit shed.yaml;
-// a set TacklerMaxSpawns or ArbiterMaxSpawns, 0 included, wins, and 0 turns that role off.
+// An empty DriverKind, Tackler or Arbiter, and a zero TacklerTimeoutMin or ArbiterTimeoutMin, inherit shed.yaml.
+// A nil TacklerMaxSpawns or ArbiterMaxSpawns inherits shed.yaml; a set one wins, 0 included.
+// Setting one to 0 turns that role off.
 type Override struct {
 	DriverKind        string
 	Tackler           string
@@ -69,7 +72,8 @@ type Override struct {
 	ArbiterMaxSpawns  *int
 }
 
-// ConfigSpec returns shed's layered-load spec: a per-worktree module whose every key is open to the local layer and so to a task's run settings.
+// ConfigSpec returns shed's layered-load spec: a per-worktree module whose every key the local layer may set.
+// The local layer is where a task's run settings set a key.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -87,7 +91,8 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig resolves shed.yaml from the layer stack under dirs.
-// An absent file in every layer resolves the template; a layer file that exists but is invalid, or a value CheckOverride refuses, is an error.
+// An absent file in every layer resolves the template;
+// a layer file that exists but is invalid, or sets a value outside its bounds, is an error.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -112,13 +117,15 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	return cfg, nil
 }
 
-// ValidateLocalValues checks the keys a local-layer shed document sets, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the keys a local-layer shed document sets, and leaves the other keys unchecked.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
 	return CheckLocalOverride(configModule, document)
 }
 
-// CheckOverride refuses a driver_kind other than empty, llm or go, a non-empty tackler or arbiter that is not a model-spec, and a negative tackler_timeout_min, tackler_max_spawns, arbiter_timeout_min or arbiter_max_spawns.
+// CheckOverride refuses any key the override sets outside its bounds.
+// A driver_kind must be empty, llm or go.
+// A tackler or arbiter must be a model-spec when set, and the timeout and spawn-budget keys must not be negative.
 // Each refusal names the module, the key, the bound and how to set the key.
 func CheckOverride(module string, o Override) error {
 	if o.DriverKind != "" {
@@ -159,7 +166,7 @@ func inheritClause(module string) string {
 	return ", or leave it empty or null to inherit shed.yaml"
 }
 
-// CheckLocalOverride decodes a local-layer document of the named module and applies CheckOverride to the keys it sets.
+// CheckLocalOverride checks the keys a local-layer document of the named module sets against their bounds.
 // A refusal is marked configengine.ErrInvalid.
 func CheckLocalOverride(module string, document []byte) error {
 	var set struct {
@@ -196,7 +203,8 @@ func CheckLocalOverride(module string, document []byte) error {
 	return nil
 }
 
-// ResolveDriverKind returns the driver an unseeded run is seeded with when nothing typed one: the override's driver kind, else shed.yaml's, else shedrun.DriverLLM.
+// ResolveDriverKind returns the driver an unseeded run is seeded with when nothing typed one:
+// the override's driver kind, else shed.yaml's, else shedrun.DriverLLM.
 func ResolveDriverKind(cfg Config, o Override) string {
 	if o.DriverKind != "" {
 		return o.DriverKind
@@ -207,8 +215,9 @@ func ResolveDriverKind(cfg Config, o Override) string {
 	return shedrun.DriverLLM
 }
 
-// ResolveTackler parses and resolves the tackler role's model-spec through reg, and takes each key from the override, else shed.yaml, else its default.
-// The model-spec defaults to haiku and the timeout to 10 minutes; the spawn budget comes from a set override, 0 included, else shed.yaml's.
+// ResolveTackler parses and resolves the tackler role's model-spec through reg.
+// The model-spec and timeout come from the override, else shed.yaml, else their defaults.
+// The spawn budget comes from a set override, 0 included, else shed.yaml's.
 // A spec that does not parse or resolve is an error naming the tackler key.
 func ResolveTackler(cfg Config, o Override, reg modelspec.Registry) (TacklerSettings, error) {
 	specText := o.Tackler
@@ -244,7 +253,8 @@ func ResolveTackler(cfg Config, o Override, reg modelspec.Registry) (TacklerSett
 	}, nil
 }
 
-// ArbiterSettings is the arbiter role's resolved model choice, timeout and spawn budget, threaded onto the arbiter session's launch spec.
+// ArbiterSettings is the arbiter role's resolved model choice, timeout and spawn budget.
+// They are threaded onto the arbiter session's launch spec.
 type ArbiterSettings struct {
 	shuttleengine.ModelChoice
 	// Timeout is how long one arbiter spawn may run.
@@ -254,7 +264,8 @@ type ArbiterSettings struct {
 }
 
 // ArbiterLimits returns the arbiter's per-spawn timeout and spawn budget without resolving its model-spec.
-// The timeout is the override's, else shed.yaml's, else 30 minutes; the budget is a set override's, 0 included, else shed.yaml's.
+// The timeout is the override's, else shed.yaml's, else the default;
+// the budget is a set override's, 0 included, else shed.yaml's.
 func ArbiterLimits(cfg Config, o Override) (timeout time.Duration, maxSpawns int) {
 	timeout = arbiterDefaultTimeout
 	if o.ArbiterTimeoutMin > 0 {
@@ -269,8 +280,9 @@ func ArbiterLimits(cfg Config, o Override) (timeout time.Duration, maxSpawns int
 	return timeout, maxSpawns
 }
 
-// ResolveArbiter parses and resolves the arbiter role's model-spec through reg, and takes each key from the override, else shed.yaml, else its default.
-// The model-spec defaults to opus[high] and the timeout to 30 minutes; the spawn budget comes from a set override, 0 included, else shed.yaml's.
+// ResolveArbiter parses and resolves the arbiter role's model-spec through reg.
+// The model-spec and timeout come from the override, else shed.yaml, else their defaults.
+// The spawn budget comes from a set override, 0 included, else shed.yaml's.
 // A spec that does not parse or resolve is an error naming the arbiter key.
 func ResolveArbiter(cfg Config, o Override, reg modelspec.Registry) (ArbiterSettings, error) {
 	specText := o.Arbiter

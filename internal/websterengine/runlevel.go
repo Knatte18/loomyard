@@ -1,5 +1,5 @@
-// runlevel.go implements Run, webster's `run` verb engine core: the run-level exclusive lease, the automatic validation gate (including the zero-batch pre-flight refusal), the state-phase entry-time reclaim of webster's own reclaimable substrates (Master's own strand, any non-terminal recovery-batch strand and any non-terminal cold verify-gate fixer strand — forks die with Master, so they need none), the plan-fingerprint crash/resume guard with its --fresh archive/re-init escape, the stale-outcome/summary archive, the always-fresh Master spawn (fork-authorized, both output files), the shuttle-outcome-to-RunResult mapping, and the run-exit whole-session audit cross-check that backstops record-batch's own per-batch incremental audit.
-// Named runlevel.go, not run.go, to avoid a clash with any future poll/spawn-style file name.
+// runlevel.go implements Run, the engine core of webster's `run` verb.
+// It takes the run-level lease, runs the validation gates, reclaims leftover strands, and audits the run's exit.
 
 package websterengine
 
@@ -27,45 +27,39 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// runLockName is the exclusive-lease file name inside the webster scratch
-// dir, held for the ENTIRE duration of one Run call:
-// without it, two concurrent `lym webster run` invocations would each
-// cold-start from the same state.json and reports, then both drive the
-// Master spawn at once.
+// runLockName is the exclusive-lease file name inside the webster scratch dir.
+// Run holds the lease for its whole duration.
+// Without it, two concurrent `lym webster run` calls would each cold-start from the same state.json and reports;
+// and both would drive the Master spawn at once.
 const runLockName = "run.lock"
 
-// masterAwaitedShellPrefixes are Master's backgrounded, blocking verbs: the failure ladder's recovery verb, the verify gate's cold fixer verb and the plan-conflict rung's plan fixer verb.
-// A prefix keeps its verb out of the background-shell wait marker;
-// it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells does not:
-// that one is held when an output file is missing and is not counted done inside background_shell_wait_min.
+// masterAwaitedShellPrefixes are the prefixes of Master's backgrounded, blocking verbs:
+// the recovery verb, the verify gate's cold fixer verb and the plan-conflict rung's plan fixer verb.
+// A prefix keeps its verb out of the background-shell wait marker, and it keeps the verb holding a gated turn end.
+// A turn waiting only on non-awaited shells is held when an output file is missing,
+// and it is not counted done inside background_shell_wait_min.
 var masterAwaitedShellPrefixes = []string{"lym webster recover-batch", fixVerifyCommand, fixPlanCommand}
 
-// ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
-// run.lock.
-// It is webster's own sentinel (per the
-// webster-owns-its-own-domain-types decision) because the caller must treat this refusal
-// differently from every other hard error: the losing call touched NOTHING on disk — the winner is
-// mid-run and owns the state — so webstercli must not run its own exit-time fabric backstop for it.
+// ErrRunBusy is returned by Run when another invocation already holds scratchDir's run.lock.
+// The losing call touches nothing on disk, because the winner owns the state.
+// So webstercli must not run its own exit-time fabric backstop for this error.
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
-// ErrNilBatcher marks Run's refusal when RunDeps.Batcher was never populated
-// by the caller. Population is webstercli's obligation (PersistentPreRunE
-// resolves it via batcher.Active); a nil interface here would panic inside
-// Batch rather than surface a diagnosable error.
+// ErrNilBatcher is returned by Run when RunDeps.Batcher was never populated.
+// webstercli populates it in PersistentPreRunE, which resolves batcher.Active.
+// A nil interface would panic inside Batch instead of surfacing a diagnosable error.
 var ErrNilBatcher = errors.New("webster: RunDeps.Batcher not populated")
 
-// RunActive reports whether a live `lym webster run` currently holds scratchDir's run.lock.
-// It probes non-blocking: if the lock can be acquired, no run owns it and the probe returns false;
-// otherwise it returns true.
-// Probe errors (filesystem failures) are returned so the caller can decide.
+// RunActive reports whether a live `lym webster run` holds scratchDir's run.lock.
+// It probes without blocking: when the lock can be acquired, no run holds it and RunActive reports false.
+// Filesystem failures while probing are returned as errors for the caller to decide on.
 func RunActive(scratchDir string) (bool, error) {
 	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, runLockName))
 	if err != nil {
 		return false, fmt.Errorf("webster: probe run.lock in %s: %w", scratchDir, err)
 	}
 	if acquired {
-		// Nobody held it — release the probe lock immediately so a real run
-		// starting right after is never blocked by the probe.
+		// Release the probe lock at once, so a run that starts right after is never blocked by the probe.
 		_ = fl.Release()
 		return false, nil
 	}
@@ -73,8 +67,7 @@ func RunActive(scratchDir string) (bool, error) {
 }
 
 // OutcomeFileName is outcome.yaml's fixed filename inside a webster dir.
-// The file's schema is webster's own (outcome.go), owned outright rather than shared with any
-// sibling module.
+// Its schema lives in outcome.go and belongs to webster alone.
 const OutcomeFileName = "outcome.yaml"
 
 // OutcomePath returns the path to outcome.yaml inside websterDir.
@@ -82,46 +75,44 @@ func OutcomePath(websterDir string) string {
 	return filepath.Join(websterDir, OutcomeFileName)
 }
 
-// MasterHandle is the started-but-not-yet-finished Master spawn Run blocks on: StrandGUID
-// identifies the reed strand Master runs in (available once the start returns, which includes the
-// provider's startup window, so Run can persist it to state.json BEFORE blocking on Wait — the
-// record the next run's entry-time reclaim reads), and Wait blocks until the spawn reaches a
-// terminal shuttle outcome. *shuttleengine.Run satisfies this structurally.
+// MasterHandle is a started Master spawn that Run blocks on.
+// StrandGUID identifies the reed strand Master runs in.
+// It is available once the start returns, which includes the provider's startup window.
+// Run persists it to state.json before it blocks on Wait.
+// The next run's entry-time reclaim reads that record.
+// Wait blocks until the spawn reaches a terminal shuttle outcome.
+// *shuttleengine.Run satisfies this interface structurally.
 //
-// Accepted residuals, both from the spawn now including the startup window under the
-// state-mutation lease, and from state.json being persisted only after StartMaster returns:
-// a process killed inside the startup window, or a startup mechanism failure (shuttle could not
-// get a liveness answer from reed maxStatusRetries times), leaves a live Master pane whose
-// MasterStrand was never recorded — invisible to reclaimEntryTimeStrands. A not-ready start no
-// longer leaks (shuttle tears the strand down) unless that teardown's own strand removal fails,
-// which the returned error then states.
+// The accepted residuals come from the spawn including the startup window under the state-mutation lease;
+// and from state.json being written only after StartMaster returns.
+// A process killed inside the startup window leaves a live Master pane with no recorded MasterStrand.
+// reclaimEntryTimeStrands cannot find that pane.
+// A start that gets no liveness answer from reed after maxStatusRetries tries is torn down by shuttle;
+// if that teardown fails, the returned error says so.
 type MasterHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
-// MasterStarter is the seam Run spawns Master through, webster's own OrchestratorStarter shape.
-// Production code passes an adapter over *shuttleengine.Runner (webstercli's own starter);
-// tests pass a local fake.
+// MasterStarter is the seam Run spawns Master through.
+// Production code passes an adapter over *shuttleengine.Runner, webstercli's own starter; tests pass a local fake.
 //
-// A shuttleengine.GateSpec rides beside the Spec: it is the list of mechanical validators the Master run's own Wait consults before it may finalize, and an empty list means ungated, which is what the Webster row supplies today.
-// The seam is widened rather than joined by a second
-// StartMaster form because it has exactly one call site and two production implementors -- an added
-// form would cost every fake a second method with no caller, which is the price shuttleengine's own
-// RunGated/AttachGated pay deliberately for a genuinely shared seam and which buys nothing here.
+// A shuttleengine.GateSpec rides beside the Spec.
+// It lists the mechanical validators that the Master run's Wait consults before it may finalize.
+// An empty list means ungated.
+// It is a parameter, not a second StartMaster form: StartMaster has one call site and two production implementors.
+// A second form would give every fake a method that no caller uses.
 type MasterStarter interface {
 	StartMaster(shuttleengine.Spec, shuttleengine.GateSpec) (MasterHandle, error)
 }
 
-// RunDeps carries every seam Run needs for testing.
-// Starter spawns Master; Stopper is the seam the entry-time reclaim stops a leftover strand through;
-// Engines and ShuttleCfg support session resolution and audit, Engines reading each recorded session through its own engine;
-// Geom is the told Geometry every path (PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir,
-// WorktreeRoot, PaneCwd, AnchorRoot, StencilsDir) is read from;
-// RefMatcher is the injected fabric-reference class matcher CheckParent/CheckFork consult, never nil
-// in either mode;
-// Config, Roles, and Batcher carry the loaded configuration, pre-flight-resolved role->model-spec
-// map, and CLI-pre-resolved active batchifier.
+// RunDeps carries every seam Run needs, so tests can replace each one.
+// Starter spawns Master, and Stopper stops a leftover strand during the entry-time reclaim.
+// Engines reads each recorded session through its own engine, and ShuttleCfg supports session resolution and audit.
+// Geom is the told Geometry that every path is read from.
+// RefMatcher is the injected fabric-reference class matcher that CheckParent and CheckFork consult; it is never nil.
+// Config and Roles carry the loaded configuration and the pre-resolved role-to-model-spec map.
+// Batcher carries the active batchifier.
 type RunDeps struct {
 	Starter    MasterStarter
 	Stopper    StrandStopper
@@ -129,44 +120,44 @@ type RunDeps struct {
 	ShuttleCfg shuttleengine.Config
 	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
-	// Batcher is the CLI-resolved active batchifier (batcher.Active),
-	// populated by webstercli's PersistentPreRunE before Run is called. Run
-	// refuses with ErrNilBatcher when it is nil.
+	// Batcher is the active batchifier, resolved by the CLI through batcher.Active.
+	// webstercli's PersistentPreRunE populates it before Run is called.
+	// Run returns ErrNilBatcher when it is nil.
 	Batcher    batcher.Batcher
 	Geom       Geometry
 	RefMatcher RefMatcher
-	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	// ReadOnly reports whether a fabric-referencing command is read-only, making its finding a warning; nil accepts none.
 	ReadOnly func(cmd string) bool
 
-	// Gate is the list of mechanical validators Master's own shuttle run is held to:
-	// Run hands it to StartMaster beside the Spec, and the run's Wait re-prompts the live Master on a failed verdict until it passes or the failing entry's re-prompt budget is exhausted.
-	// An empty list means ungated, which is what every caller supplies until a Webster validator exists.
+	// Gate is the list of mechanical validators that Master's shuttle run is held to.
+	// Run hands it to StartMaster beside the Spec, and Wait re-prompts the live Master on each failed verdict.
+	// Re-prompts stop once the gate passes or the entry's re-prompt budget is spent; an empty list means ungated.
 	Gate shuttleengine.GateSpec
 
-	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
-	// is off. It lives here rather than on Geometry because internal/hubgeom and
-	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
-	// this value needs no geometry derivation.
+	// FrictionDir is the told absolute friction directory (see internal/friction).
+	// It is empty when Tier 2 is off.
+	// It lives here rather than on Geometry, since this value needs no geometry derivation.
+	// internal/hubgeom and internal/standalonegeom are the only constructors of the Geometry struct.
 	FrictionDir string
 
-	// ParentBranch names the branch the run merges its parent in from, for the fix commit check's clean-parent-merge rule.
-	// It is nil in standalone mode, so no merge commit is accepted there.
+	// ParentBranch names the branch the run merges its parent in from.
+	// The fix commit check's clean-parent-merge rule reads it; nil in standalone mode accepts no merge commit.
 	ParentBranch ParentBranchFunc
 
-	// ReentryStep is the plain step that re-enters the run after accept-audit, closing every pending-findings and run-exit way forward.
-	// Empty means `lym webster run`; the shed adapter sets "re-step the <row> row".
-	// The reset route ends in it too, since the reset archives the run record and a plain run starts over.
+	// ReentryStep is the plain step that re-enters the run after accept-audit.
+	// Empty means `lym webster run`; the shed adapter sets "re-step the <row> row", and the reset route uses it too.
+	// It closes every pending-findings and run-exit way forward; the reset route archives the run record first.
 	ReentryStep string
 
-	// LanguageSkills are the hub's language skills the master loads after roleSkills; empty for none.
+	// LanguageSkills are the hub's language skills that Master loads after roleSkills; empty means none.
 	LanguageSkills []string
 
-	// InstructionFiles lists the names of the instruction files Master's engine loads, which Merriam's start base counts; nil means none.
-	// It is called where a fresh partition is formed and where an auto-rebaseline prices the tail.
+	// InstructionFiles lists the names of the instruction files that Master's engine loads; nil means none.
+	// Merriam's start base counts them; it is called at partition time and at auto-rebaseline pricing.
 	InstructionFiles func() ([]string, error)
 }
 
-// instructionFiles returns the instruction file names Merriam's start base counts, none when InstructionFiles is nil.
+// instructionFiles returns the instruction file names the start base counts, or none when the field is nil.
 func (d RunDeps) instructionFiles() ([]string, error) {
 	if d.InstructionFiles == nil {
 		return nil, nil
@@ -188,41 +179,42 @@ func stepOrRun(step string) string {
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices.
-// Fresh requests the fingerprint-mismatch escape: archive the stale state.json and reports dir,
-// clear the re-renderable prompts dir, and re-init, rather than refusing with
-// ErrFingerprintMismatch.
-// It also discards pending audit findings, on an unchanged plan too, once their suspect paths match the run's start commit.
-// AutoRebaseline lets a plan that changed since the run recorded it be rebaselined on entry instead of refused with ErrFingerprintMismatch, accepting exactly what `lym webster rebaseline` accepts when it names every changed card;
-// it applies only without Fresh, and `lym webster run` never sets it.
+// Fresh is the escape from an ErrFingerprintMismatch refusal.
+// It archives the stale state.json and reports dir and clears the re-renderable prompts dir, then re-inits.
+// It also discards pending audit findings whose suspect paths match the start commit, whether or not the plan changed.
+// AutoRebaseline rebaselines a plan that changed since the run recorded it, on entry, instead of refusing.
+// It accepts exactly what `lym webster rebaseline` accepts when it names every changed card.
+// AutoRebaseline applies only without Fresh, and `lym webster run` never sets it.
 type RunOptions struct {
 	Fresh          bool
 	AutoRebaseline bool
 }
 
-// RunResult is what one successful Run call hands back: the parsed outcome.yaml's judgment
-// (Outcome/StuckReason/BatchesDone) plus the summary.md's title.
+// RunResult is what one successful Run call returns.
+// It holds the parsed outcome.yaml judgment (Outcome, StuckReason and BatchesDone) and the summary.md title.
 type RunResult struct {
-	// Outcome is one of webster's own outcomeDone or outcomeStuck values (outcome.go),
-	// taken verbatim from the parsed outcome.yaml — except that a done whose verify gate did not pass is demoted to outcomeStuck.
+	// Outcome is outcomeDone or outcomeStuck, taken verbatim from outcome.yaml.
+	// A done whose verify gate did not pass is demoted to outcomeStuck.
 	Outcome string
-	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the verify gate,
-	// whose reason names the failing identities and the attempts spent.
+	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim.
+	// A done demoted by the verify gate gets a reason that names the failing identities and the attempts spent.
 	StuckReason string
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
-	// SummaryTitle is the parsed summary.md's title heading. Always
-	// populated for Outcome == outcomeDone (summaryparser.Parse is
-	// required there — a missing or malformed summary is a hard error);
-	// populated best-effort for stuck (empty when summary.md is itself missing or malformed, which is not an error on that outcome).
+	// SummaryTitle is the title heading of the parsed summary.md.
+	// It is always set for Outcome == outcomeDone.
+	// For done, a missing or malformed summary is a hard error, since summaryparser.Parse must succeed.
+	// For stuck it is best-effort, and empty when summary.md is missing or malformed, which is not an error there.
 	SummaryTitle string
-	// Warnings carries every non-fatal observation accumulated this run — never a failure.
-	// Mirrors RecordResult.Warnings' shape and contract: the verify gate's flaky notice, and the audit warnings.
+	// Warnings carries every non-fatal observation accumulated this run; it never holds a failure.
+	// It holds the verify gate's flaky notice and the audit warnings.
 	Warnings []string
-	// Gate is Merriam's run's gate outcome, a 1:1 passthrough of the shuttle result's Gate with the verify gate's entry among its entries; nil when Merriam's run was not gated.
+	// Gate is the shuttle's Gate unchanged, verify gate entry included; nil when the run was not gated.
 	Gate *shuttleengine.GateOutcome
 }
 
-// hasBlockingFinding reports whether findings carries at least one planindex.SeverityBlocking entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the other three mirror.
+// hasBlockingFinding reports whether findings holds at least one planindex.SeverityBlocking entry.
+// Severity, not the finding count, decides the verdict.
 func hasBlockingFinding(findings []planindex.Finding) bool {
 	for _, f := range findings {
 		if f.Severity == planindex.SeverityBlocking {
@@ -232,9 +224,8 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 	return false
 }
 
-// newRunGUID returns a 128-bit random identifier, hex-encoded, generated
-// from crypto/rand: minted once at first init, never regenerated
-// across a resume.
+// newRunGUID returns a random 128-bit identifier from crypto/rand, hex-encoded.
+// It is minted once at first init and never regenerated across a resume.
 func newRunGUID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -243,15 +234,15 @@ func newRunGUID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// runExitWayForward is the trailing way-forward clause every run-exit refusal carries:
+// runExitWayForward is the trailing way-forward clause of every run-exit refusal.
 // state.json keeps every terminal batch, so a fresh Master resumes and re-drives each batch without a done record.
 const runExitWayForward = "; way forward: re-run `lym webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record"
 
 // masterRerunWayForward is the trailing way-forward clause of the Master-ended-early errors.
 const masterRerunWayForward = "; way forward: re-run `lym webster run` (re-step the Webster row); a fresh Master resumes from state.json"
 
-// MasterDiedError marks Run's mapping of a shuttle OutcomeDied result for Master's own spawn: its
-// pane died (or it never became ready) before it ever reached its own outcome-file final action.
+// MasterDiedError marks a Master spawn whose shuttle outcome was OutcomeDied.
+// The Master pane died, or never became ready, before it reached its outcome-file final action.
 type MasterDiedError struct {
 	SessionID string
 	RunDir    string
@@ -264,12 +255,11 @@ func (e *MasterDiedError) Error() string {
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterDied).
 func (e *MasterDiedError) Unwrap() error { return ErrMasterDied }
 
-// ErrMasterDied is the sentinel MasterDiedError wraps.
+// ErrMasterDied reports that a Master pane died before its run finished.
 var ErrMasterDied = errors.New("webster: master died")
 
-// MasterTimeoutError marks Run's mapping of a shuttle OutcomeTimeout result for Master's own spawn:
-// its wall-clock Timeout (MasterTimeoutMin, webster's own whole-run timeout config key)
-// elapsed before it ever reached its own outcome-file final action.
+// MasterTimeoutError marks a Master spawn whose shuttle outcome was OutcomeTimeout.
+// The run exceeded its wall-clock timeout, MasterTimeoutMin, before it reached its outcome-file final action.
 type MasterTimeoutError struct {
 	SessionID string
 	RunDir    string
@@ -282,15 +272,13 @@ func (e *MasterTimeoutError) Error() string {
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterTimeout).
 func (e *MasterTimeoutError) Unwrap() error { return ErrMasterTimeout }
 
-// ErrMasterTimeout is the sentinel MasterTimeoutError wraps.
+// ErrMasterTimeout reports that a Master run exceeded its wall-clock timeout.
 var ErrMasterTimeout = errors.New("webster: master timed out")
 
-// clearRenderedPrompts removes every fork prompt file previously written
-// into promptsDir, part of Run's --fresh escape: these are re-renderable
-// artifacts (BeginBatch rewrites each batch's own the next time it begins),
-// never archived, unlike the fingerprint-mismatch escape's state.json/
-// reports treatment — deleting rather than preserving a purely derived,
-// cheaply reproduced artifact is the correct posture. Absent dir: a no-op.
+// clearRenderedPrompts removes every fork prompt file in promptsDir, as part of Run's --fresh escape.
+// The files are derived and cheap to reproduce, so they are deleted rather than archived.
+// BeginBatch rewrites each batch's prompt when the batch begins.
+// An absent dir is a no-op.
 func clearRenderedPrompts(promptsDir string) error {
 	if err := os.RemoveAll(promptsDir); err != nil {
 		return fmt.Errorf("webster: clear rendered prompts dir %s: %w", promptsDir, err)
@@ -298,14 +286,13 @@ func clearRenderedPrompts(promptsDir string) error {
 	return nil
 }
 
-// reclaimEntryTimeStrands stops the only substrates a crashed or killed `run` process can ever leave live behind it:
-// Master's own recorded strand, any recorded, non-terminal recovery-batch strand and any non-terminal cold verify-gate fixer or plan fixer strand.
-// Forks die WITH Master (same process) — there is never an orphaned
-// in-flight fork implementer to reclaim, which is what keeps webster's own
-// entry-time reclaim simple, per
-// discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
-// (no run has ever started) is a no-op.
-// A stopped cold fixer's or plan fixer's record turns terminal dead/died, so the next fix-verify or fix-plan spawns a fresh fixer instead of attaching to the stopped strand;
+// reclaimEntryTimeStrands stops the only strands a crashed or killed `run` process can leave live.
+// It stops Master's recorded strand and every recorded, non-terminal recovery-batch strand.
+// It also stops every non-terminal cold verify-gate fixer or plan fixer strand.
+// Forks die with Master, in the same process, so there is never an orphaned fork implementer to reclaim.
+// A nil st (no run has ever started) is a no-op.
+// A stopped cold fixer or plan fixer record turns terminal, with status dead and reason died,
+// so the next fix-verify or fix-plan spawns a fresh fixer rather than attaching to the stopped strand.
 // stateChanged reports whether any record changed, so the caller saves st.
 func reclaimEntryTimeStrands(stopper StrandStopper, st *State) (stateChanged bool, err error) {
 	if st == nil {
@@ -351,16 +338,12 @@ func reclaimEntryTimeStrands(stopper StrandStopper, st *State) (stateChanged boo
 	return stateChanged, nil
 }
 
-// countBegunForkBatches counts st's recorded batches whose Kind is "fork"
-// AND whose recorded SessionID matches sessionID — the run-exit audit
-// cross-check's begun-batch baseline: every such batch was recorded because
-// BeginBatch ran for it under THIS Master session, so its own in-session
-// fork MUST be represented in the whole-session audit's transcript count,
-// or a fork silently failed to survive audit. The session scoping exists
-// because the whole-session audit only ever covers the current session's
-// own subagents directory: a crash-resumed run's fresh Master never forked
-// the batches a prior session completed, and counting those would fail
-// every legitimately completed resume.
+// countBegunForkBatches counts the fork batches in st whose SessionID equals sessionID.
+// It is the baseline of the run-exit audit cross-check.
+// BeginBatch recorded each counted batch under this session, so its fork must show in the whole-session audit count.
+// Scoping to the session matters: that audit covers only the current session's subagents directory.
+// A resumed run's fresh Master never forked the batches a prior session completed.
+// Counting them would fail every legitimate resume.
 func countBegunForkBatches(st *State, sessionID string) int {
 	if st == nil {
 		return 0
@@ -374,14 +357,16 @@ func countBegunForkBatches(st *State, sessionID string) int {
 	return count
 }
 
-// Run drives one `lym webster run` invocation to completion: the run-level mutex, validation gate,
-// state-phase entry-time reclaim, plan-fingerprint crash/resume guard with its --fresh escape, and
-// Master spawn to outcome.
-// ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
-// non-done shuttle outcomes return *Master*Error types.
-// A done outcome passes through the run-exit audit: policy findings nobody dispositioned become run-level warnings on RunResult.Warnings,
-// and an undispositioned correctness finding demotes the outcome to stuck, the same way a done whose verify gate did not pass does.
-// Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate), so a red tree re-prompts Merriam's live session and a gate that never passes ends the run stuck.
+// Run drives one `lym webster run` invocation to completion.
+// It takes the run-level lease and runs the validation gate;
+// it reclaims leftover strands, guards the plan fingerprint with its --fresh escape, and spawns Master to outcome.
+// ErrRunBusy and ErrFingerprintMismatch are exported sentinels that Run may return.
+// A non-done shuttle outcome returns a *MasterDiedError or *MasterTimeoutError.
+// A done outcome passes the run-exit audit.
+// Policy findings nobody dispositioned become run-level warnings on RunResult.Warnings.
+// An undispositioned correctness finding demotes the outcome to stuck, as a done whose verify gate failed does.
+// Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate).
+// So a red tree re-prompts Merriam's live session, and a gate that never passes ends the run stuck.
 // Every other entry of RunDeps.Gate is wrapped so that its failure writes the verify-gate report and re-prompts as the verify entry does.
 // Every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
 // A recorded batch at a dead end refuses the run with ErrBatchDeadEnd before Master is spawned, since Master would only end the run stuck on it.
@@ -411,12 +396,14 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 	defer runLock.Release()
 
-	// A record is bounded to one Webster call, and the removal sits behind the lock so a refused-busy Run never removes the live run's record.
+	// A record is bounded to one Webster call.
+	// The removal sits behind the lock, so a refused-busy Run never removes the live run's record.
 	if err := RemoveConflictRecord(deps.Geom.ScratchDir); err != nil {
 		logger.Warn("websterengine: stale plan-conflict record not removed", "err", err)
 	}
 
-	// The overview frame is hashed from the bytes this parse accepts, so a file changing after the parse cannot make the frame unreadable.
+	// The overview frame is hashed from the bytes this parse accepts;
+	// a file changing after the parse cannot make the frame unreadable.
 	var overview []byte
 	plan, err := planparser.ParsePlanFrom(deps.Geom.PlanDir, func(name string) ([]byte, error) {
 		data, err := os.ReadFile(filepath.Join(deps.Geom.PlanDir, name))
@@ -429,9 +416,9 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	// The approval gate fires here, at entry; the full validation gate runs further down, once the
-	// state phase has settled, because its resolve-backed half must be scoped by the completed
-	// cards only state.json knows about (see the ValidateDispatch call below).
+	// The approval gate fires here, at entry;
+	// the full validation gate runs further down, once the state phase has settled:
+	// its resolve-backed half must be scoped by the completed cards that only state.json knows about.
 	if !plan.Approved {
 		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan; way forward: approve the plan through its review, then re-run `lym webster run`", deps.Geom.PlanDir)
 	}
@@ -439,7 +426,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	if deps.Batcher == nil {
 		return RunResult{}, ErrNilBatcher
 	}
-	// recover-batch spawns the recovery role, not Run, so its check here is a pre-flight; a role without a resolved choice is left to the spawn that refuses it.
+	// recover-batch spawns the recovery role, so this check is a pre-flight only;
+	// a role without a resolved choice is left to the spawn that refuses it.
 	for _, role := range []Role{RoleMaster, RoleRecovery} {
 		if choice, ok := deps.Roles[role]; ok {
 			if err := roleAuditEngine(deps.Engines, role, choice); err != nil {
@@ -466,11 +454,9 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		panic(fmt.Sprintf("websterengine: the overview planparser.ParsePlanFrom accepted has no frame: %v", err))
 	}
 
-	// Serialize the whole state phase — load, entry-time reclaim, fresh
-	// archive/re-init, and the post-start strand record — against every
-	// other verb's own state read-modify-write, webster's own
-	// AcquireStateMutation discipline. Released explicitly right after
-	// the strand record lands, never held across Master's own wait.
+	// Serialize the whole state phase against every other verb's state read-modify-write through AcquireStateMutation:
+	// load, entry-time reclaim, fresh archive and re-init, and the post-start strand record.
+	// The lock is released right after the strand record lands, never held across Master's own wait.
 	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
@@ -487,17 +473,17 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	// Entry-time reclaim BEFORE anything else acts on the loaded state
-	// (including the --fresh archive below, which would discard the only
-	// record of these strands): a prior run whose process died mid-wait
-	// leaves a live Master pane (or a live recovery strand) that keeps
-	// driving on its own.
+	// Entry-time reclaim runs before anything else acts on the loaded state;
+	// that includes the --fresh archive, which would discard the only record of these strands.
+	// A prior run whose process died mid-wait leaves a live Master pane (or a live recovery strand).
+	// That pane or strand keeps driving on its own.
 	reclaimedFixers, err := reclaimEntryTimeStrands(deps.Stopper, st)
 	if err != nil {
 		return RunResult{}, err
 	}
 	if reclaimedFixers {
-		// Persisted before anything fallible follows, so a run that fails before its Master spawn still leaves the reclaimed fixer records terminal.
+		// Persisted before anything fallible follows,
+		// so a run that fails before its Master spawn still leaves the reclaimed fixer records terminal.
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
@@ -508,8 +494,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	// The batches are computed once the state phase has settled which partition the run uses:
-	// a new state forms and records one with the active batchifier, any other reads its recorded one.
+	// The state phase decides which partition the run uses:
+	// a new state forms one with the active batchifier and records it, and any other state reads its recorded one.
 	sizes := batcher.DiskSizes(deps.Geom.WorktreeRoot)
 	var batches []batcher.Batch
 	// rebaselineStep is the step the plan refusals name once an auto-rebaseline was accepted, and empty otherwise.
@@ -593,7 +579,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 			return RunResult{}, err
 		}
 		// The drop is committed once the run record is archived.
-		// Only a done outcome carries RunResult.Warnings, so each drop is logged here too, where every later refusal, Master outcome and error still leaves it on record.
+		// Only a done outcome carries RunResult.Warnings;
+		// each drop is logged here too, where every later refusal, Master outcome and error still leaves it on record.
 		for _, w := range freshWarnings {
 			logger.Warn("websterengine: --fresh dropped a pending audit finding", "warning", w)
 		}
@@ -631,46 +618,43 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	// Validation runs HERE — after the state phase settles — rather than at entry, because its
-	// resolve-backed half must be scoped to the cards whose work has NOT landed yet: re-validating
-	// the whole plan on a resume reported every completed Create/Delete/Rename card as a blocking
-	// defect (create-already-exists, glyph-not-found — the plan working exactly as designed) and
-	// permanently refused the very resume this verb's own help promises, wedging both the
-	// documented `lym webster run` resume flow and loom's own Webster-row re-drive. The scoping is
-	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
-	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
-	// set deliberately omits, already fired at entry above.
-	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already have landed its work, or not yet,
-	// and its forthcoming Create targets stay out of the status check.
+	// Validation runs here, after the state phase settles,
+	// and its resolve-backed half is scoped to the cards whose work has not landed yet.
+	// A whole-plan check on a resume would flag every completed Create, Delete and Rename card as blocking.
+	// It would also refuse the very resume the verb's help promises.
+	// A fresh run has no completed cards, so it gets the whole-plan answer unchanged.
+	// The plan-unapproved gate fired at entry, and the format-only set of ValidateDispatch leaves it out.
+	// The scope comes from DispatchScope.
+	// A batch begun but not recorded may already have landed its work, or not yet,
+	// so its forthcoming Create targets stay out of the status check.
 	begun, forthcoming := DispatchScope(batches, st)
 	index, err := deps.Geom.index()
 	if err != nil {
 		return RunResult{}, err
 	}
 	findings, err := index.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
-	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
-	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
-	// and is persisted immediately. Restamping only past the refusals left state.json describing the
-	// pre-rewrite bytes, and the first begin-batch then refused this run's own edit as a foreign one.
-	// See this package's doc.go. A restamp or save failure never masks err.
+	// The resolve pass canonicalizes handles and rewrites the plan on disk before it reports either a finding or an error,
+	// so the staleness re-baseline runs here, ahead of both refusals below, and is persisted immediately.
+	// Restamping after the refusals would leave state.json describing the pre-rewrite bytes,
+	// and the next run would refuse that state as a foreign edit.
+	// A restamp or save failure never masks err.
 	if rebaseErr := restampAndSaveFingerprint(deps.Geom, st); rebaseErr != nil {
 		if err == nil {
 			return RunResult{}, rebaseErr
 		}
-		// Both failed. The re-baseline failure is never allowed to MASK err — the validation
-		// verdict is what the operator asked for — but it must not be dropped either: the resolve
-		// pass has already rewritten the plan on disk, so a state.json still holding the
-		// pre-rewrite fingerprint makes the NEXT run refuse this run's own edit as a foreign one,
-		// with ErrFingerprintMismatch, whose advised recourse (--fresh) restarts into the same
-		// wall. Both are reported, in the same shape webstercli's begin-batch and record-batch
-		// already use for this exact coincidence (crucible round opus-medium-r5, R5-3).
+		// Both failed.
+		// The re-baseline failure never masks err, since the validation verdict is what the operator asked for,
+		// but it is not dropped either.
+		// The resolve pass has already rewritten the plan on disk, so a state.json still holding the
+		// pre-rewrite fingerprint makes the next run refuse this run's own edit as a foreign one,
+		// with ErrFingerprintMismatch, and the advised --fresh restarts into the same refusal.
+		// Both errors are reported.
 		err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this run had already earned failed: %v", err, rebaseErr)
 	}
 	if err != nil {
 		if errors.Is(err, planindex.ErrQuarryUnavailable) {
-			// Its own returned error, named for quarry rather than the plan — a gate that could not
-			// read the code has not found a plan defect to refuse the run over, matching
-			// internal/loomshed/planvalidate.go's producer-side disposition.
+			// The error names quarry, not the plan:
+			// a gate that could not read the code has found no plan defect to refuse the run over.
 			quarryStep := "re-run `lym webster run`"
 			if rebaselineStep != "" {
 				quarryStep = rebaselineStep
@@ -690,10 +674,10 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		}
 		return RunResult{}, blockedByAutoRebaseline(fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: %s", len(findings), strings.Join(msgs, "; "), wayForward), rebaselineStep)
 	}
-	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
-	// of both refusals, and persisted itself.
+	// The re-baseline runs once, at the resolve pass, ahead of both refusals, and persists itself.
 
-	// The fixer's gate call renders before the first archive, so a hub whose `webster-fix` key the config lacks refuses with nothing changed.
+	// The fixer's gate call renders before the first archive,
+	// so a hub whose `webster-fix` key the config lacks refuses with nothing changed.
 	gateConfig, err := deps.Geom.GateConfig()
 	if err != nil {
 		return RunResult{}, err
@@ -728,7 +712,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("webster: remove stale verify-gate report: %w", err)
 	}
 
-	// The fixer fork's prompt is Go-rendered and Go-written up front for the same reason as a batch fork's:
+	// The fixer fork's prompt is rendered and written by Go up front:
 	// Merriam may write nothing but its two contract files.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
 	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath, verifyFixGate)
@@ -766,17 +750,16 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 
 	spec := shuttleengine.Spec{
 		Prompt: string(prompt),
-		// Both output files: shuttle classifies this run done only once
-		// BOTH land, so a Master that writes outcome.yaml but never
-		// reaches its summary.md final action never falsely reads as
-		// finished.
+		// Both output files are required:
+		// shuttle classifies this run done only once both land,
+		// so a Master that writes outcome.yaml but never reaches its summary.md final action never falsely reads as finished.
 		OutputFiles:   []string{outcomePath, summaryPath},
 		ModelChoice:   choice,
 		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
-		// The Master stencil ends its turn after each backgrounded fork and backgrounded recover-batch, fix-verify and fix-plan and wakes on their completion.
+		// The Master stencil ends its turn after each backgrounded call and wakes on its completion.
 		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
-		// Master backgrounds recover-batch, fix-verify and fix-plan and recovery_timeout_min bounds each, so the wait marker leaves them out.
+		// The wait marker omits recover-batch, fix-verify and fix-plan; recovery_timeout_min bounds each.
 		AwaitedShellPrefixes: slices.Clone(masterAwaitedShellPrefixes),
 		Role:                 MerriamStrandRole,
 		Segment:              segmentcolor.Webster,
@@ -784,9 +767,9 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		Timeout:              time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}
 
-	// The state-mutation lease acquired above is held across this call, which now includes the
-	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
-	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
+	// The state-mutation lease acquired above is held across this call.
+	// It spans the provider's startup window, bounded by startup_timeout_s.
+	// At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir, verifyFixPromptPath)
 	gate := make(shuttleengine.GateSpec, 0, len(deps.Gate)+1)
 	for _, entry := range deps.Gate {
@@ -802,14 +785,13 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lym webster run`", err)
 	}
 
-	// Record and persist Master's strand GUID the instant it exists — BEFORE
-	// resolving the session ID via FindRun, which itself can fail. The
-	// entry-time reclaim is the only thing that can ever stop a still-live
-	// Master a dead run process left behind, and it keys off MasterStrand; if
-	// FindRun failed after a live pane was already spawned but before the
-	// strand was durable, that pane would be invisible to every future
-	// reclaim. Two saves, not one, keep the reclaimable record ahead of the
-	// fallible resolve.
+	// Record and persist Master's strand GUID as soon as it exists.
+	// This comes before FindRun resolves the session ID, since FindRun can fail.
+	// The entry-time reclaim is the only thing that can stop a still-live Master left behind by a dead run process,
+	// and it keys off MasterStrand.
+	// If FindRun failed after a live pane was spawned but before the strand was durable:
+	// that pane would be invisible to every future reclaim.
+	// Two saves, not one, keep the reclaimable record ahead of the fallible resolve.
 	st.MasterStrand = handle.StrandGUID()
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 		return RunResult{}, err
@@ -827,8 +809,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	// The state phase is over; release the mutation lease before blocking
-	// on Master — its own begin-batch/record-batch calls need it free.
+	// The state phase is over; release the mutation lease before blocking on Master.
+	// Master's own begin-batch and record-batch calls need the lease free.
 	_ = mutateLock.Release()
 	mutateHeld = false
 
@@ -875,13 +857,15 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 }
 
-// finishMasterDone maps a shuttle-done Master run onto its RunResult:
-// the outcome file, the verify-gate warnings, the verify-gate demotion and the background-shell warnings.
-// Every outcome that returns a RunResult (done, stuck) carries one warning per expired shell, stating the run's outcome after the demotion;
-// the summary's background-shell section stays done-only.
-// freshWarnings is the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
-// rebaselineWarning is the warning of an auto-rebaseline accepted at entry, empty when none ran:
-// it leads the warnings, opens a stuck outcome's reason after the verify-gate demotion, and a done outcome writes it into summary.md's "Plan rebaselined" section.
+// finishMasterDone maps a shuttle-done Master run onto its RunResult.
+// It maps the outcome file, applies the verify gate, and collects the run's warnings.
+// A flaky pass of the verify gate becomes a warning, and a failed gate demotes a done outcome to stuck.
+// Every outcome that returns a RunResult (done or stuck) carries one warning per expired shell.
+// The summary's background-shell section is done-only.
+// freshWarnings holds the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
+// rebaselineWarning is the warning of an auto-rebaseline accepted at entry, empty when none ran.
+// It leads the warnings, opens a stuck outcome's reason after the verify-gate demotion,
+// and a done outcome writes it into summary.md's "Plan rebaselined" section.
 func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result, freshWarnings []string, rebaselineWarning string, gateNotes *VerifyGateNotes) (RunResult, error) {
 	runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
 	if mapErr != nil {
@@ -912,7 +896,8 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 	if rebaselineWarning != "" && runResult.Outcome == outcomeStuck {
 		runResult.StuckReason = rebaselineWarning + ": " + runResult.StuckReason
 	}
-	// Each shell the run ended over is warned on every outcome that returns a RunResult, stating the outcome after the demotion.
+	// Each shell the run ended over is warned on every outcome that returns a RunResult.
+	// The warning states the outcome after the demotion.
 	shellOutcome := finishedShellOutcome(runResult)
 	for _, shell := range result.EndedShells {
 		runResult.Warnings = append(runResult.Warnings, expiredShellWarning(shell, shellOutcome))
@@ -957,11 +942,10 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		}
 		summaryTitle = summary.Title
 
-		// outcome: done is a whole-plan claim: every batch must carry a
-		// persisted terminal done record. A Master that wrote done while a
-		// batch was begun-but-never-recorded (a fork slipped past
-		// record-batch) is caught here, closing the begin-without-record leg
-		// of the two-layer bracket enforcement at run exit.
+		// outcome: done is a whole-plan claim: every batch must carry a persisted terminal done record.
+		// This closes the begin-without-record leg of the two-layer bracket enforcement at run exit.
+		// A Master that wrote done while a batch was begun but never recorded is caught here.
+		// A fork that slipped past record-batch is one such case.
 		if err := verifyEveryBatchDone(deps.Geom.WebsterDir, deps.Geom.ScratchDir, batches); err != nil {
 			return RunResult{}, err
 		}
@@ -978,9 +962,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 			outcome.StuckReason = auditStuck
 		}
 	} else if summary, err := summaryparser.Parse(summaryPath); err == nil {
-		// summary.md's content is optional on stuck: best-effort
-		// only, never a hard error, per discussion.md's summary-artifact
-		// decision.
+		// summary.md is optional on stuck: it is read best-effort and is never a hard error.
 		summaryTitle = summary.Title
 	}
 
@@ -993,7 +975,8 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}, nil
 }
 
-// batchIdentity returns b's own number/slug identity: a batch is numbered and named by its first card, so `begin-batch NN` names a batch by its first card's number.
+// batchIdentity returns the number and slug that identify b: a batch takes both from its first card.
+// So `begin-batch NN` names a batch by that card's number.
 func batchIdentity(b batcher.Batch) (number int, slug string) {
 	if len(b.Cards) == 0 {
 		return 0, ""
@@ -1011,17 +994,16 @@ func zeroBatchesError(planDir, step string) error {
 	return fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: %s", planDir, wayForward)
 }
 
-// verifyEveryBatchDone reloads the persisted state and confirms every batch
-// in batches carries a terminal record whose status is done — the
-// whole-plan invariant an outcome: done claims. A batch with no record, a
-// non-terminal record, or a terminal non-done record (stuck/dead) means
-// Master wrote done while that batch was not actually built — most
-// importantly a batch begun but never recorded (its fork slipped past
-// record-batch), which the transcript-count cross-check alone cannot catch
-// when the fork transcript exists but no record-batch consumed it. State is
-// reloaded fresh because the in-memory copy Run captured before Master
-// spawned is stale by run exit (begin/record-batch mutated it repeatedly).
-// scratchDir locates state.json's lock, which now lives outside websterDir.
+// verifyEveryBatchDone reloads the persisted state,
+// and it confirms every batch in batches carries a terminal record whose status is done.
+// That is the whole-plan invariant an outcome: done claims.
+// A batch with no record, a non-terminal record, or a terminal non-done record (stuck or dead) is an offender.
+// Each offender means Master wrote done while that batch was not built.
+// Most importantly, a batch begun but never recorded is one the transcript-count cross-check alone cannot catch.
+// Its fork transcript can exist with no record-batch consuming it.
+// State is reloaded fresh, because any copy captured before Master spawned is stale by run exit:
+// begin-batch and record-batch mutate the state repeatedly.
+// scratchDir locates the state.json lock, which lives outside websterDir.
 func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch) error {
 	st, err := LoadState(websterDir, scratchDir)
 	if err != nil {
@@ -1052,24 +1034,22 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 	return nil
 }
 
-// runExitAuditCrossCheck implements the run-exit whole-session backstop
-// behind record-batch's own per-batch incremental audit: a nil
-// result.ForkAudit on a done run of Master's ForkSubagents: true spec is
-// itself a hard error (the audit could not complete — fail loud, never
-// skipped), CheckParent/CheckFork run over the whole-session facts exactly
-// as record-batch's own incremental audit does, and the total audited
-// fork-transcript count must be >= the number of batches BeginBatch
-// recorded with Kind: "fork" under THIS Master session (see
-// countBegunForkBatches — a prior crashed session's batches are outside the
-// current session's audit by construction) — a shortfall means a batch was
-// recorded without its fork surviving audit;
-// both stay errors.
+// runExitAuditCrossCheck is the run-exit backstop for a done outcome on a fork-authorized Master spawn.
+// A nil result.ForkAudit is a hard error, since the whole-session audit did not complete and is never skipped.
+// It runs CheckParent and CheckFork over the whole-session facts.
+// The audited fork-transcript count must be at least the number of batches begun with Kind `fork` in this Master session.
+// Batches begun by an earlier, crashed session are outside this audit.
+// A shortfall means a batch was recorded without its fork surviving the audit, and is an error.
 //
-// Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped, because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
-// A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.
-// A correctness finding nobody dispositioned yields stuckReason, which names each finding once with the reason an uncheckable path cannot be checked, and the numbered way forward pendingFindingsText builds;
-// it is recorded in State.PendingAuditFindings, not dispositioned, and blocks run entry until AcceptPendingAudit clears it.
-// The outcome file stays on disk for diagnosis (Run never removes it).
+// Findings already held in the state's ledger are dropped.
+// The whole-session audit repeats findings that earlier batch checks already warned on or failed a batch for.
+// A policy finding nobody dispositioned becomes a run-level warning.
+// The warning is saved to state.json before the lease is released, and its text is returned in warnings.
+// A correctness finding nobody dispositioned yields stuckReason.
+// It names each finding once, with the reason its path is uncheckable, and the numbered way forward.
+// Each finding is recorded in State.PendingAuditFindings, not dispositioned,
+// and it blocks run entry until AcceptPendingAudit clears it.
+// The outcome file stays on disk for diagnosis; it is never removed.
 func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
 	if result.ForkAudit == nil {
 		return nil, "", fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped%s", runExitWayForward)
@@ -1189,13 +1169,15 @@ func hasPendingFinding(st *State, id string) bool {
 	return false
 }
 
-// ErrBatchDeadEnd is the sentinel Run returns while a recorded batch is at a dead end, one Master's failure ladder would only end the run stuck on.
+// ErrBatchDeadEnd is the sentinel returned while a recorded batch is at a dead end:
+// a state that Master's failure ladder could only end the run stuck on.
 var ErrBatchDeadEnd = errors.New("webster: a batch of this run is at a dead end")
 
-// deadEndBatchError returns ErrBatchDeadEnd wrapped with the first batch, in execution order, whose record is a dead end, or nil when none is.
-// A dead end is a terminal batch not done whose recoveries are spent and that holds no amendment a spawn has not rendered,
-// or a dead recovery that earns no retry (RecoveryRetry) and holds no such amendment.
-// The text depends only on the batch's record and the tree, so a re-entry over an unchanged run refuses with the same text.
+// deadEndBatchError returns ErrBatchDeadEnd wrapped with the first batch, in execution order, whose record is a dead end.
+// It returns nil when no batch is one.
+// A dead end is a terminal batch that is not done, whose recoveries are spent, and that holds no amendment a spawn has not rendered;
+// or a dead recovery that earns no retry (`RecoveryRetry`) and holds no such amendment.
+// The text depends only on the batch's record and the tree, so an unchanged run refuses with the same text on re-entry.
 // A git read that fails while judging a dead recovery returns a plain error naming a re-run, never a dead end.
 func deadEndBatchError(geom Geometry, st *State, batches []batcher.Batch, reentry string) error {
 	for _, b := range batches {
@@ -1226,11 +1208,12 @@ func deadEndBatchError(geom Geometry, st *State, batches []batcher.Batch, reentr
 	return nil
 }
 
-// ErrPendingAuditFindings is the sentinel Run returns while run-exit correctness findings are pending.
+// ErrPendingAuditFindings is the sentinel returned while run-exit correctness findings are pending.
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
-// pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending findings clause and the way forward pendingFindingsText builds.
-// The way forward is judged over the write history engines' audit of st's sessions yields, and ends in reentry on the accept-audit route.
+// pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending findings clause and the numbered way forward.
+// The way forward is judged over the write history that the engines' audit of st's sessions yields,
+// and it ends in reentry on the accept-audit route.
 func pendingAuditFindingsError(engines AuditEngines, st *State, geom Geometry, reentry string) error {
 	items := make([]findingItem, len(st.PendingAuditFindings))
 	for i, f := range st.PendingAuditFindings {
@@ -1243,7 +1226,7 @@ func pendingAuditFindingsError(engines AuditEngines, st *State, geom Geometry, r
 	return fmt.Errorf("%w: %s; %s", ErrPendingAuditFindings, clause, wayForward)
 }
 
-// pendingFindingsText renders the findings clause and the way forward for items, the text a run-exit stuck reason and the pending-findings refusal share.
+// pendingFindingsText renders the findings clause and the way forward for items.
 // The write history is loaded only when a path is a contract file.
 // The error is a link-resolution, engine-resolution, audit or git probe failure.
 func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
@@ -1268,12 +1251,16 @@ func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items [
 	return findingsClause(items, notes), wayForwardSteps(steps...), nil
 }
 
-// pendingPathsWayForward returns the ordered steps that clear pending findings naming paths, and each path's note for the findings clause.
-// A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through the reset route,
-// so the steps are then the reset to start, then reentry:
+// pendingPathsWayForward returns the ordered steps that clear pending findings naming paths.
+// It also returns each path's note for the findings clause.
+// A finding with no path clears only through the reset route.
+// So does a finding with a path that nothing the run recorded can check, unless the path is a cleared contract file.
+// The steps are then the reset to start, then reentry;
 // accept-audit refuses every finding while any one of them cannot be checked.
-// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork, recovery or verify-fixer session wrote last),
-// then accept-audit, then reentry.
+// Otherwise the steps are the restores, then accept-audit, then reentry.
+// The restores are: git checkout of the differing tracked paths to the last batch head;
+// restore-plan for plan paths that differ;
+// rm for a contract path that a fork, recovery or verify-fixer session wrote last.
 // The error is a link-resolution or git probe failure.
 func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {
 	notes = map[string]string{}
@@ -1335,19 +1322,22 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	return append(steps, stepAcceptAudit, reentry), notes, nil
 }
 
-// freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
+// freshPendingDrop decides whether opts.Fresh discards st's pending audit findings.
+// It returns one warning per dropped finding.
 // It refuses with ErrPendingAuditFindings, before anything is archived, in three cases:
 // a suspect path outside the plan directory still differs from the run's start commit;
 // the worktree's HEAD is not the start commit, so an unaudited commit would become the new run's base;
-// a plan path differs from the plan the run recorded and restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
+// a plan path differs from the plan the run recorded and restore-plan can undo that:
+// either because the store holds the recorded copy or because the file was never recorded.
 // The start commit is picked by git ancestry,
 // and a recorded commit missing from the repository refuses with the fetch way forward.
-// The HEAD refusal comes before the path checks, which checkPendingFindings runs against the start commit.
+// The HEAD refusal comes before the path checks, which run against the start commit.
 // When no batch recorded a start, the worktree's HEAD stands in for it.
-// When starts are recorded but none is an ancestor of all the others, HEAD stands in only while it is an ancestor of every recorded start (headBeforeEveryStart).
-// An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
-// since no verb could restore the last;
-// its warning says so.
+// When starts are recorded but none is an ancestor of all the others:
+// HEAD stands in only while it is an ancestor of every recorded start.
+// Three kinds of finding are dropped with the archived state, since no verb could restore the last:
+// an unverifiable path, a pathless finding, or a differing plan path whose recorded copy is missing from the store.
+// Each such drop's warning says so.
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
 func freshPendingDrop(engines AuditEngines, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
@@ -1424,13 +1414,11 @@ func appendRecordedAuditWarnings(deps RunDeps, batches []batcher.Batch, summaryP
 	return AppendAuditWarnings(deps.Geom.WebsterDir, recorded)
 }
 
-// accumulatedCardSHAs walks batches in execution order and collects every
-// terminal batch's own CardSHAs alongside a matching "NN-slug" label — the
-// ordered per-card SHA trail and parallel label set cardHint reads to name
-// the cards that touched a failing package. A batch with no persisted record (should never
-// happen once verifyEveryBatchDone has already confirmed every batch is
-// terminal-done, but handled defensively rather than assumed) contributes
-// nothing.
+// accumulatedCardSHAs walks batches in execution order and collects the CardSHAs of every terminal batch.
+// Each SHA gets a matching "NN-slug" label.
+// The two slices run in parallel: they let a failure name the cards that touched a failing package.
+// A batch with no persisted record contributes nothing;
+// the case should not arise once every batch is confirmed terminal-done, so it is handled rather than assumed.
 func accumulatedCardSHAs(batches []batcher.Batch, st *State) (shas, labels []string) {
 	for _, b := range batches {
 		number, slug := batchIdentity(b)

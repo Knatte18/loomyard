@@ -1,14 +1,10 @@
-// add_rollback_adopt_test.go proves Add's rollback never deletes a
-// pre-existing (adopted) weft branch: when Add merely adopted an existing
-// <slug>-weft branch and then failed at a later step, the rollback must tear
-// down only the worktree Add created — the branch, and any unpushed history
-// it carries, survives. A live review round reproduced the pre-fix behavior
-// (branch and its unique commit destroyed after a warp-push failure), so this
-// test injects a deterministic post-adopt failure (a launcher blocker directory) instead of a network failure.
+// add_rollback_adopt_test.go proves that Add's rollback never deletes a pre-existing (adopted) weft branch.
+// When Add adopts an existing <slug>-weft branch and then fails at a later step:
+// the rollback tears down only the worktree Add created; the branch, and any unpushed history it carries, survives.
+// This test injects a deterministic post-adopt failure, a launcher blocker directory, instead of a network failure.
 //
-// Package fabricengine_test to reuse the external-test-package fixture idiom
-// of lifecycle_differential_test.go; shares the single TestMain in
-// testmain_test.go.
+// Package fabricengine_test, reusing the external-test-package fixture idiom of lifecycle_differential_test.go;
+// it shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -27,10 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// mustRecordsRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
-// any error — the shared test-package helper for the many call sites across
-// this package's tests that need the weft prime worktree path, now that it is
-// a fabricengine-owned resolution rather than a Layout method.
+// mustRecordsRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on any error.
+// The many call sites across this package's tests use it to get the weft prime worktree path.
 func mustRecordsRepoRoot(t *testing.T, l *lymcwd.Location) string {
 	t.Helper()
 
@@ -41,7 +35,8 @@ func mustRecordsRepoRoot(t *testing.T, l *lymcwd.Location) string {
 	return root
 }
 
-// refuseRecordsCommits points l's records repository at a hooks directory whose pre-commit hook refuses every commit, so Add fails at its origin-record commit, the last step that can fail after the pair is wired.
+// refuseRecordsCommits points l's records repository at a hooks directory whose pre-commit hook refuses every commit;
+// so Add fails at its origin-record commit, the last step that can fail after the pair is wired.
 func refuseRecordsCommits(t *testing.T, l *lymcwd.Location) {
 	t.Helper()
 
@@ -52,7 +47,8 @@ func refuseRecordsCommits(t *testing.T, l *lymcwd.Location) {
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "config", "core.hooksPath", hooks)
 }
 
-// plantLauncherBlocker plants a directory at the pair's ide launcher script path, so Add fails writing the launcher scripts after the pair's worktrees and weft branch exist.
+// plantLauncherBlocker plants a directory at the pair's ide launcher script path;
+// so Add fails writing the launcher scripts after the pair's worktrees and weft branch exist.
 // The rollback's launcher teardown removes the planted directory and the launcher directory.
 // It returns the planted path.
 func plantLauncherBlocker(tb testing.TB, l *lymcwd.Location, slug string) string {
@@ -70,32 +66,30 @@ func plantLauncherBlocker(tb testing.TB, l *lymcwd.Location, slug string) string
 }
 
 // TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying a unique commit,
-// forces Add to fail after adopting it, and asserts the rollback removed the weft worktree but left
-// the branch — still pointing at the unique commit — untouched, alongside the usual zero warp-side
-// residue.
+// forces Add to fail after adopting it, and asserts the rollback removes only the weft worktree.
+// The branch stays at that unique commit, and no warp-side residue is left.
 func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "adopt-rollback-keep"
-	// hubforge.NewHub's CloneAndWire already produces exactly the real-hub shape the old fixture
-	// used to hand-assemble here: the weft primary checked out on the suffixed sibling of the warp's
-	// branch, a real Bolt checkout worktree the gate's ownedManagedBranch/primaryWeftBranch read succeeds
-	// against, and the repo-wide fabric.yaml Add's eager RepoWiredNames load needs — so none of that
-	// scaffolding is seeded by hand any more.
+	// The hub from hubforge.CopyHub already has the real-hub shape this test needs:
+	// the weft primary is checked out on the suffixed sibling of the warp's branch;
+	// a real Bolt checkout worktree is in place for the gate's ownedManagedBranch/primaryWeftBranch reads;
+	// and the repo-wide fabric.yaml is present for Add's eager RepoWiredNames load.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
-	// Pre-create the weft branch with a unique commit that predates the Add —
-	// the history the rollback must not destroy. The seeding worktree is
-	// removed again so the branch is free for Add to adopt.
+	// Pre-create the weft branch with a unique commit that predates the Add;
+	// the rollback must not destroy that history.
+	// The seeding worktree is removed again, so Add can adopt the branch.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
-	// Inject a deterministic failure AFTER the adopt:
+	// Inject a deterministic failure after the adopt:
 	// a directory at the ide launcher script path makes writeLaunchers fail, triggering rollback.
 	plantLauncherBlocker(t, l, slug)
 
@@ -115,8 +109,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
 
-	// Everything Add itself created is rolled back: no weft worktree dir, no
-	// warp worktree dir, no warp branch.
+	// Everything Add itself created is rolled back:
+	// no weft worktree dir, no warp worktree dir, no warp branch.
 	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 	}
@@ -128,7 +122,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 }
 
-// TestAddRollback_LiveWeftFromOrigin forces Add to fail after it took a live pair's weft branch from origin, and asserts the rollback leaves origin untouched:
+// TestAddRollback_LiveWeftFromOrigin forces Add to fail after it took a live pair's weft branch from origin.
+// It asserts that the rollback leaves origin untouched:
 // a local branch Add created from origin is deleted,
 // and a pre-existing local branch Add fast-forwarded stays at origin's tip, not rewound.
 func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
@@ -158,7 +153,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			clone := t.TempDir()
 			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
-			// The branch records its anchor, as a live pair's does, so adopting it commits nothing of its own that the rollback would leave on top of origin's tip.
+			// The branch records its anchor, so adopting it commits nothing the rollback would leave on top of origin's tip.
 			gitkit.CommitFile(t, clone, lymcwd.AnchorFileName, l.AnchorRel+"\n", "record the anchor")
 			gitkit.CommitFile(t, clone, "first.txt", "first\n", "first origin work")
 			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
@@ -196,7 +191,8 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 	}
 }
 
-// TestAddRollback_WarpBranchDeletedUnderEmptyPrefix pins that under the DEFAULT empty branch_prefix the rollback deletes the bare-slug warp branch this Add created, together with the worktree pair.
+// TestAddRollback_WarpBranchDeletedUnderEmptyPrefix pins the empty branch_prefix case:
+// the rollback deletes the bare-slug warp branch Add created, together with the worktree pair.
 func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -206,7 +202,8 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	l := h.Location
 
 	// Inject a deterministic post-creation failure:
-	// a directory at the ide launcher script path makes writeLaunchers fail after the warp worktree and its branch already exist, triggering rollbackAdd.
+	// a directory at the ide launcher script path makes writeLaunchers fail after the warp worktree and its branch exist.
+	// That triggers rollbackAdd.
 	plantLauncherBlocker(t, l, slug)
 
 	// Default empty branch_prefix: the warp branch is exactly the bare slug.
@@ -228,7 +225,9 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	}
 }
 
-// TestAddRollback_FinishesRefilledWeftWorktree forces Add to fail after its weft worktree exists, has a late writer refill that directory after the rollback's clean `git worktree remove`, and asserts the rollback still deletes it.
+// TestAddRollback_FinishesRefilledWeftWorktree forces Add to fail after its weft worktree exists.
+// A late writer refills that directory after the rollback's clean `git worktree remove`,
+// and the rollback must still delete it.
 func TestAddRollback_FinishesRefilledWeftWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -268,7 +267,9 @@ func TestAddRollback_FinishesRefilledWeftWorktree(t *testing.T) {
 	}
 }
 
-// TestAddRollback_AdoptedWarpBranchLocalCopyDeleted forces Add to fail after it adopted a live pair's warp branch from origin, and asserts the rollback deletes the local copy and leaves origin's branch untouched.
+// TestAddRollback_AdoptedWarpBranchLocalCopyDeleted forces Add to fail after it adopted a warp branch:
+// a live pair's branch taken from origin.
+// It asserts the rollback deletes the local copy and leaves origin's branch untouched.
 func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -294,10 +295,9 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	}
 }
 
-// TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new worktree's warp junctions
-// wired immediately: card 20 folds WireJunctions into Add's step 10b (after writeLaunchers, before
-// the warp push), so no dormant state and no separate `lym init` step is needed for the pair to be
-// usable.
+// TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new worktree's warp junctions wired immediately.
+// Add wires them in step 10b, after writeLaunchers and before the warp push.
+// The pair is usable at once: no dormant state and no separate `lym init` step.
 // Asserts both the repo-wide default junctions (_lym and _extra) resolve to their paired weft
 // directories.
 //
@@ -342,27 +342,22 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	}
 }
 
-// TestAddRollback_UnwiresJunctionsOnPostWiringFailure covers card 21: rollbackAdd must remove the
-// warp junctions Add's step 10b wired when a later step (the warp push) fails, while still
-// preserving an adopted pre-existing weft branch exactly as
-// TestAddRollback_AdoptedWeftBranchSurvives does.
-// Reuses that test's adopt fixture,
-// but injects the failure via a refused records commit instead of a portal blocker so the
-// failure lands AFTER wiring (step 10b) rather than before it (step 9) — otherwise the junctions
-// would never have been wired and this test would prove nothing.
+// TestAddRollback_UnwiresJunctionsOnPostWiringFailure checks two things.
+// rollbackAdd removes the warp junctions Add wired in step 10b when a later step fails,
+// and it keeps an adopted pre-existing weft branch.
+// It reuses the adopt fixture and fails step 10c by refusing records commits.
+// The failure must land after wiring: earlier, the junctions would never be wired and the test would prove nothing.
 func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "adopt-rollback-unwire"
-	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: hubforge.NewHub's CloneAndWire
-	// already produces the real-hub shape this fixture used to hand-assemble.
+	// hubforge.NewHub's CloneAndWire already produces the real-hub shape, so no part of the fixture is hand-assembled.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
-	// Pre-create the weft branch with a unique commit that predates the Add,
-	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
+	// Pre-create the weft branch with a unique commit that predates the Add.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
@@ -396,7 +391,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		}
 	}
 
-	// The adopted branch still survives the rollback, exactly as the launcher-blocker variant of this scenario asserts.
+	// The adopted branch survives the rollback.
 	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
@@ -421,10 +416,8 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 // TestAdd_GitFailureCarriesGitsOwnReason pins that a git failure inside Add reaches the operator
 // with git's explanation attached, not a bare exit code and not a claim about cwd.
 //
-// Six paths in Add used to answer every RunGit failure with "cwd is not a valid git worktree" — a
-// claim Add's own first status probe had already disproved — and the paths that did name the
-// operation reported only "(git exit %d)". A live round watched two simultaneous `lym fabric add`
-// calls for one slug report "failed (git exit 255)" with git's actual reason discarded.
+// Every RunGit failure in Add names its operation and carries git's output.
+// A message with only an exit code, or one that blames the cwd, hides the cause.
 func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -19,7 +19,7 @@ func TestResolveSender(t *testing.T) {
 	)
 	live := func(name string, pid int) Strand { return Strand{Name: name, Live: true, PanePID: pid} }
 	strands := []Strand{live(alpha, 100), live(beta, 200), live(orch, 300)}
-	// ancestry maps a process to its parent: 1001 and 1002 sit under alpha's pane, 3001 under the orch's, 5000 under no pane.
+	// ancestry maps a process to its parent: 1001 sits under alpha's pane, 3001 under the orch's, 5000 under no pane.
 	ancestry := map[int]int{1001: 1000, 1000: 100, 100: 10, 3001: 300, 300: 10, 5000: 4000, 4000: 1}
 	parentPID := func(pid int) (int, bool) {
 		parent, ok := ancestry[pid]
@@ -75,7 +75,9 @@ func TestResolveSender(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("resolveSender = %+v, %v; want an error containing %q", got, err, tt.wantErr)
 				}
-				// Only the refusal of a claim from a process in no pane wraps the first sentinel and only the refusal of a program claim from a non-orch pane wraps the second: the other-pane and unknown-pane-process refusals wrap neither.
+				// Only the refusal of a claim from a process in no pane wraps the first sentinel.
+				// Only the refusal of a program claim from a non-orch pane wraps the second.
+				// The other-pane and unknown-pane-process refusals wrap neither.
 				outside := strings.Contains(tt.wantErr, "runs in no strand pane")
 				if got := errors.Is(err, ErrStrandClaimOutsidePane); got != outside {
 					t.Errorf("errors.Is(%v, ErrStrandClaimOutsidePane) = %v; want %v", err, got, outside)

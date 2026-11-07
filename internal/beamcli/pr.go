@@ -1,4 +1,6 @@
-// pr.go is the "lym beam pr open", "update", "status" and "close" sequences: thin verbs over the pull request from a beam's branch into its parent, which the beam's orch runs so it never runs gh by hand.
+// pr.go holds the "lym beam pr open", "update", "status" and "close" sequences.
+// They are thin verbs over the pull request from a beam's branch into its parent.
+// The beam's orch runs them so it never runs gh by hand.
 
 package beamcli
 
@@ -15,20 +17,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 )
 
-// The parent pull_request modes prClose reports a beam's follow-up by.
+// The pull_request modes a beam's parent reports its follow-up by.
 const (
 	parentModeRequired = "required"
 	parentModeMerge    = "merge"
 )
 
-// The comments prClose leaves on a pull request it closes.
+// The comments left on a pull request when a beam closes it.
 const (
 	closeOnlyComment              = "Closed by the beam's orch; the beam's work stays on its branch."
 	landWithoutPullRequestComment = "Closed because the operator chose to land the beam without a pull request."
 )
 
 // beamPullRequestSide holds what a pull request verb needs of the beam's pair.
-// API is nil when Origin lacks a fact a pull request needs, or when the API could not be opened, whose cause APIErr holds; a verb that calls API checks requireOrigin first.
+// API is nil when Origin lacks a fact a pull request needs, or when the API could not be opened;
+// APIErr holds the cause in that case. A verb that calls API checks the origin first.
 // Branch is the beam pair's branch and ParentBranch the branch it lands on.
 type beamPullRequestSide struct {
 	API          pullrequest.API
@@ -38,9 +41,13 @@ type beamPullRequestSide struct {
 	ParentBranch string
 }
 
-// prOpen opens the pull request from the beam slug's branch into its parent, or brings the one its landing record names to an open state, and returns what it did.
-// A recorded pull request GitHub reports open changes nothing but commits the landing directory, a closed one is reopened and a merged one is left for Finalize.
-// With none recorded it pushes the beam branch, finds an open pull request from it or creates one with the description's text, and records the pull request with the pushed head.
+// prOpen opens the pull request from the beam slug's branch into its parent.
+// When the landing record already names one, it brings that one to an open state.
+// It returns what it did.
+// A recorded pull request GitHub reports open changes nothing but commits the landing directory.
+// A closed one is reopened, and a merged one is left for Finalize.
+// With none recorded, it pushes the beam branch and finds an open pull request from it.
+// It creates one with the description's text when there is none, and records the pull request with the pushed head.
 func prOpen(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr open"
 	if err := judgePullRequestVerb(deps, verb, slug); err != nil {
@@ -139,7 +146,8 @@ func openRecorded(ctx context.Context, deps landDeps, side beamPullRequestSide, 
 	return result, nil
 }
 
-// prUpdate pushes the beam branch and sets the title and body of the recorded pull request from the change description, marks a draft ready for review and records the pushed head.
+// prUpdate pushes the beam branch and sets the recorded pull request's title and body from the change description.
+// It marks a draft ready for review and records the pushed head.
 func prUpdate(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr update"
 	if err := judgePullRequestVerb(deps, verb, slug); err != nil {
@@ -193,7 +201,10 @@ func prUpdate(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 	}, nil
 }
 
-// judgePullRequestVerb runs the refusals every pull request verb shares, in order: the entry is an open beam with its pair here, no other machine owns the beam or its parent, the beam's run is at Beam-Await and its ready record does not stand.
+// judgePullRequestVerb runs the refusals every pull request verb shares, in order.
+// It refuses unless the entry is an open beam with its pair here;
+// no other machine owns the beam or its parent;
+// and the beam's run is at Beam-Await, and its ready record does not stand.
 func judgePullRequestVerb(deps landDeps, verb, slug string) error {
 	here, err := deps.Machine()
 	if err != nil {
@@ -215,7 +226,8 @@ func judgePullRequestVerb(deps landDeps, verb, slug string) error {
 	return judgeNotReady(deps, verb, slug)
 }
 
-// requireOrigin refuses a side whose origin lacks a fact a pull request needs, naming the fact, and one whose API could not be opened, naming the cause.
+// requireOrigin refuses a side whose origin lacks a fact a pull request needs, and names the fact.
+// A side whose API could not be opened is refused with its cause named.
 func requireOrigin(verb, slug string, side beamPullRequestSide) error {
 	if missing := landingshed.OriginMissing(side.Origin); missing != "" {
 		return fmt.Errorf("%s: no pull request is possible for the beam %s: %s; way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run `%s %s` again, or land without a pull request with `lym beam ready %s`", verb, slug, missing, verb, slug, slug)
@@ -226,7 +238,8 @@ func requireOrigin(verb, slug string, side beamPullRequestSide) error {
 	return nil
 }
 
-// markReadyForReview turns the pull request number from a draft into one ready for review and leaves a pull request that is no draft as it is.
+// markReadyForReview turns the pull request number from a draft into one ready for review.
+// It leaves a pull request that is not a draft as it is.
 func markReadyForReview(ctx context.Context, side beamPullRequestSide, number int) error {
 	status, err := side.API.Status(ctx, number)
 	if err != nil {
@@ -238,18 +251,24 @@ func markReadyForReview(ctx context.Context, side beamPullRequestSide, number in
 	return side.API.SetDraft(ctx, number, false)
 }
 
-// rerunRefusal words the refusal of a failed step of verb: the step and its cause, and the way forward of fixing the cause and running verb again.
+// rerunRefusal words the refusal of a failed step of verb.
+// The message names the step and its cause, then the way forward: fix the cause and run the same verb for slug again.
 func rerunRefusal(verb, slug, step string, err error) error {
 	return fmt.Errorf("%s: %s: %w; way forward: fix the cause it names, then run `%s %s` again", verb, step, err, verb, slug)
 }
 
-// pullRequestFollowUp names what the orch does once the pull request stands.
+// pullRequestFollowUp names the next steps once the pull request stands.
+// The operator reviews it.
+// After a change, the beam is described and the pull request is updated;
+// when the operator says so, it is marked ready.
 func pullRequestFollowUp(slug string) string {
 	return fmt.Sprintf("review the pull request with the operator; after a change run `lym beam describe %s` and `lym beam pr update %s`, and run `lym beam ready %s` when the operator says so", slug, slug, slug)
 }
 
-// prStatus reads the pull request the beam slug's landing record names and reports whether GitHub would merge it now and what stops it, and changes nothing.
-// It answers at any row up to Beam-Down; with none recorded it says so and names what decides the landing's pull request at the row the run stands at.
+// prStatus reads the pull request the beam slug's landing record names.
+// It reports whether GitHub would merge it now and what stops it, and it changes nothing.
+// It answers at any row up to Beam-Down.
+// With none recorded, it says so and names what decides the landing's pull request at the row the run stands at.
 func prStatus(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr status"
 	owners, err := deps.ReadOwners()
@@ -317,10 +336,14 @@ func prStatus(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 	return result, nil
 }
 
-// prClose closes the pull request the beam slug's landing record names, with one comment, and drops it from the record, so the beam lands without it.
-// An open pull request is closed; one GitHub reports closed or merged is only dropped.
-// The comment says the operator chose to land without a pull request when the landing decision for the beam, with none recorded, is a no, and only closes otherwise.
-// A failed read of the parent's mode or of the beam's commits still closes and drops, with the close-only comment, and reports the read's error.
+// prClose closes the pull request the beam slug's landing record names, with one comment.
+// It then drops the pull request from the record, so the beam lands without it.
+// An open pull request is closed; one that GitHub reports as closed or merged is only dropped.
+// The landing decision for a beam with no pull request chooses the comment.
+// When it is no, the comment says the operator chose to land without a pull request;
+// otherwise it is the close-only comment.
+// A failed read of the parent's mode or of the beam's commits still closes and drops, with the close-only comment.
+// The read's error is named in the way forward.
 func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr close"
 	if err := judgePullRequestVerb(deps, verb, slug); err != nil {
@@ -386,8 +409,12 @@ func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, e
 	}, nil
 }
 
-// closeFollowUp names what follows a dropped pull request for a beam whose landing decision, with none recorded, is wantsPullRequest under the parent mode mode.
-// A merge parent's Finalize opens its own pull request; any other yes is a required parent or GitHub's rules, which `lym beam ready` refuses until one is recorded again.
+// closeFollowUp names what follows a dropped pull request.
+// The caller passes whether the beam's landing decision, with no pull request recorded, still wants one.
+// It also passes the parent's pull request mode.
+// A merge parent's Finalize opens its own pull request.
+// Any other wanted pull request comes from a required parent or GitHub's rules,
+// and `lym beam ready` refuses until one is recorded again.
 func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 	switch {
 	case !wantsPullRequest:
@@ -403,9 +430,12 @@ func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 	}
 }
 
-// parentRuleRequired reports whether GitHub's rules for parentBranch require a pull request, reading them through the API open returns for the repository origin names.
-// An origin lacking a fact a pull request needs reads as no rule with no call.
-// A cancelled context and a transient failure are returned; an unusable token and any other failure read as no rule with one warning, so every parent mode is then decided by beam.yaml alone.
+// parentRuleRequired reports whether GitHub's rules for parentBranch require a pull request.
+// It reads the rules through the API that open returns for the origin's URL.
+// An origin missing a fact that a pull request needs reads as no rule, with no call made.
+// A cancelled context and a transient failure are returned.
+// An unusable token and any other failure read as no rule, with one warning,
+// so every parent mode is then decided by beam.yaml alone.
 func parentRuleRequired(ctx context.Context, origin landingshed.Origin, parentBranch string, open func(originURL string) (pullrequest.API, error)) (bool, error) {
 	if landingshed.OriginMissing(origin) != "" {
 		return false, nil

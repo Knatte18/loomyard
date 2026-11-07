@@ -31,7 +31,8 @@ type Config struct {
 }
 
 // ConfigSpec returns the heddle module's layered-load spec.
-// The module is hub-wide, and its one key changes what every worktree of the hub renders, so the local layer refuses it.
+// The module is hub-wide: its keys change what every worktree of the hub renders,
+// so the local layer refuses them.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,

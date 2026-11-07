@@ -1,9 +1,7 @@
-// server_test.go verifies ServerName's determinism, socket-safety, and per-hub uniqueness,
-// SessionName's worktree-slug derivation, and validateToldTmuxIdentity's refusal of a told identity
-// tmux could not spend verbatim.
-// ServerName is the SINGLE derivation of the -L socket key: hubgeom.ReedGeometry calls it to fill
-// Geometry.SocketKey, and Engine.Socket returns that field verbatim, so there is no second
-// spelling here to cross-check it against.
+// server_test.go tests the names reed hands tmux.
+// It covers the -L socket key from ServerName, the session name from SessionName,
+// and the refusal by validateToldTmuxIdentity of a told identity that tmux could not use verbatim.
+// ServerName is the only derivation of the socket key, so these tests do not re-derive it.
 
 package reedengine
 
@@ -20,17 +18,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// socketUnsafeChars matches the characters ServerName must never
-// produce: ':', '/', '\', and space, all of which are unsafe in a tmux -L
-// socket argument.
-// '/' joined the set with the R2 review's R2-F3: tmux resolves -L as a filename under its per-user
-// socket directory, so a separator in the key names a path whose parent does not exist — and tmux
-// answers that with a stderr line and exit 0, which no reed probe can tell apart from a slow boot.
+// socketUnsafeChars matches the characters ServerName must never produce: ':', '/', '\', and space.
+// All of them are unsafe in a tmux -L socket argument.
+// '/' is in the set because tmux resolves -L as a filename under its per-user socket directory,
+// so a separator in the key names a path whose parent does not exist.
+// tmux answers that with a stderr line and exit 0, which no reed probe can tell apart from a slow boot.
 var socketUnsafeChars = regexp.MustCompile(`[:/\\ ]`)
 
 // TestServerName runs the properties ServerName promises, each a named step below:
-// determinism, socket-safe characters (a hub at the filesystem root included), a bounded length for a long hub basename,
-// distinct keys for distinct hubs, and the readable prefix plus 8-hex hash shape.
+// determinism; socket-safe characters, a hub at the filesystem root included; a bounded length for a long hub basename;
+// distinct keys for distinct hubs; and the readable prefix plus 8-hex hash shape.
 func TestServerName(t *testing.T) {
 	tiergate.Require(t, 0)
 	steps := []struct {
@@ -66,12 +63,11 @@ func serverNameSocketSafe(t *testing.T) {
 	}
 }
 
-// serverNameSocketSafeForAHubAtTheFilesystemRoot is the regression guard for the R2 review's
-// R2-F3: a git worktree one level under the filesystem root — a container's /workspace or /app —
-// resolves its hub to "/", and filepath.Base("/") is "/", so ServerName used to emit a key
-// containing a path separator that tmux cannot create a socket for (and does not report as a
-// failure). The hash half is asserted intact alongside, since substitution must not change hub
-// identity.
+// serverNameSocketSafeForAHubAtTheFilesystemRoot guards a hub whose basename is the filesystem root.
+// A git worktree one level under the filesystem root (a container's /workspace or /app) resolves its hub to "/".
+// ServerName must not emit a key with a path separator:
+// tmux cannot create a socket for it, and it does not report the failure.
+// The hash half is asserted intact too, since substitution must not change hub identity.
 func serverNameSocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	root := string(filepath.Separator)
 
@@ -84,25 +80,19 @@ func serverNameSocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	}
 }
 
-// serverNameBoundedForALongHubBasename is the regression guard for the R4 review's R4-F2: the
-// readable half of the key was unbounded, so a long hub directory name produced a -L key whose
-// socket path could not fit sockaddr_un's 108-byte sun_path. Measured live on tmux 3.6 with the
-// default "/tmp/tmux-<uid>/": a 92-byte key works, a 93-byte one fails "(File name too long)" on
-// every invocation and the hub cannot be booted at all.
-// Two distinct long-named hubs are asserted apart alongside the bound, since truncation must not
-// change hub identity any more than the separator substitution above does.
+// serverNameBoundedForALongHubBasename guards the length of the readable half of the key.
+// An unbounded half let a long hub name make a -L key whose socket path overflows sockaddr_un's 108-byte sun_path.
+// Measured on tmux 3.6 with the default "/tmp/tmux-<uid>/" directory, a 92-byte key works,
+// and a 93-byte key fails with "(File name too long)" on every invocation, so the hub cannot boot.
+// Two distinct long-named hubs are asserted apart too, since truncation must not change hub identity.
 func serverNameBoundedForALongHubBasename(t *testing.T) {
 	longBase := strings.Repeat("h", 200) + "-LYMHUB"
 	parent := t.TempDir()
 
 	got := ServerName(filepath.Join(parent, longBase))
-	// The measured ceiling is 92 for the default socket directory; the bound
-	// asserted here is the one the cap actually promises, with headroom for a
-	// longer TMUX_TMPDIR.
-	// maxSocketSafeBaseBytes caps the readable half regardless of the suffix's
-	// length, and this basename is already far past the cap before the suffix
-	// is even considered, so the four extra bytes the -HUB -> -LYMHUB rename
-	// adds change nothing about this bound.
+	// The bound asserted here is the one maxSocketSafeBaseBytes promises, with headroom for a longer TMUX_TMPDIR.
+	// The cap applies whatever the suffix's length.
+	// This basename is already far past the cap before the suffix is considered.
 	const wantAtMost = maxSocketSafeBaseBytes + len("lym-") + len("-") + 8
 	if len(got) > wantAtMost {
 		t.Errorf("ServerName(<200-char hub basename>) = %q (%d bytes); want at most %d — tmux cannot open a socket for an over-long key", got, len(got), wantAtMost)
@@ -186,18 +176,15 @@ func TestSessionName_IsWorktreeBasename(t *testing.T) {
 	}
 }
 
-// TestValidateToldTmuxIdentity_SessionName is the regression guard for the R2 review's BLOCKING
-// finding, the R3 review's R3-F1, and the R4 review's R4-F1 — tmux's three session-name rewrite
-// classes: a worktree directory whose name carries '.' or ':' produced a session name tmux silently
-// rewrote to '_'; one carrying '\' produces a name tmux silently DOUBLES ("bs\slash" becomes
-// "bs\\slash"); and one carrying an ASCII control character, DEL, or an invalid-UTF-8 byte produces
-// a name tmux silently vis-encodes into a multi-character escape (TAB becomes the two literal
-// characters `\t`; all verified live, tmux 3.6) — so the boot loop polled
-// an exact "=<name>" target that could never match, timed out after 20s with a message naming no
-// cause, and left the rewritten session running on the shared per-hub server where no reed verb
-// could address or tear it down.
-// Each rewritten character class is asserted individually rather than as one combined case, so a
-// fix that catches only some of them fails here instead of passing.
+// TestValidateToldTmuxIdentity_SessionName covers the three ways tmux silently rewrites a session name.
+// A '.' or ':' in the worktree name is rewritten to '_'.
+// A '\' is doubled, so "bs\slash" becomes "bs\\slash".
+// An ASCII control character, DEL, or an invalid UTF-8 byte is vis-encoded into a multi-character escape;
+// TAB becomes the two literal characters `\t`, verified on tmux 3.6.
+// Each rewrite makes the boot loop poll an exact "=<name>" target that never matches,
+// so the boot times out after 20s with a message that names no cause,
+// and the rewritten session keeps running on the shared per-hub server where no reed verb can address it.
+// Each rewritten character class is asserted on its own, so a fix that catches only some of them fails here.
 func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -243,13 +230,11 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 	}
 }
 
-// TestSanitizeSessionName is the regression guard for the R4 review's R4-10: standalonegeom built
-// its session name from a RAW filepath.Base(target), so pointing standalone mode at a plain checkout
-// named "my.repo" — routine for "foo.js", "site.com", "app.git" — died at the
-// validateToldTmuxIdentity pre-flight telling the operator to rename their own repository. Hub mode
-// never reached it, because hub worktree names are lym-created and slug-shaped.
-// The exact substitution is pinned per row rather than only "it validates", so a sanitizer that
-// mangles a name it should have passed through fails here too.
+// TestSanitizeSessionName pins the exact substitution SanitizeSessionName makes, row by row.
+// Standalone mode derives its session name from the checkout directory name,
+// so a plain checkout named "my.repo" must be sanitized before validateToldTmuxIdentity sees it.
+// Hub mode never needs this, because hub worktree names are lym-created and slug-shaped.
+// Pinning each row exactly also catches a sanitizer that mangles a name it should pass through.
 func TestSanitizeSessionName(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -278,9 +263,9 @@ func TestSanitizeSessionName(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("SanitizeSessionName(%q) = %q; want %q", tt.input, got, tt.want)
 			}
-			// The sanitizer is bound to the validator that declares the rule, which is the whole reason SanitizeSessionName lives in this package:
-			// any character class validateToldTmuxIdentity learns to refuse must already be one SanitizeSessionName substitutes.
-			// A "-<hash8>" suffix is appended exactly as standalonegeom.ReedGeometry appends it, so the assertion is made against the string reed is actually told.
+			// Any character class validateToldTmuxIdentity refuses must be one SanitizeSessionName substitutes.
+			// The "-<hash8>" suffix matches what standalonegeom.ReedGeometry appends.
+			// So the assertion checks the string reed is actually told.
 			geom := Geometry{
 				SocketKey:    "lym-deadbeef",
 				SessionName:  got + "-deadbeef",
@@ -294,13 +279,10 @@ func TestSanitizeSessionName(t *testing.T) {
 	}
 }
 
-// TestValidateToldTmuxIdentity_SocketKey pins the contract backstop the standalone tellers of wave 3
-// will be bound by: a socket key carrying a path separator is refused rather than handed to tmux,
-// which answers such a key with a stderr line and exit 0.
-// The hub-mode teller cannot reach these cases (ServerName substitutes separators out at the
-// derivation), which is exactly why they need their own coverage here.
-// Neither of the first two cases below is length-sensitive, so both accept unchanged across the
-// -HUB -> -LYMHUB rename.
+// TestValidateToldTmuxIdentity_SocketKey pins the refusal of a socket key that carries a path separator.
+// Tmux answers such a key with a stderr line and exit 0, so the key is refused rather than handed to tmux.
+// Hub mode cannot reach these cases, because ServerName substitutes separators out at derivation,
+// so they need their own coverage here.
 func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -330,13 +312,11 @@ func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
 	}
 }
 
-// TestValidateToldAnchorPath is the regression guard for the R4 review's R4-F3: the told-geometry
-// pre-flight backstopped SocketKey and SessionName but not AnchorPath, the third field whose bad
-// value fails SILENTLY rather than loudly — stateDir joins onto it and every pane's tmux -c is it,
-// so an empty or relative value resolves both against the caller's own working directory and the op
-// then SUCCEEDS against the wrong tree.
-// Like the SocketKey rows above, the hub-mode teller cannot reach these cases (ReedGeometry always
-// passes the absolute Location.AnchorPath()), which is exactly why they need their own coverage.
+// TestValidateToldAnchorPath covers the refusal of an AnchorPath that is empty or relative.
+// A bad AnchorPath fails silently rather than loudly: stateDir joins onto it, and every pane's tmux -c uses it,
+// so an empty or relative value resolves both against the caller's working directory,
+// and the op then succeeds against the wrong tree.
+// Hub mode cannot reach these cases, because ReedGeometry always passes the absolute Location.AnchorPath().
 func TestValidateToldAnchorPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -367,13 +347,11 @@ func TestValidateToldAnchorPath(t *testing.T) {
 	}
 }
 
-// TestValidateToldWorktreeRootLive is the table test for the new liveness validator, modelled on
-// TestValidateToldAnchorPath's shape but I/O-aware: each row stats a real filesystem entry rather
-// than only checking shape.
-// The relative-value row points at a name that exists relative to this package's own source
-// directory (server_test.go, which is always present) rather than an absolute path made relative,
-// so the assertion holds regardless of the test process's actual working directory — the row
-// exists to prove the refusal fires on shape alone, not on the target's existence.
+// TestValidateToldWorktreeRootLive is the table test for the worktree-root liveness validator.
+// Each row stats a real filesystem entry rather than only checking shape.
+// The relative-value row points at server_test.go, which is always present in this package's source directory,
+// so the assertion holds whatever the test process's working directory is.
+// It proves the refusal fires on shape alone, not on the target's existence.
 func TestValidateToldWorktreeRootLive(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -438,9 +416,9 @@ func TestValidateToldWorktreeRootLive(t *testing.T) {
 	})
 }
 
-// TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal lands at
-// the same op boundary the identity refusal does — before the .lym directory is created, which is
-// the very act that would otherwise litter the caller's own working directory with reed state.
+// TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal.
+// The refusal lands at the same op boundary as the identity refusal: before the .lym directory is created.
+// Creating that directory would litter the caller's working directory with reed state.
 //
 // The empty told anchor is what makes this assertion possible AND what makes it fragile: stateDir()
 // then joins onto "", so the subject path is a bare ".lym" relative to the TEST PROCESS's working
@@ -486,16 +464,20 @@ func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T)
 	}
 }
 
-// TestWithOpLock_ToldGeometry pins that withOpLock and withTryOpLock judge the told geometry at the op boundary,
-// before every tmux round trip and every directory creation, so a bad identity creates no substrate reed cannot address.
-// newTestEngine's tmux/shell paths deliberately do not exist, so an op that DID reach tmux would fail with an exec error naming that path;
-// asserting the error is the told-geometry refusal instead is what pins the ordering.
-// A rewritten session name is refused naming it.
-// A worktree root that vanished, is a regular file or is the standalone non-existent target shape is refused with errWorktreeRootGone and nothing is created,
-// withTryOpLock as its own row so a regression that fixes only one of the two lock helpers fails;
-// the vanished-path message mentions --target-dir while the not-a-directory message carries no rename remedy, since nothing was renamed.
-// A worktree root that exists with a different anchor path not created yet (the standalone first-run shape, which fails if a later change re-gates the predicate on AnchorPath),
-// and the hub first-run shape, succeed and create the anchor's .lym directory.
+// TestWithOpLock_ToldGeometry pins that withOpLock and withTryOpLock judge the told geometry at the op boundary.
+// The check runs before every tmux round trip and every directory creation,
+// so a bad identity creates no substrate reed cannot address.
+// The test engine's tmux and shell paths do not exist.
+// An op that reached tmux would fail with an exec error naming that path.
+// Asserting the told-geometry refusal instead pins the ordering.
+// A rewritten session name is refused, and the error names it.
+// A worktree root that vanished, is a regular file, or names a non-existent standalone target is refused.
+// The refusal is errWorktreeRootGone, and nothing is created.
+// The test covers withOpLock and withTryOpLock as separate rows, so a fix to only one of the two helpers fails.
+// The vanished-path message mentions --target-dir.
+// The not-a-directory message carries no rename remedy, since nothing was renamed.
+// The standalone and hub first-run shapes succeed and create the anchor's .lym directory.
+// The standalone row fails if a later change gates the predicate on AnchorPath.
 func TestWithOpLock_ToldGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

@@ -1,4 +1,5 @@
-// fankeys.go holds the per-round fan grammar a module's review fan keys share: the FanList value, its shape error and the validation that resolves every named fan through lenses.yaml.
+// fankeys.go holds the per-round fan grammar that a module's review fan keys share.
+// It defines FanList, FanShapeError, and ValidateFanKeys, which resolves each named fan through lenses.yaml.
 
 package lenses
 
@@ -9,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FanList is a fan key's value: one fan name for every round, or a list of fan names, one per round, whose last entry serves every later round.
+// FanList is the value of a fan key: a list of fan names, one per round, whose last entry serves every later round.
 // An empty entry runs its round solo, or with the single fixer.
 // A YAML scalar loads as a list of one.
 type FanList []string
@@ -20,11 +21,12 @@ type FanShapeError struct {
 	Line int
 }
 
+// Error implements error and names the line of the refused value.
 func (e *FanShapeError) Error() string {
 	return fmt.Sprintf(`value at line %d is neither a fan name nor a list of fan names; set the key to a fan name, or to a list of fan names, with "" for a solo or single round`, e.Line)
 }
 
-// UnmarshalYAML accepts a scalar or a block sequence of scalars and rejects any other shape.
+// UnmarshalYAML accepts a scalar, or a sequence whose entries are all scalars, and rejects any other shape.
 func (l *FanList) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
@@ -45,16 +47,19 @@ func (l *FanList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
-// FanKey is one config key holding a FanList.
+// FanKey pairs the name of a config key with the FanList it holds.
 type FanKey struct {
 	Key  string
 	Fans FanList
 }
 
-// ValidateFanKeys refuses an empty list on each of keys and resolves each non-empty entry through lenses.yaml under dirs, whose load fills a lens or fan the stack lacks from the template.
-// module names the config module the keys belong to in every refusal.
-// A fan that does not resolve is refused naming the key, the 1-based entry, the unknown name and the fans that exist,
-// and an unreadable lenses.yaml is refused naming the first key with a non-empty entry.
+// ValidateFanKeys refuses an empty list on each of keys.
+// It resolves each non-empty entry through lenses.yaml under dirs.
+// Loading lenses.yaml fills any lens or fan the stack lacks from the template.
+// The module parameter names the config module the keys belong to in every refusal.
+// A fan that does not resolve is refused naming the key, the 1-based entry and the reason.
+// For an unknown name, the reason lists the fans that exist.
+// A lenses.yaml that fails to load is refused naming the first key with a non-empty entry.
 // With every entry empty, lenses.yaml is never read.
 func ValidateFanKeys(dirs configengine.Dirs, module string, keys []FanKey) error {
 	var loadedConfig *Config

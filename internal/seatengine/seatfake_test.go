@@ -1,4 +1,5 @@
-// seatfake_test.go holds the handle-shaped fake shuttle the engine tests drive, and the helpers that run an engine beside it.
+// seatfake_test.go holds the handle-shaped fake shuttle the engine tests drive.
+// It also holds the helpers that run an engine beside it.
 
 package seatengine
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
-// fakeWait bounds every wait a test makes on the engine's goroutines; it is only reached when a test is about to fail.
+// fakeWait bounds every wait a test makes on the engine's goroutines;
+// it is only reached when a test is about to fail.
 const fakeWait = 10 * time.Second
 
 // fakeHandle is one started seat: its wait blocks until the test releases it or the engine stops it.
@@ -91,7 +93,8 @@ func (h *fakeHandle) Send(text string) error {
 	return nil
 }
 
-// Stop records the stop and, unless it is scripted to fail, ends the seat's wait as died, with the scripted wait error when there is one.
+// Stop records the stop and, unless it is scripted to fail, ends the seat's wait as died.
+// The wait ends with the scripted wait error when there is one.
 func (h *fakeHandle) Stop() error {
 	h.mu.Lock()
 	h.stops++
@@ -123,7 +126,7 @@ type fakeShuttle struct {
 
 	// startErrs fails the start of the seat with that role.
 	startErrs map[string]error
-	// startedBy routes the start of the seat with that role to the Shuttle, which answers it in place of the fake handles.
+	// startedBy routes the start of the seat with that role to the Shuttle, which answers it in place of fake handles.
 	startedBy map[string]Shuttle
 	// strandNames overrides the strand name a role's seat is started under.
 	strandNames map[string]string
@@ -162,7 +165,8 @@ func newFakeShuttle(t *testing.T) *fakeShuttle {
 	}
 }
 
-// realRunnerShuttle returns a Shuttle over a real shuttleengine.Runner whose engine set holds only the fake engine, which supports no requirement, with the reed it records on.
+// realRunnerShuttle returns a Shuttle over a real shuttleengine.Runner whose engine set holds only the fake engine.
+// The fake engine supports no requirement, and the returned Reed is the one the Runner records on.
 func realRunnerShuttle(t *testing.T, root string) (Shuttle, *shuttlefake.Reed) {
 	t.Helper()
 	reed := &shuttlefake.Reed{}
@@ -315,7 +319,8 @@ func await(t *testing.T, ended <-chan engineEnd) engineEnd {
 	}
 }
 
-// waitRecorder stands in for the notice sender's timer: it answers every wait at once and keeps each duration it was asked for.
+// waitRecorder stands in for the notice sender's timer.
+// It answers every wait at once and keeps each duration it was asked for.
 type waitRecorder struct {
 	mu    sync.Mutex
 	waits []time.Duration
@@ -338,7 +343,8 @@ func (r *waitRecorder) recorded(n int) []time.Duration {
 	return slices.Clone(r.waits[:min(n, len(r.waits))])
 }
 
-// engineFixture returns an engine over a fresh fake shuttle, whose stencils directory and worktree root are set up for table.
+// engineFixture returns an engine over a fresh fake shuttle.
+// Its stencils directory and worktree root are set up for table.
 // Its notice sender waits through a waitRecorder, so no retry costs real time.
 func engineFixture(t *testing.T, shuttle *fakeShuttle) (*Engine, Geometry) {
 	t.Helper()

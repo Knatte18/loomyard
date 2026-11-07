@@ -1,4 +1,5 @@
-// fixcap.go implements FixCap, the judge of a merge fixer's change against the size and kind caps that bound what an unreviewed fix can let through.
+// fixcap.go implements FixCap, which judges a merge fixer's change against the caps on its size and kind.
+// The caps bound what an unreviewed fix can let through.
 
 package landingshed
 
@@ -31,7 +32,9 @@ var testSkipMarkers = []string{"t.Skip", "[Ignore", "Skip ="}
 var buildConstraintPrefixes = []string{"//go:build", "// +build", "#if"}
 
 // Exceeded returns the reason change is over the caps, or "" when it is within them.
-// A change is over when its lines exceed MaxLines; when, whatever its size, it touches a test file, a testdata path or a gate or build configuration file; or when an added line skips a test or adds a build constraint.
+// A change is over when its lines exceed MaxLines.
+// Otherwise it is over when it touches a test file, a testdata path, or a gate or build configuration file.
+// It is also over when an added line skips a test or adds a build constraint.
 // The reason names the first offending path or line.
 func (c FixCap) Exceeded(change fabricengine.LineChange) string {
 	if change.Lines > c.MaxLines {

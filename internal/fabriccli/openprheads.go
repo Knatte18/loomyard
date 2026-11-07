@@ -1,5 +1,6 @@
-// openprheads.go is the open pull request lookup `lym fabric cleanup --remote` hands to fabricengine.Topology.CleanupRemoteWarp, which keeps every branch an open pull request still names.
-// It lives here rather than in fabricengine because the engine imports no GitHub client.
+// openprheads.go looks up the same-repository head branches of open pull requests for `lym fabric cleanup --remote`.
+// The cleanup passes them to `fabricengine.Topology.CleanupRemoteWarp`, which keeps every such branch.
+// The lookup lives here, not in `fabricengine`, because the engine imports no GitHub client.
 
 package fabriccli
 
@@ -19,13 +20,16 @@ const openPRListTimeout = 30 * time.Second
 // openPRListPageSize is the page size of the open-PR listing, GitHub's maximum.
 const openPRListPageSize = 100
 
-// listOpenPRHeads returns the head branch of every open pull request on the repository behind remoteURL whose head lives in that same repository;
-// the map is non-nil, and empty when none is open.
-// Any failure (a non-GitHub origin, no token, a network error, the timeout) returns an error, so the caller keeps every branch.
+// listOpenPRHeads returns the head branch of every open pull request on the repository behind remoteURL.
+// Only a head that lives in that same repository is returned.
+// The map is non-nil, and empty when none is open.
+// Any failure, such as a non-GitHub origin, a missing token, a network error or the timeout, returns an error,
+// so the caller keeps every branch.
 // It is a package-level variable so tests can substitute the GitHub call.
 var listOpenPRHeads = fetchOpenPRHeads
 
-// fetchOpenPRHeads is listOpenPRHeads' production implementation.
+// fetchOpenPRHeads asks the GitHub API for every open pull request of the repository behind remoteURL.
+// It returns the head branches that live in that same repository, and an error when the lookup fails.
 func fetchOpenPRHeads(ctx context.Context, remoteURL string) (map[string]bool, error) {
 	owner, repo, err := githubclient.ParseOwnerRepo(remoteURL)
 	if err != nil {

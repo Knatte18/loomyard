@@ -1,4 +1,5 @@
-// pushnotifier.go installs the process-wide route that mails a failed-push notice to the hub's prime orch, signed as the FABRIC program.
+// pushnotifier.go installs the process-wide route for failed-push notices.
+// The route mails each notice to the hub's prime orch, signed as the FABRIC program.
 
 package orchcli
 
@@ -17,11 +18,13 @@ import (
 // fabricProgram is the program name a failed-push notice is signed with.
 const fabricProgram = "FABRIC"
 
-// InstallPushNotifier installs fabricengine's push notifier for this process, so a push origin refuses reaches the prime orch as creel mail.
-// The hub is the one the context's working directory resolves to, as the network gate resolves it:
-// a detached push child starts in the hub's board worktree, which resolves as a worktree root.
+// InstallPushNotifier installs fabricengine's push notifier for this process,
+// so a push the origin refuses reaches the prime orch as creel mail.
+// The hub is the one the context's working directory lies in.
+// A detached push child starts in the hub's board worktree, which resolves as a worktree root.
 // Outside a hub nothing is installed.
-// The notifier posts only for that hub, and reports a failure of another hub not posted.
+// The notifier posts only for that hub,
+// and it reports a failure from another hub as not posted.
 func InstallPushNotifier(ctx context.Context) {
 	location, inHub := hubLocation(ctx)
 	if !inHub {
@@ -40,7 +43,7 @@ func InstallPushNotifier(ctx context.Context) {
 	})
 }
 
-// hubLocation resolves the hub the context's working directory lies in, as the network gate resolves it, and reports false outside a hub.
+// hubLocation resolves the hub the context's working directory lies in, and reports false outside a hub.
 func hubLocation(ctx context.Context) (*lymcwd.Location, bool) {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -56,7 +59,8 @@ func hubLocation(ctx context.Context) (*lymcwd.Location, bool) {
 	return location, true
 }
 
-// drivableLocation returns location when a lym verb can run from it, and otherwise the first worktree of its hub one can run from.
+// drivableLocation returns location when a lym verb can run from it.
+// Otherwise it returns the first worktree of its hub that a lym verb can run from.
 // The board worktree and a records sibling cannot resolve the hub's prime, since that scan reads the code repository.
 func drivableLocation(location *lymcwd.Location) (*lymcwd.Location, error) {
 	if fabricengine.RequireDrivableWorktree(location) == nil {

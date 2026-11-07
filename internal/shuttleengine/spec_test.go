@@ -1,6 +1,6 @@
-// spec_test.go verifies Spec.validate's normalization and error paths: mandatory
-// Prompt/OutputFiles, relative-to-absolute resolution for output files, the Timeout
-// defaulting/negative-rejection rules, and the Display.Anchor default.
+// spec_test.go verifies Spec.validate's normalization and error paths.
+// It covers the mandatory Prompt and OutputFiles, and the relative-to-absolute resolution of output files.
+// It also covers the Timeout defaults and negative-value rejection, and the Display.Anchor default.
 
 package shuttleengine
 
@@ -15,24 +15,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSpec_Validate drives Spec.validate through its rejections, its defaults and the fields it
-// must leave alone. Effort, Version and NameOverride are provider or engine
-// vocabulary validated elsewhere, so validate must neither default nor reject them: a later "tidy
-// up the validator" change must not quietly start doing either.
+// TestSpec_Validate drives Spec.validate through its rejections, its defaults and the fields it must leave alone.
+// Effort, Version and NameOverride are provider or engine vocabulary validated elsewhere:
+// validate must neither default nor reject them.
+// A later "tidy up the validator" change must not quietly start doing either.
 func TestSpec_Validate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const worktreeRoot = `C:\worktree`
-	// A pre-existing output file would satisfy the file contract on the very first turn end,
-	// silently classifying an unfinished run as done (proven live), so validate must reject it loudly.
+	// A pre-existing output file would satisfy the file contract at the first turn end.
+	// It would silently classify an unfinished run as done, so validate must reject it loudly.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "stale.md"), []byte("stale artifact"), 0o644); err != nil {
 		t.Fatalf("seed stale output file: %v", err)
 	}
-	// An OS-absolute OutputFiles entry must pass through unchanged, not be re-rooted at the
-	// worktree. t.TempDir() is absolute on any host; the file is fresh because validate rejects
-	// pre-existing output files.
+	// An OS-absolute OutputFiles entry must pass through unchanged, not be re-rooted at the worktree.
+	// t.TempDir() is absolute on any host, and the file is fresh because validate rejects pre-existing output files.
 	abs := filepath.Join(dir, "fresh.md")
 
 	tests := []struct {

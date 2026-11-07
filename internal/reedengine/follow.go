@@ -1,5 +1,7 @@
-// follow.go holds the per-session follow state: the session option @lym_follow and the read that turns it into a decision.
-// The option is a decision-bearing session option reed reads, with @lym_button_spec, @lym_button_dir and @lym_button_answer, which a button click reads, unlike @strand, @strand_color, @lym_unseen and the wait marks, which stay display only.
+// follow.go holds the per-session follow state.
+// It holds the session option @lym_follow and the read that turns it into a decision.
+// Reed reads this option to decide where a viewer goes, so it is decision-bearing;
+// the other session options are for display only.
 
 package reedengine
 
@@ -15,8 +17,8 @@ import (
 // Follow is off only while it reads "off"; an unset option reads on.
 const followSessionOption = "@lym_follow"
 
-// followingLocked reports whether the session's viewer follows the run, reading followSessionOption.
-// Only the trimmed value "off" reads false, so a session booted by an older lym, whose option is unset, follows.
+// followingLocked reports whether the session's viewer follows the run, by reading the follow session option.
+// Only the trimmed value "off" reports false, so a session booted by an older lym, whose option is unset, follows.
 // A failed read reports false and is logged at Warn, so a broken read never moves a viewer.
 func (e *Engine) followingLocked() bool {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{"+followSessionOption+"}")
@@ -27,8 +29,11 @@ func (e *Engine) followingLocked() bool {
 	return strings.TrimSpace(out) != "off"
 }
 
-// FollowRun turns the session's follow state on and selects the relevant window: the newest live agent window, else the lowest-index overview window, else nothing.
-// It returns the no-session and state-load errors; a failed option write is logged at Warn and the select still runs, and a failed listing or select is logged and never fails the call.
+// FollowRun turns the session's follow state on and selects the relevant window:
+// the newest live agent window, else the lowest-index overview window, else nothing.
+// It returns the no-session and state-load errors;
+// a failed option write is logged at Warn and the select still runs,
+// and a failed listing or select is logged and never fails the call.
 // It sets one session option and selects one window of the engine's own session, and persists no state.
 func (e *Engine) FollowRun() error {
 	return e.withOpLock(func() error {
@@ -47,17 +52,20 @@ func (e *Engine) FollowRun() error {
 	})
 }
 
-// overviewWindowOption is the window option reed sets on an overview window beside ownWindowOption.
-// It lets a caller told only a socket and a session tell the overview from an agent window without reed state.
+// overviewWindowOption is the window option reed sets on an overview window.
+// It lets a caller holding only a socket and a session tell an overview window from an agent window, without reed state.
 const overviewWindowOption = "@lym_overview"
 
-// followTargetFormat is the session-wide listing format followTargetWindow reads: window id, window index, own flag, overview flag, then the pane's dead flag.
+// followTargetFormat is the session-wide listing format a follow jump reads:
+// window id, window index, own flag, overview flag, then the pane's dead flag.
 const followTargetFormat = "#{window_id} #{window_index} #{?#{@lym_own},1,0} #{?#{@lym_overview},1,0} #{pane_dead}"
 
-// followTargetWindow returns the window a follow jump lands on, read from a followTargetFormat listing.
-// It is the same rule as relevantWindow, read from window options instead of reed state:
-// among the windows carrying the own option and not the overview one, the highest-index window holding a pane that is not dead, else the lowest-index window carrying the overview option, else the empty string.
-// An overview window opened by an older lym carries no overview marker and so counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
+// followTargetWindow returns the window a follow jump lands on, read from a session-wide pane listing.
+// It reads window options instead of reed state.
+// Among windows with the own option and not the overview option, it picks the highest-index one with a live pane.
+// With none, it picks the lowest-index window with the overview option, and with none of those, the empty string.
+// An overview window opened by an older lym has no overview marker, so it counts as an agent window.
+// It wins only when no other agent window is live, which gives the same outcome as the overview fallback.
 // A line it cannot parse is skipped.
 func followTargetWindow(listing string) string {
 	best, bestIndex := "", -1
@@ -87,7 +95,7 @@ func followTargetWindow(listing string) string {
 	return overview
 }
 
-// FollowSession turns follow on for the told session of the server listening on socketPath and selects the session's relevant window.
+// FollowSession turns follow on for the named session on the server at socketPath and selects its relevant window.
 // It reads no working directory, config or state: the window is chosen from tmux facts alone.
 // It issues list-panes, set-option and, when a window is relevant, select-window on that socket, and nothing else.
 // The error names an unknown session, a refused option write or a refused select.
@@ -95,8 +103,10 @@ func FollowSession(tmuxPath, socketPath, session string) error {
 	return followSessionVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), session)
 }
 
-// followSessionVia is FollowSession's implementation over an already-built TmuxCmd, so a test can drive it through the execHook seam.
-// A failed listing, which is how an unknown session answers, returns before any write, and a failed option write returns before any select.
+// followSessionVia does the follow of one session over an already-built TmuxCmd,
+// so a test can drive it through the execHook seam.
+// A failed listing, which is how an unknown session answers, returns before any write;
+// a failed option write returns before any select.
 func followSessionVia(cmd TmuxCmd, session string) error {
 	listing, err := cmd.output("list-panes", "-s", "-t", exactSessionTarget(session), "-F", followTargetFormat)
 	if err != nil {

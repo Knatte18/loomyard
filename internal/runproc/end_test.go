@@ -15,7 +15,7 @@ import (
 )
 
 // world is a scripted process table with a fake clock and a recorder of the signals sent to it.
-// A signalled process leaves the table unless a row makes it ignore SIGTERM, ignore both signals, or turn zombie on SIGTERM.
+// A signalled process leaves the table unless a row makes it ignore SIGTERM or both signals, or turn zombie on SIGTERM.
 type world struct {
 	start         time.Time
 	clock         time.Time

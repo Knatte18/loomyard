@@ -1,4 +1,5 @@
-// intake_test.go covers the intake handlers against an httptest server standing in for the hub's repository, reached through a hubissues.Repo, and a Board over a temp dir with SkipGit.
+// intake_test.go covers the intake handlers against an httptest server standing in for the hub's repository.
+// The server is reached through a hubissues.Repo, and the Board runs over a temp dir with SkipGit.
 // No test reaches real token resolution or the network, and every refusal asserts that board.json is unchanged.
 
 package boardcli
@@ -35,7 +36,7 @@ type fakeIssue struct {
 	stateReason string
 	pullRequest bool
 	labels      []string
-	// thread is the issue's comments, oldest first, each served with the given body and a creation time of 2026-01-02 plus its index in days.
+	// thread holds the issue's comments, oldest first; each is dated 2026-01-02 plus its index in days.
 	thread []string
 	// failThread makes the comments endpoint answer with a server error.
 	failThread bool
@@ -128,7 +129,7 @@ func (f *fakeInbox) handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveComments serves the comments of the issue numbered number in pages of two, or fails when the issue's failThread is set.
+// serveComments serves the comments of issue number in pages of two, or fails if its failThread is set.
 func (f *fakeInbox) serveComments(w http.ResponseWriter, r *http.Request, number string) {
 	n, _ := strconv.Atoi(number)
 	issue, _ := f.find(n)
@@ -372,7 +373,7 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 	}
 }
 
-// quotedPointerComment quotes the import pointer sentence inside other text, so it is kept.
+// quotedPointerComment quotes the import pointer sentence inside other text; the import keeps it.
 const quotedPointerComment = "Earlier it said: Imported into the board as `old`. Please re-check."
 
 // threadWithPointer is three comments across two fake pages: the middle one is a whole-body import pointer, which is dropped.

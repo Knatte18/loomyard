@@ -1,5 +1,8 @@
-// spawn_hub_integration_test.go holds the Spawn and OpenTask checks that run against the prime and against a task pair of one hubforge hub:
-// the prime opens the lym-generated hub workspace, a beam its own workspace, a task slug and a beam with no readable origin record open their bare folder, and the window command follows a launch.
+// spawn_hub_integration_test.go holds the Spawn and OpenTask checks of one hubforge hub.
+// They run against the prime and against a task pair.
+// The prime opens the lym-generated hub workspace, and a beam opens its own workspace.
+// A task slug and a beam with no readable origin record open their bare folder.
+// The window command follows a launch.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
@@ -30,7 +33,8 @@ func recordLauncher(t *testing.T) *[]string {
 	return launched
 }
 
-// recordLaunches swaps CodeLauncher for a recorder and returns the launched paths and, per launch, the files opened beside the path, restoring the seam on cleanup.
+// recordLaunches swaps CodeLauncher for a recorder, restoring the seam on cleanup.
+// It returns the launched paths and, for each launch, the files opened beside the path.
 func recordLaunches(t *testing.T) (launched *[]string, opened *[][]string) {
 	t.Helper()
 	original := CodeLauncher
@@ -63,7 +67,8 @@ func setIDEConfig(t *testing.T, h *hubforge.Hub, contents string) {
 	})
 }
 
-// setLocalIDEConfig writes the local override of the ide module under anchor, where a worktree's local config layer is read from, and removes it on cleanup.
+// setLocalIDEConfig writes the local override of the ide module under anchor, and removes it on cleanup.
+// That is where a worktree's local config layer is read from.
 func setLocalIDEConfig(t *testing.T, anchor, contents string) {
 	t.Helper()
 	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
@@ -107,7 +112,8 @@ func primeSettingsPath(h *hubforge.Hub, prime string) string {
 	return filepath.Join(h.Path, prime, h.Location.AnchorRel, ".vscode", "settings.json")
 }
 
-// resetPrimeEditorState removes the prime's untracked .vscode directory and the hub workspace file, returning the prime to the state of a freshly built hub for a step that depends on it.
+// resetPrimeEditorState removes the prime's untracked .vscode directory and the hub workspace file.
+// The prime is then in the state of a freshly built hub, for a step that depends on it.
 func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	prime := primeOf(t, h)
@@ -119,9 +125,11 @@ func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// checkPrimeWritesHubWorkspace covers the workspace file's location, folders and launch argument at the hub's anchor:
-// the prime's branch, Bolt and every task pair the scenario added so far, and no _portals folder.
-// The launch opens beside the workspace, in order, the existing files the hub's ide.yaml lists for the prime, with {beam} resolved to the prime's name and an absent file skipped.
+// checkPrimeWritesHubWorkspace asserts the hub workspace file's location, folders and launch argument.
+// It sits at the hub's anchor and lists the prime's branch, Bolt and every task pair the scenario added so far.
+// It has no _portals folder.
+// The launch opens beside the workspace, in order, the existing files the hub's ide.yaml lists for the prime.
+// {beam} resolves to the prime's name, and an absent file is skipped.
 func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -210,11 +218,13 @@ func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
 	return data, true
 }
 
-// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder, and that a task seed and spawn leave the workspace file's bytes, or its absence, unchanged.
-// It also asserts Seed writes the same on-demand attach task Spawn does and seeds the keybindings.json as Spawn does, each into a missing file.
+// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder.
+// It also asserts a task seed and a task spawn leave the workspace file's bytes, or its absence, unchanged.
+// It also asserts Seed and Spawn both write the on-demand attach task and seed keybindings.json into missing files.
 // It also asserts Spawn, and never Seed, runs the machine's desktop window command.
 // An ide.yaml that fails to load fails Seed, Spawn and OpenTask, with nothing launched and no settings.json written.
-// A valid one opens beside the folder the existing files it lists for a task, with {beam} resolved to the prime for a task forked from it and a directory entry skipped.
+// A valid ide.yaml opens the folder beside the existing files it lists for a task.
+// A directory entry is skipped, and {beam} resolves to the prime for a task forked from it.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -297,11 +307,14 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
-// checkBeamOpensBeamWorkspace asserts a beam seed regenerates the beam's workspace file with its workspace title and launches nothing,
-// and a beam spawn regenerates that file, launches it with the beam as its first folder and runs the window command once.
-// The spawn opens beside it, in order, the existing files the hub's ide.yaml lists for a beam, with {beam} resolved to the beam's slug and an absent file and a directory skipped,
-// and the workspace's settings open a markdown file rendered.
-// A task forked from the beam opens, through OpenTask and Spawn, the file ide.yaml lists for a task with {beam} resolved to the beam's slug.
+// checkBeamOpensBeamWorkspace asserts that a beam seed regenerates the beam's workspace file with its workspace title,
+// and that it launches nothing.
+// A beam spawn regenerates that file, launches it with the beam as its first folder, and runs the window command once.
+// The spawn opens beside it, in order, the existing files the hub's ide.yaml lists for a beam.
+// {beam} resolves to the beam's slug, and an absent file and a directory are skipped.
+// The workspace's settings open a markdown file rendered.
+// A task forked from the beam opens, through OpenTask and Spawn, the file ide.yaml lists for a task;
+// in that list, {beam} resolves to the beam's slug.
 func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -362,7 +375,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 
 	child := slug + "-task"
 	hubforge.AddPairWith(t, h, child, fabricengine.AddOptions{Parent: slug})
-	// Removed on cleanup, since the hub workspace check of a later step lists every pair of the hub.
+	// The forked task is removed on cleanup, since the hub workspace check of a later step lists every pair of the hub.
 	t.Cleanup(func() {
 		if _, err := h.Topology.Remove(l, child, true, false); err != nil {
 			t.Errorf("remove the task forked from the beam: %v", err)
@@ -382,9 +395,12 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
-// checkBeamWithoutReadableOriginOpensBareFolder asserts Spawn returns no error and launches the pair's bare anchor folder, never a workspace file.
-// It covers a marked beam whose origin record cannot be read because its records worktree's lock directory is missing, and one whose record is absent.
-// It also asserts a {beam} entry of ide.yaml's task list opens nothing for such a pair, since its parent cannot be read, even beside a file named ".md".
+// checkBeamWithoutReadableOriginOpensBareFolder asserts that Spawn returns no error,
+// and that it launches the pair's bare anchor folder and no workspace file.
+// It covers a marked beam whose origin record cannot be read: its records worktree's lock directory is missing.
+// It also covers a marked beam whose record is absent.
+// It also asserts a {beam} entry of ide.yaml's task list opens nothing for such a pair.
+// Its parent cannot be read, so the entry opens nothing, even beside a file named ".md".
 // It restores the lock directory before returning, so later steps regenerate the hub workspace over a readable pair.
 func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
@@ -396,7 +412,7 @@ func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub
 	}
 	setDesktopWindowCommand(t, h)
 	setIDEConfig(t, h, "open_files:\n  task: [\"{beam}.md\"]\n")
-	// A file named ".md" is what the entry reads as if the placeholder were replaced by nothing.
+	// The entry reads as ".md" when {beam} is replaced by nothing, so this file is planted under that name.
 	writeFileUnder(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel), ".md")
 	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
@@ -440,8 +456,10 @@ func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub
 
 // checkWindowCommandFollowsALaunch asserts OpenTask runs the machine's window command once after a launch,
 // and that a failing CodeLauncher makes Spawn and OpenTask return its error and run no command.
-// It also asserts OpenTask passes the launcher the files ide.yaml lists for a task, with {beam} resolved to the prime for a task forked from it,
-// and that the task worktree's own local override of ide.yaml applies although the location OpenTask runs from is another worktree.
+// It also asserts OpenTask passes the launcher the files ide.yaml lists for a task,
+// and that {beam} resolves to the prime for a task forked from it.
+// It also asserts the task worktree's own local override of ide.yaml applies,
+// and that it still applies when OpenTask runs from another worktree.
 func checkWindowCommandFollowsALaunch(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -499,7 +517,8 @@ func windowCommandRuns(t *testing.T, markerPath string) int {
 	return len(strings.Fields(string(data)))
 }
 
-// checkPrimeSeedWritesHubWorkspace asserts a seed of the prime writes the hub workspace file with the workspace title and launches nothing.
+// checkPrimeSeedWritesHubWorkspace asserts a seed of the prime writes the hub workspace file with the workspace title,
+// and that the seed launches nothing.
 func checkPrimeSeedWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -518,7 +537,8 @@ func checkPrimeSeedWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// checkPrimeSplicesSettingsAndRegenerates covers the splice of JSONC settings with the workspace look, idempotence, settings changes and hand-edit overwrite.
+// checkPrimeSplicesSettingsAndRegenerates covers the splice of JSONC settings with the workspace look.
+// It also covers idempotence, settings changes and hand-edit overwrite.
 func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -604,7 +624,9 @@ func checkPrimeSettingsReadFailure(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// checkPrimeWriteFailure plants a read-only workspace file of different bytes and asserts the prime spawn and the prime seed return the write error, the spawn launches nothing and both leave the file's bytes.
+// checkPrimeWriteFailure plants a read-only workspace file of different bytes.
+// It asserts the prime spawn and the prime seed return the write error,
+// and that the spawn launches nothing and both leave the file's bytes as they were.
 // It skips as root, where mode bits refuse nothing.
 func checkPrimeWriteFailure(t *testing.T, h *hubforge.Hub) {
 	if os.Geteuid() == 0 {
@@ -680,7 +702,8 @@ func readPrimeLook(t *testing.T, path string) primeLook {
 	return look
 }
 
-// setDesktopWindowCommand writes h's desktop machine override with a window command that appends "ran" to a marker file, in a form sh and cmd both run, and no wait.
+// setDesktopWindowCommand writes h's desktop machine override with a window command.
+// The command appends "ran" to a marker file in a form that sh and cmd both run, and it does not wait.
 // It returns the marker's path and removes the override on cleanup.
 func setDesktopWindowCommand(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()

@@ -1,7 +1,8 @@
-// session.go completes Claude's shuttleengine.SessionCycler: the idle-session probe and the clear-session and compact-session choreographies.
-// The shuttleengine.SkillLoader realization lives in skillload.go.
-// The session-cycling pieces are pure over a capture string or literal text, like startup.go's classifiers,
-// and all Claude TUI shape knowledge stays in this package, per the Shuttle Provider-Seam Invariant.
+// session.go implements shuttleengine.SessionCycler for Claude:
+// the idle-session probe and the clear-session and compact-session choreographies.
+// The shuttleengine.SkillLoader implementation lives in skillload.go.
+// The session-cycling pieces are pure over a capture string or literal text;
+// all Claude TUI shape knowledge stays in this package, per the Shuttle Provider-Seam Invariant.
 package claudeengine
 
 import (
@@ -29,34 +30,39 @@ var (
 	_ shuttleengine.DismissiblePickerReader = (*Claude)(nil)
 )
 
-// pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste: `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]`.
-// The first capture group is the line count when the placeholder shows one.
+// pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste:
+// `[Pasted text #<n>]`, or `[Pasted text #<n> +<m> lines]` when it shows a line count.
+// The first capture group is that count, or empty when there is none.
 var pastePlaceholderShape = regexp.MustCompile(`^\[Pasted text #\d+(?: \+(\d+) lines)?\]$`)
 
-// runningTurnNeedle is Claude's running-turn hint in normalizeCapture form.
+// runningTurnNeedle is the lowercase, whitespace-free form of Claude's running-turn hint.
 const runningTurnNeedle = "esctointerrupt"
 
-// rewindPickerNeedle is the subtitle of Claude's rewind picker in normalizeCapture form.
+// rewindPickerNeedle is the lowercase, whitespace-free form of the subtitle of Claude's rewind picker.
 const rewindPickerNeedle = "restorethecodeand/orconversationtothepointbefore"
 
 // interruptSettle is how long after an interrupt key the pane is left alone before it is read again.
 // It assumes Claude Code's double-Esc window is under 2 seconds.
 const interruptSettle = 2 * time.Second
 
-// boxRuleChars are the characters a horizontal-rule line of the input box may carry besides whitespace: the rule glyph itself, box corners and side bars.
+// boxRuleChars are the characters a horizontal-rule line of the input box may carry besides whitespace:
+// the rule glyph itself, box corners and side bars.
 const boxRuleChars = "─╭╮╰╯│"
 
-// boxInteriorChars are stripped from a line between the rules before judging it blank: the caret and side bars, on top of whitespace.
+// boxInteriorChars are stripped from a line between the rules before judging it blank:
+// the caret and side bars, on top of whitespace.
 const boxInteriorChars = gateCaretMarker + "│>"
 
 // shellEOLMark is zsh's PROMPT_EOL_MARK, which the pane's login shell prints before reed's launch line starts Claude.
 // A pane resize can leave it on the row Claude later draws its box on, so Claude never received it as input.
 const shellEOLMark = "%"
 
-// boxMinRows is the fewest pane rows Claude's input box needs: the top rule, the caret line, the bottom rule and the footer under it.
+// boxMinRows is the fewest pane rows Claude's input box needs:
+// the top rule, the caret line, the bottom rule and the footer under it.
 const boxMinRows = 4
 
-// PaneTooShort reports whether capture shows a pane too short to draw the input box: no caret line anywhere, and fewer rows than boxMinRows.
+// PaneTooShort reports whether capture shows a pane too short to draw the input box:
+// no caret line anywhere, and fewer rows than the input box needs.
 // A pane of normal height that is busy or showing a dialog is never too short, whatever it draws.
 func (c *Claude) PaneTooShort(capture string) bool {
 	if strings.Contains(capture, gateCaretMarker) {
@@ -66,22 +72,26 @@ func (c *Claude) PaneTooShort(capture string) bool {
 	return len(rows) < boxMinRows
 }
 
-// IdleSession reports whether capture shows Claude idle: no turn in progress, the input box on screen, and the box empty.
+// IdleSession reports whether capture shows Claude idle: no turn in progress, and an empty input box on screen.
 //
-// The box is located from the last line carrying gateCaretMarker, walking up and down to the first horizontal-rule line on each side.
+// The box is located from the last line carrying gateCaretMarker.
+// It walks up and down to the first horizontal-rule line on each side.
 // A permission prompt or other select dialog draws its caret on an option line with no rule below it, so it is not idle;
 // a draft leaves non-blank text between the rules.
 //
-// Two fail-closed residuals, stated rather than papered over.
-// A plain capture carries no styling, so any non-empty box classifies as not idle and the watcher skips the poll and retries;
-// the greyed prompt suggestion does not appear in a shuttle-launched session, since every settings file switches it off,
-// and a caller that reads through PlainBoxCapture sees a box holding only the placeholder or suggestion as empty, under that method's bounds.
-// And a transcript line quoting "esc to interrupt" anywhere in the capture classifies as not idle, because the running-turn hint is matched over the whole capture.
+// A plain capture carries no styling, so any non-empty box classifies as not idle,
+// and the watcher skips the poll and retries.
+// The greyed prompt suggestion does not appear in a shuttle-launched session, since every settings file switches it off.
+// A caller that reads through PlainBoxCapture sees a box holding only the placeholder or suggestion as empty.
+// This holds only under that method's bounds.
+// A transcript line quoting "esc to interrupt" anywhere in the capture classifies as not idle.
+// The running-turn hint is matched over the whole capture.
 //
 // A box holding only a lone `%` reads idle: that is the shell's end-of-line mark left on screen, never input.
-// Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty, so a paste can merge with it.
-// The operator-activity hold still runs before every write behind the pre-write guard,
-// but the session idle probe's fallback for a strand with no run reads the box with no operator-activity hold, so there a lone `%` reads idle with no operator check.
+// Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty,
+// so a paste can merge with it.
+// The operator-activity hold runs before every write behind the pre-write guard,
+// but a caller that reads the box without that hold sees a lone `%` as idle with no operator check.
 func (c *Claude) IdleSession(capture string) bool {
 	if c.RunningTurn(capture) {
 		return false
@@ -101,10 +111,11 @@ func (c *Claude) IdleSession(capture string) bool {
 	return true
 }
 
-// InputBoxText returns the text the input box holds in capture: the interior lines with the caret, side bars and surrounding whitespace removed, non-blank lines joined by a single space.
+// InputBoxText returns the text the input box holds in capture:
+// the non-blank interior lines, stripped of the caret, side bars and surrounding whitespace, joined by single spaces.
 // ok is false when capture shows no input box.
-// The box is located exactly as IdleSession locates it,
-// so a running turn over an empty box answers ok true with empty text.
+// The box is located from the last caret line to the rules on either side of it;
+// a running turn over an empty box answers ok true with empty text.
 // A box holding only a lone `%`, the shell's end-of-line mark left on screen, answers empty text too.
 // Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty, so a paste can merge with it;
 // the pre-write guard's operator-activity hold still runs before every write.
@@ -126,8 +137,9 @@ func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 	return strings.Join(parts, " "), true
 }
 
-// StrayInput reports whether capture shows Claude idle but for an input box holding exactly one stray-character candidate, and returns it.
-// A candidate is a single character that is neither a letter, a digit nor whitespace, in a box located as IdleSession locates it, with no running turn on screen.
+// StrayInput reports whether capture shows Claude idle but for one stray-character candidate in the box, and returns it.
+// A candidate is a single character that is neither a letter, a digit nor whitespace.
+// A running turn on screen yields no candidate.
 // The lone `%` reads as an empty box, so it is never a candidate.
 func (c *Claude) StrayInput(capture string) (text string, ok bool) {
 	if c.RunningTurn(capture) {
@@ -168,18 +180,20 @@ const escapeKey = "Escape"
 type dismissiblePicker struct {
 	// name names the picker in logs and hold reasons.
 	name string
-	// needles are phrases in normalizeCapture form that must all be on screen.
+	// needles are lowercase, whitespace-free phrases that must all be on screen.
 	needles []string
 }
 
-// dismissiblePickers are the mid-session pickers DismissiblePicker recognises.
+// dismissiblePickers lists the known mid-session pickers, checked in order.
 // The autocompact picker asks whether to autocompact earlier, and its Escape answers "not now".
 var dismissiblePickers = []dismissiblePicker{
 	{name: "autocompact", needles: []string{"werecommendcompactingearlier", "escnotnow"}},
 }
 
-// DismissiblePicker reports whether capture shows one of Claude Code's known mid-session pickers in place of the input box, and returns its name and one Escape, which closes it and keeps the current setting.
-// Every needle of the picker must be on screen and the input box must not, so a transcript quoting the wording above a live box is not the picker.
+// DismissiblePicker reports whether capture shows a known Claude Code mid-session picker in place of the input box:
+// it returns the picker's name and one Escape, which closes it and keeps the current setting.
+// Every needle of the picker must be on screen and the input box must not,
+// so a transcript quoting the wording above a live box is not the picker.
 // Bound: a release that rewords the picker leaves it unrecognised.
 func (c *Claude) DismissiblePicker(capture string) (name string, keys []shuttleengine.PaneInput, ok bool) {
 	if _, boxShown := inputBoxInterior(capture); boxShown {
@@ -209,16 +223,18 @@ func (c *Claude) SubmitSettle() time.Duration {
 // ClearInputSequence returns one C-u, which deletes from the caret to the start of the line.
 // Sent text is one line with the caret at its end, and so is a lone stray-character candidate, so that empties the box;
 // C-u is neither Escape nor C-c, so it never interrupts a running turn.
-// A restored multi-line prompt takes RestoredPromptClearSequence instead, since one C-u deletes only the caret's row.
+// A restored multi-line prompt needs more than one C-u, since one C-u deletes only the caret's row.
 func (c *Claude) ClearInputSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "C-u"}}
 }
 
 var _ shuttleengine.RestoredPromptClearer = (*Claude)(nil)
 
-// RestoredPromptClearSequence returns the keys that empty the input box capture shows, a plain capture holding the prompt of a turn that was just interrupted.
+// RestoredPromptClearSequence returns the keys that empty the input box capture shows.
+// The capture is plain, holding the prompt of a turn that was just interrupted.
 // The box's lines are counted from the first interior row that holds text to the last, blank rows between them included.
-// For n lines it returns n C-u with one BSpace between each pair: C-u deletes the caret's row, and a BSpace at a row's start joins it to the row above.
+// For n lines it returns n C-u with one BSpace between each pair:
+// C-u deletes the caret's row, and a BSpace at a row's start joins it to the row above.
 // A capture with no box, or a box with no text, answers no keys.
 // The sequence holds no Escape, C-c or Enter, so it never interrupts a running turn.
 func (c *Claude) RestoredPromptClearSequence(capture string) []shuttleengine.PaneInput {
@@ -252,15 +268,16 @@ func (c *Claude) RestoredPromptClearSequence(capture string) []shuttleengine.Pan
 // A live check pins it; false makes shuttle paste without the Enter and send the first Enter as a guarded one.
 const pasteSubmitsOnEnter = true
 
-// PasteCollapseMinChars is the length from which Claude Code collapses a pasted text into a placeholder in its input box.
+// PasteCollapseMinChars is the length from which Claude Code collapses a paste into a placeholder in its input box.
 const PasteCollapseMinChars = 800
 
 // PasteSubmits reports whether an Enter right after the paste end submits the pasted text.
 func (c *Claude) PasteSubmits() bool { return pasteSubmitsOnEnter }
 
-// OwnPastePlaceholder reports whether boxText, trimmed, is the whole of the collapsed-paste placeholder a paste of text produces.
-// The text must reach PasteCollapseMinChars characters, and a placeholder showing `+<m> lines` must count m as the newlines in text.
-// A draft that merely quotes the placeholder inside other words is not one.
+// OwnPastePlaceholder reports whether boxText, trimmed, is the whole placeholder that a paste of text produces.
+// The text must be long enough for Claude Code to collapse it,
+// and a placeholder showing `+<m> lines` must count m as the newlines in text.
+// A draft that quotes the placeholder inside other words is not one.
 func (c *Claude) OwnPastePlaceholder(boxText, text string) bool {
 	if utf8.RuneCountInString(text) < PasteCollapseMinChars {
 		return false
@@ -277,7 +294,8 @@ func (c *Claude) OwnPastePlaceholder(boxText, text string) bool {
 }
 
 // inputBoxInterior returns the lines between the input box's rules in capture.
-// The box is located from the last line carrying gateCaretMarker, walking up and down to the first horizontal-rule line on each side.
+// The box is located from the last line carrying gateCaretMarker.
+// It walks up and down to the first horizontal-rule line on each side.
 // ok is false when there is no caret line or no rule on either side of it.
 func inputBoxInterior(capture string) (interior []string, ok bool) {
 	lines := strings.Split(capture, "\n")
@@ -310,10 +328,11 @@ func inputBoxInterior(capture string) (interior []string, ok bool) {
 	return lines[top+1 : bottom], true
 }
 
-// isTopBoxRule reports whether line is the input box's top rule: a plain rule per isBoxRule, or a labelled one.
-// A named session labels its top rule at the right (`──── tst:orch ─`), so a line that starts with three rule glyphs and ends with one counts as a top rule whatever its label says.
-// Only the top rule carries a label, so the bottom rule is matched by isBoxRule alone,
-// and a draft line shaped like a labelled rule below the caret never closes the box.
+// isTopBoxRule reports whether line is the input box's top rule: a plain rule, or a labelled one.
+// A named session labels its top rule at the right (`──── tst:orch ─`).
+// A line that starts with three rule glyphs and ends with one counts as a top rule, whatever its label says.
+// Only the top rule carries a label, so the bottom rule must be a plain rule.
+// A draft line shaped like a labelled rule below the caret therefore never closes the box.
 func isTopBoxRule(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "───") && strings.HasSuffix(trimmed, "─") {
@@ -322,7 +341,8 @@ func isTopBoxRule(line string) bool {
 	return isBoxRule(line)
 }
 
-// isBoxRule reports whether line is a horizontal rule of the input box: non-blank, made only of rule glyphs, corners, side bars and whitespace, with at least one rule glyph.
+// isBoxRule reports whether line is a horizontal rule of the input box:
+// non-blank, made only of rule glyphs, corners, side bars and whitespace, with at least one rule glyph.
 func isBoxRule(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.Contains(trimmed, "─") {
@@ -336,7 +356,8 @@ func isBoxRule(line string) bool {
 	return true
 }
 
-// holdsOnlyEOLMark reports whether interior, once the caret, side bars and whitespace are stripped from every line, holds exactly shellEOLMark across all lines together.
+// holdsOnlyEOLMark reports whether interior holds nothing but the shell's end-of-line mark.
+// The caret, side bars and whitespace are stripped from each line, and the lines are then joined.
 func holdsOnlyEOLMark(interior []string) bool {
 	stripper := strings.NewReplacer(gateCaretMarker, "", "│", "")
 	var remaining strings.Builder
@@ -370,7 +391,8 @@ func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
 	}
 }
 
-// CompactSessionSequence returns /compact and its Enter, followed by focus when it is non-empty, with no leading Escape because the caller has just proved the input box empty.
+// CompactSessionSequence returns /compact and its Enter, followed by focus when it is non-empty.
+// It has no leading Escape, because the caller has just proved the input box empty.
 // There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput {
 	text := "/compact"
@@ -383,7 +405,8 @@ func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput 
 	}
 }
 
-// ReloadPluginsSequence returns /reload-plugins and its Enter, with no leading Escape for the same reason as ClearSessionSequence.
+// ReloadPluginsSequence returns /reload-plugins and its Enter.
+// It has no leading Escape, because the caller has just proved the input box empty.
 // The command rebuilds the skill list the Skill tool reads and ends no turn.
 // There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) ReloadPluginsSequence() []shuttleengine.PaneInput {

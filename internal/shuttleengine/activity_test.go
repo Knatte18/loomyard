@@ -1,6 +1,7 @@
-// activity_test.go covers ReadAgentActivity over run directories written by the test, with the liveness seam replaced so no process is spawned and an engine double that answers the transcript reading.
-// Replacing the seam is process-global state,
-// so these tests do not run in parallel.
+// activity_test.go covers ReadAgentActivity over run directories written by the test.
+// It replaces the liveness seam, so no process is spawned,
+// and it runs an engine double that answers the transcript reading.
+// The seam is process-global state, so these tests do not run in parallel.
 
 package shuttleengine
 
@@ -18,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// activityEngine is a fakeEngine that also reads transcript activity from a table keyed by the turn end's message.
+// activityEngine is an engine double that reads transcript activity from a table keyed by the turn end's message.
 type activityEngine struct {
 	*fakeEngine
 	byMessage map[string]TurnEndActivity
@@ -28,8 +29,10 @@ func (e *activityEngine) TurnEndActivity(turnEnd Event) TurnEndActivity {
 	return e.byMessage[turnEnd.Message]
 }
 
-// signalActivityEngine is an activityEngine that also reads session signals:
-// STOP: and ASK: lines are unstamped Stop and ask records, SIG-STOP@<time> is a stamped Stop record and SIG-IDLE@<time> a stamped idle notice, which is not a record.
+// signalActivityEngine is an engine double that reads transcript activity and session signals.
+// STOP: and ASK: lines are unstamped Stop and ask records.
+// SIG-STOP@<time> is a stamped Stop record.
+// SIG-IDLE@<time> is a stamped idle notice, not a record.
 type signalActivityEngine struct {
 	*activityEngine
 }
@@ -51,7 +54,7 @@ func (e signalActivityEngine) ParseSessionSignals(data []byte) ([]SessionSignal,
 	return signals, len(data)
 }
 
-// failingPartEngine is a fakeEngine whose ParseEvents fails on any bytes containing failOn.
+// failingPartEngine is an engine double whose ParseEvents fails on any bytes containing failOn.
 type failingPartEngine struct {
 	*fakeEngine
 	failOn string
@@ -94,7 +97,8 @@ func TestReadAgentActivity(t *testing.T) {
 	tests := []struct {
 		name string
 		runs map[string]activityRun
-		// transcript answers the engine's transcript reading by turn-end message; nil runs the plain engine with no ActivityReader.
+		// transcript answers the engine's transcript reading by turn-end message;
+		// nil runs the plain engine with no ActivityReader.
 		transcript map[string]TurnEndActivity
 		// signals gives the engine a session-signal parser.
 		signals bool
@@ -286,7 +290,7 @@ func TestReadAgentActivity(t *testing.T) {
 		}
 	})
 
-	// It captures the process-global logger at Debug, so it runs serially like the test.
+	// It captures the process-global logger at Debug, so it does not run in parallel.
 	t.Run("events that fail to parse log once per episode", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
@@ -303,7 +307,7 @@ func TestReadAgentActivity(t *testing.T) {
 		requireFailureEpisode(t, buf.String(), "could not parse a run's events", 2, "run events parse again")
 	})
 
-	// It captures the process-global logger at Debug, so it runs serially like the test.
+	// It captures the process-global logger at Debug, so it does not run in parallel.
 	t.Run("a pre-offset part that fails to parse after the own part parsed logs one episode", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
@@ -330,7 +334,7 @@ func TestReadAgentActivity(t *testing.T) {
 		}
 	})
 
-	// It captures the process-global logger at Debug, so it runs serially like the test.
+	// It captures the process-global logger at Debug, so it does not run in parallel.
 	t.Run("a running record whose waiter is gone logs once per episode until it reads live", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
@@ -393,7 +397,7 @@ func TestReadAgentActivity(t *testing.T) {
 		}
 	})
 
-	// It captures the process-global logger at Debug, so it runs serially like the test.
+	// It captures the process-global logger at Debug, so it does not run in parallel.
 	t.Run("each run is read through the engine its record names", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
@@ -556,7 +560,9 @@ func TestReadNewestRunEnd(t *testing.T) {
 	})
 }
 
-// writeActivityRun writes the run directory name under root: its run.json, its activity stamp when the run sets one, and its events file stamped with eventsWritten unless the run has none.
+// writeActivityRun writes a run directory named name under root.
+// It writes run.json, the activity stamp when the run sets one, and the events file.
+// The events file is stamped with eventsWritten unless the run has none.
 func writeActivityRun(t *testing.T, root, name string, run activityRun, created, eventsWritten time.Time) {
 	t.Helper()
 	runDir := filepath.Join(root, name)

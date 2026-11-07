@@ -1,12 +1,8 @@
-// mergeerrors.go declares the merge-verb typed error surface and the closed guard-reason set.
-// Every message is fixed and side-free: none interpolates a branch name, path, or git error, and
-// where a caller needs the offending branch it travels in a typed error's own field
-// (ErrMergeInRequired.Source), never inside an Error() string.
-// MergeGuardError.Checkout and MergeGuardError.DirtyPaths carry the dirty guard's detail the same way.
-// The closed reason set backing MergeGuardError is pinned verbatim from the discussion's
-// safety-guards-are-aggregated-and-side-free decision; adding a member is a same-commit change to
-// the constant list and to the vocabulary assertion covering it (mergevocab_test.go, batch 5), and
-// no member may name a side, carry a path, or imply an order.
+// mergeerrors.go declares the typed errors of the merge verbs.
+// It also declares the closed set of guard reasons that MergeGuardError carries.
+// Every error message is a fixed string: none interpolates a branch name, a path or a git error.
+// A caller that needs the offending branch reads it from a typed error's field, such as ErrMergeInRequired.Source.
+// MergeGuardError.Checkout and MergeGuardError.DirtyPaths carry the dirty-guard detail in the same way.
 
 package fabricengine
 
@@ -16,20 +12,13 @@ import (
 )
 
 // The closed set of guard-reason strings a *MergeGuardError may carry.
-// Pinned verbatim from the discussion's safety-guards-are-aggregated-and-side-free decision:
-// adding a member is a same-commit change to this list and to pinnedMergeReasons in
-// mergevocab_test.go — enforced mechanically by
-// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses every production file in this
-// package for mergeReason* constants rather than this file alone — and no member may name a side,
-// carry a path, or imply an order.
-// That this file is the set's only home is itself enforced, by
-// TestMergeVocabulary_GuardReasonSetMatchesConstBlock: a member declared beside its consuming
-// guard in mergeguards.go would otherwise escape the pinned map and every assertion it drives.
-// Membership is earned by being an *aggregatable precondition* — one of several reasons a single
-// *MergeGuardError may carry at once. A terminal, standalone disposition with nothing to aggregate
-// alongside it belongs in the typed error surface below instead: "no merge in progress" was once a
-// member here, produced by nothing, while *ErrNoMergeInProgress carried the same words and did the
-// actual work. It was removed rather than given a producer.
+// A member is an aggregatable precondition, one of several reasons a single *MergeGuardError may carry at once.
+// A terminal disposition with nothing to aggregate alongside it belongs in the typed errors below.
+// No member may name a side, carry a path or imply an order.
+// Adding a member means changing this list and pinnedMergeReasons in mergevocab_test.go.
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock enforces this.
+// It parses every production file in the package for mergeReason* constants.
+// It also enforces that this file is the set's only home.
 const (
 	mergeReasonAlreadyInProgress   = "merge already in progress"
 	mergeReasonUnresolvedConflicts = "unresolved conflicts remain"
@@ -44,10 +33,10 @@ const (
 )
 
 // MergeGuardError aggregates every failed merge precondition as a sorted, deduplicated list of
-// fixed reason strings drawn from the closed set above.
-// The list is aggregated rather than first-failure so two scenarios differing only in which
-// precondition failed on which side produce byte-identical errors — no failure ordering ever
-// discloses that two subjects were checked.
+// fixed reason strings drawn from the package's closed set of guard reasons.
+// It reports every failure rather than the first.
+// Two scenarios that differ only in which precondition failed on which side therefore produce byte-identical errors.
+// The error then discloses no failure order.
 // Checkout and DirtyPaths carry the detail of the dirty-worktree reason, outside Error():
 // Checkout is the absolute path of the code checkout the guard read.
 // DirtyPaths lists its tracked dirty paths relative to it, slash-separated and sorted.
@@ -74,12 +63,9 @@ func (e *MergeGuardError) has(reason string) bool {
 }
 
 // WorktreeDirty reports whether e's aggregated reasons include the dirty-worktree guard reason.
-// It is the supported way for a caller outside this package to recognize the condition: the
-// guard-reason constants themselves are a closed, unexported set, pinned verbatim by this file's
-// own comment and by two of this package's tests, so an outside caller has no literal to match
-// against and would otherwise have to hardcode the reason text -- with nothing to catch that text
-// drifting later. WorktreeDirty keeps the coupling inside the package that owns the constant, where
-// the existing pinning tests already cover it.
+// Callers outside this package use it to recognize the condition, since the guard-reason constants are unexported.
+// Matching the reason text from outside would drift unnoticed,
+// so this method keeps the match in the package that owns the constant.
 func (e *MergeGuardError) WorktreeDirty() bool {
 	return e.has(mergeReasonWorktreeDirty)
 }
@@ -99,7 +85,7 @@ func (e *MergeGuardError) DetachedHead() bool {
 	return e.has(mergeReasonDetachedHead)
 }
 
-// withDirt records the code checkout the dirty guard read and its dirty paths on e, when paths is not empty, and returns e.
+// withDirt sets Checkout and DirtyPaths on e when paths is not empty, and returns e.
 func (e *MergeGuardError) withDirt(checkout string, paths []string) *MergeGuardError {
 	if len(paths) > 0 {
 		e.Checkout = checkout
@@ -124,26 +110,22 @@ func newMergeGuardError(reasons []string) *MergeGuardError {
 	return &MergeGuardError{Reasons: unique}
 }
 
-// ErrMergeInRequired is returned by Merge when the merge attempt produced conflicts and Merge
-// self-aborted both sides: conflict resolution belongs in the source pair's own worktree, so the
-// caller must run MergeIn there first, then retry.
-// Source names the offending branch — the one detail this error carries outside its fixed message.
+// ErrMergeInRequired reports a merge that produced conflicts and was aborted on both sides.
+// Conflicts are resolved in the source branch's own worktree.
+// The caller runs `lym fabric merge-in` there first, then retries.
+// Source names the offending branch, the one detail this error carries outside its fixed message.
 //
-// The message names the CLI spelling rather than this package's own method name, and that is the rule the three remedy-carrying errors in this file follow rather than a lapse into cli vocabulary.
-// These strings are read by an operator or an agent, verbatim, out of the fabric envelope and out of landingshed's stuck message — neither of whom can run a Go method called MergeIn.
-// *ErrForeignMergeState below already set the precedent by naming plain git, and fabriccli's own conflict envelope names "lym fabric merge-stage" for the same reason.
-// Go callers are served by this godoc, which does name the method;
-// the Error() string serves the reader who has to act on it.
+// Errors that carry a remedy name the CLI command, not a Go method.
+// An operator or an agent reads the message verbatim and cannot run a Go method.
 type ErrMergeInRequired struct{ Source string }
 
-// Error implements the error interface with a fixed, side-free message; Source travels only in the
-// struct field, never interpolated into the string.
+// Error implements the error interface with a fixed message that does not include Source.
 func (e *ErrMergeInRequired) Error() string {
 	return `fabricengine: merge produced conflicts and was aborted; run "lym fabric merge-in" in the source branch's own worktree first, then retry`
 }
 
-// ErrForeignMergeState is returned by every mutating merge verb when git-level merge state exists
-// on either side that fabric did not itself start — the foreign state is left untouched.
+// ErrForeignMergeState reports git merge state on either side that fabric did not start.
+// Every mutating merge verb returns it, and the foreign state is left untouched.
 type ErrForeignMergeState struct{}
 
 // Error implements the error interface with a fixed message.
@@ -151,9 +133,8 @@ func (e *ErrForeignMergeState) Error() string {
 	return "fabricengine: git merge state exists that fabric did not start; conclude or abort it with plain git, then retry"
 }
 
-// ErrNoMergeInProgress is returned by MergeContinue/MergeAbort when neither a fabric merge record
-// nor foreign git merge state exists on either side — mirroring git's own "There is no merge in
-// progress".
+// ErrNoMergeInProgress reports that neither a fabric merge record nor foreign git merge state exists on either side.
+// The verbs that continue or abort a merge return it, mirroring git's own "There is no merge in progress".
 type ErrNoMergeInProgress struct{}
 
 // Error implements the error interface with a fixed message.
@@ -161,8 +142,8 @@ func (e *ErrNoMergeInProgress) Error() string {
 	return "fabricengine: no merge in progress"
 }
 
-// ErrMergeIncomplete is returned when the conclude phase did not finish landing both sides' commits;
-// the caller re-runs MergeContinue to finish it.
+// ErrMergeIncomplete reports that the conclude phase did not land the commits of both sides.
+// Running `lym fabric merge --continue` again finishes the merge.
 type ErrMergeIncomplete struct{}
 
 // Error implements the error interface with a fixed message.
@@ -170,19 +151,19 @@ func (e *ErrMergeIncomplete) Error() string {
 	return `fabricengine: merge conclude did not finish; run "lym fabric merge --continue" again`
 }
 
-// ErrUnmergeableState is returned when a merge produced conflicts outside the fabric-managed
-// worktree tree — a path unifyConflictPaths could not map to the single visible worktree — and the
-// merge was aborted on both sides, restoring the pair.
+// ErrUnmergeableState reports a merge that produced conflicts outside the fabric-managed worktree tree.
+// That is a conflicted path that cannot map to the single visible worktree.
+// The merge is aborted on both sides, which restores the pair.
 type ErrUnmergeableState struct{}
 
-// Error implements the error interface with a fixed message; the offending detail goes to the
-// internal log only.
+// Error implements the error interface with a fixed message.
+// The offending detail goes to the internal log only.
 func (e *ErrUnmergeableState) Error() string {
 	return "fabricengine: merge produced conflicts outside the fabric-managed tree; operator intervention required"
 }
 
-// ErrMergeInProgress is the single typed error every sibling mutating verb returns while a fabric
-// merge record exists on the pair — the lock decision's one typed, side-free sibling-refusal error.
+// ErrMergeInProgress reports that a fabric merge record exists on the pair.
+// Every other mutating verb returns it while the record exists.
 type ErrMergeInProgress struct{}
 
 // Error implements the error interface with a fixed message.

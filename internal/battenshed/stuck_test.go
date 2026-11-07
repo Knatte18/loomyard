@@ -1,5 +1,6 @@
-// stuck_test.go pins that a stuck verdict's log line takes its level from its cause:
-// a failed producer step logs at Warn, and an ordinary wait or move logs at Info and leaves its reason in the reason file.
+// stuck_test.go pins that a stuck verdict's log line takes its level from its cause.
+// A failed producer step logs at Warn.
+// An ordinary wait or move logs at Info and leaves its reason in the reason file.
 
 package battenshed
 
@@ -17,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestStuckReport_LevelFollowsCause drives one producer per cause and asserts the single stuck line carrying the cause's reason has the cause's level.
+// TestStuckReport_LevelFollowsCause drives one producer per cause.
+// It asserts that the single stuck line carrying the cause's reason has the cause's level.
 // An Info cause also leaves its reason in the reason file.
 // It captures the process-global logger at Info, so it is not parallel.
 func TestStuckReport_LevelFollowsCause(t *testing.T) {
@@ -29,7 +31,7 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 		level string
 		// reason is a fragment of the reason the cause produces.
 		reason string
-		// fileReason is the fragment the reason file holds once the producer returns; empty means reason, for a cause whose wait a later reason ends.
+		// fileReason is the fragment after the producer returns; empty means reason, as a later reason ends the wait.
 		fileReason string
 		// run drives the cause's producer and returns its scratch directory and name.
 		run func(t *testing.T) (scratchDir, producer string)
@@ -84,7 +86,8 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 				clock := &fakeClock{}
 				_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{running}, clock)
 				recordSpawnConfirmed("innerrun", "myslug", scratchDir, SpawnConfirmedFile(scratchDir, "innerrun"))
-				// The write that removes the child's status lands as the first read returns, so the check finds the file moved and its next read finds it gone.
+				// The write that removes the child's status lands as the first read returns, so the check finds the file moved,
+				// and its next read finds it gone.
 				reads := 0
 				deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) {
 					reads++
@@ -109,7 +112,8 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 				build := func() shedengine.ShedProducer {
 					return NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace)
 				}
-				// The first pass spawns the child, reads it running and yields; the next pass finds it awaiting and ends with the change of state.
+				// The first pass spawns the child, reads it running and yields;
+				// the next pass finds it awaiting and ends with the change of state.
 				if outcome, _ := shedfake.CallOK(t, build()); outcome != shedengine.Yield {
 					t.Errorf("first pass = %q; want a Yield", outcome)
 				}

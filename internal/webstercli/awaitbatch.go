@@ -1,9 +1,9 @@
-// awaitbatch.go implements the `await-batch` webster verb: a bounded wait for one batch's report
-// file, for an operator watching a run.
-// Master does not call it: it ends its turn while a backgrounded fork works and records the batch
-// on the fork's completion notification.
-// The verb is deliberately stateless: no state.json read, no lease, no fabric commit — a pure bounded watch
-// on the report path, so it can never corrupt a run no matter who calls it or when.
+// awaitbatch.go implements the `await-batch` webster verb: a bounded wait for one batch's report file.
+// An operator watching a run calls it.
+// Master does not call it: it ends its turn while a backgrounded fork works,
+// and it records the batch on the fork's completion notification.
+// The verb is stateless: it reads no state.json, takes no lease and makes no fabric commit.
+// It only watches the report path, so no caller, at any time, can corrupt a run.
 package webstercli
 
 import (
@@ -66,8 +66,7 @@ Example:
 				return nil
 			}
 
-			// Default to a short block so an agent caller's foreground call
-			// stays under Claude Code's auto-background threshold.
+			// Default to a short block so an agent caller's foreground call stays under Claude Code's auto-background threshold.
 			waitBudget := wait
 			if waitBudget == 0 {
 				waitBudget = time.Duration(websterengine.DefaultAwaitWaitS) * time.Second

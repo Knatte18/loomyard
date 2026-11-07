@@ -1,7 +1,8 @@
-// configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to the per-worktree config files it is told about, read from the task's weft branch since its fork point.
+// configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to per-worktree config files.
+// ReadConfigChanges reads the files it is told about from the task's weft branch since its fork point.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustRecordsRepoRoot;
-// it shares the single TestMain in testmain_test.go.
+// It reuses hubforge.CopyHub and the mustRecordsRepoRoot helper from add_rollback_adopt_test.go.
+// It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -20,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestReadConfigChanges forks a pair from the prime, commits on the pair's weft branch and calls ReadConfigChanges against the prime's branch.
+// TestReadConfigChanges forks a pair from the prime and commits on the pair's weft branch.
+// The test then calls ReadConfigChanges against the prime's branch.
 func TestReadConfigChanges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -35,7 +37,8 @@ func TestReadConfigChanges(t *testing.T) {
 		rels []string
 		// taskFiles are anchor-relative files committed on the pair's weft branch, one commit each.
 		taskFiles []string
-		// baseFile is an anchor-relative file committed on the parent's weft branch before the pair is forked, so the fork point holds it as "base content".
+		// baseFile is an anchor-relative file committed on the parent's weft branch before the pair is forked,
+		// so the fork point holds it as "base content".
 		baseFile string
 		// outsideAnchorFile is a repository-root-relative file also committed on the pair's weft branch.
 		outsideAnchorFile string

@@ -1,4 +1,5 @@
-// conditionedsend.go holds Runner.SendConditioned, the send that gives a line to a session only while it reads a named state, and the reading and wait around it.
+// conditionedsend.go holds Runner.SendConditioned, which gives a line to a session only while it reads a named state.
+// The file also holds the reading and the wait around that send.
 
 package shuttleengine
 
@@ -7,26 +8,34 @@ import (
 	"fmt"
 )
 
-// ErrSendConditionUnmet marks a conditioned send whose session did not read the condition at its one reading: nothing was typed.
+// ErrSendConditionUnmet marks a conditioned send whose session did not read the condition at its one reading:
+// nothing was typed.
 var ErrSendConditionUnmet = errors.New("shuttle: the session does not read the send's condition")
 
-// SendCondition names the session state a conditioned send's ready reading must show.
+// SendCondition names the session state and its cause that a conditioned send's ready reading must show.
 type SendCondition struct {
 	State SessionStateName
 	Cause string
 }
 
-// SendConditioned types text into the pane of the run identified by guid when one ready reading shows the session in the state want names, and submits it.
-// turnStarted is true when a turn start past the send reads within one submit window of the landing, and false with a nil error for a send that landed with none seen.
+// SendConditioned types text into the pane of the run identified by guid and submits it.
+// It does so when one ready reading shows the session in the state want names.
+// turnStarted is true when a turn start past the send reads within one submit window of the landing.
+// It is false, with a nil error, for a send that landed with none seen.
 //
 // The reading takes no wait, no settle and no key, and refuses at once:
 // with an error wrapping ErrRewindPickerOpen when the rewind picker is open, leaving it open;
-// with an error wrapping ErrSendConditionUnmet when the session reads another state, a busy session and an unmatched turn start included;
-// and with a *SessionBusyError when the pane is too short or shows no input box, when the input box holds any text, a draft or a lone stray character, and when an operator was active in the pane.
+// with an error wrapping ErrSendConditionUnmet when the session reads another state:
+// a busy session and an unmatched turn start included;
+// and with a *SessionBusyError when:
+// the pane is too short or shows no input box;
+// the input box holds any text, a draft or a lone stray character;
+// and when an operator was active in the pane.
 // A refused send types nothing.
 //
-// It never clears a stray character, never closes the picker and never clears a text that did not land, so a send that does not land fails with ErrSubmissionNotLanded and leaves its text in the box.
-// It never consults a pending-send record, so a line an earlier unlanded send left pending is typed again.
+// It never clears a stray character, never closes the picker and never clears a text that did not land,
+// so a send that does not land fails with ErrSubmissionNotLanded and leaves its text in the box.
+// It never consults a `pendingSend` record, so a line an earlier unlanded send left pending is typed again.
 func (r *Runner) SendConditioned(guid, text string, want SendCondition) (turnStarted bool, err error) {
 	if r.toldErr != nil {
 		return false, r.toldErr
@@ -53,7 +62,8 @@ func (r *Runner) SendConditioned(guid, text string, want SendCondition) (turnSta
 	return awaitTurnStart(sc, sentAt), nil
 }
 
-// conditionedReading takes one reading of the strand's pane and events file and returns nil only when the session reads want and can take typed input.
+// conditionedReading takes one reading of the strand's pane and events file.
+// It returns nil only when the session reads want and can take typed input.
 // It waits on nothing and plays no key.
 func conditionedReading(sc sendContext, want SendCondition) error {
 	capture, err := sc.reed.CapturePane(sc.guid)
@@ -76,8 +86,10 @@ func conditionedReading(sc sendContext, want SendCondition) error {
 	return nil
 }
 
-// awaitTurnStart polls the events file for a turn start past byte offset sentAt, for at most one submit window on the context's clock, and reports whether one read.
-// The polls start at idlePollInitial and double up to idlePollMax, and the window's poll count bounds them under a clock that never advances.
+// awaitTurnStart polls the events file for a turn start past byte offset sentAt.
+// It polls for at most one submit window on the context's clock, and reports whether one read.
+// The polls start at idlePollInitial and double up to idlePollMax,
+// and the window's poll count bounds them under a clock that never advances.
 func awaitTurnStart(sc sendContext, sentAt int64) bool {
 	window := submitConfirmTimeout(sc.cfg)
 	closeAt := sc.clock.Now().Add(window)

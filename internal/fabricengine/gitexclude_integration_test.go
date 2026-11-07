@@ -1,6 +1,6 @@
 // gitexclude_integration_test.go pins the serialisation and atomicity of `.git/info/exclude` mutation.
-// The file lives in the repo's COMMON gitdir, so every worktree of a hub shares it and two `lym fabric` verbs running side by side mutate the same bytes.
-// Before mutateGitExclude existed, each caller did its own read-modify-write with os.WriteFile, whose truncate-then-write let a concurrent reader observe an EMPTY file and write that emptiness back — destroying the operator's own exclude patterns as well as fabric's junction exclusions.
+// Every worktree of a hub shares that file in the common gitdir, so concurrent `lym fabric` verbs mutate the same bytes.
+// A truncating write lets a concurrent reader see an empty file and write that back, erasing the operator's patterns.
 // It is integration-tagged because resolving the exclude path spawns real git.
 
 package fabricengine
@@ -19,9 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// operatorExcludePattern stands in for the exclude entries a repository already carries before
-// fabric touches the file — git's own comment block, or a pattern the operator wrote by hand.
-// Nothing fabric does may ever remove it.
+// operatorExcludePattern stands in for an exclude entry that a repository carries before fabric touches the file.
+// The entry may be one of git's own comment lines or a pattern the operator wrote by hand; fabric must never remove it.
 const operatorExcludePattern = "/operator-build-output"
 
 // TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent runs many simultaneous mutations
@@ -84,8 +83,8 @@ func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.
 	}
 }
 
-// TestMutateGitExclude_ReportsWhetherContentChanged pins the no-op contract a caller relies on to
-// decide whether it actually unwired anything.
+// TestMutateGitExclude_ReportsWhetherContentChanged pins the no-op contract.
+// A caller relies on it to decide whether it unwired anything.
 func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

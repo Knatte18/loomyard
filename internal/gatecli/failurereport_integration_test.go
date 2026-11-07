@@ -1,4 +1,5 @@
-// failurereport_integration_test.go covers the failure report's reads of a real repository: the files the change touches, from the merge base with the pair's parent branch, and the lint steps a gate key lists.
+// failurereport_integration_test.go covers the failure report's reads of a real repository.
+// It reads the changed files from the merge base with the pair's parent branch, and the lint steps a gate key lists.
 // It is Tier 2: it builds a real hub and spawns git.
 
 package gatecli

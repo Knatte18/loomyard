@@ -1,35 +1,54 @@
-// Package boardcli is the `lym board` command: the task-tracker board's verbs over one `board.json` store, whose entries carry a kind and labels.
+// Package boardcli is the `lym board` command:
+// the task-tracker board's verbs over one `board.json` store, whose entries carry a kind and labels.
 //
 // The verb tree:
-//   - `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps` come from `storeVerbs`.
-//   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
+//   - From `storeVerbs`:
+//     `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps`.
+//   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy` are built in `Command`.
+//     The `rerender` and `sync` maintenance verbs are built there too.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
 // `prune` prints `removed` and `retire-legacy` prints `legacy_files`.
 //
-// A `PersistentPreRunE` resolves configuration once: it loads the Bolt checkout's `_lym/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
+// A `PersistentPreRunE` resolves configuration once.
+// It loads the Bolt checkout's `_lym/config/board.yaml` through `boardengine.LoadConfig` from any worktree.
+// It also derives the board data dir from the worktree layout.
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.
-// `sync` takes the hidden `--deferrable` flag the detached sync child carries:
-// with a pause covering the process it logs one Info line and succeeds with nothing committed or pushed, before it takes any lock,
-// and a pause that arrives before its push's network call makes it exit instead of waiting, its commit staying local for the next sync.
+// `sync` takes the hidden `--deferrable` flag that the detached sync child carries.
+// With a pause covering the process, it logs one Info line and succeeds with nothing committed or pushed.
+// It does so before it takes any lock.
+// A pause that arrives before the push's network call makes it exit instead of waiting.
+// Its commit stays local for the next sync.
 //
 // A payload command's `Use` names its keys in one `{…}` token, written in the grammar `payloadLegend` states once;
-// the `board` group's `Long` ends with that legend, and the operator command index's `board` line carries it as an index note.
-// The group's note-audience annotation names the operator, the audience of every payload-taking board verb, so no other audience's index prints the note.
-// Each parser validates against one `payloadKeys` declared beside its command, a test couples every token to its declaration, and an unknown key is refused.
-// The addressing verbs, `set-deps` and merge's `set_status` included, take exactly one of a `slug`, a numeric `id` or a `handle` such as `B4`, the selector group `entrySelector` declares.
-// The pre-run fills three seams of the board's config from the resolved location, none of them on the `--board-path` path:
-// `ValidateSlug` applies fabric's pair slug rule, with the hub's configured junction names, to every task or project slug a write makes, a promote and a rename included;
-// `PairExists` reports whether the slug's task worktree stands as a registered worktree, so a leftover directory that is no worktree reads as no pair, for the refusal of a project change or rename on an entry with a pair;
+// the `board` group's `Long` ends with that legend,
+// and the operator command index's `board` line carries it as an index note.
+// The group's note-audience annotation names the operator, the audience of every payload-taking board verb;
+// no other audience's index prints the note.
+// Each parser validates against one `payloadKeys` declared beside its command, and an unknown key is refused.
+// A test couples every token to its declaration.
+// The addressing verbs, `set-deps` and merge's `set_status` included, take exactly one key of `entrySelector`:
+// a `slug`, a numeric `id` or a `handle` such as `B4`.
+// The pre-run fills these seams of the board's config from the resolved location, none on the `--board-path` path:
+// `ValidateSlug` applies fabric's pair slug rule, with the hub's configured junction names:
+// it checks every task or project slug a write makes, a promote and a rename included;
+// `PairExists` reports whether the slug's task worktree stands as a registered worktree,
+// so a leftover directory that is no worktree reads as no pair;
+// it serves the refusal of a project change or rename on an entry with a pair;
 // `ParentOf` is `hubgeom.ParentOf`, the one parent resolver.
-// `get` emits a beam's `beam_color`, which only the owner setter writes, so `upsert` refuses a payload naming it as an unknown field.
+// `get` emits a beam's `beam_color`, which only the owner setter writes;
+// `upsert` refuses a payload naming it as an unknown field.
 // `upsert` takes `front`, `on_land` and `discussed` only as the entry's stored values, since only lym writes them.
-// `get` carries the entry's `parent_beam` beside `task` in its envelope, the slug of the beam above it and empty when the prime is its parent, and gives a project its effective owner as it gives a task's; `list` carries `parent_beam` on each entry that has one.
+// `get` carries the entry's `parent_beam` beside `task` in its envelope:
+// the slug of the beam above the entry, empty when the prime is its parent.
+// `get` gives a project its effective owner as it gives a task's.
+// `list` carries `parent_beam` on each entry that has one.
 //
-// A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lym board get B4` works and a verb that needs further keys refuses it as missing them.
+// A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`.
+// So `lym board get B4` works, and a verb that needs further keys refuses it as missing them.
 // `depends_on`, merge's `remove_slugs` and intake's `into` stay slugs.
 // Every verb prints JSON through `internal/output`, one object per line, errors included.
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
@@ -37,71 +56,108 @@
 // The listing puts the Sketches after every other entry, under a `sketches:` line.
 // The listing opens with the entry's handle, a column left out only when no listed entry has one.
 // It carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
-// Two age columns follow, the entry's age and the time since its last revision, computed as of the listing from the stored dates and blank for an unknown one;
-// each is left out when no listed entry has that date.
-// `list` names the machine that owns the hub's prime beside its entries: as the envelope's `prime_owner` key, empty when none is recorded, and with `--text` as a `prime owner: <machine>` line, `none` when none is recorded, before the entry lines.
-// `list` takes `--sort age` to list the oldest entries first and `--sort revised` the longest unrevised first, with an entry lacking the date last and ties in README order.
+// Two age columns follow: the entry's age and the time since its last revision.
+// Each is computed as of the listing from the stored dates, and blank for an unknown one.
+// A column is left out when no listed entry has that date.
+// `list` names the machine that owns the hub's prime beside its entries.
+// The envelope carries it as the `prime_owner` key, empty when none is recorded.
+// With `--text`, a `prime owner: <machine>` line, `none` when none is recorded, comes before the entry lines.
+// `list` takes `--sort age` to list the oldest entries first and `--sort revised` the longest unrevised first.
+// An entry lacking the date comes last, and ties stay in README order.
 //
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
 // `merge` takes the same flag and sets the `upsert` object's `body` under the same refusals.
 //
-// Every verb that takes a slug (`get`, `upsert`, `upsert-batch`, `set-status`, `remove`, `merge`, `promote`, `rename`, `set-deps` and `intake import`) states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
+// Every verb that takes a slug states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
 //
-// An entry whose status has the run-status form is held by a run, and `upsert`, `upsert-batch`, `remove`, `merge`, `set-deps`, `promote` and `intake import` with `into` refuse a write that changes its scope.
+// An entry whose status has the run-status form is held by a run.
+// These verbs refuse a write that changes a held entry's scope:
+// `upsert`, `upsert-batch`, `remove`, `merge`, `set-deps`, `promote` and `intake import` with `into`.
 // `set-status` and `prune` never refuse on it.
 // `rename` refuses to rename a held entry, and renames an entry a held task depends on.
 //
-// Every verb's board carries the caller's `LYM_STRAND_NAME` as `boardengine.Config.StrandName`, so `upsert`, `upsert-batch`, `merge` and `promote` refuse a write that creates or promotes a task from a run agent's session, naming a note as the way forward.
+// Every verb's board carries the caller's `LYM_STRAND_NAME` as `boardengine.Config.StrandName`.
+// A run agent's session cannot create or promote a task through `upsert`, `upsert-batch`, `merge` or `promote`;
+// the refusal names a note as the way forward.
 //
-// `rename {slug|id, to}` changes one entry's slug in one write and prints `{"task":{…},"mentions":[…]}`: the renamed entry, and the slugs of the entries whose body or brief still name the old slug as a whole word, `[]` when none does.
+// `rename {slug|id, to}` changes one entry's slug in one write and prints `{"task":{…},"mentions":[…]}`:
+// the renamed entry, and the slugs of the entries whose body or brief name the old slug as a whole word.
+// `mentions` is `[]` when no entry does.
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //
-// A new entry whose payload lacks `created` gets the write's time, and a scope-changing write whose payload lacks `revised` gets it too.
+// A new entry whose payload lacks `created` gets the write's time.
+// A scope-changing write whose payload lacks `revised` gets it too.
 //
-// A payload's `run_settings` is checked before the store write by `upsert`, each task of `upsert-batch` and `merge`'s upsert.
-// It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
-// A payload's `profile` is checked on the same paths: it must be a string, and a non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir), else the refusal names the known profiles and the way forward; `""` clears it.
+// `upsert`, each task of `upsert-batch` and `merge`'s upsert check a payload's `run_settings` before the store write.
+// The value must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it;
+// a refusal names the module and the key, and the board stores the migrated result.
+// A payload's `profile` is checked on the same paths, and it must be a string.
+// A non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir);
+// otherwise the refusal names the known profiles and the way forward.
+// `""` clears it.
 // Whether the profile holds a block for the task's recipe is checked at Seed-Child, which resolves the recipe.
-// A change to either stored value is refused from a session whose `LYM_STRAND_NAME` carries a slug, and names the operator, the hub orch or the orch of the entry's beam as the way forward.
-// A beam's orch, its strand carrying the beam's slug and the orch role, is the exception: it changes either value on an entry that belongs to its beam both as stored and after the write.
+// A session whose `LYM_STRAND_NAME` carries a slug cannot change either stored value.
+// The refusal names the operator, the hub orch or the orch of the entry's beam as the way forward.
+// A beam's orch, its strand carrying the beam's slug and the orch role, is the exception:
+// it may change either value on an entry that belongs to its beam both as stored and after the write.
 // The entry's beam is read through its project link by `boardengine.Board.BeamUnder`.
 // The guard reads outside the write lock and stops a mistaken write, not a determined one.
-// A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
-// it applies to the next run's Seed-Child, and the running pair takes it through `lym config <module> --layer local --set` in the pair.
+// A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds.
+// It adds a `notice` field to the envelope:
+// the change applies to the next run's Seed-Child;
+// the running pair takes it through `lym config <module> --layer local --set` in the pair.
 // Value semantics, such as a positive integer, stay with the module's load.
 //
-// `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`, joined after a run-settings notice, one line per pair, a batch pair once;
+// `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`.
+// It is joined after a run-settings notice, one line per pair, a batch pair once;
 // `set-deps` prints `notice` only then.
 // `promote` and `intake import` write no `depends_on` and stay unchanged.
 // `promote` takes `--recipe <name>`, which sets the promoted task's recipe in the same write.
-// A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe raddle, which keeps its record and releases the task:
-// `promote` with no `--recipe` gives it raddle, `--recipe raddle` is accepted, and any other recipe is refused, naming the plain promote.
+// A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe raddle.
+// That recipe keeps the record and releases the task:
+// `promote` with no `--recipe` gives it raddle, and `--recipe raddle` is accepted;
+// any other recipe is refused, naming the plain promote.
 //
-// `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`, every run profile in the hub's `profiles.yaml` in name order with its settings per recipe, and `"profiles":[]` when there is none.
+// `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`:
+// every run profile in the hub's `profiles.yaml` in name order, with its settings per recipe.
+// `"profiles":[]` when there is none.
 // `defaults` maps each recipe to the profile a task of that recipe takes when it names none.
 //
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
 // an empty body writes nothing,
 // and an absent target is an error.
 // Editing a body is a file round trip: `get --body > body.md`, edit the file, then `upsert --body-file body.md`.
-// A task whose run's Discussion was approved carries `"discussed": true` in `get`'s envelope, and `get --record` writes its stored decision record alone, verbatim.
-// `--record` refuses an absent entry, an entry that is not discussed, a discussed entry whose record file is missing, and `--body` beside it, each naming its way forward.
-// A saved `rename` can still report an error when the entry's decision record file could not follow it; the entry is renamed, and the error names the file to deal with.
-// `get`, `list-full` and the task envelope of `upsert`, `promote` and `merge` print an entry's kept keys, the board.json keys this binary does not know, while `list` and the README use known fields only.
+// A task whose run's Discussion was approved carries `"discussed": true` in `get`'s envelope.
+// `get --record` writes its stored decision record alone, verbatim.
+// `--record` refuses each of these, naming its way forward:
+// an absent entry, an undiscussed entry, a discussed entry whose record file is missing, and `--body` beside it.
+// A saved `rename` can still report an error when the entry's decision record file could not follow it.
+// The entry is renamed, and the error names the file to deal with.
+// Kept keys are the board.json keys this binary does not know.
+// `get`, `list-full` and the task envelope of `upsert`, `promote` and `merge` print an entry's kept keys.
+// `list` and the README use known fields only.
 //
-// The intake verbs work on the hub's own GitHub repository, read through `internal/hubissues`: the repository `fabricengine.HubRepoURL` returns, the hub's recorded binding or else its origin remote, never selfreport's repository.
+// The intake verbs work on the hub's own GitHub repository, read through `internal/hubissues`.
+// That repository is the one `fabricengine.HubRepoURL` returns:
+// the hub's recorded binding or else its origin remote, never selfreport's repository.
 // Only an intake verb resolves that repository, so every other verb works offline.
-// `intake list` prints `{"issues":[{"number":…,"title":…}]}` for each open issue no entry records, pull requests excluded, and no open issue as `{"issues":[]}`.
+// `intake list` prints `{"issues":[{"number":…,"title":…}]}` for each open issue no entry records.
+// Pull requests are excluded, and no open issue prints `{"issues":[]}`.
 // `--full` prints number, title, body, labels, url, comments and created_at for the same set.
 //
-// `intake import` prints `{"slug":…,"issue":…,"labels":[…],"dropped":[…]}`, with the slug of the entry folded into for a fold.
-// A failed comment or close after the board write carries the same four fields and the `close` payload in the error envelope.
+// `intake import` prints `{"slug":…,"issue":…,"labels":[…],"dropped":[…]}`.
+// For a fold, `slug` is the entry folded into.
+// A failed comment or close after the board write carries the same fields and the `close` payload in the error envelope.
 // An already-recorded issue prints `recorded`.
 //
-// `raddle <slug>` takes a bare slug, not a payload, and prints the approved raddle proposal of the store directory that holds the slug, a Sketch's own or one its run filed, verbatim with no envelope.
-// It reads only, errors for a slug the raddle store does not hold naming `lym report raddle` as the way forward, and works after the run's landing pruned the Sketch, since the store outlives prune.
+// `raddle <slug>` takes a bare slug, not a payload.
+// It prints, verbatim with no envelope, the approved raddle proposal of the store directory that holds the slug:
+// a Sketch's own or one its run filed.
+// It reads only.
+// A slug the raddle store does not hold is an error naming `lym report raddle` as the way forward.
+// It works after the run's landing pruned the Sketch, since the store outlives prune.
 //
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
 // Each list is in `board.yaml` file order,

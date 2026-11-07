@@ -1,4 +1,5 @@
-// index.go renders the command index: a nested markdown list of one line per command, filtered by the audience annotation, read from a live cobra tree.
+// index.go renders the command index, a nested markdown list with one line per command.
+// The list is filtered by audience annotation and read from a live cobra tree.
 
 package clihelp
 
@@ -9,7 +10,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Invocable reports whether cmd takes an audience: a leaf, or a runnable group whose Use carries a token after its name or that has a visible flag of its own.
+// Invocable reports whether cmd takes an audience of its own.
+// A leaf always does.
+// A group does when it is runnable and either its Use carries a token after its name,
+// or it has a visible flag of its own.
 // A group's persistent flags never qualify it, since they configure its children.
 func Invocable(cmd *cobra.Command) bool {
 	if !cmd.HasSubCommands() {
@@ -22,10 +26,10 @@ func Invocable(cmd *cobra.Command) bool {
 }
 
 // RenderIndex renders the nested markdown list of every command under root whose audience annotation equals audience.
-// It indents two spaces per level and implies `lym` plus the parent path by nesting.
-// A group prints in group form when only a descendant prints.
-// A runnable group prints in leaf form when its own annotation matches.
-// A command without an annotation never prints.
+// It indents two spaces per level, and lines omit `lym` and the parent path, which the nesting implies.
+// A command that does not print in leaf form prints in group form when a descendant prints.
+// An invocable command prints in leaf form when its audience annotation matches.
+// A command without an annotation never prints in leaf form.
 // A command's index note prints only in the audience its IndexNoteAudienceAnnotation names.
 // It walks root in memory and reads no file.
 func RenderIndex(root *cobra.Command, audience string) string {
@@ -59,12 +63,14 @@ func indexLines(cmd *cobra.Command, audience string, depth int) []string {
 	return nil
 }
 
-// groupLine formats cmd as the name in backticks, a colon and its Short, followed by its index note when audience is the one the note names.
+// groupLine formats cmd as its name in backticks, a colon and its Short.
+// It appends the index note when audience matches the audience its note names.
 func groupLine(cmd *cobra.Command, audience string) string {
 	return withNote(cmd, audience, "- `"+cmd.Name()+"`: "+cmd.Short)
 }
 
-// leafLine formats cmd as its Use in backticks, then the flags Use does not spell, a colon and its Short, followed by its index note when audience is the one the note names.
+// leafLine formats cmd as its Use in backticks, then the visible local flags that Use does not spell.
+// It then adds a colon and its Short, and appends the index note when audience matches the audience its note names.
 func leafLine(cmd *cobra.Command, audience string) string {
 	line := "- `" + cmd.Use + "`"
 	var flagNames []string

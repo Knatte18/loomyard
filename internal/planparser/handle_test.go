@@ -1,4 +1,5 @@
-// handle_test.go covers splitHandleDeclaration and handleUnit, the two pure string helpers card 9 adds, plus the referencedHandles predicate card 10 adds beside them.
+// handle_test.go covers splitHandleDeclaration and handleUnit, two pure string helpers.
+// It also covers referencedHandles, which maps each handle to the cards that name it.
 
 package planparser
 
@@ -111,7 +112,8 @@ func TestHandleUnit(t *testing.T) {
 	}
 }
 
-// TestHandleIndexes asserts referencedHandles maps each handle-shaped target or use to the cards naming it, leaving a non-handle ref out.
+// TestHandleIndexes asserts referencedHandles maps each handle-shaped target or use to the cards naming it.
+// A non-handle ref has no entry.
 //
 //testtiming:keep pins referencedHandles map contents, which TestValidate_HandleConsistency reaches only as findings
 func TestHandleIndexes(t *testing.T) {
@@ -138,8 +140,14 @@ func TestHandleIndexes(t *testing.T) {
 	}
 }
 
-// TestCheckHandleMalformed_FileUnitRule asserts a handle whose unit half names a ".go" file is refused up front with a handle-malformed finding naming the package-directory fix: such a handle canonicalizes to a member spelling quarry's Resolve can never answer, so the plan would validate clean and then wedge at the creating card's own done-check.
-// The rule binds a handle whose unit half is actually read -- a Create declaration's -- and not one claimed only as a Rename pair's to-side, whose unit canonicalization takes from the resolved old side; it is gated off for every language but go.
+// TestCheckHandleMalformed_FileUnitRule asserts that a handle whose unit half names a ".go" file is refused.
+// The refusal is a handle-malformed finding naming the package-directory fix.
+// Such a handle canonicalizes to a member spelling that the resolver can never answer,
+// so the plan would validate clean and then wedge at the creating card's own done-check.
+// The rule binds a handle whose unit half is read, that is, a Create declaration's handle.
+// It does not bind a handle claimed only as a Rename pair's to-side.
+// Its unit canonicalization takes from the resolved old side.
+// The rule is gated off for every language but go.
 func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -222,7 +230,8 @@ func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
 	}
 }
 
-// TestHandleBody asserts HandleBody strips the plan: prefix of a handle-shaped ref and reports every other shape as not a handle, in agreement with IsHandleRef.
+// TestHandleBody asserts HandleBody strips the plan: prefix of a handle-shaped ref.
+// It also asserts that every other shape is reported as not a handle, in agreement with IsHandleRef.
 //
 //testtiming:keep pins HandleBody's prefix strip and IsHandleRef's agreement with it, which TestCardTargetDirs does not assert
 func TestHandleBody(t *testing.T) {
@@ -284,8 +293,9 @@ func TestNewHandle(t *testing.T) {
 	}
 }
 
-// TestHandleMember asserts HandleMember returns the text after a handle's #, and HandleIdentifier the final identifier of a qualified member, refusing an empty or absent member.
-// The identifier cases are planglyph's draftHandleIdentifier table, ported as the assertion base.
+// TestHandleMember asserts HandleMember returns the text after a handle's #.
+// It also asserts HandleIdentifier returns the final identifier of a qualified member.
+// Both refuse an empty or absent member.
 func TestHandleMember(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

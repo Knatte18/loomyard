@@ -1,5 +1,7 @@
 // amendment.go implements the Bouncer's new review generation over a changed subject.
-// It holds the archive and the generation record that start it, the amendment allowance that bounds an amendment's rounds, and AmendmentNote, the text that scopes an amendment's review to the change.
+// It holds the archive and the generation record that start it.
+// It also holds the amendment allowance that bounds an amendment's rounds.
+// AmendmentNote is the text that scopes an amendment's review to the change.
 
 package shedadapters
 
@@ -14,13 +16,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// startNextGeneration starts the generation after settled's over a changed subject.
-// It reads the review input first, keeping its path when the input was written after settled.SettledAt, and returns a read error before anything is archived.
-// It then archives the run directory, the records travelling along, and writes the generation record with the next number.
-// An amendment carries the Amendment mark, base and the kept review input path; a full generation, which cfg.FullGeneration selects, carries the number alone.
+// startNextGeneration starts the generation that follows settled, over a changed subject.
+// It reads the review input first, keeping its path when the input was written after settled.SettledAt.
+// A read error is returned before anything is archived.
+// It then archives the run directory with the records travelling along.
+// It writes the generation record with the next number.
+// An amendment carries the Amendment mark, base and the kept review input path;
+// a full generation, which cfg.FullGeneration selects, carries the number alone.
 // An amendment with an allowance of 0 settles through approveWithoutReview, and every other generation seeds.
-// A failed archive degrades, as the clear does.
-// A Call that fails after the archive leaves the generation record naming a generation no seed has run for, and the next Call's seed takes it from there.
+// A failed archive degrades.
+// A Call that fails after the archive leaves the generation record naming a generation no seed has run for,
+// and the next Call's seed takes it from there.
 func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord, base string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	amendment := !b.cfg.FullGeneration
 	inputPath := ""
@@ -53,7 +59,8 @@ func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord,
 	return b.seedCall(ctx)
 }
 
-// keptReviewInput returns the path of the review input when the ReviewInput seam reports one written after settledAt, and "" otherwise.
+// keptReviewInput returns the path of the review input when the ReviewInput seam reports one written after settledAt.
+// Otherwise it returns the empty string.
 // An unset or unparsable settledAt reads as the zero time, so any input is later.
 func (b *Bouncer) keptReviewInput(settledAt string) (string, error) {
 	if b.cfg.ReviewInput == nil {
@@ -81,12 +88,16 @@ func (b *Bouncer) amendment() (generationRecord, bool) {
 	return generation, found && generation.Amendment
 }
 
-// AmendmentNote renders from the run directory's generation record the note the seed, the reviewers and the judge read, scoping an amendment's review to its change.
-// It is `none` outside an amendment.
+// AmendmentNote renders the note that scopes an amendment's review to its change.
+// The note is built from the run directory's generation record, and the seed, the reviewers and the judge read it.
+// The note is `none` outside an amendment.
 // For a document the note limits the review to the artifacts' change since the commit the record's base names.
-// For a code segment the settled side is the stored settle-record.patch and the current side is the working-tree diff against the current merge base, untracked files outside the exclusion set included,
-// so a change already uncommitted at the settle is never shown as new and parent changes a Parent-Align brought are left out.
-// The note also names the review input file when the record holds one, as an input the amendment reviews besides the change.
+// For a code segment the settled side is the stored settle-record.patch.
+// The current side is the working-tree diff against the current merge base.
+// It includes untracked files outside the exclusion set.
+// A change already uncommitted at the settle is never shown as new;
+// parent changes a Parent-Align brought are left out.
+// When the record holds a review input, the note names its file as an input the amendment reviews besides the change.
 func AmendmentNote(runDir string) string {
 	generation, found, err := readGenerationRecord(runDir)
 	if err != nil {

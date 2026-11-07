@@ -1,4 +1,5 @@
-// summarywriter.go implements SummaryWriter, the stream filter that prints a verb's JSON envelope line as its readable summary and passes every other byte through as written.
+// summarywriter.go implements SummaryWriter, a stream filter that prints a verb's JSON envelope as a readable summary.
+// It passes every other byte through as written.
 
 package output
 
@@ -7,7 +8,8 @@ import (
 	"io"
 )
 
-// SummaryWriter writes everything written to it through to an underlying writer, except a line that opens with '{' and holds one envelope, which it writes as Summary renders it.
+// SummaryWriter writes everything written to it through to an underlying writer.
+// A line that opens with '{' and holds one envelope is written as its readable summary instead.
 // Text that does not open a line with '{', such as a prompt with no line break, reaches the underlying writer at once.
 // A line that opens with '{' is held until its line break or Flush.
 // A SummaryWriter is not safe for concurrent use.
@@ -55,7 +57,8 @@ func (s *SummaryWriter) Write(p []byte) (int, error) {
 	return total, nil
 }
 
-// Flush writes a held line that never got its line break, as its summary when it holds an envelope and as written otherwise.
+// Flush writes a held line that never got its line break.
+// It writes the line as its summary when it holds an envelope, and as written otherwise.
 func (s *SummaryWriter) Flush() error {
 	if !s.holding {
 		return nil

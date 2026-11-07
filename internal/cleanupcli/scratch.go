@@ -1,4 +1,5 @@
-// scratch.go implements the cleanup module's own segment: the removal of old, uncited children of the .scratch directory at the prime's anchor.
+// scratch.go implements the scratch segment of the cleanup verb:
+// the removal of old, uncited children of the .scratch directory at the prime's anchor.
 
 package cleanupcli
 
@@ -18,14 +19,17 @@ import (
 // scratchDirName is the name of the scratch directory at the prime worktree's anchor, which no other module owns.
 const scratchDirName = ".scratch"
 
-// scratchMaxAge is how long a scratch child must go unmodified before the segment removes it; it matches the default retention age of the logger's trace sweep.
+// scratchMaxAge is how long a scratch child must go unmodified before the segment removes it.
 const scratchMaxAge = 14 * 24 * time.Hour
 
-// boardDoneStatus is the status of a board entry whose work is finished, which no longer keeps a scratch child alive.
+// boardDoneStatus is the status of a board entry whose work is finished;
+// such an entry does not keep a scratch child alive.
 const boardDoneStatus = "done"
 
-// scratchSegment removes, or with apply false lists, the direct children of dir that nothing needs any more, and returns their names.
-// A child qualifies when the newest modification time of it and everything below it is older than now minus scratchMaxAge, and no board entry that is not done cites its ".scratch/<name>" path in its title, brief or body.
+// scratchSegment removes the direct children of dir that nothing still needs and returns their names.
+// With apply false, it only lists them.
+// A child qualifies when neither it nor anything below it was modified within the last scratchMaxAge,
+// and no board entry that is not done cites its ".scratch/<name>" path in its title, brief or body.
 // A link is judged on its own modification time and removed as a link, never followed.
 // A missing dir is an empty segment.
 // The board is read first; a read error fails the segment with nothing removed.

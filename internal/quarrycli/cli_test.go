@@ -9,8 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCommand_ExactChildSet asserts Command()'s child set is exactly the four verbs: toc, glyphs,
-// resolve, and expand -- no more, no fewer.
+// TestCommand_ExactChildSet asserts Command()'s child set is exactly the four verbs: toc, glyphs, resolve, and expand.
 func TestCommand_ExactChildSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	cmd := Command()

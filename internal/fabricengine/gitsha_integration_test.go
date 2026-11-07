@@ -1,9 +1,8 @@
-// gitsha_integration_test.go holds the SHA/commit-message-reading fixture helpers export_test.go
-// used to carry: CurrentSHAForTest, CommitWarpForTest, BareBranchSHAForTest, and commitMessageAt, plus their ForTest
-// re-exports. They live here rather than in export_test.go because each spawns git directly via
-// os/exec.Command to capture its output, and every one of their callers is itself
-// integration-tagged; an untagged export_test.go carrying a raw exec.Command call would trip the
-// Test Tier Purity Invariant regardless of which build tag its callers carry.
+// gitsha_integration_test.go holds the fixture helpers that read commit SHAs and commit messages from git.
+// They live here rather than in export_test.go because each spawns git directly through os/exec.Command,
+// and every caller is integration-tagged.
+// An untagged export_test.go with a raw exec.Command call would trip the Test Tier Purity Invariant.
+// That holds whatever build tag the callers carry.
 
 package fabricengine
 
@@ -20,7 +19,8 @@ func CurrentSHAForTest(t *testing.T, dir string) string {
 	return gitkit.RevParse(t, dir, "HEAD")
 }
 
-// CommitWarpForTest commits content as warpPath's README, with content as the message, and returns the new HEAD SHA.
+// CommitWarpForTest commits content as the README of warpPath, using content as the commit message.
+// It returns the new HEAD SHA.
 func CommitWarpForTest(t *testing.T, warpPath, content string) string {
 	t.Helper()
 	return gitkit.CommitFile(t, warpPath, "README", content, content)
@@ -32,14 +32,11 @@ func BareBranchSHAForTest(t *testing.T, bareDir, branch string) string {
 	return gitkit.RevParse(t, bareDir, branch)
 }
 
-// CommitMessageAtForTest re-exports commitMessageAt (relocated fixture helper, formerly
-// syncweft_integration_test.go): commitweftat_test.go (package fabricengine, never migrating) calls it
-// unqualified, and commit_integration_test.go needs it before syncweft_integration_test.go's own
-// migration card lands.
+// CommitMessageAtForTest returns a revision's full raw commit message for the external test package.
 var CommitMessageAtForTest = commitMessageAt
 
-// commitMessageAt returns rev's full raw commit message (subject + body + trailers) in repoPath, via
-// `git log --format=%B`.
+// commitMessageAt returns rev's full raw commit message (subject, body and trailers) in repoPath.
+// It reads the message with `git log --format=%B`.
 func commitMessageAt(t *testing.T, repoPath, rev string) string {
 	t.Helper()
 

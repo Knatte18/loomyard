@@ -19,8 +19,8 @@ var archiveTestInstant = time.Date(2026, 8, 16, 15, 13, 26, 0, time.UTC)
 func TestArchiveStaleOutputs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// Each step creates its files, then archives its listed names; a listed name that was
-	// never created is an absent entry.
+	// Each step creates its files, then archives its listed names.
+	// A listed name that was never created is an absent entry.
 	type step struct {
 		create  []string
 		archive []string

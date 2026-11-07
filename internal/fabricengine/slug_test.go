@@ -1,6 +1,5 @@
 // slug_test.go pins the shared worktree-slug validator both Add and Remove route through.
-// It is a tier0 test: validateWorktreeSlug is pure string work with no git spawn and no
-// filesystem access.
+// It is a tier0 test: validateWorktreeSlug is pure string work with no git spawn and no filesystem access.
 
 package fabricengine
 
@@ -35,9 +34,9 @@ func TestValidateWorktreeSlug(t *testing.T) {
 		{"durable structural dir", "_lym", nil, "reserved for lym hub geometry"},
 		{"transient structural dir", ".lym", nil, "reserved for lym hub geometry"},
 		{"configured junction name", "_extra", []string{"_extra"}, "reserved for lym hub geometry"},
-		// "." and ".." carry no separator and name no reserved directory, so every other rule here
-		// waves them through — and filepath.Join then resolves ".." out of the launcher directory and
-		// onto the hub itself, where Remove's os.RemoveAll deletes the whole hub.
+		// "." and ".." carry no separator and name no reserved directory, so every other rule here waves them through.
+		// Then filepath.Join resolves ".." out of the launcher directory onto the hub itself.
+		// Remove's os.RemoveAll deletes the whole hub.
 		{"self reference", ".", nil, "not a relative path element"},
 		{"parent reference", "..", nil, "not a relative path element"},
 		{"trailing dot segment", "task/.", nil, "single path component"},

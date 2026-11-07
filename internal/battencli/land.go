@@ -1,5 +1,5 @@
-// land.go wires the Land row: the seams that pull the prime, read the landing config, run the deploy command and prune the board.
-// Every seam resolves what it touches on Call, never at wiring time.
+// land.go wires the Land row's seams: the prime pull, the landing config, the deploy command and the board prune.
+// Every seam resolves what it touches when it runs, never at wiring time.
 
 package battencli
 
@@ -30,7 +30,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
-// pauseRequested returns the seam that reads the pause_requested flag of batten's own status file, the one `lym batten pause` writes.
+// pauseRequested returns the seam that reads the pause_requested flag of batten's own status file.
+// `lym batten pause` writes that file.
 // An absent status file reads as not paused.
 func pauseRequested(location *lymcwd.Location, slug string) func() (bool, error) {
 	return func() (bool, error) {
@@ -74,7 +75,8 @@ func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd
 			}
 			return fab.CurrentBranch()
 		},
-		// PrimeDirty keeps only the paths under the prime's code worktree: the records side is pulled non-fatally by fabric's pull, and its run records change under every batten.
+		// PrimeDirty keeps only the paths under the prime's code worktree:
+		// the records side is pulled non-fatally by fabric's pull, and its run records change under every batten.
 		PrimeDirty: func() ([]string, error) {
 			fab, err := fabricengine.Open(location)
 			if err != nil {
@@ -142,7 +144,8 @@ func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd
 	}
 }
 
-// childFinalized reports whether the run in taskLocation finished a Finalize: its status history holds a Finalize with outcome Done.
+// childFinalized reports whether the run in taskLocation finished a Finalize:
+// its status history holds a Finalize with outcome Done.
 // A run with no status file, or none that finalized, such as a motif run, landed no code.
 func childFinalized(taskLocation *lymcwd.Location) (bool, error) {
 	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
@@ -158,8 +161,10 @@ func childFinalized(taskLocation *lymcwd.Location) (bool, error) {
 }
 
 // pullStopOutcome splits a pull's error into the Land row's two outcomes.
-// An err that is exactly a records-side stop is a records side that did not pull: its message comes back as recordsStop with a nil pullErr, so the landing goes on.
-// Any other error, one joining a code-side failure to a records-side stop included, comes back as pullErr, so an unpulled prime is never deployed.
+// An err that is exactly a records-side stop is a records side that did not pull:
+// its message comes back as recordsStop with a nil pullErr, so the landing goes on.
+// Any other error comes back as pullErr, so an unpulled prime is never deployed.
+// That includes an error joining a code-side failure to a records-side stop.
 func pullStopOutcome(err error) (recordsStop string, pullErr error) {
 	if message, ok := fabricengine.RecordsStopMessage(err); ok {
 		return message, nil
@@ -167,8 +172,10 @@ func pullStopOutcome(err error) (recordsStop string, pullErr error) {
 	return "", err
 }
 
-// RunDeploy runs command through the platform shell in primeDir with its output in the file logPath, ending it after timeout.
-// A command that outlives the timeout reports TimedOut; a shell that could not start, or a cancelled ctx, is the returned error.
+// RunDeploy runs command through the platform shell in primeDir with its output in the file logPath.
+// It ends the command once timeout elapses.
+// A command that outlives the timeout reports TimedOut;
+// a shell that could not start, or a cancelled ctx, is the returned error.
 func RunDeploy(ctx context.Context, primeDir, command, logPath string, timeout time.Duration) (battenshed.DeployResult, error) {
 	logFile, err := os.Create(logPath)
 	if err != nil {
@@ -190,8 +197,10 @@ func RunDeploy(ctx context.Context, primeDir, command, logPath string, timeout t
 	return battenshed.DeployResult{ExitCode: exitCode}, nil
 }
 
-// runRowCommand runs command through the platform shell in dir with its output in the file logPath, ending it after timeout.
-// A command that outlives the timeout reports TimedOut; a shell that could not start, or a cancelled ctx, is the returned error.
+// runRowCommand runs command through the platform shell in dir with its output in the file logPath.
+// It ends the command once timeout elapses.
+// A command that outlives the timeout reports TimedOut;
+// a shell that could not start, or a cancelled ctx, is the returned error.
 func runRowCommand(ctx context.Context, dir, command, logPath string, timeout time.Duration) (shedadapters.CommandResult, error) {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return shedadapters.CommandResult{}, err
@@ -216,7 +225,8 @@ func runRowCommand(ctx context.Context, dir, command, logPath string, timeout ti
 	return shedadapters.CommandResult{ExitCode: exitCode}, nil
 }
 
-// commandEnv returns environ without the strand-name variable, so a command a batten row runs never reads as an agent's own and a gate call inside it runs in-process.
+// commandEnv returns environ without the strand-name variable,
+// so a command a batten row runs never reads as an agent's own, and a gate call inside it runs in-process.
 func commandEnv(environ []string) []string {
 	return slices.DeleteFunc(slices.Clone(environ), func(entry string) bool {
 		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=")

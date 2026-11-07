@@ -1,4 +1,4 @@
-// tmuxconf.go — the operator tmux config feature: the `tmux_conf` key's validation and the boot guard that sources it.
+// tmuxconf.go validates the `tmux_conf` key and runs the boot guard that sources the operator's tmux config.
 
 package reedengine
 
@@ -17,13 +17,17 @@ import (
 // tmuxConfEnv is the environment variable the `tmux_conf` template line reads.
 const tmuxConfEnv = "LYM_REED_TMUX_CONF"
 
-// tmuxConfForbiddenChars are the non-whitespace characters a tmux config path may not hold:
-// source-file treats its argument as a glob, and the boot nests the path in a command string tmux parses a second time.
+// tmuxConfForbiddenChars are the non-whitespace characters a tmux config path may not hold.
+// source-file treats its argument as a glob,
+// and the boot nests the path in a command string that tmux parses a second time.
 const tmuxConfForbiddenChars = `*?[\'";#{}$`
 
 // tmuxConfPath validates the `tmux_conf` value and returns the path to source.
 // An empty raw returns the empty string.
-// A leading `~/` expands to a non-empty home, and stays unexpanded, so refused as not absolute, when home is empty; the result must be an absolute path to an existing regular file holding no whitespace and none of the characters tmux would reinterpret.
+// A leading `~/` expands to home when home is non-empty.
+// With an empty home, the `~/` stays unexpanded and is refused as not absolute.
+// The result is an absolute path to an existing regular file.
+// It holds no whitespace and none of the characters tmux would reinterpret.
 // Every error names the key `tmux_conf`, the variable tmuxConfEnv and the path.
 func tmuxConfPath(raw, home string) (string, error) {
 	if raw == "" {
@@ -52,13 +56,14 @@ func tmuxConfPath(raw, home string) (string, error) {
 	return path, nil
 }
 
-// tmuxConfClaimedOption is the server option the boot that wins the claim sets: `sourced` when it sourced a file, `empty` when it had none.
+// tmuxConfClaimedOption is the server option that the boot winning the claim sets.
+// Its value is `sourced` when that boot sourced a file, and `empty` when it had none.
 const tmuxConfClaimedOption = "@lym_tmux_conf_claimed"
 
-// reedSessionOption is the session option every reed session carries from its creation, which the session filter reads.
+// reedSessionOption is the session option that every reed session carries from its creation, which marks it as reed's.
 const reedSessionOption = "@lym_reed_session"
 
-// serverIdentityLocked returns the answer of the server's `#{pid} #{start_time}`, which names one server incarnation.
+// serverIdentityLocked returns what the server prints for `#{pid} #{start_time}`, which names one server incarnation.
 // It returns the empty string when the round trip fails or prints nothing, as for a socket with no server.
 func (e *Engine) serverIdentityLocked() string {
 	out, err := e.tmux.output("display-message", "-p", "#{pid} #{start_time}")
@@ -68,8 +73,9 @@ func (e *Engine) serverIdentityLocked() string {
 	return strings.TrimSpace(out)
 }
 
-// bootGuardArgv is the one chained tmux invocation of the boot guard.
-// A candidate boot opens with an `if-shell` that claims the server's one-time source, racing other candidates on the server option, and sources confPath when it wins and confPath is non-empty.
+// bootGuardArgv builds the one chained tmux invocation of the boot guard.
+// A candidate boot opens with an `if-shell` that claims the server's one-time source.
+// Candidates race for the claim on the server option, and the winner sources confPath when it is non-empty.
 // Every guard ends by pinning `destroy-unattached` and `exit-unattached` off, so the operator file cannot end the server.
 func bootGuardArgv(candidate bool, confPath string) []string {
 	var argv []string
@@ -86,10 +92,15 @@ func bootGuardArgv(candidate bool, confPath string) []string {
 	)
 }
 
-// guardBootSessionLocked runs the boot guard on the server the boot just reached, then reads back that this session and both pins survived the operator file.
-// The boot is a candidate for the source when the server's identity now differs from identityBefore, the one read before the spawn.
-// The guard invocation's exit status is only ever a warning, since one status carries the claim, the source and both pins; the read-back decides.
-// It fails when the session is gone, naming the key, the variable and confPath, after ending the server if no reed session remains on it, or when either pin does not read `off`.
+// guardBootSessionLocked runs the boot guard on the server the boot just reached.
+// Then it reads back that the session and both pins survived the operator file.
+// The boot is a candidate for the source when the server's identity now differs from identityBefore.
+// identityBefore is the identity read before the spawn.
+// The guard's exit status is only ever a warning, since one status carries the claim, the source and both pins;
+// the read-back decides.
+// It fails when the session is gone, after ending the server if no reed session remains on it.
+// The error names the key, the variable and confPath.
+// It also fails when either pin does not read `off`.
 func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 	candidate := e.serverIdentityLocked() != identityBefore
 	logger.Info("reed: tmux config claim", "socket", e.Socket(), "session", e.SessionName(), "candidate", candidate, "path", confPath)
@@ -122,8 +133,10 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 	return nil
 }
 
-// endServerWithoutReedSessionLocked ends the server and removes its socket file when it lists no session that counts as reed's, or no longer answers.
-// A boot refused because the operator file ended its session calls it, so a server holding only sessions the file created does not outlive the refusal.
+// endServerWithoutReedSessionLocked ends the server and removes its socket file.
+// It does so when the server lists no session that counts as reed's, or when it no longer answers.
+// A boot refused because the operator file ended its session calls it,
+// so a server holding only sessions the file created does not outlive the refusal.
 // It is best-effort: a failure is logged and never replaces the refusal.
 func (e *Engine) endServerWithoutReedSessionLocked() {
 	if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err == nil && strings.TrimSpace(out) != "" {
@@ -143,11 +156,15 @@ func (e *Engine) endServerWithoutReedSessionLocked() {
 }
 
 // reedSessionFilter is the tmux format that is true for a session that counts as reed's.
-// On a server whose starter sourced an operator file (claim `sourced`), only a session carrying the reed tag counts; on any other server every session does, so a server that sourced nothing, or started before the claim existed, keeps listing everything.
+// On a server whose starter sourced an operator file (claim `sourced`), only a session carrying the reed tag counts;
+// on any other server every session does,
+// so a server that sourced nothing, or started before the claim existed, keeps listing everything.
 const reedSessionFilter = "#{||:#{!=:#{" + tmuxConfClaimedOption + "},sourced},#{" + reedSessionOption + "}}"
 
 // listSessionsArgv is the list-sessions invocation that prints format once per session that counts as reed's.
-// Off Windows it filters with reedSessionFilter; on Windows it lists every session, since no Windows boot claims a server and the multiplexer's support for the filter flag is unverified.
+// Off Windows it filters with reedSessionFilter;
+// on Windows it lists every session, since no Windows boot claims a server.
+// The multiplexer's support for the filter flag there is unverified.
 func listSessionsArgv(goos, format string) []string {
 	if goos == "windows" {
 		return []string{"list-sessions", "-F", format}

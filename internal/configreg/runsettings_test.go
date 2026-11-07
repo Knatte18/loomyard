@@ -14,11 +14,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// renamedCodeMaxBounces is the line loom's Migrate writes for a retired webster_max_bounces of 2, carrying the comment the loom template holds on code_max_bounces.
+// renamedCodeMaxBounces is the line loom's Migrate writes for a retired webster_max_bounces of 2.
+// It carries the comment the loom template holds on code_max_bounces.
 const renamedCodeMaxBounces = "code_max_bounces: 2 # bounce budget of the Code-Review perch: N gives N judged Burler rounds, 1 by default; null takes review_max_bounces; 0 runs no review round: the perch's Bouncer settles approved at once; a checkpoint above this budget means the perch never rules CIRCLING and reaches the soft-cap rule, or the accept, instead\n"
 
-// TestPrepareRunSettings pins PrepareRunSettings over the real registry: the documents it returns and the refusals that name the module and key.
-// It is not parallel: its Warn subtest reads the process-global logger, which a parallel top-level test would also write to.
+// TestPrepareRunSettings pins PrepareRunSettings over the real registry:
+// the documents it returns and the refusals that name the module and key.
+// It is not parallel: its Warn subtest reads the process-global logger, which parallel tests would also write to.
 func TestPrepareRunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -404,7 +406,8 @@ func TestPrepareRunSettings(t *testing.T) {
 	})
 }
 
-// TestLayerRunSettings pins how a task's run settings lie over its run profile's: per key, per module, and with each side's refusal naming its source.
+// TestLayerRunSettings pins how a task's run settings lie over its run profile's:
+// per key, per module, and with each side's refusal naming its source.
 func TestLayerRunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -492,7 +495,8 @@ func TestLayerRunSettings(t *testing.T) {
 	}
 }
 
-// TestProfilesCheckLoad pins the profiles module's load check: the template's starting profiles pass, and a hub file profile with a key no module takes is refused naming the profile.
+// TestProfilesCheckLoad pins the profiles module's load check: the template's starting profiles pass,
+// and a hub file profile with a key no module takes is refused naming the profile.
 func TestProfilesCheckLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,7 +1,7 @@
-// audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under
-// t.TempDir(): the parent-transcript spawn tally, one ForkReport per fork transcript with every
-// field asserted, the missing-subagents-dir zero-fork finding, the missing-parent-transcript error,
-// and the path-encoding derivation claudeProjectDirFor implements.
+// audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under t.TempDir().
+// It asserts the parent-transcript spawn tally and each fork's ForkReport fields.
+// It also covers the zero-fork finding for a missing subagents/ directory and the missing-parent-transcript error.
+// The path encoding that claudeProjectDirFor derives is covered too.
 
 package claudeengine
 
@@ -16,9 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// copyFixture copies the named testdata fixture file to dest, creating dest's
-// parent directory as needed — the "build a fake project dir under t.TempDir()"
-// step every subtest below uses to populate a derived ~/.claude/projects layout.
+// copyFixture copies the named testdata fixture to dest, creating dest's parent directory as needed.
+// The tests use it to build the fake project directory under t.TempDir().
 func copyFixture(t *testing.T, name, dest string) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", name))
@@ -33,9 +32,9 @@ func copyFixture(t *testing.T, name, dest string) {
 	}
 }
 
-// TestAuditForks_FullLayout builds a complete fake project dir — a parent transcript plus three
-// fork transcripts under subagents/ — and asserts every ForkAudit/ForkReport field the audit
-// populates.
+// TestAuditForks_FullLayout builds a complete fake project dir:
+// a parent transcript and three fork transcripts under subagents/.
+// It asserts the ForkAudit and ForkReport fields the audit populates.
 func TestAuditForks_FullLayout(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -98,9 +97,8 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	if mutating.WriteCalls != 1 {
 		t.Errorf("mutating fork WriteCalls = %d; want 1", mutating.WriteCalls)
 	}
-	// WritePaths must carry the written path itself, not just the count — a
-	// caller whose forks may write (webster's implementers) polices WHICH
-	// files were touched, per-fork, exactly as ParentWrites does for Master.
+	// WritePaths carries the written paths themselves, not only their count.
+	// A caller whose forks may write checks which files each fork touched.
 	if len(mutating.WritePaths) != 1 || mutating.WritePaths[0] != "/tmp/repo/notes.md" {
 		t.Errorf("mutating fork WritePaths = %v; want [\"/tmp/repo/notes.md\"]", mutating.WritePaths)
 	}
@@ -115,8 +113,8 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	}
 }
 
-// wantWriteEvents is what testdata/parent-writes-results.jsonl must yield: a succeeded Write, an Edit
-// whose result is an error, and a Write that never got a result.
+// wantWriteEvents is what testdata/parent-writes-results.jsonl must yield:
+// a succeeded Write, an Edit whose result is an error, and a Write that never got a result.
 func wantWriteEvents() []shuttleengine.WriteEvent {
 	return []shuttleengine.WriteEvent{
 		{Path: "/work/a.txt", At: time.Date(2026, 1, 2, 10, 0, 1, 500_000_000, time.UTC), Succeeded: true},
@@ -138,9 +136,9 @@ func assertWriteEvents(t *testing.T, label string, got []shuttleengine.WriteEven
 	}
 }
 
-// TestAuditForks_WriteEventsCarryTimeAndResult proves the parent and a fork transcript each yield
-// their write calls in order, resolved against the tool_result naming the call's id, while the
-// existing path lists keep their meaning.
+// TestAuditForks_WriteEventsCarryTimeAndResult proves the write events carry time and result.
+// The parent transcript and a fork transcript each yield their write calls in order.
+// Each call is resolved against the tool_result that names its id, and the path lists keep their meaning.
 func TestAuditForks_WriteEventsCarryTimeAndResult(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -173,10 +171,9 @@ func TestAuditForks_WriteEventsCarryTimeAndResult(t *testing.T) {
 	}
 }
 
-// TestAuditForks_MissingSubagentsDirYieldsZeroForks proves a fork-authorized session that never
-// actually spawned a fork (no subagents/ directory at all) is a legitimate zero-fork finding, not
-// an error — the parent transcript's own SpawnCalls/NamedSpawns are still populated from what it
-// attempted.
+// TestAuditForks_MissingSubagentsDirYieldsZeroForks proves a missing subagents/ directory is not an error.
+// A fork-authorized session that spawned no forks is a legitimate zero-fork finding.
+// The parent transcript is still read, so SpawnCalls and NamedSpawns are populated from the spawns it attempted.
 func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -186,7 +183,7 @@ func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
 	sessionID := "sess-no-forks"
 	projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
 	copyFixture(t, "parent-spawns.jsonl", filepath.Join(projectDir, sessionID+".jsonl"))
-	// Deliberately no subagents/ directory created at all.
+	// No subagents/ directory is created: the session spawned no forks.
 
 	c := New()
 	audit, err := c.AuditForks(sessionID, workdir)
@@ -201,9 +198,8 @@ func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
 	}
 }
 
-// TestAuditForks_MissingParentTranscriptErrors proves a missing parent transcript IS an error —
-// unlike the missing-subagents-dir case, there is no way to know what the session spawned without
-// it.
+// TestAuditForks_MissingParentTranscriptErrors proves a missing parent transcript is an error.
+// Without the parent transcript there is no way to know what the session spawned.
 func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -216,7 +212,8 @@ func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 	}
 }
 
-// TestClaudeProjectDirFor_EncodesNonAlnumBytes pins the exact cwd-encoding derivation: every non-alphanumeric byte becomes '-', mirroring claudeProjectDir in internal/reedcli/smoke_test.go.
+// TestClaudeProjectDirFor_EncodesNonAlnumBytes pins the exact cwd-encoding derivation:
+// every non-alphanumeric byte becomes '-'.
 //
 //testtiming:keep pins the literal encoding of a backslash-and-space path, which its covering test computes through its own reimplementation of the encoding
 func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
@@ -234,10 +231,8 @@ func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
 	}
 }
 
-// encodeForTest reproduces claudeProjectDirFor's encoding step directly (rather
-// than calling the unexported function under a different HOME) so this test file
-// can compute the expected project directory for a given workdir independently
-// of the function under test.
+// encodeForTest returns workdir with each non-alphanumeric byte replaced by '-'.
+// It repeats the encoding here, so that a test's expected directory does not depend on the code under test.
 func encodeForTest(workdir string) string {
 	encoded := []byte(workdir)
 	for i, b := range encoded {

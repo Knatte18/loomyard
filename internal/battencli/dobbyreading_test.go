@@ -1,4 +1,5 @@
-// dobbyreading_test.go pins what the pass wiring reads from the parent worktree's dobby: its pid, its recorded sleeps and the shared awake clock, and which runs take no slot.
+// dobbyreading_test.go pins what the pass wiring reads from the parent worktree's dobby:
+// its pid, its recorded sleeps and the shared awake clock; and which runs take no slot.
 
 package battencli
 
@@ -198,7 +199,7 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 		childRecipe string
 		// childRecipeUnreadable makes the child-recipe record a directory, so reading it fails.
 		childRecipeUnreadable bool
-		// defaultRecipe is the board's default_recipe, empty leaving the template's.
+		// defaultRecipe is the board's `default_recipe`; an empty value leaves the template's recipe in place.
 		defaultRecipe string
 		wantRefused   bool
 	}{

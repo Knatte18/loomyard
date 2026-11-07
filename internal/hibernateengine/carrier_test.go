@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// waitTerminal polls the request file until it holds a terminal request, failing the test past a deadline, since the carrier's goroutine gives no signal when it ends.
+// waitTerminal polls the request file until it holds a terminal request.
+// It fails the test past a deadline, since the carrier's goroutine gives no signal when it ends.
 func waitTerminal(t *testing.T, w *fakeWorld) Request {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -242,7 +243,7 @@ func TestCarrier(t *testing.T) {
 			t.Fatal(err)
 		}
 		<-inTriggerWait
-		// The fresh request names no carrier, so the sequence in flight no longer owns the file.
+		// The fresh request names no carrier, so the sequence in flight does not own the file.
 		w.seed(Request{Trigger: TriggerNow, Requester: requesterExternal, RequestedAt: w.now(), Phase: PhaseWaiting})
 		stale := time.Now().Add(-time.Hour)
 		if err := os.Chtimes(w.requestPath, stale, stale); err != nil {

@@ -1,4 +1,5 @@
-// prerunseams_test.go guards that root's PersistentPreRunE installs heddle's seams, which no behavioural test can pin because the installs are skipped under testing.Testing().
+// prerunseams_test.go guards that root's PersistentPreRunE installs heddle's seams.
+// No behavioural test can pin them, because the installs are skipped under testing.Testing().
 
 package main
 
@@ -13,7 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPersistentPreRunE_InstallsSeams parses cmd/lym/main.go, finds root's PersistentPreRunE and fails, naming the missing call, unless its body installs the worktree seam and the passage reader and registers one Bolt replayer from boardengine and one from heddleengine.
+// TestPersistentPreRunE_InstallsSeams parses cmd/lym/main.go and checks root's PersistentPreRunE.
+// It fails naming the missing call unless the body installs the worktree seam and the passage reader.
+// It also requires one Bolt replayer from boardengine and one from heddleengine to be registered.
 func TestPersistentPreRunE_InstallsSeams(t *testing.T) {
 	tiergate.Require(t, 0)
 	mainGoPath := filepath.Join(scankit.Root(t), "cmd", "lym", "main.go")

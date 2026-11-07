@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestJudgementGate covers the entry passing a valid file and failing, with the findings the judge is re-prompted with, on a missing file and on a file carrying another spawn id.
+// TestJudgementGate covers the entry passing a valid file and failing a missing file.
+// It also covers a file carrying another spawn id, and the findings the judge is re-prompted with.
 func TestJudgementGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

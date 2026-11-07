@@ -1,4 +1,6 @@
-// fixture_test.go holds the fakes the package's tests share: a real shuttle runner over the shuttlefake reed and engine behind a recording starter and stopper, an in-memory record store and a scripted clock.
+// fixture_test.go holds the fakes the package's tests share.
+// A real shuttle runner over the shuttlefake reed and engine sits behind a recording starter and stopper.
+// The fixture also has an in-memory record store and a scripted clock.
 
 package gatefixer
 
@@ -21,7 +23,8 @@ type fakeClock struct {
 func (c *fakeClock) Now() time.Time        { return c.now }
 func (c *fakeClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
-// recordingStarter starts through inner and records every spec it was handed; a non-nil err makes Start fail before inner runs.
+// recordingStarter starts through inner and records every spec it was handed;
+// a non-nil err makes Start fail before inner runs.
 type recordingStarter struct {
 	inner Starter
 	err   error
@@ -83,7 +86,7 @@ func (s *memoryStore) Save(rec *Record) error {
 	return nil
 }
 
-// fixture is a fully wired Deps over fakes, with the store and the spec a spawn takes.
+// fixture wires Deps over fakes, with the store and the spec a spawn takes.
 type fixture struct {
 	deps      Deps
 	reed      *shuttlefake.Reed
@@ -98,7 +101,8 @@ type fixture struct {
 	registered []string
 }
 
-// newFixture returns a fixture whose starter runs a real shuttle runner over the shuttlefake reed and engine, with the clock at the Unix epoch.
+// newFixture returns a fixture whose starter runs a real shuttle runner over the shuttlefake reed and engine.
+// The clock starts at the Unix epoch.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	anchor := t.TempDir()

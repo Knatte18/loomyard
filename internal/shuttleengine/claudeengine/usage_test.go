@@ -134,7 +134,9 @@ func TestContextTokens_Unknown(t *testing.T) {
 	}
 }
 
-// timedTranscript is a transcript with timestamps on every entry: a boundary at 01:00, an assistant turn at 02:00, a sidechain boundary at 03:00 and a second boundary at 04:00 followed by an assistant turn at 05:00.
+// timedTranscript is a transcript with a timestamp on every entry.
+// Its boundaries are at 01:00, at 03:00 on the sidechain, and at 04:00.
+// Its assistant turns are at 00:30, 02:00 and 05:00.
 const timedTranscript = `{"type":"assistant","isSidechain":false,"timestamp":"2026-03-04T00:30:00Z","message":{"usage":{"input_tokens":1}}}
 {"type":"system","subtype":"compact_boundary","isSidechain":false,"timestamp":"2026-03-04T01:00:00Z","compactMetadata":{"postTokens":10}}
 {"type":"assistant","isSidechain":false,"timestamp":"2026-03-04T02:00:00Z","message":{"usage":{"input_tokens":2}}}
@@ -210,7 +212,8 @@ func TestCompactedSince_DegradesToNotFound(t *testing.T) {
 	}
 }
 
-// TestCompactedSince_CountsTurnEndsAfterTheBoundary covers the turn-end count and the match of the read turn end against the transcript's newest one.
+// TestCompactedSince_CountsTurnEndsAfterTheBoundary checks the turn-end count after the boundary.
+// It also checks that the read turn end is the transcript's newest one.
 func TestCompactedSince_CountsTurnEndsAfterTheBoundary(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -265,12 +268,17 @@ func assistantLine(id string, sidechain bool, input, cacheCreation, cacheRead, o
 		sidechain, id, input, cacheCreation, cacheRead, output)
 }
 
-// idlessLine builds one transcript line of an assistant message with no id and no uuid, carrying the given input and cache-read tokens and one output token.
+// idlessLine builds one transcript line of an assistant message with no id and no uuid.
+// It carries the given input and cache-read tokens and one output token.
 func idlessLine(input, cacheRead int) string {
 	return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":%d,"cache_creation_input_tokens":0,"cache_read_input_tokens":%d,"output_tokens":1}}}`, input, cacheRead)
 }
 
-// TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, the four split counts are summed over parent and forks, a session without a subagents directory has zero forks, and an unreadable session reads unknown with the split unread.
+// TestSessionUsage_SumsParentAndForks pins the session-usage reading over fixture transcripts.
+// A message repeated across lines counts once; sidechain and malformed lines are skipped.
+// Forks are summed into the totals and broken out, and the four split counts are summed over parent and forks.
+// A session without a subagents directory has zero forks.
+// An unreadable session reads unknown with the split unread.
 // It runs serially because it sets the process-global HOME.
 func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 	tiergate.Require(t, 0)

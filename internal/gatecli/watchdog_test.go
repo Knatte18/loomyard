@@ -1,4 +1,5 @@
-// watchdog_test.go covers the CPU watchdog's quit decisions over a scripted sampler and a fake clock, and the conditions under which the watchdog runs at all.
+// watchdog_test.go covers the CPU watchdog's quit decisions over a scripted sampler and a fake clock.
+// It also covers the conditions under which the watchdog runs at all.
 
 package gatecli
 
@@ -41,7 +42,6 @@ func series(path string, cumulative ...time.Duration) []scriptedSample {
 	return samples
 }
 
-// seconds is a duration of fractional seconds.
 func seconds(value float64) time.Duration {
 	return time.Duration(value * float64(time.Second))
 }

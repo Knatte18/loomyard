@@ -1,5 +1,6 @@
-// beginbatch_helper_test.go holds the BeginBatch fixture and the C# re-sign plan the tier0 and tier1 begin-batch and record-batch tests share.
-// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
+// beginbatch_helper_test.go holds the BeginBatch fixture and the C# re-sign plan.
+// The tier0 and tier1 begin-batch and record-batch tests share both.
+// The fixtures are package-local: the internal and external test packages do not share a test-helper package.
 
 package websterengine_test
 
@@ -15,12 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// csharpRendererSource is a C# file declaring one method, Draw, taking one parameter of paramType.
+// csharpRendererSource returns C# source declaring one method, Draw, that takes one parameter of paramType.
 func csharpRendererSource(paramType string) string {
 	return fmt.Sprintf("namespace Glyphchain.Sharp\n{\n    public class Renderer\n    {\n        public void Draw(%s count)\n        {\n        }\n    }\n}\n", paramType)
 }
 
-// csharpResignPlanDir writes a two-card csharp plan into a fresh directory and returns the directory with the parsed plan.
+// csharpResignPlanDir writes a two-card csharp plan into a fresh directory.
+// It returns the directory and the parsed plan.
 // Card 1 re-signs Glyphchain.Sharp#Renderer.Draw(int) to take a long, and card 2 names the old glyph under Uses.
 func csharpResignPlanDir(t *testing.T) (string, *planparser.Plan) {
 	t.Helper()
@@ -55,14 +57,16 @@ func csharpResignPlanDir(t *testing.T) (string, *planparser.Plan) {
 	return dir, plan
 }
 
-// beginCard returns a minimal single-card batcher.Batch identifying number and slug.
-// It rests on begin-batch's batchIdentity assumption: batch ≡ card under the identity batchifier.
+// beginCard returns a single-card batcher.Batch with the given number and slug.
+// The batch holds only that card, so the batch and the card are one unit.
 func beginCard(number int, slug string) batcher.Batch {
 	return batcher.Batch{Cards: []planparser.Card{{Number: number, Slug: slug, Title: slug, Intent: "placeholder card " + slug}}}
 }
 
-// beginFixture is a fully-wired set of BeginBatch dependencies.
-// It holds a temp directory with base.txt as WorktreeRoot over a fakeGit at one commit, fresh webster/reports/prompts temp dirs, and two literal single-card execution batches backed by a seeded plan dir for the fingerprint gate.
+// beginFixture is a fully wired set of BeginBatch dependencies.
+// It holds a temp directory with base.txt as WorktreeRoot over a fakeGit at one commit.
+// It also holds fresh webster, reports and prompts temp dirs.
+// Two literal single-card execution batches are backed by a seeded plan dir for the fingerprint gate.
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Stopper   *recordingStopper
@@ -95,7 +99,8 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	promptsDir := t.TempDir()
 	stopper := &recordingStopper{}
 
-	// webster's prompts are read from disk at call time, so the fixture's hub must carry them before BeginBatch reaches RenderForkPrompt.
+	// webster's prompts are read from disk at call time.
+	// The fixture's hub must carry them before BeginBatch reaches RenderForkPrompt.
 	hubPath := filepath.Dir(worktree)
 	seedHubStencils(t, hubPath)
 

@@ -1,7 +1,7 @@
-// classify_test.go covers Classify's pinned decision order: a present Report short-circuits to
-// terminal regardless of every other field, with its head SHA carried through.
+// classify_test.go pins Classify's decision order.
+// A present Report short-circuits to terminal regardless of every other field, and its head SHA carries through.
 // A report's deviations are ignored: they never change the mapped status or fill the digest's list.
-// Absent a report, the dead-reason precedence runs TurnEnded -> timeout -> strand-died -> running, in that order.
+// Absent a report, the dead-reason precedence runs TurnEnded, then timeout, then strand-died, then running.
 // Tier 1: no git, inputs constructed directly.
 
 package websterengine
@@ -48,8 +48,8 @@ func TestClassify(t *testing.T) {
 			wantHeadSHA:  "def",
 		},
 		{
-			// Every other field is set to values that would otherwise classify as
-			// dead-timeout, to prove Report wins outright regardless.
+			// Every other field would classify as dead-timeout on its own;
+			// the report must win regardless.
 			name: "report present short-circuits to terminal done",
 			in: ClassifyInputs{
 				BatchNumber:  4,

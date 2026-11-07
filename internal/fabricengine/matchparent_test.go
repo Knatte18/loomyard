@@ -1,6 +1,5 @@
-// matchparent_test.go covers matchParentBranch, the pure worktree-entry matcher OpenParent's
-// resolution chain builds on — no fixture needed, since the function takes a hand-built
-// []fabricengine.WorktreeEntry slice.
+// matchparent_test.go covers matchParentBranch, the pure matcher over worktree entries.
+// It takes hand-built []fabricengine.WorktreeEntry slices, so it needs no fixture.
 
 package fabricengine_test
 
@@ -53,11 +52,8 @@ func TestMatchParentBranch(t *testing.T) {
 			wantOK:       false,
 		},
 		{
-			// matchParentBranch special-cases nothing: a match whose Branch equals the given
-			// parentBranch still matches even though nothing here distinguishes it as the
-			// "acting worktree's own" branch. That refusal is loom policy, not fabric policy
-			// (self-parent-is-loom-policy-not-fabric-policy), so a future edit must not "fix"
-			// this case into an error.
+			// matchParentBranch matches an entry whose Branch equals parentBranch, including the acting worktree's own branch.
+			// Refusing a self-parent is loom policy, not fabric policy, so this case must not become an error here.
 			name: "SelfParentBranchStillMatches",
 			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt-self", Branch: "task-branch"},

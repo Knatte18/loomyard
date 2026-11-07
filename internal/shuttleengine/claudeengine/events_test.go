@@ -1,7 +1,5 @@
-// events_test.go exercises ParseEvents against a fixture JSONL containing two Stop events, an
-// interleaved garbage line, a non-Stop/non-ask event, and a blank line — asserting the lenient skip
-// behaviour and that Raw round trips the exact line it was parsed from — plus dedicated cases for
-// the live-ask (PreToolUse+AskUserQuestion) signal.
+// events_test.go tests ParseEvents on a fixture JSONL of Stop, non-Stop, garbage, and blank lines.
+// It pins the lenient skip of unrecognized lines, that Raw keeps each event's exact line, and the live-ask signal.
 
 package claudeengine
 
@@ -48,8 +46,8 @@ func TestParseEvents_LenientFixture(t *testing.T) {
 	}
 }
 
-// TestParseEvents_LiveAsk verifies a PreToolUse+AskUserQuestion line becomes an EventAsk carrying
-// every tool_input.questions[].question string newline-joined.
+// TestParseEvents_LiveAsk verifies a PreToolUse+AskUserQuestion line becomes an EventAsk.
+// Its Message joins every tool_input.questions[].question string with a newline between them.
 func TestParseEvents_LiveAsk(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := New()
@@ -73,10 +71,9 @@ func TestParseEvents_LiveAsk(t *testing.T) {
 	}
 }
 
-// TestParseEvents_LiveAsk_UnexpectedShape verifies a PreToolUse+AskUserQuestion line whose
-// tool_input does not carry the expected questions shape still classifies as EventAsk (the
-// hook_event_name/tool_name pair is confirmed) but with an empty Message, per the leniency contract
-// — never an error.
+// TestParseEvents_LiveAsk_UnexpectedShape verifies a PreToolUse+AskUserQuestion line with an unexpected tool_input.
+// It still classifies as EventAsk, since the hook_event_name and tool_name pair matches.
+// Its Message is empty, and ParseEvents returns no error.
 func TestParseEvents_LiveAsk_UnexpectedShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := New()
@@ -96,8 +93,8 @@ func TestParseEvents_LiveAsk_UnexpectedShape(t *testing.T) {
 	}
 }
 
-// TestParseEvents_PreToolUse_OtherToolSkipped verifies a PreToolUse line for a tool other than
-// AskUserQuestion is skipped entirely, same as any other unrecognized line.
+// TestParseEvents_PreToolUse_OtherToolSkipped verifies a PreToolUse line for a tool other than AskUserQuestion.
+// ParseEvents skips such a line the way it skips any other unrecognized line.
 func TestParseEvents_PreToolUse_OtherToolSkipped(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := New()
@@ -111,9 +108,9 @@ func TestParseEvents_PreToolUse_OtherToolSkipped(t *testing.T) {
 	}
 }
 
-// TestParseEvents_RawPreservesSurroundingWhitespace verifies that Raw carries the exact original
-// line bytes -- including incidental leading/trailing whitespace -- rather than the trimmed copy
-// used internally for the blank-line check and JSON parse.
+// TestParseEvents_RawPreservesSurroundingWhitespace verifies that Raw carries the exact line bytes:
+// incidental leading and trailing whitespace stays in Raw, while ParseEvents trims a copy.
+// The trimmed copy serves the blank-line check and the JSON parse.
 func TestParseEvents_RawPreservesSurroundingWhitespace(t *testing.T) {
 	tiergate.Require(t, 0)
 	c := New()
@@ -142,9 +139,9 @@ func TestParseEvents_EmptyInput(t *testing.T) {
 	}
 }
 
-// fixtureJSONL mirrors a Stop-hook events.jsonl containing: a valid Stop
-// event, a garbage (non-JSON) line simulating a partial/truncated append, a
-// non-Stop event, a blank line, and a second valid Stop event.
+// fixtureJSONL mirrors a Stop-hook events.jsonl that holds two valid Stop events.
+// A garbage line simulates a partial or truncated append;
+// a non-Stop event and a blank line sit between the two Stop events.
 const fixtureJSONL = `{"hook_event_name":"Stop","last_assistant_message":"first message","session_id":"s1"}
 {this is not valid json
 {"hook_event_name":"SessionStart","session_id":"s1"}

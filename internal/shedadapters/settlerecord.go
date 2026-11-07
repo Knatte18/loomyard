@@ -1,6 +1,8 @@
 // settlerecord.go implements the Bouncer's two durable records beside its run directory's round files:
-// the settle record that says a segment's verdict settled over which subject, and the generation record that numbers the review generations.
-// It also holds the subject identity both records carry, the settle record's liveness test and the carry of the records across a run-directory archive.
+// the settle record, which says a segment's verdict settled over which subject;
+// and the generation record, which numbers the review generations.
+// It also holds the subject identity both records carry and the settle record's liveness test.
+// It also holds the carry of the records across a run-directory archive.
 
 package shedadapters
 
@@ -20,7 +22,8 @@ const (
 	settleRecordFile     = "settle-record.json"
 	settlePatchFile      = "settle-record.patch"
 	generationRecordFile = "generation-record.json"
-	// recordLockSuffix ends the name of each record's lock, which lock.TrackedFileLockPath places outside the tracked run directory.
+	// recordLockSuffix ends the name of each record's lock;
+	// lock.TrackedFileLockPath places that lock outside the tracked run directory.
 	recordLockSuffix = ".lock"
 )
 
@@ -32,11 +35,15 @@ const (
 	SubjectCode = "code"
 )
 
-// Subject is the identity of what a review segment judges, compared to tell a re-entry over an unchanged subject from one over a changed subject.
-// Kind is one of the Subject constants.
+// Subject is the identity of what a review segment judges.
+// It tells a re-entry over an unchanged subject from one over a changed subject.
+// Kind is "document" or "code".
 // Hash is a document's identity-text hash.
-// MergeBase, Head, FullHash and PatchID describe a code segment: the merge base and the branch head the diff was taken at, the hash of the full diff and the diff's patch-id.
-// Base is the amendment base read with the subject, the record head a document settled at or a code segment's merge base, and Patch is a code segment's full diff.
+// MergeBase, Head, FullHash and PatchID describe a code segment:
+// the merge base and the branch head the diff was taken at, the hash of the full diff, and the diff's patch-id.
+// Base is the amendment base read with the subject:
+// the record head a document settled at, or a code segment's merge base.
+// Patch is a code segment's full diff.
 // Base and Patch are never encoded: a record holds them beside the subject.
 type Subject struct {
 	Kind      string `json:"kind"`
@@ -52,11 +59,13 @@ type Subject struct {
 // Unchanged reports whether s is the same subject as settled.
 // A document is unchanged when its Kind and Hash are equal.
 // A code segment is unchanged when its merge base is the settled one and its FullHash is equal.
-// It is also unchanged when the merge base moved, mergeInOnly(settled.Head) reports that the history since then holds only merge-ins, and the PatchID is equal.
+// It is also unchanged when the merge base moved, mergeInOnly(settled.Head) reports only merge-ins since then,
+// and the PatchID is equal.
 // A nil mergeInOnly reads a moved merge base as changed, and a mergeInOnly error is returned.
 //
 // Bound: a moved merge base with a merge-in-only history and an equal patch-id reads as unchanged.
-// That lets through, unreviewed by this segment, a parent change that interacts with the task's change without sharing a line with it.
+// That lets through, unreviewed by this segment, a parent change;
+// it interacts with the task's change without sharing a line with it.
 // The verify tiers bound it.
 func (s Subject) Unchanged(settled Subject, mergeInOnly func(since string) (bool, error)) (bool, error) {
 	if s.Kind != settled.Kind {
@@ -82,9 +91,12 @@ func (s Subject) Unchanged(settled Subject, mergeInOnly func(since string) (bool
 }
 
 // settleRecord is the record of one settled review verdict, kept in the run directory as settle-record.json.
-// Base is the amendment base, Generation and Round are the generation and round that settled, and SettledAt is the settle time in RFC 3339.
-// RoundStartedAt is the start of the review half of the round the settle judged, whole seconds in RFC 3339 UTC, and empty when the start is unknown.
-// Settled is true once the segment's Commit returned, so a record with it false is a settle that was interrupted before the commit.
+// Base is the amendment base, Generation and Round are the generation and round that settled;
+// SettledAt is the settle time in RFC 3339.
+// RoundStartedAt is the start of the review half of the round the settle judged, in whole seconds of RFC 3339 UTC.
+// It is empty when the start is unknown.
+// Settled is true once the segment's Commit returned;
+// a record with it false is a settle that was interrupted before the commit.
 // A code segment's full diff lives beside it in settle-record.patch.
 // A Generation below 1 reads as 1.
 type settleRecord struct {
@@ -98,7 +110,8 @@ type settleRecord struct {
 }
 
 // generationRecord is the record of a run directory's review generation, kept as generation-record.json.
-// Number is the generation, Amendment says the generation reviews only a change under the amendment allowance, and Base is its amendment base.
+// Number is the generation; Amendment says the generation reviews only a change under the amendment allowance;
+// Base is its amendment base.
 // ReviewInput is the path of the review input a re-entry is told, which the amendment reviews besides the change.
 // JudgeSubject, JudgeBase and JudgeAt (RFC 3339) are the subject, base and time the latest judge spawn recorded.
 type generationRecord struct {
@@ -112,7 +125,8 @@ type generationRecord struct {
 }
 
 // readRecord decodes the JSON record at path, tolerating keys the type does not know.
-// An absent file, and one in an absent directory, is not found; reading an absent record creates neither a directory nor a lock file.
+// An absent file, and one in an absent directory, is not found;
+// reading an absent record creates neither a directory nor a lock file.
 func readRecord[T any](path string) (T, bool, error) {
 	if _, err := os.Stat(path); err != nil {
 		var zero T
@@ -128,7 +142,8 @@ func readRecord[T any](path string) (T, bool, error) {
 	return record, found, nil
 }
 
-// writeRecord writes the JSON record at path through internal/state under its lock, which sits outside the tracked run directory.
+// writeRecord writes the JSON record at path through internal/state under its lock;
+// the lock sits outside the tracked run directory.
 func writeRecord[T any](path string, record T) error {
 	if err := state.WriteJSON(path, lock.TrackedFileLockPath(path, recordLockSuffix), record); err != nil {
 		return fmt.Errorf("shedadapters: write record %s: %w", path, err)
@@ -145,7 +160,8 @@ func readSettleRecord(runDir string) (settleRecord, bool, error) {
 	return record, found, err
 }
 
-// writeSettleRecord writes the run directory's settle record, and a non-nil patch beside it first, so a record never names a patch that is absent.
+// writeSettleRecord writes the run directory's settle record, and a non-nil patch beside it first,
+// so a record never names a patch that is absent.
 func writeSettleRecord(runDir string, rec settleRecord, patch []byte) error {
 	if patch != nil {
 		patchPath := filepath.Join(runDir, settlePatchFile)
@@ -167,7 +183,8 @@ func writeGenerationRecord(runDir string, rec generationRecord) error {
 }
 
 // liveSettleRecord returns the run directory's settle record when it is live, and false otherwise.
-// A record is live when it names the directory's current generation, which is the generation record's number or 1 when there is none,
+// The current generation is the generation record's number, or 1 when there is none.
+// A record is live when it names the current generation,
 // and no `round-<n>-review.md` is on disk for a round past the settled one.
 func liveSettleRecord(runDir string) (settleRecord, bool, error) {
 	record, found, err := readSettleRecord(runDir)
@@ -216,8 +233,11 @@ func SettleLive(runDir string) (settledAt time.Time, live bool, err error) {
 
 // SettleRoundStart returns the round start the run directory's live settle record holds, and true.
 // It returns the zero time and false when no record is live or the live record has no or a zero round start.
-// A round start that does not parse reads as an absent one and is logged at Warn, so a caller keeps its amendment when the start is unknown.
-// The error carries only a failed read of the settle record itself.
+// A round start that does not parse reads as an absent one and is logged at Warn,
+// so a caller keeps its amendment when the start is unknown.
+// SettleRoundStart returns the UTC time the settle record's round started, and reports whether that time is known.
+// It reports false when the record is not live, has no start, or has an unparseable one.
+// The error is set only when the settle record cannot be read.
 func SettleRoundStart(runDir string) (time.Time, bool, error) {
 	record, live, err := liveSettleRecord(runDir)
 	if err != nil || !live || record.RoundStartedAt == "" {
@@ -234,9 +254,9 @@ func SettleRoundStart(runDir string) (time.Time, bool, error) {
 	return start.UTC(), true, nil
 }
 
-// CarryRecords copies the settle record, its patch and the generation record that exist in fromDir into toDir, byte for byte.
+// CarryRecords copies the settle record, its patch, and the generation record from fromDir into toDir, byte for byte.
 // An absent file is skipped, and an absent fromDir holds none.
-// It copies nothing when toDir already holds a generation record, since every seed and settle that has a subject writes one.
+// It copies nothing when toDir already holds a generation record, which every seed and settle with a subject writes.
 // The generation record is copied last, so a carry that failed part way leaves none and a repeat completes it.
 func CarryRecords(fromDir, toDir string) error {
 	generationPath := filepath.Join(toDir, generationRecordFile)

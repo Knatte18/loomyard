@@ -1,6 +1,6 @@
-// discussionpath_test.go tests the AnchorPath-anchored DiscussionDir/
-// DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built lymcwd.Location — pure
-// path arithmetic, no spawning, untagged (Tier 1).
+// discussionpath_test.go tests the DiscussionDir, DiscussionDecisionRecord and DiscussionSupportLog accessors.
+// They resolve from the anchor path of a hand-built lymcwd.Location.
+// The test is pure path arithmetic, so it spawns nothing and runs untagged at Tier 1.
 
 package loomengine
 
@@ -13,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDiscussionPaths pins the discussion directory, the decision record, the support log and the advisor notes at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
+// TestDiscussionPaths pins the discussion directory, decision record, support log and advisor notes at the anchor.
+// It also pins that DiscussionDirRel is the relative form DiscussionDir composes from.
 // It pins the project record's directory, record and support log the same way, one directory per beam slug.
-// The anchored row's AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root; the unanchored row's anchor path equals the worktree path.
+// The anchored row's AnchorRel differs from "."; the accessors must follow that subpath, not the bare worktree root.
+// The unanchored row's anchor path equals the worktree path.
 //
 //testtiming:keep pins the exact discussion directory, decision record, support log and relevant list paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
 func TestDiscussionPaths(t *testing.T) {

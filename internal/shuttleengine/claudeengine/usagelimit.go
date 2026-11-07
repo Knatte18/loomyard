@@ -1,4 +1,4 @@
-// usagelimit.go reads when a usage limit resets from the text of Claude Code's usage-limit message.
+// usagelimit.go works out when a usage limit resets from the text of Claude Code's usage-limit message.
 
 package claudeengine
 
@@ -6,17 +6,22 @@ import (
 	"regexp"
 	"strconv"
 	"time"
-	// The zone database is embedded so a reset clause's zone resolves on a machine with no system zone files, such as Windows.
+	// The zone database is embedded,
+	// so a reset clause's zone resolves on a machine with no system zone files, such as Windows.
 	_ "time/tzdata"
 )
 
-// resetClause matches the reset clause of Claude Code's usage-limit message: `resets 2pm (Europe/Oslo)`, `resets 2:30pm (Europe/Oslo)`, `resets Oct 30, 2pm (Europe/Oslo)` or `reset at 2pm (Europe/Oslo)`.
+// resetClause matches the reset clause of Claude Code's usage-limit message, in these forms:
+// `resets 2pm (Europe/Oslo)`, `resets 2:30pm (Europe/Oslo)`;
+// `resets Oct 30, 2pm (Europe/Oslo)`, `reset at 2pm (Europe/Oslo)`.
 // Its groups are the month, the day, the hour, the minute, `am` or `pm`, and the IANA zone.
 var resetClause = regexp.MustCompile(`resets?(?: at)? (?:([A-Z][a-z]{2}) (\d{1,2}),? (?:at )?)?(\d{1,2})(?::(\d{2}))? ?([ap]m) \(([^)]+)\)`)
 
-// usageLimitResetsAt returns when the usage limit the message text names resets: the first instant after the entry's RFC 3339 timestamp that matches the text's reset clause in the clause's zone.
+// usageLimitResetsAt returns when the usage limit that text names resets:
+// the first instant after timestamp, an RFC 3339 time, at which the clock in the clause's zone shows the clause's time.
 // A clause with a month and day resolves to that date, in the timestamp's year or the next.
-// It returns the zero time when the text has no reset clause, the timestamp does not parse, or the zone, hour, minute, month or day of the month is not valid.
+// It returns the zero time when text has no reset clause or timestamp does not parse.
+// It also does when the zone, hour, minute, month or day of the month is not valid.
 func usageLimitResetsAt(text, timestamp string) time.Time {
 	match := resetClause.FindStringSubmatch(text)
 	if match == nil {

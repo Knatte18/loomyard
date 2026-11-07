@@ -20,7 +20,8 @@ func TestGateCallSource(t *testing.T) {
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	hub := loc.HubPath
-	// The hub's board directory exists from the start, as in a real hub, so the config dirs the source reads name it before the gate.yaml does.
+	// The hub's board directory exists from the start, as in a real hub,
+	// so the config dirs the source reads name it before the gate.yaml does.
 	if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
 		t.Fatal(err)
 	}

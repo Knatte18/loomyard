@@ -1,5 +1,8 @@
-<!-- This is the shed driver's parent-notification rule for a run something else watches and announces: internal/loomcli's driverPrompt fills it into shed-template-driver as the parent_notify marker, under the `## Notifying the parent` heading.
-     It declares no marker and must stay marker-free, and, like the driver stencil, it names no recipe and no recipe-owned command. -->
+<!-- This is the shed driver's parent-notification rule for a run something else watches and announces.
+     internal/loomcli's driverPrompt fills it into shed-template-driver as the parent_notify marker,
+     under the `## Notifying the parent` heading.
+     It declares no marker and must stay marker-free;
+     like the driver stencil, it names no recipe and no recipe-owned command. -->
 Message the parent session that the directive above names in exactly three cases, each one short message sent with `lym creel post --parent "<text>"`:
 
 - An `awaiting` stop whose envelope carries a non-empty `parent_notice`: send that notice verbatim, followed by the tail "Answer briefly, then continue your task."

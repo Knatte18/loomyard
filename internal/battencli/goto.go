@@ -1,4 +1,6 @@
-// goto.go declares batten's PreGoto hook: it keeps Worktree-Teardown unreachable from any failure path, the rule the batten recipe's header states, by admitting a goto onto that row, or onto Land, only once the child run is done.
+// goto.go declares batten's PreGoto hook, which guards a goto onto Worktree-Teardown or Land.
+// The hook admits that goto only once the child run is done, or when batten's current row is already that row.
+// That keeps Worktree-Teardown unreachable from any failure path.
 
 package battencli
 
@@ -13,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// battenPreGoto implements the PreGoto hook for batten's spec, locating the child tapestry run's status file the way wire's ResolveStatus does.
+// battenPreGoto implements the PreGoto hook for batten's spec.
+// It locates the child run's status file in the task worktree.
 func (c *battenCLI) battenPreGoto(_ context.Context, target string) error {
 	childStatus := func() (string, error) {
 		taskLocation, err := taskWorktreeLocation(c.location, c.slug)
@@ -25,9 +28,10 @@ func (c *battenCLI) battenPreGoto(_ context.Context, target string) error {
 	return preGoto(target, c.slug, c.shedPaths.StatusPath, childStatus)
 }
 
-// preGoto admits every target other than Land and Worktree-Teardown unread.
-// Either of those two is admitted only when the batten run's own current row is already that row, or when the child run's status reads done.
-// The first term admits the way forward of a pause honoured in Land, a goto onto Land with batten blocked there.
+// preGoto admits every target other than Land and Worktree-Teardown without reading any status.
+// Either of those two is admitted only when the batten run's own current row is already that row.
+// It is also admitted when the child run's status reads done.
+// The first condition admits the way forward of a pause honoured in Land, a goto onto Land with batten blocked there.
 // A child status that cannot be located or read counts as not done.
 func preGoto(target, slug, ownStatusPath string, childStatus func() (string, error)) error {
 	if target != battenrecipe.NameWorktreeTeardown && target != battenrecipe.NameLand {

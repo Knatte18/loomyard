@@ -1,7 +1,6 @@
-// add.go implements the `add` reed verb: a thin flag-to-spec mapper over reedengine.AddStrand.
+// add.go implements the `add` reed verb: a thin flag-to-spec mapper over `reedengine.AddStrand`.
 // The CLI validates only the closed --anchor vocabulary here;
-// guid generation, worktree stamping, and name resolution all belong to the engine
-// (reedengine.AddStrand), not this file.
+// guid generation, worktree stamping, and name resolution belong to the engine, not this file.
 
 package reedcli
 
@@ -72,8 +71,8 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// The CLI vocabulary is own-window and hidden.
-			// Overview is an engine-only anchor, so it is rejected here with the retired spellings.
+			// The CLI accepts only own-window and hidden;
+			// every other anchor, overview included, is rejected here.
 			switch render.Anchor(anchor) {
 			case render.AnchorHidden, render.AnchorOwnWindow:
 			default:
@@ -129,10 +128,10 @@ Example:
 	cmd.Flags().BoolVar(&ifAbsent, "if-absent", false, "make a repeated add idempotent by matching --name against this worktree's strands")
 	cmd.Flags().StringVar(&unlessName, "unless-name", "", "skip the add while this worktree's state holds a strand, live or dormant, matching this role segment or full name; checked before --if-absent, never touches that strand")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
-		// MarkFlagRequired only errors when the named flag does not exist on
-		// cmd; --cmd is registered immediately above, so this can never fire
-		// at runtime. Panicking surfaces a wiring mistake immediately rather
-		// than silently accepting adds with no --cmd.
+		// MarkFlagRequired errors only when the named flag is not registered on cmd.
+		// --cmd is registered immediately above, so this can never fire at runtime.
+		// Panicking surfaces a wiring mistake immediately;
+		// it does not silently accept adds with no --cmd.
 		panic(fmt.Sprintf("reedcli: mark --cmd required: %v", err))
 	}
 

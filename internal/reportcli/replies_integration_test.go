@@ -1,4 +1,5 @@
-// replies_integration_test.go drives `lym report replies` through RunCLIIn over a hubforge hub: the prime-only refusal and the counts of a fake creel journal.
+// replies_integration_test.go drives `lym report replies` through RunCLIIn over a hubforge hub:
+// the prime-only refusal and the counts of a fake creel journal.
 
 package reportcli
 
@@ -16,7 +17,8 @@ import (
 )
 
 // TestRepliesVerb replaces the process-global creelLog seam, so it does not run in parallel.
-// It is a test of its own because TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun, which drives the other verbs over the same kind of hub, runs in parallel.
+// It is a test of its own because TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun runs in parallel,
+// and it drives the other verbs over the same kind of hub.
 func TestRepliesVerb(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
@@ -58,7 +60,8 @@ func TestRepliesVerb(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("from the prime: exit %d, output %s; want exit 0", code, out)
 	}
-	// The marked post went to the driver, which answered it and was chased once; the orch received an unmarked reply and counts nowhere.
+	// The marked post went to the driver, which answered it and was chased once;
+	// the orch received an unmarked reply and counts nowhere.
 	want := []any{map[string]any{"role": "driver", "expected": 1.0, "replied": 1.0, "chased": 1.0, "unanswered": 0.0}}
 	if roles, _ := counted.Raw["roles"].([]any); !reflect.DeepEqual(roles, want) {
 		t.Errorf("roles = %v; want %v", roles, want)

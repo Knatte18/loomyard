@@ -1,5 +1,6 @@
-// gate_pending_test.go covers the pending gate state: a PassOnCap entry that holds the run at a turn boundary,
-// driven through the same fake engine, fake reed and fake clock gate_test.go uses — hermetic, untagged, and never sleeping for real.
+// gate_pending_test.go covers the pending gate state: a PassOnCap entry that holds the run at a turn boundary.
+// It runs through the same fake engine, fake reed, and fake clock as gate_test.go:
+// hermetic, untagged, and never sleeping for real.
 
 package shuttleengine
 
@@ -25,7 +26,8 @@ func sendCaptures(text string) []string {
 	return []string{"idle pane", "idle pane", text}
 }
 
-// pendingFixture is a gated Run over a first Done already in the events file, whose clock runs steps in order, one per Sleep.
+// pendingFixture is a gated Run over a first Done already in the events file.
+// Its clock runs the steps in order, one per Sleep.
 type pendingFixture struct {
 	run        *Run
 	reed       *fakeReed
@@ -33,7 +35,8 @@ type pendingFixture struct {
 	fc         *fakeClock
 }
 
-// newPendingFixture builds the fixture; steps receive the fixture so a step can append an arrival or push the clock past the deadline.
+// newPendingFixture builds the fixture.
+// Each step receives the fixture, so a step can append an arrival or push the clock past the deadline.
 func newPendingFixture(t *testing.T, spec GateSpec, captures []string, steps ...func(f *pendingFixture)) *pendingFixture {
 	t.Helper()
 	runDir := t.TempDir()
@@ -133,7 +136,8 @@ func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
 	}
 }
 
-// TestGatePending_FailedSendWarnsAndStaysPending asserts a pending send that fails on two evaluations warns once, logs Debug while it stays failing and logs one Info when it is delivered.
+// TestGatePending_FailedSendWarnsAndStaysPending asserts that a pending send failing on two evaluations warns once;
+// it logs Debug while it keeps failing, and it logs one Info when it is delivered.
 // The failing evaluations leave the entry pending at the boundary, so the next tick evaluates again.
 func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -294,10 +298,11 @@ func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 	wantStates(t, result.Gate, GateEntryPassed)
 }
 
-// TestAttachGated_Pending covers a pending gate over a resumed run whose events file already holds a
-// Done: the replayed Done is the first gated arrival, and with a carried Send text it sends once and
-// is then released by the deadline, whose finalize reads Final; without one, the gate re-evaluates
-// on the throttled cadence, no sooner than gateRecheckEvery apart, until a verdict arrives.
+// TestAttachGated_Pending covers a pending gate over a resumed run whose events file already holds a Done.
+// The replayed Done is the first gated arrival.
+// With a carried Send text, the gate sends once and is then released by the deadline, whose finalize reads Final.
+// Without one, the gate re-evaluates on the throttled cadence:
+// no sooner than gateRecheckEvery apart, until a verdict arrives.
 //
 //testtiming:keep pins a pending gate over a resumed run: the replayed Done evaluates once and sends the carried text, and a bare pending re-evaluates on the throttled cadence rather than every poll tick
 func TestAttachGated_Pending(t *testing.T) {
@@ -389,21 +394,21 @@ func TestAttachGated_Pending(t *testing.T) {
 }
 
 // TestGatePending_ExpiryProbeEndsMidTurnWait covers a MayHold entry's Expired probe.
-// It is called only while the writer is off the boundary.
-// It ends the run done within gateRecheckEvery of turning true.
+// The probe is called only while the writer is off the boundary.
+// It ends the run as done within gateRecheckEvery of the probe answering true.
 // Finalize then reads the verdict through the entries' Final closures.
 func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	const deadlineStep = 40
 	tests := []struct {
 		name string
-		// noBoundary replaces the seeded turn end with a line the fake engine ignores, so the loop never sees a boundary, as after a driver restart mid-turn.
+		// noBoundary replaces the seeded turn end with an ignored line, so no boundary is seen, as after a driver restart.
 		noBoundary bool
 		// bareHold makes the parent-review entry pend without a Send, so the writer stays at the idle boundary.
 		bareHold bool
 		// firstFailsAtFinalize makes the must-pass entry fail on every evaluation after the first.
 		firstFailsAtFinalize bool
-		// turnsTrueAtTick is the tick after whose sleep the probe answers true; 0 means it never does and the deadline ends the run.
+		// turnsTrueAtTick is the tick after whose sleep the probe answers true; zero means the deadline ends the run.
 		turnsTrueAtTick int
 		probeErr        error
 		// probeErrCalls bounds how many first probe calls return probeErr; zero means every call does.

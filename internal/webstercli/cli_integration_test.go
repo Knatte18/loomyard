@@ -1,7 +1,8 @@
-// cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository, proving the standalone pre-run leaves the target untouched and a wrongly entered hub refuses -- properties no untagged test in this package can observe, since they require the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end pre-run.
+// cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository.
+// It proves the standalone pre-run leaves that directory untouched and that a wrongly entered hub refuses.
+// Those properties need the real standalonestate.Derive, the real standalone stencil seed and an end-to-end pre-run;
+// no untagged test in this package observes them.
 // The test that boots a real reed session lives in cli_tmux_test.go.
-// It follows the shape internal/reedcli/cli_integration_test.go already establishes for a tagged CLI-level test;
-// this package already carries a hermetic TestMain (testmain_test.go) and an existing tagged file (verbs_test.go), so no new test-main wiring is needed here.
 
 package webstercli
 
@@ -19,25 +20,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged proves the two-roots split's whole point:
-// the target directory itself -- the operator's git repository -- gains no hidden state tree, no lock
-// file, and no rendered prompt from a standalone invocation. Every durable and scratch artifact lives
-// under the derived state directory instead. This is the one property no untagged unit test in this
-// batch observes, since it requires a real Derive call and a real filesystem to assert an absence
-// against.
+// TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged checks that a standalone run leaves the target untouched.
+// The target is the operator's git repository, and it gains no state tree, lock file, or rendered prompt.
+// Every durable and scratch artifact lives under the derived state directory instead.
+// No untagged unit test observes this, since it needs a real Derive call and a real filesystem to assert an absence.
 //
-// It also positively asserts F22's fix: a trace-*.log file lands under the derived state directory's
-// standalonegeom.LogsDir, whose first line's worktree_root= field names target. That positive
-// assertion is the load-bearing half -- it fails against pre-fix source, where nothing is written
-// there at all -- while the target-directory emptiness assertion above pins the defect's actual
-// symptom. t.Setenv("LYM_TRACE", "1") lifts the durable sink's testing.Testing() suppression, since
-// without that lift the sink stays closed for the whole process and the positive assertion would pass
-// for the same wrong reason the emptiness assertion passes today while F22 is live.
+// It also checks that a trace-*.log file lands under the derived state directory's standalonegeom.LogsDir,
+// and that its first line's worktree_root= field names target.
+// This positive assertion fails against source that never redirects the sink, where nothing is written there at all.
+// t.Setenv("LYM_TRACE", "1") lifts the durable sink's testing.Testing() suppression.
+// Without that lift the sink stays closed for the whole process.
+// The positive assertion would then pass for the wrong reason.
 //
-// The cleanliness assertion above is deliberately scoped to "status", an invocation that reaches wiring.
-// It does NOT extend to an invocation that fails before standalonestate.Derive (a cobra flag-parsing failure, a root pre-run failure, or a Derive failure itself): under the real lym binary, logger.NotifyExit force-arms the sink on a pre-redirect non-zero exit and the cwd fallback then writes one trace file into the target over that bounded window.
-// NotifyExit is called only from cmd/lym/main.go -- mentioned here, not read -- and this test drives RunCLIIn directly, so NotifyExit never executes in this process at all;
-// a broader "target always stays clean" claim would be false of the shipped path even though this test could not observe it either way.
+// The cleanliness assertion is scoped to "status", an invocation that reaches wiring.
+// It does not extend to an invocation that fails before standalonestate.Derive.
+// That covers a cobra flag-parsing failure, a root pre-run failure, or a Derive failure itself.
+// Under the real lym binary, logger.NotifyExit force-arms the sink on a pre-redirect non-zero exit,
+// and the cwd fallback then writes one trace file into the target over that bounded window.
+// NotifyExit is called only from cmd/lym/main.go.
+// This test drives RunCLIIn directly, so NotifyExit never runs in this process.
+// The test therefore cannot claim the target always stays clean, since the shipped path can write into it.
 func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	target := t.TempDir()
@@ -61,8 +63,8 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	}
 
 	var out strings.Builder
-	// "status" is enough to drive the pre-run's full standalone wiring (including the stencil seed)
-	// without requiring a seeded plan directory -- status never reads the plan at all.
+	// "status" drives the pre-run's full standalone wiring, including the stencil seed.
+	// It needs no seeded plan directory, since status never reads the plan.
 	_ = RunCLIIn(target, &out, []string{"status"})
 
 	after, err := os.ReadDir(target)
@@ -77,12 +79,12 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 		t.Errorf("target directory %q gained entries from a standalone invocation: %v; want it byte-for-byte unchanged -- no hidden state tree, no lock file, no rendered prompt", target, names)
 	}
 
-	// "status" itself never logs at Info-or-above, so nothing arms the durable sink on its own; one
-	// forced logger.Info call after the invocation is what proves WHERE wireStandalone pointed the
-	// sink -- exactly the mechanism internal/webstercli/wiring_test.go's own sink-redirect tests use.
-	// Against pre-fix source (no redirect at all), this call falls back to the process's real cwd via
-	// ensureDurableSink's dir=="" branch (which LYM_TRACE=1 unblocks), landing the trace file
-	// somewhere other than logsDir below and failing this test's positive assertion correctly.
+	// "status" never logs at Info or above, so nothing arms the durable sink on its own.
+	// The forced logger.Info call after the invocation shows where wireStandalone pointed the sink.
+	// It uses the same mechanism as the sink-redirect tests in internal/webstercli/wiring_test.go.
+	// Against source with no redirect, this call falls back to the process's real cwd.
+	// That fallback goes through ensureDurableSink's dir=="" branch, which LYM_TRACE=1 unblocks.
+	// The trace file then lands outside logsDir below, and the positive assertion fails.
 	logger.Info("cli_integration_test: arm the sink")
 
 	logsDir := standalonegeom.LogsDir(stateDir)
@@ -103,22 +105,19 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_WronglyEnteredHub_Refuses is deviation four on the plan's hub byte-identity list:
-// internal/webstercli/cli.go discarded ResolveMode's error class before this task, so entering a
-// wired hub worktree from an ordinary subdirectory started a silent standalone session there. This
-// invocation now refuses instead. It is a deliberate correction of shipped behaviour, which is why
-// it is pinned rather than merely allowed.
+// TestRunCLIIn_WronglyEnteredHub_Refuses checks that entering a wired hub worktree from a subdirectory refuses.
+// The invocation refuses rather than starting a standalone session in that subdirectory.
+// The test pins that behaviour.
 //
-// It builds a real wired hub via hubforge.NewHub, creates an ordinary subdirectory inside the prime
-// worktree, and drives RunCLIIn from that subdirectory. "status" is chosen because it drives the
-// full pre-run without requiring a seeded plan directory, matching the reasoning
-// TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged already records for the same choice.
+// It builds a real wired hub via hubforge.NewHub.
+// It creates an ordinary subdirectory inside the prime worktree and drives RunCLIIn from that subdirectory.
+// "status" drives the full pre-run and needs no seeded plan directory.
+// It is the same choice as TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged.
 //
-// It redirects XDG_STATE_HOME and LOCALAPPDATA to t.TempDir() values before the call and asserts
-// both remain empty afterwards: this invocation must refuse before wireStandalone ever calls
-// standalonestate.Derive, and without the redirect the emptiness assertion would be made against the
-// operator's real state directory. The redirect means this test must not be marked t.Parallel() --
-// t.Setenv panics under a parallel test.
+// It redirects XDG_STATE_HOME and LOCALAPPDATA to t.TempDir() values and asserts that both stay empty afterwards.
+// The invocation must refuse before wireStandalone calls standalonestate.Derive.
+// Without the redirect, the emptiness assertion would run against the operator's real state directory.
+// The redirect means this test must not be marked t.Parallel, since t.Setenv panics under a parallel test.
 func TestRunCLIIn_WronglyEnteredHub_Refuses(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

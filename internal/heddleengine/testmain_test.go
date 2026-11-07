@@ -1,4 +1,5 @@
-// testmain_test.go wires the package's test binary into the hermetic git environment its integration tests need and runs it under tmuxkit.Main.
+// testmain_test.go wires the package's test binary into the hermetic git environment its integration tests need.
+// It runs the tests under tmuxkit.Main.
 
 package heddleengine
 

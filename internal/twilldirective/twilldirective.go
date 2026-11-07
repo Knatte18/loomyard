@@ -1,5 +1,5 @@
-// twilldirective.go implements Directive, the renderer a spawning module calls to read the twill directive stencil from a told directory and fill it with its host values.
-// See doc.go for the package-level rationale.
+// twilldirective.go implements Directive, the renderer a spawning module calls.
+// Directive reads the twill directive stencil from a stencils directory and fills it with the host's values.
 
 package twilldirective
 
@@ -21,13 +21,15 @@ const directiveStencil = "twill-directive"
 // writerForkStencil names the part stencil Directive reads when a writer fork is asked for.
 const writerForkStencil = "twill-writer-fork"
 
-// writerForkGatedStencil names the part stencil Directive reads when a writer fork is asked for and the host's files are checked by a gate after the turn ends.
+// writerForkGatedStencil names the part stencil Directive reads when a writer fork is asked for,
+// and the host's files are checked by a gate after the turn ends.
 const writerForkGatedStencil = "twill-writer-fork-gated"
 
 // gatedClosingStep is the closing step of a directive whose writer runs no self-check.
 const gatedClosingStep = "6. End your turn: the reviewed files are checked once it ends, so run no validator."
 
-// ungatedCheckedClause is what the writer-fork boilerplate says of the reviewed files when the writer ran a self-check before the forks were spawned.
+// ungatedCheckedClause is the clause that says the reviewed files passed the self-check.
+// The writer-fork boilerplate carries it when the writer ran the self-check before the forks were spawned.
 const ungatedCheckedClause = " and passed the self-check"
 
 // relaunchStencil names the part stencil Directive reads when no writer fork is asked for.
@@ -51,7 +53,7 @@ type Values struct {
 	ReviewedFiles string
 	// SpawnPoint is the sentence that opens the procedure and says when the writer runs it, rendered verbatim.
 	SpawnPoint string
-	// RejectionRule is the sentence that tells the writer how to fix or reject a finding, rendered verbatim on its own line under the judge step; read only when CriticalJudge is nil.
+	// RejectionRule is the sentence telling the writer how to fix or reject a finding; the plain judge reads it.
 	RejectionRule string
 	// SeverityRule is the phrase that tells each fork how to grade a finding, rendered verbatim after "each with".
 	SeverityRule string
@@ -65,9 +67,9 @@ type Values struct {
 	SelfCheckStep string
 	// SelfCheckCommand is the command the writer runs as the self-check; it may be empty only when Gated is set and WriterFork is set.
 	SelfCheckCommand string
-	// FinalSelfCheckCommand is the command the writer runs as the final self-check, after the lens review is recorded; it may be empty only when Gated is set.
+	// FinalSelfCheckCommand is the command the writer runs after recording the lens review; empty only when Gated is set.
 	FinalSelfCheckCommand string
-	// Gated reports that a gate checks the reviewed files once the writer ends its turn, so the writer runs no validator: the writer-fork part drops its self-check steps and the directive ends the turn without a final self-check.
+	// Gated reports that a gate checks the reviewed files after the writer ends its turn, so the writer runs no validator.
 	Gated bool
 	// DispositionPlace names where the writer records the lens review.
 	DispositionPlace string
@@ -75,19 +77,19 @@ type Values struct {
 	LensReportPath string
 	// LensReportSpecPath is the deployed spec that defines a saved report's format.
 	LensReportSpecPath string
-	// RelaunchFiles is the phrase naming the files a relaunched writer finishes writing, rendered verbatim with the host's own backticks; read only when WriterFork is nil.
+	// RelaunchFiles names the files a relaunched writer finishes, rendered verbatim; read only without WriterFork.
 	RelaunchFiles string
-	// WriterFork, when set, has one fork write the reviewed files and replaces the relaunch paragraphs; nil asks for no writer fork.
+	// WriterFork, when set, has one fork write the reviewed files in place of the relaunch paragraphs; nil asks for none.
 	WriterFork *WriterFork
-	// CriticalJudge, when set, has the writer judge each finding as a critical fixer; nil asks for the plain judge, which needs RejectionRule.
+	// CriticalJudge, when set, has the writer judge each finding as a critical fixer; nil selects the plain judge.
 	CriticalJudge *CriticalJudge
 }
 
 // CriticalJudge holds the host values only the critical-judge part needs, each rendered verbatim.
 type CriticalJudge struct {
-	// GoverningInput is the phrase naming the input a finding's premise is weighed against, rendered verbatim after "against the code and".
+	// GoverningInput is the phrase naming the input a finding's premise is weighed against, rendered verbatim.
 	GoverningInput string
-	// DisputeEvidence is the phrase listing the evidence kinds a dispute cites, rendered verbatim after "opened in this session,".
+	// DisputeEvidence is the phrase listing the evidence kinds a dispute cites, rendered verbatim.
 	DisputeEvidence string
 }
 
@@ -107,7 +109,9 @@ type WriterFork struct {
 // Every marker is required: an empty value, or an empty Lenses, fails the fill with an error naming the marker.
 // With v.WriterFork set the directive carries the writer-fork part, otherwise the relaunch paragraphs.
 // With v.CriticalJudge set it carries the critical-judge part, otherwise the plain-judge part.
-// With v.Gated set the writer runs no validator: the writer-fork part is the one without its self-check steps, the closing step ends the turn without a final self-check, and the reviewed files are not said to have passed one.
+// With v.Gated set the writer runs no validator.
+// The writer-fork part drops its self-check steps, the closing step ends the turn without a final self-check,
+// and the reviewed files are not said to have passed one.
 // Every error names the stencil it comes from.
 func Directive(stencilsDir string, v Values) (string, error) {
 	closingStep := "6. Run `" + v.FinalSelfCheckCommand + "` again until it passes, then end your turn."
@@ -162,7 +166,8 @@ func Directive(stencilsDir string, v Values) (string, error) {
 	return fillPart(stencilsDir, directiveStencil, values, []string{"writer_fork", "relaunch_rules", "checked_clause"})
 }
 
-// judgePart returns the judge part for the host: the critical judge filled over values and the critical judge's own values when critical is set, otherwise the plain judge filled over values.
+// judgePart returns the judge part filled over values.
+// It fills the critical judge, with critical's values merged in, when critical is set, and the plain judge otherwise.
 func judgePart(stencilsDir string, values map[string]string, critical *CriticalJudge) (string, error) {
 	if critical == nil {
 		return fillPart(stencilsDir, plainJudgeStencil, values, nil)
@@ -174,7 +179,7 @@ func judgePart(stencilsDir string, values map[string]string, critical *CriticalJ
 }
 
 // fillPart reads stencil name from stencilsDir and returns it filled with values, without trailing newlines.
-// The names in optional may be empty.
+// Markers named in optional may be left empty.
 // Every error names the stencil.
 func fillPart(stencilsDir, name string, values map[string]string, optional []string) (string, error) {
 	content, err := stencilstore.Read(stencilsDir, name)

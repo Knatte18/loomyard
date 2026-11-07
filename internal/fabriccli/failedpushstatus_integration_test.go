@@ -1,4 +1,5 @@
-// failedpushstatus_integration_test.go covers `lym fabric status` printing the hub's outstanding failed-push records over a hubforge hub.
+// failedpushstatus_integration_test.go covers `lym fabric status` printing the hub's outstanding failed-push records.
+// It runs over a hubforge hub.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test

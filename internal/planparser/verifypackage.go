@@ -1,5 +1,6 @@
-// verifypackage.go holds verify-package-missing, the plan check that refuses an author-written card Verify command whose relative package argument names no directory.
-// It reads the same shell-chain shapes as verifymodule.go's checks, for `go test`, `go build`, `go vet` and `lym gate test`.
+// verifypackage.go holds verify-package-missing, the plan check of a card's Verify command.
+// It refuses a relative package argument that names no directory.
+// It reads `go test`, `go build`, `go vet` and `lym gate test` commands, tracking the directory each runs in.
 
 package planparser
 
@@ -13,19 +14,22 @@ import (
 
 // missingPackageArg is one relative package argument of a gate command that names no directory.
 type missingPackageArg struct {
-	// Command is the command's text.
+	// Command is the command's text, its fields joined by single spaces and its leading environment assignments removed.
 	Command string
 
-	// Arg is the package argument as written.
+	// Arg is the relative package argument as the command spells it, including any `/...` suffix.
 	Arg string
 
-	// Hint is the argument with its external-test `_test` suffix removed when that spelling names a directory, and empty otherwise.
+	// Hint is the argument with its external-test `_test` suffix removed, if that names a directory, otherwise empty.
 	Hint string
 }
 
-// checkVerifyPackageMissing implements verify-package-missing: a relative package argument of a `go test`, `go build`, `go vet` or `lym gate test` command in a card's Verify value must name a directory.
+// checkVerifyPackageMissing implements verify-package-missing:
+// a relative package argument in a card's Verify value must name a directory.
+// It applies to the package arguments of `go test`, `go build`, `go vet` and `lym gate test` commands.
 // A card's value is judged against the directories on disk plus those the plan creates through that card.
-// A card's Verify is skipped when that card or an earlier one holds a Move group, since a Move's destination lives in Intent prose.
+// A card's Verify is skipped when that card or an earlier one holds a Move group.
+// A Move's destination lives in Intent prose, which this check does not read.
 // The overview's `## verify:` section is not read, since no gate runs it.
 // It reads static spellings only: an argument behind a variable or inside `bash -c` passes.
 // It returns nothing unless the plan's language is go.
@@ -75,7 +79,7 @@ func holdsMoveGroup(card Card) bool {
 	return false
 }
 
-// createdDirs returns the directory of every CardTargetDirs entry that is not delete-only over the cards numbered at or below through.
+// createdDirs returns the directory of each target of the cards numbered at or below through, except delete-only ones.
 func createdDirs(plan *Plan, through int) []string {
 	var dirs []string
 	for _, card := range plan.Cards {
@@ -91,7 +95,7 @@ func createdDirs(plan *Plan, through int) []string {
 	return dirs
 }
 
-// missingPackageArgs scans one shell chain exactly as crossModuleCommands does and returns each relative package argument naming no directory.
+// missingPackageArgs scans one shell chain and returns each relative package argument that names no directory.
 // A directory counts when it is on disk under worktreeRoot, or equals or is an ancestor of an entry of created.
 // The scan ends at a `cd` or a `-C` or `--dir` that cannot be placed, and at a `cd` in a pipeline stage or after `||`.
 func missingPackageArgs(chain, worktreeRoot string, created []string) []missingPackageArg {
@@ -172,8 +176,10 @@ func missingPackageArgs(chain, worktreeRoot string, created []string) []missingP
 	return found
 }
 
-// gateTestDirAndPackages reads the fields after `lym gate test`: the directory the command runs in and its relative package arguments.
-// `-C` and `--dir`, spelled with a space or `=`, set the directory, `--tags` skips its value, and reading stops at `--`.
+// gateTestDirAndPackages reads the fields after `lym gate test`:
+// the directory the command runs in and its relative package arguments.
+// `-C` and `--dir`, spelled with a space or `=`, set the directory.
+// `--tags` skips its value, and reading stops at `--`.
 // ok is false when a directory cannot be placed.
 func gateTestDirAndPackages(runDir string, fields []string) (commandDir string, packageArgs []string, ok bool) {
 	commandDir = runDir

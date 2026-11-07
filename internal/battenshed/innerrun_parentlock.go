@@ -1,4 +1,5 @@
-// innerrun_parentlock.go implements InnerRun's parent lock duty: releasing the lock of the child's run on every probe check once its owner has idled.
+// innerrun_parentlock.go implements InnerRun's parent lock duty:
+// releasing the lock of the child's run on every probe check once its owner has idled.
 
 package battenshed
 
@@ -17,8 +18,10 @@ type lockWatch struct {
 	idleOwner parentlock.Owner
 }
 
-// lockStep acts on the lock record naming the child's run, once per probe check; it does nothing without deps.ParentLock.
-// A record is released once its owner's agents have all waited for IdleBound with none busy; the watch restarts whenever the owner changes, and a failed agent read releases nothing.
+// lockStep acts on the lock record naming the child's run, once per probe check.
+// It does nothing without deps.ParentLock.
+// A record is released once its owner's agents have all waited for IdleBound with none busy;
+// the watch restarts whenever the owner changes, and a failed agent read releases nothing.
 // Every release logs one Info, and a failure of a seam warns once per episode and changes nothing.
 // While a pause covers the slug it releases nothing, except the record of a pause held for an owner.
 func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
@@ -26,7 +29,8 @@ func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 	if lock == nil {
 		return
 	}
-	// A covered holder keeps its record, and the idle watch restarts after the resume so paused time never counts as waiting.
+	// A covered holder keeps its record,
+	// and the idle watch restarts after the resume so paused time never counts as waiting.
 	// A pause held for an owner releases the record instead, unless a Finalize past its parent-side merge keeps it.
 	if w.pause.Covered {
 		if w.pause.OwnerHeld && !p.keepsLockForFinalize(w.status) {
@@ -52,7 +56,8 @@ func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 const failKeepsLockRead = "battenshed: could not tell whether a landing holds the child's parent lock; keeping it"
 
 // loopLockStep releases a record once the idle rule holds for its owner.
-// It releases nothing while deps.ParentLock.KeepsLock answers true, and restarts the idle watch; a failed read keeps the lock and warns once per episode.
+// It releases nothing while deps.ParentLock.KeepsLock answers true, and restarts the idle watch;
+// a failed read keeps the lock and warns once per episode.
 func (p *innerRunProducer) loopLockStep(w *childWait, record parentlock.Record) {
 	lock := p.deps.ParentLock
 	if lock.KeepsLock != nil {

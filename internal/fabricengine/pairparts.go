@@ -1,4 +1,6 @@
-// pairparts.go holds the read-only reads of what is left of a pair: its local parts, whether its task branch is on origin, and which task branches a slug prefix names.
+// pairparts.go holds the read-only reads of what is left of a pair.
+// It reports which local parts remain and whether the task branch is on origin.
+// It also lists the task branches a slug prefix names.
 
 package fabricengine
 
@@ -22,7 +24,7 @@ type PairParts struct {
 	TaskBranch bool
 	// Launchers reports the pair's launcher directory.
 	Launchers bool
-	// StrayPath reports a path at the pair's task worktree location that is no registered linked worktree, such as a directory a late writer refilled after a removal.
+	// StrayPath reports an unregistered path at the pair's task worktree location, such as one a late writer refilled.
 	StrayPath bool
 }
 
@@ -31,7 +33,7 @@ func (p PairParts) Any() bool {
 	return p.TaskWorktree || p.RecordsWorktree || p.RecordsBranch || p.TaskBranch || p.Launchers || p.StrayPath
 }
 
-// PairParts reads which parts of slug's pair are present locally, by the same reading Remove makes of what is left.
+// PairParts reports which parts of slug's pair are present, read locally.
 func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error) {
 	state, err := t.inspectPair(l, slug)
 	if err != nil {
@@ -47,16 +49,21 @@ func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error)
 	}, nil
 }
 
-// TaskBranchOnOrigin reports whether slug's task branch exists on the task repository's origin, under the current branch prefix or as the bare slug of a pair made before the prefix was set.
+// TaskBranchOnOrigin reports whether slug's task branch exists on the task repository's origin.
+// It matches the branch under the current branch prefix, or the bare slug of a pair made before the prefix was set.
 // A repository with no origin remote reads false, and a failed lookup on a configured origin is returned.
 func (t *Topology) TaskBranchOnOrigin(l *lymcwd.Location, slug string) (bool, error) {
 	found, err := t.originTaskBranch(l, slug)
 	return found != "", err
 }
 
-// TaskBranchSlugs lists, sorted and without duplicates, the slugs starting with prefix whose task branch exists in the prime's warp repository, as a local branch or as an origin remote-tracking branch.
-// A branch carrying the configured branch prefix names the slug after it, and one lacking it names itself, as a pair made before the prefix was set does.
-// It reads the branch prefix from the fabric config and the refs in-process, so the remote-tracking branches are the ones the last fetch left and no network call is made.
+// TaskBranchSlugs lists the slugs starting with prefix whose task branch exists in the prime's warp repository.
+// A task branch counts as a local branch or as an origin remote-tracking branch.
+// The result is sorted and has no duplicates.
+// A branch carrying the configured branch prefix names the slug after it.
+// A branch lacking it names itself, as a pair made before the prefix was set does.
+// It reads the branch prefix from the fabric config and the refs in-process,
+// so the remote-tracking branches are those the last fetch left, and no network call is made.
 // An empty result is no error.
 func TaskBranchSlugs(prime *lymcwd.Location, prefix string) ([]string, error) {
 	cfg, err := LoadConfig(ConfigDirs(prime))

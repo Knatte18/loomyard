@@ -9,10 +9,11 @@ import (
 	"time"
 )
 
-// MergeRetryWindow is how long a merge, and a read of a pull request whose mergeability GitHub has not computed, is retried.
+// MergeRetryWindow is how long a merge is retried.
+// A read of a pull request whose mergeability GitHub has not computed is retried for the same length of time.
 const MergeRetryWindow = time.Minute
 
-// GitHub's mergeable_state values ReadMergeState reads.
+// GitHub's mergeable_state values, the strings the merge judgment compares against.
 const (
 	mergeableClean    = "clean"
 	mergeableHasHooks = "has_hooks"
@@ -27,7 +28,7 @@ const (
 // satisfiedConclusions are the conclusions GitHub counts as satisfying a required check.
 var satisfiedConclusions = []string{"success", "neutral", "skipped"}
 
-// MergeState is what ReadMergeState read about a pull request and judged.
+// MergeState is a pull request's state as read from GitHub, with the judgment of whether it can merge now.
 type MergeState struct {
 	// State is where the pull request stands.
 	State State
@@ -41,14 +42,18 @@ type MergeState struct {
 	Approved bool
 	// Checks are the required checks of the base branch, each with its conclusion at Head.
 	Checks []Check
-	// MergeableNow reports whether GitHub would merge the pull request now: it is open, not a draft, at the beam's head, and in a mergeable state of clean, has_hooks or unstable.
+	// MergeableNow reports whether GitHub would merge the pull request now.
+	// It must be open, not a draft, at the beam's head, and in a mergeable state of clean, has_hooks or unstable.
 	MergeableNow bool
 	// Causes name what stops the merge, one per cause; empty exactly when MergeableNow.
 	Causes []string
 }
 
-// ReadMergeState reads pull request number and the required checks of base at its head, and judges whether it can merge now with beamHead as its head.
-// A mergeable_state GitHub has not yet computed is read again after sleep, doubling from one second, until MergeRetryWindow of the now clock has passed since the first read, and is then reported as a cause.
+// ReadMergeState reads pull request number and the required checks of base at its head.
+// It judges whether the pull request can merge now, with beamHead as the head it must be at.
+// A mergeable_state that GitHub has not yet computed is read again after sleep, doubling from one second.
+// Reads stop once MergeRetryWindow of the now clock has passed since the first read,
+// and the unknown state is then reported as a cause.
 // A failed GitHub call, and a failed sleep, are returned.
 func ReadMergeState(ctx context.Context, api API, number int, beamHead, base string, now func() time.Time, sleep func(ctx context.Context, d time.Duration) error) (MergeState, error) {
 	started := now()
@@ -88,8 +93,9 @@ func ReadMergeState(ctx context.Context, api API, number int, beamHead, base str
 	}, nil
 }
 
-// mergeCauses names every reason a pull request in status cannot merge with beamHead as its head, in the order a reader fixes them.
-// A pull request no longer open is judged by that alone, since GitHub's mergeable_state of a closed one says nothing.
+// mergeCauses names every reason a pull request in status cannot merge with beamHead as its head.
+// The reasons come in the order a reader fixes them.
+// A pull request not open gets no mergeable_state cause, since GitHub's mergeable_state says nothing of one.
 func mergeCauses(status Status, beamHead string, checks []Check) []string {
 	var causes []string
 	switch status.State {

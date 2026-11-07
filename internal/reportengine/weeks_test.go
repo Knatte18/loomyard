@@ -1,4 +1,5 @@
-// weeks_test.go tests the per-week aggregates, the absent counts, the JSON envelope and the markdown rendering over fake sources.
+// weeks_test.go tests the per-week aggregates, the absent counts, the JSON envelope and the markdown rendering.
+// It runs over fake sources.
 
 package reportengine
 

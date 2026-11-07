@@ -22,7 +22,8 @@ func listenUnixSocket(t *testing.T, dir, key string) *net.UnixListener {
 	return l
 }
 
-// TestBootSocketPath pins the socket path rules the boot refusal rests on: the limit per GOOS, the pure length check, and the base's symlinks being resolved before measuring.
+// TestBootSocketPath pins the socket path rules the boot refusal rests on:
+// the limit per GOOS, the pure length check, and the base's symlinks being resolved before measuring.
 // It sets TMUX_TMPDIR, which is process-global, so it does not run in parallel.
 func TestBootSocketPath(t *testing.T) {
 	tiergate.Require(t, 0)

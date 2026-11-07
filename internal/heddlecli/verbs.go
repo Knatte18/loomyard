@@ -42,7 +42,8 @@ func viewOf(entry heddleengine.LayeredEntry) entryView {
 // layerFlagUsage is the help text of the --layer flag set and remove share.
 const layerFlagUsage = "the layer to change: empty for the repository's entries, " + heddleengine.OverrideLayer + " for the hub's override of a shipped entry"
 
-// overrideLayer reports whether layer names the lym overrides, refusing any value but empty and heddleengine.OverrideLayer.
+// overrideLayer reports whether layer names the lym overrides.
+// It refuses any value but the empty layer and heddleengine.OverrideLayer.
 func overrideLayer(layer string) (bool, error) {
 	switch layer {
 	case "":
@@ -53,7 +54,8 @@ func overrideLayer(layer string) (bool, error) {
 	return false, fmt.Errorf("heddle: unknown layer %q; way forward: omit --layer for a repository entry, or give --layer %s to override a shipped entry", layer, heddleengine.OverrideLayer)
 }
 
-// requireOverrideOn refuses a new override while the hub's heddle.yaml leaves lym_override off, since every render would ignore it.
+// requireOverrideOn refuses a new override while the hub's heddle.yaml leaves lym_override off.
+// Every render would otherwise ignore it.
 func (c *heddleCLI) requireOverrideOn() error {
 	cfg, err := heddleengine.LoadConfig(configengine.Dirs{Board: c.boltDir})
 	if err != nil {
@@ -221,7 +223,8 @@ Examples:
 }
 
 // setOverride stores the text of textFile as the hub's override of the shipped entry slug.
-// It refuses --order and --targets, a missing --text-file and a hub whose heddle.yaml leaves lym_override off, saving nothing.
+// It refuses --order and --targets, a missing --text-file, and a hub whose heddle.yaml leaves lym_override off.
+// A refusal saves nothing.
 func (c *heddleCLI) setOverride(cmd *cobra.Command, slug, textFile string) error {
 	if cmd.Flags().Changed("order") || cmd.Flags().Changed("targets") {
 		return c.fail(cmd, fmt.Errorf("heddle: --layer %s overrides a shipped entry's text alone, so it takes no --order or --targets; way forward: give --text-file only", heddleengine.OverrideLayer))
@@ -391,9 +394,11 @@ func (c *heddleCLI) finishWrite(cmd *cobra.Command, slug string, file storeFile,
 	return nil
 }
 
-// write applies change to file under the Bolt write lock and saves it, then starts the board's detached Bolt sync once the lock is released.
+// write applies change to file under the Bolt write lock and saves it.
+// It then starts the board's detached Bolt sync once the lock is released.
 // It pulls and commits nothing in the foreground and touches no worktree.
-// A change the store refuses saves nothing and starts no sync; a sync that fails to start leaves the saved file in place and sets syncWarning, because the board's own write path ignores that failure the same way.
+// A change the store refuses saves nothing and starts no sync.
+// A sync that fails to start leaves the saved file in place and sets syncWarning.
 func (c *heddleCLI) write(file storeFile, change func(*heddleengine.Store) error) error {
 	if err := c.saveLocked(file, change); err != nil {
 		return err

@@ -12,7 +12,7 @@ import (
 )
 
 // PauseGeometry builds the pauserecord.Geometry for l: the hub's pause record and l's pair slug, empty for the prime.
-// Failing to tell the prime from a task worktree is the one error, as for ReedGeometry.
+// The only error is failing to tell the prime from a task worktree.
 func PauseGeometry(l *lymcwd.Location) (pauserecord.Geometry, error) {
 	prime, err := isPrimeWorktree(l.WorktreePath())
 	if err != nil {
@@ -21,7 +21,8 @@ func PauseGeometry(l *lymcwd.Location) (pauserecord.Geometry, error) {
 	return pauseGeometry(l, prime), nil
 }
 
-// pauseGeometry is PauseGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
+// pauseGeometry builds the geometry for l, given whether l is the prime,
+// so a unit test can pick either case without a .git entry.
 // The record lives under the board-level .lym every worktree of the hub reaches by path.
 func pauseGeometry(l *lymcwd.Location, prime bool) pauserecord.Geometry {
 	var slug string

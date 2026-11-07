@@ -1,4 +1,5 @@
-// spawnorder_test.go pins the spawn order the teller hands reed: the sort rule and where a pair's start time is read from.
+// spawnorder_test.go pins the spawn order the teller hands reed:
+// the sort rule and where a pair's start time is read from.
 
 package hubgeom
 
@@ -18,7 +19,8 @@ func spawnCandidateNamed(name string, prime bool, started time.Time, dated bool)
 	return spawnCandidate{location: &lymcwd.Location{WorktreeName: name}, prime: prime, started: started, dated: dated}
 }
 
-// TestSortSpawnOrder pins the ordering rule: the prime first whatever its time, dated pairs ascending, undated pairs after them by name, ties by name.
+// TestSortSpawnOrder pins the ordering rule:
+// the prime first whatever its time, dated pairs ascending, undated pairs after them by name, ties by name.
 func TestSortSpawnOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -79,7 +81,8 @@ func TestSortSpawnOrder(t *testing.T) {
 	}
 }
 
-// TestRunStartTime pins that a pair's start time is its run seed's started_at stamp, that a seed without a parseable stamp or an absent seed has none, and that the seed file's modification time is never read.
+// TestRunStartTime pins that a pair's start time is its run seed's started_at stamp:
+// a seed without a parseable stamp or an absent seed has none, and the seed file's modification time is never read.
 func TestRunStartTime(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

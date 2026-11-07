@@ -1,4 +1,5 @@
-// batchfail_helper_test.go holds the failed-batch fixture and the verify-fix prompt path the tier0 and tier1 tests of this package share.
+// batchfail_helper_test.go holds the failed-batch fixture and the verify-fix prompt path.
+// The tier0 and tier1 tests of this package share both.
 
 package websterengine
 

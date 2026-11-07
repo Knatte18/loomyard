@@ -11,7 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// GateSlots returns the gate-slot pool of l's hub: its slot directory is the Bolt checkout's, and its limits are read strictly from the Bolt checkout's gate.yaml and this machine's override at every acquire.
+// GateSlots returns the gate-slot pool of l's hub.
+// Its slot directory is the Bolt checkout's.
+// Its limits are read strictly from the Bolt checkout's gate.yaml and this machine's override at every acquire.
 // A gate config that cannot be loaded surfaces at acquire as an error naming each file in the stack.
 func GateSlots(l *lymcwd.Location) *gateslot.Pool {
 	boltDir := fabricengine.BoltDir(l.HubPath)

@@ -1,12 +1,16 @@
-// smoke_starttail_test.go covers the two live-substrate properties of `lym loom start`'s tail against a real wired hub and a real tmux session:
-// that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, exactly one status strand and no loom-operator strand -- is unchanged by that.
-// It also pins the watchdog spawn's gate position -- that it fires on every start, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
+// smoke_starttail_test.go pins the live-substrate properties of `lym loom start`'s tail.
+// It runs against a real wired hub and a real tmux session.
+// The verb never attaches or switches a tmux client.
+// The strand set it leaves is unchanged by that.
+// On the unseeded fixture, resolveSeedDriver seeds llm, so the set is one status strand and no loom-operator strand.
 //
-// It reuses this package's existing smoke fixtures throughout: lymbin.Build, newWiredPairFixture,
-// registerBootstrapTeardown, probeReedEngine, statusStrandCount, and tmuxBinaryPath, rather than
-// building a second rig. Like its siblings it drives the real built cmd/lym binary as a subprocess,
-// never RunCLI in-process, per this package's smoke suite doc comment: `lym loom start` spawns its
-// detached driver via os.Executable(), which an in-process call would resolve to the test binary.
+// It also pins the watchdog spawn's gate position: it fires on every start.
+// `start_watchdog_test.go` cannot reach that position through the real RunE, because reed Up needs a live tmux server.
+//
+// The smoke tests in this package reuse its existing fixtures rather than building a second rig.
+// They drive the real built cmd/lym binary as a subprocess and never call RunCLI in-process.
+// `lym loom start` spawns its detached driver via os.Executable().
+// An in-process call would resolve that to the test binary.
 
 package loomcli
 
@@ -34,11 +38,12 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 	return strings.Fields(string(out))
 }
 
-// TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lym loom start` exits 0 with an ok envelope and attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server,
-// and that it leaves no strand named "loom-operator" and exactly one status strand:
-// the fixture is unseeded, so resolveSeedDriver seeds it llm,
-// and an llm-driven start ensures the status strand.
-// The literal is spelled inline as a guard against the removed operator strand coming back: Selvage is the operator's terminal, not a strand.
+// TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lym loom start` exits 0 with an ok envelope.
+// It attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server.
+// It leaves no strand named "loom-operator" and exactly one status strand.
+// The fixture is unseeded, so resolveSeedDriver seeds it llm, and an llm-driven start ensures the status strand.
+// The literal is spelled inline as a guard against the removed operator strand coming back.
+// Selvage is the operator's terminal, not a strand.
 // The smoke run has no TTY,
 // so a start that still attached would exit non-zero.
 func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
@@ -87,7 +92,7 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 		t.Errorf("status strands after an llm-driven start = %d; want 1", count)
 	}
 
-	// $TMUX names reed's own server, the case that used to switch the caller's client.
+	// $TMUX names reed's own server, the case that would switch the caller's client.
 	tmuxEnv, err := exec.Command(tmuxPath, "-L", eng.Socket(), "display-message", "-p", "-t", "="+eng.SessionName(), "#{socket_path},#{pid},0").Output()
 	if err != nil {
 		t.Fatalf("read reed's server identity: %v", err)
@@ -102,8 +107,11 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	}
 }
 
-// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lym loom start --no-attach` bootstrap leaves a live per-hub watchdog daemon for the fixture hub, found by the same argv-signature scan the smoke teardown uses.
-// This is what proves the watchdog spawn fires on every start, not only on an attaching one -- the single thing a later edit is most likely to get wrong -- which is the one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
+// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins the watchdog spawn after `lym loom start --no-attach`.
+// It checks for a live per-hub watchdog daemon for the fixture hub.
+// The check finds the daemon by the argv-signature scan the smoke teardown uses.
+// The test proves the watchdog spawn fires on every start, not only on an attaching one.
+// A later edit is most likely to break that, and hermetic tests cannot reach it.
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)

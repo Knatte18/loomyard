@@ -1,6 +1,6 @@
-// build.go declares this package's assembly entry point, Build, which resolves each row's engine
-// through the shedrecipe registry and calls the returned constructor to produce the
-// []shedengine.ProducerDef that shedengine.Shed already consumes unchanged.
+// build.go declares this package's assembly entry point, Build.
+// It resolves each row's engine through the shedrecipe registry;
+// it calls the constructor it returns to produce the []shedengine.ProducerDef that shedengine.Shed consumes.
 
 package shedbuild
 
@@ -11,30 +11,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// Build resolves each row of r against the shedrecipe registry and calls the returned constructor
-// with env, producing the []shedengine.ProducerDef that shedengine.Shed already consumes
-// unchanged.
+// Build resolves each row of r against the shedrecipe registry and calls the returned constructor with env.
+// It produces the []shedengine.ProducerDef that shedengine.Shed consumes as is.
 //
-// Build returns an error naming r has no producers when r.Producers is empty -- defence in depth,
-// since Parse already rejects that, but Build also accepts a hand-built Recipe that never went
-// through Parse.
+// Build returns an error when r has no producers, because it also accepts a Recipe that was not parsed.
 //
-// Build takes the expanded recipe: a row carrying Block while its engine is not shedrecipe.EngineBlock is a block row that was never expanded, and Build refuses it first, ahead of the loom contract check.
-// A row whose engine is shedrecipe.EngineBlock takes the entry gate of the shedrecipe block gate check its BlockGate names, and a BlockGate naming no check is refused.
+// Build takes the expanded recipe.
+// A row carrying Block whose engine is not shedrecipe.EngineBlock was never expanded;
+// Build refuses it ahead of the loom contract check.
+// A row whose engine is shedrecipe.EngineBlock takes the entry gate of the block gate check its BlockGate names;
+// a BlockGate naming no check is refused.
 // Every definition carries its row's SkipTo, and its row's BlockPath as Block.
 //
-// A recipe declaring `contract: loom` is checked next by checkLoomContract, before any registry lookup, and refused when it breaks the loom contract.
+// A recipe declaring `contract: loom` is checked for the loom contract before any registry lookup;
+// it is refused when it breaks the contract.
 //
-// Build runs no reachability, cycle, blind-gate, dangling-target, or segment analysis, and never
-// calls into internal/shedcheck: a legitimately resumable graph starts mid-graph, so
-// reachability-from-entry is the wrong question at build time, and shedengine's own validation
-// already rejects dangling targets, duplicate names, and cross-segment OnStuck before a run
-// touches anything.
+// Build runs no reachability, cycle, blind-gate, dangling-target or segment analysis;
+// it never calls internal/shedcheck.
+// A legitimately resumable graph starts mid-graph, so reachability from the entry is the wrong question at build time.
+// shedengine's own validation rejects dangling targets, duplicate names and cross-segment OnStuck before a run starts.
 //
-// Build is not filesystem-free: it is a pass-through for the construction-time filesystem effects
-// some registry constructors have of their own accord -- see internal/shedbuild/doc.go for the
-// single site enumerating which constructor produces which effect; this package neither
-// suppresses nor wraps those effects.
+// Build is not filesystem-free: some registry constructors reach disk at construction time.
+// Build passes those effects through without suppressing or wrapping them.
+// internal/shedbuild/doc.go lists which constructor produces which effect.
 func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 	if len(r.Producers) == 0 {
 		return nil, fmt.Errorf("shedbuild: recipe has no producers")
@@ -78,7 +77,9 @@ func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 	return defs, nil
 }
 
-// rowEntryGate builds the entry gate of row: the block gate check its BlockGate names for a block row, and its entry_gate checks for any other row, nil for a row with none.
+// rowEntryGate builds the entry gate of row.
+// A block row takes the block gate check its BlockGate names; any other row takes its entry_gate checks.
+// A row with no entry_gate checks has a nil gate.
 func rowEntryGate(row Row, env shedrecipe.Env) (shedengine.EntryGate, error) {
 	if row.Engine == shedrecipe.EngineBlock {
 		check, err := shedrecipe.LookupBlockGate(row.BlockGate)
@@ -94,7 +95,8 @@ func rowEntryGate(row Row, env shedrecipe.Env) (shedengine.EntryGate, error) {
 	return entryGateOf(row, checks, env)
 }
 
-// refuseUnexpandedBlockRow returns the refusal for the first row of rows that names a block while its engine is not shedrecipe.EngineBlock, nil when there is none.
+// refuseUnexpandedBlockRow returns the refusal for the first row that names a block but is not an EngineBlock row.
+// It returns nil when no row does.
 // Such a row was parsed and never expanded, so no producer can be built for it.
 func refuseUnexpandedBlockRow(rows []Row) error {
 	for i, row := range rows {

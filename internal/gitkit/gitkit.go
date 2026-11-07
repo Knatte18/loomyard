@@ -1,5 +1,4 @@
-// gitkit.go implements the shared test-fixture builders and copy helpers used across worktree,
-// weft, and paths tests.
+// gitkit.go holds the shared test fixtures: repo builders, git spawn helpers, and repo copy helpers.
 
 package gitkit
 
@@ -18,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-// FixtureGitEnv is the name of the environment variable that marks a git process as fixture setup rather than code under test.
+// FixtureGitEnv is the environment variable that marks a git process as fixture setup, not code under test.
 // A marked child carries the value "1".
 const FixtureGitEnv = "LYM_FIXTURE_GIT"
 
@@ -27,9 +26,8 @@ func fixtureGitEnviron() []string {
 	return append(os.Environ(), FixtureGitEnv+"=1")
 }
 
-// GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath, calling tb.Fatalf on
-// failure — non-empty output means the worktree has uncommitted changes (staged, unstaged, or
-// untracked).
+// GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath and calls tb.Fatalf on failure.
+// Non-empty output means the worktree has uncommitted changes: staged, unstaged, or untracked.
 func GitStatusPorcelain(tb testing.TB, repoPath string) string {
 	tb.Helper()
 
@@ -43,7 +41,7 @@ func GitStatusPorcelain(tb testing.TB, repoPath string) string {
 	return string(out)
 }
 
-// MustRun runs a command in the specified directory, calling tb.Fatalf on failure.
+// MustRun runs a command in dir, calling tb.Fatalf on failure.
 func MustRun(tb testing.TB, dir string, args ...string) {
 	tb.Helper()
 
@@ -57,7 +55,7 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 }
 
 // Git runs `git <args>` in dir and returns its trimmed stdout, calling tb.Fatalf on a spawn error or non-zero exit.
-// It is the one spawning primitive behind the query helpers in query.go, which stay spawn-free.
+// The query helpers spawn git only through Git and gitExit.
 func Git(tb testing.TB, dir string, args ...string) string {
 	tb.Helper()
 
@@ -88,20 +86,18 @@ func gitExit(dir string, args ...string) (stdout string, code int, err error) {
 	return "", -1, runErr
 }
 
-// SeedConfig seeds real configuration into a git repository: creates _lym/config, writes each
-// module's YAML file, and commits them.
-// The map parameter maps module names to YAML content.
-// This preserves the leaf invariant by avoiding configreg imports.
+// SeedConfig seeds real configuration into a git repository.
+// It creates the config directory, writes each module's YAML file, and commits them.
+// configByModule pairs each module name with its YAML content.
+// It does not import configreg, which keeps this package a leaf.
 func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string) {
 	tb.Helper()
 
-	// Create config directory if it doesn't exist.
 	configDir := configengine.ConfigDir(repoDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		tb.Fatalf("mkdir config dir: %v", err)
 	}
 
-	// Write each module's config file.
 	for module, content := range configByModule {
 		configPath := configengine.ConfigFile(repoDir, module)
 		if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
@@ -116,13 +112,12 @@ func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string)
 
 // Template builders: cached, built once per test binary via sync.Once.
 
-// stripHookSamples removes all *.sample files from the given hooks directory
-// (best-effort; errors are ignored).
+// stripHookSamples removes the *.sample files from hooksDir.
+// Errors are ignored, so the removal is best-effort.
 func stripHookSamples(hooksDir string) {
 	pattern := filepath.Join(hooksDir, "*.sample")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		// Ignore glob errors (best-effort).
 		return
 	}
 	for _, match := range matches {
@@ -130,8 +125,9 @@ func stripHookSamples(hooksDir string) {
 	}
 }
 
-// initRepo initializes a git repository at dir on branch main, disabling
-// fsmonitor and auto-maintenance (copies inherit .git/config). Panics on failure.
+// initRepo initializes a git repository at dir on branch main, disabling fsmonitor and auto-maintenance.
+// Copies inherit .git/config, so these settings reach every copy.
+// It panics on failure.
 func initRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
 	mustGit(dir, "config", "user.email", "test@test.com")
@@ -172,15 +168,15 @@ func mustGit(dir string, args ...string) {
 	}
 }
 
-// repoTemplateOnce caches the repo template (git repo with bare origin, left empty).
+// The repo template and its bare origin are built once per test binary and cached in these variables.
 var (
 	repoTemplateOnce     sync.Once
 	repoTemplatePath     string
 	repoTemplateBarePath string
 )
 
-// buildRepoTemplate constructs the repo template: a git repo with origin bare remote,
-// populated with a README and initial commit (called once per test binary; panics on failure).
+// buildRepoTemplate constructs the repo template: a git repo whose initial commit holds a README.
+// It also adds a bare origin remote and runs once per test binary; it panics on failure.
 func buildRepoTemplate() (hub, bare string) {
 	repoTemplateOnce.Do(func() {
 		tmpDir, err := lymtemp.MkdirTemp("gitkit-repo-*")
@@ -201,7 +197,7 @@ func buildRepoTemplate() (hub, bare string) {
 		}
 		commitAll(hub, "init")
 
-		// Create bare remote and add it as origin (left empty; no push).
+		// The bare remote stays empty: nothing is pushed to it.
 		bare := filepath.Join(tmpDir, "bare")
 		initBareRemote(bare, hub)
 
@@ -214,18 +210,15 @@ func buildRepoTemplate() (hub, bare string) {
 
 // Fixture structs for public API.
 
-// RepoFixture represents an isolated copy of the repo template: a plain git repo with a bare
-// origin, never a hub.
-// It is the primitive repo fixture and is callable from internal/lymcwd alone —
-// every other package takes a real hub from internal/hubforge instead;
-// see TestCopyRepoCallerSet_LymcwdOnly.
+// RepoFixture is an isolated copy of the repo template: a plain git repo with a bare origin, not a hub.
+// Only internal/lymcwd may use it, and a test enforces that.
 type RepoFixture struct {
 	Repo string
 	Bare string
 }
 
-// rewriteOriginURLInConfig rewrites the origin URL in .git/config as a pure text edit
-// (no subprocess). It asserts that exactly one url line exists under [remote "origin"].
+// rewriteOriginURLInConfig rewrites the origin URL in .git/config as a pure text edit, with no subprocess.
+// It asserts that exactly one url line exists under [remote "origin"].
 func rewriteOriginURLInConfig(repoPath string, newURL string) error {
 	configPath := filepath.Join(repoPath, ".git", "config")
 
@@ -275,21 +268,18 @@ func rewriteOriginURLInConfig(repoPath string, newURL string) error {
 	return nil
 }
 
-// copyDirRecursive recursively copies a directory tree from src to dest (panics on symlinks).
+// copyDirRecursive copies the directory tree src into dest, and returns an error on a symlink.
 func copyDirRecursive(src string, dest string) error {
-	// Ensure destination parent exists.
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
 
-	// Create destination root.
 	if err := os.Mkdir(dest, 0o755); err != nil {
 		return err
 	}
 
-	// WalkDir does not follow symlinks on entry; we detect them explicitly so
-	// that a symlink in a template causes an immediate, clear error rather than
-	// silently producing a dangling link in the copy.
+	// WalkDir does not follow symlinks on entry.
+	// The check below fails at once on a symlink in a template, rather than leave a dangling link in the copy.
 	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -315,7 +305,6 @@ func copyDirRecursive(src string, dest string) error {
 			return os.MkdirAll(destPath, info.Mode())
 		}
 
-		// Copy regular file.
 		srcFile, err := os.Open(path)
 		if err != nil {
 			return err
@@ -340,12 +329,9 @@ func copyDirRecursive(src string, dest string) error {
 	})
 }
 
-// CopyRepo returns an isolated copy of the repo template: a plain git repo with a bare origin,
-// never a hub.
-// The copy is placed in tb.TempDir();
-// its origin URL is rewritten to point to the copied bare repository.
-// It is the primitive repo fixture and is callable from internal/lymcwd alone;
-// every other package takes a real hub from internal/hubforge instead.
+// CopyRepo returns an isolated copy of the repo template: a plain git repo with a bare origin, not a hub.
+// The copy is placed in tb.TempDir(), and its origin URL points to the copied bare repository.
+// Only internal/lymcwd may call it, and a test enforces that.
 func CopyRepo(tb testing.TB) RepoFixture {
 	tb.Helper()
 
@@ -354,19 +340,16 @@ func CopyRepo(tb testing.TB) RepoFixture {
 	// Use a single temp dir so both repos share one cleanup entry.
 	tempContainer := tb.TempDir()
 
-	// Copy template hub into temp dir
 	copiedHub := filepath.Join(tempContainer, "hub")
 	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
 		tb.Fatalf("copyDirRecursive hub: %v", err)
 	}
 
-	// Copy template bare into the same temp dir
 	copiedBare := filepath.Join(tempContainer, "bare")
 	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
 		tb.Fatalf("copyDirRecursive bare: %v", err)
 	}
 
-	// Rewrite origin URL in copied hub's config
 	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
 		tb.Fatalf("rewriteOriginURLInConfig: %v", err)
 	}

@@ -1,10 +1,13 @@
-// remoteonly.go implements Fabric.RemoteOnlyCommits, the read of how far the remote task branch has run ahead of the warp checkout's HEAD.
+// remoteonly.go implements Fabric.RemoteOnlyCommits.
+// It reads how far the remote task branch has run ahead of the warp checkout's HEAD.
 
 package fabricengine
 
 import "fmt"
 
-// RemoteOnlyCommits fetches the warp origin and returns the tip of the remote branch named like the warp checkout's current branch, and the commits on it that HEAD lacks, newest first.
+// RemoteOnlyCommits fetches the warp origin.
+// It returns the tip of the remote branch named like the warp checkout's current branch,
+// and the commits on that tip that HEAD lacks, newest first.
 // The tip and the commit list are both empty when the repository has no origin remote or the remote has no such branch;
 // a remote branch at or behind HEAD returns its tip and no commits.
 // A failed fetch or branch read returns the error, and the caller decides whether it refuses or degrades.
@@ -23,7 +26,8 @@ func (f *Fabric) RemoteOnlyCommits() (tip string, commits []string, err error) {
 		return "", nil, fmt.Errorf("fabricengine: remote-only commits: %w", err)
 	}
 
-	// The tip is read from the remote itself, not the tracking ref: a branch deleted on the remote leaves a stale tracking ref behind.
+	// The tip is read from the remote itself, not the tracking ref.
+	// A branch deleted on the remote leaves a stale tracking ref behind.
 	tips, err := remoteBranchTips(f.warpPath)
 	if err != nil {
 		return "", nil, err

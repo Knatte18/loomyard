@@ -53,7 +53,8 @@ func CreateTemp(pattern string) (*os.File, error) {
 	return os.CreateTemp(dir, pattern)
 }
 
-// Remove releases and deletes the process's run directory and forgets it, so a later Dir makes a fresh one.
+// Remove releases and deletes the process's run directory and forgets it;
+// the next call that needs one creates a fresh one.
 // It returns nil when no run directory was created.
 func Remove() error {
 	processMu.Lock()

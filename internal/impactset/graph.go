@@ -15,11 +15,11 @@ const (
 	commandDir = "cmd/lym"
 )
 
-// goListFormat is the `go list -f` template parseGoList reads.
-// Imports are joined by a semicolon, the field separator is a tab.
+// goListFormat is the `go list -f` template for one line per package.
+// Fields are tab-separated, and the imports within one field are joined by a semicolon.
 const goListFormat = `{{.ImportPath}}{{"\t"}}{{.Dir}}{{"\t"}}{{join .Imports ";"}}{{"\t"}}{{join .TestImports ";"}}{{"\t"}}{{join .XTestImports ";"}}`
 
-// pkg is one package of the module.
+// pkg is one package of the module, as `go list` reports it.
 type pkg struct {
 	ImportPath string
 	// Dir is the slash-separated directory relative to the worktree, `.` for the root.
@@ -30,7 +30,7 @@ type pkg struct {
 	TestImports []string
 }
 
-// parseGoList reads `go list -f goListFormat` output into packages, resolving each absolute Dir against rootDir.
+// parseGoList reads `go list -f goListFormat` output into packages, making each absolute Dir relative to rootDir.
 // A package whose directory lies outside rootDir is skipped.
 func parseGoList(output, rootDir string) []pkg {
 	var pkgs []pkg
@@ -76,7 +76,8 @@ func newModuleGraph(pkgs []pkg) moduleGraph {
 	return g
 }
 
-// closure returns the import paths reachable from the roots through non-test imports, the roots included, restricted to module packages.
+// closure returns the import paths of the module packages reachable from the roots through non-test imports.
+// The roots themselves are included when they are module packages.
 func (g moduleGraph) closure(roots []string) map[string]bool {
 	seen := map[string]bool{}
 	queue := append([]string(nil), roots...)
@@ -94,7 +95,7 @@ func (g moduleGraph) closure(roots []string) map[string]bool {
 }
 
 // reaches reports whether package p's build or test reaches a package in changed:
-// p itself, its transitive non-test dependencies, or the dependencies of its own test imports.
+// p itself, its transitive non-test dependencies, or its test imports and their dependencies.
 func (g moduleGraph) reaches(p pkg, changed map[string]bool) bool {
 	roots := append([]string{p.ImportPath}, p.TestImports...)
 	for importPath := range g.closure(roots) {
@@ -105,8 +106,9 @@ func (g moduleGraph) reaches(p pkg, changed map[string]bool) bool {
 	return false
 }
 
-// impactedSet returns the import paths of the changed packages and every package that reaches one of them.
-// When the changed packages include the `cmd/lym` main package itself, which no test imports, it also returns every package whose tests import the binary builder.
+// impactedSet returns the import paths of the changed packages and of every package that reaches one of them.
+// The `cmd/lym` main package is imported by no test,
+// so a change to it also adds every package whose test files import `internal/testkit/lymbin`.
 func (g moduleGraph) impactedSet(changed map[string]bool) map[string]bool {
 	set := map[string]bool{}
 	for _, p := range g.byImportPath {
@@ -120,8 +122,9 @@ func (g moduleGraph) impactedSet(changed map[string]bool) map[string]bool {
 	return set
 }
 
-// addBinaryBuildingTests adds every package whose test files import the binary builder to set.
-// It returns the sorted module-relative directories of those packages, empty when the module has no binary builder package.
+// addBinaryBuildingTests adds every package whose test files import `internal/testkit/lymbin` to set.
+// It returns the sorted module-relative directories of those packages.
+// The result is empty when the module has no `internal/testkit/lymbin` package.
 func (g moduleGraph) addBinaryBuildingTests(set map[string]bool) []string {
 	lymbin, ok := g.byDir[lymbinDir]
 	if !ok {

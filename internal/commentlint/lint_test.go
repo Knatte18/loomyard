@@ -15,7 +15,7 @@ func source(commentLines ...string) string {
 	return "package p\n\n" + strings.Join(commentLines, "\n") + "\nfunc F() {}\n"
 }
 
-// flaggedLines returns the line numbers findNewWrappedBreaks reports.
+// flaggedLines returns the line numbers of newText that the wrapped-break check flags.
 func flaggedLines(baseText, newText string) []int {
 	var lines []int
 	for _, finding := range findNewWrappedBreaks("p.go", baseText, newText) {

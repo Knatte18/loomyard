@@ -1,9 +1,10 @@
 //go:build linux
 
-// bar_integration_test.go expands the three-line status bar against a real tmux server and an attached client,
-// and asserts the acceptance rows: which button is lit, which windows get a button, the wait mark, and the session line.
-// The formats are expanded with display-message -c <client>, so the client's own session and current window are the context.
-// The client is attached through the pty harness attachgeometry_integration_test.go defines.
+// bar_integration_test.go checks the three-line status bar against a real tmux server and an attached client.
+// It asserts which button is lit, which windows get a button, the wait mark, and the session line.
+// The formats are expanded with display-message -c <client>.
+// The client's own session and current window are therefore the context.
+// The client attaches through the pty harness that attachgeometry_integration_test.go defines.
 
 package reedengine
 
@@ -18,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// barFixture is a session with Selvage, two strand panes (alpha in the review segment, beta in plan), a second window, a window carrying @lym_hidden and a second session, with a client attached.
+// barFixture is a session with a Selvage pane, two strand panes, a second window, and a second session.
+// One window carries @lym_hidden, and a client is attached.
+// The strand panes are alpha, in the review segment, and beta, in plan.
 type barFixture struct {
 	e                         *Engine
 	client                    string
@@ -75,7 +78,8 @@ func newBarFixture(t *testing.T) *barFixture {
 	return f
 }
 
-// expand returns format expanded for the attached client; callers pass T:status-format so the strftime parts are filled in as the status line does.
+// expand returns format expanded for the attached client.
+// Callers pass a #{T:status-format[N]} format so the strftime parts are filled in as the status line does.
 func (f *barFixture) expand(t *testing.T, format string) string {
 	t.Helper()
 	return strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-c", f.client, "-p", format))
@@ -210,9 +214,11 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 }
 
 // TestBar_LineTwoListsSessionsPrimeFirst pins line 2's session buttons.
-// Each session appears once, the client's session lit with its full name and the others cut to 12 characters, with no stray comma from a second loop format.
+// Each session appears once: the client's session is lit with its full name, and the others are cut to 12 characters.
+// Line 2 has no stray comma from a second loop format.
 // The session carrying @lym_prime_session comes ahead of the rest.
-// With no session marked the first loop draws nothing, and the second loop's order is session name on tmux 3.4 and session id on newer tmux, so no order is asserted.
+// With no session marked, the first loop draws nothing.
+// The second loop's order is session name on tmux 3.4 and session id on newer tmux, so the test asserts no order.
 func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
@@ -295,7 +301,10 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 	}
 }
 
-// TestBar_LineTwoShowsTheCheckMarkBeforeTheClock pins the check mark on line 2: absent while unset, its text and growing seconds styled by its running state, the green style without seconds once ended, and gone once cleared.
+// TestBar_LineTwoShowsTheCheckMarkBeforeTheClock pins the check mark on line 2.
+// The mark is absent while unset.
+// Its text and growing seconds are styled by its running state.
+// Once ended, it shows the green style without seconds, and it is gone once cleared.
 func TestBar_LineTwoShowsTheCheckMarkBeforeTheClock(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()

@@ -1,4 +1,7 @@
-// pawlrecipe_test.go covers the pawl recipe as a loom recipe: its rows, their edges and producer types through New and Routing, the absence of a review segment and of a reroute edge, the retired rows, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
+// pawlrecipe_test.go covers the pawl recipe as a loom recipe.
+// It pins the recipe's rows and their edges and producer types through New and Routing.
+// It also pins the absence of a review segment and of a reroute edge.
+// It pins the retired rows and the hold boundary against boardengine.RunHolds.
 
 package loomrecipe
 
@@ -90,8 +93,10 @@ func TestPawlRecipe(t *testing.T) {
 	})
 }
 
-// TestPawlRecipe_HoldLiftsOnlyBeforeFinalize pins boardengine.RunHolds, which imports no recipe package, against the recipe's rows:
-// a beam project's run holds nothing of its entry at batten's claim row and at every pawl row before Finalize, and holds it at Finalize and every row after it.
+// TestPawlRecipe_HoldLiftsOnlyBeforeFinalize pins boardengine.RunHolds against the recipe's rows.
+// boardengine imports no recipe package.
+// A beam project's run holds nothing of its entry at batten's claim row and at every pawl row before Finalize.
+// It holds it at Finalize and every row after it.
 // It also pins the recipe's retired rows, which a parked run may still stand at, as held.
 func TestPawlRecipe_HoldLiftsOnlyBeforeFinalize(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -136,8 +141,10 @@ func TestPawlRecipe_HoldLiftsOnlyBeforeFinalize(t *testing.T) {
 	}
 }
 
-// TestPawlRecipe_BodyLocksFromRecordWrite pins boardengine's body lock of a beam project, which imports no recipe package, against the recipe's rows:
-// the project's body takes an edit at batten's claim row and at Preflight, before Record-Write writes the project record from it, and none from Record-Write on.
+// TestPawlRecipe_BodyLocksFromRecordWrite pins boardengine's body lock of a beam project against the recipe's rows.
+// boardengine imports no recipe package.
+// The project's body takes an edit at batten's claim row and at Preflight.
+// Record-Write writes the project record from the body, and the body takes no edit from Record-Write on.
 func TestPawlRecipe_BodyLocksFromRecordWrite(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

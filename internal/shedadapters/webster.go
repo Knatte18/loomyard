@@ -1,6 +1,5 @@
-// webster.go implements WebsterProducer, the shedadapters adapter over websterengine's black-box
-// multi-spawn run seam: it drives one websterengine.Run call and maps its RunResult/error onto the
-// shedengine.ShedProducer contract.
+// webster.go implements WebsterProducer, an adapter over websterengine.Run.
+// It maps the run's RunResult and error onto the shedengine.ShedProducer contract.
 
 package shedadapters
 
@@ -15,30 +14,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// websterEngineLabel is the short engine label WebsterProducer's log lines and error text carry.
+// websterEngineLabel is the engine label that log lines and error text carry.
 const websterEngineLabel = "webster"
 
-// WebsterRunner is the func-typed seam WebsterProducer drives Webster's run verb through. Webster's
-// entry point is already a free function, so this seam is a func type rather than an interface.
+// WebsterRunner is the seam WebsterProducer calls to run webster.
+// It is a func type rather than an interface, because websterengine.Run is already a free function.
 type WebsterRunner func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error)
 
-// Compile-time proof that websterengine.Run satisfies WebsterRunner.
 var _ WebsterRunner = websterengine.Run
 
-// Webster's own outcome values (websterengine's own outcomeDone/outcomeStuck constants) are unexported, so this adapter compares RunResult.Outcome against its own copies of the same literals.
-// The duplication is named rather than hidden:
-// the default: branch in Call below errors on any value that is not one of these two, and a test row drives that branch,
-// so a webster-side rename surfaces as a failing test here instead of a silently mis-mapped verdict.
+// websterengine keeps its outcome values unexported, so these constants copy its literals.
+// A rename there surfaces here: the default branch in Call errors on any value other than these two,
+// and a test drives that branch, so the rename fails a test rather than mis-mapping a verdict.
 const (
 	websterOutcomeDone  = "done"
 	websterOutcomeStuck = "stuck"
 )
 
-// planConflictWayForward is the clause a halted Webster plan conflict ends with: the run's parent records the fix as a plan amendment, sends the run to Plan-Burler-Review and resumes it.
+// planConflictWayForward is the way-forward clause that ends the Stuck reason for a webster plan conflict.
+// It names the steps that clear the conflict.
 const planConflictWayForward = "the run's parent records the fix as a decision naming the conflicting pending cards by slug and number with \"lym loom decision add <slug> --by parent … --amends-plan\", then runs \"lym loom goto --to Plan-Burler-Review\" and \"lym loom resume\" in the task worktree"
 
-// WebsterProducer is the shedadapters adapter over websterengine's Run seam: it invokes run once per
-// Call with Fresh always false and AutoRebaseline always true, and maps the resulting RunResult/error onto shedengine's contract.
+// WebsterProducer is a shedengine.ShedProducer that runs websterengine.Run once per Call.
+// Each Call runs with Fresh false and AutoRebaseline true, and maps the result onto the shedengine contract.
 type WebsterProducer struct {
 	name string
 	run  WebsterRunner
@@ -47,8 +45,8 @@ type WebsterProducer struct {
 
 var _ shedengine.ShedProducer = (*WebsterProducer)(nil)
 
-// NewWebsterProducer returns a WebsterProducer identified as name, driving deps through run. A nil
-// run defaults to websterengine.Run, the production seam.
+// NewWebsterProducer returns a WebsterProducer named name that drives deps through run.
+// A nil run defaults to websterengine.Run.
 func NewWebsterProducer(name string, run WebsterRunner, deps websterengine.RunDeps) *WebsterProducer {
 	if run == nil {
 		run = websterengine.Run
@@ -59,16 +57,22 @@ func NewWebsterProducer(name string, run WebsterRunner, deps websterengine.RunDe
 	return &WebsterProducer{name: name, run: run, deps: deps}
 }
 
-// Call runs one WebsterProducer iteration: entry-check the context, invoke the run seam with
-// Fresh: false and AutoRebaseline: true, and map its RunResult/error onto shedengine's contract.
+// Call runs one iteration of the producer.
+// It checks the context on entry.
+// It invokes the run seam with Fresh false and AutoRebaseline true.
+// It maps the RunResult and error onto the shedengine contract.
 //
-// RunOptions.Fresh is fixed false and is never configurable here: Fresh: true is the destructive
-// fingerprint-mismatch escape (it archives state and reports and clears the rendered prompts), and
-// must stay an explicit human act via the CLI, never something a Shed resume triggers.
-// AutoRebaseline is the non-destructive counterpart this row sets: a plan changed between steps is rebaselined on entry.
-// Every failure of that path, a refusal or a transient alike, maps to Stuck with its text, whose way forward re-steps this row.
+// RunOptions.Fresh is fixed false and is never configurable here.
+// Fresh true is the destructive fingerprint-mismatch escape.
+// It archives state, reports, and clears the rendered prompts.
+// It must stay an explicit human act through the CLI, never something a Shed resume triggers.
+// AutoRebaseline is the non-destructive counterpart this row sets.
+// A plan changed between steps is rebaselined on entry.
+// Every failure of that path, a refusal or a transient alike, maps to Stuck with its text.
+// The way forward in that text re-steps this row.
 //
-// No mid-run bridge is installed, so a cancel is not observed until Master reaches a terminal outcome or its own configured whole-run timeout elapses.
+// No mid-run bridge is installed.
+// A cancel goes unobserved until Master reaches a terminal outcome or its configured whole-run timeout elapses.
 func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, websterEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -77,7 +81,8 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	result, err := p.run(p.deps, websterengine.RunOptions{Fresh: false, AutoRebaseline: true})
 	if err != nil {
 		if errors.Is(err, websterengine.ErrPendingAuditFindings) || errors.Is(err, websterengine.ErrAutoRebaseline) || errors.Is(err, websterengine.ErrBatchDeadEnd) {
-			// A halt only the operator can clear: the run blocks with the refusal's own text, whose way forward already ends in this row's re-entry step.
+			// A halt only the operator can clear.
+			// The run blocks with the refusal's own text, and its way forward already ends in this row's re-entry step.
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
@@ -92,9 +97,9 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 
 	switch result.Outcome {
 	case websterOutcomeDone:
-		// A genuine success verdict survives cancellation -- the one exception cancelErr never
-		// applies to. The summary is Webster's human-readable account of the whole run and is
-		// guaranteed present on this outcome; the webster dir is already told, never derived.
+		// A success verdict survives cancellation, the one outcome cancelErr never applies to.
+		// The summary is Webster's account of the whole run and is present on this outcome.
+		// The webster dir is taken from the producer's geometry, never derived.
 		return shedengine.Done, shedengine.OutputPointer{Path: summaryparser.Path(p.deps.Geom.WebsterDir), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate)}, nil
 
 	case websterOutcomeStuck:

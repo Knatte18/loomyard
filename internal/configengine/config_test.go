@@ -1,11 +1,6 @@
-// config_test.go — unit tests for the strict and degrading config loaders.
-//
-// Tests cover: the strict Load contract using yamlengine + envsource, missing-key detection,
-// absent-file errors, env variable resolution via templates, nested-key handling, the
-// not-initialized error path, the ConfigDir/ConfigFile/ LymDirName path constructors configengine
-// singly declares, and the degrading LoadOrTemplate contract -- its two proven-absence fallback
-// triggers, the strict-when-present boundary it shares with Load, and the absence-only
-// discrimination that keeps a stat failure from being mistaken for absence.
+// config_test.go holds the unit tests for the strict Load and the degrading LoadOrTemplate config loaders.
+// They cover missing-key fill-in, absent-file and not-initialized errors, env resolution, and nested keys.
+// LoadOrTemplate falls back only on proven absence, and a stat failure is never mistaken for absence.
 
 package configengine_test
 
@@ -24,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// baseState is how much of a base directory's _lym tree newBase creates.
+// baseState names how much of a base directory's _lym tree a test sets up.
 type baseState int
 
 const (
@@ -38,7 +33,7 @@ const (
 	baseConfigDir
 	// baseWithFile creates _lym/config/ and writes content as the module's config file.
 	baseWithFile
-	// baseUnreadable creates _lym/config/ with a directory where the module's config file belongs, so reading it fails without the file being absent.
+	// baseUnreadable makes the module's config file path a directory, so reading it fails without the file being absent.
 	baseUnreadable
 )
 
@@ -71,7 +66,7 @@ func newBase(t *testing.T, state baseState, module, content string) (baseDir, pa
 	return baseDir, configengine.ConfigFile(baseDir, module)
 }
 
-// boardSpec returns the per-worktree spec of the module the loader tests call "board".
+// boardSpec returns the per-worktree spec for the module named "board", which the loader tests load.
 func boardSpec(template string, openMaps []string) configengine.Spec {
 	return configengine.Spec{Name: "board", Template: []byte(template), OpenMaps: openMaps}
 }
@@ -122,7 +117,7 @@ type loadCase struct {
 	notContains []string
 }
 
-// checkLoaded asserts a loaded config against the row: its bytes, the single fill line or none, and the file left untouched.
+// checkLoaded asserts a loaded config's bytes, its single fill line or none, and that the file is left untouched.
 func checkLoaded(t *testing.T, tc loadCase, resolved []byte, buf *logcapture.Buffer, path string) {
 	t.Helper()
 	for _, want := range tc.contains {
@@ -145,7 +140,10 @@ func checkLoaded(t *testing.T, tc loadCase, resolved []byte, buf *logcapture.Buf
 	assertFileUnchanged(t, path, tc.content)
 }
 
-// TestLoad pins what the strict loader returns for a present file: file values beat template defaults, a missing key loads at its template default with one fill line and the file untouched, a present empty value or emptied list is kept, an extra key is tolerated, env markers resolve, and a declared open map is carried whole.
+// TestLoad pins what the strict loader returns for a present file.
+// File values beat template defaults, a present empty value or emptied list is kept, and an extra key is tolerated.
+// A missing key loads at its template default with one fill line, and the file is left untouched.
+// Env markers resolve, and a declared open map is carried whole.
 // It serializes its rows because they swap the process-global logger output and set env variables.
 func TestLoad(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -265,7 +263,7 @@ func TestLoad_Refusals(t *testing.T) {
 		openMaps   []string
 		wantErr    []string
 		wantNotErr []string
-		// boardDir tells the base dir as the board dir instead of the anchor, and hubWide marks the spec hub-wide.
+		// boardDir uses the base dir as the board dir instead of the anchor, and hubWide marks the spec hub-wide.
 		boardDir, hubWide bool
 		// wantInvalid is whether the error is marked ErrInvalid, under Load and, for a present path, under LoadOrTemplate.
 		wantInvalid bool
@@ -425,8 +423,10 @@ func TestMarkInvalid(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate pins the degrading loader: proven absence of _lym/, of the config file or of the base directory resolves the template with env overrides honored, and a present file loads exactly as the strict loader loads it.
-// It serializes its rows because they swap the process-global logger output and set env variables.
+// TestLoadOrTemplate pins the degrading loader.
+// A provably absent _lym/, config file or base directory resolves the template, with env overrides honored.
+// A present file loads exactly as the strict loader loads it.
+// It serializes its rows, because they swap the process-global logger output and set env variables.
 func TestLoadOrTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -532,7 +532,9 @@ func TestLoadOrTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error wrap: with no _lym/ on disk, a template whose required ${env:NAME} marker has no variable returns an error naming "config template:" and the module, and never a config-file path that does not exist.
+// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the error wrap of the fallback path.
+// With no _lym/ on disk, a template with a required ${env:NAME} marker and no variable returns an error.
+// The error names "config template:" and the module, and never a config file, since none exists on disk.
 func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -553,7 +555,9 @@ func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	}
 }
 
-// TestFindBaseDir pins that a base directory holding _lym/ is returned as is, and that one without it is refused with an error that satisfies errors.Is(err, ErrNotInitialized) -- the sentinel is wrapped, not returned bare -- while its text still says "not initialized", since strict callers match on that text.
+// TestFindBaseDir pins that a base directory holding _lym/ is returned as is.
+// A base directory without it is refused with an error that satisfies errors.Is(err, ErrNotInitialized).
+// The sentinel is wrapped, not returned bare; the text still says "not initialized", since strict callers match on it.
 //
 //testtiming:keep pins FindBaseDir's own return value and its wrapped sentinel, which the covering Edit rows only match as text
 func TestFindBaseDir(t *testing.T) {
@@ -595,7 +599,8 @@ func TestFindBaseDir(t *testing.T) {
 	}
 }
 
-// TestErrNotInitialized_NotMatchedByUnrelatedError tests that a hand-constructed, unrelated error does not satisfy errors.Is(err, configengine.ErrNotInitialized).
+// TestErrNotInitialized_NotMatchedByUnrelatedError pins that the sentinel matches by identity.
+// A hand-constructed error with the same text does not satisfy errors.Is(err, configengine.ErrNotInitialized).
 //
 //testtiming:keep pins that the sentinel matches by identity and not by message text, which no covering test asserts
 func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
@@ -608,7 +613,10 @@ func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
 	}
 }
 
-// TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and ConfigFile live under LymDirName, StagingFile lives under the .lym counterpart, ConfigFileRel is relative and in lockstep with ConfigFile, and LymDirName is "_lym" -- the token internal/lymdirs is the sole declarer of.
+// TestConfigPaths pins the path constructors that configengine declares.
+// ConfigDir and ConfigFile live under LymDirName, and StagingFile lives under the .lym counterpart.
+// ConfigFileRel is relative and in lockstep with ConfigFile.
+// LymDirName is "_lym", as declared in internal/lymdirs.
 func TestConfigPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

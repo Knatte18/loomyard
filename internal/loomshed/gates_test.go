@@ -1,11 +1,8 @@
-// gates_test.go covers NewDiscussionGate and NewPlanGate's own outcome mapping, the ParsePlan error
-// split that is the subtlest rule in the task, the fail-closed severity predicate both gates key
-// their pass/fail split on.
+// gates_test.go covers the outcome mapping of NewDiscussionGate and NewPlanGate.
+// It also covers the ParsePlan error split and the fail-closed severity predicate that both gates key on.
 //
-// It reuses three fixture helpers -- validDecisionRecord, writeDiscussionFixture, and
-// seedPlanFormatFixture -- that used to live alongside the two removed validate producers'
-// own test files and now live in fixture_test.go, since all three already build exactly the
-// on-disk shapes these cases need.
+// It reuses three fixture helpers: validDecisionRecord, writeDiscussionFixture and seedPlanFormatFixture.
+// They live in fixture_test.go, since each builds the on-disk shape these cases need.
 //
 // All of it is untagged and offline, per the Test Tier Purity Invariant; the quarry-unavailable case
 // asserts on the error path rather than requiring a resolvable fixture, which is what keeps the
@@ -40,8 +37,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestGateRows_StopsNameAWayForward pins the trailing way-forward clause on the gate rows' stops and takes each one:
-// the commit-seam failures and the batchifier fault are transient or operator-fixable, so the same row proceeds once the named fix is made.
+// TestGateRows_StopsNameAWayForward pins that each gate row's stop names a way forward, and takes each one.
+// The commit-seam failures and the batchifier fault are transient or operator-fixable,
+// so the same row proceeds once the named fix is made.
 func TestGateRows_StopsNameAWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	commitFault := errors.New("index.lock exists")
@@ -206,7 +204,8 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
-	// The gate reads the decision record, the support log and the relevant list, so an advisor's notes file beside them is never judged.
+	// The gate reads the decision record, the support log and the relevant list,
+	// so an advisor's notes file beside them is never judged.
 	t.Run("AdvisorNotesAreNotRead", func(t *testing.T) {
 		dir := t.TempDir()
 		check, _ := gateOf(t, dir, validDecisionRecord)
@@ -239,10 +238,9 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Errorf("gate() Findings = %q; want it to name the check that fired", result.Findings)
 		}
 
-		// The warn line is the only durable record of the refusal: the findings file itself lives in
-		// the ephemeral run directory finalize deletes on the Done cleanup, so this assertion is what
-		// keeps that promise honest against the closure, not just against the producer that is about to
-		// be deleted.
+		// The warn line is the only durable record of the refusal.
+		// The findings file lives in the ephemeral run directory that finalize deletes on the Done cleanup,
+		// so this assertion checks the closure itself, not only the producer that writes the file.
 		logged := buf.String()
 		if !strings.Contains(logged, result.Findings) {
 			t.Errorf("log = %q; want it to carry the same formatted findings as GateResult.Findings", logged)
@@ -294,10 +292,8 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
-	// ErrorReturnsRatherThanAFailedGate is the case a validator error is returned rather than reported
-	// as a failed gate: a decision record that is a directory is the error fixture the existing
-	// validate tests already use (discussionvalidate_test.go's
-	// DecisionRecordUnreadableReturnsErrorNotStuck).
+	// ErrorReturnsRatherThanAFailedGate pins that a validator error is returned rather than reported as a failed gate.
+	// A decision record that is a directory is the fixture that makes the validator return an error.
 	t.Run("ErrorReturnsRatherThanAFailedGate", func(t *testing.T) {
 		dir := t.TempDir()
 		check, _ := gateOf(t, dir, "")
@@ -314,13 +310,15 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
-	// One validator serves every loom record, so each case drives it over a told history, with the citation checks on and off.
+	// One validator serves every loom record,
+	// so each case drives it over a told history, with the citation checks on and off.
 	const addedEntry = "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: Keep the cache per run.\n\nRationale: A shared cache races.\n"
 	const addedHeading = "### Added after Discussion (parent, 2026-03-04): Keep the cache"
 	const realSections = "\n## Scope\n\n## Decisions\n\n## Constraints\n\n## Auto-mode assumptions\n\n## Open risks\n\n## Acceptance criteria\n"
 	dupIDRecord := strings.Replace(strings.Replace(validDecisionRecord, "Decisions text.", "### D1 — a\n\nDecision: a.\n\n### D1 — b\n\nDecision: b.", 1), "Criteria text.", "- D1 holds.", 1)
 	historyError := errors.New("history unavailable")
-	// A Record-Write record carries the board entry's body in a fenced block, so a heading in the body is no section of the record.
+	// A Record-Write record carries the board entry's body in a fenced block,
+	// so a heading in the body is no section of the record.
 	headingInBody := string(BoardRecord("## Open risks\n\nfrom the body"))
 	fencedDecisions := func(openFence, closeFence string) string {
 		return "## Goal\n\n" + openFence + "\n## Decisions\n" + closeFence + "\n" + realSections
@@ -342,7 +340,8 @@ func TestNewDiscussionGate(t *testing.T) {
 		{name: "a record whose history holds no added entry passes", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, wantPassed: true, wantHistoryOn: true},
 		{name: "a record that keeps its added entry passes", record: validDecisionRecord + addedEntry, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantPassed: true, wantHistoryOn: true},
 		{name: "a dropped added entry fails naming its heading", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
-		// A `lym fabric commit` of the overwrite leaves the dropping copy as the newest version, so the check must read the whole history.
+		// A `lym fabric commit` of the overwrite leaves the dropping copy as the newest version,
+		// so the check must read the whole history.
 		{name: "a dropped entry fails when the newest version is the dropping copy", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord), []byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
 		{name: "a record missing a section never reads the history", record: strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1), history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: "discussion-section-missing"},
 		{name: "a repeated id fails and reads the history once", record: dupIDRecord, wantFindings: "decision-id-duplicate", wantHistoryOn: true},
@@ -477,8 +476,8 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("PlanglyphErrorReturnsRatherThanAFailedGate", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		seedGlyphPlanFixture(t, anchorPath, true, "sub#Foo", "")
-		// A language: go plan pointed at a worktreeRoot that does not exist: openRepo cannot open it,
-		// so the gate must return an error rather than reporting GateResult{Passed: false}.
+		// A go plan whose worktreeRoot does not exist fails to open its repository,
+		// so the gate must return an error rather than report GateResult{Passed: false}.
 		worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
 
 		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), PlanContext{})
@@ -497,8 +496,8 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("InformationalOnlyFindingsPassWithAWarnLine", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-		// "newpkg#Bar" resolves not_found with unit: not_found, which createFindings reports as the
-		// informational create-new-unit finding -- no blocking finding in this plan.
+		// "newpkg#Bar" resolves not_found with unit: not_found.
+		// createFindings reports that as the informational create-new-unit finding, so this plan has no blocking finding.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "")
 
 		told := t.TempDir()
@@ -510,7 +509,8 @@ func TestNewPlanGate(t *testing.T) {
 		cases := []struct {
 			name       string
 			scratchDir string
-			// wantFile is the path the log must carry and the file that must hold the finding; empty means the finding stays inline.
+			// wantFile is the path the log must carry and the file that must hold the finding;
+			// empty means the finding stays inline.
 			wantFile string
 		}{
 			{name: "told directory records a file and logs its count and path", scratchDir: told, wantFile: filepath.Join(told, "Plan-Gate-informational-findings.txt")},
@@ -547,9 +547,10 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("MixedBlockingAndInformationalFailsTheGate", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-		// "newpkg#Bar" is informational (create-new-unit); "sub#Missing" resolves not_found with
-		// unit: found, which statusFindings reports as the blocking glyph-not-found finding. One
-		// blocking finding is enough to fail the gate.
+		// "newpkg#Bar" is informational (create-new-unit);
+		// "sub#Missing" resolves not_found with unit: found.
+		// statusFindings reports that as the blocking glyph-not-found finding.
+		// One blocking finding is enough to fail the gate.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "sub#Missing")
 
 		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), PlanContext{})
@@ -562,7 +563,7 @@ func TestNewPlanGate(t *testing.T) {
 		}
 	})
 
-	// The cards of a batch webster's run record holds done are history:
+	// The cards that the Webster run record holds as done are history:
 	// a run moved back to the plan review after Webster built card 1 must not wedge on card 1's own landed Create.
 	builtRepo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
 	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
@@ -752,7 +753,8 @@ func TestNewPlanGate(t *testing.T) {
 	longEntryA := "- `PATTERN-a` — " + strings.Repeat("l", 200)
 	bigEntryB := "- `PATTERN-b` — " + strings.Repeat("b", 150)
 	underLine := overviewOf(pattern.HeadroomBytes-100, shortEntryA, entryB)
-	// removableUnderLine grows past the line when longEntryA replaces shortEntryA, and falls back under it once bigEntryB is removed too.
+	// removableUnderLine grows past the line when longEntryA replaces shortEntryA;
+	// it falls back under the line once bigEntryB is removed too.
 	removableUnderLine := overviewOf(pattern.HeadroomBytes-100, shortEntryA, bigEntryB)
 	const (
 		namesB  = "Delete the `PATTERN-b` bullet from PATTERN.md."

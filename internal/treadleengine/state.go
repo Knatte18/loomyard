@@ -1,18 +1,17 @@
-// state.go persists one treadle block's progress at <runDir>/state.json via internal/state's locked
-// JSON I/O.
-// It implements the round-level crash-recovery mechanics: classifying an existing state file into
-// fresh/resume/error, moving aside a partial round's stale artifacts before it re-runs, and the
-// pause flag file the loop checks between rounds.
-// Identity derivation (ProfileHash, DeriveRunID, ValidRunID, sanitizeSlug) is NOT here — treadle
-// takes ProfileHash as caller-supplied data (see Profile.ProfileHash and the treadle-owns-no-config
-// shared decision);
-// a caller owns them, alongside whatever resolves its own profile data.
+// state.go persists one treadle block's progress at <runDir>/state.json via internal/state's locked JSON I/O.
+// It classifies an existing state file as fresh, resume, or error.
+// It moves aside a partial round's stale artifacts before the round re-runs.
+// It also implements the pause flag file the loop checks between rounds.
+// Identity derivation (ProfileHash, DeriveRunID, ValidRunID, sanitizeSlug) is not here.
+// Treadle takes ProfileHash as caller-supplied data.
+// A caller owns the identity functions, alongside whatever resolves its own profile data.
 //
-// The persisted artifacts split across two directories (the told-never-derived-scratch-dir shared
-// decision): state.json and every round artifact live in runDir, while state.json.lock, run.lock
-// (run.go), and the pause flag live in scratchDir — the block's never-tracked, .lym-anchored tree.
-// A caller that has not split the two passes the same directory for both, which every function
-// below treats as an ordinary, harmless case.
+// The persisted artifacts split across two directories.
+// state.json and every round artifact live in runDir.
+// state.json.lock, run.lock (run.go), and the pause flag live in scratchDir.
+// That is the block's never-tracked, .lym-anchored tree.
+// A caller that has not split the two passes the same directory for both.
+// Every function below treats that as an ordinary, harmless case.
 
 package treadleengine
 
@@ -27,14 +26,12 @@ import (
 // stateFileName is the state.json file name inside a block's run dir.
 const stateFileName = "state.json"
 
-// staleSuffix is appended to a stale artifact's path before its round
-// re-runs; a numeric suffix is added on top when staleSuffix alone would
-// collide with an already-stale file from an earlier partial resume.
+// staleSuffix is appended to a stale artifact's path before its round re-runs.
+// A numeric suffix is added when staleSuffix alone would collide with an earlier stale file.
 const staleSuffix = ".stale"
 
 // PauseFlagName is the pause flag file's name inside a block's run dir.
-// It is exported so a caller's own pause verb can name the same file it writes without
-// recomputing the join itself.
+// It is exported so a caller writing the pause flag targets the file the run loop checks.
 const PauseFlagName = "pause"
 
 // roundRecord is the persisted history entry for one completed round: identity,
@@ -49,18 +46,15 @@ type roundRecord struct {
 	ReviewPath      string `json:"reviewPath"`
 	FixerReportPath string `json:"fixerReportPath"`
 	JudgePath       string `json:"judgePath,omitempty"`
-	// HandoffPath is the path of this round's judge-maintained handoff file
-	// (see handoff.go), set only when that round's judge call succeeded AND
-	// its handoff output read and ParseHandoff-validated cleanly — additive
-	// per the state-json-compatibility shared decision, so a block written
-	// by an older binary resumes with zero migration; its records simply
-	// lack handoff coverage, which judgeReadSet's fallback already handles.
+	// HandoffPath is the path of this round's judge-maintained handoff file (see handoff.go).
+	// It is set only when that round's judge call succeeded and ParseHandoff validated its handoff output.
+	// The field is additive: a block written by an older binary resumes with no migration.
+	// Its records lack handoff coverage, which the judge read-set fallback already handles.
 	HandoffPath string `json:"handoffPath,omitempty"`
 	GatePath    string `json:"gatePath,omitempty"`
-	// SeedPath is the path of this round's pre-round targeting seed file
-	// (see run.go), set only when Profile.PreRoundTargeting was on AND that
-	// round's targeting call succeeded — additive per the
-	// state-json-compatibility shared decision, exactly like HandoffPath.
+	// SeedPath is the path of this round's pre-round targeting seed file (see run.go).
+	// It is set only when pre-round targeting was enabled and that round's targeting call succeeded.
+	// Like HandoffPath, the field is additive, so older state files still load.
 	SeedPath     string `json:"seedPath,omitempty"`
 	JudgeVerdict string `json:"judgeVerdict,omitempty"`
 	GatePassed   *bool  `json:"gatePassed,omitempty"`
@@ -86,22 +80,16 @@ type resumeInfo struct {
 	NextRound int
 }
 
-// loadOrInitState reads <runDir>/state.json (locked against
-// <scratchDir>/state.json.lock) and classifies it against hash (the
-// incoming profile's ProfileHash) and caps (the incoming profile's resolved
-// RoundCaps). Every error message is prefixed with name (the calling
-// engine's own name), per the name-parameterized-diagnostics shared
-// decision:
-//   - no state.json: a fresh block. An initial runState (ProfileHash: hash,
-//     RoundCaps: caps) is written before returning, so a concurrent second
-//     invocation against the same runDir observes a non-fresh state.
-//   - unfinished state (Outcome == "") with a matching ProfileHash: resume —
-//     NextRound is len(Rounds)+1.
-//   - unfinished state with a different ProfileHash: fail loud. An edited
-//     profile must never silently continue rounds recorded under the old
-//     one; the caller is told to use a fresh --run-id instead.
-//   - terminal state (Outcome != ""): fail loud — this block already ran to
-//     completion and treadle never re-opens a finished block.
+// loadOrInitState reads <runDir>/state.json (locked against <scratchDir>/state.json.lock)
+// and classifies it against hash (the incoming profile's ProfileHash) and caps (the incoming profile's
+// resolved RoundCaps). Every error message is prefixed with name, the calling engine's own name.
+//   - no state.json: a fresh block. An initial runState (ProfileHash: hash, RoundCaps: caps) is written
+//     before returning, so a concurrent second invocation against the same runDir observes a non-fresh state.
+//   - unfinished state (Outcome == "") with a matching ProfileHash: resume; NextRound is len(Rounds)+1.
+//   - unfinished state with a different ProfileHash: fail loud. An edited profile must never silently
+//     continue rounds recorded under the old one; the caller is told to use a fresh --run-id instead.
+//   - terminal state (Outcome != ""): fail loud. This block already ran to completion,
+//     and treadle never re-opens a finished block.
 func loadOrInitState(name string, runDir string, scratchDir string, hash string, caps []int) (runState, resumeInfo, error) {
 	path := filepath.Join(runDir, stateFileName)
 	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
@@ -133,16 +121,13 @@ func loadOrInitState(name string, runDir string, scratchDir string, hash string,
 	return existing, resumeInfo{Fresh: false, NextRound: len(existing.Rounds) + 1}, nil
 }
 
-// TerminalOutcome reports the terminal Outcome recorded in runDir's state.json: ok is true only
-// when a state file exists AND records a finished block (APPROVED or STUCK).
+// TerminalOutcome reports the terminal Outcome recorded in runDir's state.json.
+// ok is true only when a state file exists and records a finished block (APPROVED or STUCK).
 // A missing state file or an in-flight block (empty Outcome) returns ok false with no error.
-// It exists for a caller's own pause verb, which must refuse to write a pause flag against a
-// block that already finished — no
-// run loop will ever observe that flag, so reporting the pause as accepted would mislead the
-// operator.
-// Reads under the same state.json.lock discipline as loadOrInitState, locked against
-// <scratchDir>/state.json.lock — a caller's pause verb must resolve scratchDir from the same
-// scratch base the run verb passes to the engine.
+// A caller that writes a pause flag uses it to refuse a block that already finished.
+// Accepting the flag for a finished block would mislead the operator, since no run loop will observe it.
+// It reads under the same state.json.lock that the run takes.
+// scratchDir must therefore be the scratch base the run passes to the engine.
 func TerminalOutcome(runDir, scratchDir string) (Outcome, bool, error) {
 	path := filepath.Join(runDir, stateFileName)
 	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
@@ -171,15 +156,12 @@ func saveState(runDir, scratchDir string, s runState) error {
 	return state.WriteJSON(path, lockPath, s)
 }
 
-// moveStaleArtifacts renames aside every artifact file that already exists
-// for round/attempt inside runDir, so a re-run round never trips a fresh
-// spawn's no-pre-existing-output-file rule. It is called on resume for a
-// round that started but never reached done (no roundRecord was appended
-// for it), just before that round is re-run from scratch — once at attempt 1
-// (run.go, before the round's pre-round targeting call, so a leftover seed
-// file from an interrupted prior attempt at this round is cleared before
-// targeting tries to write a fresh one) and again at the top of each later
-// retry attempt (run.go's runRound).
+// moveStaleArtifacts renames aside every artifact file that already exists for round/attempt inside runDir.
+// A re-run round then never trips a fresh spawn's no-pre-existing-output-file rule.
+// The caller invokes it for a round that started but never completed, before the round re-runs.
+// At attempt 1 it runs before the pre-round targeting call.
+// That clears a leftover seed file from an interrupted attempt before targeting writes a fresh one.
+// It runs again at the start of each later retry attempt.
 func moveStaleArtifacts(name string, runDir string, round, attempt int) error {
 	paths := artifactPaths(runDir, round, attempt)
 	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Handoff, paths.Gate, paths.Seed} {
@@ -220,26 +202,20 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// PauseFlagPath returns the path to the pause flag file inside scratchDir —
-// the block's never-tracked scratch dir, not its durable run dir.
-// A caller's own pause verb writes this file,
-// and the run loop's PauseRequested seam checks for it between rounds;
-// both must resolve scratchDir from the same scratch base a caller's run
-// verb passes to the engine, which is why this is exported rather than
-// duplicated at each call site.
+// PauseFlagPath returns the path of the pause flag file inside scratchDir.
+// scratchDir is the block's never-tracked scratch directory, not its durable run directory.
+// The writer of the flag and the run loop's check for it between rounds share this path.
+// Both must resolve scratchDir from the same scratch base the run verb passes to the engine,
+// so the path is built in one place rather than duplicated at each call site.
 func PauseFlagPath(scratchDir string) string {
 	return filepath.Join(scratchDir, PauseFlagName)
 }
 
-// clearPauseFlag removes the pause flag file if present, doing nothing if
-// it is absent. It is called at Run's entry so a resumed block does not
-// instantly re-pause on a flag left over from the run that requested the
-// pause it is now resuming from, and again at every terminal, non-PAUSED
-// return so a finished block never leaves the flag behind. Its error is
-// prefixed with name (the calling engine's own name) like every other
-// message in this file — Run returns it verbatim rather than re-wrapping,
-// so without the prefix a removal failure would reach the caller's CLI
-// envelope as the one error carrying no module label at all.
+// clearPauseFlag removes the pause flag file if present, doing nothing if it is absent.
+// It runs at the start of a run, so a resumed block does not pause again on a flag left by the run it resumes from.
+// It also runs at every terminal return other than a pause, so a finished block never leaves the flag behind.
+// The error is prefixed with name, the calling engine's name, because the caller returns it unwrapped.
+// Without that prefix a removal failure would reach the CLI envelope with no module label at all.
 func clearPauseFlag(name string, scratchDir string) error {
 	path := PauseFlagPath(scratchDir)
 	if err := os.Remove(path); err != nil {

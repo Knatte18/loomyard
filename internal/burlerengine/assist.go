@@ -1,5 +1,7 @@
-// assist.go builds the review half's assistant seat: an extra reviewer on the engine its model choice names, whose report the reviewer chair consolidates as one more report.
-// It derives the assistant's report and end marker from the review path and the attempt token, composes the assistant's own instruction files, and copies a done assistant's report beside the review once the chair has ended.
+// assist.go builds the review's assistant seat: an extra reviewer on the engine its model choice names.
+// Its report is one more report the reviewer chair consolidates.
+// It derives the assistant's report and end marker from the review path and the attempt token.
+// It composes the instruction files; once the chair has ended, it copies a done report beside the review.
 
 package burlerengine
 
@@ -18,10 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// AssistSeatName is the name of the review table's assistant seat, so its strand role is the review role followed by -assist.
+// AssistSeatName is the name of the review table's assistant seat.
+// Its strand role is the review role followed by -assist.
 const AssistSeatName = "assist"
 
-// The stencils an assisted round reads: the chair's stencil, the solo and the fanned assistant's own, the chair's consolidation part and the assistant's fanned cluster rules.
+// The stencils an assisted round reads:
+// the chair's stencil and consolidation part, the assistant's solo and fanned stencils, and its cluster-fan rules.
 const (
 	assistedReviewerStencil     = "burler-template-reviewer-assisted"
 	assistReviewerStencil       = "burler-template-assist-reviewer"
@@ -34,8 +38,10 @@ const (
 const assistRulesMarker = "assist_rules"
 
 // AssistOutcome is what became of one assistant seat of a review round.
-// Ending is the text of its end marker, empty when none was written; Report is its own report and Copy the copy beside the review, set only when Ending is done.
-// MissingLenses names, in fan order, each lens of a done fanned assistant that returned no lens report, so a solo run of a fanned seat cannot pass as a fanned one.
+// Ending is the text of its end marker, empty when none was written;
+// Report is its own report and Copy the copy beside the review, set only when Ending is done.
+// MissingLenses names, in fan order, each lens of a done fanned assistant that returned no lens report,
+// so a solo run of a fanned seat cannot pass as a fanned one.
 type AssistOutcome struct {
 	Seat          string
 	Ending        string
@@ -49,14 +55,17 @@ func (opts RunOpts) assisted() bool {
 	return opts.Assist.Model != ""
 }
 
-// AssistCopyPath returns the path a done assistant's report is copied to once the chair has ended: `<review stem>.assist-<seat>.md` beside the review file.
+// AssistCopyPath returns the path a done assistant's report is copied to once the chair has ended:
+// `<review stem>.assist-<seat>.md` beside the review file.
 func AssistCopyPath(reviewPath, seat string) string {
 	stem := strings.TrimSuffix(filepath.Base(reviewPath), filepath.Ext(reviewPath))
 	return filepath.Join(filepath.Dir(reviewPath), fmt.Sprintf("%s.assist-%s.md", stem, seat))
 }
 
-// assistPaths returns the assistant seat's report and end marker for the review at reviewPath and the attempt token, never tracked:
-// under the anchor's .lym at the review path's subpath when the review sits under the anchor's _lym, else under the anchor's .lym burler directory.
+// assistPaths returns the assistant seat's report and end marker for the review at reviewPath and the attempt token.
+// They are never tracked.
+// When the review sits under the anchor's _lym, they sit under the anchor's .lym at the review path's subpath;
+// otherwise they sit under the anchor's .lym burler directory.
 // Each name carries the review's stem, the token and the seat, so a retry's files are never the first attempt's.
 func assistPaths(anchorPath, reviewPath, token, seat string) (report, marker string) {
 	dir := filepath.Join(anchorPath, lymdirs.DotLymDirName, burlerDirName, "assist")
@@ -68,7 +77,8 @@ func assistPaths(anchorPath, reviewPath, token, seat string) (report, marker str
 	return base + ".md", base + ".end"
 }
 
-// assistProfile returns the copy of p the assistant reviews under: its own report path and fan, with p's target, fasit, rubric, focus and prior rounds.
+// assistProfile returns the copy of p the assistant reviews under:
+// its own report path and fan, with p's target, fasit, rubric, focus and prior rounds.
 func assistProfile(p *Profile, report, fan string) Profile {
 	assist := *p
 	assist.ReviewPath = report
@@ -96,9 +106,11 @@ func (e *Engine) assistLensNames(fan string) []string {
 }
 
 // assistSeat returns the assistant seat of p's review under opts, or nil when opts names none.
-// files are the assistant's instruction file paths, and values its stencil values; the caller composes both, or passes a probe's.
+// files are the assistant's instruction file paths, and values its stencil values;
+// the caller composes both, or passes a probe's.
 // skipReason, when set, keeps the seat from starting, its end marker naming the reason.
-// A fanned assistant runs the fanned stencil, and its lens reports are its subagent reports, so its directive and write surface name them.
+// A fanned assistant runs the fanned stencil.
+// Its lens reports are its subagent reports, so its directive and write surface name them.
 func (e *Engine) assistSeat(p *Profile, opts RunOpts, files reviewFilePaths, skills []string, skipReason string) *seatengine.Seat {
 	if !opts.assisted() {
 		return nil
@@ -132,7 +144,8 @@ func (e *Engine) assistSeat(p *Profile, opts RunOpts, files reviewFilePaths, ski
 	return seat
 }
 
-// withAssistant returns table with seat added as its assistant: the chair runs the assisted stencil and reads the assistant's report as an input.
+// withAssistant returns table with seat added as its assistant:
+// the chair runs the assisted stencil and reads the assistant's report as an input.
 // A nil seat returns table unchanged.
 func withAssistant(table seatengine.Table, seat *seatengine.Seat) seatengine.Table {
 	if seat == nil {
@@ -145,9 +158,14 @@ func withAssistant(table seatengine.Table, seat *seatengine.Seat) seatengine.Tab
 	return table
 }
 
-// composeAssist composes the assistant's instruction files for p's review under opts into a fresh instruction directory, rendered for the assistant's engine, and writes them.
-// The assistant reads the same explore and review steps, fasit, rubric, PATTERN directive, focus and prior rounds the chair reads, with its own report path and fan.
-// It returns the files' paths and an empty reason, or placeholder paths and the reason the assistant cannot start, which a missing engine block or an unknown fan gives; the step then goes on without it.
+// composeAssist composes the assistant's instruction files for p's review under opts:
+// it writes them into a fresh instruction directory, rendered for the assistant's engine.
+// The assistant reads what the chair reads:
+// the explore and review steps, fasit, rubric, PATTERN directive, focus and prior rounds.
+// It uses its own report path and fan.
+// It returns the files' paths and an empty reason.
+// A missing engine block or an unknown fan gives placeholder paths and the reason the assistant cannot start;
+// the step then goes on without it.
 func (e *Engine) composeAssist(p *Profile, opts RunOpts, directive string) (reviewFilePaths, string) {
 	report, _ := assistPaths(e.geom.AnchorPath, p.ReviewPath, opts.Round, AssistSeatName)
 	assist := assistProfile(p, report, opts.AssistFan)
@@ -173,8 +191,9 @@ func (e *Engine) composeAssist(p *Profile, opts RunOpts, directive string) (revi
 	return files, ""
 }
 
-// unstartedAssist returns what composeAssist answers when the assistant cannot start: the reason, and the probe directory's file paths.
-// The seat never starts, but a table whose seat holds a blank instruction path fails its validation, which would error the round instead of letting it go on without the assistant.
+// unstartedAssist returns the reason the assistant cannot start, and placeholder file paths in the probe directory.
+// The seat never starts, but the table validation rejects a blank instruction path.
+// Erroring on that would fail the round instead of letting it go on without the assistant.
 // The paths are placeholders: no file is written there, and nothing may read them.
 func (e *Engine) unstartedAssist(err error) (reviewFilePaths, string) {
 	return reviewFilesIn(e.probeDirOf()), notStartedReason(err)
@@ -186,9 +205,11 @@ func notStartedReason(err error) string {
 	return err.Error()
 }
 
-// assistRulesBlock renders the chair's consolidation part of an assisted round for engine, for the review step's optional assist_rules marker.
+// assistRulesBlock renders the chair's consolidation part of an assisted round for engine:
+// the value of the review step's optional assist_rules marker.
 // A round with no assistant returns "" without reading anything.
-// The value is led by the blank line that separates it from the cluster rules, which the stencil loader would drop from the stencil itself.
+// The value leads with the blank line that separates it from the cluster rules;
+// the stencil loader would drop that blank line from the stencil itself.
 func assistRulesBlock(stencilsDir, engine string, opts RunOpts) (string, error) {
 	if !opts.assisted() {
 		return "", nil
@@ -200,10 +221,13 @@ func assistRulesBlock(stencilsDir, engine string, opts RunOpts) (string, error) 
 	return "\n\n" + strings.TrimRight(string(rules), "\n"), nil
 }
 
-// keepAssistReports reads every assistant seat's end marker in seats and copies the report of one whose marker reads done beside the review file, returning what became of each.
+// keepAssistReports reads every assistant seat's end marker in seats and returns what became of each.
+// It copies the report of a seat whose marker reads done beside the review file.
 // Any other ending, gate failed included, copies nothing.
 // A failed read or copy is logged and leaves that assistant's Copy empty, since the assistant never gates the round.
-// lensNames are the lenses the assistant's fan asked of it; each a done assistant returned no lens report for is named on its outcome and logged, and never fails the round.
+// lensNames are the lenses the assistant's fan asked of it;
+// a done assistant that returned no report for one of them has it named on its outcome and logged,
+// and the round never fails.
 func keepAssistReports(reviewPath string, seats []seatengine.SeatResult, lensNames []string) []AssistOutcome {
 	var outcomes []AssistOutcome
 	for _, seat := range seats {
@@ -231,7 +255,7 @@ func keepAssistReports(reviewPath string, seats []seatengine.SeatResult, lensNam
 	return outcomes
 }
 
-// missingLensReports returns the names in lensNames whose lens report beside report says its lens returned nothing, or does not exist.
+// missingLensReports returns the names in lensNames that have no returned lens report beside report.
 func missingLensReports(report string, lensNames []string) []string {
 	var missing []string
 	for _, lens := range lensNames {

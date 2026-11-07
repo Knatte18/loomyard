@@ -1,9 +1,7 @@
-// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry calls to turn its row's "gates" Config key into a shuttleengine.GateSpec.
+// entries_gate.go implements resolveGateSpec, which turns a row's "gates" Config key into a shuttleengine.GateSpec.
 //
-// Each element selects a validator by a declared name resolved against Env, exactly as bouncerEntry already resolves "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan/Env.ApproveDiscussion.
-// Selecting the validator by switching on the row's own Name was rejected: that would make row
-// names load-bearing in a second place beyond resume identity, where a renamed row would silently
-// lose its gate rather than failing to build.
+// Each element selects its validator by a declared name resolved against Env, not by the row's Name.
+// Keying the validator on the row's Name would make a rename silently drop its gate instead of failing to build.
 
 package shedrecipe
 
@@ -20,43 +18,65 @@ import (
 // gateEntryKeys are the keys one element of a row's "gates" list may carry.
 var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 
-// resolveGateSpec is the single place the "gates" Config key is read and turned into a shuttleengine.GateSpec, shared by every gated entry.
+// resolveGateSpec is the single place the "gates" Config key is read and turned into a shuttleengine.GateSpec.
+// Every gated entry resolves its gates here.
 //
-// "gates" is an optional list of maps, read via configMapList.
-// An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
-// a present empty list is an error, since it is an author mistake rather than an ungated row.
+// "gates" is an optional list of maps.
+// An absent key returns a nil GateSpec, which is what every ungated row carries by saying nothing.
+// A present empty list is an error, since it is an author mistake rather than an ungated row.
 //
 // Each element carries a required "name", resolved against a closed vocabulary:
 // "clean" requires env.WorktreeRoot to pass requireAbsRoot and returns loomshed.NewCleanGate over it;
-// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and a non-nil env.DiscussionHistory, and returns loomshed.NewDiscussionGate over them;
-// when env.RecordEngine is DiscussionWrite, "discussion" also requires env.RelevantPath and env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex, and passes them to the gate with the citation checks on, which read the worktree and the index;
-// "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
-// "parts" requires env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath and a non-nil env.Setting and returns loomshed.NewPartsGate over them, capped by the tapestry.parts_max setting;
-// "raddle" requires the absolute env.RaddleWrite.Check.ProposalPath and env.RaddleWrite.Check.RecordPath and the non-nil env.RaddleWrite.Check.Board and env.RaddleWrite.Deps.StoreCold, and returns loomshed.NewRaddleGate over them;
-// "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
-// "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
-// the gate's told command is env.VerifyCommand read for the row's gate key, and its tree scope is env.VerifyTreeScope read for that key, so the row runs its own key of the hub's gate.yaml;
-// env.VerifyTreeScope alone selects the darn form, which requires env.VerifyMergeBase, the base of both lints in that form, and otherwise env.VerifyMergeBase is the base of the headroom lint;
-// "drift" requires the env.Drift seams Config, Status, CaptureCurrent, TrailerCommit, FileAt and Compare and returns driftengine.NewDriftGate over them;
-// "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt and returns driftengine.NewExpectationGate over them;
+// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot;
+// it also requires a non-nil env.DiscussionHistory, and returns loomshed.NewDiscussionGate over them;
+// when env.RecordEngine is DiscussionWrite, "discussion" also requires env.RelevantPath to pass requireAbsRoot;
+// it also requires env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex;
+// it then passes env.RelevantPath and env.WorktreeRoot to the gate, with the citation checks on;
+// the citation checks read the worktree and the index;
+// "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex;
+// it returns loomshed.NewPlanGate over them;
+// "parts" requires env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath and a non-nil env.Setting;
+// it returns loomshed.NewPartsGate over them, capped by the tapestry.parts_max setting;
+// "raddle" requires the absolute env.RaddleWrite.Check.ProposalPath and env.RaddleWrite.Check.RecordPath;
+// it also requires the non-nil env.RaddleWrite.Check.Board and env.RaddleWrite.Deps.StoreCold;
+// it returns loomshed.NewRaddleGate over them;
+// "description" requires env.DescriptionPath to pass requireAbsRoot;
+// it returns landingshed.NewDescriptionGate over it;
+// "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand;
+// it takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them;
+// the site label is "<row name> gate";
+// the gate's told command is env.VerifyCommand read for the row's gate key;
+// its tree scope is env.VerifyTreeScope read for that key, so the row runs its own key of the hub's gate.yaml;
+// env.VerifyTreeScope alone selects the darn form;
+// it requires env.VerifyMergeBase, the base of both lints in that form;
+// otherwise env.VerifyMergeBase is the base of the headroom lint;
+// "drift" requires the env.Drift seams Config, Status, CaptureCurrent, TrailerCommit, FileAt and Compare;
+// it returns driftengine.NewDriftGate over them;
+// "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt;
+// it returns driftengine.NewExpectationGate over them;
 // "judgement" returns driftengine.NewJudgementGate over env.Drift, which reads only its Paths and requires no seam;
 // any other value is an error naming the key and every legal value.
 // A name may appear once per list.
 //
-// "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
-// 0 turns the entry off, yet the entry still resolves its closure and its Env requirements, so a typo in an off gate fails loud.
+// "attempts" is a required non-negative integer, and 0 is a present value.
+// 0 turns the entry off, yet the entry still resolves its closure and its Env requirements,
+// so a typo in an off gate fails loud.
 // "pass_on_cap" is an optional bool on every element, false when absent.
 //
-// Every error is qualified with entry so a recipe author with a typo is told which row spoke, matching the qualification resolveUnderRoot already applies.
+// Every error names entry, so a recipe author with a typo is told which row spoke.
 //
-// resolveGateSpec reads only the "gates" key and rejects unknown keys only inside each element -- each caller keeps owning its own configRejectUnknown call for the row's own keys, which is where the Config Strictness Invariant's strictness lives.
+// resolveGateSpec reads only the "gates" key and rejects unknown keys only inside each element.
+// Each caller rejects the unknown keys of its own row with its own check.
 func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec, error) {
 	return resolveRowGateSpec(entry, entry, cfg, env)
 }
 
-// resolveRowGateSpec is resolveGateSpec for a caller that also knows its row's name, which the "verify" gate renders into its site label as "<row> gate".
+// resolveRowGateSpec turns a row's "gates" Config key into a shuttleengine.GateSpec.
+// It takes the row's name as well as its entry.
+// The site label of the "verify" gate is "<row> gate".
 // The "verify" gate runs the gate key the row's optional "gate_key" string names, else the row name in lower case;
-// "gate_key" selects only which key of the hub's gate.yaml the row runs, and the key's tiers and scope stay hub-file only.
+// "gate_key" selects only which key of the hub's gate.yaml the row runs,
+// and the key's tiers and scope stay hub-file only.
 // Errors stay qualified with entry, so a row rename never changes what an author is told.
 func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.GateSpec, error) {
 	elems, present, err := configMapList(cfg, "gates")
@@ -96,7 +116,8 @@ func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.G
 	return spec, nil
 }
 
-// resolveGateEntry resolves one element of a row's "gates" list, wrapping every config-accessor error with the entry and the element's index because those accessors name neither.
+// resolveGateEntry resolves one element of a row's "gates" list.
+// It wraps every config-accessor error with the entry and the element's index, since those accessors name neither.
 func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env Env) (shuttleengine.GateEntry, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("shedrecipe: %s: config key %q element %d: %w", entry, "gates", index, err)
@@ -127,7 +148,9 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 	return shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}, nil
 }
 
-// planContextOf builds the plan gates' PlanContext from env: the hub's rename tools, refused raw commands and tier tags, the seam-test reader over the worktree, and the decision record on a tapestry run.
+// planContextOf builds the PlanContext that the plan gates check a plan against.
+// It reads the hub's rename tools, refused raw commands and tier tags from env.
+// It sets the seam-test reader over the worktree, and the decision record on a tapestry run.
 // A darn run has no PatternRecordPath, so its plan is not compared with a record.
 // The PATTERN.md base is read at the merge base the verify gate's headroom lint is told.
 func planContextOf(env Env) loomshed.PlanContext {
@@ -142,7 +165,8 @@ func planContextOf(env Env) loomshed.PlanContext {
 }
 
 // resolvePlainGateClosure resolves the validator names of the gate vocabulary.
-// The "parts" gate requires the absolute env.AnchorPath and env.DecisionRecordPath and a non-nil env.Setting, and reads its cap from the tapestry.parts_max setting.
+// The "parts" gate requires the absolute env.AnchorPath and env.DecisionRecordPath and a non-nil env.Setting.
+// It reads its cap from the tapestry.parts_max setting.
 // The "verify" gate is told env.VerifyHold, which holds its verify under a pause.
 func resolvePlainGateClosure(entry, row, gateKey string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {

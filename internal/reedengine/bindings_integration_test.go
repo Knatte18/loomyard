@@ -1,7 +1,8 @@
 //go:build linux
 
-// bindings_integration_test.go drives the Alt-key and status-bar bindings against a real tmux server and an attached client.
-// The terminal's own byte sequences are written into the client's pty (ESC [1;3A..D, SGR mouse clicks at the bar's cells), so the whole key path is exercised.
+// bindings_integration_test.go drives the Alt-key and status-bar bindings against a real tmux server.
+// The terminal's own byte sequences go into the client's pty (ESC [1;3A..D, SGR mouse clicks at the bar's cells).
+// That exercises the whole key path.
 // The client is attached through the pty harness attachgeometry_integration_test.go defines.
 
 package reedengine
@@ -29,8 +30,10 @@ const (
 // styleDirective matches a tmux `#[...]` style directive in an expanded status line.
 var styleDirective = regexp.MustCompile(`#\[[^\]]*\]`)
 
-// bindingsFixture is a session with Selvage, two strand panes, a second window and a second session, with a mouse-enabled client attached.
-// The executable the Alt+Left/Right bindings name is a recorder script under a directory containing `#`, which writes its arguments to recordPath.
+// bindingsFixture is a session with Selvage, two strand panes, a second window and a second session.
+// A mouse-enabled client is attached to it.
+// The executable the Alt+Left/Right bindings name is a recorder script under a directory containing `#`,
+// and it writes its arguments to recordPath.
 type bindingsFixture struct {
 	e                         *Engine
 	pty                       *attachGeometryPTY
@@ -79,7 +82,8 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	if err != nil || st == nil {
 		t.Fatalf("LoadState = (%+v, %v)", st, err)
 	}
-	// The console marker is unset before attaching, so every bindings test passes only when the attach pre-flight re-asserts it.
+	// The console marker is unset before attaching,
+	// so every bindings test passes only when the attach pre-flight re-asserts it.
 	if err := e.tmux.run("set-option", "-p", "-u", "-t", st.SelvagePaneID, consolePaneOption); err != nil {
 		t.Fatalf("unset the console marker: %v", err)
 	}
@@ -149,7 +153,7 @@ func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 	}
 }
 
-// awaitRecord waits for the recorder lym to write its eight arguments of a follow jump and returns them.
+// awaitRecord waits for the recorder lym to write the arguments of a follow jump and returns them.
 func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
 	t.Helper()
 	var args []string
@@ -169,15 +173,18 @@ func (f *bindingsFixture) removeRecord(t *testing.T) {
 	}
 }
 
-// wantFollowRecord returns the arguments the recorder lym writes for a follow jump of session on the told socket, with the tmux path checked apart.
+// wantFollowRecord returns the arguments the recorder lym writes for a follow jump of session on the told socket.
+// The tmux path itself is checked apart, so the list ends at the --tmux flag.
 func wantFollowRecord(socketPath, session string) []string {
 	return []string{"reed", "follow", "--socket", socketPath, "--session", session, "--tmux"}
 }
 
-// doubleClickGap is longer than tmux's own double-click window, so two clicks of a test never merge into a DoubleClick1Status event the bindings do not take.
+// doubleClickGap is longer than tmux's own double-click window.
+// Two clicks of a test then never merge into a DoubleClick1Status event the bindings do not take.
 const doubleClickGap = 400 * time.Millisecond
 
-// click presses and releases the left mouse button on the status line row (0, 1 or 2) of the three-line bar at the first cell of label in that line's text.
+// click presses and releases the left mouse button on the status line row (0, 1 or 2) of the three-line bar.
+// The click lands on the first cell of label in that line's text.
 // The row sits 2 - row lines above the client's last row.
 func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 	t.Helper()
@@ -204,7 +211,8 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddStrand(overview): %v", err)
 	}
-	// The recorder lym exits at once, which would close an OpenWindow window, so each hidden window is a plain detached one marked by hand.
+	// The recorder lym exits at once, which would close an OpenWindow window,
+	// so each hidden window is a plain detached one marked by hand.
 	for _, name := range []string{"hidden-one", "hidden-two"} {
 		windows, err := f.e.tmux.listSessionWindows(f.e.SessionName())
 		if err != nil {
@@ -396,8 +404,11 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 	f.assertFollow(t, "on")
 }
 
-// TestBindings_ButtonClickRunsTheVerbInTheRunDirectory clicks a rendered button and asserts what the pinned line runs: in which directory, with which arguments and environment, and that a failing verb leaves the pane out of view mode.
-// The executable is swapped for a script that records its working directory, whether the strand name variables are set and its arguments, then exits 3.
+// TestBindings_ButtonClickRunsTheVerbInTheRunDirectory clicks a button and asserts what the pinned line runs.
+// It checks the run directory and the arguments and environment.
+// A failing verb must leave the pane out of view mode.
+// The executable is swapped for a script that exits 3.
+// The script records its working directory, whether the strand name variables are set, and its arguments.
 func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()

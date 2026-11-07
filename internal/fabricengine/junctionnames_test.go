@@ -1,11 +1,7 @@
-// junctionnames_test.go — unit tests for junctionNames, filterHubReserved, and the hub-structural
-// name constructors BoardDir, HubPath and IsReservedHubName relocated from internal/lymcwd in this
-// batch.
+// junctionnames_test.go — unit tests for junctionNames, filterHubReserved, BoardDir, HubPath and IsReservedHubName.
 //
-// Package fabricengine (not fabricengine_test) so it can call the unexported junctionNames and
-// filterHubReserved directly.
-// Hermetic: no git spawn, so this stays a Tier-1 unit test even though the package as a whole also
-// carries git-spawning integration tests elsewhere.
+// Package fabricengine, not fabricengine_test, so it can call the unexported junctionNames and filterHubReserved.
+// Hermetic: no git spawn, so this stays a Tier-1 unit test although other files in the package spawn git.
 
 package fabricengine
 
@@ -19,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a config-load failure at
-// baseDir is surfaced as a non-nil error and a nil name slice, never silently defaulted to `_lym`.
+// TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule:
+// a config-load failure at baseDir yields a non-nil error and a nil name slice, never a default of `_lym`.
 //
 //testtiming:keep a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lym; coverage of its blocks by other tests does not show an assertion of this
 func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
@@ -36,8 +32,7 @@ func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 	}
 }
 
-// TestFilterHubReserved covers filterHubReserved's table of shapes: mixed reserved/non-reserved
-// input, all-reserved input, and no-reserved input.
+// TestFilterHubReserved covers the reserved-name filter on mixed, all-reserved and no-reserved input.
 func TestFilterHubReserved(t *testing.T) {
 	tiergate.Require(t, 0)
 	reserved := HubReservedNames()
@@ -78,10 +73,8 @@ func TestFilterHubReserved(t *testing.T) {
 		})
 	}
 
-	// Sanity: HubReservedNames() itself must contain exactly the three
-	// hub-structural tokens this test's "MixedDropsReservedKeepsOrder" case
-	// relies on being dropped -- the junction-wiring block set, unchanged by
-	// this batch's structural-directory work.
+	// HubReservedNames() must contain the Bolt checkout, _portals and _launchers:
+	// the junction-wiring block set the cases above rely on being dropped.
 	for _, want := range []string{BoltDirName, "_portals", "_launchers"} {
 		found := false
 		for _, r := range reserved {
@@ -95,10 +88,9 @@ func TestFilterHubReserved(t *testing.T) {
 		}
 	}
 
-	// .lym must NEVER be in HubReservedNames(): adding it there would make
-	// filterHubReserved delete it from the wired names (so the per-worktree
-	// junction is never created) and would make scanOnDiskJunctionNames skip
-	// it (so Unwire's sweep and applyStaleRemoval could never see it).
+	// .lym must not be in HubReservedNames().
+	// That would make filterHubReserved drop it from the wired names, so the per-worktree junction is never created.
+	// It would also make scanOnDiskJunctionNames skip it, so Unwire's sweep and applyStaleRemoval could never see it.
 	for _, r := range reserved {
 		if r == ".lym" {
 			t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", reserved, ".lym")
@@ -153,7 +145,8 @@ func TestBoardDir(t *testing.T) {
 }
 
 // TestHubPath verifies that HubPath joins parent and name with HubSuffix.
-// The two cases are deliberately expressed differently: "simple repo name" pins the literal -LYMHUB suffix value, so a future change to HubSuffix fails this test, while "nested parent" pins composition through HubSuffix, so the test still covers that HubPath composes from the constant rather than from a hardcoded string of its own.
+// The "simple repo name" case pins the literal -LYMHUB suffix, so a change to HubSuffix fails this test.
+// The "nested parent" case checks that HubPath composes from HubSuffix rather than from a hardcoded string.
 //
 //testtiming:keep HubPath joining parent and name with HubSuffix, pinning the literal -LYMHUB suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestHubPath(t *testing.T) {
@@ -190,9 +183,9 @@ func TestHubPath(t *testing.T) {
 	}
 }
 
-// TestIsReservedHubName verifies the reserved hub-entry name predicate slug validation (fabric's
-// Add) gates on: every geometry-owned hub-level entry name is reserved (union of HubReservedNames()
-// and the caller-supplied junctionNames), ordinary slugs and near-misses are not.
+// TestIsReservedHubName verifies the reserved hub-entry name predicate that slug validation uses.
+// Every geometry-owned hub-level name is reserved: the union of HubReservedNames() and junctionNames.
+// Ordinary slugs and near-misses are not.
 //
 //testtiming:keep the reserved hub-entry predicate slug validation gates on, over every geometry-owned name and near-misses; coverage of its blocks by other tests does not show an assertion of this
 func TestIsReservedHubName(t *testing.T) {
@@ -225,13 +218,9 @@ func TestIsReservedHubName(t *testing.T) {
 		})
 	}
 
-	// Regression (r1-review): the hub-structural tokens must stay reserved even
-	// when junctionNames is empty.
-	// A worktree slug must never claim the Bolt checkout, _portals, or _launchers, regardless of the caller's pathspec.
-	// This is now the sole coverage of that invariant for an empty junctionNames
-	// (exactly the configuration this batch's empty pathspec default creates),
-	// making it more load-bearing than before -- _raddle dropped out of the set
-	// entirely in card 19 and is no longer reserved at all.
+	// The hub-structural tokens stay reserved when junctionNames is empty, as it is for the default pathspec.
+	// A worktree slug must never claim the Bolt checkout, _portals, or _launchers, whatever junctionNames holds.
+	// This subtest is the only coverage of that invariant for an empty junctionNames.
 	t.Run("hub-structural tokens reserved for empty junctionNames", func(t *testing.T) {
 		t.Parallel()
 
@@ -242,9 +231,7 @@ func TestIsReservedHubName(t *testing.T) {
 		}
 	})
 
-	// A name present only in the caller-supplied junctionNames (not in
-	// HubReservedNames()) must be reported reserved -- the injected portion of
-	// the union.
+	// A name present only in the caller-supplied junctionNames, not in HubReservedNames(), must be reported reserved.
 	t.Run("junction-only name is reserved", func(t *testing.T) {
 		t.Parallel()
 
@@ -253,8 +240,7 @@ func TestIsReservedHubName(t *testing.T) {
 		}
 	})
 
-	// A name absent from both HubReservedNames() and junctionNames must not be
-	// reserved.
+	// A name absent from both HubReservedNames() and junctionNames must not be reserved.
 	t.Run("unrelated name is not reserved", func(t *testing.T) {
 		t.Parallel()
 
@@ -263,19 +249,10 @@ func TestIsReservedHubName(t *testing.T) {
 		}
 	})
 
-	// The union over the default (now empty) pathspec's junctionNames reserves
-	// exactly four names -- down from the six a hardcoded switch once reserved.
-	// Two names left the set in this batch: _raddle, because HubReservedNames()
-	// drops it (card 19); and _pattern, because an empty pathspec removes it
-	// from the junctionNames union entirely (there is no longer any junction
-	// name for a default-configured repo to inject).
-	// With junctionNames now empty, the four survivors no longer share one
-	// source: _lym is reserved via structuralCommittedDirs (never the config
-	// arm), while the Bolt checkout, _portals, and _launchers are reserved via
-	// HubReservedNames().
-	// `.lym` is reserved too, via structuralNeverCommittedDirs, but was never a
-	// member of this list and still is not -- this is a positive "these are
-	// reserved" set, not an exhaustiveness assertion over every reserved name.
+	// With junctionNames empty, as for the default pathspec, four names stay reserved:
+	// _lym via structuralCommittedDirs, and the Bolt checkout, _portals and _launchers via HubReservedNames().
+	// `.lym` is also reserved, via structuralNeverCommittedDirs, but this list does not include it.
+	// The check is a positive set, not an exhaustive one over every reserved name.
 	t.Run("default pathspec union reserves exactly four names", func(t *testing.T) {
 		t.Parallel()
 
@@ -290,9 +267,8 @@ func TestIsReservedHubName(t *testing.T) {
 		}
 	})
 
-	// _raddle has converged on an anchor-level `_lym/raddle/` design with no
-	// hub-level presence, so a worktree slug named _raddle is now accepted by
-	// IsReservedHubName -- the observable behaviour change this batch delivers.
+	// _raddle has no hub-level presence: its design lives at the anchor, under `_lym/raddle/`.
+	// A worktree slug named _raddle is therefore not reserved by IsReservedHubName.
 	t.Run("raddle slug is no longer reserved", func(t *testing.T) {
 		t.Parallel()
 
@@ -302,7 +278,8 @@ func TestIsReservedHubName(t *testing.T) {
 	})
 }
 
-// TestConfigDirs pins the geometry a location tells a layered load: the anchor always, and the board dir and the weft checkout only when each exists as a directory.
+// TestConfigDirs pins the geometry a location tells a layered load.
+// The anchor is always included; the board dir and the weft checkout only when each exists as a directory.
 func TestConfigDirs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -311,7 +288,7 @@ func TestConfigDirs(t *testing.T) {
 		name      string
 		makeBoard func(t *testing.T, board string)
 		wantBoard bool
-		// makeWeft creates the weft checkout the location pairs with.
+		// makeWeft reports whether the weft checkout the location pairs with is created.
 		makeWeft bool
 	}{
 		{

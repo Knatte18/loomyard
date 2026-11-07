@@ -1,5 +1,6 @@
-// look_test.go covers lookFor over a hub of plain directories: the window title from the hub shortname,
-// and the project and worktree colours of the prime, a beam and a task under each.
+// look_test.go covers `lookFor` over a hub of plain directories.
+// It checks the window title from the hub shortname.
+// It also checks the project and worktree colours of the prime, of a beam, and of a task.
 
 package ideengine
 
@@ -15,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
-// Colours of the palette the hub below uses, in palette order after the prime's green.
+// Colours of the palette that the test hub uses, in palette order after the prime's green.
 const (
 	purple = "#7d2d6b"
 	blue   = "#2d4f7d"
@@ -23,7 +24,10 @@ const (
 	violet = "#4a2d7d"
 )
 
-// lookHub builds a hub of plain directories: a prime, a beam bm recording violet, a beam bn recording no colour, tasks t1 and t2 under bm, and tasks t3, t4 and t5 under the prime, with settings for t2, t4 and t5.
+// lookHub builds a hub of plain directories: a prime, beams bm and bn, and tasks t1 to t5.
+// Beam bm records violet, and beam bn records no colour.
+// Tasks t1 and t2 sit under bm, and tasks t3, t4 and t5 sit under the prime.
+// Tasks t2, t4 and t5 have settings.
 // A non-empty shortname is recorded on the board.
 func lookHub(t *testing.T, shortname string) *lymcwd.Location {
 	t.Helper()

@@ -1,6 +1,5 @@
-// config_test.go verifies shuttle.yaml's template parses, defaults resolve through LoadConfig, and
-// environment overrides + the template-fallback path behave the way reedengine's config tests
-// establish the pattern.
+// config_test.go verifies that shuttle.yaml's template parses and that its defaults resolve through LoadConfig,
+// and that environment overrides and the template fallback take effect.
 
 package shuttleengine_test
 
@@ -20,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// seedLymConfig creates <tmpDir>/_lym/config/<module>.yaml with content, the
-// minimal on-disk shape LoadConfig needs (no git repository required).
+// seedLymConfig creates <tmpDir>/_lym/config/<module>.yaml with content.
+// It writes the minimal on-disk shape that LoadConfig reads, with no git repository required.
 func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
 	lymDir := filepath.Join(tmpDir, lymdirs.LymDirName)
@@ -46,9 +45,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	// Seed the config file with the template itself: this is exactly the
-	// file "lym config reconcile" would produce, so LoadConfig must accept
-	// it verbatim and every default must resolve.
+	// Seed the config file with the template itself.
+	// It is the file "lym config reconcile" would produce, so LoadConfig must accept it verbatim,
+	// and every default must resolve.
 	seedLymConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
 
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
@@ -138,7 +137,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	})
 }
 
-// TestLoadConfig_KeepWarmMaxReruns pins that a local layer sets the break-even, 0 turns the long wait off, and a negative value is refused with its way forward.
+// TestLoadConfig_KeepWarmMaxReruns pins that a local layer sets the break-even.
+// It also pins that 0 turns the long wait off, and that a negative value is refused with its way forward.
 func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -183,7 +183,7 @@ func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_RetiredClaudeKeys pins that the Claude keys moved to claude.yaml still load from an unreconciled layer and are dropped.
+// TestLoadConfig_RetiredClaudeKeys pins that retired Claude keys still load from an unreconciled layer and are dropped.
 func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -251,7 +251,8 @@ func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 	})
 }
 
-// TestMigrateConfig_RenamesDenyPython pins the claude_deny_python to deny_python rename, which keeps the value and comment.
+// TestMigrateConfig_RenamesDenyPython pins the claude_deny_python to deny_python rename.
+// The rename keeps the value and the comment.
 func TestMigrateConfig_RenamesDenyPython(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -461,11 +462,10 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
-	// Seed under a non-"shuttle" module name with a config whose
-	// poll_interval_ms differs from the template default, so a hardcoded
-	// module name would be caught either way: this module reads back its
-	// seeded value, and the never-seeded "shuttle" module reads back the
-	// template default instead.
+	// Seed under a module name other than "shuttle", with a config whose
+	// poll_interval_ms differs from the template default.
+	// A hardcoded module name would be caught either way:
+	// this module reads back its seeded value, and the never-seeded "shuttle" module reads back the template default.
 	seeded := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 1000", "poll_interval_ms: 1500", 1)
 	seedLymConfig(t, tmpDir, "othershuttle", seeded)
 
@@ -505,7 +505,8 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	}
 }
 
-// TestConfig_StartAllowance verifies the start allowance is every launch's startup_timeout_s, the first and each retry, plus the retry delay once per retry.
+// TestConfig_StartAllowance verifies the start allowance, which covers startup_timeout_s for every launch.
+// The first launch and each retry count, and the retry delay is added once per retry.
 func TestConfig_StartAllowance(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -535,7 +536,7 @@ func TestConfig_StartAllowance(t *testing.T) {
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
-	// Do NOT create _lym/ -- LoadConfig must degrade to the embedded template.
+	// Leave _lym/ uncreated, so LoadConfig degrades to the embedded template.
 
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {

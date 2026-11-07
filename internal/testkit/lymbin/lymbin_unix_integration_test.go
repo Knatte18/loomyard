@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRun_TimesOutNamingTheTimeout passes whether or not the sleeper starts within the timeout, since either way it outlives it.
+// TestRun_TimesOutNamingTheTimeout passes whether or not the sleeper starts within the timeout.
+// Either way the sleeper outlives the timeout.
 func TestRun_TimesOutNamingTheTimeout(t *testing.T) {
 	tiergate.Require(t, 1)
 	self, err := os.Executable()

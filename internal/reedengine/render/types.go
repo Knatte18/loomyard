@@ -1,5 +1,6 @@
-// types.go defines the closed display vocabulary render exposes to its caller: the Anchor kinds a
-// strand may declare and the per-strand Display settings (anchor, focus, viewer and window group).
+// types.go defines the closed display vocabulary render exposes to its caller.
+// It holds the Anchor kinds a strand may declare.
+// It also holds the per-strand Display settings: anchor, focus, viewer and window group.
 // The only logic is the decode remap of the retired anchor spellings.
 
 // Package render owns the closed display vocabulary a spawner names when it places a strand.
@@ -28,7 +29,8 @@ const (
 	AnchorHidden Anchor = "hidden"
 )
 
-// UnmarshalJSON decodes a JSON string into the anchor and reads the retired pane-era spellings "below-parent" and "top" as AnchorOwnWindow,
+// UnmarshalJSON decodes a JSON string into the anchor.
+// It reads the retired pane-era spellings "below-parent" and "top" as AnchorOwnWindow,
 // so a strand an older binary recorded loads as the window it now gets.
 // Every other string is kept as written, and a non-string value is a decode error.
 func (a *Anchor) UnmarshalJSON(data []byte) error {
@@ -46,18 +48,20 @@ func (a *Anchor) UnmarshalJSON(data []byte) error {
 }
 
 // Display carries the per-strand settings render validates.
-// Its JSON tags are load-bearing: the engine persists Display verbatim inside the reed.json strand
-// record, so these lowerCamel keys are the on-disk contract callers (shuttle) will read and write.
+// Its JSON tags are load-bearing: the engine persists Display verbatim inside the reed.json strand record,
+// so these lowerCamel keys are the on-disk contract that callers read and write.
 type Display struct {
 	// Anchor selects which placement strategy governs this strand.
 	Anchor Anchor `json:"anchor"`
 	// Focus marks this strand as the one that should receive tmux input focus.
 	Focus bool `json:"focus"`
-	// KeepViewer marks an own-window strand whose new window never takes the viewer, where an unset one may follow the run onto it.
+	// KeepViewer marks an own-window strand whose new window never takes the viewer.
+	// An unset one may let the viewer follow the run onto the new window.
 	// Focus wins when both are set.
 	KeepViewer bool `json:"keepViewer,omitempty"`
 	// Window names the window group the spawner puts the strand in; empty for a strand that wants a window to itself.
-	// It is read only for an own-window strand, and reed decides from it and WindowSize whether the group shares one window.
+	// It is read only for an own-window strand.
+	// Reed decides from it and WindowSize whether the group shares one window.
 	Window string `json:"window,omitempty"`
 	// WindowSize is the number of strands the spawner puts in the Window group; 0 reads as 1.
 	// It is read only for an own-window strand.

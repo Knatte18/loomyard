@@ -1,6 +1,5 @@
-// webstergeom.go implements WebsterGeometry, the told-mode builder that constructs a
-// websterengine.Geometry from a standalone session's target directory and derived state
-// directory.
+// webstergeom.go implements WebsterGeometry, the told-mode builder for a standalone session's websterengine.Geometry.
+// It takes the session's target directory and state directory.
 
 package standalonegeom
 
@@ -12,30 +11,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// WebsterGeometry builds a websterengine.Geometry for a standalone session, given the
-// already-absolute target directory and the stateDir the caller already derived via
-// standalonestate.Derive(target).
+// WebsterGeometry builds a websterengine.Geometry for a standalone session.
+// target is the already-absolute target directory, and stateDir is the state directory the caller derived from it.
 //
-// Unlike ReedGeometry, WebsterGeometry takes no hash8: none of webster's ten values is
-// hash-derived, so no unused parameter is added for symmetry with the reed builder.
+// No value here is hash-derived, so the builder takes no hash8.
 //
-// WebsterDir, ReportsDir, ScratchDir and PromptsDir come from the four websterengine accessors
-// applied to stateDir, so standalone's _lym/webster and .lym/webster pair are ordinary directory
-// siblings under <state>, at the same mirrored subpaths a hub uses.
+// WebsterDir, ReportsDir, ScratchDir and PromptsDir come from the websterengine accessors applied to stateDir.
+// They sit at the same mirrored subpaths a hub uses.
 //
-// PlanDir and StencilsDir are the defaults only: the CLI argument boundary may override either
-// from a flag after calling this builder, and this package knows nothing about flags. StencilsDir's
-// default comes from StencilsDir(stateDir), the sole construction site for the standalone stencils
-// directory. SpecsDir is NOT in that class — there is no flag for it, so it is never overridden
-// after this builder returns.
+// PlanDir and StencilsDir are defaults: the CLI may override either with a flag after this builder returns.
+// SpecsDir has no such flag, so it is never overridden.
 //
-// VerifyDir is verifytree.Dir(stateDir), so the verified-tree record sits beside webster's other never-tracked state.
+// VerifyDir is the verified-tree directory under stateDir, beside webster's other untracked state.
 //
-// GateConfig loads the gate config over the target worktree's own directory at each call, the file the gate verb reads outside every hub;
-// a worktree with none is refused naming `lym config gate`.
+// GateConfig loads the gate config from the target worktree's own directory on each call.
+// That file is the one the gate verb reads outside any hub.
+// A worktree without one is refused with an error naming `lym config gate`.
 //
 // WorktreeRoot and PaneCwd are both target, never stateDir:
-// target is the git repository an implementer's work happens in and the directory its sessions run in.
+// target is the git repository an implementer works in and the directory its sessions run in.
 func WebsterGeometry(target, stateDir string) websterengine.Geometry {
 	return websterengine.Geometry{
 		AnchorRoot:   stateDir,

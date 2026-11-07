@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// The text a stopped dirty, gone or busy branch's line is followed by in a printed summary.
+// cleanupRerunLine is the text that follows a stopped dirty, gone or busy branch's line in a printed summary.
 const cleanupRerunLine = "then re-run lym cleanup --apply from the prime"
 
 // callLog records the arguments of every remote call a reconcile makes.
@@ -54,7 +54,8 @@ func (c *callLog) withVerb(verb string) [][]string {
 	return found
 }
 
-// originHub is a hub whose prime records branch is published, so every judged branch has a tracking ref, and the paths its tests reach for.
+// originHub is a hub whose prime records branch is published, so every judged branch has a tracking ref.
+// It also holds the paths its tests reach for.
 type originHub struct {
 	*hubforge.Hub
 	primeBranch      string
@@ -442,7 +443,8 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			{"task branch", pairCode, pairBranch},
 			{"prime branch", hub.PrimeWorktree(), hub.primeBranch},
 		} {
-			// A pull gives the tracking ref a reflog value, as every branch of a long-lived checkout has one; a fresh clone's ref has none.
+			// A pull gives the tracking ref a reflog value, as every branch of a long-lived checkout has one;
+			// a fresh clone's ref has none.
 			other := otherMachine(t, hub.CodeBare, row.branch)
 			gitkit.CommitFile(t, other, "advanced.txt", "advanced", "origin advanced")
 			gitkit.Git(t, other, "push", "origin", row.branch)
@@ -674,7 +676,9 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	})
 
 	t.Run("A run scope that may find its pair absent judges the run's entry from origin's board with no branch of its own, and refuses without the option", func(t *testing.T) {
-		// absentHub returns a hub whose task worktree is gone: removed through git, or with staleRegistration its directory deleted and the registration left for prune.
+		// absentHub returns a hub whose task worktree is gone.
+		// Without staleRegistration it is removed through git;
+		// with it the directory is deleted and the registration is left for prune.
 		absentHub := func(t *testing.T, staleRegistration bool) *originHub {
 			t.Helper()
 			hub := newOriginHub(t)
@@ -759,7 +763,8 @@ type rewoundBranch struct {
 	first, second string
 }
 
-// newRewoundBranch builds a hub with a pair whose branch carries two pushed commits that another machine's leased update then dropped from origin.
+// newRewoundBranch builds a hub with a pair whose branch carries two pushed commits.
+// Another machine's leased update then drops them from origin.
 // With withLocal the pair also holds one commit that was never pushed.
 func newRewoundBranch(t *testing.T, withLocal bool) rewoundBranch {
 	t.Helper()

@@ -1,4 +1,5 @@
-// compare.go — the compare run: the mechanical comparison Drift-Verify and `lym drift check` run against the baseline directory under `diff: command`.
+// compare.go holds the compare run:
+// the mechanical comparison Drift-Verify and `lym drift check` run against the baseline directory under `diff: command`.
 //
 // RunCompare shares the capture's runner and writes no record.
 
@@ -16,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// CompareRequest is the told input of a compare run.
+// CompareRequest is the input of a compare run.
 type CompareRequest struct {
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
@@ -52,9 +53,10 @@ type CompareResult struct {
 }
 
 // RunCompare runs the declared compare command against the baseline directory and returns how it ended.
-// It takes the compare marker, an OS lock, before it waits for its gate slot and holds it until it ends, so a compare queued for a slot reads as activity and one a dead compare left reads as none.
+// It takes the compare marker, an OS lock, before it waits for its gate slot and holds it until it ends,
+// so a compare queued for a slot reads as activity and one a dead compare left reads as none.
 // A marker still held once LockRetry runs out is refused.
-// A command still holding the retired {skip_file} placeholder is refused first, before the marker and the slot.
+// A command that still holds the `{skip_file}` placeholder is refused first, before the marker and the slot.
 // A non-zero exit and a timeout are results that did not pass, not errors.
 func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) {
 	if err := refuseSkipFilePlaceholder(siteCompare, stepCompare, req.Step.Command); err != nil {

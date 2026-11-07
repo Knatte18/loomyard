@@ -1,4 +1,6 @@
-// watch.go implements the request's sequence, which the prime's dobby carries: wait for the trigger, pause the hub, confirm the pause, hibernate the machine, detect the wake and lift or keep the request's own pause entry.
+// watch.go implements the request's sequence, which the prime's dobby carries.
+// The sequence waits for the trigger, pauses the hub, confirms the pause, and hibernates the machine;
+// it detects the wake, and lifts or keeps the request's own pause entry.
 
 package hibernateengine
 
@@ -25,32 +27,32 @@ const (
 	pauseGrace = 10 * time.Second
 	// confirmInterval is the wait between two confirmation readings.
 	confirmInterval = 5 * time.Second
-	// confirmRereads is how many re-reads follow the first confirmation reading, so confirmation gives up after ten minutes.
+	// confirmRereads counts the re-reads after the first confirmation reading; confirmation gives up after ten minutes.
 	confirmRereads = 120
-	// confirmForkRereads is how many re-reads follow the first confirmation reading while forks are the only withholding reason, so confirmation gives up after sixty minutes.
+	// confirmForkRereads counts the re-reads while forks alone withhold the confirmation, up to sixty minutes.
 	confirmForkRereads = 720
 	// wakeWindow is how much awake time after the hibernate call may pass without a wake before the request fails.
 	wakeWindow = 5 * time.Minute
 	// wakePoll is how often the wake detection reads the clocks.
 	wakePoll = time.Second
-	// triggerPollBase is the first wait between two trigger readings; it doubles to triggerPollCeiling while the reading is unchanged.
+	// triggerPollBase is the first wait between trigger readings; it doubles while the reading is unchanged.
 	triggerPollBase = time.Second
 	// triggerPollCeiling is the longest wait between two trigger readings.
 	triggerPollCeiling = 30 * time.Second
-	// noticeLineBound is the longest notice line queued as it is; a longer one is written to Deps.NoticePath and a short line names the file.
+	// noticeLineBound is the longest notice line queued as it is; a longer one goes to Deps.NoticePath instead.
 	noticeLineBound = 1 << 10
 	// noticeRetryBase is the first wait before a refused notice is queued again; it doubles to noticeRetryCeiling.
 	noticeRetryBase = time.Second
 	// noticeRetryCeiling is the longest wait between two attempts to queue a notice.
 	noticeRetryCeiling = 30 * time.Second
-	// noticeRetryWindow is how long the waits between attempts to queue a notice may add up to before the sequence gives up.
+	// noticeRetryWindow is how long the waits between attempts to queue a notice may add up to before giving up.
 	noticeRetryWindow = 10 * time.Minute
 )
 
 // keptPauseOutcome is the tail of a notice whose request kept its owned pause entry live after the wake.
 const keptPauseOutcome = "it kept its pause, as the request asked, so the hub stays paused; `lym tender resume` lifts it."
 
-// runGoneError means the batten status an after trigger waits for no longer exists.
+// runGoneError reports that the batten status an after trigger waits for no longer exists.
 type runGoneError struct{ slug string }
 
 func (e runGoneError) Error() string {
@@ -58,12 +60,17 @@ func (e runGoneError) Error() string {
 }
 
 // carry runs the sequence of r, a request the running process took up, and returns the request as it ended.
-// A request taken up in the hibernating or resuming phase ends failed at once, the pause entry it owns lifted only when it resumes on wake, since the wake its sequence waited for can no longer be seen.
-// The reason of a request taken up in the resuming phase adds that its wake reconcile may not have run and that `lym cleanup --apply` runs it.
+// A request taken up in the hibernating or resuming phase ends failed at once.
+// Its owned pause entry is lifted only when it resumes on wake, since the wake it waited for can no longer be seen.
+// The reason of a request taken up in the resuming phase adds that its wake reconcile may not have run;
+// `lym cleanup --apply` runs it.
 // After the wake it reconciles the hub with origin.
-// A request that resumes on wake then has its own pause entry lifted whatever the reconcile found, and a failed write of the request or a refused notice never keeps that entry live.
-// A request that does not keeps the entry live on every path after the wake, a failure included, so the hub stays paused until the operator lifts it.
-// A request cancelled meanwhile ends the sequence quietly, with the entry its pause added lifted by identity, since the cancel may have read the request before that entry was recorded.
+// A request that resumes on wake then has its own pause entry lifted whatever the reconcile found,
+// and a failed write of the request or a refused notice never keeps that entry live.
+// A request that does not resume on wake keeps the entry live on every path after the wake, a failure included,
+// so the hub stays paused until the operator lifts it.
+// A request cancelled meanwhile ends the sequence quietly, with the entry its pause added lifted by identity;
+// since the cancel may have read the request before that entry was recorded.
 // The sequence sends no key and no text of its own: every interrupt and resume line is tender's.
 func carry(deps Deps, r Request) (Request, error) {
 	if r.Phase == PhaseHibernating || r.Phase == PhaseResuming {
@@ -134,7 +141,8 @@ func carry(deps Deps, r Request) (Request, error) {
 		return withdrawn(deps, r, kept, nil)
 	}
 	r = resuming
-	// The entry kept from the pause stands in for an owned entry the request failed to record, so the reconcile recognises the request's own hub entry.
+	// The entry kept from the pause stands in for an owned entry the request failed to record,
+	// so the reconcile recognises the request's own hub entry.
 	target := r
 	if target.Owned == nil {
 		target.Owned = kept
@@ -165,8 +173,10 @@ func carry(deps Deps, r Request) (Request, error) {
 	return r, errors.Join(recordErr, writeErr, sendNotice(deps, line, headline))
 }
 
-// withdrawn ends the sequence of a request that is no longer this process's or has gone terminal, as after a cancel, with err as the error, and lifts kept, the entry the sequence's pause added, by identity.
-// A cancel lifts the entry the request records, but it may have read the request before the pause recorded it; a lift of an entry already lifted lifts nothing.
+// withdrawn ends the sequence of a request that is no longer this process's or has gone terminal, as after a cancel;
+// it lifts kept, the entry the sequence's pause added, by identity, and returns err.
+// A cancel lifts the entry the request records, but it may have read the request before the pause recorded it;
+// a lift of an entry already lifted lifts nothing.
 func withdrawn(deps Deps, r Request, kept *tenderengine.EntryRef, err error) (Request, error) {
 	if kept == nil {
 		return r, err
@@ -177,8 +187,11 @@ func withdrawn(deps Deps, r Request, kept *tenderengine.EntryRef, err error) (Re
 	return r, err
 }
 
-// sendNotice queues line for the orch, queueing it again after a doubling wait while it is refused, until the waits add up to noticeRetryWindow, since right after a wake the orch's session may not be listed yet.
-// A line longer than noticeLineBound, or one spanning lines, is written whole to Deps.NoticePath and headline is queued in its place with the file named, so the notice stays one short line.
+// sendNotice queues line for the orch and, while it is refused, queues it again after a doubling wait.
+// It retries until the total wait reaches the retry window;
+// right after a wake the orch's session may not be listed yet.
+// A line longer than the length bound, or one spanning lines, is written whole to Deps.NoticePath;
+// headline is queued in its place with the file named, so the notice stays one short line.
 // The last refusal is returned.
 func sendNotice(deps Deps, line, headline string) error {
 	if len(line) > noticeLineBound || strings.Contains(line, "\n") {
@@ -197,7 +210,7 @@ func sendNotice(deps Deps, line, headline string) error {
 	}
 }
 
-// writeNoticeFile writes line whole to Deps.NoticePath and returns the sentence the short notice names the file with.
+// writeNoticeFile writes line whole to Deps.NoticePath and returns the sentence that names the file.
 // A failed write is logged with the line and named in the sentence instead.
 func writeNoticeFile(deps Deps, line string) string {
 	err := os.MkdirAll(filepath.Dir(deps.NoticePath), 0o755)
@@ -222,7 +235,7 @@ func wakeOutcome(lifted *tenderengine.ResumeReport) string {
 	return "its pause was lifted."
 }
 
-// keptOutcome says what became of the pause entry of r, a request that keeps it after the wake, as the tail of the wake notice.
+// keptOutcome says, for the tail of a wake notice, what became of the pause entry of r when r keeps it past the wake.
 func keptOutcome(r Request) string {
 	if r.Owned == nil {
 		return wakeOutcome(nil)
@@ -258,7 +271,7 @@ func recordOwned(deps Deps, ref tenderengine.EntryRef) error {
 }
 
 // advance moves the request to phase with reason under the lock, and tells the phase to Deps.phased once written.
-// It reports false, writing nothing, when the request is no longer carried here or has gone terminal, as after a cancel.
+// It reports false, writing nothing, when the request is not carried here or has gone terminal, as after a cancel.
 func advance(deps Deps, phase Phase, reason string) (Request, bool, error) {
 	var next Request
 	moved := false
@@ -278,7 +291,8 @@ func advance(deps Deps, phase Phase, reason string) (Request, bool, error) {
 	return next, true, nil
 }
 
-// finish writes a terminal phase and its reason the same way advance does, and returns the request as written, or r when nothing was written.
+// finish writes a terminal phase and its reason under the lock.
+// It returns the request as written, or r when nothing was written.
 func finish(deps Deps, r Request, phase Phase, reason string) (Request, error) {
 	var written Request
 	moved := false
@@ -306,12 +320,14 @@ func fail(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Req
 	return failRequest(deps, r, kept, reason, true)
 }
 
-// failAtWake ends the request failed with reason after the wake, lifts the entry it owns only when r resumes on wake, and queues one notice.
+// failAtWake ends the request failed with reason after the wake;
+// it lifts the entry it owns only when r resumes on wake, and queues one notice.
 func failAtWake(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Request, error) {
 	return failRequest(deps, r, kept, reason, r.ResumeOnWake)
 }
 
-// failRequest ends the request failed with reason, lifts the entry it owns when lift is set, and queues one notice naming what became of that entry.
+// failRequest ends the request failed with reason;
+// it lifts the entry it owns when lift is set and queues one notice naming what became of that entry.
 // When the request records no owned entry the entry kept from the pause stands in for it.
 // The lift and the notice run even when the failed write itself fails, and the write's error is returned.
 func failRequest(deps Deps, r Request, kept *tenderengine.EntryRef, reason string, lift bool) (Request, error) {
@@ -341,7 +357,8 @@ func failRequest(deps Deps, r Request, kept *tenderengine.EntryRef, reason strin
 }
 
 // waitForTrigger reads the trigger until it fires and reports true.
-// It reports false when the request ended meanwhile: failed because the batten status an after trigger waits for is gone, or no longer carried here, as after a cancel.
+// It reports false when the request ended meanwhile:
+// failed because the batten status an after trigger waits for is gone, or not carried here, as after a cancel.
 // The wait has no deadline, since the operator cancels a request whose run halted.
 func waitForTrigger(deps Deps, r Request) (Request, bool, error) {
 	delay := triggerPollBase
@@ -423,15 +440,18 @@ const (
 	confirmationReached confirmation = iota
 	// confirmationLifted: no live hub entry stands, the operator's resume having lifted the pause.
 	confirmationLifted
-	// confirmationStopped: the request is no longer carried here.
+	// confirmationStopped: the request is not carried here.
 	confirmationStopped
 	confirmationTimedOut
 )
 
-// awaitConfirmation reads the hub until a reading confirms the pause, the first reading right after the pause and then re-reads confirmInterval apart.
-// The wait gives up after confirmRereads re-reads unless the latest reading withheld only for forks, which get confirmForkRereads.
-// The first reading also withholds while the pause report names a strand still busy or a session whose interrupt was refused.
-// A reading error is logged and counts as unconfirmed and as not fork-only; the reason is the last withholding one when the wait times out.
+// awaitConfirmation reads the hub until a reading confirms the pause.
+// The first reading comes right after the pause, and each re-read waits confirmInterval.
+// The wait gives up after confirmRereads re-reads unless the latest reading withheld only for forks;
+// a fork-only reading may re-read up to confirmForkRereads times.
+// The first reading also withholds while the pause report lists a strand still busy or a refused one.
+// A reading error is logged and counts as unconfirmed and as not fork-only;
+// the reason is the last withholding one when the wait times out.
 func awaitConfirmation(deps Deps, report tenderengine.PauseReport, requester string) (confirmation, string) {
 	withheld := ""
 	forkOnly := false
@@ -478,11 +498,16 @@ func hubPaused(status tenderengine.StatusReport) bool {
 	return slices.ContainsFunc(status.Live, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub })
 }
 
-// confirmed reports whether one reading confirms the pause: a live hub entry stands, every session is idle, asking, dead or busy only on background shells, no network operation is in flight and the land lock is free.
+// confirmed reports whether one reading confirms the pause.
+// A live hub entry must stand, and every session must be idle, asking, dead, or busy only on background shells.
+// No network operation may be in flight, and the land lock must be free.
 // A suspend freezes a shell and resumes it on wake, so a shell withholds nothing, while a background fork does.
-// A session whose strand is the requester is left out when the requester parses as the orch, since a hub pause does not interrupt the orch.
-// hubEntry is false when no live hub entry stands, and reason is the first of the reasons that withhold a reading that is not ok.
-// forkOnly is true when the reading withholds and every reason is a background fork, never when a network operation is in flight, the land lock is held or any other session is busy.
+// A session whose strand is the requester is left out when the requester parses as the orch;
+// a hub pause does not interrupt the orch.
+// hubEntry is false when no live hub entry stands;
+// reason is the first of the reasons that withhold a reading that is not ok.
+// forkOnly is true when the reading withholds and every reason is a background fork;
+// it is never true when a network operation is in flight, the land lock is held, or any other session is busy.
 // The parent locks in status.Holds are not read, since a paused run keeps its parent lock by design.
 func confirmed(status tenderengine.StatusReport, landLockHeld bool, requester string) (ok bool, hubEntry bool, forkOnly bool, reason string) {
 	if !hubPaused(status) {
@@ -516,7 +541,8 @@ func confirmed(status tenderengine.StatusReport, landLockHeld bool, requester st
 	return false, true, forkReasons == len(reasons), reasons[0]
 }
 
-// settledSession reports whether a session reads as one a suspend leaves unharmed: idle, asking, dead, or busy only on background shells.
+// settledSession reports whether a session reads as one a suspend leaves unharmed:
+// idle, asking, dead, or busy only on background shells.
 func settledSession(session tenderengine.SessionStatus) bool {
 	switch shuttleengine.SessionStateName(session.State) {
 	case shuttleengine.SessionIdleDone, shuttleengine.SessionIdleStalled, shuttleengine.SessionIdleFresh, shuttleengine.SessionAsking, shuttleengine.SessionDead:
@@ -534,7 +560,8 @@ func requesterIsOrchStrand(requester string) bool {
 	return err == nil && agentname.MatchesRole(name.Role, agentname.RoleOrch)
 }
 
-// awaitWake observes the clocks right before the hibernate call and then every wakePoll, and reports whether a sleep ending after the call is seen within wakeWindow of awake time.
+// awaitWake observes the clocks right before the hibernate call and then every wakePoll;
+// it reports whether a sleep ending after the call is seen within wakeWindow of awake time.
 // A Hibernate error is returned.
 func awaitWake(deps Deps) (woke bool, err error) {
 	var watch pauserecord.SleepWatch

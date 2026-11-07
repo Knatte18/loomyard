@@ -1,7 +1,9 @@
-<!-- This is the assistant chair's seat directive: the block the lead stencil of a table of assistant seats pulls in with the bare {{template "seat-directive-assistant-chair"}}, with no pipeline.
+<!-- This is the assistant chair's seat directive:
+     the block the lead stencil of an assistant table pulls in with the bare {{template "seat-directive-assistant-chair"}}.
+     The call has no pipeline.
      The fill hands it the seat's value map, so it declares one required marker:
-     {{.assistants}}, one line per assistant naming its strand, its report and its end marker, which internal/seatengine fills.
-     seat-directive-chair keeps serving every advisor table. -->
+     {{.assistants}}, one line per assistant naming its strand, its report and its end marker.
+     internal/seatengine fills it. -->
 
 ## You have assistants in this step
 

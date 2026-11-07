@@ -59,11 +59,9 @@ func TestDeriveWarpName(t *testing.T) {
 	}
 }
 
-// TestCloneRepo_InvalidURLFails asserts that cloneRepo's error on a bogus/nonexistent source URL is
-// composed from local context (the attempted URL and destination, plus the git exit code) rather
-// than git's own stderr text.
-// No real git fixture is needed: a nonexistent source path is enough to make `git clone` fail
-// immediately.
+// TestCloneRepo_InvalidURLFails asserts that cloneRepo's error for a bogus or nonexistent source URL:
+// it names the attempted URL and destination and the git exit code, and it also carries git's own explanation.
+// No real git fixture is needed, since a nonexistent source path makes `git clone` fail immediately.
 //
 //testtiming:keep cloneRepo's error being composed from the attempted URL, destination and exit code rather than git's stderr; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneRepo_InvalidURLFails(t *testing.T) {
@@ -78,9 +76,9 @@ func TestCloneRepo_InvalidURLFails(t *testing.T) {
 	if !strings.Contains(err.Error(), url) {
 		t.Errorf("cloneRepo(%q, %q) error = %q; want substring %q (attempted URL)", url, dest, err.Error(), url)
 	}
-	// Compare against filepath.Base(dest) rather than the raw dest string: %q escapes
-	// backslashes on Windows, so the literal OS-native dest path would never appear
-	// unescaped in err.Error() even though the destination is faithfully reported.
+	// Compare against filepath.Base(dest) rather than the raw dest string:
+	// %q escapes backslashes on Windows, so the OS-native dest path never appears unescaped in err.Error().
+	// The destination is still reported faithfully.
 	if destName := filepath.Base(dest); !strings.Contains(err.Error(), destName) {
 		t.Errorf("cloneRepo(%q, %q) error = %q; want substring %q (destination)", url, dest, err.Error(), destName)
 	}

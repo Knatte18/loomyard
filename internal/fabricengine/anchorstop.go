@@ -1,5 +1,5 @@
-// anchorstop.go compares a weft's anchor marker with its upstream's and defines the stop that a difference, or a marker left empty, raises.
-// The weft pull, the fast-forward behind a landing and the replaying push all stop on it instead of crossing an anchor change.
+// anchorstop.go defines the stop a weft raises when its anchor marker differs from its upstream's or is left empty.
+// The weft pull, the fast-forward behind a landing and the replaying push stop rather than cross an anchor change.
 
 package fabricengine
 
@@ -12,16 +12,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// ErrAnchorChange is wrapped by every stop that keeps a weft from crossing a change of its anchor marker, or from working with a marker it cannot read.
+// ErrAnchorChange is wrapped by every stop that keeps a weft from crossing an anchor change.
+// It also covers a weft whose marker it cannot read.
 var ErrAnchorChange = errors.New("fabricengine: weft anchor marker change")
 
-// PushFailureAnchorChange means the push was held back because the upstream carries another anchor marker than the weft, or the weft's own marker is empty.
+// PushFailureAnchorChange means the push was held back because the upstream carries another anchor marker than the weft.
+// It also covers a weft whose own marker is empty.
 // The record carries the way forward the stop named.
 const PushFailureAnchorChange PushFailureClass = "anchor_change"
 
 // AnchorStopError is the stop of a weft operation that would have crossed an anchor change.
 // Reason says what differs, and WayForward names the commands that settle it.
-// It reports errors.Is(err, ErrAnchorChange), and its message is the reason alone: a caller adds the way forward where it prints one.
+// It reports errors.Is(err, ErrAnchorChange),
+// and its message is the reason alone: a caller adds the way forward where it prints one.
 type AnchorStopError struct {
 	Reason     string
 	WayForward string
@@ -46,11 +49,13 @@ func (e *AnchorStopError) weftStop(branch string) *WeftStopError {
 	}
 }
 
-// weftAnchorStop compares the anchor of the weft tip head with that of the upstream tip upstream, each read by treeAnchor with names and fallback.
+// weftAnchorStop compares the anchor of the weft at head with the anchor at upstream, each read by treeAnchor.
 // It stops when upstream has commits head lacks and the two anchors differ:
-// taking upstream in, by fast-forward or by replay, would then leave a marker other than the checked-out one or carry local commits across a marker change.
+// taking upstream in, by fast-forward or by replay, would leave a marker other than the checked-out one;
+// or it would carry local commits across a marker change.
 // A head that already contains upstream never stops, so a re-anchor not yet pushed goes through.
-// wantAnchor is the anchor that settles the stop: upstream's when head's anchor equals the merge base's, since only upstream moved it, and head's otherwise.
+// wantAnchor is the anchor that settles the stop:
+// upstream's when head's anchor equals the merge base's, since only upstream moved it, and head's otherwise.
 // With reset, for a caller that replaces the checked-out tree with upstream's, ancestry is ignored:
 // any difference between the two anchors stops, and wantAnchor is upstream's.
 func weftAnchorStop(weftPath, head, upstream string, names []string, fallback string, reset bool) (wantAnchor string, stop bool, err error) {
@@ -113,10 +118,12 @@ func emptyMarkerStop(weftPath string) *AnchorStopError {
 	}
 }
 
-// refuseDropLocalAnchorChange refuses to move the weft worktree at weftPath of the pair slug onto origin's tip tracking while the anchors of the two differ.
+// refuseDropLocalAnchorChange refuses to move the weft at weftPath onto origin's tracking tip while the anchors differ.
 // A local weft ahead of origin with a re-anchor not yet pushed differs as well, since the comparison ignores ancestry.
 // An empty own marker is refused first.
-// Both refusals wrap ErrAnchorChange, and the difference names the anchor change and ends with re-running the same adopt under --drop-local, since the pair may be a moved run that no adopt names.
+// Both refusals wrap ErrAnchorChange.
+// The second refusal names the anchor change and says to re-run the same adopt under --drop-local;
+// the pair may be a moved run that no adopt names.
 func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking string) error {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return fmt.Errorf("%w: %s", stop, stop.WayForward)
@@ -138,7 +145,8 @@ func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking st
 }
 
 // upstreamAnchorStop compares the weft worktree at weftPath, as checked out, with the upstream tip upstream.
-// The pair's fallback anchor and wired names are read from its own recorded anchor, and codeWorktree is where the way forward runs.
+// The fallback anchor and the wired names come from the weft's pair.
+// codeWorktree is where the way forward runs.
 // It returns nil when the weft may take upstream in.
 func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopError, error) {
 	slug, ok := WeftWarpSlug(filepath.Base(weftPath))

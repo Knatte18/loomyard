@@ -1,4 +1,5 @@
-// acquire.go — the unbounded queue wait for a parent lock: attempts until granted, polling with backoff and waking early on a change to the lock record.
+// acquire.go implements the unbounded queue wait for a parent lock.
+// It attempts until the lock is granted, polling with backoff and waking early on a change to the lock record.
 
 package parentlock
 
@@ -15,28 +16,28 @@ import (
 )
 
 const (
-	// acquireWakeFloor is the first poll delay, the delay the wait returns to when the holder changes, and the least time between two wakes.
+	// acquireWakeFloor is the first poll delay, the delay a holder change resets to, and the least gap between two wakes.
 	acquireWakeFloor = time.Second
 	// acquireWakeCeiling is the longest poll delay while the holder is unchanged.
 	acquireWakeCeiling = 30 * time.Second
 )
 
-// ErrPaused is returned by Acquire when the waiter's Paused seam reports a pause.
+// ErrPaused is returned when a queue wait ends because the caller reports a pause.
 var ErrPaused = errors.New("parent lock wait paused")
 
-// Waiter carries what a caller tells Acquire; each field is optional.
+// Waiter carries the caller's hooks and options for a queue wait; each field is optional.
 type Waiter struct {
 	// OnWait is called once when the wait starts and again whenever the holder changes, so the caller can record the wait.
 	OnWait func(holder Record)
-	// Paused is read before every sleep; true ends the wait with ErrPaused.
+	// Paused is read before every sleep; a true result ends the wait with a pause error.
 	Paused func() bool
 	// Sleep replaces the timer wait; it returns the context's error when ctx ends first.
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Now replaces the clock the least time between two wakes is measured on.
 	Now func() time.Time
-	// Front queues the caller ahead of every ticket not itself at the front, for a run taking back a lock it freed to work outside it.
+	// Front queues the caller ahead of tickets not at the front, for a run retaking a lock it freed to work outside it.
 	Front bool
-	// Watch replaces fswatch.Watch, which opens the watch on the lock record.
+	// Watch opens the watch on the lock record; nil uses the package's default watch.
 	Watch func(dir string, names ...string) (*fswatch.Watcher, error)
 }
 
@@ -62,7 +63,7 @@ func (w Waiter) now() time.Time {
 }
 
 // pause sleeps d, or until changes delivers a change to the lock record.
-// A change still waits out the rest of acquireWakeFloor since wokeAt, so no wake follows another by less than the floor.
+// A change still waits out the rest of the floor, counted from wokeAt, so no two wakes come closer than it.
 // A nil changes sleeps d.
 // changesClosed reports that changes is closed, which the caller then replaces with nil.
 // A closed channel would end every later pause at once and lose the backoff.
@@ -106,9 +107,11 @@ func channelClosed(changes <-chan fswatch.Event) bool {
 }
 
 // Acquire attempts branch's lock for owner until it is granted, waiting in the queue with no time limit, and returns the granted record.
-// It polls from one second, doubling to thirty seconds while the holder is unchanged and returning to one second when it changes.
-// A change to the lock record, such as its holder's release, ends the poll delay early, still a second after the last attempt began;
-// a watch that cannot open, or that closes mid-wait, leaves the wait on its poll alone.
+// It polls from the wake floor.
+// It doubles toward the wake ceiling while the holder is unchanged, and it returns to the floor when the holder changes.
+// A change to the lock record, such as its holder's release, ends the poll delay early.
+// Even then, no wake comes less than the wake floor after the last attempt began.
+// A watch that cannot open, or that closes mid-wait, leaves the wait on its poll alone.
 // A cancelled context, a pause and an attempt error each return with owner's ticket removed.
 // It only waits and takes: it never frees another owner's live record.
 func (s *Store) Acquire(ctx context.Context, branch string, owner Owner, w Waiter) (Record, error) {

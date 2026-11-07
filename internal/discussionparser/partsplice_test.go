@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// spliceRecord is a decision record with three decisions, one added entry, a carry-over block and two PATTERN changes; § stands for a backtick.
+// spliceRecord is a decision record with three decisions, one added entry, a carry-over block and two PATTERN changes;
+// § stands for a backtick.
 var spliceRecord = strings.NewReplacer("§", "`").Replace(`# Decision record
 
 ## Goal
@@ -75,7 +76,7 @@ Decision: late.
 - §PATTERN-two§ — changes: Two rule.
 `)
 
-// TestSectionBullets covers plain bullets, continuation lines, a fenced bullet, a carry-over block and an absent heading.
+// TestSectionBullets covers plain and continuation bullets, a fenced bullet, a carry-over block and an absent heading.
 func TestSectionBullets(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -102,7 +103,8 @@ func TestSectionBullets(t *testing.T) {
 	}
 }
 
-// TestMapPatternChanges covers a mapped bullet rewritten in place as a `changes` bullet whatever its action, no mapping leaving the record as it is, and the refusal of a Sketch id the record lacks.
+// TestMapPatternChanges covers a mapped bullet rewritten in place as a `changes` bullet whatever its action;
+// no mapping leaves the record as it is, and an id the record lacks is refused.
 func TestMapPatternChanges(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -145,7 +147,8 @@ func TestMapPatternChanges(t *testing.T) {
 	}
 }
 
-// TestSplicePart covers the spliced record's content, that it passes the decision-id and heading checks, and the refusal of an id, bullet or PATTERN entry the record lacks.
+// TestSplicePart covers the spliced record's content, and that it passes the decision-id and heading checks;
+// it also refuses an id, bullet or PATTERN entry the record lacks.
 func TestSplicePart(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

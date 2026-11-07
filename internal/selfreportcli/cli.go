@@ -1,12 +1,9 @@
-// cli.go assembles the Cobra command tree for the selfreport module and wires the RunCLI seam.
-// The "create" subcommand's RunE closure reads flag state via the named createCmd variable to
-// distinguish "flag not set" from "flag set to empty string" using Changed("body"), following the
-// fabric module pattern for local-flag access inside a cobra RunE.
+// cli.go defines the cobra command tree for the selfreport module.
+// It also holds RunCLI, the seam that runs the tree in process.
 
-// Package selfreportcli provides the cobra command tree for filing LoomYard bugs and enhancements
-// as GitHub issues directly from lym.exe.
-// The module is reachable as `lym selfreport create` and delegates the actual GitHub API call to
-// the selfreportengine domain package.
+// Package selfreportcli provides the cobra command tree for filing LoomYard bugs and enhancements as GitHub issues.
+// The tree is reachable as `lym selfreport create`.
+// The create subcommand delegates the GitHub API call to `selfreportengine`.
 package selfreportcli
 
 import (
@@ -19,27 +16,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// stdin is the seam that runCreate reads for body content when --body is "-".
-// Tests replace this with a strings.Reader to exercise the stdin path without
-// blocking on real OS input.
+// stdin is the source that runCreate reads body content from when --body is "-".
+// Tests replace it with a strings.Reader so the stdin path runs without blocking on OS input.
 var stdin io.Reader = os.Stdin
 
 // Command builds the cobra command tree for the selfreport module.
-// The parent command has no shared setup since selfreport requires none;
-// all flags and logic live on the "create" subcommand.
+// The parent command has no shared setup, so all flags and logic live on the create subcommand.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "selfreport",
 		Short: "self-report a LoomYard bug or enhancement to lym's own repo on GitHub",
-		// ArbitraryArgs lets a standalone RunCLI, where this group is the cobra root, reach GroupRunE instead of cobra's own unknown-command error.
+		// ArbitraryArgs lets GroupRunE handle unknown subcommands when this group is the cobra root, as in RunCLI.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
 	}
 
-	// createCmd is declared as a named variable so that its RunE closure can
-	// call createCmd.Flags().Changed("body") to detect whether --body was
-	// explicitly provided. This follows the fabric module pattern for reading
-	// local flags from within a cobra RunE.
+	// The RunE closure passes createCmd to runCreate, which reads flags through it.
+	// The variable is declared before its literal so that the closure can refer to it.
 	var createCmd *cobra.Command
 	createCmd = &cobra.Command{
 		Use:         "create <title>",
@@ -73,30 +66,26 @@ Examples:
 	return cmd
 }
 
-// RunCLI is the public seam for the selfreport module, delegating to clihelp.Execute for in-process
-// test capture.
+// RunCLI runs the selfreport command tree on args in process, writing its output to out.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// runCreate executes the logic for "selfreport create <title>",
-// resolving body from --body (or stdin if "-"), applying default "bug" label,
-// and delegating to selfreportengine.CreateIssue.
+// runCreate runs the create subcommand for title and writes the result to out.
+// It resolves the body from --body, or from stdin when --body is "-".
+// It applies the default "bug" label when no --label is given.
+// The GitHub call is made by `selfreportengine.CreateIssue`.
 func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 	title := args[0]
 
-	// Resolve the body pointer. nil means --body was not supplied, which causes
-	// CreateIssue to omit the request's "body" field entirely so GitHub applies
-	// its own default (no body). Using Changed() rather than comparing to ""
-	// correctly handles --body "" as an explicit empty body vs. the flag not
-	// being set at all.
+	// Resolve the body pointer.
+	// nil means --body was not supplied, so CreateIssue omits the "body" field and GitHub applies its own default.
+	// Changed reports whether the flag was set, so --body "" gives an empty body rather than none.
 	var body *string
 	if cmd.Flags().Changed("body") {
 		bodyStr, _ := cmd.Flags().GetString("body")
 		if bodyStr == "-" {
-			// Read the entire stdin seam; white-box tests replace the stdin
-			// package variable with a strings.Reader to avoid blocking on
-			// real OS input.
+			// Read all of stdin, through the stdin variable that tests replace.
 			content, err := io.ReadAll(stdin)
 			if err != nil {
 				return output.Err(out, "failed to read stdin: "+err.Error())
@@ -108,8 +97,8 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 		}
 	}
 
-	// Default to "bug" when the caller omits all --label flags, as defect
-	// reports against LoomYard are the primary use case for this command.
+	// Default to the "bug" label when no --label flag is given.
+	// Defect reports against LoomYard are the primary use of this command.
 	labels, _ := cmd.Flags().GetStringArray("label")
 	if len(labels) == 0 {
 		labels = selfreportengine.DefaultLabels()
@@ -120,10 +109,8 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Build the success envelope: url is always included; number is included
-	// only when CreateIssue's typed response carried a non-zero issue number
-	// (see CreateIssue's godoc: this is now a defensive gate, not an expected
-	// omission -- a successful response always carries one in practice).
+	// The success envelope always carries url.
+	// It carries number only when CreateIssue returned a non-zero issue number.
 	fields := map[string]any{"url": url}
 	if number != 0 {
 		fields["number"] = number

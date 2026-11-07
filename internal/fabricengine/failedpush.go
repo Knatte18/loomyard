@@ -1,5 +1,6 @@
 // failedpush.go holds the failed-push record, one machine-local file per repository side and branch.
-// It also holds the once-per-episode notice to the orch through the installed notifier, and the way-forward line per side and class.
+// It also holds the once-per-episode notice to the orch, sent through the installed notifier.
+// The way-forward line for each side and class is built there too.
 
 package fabricengine
 
@@ -104,9 +105,11 @@ func failedPushLockPath(path string) string {
 }
 
 // RecordPushFailure writes f as the failed-push record of its repository side and branch under the record's lock.
-// The first failure creates the record and later ones keep its first-seen time and notified flag, replace the rest and bump the count.
-// While the record is not notified and its class is not deferred, the installed notifier is called once with a line naming the branch, the class, the error and the way forward,
-// and the record is marked notified only when the notifier reports the mail posted.
+// The first failure creates the record.
+// Later failures keep its first-seen time and notified flag, replace the other fields and bump the count.
+// While the record is not notified and its class is not deferred, the installed notifier is called once.
+// The line it receives names the branch, the class, the error and the way forward.
+// The record is marked notified only when the notifier reports the mail posted.
 // A notifier error is logged and leaves the record unnotified, so the next failure mails again.
 func RecordPushFailure(hubPath string, f FailedPush, now time.Time) error {
 	path := failedPushPath(hubPath, f.Repo, f.Branch)
@@ -180,8 +183,9 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 	return records, nil
 }
 
-// FailedPushFields renders the hub's failed-push records as the envelope rows a verb prints:
-// repo side, branch, class, last error line, first and last seen, count, notified and the way forward for the record's class.
+// FailedPushFields renders the hub's failed-push records as the envelope rows a verb prints.
+// Each row carries the record's repo side, branch, class and last error line.
+// It also carries the first and last seen times, the count, the notified flag and the way forward for its class.
 // A hub with no records returns an empty list, never nil, so the field prints as [].
 func FailedPushFields(hubPath string) ([]map[string]any, error) {
 	records, err := ListFailedPushes(hubPath)
@@ -249,8 +253,9 @@ func FailedPushWayForward(f FailedPush) string {
 	}
 }
 
-// recordsConflictWayForward names a records branch origin moved past: the conflicting paths when a replay stopped on some, the local commits,
-// and the two ways to settle it, each run in worktree, followed by pushVerb, the push step with its directory.
+// recordsConflictWayForward names a records branch origin moved past.
+// It names the conflicting paths when a replay stopped on some, the local commits, and the two ways to settle it.
+// The two ways run in worktree, and the second ends with pushVerb, the push step with its directory.
 // It names no machine, since no commit names the machine that wrote it.
 func recordsConflictWayForward(worktree, branch string, paths, commits []string, pushVerb string) string {
 	found := fmt.Sprintf("origin/%s holds commits this branch lacks (local commits: %s)", branch, joinOrNone(commits))
@@ -266,7 +271,7 @@ func recordsConflictWayForward(worktree, branch string, paths, commits []string,
 }
 
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
-// A prime's branch is pushed by a plain git push in the prime, since the pair push leaves the prime's code branch unpushed.
+// A prime's branch is pushed by a plain git push, since the pair push leaves the prime's code branch unpushed.
 func codeDivergedWayForward(worktree, branch string, prime bool) string {
 	push := fmt.Sprintf("`lym fabric push` in %s", worktree)
 	if prime {
@@ -276,7 +281,8 @@ func codeDivergedWayForward(worktree, branch string, prime bool) string {
 		branch, branch, worktree, push)
 }
 
-// rewoundWayForward names the two ways to settle a task branch origin rewound to originHead, dropping the commits in dropped.
+// rewoundWayForward names the two ways to settle a task branch origin rewound to originHead.
+// dropped holds the commits the rewind removed from origin.
 func rewoundWayForward(worktree, branch, originHead string, dropped []string) string {
 	return fmt.Sprintf("origin rewound %s to %s, dropping %s; "+
 		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` there; "+

@@ -1,4 +1,5 @@
-// auditseverity_test.go exercises ClassifyViolation over a real scratch repo, and the stability of the finding Keys CheckParent assigns.
+// auditseverity_test.go exercises ClassifyViolation over a real scratch repo.
+// It also checks that the finding Keys CheckParent assigns are stable.
 
 package websterengine
 
@@ -38,7 +39,7 @@ func TestClassifyViolation(t *testing.T) {
 	}
 	outside := t.TempDir()
 
-	// A second fixture whose _lym is a link to a sibling directory, written through the link's target.
+	// A second fixture whose _lym is a link to a temp directory outside the repository.
 	linkRoot := gitwrapNewScratchRepo(t)
 	lymTarget := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(lymTarget, "webster"), 0o755); err != nil {

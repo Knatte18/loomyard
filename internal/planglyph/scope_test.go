@@ -1,5 +1,5 @@
-// scope_test.go covers ScopeGuard against fake deltas, never a real quarry.Repo, since the
-// function's own contract is pure comparison over an already-computed answer.
+// scope_test.go covers ScopeGuard against fake deltas, never a real quarry.Repo:
+// ScopeGuard's contract is a pure comparison over an already-computed answer.
 
 package planglyph
 
@@ -13,7 +13,8 @@ import (
 )
 
 // TestScopeGuard_SymbolCoverage covers the symbol check.
-// A symbol is in scope when a member target or handle names it, when a rename has a side named, or when a file or package target covers every file it lives in.
+// A symbol is in scope when a member target or handle names it, or when a rename has a side named.
+// It is also in scope when a file or package target covers every file it lives in.
 // Each row is one card's targets and one delta symbol, and asserts the reported findings' files.
 func TestScopeGuard_SymbolCoverage(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -72,7 +73,8 @@ func TestScopeGuard_SymbolCoverage(t *testing.T) {
 	}
 }
 
-// TestScopeGuard_FileLevelCoverage covers the file-level pass: a changed file the delta gives no symbols for is reported unless a card target's file or package directory covers it.
+// TestScopeGuard_FileLevelCoverage covers the file-level pass:
+// a changed file the delta gives no symbols for is reported unless a card target's file or package directory covers it.
 // A file carrying an out-of-target symbol is reported by that symbol's finding alone.
 func TestScopeGuard_FileLevelCoverage(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -121,8 +123,8 @@ func TestScopeGuard_FileLevelCoverage(t *testing.T) {
 	}
 }
 
-// TestScopeGuard_DeletedAndModifiedAlsoChecked covers a Deleted and a Modified symbol outside the
-// union, each producing its own informational finding.
+// TestScopeGuard_DeletedAndModifiedAlsoChecked covers a Deleted and a Modified symbol outside the union:
+// each producing its own informational finding.
 func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 	tiergate.Require(t, 0)
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
@@ -137,8 +139,8 @@ func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 	}
 }
 
-// TestScopeGuard_EmptyDeltaNoFindingsNoPanic covers the caller's degradation path input: a
-// zero-value delta produces no findings and no panic.
+// TestScopeGuard_EmptyDeltaNoFindingsNoPanic pins the caller's degradation path input.
+// A zero-value delta produces no findings and no panic.
 func TestScopeGuard_EmptyDeltaNoFindingsNoPanic(t *testing.T) {
 	tiergate.Require(t, 0)
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
@@ -149,11 +151,10 @@ func TestScopeGuard_EmptyDeltaNoFindingsNoPanic(t *testing.T) {
 	}
 }
 
-// TestScopeGuard_RenamedPairOutsideTargetsIsReported covers the round-4 review's R4-21. Quarry
-// removes an exact-tier pair's constituents from Created and Deleted entirely, so a renamed symbol
-// reaches neither of those loops — a fork that renamed a symbol outside its batch's declared
-// targets was the one kind of touch this guard never reported, and DetectDrift's gate two logs an
-// unreferenced rename at Debug only, so nothing operator-visible named it.
+// TestScopeGuard_RenamedPairOutsideTargetsIsReported pins that a rename outside the batch's targets is reported.
+// Quarry removes an exact-tier pair's constituents from Created and Deleted entirely,
+// so a renamed symbol reaches neither of the guard's loops over those lists.
+// DetectDrift logs an unreferenced rename at Debug only, so without this check nothing operator-visible names it.
 func TestScopeGuard_RenamedPairOutsideTargetsIsReported(t *testing.T) {
 	tiergate.Require(t, 0)
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
@@ -172,9 +173,8 @@ func TestScopeGuard_RenamedPairOutsideTargetsIsReported(t *testing.T) {
 	}
 }
 
-// TestScopeGuard_RenamedPairInsideTargetsIsNotReported covers the other half: a pair either of
-// whose endpoints the batch declared is the card doing the renaming, or a card that asked for the
-// new name, and is in scope on either side.
+// TestScopeGuard_RenamedPairInsideTargetsIsNotReported pins that a rename with a declared endpoint is not reported.
+// The card either renames the symbol itself or asks for its new name, so the rename is in scope on either side.
 func TestScopeGuard_RenamedPairInsideTargetsIsNotReported(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tc := range []struct {

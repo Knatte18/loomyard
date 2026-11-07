@@ -1,4 +1,5 @@
-// bouncer_usage_test.go covers the usage record the Bouncer writes beside the Burler's: one entry per seed or judge pass whose result reached the Call.
+// bouncer_usage_test.go covers the usage record the Bouncer writes beside the Burler's.
+// It holds one entry per seed or judge pass whose result reached the Call.
 
 package shedadapters
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// requirePassEntry fails t unless entry holds model, the run's claude engine, the 90-second run and the known 1000-fresh, 5000-cache-read reading, with no fork fields.
+// requirePassEntry fails t unless entry holds the model and the run's claude engine.
+// It also requires the 90-second run and the known 1000-fresh, 5000-cache-read reading, with no fork fields.
 func requirePassEntry(t *testing.T, entry halfUsage, model shuttleengine.ModelChoice, started time.Time) {
 	t.Helper()
 	if entry.Model != model.Model || entry.Effort != model.Effort {

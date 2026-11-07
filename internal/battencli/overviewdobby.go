@@ -1,4 +1,5 @@
-// overviewdobby.go renders the View of a worktree's dobby as the lines a beam's window draws above its orchs and `lym beam status` prints.
+// overviewdobby.go renders a worktree's dobby as the lines a beam's window draws above its orchs,
+// and `lym beam status` prints the same lines.
 
 package battencli
 
@@ -23,11 +24,14 @@ const (
 	dobbyUnreadableFormat = "dobby %s: unreadable"
 )
 
-// DobbyLines renders view, the View of the dobby label names, as lines at now:
-// a header saying whether the dobby lives with its max_runs and land_notice, one line per run it drives with its cells from runCells and its last pass, and one line per released task it has not started with everything that holds the task back;
-// a run or task whose board entry asks for a landing notice ends its line with notify_on_land.
+// DobbyLines renders the dobby labeled label as lines at now.
+// It takes the dobby's state from view and the cells of its runs from runCells.
+// The header gives max_runs and land_notice while the dobby is alive, else says it is not running and how to start it.
+// Each run it drives takes one line, with its cells and its last pass.
+// Each released task it has not started takes one line, naming everything that holds it back.
+// A run or task whose board entry asks for a landing notice ends its line with notify_on_land.
 // A run whose cells are unreadable draws `status unreadable` in their place and takes no part in their column widths.
-// Every time still growing renders in whole minutes, so the lines change at most once a minute.
+// A duration still growing renders in whole minutes, so the lines change at most once a minute.
 func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
 	header := fmt.Sprintf("dobby %s: alive, max_runs %d, land_notice %s", label, view.MaxRuns, view.LandNotice)
 	if !view.Alive {
@@ -77,7 +81,8 @@ func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCell
 	return lines
 }
 
-// overviewDobbyLines reads the View of the dobby reader names and the cells of its runs, and renders them at now; a view that does not read renders the one unreadable line.
+// overviewDobbyLines reads the dobby through reader and renders its lines at now, with each run's cells from cells.
+// A dobby whose view does not read renders the one unreadable line instead.
 func overviewDobbyLines(reader *DobbyViewReader, cells *DobbyRunCells, now time.Time) []string {
 	view, err := reader.Read(now)
 	if err != nil {
@@ -87,7 +92,8 @@ func overviewDobbyLines(reader *DobbyViewReader, cells *DobbyRunCells, now time.
 	return DobbyLines(reader.Label(), view, cells.Of(view.Runs, now), now)
 }
 
-// dobbyRunPass renders a run's pass cell: a pass in flight, or the minutes since its last pass exited, then what the dobby's record says of it.
+// dobbyRunPass renders a run's pass cell: a pass in flight, or the minutes since its last pass exited, or no pass yet.
+// The cell then adds what the dobby's record says of the run.
 func dobbyRunPass(run dobbyengine.ViewRun, now time.Time) string {
 	pass := "no pass yet"
 	switch {
@@ -112,7 +118,8 @@ func dobbyRunPass(run dobbyengine.ViewRun, now time.Time) string {
 	return strings.Join(notes, ", ")
 }
 
-// dobbyTaskWait renders what a released task waits on, or that nothing holds it back, with the last refused start when one was recorded.
+// dobbyTaskWait renders what a released task waits on, or that nothing holds it back.
+// The last refused start is shown when one is recorded.
 func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) string {
 	if task.Ready() {
 		if task.Refusal != "" {
@@ -148,7 +155,6 @@ func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) str
 	return "waits on " + strings.Join(reasons, "; ")
 }
 
-// firstLine returns text up to its first line break.
 func firstLine(text string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
 	return line

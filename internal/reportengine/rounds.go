@@ -1,4 +1,5 @@
-// rounds.go reads who repaired a run and how its reviews went: arbiter attempts, LLM steps, drive reports, review rounds per segment and the decisions added after the discussion.
+// rounds.go reads who repaired a run and how its reviews went:
+// arbiter attempts, LLM steps, drive reports, review rounds per segment, and the decisions added after the discussion.
 
 package reportengine
 
@@ -27,7 +28,7 @@ const (
 	SourceDecisions    = "decisions"
 )
 
-// The LLM-step sources of RunRow.LLMSteps.
+// The keys of a run's LLM-step counts: the loom history and the batten record.
 const (
 	LLMStepsLoom   = "loom"
 	LLMStepsBatten = "batten"
@@ -58,7 +59,8 @@ func entryTime(text string) time.Time {
 	return at
 }
 
-// readRounds fills the run's arbiter outcomes, LLM steps, drive reports, review segments and decisions from the records at tag.
+// readRounds fills the run's rows from the records at tag:
+// arbiter outcomes, LLM steps, drive reports, review segments and decisions.
 // A source whose directory or file the tree lacks stays nil, and a record that does not decode is a finding.
 func (row *RunRow) readRounds(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
 	row.Segments = map[string]*SegmentRounds{}
@@ -150,14 +152,15 @@ func (row *RunRow) readDriveReports(records Reader, tag gitrepo.TagRef) error {
 	return nil
 }
 
-// retiredReviewSubdirs maps a review directory a past run's tapestry recipe wrote to the segment it is read as;
-// an old Webster-Review's rounds are Code-Review's, and Merge-Review's are dropped, which the empty segment marks.
+// retiredReviewSubdirs maps the review directories older runs wrote to the segment their rounds count under.
+// An empty segment drops the rounds.
 var retiredReviewSubdirs = map[string]string{
 	"webster": "code",
 	"merge":   "",
 }
 
-// currentReviewSegment returns the segment a review directory name counts under, and false when the directory counts under none.
+// currentReviewSegment returns the segment a review directory counts under.
+// It returns false when the directory counts under none.
 func currentReviewSegment(subdir string) (string, bool) {
 	if segment, retired := retiredReviewSubdirs[subdir]; retired {
 		return segment, segment != ""
@@ -167,7 +170,8 @@ func currentReviewSegment(subdir string) (string, bool) {
 
 // readSegments counts the review rounds of every review segment, and of the parent review, into Segments.
 // A Bouncer re-seed's archived generation adds its rounds to its segment's and is no segment of its own.
-// A past run's Webster-Review directory is read as the Code-Review segment, and its Merge-Review directory is not read.
+// A directory retiredReviewSubdirs maps counts under the segment it maps to,
+// and a directory that maps to an empty segment is not counted.
 func (row *RunRow) readSegments(records Reader, tag gitrepo.TagRef) error {
 	reviewsDir := filepath.ToSlash(loomengine.LoomReviewsDirRel())
 	subdirs, err := records.SubdirsAtRevision(tag.Commit, reviewsDir)
@@ -255,8 +259,10 @@ func (row *RunRow) readDecisions(records Reader, tag gitrepo.TagRef) ([]Finding,
 	return nil, nil
 }
 
-// countLLMSteps counts the steps an LLM took by hand: the loom history's goto and reroute entries, and the batten record's goto and reroute entries and unexplained resumes.
-// Entries an automatic step accounts for, a goto an applied arbiter verdict accounts for and a resume an applied arbiter attempt accounts for are none of them.
+// countLLMSteps counts the steps an LLM took by hand: the goto and reroute entries of the loom history,
+// and the goto and reroute entries and unexplained resumes of the batten record.
+// Entries an automatic step accounts for are not counted;
+// neither are a goto an applied arbiter verdict accounts for or a resume an applied arbiter attempt accounts for.
 func (row *RunRow) countLLMSteps() {
 	attempts := append([]loomengine.ArbiterRecord(nil), row.arbiterRecords...)
 	sort.Slice(attempts, func(i, j int) bool { return attempts[i].Attempt.Number < attempts[j].Attempt.Number })
@@ -341,7 +347,8 @@ func countHandSteps(history []shedengine.HistoryEntry, accounted map[int]bool) i
 	return count
 }
 
-// markAbsentSegments sets each segment that some run holds and another lacks to nil in the run lacking it, so a run is never read as having zero rounds of a segment it never had.
+// markAbsentSegments sets each segment that some run holds and another lacks to nil in the run lacking it.
+// A nil entry tells a reader that the run never had the segment, not that it had zero rounds of it.
 func markAbsentSegments(runs []RunRow) {
 	union := map[string]bool{}
 	for _, run := range runs {

@@ -4,7 +4,8 @@ Each package below imports a closed set and never a feature package; a reverse i
 
 ## `internal/gitkit`
 
-Imports only the standard library, `lymcwd`, `weftname`, `configengine`, `lymdirs` and `lymtemp`, and `gofrs/flock` through `lymtemp`.
+Imports only the standard library, `lymcwd`, `weftname`, `configengine`, `lymdirs` and `lymtemp`.
+It also reaches `gofrs/flock` through `lymtemp`.
 - `gitkit.CopyRepo` is callable from `lymcwd` alone; everyone else takes a hub from `hubforge`.
 - Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.
   This is review discipline, not a scan.
@@ -12,7 +13,8 @@ Imports only the standard library, `lymcwd`, `weftname`, `configengine`, `lymdir
 ## `internal/fabricvocab`
 
 Imports only the standard library.
-It holds only the vocabulary predicates and their data, since the owner-set row exempts the whole package from the bare-token rule.
+It holds only the vocabulary predicates and their data.
+That limit matters because the owner-set row exempts the whole package from the bare-token rule.
 
 ## `internal/haltnote`
 
@@ -35,7 +37,8 @@ It declares the review budget key family tapestry and darn config build on, and 
 ## `internal/buildinfo`
 
 Imports nothing at all, not even the standard library.
-It exposes `Channel`, its two values `ChannelProduction` and `ChannelDev`, and the accessors `IsDev()` and `IsProduction()` only.
+It exposes only `Channel` and its values `ChannelProduction` and `ChannelDev`.
+The only accessors are `IsDev()` and `IsProduction()`.
 
 ## `internal/standalonestate`
 
@@ -45,8 +48,10 @@ It never resolves a working directory, and `Derive` creates nothing on disk.
 ## `internal/shellguard`
 
 Imports only the standard library, `internal/agentname` and `internal/gateslot`.
-- `internal/agentname` and `internal/gateslot` are admitted for the three environment-variable names the raw go row's pattern names.
-  The `gateslot` admission departs from the header's "never a feature package" for the two constants `gateslot` owns, because declaring each name once outweighs a dependency-free leaf.
+- `internal/agentname` and `internal/gateslot` are admitted for environment-variable names.
+  The raw go row's pattern names those variables.
+  The `gateslot` admission departs from the header's "never a feature package" for the constants `gateslot` owns.
+  Declaring each name once outweighs a dependency-free leaf.
 
 ## `internal/segmentcolor`
 
@@ -64,8 +69,9 @@ Imports only the standard library, `lymdirs`, `stencilstore` and `stencil`.
 ## `internal/friction`
 
 Imports only the standard library, `internal/logger`, `internal/stencil` and `internal/stencilstore`.
-- `internal/logger` is admitted because the marker-absent helper logs rather than returning a bool for seven callers to duplicate.
-  `internal/friction` already pulls `logger` transitively through `internal/stencilstore`, so the admission widens nothing in practice.
+- `internal/logger` is admitted because the marker-absent helper logs the absence.
+  Returning a bool instead would make every caller duplicate that logging.
+  `internal/friction` already reaches `logger` through `internal/stencilstore`, so the admission widens nothing.
 
 ## `internal/durfmt`
 
@@ -93,8 +99,10 @@ It spawns no process: each caller runs `journalctl` itself and wraps the clause 
 ## `internal/dotgit`
 
 Imports only the standard library.
-It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
-It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lymcwd`, so `lymcwd` importing `gitrepo` would close a cycle.
+It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root.
+It parses in-process and spawns nothing.
+It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lymcwd`.
+A `lymcwd` import of `gitrepo` would therefore close a cycle.
 
 ## `internal/toolfloor`
 
@@ -104,7 +112,8 @@ It holds the git and tmux version floor and the version-line parser, and spawns,
 ## `internal/pauserecord`
 
 Imports only the standard library and `internal/state`, and `gofrs/flock` through it.
-It is the one leaf every reader of a pause imports, and each reader is told its `Geometry` and derives no path of its own.
+It is the one leaf every reader of a pause imports.
+Each reader is told its `Geometry` and derives no path of its own.
 
 ## `internal/lymtemp`
 

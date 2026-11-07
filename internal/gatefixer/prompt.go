@@ -1,4 +1,5 @@
-// prompt.go renders a fixer's prompt: the shared cold frame joined ahead of one caller body stencil and filled from told values.
+// prompt.go renders a fixer's prompt.
+// It joins the shared cold frame ahead of one caller body stencil and fills the result from the told values.
 
 package gatefixer
 
@@ -42,8 +43,11 @@ type PromptInputs struct {
 }
 
 // RenderPrompt reads FrameStencil and in.BodyStencil from in.StencilsDir, joins them frame first and fills the result.
-// The report and reply paths and every body value are filled, with the frame's own paths winning over a body value of the same key, beside the PATTERN, parent, edit and friction directives.
-// It refuses an empty ReportPath or ReplyPath, and returns an error for a stencil that cannot be read or a directive that cannot be rendered.
+// The report and reply paths and every body value are filled,
+// and the frame's own paths win over a body value of the same key.
+// The PATTERN, parent, edit and friction directives are filled alongside them.
+// It refuses an empty ReportPath or ReplyPath.
+// It returns an error for a stencil that cannot be read or a directive that cannot be rendered.
 // A friction directive that cannot be rendered is logged and left out.
 func RenderPrompt(in PromptInputs) ([]byte, error) {
 	if strings.TrimSpace(in.ReportPath) == "" {

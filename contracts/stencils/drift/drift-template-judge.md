@@ -1,11 +1,11 @@
-<!-- This is the drift judge's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/drift/`
-     and read from there at call time by internal/seatengine, which fills it from the lead's value map that driftengine's JudgeTable builds, then hands it to
-     shuttle as the agent's whole prompt.
-     Every marker below is a top-level substitution;
-     the engine fills the parent and edit directives, and JudgeTable fills the rest,
-     mode_rules with the autonomous or the operator text by drift.yaml's judge_interactive.
-     There are no conditionals anywhere in this file. -->
+<!-- This is the drift judge's entire instruction set.
+     It ships as an embedded default in the top-level stencils package (contracts/stencils/stencils.go).
+     It is seeded to the Bolt checkout's `_lym/stencils/drift/`, and internal/seatengine reads it from there at call time.
+     seatengine fills it from the lead's value map that `driftengine.JudgeTable` builds.
+     It then hands the result to shuttle as the agent's whole prompt.
+     Every marker below is a top-level substitution, and the file has no conditionals.
+     The engine fills the parent and edit directives, and `driftengine.JudgeTable` fills the rest;
+     mode_rules holds the autonomous or the operator text, chosen by drift.yaml's judge_interactive. -->
 
 # Drift judge — rule on each change the task made
 

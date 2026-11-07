@@ -1,9 +1,12 @@
-// parentdirective_test.go pins PATTERN-stencil-ownership: every spawned role's opening stencil
-// renders the parent directive, and no stencil outside the orch family tells an agent to ask the
-// operator in its pane.
-// It also pins the entry's edit-directive clause: every opening stencil renders the edit directive, and no other stencil restates the rule.
-// The scans read stencil text only; an interactive role's questions, the Discussion chair's and the judge seat's under judge_interactive, come from the
-// `{{.mode_rules}}` marker, whose text is Go, never from a stencil.
+// parentdirective_test.go pins PATTERN-stencil-ownership:
+// every spawned role's opening stencil renders the parent directive,
+// and no stencil outside the orch family tells an agent to ask the operator in its pane.
+// It also pins the entry's edit-directive clause:
+// every opening stencil renders the edit directive,
+// and no other stencil restates the rule.
+// The scans read stencil text only.
+// An interactive role's questions come from the `{{.mode_rules}}` marker, whose text is Go, never from a stencil.
+// Those are the Discussion chair's and the judge seat's questions under judge_interactive.
 
 package stencils
 
@@ -36,7 +39,8 @@ func carriesMarker(body string, bodies map[string]string, marker string) bool {
 	return false
 }
 
-// openingStencilViolations returns one description per mapped stencil that is not registered or whose body lacks marker, itself or through a registered stencil it includes.
+// openingStencilViolations returns one description per mapped stencil that is unregistered or whose body lacks marker.
+// A body carries marker itself or through a registered stencil it includes.
 // bodies maps a registered stencil name to its agent-facing body.
 func openingStencilViolations(opening map[string][]string, bodies map[string]string, marker string) []string {
 	var violations []string
@@ -62,7 +66,7 @@ var (
 	editMarker   = "{{." + editdirective.MarkerName + "}}"
 )
 
-// editRuleSentences returns each sentence of body that contains an editRulePhrases entry.
+// editRuleSentences returns each sentence of body that contains a phrase which states the edit rule.
 func editRuleSentences(body string) []string {
 	var found []string
 	for _, sentence := range sentenceSplitPattern.Split(body, -1) {
@@ -73,7 +77,7 @@ func editRuleSentences(body string) []string {
 	return found
 }
 
-// unboundedAskSentences returns each sentence of body that matches an askOperatorPhrases entry and holds no askOperatorBounds word.
+// unboundedAskSentences returns each sentence of body that asks the operator with no bounding word in it.
 func unboundedAskSentences(body string) []string {
 	var found []string
 	for _, sentence := range sentenceSplitPattern.Split(body, -1) {
@@ -107,7 +111,8 @@ func registeredBodies(t *testing.T) map[string]string {
 	return bodies
 }
 
-// TestStencils_OpeningStencilsRenderParentDirective fails when a role's opening stencil is unregistered or lacks the parent directive marker.
+// TestStencils_OpeningStencilsRenderParentDirective fails when a role's opening stencil is unregistered;
+// it also fails when that stencil lacks the parent directive marker.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
@@ -120,7 +125,8 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 	}
 }
 
-// TestStencils_OpeningStencilsRenderEditDirective fails when a role's opening stencil is unregistered or lacks the edit directive marker.
+// TestStencils_OpeningStencilsRenderEditDirective fails when a role's opening stencil is unregistered;
+// it also fails when that stencil lacks the edit directive marker.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
@@ -133,7 +139,7 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 	}
 }
 
-// TestStencils_NoEditRuleRestatement fails for any registered stencil other than edit-directive with a sentence that restates the edit rule.
+// TestStencils_NoEditRuleRestatement fails when a stencil besides edit-directive restates the edit rule in a sentence.
 //
 //testtiming:keep pins the rule that only the edit-directive stencil states the edit rule, a guard that fires which no other test asserts
 //lym:guard
@@ -152,7 +158,8 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 	}
 }
 
-// TestStencils_NoUnboundedAskOperator fails for any registered stencil outside the orch family with an ask-the-operator sentence that carries no prohibition word.
+// TestStencils_NoUnboundedAskOperator fails for any registered stencil outside the orch family.
+// Such a stencil fails when one of its sentences tells the agent to ask the operator and carries no prohibition word.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
 //lym:guard
@@ -170,7 +177,8 @@ func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 	}
 }
 
-// TestParentDirectiveScans_SyntheticRows proves each scan fails on a stencil that breaks its rule and passes on one that does not.
+// TestParentDirectiveScans_SyntheticRows proves each scan fails on a stencil that breaks its rule.
+// It also proves each scan passes on a stencil that does not break its rule.
 //
 //testtiming:keep proves each parent-directive scan fires on a stencil that breaks its rule, which the scans over the real stencils cannot show while those stencils comply
 func TestParentDirectiveScans_SyntheticRows(t *testing.T) {

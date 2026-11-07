@@ -1,4 +1,5 @@
-// trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and Webster state, and NewTracer's missing-plan and missing-state errors over temp-dir fixtures.
+// trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and Webster state.
+// It also covers the errors NewTracer returns for a missing plan or state, over temp-dir fixtures.
 
 package failuretrace
 
@@ -32,7 +33,8 @@ func tracePlan() *planparser.Plan {
 	}}
 }
 
-// traceState records cards 3 and 4 in one batch, 5 and 6 in another, card 7 in a batch with no card commit, and card 12 in a batch record that predates the Cards field.
+// traceState records cards 3 and 4 in one batch, 5 and 6 in another, and card 7 in a batch with no card commit.
+// Card 12 sits in a batch record that predates the Cards field.
 func traceState() *websterengine.State {
 	return &websterengine.State{Batches: map[int]*websterengine.BatchState{
 		1:  {Slug: "alpha", Cards: []string{"03-alpha", "04-beta"}, StartSHA: "s1", CardSHAs: []string{"c3", "c4"}},

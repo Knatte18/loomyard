@@ -1,9 +1,7 @@
-// trailer.go — the Warp-SHA git commit trailer: fabric's format and parse helpers for recording,
-// inside a weft commit's own message, which warp SHA that weft commit corresponds to.
-// The trailer is the sole source of truth for warp<->weft correspondence (see corrindex.go, the
-// derived-cache layer built on top of it);
-// it lives inside weft's own versioned commit history, so it can never drift out of sync with the
-// commit it describes.
+// trailer.go holds the Warp-SHA git commit trailer, the record of which warp SHA a weft commit corresponds to.
+// It holds fabric's helpers that format and parse that trailer in a commit message.
+// The trailer is the sole source of truth for warp<->weft correspondence; corrindex.go builds a derived cache on it.
+// It lives inside weft's own versioned commit history, so it cannot drift from the commit it describes.
 
 package fabricengine
 
@@ -13,24 +11,20 @@ import (
 	"strings"
 )
 
-// WarpSHATrailerKey is the git-trailer key fabric writes into every weft commit's message, in the
-// same convention as git's own "Co-authored-by:" trailer: "Warp-SHA: <sha>".
+// WarpSHATrailerKey is the git-trailer key fabric writes into every weft commit message as "Warp-SHA: <sha>".
 const WarpSHATrailerKey = "Warp-SHA"
 
-// SnapshotTrailerKey is the git-trailer key fabric writes into a weft commit's message, once per
-// caller-supplied snapshot tag, alongside the Warp-SHA trailer (see appendSnapshotTrailers).
+// SnapshotTrailerKey is the git-trailer key fabric writes into a weft commit message.
+// It is written once per caller-supplied snapshot tag, alongside the Warp-SHA trailer.
 const SnapshotTrailerKey = "Snapshot"
 
-// snapshotTagPattern is the single-line token charset a snapshot tag must
-// match: letters, digits, dot, underscore, hyphen. It deliberately excludes
-// newline, carriage return, and colon — the trailer-injection vector a tag
-// containing one of those characters would otherwise open (an attacker- or
-// bug-supplied tag could inject a fake trailer line, or an unrelated one,
-// into the commit message).
+// snapshotTagPattern is the single-line charset a snapshot tag must match: letters, digits, dot, underscore, hyphen.
+// It excludes newline, carriage return and colon.
+// Those characters would let a tag inject a fake or unrelated trailer line into the commit message.
 var snapshotTagPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// ErrInvalidSnapshotTag is a typed error returned by validateSnapshotTag, naming the offending tag
-// so a caller (or an operator reading the error) knows exactly which supplied tag was rejected.
+// ErrInvalidSnapshotTag is the error for a snapshot tag outside the allowed charset.
+// It names the rejected tag so the caller can report it.
 type ErrInvalidSnapshotTag struct {
 	Tag string
 }
@@ -40,8 +34,8 @@ func (e *ErrInvalidSnapshotTag) Error() string {
 	return fmt.Sprintf("fabricengine: invalid snapshot tag %q: must match %s", e.Tag, snapshotTagPattern.String())
 }
 
-// validateSnapshotTag returns an *ErrInvalidSnapshotTag when tag does not
-// match snapshotTagPattern, and nil otherwise.
+// validateSnapshotTag returns an *ErrInvalidSnapshotTag when tag is not a valid snapshot tag, and nil otherwise.
+// A valid tag is non-empty and made only of letters, digits, dot, underscore and hyphen.
 func validateSnapshotTag(tag string) error {
 	if !snapshotTagPattern.MatchString(tag) {
 		return &ErrInvalidSnapshotTag{Tag: tag}
@@ -49,15 +43,11 @@ func validateSnapshotTag(tag string) error {
 	return nil
 }
 
-// appendSnapshotTrailers returns message with one "Snapshot: <tag>" trailer
-// line appended per entry in tags, in order. Every tag is validated via
-// validateSnapshotTag BEFORE any line is appended, so a single invalid tag
-// fails the whole call with nothing written — a caller must not end up
-// committing a message with some, but not all, of its intended snapshot
-// trailers. Reuses endsInTrailerBlock so the appended lines join an
-// existing trailer block (e.g. the Warp-SHA trailer a caller has already
-// appended) directly, rather than starting a new paragraph. An empty tags
-// slice returns message unchanged with a nil error.
+// appendSnapshotTrailers returns message with one "Snapshot: <tag>" trailer line appended per tag, in order.
+// It validates every tag before it appends any line, so an invalid tag fails the call with nothing written.
+// A message therefore never carries only some of its snapshot trailers.
+// Appended lines join an existing trailer block directly, rather than starting a new paragraph.
+// An empty tags slice returns message unchanged with a nil error.
 func appendSnapshotTrailers(message string, tags []string) (string, error) {
 	if len(tags) == 0 {
 		return message, nil
@@ -72,9 +62,8 @@ func appendSnapshotTrailers(message string, tags []string) (string, error) {
 	for i, tag := range tags {
 		trailerLine := fmt.Sprintf("%s: %s", SnapshotTrailerKey, tag)
 		if i == 0 && !endsInTrailerBlock(result) {
-			// Only the FIRST appended line needs to decide whether to start a
-			// new trailer-block paragraph; every subsequent line joins the
-			// block this call itself just started.
+			// The first line decides whether to start a new trailer-block paragraph.
+			// Every later line joins the block this call has just started.
 			result += "\n\n" + trailerLine
 			continue
 		}
@@ -83,15 +72,14 @@ func appendSnapshotTrailers(message string, tags []string) (string, error) {
 	return result, nil
 }
 
-// trailerLinePattern matches a single git-trailer-shaped line: key: value format.
-// It is used to decide whether a commit message's final paragraph is already a
-// trailer block, mirroring git's own loose trailer-line recognition.
+// trailerLinePattern matches one git-trailer-shaped line, a key, a colon and a value.
+// It decides whether a message's final paragraph is already a trailer block.
+// It follows git's loose trailer-line recognition.
 var trailerLinePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*:\s+\S.*$`)
 
-// appendWarpSHATrailer returns message with a "Warp-SHA: <warpSHA>" trailer line
-// appended, following git's trailer conventions: joins an existing trailer block
-// directly if the message already ends in one, or starts a new trailer block
-// separated from the body by a blank line otherwise.
+// appendWarpSHATrailer returns message with a "Warp-SHA: <warpSHA>" trailer line appended.
+// It joins an existing trailer block directly.
+// Otherwise it starts a new block after a blank line, as git's trailer conventions do.
 func appendWarpSHATrailer(message, warpSHA string) string {
 	trimmed := strings.TrimRight(message, "\n")
 	trailerLine := fmt.Sprintf("%s: %s", WarpSHATrailerKey, warpSHA)
@@ -102,9 +90,9 @@ func appendWarpSHATrailer(message, warpSHA string) string {
 	return trimmed + "\n\n" + trailerLine
 }
 
-// endsInTrailerBlock reports whether message's final paragraph (after its last
-// blank line) consists entirely of trailer-shaped lines. The subject paragraph
-// is never a trailer block, even if its lines match the trailer pattern.
+// endsInTrailerBlock reports whether message's final paragraph consists entirely of trailer-shaped lines.
+// That paragraph starts after the last blank line.
+// A message with no blank line has no such paragraph, so it is never a trailer block.
 func endsInTrailerBlock(message string) bool {
 	if message == "" {
 		return false
@@ -139,14 +127,14 @@ func endsInTrailerBlock(message string) bool {
 }
 
 // TaskCommitOf returns the code-side commit a records commit message names in its trailer.
-// It is false when the message carries no such trailer.
+// The bool is false when the message carries no such trailer.
 func TaskCommitOf(message string) (string, bool) {
 	return parseWarpSHATrailer(message)
 }
 
 // parseWarpSHATrailer extracts the Warp-SHA trailer value from a full commit message.
-// When multiple "Warp-SHA:" lines exist, the last one wins, matching git's trailer
-// semantics. Reports ok=false when the message carries no Warp-SHA trailer at all.
+// When multiple "Warp-SHA:" lines exist, the last one wins, as in git's trailer semantics.
+// ok is false when the message carries no Warp-SHA trailer at all.
 func parseWarpSHATrailer(message string) (sha string, ok bool) {
 	prefix := WarpSHATrailerKey + ":"
 	for _, line := range strings.Split(message, "\n") {

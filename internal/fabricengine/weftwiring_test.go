@@ -1,9 +1,7 @@
-// weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic WarpJunction
-// slices — no build tag, since it touches only plain directories and fslink, never git.
-// It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second
-// entry is batch 5's job), so removeWarpJunction's best-effort, continue-past-failure contract
-// cannot be driven through the exported (l, slug) surface with more than one junction;
-// this file drives the extracted loop directly instead.
+// weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic WarpJunction slices.
+// It has no build tag, since it touches only plain directories and fslink, never git.
+// WarpJunctions(l, slug) returns one entry, so the exported surface cannot drive several junctions.
+// This file drives the extracted loop directly instead.
 
 package fabricengine
 
@@ -15,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRemoveJunctionRecords_ContinuesPastFailure proves the function continues removing junctions
-// after a per-junction failure, and that an empty junctions slice is a no-op.
+// TestRemoveJunctionRecords_ContinuesPastFailure checks that removal continues past a per-junction failure.
+// It also checks that an empty junctions slice is a no-op.
 //
 //testtiming:keep the removal loop continuing past a per-junction failure and an empty slice being a no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {

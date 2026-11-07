@@ -1,11 +1,8 @@
-// syncweft_integration_test.go — integration coverage for the parts of the
-// weft-git surface that genuinely need git spawned: the Warp-SHA trailer
-// landing in a real commit, RebuildIndex reconstructing what an incremental
-// build produces, the detached-commit path's self-healing lookup, and
-// staleness surviving a rebuild. Package fabricengine_test, driving the
-// unexported index plumbing (corrIndexPath, loadCorrIndex, weftGitDir)
-// through export_test.go's ForTest shims alongside the exported Fabric
-// surface.
+// syncweft_integration_test.go covers the weft-git paths that need git spawned.
+// It checks that the Warp-SHA trailer lands in a real commit.
+// It checks that RebuildIndex reconstructs the index an incremental build produces.
+// It checks the detached-commit path's self-healing lookup, and that staleness survives a rebuild.
+// The package is fabricengine_test; the unexported index plumbing is reached via export_test.go's ForTest shims.
 
 package fabricengine_test
 
@@ -20,9 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRebuildIndex_EqualsIncrementallyBuiltIndex asserts that after several Commit rounds (each
-// incrementally updating the index via RecordCorrespondence), a full RebuildIndex reconstructs an
-// index whose entries are identical to the incrementally-built one.
+// TestRebuildIndex_EqualsIncrementallyBuiltIndex checks that a full RebuildIndex matches the incremental index.
+// The incremental index comes from several Commit rounds, each calling RecordCorrespondence.
+// The rebuilt entries must be identical to the incremental ones.
 func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -76,12 +73,10 @@ func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	}
 }
 
-// expireAndPruneUnreachable forces git to actually forget any commit
-// objects that are no longer reachable from a ref, in repoPath. A plain
-// amend/reset alone leaves the superseded object resolvable via the reflog
-// for a while — gitrepo/doc.go's own documented SHAExists caveat — so tests
-// that need SHAExists to genuinely report false on a rewritten-away SHA
-// must call this first.
+// expireAndPruneUnreachable makes git forget every commit object no longer reachable from a ref in repoPath.
+// An amend or reset alone leaves the superseded object resolvable through the reflog.
+// SHAExists may still report it as present until this runs.
+// Tests that need SHAExists to report false for a rewritten-away SHA call this first.
 func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 	t.Helper()
 
@@ -89,11 +84,10 @@ func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 	gitkit.MustRun(t, repoPath, "git", "gc", "--prune=now", "-q")
 }
 
-// TestWeftSHAForWarpSHA_DetachedPathSelfCorrection covers the CLI detached path's self-correction:
-// CommitWeft records a pre-push SHA;
-// the commit is then amended in place (same trailer, new SHA) and the old SHA is forced to
-// genuinely stop resolving via expireAndPruneUnreachable.
-// WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving (amended) trailer commit.
+// TestWeftSHAForWarpSHA_DetachedPathSelfCorrection covers the CLI detached path's self-correction.
+// CommitWeft records a pre-push SHA, then the commit is amended in place: same trailer, new SHA.
+// expireAndPruneUnreachable then makes the old SHA stop resolving.
+// WeftSHAForWarpSHA must heal with one RebuildIndex retry to the surviving amended trailer commit.
 func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -121,11 +115,10 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 		t.Fatalf("WeftSHAForWarpSHA() (pre-amend) = %q; want %q", got, preAmendSHA)
 	}
 
-	// Change the tree before amending — a same-second, same-tree amend can
-	// legitimately land on the identical SHA (git's SHA covers tree,
-	// parent, author, committer, and message; two amends within the same
-	// second can otherwise tie on every field), so this guarantees a
-	// genuinely new commit object while --no-edit preserves the trailer.
+	// Change the tree before amending.
+	// Git's SHA covers the tree, parent, author, committer, and message,
+	// so an amend within the same second with an unchanged tree can land on the identical SHA.
+	// Changing the tree guarantees a new commit object, and --no-edit keeps the trailer.
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, amended")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "add", "-A")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "commit", "--amend", "--no-edit")
@@ -144,12 +137,10 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	}
 }
 
-// staleCorrespondenceFixture builds a fresh warp/weft pair with exactly one
-// recorded correspondence, then rewrites weft's history so that
-// correspondence is stale beyond what RebuildIndex can recover: the trailer
-// commit is reset away and the orphaned object is genuinely pruned (not
-// just amended in place), so a full trailer rescan finds nothing naming
-// warpSHA anywhere. Returns the Fabric and the now-stale warpSHA.
+// staleCorrespondenceFixture builds a warp/weft pair with one recorded correspondence, then makes it stale.
+// The history is rewritten so that RebuildIndex cannot recover the correspondence.
+// The trailer commit is reset away and the orphaned object pruned, so no trailer names warpSHA anywhere.
+// It returns the Fabric and the now-stale warpSHA.
 func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA string) {
 	t.Helper()
 
@@ -172,17 +163,14 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 		t.Fatalf("WeftSHAForWarpSHA() (pre-rewrite) = %q, %v; want %q, nil", got, err, weftSHA)
 	}
 
-	// Discard the trailer commit from history entirely, then force git to
-	// genuinely forget the orphaned object — RebuildIndex's scan will find
-	// no trailer naming warpSHA anywhere afterwards.
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "reset", "--hard", baseWeftSHA)
 	expireAndPruneUnreachable(t, weftFixture.PrimeRecords())
 
 	return f, warpSHA
 }
 
-// TestWeftSHAForWarpSHA_StalenessSurvivesRebuild covers a history rewrite RebuildIndex cannot
-// recover from: WeftSHAForWarpSHA must surface wrapped ErrStaleSHA (errors.Is).
+// TestWeftSHAForWarpSHA_StalenessSurvivesRebuild covers a history rewrite that RebuildIndex cannot recover from.
+// WeftSHAForWarpSHA must return an error wrapping ErrStaleSHA, so that errors.Is matches it.
 func TestWeftSHAForWarpSHA_StalenessSurvivesRebuild(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

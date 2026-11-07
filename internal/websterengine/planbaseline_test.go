@@ -79,7 +79,8 @@ func TestStorePlanBaseline_ContentAddressed(t *testing.T) {
 	}
 }
 
-// TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash proves a file edited after its hash was computed is refused and nothing is stored under that hash.
+// TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash proves a file edited after its hash was computed is refused.
+// Nothing is stored under that hash.
 func TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -109,10 +110,11 @@ func TestStorePlanBaseline_EmptyWebsterDirIsAnError(t *testing.T) {
 	}
 }
 
-// TestRestorePlan proves RestorePlan rewrites every edited or removed recorded file from its stored
-// copy and removes files the record lacks, returning the touched names sorted, touches nothing on an
-// unchanged plan, and refuses, naming the file and the fresh-run way forward and leaving the plan as
-// it was, when a stored copy or the recorded hashes are missing.
+// TestRestorePlan proves RestorePlan rewrites every edited or removed recorded file from its stored copy.
+// It also proves RestorePlan removes files the record lacks and returns the touched names sorted.
+// On an unchanged plan it touches nothing.
+// When a stored copy or the recorded hashes are missing, it refuses and leaves the plan as it was.
+// The refusal names the file and the fresh-run way forward.
 func TestRestorePlan(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,15 +1,22 @@
-<!-- This is the loom arbiter's launch prompt: the whole procedure of the cold, stronger-model session that settles one stop of a run its driver could not settle.
-     It is filled via internal/stencil.Fill (internal/shedarbiter's Prompt) and typed into the arbiter session as its entire instruction set.
-     Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
-     {{.recipe}} is the description of the recipe whose run is judged, naming the repair verbs the arbiter may run, or the literal `none`,
-     {{.run_id}} is the run whose stop is judged, {{.slug}} the task it belongs to, {{.worktree}} the directory every command runs in,
-     {{.envelope_path}} the stop envelope, {{.report_path}} the driver's stop or fork report, {{.brief_path}} the review escalation brief and {{.case_brief_path}} the tackler's case brief (each the literal `none` when absent),
-     {{.decision_record_path}} and {{.support_log_path}} the task's decision record and support log,
-     {{.verdict_path}} the one file the arbiter writes,
-     {{.amendment_target}} the row a plan amendment routes to, or the literal `none`,
-     {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
-     and {{.edit_directive}} the shared edit directive rendered by internal/editdirective.
-     The body is recipe-blind: it names no recipe and no row, which arrive only through the stop envelope and the files it points at. -->
+<!-- This is the loom arbiter's launch prompt:
+     the whole procedure of the cold, stronger-model session that settles one stop of a run its driver could not settle.
+     internal/shedarbiter's Prompt fills it through internal/stencil.Fill;
+     the result is typed into the arbiter session as its entire instruction set.
+     Every marker below is a top-level {{.X}} substitution, and every one is required non-empty.
+     {{.recipe}} is the description of the recipe whose run is judged, or the literal `none`;
+     it names the repair verbs the arbiter may run.
+     {{.run_id}} is the run whose stop is judged, and {{.slug}} is the task it belongs to.
+     {{.worktree}} is the directory every command runs in.
+     {{.envelope_path}} is the stop envelope, and {{.report_path}} is the driver's stop or fork report.
+     {{.brief_path}} is the review escalation brief, and {{.case_brief_path}} is the tackler's case brief.
+     Each of those two is the literal `none` when absent.
+     {{.decision_record_path}} and {{.support_log_path}} are the task's decision record and support log.
+     {{.verdict_path}} is the one file the arbiter writes.
+     {{.amendment_target}} is the row a plan amendment routes to, or the literal `none`.
+     {{.parent_directive}} is the no-parent variant of the parent directive rendered by internal/parentdirective.
+     {{.edit_directive}} is the shared edit directive rendered by internal/editdirective.
+     The body is recipe-blind: it names no recipe and no row;
+     they arrive only through the stop envelope and the files it points at. -->
 
 # Arbiter for run `{{.run_id}}`
 

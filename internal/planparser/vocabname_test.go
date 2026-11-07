@@ -11,8 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckFabricVocabularyName covers the names a plan declares that the fabric-vocabulary scan refuses and the ones it admits.
-// Side-token names are built from fabricvocab.SideTokens, since this file sits outside the owner set.
+// TestCheckFabricVocabularyName covers the plan-declared names the fabric-vocabulary scan refuses or admits.
+// Side-token names come from fabricvocab.SideTokens, so this file spells none of them:
+// a file outside the owner set may not spell a side token.
 func TestCheckFabricVocabularyName(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

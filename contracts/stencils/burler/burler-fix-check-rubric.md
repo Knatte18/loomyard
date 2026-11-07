@@ -1,5 +1,6 @@
-<!-- This is burler's fix-check rubric: the severity vocabulary and finding rules the fork lenses of a twill fixer's self-check work under.
-     The fixer reads it from its deployed path before it spawns the forks, so every fork inherits it; internal/burlerengine's selfCheckBlock (prompt.go) names that path in the self-check part.
+<!-- This is burler's fix-check rubric: the severity vocabulary and finding rules for a twill fixer's self-check forks.
+     The fixer reads it from its deployed path before it spawns the forks, so every fork inherits it.
+     `selfCheckBlock` (internal/burlerengine/prompt.go) names that path in the self-check part.
      It declares no marker. -->
 # Fix-check rubric
 

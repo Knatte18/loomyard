@@ -1,4 +1,7 @@
-// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held offset, and the SessionCycler-backed operations (context usage, idle probe, clear, compact) an orchestrator watcher needs.
+// session.go holds Runner's session-cycling surface.
+// It reads a live run's events from a caller-held offset.
+// It also holds the SessionCycler-backed operations an orchestrator watcher needs:
+// context usage, idle probe, clear and compact.
 // All of it is provider-invariant; provider specifics stay behind Engine and SessionCycler.
 
 package shuttleengine
@@ -31,8 +34,9 @@ func (r *Runner) skillLoader(engine Engine) (SkillLoader, error) {
 	return loader, nil
 }
 
-// LoadSkills types the provider's one-turn load message for skills into the live pane of the run identified by guid, through the verified send path.
-// Like every verified send it waits for an idle session first and fails with ErrSessionBusy if it stays busy.
+// LoadSkills types the provider's one-turn skill load message into the live pane of the run identified by guid.
+// The send goes through the verified send path.
+// It waits for an idle session first and fails with ErrSessionBusy if the session stays busy.
 func (r *Runner) LoadSkills(guid string, skills []string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -56,7 +60,8 @@ func (r *Runner) LoadSkills(guid string, skills []string) error {
 	return sendVerified(sc, loader.SkillLoadMessage(skills))
 }
 
-// ClassifySkillLoad returns the classification, by the engine the run identified by guid records, of the load turn of skills that turnEnd ended.
+// ClassifySkillLoad returns the classification of the load turn of skills that turnEnd ended.
+// The engine is the one the run identified by guid records.
 func (r *Runner) ClassifySkillLoad(guid string, turnEnd Event, skills []string) (SkillLoadReport, error) {
 	if r.toldErr != nil {
 		return SkillLoadReport{}, r.toldErr
@@ -76,11 +81,12 @@ func (r *Runner) ClassifySkillLoad(guid string, turnEnd Event, skills []string) 
 	return loader.ClassifySkillLoad(turnEnd, skills), nil
 }
 
-// ReadEvents returns the events of the run identified by guid that lie past byte offset, and the offset to resume from.
-// A partial trailing line stays unconsumed, a parse error returns the original offset,
-// and an absent events file returns no events and the original offset, matching pollEventsTick.
+// ReadEvents returns the events of the run identified by guid past byte offset, and the offset to resume from.
+// A partial trailing line stays unconsumed; a parse error returns the original offset;
+// an absent events file returns no events and the original offset.
 //
-// When the run's engine reads session signals, each event gets the time of the signal marked as yielding an event from the same line, paired in file order.
+// When the run's engine reads session signals, each event gets the time of the signal marked as yielding it.
+// Marked signals pair with events in file order.
 // The offset then advances only by the bytes the signal reading consumed.
 // A time stamp read ahead of its payload therefore stays unconsumed until the payload arrives.
 // When the marked signals and the events do not pair one to one, every event of the read gets the zero time.
@@ -141,7 +147,8 @@ func stampEventTimes(events []Event, signals []SessionSignal) {
 	}
 }
 
-// SessionState returns the session state of the run identified by guid, read from files at the runner's clock.
+// SessionState returns the session state of the run identified by guid, read from its files.
+// The time comes from the runner's clock.
 func (r *Runner) SessionState(guid string) (RunSessionState, error) {
 	if r.toldErr != nil {
 		return RunSessionState{}, r.toldErr
@@ -157,13 +164,13 @@ func (r *Runner) SessionState(guid string) (RunSessionState, error) {
 	return readRunSessionState(rs, engine, r.clock.Now()), nil
 }
 
-// SessionState returns the session state of this run, the same reading Runner.SessionState gives for its strand guid.
-// It reads files only and writes nothing, so it is safe to call while the run's Wait runs on another goroutine.
+// SessionState returns the session state of this run, read from its files.
+// It reads files only and writes nothing, so it is safe to call while another goroutine waits on the run.
 func (run *Run) SessionState() (RunSessionState, error) {
 	return run.runner.SessionState(run.StrandGUID())
 }
 
-// ContextTokens returns the provider's context usage as of turnEnd, via the SessionCycler of the engine the run identified by guid records.
+// ContextTokens returns the provider's context usage as of turnEnd, for the run identified by guid.
 // A reading with Known false means usage could not be read.
 func (r *Runner) ContextTokens(guid string, turnEnd Event) (ContextReading, error) {
 	if r.toldErr != nil {
@@ -184,7 +191,8 @@ func (r *Runner) ContextTokens(guid string, turnEnd Event) (ContextReading, erro
 	return cycler.ContextTokens(turnEnd), nil
 }
 
-// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, via the SessionCycler of the engine the run identified by guid records.
+// CompactedSince returns the newest compaction boundary after since in the transcript that turnEnd names.
+// The boundary carries the turn ends that follow it.
 // found is false when there is none or the transcript could not be read.
 func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (CompactionBoundary, bool, error) {
 	if r.toldErr != nil {
@@ -206,7 +214,7 @@ func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (Co
 	return boundary, found, nil
 }
 
-// UsageLimit returns the usage-limit reading of the transcript turnEnd names, via the ActivityReader of the engine the run identified by guid records.
+// UsageLimit returns the usage-limit reading of the transcript that turnEnd names, for the run identified by guid.
 // An engine without the capability reads no usage limit.
 func (r *Runner) UsageLimit(guid string, turnEnd Event) (UsageLimit, error) {
 	if r.toldErr != nil {
@@ -228,15 +236,24 @@ func (r *Runner) UsageLimit(guid string, turnEnd Event) (UsageLimit, error) {
 }
 
 // SessionIdle reports whether the run identified by guid can take typed input.
-// The answer is the readiness reading over the run's hook-derived session state and one pane capture, styled where the engine can blank its placeholder:
-// a ready reading is idle and a held one is not idle with its Reason, and the runner keeps one turn-start hold per strand across calls.
-// A ready reading beside a pane that does not show the provider idle still answers idle, and logs the disagreement with the pane's last lines at Debug.
+// The answer is the readiness reading over the run's hook-derived session state and one pane capture.
+// The pane capture is styled where the engine can blank its placeholder.
+// A ready reading is idle; a held one is not idle, with its Reason.
+// The runner keeps one turn-start hold per strand across calls.
+// A ready reading beside a pane that does not show the provider idle still answers idle;
+// it logs the disagreement at Debug, with the pane's last lines.
 // An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
-// The engine is the one the run's record names, or for a strand with no run record the live strand's provider, so an opened session is read by its own engine.
+// The engine is the one the run's record names, or for a strand with no run record the live strand's provider.
+// So an opened session is read by its own engine.
 // A guid that no run record names and reed does not track as a live strand fails.
-// TooShort, Draft and NoInputBox are filled only for an answer that is not idle, on the pane fallback as on the readiness reading.
-// NoTurn and TurnEndedAt are filled for a ready or held readiness reading that finds no turn, the operator-activity hold included;
-// on the pane fallback NoTurn is the pane's idle answer or, for an engine with InterruptGuard, true when the box was found, the pane is not too short and no running turn shows, and TurnEndedAt stays zero.
+// TooShort, Draft and NoInputBox are filled only for an answer that is not idle.
+// They are filled on the pane fallback as on the readiness reading.
+// NoTurn and TurnEndedAt are filled for a ready or held readiness reading that finds no turn.
+// This includes the operator-activity hold.
+// On the pane fallback, NoTurn is the pane's idle answer.
+// For an engine with InterruptGuard, NoTurn is instead true when the following hold:
+// the box was found, the pane is not too short, and no running turn shows.
+// TurnEndedAt stays zero on the pane fallback.
 func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
 		return IdleProbe{}, r.toldErr
@@ -304,7 +321,8 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	return probe, nil
 }
 
-// sendSessionSequence sends the sequence that sequenceFor returns for the cycler into the live pane of the run identified by guid, through the guarded send path.
+// sendSessionSequence sends the sequence that sequenceFor returns into the live pane of the run identified by guid.
+// It goes through the guarded send path.
 // A non-empty landing makes a session-start line of that source the send's confirmation.
 func (r *Runner) sendSessionSequence(guid string, landing SessionStartSource, sequenceFor func(SessionCycler) []PaneInput) error {
 	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
@@ -329,7 +347,8 @@ func (r *Runner) sendSessionSequence(guid string, landing SessionStartSource, se
 }
 
 // ClearSession sends the provider's clear-session command into the live pane of the run identified by guid.
-// Like every verified send it waits for an idle session first and fails with ErrSessionBusy if the session or its input box stays held, typing nothing.
+// It waits for an idle session first,
+// and it fails with ErrSessionBusy, typing nothing, if the session or its input box stays held.
 func (r *Runner) ClearSession(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -338,7 +357,8 @@ func (r *Runner) ClearSession(guid string) error {
 }
 
 // ReloadPlugins sends the provider's reload-plugins command into the live pane of the run identified by guid.
-// Like ClearSession it fails with ErrSessionBusy while the session or its input box is held.
+// It waits for an idle session first,
+// and it fails with ErrSessionBusy while the session or its input box is held.
 func (r *Runner) ReloadPlugins(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -346,9 +366,10 @@ func (r *Runner) ReloadPlugins(guid string) error {
 	return r.sendSessionSequence(guid, "", SessionCycler.ReloadPluginsSequence)
 }
 
-// TypeColor sends the provider's color command for color into the live pane of the run identified by guid, for a caller that colors the session itself.
+// TypeColor sends the provider's color command for color into the live pane of the run identified by guid.
+// It suits a caller that colors the session itself.
 // A provider with no color command, or none for color, types nothing.
-// Like every verified send it fails with ErrSessionBusy while the session or its input box is held, so the caller may retry.
+// It fails with ErrSessionBusy while the session or its input box is held, so the caller may retry.
 func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -365,8 +386,10 @@ func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	return typeColor(sc, color)
 }
 
-// CompactSession sends the provider's compact-session command, keeping what focus names, into the live pane of the run identified by guid.
-// Like ClearSession it fails with ErrSessionBusy while the session or its input box is held.
+// CompactSession sends the provider's compact-session command into the live pane of the run identified by guid.
+// The command keeps what focus names.
+// It waits for an idle session first,
+// and it fails with ErrSessionBusy while the session or its input box is held.
 // It refuses a focus containing a newline, since the focus is sent as one line.
 func (r *Runner) CompactSession(guid, focus string) error {
 	if r.toldErr != nil {

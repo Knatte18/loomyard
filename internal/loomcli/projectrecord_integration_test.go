@@ -1,4 +1,4 @@
-// projectrecord_integration_test.go drives the beam-side decision seams and the project record commit over a hub forged by hubforge.
+// projectrecord_integration_test.go drives the beam-side decision seams and the project record commit over a forged hub.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -24,7 +24,8 @@ const (
 	testShort = "tst"
 )
 
-// beamHub forges a hub holding the beam pair testBeam, a member entry whose pair was forked from the beam, a member entry with no pair and a pair forked from the beam that the board does not list, and returns the hub with a location for each worktree name.
+// beamHub forges a hub holding the beam pair testBeam and two pairs forked from it.
+// It returns the hub and a location lookup by worktree name.
 func beamHub(t *testing.T) (hub *hubforge.Hub, location func(name string) *lymcwd.Location) {
 	t.Helper()
 	hub = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -136,7 +137,8 @@ func TestDecisionParent_ABeamsRecordIsItsOwnOrchs(t *testing.T) {
 	})
 }
 
-// TestCommitRunRecord_ProjectRecordCommitsItsDirectory pins that a project record commit stages the project directory, whose record then reads back from HEAD, and not the discussion directory.
+// TestCommitRunRecord_ProjectRecordCommitsItsDirectory pins that a project record commit stages the project directory:
+// its record reads back from HEAD, and the discussion directory is not staged.
 func TestCommitRunRecord_ProjectRecordCommitsItsDirectory(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

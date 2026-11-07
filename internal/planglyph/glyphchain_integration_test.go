@@ -1,4 +1,5 @@
-// glyphchain_integration_test.go carries each glyph-chain shape row's legs past the plan gate through a real commit's delta, handle binding, the on-disk rewrite and the done-checks, spawning git through Delta — the reason this file carries the integration build tag.
+// glyphchain_integration_test.go carries each glyph-chain shape row's legs past the plan gate through real git.
+// Each leg runs through a commit's delta, handle binding, the on-disk rewrite and the done-checks.
 // glyphchain_test.go holds the shape table and the untagged plan-gate legs.
 
 package planglyph
@@ -24,7 +25,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// newGlyphChainRepo returns a delta fixture repository holding a copy of the committed fixture module, and the SHA of the commit that adds it.
+// newGlyphChainRepo returns a delta fixture repository holding a copy of the committed fixture module.
+// It also returns the SHA of the commit that adds it.
 func newGlyphChainRepo(t *testing.T) (*deltaFixtureRepo, string) {
 	t.Helper()
 	f := newDeltaFixtureRepo(t)
@@ -37,7 +39,8 @@ func newGlyphChainRepo(t *testing.T) (*deltaFixtureRepo, string) {
 }
 
 // commitEdits applies edits to the fixture repository's files, commits them and returns the commit's SHA.
-// Each non-empty old must occur exactly once in its file, so a stale edit fails loudly instead of silently changing nothing.
+// Each non-empty old must occur exactly once in its file,
+// so a stale edit fails loudly instead of silently changing nothing.
 func (f *deltaFixtureRepo) commitEdits(edits []codeEdit) string {
 	f.t.Helper()
 	for _, e := range edits {
@@ -64,7 +67,8 @@ func (f *deltaFixtureRepo) commitEdits(edits []codeEdit) string {
 	return f.git("rev-parse", "HEAD")
 }
 
-// bindCardOne binds card 1's handles of the plan in dir from the delta between base and head, requiring no finding, and returns the plan re-read from disk.
+// bindCardOne binds card 1's handles of the plan in dir from the delta between base and head.
+// It fails the test on any finding and returns the plan re-read from disk.
 func bindCardOne(t *testing.T, f *deltaFixtureRepo, dir, base, head string) *planparser.Plan {
 	t.Helper()
 	plan, err := planparser.ParsePlan(dir)
@@ -89,7 +93,8 @@ func bindCardOne(t *testing.T, f *deltaFixtureRepo, dir, base, head string) *pla
 	return bound
 }
 
-// requireDoneChecksClean fails unless DoneChecks over cards reports nothing against the fixture repository's current tree.
+// requireDoneChecksClean fails unless DoneChecks over cards reports nothing.
+// It checks against the fixture repository's current tree.
 func requireDoneChecksClean(t *testing.T, plan *planparser.Plan, cards []planparser.Card, root string) {
 	t.Helper()
 	findings, err := DoneChecks(plan, cards, root)
@@ -101,7 +106,9 @@ func requireDoneChecksClean(t *testing.T, plan *planparser.Plan, cards []planpar
 	}
 }
 
-// TestGlyphChain_Delta runs each shape row's Create, Rename and Delete legs, each in its own repository, past the plan gate through a committed code change, the delta, handle binding and the done-checks.
+// TestGlyphChain_Delta runs each shape row's Create, Rename and Delete legs, each in its own repository.
+// A leg passes the plan gate.
+// A committed code change then goes through the delta, handle binding and the done-checks.
 func TestGlyphChain_Delta(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -162,14 +169,15 @@ func TestGlyphChain_Delta(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_UnreferencedHandle pins that a Create handle no other card references is bound at record-batch and passes its done-check.
+// TestGlyphChain_UnreferencedHandle pins that a Create handle no other card references is bound at record-batch.
+// The bound handle also passes its done-check.
 func TestGlyphChain_UnreferencedHandle(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, base := newGlyphChainRepo(t)
 	dir, plan := writeLanguagePlan(t, "go", []string{createCard(&createLeg{"plan:shapes#draft", "func NewFunc() int", ""})})
-	// The plan gate's own verdict is TestGlyphChain_CrossCard's; here it only canonicalizes the draft handle the bind matches.
+	// This call does not assert the findings; it only canonicalizes the draft handle the bind matches.
 	if _, err := ValidateFormat(plan, f.root); err != nil {
 		t.Fatalf("ValidateFormat(...) returned error: %v", err)
 	}
@@ -182,7 +190,10 @@ func TestGlyphChain_UnreferencedHandle(t *testing.T) {
 	requireDoneChecksClean(t, bound, bound.Cards[:1], f.root)
 }
 
-// TestGlyphChain_ReworkGenerations pins the rework-generations scenario: three cards share a file and validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports no blocking finding and no redundant-file-target for card 2's file and handle built in that file.
+// TestGlyphChain_ReworkGenerations pins the rework-generations scenario.
+// Three cards share a file and validate clean at the plan gate.
+// Once card 1's code is bound, a dispatch with card 1 completed reports no blocking finding.
+// It also reports no redundant-file-target for card 2's file and for the handle built in that file.
 func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -211,7 +222,9 @@ func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_RedundantPackage pins redundant-package-target across the plan gate and dispatch: a package self glyph beside a handle of that package is flagged both before and after card 1's handle is bound, and a rename's to-side handle belongs to the old glyph's package, not the package its draft spelling names.
+// TestGlyphChain_RedundantPackage pins redundant-package-target across the plan gate and dispatch.
+// A package self glyph beside a handle of that package is flagged both before and after card 1's handle is bound.
+// A rename's to-side handle belongs to the old glyph's package, not the package its draft spelling names.
 func TestGlyphChain_RedundantPackage(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -300,11 +313,15 @@ const runnerDecl = "package callees\n\n// Runner has two methods another package
 // unrelatedCalls calls Run and Call on receivers other than callees.Runner: Run on line 14 and 15, Call on line 16.
 const unrelatedCalls = "package callers\n\nimport (\n\t\"os/exec\"\n\t\"reflect\"\n)\n\ntype local struct{}\n\n// Run and Call are only named in this comment and on the receivers below.\nfunc (local) Run() int { return 0 }\n\nfunc unrelated(c *exec.Cmd, l local, v reflect.Value) {\n\t_ = c.Run()\n\t_ = l.Run()\n\t_ = v.Call(nil)\n}\n"
 
-// usesOfMethod calls callees.Thing.Method on a value (line 7), a pointer (line 9), a type embedding Thing (line 11) and as a method value (line 13).
+// usesOfMethod calls callees.Thing.Method on a value (line 7) and on a pointer (line 9).
+// It also calls it through a type embedding Thing (line 11) and as a method value (line 13).
 const usesOfMethod = "package callers\n\nimport \"example.com/glyphchain/callees\"\n\ntype usesEmbeds struct{ callees.Thing }\n\nfunc usesValue(t callees.Thing) int { return t.Method() }\n\nfunc usesPointer(t *callees.Thing) int { return t.Method() }\n\nfunc usesPromoted(e usesEmbeds) int { return e.Method() }\n\nfunc usesMethodValue(t callees.Thing) func() int { return t.Method }\n"
 
-// TestGlyphChain_CallerCoverageTyped pins caller-uncovered with a real go list load: type information tells receivers apart, and the import-path scan answers where the load has none.
-// The same rows pin delete-before-reference over that load: one load serves both checks, a deleted method's calls inside a later card's code are blocking where the load types them, and dispatch, which loads nothing, reports a name match informationally.
+// TestGlyphChain_CallerCoverageTyped pins caller-uncovered with a real go list load:
+// type information tells receivers apart, and the import-path scan answers where the load has none.
+// The same rows pin delete-before-reference over that load: one load serves both checks.
+// A deleted method's calls inside a later card's code are blocking where the load types them.
+// Dispatch, which loads nothing, reports a name match informationally.
 func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -327,17 +344,21 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 		files map[string]string
 		// dropRootModule removes the fixture's root go.mod, which skips the load.
 		dropRootModule bool
-		// done is the number of leading cards passed as done, which runs the plan through validateFormatAfter instead of planGatePass.
+		// done is the number of leading cards passed as done;
+		// it runs the plan through validateFormatAfter instead of the plan gate.
 		done int
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
 		want []string
 		// wantDetails are substrings some caller-uncovered finding's detail holds.
 		wantDetails []string
-		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding of the plan gate, sorted: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
+		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding of the plan gate, sorted:
+		// "<file>:<line>" when blocking and "<file> at line <n>" when informational.
 		wantDeleteOrder []string
-		// wantDispatchDeleteOrder is wantDeleteOrder's shape for ValidateDispatch over the same plan, which takes no loader.
+		// wantDispatchDeleteOrder lists "<severity> <location>" for every delete-before-reference finding of ValidateDispatch;
+		// it takes no loader; its rows are sorted and its locations take the forms wantDeleteOrder documents.
 		wantDispatchDeleteOrder []string
-		// bothChecks marks a row whose plan reports caller-uncovered and delete-before-reference, which must share exactly one load.
+		// bothChecks marks a row whose plan reports caller-uncovered and delete-before-reference;
+		// the two checks must share exactly one load.
 		bothChecks bool
 	}{
 		{

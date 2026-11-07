@@ -15,8 +15,9 @@ import (
 )
 
 // SlackGeometry builds the slackengine.Geometry of the hub at hubPath.
-// A hub with no recorded shortname is the error CreelGeometry returns for it.
-// The token path lies in the per-user credential directory, and a machine where none resolves is an error naming the environment variables that decide it.
+// A hub with no recorded shortname is an error.
+// The token path lies in the per-user credential directory.
+// A machine where that directory does not resolve is an error naming the environment variables that decide it.
 func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 	creel, err := CreelGeometry(hubPath, "")
 	if err != nil {

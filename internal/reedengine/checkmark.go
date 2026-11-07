@@ -1,4 +1,5 @@
-// checkmark.go sets the session check mark that line 2 of the status bar shows: a check's text, state and the start of its step in flight, as session user options.
+// checkmark.go sets the session check mark that line 2 of the status bar shows.
+// The check mark is its text, its state and the start of its step in flight, held as session user options.
 
 package reedengine
 
@@ -8,10 +9,11 @@ import (
 	"time"
 )
 
-// SetCheckMark sets this session's check mark to text in state, its step in flight started at start, or clears the mark when text is empty.
+// SetCheckMark sets this session's check mark to text in state, with its step in flight started at start.
 // A zero start clears the start alone, so the bar shows no seconds.
+// An empty text clears the mark.
 // The mark is display only: nothing is persisted and it dies with the session.
-// A failure, a session that is not up among them, is returned for the caller to log.
+// A failure is returned for the caller to log, including when no session is up.
 func (e *Engine) SetCheckMark(state, text string, start time.Time) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {

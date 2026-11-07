@@ -1,4 +1,5 @@
-// rebaseline_test.go exercises Rebaseline, reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
+// rebaseline_test.go exercises Rebaseline.
+// It reuses the begin fixture for the foreign-edit scenario and builds bare RebaselineDeps for the card-set refusals.
 package websterengine_test
 
 import (
@@ -34,9 +35,9 @@ func doneBatchOne() *websterengine.BatchState {
 	}
 }
 
-// TestRebaseline_ForeignEditAcceptedMidRun walks the mid-run loop: begin-batch refuses a foreign plan
-// edit naming rebaseline, Rebaseline accepts it, and the next begin-batch succeeds with the done
-// record intact.
+// TestRebaseline_ForeignEditAcceptedMidRun walks the mid-run loop.
+// begin-batch refuses a foreign plan edit that names rebaseline.
+// Rebaseline accepts that edit, and the next begin-batch succeeds with the done record intact.
 //
 //testtiming:keep pins the whole refuse, rebaseline, re-begin loop across three calls on one state; the covering tests each make one of those calls
 func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
@@ -72,10 +73,10 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	}
 }
 
-// reStep is the step a row under the loom's Webster row tells Rebaseline to name in place of the manual verbs.
+// reStep is the way forward a refusal names under a set step, in place of the manual verbs.
 const reStep = "re-step the webster row"
 
-// recordPlanFileHashes records, as the state's plan-file hashes, the hash of every markdown file in the deps' plan directory.
+// recordPlanFileHashes sets the state's plan-file hashes to the hash of each markdown file in the deps' plan directory.
 func recordPlanFileHashes(t *testing.T, deps *websterengine.RebaselineDeps) {
 	t.Helper()
 	entries, err := os.ReadDir(deps.Plan.Dir)
@@ -92,7 +93,7 @@ func recordPlanFileHashes(t *testing.T, deps *websterengine.RebaselineDeps) {
 }
 
 // skipAsRoot skips the test for root, whom file mode bits do not bind.
-// A caller is a test Windows never generates, since mode bits bind nothing there either.
+// A caller is a test that Windows never generates, since mode bits bind nothing there either.
 func skipAsRoot(t *testing.T) {
 	t.Helper()
 	if os.Geteuid() == 0 {
@@ -119,7 +120,9 @@ func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSou
 
 func (fixedBatcher) Name() string { return "fixed" }
 
-// rebaselineDeps builds bare RebaselineDeps over a plan holding planCards, a state recording partition (nil for a state from before partitions) and recs, and active as the tail's batchifier.
+// rebaselineDeps builds bare RebaselineDeps over a plan holding planCards.
+// The state records partition (nil for a state from before partitions) and recs.
+// active is the tail's batchifier.
 func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []websterengine.PartitionBatch, active batcher.Batcher, recs map[int]*websterengine.BatchState) websterengine.RebaselineDeps {
 	t.Helper()
 	planDir := seedPlanDir(t)
@@ -139,12 +142,14 @@ func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []webst
 	}
 }
 
-// TestRebaseline_CardSet proves Rebaseline compares the cards of every batch up to the last begun one with the edited plan's:
-// a removed, renumbered, reordered or inserted card at or before the last begun card refuses, naming the batch, the card and the fresh-restart steps, whether or not the record carries a StartSHA;
-// cards after it are re-batched by the active batchifier, with the begun batch keeping its recorded profile and estimate and the new partition replacing the old only on accept;
-// a tail whose order breaks a dependency refuses with ErrBatchOrder;
-// a state without a partition regroups by identity and records none;
-// and a legacy record with no card set is accepted and restamped.
+// TestRebaseline_CardSet proves Rebaseline compares each batch's cards up to the last begun one with the edited plan's.
+// A removed, renumbered, reordered or inserted card at or before the last begun card refuses.
+// The refusal names the batch, the card and the fresh-restart steps, whether or not the record carries a StartSHA.
+// Cards after it are re-batched by the active batchifier.
+// The begun batch keeps its recorded profile and estimate, and the new partition replaces the old only on accept.
+// A tail whose order breaks a dependency refuses with ErrBatchOrder.
+// A state without a partition regroups by identity and records none.
+// A legacy record with no card set is accepted and restamped.
 func TestRebaseline_CardSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -179,7 +184,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 		// wantPartition is State.Partition after the call;
 		// a refusal expects the partition it began with.
 		wantPartition []websterengine.PartitionBatch
-		// wantTailPosition, when set, is the position the regrouped tail's first batch records in its Breakdown, and wantPartition is not compared.
+		// wantTailPosition, when set, is the Breakdown position of the regrouped tail's first batch; wantPartition is unchecked.
 		wantTailPosition int
 		// permissionBits marks a row that needs file mode bits to deny a read, which Windows never does.
 		permissionBits bool
@@ -187,7 +192,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 		step string
 		// prepare adjusts the deps before the call.
 		prepare func(t *testing.T, deps *websterengine.RebaselineDeps)
-		// wantText lists what a refusal names beyond the default fresh-restart steps, which a row under a set step does not have;
+		// wantText lists what a refusal names beyond the default fresh-restart steps, which a row under a set step lacks;
 		// a row with wantText expects an error even without wantErr.
 		wantText []string
 	}{
@@ -511,11 +516,12 @@ func writePlanFile(t *testing.T, fx *beginFixture, name, body string) {
 	}
 }
 
-// TestRebaseline_EditedPlan proves which plan edits Rebaseline accepts after batch 1 was begun and
-// finished: an edited unbegun card it is told about is accepted, recording its hash and leaving the
-// begun record alone, as is a begun card's edit under a record without card hashes and any edit under
-// a state without plan-file hashes; a begun card's changed body, an edited card it was not told about
-// and an edited overview refuse, naming what changed and leaving the fingerprint.
+// TestRebaseline_EditedPlan proves which plan edits Rebaseline accepts after batch 1 is begun and finished.
+// An edited unbegun card the call names is accepted: its hash is recorded and the begun record is left alone.
+// A begun card's edit under a record without card hashes is accepted.
+// So is any edit under a state without plan-file hashes.
+// A begun card's changed body, an edited card the call does not name, and an edited overview refuse.
+// Each refusal names what changed and leaves the fingerprint unchanged.
 func TestRebaseline_EditedPlan(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -828,9 +834,13 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 	}
 }
 
-// TestRebaseline_OverviewFrameUnreadable proves an overview Rebaseline cannot read a frame from refuses with the reason:
-// an overview that loses its Card Index after the verb parsed the plan refuses as transient, naming the re-run or, with a step set, the re-step, through the index-only check when the state records plan-file hashes and through the restamp when it records none;
-// and a changed overview in a run with an empty recorded frame refuses with the cause, one of no recorded overview hash, an absent baseline copy or a copy without a Card Index, the last two naming the copy's path, and logs that cause once at Info.
+// TestRebaseline_OverviewFrameUnreadable proves that a Rebaseline which cannot read a frame refuses with the reason.
+// An overview that loses its Card Index after the verb parsed the plan refuses as transient.
+// The refusal names the re-run, or the re-step when a step is set.
+// The way forward is the index-only check when the state records plan-file hashes, and the restamp when it records none.
+// A changed overview in a run with an empty recorded frame refuses with the cause:
+// no recorded overview hash, an absent baseline copy, or a copy without a Card Index.
+// The last two name the copy's path, and the cause is logged once at Info.
 // The log capture swaps the logger's process-global output and verbosity, so no row runs in parallel.
 func TestRebaseline_OverviewFrameUnreadable(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -943,7 +953,8 @@ func TestRebaseline_OverviewFrameUnreadable(t *testing.T) {
 	}
 }
 
-// requireNoManualVerb fails the test when err's text names a verb an agent would run by hand, which no refusal on the Webster row's path may do.
+// requireNoManualVerb fails the test when err's text names a verb an agent would run by hand;
+// no refusal on this path may name one.
 func requireNoManualVerb(t *testing.T, err error) {
 	t.Helper()
 	for _, manual := range []string{"lym webster rebaseline", "lym webster run"} {
@@ -984,7 +995,8 @@ func checkBegunCardRestamped(t *testing.T, fx *beginFixture, before websterengin
 	}
 }
 
-// checkInFlightCardAmended asserts the accepted edit of an in-flight batch's card restamped it like a terminal one and also left exactly one unrendered AmendedCards entry for it.
+// checkInFlightCardAmended asserts that an accepted edit of an in-flight batch's card restamps it like a terminal one.
+// It also asserts exactly one unrendered AmendedCards entry for that card.
 func checkInFlightCardAmended(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
 	t.Helper()
 	checkBegunCardRestamped(t, fx, before, res)
@@ -997,9 +1009,11 @@ func checkInFlightCardAmended(t *testing.T, fx *beginFixture, before websterengi
 	}
 }
 
-// handlePlan is a three-card plan whose card 2 declares a handle; with cardOneUsesHandle, card 1 Uses it in the given spelling,
+// handlePlan returns a three-card plan whose card 2 declares a handle.
+// When cardOneUsesHandle is set, card 1 Uses the handle in the given spelling,
 // so canonicalizing card 2's draft handle rewrites card 1 as well.
-// Card 1 comes first in a plan that passes the format checks, so the Uses edge is added only after batch 1 was begun, as a mid-run plan edit.
+// Card 1 comes first in a plan that passes the format checks,
+// so the Uses edge is added only after batch 1 is begun, as a mid-run plan edit.
 func handlePlan(draft, cardOneUsesHandle bool) plankit.Plan {
 	spelling := "Baz"
 	if draft {
@@ -1027,8 +1041,9 @@ func handlePlan(draft, cardOneUsesHandle bool) plankit.Plan {
 	}
 }
 
-// beginThenLeaveHandleDraft returns a fixture whose batch 1 is begun and done, and whose plan on disk carries card 2's handle in draft spelling
-// with state.json describing exactly those bytes, so the next BeginBatch's canonicalization rewrites begun card 1 (#330).
+// beginThenLeaveHandleDraft returns a fixture whose batch 1 is begun and done.
+// Its plan on disk carries card 2's handle in draft spelling, and state.json describes exactly those bytes,
+// so the next BeginBatch's canonicalization rewrites begun card 1.
 func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	t.Helper()
 	fx := newBeginFixture(t)
@@ -1056,9 +1071,12 @@ func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	return fx
 }
 
-// TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330 pins the begin-batch half of #330:
-// when begin-batch's handle canonicalization rewrites a begun card, the card's recorded hash moves to the rewritten bytes, so the card never reads as a foreign edit.
-// The rewrite happens only when a begun card Uses a handle a later card declares, a backward dependency that Rebaseline refuses on the batch order, so the accept after a moved hash is pinned by the record-batch variant in rebaseline_git_test.go.
+// TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330 pins one begin-batch behavior:
+// when handle canonicalization rewrites a begun card, the card's recorded hash moves to the rewritten bytes,
+// so the card never reads as a foreign edit.
+// The rewrite happens only when a begun card Uses a handle that a later card declares.
+// That is a backward dependency that Rebaseline refuses on the batch order,
+// so the accept after a moved hash is pinned by the record-batch variant in rebaseline_git_test.go.
 func TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := beginThenLeaveHandleDraft(t)
@@ -1081,8 +1099,8 @@ func TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330(t *testing
 	}
 }
 
-// TestRebaseline_ForeignEditToBegunCardStaysRefused proves a foreign edit to a begun card is refused
-// by begin-batch without moving the card's recorded hash, so Rebaseline naming that card refuses too.
+// TestRebaseline_ForeignEditToBegunCardStaysRefused proves that begin-batch refuses a foreign edit to a begun card,
+// and it leaves the card's recorded hash unmoved, so a later Rebaseline naming that card refuses too.
 //
 //testtiming:keep pins a refused begin-batch leaving the begun card's recorded hash untouched, so a later rebaseline naming that card still refuses; the covering tests make only one of the two calls
 func TestRebaseline_ForeignEditToBegunCardStaysRefused(t *testing.T) {

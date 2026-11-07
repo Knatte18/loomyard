@@ -1,5 +1,7 @@
-// profile.go reports each batcher profile's cost and quality from finished runs: a per-batch cost table, one row per run and one summary line per profile.
-// Everything but the transcripts' tokens comes from the one repository the tool is pointed at: the runs' webster records and the Code-Review files committed beside them, read through gitrepo's read side only.
+// profile.go reports each batcher profile's cost and quality from finished runs:
+// a per-batch cost table, one row per run and one summary line per profile.
+// Everything but the transcripts' tokens comes from the one repository the tool is pointed at:
+// the runs' webster records and the Code-Review files committed beside them, read through gitrepo's read side only.
 
 package main
 
@@ -26,7 +28,8 @@ type RunRecords interface {
 }
 
 // The run subdirectories under the reviews directory that hold the code review's round files:
-// codeReviewSubdir is the tapestry recipe's run_subdir value of the Code-Review segment, and websterReviewSubdir is the one an older run's Webster-Review segment wrote.
+// codeReviewSubdir is the tapestry recipe's run_subdir value of the Code-Review segment.
+// websterReviewSubdir is the one an older run's Webster-Review segment wrote.
 const (
 	codeReviewSubdir    = "code"
 	websterReviewSubdir = "webster"
@@ -174,14 +177,16 @@ func BuildProfileReport(runs []RunTally, records RunRecords) (ProfileReport, err
 	return report, nil
 }
 
-// plannedBatch is one batch of a run as its last recorded state, or its plan, partitions it.
+// plannedBatch is one batch of a run as the last recorded state partitions it.
+// Without a recorded partition, the run's plan gives the batch.
 type plannedBatch struct {
 	number  int
 	profile string
 	cards   []string
 }
 
-// readRunProfile reads one run's records: its last state's partition and batch records, the forks that ran each batch and the findings of its review files.
+// readRunProfile reads one run's records:
+// its last state's partition and batch records, the forks that ran each batch and the findings of its review files.
 func readRunProfile(run RunTally, records RunRecords) (RunProfile, error) {
 	row := RunProfile{Run: run.Slug}
 	commits, err := records.CommitsWithSubject(websterRecordSubjectPrefix + run.Slug)
@@ -257,7 +262,8 @@ func readRunProfile(run RunTally, records RunRecords) (RunProfile, error) {
 	return row, nil
 }
 
-// readRecordedState decodes state.json as it stood at the record commit rev, leniently, so a state with an older shape still reads.
+// readRecordedState decodes state.json as it stood at the record commit rev.
+// It decodes leniently, so a state with an older shape still reads.
 func readRecordedState(records RunRecords, rev string) (*websterengine.State, error) {
 	data, err := records.FileAtRevision(rev, path.Join(websterengine.DirRel(), "state.json"))
 	if err != nil {
@@ -270,8 +276,8 @@ func readRecordedState(records RunRecords, rev string) (*websterengine.State, er
 	return &state, nil
 }
 
-// reviewDirOf returns the first of the code and the webster review directories at rev that holds a round review file, with its file names.
-// It returns no directory when neither does, and the first read error when a directory could not be listed.
+// reviewDirOf returns the directory at rev holding a round review file, the code one first, with its file names.
+// It returns no directory when neither holds one, and the first read error when a directory could not be listed.
 func reviewDirOf(records RunRecords, rev string) (string, []string, error) {
 	reviewsDir := filepath.ToSlash(loomengine.LoomReviewsDirRel())
 	var firstErr error
@@ -293,7 +299,8 @@ func reviewDirOf(records RunRecords, rev string) (string, []string, error) {
 	return "", nil, firstErr
 }
 
-// countFindings sums the findings of every round-<n>-review.md file directly in the code review directory at rev, or in the webster one of an older run.
+// countFindings sums the findings of every round-<n>-review.md file directly in the review directory at rev:
+// the code one, or the webster one of an older run.
 // It returns a mark instead when there is no such file or one cannot be read or parsed.
 func countFindings(records RunRecords, rev string) (int, string) {
 	dir, names, err := reviewDirOf(records, rev)
@@ -329,7 +336,8 @@ func cardNumber(id string) int {
 	return n
 }
 
-// WriteMarkdown writes the per-batch cost table, the row of each run and the summary line of each profile.
+// WriteMarkdown writes the report as markdown tables.
+// They give the cost of each batch, the figures of each run, and the totals of each profile.
 func (r ProfileReport) WriteMarkdown(w io.Writer) {
 	fmt.Fprintf(w, "## Batch cost\n\n")
 	fmt.Fprintln(w, "| run | batch | profile | cards | measured peak | weight |")

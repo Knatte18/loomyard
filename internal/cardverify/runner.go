@@ -1,4 +1,4 @@
-// runner.go — the runner of a card's `**Verify:**` lines: one line through the platform shell, and every card's line in card order.
+// runner.go runs a card's `**Verify:**` lines: each line through the platform shell, in card order.
 
 package cardverify
 
@@ -20,13 +20,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
-// DefaultTimeout bounds a slot-held line when a Runner's Timeout is zero.
+// DefaultTimeout bounds a slot-held line when no timeout is set.
 const DefaultTimeout = 10 * time.Minute
 
-// gateCallPrefix starts every line IsGateCall accepts.
+// gateCallPrefix holds the words every `lym gate test` call starts with.
 var gateCallPrefix = []string{"lym", "gate", "test"}
 
-// waitFlag is the gate flag a line must hold to run outside the runner's timeout.
+// waitFlag is the gate flag that lets a `lym gate test` line block for its slots itself, outside any timeout.
 const waitFlag = "--wait"
 
 // controlOperators are the shell constructs that make a line more than one `lym gate test` call.
@@ -36,29 +36,37 @@ var controlOperators = []string{";", "&", "|", "\n", "`", "$(", "<", ">"}
 type Runner struct {
 	// Worktree is the directory every line runs in.
 	Worktree string
-	// Slots is the told gate-slot pool a slot-held line takes one slot of; nil runs every line unslotted with the parent's environment.
+	// Slots is the gate-slot pool a slot-held line takes one slot from;
+	// nil runs every line unslotted with the parent's environment.
 	Slots *gateslot.Pool
 	// WaitDir is the directory a slot-held line writes its wait record into while it waits; empty writes none.
 	WaitDir string
 	// Timeout bounds a slot-held line from the moment its slot is held; zero means DefaultTimeout.
 	Timeout time.Duration
-	// Phase, when set, is called with true right before a slot-held line acquires its slot and with false right before any line runs, so a caller can tell the slot wait from the run.
+	// Phase, when set, is called with true right before a slot-held line acquires its slot.
+	// It is called with false right before any line runs, so a caller can tell the slot wait from the run.
 	Phase func(slotWait bool)
-	// Tied, when set, makes a line run tied to the calling process and is called with the line's process tree once the line runs, so a caller can record the tree.
+	// Tied, when set, makes a line run tied to the calling process.
+	// It is called with the line's process tree once the line runs, so a caller can record the tree.
 	Tied func(proc.TreeRecord)
 }
 
-// RunLine runs one `**Verify:**` line through verifyrun in the worktree, its output to out, and returns how it failed, empty when it passed.
-// Cancelling ctx during the slot wait fails the line, and during the line ends its process group.
-// A failure reads `exited <code>`, `failed to start: <err>`, `could not acquire a gate slot: <err>` or `timed out after <timeout>`.
-// A line IsGateCall accepts runs unslotted and outside the timeout, since the gate's own pre-tier ceiling and tier timeouts bound it.
-// Any other line takes one slot of the pool without a cap on the wait, and runs under the timeout counted from the moment the slot is held, with the environment gateslot.HolderEnv returns.
+// RunLine runs one `**Verify:**` line through verifyrun in the worktree, writing its output to out.
+// It returns how the line failed, or the empty string when it passed.
+// Cancelling ctx during the slot wait fails the line; during the run it ends the line's process group.
+// A failure reads `exited <code>`, `failed to start: <err>`, or `timed out after <timeout>`.
+// A failed slot wait reads `could not acquire a gate slot: <err>`.
+// A `lym gate test` call that holds `--wait` runs unslotted and outside the timeout.
+// The gate's own pre-tier ceiling and tier timeouts bound it.
+// Any other line takes one slot of the pool and waits for it without a cap.
+// Its timeout counts from the moment the slot is held.
+// It runs with the environment that gateslot.HolderEnv returns.
 // Neither sees gateslot.PrebuiltLymEnv: a line's own go test builds lym once per test binary.
 func (r Runner) RunLine(ctx context.Context, line string, out io.Writer) string {
 	return r.runLine(ctx, strings.TrimSpace(line), "card verify", out)
 }
 
-// runLine is RunLine with site as the label of the slot holder and wait record.
+// runLine runs line with site as the label of its slot holder and wait record.
 func (r Runner) runLine(ctx context.Context, line, site string, out io.Writer) string {
 	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	if IsGateCall(line) {
@@ -87,14 +95,14 @@ func (r Runner) runLine(ctx context.Context, line, site string, out io.Writer) s
 	return r.execute(ctx, line, gateslot.HolderEnv(env, lease, limits.Tier0Parallel), out, r.timeout())
 }
 
-// phase reports a phase change to Phase when it is set.
 func (r Runner) phase(slotWait bool) {
 	if r.Phase != nil {
 		r.Phase(slotWait)
 	}
 }
 
-// RunCards runs each card's `**Verify:**` value in card order, its output to out, and returns one line per failing card, `card NN-<slug> verify <command> <how>`, where <how> is RunLine's failure.
+// RunCards runs each card's `**Verify:**` value in card order, writing its output to out.
+// It returns one line per failing card, `card NN-<slug> verify <command> <how>`, where <how> is how the line failed.
 // A card with no `**Verify:**` passes, and stopAtFirst ends the run at the first failing card.
 // It returns no error: a line that cannot start is a failed line.
 func (r Runner) RunCards(ctx context.Context, cards []planparser.Card, out io.Writer, stopAtFirst bool) []string {
@@ -145,7 +153,6 @@ func IsGateCall(line string) bool {
 	return false
 }
 
-// timeout returns the slot-held bound.
 func (r Runner) timeout() time.Duration {
 	if r.Timeout <= 0 {
 		return DefaultTimeout

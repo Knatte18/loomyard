@@ -1,10 +1,11 @@
-// launcher_content_test.go tests the pure, build-tag-free launcher content builder for both the Windows (.cmd) and non-Windows (.sh) branches.
-// Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS, both branches are exercised on any warp, including this Windows dev box.
-// The fabric-checkout case asserts fabric's own checkout script content ("fabric checkout" lym args), and the run case asserts the run launcher's own command line ("loom start" lym args).
+// launcher_content_test.go tests the pure launcher content builder for Windows (.cmd) and non-Windows (.sh) branches.
+// Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS;
+// both branches are exercised on any warp, including a Windows dev box.
+// The fabric-checkout case asserts fabric's own checkout script content ("fabric checkout" lym args),
+// and the run case asserts the run launcher's own command line ("loom start" lym args).
 //
-// TestWriteLaunchers_RunScriptContentAndFilename additionally drives writeLaunchers itself, pinning
-// the launcher-filename-unchanged decision's two halves together: the written run launcher's filename
-// stays "run"+ext while its content names "loom start".
+// TestWriteLaunchers_RunScriptContentAndFilename also drives writeLaunchers itself.
+// It pins that the run launcher's filename stays "run"+ext while its content names "loom start".
 
 package fabricengine
 
@@ -176,13 +177,17 @@ func TestLauncherScript(t *testing.T) {
 	})
 }
 
-// TestWriteLaunchers_RunScriptContentAndFilename pins the launcher-filename-unchanged decision's two
-// halves together: writeLaunchers still names the run launcher file "run"+ext, and that file's
-// content still invokes "loom start", not "loom drive" or the retired "loom run" bootstrap sense.
+// TestWriteLaunchers_RunScriptContentAndFilename pins that writeLaunchers names the run launcher file "run"+ext,
+// and that the file's content invokes "loom start", not "loom drive" or "loom run".
 //
-// A scenario in launcherScript/launcherExt's own shape cannot catch a rename of the file, since neither of those constructs a path — runPath is built by filepath.Join(launcherDir, "run"+ext) inside writeLaunchers alone.
-// So this scenario calls writeLaunchers directly, against a hand-built *lymcwd.Location whose HubPath is a t.TempDir(), the same pattern portallauncher_test.go's other tier 1 suites use to avoid a real hub.
-// The menu launcher is pre-seeded at menuLauncherPath(l) so writeLaunchers' never-clobber early return fires before it ever reaches PrimeName(l), which a hand-built Location cannot satisfy.
+// Neither launcherScript nor launcherExt constructs a path, so a scenario in their shape cannot catch a file rename.
+// runPath is built by filepath.Join(launcherDir, "run"+ext) inside writeLaunchers alone.
+// So this scenario calls writeLaunchers directly.
+// It runs against a hand-built *lymcwd.Location whose HubPath is a t.TempDir().
+// It avoids a real hub, the pattern portallauncher_test.go's other tier 1 suites use.
+// The menu launcher is pre-seeded at menuLauncherPath(l).
+// So writeLaunchers' never-clobber early return fires before it reaches PrimeName(l).
+// A hand-built Location cannot satisfy what PrimeName(l) needs.
 //
 //testtiming:keep the run launcher keeping its "run"+ext filename and a content that invokes "loom start"; coverage of its blocks by other tests does not show an assertion of this
 func TestWriteLaunchers_RunScriptContentAndFilename(t *testing.T) {

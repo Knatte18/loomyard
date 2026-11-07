@@ -1,4 +1,5 @@
-// driftwiring_test.go checks the request the loomcli Drift seams hand the detached capture child's start, the records paths the judge snapshot leaves out and the seam that ends the removed drift agents' chairs.
+// driftwiring_test.go checks the loomcli Drift seams that start the detached capture child and end drift agents' chairs.
+// It also checks the records paths the judge snapshot leaves out.
 
 package loomcli_test
 
@@ -58,7 +59,10 @@ func TestLoomRecordsDirs_HoldTheUsageDirectoryUnderTheAnchor(t *testing.T) {
 	}
 }
 
-// TestStrandRoleStopper_StopsOnlyTheToldRoles covers which strands of reed's table the seam ends: a live or present own-window strand of exactly a told role, and no other role, numbered form, dead strand or retiring one, passing a failing table read or stop through.
+// TestStrandRoleStopper_StopsOnlyTheToldRoles covers which strands of reed's table the seam ends.
+// It ends only a live or present own-window strand of exactly a told role.
+// It leaves alone other roles, numbered forms, dead strands and retiring ones.
+// A failing table read or stop passes through.
 func TestStrandRoleStopper_StopsOnlyTheToldRoles(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

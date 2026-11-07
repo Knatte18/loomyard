@@ -1,5 +1,6 @@
-// fixer.go builds the merge fixer's session table, the one cold session Parent-Align and Finalize spawn to fix a merge or test failure inside their row.
-// FixerTable is the pure builder that turns the row's told values into a seatengine.Table; it derives no path of its own (Told-Geometry Invariant).
+// fixer.go builds the merge fixer's session table, the one cold session that fixes a merge or test failure in a row.
+// FixerTable is the pure builder that turns the row's told values into a seatengine.Table;
+// it derives no path of its own (Told-Geometry Invariant).
 
 package landingshed
 
@@ -35,7 +36,8 @@ const fixerRole = "fixer"
 var fixerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // FixerInputs carries the told values one merge fixer session needs.
-// Every field is required except PlanDir, FailureRecordPath, FixReviewPath and LanguageSkills; AlignedTip is required in parent-align mode only.
+// Every field is required except PlanDir, FailureRecordPath, FixReviewPath and LanguageSkills;
+// AlignedTip is required in parent-align mode only.
 type FixerInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
@@ -52,7 +54,8 @@ type FixerInputs struct {
 	// FixReviewPath is the report of a fix review whose findings the fixer fixes; empty when no review rejected the change.
 	// Finalize alone sets it.
 	FixReviewPath string
-	// AlignedTip is the tip the parent's changes are read from: the merge record's aligned tip or, when it holds none, the entry's fork point.
+	// AlignedTip is the tip the parent's changes are read from:
+	// the merge record's aligned tip or, when it holds none, the entry's fork point.
 	// Empty in finalize mode, where the fixer reads no parent change.
 	AlignedTip string
 	// MergedTip is the tip the merge left on the task branch.
@@ -63,16 +66,21 @@ type FixerInputs struct {
 	TaskBranch string
 	// ParentBranch is the branch the task lands on.
 	ParentBranch string
-	// Slug is the task's slug.
+	// Slug is the task's slug, passed to the prompt as the `slug` value.
 	Slug string
 	// LanguageSkills are the run's language skills the session loads after its own, before its prompt.
 	LanguageSkills []string
 }
 
-// FixerTable builds the seatengine.Table of the merge fixer session: one lead that fixes on the task branch and writes the report at in.ReportPath.
-// An empty required input field is an error naming the field, and so is an unknown mode and a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
-// PlanDir, FailureRecordPath and FixReviewPath are optional values in both modes, and AlignedTip is optional in finalize mode only, so an empty AlignedTip in parent-align mode is refused by name.
-// The table's timeout is one turn's, cfg.FixerTimeoutMin; the caller sets the gate and stretches the timeout over the turns it may spend.
+// FixerTable builds the seatengine.Table of the merge fixer session:
+// one lead that fixes on the task branch and writes the report at in.ReportPath.
+// An empty required input field is an error naming the field, and so is an unknown mode.
+// A stencil missing from in.StencilsDir is an error too.
+// These checks fail a mis-wired closure before the row runs, rather than rendering a blank path into the prompt.
+// PlanDir, FailureRecordPath and FixReviewPath are optional values in both modes.
+// AlignedTip is optional in finalize mode only, so an empty AlignedTip in parent-align mode is refused by name.
+// The table's timeout is one turn's, cfg.FixerTimeoutMin;
+// the caller sets the gate and stretches the timeout over the turns it may spend.
 func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},

@@ -1,6 +1,5 @@
-// driverspec.go implements driverSpec, the pure composer building the shuttleengine.Spec the loom driver
-// session launches from. It lives beside bootstrap.go per the pure-decisions-live-in-bootstrap-go
-// Shared Decision.
+// driverspec.go composes the shuttleengine.Spec that the loom driver session launches from.
+// It is pure, and it lives beside bootstrap.go.
 
 package loomcli
 
@@ -10,49 +9,49 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// driverRole is the agent-name role this module's driver spawn carries.
+// driverRole is the agent-name role that the driver spawn carries.
 const driverRole = "driver"
 
-// driverSkills is the skill list the driver loads before its launch prompt: none, since the prompt is the driver's whole procedure.
+// driverSkills is the empty skill list the driver session loads.
+// The launch prompt carries the whole procedure, so the driver loads no skill.
 var driverSkills = []string{}
 
-// driverSpec composes the shuttleengine.Spec the loom driver session launches from, from an already-
-// composed prompt, an already-composed report path, and the resolved driver-role model choice.
+// driverSpec composes the shuttleengine.Spec that the loom driver session launches from.
+// It takes the composed prompt, the composed report path, and the resolved driver-role model choice.
 //
-// Every non-default field is pinned here with its own reason -- the standard this package holds.
+// OutputFiles holds only the report path, since the driver run has exactly one output file.
+// ModelChoice is the resolved engine, model, effort and version, never a raw config alias.
+// Only resolved values mean anything to the engine that reads them.
 //
-// Prompt is the argument verbatim. Skills is driverSkills, empty. OutputFiles is a single-entry slice holding reportPath: the file
-// contract Spec enforces treats a run's output file as its return value, and this run has exactly
-// one.
-// ModelChoice is choice whole, which carries the RESOLVED engine, model id, effort and version, never a raw config alias.
-// Only the resolved values mean anything to the engine that reads them.
-// NameOverride is driverStrandDisplayName, an explicit role: reed refuses an add whose explicit role is already held rather than renumbering it,
-// and the bootstrap's own dead-strand removal (resolveDriverStrandAction) runs before the add, so a corpse never holds the role when the add arrives.
-// The next bootstrap's lookup uses the same constant, and reed's add has no upsert semantics,
-// so add and lookup must agree on this byte-stable role.
+// NameOverride is the explicit driver strand name.
+// Reed refuses an add whose explicit role is already held rather than renumbering it.
+// The bootstrap removes a dead driver strand before the add, so the role is free when the add arrives.
+// The next bootstrap's lookup uses the same constant.
+// Reed's add has no upsert, so add and lookup must agree on one byte-stable role.
 //
-// Interactive is false, which is shuttle's autonomous posture: it is what adds the
-// --dangerously-skip-permissions flag and the operator-prompt deny an unattended session needs.
-// ForkSubagents is true, so the claude engine permits fork subagents and still denies every other subagent type:
-// at an error or interrupted stop the driver spawns one fork of itself to read the traces and repair, which keeps the trace material out of the driver's own context.
-// Requires is background-wake: the driver stencil runs its loop and arbiter as background jobs and wakes on them.
-// Role is the literal "driver", which is what the run directory
-// records and what makes a driver run distinguishable from a producer round. Round is empty, because
-// a driver is not one round of anything. Parent is empty, because the driver is top-level and the
-// panes loom's producers spawn while it runs are its siblings.
-// Segment is the coordinator, because the driver is the session that drives the whole run.
+// Interactive is false, because the session runs unattended.
+// Shuttle then adds the skip-permissions flag and denies operator prompts.
+// ForkSubagents is true: the claude engine permits fork subagents and denies every other type.
+// At an error or interrupted stop the driver forks one of itself to read the traces and repair.
+// The traces stay out of the driver's own context.
+// Requires is background-wake: the driver runs its loop and arbiter as background jobs and wakes on them.
+// Role is the literal "driver", which the run directory records.
+// It tells a driver run apart from a producer round.
+// Round and Parent are empty: a driver is not one round of anything, and it is top-level.
+// Segment is the coordinator, since the driver drives the whole run.
 //
-// Display.Anchor is own-window and must never be hidden: the driver is an agent window of its own, after the overview and before the shell,
-// and it is the session an operator attaches to watch, so a hidden pane would make a run that may last hours legible only through its
-// log file. Display.Focus is false because the flag is persisted on the strand and re-evaluated on
-// every subsequent add, so a true value would re-capture focus on every agent pane the run spawns
-// afterwards.
+// Display.Anchor is own-window and is never hidden.
+// The operator attaches to this session to watch a run that may last hours.
+// A hidden pane would leave only the log file to read.
+// Display.Focus is false.
+// The flag is persisted on the strand and re-evaluated on every later add.
+// True would take focus back on each agent pane the run spawns.
 //
-// Timeout and KeepPane are left at their zero values deliberately.
-// A zero Timeout defaults to run_timeout_min in Spec.validate, and on this path it bounds only shuttle's startup step
-// inside Start -- the startup window itself is startup_timeout_s -- because Wait is never entered: the
-// driver session runs until it stops itself, and this path never waits on it to completion.
-// KeepPane is read only by Wait, so leaving it at its zero value is a statement that nothing on this path reads it, not a choice about pane retention.
+// Timeout and KeepPane stay zero, a statement about this path rather than a retention choice.
+// A zero Timeout defaults to run_timeout_min and, on this path, bounds only the startup step.
+// The startup window is startup_timeout_s.
+// The session is never waited on to completion, so no other timeout covers it.
+// KeepPane is read only when the session is waited on, so zero says nothing about pane retention.
 func driverSpec(prompt string, reportPath string, choice shuttleengine.ModelChoice) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,

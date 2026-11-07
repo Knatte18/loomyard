@@ -1,4 +1,5 @@
-// testmain_test.go runs the package's tests under tmuxkit.Main, so their temp files live in the process run directory and go with it.
+// testmain_test.go runs the package's tests under tmuxkit.Main.
+// That puts their temp files in the process run directory, so they go with it.
 
 package friction
 

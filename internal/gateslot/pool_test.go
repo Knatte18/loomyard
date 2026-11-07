@@ -1,4 +1,5 @@
-// pool_test.go covers the slot pool, its holder records, the inherited slot check, the child environment and the wait records over file locks in a temp directory.
+// pool_test.go covers the slot pool over file locks in a temp directory:
+// its holder records, the inherited slot check, the child environment and the wait records.
 // File locks are not spawns, so the tests stay untagged and run with a shortened poll interval.
 
 package gateslot
@@ -287,7 +288,7 @@ type acquireResult struct {
 	err   error
 }
 
-// acquireSlotsAsync runs AcquireSlots in a goroutine and returns the channel its result arrives on.
+// acquireSlotsAsync runs an acquire of count slots in a goroutine and returns the channel its result arrives on.
 func acquireSlotsAsync(ctx context.Context, pool *Pool, h Holder, count int) <-chan acquireResult {
 	done := make(chan acquireResult, 1)
 	go func() {

@@ -13,7 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel provokes a real non-fs.ErrNotExist stat failure — EACCES on the parent directory — and asserts it refuses without matching the sentinel, per the only-proven-gone-carries-the-sentinel contract.
+// TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel makes the parent directory unreadable,
+// so the stat fails with EACCES rather than fs.ErrNotExist.
+// It asserts the refusal does not match the sentinel: only a path proven gone carries errWorktreeRootGone.
 // Skipped when running as root, since root ignores the permission bit entirely.
 func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testing.T) {
 	tiergate.Require(t, 0)

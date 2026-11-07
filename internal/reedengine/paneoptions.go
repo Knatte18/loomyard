@@ -1,6 +1,8 @@
-// paneoptions.go sets the tmux user options that identify strands: @strand, @strand_color and @lym_strand_name on each strand pane, @lym_strands on the strand window.
+// paneoptions.go sets the tmux user options that identify strands:
+// @strand, @strand_color and @lym_strand_name on each strand pane, and @lym_strands on the strand window.
 // It also names @lym_console, the marker of the operator console pane that the key bindings read.
-// No Go decision reads them back but the button click, which reads @lym_strand_name for {strand}; the status bar and the key bindings read the rest.
+// No Go decision reads them back but the button click, which reads @lym_strand_name for {strand};
+// the status bar and the key bindings read the rest.
 
 package reedengine
 
@@ -23,11 +25,13 @@ func strandLabel(name string) string {
 	return parsed.Role
 }
 
-// strandNamePaneOption is the pane option holding a strand's full name, which a button click reads to fill {strand}; @strand holds only the role.
+// strandNamePaneOption is the pane option holding a strand's full name, which a button click reads to fill {strand};
+// @strand holds only the role.
 const strandNamePaneOption = "@lym_strand_name"
 
-// setStrandPaneOptionsLocked sets @strand and strandNamePaneOption on a strand's pane, and @strand_color when the strand's segment resolves to a color, else unsets it.
-// An empty strand name unsets strandNamePaneOption, so a stale name never outlives a relaunch under no name.
+// setStrandPaneOptionsLocked sets @strand and @lym_strand_name on a strand's pane.
+// It sets @strand_color when the strand's segment resolves to a color, and unsets it otherwise.
+// An empty strand name unsets @lym_strand_name, so a stale name never outlives a relaunch under no name.
 // A failure is logged and never fails the step.
 func (e *Engine) setStrandPaneOptionsLocked(paneID string, s Strand) {
 	if err := e.tmux.run("set-option", "-p", "-t", paneID, "@strand", strandLabel(s.Name)); err != nil {
@@ -71,7 +75,8 @@ func (e *Engine) markStrandWindowLocked(windowTarget string) {
 	}
 }
 
-// markResolvedStrandWindowLocked marks the strand window once Selvage exists and the window resolves, then checks the shell window, which is how a fresh boot names its one window shell.
+// markResolvedStrandWindowLocked marks the strand window once Selvage exists and the window resolves.
+// It then checks the shell window, which is how a fresh boot names its one window shell.
 // An unresolved window is logged and skips the mark and the check.
 func (e *Engine) markResolvedStrandWindowLocked(st *ReedState) {
 	windowTarget, err := e.strandWindowTargetFor(st)

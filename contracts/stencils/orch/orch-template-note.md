@@ -1,4 +1,5 @@
-<!-- This is the template for the orch note, rendered to a file by RenderNoteTemplateFile (internal/orchengine/prompt.go).
+<!-- This is the template for the orch note.
+     RenderNoteTemplateFile (internal/orchengine/prompt.go) renders it to a file.
      The session fills it in at the path the note request names and ends its turn.
      It carries no markers. -->
 # Orch note

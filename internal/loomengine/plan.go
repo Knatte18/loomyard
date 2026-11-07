@@ -1,30 +1,36 @@
 // plan.go implements PlanTable, the Plan-Write row's seat-table builder.
-// Like the Discussion producer (discussion.go), the Plan producer is not a Go module — it is a
-// prompt/profile fed to the seat engine, one lead seat producing one artifact.
+// The Plan producer, like the Discussion producer in discussion.go, is not a Go module.
+// It is a prompt and profile fed to the seat engine: one lead seat produces one artifact.
 // The decision record, `_lym/discussion/decision-record.md` (see layout.DiscussionDecisionRecord), is its design input;
 // `_lym/discussion/relevant.md` is its head start on the code when present, never scope.
 // It reads nothing else from `_lym/discussion/`, never the support log, and never reads the board.
-// Its output is a plan-format flat-card plan written into `_lym/plan/`: one `NN-<card-slug>.md`
-// per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
-// contracts/specs/loom-plan-spec.md).
-// The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review
-// logic of its own beyond the twill lens review below (the Bouncer+Burler segment's separate job); `Plan-Bouncer`'s approved
-// settle is what flips `approved` to `true`, immediately before its commit seam fires.
+// Its output is a plan-format flat-card plan written into `_lym/plan/`:
+// one `NN-<card-slug>.md` per card plus `00-overview.md`, written last as the run's done-sentinel.
+// The format is in contracts/specs/loom-plan-spec.md.
+// The producer always writes `approved: false` in the frontmatter of `00-overview.md`.
+// It has no review logic of its own beyond the twill lens review below;
+// the plan review is the Bouncer+Burler segment's separate job.
+// The approved settle of `Plan-Bouncer` flips `approved` to `true`, immediately before its commit seam fires.
 //
-// With plan_lenses set the lead carries the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents are authorized.
+// With plan_lenses set, the lead carries the twill directive rendered into the plan template between Step 2 and Step 3.
+// Fork subagents are authorized.
 // The directive's lenses come from the lenses.yaml fan plan_lenses names.
-// The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it, then spawns the lens forks and judges their findings as a critical fixer.
-// The forks hold the exploration and the plan but not fork0's reasoning, and the lead records the lens review in the plan directory's lens-review.md.
-// The writer runs `lym loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
+// The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it;
+// then it spawns the lens forks and judges their findings as a critical fixer.
+// The forks hold the exploration and the plan but not fork0's reasoning;
+// the lead records the lens review in the plan directory's lens-review.md.
+// The writer runs `lym loom validate-plan --lens-review` as its final self-check,
+// and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
 // Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
 // The plan gates and the Plan-Review segment still bound what lands in the plan.
-// With plan_lenses empty the prompt keeps its bytes and ForkSubagents stays false.
+// With plan_lenses empty, the prompt keeps its bytes and ForkSubagents stays false.
 //
 // PlanTable is a pure builder: it does not stat the decision record,
 // does not stat or create `_lym/plan/`, and does not spawn anything.
-// Rotating a stale `_lym/plan/` before a re-run is owned by `loomshed.NewPlanDirRotator`, run as the Plan-Write producer's fresh-spawn preparation;
-// verifying the input exists stays outside PlanTable.
+// Rotating a stale `_lym/plan/` before a re-run is owned by `loomshed.NewPlanDirRotator`;
+// it runs as the Plan-Write producer's fresh-spawn preparation.
+// Verifying the input exists stays outside PlanTable.
 
 package loomengine
 
@@ -55,21 +61,30 @@ var planSkills = []string{"scribe:prose", "scribe:testing"}
 // planStencil is the stencil that opens the Plan-Write lead seat.
 const planStencil = "loom-template-plan"
 
-// planSelfCheckStencil and planSelfCheckGatedStencil are the fragments that fill the plan template's self-check step, the first for a writer that runs the validator itself and the second for one whose gate has a cold fixer.
+// planSelfCheckStencil and planSelfCheckGatedStencil are the fragments that fill the plan template's self-check step.
+// The first serves a writer that runs the validator itself; the second serves one whose gate has a cold fixer.
 const (
 	planSelfCheckStencil      = "loom-fragment-self-check-plan"
 	planSelfCheckGatedStencil = "loom-fragment-self-check-plan-gated"
 )
 
-// PlanTable builds the seatengine.Table of one Plan-Write run: a lead that writes the plan directory's cards and, last, its overview.
-// When cfg.PlanLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs; otherwise the prompt keeps its bytes.
+// PlanTable builds the seatengine.Table of one Plan-Write run.
+// The lead writes the plan directory's cards and, last, its overview.
+// When cfg.PlanLenses is set, only the lead is authorized to spawn fork subagents,
+// and the lead carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs;
+// otherwise the prompt keeps its bytes.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
-// The seat's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
-// gateTiers is the hub's rendered tier and gate-list lines, or "none" when no tier is declared; it fills the prompt's gate_tiers marker verbatim.
+// The seat's opening stencil is read at call time from stencilsDir,
+// and the seat engine renders the parent and edit directives from its geometry.
+// gateTiers is the hub's rendered tier and gate-list lines, or "none" when no tier is declared;
+// it fills the prompt's gate_tiers marker verbatim.
 // cfg.SubagentModel names the model of the fresh subagents the lead's prompt tells it to hand lookups to.
 // The table carries no gate; the producer entry sets it.
-// A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
-// fixerOn reports that a cold fixer clears the row's plan gate, so the prompt tells the writer to run no validator and the twill directive asks for none; false renders today's prompt.
+// A pattern directive that cannot be rendered fails the table;
+// a friction directive that cannot be rendered is left empty, and the failure is logged.
+// fixerOn reports that a cold fixer clears the row's plan gate,
+// so the prompt tells the writer to run no validator and the twill directive asks for none;
+// false keeps the writer's own validator run.
 func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string, fixerOn bool) (seatengine.Table, error) {
 	choice, err := resolveModelChoice(cfg.Plan, reg)
 	if err != nil {

@@ -1,4 +1,5 @@
-// bindings_test.go pins bindingArgvs's output: the five Alt keys and the status click, each a root-table binding, and no other key.
+// bindings_test.go pins the output of `bindingArgvs`: the Alt keys and the status click.
+// Each is a root-table binding, and no other key is bound.
 // It also pins the bindings' build stamp and the op lock's re-pin of a server an older build pinned.
 
 package reedengine
@@ -165,7 +166,8 @@ func clickArgv(t *testing.T, argvs [][]string) []string {
 	return nil
 }
 
-// clickBranchCommand returns the command the click binding runs for rangeType, the element after that branch's range condition.
+// clickBranchCommand returns the command the click binding runs for rangeType.
+// It is the element after that branch's range condition in click.
 func clickBranchCommand(t *testing.T, click []string, rangeType string) string {
 	t.Helper()
 	condition := "#{==:#{mouse_status_range}," + rangeType + "}"
@@ -176,7 +178,8 @@ func clickBranchCommand(t *testing.T, click []string, rangeType string) string {
 	return click[at+1]
 }
 
-// TestBindingsBuildStamp pins the bindings' build stamp: when a stamp is stale, what the pin writes, and the op lock re-pinning a server an older build pinned.
+// TestBindingsBuildStamp pins the bindings' build stamp.
+// It covers when a stamp is stale, what the pin writes, and the op lock re-pinning a server an older build pinned.
 func TestBindingsBuildStamp(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1,4 +1,5 @@
-// innerrun_pause.go makes InnerRun's wait read the hub's pause record: the per-check coverage reading, the arm hold and the spawn hold.
+// innerrun_pause.go makes InnerRun's wait read the hub's pause record:
+// the per-check coverage reading, the arm hold and the spawn hold.
 
 package battenshed
 
@@ -13,7 +14,8 @@ import (
 )
 
 // coverage reads deps.Pause into w.pause and returns it.
-// An error reads as not covered and is warned about once per distinct message, since a corrupt record must never freeze a run.
+// An error reads as not covered and is warned about once per distinct message.
+// A corrupt record must never freeze a run.
 func (p *innerRunProducer) coverage(w *childWait) pauserecord.Coverage {
 	coverage, err := p.deps.Pause()
 	if err != nil {
@@ -44,9 +46,11 @@ func (p *innerRunProducer) runArm(ctx context.Context, w *childWait, step armSte
 	return step(ctx, w)
 }
 
-// holdSpawnWhileCovered ends the pass with a Yield while the pause record covers the slug or another machine owns the run, so a covered or foreign child is never started.
+// holdSpawnWhileCovered ends the pass with a Yield while the pause covers the slug or another machine owns the run.
+// So a covered or foreign child is never started.
 // It reads coverage once.
-// While an owner stands, covered or not, it first re-runs the owner check when a notice probe is due, and reading the run as owned here clears the owner.
+// While an owner stands, covered or not, it first re-runs the owner check when a notice probe is due.
+// Reading the run as owned here clears the owner.
 // It returns nil when nothing holds the spawn, so the Call goes on to it in the same pass.
 // Batten's own pause flag and a cancelled context end the hold with their own verdicts.
 func (p *innerRunProducer) holdSpawnWhileCovered(ctx context.Context) *waitEnd {

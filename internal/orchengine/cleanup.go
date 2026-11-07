@@ -1,4 +1,5 @@
-// cleanup.go removes the handoff files an orch's cycles leave behind, keeping the one a restart resumes from, and the retired notice queue and log.
+// cleanup.go removes the handoff files an orch's cycles leave behind, keeping the one a restart resumes from.
+// It also removes the retired notice queue and log.
 
 package orchengine
 
@@ -13,9 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// HandoffCleanup is what one handoff cleanup removed, or with apply false would remove.
+// HandoffCleanup reports one handoff cleanup: the file kept, and the files it removed or, on a dry run, could remove.
 type HandoffCleanup struct {
-	// Kept is the name of the handoff file State.LastHandoff names, empty when cleanup decided to remove nothing.
+	// Kept is the name of the last handoff the state records, which a restart resumes from; empty when Reason is set.
 	Kept string
 	// Removed lists the names of the removed files, or in a dry run the removable ones.
 	Removed []string
@@ -23,16 +24,21 @@ type HandoffCleanup struct {
 	Reason string
 }
 
-// CleanupHandoffs removes every regular file directly under p.HandoffsDir except the one State.LastHandoff names, so a restart still resumes from it.
+// CleanupHandoffs removes every regular file directly under p.HandoffsDir except the one State.LastHandoff names,
+// so a restart still resumes from it.
 // With apply false it removes nothing and lists the files apply would remove.
 // A newer partial handoff an aborted cycle left is removed with the rest.
-// It removes nothing, saying why in the result, when the orch is not idle, no handoff is recorded or the recorded one is gone; a missing p.Dir returns at once.
-// The state lock is held from the state read through the last removal, so a cycle cannot enter handoff-requested in between.
+// It removes nothing and says why in the result when the orch is not idle or no handoff is recorded.
+// It likewise removes nothing, and says why, when the recorded handoff is gone.
+// A missing p.Dir returns at once.
+// The state lock, when taken, is held from the state read through the last removal,
+// so a cycle cannot enter handoff-requested in between.
 func CleanupHandoffs(p Paths, apply bool) (HandoffCleanup, error) {
 	return cleanupHandoffs(p, apply, nil)
 }
 
-// cleanupHandoffs is CleanupHandoffs with beforeRemove, a seam the tests use to interleave a cycle; it runs after the decision and before the first removal.
+// cleanupHandoffs runs one handoff cleanup and calls beforeRemove, when it is not nil, before the first removal.
+// Tests pass beforeRemove to interleave a cycle after the decision.
 func cleanupHandoffs(p Paths, apply bool, beforeRemove func()) (HandoffCleanup, error) {
 	result := HandoffCleanup{Removed: []string{}}
 
@@ -106,9 +112,9 @@ func cleanupHandoffs(p Paths, apply bool, beforeRemove func()) (HandoffCleanup, 
 	return result, nil
 }
 
-// CleanupRetiredNotices lists the file names of the retired notice queue directory and notice log of the prime when they are present.
+// CleanupRetiredNotices lists the names of the prime's retired notice queue and notice log that are present.
 // With apply true it removes them; with apply false it removes nothing.
-// Neither is written any more, and an absent one is skipped.
+// Nothing writes either of them, and an absent one is skipped.
 func CleanupRetiredNotices(p Paths, apply bool) ([]string, error) {
 	listed := []string{}
 	for _, path := range []string{p.NoticesDir, p.RetiredNoticeLogPath} {

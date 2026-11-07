@@ -55,8 +55,8 @@ func lensesFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
 	return string(out)
 }
 
-// burlerFixture returns a burler.yaml document: the template's lenses and fans decoded, changed by edit and marshalled back holding only those two keys.
-// Every key of such a document is one the burler-to-lenses moves take out, so the move leaves it empty.
+// burlerFixture returns a burler.yaml document holding only the template's lenses and fans, changed by edit.
+// Every key of such a document is one a `configreg.KeyMove` takes out, so the move leaves it empty.
 func burlerFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
 	t.Helper()
 	var cfg lenses.Config
@@ -106,7 +106,8 @@ func loadLensesAt(t *testing.T, dirs configengine.Dirs) lenses.Config {
 	return cfg
 }
 
-// lensSetFixture returns a sparse lenses.yaml document that picks lensSet, none when it is empty, and holds the given lens entries.
+// lensSetFixture returns a sparse lenses.yaml document holding the given lens entries.
+// It sets lens_set to lensSet, and leaves it out when lensSet is empty.
 func lensSetFixture(t *testing.T, lensSet string, entries map[string]string) string {
 	t.Helper()
 	out, err := yaml.Marshal(struct {
@@ -148,7 +149,13 @@ type moduleWant struct {
 	loadUnchanged bool
 }
 
-// TestReconcileAll pins what a run does to each module's file and Result: a dry run reports and writes nothing, an apply adds the template's missing keys and prunes stale ones, an absent file is seeded from the template, and a seed-only module ("models" today) is materialized verbatim exactly once and never rewritten after -- not even to resurrect a key the operator removed -- while a non-seed-only module in the same run is still pruned.
+// TestReconcileAll pins what a run does to each module's file and Result.
+// A dry run reports and writes nothing.
+// An apply adds the template's missing keys and prunes stale ones.
+// An absent file is seeded from the template.
+// A seed-only module (such as `models`) is materialized verbatim exactly once and never rewritten:
+// not even to resurrect a key the operator removed.
+// A non-seed-only module in the same run is still pruned.
 func TestReconcileAll(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -323,7 +330,8 @@ func TestReconcileAll(t *testing.T) {
 		},
 	}
 
-	// Each floored module's below-floor key: a dry run reports the raise and writes nothing, an apply writes the key at its floor.
+	// A below-floor key in each floored module: a dry run reports the raise and writes nothing;
+	// an apply writes the key at its floor.
 	for _, floored := range []struct{ module, seed, line, raised, stale string }{
 		{"shuttle", "poll_interval_ms: 500\n", "poll_interval_ms: raised from 500 to 1000", "poll_interval_ms: 1000", "poll_interval_ms: 500"},
 		{"orch", "poll_interval_ms: 500\n", "poll_interval_ms: raised from 500 to 1000", "poll_interval_ms: 1000", "poll_interval_ms: 500"},
@@ -474,7 +482,6 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	// First apply
 	results1, err := ReconcileAll(tmpDir, "", Options{Apply: true})
 	if err != nil {
 		t.Fatalf("ReconcileAll first apply: %v", err)
@@ -504,7 +511,8 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 	}
 }
 
-// reconcileFabricResult runs ReconcileHubWideAt and returns the "fabric" result.
+// reconcileFabricResult reconciles the hub-wide modules of boardDir and returns the fabric result;
+// it fails if the reconcile fails or reports no fabric result.
 func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, error) {
 	results, err := ReconcileHubWideAt(boardDir, primeBaseDir, HubWideOptions{Apply: apply})
 	if err != nil {
@@ -517,9 +525,10 @@ func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, e
 	return *result, nil
 }
 
-// TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate pins which input each hub-wide module's
-// reconcile starts from:
-// a present hub file is never replaced, an absent board.yaml or landing.yaml is seeded from the prime's copy when it has one, and an absent fabric.yaml never reads the prime.
+// TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate pins where each hub-wide module's reconcile starts from:
+// a present hub file is never replaced;
+// an absent board.yaml or landing.yaml is seeded from the prime's copy when it has one,
+// and an absent fabric.yaml never reads the prime.
 func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	const primeBoard = "types:\n  spike: A time-boxed investigation\nlabels:\n  area-x: Area X\n"
@@ -560,10 +569,12 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		wantNotDropped []string
 		// loadUnchanged pins that lenses.Load over the board dir resolves the same before the dry run and after the apply.
 		loadUnchanged bool
-		// wantMigrated and wantUnsettled are the applied result's Migrated and Unsettled, compared as they stand; nil skips the check.
+		// wantMigrated and wantUnsettled are the applied result's Migrated and Unsettled, compared as they stand;
+		// nil skips the check.
 		wantMigrated  []string
 		wantUnsettled []string
-		// wantFileError means both the dry run and the apply return a *FileError naming the module and leave the hub file's bytes as they were.
+		// wantFileError means both the dry run and the apply return a *FileError naming the module;
+		// the hub file's bytes stay as they were.
 		wantFileError bool
 	}{
 		{
@@ -907,8 +918,10 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 	}
 }
 
-// TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate pins how a present profiles.yaml follows the template against the template base beside it:
-// a key left at the base's value takes the template's change, a key the operator set or removed stays, a dry run writes nothing, and an apply writes an absent or stale base and leaves nothing for the next apply.
+// TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate pins how a present profiles.yaml follows its template.
+// The reference is the template base beside the hub file:
+// a key left at the base's value takes the template's change; a key the operator set or removed stays;
+// a dry run writes nothing; an apply writes an absent or stale base and leaves nothing for the next apply.
 func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -935,7 +948,8 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 		baseFile string
 		// baseIsDir makes the template base a directory, so reading it fails.
 		baseIsDir bool
-		// wantBaseError, when set, expects both runs to fail with a FileError naming the template base and holding this text, and the hub file untouched.
+		// wantBaseError, when set, expects both runs to fail with a FileError naming the template base;
+		// the error holds this text, and the hub file stays untouched.
 		wantBaseError string
 		// wantAdded nil skips the Added check, and wantAddedHas lists paths Added must hold.
 		wantAdded     []string
@@ -1116,12 +1130,11 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	}
 }
 
-// TestReconcileHubWideAt_MigratesLegacyFabricConfig pins the fabric-cutover's one-shot migration
-// (F-D): a pre-cutover hub's warp.yaml/weft.yaml values must be folded into fabric.yaml's first
-// write instead of silently discarded in favor of the bare template default,
-// and the legacy files must be pruned afterward so the migration does not re-fire.
-// Routed through ReconcileHubWideAt(boardDir, "", apply), since ReconcileAll never reconciles a
-// hub-wide module (see TestReconcileAll_HubWideCopy).
+// TestReconcileHubWideAt_MigratesLegacyFabricConfig pins the migration of legacy warp.yaml and weft.yaml values:
+// the values fold into fabric.yaml's first write;
+// without the fold, the bare template default would silently discard them,
+// and the legacy files are pruned afterward so the migration does not fire again.
+// The test drives the hub-wide reconcile directly, since the all-modules reconcile never reconciles a hub-wide module.
 func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1154,7 +1167,8 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 			wantPruned:   []string{"warp", "weft"},
 		},
 		{
-			// _lym is structural, injected in code and never read from the pathspec key, so the sparse fabric.yaml holds no pathspec and the load resolves the template's empty one.
+			// _lym is structural, injected in code and never read from the pathspec key;
+			// so the sparse fabric.yaml holds no pathspec and the load resolves the template's empty one.
 			name:             "only warp.yaml present, the seeded file holds only the legacy unit",
 			legacyFirst:      "branch_prefix: hanf/\n",
 			apply:            true,
@@ -1243,8 +1257,12 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 	}
 }
 
-// TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce pins the one-time strip of a hub's base files: while the board's base-sparse marker is absent, a walk's pass (StripBase and Apply) reduces every non-seed-only base to the units that differ from the template and from a former template value, and writes the marker only when every module's file exists;
-// without StripBase or on a dry run the strip is only reported, a marked board keeps a unit equal to a former value as a pin, and a seed-only file is never rewritten.
+// TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce pins the one-time strip of a hub's base files.
+// While the board's base-sparse marker is absent, a walk's pass (StripBase and Apply) reduces every non-seed-only base.
+// Each such base keeps only the units that differ from the template and from a former template value;
+// the marker is written only when every module's file exists.
+// Without StripBase or on a dry run the strip is only reported;
+// a marked board keeps a unit equal to a former value as a pin, and a seed-only file is never rewritten.
 func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1269,7 +1287,7 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 		// wantUnchangedAll pins every file as written; otherwise a non-seed-only file ends header-only unless wantKept names it.
 		wantUnchangedAll bool
 		wantKept         map[string][]string
-		// wantStripped lists keys a module's Result.Stripped must hold; wantNoStripped names modules whose Stripped must be empty.
+		// wantStripped lists keys Result.Stripped must hold; wantNoStripped names modules whose Stripped is empty.
 		wantStripped   map[string][]string
 		wantNoStripped []string
 		wantMarker     bool
@@ -1465,7 +1483,10 @@ type gateKeyFile struct {
 	Scope string `yaml:"scope"`
 }
 
-// TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize pins that a hub gate.yaml gains the adopt gate with a copy of its tuned finalize: when the file is present and holds a finalize a retired list just became, and when the file is absent and seeded from a prime copy tuning finalize, so the seeding pass leaves it complete.
+// TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize pins that a hub gate.yaml gains adopt from its tuned finalize.
+// A present file holding the retired landing list gains adopt beside the finalize it became.
+// An absent file seeded from a prime copy that tunes finalize gains it too,
+// so the seeding pass leaves the file complete.
 func TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1541,10 +1562,11 @@ func TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize(t *testing.T) {
 	})
 }
 
-// TestReconcileAll_HubWideCopy pins how ReconcileAll treats a hub-wide module ("board"): it never
-// reconciles or writes it under the worktree, and a leftover per-worktree copy is kept, reported
-// Retired when the hub file subsumes it (apply deletes it) or Divergent when it holds an entry the
-// hub file lacks.
+// TestReconcileAll_HubWideCopy pins how ReconcileAll treats a hub-wide module ("board"):
+// it never reconciles or writes it under the worktree.
+// A leftover per-worktree copy is kept.
+// It is reported Retired when the hub file subsumes it; apply then deletes it.
+// It is reported Divergent when it holds an entry the hub file lacks.
 func TestReconcileAll_HubWideCopy(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1633,8 +1655,12 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 	}
 }
 
-// TestReconcileAll_SparseLayers pins that in a hub a worktree file and a local file are sparse layers: retired keys are pruned and a below-floor value is migrated, but nothing is ever added, an absent file stays absent, a seed-only module's files are untouched, and a file emptied by a prune is deleted.
-// A worktree file keeps a key the template lacks and no retired key covers, reported preserved, unless PruneUnknown is set; a local file loses it either way.
+// TestReconcileAll_SparseLayers pins that in a hub a worktree file and a local file are sparse layers.
+// Retired keys are pruned and a below-floor value is migrated, but nothing is ever added.
+// An absent file stays absent, a seed-only module's files are untouched, and a file emptied by a prune is deleted.
+// A worktree file keeps a key the template lacks and no retired key covers.
+// It reports that key preserved unless PruneUnknown is set.
+// A local file loses it either way.
 func TestReconcileAll_SparseLayers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1836,7 +1862,8 @@ func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
 }
 
 // TestReconcileAll_MigratesToSparse pins the one-time strip of a worktree's full files to sparse overrides:
-// the keys equal to what the layers below resolve to are stripped and reported, an emptied file is deleted, and every key the file held resolves unchanged.
+// The keys equal to what the layers below resolve to are stripped and reported.
+// An emptied file is deleted, and every key the file held resolves unchanged.
 // The keys the repo default adds are reported as inherited.
 // A marked worktree, a dry run, a run without Migrate and a hub missing a repo default strip nothing.
 func TestReconcileAll_MigratesToSparse(t *testing.T) {
@@ -1870,7 +1897,7 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 		wantStripped    []string
 		wantInherited   []string
 		wantMarker      bool
-		// resolutionChanges marks a row whose strip drops a former value, so the worktree resolves to the layer below's value.
+		// resolutionChanges marks a row whose strip drops a former value, so the worktree resolves to the layer below.
 		resolutionChanges bool
 	}{
 		{
@@ -2050,7 +2077,7 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 	}
 }
 
-// TestFormerSourceDefaults_NameDeclaredMoveSources pins that every former source default names the source key of a declared key move.
+// TestFormerSourceDefaults_NameDeclaredMoveSources pins each former source default as a declared move's source key.
 func TestFormerSourceDefaults_NameDeclaredMoveSources(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2066,7 +2093,9 @@ func TestFormerSourceDefaults_NameDeclaredMoveSources(t *testing.T) {
 	}
 }
 
-// TestFormerTemplateValues_DifferFromTheTemplate pins that every former value names a registered module and a unit its template holds, and differs from the template's current value, compared as YAML nodes with the module's open maps.
+// TestFormerTemplateValues_DifferFromTheTemplate pins that each former value differs from the template.
+// A former value names a registered module and a unit its template holds.
+// It is compared as YAML nodes, with the module's open maps.
 func TestFormerTemplateValues_DifferFromTheTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2106,7 +2135,8 @@ func loomTemplate() string {
 	return template()
 }
 
-// loomTemplateWith returns template with the line of the named top-level key replaced by replacement, a whole "key: value" line.
+// loomTemplateWith returns template with the named top-level key's line replaced by replacement.
+// The replacement is a whole "key: value" line.
 func loomTemplateWith(template, key, replacement string) string {
 	lines := strings.Split(template, "\n")
 	for i, line := range lines {
@@ -2127,7 +2157,8 @@ func findLayerResult(results []Result, module string, layer configengine.Layer) 
 	return nil
 }
 
-// TestReconcile_FailureNamesItsFile pins that a reconcile failure is a *FileError naming the module and the absolute path of the file that failed, with the path leading its message.
+// TestReconcile_FailureNamesItsFile pins that a reconcile failure is a *FileError.
+// The error names the module and the absolute path of the file that failed, and the path leads the message.
 func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2281,7 +2312,10 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	}
 }
 
-// TestPrimeSeedError pins that an invalid-config seed failure names the prime's copy, that the extra "delete the selector line" step is added only for a module that has an overlay selector, and that any other failure is returned unchanged.
+// TestPrimeSeedError pins how a failed prime seed is reported.
+// An invalid-config failure names the prime's copy.
+// The extra "delete the selector line" step is added only for a module that has an overlay selector.
+// Any other failure is returned unchanged.
 func TestPrimeSeedError(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2331,7 +2365,10 @@ func TestPrimeSeedError(t *testing.T) {
 	}
 }
 
-// TestReconcile_MovesKeysAcrossModules pins the declared shuttle-to-claude and burler-to-lenses key moves at every reconcile entry point: where the value lands at each layer, what a collision keeps or overwrites, and that a dry run writes nothing and a second pass moves nothing.
+// TestReconcile_MovesKeysAcrossModules pins the declared key moves: shuttle-to-claude and burler-to-lenses.
+// The test runs at every reconcile entry point and checks where the value lands at each layer.
+// It also checks what a collision keeps or overwrites.
+// A dry run writes nothing, and a second pass moves nothing.
 func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2361,11 +2398,11 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 		name string
 		// files maps "<base|board|prime|local>:<module>" to the file's content.
 		files map[string]string
-		// call is "hub" (ReconcileAll over a board dir), "standalone" (ReconcileAll without one) or "board" (ReconcileHubWideAt seeding from the prime).
+		// call is "hub" (ReconcileAll over a board dir), "standalone" (ReconcileAll alone) or "board" (ReconcileHubWideAt).
 		call   string
 		dryRun bool
 		repeat bool
-		// boardMarker writes the board's base-sparse marker before the run, and primeMarked the prime's sparse marker; their files keys name module files only.
+		// boardMarker and primeMarked write the board's and the prime's sparse markers; their keys name module files only.
 		boardMarker bool
 		primeMarked bool
 		// contains and excludes map a file key to substrings its content must and must not hold after the run.

@@ -1,4 +1,4 @@
-// cli.go builds the cobra command tree for the report module and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the cobra command tree for the report module and the RunCLI and RunCLIIn seams that run it.
 // The convergence verb validates its flags, resolves the prime's geometry once, and hands it to the report engine.
 // The prime resolution every verb shares lives here too.
 
@@ -32,7 +32,8 @@ const (
 	defaultFreshDays = 3
 )
 
-// Command returns the cobra command for the report module: the bare `report` group and its five verbs, convergence, timing, cost, raddle and replies.
+// Command returns the cobra command for the report module.
+// The bare `report` group holds the verbs convergence, timing, cost, raddle and replies.
 func Command() *cobra.Command {
 	report := &cobra.Command{
 		Use:   "report",
@@ -55,7 +56,8 @@ and changes nothing.`,
 }
 
 // resolvePrime resolves the cwd the context carries to the hub's prime worktree for the verb named verb.
-// Each refusal names `lym report <verb>`: a cwd that is no worktree, a worktree that is not drivable, and a worktree that is not the prime.
+// The refusals for a worktree that is not drivable and for a worktree that is not the prime name `lym report <verb>`.
+// A cwd that is no worktree is refused by lymcwd.Resolve.
 func resolvePrime(ctx context.Context, verb string) (*lymcwd.Location, error) {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -211,7 +213,8 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
+// RunCLIIn runs the report module CLI with cwd carried in the execution context.
+// An empty cwd reads the process cwd instead, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

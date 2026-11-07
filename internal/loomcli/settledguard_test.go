@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSettledSegmentGuard covers which gotos the guard admits and refuses over a loom producer list and run directories holding records.
+// TestSettledSegmentGuard covers which gotos the guard admits and refuses.
+// The cases are built over a loom producer list and run directories that hold records.
 func TestSettledSegmentGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

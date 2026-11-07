@@ -1,4 +1,5 @@
-// layers_test.go — tests for the layer stack: the layered loaders, the local-layer rule, the layer reader and the unexpanded stack merge.
+// layers_test.go tests the layer stack.
+// It covers the layered loaders, the local-layer rule, the layer reader and the unexpanded stack merge.
 
 package configengine_test
 
@@ -44,7 +45,8 @@ func layerSpec() configengine.Spec {
 	}
 }
 
-// overlaySpec is layerSpec with a selector key, pick, over a per-name map, lenses, and one overlay document, x, that replaces lens a and adds lens b.
+// overlaySpec is a per-worktree spec with a selector key, pick, over a per-name map, and lenses.
+// Its one overlay document, x, replaces lens a and adds lens b.
 // pick and lenses are guard keys.
 func overlaySpec() configengine.Spec {
 	spec := layerSpec()
@@ -155,7 +157,10 @@ func decodeTopLevel(t *testing.T, resolved []byte) map[string]string {
 	return got
 }
 
-// TestLoad_LayerStack pins how the two loaders resolve a module across its layers: template fallback, the highest layer winning key by key, whole replacement of lists, scalars and open maps, each geometry, strict and degrading absent bases, empty upper layers, the staging copy never read as the local layer, one expansion against the anchor's environment, and which fills are logged.
+// TestLoad_LayerStack pins how the two loaders resolve a module across its layers:
+// template fallback; the highest layer winning key by key; whole replacement of lists, scalars and open maps;
+// each geometry; strict and degrading absent bases; empty upper layers; the staging copy never read as the local layer;
+// one expansion against the anchor's environment; and which fills are logged.
 // It serializes its rows because they swap the process-global logger output.
 func TestLoad_LayerStack(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -178,13 +183,13 @@ func TestLoad_LayerStack(t *testing.T) {
 		// retired is the spec's retired keys, and wantAbsent the top-level keys the resolved document must lack.
 		retired    map[string]configengine.Category
 		wantAbsent []string
-		// wantUnknown maps each layer whose file holds keys the template lacks to the keys of its one warning, over both loaders; empty means no warning.
+		// wantUnknown maps each layer with keys the template lacks to their warning, from both loaders; empty means none.
 		wantUnknown map[configengine.Layer]string
 		// perNameMaps is the spec's per-name maps; a row that sets it loads over the template with perNameTail appended.
 		perNameMaps []string
 		// overlay swaps in overlaySpec, which keeps its own template and per-name maps whatever perNameMaps holds.
 		overlay bool
-		// refusal is the substrings both loaders must refuse with, marked ErrInvalid, and refusalLacks those the refusal must not hold; a refusal row asserts nothing else.
+		// refusal lists substrings both loaders must refuse with, marked ErrInvalid; refusalLacks lists those it must not hold.
 		refusal      []string
 		refusalLacks []string
 		want         map[string]string
@@ -594,7 +599,11 @@ func TestLoad_LayerStack(t *testing.T) {
 	}
 }
 
-// TestValidateLocal pins the machine-layer rule, and that the local layer refuses a machine key, besides the local-layer rule: a key the template lacks, a shape mismatch, a category other than none and, for a hub-wide module, an unclassified key are refused naming the key; an open-map entry, a whole-entry alias, a per-name key some template entry holds under any name, the longest covering entry and an empty document pass.
+// TestValidateLocal pins the machine-layer rule: the local layer refuses a machine key.
+// It also pins the local-layer rule: a key the template lacks, a shape mismatch, or a category other than none;
+// for a hub-wide module, an unclassified key too; each refusal names the key.
+// An open-map entry, a whole-entry alias, a per-name key some template entry holds under any name;
+// the longest covering entry and an empty document pass.
 func TestValidateLocal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -719,7 +728,10 @@ func TestValidateLocal(t *testing.T) {
 	}
 }
 
-// TestLayers pins the layer reader and the stack merge: the present files in stack order per geometry, absent files skipped, a comment-only machine or local file dropped, a refused machine or local file naming itself, and a Doc merged unexpanded with no template key filled and an Origins entry per top-level key.
+// TestLayers pins the layer reader and the stack merge.
+// Present files load in stack order per geometry; absent files are skipped.
+// A comment-only machine or local file is dropped; a refused machine or local file names itself.
+// A Doc is merged unexpanded, with no template key filled and an Origins entry per top-level key.
 func TestLayers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -963,7 +975,8 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
-// TestLayerFile pins which layers apply and where their files live under each geometry, the base layer, and that the local file is never at the staging path.
+// TestLayerFile pins which layers apply and where their files live under each geometry, including the base layer,
+// and that the local file is never at the staging path.
 func TestLayerFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1040,7 +1053,9 @@ func annotationsOf(provenance []byte) map[string]string {
 	return notes
 }
 
-// TestProvenance pins that every unit of the resolved configuration is annotated with the highest layer holding it, the template layer when none does, and that the refusals of the loader apply unchanged.
+// TestProvenance pins that every unit of the resolved configuration is annotated with the highest layer holding it.
+// A unit no layer holds is annotated with the template layer.
+// It also pins that the refusals of the loader apply unchanged.
 func TestProvenance(t *testing.T) {
 	tiergate.Require(t, 0)
 	const base = "name: d\nnested:\n  deep: 2\nlist: [x, y]\nlabels:\n  a: A\nrun: sh\n"
@@ -1120,7 +1135,8 @@ func TestProvenance(t *testing.T) {
 	}
 }
 
-// TestDropRetired pins that a retired key leaves the document and a mapping it empties leaves with it, while a sibling key, an unknown key and a document holding no retired key stay as written.
+// TestDropRetired pins that a retired key leaves the document, and a mapping it empties leaves with it.
+// A sibling key, an unknown key and a document holding no retired key stay as written.
 func TestDropRetired(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

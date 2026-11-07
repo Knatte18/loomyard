@@ -1,7 +1,8 @@
 // arbiter.go declares the records of a run's arbiter and their readers and writers:
-// the role name, the stop an attempt arbitrates, one attempt's directory contents (attempt.json, prompt.md, verdict.yaml, envelope.json and the applied mark) and the ephemeral in-flight marker.
+// the role name, the stop an attempt arbitrates, and the ephemeral in-flight marker.
+// An attempt directory holds attempt.json, prompt.md, verdict.yaml, envelope.json and the applied mark.
 // Every function takes the directory or path it works on; internal/shedrun declares where those live.
-// The records sit in this package, not in loomcli, so battencli reads the marker and matches arbiter strands without importing another CLI package.
+// The records live here, not in a CLI package, so other packages read them without importing one.
 
 package loomengine
 
@@ -46,7 +47,8 @@ func IsArbiterStrand(name string) bool {
 	return err == nil && agentname.MatchesRole(parsed.Role, ArbiterRole)
 }
 
-// ArbiterAttempt is attempt.json: the record the arbiter verb writes before it spawns, so the attempt counts against the spawn budget whatever happens next.
+// ArbiterAttempt is attempt.json: the record the arbiter verb writes before it spawns;
+// the attempt counts against the spawn budget whatever happens next.
 type ArbiterAttempt struct {
 	Number       int                `json:"number"`
 	StopKey      sheddriver.StopKey `json:"stop_key"`
@@ -57,7 +59,7 @@ type ArbiterAttempt struct {
 	StrandGUID   string             `json:"strand_guid"`
 	EnvelopePath string             `json:"envelope_path"`
 	ReportPath   string             `json:"report_path"`
-	// CaseBriefPath is the tackler's case brief the attempt was given, so a re-run names the same brief; omitted when there was none.
+	// CaseBriefPath is the case brief the tackler was given, so a re-run names the same one; empty when there was none.
 	CaseBriefPath string `json:"case_brief_path,omitempty"`
 
 	// Dir is the attempt's directory, filled by the readers and never serialized.
@@ -85,7 +87,8 @@ func ReadArbiterAttempt(dir string) (ArbiterAttempt, error) {
 
 // ListArbiterAttempts reads every subdirectory of arbiterDir as an attempt, sorted by Number.
 // An absent arbiterDir lists none.
-// A subdirectory with no readable attempt.json is an error naming it, since the verb writes that file before anything else and the count of attempts is the spawn budget.
+// A subdirectory with no readable attempt.json is an error naming it;
+// the verb writes that file before anything else, and the count of attempts is the spawn budget.
 func ListArbiterAttempts(arbiterDir string) ([]ArbiterAttempt, error) {
 	entries, err := os.ReadDir(arbiterDir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -118,8 +121,9 @@ type ArbiterRecord struct {
 }
 
 // ParseArbiterAttemptDir parses an attempt directory's files, keyed by file name, as they sit in a git tree.
-// An unknown key reads in attempt.json and verdict.yaml, and no verdict validation runs.
-// It errors, naming the file, for an attempt.json that is absent or does not decode and for a verdict.yaml that does not decode.
+// An unknown key in attempt.json or verdict.yaml is ignored, and the verdict is not validated.
+// It errors, naming the file, when attempt.json is absent or does not decode;
+// it also errors, naming the file, when verdict.yaml does not decode.
 func ParseArbiterAttemptDir(files map[string][]byte) (ArbiterRecord, error) {
 	var record ArbiterRecord
 	attemptData, ok := files[arbiterAttemptFileName]
@@ -150,7 +154,7 @@ func ArbiterVerdictPath(dir string) string { return filepath.Join(dir, arbiterVe
 func ArbiterEnvelopePath(dir string) string { return filepath.Join(dir, arbiterEnvelopeFileName) }
 
 // ArbiterVerdict is verdict.yaml, the agent's own result.
-// Verdict is ArbiterVerdictResume or ArbiterVerdictHandOn.
+// Verdict is the verdict word: resume or hand-on.
 // Goto names the row a resume moves the run back to, and is empty for a resume that continues where the run stands.
 type ArbiterVerdict struct {
 	Verdict  string   `yaml:"verdict"`
@@ -161,7 +165,8 @@ type ArbiterVerdict struct {
 }
 
 // ReadArbiterVerdict reads and validates the verdict file at path; an absent file returns found false.
-// It refuses a file that does not parse, an unknown key, an unknown verdict word, an empty reason, a hand-on without a question and a goto on a hand-on.
+// It refuses a file that does not parse, has an unknown key, has an unknown verdict word, or has an empty reason;
+// it also refuses a hand-on without a question and a goto on a hand-on.
 func ReadArbiterVerdict(path string) (ArbiterVerdict, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -220,7 +225,8 @@ func ReadArbiterEnvelope(path string) (ArbiterEnvelope, bool, error) {
 	return e, true, nil
 }
 
-// MarkArbiterApplied writes the applied mark in the attempt directory dir, recording that the re-launch consumed the attempt.
+// MarkArbiterApplied writes the applied mark in the attempt directory dir;
+// the mark records that the re-launch consumed the attempt.
 func MarkArbiterApplied(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("loom: create arbiter attempt directory: %w", err)
@@ -258,7 +264,7 @@ func WriteArbiterMarker(path string, m ArbiterMarker) error {
 	return writeArbiterJSON(path, m)
 }
 
-// ReadArbiterMarker reads the marker at path; an absent file returns found false.
+// ReadArbiterMarker reads the marker at path; an absent file reports found as false.
 func ReadArbiterMarker(path string) (ArbiterMarker, bool, error) {
 	var m ArbiterMarker
 	found, err := readArbiterJSON(path, &m)
@@ -291,7 +297,7 @@ func writeArbiterJSON(path string, v any) error {
 	return nil
 }
 
-// readArbiterJSON decodes the JSON file at path into v; an absent file returns found false.
+// readArbiterJSON decodes the JSON file at path into v; an absent file reports found as false.
 func readArbiterJSON(path string, v any) (found bool, err error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {

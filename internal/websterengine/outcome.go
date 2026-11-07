@@ -1,11 +1,6 @@
-// outcome.go implements webster's own Master-outcome contract: outcome, the in-memory schema
-// parseOutcome strictly decodes, and archiveStaleOutcome, the archive-never-refuse act performed
-// before Master's own outcome.yaml is next written.
-// Unlike gitwrap.go/fingerprint.go/archive.go, which are webster-local mechanism copies,
-// outcome.go defines a shape webster owns outright: Outcome/ParseOutcome are webster's own
-// contract, not derived from any sibling module's.
-// Consumed only in-package (runlevel.go/summary.go, wired in batch 7), so every symbol here stays
-// unexported/engine-scoped.
+// outcome.go defines webster's Master-outcome contract: the outcome type, parseOutcome, and archiveStaleOutcome.
+// parseOutcome strictly decodes outcome.yaml.
+// archiveStaleOutcome moves an existing outcome.yaml aside before Master writes a new one.
 
 package websterengine
 
@@ -20,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The two legal outcome.Outcome values.
+// The two legal values of outcome's Outcome field.
 const (
 	outcomeDone  = "done"
 	outcomeStuck = "stuck"
@@ -29,15 +24,15 @@ const (
 // outcomeFileName is outcome.yaml's fixed filename inside a webster dir.
 const outcomeFileName = "outcome.yaml"
 
-// outcome is Master's final-action file's in-memory form: the terminal
-// judgment it reached over one whole plan run.
+// outcome is the in-memory form of Master's final-action file:
+// the terminal judgment Master reached over one whole plan run.
 type outcome struct {
 	// Outcome is one of outcomeDone or outcomeStuck.
 	Outcome string `yaml:"outcome"`
-	// StuckReason is Master's one-line account of the blocker, required non-empty when Outcome is outcomeStuck; empty (YAML null) for outcomeDone.
+	// StuckReason is Master's one-line account of the blocker: required for outcomeStuck, empty (YAML null) for outcomeDone.
 	StuckReason string `yaml:"stuck_reason"`
-	// BatchesDone is the count of batches that reached status: done this
-	// run.
+	// BatchesDone is the count of batches that reached status: done.
+	// It counts this run only.
 	BatchesDone int `yaml:"batches_done"`
 }
 
@@ -70,7 +65,7 @@ func parseOutcome(path string) (*outcome, error) {
 }
 
 // archiveStaleOutcome renames outcome.yaml to outcome-<timestamp>.yaml in place.
-// Absent file returns ("", nil). Collisions get numeric suffix ("-1", "-2", ...).
+// Absent file returns ("", nil). A name collision gets a numeric suffix ("-1", "-2", ...).
 func archiveStaleOutcome(websterDir string, now func() time.Time) (archivedTo string, err error) {
 	path := filepath.Join(websterDir, outcomeFileName)
 

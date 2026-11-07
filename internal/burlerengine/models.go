@@ -1,4 +1,5 @@
-// models.go declares the per-round lists of shuttle model choices of a burler round's two halves: the reviewer's and the fixer's, picked by round number.
+// models.go declares the per-round lists of shuttle model choices for a burler round's two halves.
+// The reviewer's list and the fixer's list are each picked by round number.
 
 package burlerengine
 
@@ -13,7 +14,9 @@ type RoundModels struct {
 }
 
 // Pick returns the review and fix choices for round, counting rounds from 1.
-// Each list is resolved independently: entry round of the list, its last entry for a round past the list, and the first entry for a round below 1.
+// Each list is resolved independently.
+// A round picks the entry at its number, a round past the list takes the last entry,
+// and a round below 1 takes the first.
 // An empty list yields the zero ModelChoice.
 func (m RoundModels) Pick(round int) (review, fix shuttleengine.ModelChoice) {
 	return pickRound(m.Review, round), pickRound(m.Fix, round)

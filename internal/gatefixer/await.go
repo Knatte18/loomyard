@@ -1,4 +1,6 @@
-// await.go implements the bounded wait on a fixer strand: done once its reply file exists, dead when its turn ends without one, its timeout passes or its strand is gone.
+// await.go implements the bounded wait on a fixer strand.
+// The wait ends done once the reply file exists.
+// It ends dead when the turn ends without one, when the timeout passes, or when the strand is gone.
 
 package gatefixer
 
@@ -28,7 +30,10 @@ type Result struct {
 
 // Await blocks up to wait for rec's fixer to reach a terminal classification, polling once a second on deps.Clock.
 // The fixer is done once rec.ReplyPath exists.
-// It is dead when its newest turn ended without one (DeadReasonAsking), when timeout has passed since the spawn (DeadReasonTimeout), or when its strand is gone (DeadReasonDied), checked in that order.
+// It is dead in three cases, checked in this order.
+// Its newest turn ended without a reply (DeadReasonAsking).
+// The timeout has passed since the spawn (DeadReasonTimeout).
+// Its strand is gone (DeadReasonDied).
 // A wait that elapses first returns StatusRunning.
 // Every terminal result stops the strand; only done also reads the reply and removes the run directory.
 // A failed stop, reply read or removal is a warning.

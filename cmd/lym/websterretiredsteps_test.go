@@ -1,7 +1,6 @@
-// websterretiredsteps_test.go pins that no webster way forward names `git reset --keep`, or a `lym webster reset` followed by `lym webster run --fresh`.
-// `reset --to start` archives the run record and performs the keep form itself, so a plain `lym webster run` follows every reset.
-// The scan reads files only, so it stays in the untagged tier, and reuses the token matcher of norecoverydeny_test.go.
-// The scanned surface is `contracts/specs/`, `contracts/stencils/webster/` and the string literals of the non-test Go files under the webster modules.
+// websterretiredsteps_test.go pins that no webster way forward names `git reset --keep`;
+// it also pins that no such way forward names a `lym webster reset` followed by `lym webster run --fresh`.
+// The scan reads files only, so it stays in the untagged tier, and reuses the token matcher of `norecoverydeny_test.go`.
 
 package main
 
@@ -32,10 +31,12 @@ var (
 // retiredStepsTextSurfaces are the module-root-relative directories whose files are scanned as plain text.
 var retiredStepsTextSurfaces = []string{"contracts/specs", "contracts/stencils/webster"}
 
-// retiredStepsGoModulePrefixes are the directory-name prefixes under internal/ whose non-test Go string literals are scanned.
+// retiredStepsGoModulePrefixes are directory-name prefixes under internal/.
+// Their non-test Go string literals are scanned.
 var retiredStepsGoModulePrefixes = []string{"webster"}
 
-// scanRetiredSteps returns one hit per line of text that names `git reset --keep`, or that names `lym webster reset` before `lym webster run --fresh`.
+// scanRetiredSteps returns a hit for each retired step a line of text names:
+// `git reset --keep`, or `lym webster reset` before `lym webster run --fresh`.
 // Line numbers are 1-based and offset by firstLine-1.
 func scanRetiredSteps(file, text string, firstLine int) []deniedRecoveryHit {
 	var hits []deniedRecoveryHit
@@ -84,7 +85,8 @@ func scanRetiredStepsGoFile(t *testing.T, root, path string) []deniedRecoveryHit
 	return hits
 }
 
-// TestWebsterRetiredSteps_ScannedSurfaceHasNone fails, naming file and line, for every retired step the scanned surface names.
+// TestWebsterRetiredSteps_ScannedSurfaceHasNone fails for every retired step the scanned surface names.
+// The failure names the file and line of each hit.
 //
 //testtiming:keep pins that no webster refusal, stencil or spec names git reset --keep or a reset followed by run --fresh, the retirement of both routes
 //lym:guard

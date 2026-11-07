@@ -48,7 +48,8 @@ func lockOwnerOf(t *testing.T, store *parentlock.Store) (parentlock.Owner, bool)
 	return record.Owner, found
 }
 
-// TestLoopLockExit asserts the exit hook releases the loop's record at every stop, an awaiting one included, and leaves a record of another process alone.
+// TestLoopLockExit asserts the exit hook releases the loop's record at every stop, an awaiting one included.
+// It leaves a record of another process alone.
 func TestLoopLockExit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -97,7 +98,9 @@ func countLogLines(log, level, text string) int {
 	return count
 }
 
-// TestIdleReleaseLogLevels asserts the wake hook logs a repeating list or agent read failure once at Warn, Debug while it lasts and Info at recovery, and logs a release at Info.
+// TestIdleReleaseLogLevels asserts the wake hook's log levels.
+// A repeating list or agent read failure logs once at Warn, at Debug while it lasts, and at Info on recovery.
+// A release logs at Info.
 // It is serial: it captures the process-global logger.
 func TestIdleReleaseLogLevels(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -191,7 +194,9 @@ func TestIdleReleaseLogLevels(t *testing.T) {
 	}
 }
 
-// TestFinalizeKeepsLock asserts the check holds the lock while the run's status names Finalize running or a verify marker of a live process stands, and on a read that fails, and holds nothing for any other status or no file at all.
+// TestFinalizeKeepsLock asserts the check holds the lock in three cases.
+// The run's status names Finalize running, a verify marker of a live process stands, or a read that fails.
+// It holds nothing for any other status or for no file at all.
 func TestFinalizeKeepsLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -258,7 +263,8 @@ func TestFinalizeKeepsLock(t *testing.T) {
 	}
 }
 
-// TestLoopIdleRelease asserts the wake hook releases the loop's record once every agent has waited past the bound with none busy, and keeps it below the bound, beside a busy agent and on a failed read.
+// TestLoopIdleRelease asserts the wake hook releases the loop's record once every agent has waited past the bound.
+// It keeps the record below the bound, beside a busy agent, and on a failed read.
 func TestLoopIdleRelease(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -9,8 +9,10 @@ import "github.com/Knatte18/loomyard/internal/shedbuild"
 // discussionWriteEngine is the engine of the row that writes a recipe's discussion.
 const discussionWriteEngine = "DiscussionWrite"
 
-// discussionApprovalRow returns the name of the row that approves parsed's discussion: the row its DiscussionWrite row's on_done names, when that row's engine is the Bouncer.
-// It reports false for a recipe with no DiscussionWrite row, and for one whose DiscussionWrite row hands to a row that is not a Bouncer.
+// discussionApprovalRow returns the name of the row that approves parsed's discussion:
+// the row its DiscussionWrite row's on_done names, when that row's engine is the Bouncer.
+// It reports false for a recipe with no DiscussionWrite row.
+// It also reports false when the DiscussionWrite row's on_done names no Bouncer row.
 func discussionApprovalRow(parsed shedbuild.Recipe) (string, bool) {
 	for _, row := range parsed.Producers {
 		if row.Engine != discussionWriteEngine {
@@ -26,7 +28,8 @@ func discussionApprovalRow(parsed shedbuild.Recipe) (string, bool) {
 	return "", false
 }
 
-// DiscussionApprovalRow returns the name of the row that approves the named recipe's discussion, and reports whether the recipe has one.
+// DiscussionApprovalRow returns the name of the row that approves the named recipe's discussion.
+// The bool reports whether the recipe has such a row.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func DiscussionApprovalRow(recipe string) (string, bool, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
@@ -37,11 +40,11 @@ func DiscussionApprovalRow(recipe string) (string, bool, error) {
 	return row, hasRow, nil
 }
 
-// PastDiscussionApproval reports whether a run of the named recipe standing at currentRow is past its discussion approval, and whether the recipe has an approval row at all.
-// hasRow is false, and past false, for a recipe with no approval row.
-// Otherwise a run is past when currentRow, mapped through RetiredRows, is a row of the recipe after every row of the approval row's segment.
+// PastDiscussionApproval reports whether a run of the named recipe at currentRow is past its discussion approval.
+// hasRow reports whether the recipe has an approval row at all, and past is false when it has none.
+// Otherwise a run is past when currentRow, mapped through RetiredRows, is a row after the approval row's segment.
 // An empty currentRow, a row before or inside that segment, and a row the recipe does not hold are not past.
-// The recipe's rows are read expanded, so an approval row inside a block, as the tapestry recipe's Motif block holds it, is found where the run meets it.
+// The recipe's rows are read expanded, so an approval row inside a block is found where the run meets it.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func PastDiscussionApproval(recipe, currentRow string) (past, hasRow bool, err error) {
 	parsed, err := parseEmbeddedRecipe(recipe)

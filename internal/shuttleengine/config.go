@@ -1,8 +1,8 @@
 // config.go — configuration for the shuttle module.
 //
-// Defines the Config type mirroring shuttle.yaml's keys and LoadConfig, which uses
-// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the shuttle config file,
-// degrading to the embedded template on proven absence;
+// Defines the Config type, which mirrors shuttle.yaml's keys, and LoadConfig.
+// LoadConfig resolves the shuttle config file through internal/configengine.LoadOrTemplate with ConfigTemplate(),
+// and it degrades to the embedded template on proven absence.
 // shuttle never reads config files or knows their on-disk layout itself.
 
 package shuttleengine
@@ -18,8 +18,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the resolved shuttle.yaml configuration: run directories, timeouts, poll knobs,
-// and the python guard switch.
+// Config represents the resolved shuttle.yaml configuration.
+// It holds run directories, timeouts, poll knobs, and the python guard switch.
 type Config struct {
 	RunDir         string `yaml:"run_dir"`
 	PollIntervalMS int    `yaml:"poll_interval_ms"` // Wait loop's tick interval; a value below one second is floored to it.
@@ -29,10 +29,14 @@ type Config struct {
 
 	StartupTimeoutS int `yaml:"startup_timeout_s"` // Startup probe timeout; 0 fast-fails as died and zeroes orphan sweep's protection window.
 
-	// StartRetries is how many extra launches a start gets after an attempt whose provider died before it took its first input and whose strand was removed; 0 turns the retry off, and LoadConfig refuses negative.
+	// StartRetries is how many extra launches a start gets after an attempt that fails this way:
+	// its provider died before taking its first input, and its strand was removed.
+	// 0 turns the retry off; a negative value is rejected when the config loads.
 	StartRetries int `yaml:"start_retries"`
 
-	// KeepWarmMaxReruns is how many keep-warm re-runs one long gate wait is worth, the break-even against a single cache write; 0 turns the long wait off, and LoadConfig refuses negative.
+	// KeepWarmMaxReruns is how many keep-warm re-runs one long gate wait is worth.
+	// That count is the break-even against a single cache write.
+	// 0 turns the long wait off; a negative value is rejected when the config loads.
 	KeepWarmMaxReruns int `yaml:"keep_warm_max_reruns"`
 
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes an outstanding background shell of either signal may run before the wait logs it and shows it in the wait marker; it also expires a waiting turn end whose every outstanding task is a non-awaited shell, an ungated one with an output file missing into a held turn end and a gated one with every output file present into a Done. LoadConfig refuses non-positive.
@@ -45,26 +49,30 @@ type Config struct {
 
 	SubmitConfirmTimeoutS int `yaml:"submit_confirm_timeout_s"` // Seconds from the moment a verified send begins typing within which it must be seen to land before it fails, ending at the run's deadline for a gate send; binds only an engine with InputBoxReader. LoadConfig refuses non-positive.
 
-	// Engine names the engine of a spec that names none; it must be a registered engine name, checked where the registry builds the set.
+	// Engine names the engine of a spec that names none.
+	// It must be a registered engine name, checked where the registry builds the set.
 	Engine string `yaml:"engine"`
 
-	// DenyPython switches the python guard of the shell-guard table for every engine, its hook and its system-prompt sentence together; off for a hub whose work needs Python.
+	// DenyPython switches the python guard of the shell-guard table for every engine.
+	// Each engine's hook and system-prompt sentence switch together with the guard.
+	// Leave it off for a hub whose work needs Python.
 	DenyPython bool `yaml:"deny_python"`
 
 	// RefuseRaw lists the command prefixes the shell guard refuses to run raw, from the hub's gate config.
-	// No config file sets it: an engine's Prepare fills it on its copy of the config, so it has no yaml key.
+	// No config file sets it: an engine fills it on its own copy of the config, so it has no yaml key.
 	RefuseRaw []string `yaml:"-"`
 }
 
-// StartAllowance returns the longest a start may take: every launch's startup_timeout_s, the first and each of start_retries retries, with the wait between attempts.
+// StartAllowance returns the longest a start may take:
+// every launch's startup_timeout_s, the first and each of start_retries retries, with the wait between attempts.
 func (c Config) StartAllowance() time.Duration {
 	launches := time.Duration(1+c.StartRetries) * time.Duration(c.StartupTimeoutS) * time.Second
 	return launches + time.Duration(c.StartRetries)*startRetryDelay
 }
 
 // ConfigSpec returns shuttle's layered-load spec.
-// It carries the template, the per-key classification that decides which keys a local override may hold,
-// and the retired keys an unreconciled layer may still hold.
+// It carries the template and the per-key classification, which decides which keys a local override may hold.
+// It also carries the retired keys that an unreconciled layer may still hold.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "shuttle",
@@ -152,8 +160,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// MigrateConfig raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor, for lym config reconcile.
-// It also renames a legacy claude_deny_python to deny_python, and returns the rewritten bytes with one line per rewrite.
+// MigrateConfig serves lym config reconcile.
+// It raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor.
+// It also renames a legacy claude_deny_python to deny_python.
+// It returns the rewritten bytes and a line for each rewrite.
 // Everything else is carried through with its comments;
 // the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
@@ -176,8 +186,11 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return rewritten, lines, nil
 }
 
-// renameDenyPython renames a top-level claude_deny_python key to deny_python in place, keeping its value, position and line comment, and returns the rewritten document with one line describing the rewrite.
-// A document already holding deny_python beside claude_deny_python keeps deny_python and drops the legacy key, and the line reports the dropped value.
+// renameDenyPython renames a top-level claude_deny_python key to deny_python in place.
+// It keeps the value, position and line comment of the key.
+// It returns the rewritten document and one line describing the rewrite.
+// A document holding deny_python beside claude_deny_python keeps deny_python and drops the legacy key.
+// The returned line reports the dropped value.
 // A document holding neither key, or no content, comes back unchanged with an empty line.
 // A document that does not parse, or whose root is not a mapping, returns an error.
 func renameDenyPython(existing []byte) ([]byte, string, error) {

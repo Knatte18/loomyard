@@ -1,5 +1,7 @@
-// blobread_integration_test.go covers the history reads — FileAtRevision, FilesInDirAtRevision, PathRevisions, CommitsWithSubject, CommitsNotIn and IsAncestor's real-git reachability — against one real git repository with three commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
-// IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a //go:build constraint applies per file, not per function.
+// blobread_integration_test.go covers the gitrepo history reads over one real git repository of three commits;
+// the repository is built under t.TempDir() with the newRepo, writeFile and commitAll helpers of gitrepo_test.go.
+// The argument-validation guard of IsAncestor lives in the untagged ancestry_test.go;
+// a //go:build constraint applies per file, not per function.
 
 package gitrepo_test
 
@@ -17,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// commitAllAt makes an empty commit in dir whose committer date is committerDate, which gitkit.Git cannot set without a process-global env change.
+// commitAllAt makes an empty commit in dir with committerDate as both its author and committer date;
+// gitkit.Git cannot set that date without a process-global env change.
 func commitAllAt(t *testing.T, dir, message, committerDate string) {
 	t.Helper()
 
@@ -29,9 +32,12 @@ func commitAllAt(t *testing.T, dir, message, committerDate string) {
 	}
 }
 
-// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file and a directory holding two files and a subdirectory;
-// a second branch and a tag then point at commit C.
-// Every step only reads, so the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
+// TestHistoryReads drives the history reads over one repository.
+// Commit A writes a.txt as "version one"; commit B rewrites it as "version two";
+// commit C adds an unrelated file and a directory holding two files and a subdirectory.
+// A second branch and a tag then point at commit C.
+// Every step only reads;
+// the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestHistoryReads(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -83,7 +89,8 @@ func TestHistoryReads(t *testing.T) {
 				t.Fatal("IsAncestor(absent SHA, B) error = nil; want an error (merge-base cannot classify an unknown commit)")
 			}
 		}},
-		// CommitsNotIn lists the commits past the base newest first, nothing when the tip is behind the base, and errors on an unknown object.
+		// CommitsNotIn lists the commits past the base, newest first;
+		// it returns none when the tip is behind the base, and it errors on an unknown object.
 		{"CommitsNotIn lists the commits past a base newest first", func(t *testing.T) {
 			got, err := repo.CommitsNotIn(shaC, shaA)
 			if err != nil {
@@ -110,7 +117,8 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("CommitsNotIn(absent SHA, A) error = %v; want it to name %s", err, absentSHA)
 			}
 		}},
-		// FileAtRevision returns a file's exact stored bytes at an older commit, unaffected by a later change to the working-tree copy.
+		// FileAtRevision returns a file's exact stored bytes at an older commit;
+		// a later change to the working-tree copy does not affect the result.
 		{"FileAtRevision returns the exact bytes at an older commit", func(t *testing.T) {
 			got, err := repo.FileAtRevision(shaA, "a.txt")
 			if err != nil {
@@ -120,7 +128,8 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("FileAtRevision(%s, a.txt) = %q; want %q", shaA, got, "version one")
 			}
 		}},
-		// ErrPathNotAtRevision for a path absent from that revision's tree is distinguishable from a malformed-revision error.
+		// An absent path yields ErrPathNotAtRevision;
+		// a malformed revision yields a different error.
 		{"FileAtRevision distinguishes an absent path from an invalid sha", func(t *testing.T) {
 			_, err := repo.FileAtRevision(shaB, "missing.txt")
 			if !errors.Is(err, gitrepo.ErrPathNotAtRevision) {
@@ -195,7 +204,8 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("CommitsWithSubject(absent) = %v; want none", got)
 			}
 		}},
-		// HeadContains is true for HEAD's own commit and an earlier one, false for a commit only an unmerged side branch holds, a well-formed sha in no object store, and an unborn HEAD, and ErrInvalidSHA for a malformed sha.
+		// HeadContains reports whether HEAD's history holds a commit;
+		// it returns ErrInvalidSHA for a malformed sha.
 		{"HeadContains answers whether HEAD's history holds a commit", func(t *testing.T) {
 			sideDir, sideRepo := newRepo(t)
 			writeFile(t, sideDir, "x.txt", "base")

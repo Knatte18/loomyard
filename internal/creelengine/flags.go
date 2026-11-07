@@ -1,4 +1,5 @@
-// flags.go keeps one flag file per strand holding unread mail in Geometry.FlagDir, which a strand's tool-boundary hook tests before it asks the daemon for mail.
+// flags.go keeps one flag file per strand that holds unread mail or is owed an echo, in Geometry.FlagDir.
+// A strand's tool-boundary hook tests that file before it asks the daemon for mail.
 
 package creelengine
 
@@ -13,7 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// flaggedFilesLocked returns the flag file names the pool asks for: one per strand holding unread mail a claim can hand out or owed an echo, reserved or not, and none for a program.
+// flaggedFilesLocked returns the flag file names the pool asks for.
+// It names one file per strand that holds unread mail a claim can hand out or is owed an echo, reserved or not;
+// it names none for a program.
 func (s *Store) flaggedFilesLocked() map[string]bool {
 	want := map[string]bool{}
 	for strand := range s.echoes {
@@ -27,9 +30,10 @@ func (s *Store) flaggedFilesLocked() map[string]bool {
 	return want
 }
 
-// syncFlagsLocked creates each flag the pool asks for and the directory lacks, and removes each flag the directory holds and the pool no longer asks for.
-// A failed create or removal is logged and left out of the record of what the directory holds, so the next sync tries it again.
-// A store told no flag directory keeps no flags.
+// syncFlagsLocked brings the flag directory in line with the flags the pool asks for.
+// It creates each missing flag and removes each flag the pool no longer asks for.
+// A failed create or removal is logged and not recorded, so the next sync tries it again.
+// A store with no flag directory keeps no flags.
 func (s *Store) syncFlagsLocked() {
 	if s.geom.FlagDir == "" {
 		return
@@ -57,8 +61,10 @@ func (s *Store) syncFlagsLocked() {
 	}
 }
 
-// ReconcileFlags makes Geometry.FlagDir hold exactly the flags the pool asks for, creating the directory and removing every other regular file in it.
-// The daemon runs it once at start, so a flag left by an earlier daemon for mail since read, or a flag lost with the directory, is put right.
+// ReconcileFlags makes Geometry.FlagDir hold exactly the flags the pool asks for.
+// It creates the directory and removes every other regular file in it.
+// The daemon runs it once at start,
+// and it puts right a flag an earlier daemon left behind for mail since read, or a flag lost with the directory.
 func (s *Store) ReconcileFlags() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

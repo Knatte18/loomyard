@@ -11,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// baseCorpus is a production library with two types and a test project of three fixtures: one naming Circle, one naming Shape, and one naming neither.
+// baseCorpus is a production library with two types, and a test project of three fixtures.
+// One fixture names Circle, one names Shape, and one names neither.
 var baseCorpus = map[string]string{
 	"Lib/Circle.cs":            "namespace Lib; class Circle { }",
 	"Lib/Shape.cs":             "namespace Lib; class Shape { Circle c; }",

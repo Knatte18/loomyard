@@ -28,7 +28,8 @@ const amendmentKindRestore = "restore"
 // amendForms names the three forms of an amendment as the verb's flags spell them.
 const amendForms = "--entries <file>, --restore or --discard"
 
-// amendRows are the rows an amendment is admitted at while blocked: Drift-Expect for Restore alone, the writer rows, Drift-Verify and Drift-Recheck.
+// amendRows are the rows an amendment is admitted at while blocked:
+// Drift-Expect for Restore alone, the writer rows, Drift-Verify and Drift-Recheck.
 var amendRows = []string{expectRow, darnWriteRow, websterRow, verifyRow, recheckRow}
 
 // AmendRequest is one amendment the run's parent asks for.
@@ -57,12 +58,23 @@ func (r AmendRequest) Check() error {
 	return nil
 }
 
-// Amend records one amendment of the sealed expectation or the records in one WriteRecords commit, and never edits the seal commit.
-// It is admitted only at a blocked writer row, Drift-Verify or Drift-Recheck, and at a blocked Drift-Expect for Restore alone, and refuses a request that holds none or several of the three forms before it reads anything.
-// Entries are parsed by ParseExpectation under the recorded mode against the baseline's listing, so an entry the parser refuses is refused with its message, and the stored rulings of every cell they cover, or under diff command of every case they name, are dropped so they are judged again.
-// Restore writes back whatever failed its check, the seal commit's copy over an edited expected.yaml and RestoreRecords over records that differ from their commit, and is refused when neither failed.
-// Discard records that the expectation is set aside, so the seal check is skipped and containment reads an empty expectation and every amendment.
-// An amendment only adds coverage, restores the sealed file and records, or sets the whole expectation aside; it cannot remove one entry or change the seal.
+// Amend records one amendment of the sealed expectation or the records in one WriteRecords commit.
+// It never edits the seal commit.
+// It is admitted only at a blocked writer row, Drift-Verify or Drift-Recheck.
+// At a blocked Drift-Expect it is admitted for Restore alone.
+// It refuses a request that holds none or several of the three forms before it reads anything.
+// Entries are parsed by ParseExpectation under the recorded diff mode against the baseline's listing,
+// and an entry the parser refuses is refused with its message.
+// The stored rulings they cover are dropped so they are judged again:
+// under diff command, each case ruling of a case they name;
+// otherwise, each cell ruling they cover.
+// Restore writes back whatever failed its check:
+// the seal commit's copy over an edited expected.yaml, and RestoreRecords over records that differ from their commit.
+// It is refused when neither failed.
+// Discard records that the expectation is set aside.
+// The seal check is skipped, and containment reads an empty expectation and every amendment.
+// An amendment only adds coverage, restores the sealed file and records, or sets the whole expectation aside;
+// it cannot remove one entry or change the seal.
 func Amend(d Deps, st VerbStatus, req AmendRequest) error {
 	if err := req.Check(); err != nil {
 		return err
@@ -109,7 +121,8 @@ func Amend(d Deps, st VerbStatus, req AmendRequest) error {
 	})
 }
 
-// admitAmend refuses an amendment at a row it is not admitted at, at an admitted row that is not blocked, and a form other than Restore at Drift-Expect, where no expectation is sealed yet.
+// admitAmend refuses an amendment at a row it is not admitted at, or at an admitted row that is not blocked.
+// At Drift-Expect it admits only Restore, since no expectation is sealed yet.
 func admitAmend(st VerbStatus, req AmendRequest) error {
 	row, runState := st.Status.CurrentProducer, st.Status.State
 	switch {
@@ -148,7 +161,8 @@ func parseAmendedEntries(d Deps, records Records, entries string) (Expectation, 
 }
 
 // dropCoveredRulings drops from judged the stored rulings the amended expectation reopens:
-// under diff command each case ruling of a case the expectation names, otherwise each cell ruling the expectation covers.
+// under diff command, each case ruling of a case the expectation names;
+// otherwise, each cell ruling the expectation covers.
 func dropCoveredRulings(judged *JudgedRecord, expectation Expectation, mode string) {
 	if mode == DiffCommand {
 		judged.Cases = slices.DeleteFunc(judged.Cases, func(ruled JudgedCase) bool {
@@ -163,7 +177,9 @@ func dropCoveredRulings(judged *JudgedRecord, expectation Expectation, mode stri
 	})
 }
 
-// restoreFailed writes back whatever failed its check: the records from their newest commit when they differ from it, and the seal commit's copy over an expected.yaml edited after the seal.
+// restoreFailed writes back whatever failed its check:
+// the records from their newest commit when they differ from it;
+// the seal commit's copy over an expected.yaml edited after the seal.
 // It refuses when neither failed, naming where the halt's own ways forward are.
 func restoreFailed(d Deps, records Records) error {
 	restored := false

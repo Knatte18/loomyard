@@ -1,4 +1,5 @@
-// checklist_test.go pins the checklist frame renderChecklist draws for a status and a recipe, and the verb's refusal outside a git worktree.
+// checklist_test.go pins the checklist frame renderChecklist draws for a status and a recipe.
+// It also pins the verb's refusal outside a git worktree.
 
 package loomcli
 
@@ -97,7 +98,9 @@ var reviewRecipe = []loomrecipe.RecipeRow{
 	{Name: "PR-Rework", Segment: "PR"},
 }
 
-// motifRecipe is the shape of tapestry's expanded rows around its Motif block: the block row, then the block's Discussion rows, one of them a review segment, then the row the block exits to.
+// motifRecipe is the shape of tapestry's expanded rows around its Motif block.
+// It runs the block row, then the block's Discussion rows, one of them a review segment.
+// The row the block exits to follows them.
 var motifRecipe = []loomrecipe.RecipeRow{
 	{Name: "Preflight"},
 	{Name: "Motif", IsBlock: true, SkipTo: "Drift-Baseline"},
@@ -119,7 +122,8 @@ func bouncedEntry(atMinute int) shedengine.HistoryEntry {
 	return stuckEntry("Rev-Bouncer", atMinute, "Rev-Review")
 }
 
-// roundEntry is a Done entry of producer at the given minute whose output is the round file of the given kind, such as round-2-review.md.
+// roundEntry is a Done entry of producer at the given minute.
+// Its output is the round file of the given kind, such as round-2-review.md.
 func roundEntry(producer string, atMinute, round int, kind string) shedengine.HistoryEntry {
 	entry := doneEntry(producer, atMinute)
 	entry.Output = fmt.Sprintf("round-%d-%s.md", round, kind)
@@ -145,7 +149,8 @@ func resolvedArbiter(number, spawnMinute, historyLength int, verdict, cause stri
 	}
 }
 
-// pendingArbiter is an attempt spawned spawnMinute after checklistClock that has no envelope yet and whose deadline is deadlineMinute after it.
+// pendingArbiter is an attempt spawned spawnMinute after checklistClock that has no envelope yet.
+// Its deadline is deadlineMinute after it.
 func pendingArbiter(number, spawnMinute, historyLength, deadlineMinute int) checklistArbiter {
 	return checklistArbiter{
 		number:        number,
@@ -1256,7 +1261,9 @@ func TestRenderChecklist(t *testing.T) {
 	})
 }
 
-// TestChecklistPoll_WaitLineKeepsTheNoteText asserts the pane's wait line carries the Waiting hook's text, elapsed time included, never its steady form, and that a settled run waits on nothing.
+// TestChecklistPoll_WaitLineKeepsTheNoteText asserts the pane's wait line carries the Waiting hook's text.
+// The line keeps the elapsed time and never shows the steady form.
+// It also asserts that a settled run waits on nothing.
 func TestChecklistPoll_WaitLineKeepsTheNoteText(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

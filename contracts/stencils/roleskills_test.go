@@ -1,10 +1,7 @@
-// roleskills_test.go pins PATTERN-stencil-ownership: a skill reaches a spawned session because the
-// spawning module names it on the launch spec and lym delivers it, so no stencil asks an agent to load
-// a skill.
-// The scan reads each shipped stencil's agent-facing body, the orch role's included, and flags an imperative load verb
-// followed by a `<plugin>:<skill>` token in the same sentence, or any mention of the `Skill` tool.
-// Naming a skill as a pointer, as the orch role does for `ly:board`, carries no load verb
-// and is not a match.
+// roleskills_test.go pins PATTERN-stencil-ownership: no stencil asks an agent to load a skill.
+// A skill reaches a spawned session because the spawning module names it on the launch spec and lym delivers it.
+// The scan reads each shipped stencil's agent-facing body, the orch role's included.
+// Naming a skill as a pointer, as the orch role does for `ly:board`, carries no load verb and is not a match.
 
 package stencils
 
@@ -28,7 +25,8 @@ var (
 	sentenceSplitPattern = regexp.MustCompile(`[.!?]\s|\n`)
 )
 
-// skillLoadViolations returns one description per sentence of body that instructs an agent to load a skill, and one when body mentions the Skill tool.
+// skillLoadViolations returns one description per sentence of body that instructs an agent to load a skill.
+// It also returns one description when body mentions the Skill tool.
 func skillLoadViolations(body string) []string {
 	var violations []string
 	if skillToolPattern.MatchString(body) {
@@ -46,7 +44,8 @@ func skillLoadViolations(body string) []string {
 	return violations
 }
 
-// TestStencils_NoSkillLoadInstructions fails for every registered stencil whose agent-facing body tells an agent to load a skill or names the Skill tool.
+// TestStencils_NoSkillLoadInstructions fails for every stencil whose agent-facing body tells an agent to load a skill.
+// A stencil that names the Skill tool fails too.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive ban on a stencil telling an agent to load a skill that lym delivers, or naming the Skill tool, a guard that fires which no other test asserts
 //lym:guard
@@ -61,7 +60,8 @@ func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 	}
 }
 
-// TestSkillLoadViolations_SyntheticRows proves the scan fails on a stencil that breaks the rule and passes on one that does not.
+// TestSkillLoadViolations_SyntheticRows proves the scan fails on a stencil that breaks the rule.
+// It also proves the scan passes on one that does not.
 //
 //testtiming:keep proves the skill-load scan fires on a stencil that breaks the rule and stays quiet on a bare pointer, which the scan over the real stencils cannot show while those stencils comply
 func TestSkillLoadViolations_SyntheticRows(t *testing.T) {

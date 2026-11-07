@@ -1,8 +1,9 @@
-// reset.go implements ResetHard, the SHA-validated hard reset fabric's coordinated history-recovery
-// flows (Fabric.Pull's rebase-reconciliation among them) build on: point HEAD (and the working
-// tree) at a caller-supplied commit exactly, discarding any local commits or uncommitted changes
-// the checkout previously had past that SHA.
-// It also implements ResetKeep, the SHA-validated reset that moves HEAD and keeps uncommitted changes, IsLocalChangeRefusal, which tells that reset's refusal over a local change from its other failures, and CherryPick with its CherryPickAbort, the tree-mutating replay of one commit onto HEAD.
+// reset.go implements the operations that move a checkout's HEAD onto a given commit.
+// ResetHard points HEAD, the index and the working tree at a commit exactly.
+// It discards any local commits or uncommitted changes past that commit.
+// ResetKeep moves HEAD and the index and carries uncommitted changes across.
+// IsLocalChangeRefusal reports whether err is the refusal over a local change, not another failure.
+// CherryPick replays one commit onto HEAD, and CherryPickAbort abandons a cherry-pick in progress.
 
 package gitrepo
 
@@ -15,8 +16,7 @@ import (
 )
 
 // ResetHard resets HEAD, index, and working tree to sha via `git reset --hard`.
-// sha must be a valid hex object name,
-// or ErrInvalidSHA is returned.
+// sha must be a valid hex object name, or ErrInvalidSHA is returned.
 func (r *Repo) ResetHard(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
@@ -32,8 +32,7 @@ func (r *Repo) ResetHard(sha string) error {
 // ResetKeep moves HEAD and the index to sha via `git reset --keep`, carrying every uncommitted change across.
 // It refuses, with nothing changed, when an uncommitted change sits in a path that differs between HEAD and sha;
 // that refusal is the checked *gitexec.GitError, wrapped, so a caller can surface git's message.
-// sha must be a valid hex object name,
-// or ErrInvalidSHA is returned.
+// sha must be a valid hex object name, or ErrInvalidSHA is returned.
 func (r *Repo) ResetKeep(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
@@ -46,8 +45,8 @@ func (r *Repo) ResetKeep(sha string) error {
 	return nil
 }
 
-// IsLocalChangeRefusal reports whether err is the refusal git raises when `reset --keep` would overwrite an uncommitted change:
-// a checked *gitexec.GitError whose stderr says an entry is not up to date or a local change would be overwritten.
+// IsLocalChangeRefusal reports whether err is the refusal `reset --keep` raises over an uncommitted change.
+// It is a checked *gitexec.GitError whose stderr says an entry is not up to date or a local change would be overwritten.
 // Any other failure of the reset, such as a held index lock, is not a refusal.
 func IsLocalChangeRefusal(err error) bool {
 	var gitErr *gitexec.GitError
@@ -60,9 +59,11 @@ func IsLocalChangeRefusal(err error) bool {
 
 // CherryPick applies sha's change onto HEAD via `git cherry-pick`.
 // A commit whose change the branch already carries is skipped with HEAD unmoved, as `pull --rebase` drops it.
-// A commit that is empty from the start is refused with an error naming it, and the cherry-pick is left in progress for CherryPickAbort.
+// A commit that is empty from the start is refused with an error naming it,
+// and the cherry-pick is left in progress for CherryPickAbort.
 // sha must be a valid hex object name, or ErrInvalidSHA is returned.
-// A conflict or any other failed pick returns the wrapped *gitexec.GitError and leaves the cherry-pick in progress, when one started, for CherryPickAbort.
+// A conflict or any other failed pick returns the wrapped *gitexec.GitError.
+// It leaves the cherry-pick in progress, when one started, for CherryPickAbort.
 func (r *Repo) CherryPick(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
@@ -117,7 +118,8 @@ func (r *Repo) CherryPick(sha string) error {
 	}
 }
 
-// CherryPickAbort abandons a cherry-pick in progress via `git cherry-pick --abort`, restoring HEAD and the working tree.
+// CherryPickAbort abandons a cherry-pick in progress via `git cherry-pick --abort`.
+// It restores HEAD and the working tree.
 // With no cherry-pick in progress it succeeds.
 func (r *Repo) CherryPickAbort() error {
 	_, err := r.runChecked("cherry-pick", "--abort")

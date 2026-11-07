@@ -1,4 +1,4 @@
-// batten.go reads the batten source of a run: the batten status snapshots recorded in the run's span of the records branch.
+// batten.go reads a run's batten source: the status snapshots recorded in the run's span of the records branch.
 
 package reportengine
 
@@ -16,8 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// battenCommit is a records commit that touched a slug's status file, read.
-// holds is false for a commit that deleted the file or whose file does not decode, the latter also carrying decodeErr.
+// battenCommit is a records commit that touched a slug's status file and carries the file read at it.
+// holds is false for a commit that deleted the file or whose file does not decode.
+// A commit whose file does not decode also carries decodeErr.
 type battenCommit struct {
 	sha       string
 	committed time.Time
@@ -25,7 +26,7 @@ type battenCommit struct {
 	status    shedengine.Status
 	decodeErr error
 
-	// fresh marks a commit whose status begins a new batten run: its history opens with the worktree-create row and the previous commit touching the file held no file or a longer history.
+	// fresh marks a run's first commit: history opens with worktree-create; predecessor has no file or longer history.
 	fresh bool
 }
 
@@ -39,7 +40,8 @@ type battenIndex struct {
 	checkpoints map[string][]time.Time
 }
 
-// newBattenIndex walks the records branch once for the commits touching a run's directory and groups them by slug, oldest first.
+// newBattenIndex walks the records branch once for the commits touching a run's directory.
+// It groups them by slug, oldest first.
 // The same walk collects the landing checkpoint commits, named by their subject.
 func newBattenIndex(src Sources) (*battenIndex, error) {
 	root := filepath.ToSlash(shedrun.RunsRootRel())
@@ -63,7 +65,7 @@ func newBattenIndex(src Sources) (*battenIndex, error) {
 	return index, nil
 }
 
-// statusPathSlug returns the slug whose status file path names, for a path under root.
+// statusPathSlug returns the slug whose status file is path, and false when path is not such a file under root.
 func statusPathSlug(root, path string) (string, bool) {
 	rest, ok := strings.CutPrefix(path, root+"/")
 	if !ok {
@@ -80,7 +82,8 @@ func statusPathSlug(root, path string) (string, bool) {
 	return slug, true
 }
 
-// commitsOf reads the status file at every commit that touched slug's, oldest first.
+// commitsOf reads slug's status file at every commit that touched it, oldest first.
+// It caches the result per slug.
 func (b *battenIndex) commitsOf(slug, statusRel string) ([]battenCommit, error) {
 	if read, ok := b.read[slug]; ok {
 		return read, nil
@@ -111,9 +114,11 @@ func (b *battenIndex) commitsOf(slug, statusRel string) ([]battenCommit, error) 
 	return read, nil
 }
 
-// snapshotsOfRun returns the batten status snapshots of the run archived under tag, oldest first, the commit holding the last of them, and a finding for each snapshot that does not decode.
-// The run's own fresh seed is the newest fresh seed committed after earlier, when there is one, and at or before until; its span runs up to the slug's next fresh seed or to the records tip.
-// No fresh seed in that interval returns no snapshots and an empty commit.
+// snapshotsOfRun returns the batten status snapshots of the run archived under tag, oldest first.
+// It also returns the commit holding the last of them and a finding for each snapshot that does not decode.
+// The run's own fresh seed is the newest fresh seed committed after earlier, when there is one, and at or before until.
+// Its span runs up to the slug's next fresh seed, or to the records tip.
+// With no fresh seed in that interval, it returns no snapshots and an empty commit.
 func (b *battenIndex) snapshotsOfRun(slug, tag string, earlier *time.Time, until time.Time) ([]shedengine.Status, string, []Finding, error) {
 	rels, err := shedrun.TreeRunRels(slug)
 	if err != nil {

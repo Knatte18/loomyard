@@ -1,8 +1,7 @@
 // anchor_test.go — unit tests for the pure reachableAnchor walk.
 // Every test here drives reachableAnchor against a hand-built []corrEntry slice and a fake
-// in-memory reachable predicate (a map[string]bool closure);
-// no git is spawned, per the Test Tier Purity Invariant for an untagged Tier-1 file — modeled on
-// corrindex_test.go's git-free style.
+// in-memory reachable predicate, a map[string]bool closure.
+// No git is spawned, per the Test Tier Purity Invariant for an untagged Tier-1 file.
 
 package fabricengine
 

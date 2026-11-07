@@ -1,5 +1,5 @@
-// classify.go reads batten's recorded child state changes back out of its status history and classifies them the way batten's own notice rules would have at the time, working on recorded values only.
-// It is the reading counterpart of stateChangeText, which writes the entries it parses.
+// classify.go reads batten's recorded child state changes from its status history.
+// It classifies them as batten's notice rules would have at the time, working only on recorded values.
 
 package battenshed
 
@@ -24,7 +24,7 @@ const (
 	WakeKindReviewEscalation = "review-escalation"
 	// WakeKindPRGate is a halt at the gate row.
 	WakeKindPRGate = "pr-gate"
-	// WakeKindFailed is a failure episode of a batten row.
+	// WakeKindFailed is a wake for a failed state or a failure episode of a batten row.
 	WakeKindFailed = "failed"
 	// AutomaticKindVerifyRetry is batten's own retry of a first verify failure.
 	AutomaticKindVerifyRetry = "verify-retry"
@@ -41,7 +41,8 @@ type StateChange struct {
 	At       time.Time
 }
 
-// NoticeRules carries the row names batten is told in production, so the classifier names none itself.
+// NoticeRules carries the row names and escalation counts that the notice rules classify halts by.
+// The caller supplies them, so the classifier hardcodes no row.
 type NoticeRules struct {
 	// VerifyRows are the rows whose first verify failure batten retries.
 	VerifyRows []string
@@ -53,7 +54,7 @@ type NoticeRules struct {
 	Escalations map[string]int
 }
 
-// BattenRecord is one run's batten source.
+// BattenRecord holds one run's batten status snapshots and the child's loom history.
 type BattenRecord struct {
 	// Snapshots is batten's status decoded at each records commit in the run's span that holds it, oldest first.
 	Snapshots []shedengine.Status
@@ -75,7 +76,7 @@ type AutomaticStep struct {
 	At       time.Time
 }
 
-// Classification is the result of ClassifyRecords.
+// Classification holds the state changes, wakes and automatic steps read from one run's records.
 // AccountedChild holds the indexes of Child entries an automatic step accounts for.
 type Classification struct {
 	Changes        []StateChange
@@ -85,8 +86,9 @@ type Classification struct {
 	AccountedChild []int
 }
 
-// ParseStateChange reads the output of a state-change history entry: `child <from> → <to>` with an optional ` at <producer>` suffix.
-// Both states must be legal; any other text is false.
+// ParseStateChange reads the output of a state-change history entry:
+// `child <from> → <to>` with an optional ` at <producer>` suffix.
+// The bool result is false unless both states are legal.
 func ParseStateChange(output string) (StateChange, bool) {
 	rest, ok := strings.CutPrefix(output, "child ")
 	if !ok {
@@ -103,7 +105,7 @@ func ParseStateChange(output string) (StateChange, bool) {
 	return StateChange{From: shedengine.State(from), To: shedengine.State(to), Producer: producer}, true
 }
 
-// isLegalState reports whether state is one of the six legal child states.
+// isLegalState reports whether state is one of the legal child states.
 func isLegalState(state shedengine.State) bool {
 	switch state {
 	case shedengine.StateRunning, shedengine.StatePaused, shedengine.StateDone, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StateAwaiting:
@@ -112,10 +114,13 @@ func isLegalState(state shedengine.State) bool {
 	return false
 }
 
-// ClassifyRecords reads the child's state changes from the last snapshot's history and applies rules to them and to the snapshot sequence.
-// A change into paused is no wake, a verify retry or a moved-parent resume is an automatic step and no wake, every other halt is one wake,
-// and a failure episode of an episode row is one wake however many failures it spans.
-// No snapshots returns an empty Classification.
+// ClassifyRecords sorts the child's state changes into wakes, automatic steps and pauses.
+// The changes come from the last snapshot's history; failure episodes come from the whole snapshot sequence.
+// A change into paused is not a wake.
+// A verify retry or a moved-parent resume is an automatic step, not a wake.
+// Every other halt is one wake.
+// A failure episode of an episode row is one wake, however many failures it spans.
+// With no snapshots it returns an empty Classification.
 func ClassifyRecords(rec BattenRecord, rules NoticeRules) Classification {
 	var result Classification
 	if len(rec.Snapshots) == 0 {
@@ -186,7 +191,8 @@ func classifyChanges(result *Classification, child []shedengine.HistoryEntry, ru
 }
 
 // classifyEpisodes adds one wake per failure episode of each episode row.
-// A snapshot in state failed at the row opens an episode when none is open, and the first later snapshot whose history holds more done entries for the row closes it.
+// A snapshot in state failed at the row opens an episode when none is open.
+// The first later snapshot whose history holds more done entries for the row closes it.
 func classifyEpisodes(result *Classification, snapshots []shedengine.Status, rows []string) {
 	for _, row := range rows {
 		open := false
@@ -220,7 +226,8 @@ func countDone(history []shedengine.HistoryEntry, row string) int {
 	return count
 }
 
-// nextHaltIndex returns the index of the first change after index into awaiting, blocked or failed, or len(changes) when none follows.
+// nextHaltIndex returns the index of the first change after index into awaiting, blocked or failed.
+// It returns len(changes) when none follows.
 func nextHaltIndex(changes []StateChange, index int) int {
 	for j := index + 1; j < len(changes); j++ {
 		switch changes[j].To {

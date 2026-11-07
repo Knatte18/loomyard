@@ -1,5 +1,7 @@
-<!-- This is the twill relaunch part: the host-neutral paragraphs that say what a writer relaunched around its lens spawn call does, for a host that runs no writer fork.
-     internal/twilldirective renders it into the twill directive, and the spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
+<!-- This is the twill relaunch part: the host-neutral paragraphs for a host that runs no writer fork.
+     They say what a writer relaunched around its lens spawn call does.
+     internal/twilldirective renders it into the twill directive.
+     The spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
      It declares these required markers:
      {{.relaunch_files}}, {{.format_step}}, {{.self_check_step}}, {{.self_check_command}} and {{.disposition_place}}. -->
 

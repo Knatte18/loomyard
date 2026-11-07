@@ -1,4 +1,6 @@
-// overlay.go reads and words the stdin side of `lym loom validate-plan --overlay`: the proposed plan file contents the verb checks in memory, and the refusal for each way that input or its names are unusable.
+// overlay.go reads the stdin side of `lym loom validate-plan --overlay`:
+// the proposed plan file contents the verb checks in memory.
+// It words the refusal for each way that input or its names are unusable.
 
 package loomcli
 
@@ -13,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// errOverlayNoInput is the cause readOverlay reports for an empty or whitespace-only input, and the verb for a terminal stdin.
+// errOverlayNoInput is the cause for an empty or whitespace-only input, and for a terminal stdin.
 var errOverlayNoInput = errors.New("no input")
 
 // errOverlayMalformed is the sentinel readOverlay wraps when the input is not exactly one JSON object of distinct names mapped to string values.
@@ -32,7 +34,8 @@ func inputIsTerminal(in io.Reader) bool {
 
 // readOverlay reads all of in as one JSON object mapping plan file names to their full proposed content.
 // Empty or whitespace-only input is errOverlayNoInput.
-// Input that is not exactly one JSON object, a name that occurs twice and a value that is not a string wrap errOverlayMalformed, naming the offending name where there is one.
+// Input that is not exactly one JSON object wraps errOverlayMalformed, as does a repeated name or a non-string value.
+// The error names the offending name where there is one.
 func readOverlay(in io.Reader) (map[string]string, error) {
 	data, err := io.ReadAll(in)
 	if err != nil {
@@ -104,7 +107,8 @@ func overlaidPlan(in io.Reader, planDir string) (plan *planparser.Plan, refusal 
 	return plan, "", err
 }
 
-// overlayRefusal words the refusal for an error of readOverlay or of planparser.NewOverlay, as `loom: validate-plan --overlay: <cause>; way forward: <step>`.
+// overlayRefusal words the refusal for an error of readOverlay or of planparser.NewOverlay.
+// The refusal reads `loom: validate-plan --overlay: <cause>; way forward: <step>`.
 // It returns "" for any other error, which is a plan that does not parse.
 func overlayRefusal(err error) string {
 	const prefix = "loom: validate-plan --overlay: "

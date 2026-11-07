@@ -1,5 +1,6 @@
-// partcheck.go implements the checks of a split plan: the parts gate, the part check with its gate and writer Accept, and the join's Go half.
-// The part check is the ordinary format check over one part's plan directory carrying a planparser.PartScope, so it shares the plan gate's index and context checks.
+// partcheck.go holds the checks of a split plan.
+// It has the parts gate, the part check with its gate and writer Accept, and the Go half of the join.
+// The part check is the format check over one part's plan directory, carrying a planparser.PartScope.
 
 package loomshed
 
@@ -23,7 +24,8 @@ var ErrPartUnknown = errors.New("loomshed: no such part")
 const partExportMissingCheck = "part-export-missing"
 
 // NewPartsGate returns the Parts-Write row's `parts` gate closure.
-// It runs partsparser.Validate over the parts file under anchorPath, the files under worktreeRoot, the decision record at recordPath and the most parts max allows, and maps no finding to a pass and findings to a failed gate carrying one `check[/part]: detail` line each.
+// It runs partsparser.Validate over the parts file under anchorPath, passing worktreeRoot, recordPath and max on.
+// It maps no finding to a pass and findings to a failed gate carrying one `check[/part]: detail` line each.
 // A returned error is the gate's error.
 func NewPartsGate(anchorPath, worktreeRoot, recordPath string, max int) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
@@ -47,7 +49,8 @@ func NewPartsGate(anchorPath, worktreeRoot, recordPath string, max int) shuttlee
 }
 
 // readParts reads and parses the parts file under anchorPath.
-// An absent or malformed file is an error that sends the reader to the parent, whose way forward is to re-run Parts-Write.
+// An absent or malformed file is an error that sends the reader to the parent.
+// Its way forward is to re-run Parts-Write.
 func readParts(anchorPath string) (*partsparser.Parts, error) {
 	path := partsparser.File(anchorPath)
 	data, err := os.ReadFile(path)
@@ -77,7 +80,9 @@ func partContract(parts *partsparser.Parts, part string) (partsparser.Part, erro
 	return partsparser.Part{}, fmt.Errorf("%w: %q; the parts file holds %s; way forward: pass one of those names", ErrPartUnknown, part, strings.Join(names, ", "))
 }
 
-// partScope returns the part scope for the part named part: the exports other parts and shared spots give it, split into `plan:` handles and new file paths, and the paths of every shared spot.
+// partScope returns the part scope for the part named part.
+// It holds the exports that other parts and shared spots give the part, as `plan:` handles and new file paths.
+// It also holds the paths of every shared spot.
 func partScope(parts *partsparser.Parts, part string) *planparser.PartScope {
 	scope := &planparser.PartScope{Name: part, SpotPaths: parts.SpotPaths()}
 	for _, ref := range parts.External(part) {
@@ -90,8 +95,13 @@ func partScope(parts *partsparser.Parts, part string) *planparser.PartScope {
 	return scope
 }
 
-// checkPartPlan returns the findings of one part's parsed plan: the index's format findings under the part scope, the context checks without the decision record, and one blocking part-export-missing per contract export no card creates.
-// The decision record is left out because pattern-changes-mismatch and pattern-line-unprescribed rest on the joined overview, which the part has none of; the joined plan's gate runs them.
+// checkPartPlan returns the findings of one part's parsed plan.
+// They are the index's format findings under the part scope;
+// the context checks without the decision record;
+// and one blocking part-export-missing per contract export that no card creates.
+// The decision record is left out:
+// pattern-changes-mismatch and pattern-line-unprescribed rest on the joined overview, which the part lacks;
+// the joined plan's gate runs them.
 func checkPartPlan(plan *planparser.Plan, parts *partsparser.Parts, contract partsparser.Part, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	plan.Part = partScope(parts, contract.Name)
 	findings, err := index.ValidateFormat(plan, worktreeRoot, nil)
@@ -117,9 +127,16 @@ func checkPartPlan(plan *planparser.Plan, parts *partsparser.Parts, contract par
 	return findings, nil
 }
 
-// ValidatePart is the part check shared by `lym loom validate-plan --part`, the part plan gate and a part writer's Accept.
-// It reads the part's contract from the parts file under anchorPath, parses the part's plan directory with a part scope and returns the findings of the format check over worktreeRoot, the context checks without the decision record, and a blocking part-export-missing finding for each export of the contract no card creates.
-// An absent or malformed parts file, a part the file does not hold (an error wrapping ErrPartUnknown) and a part directory that cannot be read as a plan are errors, each naming its way forward.
+// ValidatePart runs the part check for `lym loom validate-plan --part`, the part plan gate and a writer's Accept.
+// It reads the part's contract from the parts file under anchorPath.
+// It parses the part's plan directory with a part scope.
+// It returns the findings of three checks:
+// the format check over worktreeRoot;
+// the context checks without the decision record;
+// and a blocking part-export-missing finding for each contract export that no card creates.
+// An absent or malformed parts file is an error, and so is a part the file does not hold, which wraps ErrPartUnknown.
+// A part directory that does not parse as a plan is an error too.
+// Each error names its way forward.
 func ValidatePart(anchorPath, worktreeRoot, part string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	parts, err := readParts(anchorPath)
 	if err != nil {
@@ -137,8 +154,10 @@ func ValidatePart(anchorPath, worktreeRoot, part string, index planindex.Index, 
 	return checkPartPlan(plan, parts, contract, worktreeRoot, index, pc)
 }
 
-// NewPartPlanGate returns the `plan-part` gate closure of a part writer's seat: the plan gate's mapping over ValidatePart's findings for the part named part.
-// A part directory that cannot be parsed is a finding the writer can fix, and an index error stays a returned error, as in the plan gate.
+// NewPartPlanGate returns the `plan-part` gate closure of a part writer's seat.
+// The gate checks the part's plan directory and reports the findings as its result.
+// A part directory that cannot be parsed is a finding the writer can fix.
+// An index error stays a returned error.
 func NewPartPlanGate(anchorPath, worktreeRoot, scratchDir, part string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
 	return planGate("Plan-Part-Gate", partsparser.PartDir(anchorPath, part), scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		parts, err := readParts(anchorPath)
@@ -169,9 +188,14 @@ func NewPartAccept(anchorPath, worktreeRoot, part string, index planindex.Index,
 	}
 }
 
-// JoinParts is the Go half of `lym loom join-parts`: it re-checks every part and joins the parts' plans into the plan under anchorPath.
-// It refuses an absent or malformed parts file as ValidatePart does, a part whose overview is absent, and the first part in file order with a blocking finding, carrying the findings.
-// Each refusal names the part to fix and the way forward: the chair has that part's writer fix it, or fixes it itself when the writer no longer answers, then runs `lym loom join-parts` again.
+// JoinParts is the Go half of `lym loom join-parts`:
+// it re-checks every part and joins the parts' plans into the plan under anchorPath.
+// It refuses an absent or malformed parts file as ValidatePart does.
+// It refuses a part whose overview is absent.
+// It refuses the first part in file order with a blocking finding, carrying the findings.
+// Each refusal names the part to fix and the way forward.
+// The chair has that part's writer fix it, or fixes it itself when the writer no longer answers;
+// then it runs `lym loom join-parts` again.
 // Otherwise it returns the result or the refusal of planparser.JoinParts, which receives the parts in file order.
 func JoinParts(anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) (*planparser.JoinResult, error) {
 	parts, err := readParts(anchorPath)

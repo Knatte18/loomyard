@@ -1,9 +1,12 @@
-// sessionname.go gives Claude the three reedengine.SessionNamer methods the per-hub watchdog uses to repair a session's own name.
+// sessionname.go gives Claude the three reedengine.SessionNamer methods.
+// The per-hub watchdog uses them to repair a session's own name.
 // All Claude shape knowledge stays here, per the Shuttle Provider-Seam Invariant.
 //
-// The session name is read from the transcript's latest `custom-title` line, which Claude Code writes on `--name` and on `/rename`.
+// The session name is read from the transcript's latest `custom-title` line.
+// Claude Code writes that line on `--name` and on `/rename`.
 // `custom-title` is a Claude Code internal, not a documented interface.
-// If its shape changes, every read finds no entry, so the watchdog retypes `/rename` on each idle tick and logs each one.
+// If its shape changes, every read finds no entry,
+// so the watchdog retypes `/rename` on each idle tick and logs each one.
 
 package claudeengine
 
@@ -24,9 +27,10 @@ const customTitleType = "custom-title"
 
 // SessionNameDrift reports whether the session's latest recorded name differs from want.
 // A transcript with no name line at all counts as drift, since Claude never got the name or a compact dropped it.
-// A missing or unreadable transcript reports no drift, so a session whose transcript is not yet written is never retyped.
-// A transcript that does not exist yet logs at Debug.
-// Any other read failure logs at Warn once per session id for as long as c lives, and at Debug after that.
+// A missing transcript reports no drift and logs at Debug,
+// so a session whose transcript is not yet written is never retyped.
+// Any other read failure also reports no drift.
+// It logs at Warn once per session id, for as long as c lives, and at Debug after that.
 func (c *Claude) SessionNameDrift(sessionID, workdir, want string) bool {
 	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
@@ -87,7 +91,7 @@ func (s *nameReadWarnings) first(sessionID string) bool {
 	return true
 }
 
-// SessionIdle delegates to IdleSession, the same probe the orch watcher gates /clear on.
+// SessionIdle reports whether capture, a pane's screen contents, shows a session ready to take a typed rename.
 func (c *Claude) SessionIdle(capture string) bool {
 	return c.IdleSession(capture)
 }

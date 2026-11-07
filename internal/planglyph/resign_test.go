@@ -1,4 +1,5 @@
-// resign_test.go covers RebindResigns: the carrying of a recorded C# re-sign arrow into the plan once its edit is in the tree.
+// resign_test.go covers RebindResigns:
+// the carrying of a recorded C# re-sign arrow into the plan once its edit is in the tree.
 
 package planglyph
 
@@ -13,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRebindResigns runs RebindResigns over a fixture copy and a plan whose card 1 re-signs a member and whose card 2 names the member by its old glyph.
+// TestRebindResigns runs RebindResigns over a fixture copy and a plan:
+// card 1 re-signs a member, and card 2 names the member by its old glyph.
 func TestRebindResigns(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -35,7 +37,8 @@ func TestRebindResigns(t *testing.T) {
 		want []findingKey
 		// card2 is the substring card 2's file must hold afterwards.
 		card2 string
-		// rewritten is whether the plan's card files change: card 1's arrow target and card 2's reference both move to the minted id.
+		// rewritten is whether the plan's card files change:
+		// card 1's arrow target and card 2's reference both move to the minted id.
 		rewritten bool
 	}{
 		{

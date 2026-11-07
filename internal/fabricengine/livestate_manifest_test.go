@@ -1,9 +1,7 @@
-// livestate_manifest_test.go captures a whole-hub filesystem manifest before and after a verb runs, and diffs two
-// manifests against a set of permitted removal roots so a cell can assert that a verb touched nothing
-// outside what it declared it would.
-// The manifest is the survival-assertion mechanism batches 5-7 build cells against: CaptureManifest,
-// DiffManifest, and AssertNoUnpermittedChange are the whole of the external interface those batches
-// consume.
+// livestate_manifest_test.go captures a whole-hub filesystem manifest before and after a verb runs.
+// It diffs two manifests against a set of permitted removal roots.
+// A cell uses it to assert that a verb touched nothing outside what it declared it would.
+// CaptureManifest, DiffManifest and AssertNoUnpermittedChange form its external interface.
 
 package fabricengine_test
 
@@ -22,12 +20,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 )
 
-// gitDirName is the base name a manifest walk treats specially: every ".git" entry, file or directory, gets the narrow allowlisted treatment gitDirRule describes, rather than the ordinary walk rules.
-// It is not a fabric geometry token, so it is spelled here directly rather than routed through an accessor — the geometry-through-accessors rule governs the Bolt checkout, `-weft`, `_portals`, `_launchers`, `_lym` and `.lym`, not git's own directory name.
+// gitDirName is the base name of git's own metadata entry.
+// A manifest walk gives every ".git" entry, file or directory, a narrow allowlisted treatment.
+// It does not apply the ordinary walk rules to them.
+// The name is not a fabric geometry token, so it is spelled directly rather than routed through an accessor.
+// Fabric geometry names go through accessors: the Bolt checkout, `-weft`, `_portals`, `_launchers`, `_lym`, `.lym`.
 const gitDirName = ".git"
 
-// Kind enumerates the closed set of filesystem entry shapes a Manifest records: a regular file, a
-// directory, or a link (a symlink on POSIX, a junction on Windows).
+// Kind enumerates the closed set of filesystem entry shapes a Manifest records:
+// a regular file, a directory, or a link (a symlink on POSIX, a junction on Windows).
 type Kind int
 
 const (
@@ -35,13 +36,12 @@ const (
 	KindFile Kind = iota
 	// KindDir is a directory, recorded at existence granularity only.
 	KindDir
-	// KindLink is a link — a symlink on POSIX, a junction on Windows — recorded as a leaf, never
-	// descended into, with its raw one-hop target.
+	// KindLink is a link, a symlink on POSIX or a junction on Windows.
+	// It is recorded as a leaf, never descended into, with its raw one-hop target.
 	KindLink
 )
 
-// String reports kind's name in prose, so a diff failure message names the entry shape it is
-// complaining about.
+// String reports kind's name in prose, so a diff failure message names the entry shape it complains about.
 func (k Kind) String() string {
 	switch k {
 	case KindFile:
@@ -57,60 +57,49 @@ func (k Kind) String() string {
 
 // Entry is what a Manifest records for one hub-relative path.
 //
-// Deliberately not recorded, each for its own reason: permission bits (meaningless on Windows, where
-// every file looks alike to a POSIX-shaped mode check); mtime (touched by operations — a git checkout,
-// a copy — that are not the destruction this harness exists to catch); and size-without-hash (two
-// files of equal size can differ in content, which is exactly the case a survival assertion must not
-// miss).
+// Permission bits are not recorded, since they are meaningless on Windows.
+// Modification time is not recorded, since a git checkout or a copy touches it without destroying anything.
+// Size is not recorded alone, since two files of equal size can differ in content,
+// and a survival assertion must catch that.
 type Entry struct {
 	// Kind is the entry's filesystem shape.
 	Kind Kind
-	// LinkTarget is the raw one-hop target of a KindLink entry, from fslink.RawTarget — not
-	// fslink.PointsTo, for the same reason destroy.go's ownedWiredJunction check uses the raw target:
-	// a fully-resolved chain fails outright when a later segment is gone, and silently walks past a
-	// target that is itself a further link.
+	// LinkTarget is the raw one-hop target of a KindLink entry.
+	// It is kept unresolved.
+	// A fully resolved chain fails outright when a later segment is gone,
+	// and it walks past a target that is itself a further link.
 	// Empty for KindFile and KindDir.
 	LinkTarget string
 	// ContentHash is the SHA-256 hash, hex-encoded, of a KindFile entry's bytes.
-	// Empty for KindDir and KindLink, and empty for a ".git" file entry, which the git allowlist
-	// records at existence granularity only.
+	// Empty for KindDir and KindLink.
+	// A ".git" file entry is empty too, since it is recorded at existence granularity only.
 	ContentHash string
 }
 
-// Manifest is a whole-hub filesystem capture: every key is a filepath.ToSlash-normalised path relative
-// to the captured hub root, mapped to the Entry recorded for it.
+// Manifest is a whole-hub filesystem capture.
+// Each key is a filepath.ToSlash-normalised path relative to the captured hub root.
+// Each value is the Entry recorded for that path.
 type Manifest map[string]Entry
 
 // CaptureManifest walks hubRoot and returns a Manifest of everything found there.
 //
-// A link is always recorded as a leaf and never descended into, on every platform: detection goes
-// through fslink.IsLink, never a raw os.Lstat mode-bit check, because that is the only test that
-// answers the question uniformly for a POSIX symlink and a Windows junction alike.
-// This rule is load-bearing, not an optimisation.
-// Fabric's wired junctions carry absolute targets that point back inside the same hub — warp/_lym to
-// the hub's weft-side _lym, warp/.lym likewise — so a walk that descended through a junction would
-// record the weft sibling's contents twice: once under its own path, and again under every warp
-// junction chaining into it.
-// Every legitimate weft-side change would then surface as an unpermitted mutation under a warp key,
-// while a permit root written against a warp path would silently license weft destruction.
-// The link's identity is fully captured by its kind plus its raw one-hop target; whatever the target
-// contains is recorded once, under the target's own path.
+// Detection goes through fslink.IsLink, not a raw os.Lstat mode-bit check.
+// That is the only test that answers uniformly for a POSIX symlink and a Windows junction.
+// CaptureManifest records every entry under hubRoot, keyed by its slash-separated path relative to hubRoot.
+// A symbolic link or junction is recorded once, with its raw one-hop target, and the walk never descends into it.
+// Descending would record the target's contents a second time under the link's path,
+// and a permit written against the link's path would then license changes to the target.
+// Links are detected explicitly rather than left to the walk.
+// Windows junctions and POSIX symlinks differ in whether a directory walk descends into them.
 //
-// Windows junctions and POSIX symlinks differ in how a plain directory walk traverses them — a walk
-// that happens not to descend on one platform may descend on the other — which is exactly why this
-// function checks fslink.IsLink itself before deciding whether to recurse, rather than trusting the
-// walk's own default behaviour.
+// Inside a ".git" directory, or at a ".git" file, only two kinds of entry are recorded:
+// the ".git" entry itself, and each ".git/worktrees/<name>" directory.
+// Both are recorded at existence granularity, with no content hash.
+// Everything else under ".git" is excluded.
+// Excluding ".git" wholesale would hide linked-worktree deregistration.
+// Hashing everything under it would drown the manifest in index, log, ref and object churn.
 //
-// Inside any ".git" directory, or at a ".git" file (what a linked worktree carries), only the ".git"
-// entry itself and each ".git/worktrees/<name>" directory are recorded, both at existence granularity
-// with no content hash; everything else under ".git" is excluded.
-// A blanket ".git" exclusion would blind the harness to linked-worktree deregistration — the shape of
-// R3's defect exactly — while hashing everything under ".git" would drown every cell in index, logs,
-// refs, objects, FETCH_HEAD, ORIG_HEAD and packed-refs churn until the permit lists permitted
-// everything.
-// Branch existence is deliberately not carried by the manifest at all; it is asserted through git
-// itself in the per-verb effect assertions, where the answer is authoritative rather than inferred
-// from a ref file.
+// Branch existence is not carried by the manifest; callers assert it through git directly.
 //
 // It calls tb.Fatalf on any error.
 func CaptureManifest(tb testing.TB, hubRoot string) Manifest {
@@ -145,10 +134,10 @@ func CaptureManifest(tb testing.TB, hubRoot string) Manifest {
 				return targetErr
 			}
 			manifest[relSlash] = Entry{Kind: KindLink, LinkTarget: target}
-			// A junction can present as a directory entry to the walk on Windows; SkipDir on a
-			// directory-shaped entry is what keeps this function from ever descending through a link
-			// regardless of platform. SkipDir on a non-directory entry would instead skip the rest of
-			// the containing directory, which is why the two cases are not folded together.
+			// On Windows a junction can present as a directory entry to the walk.
+			// SkipDir on a directory-shaped entry keeps the walk from descending through a link on any platform.
+			// SkipDir on a non-directory entry would skip the rest of the containing directory.
+			// The two cases are therefore kept apart.
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -173,13 +162,13 @@ func CaptureManifest(tb testing.TB, hubRoot string) Manifest {
 	return manifest
 }
 
-// captureGitEntry applies the ".git" allowlist to one walk entry named ".git": it records the entry
-// itself and, for a directory, each ".git/worktrees/<name>" directory, then returns filepath.SkipDir
-// so the walk never descends into anything else ".git" carries.
+// captureGitEntry applies the ".git" allowlist to one walk entry named ".git".
+// It records the entry itself and, for a directory, each ".git/worktrees/<name>" directory.
+// It then returns filepath.SkipDir so the walk never descends into anything else ".git" carries.
 func captureGitEntry(manifest Manifest, hubRoot, path, relSlash string, d fs.DirEntry) error {
 	if !d.IsDir() {
-		// A linked worktree's ".git" is a file, not a directory; it is recorded at existence
-		// granularity only, matching the directory case below.
+		// A linked worktree's ".git" is a file, not a directory.
+		// It is recorded at existence granularity only, the same as a ".git" directory.
 		manifest[relSlash] = Entry{Kind: KindFile}
 		return nil
 	}
@@ -223,20 +212,20 @@ type ChangeKind int
 const (
 	// ChangeRemoved reports a path present in before and absent from after.
 	ChangeRemoved ChangeKind = iota
-	// ChangeKindChanged reports a path whose Entry.Kind differs between before and after — a file
-	// where a link was, or the like.
+	// ChangeKindChanged reports a path whose Entry.Kind differs between before and after.
+	// For example, a file where a link was.
 	ChangeKindChanged
-	// ChangeLinkTargetChanged reports a KindLink path whose raw one-hop target differs between before
-	// and after.
+	// ChangeLinkTargetChanged reports a KindLink path whose raw one-hop target differs.
+	// Only the raw one-hop target is compared, not the content it points at.
 	ChangeLinkTargetChanged
-	// ChangeContentChanged reports a KindFile path whose content hash differs between before and
-	// after.
+	// ChangeContentChanged reports a KindFile path whose content hash differs.
+	// The hashes are compared between before and after.
 	ChangeContentChanged
 	// ChangeAdded reports a path present in after and absent from before.
 	ChangeAdded
 )
 
-// String reports k's name in prose, so a diff failure message names the kind of change it found.
+// String returns the name of k in prose, so a failure message names the kind of change.
 func (k ChangeKind) String() string {
 	switch k {
 	case ChangeRemoved:
@@ -254,7 +243,7 @@ func (k ChangeKind) String() string {
 	}
 }
 
-// Change is one path-level difference DiffManifest found between two manifests.
+// Change is one path-level difference between two manifests.
 // Before is nil for a ChangeAdded entry; After is nil for a ChangeRemoved entry; both are set for
 // every other kind.
 type Change struct {
@@ -268,17 +257,14 @@ type Change struct {
 	After *Entry
 }
 
-// DiffManifest compares before and after and returns every path that disappeared, changed kind,
-// changed link target, or changed content hash and that is not at or below any permitted root, plus
-// every path added between the two captures, reported with ChangeAdded so a cell can assert on
-// destruction without being noisy about creation.
+// DiffManifest returns every change to a path that is not at or below any permitted root.
+// A change is a path that disappeared, changed kind, changed link target, or changed content hash.
+// It also returns every path added between the two captures, reported with ChangeAdded,
+// so a cell can assert on destruction without treating creation as destruction.
 //
 // A permitted root is a filepath.ToSlash hub-relative path prefix.
-// Matching is on path segments, not on raw string prefix, so a root of "_portals/x" never permits
-// "_portalsfoo/y".
-// Comparison of a path segment against a root segment folds case on Windows only, via this file's own
-// segmentsEqual — lymcwd.samePath does exactly this but is unexported, so this file carries its own
-// equivalent rather than reaching for it.
+// Matching is on path segments, not on raw string prefix, so a root of "_portals/x" never permits "_portalsfoo/y".
+// On Windows the segment comparison folds case; elsewhere it is byte-exact.
 //
 // The returned slice is sorted by Path, so a caller's failure output is stable across runs.
 func DiffManifest(before, after Manifest, permitted []string) []Change {
@@ -347,8 +333,8 @@ func pathPermitted(path string, permitted []string) bool {
 }
 
 // pathAtOrBelowRoot reports whether path, split on "/", carries root's segments as a prefix.
-// Segment-wise comparison, not raw string-prefix comparison, is what keeps a root of "_portals/x" from
-// matching "_portalsfoo/y".
+// The comparison runs segment by segment, not as a raw string prefix,
+// so a root of "_portals/x" does not match "_portalsfoo/y".
 func pathAtOrBelowRoot(path, root string) bool {
 	pathSegments := strings.Split(path, "/")
 	rootSegments := strings.Split(root, "/")
@@ -363,10 +349,8 @@ func pathAtOrBelowRoot(path, root string) bool {
 	return true
 }
 
-// segmentsEqual reports whether two path segments name the same thing: byte-exact everywhere except
-// Windows, where the comparison folds case — the same posture lymcwd.samePath takes for a full path,
-// carried here at segment granularity because that unexported function is not reachable from this
-// package.
+// segmentsEqual reports whether two path segments name the same thing.
+// The comparison is byte-exact, except on Windows, where it folds case.
 func segmentsEqual(a, b string) bool {
 	if runtime.GOOS == "windows" {
 		return strings.EqualFold(a, b)
@@ -374,11 +358,9 @@ func segmentsEqual(a, b string) bool {
 	return a == b
 }
 
-// nearestPermittedRoot returns whichever of permitted shares the longest path-segment prefix with
-// path, for a failure message to name even when that root did not end up covering path — the message
-// this supports is "here is the permitted root that came closest, and it still didn't reach you".
-// Returns "(none declared)" if permitted is empty, or "(none)" if no permitted root shares even path's
-// first segment.
+// nearestPermittedRoot returns the permitted root that shares the longest path-segment prefix with path.
+// A failure message names this root even when it does not cover path.
+// It returns "(none declared)" if permitted is empty, or "(none)" if no permitted root shares path's first segment.
 func nearestPermittedRoot(path string, permitted []string) string {
 	if len(permitted) == 0 {
 		return "(none declared)"
@@ -407,8 +389,8 @@ func nearestPermittedRoot(path string, permitted []string) string {
 	return best
 }
 
-// describe renders one Change in prose for a failure message: the path, what kind of change it was,
-// and enough of the before/after entries to make the change legible without a debugger.
+// describe renders one Change in prose for a failure message:
+// the path, the kind of change, and enough of the before/after entries to make it legible without a debugger.
 func (c Change) describe() string {
 	switch c.Kind {
 	case ChangeRemoved:
@@ -427,12 +409,9 @@ func (c Change) describe() string {
 }
 
 // AssertNoUnpermittedChange fails tb if before and after differ anywhere outside permitted's roots.
-// Additions are never a failure here — DiffManifest's ChangeAdded entries exist so a cell can inspect
-// creation without AssertNoUnpermittedChange treating it as destruction — only ChangeRemoved,
-// ChangeKindChanged, ChangeLinkTargetChanged and ChangeContentChanged can fail this assertion.
-// The failure message names each offending path, its kind of change, and the nearest permitted root
-// that did not cover it, because triaging which permit root a survival assertion needs widened is the
-// reason this manifest exists alongside sentinels rather than instead of them.
+// Additions are never a failure, so a cell can inspect creation without treating it as destruction.
+// Only removal, kind change, link target change and content change can fail this assertion.
+// The failure message names each offending path, its kind of change, and the nearest permitted root.
 func AssertNoUnpermittedChange(tb testing.TB, before, after Manifest, permitted []string) {
 	tb.Helper()
 

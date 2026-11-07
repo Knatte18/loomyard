@@ -1,5 +1,6 @@
-// buttonrow.go renders a session's status-bar buttons into session options: the two drawn rows and the spec and run directory a click reads.
-// The render runs in the geometry pins, at boot and at every attach pre-flight.
+// buttonrow.go renders a session's status-bar buttons into session options.
+// It writes the two drawn rows, and the spec and run directory a click reads.
+// The render runs from the geometry pins, which boot and the attach pre-flight both run.
 
 package reedengine
 
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	// buttonSpecOption is the session user option holding the JSON spec of the drawn buttons, which a click reads to find what to run.
+	// buttonSpecOption is the session user option holding the JSON spec that a click reads to find what to run.
 	buttonSpecOption = "@lym_button_spec"
 
 	// buttonDirOption is the session user option holding the run directory as one word quoted in reed's shell dialect.
@@ -47,7 +48,7 @@ type buttonSpecEntry struct {
 	Run string `json:"run"`
 	// Confirm is the prompt asked before Run, with the static placeholders filled; empty asks nothing.
 	Confirm string `json:"confirm"`
-	// Ask is the prompt whose answer fills {answer}, asked before Confirm, with the static placeholders filled; empty asks nothing.
+	// Ask is the prompt whose answer fills {answer}, asked before Confirm, static placeholders filled; empty asks nothing.
 	Ask string `json:"ask"`
 	// AskDefault fills {answer} when the answer to Ask is empty.
 	AskDefault string `json:"ask_default"`
@@ -60,8 +61,10 @@ func buttonRangeFormat(index int, label string) string {
 	return fmt.Sprintf("#[range=user|%s%d %s] %s #[norange list=on default] ", buttonRangePrefix, index, unlitButtonStyle, label)
 }
 
-// composeButtonRowLocked renders the session's buttons: the plain row drawn in a window whose active pane is no strand pane, the agent row drawn in every window, and the spec a click reads.
-// A standalone geometry, a failed button context, an unresolvable shell and a failed beam lookup each give empty rows and a zero spec, so line 3 shows follow alone.
+// composeButtonRowLocked renders the session's buttons: the plain row, the agent row and the spec a click reads.
+// The plain row is drawn in a window whose active pane is no strand pane; the agent row is drawn in every window.
+// A standalone geometry, a failed button context, an unresolvable shell or a failed beam lookup yields empty rows.
+// In each case the spec is zero, and line 3 shows follow alone.
 // Reed's entries come before the machine's, each valid entry numbered in that order.
 // An entry using {beam} is left out, with a Warn, when the beam's directory is absent on this machine.
 // An entry whose filled ask text holds a ',' is left out, with a Warn, since tmux splits a prompt at its commas.
@@ -152,8 +155,8 @@ func usesBeamPlaceholder(entries []buttonEntry) bool {
 	return false
 }
 
-// pinButtonRowLocked sets the two row options, the spec option and the run directory option on target in one tmux invocation,
-// so no click sees a row and a spec from different renders.
+// pinButtonRowLocked sets the two row options, the spec option and the run directory option on target.
+// It sets them in one tmux invocation, so no click sees a row and a spec from different renders.
 // An empty render sets all four to the empty string.
 // A failure is logged at Warn and ignored, like every status pin.
 // Assumes the op lock is already held.

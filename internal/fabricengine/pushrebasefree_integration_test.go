@@ -1,9 +1,9 @@
-// pushrebasefree_integration_test.go covers PushWarpRebaseFreeAt against a real warp checkout with a
-// bare origin: a commit ahead of its upstream pushes successfully and the returned record reports
-// the branch push; SkipGit and SkipPush each return an empty result with a nil error and push
-// nothing; and no untracked push-lock file is left behind — the residue property this function exists
-// to guarantee.
-// Reuses coalesce_integration_test.go's addWarpBareRemote fixture helper and gitsha_integration_test.go's BareBranchSHAForTest/CurrentSHAForTest re-exports.
+// pushrebasefree_integration_test.go covers PushWarpRebaseFreeAt against a real warp checkout with a bare origin.
+// A commit ahead of its upstream pushes successfully, and the returned record reports the branch push.
+// SkipGit and SkipPush each return an empty result with a nil error and push nothing.
+// No untracked push-lock file is left behind, which is the residue property the function guarantees.
+// It reuses the addWarpBareRemote fixture from coalesce_integration_test.go.
+// It also uses the BareBranchSHAForTest and CurrentSHAForTest re-exports from gitsha_integration_test.go.
 
 package fabricengine_test
 
@@ -18,11 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush covers the successful push path: a warp
-// checkout with a commit ahead of its bare origin pushes it, the bare remote advances to the local
-// HEAD, the returned record contains a KindBranchPushed entry, and no gitrepo.PushLockFileName file
-// is left behind at the warp worktree root — the residue property PushWarpRebaseFreeAt exists to
-// guarantee.
+// TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush covers the successful push path.
+// A warp checkout with a commit ahead of its bare origin pushes it,
+// and the bare remote advances to the local HEAD.
+// The returned record contains a KindBranchPushed entry.
+// The test pins the residue property: no gitrepo.PushLockFileName file is left at the warp worktree root.
 func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -58,8 +58,8 @@ func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 	}
 }
 
-// TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing asserts SkipGit and SkipPush each short-
-// circuit to an empty result and a nil error, leaving the bare remote unadvanced.
+// TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing asserts that SkipGit and SkipPush each short-circuit.
+// Each returns an empty result with a nil error and leaves the bare remote unadvanced.
 func TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

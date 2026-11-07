@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriftAwait covers each Done and Stuck way out of the row, the pass with drift switched off, the wait on a held capture lock, awaited_at written on a passed capture, a deferral and the commit of the durable directory on every pass.
+// TestDriftAwait covers every way out of the row: Done, Stuck, a deferral, and the pass with drift switched off.
+// It also checks the wait on a held capture lock, the awaited_at stamp, and the durable directory commit on every pass.
 func TestDriftAwait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

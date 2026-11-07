@@ -1,5 +1,5 @@
-// entries_parts.go implements partsWriteEntry and partsPlanWriteEntry, the Constructors for the "PartsWrite" and "PartsPlanWrite" registry rows.
-// It also holds resolvePartGates, which turns the Parts-Plan-Write row's "part_gates" key into the per-part gates of its writer seats.
+// entries_parts.go holds the Constructors of the "PartsWrite" and "PartsPlanWrite" registry rows.
+// It also holds resolvePartGates, which builds the per-part gates of the PartsPlanWrite row's "part_gates" key.
 // Both entries run a told seat table on a MultiLLM producer behind loomshed.NewPlanWrite's commit decorator.
 
 package shedrecipe
@@ -14,21 +14,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// PartSeats holds the per-part hooks of the Parts-Plan-Write table that only the entry can build, each keyed by a part's name.
-// Env.PartsPlanTable receives them so the table builder wires one gate, one Accept and one findings path to each writer seat.
+// PartSeats holds the per-part hooks of a PartsPlanWrite table, each keyed by a part's name.
+// Only the entry can build them; Env.PartsPlanTable receives them.
+// The table builder wires one gate, one Accept and one findings path to each writer seat.
 type PartSeats struct {
-	// Gates returns the gate of the writer seat for the named part, or an error that fails the table.
+	// Gates returns the gate spec of the writer seat for the named part; an error fails the table.
 	Gates func(part string) (shuttleengine.GateSpec, error)
-	// Accept returns the Accept hook of the writer seat for the named part.
+	// Accept returns the hook that accepts the writer seat's result for the named part.
 	Accept func(part string) func(shuttleengine.Result) error
 	// FindingsPath returns the file the named part's exhausted gate keeps its findings in.
 	FindingsPath func(part string) string
 }
 
 // partsWriteEntry is the Constructor for the "PartsWrite" registry row.
-// It validates Env.PartsTable, Env.CommitParts, Env.Seats and Env.AnchorPath, and resolves the row's "gates" Config key through resolveGateSpec.
-// It then builds a seat-table producer carrying loomshed.NewPartsDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
-// The table arrives as a shedadapters.TableSource closure evaluated once per Call, and the resolved gate is stamped onto each table it returns.
+// It validates Env.PartsTable, Env.CommitParts, Env.Seats and Env.AnchorPath.
+// It resolves the row's "gates" Config key through resolveGateSpec.
+// It builds a seat-table producer with loomshed.NewPartsDirRotator as its fresh-spawn preparation.
+// The producer sits behind loomshed.NewPlanWrite's post-Done commit decorator.
+// The table arrives as a shedadapters.TableSource closure, evaluated once per Call.
+// The resolved gate is stamped onto each table it returns.
 // The row carries exactly one Config key, "gates".
 func partsWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg, "gates"); err != nil {
@@ -64,10 +68,13 @@ func partsWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProdu
 }
 
 // partsPlanWriteEntry is the Constructor for the "PartsPlanWrite" registry row.
-// It validates Env.PartsPlanTable, Env.CommitPartsPlan, Env.Seats, Env.PlanIndex, Env.Rework.ArchiveWebster and the absolute Env.AnchorPath, Env.WorktreeRoot and Env.StencilsDir.
+// It validates Env.PartsPlanTable, Env.CommitPartsPlan, Env.Seats, Env.PlanIndex and Env.Rework.ArchiveWebster.
+// It also requires the absolute Env.AnchorPath, Env.WorktreeRoot and Env.StencilsDir.
 // It resolves the row's "gates" key through resolveGateSpec and its "part_gates" key through resolvePartGates.
-// It builds a seat-table producer carrying loomshed.NewPartsPlanRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
-// The table source hands Env.PartsPlanTable the per-part hooks and stamps the "gates" gate onto the chair of the table it returns.
+// It builds a seat-table producer with loomshed.NewPartsPlanRotator as its fresh-spawn preparation.
+// The producer sits behind loomshed.NewPlanWrite's post-Done commit decorator.
+// The table source passes the per-part hooks to Env.PartsPlanTable.
+// It stamps the "gates" gate onto the chair of each table it returns.
 // The row carries the Config keys "gates" and "part_gates".
 func partsPlanWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg, "gates", "part_gates"); err != nil {
@@ -126,9 +133,12 @@ func partsPlanWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedP
 	return loomshed.NewPlanWrite(row.Name, inner, env.CommitPartsPlan), nil
 }
 
-// resolvePartGates reads the row's "part_gates" Config key as resolveGateSpec reads "gates", with the same element keys, and returns the closure that builds a part's gate spec.
-// The one legal gate name is "plan-part", which requires the absolute env.AnchorPath and env.WorktreeRoot and a non-nil env.PlanIndex; any other name is refused naming it.
-// The list is validated once, here; an absent key returns a closure that gates no part, and a present empty list is an error.
+// resolvePartGates reads the row's "part_gates" Config key and returns the closure that builds a part's gate spec.
+// The list is validated once, when the row is built.
+// An absent key returns a closure that gates no part; a present empty list is an error.
+// The one legal gate name is "plan-part".
+// It requires the absolute env.AnchorPath and env.WorktreeRoot and a non-nil env.PlanIndex.
+// Any other name is refused, and the error names it.
 // Each element yields, for a part, one shuttleengine.GateEntry whose gate is loomshed.NewPartPlanGate over that part.
 func resolvePartGates(entry string, cfg Config, env Env) (func(part string) (shuttleengine.GateSpec, error), error) {
 	elems, present, err := configMapList(cfg, "part_gates")

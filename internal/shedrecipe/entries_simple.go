@@ -1,5 +1,5 @@
-// entries_simple.go implements the registry entries that take an empty Config and validate only the Env fields they read.
-// They are preflightEntry, parentAlignEntry, finalizeEntry, frictionReflectEntry, stubEntry, and websterEntry, the webster implementer.
+// entries_simple.go implements the constructors of the registry rows that take at most one Config key:
+// preflightEntry, parentAlignEntry, finalizeEntry, frictionReflectEntry, stubEntry, and websterEntry.
 
 package shedrecipe
 
@@ -13,8 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// preflightEntry is the Constructor for the "Preflight" registry row: it validates Env.Cwd and
-// returns preflightshed.NewPreflightWithChecks(name, env.Cwd, checks), the checks being env.PreflightBatcher, env.PreflightStencils and env.PreflightDrift.
+// preflightEntry is the Constructor for the "Preflight" registry row.
+// It validates Env.Cwd and returns preflightshed.NewPreflightWithChecks(name, env.Cwd, checks);
+// its checks are env.PreflightBatcher, env.PreflightStencils and env.PreflightDrift.
 func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -25,10 +26,12 @@ func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	return preflightshed.NewPreflightWithChecks(row.Name, env.Cwd, preflightshed.Checks{Batcher: env.PreflightBatcher, Stencils: env.PreflightStencils, Drift: env.PreflightDrift}), nil
 }
 
-// landingRowDeps returns a copy of env.Landing whose GateKey is the key the row's optional "gate_key" string names, else the row name in lower case.
+// landingRowDeps returns a copy of env.Landing whose GateKey is the key the row's optional "gate_key" string names.
+// When the row names no key, or an empty one, GateKey is the row name in lower case.
 // The copy keeps Env run-wide: each landing row sets its own key on its own Deps.
 // A non-string "gate_key" is refused naming the entry, the row, the key and the way forward.
-// "gate_key" selects only which key of the hub's gate.yaml the row runs, and the key's tiers and scope stay hub-file only.
+// "gate_key" selects only which key of the hub's gate.yaml the row runs,
+// and the key's tiers and scope stay hub-file only.
 func landingRowDeps(entry string, row RowIdentity, cfg Config, env Env) (landingshed.Deps, error) {
 	gateKey := strings.ToLower(row.Name)
 	if raw, ok := cfg["gate_key"]; ok {
@@ -45,11 +48,15 @@ func landingRowDeps(entry string, row RowIdentity, cfg Config, env Env) (landing
 	return deps, nil
 }
 
-// parentAlignEntry is the Constructor for the "ParentAlign" registry row: it returns landingshed.NewParentAlign over a copy of env.Landing whose GateKey is the row's, wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
+// parentAlignEntry is the Constructor for the "ParentAlign" registry row.
+// It returns landingshed.NewParentAlign over a copy of env.Landing whose GateKey is the row's,
+// and it wraps that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
-// The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in, else the row name in lower case.
+// The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in.
+// Without it, or with an empty one, the key is the row name in lower case.
 //
-// It validates no Env field of its own: landingshed.NewParentAlign already rejects the nil seams and the empty merge record path it requires.
+// It validates no Env field of its own:
+// landingshed.NewParentAlign already rejects the nil seams and the empty merge record path it requires.
 func parentAlignEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg, "gate_key"); err != nil {
 		return nil, err
@@ -65,13 +72,18 @@ func parentAlignEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	return m, nil
 }
 
-// finalizeEntry is the Constructor for the "Finalize" registry row: it returns landingshed.NewFinalize over a copy of env.Landing whose GateKey is the row's, wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
+// finalizeEntry is the Constructor for the "Finalize" registry row.
+// It returns landingshed.NewFinalize over a copy of env.Landing whose GateKey is the row's,
+// and it wraps that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
-// The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in, else the row name in lower case.
-// Finalize's own identity is the package constant finalizeName.
-// The coverage-guard test in internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key ("Finalize") to match that constant.
+// The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in.
+// Without it, or with an empty one, the key is the row name in lower case.
+// Finalize's own identity is the constant finalizeName in internal/landingshed.
+// The coverage-guard test in internal/loomrecipe/coverage_guard_test.go pins the registry key of this row:
+// the registry key "Finalize" must match that constant.
 //
-// It validates no Env field of its own: landingshed.NewFinalize already rejects the nil closures in landingshed.Deps.
+// It validates no Env field of its own:
+// landingshed.NewFinalize already rejects the nil closures in landingshed.Deps.
 func finalizeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg, "gate_key"); err != nil {
 		return nil, err
@@ -87,9 +99,9 @@ func finalizeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 	return fz, nil
 }
 
-// frictionReflectEntry is the Constructor for the "FrictionReflect" registry row: it returns
-// loomshed.NewFrictionReflect(name, env.ReflectFriction), wrapping that constructor's own error with
-// this package's error-text prefix.
+// frictionReflectEntry is the Constructor for the "FrictionReflect" registry row.
+// It returns loomshed.NewFrictionReflect(name, env.ReflectFriction),
+// and it wraps that constructor's own error with this package's error-text prefix.
 //
 // It validates no Env field of its own and inherits loomshed.NewFrictionReflect's nil-closure refusal.
 func frictionReflectEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -103,8 +115,8 @@ func frictionReflectEntry(row RowIdentity, cfg Config, env Env) (shedengine.Shed
 	return p, nil
 }
 
-// stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns
-// loomshed.NewStub(name).
+// stubEntry is the Constructor for the "Stub" registry row.
+// It validates no Env field and returns loomshed.NewStub(name).
 func stubEntry(row RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -112,19 +124,25 @@ func stubEntry(row RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, err
 	return loomshed.NewStub(row.Name), nil
 }
 
-// websterEntry is the Constructor of the webster implementer, which the "Implementer" registry row builds when its setting names webster: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.ConfigDirs.Anchor, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
+// websterEntry is the Constructor of the webster implementer.
+// The "Implementer" registry row builds it when its setting names webster.
+// It resolves the row's "gates" Config key through resolveGateSpec onto the gate field of Env.WebsterDeps.
+// It validates Env.ConfigDirs.Anchor, Env.WebsterRun and Env.CommitWebster;
+// it also validates the Starter, Stopper, Engines and RefMatcher fields of Env.WebsterDeps.
+// It returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
 //
-// The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
-// one key means one thing at every gated site, and a reader of the recipe can see which validator
-// guards each row without opening Go.
+// The gate is resolved here for the same reason the other gated rows resolve theirs here:
+// one key means one thing at every gated site,
+// and a reader of the recipe can see which validator guards each row without opening Go.
 // The shipped "Webster" row carries no "gates" key, so resolveGateSpec returns the zero GateSpec.
-// `websterengine.Run` adds the plan-level `verify` entry to Merriam's spec itself and refuses a `deps.Gate` that already names `verify`,
-// so a recipe row cannot add a second one beside it.
+// `websterengine.Run` adds the plan-level `verify` entry to the Webster spec itself;
+// it refuses a `deps.Gate` that already names `verify`, so a recipe row cannot add a second one beside it.
 //
-// It checks none of WebsterDeps' other nil-able fields, each for its own reason: Batcher is
-// overwritten by loomshed's own wrapper on every Call, and that wrapper's own field doc says the
-// caller leaves it nil; and ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
-// websterengine.Run, not to this wiring layer.
+// It checks none of WebsterDeps' other nil-able fields, each for its own reason:
+// Batcher is overwritten by loomshed's own wrapper on every Call,
+// and that wrapper's own field doc says the caller leaves it nil;
+// ShuttleCfg, Roles, Config, and Geom are value and map types;
+// their validation belongs to websterengine.Run, not to this wiring layer.
 func websterEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Webster", cfg, env)
 	if err != nil {

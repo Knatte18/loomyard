@@ -1,8 +1,7 @@
-// launcher_content.go builds the byte content and file mode for launcher scripts (ide,
-// fabric-checkout, ide-menu, run) as pure, GOOS-parameterized functions.
-// Keeping this logic build-tag-free lets it be unit-tested on the Windows warp for both the Windows
-// (.cmd) and non-Windows (.sh) branches;
-// only the OS I/O in launchers.go depends on the real runtime.GOOS.
+// launcher_content.go builds the content and file mode of launcher scripts (ide, fabric-checkout, ide-menu, run).
+// It is pure and GOOS-parameterized.
+// Keeping it free of build tags lets tests cover both the Windows (.cmd) and non-Windows (.sh) branches.
+// Only the OS I/O in launchers.go reads the real runtime.GOOS.
 
 package fabricengine
 
@@ -13,8 +12,6 @@ import (
 	"strings"
 )
 
-// launcherExt returns the launcher script's file extension for the given GOOS:
-// ".cmd" on Windows, ".sh" everywhere else.
 func launcherExt(goos string) string {
 	if goos == "windows" {
 		return ".cmd"
@@ -22,9 +19,10 @@ func launcherExt(goos string) string {
 	return ".sh"
 }
 
-// launcherScript builds the content and file mode for a launcher script that
-// climbs to a target subpath and invokes lym. On Windows, uses cmd with CRLF
-// and mode 0o644. On non-Windows, uses bash with LF and mode 0o755 (executable).
+// launcherScript builds the content and file mode of a launcher script that runs lym with lymArgs.
+// It changes into climbRel, relative to the script's own directory.
+// On Windows it is a cmd script with CRLF line endings and mode 0o644.
+// Elsewhere it is a bash script with LF line endings and mode 0o755, so the file is executable.
 func launcherScript(goos, climbRel, lymArgs string) (content []byte, mode os.FileMode) {
 	climbFwd := filepath.ToSlash(climbRel)
 

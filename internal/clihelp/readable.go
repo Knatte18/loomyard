@@ -1,4 +1,5 @@
-// readable.go implements the readable summary of operator verbs: the global --envelope flag, the choice of whether a command prints the summary, and the writer that renders it.
+// readable.go implements the readable summary of operator verbs.
+// It holds the global --envelope flag, the rule for which commands print the summary, and the writer that renders it.
 
 package clihelp
 
@@ -12,11 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// EnvelopeFlagUsage is the help text of the global --envelope flag InstallReadableOutput declares.
+// EnvelopeFlagUsage is the help text of the global --envelope flag.
 const EnvelopeFlagUsage = "print the full JSON envelope where an operator verb on a terminal prints its readable summary"
 
 // InstallReadableOutput declares the global --envelope flag as a persistent flag on root.
-// A command that declares its own envelope flag shadows it, and its own flag, when set, keeps the envelope too.
+// A command that declares its own envelope flag shadows the global one.
+// When that flag is set, the command still prints the envelope.
 // Call InstallReadableOutput once during root command construction.
 func InstallReadableOutput(root *cobra.Command) {
 	root.PersistentFlags().Bool(output.EnvelopeFlag, false, EnvelopeFlagUsage)
@@ -28,10 +30,13 @@ func WriterIsTerminal(w io.Writer) bool {
 	return ok && term.IsTerminal(int(file.Fd()))
 }
 
-// UseReadableOutput points cmd's output at an output.SummaryWriter when cmd prints the readable summary, and flushes that writer when the invocation ends.
-// cmd prints it when it carries the operator audience, its output writer is a terminal by isTerminal, no envelope flag is set on it,
-// and it declares no json flag of its own, since such a command renders its own view for a terminal.
-// A person at a terminal so reads each envelope line as its summary, while an agent or script, whose output is never a terminal, reads the envelope.
+// UseReadableOutput points cmd's output at an output.SummaryWriter when cmd prints the readable summary.
+// It flushes that writer when the invocation ends.
+// cmd prints the summary only when it carries the operator audience and its output is a terminal per isTerminal.
+// It also requires that no envelope flag is set on cmd.
+// Likewise a command that declares its own json flag is skipped, since it renders its own view for a terminal.
+// A person at a terminal reads each envelope line as its summary.
+// An agent or script, whose output is not a terminal, reads the envelope.
 func UseReadableOutput(cmd *cobra.Command, isTerminal func(io.Writer) bool) {
 	if cmd.Annotations[AudienceAnnotation] != AudienceOperator {
 		return

@@ -1,6 +1,6 @@
-// names.go declares the batten recipe's row-name constants, the authority the recipe file's
-// row names are pinned against, RowsBeforeRunShed, and RecipeEngines, the derived engine set the cross-consumer
-// coverage guard in internal/shedrecipe trusts.
+// names.go declares the batten recipe's row-name constants, the names the recipe file's rows must match.
+// It also declares RowsBeforeRunShed and RecipeEngines:
+// the derived engine set that the cross-consumer coverage guard in internal/shedrecipe trusts.
 
 package battenrecipe
 
@@ -12,33 +12,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// The batten recipe row names. These are durable on-disk identities that resume depends
-// on: a rename here without a matching rename in contracts/recipes/batten-recipe.yaml breaks
-// resume for any in-flight run, and this package's own coverage guard pins the two against each
-// other.
+// The batten recipe row names.
+// These are durable on-disk identities that resume depends on:
+// a rename here without a matching rename in contracts/recipes/batten-recipe.yaml breaks resume for any in-flight run;
+// this package's coverage guard pins the two against each other.
 const (
 	// NameWorktreeCreate is the row that creates the task worktree.
 	NameWorktreeCreate = "Worktree-Create"
-	// NameSeedChild is the row that seeds the task worktree's own inner shed run, deriving its
-	// recipe from the Board task's own type and its driver from prime's own seed. It runs between
-	// Worktree-Create and Run-Shed, since Run-Shed's own inner shed run cannot start until its
-	// seed exists.
+	// NameSeedChild is the row that seeds the task worktree's inner shed run.
+	// It derives the run's recipe from the Board task's own type and its driver from prime's own seed.
+	// It runs between Worktree-Create and Run-Shed;
+	// the inner shed run cannot start until its seed exists.
 	NameSeedChild = "Seed-Child"
-	// NameOpenWindow is the row that opens the run's terminal window on the task worktree when batten.yaml's open_window is on.
+	// NameOpenWindow is the row that opens a terminal window on the task worktree when batten.yaml's open_window is on.
 	NameOpenWindow = "Open-Window"
 	// NameSeedIDE is the row that writes the task worktree's VS Code config when batten.yaml's seed_ide is on.
 	NameSeedIDE = "Seed-IDE"
 	// NameOpenIDE is the row that opens VS Code on the task worktree when batten.yaml's open_ide is on.
 	NameOpenIDE = "Open-IDE"
-	// NameRunShed is the row that runs the inner shed run inside the task worktree. The constant's
-	// name may follow a neutralization of the producer it identifies, but its value is durable:
-	// shedengine persists CurrentProducer -- this row name -- into the status file, so a rename of
-	// the value breaks resume for an in-flight run. recipe_test.go pins the value against that
-	// symmetry-minded rename. The value itself changed from "Loom-Run" to "Run-Shed" as part of
-	// this task's lifecycle-to-batten rename, deliberately, under the
-	// no-migration-and-no-in-flight-runs-at-landing Shared Decision: landing requires no lifecycle
-	// or batten run in flight, so this durable identity's old value is abandoned rather than
-	// migrated.
+	// NameRunShed is the row that runs the inner shed run inside the task worktree.
+	// Its value is durable, not its name.
+	// shedengine persists CurrentProducer, this row name, into the status file.
+	// Changing the value breaks resume for any in-flight run.
+	// The value must match the row's name in contracts/recipes/batten-recipe.yaml,
+	// or this package's coverage guard fails.
+	// The constant's own name may differ from the value, since only the value is persisted.
+	// Renaming the constant alone leaves resume unaffected.
+	// recipe_test.go pins the value against a rename, so a changed value fails that test.
 	NameRunShed = "Run-Shed"
 	// NameLand is the row that lands a finished child into the prime: pull, deploy, board prune and the ready notice.
 	// It runs between Run-Shed and Worktree-Teardown and carries no on_stuck, so a failed step halts batten blocked there.
@@ -47,8 +47,9 @@ const (
 	NameWorktreeTeardown = "Worktree-Teardown"
 )
 
-// RowsBeforeRunShed returns the names of the batten recipe's rows listed before Run-Shed, in recipe order: the rows a task's run passes through before its inner run starts.
-// A recipe that fails to parse or holds no Run-Shed row panics, naming this package, as RecipeEngines does.
+// RowsBeforeRunShed returns the names of the batten recipe's rows listed before Run-Shed, in recipe order:
+// the rows a task's run passes through before its inner run starts.
+// A recipe that fails to parse or holds no Run-Shed row panics, naming this package.
 func RowsBeforeRunShed() []string {
 	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
 	if err != nil {
@@ -64,15 +65,11 @@ func RowsBeforeRunShed() []string {
 	panic("battenrecipe: RowsBeforeRunShed: the batten recipe holds no " + NameRunShed + " row")
 }
 
-// RecipeEngines parses recipes.BattenRecipe, collects each row's engine name, de-duplicates,
-// and returns the result sorted. It is the input the cross-consumer coverage guard in
-// internal/shedrecipe trusts, unioned with loomrecipe.RecipeEngines to check
-// shedrecipe.Names() for closed coverage.
+// RecipeEngines returns the distinct engine names of the batten recipe's rows, sorted.
+// The cross-consumer coverage guard in internal/shedrecipe trusts this result.
 //
-// RecipeEngines derives its result from the recipe rather than a hand-maintained literal, and
-// never returns a nil slice alongside an error: a parse failure panics, naming this package, since
-// a recipe that fails to parse is a build-time defect in an embedded file rather than a runtime
-// condition.
+// It derives the engines from the recipe rather than a hand-maintained list.
+// A parse failure panics, naming this package: the embedded recipe is a build-time defect, not a runtime condition.
 func RecipeEngines() []string {
 	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
 	if err != nil {

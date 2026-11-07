@@ -1,4 +1,5 @@
-// apierrorretry_test.go covers how Wait re-sends a turn the provider's API ended on an error, and how the run ends once the re-sends are spent.
+// apierrorretry_test.go covers how `Wait` re-sends a turn the provider's API ended on an error.
+// It also covers how the run ends once the re-sends are spent.
 
 package shuttleengine
 
@@ -13,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// reactingReed is an echoReed that runs react after each line typed into its pane, as the agent's answer to it.
+// reactingReed is a fake reed that runs react after each line typed into its pane, as the agent's answer to it.
 // Its first failSends sends fail before any line is typed.
 type reactingReed struct {
 	*echoReed
@@ -43,7 +44,8 @@ func TestWait_APIErrorRetry(t *testing.T) {
 		retries int
 		// events is the events file the run starts over, defaultEvents when empty.
 		events string
-		// react is what the agent appends to its events file after each line typed into its pane, and writeOutput makes it write the output file first.
+		// react is what the agent appends to its events file after each line typed into its pane.
+		// The writeOutput flag makes the agent write the output file first.
 		react       []string
 		writeOutput bool
 		// outputFirst writes the output file before Wait starts.
@@ -59,7 +61,8 @@ func TestWait_APIErrorRetry(t *testing.T) {
 		// wantGaps is the least run-clock time before each send, from the API-error turn end it re-sends.
 		wantGaps     []time.Duration
 		wantAPIError string
-		// ownWindow makes the run's strand an own-window one, and wantRemoved is how many strand removals the run makes, asserted only then.
+		// ownWindow makes the run's strand an own-window one.
+		// wantRemoved is how many strand removals the run makes, asserted only when ownWindow is set.
 		ownWindow   bool
 		wantRemoved int
 	}{

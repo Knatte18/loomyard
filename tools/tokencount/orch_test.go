@@ -1,4 +1,4 @@
-// orch_test.go drives the orchestrator count and the cost estimate over fake reads: the charge by time, a fork naming one run, the window cut-off, the Orch segment of the segment tables, the section order, the fake engine's prices and an unpriced model.
+// orch_test.go tests the orchestrator count and cost estimate over fake reads.
 // The prices are the fake pricer's, not any provider's.
 // Tier-1 (no git, no spawn).
 
@@ -142,7 +142,8 @@ func TestCountOrch(t *testing.T) {
 	}
 	// The runs' burler parts cost $20 each and the Orch segment splits each run's charge into its session and forks parts;
 	// the shares divide by a total that holds the Orch segment.
-	// In All runs the segment also holds the usage charged to no run, so it carries the whole orch cost, averaged over the three runs.
+	// In All runs the segment also holds the usage charged to no run,
+	// so it carries the whole orch cost, averaged over the three runs.
 	for _, want := range []string{
 		"| **Orch**, $103.33 per run | $310.00 | 83.8% |  |  |  |\n| └ forks | $180.00 | 48.6% |  |  |  |\n| └ unattributed | $70.00 | 18.9% |  |  |  |\n| └ session | $60.00 | 16.2% |  |  |  |\n" +
 			"| **Other** | $60.00 | 16.2% | 0s | 0.0% | model-a: 3 |\n| └ burler | $60.00 | 16.2% | 0s | 0.0% | model-a: 3 |\n| idle | | | 4h0m0s | 100.0% | |\n",

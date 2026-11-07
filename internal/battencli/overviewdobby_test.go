@@ -1,4 +1,5 @@
-// overviewdobby_test.go pins the dobby's lines: DobbyLines over built views and cells, and the window frame that draws them above the orchs.
+// overviewdobby_test.go pins the dobby's lines.
+// It covers DobbyLines over built views and cells, and the window frame that draws them above the orchs.
 
 package battencli
 

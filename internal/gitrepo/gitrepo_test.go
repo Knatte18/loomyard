@@ -1,4 +1,5 @@
-// gitrepo_test.go covers the read/commit primitives (CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists, CurrentBranch) against real git repositories built under t.TempDir().
+// gitrepo_test.go covers the read and commit primitives of Repo against real git repositories built under t.TempDir():
+// CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists and CurrentBranch.
 // Every test spawns real git, so this file requires the hermetic TestMain in testmain_test.go.
 
 package gitrepo_test
@@ -16,8 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// newRepo creates a fresh git repository on branch main and returns both
-// the raw directory and a gitrepo.Repo wrapping it.
+// newRepo creates a fresh git repository on branch main and returns the raw directory and a gitrepo.Repo wrapping it.
 func newRepo(t *testing.T) (dir string, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -35,8 +35,8 @@ func writeFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-// commitAll stages and commits all changes in dir via git, bypassing the
-// Repo under test — used only for fixture setup.
+// commitAll stages and commits all changes in dir via git, bypassing the Repo under test.
+// It is used only for fixture setup.
 func commitAll(t *testing.T, dir, message string) {
 	t.Helper()
 
@@ -44,14 +44,12 @@ func commitAll(t *testing.T, dir, message string) {
 	gitkit.Git(t, dir, "commit", "-m", message)
 }
 
-// runGit runs a git subcommand in dir, returning stdout and stderr.
 func runGit(t *testing.T, dir string, args ...string) (stdout, stderr string, code int, err error) {
 	t.Helper()
 
 	return gitexec.RunGit(args, dir)
 }
 
-// runGitStatus returns the porcelain status output for dir.
 func runGitStatus(t *testing.T, dir string) (stdout, stderr string, code int, err error) {
 	t.Helper()
 
@@ -124,8 +122,9 @@ func requireSameFiles(t *testing.T, call string, got []string, want ...string) {
 }
 
 // TestCurrentSHA covers an unborn HEAD and a committed one in a single repository.
-// The steps run serially against shared repository state: the second step relies on the commit it makes itself, after the first has seen the repository empty.
-// The top-level test calls t.Parallel; no step does, because the steps share the repository.
+// The steps run serially against shared repository state:
+// the second step relies on the commit it makes itself, after the first has seen the repository empty.
+// The top-level test calls t.Parallel; no step does.
 func TestCurrentSHA(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -150,9 +149,13 @@ func TestCurrentSHA(t *testing.T) {
 	})
 }
 
-// TestCommitAndReadPrimitives drives StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists, CurrentBranch and the mid-merge refusal through one repository.
-// The steps run serially in one order and share the repository's state: every step starts from a clean tree on main with the files a.txt and b.txt tracked, except where a comment names the dirt an earlier step leaves for the next, and the mid-merge step runs last because it leaves a merge pending.
-// The top-level test calls t.Parallel; no step does, because the steps share the repository.
+// TestCommitAndReadPrimitives drives the commit and read primitives through one repository.
+// It also covers the mid-merge refusal.
+// The steps run serially in one order and share the repository's state.
+// Each step starts from a clean tree on main with a.txt and b.txt tracked.
+// Where a comment names the dirt an earlier step leaves, the next step starts from that dirt instead.
+// The mid-merge step runs last, because it leaves a merge pending.
+// The top-level test calls t.Parallel; no step does.
 func TestCommitAndReadPrimitives(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -175,7 +178,8 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 				t.Errorf("StageAndCommit() = (%q, %v); want (\"\", false) (nothing-to-commit signal)", sha, committed)
 			}
 		}},
-		// Leaves wip.txt staged for the next step: an index entry staged outside the call is a human's half-staged WIP in the shared worktree.
+		// Leaves wip.txt staged for the next step:
+		// an index entry staged outside the call is a human's half-staged WIP in the shared worktree.
 		{"StageAndCommit with an empty list never commits a pre-staged entry", func(t *testing.T) {
 			writeFile(t, dir, "wip.txt", "half-staged WIP")
 			gitkit.MustRun(t, dir, "git", "add", "wip.txt")
@@ -303,7 +307,8 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 			}
 			gitkit.MustRun(t, dir, "git", "checkout", "--", "a.txt")
 		}},
-		// A filename outside ASCII must come back as the literal on-disk path, not core.quotePath's C-quoted escape form ("\"bl\\303\\245b\\303\\246r.txt\"") that matches nothing on disk.
+		// A filename outside ASCII must come back as the literal on-disk path.
+		// The C-quoted escape form that `core.quotePath` produces matches nothing on disk.
 		{"ChangedFilesSince returns a non-ASCII path verbatim", func(t *testing.T) {
 			base := requireCurrentSHA(t, repo)
 			const name = "blåbær.txt"
@@ -318,8 +323,9 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 				t.Errorf("ChangedFilesSince() = %q; want [%q] verbatim", got, name)
 			}
 		}},
-		// A rename must list both the old path (which no longer exists at HEAD) and the new one;
-		// git's default rename detection would report only the destination, leaving a consumer's per-file state for the old path stale forever.
+		// A rename must list both the old path, which is absent from HEAD, and the new one.
+		// git's default rename detection would report only the destination.
+		// A consumer's per-file state for the old path would then stay stale forever.
 		{"ChangedFilesSince reports both paths of a rename", func(t *testing.T) {
 			writeFile(t, dir, "old.txt", "content that stays identical")
 			commitAll(t, dir, "add old.txt")
@@ -356,8 +362,8 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 				}
 			}
 		}},
-		// CurrentBranch must surface an error rather than an empty string on a detached HEAD, so a caller can never mistake "no branch captured" for a legitimate empty branch name.
-		// Reattaches main afterwards.
+		// CurrentBranch must return an error on a detached HEAD, not an empty string.
+		// An empty string would let a caller mistake "no branch captured" for a legitimate empty branch name.
 		{"CurrentBranch errors on a detached HEAD", func(t *testing.T) {
 			gitkit.MustRun(t, dir, "git", "checkout", "--detach", requireCurrentSHA(t, repo))
 			defer gitkit.MustRun(t, dir, "git", "checkout", "main")
@@ -366,12 +372,16 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 				t.Fatal("CurrentBranch() on detached HEAD error = nil; want non-nil")
 			}
 		}},
-		// While a merge is in progress (MERGE_HEAD present), a pathspec-scoped StageAndCommit of an unrelated file is refused by git ("cannot do a partial commit during a merge") rather than silently finalizing the human's half-done merge under the automated message.
-		// The merge is clean and resolved (git merge --no-commit of a non-conflicting branch) on purpose: an unresolved conflict would block any commit and mask the distinction.
-		// It guards the pathspec scoping of the commit: `commit -- <files>` refuses a partial commit mid-merge, whereas an unscoped `git commit` would complete the merge, so the merge must still be pending afterward.
+		// While a merge is in progress (MERGE_HEAD present), git refuses a pathspec-scoped StageAndCommit of an unrelated file.
+		// Git's message is "cannot do a partial commit during a merge".
+		// The refusal keeps the human's half-done merge from being silently finalized under the automated message.
+		// The merge is clean and resolved, because an unresolved conflict would block any commit and mask the distinction.
+		// It guards the pathspec scoping: `commit -- <files>` refuses a partial commit mid-merge.
+		// An unscoped `git commit` would complete the merge, so the merge must still be pending afterward.
 		// Runs last: it leaves the merge pending.
 		{"StageAndCommit mid-merge refuses a partial commit", func(t *testing.T) {
-			// A feature branch adds feat.txt while main edits a different file, so the merge is non-conflicting and leaves a clean, fully-resolved index.
+			// A feature branch adds feat.txt while main edits a different file, so the merge does not conflict.
+			// The merge then leaves a clean, fully-resolved index.
 			gitkit.MustRun(t, dir, "git", "checkout", "-b", "feature")
 			writeFile(t, dir, "feat.txt", "feature\n")
 			commitAll(t, dir, "feature edit")
@@ -379,7 +389,8 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 			writeFile(t, dir, "b.txt", "main edit\n")
 			commitAll(t, dir, "main edit")
 
-			// --no-commit stops after merging into the index/worktree, so MERGE_HEAD is set with a clean index: the mid-merge state a commit could finalize.
+			// `--no-commit` stops after merging into the index and worktree, so `MERGE_HEAD` is set with a clean index:
+			// the mid-merge state a commit could finalize.
 			gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "feature")
 			if !mergeHeadPresent(t, dir) {
 				t.Fatal("MERGE_HEAD not present after --no-commit merge; test needs a mid-merge state")

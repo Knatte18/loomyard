@@ -1,63 +1,9 @@
-// destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo), dropping seed commits from the hub's own board checkout (dropSeedCommits: a `reset --keep` to upstream and a replay of the other commits), and moving a pair's branches to origin's tips (DropLocal: a `reset --keep` per branch, after the local tip is kept under an archive tag), and moving a weft branch to a tip built from its upstream and its local commits (resetWeftToIntegrated: a `reset --keep`), and putting the paths of an unfinished anchor move back to HEAD (restoreMovePathsToHead: a reset, a checkout and a clean).
-// Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
-//
-// The pipeline runs four checks, always in this fixed order, stopping at the first failure:
-// containment, ownership, dirtiness, force.
-// Ahead of all four sits a request-shape check that is not one of them: a pathRequest declaring no
-// ownership kind, no dirtiness, or a dirtinessNA with an empty reason is refused before any of the
-// four runs, since a malformed request cannot be evaluated at all. That refusal borrows
-// CheckOwnership/CheckDirtiness to name which declaration is missing, so a reader must not conclude
-// from its Check value that containment passed — containment had not run yet.
-// --force answers dirtiness only: it never satisfies containment and never satisfies ownership, so a
-// containment failure — the class of defect that once destroyed an entire hub — can never be
-// overridden by a flag.
-//
-// Containment is resolved, not lexical: both the container and target's ancestry are put through
-// filepath.EvalSymlinks before they are related (see ancestors.go's refuseUncontainedPath and
-// containmentPath). It was purely lexical until R2's review drove a symlink planted at an
-// intermediate segment of a gate target and watched a gated removal delete files outside the hub
-// while the check passed. Target's FINAL component stays unresolved on purpose — a junction
-// removal's target is itself a link.
-//
-// That check resolves at one instant, though, and R3's review drove the gap it left: a symlink at an
-// intermediate segment, dangling when the check ran and flipped live-and-escaping before the executor
-// acted, carried a gated removal outside the hub anyway — the check-then-act window a nominal path
-// resolved once and unlinked later cannot close. So the two arbitrary-path executors (removePath,
-// removeLink) no longer act on the nominal path: removeContainedPath removes through an os.Root rooted
-// at the gate's container, resolving each component and unlinking as one openat chain that refuses any
-// component escaping the container at removal time. The containment check above stays as
-// defense-in-depth; the rooted act is what binds resolution to the unlink and closes the window.
-//
-// R5's review drove the same window on the CREATE side: createExclusiveDir's os.Mkdir followed an
-// intermediate planted symlink, and createGitWorktree's `git worktree add <target>` followed a symlink
-// toggled at the target during Add's check-then-act window and wrote a whole worktree outside the hub.
-// createExclusiveDir now creates its leaf through an os.Root rooted at the parent (same openat refusal
-// as removeContainedPath), and createGitWorktree routes through containedWorktreeAdd, which stages the
-// worktree under a rooted 0700 random parent and moves it into place with os.Root.Rename. R5 stopped
-// there, but os.Root.Rename renames a symlink standing at the source's own final component as a link, so
-// a staging-leaf symlink planted during git's write still produced an out-of-hub worktree reported as
-// success; R6 adds the fail-closed containment checks (stagedWorktreeContained, on the staging leaf and
-// again on the placed target) that make containedWorktreeAdd refuse rather than report such an add — see
-// its own comment.
-// The Check enum below names only the three checks a refusal can ever be attributed to —
-// containment, ownership, dirtiness — because force never fails: it is consulted only to make the
-// dirtiness check pass, never to cause a refusal of its own.
-//
-// See PATTERN-fabric-boundary (added once this slice's guard test
-// lands) for the machine-enforced half of this rule.
-//
-// Recording contract: every executor below takes a leading `rec *Mutations` parameter and appends its own primitive's entry itself, after the primitive observably changed state — never before, and never for a no-op.
-// A refusal records nothing, since nothing happened;
-// removeGitWorktree, deleteBranch, and deleteRemoteBranch record only when the underlying git command returned a nil error, since a non-nil error — whether git ran and rejected the command or could not be run at all — would otherwise claim a destruction that never occurred;
-// deleteRemoteBranch additionally requires an observed deletion rather than a nil error alone, since its own nil-error-plus-deleted==false case is the already-absent idempotent success.
-// The parameter is explicit, never a request-type field,
-// because a missing struct field is a silent zero value the compiler accepts while a missing
-// parameter does not compile — this slice exists because a record was silently dropped, so the
-// mechanism that turns dropping it into a build failure is the one this file uses.
-// This record-only-on-observed-effect rule is what makes the truthfulness cross-check's commission
-// direction sound: every entry this file ever appends corresponds to a real, completed effect, so a
-// consumer of the record can trust that its presence means the primitive actually ran.
+// destroy.go holds every destructive primitive of package fabricengine.
+// Each primitive is reached only through an executor, and every executor runs the gate defined here first.
+// The gate checks the request shape, then containment, ownership and dirtiness, stopping at the first failure;
+// --force satisfies dirtiness alone.
+// Arbitrary-path acts run through an os.Root,
+// and each executor appends its entry to rec *Mutations only after its primitive took effect.
 
 package fabricengine
 
@@ -81,37 +27,35 @@ import (
 )
 
 // originRemoteName is the remote name deleteRemoteBranch always operates against.
-// fabric's geometry already hardcodes "origin" throughout — clone.go's weft adopt-or-create path
-// uses "refs/remotes/origin/" and "origin/<branch>" directly — so introducing configurability at
-// this one point alone would be inconsistent with the rest of the package and untested against any
-// other value.
+// The package hardcodes "origin" throughout its geometry.
+// A configurable remote at this one call site would be inconsistent with the rest of the package,
+// and it would be untested against any other value.
 const originRemoteName = "origin"
 
-// Check names one of the three checks a destructive-gate refusal can be attributed to: containment,
-// ownership, or dirtiness. It is string-backed so a refusal renders and marshals without a
-// conversion step, and so RefusalOf's caller can read it with no import of anything unexported.
+// Check names one of the three checks a destructive-gate refusal can be attributed to:
+// containment, ownership, or dirtiness.
+// It is string-backed so a refusal renders and marshals without a conversion step.
 //
-// There is deliberately no CheckForce member, and one must never be added: force is consulted only
-// inside checkPathDirtiness, where it makes the dirtiness check PASS rather than fail, so a refusal
-// can never be attributed to it.
+// There is deliberately no CheckForce member, and none may be added.
+// Force only makes the dirtiness check pass, so no refusal can be attributed to it.
 type Check string
 
 const (
-	// CheckContainment names the gate's containment check: the target must resolve strictly below
-	// its declared container.
+	// CheckContainment names the gate's containment check:
+	// the target must resolve strictly below its declared container.
 	CheckContainment Check = "containment"
-	// CheckOwnership names the gate's ownership check: the target must satisfy one of the closed set
-	// of ownership predicates declared for the request.
+	// CheckOwnership names the gate's ownership check:
+	// the target must satisfy one of the closed set of ownership predicates declared for the request.
 	CheckOwnership Check = "ownership"
-	// CheckDirtiness names the gate's dirtiness check: the target must be clean, or the caller must
-	// have passed --force.
+	// CheckDirtiness names the gate's dirtiness check:
+	// the target must be clean, or the caller must have passed --force.
 	CheckDirtiness Check = "dirtiness"
 )
 
-// destructiveRefusal is the gate's one error type: it names which of the three checks refused a
-// destructive request, the requested act, the target (a path or a branch name), and a human reason.
-// Every refusal in this file is returned as *destructiveRefusal, never as a bare fmt.Errorf, so a
-// caller can always test for one with errors.As.
+// destructiveRefusal is the gate's one error type.
+// It names the check that refused, the requested act, the target (a path or a branch name), and a human reason.
+// Every refusal in this file is returned as *destructiveRefusal, never as a bare fmt.Errorf,
+// so a caller can always test for one with errors.As.
 type destructiveRefusal struct {
 	Check  Check
 	What   string
@@ -125,10 +69,9 @@ func (e *destructiveRefusal) Error() string {
 }
 
 // surfaceRefusal returns err unchanged when it carries a *destructiveRefusal, and nil otherwise.
-// It is the single expression of the a-refusal-is-never-best-effort decision in _mill/discussion.md:
-// every best-effort call site that can return an error wraps its executor call in surfaceRefusal, so
-// an operational failure (git exited nonzero, the filesystem said no) stays discardable while a gate
-// refusal never does.
+// A best-effort call site wraps its executor call in surfaceRefusal.
+// An operational failure (git exited nonzero, the filesystem said no) stays discardable.
+// A gate refusal is never discardable.
 func surfaceRefusal(err error) error {
 	if errors.As(err, new(*destructiveRefusal)) {
 		return err
@@ -136,11 +79,10 @@ func surfaceRefusal(err error) error {
 	return nil
 }
 
-// Refusal is the value form of a destructive-gate refusal: the check that refused, the requested
-// act, the target, and a human reason.
-// RefusalOf is the only producer, and it exists rather than exporting *destructiveRefusal itself
-// because *destructiveRefusal is a mutable pointer type whose identity callers could start
-// switching on, when the envelope only ever needs its four values.
+// Refusal is the value form of a destructive-gate refusal:
+// the check that refused, the requested act, the target, and a human reason.
+// RefusalOf is the only producer of a Refusal.
+// It is a value rather than *destructiveRefusal, so callers cannot switch on the identity of a mutable pointer.
 type Refusal struct {
 	Check  Check
 	What   string
@@ -148,8 +90,8 @@ type Refusal struct {
 	Reason string
 }
 
-// RefusalOf reports whether err carries a *destructiveRefusal anywhere in its chain, unwrapping via
-// errors.As so a refusal wrapped several layers deep (fmt.Errorf("...: %w", ...)) is still found.
+// RefusalOf reports whether err carries a *destructiveRefusal anywhere in its chain.
+// It unwraps via errors.As, so a refusal wrapped several layers deep is still found.
 // It returns the zero Refusal and false for a nil error and for an error carrying no refusal.
 func RefusalOf(err error) (Refusal, bool) {
 	if err == nil {
@@ -162,48 +104,45 @@ func RefusalOf(err error) (Refusal, bool) {
 	return Refusal{Check: refusal.Check, What: refusal.What, Target: refusal.Target, Reason: refusal.Reason}, true
 }
 
-// slugSpec carries the two halves validateWorktreeSlug needs, for a pathRequest whose target is
-// slug-derived. It is nil on a pathRequest whose target is not slug-derived — slug validation is
-// skipped entirely in that case, never treated as vacuously passing or failing.
+// slugSpec holds the inputs of the slug check: the slug, and the junction names it is checked against.
+// It is set on a pathRequest whose target is derived from a slug, and nil otherwise.
+// A nil slugSpec skips the slug check entirely; the check never passes or fails vacuously.
 type slugSpec struct {
 	name          string
 	junctionNames []string
 }
 
-// createdToken is the unforgeable proof that the gate itself created a path or a git worktree: the
-// createExclusiveDir / createGitWorktree minters below are its only producers.
-// Its unexported-ness alone does not stop a same-package composite literal — createdToken{} compiles
-// anywhere in this package — so the property is enforced by the bypass guard batch 6 adds, which bans
-// the token `createdToken{` outside this file. A reader who believes the type system alone enforces
-// this will eventually write one.
+// createdToken is the unforgeable proof that the gate itself created a path or a git worktree.
+// Only the minting functions in this file produce one.
+// Unexported-ness alone does not stop a same-package composite literal;
+// the bypass guard in cmd/lym/destructiveguard_test.go bans the literal `createdToken{` outside this file.
 type createdToken struct {
 	path     string
 	worktree bool
 }
 
-// createdBranchToken is the unforgeable proof that the `git worktree add -b <branch>` createGitWorktree ran created branch, locally, in this call.
-// createGitWorktree is its only producer.
-// Like createdToken, its unexported-ness does not stop a same-package composite literal,
-// so the property is enforced by the bypass guard banning the token `createdBranchToken{` outside this file.
+// createdBranchToken is the unforgeable proof that a `git worktree add -b <branch>` created the branch locally.
+// Only the minting function in this file produces one, and only in the call that creates the branch.
+// Unexported-ness alone does not stop a same-package composite literal;
+// the bypass guard in cmd/lym/destructiveguard_test.go bans the literal `createdBranchToken{` outside this file.
 type createdBranchToken struct {
 	branch string
 }
 
-// pathRequest is the gate's request shape for every destructive primitive whose target is a
-// filesystem path: os.RemoveAll/os.Remove, git worktree remove, ResetHard, and link removal/re-point.
-// Every field is required — a zero-value ownership or dirtiness is refused by the pipeline rather
-// than silently passed, which is what makes an omitted check a loud failure instead of a forgotten
-// one.
+// pathRequest is the gate's request for every destructive primitive whose target is a filesystem path:
+// os.RemoveAll, os.Remove, git worktree remove, ResetHard, and link removal or re-pointing.
+// Every field is required: a zero-value ownership or dirtiness is refused, not passed,
+// so an omitted check fails loudly instead of being forgotten.
 type pathRequest struct {
 	// what names the act being attempted, for the refusal message (e.g. "remove worktree").
 	what string
-	// container is the path target must resolve strictly below, symlinks in target's ancestry
-	// resolved before the comparison; see refuseUncontainedPath.
+	// container is the path that target must resolve strictly below;
+	// symlinks in target's ancestry are resolved before the comparison.
 	container string
 	// target is the path the executor will act on.
 	target string
-	// slug is non-nil when target is derived from a caller-supplied slug, and carries the two
-	// inputs validateWorktreeSlug needs.
+	// slug is non-nil when target is derived from a caller-supplied slug;
+	// it carries the inputs of the slug check.
 	slug *slugSpec
 	// ownership declares which closed-enum ownership kind target must satisfy.
 	ownership pathOwnership
@@ -213,15 +152,15 @@ type pathRequest struct {
 	force bool
 }
 
-// branchRequest is the gate's request shape for the one destructive primitive whose target is a ref:
-// git branch -D. It carries no container and no target field at all — containment is structurally
-// N/A for a ref, expressed by the type rather than by a per-site "" that could be forgotten.
-// Per the "each check's inputs travel with the check" rule, an ownership predicate's inputs ride on its constructor.
+// branchRequest is the gate's request for the one destructive primitive whose target is a ref: git branch -D.
+// It has no container and no target field, because containment does not apply to a ref.
+// The type omits them rather than having each call site pass an empty value.
+// Each ownership predicate takes its inputs through its constructor.
 type branchRequest struct {
 	// what names the act being attempted, for the refusal message.
 	what string
-	// repoDir is the repository holding the branch — the weft repository for every existing site, the
-	// warp repository for the pair's warp branch — not a path being destroyed.
+	// repoDir is the repository holding the branch.
+	// It is the weft repository, or the warp repository for the pair's warp branch, and never a path being destroyed.
 	repoDir string
 	// branch is the branch name the executor will delete.
 	branch string
@@ -229,21 +168,19 @@ type branchRequest struct {
 	ownership branchOwnership
 	// dirtiness declares which dirtiness probe the pipeline runs against branch.
 	dirtiness branchDirtiness
-	// force is reserved: every branchRequest construction in this package hardcodes it false today,
-	// since no branch-deletion call site's own gate currently answers to it (Cleanup's own force
-	// parameter is likewise reserved and consulted by no gate — see cleanup.go). Even if a future
-	// gate did consult it, force could never answer the checked-out-branch dirtiness check itself —
-	// see branch-deletion-is-ref-shaped in _mill/discussion.md.
+	// force is reserved: every construction in this package hardcodes it false.
+	// No call site's gate consults it today.
+	// Even a gate that consulted it could not let force answer the checked-out-branch dirtiness check;
+	// force never waives that check.
+	// It is kept for a future gate that consults it.
 	force bool
 }
 
-// remoteBranchRequest is the gate's request shape for the primitive whose target is a ref on a
-// remote: git push <remote> --delete. It is a distinct type from branchRequest, never a remote field
-// added to it, because branchRequest's own doc comment rejects a per-site empty-string sentinel for a
-// structurally-N/A field, and a remote that must be "" at branchRequest's four existing local call
-// sites is exactly that shape; keeping the two types distinct also keeps the two executors' call-site
-// sets disjoint and auditable. Like branchRequest, it carries no container and no target field:
-// containment is structurally N/A for a ref.
+// remoteBranchRequest is the gate's request for the primitive whose target is a ref on a remote:
+// git push <remote> --delete.
+// Local branch deletions have no remote, so a remote field would be an empty value at every local call site.
+// Keeping it a distinct type keeps the call sites of the two executors disjoint and auditable.
+// It has no container and no target field, because containment does not apply to a ref.
 type remoteBranchRequest struct {
 	// what names the act being attempted, for the refusal message.
 	what string
@@ -261,14 +198,15 @@ type remoteBranchRequest struct {
 	// when non-empty the deletion succeeds only while the remote branch still sits there.
 	// Empty keeps the unleased, idempotent path.
 	leaseSHA string
-	// force is reserved: every remoteBranchRequest construction in this package hardcodes it false
-	// today, exactly as branchRequest's own force field does, for the same reason — no call site's own
-	// gate currently answers to it.
+	// force is reserved: every construction in this package hardcodes it false.
+	// No call site's gate consults it today.
+	// It is kept for a future gate that consults it.
 	force bool
 }
 
-// remoteBranchUpdateRequest is the gate's request shape for the leased push that moves a task pair's own branch on a remote.
-// It carries a pathRequest rather than a branch declaration: the push runs the same containment, ownership, dirtiness and force pipeline over the pair's warp checkout that the checkout rewrite it precedes runs.
+// remoteBranchUpdateRequest is the gate's request for the leased push that moves a task pair's own branch on a remote.
+// It carries a pathRequest instead of a branch declaration:
+// the push runs the containment, ownership, dirtiness and force checks over the pair's warp checkout.
 type remoteBranchUpdateRequest struct {
 	// pathReq is the pair-warp checkout request the pipeline runs before the push.
 	pathReq pathRequest
@@ -287,8 +225,7 @@ type remoteBranchUpdateRequest struct {
 }
 
 // pathOwnershipKind enumerates the closed set of ownership predicates a pathRequest may declare.
-// It has meaning only inside this file; every kind is reached solely through its ownedXxx
-// constructor below, never constructed directly.
+// Each kind is reached only through its ownedXxx constructor, never constructed directly.
 type pathOwnershipKind int
 
 const (
@@ -307,10 +244,9 @@ const (
 	pathOwnershipMovePathspecs
 )
 
-// pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
-// satisfy. The zero value is invalid and is refused by the pipeline before any check runs.
-// Construct one only via the ownedXxx functions below — each takes exactly what its predicate
-// needs and nothing more, per the each-check's-inputs-travel-with-the-check rule.
+// pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must satisfy.
+// The zero value is invalid and is refused by the pipeline before any check runs.
+// Construct one only through an ownedXxx constructor, each of which takes exactly the inputs its predicate needs.
 type pathOwnership struct {
 	kind           pathOwnershipKind
 	repoDir        string
@@ -318,43 +254,45 @@ type pathOwnership struct {
 	tok            createdToken
 	wiredLinks     []string
 	expectedTarget string
-	// weftDir and parentBranch serve ownedPairWarpCheckout only.
+	// weftDir and parentBranch are used only by the pair warp checkout predicate.
 	weftDir      string
 	parentBranch string
-	// pathspecs serves ownedMovePathspecs only, with root as the weft worktree they are relative to.
+	// pathspecs are used only by the move predicate, relative to root as the weft worktree.
 	pathspecs []string
 }
 
-// ownedRegisteredLinkedWorktree declares target as owned when it is registered in repoDir's worktree
-// list as a worktree OTHER than the main one — the ordinary teardown case, resolved via
-// isRegisteredLinkedWorktreeIn.
+// ownedRegisteredLinkedWorktree declares target as owned when repoDir's worktree list registers it as a linked worktree.
+// The main worktree does not count: this is the ordinary teardown case.
 func ownedRegisteredLinkedWorktree(repoDir string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipRegisteredLinkedWorktree, repoDir: repoDir}
 }
 
-// ownedWarpCheckout declares target as owned when it is ANY worktree of the warp repo at repoDir,
-// prime included — the membership test resetHardTo needs, since ResetHard's ordinary target is the
-// hub's prime warp worktree, which isRegisteredLinkedWorktreeIn deliberately excludes.
+// ownedWarpCheckout declares target as owned when it is any worktree of the warp repo at repoDir, prime included.
+// A hard reset's ordinary target is the hub's prime warp worktree, so the prime checkout must count as owned.
 func ownedWarpCheckout(repoDir string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipWarpCheckout, repoDir: repoDir}
 }
 
-// ownedPairWarpCheckout declares target as owned when it is a registered linked worktree of the warp repo at repoDir, never its main checkout;
-// its checked-out branch is not parentBranch (the ownedPairWarpBranch rule);
-// and the weft checkout at weftDir has RecordsBranchName of that branch checked out, so the branch is the pair's own.
+// ownedPairWarpCheckout declares target as owned when it is a registered linked worktree of the warp repo at repoDir.
+// It is never the main checkout.
+// Its checked-out branch must not be parentBranch.
+// The weft checkout at weftDir must have the branch that the weft records for this pair checked out,
+// so that branch is the pair's own.
 // A detached HEAD on either side fails the predicate.
 func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipPairWarpCheckout, repoDir: repoDir, weftDir: weftDir, parentBranch: parentBranch}
 }
 
-// ownedBoardWorktree declares target as owned when its base name is BoltDirName and a weft repo of the same hub registers it as a linked worktree:
+// ownedBoardWorktree declares target as owned when its base name is BoltDirName,
+// and a weft repo of the same hub registers it as a linked worktree:
 // some directory directly in target's parent, whose name WeftWarpSlug admits, lists target among its linked worktrees.
 // A directory that merely shares the name, or the Bolt checkout of another hub, fails the predicate.
 func ownedBoardWorktree() pathOwnership {
 	return pathOwnership{kind: pathOwnershipBoardWorktree}
 }
 
-// ownedMovePathspecs declares target as owned when it lies at or under one of pathspecs, each a slash path relative to the weft worktree at weftPath.
+// ownedMovePathspecs declares target as owned when it lies at or under one of pathspecs.
+// Each is a slash path relative to the weft worktree at weftPath.
 // The pathspecs are the paths an anchor move rewrites: A/<names>, B/<names> and the root marker, never `.lym`.
 func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipMovePathspecs, root: weftPath, pathspecs: pathspecs}
@@ -366,39 +304,38 @@ func ownedFabricHub() pathOwnership {
 	return pathOwnership{kind: pathOwnershipFabricHub}
 }
 
-// ownedUnderGeometryRoot declares target as owned when root is a member of the closed set of fabric
-// geometry roots and target resolves at or below it, admitting deep descendants and non-directory
-// targets. It supplies what containment cannot: containment proves target is below the container,
+// ownedUnderGeometryRoot declares target as owned when root is a member of the closed set of fabric geometry roots.
+// It admits a target that resolves at or below root, including deep descendants and non-directory targets.
+// It supplies what containment cannot: containment proves target is below the container,
 // but proves nothing if the caller chose the container.
 func ownedUnderGeometryRoot(root string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipUnderGeometryRoot, root: root}
 }
 
-// ownedFreshlyCreatedPath declares target as owned when tok is the token createExclusiveDir minted
-// for exactly this path. Since createdToken has no producer outside this file's two minters (backed
-// by the bypass guard), a site cannot declare this kind for a path the gate did not create.
+// ownedFreshlyCreatedPath declares target as owned when tok, minted by createExclusiveDir, covers exactly this path.
+// Since createdToken has no producer outside this file's two minters (backed by the bypass guard);
+// a site cannot declare this kind for a path the gate did not create.
 func ownedFreshlyCreatedPath(tok createdToken) pathOwnership {
 	return pathOwnership{kind: pathOwnershipFreshlyCreatedPath, tok: tok}
 }
 
-// ownedFreshlyCreatedWorktree declares target as owned when tok is the token createGitWorktree
-// minted for exactly this path, mirroring ownedFreshlyCreatedPath for the worktree-shaped case
-// (add.go's rollback of a worktree that same Add call created).
+// ownedFreshlyCreatedWorktree declares target as owned when tok is the token createGitWorktree minted for this path.
+// It serves the rollback, in add.go, of a worktree that the same Add call created.
 func ownedFreshlyCreatedWorktree(tok createdToken) pathOwnership {
 	return pathOwnership{kind: pathOwnershipFreshlyCreatedWorktree, tok: tok}
 }
 
 // ownedWiredJunction declares target as owned when it is a member of wiredLinks, is itself a link,
-// and resolves to expectedTarget — the teardown-shaped link check. Comparing the resolved target is
-// what R1's defect needed and did not have: a user's own tracked symlink sitting at a wired path is
-// a link, but does not resolve to what fabric wired there.
+// and resolves to expectedTarget, the teardown-shaped link check.
+// Comparing the resolved target separates a link fabric wired from a user's own tracked symlink at the same path:
+// the user's symlink is a link too, but it does not resolve to what fabric wired there.
 func ownedWiredJunction(wiredLinks []string, expectedTarget string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipWiredJunction, wiredLinks: wiredLinks, expectedTarget: expectedTarget}
 }
 
-// ownedDriftedWiredJunction declares target as owned when it is a member of wiredLinks and is itself
-// a link — the re-point-shaped link check. The resolved target is deliberately not compared, because
-// a drifted or dangling target is the precondition for repairing it, not a disqualifier.
+// ownedDriftedWiredJunction declares target as owned when it is a member of wiredLinks and is itself a link.
+// The resolved target is not compared.
+// A drifted or dangling target is the precondition for repairing it, so it must not disqualify the link.
 func ownedDriftedWiredJunction(wiredLinks []string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipDriftedWiredJunction, wiredLinks: wiredLinks}
 }
@@ -415,8 +352,8 @@ const (
 	branchOwnershipCreatedBranch
 )
 
-// branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
-// satisfy. The zero value is invalid and is refused by the pipeline before any check runs.
+// branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must satisfy.
+// The zero value is invalid and is refused by the pipeline before any check runs.
 type branchOwnership struct {
 	kind     branchOwnershipKind
 	location *lymcwd.Location
@@ -429,33 +366,36 @@ type branchOwnership struct {
 }
 
 // ownedCreatedBranch declares branch as owned when it is exactly the branch tok proves this call created.
-// It consults no naming scheme, so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
+// It consults no naming scheme,
+// so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
 // l serves the checked-out dirtiness probe.
 // An empty proof matches nothing.
 func ownedCreatedBranch(l *lymcwd.Location, tok createdBranchToken) branchOwnership {
 	return branchOwnership{kind: branchOwnershipCreatedBranch, location: l, createdBranch: tok.branch}
 }
 
-// ownedPairWarpBranch declares branch as owned when it is exactly warpBranch, the branch the pair stands on, and warpBranch is not parentBranch, the branch the pair lands on.
-// ownedManagedBranch cannot serve a warp branch:
-// under the default empty branch_prefix the warp branch is the bare slug, which it accepts only when weft-suffixed, and its primary-branch and checked-out predicates read the weft side only.
-// This kind consults no weft-side predicate; the checked-out question belongs to the dirtiness step.
+// ownedPairWarpBranch declares branch as owned when it is exactly warpBranch, the branch the pair stands on.
+// Its warpBranch must not be parentBranch, the branch the pair lands on.
+// This kind consults no weft-side predicate, because the warp branch can be the bare slug those predicates reject.
+// The checked-out question belongs to the dirtiness step.
 // An empty warpBranch matches nothing.
 func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
 }
 
-// ownedPairWeftBranch declares branch as owned when it is exactly RecordsBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
-// It deliberately has no checked-out test:
-// while Add builds the pair the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
+// ownedPairWeftBranch declares branch as owned when it is exactly RecordsBranchName(warpBranch).
+// It must also be accepted by WeftWarpSlug and must not be l's primary weft branch.
+// It has no checked-out test: while Add builds the pair, the same-named local branch is the replacement.
+// That branch is checked out at the new weft worktree, so a checked-out test would refuse it.
 // An empty warpBranch matches nothing.
 func ownedPairWeftBranch(l *lymcwd.Location, warpBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWeft, location: l, warpBranch: warpBranch}
 }
 
-// ownedManagedBranch declares a records branch as owned when it is one fabric's own scheme constructs (accepted
-// by WeftWarpSlug), is not l's primary weft branch, and is not checked out at any worktree.
-// It consults no branch prefix, so a pair made under an earlier prefix stays as owned as one made under the current prefix.
+// ownedManagedBranch declares a records branch as owned when WeftWarpSlug accepts it.
+// It is not l's primary weft branch, and no worktree has it checked out.
+// It consults no branch prefix,
+// so a pair made under an earlier prefix stays as owned as one made under the current prefix.
 // It takes a *lymcwd.Location because primaryWeftBranch(l) needs it.
 func ownedManagedBranch(l *lymcwd.Location) branchOwnership {
 	return branchOwnership{kind: branchOwnershipManaged, location: l}
@@ -473,9 +413,8 @@ const (
 	pathDirtinessTrackedOn
 )
 
-// pathDirtiness declares which dirtiness probe (or N/A) the pipeline runs against a pathRequest's
-// target. The zero value is invalid; dirtinessNA("") is likewise invalid — an empty reason is a
-// refusal, not a pass.
+// pathDirtiness declares which dirtiness probe, or N/A, the pipeline runs against a pathRequest's target.
+// The zero value is invalid, and so is dirtinessNA(""): an empty reason is a refusal, not a pass.
 type pathDirtiness struct {
 	kind   pathDirtinessKind
 	scope  dirtyScope
@@ -486,38 +425,39 @@ type pathDirtiness struct {
 	onPaths []string
 }
 
-// dirtyTrackedOn declares that the pipeline's dirtiness step probes tracked files only, and refuses only on a dirty tracked path in paths (worktree-relative, slash-separated).
+// dirtyTrackedOn declares that the pipeline's dirtiness step probes tracked files only.
+// It refuses only on a dirty tracked path in paths (worktree-relative, slash-separated).
 // A dirty path anywhere else is carried across by the act and never refuses.
 // The refusal names each such path.
 func dirtyTrackedOn(paths []string) pathDirtiness {
 	return pathDirtiness{kind: pathDirtinessTrackedOn, scope: scopeTracked, onPaths: paths}
 }
 
-// dirtyTrackedExcept declares that the pipeline's dirtiness step probes tracked files only, as dirtyScopeTracked does,
-// and refuses only on a dirty tracked path outside ownPaths (worktree-relative, slash-separated).
+// dirtyTrackedExcept declares that the pipeline's dirtiness step probes tracked files only.
+// It refuses only on a dirty tracked path outside ownPaths (worktree-relative, slash-separated).
 // The refusal names each such path.
 func dirtyTrackedExcept(ownPaths []string) pathDirtiness {
 	return pathDirtiness{kind: pathDirtinessTrackedExcept, scope: scopeTracked, ownPaths: ownPaths}
 }
 
-// dirtyScopeTracked declares that the pipeline's dirtiness step probes tracked files only, via
-// worktreeDirty(scopeTracked, target) — the right scope wherever the destructive action leaves
-// untracked files alone (e.g. a reset --hard).
+// dirtyScopeTracked declares that the pipeline's dirtiness step probes tracked files only.
+// The probe is worktreeDirty(scopeTracked, target).
+// It is the right scope wherever the destructive action leaves untracked files alone, for example a reset --hard.
 func dirtyScopeTracked() pathDirtiness {
 	return pathDirtiness{kind: pathDirtinessScope, scope: scopeTracked}
 }
 
-// dirtyScopeAll declares that the pipeline's dirtiness step probes tracked and untracked files
-// alike, via worktreeDirty(scopeAll, target) — the right scope wherever the destructive action would
-// take untracked files down with it.
+// dirtyScopeAll declares that the pipeline's dirtiness step probes tracked and untracked files alike.
+// The probe is worktreeDirty(scopeAll, target).
+// It is the right scope wherever the destructive action would take untracked files down with it.
 func dirtyScopeAll() pathDirtiness {
 	return pathDirtiness{kind: pathDirtinessScope, scope: scopeAll}
 }
 
-// dirtinessNA declares that the dirtiness check does not apply to this pathRequest, for the stated
-// reason — e.g. a rollback site tearing down a path this same transaction created, which has no work
-// to lose because nothing was ever committed to it. reason must be non-empty: an empty reason is
-// refused by the pipeline as an unstated N/A, not treated as a pass.
+// dirtinessNA declares that the dirtiness check does not apply to this pathRequest, for the stated reason.
+// For example, a rollback site tearing down a path this same transaction created has no work to lose.
+// Nothing was ever committed to that path.
+// reason must be non-empty: an empty reason is refused by the pipeline as an unstated N/A, not treated as a pass.
 func dirtinessNA(reason string) pathDirtiness {
 	return pathDirtiness{kind: pathDirtinessNA, reason: reason}
 }
@@ -535,59 +475,58 @@ const (
 	branchDirtinessArchivedTip
 )
 
-// branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
+// branchDirtiness declares which dirtiness probe the pipeline runs against a branch.
 // The zero value is invalid and is refused by the pipeline before any check runs.
 type branchDirtiness struct {
 	kind branchDirtinessKind
-	// parentBranch serves dirtyUnlandedWork and dirtyUnlandedRemoteTip; empty when the pair has no origin record.
+	// parentBranch is the branch unlanded work must have landed on; empty when the pair has no origin record.
 	parentBranch string
-	// archiveTag serves dirtyArchivedOnRemote and dirtyArchivedTip: the archive/<slug>/* tag the pre-flight proved covers the branch's tip.
+	// archiveTag is the archive/<slug>/* tag the pre-flight proved covers the branch's tip.
 	archiveTag string
 }
 
 // dirtyArchivedTip declares that the local branch's tip is covered by archiveTag.
-// The tag is an archive/<slug>/* tag whose target the branch's current tip is an ancestor of or equal to, so deleting the branch loses no work even when it is unlanded.
-// It answers a local question only: checkBranchDirtiness accepts it, checkRemoteBranchRequest refuses it,
-// and an empty archiveTag is refused as covered by no archive tag.
+// The tag is an archive/<slug>/* tag whose target the branch's current tip is an ancestor of or equal to.
+// Deleting the branch loses no work, even when the branch is unlanded.
+// It applies to local branches only, and an empty archiveTag is refused.
 func dirtyArchivedTip(archiveTag string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessArchivedTip, archiveTag: archiveTag}
 }
 
-// dirtyArchivedOnRemote declares that the remote branch's tip is covered by archiveTag, an archive/<slug>/* tag the caller's pre-flight proved reaches it,
-// so deleting it loses no work.
-// It answers a remote question only: checkRemoteBranchRequest accepts it, checkBranchRequest refuses it,
-// and an empty archiveTag is refused as covered by no archive tag.
+// dirtyArchivedOnRemote declares that the remote branch's tip is covered by archiveTag.
+// archiveTag is an archive/<slug>/* tag the caller's pre-flight proved reaches the tip.
+// Deleting the remote branch loses no work.
+// It applies to remote branches only, and an empty archiveTag is refused.
 func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessArchivedOnRemote, archiveTag: archiveTag}
 }
 
-// dirtyUnlandedWork declares that the pipeline's dirtiness step refuses a branch whose work would be
-// lost: it must not be checked out, and every commit on it must be reachable from another ref or
-// already landed on parentBranch (empty when the pair has no origin record). See checkUnlandedWork.
+// dirtyUnlandedWork declares that the dirtiness step refuses a branch whose work would be lost.
+// The branch must not be checked out,
+// and every commit on it must be reachable from another ref or already landed on parentBranch.
+// parentBranch is empty when the pair has no origin record.
 func dirtyUnlandedWork(parentBranch string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessUnlandedWork, parentBranch: parentBranch}
 }
 
-// dirtyUnlandedRemoteTip declares that the pipeline's dirtiness step refuses a remote branch whose leased tip carries work that would be lost:
-// every commit on the tip must be reachable from a ref other than a copy of the same branch, or merging the tip into parentBranch (empty when the pair has no origin record) must change nothing.
-// It answers a remote question only: checkRemoteBranchRequest accepts it and requires a non-empty leaseSHA, the tip under test,
-// and checkBranchDirtiness refuses it for a local delete.
-// See checkUnlandedRemoteTip.
+// dirtyUnlandedRemoteTip declares that the dirtiness step refuses a remote branch's leased tip.
+// The tip is safe when every commit on it is reachable from a ref other than a copy of the same branch.
+// It is also safe when merging it into parentBranch changes nothing.
+// parentBranch is empty when the pair has no origin record.
+// It applies to remote branches only, and requires a non-empty leaseSHA, the tip under test.
 func dirtyUnlandedRemoteTip(parentBranch string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessUnlandedRemoteTip, parentBranch: parentBranch}
 }
 
-// dirtyCheckedOutBranch declares that the pipeline's dirtiness step asks whether branch is checked
-// out at any worktree — for a ref, "is there work here to lose" means "is this branch checked out
-// somewhere", since git branch -D cannot delete a checked-out branch anyway.
+// dirtyCheckedOutBranch declares that the dirtiness step asks whether the branch is checked out at any worktree.
+// A branch checked out somewhere counts as holding work to lose.
+// git branch -D cannot delete a checked-out branch anyway.
 func dirtyCheckedOutBranch() branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessCheckedOutBranch}
 }
 
-// resolvePathOwnership dispatches own's kind to its predicate and reports whether target satisfies
-// it. Every predicate reuses an existing helper rather than reimplementing it, and every predicate
-// answers false on an enumeration failure — the conservative direction the existing helpers already
-// take.
+// resolvePathOwnership dispatches own's kind to its predicate and reports whether target satisfies it.
+// Every predicate answers false when an enumeration fails, the conservative direction.
 func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason string) {
 	switch own.kind {
 	case pathOwnershipRegisteredLinkedWorktree:
@@ -632,13 +571,13 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		return true, ""
 
 	case pathOwnershipUnderGeometryRoot:
-		// The geometry-root set has two members, the value launchersDir returns and the retired portals container:
-		// a directory whose base name is launchersDirName or portalsDirName.
-		// A root outside that set is itself a refusal, so a call site cannot satisfy this check by naming a convenient parent.
+		// A fabric geometry root is a directory whose base name is launchersDirName or portalsDirName.
+		// The value launchersDir returns is one such root.
+		// A root outside that set is refused, so a call site cannot satisfy this check by naming a convenient parent.
 		//
-		// The base-name test runs against the RESOLVED root, not the nominal one, for the same
-		// reason pathAtOrBelow now resolves: a link standing where the geometry root belongs is
-		// not the geometry root, and testing the nominal spelling would let one masquerade as it.
+		// The base-name test runs against the resolved root, not the nominal one, as pathAtOrBelow does.
+		// A link standing where the geometry root belongs is not the geometry root.
+		// Testing the nominal spelling would let it masquerade as one.
 		resolvedRoot := resolveAncestorSymlinks(own.root)
 		if base := filepath.Base(resolvedRoot); base != launchersDirName && base != portalsDirName {
 			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
@@ -668,12 +607,12 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		if err != nil || !isLink {
 			return false, fmt.Sprintf("%s is not a link", target)
 		}
-		// RawTarget, not PointsTo: the comparison is against the ONE HOP a wiring call actually
-		// recorded, not a fully-resolved chain. PointsTo fully resolves — which fails outright when
-		// a later segment is gone (a stale-pair prune, where the warp side a wired junction chains
-		// through no longer exists) and silently walks past a target that is itself a further
-		// symlink (a junction wired at a warp `_lym` that itself points at weft), comparing an
-		// end state a one-hop expectedTarget was never meant to match.
+		// The comparison uses RawTarget, not PointsTo.
+		// It runs against the one hop a wiring call recorded.
+		// PointsTo resolves the whole chain, and it fails outright when a later segment is gone.
+		// That happens after a stale-pair prune removes the warp side a wired junction chains through.
+		// PointsTo also walks past a target that is itself a symlink, such as a warp `_lym` that points at weft,
+		// so it compares an end state a one-hop expectedTarget was never meant to match.
 		rawTarget, err := fslink.RawTarget(target)
 		if err != nil {
 			return false, fmt.Sprintf("read link target of %s: %v", target, err)
@@ -684,8 +623,8 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		return true, ""
 
 	case pathOwnershipDriftedWiredJunction:
-		// The resolved target is deliberately not compared: drift (or a dangling target) is the
-		// precondition for repairing this link, not a disqualifier.
+		// The resolved target is not compared.
+		// Drift, or a dangling target, is the precondition for repairing this link, not a disqualifier.
 		if !containsCleanPath(own.wiredLinks, target) {
 			return false, fmt.Sprintf("%s is not one of fabric's wired junction paths", target)
 		}
@@ -700,9 +639,9 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 	}
 }
 
-// resolvePairWarpCheckout implements ownedPairWarpCheckout's predicate.
-// The linked-worktree test runs first, so the prime checkout refuses without a branch read;
-// every branch read that fails, a detached HEAD included, refuses, the conservative direction.
+// resolvePairWarpCheckout reports whether target is the pair's own warp checkout, with a reason when it is not.
+// The linked-worktree test runs first, so the prime checkout refuses without a branch read.
+// A branch read that fails, a detached HEAD included, refuses too, the conservative direction.
 func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 	if !isRegisteredLinkedWorktreeIn(own.repoDir, target) {
 		return false, fmt.Sprintf("%s is not a registered linked worktree of %s", target, own.repoDir)
@@ -724,8 +663,8 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 	return true, ""
 }
 
-// isHubBoardWorktree implements ownedBoardWorktree's predicate.
-// An unreadable parent directory answers false, the conservative direction.
+// isHubBoardWorktree reports whether target is the worktree named BoltDirName of a weft repo in its hub.
+// An unreadable hub directory answers false, the conservative direction.
 func isHubBoardWorktree(target string) bool {
 	if filepath.Base(target) != BoltDirName {
 		return false
@@ -749,14 +688,10 @@ func isHubBoardWorktree(target string) bool {
 	return false
 }
 
-// isAnyWorktreeOf reports whether target is ANY worktree of the repo at repoDir, prime included —
-// List's membership test with no Main-entry exclusion. It is deliberately not
-// isRegisteredLinkedWorktreeIn, which skips the main entry: the hub's prime warp worktree is
-// resetHardTo's ordinary target and must pass. ownedWarpCheckout is this predicate's sole
-// constructor: it stayed repo-agnostic by construction — repoDir names whichever repo the caller is
-// checking — for the now-retired weft-side twin resetMergeSides once needed, and there is no reason
-// to narrow it back now that that caller is gone. An unenumerable repo answers false, the
-// conservative direction.
+// isAnyWorktreeOf reports whether target is any worktree of the repo at repoDir, the prime checkout included.
+// The main entry counts too, since the hub's prime warp worktree is an ordinary reset target and must pass.
+// repoDir names whichever repo the caller checks, so the test works for any repo.
+// An unenumerable repo answers false, the conservative direction.
 func isAnyWorktreeOf(repoDir, target string) bool {
 	entries, err := List(repoDir)
 	if err != nil {
@@ -774,12 +709,10 @@ func isAnyWorktreeOf(repoDir, target string) bool {
 // pathAtOrBelow reports whether target resolves at or below root, admitting deep descendants and
 // non-directory targets alike.
 //
-// It relates the two through the same resolveAncestorSymlinks/containmentPath pair
-// refuseUncontainedPath uses, and for the same reason: ownedUnderGeometryRoot is the one ownership
-// kind with no independent authority to cross-check against — the worktree-shaped kinds compare
-// against git's own registration and the link-shaped ones against fslink.RawTarget, both of which
-// already carry resolved paths — so a nominal-path comparison here left it the single predicate a
-// planted intermediate symlink could satisfy.
+// Both paths are resolved before they are compared.
+// A symlink planted in an intermediate component must not let a target outside root compare as inside it.
+// This ownership kind has no independent record to cross-check its paths against.
+// Resolution is therefore its only guard.
 func pathAtOrBelow(root, target string) bool {
 	rel, err := filepath.Rel(resolveAncestorSymlinks(root), containmentPath(target))
 	if err != nil {
@@ -791,8 +724,7 @@ func pathAtOrBelow(root, target string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// containsCleanPath reports whether target, once filepath.Clean'd, matches any entry of paths (also
-// cleaned) — the membership test the two link-shaped ownership kinds share.
+// containsCleanPath reports whether target equals one of paths, after filepath.Clean is applied to both.
 func containsCleanPath(paths []string, target string) bool {
 	cleanTarget := filepath.Clean(target)
 	for _, p := range paths {
@@ -803,8 +735,7 @@ func containsCleanPath(paths []string, target string) bool {
 	return false
 }
 
-// resolveBranchOwnership dispatches own's kind to its predicate and reports whether branch satisfies
-// it.
+// resolveBranchOwnership dispatches own's kind to its predicate and reports whether branch satisfies it.
 func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason string) {
 	switch own.kind {
 	case branchOwnershipManaged:
@@ -823,8 +754,8 @@ func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason
 	}
 }
 
-// resolvePairWarpBranch implements ownedPairWarpBranch's predicate: branch must be exactly warpBranch,
-// and warpBranch must not be parentBranch.
+// resolvePairWarpBranch reports whether branch is the pair's own warp branch.
+// branch must equal warpBranch, and warpBranch must not equal parentBranch.
 func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, string) {
 	if warpBranch == "" || branch != warpBranch {
 		return false, fmt.Sprintf("%s is not the pair's own warp branch %q", branch, warpBranch)
@@ -835,9 +766,9 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 	return true, ""
 }
 
-// resolvePairWeftBranch implements ownedPairWeftBranch's predicate.
+// resolvePairWeftBranch reports whether branch is the pair's own weft branch.
 // The two pure name checks run first, so a mismatched name refuses without spawning git;
-// then branch must not be l's primary weft branch, failing closed when the primary cannot be read.
+// then branch must not be the primary weft branch of l, and an unreadable primary refuses.
 func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool, string) {
 	if warpBranch == "" || branch != RecordsBranchName(warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
@@ -855,10 +786,10 @@ func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool,
 	return true, ""
 }
 
-// resolveManagedBranch implements ownedManagedBranch's predicate: branch must be one fabric's own
-// scheme constructs, must not be l's primary weft branch, and must not be checked out at any
-// worktree. It inherits primaryWeftBranch's fail-closed direction: an unreadable primary refuses
-// rather than proceeds, since Cleanup's deletions (and every other branch -D site) are irreversible.
+// resolveManagedBranch reports whether branch may be deleted as a fabric-managed weft branch.
+// branch must be a name the fabric scheme constructs, must not be the primary weft branch of l,
+// and no worktree may have it checked out.
+// An unreadable primary refuses rather than proceeds, since every branch deletion is irreversible.
 func resolveManagedBranch(l *lymcwd.Location, branch string) (bool, string) {
 	if _, weftManaged := WeftWarpSlug(branch); !weftManaged {
 		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
@@ -887,20 +818,14 @@ func resolveManagedBranch(l *lymcwd.Location, branch string) (bool, string) {
 // checkPathRequest runs the gate's four checks against req, in fixed order, stopping at the first
 // failure: containment, ownership, dirtiness, force.
 //
-// The request's SHAPE is validated first, ahead of everything including the absent-target rule: a
-// declaration that is missing is missing regardless of what is on disk, and validating a struct
-// costs no syscall. The order matters more than it looks. It used to run after the absent-target
-// short-circuit, which meant a request declaring no ownership and no dirtiness passed the gate
-// vacuously whenever its target happened not to exist — so the property this file claims, that an
-// omitted check is a loud failure rather than a forgotten one, held only for targets that were
-// there, which is precisely the case a new call site's first test is least likely to cover.
+// The request's shape is validated first, ahead of the absent-target rule.
+// A missing declaration is refused whether or not the target exists, and validating a struct costs no syscall.
 //
-// An absent target is then a no-op success before the four checks run — most ownership predicates
-// fail on a path that is not there, and removeJunctionRecords, removeLaunchers and
-// Remove's tolerance of an already-absent weft worktree are all documented as idempotent today, so
-// refusing here would turn those into hard failures. os.Lstat, not os.Stat, is what decides
-// "absent": a dangling link is present as a link even though its target is not, and
-// ownedDriftedWiredJunction must still see it.
+// An absent target is then a no-op success before the four checks run.
+// Most ownership predicates fail on a path that is not there.
+// The removals that tolerate an absent path are idempotent, so refusing here would make them hard failures.
+// os.Lstat, not os.Stat, decides "absent": a dangling link is present as a link even though its target is not.
+// The drifted-junction ownership check must still see such a link.
 func checkPathRequest(req pathRequest) error {
 	if req.ownership.kind == pathOwnershipUnset {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
@@ -938,19 +863,19 @@ func checkPathRequest(req pathRequest) error {
 // req.force is consulted only here, and nowhere else in the pipeline: it satisfies dirtiness and
 // nothing else, never containment and never ownership, which is what keeps "remove .." — a
 // containment failure — from ever being answerable by a flag.
-// A dirtinessNA declaration always passes (its validity was already checked in checkPathRequest). A
-// probe that cannot run at all is itself a refusal, not a pass, since a probe failure is exactly the
+// A dirtinessNA declaration always passes, because a declaration without a reason is refused before this step.
+// A probe that cannot run at all is itself a refusal, not a pass, since a probe failure is exactly the
 // state in which an unconditional destructive act is least defensible.
 //
-// The probe is not atomic with the act it gates, and that limit is stated rather than left implicit:
-// this function runs `git status --porcelain` and returns, and the executor then performs the
-// primitive, with no lock spanning the two — so a write landing in that window is destroyed.
-// The exposure stays narrow by construction: removeGitWorktree re-checks through git itself,
-// resetHardTo delegates to git, and the only RemoveAll sites carrying a real dirtiness scope are the
-// two fallbacks that fire only AFTER git has already declined the removal. Closing the window would
-// need a lock held across probe and act at every executor, which is a much larger claim about every
-// future call path than the residual risk warrants — but "the gate executes rather than approves"
-// must not be read as "the probe and the act are one transaction".
+// The probe is not atomic with the act it gates.
+// This function runs `git status --porcelain` and returns; the executor then performs the primitive.
+// No lock spans the two, so a write landing in that window is destroyed.
+// The exposure stays narrow: removeGitWorktree re-checks through git itself, and resetHardTo delegates to git.
+// The only RemoveAll sites with a real dirtiness scope are two fallbacks,
+// and each fires only after git has declined the removal.
+// Closing the window would need a lock held across the probe and the act at every executor.
+// That costs more than the residual risk warrants.
+// Saying the gate executes rather than approves does not make the probe and the act one transaction.
 func checkPathDirtiness(req pathRequest) error {
 	if req.dirtiness.kind == pathDirtinessNA {
 		return nil
@@ -988,9 +913,9 @@ func checkPathDirtiness(req pathRequest) error {
 	return nil
 }
 
-// dirtyPathsOutside returns the paths a `git status --porcelain` listing reports that are not in ownPaths.
-// The listing is worktreeDirty's trimmed detail, so the first line may have lost its leading status space;
-// each line is read as a run of status letters, spaces, then the path, and a rename reports its new path.
+// dirtyPathsOutside returns the paths in a `git status --porcelain` listing that are not in ownPaths.
+// The listing arrives trimmed, so its first line may have lost the leading status space.
+// Each line is read as status letters, spaces, then the path; a rename reports its new path.
 func dirtyPathsOutside(porcelain string, ownPaths []string) []string {
 	own := make(map[string]bool, len(ownPaths))
 	for _, p := range ownPaths {
@@ -1013,8 +938,8 @@ func dirtyPathsOutside(porcelain string, ownPaths []string) []string {
 	return foreign
 }
 
-// checkBranchRequest runs the gate's checks against req: the same pipeline checkPathRequest runs,
-// minus containment and minus the absent-target rule, neither of which has meaning for a ref.
+// checkBranchRequest runs the gate's checks against req for a branch.
+// It skips the containment and absent-target rules, which have no meaning for a ref.
 func checkBranchRequest(req branchRequest) error {
 	if req.ownership.kind == branchOwnershipUnset {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
@@ -1030,17 +955,12 @@ func checkBranchRequest(req branchRequest) error {
 	return checkBranchDirtiness(req)
 }
 
-// checkBranchDirtiness runs the pipeline's dirtiness step for a branchRequest: is branch checked out
-// at any worktree. git branch -D cannot delete a checked-out branch anyway, so this converts git's
-// own refusal into a named gate refusal, the same move as re-gating removeWarpWorktreeDir's fallback.
-// Unlike checkPathDirtiness, req.force is never consulted here — branch-deletion-is-ref-shaped in
-// _mill/discussion.md is explicit that --force may answer a call site's own gate but never this
-// check. No branch-deletion call site's own gate currently answers to force in practice: every
-// branchRequest construction in this package hardcodes force: false, and Cleanup's own force
-// parameter is likewise reserved and consulted by no gate (see cleanup.go).
+// checkBranchDirtiness runs the dirtiness step for a branchRequest.
+// It refuses a branch checked out at any worktree: git branch -D cannot delete a checked-out branch,
+// so this names the refusal at the gate instead of leaving git's error.
+// req.force is never consulted, since --force may answer a call site's own gate but never this check.
 //
-// The unlanded-work kind additionally refuses a branch carrying commits no other ref holds and the
-// parent does not already contain; see checkUnlandedWork.
+// The unlanded-work kind also refuses a branch whose commits no other ref holds and its parent does not contain.
 func checkBranchDirtiness(req branchRequest) error {
 	if req.dirtiness.kind == branchDirtinessArchivedOnRemote {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "archived-on-remote dirtiness answers a remote question; a local branch delete has no remote tip to prove"}
@@ -1057,7 +977,9 @@ func checkBranchDirtiness(req branchRequest) error {
 	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
 }
 
-// checkArchivedTip is dirtyArchivedTip's probe, read-only git run from req.repoDir: the archive tag must be named and the branch's current tip must be an ancestor of or equal to the tag's target.
+// checkArchivedTip refuses a branch whose tip the archive tag does not cover.
+// It runs read-only git from req.repoDir.
+// The tag must be named, and the branch tip must be an ancestor of or equal to the tag's target.
 // req.force is never consulted.
 func checkArchivedTip(req branchRequest) error {
 	refuse := func(reason string) error {
@@ -1083,10 +1005,14 @@ func checkArchivedTip(req branchRequest) error {
 	return nil
 }
 
-// checkUnlandedRemoteTip is dirtyUnlandedRemoteTip's probe, all read-only git run from req.repoDir against the leased tip, which must already be fetched.
-// checkUnlandedWork's rule applies to the tip: it passes when every commit on it is reachable from another ref, otherwise, with a parent, when merging it into the parent changes nothing.
-// For a remote tip "another ref" excludes every copy of the same branch, local and remote-tracking, since a tracking ref always holds the tip and would make every pushed branch look held.
-// git clears accumulated --exclude patterns after each ref-selecting option, so the exclusion is repeated ahead of each.
+// checkUnlandedRemoteTip refuses a remote tip whose commits no other ref holds and its parent does not contain.
+// It runs read-only git from req.repoDir against the leased tip, which must already be fetched.
+// The tip passes when every commit on it is reachable from another ref;
+// otherwise, with a parent, it passes when merging it into the parent changes nothing.
+// For a remote tip, "another ref" excludes every copy of the same branch, local and remote-tracking.
+// A tracking ref always holds the tip, so without that exclusion every pushed branch would look held.
+// git clears accumulated --exclude patterns after each ref-selecting option,
+// so the exclusion is repeated ahead of each.
 // req.force is never consulted.
 func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 	refuse := func(reason string) error {
@@ -1122,12 +1048,14 @@ func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 	return refuse(fmt.Sprintf("%s commit(s) on the remote branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git push %s --delete %s", count, req.remote, req.branch))
 }
 
-// checkUnlandedWork is dirtyUnlandedWork's probe, all read-only git run from req.repoDir. In order:
-// the branch must not be checked out; it passes when every commit on it is reachable from another
-// local branch, a remote-tracking ref or a tag; otherwise, with a parent, it passes when merging it
-// into the parent changes nothing (git merge-tree yields the parent tip's own tree, a conflict counting
-// as a change); otherwise it is refused, naming the count of commits held by no other ref and the hand
-// remedy. req.force is never consulted.
+// checkUnlandedWork refuses a local branch with commits that neither another ref nor its parent already holds.
+// It runs read-only git from req.repoDir.
+// The branch must not be checked out.
+// It passes when every commit on it is reachable from another local branch, a remote-tracking ref or a tag.
+// Otherwise, with a parent, it passes when merging the branch into the parent changes nothing:
+// git merge-tree yields the parent tip's own tree, and a conflict counts as a change.
+// Otherwise it refuses, naming the count of commits held by no other ref and a manual remedy.
+// req.force is never consulted.
 func checkUnlandedWork(req branchRequest) error {
 	refuse := func(reason string) error {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: reason}
@@ -1168,13 +1096,10 @@ func checkUnlandedWork(req branchRequest) error {
 	return refuse(fmt.Sprintf("%s commit(s) on this branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git branch -D %s", count, req.branch))
 }
 
-// checkedOutBranchDirtiness is the checked-out-at-a-worktree dirtiness probe both branchRequest (via
-// checkBranchDirtiness) and remoteBranchRequest (via checkRemoteBranchRequest) run: is branch checked
-// out at any worktree. git branch -D cannot delete a checked-out branch anyway, so this converts
-// git's own refusal into a named gate refusal, the same move as re-gating removeWarpWorktreeDir's
-// fallback.
-// It keeps the *lymcwd.Location access path checkBranchDirtiness already used, rather than adding a
-// location field to remoteBranchRequest — the three values here are everything the probe needs.
+// checkedOutBranchDirtiness refuses a branch that is checked out at any worktree, as a named gate refusal.
+// git branch -D cannot delete a checked-out branch;
+// this check turns git's own refusal into a refusal that names the check.
+// The three values it takes are everything the probe needs.
 func checkedOutBranchDirtiness(l *lymcwd.Location, what, branch string) error {
 	branches, err := listWeftBranches(l)
 	if err != nil {
@@ -1188,11 +1113,10 @@ func checkedOutBranchDirtiness(l *lymcwd.Location, what, branch string) error {
 	return nil
 }
 
-// checkRemoteBranchRequest runs the gate's checks against req, structurally mirroring
-// checkBranchRequest: an unset ownership or dirtiness declaration is refused before either predicate
-// runs, then resolveBranchOwnership resolves ownership, then the same checked-out-at-a-worktree
-// dirtiness probe checkBranchDirtiness runs. Containment is structurally N/A here exactly as it is
-// for branchRequest, and there is no container field to check.
+// checkRemoteBranchRequest runs the gate's checks against req for a remote branch delete.
+// An unset ownership or dirtiness declaration is refused before any check runs.
+// Then ownership is resolved, and the dirtiness check for the declared kind runs.
+// Containment does not apply, since a remote branch has no container field to check.
 func checkRemoteBranchRequest(req remoteBranchRequest) error {
 	if req.ownership.kind == branchOwnershipUnset {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
@@ -1230,24 +1154,19 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 }
 
 // removeContainedPath removes the container-relative form of target through an os.Root rooted at
-// container, so that path-component resolution and the unlink are one openat chain that atomically
-// refuses to traverse a symlink escaping container.
-// This is what binds the gate's containment resolution to the act rather than to an earlier instant:
-// a symlink planted at an intermediate segment of target and flipped live-and-escaping between the
-// pipeline's check and this removal can no longer carry the unlink outside container, because os.Root
-// rejects the escaping component at removal time — a nominal path resolved once and acted on later
-// left exactly that window open.
+// container, so path-component resolution and the unlink are one openat chain.
+// That chain refuses to traverse a symlink escaping container.
+// A symlink planted at an intermediate segment of target can be flipped to point outside container after a check.
+// Such a link still cannot carry the unlink outside container: os.Root rejects the escaping component at removal time.
 // A final-component link is still removed as a link, since os.Root.Remove/RemoveAll never follow the
 // target's own last component, so a junction removal is unaffected.
 //
-// recursive selects RemoveAll (a directory and its subtree) over Remove (a single entry, which the OS
-// itself refuses the moment a directory is non-empty).
-// It reports whether an entry was actually removed — false for an already-absent target, preserving
-// the idempotence every executor here relies on — and whether that entry was a directory, for the
-// caller's mutation-record detail.
-// container must be a strict ancestor of target;
-// a target equal to or outside container is a programming error and is returned as one, never a silent
-// no-op, since a request the gate built with a mismatched container/target pair is a bug in the gate.
+// recursive selects RemoveAll (a directory and its subtree) over Remove (a single entry).
+// The OS itself refuses Remove on a non-empty directory.
+// It reports whether an entry was removed: false for an already-absent target, which makes removal idempotent.
+// It also reports whether that entry was a directory, for the caller's mutation-record detail.
+// container must be a strict ancestor of target.
+// A target equal to or outside container is a programming error and is returned as an error, never a silent no-op.
 func removeContainedPath(container, target string, recursive bool) (removed, wasDir bool, err error) {
 	rel, relErr := filepath.Rel(filepath.Clean(container), filepath.Clean(target))
 	if relErr != nil {
@@ -1260,8 +1179,7 @@ func removeContainedPath(container, target string, recursive bool) (removed, was
 	root, err := os.OpenRoot(container)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// The container itself is gone, so anything under it is too: the same idempotent no-op an
-			// already-absent target is, not a failure.
+			// The container is gone, so nothing under it exists: removing it is a no-op, not a failure.
 			return false, false, nil
 		}
 		return false, false, fmt.Errorf("open container %s: %w", container, err)
@@ -1273,9 +1191,9 @@ func removeContainedPath(container, target string, recursive bool) (removed, was
 		if os.IsNotExist(statErr) {
 			return false, false, nil
 		}
-		// A "path escapes from parent" error lands here when an intermediate component of rel resolves
-		// through a symlink pointing outside container — exactly the escape this helper exists to
-		// refuse, so it surfaces as an error rather than a removal.
+		// An intermediate component of rel that resolves through a symlink pointing outside container:
+		// Lstat fails with a "path escapes from parent" error.
+		// That escape is what this helper refuses, so the error is returned rather than a removal.
 		return false, false, statErr
 	}
 
@@ -1291,11 +1209,9 @@ func removeContainedPath(container, target string, recursive bool) (removed, was
 	return true, wasDir, nil
 }
 
-// removePath is the executor for the os.RemoveAll/os.Remove primitive: it runs the pipeline, then
-// removes req.target through removeContainedPath rooted at req.container — RemoveAll for a directory
-// or Remove otherwise — tolerating an already-absent target.
-// It is named removePath, not removeDir, because removeLaunchers deletes script FILES as well as
-// their directory, and both must route through one executor.
+// removePath removes req.target through removeContainedPath rooted at req.container, after checking req.
+// It uses RemoveAll for a directory and Remove otherwise, and it tolerates an already-absent target.
+// It removes a file as well as a directory, so one executor serves both.
 // On success it appends KindPathRemoved to rec, with detail "recursive" for the directory branch and
 // "single" for the single-entry branch; the already-absent case records nothing, since that is a
 // successful no-op, not a removal.
@@ -1320,22 +1236,27 @@ func removePath(rec *Mutations, req pathRequest) error {
 	return nil
 }
 
-// leftoverRemoveAttempts bounds removeWorktreeLeftover: the first removal and two retries.
+// leftoverRemoveAttempts bounds the removal of a leftover worktree directory: the first try and two retries.
 const leftoverRemoveAttempts = 3
 
-// leftoverSeam holds the removal and the sleep behind removeWorktreeLeftover, and the refill a late writer makes after a clean `git worktree remove`.
-// A nil field means production: removeContainedPath over the whole subtree, time.Sleep, and no refill.
+// leftoverSeam holds the injectable removal, sleep and refill steps of a leftover worktree removal.
+// A nil remove or sleep means production: removeContainedPath over the whole subtree, and time.Sleep.
+// A nil refill runs nothing.
 type leftoverSeam struct {
 	remove func(container, target string) (removed, wasDir bool, err error)
 	sleep  func(delay time.Duration)
-	// refill runs on target after a `git worktree remove` of it exited cleanly, so a test plays the late writer that refills the directory.
+	// refill runs on target after a clean `git worktree remove`; tests use it to play a late writer.
 	refill func(target string)
 }
 
 // removeWorktreeLeftover finishes the removal of a worktree directory still on disk after `git worktree remove` deregistered it.
-// Its caller's git run is its ownership proof: that run passed the gate's registered-linked-worktree and dirtiness checks on this same target and had already accepted discarding it, so no check runs here, and containment is kept by the removal's os.Root under container.
-// A removal that fails with a late writer's error (a refilled directory, or on Windows a file its writer still holds open) is retried after one second and then two, three attempts in all; any other failure is returned at once.
-// A removal appends KindPathRemoved for target, as removePath does.
+// Its caller's git run is its ownership proof.
+// That run passed the gate's registered-linked-worktree and dirtiness checks on this same target;
+// it had already accepted discarding it, so no check runs here.
+// Containment is kept by the removal's os.Root under container.
+// A late writer can make a removal fail: a refilled directory, or on Windows a file its writer still holds open.
+// Such a removal is retried after one second, then two, three attempts in all; any other failure is returned at once.
+// A removal appends KindPathRemoved for target to rec.
 func removeWorktreeLeftover(rec *Mutations, container, target string, seam leftoverSeam) error {
 	remove := seam.remove
 	if remove == nil {
@@ -1372,11 +1293,15 @@ func removeWorktreeLeftover(rec *Mutations, container, target string, seam lefto
 	return fmt.Errorf("remove %s: %w", target, err)
 }
 
-// finishGitWorktreeRemoval completes a `git worktree remove` of target run from repoDir, given gitErr, the error removeGitWorktree returned for it.
-// A clean exit with target still on disk is a directory a late writer, such as a build or language server writing git-ignored output, refilled after git deleted it;
-// a git failure that left target deregistered and on disk is git dropping the registration and failing on the directory.
-// Either directory is removed through removeWorktreeLeftover, under container, and a nil error then means the worktree is gone.
-// Any other outcome returns gitErr unchanged: a clean exit with nothing left, a failure before git ran, a failure that left target registered, a failure after which the repository's worktrees cannot be listed, or one that left nothing on disk.
+// finishGitWorktreeRemoval completes a `git worktree remove` of target run from repoDir.
+// It takes gitErr, the error that run returned.
+// A clean exit with target still on disk means a late writer refilled the directory after git deleted it;
+// such a writer is a build or language server writing git-ignored output.
+// A git failure that left target deregistered and on disk: git dropped the registration and failed on the directory.
+// Either directory is removed under container, and a nil error then means the worktree is gone.
+// Any other outcome returns gitErr unchanged: a clean exit with nothing left, or a failure before git ran;
+// a failure that left target registered, or one after which the repository's worktrees cannot be listed;
+// or a failure that left nothing on disk.
 func finishGitWorktreeRemoval(rec *Mutations, repoDir, container, target string, gitErr error, seam leftoverSeam) error {
 	if gitErr == nil {
 		if seam.refill != nil {
@@ -1387,7 +1312,8 @@ func finishGitWorktreeRemoval(rec *Mutations, repoDir, container, target string,
 		if !errors.As(gitErr, &gitRunErr) {
 			return gitErr
 		}
-		// An unlistable repository proves nothing about target, so it is treated as registered: the recursive delete needs the proof that git dropped the registration.
+		// An unlistable repository proves nothing about target, so target is treated as registered.
+		// The recursive delete needs proof that git dropped the registration.
 		entries, listErr := List(repoDir)
 		if listErr != nil || listsLinkedWorktree(entries, target) {
 			return gitErr
@@ -1405,11 +1331,17 @@ func finishGitWorktreeRemoval(rec *Mutations, repoDir, container, target string,
 	return nil
 }
 
-// RemoveStrayTaskPath deletes what stands at slug's task worktree path when it is no registered linked worktree, such as a directory a build or language server refilled with ignored output after the pair's removal, and reports whether it deleted anything.
-// The caller's ownership proof is its own knowledge that a pair of slug stood at that path: a run that created the pair, or a removal of the slug's pair the operator asked for.
-// It refuses a registered linked worktree, which is a pair to remove, and a directory holding a `.git` entry, which is a repository of its own and never fabric's to delete.
-// Containment is kept by the delete's os.Root under the hub; no dirtiness check runs and no force applies, since what stands there is no worktree.
-// A delete that fails, after the late-writer retries, returns an error wrapping ErrStrayPathKept and leaves the path on disk.
+// RemoveStrayTaskPath deletes the stray directory at slug's task worktree path and reports whether it deleted anything.
+// A stray directory is one that no registered linked worktree owns.
+// A build or language server may refill such a path with ignored output after the pair's removal.
+// The caller's ownership proof is its own knowledge that a pair of slug stood at that path.
+// It comes from a run that created the pair, or from a removal of the slug's pair that the operator asked for.
+// It refuses a registered linked worktree, which is a pair to remove.
+// It also refuses a directory holding a `.git` entry, which is a repository of its own that fabric does not delete.
+// The delete is contained by an os.Root under the hub.
+// No dirtiness check runs and no force applies, since what stands there is no worktree.
+// A delete that fails after the late-writer retries returns an error wrapping ErrStrayPathKept.
+// It leaves the path on disk.
 func (t *Topology) RemoveStrayTaskPath(l *lymcwd.Location, slug string) (bool, error) {
 	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
 		return false, err
@@ -1437,13 +1369,13 @@ func (t *Topology) RemoveStrayTaskPath(l *lymcwd.Location, slug string) (bool, e
 	return true, nil
 }
 
-// removeGitWorktree is the executor for the git worktree remove primitive: it runs the pipeline,
-// then runs git worktree remove [--force] from repoDir.
-// It returns the resulting error unchanged rather than wrapping it, because every call site builds
-// its own message from it, recovering the exit code and stderr via errors.As(err, &gitErr) wherever
-// it needs them.
-// It appends KindWorktreeRemoved to rec only when err is nil — a non-nil error must never be recorded
-// as a completed removal.
+// removeGitWorktree is the executor for the git worktree remove primitive.
+// It runs the pipeline, then runs git worktree remove [--force] from repoDir.
+// It returns the error from git unchanged rather than wrapping it.
+// Every call site builds its own message from that error.
+// Where it needs the exit code or stderr, it recovers them via errors.As(err, &gitErr).
+// It appends KindWorktreeRemoved to rec only when err is nil.
+// A non-nil error must never be recorded as a completed removal.
 func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) error {
 	if checkErr := checkPathRequest(req); checkErr != nil {
 		return checkErr
@@ -1462,15 +1394,13 @@ func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) error {
 	return err
 }
 
-// removeLink is the executor for the link-removal primitive: it runs the pipeline, then removes
-// req.target through removeContainedPath rooted at req.container.
-// It routes through removeContainedPath rather than fslink.Remove for the same reason removePath does:
-// a link removal's own intermediate ancestry is exactly where a planted symlink carried a gated
-// removal outside its container, and rooting the unlink at container is what refuses that escape at
-// act time rather than trusting a path resolved earlier. The link's own final component is still
-// removed as a link, since os.Root never follows the target's last component.
-// It appends KindLinkRemoved to rec only when the link was actually there: removeContainedPath reports
-// removed=false for an already-absent target, so an idempotent no-op is not recorded as a removal.
+// removeLink is the executor for the link-removal primitive.
+// It runs the pipeline, then removes req.target through removeContainedPath rooted at req.container.
+// Rooting the unlink at container refuses a planted symlink in the target's intermediate ancestry at act time.
+// Such a symlink would otherwise carry the removal outside the container, and no path resolved earlier is trusted.
+// The link's own final component is still removed as a link, since os.Root never follows the target's last component.
+// It appends KindLinkRemoved to rec only when the link was there.
+// An already-absent target reports removed=false from removeContainedPath, so a no-op is not recorded as a removal.
 func removeLink(rec *Mutations, req pathRequest) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
@@ -1486,13 +1416,12 @@ func removeLink(rec *Mutations, req pathRequest) error {
 	return nil
 }
 
-// repointLink is the executor for a junction re-point: it removes a drifted or dangling link so the
-// caller can recreate it, enforcing containment and ownership but declaring dirtiness N/A — a
-// re-point is repair, not teardown, and has no force semantics at all, so it takes no force
-// parameter: a repair site can never be handed a teardown site's force flag.
-// It passes rec straight through to removeLink and appends nothing of its own: there is deliberately
-// no link_repointed kind, since a repoint physically is a removal here plus a creation at the
-// caller's own fslink.CreateDirLink.
+// repointLink is the executor for a junction re-point.
+// It removes a drifted or dangling link so the caller can recreate it.
+// It enforces containment and ownership, and declares dirtiness not applicable.
+// A re-point is repair, not teardown, so it takes no force parameter.
+// It passes rec straight through to removeLink and appends nothing of its own.
+// No link_repointed kind is recorded, since a re-point is a removal here plus a creation by the caller.
 func repointLink(rec *Mutations, what, container, target string, own pathOwnership) error {
 	req := pathRequest{
 		what:      what,
@@ -1505,12 +1434,11 @@ func repointLink(rec *Mutations, what, container, target string, own pathOwnersh
 	return removeLink(rec, req)
 }
 
-// deleteBranch is the executor for the git branch -D primitive: it runs the pipeline, then runs git
-// branch -D from req.repoDir.
-// It returns the resulting error unchanged rather than wrapping it, for the same reason
-// removeGitWorktree does: every call site builds its own message from it.
-// It appends KindBranchDeleted to rec via AppendRef, not Append, only when err is nil: a branch name
-// is a ref, not a path, so it carries no hub-relative conversion.
+// deleteBranch is the executor for the git branch -D primitive.
+// It runs the pipeline, then runs git branch -D from req.repoDir.
+// It returns the git error unchanged rather than wrapping it, so every call site builds its own message from it.
+// It appends KindBranchDeleted to rec via AppendRef, not Append, only when err is nil.
+// A branch name is a ref, not a path, so it carries no hub-relative conversion.
 func deleteBranch(rec *Mutations, req branchRequest) error {
 	if checkErr := checkBranchRequest(req); checkErr != nil {
 		return checkErr
@@ -1523,15 +1451,13 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 	return err
 }
 
-// deleteRemoteBranch is the executor for the git push <remote> --delete primitive: it runs the
-// pipeline, then calls gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch).
-// It returns the (deleted, err) pair through unchanged, wrapping nothing — every call site builds its
-// own message from it, exactly as deleteBranch and removeGitWorktree already do.
+// deleteRemoteBranch is the executor for the git push <remote> --delete primitive.
+// It runs the pipeline, then calls gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch).
+// It returns the (deleted, err) pair unchanged and wraps nothing, so every call site builds its own message from it.
 // A non-empty req.leaseSHA routes through DeleteRemoteBranchLeased instead, recording only on success.
-// It appends KindRemoteBranchDeleted to rec via AppendRef, not Append, only when err is nil AND
-// deleted is true: a remote ref is a ref, not a path, so it carries no hub-relative conversion, and
-// the append happens only on an observed deletion — never on deleted == false, which is the
-// already-absent idempotent success, and never on an error.
+// It appends KindRemoteBranchDeleted to rec via AppendRef, not Append, only when err is nil and deleted is true.
+// A remote ref is a ref, not a path, so it carries no hub-relative conversion.
+// It never appends when deleted is false, which is the already-absent idempotent success, nor on an error.
 func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, err error) {
 	if checkErr := checkRemoteBranchRequest(req); checkErr != nil {
 		return false, checkErr
@@ -1552,10 +1478,15 @@ func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, 
 	return deleted, err
 }
 
-// updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote: it runs checkPathRequest over req.pathReq, re-reads the checkout's branch so only the pair's own branch, never the parent branch, is moved, then calls req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA).
-// A lease that no longer holds returns the divergence refusal, since the remote tip moved after the caller read it and may now hold commits the checkout lacks;
-// any other push failure is wrapped with a way forward.
-// It appends KindRemoteBranchUpdated to rec via AppendRef only once the push succeeded: a remote ref carries no hub-relative conversion.
+// updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote.
+// It runs the pipeline over req.pathReq, then re-reads the checkout's branch.
+// That keeps the parent branch from being moved: only the pair's own branch is pushed.
+// It then calls req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA).
+// A lease that no longer holds returns the divergence refusal.
+// The remote tip moved after the caller read it, and may now hold commits the checkout lacks.
+// Any other push failure is wrapped with a way forward.
+// It appends KindRemoteBranchUpdated to rec via AppendRef only once the push succeeded.
+// A remote ref carries no hub-relative conversion.
 func updateRemoteBranch(rec *Mutations, req remoteBranchUpdateRequest) error {
 	if err := checkPathRequest(req.pathReq); err != nil {
 		return err
@@ -1580,37 +1511,33 @@ func updateRemoteBranch(rec *Mutations, req remoteBranchUpdateRequest) error {
 	return nil
 }
 
-// remoteDivergenceWayForward is the way forward every refusal over a remote task branch holding commits the checkout lacks names.
-// It offers the `ours` merge, which takes no content and cannot conflict, for the run's own abandoned commits, and no plain merge.
+// remoteDivergenceWayForward returns the way forward for a remote task branch holding commits the checkout lacks.
+// It offers the `ours` merge for the run's own abandoned commits, because it takes no content and cannot conflict.
+// It never offers a plain merge.
 func remoteDivergenceWayForward(remote, branch string) string {
 	return fmt.Sprintf("way forward: if those commits are this run's own abandoned work, run `git merge --strategy ours %s/%s` in the task worktree, "+
 		"which takes no content and cannot conflict, then re-run this reset, which rewinds both the checkout and the remote task branch and discards what the merge brought in; "+
 		"if they may be someone else's work, do not re-run this reset, which would discard them, and leave the rewind to the operator", remote, branch)
 }
 
-// createExclusiveDir creates path as a directory the gate can later authorise the removal of, and
-// returns the createdToken proving it.
+// createExclusiveDir creates path as a new directory and returns the createdToken proving this call created it.
 //
-// It roots at path's parent and creates only path's final component (filepath.Base) through the root,
-// so a symlink planted AT that final component is refused as an EEXIST — os.Root.Mkdir, like os.Mkdir,
-// never follows a symlink standing at the entry it creates — and the token is only ever minted for a
-// directory this call actually brought into being.
-// The rooting is NOT, and is not relied on to be, a defence against a symlink planted at an INTERMEDIATE
-// ancestor of path: os.OpenRoot resolves the parent argument (symlinks in it included) before rooting,
-// and the single-component leaf handed to root.Mkdir has no intermediate segment left for the root to
-// refuse, so a link in path's parent ancestry is followed exactly as a bare os.Mkdir would follow it.
-// That is safe at this function's sole call site — CloneHub mints the hub as a single new component
-// under the operator-chosen clone parent, an operator-controlled location an attacker cannot plant a
-// symlink inside the way it can inside a live hub — but a future caller passing a path whose parent
-// ancestry is attacker-influenced must not treat createExclusiveDir as sufficient containment on its
-// own; removeContainedPath and containedWorktreeAdd, which root at a FIXED hub container and resolve the
-// whole relative tail through it, are the pattern for that case.
+// It opens path's parent as an os.Root and creates only path's final component through that root.
+// os.Root.Mkdir, like os.Mkdir, never follows a symlink standing at the entry it creates,
+// so a symlink planted at that final component makes the call fail with EEXIST.
+// The token is minted only for a directory this call brought into being.
 //
-// createdToken is only unforgeable because the bypass guard batch 6 adds bans the token
-// `createdToken{` outside this file, with destroy.go itself on the guard's allowlist — being
-// unexported does not by itself stop a same-package composite literal, and a reader who believes
-// otherwise will eventually write one.
-// On success it appends KindDirCreated to rec, never before the mkdir observably created the directory.
+// The root does not guard against a symlink planted at an intermediate ancestor of path.
+// os.OpenRoot resolves the parent argument, symlinks included, before rooting it,
+// and the single-component leaf leaves no intermediate segment for the root to refuse,
+// so a link in path's parent ancestry is followed exactly as os.Mkdir would follow it.
+// It suffices only where the parent is an operator-controlled location; an attacker cannot plant a link there.
+// A caller whose parent ancestry is attacker-influenced needs a root fixed at a container.
+// It must resolve the whole relative tail through that root.
+//
+// Being unexported does not by itself stop a same-package composite literal.
+// A guard bans the `createdToken{` literal outside this file; this file is on its allowlist.
+// On success it appends KindDirCreated to rec, only after the mkdir has created the directory.
 func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 	cleaned := filepath.Clean(path)
 	parent := filepath.Dir(cleaned)
@@ -1626,18 +1553,17 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 	return createdToken{path: cleaned, worktree: false}, nil
 }
 
-// createGitWorktree adds a git worktree at target through containedWorktreeAdd and, on success,
-// returns the createdToken proving the gate itself added it there and the createdBranchToken proving the `-b` of buildArgs created createdBranch.
+// createGitWorktree adds a git worktree at target.
+// On success it returns two tokens: the createdToken proving this call added the worktree there,
+// and the createdBranchToken proving the `-b` in buildArgs created createdBranch.
 //
-// buildArgs returns the full `git worktree add` argument slice given the path git should write the
-// worktree to; the caller supplies it so this one minter serves the warp-side add's `-b <branch>`
-// shape while the containment machinery stays uniform. container is the directory target must be a
-// child of (the hub for a slug worktree), and is where the collision-free staging directory is created.
+// buildArgs returns the full `git worktree add` argument slice for the path git should write to.
+// The caller chooses the argument shape, such as a `-b <branch>` add, and the containment step stays the same.
+// container is the directory that target must be a direct child of.
+// The collision-free staging directory is created there.
 //
-// On a git or placement failure it returns the zero token, which no ownership kind accepts, alongside
-// the resulting error unwrapped — see createExclusiveDir's doc comment for why createdToken is
-// unforgeable outside this file, and errors.As(err, &gitErr) for how a call site recovers the exit
-// code and stderr it needs.
+// On a git or placement failure it returns the zero tokens, which no ownership kind accepts, and the error unwrapped.
+// A caller recovers the git exit code and stderr from that error with errors.As.
 // It appends KindWorktreeCreated to rec only on the success path that mints the token.
 func createGitWorktree(rec *Mutations, repoDir, container, target, createdBranch string, buildArgs func(worktreePath string) []string) (createdToken, createdBranchToken, error) {
 	if err := containedWorktreeAdd(repoDir, container, target, buildArgs); err != nil {
@@ -1647,48 +1573,41 @@ func createGitWorktree(rec *Mutations, repoDir, container, target, createdBranch
 	return createdToken{path: filepath.Clean(target), worktree: true}, createdBranchToken{branch: createdBranch}, nil
 }
 
-// containedWorktreeAdd runs `git worktree add` in a way that never REPORTS a worktree placed inside
-// container while it was actually written OUTSIDE it through a symlink planted at the staging or target
-// path during the caller's check-then-act window — the create-side twin of removeContainedPath's
-// delete-side guarantee. Round 5 built the staging structure below but never verified, after the move,
-// that the placed target was a real directory rather than a followed symlink, so a planted staging-leaf
-// symlink still produced an out-of-hub worktree reported as success; round 6 closes that by binding the
-// containment check to the act at both the staging write and the placement.
+// containedWorktreeAdd runs `git worktree add` and fails closed when git writes outside container.
+// A symlink planted at the staging or target path can make it do so.
+// Such a symlink could appear between a containment check and the act, so the checks here bind to the act itself.
 //
-// The escape it must close: `git worktree add <path>` resolves its destination-path argument itself and
-// FOLLOWS a symlink standing there, writing a full real worktree wherever the symlink points and
-// registering it at the resolved path. os.Root cannot reach through the git subprocess the way it
-// reaches through removeContainedPath's own os.Remove, so this cannot be closed by rooting the git
-// call; it is closed by a two-level staging structure plus two fail-closed containment checks.
+// `git worktree add <path>` follows a symlink standing at its destination argument.
+// It then writes a full worktree wherever that symlink points and registers it at the resolved path.
+// os.Root cannot reach through the git subprocess, so rooting the git call does not close this.
+// Two staging levels and two fail-closed containment checks close it instead.
 //
-// git's WRITE targets a two-level staging location: a collision-free random PARENT directory created
-// through an os.Root rooted at container (openat-atomic, mode 0700, unpredictable so a different-UID
-// planter can neither guess nor write the leaf, and any intermediate-symlink escape refused at mkdir
-// time), holding a leaf named after target's base so git names its admin directory
-// (`<gitdir>/worktrees/<name>`) after the slug exactly as it would have unstaged. The two-level shape is
-// load-bearing: os.Root.Rename refuses a symlink at an INTERMEDIATE source component, so a planter who
-// swaps the random parent (writable only from container itself) makes the rename fail closed rather than
-// escape; a single-level staging dir directly under container would have no such protective parent.
+// git writes to a two-level staging location.
+// The first level is a collision-free random parent directory, created through an os.Root rooted at container.
+// It has mode 0700, so another UID can neither guess nor write the leaf.
+// Mkdir refuses any intermediate-symlink escape.
+// The leaf is named after target's base, so git names its admin directory after the slug.
+// Two levels are required: os.Root.Rename refuses a symlink at an intermediate source component.
+// So a planter who swaps the random parent makes the rename fail closed rather than escape.
 //
-// os.Root.Rename refuses to follow a symlink at the rename DESTINATION but renames a symlink standing at
-// the source's own FINAL component as a link (it moves the link, not its target), so the two checks
-// below are what actually bind containment to the act: after git writes, stagedWorktreeContained
-// confirms the staging leaf git wrote to is a real directory reached without traversing any symlink (a
-// symlink there means git followed a planted link and wrote outside); after the rename, the same check
-// on target catches a leaf swapped in the narrow pre-check→rename window, whose symlink would otherwise
-// have been renamed onto target. Either failure cleans up the escaped worktree and staging debris and
-// returns an error, so an out-of-hub worktree is never reported as a placed one.
+// os.Root.Rename refuses a symlink at the rename destination.
+// It moves a symlink at the source's final component as a link, not its target.
+// Two checks bind containment to the act.
+// After git writes, stagedWorktreeContained confirms that the staging leaf is a real directory.
+// It must be reached without traversing any symlink; a symlink there means git followed a planted link.
+// After the rename, the same check on target catches a leaf swapped in the window before the rename.
+// A failure of either check removes the escaped worktree and staging debris, and returns an error.
+// So an out-of-container worktree is never reported as placed.
 //
-// A same-UID (or root) planter actively racing the add can still make git transiently write a checkout
-// into a directory it already controls and can read the repo from anyway; that is not preventable by any
-// staging location, since such a planter can substitute any path fabric writes to. What is guaranteed is
-// that this function never returns nil for such an add and never leaves target a dangling out-of-hub
-// symlink — it fails closed.
+// A same-UID or root planter can still race the add.
+// Git may transiently write a checkout into a directory that planter already controls and can read the repo from.
+// No staging location prevents this, since such a planter can substitute any path fabric writes to.
+// For such an add the function guarantees that it never returns nil.
+// It also never leaves target a dangling out-of-container symlink; it fails closed.
 //
-// target must be a direct child of container (every fabric worktree target — a hub-sibling slug worktree
-// or the Bolt checkout — is), which is what lets the single-component rename land it in place. buildArgs
-// returns the full argument slice given the path git should write to; every caller embeds exactly the
-// staging path this function hands it, never target, so no caller can reintroduce the followed-symlink write.
+// target must be a direct child of container, so the single-component rename lands it in place.
+// buildArgs returns the full argument slice for the path git should write to.
+// It must embed the staging path it is handed, never target, so the followed-symlink write cannot be reintroduced.
 func containedWorktreeAdd(repoDir, container, target string, buildArgs func(worktreePath string) []string) error {
 	rel, relErr := filepath.Rel(filepath.Clean(container), filepath.Clean(target))
 	if relErr != nil {
@@ -1768,9 +1687,9 @@ func containedWorktreeAdd(repoDir, container, target string, buildArgs func(work
 	_ = root.RemoveAll(stagingParent)
 
 	if _, err := gitexec.Run([]string{"worktree", "repair", target}, repoDir); err != nil {
-		// The worktree is placed but its registration still names the staging path; remove the
-		// half-registered worktree so the caller's rollback sees a clean slate rather than a target whose
-		// broken registration `git worktree remove` would itself choke on.
+		// The worktree is placed, but its registration still names the staging path.
+		// Remove the half-registered worktree so the caller's rollback sees a clean slate.
+		// Left as it is, `git worktree remove` would itself choke on the broken registration.
 		_, _ = gitexec.Run([]string{"worktree", "remove", "--force", target}, repoDir)
 		_, _ = gitexec.Run([]string{"worktree", "prune"}, repoDir)
 		return fmt.Errorf("repair worktree registration at %s: %w", target, err)
@@ -1778,11 +1697,10 @@ func containedWorktreeAdd(repoDir, container, target string, buildArgs func(work
 	return nil
 }
 
-// stagedWorktreeContained reports whether rel, resolved through root's own directory handle, is a real
-// directory containedWorktreeAdd can trust as a placed worktree: not a symlink git followed out of the
-// container, and not a path whose ancestry escapes root. os.Root.Lstat resolves every component through
-// container's handle and returns an error for an escaping intermediate component, so a non-nil error and
-// a symlink leaf are both reported as not contained — the conservative, fail-closed direction.
+// stagedWorktreeContained reports whether rel, resolved through root's own directory handle, is a real directory.
+// It is false for a symlink that git followed out of the container, and for a path whose ancestry escapes root.
+// os.Root.Lstat resolves every component through root's handle and fails for an escaping intermediate component.
+// A non-nil error and a symlink leaf both report as not contained: the conservative, fail-closed direction.
 func stagedWorktreeContained(root *os.Root, rel string) bool {
 	info, err := root.Lstat(rel)
 	if err != nil {
@@ -1791,10 +1709,12 @@ func stagedWorktreeContained(root *os.Root, rel string) bool {
 	return info.Mode()&os.ModeSymlink == 0 && info.IsDir()
 }
 
-// worktreeStagingPrefix opens the name of the staging directory a new worktree is created in before it moves to its final path.
+// worktreeStagingPrefix prefixes the name of a worktree staging directory.
+// A new worktree is created in such a directory before it moves to its final path.
 const worktreeStagingPrefix = ".fabric-wt-staging-"
 
-// InWorktreeStaging reports whether path lies under a worktree staging directory, where a worktree being created sits before it moves to its final path.
+// InWorktreeStaging reports whether path lies under a worktree staging directory.
+// A worktree being created sits in such a directory until it moves to its final path.
 func InWorktreeStaging(path string) bool {
 	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
 		if strings.HasPrefix(part, worktreeStagingPrefix) {
@@ -1804,11 +1724,12 @@ func InWorktreeStaging(path string) bool {
 	return false
 }
 
-// mkWorktreeStagingDir creates a fresh, collision-free staging parent directory directly under root and
-// returns its base name. The name is unpredictable (crypto/rand) so a different-UID planter with hub
-// write access cannot pre-plant a symlink at it, the mode is 0700 so such a planter can neither list nor
-// write the leaf git will create inside it, and the create goes through root's own directory handle so
-// an intermediate-symlink escape is refused rather than followed.
+// mkWorktreeStagingDir creates a fresh, collision-free staging parent directory directly under root.
+// It returns the directory's base name.
+// The name is unpredictable (crypto/rand),
+// so a planter under a different UID with hub write access cannot pre-plant a symlink at it.
+// The mode is 0700, so such a planter can neither list nor write the leaf git creates inside it.
+// The create goes through root's own directory handle, so an intermediate-symlink escape is refused, not followed.
 func mkWorktreeStagingDir(root *os.Root) (string, error) {
 	for attempt := 0; attempt < 100; attempt++ {
 		var buf [16]byte
@@ -1827,12 +1748,9 @@ func mkWorktreeStagingDir(root *os.Root) (string, error) {
 	return "", fmt.Errorf("create worktree staging dir under %s: exhausted attempts", root.Name())
 }
 
-// resetHardTo is the executor for the ResetHard primitive: it runs the pipeline against req, and
-// only once that passes does it call repo's own ResetHard(sha) — repo is the raw gitrepo.Repo handle
-// the pipeline's ownership check has just proven req.target actually belongs to, and sha is the
-// commit the caller wants the checkout rewound to.
-// On a nil error from repo.ResetHard it appends KindWorktreeReset to rec, with sha as the detail —
-// this is the primitive behind defect 1.
+// resetHardTo rewinds the checkout of repo to sha, once checkPathRequest passes for req.
+// The check has proven that req.target belongs to repo, the raw gitrepo.Repo handle.
+// On a nil error from repo.ResetHard it appends KindWorktreeReset to rec, with sha as the detail.
 func resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
@@ -1852,8 +1770,7 @@ var (
 	errDropReplayFailed = errors.New("replaying the commits that are not seed commits failed")
 )
 
-// boardDropRequest builds the gate request both seed-commit drop callers share:
-// container the board dir's parent, target the board dir, ownership ownedBoardWorktree, dirtiness dirtyTrackedOn(touched), and force always false.
+// boardDropRequest builds the gate request for dropping seed commits from the board checkout.
 // touched is every path the commits ahead of upstream change.
 func boardDropRequest(boardDir string, touched []string) pathRequest {
 	return pathRequest{
@@ -1866,13 +1783,16 @@ func boardDropRequest(boardDir string, touched []string) pathRequest {
 	}
 }
 
-// dropSeedCommits is the executor for dropping seed commits from the board checkout:
-// it runs the pipeline against req, resets repo to upstream keeping uncommitted changes, then replays every commit of ahead that IsSeedCommit does not admit, oldest first.
+// dropSeedCommits drops seed commits from the board checkout.
+// It runs checkPathRequest on req and resets repo to upstream, keeping uncommitted changes.
+// It then replays every commit of ahead that IsSeedCommit does not admit, oldest first.
 // ahead is the commits HEAD has over upstream, newest first.
 // A replayed commit whose change upstream already carries is dropped with the rest, as `pull --rebase` would.
-// A replay failure aborts the cherry-pick, restores the tip the call started from and returns errDropReplayFailed, so the repo is never left mid-replay.
-// A reset git refuses over a local change returns errDropResetRefused with nothing changed.
-// It appends KindCommitsDropped, with the dropped seed SHAs as the detail, once HEAD observably moved, and nothing on a refusal or a failure.
+// A replay failure aborts the cherry-pick and restores the tip the call started from.
+// It returns errDropReplayFailed, so the repo is never left mid-replay.
+// A reset that git refuses over a local change returns errDropResetRefused with nothing changed.
+// It appends KindCommitsDropped once HEAD observably moved, with the dropped seed SHAs as the detail.
+// It appends nothing on a refusal or a failure.
 func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstream string, ahead []string) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
@@ -1910,14 +1830,16 @@ func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstre
 	return nil
 }
 
-// DropLocalResult is what DropLocal reports: its mutation record and the archive tags it kept.
+// DropLocalResult reports a local drop: its mutation record and the archive tags it kept.
 type DropLocalResult struct {
 	MutationRecord
-	// Tags lists the local archive tags that hold the tips DropLocal moved branches off, one per moved branch.
+	// Tags lists the local archive tags that hold the tips the drop moved branches off, one per moved branch.
 	Tags []string `json:"tags,omitempty"`
 }
 
-// dropLocalPlan is one branch DropLocal moves: its gate request, its checkout, the tip it leaves, the origin tip it moves to and the commits that tip holds origin lacks.
+// dropLocalPlan describes one branch to move.
+// It holds the gate request, the checkout, and the tip the branch leaves.
+// It also holds the origin tip the branch moves to and the commits of that tip that origin lacks.
 type dropLocalPlan struct {
 	req       pathRequest
 	repo      *gitrepo.Repo
@@ -1926,12 +1848,19 @@ type dropLocalPlan struct {
 	localOnly []string
 }
 
-// DropLocal moves the code and records branches of the pair slug to the tips origin last held for them, after keeping each branch's local tip under a local `archive/<slug>/<tip>` tag.
-// Only a branch holding commits its origin tracking ref lacks is touched, and a branch with no tracking ref is left alone.
-// The gate runs against every branch before any is tagged or moved: a tracked change on a path the move rewrites refuses with those paths named, and nothing is tagged or moved.
-// So does a records branch whose own anchor marker is empty, and one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored: the refusal wraps ErrAnchorChange and names the commands that settle it.
+// DropLocal moves the code and records branches of the pair slug to the tips origin last held for them.
+// Before each move it keeps the branch's local tip under a local `archive/<slug>/<tip>` tag.
+// Only a branch holding commits its origin tracking ref lacks is touched,
+// and a branch with no tracking ref is left alone.
+// The gate runs against every branch before any is tagged or moved:
+// a tracked change on a path the move rewrites refuses with those paths named, and nothing is tagged or moved.
+// It also refuses a records branch whose anchor marker is empty.
+// It refuses one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored.
+// The refusal wraps ErrAnchorChange and names the commands that settle it.
 // Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
-// It appends a tag_created entry per tag and a commits_dropped entry per moved branch, with the dropped commits' SHAs as the detail, each after its effect, to rec and to the result.
+// It appends a tag_created entry per tag and a commits_dropped entry per moved branch.
+// Each entry follows its effect, and the commits_dropped detail holds the dropped commits' SHAs.
+// Entries go to rec and to the result.
 func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalResult, err error) {
 	own := NewMutations(l.HubPath)
 	defer func() {
@@ -1999,7 +1928,8 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 
 // keepArchiveTag puts the local tag `archive/<slug>/<first 12 hex of sha>` on sha in repo and returns its name.
 // A tag already on sha is kept, and one on another commit is an error.
-// It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
+// It appends KindTagCreated once the tag exists.
+// Its target is the repository root and its detail is the tag name.
 func keepArchiveTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
 	tag := ArchiveTagName(slug, sha)
 	commonDir, err := repo.CommonDir()
@@ -2022,8 +1952,10 @@ func keepArchiveTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (strin
 	return tag, nil
 }
 
-// restoreReplayTip puts repo's branch back on tip with `reset --keep` after a replay failed past its pick, so a failure never leaves the branch on upstream.
-// A reset git refuses, as over a file the failed replay already wrote, is returned with the tag that holds tip.
+// restoreReplayTip puts repo's branch back on tip with `reset --keep` after a replay failed past its pick,
+// so a failure never leaves the branch on upstream.
+// Git may refuse the reset over a file the failed replay already wrote;
+// the returned error then names the tag that holds tip.
 func restoreReplayTip(rec *Mutations, repo *gitrepo.Repo, tip string) error {
 	if err := resetKeepOrTag(rec, repo, tip); err != nil {
 		return fmt.Errorf("restore %s after a failed board replay: %w", tip, err)
@@ -2047,11 +1979,14 @@ func resetKeepOrTag(rec *Mutations, repo *gitrepo.Repo, tip string) error {
 }
 
 // cherryPickOnto is the executor for replaying local commits onto a records branch's moved upstream:
-// it runs the pipeline against req, resets repo to onto keeping uncommitted changes, then cherry-picks commits, oldest first.
+// it runs the pipeline against req and resets repo to onto, keeping uncommitted changes;
+// then it cherry-picks commits, oldest first.
 // A commit that changes no path, and one whose change onto already carries, is dropped and returned in dropped.
 // A refusal of the dirtiness check, and a reset git refuses over a local change, return ErrReplayDirty with nothing changed.
-// A conflicting pick aborts the cherry-pick, restores the tip the call started from and returns ErrReplayConflict wrapped with the conflicting paths, so the repo is never left mid-replay.
-// It appends KindRepoAdvanced, with the new tip as the detail, once HEAD observably moved, and nothing on a refusal or a failure.
+// A conflicting pick aborts the cherry-pick and restores the tip the call started from.
+// It returns ErrReplayConflict wrapped with the conflicting paths, so the repo is never left mid-replay.
+// It appends KindRepoAdvanced once HEAD observably moved, with the new tip as the detail.
+// On a refusal or a failure it appends nothing.
 func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto string, commits []string) (dropped []string, err error) {
 	if err := checkPathRequest(req); err != nil {
 		var refusal *destructiveRefusal
@@ -2064,7 +1999,8 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 	if err != nil {
 		return nil, err
 	}
-	// An onto the repository lacks is no dirty stop, so it is told apart before the reset, whose refusal is then the dirty one.
+	// A missing onto is not a dirty stop, so it is checked before the reset;
+	// a refusal from the reset is then the dirty one.
 	if _, err := repo.ResolveSHA(onto + "^{commit}"); err != nil {
 		return nil, fmt.Errorf("resolve %s to replay onto: %w", onto, err)
 	}
@@ -2125,8 +2061,12 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 	return dropped, nil
 }
 
-// resetWeftToIntegrated is the executor that moves the weft branch checked out at weftPath to onto, a commit built from its upstream and its local commits.
-// It runs the pipeline against the replay request of weftPath, any worktree of the weft's repository being owned and the dirtiness check refusing a tracked change on a path onto rewrites against HEAD, then resets the branch to onto keeping uncommitted changes.
+// resetWeftToIntegrated is the executor that moves the weft branch checked out at weftPath to onto.
+// onto is a commit built from its upstream and its local commits.
+// It runs the pipeline against the replay request of weftPath.
+// That request owns any worktree of the weft's repository;
+// its dirtiness check refuses a tracked change on a path onto rewrites against HEAD.
+// It then resets the branch to onto keeping uncommitted changes.
 // A refusal of the dirtiness check, and a reset git refuses over a local change, return ErrReplayDirty with nothing changed.
 // It appends KindRepoAdvanced, with onto as the detail, once the branch moved, and nothing on a refusal or a failure.
 func resetWeftToIntegrated(rec *Mutations, weftPath, onto string) error {
@@ -2159,13 +2099,17 @@ func resetWeftToIntegrated(rec *Mutations, weftPath, onto string) error {
 	return nil
 }
 
-// restoreMovePathsToHead is the executor that puts the paths an unfinished anchor move rewrote in the weft worktree at weftPath back to HEAD.
+// restoreMovePathsToHead is the executor that restores to HEAD the paths an unfinished anchor move rewrote.
+// They lie in the weft worktree at weftPath.
 // pathspecs are slash paths relative to weftPath: A/<names>, B/<names> and the root marker of the move, never `.lym`.
-// It runs the pipeline against every pathspec, owning what lies under the move's pathspecs and declaring the dirtiness check not applicable.
+// It runs the pipeline against every pathspec.
+// It owns what lies under the pathspecs and declares the dirtiness check not applicable.
 // The move record, or the failing step that raised it, proves the changes under them are the move's own.
-// It then resets the index to HEAD for the pathspecs, restores the tracked files from it and removes the untracked files git does not ignore.
+// It then resets the index to HEAD for the pathspecs and restores the tracked files from it;
+// it removes the untracked files git does not ignore.
 // Nothing HEAD does not track stays under them.
-// It appends KindWorktreeReset, with HEAD as the detail, when it found a change to undo, and nothing on a refusal, a failure or a clean tree.
+// It appends KindWorktreeReset, with HEAD as the detail, when it found a change to undo.
+// On a refusal, a failure or a clean tree it appends nothing.
 func restoreMovePathsToHead(rec *Mutations, weftPath string, pathspecs []string) error {
 	const what = "restore the paths of an anchor move to HEAD"
 	own := ownedMovePathspecs(weftPath, pathspecs)
@@ -2223,16 +2167,10 @@ func restoreMovePathsToHead(rec *Mutations, weftPath string, pathspecs []string)
 	return nil
 }
 
-// ResetHard resets the warp checkout's HEAD, index, and working tree to sha, discarding any local
-// commits or uncommitted changes past that point.
-// It is the gated executor for the ResetHard primitive: there is exactly one correct check
-// declaration for "reset this Fabric's warp checkout", so this exported one-argument method
-// hardcodes it rather than exposing a request-taking API — container is the hub
-// (filepath.Dir(f.warpPath); Fabric holds no *lymcwd.Location at all, and the parent of the warp
-// worktree path is the hub), target is the warp worktree itself, ownership is ownedWarpCheckout so
-// the hub's ordinary prime-worktree target still passes, dirtiness is dirtyScopeTracked to match
-// warpWorktreeDirty exactly, and force is always false — Pull exposes no force flag, and this is the
-// primitive R2's defect discarded uncommitted tracked work through on every advance path.
+// ResetHard resets the warp checkout's HEAD, index, and working tree to sha.
+// It discards any local commits past sha and any uncommitted tracked changes.
+// The request is fixed to the warp worktree, and its ownership accepts the prime checkout.
+// It discards only tracked files and never forces.
 // rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
 func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 	req := pathRequest{
@@ -2247,22 +2185,31 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 }
 
 // ResetPairCode resets a task pair's warp checkout's HEAD, index and working tree to sha.
-// It is the gated executor for the pair-scoped reset, beside ResetHard, which refuses on any tracked dirt and accepts the prime checkout.
-// The request is hardcoded: container is the hub (filepath.Dir(f.warpPath)), target is the warp worktree,
-// ownership is ownedPairWarpCheckout, so the prime checkout, a pair on parentBranch, a pair whose weft is on another branch and a detached HEAD all refuse,
-// dirtiness is dirtyTrackedExcept(ownPaths), so uncommitted tracked changes are discarded only on the paths the caller names,
-// and force is always false.
-// Untracked files are left alone and the weft is never touched.
+// It discards uncommitted tracked changes only on the paths in ownPaths.
+// It leaves untracked files alone and never touches the weft.
+// The request refuses the prime checkout, a pair on parentBranch, and a detached HEAD;
+// it also refuses a pair whose weft is on another branch.
 //
 // It also moves the pair's task branch on the origin remote to sha, so a later push is not rejected as diverged.
-// The order is: the gate checks; then, unless opts.SkipPush, a fetch and an ancestry read of the remote task branch against HEAD; then the leased remote update; then the checkout rewrite.
-// A refusal at any step before the remote update leaves the remote and the checkout unchanged, and the first refusal met is the local, cheap one.
-// The remote update is skipped, with no record entry, when the repository has no remote, the remote has no such branch, or the remote tip already equals sha or is an ancestor of it.
+// The order is:
+// the gate checks;
+// then, unless opts.SkipPush, a fetch and an ancestry read of the remote task branch against HEAD;
+// then the leased remote update;
+// then the checkout rewrite.
+// A refusal at any step before the remote update leaves the remote and the checkout unchanged,
+// and the first refusal met is the local, cheap one.
+// The remote update is skipped, with no record entry, when the repository has no remote;
+// when the remote has no such branch;
+// or when the remote tip already equals sha or is an ancestor of it.
 // opts.SkipGit does not skip the fetch or the remote update; opts.SkipPush is the only bypass.
 //
-// The bound: the update rewrites only the pair's own task branch, only to sha, only when every commit it drops is reachable from HEAD, and with a lease on the remote tip the ancestry read saw.
-// A remote-only commit becomes reachable only through the `ours` merge the operator runs after reading the commits the refusal lists, which is the one judgment left to the operator.
-// If the checkout rewrite fails after the remote moved, the error says so; rec then holds the remote_branch_updated entry, and re-running converges.
+// The update rewrites only the pair's own task branch, and only to sha;
+// it does so only when every commit it drops is reachable from HEAD.
+// It takes a lease on the remote tip that the ancestry read saw.
+// A remote-only commit becomes reachable only through an `ours` merge that the operator runs.
+// Reading the commits the refusal lists is the one judgment left to the operator.
+// If the checkout rewrite fails after the remote moved, the error says so;
+// rec then holds the remote_branch_updated entry, and re-running converges.
 // rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
 func (f *Fabric) ResetPairCode(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
 	req := pathRequest{
@@ -2290,7 +2237,9 @@ func (f *Fabric) ResetPairCode(rec *Mutations, sha, parentBranch string, ownPath
 	return nil
 }
 
-// moveRemoteTaskBranch is ResetPairCode's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
+// moveRemoteTaskBranch moves the pair's remote task branch to sha.
+// It refuses when the remote branch holds commits that HEAD lacks.
+// It reports whether it updated the remote branch.
 func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, parentBranch string, opts SyncOptions) (moved bool, err error) {
 	if opts.SkipPush {
 		return false, nil
@@ -2331,8 +2280,8 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 	return err == nil, err
 }
 
-// describeCommits renders each commit as an indented `<short sha> <subject>` line, newest first as given.
-// A commit whose subject cannot be read is rendered as its bare SHA.
+// describeCommits renders each commit as an indented `<short sha> <subject>` line, in the order given.
+// When the log cannot be read or does not return one line per commit, every commit is rendered as its bare SHA.
 func (f *Fabric) describeCommits(shas []string) string {
 	args := append([]string{"log", "--no-walk=unsorted", "--format=%h %s"}, shas...)
 	out, err := gitexec.Run(args, f.warpPath)
@@ -2343,23 +2292,17 @@ func (f *Fabric) describeCommits(shas []string) string {
 	return "  " + strings.Join(lines, "\n  ")
 }
 
-// resetMergeSides is the gated reset abort and self-abort use to restore the warp checkout of a
-// merge to its pre-merge SHA, through the existing resetHardTo executor — no new executor is
-// needed, only one abort-specific pathRequest value.
+// resetMergeSides restores the warp checkout to warpSHA, the SHA it had before the merge started.
+// It runs through the resetHardTo executor with a pathRequest of its own.
+// It forces the reset, because an abort discards the dirt the merge left behind:
+// unresolved conflict markers are tracked-file modifications.
+// MergeAbort refuses to run without a fabric-written record, so the discard covers only that merge's dirt;
+// the pre-merge clean-pair guard already excludes an operator's own work.
 //
-// force is true, the one deliberate divergence from Fabric.ResetHard's hardcoded force: false: an
-// abort's entire purpose is to discard the intentionally dirty state accumulated since the merge
-// started — unresolved conflict markers are tracked-file modifications — and forcing is safe here
-// only because every caller of this method is record-gated: MergeAbort refuses to run without a
-// fabric-written record, so what gets discarded is exactly the dirt the merge in progress produced,
-// the state abort exists to clean up by definition, never an operator's pre-existing work (the
-// pre-merge clean-pair guard already excluded that).
-//
-// The weft is never reset here — abort-does-not-reset-weft. The weft was never a merge participant,
-// so an abort has nothing to restore there, and with the weft advancing per transition (its own
-// commits landing independently of any merge) a reset would discard already-pushed status history
-// and leave the local weft behind its own origin, breaking the next push too. mergeState.WeftStart
-// stays recorded and stays filled; it simply stops being a reset target.
+// The weft is never reset here, because it was never a merge participant.
+// Its commits land independently of any merge, so a reset would discard pushed status history
+// and leave the local weft behind its origin, breaking the next push too.
+// mergeState.WeftStart stays recorded and filled, but it is not a reset target.
 func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA string) error {
 	warpReq := pathRequest{
 		what:      "reset warp checkout for merge abort",

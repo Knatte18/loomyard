@@ -2,7 +2,8 @@
 //
 // It is the one kit exempt from the Testkit Invariant's spawn-import rule,
 // and it runs nothing but that `go build` of ./cmd/lym and the built binary under group kill.
-// A test binary builds `lym` at most once, or not at all when `gateslot.PrebuiltLymEnv` names a binary a gate run already built from the same tree.
+// A test binary builds `lym` at most once.
+// Without ldflags it skips the build when `gateslot.PrebuiltLymEnv` names a gate-run binary built from the same tree.
 // Only tagged test files may call it; Test Tier Purity bans the `lymbin.` token elsewhere.
 package lymbin
 
@@ -24,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// ErrStalePrebuilt is returned, wrapped with the path, when `gateslot.PrebuiltLymEnv` names a file that is missing or not executable.
+// ErrStalePrebuilt marks a `gateslot.PrebuiltLymEnv` value that names a missing or non-executable file.
 var ErrStalePrebuilt = errors.New("lymbin: the prebuilt lym binary is missing or not executable")
 
 // buildResult is one cached build, filled by the first caller of its key.
@@ -42,7 +43,9 @@ var (
 )
 
 // prebuilt reads `gateslot.PrebuiltLymEnv`.
-// Unset answers ("", false, nil), an existing executable file answers (path, true, nil), and anything else answers ErrStalePrebuilt wrapped with the path.
+// Unset answers ("", false, nil).
+// An existing executable file answers (path, true, nil).
+// Anything else answers ErrStalePrebuilt wrapped with the path.
 func prebuilt() (string, bool, error) {
 	path := os.Getenv(gateslot.PrebuiltLymEnv)
 	if path == "" {
@@ -55,7 +58,8 @@ func prebuilt() (string, bool, error) {
 	return path, true, nil
 }
 
-// compile builds `./cmd/lym` from the module root, which scankit.ModuleRoot finds from the test binary's starting directory, into dir and returns the binary path.
+// compile builds `./cmd/lym` from the module root into dir and returns the binary path.
+// scankit.ModuleRoot finds the module root from the test binary's starting directory.
 // An empty ldflags omits the `-ldflags` argument.
 func compile(dir, ldflags string) (string, error) {
 	root, err := scankit.ModuleRoot()
@@ -82,7 +86,8 @@ func compile(dir, ldflags string) (string, error) {
 }
 
 // BuildInto returns the binary `gateslot.PrebuiltLymEnv` names when ldflags is empty and the variable is set.
-// Otherwise it builds `./cmd/lym` from the module root into dir, with ldflags as `-ldflags` when non-empty, and returns the binary path.
+// Otherwise it builds `./cmd/lym` from the module root into dir.
+// It passes ldflags as `-ldflags` when non-empty, and returns the binary path.
 // The error carries the build's combined output, or wraps ErrStalePrebuilt when the variable names no executable file.
 func BuildInto(dir, ldflags string) (string, error) {
 	if ldflags == "" {
@@ -94,8 +99,10 @@ func BuildInto(dir, ldflags string) (string, error) {
 	return compile(dir, ldflags)
 }
 
-// buildOnce returns the binary for ldflags, building it at most once per test binary and per pair of prebuilt-variable value and ldflags.
-// An empty ldflags returns the prebuilt binary when one is set; every other build goes into a fresh `lymtemp.MkdirTemp("lymbin-")` in the process run directory.
+// buildOnce returns the binary for ldflags.
+// It builds at most once per test binary and per pair of prebuilt-variable value and ldflags.
+// An empty ldflags returns the prebuilt binary when one is set;
+// every other build goes into a fresh `lymtemp.MkdirTemp("lymbin-")` in the process run directory.
 // A non-empty ldflags always builds, since a stamped build can never be the prebuilt one.
 func buildOnce(ldflags string) (string, error) {
 	key := os.Getenv(gateslot.PrebuiltLymEnv) + "\x00" + ldflags
@@ -124,10 +131,11 @@ func buildOnce(ldflags string) (string, error) {
 	return result.path, result.err
 }
 
-// ErrTimeout is returned, wrapped with the arguments, when Run's command outlives its timeout.
+// ErrTimeout is returned, wrapped with the arguments, when the command outlives its timeout.
 var ErrTimeout = errors.New("lymbin: the command outlived its timeout")
 
-// Run runs bin with args in dir, bounded by timeout, in its own process group, and returns its combined output and exit code.
+// Run runs bin with args in dir, bounded by timeout, in its own process group.
+// It returns the combined output and exit code.
 // The process environment is inherited, so the hermetic git variables reach the child.
 // A deadline kills the whole group, so no descendant outlives the command, and answers exit code -1 with ErrTimeout.
 // Any exit of the command answers a nil error; the error is otherwise the start failure.
@@ -136,7 +144,8 @@ func Run(bin, dir string, timeout time.Duration, args ...string) (output string,
 	return RunWithEnv(bin, dir, nil, timeout, args...)
 }
 
-// RunWithEnv is Run with extraEnv appended to the inherited environment of the child alone,
+// RunWithEnv runs bin with args in dir, bounded by timeout, in its own process group.
+// extraEnv is appended to the inherited environment of the child alone,
 // so a parallel test can set a variable for one invocation without t.Setenv.
 func RunWithEnv(bin, dir string, extraEnv []string, timeout time.Duration, args ...string) (output string, exitCode int, err error) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), timeout, fmt.Errorf("%w after %s", ErrTimeout, timeout))
@@ -144,9 +153,11 @@ func RunWithEnv(bin, dir string, extraEnv []string, timeout time.Duration, args 
 	return runUntilDone(ctx, bin, dir, extraEnv, args...)
 }
 
-// runUntilDone runs bin with args in dir, in its own process group, until it exits or ctx ends, and returns its combined output and exit code.
+// runUntilDone runs bin with args in dir, in its own process group, until it exits or ctx ends.
+// It returns the combined output and exit code.
 // extraEnv, when non-nil, is appended to the inherited environment.
-// A ctx whose cause wraps ErrTimeout kills the whole group and answers exit code -1 with that cause, so the caller decides when the timeout starts.
+// A ctx whose cause wraps ErrTimeout kills the whole group and answers exit code -1 with that cause,
+// so the caller decides when the timeout starts.
 // Any exit of the command answers a nil error; the error is otherwise the start failure.
 func runUntilDone(ctx context.Context, bin, dir string, extraEnv []string, args ...string) (output string, exitCode int, err error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -176,7 +187,8 @@ func Build(tb testing.TB) string {
 	return BuildWithLDFlags(tb, "")
 }
 
-// PutFirstOnPath copies the built `lym` binary into a temp directory under the name `lym` and puts that directory first on `PATH` for the test.
+// PutFirstOnPath copies the built `lym` binary into a temp directory under the name `lym`.
+// It puts that directory first on `PATH` for the test.
 // The built binary may carry a content-derived name, which a shell looking up `lym` would not find.
 // It sets process-global state through t.Setenv, so the calling test is not parallel.
 func PutFirstOnPath(t *testing.T) {
@@ -197,7 +209,8 @@ func PutFirstOnPath(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// BuildWithLDFlags is Build with the given linker flags.
+// BuildWithLDFlags returns the `lym` binary built with the given linker flags.
+// It is built at most once per test binary and per ldflags value.
 func BuildWithLDFlags(tb testing.TB, ldflags string) string {
 	tb.Helper()
 	bin, err := buildOnce(ldflags)

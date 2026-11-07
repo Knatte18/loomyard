@@ -1,4 +1,4 @@
-// parentguard.go — the guard Finalize takes and frees the parent lock through, and re-checks the lock with before it lands.
+// parentguard.go implements the guard that takes, frees and re-checks the parent lock for the rows that land on it.
 
 package landingshed
 
@@ -30,11 +30,13 @@ func newParentGuard(deps Deps) parentGuard {
 	}
 }
 
-// ensure takes the parent lock for the run, waiting in the queue while another run holds it, at the front of the queue when front is set.
+// ensure takes the parent lock for the run, waiting in the queue while another run holds it.
+// When front is set, the run waits at the front of the queue.
 // While it waits it keeps the run's wait record and the driver strand's pane mark, and removes both on every way out.
 //
-// It returns "" once the lock is held, and a non-empty Stuck reason when the operator halted the wait or the lock record is unreadable;
-// a caller returns either reason as a Stuck with Halt set.
+// It returns "" once the lock is held.
+// It returns a non-empty reason when the operator halted the wait or the lock record is unreadable,
+// and a caller returns it as a Stuck with Halt set.
 // A cancellation and every other failure are returned as an error.
 // A guard with no lock store takes no lock.
 func (g parentGuard) ensure(ctx context.Context, producer string, front bool) (string, error) {
@@ -84,7 +86,7 @@ func (g parentGuard) ensure(ctx context.Context, producer string, front bool) (s
 }
 
 // release frees the run's own parent lock record, leaving a record another process owns alone.
-// A failure is logged and changes no verdict.
+// A failure is only logged, since release returns no error.
 func (g parentGuard) release(producer string) {
 	if g.lock.Store == nil {
 		return
@@ -100,8 +102,9 @@ func (g parentGuard) release(producer string) {
 }
 
 // stillHeld re-reads the parent lock record just before a landing and returns "" when it still names this run.
-// A record that no longer names the run, or none, means something released the lock: an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`.
-// An unreadable record is a reason too, as at ensure.
+// A record that no longer names the run, or none, means something released the lock:
+// an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`.
+// An unreadable record is a reason too, not an error.
 // Both reasons open with LandingStopPrefix, so only the orch's `lym loom resume` lifts the halt they make.
 // A guard with no lock store holds no lock and checks none.
 // Any other failure is returned as an error.
@@ -125,8 +128,10 @@ func (g parentGuard) stillHeld(producer string) (string, error) {
 	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`; nothing was landed; way forward: `lym loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
 }
 
-// pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row; a read error counts as not paused.
-// The wait polls it, so failures is the episode of its read errors: a Warn at the first, Debug while it repeats and an Info at the next good read.
+// pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row.
+// A read error counts as not paused.
+// The wait polls it, so failures is the episode of its read errors:
+// a Warn at the first, Debug while it repeats and an Info at the next good read.
 func (g parentGuard) pauseRequested(failures *logger.Episode) bool {
 	if g.lock.PauseRequested == nil {
 		return false

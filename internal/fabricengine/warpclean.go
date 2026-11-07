@@ -1,6 +1,5 @@
-// warpclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
-// by preflight.CheckResolved to determine whether both sides of a warp/weft pair have any dirty
-// (uncommitted or untracked) paths before a loom phase transition proceeds.
+// warpclean.go checks whether the warp and weft worktrees of a fabric pair are clean.
+// A pair is dirty when either side has uncommitted or untracked paths.
 
 package fabricengine
 
@@ -13,12 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// Clean reports whether both the warp and weft worktrees have no dirty paths, including untracked
-// files.
-// It is package-level for use by preflight.CheckResolved.
+// Clean reports whether both the warp and weft worktrees have no dirty paths, including untracked files.
 // The weft-side check is skipped when the weft worktree does not exist.
-// weftExempt names anchor-relative weft paths, or git pathspec globs, whose dirty content the weft-side check ignores, everything beneath each included.
-// Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
+// weftExempt names anchor-relative weft paths, or git pathspec globs, whose dirty content the weft-side check ignores.
+// Each path also exempts everything beneath it.
+// It returns a non-empty reason when dirty, and a non-nil error for a system failure.
 func Clean(l *lymcwd.Location, weftExempt ...string) (clean bool, reason string, err error) {
 	warpReason, err := dirtyReason("git status --porcelain", l.WorktreePath())
 	if err != nil {
@@ -48,7 +46,8 @@ func Clean(l *lymcwd.Location, weftExempt ...string) (clean bool, reason string,
 	return false, strings.Join(reasons, "; "), nil
 }
 
-// exemptPathspec returns the status pathspec that matches the whole worktree but each of the anchor-relative exempt paths, scoped under anchorRel.
+// exemptPathspec returns the status pathspec that matches the whole worktree except the exempt paths.
+// Each exempt path is anchor-relative and scoped under anchorRel.
 // It returns nil when exempt is empty, so the probe runs unscoped.
 func exemptPathspec(anchorRel string, exempt []string) []string {
 	if len(exempt) == 0 {

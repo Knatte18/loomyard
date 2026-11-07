@@ -1,4 +1,5 @@
-// lex.go turns C# source into identifier and punctuation tokens, dropping comments, preprocessor lines, character literals and the literal text of every string.
+// lex.go turns C# source into identifier and punctuation tokens.
+// It drops comments, preprocessor lines, character literals and the literal text of every string.
 
 package dotnetimpact
 
@@ -26,15 +27,18 @@ type lexer struct {
 }
 
 // lex returns the identifier and punctuation tokens of data.
-// Comments, `#` preprocessor lines, character literals and the literal text of regular, verbatim and raw strings are dropped.
-// The code of every interpolation hole is kept as tokens, nested strings and braces included, without the hole's own braces.
+// Comments, `#` preprocessor lines and character literals are dropped.
+// The literal text of regular, verbatim and raw strings is dropped as well.
+// The code of every interpolation hole is kept as tokens, nested strings and braces included.
+// The hole's own braces are left out.
 func lex(data []byte) []token {
 	l := &lexer{src: string(data)}
 	l.code(false)
 	return l.tokens
 }
 
-// code scans tokens until the end of the source, or, when inHole is set, until the brace that closes the hole, which it leaves unconsumed.
+// code scans tokens until the end of the source.
+// When inHole is set, it stops at the brace that closes the hole and leaves that brace unconsumed.
 func (l *lexer) code(inHole bool) {
 	depth := 0
 	for l.pos < len(l.src) {
@@ -76,7 +80,7 @@ func (l *lexer) code(inHole bool) {
 	}
 }
 
-// peek returns the byte offset ahead of the scan position, or 0 past the end.
+// peek returns the byte at the offset ahead of the scan position, or 0 past the end.
 func (l *lexer) peek(offset int) byte {
 	if l.pos+offset < len(l.src) {
 		return l.src[l.pos+offset]
@@ -143,8 +147,9 @@ func (l *lexer) skipCharLiteral() {
 	l.pos = min(i+1, len(l.src))
 }
 
-// stringOrOther handles a `"`, `$` or `@` at the scan position:
-// a string literal of any form is consumed, a verbatim identifier is emitted without its `@`, and any other use is punctuation.
+// stringOrOther handles a `"`, `$` or `@` at the scan position.
+// A string literal of any form is consumed.
+// A verbatim identifier is emitted without its `@`, and any other use is punctuation.
 func (l *lexer) stringOrOther() {
 	i := l.pos
 	dollars, verbatim := 0, false
@@ -175,7 +180,8 @@ func (l *lexer) stringOrOther() {
 }
 
 // stringBody consumes the string whose opening quote is at the scan position.
-// dollars is the count of `$` prefixes, which is the brace count that opens a hole, and verbatim reports an `@` prefix.
+// dollars is the count of `$` prefixes, which is the brace count that opens a hole.
+// verbatim reports whether the string has an `@` prefix.
 func (l *lexer) stringBody(dollars int, verbatim bool) {
 	quotes := 0
 	for l.pos+quotes < len(l.src) && l.src[l.pos+quotes] == '"' {

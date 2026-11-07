@@ -1,5 +1,7 @@
-// refusalnote.go records the friction note a `lym webster` refusal leaves, at the one place every verb's output passes through.
-// A verb stays unaware of it: noteRefusals wraps the verb's RunE, tees what the verb prints, and reads the envelope back.
+// refusalnote.go writes the friction note a `lym webster` refusal leaves.
+// The note is written at the one place every verb's output passes through.
+// A verb is unaware of the note.
+// noteRefusals wraps the verb's RunE, tees what the verb prints, and reads the envelope back.
 package webstercli
 
 import (
@@ -15,9 +17,10 @@ import (
 )
 
 // noteRefusals wraps cmd.RunE so a refusal envelope the verb prints also writes one friction note.
-// The verb's exit code and envelope are exactly what the original RunE produced: the output is only tee'd, and a note-write failure or an envelope that does not decode logs a warning and changes nothing.
-// An `ok: true` envelope, such as `status`'s report, writes nothing, and so does an empty friction directory.
-// Only what RunE prints is seen: a refusal cobra raises before RunE never reaches the tee.
+// The verb's exit code and envelope are unchanged: the output is only tee'd,
+// and a note-write failure or an envelope that does not decode logs a warning and changes nothing.
+// An `ok: true` envelope, such as `status`'s report, writes nothing, and so does an unset friction directory.
+// Only what RunE prints is seen: a refusal that cobra raises before RunE runs never reaches the tee.
 func (c *websterCLI) noteRefusals(cmd *cobra.Command) *cobra.Command {
 	inner := cmd.RunE
 	if inner == nil {
@@ -39,7 +42,8 @@ func (c *websterCLI) noteRefusals(cmd *cobra.Command) *cobra.Command {
 	return cmd
 }
 
-// noteEnvelope decodes the last non-empty line of out as a JSON envelope and writes a refusal note when its `ok` is false.
+// noteEnvelope decodes the last non-empty line of out as a JSON envelope.
+// It writes a refusal note when the envelope's `ok` is false.
 func (c *websterCLI) noteEnvelope(cmd *cobra.Command, args []string, out []byte) {
 	line := lastNonEmptyLine(out)
 	if line == "" {
@@ -83,7 +87,8 @@ func lastNonEmptyLine(out []byte) string {
 	return ""
 }
 
-// renderInvocationArgs renders the positional args, then every flag the invocation set as `--name=value`, space-separated.
+// renderInvocationArgs renders the positional args, then every flag the invocation set.
+// Each flag renders as `--name=value`, and the parts are joined with single spaces.
 func renderInvocationArgs(cmd *cobra.Command, args []string) string {
 	parts := append([]string(nil), args...)
 	cmd.Flags().Visit(func(f *pflag.Flag) {

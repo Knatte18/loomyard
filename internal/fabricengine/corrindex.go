@@ -1,12 +1,7 @@
-// corrindex.go — the git-free correspondence-index component: a sorted, locally-persisted cache
-// over the warp<->weft SHA correspondence that fabric's Warp-SHA trailers (trailer.go) record
-// authoritatively.
-// Per the correspondence index layering decision, this component takes an explicit file path and
-// never touches git itself;
-// the fabric layer (built on top, in a later batch) owns gitdir resolution, WarpSeq computation,
-// and the trailer scan that rebuilds this cache from scratch.
-// Keeping git out of this file is what lets its tests stay untagged Tier-1 (no git spawn) under the
-// Test Tier Purity Invariant.
+// corrindex.go holds the correspondence index: a sorted, file-backed cache of the warp<->weft SHA correspondence.
+// The index takes an explicit file path and never touches git.
+// The fabric layer owns gitdir resolution, WarpSeq computation, and the trailer scan that rebuilds the cache.
+// Keeping git out of this file keeps its tests untagged Tier-1 (no git spawn) under the Test Tier Purity Invariant.
 
 package fabricengine
 
@@ -30,29 +25,27 @@ type corrIndex struct {
 	recs []corrEntry
 }
 
-// loadCorrIndex loads the corrIndex from path via state.ReadJSON under path+".lock".
-// Missing file yields empty index (fresh pair, no correspondence yet).
+// loadCorrIndex reads the index at path under a lock on path+".lock".
+// A missing file yields an empty index, the state of a fresh warp/weft pair with no correspondence yet.
 func loadCorrIndex(path string) (*corrIndex, error) {
 	recs, _, err := state.ReadJSON[[]corrEntry](path, path+".lock")
 	if err != nil {
 		return nil, err
 	}
-	// Defensive re-sort to maintain invariant even if file was hand-edited.
+	// Re-sort defensively: the file may have been hand-edited.
 	sort.SliceStable(recs, func(i, j int) bool { return recs[i].WarpSeq < recs[j].WarpSeq })
 	return &corrIndex{path: path, recs: recs}, nil
 }
 
-// record upserts e by WarpSHA: replaces existing or appends new,
-// re-sorting by WarpSeq so "last recorded wins" for same-seq entries.
-// The upsert base is the freshly-read on-disk file, via state.UpdateJSON, never ix.recs — ix.recs
-// can be stale relative to a write another process made after this handle was loaded, and composing
-// from a stale base would silently clobber that write.
-// Persists before in-memory update so write failure leaves index unchanged;
-// after a successful record(), ix.recs reflects on-disk truth and may therefore contain entries
-// another process recorded.
-// This serialises record() against every other write to the file, but not against RebuildIndex's
-// scan-to-write span, so the reverse interleaving — a scan that read before this record()'s write,
-// followed by RebuildIndex's own later write — still loses an entry.
+// record upserts e by WarpSHA, replacing any existing entry with the same WarpSHA.
+// It re-sorts by WarpSeq, so the last recorded entry wins among entries with equal WarpSeq.
+// The upsert composes from the freshly read file, never from ix.recs.
+// ix.recs can be stale when another process writes after this handle loads.
+// Composing from it would clobber that write.
+// The write happens before ix.recs changes, so a failed write leaves the index unchanged.
+// After a successful write, ix.recs reflects the file and may hold entries other processes recorded.
+// The write serialises against other writes to the file, but not against the scan-to-write span of RebuildIndex:
+// a scan that reads before this write and writes after it still loses this entry.
 func (ix *corrIndex) record(e corrEntry) error {
 	var next []corrEntry
 	err := state.UpdateJSON(ix.path, ix.path+".lock", func(cur []corrEntry, _ bool) ([]corrEntry, error) {
@@ -84,8 +77,9 @@ func (ix *corrIndex) exact(warpSHA string) (corrEntry, bool) {
 	return corrEntry{}, false
 }
 
-// nearestAtOrBefore returns the greatest WarpSeq <= seq via binary search,
-// or the last-recorded entry if multiple share that seq, ok=false if none qualify.
+// nearestAtOrBefore returns the entry with the greatest WarpSeq at or before seq.
+// When several entries share that WarpSeq, it returns the last recorded one.
+// ok is false when no entry qualifies.
 func (ix *corrIndex) nearestAtOrBefore(seq int) (corrEntry, bool) {
 	idx := sort.Search(len(ix.recs), func(i int) bool { return ix.recs[i].WarpSeq > seq })
 	if idx == 0 {
@@ -94,9 +88,7 @@ func (ix *corrIndex) nearestAtOrBefore(seq int) (corrEntry, bool) {
 	return ix.recs[idx-1], true
 }
 
-// entries returns a copy of the index's current WarpSeq-sorted entries, for
-// callers (e.g. RebuildIndex equality assertions) that need to compare index
-// contents without risking mutation of the index's own backing slice.
+// entries returns a copy of the WarpSeq-sorted entries, so callers cannot alias the index's backing slice.
 func (ix *corrIndex) entries() []corrEntry {
 	cp := make([]corrEntry, len(ix.recs))
 	copy(cp, ix.recs)

@@ -1,4 +1,5 @@
-// patternentry_test.go covers the readers of a card's PATTERN entries: its fenced entry lines and the entry IDs its text names.
+// patternentry_test.go covers the readers of a card's PATTERN entries:
+// its fenced entry lines and the entry IDs its text names.
 
 package planparser
 

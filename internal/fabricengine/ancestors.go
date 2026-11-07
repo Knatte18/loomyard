@@ -1,5 +1,5 @@
-// ancestors.go implements the empty-directory sweeper that prunes empty ancestors of removed
-// worktrees and launchers, and the containment assertion its destructive callers share.
+// ancestors.go implements the empty-directory sweeper that prunes empty ancestors of removed worktrees and launchers.
+// It also holds the containment check that the destructive callers share.
 
 package fabricengine
 
@@ -10,35 +10,21 @@ import (
 	"strings"
 )
 
-// refuseUncontainedPath returns an error unless target RESOLVES strictly below container.
+// refuseUncontainedPath returns an error unless target resolves strictly below container.
 //
-// It guards the teardown helpers that delete a path derived by joining a caller-supplied slug onto
-// hub geometry.
-// Slug validation is the primary defence and catches every input this repo can produce today, but a
-// derived path that has escaped its container is being handed to os.RemoveAll, so the cost of
-// asserting it is nothing against the cost of being wrong once.
+// It guards the teardown helpers that delete a path derived by joining a caller-supplied slug onto hub geometry.
+// Slug validation is the primary defence.
+// A derived path that has escaped its container would reach os.RemoveAll.
+// Asserting containment costs far less than being wrong once.
 //
-// Both sides are put through resolveAncestorSymlinks/containmentPath before they are related, and
-// that resolution is the whole point rather than a refinement: a purely lexical filepath.Rel
-// comparison trusts the NOMINAL path, so a symlink planted at any intermediate segment of target
-// let a gated removal act on a real path far outside container while the check happily passed —
-// reproduced live against `removeLaunchers` by planting a link at <Hub>/_launchers/<slug>, which
-// then deleted two files outside the hub and reported success.
-// The final component of target is deliberately NOT resolved (see containmentPath): a junction
-// removal's target IS a link, and resolving it would place the target inside the weft worktree it
-// points at rather than the warp worktree it lives in, refusing every legitimate unwire.
+// The comparison resolves the symlinks in both paths before it relates them.
+// A lexical comparison trusts the nominal path.
+// A symlink at an intermediate segment of target lets a gated removal act outside container while the check passes.
+// The final component of target stays unresolved.
+// A link being removed must be judged where it lives, not where it points.
 //
-// The refusal is a *destructiveRefusal, not a bare fmt.Errorf, and that is load-bearing rather than
-// cosmetic. Its caller removeLaunchers is reached from best-effort call sites in
-// Remove and Prune that wrap it in surfaceRefusal, which by design discards anything that is NOT a
-// *destructiveRefusal. While this guard returned a plain error it was therefore silently swallowed:
-// a static symlink planted at the _launchers container made the whole teardown refuse —
-// correctly, nothing escaped — while `lym fabric remove` reported "ok":true, "partial":false and an
-// exit 0, with the launcher scripts still on disk and no signal to the operator that a containment
-// guard had fired at all (fabric's R8 crucible round, finding L2; R2's M2 dishonest-success shape on
-// the teardown path). Typing it as the gate's own refusal is what makes PATTERN-fabric-boundary's "a gate
-// refusal is never discarded on a best-effort path" true for this guard too, with no change at any
-// call site, and makes RefusalOf answer for it like any other.
+// The failure is returned as a refusal, not a plain error.
+// Best-effort callers discard every error that is not a refusal, so a plain error would be swallowed silently.
 func refuseUncontainedPath(container, target, what string) error {
 	if err := containmentFailure(container, target); err != nil {
 		return &destructiveRefusal{
@@ -51,14 +37,9 @@ func refuseUncontainedPath(container, target, what string) error {
 	return nil
 }
 
-// containmentFailure returns the bare reason target does not resolve strictly below container, or
-// nil when it does.
+// containmentFailure returns the reason target does not resolve strictly below container, or nil when it does.
 //
-// It exists so the destructive gate can attribute its own refusal without inheriting a second
-// "refusing to remove …" prefix: checkPathRequest already renders one through *destructiveRefusal,
-// and wrapping refuseUncontainedPath's whole message produced "refusing to remove remove launcher
-// script" in a real refusal.
-// The caller that is NOT the gate (launchers.go) keeps the prefixed wrapper, where it reads correctly.
+// The reason carries no message prefix, so a caller that already names the action does not repeat it.
 func containmentFailure(container, target string) error {
 	resolvedContainer := resolveAncestorSymlinks(container)
 	resolvedTarget := containmentPath(target)
@@ -73,15 +54,14 @@ func containmentFailure(container, target string) error {
 	return nil
 }
 
-// containmentPath renders path for a containment comparison: every symlink in its PARENT ancestry
-// is resolved, while the final component is carried through unresolved.
+// containmentPath renders path for a containment comparison, resolving every symlink in its parent directories.
+// The final component is kept as written.
 //
-// Keeping the final component is what lets a link be a legitimate containment target. Every
-// junction the gate removes is itself a link living inside the warp worktree and pointing into the
-// weft one, so resolving the leaf would relocate the target into the weft worktree and make the
-// warp-worktree container refuse it.
-// Resolving everything ABOVE the leaf is what closes the bypass: a link at any intermediate segment
-// moves the real inode elsewhere, and that relocation is exactly what the comparison must see.
+// Keeping the final component lets a link be a valid containment target.
+// A link being removed lives inside the container and points elsewhere.
+// Resolving that link would move the target outside the container, so the container would refuse it.
+// Resolving every ancestor closes the bypass:
+// a link at an intermediate segment moves the real directory elsewhere, and the comparison must see that.
 func containmentPath(path string) string {
 	cleaned := filepath.Clean(path)
 	parent := filepath.Dir(cleaned)
@@ -91,17 +71,16 @@ func containmentPath(path string) string {
 	return filepath.Join(resolveAncestorSymlinks(parent), filepath.Base(cleaned))
 }
 
-// resolveAncestorSymlinks returns dir with every symlink in it resolved, falling back component by
-// component for the part of dir that does not exist on disk yet.
+// resolveAncestorSymlinks returns dir with every symlink in it resolved.
 //
-// filepath.EvalSymlinks fails outright on a path whose leaf is absent, which is an ordinary state
-// for a gate target (a launcher directory already swept, a hub about to be created), so a bare
-// EvalSymlinks call would answer "cannot resolve" far more often than "resolved". Walking upward to
-// the deepest ancestor that DOES exist, resolving that, and re-joining the missing tail keeps the
-// answer usable in exactly those cases while still resolving every link that is actually there.
-// An unresolvable path degrades to its cleaned lexical form, which is the pre-existing behaviour
-// and therefore never stricter than it was — the fallback direction matters on Windows, where
-// EvalSymlinks over a directory junction is the case least covered by this repo's own testing.
+// filepath.EvalSymlinks fails when the leaf of a path is absent.
+// That is ordinary for a gate target, such as a launcher directory already swept or a hub not yet created.
+// So the function resolves the deepest ancestor that exists and joins the missing tail back on.
+// Every link that is present is still resolved.
+// A path that cannot be resolved falls back to its cleaned lexical form.
+// The result is therefore never stricter than a lexical comparison.
+// The fallback direction matters on Windows.
+// There, EvalSymlinks over a directory junction is the case least covered by this repo's own testing.
 func resolveAncestorSymlinks(dir string) string {
 	cleaned := filepath.Clean(dir)
 	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
@@ -114,59 +93,44 @@ func resolveAncestorSymlinks(dir string) string {
 	return filepath.Join(resolveAncestorSymlinks(parent), filepath.Base(cleaned))
 }
 
-// pruneEmptyAncestors walks upward from start, removing empty directories up to
-// (but not including) stop. All errors are silently swallowed. The helper is
-// idempotent: calling it on an already-pruned tree is safe.
+// pruneEmptyAncestors walks upward from start, removing empty directories up to, but not including, stop.
+// All errors are silently swallowed, and the walk halts at the first one.
+// It is idempotent: calling it on an already-pruned tree is safe.
 //
-// Both the boundary test and the removal go through an os.Root rooted at stop, and that is the same
-// bind-containment-to-the-act rule the gate's own arbitrary-path executors follow rather than a
-// redundant precaution. The sweep used to relate cur to stop with a purely lexical filepath.Rel over
-// the NOMINAL strings — the comparison R2 proved answers a question nobody is asking — and then act
-// with an equally nominal single-entry removal.
-// Its callers walk the hub-level structural container an attacker can plant at (<hub>/_launchers), so with a multi-segment AnchorRel (say `services/api`) a symlink planted at `services` made the first removal resolve that component and destroy an out-of-hub `/victim/api` before the loop unlinked the link itself and halted (fabric's R8 crucible round, finding L1).
-// Rooting the sweep makes every component resolve through stop's own directory handle, so an escaping component is refused by the kernel instead of followed.
-//
-// The exposure this closed was genuinely narrow — a single-entry removal is refused by the OS the
-// moment the directory is non-empty, so only an EMPTY out-of-hub directory could be destroyed, and
-// nothing here is ever recorded to the mutation record — but it was the last lexical-containment
-// plus raw-nominal-act pair left in the package, on exactly the containers the campaign has now
-// hardened on both the write and the delete side.
+// Removal goes through an os.Root opened at stop.
+// A component that escapes stop is refused by the OS rather than followed.
+// Callers walk a hub-level container that an attacker can plant a link in, so the nominal path is not trusted.
 func pruneEmptyAncestors(start, stop string) {
 	root, err := os.OpenRoot(stop)
 	if err != nil {
-		// The stop directory itself is gone or unopenable: there is nothing above start left to
-		// prune, and the swallow-everything contract above applies here too.
+		// The stop directory is gone or cannot be opened, so there is nothing above start left to prune.
 		return
 	}
 	defer func() { _ = root.Close() }()
 
 	cur := start
 	for {
-		// Boundary guard: cur must still be strictly under stop. This stays lexical because it is the
-		// loop's TERMINATION condition, not its containment guarantee — the removal below is what
-		// refuses an escape, and a lexical Rel can only ever stop the walk early, never widen it.
+		// Boundary guard: cur must still be strictly under stop.
+		// The check is lexical because it only ends the loop; the removal below refuses any escape.
+		// A lexical comparison can stop the walk early, but it cannot widen it.
 		rel, err := filepath.Rel(stop, cur)
 		if err != nil {
-			// Filesystem error on Rel (rare)
+			// The paths cannot be related, so the walk stops here.
 			return
 		}
 
-		// Check if cur is the stop dir or above it (outside the target subtree)
 		if rel == "." || strings.HasPrefix(rel, "..") {
-			// We've reached or passed the boundary; halt
 			return
 		}
 
-		// Remove through the root: a single-entry removal, so a non-empty directory is refused by the
-		// OS exactly as before, and an intermediate component escaping stop is refused rather than
-		// resolved. A final-component link is unlinked as a link, since os.Root never follows the last
-		// component.
+		// Remove through the root deletes a single entry, so the OS refuses a non-empty directory.
+		// A component that escapes stop is refused rather than followed.
+		// A final-component link is unlinked as a link, since os.Root never follows the last component.
 		if err := root.Remove(rel); err != nil {
-			// Directory is not empty, already gone, escapes the container, or other error; halt.
+			// Any failure halts the walk, including a directory that is not empty.
 			return
 		}
 
-		// Successfully removed; move to parent
 		cur = filepath.Dir(cur)
 	}
 }

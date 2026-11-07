@@ -1,4 +1,5 @@
-// retiring_test.go pins MarkRetiring's persistence, its Status projection, and the ErrUnknownStrand sentinel the unknown-guid refusals wrap.
+// retiring_test.go pins MarkRetiring's persistence and its Status projection.
+// It also pins that the unknown-guid refusals wrap the ErrUnknownStrand sentinel.
 
 package reedengine
 
@@ -63,8 +64,8 @@ func TestMarkRetiring_RoundTripsThroughStateAndStatus(t *testing.T) {
 	}
 }
 
-// TestUnknownStrandRefusalsWrapErrUnknownStrand pins that every refusal naming a guid the state does not hold wraps ErrUnknownStrand,
-// whether the state file holds other strands, is absent, or is handed to the locked remove.
+// TestUnknownStrandRefusalsWrapErrUnknownStrand pins that every refusal naming an unknown guid wraps ErrUnknownStrand.
+// The wrap holds whether the state file holds other strands, is absent, or is handed to the locked remove.
 func TestUnknownStrandRefusalsWrapErrUnknownStrand(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

@@ -1,4 +1,6 @@
-// pawlwiring.go holds the wiring only a pawl run needs: the seams of Beam-Up, Beam-Await and Beam-Down over the hub, the notice of Beam-Up's warnings, the landing re-check Beam-Await runs, the blocker read Finalize's land check backstops it with, and the side effects of a move off a retired row.
+// pawlwiring.go holds the wiring only a pawl run needs: the seams of Beam-Up, Beam-Await and Beam-Down over the hub;
+// the notice of Beam-Up's warnings; the landing re-check Beam-Await runs;
+// the blocker read that backstops the land check; and the side effects of a move off a retired row.
 
 package loomcli
 
@@ -36,7 +38,8 @@ const retiredMoveGitHubTimeout = 30 * time.Second
 
 // pawlDeps assembles the seams of the pawl producers for the beam pair at location, whose slug names its project entry.
 // Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
-// The run id is the seed's start time, left empty when the run has no seed yet, which the producer's constructor refuses naming the field.
+// The run id is the seed's start time, left empty when the run has no seed yet;
+// the producer's constructor refuses that, naming the field.
 func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	seed, found, err := shedrun.ReadSeed(location, shedrun.SelfRunID)
 	if err != nil {
@@ -164,8 +167,9 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	}, nil
 }
 
-// pawlRetiredMove returns the seam that gives the pawl run of the beam slug at location the side effects of a move off a retired row, over the hub.
-// The PR-Review session ends through the run's `RoleSession` records, and the pull request's state reads through the pair's origin; pawl's own status and notice seams are reused.
+// pawlRetiredMove returns the seam that moves the beam slug at location off a retired row, over the hub.
+// The PR-Review session ends through the run's `RoleSession` records,
+// and the pull request's state reads through the pair's origin; the status and notice seams come from the pawl run.
 // Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
 func pawlRetiredMove(location *lymcwd.Location, slug string, pawl pawlengine.Deps) func(from, to string, resumed bool) error {
 	recordPath := shedrun.PullRequestRecord(location, shedrun.SelfRunID)
@@ -236,7 +240,8 @@ func pullRequestOpen(location *lymcwd.Location, number int) (bool, error) {
 	return status.State == pullrequest.StateOpen, nil
 }
 
-// commitLandingDirectory commits the landing directory of the beam pair at location, and commits nothing when the directory holds nothing git could take.
+// commitLandingDirectory commits the landing directory of the beam pair at location;
+// it commits nothing when the directory holds no content git can commit.
 func commitLandingDirectory(location *lymcwd.Location, slug string) error {
 	hasContent, err := fabricengine.AnchoredPathHasContent(location, loomengine.LandingDirRel())
 	if err != nil || !hasContent {
@@ -257,8 +262,9 @@ func runBeamUpStep(beamUp func() (orchcli.BeamUpReport, error), notify func(line
 	return nil
 }
 
-// surfaceBeamUpWarnings logs each warning the bring-up of the beam slug reported and posts them through notify as one notice to the beam's orch,
-// so a dobby that did not start or a missing overview reaches the operator without halting the row.
+// surfaceBeamUpWarnings logs each warning the bring-up of the beam slug reported.
+// It posts them through notify as one notice to the beam's orch.
+// A dobby that did not start or a missing overview then reaches the operator without halting the row.
 // A notice that cannot be posted is logged, since the warnings are already in the log.
 func surfaceBeamUpWarnings(notify func(line string) error, slug string, warnings []string) {
 	line := beamUpWarningLine(slug, warnings)
@@ -273,7 +279,8 @@ func surfaceBeamUpWarnings(notify func(line string) error, slug string, warnings
 	}
 }
 
-// beamUpWarningLine words the notice of the warnings the bring-up of the beam slug reported, empty when it reported none.
+// beamUpWarningLine returns the notice of the warnings the bring-up of the beam slug reported.
+// It returns the empty string when there are none.
 func beamUpWarningLine(slug string, warnings []string) string {
 	if len(warnings) == 0 {
 		return ""
@@ -281,7 +288,8 @@ func beamUpWarningLine(slug string, warnings []string) string {
 	return fmt.Sprintf("Beam-Up brought the beam %s up with warnings: %s", slug, strings.Join(warnings, "; "))
 }
 
-// openLandRequestWatch returns a channel that delivers a value whenever the land request changes, or nil when no watch can be opened, which leaves Beam-Await on its timer.
+// openLandRequestWatch returns a channel that delivers a value whenever the land request changes.
+// It returns nil when no watch can be opened, which leaves Beam-Await on its timer.
 // The directory is created when absent, since Beam-Await may start before the beam's dobby has made it.
 // The watcher lives until the process ends.
 func openLandRequestWatch(paths pawlengine.Paths) <-chan struct{} {
@@ -294,7 +302,8 @@ func openLandRequestWatch(paths pawlengine.Paths) <-chan struct{} {
 	return changed
 }
 
-// ownerOfSubject returns the owner machine the board entry slug reads as, from the local board, and the subject `lym adopt` takes to move it.
+// ownerOfSubject returns the owner machine the board entry slug reads as, from the local board.
+// It also returns the subject that `lym adopt` takes to move the entry.
 // An empty slug is the root: its owner is the prime owner and its subject the root's.
 func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject string, err error) {
 	prime, err := primeOfHub(location)
@@ -316,8 +325,9 @@ func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject stri
 	return owner, subject, err
 }
 
-// pawlRecheck reads what the landing re-check judges for the beam slug at location: the members and pairs working under it, the beam's owner, its parent's owner and its ready record.
-// It returns the lines of pawlRecheckLines, empty when the beam may land.
+// pawlRecheck reads what the landing re-check judges for the beam slug at location.
+// These are the members and pairs working under the beam, the beam's owner, the parent's owner and the ready record.
+// It returns the lines naming each failed check, empty when the beam may land.
 func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	here, err := machinename.Name()
 	if err != nil {
@@ -351,8 +361,11 @@ func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	return pawlRecheckLines(slug, ready, blockers, refusal, here, beamOwner, parentOwner, parentSubject), nil
 }
 
-// pawlRecheckLines words the failed landing re-check of the beam slug, one line per blocker, empty when every check passes.
-// Each way forward of refusal, the text of the beam's blockers, is a line; a beam this machine does not own names `lym adopt <slug>`, a parent another machine owns names `lym adopt <parentSubject>`, which is `root` for the prime, and a beam not flagged ready names `lym beam ready <slug>`.
+// pawlRecheckLines words the failed landing re-check of the beam slug as lines, empty when every check passes.
+// Each way forward in a refusal is a line of its own; without a refusal, remaining work under the beam is one line.
+// A beam this machine does not own names `lym adopt <slug>`.
+// A parent another machine owns names `lym adopt <parentSubject>`, where the subject is `root` for the prime.
+// A beam not flagged ready names `lym beam ready <slug>`.
 func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlockers, refusal error, here, beamOwner, parentOwner, parentSubject string) []string {
 	var lines []string
 	switch {
@@ -373,7 +386,8 @@ func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlocke
 	return lines
 }
 
-// refusalWays splits a BeamLandRefusal into the ways forward it names, one per blocker; a text with no way forward is one line.
+// refusalWays splits the text of a land refusal into the ways forward it names, one string per way.
+// A text that names no way forward is returned whole, as one string.
 func refusalWays(refusal error) []string {
 	text := refusal.Error()
 	if _, ways, found := strings.Cut(text, "way forward: "); found {
@@ -382,7 +396,8 @@ func refusalWays(refusal error) []string {
 	return []string{text}
 }
 
-// pawlLandBlockers returns the seam Finalize's land check reads: the open members and the local pairs forked from the beam slug, from the hub of prime.
+// pawlLandBlockers returns a function that reads the blockers of the beam slug for the land check.
+// The blockers are the open members and the local pairs forked from the beam slug, read from the hub of prime.
 func pawlLandBlockers(prime *lymcwd.Location, slug string) func() ([]landingshed.LandBlocker, error) {
 	return func() ([]landingshed.LandBlocker, error) {
 		found, err := battencli.ReadBeamLandBlockers(prime, slug)
@@ -400,7 +415,8 @@ func pawlLandBlockers(prime *lymcwd.Location, slug string) func() ([]landingshed
 	}
 }
 
-// stopBeamDobby ends the dobby of the beam slug when its lock reads held, through its `RoleDobby` record alone, so no other process of the beam is signalled.
+// stopBeamDobby ends the dobby of the beam slug when its lock reads held.
+// It ends the dobby through its `RoleDobby` record alone, so no other process of the beam is signalled.
 func stopBeamDobby(prime *lymcwd.Location, slug string) error {
 	geometry, err := hubgeom.DobbyGeometry(prime, slug)
 	if err != nil {
@@ -414,7 +430,8 @@ func stopBeamDobby(prime *lymcwd.Location, slug string) error {
 	return err
 }
 
-// beamParentWorktree returns the name of the parent worktree the beam slug records in its origin record, the prime's name when the record names none.
+// beamParentWorktree returns the name of the parent worktree the beam slug records in its origin record.
+// It returns the prime's name when the record names no parent worktree.
 func beamParentWorktree(prime *lymcwd.Location, slug string) (string, error) {
 	origin, found, err := fabricengine.ReadOriginFor(prime, slug)
 	if err != nil {

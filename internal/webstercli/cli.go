@@ -1,10 +1,26 @@
-// cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd, runs one preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients on websterCLI exactly once per invocation.
-// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
-// The module holds no *lymcwd.Location: every path it touches -- every _lym/plan and _lym/webster path included -- arrives as a websterengine.Geometry, told by hubgeom.WebsterGeometry(loc) in hub mode or internal/standalonegeom.WebsterGeometry(target, stateDir) in standalone, never re-derived from a stored Location.
-// Fabric is reached only through the lazy c.openFabric closure, which is nil in standalone mode -- standalone has no fabric repo by construction, and the closure is never called during wiring in either mode.
+// cli.go builds the cobra command tree for the webster module.
+// It also holds the RunCLI seam, which adapts that tree to the standard io.Writer call contract.
+// The parent "webster" command carries a PersistentPreRunE.
+// It resolves cwd, runs one preflight.ResolveMode probe, and delegates to c.wire (wiring.go).
+// c.wire selects hub or standalone mode and builds the whole engine stack for the mode that wins.
+// It stores the resolved ingredients on websterCLI exactly once per invocation.
+// A non-nil ResolveMode error means refuse.
+// The pre-run aborts there, before c.wire is called, since refusal is a resolution verdict, not a wiring choice.
 //
-// websterCLI stores TWO adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by the cold-strand spawns of recover-batch, fix-verify and fix-plan) and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, neither of which the other exposes.
+// The module holds no *lymcwd.Location.
+// Every path it touches, including every _lym/plan and _lym/webster path, arrives as a websterengine.Geometry.
+// hubgeom.WebsterGeometry(loc) supplies it in hub mode.
+// standalonegeom.WebsterGeometry(target, stateDir) supplies it in standalone.
+// No path is re-derived from a stored Location.
+// Fabric is reached only through the lazy c.openFabric closure.
+// That closure is nil in standalone mode, which has no fabric repo, and wiring never calls it in either mode.
+//
+// websterCLI stores two adapted views of the one constructed Runner.
+// starter (websterengine.Starter) is webster's own local copy of the spawn seam.
+// The cold-strand spawns of recover-batch, fix-verify and fix-plan consume it.
+// masterStarter (websterengine.MasterStarter) sits behind the runnerMasterStarter adapter.
+// The run verb's Master spawn consumes it.
+// The seams differ because each verb needs its own narrow view of the same *shuttleengine.Runner.
 
 package webstercli
 
@@ -27,7 +43,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// websterCLI is the receiver every webster verb hangs off of.
+// websterCLI is the receiver for every webster verb.
+// It holds the ingredients that wire resolves for those verbs.
 type websterCLI struct {
 	// runner is the constructed shuttle Runner the two adapted seams below are derived from.
 	runner *shuttleengine.Runner
@@ -36,32 +53,33 @@ type websterCLI struct {
 	starter       websterengine.Starter
 	masterStarter websterengine.MasterStarter
 
-	// engines and reed are the constructed engine set and reed engine record-batch and recover-batch need directly;
-	// engines is the lookup webster reads each recorded session through.
+	// engines and reed are the constructed engine set and reed engine that record-batch and recover-batch use directly.
+	// engines is the lookup that each recorded session is read through.
 	engines websterengine.AuditEngines
 	reed    shuttleengine.ReedOps
 
-	// reedUp brings the standalone reed session up, idempotently. It is set by
-	// wireStandalone alone — run calls it immediately before spawning Master and recover-batch
-	// immediately before spawning its cold recovery strand, because standalone mode has no other way
-	// to a live session: `lym reed up` is hub-only (its pre-run requires lymcwd.Resolve), so the
-	// session on standalone's own geometry (socket "lym-<hash8>", state under the derived state
-	// directory) can only be booted in-process, mirroring what internal/loomcli's run/drive verbs
-	// already do for hub mode. It stays nil in hub mode, where bringing reed up remains the
-	// operator's (or loom's) own act.
+	// reedUp brings the standalone reed session up, idempotently.
+	// Only wireStandalone sets it.
+	// run calls it immediately before spawning Master.
+	// recover-batch calls it immediately before spawning its cold recovery strand.
+	// Standalone mode has no other way to a live session.
+	// The hub-only `lym reed up` requires lymcwd.Resolve in its pre-run, so it cannot start standalone's session.
+	// Its socket is lym-<hash8>, its state lies under the derived state directory, and it can only boot in-process.
 	//
-	// It is called by those two spawning verbs alone, never from wiring, so validate, status and await-batch still boot no tmux server.
-	// The membership rule is "does this verb start an OS process of its own", not "does it write":
-	// begin-batch and record-batch mutate state but only inject into or read around a pane Master already owns,
-	// so a session they could reach exists by construction whenever they are legitimately called.
+	// Only those two verbs call it, never wiring, so validate, status and await-batch boot no tmux server.
+	// The rule is whether a verb starts an OS process of its own, not whether it writes state.
+	// begin-batch and record-batch write state but only inject into or read around a pane Master already owns,
+	// so a session they reach exists by construction whenever they are legitimately called.
+	// It stays nil in hub mode, where bringing reed up is the operator's or loom's own act.
 	reedUp func() error
 
-	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default (<stateDir>/_lym/plan in standalone, the hub anchor's _lym/plan in hub mode).
-	// Set by BOTH wiring paths, read by the run verb alone, which refuses to spawn Master over a moved plan: Master's in-pane verb invocations are flagless and resolve the default, so they could never see the override.
-	// It is set in hub mode too, and that is not symmetry for its own sake.
-	// contracts/stencils/webster /webster-template-master.md drives `lym webster begin-batch <NN>` flagless in BOTH modes -- only {{.plan_dir}} is templated -- so a hub `lym webster run --plan-dir /elsewhere` spawned a Master told to read /elsewhere while its own in-pane begin-batch re-wired against the hub default and refused against a plan it could not see.
-	// That is the same F-A3 failure the standalone branch was hardened against in crucible round fable5-high-r3, left live on the hub path until round opus-medium-r6 (R6-8).
-	// planDirDefault carries that default path for the refusal's own recourse text.
+	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default.
+	// The default is <stateDir>/_lym/plan in standalone and the hub anchor's _lym/plan in hub mode.
+	// Both wiring paths set it, and only the run verb reads it, to refuse spawning Master over a moved plan.
+	// Master's in-pane verb invocations are flagless and resolve the default, so they could never see the override.
+	// The Master stencil drives `lym webster begin-batch <NN>` flagless in both modes; only {{.plan_dir}} is templated.
+	// Hub mode sets the field too, so run refuses over a moved plan that the in-pane begin-batch could not see.
+	// planDirDefault holds that default path for the refusal's recourse text.
 	planDirOverridden bool
 	planDirDefault    string
 
@@ -69,33 +87,33 @@ type websterCLI struct {
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]shuttleengine.ModelChoice
 
-	// instructionFiles lists the instruction files Master's engine names, which Merriam's start base counts; nil means none.
-	// It looks the engine up when called, so a verb that never prices a partition is never refused for the master key.
+	// instructionFiles lists the instruction files Master's engine names, which count toward the start base; nil means none.
+	// It looks the engine up when called, so a verb that never prices a partition is never refused over the master key.
 	instructionFiles func() ([]string, error)
 
-	// anchorRel is the hub-mode Location's own anchor-relative path (loc.AnchorRel), empty in
-	// standalone. It is the one thing the deleted layout field held that no other told replacement
-	// supplies, and fabricSync's own told scope (card 37) needs it for fabricengine.ScopedPathspec.
+	// anchorRel is the hub-mode Location's anchor-relative path (loc.AnchorRel), and it is empty in standalone.
+	// Fabric sync needs it to scope its pathspec with fabricengine.ScopedPathspec.
+	// No other field supplies that path.
 	anchorRel string
 
-	// geom is the told websterengine.Geometry every verb's Deps construction, and every path this
-	// module touches, reads from -- hubgeom.WebsterGeometry(loc) in hub mode,
-	// standalonegeom.WebsterGeometry(target, stateDir) in standalone.
+	// geom is the websterengine.Geometry that every verb's Deps construction reads.
+	// It is hubgeom.WebsterGeometry(loc) in hub mode and standalonegeom.WebsterGeometry(target, stateDir) in standalone.
+	// Every path this module touches is read from it.
 	geom websterengine.Geometry
-	// refMatcher is the injected fabric-reference class matcher record-batch's and run's own audit
-	// consult — a real *fabricengine.RefScanner in hub mode, built eagerly because NewRefScanner only
-	// compiles a regexp and cannot fail.
+	// refMatcher is the injected fabric-reference class matcher that record-batch's and run's audits consult.
+	// It is a real *fabricengine.RefScanner in hub mode.
+	// It is built eagerly, because NewRefScanner only compiles a regexp and cannot fail.
 	refMatcher websterengine.RefMatcher
-	// openFabric is the lazy fabric-handle opener the verbs' fabric commits go through. It must NOT be
-	// opened during PersistentPreRunE: fabricengine.Open stat-checks the paired sibling and would fail
-	// the pre-run in the three healthy-but-unwired locations that run validate and status today,
-	// which never commit to the fabric.
+	// openFabric is the lazy fabric-handle opener that the verbs' fabric commits go through.
+	// It must not be opened during PersistentPreRunE, since fabricengine.Open stat-checks the paired sibling.
+	// Opening it there would fail the pre-run in healthy but unwired locations.
+	// Those are the locations that validate and status run in, and neither verb commits to the fabric.
 	openFabric func() (*fabricengine.Fabric, error)
-	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record, for record-batch's and recover-batch's clean-parent-merge rule.
-	// It is a closure for the same reason openFabric is, and stays nil in standalone, where no merge commit is accepted.
+	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record.
+	// The clean-parent-merge rule needs it; standalone leaves it nil, since no merge commit is accepted.
 	parentBranch websterengine.ParentBranchFunc
-	// runProcDir is the hub-level directory holding the owner records of a run's processes, set by wireHub and empty in standalone.
-	// pairSlugRead lazily reads the worktree's pair slug from fabric's origin record, as parentBranch reads the parent; it stays nil in standalone.
+	// runProcDir is the hub-level directory holding the owner records of a run's processes; wireHub sets it.
+	// pairSlugRead lazily reads the worktree's pair slug from fabric's origin record; it stays nil in standalone.
 	runProcDir   string
 	pairSlugRead func() string
 
@@ -114,27 +132,27 @@ type websterCLI struct {
 	// wireHub loads them once per process from the hub's language.yaml; wireStandalone leaves them empty.
 	renameTools []string
 
-	// frictionDir is the absolute friction directory in hub mode, tolerantly resolved from loom's own
-	// config in wireHub, and the empty string in standalone -- a standalone webster run is not a loom
-	// run and has no friction directory. It is the reason this CLI imports internal/loomengine at
-	// all: contracts/stencils/webster/webster-template-master.md drives the batch loop by shelling
-	// out to `lym webster begin-batch`/`lym webster recover-batch` as separate processes, so the
-	// per-batch implementer fork's and recovery strand's prompts are composed here, not in
-	// internal/loomcli.
+	// frictionDir is the absolute friction directory in hub mode, resolved tolerantly from loom's own config in wireHub.
+	// It is empty in standalone.
+	// A standalone webster run is not a loom run and has no friction directory.
+	// It is the reason this package imports internal/loomengine at all.
+	// The Master stencil drives the batch loop by shelling out to `lym webster` verbs as separate processes.
+	// So the per-batch implementer fork's and recovery strand's prompts are composed here.
+	// They are not composed in internal/loomcli.
 	frictionDir string
 
-	// pause is the pause geometry the wiring resolved and told the runner.
-	// It is set by wireHub and wireStandalone; the verify verb builds its hold from it, and the batch verbs read the pause record through it.
+	// pause is the pause geometry that the wiring resolves and hands to the runner.
+	// wireHub and wireStandalone set it; the verify verb builds its hold from it, and batch verbs read the pause record.
 	pause pauserecord.Geometry
-	// masterStrand returns the calling Master strand's name and guid, which begin-batch and recover-batch claim into a pause that covers the pair.
-	// It is set by wireHub and wireStandalone over the reed engine each builds.
+	// masterStrand returns the calling Master strand's name and guid.
+	// begin-batch and recover-batch claim them into a pause covering the pair; wireHub and wireStandalone set it.
 	masterStrand func() (name, guid string, err error)
 
-	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw, as-parsed values of the three
-	// standalone-entry persistent flags (--stencils-dir, --plan-dir, --target-dir), each bound by
-	// Command() and read by the wiring function (wiring.go) inside resolvePersistentPreRun. An empty
-	// value means the flag was not passed; the wiring function computes each mode's own default
-	// rather than a zero-value fallback landing here.
+	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw values of the three standalone-entry persistent flags.
+	// Command() binds each one.
+	// The wiring function reads each inside resolvePersistentPreRun.
+	// An empty value means the flag was not passed.
+	// The wiring function computes each mode's own default, rather than a zero-value fallback landing here.
 	stencilsDirFlag string
 	planDirFlag     string
 	targetDirFlag   string
@@ -147,8 +165,8 @@ type runnerMasterStarter struct {
 
 // StartMaster implements websterengine.MasterStarter.
 //
-// It spends Runner.StartGated rather than Runner.Start so the gate reaches the run before the
-// caller blocks on it; a zero gate makes StartGated behave exactly as Start.
+// It starts the run through Runner.StartGated, so the gate reaches the run before the caller blocks on it.
+// A zero gate starts the run ungated.
 func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
 	run, err := s.runner.StartGated(spec, gate)
 	if err != nil {
@@ -157,19 +175,15 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 	return run, nil
 }
 
-// resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
-// decision and the whole engine stack construction to c.wire (wiring.go), storing the resolved
-// ingredients on c.
-// A non-nil ResolveMode error is the refuse case, and it is handled right here rather than inside
-// wire: the refusal deliberately stays in resolvePersistentPreRun because it is a resolution
-// verdict, not a wiring choice, so it is surfaced verbatim and aborts the pre-run before c.wire is
-// ever called -- wire's own two-row truth table never sees a third value.
-// Extracted from Command()'s PersistentPreRunE assignment so a test can invoke it directly against a
-// *websterCLI it holds a reference to and inspect the populated fields afterward -- most notably that
-// c.openFabric is built here as a closure but never itself called.
-// Skips resolution entirely when the group command itself is invoked (bare listing or
-// unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
-// be present.
+// resolvePersistentPreRun resolves the working directory and the preflight mode, then wires the engine stack.
+// It calls preflight.ResolveMode, then delegates the mode decision and the stack construction to c.wire.
+// c.wire stores the resolved ingredients on c.
+// A ResolveMode error is a refusal handled here rather than in c.wire:
+// it is a resolution verdict, not a wiring choice,
+// so it is surfaced verbatim and aborts the pre-run before c.wire runs.
+// It skips resolution when the group command itself runs:
+// a bare listing or an unknown subcommand, both routed through clihelp.GroupRunE.
+// Neither path needs a git repository.
 func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "webster" {
 		return nil
@@ -205,8 +219,9 @@ func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) 
 	return nil
 }
 
-// refuseConfigLoad prints refusal as an error envelope, carrying config_invalid: true for a content failure and nothing extra for an unreadable file, and aborts before the verb's body.
-// It writes the refusal's friction note itself, since a pre-run refusal never reaches the noteRefusals tee.
+// refuseConfigLoad prints refusal as an error envelope and aborts before the verb's body.
+// It sets config_invalid: true only for a content failure, not for an unreadable file.
+// It also writes the refusal's friction note itself, since a pre-run refusal never reaches noteRefusals.
 func (c *websterCLI) refuseConfigLoad(cmd *cobra.Command, args []string, refusal configLoadRefusal) {
 	var fields map[string]any
 	if refusal.invalid {
@@ -222,8 +237,9 @@ func (c *websterCLI) refuseConfigLoad(cmd *cobra.Command, args []string, refusal
 
 // Command returns the cobra command tree for the webster module.
 //
-// The parent "webster" command carries a PersistentPreRunE (c.resolvePersistentPreRun) that resolves
-// cwd and configs into c, skipping resolution when the group command itself is invoked.
+// The parent "webster" command's PersistentPreRunE, c.resolvePersistentPreRun, resolves the working directory.
+// It wires the engine stack into c.
+// It skips resolution when the group command itself is invoked.
 func Command() *cobra.Command {
 	c := &websterCLI{}
 
@@ -250,7 +266,7 @@ private reed session before spawning Master.
 
 Example (standalone, outside any lym hub):
   lym webster run --target-dir /path/to/repo`,
-		// RunE is set so that bare "lym webster" lists subcommands and "lym webster bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		// RunE lists the subcommands for a bare "lym webster" and emits a JSON error envelope for an unknown one.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
@@ -267,7 +283,7 @@ Example (standalone, outside any lym hub):
 	return parent
 }
 
-// listInstructionFiles returns the instruction file names Merriam's start base counts, none when no lister is set.
+// listInstructionFiles returns the instruction file names the start base counts, or nil when no lister is set.
 func (c *websterCLI) listInstructionFiles() ([]string, error) {
 	if c.instructionFiles == nil {
 		return nil, nil
@@ -275,8 +291,10 @@ func (c *websterCLI) listInstructionFiles() ([]string, error) {
 	return c.instructionFiles()
 }
 
-// executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
-// Merriam's start base is computed only for a nil state, the one case that forms a partition; a recorded partition is mapped without reading it.
+// executionBatches returns the batches every verb runs for plan and the loaded state.
+// Cards are sized from the task worktree.
+// The start base is computed only for a nil state, the one case that forms a partition;
+// a recorded partition is mapped without reading it.
 func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
 	var base batcher.StartBase
 	if st == nil {
@@ -294,8 +312,10 @@ func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.S
 
 // addVerbs registers every webster verb under parent.
 // Every verb but `validate` and `verify` goes through noteRefusals, so a refusal it prints leaves a friction note.
-// `validate` and `verify` are self-checks an agent iterates against, so their findings are expected rather than friction.
-// A refusal cobra raises before the verb's RunE stays unnoted, since it fires before the friction directory is resolved:
+// `validate` and `verify` are self-checks an agent iterates against.
+// Their findings are expected rather than friction.
+// A refusal that cobra raises before the verb's RunE stays unnoted.
+// It fires before the friction directory is resolved:
 // a flag-parse or argument-count error, and one raised in resolvePersistentPreRun.
 func (c *websterCLI) addVerbs(parent *cobra.Command) {
 	parent.AddCommand(c.validateCmd())
@@ -321,32 +341,28 @@ func (c *websterCLI) addVerbs(parent *cobra.Command) {
 // persistPlanFingerprintRebaseline saves st when the bracket verb that just failed had already
 // re-baselined the plan-staleness fingerprint, and returns the save's own error.
 //
-// Both bracket verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands
-// on disk — handle canonicalization inside begin-batch's ValidateDispatch, handle binding and
-// exact-tier drift repair inside record-batch — and either verb can then fail on a later step of
-// the same call. The rewrite is a durable fact about the run, so discarding the re-baseline along
-// with the failed call left the plan on disk carrying webster's own edit while state.json still
-// recorded the pre-rewrite fingerprint: every later bracket verb then refused that edit as a
-// foreign one, and the advised `--fresh` recourse refused the run outright over the cards that had
-// already landed.
+// Both bracket verbs re-baseline State.PlanFingerprint as soon as a sanctioned plan rewrite lands on disk:
+// begin-batch does so while canonicalizing a handle in ValidateDispatch;
+// record-batch does so while binding a handle and repairing exact-tier drift.
+// Either verb can then fail on a later step of the same call.
+// The rewrite is a durable fact about the run, so the re-baseline must outlive the failed call.
+// Discarding it would leave the plan on disk carrying the rewrite while state.json keeps the old fingerprint,
+// and every later bracket verb would refuse that rewrite as a foreign edit.
 //
-// fingerprintBefore is the value read out of st immediately before the verb ran. An unchanged
-// fingerprint means no rewrite happened, so nothing is written at all — which is what keeps a
-// genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
+// fingerprintBefore is the value read out of st immediately before the verb ran.
+// An unchanged fingerprint means no rewrite happened, so nothing is written at all.
+// That keeps a genuine foreign edit failing ErrFingerprintMismatch.
 // Callers invoke this while still holding the state-mutation lease.
 //
-// It persists the plan baseline, the fingerprint, the per-file hashes and the overview frame hash, and NOTHING ELSE.
-// The state it writes is re-loaded from disk here and carries only the new baseline, rather than being the caller's whole in-memory *State.
-// The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
-// the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
-// whole struct persisted the transcript as CONSUMED on a call that then failed ErrCardNotDone. The
-// resumed record-batch then found zero new transcripts (ErrNoForkTranscripts) and the batch was stuck
-// in a three-verb refusal circle whose only exit is an operator moving the report file by hand — and
-// the identical failure with an unchanged fingerprint resumed cleanly, so the outcome turned on
-// whether a rewrite happened to land (crucible round opus-medium-r6, R6-4).
-// Re-loading under the still-held lease is safe by construction: nothing else may mutate state while
-// the lease is held, so the reload differs from the caller's copy only by the mutations this function
-// exists to drop.
+// It persists only the plan baseline, the fingerprint, the per-file hashes and the overview frame hash.
+// It does not save the caller's whole in-memory State.
+// The state written here is re-loaded from disk and carries only the new baseline.
+// The caller's copy must not be saved whole:
+// RecordBatch appends to State.SeenForkTranscripts before the step that can fail,
+// and the save would mark transcripts consumed by a call that then failed.
+// A resumed record-batch would then find no new transcripts and fail with ErrNoForkTranscripts.
+// Re-loading under the still-held lease is safe by construction: nothing else may mutate state while the lease is held,
+// so the reload differs from the caller's copy only by the mutations this function drops.
 func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websterengine.State, fingerprintBefore string) error {
 	if st == nil || st.PlanFingerprint == fingerprintBefore {
 		return nil
@@ -366,18 +382,15 @@ func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websteren
 
 // RunCLI is the public seam for the webster module CLI.
 //
-// It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer
-// for all output (including cobra's error text).
-// This preserves the existing call contract so that callers and tests are unchanged.
+// It delegates to clihelp.Execute with the cobra command tree.
+// Out receives all output, including cobra's error text.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
+// RunCLIIn runs the webster module CLI with cwd seeded into the execution context.
+// An empty cwd reads the process working directory instead, through clihelp.Execute.
+// The branch exists because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

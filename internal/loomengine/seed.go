@@ -11,15 +11,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// VerifySeedOwnership reports an error when the status file at statusPath records a different
-// task's slug than wantSlug — the state a worktree inherits when it is forked (via `lym fabric
-// add`) from a task worktree whose pair still carries `_lym/loom/status.json`. Without this guard
-// the driver silently resumed the INHERITED task's run — observed live as a new task failing at
-// the OLD task's Finalize, with the status envelope naming the old slug (crucible round
-// fable5-high-r3, F-B7).
+// VerifySeedOwnership reports an error when the status file at statusPath records a task slug other than wantSlug.
+// A worktree forked with `lym fabric add` from a task worktree inherits that task's state.
+// The inheritance happens when the pair still carries `_lym/loom/status.json`;
+// without this guard the driver would silently resume the inherited task's run.
 //
-// A missing file, an empty recorded slug, a product that does not decode, and a decode failure on the outer shed envelope itself (malformed JSON) all pass: the caller's own missing-file handling and the driver's own read of the status file answer them.
-// A genuine read or lock failure, anything that is not a decode failure, is still returned as its own error, never converted into a verdict.
+// A missing file, an empty recorded slug, and a product that does not decode all pass.
+// Malformed JSON in the outer shed envelope passes too.
+// The caller's missing-file handling and the driver's own read of the status file answer those cases.
+// Any error that is not a decode failure is returned as is, never converted into a verdict.
 func VerifySeedOwnership(statusPath, statusLockPath, wantSlug string) error {
 	shed, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {

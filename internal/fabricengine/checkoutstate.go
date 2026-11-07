@@ -1,5 +1,6 @@
-// checkoutstate.go implements the read-only readings of both checkouts of a pair: CheckoutStates, which reads each checkout's HEAD, changed tracked paths and untracked paths, and RecordsPathsChangedSince, which lists the weft paths committed since a revision.
-// Neither writes anything or names a consumer's concept.
+// checkoutstate.go holds the read-only readings of the two checkouts of a pair:
+// CheckoutStates reads each checkout's HEAD, changed tracked paths and untracked paths.
+// RecordsPathsChangedSince lists the weft paths committed since a revision.
 
 package fabricengine
 
@@ -74,7 +75,7 @@ func readCheckoutState(root string) (CheckoutState, error) {
 	return state, nil
 }
 
-// RecordsPathsChangedSince returns the weft paths whose committed content differs between the revision rev and the weft worktree's HEAD.
+// RecordsPathsChangedSince returns the weft paths whose committed content differs between rev and the weft HEAD.
 // The paths are slash-separated, relative to the weft worktree's root, sorted and never nil.
 func RecordsPathsChangedSince(l *lymcwd.Location, rev string) ([]string, error) {
 	changed, err := gitrepo.New(RecordsWorktree(l)).ChangedFilesSince(rev)

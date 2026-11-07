@@ -1,4 +1,5 @@
-// check.go — the drift check every writer gate and Drift-Verify runs: containment of the current code's captured changes by the sealed expectation, and the gate entry over it.
+// check.go is the drift check that every writer gate and Drift-Verify runs.
+// It covers containment of the current code's captured changes by the sealed expectation, and the gate entry over it.
 //
 // Check writes no tracked record and decides nothing; its report is what a caller maps to an outcome.
 
@@ -46,9 +47,9 @@ type CheckReport struct {
 	Mode string
 	// BaselineFault is the reason the baseline cannot be compared, and ends the check.
 	BaselineFault string
-	// RecordsFault is the reason the records on disk differ from their committed copies; the check went on over the committed copies.
+	// RecordsFault is the reason the records on disk differ from their committed copies; the check reads those instead.
 	RecordsFault string
-	// SealFault is the reason the sealed expectation cannot be trusted; the check went on over the sealed copy, or an empty expectation when there is none.
+	// SealFault is the reason the sealed expectation is untrusted; the check uses the sealed copy, or an empty one if none.
 	SealFault string
 	// CaptureFault is the reason the current capture did not pass, and ends the check.
 	CaptureFault string
@@ -76,13 +77,17 @@ func (r CheckReport) Unexpected() []ClassifiedCell {
 	return unexpected
 }
 
-// Check runs the drift check over d's seams and returns what it found; it ends at the first step that ends the check:
-// no scope record, scope off, a deferred capture and a waiver skip it;
-// a run not past Drift-Expect skips it before any baseline check, since a real run has no awaited_at before Drift-Await counts the capture;
-// a capture that never counted, a missing baseline directory and a changed baseline digest are a baseline fault;
-// a records mismatch is a records fault and the check goes on over the committed copies;
-// a failed seal check is a seal fault and the check goes on against the sealed copy, or an empty expectation when there is none.
-// Under DiffLines it takes a current capture, whose failure is a capture fault, diffs it against the baseline, drops the cells of the volatile lists and classifies each cell left by the merged expectation.
+// Check runs the drift check and returns what it found; it ends at the first step that ends the check.
+// No scope record, scope off, a deferred capture and a waiver skip it.
+// A run not past Drift-Expect skips it before any baseline check.
+// A real run has no awaited_at until Drift-Await counts the capture.
+// A capture that never counted, a missing baseline directory and a changed baseline digest are a baseline fault.
+// A records mismatch is a records fault, and the check goes on over the committed copies.
+// A failed seal check is a seal fault;
+// the check goes on against the sealed copy, or an empty expectation when there is none.
+// Under DiffLines it takes a current capture, whose failure is a capture fault.
+// It diffs the capture against the baseline and drops the cells of the volatile lists.
+// It then classifies each cell left by the merged expectation.
 // Under DiffCommand it runs the declared compare and takes no capture.
 // Whether the capture counted is read from the tracked scope record alone, never from the capture record.
 func Check(ctx context.Context, d Deps) (CheckReport, error) {
@@ -192,7 +197,9 @@ func skipReason(found bool, scope ScopeRecord) string {
 	return ""
 }
 
-// baselineHead returns the code head the counted baseline was captured at, from the capture record while it exists and otherwise from the oldest commit that recorded the baseline's digest.
+// baselineHead returns the code head the counted baseline was captured at.
+// It reads that from the capture record while the record exists.
+// When that record is gone, it reads the oldest commit that recorded the baseline's digest.
 func baselineHead(d Deps) (string, error) {
 	capture, found, err := ReadCapture(d.Paths)
 	if err != nil {
@@ -208,7 +215,8 @@ func baselineHead(d Deps) (string, error) {
 	return commit.CodeHead, nil
 }
 
-// sealedAndAmended parses the sealed expectation and every amendment that adds entries under mode against the baseline's listings, and merges them in order.
+// sealedAndAmended parses the sealed expectation under mode against the baseline's listings.
+// It then merges in order every amendment that adds entries, each parsed the same way.
 func sealedAndAmended(sealed []byte, amendments []Amendment, mode string, baseline []CaseListing) (Expectation, error) {
 	expectation, err := ParseExpectation(sealed, mode, baseline)
 	if err != nil {
@@ -227,7 +235,8 @@ func sealedAndAmended(sealed []byte, amendments []Amendment, mode string, baseli
 	return expectation, nil
 }
 
-// classifyCurrent takes the current capture, diffs it against the baseline and classifies each cell volatile does not name into report.
+// classifyCurrent takes the current capture and diffs it against the baseline.
+// It classifies each cell that volatile does not name into report.
 // A capture that did not pass is a capture fault and ends the check with no error.
 func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []*regexp.Regexp, volatile Volatile, baseline []CaseListing, report *CheckReport) error {
 	if err := requireSeams("the drift check under diff lines", seam{"CaptureCurrent", d.CaptureCurrent != nil}); err != nil {
@@ -307,7 +316,9 @@ func repeatedKeys(listings ...[]CaseListing) map[caseKey]bool {
 	return repeated
 }
 
-// Findings renders the report: a line for the skip, each fault with its way forward, each unexpected cell with its case, identity, old value and new value, and the compare's exit and log under DiffCommand.
+// Findings renders the report as lines:
+// the skip, each fault with its way forward, and each unexpected cell with its case, identity, old and new value.
+// The compare's exit and log follow when the compare ran.
 // It is empty when the check found nothing to report.
 func (r CheckReport) Findings() string {
 	var lines []string
@@ -346,7 +357,8 @@ func describeCell(c ClassifiedCell) string {
 	return fmt.Sprintf("%s in case %q at %s: old %q, new %q", cell.Kind, cell.Case, identityText(cell.Identity, c.Repeated), cell.Old, cell.New)
 }
 
-// identityText names an identity: a key, with its occurrence only when the key repeats in its case, or `#` and the line position of an unkeyed line.
+// identityText names an identity:
+// a key, with its occurrence only when the key repeats in its case, or `#` and the line position of an unkeyed line.
 func identityText(identity Identity, repeated bool) string {
 	if identity.Key == "" {
 		return fmt.Sprintf("#%d", identity.Line)
@@ -357,9 +369,13 @@ func identityText(identity Identity, repeated bool) string {
 	return fmt.Sprintf("key %q", identity.Key)
 }
 
-// NewDriftGate returns the gate the `drift` entry of a writer's gate list runs: it runs Check over d and judges the report.
-// It passes on a skip and on a baseline fault, which no writer session can clear, and under DiffCommand whatever the compare's exit; its findings are logged at Info when they remain.
-// It fails on a capture fault and, under DiffLines, on any unexpected cell, with the report's findings, which also name a records or seal fault found beside them.
+// NewDriftGate returns the gate the `drift` entry of a writer's gate list runs:
+// it runs Check over d and judges the report.
+// It passes on a skip and on a baseline fault, which no writer session can clear.
+// Under `DiffCommand` it passes whatever the compare's exit.
+// Findings that remain on a pass are logged at Info.
+// It fails on a capture fault and, under `DiffLines`, on any unexpected cell.
+// The failure carries the report's findings, which also name a records or seal fault found beside them.
 // It writes no tracked record, only the current capture's scratch directory.
 func NewDriftGate(d Deps) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {

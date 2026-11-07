@@ -1,17 +1,17 @@
-// warpbinding_reconcile_integration_test.go proves Topology.Reconcile's once-per-hub warp-URL
-// binding backfill (reconcile.go's reconcileWarpBinding): the recorded/present/diverged/skipped/
-// deferred outcome taxonomy, that the check runs exactly once per Reconcile call regardless of how
-// many pairs a hub has, and that a divergent or transport-only-differing record is reported but never
-// overwritten. It also proves Unwire leaves a recorded binding untouched.
+// warpbinding_reconcile_integration_test.go covers the warp-URL binding backfill of Topology.Reconcile:
+// the recorded, present, diverged, skipped and deferred outcomes of reconcileWarpBinding in reconcile.go.
+// The check runs exactly once per Reconcile call, however many pairs the hub has.
+// A divergent or transport-only-differing record is reported but never overwritten.
+// Unwire leaves a recorded binding untouched.
 //
-// Every test needs a hub built through fabricengine.CloneHub's own backfill path directly — the
-// backfill reads the warp side's real "origin" remote as CloneHub itself sets it up, not as
-// hubforge.NewHub's own pre-wired template would — so this file builds its own newClonedHubFixture
-// helper on top of CloneHub and clone_adopt_test.go's makeBareRemote instead of taking a ready-made
-// hub from hubforge.
+// Every test needs a hub built through CloneHub's own backfill path.
+// The backfill reads the warp side's real "origin" remote as CloneHub sets it up.
+// hubforge.NewHub's pre-wired template does not set it up that way.
+// This file therefore builds its own newClonedHubFixture on top of CloneHub.
+// It reuses makeBareRemote from clone_adopt_test.go.
 //
-// Package fabricengine_test to isolate real end-to-end git fixtures from the package's internal unit
-// tests; shares the single TestMain in testmain_test.go with every other file in this package.
+// Package fabricengine_test isolates real end-to-end git fixtures from the package's internal unit tests.
+// It shares the single TestMain in testmain_test.go with every other file in this package.
 
 package fabricengine_test
 
@@ -28,9 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// clonedHubFixture bundles the pieces newClonedHubFixture builds: the resolved clone geometry, the
-// prime warp worktree's layout, a ready-to-use Topology, and the two bare remote paths the tests need
-// to author expected binding content and to sever/restore the warp side's origin.
+// clonedHubFixture bundles a cloned test hub: its clone result, its layout, and a ready-to-use Topology.
+// The two bare remote paths let tests author expected binding content and sever and restore the warp origin.
 type clonedHubFixture struct {
 	Result      fabricengine.CloneResult
 	Layout      *lymcwd.Location
@@ -39,17 +38,17 @@ type clonedHubFixture struct {
 	RecordsBare string
 }
 
-// newClonedHubFixture builds a genuinely remote-backed hub via fabricengine.CloneHub against two bare
-// fixtures, seeds the repo-wide fabric config, and resolves a ready-to-use Topology and Location.
-// ForceBootstrap is set because the bare weft fixture is an ordinary seeded remote standing in for a
-// weft, not a repo that has ever been one, so it carries no .lym-anchor of its own.
+// newClonedHubFixture builds a remote-backed hub through fabricengine.CloneHub against two bare fixtures.
+// It seeds the repo-wide fabric config and resolves a ready-to-use Topology and Location.
+// ForceBootstrap is set because the bare weft fixture is a seeded remote, not a repo that has been a weft;
+// it therefore carries no .lym-anchor of its own.
 //
-// The fixture leaves the board worktree CLEAN: CloneHub writes the anchor marker (and this helper's
-// own seedRepoWideFabricConfig writes the repo-wide config) but neither is committed — CloneHub never
-// commits, only the CLI's Bolt.Commit does — so the board is dirty the moment CloneHub returns. A
-// local stage-all commit through Bolt (no push) closes that gap; every "recorded"-outcome test below
-// depends on starting from a clean board, or reconcileWarpBinding's dirty-board guard would defer the
-// write instead.
+// The fixture leaves the board worktree clean only after a local commit.
+// CloneHub writes the anchor marker and seedRepoWideFabricConfig writes the repo-wide config; neither is committed.
+// CloneHub never commits; only the CLI's Bolt.Commit does, so the board is dirty when CloneHub returns.
+// A local stage-all commit through Bolt, with no push, closes that gap.
+// Every "recorded"-outcome test below depends on that clean board:
+// without it, reconcileWarpBinding's dirty-board guard defers the write instead.
 func newClonedHubFixture(t *testing.T) clonedHubFixture {
 	t.Helper()
 
@@ -96,11 +95,9 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 	}
 }
 
-// unbindHub removes the recorded warp-binding file from boardDir's worktree and commits that deletion
-// through a Bolt, producing the "unbound hub that predates the binding" state explicitly rather than
-// assuming it. commitFileOnBranch is deliberately not reused here: it commits through a throwaway
-// scratch clone pushed to the bare remote and never touches an existing local worktree, so it cannot
-// leave boardDir itself clean.
+// unbindHub removes the recorded warp-binding file from boardDir's worktree and commits that deletion through a Bolt.
+// That produces the unbound hub that predates the binding, explicitly rather than by assumption.
+// The commit runs on boardDir itself, which leaves the board clean for the test.
 func unbindHub(t *testing.T, boardDir string) {
 	t.Helper()
 
@@ -113,9 +110,9 @@ func unbindHub(t *testing.T, boardDir string) {
 	}
 }
 
-// writeAndCommitBinding overwrites boardDir's recorded warp-binding file with url and commits the
-// change through a Bolt, used to author a record that intentionally differs from the warp side's
-// actual origin (normalized-equal, genuinely divergent, or transport-identity-equal).
+// writeAndCommitBinding overwrites boardDir's recorded warp-binding file with url and commits the change through a Bolt.
+// Tests use it to author a record that differs from the warp origin in a chosen way:
+// normalized-equal, divergent, or transport-identity-equal.
 func writeAndCommitBinding(t *testing.T, boardDir, url string) {
 	t.Helper()
 
@@ -128,10 +125,9 @@ func writeAndCommitBinding(t *testing.T, boardDir, url string) {
 	}
 }
 
-// TestReconcile_BacksFillsBindingOnce asserts that an unbound wired hub gains the record on its first
-// Reconcile: the outcome is "recorded", the file exists at the board root holding the warp origin URL,
-// and no pair result carries a binding-related detail — the binding is a repo-wide fact, never
-// reported per-pair.
+// TestReconcile_BacksFillsBindingOnce asserts that an unbound wired hub gains the record on its first Reconcile:
+// the outcome is "recorded", the board root holds the file with the warp origin URL,
+// and no pair result carries a binding detail, because the binding is a repo-wide fact.
 func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -164,8 +160,8 @@ func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
 }
 
 // TestReconcile_BacksFillsOnceOnMultiWorktreeHub asserts that with several warp worktrees present,
-// the backfill still writes the record exactly once and reports it exactly once at the repo-wide
-// level, leaving the per-pair results untouched.
+// the backfill still writes the record exactly once and reports it exactly once at the repo-wide level,
+// and it leaves the per-pair results untouched.
 func TestReconcile_BacksFillsOnceOnMultiWorktreeHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -194,8 +190,8 @@ func TestReconcile_BacksFillsOnceOnMultiWorktreeHub(t *testing.T) {
 	}
 }
 
-// TestReconcile_NormalizedRecordReportsPresent asserts that a record differing from the warp origin
-// only by a trailing ".git" normalizes equal and reports "present", not "diverged".
+// TestReconcile_NormalizedRecordReportsPresent asserts that a trailing ".git" difference is normalized away:
+// a record that differs from the warp origin only by that suffix reports "present", not "diverged".
 func TestReconcile_NormalizedRecordReportsPresent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -218,9 +214,8 @@ func TestReconcile_NormalizedRecordReportsPresent(t *testing.T) {
 	}
 }
 
-// TestReconcile_DivergentRecordIsLeftUntouched asserts that a genuinely differing record is not
-// overwritten, reports "diverged" with both URLs named in the detail, and Reconcile still returns a
-// nil error.
+// TestReconcile_DivergentRecordIsLeftUntouched asserts that a differing record is not overwritten:
+// it reports "diverged" with both URLs named in the detail, and Reconcile still returns a nil error.
 func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -252,12 +247,12 @@ func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 	}
 }
 
-// TestReconcile_TransportOnlyDifferenceIsAdvisory asserts that a record spelling the same repo over a
-// different transport reports "diverged" with a detail that says the difference is transport-only and
-// advisory. The fixture's warp origin is a local path with no scheme, so normalizeWarpURL applies no
-// case-folding to it; flipping its case produces two spellings that differ under normalizeWarpURL
-// (still "diverged") but collapse to the same string under warpURLTransportIdentity, which lowercases
-// unconditionally — the same shape a real scheme-vs-scp-form transport swap produces.
+// TestReconcile_TransportOnlyDifferenceIsAdvisory asserts that a transport-only difference is advisory:
+// the record reports "diverged" with a detail that calls the difference transport-only and advisory.
+// The warp origin is a local path with no scheme, so normalizeWarpURL applies no case-folding to it.
+// Flipping its case gives two spellings that differ under normalizeWarpURL and stay "diverged".
+// They collapse to one string under warpURLTransportIdentity, which lowercases unconditionally.
+// This has the same shape as a real scheme-versus-scp-form transport swap.
 func TestReconcile_TransportOnlyDifferenceIsAdvisory(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -284,9 +279,9 @@ func TestReconcile_TransportOnlyDifferenceIsAdvisory(t *testing.T) {
 	}
 }
 
-// TestReconcile_DirtyBoardDefersWrite asserts that with an unrelated uncommitted file in the board
-// worktree, the outcome is "deferred", no binding file is written, and the unrelated file is neither
-// committed nor pushed: it remains untracked and the board's HEAD is unchanged.
+// TestReconcile_DirtyBoardDefersWrite asserts that an uncommitted unrelated file defers the write:
+// the outcome is "deferred" and no binding file is written.
+// The unrelated file is neither committed nor pushed: it stays untracked, and the board's HEAD is unchanged.
 func TestReconcile_DirtyBoardDefersWrite(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -322,8 +317,8 @@ func TestReconcile_DirtyBoardDefersWrite(t *testing.T) {
 	}
 }
 
-// TestReconcile_NoWarpOriginIsSkipped asserts that after removing the warp side's origin remote, the
-// outcome is "skipped" with an empty detail and Reconcile still returns a nil error.
+// TestReconcile_NoWarpOriginIsSkipped asserts that without a warp origin remote the outcome is "skipped":
+// the detail is empty, and Reconcile still returns a nil error.
 func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -344,13 +339,12 @@ func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
 	}
 }
 
-// TestReconcile_UnpushedRetryPushesOnPresent covers the engine-only half of the unpushed-retry story:
-// once a record is committed and matches the warp origin, Reconcile reports "present" with an empty
-// detail, and a second Reconcile pass creates no further commit. Topology.Reconcile itself never
-// pushes — that is the CLI handler's job (fabriccli.runReconcile) — so this test drives
-// Topology.Reconcile directly and asserts only on the engine's verdict; the actual commit-then-push
-// retry (a backfill whose push failed, then succeeding on the next pass) is covered at the CLI seam by
-// TestRunCLI_ReconcileBacksFillsWarpBinding and TestRunCLI_ReconcileBackfillFailureIsNonFatal instead.
+// TestReconcile_UnpushedRetryPushesOnPresent covers the engine half of the unpushed-retry path:
+// once a record is committed and matches the warp origin, Reconcile reports "present" with an empty detail,
+// and a second pass creates no further commit.
+// Topology.Reconcile never pushes; the CLI handler (fabriccli.runReconcile) does.
+// This test therefore drives Topology.Reconcile directly and asserts only the engine's verdict.
+// The commit-then-push retry is covered at the CLI seam.
 func TestReconcile_UnpushedRetryPushesOnPresent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -377,10 +371,9 @@ func TestReconcile_UnpushedRetryPushesOnPresent(t *testing.T) {
 	}
 }
 
-// TestUnwire_LeavesWarpBindingInPlace asserts that running unwire on a bound hub leaves the record on
-// the weft side untouched, exactly as it already leaves the anchor marker and the repo-wide config.
-// This requires no production change; it exists so a future unwire edit cannot quietly delete the
-// record.
+// TestUnwire_LeavesWarpBindingInPlace asserts that unwire on a bound hub leaves the record on the weft side untouched.
+// Unwire already leaves the anchor marker and the repo-wide config in place the same way.
+// No production change is needed; the test stops a future unwire edit from deleting the record.
 func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -406,13 +399,9 @@ func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 	}
 }
 
-// TestReconcile_BoardLockArtifactDoesNotDeferBackfill is the counterpart to
-// TestReconcile_DirtyBoardDefersWrite: a module's own lock file at the board root is machine-local
-// scratch, not unrelated content a stage-all commit would sweep up, so it must not defer the
-// once-per-hub binding backfill.
-// Before the *.lock/*.swaplock excludes, a single ordinary board read left tasks.json.swaplock at
-// the board root permanently, and every subsequent reconcile on a hub predating the binding reported
-// "deferred" forever.
+// TestReconcile_BoardLockArtifactDoesNotDeferBackfill is the counterpart to TestReconcile_DirtyBoardDefersWrite.
+// A lock file at the board root is machine-local scratch, not content a stage-all commit would sweep up.
+// It must therefore not defer the once-per-hub binding backfill.
 func TestReconcile_BoardLockArtifactDoesNotDeferBackfill(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

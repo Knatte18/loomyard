@@ -1,5 +1,7 @@
 // Package scankit is the shared harness for source-scan invariant tests.
-// It locates the module root, walks source files under the shared skip set, matches findings against allowlists that report their own stale entries, guards a scan against running vacuously, and checks a package's imports.
+// It locates the module root and walks source files under the shared skip set.
+// It matches findings against allowlists that report their own stale entries.
+// It guards a scan against running vacuously and checks a package's imports.
 // It imports the standard library only.
 package scankit
 
@@ -43,7 +45,7 @@ func skipDir(name string) bool {
 	return skipDirNames[name] || strings.Contains(name, "testdata")
 }
 
-// Options configures a Walk.
+// Options selects the directories and files a source walk visits.
 type Options struct {
 	// Roots are directories to scan, relative to Base.
 	// Empty means Base itself.
@@ -87,16 +89,18 @@ func (f *File) AST(t testing.TB, mode parser.Mode) *ast.File {
 	return f.ast
 }
 
-// FileSet returns the file set the last AST call parsed into.
+// FileSet returns the file set the file was parsed into, or nil before the file is first parsed.
 func (f *File) FileSet() *token.FileSet { return f.fset }
 
 // startDir is the test binary's working directory at package init, before any test changes it.
-// go test starts every test binary in its package's directory, which lies inside the module,
-// and the kit cannot read its own source location instead: under `-trimpath`, which gate runs set, `runtime.Caller` reports a module-relative path.
-// The kit imports the standard library only, so it reads the directory with os.Getwd rather than through internal/lymcwd.
+// go test starts every test binary in its package's directory, which lies inside the module.
+// The kit cannot use `runtime.Caller` for its source location:
+// under `-trimpath`, which gate runs set, it reports a module-relative path.
+// The kit imports the standard library only,
+// so it reads the directory with os.Getwd rather than through internal/lymcwd.
 var startDir, startDirErr = os.Getwd()
 
-// Root returns the module root, found from the test binary's starting directory and the enclosing go.mod.
+// Root returns the module root, and fails the test when no go.mod is found above the test binary's starting directory.
 func Root(t testing.TB) string {
 	t.Helper()
 	root, err := ModuleRoot()
@@ -106,7 +110,8 @@ func Root(t testing.TB) string {
 	return root
 }
 
-// ModuleRoot returns the module root, the nearest directory holding go.mod at or above the test binary's starting directory.
+// ModuleRoot returns the module root:
+// the nearest directory holding go.mod at or above the test binary's starting directory.
 func ModuleRoot() (string, error) {
 	if startDirErr != nil {
 		return "", fmt.Errorf("read the test binary's starting directory: %w", startDirErr)
@@ -245,7 +250,7 @@ func (a *Allowlist) Allowed(key string) bool {
 	return found
 }
 
-// Stale returns, sorted, the keys of entries that matched nothing.
+// Stale returns the keys of entries that matched nothing, sorted.
 func (a *Allowlist) Stale() []string {
 	var stale []string
 	for _, e := range a.entries {
@@ -335,14 +340,16 @@ func isStdlib(path string) bool {
 	return !strings.Contains(first, ".")
 }
 
-// AssertImportAllowlist fails the test when a production file in pkgDir imports anything beyond the standard library and the allowed import paths.
+// AssertImportAllowlist fails the test when a production file in pkgDir imports outside its allowlist:
+// anything that is neither standard library nor one of the allowed import paths.
 // pkgDir is a slash path relative to the module root, or absolute.
 func AssertImportAllowlist(t testing.TB, pkgDir string, allowed ...string) {
 	t.Helper()
 	assertImports(t, pkgDir, allowed, false)
 }
 
-// AssertImportAllowlistNoStale is AssertImportAllowlist that also fails for every allowed import path no production file in pkgDir imports.
+// AssertImportAllowlistNoStale fails the test for every import outside the standard library and the allowed paths.
+// It also fails for every allowed path that no production file in pkgDir imports.
 func AssertImportAllowlistNoStale(t testing.TB, pkgDir string, allowed ...string) {
 	t.Helper()
 	assertImports(t, pkgDir, allowed, true)

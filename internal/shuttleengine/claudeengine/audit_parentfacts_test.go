@@ -1,8 +1,6 @@
-// audit_parentfacts_test.go covers the parent-session write/bash fact extraction AuditForks
-// populates onto ForkAudit: ParentWriteCalls, ParentWrites, and ParentBashCommands.
-// Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no
-// subprocess) rather than reusing audit_test.go's testdata fixtures, since this file's cases are
-// specific to the parent-fact fields those fixtures do not exercise.
+// audit_parentfacts_test.go covers how AuditForks fills the parent-session facts of ForkAudit.
+// The write and bash facts are ParentWriteCalls, ParentWrites, and ParentBashCommands.
+// Each test writes its transcript with os.WriteFile, so it reads no fixture file and runs no subprocess.
 
 package claudeengine
 
@@ -14,9 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeParentTranscript writes lines (already-JSON transcript lines) as a
-// newline-joined parent transcript at projectDir/sessionID.jsonl, creating
-// projectDir as needed.
+// writeParentTranscript writes the JSON transcript lines, newline-joined, to projectDir/sessionID.jsonl.
+// It creates projectDir when it does not exist.
 func writeParentTranscript(t *testing.T, projectDir, sessionID string, lines []string) {
 	t.Helper()
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
@@ -32,11 +29,9 @@ func writeParentTranscript(t *testing.T, projectDir, sessionID string, lines []s
 	}
 }
 
-// TestAuditForks_ParentWritesAndBashInOrder proves a parent transcript's own
-// Write/Edit/NotebookEdit and Bash tool_use blocks populate
-// ParentWriteCalls/ParentWrites/ParentBashCommands in transcript order, alongside the existing
-// SpawnCalls/NamedSpawns facts — and that the missing-subagents-dir zero-fork finding still carries
-// these fields.
+// TestAuditForks_ParentWritesAndBashInOrder checks the parent's own tool calls, in transcript order:
+// Write, Edit and NotebookEdit fill ParentWriteCalls and ParentWrites, and Bash fills ParentBashCommands.
+// It also checks that a session with no subagents directory, which yields zero forks, still reports these fields.
 func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -59,9 +54,8 @@ func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_05"}]}}`,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Made three edits and ran two commands."}]}}`,
 	})
-	// Deliberately no subagents/ directory: this is the missing-subagents-dir
-	// zero-fork path, proven elsewhere to still populate SpawnCalls/NamedSpawns —
-	// here it must also carry the new parent-fact fields.
+	// The test creates no subagents/ directory, so the audit takes the zero-fork path.
+	// That path must still populate the parent-fact fields.
 
 	c := New()
 	audit, err := c.AuditForks(sessionID, workdir)
@@ -97,10 +91,8 @@ func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 	}
 }
 
-// TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked proves a Write-family tool_use block
-// whose input carries neither file_path nor notebook_path does not panic — it still increments
-// ParentWriteCalls,
-// but contributes no entry to ParentWrites.
+// TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked checks a Write-family tool_use block with no path key.
+// The block must not panic, must count in ParentWriteCalls, and must add no ParentWrites entry.
 func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()
@@ -131,10 +123,9 @@ func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {
 	}
 }
 
-// TestAuditForks_ExistingZeroForkAndForkFactsUnchanged proves this batch's parent-fact additions
-// leave the pre-existing zero-fork and fork-report behaviour untouched: a parent transcript with no
-// writes/bash still reports empty ParentWrites/ParentBashCommands (not nil-vs-empty confusion) and
-// the existing SpawnCalls/NamedSpawns/Forks facts are unaffected.
+// TestAuditForks_ExistingZeroForkAndForkFactsUnchanged checks a parent transcript that has no writes or Bash calls:
+// ParentWrites and ParentBashCommands must come back empty,
+// and the existing SpawnCalls, NamedSpawns and Forks facts must keep their values.
 func TestAuditForks_ExistingZeroForkAndForkFactsUnchanged(t *testing.T) {
 	tiergate.Require(t, 0)
 	home := t.TempDir()

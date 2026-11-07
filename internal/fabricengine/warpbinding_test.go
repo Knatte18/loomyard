@@ -1,7 +1,6 @@
-// warpbinding_test.go — table tests for the warp-binding core: the normalizer, the transport-identity
-// collapse, the pure conflict resolver, and the on-disk read/write round trip.
-// This is a Tier 1 file: it is package fabricengine (so it can exercise the unexported helpers
-// directly), carries no //go:build line, and spawns no git.
+// warpbinding_test.go holds the table tests for the warp-binding core.
+// It covers the URL normalizer, the transport-identity collapse, the conflict resolver, and the on-disk round trip.
+// It is package fabricengine, so it reaches the unexported helpers directly, carries no build tag, and spawns no git.
 
 package fabricengine
 
@@ -15,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNormalizeWarpURL covers normalizeWarpURL's trailing-slash strip, trailing-.git strip, and
-// scheme/host lowercasing, in that order, plus the local-path and scp-form cases that must keep
-// their case byte-for-byte.
+// TestNormalizeWarpURL covers normalizeWarpURL's trailing-slash strip, trailing-.git strip, and scheme/host lowercasing.
+// It applies them in that order, and it checks that local paths and scp forms keep their case byte-for-byte.
 //
 //testtiming:keep normalizeWarpURL's trailing-slash and .git stripping and host lowercasing while local paths and scp forms keep their case; coverage of its blocks by other tests does not show an assertion of this
 func TestNormalizeWarpURL(t *testing.T) {
@@ -32,8 +30,8 @@ func TestNormalizeWarpURL(t *testing.T) {
 		{"trailing_dot_git_stripped", "https://github.com/u/repo.git", "https://github.com/u/repo"},
 		{"both_slash_and_dot_git_stripped", "https://github.com/u/repo.git/", "https://github.com/u/repo"},
 		{"scheme_and_host_lowercased_path_case_kept", "https://GitHub.COM/U/Repo", "https://github.com/U/Repo"},
-		// The scp form has no <scheme>:// prefix, so case is left byte-identical apart from the
-		// .git strip; it must therefore NOT equal the https spelling of the same repo.
+		// The scp form has no <scheme>:// prefix, so only the .git strip touches its case.
+		// It must not equal the https spelling of the same repo.
 		{"scp_form_case_untouched", "git@github.com:u/repo.git", "git@github.com:u/repo"},
 		{"empty_string_stays_empty", "", ""},
 		{"posix_local_path", "/home/u/fixtures/bare.git", "/home/u/fixtures/bare"},
@@ -57,8 +55,8 @@ func TestNormalizeWarpURL(t *testing.T) {
 	}
 }
 
-// TestWarpURLTransportIdentity asserts that warpURLTransportIdentity collapses different transport
-// spellings of the same repo to the same identity string, while a different repo path stays distinct.
+// TestWarpURLTransportIdentity asserts that warpURLTransportIdentity collapses transport spellings of one repo.
+// It maps them to the same identity string, and a different repo path stays distinct.
 func TestWarpURLTransportIdentity(t *testing.T) {
 	tiergate.Require(t, 0)
 	https := warpURLTransportIdentity("https://github.com/u/repo.git")
@@ -77,9 +75,8 @@ func TestWarpURLTransportIdentity(t *testing.T) {
 	}
 }
 
-// TestResolveEffectiveWarpURL covers every row of the conflict rule resolveEffectiveWarpURL encodes:
-// absent/supplied, present/absent, matching, normalized-matching, and the two conflicting rows
-// (transport swap and differing repo).
+// TestResolveEffectiveWarpURL covers every row of the conflict rule resolveEffectiveWarpURL encodes.
+// The rows are absent/supplied, present/absent, matching, normalized-matching, transport swap, and differing repo.
 //
 //testtiming:keep every row of the warp-binding conflict rule; coverage of its blocks by other tests does not show an assertion of this
 func TestResolveEffectiveWarpURL(t *testing.T) {
@@ -210,8 +207,8 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 	}
 }
 
-// TestWarpBindingReadWrite round-trips writeWarpBinding and readWarpBinding against a t.TempDir()
-// stand-in board directory, covering the absent, written, whitespace-only, and overwrite cases.
+// TestWarpBindingReadWrite round-trips writeWarpBinding and readWarpBinding over a t.TempDir() board directory.
+// It covers the absent, written, whitespace-only, and overwrite cases.
 func TestWarpBindingReadWrite(t *testing.T) {
 	tiergate.Require(t, 0)
 	boardDir := t.TempDir()
@@ -237,8 +234,7 @@ func TestWarpBindingReadWrite(t *testing.T) {
 		t.Errorf("file content = %q; want %q (URL plus exactly one trailing newline)", string(data), warpURL+"\n")
 	}
 
-	// A whitespace-only file is treated as absent, mirroring readRecordedAnchor's empty-after-trim
-	// rule.
+	// A whitespace-only file is treated as absent.
 	if err := os.WriteFile(path, []byte("   \n\t\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v; want nil", path, err)
 	}

@@ -13,7 +13,8 @@ import (
 )
 
 // requestCycle writes the cycle request marker for mode, then checks for a live watcher.
-// With no watcher live it removes the marker again, so no later watcher acts on a request made while none ran, and reports false.
+// With no watcher live it removes the marker again, so no later watcher acts on a request made while none ran,
+// and it reports false.
 // It removes only the request it wrote, so a request another caller wrote meanwhile stays.
 func (c *orchCLI) requestCycle(mode string) (watcherLive bool, err error) {
 	request := orchengine.CycleRequest{Mode: mode, RequestedAt: time.Now()}
@@ -32,7 +33,8 @@ func (c *orchCLI) requestCycle(mode string) (watcherLive bool, err error) {
 	return watcherLive, nil
 }
 
-// requestCmd runs requestCycle for mode and prints the shared envelope.
+// requestCmd writes a cycle request for mode and prints the outcome envelope;
+// the envelope reports whether a live watcher will act on it.
 func (c *orchCLI) requestCmd(cmd *cobra.Command, mode string) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -55,7 +57,6 @@ func (c *orchCLI) requestCmd(cmd *cobra.Command, mode string) error {
 	return nil
 }
 
-// refreshCmd builds the `refresh` subcommand.
 func (c *orchCLI) refreshCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "refresh",

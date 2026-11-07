@@ -1,5 +1,8 @@
-<!-- This is burler's fork-reading part: the pre-read a fanned round's handler does in the explore step, so every fork inherits the reading instead of repeating it.
-     internal/burlerengine's forkReadingBlock (prompt.go) reads and fills it, and composeReviewPrompt injects it as burler-step-1-explore's optional fork_reading marker value in a fanned round only.
+<!-- This is burler's fork-reading part: the pre-read a fanned round's handler does in the explore step.
+     Every fork inherits that reading instead of repeating it.
+     `forkReadingBlock` (internal/burlerengine/prompt.go) fills it.
+     `composeReviewPrompt` injects the result as burler-step-1-explore's optional fork_reading marker value.
+     It does so in a fanned round only.
      It declares no marker. -->
 ## Reading for the fork reviewers
 

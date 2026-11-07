@@ -1,8 +1,7 @@
-// testmain_integration_test.go wires this package's integration test binary into the hermetic git
-// test environment: gitkit.HermeticGitEnv() runs once before any test, since this package's sibling
-// integration files (finalize_integration_test.go, publish_integration_test.go) spawn git via
-// hubforge fixtures (Test Tier Purity Invariant / Hermetic Git Test Environment Invariant),
-// modelled on internal/loomshed's own equivalent.
+// testmain_integration_test.go wires this package's integration test binary into the hermetic git test environment:
+// gitkit.HermeticGitEnv() runs once before any test.
+// Sibling files finalize_integration_test.go and publish_integration_test.go spawn git through hubforge fixtures.
+// They follow the Test Tier Purity Invariant and the Hermetic Git Test Environment Invariant.
 
 package landingshed_test
 

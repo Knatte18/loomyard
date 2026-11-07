@@ -1,4 +1,5 @@
-// notice.go declares the chair-side notice sender, which types one-line advisor notices into the chair's session, and the wording of those notices.
+// notice.go declares the chair-side notice sender, which types one-line advisor notices into the chair's session.
+// It also holds the wording of those notices.
 
 package seatengine
 
@@ -30,7 +31,9 @@ func writerDoneNotice(name string, outputs []string) string {
 	return fmt.Sprintf("Writer %s finished its part and keeps answering you; its outputs stand: %s", name, strings.Join(outputs, ", "))
 }
 
-// writerResumeNotice returns the one-line notice that tells the chair writer name was stopped when the step was interrupted, so it no longer answers while its outputs stand.
+// writerResumeNotice returns the one-line notice that tells the chair writer name was stopped.
+// The writer was stopped when the step was interrupted, so any fix asked of it is lost.
+// It no longer answers; its outputs stand.
 func writerResumeNotice(name string, outputs []string) string {
 	return fmt.Sprintf("Writer %s was stopped when this step was interrupted; any fix you had asked of it is lost, and it no longer answers; its outputs stand: %s", name, strings.Join(outputs, ", "))
 }
@@ -40,7 +43,8 @@ func advisorUpNotice(name string) string {
 	return fmt.Sprintf("Advisor %s is up and takes your questions.", name)
 }
 
-// advisorNotStartedNotice returns the one-line notice that tells the chair advisor name never started, so it decides without it.
+// advisorNotStartedNotice returns the one-line notice that tells the chair advisor name never started,
+// so it decides without it.
 func advisorNotStartedNotice(name string) string {
 	return fmt.Sprintf("Advisor %s did not start and never answers; decide without it.", name)
 }
@@ -67,7 +71,8 @@ type noticeSender struct {
 }
 
 // newNoticeSender returns a sender that holds queued lines until start is called.
-// It stops delivering once every path in chairOutputs exists, and waits retry between attempts at a line the chair's session could not take.
+// It stops delivering once every path in chairOutputs exists.
+// It waits retry between attempts at a line the chair's session could not take.
 // Each wait goes through after, which answers once the duration has passed.
 func newNoticeSender(chairOutputs []string, retry time.Duration, after func(time.Duration) <-chan time.Time) *noticeSender {
 	return &noticeSender{
@@ -161,7 +166,9 @@ func (s *noticeSender) next() (string, bool) {
 }
 
 // deliver types line into the chair's session, retrying a busy, unlanded or paused send.
-// A paused chair holds the line until the resume: while the refusal is a pause the wait between attempts doubles from the retry interval up to pausedNoticeRetryCap, and any other held answer returns it to the retry interval.
+// A paused chair holds the line until the resume.
+// While the refusal is a pause, the wait between attempts doubles from the retry interval up to pausedNoticeRetryCap.
+// Any other held answer returns the wait to the retry interval.
 // It reports false when delivery is over: the chair's outputs all exist or the sender was stopped.
 // A line that never lands, or that fails for another reason, is logged and dropped.
 func (s *noticeSender) deliver(chair Handle, line string) bool {
@@ -197,7 +204,8 @@ func (s *noticeSender) deliver(chair Handle, line string) bool {
 	}
 }
 
-// allExist reports whether every path exists; an empty list is not all-existing, so a sender with no outputs to watch never stops itself.
+// allExist reports whether every path exists.
+// An empty list is not all-existing, so a sender with no outputs to watch never stops itself.
 func allExist(paths []string) bool {
 	if len(paths) == 0 {
 		return false

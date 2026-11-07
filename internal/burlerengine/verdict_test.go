@@ -1,4 +1,7 @@
-// verdict_test.go table-drives ParseReview over the happy paths and every fail-loud rule documented on it: frontmatter presence/closure, YAML validity, verdict spelling, per-finding key completeness, severity and class vocabularies, duplicate ids, the two verdict/findings consistency rules, and the optional Origin field's pass-through (with and without it present).
+// verdict_test.go table-drives ParseReview over its happy paths and every fail-loud rule it documents.
+// It covers frontmatter presence and closure, YAML validity, verdict spelling and per-finding key completeness.
+// It also covers severity and class vocabularies, duplicate ids and verdict/findings consistency.
+// The optional Origin field's pass-through is covered with and without the field present.
 
 package burlerengine
 
@@ -136,8 +139,8 @@ findings:
 		},
 		{
 			// A cluster round's consolidated review tags each finding with an
-			// origin: key (lens:<name> or handler) — ParseReview must parse it
-			// through onto Finding.Origin without validating its content.
+			// origin: key, lens:<name> or handler.
+			// ParseReview must carry it onto Finding.Origin without validating its content.
 			name: "cluster findings carry origin",
 			content: `---
 verdict: BLOCKING
@@ -165,8 +168,8 @@ Fix the nil check.
 			},
 		},
 		{
-			// A pre-cluster (origin-less) review file must keep parsing
-			// identically — origin is optional and never required.
+			// A review file without origin keys parses identically:
+			// origin is optional and never required.
 			name: "findings without origin parse identically",
 			content: `---
 verdict: BLOCKING
@@ -209,11 +212,8 @@ verdict: [APPROVED
 			errSubstr: "not valid YAML",
 		},
 		{
-			// The single most frequent live review-file defect: a summary
-			// that opens with a quoted fragment then carries unquoted
-			// trailing prose on the same line — invalid YAML. ParseReview
-			// must append a targeted hint rather than just yaml.v3's raw,
-			// hard-to-act-on parser error.
+			// A summary that opens with a quoted fragment and carries unquoted trailing prose on the same line is invalid YAML.
+			// ParseReview must append a targeted hint rather than yaml.v3's raw, hard-to-act-on parser error.
 			name: "malformed quoted summary appends a targeted hint",
 			content: `---
 verdict: BLOCKING

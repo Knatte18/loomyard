@@ -1,8 +1,18 @@
-// bindings.go declares the server-wide key and mouse bindings of reed's navigation: the four Alt keys and the left click on the status bar, whose branches cover the shell, window and session ranges, the follow button and the button ranges.
-// Alt+Up and Alt+Down step across windows in index order, and a left click on the shell button returns to the strands' window.
-// The builder is pure; pinBindingsLocked issues its argvs, each non-fatal, from the geometry pin path that boot and the attach pre-flight both run.
-// The pin stamps the server with the build that made it, and every op under the blocking op lock re-pins when the stamp is absent, unparseable or another build's with a commit time not after the running build's, so a deploy reaches a running server at its first reed op.
-// Alt+Up, Alt+Down and the shell and window clicks write the follow state off, and the follow button toggles it; @lym_follow is the one option these bindings write that a Go decision reads.
+// bindings.go declares the server-wide key and mouse bindings of reed's navigation.
+// They are the four Alt keys and the left click on the status bar.
+// Alt+Up and Alt+Down step across windows in index order,
+// and a left click on the shell button returns to the strands' window.
+// The click dispatches on the shell, window and session ranges, the follow button and the button ranges.
+// The builder is pure.
+// pinBindingsLocked issues its argvs, each non-fatal.
+// Its caller is the geometry pin path that boot and the attach pre-flight run.
+// The pin stamps the server with the build that made it.
+// Every op under the blocking op lock re-pins when the stamp is absent or unparseable.
+// It also re-pins when another build's stamp has a commit time not after the running build's,
+// so a deploy reaches a running server at its first reed op.
+// Alt+Up, Alt+Down and the shell and window clicks write the follow state off.
+// The follow button toggles it.
+// @lym_follow is the one option these bindings write that a Go decision reads.
 
 package reedengine
 
@@ -40,7 +50,8 @@ const followCommandOption = "@lym_follow_command"
 // The click reads it through `#{E:...}` inside run-shell, like followCommandOption.
 const buttonCommandOption = "@lym_button_command"
 
-// bindingsBuildOption is the server-global user option naming the build whose bindings the server holds: its VCS commit time in RFC 3339 UTC, a space, then its revision label.
+// bindingsBuildOption is the server-global user option naming the build whose bindings the server holds.
+// Its value is the build's VCS commit time in RFC 3339 UTC, a space, then its revision label.
 // It is unset when no build pinned them, or when the one that did carries no VCS stamp.
 const bindingsBuildOption = "@lym_bindings_build"
 
@@ -54,7 +65,8 @@ func bindingsBuildStamp(build buildvcs.Identity) string {
 
 // bindingsStale reports whether running should re-pin the bindings of a server whose bindingsBuildOption reads stamp.
 // A running build with no VCS stamp never re-pins.
-// Otherwise an empty or unparseable stamp is stale, running's own stamp is not, and another build's stamp is stale unless its commit time is after running's,
+// Otherwise an empty or unparseable stamp is stale, and running's own stamp is not.
+// Another build's stamp is stale unless its commit time is after running's,
 // so an older binary still running reed ops never pins its bindings back over a newer one's.
 func bindingsStale(stamp string, running buildvcs.Identity) bool {
 	if running.Revision == "" {
@@ -85,14 +97,17 @@ type statusClickBranch struct {
 }
 
 // statusClickBranches lists the left-click dispatch on `#{mouse_status_range}`, in order.
-// The shell and window branches write follow off first, also for a click on the current window; the session branch leaves the follow state alone.
+// The shell and window branches write follow off first, also for a click on the current window;
+// the session branch leaves the follow state alone.
 var statusClickBranches = []statusClickBranch{
 	{"shell", followOffCommand + " ; " + shellClickCommand},
 	{"window", followOffCommand + " ; select-window -t="},
 	{"session", "switch-client -t="},
 }
 
-// followClickCommand returns the command the follow button's click runs: from off it writes follow on and, when followJump holds, runs the jump line in the background; from on it writes follow off and changes no window.
+// followClickCommand returns the command the follow button's click runs.
+// From off it writes follow on and, when followJump holds, runs the jump line in the background;
+// from on it writes follow off and changes no window.
 func followClickCommand(followJump bool) string {
 	turnOn := "set-option " + followSessionOption + " on"
 	if followJump {
@@ -101,16 +116,25 @@ func followClickCommand(followJump bool) string {
 	return "if-shell -F '#{==:#{" + followSessionOption + "},off}' '" + turnOn + "' '" + followOffCommand + "'"
 }
 
-// bindingArgvs returns the argvs of the Alt keys and the status click, each in the root table: first an `unbind-key -n M-z` that removes the Alt+z an older build bound, since a `bind-key` re-pin never removes a binding, then the `bind-key -n` argvs.
+// bindingArgvs returns the argvs of the Alt keys and the status click, each in the root table.
+// The first argv is an `unbind-key -n M-z` that removes the Alt+z an older build bound.
+// A `bind-key` re-pin never removes a binding, so the unbind is needed.
+// The `bind-key -n` argvs follow it.
 // switchPrev and switchNext are the shell lines run-shell runs for M-Left and M-Right;
 // an empty one leaves its key unbound.
-// followJump reports that the follow button's jump line is pinned in followCommandOption, so a click that turns follow on runs it.
-// M-Down and M-Up write follow off, then step to the next and previous window with tmux's own wrap, in every window, and the step then goes on if it landed on a window carrying @lym_hidden.
+// followJump reports that the follow button's jump line is pinned in followCommandOption.
+// A click that turns follow on then runs it.
+// M-Down and M-Up write follow off, then step to the next and previous window with tmux's own wrap, in every window,
+// and the step then goes on if it landed on a window carrying @lym_hidden.
 // The write comes first so it lands also when the step wraps onto the current window.
-// Hidden windows sit after the shell window, so one conditional step reaches a visible window: forward onto the session's first window, the lowest-index overview, and back onto the strands' window, the shell.
-// The status click and each step are dispatched by chained commands, joined by tmux's escaped `\;` separator argument, since only one range type matches a click.
-// The click dispatch ends in the follow button's branch, then, when buttonClick holds, the button branch:
-// a click on a range named by buttonRangePrefix runs the line pinned in buttonCommandOption, resolved through the session's own options.
+// Hidden windows sit after the shell window, so one conditional step reaches a visible window.
+// Forward, the step lands on the session's first window, the lowest-index overview;
+// back, it lands on the strands' window, the shell.
+// The status click and each step are dispatched by chained commands, joined by tmux's escaped `\;` separator argument;
+// only one range type matches a click.
+// The click dispatch ends in the follow button's branch.
+// When buttonClick holds, a click on a range named by buttonRangePrefix runs the button branch.
+// That branch runs the line pinned in buttonCommandOption, resolved through the session's own options.
 // buttonClick reports that the line is pinned; when false no button branch is bound.
 func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick bool) [][]string {
 	argvs := [][]string{
@@ -140,11 +164,15 @@ func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick bool) [
 }
 
 // pinBindingsLocked issues the navigation bindings on the server.
-// Each call's failure is logged via logger.Warn and ignored, and no GOOS branch guards it: psmux may refuse some or all of them.
-// An unresolvable executable, socket path or tmux path logs a named warning, leaves M-Left and M-Right unbound and the follow button without its jump, the other bindings in place.
-// The follow jump line is set in followCommandOption when it resolves and unset otherwise, so a stale line never outlives the binary that pinned it.
+// Each call's failure is logged via logger.Warn and ignored.
+// No GOOS branch guards it, since psmux may refuse some or all of them.
+// An unresolvable executable, socket path or tmux path logs a named warning.
+// Then M-Left and M-Right stay unbound and the follow button goes without its jump; the other bindings are still pinned.
+// The follow jump line is set in followCommandOption when it resolves and unset otherwise,
+// so a stale line never outlives the binary that pinned it.
 // The button click line is set in buttonCommandOption and unset the same way.
-// bindingsBuildOption is then set to this binary's build stamp, or unset for a binary with no VCS stamp, ahead of the bindings themselves.
+// This binary's build stamp is then set in bindingsBuildOption, ahead of the bindings themselves.
+// It is unset for a binary with no VCS stamp.
 // Assumes the op lock is already held.
 func (e *Engine) pinBindingsLocked() {
 	switchPrev, switchNext, follow, button := e.switchBindingCommandsLocked()
@@ -176,9 +204,10 @@ func (e *Engine) pinBindingsLocked() {
 	}
 }
 
-// repinStaleBindingsLocked re-pins the global status formats and the navigation bindings when the server's bindingsBuildOption names a build bindingsStale finds stale against this binary.
+// repinStaleBindingsLocked re-pins the global status formats and the navigation bindings another build pinned.
+// It acts only when `bindingsStale` finds the stamp in `bindingsBuildOption` stale against this binary.
 // A binary with no VCS stamp reads nothing.
-// A failed read, as with no server up, is logged at Debug and pins nothing.
+// A failed read, for example when no server is up, is logged at Debug and pins nothing.
 // Assumes the op lock is already held.
 func (e *Engine) repinStaleBindingsLocked() {
 	if e.build.Revision == "" {
@@ -201,7 +230,8 @@ func (e *Engine) repinStaleBindingsLocked() {
 	e.pinBindingsLocked()
 }
 
-// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right, the follow button's jump and a button click, all empty when the socket path, the tmux path or this binary cannot be resolved.
+// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right, the follow button's jump and a button click.
+// All four are empty when the socket path, the tmux path or this binary cannot be resolved.
 func (e *Engine) switchBindingCommandsLocked() (prev, next, follow, button string) {
 	socketPath, err := e.tmux.output("display-message", "-p", "#{socket_path}")
 	socketPath = strings.TrimSpace(socketPath)

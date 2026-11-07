@@ -1,4 +1,5 @@
-// deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live, the adopt check start's guard under go test, its alive skip and its liveness reading, and the adopt gate tiers it carries.
+// deps_test.go covers the hub-only pause reading and the adopt check start's guard under go test;
+// its alive skip, its liveness reading, and the adopt gate tiers it carries.
 
 package adoptcli
 
@@ -219,7 +220,8 @@ func TestCheckAlive(t *testing.T) {
 		name   string
 		record CheckRecord
 		want   bool
-		// needsTicks marks a row that needs a readable start time, which only Linux gives, so no other platform generates a subtest for it.
+		// needsTicks marks a row that needs a readable start time, which only Linux gives,
+		// so no other platform generates a subtest for it.
 		needsTicks bool
 	}{
 		{name: "OwnPidAndTicksIsAlive", record: CheckRecord{PID: self, StartTicks: ticks}, want: true},

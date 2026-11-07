@@ -1,5 +1,7 @@
 // halt_test.go covers loom's halt friction: the halt note, loomAfterStep under step and loomPostRun under run.
-// Every test is untagged Tier 1: the reflection agent is a shedfake.Shuttle, which also stands in for its `lym selfreport create` filing, so nothing spawns an agent or files an issue.
+// Every test is untagged Tier 1.
+// The reflection agent is a shedfake.Shuttle, which also stands in for its `lym selfreport create` filing.
+// So nothing spawns an agent or files an issue.
 
 package loomcli
 
@@ -32,12 +34,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// haltFixture is a receiver with Tier 2 on, seeded stencils and a shuttle answering done.
+// haltFixture holds a loomCLI with Tier 2 on, seeded stencils and a shuttle answering done.
 type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
 	frictionDir string
-	// commitStatus is the shed's CommitStatus seam in stepOver;
+	// commitStatus is the shed's CommitStatus seam;
 	// nil leaves it unset.
 	commitStatus func(producer, state string) error
 }
@@ -223,7 +225,9 @@ func TestWriteHaltNote_EmptyDirectoryWritesNothing(t *testing.T) {
 	}
 }
 
-// TestLoomAfterStep_WritesNothing asserts a busy shed, a stale failed status carrying a different error, and an awaiting or paused hand-off each skip reflection: no halt note and no reflection spawn.
+// TestLoomAfterStep_WritesNothing asserts that each state skips reflection:
+// a busy shed, a stale failed status carrying a different error, and an awaiting or paused hand-off.
+// No halt note is written and no reflection spawns.
 func TestLoomAfterStep_WritesNothing(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -373,7 +377,8 @@ func (fn funcProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	return fn(ctx)
 }
 
-// stepEnvelopeOver drives the generic step body over f.c.specFor("step") with PreStep cleared and BuildShed replaced by a one-row shed whose Webster producer is p.
+// stepEnvelopeOver drives the generic step body over f.c.specFor("step") with PreStep cleared.
+// BuildShed is replaced by a one-row shed whose Webster producer is p.
 func (f *haltFixture) stepEnvelopeOver(t *testing.T, p shedengine.ShedProducer) (map[string]any, int) {
 	t.Helper()
 
@@ -381,7 +386,8 @@ func (f *haltFixture) stepEnvelopeOver(t *testing.T, p shedengine.ShedProducer) 
 	return f.stepOver(t, nil, []shedengine.ProducerDef{{Name: loomshed.NameWebster, Producer: p}})
 }
 
-// stepOver drives the generic step body over f.c.specFor("step") against the status file as it stands, with PreStep set to preStep (nil clears it) and BuildShed replaced by a shed over producers.
+// stepOver drives the generic step body over f.c.specFor("step") against the status file as it stands.
+// It sets PreStep to preStep (nil clears it) and replaces BuildShed with a shed over producers.
 func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (string, error), producers []shedengine.ProducerDef) (map[string]any, int) {
 	t.Helper()
 
@@ -415,7 +421,8 @@ func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (stri
 	return envelope, code
 }
 
-// TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes drives step with a producer that returns Stuck on a row with no OnStuck, the escalation arm.
+// TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes drives step through the escalation arm.
+// A producer returns Stuck on a row with no OnStuck.
 func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -453,7 +460,8 @@ func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 	}
 }
 
-// TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection drives step with a producer that returns an error: the error envelope reports friction skipped, the halt note is on disk and no reflection ran.
+// TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection drives step with a producer that returns an error.
+// The error envelope reports friction skipped, the halt note is on disk and no reflection ran.
 func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -479,8 +487,11 @@ func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 	}
 }
 
-// TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note as an interrupted stop with the cause as reason, reports skipped and runs the reflection shuttle zero times.
-// The note records the state the status file holds after the stop, `failed` when there is none, and an error in it the stop did not write.
+// TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note.
+// The note is an interrupted stop with the cause as reason.
+// The envelope reports skipped and the reflection shuttle runs zero times.
+// The note records the status file's state after the stop: `failed` when there is none.
+// It also keeps any error in that file that the stop did not write.
 func TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -553,7 +564,8 @@ var doneProducer = funcProducer(func(context.Context) (shedengine.Outcome, shede
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 })
 
-// handoffSteps runs two generic steps over a shed whose first row returns Done and leaves the run running, with the status seeded once and PreStep taking the entry observation as the real hook does.
+// handoffSteps runs two generic steps over a shed whose first row returns Done and leaves the run running.
+// The status is seeded once, and PreStep takes the entry observation as the real hook does.
 // beforeSecond runs between the two steps.
 func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 	t.Helper()
@@ -582,8 +594,8 @@ func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 			t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
 		}
 	}
-	// longHistory removes the voucher and appends seven entries to the persisted history,
-	// so the observed history holds more than five.
+	// longHistory removes the voucher and appends seven entries to the persisted history.
+	// This leaves the observed history with more than five entries.
 	longHistory := func(t *testing.T, f *haltFixture) {
 		removeVoucher(t, f)
 		p := f.c.shedPaths

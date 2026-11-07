@@ -1,4 +1,5 @@
-// hubregistry_test.go covers Record, Lookup and Live over temporary hubs that hold only a Bolt shortname record, so nothing is spawned.
+// hubregistry_test.go covers Record, Lookup and Live over temporary hubs that hold only a Bolt shortname record.
+// Nothing is spawned.
 
 package hubregistry_test
 
@@ -32,7 +33,8 @@ func newHub(t *testing.T, root, name, shortname string) string {
 	return hub
 }
 
-// recordedPaths returns the hub paths Live answers.
+// recordedPaths returns the hub paths of the entries in dir's record that are still live.
+// An entry is live when its hub's Bolt shortname record still reads the entry's own shortname.
 func recordedPaths(t *testing.T, dir string) []string {
 	t.Helper()
 	live, err := hubregistry.Live(dir)
@@ -46,7 +48,8 @@ func recordedPaths(t *testing.T, dir string) []string {
 	return paths
 }
 
-// TestRecord covers the upsert, the drops of vanished and renamed hubs, the entries it keeps, concurrent recorders and a corrupt file.
+// TestRecord covers the upsert, the drops of vanished and renamed hubs, and the entries it keeps.
+// It also covers concurrent recorders and a corrupt file.
 func TestRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
